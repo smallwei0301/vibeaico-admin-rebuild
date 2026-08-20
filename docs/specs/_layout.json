@@ -1,0 +1,300 @@
+{
+ "sidebarNav": [
+  {
+   "label": "儀表板",
+   "icon": "bi-speedometer2",
+   "href": "/tenant/dashboard",
+   "feature": ""
+  },
+  {
+   "label": "預約管理",
+   "icon": "bi-calendar-check",
+   "href": "",
+   "feature": "",
+   "collapseId": "navBooking",
+   "children": [
+    {
+     "label": "預約列表",
+     "icon": "bi-list-ul",
+     "href": "/tenant/bookings",
+     "feature": "",
+     "badgeId": "pendingBookingBadge"
+    },
+    {
+     "label": "定期預約",
+     "icon": "bi-arrow-repeat",
+     "href": "/tenant/recurring-bookings",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "行事曆",
+     "icon": "bi-calendar3",
+     "href": "/tenant/calendar",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "營運報表",
+     "icon": "bi-bar-chart-line",
+     "href": "/tenant/reports",
+     "feature": "BASIC_REPORT",
+     "badgeId": ""
+    },
+    {
+     "label": "行事曆同步",
+     "icon": "bi-calendar-plus",
+     "href": "/tenant/calendar-sync",
+     "feature": "",
+     "badgeId": ""
+    }
+   ]
+  },
+  {
+   "label": "顧客管理",
+   "icon": "bi-people",
+   "href": "",
+   "feature": "",
+   "collapseId": "navCustomer",
+   "children": [
+    {
+     "label": "顧客列表",
+     "icon": "bi-person-lines-fill",
+     "href": "/tenant/customers",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "會員等級",
+     "icon": "bi-award",
+     "href": "/tenant/membership-levels",
+     "feature": "MEMBERSHIP_SYSTEM",
+     "badgeId": ""
+    }
+   ]
+  },
+  {
+   "label": "顧客訊息",
+   "icon": "bi-chat-left-text",
+   "href": "/tenant/chat",
+   "feature": "",
+   "badgeId": "unreadChatBadge"
+  },
+  {
+   "label": "店家營運",
+   "icon": "bi-shop",
+   "href": "",
+   "feature": "",
+   "collapseId": "navOperation",
+   "children": [
+    {
+     "label": "員工管理",
+     "icon": "bi-person-badge",
+     "href": "/tenant/staff",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "服務項目",
+     "icon": "bi-list-check",
+     "href": "/tenant/services",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "封鎖時段",
+     "icon": "bi-calendar-x",
+     "href": "/tenant/block-times",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "看診號碼掛號",
+     "icon": "bi-123",
+     "href": "/tenant/clinic-queue",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "班表管理",
+     "icon": "bi-calendar-week",
+     "href": "/tenant/shifts",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "收款方式",
+     "icon": "bi-credit-card",
+     "href": "/tenant/payment-methods",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "票券管理",
+     "icon": "bi-ticket-perforated",
+     "href": "/tenant/coupons",
+     "feature": "COUPON_SYSTEM",
+     "badgeId": ""
+    },
+    {
+     "label": "商品管理",
+     "icon": "bi-box-seam",
+     "href": "/tenant/products",
+     "feature": "PRODUCT_SALES",
+     "badgeId": ""
+    },
+    {
+     "label": "商品訂單",
+     "icon": "bi-bag",
+     "href": "/tenant/product-orders",
+     "feature": "PRODUCT_SALES",
+     "badgeId": "pendingOrderBadge"
+    },
+    {
+     "label": "庫存異動",
+     "icon": "bi-clipboard-data",
+     "href": "/tenant/inventory",
+     "feature": "INVENTORY",
+     "badgeId": ""
+    },
+    {
+     "label": "關鍵字回覆",
+     "icon": "bi-chat-square-text",
+     "href": "/tenant/keyword-replies",
+     "feature": "KEYWORD_REPLY",
+     "badgeId": ""
+    },
+    {
+     "label": "AI 客服設定",
+     "icon": "bi-robot",
+     "href": "/tenant/ai-settings",
+     "feature": "AI_ASSISTANT",
+     "badgeId": ""
+    }
+   ]
+  },
+  {
+   "label": "行銷推廣",
+   "icon": "bi-megaphone",
+   "href": "",
+   "feature": "",
+   "collapseId": "navMarketing",
+   "children": [
+    {
+     "label": "推廣中心",
+     "icon": "bi-rocket-takeoff",
+     "href": "/tenant/promote",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "行銷活動",
+     "icon": "bi-bullseye",
+     "href": "/tenant/campaigns",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "行銷推播",
+     "icon": "bi-broadcast",
+     "href": "/tenant/marketing",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "推薦好友",
+     "icon": "bi-share",
+     "href": "/tenant/referrals",
+     "feature": "",
+     "badgeId": ""
+    }
+   ]
+  },
+  {
+   "label": "公開頁面",
+   "icon": "bi-globe2",
+   "href": "",
+   "feature": "",
+   "collapseId": "navPublicPage",
+   "children": [
+    {
+     "label": "店面設計",
+     "icon": "bi-brush",
+     "href": "/tenant/shop-design",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "作品展示",
+     "icon": "bi-images",
+     "href": "/tenant/portfolio",
+     "feature": "PORTFOLIO_SHOWCASE",
+     "badgeId": ""
+    }
+   ]
+  },
+  {
+   "label": "系統設定",
+   "icon": "bi-gear",
+   "href": "",
+   "feature": "",
+   "collapseId": "navSystem",
+   "children": [
+    {
+     "label": "店家設定",
+     "icon": "bi-sliders",
+     "href": "/tenant/settings",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "LINE 設定",
+     "icon": "bi-chat-dots",
+     "href": "/tenant/line-settings",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "選單設計",
+     "icon": "bi-palette-fill",
+     "href": "/tenant/rich-menu-design",
+     "feature": "CUSTOM_RICH_MENU",
+     "badgeId": ""
+    },
+    {
+     "label": "功能商店",
+     "icon": "bi-puzzle",
+     "href": "/tenant/feature-store",
+     "feature": "",
+     "badgeId": ""
+    },
+    {
+     "label": "點數管理",
+     "icon": "bi-coin",
+     "href": "/tenant/points",
+     "feature": "",
+     "badgeId": ""
+    }
+   ]
+  },
+  {
+   "label": "贊助我們",
+   "icon": "bi-heart-fill",
+   "href": "/tenant/donate",
+   "feature": ""
+  },
+  {
+   "label": "回報問題",
+   "icon": "bi-bug",
+   "href": "#",
+   "feature": ""
+  }
+ ],
+ "sidebarBrand": {
+  "logo": "/images/vibeai-logo.png",
+  "text": "VibeAI"
+ },
+ "topbarHTML": "<header class=\"topbar\">\n<div class=\"topbar-left\">\n<!-- 手機版選單切換（待處理數顯示在此，手機側欄收合時才看得到）-->\n<button class=\"btn-sidebar-toggle d-md-none position-relative\" id=\"sidebarToggleMobile\">\n<i class=\"bi bi-list\"></i>\n<span class=\"badge badge-count bg-danger rounded-pill\" id=\"hamburgerPendingBadge\" style=\"display:none;position:absolute;top:2px;right:2px;font-size:11px;min-width:18px;padding:2px 5px;\">\n</span>\n</button>\n<!-- 當前店家指示 chip（最顯眼處，多店家時可點開切換） -->\n<button id=\"currentTenantChip\" onclick=\"openTenantPickerModal()\" onmouseout=\"this.style.background='#f5f5f7'\" onmouseover=\"this.style.background='#ececf0'\" style=\"display:none;align-items:center;gap:6px;\n                                   background:#f5f5f7;color:#1d1d1f;\n                                   border:1px solid rgba(0,0,0,.08);padding:6px 14px;border-radius:20px;font-weight:600;font-size:13px;\n                                   cursor:pointer;box-shadow:none;transition:all .15s;\" type=\"button\">\n<i class=\"bi bi-shop\" style=\"font-size:14px;\"></i>\n<span id=\"currentTenantChipName\">店家</span>\n<i class=\"bi bi-chevron-expand\" id=\"currentTenantChipArrow\" style=\"font-size:11px;opacity:.85;display:none;\"></i>\n</button>\n</div>\n<div class=\"topbar-right\">\n<!-- 點數餘額 -->\n<div class=\"points-badge\">\n<i class=\"bi bi-coin\"></i>\n<span id=\"pointsBalance\">-</span>\n</div>\n<!-- 用戶下拉選單 -->\n<div class=\"dropdown\">\n<div aria-expanded=\"false\" class=\"user-dropdown\" data-bs-toggle=\"dropdown\" id=\"userDropdown\">\n<span class=\"user-avatar\">U</span>\n<span class=\"user-name d-none d-md-inline\">使用者</span>\n<span class=\"tenant-name d-none d-lg-inline\"></span>\n<i class=\"bi bi-chevron-down ms-1\"></i>\n</div>\n<ul class=\"dropdown-menu dropdown-menu-end\" id=\"userDropdownMenu\">\n<!-- 多店家切換區（單店家用戶不顯示） -->\n<li class=\"tenant-switcher-section\" id=\"tenantSwitcherTopbarSection\" style=\"display:none;\">\n<h6 class=\"dropdown-header\"><i class=\"bi bi-shop me-1\"></i>切換店家</h6>\n<div id=\"tenantSwitcherTopbarList\"></div>\n<hr class=\"dropdown-divider\"/>\n</li>\n<li>\n<a class=\"dropdown-item\" href=\"/tenant/settings\">\n<i class=\"bi bi-gear me-2\"></i>店家設定\n                                </a>\n</li>\n<!-- 安裝手機 App（PWA）：已安裝時由 tenant.js 隱藏 -->\n<li id=\"installAppMenuItem\" style=\"display:none;\">\n<a class=\"dropdown-item\" href=\"#\" onclick=\"openInstallApp(); return false;\">\n<i class=\"bi bi-phone me-2\"></i>安裝手機 App\n                                </a>\n</li>\n<!-- 開啟推播通知：未授權且伺服器已啟用推播時由 tenant.js 顯示 -->\n<li id=\"enablePushMenuItem\" style=\"display:none;\">\n<a class=\"dropdown-item\" href=\"#\" onclick=\"enablePushNotification(); return false;\">\n<i class=\"bi bi-bell me-2\"></i>開啟新預約推播\n                                </a>\n</li>\n<li><hr class=\"dropdown-divider\"/></li>\n<li>\n<a class=\"dropdown-item\" href=\"#\" onclick=\"tenantLogout()\">\n<i class=\"bi bi-box-arrow-right me-2\"></i>登出\n                                </a>\n</li>\n</ul>\n</div>\n</div>\n</header>",
+ "topbarText": "店家 - U 使用者 切換店家 店家設定 安裝手機 App 開啟新預約推播 登出",
+ "footerText": "Copyright © 瓦比艾有限公司 VibeAI Co., Ltd. 2026"
+}

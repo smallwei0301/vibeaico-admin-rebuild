@@ -1,0 +1,652 @@
+{
+ "route": "/tenant/dashboard",
+ "file": "dashboard",
+ "title": "儀表板 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "儀表板",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h5",
+   "text": "3 分鐘開始收單",
+   "icon": "bi-rocket-takeoff",
+   "cls": "onboarding-title"
+  },
+  {
+   "lvl": "h5",
+   "text": "快速開始設定您的店家",
+   "icon": "bi-rocket-takeoff",
+   "cls": "onboarding-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "快速操作",
+   "icon": "bi-lightning-charge",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "今日預約",
+   "icon": "",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "最近活動",
+   "icon": "",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "員工業績（本月）",
+   "icon": "bi-trophy",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "本週預約趨勢",
+   "icon": "",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "本月預約來源",
+   "icon": "bi-pie-chart",
+   "cls": "m-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [
+  {
+   "text": "今日預約 -",
+   "cls": "card stat-card border-primary h-100 text-decoration-none",
+   "icon": "bi-calendar-check"
+  },
+  {
+   "text": "待確認 -",
+   "cls": "card stat-card border-warning h-100 text-decoration-none",
+   "icon": "bi-hourglass-split"
+  },
+  {
+   "text": "本月營收 -",
+   "cls": "card stat-card border-success h-100 text-decoration-none",
+   "icon": "bi-currency-dollar"
+  },
+  {
+   "text": "總顧客數 -",
+   "cls": "card stat-card border-info h-100 text-decoration-none",
+   "icon": "bi-people"
+  },
+  {
+   "text": "系統推送額度 - LINE 平台 -",
+   "cls": "card stat-card border-secondary h-100 text-decoration-none",
+   "icon": "bi-broadcast"
+  }
+ ],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card stat-card border-primary h-100 text-decoration-none",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "今日預約 -"
+  },
+  {
+   "id": "",
+   "cls": "card stat-card border-warning h-100 text-decoration-none",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "待確認 -"
+  },
+  {
+   "id": "",
+   "cls": "card stat-card border-success h-100 text-decoration-none",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "本月營收 -"
+  },
+  {
+   "id": "",
+   "cls": "card stat-card border-info h-100 text-decoration-none",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "總顧客數 -"
+  },
+  {
+   "id": "",
+   "cls": "card stat-card border-secondary h-100 text-decoration-none",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "系統推送額度 - LINE 平台 -"
+  },
+  {
+   "id": "",
+   "cls": "card border-danger shadow-sm",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "功能訂閱已到期 相關的票券已暫停、商品已下架（顧客暫時看不到）。你的設定與資料都完整保留， 續訂後系統會自動恢復原狀 。"
+  },
+  {
+   "id": "",
+   "cls": "card border-info",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "功能訂閱即將到期 以下功能將在 10 天內到期，請及時續訂以免影響使用 前往續訂"
+  },
+  {
+   "id": "pushQuotaWarningCard",
+   "cls": "card",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": ""
+  },
+  {
+   "id": "",
+   "cls": "card border-danger",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "LINE 推送額度已用盡 您的 LINE 官方帳號本月免費推播額度（200 則）已用完，預約通知、行銷推播等將無法送達顧客。 請到 LINE 官方帳號管理後台 →「設定」→「帳務專區」→「推廣方案」升級方案： 中用量 NT$800/月（3,000 則） 或等下個月 1 號重置。"
+  },
+  {
+   "id": "",
+   "cls": "card border-danger",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "未處理預約 0 筆預約已過期但尚未處理 前往處理"
+  },
+  {
+   "id": "",
+   "cls": "card border-danger",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "庫存低量警告 0 項商品低於安全庫存 查看"
+  },
+  {
+   "id": "",
+   "cls": "card border-warning",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "顧客流失預警 0 位顧客超過 30 天未回訪 查看"
+  },
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "",
+   "header": "今日預約 查看全部",
+   "bodyText": "時間 顧客 服務 員工 狀態 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "",
+   "header": "最近活動",
+   "bodyText": "載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "bi-trophy",
+   "header": "員工業績（本月） 詳細",
+   "bodyText": "員工 預約 完成率 營收 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "",
+   "header": "本週預約趨勢 詳細報表",
+   "bodyText": ""
+  },
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "bi-pie-chart",
+   "header": "本月預約來源",
+   "bodyText": ""
+  }
+ ],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "時間",
+    "顧客",
+    "服務",
+    "員工",
+    "狀態"
+   ],
+   "tbodyId": "todayBookingsTable",
+   "placeholder": "載入中..."
+  },
+  {
+   "id": "",
+   "cls": "table table-hover table-sm mb-0",
+   "columns": [
+    "員工",
+    "預約",
+    "完成率",
+    "營收"
+   ],
+   "tbodyId": "staffPerformanceTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "",
+   "icon": "bi-x-lg",
+   "cls": "onboarding-close",
+   "id": "",
+   "href": "",
+   "onclick": "skipFocusCard()"
+  },
+  {
+   "text": "去修改",
+   "icon": "bi-pencil-square",
+   "cls": "btn btn-light btn-lg px-4 fw-bold text-primary",
+   "id": "focusEditServiceBtn",
+   "href": "/tenant/services",
+   "onclick": "focusTrack('focus_edit_service'); sessionStorage.setItem('openCreateModal','service-edit')"
+  },
+  {
+   "text": "先完成第 1 步",
+   "icon": "bi-clipboard",
+   "cls": "btn btn-outline-light",
+   "id": "focusCopyBtn",
+   "href": "",
+   "onclick": "copyFocusUrl()"
+  },
+  {
+   "text": "開啟",
+   "icon": "bi-box-arrow-up-right",
+   "cls": "btn btn-sm btn-success",
+   "id": "",
+   "href": "#",
+   "onclick": "focusTrack('focus_open_shop')"
+  },
+  {
+   "text": "查看公開頁面",
+   "icon": "bi-eye",
+   "cls": "btn btn-sm btn-light",
+   "id": "onboardingPublicPageLink",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "發第一張票券",
+   "icon": "bi-ticket-perforated",
+   "cls": "btn btn-sm btn-light",
+   "id": "",
+   "href": "/tenant/coupons",
+   "onclick": ""
+  },
+  {
+   "text": "自訂店面設計",
+   "icon": "bi-palette",
+   "cls": "btn btn-sm btn-light",
+   "id": "",
+   "href": "/tenant/shop-design",
+   "onclick": ""
+  },
+  {
+   "text": "前往設定",
+   "icon": "bi-gear",
+   "cls": "btn btn-sm btn-danger",
+   "id": "",
+   "href": "/tenant/settings",
+   "onclick": ""
+  },
+  {
+   "text": "立即設定",
+   "icon": "bi-arrow-right-circle",
+   "cls": "btn btn-sm btn-primary",
+   "id": "",
+   "href": "/tenant/calendar-sync",
+   "onclick": ""
+  },
+  {
+   "text": "",
+   "icon": "",
+   "cls": "btn-close ms-1",
+   "id": "",
+   "href": "",
+   "onclick": "dismissCalSyncPromo()"
+  },
+  {
+   "text": "前往續訂",
+   "icon": "",
+   "cls": "btn btn-primary btn-sm text-nowrap flex-shrink-0",
+   "id": "",
+   "href": "/tenant/feature-store",
+   "onclick": ""
+  },
+  {
+   "text": "前往處理",
+   "icon": "",
+   "cls": "btn btn-primary btn-sm text-nowrap flex-shrink-0",
+   "id": "",
+   "href": "/tenant/bookings?status=UNPROCESSED",
+   "onclick": ""
+  },
+  {
+   "text": "查看",
+   "icon": "",
+   "cls": "btn btn-primary btn-sm text-nowrap flex-shrink-0",
+   "id": "",
+   "href": "/tenant/products",
+   "onclick": ""
+  },
+  {
+   "text": "複製",
+   "icon": "bi-clipboard",
+   "cls": "btn btn-sm btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "copyDashUrl()"
+  },
+  {
+   "text": "開啟",
+   "icon": "bi-box-arrow-up-right",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "dashPublicLink",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "查看全部",
+   "icon": "",
+   "cls": "btn btn-sm btn-primary",
+   "id": "",
+   "href": "/tenant/bookings",
+   "onclick": ""
+  },
+  {
+   "text": "詳細",
+   "icon": "",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "/tenant/reports",
+   "onclick": ""
+  },
+  {
+   "text": "詳細報表",
+   "icon": "",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "/tenant/reports",
+   "onclick": ""
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-success d-flex align-items-center flex-wrap gap-2 mx-3 mt-3 mb-0 d-n",
+   "text": "你的預約頁已可以收單： 開啟",
+   "id": "onboardingReadyBanner"
+  },
+  {
+   "cls": "alert alert-danger d-flex align-items-center flex-wrap gap-2 mb-4 d-none",
+   "text": "預約截止日期已過（ ） 顧客目前無法透過 LINE / 公開頁面預約任何日期。請前往店家設定更新或清除截止日。 前往設定",
+   "id": "cutoffExpiredAlert"
+  },
+  {
+   "cls": "alert onboard-banner onboard-primary d-flex align-items-center flex-wrap gap-2 m",
+   "text": "把預約自動同步到您的 Google / Apple 行事曆 一次設定，所有新預約自動出現在您平常看的行事曆上 立即設定",
+   "id": "calSyncPromo"
+  },
+  {
+   "cls": "alert alert-primary mb-0 d-flex align-items-center flex-wrap gap-2",
+   "text": "您的公開預約網址： 複製 開啟",
+   "id": ""
+  }
+ ],
+ "emptyStates": [],
+ "badges": [
+  "1",
+  "2"
+ ],
+ "jsStrings": [
+  " 到期</span></span>",
+  " 天後到期",
+  " 筆",
+  "(LINE 用戶)",
+  ">${label}體驗至 ${data.planExpiresAt}，到期不自動扣款</span>",
+  ">-- 請選擇 --</option>",
+  "></i>LINE 連線已中斷，通知暫停發送中——請至 <a href=",
+  "></i>「主要」接收者另外會收到訂閱到期／儲值提醒（僅發給主要一位）。</div>",
+  "></i>新增接收者</button>",
+  "></i>新增第一項服務",
+  "></i>每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）</span>",
+  ">LINE 推廣方案</a>",
+  ">LINE 設定頁</a> 檢查並重新儲存設定以恢復。</div>",
+  ">主要</span>",
+  ">加購</span>",
+  ">加購推送額度（49 點/月）</a>（額度提升至 700 則）+ 升級 <a href=",
+  ">尚無可加入的 LINE 好友</option>",
+  ">已取消</span>",
+  ">已於 ",
+  ">已達上限 ${_notify.maxRecipients} 位</span>",
+  ">暫無活動記錄</div>",
+  ">本月暫無資料</td></tr>",
+  ">續訂</a>",
+  ">載入失敗</div>",
+  ">載入失敗</option>",
+  ">載入失敗</td></tr>",
+  "AI 正在思考中...",
+  "LINE 通知已綁定（連線中斷）",
+  "LINE 通知已開啟",
+  "}」將成為主要接收者（訂閱到期／儲值提醒改發給他）。確定移除？",
+  "今日到期",
+  "公開頁面",
+  "回報已送出，我們將盡快處理！",
+  "專業版",
+  "已用盡",
+  "已移除接收者",
+  "已複製預約網址",
+  "已複製預約頁網址",
+  "已解除綁定",
+  "已開始新對話。請問需要什麼協助？",
+  "建議：<a href=",
+  "後台建立",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "是我，綁定通知",
+  "未指定",
+  "未知",
+  "未知錯誤",
+  "未設定 LINE",
+  "本月尚無預約，有預約後這裡會顯示來源分布</div>",
+  "本月已使用 ${used}/${quota} 則（${pct}%），剩餘 ${remaining} 則。額度用完後預約通知、行銷推播等將無法發送。",
+  "此人是「主要」接收者。移除後「${(next && next.displayName) || ",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "營收 (NT$)",
+  "營收：NT$ ",
+  "確定將此人移出通知名單？其他接收者不受影響。",
+  "確定解除全部 ${n} 位接收者的綁定？之後不會再收到 LINE 即時通知。",
+  "確定解除綁定？之後不會再收到 LINE 即時通知。",
+  "確認加入",
+  "確認將此人加入通知名單？",
+  "確認是您本人嗎？",
+  "移除失敗",
+  "系統推送額度使用超過 80%",
+  "系統推送額度即將用盡",
+  "綁定失敗",
+  "綁定成功！之後有新預約會即時通知綁定的 LINE。",
+  "解除失敗",
+  "請先選擇",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請手動複製：",
+  "請選擇問題類別",
+  "載入今日預約失敗:",
+  "載入員工業績失敗:",
+  "載入提醒失敗:",
+  "載入最近活動失敗:",
+  "載入統計資料失敗:",
+  "載入設定狀態失敗:",
+  "載入週統計失敗:",
+  "輕量版",
+  "這是最後一位接收者，移除後將不再收到 LINE 即時通知。確定移除？",
+  "連線錯誤，請稍後再試",
+  "預約數",
+  "預約數：",
+  "額度將於每月 1 號重置。如需更多額度請聯繫客服。",
+  "（建立店家代碼後顯示）",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bookings",
+  "/api/bug-report",
+  "/api/customers",
+  "/api/feature-store",
+  "/api/reports/daily",
+  "/api/reports/dashboard",
+  "/api/reports/dashboard-alerts",
+  "/api/reports/staff-performance",
+  "/api/settings",
+  "/api/settings/line",
+  "/api/settings/line/owner-notify",
+  "/api/settings/line/owner-notify/bind",
+  "/api/settings/line/owner-notify/line-users",
+  "/api/settings/line/owner-notify/recipients/",
+  "/api/settings/onboarding-event",
+  "/api/settings/setup-status",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 66026
+}

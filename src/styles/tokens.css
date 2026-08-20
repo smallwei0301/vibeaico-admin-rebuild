@@ -1,0 +1,141 @@
+/* =============================================================================
+   VibeAI 店家後台 — 設計 Token（Design Tokens）
+   來源：原站 /css/common.css :root 與 /css/tenant.css 全站量測
+   本檔為「單一事實來源」：Tailwind theme 與所有元件皆引用這裡的變數。
+   ============================================================================= */
+
+:root {
+  /* ---------- 品牌與語意色 ---------- */
+  --primary-color: #4361ee;
+  --primary-hover: #3a56d4;
+  --primary-deep: #3a0ca3;          /* 主色漸層終點 */
+  --secondary-color: #86868b;
+  --success-color: #34c759;
+  --info-color: #5ac8fa;
+  --warning-color: #ff9f0a;
+  --danger-color: #ff3b30;
+  --light-color: #f5f5f7;           /* 內容區底色 */
+  --dark-color: #1d1d1f;            /* 側邊欄底色 / 主要文字 */
+
+  /* ---------- 主色透明衍生（focus ring / 選取態） ---------- */
+  --primary-a10: rgba(67, 97, 238, 0.10);
+  --primary-a25: rgba(67, 97, 238, 0.25);
+  --primary-a30: rgba(67, 97, 238, 0.30);
+  --primary-light: #8ea4ff;         /* 側邊欄 active 左指示條 */
+
+  /* ---------- 中性階（自原站高頻色彙整） ---------- */
+  --neutral-0: #ffffff;
+  --neutral-25: #fafafa;
+  --neutral-50: #f8f9fa;
+  --neutral-100: #f5f5f7;
+  --neutral-150: #f2f3f7;           /* 表格斑馬紋 */
+  --neutral-200: #eeeef0;
+  --neutral-250: #e8e8ed;           /* 主要邊框色 */
+  --neutral-300: #dee2e6;
+  --neutral-400: #adb5bd;
+  --neutral-500: #86868b;           /* 次要文字 */
+  --neutral-600: #6e6e73;
+  --neutral-700: #55555b;
+  --neutral-800: #2c2c2e;
+  --neutral-900: #1d1d1f;
+
+  /* ---------- 狀態徽章（實心底 + 深色字，非半透明） ---------- */
+  --badge-primary-bg: #e4eaff;  --badge-primary-fg: #24358f;
+  --badge-success-bg: #ddf5e6;  --badge-success-fg: #146c37;
+  --badge-warning-bg: #fff1d6;  --badge-warning-fg: #7a4f00;
+  --badge-danger-bg:  #fce0d0;  --badge-danger-fg:  #9c3600;
+  --badge-info-bg:    #d9f0fb;  --badge-info-fg:    #1a6b8f;
+  --badge-purple-bg:  #ece2fb;  --badge-purple-fg:  #4d2b8c;
+  --badge-neutral-bg: #eeeef0;  --badge-neutral-fg: #55555b;
+
+  /* ---------- 第三方品牌色 ---------- */
+  --line-green: #06c755;
+  --line-green-dark: #1db446;
+  --google-blue: #4285f4;
+
+  /* ---------- 漸層 ---------- */
+  --bg-gradient-primary: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
+  --bg-gradient-success: linear-gradient(135deg, #34c759 0%, #30b350 100%);
+  --bg-gradient-info:    linear-gradient(135deg, #5ac8fa 0%, #32ade6 100%);
+  --bg-gradient-warning: linear-gradient(135deg, #ff9f0a 0%, #ff8800 100%);
+  --bg-gradient-danger:  linear-gradient(135deg, #ff3b30 0%, #d70015 100%);
+
+  /* ---------- 圓角 ---------- */
+  --radius-xs: 2px;
+  --radius-sm: 6px;
+  --radius: 8px;              /* --border-radius */
+  --radius-md: 10px;
+  --radius-lg: 12px;          /* --border-radius-lg */
+  --radius-pill: 999px;
+  --radius-circle: 50%;
+
+  /* ---------- 陰影 ---------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow:    0 2px 12px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 10px 40px rgba(0, 0, 0, 0.30);
+  --shadow-focus: 0 0 0 3px rgba(67, 97, 238, 0.25);
+  --shadow-nav-active: inset 3px 0 0 #8ea4ff;
+
+  /* ---------- 字體 ---------- */
+  --font-family: "Inter", "Noto Sans TC", -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* 字級（原站以 rem 為主，1rem = 16px） */
+  --text-2xs: 0.65rem;    /* 10.4px — 側欄分類標題、極小標籤 */
+  --text-xs:  0.75rem;    /* 12px   — 全站最高頻小字：表格附註、help text */
+  --text-sm:  0.8125rem;  /* 13px   — 表格內文、徽章 */
+  --text-base:0.875rem;   /* 14px   — 表單、按鈕、一般內文 */
+  --text-md:  1rem;       /* 16px   — 卡片標題、側欄品牌字 */
+  --text-lg:  1.125rem;   /* 18px */
+  --text-xl:  1.25rem;    /* 20px   — 區塊標題 */
+  --text-2xl: 1.5rem;     /* 24px   — 頁面標題 / 統計數字 */
+  --text-3xl: 2rem;       /* 32px */
+  --text-4xl: 2.5rem;     /* 40px   — 大型統計數字 */
+
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;   /* 原站最高頻字重 */
+  --font-bold: 700;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+  --tracking-tight: -0.01em;
+
+  /* ---------- 間距（原站 1.5rem 為內容區主節奏） ---------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;     /* #content padding */
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  /* ---------- 版面 ---------- */
+  --sidebar-width: 250px;
+  --sidebar-collapsed-width: 80px;
+  --topbar-height: 4.375rem;   /* 70px，與 .sidebar-brand 同高 */
+  --content-padding: 1.5rem;
+  --content-max-width: 1600px;
+
+  /* ---------- 動效 ---------- */
+  --transition-fast: 0.15s ease;
+  --transition-base: 0.2s ease;
+  --transition-slow: 0.3s ease;
+  --transition-all: all 0.2s ease;
+  --transition-sidebar: width 0.3s ease, transform 0.3s ease;
+
+  /* ---------- z-index 疊層 ---------- */
+  --z-sidebar: 1;
+  --z-content: 1;
+  --z-topbar: 1020;
+  --z-backdrop: 1040;
+  --z-modal: 1050;
+  --z-toast: 1080;
+  --z-flyout: 1090;   /* 側欄收合時的飛出選單 */
+}

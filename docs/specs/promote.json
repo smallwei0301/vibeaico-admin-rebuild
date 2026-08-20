@@ -1,0 +1,318 @@
+{
+ "route": "/tenant/promote",
+ "file": "promote",
+ "title": "推廣中心 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "推廣中心",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "你的線上預約頁",
+   "icon": "bi-globe2",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "預約 QR Code",
+   "icon": "bi-qr-code",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "把預約頁放上各通路（複製即用）",
+   "icon": "bi-megaphone",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "推廣成效（各通路帶來的瀏覽）",
+   "icon": "bi-bar-chart-line",
+   "cls": "m-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "你的線上預約頁 複製 開啟 這是顧客「自己上網預約」的入口。把它貼到下方各個通路，新客就能不透過 LINE 直接找到你並預約。"
+  },
+  {
+   "id": "",
+   "cls": "card h-100 text-center",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "預約 QR Code 下載 QR（印門口 / 名片）"
+  },
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-megaphone",
+   "header": "把預約頁放上各通路（複製即用）",
+   "bodyText": "每個通路的連結都已自動加上來源標記（ ?utm_source=... ），方便你在下方「推廣成效」看出哪個通路最有效。 各平台（Google／FB／IG）介面偶有調整，若選項位置與步驟不同，於該平台搜尋「預約連結 / Book Now」即可找到。 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "bi-bar-chart-line",
+   "header": "推廣成效（各通路帶來的瀏覽） 最近 7 天 最近 30 天 最近 90 天",
+   "bodyText": "通路來源 瀏覽次數 (PV) 不重複訪客 (UV) 載入中... 「直接造訪」= 沒有經由帶標記的推廣連結進來（例如直接輸入網址、書籤、或你貼的是未加標記的舊連結）。多用上方「複製即用」的連結，這份報表就會越準。"
+  }
+ ],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "通路來源",
+    "瀏覽次數 (PV)",
+    "不重複訪客 (UV)"
+   ],
+   "tbodyId": "statsTableBody",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "publicUrl",
+   "placeholder": "",
+   "required": false,
+   "value": "載入中...",
+   "cls": "form-control",
+   "label": "",
+   "help": ""
+  },
+  {
+   "tag": "select",
+   "type": "",
+   "name": "",
+   "id": "statsDays",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-select form-select-sm",
+   "options": [
+    {
+     "value": "7",
+     "label": "最近 7 天"
+    },
+    {
+     "value": "30",
+     "label": "最近 30 天"
+    },
+    {
+     "value": "90",
+     "label": "最近 90 天"
+    }
+   ],
+   "label": "",
+   "help": ""
+  }
+ ],
+ "buttons": [
+  {
+   "text": "複製",
+   "icon": "bi-clipboard",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "copyText(document.getElementById('publicUrl').value, '網址已複製')"
+  },
+  {
+   "text": "開啟",
+   "icon": "bi-box-arrow-up-right",
+   "cls": "btn btn-outline-primary",
+   "id": "openPublicUrl",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "下載 QR（印門口 / 名片）",
+   "icon": "bi-download",
+   "cls": "btn btn-sm btn-outline-primary mt-3",
+   "id": "qrDownloadBtn",
+   "href": "",
+   "onclick": "downloadQr()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [],
+ "emptyStates": [],
+ "badges": [],
+ "jsStrings": [
+  "></i>這段期間還沒有瀏覽資料，把上方連結貼出去看看吧！</td></tr>",
+  ">QR 元件載入失敗</span>",
+  ">請先到「店家設定」設定店家代碼，才會有公開預約頁。</div>",
+  ">載入失敗，請稍後再試</td></tr>",
+  "AI 正在思考中...",
+  "CP 值最高：客人在 Google 搜尋你的店名 / 地圖上就能看到「預約」連結。",
+  "Email 簽名檔 / 自動回覆",
+  "Facebook 粉專按鈕",
+  "Google 商家檔案",
+  "Instagram 個人簡介",
+  "LINE 圖文選單",
+  "QR 尚未產生",
+  "個人檔案 →「編輯個人檔案」",
+  "儲存。一個粉專同時只能有一顆按鈕，會顯示在首頁封面下方",
+  "動作選「打開網址」，貼上下方網址",
+  "回報已送出，我們將盡快處理！",
+  "在 LINE 選單放一格直接打開預約頁（適合想用網頁版預約流程的店家）。",
+  "寄預約確認 / 行銷信時自然帶上預約連結",
+  "尚未設定店家代碼",
+  "已複製",
+  "已開始新對話。請問需要什麼協助？",
+  "後台「選單設計」新增 / 編輯一格",
+  "截圖讀取失敗",
+  "把下方網址貼到「網站」欄位（多個連結可用 bio 連結工具）",
+  "把預約頁放進 IG 個人簡介的網站欄，貼文 / 限動都能導流。",
+  "抱歉，發生錯誤：",
+  "未知錯誤",
+  "每封信都順手帶上預約入口。",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "用「管理這個商家的 Google 帳號」在 Google 搜尋你的店名（或開 Google 地圖 App 點你的商家）",
+  "發布到 LINE。顧客點該格就進入網頁預約頁",
+  "粉專封面照片下方點「＋ 新增按鈕」（已有按鈕則點「編輯」，或 ⋯ → 編輯行動呼籲按鈕）",
+  "粉專首頁加一顆「立即預訂」按鈕（也可在 Meta Business Suite 設定）。",
+  "複製下方網址",
+  "複製失敗，請手動複製",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請選擇問題類別",
+  "貼上下方網址（需 https）→ 儲存，數分鐘內生效（最久 24 小時）",
+  "貼進 Email 簽名檔或自動回覆內容",
+  "載入推廣資料失敗:",
+  "連線錯誤，請稍後再試",
+  "選「立即預訂 / Book Now」→ 貼上下方網址",
+  "限時動態 / 貼文也可加「連結」貼紙導到這個網址",
+  "預約QRcode.png",
+  "點「編輯商家檔案」→「聯絡資訊」→ 找到「預約連結 / Appointment links」（部分行業類別沒有此欄位，改貼到「網站」欄位即可）",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/promotion/stats",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 19025
+}

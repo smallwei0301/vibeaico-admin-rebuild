@@ -1,0 +1,256 @@
+{
+ "route": "/tenant/chat",
+ "file": "chat",
+ "title": "顧客訊息 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "顧客訊息",
+   "icon": "",
+   "cls": "page-title"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "載入中... 查看資料 選擇左側對話開始聊天 Enter 發送，Shift+Enter 換行"
+  }
+ ],
+ "tables": [],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "searchConversation",
+   "placeholder": "搜尋顧客...",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm",
+   "label": "",
+   "help": ""
+  },
+  {
+   "tag": "textarea",
+   "type": "",
+   "name": "",
+   "id": "messageInput",
+   "placeholder": "輸入訊息...",
+   "required": false,
+   "value": "",
+   "cls": "form-control",
+   "rows": "1",
+   "label": "",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "file",
+   "name": "",
+   "id": "chatImageInput",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "",
+   "label": "",
+   "help": "Enter 發送，Shift+Enter 換行"
+  }
+ ],
+ "buttons": [
+  {
+   "text": "",
+   "icon": "bi-arrow-left",
+   "cls": "btn btn-sm btn-outline-secondary me-2 d-md-none",
+   "id": "",
+   "href": "",
+   "onclick": "backToList()"
+  },
+  {
+   "text": "",
+   "icon": "bi-image",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "document.getElementById('chatImageInput').click()"
+  },
+  {
+   "text": "",
+   "icon": "bi-send",
+   "cls": "btn btn-primary",
+   "id": "sendBtn",
+   "href": "",
+   "onclick": "sendMessage()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [],
+ "emptyStates": [
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "載入中...",
+   "id": ""
+  },
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "選擇左側對話開始聊天",
+   "id": ""
+  }
+ ],
+ "badges": [],
+ "jsStrings": [
+  ") 順序相反：escapeHtml 已把 ",
+  "></i>圖片</span>",
+  "><p>載入失敗</p></div>",
+  ">尚無訊息</div>",
+  ">尚無顧客訊息</p></div>",
+  ">載入失敗</div>",
+  "AI 正在思考中...",
+  "分前",
+  "剛剛",
+  "回報已送出，我們將盡快處理！",
+  "圖片大小不可超過 5MB",
+  "圖片發送失敗",
+  "天前",
+  "小時前",
+  "已開始新對話。請問需要什麼協助？",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "未知錯誤",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "無法開啟此顧客對話，可能尚未綁定 LINE",
+  "發送失敗",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請選擇問題類別",
+  "連線錯誤，請稍後再試",
+  "顧客",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/chat/conversations",
+  "/api/chat/messages/${chatId}",
+  "/api/chat/messages/${chatId}/read",
+  "/api/chat/messages/${currentCustomerId}",
+  "/api/chat/messages/${currentCustomerId}/image",
+  "/api/customers/${targetCustomerId}",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 23812
+}

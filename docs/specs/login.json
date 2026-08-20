@@ -1,0 +1,107 @@
+{
+ "route": "/tenant/login",
+ "file": "login",
+ "title": "店家登入 | VibeAI管理系統",
+ "metaDescription": "登入VibeAI店家後台，管理您的預約、顧客、員工和營運報表。免費線上預約系統，整合 LINE 預約機器人。立即免費試用！",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "LINE 智慧預約系統",
+   "icon": "",
+   "cls": ""
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [],
+ "tables": [],
+ "forms": [
+  {
+   "id": "loginForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "username",
+     "id": "username",
+     "placeholder": "請輸入帳號",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "帳號",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "password",
+     "name": "password",
+     "id": "password",
+     "placeholder": "請輸入密碼",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "密碼",
+     "help": ""
+    }
+   ]
+  }
+ ],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "",
+   "icon": "bi-eye",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "togglePasswordVisibility()"
+  },
+  {
+   "text": "登入 登入中...",
+   "icon": "",
+   "cls": "btn btn-primary btn-lg",
+   "id": "loginBtn",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "用 LINE 登入",
+   "icon": "bi-chat-dots-fill",
+   "cls": "btn btn-lg",
+   "id": "oauthLineBtn",
+   "href": "/api/auth/oauth/line/authorize",
+   "onclick": ""
+  },
+  {
+   "text": "用 Google 登入",
+   "icon": "",
+   "cls": "btn btn-lg",
+   "id": "oauthGoogleBtn",
+   "href": "/api/auth/oauth/google/authorize",
+   "onclick": ""
+  }
+ ],
+ "modals": [],
+ "alerts": [
+  {
+   "cls": "alert alert-danger mt-3 d-none small",
+   "text": "",
+   "id": "oauthErrorBox"
+  }
+ ],
+ "emptyStates": [],
+ "badges": [],
+ "jsStrings": [
+  "模擬登入失敗:",
+  "模擬登入失敗：請稍後再試，或回超管後台重新產生連結。",
+  "模擬登入失敗：連結可能已過期，請回超管後台重新產生模擬登入連結。",
+  "第三方登入失敗："
+ ],
+ "jsApiCalls": [
+  "/api/auth/impersonate",
+  "/api/auth/oauth/google/authorize",
+  "/api/auth/oauth/line/authorize"
+ ],
+ "inlineJsBytes": 5947
+}

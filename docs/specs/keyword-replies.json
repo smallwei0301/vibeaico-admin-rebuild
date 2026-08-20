@@ -1,0 +1,536 @@
+{
+ "route": "/tenant/keyword-replies",
+ "file": "keyword-replies",
+ "title": "關鍵字回覆 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "關鍵字回覆 33 點/月・專業版含",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "我的自訂關鍵字",
+   "icon": "bi-chat-quote",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "系統內建關鍵字（預約、選單、取消…）",
+   "icon": "bi-gear",
+   "cls": "m-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-chat-quote",
+   "header": "我的自訂關鍵字 ＋ 新增",
+   "bodyText": "還沒有自訂關鍵字。顧客最常問的三件事，一鍵建立範本（內容可再修改）： 💰 價格怎麼算 📍 店在哪裡 🕐 營業時間 關鍵字 觸發方式 動作 啟用 操作 載入中… 小提醒：顧客「正在預約流程中」時打字仍是操作預約（例如打「取消」是 放棄目前這筆還沒送出的預約、回到主選單 ，不是取消已成立的預約），不會觸發你的關鍵字。 另外：若你在 LINE 官方後台（OA Manager） 對同一個字也設了自動回應，兩邊會同時回覆——建議用本功能取代後，把 OA Manager 那則關閉。"
+  },
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-gear",
+   "header": "系統內建關鍵字（預約、選單、取消…）",
+   "bodyText": "這些是系統預設就會回應的字。一般 不需要改動 ——預設全部開啟即可。 關掉開關＝顧客打這些字 Bot 完全不回（ 本系統發布的 Rich Menu 功能按鈕照常可用——走獨立路徑不受影響； ⚠️ 但「 傳送文字 」類型的格子、或你在 LINE 官方後台自行建立 的圖文選單「傳送訊息」按鈕，送出的是真文字，會一併沒有回應）； 點某個字＝那個字改回你自己寫的內容 ，其他字不受影響。 「活動」組請到 LINE 設定頁 → 主選單樣式卡片 的獨立開關管理。 ＊停用/覆蓋屬「自訂關鍵字回覆」功能範圍，需訂閱才會對顧客生效（設定隨時可先存）。 💡 尚未訂閱——下方開關/覆蓋可先設定儲存，但 訂閱前顧客端不會生效 （系統關鍵字照常回應）。 載入中…"
+  }
+ ],
+ "tables": [
+  {
+   "id": "kwTable",
+   "cls": "table table-sm align-middle mb-0",
+   "columns": [
+    "關鍵字",
+    "觸發方式",
+    "動作",
+    "啟用",
+    "操作"
+   ],
+   "tbodyId": "kwTableBody",
+   "placeholder": "載入中…"
+  }
+ ],
+ "forms": [],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "新增關鍵字",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "openKwModal()"
+  },
+  {
+   "text": "＋ 新增",
+   "icon": "",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": "openKwModal()"
+  },
+  {
+   "text": "💰 價格怎麼算",
+   "icon": "",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": "applyKwTemplate(0)"
+  },
+  {
+   "text": "📍 店在哪裡",
+   "icon": "",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": "applyKwTemplate(1)"
+  },
+  {
+   "text": "🕐 營業時間",
+   "icon": "",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": "applyKwTemplate(2)"
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "kwModal",
+   "title": "新增自訂關鍵字",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "💡 尚未訂閱此功能——可以先把內容設定好存起來， 訂閱 後立即生效。 關鍵字 * 觸發方式 訊息就是這個字才回（一字不差） 訊息裡有這個字就回（建議） 動作 回覆自訂內容 啟動個資收集（問姓名/手機） 回覆文字 * 附加圖片（選填） 移除 附加連結按鈕（選填） 按鈕文字 啟用",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "kwId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "kwKeyword",
+     "placeholder": "例：價格、地址、營業時間",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "kwMatchType",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "EXACT",
+       "label": "訊息就是這個字才回（一字不差）"
+      },
+      {
+       "value": "CONTAINS",
+       "label": "訊息裡有這個字就回（建議）"
+      }
+     ],
+     "label": "觸發方式",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "kwActionType",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "REPLY_CONTENT",
+       "label": "回覆自訂內容"
+      },
+      {
+       "value": "START_PROFILE_COLLECTION",
+       "label": "啟動個資收集（問姓名/手機）"
+      }
+     ],
+     "label": "動作",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "kwReplyText",
+     "placeholder": "顧客打此關鍵字時 Bot 回覆的文字",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "rows": "3",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "kwImageFile",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "kwImageUrl",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "url",
+     "name": "",
+     "id": "kwLinkUrl",
+     "placeholder": "https://...",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "附加連結按鈕（選填）",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "kwLinkLabel",
+     "placeholder": "查看更多",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "按鈕文字",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "kwEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "啟用",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-sm btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存",
+     "cls": "btn btn-sm btn-primary",
+     "id": "kwSaveBtn"
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-warning d-none",
+   "text": "💡 尚未訂閱「自訂關鍵字回覆」——你可以先把內容設定好（含下方系統內建關鍵字的停用/覆蓋）， 訂閱後立即生效 ；訂閱前顧客端維持系統預設行為。 前往功能商店訂閱 →",
+   "id": "kwUnsubscribedHint"
+  },
+  {
+   "cls": "alert alert-warning py-1 px-2 small d-none mb-2",
+   "text": "💡 尚未訂閱——下方開關/覆蓋可先設定儲存，但 訂閱前顧客端不會生效 （系統關鍵字照常回應）。",
+   "id": "kwSysUnsubHint"
+  }
+ ],
+ "emptyStates": [],
+ "badges": [
+  "33 點/月・專業版含"
+ ],
+ "jsStrings": [
+  ">取代內建：${kwEsc(k.overridesSystem)}</span>",
+  ">系統關鍵字設定載入失敗——為避免誤覆寫你先前的停用設定，已暫停顯示開關。",
+  ">重要</span>",
+  ">重試</a>",
+  ">重試</a>，或重新整理頁面。</div>",
+  ">關鍵字列表載入失敗。",
+  ">（已停用）</span>",
+  "AI 正在思考中...",
+  "Google 地圖導航",
+  "⚠️ 停用前請確認",
+  "⚠️ 顧客必須整句只打「${kw}」才會回；打「請問${kw}多少」不會回覆——顧客常打整句話，建議改選「包含」",
+  "「訊息裡有這個字就回」的關鍵字至少需 2 個字（單一字元會攔截到大量一般訊息）",
+  "」將完全沒有回應！\\n\\n「",
+  "」很短——顧客訊息只要含這兩個字就會觸發（連閒聊句子都可能中）。\\n\\n建議改用「訊息就是這個字才回」或更長的關鍵字。仍要儲存嗎？",
+  "」是顧客在對話中的逃生口（流程卡住時用的）。\\n\\n確定要停用嗎？",
+  "」相關功能。儲存後會改成回覆你設定的內容。",
+  "」等字 Bot 仍照常回應）。\\n\\n訂閱後此設定才會讓顧客打這些字時完全沒有回應。確定要先儲存停用設定嗎？",
+  "一模一樣才回",
+  "主選單",
+  "作品",
+  "作品展示",
+  "例：顧客打「請問${kw}多少」→ 會回覆",
+  "促銷",
+  "價格",
+  "優惠券",
+  "優惠活動",
+  "儲存失敗",
+  "功能",
+  "取消",
+  "商品",
+  "回報已送出，我們將盡快處理！",
+  "圖片上傳失敗：",
+  "圖片壓縮後仍超過 5MB，請改用較小的圖片",
+  "圖片過大（超過 25MB），請改用較小的圖片",
+  "地址",
+  "尚未訂閱（設定先存不生效）",
+  "展示",
+  "已停用",
+  "已停用該組系統關鍵字",
+  "已儲存",
+  "已儲存停用設定（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）",
+  "已儲存停用設定（無法確認訂閱狀態，請重新整理頁面確認是否生效）",
+  "已儲存（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）",
+  "已儲存（無法確認訂閱狀態，請重新整理頁面確認是否生效）",
+  "已刪除",
+  "已啟用",
+  "已啟用（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）",
+  "已恢復該組系統關鍵字",
+  "已開始新對話。請問需要什麼協助？",
+  "幫助",
+  "建立範本：",
+  "您好！我們的服務價目如下：\\n・（服務A）NT$ ___\\n・（服務B）NT$ ___\\n詳細歡迎點「開始預約」查看所有服務與價格 😊",
+  "我們的店址：___\\n🚇 交通方式：___\\n🅿️ 停車資訊：___",
+  "我們的營業時間：\\n週一～週五 __:__ – __:__\\n週六日 ___\\n線上預約 24 小時開放喔！",
+  "我想預約",
+  "我的 coupon",
+  "我的coupon",
+  "我的優惠券",
+  "我的券",
+  "我的票券",
+  "我的訂位",
+  "我的訂單",
+  "我的預約",
+  "我要訂位",
+  "我要預約",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "提醒：你尚未訂閱「自訂關鍵字回覆」，這個停用設定會先儲存但「不會生效」（顧客打「",
+  "新增自訂關鍵字",
+  "最新活動",
+  "會員",
+  "會員資訊",
+  "有此字就回",
+  "未知錯誤",
+  "查看我的預約",
+  "查看訂單",
+  "查看預約",
+  "查詢預約",
+  "注意：顧客打這個字，原本 Bot 會執行「",
+  "活動",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "瀏覽商品",
+  "無法處理此圖片格式，請改用 JPG/PNG",
+  "營業時間",
+  "確定刪除關鍵字「",
+  "票券",
+  "立即預約",
+  "編輯自訂關鍵字",
+  "訂位",
+  "訂單查詢",
+  "說明",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請稍後再試",
+  "請輸入回覆文字",
+  "請輸入關鍵字",
+  "請選擇問題類別",
+  "購買",
+  "這個字會取代系統功能",
+  "連線錯誤，請稍後再試",
+  "選單",
+  "開啟店家通知",
+  "開始預約",
+  "關鍵字「",
+  "關鍵字太短提醒",
+  "關閉店家通知",
+  "預約",
+  "預約流程（完全相符）",
+  "預訂",
+  "領取票券",
+  "顧客打「",
+  "點數",
+  "（無回應）",
+  "（還沒儲存，可修改）",
+  "，或重新整理頁面。</div>",
+  "💬 自訂回覆",
+  "📋 個資收集"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/settings/line/keyword-replies",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 36558
+}

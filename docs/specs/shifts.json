@@ -1,0 +1,720 @@
+{
+ "route": "/tenant/shifts",
+ "file": "shifts",
+ "title": "班表管理 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "班表管理",
+   "icon": "",
+   "cls": "page-title"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [],
+ "tables": [
+  {
+   "id": "shiftsTable",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "員工",
+    "排班模式"
+   ],
+   "tbodyId": "shiftsBody",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "date",
+   "name": "",
+   "id": "jumpDate",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm",
+   "label": "自訂日期：",
+   "help": "自訂日期："
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "viewWeeks",
+   "id": "vw1",
+   "placeholder": "",
+   "required": false,
+   "value": "1",
+   "cls": "btn-check",
+   "label": "1 週",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "viewWeeks",
+   "id": "vw2",
+   "placeholder": "",
+   "required": false,
+   "value": "2",
+   "cls": "btn-check",
+   "label": "2 週",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "viewWeeks",
+   "id": "vw4",
+   "placeholder": "",
+   "required": false,
+   "value": "4",
+   "cls": "btn-check",
+   "label": "4 週",
+   "help": ""
+  }
+ ],
+ "buttons": [
+  {
+   "text": "",
+   "icon": "bi-chevron-left",
+   "cls": "btn btn-ghost",
+   "id": "prevWeekBtn",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "今天",
+   "icon": "",
+   "cls": "btn btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "本週",
+   "icon": "",
+   "cls": "btn btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "本月",
+   "icon": "",
+   "cls": "btn btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "下個月",
+   "icon": "",
+   "cls": "btn btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "1 週",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "2 週",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "4 週",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "循環重複到…",
+   "icon": "bi-arrow-repeat",
+   "cls": "btn btn-sm btn-primary",
+   "id": "repeatCycleBtn",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "管理範本",
+   "icon": "bi-gear",
+   "cls": "btn btn-warning fw-semibold",
+   "id": "tplEditBtn",
+   "href": "",
+   "onclick": ""
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "shiftModal",
+   "title": "設定班別",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog",
+   "bodyText": "— 快速選擇 尚無班別範本，請先點右上「管理範本」建立。 休 清除（恢復週排班） 班別類型 上班 休 開始時間 * 結束時間 * 休息開始（選填） 休息結束（選填） 休息時間必須在上班時段內。不需要休息請保持空白。 備註（班別名稱，選填）",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "editStaffId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": "—"
+    },
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "editShiftDate",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": "—"
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "sfType",
+     "id": "sfWorking",
+     "placeholder": "",
+     "required": false,
+     "value": "WORKING",
+     "cls": "form-check-input",
+     "label": "上班",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "sfType",
+     "id": "sfOff",
+     "placeholder": "",
+     "required": false,
+     "value": "OFF",
+     "cls": "form-check-input",
+     "label": "休",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "sfStart",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "開始時間 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "sfEnd",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "結束時間 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "sfBreakStart",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "休息開始（選填）",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "sfBreakEnd",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "休息結束（選填）",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "sfNote",
+     "placeholder": "例如：早班、晚班、加班",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "備註（班別名稱，選填）",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "sfTemplateId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "備註（班別名稱，選填）",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存",
+     "cls": "btn btn-primary",
+     "id": "saveShiftBtn"
+    }
+   ]
+  },
+  {
+   "id": "weeklyScheduleModal",
+   "title": "編輯週排班",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "此員工為「固定休息」模式，直接編輯每週固定時段。儲存後本週與未來各週都會套用。 星期 上班 開始 結束 休息開始 休息結束",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "wsStaffId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存",
+     "cls": "btn btn-primary",
+     "id": "wsSaveBtn"
+    }
+   ]
+  },
+  {
+   "id": "tplModal",
+   "title": "班別範本管理",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "建立常用班別（早班、午班、晚班…），之後在每位員工的月曆班表可一鍵套用，不用重複填時間。最多 10 組。 新增班別 班別名稱 * 開始時間 * 結束時間 * 顯示色 休息開始（選填） 休息結束（選填） 新增 清除 班別名稱 時段 休息 操作 尚無範本",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "tplEditId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "班別名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "tplName",
+     "placeholder": "例：早班",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "班別名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "tplStart",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm time-select",
+     "options": [],
+     "label": "開始時間 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "tplEnd",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm time-select",
+     "options": [],
+     "label": "結束時間 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "color",
+     "name": "",
+     "id": "tplColor",
+     "placeholder": "",
+     "required": false,
+     "value": "#4361ee",
+     "cls": "form-control form-control-color form-control-sm",
+     "label": "顯示色",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "tplBreakStart",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm time-select",
+     "options": [],
+     "label": "休息開始（選填）",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "tplBreakEnd",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm time-select",
+     "options": [],
+     "label": "休息結束（選填）",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "關閉",
+     "cls": "btn btn-secondary",
+     "id": ""
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-light mb-3",
+   "text": "優先序： 店家封鎖 > 班表（指定日）> 請假 > 週排班。有班表記錄時，該員工當日以班表為準，忽略請假與週排班。",
+   "id": ""
+  }
+ ],
+ "emptyStates": [
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "載入中...",
+   "id": ""
+  }
+ ],
+ "badges": [
+  "—",
+  "休",
+  "早班",
+  "晚班",
+  "自訂"
+ ],
+ "jsStrings": [
+  " 週排好再用。</div>",
+  " 週）這段的排班為一個循環，按星期幾重複排到結束日。</div>",
+  "${DAY_NAMES[dow]}：休息時段必須在上班時段內且結束晚於開始",
+  "${DAY_NAMES[dow]}：休息時間必須同時填寫",
+  "${DAY_NAMES[dow]}：結束（${e}）不能晚於店家營業時間（${bizEnd}）",
+  "${DAY_NAMES[dow]}：結束（${e}）必須晚於開始（${s}）",
+  "${DAY_NAMES[dow]}：請選擇開始與結束時間",
+  "${DAY_NAMES[dow]}：開始（${s}）不能早於店家營業時間（${bizStart}）",
+  "${d.skippedConflict} 天都因已有預約被跳過，沒有新增排班",
+  "${l.startTime}–${l.endTime} 請假${rec}",
+  "<div><strong>${DAY_NAMES[dow]}週排班：</strong>${hhmm(weekly.startTime)}–${hhmm(weekly.endTime)}${bs ? ",
+  "<div><strong>${DAY_NAMES[dow]}週排班：</strong><span class=",
+  "<div><strong>店家營業時間：</strong>${bizHours.start}–${bizHours.end}${bizHours.breakStart ? ",
+  ">(半天假)</div>",
+  "></i><strong>當天已請假：</strong>${leaveStrs.join(",
+  "></i>新增班別",
+  "></i>編輯班別",
+  ">⚠️ 沒排班的格子<b>不會</b>複製，那些天仍沿用員工「週排班」設定（可能仍顯示為可預約）。已有預約衝突的天會自動跳過。請先把這 ",
+  ">上班</span><div class=",
+  ">以 <b>",
+  ">休</span>",
+  ">全部員工</option>",
+  ">員工</th><th style=",
+  ">對象</label>",
+  ">尚未建立員工，請先到「員工管理」新增員工</td></tr>",
+  ">尚未建立，請點右方「管理範本」新增</span>",
+  ">尚無範本</td></tr>",
+  ">排班模式<div class=",
+  ">最多排到 ",
+  ">未上班</span></div>",
+  ">未排班</span>",
+  ">重複到</label>",
+  ">點按鈕可切換</div></th>",
+  "AI 正在思考中...",
+  "。⚠️ 為避免一次排太久，只排到 ${d.effectiveEndDate}（未達您選的 ${d.requestedEndDate}），到期前再重複一次即可",
+  "休息時段必須在班別時段內",
+  "休息時間需同時填寫開始和結束",
+  "休息結束必須晚於休息開始",
+  "休息結束（${be}）不能晚於下班時間（${e}）",
+  "休息結束（${be}）必須晚於休息開始（${bs}）",
+  "休息開始（${bs}）不能早於上班時間（${s}）",
+  "儲存失敗",
+  "儲存失敗，請確認資料",
+  "儲存失敗：",
+  "全天請假${rec}",
+  "切換失敗",
+  "刪除",
+  "刪除失敗",
+  "回報已送出，我們將盡快處理！",
+  "固定休息",
+  "封鎖",
+  "將此員工切換為「${label}」模式？\\n\\n${next === ",
+  "尚未建立員工",
+  "已切換為${label}",
+  "已填休息結束，請一併填休息開始（或兩個都留空）",
+  "已填休息開始，請一併填休息結束（或兩個都留空）",
+  "已清除",
+  "已重複排班：寫入 ${d.applied} 天",
+  "已開始新對話。請問需要什麼協助？",
+  "循環重複失敗：",
+  "截圖讀取失敗",
+  "找不到員工資料",
+  "抱歉，發生錯誤：",
+  "新增",
+  "更新",
+  "未知錯誤",
+  "沒有日期被排到",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "清除這筆班表？\\n\\n清除後該員工當日將沿用週排班。",
+  "班別時間不能早於營業時間（",
+  "班別時間不能晚於營業時間（",
+  "班別範本已刪除（相關班表已清除）",
+  "班別範本已新增",
+  "班別範本已更新（班表時間已同步）",
+  "班別結束時間（${e}）不能晚於店家營業時間（${bizHours.end}）",
+  "班別開始時間（${s}）不能早於店家營業時間（${bizHours.start}）",
+  "班表已儲存",
+  "班表已儲存（衝突由店家自行通知）",
+  "確定刪除此班別範本？\\n已套用此範本的班表會一併清除（日期變為「未排班」）",
+  "結束時間必須晚於開始時間",
+  "結束時間（${e}）必須晚於開始時間（${s}）",
+  "網路錯誤",
+  "編輯",
+  "自訂",
+  "請假",
+  "請填寫問題標題",
+  "請填寫班別名稱",
+  "請填寫詳細說明",
+  "請稍後再試",
+  "請選擇問題類別",
+  "請選擇結束日期",
+  "請選擇開始與結束時間",
+  "載入員工失敗",
+  "載入班別範本失敗",
+  "載入班表失敗",
+  "輪休",
+  "連線錯誤，請稍後再試",
+  "週一",
+  "週三",
+  "週二",
+  "週五",
+  "週六",
+  "週四",
+  "週排班已儲存",
+  "週日",
+  "開始重複",
+  "（一年後）。</div>",
+  "（每週）",
+  "（無回應）",
+  "，${d.skippedConflict} 天因已有預約跳過",
+  "🔁 循環重複排班"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/settings",
+  "/api/shift-templates",
+  "/api/shift-templates/${id}",
+  "/api/shifts",
+  "/api/shifts/repeat-cycle",
+  "/api/staff",
+  "/api/staff/${encodeURIComponent",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 62466
+}

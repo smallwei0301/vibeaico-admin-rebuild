@@ -1,0 +1,658 @@
+{
+ "route": "/tenant/staff",
+ "file": "staff",
+ "title": "員工管理 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "員工管理",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "員工列表",
+   "icon": "",
+   "cls": "data-table-title mb-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover",
+   "columns": [
+    "#",
+    "員工資訊",
+    "聯絡方式",
+    "可預約",
+    "狀態",
+    "操作"
+   ],
+   "tbodyId": "dataTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "新增員工",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "openCreateModal()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "staffTermModal",
+   "title": "自訂員工稱呼",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "員工統稱 例如：專業技術師 / 美容師 / 治療師 / 教練。此稱呼會套用到後台、公開預約頁、LINE 與通知信。留空＝恢復預設「服務人員」。",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "staffTermInput",
+     "placeholder": "服務人員（預設）",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "",
+     "help": "例如：專業技術師 / 美容師 / 治療師 / 教練。此稱呼會套用到後台、公開預約頁、LINE 與通知信。留空＝恢復預設「服務人員」。"
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  },
+  {
+   "id": "formModal",
+   "title": "新增員工",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "頭像 點擊上傳頭像（最大 2MB） 移除頭像 姓名 * 請輸入員工姓名（最多50字） 顯示名稱 用於顧客端顯示，不填則使用姓名 電話 請輸入有效的電話號碼 電子郵件 請輸入有效的電子郵件 簡介 0 /500 同時段最大預約數 此員工同一時段可同時接待的預約數量（預設 1） 可承接的服務項目 全選 清除 與「服務項目 → 可承接的服務人員」是同一份設定。標「全員可做」的服務目前未限制人員——取消勾選會把它改成「指定名單」（新進員工不再自動涵蓋）。 可接受預約 顯示於前台",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "dataId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": "點擊上傳頭像（最大 2MB）"
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "avatarInput",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "頭像",
+     "help": "點擊上傳頭像（最大 2MB）"
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "name",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "姓名 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "displayName",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "顯示名稱",
+     "help": "用於顧客端顯示，不填則使用姓名"
+    },
+    {
+     "tag": "input",
+     "type": "tel",
+     "name": "",
+     "id": "phone",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "電話",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "email",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "電子郵件",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bio",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "3",
+     "label": "簡介",
+     "help": "0 /500"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "maxConcurrentBookings",
+     "placeholder": "1",
+     "required": false,
+     "value": "1",
+     "cls": "form-control",
+     "label": "同時段最大預約數",
+     "help": "此員工同一時段可同時接待的預約數量（預設 1）"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "isBookable",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "可接受預約",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "isVisible",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "顯示於前台",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存 處理中...",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  },
+  {
+   "id": "leaveModal",
+   "title": "請假管理 -",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "新增請假 請假類型 事假 病假 休假 特休 其他 封鎖時段 循環類型 單次 每週 請假日期 * 可選擇單一日期或使用下方快速選擇 星期幾 * 週日 週一 週二 週三 週四 週五 週六 請假原因（選填） 快速選擇 明天 下週一~五 本週末 下週末 已選擇日期 整天 開始時間 結束時間 新增請假 新增中... 已排定請假 顯示未來 60 天內的請假 日期 星期 類型 原因 操作 載入中...",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "leaveStaffId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": "可選擇單一日期或使用下方快速選擇"
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "leaveType",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "PERSONAL",
+       "label": "事假"
+      },
+      {
+       "value": "SICK",
+       "label": "病假"
+      },
+      {
+       "value": "VACATION",
+       "label": "休假"
+      },
+      {
+       "value": "ANNUAL",
+       "label": "特休"
+      },
+      {
+       "value": "OTHER",
+       "label": "其他"
+      },
+      {
+       "value": "BLOCKED",
+       "label": "封鎖時段"
+      }
+     ],
+     "label": "請假類型",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "leaveRecurrence",
+     "id": "leaveSingle",
+     "placeholder": "",
+     "required": false,
+     "value": "SINGLE",
+     "cls": "form-check-input",
+     "label": "單次",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "leaveRecurrence",
+     "id": "leaveWeekly",
+     "placeholder": "",
+     "required": false,
+     "value": "WEEKLY",
+     "cls": "form-check-input",
+     "label": "每週",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "date",
+     "name": "",
+     "id": "leaveDate",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "請假日期 *",
+     "help": "可選擇單一日期或使用下方快速選擇"
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "leaveDayOfWeek",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "0",
+       "label": "週日"
+      },
+      {
+       "value": "1",
+       "label": "週一"
+      },
+      {
+       "value": "2",
+       "label": "週二"
+      },
+      {
+       "value": "3",
+       "label": "週三"
+      },
+      {
+       "value": "4",
+       "label": "週四"
+      },
+      {
+       "value": "5",
+       "label": "週五"
+      },
+      {
+       "value": "6",
+       "label": "週六"
+      }
+     ],
+     "label": "星期幾 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "leaveReason",
+     "placeholder": "例如：家中有事、身體不適等",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "請假原因（選填）",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "leaveFullDay",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "整天",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "leaveStartTime",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "開始時間",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "leaveEndTime",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "結束時間",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "關閉",
+     "cls": "btn btn-secondary",
+     "id": ""
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-info small mb-3",
+   "text": "上班時段、輪休、班別範本請至 班表管理 ；此頁僅管理員工基本資料與請假。",
+   "id": ""
+  }
+ ],
+ "emptyStates": [
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "載入中...",
+   "id": ""
+  }
+ ],
+ "badges": [],
+ "jsStrings": [
+  "<strong>員工數量已達免費版上限（",
+  ">${d} (週${dayOfWeek}) <i class=",
+  ">全員可做</span>",
+  ">前往訂閱</a>",
+  ">否</span>",
+  ">整天</span>",
+  ">是</span>",
+  ">暫無員工，請點擊「新增員工」建立</td></tr>",
+  ">每週</span>",
+  ">目前沒有排定的請假</td></tr>",
+  ">訂閱「無限員工」（129 點/月）後即可新增更多員工。</div>",
+  ">載入失敗</td></tr>",
+  ">載入失敗，請重新整理頁面</td></tr>",
+  "AI 正在思考中...",
+  "Email 格式",
+  "」原為全員可做；取消勾選後將改為「指定名單」（其餘人員保留、新進人員不再自動涵蓋）。確定嗎？",
+  "儲存員工失敗:",
+  "儲存失敗: ",
+  "刪除員工失敗:",
+  "刪除失敗: ",
+  "刪除請假失敗:",
+  "員工姓名",
+  "員工已刪除",
+  "員工建立成功",
+  "員工更新成功",
+  "員工順序已更新",
+  "回報已送出，我們將盡快處理！",
+  "圖片大小不可超過 2MB",
+  "已將稱呼改為「${val}」",
+  "已恢復預設稱呼「服務人員」",
+  "已複製員工專屬連結",
+  "已開始新對話。請問需要什麼協助？",
+  "成功新增 ${(payload.leaveDates || []).length} 筆請假",
+  "成功新增每週請假",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "排序失敗，重新整理後恢復",
+  "新增員工",
+  "新增失敗: ",
+  "新增請假失敗:",
+  "時段與休息時間（",
+  "服務人員",
+  "未知錯誤",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "班表管理（排班/輪休/範本）",
+  "產生連結失敗",
+  "產生連結失敗: ",
+  "目前 <strong>",
+  "確定要刪除此員工嗎？此操作無法復原。",
+  "確定要刪除此請假記錄嗎？",
+  "結束時間不能晚於營業結束時間（",
+  "編輯員工",
+  "請假已新增（衝突由店家自行通知）",
+  "請假管理",
+  "請假記錄已刪除",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請填寫開始和結束時間",
+  "請檢查：",
+  "請稍後再試",
+  "請選擇問題類別",
+  "請選擇請假日期",
+  "載入員工失敗:",
+  "載入員工詳情失敗",
+  "載入員工詳情失敗:",
+  "載入請假列表失敗:",
+  "連線錯誤，請稍後再試",
+  "週一",
+  "週三",
+  "週二",
+  "週五",
+  "週六",
+  "週四",
+  "週日",
+  "開始時間不能早於營業開始時間（",
+  "開始時間必須早於結束時間",
+  "（無回應）",
+  "）重疊，休息時段本來就不營業"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/services",
+  "/api/settings",
+  "/api/staff",
+  "/api/staff/${id}",
+  "/api/staff/${staffId}/leaves",
+  "/api/staff/${staffId}/leaves/${leaveId}",
+  "/api/staff/${staffId}/regenerate-token",
+  "/api/staff/reorder",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 49357
+}

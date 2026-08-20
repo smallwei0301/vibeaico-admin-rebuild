@@ -1,0 +1,455 @@
+{
+ "route": "/tenant/reports",
+ "file": "reports",
+ "title": "營運報表 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "營運報表",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "每日預約與營收趨勢",
+   "icon": "",
+   "cls": "m-0 fw-bold text-primary"
+  },
+  {
+   "lvl": "h6",
+   "text": "熱門服務分布",
+   "icon": "",
+   "cls": "m-0 fw-bold text-primary"
+  },
+  {
+   "lvl": "h6",
+   "text": "熱門服務 TOP 5",
+   "icon": "",
+   "cls": "m-0 fw-bold text-primary"
+  },
+  {
+   "lvl": "h6",
+   "text": "員工業績 TOP 5",
+   "icon": "",
+   "cls": "m-0 fw-bold text-primary"
+  },
+  {
+   "lvl": "h6",
+   "text": "熱門商品 TOP 10",
+   "icon": "bi-bag-check",
+   "cls": "m-0 fw-bold text-success"
+  },
+  {
+   "lvl": "h6",
+   "text": "預約時段分布",
+   "icon": "",
+   "cls": "m-0 fw-bold text-primary"
+  },
+  {
+   "lvl": "h6",
+   "text": "服務趨勢分析",
+   "icon": "",
+   "cls": "m-0 fw-bold text-primary"
+  },
+  {
+   "lvl": "h5",
+   "text": "解鎖進階報表分析",
+   "icon": "",
+   "cls": "mb-2"
+  }
+ ],
+ "tabs": [],
+ "statCards": [
+  {
+   "text": "總預約數 -",
+   "cls": "card border-left-primary shadow-sm h-100",
+   "icon": "bi-calendar-check"
+  },
+  {
+   "text": "活躍顧客數 - 期間內有預約的顧客",
+   "cls": "card border-left-primary shadow-sm h-100",
+   "icon": ""
+  }
+ ],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card border-left-primary shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "總預約數 -"
+  },
+  {
+   "id": "",
+   "cls": "card border-left-success shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "總營收 -"
+  },
+  {
+   "id": "",
+   "cls": "card border-left-info shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "完成率 - 完成/總數"
+  },
+  {
+   "id": "",
+   "cls": "card border-left-warning shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "新客戶 -"
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm h-100",
+   "headerIcon": "",
+   "header": "每日預約與營收趨勢",
+   "bodyText": ""
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm h-100",
+   "headerIcon": "",
+   "header": "熱門服務分布",
+   "bodyText": ""
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm h-100",
+   "headerIcon": "",
+   "header": "熱門服務 TOP 5",
+   "bodyText": "排名 服務名稱 預約數 營收 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm h-100",
+   "headerIcon": "",
+   "header": "員工業績 TOP 5",
+   "bodyText": "排名 員工姓名 服務數 營收 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm h-100",
+   "headerIcon": "bi-bag-check",
+   "header": "熱門商品 TOP 10 僅計算已完成訂單",
+   "bodyText": "排名 商品名稱 銷售數量 營收 佔比 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm",
+   "headerIcon": "",
+   "header": "預約時段分布",
+   "bodyText": "載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card border-left-info shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "顧客保留率 - 活躍顧客 / 總顧客"
+  },
+  {
+   "id": "",
+   "cls": "card border-left-primary shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "活躍顧客數 - 期間內有預約的顧客"
+  },
+  {
+   "id": "",
+   "cls": "card border-left-success shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "平均來客週期 - 天"
+  },
+  {
+   "id": "",
+   "cls": "card border-left-warning shadow-sm h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "平均顧客價值 - 完成預約 / 活躍顧客"
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm",
+   "headerIcon": "",
+   "header": "服務趨勢分析",
+   "bodyText": "服務名稱 當期預約數 成長率 載入中..."
+  },
+  {
+   "id": "",
+   "cls": "card shadow-sm border-primary",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "解鎖進階報表分析 訂閱進階報表功能，獲取顧客保留率、活躍顧客分析、服務趨勢等深度數據 前往功能商店"
+  }
+ ],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "排名",
+    "服務名稱",
+    "預約數",
+    "營收"
+   ],
+   "tbodyId": "topServicesTable",
+   "placeholder": "載入中..."
+  },
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "排名",
+    "員工姓名",
+    "服務數",
+    "營收"
+   ],
+   "tbodyId": "topStaffTable",
+   "placeholder": "載入中..."
+  },
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "排名",
+    "商品名稱",
+    "銷售數量",
+    "營收",
+    "佔比"
+   ],
+   "tbodyId": "topProductsTable",
+   "placeholder": "載入中..."
+  },
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "服務名稱",
+    "當期預約數",
+    "成長率"
+   ],
+   "tbodyId": "serviceTrendsTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "本週",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "setDateRange('week', this)"
+  },
+  {
+   "text": "本月",
+   "icon": "",
+   "cls": "btn btn-outline-secondary active",
+   "id": "",
+   "href": "",
+   "onclick": "setDateRange('month', this)"
+  },
+  {
+   "text": "本季",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "setDateRange('quarter', this)"
+  },
+  {
+   "text": "匯出",
+   "icon": "bi-download",
+   "cls": "btn btn-outline-primary dropdown-toggle",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "前往功能商店",
+   "icon": "bi-shop",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "/tenant/feature-store?feature=ADVANCED_REPORT",
+   "onclick": ""
+  }
+ ],
+ "modals": [
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [],
+ "emptyStates": [
+  {
+   "cls": "card-body text-center py-5",
+   "text": "解鎖進階報表分析 訂閱進階報表功能，獲取顧客保留率、活躍顧客分析、服務趨勢等深度數據 前往功能商店",
+   "id": ""
+  }
+ ],
+ "badges": [],
+ "jsStrings": [
+  "${d.hourLabel}: ${d.bookingCount} 筆預約${d.isPeak ? ",
+  "></i>暫無資料",
+  ">持平</span>",
+  ">暫無服務趨勢資料</td></tr>",
+  ">暫無資料</div>",
+  ">暫無資料</td></tr>",
+  ">此期間無已完成商品訂單</td></tr>",
+  ">載入失敗</div>",
+  ">載入失敗</td></tr>",
+  ">載入失敗，請重新整理</td></tr>",
+  "AI 正在思考中...",
+  "匯出失敗:",
+  "匯出失敗，請稍後再試",
+  "回報已送出，我們將盡快處理！",
+  "報表匯出成功",
+  "已開始新對話。請問需要什麼協助？",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "未知錯誤",
+  "檢查進階報表訂閱失敗:",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "營收",
+  "營收 (NT$)",
+  "營運報表_${localDateStr()}.${format === ",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請選擇問題類別",
+  "載入員工業績失敗:",
+  "載入報表摘要失敗:",
+  "載入時段分布失敗:",
+  "載入每日趨勢失敗:",
+  "載入熱門商品失敗:",
+  "載入熱門服務失敗:",
+  "載入進階報表失敗:",
+  "連線錯誤，請稍後再試",
+  "預約數",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/export/reports/${format}",
+  "/api/feature-store",
+  "/api/reports/advanced",
+  "/api/reports/daily",
+  "/api/reports/hourly",
+  "/api/reports/summary",
+  "/api/reports/top-products",
+  "/api/reports/top-services",
+  "/api/reports/top-staff",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 28570
+}

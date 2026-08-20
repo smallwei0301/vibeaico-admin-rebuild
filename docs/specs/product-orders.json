@@ -1,0 +1,570 @@
+{
+ "route": "/tenant/product-orders",
+ "file": "product-orders",
+ "title": "商品訂單 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "商品訂單",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "訂單列表",
+   "icon": "",
+   "cls": "data-table-title"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card mb-3",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "狀態篩選： 全部 待確認 已確認 已完成 已取消"
+  }
+ ],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover",
+   "columns": [
+    "訂單編號",
+    "顧客",
+    "商品",
+    "數量",
+    "金額",
+    "狀態",
+    "建立時間",
+    "操作"
+   ],
+   "tbodyId": "dataTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "select",
+   "type": "",
+   "name": "",
+   "id": "statusFilter",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-select form-select-sm",
+   "options": [
+    {
+     "value": "",
+     "label": "全部"
+    },
+    {
+     "value": "PENDING",
+     "label": "待確認"
+    },
+    {
+     "value": "CONFIRMED",
+     "label": "已確認"
+    },
+    {
+     "value": "COMPLETED",
+     "label": "已完成"
+    },
+    {
+     "value": "CANCELLED",
+     "label": "已取消"
+    }
+   ],
+   "label": "",
+   "help": ""
+  }
+ ],
+ "buttons": [
+  {
+   "text": "新增訂單",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "openManualOrderModal()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "manualOrderModal",
+   "title": "新增訂單（現場加購記帳）",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg modal-dialog-scrollable",
+   "bodyText": "顧客 既有顧客 新顧客 搜尋 請先搜尋顧客 商品 加入 尚未加入商品 合計： NT$ 0 選項 經手員工（僅記錄供日後查詢，不計入業績報表，選填） 不指定 付款方式（選填） 未指定 關聯今日預約（選填，對帳用） 不關聯 備註 已當場收款完成（自動完成訂單：集點/累計消費即時入帳） LINE 通知顧客消費明細（未綁 LINE 自動改寄 Email；每則扣 1 推播額度）",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "moCustMode",
+     "id": "moModeExisting",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "btn-check",
+     "label": "既有顧客",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "moCustMode",
+     "id": "moModeNew",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "btn-check",
+     "label": "新顧客",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "search",
+     "name": "",
+     "id": "moCustKeyword",
+     "placeholder": "搜尋姓名/電話...",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "moCustomerId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "",
+       "label": "請先搜尋顧客"
+      }
+     ],
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "moNewName",
+     "placeholder": "姓名",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "tel",
+     "name": "",
+     "id": "moNewPhone",
+     "placeholder": "電話（手機或市話）",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "moProductSelect",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [],
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "moProductQty",
+     "placeholder": "",
+     "required": false,
+     "value": "1",
+     "cls": "form-control",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "moStaffId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "",
+       "label": "不指定"
+      }
+     ],
+     "label": "經手員工（僅記錄供日後查詢，不計入業績報表，選填）",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "moPaymentMethodId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "",
+       "label": "未指定"
+      }
+     ],
+     "label": "付款方式（選填）",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "moBookingId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "",
+       "label": "不關聯"
+      }
+     ],
+     "label": "關聯今日預約（選填，對帳用）",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "moNote",
+     "placeholder": "選填",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "備註",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "moPaidCompleted",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "已當場收款完成（自動完成訂單：集點/累計消費即時入帳）",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "moNotify",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "LINE 通知顧客消費明細（未綁 LINE 自動改寄 Email；每則扣 1 推播額度）",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "建立訂單 建立中...",
+     "cls": "btn btn-primary",
+     "id": "moSubmitBtn"
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [],
+ "emptyStates": [
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "載入中...",
+   "id": ""
+  }
+ ],
+ "badges": [
+  "待處理: 0"
+ ],
+ "jsStrings": [
+  "></i>套用票券並完成</button>",
+  "></i>未付款自動取消期限：${formatDateTime(o.payDueAt)}</div>",
+  "></i>本單為預約現場加購（至預約列表查看）</a></td></tr>",
+  "></i>直接完成（無票券）</button>",
+  "></i>統編 ${escapeHtml(o.taxId)}</span>",
+  "></i>聊天</a>",
+  "></i>自取</span>",
+  "></i>郵寄</span>",
+  ">LINE 用戶</th><td><code class=",
+  ">不指定</option>",
+  ">不關聯</option>",
+  ">付款方式</th><td><i class=",
+  ">付款方式</th><td><span class=",
+  ">備註</th><td style=",
+  ">備註</th><td><span class=",
+  ">取消</button></div>",
+  ">取消原因</th><td><i class=",
+  ">取消時間</th><td>${formatDateTime(o.cancelledAt)}</td></tr>",
+  ">商品</th><td>${escapeHtml(o.productName)}</td></tr><tr><th class=",
+  ">完成取貨</h5><button type=",
+  ">完成取貨</th><td><i class=",
+  ">尚未加入商品</td></tr>",
+  ">已付清</span></div>",
+  ">已取消</span>",
+  ">已完成</span>",
+  ">已確認</span>",
+  ">待付款</span></div>",
+  ">待確認</span>",
+  ">找不到顧客，可切換「新顧客」建檔</option>",
+  ">搜尋中...</option>",
+  ">搜尋失敗</option>",
+  ">收件地址</th><td><i class=",
+  ">數量 × 單價</th><td>${o.quantity} × ${formatMoney(o.unitPrice)}</td></tr>",
+  ">暫無訂單</td></tr>",
+  ">未指定</option>",
+  ">未指定（下單後與顧客確認）</span></td></tr>",
+  ">未提供</span>",
+  ">未提供電話</div>",
+  ">未線上付款</span></div>",
+  ">無</span></td></tr>",
+  ">無上架商品</option>",
+  ">確定顧客已取貨完成？</p>",
+  ">票券代碼</label><input type=",
+  ">票券折抵</th><td><span class=",
+  ">統一編號</th><td><i class=",
+  ">經手員工</th><td><i class=",
+  ">線上收款</th><td>${orderPayBadge(o).replace(",
+  ">請先搜尋顧客</option>",
+  ">載入失敗</td></tr>",
+  ">部分付款</span></div>",
+  ">關聯預約</th><td><a href=",
+  "AI 正在思考中...",
+  "LINE 顧客",
+  "⚠️ 此訂單已收款 ",
+  "⚠️ 此訂單需線上付款但顧客尚未付款。\\n若顧客改用現金/轉帳，可先確認，收款後再按「標記已線下收款」。\\n\\n仍要確認嗎？",
+  "。\\n取消後系統不會自動退款，請依實際收款方式退款給顧客（線上刷卡請至您的金流後台操作）。\\n\\n仍要取消嗎？",
+  "付款連結已複製，可傳給顧客用手機刷卡",
+  "回報已送出，我們將盡快處理！",
+  "套用並完成",
+  "已標記為已收款",
+  "已開始新對話。請問需要什麼協助？",
+  "建立訂單失敗:",
+  "待處理: ${count}",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "操作失敗",
+  "數量至少 1",
+  "新顧客請填姓名與電話",
+  "未知錯誤",
+  "查看詳細資訊",
+  "此訂單目前沒有可用的付款連結",
+  "此電話已屬於既有顧客「${escapeHtml(hit.name)}」，訂單將記在該顧客名下（消費明細也會通知這位顧客），不會建立「${escapeHtml(name)}」。確定繼續嗎？",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "確定要確認此訂單嗎？",
+  "確定顧客已用現金 / 轉帳等方式付清此訂單？\\n標記後會清除「待付款」徽章，且不會被系統自動取消。",
+  "票券已套用！折抵 ${formatMoney(couponRes.data?.couponDiscount || 0)}",
+  "票券已套用，但「完成訂單」失敗：",
+  "訂單已取消，庫存已回補",
+  "訂單已取消，庫存已回補。請記得退款給顧客。",
+  "訂單已完成",
+  "訂單已建立",
+  "訂單已建立但未完成，請至列表手動處理",
+  "訂單已確認",
+  "請先搜尋並選擇顧客",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請手動複製付款連結",
+  "請至少加入一項商品",
+  "請輸入取消原因（選填）：",
+  "請輸入票券代碼",
+  "請選擇商品",
+  "請選擇問題類別",
+  "載入商品/員工資料失敗",
+  "載入建單資料失敗:",
+  "載入待處理數量失敗:",
+  "載入訂單失敗:",
+  "輸入票券代碼",
+  "連線錯誤，請稍後再試",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bookings",
+  "/api/bug-report",
+  "/api/customers",
+  "/api/payment-methods",
+  "/api/product-orders",
+  "/api/product-orders/${id}/apply-coupon",
+  "/api/product-orders/${id}/cancel${params}",
+  "/api/product-orders/${id}/complete",
+  "/api/product-orders/${id}/confirm",
+  "/api/product-orders/${orderId}/mark-paid-offline",
+  "/api/product-orders/manual",
+  "/api/product-orders/pending/count",
+  "/api/products",
+  "/api/staff",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 51365
+}

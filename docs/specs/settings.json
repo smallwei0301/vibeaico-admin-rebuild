@@ -1,0 +1,1409 @@
+{
+ "route": "/tenant/settings",
+ "file": "settings",
+ "title": "店家設定 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "店家設定",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h5",
+   "text": "基本資訊",
+   "icon": "bi-shop",
+   "cls": "mb-4"
+  },
+  {
+   "lvl": "h5",
+   "text": "營業設定",
+   "icon": "bi-clock",
+   "cls": "mb-4"
+  },
+  {
+   "lvl": "h5",
+   "text": "通知設定",
+   "icon": "bi-bell",
+   "cls": "mb-4"
+  },
+  {
+   "lvl": "h6",
+   "text": "顧客通知",
+   "icon": "bi-bell",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "生日祝福與顧客喚回",
+   "icon": "bi-gift",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "LINE 預約狀態推播",
+   "icon": "bi-chat-dots",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "Email 預約通知",
+   "icon": "bi-envelope",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "預約自動確認",
+   "icon": "bi-lightning",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "商品訂單線上收款",
+   "icon": "bi-credit-card-2-front",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "強制指定 服務人員",
+   "icon": "bi-person-check",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "隱私防護",
+   "icon": "bi-shield-lock",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h5",
+   "text": "顧客點數累積設定",
+   "icon": "bi-coin",
+   "cls": "mb-4"
+  },
+  {
+   "lvl": "h6",
+   "text": "點數試算",
+   "icon": "bi-calculator",
+   "cls": "card-title"
+  },
+  {
+   "lvl": "h5",
+   "text": "行事曆同步",
+   "icon": "bi-calendar-plus",
+   "cls": "mb-3"
+  },
+  {
+   "lvl": "h5",
+   "text": "更改密碼",
+   "icon": "bi-shield-lock",
+   "cls": "mb-4"
+  }
+ ],
+ "tabs": [
+  [
+   {
+    "text": "基本資訊",
+    "icon": "bi-shop",
+    "target": "#basic",
+    "active": true
+   },
+   {
+    "text": "營業設定",
+    "icon": "bi-clock",
+    "target": "#business",
+    "active": false
+   },
+   {
+    "text": "通知設定",
+    "icon": "bi-bell",
+    "target": "#notification",
+    "active": false
+   },
+   {
+    "text": "點數設定",
+    "icon": "bi-coin",
+    "target": "#points",
+    "active": false
+   },
+   {
+    "text": "行事曆同步",
+    "icon": "bi-calendar-plus",
+    "target": "#calendar-sync",
+    "active": false
+   },
+   {
+    "text": "帳號安全",
+    "icon": "bi-shield-lock",
+    "target": "#security",
+    "active": false
+   }
+  ]
+ ],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "基本資訊 營業設定 通知設定 點數設定 行事曆同步 帳號安全"
+  },
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "基本資訊 公開預約網址 複製 分享此連結，顧客即可直接在網頁上預約（不需 LINE） 店家名稱 * 請輸入店家名稱 聯絡電話 請輸入有效的電話號碼 電子郵件 請輸入有效的電子郵件 用於接收系統通知 地址 顯示於預約確認通知中 店家簡介 0 /500 儲存變更 儲存中... 營業設定 設定營業時間會影響顧客可預約的時段 每天營業時間不同 開啟後可逐日設定不同營業時段（甚至同一天分上、下午多段）。系統會自動換算成營業時間與封鎖時段，無須手動設定封鎖。 逐日設定後，系統會自動把「沒開放的時段」建立成 每週封鎖時段 （在「封鎖時段」頁會看到「自動產生」標記，請勿手動刪除——要調整請回此頁）。下方「預約間隔／可提前預約／截止日」設定仍適用於所有日子。 營業開始時間 * 請選擇營業開始時間 營業結束時間 * 結束時間必須晚於開始時間 休息開始時間 休息開始時間不正確 設定午休時間，該時段不可預約（選填"
+  },
+  {
+   "id": "",
+   "cls": "card bg-light mb-4",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "點數試算 消費金額 NT$ 10 點"
+  }
+ ],
+ "tables": [],
+ "forms": [
+  {
+   "id": "basicForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "tenantName",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "店家名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "tel",
+     "name": "",
+     "id": "tenantPhone",
+     "placeholder": "例如：02-1234-5678",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡電話",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "tenantEmail",
+     "placeholder": "contact@example.com",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "電子郵件",
+     "help": "用於接收系統通知"
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "tenantAddress",
+     "placeholder": "店家地址",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "地址",
+     "help": "顯示於預約確認通知中"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "tenantDescription",
+     "placeholder": "簡單介紹您的店家特色...",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "3",
+     "label": "店家簡介",
+     "help": "0 /500"
+    }
+   ]
+  },
+  {
+   "id": "businessForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "perDayModeToggle",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "每天營業時間不同 開啟後可逐日設定不同營業時段（甚至同一天分上、下午多段）。系統會自動換算成營業時間與封鎖時段，無須手動設定封鎖。",
+     "help": "開啟後可逐日設定不同營業時段（甚至同一天分上、下午多段）。系統會自動換算成營業時間與封鎖時段，無須手動設定封鎖。"
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "businessStart",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "營業開始時間 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "businessEnd",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "營業結束時間 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "breakStart",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "休息開始時間",
+     "help": "設定午休時間，該時段不可預約（選填）"
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "breakEnd",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "休息結束時間",
+     "help": "休息結束後恢復可預約"
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "slotInterval",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "30",
+       "label": "30 分鐘"
+      },
+      {
+       "value": "60",
+       "label": "60 分鐘"
+      },
+      {
+       "value": "90",
+       "label": "90 分鐘"
+      },
+      {
+       "value": "120",
+       "label": "120 分鐘"
+      }
+     ],
+     "label": "預約時段間隔",
+     "help": "顧客可選擇的預約時間間隔"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "advanceBookingValue",
+     "placeholder": "",
+     "required": false,
+     "value": "1",
+     "cls": "form-control",
+     "label": "可提前預約時間",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "advanceBookingUnit",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "month",
+       "label": "月"
+      },
+      {
+       "value": "day",
+       "label": "天"
+      }
+     ],
+     "label": "可提前預約時間",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "advanceBookingDays",
+     "placeholder": "",
+     "required": false,
+     "value": "30",
+     "cls": "",
+     "label": "可提前預約時間",
+     "help": "顧客最多可提前 1 個月預約"
+    },
+    {
+     "tag": "input",
+     "type": "date",
+     "name": "",
+     "id": "bookingCutoffDate",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "預約截止日期 (選填)",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "minAdvanceBookingDays",
+     "placeholder": "",
+     "required": false,
+     "value": "0",
+     "cls": "form-control",
+     "label": "最快可預約 (前置時間)",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay0",
+     "placeholder": "",
+     "required": false,
+     "value": "0",
+     "cls": "form-check-input closed-day-check",
+     "label": "週日",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay1",
+     "placeholder": "",
+     "required": false,
+     "value": "1",
+     "cls": "form-check-input closed-day-check",
+     "label": "週一",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay2",
+     "placeholder": "",
+     "required": false,
+     "value": "2",
+     "cls": "form-check-input closed-day-check",
+     "label": "週二",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay3",
+     "placeholder": "",
+     "required": false,
+     "value": "3",
+     "cls": "form-check-input closed-day-check",
+     "label": "週三",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay4",
+     "placeholder": "",
+     "required": false,
+     "value": "4",
+     "cls": "form-check-input closed-day-check",
+     "label": "週四",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay5",
+     "placeholder": "",
+     "required": false,
+     "value": "5",
+     "cls": "form-check-input closed-day-check",
+     "label": "週五",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "closedDay6",
+     "placeholder": "",
+     "required": false,
+     "value": "6",
+     "cls": "form-check-input closed-day-check",
+     "label": "週六",
+     "help": ""
+    }
+   ]
+  },
+  {
+   "id": "notificationForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingReminder",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約提醒 自動提醒顧客即將到來的預約（LINE / Email 自動切換）",
+     "help": "自動提醒顧客即將到來的預約（LINE / Email 自動切換）"
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "reminderHoursBefore",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select form-select-sm",
+     "options": [
+      {
+       "value": "1",
+       "label": "預約前 1 小時"
+      },
+      {
+       "value": "2",
+       "label": "預約前 2 小時"
+      },
+      {
+       "value": "3",
+       "label": "預約前 3 小時"
+      },
+      {
+       "value": "6",
+       "label": "預約前 6 小時"
+      },
+      {
+       "value": "12",
+       "label": "預約前 12 小時"
+      },
+      {
+       "value": "24",
+       "label": "預約前 1 天"
+      },
+      {
+       "value": "48",
+       "label": "預約前 2 天"
+      }
+     ],
+     "label": "提醒時間",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "enableBirthdayGreeting",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "生日祝福 每天早上 9:00 自動發送給當天生日的顧客",
+     "help": "每天早上 9:00 自動發送給當天生日的顧客"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "birthdayGreetingMessage",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "rows": "2",
+     "label": "祝福訊息",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "enableCustomerRecall",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "顧客喚回 每天下午 2:00 自動發送給久未到訪的顧客（每家店每天最多 50 位）",
+     "help": "每天下午 2:00 自動發送給久未到訪的顧客（每家店每天最多 50 位）"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "customerRecallDays",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "多久沒來就喚回",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "customerRecallMessage",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "rows": "2",
+     "label": "多久沒來就喚回",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingConfirmed",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約已確認 確認預約時推播 LINE 通知顧客",
+     "help": "確認預約時推播 LINE 通知顧客"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingCompleted",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約已完成 服務完成時推播 LINE 通知顧客（預設關閉）",
+     "help": "服務完成時推播 LINE 通知顧客（預設關閉）"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingCancelled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約已取消 取消預約時推播 LINE 通知顧客",
+     "help": "取消預約時推播 LINE 通知顧客"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingModified",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約被修改 預約時間、人員等變更時推播 LINE 通知顧客",
+     "help": "預約時間、人員等變更時推播 LINE 通知顧客"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingNoShow",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "顧客爽約 標記爽約時推播 LINE 通知顧客（預設關閉）",
+     "help": "標記爽約時推播 LINE 通知顧客（預設關閉）"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyNewBooking",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "店家：新預約 / 確認通知 新預約建立和確認時，Email 通知店家",
+     "help": "新預約建立和確認時，Email 通知店家"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyBookingCancel",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "店家：取消預約通知 預約被取消時，Email 通知店家",
+     "help": "預約被取消時，Email 通知店家"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyStaffBooking",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "員工：預約 Email 通知 員工被指派預約時，Email 通知該員工（需在員工管理填寫 Email）",
+     "help": "員工被指派預約時，Email 通知該員工（需在員工管理填寫 Email）"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "notifyProductOrder",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "店家：商品訂單 Email 通知 LINE Bot / 公開頁 / 購物車建立商品訂單時，Email 通知店家（預設開啟）",
+     "help": "LINE Bot / 公開頁 / 購物車建立商品訂單時，Email 通知店家（預設開啟）"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "autoConfirmEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "自動確認預約 開啟後，顧客預約將自動確認，無需手動操作。適合一人店家或不需審核預約的情境。 （若你有服務設定了「線上收款」，此開關也決定 顧客付款完成後要不要自動確認 ——關閉時付款後仍停在待確認，由你手動確認。） 關閉時走原本手動確認流程",
+     "help": "開啟後，顧客預約將自動確認，無需手動操作。適合一人店家或不需審核預約的情境。 （若你有服務設定了「線上收款」，此開關也決定 顧客付款完成後要不要自動確認 ——關閉時付款後仍停在待確認，由你手動確認。）"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "productOnlinePaymentEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "顧客下單必須線上刷卡付款才成立 開啟後，顧客在公開頁 / LINE 自助下單會拿到付款連結： 付全額成功 → 訂單自動變「已確認」 ； 15 分鐘沒付 → 自動取消並把庫存還回來 。取貨/出貨後仍由你按「完成」。 前提：你已在「收款方式」設",
+     "help": "開啟後，顧客在公開頁 / LINE 自助下單會拿到付款連結： 付全額成功 → 訂單自動變「已確認」 ； 15 分鐘沒付 → 自動取消並把庫存還回來 。取貨/出貨後仍由你按「完成」。"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "staffSelectionMandatory",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約時強制顧客指定 服務人員 開啟後，顧客在 LINE、公開頁、後台代客建單預約時， 必須選擇一位 服務人員 ，沒選就無法送出（不再由系統自動分配）。適合多人店家、希望每筆預約都指定誰來服務。 關閉：沿用「可不指定，系統自動安排」。 注意 ",
+     "help": "開啟後，顧客在 LINE、公開頁、後台代客建單預約時， 必須選擇一位 服務人員 ，沒選就無法送出（不再由系統自動分配）。適合多人店家、希望每筆預約都指定誰來服務。"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "privacyProtectionEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "隱私防護模式 開啟後，LINE 個資收集改用網頁表單，顧客資料不會留在 LINE chat 紀錄裡。建議多人共用 OA 的店家開啟。 關閉時走原本 LINE 對話收集流程；開啟時顧客會看到一張卡片含「點此填寫個資」按鈕。",
+     "help": "開啟後，LINE 個資收集改用網頁表單，顧客資料不會留在 LINE chat 紀錄裡。建議多人共用 OA 的店家開啟。"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "collectCustomerEmailEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約時收集顧客 Email 開啟（預設）：LINE 預約個資收集會多問一步 Email（顧客可跳過）；隱私表單也會顯示 Email 欄位。 關閉：LINE 不再詢問 Email、隱私表單不顯示 Email 欄位，縮短預約流程。 提示 ：未訂",
+     "help": "開啟（預設）：LINE 預約個資收集會多問一步 Email（顧客可跳過）；隱私表單也會顯示 Email 欄位。"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "collectCustomerBirthdayEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約時收集顧客生日 開啟（預設）：LINE 預約 / 隱私表單會請顧客填生日。關閉：不再詢問生日。 生日主要用於「生日祝福」「生日優惠活動」（需訂閱對應功能），沒在用可關閉、縮短預約流程。",
+     "help": "開啟（預設）：LINE 預約 / 隱私表單會請顧客填生日。關閉：不再詢問生日。 生日主要用於「生日祝福」「生日優惠活動」（需訂閱對應功能），沒在用可關閉、縮短預約流程。"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "collectCustomerGenderEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "預約時收集顧客性別 開啟（預設）：LINE 預約 / 隱私表單會請顧客選性別。關閉：不再詢問性別。",
+     "help": "開啟（預設）：LINE 預約 / 隱私表單會請顧客選性別。關閉：不再詢問性別。"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "deferProfileCollectionEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "加好友時先不收集資料（延後到預約時） 關閉（預設）：新好友加入 LINE 當下就會被要求填寫手機等資料。 開啟：加好友只顯示歡迎訊息，顧客可先詢問商品、瀏覽功能；等顧客真的要預約時才收集資料。 適合「顧客多半先詢問、少數才預約」的店家（如代",
+     "help": "關閉（預設）：新好友加入 LINE 當下就會被要求填寫手機等資料。 開啟：加好友只顯示歡迎訊息，顧客可先詢問商品、瀏覽功能；等顧客真的要預約時才收集資料。"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "welcomeMessageText",
+     "placeholder": "例：嗨！感謝您加入本店的官方帳號",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "2",
+     "label": "加好友歡迎訊息（自訂）",
+     "help": "留白＝系統預設（嗨 OO！感謝您加入本店的官方帳號 👋）"
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "welcomeCardTitle",
+     "placeholder": "例：歡迎加入！",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "歡迎卡片標題（自訂）",
+     "help": "留白＝系統預設（歡迎加入！）"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "welcomeFeatureListText",
+     "placeholder": "一行一項，例：預約到店試穿",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "歡迎卡片功能介紹清單（自訂）",
+     "help": "一行一項，最多 8 行。例：👗 預約到店試穿、📦 詢問代購商品、💬 直接留言客服"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bookingCustomFieldsText",
+     "placeholder": "一行一個欄位，行尾加 * 表必填\n例：\n車型*\n特殊需求",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "3",
+     "label": "預約自訂欄位",
+     "help": "一行一個欄位（最多 5 個、每個 20 字），行尾加 * 表必填。例：「車型*」「特殊需求」"
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "welcomeCardImageFile",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "d-none",
+     "label": "歡迎卡片圖片（自訂）",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "profileCollectIntroText",
+     "placeholder": "例：請先完成基本資料，即可開始使用預約服務",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "2",
+     "label": "個資收集開場白（自訂）",
+     "help": "留白＝系統預設（歡迎加入！🎉 請先完成基本資料，即可開始使用預約服務。）"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "profileCollectDoneText",
+     "placeholder": "例：資料收到囉！有想找的款式隨時跟我說 😊",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "2",
+     "label": "個資收集完成招呼語（自訂）",
+     "help": "留白＝系統預設（🎉 資料設定完成！）"
+    }
+   ]
+  },
+  {
+   "id": "pointsForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "pointEarnEnabled",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "啟用點數累積 開啟後，顧客完成預約可自動獲得點數",
+     "help": "開啟後，顧客完成預約可自動獲得點數"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "pointEarnRate",
+     "placeholder": "",
+     "required": false,
+     "value": "10",
+     "cls": "form-control",
+     "label": "店家名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "pointRoundMode",
+     "id": "roundFloor",
+     "placeholder": "",
+     "required": false,
+     "value": "FLOOR",
+     "cls": "form-check-input",
+     "label": "無條件捨去 （推薦） 消費 NT$95（比例 10）→ 9 點",
+     "help": "（推薦）"
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "pointRoundMode",
+     "id": "roundRound",
+     "placeholder": "",
+     "required": false,
+     "value": "ROUND",
+     "cls": "form-check-input",
+     "label": "四捨五入 消費 NT$95（比例 10）→ 10 點",
+     "help": "消費 NT$95（比例 10）→ 10 點"
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "pointRoundMode",
+     "id": "roundCeil",
+     "placeholder": "",
+     "required": false,
+     "value": "CEIL",
+     "cls": "form-check-input",
+     "label": "無條件進位 消費 NT$91（比例 10）→ 10 點",
+     "help": "消費 NT$91（比例 10）→ 10 點"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "testAmount",
+     "placeholder": "",
+     "required": false,
+     "value": "100",
+     "cls": "form-control",
+     "label": "",
+     "help": ""
+    }
+   ]
+  },
+  {
+   "id": "changePasswordForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "password",
+     "name": "",
+     "id": "currentPassword",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "目前密碼 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "password",
+     "name": "",
+     "id": "newPassword",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "新密碼 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "password",
+     "name": "",
+     "id": "confirmPassword",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "確認新密碼 *",
+     "help": ""
+    }
+   ]
+  }
+ ],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "publicShopUrl",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-control bg-white",
+   "label": "店家名稱 *",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "calIcsUrl",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-control",
+   "label": "",
+   "help": ""
+  }
+ ],
+ "buttons": [
+  {
+   "text": "複製",
+   "icon": "bi-clipboard",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "copyPublicUrl()"
+  },
+  {
+   "text": "",
+   "icon": "bi-box-arrow-up-right",
+   "cls": "btn btn-outline-primary",
+   "id": "publicShopLink",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "儲存變更 儲存中...",
+   "icon": "bi-check-lg",
+   "cls": "btn btn-primary",
+   "id": "saveBasicBtn",
+   "href": "",
+   "onclick": "saveBasicSettings()"
+  },
+  {
+   "text": "清除",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "clearCutoffDate()"
+  },
+  {
+   "text": "上傳圖片",
+   "icon": "bi-upload",
+   "cls": "btn btn-outline-primary btn-sm",
+   "id": "",
+   "href": "",
+   "onclick": "document.getElementById('welcomeCardImageFile').click()"
+  },
+  {
+   "text": "移除圖片",
+   "icon": "bi-trash",
+   "cls": "btn btn-outline-danger btn-sm d-none",
+   "id": "welcomeCardImageRemoveBtn",
+   "href": "",
+   "onclick": "removeWelcomeCardImage()"
+  },
+  {
+   "text": "",
+   "icon": "bi-google",
+   "cls": "btn btn-lg",
+   "id": "calGoogleBtn",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "",
+   "icon": "bi-clipboard",
+   "cls": "btn btn-outline-secondary",
+   "id": "calCopyBtn",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "",
+   "icon": "bi-arrow-counterclockwise",
+   "cls": "btn btn-outline-danger btn-sm",
+   "id": "calRegenBtn",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "更改密碼 處理中...",
+   "icon": "bi-key",
+   "cls": "btn btn-primary",
+   "id": "changePasswordBtn",
+   "href": "",
+   "onclick": ""
+  }
+ ],
+ "modals": [
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-primary mb-4",
+   "text": "公開預約網址 複製 分享此連結，顧客即可直接在網頁上預約（不需 LINE）",
+   "id": "publicUrlCard"
+  },
+  {
+   "cls": "alert alert-light mb-4",
+   "text": "設定營業時間會影響顧客可預約的時段",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-info py-2 small mb-2",
+   "text": "逐日設定後，系統會自動把「沒開放的時段」建立成 每週封鎖時段 （在「封鎖時段」頁會看到「自動產生」標記，請勿手動刪除——要調整請回此頁）。下方「預約間隔／可提前預約／截止日」設定仍適用於所有日子。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light mb-4",
+   "text": "設定何時要收到系統通知",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-info small mb-3",
+   "text": "省額度提示： 每則 LINE 推播消耗 1 則 push 額度。關閉不需要的通知可節省額度， 特別是 LINE 免費方案每月只有 200 則。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-warning mb-3",
+   "text": "此功能需訂閱「Email 預約通知」或輕量版/專業版方案。 前往開通（49 點/月）",
+   "id": "emailNotifyLocked"
+  },
+  {
+   "cls": "alert alert-info mb-4",
+   "text": "設定顧客完成預約後如何累積點數。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-warning small mb-3",
+   "text": "",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-warning mb-4",
+   "text": "更改密碼後需要重新登入",
+   "id": ""
+  }
+ ],
+ "emptyStates": [],
+ "badges": [
+  "10 點"
+ ],
+ "jsStrings": [
+  " 三種格式——曾有店家資料存成裸字串 ",
+  " 個月預約",
+  " 個，請刪減後再儲存",
+  " 天預約",
+  " 的時段開始時間必須早於結束時間",
+  " 的營業時段互相重疊",
+  " 筆你「手動建立的每週封鎖」，已保留（不會自動刪除）。\\n\\n若這些封鎖是用來塑形舊的營業時段，可能與新的逐日營業時間重疊，請至「封鎖時段」頁確認是否要刪除。",
+  " 筆封鎖時段（可在「封鎖時段」頁查看，請勿手動刪除，要調整請回此頁）",
+  " 筆既有預約落在新的公休日或非營業時段。\\n\\n",
+  " 筆既有預約落在新的非營業時段。\\n\\n設定已儲存，但這些預約「不會」自動取消。請至「預約列表」確認是否需要調整或通知顧客。",
+  " 行，請刪減後再儲存",
+  " 點",
+  "></i>目前<strong>沒有</strong>線上刷卡金流，此開關開了也不會生效（顧客照舊免付款下單）。",
+  "></i>目前是<strong>示範測試金流</strong>：顧客會被要求付款且有 15 分鐘倒數，但測試卡付款<strong>不會自動確認訂單</strong>（示範付款可偽造，刻意不觸發出貨）。正式收款請改綁自己的金流帳號。",
+  "></i>線上刷卡金流<strong>尚未開通</strong>（未通過小額實刷測試，或剛改過金鑰被重置），此開關目前<strong>不會生效</strong>。",
+  "></i>線上刷卡金流已開通（",
+  "></span>載入中...</div>",
+  ">營業</label>",
+  ">至</span>",
+  ">載入失敗：",
+  "AI 正在思考中...",
+  "Email 格式",
+  "ℹ️ 偵測到 ",
+  "⚠️ 截止日已過 — 顧客目前無法透過 LINE / 公開頁面預約任何日期！請更新或清除截止日。",
+  "⚠️ 注意：有 ",
+  "上傳失敗：",
+  "休息時間請同時填寫開始和結束時間，或都不填",
+  "休息結束時間不能晚於營業結束時間",
+  "休息結束時間必須晚於開始時間",
+  "休息開始時間不能早於營業開始時間",
+  "儲存失敗：",
+  "可提前預約時間最少 1 天，最多 6 個月",
+  "回報已送出，我們將盡快處理！",
+  "固定截止日：不管今天幾號，顧客最遠只能預約到此日期（與提前天數取較早者）。留白＝不啟用。",
+  "基本資訊已儲存",
+  "密碼已更改，請重新登入",
+  "密碼錯誤",
+  "已依你的營業時段自動建立 ",
+  "已產生新網址，請重新加入 Google Calendar",
+  "已移除歡迎卡片圖片",
+  "已複製",
+  "已複製訂閱網址",
+  "已複製預約網址",
+  "已開始新對話。請問需要什麼協助？",
+  "店家名稱",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "更改密碼失敗：",
+  "未知錯誤",
+  "未訂閱時<strong>不會發送任何喚回訊息</strong>，此處設定不會生效。",
+  "未訂閱時<strong>不會發送任何提醒</strong>（LINE 與 Email 都不會），此處設定不會生效。",
+  "未訂閱時<strong>不會發送任何生日祝福</strong>，此處設定不會生效。",
+  "未訂閱時<strong>顧客完成預約/訂單不會自動累積點數</strong>（不會報錯，就是靜靜地不加），此處設定不會生效。",
+  "歡迎卡片功能介紹清單最多 8 行，目前有 ",
+  "歡迎卡片圖片已更新",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "營業結束時間必須晚於開始時間",
+  "營業設定已儲存",
+  "生日祝福",
+  "目前密碼不正確",
+  "確定重新產生？\\n\\n舊網址將立即失效，已在 Google Calendar 訂閱的會停止更新（需重新加入）。",
+  "移除失敗：",
+  "線上刷卡付款",
+  "自動預約提醒",
+  "解析公休日失敗:",
+  "解析逐日營業時間失敗:",
+  "設定已儲存，但這些預約「不會」自動取消。請至「預約列表」確認是否需要調整時間或通知顧客。",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請檢查：",
+  "請確認所有密碼欄位已填寫，且新密碼與確認密碼一致",
+  "請稍後再試",
+  "請至少設定一天的營業時段（不能全部公休）",
+  "請選擇問題類別",
+  "載入設定失敗:",
+  "載入設定失敗，請重新整理頁面",
+  "通知設定已儲存",
+  "連線錯誤，請稍後再試",
+  "週一",
+  "週三",
+  "週二",
+  "週五",
+  "週六",
+  "週四",
+  "週日",
+  "重新產生失敗",
+  "集點系統",
+  "預約自訂欄位最多 5 個，目前有 ",
+  "預約自訂欄位每個名稱最多 20 字，請縮短後再儲存",
+  "顧客喚回",
+  "顧客最多可提前 ",
+  "顧客最遠只能預約到 ",
+  "點數累積比例需在 1-1000 之間",
+  "點數設定已儲存",
+  "（無回應）",
+  "（目前設定）",
+  "（與提前天數限制取較早者）",
+  "），開關開啟即生效。"
+ ],
+ "jsApiCalls": [
+  "/api/auth/change-password",
+  "/api/bug-report",
+  "/api/feature-store",
+  "/api/payment-methods",
+  "/api/settings",
+  "/api/settings/calendar",
+  "/api/settings/calendar/regenerate",
+  "/api/settings/weekly-business-hours/draft",
+  "/api/settings/welcome-card-image",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 64255
+}

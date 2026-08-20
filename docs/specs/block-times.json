@@ -1,0 +1,425 @@
+{
+ "route": "/tenant/block-times",
+ "file": "block-times",
+ "title": "封鎖時段 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "封鎖時段",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "封鎖時段列表",
+   "icon": "",
+   "cls": "data-table-title"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover",
+   "columns": [
+    "名稱",
+    "類型",
+    "日期/星期",
+    "時段",
+    "原因",
+    "操作"
+   ],
+   "tbodyId": "dataTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "新增封鎖",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "showBlockTimeModal()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "blockTimeModal",
+   "title": "新增封鎖時段",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "封鎖名稱 * 原因 循環類型 單次 每週 日期 * 星期幾 * 週日 週一 週二 週三 週四 週五 週六 整天封鎖 開始時間 結束時間",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "blockTimeId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "btTitle",
+     "placeholder": "例如：店休、團隊會議",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "封鎖名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "btReason",
+     "placeholder": "選填",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "原因",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "btRecurrence",
+     "id": "btSingle",
+     "placeholder": "",
+     "required": false,
+     "value": "SINGLE",
+     "cls": "form-check-input",
+     "label": "單次",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "btRecurrence",
+     "id": "btWeekly",
+     "placeholder": "",
+     "required": false,
+     "value": "WEEKLY",
+     "cls": "form-check-input",
+     "label": "每週",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "date",
+     "name": "",
+     "id": "btDate",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "日期 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "btDayOfWeek",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "0",
+       "label": "週日"
+      },
+      {
+       "value": "1",
+       "label": "週一"
+      },
+      {
+       "value": "2",
+       "label": "週二"
+      },
+      {
+       "value": "3",
+       "label": "週三"
+      },
+      {
+       "value": "4",
+       "label": "週四"
+      },
+      {
+       "value": "5",
+       "label": "週五"
+      },
+      {
+       "value": "6",
+       "label": "週六"
+      }
+     ],
+     "label": "星期幾 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "btFullDay",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "整天封鎖",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "btStartTime",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "開始時間",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "btEndTime",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control time-select",
+     "options": [],
+     "label": "結束時間",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存 儲存中...",
+     "cls": "btn btn-primary",
+     "id": "saveBlockTimeBtn"
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-light mb-3",
+   "text": "封鎖時段內不接受預約，適用所有預約入口（公開頁面、LINE Bot、後台新增預約）",
+   "id": ""
+  }
+ ],
+ "emptyStates": [
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "載入中...",
+   "id": ""
+  }
+ ],
+ "badges": [],
+ "jsStrings": [
+  "></i> 營運時間</a>",
+  "></i> 自動產生</span>",
+  "></i>尚未設定封鎖時段</td></tr>",
+  ">單次</span>",
+  ">整天</span>",
+  ">每週</span>",
+  ">載入失敗</td></tr>",
+  "AI 正在思考中...",
+  "儲存失敗：",
+  "刪除失敗：",
+  "回報已送出，我們將盡快處理！",
+  "封鎖時段已新增",
+  "封鎖時段已新增（衝突由店家自行通知）",
+  "封鎖時段已更新",
+  "已刪除",
+  "已開始新對話。請問需要什麼協助？",
+  "截圖讀取失敗",
+  "找不到封鎖時段",
+  "抱歉，發生錯誤：",
+  "新增封鎖時段",
+  "時段與休息時間（",
+  "未知錯誤",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "確定要刪除此封鎖時段？",
+  "結束時間不能晚於營業結束時間（",
+  "編輯封鎖時段",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請填寫開始和結束時間",
+  "請稍後再試",
+  "請輸入封鎖名稱",
+  "請選擇問題類別",
+  "請選擇日期",
+  "載入失敗",
+  "連線錯誤，請稍後再試",
+  "週一",
+  "週三",
+  "週二",
+  "週五",
+  "週六",
+  "週四",
+  "週日",
+  "開始時間不能早於營業開始時間（",
+  "開始時間必須早於結束時間",
+  "（無回應）",
+  "）重疊，休息時段本來就不營業"
+ ],
+ "jsApiCalls": [
+  "/api/block-times",
+  "/api/block-times/${id}",
+  "/api/bug-report",
+  "/api/settings",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 22425
+}

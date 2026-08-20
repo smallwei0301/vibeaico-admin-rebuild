@@ -1,0 +1,303 @@
+{
+ "route": "/tenant/donate",
+ "file": "donate",
+ "title": "贊助我們 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "贊助我們",
+   "icon": "bi-heart-fill",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "感謝這些店家",
+   "icon": "bi-heart-fill",
+   "cls": "m-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "全平台累積贊助 選擇贊助金額（NT$） 100 300 500 1,000 自訂金額 最低 NT$ 10、最高 NT$ 100,000（整數） 名單顯示名稱 會顯示在贊助名單與跑馬燈上（最長 50 字） 前往贊助 處理中... 透過藍新金流安全付款，支援信用卡 / Apple Pay / Google Pay"
+  },
+  {
+   "id": "",
+   "cls": "card h-100",
+   "headerIcon": "bi-heart-fill",
+   "header": "感謝這些店家 依贊助時間排序（最近 50 家）",
+   "bodyText": "店家 贊助時間 載入中..."
+  }
+ ],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover mb-0",
+   "columns": [
+    "店家",
+    "贊助時間"
+   ],
+   "tbodyId": "donorTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "number",
+   "name": "",
+   "id": "donateAmount",
+   "placeholder": "NT$ 10 ~ 100,000",
+   "required": false,
+   "value": "",
+   "cls": "form-control",
+   "label": "自訂金額",
+   "help": "最低 NT$ 10、最高 NT$ 100,000（整數）"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "donateDisplayName",
+   "placeholder": "預設使用店家名稱",
+   "required": false,
+   "value": "",
+   "cls": "form-control",
+   "label": "名單顯示名稱",
+   "help": "會顯示在贊助名單與跑馬燈上（最長 50 字）"
+  }
+ ],
+ "buttons": [
+  {
+   "text": "100",
+   "icon": "",
+   "cls": "btn btn-outline-secondary donate-amount-btn",
+   "id": "",
+   "href": "",
+   "onclick": "pickAmount(this)"
+  },
+  {
+   "text": "300",
+   "icon": "",
+   "cls": "btn btn-outline-secondary donate-amount-btn",
+   "id": "",
+   "href": "",
+   "onclick": "pickAmount(this)"
+  },
+  {
+   "text": "500",
+   "icon": "",
+   "cls": "btn btn-outline-secondary donate-amount-btn",
+   "id": "",
+   "href": "",
+   "onclick": "pickAmount(this)"
+  },
+  {
+   "text": "1,000",
+   "icon": "",
+   "cls": "btn btn-outline-secondary donate-amount-btn",
+   "id": "",
+   "href": "",
+   "onclick": "pickAmount(this)"
+  },
+  {
+   "text": "前往贊助 處理中...",
+   "icon": "bi-heart-fill",
+   "cls": "btn btn-danger w-100",
+   "id": "donateBtn",
+   "href": "",
+   "onclick": "submitDonation()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-success mb-3 d-none",
+   "text": "謝謝你的支持！❤ 付款處理中，你的名字通常會在一分鐘內出現在贊助名單上。",
+   "id": "paymentSuccessAlert"
+  },
+  {
+   "cls": "alert alert-danger mb-3 d-none",
+   "text": "付款未完成 ，沒有關係，心意我們收到了！如有疑問請聯絡： vibeaico@gmail.com",
+   "id": "paymentFailedAlert"
+  },
+  {
+   "cls": "alert alert-light",
+   "text": "贊助是自願支持平台營運， 不是功能購買、也不會轉成點數 ； 需要儲值點數訂閱功能請到 點數管理 。",
+   "id": ""
+  }
+ ],
+ "emptyStates": [],
+ "badges": [],
+ "jsStrings": [
+  ">感謝 ",
+  ">載入失敗，請重新整理</td></tr>",
+  "AI 正在思考中...",
+  "☕ 成為第一位贊助者，讓 VibeAI 走得更遠 ❤",
+  "付款建立失敗:",
+  "付款建立失敗：",
+  "你已贊助 NT$ ",
+  "回報已送出，我們將盡快處理！",
+  "已開始新對話。請問需要什麼協助？",
+  "建立付款失敗，請稍後再試",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "未知錯誤",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請稍後再試",
+  "請輸入整數贊助金額",
+  "請選擇問題類別",
+  "贊助金額須介於 NT$ 10 ~ 100,000",
+  "載入失敗",
+  "載入贊助總覽失敗:",
+  "連線錯誤，請稍後再試",
+  "還沒有贊助記錄，成為第一位支持者吧 ☕</td></tr>",
+  "（無回應）",
+  "，謝謝你 ❤"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/donations",
+  "/api/donations/summary",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 17790
+}

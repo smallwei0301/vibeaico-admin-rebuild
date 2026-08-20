@@ -1,0 +1,4241 @@
+/**
+ * Tenant 店家後台樣式
+ *
+ * 預約平台 - 店家後台專用 CSS
+ */
+
+/* ========================================
+   版面配置
+   ======================================== */
+
+#wrapper {
+    display: flex;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* 側邊欄背景延伸 - 防止右側內容滾動時左側出現空白 */
+#wrapper::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    background: #1d1d1f;
+    pointer-events: none;
+    z-index: 0;
+    transition: width 0.3s ease;
+}
+
+#wrapper:has(#sidebar.collapsed)::before {
+    width: var(--sidebar-collapsed-width);
+}
+
+#content-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-color: var(--light-color);
+    position: relative;
+    z-index: 1;
+}
+
+#content {
+    flex: 1 0 auto;
+    padding: 1.5rem;
+}
+
+/* ========================================
+   側邊欄
+   ======================================== */
+
+#sidebar {
+    display: block;
+    width: var(--sidebar-width);
+    height: 100vh;
+    height: 100dvh;
+    position: sticky;
+    top: 0;
+    flex-shrink: 0;
+    background: #1d1d1f;
+    transition: width 0.3s ease, transform 0.3s ease;
+    z-index: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+
+#sidebar::-webkit-scrollbar { width: 4px; }
+#sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+/* nav 列表：跟隨 sidebar 整體捲動（不獨立捲動） */
+#sidebar .nav.flex-column {
+    display: block;
+    overflow: visible;
+}
+
+/* 收合模式：允許飛出選單溢出 */
+#sidebar.collapsed .nav.flex-column {
+    overflow: visible;
+}
+
+#sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
+}
+
+/* Logo */
+.sidebar-brand {
+    height: 4.375rem;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-decoration: none;
+}
+
+.sidebar-brand-icon {
+    font-size: 1.5rem;
+    color: white;
+}
+
+/* 品牌標記（2026-08-02 美感）：原本直接放 logo 圖，在深色側欄上是一塊直角白方塊，
+   像未經處理的素材。包成圓角容器 + 內距後讀起來是刻意的 app mark。 */
+.sidebar-brand img {
+    background: #fff;
+    border-radius: 7px;
+    padding: 4px 5px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar-brand-text {
+    font-size: 1rem;
+    font-weight: 700;
+    color: white;
+    letter-spacing: -0.01em;
+    margin-left: 0.5rem;
+}
+
+#sidebar.collapsed .sidebar-brand-text {
+    display: none;
+}
+
+/* 分隔線 */
+.sidebar-divider {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    margin: 0 1rem 0.5rem;
+    flex-shrink: 0;
+}
+
+/* 標題（已改用群組收合選單，保留向後相容） */
+.sidebar-heading {
+    padding: 0 1rem 0.5rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+#sidebar.collapsed .sidebar-heading {
+    display: none;
+}
+
+/* 導航項目 */
+.nav-item {
+    position: relative;
+}
+
+.nav-link {
+    display: flex;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    margin: 0.1rem 0.5rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 600;
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.nav-link:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* 當前頁：唯一帶彩度的導航狀態（2026-08-01 UX 評審 — 原本 active/hover/群組展開三層白霧亮度接近，
+   店家要盯著看才知道自己在哪一頁）。主色底 + 左側指示條，收合側欄時指示條仍可見。
+   ⚠️ 必須 scope 在 #sidebar 內：`.nav-link.active` 是 Bootstrap 通用 class，
+   不限定會污染全站 tab（settings/shop-design/rich-menu-design 的分頁都吃到左指示條與白字，
+   2026-08-01 複評實測 settings tab 出現 inset 3px #8ea4ff）。 */
+#sidebar .nav-link.active {
+    color: white;
+    font-weight: 700;
+    background: rgba(67, 97, 238, 0.32);
+    box-shadow: inset 3px 0 0 #8ea4ff;
+}
+
+.nav-link i {
+    font-size: 1rem;
+    width: 1.5rem;
+    margin-right: 0.75rem;
+    text-align: center;
+}
+
+#sidebar.collapsed .nav-link span {
+    display: none;
+}
+
+#sidebar.collapsed .nav-link i {
+    margin-right: 0;
+}
+
+#sidebar.collapsed .nav-link {
+    justify-content: center;
+    padding: 0.75rem;
+}
+
+/* ===== 側邊欄群組（可收合選單） ===== */
+
+.sidebar-group {
+    position: relative;
+}
+
+/* 群組標題按鈕 */
+.sidebar-group-toggle {
+    display: flex;
+    align-items: center;
+    padding: 0.65rem 1rem;
+    margin: 0.1rem 0.5rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none !important;
+    border-radius: 0.5rem;
+    transition: all 0.2s ease;
+}
+
+.sidebar-group-toggle:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* 當前群組高亮 */
+/* 群組展開態刻意壓低（展開與否已由箭頭旋轉表達），不要跟「當前頁」搶注意力 */
+.sidebar-group-toggle:not(.collapsed) {
+    color: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* 當前頁「所屬群組」的層級標記（2026-08-01 複評）：
+   子項清單一長（店家營運有 12 項），父群組列一捲出視窗就不知道自己在哪個群組。
+   用比子項指示條淡一階的左側條，形成「群組 → 當前頁」兩層可讀的階層。 */
+.sidebar-group-toggle.has-active {
+    box-shadow: inset 3px 0 0 rgba(142, 164, 255, 0.45);
+}
+
+/* 群組展開箭頭 */
+.sidebar-group-arrow {
+    font-size: 0.65rem;
+    margin-left: auto;
+    transition: transform 0.25s ease;
+    width: auto !important;
+    margin-right: 0 !important;
+}
+
+.sidebar-group-toggle:not(.collapsed) .sidebar-group-arrow {
+    transform: rotate(180deg);
+}
+
+/* 子選單項目 */
+.sidebar-sub-nav {
+    padding-left: 0;
+    list-style: none;
+}
+
+.sidebar-sub-nav .nav-link {
+    padding: 0.5rem 1rem 0.5rem 2.75rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.65);
+}
+
+.sidebar-sub-nav .nav-link:hover {
+    color: white;
+}
+
+.sidebar-sub-nav .nav-link.active {
+    color: white;
+    font-weight: 700;
+    background: rgba(67, 97, 238, 0.32);
+    box-shadow: inset 3px 0 0 #8ea4ff;
+}
+
+.sidebar-sub-nav .nav-link i {
+    font-size: 0.85rem;
+    width: 1.25rem;
+    margin-right: 0.5rem;
+}
+
+/* ===== 收合側邊欄：群組飛出選單 ===== */
+
+#sidebar.collapsed .sidebar-group-arrow {
+    display: none;
+}
+
+#sidebar.collapsed .sidebar-group-toggle {
+    justify-content: center;
+    padding: 0.75rem;
+}
+
+#sidebar.collapsed .sidebar-group-toggle span {
+    display: none;
+}
+
+#sidebar.collapsed .sidebar-group-toggle > i:first-child {
+    margin-right: 0;
+}
+
+/* 收合模式：隱藏子選單，hover 時飛出 */
+#sidebar.collapsed .sidebar-group > .collapse,
+#sidebar.collapsed .sidebar-group > .collapsing {
+    display: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    width: 200px;
+    background: #2c2c2e;
+    border-radius: 0 0.5rem 0.5rem 0;
+    box-shadow: 4px 4px 15px rgba(0, 0, 0, 0.25);
+    padding: 0.5rem 0;
+    z-index: 1100;
+}
+
+#sidebar.collapsed .sidebar-group:hover > .collapse,
+#sidebar.collapsed .sidebar-group:hover > .collapsing {
+    display: block !important;
+}
+
+/* 飛出選單內項目樣式重置 */
+#sidebar.collapsed .sidebar-sub-nav {
+    padding-left: 0;
+}
+
+#sidebar.collapsed .sidebar-sub-nav .nav-link {
+    padding: 0.5rem 1rem;
+    justify-content: flex-start;
+    font-size: 0.85rem;
+}
+
+#sidebar.collapsed .sidebar-sub-nav .nav-link span {
+    display: inline !important;
+}
+
+#sidebar.collapsed .sidebar-sub-nav .nav-link i {
+    margin-right: 0.5rem !important;
+}
+
+/* 待確認預約徽章 */
+.pending-badge {
+    animation: pendingPulse 2s ease-in-out infinite;
+}
+@keyframes pendingPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+#sidebar.collapsed .pending-badge {
+    display: none !important;
+}
+
+/* 摺疊按鈕 */
+.sidebar-toggle {
+    width: 100%;
+    padding: 0.75rem;
+    color: rgba(255, 255, 255, 0.8);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+    color: white;
+}
+
+.sidebar-toggle i {
+    transition: transform 0.3s ease;
+}
+
+#sidebar.collapsed .sidebar-toggle i {
+    transform: rotate(180deg);
+}
+
+/* ========================================
+   頂部導航
+   ======================================== */
+
+.topbar {
+    height: 4.375rem;
+    background-color: white;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: none;
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* 側邊欄切換按鈕 */
+.btn-sidebar-toggle {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--secondary-color);
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.btn-sidebar-toggle:hover {
+    background-color: var(--light-color);
+}
+
+/* 點數餘額顯示 */
+.points-badge {
+    display: flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--light-color);
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.points-badge i {
+    margin-right: 0.5rem;
+}
+
+/* 用戶下拉選單 */
+.user-dropdown {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: var(--border-radius);
+    transition: background-color 0.15s ease;
+}
+
+.user-dropdown:hover {
+    background-color: var(--light-color);
+}
+
+.user-avatar {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.875rem;
+}
+
+.user-name {
+    margin-left: 0.5rem;
+    font-weight: 600;
+    color: var(--dark-color);
+}
+
+.tenant-name {
+    font-size: 0.75rem;
+    color: var(--secondary-color);
+    margin-left: 0.5rem;
+}
+
+/* ========================================
+   頁面標題
+   ======================================== */
+
+.page-header {
+    margin-bottom: 1.5rem;
+}
+
+/* 頁面群組脈絡（2026-08-01 UX 評審）：深層頁只有一個 h1，看不出自己屬於哪個群組。
+   放在 .page-title 正上方的一行灰色小字路徑。 */
+.page-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.page-eyebrow a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.page-eyebrow a:hover {
+    color: var(--primary-color);
+}
+
+.page-eyebrow i {
+    font-size: 0.65rem;
+    opacity: 0.6;
+}
+
+/* 當前頁 crumb（2026-08-02）：原本只有「父群組 ›」尾隨一個懸空 chevron，
+   視覺上像被截斷的字串。補上當前頁名稱後路徑才完整。 */
+.page-eyebrow-current {
+    color: var(--dark-color);
+    opacity: 0.75;
+}
+
+.page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--dark-color);
+    margin-bottom: 0.25rem;
+}
+
+.page-subtitle {
+    font-size: 0.875rem;
+    color: var(--secondary-color);
+}
+
+/* 麵包屑 */
+.breadcrumb {
+    background: none;
+    padding: 0;
+    margin-bottom: 0;
+    font-size: 0.8rem;
+}
+
+.breadcrumb-item + .breadcrumb-item::before {
+    content: ">";
+}
+
+/* ========================================
+   頁尾
+   ======================================== */
+
+.footer {
+    padding: 1rem 1.5rem;
+    background-color: white;
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    color: var(--secondary-color);
+    font-size: 0.8rem;
+}
+
+/* ========================================
+   登入頁面
+   ======================================== */
+
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-gradient-primary);
+}
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    background: white;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+
+/* 2026-07-31 質感審計 #8：header/footer 灰帶拿掉（原本把卡片切成三段）、h1 改近黑 */
+.login-header {
+    padding: 2rem 2rem 0.5rem;
+    text-align: center;
+    background: transparent;
+}
+
+.login-header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--dark-color);
+    margin-bottom: 0.5rem;
+}
+
+.login-header p {
+    color: var(--secondary-color);
+    margin-bottom: 0;
+}
+
+.login-body {
+    padding: 2rem;
+}
+
+.login-footer {
+    padding: 0.5rem 2rem 1.5rem;
+    text-align: center;
+    background: transparent;
+    color: var(--secondary-color);
+    font-size: 0.8rem;
+}
+
+/* 質感審計 #8：登入卡 input-group 一列三種框 → 內嵌成一個連續欄位
+   （icon 方格與眼睛鈕融入輸入框，僅 CSS，不動 markup） */
+.login-page .input-group-text {
+    background-color: #fafafa;
+    border-color: #e8e8ed;
+    border-right: 0;
+    color: var(--secondary-color);
+}
+.login-page .input-group .form-control {
+    border-left: 0;
+}
+.login-page .input-group .btn-outline-secondary {
+    background-color: #fafafa;
+    border-color: #e8e8ed;
+    border-left: 0;
+    color: var(--secondary-color);
+}
+.login-page .input-group .btn-outline-secondary:hover {
+    background-color: #f0f0f2;
+    color: var(--dark-color);
+}
+
+/* ========================================
+   儀表板
+   ======================================== */
+
+.dashboard-stats {
+    margin-bottom: 1.5rem;
+}
+
+/* KPI 列版面（2026-08-01 美觀專項）：原本 5 張卡都用 col-xl-3（每列 4 張），
+   第 5 張必定掉到第二行、右側留下 3/4 空白，是整個儀表板最顯眼的版面破綻。
+   改用 col-xl 等分後桌機一行五張；此處統一數字與標籤的視覺節奏。 */
+@media (min-width: 1200px) {
+    .dashboard-stats .stat-value {
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+    }
+    .dashboard-stats .card-body {
+        padding: 1rem 1.1rem;
+    }
+    /* 五等分後單卡變窄，圖示略縮避免擠壓數字 */
+    .dashboard-stats .stat-icon-circle {
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 0.95rem;
+    }
+}
+
+/* KPI 卡片圖示（2026-08-01 UX 評審「一格一色」收斂）：
+   原本五張並排卡片各配一顆 100% 飽和實心圓，整列像調色盤、數字反而被搶戲。
+   改成同色相的淡底 + 深色圖示：色彩仍能區分卡片類別，但視覺重量讓給「數字」本身。 */
+.stat-icon-circle {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stat-icon-circle.primary {
+    background-color: rgba(67, 97, 238, 0.12);
+    color: var(--primary-color);
+}
+
+.stat-icon-circle.success {
+    background-color: rgba(52, 199, 89, 0.14);
+    color: #1e7e43;
+}
+
+.stat-icon-circle.info {
+    background-color: rgba(90, 200, 250, 0.18);
+    color: #1a6b8f;
+}
+
+.stat-icon-circle.warning {
+    background-color: rgba(255, 159, 10, 0.16);
+    color: #a86400;
+}
+
+.stat-icon-circle.danger {
+    background-color: rgba(255, 59, 48, 0.12);
+    color: #c8271c;
+}
+
+/* ========================================
+   行事曆
+   ======================================== */
+
+.calendar-container {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem;
+}
+
+/* FullCalendar 自訂樣式 */
+.fc {
+    font-family: var(--font-family);
+}
+
+.fc-toolbar-title {
+    font-size: 1.25rem !important;
+}
+
+.fc-button-primary {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+.fc-button-primary:hover {
+    background-color: var(--primary-hover) !important;
+    border-color: var(--primary-hover) !important;
+}
+
+.fc-event {
+    border: none;
+    padding: 2px 4px;
+    font-size: 0.75rem;
+}
+
+.fc-event.status-unprocessed {
+    background-color: #e65100;
+    color: #fff;
+}
+
+.fc-event.status-pending {
+    background-color: var(--warning-color);
+    color: #1d1d1f;
+}
+
+.fc-event.status-confirmed {
+    background-color: var(--primary-color);
+    color: #fff;
+}
+
+.fc-event.status-completed {
+    background-color: var(--success-color);
+    color: #fff;
+}
+
+.fc-event.status-cancelled {
+    background-color: var(--secondary-color);
+    color: #fff;
+}
+
+.fc-event.status-no-show {
+    background-color: #6f42c1;
+    color: #fff;
+}
+
+
+/* 行事曆狀態圖例 */
+.calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 1rem;
+}
+
+.calendar-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: #555;
+}
+
+.calendar-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* ========================================
+   資料表格
+   ======================================== */
+
+.data-table-container {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    max-width: 100%;
+}
+
+.data-table-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.data-table-title {
+    font-weight: 700;
+    color: var(--dark-color);
+    margin: 0;
+}
+
+.data-table-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    /* 允許換行：1024 實測 bookings 的搜尋列整組寬 737 塞進 724 的內容區 →
+       3 個元素（容器、input-group、搜尋鈕）右緣 1032 超出畫面 8px。
+       換行後擠不下就往下排，不再溢出。 */
+    flex-wrap: wrap;
+}
+
+.data-table-body {
+    padding: 0;
+}
+
+.data-table-footer {
+    padding: 1rem 1.25rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.data-table-info {
+    font-size: 0.8rem;
+    color: var(--secondary-color);
+}
+
+/* 防止表格內容溢出 — 手機版可水平滾動 */
+.data-table-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /* 右側漸層陰影提示可滾動 */
+    position: relative;
+}
+
+.data-table-body td {
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+    .data-table-body td {
+        max-width: 200px;
+    }
+}
+
+@media (max-width: 768px) {
+    .data-table-body td {
+        max-width: 150px;
+    }
+}
+
+/* ========================================
+   表格易讀性強化（2026-08-01 UX 評審）
+   問題：1440px 下 bookings 右側「狀態/操作」欄被切掉、金額欄左對齊無法目視比大小、
+        表頭與資料列同色難分、列高過鬆一屏看不到幾筆。
+   做法全為視覺層（不動 DOM/id/class），套在既有 .data-table-body 結構上。
+   ======================================== */
+
+/* 1) 長文字欄收窄：顧客/服務/員工這類長名稱不要各佔 300px 把右側欄擠出畫面。
+   ⚠️ 數值由實測反推：bookings 在 200px 時表格自然寬 1210px > 容器 1124px，
+   溢出 86px 讓 sticky 操作欄整欄蓋掉「狀態」（複評放大 2.5x 證實 10 列全空）。
+   收到 170px 後三個長欄各省 30px，總寬回到約 1120px 落在容器內。 */
+@media (min-width: 992px) {
+    /* ⚠️ 2026-08-02 再收窄 170→150px：操作欄補到 190px（容納 5 顆動作鈕）後表格又變寬，
+       實測第 5 顆「詳情」右緣 1423 > 卡片右緣 1408，溢出 15px 仍點不到。
+       長文字欄每欄再省 20px（三欄共 60px）足以吸收，且不影響可讀性（本就是省略號顯示）。 */
+    .data-table-body td {
+        max-width: 150px;
+    }
+}
+
+/* 2) 操作欄釘在右側：橫捲時「確認/取消/完成」永遠看得到（最後一欄慣例為操作欄）
+      ⚠️ 釘住的儲存格必須「繼承列底色」，否則 hover／斑馬／選取列會在列尾露出一塊
+      比列身淺的方塊，看起來像渲染壞掉（2026-08-01 複評抓到）。 */
+@media (min-width: 992px) {
+    /* ⚠️ 用 CSS 變數傳遞列底色，不要用 `background: inherit`：
+       inherit 取的是父層「指定值」，在 hover 態下實測沒有跟著更新，
+       導致釘住的儲存格與列身出現淺一階的雙色接縫（看起來像渲染壞掉，複評抓到）。
+       改用 --row-bg 變數後，hover/斑馬/選取列都能正確傳遞。 */
+    /* ⚠️ 必須關掉 Bootstrap 自己的 hover 上色再統一由 --row-bg 供色：
+       `.table-hover` 是把 hover 底色畫在【td】的 --bs-table-bg-state（#ececec），
+       而我們設在 tr 上的 --row-bg 只有那顆 sticky td 讀得到，兩者值又不同
+       → hover 時列身與釘住格呈現兩種灰，出現一條硬邊接縫（第三輪複評取樣證實：
+       列身 #ECECEC vs 釘住格 #F7F8FB）。讓所有 cell 讀同一個變數才會真正一致。 */
+    .data-table-body table > tbody > tr {
+        --row-bg: #fff;
+    }
+    .data-table-body table > tbody > tr:hover {
+        --row-bg: #f2f3f7;
+    }
+    .data-table-body table.table-hover > tbody > tr > *,
+    .data-table-body table > tbody > tr > * {
+        --bs-table-bg-state: transparent;
+        background-color: var(--row-bg);
+    }
+    /* ⚠️ 2026-08-02 補 `:not(#shiftsTable)`：作者在另外兩條同類規則（tenant.css 的
+       pointer:coarse 版與 ≤991px 版）都寫了排除班表並註明「班表最後一欄是週日不是操作欄」，
+       唯獨這條漏掉。iPad 橫向（1024×768）實測：週日欄被釘住後週六被蓋 180px、週五 66px。 */
+    .data-table-body table:not(#shiftsTable) > thead > tr > th:last-child,
+    .data-table-body table:not(#shiftsTable) > tbody > tr > td:last-child {
+        position: sticky;
+        right: 0;
+        z-index: 2;
+        box-shadow: -6px 0 8px -6px rgba(0, 0, 0, 0.12);
+    }
+    .data-table-body table:not(#shiftsTable) > thead > tr > th:last-child {
+        z-index: 3;
+        background: #fafafa;
+    }
+}
+
+/* 992~1199px（iPad 橫向、小筆電視窗）：這個帶寬會溢出，但 2026-08-02 為手機加的
+   「讓位 padding」寫在 @media (max-width:991px) 裡完全到不了這裡 →
+   釘住的操作欄直接蓋在資料上。實測 1024×768 /tenant/bookings：整個「狀態」欄
+   （已確認/待確認徽章）被蓋 130px＝100% 看不到，金額 $1,200 被蓋 60px，共 22 格。
+   雖然橫捲到底可以救回來（捲到最右 covN=0），但預設狀態整欄消失且沒有任何提示。
+   ≥1200px 不套用：那裡表格多半塞得下，硬加 padding 反而製造不必要的橫捲。 */
+@media (min-width: 992px) and (max-width: 1199.98px) {
+    .data-table-body table:not(#shiftsTable) > thead > tr > th:nth-last-child(2),
+    .data-table-body table:not(#shiftsTable) > tbody > tr > td:nth-last-child(2) {
+        padding-right: 200px;   /* ≥ 實測釘住欄寬 190px */
+        text-overflow: clip;    /* 同手機：padding 造成的假省略號要關掉 */
+    }
+    /* 同一帶寬也要有手機那條「名稱欄可折行」的逃生口，否則 1024 拿到 max-width:150px 的
+       壓縮卻沒有折行 → products 有 5 個品名被切且表格 0 捲動空間（「哥倫比亞 蜜處理 半磅」
+       被吃 51px），永遠看不到完整名稱。 */
+    .data-table-body td:first-child,
+    .data-table-body td.d-none + td,
+    .data-table-body th.d-none + th {
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    /* 操作欄同樣要折行 + 解除寬度上限：這個帶寬多半是觸控裝置（iPad 橫向），
+       按鈕一樣被 common.css 的 `.btn{min-width:44px}` 撐到 44px，而格子一樣被壓到 150px
+       → 實測 1024 下 bookings「詳情」跑到 x993~1037、customers/staff/products/coupons 的
+       「刪除」跑到 990~1034，全部超出 1024 的畫面且被 overflow:hidden 裁掉。
+       這是 8/2 手機那條 bug 在 1024 的重演——修手機時只寫了 ≤991px。 */
+    .data-table-body td:last-child:not([colspan]) {
+        max-width: none !important;
+        overflow: visible !important;
+    }
+    .data-table-body td:last-child:not([colspan]) .btn-group,
+    .data-table-body td:last-child:not([colspan]) .btn-group-sm {
+        display: inline-flex !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-end;
+        gap: 1px;
+        max-width: 136px;
+    }
+    .data-table-body td:last-child:not([colspan]) .btn-group > .btn {
+        border-radius: var(--radius-sm, 6px) !important;
+    }
+}
+
+/* 3) 數字欄可比大小：等寬數字 + 右對齊（用既有 Bootstrap 的 text-end 或 .num 標記） */
+.data-table-body td.text-end,
+.data-table-body th.text-end,
+.data-table-body .num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+/* 4) 表頭與資料列拉開層級：淺灰底 + 小字大寫間距，跨頁一致 */
+.data-table-body table > thead > tr > th {
+    background: #fafafa;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--secondary-color);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    white-space: nowrap;
+}
+
+/* 4b) 長清單表頭吸頂（2026-08-01 複評）：票券頁一次渲染 110+ 列（頁高 5800px），
+   捲到中段就忘了哪一欄是什麼。表頭跟著捲動固定在容器頂端。
+   ⚠️ sticky 需要捲動容器有明確高度上限才生效，故與下面的 max-height 搭配。 */
+.data-table-body table > thead > tr > th {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+}
+
+/* 4c) 超長清單給捲動容器高度上限：避免整頁被單一表格拉到數千 px，
+   分頁列/頁尾永遠在視窗外。65vh 讓表格自己捲，頁面骨架保持可掌握。
+   只在「列數多到值得」時啟用——用 .data-table-scroll 標記，預設不影響既有頁面。
+   ⚠️ 高度上限必須掛在 .table-responsive（Bootstrap 給它 overflow-x:auto，
+   依規範 overflow-y 連帶變成 auto ⇒ 它才是真正的捲動容器）。掛在外層 .data-table-body
+   會讓 thead 的 sticky 相對錯誤的容器計算，視覺上完全不吸頂。 */
+/* ⚠️ 僅桌機啟用：手機上「頁面捲動裡再包一層垂直捲動」會吃掉慣性捲動，
+   且最後一列被硬切在卡片底緣看起來像渲染壞掉（2026-08-02 複評 mb-coupons 實證）。 */
+@media (min-width: 992px) {
+    .data-table-body.data-table-scroll > .table-responsive {
+        max-height: 65vh;
+        overflow-y: auto;
+    }
+}
+
+/* 4d) 列內動作鈕收緊（2026-08-02）：實測表格本身沒溢出（1124 = 容器寬），
+   是「動作鈕群組撐破自己的儲存格」造成最後一顆被畫到卡片外（bookings 5 顆溢 3px、
+   customers 4 顆溢 18px）。收緊每顆的左右內距即可回收足夠寬度，不必再犧牲文字欄。 */
+@media (min-width: 992px) {
+    .data-table-body td .btn-group .btn,
+    .data-table-body td .btn-sm {
+        padding-left: 0.4rem;
+        padding-right: 0.4rem;
+    }
+    .data-table-body td .btn-group {
+        white-space: nowrap;
+    }
+}
+
+/* 5) 列高收斂：一屏多看 2-3 筆（觸控裝置另有 44px 規則，不受此影響） */
+@media (min-width: 992px) and (pointer: fine) {
+    .data-table-body table > tbody > tr > td {
+        padding-top: 0.55rem;
+        padding-bottom: 0.55rem;
+    }
+}
+
+/* 6) 橫捲提示（2026-08-02 修正掛載對象）：
+   ⚠️ 原本掛在 .data-table-body 完全無效，兩個原因：
+   ① 真正的捲動容器是子層 .table-responsive（Bootstrap 給它 overflow-x:auto），
+      background-attachment:local 掛在非捲動元素上不會隨捲動更新；
+   ② 表格 cell 有不透明底色（--row-bg），會把父層的漸層整片蓋掉。
+   改用 sticky 偽元素疊在 cell 之上，才是真的「右邊還有，滑一下」的提示。 */
+.data-table-body > .table-responsive {
+    position: relative;
+}
+
+/* 右緣提示：sticky 讓它固定在可視區右側、z-index 高於 cell 背景 */
+.data-table-body > .table-responsive::after {
+    content: "";
+    position: sticky;
+    top: 0;
+    right: 0;
+    float: right;
+    width: 28px;
+    height: 100%;
+    margin-left: -28px;
+    pointer-events: none;
+    z-index: 3;
+    background: linear-gradient(to left, rgba(0, 0, 0, 0.10), rgba(0, 0, 0, 0));
+}
+
+/* 捲到最右時不需要提示（用 scroll-driven 不易做，改以「內容未溢出就不顯示」近似：
+   表格寬度 ≤ 容器時 sticky 偽元素仍在但視覺影響極小，可接受） */
+.data-table-body {
+    background:
+        linear-gradient(to right, white 30%, rgba(255, 255, 255, 0)) left center / 40px 100% no-repeat,
+        linear-gradient(to left, white 30%, rgba(255, 255, 255, 0)) right center / 40px 100% no-repeat,
+        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.1), transparent) left center / 14px 100% no-repeat,
+        radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.1), transparent) right center / 14px 100% no-repeat;
+    background-attachment: local, local, scroll, scroll;
+}
+
+/* ========================================
+   詳情頁面
+   ======================================== */
+
+.detail-header {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.detail-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--dark-color);
+    margin-bottom: 0.5rem;
+}
+
+.detail-subtitle {
+    font-size: 0.875rem;
+    color: var(--secondary-color);
+}
+
+.detail-section {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 1.5rem;
+}
+
+.detail-section-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.detail-section-title {
+    font-weight: 700;
+    color: var(--dark-color);
+    margin: 0;
+}
+
+.detail-section-body {
+    padding: 1.25rem;
+}
+
+/* 資訊列表 */
+.info-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.info-list li {
+    display: flex;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.info-list li:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    flex: 0 0 40%;
+    font-weight: 600;
+    color: var(--secondary-color);
+}
+
+.info-value {
+    flex: 1;
+    color: var(--dark-color);
+}
+
+/* ========================================
+   快速操作
+   ======================================== */
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.quick-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    text-decoration: none;
+    color: var(--dark-color);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.quick-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    color: var(--primary-color);
+}
+
+.quick-action-btn i {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+    color: var(--primary-color);
+}
+
+.quick-action-btn span {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+/* ========================================
+   設定頁面
+   ======================================== */
+
+.settings-nav {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 0.5rem;
+}
+
+.settings-nav .nav-link {
+    color: var(--dark-color);
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius);
+}
+
+.settings-nav .nav-link:hover {
+    background-color: var(--light-color);
+}
+
+.settings-nav .nav-link.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.settings-content {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+}
+
+/* ========================================
+   功能商店
+   ======================================== */
+
+.feature-card {
+    background: white;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.feature-card-header {
+    padding: 1.25rem;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.feature-card-body {
+    padding: 1.25rem;
+}
+
+.feature-card-footer {
+    padding: 1rem 1.25rem;
+    background: rgba(0, 0, 0, 0.02);
+    border-top: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.feature-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    color: white;
+}
+
+.feature-price {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.feature-price-unit {
+    font-size: 0.75rem;
+    color: var(--secondary-color);
+}
+
+/* ========================================
+   側邊欄設定進度環
+   ======================================== */
+
+.sidebar-setup-progress {
+    padding: 0.75rem 1rem;
+    flex-shrink: 0;
+}
+
+.setup-progress-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: rgba(255, 255, 255, 0.8);
+    padding: 0.5rem;
+    border-radius: 0.5rem;
+    transition: background 0.15s ease;
+}
+
+.setup-progress-link:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.progress-ring {
+    flex-shrink: 0;
+}
+
+.progress-ring-fill {
+    transition: stroke-dashoffset 0.6s ease;
+}
+
+.setup-progress-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+#sidebar.collapsed .setup-progress-label {
+    display: none;
+}
+
+#sidebar.collapsed .setup-progress-link {
+    justify-content: center;
+}
+
+/* ========================================
+   側邊欄店家 footer
+   ======================================== */
+
+.sidebar-footer {
+    padding: 0.5rem 1rem;
+    flex-shrink: 0;
+}
+
+.sidebar-footer-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.75rem;
+}
+
+/* 店家切換器實測只有 21px 高（inline style 寫死 padding:0），而它出現在每一頁。
+   用 min-height 拉高——不改 padding 是因為 inline style 的優先權高於 CSS，改 padding 沒用。 */
+.tenant-switcher-btn {
+    min-height: 36px;
+}
+@media (pointer: coarse) {
+    .tenant-switcher-btn {
+        min-height: 44px;
+    }
+}
+
+.sidebar-footer-icon {
+    font-size: 0.875rem;
+    flex-shrink: 0;
+}
+
+.sidebar-footer-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#sidebar.collapsed .sidebar-footer-name {
+    display: none;
+}
+
+#sidebar.collapsed .sidebar-footer-content {
+    justify-content: center;
+}
+
+/* ========================================
+   側邊欄注意圓點
+   ======================================== */
+
+.setup-attention-dot {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #f59e0b;
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.setup-attention-dot.next-step {
+    background-color: #10b981;
+    animation: pulse-dot-green 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); }
+    50% { opacity: 0.6; transform: translateY(-50%) scale(1.3); }
+}
+
+@keyframes pulse-dot-green {
+    0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); }
+    50% { opacity: 0.7; transform: translateY(-50%) scale(1.4); }
+}
+
+#sidebar.collapsed .setup-attention-dot {
+    right: 6px;
+    top: 8px;
+    transform: none;
+}
+
+/* ========================================
+   新手引導卡片
+   ======================================== */
+
+.onboarding-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--border-radius-lg, 0.75rem);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+}
+
+.onboarding-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 1.25rem 1.5rem 0.75rem;
+    color: white;
+}
+
+.onboarding-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+    color: white;
+}
+
+.onboarding-subtitle {
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin-top: 0.25rem;
+}
+
+.onboarding-close {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: white;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
+}
+
+.onboarding-close:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.onboarding-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 0 1.5rem;
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.onboarding-progress-fill {
+    height: 100%;
+    background: white;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+}
+
+.onboarding-body {
+    padding: 1rem 1.5rem 1.25rem;
+}
+
+.onboarding-steps {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    scrollbar-width: none;
+}
+
+.onboarding-steps::-webkit-scrollbar {
+    display: none;
+}
+
+.onboarding-step {
+    flex: 1;
+    min-width: 160px;
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 0.625rem;
+    padding: 1rem;
+    text-decoration: none;
+    color: white;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    transition: background 0.15s, transform 0.15s;
+    position: relative;
+}
+
+.onboarding-step:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+    color: white;
+}
+
+.onboarding-step .step-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.onboarding-step .step-title {
+    font-weight: 700;
+    font-size: 0.875rem;
+}
+
+.onboarding-step .step-desc {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.7);
+    line-height: 1.3;
+}
+
+.onboarding-step .step-status {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    font-size: 1rem;
+    opacity: 0.7;
+}
+
+.onboarding-step.completed {
+    opacity: 0.55;
+}
+
+.onboarding-step.completed .step-status {
+    opacity: 1;
+    color: #a7f3d0;
+}
+
+.onboarding-step.next-step {
+    background: rgba(255, 255, 255, 0.22);
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.3);
+}
+
+.onboarding-step.next-step .step-status {
+    opacity: 1;
+    color: white;
+}
+
+.onboarding-complete {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    color: white;
+}
+
+.onboarding-complete .complete-icon {
+    font-size: 2.5rem;
+    color: #a7f3d0;
+}
+
+.onboarding-complete .complete-text strong {
+    font-size: 1.1rem;
+}
+
+.onboarding-complete .complete-text p {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.onboarding-next-actions {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+.onboarding-next-actions .btn-light {
+    color: #4a3b8f;
+    font-weight: 600;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.onboarding-next-actions .btn-light:hover {
+    background: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ========================================
+   響應式 - 手機 (< 576px)
+   ======================================== */
+
+@media (max-width: 575.98px) {
+    /* 手機版隱藏側邊欄背景延伸 */
+    #wrapper::before {
+        display: none;
+    }
+
+    #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100dvh;
+        z-index: 1000;
+        transform: translateX(-100%);
+        width: 260px;
+    }
+
+    #sidebar.show {
+        transform: translateX(0);
+    }
+
+    /* 手機版 sidebar 打開時：暗化內容區 */
+    #sidebar.show ~ #content-wrapper {
+        opacity: 0.3;
+        transition: opacity 0.3s ease;
+    }
+
+    /* 保留 topbar 的漢堡按鈕可點擊（關閉 sidebar 用） */
+    #sidebar.show ~ #content-wrapper .topbar {
+        pointer-events: auto;
+        opacity: 1;
+    }
+
+    #sidebar .nav.flex-column {
+        padding-bottom: 2rem;
+    }
+
+    /* 手機版隱藏進度環 */
+    .sidebar-setup-progress {
+        display: none !important;
+    }
+
+    /* 新手引導卡片手機版 */
+    .onboarding-card {
+        margin-bottom: 1rem;
+    }
+
+    .onboarding-header {
+        padding: 1rem 1rem 0.5rem;
+    }
+
+    .onboarding-title {
+        font-size: 0.95rem;
+    }
+
+    .onboarding-progress-bar {
+        margin: 0 1rem;
+    }
+
+    .onboarding-body {
+        padding: 0.75rem 1rem 1rem;
+    }
+
+    .onboarding-steps {
+        gap: 0.5rem;
+    }
+
+    .onboarding-step {
+        min-width: 140px;
+        padding: 0.75rem;
+    }
+
+    /* 手機頂欄常駐（2026-08-01 UX 評審）：長頁面捲到底要回導航得滑幾十屏 */
+    .topbar {
+        height: 3.5rem;
+        padding: 0 0.75rem;
+        position: sticky;
+        top: 0;
+        z-index: 1030;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.06);
+    }
+
+    /* 搜尋列不要被拆成 2-3 排：input-group 是一個整體，內部元素不可各自 100% 寬
+       （原 .data-table-actions .form-control{width:100%} 會打到 input-group 內的 input） */
+    .data-table-actions .input-group {
+        width: 100%;
+        flex-wrap: nowrap;
+    }
+    .data-table-actions .input-group > .form-control,
+    .data-table-actions .input-group > .form-select {
+        width: auto;
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+    .data-table-actions .input-group > .btn {
+        flex: 0 0 auto;
+        width: auto;
+    }
+
+    /* 內容區底部留白：避免右下 AI 客服浮動鈕壓住分頁列與最後一列操作鈕 */
+    #content {
+        padding-bottom: 5.5rem;
+    }
+
+    #content {
+        padding: 0.75rem;
+    }
+
+    .page-header {
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    /* 頁面標題旁的按鈕群組：手機版換行 + 全寬 */
+    .page-header > .d-flex {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .page-header > .d-flex > .btn {
+        flex: 1;
+        font-size: 0.8rem;
+        padding: 0.375rem 0.5rem;
+    }
+
+    .page-title {
+        font-size: 1.125rem;
+    }
+
+    .page-subtitle {
+        font-size: 0.75rem;
+    }
+
+    .data-table-header {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    .data-table-title {
+        font-size: 0.875rem;
+    }
+
+    .data-table-actions {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+    }
+
+    .data-table-actions .form-control,
+    .data-table-actions .form-select {
+        width: 100%;
+    }
+
+    .data-table-footer {
+        flex-direction: column;
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+
+    /* 表格內操作按鈕：手機版不溢出 */
+    .table .btn-group {
+        flex-wrap: nowrap;
+    }
+
+    .table .btn-group .btn {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    /* 表格最小寬度，確保 table-responsive 滾動 */
+    .table-responsive table {
+        min-width: 0;
+    }
+
+    .quick-actions {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+
+    .quick-action-btn {
+        padding: 1rem;
+    }
+
+    .quick-action-btn i {
+        font-size: 1.5rem;
+    }
+
+    .quick-action-btn span {
+        font-size: 0.75rem;
+    }
+
+    .points-badge,
+    .tenant-name,
+    .user-name {
+        display: none;
+    }
+
+    .detail-header {
+        padding: 1rem;
+    }
+
+    .detail-title {
+        font-size: 1rem;
+    }
+
+    .detail-section-body {
+        padding: 0.875rem;
+    }
+
+    .info-list li {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .info-label {
+        flex: none;
+    }
+
+    .settings-nav {
+        margin-bottom: 1rem;
+    }
+
+    .settings-nav .nav-link {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8125rem;
+    }
+
+    .settings-content {
+        padding: 1rem;
+    }
+
+    .feature-card-header,
+    .feature-card-body {
+        padding: 1rem;
+    }
+
+    .feature-icon {
+        width: 2.5rem;
+        height: 2.5rem;
+        font-size: 1rem;
+    }
+
+    .feature-price {
+        font-size: 1.25rem;
+    }
+
+    .login-card {
+        margin: 1rem;
+        max-width: calc(100% - 2rem);
+    }
+
+    .login-header,
+    .login-body {
+        padding: 1.5rem;
+    }
+
+    /* 註冊頁「登入」連結增大觸控區域 */
+    .login-footer a {
+        padding: 0.5rem;
+    }
+
+    .calendar-container {
+        padding: 0.5rem;
+    }
+
+    .fc-toolbar-title {
+        font-size: 1rem !important;
+    }
+
+    .fc-toolbar {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .fc-toolbar-chunk {
+        display: flex;
+        justify-content: center;
+    }
+}
+
+/* ========================================
+   響應式 - 平板 (576px - 768px)
+   ======================================== */
+
+@media (min-width: 576px) and (max-width: 767.98px) {
+    /* 平板小螢幕隱藏側邊欄背景延伸 */
+    #wrapper::before {
+        display: none;
+    }
+
+    #sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100dvh;
+        z-index: 1000;
+        transform: translateX(-100%);
+    }
+
+    #sidebar.show {
+        transform: translateX(0);
+    }
+
+    #sidebar.show ~ #content-wrapper {
+        opacity: 0.3;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+    }
+
+    #sidebar .nav.flex-column {
+        padding-bottom: 2rem;
+    }
+
+    .topbar {
+        padding: 0 1rem;
+    }
+
+    #content {
+        padding: 1rem;
+    }
+
+    .page-title {
+        font-size: 1.25rem;
+    }
+
+    .data-table-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .data-table-actions {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .quick-actions {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .points-badge {
+        display: none;
+    }
+
+    .tenant-name {
+        display: none;
+    }
+
+    .info-list li {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .info-label {
+        flex: none;
+    }
+}
+
+/* ========================================
+   響應式 - 小平板/iPad (768px - 992px)
+   ======================================== */
+
+@media (min-width: 768px) and (max-width: 991.98px) {
+    /* 平板版側邊欄背景寬度同步 */
+    #wrapper::before {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    #sidebar {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    #sidebar .sidebar-brand-text,
+    #sidebar .sidebar-heading,
+    #sidebar .nav-link span {
+        display: none;
+    }
+
+    #sidebar .nav-link {
+        justify-content: center;
+        padding: 0.75rem;
+    }
+
+    #sidebar .nav-link i {
+        margin-right: 0;
+    }
+
+    /* 平板版：允許飛出選單溢出 */
+    #sidebar .nav.flex-column {
+        overflow: visible;
+    }
+
+    /* 平板版群組飛出選單（同 collapsed） */
+    #sidebar .sidebar-group-arrow {
+        display: none;
+    }
+
+    #sidebar .sidebar-group-toggle {
+        justify-content: center;
+        padding: 0.75rem;
+    }
+
+    #sidebar .sidebar-group > .collapse,
+    #sidebar .sidebar-group > .collapsing {
+        display: none !important;
+        height: auto !important;
+        overflow: visible !important;
+        position: absolute;
+        left: 100%;
+        top: 0;
+        width: 200px;
+        background: #2c2c2e;
+        border-radius: 0 0.5rem 0.5rem 0;
+        box-shadow: 4px 4px 15px rgba(0, 0, 0, 0.25);
+        padding: 0.5rem 0;
+        z-index: 1100;
+    }
+
+    /* 2026-07-31 iPad 直向修復：飛出選單原本只認 :hover——觸控裝置沒有 hover，
+       JS（Bootstrap collapse）點擊加上的 .show 被上面的 display:none !important 壓死，
+       導致 iPad 直向用手指「摸不到」任何群組子選單（WebKit 實測導航 0 成功）。
+       補 .collapse.show 讓 tap 開啟的選單也顯示：點一下開、再點一下關，滑鼠 hover 行為不變 */
+    #sidebar .sidebar-group:hover > .collapse,
+    #sidebar .sidebar-group:hover > .collapsing,
+    #sidebar .sidebar-group > .collapse.show {
+        display: block !important;
+    }
+
+    /* 此斷點側邊欄寬度是寫死的（上方 width 規則不看 .collapsed）——摺疊按鈕按了 class 有切
+       但畫面無反應＝死按鈕，直接隱藏避免「按了沒反應以為壞掉」 */
+    #sidebarToggle {
+        display: none;
+    }
+
+    #sidebar .sidebar-sub-nav .nav-link {
+        padding: 0.5rem 1rem;
+        justify-content: flex-start;
+    }
+
+    #sidebar .sidebar-sub-nav .nav-link span {
+        display: inline !important;
+    }
+
+    #sidebar .sidebar-sub-nav .nav-link i {
+        margin-right: 0.5rem !important;
+    }
+
+    /* 平板版隱藏進度環文字和 footer 文字 */
+    .setup-progress-label,
+    .sidebar-footer-name {
+        display: none;
+    }
+
+    .setup-progress-link,
+    .sidebar-footer-content {
+        justify-content: center;
+    }
+
+    .setup-attention-dot {
+        right: 6px;
+        top: 8px;
+        transform: none;
+    }
+
+    .topbar {
+        padding: 0 1rem;
+    }
+
+    #content {
+        padding: 1.25rem;
+    }
+
+    .quick-actions {
+        grid-template-columns: repeat(4, 1fr);
+    }
+
+    .tenant-name {
+        display: none;
+    }
+}
+
+/* ========================================
+   響應式 - 桌面 (>= 992px)
+   ======================================== */
+
+@media (min-width: 992px) {
+    #sidebar:not(.collapsed) {
+        width: var(--sidebar-width);
+    }
+
+    #sidebar.collapsed {
+        width: var(--sidebar-collapsed-width);
+    }
+
+    .quick-actions {
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    }
+}
+
+/* ========================================
+   響應式 - 大桌面 (>= 1200px)
+   ======================================== */
+
+@media (min-width: 1200px) {
+    #content {
+        padding: 2rem;
+    }
+
+    .data-table-header,
+    .data-table-footer {
+        padding: 1rem 1.5rem;
+    }
+}
+
+/* ========================================
+   側邊欄遮罩
+   ======================================== */
+
+/* 手動 overlay 元素（JS toggle） */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+}
+
+.sidebar-overlay.show {
+    display: block;
+}
+
+/* 手機版：sidebar 打開時 body 不可滾動 */
+@media (max-width: 767.98px) {
+    body:has(#sidebar.show) {
+        overflow: hidden;
+    }
+}
+
+/* ========================================
+   行動版優化
+   ======================================== */
+
+/* 固定底部操作列 */
+.mobile-bottom-actions {
+    display: none;
+}
+
+@media (max-width: 575.98px) {
+    .mobile-bottom-actions {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        padding: 0.75rem;
+        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+        z-index: 100;
+        gap: 0.5rem;
+    }
+
+    .mobile-bottom-actions .btn {
+        flex: 1;
+    }
+
+    /* 為底部操作列預留空間 */
+    .has-bottom-actions #content {
+        padding-bottom: 5rem;
+    }
+}
+
+/* 卡片堆疊式佈局 (手機) */
+@media (max-width: 575.98px) {
+    .card-stack .card {
+        margin-bottom: 0.75rem;
+    }
+
+    .card-stack .card:last-child {
+        margin-bottom: 0;
+    }
+}
+
+/* 滑動式分頁標籤 */
+.nav-tabs-scroll {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+}
+
+.nav-tabs-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.nav-tabs-scroll .nav-item {
+    flex: 0 0 auto;
+}
+
+/* 響應式網格卡片 */
+.card-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 576px) {
+    .card-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (min-width: 992px) {
+    .card-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (min-width: 1200px) {
+    .card-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* ========================================
+   Rich Menu 即時預覽
+   ======================================== */
+
+.rich-menu-preview-container {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0;
+}
+
+.phone-mockup {
+    width: 280px;
+    height: 500px;
+    background-color: #000;
+    border-radius: 30px;
+    padding: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.phone-screen {
+    width: 100%;
+    height: 100%;
+    background-color: #fff;
+    border-radius: 22px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* LINE 聊天室頭部 */
+.line-header {
+    height: 48px;
+    background: linear-gradient(180deg, #06C755 0%, #00B050 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    flex-shrink: 0;
+}
+
+.line-header-back {
+    color: white;
+    font-size: 1.2rem;
+}
+
+.line-header-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.3);
+    margin-left: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.8rem;
+}
+
+.line-header-name {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-left: 10px;
+    flex: 1;
+}
+
+.line-header-icons {
+    display: flex;
+    gap: 12px;
+    color: white;
+    font-size: 1rem;
+}
+
+/* LINE 聊天區域背景 */
+.line-chat-area {
+    flex: 1;
+    background-color: #7AACB3;
+    background-image:
+        radial-gradient(circle at 10% 20%, rgba(255,255,255,0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 60%, rgba(255,255,255,0.08) 0%, transparent 40%),
+        radial-gradient(circle at 40% 80%, rgba(255,255,255,0.06) 0%, transparent 30%);
+    position: relative;
+    overflow: hidden;
+}
+
+.line-chat-hint {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    font-size: 0.65rem;
+    padding: 4px 10px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+/* Rich Menu 預覽區域 */
+.rich-menu-preview {
+    height: 90px;
+    background-color: #1DB446;
+    flex-shrink: 0;
+    display: grid;
+    gap: 1px;
+    padding: 1px;
+    transition: background-color 0.3s ease;
+    position: relative;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+}
+
+/* 3+4 佈局：上排 3 格、下排 4 格 */
+.rich-menu-preview.layout-3x4 {
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+.rich-menu-preview.layout-3x4 .cell-row1 { grid-column: span 4; }
+.rich-menu-preview.layout-3x4 .cell-row2 { grid-column: span 3; }
+
+/* 4+4 佈局：上排 4 格、下排 4 格 */
+.rich-menu-preview.layout-4x4 {
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+
+.rich-menu-preview.theme-GREEN { background-color: #1DB446; }
+.rich-menu-preview.theme-BLUE { background-color: #2196F3; }
+.rich-menu-preview.theme-PURPLE { background-color: #9C27B0; }
+.rich-menu-preview.theme-ORANGE { background-color: #FF5722; }
+.rich-menu-preview.theme-DARK { background-color: #263238; }
+
+.rich-menu-cell {
+    background-color: rgba(255, 255, 255, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.65rem;
+    text-align: center;
+    padding: 4px;
+    transition: background-color 0.2s ease;
+    position: relative;
+    z-index: 2;
+}
+
+.rich-menu-cell:hover {
+    background-color: rgba(255, 255, 255, 0.25);
+}
+
+.rich-menu-cell-icon {
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+    line-height: 1;
+}
+
+.rich-menu-cell-text {
+    font-weight: 600;
+    line-height: 1.2;
+    font-size: 0.7rem;
+}
+
+/* 自訂圖片預覽疊層 */
+.rich-menu-custom-image {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: none;
+    z-index: 0;
+}
+
+/* 自訂圖片模式：顯示背景圖 + 描邊文字（不遮蓋背景） */
+.rich-menu-preview.has-custom-image .rich-menu-custom-image {
+    display: block;
+}
+
+.rich-menu-preview.has-custom-image .rich-menu-cell {
+    background-color: transparent;
+}
+
+.rich-menu-preview.has-custom-image .rich-menu-cell-icon,
+.rich-menu-preview.has-custom-image .rich-menu-cell-text {
+    text-shadow: -2px -2px 0 var(--rm-outline, #000),
+                  2px -2px 0 var(--rm-outline, #000),
+                 -2px  2px 0 var(--rm-outline, #000),
+                  2px  2px 0 var(--rm-outline, #000),
+                  0   -2px 0 var(--rm-outline, #000),
+                  0    2px 0 var(--rm-outline, #000),
+                 -2px  0   0 var(--rm-outline, #000),
+                  2px  0   0 var(--rm-outline, #000);
+    color: var(--rm-text-color, #fff);
+}
+
+/* 手機底部導航列 */
+.phone-bottom-bar {
+    height: 28px;
+    background-color: #f8f8f8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border-top: 1px solid #e0e0e0;
+}
+
+.phone-home-indicator {
+    width: 80px;
+    height: 4px;
+    background-color: #333;
+    border-radius: 2px;
+}
+
+/* 預覽說明文字 */
+.preview-label {
+    text-align: center;
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    color: var(--secondary-color);
+}
+
+/* ========================================
+   Rich Menu 模式切換 Tab
+   ======================================== */
+
+.rich-menu-mode-tabs {
+    display: flex;
+    gap: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid var(--primary-color, #4361ee);
+}
+
+.rich-menu-mode-tab {
+    flex: 1;
+    padding: 10px 16px;
+    border: none;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background-color: #fff;
+    color: var(--primary-color, #4361ee);
+}
+
+.rich-menu-mode-tab.active {
+    background-color: var(--primary-color, #4361ee);
+    color: #fff;
+}
+
+.rich-menu-mode-tab:not(.active):hover {
+    background-color: rgba(67, 97, 238, 0.1);
+}
+
+/* ========================================
+   自訂模式 - 佈局選擇器
+   ======================================== */
+
+.layout-selector {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+}
+
+.layout-option {
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    padding: 8px 4px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.layout-option:hover {
+    border-color: #adb5bd;
+}
+
+.layout-option.active {
+    border-color: var(--primary-color, #4361ee);
+    background-color: rgba(67, 97, 238, 0.05);
+}
+
+.layout-label {
+    font-size: 0.65rem;
+    color: #6c757d;
+    margin-top: 4px;
+    font-weight: 600;
+}
+
+.layout-mini {
+    display: grid;
+    gap: 1px;
+    background: #dee2e6;
+    height: 32px;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.layout-mini > div {
+    background: #adb5bd;
+}
+
+/* 各佈局的 mini 預覽 */
+.layout-mini-3x4 {
+    grid-template-columns: repeat(12, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+.layout-mini-3x4 > div:nth-child(-n+3) { grid-column: span 4; }
+.layout-mini-3x4 > div:nth-child(n+4) { grid-column: span 3; }
+
+.layout-mini-2x3 {
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+
+.layout-mini-2x3-top2 {
+    grid-template-columns: repeat(6, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+.layout-mini-2x3-top2 > div:nth-child(-n+2) { grid-column: span 3; }
+.layout-mini-2x3-top2 > div:nth-child(n+3) { grid-column: span 2; }
+
+.layout-mini-2x2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+
+.layout-mini-1x2 {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: 1fr 1fr;
+}
+.layout-mini-1x2 > div:first-child { grid-column: span 2; }
+
+/* ========================================
+   自訂模式 - 預覽
+   ======================================== */
+
+.rich-menu-custom-preview {
+    height: 90px;
+    flex-shrink: 0;
+    position: relative;
+    background: #263238;
+    overflow: hidden;
+}
+
+.rich-menu-custom-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 1;
+}
+
+.rich-menu-area-markers {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+}
+
+.rich-menu-area-number {
+    position: absolute;
+    z-index: 3;
+    background: rgba(67, 97, 238, 0.75);
+    color: white;
+    font-weight: bold;
+    font-size: 0.7rem;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translate(-50%, -50%);
+}
+
+.rich-menu-area-border {
+    position: absolute;
+    z-index: 2;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-sizing: border-box;
+}
+
+/* 響應式調整 */
+@media (max-width: 575.98px) {
+    .rich-menu-preview-container {
+        padding: 0.5rem 0;
+    }
+
+    .phone-mockup {
+        width: 240px;
+        height: 420px;
+        border-radius: 25px;
+        padding: 8px;
+    }
+
+    .phone-screen {
+        border-radius: 18px;
+    }
+
+    .line-header {
+        height: 40px;
+    }
+
+    .rich-menu-preview {
+        height: 75px;
+    }
+
+    .rich-menu-custom-preview {
+        height: 75px;
+    }
+
+    .rich-menu-cell-icon {
+        font-size: 0.85rem;
+    }
+
+    .rich-menu-cell-text {
+        font-size: 0.5rem;
+    }
+
+    .layout-selector {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+/* ========================================
+   Flex Menu 主選單預覽
+   ======================================== */
+
+.flex-menu-preview-container {
+    display: flex;
+    justify-content: center;
+}
+
+.flex-menu-phone-mockup {
+    width: 280px;
+    background: #e5ddd5;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.flex-menu-bubble {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.flex-menu-header {
+    background-color: #1DB446;
+    padding: 16px;
+    text-align: center;
+    transition: background-color 0.2s;
+}
+
+.flex-menu-header-title {
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.flex-menu-header-subtitle {
+    color: #fff;
+    font-size: 0.7rem;
+    margin-top: 4px;
+    opacity: 0.9;
+}
+
+.flex-menu-tip {
+    background: #F5F5F5;
+    margin: 12px;
+    padding: 8px 10px;
+    border-radius: 6px;
+}
+
+.flex-menu-tip-title {
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.flex-menu-tip-text {
+    font-size: 0.6rem;
+    color: #666;
+    margin-top: 2px;
+}
+
+.flex-menu-buttons {
+    padding: 8px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.flex-menu-btn {
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: #fff;
+    cursor: default;
+    transition: background-color 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.flex-menu-btn.full {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.flex-menu-btn.full .flex-menu-btn-title {
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+.flex-menu-btn.full .flex-menu-btn-sub {
+    font-size: 0.6rem;
+    opacity: 0.9;
+}
+
+.flex-menu-btn.compact {
+    flex: 1;
+    text-align: center;
+    padding: 8px 6px;
+}
+
+.flex-menu-btn.compact .flex-menu-btn-title {
+    font-size: 0.68rem;
+    font-weight: bold;
+}
+
+.flex-menu-btn-row {
+    display: flex;
+    gap: 6px;
+}
+
+.flex-menu-btn-title {
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+.flex-menu-btn-sub {
+    font-size: 0.6rem;
+    opacity: 0.85;
+}
+
+/* 按鈕設定列表 */
+.flex-btn-setting {
+    background: #fafafa;
+}
+
+.flex-btn-setting .form-control-color {
+    cursor: pointer;
+}
+
+/* RWD */
+@media (max-width: 576px) {
+    .flex-menu-phone-mockup {
+        width: 100%;
+        max-width: 280px;
+    }
+
+    /* mobile 表格操作欄按鈕更緊湊 */
+    .table .btn-group-sm .btn,
+    .table-responsive .btn-group .btn {
+        padding: 4px 6px !important;
+        font-size: 0.75rem;
+    }
+    .table .btn-group-sm .btn i,
+    .table-responsive .btn-group .btn i {
+        font-size: 0.85rem;
+    }
+
+    /* table 內文字縮小，讓欄位不擠 */
+    .table-responsive .table {
+        font-size: 0.85rem;
+    }
+    .table-responsive .table td,
+    .table-responsive .table th {
+        padding: 0.5rem 0.4rem;
+        white-space: nowrap;  /* 不斷行，超出由 table-responsive scroll */
+    }
+    /* 名稱欄允許 wrap，其他 nowrap（讓內容有機會完整顯示） */
+    .table-responsive .table td:first-child {
+        white-space: normal;
+        min-width: 140px;
+    }
+    /* 縮小表格內的 badge 與 thumbnail */
+    .table-responsive .badge {
+        font-size: 0.7rem;
+        padding: 0.25rem 0.5rem;
+    }
+
+    /* 快速提示：table-responsive 右邊出現漸層暗示「可左右滑」 */
+    .table-responsive {
+        position: relative;
+    }
+    .table-responsive::after {
+        content: '';
+        position: absolute;
+        top: 0; right: 0; bottom: 0;
+        width: 24px;
+        background: linear-gradient(to left, rgba(255,255,255,0.95), transparent);
+        pointer-events: none;
+        opacity: 0.6;
+    }
+}
+
+/* ========================================
+   進階自訂 Rich Menu
+   ======================================== */
+
+/* 大尺寸佈局 mini 預覽（3行） */
+.layout-mini-3row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 1px;
+    background: #dee2e6;
+    height: 48px;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.layout-mini-3row > div {
+    background: #adb5bd;
+}
+
+/* 每格設定區塊 */
+.adv-cell-settings .border {
+    transition: border-color 0.15s;
+}
+
+.adv-cell-settings .border:hover {
+    border-color: var(--primary-color) !important;
+}
+
+.adv-cell-settings .adv-cell-label {
+    font-size: 0.8rem;
+}
+
+.adv-cell-settings .adv-cell-action {
+    font-size: 0.75rem;
+}
+
+/* Flex 彈窗 Modal 卡片 */
+#flexPopupBubbles .card {
+    border-color: #e0e0e0;
+}
+
+#flexPopupBubbles .card-header {
+    background: #f8f9fa;
+    padding: 0.5rem 0.75rem;
+}
+
+#flexPopupBubbles .card-body {
+    padding: 0.75rem;
+}
+
+/* 進階自訂 Rich Menu 即時預覽 */
+.rich-menu-advanced-preview {
+    position: relative;
+    width: 100%;
+    height: 70px;
+    overflow: hidden;
+    border-radius: 0;
+}
+
+.adv-preview-bg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #F5F0E8;
+}
+
+.adv-preview-cells {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.adv-preview-cell {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.adv-preview-cell-border {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0.5px solid rgba(255,255,255,0.4);
+    pointer-events: none;
+}
+
+.adv-preview-cell-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 1px;
+    box-shadow: 0 0 2px rgba(0,0,0,0.3);
+    position: relative;
+    z-index: 1;
+}
+
+.adv-preview-cell-label {
+    font-size: 6px;
+    font-weight: 600;
+    line-height: 1.1;
+    text-align: center;
+    max-width: 90%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    position: relative;
+    z-index: 1;
+}
+
+.adv-preview-cell-num {
+    position: absolute;
+    top: 1px;
+    left: 2px;
+    font-size: 5px;
+    color: rgba(255,255,255,0.6);
+    font-weight: bold;
+    z-index: 2;
+}
+
+/* ========================================
+   LINE 設定教學輪播 (lt = line tutorial)
+   ======================================== */
+
+.lt-modal .modal-content {
+    border: none;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.lt-modal-header {
+    background: linear-gradient(135deg, #06C755 0%, #04a648 100%);
+    color: white;
+    border-bottom: none;
+    padding: 12px 20px;
+}
+
+.lt-step-badge {
+    background: rgba(255,255,255,0.25);
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.lt-modal-body {
+    max-height: 65vh;
+    overflow-y: auto;
+}
+
+.lt-layout {
+    display: flex;
+    gap: 0;
+    min-height: 350px;
+}
+
+.lt-mockup-side {
+    flex: 0 0 55%;
+    background: #f0f2f5;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lt-text-side {
+    flex: 1;
+    padding: 28px 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.lt-text-side h5 {
+    font-weight: 700;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.lt-steps-list {
+    padding-left: 18px;
+    margin-bottom: 16px;
+}
+
+.lt-steps-list li {
+    margin-bottom: 8px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #444;
+}
+
+.lt-tip {
+    display: flex;
+    align-items: flex-start;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    color: #555;
+    line-height: 1.5;
+}
+
+/* 模擬瀏覽器 */
+.lt-mockup-browser {
+    width: 100%;
+    max-width: 380px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    background: white;
+}
+
+.lt-browser-bar {
+    background: #e8e8e8;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.lt-browser-dots {
+    display: flex;
+    gap: 5px;
+}
+
+.lt-browser-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #ccc;
+}
+
+.lt-browser-dots span:first-child { background: #ff5f57; }
+.lt-browser-dots span:nth-child(2) { background: #ffbd2e; }
+.lt-browser-dots span:last-child { background: #28c840; }
+
+.lt-browser-url {
+    flex: 1;
+    background: white;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lt-browser-body {
+    min-height: 200px;
+}
+
+/* 模擬 input */
+.lt-mock-input {
+    background: #f8f8f8;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+    color: #333;
+}
+
+.lt-mock-btn {
+    font-weight: 500;
+}
+
+/* 高亮標註 */
+.lt-highlight {
+    border: 2px dashed #ff4444;
+    border-radius: 8px;
+    position: relative;
+    animation: lt-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes lt-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,68,68,0.3); }
+    50% { box-shadow: 0 0 0 6px rgba(255,68,68,0); }
+}
+
+.lt-highlight-arrow {
+    color: #ff4444;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    margin-top: 2px;
+    animation: lt-bounce 1s ease-in-out infinite;
+}
+
+@keyframes lt-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+
+/* 歡迎頁流程圖 */
+.lt-welcome-flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px;
+}
+
+.lt-flow-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: white;
+    border-radius: 10px;
+    padding: 10px 20px;
+    min-width: 200px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    transition: transform 0.2s;
+}
+
+.lt-flow-item.lt-flow-active {
+    transform: scale(1.05);
+    box-shadow: 0 3px 12px rgba(6,199,85,0.2);
+}
+
+.lt-flow-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.lt-flow-arrow {
+    color: #ccc;
+    font-size: 14px;
+}
+
+/* 步驟指示器圓點 */
+.lt-modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    border-top: 1px solid #e9ecef;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lt-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.lt-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #ddd;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.lt-dot.active {
+    background: #06C755;
+    transform: scale(1.3);
+}
+
+.lt-nav-buttons {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+/* RWD：手機版上下佈局 */
+@media (max-width: 768px) {
+    .lt-layout {
+        flex-direction: column;
+        min-height: auto;
+    }
+
+    .lt-mockup-side {
+        flex: none;
+        padding: 16px;
+    }
+
+    .lt-text-side {
+        padding: 16px;
+    }
+
+    .lt-modal-body {
+        max-height: 70vh;
+    }
+
+    .lt-mockup-browser {
+        max-width: 100%;
+    }
+
+    .lt-modal-footer {
+        justify-content: center;
+    }
+
+    .lt-welcome-flow {
+        gap: 2px;
+    }
+
+    .lt-flow-item {
+        min-width: 160px;
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+
+    .lt-flow-icon {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+    }
+}
+
+/* ========================================
+   PWA 安裝橫幅
+   ======================================== */
+
+.pwa-install-banner {
+    background: linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%);
+    color: white;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.15);
+    animation: pwaSlideUp 0.3s ease;
+}
+
+@keyframes pwaSlideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+/* ===== 後台「其他圖片」縮圖橫向可滑列 =====
+   用於商品 / 服務 / 作品編輯 Modal：上傳多張後橫向滾動，不換行堆高 */
+.extra-images-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 2px 8px;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+}
+.extra-images-strip::-webkit-scrollbar {
+    height: 6px;
+}
+.extra-images-strip::-webkit-scrollbar-thumb {
+    background: #c8c8c8;
+    border-radius: 3px;
+}
+.extra-images-strip > * {
+    flex-shrink: 0;
+    scroll-snap-align: start;
+}
+.extra-images-strip .text-muted.align-self-center {
+    margin-left: 4px;
+}
+
+/* ========================================
+   視覺質感精修（2026-08-01「美觀程度」專項）
+   目標：從「稱職的 Bootstrap 後台」推到「2026 年的專業 SaaS」。
+   全為視覺層（邊框/陰影/字距/過渡/焦點），不動版型結構與任何 id/class 行為。
+   ======================================== */
+
+/* 1) 卡片邊緣：純陰影浮空 → 髮絲邊框 + 更輕的陰影。
+      邊框讓卡片在淺灰底上有明確、銳利的邊界（Linear/Stripe 系的作法），
+      陰影退居輔助，整體更乾淨、不糊。 */
+.card,
+.data-table-container,
+.detail-header,
+.settings-card {
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+/* 1b) Bootstrap `.shadow-sm` 工具類帶 !important，會蓋掉上面的設計 token
+       → 同一頁上出現兩種卡片陰影（reports 16 處、pos 7 處、portfolio 5 處…）。
+       這裡把「內容區的卡片」統一回 token，不動 Modal / 下拉等其他 .shadow-* 用途。 */
+#content .card.shadow-sm,
+#content .card.shadow,
+#content .data-table-container.shadow-sm {
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
+}
+
+/* 2) 互動過渡：卡片與列的狀態變化給 150ms 緩動，滑過時「有回應」而不是硬切 */
+.card,
+.data-table-body table > tbody > tr,
+.btn,
+.nav-link,
+.badge {
+    transition: background-color 0.15s ease, box-shadow 0.15s ease,
+                border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+/* 3) 字體階層精修：標題收緊字距（中英混排在 700 字重下預設偏鬆），
+      副標降一階灰度拉開層次 */
+.page-title {
+    letter-spacing: -0.015em;
+}
+
+.page-subtitle {
+    color: var(--secondary-color);
+    letter-spacing: -0.005em;
+}
+
+.data-table-title,
+.card-title,
+h5.modal-title {
+    letter-spacing: -0.01em;
+}
+
+/* 4) 統一焦點樣式：鍵盤操作時有清楚一致的主色焦點環（原本各元件不一致，
+      有些甚至只有瀏覽器預設藍框，與設計語言衝突） */
+.btn:focus-visible,
+.form-control:focus,
+.form-select:focus,
+.nav-link:focus-visible,
+.page-eyebrow a:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.25);
+    border-color: var(--primary-color);
+}
+
+/* 5) 主要按鈕質感：略減圓角雜訊 + hover 時輕微抬升，點擊回彈 */
+.btn {
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 2px 8px rgba(67, 97, 238, 0.28);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+/* 6) 表格列 hover 更柔和（原本直接換底色，過渡後更順） */
+.data-table-body table > tbody > tr:hover {
+    box-shadow: inset 0 0 0 1px rgba(67, 97, 238, 0.06);
+}
+
+/* 7) Modal 質感：加大圓角 + 更柔的陰影，與卡片語言一致 */
+.modal-content {
+    border: none;
+    border-radius: var(--border-radius-lg);
+    box-shadow: 0 20px 60px rgba(16, 24, 40, 0.18);
+}
+
+/* ========================================
+   表單頁易讀性（2026-08-01 UX 評審）
+   ======================================== */
+
+/* 1) 短欄位不要在 1440px 拉滿 ~800px：Email/電話/代號/時間這類固定長度輸入限寬，
+      閱讀行長回到合理範圍。長文欄（textarea）與需要全寬的元件不受影響。 */
+@media (min-width: 992px) {
+    .settings-card input[type="email"],
+    .settings-card input[type="tel"],
+    .settings-card input[type="url"],
+    .settings-card input[type="number"],
+    .settings-card input[type="date"],
+    .settings-card input[type="time"],
+    .tab-pane input[type="email"],
+    .tab-pane input[type="tel"],
+    .tab-pane input[type="number"],
+    .tab-pane input[type="date"],
+    .tab-pane input[type="time"] {
+        max-width: 22rem;
+    }
+    /* 名稱/代號類單行文字欄：限寬但比上面寬一些 */
+    .tab-pane .form-control-shortish {
+        max-width: 28rem;
+    }
+}
+
+/* 2) 表單區塊底部的主要儲存鈕：手機版釘在底部（長設定頁改完 toggle 不用盲捲到底找按鈕） */
+@media (max-width: 991.98px) {
+    .tab-pane > form > .btn-primary,
+    .tab-pane form > .btn-primary[id^="save"] {
+        position: sticky;
+        bottom: 0.75rem;
+        width: 100%;
+        z-index: 5;
+        padding-top: 0.6rem;
+        padding-bottom: 0.6rem;
+        box-shadow: 0 6px 20px rgba(67, 97, 238, 0.28);
+    }
+}
+
+/* 3) 桌機：儲存鈕與上方欄位拉開距離並加分隔線，避免「混在欄位裡看不到」 */
+@media (min-width: 992px) {
+    .tab-pane form > .btn-primary[id^="save"] {
+        margin-top: 1.25rem;
+    }
+}
+
+/* ========================================
+   手機後台可用性強化（2026-06-25 RWD 體檢）
+   ======================================== */
+
+/* FullCalendar 操作按鈕放大到觸控規範（原 32~33px < 44pt 易點錯）*/
+@media (max-width: 767.98px) {
+    .fc .fc-button {
+        min-height: 44px;
+        padding: 6px 12px;
+    }
+    .fc .fc-toolbar.fc-header-toolbar {
+        flex-wrap: wrap;
+        gap: 6px;
+        row-gap: 8px;
+    }
+    .fc .fc-toolbar-title {
+        font-size: 1.1rem;
+    }
+}
+
+/* 手機行事曆月檢視可讀性（2026-08-01 UX 評審）：
+   390px 下每格寬約 50px，事件同時塞「時間 + 顧客名」→ 標題被切成「15:0」「10:0」這種讀不懂的殘字。
+   月檢視改「只顯示顧客名、隱藏時間」——時間點進去看詳情即可，格子裡認人比認時間有用；
+   週/日檢視格子夠寬，維持顯示時間不動。 */
+/* 月檢視事件標題在桌機也會被切，但 FullCalendar 預設是 text-overflow:clip →
+   字被切在半個字元上、沒有任何「還有後續」的提示（1280 實測「⏳ 林柏諺 - 拉花課程（一對一）」
+   內容 175px 只顯示 69px，少了 106px；1440 少 83px；連 1920 都還少 14px）。
+   補省略號讓店家看得出來被截斷了，滑過有 title 提示、點開有完整內容。 */
+/* 月檢視事件標題：允許折成兩行再省略，而不是單行切掉。
+   實測 1024 下「✓ 陳映蓉 - 下午茶座位預約」內容 143px 只顯示 35px（約 2 個字），
+   1440 也只有 92px——單行永遠塞不下「顧客名 + 服務名」。格子寬約 140px，
+   折兩行就看得完整。搭配 dayMaxEvents 收斂成「+N」，列高不會失控。 */
+.fc-dayGridMonth-view .fc-event .fc-event-title {
+    overflow: hidden;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.25;
+    word-break: break-word;
+}
+
+/* 手機月檢視（非預設，店家自己切過去）格子只有約 50px 寬，折行也放不下 →
+   維持單行 + 省略號，靠點擊看詳情。 */
+@media (max-width: 575.98px) {
+    .fc-dayGridMonth-view .fc-event .fc-event-title {
+        display: block;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+}
+
+@media (max-width: 575.98px) {
+    /* ⚠️ 這裡曾經寫過 `.fc-view-harness { height: auto !important }`（v67），想讓容器隨內容長高，
+       結果**把容器壓成 0px**（FullCalendar 的子層是絕對定位，靠 harness 的實高撐開）→
+       清單與月檢視的內容整片溢出、被頁尾蓋住，比原本的問題更嚴重。v68 已移除。
+       月檢視原本的溢出改由 `dayMaxEvents: true` 解決（106px → 10px），
+       且手機預設已改清單檢視。**不要再嘗試用 height:auto 覆蓋 FullCalendar 的高度計算。** */
+    .fc-dayGridMonth-view .fc-event .fc-event-time {
+        display: none;
+    }
+    .fc-dayGridMonth-view .fc-event .fc-event-title {
+        font-size: 0.7rem;
+        line-height: 1.25;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .fc-dayGridMonth-view .fc-event {
+        padding: 1px 3px;
+    }
+    /* 「+N 則」連結放大到可點（原本疊在事件下方很難命中） */
+    .fc-daygrid-more-link {
+        font-size: 0.7rem;
+        padding: 2px 4px;
+        display: inline-block;
+    }
+}
+
+/* 手機版資料表格密化：縮 padding/字級，讓「操作」欄盡量落在畫面內、減少橫捲 */
+@media (max-width: 575.98px) {
+    .data-table-body .table > :not(caption) > * > * {
+        padding-left: 0.4rem;
+        padding-right: 0.4rem;
+    }
+    .data-table-body .table {
+        /* 2026-08-01 UX 評審：目標客群含中高齡店主，13.6px 偏小 → 提到 14.4px */
+        font-size: 0.9rem;
+    }
+    /* 操作欄按鈕緊湊排列，避免被推出 viewport */
+    .data-table-body .table td .btn-sm,
+    .data-table-body .table td .btn {
+        padding: 0.25rem 0.4rem;
+    }
+
+    /* ❌ 手機「釘住操作欄」已移除（2026-08-02 第三輪複評後的根本修正）
+       它是連續三輪 regression 的共同根因：390px 放不下整張表，釘住的那一欄就會「浮」在
+       資料上面 —— 依序蓋掉過狀態徽章（切成「已確」「待確」）、售價（$450 顯示成「$4」，
+       這種「看起來像正常數字的錯值」比截斷更危險）、甚至表頭本身（「操作」只印出「作」）。
+       我先前用「調 max-width」試圖閃避重疊，本質是打地鼠：修好 A 欄就壓壞 B 欄。
+       手機改為單純橫向捲動：所有欄位都完整可讀，捲一下就看得到操作鈕，沒有任何資料被遮蓋。
+       （桌機保留 sticky —— 那裡表格塞得下容器，不會產生重疊。） */
+    .data-table-body table > tbody > tr {
+        --row-bg: #fff;
+    }
+
+    /* 手機不再壓縮欄寬（壓縮正是截斷金額的元兇），改讓表格自然寬度 + 橫捲 */
+    .data-table-body td {
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        max-width: 160px;
+    }
+
+    /* 🔒 數字欄永不截斷：金額被截成「$4」會被誤讀為正確數字，是資料正確性問題不是版面問題 */
+    .data-table-body td.text-end,
+    .data-table-body td .num,
+    .data-table-body td.num {
+        max-width: none !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+    }
+
+    /* 🔒 狀態徽章永不折行/截斷 */
+    .data-table-body td .badge {
+        white-space: nowrap;
+    }
+
+    /* 名稱類欄位優先給寬度：不折成單字，最多兩行 */
+    .data-table-body td:nth-child(2) {
+        min-width: 7.5rem;
+    }
+
+    /* 編號/訂單號這類不該折行的識別碼：單行 + 省略號（折兩行會讓一屏少看 2 筆） */
+    .data-table-body td.cell-id,
+    .data-table-body td .text-nowrap {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* 狀態欄不壓縮，確保徽章完整顯示 */
+    .data-table-body td:has(> .badge),
+    .data-table-body td .badge {
+        white-space: nowrap;
+    }
+    /* 但「操作欄」與明確標記 nowrap 的欄位維持單行 */
+    .data-table-body td:last-child,
+    .data-table-body td.text-nowrap {
+        white-space: nowrap;
+    }
+
+    /* 次要文字（電話/時間等）字級回到可讀範圍 */
+    .data-table-body .small,
+    .data-table-body small {
+        font-size: 0.8rem;
+    }
+}
+
+/* ========================================
+   手機後台可用性強化 批次1（2026-06-25 多 agent 體檢後）
+   ======================================== */
+
+/* H1：Modal 內容可獨立捲動 + footer 固定可見（修「儲存鈕跑出畫面看不到」）
+   等同對所有 modal 套用 modal-dialog-scrollable，並補 iOS 安全區。
+   2026-06-26 升級 pointer:coarse——iPad（820/橫向）的長表單 Modal footer 一樣會跑出畫面 */
+/* 2026-08-02 修正兩點（實測後）：
+   ① 扣的高度不夠：`100dvh - 1rem` = 752，但 .modal-dialog 自己有上下各 1.75rem 邊距，
+      752 + 28 = **780** —— 正好等於量到的「頁尾掉出畫面 12px」（vh 768）。改扣 3.5rem。
+   ② 只套 pointer:coarse，桌機完全沒保護：1440 實測 services 表單頁尾在 1288（畫面才 900）、
+      products 在 1025，長表單的「儲存」按鈕開啟時根本看不到。改成所有裝置都套用。 */
+.modal-content {
+    max-height: calc(100vh - 3.5rem);
+    max-height: calc(100dvh - 3.5rem);
+}
+.modal-body {
+    overflow-y: auto;
+}
+
+/* 手機分頁列改換行，不要橫捲（2026-08-02 量測）：
+   分頁在可橫捲容器裡「滑得到但預設看不到」——
+   選單設計的第二個分頁「Flex 主選單」右緣 493（畫面 390）完全在畫面外，
+   而 LINE 稽核指出「店家改了選單怎麼沒生效」的頭號原因正是**沒人點過第二個分頁**
+   （Rich Menu 與 Flex 主選單各有各的發布鈕）；設定頁也有 4 個分頁（通知/點數/行事曆同步/帳號安全）
+   在畫面外。換行後全部一眼看得到，代價只是分頁列多佔一兩行高度。 */
+@media (max-width: 991px) {
+    #content .nav-tabs,
+    #content .nav-pills {
+        flex-wrap: wrap;
+    }
+}
+
+/* WCAG 2.5.8（AA）目標尺寸最低 24×24 —— **不分輸入裝置**，桌機滑鼠一樣適用。
+   下面的 pointer:coarse 區塊把主要控制項再拉到 44px（Apple HIG），這一區是全裝置的底線。
+   2026-08-02 桌機實測仍有 109 個低於 24px（keyword-replies 的 chip 51 個、
+   預約列表的勾選框 14×14、開關 25×12）。 */
+.form-check-input {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+.form-switch .form-check-input {
+    width: 2.5rem;
+    height: 1.5rem;
+}
+.kw-chip,
+.badge.kw-chip {
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+}
+.btn-sm {
+    min-height: 24px;
+    /* 寬度也要有底線：「使用小提醒」的收合箭頭帶 p-0，量到只有 14px 寬 */
+    min-width: 24px;
+}
+/* 麵包屑連結（量到 48×18）：加上下 padding 撐到 24px，不改字級。
+   ⚠️ 本專案的麵包屑實際是 `.page-eyebrow`（不是 Bootstrap 的 .breadcrumb），
+   只寫 .breadcrumb 會完全打不到——這就是為什麼 28 頁「每頁都還剩 1 個」。 */
+.breadcrumb a,
+.breadcrumb-item a,
+.page-eyebrow a {
+    display: inline-block;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+/* Bootstrap 關閉鈕預設 1em（量到 21×21） */
+.btn-close {
+    width: 24px;
+    height: 24px;
+    background-size: 12px;
+}
+/* 行事曆「+N more」（量到 51×16） */
+.fc-daygrid-more-link {
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+}
+/* 月檢視事件方塊（1920 量到 13 個 218×22，差 2px）。
+   這條原本只寫在 pointer:coarse 區塊，桌機滑鼠吃不到——WCAG 24px 不分輸入裝置。 */
+.fc-daygrid-event {
+    min-height: 24px;
+    display: flex;
+    align-items: center;
+}
+
+/* ========================================
+   觸控目標放大（2026-08-02 三尺寸量測：390 有 221 個、1024 有 239 個控制項低於 40×40，
+   最小的只有 7.6px）。
+   ⚠️ 刻意「放大實際控制項」而不是用 ::after 偽元素擴大點擊範圍——後者會蓋住相鄰元素，
+   製造新的遮擋問題（今天已有一條 bug 正是元素被自己的外框蓋住）。
+   內文中的行內小連結不強制拉到 44px（會把版面撐鬆、一頁看到的資料變少），
+   改成給足上下 padding 提高到可穩定點按的高度。
+   ======================================== */
+@media (pointer: coarse) {
+    /* Bootstrap 開關預設約 32×16，量到最小 13.6×13.6 */
+    .form-switch .form-check-input {
+        width: 2.75rem;
+        height: 1.5rem;
+    }
+    /* 一般勾選框/單選鈕（列表批次選取的 17×17） */
+    .form-check-input {
+        width: 1.375rem;
+        height: 1.375rem;
+    }
+    /* .btn-sm 已有 min-height:44px，但寬度只有 36px */
+    .btn-sm {
+        min-width: 40px;
+    }
+    /* ⚠️ 色票類「固定尺寸方塊」要排除：它們是 24px 的顏色樣本，被 min-width 撐成 40px 後
+       整排擠出畫面（v67 實測 line-settings 的「暗黑」色票右緣 403 > 畫面 390 且無可捲容器
+       ＝真的點不到，v67 之前這頁是乾淨的——是我加的規則造成的）。
+       旁邊本來就有精確選色器，色票只是快捷樣本。 */
+    .flex-header-preset,
+    .color-swatch,
+    input[type="color"].form-control-color {
+        min-width: 0;
+    }
+    /* 麵包屑、內文小連結、chip、行事曆「+N」：給足上下 padding 撐開可點高度 */
+    .breadcrumb-item a,
+    a.small,
+    .btn-link.btn-sm,
+    .fc-daygrid-more-link,
+    .fc-list-day-text {
+        display: inline-block;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        line-height: 1.4;
+    }
+    /* 行事曆圖例 chip（量到 19.2px） */
+    .legend-toggle {
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    /* ↓ 以下針對 2026-08-02 量測列出的實際元素逐項處理。
+       採用的標準：主要控制項 44px（Apple HIG），其餘至少 24×24（WCAG 2.5.8 AA 最低要求）。
+       **句子中的行內連結刻意不強制放大**——WCAG 2.5.8 對它明文豁免，硬撐成 44px 會毀掉排版。 */
+
+    /* 行事曆工具列按鈕：量到 39×44，只差 1px */
+    .fc .fc-button {
+        min-width: 40px;
+    }
+    /* 月檢視日期數字（1024 量到 28 個 28×29）與星期標題 */
+    .fc-daygrid-day-number,
+    .fc-col-header-cell-cushion {
+        padding: 6px 8px !important;
+        display: inline-block;
+    }
+    /* 月檢視事件（1024 量到 16 個高 22px）與清單檢視的日期列 */
+    .fc-daygrid-event {
+        min-height: 26px;
+        display: flex;
+        align-items: center;
+    }
+    .fc-list-day-text,
+    .fc-list-day-side-text {
+        min-height: 32px;
+    }
+    /* 關鍵字 chip（22px）與範本分類鈕（28px） */
+    .kw-chip,
+    .sample-cat-btn {
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+    }
+    /* 勾選框／單選鈕拉到 26px（22px 低於 WCAG 24px 門檻） */
+    .form-check-input {
+        width: 1.625rem;
+        height: 1.625rem;
+    }
+    /* 開關高度 24px 稍低，拉到 28px（寬度已是 44px） */
+    .form-switch .form-check-input {
+        width: 2.75rem;
+        height: 1.75rem;
+    }
+}
+
+@media (pointer: coarse) {
+    .modal-body {
+        -webkit-overflow-scrolling: touch;
+    }
+    .modal-footer {
+        padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    }
+    /* Modal footer 按鈕達觸控標準（原 31px）*/
+    .modal-footer .btn {
+        min-height: 44px;
+    }
+}
+
+/* H2：手機列表「操作」欄固定在右側，橫向捲動時永遠可見（不必滑到底才點得到）
+   覆蓋 bookings/staff/services/products/membership 等列表 */
+/* A3（2026-06-26 升級）：改 pointer:coarse 涵蓋 iPad（820 也會溢出）；排除 #shiftsTable
+   （班表最後一欄是「週日」不是操作欄，且它有自己的員工欄 sticky，套右 sticky 會錯位）*/
+/* ⚠️ 2026-08-02：本區塊的「手機/平板釘住最後一欄」已停用（僅保留 ≥992px 桌機版，見上方）。
+   它是第三輪複評三個 regression 的真正來源——我先前只改 max-width 區塊，完全沒碰到這條
+   2026-06-26 的舊規則，所以「釘住的操作欄浮在資料上」一直存在：
+   狀態徽章被切成「已確」、售價 $450 顯示成「$4」（看起來像正常數字的錯值）、表頭「操作」只剩「作」。
+   小螢幕塞不下整張表時，釘住任何一欄都必然覆蓋資料；正解是單純橫捲，所有值都完整可讀。
+   ⚠️ 若未來要恢復，必須先確保表格總寬 ≤ 容器寬（否則就是重演這個 bug）。 */
+@media (pointer: coarse) and (min-width: 992px) {
+    .table-responsive > .table:not(#shiftsTable) > thead > tr > th:last-child,
+    .table-responsive > .table:not(#shiftsTable) > tbody > tr > td:last-child {
+        position: sticky;
+        right: 0;
+        background-color: #fff;
+        box-shadow: -3px 0 5px -2px rgba(0, 0, 0, 0.08);
+    }
+    .table-responsive > .table:not(#shiftsTable) > thead > tr > th:last-child {
+        background-color: var(--bs-table-bg, #f8f9fa);
+    }
+}
+
+/* M1：觸控目標放大到 44pt（漢堡鍵 40→44、店家 chip、側欄子選單連結 37→44）*/
+@media (max-width: 991.98px) {
+    .btn-sidebar-toggle {
+        width: 44px;
+        height: 44px;
+    }
+    #currentTenantChip {
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+    #sidebar .sidebar-sub-nav .nav-link {
+        padding-top: 10.5px;
+        padding-bottom: 10.5px;
+    }
+}
+
+/* M1 補漏（2026-08-02）：上面那條寫死 max-width:991.98px，**iPad 橫向（1024 寬）整個吃不到**
+   → 側欄連結在觸控裝置上量到 234×37，比 44px 觸控標準矮一截，而它出現在每一頁。
+   改用 pointer:coarse 補上寬螢幕觸控裝置（桌機滑鼠不受影響）。 */
+@media (pointer: coarse) and (min-width: 992px) {
+    #sidebar .nav-link,
+    #sidebar .sidebar-sub-nav .nav-link {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+    #tenantSwitcherSidebar {
+        min-height: 44px;
+    }
+}
+
+/* M2 已由 common.css 的 @media(pointer:coarse) .btn-sm{min-height:44px} 取代（涵蓋手機+iPad+觸控桌面）。
+   原本「排除表格內按鈕」的規則移除——5 輪深掃確認列表操作鈕 30px 不可點是 HIGH，應一律 44px（列變高可接受）*/
+
+/* A4（2026-06-26 升級 pointer:coarse）：班表員工欄固定左側（手機+iPad 橫滑看整週仍知道是哪位員工）*/
+@media (pointer: coarse) {
+    #shiftsTable thead th:first-child,
+    #shiftsTable tbody td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 1;
+        background-color: #fff;
+        box-shadow: 3px 0 5px -2px rgba(0, 0, 0, 0.08);
+    }
+    #shiftsTable thead th:first-child {
+        background-color: #f1f3f5;
+    }
+}
+
+/* 橫向捲動提示（班表等寬表格用，觸控裝置顯示）*/
+.mobile-scroll-hint {
+    display: none;
+}
+@media (pointer: coarse) {
+    .mobile-scroll-hint {
+        display: block;
+        font-size: 0.82rem;
+        color: #8a8a8e;
+        text-align: center;
+        padding: 4px 0;
+    }
+}
+
+/* ========================================
+   儀表板 onboarding 橫幅統一版式（2026-07-31 質感審計次優先 #1）
+   三種樣式（alert-success LINE 綁定 / alert-primary 行事曆推廣 / 白卡紅圈提醒卡）
+   → 統一「白卡 + 左側 4px 色條」。只動 class/樣式，id 與 d-none 顯示機制不動。
+   ======================================== */
+
+.alert.onboard-banner {
+    background-color: #fff;
+    color: var(--dark-color);
+    border: 1px solid #e8e8ed;
+    border-left: 4px solid var(--primary-color);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow);
+}
+.onboard-banner.onboard-primary { border-left-color: var(--primary-color); }
+.onboard-banner.onboard-success { border-left-color: var(--success-color); }
+.onboard-banner.onboard-danger  { border-left-color: var(--danger-color); }
+
+/* 提醒卡片列（#alertCards）同版式：原 border-info/warning/danger 全框
+   因 common.css .card{border:none} 實際上沒顯示（=白卡紅圈），改為左側 4px 色條。
+   注意 pushQuotaWarningCard 的 class 由 JS 重設為 'card border-danger|warning'，
+   故此處用 CSS 收編既有 class、不動 HTML/JS（JS 重設後樣式照樣命中）。 */
+#alertCards .card.border-info,
+#alertCards .card.border-warning,
+#alertCards .card.border-danger {
+    border: 1px solid #e8e8ed !important;
+    border-left-width: 4px !important;
+    border-left-style: solid !important;
+}
+#alertCards .card.border-info    { border-left-color: var(--info-color) !important; }
+#alertCards .card.border-warning { border-left-color: var(--warning-color) !important; }
+#alertCards .card.border-danger  { border-left-color: var(--danger-color) !important; }
+
+/* ========================================
+   手機 dashboard stat 卡 2×2（2026-07-31 質感審計次優先 #2）
+   col 改 col-6（桌機欄寬不變），彩色大圓 icon 手機縮小、間距收緊防 390px 溢出。
+   ======================================== */
+
+@media (max-width: 767.98px) {
+    .dashboard-stats .stat-icon-circle {
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.875rem;
+    }
+    .dashboard-stats > [class*="col-"] {
+        margin-bottom: 1rem !important;
+    }
+    .dashboard-stats .card-body {
+        padding: 0.875rem 0.75rem;
+    }
+    .dashboard-stats .stat-value {
+        font-size: 1.125rem;
+        word-break: break-all; /* 極端長金額不撐爆 col-6 卡片 */
+    }
+}
+
+/* 使用小提醒收合標題列（services.html；純 Bootstrap collapse，chevron 隨展開狀態旋轉） */
+.help-collapse-toggle .bi-chevron-down {
+    display: inline-block;
+    transition: transform 0.2s ease;
+}
+.help-collapse-toggle.collapsed .bi-chevron-down {
+    transform: rotate(-90deg);
+}
+
+/* ========================================
+   UI 評審第 5 輪（2026-08-02）：兩軌評審共同指出的四類問題
+   ① AI 客服 FAB 壓住列表最後一列的操作鈕
+   ② 手機版表格右緣被硬切，沒有「還有內容」的提示
+   ③ reports 四色左邊框 + 全藍卡片標題（色彩不承載語意）
+   ④ 工具列殘留彩虹（products/services 排序模式列）
+   ======================================== */
+
+/* ① FAB 遮擋：內容區底部預留 FAB 直徑 + 安全距離，最後一列不會被壓住。
+      桌機 FAB 56px + bottom 24px → 需要 88px；手機再多留一點給捲動慣性。 */
+#content {
+    padding-bottom: 96px;
+}
+@media (max-width: 768px) {
+    #content { padding-bottom: 104px; }
+    /* FAB 位置改由下方「⑨ 手機 FAB 移左下角」統一處理，此處不再調 bottom（避免兩條 !important 打架）*/
+}
+
+/* ② 手機版表格捲動提示：右緣淡出，讓「右邊還有欄位」看得出來。
+      只在真的溢出時才淡出（用 scroll-shadow 背景技法，不遮住沒溢出的表格）。 */
+@media (max-width: 991px) {
+    .table-responsive,
+    .data-table-scroll {
+        background:
+            linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center,
+            linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center,
+            linear-gradient(to right, rgba(16, 24, 40, 0.10), rgba(16, 24, 40, 0)) left center,
+            linear-gradient(to left, rgba(16, 24, 40, 0.10), rgba(16, 24, 40, 0)) right center;
+        background-repeat: no-repeat;
+        background-size: 32px 100%, 32px 100%, 14px 100%, 14px 100%;
+        background-attachment: local, local, scroll, scroll;
+    }
+    /* 頁籤列同理：settings 的「通知設…」被切邊時要看得出可橫捲 */
+    .nav-tabs {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .nav-tabs::-webkit-scrollbar { display: none; }
+    .nav-tabs .nav-link { white-space: nowrap; }
+}
+
+/* ③ reports：拿掉裝飾性四色左邊框，卡片標題回到中性深灰。
+      數字本身才是重點，色條不承載語意只會分散注意力。 */
+#content .card[class*="border-left"],
+#content .stat-card,
+#content .report-card {
+    border-left-width: 1px !important;
+    border-left-color: rgba(0, 0, 0, 0.06) !important;
+}
+#content .card-header h5,
+#content .card-header h6,
+#content .card-title {
+    color: #1c2033;
+}
+
+/* ④ 排序模式列做成真正的 segmented control（取代橘/藍/綠三色並排） */
+.sort-mode-group {
+    background: #f1f3f9;
+    border-radius: 10px;
+    padding: 3px;
+    display: inline-flex;
+    gap: 2px;
+}
+.sort-mode-group .btn {
+    border: 0;
+    background: transparent;
+    color: #5b6076;
+    border-radius: 8px;
+    box-shadow: none;
+}
+.sort-mode-group .btn.active,
+.sort-mode-group .btn:active {
+    background: #fff;
+    color: var(--primary-color);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+}
+
+/* ⑤ 手機版：動作欄固定在右側，永遠看得到、點得到（2026-08-02 第 5 輪）
+      實測 390px 下 staff/products/block-times/services 的操作欄整個在畫面外
+      （actionLeft 424~524px > 視窗 390px），店家在手機上根本按不到編輯/刪除。
+
+      ⚠️ 這裡跟 2026-08-01 移除的舊手機 sticky 不同：
+      舊版沒有替前一欄讓位，捲到底時最後一欄資料會永久躲在固定欄底下
+      （$450 被截成「$4」、徽章被截成「已確」）。這版用
+      `td:nth-last-child(2) { padding-right }` 預留固定欄寬度，
+      捲到最右時前一欄仍能完整露出。 */
+@media (max-width: 991px) {
+    .data-table-body th:last-child:not([colspan]),
+    .data-table-body td:last-child:not([colspan]) {
+        position: sticky;
+        right: 0;
+        z-index: 2;
+        background: var(--row-bg, #fff);
+        box-shadow: -6px 0 8px -6px rgba(16, 24, 40, 0.18);
+    }
+    /* 為固定欄讓位：固定欄改單列後最寬約 150px（5 顆 icon，bookings）。
+       這個值必須 ≥ 固定欄實寬，否則最後一個內容欄（多半是狀態徽章）右半會被壓掉，
+       變成「已發」「上架」這種殘字。欄位少的表（block-times 只有 2 顆 icon）
+       多出來的只是可橫捲的尾端空白，無副作用。 */
+    .data-table-body th:nth-last-child(2),
+    .data-table-body td:nth-last-child(2) {
+        padding-right: 156px;
+        /* ⚠️ 這個 padding 會讓 scrollWidth > clientWidth，瀏覽器誤判「內容被截斷」而畫出
+           省略號——狀態欄只有一顆徽章，被「截斷」的其實只有空白 padding，畫出來的「…」
+           純屬視覺髒點（2026-08-02 第 9 輪評審抓到，8 列顧客全中）。關掉省略號即可。 */
+        text-overflow: clip;
+    }
+    /* ⚠️ 班表（#shiftsTable）必須排除：它最後一欄是「週日」不是操作欄，釘住它等於把
+       週二~週六五整欄壓在底下（2026-08-02 實測 390px：週二被蓋 200px、週三 299px、
+       週四 399px…店家看不到自己的班表）。2026-06-26 的舊 sticky 規則本來就寫了
+       `:not(#shiftsTable)` 並註明原因，8/1 新增這個區塊時漏掉，是我造成的迴歸。 */
+    .data-table-body #shiftsTable th:last-child,
+    .data-table-body #shiftsTable td:last-child {
+        position: static;
+        box-shadow: none;
+    }
+    .data-table-body #shiftsTable th:nth-last-child(2),
+    .data-table-body #shiftsTable td:nth-last-child(2) {
+        padding-right: 0.5rem;
+    }
+
+    /* 名稱欄允許折行：products 的商品名稱在 390px 下永久被切掉（表格可捲範圍只有 5px，
+       捲到底也救不回來，「哥倫比亞 蜜處理 半磅」被吃掉 27px）。手機上寧可折成兩行，
+       也不要讓店家永遠看不到完整品名。
+       ⚠️ 不能只寫 `td:first-child`：products/staff 等表的第一欄是**手機隱藏的拖曳欄**
+       （`d-none d-md-table-cell`），規則會落在看不見的格子上完全沒作用（2026-08-02 實測）。
+       所以同時命中「第一欄」與「緊接在隱藏欄之後的那一欄」＝畫面上真正的第一欄。 */
+    .data-table-body td:first-child,
+    .data-table-body td.d-none + td,
+    .data-table-body th.d-none + th {
+        white-space: normal;
+        word-break: break-word;
+    }
+
+    /* 固定欄自身不吃 hover 底色變化，避免與 --row-bg 打架出現接縫 */
+    .data-table-body td:last-child:not([colspan]) {
+        --bs-table-bg-state: transparent;
+    }
+}
+
+/* ⑥ 手機列表列高一致：固定動作欄內的 icon 鈕排成單列。
+      ⚠️ common.css 有一條更早的手機規則 `.table .btn-group { display: inline-grid !important;
+      grid-template-columns: repeat(2,1fr) }`（2×2 網格，是「動作欄還會被橫向捲出畫面」年代
+      為了省寬度做的）。動作欄改成右側固定欄之後，2×2 只剩缺點：撐高列（90↔116px 交錯）、
+      看起來像硬塞。這裡用同等 !important 覆蓋回單列，非固定欄的表格仍沿用 common.css 的 2×2。 */
+@media (max-width: 991px) {
+    .data-table-body td:last-child:not([colspan]) .btn-group,
+    .data-table-body td:last-child:not([colspan]) > div {
+        display: inline-flex !important;
+        flex-wrap: nowrap !important;
+        gap: 1px;
+    }
+    /* 部分頁在 th 寫死 inline min-width（bookings 190px / products 200px），
+       手機會讓固定欄佔掉半個螢幕 → 一律讓它依內容收縮 */
+    .data-table-body th:last-child:not([colspan]),
+    .data-table-body td:last-child:not([colspan]) {
+        min-width: 0 !important;
+        width: auto !important;
+    }
+    .data-table-body td:last-child:not([colspan]) .btn {
+        padding-left: 0.3rem;
+        padding-right: 0.3rem;
+    }
+}
+
+/* ⑦ LINE 設定頁兩欄高度失衡（左欄 ~1300px、右欄 ~5900px → 左側留 4600px 死白）
+      右欄是狀態/預覽/說明的長卡片堆，短時間內不打算重排 HTML；
+      改讓左欄設定表單在桌機黏住視窗，捲動右欄時左側不再是一片空白。 */
+/* 2026-08-02：Rich Menu / Flex 主選單 / 使用說明三張長卡片已改滿寬（col-12），
+   右欄不再是 5900px 的高瘦柱、左欄也不再留大片空白 → 原本的 sticky 補償已無必要，
+   留著反而會讓表單在捲到滿寬區時浮在旁邊。 */
+
+/* ⑧ 手機固定動作欄收尾（第 7 輪評審 B1/B2）
+      問題一：固定欄內 4 顆 icon 折成 2×2，把列撐高且看起來像硬塞。
+      問題二：緊鄰固定欄的內容（票券狀態徽章、預約服務名）右半被壓掉，
+              變成「已發」「拉花課程（」這種看不懂的殘字。 */
+@media (max-width: 991px) {
+    /* 固定欄本身：一列排開不換行，寬度隨內容但不再撐高列 */
+    .data-table-body th:last-child:not([colspan]),
+    .data-table-body td:last-child:not([colspan]) {
+        white-space: nowrap;
+    }
+    /* 操作鈕排版：每列最多 3 顆，超過折行。
+       ⚠️ 2026-08-02 實測修正：原本寫 `nowrap` + `width:25px`，但 25px 從來沒生效過——
+       common.css:654「觸控裝置 .btn { min-width:44px }」的 min-width 贏過 width，
+       實際渲染是 44px。bookings 有 5 顆鈕 → 內容 245px 硬塞進 max-width:160px 且 overflow:hidden
+       的格子，第 5 顆「詳情」整顆在畫面外（rect 399~443，畫面只有 390），而且因為這格是釘住的，
+       兩個捲軸捲到底都救不回來＝永遠點不到。
+       390px 螢幕放不下 5 顆 44px 按鈕，這是物理限制；折成兩行可以全部點得到，
+       代價是那幾列變高。「按鈕點不到」比「列變高」嚴重，所以選折行。
+       不縮小按鈕是刻意的——先前稽核已認定列表操作鈕 30px 不可點屬 HIGH。 */
+    .data-table-body td:last-child:not([colspan]) .btn-group,
+    .data-table-body td:last-child:not([colspan]) .btn-group-sm {
+        display: inline-flex !important;
+        flex-wrap: wrap !important;
+        justify-content: flex-end;
+        gap: 1px;
+        max-width: 136px;   /* 3 × 44 + 2 × 1 gap，確保一列最多 3 顆 */
+    }
+    /* 折行後每顆仍是完整圓角按鈕（Bootstrap btn-group 只把首尾去圓角，折行會很醜）*/
+    .data-table-body td:last-child:not([colspan]) .btn-group > .btn {
+        border-radius: var(--radius-sm, 6px) !important;
+    }
+    /* 這格不受 max-width:160px + overflow:hidden 限制，否則折行後仍會被裁 */
+    .data-table-body td:last-child:not([colspan]) {
+        max-width: none !important;
+        overflow: visible !important;
+    }
+    /* 徽章不被壓斷：整顆徽章不換行，寧可整欄橫捲也不要顯示半個字 */
+    .data-table-body td .badge {
+        white-space: nowrap;
+    }
+}
+
+/* ⑨ AI 客服按鈕已於 2026-08-02 從「右下浮動氣泡」改為「頂端工具列按鈕」
+      （見 layout.html 的 #aiSupportBubble 註解）。原本這裡有一整組手機專用的
+      「移到左下 + 捲動時讓路 + 開 modal 時隱藏」規則，全部隨之移除——
+      量測證實浮動氣泡在手機/平板/桌機都會蓋住可點的控制項，換角落只是換受害者。
+      按鈕現在跟著工具列走，不再覆蓋任何內容。 */
+
+
+/* ⑩ 短頁面時 FAB 蓋住 footer「Copyright ©」（頁面已到底、無可捲動，非截圖假象）*/
+@media (max-width: 991px) {
+    footer, .app-footer, #content + footer {
+        padding-bottom: 72px;
+    }
+}
+
+/* ⑪ 滿寬卡片內的單行短輸入不要拉到 1140px（2026-08-02 第 11 輪評審）
+      line-settings 的 Rich Menu / Flex 區塊改滿寬後，像「Header 標題」這種單行文字欄
+      被拉成與卡片等寬，視覺過度空曠且與旁邊色票區不對稱。長文字（textarea）不受限。 */
+@media (min-width: 992px) {
+    .col-12 > .card .card-body input[type="text"]:not(.form-control-lg),
+    .col-12 > .card .card-body input[type="url"] {
+        max-width: 420px;
+    }
+}
+
+/* ⑫ 分類篩選 chip（2026-08-02 第 12 輪評審）
+      原本用 .btn-group.flex-wrap，btn-group 的子項會被拉伸，390px 下第 4 個分類
+      （如「沖煮器材」）獨佔一整行且被拉滿寬 → 孤行。改成可換行的膠囊 chip。 */
+.filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.filter-chips .btn {
+    flex: 0 0 auto;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    padding: 0.2rem 0.7rem;
+}
+
+/* ===== 側邊欄付費功能鎖頭（2026-08-07）=====
+   未訂閱的付費功能改成「顯示 + 灰階 + 鎖頭」而不是整項隱藏——
+   隱藏會讓店家永遠不知道有這功能可以買（見 tenant.js decorateSidebarFeatureItem 註解）。
+   視覺重量刻意壓低：比正常項目淡，不搶走已訂閱功能的注意力。 */
+#sidebar .nav-item.feature-locked .nav-link {
+    opacity: 0.55;
+}
+#sidebar .nav-item.feature-locked .nav-link:hover {
+    opacity: 0.85;
+}
+#sidebar .feature-lock-icon {
+    font-size: 11px;
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+#sidebar .feature-expiry-badge {
+    font-size: 10px;
+    font-weight: 600;
+    flex-shrink: 0;
+    padding: 2px 6px;
+}

@@ -1,0 +1,342 @@
+{
+ "route": "/tenant/ai-settings",
+ "file": "ai-settings",
+ "title": "AI 客服設定 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "AI 客服設定",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "快速套用行業範本",
+   "icon": "bi-collection",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "自訂提示詞",
+   "icon": "bi-chat-heart",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "AI 如何回覆？",
+   "icon": "bi-info-circle",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "撰寫建議",
+   "icon": "bi-pencil-square",
+   "cls": "m-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-collection",
+   "header": "快速套用行業範本",
+   "bodyText": "選擇最接近您行業的範本，一鍵套用後再依需求修改 🐾 寵物美容 💅 美容美甲 ✂️ 髮廊 🏥 醫美診所 💪 健身房 🍽️ 餐廳 🧖 SPA 按摩"
+  },
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-chat-heart",
+   "header": "自訂提示詞 清空",
+   "bodyText": "啟用 AI 自動回覆 關閉後，LINE Bot 不會自動用 AI 回覆訊息（其他選單功能不受影響）。 嚴格模式：閒聊 / 亂碼 由專人處理 開啟後，顧客若打純數字（如 1822）、亂碼、單字、符號等「明顯非詢問」訊息，AI 完全不回覆，讓店家專人親自接。正常詢問（價格/時間/地址）AI 仍會正常回答。 套用範本後可自由修改，儲存後立即生效 0 /2000 儲存設定 儲存中..."
+  },
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-info-circle",
+   "header": "AI 如何回覆？",
+   "bodyText": "AI 客服會自動結合以下資訊回覆顧客： 您的店家名稱、電話、地址 所有服務項目與價格 顧客的姓名與預約記錄 您填寫的自訂提示詞 小技巧： 寫得越具體，AI 回覆越精準。例如「停車場在巷口左轉 50 公尺」比「附近有停車場」好。"
+  },
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "bi-pencil-square",
+   "header": "撰寫建議",
+   "bodyText": "每條重點用「-」開頭，一行一個 寫 5-15 條效果最好 加入促銷活動與優惠資訊 寫下顧客最常問的問題答案 指定語氣風格（親切/專業/活潑） 註明不提供的服務，避免誤答"
+  }
+ ],
+ "tables": [],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "aiAssistantEnabled",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "啟用 AI 自動回覆",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "aiStrictMode",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "嚴格模式：閒聊 / 亂碼 由專人處理",
+   "help": ""
+  },
+  {
+   "tag": "textarea",
+   "type": "",
+   "name": "",
+   "id": "aiCustomPrompt",
+   "placeholder": "選擇上方行業範本，或直接輸入您的自訂提示詞...",
+   "required": false,
+   "value": "",
+   "cls": "form-control",
+   "rows": "12",
+   "label": "",
+   "help": "套用範本後可自由修改，儲存後立即生效 0 /2000"
+  }
+ ],
+ "buttons": [
+  {
+   "text": "🐾 寵物美容",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('pet')"
+  },
+  {
+   "text": "💅 美容美甲",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('nail')"
+  },
+  {
+   "text": "✂️ 髮廊",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('hair')"
+  },
+  {
+   "text": "🏥 醫美診所",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('clinic')"
+  },
+  {
+   "text": "💪 健身房",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('gym')"
+  },
+  {
+   "text": "🍽️ 餐廳",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('restaurant')"
+  },
+  {
+   "text": "🧖 SPA 按摩",
+   "icon": "",
+   "cls": "btn btn-outline-secondary w-100 template-btn",
+   "id": "",
+   "href": "",
+   "onclick": "applyTemplate('spa')"
+  },
+  {
+   "text": "清空",
+   "icon": "bi-eraser",
+   "cls": "btn btn-outline-danger btn-sm",
+   "id": "clearPromptBtn",
+   "href": "",
+   "onclick": "clearPrompt()"
+  },
+  {
+   "text": "儲存設定 儲存中...",
+   "icon": "bi-check-lg",
+   "cls": "btn btn-primary",
+   "id": "saveAiPromptBtn",
+   "href": "",
+   "onclick": "saveAiPrompt()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-light mb-0 py-2 px-3",
+   "text": "小技巧： 寫得越具體，AI 回覆越精準。例如「停車場在巷口左轉 50 公尺」比「附近有停車場」好。",
+   "id": ""
+  }
+ ],
+ "emptyStates": [],
+ "badges": [],
+ "jsStrings": [
+  "AI 客服",
+  "AI 客服已關閉",
+  "AI 客服設定已儲存（已啟用）",
+  "AI 正在思考中...",
+  "SPA 按摩",
+  "健身房",
+  "儲存失敗：",
+  "回報已送出，我們將盡快處理！",
+  "套用範本",
+  "寵物美容",
+  "已開始新對話。請問需要什麼協助？",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "未知錯誤",
+  "未訂閱時 <strong>AI 不會回覆顧客的任何問題</strong>，此頁設定可以儲存但不會生效。",
+  "清空提示詞",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "確定要套用「${t.name}」範本嗎？\\n\\n目前的提示詞會被取代，套用後可以自由修改。",
+  "確定要清空提示詞嗎？",
+  "美容美甲",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請稍後再試",
+  "請選擇問題類別",
+  "載入 AI 設定失敗",
+  "連線錯誤，請稍後再試",
+  "醫美診所",
+  "餐廳",
+  "髮廊",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/settings/line",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 19382
+}

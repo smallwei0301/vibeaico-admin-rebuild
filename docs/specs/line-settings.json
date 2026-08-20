@@ -1,0 +1,1611 @@
+{
+ "route": "/tenant/line-settings",
+ "file": "line-settings",
+ "title": "LINE 設定 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "LINE 設定",
+   "icon": "",
+   "cls": "page-title mb-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "LINE Official Account 設定",
+   "icon": "bi-chat-dots",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "設定完成後必做！否則 Bot 不會回應",
+   "icon": "bi-exclamation-octagon-fill",
+   "cls": "alert-heading mb-2"
+  },
+  {
+   "lvl": "h6",
+   "text": "步驟一：建立 LINE 官方帳號",
+   "icon": "bi-1-circle",
+   "cls": "fw-bold text-primary mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "步驟二：啟用 Messaging API",
+   "icon": "bi-2-circle",
+   "cls": "fw-bold text-primary mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "步驟三：取得 Channel ID 與 Channel Secret",
+   "icon": "bi-3-circle",
+   "cls": "fw-bold text-primary mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "步驟四：取得 Access Token",
+   "icon": "bi-4-circle",
+   "cls": "fw-bold text-primary mb-3 mt-2"
+  },
+  {
+   "lvl": "h6",
+   "text": "步驟五：儲存並啟用",
+   "icon": "bi-5-circle",
+   "cls": "fw-bold text-primary mb-3"
+  },
+  {
+   "lvl": "h6",
+   "text": "自動回覆設定",
+   "icon": "bi-reply",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "解除 LINE 帳號綁定",
+   "icon": "bi-unlink",
+   "cls": "m-0 text-danger"
+  },
+  {
+   "lvl": "h6",
+   "text": "連線狀態",
+   "icon": "bi-activity",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "LINE 設定檢查報告",
+   "icon": "bi-clipboard-check",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h5",
+   "text": "您的 LINE 官方帳號",
+   "icon": "",
+   "cls": "m-0 fw-bold"
+  },
+  {
+   "lvl": "h6",
+   "text": "如何讓顧客加入？",
+   "icon": "bi-megaphone",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "Rich Menu 快捷選單",
+   "icon": "bi-grid-3x2",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "主選單樣式（Flex Message）",
+   "icon": "bi-chat-square-text",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "使用說明",
+   "icon": "bi-question-circle",
+   "cls": "m-0"
+  },
+  {
+   "lvl": "h6",
+   "text": "LINE Bot 可以做什麼？",
+   "icon": "",
+   "cls": "small fw-bold"
+  },
+  {
+   "lvl": "h6",
+   "text": "常見問題",
+   "icon": "",
+   "cls": "small fw-bold"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-chat-dots",
+   "header": "LINE Official Account 設定",
+   "bodyText": "設定完成後必做！否則 Bot 不會回應 請到 LINE Official Account Manager 關閉自動回應： 進入您的官方帳號 → 設定 → 回應設定 「回應方式」改為只有「 手動聊天 」 不要 勾選「自動回應訊息」 確認「Webhook」顯示為 啟用 點擊下方按鈕直接前往您的回應設定頁面，將「回應方式」改為「 手動聊天 」： 一鍵前往關閉自動回應 如果不關閉，LINE 會攔截所有訊息，您的 Bot 完全不會收到也不會回應。 設定教學 看不懂文字？右邊改看圖文步驟 → 查看詳細教學 看圖文教學 步驟一：建立 LINE 官方帳號 1. 前往 LINE Official Account Manager ，使用 LINE 帳號登入 2. 點擊「 建立 」，填寫帳號名稱、email、業種等資訊 3. 確認資料後選擇「 稍後進行認證（前往管理畫面） 」 4. 系統會跳出「開始經營帳號前」"
+  },
+  {
+   "id": "",
+   "cls": "card card-body bg-light",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "步驟一：建立 LINE 官方帳號 1. 前往 LINE Official Account Manager ，使用 LINE 帳號登入 2. 點擊「 建立 」，填寫帳號名稱、email、業種等資訊 3. 確認資料後選擇「 稍後進行認證（前往管理畫面） 」 4. 系統會跳出「開始經營帳號前」對話框，點「 下一步 」→ 進入主頁 步驟二：啟用 Messaging API 1. 在主頁右上角點擊「 設定 」 2. 左側選單點擊「 Messaging API 」 3. 點擊「 啟用 Messaging API 」 4. 選擇或建立 服務提供者 （Provider），按「 同意 」 5. 隱私權政策和服務條款 兩行留空 ，按「 確定 」 6. 確認資訊後再按「 同意 」完成啟用 注意：一旦與服務提供者連動 即無法變更或解除 步驟三：取得 Channel ID 與 Channel Secret 啟用後，"
+  },
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "bi-reply",
+   "header": "自動回覆設定 啟用自動回覆",
+   "bodyText": "關閉後 bot 不會主動回覆客人閒聊；若沒有 Rich Menu，請告知顧客 傳「 選單 」「 預約 」「 票券 」「 商品 」「 會員 」「 作品 」等關鍵字即可叫出對應功能（按鈕點擊永遠可用）。 💬 想讓顧客打「價格」「地址」等文字時 Bot 自動回覆？請到 店家營運 → 關鍵字回覆 設定（含系統內建關鍵字的停用/覆蓋管理）。 想自訂「加好友歡迎訊息」？請到 店家設定 → 通知設定 →「加好友歡迎訊息（自訂）」 設定（會顯示在顧客加入好友時的歡迎卡片上）。 預設回覆 當 Bot 無法理解顧客訊息時的回覆 0 /500 儲存設定 儲存中..."
+  },
+  {
+   "id": "disconnectCard",
+   "cls": "card mt-4 border-danger d-none",
+   "headerIcon": "bi-unlink",
+   "header": "解除 LINE 帳號綁定",
+   "bodyText": "解除綁定後將完全清除所有 LINE 設定，包含 Channel ID、密鑰、Token、Rich Menu、主選單配置等。 顧客的 LINE 對話記錄不受影響，但 Bot 將停止回應。如需重新啟用，請重新填寫 LINE 設定。 解除綁定 處理中..."
+  },
+  {
+   "id": "",
+   "cls": "card mb-4",
+   "headerIcon": "bi-activity",
+   "header": "連線狀態",
+   "bodyText": "尚未設定 測試連線 測試中... 完整檢查 檢查中... 「測試連線」只看 Token 對不對； 「 完整檢查 」會跑 5 項檢測找出「為什麼按 Bot 沒反應」"
+  },
+  {
+   "id": "verifyResultCard",
+   "cls": "card mb-4 d-none border-0 shadow-sm",
+   "headerIcon": "bi-clipboard-check",
+   "header": "LINE 設定檢查報告",
+   "bodyText": "關閉"
+  },
+  {
+   "id": "botInfoCard",
+   "cls": "card mb-4 d-none border-0 shadow-sm",
+   "headerIcon": "bi-line",
+   "header": "您的 LINE 官方帳號 顧客加好友後即可線上預約、購物、收通知",
+   "bodyText": "掃描加好友 請顧客用 LINE 掃描此 QR Code 加入好友 複製連結 下載 QR Code"
+  },
+  {
+   "id": "promotionCard",
+   "cls": "card mb-4 d-none",
+   "headerIcon": "bi-megaphone",
+   "header": "如何讓顧客加入？",
+   "bodyText": "1 店內張貼 QR Code 下載上方 QR Code 印出張貼在店內 2 分享加好友連結 複製連結分享到社群媒體或官網 3 名片或傳單 在名片、傳單上印製 QR Code 4 搜尋 ID 加入 顧客在 LINE 搜尋 @xxx 加入"
+  },
+  {
+   "id": "richMenuCard",
+   "cls": "card mb-4",
+   "headerIcon": "bi-grid-3x2",
+   "header": "Rich Menu 快捷選單",
+   "bodyText": "未設定 已設為預設顯示 進階選單設計 店家名稱 顧客聊天區域 開始預約 我的預約 瀏覽商品 作品展示 領取票券 我的票券 會員資訊 聯絡店家 即時預覽效果 選擇主題配色 LINE 綠 海洋藍 皇家紫 日落橘 暗黑 或上傳自訂背景 上傳背景圖片，系統會自動疊加描邊文字（不遮蓋背景） 直接使用背景圖（不疊加系統文字圖示） 取消勾選可讓系統在背景上疊加「開始預約」等文字和圖示 文字顏色 白色 黑色 金色 粉紅 天藍 建立主題選單 建立中... 1 選擇尺寸與佈局 標準 (2行) 大尺寸 (3行+) 3+4 2x3 2+3 2x2 1+2 3+4+4 1+4+4 4+4 3+4+4+1 自訂格數 行數 1 2 3 4 x 列數 1 2 3 4 5 套用 自由定義格數，每格可獨立設定功能 2 背景設定 或 上傳背景圖片或選擇純色背景 3 每格設定 4 預覽與發布 精確預覽 儲存草稿 發布到 LINE"
+  },
+  {
+   "id": "flexMenuCard",
+   "cls": "card mb-4",
+   "headerIcon": "bi-chat-square-text",
+   "header": "主選單樣式（Flex Message） 前往選單設計",
+   "bodyText": "自訂顧客在 LINE 聊天室看到的主選單外觀，包含按鈕顏色、圖示和標題。 啟用 Flex 主選單 關閉後：顧客輸入任何文字（含「選單」）都 不會 再彈出主選單，只會收到下方選擇的回應（提示文字或完全靜默）。 底部 Rich Menu 仍正常運作 ，所有功能（預約/商品/票券）不受影響——請確認已發布底部選單，否則顧客將沒有任何操作入口。 關閉時，顧客打閒聊文字的回應： 回提示文字「請點選下方選單使用 👇」（避免 Bot 看起來像死掉） 完全靜默（店家在 LINE OA Manager 自己手動回覆） 顧客打「活動」等文字時自動回覆活動列表 開啟（預設）：顧客輸入含「活動 / 優惠活動 / 最新活動 / 促銷」的文字時，系統自動回覆活動列表。 關閉：這類文字系統完全不回應——適合已在 LINE OA Manager 自設「本月活動」等關鍵字回覆的店家（避免兩邊同時回覆）。 Rich Menu"
+  },
+  {
+   "id": "",
+   "cls": "card",
+   "headerIcon": "bi-question-circle",
+   "header": "使用說明",
+   "bodyText": "LINE Bot 可以做什麼？ 接收顧客預約訊息 自動回覆預約確認 發送預約提醒通知 行銷訊息推播 常見問題 Q: 連線失敗怎麼辦？ 請確認 Channel ID、Secret 和 Token 是否正確。儲存後系統會自動設定 Webhook URL 並測試連線。 Q: Bot 不回應訊息？ 1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉 Q: Webhook 驗證是什麼？ 儲存設定後，系統會自動將 Webhook URL 設定到 LINE 並發送驗證請求。LINE 會向此 URL 發送測試訊號，收到 200 回應即代表驗證成功。如果驗證失敗，請重新點「儲存設定」再試一次。 Q: 按選單沒反應？ Rich Menu 按鈕需要 Bot 連線正常才會回應。請先確認上方「連線狀態」"
+  }
+ ],
+ "tables": [],
+ "forms": [
+  {
+   "id": "lineForm",
+   "action": "",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "channelId",
+     "placeholder": "純數字，例如：2005459361",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "Channel ID * 從 LINE 後台複製",
+     "help": "從 LINE 後台複製"
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "channelSecret",
+     "placeholder": "32 字元英數字，例如：ab2d0a47249da385b1dfda6d5adcb865",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "Channel Secret * 從 LINE 後台複製",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "channelAccessToken",
+     "placeholder": "很長的一串英數字（約 170 字元），例如：G6e//SU+Bv9k00q2cidc...",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "Channel Access Token * 從 LINE Developers Console 複製",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "webhookUrl",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "Webhook URL",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "lineBasicId",
+     "placeholder": "例如：@abc1234x",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "LINE 官方帳號基本 ID （選填）",
+     "help": "（選填）"
+    }
+   ]
+  }
+ ],
+ "looseFields": [
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "autoReplyEnabled",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "啟用自動回覆",
+   "help": ""
+  },
+  {
+   "tag": "textarea",
+   "type": "",
+   "name": "",
+   "id": "defaultReply",
+   "placeholder": "無法識別訊息時的預設回覆...",
+   "required": false,
+   "value": "",
+   "cls": "form-control",
+   "rows": "3",
+   "label": "預設回覆",
+   "help": "當 Bot 無法理解顧客訊息時的回覆 0 /500"
+  },
+  {
+   "tag": "input",
+   "type": "file",
+   "name": "",
+   "id": "defaultBgImage",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm",
+   "label": "或上傳自訂背景",
+   "help": "上傳背景圖片，系統會自動疊加描邊文字（不遮蓋背景）"
+  },
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "noOverlayCheckbox",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "直接使用背景圖（不疊加系統文字圖示）",
+   "help": "取消勾選可讓系統在背景上疊加「開始預約」等文字和圖示"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "customTextColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#FFFFFF",
+   "cls": "form-control form-control-sm form-control-color",
+   "label": "文字顏色",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "advMenuSize",
+   "id": "advSizeHalf",
+   "placeholder": "",
+   "required": false,
+   "value": "HALF",
+   "cls": "btn-check",
+   "label": "標準 (2行)",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "advMenuSize",
+   "id": "advSizeFull",
+   "placeholder": "",
+   "required": false,
+   "value": "FULL",
+   "cls": "btn-check",
+   "label": "大尺寸 (3行+)",
+   "help": ""
+  },
+  {
+   "tag": "select",
+   "type": "",
+   "name": "",
+   "id": "advCustomRows",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-select form-select-sm",
+   "options": [
+    {
+     "value": "1",
+     "label": "1"
+    },
+    {
+     "value": "2",
+     "label": "2"
+    },
+    {
+     "value": "3",
+     "label": "3"
+    },
+    {
+     "value": "4",
+     "label": "4"
+    }
+   ],
+   "label": "1 選擇尺寸與佈局",
+   "help": "行數"
+  },
+  {
+   "tag": "select",
+   "type": "",
+   "name": "",
+   "id": "advCustomCols",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-select form-select-sm",
+   "options": [
+    {
+     "value": "1",
+     "label": "1"
+    },
+    {
+     "value": "2",
+     "label": "2"
+    },
+    {
+     "value": "3",
+     "label": "3"
+    },
+    {
+     "value": "4",
+     "label": "4"
+    },
+    {
+     "value": "5",
+     "label": "5"
+    }
+   ],
+   "label": "1 選擇尺寸與佈局",
+   "help": "列數"
+  },
+  {
+   "tag": "input",
+   "type": "file",
+   "name": "",
+   "id": "advBgImage",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm",
+   "label": "2 背景設定",
+   "help": "或"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "advBgColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#F5F0E8",
+   "cls": "form-control form-control-sm form-control-color",
+   "label": "2 背景設定",
+   "help": "或"
+  },
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "flexMenuEnabledToggle",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "啟用 Flex 主選單",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "flexMenuFallbackMode",
+   "id": "flexMenuFallbackHint",
+   "placeholder": "",
+   "required": false,
+   "value": "hint",
+   "cls": "form-check-input",
+   "label": "回提示文字「請點選下方選單使用 👇」（避免 Bot 看起來像死掉）",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "radio",
+   "name": "flexMenuFallbackMode",
+   "id": "flexMenuFallbackSilent",
+   "placeholder": "",
+   "required": false,
+   "value": "silent",
+   "cls": "form-check-input",
+   "label": "完全靜默（店家在 LINE OA Manager 自己手動回覆）",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "campaignKeywordToggle",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "顧客打「活動」等文字時自動回覆活動列表",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "flexHeaderColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#1DB446",
+   "cls": "form-control form-control-color",
+   "label": "Header 顏色",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "flexHeaderColorText",
+   "placeholder": "",
+   "required": false,
+   "value": "#1DB446",
+   "cls": "form-control form-control-sm",
+   "label": "Header 顏色",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "flexHeaderTitle",
+   "placeholder": "例：✨ {shopName}",
+   "required": false,
+   "value": "✨ {shopName}",
+   "cls": "form-control form-control-sm",
+   "label": "Header 標題",
+   "help": "{shopName} 會自動替換為您的店名"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "flexHeaderSubtitle",
+   "placeholder": "",
+   "required": false,
+   "value": "歡迎光臨！請問需要什麼服務呢？",
+   "cls": "form-control form-control-sm",
+   "label": "歡迎語",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "checkbox",
+   "name": "",
+   "id": "flexShowTip",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-check-input",
+   "label": "顯示使用提示",
+   "help": ""
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepServiceColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#4A90D9",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "選擇服務"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "stepServiceTitle",
+   "placeholder": "✂️ 選擇您的服務",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm flex-step-title",
+   "label": "",
+   "help": "選擇服務"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepDateColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#1DB446",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "選擇日期"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "stepDateTitle",
+   "placeholder": "📅 選擇預約日期",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm flex-step-title",
+   "label": "",
+   "help": "選擇日期"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepStaffColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#4A90D9",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "選擇員工"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "stepStaffTitle",
+   "placeholder": "👤 選擇服務人員",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm flex-step-title",
+   "label": "",
+   "help": "選擇員工"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepTimeColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#4A90D9",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "選擇時段"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "stepTimeTitle",
+   "placeholder": "⏰ 選擇時段",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm flex-step-title",
+   "label": "",
+   "help": "選擇時段"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepNoteColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#5C6BC0",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "備註"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "stepNoteTitle",
+   "placeholder": "📝 備註事項",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm flex-step-title",
+   "label": "",
+   "help": "備註"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepConfirmColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#1DB446",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "確認預約"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "stepConfirmTitle",
+   "placeholder": "📋 確認預約資訊",
+   "required": false,
+   "value": "",
+   "cls": "form-control form-control-sm flex-step-title",
+   "label": "",
+   "help": "確認預約"
+  },
+  {
+   "tag": "input",
+   "type": "color",
+   "name": "",
+   "id": "stepSuccessColor",
+   "placeholder": "",
+   "required": false,
+   "value": "#1DB446",
+   "cls": "form-control form-control-color flex-step-color",
+   "label": "",
+   "help": "預約成功"
+  },
+  {
+   "tag": "input",
+   "type": "text",
+   "name": "",
+   "id": "",
+   "placeholder": "",
+   "required": false,
+   "value": "（使用系統預設標題）",
+   "cls": "form-control form-control-sm",
+   "label": "",
+   "help": "預約成功"
+  }
+ ],
+ "buttons": [
+  {
+   "text": "查看教學",
+   "icon": "bi-play-circle",
+   "cls": "btn btn-outline-success btn-sm",
+   "id": "",
+   "href": "",
+   "onclick": "showLineTutorial()"
+  },
+  {
+   "text": "一鍵前往關閉自動回應",
+   "icon": "bi-box-arrow-up-right",
+   "cls": "btn btn-danger btn-sm mb-2",
+   "id": "disableAutoReplyLink",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "查看詳細教學",
+   "icon": "bi-card-text",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "看圖文教學",
+   "icon": "bi-images",
+   "cls": "btn btn-sm btn-success",
+   "id": "",
+   "href": "",
+   "onclick": "showLineTutorial()"
+  },
+  {
+   "text": "",
+   "icon": "bi-eye",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "togglePassword('channelSecret')"
+  },
+  {
+   "text": "複製",
+   "icon": "bi-clipboard",
+   "cls": "btn btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": "copyWebhookUrl()"
+  },
+  {
+   "text": "儲存設定 儲存中...",
+   "icon": "bi-check-lg",
+   "cls": "btn btn-primary",
+   "id": "saveLineBtn",
+   "href": "",
+   "onclick": "saveLineSettings()"
+  },
+  {
+   "text": "解除綁定 處理中...",
+   "icon": "bi-x-circle",
+   "cls": "btn btn-outline-danger btn-sm",
+   "id": "disconnectBtn",
+   "href": "",
+   "onclick": "disconnectLine()"
+  },
+  {
+   "text": "測試連線 測試中...",
+   "icon": "bi-plug",
+   "cls": "btn btn-outline-primary btn-sm",
+   "id": "testConnectionBtn",
+   "href": "",
+   "onclick": "testConnection()"
+  },
+  {
+   "text": "完整檢查 檢查中...",
+   "icon": "bi-clipboard-check",
+   "cls": "btn btn-outline-warning btn-sm ms-2",
+   "id": "verifyConfigBtn",
+   "href": "",
+   "onclick": "verifyLineConfig()"
+  },
+  {
+   "text": "關閉",
+   "icon": "bi-x",
+   "cls": "btn btn-link btn-sm text-muted",
+   "id": "",
+   "href": "",
+   "onclick": "document.getElementById('verifyResultCard').classList.add('d-none')"
+  },
+  {
+   "text": "加入好友",
+   "icon": "bi-person-plus-fill",
+   "cls": "btn btn-lg text-white fw-bold",
+   "id": "addFriendBtn",
+   "href": "#",
+   "onclick": ""
+  },
+  {
+   "text": "複製連結",
+   "icon": "bi-link-45deg",
+   "cls": "btn btn-outline-success flex-fill",
+   "id": "",
+   "href": "",
+   "onclick": "copyAddFriendUrl()"
+  },
+  {
+   "text": "下載 QR Code",
+   "icon": "bi-download",
+   "cls": "btn btn-outline-success flex-fill",
+   "id": "",
+   "href": "",
+   "onclick": "downloadQrCode()"
+  },
+  {
+   "text": "進階選單設計",
+   "icon": "bi-palette-fill",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "/tenant/rich-menu-design",
+   "onclick": ""
+  },
+  {
+   "text": "LINE 綠",
+   "icon": "",
+   "cls": "btn btn-sm theme-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "海洋藍",
+   "icon": "",
+   "cls": "btn btn-sm theme-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "皇家紫",
+   "icon": "",
+   "cls": "btn btn-sm theme-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "日落橘",
+   "icon": "",
+   "cls": "btn btn-sm theme-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "暗黑",
+   "icon": "",
+   "cls": "btn btn-sm theme-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "白色",
+   "icon": "",
+   "cls": "btn btn-sm text-color-btn active",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "黑色",
+   "icon": "",
+   "cls": "btn btn-sm text-color-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "金色",
+   "icon": "",
+   "cls": "btn btn-sm text-color-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "粉紅",
+   "icon": "",
+   "cls": "btn btn-sm text-color-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "天藍",
+   "icon": "",
+   "cls": "btn btn-sm text-color-btn",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "建立主題選單 建立中...",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-success btn-sm w-100 mb-3",
+   "id": "createRichMenuBtn",
+   "href": "",
+   "onclick": "createRichMenu()"
+  },
+  {
+   "text": "標準 (2行)",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "大尺寸 (3行+)",
+   "icon": "",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "套用",
+   "icon": "bi-check-lg",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "",
+   "onclick": "applyCustomGrid()"
+  },
+  {
+   "text": "精確預覽",
+   "icon": "bi-eye",
+   "cls": "btn btn-outline-primary btn-sm flex-fill",
+   "id": "previewAdvBtn",
+   "href": "",
+   "onclick": "previewAdvancedRichMenu()"
+  },
+  {
+   "text": "儲存草稿",
+   "icon": "bi-save",
+   "cls": "btn btn-outline-secondary btn-sm flex-fill",
+   "id": "saveAdvConfigBtn",
+   "href": "",
+   "onclick": "saveAdvancedConfig()"
+  },
+  {
+   "text": "發布到 LINE 建立中...",
+   "icon": "bi-rocket",
+   "cls": "btn btn-success btn-sm w-100 mb-3",
+   "id": "createAdvRichMenuBtn",
+   "href": "",
+   "onclick": "createAdvancedRichMenu()"
+  },
+  {
+   "text": "刪除已發布的 Rich Menu 刪除中...",
+   "icon": "bi-trash",
+   "cls": "btn btn-outline-danger btn-sm w-100",
+   "id": "deleteRichMenuBtn",
+   "href": "",
+   "onclick": "deleteRichMenu()"
+  },
+  {
+   "text": "前往選單設計",
+   "icon": "bi-palette-fill",
+   "cls": "btn btn-sm btn-outline-primary",
+   "id": "",
+   "href": "/tenant/rich-menu-design",
+   "onclick": ""
+  },
+  {
+   "text": "",
+   "icon": "",
+   "cls": "btn btn-sm flex-header-preset",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "展開",
+   "icon": "bi-chevron-down",
+   "cls": "btn btn-sm btn-outline-secondary py-0 px-2",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "儲存主選單樣式 儲存中...",
+   "icon": "bi-check-lg",
+   "cls": "btn btn-primary btn-sm w-100 mb-3",
+   "id": "saveFlexMenuBtn",
+   "href": "",
+   "onclick": "saveFlexMenuConfig()"
+  },
+  {
+   "text": "恢復預設（預覽）",
+   "icon": "bi-arrow-counterclockwise",
+   "cls": "btn btn-outline-secondary btn-sm w-100",
+   "id": "",
+   "href": "",
+   "onclick": "resetFlexMenuConfig()"
+  },
+  {
+   "text": "清除已發布的主選單自訂設定 清除中...",
+   "icon": "bi-trash",
+   "cls": "btn btn-outline-danger btn-sm w-100",
+   "id": "deleteFlexMenuBtn",
+   "href": "",
+   "onclick": "deleteFlexMenuConfig()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "flexPopupModal",
+   "title": "自訂 Flex 彈窗設定",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "彈窗類型 單一卡片 輪播卡片（多張） 新增卡片",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "flexPopupCellIndex",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "flexPopupType",
+     "id": "flexPopupSingle",
+     "placeholder": "",
+     "required": false,
+     "value": "single",
+     "cls": "btn-check",
+     "label": "單一卡片",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "radio",
+     "name": "flexPopupType",
+     "id": "flexPopupCarousel",
+     "placeholder": "",
+     "required": false,
+     "value": "carousel",
+     "cls": "btn-check",
+     "label": "輪播卡片（多張）",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary btn-sm",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary btn-sm",
+     "id": ""
+    }
+   ]
+  },
+  {
+   "id": "lineTutorialModal",
+   "title": "LINE 設定圖文教學（跟著紅框做）",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down",
+   "bodyText": "",
+   "fields": [],
+   "footerButtons": []
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [
+  {
+   "cls": "alert alert-danger mb-4",
+   "text": "設定完成後必做！否則 Bot 不會回應 請到 LINE Official Account Manager 關閉自動回應： 進入您的官方帳號 → 設定 → 回應設定 「回應方式」改為只有「 手動聊天 」 不要 勾選「自動回應訊息」 確認「Webhook」顯示為 啟用 點擊下方按鈕直接前往您的回應設定頁面，將「回應方式」改為「 手動聊天 」： 一鍵前往關閉自動回應 如果不關閉，LINE 會攔截所有訊息，您的 Bot 完全不會收到也不會回應。",
+   "id": "autoReplyWarning"
+  },
+  {
+   "cls": "alert alert-info mb-3",
+   "text": "設定教學 看不懂文字？右邊改看圖文步驟 → 查看詳細教學 看圖文教學",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-warning small mb-3",
+   "text": "注意：一旦與服務提供者連動 即無法變更或解除",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-danger small mb-2 mt-2",
+   "text": "必做三件事！ 缺一不可，否則 Bot 不會回應： ① 回應設定 →「手動聊天」（關閉自動回應） ② Messaging API → Webhook URL 已填入 ③ LINE Developers Console →「Use webhook」已啟用",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-warning small mb-0",
+   "text": "驗證 Webhook： 儲存設定後，系統會自動將 Webhook URL 設定到 LINE 並發送驗證請求。LINE 會向此 URL 發送測試訊號，收到 200 回應即代表驗證成功。如果驗證失敗，請回到本系統重新點「儲存設定」再試一次。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-info small mb-4 py-2",
+   "text": "以下三個欄位的資料都要從 LINE 後台 取得，再複製貼到這裡。 不知道怎麼取得？請點擊右上角「查看教學」按步驟操作。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-danger small mt-2 py-2 px-3",
+   "text": "",
+   "id": "idFormatWarning"
+  },
+  {
+   "cls": "alert alert-danger small mt-2 py-2 px-3",
+   "text": "",
+   "id": "secretFormatWarning"
+  },
+  {
+   "cls": "alert alert-danger small mt-2 py-2 px-3",
+   "text": "",
+   "id": "tokenFormatWarning"
+  },
+  {
+   "cls": "alert alert-info small mb-3",
+   "text": "關閉後 bot 不會主動回覆客人閒聊；若沒有 Rich Menu，請告知顧客 傳「 選單 」「 預約 」「 票券 」「 商品 」「 會員 」「 作品 」等關鍵字即可叫出對應功能（按鈕點擊永遠可用）。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light border small mb-3",
+   "text": "💬 想讓顧客打「價格」「地址」等文字時 Bot 自動回覆？請到 店家營運 → 關鍵字回覆 設定（含系統內建關鍵字的停用/覆蓋管理）。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light border small mb-3",
+   "text": "想自訂「加好友歡迎訊息」？請到 店家設定 → 通知設定 →「加好友歡迎訊息（自訂）」 設定（會顯示在顧客加入好友時的歡迎卡片上）。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light small mt-3 mb-0",
+   "text": "Rich Menu 是顧客打開聊天室時，顯示在底部的快捷按鈕選單，可讓顧客快速操作預約、查詢等功能。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light border mb-3 py-2",
+   "text": "啟用 Flex 主選單 關閉後：顧客輸入任何文字（含「選單」）都 不會 再彈出主選單，只會收到下方選擇的回應（提示文字或完全靜默）。 底部 Rich Menu 仍正常運作 ，所有功能（預約/商品/票券）不受影響——請確認已發布底部選單，否則顧客將沒有任何操作入口。 關閉時，顧客打閒聊文字的回應： 回提示文字「請點選下方選單使用 👇」（避免 Bot 看起來像死掉） 完全靜默（店家在 LINE OA Manager 自己手動回覆）",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light border mb-3 py-2",
+   "text": "顧客打「活動」等文字時自動回覆活動列表 開啟（預設）：顧客輸入含「活動 / 優惠活動 / 最新活動 / 促銷」的文字時，系統自動回覆活動列表。 關閉：這類文字系統完全不回應——適合已在 LINE OA Manager 自設「本月活動」等關鍵字回覆的店家（避免兩邊同時回覆）。 Rich Menu「查看活動」按鈕不受影響。 ⚠️ 關閉前請先確認已在 LINE OA Manager 設好對應的關鍵字自動回覆， 否則顧客打「活動」相關文字會 完全沒有任何回應 。",
+   "id": ""
+  },
+  {
+   "cls": "alert alert-light small mt-3 mb-0",
+   "text": "LINE 聊天室背景是 LINE 平台功能，由每位用戶自行在 LINE App「設定 → 聊天 → 背景主題」中更改，無法透過 API 統一設定。",
+   "id": ""
+  }
+ ],
+ "emptyStates": [],
+ "badges": [
+  "1",
+  "2",
+  "3",
+  "4",
+  "已設為預設顯示",
+  "從 LINE Developers Console 複製",
+  "從 LINE 後台複製",
+  "未設定"
+ ],
+ "jsStrings": [
+  " 字元，可能沒有複製完整，或是貼錯欄位了。",
+  " 字元，請確認是否複製完整。",
+  " 項失敗",
+  " 項警告",
+  "${rows} 行 × ${cols} 列 = ${rows * cols} 格（點「套用」生效）",
+  "32 字元的密鑰",
+  "<br>Access Token 是一串很長的英數字（約 170 字元），不是 http 開頭的網址。",
+  "<br>請到 <strong>LINE Developers Console</strong>（不是 LINE 官方帳號管理後台）→ Messaging API Tab → 頁面最下方 → 點「Issue」產生 → 複製貼到這裡。",
+  "<strong>👉 這就是「按 Bot 沒反應」的元兇</strong><br>",
+  "></i> 灰罩 = 範例帳號，請忽略</span></div>",
+  "></i> 紅框 = 點／填這裡</span>",
+  "></i> 馬賽克 = 你自己的機密資料</span>",
+  "></i><strong>Access Token 通常約 170 字元。</strong>您目前只有 ",
+  "></i><strong>Channel ID 通常是純數字。</strong>請確認是否複製正確。",
+  "></i><strong>Channel Secret 通常是 32 字元。</strong>您目前只有 ",
+  "></i><strong>目前顧客看到的是「輪播卡片」主選單</strong>（在 <a href=",
+  "></i><strong>這不是 Access Token！</strong>您貼的是網址。",
+  "></i><strong>這不是 Channel ID！</strong>您貼的是網址。Channel ID 是純數字（例如 2005459361），請從 LINE 官方帳號管理後台的 Messaging API 頁面複製。",
+  "></i><strong>這不是 Channel Secret！</strong>您貼的是網址。Channel Secret 是 32 字元的英數字串，請從 LINE 官方帳號管理後台的 Messaging API 頁面複製。",
+  "></i>LINE 設定檢查報告 — ",
+  "></i>直接前往 LINE 後台</a></div>",
+  "></i>精確預覽",
+  "></i>編輯彈窗卡片",
+  "></span>預覽中...",
+  ">選單設計頁</a> 編輯）。此處是基本款氣泡編輯器——在這裡按「儲存」會把顧客看到的主選單<strong>切回氣泡款、輪播卡片停用</strong>。若只想調整輪播樣式，請前往選單設計頁。",
+  ">（重複，可刪）</span>",
+  "AI 正在思考中...",
+  "Channel Access Token 欄位貼的是網址，請貼入 LINE Developers Console 產生的 Token（很長的英數字串）",
+  "Channel ID 欄位貼的是網址，請貼入純數字的 Channel ID（從 LINE 後台複製）",
+  "Channel Secret 欄位貼的是網址，請貼入 32 字元的 Channel Secret（從 LINE 後台複製）",
+  "Flex 主選單已啟用",
+  "Flex 主選單已關閉（顧客只能透過 Rich Menu 操作）",
+  "LINE 帳號已解除綁定",
+  "LINE 帳號已解除綁定，但 Rich Menu 無法自動刪除（Token 已失效）。\\n\\n請到 LINE Developer Console 手動刪除 Rich Menu，否則顧客仍會看到舊選單。",
+  "LINE 綠",
+  "LINE 設定已儲存",
+  "Providers 點你的提供者",
+  "QR Code 已下載！可列印張貼在店內",
+  "Rich Menu 已刪除",
+  "Rich Menu 建立成功！已使用自訂背景搭配描邊文字",
+  "Rich Menu 建立成功！直接使用背景圖",
+  "Rich Menu 建立成功！顧客現在可以看到快捷選單了",
+  "Webhook URL 尚未產生",
+  "Webhook 不用自己填，存好金鑰後 VibeAI 會自動設定。",
+  "Webhook 沒開啟 → LINE 不會把使用者點選/訊息送到本系統 → 看起來 Bot 像在睡覺。",
+  "••••••••（已儲存，留空則不更新）",
+  "① 填店家名稱",
+  "① 已有帳號 → 點帳號名稱進入",
+  "① 按綠色「LINE帳號」",
+  "① 貼 Channel ID",
+  "① 輸入提供者名稱",
+  "① 點右上「⚙ 設定」",
+  "② 同意",
+  "② 填 Email",
+  "② 貼 Channel Secret",
+  "③ 貼 Channel Access Token",
+  "③ 選行業",
+  "④ 按「儲存設定」",
+  "④ 確定",
+  "★ 改成「手動聊天」",
+  "★ 複製 Channel ID 與 Channel secret",
+  "★ 貼上三組金鑰 → 儲存",
+  "⚠️ 有 ",
+  "✅ 全部通過",
+  "❌ 有 ",
+  "一、登入 LINE Business ID",
+  "一般不用！VibeAI 會自動設。若要手動：在 Dev Console Webhook URL 貼上 VibeAI 的 Webhook 網址按 Update。",
+  "七、把金鑰貼進 VibeAI 後台 ★（這段是重點）",
+  "三、進入後台",
+  "主選單",
+  "主選單已恢復預設",
+  "主選單樣式已儲存！顧客下次開啟聊天時會看到新樣式",
+  "九、（選用）設計 Rich Menu 聊天室選單",
+  "二、選擇或建立官方帳號",
+  "五、複製 Channel ID / Secret",
+  "作品展示",
+  "你的 Channel Access Token",
+  "你的 Channel ID",
+  "你的 Channel Secret",
+  "你的 Channel access token（複製它）",
+  "你的 Channel secret",
+  "修好後馬上活過來。</div>",
+  "儲存失敗：",
+  "儲存設定失敗，請重試",
+  "兩欄可留空，直接按「確定」。",
+  "八、LINE 後台關閉自動回應 ★（不關 Bot 不會回）",
+  "六、到 LINE Developers Console 拿 Token",
+  "切到「Messaging API」分頁",
+  "列出你管理的官方帳號。已有帳號點「帳號名稱」進入；沒有才點左上「建立」。",
+  "刪除失敗：",
+  "前往 LINE Developers Console",
+  "前往 LINE 官方帳號管理後台",
+  "卡片標題",
+  "卡片說明文字",
+  "同意",
+  "同意使用資訊",
+  "啟用 Messaging API",
+  "四、啟用 Messaging API",
+  "回 LINE 後台 → 設定",
+  "回到 LINE 官方帳號管理後台，點右上「設定」。",
+  "回到 VibeAI 後台 LINE 設定，把剛剛複製的 Channel ID、Channel Secret、Channel Access Token 貼到對應欄位，按「儲存設定」。Webhook 網址會自動帶入。",
+  "回報已送出，我們將盡快處理！",
+  "回應方式選「手動聊天」（關閉自動回應）。這樣顧客訊息才會交給 VibeAI Bot 處理。",
+  "在「Channel access token (long-lived)」按黑色「Issue」。",
+  "填「帳號名稱」「Email」「公司資訊」，選對「業種」，按「確定」。",
+  "填寫店家資料",
+  "姓名",
+  "完整檢查",
+  "尚未取得 QR Code",
+  "尚未取得加好友連結",
+  "左側選單點「Messaging API」。",
+  "左側選單點「回應設定」。",
+  "左側點「Messaging API」",
+  "左側點「回應設定」",
+  "已啟用",
+  "已套用 ${rows} 行 x ${cols} 列 = ${cellCount} 格",
+  "已恢復預設樣式（尚未儲存）",
+  "已複製到剪貼簿",
+  "已複製加好友連結！",
+  "已設為完全靜默模式",
+  "已設為純文字提示模式",
+  "已開啟活動關鍵字自動回覆",
+  "已開始新對話。請問需要什麼協助？",
+  "已關閉活動關鍵字自動回覆（改由您在 LINE OA Manager 自設的回覆接手）",
+  "帳號一覽：選擇你的帳號",
+  "帳號建立完成",
+  "店家代碼",
+  "建立 Rich Menu 主題選單",
+  "建立主題選單",
+  "建立失敗：",
+  "建立服務提供者",
+  "彈窗設定已儲存",
+  "往下捲找 Channel access token",
+  "我的店家",
+  "我的票券",
+  "我的訂單",
+  "我的預約",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "拖曳排序",
+  "按「Issue」",
+  "按「下一步」",
+  "按「下一步」。",
+  "按「了解並繼續使用」",
+  "按「前往主頁」",
+  "按「前往主頁」。",
+  "按「同意」",
+  "按「同意」。",
+  "按「啟用 Messaging API」",
+  "按「完成」",
+  "按「稍後進行認證（前往管理畫面）」",
+  "按「稍後進行認證（前往管理畫面）」進入後台。",
+  "按綠色「LINE帳號」，用你的個人 LINE 登入即可。",
+  "按鈕文字",
+  "換成你的實際行業",
+  "文字標籤",
+  "日落橘",
+  "暗黑模式",
+  "更新失敗：",
+  "最多 10 張卡片",
+  "會員資訊",
+  "未知",
+  "未知錯誤",
+  "未設定",
+  "格數範圍 1-20",
+  "業種要選符合你店家的類別。",
+  "模式：",
+  "檢查失敗：",
+  "檢查無誤後按綠色「完成」。",
+  "歡迎光臨！請問需要什麼服務呢？",
+  "沒有才點「建立」",
+  "海洋藍",
+  "清除失敗",
+  "清除失敗：",
+  "清除目前對話，下次開新對話？",
+  "測試連線",
+  "瀏覽商品",
+  "瀏覽精選作品",
+  "狀態「使用中」。複製 Channel ID 和 Channel secret 兩個，貼到 VibeAI 後台。",
+  "狀態「未使用」，按綠色「啟用 Messaging API」。",
+  "用「測試連線」確認 Token 對不對；「完整檢查」會跑 5 項找出「為什麼按 Bot 沒反應」。",
+  "用上一步「LINE帳號」登入的人不會看到這頁，可略過。",
+  "登入 LINE Business ID",
+  "發布失敗：",
+  "發行 Token（Issue）",
+  "皇家紫",
+  "目前顧客看到的是「輪播卡片」主選單。\\n\\n在這裡儲存會切回基本款氣泡、輪播卡片將停用（輪播設定仍保留，可到選單設計頁重新發布）。\\n\\n確定要切回氣泡款？",
+  "確定",
+  "確定啟用",
+  "確定要刪除 Rich Menu 嗎？刪除後顧客將看不到快捷選單。",
+  "確定要清除主選單自訂設定嗎？\\n\\n清除後將恢復系統預設樣式，卡片圖片也會一併刪除。",
+  "確定要解除 LINE 帳號綁定嗎？\\n\\n此操作將完全清除所有 LINE 設定（Channel ID、密鑰、Token、Rich Menu、主選單配置等），且無法復原。\\n\\n如需重新啟用，必須重新填寫所有 LINE 設定。",
+  "確認啟用",
+  "確認後按「確定」（連動後無法解除）。",
+  "確認資料 → 完成",
+  "網路錯誤",
+  "編輯彈窗卡片",
+  "聯絡店家",
+  "自動回覆設定已儲存",
+  "自訂圖片",
+  "自訂彈窗",
+  "自訂背景",
+  "自訂選單",
+  "自訂選單建立成功！",
+  "至少需要保留 1 個按鈕",
+  "舊測試提供者，請忽略",
+  "若你用的是商用帳號，輸入 Email、密碼後按「登入」。",
+  "若跳出條款更新，按「了解並繼續使用」。",
+  "複製 Channel ID + Secret",
+  "複製 Channel access token",
+  "複製失敗，請手動複製",
+  "複製好金鑰後，點頁面下方「LINE Developers Console」藍色連結。",
+  "複製這串 Token",
+  "複製這串長長的 Token（等一下要貼到 VibeAI）。",
+  "解除 LINE 綁定",
+  "解除綁定失敗：",
+  "設定彈窗卡片",
+  "請上傳 PNG 或 JPG 格式的圖片",
+  "請先上傳圖片",
+  "請填寫 Channel ID",
+  "請填寫問題標題",
+  "請填寫第 ${i + 1} 格的連結網址",
+  "請填寫詳細說明",
+  "請檢查 LINE 設定",
+  "請檢查設定",
+  "請檢查設定是否正確",
+  "請確認圖片和設定",
+  "請稍後再試",
+  "請至少填寫一張卡片的標題",
+  "請選擇問題類別",
+  "貼 Webhook 網址",
+  "購買優惠商品",
+  "跳過引導視窗 (1/2)",
+  "跳過引導視窗 (2/2)",
+  "載入 Flex Menu 配置失敗:",
+  "載入 Flex 主選單狀態失敗:",
+  "載入 LINE 設定失敗:",
+  "載入 Rich Menu 資訊失敗:",
+  "載入活動關鍵字設定失敗:",
+  "輸入帳密後按「登入」",
+  "輸入網址（https://...）",
+  "這些是測試提供者，請忽略",
+  "這是 Messaging API 設定頁，往下捲到最底找「Channel access token」。",
+  "連線測試失敗：",
+  "連線測試成功！繼續執行完整檢查...",
+  "連線錯誤，請稍後再試",
+  "進入後台主頁",
+  "進階自訂選單已發布到 LINE！",
+  "選「建立服務提供者」輸入名稱，按「同意」。",
+  "選「手動聊天」",
+  "選單 ",
+  "配置草稿已儲存",
+  "長字串 Token",
+  "開始預約",
+  "閱讀後按綠色「同意」。",
+  "隱私權政策（選填）",
+  "需訂閱「進階自訂選單」功能",
+  "需訂閱「進階自訂選單」功能才能發布",
+  "預覽圖已生成",
+  "預覽失敗：",
+  "預覽生成失敗",
+  "預覽生成失敗：",
+  "領取票券",
+  "頭像",
+  "點「LINE Developers Console」",
+  "點「Messaging API」分頁",
+  "點「回應設定」",
+  "點上方「Messaging API」分頁。",
+  "點你剛建立的提供者（你的店名）。",
+  "點你的 Messaging API 頻道卡片。",
+  "點你的提供者",
+  "點右上「設定」",
+  "點右上角的「⚙ 設定」。",
+  "點左側「Messaging API」",
+  "點這個頻道",
+  "點進 Messaging API 頻道",
+  "（以下 4 步：沒有帳號才需要「建立新帳號」，已有帳號跳第 9 步）",
+  "（同上，已輸入名稱）",
+  "（如出現）條款更新",
+  "（替代）用 Email 登入",
+  "（無回應）",
+  "（選用）Dev Console 手動設 Webhook",
+  "（選用）選主題配色或上傳背景，按「建立主題選單」，顧客聊天室底部就有快捷選單。"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/feature-store",
+  "/api/line/webhook/",
+  "/api/settings/line",
+  "/api/settings/line/campaign-keyword",
+  "/api/settings/line/disconnect",
+  "/api/settings/line/flex-menu",
+  "/api/settings/line/flex-menu-enabled",
+  "/api/settings/line/rich-menu",
+  "/api/settings/line/rich-menu/advanced-config",
+  "/api/settings/line/rich-menu/create",
+  "/api/settings/line/rich-menu/create-advanced",
+  "/api/settings/line/rich-menu/create-custom",
+  "/api/settings/line/rich-menu/preview-advanced",
+  "/api/settings/line/rich-menu/upload-image",
+  "/api/settings/line/test",
+  "/api/settings/line/verify",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 132282
+}

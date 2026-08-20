@@ -1,0 +1,1581 @@
+{
+ "rootVars": {
+  "--primary-color": "#4361ee",
+  "--primary-hover": "#3a56d4",
+  "--secondary-color": "#86868b",
+  "--success-color": "#34c759",
+  "--info-color": "#5ac8fa",
+  "--warning-color": "#ff9f0a",
+  "--danger-color": "#ff3b30",
+  "--light-color": "#f5f5f7",
+  "--dark-color": "#1d1d1f",
+  "--bg-gradient-primary": "linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%)",
+  "--bg-gradient-success": "linear-gradient(135deg, #34c759 0%, #30b350 100%)",
+  "--bg-gradient-info": "linear-gradient(135deg, #5ac8fa 0%, #32ade6 100%)",
+  "--bg-gradient-warning": "linear-gradient(135deg, #ff9f0a 0%, #ff8800 100%)",
+  "--bg-gradient-danger": "linear-gradient(135deg, #ff3b30 0%, #d70015 100%)",
+  "--sidebar-width": "250px",
+  "--sidebar-collapsed-width": "80px",
+  "--shadow-sm": "0 1px 2px rgba(0, 0, 0, 0.03)",
+  "--shadow": "0 2px 12px rgba(0, 0, 0, 0.06)",
+  "--shadow-md": "0 4px 20px rgba(0, 0, 0, 0.08)",
+  "--shadow-lg": "0 8px 30px rgba(0, 0, 0, 0.12)",
+  "--border-radius": "8px",
+  "--border-radius-lg": "12px",
+  "--font-family": "\"Inter\", \"Noto Sans TC\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
+ },
+ "topHexColors": [
+  [
+   "#fff",
+   28
+  ],
+  [
+   "#000",
+   9
+  ],
+  [
+   "#4361ee",
+   8
+  ],
+  [
+   "#e8e8ed",
+   7
+  ],
+  [
+   "#fafafa",
+   7
+  ],
+  [
+   "#1d1d1f",
+   5
+  ],
+  [
+   "#86868b",
+   4
+  ],
+  [
+   "#333",
+   4
+  ],
+  [
+   "#34c759",
+   3
+  ],
+  [
+   "#ff3b30",
+   3
+  ],
+  [
+   "#fff1d6",
+   3
+  ],
+  [
+   "#7a4f00",
+   3
+  ],
+  [
+   "#e4eaff",
+   3
+  ],
+  [
+   "#24358f",
+   3
+  ],
+  [
+   "#ddf5e6",
+   3
+  ],
+  [
+   "#146c37",
+   3
+  ],
+  [
+   "#eeeef0",
+   3
+  ],
+  [
+   "#55555b",
+   3
+  ],
+  [
+   "#6e6e73",
+   3
+  ],
+  [
+   "#8ea4ff",
+   3
+  ],
+  [
+   "#06C755",
+   3
+  ],
+  [
+   "#1DB446",
+   3
+  ],
+  [
+   "#dee2e6",
+   3
+  ],
+  [
+   "#adb5bd",
+   3
+  ],
+  [
+   "#f8f9fa",
+   3
+  ],
+  [
+   "#5ac8fa",
+   2
+  ],
+  [
+   "#ff9f0a",
+   2
+  ],
+  [
+   "#3a0ca3",
+   2
+  ],
+  [
+   "#d70015",
+   2
+  ],
+  [
+   "#dddfeb",
+   2
+  ],
+  [
+   "#ece2fb",
+   2
+  ],
+  [
+   "#4d2b8c",
+   2
+  ],
+  [
+   "#fce0d0",
+   2
+  ],
+  [
+   "#9c3600",
+   2
+  ],
+  [
+   "#6c757d",
+   2
+  ],
+  [
+   "#1e7e43",
+   2
+  ],
+  [
+   "#1a6b8f",
+   2
+  ],
+  [
+   "#2c2c2e",
+   2
+  ],
+  [
+   "#555",
+   2
+  ],
+  [
+   "#a7f3d0",
+   2
+  ],
+  [
+   "#263238",
+   2
+  ],
+  [
+   "#f8f8f8",
+   2
+  ],
+  [
+   "#e0e0e0",
+   2
+  ],
+  [
+   "#666",
+   2
+  ],
+  [
+   "#e9ecef",
+   2
+  ],
+  [
+   "#ccc",
+   2
+  ],
+  [
+   "#ddd",
+   2
+  ],
+  [
+   "#ff4444",
+   2
+  ],
+  [
+   "#3a56d4",
+   1
+  ],
+  [
+   "#f5f5f7",
+   1
+  ],
+  [
+   "#30b350",
+   1
+  ],
+  [
+   "#32ade6",
+   1
+  ],
+  [
+   "#ff8800",
+   1
+  ],
+  [
+   "#1f2d3d",
+   1
+  ],
+  [
+   "#0d6efd",
+   1
+  ],
+  [
+   "#198754",
+   1
+  ],
+  [
+   "#dc3545",
+   1
+  ],
+  [
+   "#ffc107",
+   1
+  ],
+  [
+   "#eef1fe",
+   1
+  ],
+  [
+   "#2a3eb1",
+   1
+  ],
+  [
+   "#eafaf0",
+   1
+  ],
+  [
+   "#f7f7f9",
+   1
+  ],
+  [
+   "#4a4a52",
+   1
+  ],
+  [
+   "#248a3d",
+   1
+  ],
+  [
+   "#ffe5e3",
+   1
+  ],
+  [
+   "#a51f16",
+   1
+  ],
+  [
+   "#e2f4fd",
+   1
+  ],
+  [
+   "#e3e6ef",
+   1
+  ],
+  [
+   "#4a5169",
+   1
+  ],
+  [
+   "#f0f0f2",
+   1
+  ],
+  [
+   "#a86400",
+   1
+  ],
+  [
+   "#c8271c",
+   1
+  ],
+  [
+   "#e65100",
+   1
+  ],
+  [
+   "#6f42c1",
+   1
+  ],
+  [
+   "#ececec",
+   1
+  ],
+  [
+   "#ECECEC",
+   1
+  ],
+  [
+   "#F7F8FB",
+   1
+  ],
+  [
+   "#f2f3f7",
+   1
+  ],
+  [
+   "#f59e0b",
+   1
+  ],
+  [
+   "#10b981",
+   1
+  ]
+ ],
+ "topRgba": [
+  [
+   "rgba(0, 0, 0, 0.04)",
+   10
+  ],
+  [
+   "rgba(0, 0, 0, 0.06)",
+   7
+  ],
+  [
+   "rgba(255, 255, 255, 0.8)",
+   6
+  ],
+  [
+   "rgba(0, 0, 0, 0.08)",
+   4
+  ],
+  [
+   "rgba(0, 0, 0, 0.12)",
+   4
+  ],
+  [
+   "rgba(255, 255, 255, 0)",
+   4
+  ],
+  [
+   "rgba(0, 0, 0, 0.1)",
+   4
+  ],
+  [
+   "rgba(255, 159, 10, 0.45)",
+   3
+  ],
+  [
+   "rgba(67, 97, 238, 0.4)",
+   3
+  ],
+  [
+   "rgba(52, 199, 89, 0.45)",
+   3
+  ],
+  [
+   "rgba(134, 134, 139, 0.4)",
+   3
+  ],
+  [
+   "rgba(0, 0, 0, 0.25)",
+   3
+  ],
+  [
+   "rgba(255, 255, 255, 0.15)",
+   3
+  ],
+  [
+   "rgba(255, 255, 255, 0.1)",
+   3
+  ],
+  [
+   "rgba(255, 255, 255, 0.3)",
+   3
+  ],
+  [
+   "rgba(0, 0, 0, 0.02)",
+   2
+  ],
+  [
+   "rgba(111, 66, 193, 0.4)",
+   2
+  ],
+  [
+   "rgba(230, 81, 0, 0.45)",
+   2
+  ],
+  [
+   "rgba(67, 97, 238, 0.25)",
+   2
+  ],
+  [
+   "rgba(255, 255, 255, 0.4)",
+   2
+  ],
+  [
+   "rgba(67, 97, 238, 0.32)",
+   2
+  ],
+  [
+   "rgba(255, 255, 255, 0.2)",
+   2
+  ],
+  [
+   "rgba(255, 255, 255, 0.7)",
+   2
+  ],
+  [
+   "rgba(0, 0, 0, 0.15)",
+   2
+  ],
+  [
+   "rgba(0, 0, 0, 0.3)",
+   2
+  ],
+  [
+   "rgba(0,0,0,0.1)",
+   2
+  ],
+  [
+   "rgba(16, 24, 40, 0.04)",
+   2
+  ],
+  [
+   "rgba(67, 97, 238, 0.28)",
+   2
+  ],
+  [
+   "rgba(16, 24, 40, 0.18)",
+   2
+  ],
+  [
+   "rgba(16, 24, 40, 0.10)",
+   2
+  ],
+  [
+   "rgba(16, 24, 40, 0)",
+   2
+  ],
+  [
+   "rgba(0, 0, 0, 0.03)",
+   1
+  ],
+  [
+   "rgba(67, 97, 238, 0.3)",
+   1
+  ],
+  [
+   "rgba(67,97,238,.25)",
+   1
+  ],
+  [
+   "rgba(..., var(--bs-bg-opacity,1)",
+   1
+  ],
+  [
+   "rgba(67, 97, 238, var(--bs-bg-opacity, 1)",
+   1
+  ],
+  [
+   "rgba(52, 199, 89, var(--bs-bg-opacity, 1)",
+   1
+  ],
+  [
+   "rgba(255, 59, 48, var(--bs-bg-opacity, 1)",
+   1
+  ],
+  [
+   "rgba(134, 134, 139, var(--bs-bg-opacity, 1)",
+   1
+  ],
+  [
+   "rgba(255, 159, 10, var(--bs-bg-opacity, 1)",
+   1
+  ]
+ ],
+ "borderRadius": [
+  [
+   "var(--border-radius)",
+   15
+  ],
+  [
+   "50%",
+   14
+  ],
+  [
+   "8px",
+   8
+  ],
+  [
+   "var(--border-radius-lg)",
+   7
+  ],
+  [
+   "6px",
+   5
+  ],
+  [
+   "10px",
+   4
+  ],
+  [
+   "12px",
+   4
+  ],
+  [
+   "0.5rem",
+   3
+  ],
+  [
+   "2px",
+   3
+  ],
+  [
+   "3px",
+   3
+  ],
+  [
+   "999px",
+   2
+  ],
+  [
+   "4px",
+   2
+  ],
+  [
+   "0 0.5rem 0.5rem 0",
+   2
+  ],
+  [
+   "var(--radius-sm, 6px) !important",
+   2
+  ],
+  [
+   "6px !important",
+   1
+  ],
+  [
+   "7px",
+   1
+  ],
+  [
+   "var(--border-radius-lg, 0.75rem)",
+   1
+  ],
+  [
+   "0.625rem",
+   1
+  ],
+  [
+   "30px",
+   1
+  ],
+  [
+   "22px",
+   1
+  ],
+  [
+   "25px",
+   1
+  ],
+  [
+   "18px",
+   1
+  ],
+  [
+   "0",
+   1
+  ]
+ ],
+ "boxShadow": [
+  [
+   "var(--shadow)",
+   11
+  ],
+  [
+   "var(--shadow-lg)",
+   4
+  ],
+  [
+   "var(--shadow-md)",
+   2
+  ],
+  [
+   "0 0 0 3px rgba(67, 97, 238, 0.25)",
+   2
+  ],
+  [
+   "inset 3px 0 0 #8ea4ff",
+   2
+  ],
+  [
+   "4px 4px 15px rgba(0, 0, 0, 0.25)",
+   2
+  ],
+  [
+   "none",
+   2
+  ],
+  [
+   "0 2px 8px rgba(67, 97, 238, 0.3)",
+   1
+  ],
+  [
+   "0 0 0 3px rgba(67,97,238,.25)",
+   1
+  ],
+  [
+   "0 1px 3px rgba(0, 0, 0, 0.25)",
+   1
+  ],
+  [
+   "inset 3px 0 0 rgba(142, 164, 255, 0.45)",
+   1
+  ],
+  [
+   "0 1px 0 rgba(0, 0, 0, 0.04)",
+   1
+  ],
+  [
+   "-6px 0 8px -6px rgba(0, 0, 0, 0.12)",
+   1
+  ],
+  [
+   "0 4px 20px rgba(102, 126, 234, 0.3)",
+   1
+  ],
+  [
+   "0 0 0 2px rgba(255, 255, 255, 0.3)",
+   1
+  ],
+  [
+   "0 2px 8px rgba(0, 0, 0, 0.1)",
+   1
+  ],
+  [
+   "0 4px 12px rgba(0, 0, 0, 0.15)",
+   1
+  ],
+  [
+   "0 1px 6px rgba(0, 0, 0, 0.06)",
+   1
+  ],
+  [
+   "0 -2px 10px rgba(0, 0, 0, 0.1)",
+   1
+  ],
+  [
+   "0 10px 40px rgba(0, 0, 0, 0.3)",
+   1
+  ],
+  [
+   "0 2px 8px rgba(0,0,0,0.1)",
+   1
+  ],
+  [
+   "0 1px 3px rgba(0,0,0,0.1)",
+   1
+  ],
+  [
+   "0 0 2px rgba(0,0,0,0.3)",
+   1
+  ],
+  [
+   "0 4px 20px rgba(0,0,0,0.12)",
+   1
+  ],
+  [
+   "0 0 0 0 rgba(255,68,68,0.3)",
+   1
+  ],
+  [
+   "0 0 0 6px rgba(255,68,68,0)",
+   1
+  ],
+  [
+   "0 2px 8px rgba(0,0,0,0.06)",
+   1
+  ],
+  [
+   "0 3px 12px rgba(6,199,85,0.2)",
+   1
+  ],
+  [
+   "0 -2px 10px rgba(0, 0, 0, 0.15)",
+   1
+  ],
+  [
+   "0 1px 2px rgba(16, 24, 40, 0.04)",
+   1
+  ]
+ ],
+ "fontSize": [
+  [
+   "0.75rem",
+   21
+  ],
+  [
+   "0.875rem",
+   14
+  ],
+  [
+   "0.8rem",
+   11
+  ],
+  [
+   "1.5rem",
+   9
+  ],
+  [
+   "0.7rem",
+   9
+  ],
+  [
+   "0.8125rem",
+   7
+  ],
+  [
+   "1rem",
+   7
+  ],
+  [
+   "1.25rem",
+   6
+  ],
+  [
+   "0.65rem",
+   6
+  ],
+  [
+   "0.85rem",
+   6
+  ],
+  [
+   "1.1rem",
+   4
+  ],
+  [
+   "12px",
+   4
+  ],
+  [
+   "14px",
+   4
+  ],
+  [
+   "1.125rem",
+   3
+  ],
+  [
+   "0.6rem",
+   3
+  ],
+  [
+   "2rem",
+   2
+  ],
+  [
+   "0.675rem",
+   2
+  ],
+  [
+   "2.5rem",
+   2
+  ],
+  [
+   "0.95rem",
+   2
+  ],
+  [
+   "0.9rem",
+   2
+  ],
+  [
+   "13px",
+   2
+  ],
+  [
+   "11px",
+   2
+  ],
+  [
+   "4rem",
+   1
+  ],
+  [
+   "0.625rem",
+   1
+  ],
+  [
+   "1.375rem",
+   1
+  ],
+  [
+   "16px",
+   1
+  ],
+  [
+   "1.25rem !important",
+   1
+  ],
+  [
+   "1rem !important",
+   1
+  ],
+  [
+   "1.2rem",
+   1
+  ],
+  [
+   "1.4rem",
+   1
+  ],
+  [
+   "0.5rem",
+   1
+  ],
+  [
+   "0.68rem",
+   1
+  ],
+  [
+   "6px",
+   1
+  ],
+  [
+   "5px",
+   1
+  ],
+  [
+   "0.82rem",
+   1
+  ],
+  [
+   "10px",
+   1
+  ]
+ ],
+ "fontWeight": [
+  [
+   "600",
+   24
+  ],
+  [
+   "700",
+   20
+  ],
+  [
+   "bold",
+   7
+  ],
+  [
+   "500",
+   4
+  ]
+ ],
+ "transition": [
+  [
+   "all 0.2s ease",
+   5
+  ],
+  [
+   "background-color 0.15s ease",
+   2
+  ],
+  [
+   "transform 0.15s ease, box-shadow 0.15s ease",
+   2
+  ],
+  [
+   "opacity 0.3s ease",
+   2
+  ],
+  [
+   "background-color 0.2s",
+   2
+  ],
+  [
+   "box-shadow 0.25s ease, transform 0.25s ease",
+   1
+  ],
+  [
+   "width 0.3s ease",
+   1
+  ],
+  [
+   "width 0.3s ease, transform 0.3s ease",
+   1
+  ],
+  [
+   "transform 0.25s ease",
+   1
+  ],
+  [
+   "color 0.15s ease",
+   1
+  ],
+  [
+   "transform 0.3s ease",
+   1
+  ],
+  [
+   "background 0.15s ease",
+   1
+  ],
+  [
+   "stroke-dashoffset 0.6s ease",
+   1
+  ],
+  [
+   "background 0.15s",
+   1
+  ],
+  [
+   "width 0.6s ease",
+   1
+  ],
+  [
+   "background 0.15s, transform 0.15s",
+   1
+  ],
+  [
+   "background-color 0.3s ease",
+   1
+  ],
+  [
+   "background-color 0.2s ease",
+   1
+  ],
+  [
+   "border-color 0.15s",
+   1
+  ],
+  [
+   "transform 0.2s",
+   1
+  ]
+ ],
+ "gradients": [
+  [
+   "linear-gradient(135deg, #4361ee 0%, #3a0ca3 100%)",
+   2
+  ],
+  [
+   "linear-gradient(135deg, #34c759 0%, #30b350 100%)",
+   1
+  ],
+  [
+   "linear-gradient(135deg, #5ac8fa 0%, #32ade6 100%)",
+   1
+  ],
+  [
+   "linear-gradient(135deg, #ff9f0a 0%, #ff8800 100%)",
+   1
+  ],
+  [
+   "linear-gradient(135deg, #ff3b30 0%, #d70015 100%)",
+   1
+  ],
+  [
+   "linear-gradient(to left, rgba(0, 0, 0, 0.10)",
+   1
+  ],
+  [
+   "linear-gradient(to right, white 30%, rgba(255, 255, 255, 0)) left center / 40px 100% no-repeat,\n        linear-gradient(to left, white 30%, rgba(255, 255, 255, 0)) right center / 40px 100% no-repeat,\n        radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.1)",
+   1
+  ],
+  [
+   "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+   1
+  ],
+  [
+   "linear-gradient(180deg, #06C755 0%, #00B050 100%)",
+   1
+  ],
+  [
+   "linear-gradient(to left, rgba(255,255,255,0.95)",
+   1
+  ],
+  [
+   "linear-gradient(135deg, #06C755 0%, #04a648 100%)",
+   1
+  ],
+  [
+   "linear-gradient(to right, #fff 30%, rgba(255, 255, 255, 0)) left center,\n            linear-gradient(to left, #fff 30%, rgba(255, 255, 255, 0)) right center,\n            linear-gradient(to right, rgba(16, 24, 40, 0.10)",
+   1
+  ],
+  [
+   "linear-gradient(to left, rgba(16, 24, 40, 0.10)",
+   1
+  ]
+ ],
+ "spacingValues": [
+  [
+   "0.5rem",
+   19
+  ],
+  [
+   "1rem",
+   17
+  ],
+  [
+   "0.75rem",
+   15
+  ],
+  [
+   "0",
+   11
+  ],
+  [
+   "8px",
+   8
+  ],
+  [
+   "1px",
+   7
+  ],
+  [
+   "1.25rem",
+   6
+  ],
+  [
+   "1.5rem",
+   6
+  ],
+  [
+   "0.75rem 1rem",
+   5
+  ],
+  [
+   "1rem 1.25rem",
+   4
+  ],
+  [
+   "6px",
+   4
+  ],
+  [
+   "0.25rem",
+   3
+  ],
+  [
+   "0.5rem 0",
+   3
+  ],
+  [
+   "0.5rem 1rem",
+   3
+  ],
+  [
+   "4px",
+   3
+  ],
+  [
+   "0 1rem",
+   3
+  ],
+  [
+   "10px",
+   3
+  ],
+  [
+   "12px",
+   3
+  ],
+  [
+   "16px",
+   3
+  ],
+  [
+   "0.375rem 0.75rem",
+   2
+  ],
+  [
+   "0.25rem 0.5rem",
+   2
+  ],
+  [
+   "0.875rem",
+   2
+  ],
+  [
+   "0.3rem 0.6rem",
+   2
+  ],
+  [
+   "0.2rem 0.4rem",
+   2
+  ],
+  [
+   "3px",
+   2
+  ],
+  [
+   "0 1rem 0.5rem",
+   2
+  ],
+  [
+   "0.65rem 1rem",
+   2
+  ],
+  [
+   "0.1rem 0.5rem",
+   2
+  ],
+  [
+   "0 1.5rem",
+   2
+  ],
+  [
+   "1rem 1.5rem",
+   2
+  ],
+  [
+   "2rem",
+   2
+  ],
+  [
+   "2px 4px",
+   2
+  ],
+  [
+   "0.4rem",
+   2
+  ],
+  [
+   "0.5rem 0.75rem",
+   2
+  ],
+  [
+   "8px 10px",
+   2
+  ],
+  [
+   "12px 20px",
+   2
+  ],
+  [
+   "2px",
+   2
+  ],
+  [
+   "0.875rem 1.25rem",
+   1
+  ],
+  [
+   "0.35em 0.75em",
+   1
+  ],
+  [
+   "0 2px",
+   1
+  ],
+  [
+   "3rem",
+   1
+  ],
+  [
+   "0.5rem 0.875rem",
+   1
+  ],
+  [
+   "0.25em 0.5em",
+   1
+  ],
+  [
+   "2rem 1rem",
+   1
+  ],
+  [
+   "0.875rem 1rem",
+   1
+  ],
+  [
+   "1.25rem 1.25rem 0.75rem",
+   1
+  ],
+  [
+   "0.35rem 1rem",
+   1
+  ],
+  [
+   "4px 5px",
+   1
+  ],
+  [
+   "0.5rem 1rem 0.5rem 2.75rem",
+   1
+  ],
+  [
+   "2rem 2rem 0.5rem",
+   1
+  ]
+ ],
+ "mediaQueries": [
+  "@media (hover: none) and (pointer: coarse) ",
+  "@media (max-width: 1200px) ",
+  "@media (max-width: 575.98px) ",
+  "@media (max-width: 576px) ",
+  "@media (max-width: 767.98px) ",
+  "@media (max-width: 768px) ",
+  "@media (max-width: 991.98px) ",
+  "@media (max-width: 991px) ",
+  "@media (max-width:991px) 裡完全到不了這裡 →\n   釘住的操作欄直接蓋在資料上。實測 1024×768 /tenant/bookings：整個「狀態」欄\n   （已確認/待確認徽章）被蓋 130px＝100% 看不到，金額 $1,200 被蓋 60px，共 22 格。\n   雖然橫捲到底可以救回來（捲到最右 covN=0），但預設狀態整欄消失且沒有任何提示。\n   ≥1200px 不套用：那裡表格多半塞得下，硬加 padding 反而製造不必要的橫捲。 */\n@media (min-width: 992px) and (max-width: 1199.98px) ",
+  "@media (min-width: 1200px) ",
+  "@media (min-width: 576px) ",
+  "@media (min-width: 576px) and (max-width: 767.98px) ",
+  "@media (min-width: 768px) ",
+  "@media (min-width: 768px) and (max-width: 991.98px) ",
+  "@media (min-width: 992px) ",
+  "@media (min-width: 992px) and (pointer: fine) ",
+  "@media (pointer: coarse) ",
+  "@media (pointer: coarse) and (min-width: 992px) ",
+  "@media(pointer:coarse) .btn-sm"
+ ],
+ "keyframes": [
+  "lt-bounce",
+  "lt-pulse",
+  "pendingPulse",
+  "pulse-dot",
+  "pulse-dot-green",
+  "pwaSlideUp",
+  "spin"
+ ],
+ "customClassCount": 319,
+ "customClasses": [
+  "active",
+  "adv-cell-action",
+  "adv-cell-label",
+  "adv-cell-settings",
+  "adv-preview-bg",
+  "adv-preview-cell",
+  "adv-preview-cell-border",
+  "adv-preview-cell-icon",
+  "adv-preview-cell-label",
+  "adv-preview-cell-num",
+  "adv-preview-cells",
+  "alert",
+  "align-self-center",
+  "app-footer",
+  "badge",
+  "bi-chevron-down",
+  "border",
+  "border-danger",
+  "border-info",
+  "border-warning",
+  "breadcrumb",
+  "breadcrumb-item",
+  "btn",
+  "btn-close",
+  "btn-group",
+  "btn-group-sm",
+  "btn-light",
+  "btn-link",
+  "btn-outline-secondary",
+  "btn-primary",
+  "btn-sidebar-toggle",
+  "btn-sm",
+  "calendar-container",
+  "calendar-legend",
+  "calendar-legend-dot",
+  "calendar-legend-item",
+  "card",
+  "card-body",
+  "card-grid",
+  "card-header",
+  "card-stack",
+  "card-title",
+  "cell-id",
+  "cell-row1",
+  "cell-row2",
+  "col-12",
+  "collapse",
+  "collapsed",
+  "collapsing",
+  "color-swatch",
+  "compact",
+  "complete-icon",
+  "complete-text",
+  "completed",
+  "css",
+  "d-flex",
+  "d-none",
+  "danger",
+  "dashboard-stats",
+  "data-table-actions",
+  "data-table-body",
+  "data-table-container",
+  "data-table-footer",
+  "data-table-header",
+  "data-table-info",
+  "data-table-scroll",
+  "data-table-title",
+  "detail-header",
+  "detail-section",
+  "detail-section-body",
+  "detail-section-header",
+  "detail-section-title",
+  "detail-subtitle",
+  "detail-title",
+  "extra-images-strip",
+  "fc-button",
+  "fc-button-primary",
+  "fc-col-header-cell-cushion",
+  "fc-dayGridMonth-view",
+  "fc-daygrid-day-number",
+  "fc-daygrid-event",
+  "fc-daygrid-more-link",
+  "fc-event",
+  "fc-event-time",
+  "fc-event-title",
+  "fc-header-toolbar",
+  "fc-list-day-side-text",
+  "fc-list-day-text",
+  "fc-toolbar",
+  "fc-toolbar-chunk",
+  "fc-toolbar-title",
+  "fc-view-harness",
+  "feature-card",
+  "feature-card-body",
+  "feature-card-footer",
+  "feature-card-header",
+  "feature-expiry-badge",
+  "feature-icon",
+  "feature-lock-icon",
+  "feature-locked",
+  "feature-price",
+  "feature-price-unit",
+  "filter-chips",
+  "flex-btn-setting",
+  "flex-column",
+  "flex-header-preset",
+  "flex-menu-btn",
+  "flex-menu-btn-row",
+  "flex-menu-btn-sub",
+  "flex-menu-btn-title",
+  "flex-menu-bubble",
+  "flex-menu-buttons",
+  "flex-menu-header",
+  "flex-menu-header-subtitle",
+  "flex-menu-header-title",
+  "flex-menu-phone-mockup",
+  "flex-menu-preview-container",
+  "flex-menu-tip",
+  "flex-menu-tip-text",
+  "flex-menu-tip-title",
+  "footer",
+  "form-check-input",
+  "form-control",
+  "form-control-color",
+  "form-control-shortish",
+  "form-select",
+  "form-switch",
+  "full",
+  "has-active",
+  "has-bottom-actions",
+  "has-custom-image",
+  "help-collapse-toggle",
+  "html",
+  "info",
+  "info-label",
+  "info-list",
+  "info-value",
+  "input-group",
+  "input-group-text",
+  "kw-chip",
+  "layout-3x4",
+  "layout-4x4",
+  "layout-label",
+  "layout-mini",
+  "layout-mini-1x2",
+  "layout-mini-2x2",
+  "layout-mini-2x3",
+  "layout-mini-2x3-top2",
+  "layout-mini-3row",
+  "layout-mini-3x4",
+  "layout-option",
+  "layout-selector",
+  "legend-toggle",
+  "line-chat-area",
+  "line-chat-hint",
+  "line-header",
+  "line-header-avatar",
+  "line-header-back",
+  "line-header-icons",
+  "line-header-name",
+  "login-body",
+  "login-card",
+  "login-footer",
+  "login-header",
+  "login-page",
+  "lt-browser-bar",
+  "lt-browser-body",
+  "lt-browser-dots",
+  "lt-browser-url",
+  "lt-dot",
+  "lt-dots",
+  "lt-flow-active",
+  "lt-flow-arrow",
+  "lt-flow-icon",
+  "lt-flow-item",
+  "lt-highlight",
+  "lt-highlight-arrow",
+  "lt-layout",
+  "lt-mock-btn",
+  "lt-mock-input",
+  "lt-mockup-browser",
+  "lt-mockup-side",
+  "lt-modal",
+  "lt-modal-body",
+  "lt-modal-footer",
+  "lt-modal-header",
+  "lt-nav-buttons",
+  "lt-step-badge",
+  "lt-steps-list",
+  "lt-text-side",
+  "lt-tip",
+  "lt-welcome-flow",
+  "mobile-bottom-actions",
+  "mobile-scroll-hint",
+  "modal-body",
+  "modal-content",
+  "modal-dialog",
+  "modal-footer",
+  "modal-title",
+  "nav",
+  "nav-item",
+  "nav-link",
+  "nav-pills",
+  "nav-tabs",
+  "nav-tabs-scroll",
+  "next-step",
+  "num",
+  "onboard-banner",
+  "onboard-danger",
+  "onboard-primary",
+  "onboard-success",
+  "onboarding-body",
+  "onboarding-card",
+  "onboarding-close",
+  "onboarding-complete",
+  "onboarding-header",
+  "onboarding-next-actions",
+  "onboarding-progress-bar",
+  "onboarding-progress-fill",
+  "onboarding-step",
+  "onboarding-steps",
+  "onboarding-subtitle",
+  "onboarding-title",
+  "page-eyebrow",
+  "page-eyebrow-current",
+  "page-header",
+  "page-subtitle",
+  "page-title",
+  "pending-badge",
+  "phone-bottom-bar",
+  "phone-home-indicator",
+  "phone-mockup",
+  "phone-screen",
+  "points-badge",
+  "preview-label",
+  "primary",
+  "progress-ring",
+  "progress-ring-fill",
+  "pwa-install-banner",
+  "quick-action-btn",
+  "quick-actions",
+  "report-card",
+  "rich-menu-advanced-preview",
+  "rich-menu-area-border",
+  "rich-menu-area-markers",
+  "rich-menu-area-number",
+  "rich-menu-cell",
+  "rich-menu-cell-icon",
+  "rich-menu-cell-text",
+  "rich-menu-custom-bg",
+  "rich-menu-custom-image",
+  "rich-menu-custom-preview",
+  "rich-menu-mode-tab",
+  "rich-menu-mode-tabs",
+  "rich-menu-preview",
+  "rich-menu-preview-container",
+  "sample-cat-btn",
+  "settings-card",
+  "settings-content",
+  "settings-nav",
+  "setup-attention-dot",
+  "setup-progress-label",
+  "setup-progress-link",
+  "shadow",
+  "shadow-sm",
+  "show",
+  "sidebar-brand",
+  "sidebar-brand-icon",
+  "sidebar-brand-text",
+  "sidebar-divider",
+  "sidebar-footer",
+  "sidebar-footer-content",
+  "sidebar-footer-icon",
+  "sidebar-footer-name",
+  "sidebar-group",
+  "sidebar-group-arrow",
+  "sidebar-group-toggle",
+  "sidebar-heading",
+  "sidebar-overlay",
+  "sidebar-setup-progress",
+  "sidebar-sub-nav",
+  "sidebar-toggle",
+  "small",
+  "sort-mode-group",
+  "stat-card",
+  "stat-icon-circle",
+  "stat-value",
+  "status-cancelled",
+  "status-completed",
+  "status-confirmed",
+  "status-no-show",
+  "status-pending",
+  "status-unprocessed",
+  "step-desc",
+  "step-icon",
+  "step-status",
+  "step-title",
+  "success",
+  "tab-pane",
+  "table",
+  "table-hover",
+  "table-responsive",
+  "tenant-name",
+  "tenant-switcher-btn",
+  "text-end",
+  "text-muted",
+  "text-nowrap",
+  "theme-BLUE",
+  "theme-DARK",
+  "theme-GREEN",
+  "theme-ORANGE",
+  "theme-PURPLE",
+  "topbar",
+  "topbar-left",
+  "topbar-right",
+  "user-avatar",
+  "user-dropdown",
+  "user-name",
+  "warning"
+ ]
+}

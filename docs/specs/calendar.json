@@ -1,0 +1,330 @@
+{
+ "route": "/tenant/calendar",
+ "file": "calendar",
+ "title": "行事曆 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "行事曆",
+   "icon": "",
+   "cls": "page-title"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [],
+ "tables": [],
+ "forms": [],
+ "looseFields": [
+  {
+   "tag": "select",
+   "type": "",
+   "name": "",
+   "id": "staffFilter",
+   "placeholder": "",
+   "required": false,
+   "value": "",
+   "cls": "form-select form-select-sm",
+   "options": [
+    {
+     "value": "",
+     "label": "全部員工"
+    }
+   ],
+   "label": "",
+   "help": ""
+  }
+ ],
+ "buttons": [
+  {
+   "text": "新增預約",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "window.location.href='/tenant/bookings?action=create'"
+  },
+  {
+   "text": "顧客預約",
+   "icon": "bi-calendar-check",
+   "cls": "btn btn-primary btn-sm active",
+   "id": "btnModeBooking",
+   "href": "",
+   "onclick": "switchCalendarMode('booking')"
+  },
+  {
+   "text": "員工排班",
+   "icon": "bi-people",
+   "cls": "btn btn-outline-primary btn-sm",
+   "id": "btnModeStaff",
+   "href": "",
+   "onclick": "switchCalendarMode('staff')"
+  }
+ ],
+ "modals": [
+  {
+   "id": "bookingModal",
+   "title": "預約詳情",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog",
+   "bodyText": "載入中...",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "關閉",
+     "cls": "btn btn-secondary",
+     "id": ""
+    }
+   ]
+  },
+  {
+   "id": "cancelReasonModal",
+   "title": "取消預約",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog",
+   "bodyText": "取消後將透過 LINE 通知顧客，請填寫原因讓顧客了解。 取消原因",
+   "fields": [
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "cancelReason",
+     "placeholder": "例：店家臨時公休、員工請假、時段調整...",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "3",
+     "label": "取消原因",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "返回",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定取消",
+     "cls": "btn btn-danger",
+     "id": "confirmCancelBtn"
+    }
+   ]
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [],
+ "emptyStates": [],
+ "badges": [],
+ "jsStrings": [
+  " 天每天都封鎖下面這個時間範圍</div>",
+  "${dateStr}（整天）",
+  "${prefix}🔢${booking.queueNumber}號 ${nameWithLine}${booking.queueSessionName ? ",
+  "${startDate} ～ ${lastDate}（共 ${days} 天）",
+  "></i>聊天</a>",
+  "><strong>備註：</strong>${escapeHtml(booking.customerNote)}</div>",
+  "><strong>時間：</strong>${booking.startTime?.substring(0, 5) || ",
+  "><strong>🌙 入住：</strong>${booking.bookingDate} ${booking.startTime?.substring(0,5) || ",
+  "><strong>🔢 掛號號碼：</strong>第 ${booking.queueNumber} 號${booking.queueSessionName ? ",
+  ">取消</button>",
+  ">多天：這 ",
+  ">已付清</span>",
+  ">已付訂金</span>",
+  ">待付款</span>",
+  ">查看詳情</a>",
+  ">標記完成</button>",
+  ">爽約</button>",
+  ">確認</button>",
+  ">關閉</button>",
+  ">（已折抵 $${(booking.couponDiscount || 0) + (booking.pointsRedeemed || 0)}）</span>",
+  "AI 正在思考中...",
+  "} → <strong>退房：</strong>${booking.checkoutDate} ${booking.endTime?.substring(0,5) || ",
+  "} → 退房 ${booking.checkoutDate} ${booking.endTime?.substring(0,5) || ",
+  "}${lineHint}\\n服務：${booking.serviceName || ",
+  "}\\n員工：${booking.staffName || ",
+  "}（${Math.max(1, Math.round((new Date(booking.checkoutDate) - new Date(booking.bookingDate))/86400000))} 晚）</div>",
+  "}（${nights}晚）",
+  "⚠️ 此預約需線上付款，但顧客${warn}。\\n\\n",
+  "例如：店休、私人行程",
+  "入住 ${booking.bookingDate} ${booking.startTime?.substring(0,5) || ",
+  "刪除封鎖「${props.btTitle}」？",
+  "刪除封鎖「${props.btTitle}」？\\n\\n這是「每週重複」的封鎖，會把每一週的這個封鎖整條刪除。",
+  "刪除封鎖時段",
+  "取消預約失敗:",
+  "取消預約失敗：",
+  "回報已送出，我們將盡快處理！",
+  "外部行事曆事件（唯讀）",
+  "完成預約失敗:",
+  "完成預約失敗：",
+  "封鎖已刪除",
+  "封鎖這一天",
+  "封鎖這個時段",
+  "尚未付款",
+  "已取消",
+  "已完成",
+  "已建立 ${ok} 筆封鎖${fail ? ",
+  "已標記爽約",
+  "已確認",
+  "已開始新對話。請問需要什麼協助？",
+  "待確認",
+  "從這個時間起 1 小時不接受預約（下一步可改名稱）",
+  "截圖讀取失敗",
+  "手動確認後時段就會被佔用（付款完成本來會自動確認）。\\n\\n確定要手動確認嗎？",
+  "抱歉，發生錯誤：",
+  "時間：${(booking.startTime?.substring(0, 5) || ",
+  "未建立任何封鎖",
+  "未指定",
+  "未知錯誤",
+  "未處理",
+  "標記爽約失敗:",
+  "標記爽約失敗：",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "爽約",
+  "確定標記此預約為「已完成」？（將自動集點。若需套用票券／點數，請改用「查看詳情」到預約列表操作）",
+  "確定標記此預約為「爽約」？",
+  "確認預約失敗:",
+  "確認預約失敗：",
+  "臨時封鎖",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請稍後再試",
+  "請選擇問題類別",
+  "請選擇開始與結束時間",
+  "載入員工列表失敗",
+  "載入失敗",
+  "載入行事曆資料失敗:",
+  "這一整天都不接受預約（下一步可改名稱）",
+  "這是「每天不同營業時間」自動產生的休息時段，要調整請到 店家設定 → 營運時間",
+  "連線錯誤，請稍後再試",
+  "開始時間必須早於結束時間",
+  "預約已取消",
+  "預約已完成",
+  "預約已確認",
+  "（無回應）",
+  "，已通知顧客",
+  "🔢 掛號號碼：第 ${booking.queueNumber} 號${booking.queueSessionName ? "
+ ],
+ "jsApiCalls": [
+  "/api/block-times",
+  "/api/block-times/${props.btId}",
+  "/api/bookings/${bookingId}/complete",
+  "/api/bookings/${bookingId}/confirm",
+  "/api/bookings/${bookingId}/no-show",
+  "/api/bookings/${cancelTargetId}/cancel",
+  "/api/bookings/calendar",
+  "/api/bug-report",
+  "/api/external-calendars/events",
+  "/api/staff/bookable",
+  "/api/staff/calendar",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 49573
+}

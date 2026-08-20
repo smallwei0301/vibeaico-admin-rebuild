@@ -1,0 +1,716 @@
+{
+ "route": "/tenant/products",
+ "file": "products",
+ "title": "商品管理 - 店家後台",
+ "metaDescription": "",
+ "headings": [
+  {
+   "lvl": "h1",
+   "text": "商品管理",
+   "icon": "",
+   "cls": "page-title"
+  },
+  {
+   "lvl": "h6",
+   "text": "商品列表",
+   "icon": "",
+   "cls": "data-table-title mb-0"
+  }
+ ],
+ "tabs": [],
+ "statCards": [],
+ "cards": [
+  {
+   "id": "",
+   "cls": "card mb-3 border-0 shadow-sm",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "使用小提醒 LINE 精選 ：點星星控制商品是否在 LINE 顯示（黃色＝顯示），LINE 最多顯示 11 件 ，多的請關掉。 拖曳排序 ：拖住左側圖示上下移動，放開自動儲存。LINE 和公開頁各自獨立排序。 套用順序 ：排好一邊後，一鍵複製到另一邊（省得排兩次）。 上架/下架 ：控制商品在公開頁面是否可見，下架後顧客看不到。"
+  },
+  {
+   "id": "",
+   "cls": "card mb-3 border-0 shadow-sm",
+   "headerIcon": "",
+   "header": "",
+   "bodyText": "篩選分類： 全部 排序模式： LINE 顯示順序 公開頁順序 套用此順序到公開頁 目前 LINE 精選： 0 件 （最多顯示 11 件） ⚠ 超過 11 件，請點星星關掉不需要的 此排序影響顧客在公開頁商品 Tab 看到的順序"
+  }
+ ],
+ "tables": [
+  {
+   "id": "",
+   "cls": "table table-hover",
+   "columns": [
+    "商品名稱",
+    "分類",
+    "售價",
+    "庫存",
+    "狀態",
+    "LINE",
+    "操作"
+   ],
+   "tbodyId": "dataTable",
+   "placeholder": "載入中..."
+  }
+ ],
+ "forms": [],
+ "looseFields": [],
+ "buttons": [
+  {
+   "text": "低庫存 0",
+   "icon": "bi-exclamation-triangle",
+   "cls": "btn btn-outline-warning",
+   "id": "lowStockBtn",
+   "href": "",
+   "onclick": "showLowStockProducts()"
+  },
+  {
+   "text": "管理分類",
+   "icon": "bi-tags",
+   "cls": "btn btn-outline-secondary",
+   "id": "",
+   "href": "",
+   "onclick": "openCategoryManageModal()"
+  },
+  {
+   "text": "新增商品",
+   "icon": "bi-plus-lg",
+   "cls": "btn btn-primary",
+   "id": "",
+   "href": "",
+   "onclick": "openCreateModal()"
+  },
+  {
+   "text": "",
+   "icon": "bi-chevron-down",
+   "cls": "btn btn-sm btn-link text-muted ms-auto p-0",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "全部",
+   "icon": "",
+   "cls": "btn btn-outline-primary active",
+   "id": "",
+   "href": "",
+   "onclick": ""
+  },
+  {
+   "text": "LINE 顯示順序",
+   "icon": "bi-stars",
+   "cls": "btn",
+   "id": "sortModeLineBtn",
+   "href": "",
+   "onclick": "setProductSortMode('line')"
+  },
+  {
+   "text": "公開頁順序",
+   "icon": "bi-globe",
+   "cls": "btn",
+   "id": "sortModePublicBtn",
+   "href": "",
+   "onclick": "setProductSortMode('public')"
+  },
+  {
+   "text": "套用此順序到公開頁",
+   "icon": "bi-arrow-left-right",
+   "cls": "btn btn-sm btn-outline-secondary",
+   "id": "syncOrderBtn",
+   "href": "",
+   "onclick": "syncProductOrder()"
+  }
+ ],
+ "modals": [
+  {
+   "id": "confirmModal",
+   "title": "確認",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "確定要執行此操作嗎？",
+   "fields": [],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確定",
+     "cls": "btn btn-primary",
+     "id": "confirmOkBtn"
+    }
+   ]
+  },
+  {
+   "id": "formModal",
+   "title": "新增商品",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "商品名稱 * 請輸入商品名稱 分類 * 管理分類 請選擇分類 請選擇商品分類 分類由店家自訂，可依行業特性自由建立（如：咖啡豆、毛巾、周邊商品） 售價 * NT$ 請輸入有效的價格 庫存數量 不填則不追蹤庫存 安全庫存量 庫存低於此數量會顯示警示 是否追蹤庫存 啟用庫存追蹤 單次最多購買數量 每個顧客單筆訂單的上限（例：限購 5 件） 排序（公開頁面顯示順序） 數字越小越前面（例：0 最前面），相同時依名稱排序 主圖（第一張，必填） 移除主圖 支援 JPG / PNG，建議尺寸 800x800，最大 2MB 其他圖片（選填，最多 8 張） 可一次選多張，用於商品細節/不同角度展示 商品描述",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "dataId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": "分類由店家自訂，可依行業特性自由建立（如：咖啡豆、毛巾、周邊商品）"
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "name",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "商品名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "categoryId",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇分類"
+      }
+     ],
+     "label": "分類 * 管理分類",
+     "help": "分類由店家自訂，可依行業特性自由建立（如：咖啡豆、毛巾、周邊商品）"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "price",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "售價 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "stockQuantity",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "庫存數量",
+     "help": "不填則不追蹤庫存"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "safetyStock",
+     "placeholder": "低於此數量會提醒",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "安全庫存量",
+     "help": "庫存低於此數量會顯示警示"
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "trackInventory",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "啟用庫存追蹤",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "maxPerOrder",
+     "placeholder": "留空不限，以庫存為上限",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "單次最多購買數量",
+     "help": "每個顧客單筆訂單的上限（例：限購 5 件）"
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "sortOrder",
+     "placeholder": "",
+     "required": false,
+     "value": "0",
+     "cls": "form-control",
+     "label": "排序（公開頁面顯示順序）",
+     "help": "數字越小越前面（例：0 最前面），相同時依名稱排序"
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "imageFile",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "主圖（第一張，必填）",
+     "help": "支援 JPG / PNG，建議尺寸 800x800，最大 2MB"
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "extraImageFiles",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "其他圖片（選填，最多 8 張）",
+     "help": "可一次選多張，用於商品細節/不同角度展示"
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "description",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "rows": "3",
+     "label": "商品描述",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "儲存 儲存中...",
+     "cls": "btn btn-primary",
+     "id": "productSaveBtn"
+    }
+   ]
+  },
+  {
+   "id": "stockModal",
+   "title": "調整庫存",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-sm",
+   "bodyText": "商品名稱 目前庫存 安全庫存 目前庫存低於安全庫存 調整數量 * -10 -1 +1 +10 調整後庫存： - 調整原因 請選擇原因 進貨補充 銷售出貨 盤點調整 損耗報廢 退貨入庫 其他 其他原因",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "stockProductId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "stockAdjustQty",
+     "placeholder": "",
+     "required": false,
+     "value": "0",
+     "cls": "form-control text-center",
+     "label": "調整數量 *",
+     "help": ""
+    },
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "stockReasonSelect",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇原因"
+      },
+      {
+       "value": "進貨補充",
+       "label": "進貨補充"
+      },
+      {
+       "value": "銷售出貨",
+       "label": "銷售出貨"
+      },
+      {
+       "value": "盤點調整",
+       "label": "盤點調整"
+      },
+      {
+       "value": "損耗報廢",
+       "label": "損耗報廢"
+      },
+      {
+       "value": "退貨入庫",
+       "label": "退貨入庫"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "調整原因",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "stockReason",
+     "placeholder": "請輸入原因",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "其他原因",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "確認調整 處理中...",
+     "cls": "btn btn-primary",
+     "id": "stockAdjustBtn"
+    }
+   ]
+  },
+  {
+   "id": "categoryManageModal",
+   "title": "商品分類管理",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-lg",
+   "bodyText": "依行業自由建立分類（如咖啡豆/器具/書籍/寵物用品等），最多 50 個。 分類名稱 * 排序 啟用 新增 清除 拖曳左側圖示可調整分類順序 名稱 狀態 操作 尚無分類",
+   "fields": [
+    {
+     "tag": "input",
+     "type": "hidden",
+     "name": "",
+     "id": "catEditId",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "",
+     "label": "分類名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "catName",
+     "placeholder": "例：熱門商品",
+     "required": false,
+     "value": "",
+     "cls": "form-control form-control-sm",
+     "label": "分類名稱 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "number",
+     "name": "",
+     "id": "catSortOrder",
+     "placeholder": "",
+     "required": false,
+     "value": "0",
+     "cls": "form-control form-control-sm",
+     "label": "排序",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "checkbox",
+     "name": "",
+     "id": "catIsActive",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-check-input",
+     "label": "啟用",
+     "help": ""
+    }
+   ],
+   "footerButtons": []
+  },
+  {
+   "id": "bugReportModal",
+   "title": "回報問題",
+   "cls": "modal fade",
+   "dialogCls": "modal-dialog modal-dialog-centered",
+   "bodyText": "問題類別 * 請選擇類別 功能異常 顯示問題 操作困難 其他 問題標題 * 詳細說明 * 附上截圖（選填） 支援 PNG、JPG、GIF、WebP，建議小於 5MB 聯絡信箱",
+   "fields": [
+    {
+     "tag": "select",
+     "type": "",
+     "name": "",
+     "id": "bugCategory",
+     "placeholder": "",
+     "required": true,
+     "value": "",
+     "cls": "form-select",
+     "options": [
+      {
+       "value": "",
+       "label": "請選擇類別"
+      },
+      {
+       "value": "功能異常",
+       "label": "功能異常"
+      },
+      {
+       "value": "顯示問題",
+       "label": "顯示問題"
+      },
+      {
+       "value": "操作困難",
+       "label": "操作困難"
+      },
+      {
+       "value": "其他",
+       "label": "其他"
+      }
+     ],
+     "label": "問題類別 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "text",
+     "name": "",
+     "id": "bugTitle",
+     "placeholder": "簡短描述問題",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "label": "問題標題 *",
+     "help": ""
+    },
+    {
+     "tag": "textarea",
+     "type": "",
+     "name": "",
+     "id": "bugDescription",
+     "placeholder": "請描述問題的重現步驟、發生時間、錯誤訊息等...",
+     "required": true,
+     "value": "",
+     "cls": "form-control",
+     "rows": "4",
+     "label": "詳細說明 *",
+     "help": ""
+    },
+    {
+     "tag": "input",
+     "type": "file",
+     "name": "",
+     "id": "bugScreenshot",
+     "placeholder": "",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "附上截圖（選填）",
+     "help": "支援 PNG、JPG、GIF、WebP，建議小於 5MB"
+    },
+    {
+     "tag": "input",
+     "type": "email",
+     "name": "",
+     "id": "bugEmail",
+     "placeholder": "方便我們聯繫您",
+     "required": false,
+     "value": "",
+     "cls": "form-control",
+     "label": "聯絡信箱",
+     "help": ""
+    }
+   ],
+   "footerButtons": [
+    {
+     "text": "取消",
+     "cls": "btn btn-secondary",
+     "id": ""
+    },
+    {
+     "text": "送出回報",
+     "cls": "btn btn-primary",
+     "id": ""
+    }
+   ]
+  }
+ ],
+ "alerts": [],
+ "emptyStates": [
+  {
+   "cls": "text-center text-muted py-5",
+   "text": "載入中...",
+   "id": ""
+  }
+ ],
+ "badges": [
+  "0",
+  "上架中",
+  "售完",
+  "已下架",
+  "草稿"
+ ],
+ "jsStrings": [
+  " 張）</div>",
+  " 張，請先移除再新增",
+  " 無法讀取（可能是 HEIC 格式，請改存成 JPG/PNG），已略過",
+  " 讀取失敗，已略過",
+  " 超過 2MB，跳過",
+  "${actionText}商品失敗:",
+  "${actionText}失敗: ",
+  ">不追蹤</span>",
+  ">停用</span>",
+  ">全部 <span class=",
+  ">售完</span>",
+  ">啟用</span>",
+  ">尚未新增其他圖片（已有 0 / ",
+  ">尚無分類</td></tr>",
+  ">未分類 <span class=",
+  ">請選擇分類</option>",
+  ">載入失敗</td></tr>",
+  "AI 正在思考中...",
+  "LINE 順序已更新",
+  "LINE 顯示順序",
+  "}${adjustQty}，目前庫存：${r.data.stockQuantity}",
+  "上架",
+  "下架",
+  "儲存商品失敗:",
+  "儲存失敗",
+  "儲存失敗: ",
+  "儲存失敗：",
+  "公開頁",
+  "公開頁順序",
+  "公開頁順序已更新",
+  "其他",
+  "分類已刪除",
+  "分類已新增",
+  "分類已更新",
+  "分類順序已更新",
+  "切換失敗",
+  "切換失敗：",
+  "刪除商品失敗:",
+  "刪除失敗",
+  "刪除失敗：",
+  "同步失敗",
+  "同步失敗：",
+  "商品已${actionText}",
+  "商品已刪除",
+  "商品建立成功",
+  "商品更新成功",
+  "商品銷售",
+  "回報已送出，我們將盡快處理！",
+  "圖片大小不可超過 2MB",
+  "在 LINE 顯示中（點擊隱藏）",
+  "套用此順序到 LINE",
+  "套用此順序到公開頁",
+  "將目前的「${fromLabel}」套用到 ${toMode} 排序？\\n\\n會覆蓋現有 ${toMode} 排序。",
+  "已在 LINE 顯示",
+  "已套用到${toMode}排序",
+  "已從 LINE 隱藏",
+  "已從 LINE 隱藏（點擊顯示）",
+  "已達上限 ",
+  "已開始新對話。請問需要什麼協助？",
+  "庫存管理",
+  "庫存管理是<strong>獨立於「商品銷售」的另一個功能</strong>。未訂閱時無法調整庫存、也看不到庫存異動記錄。",
+  "庫存調整成功！${adjustQty > 0 ? ",
+  "截圖讀取失敗",
+  "抱歉，發生錯誤：",
+  "排序失敗",
+  "新增",
+  "新增商品",
+  "更新",
+  "未知錯誤",
+  "未訂閱時<strong>無法新增/修改商品，也無法上架</strong>，公開頁與 LINE 的商品入口不會出現。既有商品資料會保留。",
+  "未設定",
+  "未追蹤",
+  "清除失敗",
+  "清除目前對話，下次開新對話？",
+  "確定刪除此分類？（若還有商品使用會拒絕刪除）",
+  "確定要刪除此商品嗎？",
+  "確定要將此商品${actionText}嗎？",
+  "禮品卡",
+  "移除",
+  "網路錯誤",
+  "編輯商品",
+  "美甲產品",
+  "調整失敗: ",
+  "調整庫存失敗:",
+  "調整後庫存不能為負數",
+  "請填寫分類名稱",
+  "請填寫問題標題",
+  "請填寫詳細說明",
+  "請檢查標示紅色的欄位（名稱、分類、價格等）",
+  "請稍後再試",
+  "請輸入有效的調整數量",
+  "請選擇問題類別",
+  "護膚產品",
+  "護髮產品",
+  "載入商品失敗:",
+  "載入商品詳情失敗",
+  "載入商品詳情失敗:",
+  "造型產品",
+  "連線錯誤，請稍後再試",
+  "配件",
+  "點擊上架",
+  "點擊下架",
+  "（無回應）"
+ ],
+ "jsApiCalls": [
+  "/api/bug-report",
+  "/api/product-categories",
+  "/api/product-categories/${id}",
+  "/api/product-categories/reorder",
+  "/api/products",
+  "/api/products/${id}",
+  "/api/products/${id}/${action}",
+  "/api/products/${id}/adjust-stock",
+  "/api/products/${id}/toggle-line-featured",
+  "/api/products/reorder",
+  "/api/products/reorder-line",
+  "/api/support-chat/history",
+  "/api/support-chat/message",
+  "/api/support-chat/new-session",
+  "/api/support-chat/status"
+ ],
+ "inlineJsBytes": 56217
+}
