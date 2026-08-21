@@ -102,6 +102,7 @@ select *，避免洩漏成本欄位）。無登入者可讀行程；下單需旅
 | 端點 | auth | 說明 |
 |---|---|---|
 | GET `/api/public/shops/{shopCode}` | 無 | 店家公開資料（名稱/介紹/品牌色） |
+| GET `/api/public/shops/{shopCode}/catalog` | 無 | **統一目錄**：`{sections:[{type:'TRIPS'\|'SERVICES'\|'PRODUCTS'\|'PORTFOLIO', items:[…]}]}`。只回該店實際有的區塊（導遊只有 TRIPS、沙龍只有 SERVICES、斜槓店家兩者都有），順序依店面設計設定。商店頁與 LINE 目錄輪播共用這一支 |
 | GET `/api/public/shops/{shopCode}/trips` | 無 | PUBLISHED 行程列表（Midao 另加 `?midaoListed=true`） |
 | GET `/api/public/shops/{shopCode}/trips/{slug}` | 無 | 行程詳情 + 方案 + 未來團次與**即時剩餘名額**（`capacity - seats_booked`，永不快取） |
 | GET `/api/public/departures/{id}/availability` | 無 | 單一團次餘額（下單頁輪詢用） |
@@ -112,8 +113,17 @@ select *，避免洩漏成本欄位）。無登入者可讀行程；下單需旅
 | GET `/api/public/trips/{tripId}/reviews` | 無 | 評論列表（hidden 過濾） |
 | POST `/api/public/orders/{id}/review` | 旅客 JWT | 限本人、訂單 COMPLETED、一單一評 |
 
-VibeAI 商店頁本體：`src/app/s/[shopCode]/**`（行程列表、詳情、下單、我的訂單），
-吃上表同一組 API —— **商店頁不走 services/mock 層**，它是公開站，直接 fetch。
+VibeAI 商店頁本體：`src/app/s/[shopCode]/**`，吃上表同一組 API ——
+**商店頁不走 services/mock 層**，它是公開站，直接 fetch。
+
+> **設計原則（owner 2026-08-21 確認）：一個商店頁，動態組區塊。**
+> 不存在「服務版」與「行程版」兩種商店頁 —— 首頁依 `catalog` 端點回傳的
+> sections 渲染（行程／服務項目／商品／作品集，有什麼顯示什麼），店家在
+> 既有「店面設計」頁控制區塊順序與開關。行程與服務在**資料層刻意分開**
+> （時段×員工 vs 團次×名額，兩種庫存邏輯不可糾纏），但在**展示層合一**：
+> 顧客、旅客、LINE bot 看到的永遠是一間店的一份目錄。共用的還有：
+> 顧客資料（同一人可既約服務又報行程）、LINE 綁定、收款方式、通知、
+> 點數；LINE「我的預約」合併顯示 bookings 與 tour_orders。
 
 ## 3. 旅客 → 導遊顧客自動建檔（owner 決策 ②）
 

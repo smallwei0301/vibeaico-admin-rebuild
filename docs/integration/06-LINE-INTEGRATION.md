@@ -142,7 +142,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 |---|---|
 | `follow` | `lineProfile()` 取暱稱頭像 → upsert `line_users`（followed=true）→ 回覆歡迎訊息（`notify.welcomeMessageText`，空則略過）。若 `privacy.deferProfileCollectionEnabled=false` → 追加個資收集引導（`profileCollectIntroText`） |
 | `unfollow` | `line_users.followed = false` |
-| `message`(text) | 依序嘗試，命中即回覆並停止：① `keyword_replies`（active，keywords 完全比對）② `campaigns`（PUBLISHED 且 keyword 相符，`lineConfig.campaignKeywordEnabled`）③ 內建指令「預約」→ 回公開預約頁連結 `buildPublicBookingUrl()` ④ `lineConfig.autoReplyEnabled` → `defaultReply` ⑤ 都沒有→不回。無論是否回覆，都寫入 `chat_messages`（direction='IN'） |
+| `message`(text) | 依序嘗試，命中即回覆並停止：① 進行中的下單對話（`chat_sessions` 有 step → 交給 10 分冊 §6.2 流程）② `keyword_replies`（active，keywords 完全比對）③ `campaigns`（PUBLISHED 且 keyword 相符，`lineConfig.campaignKeywordEnabled`）④ 內建指令：「預約」→ 服務/行程目錄（10 分冊 §6.1）、「行程」→ 行程輪播、「服務」→ 服務輪播、「我的預約」→ 合併 bookings + tour_orders ⑤ AI 客服（09 §7，訂閱且啟用時）⑥ `lineConfig.autoReplyEnabled` → `defaultReply` ⑦ 都沒有→不回。無論是否回覆，都寫入 `chat_messages`（direction='IN'） |
 | `message`(image/sticker…) | 只寫 `chat_messages` |
 | `postback` | 保留：`data` 格式 `action=xxx&…`，MVP 先 log |
 

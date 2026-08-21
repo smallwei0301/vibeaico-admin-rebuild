@@ -237,10 +237,43 @@ create table tenant_payment_methods (
 
 ## 6. LINE 流程延伸（接 06 分冊）
 
-- webhook 內建指令「行程」→ 回 Flex 輪播（PUBLISHED 行程卡片，按鈕連到商店頁該行程）。
-- 旅客在 LINE 詢問 → 既有 chat 流程；導遊確認後用 `/api/tour-orders/manual` 建單
-  （綁定該 line_user 對應的 customer）→ 訂單確認/提醒推播沿用 notify 機制。
-- AI 客服（09 §7）的 system prompt 增補行程清單與價格摘要。
+LINE 是行程的第一線銷售通路，分兩版實作：
+
+### 6.1 目錄與問答（與商店頁同一份資料）
+
+- 關鍵字「行程」→ Flex 輪播（PUBLISHED 行程卡片：封面/標語/最低價/
+  「我要預約」按鈕）；「服務」→ 既有服務輪播；「預約」→ 兩者都有的店先出
+  快速回覆「想預約服務還是行程？」，只有一種的店直接進該流程。
+  卡片資料來源 = 11 分冊的 `catalog` 端點（與商店頁共用，永遠一致）。
+- **AI 客服（09 §7）的 system prompt 增補**：行程清單、各方案價格摘要、
+  未來 14 天團次與**即時剩餘名額**（`capacity - seats_booked`）——
+  顧客問「這週末賞鯨還有位子嗎」要能直接答出正確餘額。
+
+### 6.2 LINE 內下單
+
+**v1（Phase 8 交付）**：行程卡片「我要預約」按鈕 = 商店頁該行程網址
+（LINE 內建瀏覽器開啟，走 11 分冊 checkout）。實作成本趨近於零，
+商店頁完成即可在 LINE 收單。
+
+**v2（Phase 8+，聊天內完成下單）**：postback 流程，狀態存
+`chat_sessions`（tenant_id + line_user_id + step + payload jsonb，新表併入 0012）：
+
+```
+[我要預約] postback(action=trip_book&trip=…)
+ → 選方案（快速回覆，每方案一顆）
+ → 選團次（postback 按鈕，文案「8/23（六）09:00｜剩 3 位」，只列 OPEN 且有餘額的未來 14 天）
+ → 輸入人數（驗 min/max 與餘額）
+ → 確認摘要卡 → 建立 tour_order（source='LINE'，rpc 佔名額）
+ → 回覆付款指示（匯款資訊 / 刷卡連結）→ 後續同 §3 生命週期（確認收款 → 推播成立）
+```
+
+規約：任一步輸入不合法 → 重新提示同一步；輸入「取消」→ 清 session；
+名額在最後建單那一刻才鎖定（中途看到的餘額僅供參考，建單失敗回
+TOUR_001 文案「剛剛額滿了，請選其他日期」）。
+
+- 旅客自由文字詢問 → 既有 chat 流程；導遊談定後用 `/api/tour-orders/manual`
+  建單（綁定該 line_user 對應的 customer）→ 訂單確認/提醒推播沿用 notify 機制。
+- LINE「我的預約」查詢：合併回 bookings 與 tour_orders 兩種訂單。
 
 ---
 
