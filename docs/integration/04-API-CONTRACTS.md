@@ -226,10 +226,33 @@ export const POST = handle(async (_req, { params }) => {
 | GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | 狀態機同票券 |
 | GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | keyword_replies CRUD |
 | GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
-| GET `/api/chat/conversations` | line_users 加最後訊息、未讀數 |
-| GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新 |
-| POST `/api/chat/messages` | `{lineUserId, text}` → LINE push（06 分冊）＋寫 OUT 訊息 |
+| GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |
+| GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新。支援 `?after=<messageId>` → 只回該筆之後的新訊息（輪詢用） |
+| POST `/api/chat/messages` | `{lineUserId, text}` → LINE **push**（06 分冊）＋寫 OUT 訊息。⚠️ 店家在後台主動回覆時 replyToken 早已失效，只能用 push，**會佔用推播額度** → 送出前先 `consumePushQuota(tenantId, 1)`，額度不足回 409 `REQ_003` 並附文案「本月推播額度已用完」 |
 | POST `/api/chat/messages/:id/read` | read_at=now |
+
+### B-5.1 後台聊天的「即時性」（雙向收發完整鏈路）
+
+原站是 SSE；本專案部署在 Vercel serverless，**MVP 一律用輪詢**（實作簡單、
+無連線維持問題、低階模型不易做錯）。SSE 屬 Phase 7+ 的優化，非必要。
+
+| 方向 | 鏈路 |
+|---|---|
+| 顧客 → 店家（收） | LINE → `/api/line/webhook/{shopCode}`（06 分冊）→ 寫 `chat_messages`(IN) → 後台輪詢 `GET /api/chat/messages?after=` 取得新訊息 |
+| 店家 → 顧客（回） | 後台 `POST /api/chat/messages` → 扣推播額度 → LINE push API → 寫 `chat_messages`(OUT) |
+
+輪詢規約（寫進 `src/services/chat.ts`，頁面只呼叫 service）：
+
+- 開啟中的對話：每 **5 秒** 帶 `after=<最後一筆 id>` 拉增量。
+- 對話列表：每 **15 秒** 帶 `since=<上次拉取時間>` 更新未讀數與最後訊息。
+- 分頁隱藏時（`document.hidden`）暫停輪詢，回到前景立刻拉一次。
+- 側邊欄「顧客訊息」未讀徽章沿用既有 `MOCK_SIDEBAR_COUNTS` 的來源端點，
+  由同一個 15 秒輪詢更新。
+
+**頁面接線（鐵則 1 的核准例外，僅此一頁）**：`/tenant/chat/page.tsx` 目前是
+純本地 mock（沒有 service 層、送出只 append 到 local state），Phase 5 實作
+B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端點 +
+輪詢函式）並把該頁改為呼叫它。版面與文案不動。
 | GET `/api/line-users/unbound` | followed=true 且 customer_id is null |
 | POST `/api/customers/:id/bind-line` | `{lineUserId}`：寫 customers.line_user_id + line_users.customer_id |
 | POST `/api/customers/:id/unbind-line` | 雙向清除 |

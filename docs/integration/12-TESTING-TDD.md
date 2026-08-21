@@ -196,6 +196,13 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
   server（`tests/helpers/line-mock.ts` 用 node http 起本地假 LINE，記錄收到的請求）；
   驗 webhook POST（含正確簽章）→ line_users upsert、chat_messages 寫入、
   reply 被打到 mock；壞簽章 401；處理中丟錯仍回 200；quota 用完不推播。
+- **雙向收發鏈路**（04 §B-5.1）：webhook 收到訊息 → `GET /api/chat/messages?after=`
+  拉得到該筆；`POST /api/chat/messages` → mock LINE 收到 push、DB 有 OUT 訊息、
+  推播額度 -1；額度用完時該端點回 409 且**不呼叫** LINE API。
+- **AI 客服上下文**（09 §7.2）：組出的 system prompt 必須同時含服務與行程
+  （斜槓租戶）、含未來 14 天團次與正確剩餘名額；團次售完後重新組 context
+  該筆不應再出現。AI 呼叫本身在單元層 mock（不打真 API），只驗 prompt 內容
+  與逾時/失敗時回 null 落回 defaultReply。
 
 ### Phase 7（Cron）
 - 每個 cron：無 Bearer 401；正例（用 service role 預置符合條件的資料 → 打 cron →
