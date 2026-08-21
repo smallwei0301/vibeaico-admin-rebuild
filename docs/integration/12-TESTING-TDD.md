@@ -215,6 +215,7 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
 | `tests/integration/api/tour-orders.10.test.ts` | 下單佔位、餘額即時正確；**並發測試（§5）**；取消釋放；hold 過期 cron 釋放；匯款後五碼→確認收款→CONFIRMED |
 | `tests/integration/api/ecpay.10.test.ts` | CheckMacValue 產生/驗證（單元）；callback 正確 mac → PAID + 回 `1|OK`；**同編號重送冪等**；壞 mac 拒絕 |
 | `tests/e2e/tour-admin.spec.ts` | 後台建行程→建團次→看到訂單 |
+| `tests/integration/api/calendar.10.test.ts` | 統一 `/api/calendar`：同區間同時回 BOOKING 與 DEPARTURE 事件；非 TOUR_MODULE 租戶不含 DEPARTURE；ICS feed 含團次 VEVENT 與取消團的 STATUS:CANCELLED；**開團後 available-slots 排除該時段**（§5.5 撞班防護） |
 
 ### Phase 9–10（旅客/公開 API/Partner）
 - 公開 API：未登入可讀行程、餘額；checkout 未帶 JWT 401；旅客只能看自己訂單；

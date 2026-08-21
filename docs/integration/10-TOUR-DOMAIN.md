@@ -235,6 +235,38 @@ create table tenant_payment_methods (
 2. `/tenant/trips/[id]/departures` 團次月曆（名額管理）
 3. `/tenant/tour-orders` 旅遊訂單列表
 
+## 5.5 行事曆整合（團次會、方案不會）
+
+**規則：只有「有日期」的東西上行事曆。** 團次（`trip_departures`）有出團日期
+與時間 → 上行事曆；方案（`trip_plans`）是定價與人數規則、本身沒有日期 →
+不上行事曆（季節只是「可販售期間」，也不是行事曆事件）。
+
+| 對象 | 上行事曆 | 呈現 |
+|---|---|---|
+| 團次 | ✅ | 出團日期 + 出發時間，標題「行程名稱 · 方案名」，副標 `5/8 人`（滿團標紅） |
+| 方案 | ❌ | 沒有日期。要看方案請進行程編輯頁 |
+| 旅遊訂單 | ❌（獨立列） | 訂單掛在團次底下，點團次事件可展開該團報名名單 |
+
+三個落點：
+
+1. **後台行事曆頁**（`/tenant/calendar`）：資料源改為 04 分冊的統一端點
+   `GET /api/calendar`，同一格月曆同時顯示服務預約與團次（用不同色票區分，
+   沿用既有 `--color-*` token，不新增顏色）。點團次 → 側邊顯示該團報名名單
+   （連到 `/tenant/tour-orders?departureId=`）。
+2. **ICS 訂閱輸出**（`/tenant/calendar-sync` 的訂閱網址）：ICS feed **必須同時含
+   團次**，導遊在自己的 Google/Apple Calendar 才看得到出團日。
+   每個團次一個 `VEVENT`：`SUMMARY` = 行程 · 方案、`DTSTART/DTEND` 依出發時間
+   與方案時長、`DESCRIPTION` 含目前報名人數與集合地點、`UID` = `departure-{id}@vibeai`。
+   團次取消 → 該 VEVENT 標 `STATUS:CANCELLED`（訂閱端才會消失）。
+3. **出團日自動忙碌**（重要，避免撞班）：導遊同時有服務項目時，
+   `GET /api/bookings/available-slots` 必須把**該員工/該店在團次時段內的時間排除**
+   （視同 block_time）—— 否則會發生「早上在海上帶團、系統卻讓顧客約了同一時段的服務」。
+   判定範圍 = 團次 `start_time` 起算 `plan.duration_minutes`；
+   未指定時間的團次視為整日忙碌。
+
+> 現況：目前 `/tenant/calendar` 頁只讀 `listBookings`（服務預約），
+> 團次尚未接入 —— 屬 Phase 8 待辦，實作時照本節規格補齊三個落點。
+
 ## 6. LINE 流程延伸（接 06 分冊）
 
 LINE 是行程的第一線銷售通路，分兩版實作：
@@ -297,4 +329,7 @@ TOUR_001 文案「剛剛額滿了，請選其他日期」）。
 - [ ] 綠界 sandbox 全流程：下單佔位 → 付款 → callback 冪等（重送不重複入帳）→ CONFIRMED + LINE/Email 通知
 - [ ] 匯款流程：30 分鐘未付的綠界單被 cron 釋放；匯款單 3 天後釋放；後五碼回報＋確認收款可走通
 - [ ] 後台三個新頁在 mock 模式與真實模式都正常；非導遊租戶看不到「行程管理」選單
+- [ ] 行事曆（§5.5）：`/tenant/calendar` 同時顯示服務預約與團次；ICS 訂閱
+      含團次 VEVENT（取消的團標 STATUS:CANCELLED）；團次時段被
+      available-slots 排除（開一團後該時段訂不到服務）
 - [ ] LINE 輸入「行程」收到行程輪播

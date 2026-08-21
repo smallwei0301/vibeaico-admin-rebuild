@@ -170,7 +170,8 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/bookings/:id/mark-paid-offline` | payment_status=PAID_OFFLINE |
 | POST `/api/bookings/:id/revert-complete` | COMPLETED→PENDING，並回沖完成時發的點數 ⚙M |
 | GET `/api/bookings/available-slots` | `?serviceId&staffId?&date`：讀 business 設定（時段間隔/營業時間/公休）+ 已有 bookings + block_times + shifts → 回 `{slots:[{start,end,staffIds[]}]}` |
-| GET `/api/bookings/calendar` | `?from&to`：回該區間全部（不分頁），行事曆頁用 |
+| GET `/api/bookings/calendar` | `?from&to`：回該區間全部（不分頁）。**僅服務預約**；行事曆頁請改用下面的統一端點 |
+| GET `/api/calendar` | `?from&to`：**行事曆頁唯一資料源**，合併四種事件成一個陣列（展示層合一，資料層仍分開）：`{events: CalendarEvent[]}`，`CalendarEvent` 以 `type` 區辨 —— `BOOKING`（服務預約）／`DEPARTURE`（行程團次，含 `seatsBooked/capacity`）／`BLOCK`（封鎖時段）／`EXTERNAL`（匯入的外部 ICS，唯讀）。`DEPARTURE` 只在租戶有 `TOUR_MODULE` 時出現。共用型別加在 `src/lib/types.ts`（只新增） |
 | GET/POST `/api/block-times`、DELETE `/api/block-times/:id` | CRUD，欄位同表 |
 | GET/POST `/api/recurring-bookings`、PUT/DELETE `:id`、POST `:id/renew` | rule jsonb `{weekday(0-6), time'HH:mm', intervalWeeks, until}`；renew=依 rule 產生未來實體 bookings（source='RECURRING'） |
 
