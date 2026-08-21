@@ -164,27 +164,41 @@ cron：`/api/cron/tour-order-expiry`（每小時，併入 07 分冊 crons 與 ve
 
 ## 4. 導遊自訂金流（migration 同 0012）
 
+**設定 UI 已存在**：`/tenant/payment-methods` 頁（含 i18n 文案）已完整支援六種
+收款類型與雙金流商，資料表以該頁的欄位模型為準（不是簡化版）：
+
 ```sql
-create type payment_method_type as enum ('BANK_TRANSFER','ECPAY');
+-- 對齊 src/app/tenant/payment-methods/page.tsx 的 MethodType / GatewayProvider
+create type payment_method_type as enum
+  ('LINE_PAY','JKOPAY','BANK_TRANSFER','CASH','ONLINE_PAYMENT','OTHER');
+create type gateway_provider as enum ('NEWEBPAY','ECPAY');
 
 create table tenant_payment_methods (
-  id           uuid primary key default gen_random_uuid(),
-  tenant_id    uuid not null references tenants(id) on delete cascade,
-  type         payment_method_type not null,
-  label        text not null default '',
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references tenants(id) on delete cascade,
+  method_type   payment_method_type not null,
+  display_name  text not null default '',
+  qr_image_url  text not null default '',        -- LINE Pay / 街口收款 QR
   -- BANK_TRANSFER：{bankName, bankCode, accountNumber, accountHolder, instructions}
-  config       jsonb not null default '{}',
-  -- ECPAY：MerchantID 明文放 config；HashKey/HashIV 加密（比照 LINE secrets，01 §5.4）
-  ecpay_hash_key_enc text not null default '',
-  ecpay_hash_iv_enc  text not null default '',
-  active       boolean not null default true,
-  sort_order   int not null default 0,
-  created_at   timestamptz not null default now()
+  config        jsonb not null default '{}',
+  -- ONLINE_PAYMENT（線上刷卡）：
+  gateway_provider gateway_provider,             -- 綠界或藍新
+  gateway_merchant_id text not null default '',
+  gateway_hash_key_enc text not null default '', -- HashKey/HashIV 加密（比照 LINE secrets，01 §5.4）
+  gateway_hash_iv_enc  text not null default '',
+  gateway_verified_at  timestamptz,              -- 實刷測試通過時間（頁面的「開通」狀態）
+  active        boolean not null default true,
+  sort_order    int not null default 0,
+  created_at    timestamptz not null default now()
 );
 ```
 
-- 設定 UI 落在既有 `/tenant/payment-methods` 頁（頁面骨架已存在，04 §B 對應端點
-  改為讀寫本表；秘密欄位遮罩/空字串不覆蓋規則與 LINE 相同）。
+- 端點即 04 §B 既列的 `/api/payment-methods`（CRUD、`test-connection`、
+  `test-charge`——建 NT$1/5 實刷單走該租戶金流商 sandbox/正式、`toggle-active`）；
+  秘密欄位遮罩/空字串不覆蓋規則與 LINE 相同。
+- 旅遊 checkout 的線上刷卡（下文）支援 ECPAY 與 NEWEBPAY 兩家，依該收款方式的
+  `gateway_provider` 產生對應表單；QR 類型（LINE Pay/街口）在 checkout 呈現
+  QR 圖 + 回報付款流程（同匯款的人工確認）。
 - **綠界流程（導遊需自備綠界特店帳號）**：checkout API 建單＋佔位 → 用該租戶解密後的
   HashKey/HashIV 產生 AioCheckOut 表單參數（CheckMacValue）→ 前端 form POST 到綠界 →
   綠界 server 回呼 `POST /api/payments/ecpay/{shopCode}/callback` → 驗 CheckMacValue →
