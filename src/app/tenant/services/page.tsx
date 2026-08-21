@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listServices, listStaff } from '@/services/catalog';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { servicesPage as t } from '@/i18n/zh-TW/pages/services';
@@ -39,10 +40,22 @@ type ServiceCategory = {
   sortOrder: number;
 };
 
-const MOCK_CATEGORIES: ServiceCategory[] = [
+const CATEGORIES_LOCAL_SHOP: ServiceCategory[] = [
   { id: 'sc_1', name: '剪髮', description: '洗剪吹相關服務', active: true, sortOrder: 1 },
   { id: 'sc_2', name: '染燙', description: '', active: true, sortOrder: 2 },
   { id: 'sc_3', name: '護理', description: '頭皮與髮質護理', active: true, sortOrder: 3 },
+];
+
+/** 嚮導模式的「服務項目」多半改用行程/方案（見 tenant/trips），此處僅保留少量客製服務分類 */
+const CATEGORIES_GUIDE: ServiceCategory[] = [
+  { id: 'sc_1', name: '客製諮詢', description: '包團規劃、行前討論', active: true, sortOrder: 1 },
+  { id: 'sc_2', name: '加購服務', description: '接駁、攝影紀錄等單次加購', active: true, sortOrder: 2 },
+];
+
+const CATEGORIES_CLINIC: ServiceCategory[] = [
+  { id: 'sc_1', name: '一般門診', description: '初診、複診相關服務', active: true, sortOrder: 1 },
+  { id: 'sc_2', name: '健檢', description: '健康檢查與健檢加項', active: true, sortOrder: 2 },
+  { id: 'sc_3', name: '疫苗', description: '公費／自費疫苗接種', active: true, sortOrder: 3 },
 ];
 
 /** 原站 Service 另有住宿／號碼掛號／人員需求／緩衝／線上收款等旗標 */
@@ -98,7 +111,9 @@ export default function ServicesPage() {
   const toast = useToast();
 
   const [rows, setRows] = React.useState<ServiceRow[]>([]);
-  const [categories, setCategories] = React.useState<ServiceCategory[]>(MOCK_CATEGORIES);
+  const [categories, setCategories] = React.useState<ServiceCategory[]>(() => byMode({
+    LOCAL_SHOP: CATEGORIES_LOCAL_SHOP, GUIDE: CATEGORIES_GUIDE, CLINIC: CATEGORIES_CLINIC,
+  }));
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [tipsOpen, setTipsOpen] = React.useState(true);

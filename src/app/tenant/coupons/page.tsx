@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/Toast';
 import { listCoupons } from '@/services/catalog';
 import { listCustomers } from '@/services/customers';
 import { listFeatures } from '@/services/settings';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { couponsPage as t } from '@/i18n/zh-TW/pages/coupons';
@@ -71,7 +72,7 @@ const DEFAULT_EXTRAS: CouponExtras = {
   lastRedeemedCode: null,
 };
 
-const MOCK_COUPON_EXTRAS: Record<string, Partial<CouponExtras>> = {
+const COUPON_EXTRAS_LOCAL_SHOP: Record<string, Partial<CouponExtras>> = {
   cp_1: {
     type: 'DISCOUNT_PERCENT',
     code: 'NEW8FOLD',
@@ -95,6 +96,55 @@ const MOCK_COUPON_EXTRAS: Record<string, Partial<CouponExtras>> = {
   },
 };
 
+const COUPON_EXTRAS_GUIDE: Record<string, Partial<CouponExtras>> = {
+  cp_1: {
+    type: 'DISCOUNT_PERCENT',
+    code: 'EARLYBIRD10',
+    maxDiscountAmount: 800,
+    limitPerCustomer: 1,
+    applicableServices: ['龜山島賞鯨半日遊', '花蓮砂婆礑溯溪體驗'],
+    lastRedeemedCode: 'GBR20260',
+  },
+  cp_2: {
+    type: 'DISCOUNT_AMOUNT',
+    code: 'GROUP500',
+    minOrderAmount: 4000,
+    limitPerCustomer: 3,
+    lastRedeemedCode: 'GRP99213',
+  },
+  cp_3: {
+    type: 'GIFT',
+    code: 'BACKAGAIN',
+    giftItem: '免費裝備租借（防水袋或防曬帽任選）',
+    privateMode: true,
+  },
+  cp_4: {
+    type: 'DISCOUNT_PERCENT',
+    code: 'STREAM15',
+    maxDiscountAmount: 600,
+    limitPerCustomer: 1,
+    applicableServices: ['花蓮砂婆礑溯溪體驗'],
+  },
+};
+
+const COUPON_EXTRAS_CLINIC: Record<string, Partial<CouponExtras>> = {
+  cp_1: {
+    type: 'DISCOUNT_AMOUNT',
+    code: 'HEALTHCHECK800',
+    minOrderAmount: 3000,
+    limitPerCustomer: 1,
+    applicableServices: ['成人健康檢查'],
+    lastRedeemedCode: 'HC48120',
+  },
+  cp_2: {
+    type: 'DISCOUNT_PERCENT',
+    code: 'FAMILYVAC10',
+    maxDiscountAmount: 300,
+    limitPerCustomer: 4,
+    applicableServices: ['流感疫苗接種'],
+  },
+};
+
 const TYPE_FROM_DISCOUNT: Record<Coupon['discountType'], CouponType> = {
   AMOUNT: 'DISCOUNT_AMOUNT',
   PERCENT: 'DISCOUNT_PERCENT',
@@ -108,13 +158,18 @@ const ISSUE_MAX = t.issue.max;
 
 type CouponRow = Coupon & CouponExtras;
 
-const toRow = (c: Coupon): CouponRow => ({
-  ...c,
-  ...DEFAULT_EXTRAS,
-  type: TYPE_FROM_DISCOUNT[c.discountType],
-  displayStatus: c.status,
-  ...(MOCK_COUPON_EXTRAS[c.id] ?? {}),
-});
+const toRow = (c: Coupon): CouponRow => {
+  const extras = byMode({
+    LOCAL_SHOP: COUPON_EXTRAS_LOCAL_SHOP, GUIDE: COUPON_EXTRAS_GUIDE, CLINIC: COUPON_EXTRAS_CLINIC,
+  });
+  return {
+    ...c,
+    ...DEFAULT_EXTRAS,
+    type: TYPE_FROM_DISCOUNT[c.discountType],
+    displayStatus: c.status,
+    ...(extras[c.id] ?? {}),
+  };
+};
 
 const STATUS_TONE: Record<DisplayStatus, 'neutral' | 'success' | 'warning' | 'danger' | 'info'> = {
   DRAFT: 'neutral',

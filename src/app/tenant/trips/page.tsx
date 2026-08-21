@@ -19,8 +19,10 @@ import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listTrips } from '@/services/tours';
 import { navLabel } from '@/i18n/zh-TW/nav';
-import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
+import { APP_URL } from '@/config/env';
+import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { MidaoListing, Trip, TripStatus } from '@/lib/types';
 
@@ -40,6 +42,8 @@ const MIDAO_TONE: Record<MidaoListing, 'primary' | 'info' | 'danger' | 'neutral'
 export default function TripsPage() {
   const toast = useToast();
   const businessType = useBusinessType();
+  const currentTenant = useCurrentTenant();
+  const publicShopUrl = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
 
   const [rows, setRows] = React.useState<Trip[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -231,7 +235,7 @@ export default function TripsPage() {
         title={t.title}
         actions={
           <>
-            <Link href="/s/demo-salon" target="_blank">
+            <Link href={publicShopUrl} target="_blank">
               <Button variant="outline">
                 <ExternalLink size={15} />{t.actions.viewShop}
               </Button>

@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listServices, listStaff } from '@/services/catalog';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { staffPage as t } from '@/i18n/zh-TW/pages/staff';
@@ -40,10 +41,24 @@ const DEFAULT_EXTRAS: StaffExtras = {
   displayName: '', bio: '', maxConcurrentBookings: 1, visible: true,
 };
 
-const MOCK_STAFF_EXTRAS: Record<string, StaffExtras> = {
+const STAFF_EXTRAS_LOCAL_SHOP: Record<string, StaffExtras> = {
   s_1: { displayName: 'Amy 老師', bio: '10 年剪燙染資歷，擅長韓系空氣感瀏海。', maxConcurrentBookings: 1, visible: true },
   s_2: { displayName: '', bio: '擅長男士俐落短髮與頭皮養護。', maxConcurrentBookings: 1, visible: true },
   s_3: { displayName: '', bio: '', maxConcurrentBookings: 2, visible: false },
+};
+
+const STAFF_EXTRAS_GUIDE: Record<string, StaffExtras> = {
+  s_1: { displayName: '阿海', bio: 'PADI 潛水長，10 年海域嚮導資歷，擅長賞鯨與浮潛行程。', maxConcurrentBookings: 1, visible: true },
+  s_2: { displayName: '小雨', bio: '持有高山嚮導證，熟悉花東山域路線與溯溪安全評估。', maxConcurrentBookings: 1, visible: true },
+  s_3: { displayName: '老陳船長', bio: '', maxConcurrentBookings: 1, visible: true },
+  s_4: { displayName: 'Kai', bio: '攝影嚮導，擅長行程紀錄與空拍。', maxConcurrentBookings: 2, visible: false },
+};
+
+const STAFF_EXTRAS_CLINIC: Record<string, StaffExtras> = {
+  s_1: { displayName: '林醫師', bio: '家庭醫學科主治醫師，專長慢性病長期追蹤與健康評估。', maxConcurrentBookings: 1, visible: true },
+  s_2: { displayName: '陳醫師', bio: '健檢中心主任，專長成人健檢與異常報告判讀。', maxConcurrentBookings: 1, visible: true },
+  s_3: { displayName: '王醫師', bio: '內科醫師，擅長一般內科疾病診治。', maxConcurrentBookings: 1, visible: true },
+  s_4: { displayName: '護理師 小美', bio: '', maxConcurrentBookings: 2, visible: false },
 };
 
 /** 原站 /api/staff/${id}/leaves */
@@ -87,7 +102,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type StaffRow = Staff & StaffExtras;
 
-const toRow = (s: Staff): StaffRow => ({ ...s, ...(MOCK_STAFF_EXTRAS[s.id] ?? DEFAULT_EXTRAS) });
+const toRow = (s: Staff): StaffRow => {
+  const extras = byMode({
+    LOCAL_SHOP: STAFF_EXTRAS_LOCAL_SHOP, GUIDE: STAFF_EXTRAS_GUIDE, CLINIC: STAFF_EXTRAS_CLINIC,
+  });
+  return { ...s, ...(extras[s.id] ?? DEFAULT_EXTRAS) };
+};
 
 export default function StaffPage() {
   const toast = useToast();

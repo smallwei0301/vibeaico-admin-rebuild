@@ -14,6 +14,7 @@ import { FormGroup, FormError, FormText, Input, Label, Select } from '@/componen
 import { useToast } from '@/components/ui/Toast';
 import { listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { recurringBookingsPage as t } from '@/i18n/zh-TW/pages/recurring-bookings';
@@ -39,7 +40,7 @@ type RecurringBooking = {
   lastGeneratedAt: string | null;
 };
 
-const MOCK_RECURRING_BOOKINGS: RecurringBooking[] = [
+const RECURRING_BOOKINGS_LOCAL_SHOP: RecurringBooking[] = [
   {
     id: 'rb_1', customerName: '王小明', serviceName: '精緻剪髮', staffName: 'Amy',
     dayOfWeek: 3, startTime: '10:00', intervalWeeks: 1, times: 12, createdCount: 12,
@@ -54,6 +55,43 @@ const MOCK_RECURRING_BOOKINGS: RecurringBooking[] = [
     id: 'rb_3', customerName: '李美華', serviceName: '全頭染髮', staffName: 'Ben',
     dayOfWeek: 1, startTime: '13:00', intervalWeeks: 4, times: 4, createdCount: 4,
     status: 'ENDED', lastGeneratedAt: '2026-07-06T13:00:00+08:00',
+  },
+];
+
+/** 嚮導模式較少固定週期預約，主要是企業／長期客戶的例行包團諮詢 */
+const RECURRING_BOOKINGS_GUIDE: RecurringBooking[] = [
+  {
+    id: 'rb_1', customerName: '張家豪', serviceName: '客製包團諮詢', staffName: '小雨',
+    dayOfWeek: 3, startTime: '19:00', intervalWeeks: 1, times: 6, createdCount: 6,
+    status: 'ACTIVE', lastGeneratedAt: '2026-08-19T19:00:00+08:00',
+  },
+  {
+    id: 'rb_2', customerName: '林巧薇', serviceName: '客製包團諮詢', staffName: null,
+    dayOfWeek: 6, startTime: '10:00', intervalWeeks: 2, times: 4, createdCount: 3,
+    status: 'ACTIVE', lastGeneratedAt: '2026-08-15T10:00:00+08:00',
+  },
+  {
+    id: 'rb_3', customerName: '陳彥廷', serviceName: '客製包團諮詢', staffName: '阿海',
+    dayOfWeek: 1, startTime: '20:00', intervalWeeks: 4, times: 3, createdCount: 3,
+    status: 'ENDED', lastGeneratedAt: '2026-07-06T20:00:00+08:00',
+  },
+];
+
+const RECURRING_BOOKINGS_CLINIC: RecurringBooking[] = [
+  {
+    id: 'rb_1', customerName: '劉建國', serviceName: '複診', staffName: '林醫師',
+    dayOfWeek: 3, startTime: '09:30', intervalWeeks: 4, times: 12, createdCount: 12,
+    status: 'ACTIVE', lastGeneratedAt: '2026-08-19T09:30:00+08:00',
+  },
+  {
+    id: 'rb_2', customerName: '蔡淑芬', serviceName: '成人健康檢查', staffName: null,
+    dayOfWeek: 6, startTime: '08:00', intervalWeeks: 52, times: 3, createdCount: 3,
+    status: 'ACTIVE', lastGeneratedAt: '2026-08-15T08:00:00+08:00',
+  },
+  {
+    id: 'rb_3', customerName: '周佩琪', serviceName: '複診', staffName: '王醫師',
+    dayOfWeek: 1, startTime: '14:00', intervalWeeks: 2, times: 6, createdCount: 6,
+    status: 'ENDED', lastGeneratedAt: '2026-07-06T14:00:00+08:00',
   },
 ];
 
@@ -90,7 +128,9 @@ export default function RecurringBookingsPage() {
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 320));
-      setRows(MOCK_RECURRING_BOOKINGS);
+      setRows(byMode({
+        LOCAL_SHOP: RECURRING_BOOKINGS_LOCAL_SHOP, GUIDE: RECURRING_BOOKINGS_GUIDE, CLINIC: RECURRING_BOOKINGS_CLINIC,
+      }));
     } catch {
       toast.show(`${t.messages.loadListFailed}${t.messages.unknownError}`, 'danger');
     } finally {

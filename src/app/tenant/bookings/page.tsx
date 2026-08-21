@@ -24,6 +24,7 @@ import {
 } from '@/services/bookings';
 import { listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -48,11 +49,22 @@ const DEFAULT_EXTRAS: BookingExtras = {
   paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
 };
 
-const MOCK_BOOKING_EXTRAS: Record<string, BookingExtras> = {
+const BOOKING_EXTRAS_LOCAL_SHOP: Record<string, BookingExtras> = {
   b_1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
   b_2: { paidAmount: 1000, couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
   b_3: { paidAmount: 1080, couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
   b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
+};
+
+const BOOKING_EXTRAS_GUIDE: Record<string, BookingExtras> = {
+  b_g1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
+};
+
+const BOOKING_EXTRAS_CLINIC: Record<string, BookingExtras> = {
+  b_1: { paidAmount: 300, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
+  b_2: { paidAmount: 6800, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
+  b_3: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
+  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
 };
 
 type AddonItem = {
@@ -64,10 +76,19 @@ type AddonItem = {
   staffName: string | null;
 };
 
-const MOCK_ADDON_ITEMS: Record<string, AddonItem[]> = {
+const ADDON_ITEMS_LOCAL_SHOP: Record<string, AddonItem[]> = {
   b_2: [
     { id: 'ad_1', name: '深層護髮', price: 800, quantity: 1, durationMinutes: 30, staffName: 'Amy' },
     { id: 'ad_2', name: '青草膏', price: 120, quantity: 2, durationMinutes: 0, staffName: null },
+  ],
+};
+
+const ADDON_ITEMS_GUIDE: Record<string, AddonItem[]> = {};
+
+const ADDON_ITEMS_CLINIC: Record<string, AddonItem[]> = {
+  b_2: [
+    { id: 'ad_1', name: '甲狀腺超音波', price: 1200, quantity: 1, durationMinutes: 20, staffName: '陳醫師' },
+    { id: 'ad_2', name: '肺部 X 光', price: 600, quantity: 1, durationMinutes: 10, staffName: null },
   ],
 };
 
@@ -95,9 +116,13 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
 
 const REAL_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
-const extrasOf = (b: Booking): BookingExtras => MOCK_BOOKING_EXTRAS[b.id] ?? DEFAULT_EXTRAS;
+const extrasOf = (b: Booking): BookingExtras => byMode({
+  LOCAL_SHOP: BOOKING_EXTRAS_LOCAL_SHOP, GUIDE: BOOKING_EXTRAS_GUIDE, CLINIC: BOOKING_EXTRAS_CLINIC,
+})[b.id] ?? DEFAULT_EXTRAS;
 
-const addonsOf = (b: Booking): AddonItem[] => MOCK_ADDON_ITEMS[b.id] ?? [];
+const addonsOf = (b: Booking): AddonItem[] => byMode({
+  LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
+})[b.id] ?? [];
 
 const payLinkOf = (b: Booking) => `${APP_URL.replace(/\/$/, '')}/pay/${b.bookingNo}`;
 

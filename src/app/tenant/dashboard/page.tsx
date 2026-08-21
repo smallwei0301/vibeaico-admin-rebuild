@@ -21,6 +21,7 @@ import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/se
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
@@ -46,7 +47,7 @@ type ActivityType =
 
 type RecentActivity = { id: string; type: ActivityType; name: string; target: string; at: string };
 
-const MOCK_RECENT_ACTIVITY: RecentActivity[] = [
+const ACTIVITY_LOCAL_SHOP: RecentActivity[] = [
   { id: 'a_1', type: 'BOOKING_CREATED', name: '王小明', target: '精緻剪髮', at: '2026-08-20T09:12:00+08:00' },
   { id: 'a_2', type: 'ORDER_CREATED', name: '陳雅婷', target: '護髮油 100ml', at: '2026-08-20T08:40:00+08:00' },
   { id: 'a_3', type: 'BOOKING_COMPLETED', name: '陳雅婷', target: '深層護髮', at: '2026-08-19T15:45:00+08:00' },
@@ -54,8 +55,27 @@ const MOCK_RECENT_ACTIVITY: RecentActivity[] = [
   { id: 'a_5', type: 'BOOKING_CANCELLED', name: '陳雅婷', target: '全頭染髮', at: '2026-08-17T10:20:00+08:00' },
 ];
 
+const ACTIVITY_GUIDE: RecentActivity[] = [
+  { id: 'a_1', type: 'BOOKING_CREATED', name: '黃思穎', target: '花蓮砂婆礑溯溪體驗', at: '2026-08-20T09:12:00+08:00' },
+  { id: 'a_2', type: 'ORDER_CREATED', name: '林巧薇', target: '防水袋 20L', at: '2026-08-20T08:40:00+08:00' },
+  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '陳彥廷', target: '龜山島賞鯨半日遊', at: '2026-08-19T15:45:00+08:00' },
+  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '吳孟儒', target: '', at: '2026-08-19T11:02:00+08:00' },
+  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '張家豪', target: '九份山城夜訪散策', at: '2026-08-17T10:20:00+08:00' },
+];
+
+const ACTIVITY_CLINIC: RecentActivity[] = [
+  { id: 'a_1', type: 'BOOKING_CREATED', name: '許文彥', target: '流感疫苗接種', at: '2026-08-20T09:12:00+08:00' },
+  { id: 'a_2', type: 'ORDER_CREATED', name: '蔡淑芬', target: '綜合維他命（90 錠）', at: '2026-08-20T08:40:00+08:00' },
+  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '劉建國', target: '複診', at: '2026-08-19T15:45:00+08:00' },
+  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '周佩琪', target: '', at: '2026-08-19T11:02:00+08:00' },
+  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '蔡淑芬', target: '成人健康檢查', at: '2026-08-17T10:20:00+08:00' },
+];
+
+type WeeklyTrendPoint = { weekday: number; bookings: number; revenue: number };
+type MonthSourcePoint = { source: Booking['source']; count: number };
+
 /** 本週預約趨勢：weekday 對應 common.weekdays 的索引（0 = 週日） */
-const MOCK_WEEKLY_TREND: { weekday: number; bookings: number; revenue: number }[] = [
+const TREND_LOCAL_SHOP: WeeklyTrendPoint[] = [
   { weekday: 1, bookings: 6, revenue: 8400 },
   { weekday: 2, bookings: 9, revenue: 15600 },
   { weekday: 3, bookings: 4, revenue: 5200 },
@@ -65,12 +85,48 @@ const MOCK_WEEKLY_TREND: { weekday: number; bookings: number; revenue: number }[
   { weekday: 0, bookings: 8, revenue: 14600 },
 ];
 
+/** 嚮導出團集中在週末與連假，平日以諮詢、整裝為主 */
+const TREND_GUIDE: WeeklyTrendPoint[] = [
+  { weekday: 1, bookings: 1, revenue: 3200 },
+  { weekday: 2, bookings: 2, revenue: 6400 },
+  { weekday: 3, bookings: 1, revenue: 2800 },
+  { weekday: 4, bookings: 3, revenue: 18600 },
+  { weekday: 5, bookings: 5, revenue: 42800 },
+  { weekday: 6, bookings: 9, revenue: 96400 },
+  { weekday: 0, bookings: 7, revenue: 78200 },
+];
+
+/** 診所平日門診量高，週末僅半日看診 */
+const TREND_CLINIC: WeeklyTrendPoint[] = [
+  { weekday: 1, bookings: 46, revenue: 32400 },
+  { weekday: 2, bookings: 52, revenue: 38600 },
+  { weekday: 3, bookings: 44, revenue: 30800 },
+  { weekday: 4, bookings: 50, revenue: 36200 },
+  { weekday: 5, bookings: 58, revenue: 41400 },
+  { weekday: 6, bookings: 22, revenue: 15600 },
+  { weekday: 0, bookings: 0, revenue: 0 },
+];
+
 /** 本月預約來源分布 */
-const MOCK_MONTH_SOURCES: { source: Booking['source']; count: number }[] = [
+const SOURCES_LOCAL_SHOP: MonthSourcePoint[] = [
   { source: 'LINE', count: 84 },
   { source: 'PUBLIC_PAGE', count: 41 },
   { source: 'MANUAL', count: 18 },
   { source: 'RECURRING', count: 7 },
+];
+
+const SOURCES_GUIDE: MonthSourcePoint[] = [
+  { source: 'PUBLIC_PAGE', count: 38 },
+  { source: 'LINE', count: 26 },
+  { source: 'MANUAL', count: 14 },
+  { source: 'RECURRING', count: 0 },
+];
+
+const SOURCES_CLINIC: MonthSourcePoint[] = [
+  { source: 'LINE', count: 612 },
+  { source: 'PUBLIC_PAGE', count: 204 },
+  { source: 'RECURRING', count: 96 },
+  { source: 'MANUAL', count: 48 },
 ];
 
 const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'danger' | 'neutral'> = {
@@ -151,10 +207,13 @@ export default function DashboardPage() {
     void (async () => {
       try {
         await new Promise((r) => setTimeout(r, 320));
-        setActivity(MOCK_RECENT_ACTIVITY);
+        setActivity(byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC }));
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
   }, [fail]);
+
+  const weeklyTrend = byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC });
+  const monthSources = byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC });
 
   const copyPublicUrl = async () => {
     try {
@@ -218,9 +277,9 @@ export default function DashboardPage() {
     },
   ];
 
-  const maxWeeklyBookings = Math.max(...MOCK_WEEKLY_TREND.map((d) => d.bookings), 1);
-  const maxWeeklyRevenue = Math.max(...MOCK_WEEKLY_TREND.map((d) => d.revenue), 1);
-  const sourceTotal = MOCK_MONTH_SOURCES.reduce((sum, s) => sum + s.count, 0);
+  const maxWeeklyBookings = Math.max(...weeklyTrend.map((d) => d.bookings), 1);
+  const maxWeeklyRevenue = Math.max(...weeklyTrend.map((d) => d.revenue), 1);
+  const sourceTotal = monthSources.reduce((sum, s) => sum + s.count, 0);
 
   return (
     <>
@@ -713,7 +772,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="flex h-40 items-end gap-2">
-              {MOCK_WEEKLY_TREND.map((d) => (
+              {weeklyTrend.map((d) => (
                 <div key={d.weekday} className="flex h-full flex-1 flex-col justify-end gap-1">
                   <div className="flex h-full items-end gap-1">
                     <div
@@ -746,7 +805,7 @@ export default function DashboardPage() {
               <EmptyState icon={PieChart} title={t.monthSource.empty} />
             ) : (
               <ul className="flex flex-col gap-3">
-                {MOCK_MONTH_SOURCES.map((s) => {
+                {monthSources.map((s) => {
                   const pct = Math.round((s.count / sourceTotal) * 100);
                   return (
                     <li key={s.source}>

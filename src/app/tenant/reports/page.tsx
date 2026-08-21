@@ -15,6 +15,7 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { getStaffPerformance } from '@/services/reports';
 import { listFeatures } from '@/services/settings';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { reportsPage as t } from '@/i18n/zh-TW/pages/reports';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
@@ -61,17 +62,28 @@ type ReportData = {
   };
 };
 
-const SERVICE_NAMES = ['精緻剪髮', '全頭染髮', '深層護髮', '瀏海修剪', '頭皮養護'];
-const PRODUCT_NAMES = [
+const SERVICE_NAMES_LOCAL_SHOP = ['精緻剪髮', '全頭染髮', '深層護髮', '瀏海修剪', '頭皮養護'];
+const SERVICE_NAMES_GUIDE = ['龜山島賞鯨半日遊', '花蓮砂婆礑溯溪體驗', '九份山城夜訪散策', '包船專案', '台南早餐吃透透'];
+const SERVICE_NAMES_CLINIC = ['初診（含健康評估）', '複診', '成人健康檢查', '流感疫苗接種', '勞工體檢'];
+
+const PRODUCT_NAMES_LOCAL_SHOP = [
   '修護洗髮精 500ml', '護髮油 100ml', '定型噴霧', '頭皮精華液', '深層修護髮膜',
   '免沖洗護髮素', '造型髮蠟', '柔順護色洗髮精', '蓬鬆粉', '寬齒梳',
+];
+const PRODUCT_NAMES_GUIDE = [
+  '防水袋 20L', '寬簷防曬帽', '祕島明信片組（6 入）', '手繪路線地圖', '防曬袖套',
+  '快乾運動毛巾', '登山杖（單支）', '防水手機袋', '不鏽鋼保溫瓶', '頭燈',
+];
+const PRODUCT_NAMES_CLINIC = [
+  '綜合維他命（90 錠）', '益生菌沖劑（30 包）', '醫用口罩（50 入）', '電子血壓計', '血糖試紙（50 片）',
+  '透氣 OK 繃', '電子體溫計', '看護墊（10 片）', '酒精棉片（100 片）', '兒童綜合維他命',
 ];
 
 const RANGE_POINTS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 13 };
 const RANGE_SCALE: Record<RangeKey, number> = { week: 1, month: 4.2, quarter: 12.5 };
 
 /** 決定性假資料產生器（避免 SSR / CSR 不一致，僅在 effect 內呼叫） */
-function buildReport(range: RangeKey): ReportData {
+function buildReport(range: RangeKey, serviceNames: string[], productNames: string[]): ReportData {
   const points = RANGE_POINTS[range];
   const scale = RANGE_SCALE[range];
   const stepDays = range === 'quarter' ? 7 : 1;
@@ -90,7 +102,7 @@ function buildReport(range: RangeKey): ReportData {
   const totalBookings = daily.reduce((s, d) => s + d.bookings, 0);
   const totalRevenue = daily.reduce((s, d) => s + d.revenue, 0);
 
-  const serviceDistribution: NamedCount[] = SERVICE_NAMES.map((name, i) => ({
+  const serviceDistribution: NamedCount[] = serviceNames.map((name, i) => ({
     name,
     count: Math.max(Math.round((totalBookings * (5 - i)) / 18), 1),
   }));
@@ -99,7 +111,7 @@ function buildReport(range: RangeKey): ReportData {
     .slice(0, 5)
     .map((s, i) => ({ name: s.name, bookings: s.count, revenue: s.count * (600 + i * 340) }));
 
-  const topProducts: TopProduct[] = PRODUCT_NAMES.map((name, i) => {
+  const topProducts: TopProduct[] = productNames.map((name, i) => {
     const quantity = Math.max(Math.round((28 - i * 2) * (scale / 4.2)), 1);
     return { name, quantity, revenue: quantity * (880 - i * 55) };
   });
@@ -131,7 +143,7 @@ function buildReport(range: RangeKey): ReportData {
       activeCustomers,
       avgVisitCycle: range === 'week' ? 34 : range === 'month' ? 38 : 42,
       avgCustomerValue: activeCustomers ? Math.round(totalRevenue / activeCustomers) : 0,
-      serviceTrends: SERVICE_NAMES.map((name, i) => ({
+      serviceTrends: serviceNames.map((name, i) => ({
         name,
         bookings: Math.max(Math.round((totalBookings * (5 - i)) / 18), 1),
         growth: [12.4, -6.8, 0, 24.1, -3.2][i] ?? 0,
@@ -174,7 +186,13 @@ export default function ReportsPage() {
     void (async () => {
       try {
         await new Promise((r) => setTimeout(r, 320));
-        if (alive) setData(buildReport(range));
+        const serviceNames = byMode({
+          LOCAL_SHOP: SERVICE_NAMES_LOCAL_SHOP, GUIDE: SERVICE_NAMES_GUIDE, CLINIC: SERVICE_NAMES_CLINIC,
+        });
+        const productNames = byMode({
+          LOCAL_SHOP: PRODUCT_NAMES_LOCAL_SHOP, GUIDE: PRODUCT_NAMES_GUIDE, CLINIC: PRODUCT_NAMES_CLINIC,
+        });
+        if (alive) setData(buildReport(range, serviceNames, productNames));
       } catch (e) {
         fail(t.errors.summary, e);
       } finally {

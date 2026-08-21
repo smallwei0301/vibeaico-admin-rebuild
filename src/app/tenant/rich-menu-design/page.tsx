@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listFeatures } from '@/services/settings';
+import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { richMenuDesignPage as t } from '@/i18n/zh-TW/pages/rich-menu-design';
@@ -99,7 +100,6 @@ const QUICK_TEMPLATES = t.library.styleDescriptions.slice(0, 8).map((style, i) =
 
 const ICON_SIZES = ['填滿', '大', '中', '小'] as const;
 const TEXT_SIZES = ['大', '中', '小'] as const;
-const SHOP_NAME = '示範美髮沙龍';
 
 export default function RichMenuDesignPage() {
   const toast = useToast();
@@ -177,6 +177,7 @@ function FeatureLockBar() {
 function RichMenuTab({
   subscribed, toast,
 }: { subscribed: boolean; toast: ReturnType<typeof useToast> }) {
+  const SHOP_NAME = useCurrentTenant().name;
   const [theme, setTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [layout, setLayout] = React.useState('3+4');
   const [bgUrl, setBgUrl] = React.useState('');
@@ -785,6 +786,7 @@ const MAX_FLEX_CARDS = 12;
 function FlexMenuTab({
   subscribed, toast,
 }: { subscribed: boolean; toast: ReturnType<typeof useToast> }) {
+  const SHOP_NAME = useCurrentTenant().name;
   const [enabled, setEnabled] = React.useState(true);
   const [fallback, setFallback] = React.useState<'HINT' | 'SILENT'>('HINT');
   const [cards, setCards] = React.useState<FlexCard[]>(DEFAULT_FLEX_CARDS);

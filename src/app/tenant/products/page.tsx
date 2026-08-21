@@ -21,6 +21,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import { listFeatures } from '@/services/settings';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { productsPage as t } from '@/i18n/zh-TW/pages/products';
@@ -39,7 +40,7 @@ type ProductCategory = {
   sortOrder: number;
 };
 
-const MOCK_PRODUCT_CATEGORIES: ProductCategory[] = [
+const PRODUCT_CATEGORIES_LOCAL_SHOP: ProductCategory[] = [
   { id: 'pc_1', name: '洗護', active: true, sortOrder: 1 },
   { id: 'pc_2', name: '造型', active: true, sortOrder: 2 },
   { id: 'pc_3', name: '護髮產品', active: true, sortOrder: 3 },
@@ -47,6 +48,22 @@ const MOCK_PRODUCT_CATEGORIES: ProductCategory[] = [
   { id: 'pc_5', name: '美甲產品', active: false, sortOrder: 5 },
   { id: 'pc_6', name: '配件', active: true, sortOrder: 6 },
   { id: 'pc_7', name: '禮品卡', active: true, sortOrder: 7 },
+];
+
+const PRODUCT_CATEGORIES_GUIDE: ProductCategory[] = [
+  { id: 'pc_1', name: '裝備', active: true, sortOrder: 1 },
+  { id: 'pc_2', name: '紀念品', active: true, sortOrder: 2 },
+  { id: 'pc_3', name: '戶外服飾', active: true, sortOrder: 3 },
+  { id: 'pc_4', name: '露營用品', active: false, sortOrder: 4 },
+  { id: 'pc_5', name: '票券／禮品卡', active: true, sortOrder: 5 },
+];
+
+const PRODUCT_CATEGORIES_CLINIC: ProductCategory[] = [
+  { id: 'pc_1', name: '保健品', active: true, sortOrder: 1 },
+  { id: 'pc_2', name: '衛材', active: true, sortOrder: 2 },
+  { id: 'pc_3', name: '居家醫療器材', active: true, sortOrder: 3 },
+  { id: 'pc_4', name: '藥妝保養', active: false, sortOrder: 4 },
+  { id: 'pc_5', name: '禮品卡', active: true, sortOrder: 5 },
 ];
 
 /**
@@ -110,7 +127,9 @@ export default function ProductsPage() {
   const toast = useToast();
 
   const [rows, setRows] = React.useState<ProductRow[]>([]);
-  const [categories, setCategories] = React.useState<ProductCategory[]>(MOCK_PRODUCT_CATEGORIES);
+  const [categories, setCategories] = React.useState<ProductCategory[]>(() => byMode({
+    LOCAL_SHOP: PRODUCT_CATEGORIES_LOCAL_SHOP, GUIDE: PRODUCT_CATEGORIES_GUIDE, CLINIC: PRODUCT_CATEGORIES_CLINIC,
+  }));
   const [loading, setLoading] = React.useState(true);
   const [tipsOpen, setTipsOpen] = React.useState(true);
   const [salesFeature, setSalesFeature] = React.useState(true);

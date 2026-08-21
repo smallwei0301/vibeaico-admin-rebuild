@@ -16,6 +16,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listMembershipLevels } from '@/services/catalog';
 import { listFeatures } from '@/services/settings';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { membershipLevelsPage as t } from '@/i18n/zh-TW/pages/membership-levels';
@@ -35,10 +36,22 @@ type LevelExtras = {
 
 const DEFAULT_EXTRAS: LevelExtras = { description: '', active: true, isDefault: false };
 
-const MOCK_LEVEL_EXTRAS: Record<string, LevelExtras> = {
+const LEVEL_EXTRAS_LOCAL_SHOP: Record<string, LevelExtras> = {
   ml_1: { description: '所有新顧客的預設等級', active: true, isDefault: true },
   ml_2: { description: '生日當月贈送護髮體驗一次', active: true, isDefault: false },
   ml_3: { description: '專屬設計師優先排程、免費造型諮詢', active: true, isDefault: false },
+};
+
+const LEVEL_EXTRAS_GUIDE: Record<string, LevelExtras> = {
+  ml_1: { description: '所有新旅客的預設等級', active: true, isDefault: true },
+  ml_2: { description: '生日當月贈送裝備租借券一張', active: true, isDefault: false },
+  ml_3: { description: '揪團優先候補、免費裝備升級', active: true, isDefault: false },
+};
+
+const LEVEL_EXTRAS_CLINIC: Record<string, LevelExtras> = {
+  ml_1: { description: '所有新病患的預設等級', active: true, isDefault: true },
+  ml_2: { description: '需長期追蹤治療的病患，享回診提醒與優先候補', active: true, isDefault: false },
+  ml_3: { description: '年度健檢會員，享健檢加項優惠與報告解說預約', active: true, isDefault: false },
 };
 
 /** 新增等級時的預設顏色（同 mock 的一般會員灰） */
@@ -48,10 +61,12 @@ const DEFAULT_LEVEL_COLOR = '#86868b';
 
 type LevelRow = MembershipLevel & LevelExtras;
 
-const toRow = (l: MembershipLevel): LevelRow => ({
-  ...l,
-  ...(MOCK_LEVEL_EXTRAS[l.id] ?? DEFAULT_EXTRAS),
-});
+const toRow = (l: MembershipLevel): LevelRow => {
+  const extras = byMode({
+    LOCAL_SHOP: LEVEL_EXTRAS_LOCAL_SHOP, GUIDE: LEVEL_EXTRAS_GUIDE, CLINIC: LEVEL_EXTRAS_CLINIC,
+  });
+  return { ...l, ...(extras[l.id] ?? DEFAULT_EXTRAS) };
+};
 
 export default function MembershipLevelsPage() {
   const toast = useToast();

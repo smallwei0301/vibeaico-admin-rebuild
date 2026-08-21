@@ -17,6 +17,7 @@ import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import { listFeatures } from '@/services/settings';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { inventoryPage as t } from '@/i18n/zh-TW/pages/inventory';
@@ -44,7 +45,7 @@ type InventoryLog = {
   operator: string | null;
 };
 
-const MOCK_INVENTORY_LOGS: InventoryLog[] = [
+const INVENTORY_LOGS_LOCAL_SHOP: InventoryLog[] = [
   {
     id: 'il_1', createdAt: '2026-08-20T09:12:00+08:00',
     productId: 'p_1', productName: '修護洗髮精 500ml',
@@ -95,6 +96,108 @@ const MOCK_INVENTORY_LOGS: InventoryLog[] = [
   },
 ];
 
+const INVENTORY_LOGS_GUIDE: InventoryLog[] = [
+  {
+    id: 'il_1', createdAt: '2026-08-20T09:12:00+08:00',
+    productId: 'p_1', productName: '防水袋 20L',
+    type: 'SALE_OUT', quantity: -2, stockBefore: 20, stockAfter: 18,
+    reason: '訂單 PO20260820011', operator: null,
+  },
+  {
+    id: 'il_2', createdAt: '2026-08-19T16:40:00+08:00',
+    productId: 'p_3', productName: '祕島明信片組（6 入）',
+    type: 'SALE_OUT', quantity: -12, stockBefore: 72, stockAfter: 60,
+    reason: '訂單 PO20260819008', operator: null,
+  },
+  {
+    id: 'il_3', createdAt: '2026-08-18T11:05:00+08:00',
+    productId: 'p_2', productName: '寬簷防曬帽',
+    type: 'PURCHASE_IN', quantity: 3, stockBefore: 0, stockAfter: 3,
+    reason: '進貨補充', operator: '小威',
+  },
+  {
+    id: 'il_4', createdAt: '2026-08-17T18:22:00+08:00',
+    productId: 'p_4', productName: '手繪路線地圖',
+    type: 'STOCKTAKE', quantity: -5, stockBefore: 5, stockAfter: 0,
+    reason: '盤點調整', operator: '阿海',
+  },
+  {
+    id: 'il_5', createdAt: '2026-08-16T10:30:00+08:00',
+    productId: 'p_1', productName: '防水袋 20L',
+    type: 'DAMAGE', quantity: -1, stockBefore: 19, stockAfter: 18,
+    reason: '出團途中破損', operator: '小雨',
+  },
+  {
+    id: 'il_6', createdAt: '2026-08-15T14:02:00+08:00',
+    productId: 'p_3', productName: '祕島明信片組（6 入）',
+    type: 'RETURN_IN', quantity: 6, stockBefore: 54, stockAfter: 60,
+    reason: '退貨入庫', operator: '阿海',
+  },
+  {
+    id: 'il_7', createdAt: '2026-08-14T20:15:00+08:00',
+    productId: 'p_2', productName: '寬簷防曬帽',
+    type: 'ORDER_CANCELLED', quantity: 1, stockBefore: 2, stockAfter: 3,
+    reason: '訂單取消', operator: null,
+  },
+  {
+    id: 'il_8', createdAt: '2026-08-13T09:48:00+08:00',
+    productId: 'p_1', productName: '防水袋 20L',
+    type: 'MANUAL', quantity: -1, stockBefore: 19, stockAfter: 18,
+    reason: '手動調整', operator: '小威',
+  },
+];
+
+const INVENTORY_LOGS_CLINIC: InventoryLog[] = [
+  {
+    id: 'il_1', createdAt: '2026-08-20T09:12:00+08:00',
+    productId: 'p_1', productName: '綜合維他命（90 錠）',
+    type: 'SALE_OUT', quantity: -2, stockBefore: 34, stockAfter: 32,
+    reason: '訂單 PO20260820021', operator: null,
+  },
+  {
+    id: 'il_2', createdAt: '2026-08-19T16:40:00+08:00',
+    productId: 'p_2', productName: '益生菌沖劑（30 包）',
+    type: 'SALE_OUT', quantity: -1, stockBefore: 7, stockAfter: 6,
+    reason: '訂單 PO20260819018', operator: null,
+  },
+  {
+    id: 'il_3', createdAt: '2026-08-18T11:05:00+08:00',
+    productId: 'p_1', productName: '綜合維他命（90 錠）',
+    type: 'PURCHASE_IN', quantity: 24, stockBefore: 10, stockAfter: 34,
+    reason: '進貨補充', operator: '小威',
+  },
+  {
+    id: 'il_4', createdAt: '2026-08-17T18:22:00+08:00',
+    productId: 'p_3', productName: '醫用口罩（50 入）',
+    type: 'STOCKTAKE', quantity: -3, stockBefore: 7, stockAfter: 4,
+    reason: '盤點調整', operator: '護理師 小美',
+  },
+  {
+    id: 'il_5', createdAt: '2026-08-16T10:30:00+08:00',
+    productId: 'p_2', productName: '益生菌沖劑（30 包）',
+    type: 'DAMAGE', quantity: -1, stockBefore: 8, stockAfter: 7,
+    reason: '包裝破損報廢', operator: '護理師 小美',
+  },
+  {
+    id: 'il_6', createdAt: '2026-08-15T14:02:00+08:00',
+    productId: 'p_1', productName: '綜合維他命（90 錠）',
+    type: 'RETURN_IN', quantity: 2, stockBefore: 8, stockAfter: 10,
+    reason: '退貨入庫', operator: '護理師 小美',
+  },
+  {
+    id: 'il_7', createdAt: '2026-08-14T20:15:00+08:00',
+    productId: 'p_3', productName: '醫用口罩（50 入）',
+    type: 'ORDER_CANCELLED', quantity: 2, stockBefore: 5, stockAfter: 7,
+    reason: '訂單取消', operator: null,
+  },
+  {
+    id: 'il_8', createdAt: '2026-08-13T09:48:00+08:00',
+    productId: 'p_2', productName: '益生菌沖劑（30 包）',
+    type: 'MANUAL', quantity: -1, stockBefore: 9, stockAfter: 8,
+    reason: '手動調整', operator: '小威',
+  },
+];
+
 const TYPE_TONE: Record<InventoryLogType, 'success' | 'danger' | 'info' | 'warning' | 'neutral' | 'purple'> = {
   PURCHASE_IN: 'success',
   SALE_OUT: 'info',
@@ -128,7 +231,9 @@ export default function InventoryPage() {
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 320));
-      setRows(MOCK_INVENTORY_LOGS);
+      setRows(byMode({
+        LOCAL_SHOP: INVENTORY_LOGS_LOCAL_SHOP, GUIDE: INVENTORY_LOGS_GUIDE, CLINIC: INVENTORY_LOGS_CLINIC,
+      }));
     } catch (e) {
       toast.show(
         `${t.messages.loadLogsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
