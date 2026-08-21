@@ -47,6 +47,9 @@
 9. **不新增依賴，除非分冊點名。** 各分冊明確列出允許安裝的套件與版本，其餘不裝。
 10. **mock 模式必須永遠可用。** `NEXT_PUBLIC_USE_MOCK=true` 時全站行為與現在完全相同。
     所有真實邏輯都寫在 `adapt(mock, real)` 的 real 分支與 `src/app/api/**`、`src/server/**`。
+11. **一切工作照 12 分冊的 TDD 紀律進行**：先寫測試（紅）→ 實作（綠）→ 回歸全綠
+    才算完成；12 分冊 §4 列名的測試檔是任務清單的一部分；**永遠不准為了過關而
+    改測試**（12 §2.4 的禁止清單，違反 = 該輪工作無效）；紅燈不得 merge。
 
 ---
 
@@ -116,6 +119,7 @@ supabase/
 | [`09-FEATURE-STORE.md`](09-FEATURE-STORE.md) | 功能商店訂閱制：22 項功能目錄、點數扣款、套裝方案、功能閘門對應表、到期副作用、AI 客服（Claude API） |
 | [`10-TOUR-DOMAIN.md`](10-TOUR-DOMAIN.md) | 行程領域：行程/方案/團次 schema、名額原子扣減、旅遊訂單、導遊自訂金流（綠界/匯款）、後台新頁面 |
 | [`11-PARTNER-API.md`](11-PARTNER-API.md) | 共用旅客帳號、公開商店 API、評論、顧客自動建檔、Midao Partner API 與退役路線 |
+| [`12-TESTING-TDD.md`](12-TESTING-TDD.md) | **強制**：TDD 循環、單元/整合/E2E 標準、每 Phase 必寫測試矩陣、TEST 資料庫、CI 關卡、Definition of Done |
 
 ---
 

@@ -19,6 +19,16 @@
 Midao 的 Traveler realm 改用這個 Supabase 專案（換 URL + anon key 即可，
 它本來就是 Supabase cookie 模式）。不做雙系統帳號連結 —— 只有一個身分庫。
 
+> **為什麼不是反過來共用 Midao 既有的 Supabase 專案**（owner 問過，2026-08-21 定案）：
+> ① Midao 專案是正在服務生產流量的資料庫，VibeAI Phase 0–9 的密集 migration
+> 迭代直接跑在上面，任何失誤都可能波及 Midao 線上服務；② 兩邊資料表大量撞名
+> （bookings/orders/customers…），共用就必須引入多 schema 命名空間，對照文件
+> 施工的模型是持續的出錯源；③ Midao 專案受 tour-platform harness 的 migration
+> ledger 治理，VibeAI 每條 migration 都要走那套流程會嚴重拖慢施工；
+> ④ Midao 目前冷啟動、旅客量極小，§1.4 的帳號搬遷成本趨近於零 —— 共用換來的
+> 唯一好處（免搬帳號）此刻最不值錢。結論：**兩個獨立 Supabase 專案**，
+> 只共用「VibeAI 專案的 Auth」作為兩平台的旅客身分庫。
+
 同一個 auth user 有兩種可能角色，用資料區分、不用不同帳號：
 
 | 角色 | 判定 |

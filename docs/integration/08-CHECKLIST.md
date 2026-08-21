@@ -1,7 +1,14 @@
 # 08 — 總驗收清單（執行時照抄成 todo，逐項打勾）
 
 > 每個 Phase 結束都要：`npm run typecheck` ✅、`npm run build` ✅、
-> `NEXT_PUBLIC_USE_MOCK=true` 模式全站行為不變 ✅，再加該 Phase 專屬項目。
+> `NEXT_PUBLIC_USE_MOCK=true` 模式全站行為不變 ✅，
+> **12 分冊 §4 該 Phase 的測試矩陣全綠 ✅（Definition of Done = 12 §6）**，
+> 再加該 Phase 專屬項目。本清單的每一項都必須有對應的自動化測試，
+> 只有無法自動化的（收信、LINE 手機實測）才允許人工驗收並記錄。
+
+## Phase 0 追加 — 測試基礎設施（12 分冊）
+- [ ] vitest + playwright、tests/ 骨架、fixtures、TEST Supabase 專案、reset-db 安全鎖
+- [ ] CI（check + integration jobs）上線，故意紅燈驗證關卡有效
 
 ## Phase 0 — 環境（01 分冊）
 - [ ] Supabase 專案建立，四組憑證取得
