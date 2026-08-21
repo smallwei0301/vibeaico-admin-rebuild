@@ -9,6 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { chatPage as t } from '@/i18n/zh-TW/pages/chat';
@@ -42,7 +43,7 @@ type ChatMessage = {
 const BASE = new Date('2026-08-20T15:00:00+08:00').getTime();
 const ago = (minutes: number) => new Date(BASE - minutes * 60_000).toISOString();
 
-const MOCK_CONVERSATIONS: Conversation[] = [
+const CONV_LOCAL_SHOP: Conversation[] = [
   {
     id: 'chat_1', customerId: 'c_1', customerName: '王小明',
     lastMessageType: 'TEXT', lastMessage: '請問這週六下午還有位子嗎？',
@@ -60,7 +61,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
   },
 ];
 
-const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
+const MSG_LOCAL_SHOP: Record<string, ChatMessage[]> = {
   chat_1: [
     { id: 'm_1', from: 'CUSTOMER', type: 'TEXT', text: '你好，我想預約剪髮', imageUrl: '', at: ago(20) },
     { id: 'm_2', from: 'SHOP', type: 'TEXT', text: '您好！請問希望哪一天呢？', imageUrl: '', at: ago(18) },
@@ -74,6 +75,75 @@ const MOCK_MESSAGES: Record<string, ChatMessage[]> = {
   chat_3: [
     { id: 'm_7', from: 'SHOP', type: 'TEXT', text: '您的預約已確認，週日 15:00 見！', imageUrl: '', at: ago(60 * 27) },
     { id: 'm_8', from: 'CUSTOMER', type: 'TEXT', text: '好的，謝謝！', imageUrl: '', at: ago(60 * 26) },
+  ],
+};
+
+const CONV_GUIDE: Conversation[] = [
+  {
+    id: 'chat_1', customerId: 'c_1', customerName: '陳彥廷',
+    lastMessageType: 'TEXT', lastMessage: '這週六賞鯨還有位子嗎？兩大一小',
+    lastMessageAt: ago(4), unread: 2,
+  },
+  {
+    id: 'chat_2', customerId: 'c_4', customerName: '黃思穎',
+    lastMessageType: 'TEXT', lastMessage: '溯溪需要自備什麼嗎？',
+    lastMessageAt: ago(88), unread: 1,
+  },
+  {
+    id: 'chat_3', customerId: 'c_5', customerName: '張家豪',
+    lastMessageType: 'TEXT', lastMessage: '好的，那就麻煩你了！',
+    lastMessageAt: ago(60 * 20), unread: 0,
+  },
+];
+
+const MSG_GUIDE: Record<string, ChatMessage[]> = {
+  chat_1: [
+    { id: 'm_1', from: 'CUSTOMER', type: 'TEXT', text: '你好，想問龜山島賞鯨', imageUrl: '', at: ago(25) },
+    { id: 'm_2', from: 'SHOP', type: 'TEXT', text: '您好！標準團每天 09:00 出發，全程約 3 小時 🐬', imageUrl: '', at: ago(22) },
+    { id: 'm_3', from: 'CUSTOMER', type: 'TEXT', text: '小孩 6 歲可以參加嗎', imageUrl: '', at: ago(8) },
+    { id: 'm_4', from: 'CUSTOMER', type: 'TEXT', text: '這週六賞鯨還有位子嗎？兩大一小', imageUrl: '', at: ago(4) },
+  ],
+  chat_2: [
+    { id: 'm_5', from: 'SHOP', type: 'TEXT', text: '您的溯溪行程已確認，8/24 08:00 花蓮火車站前集合 🏞', imageUrl: '', at: ago(120) },
+    { id: 'm_6', from: 'CUSTOMER', type: 'TEXT', text: '溯溪需要自備什麼嗎？', imageUrl: '', at: ago(88) },
+  ],
+  chat_3: [
+    { id: 'm_7', from: 'CUSTOMER', type: 'TEXT', text: '公司 12 人想包船，8/22 可以嗎', imageUrl: '', at: ago(60 * 24) },
+    { id: 'm_8', from: 'SHOP', type: 'TEXT', text: '可以！包船專案 18,000 元，先收 5,000 定金即可保留船班', imageUrl: '', at: ago(60 * 22) },
+    { id: 'm_9', from: 'CUSTOMER', type: 'TEXT', text: '好的，那就麻煩你了！', imageUrl: '', at: ago(60 * 20) },
+  ],
+};
+
+const CONV_CLINIC: Conversation[] = [
+  {
+    id: 'chat_1', customerId: 'c_2', customerName: '周佩琪',
+    lastMessageType: 'TEXT', lastMessage: '今天下午還有初診的號嗎？',
+    lastMessageAt: ago(6), unread: 2,
+  },
+  {
+    id: 'chat_2', customerId: 'c_1', customerName: '劉建國',
+    lastMessageType: 'TEXT', lastMessage: '收到，謝謝提醒',
+    lastMessageAt: ago(60 * 5), unread: 0,
+  },
+  {
+    id: 'chat_3', customerId: 'c_4', customerName: '蔡淑芬',
+    lastMessageType: 'TEXT', lastMessage: '健檢報告可以線上看嗎？',
+    lastMessageAt: ago(60 * 30), unread: 1,
+  },
+];
+
+const MSG_CLINIC: Record<string, ChatMessage[]> = {
+  chat_1: [
+    { id: 'm_1', from: 'CUSTOMER', type: 'TEXT', text: '你好，喉嚨痛三天了', imageUrl: '', at: ago(15) },
+    { id: 'm_2', from: 'SHOP', type: 'TEXT', text: '您好，建議先掛一般門診由醫師評估，線上可預約看診號碼。', imageUrl: '', at: ago(12) },
+    { id: 'm_3', from: 'CUSTOMER', type: 'TEXT', text: '今天下午還有初診的號嗎？', imageUrl: '', at: ago(6) },
+  ],
+  chat_2: [
+    { id: 'm_4', from: 'SHOP', type: 'TEXT', text: '提醒您：慢性處方箋將於下週到期，記得回診由醫師評估用藥。', imageUrl: '', at: ago(60 * 6) },
+    { id: 'm_5', from: 'CUSTOMER', type: 'TEXT', text: '收到，謝謝提醒', imageUrl: '', at: ago(60 * 5) },
+  ],
+  chat_3: [
+    { id: 'm_6', from: 'CUSTOMER', type: 'TEXT', text: '健檢報告可以線上看嗎？', imageUrl: '', at: ago(60 * 30) },
   ],
 };
 
@@ -119,7 +189,7 @@ export default function ChatPage() {
       if (cancelled) return;
       const now = Date.now();
       setConversations(
-        MOCK_CONVERSATIONS.map((c) => ({ ...c, timeLabel: relativeTime(c.lastMessageAt, now) })),
+        byMode({ LOCAL_SHOP: CONV_LOCAL_SHOP, GUIDE: CONV_GUIDE, CLINIC: CONV_CLINIC }).map((c) => ({ ...c, timeLabel: relativeTime(c.lastMessageAt, now) })),
       );
       setListLoading(false);
     }, 320);
@@ -139,7 +209,7 @@ export default function ChatPage() {
     /* 讀取後清掉未讀數（原站 /api/chat/messages/{id}/read）*/
     setConversations((list) => list.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)));
     setTimeout(() => {
-      setMessages(MOCK_MESSAGES[c.id] ?? []);
+      setMessages(byMode({ LOCAL_SHOP: MSG_LOCAL_SHOP, GUIDE: MSG_GUIDE, CLINIC: MSG_CLINIC })[c.id] ?? []);
       setThreadLoading(false);
     }, 260);
   };

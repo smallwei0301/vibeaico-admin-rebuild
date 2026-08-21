@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listFeatures } from '@/services/settings';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { portfolioPage as t } from '@/i18n/zh-TW/pages/portfolio';
@@ -42,7 +43,7 @@ type PortfolioItem = {
   active: boolean;
 };
 
-const MOCK_PORTFOLIOS: PortfolioItem[] = [
+const PORTFOLIO_LOCAL_SHOP: PortfolioItem[] = [
   {
     id: 'pf_1', title: '韓系空氣感層次燙', description: '微捲弧度搭配低彩度霧棕，適合細軟髮質',
     coverImageUrl: '', extraImageCount: 4, sortOrder: 1, lineSortOrder: 1,
@@ -62,6 +63,47 @@ const MOCK_PORTFOLIOS: PortfolioItem[] = [
     id: 'pf_4', title: '男士短髮修剪', description: '兩側推高、上方保留厚度',
     coverImageUrl: '', extraImageCount: 2, sortOrder: 4, lineSortOrder: 3,
     lineFeatured: true, active: false,
+  },
+];
+
+const PORTFOLIO_GUIDE: PortfolioItem[] = [
+  {
+    id: 'pf_1', title: '龜山島牛奶海空拍', description: '硫磺噴氣孔染出的乳白海域，只有繞島時看得到',
+    coverImageUrl: '', extraImageCount: 6, sortOrder: 1, lineSortOrder: 1,
+    lineFeatured: true, active: true,
+  },
+  {
+    id: 'pf_2', title: '飛旋海豚追蹤紀錄', description: '2026 年 6 月，一次遇上三群共約 200 隻',
+    coverImageUrl: '', extraImageCount: 12, sortOrder: 2, lineSortOrder: 2,
+    lineFeatured: true, active: true,
+  },
+  {
+    id: 'pf_3', title: '砂婆礑溪谷天然滑水道', description: '',
+    coverImageUrl: '', extraImageCount: 8, sortOrder: 3, lineSortOrder: 3,
+    lineFeatured: true, active: true,
+  },
+  {
+    id: 'pf_4', title: '九份夜色與礦坑遺址', description: '避開人潮的觀景平台，華燈初上那 20 分鐘',
+    coverImageUrl: '', extraImageCount: 5, sortOrder: 4, lineSortOrder: 4,
+    lineFeatured: false, active: true,
+  },
+  {
+    id: 'pf_5', title: '企業包團紀錄：員工旅遊', description: '12 人包船，客製航線',
+    coverImageUrl: '', extraImageCount: 3, sortOrder: 5, lineSortOrder: 5,
+    lineFeatured: false, active: false,
+  },
+];
+
+const PORTFOLIO_CLINIC: PortfolioItem[] = [
+  {
+    id: 'pf_1', title: '健檢中心環境', description: '獨立診間與更衣空間',
+    coverImageUrl: '', extraImageCount: 4, sortOrder: 1, lineSortOrder: 1,
+    lineFeatured: true, active: true,
+  },
+  {
+    id: 'pf_2', title: '醫療團隊介紹', description: '',
+    coverImageUrl: '', extraImageCount: 3, sortOrder: 2, lineSortOrder: 2,
+    lineFeatured: false, active: true,
   },
 ];
 
@@ -101,7 +143,7 @@ export default function PortfolioPage() {
     void (async () => {
       try {
         /* 骨架階段作品資料在頁面內，真實後端為 /api/portfolios */
-        setItems(MOCK_PORTFOLIOS);
+        setItems(byMode({ LOCAL_SHOP: PORTFOLIO_LOCAL_SHOP, GUIDE: PORTFOLIO_GUIDE, CLINIC: PORTFOLIO_CLINIC }));
       } catch {
         toast.show(t.messages.loadPortfolioFailed, 'danger');
       } finally {

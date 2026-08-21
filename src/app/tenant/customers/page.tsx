@@ -50,8 +50,12 @@ const MOCK_UNBOUND_LINE_USERS: UnboundLineUser[] = [
 /** 原站以「自動建檔」旗標區分：LINE 加好友後系統先開的空白顧客檔 */
 const AUTO_CREATED_CUSTOMER_IDS = new Set<string>(['c_2']);
 
-/** 原站 /api/customers/tags；骨架階段由假資料推導，避免與 mock 脫節 */
-const CUSTOMER_TAGS: string[] = Array.from(new Set(MOCK_CUSTOMERS.flatMap((c) => c.tags)));
+/**
+ * 原站 /api/customers/tags；骨架階段由假資料推導，避免與 mock 脫節。
+ * 必須在 render 時求值 —— 假資料會隨業態模式切換（見 src/mock/index.ts）。
+ */
+const customerTags = (): string[] =>
+  Array.from(new Set(MOCK_CUSTOMERS.flatMap((c) => c.tags)));
 
 const GENDER_OPTIONS = Object.entries(common.gender) as [Gender, string][];
 
@@ -371,7 +375,7 @@ export default function CustomersPage() {
                 onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))}
               >
                 <option value="">{t.search.tagAll}</option>
-                {CUSTOMER_TAGS.map((tag) => (
+                {customerTags().map((tag) => (
                   <option key={tag} value={tag}>{tag}</option>
                 ))}
               </Select>

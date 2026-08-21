@@ -15,7 +15,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { calendarSyncPage as t } from '@/i18n/zh-TW/pages/calendar-sync';
 import { APP_URL } from '@/config/env';
-import { MOCK_TENANTS } from '@/mock';
+import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { formatDateTime } from '@/lib/utils';
 
 /* -------------------------------------------------------------------------- */
@@ -48,12 +48,12 @@ const MOCK_EXTERNAL_CALENDARS: ExternalCalendar[] = [
   },
 ];
 
-const currentTenant = MOCK_TENANTS.find((x) => x.current) ?? MOCK_TENANTS[0];
+
 
 /** 訂閱網址：原站由 /api/settings/calendar 取得（含密鑰 token） */
 const INITIAL_ICS_TOKEN = 'a1b2c3d4e5f6a7b8';
-const buildIcsUrl = (token: string) =>
-  `${APP_URL.replace(/\/$/, '')}/ics/${currentTenant.shopCode}/${token}.ics`;
+const buildIcsUrl = (shopCode: string, token: string) =>
+  `${APP_URL.replace(/\/$/, '')}/ics/${shopCode}/${token}.ics`;
 
 /** 重新產生時使用（避免 render 期呼叫 Math.random 造成 hydration 不一致） */
 const REGENERATED_TOKENS = ['b7c8d9e0f1a2b3c4', 'c9d0e1f2a3b4c5d6', 'd1e2f3a4b5c6d7e8'];
@@ -79,7 +79,8 @@ export default function CalendarSyncPage() {
   const [adding, setAdding] = React.useState(false);
   const [deleting, setDeleting] = React.useState<ExternalCalendar | null>(null);
 
-  const icsUrl = buildIcsUrl(icsToken);
+  const currentTenant = useCurrentTenant();
+  const icsUrl = buildIcsUrl(currentTenant.shopCode, icsToken);
   const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`;
 
   React.useEffect(() => {

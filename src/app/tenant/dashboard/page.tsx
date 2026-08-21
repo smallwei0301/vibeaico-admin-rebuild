@@ -20,7 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { MOCK_TENANTS } from '@/mock';
+import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
@@ -93,8 +93,7 @@ const QUICK_ACTIONS = [
 /** 統計卡在資料載入前的佔位符（原站 DOM 即為「-」） */
 const PLACEHOLDER = '-';
 
-const currentTenant = MOCK_TENANTS.find((x) => x.current) ?? MOCK_TENANTS[0];
-const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
+
 
 const daysUntil = (isoDate: string) =>
   Math.ceil((new Date(isoDate).getTime() - Date.now()) / 86_400_000);
@@ -102,6 +101,8 @@ const daysUntil = (isoDate: string) =>
 /* -------------------------------------------------------------------------- */
 
 export default function DashboardPage() {
+  const currentTenant = useCurrentTenant();
+  const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
 
   const [stats, setStats] = React.useState<DashboardStats | null>(null);

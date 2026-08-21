@@ -18,6 +18,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listMembershipLevels } from '@/services/catalog';
 import { getDashboardStats } from '@/services/reports';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
@@ -51,7 +52,7 @@ type MarketingPush = {
   createdAt: string;
 };
 
-const MOCK_PUSHES: MarketingPush[] = [
+const PUSHES_LOCAL_SHOP: MarketingPush[] = [
   {
     id: 'mp_1', title: '本週特惠活動通知',
     content: '本週來店指定設計師洗剪只要 499，名額有限，快來 LINE 預約！',
@@ -103,6 +104,77 @@ const MOCK_PUSHES: MarketingPush[] = [
   },
 ];
 
+const PUSHES_GUIDE: MarketingPush[] = [
+  {
+    id: 'mp_g1', title: '9 月賞鯨團次開賣',
+    content: '9 月團次開放報名囉！出團前 30 天報名享 9 折，週末場次每次都秒殺 🐬',
+    targetType: 'ALL', targetValue: '', targetLabel: '',
+    estimatedCount: 412, sentCount: 0, failedCount: 0,
+    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
+    note: '等封面照確認', createdAt: '2026-08-20T09:30:00+08:00',
+  },
+  {
+    id: 'mp_g2', title: '颱風備案通知',
+    content: '本週有颱風接近，8/23 前的團次將於出團前一日 18:00 前發送最終確認，如取消全額退費。',
+    targetType: 'CUSTOM', targetValue: 'U901\nU902\nU905', targetLabel: '',
+    estimatedCount: 34, sentCount: 0, failedCount: 0,
+    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-08-22T18:00:00+08:00',
+    sentAt: null, note: '只發近期出團的旅客', createdAt: '2026-08-20T11:05:00+08:00',
+  },
+  {
+    id: 'mp_g3', title: '祕島之友限定：新路線先行報名',
+    content: '新開的太魯閣秘境路線，先開放祕島之友報名，回覆「新路線」了解詳情。',
+    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: '祕島之友',
+    estimatedCount: 20, sentCount: 0, failedCount: 0,
+    status: 'SENDING', imageUrl: '', scheduledAt: null, sentAt: null,
+    note: '', createdAt: '2026-08-19T08:05:00+08:00',
+  },
+  {
+    id: 'mp_g4', title: '溯溪季倒數',
+    content: '溯溪季只到 10/15，還沒體驗過的旅人把握最後檔期！',
+    targetType: 'TAG', targetValue: '溯溪', targetLabel: '溯溪',
+    estimatedCount: 96, sentCount: 94, failedCount: 2,
+    status: 'COMPLETED', imageUrl: 'https://example.com/river.jpg',
+    scheduledAt: null, sentAt: '2026-08-12T11:00:00+08:00',
+    note: '', createdAt: '2026-08-12T10:40:00+08:00',
+  },
+  {
+    id: 'mp_g5', title: '推播額度提醒測試',
+    content: '本月推播額度即將用完，測試發送。',
+    targetType: 'ALL', targetValue: '', targetLabel: '',
+    estimatedCount: 412, sentCount: 0, failedCount: 412,
+    status: 'FAILED', imageUrl: '', scheduledAt: null,
+    sentAt: '2026-08-10T19:20:00+08:00', note: '推播額度不足（168/200）', createdAt: '2026-08-10T19:00:00+08:00',
+  },
+];
+
+const PUSHES_CLINIC: MarketingPush[] = [
+  {
+    id: 'mp_c1', title: '流感疫苗開打通知',
+    content: '本院流感疫苗已到貨，公費對象請攜帶健保卡，線上可預約看診號碼。',
+    targetType: 'ALL', targetValue: '', targetLabel: '',
+    estimatedCount: 1864, sentCount: 0, failedCount: 0,
+    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-08-25T10:00:00+08:00',
+    sentAt: null, note: '分批發送避免當日湧入', createdAt: '2026-08-18T14:12:00+08:00',
+  },
+  {
+    id: 'mp_c2', title: '中秋連假休診公告',
+    content: '9/25～9/27 中秋連假休診，急診請至鄰近醫院，造成不便敬請見諒。',
+    targetType: 'ALL', targetValue: '', targetLabel: '',
+    estimatedCount: 1864, sentCount: 0, failedCount: 0,
+    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
+    note: '', createdAt: '2026-08-20T09:00:00+08:00',
+  },
+  {
+    id: 'mp_c3', title: '年度健檢提醒',
+    content: '距離您上次健檢已滿一年，現在預約享早鳥折 800，名額有限。',
+    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: 'VIP 健檢',
+    estimatedCount: 46, sentCount: 46, failedCount: 0,
+    status: 'COMPLETED', imageUrl: '', scheduledAt: null,
+    sentAt: '2026-08-14T09:00:00+08:00', note: '', createdAt: '2026-08-14T08:30:00+08:00',
+  },
+];
+
 const STATUS_TONE: Record<PushStatus, 'neutral' | 'info' | 'primary' | 'success' | 'danger'> = {
   DRAFT: 'neutral',
   SCHEDULED: 'info',
@@ -136,7 +208,7 @@ export default function MarketingPage() {
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 320));
-      setRows(MOCK_PUSHES);
+      setRows(byMode({ LOCAL_SHOP: PUSHES_LOCAL_SHOP, GUIDE: PUSHES_GUIDE, CLINIC: PUSHES_CLINIC }));
     } catch (e) {
       toast.show(
         `${t.messages.loadPushesFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,

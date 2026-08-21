@@ -20,6 +20,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listCoupons } from '@/services/catalog';
 import { getDashboardStats, listFeatures } from '@/services';
+import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { campaignsPage as t } from '@/i18n/zh-TW/pages/campaigns';
@@ -54,7 +55,7 @@ type Campaign = {
   createdAt: string;
 };
 
-const MOCK_CAMPAIGNS: Campaign[] = [
+const CAMPAIGNS_LOCAL_SHOP: Campaign[] = [
   {
     id: 'cm_1', name: '生日祝福', description: '生日當月來店即贈護髮體驗。',
     type: 'BIRTHDAY', status: 'ACTIVE', startAt: '2026-01-01T00:00:00+08:00', endAt: null,
@@ -95,6 +96,86 @@ const MOCK_CAMPAIGNS: Campaign[] = [
     couponId: 'cp_1', couponName: '新客體驗 8 折', bonusPoints: 0,
     thresholdAmount: null, recallDays: null, isAutoTrigger: true,
     participantCount: 62, imageUrl: '', createdAt: '2026-02-24T11:10:00+08:00',
+  },
+];
+
+const CAMPAIGNS_GUIDE: Campaign[] = [
+  {
+    id: 'cm_g1', name: '早鳥報名回饋', description: '出團前 30 天報名，送 500 點。',
+    type: 'LIMITED_TIME', status: 'ACTIVE',
+    startAt: '2026-06-01T00:00:00+08:00', endAt: '2026-10-31T23:59:00+08:00',
+    pushMessage: '暑期檔期開賣！出團前 30 天報名享 9 折，還送 500 點折抵下次行程 🌊',
+    couponId: 'cp_1', couponName: '早鳥報名 9 折', bonusPoints: 500,
+    thresholdAmount: null, recallDays: null, isAutoTrigger: false,
+    participantCount: 88, imageUrl: '', createdAt: '2026-05-20T10:00:00+08:00',
+  },
+  {
+    id: 'cm_g2', name: '揪團同行折扣', description: '4 人以上同行自動折 500。',
+    type: 'SPENDING_THRESHOLD', status: 'ACTIVE', startAt: '2026-07-01T00:00:00+08:00', endAt: null,
+    pushMessage: '找朋友一起來！4 人以上同行每筆折 500，人越多越划算 🙌',
+    couponId: 'cp_2', couponName: '揪團折 500', bonusPoints: 0,
+    thresholdAmount: 5000, recallDays: null, isAutoTrigger: true,
+    participantCount: 34, imageUrl: '', createdAt: '2026-06-25T14:30:00+08:00',
+  },
+  {
+    id: 'cm_g3', name: '旅人回訪禮', description: '一年內再次報名贈免費裝備租借。',
+    type: 'RECALL', status: 'ACTIVE', startAt: '2026-03-01T00:00:00+08:00', endAt: null,
+    pushMessage: '好久不見！最近開了新路線，回訪的旅人享免費裝備租借 🏕',
+    couponId: 'cp_3', couponName: '回訪禮：免費裝備租借', bonusPoints: 0,
+    thresholdAmount: null, recallDays: 180, isAutoTrigger: true,
+    participantCount: 26, imageUrl: '', createdAt: '2026-02-26T09:15:00+08:00',
+  },
+  {
+    id: 'cm_g4', name: '生日出海禮', description: '壽星當月報名任一行程送紀念明信片。',
+    type: 'BIRTHDAY', status: 'ACTIVE', startAt: '2026-01-01T00:00:00+08:00', endAt: null,
+    pushMessage: '生日快樂！這個月報名任一行程，我們送你一組祕島明信片 🎂',
+    couponId: null, couponName: null, bonusPoints: 200,
+    thresholdAmount: null, recallDays: null, isAutoTrigger: true,
+    participantCount: 17, imageUrl: '', createdAt: '2025-12-28T11:00:00+08:00',
+  },
+  {
+    id: 'cm_g5', name: '賞鯨季開跑', description: '4–9 月賞鯨旺季主打。',
+    type: 'LIMITED_TIME', status: 'ENDED',
+    startAt: '2026-04-01T00:00:00+08:00', endAt: '2026-08-10T23:59:00+08:00',
+    pushMessage: '賞鯨季來了！飛旋海豚出沒率 9 成，週末團次熱賣中 🐬',
+    couponId: null, couponName: null, bonusPoints: 0,
+    thresholdAmount: null, recallDays: null, isAutoTrigger: false,
+    participantCount: 142, imageUrl: '', createdAt: '2026-03-24T16:40:00+08:00',
+  },
+];
+
+const CAMPAIGNS_CLINIC: Campaign[] = [
+  {
+    id: 'cm_c1', name: '流感疫苗季提醒', description: '公費疫苗開打通知。',
+    type: 'LIMITED_TIME', status: 'ACTIVE',
+    startAt: '2026-08-15T00:00:00+08:00', endAt: '2026-12-31T23:59:00+08:00',
+    pushMessage: '流感疫苗開打囉！本院已開放線上預約，公費對象免費接種，名額有限。',
+    couponId: null, couponName: null, bonusPoints: 0,
+    thresholdAmount: null, recallDays: null, isAutoTrigger: false,
+    participantCount: 214, imageUrl: '', createdAt: '2026-08-10T09:00:00+08:00',
+  },
+  {
+    id: 'cm_c2', name: '年度健檢回訪', description: '滿一年未健檢者自動提醒。',
+    type: 'RECALL', status: 'ACTIVE', startAt: '2026-01-01T00:00:00+08:00', endAt: null,
+    pushMessage: '距離您上次健康檢查已滿一年，建議安排今年度檢查，現在預約享早鳥折 800。',
+    couponId: 'cp_1', couponName: '健檢早鳥折 800', bonusPoints: 0,
+    thresholdAmount: null, recallDays: 365, isAutoTrigger: true,
+    participantCount: 96, imageUrl: '', createdAt: '2025-12-30T10:20:00+08:00',
+  },
+  {
+    id: 'cm_c3', name: '慢性病回診提醒', description: '慢性處方箋到期前提醒。',
+    type: 'RECALL', status: 'ACTIVE', startAt: '2026-02-01T00:00:00+08:00', endAt: null,
+    pushMessage: '提醒您：慢性處方箋即將到期，記得回診由醫師評估後續用藥。',
+    couponId: null, couponName: null, bonusPoints: 0,
+    thresholdAmount: null, recallDays: 90, isAutoTrigger: true,
+    participantCount: 178, imageUrl: '', createdAt: '2026-01-28T15:10:00+08:00',
+  },
+  {
+    id: 'cm_c4', name: '家庭疫苗方案', description: '同戶 3 人以上 9 折。', type: 'SPENDING_THRESHOLD',
+    status: 'DRAFT', startAt: null, endAt: null,
+    pushMessage: '', couponId: 'cp_2', couponName: '疫苗季家庭方案', bonusPoints: 0,
+    thresholdAmount: 2400, recallDays: null, isAutoTrigger: true,
+    participantCount: 0, imageUrl: '', createdAt: '2026-08-18T17:30:00+08:00',
   },
 ];
 
@@ -152,7 +233,7 @@ export default function CampaignsPage() {
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 320));
-      setRows(MOCK_CAMPAIGNS);
+      setRows(byMode({ LOCAL_SHOP: CAMPAIGNS_LOCAL_SHOP, GUIDE: CAMPAIGNS_GUIDE, CLINIC: CAMPAIGNS_CLINIC }));
     } catch (e) {
       toast.show(
         `${t.messages.loadCampaignsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
