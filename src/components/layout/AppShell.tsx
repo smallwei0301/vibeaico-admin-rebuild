@@ -6,6 +6,7 @@ import { Footer } from './Footer';
 import { BugReportButton } from './BugReportModal';
 import { SupportChatWidget } from './SupportChatWidget';
 import { ToastProvider } from '@/components/ui/Toast';
+import { BusinessTypeProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER } from '@/mock';
 
 /**
@@ -31,22 +32,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const current = MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0];
+  /** 骨架模式：切換店家即切換業態，方便檢視三種模式的後台差異 */
+  const [tenantId, setTenantId] = React.useState(
+    (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id,
+  );
+  const current = MOCK_TENANTS.find((t) => t.id === tenantId) ?? MOCK_TENANTS[0];
+  const businessType = current.businessType ?? 'LOCAL_SHOP';
 
   return (
     <ToastProvider>
+     <BusinessTypeProvider value={businessType}>
       <div className="app-wrapper" data-collapsed={collapsed}>
         <Sidebar
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}
           counts={MOCK_SIDEBAR_COUNTS}
+          businessType={businessType}
+          extraModules={current.extraModules}
         />
         <div className="content-wrapper">
           <Topbar
             onToggleSidebar={toggle}
             tenants={MOCK_TENANTS}
             currentTenant={current}
+            onSwitchTenant={setTenantId}
             userName={MOCK_USER.name}
             setupPercent={MOCK_SETUP_STATUS.percent}
           />
@@ -56,6 +66,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <BugReportButton />
       <SupportChatWidget />
+     </BusinessTypeProvider>
     </ToastProvider>
   );
 }

@@ -18,7 +18,8 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listTrips } from '@/services/tours';
-import { nav } from '@/i18n/zh-TW/nav';
+import { navLabel } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { MidaoListing, Trip, TripStatus } from '@/lib/types';
@@ -38,6 +39,7 @@ const MIDAO_TONE: Record<MidaoListing, 'primary' | 'info' | 'danger' | 'neutral'
 
 export default function TripsPage() {
   const toast = useToast();
+  const businessType = useBusinessType();
 
   const [rows, setRows] = React.useState<Trip[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -225,7 +227,7 @@ export default function TripsPage() {
   return (
     <>
       <PageHeader
-        eyebrow={nav.navTour}
+        eyebrow={navLabel('navOperation', businessType)}
         title={t.title}
         actions={
           <>

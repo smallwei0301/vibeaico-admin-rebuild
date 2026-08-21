@@ -144,6 +144,7 @@ export const tripsPage = {
       price: '價格',
       party: '人數',
       bookingType: '預約型態',
+      deposit: '收款',
       season: '販售期間',
       review: '審核',
       status: '狀態',
@@ -162,6 +163,16 @@ export const tripsPage = {
       maxLabel: '最多人數',
       partyHelp: '每筆訂單可訂購的人數範圍。',
       bookingTypeLabel: '預約型態',
+      depositLabel: '線上收款方式',
+      depositValueLabel: '定金金額',
+      depositPercentLabel: '定金比例（%）',
+      depositHelp: {
+        NONE: '不透過線上收款，旅客下單後由你另行收款。',
+        DEPOSIT_FIXED: '線上先收固定金額定金，尾款出團當日現場收。',
+        DEPOSIT_PERCENT: '線上先收訂單金額的一定比例，尾款出團當日現場收。',
+        FULL: '線上一次收足全額。',
+      },
+      depositPerPersonNote: '每人計價的方案，定金會乘以人數。',
       activeLabel: '啟用此方案',
       yearRoundLabel: '全年販售',
       yearRoundHelp: '關閉後可設定只在特定季節販售，並為各季節設不同售價。',
@@ -169,6 +180,12 @@ export const tripsPage = {
     priceType: {
       PER_PERSON: '每人計價',
       PER_GROUP: '每團計價',
+    },
+    depositMode: {
+      NONE: '不線上收款',
+      DEPOSIT_FIXED: '固定定金',
+      DEPOSIT_PERCENT: '比例定金',
+      FULL: '全額收款',
     },
     priceTypeSuffix: {
       PER_PERSON: '／人',

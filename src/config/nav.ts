@@ -22,7 +22,6 @@ import {
   LayoutDashboard,
   List,
   ListChecks,
-  MapPinned,
   Megaphone,
   MessageSquare,
   MessageSquareText,
@@ -44,6 +43,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { hiddenNavKeys, type BusinessType } from './modes';
 
 /**
  * 側邊欄導航結構 — 1:1 對應原站 tenant/_sidebar 樣板。
@@ -72,16 +72,11 @@ export const NAV: NavEntry[] = [
   {
     key: 'navBooking', icon: CalendarCheck, children: [
       { key: 'bookings', href: '/tenant/bookings', icon: List, feature: undefined, badge: 'pendingBookingBadge' },
+      { key: 'tour_orders', href: '/tenant/tour-orders', icon: ClipboardList, feature: 'TOUR_MODULE', badge: 'pendingTourOrderBadge' },
       { key: 'recurring_bookings', href: '/tenant/recurring-bookings', icon: Repeat, feature: undefined, badge: undefined },
       { key: 'calendar', href: '/tenant/calendar', icon: Calendar, feature: undefined, badge: undefined },
       { key: 'reports', href: '/tenant/reports', icon: BarChart3, feature: 'BASIC_REPORT', badge: undefined },
       { key: 'calendar_sync', href: '/tenant/calendar-sync', icon: CalendarPlus, feature: undefined, badge: undefined },
-    ],
-  },
-  {
-    key: 'navTour', icon: MapPinned, children: [
-      { key: 'trips', href: '/tenant/trips', icon: Route, feature: 'TOUR_MODULE', badge: undefined },
-      { key: 'tour_orders', href: '/tenant/tour-orders', icon: ClipboardList, feature: 'TOUR_MODULE', badge: 'pendingTourOrderBadge' },
     ],
   },
   {
@@ -95,6 +90,7 @@ export const NAV: NavEntry[] = [
     key: 'navOperation', icon: Store, children: [
       { key: 'staff', href: '/tenant/staff', icon: BadgeCheck, feature: undefined, badge: undefined },
       { key: 'services', href: '/tenant/services', icon: ListChecks, feature: undefined, badge: undefined },
+      { key: 'trips', href: '/tenant/trips', icon: Route, feature: 'TOUR_MODULE', badge: undefined },
       { key: 'block_times', href: '/tenant/block-times', icon: Circle, feature: undefined, badge: undefined },
       { key: 'clinic_queue', href: '/tenant/clinic-queue', icon: Circle, feature: undefined, badge: undefined },
       { key: 'shifts', href: '/tenant/shifts', icon: CalendarDays, feature: undefined, badge: undefined },
@@ -133,6 +129,23 @@ export const NAV: NavEntry[] = [
   { key: 'donate', href: '/tenant/donate', icon: Heart },
   { key: 'report_issue', href: '#', icon: Bug },
 ];
+
+/**
+ * 依業態模式產生側邊欄（見 src/config/modes.ts、docs/integration/13-BUSINESS-MODES.md）。
+ * 隱藏 = 不顯示，**資料不刪**；換回該模式即可再看到。
+ * 空群組（全部葉節點都被隱藏）自動移除。
+ */
+export function getNav(
+  businessType: BusinessType = 'LOCAL_SHOP',
+  extraModules: readonly BusinessType[] = [],
+): NavEntry[] {
+  const hidden = new Set(hiddenNavKeys(businessType, extraModules));
+  return NAV.flatMap<NavEntry>((entry) => {
+    if (!isGroup(entry)) return hidden.has(entry.key) ? [] : [entry];
+    const children = entry.children.filter((c) => !hidden.has(c.key));
+    return children.length ? [{ ...entry, children }] : [];
+  });
+}
 
 /** 依 pathname 找出所屬的群組 key（用於預設展開） */
 export function findActiveGroup(pathname: string): string | null {

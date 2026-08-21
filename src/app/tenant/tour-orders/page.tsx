@@ -19,14 +19,29 @@ import { useToast } from '@/components/ui/Toast';
 import { listTourOrders } from '@/services/tours';
 import { MOCK_TRIPS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS } from '@/mock/tours';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { navLabel } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
-  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
+  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, TripPlan,
 } from '@/lib/types';
 
 const PAGE_SIZE = 20;
+
+/**
+ * 應收定金（10 分冊 §1）：每人計價 → 定金×人數；每團計價 → 收一筆。
+ * FULL = 全額線上收（定金欄位記 0）；NONE = 不線上收。
+ */
+function depositOf(plan: TripPlan, total: number, partySize = 1): number {
+  if (plan.depositMode === 'DEPOSIT_FIXED') {
+    return plan.priceType === 'PER_PERSON' ? plan.depositValue * partySize : plan.depositValue;
+  }
+  if (plan.depositMode === 'DEPOSIT_PERCENT') {
+    return Math.round((total * plan.depositValue) / 100);
+  }
+  return 0;
+}
 
 const STATUS_TONE: Record<TourOrderStatus, 'warning' | 'success' | 'primary' | 'neutral'> = {
   PENDING: 'warning', CONFIRMED: 'success', COMPLETED: 'primary', CANCELLED: 'neutral',
@@ -47,6 +62,7 @@ const MOCK_PAYMENT_METHODS = [
 
 export default function TourOrdersPage() {
   const toast = useToast();
+  const businessType = useBusinessType();
 
   const [rows, setRows] = React.useState<TourOrder[]>([]);
   const [total, setTotal] = React.useState(0);
@@ -132,6 +148,7 @@ export default function TourOrdersPage() {
   const draftTotal = draftPlan
     ? draftPlan.priceType === 'PER_PERSON' ? draftPlan.basePrice * draft.partySize : draftPlan.basePrice
     : 0;
+  const draftDeposit = draftPlan ? depositOf(draftPlan, draftTotal, draft.partySize) : 0;
 
   const submitDraft = () => {
     const trip = MOCK_TRIPS.find((x) => x.id === draft.tripId);
@@ -145,6 +162,7 @@ export default function TourOrdersPage() {
       customerName: draft.customerName, customerPhone: draft.customerPhone,
       partySize: draft.partySize,
       unitPrice: draftPlan.basePrice, totalAmount: draftTotal,
+      depositAmount: draftDeposit,
       status: 'PENDING', paymentStatus: 'UNPAID',
       paymentMethodLabel: MOCK_PAYMENT_METHODS.find((m) => m.id === draft.paymentMethodId)?.label ?? '',
       paymentRef: '', source: 'MANUAL', holdExpiresAt: null,
@@ -216,6 +234,11 @@ export default function TourOrdersPage() {
       render: (o) => (
         <div>
           <Badge tone={PAYMENT_TONE[o.paymentStatus]}>{t.paymentStatus[o.paymentStatus]}</Badge>
+          {o.depositAmount > 0 ? (
+            <div className="text-2xs text-warning">
+              {t.depositBadge} {formatCurrency(o.depositAmount)}
+            </div>
+          ) : null}
           <div className="mt-0.5 truncate text-2xs text-secondary">{o.paymentMethodLabel}</div>
           {o.holdExpiresAt ? (
             <div className="text-2xs text-warning">
@@ -278,7 +301,7 @@ export default function TourOrdersPage() {
   return (
     <>
       <PageHeader
-        eyebrow={nav.navTour}
+        eyebrow={navLabel('navBooking', businessType)}
         title={t.title}
         actions={
           <Button onClick={() => setCreateOpen(true)}>
@@ -389,6 +412,16 @@ export default function TourOrdersPage() {
                 <dd>{formatCurrency(detail.unitPrice)}</dd>
                 <dt className="text-secondary">{t.detail.fields.total}</dt>
                 <dd className="font-bold text-dark">{formatCurrency(detail.totalAmount)}</dd>
+                {detail.depositAmount > 0 ? (
+                  <>
+                    <dt className="text-secondary">{t.detail.fields.deposit}</dt>
+                    <dd>{formatCurrency(detail.depositAmount)}</dd>
+                    <dt className="text-secondary">{t.detail.fields.balance}</dt>
+                    <dd className="text-warning">
+                      {formatCurrency(detail.totalAmount - detail.depositAmount)}
+                    </dd>
+                  </>
+                ) : null}
                 <dt className="text-secondary">{t.detail.fields.method}</dt><dd>{detail.paymentMethodLabel}</dd>
                 <dt className="text-secondary">{t.detail.fields.ref}</dt>
                 <dd>{detail.paymentRef || <span className="text-muted">{t.detail.noRef}</span>}</dd>
@@ -517,6 +550,13 @@ export default function TourOrdersPage() {
           {draftPlan ? (
             <div className="rounded-md bg-neutral-50 px-3 py-2 text-sm font-semibold text-dark">
               {t.create.totalPreview(formatCurrency(draftTotal))}
+              {draftDeposit > 0 ? (
+                <div className="mt-0.5 text-2xs font-normal text-warning">
+                  {t.detail.fields.deposit} {formatCurrency(draftDeposit)}
+                  {' · '}
+                  {t.detail.fields.balance} {formatCurrency(draftTotal - draftDeposit)}
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>

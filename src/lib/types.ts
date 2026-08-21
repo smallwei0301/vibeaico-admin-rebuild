@@ -210,6 +210,10 @@ export type TenantSummary = {
   name: string;
   role: 'OWNER' | 'MANAGER' | 'STAFF';
   current: boolean;
+  /** 業態模式（見 src/config/modes.ts）；未提供時視為 LOCAL_SHOP */
+  businessType?: 'LOCAL_SHOP' | 'GUIDE' | 'CLINIC';
+  /** 斜槓店家加開的其他模組 */
+  extraModules?: ('LOCAL_SHOP' | 'GUIDE' | 'CLINIC')[];
 };
 
 export type SetupStatus = {
@@ -293,6 +297,15 @@ export type TripPlan = {
   minParticipants: number;
   maxParticipants: number;
   bookingType: TripBookingType;
+  /**
+   * 線上收款模式（與服務項目同一套選項）
+   * NONE            不線上收款（純 LINE / 現場結）
+   * DEPOSIT_FIXED   固定金額定金
+   * DEPOSIT_PERCENT 比例定金（depositValue = 1–100）
+   * FULL            全額線上收（行程預設）
+   */
+  depositMode: 'NONE' | 'DEPOSIT_FIXED' | 'DEPOSIT_PERCENT' | 'FULL';
+  depositValue: number;
   active: boolean;
   /** 全年販售；false 時以 seasons 決定販售期間 */
   yearRound: boolean;
@@ -359,6 +372,8 @@ export type TourOrder = {
   partySize: number;
   unitPrice: number;
   totalAmount: number;
+  /** 已收定金；0 = 全額或未收。待收尾款 = totalAmount - depositAmount */
+  depositAmount: number;
   status: TourOrderStatus;
   paymentStatus: TourPaymentStatus;
   /** 收款方式顯示名稱（來自 tenant_payment_methods） */

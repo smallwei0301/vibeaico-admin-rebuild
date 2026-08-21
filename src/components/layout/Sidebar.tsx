@@ -4,8 +4,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
-import { NAV, isGroup, findActiveGroup, type NavLeaf } from '@/config/nav';
-import { nav as navText } from '@/i18n/zh-TW/nav';
+import { getNav, isGroup, findActiveGroup, type NavLeaf } from '@/config/nav';
+import { navLabel, type NavKey } from '@/i18n/zh-TW/nav';
+import type { BusinessType } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
 import { CountBadge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
@@ -25,13 +26,22 @@ export function Sidebar({
   mobileOpen,
   onCloseMobile,
   counts = {},
+  businessType = 'LOCAL_SHOP',
+  extraModules,
 }: {
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
   counts?: Counts;
+  /** 業態模式決定選單佈局與名詞（見 src/config/modes.ts） */
+  businessType?: BusinessType;
+  extraModules?: readonly BusinessType[];
 }) {
   const pathname = usePathname();
+  const entries = React.useMemo(
+    () => getNav(businessType, extraModules),
+    [businessType, extraModules],
+  );
   const [openGroup, setOpenGroup] = React.useState<string | null>(() => findActiveGroup(pathname));
 
   React.useEffect(() => {
@@ -50,11 +60,11 @@ export function Sidebar({
           onClick={onCloseMobile}
           data-active={isActive(leaf.href)}
           className={cn('sidebar-link', sub && 'sidebar-sub-link')}
-          title={collapsed ? navText[leaf.key as keyof typeof navText] : undefined}
+          title={collapsed ? navLabel(leaf.key as NavKey, businessType) : undefined}
         >
           <Icon size={sub ? 15 : 17} className="flex-shrink-0" />
           <span className="sidebar-link-label truncate">
-            {navText[leaf.key as keyof typeof navText]}
+            {navLabel(leaf.key as NavKey, businessType)}
           </span>
           {count > 0 && <CountBadge count={count} className="ml-auto" />}
         </Link>
@@ -85,7 +95,7 @@ export function Sidebar({
         <hr className="sidebar-divider" />
 
         <ul className="block pb-6">
-          {NAV.map((entry) => {
+          {entries.map((entry) => {
             if (!isGroup(entry)) return renderLeaf(entry);
 
             const Icon = entry.icon;
@@ -107,7 +117,7 @@ export function Sidebar({
                 >
                   <Icon size={17} className="flex-shrink-0" />
                   <span className="sidebar-link-label truncate">
-                    {navText[entry.key as keyof typeof navText]}
+                    {navLabel(entry.key as NavKey, businessType)}
                   </span>
                   {groupCount > 0 && <CountBadge count={groupCount} className="ml-auto" />}
                   <ChevronDown size={14} data-open={open} className="sidebar-group-arrow" />

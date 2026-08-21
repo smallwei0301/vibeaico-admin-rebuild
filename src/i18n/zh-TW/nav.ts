@@ -10,7 +10,6 @@ export const nav = {
   calendar: '行事曆',
   reports: '營運報表',
   calendar_sync: '行事曆同步',
-  navTour: '行程管理',
   trips: '行程與方案',
   tour_orders: '旅遊訂單',
   navCustomer: '顧客管理',
@@ -49,3 +48,27 @@ export const nav = {
 } as const;
 
 export type NavKey = keyof typeof nav;
+
+/**
+ * 業態模式的名詞覆寫（見 src/config/modes.ts）。
+ * 只覆寫「同一個槽位、不同業態叫法不同」的鍵；未列出者用上面的預設值。
+ * 例：嚮導的「預約管理」其實是在管旅遊訂單，叫「訂單管理」才對。
+ */
+export const navByMode: Partial<Record<string, Partial<Record<NavKey, string>>>> = {
+  GUIDE: {
+    navBooking: '訂單管理',
+    navOperation: '行程營運',
+    calendar: '出團行事曆',
+  },
+  CLINIC: {
+    navBooking: '看診管理',
+    navOperation: '診所營運',
+    services: '診療項目',
+    staff: '醫師管理',
+    calendar: '看診行事曆',
+  },
+};
+
+/** 取得某個業態模式下的選單文案 */
+export const navLabel = (key: NavKey, businessType = 'LOCAL_SHOP'): string =>
+  navByMode[businessType]?.[key] ?? nav[key];

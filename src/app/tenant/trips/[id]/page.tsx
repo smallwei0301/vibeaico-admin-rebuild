@@ -25,7 +25,8 @@ import {
   getTrip, listTripAddons, listTripDepartures, listTripPlans,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { navLabel } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type {
@@ -48,6 +49,7 @@ const emptyPlan = (tripId: string): TripPlan => ({
   id: '', tripId, name: '', description: '', durationMinutes: 180,
   priceType: 'PER_PERSON', basePrice: 0, childPrice: null,
   minParticipants: 1, maxParticipants: 10, bookingType: 'SCHEDULED',
+  depositMode: 'FULL', depositValue: 0,
   active: true, yearRound: true, seasons: [], reviewState: 'NONE',
   reviewNote: '', sortOrder: 0,
 });
@@ -67,6 +69,7 @@ export default function TripDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
+  const businessType = useBusinessType();
   const tripId = String(params?.id ?? '');
 
   const [tab, setTab] = React.useState(searchParams?.get('tab') ?? 'basic');
@@ -242,7 +245,7 @@ export default function TripDetailPage() {
   if (loading || !form || !trip) {
     return (
       <>
-        <PageHeader eyebrow={nav.navTour} title={t.detailTitle} />
+        <PageHeader eyebrow={navLabel('navOperation', businessType)} title={t.detailTitle} />
         <Card><CardBody><span className="text-muted">{common.loading}</span></CardBody></Card>
       </>
     );
@@ -284,6 +287,19 @@ export default function TripDetailPage() {
     {
       key: 'bookingType', header: t.plans.columns.bookingType, width: '110px',
       render: (p) => <Badge tone="info">{t.plans.bookingType[p.bookingType]}</Badge>,
+    },
+    {
+      key: 'deposit', header: t.plans.columns.deposit, width: '120px',
+      render: (p) => (
+        <div>
+          <div className="text-xs">{t.plans.depositMode[p.depositMode]}</div>
+          {p.depositMode === 'DEPOSIT_FIXED' ? (
+            <div className="text-2xs text-secondary">{formatCurrency(p.depositValue)}</div>
+          ) : p.depositMode === 'DEPOSIT_PERCENT' ? (
+            <div className="text-2xs text-secondary">{p.depositValue}%</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'season', header: t.plans.columns.season, width: '110px',
@@ -443,7 +459,7 @@ export default function TripDetailPage() {
   return (
     <>
       <PageHeader
-        eyebrow={nav.trips}
+        eyebrow={navLabel('trips', businessType)}
         eyebrowHref="/tenant/trips"
         title={trip.title}
         subtitle={trip.region}
@@ -891,6 +907,44 @@ export default function TripDetailPage() {
               </Select>
               <FormText>{t.plans.bookingTypeHint[planDraft.bookingType]}</FormText>
             </FormGroup>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormGroup>
+                <Label required>{t.plans.fields.depositLabel}</Label>
+                <Select
+                  value={planDraft.depositMode}
+                  onChange={(e) => patchPlan({
+                    depositMode: e.target.value as TripPlan['depositMode'],
+                    depositValue: 0,
+                  })}
+                >
+                  {(Object.keys(t.plans.depositMode) as TripPlan['depositMode'][]).map((k) => (
+                    <option key={k} value={k}>{t.plans.depositMode[k]}</option>
+                  ))}
+                </Select>
+                <FormText>{t.plans.fields.depositHelp[planDraft.depositMode]}</FormText>
+              </FormGroup>
+              {planDraft.depositMode === 'DEPOSIT_FIXED'
+                || planDraft.depositMode === 'DEPOSIT_PERCENT' ? (
+                  <FormGroup>
+                    <Label required>
+                      {planDraft.depositMode === 'DEPOSIT_FIXED'
+                        ? t.plans.fields.depositValueLabel
+                        : t.plans.fields.depositPercentLabel}
+                    </Label>
+                    <Input
+                      type="number" min={0}
+                      max={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 100 : undefined}
+                      value={planDraft.depositValue}
+                      onChange={(e) => patchPlan({ depositValue: Number(e.target.value) })}
+                    />
+                    {planDraft.depositMode === 'DEPOSIT_FIXED'
+                      && planDraft.priceType === 'PER_PERSON' ? (
+                        <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
+                      ) : null}
+                  </FormGroup>
+                ) : null}
+            </div>
 
             <SwitchField
               label={t.plans.fields.activeLabel}

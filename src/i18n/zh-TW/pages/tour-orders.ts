@@ -56,6 +56,8 @@ export const tourOrdersPage = {
     PAID: '已付款',
     REFUNDED: '已退款',
   },
+  /** 定金模式的訂單：已收定金但尾款未收 */
+  depositBadge: '已收定金',
   source: {
     MIDAO: 'Midao 前台',
     VIBEAI_SHOP: '商店頁',
@@ -87,6 +89,8 @@ export const tourOrdersPage = {
       party: '人數',
       unitPrice: '單價',
       total: '總金額',
+      deposit: '已收定金',
+      balance: '待收尾款',
       method: '收款方式',
       ref: '交易編號 / 匯款後五碼',
       source: '訂單來源',

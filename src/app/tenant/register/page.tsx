@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardBody } from '@/components/ui/Card';
 import { FormError, FormGroup, FormText, Input, Label } from '@/components/ui/Form';
 import { AuthCardHeading } from '@/components/layout/AuthShell';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { registerPage as t } from '@/i18n/zh-TW/pages/register';
@@ -40,6 +42,8 @@ export default function RegisterPage() {
   const toast = useToast();
 
   const [form, setForm] = React.useState(EMPTY_FORM);
+  /** 業態模式：決定開店後的後台配置（見 src/config/modes.ts） */
+  const [businessType, setBusinessType] = React.useState<BusinessType>('LOCAL_SHOP');
   const [errors, setErrors] = React.useState<Partial<Record<Field, string>>>({});
   const [showPassword, setShowPassword] = React.useState(false);
   const [sending, setSending] = React.useState(false);
@@ -164,6 +168,37 @@ export default function RegisterPage() {
         </div>
 
         <form onSubmit={submit} noValidate>
+          {/* ------------------------------------------ 業態模式三選一 */}
+          <FormGroup>
+            <Label required>{t.businessType.label}</Label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {t.businessType.options.map((opt) => {
+                const Icon = MODE_PRESETS[opt.key as BusinessType].icon;
+                const selected = businessType === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setBusinessType(opt.key as BusinessType)}
+                    className={cn(
+                      'flex flex-col items-start gap-1 rounded-lg border-2 p-3 text-left transition-colors',
+                      selected
+                        ? 'border-primary bg-[var(--badge-primary-bg)]'
+                        : 'border-neutral-250 hover:border-neutral-400',
+                    )}
+                  >
+                    <Icon size={20} className={selected ? 'text-primary' : 'text-secondary'} />
+                    <span className="text-sm font-bold text-dark">{opt.name}</span>
+                    <span className="text-2xs text-secondary">{opt.summary}</span>
+                    <span className="text-2xs text-muted">{opt.detail}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <FormText>{t.businessType.help}</FormText>
+          </FormGroup>
+
           <FormGroup>
             <Label htmlFor="code" required>{t.form.code}</Label>
             <Input

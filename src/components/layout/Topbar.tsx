@@ -15,12 +15,15 @@ export function Topbar({
   onToggleSidebar,
   tenants,
   currentTenant,
+  onSwitchTenant,
   userName,
   setupPercent,
 }: {
   onToggleSidebar: () => void;
   tenants: TenantSummary[];
   currentTenant: TenantSummary;
+  /** 切換目前操作的店家（真實後端對應 POST /api/auth/switch-tenant） */
+  onSwitchTenant?: (tenantId: string) => void;
   userName: string;
   setupPercent: number;
 }) {
@@ -70,9 +73,10 @@ export function Topbar({
               {tenants.map((t) => (
                 <button
                   key={t.id}
+                  onClick={() => { onSwitchTenant?.(t.id); setShopMenu(false); }}
                   className={cn(
                     'flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-neutral-100',
-                    t.current && 'font-semibold text-primary',
+                    t.id === currentTenant.id && 'font-semibold text-primary',
                   )}
                 >
                   <Building2 size={15} />

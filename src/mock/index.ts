@@ -13,8 +13,12 @@ import type { FeatureSubscription } from '@/config/features';
 export const MOCK_USER = { id: 'u_1', name: '小威', email: 'owner@example.com' };
 
 export const MOCK_TENANTS: TenantSummary[] = [
-  { id: 't_1', shopCode: 'demo-salon', name: '示範美髮沙龍', role: 'OWNER', current: true },
-  { id: 't_2', shopCode: 'demo-clinic', name: '示範診所', role: 'MANAGER', current: false },
+  { id: 't_1', shopCode: 'demo-guide', name: '祕島嚮導工作室', role: 'OWNER', current: true,
+    businessType: 'GUIDE' },
+  { id: 't_2', shopCode: 'demo-salon', name: '示範美髮沙龍', role: 'OWNER', current: false,
+    businessType: 'LOCAL_SHOP' },
+  { id: 't_3', shopCode: 'demo-clinic', name: '示範診所', role: 'MANAGER', current: false,
+    businessType: 'CLINIC' },
 ];
 
 export const MOCK_SIDEBAR_COUNTS: Record<string, number> = {
