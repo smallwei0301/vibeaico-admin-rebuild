@@ -153,6 +153,22 @@ export const keywordRepliesPage = {
         keywords: ['商品', '瀏覽商品', '購買'],
       },
       {
+        /** 導遊模組（TOUR_MODULE）；未訂閱該模組的店家不顯示這一組 */
+        key: 'TRIP',
+        label: '行程',
+        feature: 'TOUR_MODULE',
+        note: '回覆行程輪播卡片；顧客點「我要預約」進入選方案 → 選團次流程。',
+        keywords: ['行程', '有什麼行程', '所有行程', '報名', '我要報名', '揪團', '出團'],
+      },
+      {
+        /** 導遊模組（TOUR_MODULE） */
+        key: 'DEPARTURE',
+        label: '出團日期',
+        feature: 'TOUR_MODULE',
+        note: '回覆未來 14 天可報名的團次與剩餘名額。',
+        keywords: ['出團日期', '哪天出團', '還有位子嗎', '剩幾位', '名額'],
+      },
+      {
         key: 'MEMBER',
         label: '會員',
         note: '',

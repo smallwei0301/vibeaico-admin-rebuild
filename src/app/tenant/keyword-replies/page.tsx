@@ -88,6 +88,14 @@ export default function KeywordRepliesPage() {
   const [rows, setRows] = React.useState<KeywordReply[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [featureActive, setFeatureActive] = React.useState(true);
+  /** 內建關鍵字組可帶 feature 條件（例：行程組只給訂閱 TOUR_MODULE 的導遊型店家） */
+  const [activeFeatures, setActiveFeatures] = React.useState<string[]>([]);
+  const visibleGroups = React.useMemo(
+    () => t.system.groups.filter(
+      (g) => !('feature' in g) || activeFeatures.includes((g as { feature: string }).feature),
+    ),
+    [activeFeatures],
+  );
 
   /** 系統內建關鍵字：每組一個開關（true = 系統照常回應） */
   const [systemEnabled, setSystemEnabled] = React.useState<Record<string, boolean>>(
@@ -121,6 +129,7 @@ export default function KeywordRepliesPage() {
       try {
         const features = await listFeatures();
         setFeatureActive(features.some((f) => f.code === 'KEYWORD_REPLY' && f.active));
+        setActiveFeatures(features.filter((f) => f.active).map((f) => f.code));
       } catch {
         toast.show(t.messages.connectionError, 'danger');
       }
@@ -392,7 +401,7 @@ export default function KeywordRepliesPage() {
           ) : null}
 
           <div className="mt-3">
-            {t.system.groups.map((g) => (
+            {visibleGroups.map((g) => (
               <SwitchField
                 key={g.key}
                 label={g.label}

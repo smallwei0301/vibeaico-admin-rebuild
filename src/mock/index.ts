@@ -140,4 +140,5 @@ export const MOCK_FEATURES: FeatureSubscription[] = [
   { code: 'PORTFOLIO_SHOWCASE', active: false, expiresAt: null },
   { code: 'CUSTOM_RICH_MENU', active: true, expiresAt: '2026-12-31' },
   { code: 'EXTRA_PUSH', active: false, expiresAt: null },
+  { code: 'TOUR_MODULE', active: true, expiresAt: null },
 ];
