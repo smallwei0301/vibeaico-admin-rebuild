@@ -32,6 +32,7 @@ npm run typecheck  # TypeScript strict 檢查
 
 | 檔案 | 內容 |
 |---|---|
+| [`docs/integration/00-MASTER-PLAN.md`](docs/integration/00-MASTER-PLAN.md) | **真實後端串接總計畫**：Supabase / 登入系統 / Resend / LINE 連動，分 8 個 Phase 的完整實作規格（給 AI 或工程師照做） |
 | [`docs/REBUILD-SPEC.md`](docs/REBUILD-SPEC.md) | **主文件**：設計系統規格、37 頁的區塊與文案清單、API 契約、還原度說明 |
 | [`docs/CONVENTIONS.md`](docs/CONVENTIONS.md) | 開發約定（新增頁面時務必先讀） |
 | [`docs/specs/`](docs/specs/) | 從原站抓下來的原始 DOM 規格 JSON，每頁一份，是所有還原工作的依據 |
