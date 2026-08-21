@@ -49,6 +49,15 @@
 - [ ] B-6 報表進階/匯出
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
 
+## Phase 5.5 — 功能商店（09 分冊）
+- [ ] migration 0011（訂閱欄位擴充 + subscribe_feature rpc + ai jsonb）
+- [ ] `FEATURE_CATALOG`（22 項）移入 `src/config/features.ts`
+- [ ] 訂閱/續訂/取消/恢復 + 套裝 LITE/PRO + 升級規則
+- [ ] `src/server/features.ts` 閘門 + 對應表逐條套用（3 位員工上限、20 組關鍵字、EXTRA_PUSH 額度 700）
+- [ ] cron feature-expiry 副作用與 restore 自動還原
+- [ ] 點數儲值 MVP（501 + 客服文案）；金流供應商決策留待平台擁有者
+- [ ] AI 客服（選配）：ai-settings 儲存 + webhook AI 回覆 + UNSURE 轉人工
+
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
 - [ ] follow/message 事件處理 + keyword replies + 預設回覆

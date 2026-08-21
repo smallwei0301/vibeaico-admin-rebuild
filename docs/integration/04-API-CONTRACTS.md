@@ -242,7 +242,7 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/export/customers/excel`、`/api/export/bookings` | 產 CSV（UTF-8 BOM），`Content-Disposition: attachment`。**不走信封**，直接回檔案 |
 | GET `/api/customers/tags` | 該店所有 tags 去重 |
 | GET `/api/customers/at-risk` | customers_view at_risk=true |
-| POST `/api/feature-store/:id/apply‖cancel‖restore` | 訂閱異動：MVP 直接寫 feature_subscriptions（金流之後另議）⚙O |
+| POST `/api/feature-store/:code/apply‖cancel‖restore` | 訂閱異動：完整規格（扣點、套裝、還原副作用）在 **09 分冊 §3**，照該冊實作 ⚙O |
 | POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能，MVP：寫進一張 `bug_reports` 表＋寄信給平台管理者即可 |
 
 ---
@@ -260,7 +260,8 @@ export const POST = handle(async (_req, { params }) => {
 | REQ_001 | 輸入驗證失敗 | 400 |
 | REQ_002 | 資源不存在 | 404 |
 | REQ_003 | 狀態衝突 / 時段重疊 / 頻率限制 | 409/429 |
-| FEAT_001 | 功能未訂閱 | 403 |
+| FEAT_001 | 功能未訂閱 / 免費方案上限 | 403 |
+| POINTS_001 | 點數不足 | 409 |
 | LINE_001 | LINE 尚未設定 | 400 |
 | LINE_002 | LINE API 錯誤 | 502 |
 | SYS_001 | 未預期錯誤 | 500 |

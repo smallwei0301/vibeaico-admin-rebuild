@@ -59,6 +59,7 @@ Phase 2  登入系統        03 分冊     Supabase Auth + 註冊/登入/忘記�
 Phase 3  核心 API        04 分冊§A   settings / bookings / customers / catalog / reports
 Phase 4  寄信            05 分冊     Resend：驗證碼、密碼重設、預約通知
 Phase 5  進階 API        04 分冊§B   coupons / products 寫入面 / points / marketing…
+Phase 5.5 功能商店訂閱制  09 分冊     22 項功能目錄、扣點訂閱、套裝方案、功能閘門、到期副作用
 Phase 6  LINE 連動       06 分冊     webhook、推播、rich menu、顧客綁定
 Phase 7  排程與收尾      07 分冊     Vercel Cron、Storage、上線檢查
 ```
@@ -109,6 +110,7 @@ supabase/
 | [`06-LINE-INTEGRATION.md`](06-LINE-INTEGRATION.md) | LINE Messaging API：webhook、簽章驗證、推播、rich menu、綁定 |
 | [`07-DEPLOYMENT-CRON.md`](07-DEPLOYMENT-CRON.md) | Vercel 環境變數、Cron Jobs、Storage buckets、上線檢查表 |
 | [`08-CHECKLIST.md`](08-CHECKLIST.md) | 全部 Phase 的逐條驗收清單（執行時照抄成 todo） |
+| [`09-FEATURE-STORE.md`](09-FEATURE-STORE.md) | 功能商店訂閱制：22 項功能目錄、點數扣款、套裝方案、功能閘門對應表、到期副作用、AI 客服（Claude API） |
 
 ---
 

@@ -67,6 +67,7 @@ Supabase
 | `RESEND_API_KEY` | server | Phase 4 | Resend API key |
 | `MAIL_FROM` | server | Phase 4 | 例如 `VibeAI <noreply@yourdomain.com>`（需在 Resend 驗證網域） |
 | `CRON_SECRET` | server | Phase 7 | Vercel Cron 呼叫 `/api/cron/*` 的 Bearer token |
+| `ANTHROPIC_API_KEY` | server | Phase 5.5（選） | AI 客服（AI_ASSISTANT 功能），見 09 分冊 §7 |
 
 `env.ts` 的 serverSchema 新增：
 

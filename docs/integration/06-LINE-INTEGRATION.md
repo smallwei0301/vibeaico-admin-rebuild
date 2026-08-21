@@ -86,7 +86,7 @@ export async function consumePushQuota(tenantId: string, count: number): Promise
   const { data } = await admin.from('push_quota_usage').select('used')
     .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
   const used = data?.used ?? 0;
-  const quota = 200;   // TODO Phase 7：加上 EXTRA_PUSH 訂閱的加購量
+  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
   if (used + count > quota) return false;
   await admin.from('push_quota_usage')
     .upsert({ tenant_id: tenantId, month, used: used + count });
