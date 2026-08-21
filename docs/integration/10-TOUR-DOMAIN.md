@@ -52,7 +52,11 @@ create table trips (
   includes       text not null default '',           -- 費用包含/不包含
   notes          text not null default '',
   status         trip_status not null default 'DRAFT',
-  midao_listed   boolean not null default false,     -- 是否上架 Midao 前台（上架費邏輯的旗標）
+  -- Midao 上架審核（與 status 互相獨立：status=PUBLISHED 控制 VibeAI 商店頁，
+  -- midao_listing 控制 Midao 前台；審核權在 Midao 管理員，見 11 分冊 §4.2）
+  midao_listing  text not null default 'NONE'
+    check (midao_listing in ('NONE','PENDING','LISTED','REJECTED')),
+  midao_listing_note text not null default '',       -- 退回原因等
   created_at     timestamptz not null default now(),
   updated_at     timestamptz not null default now(),
   unique (tenant_id, slug)
@@ -215,7 +219,8 @@ create table tenant_payment_methods (
 | 端點 | 說明 |
 |---|---|
 | GET/POST `/api/trips`、GET/PUT/DELETE `/api/trips/:id` | 行程 CRUD；DELETE 有訂單→改 ARCHIVED |
-| POST `/api/trips/:id/publish‖unpublish` | DRAFT↔PUBLISHED |
+| POST `/api/trips/:id/publish‖unpublish` | DRAFT↔PUBLISHED（只影響 VibeAI 商店頁可見性） |
+| POST `/api/trips/:id/request-midao-listing` | 導遊申請上架 Midao：`NONE/REJECTED → PENDING`，並發 `trip.listing_requested` webhook 給 Midao（審核端點在 11 分冊 §4.2） |
 | GET/POST `/api/trips/:id/plans`、PUT/DELETE `/api/trip-plans/:id` | 方案 CRUD |
 | GET/POST `/api/trips/:id/departures`（支援批次建整月）、PUT/DELETE `/api/trip-departures/:id` | 團次；capacity 調低不得小於 seats_booked（409） |
 | GET `/api/tour-orders`（分頁+篩選）、GET `:id` | 訂單列表/詳情 |

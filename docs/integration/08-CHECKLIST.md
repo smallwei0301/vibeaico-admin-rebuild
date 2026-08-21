@@ -96,7 +96,9 @@
 - [ ] 評論：限 COMPLETED 訂單、一單一評、導遊可回覆/隱藏
 
 ## Phase 10 — Midao 整合（11 分冊 §4；Midao 側工作照 tour-platform harness 進行）
-- [ ] Midao 前台行程/名額改接公開 API（名額永遠即時，不快取）
+- [ ] 既有行程資料一次性搬遷（導遊↔租戶對應 + activities/plans/檔期 → trips/*）
+- [ ] Midao 上架審核流：申請 → 待審清單 → 核准/退回（含 webhook 通知）
+- [ ] Midao 前台行程/名額改接公開 API（名額永遠即時，不快取；LISTED+PUBLISHED 過濾）
 - [ ] 旅客帳號遷移到共用 Supabase（bcrypt 匯入，密碼無感）
 - [ ] Midao 頁內下單打 `/api/public/checkout`
 - [ ] Partner API：簽章驗證、代建行程、訂單查詢、webhook 事件

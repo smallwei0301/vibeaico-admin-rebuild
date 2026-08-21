@@ -215,6 +215,9 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
 - 自動建檔：同 phone 重下單不重複建檔；traveler_user_id 回填。
 - Partner：HMAC 錯簽 401 PARTNER_001；代建行程後導遊帳號查得到；webhook 事件送達
   （mock 接收端）。CORS：白名單 origin 有 ACAO header、其他沒有。
+- Midao 上架審核流：request-midao-listing NONE→PENDING（重複申請 409）；
+  listing-decision LISTED 後出現在 partner 前台過濾條件、REJECTED 帶 note
+  導遊端可讀；`midao_listing='LISTED'` 但 `status='DRAFT'` 不得出現在 Midao 前台清單。
 - `tests/e2e/traveler.spec.ts`：商店頁瀏覽→登入→下單（匯款）→我的訂單→（種子改
   COMPLETED）→留評論。
 

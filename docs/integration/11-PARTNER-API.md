@@ -160,13 +160,20 @@ alter table tenants add column if not exists midao_guide_id text unique;  -- 導
 | 端點 | 說明 |
 |---|---|
 | GET `/api/partner/tenants` | midao_guide_id 已綁定的租戶清單 |
-| POST `/api/partner/tenants/{shopCode}/trips`（＋plans/departures 同 10 分冊管理端點鏡像） | **Midao 管理者代導遊建行程**（owner 需求）：寫入即出現在該導遊 VibeAI 後台 —— 因為本來就是同一本帳，無需同步 |
+| POST `/api/partner/tenants/{shopCode}/trips`（＋plans/departures 同 10 分冊管理端點鏡像） | **Midao 管理者代導遊建行程**（owner 需求）：寫入即出現在該導遊 VibeAI 後台 —— 因為本來就是同一本帳，無需同步。代建時可帶 `midaoListing:'LISTED'` 直接上架（管理員自建自審） |
+| GET `/api/partner/listing-requests` | **Midao 上架審核清單**：`midao_listing='PENDING'` 的行程（含導遊/行程摘要），Midao 管理後台的待審佇列資料源 |
+| POST `/api/partner/trips/{tripId}/listing-decision` | `{decision:'LISTED'\|'REJECTED', note?}`：核准後 Midao 前台開始顯示該行程（前台列表以 `midao_listing='LISTED'` 且 `status='PUBLISHED'` 過濾）；退回時 note 寫入 `midao_listing_note`，導遊在 VibeAI 後台看得到原因 |
 | GET `/api/partner/tenants/{shopCode}/tour-orders` | Midao 管理後台看訂單（金額欄位保留 —— 上架費/使用費計算用） |
-| POST `/api/partner/webhooks` | 註冊 Midao 的接收網址；VibeAI 在 `tour_order` 建立/狀態變更、`trip` 發布時 POST 事件（HMAC 簽章）。**用途僅限 Midao 更新它的顯示快取與報表，絕不得據以做名額決策** |
+| POST `/api/partner/webhooks` | 註冊 Midao 的接收網址；VibeAI 在 `tour_order` 建立/狀態變更、`trip` 發布、`trip.listing_requested`（導遊申請上架）時 POST 事件（HMAC 簽章）。**用途僅限 Midao 更新它的顯示快取、待審通知與報表，絕不得據以做名額決策** |
 
 ### 4.3 Midao 側退役路線（在 tour-platform repo 施工，遵守其 harness）
 
-1. 前台行程/名額改接公開 API（讀取面，無風險）。
+0. **既有行程資料一次性搬遷（前置）**：先為每位 Midao 導遊建立/對應 VibeAI 租戶
+   （`midao_guide_id` 綁定），再以搬遷腳本把 Midao 的 activities/plans/檔期
+   轉入 `trips/trip_plans/trip_departures`（已上架者直接 `midao_listing='LISTED'`）。
+   搬遷完成後 Midao 專案內的行程資料降為唯讀歷史，**不再是任何頁面的資料源**。
+1. 前台行程/名額改接公開 API（讀取面，無風險；列表過濾
+   `midao_listing='LISTED' and status='PUBLISHED'`）。
 2. Traveler realm 切換到共用 Supabase + 帳號遷移（§1.4）。
 3. checkout 改打 `POST /api/public/checkout`；ECPay 平台代收、orders/payments
    凍結區、payout 結算標記 deprecated（凍結區變更需按其規則取得 owner 授權）。
