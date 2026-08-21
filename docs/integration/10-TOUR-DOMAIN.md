@@ -72,9 +72,19 @@ create table trip_plans (
   child_price      numeric,                          -- null = 不分
   min_party        int not null default 1,           -- 成團人數
   max_party        int not null default 10,          -- 單筆訂單上限
+  -- 線上收款模式（owner 要求保留服務項目的定金機制，選項與 services 相同）
+  -- FULL = 全額線上收（行程預設）；DEPOSIT_* = 先收定金、尾款出團當日現場收；
+  -- NONE = 不線上收款（純 LINE/現場結）
+  deposit_mode     text not null default 'FULL'
+    check (deposit_mode in ('NONE','DEPOSIT_FIXED','DEPOSIT_PERCENT','FULL')),
+  deposit_value    numeric not null default 0,       -- FIXED=金額 / PERCENT=1–100
   sort_order       int not null default 0,
   active           boolean not null default true
 );
+-- 定金計算隨計價方式：每人計價 → 定金×人數；每團計價 → 收一筆。
+-- checkout 時：應線上收金額 = FULL→總額 / DEPOSIT→定金 / NONE→0（直接 PENDING 待確認）；
+-- tour_orders 加 `deposit_amount numeric not null default 0` 記錄已收定金，
+-- 訂單詳情顯示「已收定金／待收尾款 = total - deposit」。
 
 create table trip_departures (
   id           uuid primary key default gen_random_uuid(),

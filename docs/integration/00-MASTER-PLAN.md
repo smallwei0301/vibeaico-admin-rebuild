@@ -120,6 +120,7 @@ supabase/
 | [`10-TOUR-DOMAIN.md`](10-TOUR-DOMAIN.md) | 行程領域：行程/方案/團次 schema、名額原子扣減、旅遊訂單、導遊自訂金流（綠界/匯款）、後台新頁面 |
 | [`11-PARTNER-API.md`](11-PARTNER-API.md) | 共用旅客帳號、公開商店 API、評論、顧客自動建檔、Midao Partner API 與退役路線 |
 | [`12-TESTING-TDD.md`](12-TESTING-TDD.md) | **強制**：TDD 循環、單元/整合/E2E 標準、每 Phase 必寫測試矩陣、TEST 資料庫、CI 關卡、Definition of Done |
+| [`13-BUSINESS-MODES.md`](13-BUSINESS-MODES.md) | 業態模式（當地商店/嚮導/醫院）：註冊三選一決定選單/名詞/預設功能包；模式換門牌不換倉庫 |
 
 ---
 
