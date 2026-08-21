@@ -21,6 +21,7 @@ export const MOCK_SIDEBAR_COUNTS: Record<string, number> = {
   pendingBookingBadge: 3,
   pendingOrderBadge: 2,
   unreadChatBadge: 5,
+  pendingTourOrderBadge: 1,
 };
 
 export const MOCK_SETUP_STATUS: SetupStatus = {

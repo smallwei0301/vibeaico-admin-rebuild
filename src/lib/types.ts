@@ -220,3 +220,154 @@ export type SetupStatus = {
     done: boolean;
   }[];
 };
+
+/* ------------------------------------------------------------ 行程（旅遊） */
+/**
+ * 導遊模組（TOUR_MODULE）— 由 Midao 的 activities / activity_plans /
+ * activity_plan_seasons / activity_addons 反推，欄位語意與其一致。
+ * 詳細規格：docs/integration/10-TOUR-DOMAIN.md
+ */
+
+/** VibeAI 公開商店頁的可見性 */
+export type TripStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+
+/** Midao 前台的上架審核狀態（與 TripStatus 互相獨立） */
+export type MidaoListing = 'NONE' | 'PENDING' | 'LISTED' | 'REJECTED';
+
+export type Trip = {
+  id: string;
+  slug: string;
+  title: string;
+  tagline: string;
+  /** 簡介（VibeAI 商店頁與卡片用） */
+  summary: string;
+  /** 詳細行程（Midao 前台用） */
+  description: string;
+  region: string;
+  category: string;
+  coverImageUrl: string;
+  galleryUrls: string[];
+  meetingPoint: string;
+  meetingPointMapUrl: string;
+  /** 費用包含 / 不包含 / 注意事項，一行一項 */
+  inclusions: string[];
+  exclusions: string[];
+  notices: string[];
+  safetyNotice: string;
+  refundPolicyType: 'STANDARD' | 'FLEXIBLE' | 'STRICT';
+  status: TripStatus;
+  midaoListing: MidaoListing;
+  /** Midao 管理者退回時的說明 */
+  midaoListingNote: string;
+  /** 衍生欄位（列表用） */
+  planCount: number;
+  upcomingDepartureCount: number;
+  minPrice: number;
+  updatedAt: string;
+};
+
+/** 計價方式：每人 / 每團 */
+export type PriceType = 'PER_PERSON' | 'PER_GROUP';
+
+/**
+ * 預約型態（Midao booking_type）
+ * INSTANT   即時確認：旅客下單即成立
+ * REQUEST   需確認：導遊審核後才成立
+ * SCHEDULED 固定團次：只能選已開的團次
+ */
+export type TripBookingType = 'INSTANT' | 'REQUEST' | 'SCHEDULED';
+
+/** 方案送審狀態（Midao 管理者審核方案內容與定價） */
+export type PlanReviewState = 'NONE' | 'PENDING' | 'CHANGES_REQUESTED';
+
+export type TripPlan = {
+  id: string;
+  tripId: string;
+  name: string;
+  description: string;
+  durationMinutes: number;
+  priceType: PriceType;
+  basePrice: number;
+  /** 兒童價；null = 不分 */
+  childPrice: number | null;
+  minParticipants: number;
+  maxParticipants: number;
+  bookingType: TripBookingType;
+  active: boolean;
+  /** 全年販售；false 時以 seasons 決定販售期間 */
+  yearRound: boolean;
+  seasons: TripPlanSeason[];
+  reviewState: PlanReviewState;
+  reviewNote: string;
+  sortOrder: number;
+};
+
+/** 販售季節（月/日區間，可跨年） */
+export type TripPlanSeason = {
+  id: string;
+  name: string;
+  startMonth: number;
+  startDay: number;
+  endMonth: number;
+  endDay: number;
+  /** 該季節售價；null = 用方案基本價 */
+  priceOverride: number | null;
+  active: boolean;
+};
+
+export type DepartureStatus = 'OPEN' | 'CLOSED' | 'CANCELLED';
+
+export type TripDeparture = {
+  id: string;
+  tripId: string;
+  planId: string;
+  planName: string;
+  departsOn: string;
+  startTime: string;
+  capacity: number;
+  seatsBooked: number;
+  status: DepartureStatus;
+  note: string;
+};
+
+export type TripAddon = {
+  id: string;
+  tripId: string;
+  name: string;
+  price: number;
+  unit: PriceType;
+  /** null = 不限量 */
+  stock: number | null;
+  active: boolean;
+  sortOrder: number;
+};
+
+export type TourOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
+export type TourPaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED';
+export type TourOrderSource = 'MIDAO' | 'VIBEAI_SHOP' | 'LINE' | 'MANUAL';
+
+export type TourOrder = {
+  id: string;
+  orderNo: string;
+  tripId: string;
+  tripTitle: string;
+  planName: string;
+  departsOn: string;
+  startTime: string;
+  customerName: string;
+  customerPhone: string;
+  partySize: number;
+  unitPrice: number;
+  totalAmount: number;
+  status: TourOrderStatus;
+  paymentStatus: TourPaymentStatus;
+  /** 收款方式顯示名稱（來自 tenant_payment_methods） */
+  paymentMethodLabel: string;
+  /** 匯款後五碼 / 金流交易編號 */
+  paymentRef: string;
+  source: TourOrderSource;
+  /** 未付款保留到期時間；null = 不自動釋放 */
+  holdExpiresAt: string | null;
+  note: string;
+  createdAt: string;
+};

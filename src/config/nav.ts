@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   List,
   ListChecks,
+  MapPinned,
   Megaphone,
   MessageSquare,
   MessageSquareText,
@@ -32,6 +33,7 @@ import {
   Radio,
   Repeat,
   Rocket,
+  Route,
   Settings,
   Share2,
   ShoppingBag,
@@ -74,6 +76,12 @@ export const NAV: NavEntry[] = [
       { key: 'calendar', href: '/tenant/calendar', icon: Calendar, feature: undefined, badge: undefined },
       { key: 'reports', href: '/tenant/reports', icon: BarChart3, feature: 'BASIC_REPORT', badge: undefined },
       { key: 'calendar_sync', href: '/tenant/calendar-sync', icon: CalendarPlus, feature: undefined, badge: undefined },
+    ],
+  },
+  {
+    key: 'navTour', icon: MapPinned, children: [
+      { key: 'trips', href: '/tenant/trips', icon: Route, feature: 'TOUR_MODULE', badge: undefined },
+      { key: 'tour_orders', href: '/tenant/tour-orders', icon: ClipboardList, feature: 'TOUR_MODULE', badge: 'pendingTourOrderBadge' },
     ],
   },
   {

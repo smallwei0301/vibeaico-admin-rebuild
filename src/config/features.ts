@@ -16,6 +16,7 @@ export const FEATURE_CODES = [
   'PORTFOLIO_SHOWCASE',  // 作品展示
   'CUSTOM_RICH_MENU',    // 選單設計
   'EXTRA_PUSH',          // 加購推播額度
+  'TOUR_MODULE',         // 導遊模組：行程 / 方案 / 團次 / 旅遊訂單（見 docs/integration/10-TOUR-DOMAIN.md）
 ] as const;
 
 export type FeatureCode = (typeof FEATURE_CODES)[number];

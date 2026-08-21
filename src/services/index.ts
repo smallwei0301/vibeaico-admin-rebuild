@@ -8,3 +8,4 @@ export * from './customers';
 export * from './catalog';
 export * from './reports';
 export * from './settings';
+export * from './tours';
