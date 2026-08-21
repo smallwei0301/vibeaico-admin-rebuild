@@ -62,6 +62,9 @@ Phase 5  進階 API        04 分冊§B   coupons / products 寫入面 / points 
 Phase 5.5 功能商店訂閱制  09 分冊     22 項功能目錄、扣點訂閱、套裝方案、功能閘門、到期副作用
 Phase 6  LINE 連動       06 分冊     webhook、推播、rich menu、顧客綁定
 Phase 7  排程與收尾      07 分冊     Vercel Cron、Storage、上線檢查
+Phase 8  行程領域        10 分冊     行程/方案/團次/名額、旅遊訂單、導遊自訂金流（綠界/匯款）
+Phase 9  旅客與公開 API   11 分冊     共用旅客帳號、VibeAI 商店頁、評論、顧客自動建檔
+Phase 10 Midao 整合      11 分冊§4   Midao 前台接入、Partner API、Midao 金流退役
 ```
 
 依賴關係：Phase 2 依賴 1；Phase 3 依賴 2；Phase 4 可與 3 並行（但驗證碼寄信被
@@ -111,6 +114,8 @@ supabase/
 | [`07-DEPLOYMENT-CRON.md`](07-DEPLOYMENT-CRON.md) | Vercel 環境變數、Cron Jobs、Storage buckets、上線檢查表 |
 | [`08-CHECKLIST.md`](08-CHECKLIST.md) | 全部 Phase 的逐條驗收清單（執行時照抄成 todo） |
 | [`09-FEATURE-STORE.md`](09-FEATURE-STORE.md) | 功能商店訂閱制：22 項功能目錄、點數扣款、套裝方案、功能閘門對應表、到期副作用、AI 客服（Claude API） |
+| [`10-TOUR-DOMAIN.md`](10-TOUR-DOMAIN.md) | 行程領域：行程/方案/團次 schema、名額原子扣減、旅遊訂單、導遊自訂金流（綠界/匯款）、後台新頁面 |
+| [`11-PARTNER-API.md`](11-PARTNER-API.md) | 共用旅客帳號、公開商店 API、評論、顧客自動建檔、Midao Partner API 與退役路線 |
 
 ---
 

@@ -72,6 +72,29 @@
 - [ ] 上線前檢查表全過
 - [ ] `NEXT_PUBLIC_USE_MOCK=false` 正式切換
 
+## Phase 8 — 行程領域（10 分冊）
+- [ ] migration 0012（trips/plans/departures/tour_orders/tenant_payment_methods + reserve_seats rpc）
+- [ ] 並發下單搶最後一席恰好一成一敗（TOUR_001）
+- [ ] 綠界 sandbox 全流程 + callback 冪等；匯款後五碼回報 + 確認收款
+- [ ] cron tour-order-expiry 釋放逾期單名額
+- [ ] 後台三個新頁（行程/團次/旅遊訂單）+ TOUR_MODULE 功能旗標
+- [ ] LINE「行程」指令回 Flex 輪播
+
+## Phase 9 — 旅客與公開 API（11 分冊）
+- [ ] migration 0013（traveler_profiles/trip_reviews/partner_clients + customers.traveler_user_id）
+- [ ] 旅客註冊/登入；一人雙角色（店家帳號自動補 traveler profile）
+- [ ] `/api/public/**` 全組端點 + 白名單欄位 + CORS
+- [ ] VibeAI 商店頁 `/s/{shopCode}`（行程列表/詳情/下單/我的訂單）
+- [ ] 下單自動建檔導遊顧客（重複下單不重複建檔）
+- [ ] 評論：限 COMPLETED 訂單、一單一評、導遊可回覆/隱藏
+
+## Phase 10 — Midao 整合（11 分冊 §4；Midao 側工作照 tour-platform harness 進行）
+- [ ] Midao 前台行程/名額改接公開 API（名額永遠即時，不快取）
+- [ ] 旅客帳號遷移到共用 Supabase（bcrypt 匯入，密碼無感）
+- [ ] Midao 頁內下單打 `/api/public/checkout`
+- [ ] Partner API：簽章驗證、代建行程、訂單查詢、webhook 事件
+- [ ] Midao 平台金流（ECPay 代收/payout）標記退役
+
 ## 端對端情境（最終驗收，全部在正式站操作）
 1. 新店註冊 → 收驗證碼信 → 開店 → 登入
 2. 設定：店家資訊、營業時間、儲存後重整仍在

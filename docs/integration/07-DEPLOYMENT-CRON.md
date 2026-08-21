@@ -26,7 +26,8 @@ Vercel → 專案 → Settings → Environment Variables，依 01 分冊 §3 總
     { "path": "/api/cron/birthday-greetings", "schedule": "0 1 * * *" },
     { "path": "/api/cron/customer-recall",    "schedule": "0 6 * * *" },
     { "path": "/api/cron/recurring-bookings", "schedule": "30 16 * * *" },
-    { "path": "/api/cron/feature-expiry",     "schedule": "0 17 * * *" }
+    { "path": "/api/cron/feature-expiry",     "schedule": "0 17 * * *" },
+    { "path": "/api/cron/tour-order-expiry",  "schedule": "30 * * * *" }
   ]
 }
 ```
@@ -56,6 +57,7 @@ Vercel 會自動帶 `Authorization: Bearer ${CRON_SECRET}`（專案 env 有設�
 | customer-recall | 逐店：`enableCustomerRecall` 開啟者，customers_view `last_visit_at < now()-recallDays` 且綁 LINE，**每店每日上限 50 位**（原站規則）→ 推 `customerRecallMessage`。防重複：customers 加 `last_recall_at`，30 天內不重推 |
 | recurring-bookings | active 的 recurring_bookings：依 rule 檢查未來 7 天應存在的場次，缺的補建 bookings（source='RECURRING'，status=CONFIRMED） |
 | feature-expiry | 功能訂閱到期副作用（票券暫停/商品下架），邏輯見 09 分冊 §6（台北 01:00 執行） |
+| tour-order-expiry | 逾期未付款旅遊訂單釋放名額（綠界 30 分鐘/匯款 3 天），邏輯見 10 分冊 §3 |
 
 ---
 
