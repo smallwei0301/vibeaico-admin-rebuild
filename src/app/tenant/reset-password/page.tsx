@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, Eye, EyeOff, KeyRound } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -9,21 +10,29 @@ import { FormError, FormGroup, Input, Label } from '@/components/ui/Form';
 import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { useToast } from '@/components/ui/Toast';
 import { resetPasswordPage as t } from '@/i18n/zh-TW/pages/reset-password';
+import { ApiError } from '@/lib/api';
+import { resetPassword } from '@/services';
 
 /** 原站以 ?token=… 帶入重設 token；缺 token 直接顯示「無效的重設連結」 */
 const TOKEN_QUERY_KEY = 'token';
+/** service 層 resetPassword() 需要 email + 6 位數驗證碼（03 分冊 §6.2）；
+ *  重設連結一併帶 ?email=…，token 當驗證碼用 —— 版面/文案不變，只多讀一個查詢參數 */
+const EMAIL_QUERY_KEY = 'email';
 const PASSWORD_MIN_LENGTH = 8;
-/** 骨架模式：不打 /api/auth/reset-password */
-const MOCK_DELAY_MS = 500;
+
+/** 重設成功後導回登入頁前的停留秒數，讓使用者看到成功提示 */
+const REDIRECT_TO_LOGIN_DELAY_MS = 1500;
 
 export default function ResetPasswordPage() {
   const toast = useToast();
+  const router = useRouter();
 
   /**
-   * token 在 effect 內從 location 讀取（而非 useSearchParams）：
-   * 這頁只有客戶端會用到 token，避免整頁被推進 Suspense/動態渲染。
+   * token/email 在 effect 內從 location 讀取（而非 useSearchParams）：
+   * 這頁只有客戶端會用到，避免整頁被推進 Suspense/動態渲染。
    */
   const [token, setToken] = React.useState<string | null>(null);
+  const [email, setEmail] = React.useState<string | null>(null);
   const [tokenChecked, setTokenChecked] = React.useState(false);
 
   const [newPassword, setNewPassword] = React.useState('');
@@ -36,6 +45,7 @@ export default function ResetPasswordPage() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setToken(params.get(TOKEN_QUERY_KEY));
+    setEmail(params.get(EMAIL_QUERY_KEY));
     setTokenChecked(true);
   }, []);
 
@@ -60,12 +70,13 @@ export default function ResetPasswordPage() {
     }
     setSubmitting(true);
     try {
-      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      await resetPassword({ email: email ?? '', code: token ?? '', newPassword });
       setDone(true);
       toast.show(t.messages.success);
+      setTimeout(() => router.push('/tenant/login'), REDIRECT_TO_LOGIN_DELAY_MS);
     } catch (err) {
       toast.show(
-        `${t.messages.failedPrefix}${err instanceof Error ? err.message : t.messages.unknownError}`,
+        `${t.messages.failedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {

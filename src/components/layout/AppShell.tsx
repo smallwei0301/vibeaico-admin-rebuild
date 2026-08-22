@@ -8,6 +8,14 @@ import { SupportChatWidget } from './SupportChatWidget';
 import { ToastProvider } from '@/components/ui/Toast';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
+import { USE_MOCK } from '@/config/env';
+import { myTenants, switchTenant as switchTenantApi } from '@/services';
+import type { TenantSummary } from '@/lib/types';
+
+/** real 模式下清單尚未從 /api/auth/my-tenants 載入完成時的暫用值，避免 current 為 undefined */
+const EMPTY_TENANT: TenantSummary = {
+  id: '', shopCode: '', name: '', role: 'STAFF', current: true, businessType: 'LOCAL_SHOP',
+};
 
 /**
  * 後台版面骨架 — 對應原站 #wrapper > #sidebar + #content-wrapper。
@@ -42,18 +50,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   React.useEffect(() => {
+    if (!USE_MOCK) return;
     const saved = localStorage.getItem('vibeai.tenant.id');
     if (saved && MOCK_TENANTS.some((t) => t.id === saved)) setTenantId(saved);
   }, []);
 
-  const switchTenant = (id: string) => {
-    localStorage.setItem('vibeai.tenant.id', id);
-    setTenantId(id);
-  };
-  const current = MOCK_TENANTS.find((t) => t.id === tenantId) ?? MOCK_TENANTS[0];
+  /** real 模式：店家清單改打 GET /api/auth/my-tenants（mock 模式沿用 MOCK_TENANTS，行為不變） */
+  const [remoteTenants, setRemoteTenants] = React.useState<TenantSummary[]>([]);
+  React.useEffect(() => {
+    if (USE_MOCK) return;
+    myTenants().then((list) => {
+      setRemoteTenants(list);
+      const cur = list.find((tt) => tt.current) ?? list[0];
+      if (cur) setTenantId(cur.id);
+    }).catch(() => {});
+  }, []);
+
+  const tenants = USE_MOCK ? MOCK_TENANTS : remoteTenants;
+  const current = tenants.find((tt) => tt.id === tenantId) ?? tenants[0] ?? EMPTY_TENANT;
   const businessType = current.businessType ?? 'LOCAL_SHOP';
-  // 骨架模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
-  applyMockMode(businessType);
+  if (USE_MOCK) {
+    // 骨架模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
+    applyMockMode(businessType);
+  }
+
+  const handleSwitchTenant = (id: string) => {
+    if (USE_MOCK) {
+      localStorage.setItem('vibeai.tenant.id', id);
+      setTenantId(id);
+    } else {
+      void switchTenantApi(id).then(() => window.location.reload());
+    }
+  };
 
   return (
     <ToastProvider>
@@ -71,9 +99,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="content-wrapper">
           <Topbar
             onToggleSidebar={toggle}
-            tenants={MOCK_TENANTS}
+            tenants={tenants}
             currentTenant={current}
-            onSwitchTenant={switchTenant}
+            onSwitchTenant={handleSwitchTenant}
             userName={MOCK_USER.name}
             setupPercent={MOCK_SETUP_STATUS.percent}
           />

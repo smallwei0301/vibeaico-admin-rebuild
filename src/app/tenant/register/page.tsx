@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, MessageCircle, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody } from '@/components/ui/Card';
@@ -11,6 +12,8 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { registerPage as t } from '@/i18n/zh-TW/pages/register';
+import { ApiError } from '@/lib/api';
+import { registerTenant, sendVerificationCode } from '@/services';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁常數                                                                    */
@@ -26,8 +29,6 @@ const PHONE_LENGTH = 10;
 const PASSWORD_MIN_LENGTH = 8;
 /** 重新發送倒數秒數 */
 const RESEND_SECONDS = 60;
-/** 骨架模式：不打真實 API，只做前端驗證 */
-const MOCK_DELAY_MS = 500;
 
 type Field =
   | 'code' | 'name' | 'email' | 'verificationCode'
@@ -40,6 +41,7 @@ const EMPTY_FORM: Record<Field | 'referralCode', string> = {
 
 export default function RegisterPage() {
   const toast = useToast();
+  const router = useRouter();
 
   const [form, setForm] = React.useState(EMPTY_FORM);
   /** 業態模式：決定開店後的後台配置（見 src/config/modes.ts） */
@@ -72,13 +74,13 @@ export default function RegisterPage() {
     }
     setSending(true);
     try {
-      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      await sendVerificationCode(form.email.trim(), 'REGISTER');
       setCodeSent(true);
       setCountdown(RESEND_SECONDS);
       toast.show(`${t.messages.codeSentToPrefix}${form.email.trim()}`);
     } catch (e) {
       toast.show(
-        `${t.messages.sendCodeFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        `${t.messages.sendCodeFailedPrefix}${e instanceof ApiError ? e.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {
@@ -125,11 +127,18 @@ export default function RegisterPage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
-      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      await registerTenant({
+        email: form.email.trim(),
+        code: form.verificationCode.trim(),
+        password: form.password,
+        tenantName: form.name.trim(),
+        shopCode: form.code.trim(),
+      });
       toast.show(t.messages.registerSuccess);
+      router.push('/tenant/login');
     } catch (err) {
       toast.show(
-        `${t.messages.registerFailedPrefix}${err instanceof Error ? err.message : t.messages.unknownError}`,
+        `${t.messages.registerFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {

@@ -9,9 +9,8 @@ import { FormGroup, Input, Label } from '@/components/ui/Form';
 import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { useToast } from '@/components/ui/Toast';
 import { forgotPasswordPage as t } from '@/i18n/zh-TW/pages/forgot-password';
-
-/** 骨架模式：不打 /api/auth/forgot-password，只做前端驗證 + 成功提示 */
-const MOCK_DELAY_MS = 500;
+import { ApiError } from '@/lib/api';
+import { forgotPassword } from '@/services';
 
 export default function ForgotPasswordPage() {
   const toast = useToast();
@@ -28,12 +27,12 @@ export default function ForgotPasswordPage() {
     }
     setSubmitting(true);
     try {
-      await new Promise((r) => setTimeout(r, MOCK_DELAY_MS));
+      await forgotPassword(email.trim());
       setSent(true);
       toast.show(t.messages.sent);
     } catch (err) {
       toast.show(
-        `${t.messages.sendFailedPrefix}${err instanceof Error ? err.message : t.messages.unknownError}`,
+        `${t.messages.sendFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
         'danger',
       );
     } finally {

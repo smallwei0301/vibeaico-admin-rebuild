@@ -3,6 +3,7 @@
  * 每個函式都用 adapt(mock, real) 包起來：骨架階段回假資料，
  * 把 NEXT_PUBLIC_USE_MOCK 設成 false 就自動改打真實後端，頁面元件一行都不用改。
  */
+export * from './auth';
 export * from './bookings';
 export * from './customers';
 export * from './catalog';

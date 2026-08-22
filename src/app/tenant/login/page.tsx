@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, LogIn, MessageCircle } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +11,8 @@ import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { loginPage as t } from '@/i18n/zh-TW/pages/login';
+import { ApiError } from '@/lib/api';
+import { login } from '@/services';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁常數（不寫進 src/mock：登入沒有領域資料，只有平台 OAuth 端點）            */
@@ -21,11 +24,10 @@ const OAUTH = {
   google: t.oauth.googleHref,
 } as const;
 
-/** 骨架模式：登入不打真實 API，只做前端驗證 + 成功提示 */
-const MOCK_LOGIN_DELAY_MS = 500;
-
 export default function LoginPage() {
   const toast = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -47,11 +49,12 @@ export default function LoginPage() {
     setSubmitting(true);
     setOauthError('');
     try {
-      await new Promise((r) => setTimeout(r, MOCK_LOGIN_DELAY_MS));
+      await login(username.trim(), password);
       toast.show(common.message.saveSuccess);
+      router.push(searchParams.get('next') ?? '/tenant/dashboard');
     } catch (err) {
       toast.show(
-        err instanceof Error ? err.message : t.messages.loginFailed,
+        err instanceof ApiError ? err.message : t.messages.loginFailed,
         'danger',
       );
     } finally {
