@@ -17,6 +17,22 @@ const serverSchema = z.object({
   /** 資料庫連線字串（骨架階段可留空，走 mock） */
   DATABASE_URL: z.string().optional(),
 
+  /* ---- Supabase（Phase 0，見 docs/integration/01-ARCHITECTURE.md §3）----
+   * 維持 optional：mock 模式下必須能在全空 env 起動（鐵則 10）。
+   * 取用時才在 src/server/supabase.ts 做非空斷言。
+   * 註：NEXT_PUBLIC_* 兩把放這裡是照 01 分冊 §3 的程式碼片段；本專案頁面不 fetch
+   *     （鐵則 1），Supabase client 只在 src/server/* 建立，故不需要進 clientSchema。 */
+  NEXT_PUBLIC_SUPABASE_URL: z.string().url().optional(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().optional(),
+  /** ⚠️ 最高權限：僅 LINE webhook / Vercel Cron / 註冊流程可用（鐵則 7） */
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+
+  /** Resend 寄信（Phase 4，見 05 分冊） */
+  RESEND_API_KEY: z.string().optional(),
+
+  /** Vercel Cron 呼叫 /api/cron/* 的 Bearer token（Phase 7，見 07 分冊） */
+  CRON_SECRET: z.string().optional(),
+
   /** 簽發租戶 session / JWT 用的密鑰 */
   AUTH_SECRET: z.string().min(16).optional(),
 

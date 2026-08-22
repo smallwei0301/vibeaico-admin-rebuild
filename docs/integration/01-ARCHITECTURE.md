@@ -154,7 +154,7 @@ export function handle(fn: (req: Request, ctx: any) => Promise<Response>) {
 ### 5.2 `src/server/supabase.ts` — 兩種 client
 
 ```ts
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
@@ -167,7 +167,11 @@ export async function createServerSupabase() {
   return createServerClient(URL_(), ANON(), {
     cookies: {
       getAll: () => store.getAll(),
-      setAll: (all) => all.forEach(({ name, value, options }) => store.set(name, value, options)),
+      // setAll 的參數必須明確標型別：createServerClient 有 deprecated 與現行兩個
+      // 多載，TS 在多載解析時無法對回呼參數做上下文推導，寫成 `(all) =>` 在
+      // strict 模式下會是 TS7006/TS7031 隱含 any，typecheck 不會過。
+      setAll: (all: { name: string; value: string; options: CookieOptions }[]) =>
+        all.forEach(({ name, value, options }) => store.set(name, value, options)),
     },
   });
 }

@@ -61,6 +61,16 @@ AUTH_SECRET=<測試專用>
 - Vitest `globalSetup`（`tests/integration/global-setup.ts`）：跑 reset-db →
   以 `.env.test` 的變數 + `NEXT_PUBLIC_USE_MOCK=false` spawn `next dev -p 3100`
   → 輪詢 `http://localhost:3100` 就緒 → teardown 時殺掉。
+
+  **teardown 必須殺整個 process group，這裡踩過兩個坑，不要改回去**：
+  1. 用 `spawn('npx', ['next', 'dev', …])` 會多一層行程，真正的 `next dev` 是
+     **孫行程**；對 npx 送 SIGTERM 殺不到它，它會變孤兒繼續佔著 3100 並抓著
+     繼承來的 stdio 管線 → vitest 結束後管線不關閉，**CI job 永久卡住**。
+     解法：直接執行 `node_modules/.bin/next`，並用 `detached: true` 讓子行程
+     自成 process group，teardown 用 `process.kill(-pid, sig)` 整組終止。
+  2. `child.killed` 是「**訊號已送出**」不是「行程已結束」。拿它當結束判斷，
+     SIGTERM 之後它就是 true，SIGKILL 升級分支永遠不會執行（死碼）。
+     要用自己的 `exit` 事件旗標判斷。
 - 測試一律用 `fetch('http://localhost:3100/api/…')` 打 HTTP（不 import route
   模組 —— `cookies()` 等 Next context 只有真伺服器才有）。
 - 登入輔助 `tests/helpers/auth.ts`：`loginAs(email, password)` 回傳帶 cookie 的
@@ -72,7 +82,7 @@ AUTH_SECRET=<測試專用>
 
 ```json
 "test":              "vitest run tests/unit",
-"test:integration":  "vitest run tests/integration --no-file-parallelism",
+"test:integration":  "vitest run tests/integration --config vitest.integration.config.mts --no-file-parallelism",
 "test:e2e":          "playwright test",
 "test:all":          "npm run typecheck && npm test && npm run test:integration && npm run test:e2e"
 ```
@@ -80,6 +90,13 @@ AUTH_SECRET=<測試專用>
 整合測試 `--no-file-parallelism`：共用一個資料庫，串行執行避免測試互踩
 （唯一例外：並發測試在單一測試檔**內**用 `Promise.all`，見 §5）。
 Playwright `webServer` 設定同 §1.4 的啟動方式（`reuseExistingServer: true`）。
+
+**兩份 vitest 設定檔（必須分開，不可合併）**：
+`vitest.config.mts`（單元）與 `vitest.integration.config.mts`（整合）。
+globalSetup 是設定層級而非檔案層級，會重置 TEST 資料庫並啟動 next dev；單元測試
+依 §3 規定不得碰網路/DB，因此唯一乾淨的隔離方式就是各自一份設定檔。
+副檔名用 `.mts`：`.ts` 設定會被 Vite 當 CJS 載入並對 ESM 語法發警告（未來主版本
+將成為錯誤），`.mts` 明確以 ESM 載入（設定檔內取路徑用 `import.meta.dirname`）。
 
 ---
 
@@ -135,7 +152,8 @@ Playwright `webServer` 設定同 §1.4 的啟動方式（`reuseExistingServer: t
 describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
   beforeEach(resetDb);
   it('PENDING → CONFIRMED，回 {success:true}', async () => {
-    const api = await loginAs(SHOP_A.owner);
+    // fixtures 的 owner 是 { email, password } 物件；loginAs 簽名見 §1.4
+    const api = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
     const res = await api.post(`/api/bookings/${SHOP_A.bookingPending}/confirm`);
     expect(res.status).toBe(200);
     expect((await res.json()).success).toBe(true);
@@ -301,8 +319,15 @@ jobs:
           TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
           SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
           AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
+      # e2e 與 integration 共用同一組 TEST secrets。GitHub Actions 的 env 不會跨
+      # step 繼承，這裡必須逐條展開；留空（`env: { }`）會讓 e2e 拿不到任何憑證。
       - run: npx playwright install --with-deps chromium && npm run test:e2e
-        env: { }   # 同上組 secrets，e2e 與 integration 共用
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
+          AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
 ```
 
 規則：**紅燈不得 merge**；三個 TEST secrets 由 owner 填進 GitHub repo secrets

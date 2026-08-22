@@ -1,0 +1,39 @@
+name: ci
+on: { push: { branches: [main] }, pull_request: {} }
+jobs:
+  check:                       # 無秘密即可跑：擋最常見的壞 commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build      # env 全空 + mock 模式（鐵則 10 的 CI 版）
+        env: { NEXT_PUBLIC_USE_MOCK: 'true' }
+  integration:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run test:integration
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
+          AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
+      # e2e 與 integration 共用同一組 TEST secrets（12 分冊 §7）。
+      # 註：原文此處寫 `env: { }`，但 GitHub Actions 的 env 不會跨 step 繼承，
+      #     留空會讓 e2e 完全拿不到 TEST_SUPABASE_*，Phase 2 起必然失敗，故展開列出。
+      - run: npx playwright install --with-deps chromium && npm run test:e2e
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
+          AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
