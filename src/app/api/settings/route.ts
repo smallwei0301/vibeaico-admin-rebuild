@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { createAdminSupabase } from '@/server/supabase';
 import { decryptSecret } from '@/server/crypto';
 import {
   basicSettingsSchema, businessSettingsSchema, notifySettingsSchema,
@@ -68,12 +69,17 @@ export const PUT = handle(async (req) => {
   const b = bodySchema.parse(await req.json());
 
   if (b.basic && b.basic.shopCode !== t.shopCode) {
-    const { data: dup } = await t.supabase
+    // ⚠️ 查重必須用 service role：RLS 下使用者只看得到自己所屬店家的
+    // tenants 列，用 t.supabase 查別店的 shop_code 永遠查不到（整合測試
+    // 實跑抓到：撞碼會漏過查重、直接撞 unique constraint 變 500）。
+    // 這裡只回傳「有沒有」的布林判斷，不外洩他店資料。
+    const { data: dup, error: derr } = await createAdminSupabase()
       .from('tenants')
       .select('id')
       .eq('shop_code', b.basic.shopCode)
       .neq('id', t.tenantId)
       .maybeSingle();
+    if (derr) throw derr;
     if (dup) return fail(409, '此店家代碼已被使用', ERR.SHOPCODE_TAKEN);
   }
 
@@ -82,6 +88,10 @@ export const PUT = handle(async (req) => {
       .from('tenants')
       .update({ shop_code: b.basic.shopCode, name: b.basic.tenantName })
       .eq('id', t.tenantId);
+    // 23505＝unique 衝突：查重與更新之間別的請求先佔走了同一個 shop_code
+    // （TOCTOU），一樣回 409，不是 500。
+    if (terr && (terr as { code?: string }).code === '23505')
+      return fail(409, '此店家代碼已被使用', ERR.SHOPCODE_TAKEN);
     if (terr) throw terr;
   }
 
