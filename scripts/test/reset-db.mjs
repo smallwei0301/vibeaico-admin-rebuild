@@ -60,6 +60,9 @@ const INDEPENDENT_TABLES = [
   { table: 'auth_verification_codes', keyColumn: 'id' },
   { table: 'partner_clients', keyColumn: 'id' },
   { table: 'traveler_profiles', keyColumn: 'user_id' },
+  // 0012：tenant_id 是 on delete SET NULL（平台級表），tenants 的 cascade
+  // 刪不到它，必須獨立清。
+  { table: 'bug_reports', keyColumn: 'id' },
 ];
 
 /**
