@@ -72,7 +72,12 @@ const TRIP_A = {
   departureCap2: '7a000000-0000-4000-8000-000000000023',
 };
 
-/** 判斷錯誤是不是「資料表尚未建立」這種可容忍、預期中的情況（同 reset-db.mjs）。 */
+/**
+ * 判斷錯誤是不是「資料表尚未建立」這種可容忍、預期中的情況（同 reset-db.mjs）。
+ * ⚠️ 只認「relation 不存在」，不可用籠統的 'does not exist' —— 實跑時發現
+ *    「column "id" does not exist」（onConflict 欄位寫錯的真 bug）被舊版寬鬆
+ *    比對吞掉、誤報成「表未建立」，差點掩蓋錯誤。
+ */
 function isMissingSchemaError(error) {
   const code = error?.code ?? '';
   const message = (error?.message ?? '').toLowerCase();
@@ -81,15 +86,19 @@ function isMissingSchemaError(error) {
     code === 'PGRST205' || // PostgREST：schema cache 裡找不到這張表
     code === 'PGRST202' ||
     code === '42883' ||
-    message.includes('does not exist') ||
+    /relation "[^"]+" does not exist/.test(message) ||
     message.includes('could not find the table') ||
     message.includes('schema cache')
   );
 }
 
-/** upsert 一批 row 進某張表，容忍「表還沒建立」；其他錯誤原樣往外丟。 */
-async function safeUpsert(admin, table, rows, label) {
-  const { error } = await admin.from(table).upsert(rows, { onConflict: 'id' });
+/**
+ * upsert 一批 row 進某張表，容忍「表還沒建立」；其他錯誤原樣往外丟。
+ * conflictKey：該表的主鍵欄位（預設 'id'；tenant_settings 等以 tenant_id 為
+ * 主鍵的表要指定，否則 Postgres 會報 column "id" does not exist）。
+ */
+async function safeUpsert(admin, table, rows, label, conflictKey = 'id') {
+  const { error } = await admin.from(table).upsert(rows, { onConflict: conflictKey });
   if (!error) {
     console.log(`[seed] ${label ?? table}：已寫入 ${rows.length} 筆。`);
     return true;
@@ -161,7 +170,7 @@ export async function runSeed(admin) {
     'tenants',
   );
 
-  await safeUpsert(admin, 'tenant_settings', [{ tenant_id: SHOP_A.id }, { tenant_id: SHOP_B.id }], 'tenant_settings');
+  await safeUpsert(admin, 'tenant_settings', [{ tenant_id: SHOP_A.id }, { tenant_id: SHOP_B.id }], 'tenant_settings', 'tenant_id');
 
   // ---- 3. tenant_users（登入帳號 ↔ 租戶 ↔ 角色）----
   const tenantUserRows = [];
@@ -188,6 +197,7 @@ export async function runSeed(admin) {
       'traveler_profiles',
       [{ user_id: travelerId, name: '測試旅客一號', email: TRAVELER_1.email }],
       'traveler_profiles',
+      'user_id',
     );
   }
 

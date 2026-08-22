@@ -1,4 +1,13 @@
--- 見 docs/integration/02-SUPABASE-SCHEMA.md §0001（逐字轉錄，不可自行更動）
+-- 見 docs/integration/02-SUPABASE-SCHEMA.md §0001（逐字轉錄；僅補一行修規格缺陷，見下）
+--
+-- ⚠️ 偏離分冊原文的一行：check_function_bodies = off。
+--   is_tenant_member / tenant_role_at_least 是 language sql 函式，body 參照
+--   0003 才建立的 tenant_users；Postgres 對 SQL 函式在 CREATE 當下就驗證 body
+--   （check_function_bodies 預設 on），照分冊順序在乾淨資料庫執行 0001 必然
+--   報 42P01。關掉本 session 的 body 檢查即可（Supabase 官方 db dump 也是
+--   同樣做法），函式在首次被呼叫時仍會正常解析。已回寫 02 分冊。
+set check_function_bodies = off;
+
 create extension if not exists pgcrypto;     -- gen_random_uuid
 create extension if not exists btree_gist;   -- 預約重疊排除約束
 

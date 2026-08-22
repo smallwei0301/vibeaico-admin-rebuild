@@ -13,6 +13,12 @@
 ## 0001 — extensions 與共用函式
 
 ```sql
+-- ⚠️ 必要：is_tenant_member / tenant_role_at_least 是 language sql 函式，body
+-- 參照 0003 才建立的 tenant_users；Postgres 對 SQL 函式在 CREATE 當下就驗證
+-- body（check_function_bodies 預設 on），少了這行，0001 在乾淨資料庫上必報
+-- 42P01。（Supabase 官方 db dump 同樣輸出此設定；實際執行時發現後補上。）
+set check_function_bodies = off;
+
 create extension if not exists pgcrypto;     -- gen_random_uuid
 create extension if not exists btree_gist;   -- 預約重疊排除約束
 

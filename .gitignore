@@ -22,6 +22,7 @@ dist/
 .env*.local
 
 # 測試產物（見 docs/integration/12-TESTING-TDD.md）
+supabase/.temp/
 coverage/
 playwright-report/
 test-results/
