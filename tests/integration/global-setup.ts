@@ -112,6 +112,19 @@ function spawnNextDevServer(): ChildProcess {
     env: {
       ...process.env,
       NEXT_PUBLIC_USE_MOCK: 'false',
+      // ⚠️ 必要的顯式映射（實跑抓到的坑，勿刪）：
+      // vitest 帶著 NODE_ENV=test spawn 本 server，Next 在 test 環境**拒載
+      // .env.local**（設計如此，為了測試決定性）且只讀 .env.test —— 但
+      // .env.test 依 12 分冊全是 TEST_* 前綴名，app 程式碼（src/server/
+      // supabase.ts、middleware）讀的是無前綴名 → 不映射就是 500
+      // 「Your project's URL and Key are required」。
+      // 同時這也是安全保證：整合測試的 server 永遠拿到 TEST 專案的值，
+      // 即使 .env.local（指向正式專案）意外被載入，process env 優先權
+      // 也會壓過 .env 檔。
+      NEXT_PUBLIC_SUPABASE_URL: process.env.TEST_SUPABASE_URL ?? '',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.TEST_SUPABASE_ANON_KEY ?? '',
+      SUPABASE_SERVICE_ROLE_KEY: process.env.TEST_SUPABASE_SERVICE_ROLE_KEY ?? '',
+      NEXT_PUBLIC_APP_URL: BASE_URL,
     },
   });
   child.on('error', (err) => {

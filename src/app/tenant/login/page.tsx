@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, LogIn, MessageCircle } from 'lucide-react';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
@@ -27,7 +27,6 @@ const OAUTH = {
 export default function LoginPage() {
   const toast = useToast();
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -51,7 +50,11 @@ export default function LoginPage() {
     try {
       await login(username.trim(), password);
       toast.show(common.message.saveSuccess);
-      router.push(searchParams.get('next') ?? '/tenant/dashboard');
+      // ?next= 在 submit 當下從 location 讀（同 reset-password 頁的手法），
+      // 不用 useSearchParams()——那個 hook 在 Next 15 要求整頁包 Suspense
+      // 邊界，否則空 env 靜態預渲染直接失敗（鐵則 10 回歸實測抓到）。
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.push(next ?? '/tenant/dashboard');
     } catch (err) {
       toast.show(
         err instanceof ApiError ? err.message : t.messages.loginFailed,

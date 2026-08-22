@@ -46,7 +46,20 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // 本開發環境預裝 chromium-1194 於 /opt/pw-browsers（見 CLAUDE.md），
+        // 專案的 @playwright/test 版本 pin 的 build（如 headless_shell-1234）
+        // 不在其中，且環境規範禁止 `playwright install` 重新下載。
+        // 環境有預裝瀏覽器時（PLAYWRIGHT_BROWSERS_PATH 指向處存在
+        // chromium symlink）就用 executablePath 指過去；CI 等有跑
+        // `playwright install --with-deps chromium` 的環境則不設，
+        // 讓 Playwright 用自己下載的版本。
+        ...(process.env.PLAYWRIGHT_BROWSERS_PATH &&
+        existsSync(`${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium`)
+          ? { launchOptions: { executablePath: `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium` } }
+          : {}),
+      },
     },
   ],
 
@@ -63,6 +76,14 @@ export default defineConfig({
     timeout: 60_000,
     env: {
       NEXT_PUBLIC_USE_MOCK: 'false',
+      // ⚠️ 安全關鍵（實跑抓到，勿刪）：Playwright 的 webServer 沒有
+      // NODE_ENV=test，next dev 會照常載入 .env.local —— 那裡指向**正式**
+      // 專案。不顯式傳 TEST 值的話，E2E 會直接對正式資料庫打。
+      // process env 優先權高於 .env 檔，這裡顯式覆蓋成 TEST 專案。
+      NEXT_PUBLIC_SUPABASE_URL: process.env.TEST_SUPABASE_URL ?? '',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.TEST_SUPABASE_ANON_KEY ?? '',
+      SUPABASE_SERVICE_ROLE_KEY: process.env.TEST_SUPABASE_SERVICE_ROLE_KEY ?? '',
+      NEXT_PUBLIC_APP_URL: BASE_URL,
     },
   },
 });

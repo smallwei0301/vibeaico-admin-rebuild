@@ -80,19 +80,46 @@ export async function loginAs(email: string, password: string): Promise<AuthedAp
     throw new Error(`loginAs(${email}) 失敗：POST /api/auth/login 回 ${res.status} ${detail}`);
   }
 
-  const cookie = res.headers.get('set-cookie');
-  if (!cookie) {
+  // ⚠️ 真正的 cookie jar（實跑抓到的坑，勿簡化回「登入當下快照」）：
+  //   1. `headers.get('set-cookie')` 會把多個 Set-Cookie 併成一條逗號字串，
+  //      舊寫法 `.split(';')[0]` 只留下第一個 cookie —— @supabase/ssr 的
+  //      session 可能分塊（sb-…-auth-token.0/.1），會被砍掉一半。
+  //      正規做法是 `headers.getSetCookie()`（Node >=19.7 的標準 API，回陣列）。
+  //   2. 登入之後的回應也會 Set-Cookie —— 例如 switch-tenant 設
+  //      vibeai_active_tenant、Supabase 續期 token。不持續吃進 jar，
+  //      «switch 後 me 變更» 這類測試必然假紅（cookie 沒帶到下一個請求）。
+  const jar = new Map<string, string>();
+
+  const ingest = (response: Response): void => {
+    for (const raw of response.headers.getSetCookie()) {
+      const [pair, ...attrs] = raw.split(';');
+      const eq = pair.indexOf('=');
+      if (eq < 0) continue;
+      const name = pair.slice(0, eq).trim();
+      const value = pair.slice(eq + 1).trim();
+      const expired =
+        attrs.some((a) => a.trim().toLowerCase() === 'max-age=0') || value === '';
+      if (expired) jar.delete(name);
+      else jar.set(name, value);
+    }
+  };
+
+  const cookieHeader = (): string =>
+    [...jar.entries()].map(([n, v]) => `${n}=${v}`).join('; ');
+
+  ingest(res);
+  if (jar.size === 0) {
     throw new Error(`loginAs(${email}) 失敗：回應是 2xx 但沒有 Set-Cookie header，無法建立已登入的 session。`);
   }
-  // 只取 cookie 的名稱=值部分（丟掉 Path/HttpOnly/SameSite 等屬性），
-  // 供後續請求的 Cookie header 使用。
-  const cookiePair = cookie.split(';')[0];
 
-  const authedFetch = (path: string, init?: RequestInit): Promise<Response> =>
-    fetch(resolveUrl(path), {
+  const authedFetch = async (path: string, init?: RequestInit): Promise<Response> => {
+    const response = await fetch(resolveUrl(path), {
       ...init,
-      headers: { ...(init?.headers ?? {}), Cookie: cookiePair },
+      headers: { ...(init?.headers ?? {}), Cookie: cookieHeader() },
     });
+    ingest(response);
+    return response;
+  };
 
   return {
     fetch: authedFetch,
