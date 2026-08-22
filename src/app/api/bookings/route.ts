@@ -36,3 +36,21 @@ export const GET = handle(async (req) => {
   if (error) throw error;
   return ok(toPaged(data.map(mapBooking), count, page, size));
 });
+
+/**
+ * ⚠️ POST（手動建立預約）尚未實作於本檔。
+ *
+ * 05-EMAIL-RESEND.md §3 的觸發點表格把「新預約建立（POST /api/bookings、
+ * LINE/公開頁來源）」列為 email 通知（notifyNewBooking）的觸發點之一；但這支
+ * 端點本身屬 04-API-CONTRACTS.md §B-1（「POST /api/bookings | 手動建立：
+ * {customerId, serviceId, staffId?, startAt, note?}…」），是 Phase 5 才建
+ * 的延伸端點，本階段（Phase 4）尚未開工，本檔目前只有上方的 GET。
+ *
+ * Phase 5 B-1 實作這支端點、寫入 bookings 成功後，比照
+ * `src/app/api/bookings/[id]/cancel/route.ts` 的寫法補上（不 await，
+ * 函式內部已吞錯）：
+ *
+ *   import { createAdminSupabase } from '@/server/supabase';
+ *   import { notifyBookingEvent } from '@/server/email/notify';
+ *   void notifyBookingEvent(createAdminSupabase(), t.tenantId, newBookingId, 'NEW');
+ */

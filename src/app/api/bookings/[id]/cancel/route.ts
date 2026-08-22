@@ -2,6 +2,8 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { createAdminSupabase } from '@/server/supabase';
+import { notifyBookingEvent } from '@/server/email/notify';
 
 const bodySchema = z.object({ reason: z.string().optional() });
 
@@ -16,6 +18,8 @@ export const POST = handle(async (req, { params }) => {
     .select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new ApiHttpError(409, '此預約狀態已變更，請重新整理', ERR.CONFLICT);
-  // Phase 4 之後：這裡呼叫 notifyBookingStatus(t.tenantId, id, 'CANCELLED')（05/06 分冊）
+  // Email 通知（05 分冊 §3：notifyBookingCancel 開關）不 await ——寄信慢或失敗
+  // 都不可拖垮這支 API 的回應，函式內部已吞錯。LINE 顧客端推播屬 06 分冊，尚未接線。
+  void notifyBookingEvent(createAdminSupabase(), t.tenantId, id, 'CANCELLED');
   return ok();
 });
