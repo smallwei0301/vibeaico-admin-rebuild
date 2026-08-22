@@ -1,5 +1,5 @@
 name: ci
-on: { push: { branches: [main] }, pull_request: {} }
+on: { push: { branches: [main] }, pull_request: {}, workflow_dispatch: {} }
 jobs:
   check:                       # 無秘密即可跑：擋最常見的壞 commit
     runs-on: ubuntu-latest

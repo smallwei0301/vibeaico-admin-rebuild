@@ -291,7 +291,9 @@ it('兩個並發 checkout 搶最後名額，恰好一成一敗（10 分冊 §2�
 
 ```yaml
 name: ci
-on: { push: { branches: [main] }, pull_request: {} }
+# workflow_dispatch：允許不必等 push/PR 就手動觸發一次 run（例如補完 repo secrets
+# 後想立刻確認 integration job 是否轉綠，但沒有「rerun 既有 run」的權限時）。
+on: { push: { branches: [main] }, pull_request: {}, workflow_dispatch: {} }
 jobs:
   check:                       # 無秘密即可跑：擋最常見的壞 commit
     runs-on: ubuntu-latest
