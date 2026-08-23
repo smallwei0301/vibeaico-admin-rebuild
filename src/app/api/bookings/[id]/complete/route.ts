@@ -32,15 +32,24 @@ export const POST = handle(async (_req, { params }) => {
         : Math.floor(raw); // FLOOR（預設）＝無條件捨去
 
       if (n > 0) {
-        const { data: customer, error: cErr } = await t.supabase.from('customers')
-          .select('points').eq('id', data.customer_id).eq('tenant_id', t.tenantId).maybeSingle();
-        if (cErr) throw cErr;
-        const pointsAfter = (customer?.points ?? 0) + n;
+        // CAS（.eq('points', 舊值) + 重試）防 lost update：與 apply-points/
+        // adjust-stock 同語意，兩筆併發異動不會互相覆蓋（審計統一修正）。
+        let pointsAfter = 0;
+        for (let attempt = 0; ; attempt++) {
+          const { data: customer, error: cErr } = await t.supabase.from('customers')
+            .select('points').eq('id', data.customer_id).eq('tenant_id', t.tenantId).maybeSingle();
+          if (cErr) throw cErr;
+          const current = customer?.points ?? 0;
+          pointsAfter = current + n;
 
-        const { error: uErr } = await t.supabase.from('customers')
-          .update({ points: pointsAfter })
-          .eq('id', data.customer_id).eq('tenant_id', t.tenantId);
-        if (uErr) throw uErr;
+          const { data: updated, error: uErr } = await t.supabase.from('customers')
+            .update({ points: pointsAfter })
+            .eq('id', data.customer_id).eq('tenant_id', t.tenantId).eq('points', current) // CAS
+            .select('id').maybeSingle();
+          if (uErr) throw uErr;
+          if (updated) break;
+          if (attempt >= 2) throw new Error('point-earn CAS 重試 3 次仍衝突');
+        }
 
         const { error: lErr } = await t.supabase.from('customer_point_logs').insert({
           tenant_id: t.tenantId, customer_id: data.customer_id,

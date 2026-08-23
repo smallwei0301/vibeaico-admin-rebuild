@@ -35,23 +35,32 @@ export const POST = handle(async (_req, { params }) => {
         : Math.floor(raw); // FLOOR（預設）
 
       if (n > 0) {
-        const { data: customer, error: cErr } = await t.supabase.from('customers')
-          .select('points').eq('id', data.customer_id).eq('tenant_id', t.tenantId).maybeSingle();
-        if (cErr) throw cErr;
-        // 顧客可能已把點數折抵掉，最多扣到 0，不讓餘額變負（log 記實際扣回數）。
-        const deduct = Math.min(n, customer?.points ?? 0);
-        if (deduct > 0) {
-          const pointsAfter = (customer?.points ?? 0) - deduct;
-          const { error: uErr } = await t.supabase.from('customers')
-            .update({ points: pointsAfter })
-            .eq('id', data.customer_id).eq('tenant_id', t.tenantId);
-          if (uErr) throw uErr;
+        // CAS（.eq('points', 舊值) + 重試）防 lost update，與 apply-points/
+        // complete/adjust-stock 同語意（審計統一修正）。
+        for (let attempt = 0; ; attempt++) {
+          const { data: customer, error: cErr } = await t.supabase.from('customers')
+            .select('points').eq('id', data.customer_id).eq('tenant_id', t.tenantId).maybeSingle();
+          if (cErr) throw cErr;
+          const current = customer?.points ?? 0;
+          // 顧客可能已把點數折抵掉，最多扣到 0，不讓餘額變負（log 記實際扣回數）。
+          const deduct = Math.min(n, current);
+          if (deduct <= 0) break;
+          const pointsAfter = current - deduct;
 
-          const { error: lErr } = await t.supabase.from('customer_point_logs').insert({
-            tenant_id: t.tenantId, customer_id: data.customer_id,
-            delta: -deduct, reason: 'REVERT_COMPLETE', points_after: pointsAfter,
-          });
-          if (lErr) throw lErr;
+          const { data: updated, error: uErr } = await t.supabase.from('customers')
+            .update({ points: pointsAfter })
+            .eq('id', data.customer_id).eq('tenant_id', t.tenantId).eq('points', current) // CAS
+            .select('id').maybeSingle();
+          if (uErr) throw uErr;
+          if (updated) {
+            const { error: lErr } = await t.supabase.from('customer_point_logs').insert({
+              tenant_id: t.tenantId, customer_id: data.customer_id,
+              delta: -deduct, reason: 'REVERT_COMPLETE', points_after: pointsAfter,
+            });
+            if (lErr) throw lErr;
+            break;
+          }
+          if (attempt >= 2) throw new Error('revert-complete 回沖 CAS 重試 3 次仍衝突');
         }
       }
     }
