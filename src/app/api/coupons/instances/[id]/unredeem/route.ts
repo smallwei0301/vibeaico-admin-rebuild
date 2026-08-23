@@ -2,9 +2,11 @@
 // redeemed_at 清空；未核銷過 → 409。
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'COUPON_SYSTEM');
   const { id } = await params;
 
   const { data, error } = await t.supabase

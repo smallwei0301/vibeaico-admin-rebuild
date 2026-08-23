@@ -5,9 +5,11 @@
 // 店家量級小：全量一次查回、Node 端去重即可。
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 export const GET = handle(async () => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'ADVANCED_CUSTOMER');
 
   const { data: rows, error } = await t.supabase.from('customers')
     .select('tags')

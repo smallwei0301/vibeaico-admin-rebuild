@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 const bodySchema = z.object({
   customerIds: z.array(z.string().uuid()).min(1, '請選擇至少一位顧客'),
@@ -23,6 +24,7 @@ function genCode(): string {
 
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'COUPON_SYSTEM');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 

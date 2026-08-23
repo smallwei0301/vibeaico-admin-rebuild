@@ -18,6 +18,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { taipeiMonthRange } from '@/server/tz';
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -36,6 +37,7 @@ function taipeiDayMs(ymd: string, offsetDays = 0): number {
 
 export const GET = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'BASIC_REPORT');
   const q = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
   const month = taipeiMonthRange();
   const fromMs = q.from ? taipeiDayMs(q.from) : Date.parse(month.fromIso);

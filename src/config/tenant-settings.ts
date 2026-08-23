@@ -146,6 +146,24 @@ export const pointsSettingsSchema = z.object({
   rounding: z.enum(['FLOOR', 'ROUND', 'CEIL']).default('FLOOR'),
 });
 
+/* -------------------------------------------------------------- AI 客服 */
+/**
+ * AI 客服（AI_ASSISTANT）設定 — 存 tenant_settings.ai jsonb（migration 0011）。
+ * 09 分冊 §7.1。獨立端點 /api/ai-settings 讀寫；不併入 tenantSettingsSchema
+ * （既有 /api/settings 的群組與回傳形狀不動）。
+ */
+export const aiSettingsSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** 店家自訂的 AI 口吻／補充說明，會拼進 system prompt */
+  personaNotes: z.string().default(''),
+  /** 常見問答 */
+  faq: z.array(z.object({ q: z.string(), a: z.string() })).default([]),
+  /** AI 判定無法回答（UNSURE）時引導真人接手的訊息 */
+  handoffMessage: z.string().default(''),
+});
+
+export type AiSettings = z.infer<typeof aiSettingsSchema>;
+
 /* ------------------------------------------------------------------- 全部 */
 export const tenantSettingsSchema = z.object({
   basic: basicSettingsSchema,

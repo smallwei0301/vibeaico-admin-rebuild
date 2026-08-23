@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * POST /api/shifts/repeat-cycle — 依週模式展開寫入（04 分冊 §B-2）。
@@ -34,6 +35,7 @@ const bodySchema = z
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const b = bodySchema.parse(await req.json());
 
   const start = new Date(`${b.from}T00:00:00Z`);

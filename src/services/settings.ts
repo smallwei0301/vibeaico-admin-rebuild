@@ -60,3 +60,49 @@ export const getSetupStatus = () =>
 
 export const listFeatures = () =>
   adapt<FeatureSubscription[]>(() => MOCK_FEATURES, () => request<FeatureSubscription[]>('/api/feature-store'));
+
+/* ---- 功能商店訂閱動作（09 分冊 §3；全部 ⚙OWNER）----
+ * mock 分支一律模擬成功（回 undefined/空物件），頁面照舊只動本地 state；
+ * real 分支的 409 POINTS_001（點數不足）由頁面 catch 後開既有的儲值 modal。 */
+
+export interface FeatureRestoreResult {
+  restoredCoupons?: number;
+  restoredProducts?: number;
+  restoreSideEffectFailed?: boolean;
+}
+
+export const applyFeature = (code: string, months: number) =>
+  adapt<FeatureRestoreResult | undefined>(
+    () => undefined,
+    () => request<FeatureRestoreResult>(`/api/feature-store/${code}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ months }),
+    }),
+  );
+
+export const cancelFeature = (code: string) =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>(`/api/feature-store/${code}/cancel`, { method: 'POST' }),
+  );
+
+export const restoreFeature = (code: string) =>
+  adapt<FeatureRestoreResult | undefined>(
+    () => undefined,
+    () => request<FeatureRestoreResult>(`/api/feature-store/${code}/restore`, { method: 'POST' }),
+  );
+
+export const applyFeatureBundle = (key: 'LITE' | 'PRO', months: number) =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>(`/api/feature-store/bundle/${key}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ months }),
+    }),
+  );
+
+export const cancelFeatureBundle = (key: 'LITE' | 'PRO') =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>(`/api/feature-store/bundle/${key}/cancel`, { method: 'POST' }),
+  );

@@ -1,5 +1,6 @@
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * POST /api/products/:id/toggle-line-featured — 切換 line_featured ⚙MANAGER
@@ -7,6 +8,7 @@ import { requireTenant } from '@/server/tenant';
  */
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const { id } = await params;
 
   const { data: cur, error: rErr } = await t.supabase

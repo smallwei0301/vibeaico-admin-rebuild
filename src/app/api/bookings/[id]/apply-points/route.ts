@@ -2,11 +2,13 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 const bodySchema = z.object({ points: z.number().int().positive('點數需為正整數') });
 
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'POINT_SYSTEM');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 

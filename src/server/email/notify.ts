@@ -18,6 +18,7 @@
  */
 
 import type { createAdminSupabase } from '@/server/supabase';
+import { isFeatureActive } from '@/server/features';
 import { notifySettingsSchema, basicSettingsSchema } from '@/config/tenant-settings';
 import { sendBookingNotifyEmail } from './send';
 
@@ -85,6 +86,10 @@ export async function notifyBookingEvent(
   kind: BookingNotifyKind,
 ): Promise<void> {
   try {
+    // §5 閘門（09 分冊）：EMAIL_NOTIFICATION 未訂閱 → 不寄預約通知信，直接 return。
+    // 驗證碼信與密碼重設信不經過本函式（send-code.ts / auth 流程），不受此限。
+    if (!(await isFeatureActive(tenantId, 'EMAIL_NOTIFICATION'))) return;
+
     const [{ data: settingsRow }, { data: bookingRow }] = await Promise.all([
       adminSupabase.from('tenant_settings').select('notify, basic')
         .eq('tenant_id', tenantId).maybeSingle(),

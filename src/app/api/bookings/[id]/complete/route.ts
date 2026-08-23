@@ -1,6 +1,7 @@
 // PENDING/CONFIRMED → COMPLETED，成功後依 tenant_settings.points 累點（A-2 表格）。
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { isFeatureActive } from '@/server/features';
 import { pointsSettingsSchema } from '@/config/tenant-settings';
 
 export const POST = handle(async (_req, { params }) => {
@@ -22,7 +23,9 @@ export const POST = handle(async (_req, { params }) => {
       .select('points').eq('tenant_id', t.tenantId).maybeSingle();
     const points = pointsSettingsSchema.parse(settingsRow?.points ?? {});
 
-    if (points.pointEarnEnabled) {
+    // §5 閘門（09 分冊）：POINT_SYSTEM 未訂閱 → 只跳過累點，不是 403——
+    // 完成動作本身不受限（上面的 update 已成立）。fire-and-forget 語意不變。
+    if (points.pointEarnEnabled && (await isFeatureActive(t.tenantId, 'POINT_SYSTEM'))) {
       // src/config/tenant-settings.ts 的欄位註解：pointEarnRate = 「消費多少元
       // 累積 1 點」，因此是 final_price / pointEarnRate 取整，不是相乘——相乘
       // 會讓消費 100 元、費率 100 時得到 10000 點，不合理。

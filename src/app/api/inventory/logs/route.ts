@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { pageRange, toPaged } from '@/server/paging';
 
 /**
@@ -49,6 +50,7 @@ const querySchema = z.object({
 
 export const GET = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'INVENTORY');
   const q = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
   const { from, to, page, size } = pageRange(q.page, q.size);
 

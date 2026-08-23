@@ -172,6 +172,28 @@ export async function runSeed(admin) {
 
   await safeUpsert(admin, 'tenant_settings', [{ tenant_id: SHOP_A.id }, { tenant_id: SHOP_B.id }], 'tenant_settings', 'tenant_id');
 
+  // ---- 2.5 功能訂閱（Phase 5.5 閘門上線後必要）----
+  // 09 分冊 §5 的閘門會擋未訂閱租戶（shifts 403、第 4 位員工被擋、報表 403…），
+  // 測試種子租戶預設「平台永久贈送」全部 18 項付費功能（source='GRANTED'、
+  // expires_at null = 永久，見 §2 有效性判定），讓既有 Phase 3/5 整合測試
+  // 不因閘門而 403。gating.09.test.ts 測「未訂閱被擋」時自行 delete 特定列
+  // 再還原（各測試自理，不改共用種子的這個基線）。
+  const PAID_FEATURES = [
+    'UNLIMITED_STAFF', 'SHIFT_MANAGEMENT', 'BOOKING_REMINDER', 'BIRTHDAY_GREETING',
+    'CUSTOMER_RECALL', 'POINT_SYSTEM', 'ADVANCED_CUSTOMER', 'EMAIL_NOTIFICATION',
+    'BASIC_REPORT', 'MEMBERSHIP_SYSTEM', 'COUPON_SYSTEM', 'PRODUCT_SALES', 'INVENTORY',
+    'KEYWORD_REPLY', 'AI_ASSISTANT', 'PORTFOLIO_SHOWCASE', 'CUSTOM_RICH_MENU', 'EXTRA_PUSH',
+  ];
+  await safeUpsert(
+    admin,
+    'feature_subscriptions',
+    [SHOP_A.id, SHOP_B.id].flatMap((tid) => PAID_FEATURES.map((code) => ({
+      tenant_id: tid, code, active: true, expires_at: null, source: 'GRANTED',
+    }))),
+    'feature_subscriptions',
+    'tenant_id,code',
+  );
+
   // ---- 3. tenant_users（登入帳號 ↔ 租戶 ↔ 角色）----
   const tenantUserRows = [];
   if (ownerAId) tenantUserRows.push({ tenant_id: SHOP_A.id, user_id: ownerAId, role: 'OWNER' });

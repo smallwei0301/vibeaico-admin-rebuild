@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * 班表（shifts，0005 migration：staff_id/work_date/template_id/start_time/end_time，
@@ -30,6 +31,7 @@ const querySchema = z
 
 export const GET = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const q = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
 
   let query = t.supabase
@@ -69,6 +71,7 @@ const batchSchema = z.array(itemSchema).min(1, '請提供至少一筆班表').ma
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const items = batchSchema.parse(await req.json());
 
   const staffIds = [...new Set(items.map((i) => i.staffId))];

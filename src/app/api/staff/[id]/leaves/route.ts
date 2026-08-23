@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * 員工請假（staff_leaves，0005 migration）。types.ts 無對應型別（鐵則 3 不得改），
@@ -27,6 +28,7 @@ async function requireStaff(t: Awaited<ReturnType<typeof requireTenant>>, staffI
 /** GET /api/staff/:id/leaves — 該員工全部請假，start_at asc（班表顯示順序）。 */
 export const GET = handle(async (_req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const { id } = await params;
   await requireStaff(t, id);
 
@@ -52,6 +54,7 @@ const createSchema = z
 
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const { id } = await params;
   const b = createSchema.parse(await req.json());
   await requireStaff(t, id);

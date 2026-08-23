@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * POST /api/products/reorder — `{ids:[]}` 依序寫 sort_order = index ⚙MANAGER
@@ -13,6 +14,7 @@ const bodySchema = z.object({
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = bodySchema.parse(await req.json());
 
   for (let i = 0; i < b.ids.length; i++) {

@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { taipeiMonthRange } from '@/server/tz';
 import { mapStaffPerformance } from '@/server/mappers';
 
@@ -13,6 +14,7 @@ const querySchema = z.object({
 
 export const GET = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'BASIC_REPORT');
   const q = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
   const { fromIso: defaultFrom, toIso: defaultTo } = taipeiMonthRange();
   const from = q.from ?? defaultFrom;

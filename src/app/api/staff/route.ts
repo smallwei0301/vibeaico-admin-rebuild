@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { isFeatureActive } from '@/server/features';
 import { mapStaff } from '@/server/mappers';
 
 /**
@@ -42,6 +43,20 @@ const createSchema = z.object({
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+
+  // §5 閘門（09 分冊）：STAFF_BASIC 免費上限 3 位——未訂閱 UNLIMITED_STAFF
+  // 且該店 active 員工已達 3 → 403 FEAT_001（條件式檢查，不是整條 requireFeature）。
+  if (!(await isFeatureActive(t.tenantId, 'UNLIMITED_STAFF'))) {
+    const { count, error: eCnt } = await t.supabase
+      .from('staff')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', t.tenantId)
+      .eq('active', true);
+    if (eCnt) throw eCnt;
+    if ((count ?? 0) >= 3)
+      throw new ApiHttpError(403, '免費方案最多 3 位員工', ERR.FEATURE_LOCKED);
+  }
+
   const b = createSchema.parse(await req.json());
 
   const serviceIds = [...new Set(b.serviceIds ?? [])];

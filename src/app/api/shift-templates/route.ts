@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * 班別模板（shift_templates，0005 migration：id/tenant_id/name/start_time/
@@ -23,6 +24,7 @@ const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, '時間格式需為 H
 /** GET /api/shift-templates — 全量不分頁；無 sort_order 欄位，以 start_time asc 排。 */
 export const GET = handle(async () => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
 
   const { data, error } = await t.supabase
     .from('shift_templates')
@@ -46,6 +48,7 @@ const createSchema = z
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const b = createSchema.parse(await req.json());
 
   const insert: Record<string, unknown> = {

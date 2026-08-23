@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * POST /api/products/:id/adjust-stock — `{delta, reason}` ⚙MANAGER（B-3）。
@@ -21,6 +22,9 @@ const bodySchema = z.object({
 
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant('MANAGER');
+  // §5 閘門子集規則：INVENTORY 與 PRODUCT_SALES 都涵蓋 adjust-stock，
+  // 擋 INVENTORY 即可（INVENTORY 是庫存子功能，該端點以庫存閘門為準）。
+  await requireFeature(t.tenantId, 'INVENTORY');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 

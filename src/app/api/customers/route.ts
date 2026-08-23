@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { isFeatureActive } from '@/server/features';
 import { pageRange, toPaged } from '@/server/paging';
 import { mapCustomer } from '@/server/mappers';
 
@@ -35,10 +36,16 @@ export const GET = handle(async (req) => {
 
   if (q.atRisk) query = query.eq('at_risk', true);
   if (q.levelId) query = query.eq('membership_level_id', q.levelId);
-  if (q.tag) query = query.contains('tags', [q.tag]);
-  if (q.minSpent != null) query = query.gte('total_spent', q.minSpent);
-  if (q.maxSpent != null) query = query.lte('total_spent', q.maxSpent);
-  if (q.minVisits != null) query = query.gte('booking_count', q.minVisits);
+  // §5 閘門（09 分冊）：ADVANCED_CUSTOMER 未訂閱時「忽略」進階篩選參數
+  // （tag / minSpent / maxSpent / minVisits），不整條擋（列表本身是免費功能）。
+  const advancedCustomer =
+    (q.tag || q.minSpent != null || q.maxSpent != null || q.minVisits != null)
+      ? await isFeatureActive(t.tenantId, 'ADVANCED_CUSTOMER')
+      : false;
+  if (advancedCustomer && q.tag) query = query.contains('tags', [q.tag]);
+  if (advancedCustomer && q.minSpent != null) query = query.gte('total_spent', q.minSpent);
+  if (advancedCustomer && q.maxSpent != null) query = query.lte('total_spent', q.maxSpent);
+  if (advancedCustomer && q.minVisits != null) query = query.gte('booking_count', q.minVisits);
   if (q.keyword) query = query.or(`name.ilike.%${q.keyword}%,phone.ilike.%${q.keyword}%`);
 
   const { data, count, error } = await query;

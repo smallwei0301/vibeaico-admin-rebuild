@@ -11,9 +11,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, Label, Select, Switch } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listFeatures } from '@/services/settings';
+import { applyFeature, cancelFeature, listFeatures, restoreFeature } from '@/services/settings';
 import { getPointBalance } from '@/services/points';
-import { FEATURE_CODES, type FeatureCode, type FeatureSubscription } from '@/config/features';
+import { ApiError } from '@/lib/api';
+import {
+  FEATURE_CATALOG, FEATURE_CODES, type FeatureCode, type FeatureSubscription,
+} from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { featureStorePage as t } from '@/i18n/zh-TW/pages/feature-store';
@@ -24,48 +27,14 @@ import { formatDate, formatNumber } from '@/lib/utils';
 /* -------------------------------------------------------------------------- */
 
 type FeatureKey = keyof typeof t.features;
-type CategoryKey = Exclude<keyof typeof t.filters, 'ALL'>;
 
 /**
- * 功能目錄：分類與月費。
- * 訂閱狀態不放這裡 —— 由 listFeatures() 提供（僅 config/features.ts 的 10 個代碼有）。
+ * 功能目錄（22 項：key/category/price/paid）已依 09 分冊 §1 移入
+ * `src/config/features.ts` 的 `FEATURE_CATALOG`（鐵則 1 的核准例外，只搬常數不動 UI）。
+ * 訂閱狀態不放目錄裡 —— 由 listFeatures() 提供（僅 config/features.ts 的 10 個代碼有）。
  * 其餘 8 項付費功能在骨架階段一律視為未訂閱。
  */
-type CatalogItem = {
-  key: FeatureKey;
-  category: CategoryKey;
-  /** 月費（點/月）；免費功能為 0 */
-  price: number;
-  paid: boolean;
-};
-
-const FEATURE_CATALOG: CatalogItem[] = [
-  /* ---- 免費功能 ---- */
-  { key: 'ONLINE_BOOKING', category: 'BOOKING', price: 0, paid: false },
-  { key: 'SERVICE_CATALOG', category: 'BOOKING', price: 0, paid: false },
-  { key: 'CUSTOMER_BASIC', category: 'CUSTOMER', price: 0, paid: false },
-  { key: 'STAFF_BASIC', category: 'SYSTEM', price: 0, paid: false },
-
-  /* ---- 付費功能（共 18 項）---- */
-  { key: 'UNLIMITED_STAFF', category: 'SYSTEM', price: 49, paid: true },
-  { key: 'SHIFT_MANAGEMENT', category: 'SYSTEM', price: 49, paid: true },
-  { key: 'BOOKING_REMINDER', category: 'BOOKING', price: 49, paid: true },
-  { key: 'BIRTHDAY_GREETING', category: 'MARKETING', price: 49, paid: true },
-  { key: 'CUSTOMER_RECALL', category: 'MARKETING', price: 49, paid: true },
-  { key: 'POINT_SYSTEM', category: 'CUSTOMER', price: 49, paid: true },
-  { key: 'ADVANCED_CUSTOMER', category: 'CUSTOMER', price: 49, paid: true },
-  { key: 'EMAIL_NOTIFICATION', category: 'SYSTEM', price: 49, paid: true },
-  { key: 'BASIC_REPORT', category: 'SYSTEM', price: 99, paid: true },
-  { key: 'MEMBERSHIP_SYSTEM', category: 'CUSTOMER', price: 49, paid: true },
-  { key: 'COUPON_SYSTEM', category: 'MARKETING', price: 49, paid: true },
-  { key: 'PRODUCT_SALES', category: 'SHOP', price: 99, paid: true },
-  { key: 'INVENTORY', category: 'SHOP', price: 49, paid: true },
-  { key: 'KEYWORD_REPLY', category: 'LINE', price: 49, paid: true },
-  { key: 'AI_ASSISTANT', category: 'LINE', price: 249, paid: true },
-  { key: 'PORTFOLIO_SHOWCASE', category: 'SHOP', price: 49, paid: true },
-  { key: 'CUSTOM_RICH_MENU', category: 'LINE', price: 149, paid: true },
-  { key: 'EXTRA_PUSH', category: 'LINE', price: 249, paid: true },
-];
+type CatalogItem = (typeof FEATURE_CATALOG)[number];
 
 /** 目錄鍵同時是 config/features.ts 的訂閱代碼時，才有真實訂閱狀態 */
 const SUBSCRIBABLE_CODES = new Set<string>(FEATURE_CODES);
@@ -191,7 +160,8 @@ export default function FeatureStorePage() {
     }
     setWorking(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      // POST /api/feature-store/:code/apply（09 §3）；mock 分支模擬成功。
+      await applyFeature(item.key, months);
       const active = isActive(item);
       setSubscribeTarget(null);
       setBalance(current - need);
@@ -202,6 +172,12 @@ export default function FeatureStorePage() {
       );
       void load();
     } catch (e) {
+      // 409 POINTS_001（點數不足）→ 開既有的儲值引導 modal（09 §3 驗收要求）。
+      if (e instanceof ApiError && e.code === 'POINTS_001') {
+        setSubscribeTarget(null);
+        setShortOf({ item, months });
+        return;
+      }
       toast.show(
         `${t.messages.subscribeFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
         'danger',
@@ -218,7 +194,9 @@ export default function FeatureStorePage() {
     const sub = subOf(item);
     setWorking(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
+      // POST /api/feature-store/:code/{cancel,restore}（09 §3）；mock 模擬成功。
+      if (kind === 'cancel') await cancelFeature(item.key);
+      else await restoreFeature(item.key);
       setPending(null);
       if (kind === 'cancel') {
         toast.show(sub?.expiresAt ? t.messages.cancelledUsable(name) : t.messages.cancelled(name));

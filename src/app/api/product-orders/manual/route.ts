@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { taipeiTodayDateString } from '@/server/tz';
 
 /**
@@ -54,6 +55,7 @@ async function casAdjustStock(
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = bodySchema.parse(await req.json());
 
   // 顧客必須屬於本租戶（404 規則：不存在與不屬於一視同仁）

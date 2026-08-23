@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { mapCoupon } from '@/server/mappers';
 
 /**
@@ -59,6 +60,7 @@ const bodySchema = z.object({
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'COUPON_SYSTEM');
   const b = bodySchema.parse(await req.json());
 
   const { data, error } = await t.supabase

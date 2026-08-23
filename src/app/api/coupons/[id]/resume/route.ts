@@ -2,9 +2,11 @@
 // 樣板：bookings/:id/confirm（條件式 update，0 列 = 非法轉移或不存在 → 409/404）。
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'COUPON_SYSTEM');
   const { id } = await params;
 
   const { data, error } = await t.supabase.from('coupons')

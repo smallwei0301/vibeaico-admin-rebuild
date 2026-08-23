@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * 重算所有顧客等級（04 分冊 §B-4：等級 CRUD 儲存後執行）。
@@ -66,6 +67,7 @@ const bodySchema = z.object({
 
 export const PUT = handle(async (req, { params }) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'MEMBERSHIP_SYSTEM');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 
@@ -104,6 +106,7 @@ export const PUT = handle(async (req, { params }) => {
  */
 export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'MEMBERSHIP_SYSTEM');
   const { id } = await params;
 
   const { data, error } = await t.supabase

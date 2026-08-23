@@ -1,5 +1,6 @@
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * DELETE /api/staff/:id/leaves/:leaveId — 刪除一筆請假。
@@ -7,6 +8,7 @@ import { requireTenant } from '@/server/tenant';
  */
 export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const { id, leaveId } = await params;
 
   const { data, error } = await t.supabase

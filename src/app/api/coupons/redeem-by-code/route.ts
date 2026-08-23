@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 const bodySchema = z.object({
   code: z.string().min(1, '請輸入核銷代碼'),
@@ -10,6 +11,7 @@ const bodySchema = z.object({
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'COUPON_SYSTEM');
   const b = bodySchema.parse(await req.json());
   const code = b.code.trim().toUpperCase(); // 代碼一律大寫英數，輸入寬容處理
 

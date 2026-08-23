@@ -11,6 +11,7 @@
 // 店家量級小：全量一次查回（不分頁）。
 import { handle } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { taipeiTodayDateString } from '@/server/tz';
 
 /** CSV 跳脫：含逗號/引號/換行時包雙引號，內部引號雙寫 */
@@ -23,6 +24,7 @@ const HEADERS = ['姓名', 'LINE 顯示名稱', '電話', 'Email', '會員等級
 
 export const GET = handle(async () => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'ADVANCED_CUSTOMER');
 
   const { data: rows, error } = await t.supabase.from('customers_view')
     .select('name, line_display_name, phone, email, membership_level_name, booking_count, total_spent, at_risk, active')

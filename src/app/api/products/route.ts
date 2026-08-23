@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { mapProduct } from '@/server/mappers';
 
 /**
@@ -43,6 +44,7 @@ const createSchema = z.object({
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = createSchema.parse(await req.json());
 
   const { data: last, error: e0 } = await t.supabase

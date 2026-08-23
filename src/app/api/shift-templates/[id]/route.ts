@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, '時間格式需為 HH:mm');
 
@@ -17,6 +18,7 @@ const bodySchema = z.object({
 
 export const PUT = handle(async (req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 
@@ -54,6 +56,7 @@ export const PUT = handle(async (req, { params }) => {
  */
 export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'SHIFT_MANAGEMENT');
   const { id } = await params;
 
   const { data, error } = await t.supabase

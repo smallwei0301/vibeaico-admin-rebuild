@@ -3,9 +3,11 @@
 // EXPIRED 由讀取時判定，不落庫，因此這裡只認 DB 的 DRAFT。
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant();
+  await requireFeature(t.tenantId, 'COUPON_SYSTEM');
   const { id } = await params;
 
   const { data, error } = await t.supabase.from('coupons')

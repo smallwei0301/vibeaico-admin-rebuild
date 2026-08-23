@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 
 /**
  * PUT /api/products/:id — 編輯商品 ⚙MANAGER。所有欄位皆可選，只更新 body 裡
@@ -24,6 +25,7 @@ const bodySchema = z.object({
 
 export const PUT = handle(async (req, { params }) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 
@@ -93,6 +95,7 @@ export const PUT = handle(async (req, { params }) => {
  */
 export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const { id } = await params;
 
   const { data: existing, error: e0 } = await t.supabase
