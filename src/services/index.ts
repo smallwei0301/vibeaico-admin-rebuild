@@ -7,6 +7,7 @@ export * from './auth';
 export * from './bookings';
 export * from './customers';
 export * from './catalog';
+export * from './chat';
 export * from './coupons';
 export * from './points';
 export * from './products';

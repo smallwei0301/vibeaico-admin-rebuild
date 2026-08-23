@@ -9,145 +9,28 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { byMode } from '@/mock';
+import { ApiError } from '@/lib/api';
+import {
+  CONVERSATION_POLL_MS,
+  MESSAGE_POLL_MS,
+  listConversations,
+  listMessages,
+  markThreadRead,
+  sendMessage,
+  startPolling,
+  type ChatConversation,
+  type ChatMessage,
+} from '@/services/chat';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { chatPage as t } from '@/i18n/zh-TW/pages/chat';
 import { cn, formatTime } from '@/lib/utils';
 
-/* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
-/* -------------------------------------------------------------------------- */
-
-type Conversation = {
-  id: string;
-  customerId: string;
-  customerName: string;
-  /** 清單預覽用；type = IMAGE 時顯示「圖片」 */
-  lastMessageType: 'TEXT' | 'IMAGE';
-  lastMessage: string;
-  lastMessageAt: string;
-  unread: number;
-};
-
-type ChatMessage = {
-  id: string;
-  from: 'CUSTOMER' | 'SHOP';
-  type: 'TEXT' | 'IMAGE';
-  text: string;
-  imageUrl: string;
-  at: string;
-};
-
-/** 以固定基準時間產生假資料，避免 render 期出現 Date.now() */
-const BASE = new Date('2026-08-20T15:00:00+08:00').getTime();
-const ago = (minutes: number) => new Date(BASE - minutes * 60_000).toISOString();
-
-const CONV_LOCAL_SHOP: Conversation[] = [
-  {
-    id: 'chat_1', customerId: 'c_1', customerName: '王小明',
-    lastMessageType: 'TEXT', lastMessage: '請問這週六下午還有位子嗎？',
-    lastMessageAt: ago(3), unread: 2,
-  },
-  {
-    id: 'chat_2', customerId: 'c_4', customerName: '陳雅婷',
-    lastMessageType: 'IMAGE', lastMessage: '',
-    lastMessageAt: ago(95), unread: 1,
-  },
-  {
-    id: 'chat_3', customerId: 'c_2', customerName: '李美華',
-    lastMessageType: 'TEXT', lastMessage: '好的，謝謝！',
-    lastMessageAt: ago(60 * 26), unread: 0,
-  },
-];
-
-const MSG_LOCAL_SHOP: Record<string, ChatMessage[]> = {
-  chat_1: [
-    { id: 'm_1', from: 'CUSTOMER', type: 'TEXT', text: '你好，我想預約剪髮', imageUrl: '', at: ago(20) },
-    { id: 'm_2', from: 'SHOP', type: 'TEXT', text: '您好！請問希望哪一天呢？', imageUrl: '', at: ago(18) },
-    { id: 'm_3', from: 'CUSTOMER', type: 'TEXT', text: '這週六可以嗎', imageUrl: '', at: ago(5) },
-    { id: 'm_4', from: 'CUSTOMER', type: 'TEXT', text: '請問這週六下午還有位子嗎？', imageUrl: '', at: ago(3) },
-  ],
-  chat_2: [
-    { id: 'm_5', from: 'CUSTOMER', type: 'TEXT', text: '想染成這個顏色', imageUrl: '', at: ago(100) },
-    { id: 'm_6', from: 'CUSTOMER', type: 'IMAGE', text: '', imageUrl: '', at: ago(95) },
-  ],
-  chat_3: [
-    { id: 'm_7', from: 'SHOP', type: 'TEXT', text: '您的預約已確認，週日 15:00 見！', imageUrl: '', at: ago(60 * 27) },
-    { id: 'm_8', from: 'CUSTOMER', type: 'TEXT', text: '好的，謝謝！', imageUrl: '', at: ago(60 * 26) },
-  ],
-};
-
-const CONV_GUIDE: Conversation[] = [
-  {
-    id: 'chat_1', customerId: 'c_1', customerName: '陳彥廷',
-    lastMessageType: 'TEXT', lastMessage: '這週六賞鯨還有位子嗎？兩大一小',
-    lastMessageAt: ago(4), unread: 2,
-  },
-  {
-    id: 'chat_2', customerId: 'c_4', customerName: '黃思穎',
-    lastMessageType: 'TEXT', lastMessage: '溯溪需要自備什麼嗎？',
-    lastMessageAt: ago(88), unread: 1,
-  },
-  {
-    id: 'chat_3', customerId: 'c_5', customerName: '張家豪',
-    lastMessageType: 'TEXT', lastMessage: '好的，那就麻煩你了！',
-    lastMessageAt: ago(60 * 20), unread: 0,
-  },
-];
-
-const MSG_GUIDE: Record<string, ChatMessage[]> = {
-  chat_1: [
-    { id: 'm_1', from: 'CUSTOMER', type: 'TEXT', text: '你好，想問龜山島賞鯨', imageUrl: '', at: ago(25) },
-    { id: 'm_2', from: 'SHOP', type: 'TEXT', text: '您好！標準團每天 09:00 出發，全程約 3 小時 🐬', imageUrl: '', at: ago(22) },
-    { id: 'm_3', from: 'CUSTOMER', type: 'TEXT', text: '小孩 6 歲可以參加嗎', imageUrl: '', at: ago(8) },
-    { id: 'm_4', from: 'CUSTOMER', type: 'TEXT', text: '這週六賞鯨還有位子嗎？兩大一小', imageUrl: '', at: ago(4) },
-  ],
-  chat_2: [
-    { id: 'm_5', from: 'SHOP', type: 'TEXT', text: '您的溯溪行程已確認，8/24 08:00 花蓮火車站前集合 🏞', imageUrl: '', at: ago(120) },
-    { id: 'm_6', from: 'CUSTOMER', type: 'TEXT', text: '溯溪需要自備什麼嗎？', imageUrl: '', at: ago(88) },
-  ],
-  chat_3: [
-    { id: 'm_7', from: 'CUSTOMER', type: 'TEXT', text: '公司 12 人想包船，8/22 可以嗎', imageUrl: '', at: ago(60 * 24) },
-    { id: 'm_8', from: 'SHOP', type: 'TEXT', text: '可以！包船專案 18,000 元，先收 5,000 定金即可保留船班', imageUrl: '', at: ago(60 * 22) },
-    { id: 'm_9', from: 'CUSTOMER', type: 'TEXT', text: '好的，那就麻煩你了！', imageUrl: '', at: ago(60 * 20) },
-  ],
-};
-
-const CONV_CLINIC: Conversation[] = [
-  {
-    id: 'chat_1', customerId: 'c_2', customerName: '周佩琪',
-    lastMessageType: 'TEXT', lastMessage: '今天下午還有初診的號嗎？',
-    lastMessageAt: ago(6), unread: 2,
-  },
-  {
-    id: 'chat_2', customerId: 'c_1', customerName: '劉建國',
-    lastMessageType: 'TEXT', lastMessage: '收到，謝謝提醒',
-    lastMessageAt: ago(60 * 5), unread: 0,
-  },
-  {
-    id: 'chat_3', customerId: 'c_4', customerName: '蔡淑芬',
-    lastMessageType: 'TEXT', lastMessage: '健檢報告可以線上看嗎？',
-    lastMessageAt: ago(60 * 30), unread: 1,
-  },
-];
-
-const MSG_CLINIC: Record<string, ChatMessage[]> = {
-  chat_1: [
-    { id: 'm_1', from: 'CUSTOMER', type: 'TEXT', text: '你好，喉嚨痛三天了', imageUrl: '', at: ago(15) },
-    { id: 'm_2', from: 'SHOP', type: 'TEXT', text: '您好，建議先掛一般門診由醫師評估，線上可預約看診號碼。', imageUrl: '', at: ago(12) },
-    { id: 'm_3', from: 'CUSTOMER', type: 'TEXT', text: '今天下午還有初診的號嗎？', imageUrl: '', at: ago(6) },
-  ],
-  chat_2: [
-    { id: 'm_4', from: 'SHOP', type: 'TEXT', text: '提醒您：慢性處方箋將於下週到期，記得回診由醫師評估用藥。', imageUrl: '', at: ago(60 * 6) },
-    { id: 'm_5', from: 'CUSTOMER', type: 'TEXT', text: '收到，謝謝提醒', imageUrl: '', at: ago(60 * 5) },
-  ],
-  chat_3: [
-    { id: 'm_6', from: 'CUSTOMER', type: 'TEXT', text: '健檢報告可以線上看嗎？', imageUrl: '', at: ago(60 * 30) },
-  ],
-};
-
-/* -------------------------------------------------------------------------- */
+/**
+ * 顧客訊息 — 資料一律走 src/services/chat.ts（04 分冊 §B-5.1）。
+ * 假資料已搬進 service 的 mock 分支；輪詢規約（5 秒 after 增量、15 秒 since
+ * 列表、hidden 暫停）都收在 service 的 startPolling / list* 裡，本頁只掛/卸。
+ */
 
 /** 相對時間標籤；只在載入／送出等事件中計算，不在 render 期呼叫 */
 function relativeTime(iso: string, now: number): string {
@@ -159,7 +42,23 @@ function relativeTime(iso: string, now: number): string {
   return t.labels.daysAgo(Math.floor(hours / 24));
 }
 
-type ConversationRow = Conversation & { timeLabel: string };
+type ConversationRow = ChatConversation & { timeLabel: string };
+
+const toRow = (c: ChatConversation, now: number): ConversationRow => ({
+  ...c,
+  timeLabel: c.lastMessageAt ? relativeTime(c.lastMessageAt, now) : '',
+});
+
+/** 最後訊息時間新→舊；沒訊息的排最後 */
+function byLastMessageDesc(a: ConversationRow, b: ConversationRow): number {
+  if (a.lastMessageAt && b.lastMessageAt) return a.lastMessageAt < b.lastMessageAt ? 1 : -1;
+  if (a.lastMessageAt) return -1;
+  if (b.lastMessageAt) return 1;
+  return 0;
+}
+
+/** 本地（未上傳）訊息 id 前綴：圖片僅前端預覽用，不能當 after 錨點 */
+const LOCAL_ID_PREFIX = 'm_local_';
 
 export default function ChatPage() {
   const toast = useToast();
@@ -181,42 +80,118 @@ export default function ChatPage() {
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const nextId = React.useRef(1);
 
-  /* ------------------------------------------------------------ 對話清單 */
+  /** 輪詢 callback 讀取用（effect 只掛一次，不重建計時器） */
+  const activeIdRef = React.useRef<string | null>(null);
+  /** 開啟中對話最後一筆「伺服器」訊息 id（after=<此值> 拉增量） */
+  const lastMessageIdRef = React.useRef<string | null>(null);
+  /** 快速切換對話時丟棄過期的載入結果 */
+  const openSeq = React.useRef(0);
+
+  /* ------------------------------------------ 對話清單：載入 + 15 秒輪詢 */
   React.useEffect(() => {
     let cancelled = false;
     setListLoading(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
+    const lastFetchAt = { current: new Date().toISOString() };
+
+    void (async () => {
+      try {
+        const list = await listConversations();
+        if (cancelled) return;
+        const now = Date.now();
+        setConversations(list.map((c) => toRow(c, now)));
+      } catch {
+        if (!cancelled) toast.show(t.list.loadFailed, 'danger');
+      } finally {
+        if (!cancelled) setListLoading(false);
+      }
+    })();
+
+    /* §B-5.1：每 15 秒帶 since=<上次拉取時間> 更新未讀數與最後訊息；
+       document.hidden 暫停、回前景立刻拉一次（都在 startPolling 內）。
+       mock 模式下 startPolling 是 no-op，假資料不會被增量結果清掉。 */
+    const stop = startPolling(async () => {
+      const since = lastFetchAt.current;
+      const fetchedAt = new Date().toISOString();
+      const updated = await listConversations({ since });
+      lastFetchAt.current = fetchedAt;
+      if (updated.length === 0) return;
       const now = Date.now();
-      setConversations(
-        byMode({ LOCAL_SHOP: CONV_LOCAL_SHOP, GUIDE: CONV_GUIDE, CLINIC: CONV_CLINIC }).map((c) => ({ ...c, timeLabel: relativeTime(c.lastMessageAt, now) })),
-      );
-      setListLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+      setConversations((list) => {
+        const merged = new Map(list.map((c) => [c.id, c] as const));
+        for (const c of updated) {
+          merged.set(c.id, {
+            ...toRow(c, now),
+            /* 開啟中的對話視為已讀（訊息輪詢會同步 markRead） */
+            unread: c.id === activeIdRef.current ? 0 : c.unread,
+          });
+        }
+        return [...merged.values()].sort(byLastMessageDesc);
+      });
+    }, CONVERSATION_POLL_MS);
+
+    return () => {
+      cancelled = true;
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ------------------------------------------------------------ 訊息串 */
   const openConversation = (c: ConversationRow) => {
-    if (!c.customerId) {
+    if (!c.id) {
       toast.show(t.messages.notBound, 'warning');
       return;
     }
+    const seq = ++openSeq.current;
     setActiveId(c.id);
+    activeIdRef.current = c.id;
+    lastMessageIdRef.current = null;
     setMobileThread(true);
     setThreadLoading(true);
     setDraft('');
-    /* 讀取後清掉未讀數（原站 /api/chat/messages/{id}/read）*/
+    /* 讀取後清掉未讀數（伺服器端由 markThreadRead 逐筆 read） */
     setConversations((list) => list.map((x) => (x.id === c.id ? { ...x, unread: 0 } : x)));
-    setTimeout(() => {
-      setMessages(byMode({ LOCAL_SHOP: MSG_LOCAL_SHOP, GUIDE: MSG_GUIDE, CLINIC: MSG_CLINIC })[c.id] ?? []);
-      setThreadLoading(false);
-    }, 260);
+    void (async () => {
+      try {
+        const msgs = await listMessages({ lineUserId: c.id });
+        if (seq !== openSeq.current) return;
+        setMessages(msgs);
+        void markThreadRead(msgs);
+      } catch {
+        if (seq !== openSeq.current) return;
+        setMessages([]);
+        toast.show(t.thread.loadFailed, 'danger');
+      } finally {
+        if (seq === openSeq.current) setThreadLoading(false);
+      }
+    })();
   };
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' });
+    /* 記住最後一筆伺服器訊息，當下一輪 after 增量輪詢的錨點 */
+    const lastServer = [...messages].reverse().find((m) => !m.id.startsWith(LOCAL_ID_PREFIX));
+    lastMessageIdRef.current = lastServer?.id ?? null;
   }, [messages]);
+
+  /* §B-5.1：開啟中的對話每 5 秒帶 after=<最後一筆 id> 拉增量（mock 為 no-op） */
+  React.useEffect(() => {
+    if (!activeId) return;
+    const stop = startPolling(async () => {
+      const lastId = lastMessageIdRef.current;
+      const fresh = lastId
+        ? await listMessages({ lineUserId: activeId, after: lastId })
+        : await listMessages({ lineUserId: activeId });
+      if (fresh.length === 0) return;
+      setMessages((list) => {
+        const seen = new Set(list.map((m) => m.id));
+        const added = fresh.filter((m) => !seen.has(m.id));
+        return added.length ? [...list, ...added] : list;
+      });
+      void markThreadRead(fresh);
+    }, MESSAGE_POLL_MS);
+    return stop;
+  }, [activeId]);
 
   const active = conversations.find((c) => c.id === activeId) ?? null;
 
@@ -225,7 +200,7 @@ export default function ChatPage() {
     : conversations;
 
   const appendOwnMessage = (message: Omit<ChatMessage, 'id'>) => {
-    const id = `m_local_${nextId.current++}`;
+    const id = `${LOCAL_ID_PREFIX}${nextId.current++}`;
     setMessages((list) => [...list, { ...message, id }]);
   };
 
@@ -234,16 +209,18 @@ export default function ChatPage() {
     if (!text || !activeId) return;
     setSending(true);
     try {
-      await new Promise((r) => setTimeout(r, 260));
-      appendOwnMessage({
-        from: 'SHOP', type: 'TEXT', text, imageUrl: '', at: new Date().toISOString(),
-      });
+      const sent = await sendMessage({ lineUserId: activeId, text });
+      setMessages((list) => [...list, sent]);
       setDraft('');
       setConversations((list) => list.map((c) => (c.id === activeId
         ? { ...c, lastMessageType: 'TEXT', lastMessage: text, timeLabel: t.labels.justNow }
         : c)));
-    } catch {
-      toast.show(t.messages.sendFailed, 'danger');
+    } catch (error) {
+      /* 409 REQ_003（本月推播額度已用完）把後端 message 原樣顯示 */
+      const message = error instanceof ApiError && error.code === 'REQ_003' && error.message
+        ? error.message
+        : t.messages.sendFailed;
+      toast.show(message, 'danger');
     } finally {
       setSending(false);
     }
@@ -258,7 +235,7 @@ export default function ChatPage() {
     try {
       appendOwnMessage({
         from: 'SHOP', type: 'IMAGE', text: '',
-        imageUrl: URL.createObjectURL(file), at: new Date().toISOString(),
+        imageUrl: URL.createObjectURL(file), at: new Date().toISOString(), readAt: null,
       });
       setConversations((list) => list.map((c) => (c.id === activeId
         ? { ...c, lastMessageType: 'IMAGE', lastMessage: '', timeLabel: t.labels.justNow }
