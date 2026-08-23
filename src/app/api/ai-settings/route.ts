@@ -1,5 +1,6 @@
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { aiSettingsSchema } from '@/config/tenant-settings';
 
 /**
@@ -23,8 +24,7 @@ export const GET = handle(async () => {
 /** PUT — body = AiSettings（整包覆蓋）⚙MANAGER。 */
 export const PUT = handle(async (req) => {
   const t = await requireTenant('MANAGER');
-  // TODO(gating agent): 這裡之後要加 requireFeature(t.tenantId, 'AI_ASSISTANT')
-  // —— 閘門統一由 src/server/features.ts 的 agent 之後套（09 分冊 §5），此處先不擋。
+  await requireFeature(t.tenantId, 'AI_ASSISTANT'); // 未訂閱 → 403 FEAT_001（09 分冊 §5/§7.1）
   const ai = aiSettingsSchema.parse(await req.json());
 
   const { error } = await t.supabase

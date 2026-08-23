@@ -3,11 +3,12 @@ import { requireTenant } from '@/server/tenant';
 import { decryptSecret } from '@/server/crypto';
 import { buildWebhookUrl } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import { lineGetRaw as lineGet } from '@/server/line';
 
 /**
  * POST /api/settings/line/verify — 五項檢查（06 分冊 §7）。
  *
- * 實作程度（Phase 3 務實版，見 04 分冊 A-1 / 06 分冊 §7）：
+ * 實作程度（見 04 分冊 A-1 / 06 分冊 §7）：
  *   TOKEN       — 真檢查：GET /v2/bot/info 成功與否。
  *   WEBHOOK     — 真檢查：GET /v2/bot/channel/webhook/endpoint 的 endpoint 是否
  *                 等於本店 webhookUrl 且 active=true。
@@ -16,18 +17,14 @@ import { APP_URL } from '@/config/env';
  *   RICH_MENU   — 真檢查：GET /v2/bot/user/all/richmenu 是否有預設選單。
  *   QUOTA       — 真檢查：GET /v2/bot/message/quota + .../quota/consumption 算剩餘則數。
  * 無 token 時五項全部 pass:false、message 統一提示尚未設定。
+ *
+ * Phase 6：LINE 呼叫改走 src/server/line.ts 的 lineGetRaw —— 基底可用
+ * LINE_API_BASE 覆寫（12 分冊 Phase 6 測試要求）；回應形狀 {checks:[...]}
+ * 不變（前端 line-settings 頁 / services/settings.ts 的期待）。
  */
 type Check = { key: string; pass: boolean; message: string };
 
 const NOT_CONFIGURED = '尚未設定 LINE Channel Token';
-
-async function lineGet(token: string, path: string) {
-  const res = await fetch(`https://api.line.me${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const body = await res.json().catch(() => ({}) as any);
-  return { ok: res.ok, status: res.status, body };
-}
 
 export const POST = handle(async () => {
   const t = await requireTenant();

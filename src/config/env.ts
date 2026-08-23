@@ -33,6 +33,9 @@ const serverSchema = z.object({
   /** Vercel Cron 呼叫 /api/cron/* 的 Bearer token（Phase 7，見 07 分冊） */
   CRON_SECRET: z.string().optional(),
 
+  /** AI 客服（AI_ASSISTANT，09 分冊 §7）：平台一把 key，所有店共用；未設定時 AI 客服靜默停用 */
+  ANTHROPIC_API_KEY: z.string().optional(),
+
   /** 簽發租戶 session / JWT 用的密鑰 */
   AUTH_SECRET: z.string().min(16).optional(),
 
