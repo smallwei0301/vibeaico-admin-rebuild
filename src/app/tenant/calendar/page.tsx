@@ -12,7 +12,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, FormText, Label, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listBookings, cancelBooking, confirmBooking, completeBooking, markNoShow } from '@/services/bookings';
+import {
+  cancelBooking, completeBooking, confirmBooking, createBlockTime, deleteBlockTime,
+  listCalendarData, markNoShow,
+  type BlockTimeItem, type CalendarExternalItem,
+} from '@/services/bookings';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -84,6 +88,39 @@ const startOfWeek = (d: Date) => addDays(d, -d.getDay());
 
 const startOfMonthGrid = (d: Date) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
 
+const hm = (d: Date) =>
+  `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+/* --------------------------------------------- API 事件 → 本頁顯示形狀的映射 */
+
+/**
+ * /api/calendar 的 BLOCK 事件沒有「每週重複」「自動休息」概念（那是本頁 mock
+ * 專屬的展示欄位），一律映成 weekly/auto = false；跨 24 小時視為整天封鎖。
+ */
+const toCalendarBlock = (b: BlockTimeItem): CalendarBlock => {
+  const start = new Date(b.startAt);
+  const end = new Date(b.endAt);
+  const fullDay = end.getTime() - start.getTime() >= 24 * 60 * 60 * 1000;
+  return {
+    id: b.id,
+    title: b.reason || t.block.quickTitle,
+    date: dateKey(start),
+    startTime: fullDay ? '' : hm(start),
+    endTime: fullDay ? '' : hm(end),
+    fullDay,
+    weekly: false,
+    auto: false,
+  };
+};
+
+const toExternalEvent = (e: CalendarExternalItem): ExternalEvent => {
+  const start = new Date(e.start);
+  return {
+    id: e.id, title: e.title, date: dateKey(start),
+    startTime: hm(start), endTime: hm(new Date(e.end)),
+  };
+};
+
 /* -------------------------------------------------------------------------- */
 
 export default function CalendarPage() {
@@ -100,6 +137,7 @@ export default function CalendarPage() {
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [blocks, setBlocks] = React.useState<CalendarBlock[]>(MOCK_CALENDAR_BLOCKS);
+  const [externals, setExternals] = React.useState<ExternalEvent[]>(MOCK_EXTERNAL_EVENTS);
 
   const [detail, setDetail] = React.useState<Booking | null>(null);
   const [cancelTarget, setCancelTarget] = React.useState<Booking | null>(null);
@@ -119,8 +157,17 @@ export default function CalendarPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const res = await listBookings({ page: 0, size: 200 });
-      setBookings(res.content);
+      // GET /api/calendar 要 from/to：抓「今天 ±1 年」一次載入，翻頁不重抓
+      //（維持現行「載入一次」的行為，mock 模式不會因翻月閃 loading）。
+      const now = new Date();
+      const data = await listCalendarData(
+        new Date(now.getFullYear() - 1, now.getMonth(), 1).toISOString(),
+        new Date(now.getFullYear() + 1, now.getMonth() + 1, 1).toISOString(),
+      );
+      setBookings(data.bookings);
+      // null = mock 模式：封鎖／外部事件沿用本頁假資料 state（含每週重複、自動休息）
+      if (data.blocks) setBlocks(data.blocks.map(toCalendarBlock));
+      if (data.externals) setExternals(data.externals.map(toExternalEvent));
     } catch {
       toast.show(`${t.messages.loadFailed}${t.messages.unknownError}`, 'danger');
     } finally {
@@ -172,7 +219,7 @@ export default function CalendarPage() {
       : t.view.weekLabel(formatDate(weekDays[0].toISOString()), formatDate(weekDays[6].toISOString()));
 
   const blocksOn = (key: string) => blocks.filter((b) => b.date === key);
-  const externalsOn = (key: string) => MOCK_EXTERNAL_EVENTS.filter((e) => e.date === key);
+  const externalsOn = (key: string) => externals.filter((e) => e.date === key);
 
   const runAction = async (
     action: () => Promise<unknown>, successMessage: string, failPrefix: string,
@@ -184,6 +231,43 @@ export default function CalendarPage() {
       void load();
     } catch (e) {
       toast.show(`${failPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
+    }
+  };
+
+  /** 臨時封鎖：hour = null 封整天，否則封該小時起 1 小時。成功後以回傳 id 更新本地 state。 */
+  const createBlock = async (date: string, hour: number | null) => {
+    const start = hour !== null
+      ? new Date(`${date}T${String(hour).padStart(2, '0')}:00:00`)
+      : new Date(`${date}T00:00:00`);
+    const end = new Date(start.getTime() + (hour !== null ? 1 : 24) * 60 * 60_000);
+    try {
+      const res = await createBlockTime({
+        startAt: start.toISOString(), endAt: end.toISOString(), reason: t.block.quickTitle,
+      });
+      setBlocks((s) => [...s, {
+        id: res.id,
+        title: t.block.quickTitle,
+        date,
+        startTime: hour !== null ? `${String(hour).padStart(2, '0')}:00` : '',
+        endTime: hour !== null ? `${String(hour + 1).padStart(2, '0')}:00` : '',
+        fullDay: hour === null,
+        weekly: false,
+        auto: false,
+      }]);
+      setBlockTarget(null);
+      toast.show(t.block.created(1));
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    }
+  };
+
+  const removeBlock = async (target: CalendarBlock) => {
+    try {
+      await deleteBlockTime(target.id);
+      setBlocks((s) => s.filter((x) => x.id !== target.id));
+      toast.show(t.block.deleted);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
     }
   };
 
@@ -641,19 +725,7 @@ export default function CalendarPage() {
               <div>
                 <Button
                   block
-                  onClick={() => {
-                    const hour = blockTarget.hour ?? 0;
-                    setBlocks((s) => [...s, {
-                      id: `cb_new_${s.length + 1}`,
-                      title: t.block.quickTitle,
-                      date: blockTarget.date,
-                      startTime: `${String(hour).padStart(2, '0')}:00`,
-                      endTime: `${String(hour + 1).padStart(2, '0')}:00`,
-                      fullDay: false, weekly: false, auto: false,
-                    }]);
-                    setBlockTarget(null);
-                    toast.show(t.block.created(1));
-                  }}
+                  onClick={() => void createBlock(blockTarget.date, blockTarget.hour ?? 0)}
                 >
                   <Ban size={15} />{t.block.blockSlot}
                 </Button>
@@ -664,17 +736,7 @@ export default function CalendarPage() {
               <Button
                 block
                 variant="outline"
-                onClick={() => {
-                  setBlocks((s) => [...s, {
-                    id: `cb_new_${s.length + 1}`,
-                    title: t.block.quickTitle,
-                    date: blockTarget.date,
-                    startTime: '', endTime: '',
-                    fullDay: true, weekly: false, auto: false,
-                  }]);
-                  setBlockTarget(null);
-                  toast.show(t.block.created(1));
-                }}
+                onClick={() => void createBlock(blockTarget.date, null)}
               >
                 <Ban size={15} />{t.block.blockDay}
               </Button>
@@ -703,11 +765,9 @@ export default function CalendarPage() {
         }
         onClose={() => setBlockDeleting(null)}
         onConfirm={() => {
-          if (blockDeleting && !blockDeleting.auto) {
-            setBlocks((s) => s.filter((x) => x.id !== blockDeleting.id));
-            toast.show(t.block.deleted);
-          }
+          const target = blockDeleting;
           setBlockDeleting(null);
+          if (target && !target.auto) void removeBlock(target);
         }}
       />
     </>

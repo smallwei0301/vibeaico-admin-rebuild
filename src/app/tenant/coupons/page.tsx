@@ -19,6 +19,10 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listCoupons } from '@/services/catalog';
+import {
+  batchIssueCoupon, createCoupon, deleteCoupon, listCouponInstances, pauseCoupon,
+  publishCoupon, redeemCouponByCode, resumeCoupon, unredeemCouponInstance, updateCoupon,
+} from '@/services/coupons';
 import { listCustomers } from '@/services/customers';
 import { listFeatures } from '@/services/settings';
 import { byMode } from '@/mock';
@@ -271,14 +275,16 @@ export default function CouponsPage() {
     const { kind, coupon } = statusAction;
     setActing(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
       if (kind === 'PUBLISH') {
+        await publishCoupon(coupon.id);
         patchCoupon(coupon.id, { displayStatus: 'PUBLISHED', status: 'PUBLISHED' });
         toast.show(t.messages.published);
       } else if (kind === 'PAUSE') {
+        await pauseCoupon(coupon.id);
         patchCoupon(coupon.id, { displayStatus: 'PAUSED', status: 'PAUSED' });
         toast.show(t.messages.paused);
       } else {
+        await resumeCoupon(coupon.id);
         patchCoupon(coupon.id, { displayStatus: 'PUBLISHED', status: 'PUBLISHED' });
         toast.show(t.messages.resumed);
       }
@@ -529,8 +535,8 @@ export default function CouponsPage() {
         open={formTarget !== undefined}
         coupon={formTarget ?? null}
         onClose={() => setFormTarget(undefined)}
-        onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `cp_new_${nextId.current++}`;
+        onSaved={(draft, isEdit, newId) => {
+          const id = isEdit ? draft.id : newId ?? `cp_new_${nextId.current++}`;
           upsert({ ...draft, id });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
@@ -590,7 +596,7 @@ export default function CouponsPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
+            await deleteCoupon(deleteTarget.id);
             setRows((list) => list.filter((c) => c.id !== deleteTarget.id));
             setDeleteTarget(null);
             toast.show(t.messages.deleted);
@@ -631,7 +637,7 @@ function CouponFormModal({
   open: boolean;
   coupon: CouponRow | null;
   onClose: () => void;
-  onSaved: (draft: CouponRow, isEdit: boolean) => void;
+  onSaved: (draft: CouponRow, isEdit: boolean, newId?: string) => void;
 }) {
   const toast = useToast();
   const isEdit = !!coupon;
@@ -667,8 +673,23 @@ function CouponFormModal({
     if (list.length) { toast.show(t.messages.checkFields, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onSaved({ ...draft, discountType: DISCOUNT_FROM_TYPE[draft.type] }, isEdit);
+      const discountType = DISCOUNT_FROM_TYPE[draft.type];
+      const payload = {
+        name: draft.name,
+        description: draft.description,
+        discountType,
+        discountValue: draft.discountValue,
+        totalQuantity: draft.totalQuantity || 0,
+        startAt: draft.startAt,
+        endAt: draft.endAt,
+      };
+      let newId: string | undefined;
+      if (isEdit) {
+        await updateCoupon(draft.id, payload);
+      } else {
+        newId = (await createCoupon(payload))?.id;
+      }
+      onSaved({ ...draft, discountType }, isEdit, newId);
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -918,12 +939,22 @@ function RedeemModal({ open, onClose }: { open: boolean; onClose: () => void }) 
     setError('');
     setBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 460));
-      const discount = amount.trim() ? Math.round(Number(amount) * 0.2) : 0;
+      const res = await redeemCouponByCode(code.trim());
+      /* 折抵資訊：定額券直接顯示面額；百分比券以消費金額計算實際折抵。
+         mock 摘要無票券資料（discountType=null），沿用現行「8 折示意」試算。 */
+      const orderAmount = amount.trim() ? Number(amount) : 0;
+      let discountInfo = '';
+      if (res.discountType === 'AMOUNT') {
+        discountInfo = t.redeem.discountInfoAmount(res.discountValue);
+      } else if (res.discountType !== 'GIFT') {
+        const percent = res.discountType === 'PERCENT' ? res.discountValue : 20;
+        const actual = orderAmount ? Math.round((orderAmount * percent) / 100) : 0;
+        if (actual) discountInfo = t.redeem.discountInfoActual(actual);
+      }
       toast.show(t.redeem.success(
-        t.labels.unnamed,
-        discount ? t.redeem.discountInfoActual(discount) : '',
-        t.labels.unknown,
+        res.couponName || t.labels.unnamed,
+        discountInfo,
+        res.customerName || t.labels.unknown,
         code.trim().toUpperCase(),
       ));
       onClose();
@@ -1010,7 +1041,12 @@ function RedeemUndoModal({
     setError('');
     setBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      /* real：從發放明細找出這張已核銷的票券實例後反核銷；
+         mock：明細為空陣列，直接視為還原成功（行為不變）。 */
+      const instances = await listCouponInstances(coupon.id);
+      const target = instances.find((i) => i.redeemedAt && i.code === coupon.lastRedeemedCode)
+        ?? instances.find((i) => i.redeemedAt);
+      if (target) await unredeemCouponInstance(target.id);
       toast.show(t.undo.success);
       onUndone(coupon);
     } catch (e) {
@@ -1160,10 +1196,9 @@ function IssueModal({
     if (!coupon) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 520));
-      const count = selected.size;
+      const res = await batchIssueCoupon(coupon.id, [...selected]);
       setConfirmOpen(false);
-      onIssued(coupon, count);
+      onIssued(coupon, res.issued);
       toast.show(t.issue.submit);
     } catch (e) {
       toast.show(

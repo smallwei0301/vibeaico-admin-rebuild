@@ -12,7 +12,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, FormError, FormText, Input, Label, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listCustomers } from '@/services/customers';
+import {
+  createRecurringBooking, listRecurringBookings, renewRecurringBooking,
+  updateRecurringBooking, type RecurringBookingItem, type RecurringRule,
+} from '@/services/bookings';
+import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -113,6 +117,47 @@ const weekdayLabel = (dayOfWeek: number) =>
 const frequencyLabel = (intervalWeeks: number) =>
   (intervalWeeks === 1 ? t.frequency.weekly : t.frequency.everyNWeeks(intervalWeeks));
 
+/* --------------------------------------------- API 形狀 → 本頁列的映射 */
+
+/** 依 rule 推算「建立日起到 until 為止」的檔期數（API 沒有次數欄位，前端近似） */
+const countOccurrences = (rule: RecurringRule, fromIso: string): number => {
+  const cursor = new Date(fromIso);
+  if (Number.isNaN(cursor.getTime())) return 0;
+  cursor.setHours(0, 0, 0, 0);
+  while (cursor.getDay() !== rule.weekday) cursor.setDate(cursor.getDate() + 1);
+  const until = new Date(`${rule.until}T23:59:59`);
+  let n = 0;
+  while (cursor <= until && n < 999) {
+    n += 1;
+    cursor.setDate(cursor.getDate() + rule.intervalWeeks * 7);
+  }
+  return n;
+};
+
+/**
+ * /api/recurring-bookings 的資料形狀落差：
+ * - rule.weekday 0-6（0=週日）→ 本頁 dayOfWeek 1-7（7=週日）
+ * - 沒有 times / createdCount（renew 時後端才即時計算）→ 以 rule 推算總檔期數近似，
+ *   且建立當下即全數續產（見表單 submit），故兩者填同一數字
+ * - 沒有 lastGeneratedAt → 顯示 common.none（欄位 render 已處理 null）
+ */
+const apiToRow = (r: RecurringBookingItem): RecurringBooking => {
+  const times = countOccurrences(r.rule, r.createdAt);
+  return {
+    id: r.id,
+    customerName: r.customerName,
+    serviceName: r.serviceName,
+    staffName: r.staffName,
+    dayOfWeek: r.rule.weekday === 0 ? 7 : r.rule.weekday,
+    startTime: r.rule.time,
+    intervalWeeks: r.rule.intervalWeeks,
+    times,
+    createdCount: times,
+    status: r.active ? 'ACTIVE' : 'ENDED',
+    lastGeneratedAt: null,
+  };
+};
+
 /* -------------------------------------------------------------------------- */
 
 export default function RecurringBookingsPage() {
@@ -127,8 +172,9 @@ export default function RecurringBookingsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 320));
-      setRows(byMode({
+      // mock 分支回 null = 沿用頁內 byMode 假資料（含 API 沒有的次數／最後生成欄位）
+      const list = await listRecurringBookings();
+      setRows(list ? list.map(apiToRow) : byMode({
         LOCAL_SHOP: RECURRING_BOOKINGS_LOCAL_SHOP, GUIDE: RECURRING_BOOKINGS_GUIDE, CLINIC: RECURRING_BOOKINGS_CLINIC,
       }));
     } catch {
@@ -139,6 +185,20 @@ export default function RecurringBookingsPage() {
   }, [toast]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  /** 結束範本 = PUT /api/recurring-bookings/:id { active:false }，成功後照原文案 toast。 */
+  const endTemplate = async (id: string, successMessage: string) => {
+    try {
+      await updateRecurringBooking(id, { active: false });
+      toast.show(successMessage);
+      void load();
+    } catch (e) {
+      toast.show(
+        `${t.messages.endFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    }
+  };
 
   const columns: Column<RecurringBooking>[] = [
     {
@@ -252,10 +312,25 @@ export default function RecurringBookingsPage() {
         }
         onClose={() => setRenewing(null)}
         onConfirm={() => {
-          const times = renewing?.times ?? 0;
+          const target = renewing;
           setRenewing(null);
-          toast.show(t.messages.renewed(times));
-          void load();
+          if (!target) return;
+          void (async () => {
+            try {
+              // POST :id/renew 回 { created, skipped }；mockResult 讓 mock 分支
+              // 沿用現行「已續訂 times 筆」的數字
+              const res = await renewRecurringBooking(target.id, { created: target.times, skipped: 0 });
+              toast.show(res.skipped > 0
+                ? t.messages.createdSummary(res.created, res.skipped)
+                : t.messages.renewed(res.created));
+              void load();
+            } catch (e) {
+              toast.show(
+                `${t.messages.renewFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+                'danger',
+              );
+            }
+          })();
         }}
       />
 
@@ -278,9 +353,9 @@ export default function RecurringBookingsPage() {
             <Button
               variant="secondary"
               onClick={() => {
+                const target = endingStep2;
                 setEndingStep2(null);
-                toast.show(t.messages.endedKeep);
-                void load();
+                if (target) void endTemplate(target.id, t.messages.endedKeep);
               }}
             >
               {common.cancel}
@@ -288,10 +363,14 @@ export default function RecurringBookingsPage() {
             <Button
               variant="danger"
               onClick={() => {
-                const remain = Math.max((endingStep2?.times ?? 0) - (endingStep2?.createdCount ?? 0), 0);
+                // 「連同未來預約一起取消」：bookings 表沒有 recurring 關聯欄位、也無
+                // 批次取消端點（04 §B-1），後端無法精準對應此系列 → 兩個選項目前都
+                // 只停用範本（PUT active:false），已建立的預約一律保留；toast 沿用
+                // 現行文案與數字（詳見回報）。
+                const target = endingStep2;
+                const remain = Math.max((target?.times ?? 0) - (target?.createdCount ?? 0), 0);
                 setEndingStep2(null);
-                toast.show(t.messages.endedWithCancel(remain));
-                void load();
+                if (target) void endTemplate(target.id, t.messages.endedWithCancel(remain));
               }}
             >
               {common.confirmText}
@@ -363,13 +442,20 @@ function RecurringFormModal({
     limit.setDate(limit.getDate() + MAX_DAYS_AHEAD);
 
     const dates: string[] = [];
+    /** 同 dates，但保留 YYYY-MM-DD（rule.until 用；formatDate 是顯示格式） */
+    const rawDates: string[] = [];
     let overCap = 0;
     for (let i = 0; i < total; i += 1) {
       if (cursor > limit) overCap += 1;
-      else dates.push(formatDate(cursor.toISOString()));
+      else {
+        dates.push(formatDate(cursor.toISOString()));
+        rawDates.push(
+          `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`,
+        );
+      }
       cursor.setDate(cursor.getDate() + step * 7);
     }
-    return { dates, overCap };
+    return { dates, rawDates, overCap };
   };
 
   const validate = (): string => {
@@ -386,17 +472,53 @@ function RecurringFormModal({
     return '';
   };
 
+  /**
+   * 新顧客流程：API 只吃 customerId，先查手機（沿用既有顧客，不覆蓋姓名）、查無再建檔。
+   * createCustomer 在 services/customers.ts 被宣告成 Promise<void>（該檔不在本次分工
+   * 可動清單），但 POST /api/customers 實際回 { id }，此處以斷言取回；mock 分支回
+   * undefined → 落到空字串，mock 建立流程不看 payload，行為不變。
+   */
+  const resolveCustomerId = async (): Promise<string> => {
+    if (!newCustomer) return customerId;
+    const phone = newPhone.trim();
+    const existing = (await listCustomers({ keyword: phone, size: 5 })).content
+      .find((x) => x.phone === phone);
+    if (existing) return existing.id;
+    const created = (await createCustomer({ name: newName.trim(), phone })) as
+      unknown as { id?: string } | undefined;
+    return created?.id ?? '';
+  };
+
   const submit = async () => {
     const err = validate();
     setError(err);
     if (err) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 500));
-      const { dates, overCap } = buildDates();
-      onCreated(dates.length, overCap);
-    } catch {
-      toast.show(`${t.messages.createFailed}${t.messages.unknownError}`, 'danger');
+      const { rawDates, overCap } = buildDates();
+      // rule.until = 一年上限內的最後一個檔期日；超限次數（overCap）不進 rule，
+      // 預覽已警告、日後用「續訂」延長。API rule 無 note 欄位，共用備註不送（見回報）。
+      const rule: RecurringRule = {
+        weekday: Number(dayOfWeek) % 7, // 原站 7 = 週日 → API 0
+        time: startTime,
+        intervalWeeks: Number(intervalWeeks),
+        until: rawDates[rawDates.length - 1] ?? rawDates[0] ?? '',
+      };
+      const rec = await createRecurringBooking({
+        customerId: await resolveCustomerId(),
+        serviceId,
+        staffId: staffId || undefined,
+        rule,
+      });
+      // 建立後立即續產實體預約（原站語意：建立＝逐次呼叫一般預約流程並回報略過數）；
+      // mockResult 讓 mock 分支沿用現行推算數字，toast 不變
+      const res = await renewRecurringBooking(rec.id, { created: rawDates.length, skipped: overCap });
+      onCreated(res.created, res.skipped);
+    } catch (e) {
+      toast.show(
+        `${t.messages.createFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
     } finally {
       setSaving(false);
     }

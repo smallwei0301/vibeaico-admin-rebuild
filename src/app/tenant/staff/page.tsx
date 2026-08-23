@@ -17,7 +17,10 @@ import {
   CharCounter, FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listServices, listStaff } from '@/services/catalog';
+import {
+  createStaff, createStaffLeave, deleteStaff, deleteStaffLeave,
+  listServices, listStaff, listStaffLeaves, updateStaff, type StaffLeave,
+} from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -122,9 +125,6 @@ export default function StaffPage() {
   const [leaveTarget, setLeaveTarget] = React.useState<StaffRow | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<StaffRow | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-
-  /** 新員工的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
-  const nextId = React.useRef(1);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -371,8 +371,7 @@ export default function StaffPage() {
         services={services}
         onClose={() => setFormTarget(undefined)}
         onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `s_new_${nextId.current++}`;
-          upsert({ ...draft, id, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
+          upsert({ ...draft, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
         }}
@@ -394,10 +393,17 @@ export default function StaffPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
-            setRows((list) => list.filter((s) => s.id !== deleteTarget.id));
+            const res = await deleteStaff(deleteTarget.id);
+            if (res.deactivated) {
+              /* 後端因未來預約改為停用：保留該列並標記停用 */
+              setRows((list) => list.map((s) => (
+                s.id === deleteTarget.id ? { ...s, active: false } : s
+              )));
+            } else {
+              setRows((list) => list.filter((s) => s.id !== deleteTarget.id));
+            }
             setDeleteTarget(null);
-            toast.show(t.messages.deleted);
+            toast.show(res.message ?? t.messages.deleted);
           } catch (e) {
             toast.show(
               `${t.messages.deleteFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -529,8 +535,24 @@ function StaffFormModal({
     if (list.length) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onSaved(draft, isEdit);
+      /* API 契約欄位（頁面 StaffExtras 僅存在前端，不送出）；body 含 serviceIds[] */
+      const payload = {
+        name: draft.name,
+        phone: draft.phone,
+        email: draft.email,
+        title: draft.title,
+        avatarUrl: draft.avatarUrl,
+        bookable: draft.bookable,
+        active: draft.active,
+        serviceIds: draft.serviceIds,
+      };
+      if (isEdit) {
+        await updateStaff(draft.id, payload);
+        onSaved(draft, true);
+      } else {
+        const { id } = await createStaff(payload);
+        onSaved({ ...draft, id }, false);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -744,6 +766,29 @@ const EMPTY_LEAVE: LeaveDraft = {
   reason: '', fullDay: true, startTime: '', endTime: '',
 };
 
+/**
+ * API（staff_leaves）只有 {startAt, endAt, reason} 單一時間區間：
+ * 類型／每週循環不在契約內，載入時以預設值補齊；整天以 00:00–23:59 判定。
+ */
+const fromApiLeave = (l: StaffLeave): LeaveRecord => {
+  const date = l.startAt.slice(0, 10);
+  const startTime = l.startAt.slice(11, 16);
+  const endTime = l.endAt.slice(11, 16);
+  const fullDay = startTime === '00:00' && (endTime === '23:59' || endTime === '00:00');
+  return {
+    id: l.id,
+    staffId: l.staffId,
+    date,
+    dayOfWeek: new Date(`${date}T00:00:00`).getDay(),
+    recurrence: 'SINGLE',
+    type: 'PERSONAL',
+    reason: l.reason,
+    fullDay,
+    startTime: fullDay ? '' : startTime,
+    endTime: fullDay ? '' : endTime,
+  };
+};
+
 function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () => void }) {
   const toast = useToast();
 
@@ -754,21 +799,31 @@ function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () =>
   const [saving, setSaving] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<LeaveRecord | null>(null);
 
-  const nextId = React.useRef(1);
-
   React.useEffect(() => {
     if (!staff) return;
     setDraft(EMPTY_LEAVE);
     setError('');
     setLoading(true);
     let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setRows(MOCK_LEAVES.filter((l) => l.staffId === staff.id));
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [staff]);
+    void (async () => {
+      try {
+        /* mock 分支回 null → 沿用 MOCK_LEAVES 篩選（行為不變） */
+        const res = await listStaffLeaves(staff.id);
+        if (cancelled) return;
+        setRows(res ? res.map(fromApiLeave) : MOCK_LEAVES.filter((l) => l.staffId === staff.id));
+      } catch (e) {
+        if (cancelled) return;
+        setRows([]);
+        toast.show(
+          `${t.messages.loadLeavesFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+          'danger',
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [staff, toast]);
 
   const patch = (p: Partial<LeaveDraft>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -813,9 +868,22 @@ function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () =>
     if (err) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      /* API 只收 {startAt, endAt, reason}：每週循環以「下一個該星期」為代表日攤平送出
+         （循環與類型不在契約內，僅保留於本地列表顯示）；整天以 00:00–23:59 表示 */
+      const repDate = (() => {
+        if (draft.recurrence === 'SINGLE') return draft.date;
+        const base = new Date();
+        base.setHours(0, 0, 0, 0);
+        base.setDate(base.getDate() + ((Number(draft.dayOfWeek) - base.getDay() + 7) % 7));
+        return base.toISOString().slice(0, 10);
+      })();
+      const { id } = await createStaffLeave(staff.id, {
+        startAt: draft.fullDay ? `${repDate}T00:00:00` : `${repDate}T${draft.startTime}:00`,
+        endAt: draft.fullDay ? `${repDate}T23:59:59` : `${repDate}T${draft.endTime}:00`,
+        reason: draft.reason,
+      });
       const record: LeaveRecord = {
-        id: `lv_new_${nextId.current++}`,
+        id,
         staffId: staff.id,
         date: draft.date,
         dayOfWeek: draft.recurrence === 'WEEKLY' ? Number(draft.dayOfWeek) : new Date(draft.date).getDay(),
@@ -1031,7 +1099,16 @@ function LeaveModal({ staff, onClose }: { staff: StaffRow | null; onClose: () =>
         message={t.leave.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (deleteTarget) setRows((list) => list.filter((l) => l.id !== deleteTarget.id));
+          if (deleteTarget && staff) {
+            const target = deleteTarget;
+            setRows((list) => list.filter((l) => l.id !== target.id));
+            void deleteStaffLeave(staff.id, target.id).catch((e) => {
+              toast.show(
+                `${t.messages.deleteLeaveFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+                'danger',
+              );
+            });
+          }
           setDeleteTarget(null);
           toast.show(t.messages.leaveDeleted);
         }}

@@ -19,7 +19,11 @@ import {
   FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listServices, listStaff } from '@/services/catalog';
+import {
+  createService, createServiceCategory, deleteService, deleteServiceCategory,
+  duplicateService, listServiceCategories, listServices, listStaff,
+  reorderServiceCategories, reorderServices, toggleServiceLineFeatured, updateService,
+} from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -127,8 +131,6 @@ export default function ServicesPage() {
   const [syncOpen, setSyncOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
-  const nextId = React.useRef(1);
-
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -157,6 +159,18 @@ export default function ServicesPage() {
     })();
   }, [toast]);
 
+  /** 分類清單：mock 分支回 null → 沿用 byMode 頁內假資料（行為不變） */
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const list = await listServiceCategories();
+        if (list) setCategories(list.map((c) => ({ ...c, description: '', active: true })));
+      } catch {
+        toast.show(t.messages.retryLater, 'danger');
+      }
+    })();
+  }, [toast]);
+
   const orderOf = React.useCallback(
     (s: ServiceRow) => (sortMode === 'line' ? s.sortOrder : s.publicSortOrder),
     [sortMode],
@@ -174,18 +188,28 @@ export default function ServicesPage() {
   const lineFeaturedCount = rows.filter((s) => s.lineFeatured).length;
   const uncategorizedCount = rows.filter((s) => !s.categoryId).length;
 
+  /** LINE 排序落地（僅 line 模式；publicSortOrder 為頁面欄位，API 無對應端點） */
+  const persistLineOrder = (list: ServiceRow[]) => {
+    const ids = [...list].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => s.id);
+    void reorderServices(ids).catch((e) => {
+      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+    });
+  };
+
   const move = (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= visible.length) return;
     const reordered = [...visible];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     const orderById = new Map(reordered.map((s, i) => [s.id, i + 1]));
-    setRows((list) => list.map((s) => {
+    const next = rows.map((s) => {
       const order = orderById.get(s.id);
       if (order === undefined) return s;
       return sortMode === 'line' ? { ...s, sortOrder: order } : { ...s, publicSortOrder: order };
-    }));
+    });
+    setRows(next);
     toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
+    if (sortMode === 'line') persistLineOrder(next);
   };
 
   const toggleLine = (s: ServiceRow) => {
@@ -195,12 +219,31 @@ export default function ServicesPage() {
     }
     setRows((list) => list.map((x) => (x.id === s.id ? { ...x, lineFeatured: !x.lineFeatured } : x)));
     toast.show(s.lineFeatured ? t.messages.lineHidden : t.messages.lineShown);
+    void toggleServiceLineFeatured(s.id, !s.lineFeatured)
+      .then(({ lineFeatured }) => {
+        setRows((list) => list.map((x) => (x.id === s.id ? { ...x, lineFeatured } : x)));
+      })
+      .catch((e) => {
+        setRows((list) => list.map((x) => (x.id === s.id ? { ...x, lineFeatured: s.lineFeatured } : x)));
+        toast.show(
+          `${t.messages.toggleFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+          'danger',
+        );
+      });
   };
 
-  const duplicate = (s: ServiceRow) => {
-    const copy: ServiceRow = { ...s, id: `sv_new_${nextId.current++}`, sortOrder: rows.length + 1 };
-    setRows((list) => [...list, copy]);
-    toast.show(t.messages.duplicated);
+  const duplicate = async (s: ServiceRow) => {
+    try {
+      const { id } = await duplicateService(s.id);
+      const copy: ServiceRow = { ...s, id, sortOrder: rows.length + 1 };
+      setRows((list) => [...list, copy]);
+      toast.show(t.messages.duplicated);
+    } catch (e) {
+      toast.show(
+        `${t.messages.duplicateFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    }
   };
 
   const upsert = (draft: ServiceRow) => {
@@ -301,7 +344,7 @@ export default function ServicesPage() {
           </Button>
           <Button
             variant="outline" size="sm" title={t.actions.duplicate} aria-label={t.actions.duplicate}
-            onClick={() => duplicate(s)}
+            onClick={() => void duplicate(s)}
           >
             <Copy size={13} />
           </Button>
@@ -482,9 +525,8 @@ export default function ServicesPage() {
         staff={staff}
         onClose={() => setFormTarget(undefined)}
         onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `sv_new_${nextId.current++}`;
           const categoryName = categories.find((c) => c.id === draft.categoryId)?.name ?? null;
-          upsert({ ...draft, id, categoryName, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
+          upsert({ ...draft, categoryName, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
           if (draft.queueModeEnabled) toast.show(t.messages.queueModeEnabled, 'info');
@@ -506,11 +548,14 @@ export default function ServicesPage() {
         message={t.confirm.syncOrder(fromLabel, toModeLabel)}
         onClose={() => setSyncOpen(false)}
         onConfirm={() => {
-          setRows((list) => list.map((s) => (sortMode === 'line'
+          const next = rows.map((s) => (sortMode === 'line'
             ? { ...s, publicSortOrder: s.sortOrder }
-            : { ...s, sortOrder: s.publicSortOrder })));
+            : { ...s, sortOrder: s.publicSortOrder }));
+          setRows(next);
           setSyncOpen(false);
           toast.show(t.messages.orderApplied(toModeLabel));
+          /* 公開頁 → LINE 才會改到 sortOrder（API 唯一的排序欄位），需要落地 */
+          if (sortMode === 'public') persistLineOrder(next);
         }}
       />
 
@@ -527,10 +572,17 @@ export default function ServicesPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
-            setRows((list) => list.filter((s) => s.id !== deleteTarget.id));
+            const res = await deleteService(deleteTarget.id);
+            if (res.deactivated) {
+              /* 後端因未來預約／歷史紀錄改為停用：保留該列並標記停用 */
+              setRows((list) => list.map((s) => (
+                s.id === deleteTarget.id ? { ...s, active: false } : s
+              )));
+            } else {
+              setRows((list) => list.filter((s) => s.id !== deleteTarget.id));
+            }
             setDeleteTarget(null);
-            toast.show(t.messages.deleted);
+            toast.show(res.message ?? t.messages.deleted);
           } catch (e) {
             toast.show(
               `${t.messages.deleteServiceFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -605,8 +657,25 @@ function ServiceFormModal({
     if (list.length) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onSaved(draft, isEdit);
+      /* API 契約欄位（頁面 ServiceExtras 僅存在前端，不送出）；
+         durationMinutes 後端 min(1)，號碼掛號等 0 分鐘情境略過此欄位 */
+      const payload = {
+        name: draft.name,
+        categoryId: draft.categoryId ?? '',
+        description: draft.description,
+        durationMinutes: draft.durationMinutes || undefined,
+        price: draft.price,
+        imageUrl: draft.imageUrl,
+        active: draft.active,
+        lineFeatured: draft.lineFeatured,
+      };
+      if (isEdit) {
+        await updateService(draft.id, payload);
+        onSaved(draft, true);
+      } else {
+        const { id } = await createService(payload);
+        onSaved({ ...draft, id }, false);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -966,7 +1035,7 @@ function CategoryModal({
   open: boolean;
   categories: ServiceCategory[];
   onClose: () => void;
-  onChange: (list: ServiceCategory[]) => void;
+  onChange: React.Dispatch<React.SetStateAction<ServiceCategory[]>>;
 }) {
   const toast = useToast();
 
@@ -984,16 +1053,18 @@ function CategoryModal({
   }, [open]);
 
   const create = () => {
-    if (!name.trim()) {
+    const trimmed = name.trim();
+    if (!trimmed) {
       setError(t.category.nameRequired);
       return;
     }
     setError('');
+    const localId = `sc_new_${nextId.current++}`;
     onChange([
       ...categories,
       {
-        id: `sc_new_${nextId.current++}`,
-        name: name.trim(),
+        id: localId,
+        name: trimmed,
         description: description.trim(),
         active: true,
         sortOrder: categories.length + 1,
@@ -1002,6 +1073,14 @@ function CategoryModal({
     setName('');
     setDescription('');
     toast.show(t.category.created);
+    /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
+    void createServiceCategory(trimmed)
+      .then((res) => {
+        if (res) onChange((list) => list.map((c) => (c.id === localId ? { ...c, id: res.id } : c)));
+      })
+      .catch((e) => {
+        toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+      });
   };
 
   const move = (index: number, delta: number) => {
@@ -1011,6 +1090,9 @@ function CategoryModal({
     [next[index], next[target]] = [next[target], next[index]];
     onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
     toast.show(t.category.reordered);
+    void reorderServiceCategories(next.map((c) => c.id)).catch((e) => {
+      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+    });
   };
 
   const columns: Column<ServiceCategory>[] = [
@@ -1116,7 +1198,13 @@ function CategoryModal({
         message={t.category.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (deleteTarget) onChange(categories.filter((c) => c.id !== deleteTarget.id));
+          if (deleteTarget) {
+            const id = deleteTarget.id;
+            onChange(categories.filter((c) => c.id !== id));
+            void deleteServiceCategory(id).catch((e) => {
+              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+            });
+          }
           setDeleteTarget(null);
           toast.show(t.category.deleted);
         }}

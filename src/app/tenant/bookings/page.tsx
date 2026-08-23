@@ -20,9 +20,11 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  cancelBooking, completeBooking, confirmBooking, listBookings, markNoShow,
+  adjustBookingPrice, applyBookingCoupon, applyBookingPoints, cancelBooking,
+  completeBooking, confirmBooking, createBooking, listBookings,
+  markBookingPaidOffline, markNoShow, revertBookingComplete, updateBooking,
 } from '@/services/bookings';
-import { listCustomers } from '@/services/customers';
+import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
@@ -662,10 +664,13 @@ export default function BookingsPage() {
         }
         onClose={() => setMarkPaidTarget(null)}
         onConfirm={() => {
+          const target = markPaidTarget;
           setMarkPaidTarget(null);
-          setDetailTarget(null);
-          toast.show(t.messages.markedPaid);
-          void load();
+          if (target) {
+            void runAction(
+              () => markBookingPaidOffline(target.id), t.messages.markedPaid, t.messages.markFailed,
+            );
+          }
         }}
       />
 
@@ -747,10 +752,13 @@ export default function BookingsPage() {
         message={<span className="whitespace-pre-line">{t.confirmMessages.revert}</span>}
         onClose={() => setRevertTarget(null)}
         onConfirm={() => {
+          const target = revertTarget;
           setRevertTarget(null);
-          setDetailTarget(null);
-          toast.show(t.messages.reverted);
-          void load();
+          if (target) {
+            void runAction(
+              () => revertBookingComplete(target.id), t.messages.reverted, t.messages.revertFailed,
+            );
+          }
         }}
       />
 
@@ -929,13 +937,42 @@ function BookingFormModal({
     return '';
   };
 
+  /**
+   * 新顧客流程：API 建立預約只吃 customerId，先查手機（沿用既有顧客，不覆蓋姓名）、
+   * 查無再建檔。createCustomer 在 services/customers.ts 被宣告成 Promise<void>
+   * （該檔不在本次分工可動清單），但 POST /api/customers 實際回 { id }，此處以
+   * 斷言取回；mock 分支回 undefined → 落到空字串，mock 建立預約不看 payload，行為不變。
+   */
+  const resolveCustomerId = async (): Promise<string> => {
+    if (isEdit || !newCustomer) return customerId;
+    const phone = newPhone.trim();
+    const existing = (await listCustomers({ keyword: phone, size: 5 })).content
+      .find((x) => x.phone === phone);
+    if (existing) return existing.id;
+    const created = (await createCustomer({ name: newName.trim(), phone })) as
+      unknown as { id?: string } | undefined;
+    return created?.id ?? '';
+  };
+
   const submit = async () => {
     const err = validate();
     setError(err);
     if (err) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 450));
+      const startAt = new Date(`${date}T${time}:00`).toISOString();
+      if (isEdit && booking) {
+        // duration 下拉僅供畫面試算：PUT /api/bookings/:id 以既有 duration_minutes 重算 end_at
+        await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+      } else {
+        await createBooking({
+          customerId: await resolveCustomerId(),
+          serviceId,
+          staffId: staffId || undefined,
+          startAt,
+          note: note || undefined,
+        });
+      }
       onSaved();
     } catch (err2) {
       toast.show(
@@ -1273,6 +1310,7 @@ function ApplyCouponModal({
   onClose: () => void;
   onApplied: (discount: number, net: number) => void;
 }) {
+  const toast = useToast();
   const cp = t.couponModal;
   const [code, setCode] = React.useState('');
   const [error, setError] = React.useState('');
@@ -1281,16 +1319,18 @@ function ApplyCouponModal({
   React.useEffect(() => { setCode(''); setError(''); }, [booking]);
 
   const submit = async () => {
+    if (!booking) return;
     if (!code.trim()) { setError(t.messages.couponRequired); return; }
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
-      const price = booking?.finalPrice ?? 0;
-      const discount = Math.min(200, price);
-      onApplied(discount, price - discount);
-    } catch {
-      setError(t.messages.couponFailed);
+      // API 回折抵後金額；折抵數 = 折抵前 − 折抵後（mock 分支合成同現行假邏輯的數字）
+      const price = booking.finalPrice;
+      const res = await applyBookingCoupon(booking.id, code.trim());
+      onApplied(price - res.finalPrice, res.finalPrice);
+    } catch (e) {
+      // 404 找不到票券／409 已核銷、不屬此顧客 → 把 server message 顯示出來
+      toast.show(e instanceof Error ? e.message : t.messages.couponFailed, 'danger');
     } finally {
       setSaving(false);
     }
@@ -1357,10 +1397,11 @@ function AdjustPriceModal({
       setError(t.messages.invalidAmount);
       return;
     }
+    if (!booking) return;
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
+      await adjustBookingPrice(booking.id, value);
       onAdjusted(value);
     } catch (e) {
       setError(`${t.messages.adjustFailed}${e instanceof Error ? e.message : t.messages.unknownError}`);
@@ -1424,6 +1465,7 @@ function ApplyPointsModal({
   onClose: () => void;
   onApplied: (points: number) => void;
 }) {
+  const toast = useToast();
   const pm = t.pointsModal;
   const [points, setPoints] = React.useState('');
   const [error, setError] = React.useState('');
@@ -1438,11 +1480,18 @@ function ApplyPointsModal({
       setError(t.messages.invalidAmount);
       return;
     }
+    if (!booking) return;
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
-      onApplied(Math.min(value, balance, booking?.finalPrice ?? 0));
+      // 實際折抵數 = 折抵前 − API 回的折抵後金額；balance 只餵 mock 分支
+      // （合成「夾在餘額／金額內」的現行假結果），真模式由後端驗證並回 409 訊息。
+      const price = booking.finalPrice;
+      const res = await applyBookingPoints(booking.id, value, balance);
+      onApplied(price - res.finalPrice);
+    } catch (e) {
+      // 409 顧客點數不足（POINTS_001）等 → 把 server message 顯示出來
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
     } finally {
       setSaving(false);
     }

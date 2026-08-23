@@ -15,6 +15,9 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listMembershipLevels } from '@/services/catalog';
+import {
+  createMembershipLevel, deleteMembershipLevel, updateMembershipLevel,
+} from '@/services/coupons';
 import { listFeatures } from '@/services/settings';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -78,6 +81,7 @@ export default function MembershipLevelsPage() {
 
   const [formTarget, setFormTarget] = React.useState<LevelRow | null | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = React.useState<LevelRow | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   /** 新等級的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
   const nextId = React.useRef(1);
@@ -256,9 +260,14 @@ export default function MembershipLevelsPage() {
         open={formTarget !== undefined}
         level={formTarget ?? null}
         onClose={() => setFormTarget(undefined)}
-        onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `ml_new_${nextId.current++}`;
-          upsert({ ...draft, id });
+        onSaved={(draft, isEdit, fresh) => {
+          if (fresh) {
+            /* real：後端儲存後已全店重算等級，直接以重拉的列表（含新 customerCount）更新 */
+            setRows([...fresh].sort((a, b) => a.sortOrder - b.sortOrder).map(toRow));
+          } else {
+            const id = isEdit ? draft.id : `ml_new_${nextId.current++}`;
+            upsert({ ...draft, id });
+          }
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
         }}
@@ -267,14 +276,33 @@ export default function MembershipLevelsPage() {
       <ConfirmModal
         open={!!deleteTarget}
         danger
+        loading={deleting}
         title={t.confirm.deleteTitle}
         confirmText={common.delete}
         message={t.confirm.delete}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) setRows((list) => list.filter((l) => l.id !== deleteTarget.id));
-          setDeleteTarget(null);
-          toast.show(t.messages.deleted);
+        onConfirm={async () => {
+          if (!deleteTarget) { setDeleteTarget(null); return; }
+          setDeleting(true);
+          try {
+            const fresh = await deleteMembershipLevel(deleteTarget.id);
+            if (fresh) {
+              /* real：刪除後受影響顧客已重算落到次高等級，以重拉的列表更新 */
+              setRows([...fresh].sort((a, b) => a.sortOrder - b.sortOrder).map(toRow));
+            } else {
+              setRows((list) => list.filter((l) => l.id !== deleteTarget.id));
+            }
+            setDeleteTarget(null);
+            toast.show(t.messages.deleted);
+          } catch (e) {
+            /* i18n 尚無刪除失敗前綴（契約檔不可加字），直接顯示後端錯誤訊息 */
+            toast.show(
+              e instanceof Error && e.message ? e.message : common.message.deleteFailed,
+              'danger',
+            );
+          } finally {
+            setDeleting(false);
+          }
         }}
       />
     </>
@@ -305,7 +333,7 @@ function LevelFormModal({
   open: boolean;
   level: LevelRow | null;
   onClose: () => void;
-  onSaved: (draft: LevelRow, isEdit: boolean) => void;
+  onSaved: (draft: LevelRow, isEdit: boolean, fresh?: MembershipLevel[]) => void;
 }) {
   const toast = useToast();
   const isEdit = !!level;
@@ -330,8 +358,19 @@ function LevelFormModal({
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
-      onSaved(draft, isEdit);
+      /* description / active / isDefault 為骨架期頁內欄位，後端契約尚無對應欄位 */
+      const payload = {
+        name: draft.name,
+        color: draft.color,
+        thresholdSpent: draft.thresholdSpent,
+        discountPercent: draft.discountPercent,
+        pointRateMultiplier: draft.pointRateMultiplier,
+        sortOrder: draft.sortOrder,
+      };
+      const fresh = isEdit
+        ? await updateMembershipLevel(draft.id, payload)
+        : await createMembershipLevel(payload);
+      onSaved(draft, isEdit, fresh);
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,

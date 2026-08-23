@@ -18,6 +18,10 @@ import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormError, FormGroup, FormText, Input, Label, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProductOrders, listProducts, listStaff } from '@/services/catalog';
+import {
+  cancelProductOrder, completeProductOrder, confirmProductOrder,
+  createManualProductOrder, markProductOrderPaidOffline,
+} from '@/services/products';
 import { listCustomers } from '@/services/customers';
 import { listBookings } from '@/services/bookings';
 import { common } from '@/i18n/zh-TW/common';
@@ -139,8 +143,6 @@ export default function ProductOrdersPage() {
   const [cancelReason, setCancelReason] = React.useState('');
   const [acting, setActing] = React.useState(false);
 
-  const nextId = React.useRef(1);
-
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -185,14 +187,16 @@ export default function ProductOrdersPage() {
     const { kind, order } = pendingAction;
     setActing(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
       if (kind === 'CONFIRM') {
+        await confirmProductOrder(order.id);
         patchOrder(order.id, { status: 'CONFIRMED' });
         toast.show(t.messages.confirmed);
       } else if (kind === 'MARK_PAID') {
+        await markProductOrderPaidOffline(order.id);
         patchOrder(order.id, { paymentStatus: 'PAID_OFFLINE', paidAmount: order.totalAmount, payDueAt: null });
         toast.show(t.messages.markedPaid);
       } else {
+        await cancelProductOrder(order.id, cancelReason.trim() || undefined);
         patchOrder(order.id, {
           status: 'CANCELLED',
           cancelReason: cancelReason.trim(),
@@ -202,8 +206,9 @@ export default function ProductOrdersPage() {
       }
       setPendingAction(null);
       setCancelReason('');
-    } catch {
-      toast.show(t.messages.actionFailed, 'danger');
+    } catch (e) {
+      /* 409 等後端訊息（例：「此訂單狀態已變更，請重新整理」）原樣顯示 */
+      toast.show(e instanceof Error ? e.message : t.messages.actionFailed, 'danger');
     } finally {
       setActing(false);
     }
@@ -438,7 +443,7 @@ export default function ProductOrdersPage() {
         open={manualOpen}
         onClose={() => setManualOpen(false)}
         onCreated={(order) => {
-          setRows((list) => [{ ...order, id: `po_new_${nextId.current++}` }, ...list]);
+          setRows((list) => [order, ...list]);
           setManualOpen(false);
         }}
       />
@@ -634,7 +639,8 @@ function CompleteOrderModal({
     setError('');
     setBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      /* 票券折抵後端尚無端點，折抵金額維持前端狀態；完成取貨走真 API */
+      await completeProductOrder(order.id);
       const discount = withCoupon ? 100 : 0;
       if (withCoupon) toast.show(t.complete.couponApplied(formatCurrency(discount)));
       toast.show(t.messages.completed);
@@ -643,7 +649,7 @@ function CompleteOrderModal({
       toast.show(
         withCoupon
           ? `${t.complete.couponAppliedButFailed}${e instanceof Error ? e.message : t.messages.unknownError}`
-          : t.messages.actionFailed,
+          : (e instanceof Error ? e.message : t.messages.actionFailed),
         'danger',
       );
     } finally {
@@ -818,8 +824,17 @@ function ManualOrderModal({
   const doSubmit = async (customerName: string, id: string) => {
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 460));
-      onCreated(build(customerName, id));
+      /* 409（例：「『X』庫存不足，無法建立訂單」）由 catch 原樣顯示 */
+      const created = await createManualProductOrder({
+        customerId: id,
+        items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      });
+      /* 勾選「已收款並完成」→ 後端建單固定 PENDING/UNPAID，補打狀態端點對齊 */
+      if (paidCompleted) {
+        await completeProductOrder(created.id);
+        await markProductOrderPaidOffline(created.id);
+      }
+      onCreated({ ...build(customerName, id), id: created.id, orderNo: created.orderNo });
       toast.show(paidCompleted ? t.messages.created : t.messages.createdNotCompleted);
       if (notify) toast.show(t.manual.notify, 'info');
     } catch (e) {

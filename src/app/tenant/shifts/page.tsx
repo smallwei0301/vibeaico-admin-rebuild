@@ -15,7 +15,10 @@ import {
   FormError, FormGroup, FormText, Input, Label, Select,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listStaff } from '@/services/catalog';
+import {
+  clearShiftDay, createShiftTemplate, deleteShiftTemplate, listShifts,
+  listShiftTemplates, listStaff, repeatShiftCycles, saveShifts, updateShiftTemplate,
+} from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { shiftsPage as t } from '@/i18n/zh-TW/pages/shifts';
@@ -174,6 +177,18 @@ export default function ShiftsPage() {
     })();
   }, [toast]);
 
+  /** 班別模板：mock 分支回 null → 沿用 MOCK_TEMPLATES（行為不變）；API 無休息時間欄位，補 '' */
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const list = await listShiftTemplates();
+        if (list) setTemplates(list.map((tpl) => ({ ...tpl, breakStart: '', breakEnd: '' })));
+      } catch {
+        toast.show(t.templateModal.loadFailed, 'danger');
+      }
+    })();
+  }, [toast]);
+
   const days = React.useMemo(() => {
     if (!anchor) return [] as string[];
     const base = new Date(`${anchor}T00:00:00`);
@@ -183,6 +198,39 @@ export default function ShiftsPage() {
       return toIsoDate(d);
     });
   }, [anchor, viewWeeks]);
+
+  /**
+   * 讀取檢視區間的班表（GET /api/shifts?from&to）。mock 分支回 null →
+   * 維持現狀（MOCK_SHIFTS 與本地編輯不被覆蓋，行為不變）。
+   * API 無 OFF／休息／備註欄位：載入的列一律為 WORKING、休息與備註為空；
+   * 同員工同日多筆班（唯一鍵含 start_time）只取最早一筆顯示。
+   */
+  const loadShifts = React.useCallback(async () => {
+    if (days.length === 0) return;
+    try {
+      const list = await listShifts(days[0], days[days.length - 1]);
+      if (!list) return;
+      const map: Record<string, ShiftRecord> = {};
+      for (const item of list) {
+        const key = toKey(item.staffId, item.workDate);
+        if (key in map) continue;
+        map[key] = {
+          type: 'WORKING',
+          startTime: item.startTime,
+          endTime: item.endTime,
+          breakStart: '',
+          breakEnd: '',
+          note: '',
+          templateId: item.templateId ?? '',
+        };
+      }
+      setShifts(map);
+    } catch {
+      toast.show(t.messages.loadShiftsFailed, 'danger');
+    }
+  }, [days, toast]);
+
+  React.useEffect(() => { void loadShifts(); }, [loadShifts]);
 
   const shiftWeeks = (delta: number) => {
     if (!anchor) return;
@@ -417,6 +465,8 @@ export default function ShiftsPage() {
         staff={staff}
         weeks={viewWeeks}
         anchor={anchor}
+        shifts={shifts}
+        onApplied={() => { void loadShifts(); }}
         onClose={() => setRepeatOpen(false)}
       />
 
@@ -536,6 +586,7 @@ function ShiftModal({
   onClose: () => void;
   onSave: (record: ShiftRecord | null) => void;
 }) {
+  const toast = useToast();
   const [draft, setDraft] = React.useState<ShiftRecord>({
     type: 'WORKING', startTime: '', endTime: '', breakStart: '', breakEnd: '', note: '', templateId: '',
   });
@@ -598,10 +649,28 @@ function ShiftModal({
                 const err = validate();
                 setError(err);
                 if (err) return;
+                if (!target) return;
                 setSaving(true);
                 try {
-                  await new Promise((r) => setTimeout(r, 320));
+                  if (draft.type === 'WORKING') {
+                    /* 批次端點單筆送出；休息／備註不在 API 契約內，僅留本地顯示 */
+                    await saveShifts([{
+                      staffId: target.staff.id,
+                      workDate: target.date,
+                      startTime: draft.startTime,
+                      endTime: draft.endTime,
+                      templateId: draft.templateId || null,
+                    }]);
+                  } else {
+                    /* DB 無 OFF 概念（設休＝該日無班）：清掉當日既有班表 */
+                    await clearShiftDay(target.staff.id, target.date);
+                  }
                   onSave(draft);
+                } catch (e) {
+                  toast.show(
+                    `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+                    'danger',
+                  );
                 } finally {
                   setSaving(false);
                 }
@@ -712,7 +781,15 @@ function ShiftModal({
         title={t.shiftModal.clear}
         message={t.shiftModal.clearConfirm}
         onClose={() => setClearOpen(false)}
-        onConfirm={() => { setClearOpen(false); onSave(null); }}
+        onConfirm={() => {
+          setClearOpen(false);
+          onSave(null);
+          if (target) {
+            void clearShiftDay(target.staff.id, target.date).catch((e) => {
+              toast.show(e instanceof Error ? e.message : t.messages.clearFailed, 'danger');
+            });
+          }
+        }}
       />
     </>
   );
@@ -868,7 +945,7 @@ function TemplateModal({
   open: boolean;
   templates: ShiftTemplate[];
   onClose: () => void;
-  onChange: (list: ShiftTemplate[]) => void;
+  onChange: React.Dispatch<React.SetStateAction<ShiftTemplate[]>>;
 }) {
   const toast = useToast();
 
@@ -913,13 +990,30 @@ function TemplateModal({
     const err = validate();
     setError(err);
     if (err) return;
+    /* API（shift_templates）無 breakStart/breakEnd 欄位，僅送出契約內欄位 */
+    const payload = {
+      name: draft.name, startTime: draft.startTime, endTime: draft.endTime, color: draft.color,
+    };
     if (draft.id) {
-      onChange(templates.map((x) => (x.id === draft.id ? draft : x)));
+      const id = draft.id;
+      onChange(templates.map((x) => (x.id === id ? draft : x)));
       toast.show(t.templateModal.updated);
+      void updateShiftTemplate(id, payload).catch((e) => {
+        toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
+      });
     } else {
       if (templates.length >= TEMPLATE_MAX) return;
-      onChange([...templates, { ...draft, id: `tpl_new_${nextId.current++}` }]);
+      const localId = `tpl_new_${nextId.current++}`;
+      onChange([...templates, { ...draft, id: localId }]);
       toast.show(t.templateModal.created);
+      /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
+      void createShiftTemplate(payload)
+        .then((res) => {
+          if (res) onChange((list) => list.map((x) => (x.id === localId ? { ...x, id: res.id } : x)));
+        })
+        .catch((e) => {
+          toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
+        });
     }
     setDraft(EMPTY);
   };
@@ -1065,7 +1159,13 @@ function TemplateModal({
         message={t.templateModal.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (deleteTarget) onChange(templates.filter((x) => x.id !== deleteTarget.id));
+          if (deleteTarget) {
+            const id = deleteTarget.id;
+            onChange(templates.filter((x) => x.id !== id));
+            void deleteShiftTemplate(id).catch((e) => {
+              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+            });
+          }
           setDeleteTarget(null);
           toast.show(t.templateModal.deleted);
         }}
@@ -1079,12 +1179,14 @@ function TemplateModal({
 /* ========================================================================== */
 
 function RepeatCycleModal({
-  open, staff, weeks, anchor, onClose,
+  open, staff, weeks, anchor, shifts, onApplied, onClose,
 }: {
   open: boolean;
   staff: Staff[];
   weeks: number;
   anchor: string;
+  shifts: Record<string, ShiftRecord>;
+  onApplied: () => void;
   onClose: () => void;
 }) {
   const toast = useToast();
@@ -1116,11 +1218,35 @@ function RepeatCycleModal({
     setError('');
     setRunning(true);
     try {
-      await new Promise((r) => setTimeout(r, 480));
-      /* 骨架階段以固定值示範回應：原站由 /api/shifts/repeat-cycle 回傳 */
-      const applied = 14;
-      const skipped = 2;
-      toast.show(`${t.repeatModal.applied(applied)}${t.repeatModal.appliedSkipped(skipped)}`);
+      /*
+       * API 契約（/api/shifts/repeat-cycle）為「單週 weekPattern × 單一員工」：
+       * 以檢視起始週（anchor 起 7 天，anchor 為週日 → 第 i 天即星期 i）取樣成
+       * weekPattern（套模板的班 → templateId；設休 → null；空格或自訂時間班 →
+       * 不出現，該日既有班保留），每位員工各送一次、加總結果；
+       * from 從檢視循環結束的次日開始，避免覆蓋來源週的自訂班。
+       */
+      const targets = staffId ? staff.filter((s) => s.id === staffId) : staff;
+      const items: { staffId: string; weekPattern: Record<string, string | null> }[] = [];
+      for (const s of targets) {
+        const pattern: Record<string, string | null> = {};
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(`${anchor}T00:00:00`);
+          d.setDate(d.getDate() + i);
+          const rec = shifts[toKey(s.id, toIsoDate(d))];
+          if (!rec) continue;
+          if (rec.type === 'OFF') pattern[String(i)] = null;
+          else if (rec.templateId) pattern[String(i)] = rec.templateId;
+        }
+        if (Object.keys(pattern).length > 0) items.push({ staffId: s.id, weekPattern: pattern });
+      }
+      const fromD = new Date(`${anchor}T00:00:00`);
+      fromD.setDate(fromD.getDate() + weeks * 7);
+      const res = await repeatShiftCycles(items, toIsoDate(fromD), until);
+      const skipped = res.clearedDates - res.inserted;
+      toast.show(
+        `${t.repeatModal.applied(res.inserted)}${skipped > 0 ? t.repeatModal.appliedSkipped(skipped) : ''}`,
+      );
+      onApplied();
       onClose();
     } catch (e) {
       toast.show(

@@ -20,8 +20,12 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
+import {
+  adjustProductStock, createProduct, createProductCategory, deleteProduct, deleteProductCategory,
+  listProductCategories, reorderProductCategories, reorderProducts, toggleProductLineFeatured,
+  updateProduct, type ProductCategory,
+} from '@/services/products';
 import { listFeatures } from '@/services/settings';
-import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { productsPage as t } from '@/i18n/zh-TW/pages/products';
@@ -31,40 +35,6 @@ import type { Product } from '@/lib/types';
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
-
-/** 原站 /api/product-categories */
-type ProductCategory = {
-  id: string;
-  name: string;
-  active: boolean;
-  sortOrder: number;
-};
-
-const PRODUCT_CATEGORIES_LOCAL_SHOP: ProductCategory[] = [
-  { id: 'pc_1', name: '洗護', active: true, sortOrder: 1 },
-  { id: 'pc_2', name: '造型', active: true, sortOrder: 2 },
-  { id: 'pc_3', name: '護髮產品', active: true, sortOrder: 3 },
-  { id: 'pc_4', name: '護膚產品', active: true, sortOrder: 4 },
-  { id: 'pc_5', name: '美甲產品', active: false, sortOrder: 5 },
-  { id: 'pc_6', name: '配件', active: true, sortOrder: 6 },
-  { id: 'pc_7', name: '禮品卡', active: true, sortOrder: 7 },
-];
-
-const PRODUCT_CATEGORIES_GUIDE: ProductCategory[] = [
-  { id: 'pc_1', name: '裝備', active: true, sortOrder: 1 },
-  { id: 'pc_2', name: '紀念品', active: true, sortOrder: 2 },
-  { id: 'pc_3', name: '戶外服飾', active: true, sortOrder: 3 },
-  { id: 'pc_4', name: '露營用品', active: false, sortOrder: 4 },
-  { id: 'pc_5', name: '票券／禮品卡', active: true, sortOrder: 5 },
-];
-
-const PRODUCT_CATEGORIES_CLINIC: ProductCategory[] = [
-  { id: 'pc_1', name: '保健品', active: true, sortOrder: 1 },
-  { id: 'pc_2', name: '衛材', active: true, sortOrder: 2 },
-  { id: 'pc_3', name: '居家醫療器材', active: true, sortOrder: 3 },
-  { id: 'pc_4', name: '藥妝保養', active: false, sortOrder: 4 },
-  { id: 'pc_5', name: '禮品卡', active: true, sortOrder: 5 },
-];
 
 /**
  * 原站 Product 另有「是否追蹤庫存 / 單次限購 / 公開頁排序 / 草稿」等欄位，
@@ -127,9 +97,7 @@ export default function ProductsPage() {
   const toast = useToast();
 
   const [rows, setRows] = React.useState<ProductRow[]>([]);
-  const [categories, setCategories] = React.useState<ProductCategory[]>(() => byMode({
-    LOCAL_SHOP: PRODUCT_CATEGORIES_LOCAL_SHOP, GUIDE: PRODUCT_CATEGORIES_GUIDE, CLINIC: PRODUCT_CATEGORIES_CLINIC,
-  }));
+  const [categories, setCategories] = React.useState<ProductCategory[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [tipsOpen, setTipsOpen] = React.useState(true);
   const [salesFeature, setSalesFeature] = React.useState(true);
@@ -148,13 +116,12 @@ export default function ProductsPage() {
   const [syncOpen, setSyncOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
-  const nextId = React.useRef(1);
-
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const list = await listProducts();
+      const [list, cats] = await Promise.all([listProducts(), listProductCategories()]);
       setRows(list.map(toRow));
+      setCategories(cats);
     } catch (e) {
       toast.show(
         `${t.messages.loadProductsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -199,27 +166,44 @@ export default function ProductsPage() {
   const uncategorizedCount = rows.filter((p) => !p.categoryId).length;
   const lowStockCount = rows.filter(isLowStock).length;
 
-  const move = (index: number, delta: number) => {
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= visible.length) return;
     const reordered = [...visible];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     const orderById = new Map(reordered.map((p, i) => [p.id, i + 1]));
-    setRows((list) => list.map((p) => {
+    const nextRows = rows.map((p) => {
       const order = orderById.get(p.id);
       if (order === undefined) return p;
       return sortMode === 'line' ? { ...p, sortOrder: order } : { ...p, publicSortOrder: order };
-    }));
-    toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
+    });
+    try {
+      /* 後端只儲存 LINE 排序（sort_order）；公開頁排序尚無端點，僅前端狀態 */
+      if (sortMode === 'line') {
+        await reorderProducts([...nextRows].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id));
+      }
+      setRows(nextRows);
+      toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.sortFailed, 'danger');
+    }
   };
 
-  const toggleLine = (p: ProductRow) => {
+  const toggleLine = async (p: ProductRow) => {
     if (!p.lineFeatured && lineFeaturedCount >= LINE_FEATURED_MAX) {
       toast.show(`${t.form.limitReachedPrefix}${LINE_FEATURED_MAX}`, 'warning');
       return;
     }
-    setRows((list) => list.map((x) => (x.id === p.id ? { ...x, lineFeatured: !x.lineFeatured } : x)));
-    toast.show(p.lineFeatured ? t.messages.lineHidden : t.messages.lineShown);
+    try {
+      const { lineFeatured } = await toggleProductLineFeatured(p.id, !p.lineFeatured);
+      setRows((list) => list.map((x) => (x.id === p.id ? { ...x, lineFeatured } : x)));
+      toast.show(lineFeatured ? t.messages.lineShown : t.messages.lineHidden);
+    } catch (e) {
+      toast.show(
+        `${t.messages.toggleFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    }
   };
 
   const upsert = (draft: ProductRow) => {
@@ -242,13 +226,13 @@ export default function ProductsPage() {
           <span className="btn-group">
             <Button
               variant="ghost" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-              disabled={i === 0} onClick={() => move(i, -1)}
+              disabled={i === 0} onClick={() => void move(i, -1)}
             >
               <ChevronUp size={13} />
             </Button>
             <Button
               variant="ghost" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-              disabled={i === visible.length - 1} onClick={() => move(i, 1)}
+              disabled={i === visible.length - 1} onClick={() => void move(i, 1)}
             >
               <ChevronDown size={13} />
             </Button>
@@ -309,7 +293,7 @@ export default function ProductsPage() {
           variant="ghost" size="sm"
           title={p.lineFeatured ? t.labels.lineShown : t.labels.lineHidden}
           aria-label={p.lineFeatured ? t.labels.lineShown : t.labels.lineHidden}
-          onClick={() => toggleLine(p)}
+          onClick={() => void toggleLine(p)}
         >
           <Star size={15} className={p.lineFeatured ? 'text-warning' : 'text-neutral-400'} />
         </Button>
@@ -531,9 +515,8 @@ export default function ProductsPage() {
         onOpenCategory={() => setCategoryOpen(true)}
         onClose={() => setFormTarget(undefined)}
         onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `p_new_${nextId.current++}`;
           const categoryName = categories.find((c) => c.id === draft.categoryId)?.name ?? null;
-          upsert({ ...draft, id, categoryName, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
+          upsert({ ...draft, categoryName, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
         }}
@@ -564,14 +547,22 @@ export default function ProductsPage() {
         confirmText={toggleActionText}
         message={t.confirm.toggle(toggleActionText)}
         onClose={() => setToggleTarget(null)}
-        onConfirm={() => {
+        onConfirm={async () => {
           if (!toggleTarget) return;
           const actionText = toggleActionText;
-          setRows((list) => list.map((p) => (p.id === toggleTarget.id
-            ? { ...p, active: !p.active, draft: false }
-            : p)));
-          setToggleTarget(null);
-          toast.show(t.messages.toggled(actionText));
+          try {
+            await updateProduct(toggleTarget.id, { active: !toggleTarget.active });
+            setRows((list) => list.map((p) => (p.id === toggleTarget.id
+              ? { ...p, active: !p.active, draft: false }
+              : p)));
+            setToggleTarget(null);
+            toast.show(t.messages.toggled(actionText));
+          } catch (e) {
+            toast.show(
+              `${t.messages.toggleFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+              'danger',
+            );
+          }
         }}
       />
 
@@ -580,12 +571,26 @@ export default function ProductsPage() {
         title={sortMode === 'line' ? t.toolbar.syncToPublic : t.toolbar.syncToLine}
         message={t.confirm.syncOrder(fromLabel, toModeLabel)}
         onClose={() => setSyncOpen(false)}
-        onConfirm={() => {
-          setRows((list) => list.map((p) => (sortMode === 'line'
+        onConfirm={async () => {
+          const nextRows = rows.map((p) => (sortMode === 'line'
             ? { ...p, publicSortOrder: p.sortOrder }
-            : { ...p, sortOrder: p.publicSortOrder })));
-          setSyncOpen(false);
-          toast.show(t.messages.orderApplied(toModeLabel));
+            : { ...p, sortOrder: p.publicSortOrder }));
+          try {
+            /* 公開頁 → LINE 會改動後端的 sort_order；反向（LINE → 公開頁）僅前端狀態 */
+            if (sortMode === 'public') {
+              await reorderProducts(
+                [...nextRows].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id),
+              );
+            }
+            setRows(nextRows);
+            setSyncOpen(false);
+            toast.show(t.messages.orderApplied(toModeLabel));
+          } catch (e) {
+            toast.show(
+              `${t.messages.syncFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+              'danger',
+            );
+          }
         }}
       />
 
@@ -601,10 +606,18 @@ export default function ProductsPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
-            setRows((list) => list.filter((p) => p.id !== deleteTarget.id));
+            const res = await deleteProduct(deleteTarget.id);
+            if (res?.deactivated) {
+              /* 後端因訂單紀錄改軟刪（active=false）→ 保留列，僅改為下架 */
+              setRows((list) => list.map((p) => (p.id === deleteTarget.id
+                ? { ...p, active: false }
+                : p)));
+              toast.show(t.messages.toggled(t.actions.unpublish));
+            } else {
+              setRows((list) => list.filter((p) => p.id !== deleteTarget.id));
+              toast.show(t.messages.deleted);
+            }
             setDeleteTarget(null);
-            toast.show(t.messages.deleted);
           } catch (e) {
             toast.show(
               `${t.messages.deleteProductFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -668,8 +681,25 @@ function ProductFormModal({
     if (list.length) { toast.show(t.messages.checkFields, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onSaved(draft, isEdit);
+      /* ProductExtras（trackInventory / maxPerOrder / publicSortOrder…）後端未落地，不隨 payload 送出 */
+      const payload = {
+        name: draft.name,
+        categoryId: draft.categoryId ?? '',
+        description: draft.description,
+        price: draft.price,
+        stock: draft.stock,
+        safetyStock: draft.safetyStock,
+        imageUrl: draft.imageUrl,
+        active: draft.active,
+        lineFeatured: draft.lineFeatured,
+      };
+      if (isEdit) {
+        await updateProduct(draft.id, payload);
+        onSaved(draft, true);
+      } else {
+        const { id } = await createProduct(payload);
+        onSaved({ ...draft, id }, false);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -889,9 +919,12 @@ function StockModal({
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
-      toast.show(t.stock.success(delta > 0 ? `+${delta}` : `${delta}`, after));
-      onAdjusted(product, after);
+      const reasonText = reason === t.stock.otherValue ? otherReason.trim() : reason;
+      const { stock } = await adjustProductStock(
+        product.id, { delta, reason: reasonText }, after,
+      );
+      toast.show(t.stock.success(delta > 0 ? `+${delta}` : `${delta}`, stock));
+      onAdjusted(product, stock);
     } catch (e) {
       toast.show(
         `${t.stock.adjustFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -994,7 +1027,6 @@ function CategoryModal({
   const [active, setActive] = React.useState(true);
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ProductCategory | null>(null);
-  const nextId = React.useRef(1);
 
   React.useEffect(() => {
     if (!open) return;
@@ -1011,32 +1043,43 @@ function CategoryModal({
     setError('');
   };
 
-  const create = () => {
+  const create = async () => {
     if (!name.trim()) {
       setError(t.category.nameRequired);
       return;
     }
     setError('');
-    onChange([
-      ...categories,
-      {
-        id: `pc_new_${nextId.current++}`,
-        name: name.trim(),
-        active,
-        sortOrder: Number(sortOrder) || categories.length + 1,
-      },
-    ]);
-    reset();
-    toast.show(t.category.created);
+    try {
+      /* 後端只收 name（sort_order 自動取最大值+1、無 active 欄位）；排序值與啟用僅前端狀態 */
+      const { id } = await createProductCategory(name.trim());
+      onChange([
+        ...categories,
+        {
+          id,
+          name: name.trim(),
+          active,
+          sortOrder: Number(sortOrder) || categories.length + 1,
+        },
+      ]);
+      reset();
+      toast.show(t.category.created);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    }
   };
 
-  const move = (index: number, delta: number) => {
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= categories.length) return;
     const next = [...categories];
     [next[index], next[target]] = [next[target], next[index]];
-    onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
-    toast.show(t.category.reordered);
+    try {
+      await reorderProductCategories(next.map((c) => c.id));
+      onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+      toast.show(t.category.reordered);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    }
   };
 
   const columns: Column<ProductCategory>[] = [
@@ -1053,13 +1096,13 @@ function CategoryModal({
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-            disabled={i === 0} onClick={() => move(i, -1)}
+            disabled={i === 0} onClick={() => void move(i, -1)}
           >
             <ChevronUp size={13} />
           </Button>
           <Button
             variant="outline" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-            disabled={i === categories.length - 1} onClick={() => move(i, 1)}
+            disabled={i === categories.length - 1} onClick={() => void move(i, 1)}
           >
             <ChevronDown size={13} />
           </Button>
@@ -1115,7 +1158,7 @@ function CategoryModal({
             <span className="text-base text-neutral-700">{t.category.active}</span>
           </div>
           <div className="btn-group pb-1">
-            <Button size="sm" onClick={create}>
+            <Button size="sm" onClick={() => void create()}>
               <Plus size={13} />{t.category.create}
             </Button>
             <Button size="sm" variant="outline" onClick={reset}>{t.category.clear}</Button>
@@ -1142,10 +1185,16 @@ function CategoryModal({
         confirmText={common.delete}
         message={t.category.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) onChange(categories.filter((c) => c.id !== deleteTarget.id));
-          setDeleteTarget(null);
-          toast.show(t.category.deleted);
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          try {
+            await deleteProductCategory(deleteTarget.id);
+            onChange(categories.filter((c) => c.id !== deleteTarget.id));
+            setDeleteTarget(null);
+            toast.show(t.category.deleted);
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+          }
         }}
       />
     </>

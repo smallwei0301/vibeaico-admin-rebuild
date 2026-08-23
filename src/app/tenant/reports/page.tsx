@@ -13,19 +13,20 @@ import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
-import { getStaffPerformance } from '@/services/reports';
+import {
+  exportBookingsCsv, exportCustomersExcel, getReportData, getTopStaff,
+  type ReportData, type ReportQuery, type ReportRange,
+  type ServiceTrend, type TopProduct, type TopService,
+} from '@/services/reports';
 import { listFeatures } from '@/services/settings';
-import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { reportsPage as t } from '@/i18n/zh-TW/pages/reports';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 import type { StaffPerformance } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁專用的骨架假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
-/* -------------------------------------------------------------------------- */
 
-type RangeKey = 'week' | 'month' | 'quarter';
+type RangeKey = ReportRange;
 
 const RANGES: RangeKey[] = ['week', 'month', 'quarter'];
 
@@ -34,122 +35,16 @@ const ADVANCED_REPORT_CODE = 'ADVANCED_REPORT';
 /** 骨架階段：後端沒有這個訂閱旗標時的預設值 */
 const MOCK_ADVANCED_REPORT_SUBSCRIBED = true;
 
-type DailyPoint = { label: string; bookings: number; revenue: number };
-type NamedCount = { name: string; count: number };
-type TopService = { name: string; bookings: number; revenue: number };
-type TopProduct = { name: string; quantity: number; revenue: number };
-type HourlyPoint = { hourLabel: string; count: number; isPeak: boolean };
-type ServiceTrend = { name: string; bookings: number; growth: number };
+/** 區間 → 各報表端點的 ?from&to（YYYY-MM-DD，含今天；quarter = 13 週） */
+const RANGE_DAYS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 91 };
 
-type ReportData = {
-  summary: {
-    totalBookings: number;
-    totalRevenue: number;
-    completedBookings: number;
-    newCustomers: number;
-  };
-  daily: DailyPoint[];
-  serviceDistribution: NamedCount[];
-  topServices: TopService[];
-  topProducts: TopProduct[];
-  hourly: HourlyPoint[];
-  advanced: {
-    totalCustomers: number;
-    activeCustomers: number;
-    avgVisitCycle: number;
-    avgCustomerValue: number;
-    serviceTrends: ServiceTrend[];
-  };
-};
-
-const SERVICE_NAMES_LOCAL_SHOP = ['精緻剪髮', '全頭染髮', '深層護髮', '瀏海修剪', '頭皮養護'];
-const SERVICE_NAMES_GUIDE = ['龜山島賞鯨半日遊', '花蓮砂婆礑溯溪體驗', '九份山城夜訪散策', '包船專案', '台南早餐吃透透'];
-const SERVICE_NAMES_CLINIC = ['初診（含健康評估）', '複診', '成人健康檢查', '流感疫苗接種', '勞工體檢'];
-
-const PRODUCT_NAMES_LOCAL_SHOP = [
-  '修護洗髮精 500ml', '護髮油 100ml', '定型噴霧', '頭皮精華液', '深層修護髮膜',
-  '免沖洗護髮素', '造型髮蠟', '柔順護色洗髮精', '蓬鬆粉', '寬齒梳',
-];
-const PRODUCT_NAMES_GUIDE = [
-  '防水袋 20L', '寬簷防曬帽', '祕島明信片組（6 入）', '手繪路線地圖', '防曬袖套',
-  '快乾運動毛巾', '登山杖（單支）', '防水手機袋', '不鏽鋼保溫瓶', '頭燈',
-];
-const PRODUCT_NAMES_CLINIC = [
-  '綜合維他命（90 錠）', '益生菌沖劑（30 包）', '醫用口罩（50 入）', '電子血壓計', '血糖試紙（50 片）',
-  '透氣 OK 繃', '電子體溫計', '看護墊（10 片）', '酒精棉片（100 片）', '兒童綜合維他命',
-];
-
-const RANGE_POINTS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 13 };
-const RANGE_SCALE: Record<RangeKey, number> = { week: 1, month: 4.2, quarter: 12.5 };
-
-/** 決定性假資料產生器（避免 SSR / CSR 不一致，僅在 effect 內呼叫） */
-function buildReport(range: RangeKey, serviceNames: string[], productNames: string[]): ReportData {
-  const points = RANGE_POINTS[range];
-  const scale = RANGE_SCALE[range];
-  const stepDays = range === 'quarter' ? 7 : 1;
-
-  const daily: DailyPoint[] = Array.from({ length: points }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (points - 1 - i) * stepDays);
-    const bookings = 4 + ((i * 7 + points) % 12);
-    return {
-      label: `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`,
-      bookings,
-      revenue: bookings * 1180 + ((i * 13) % 5) * 420,
-    };
-  });
-
-  const totalBookings = daily.reduce((s, d) => s + d.bookings, 0);
-  const totalRevenue = daily.reduce((s, d) => s + d.revenue, 0);
-
-  const serviceDistribution: NamedCount[] = serviceNames.map((name, i) => ({
-    name,
-    count: Math.max(Math.round((totalBookings * (5 - i)) / 18), 1),
-  }));
-
-  const topServices: TopService[] = serviceDistribution
-    .slice(0, 5)
-    .map((s, i) => ({ name: s.name, bookings: s.count, revenue: s.count * (600 + i * 340) }));
-
-  const topProducts: TopProduct[] = productNames.map((name, i) => {
-    const quantity = Math.max(Math.round((28 - i * 2) * (scale / 4.2)), 1);
-    return { name, quantity, revenue: quantity * (880 - i * 55) };
-  });
-
-  const hourly: HourlyPoint[] = Array.from({ length: 11 }, (_, i) => {
-    const hour = 10 + i;
-    const count = Math.max(Math.round((3 + ((i * 5) % 9)) * (scale / 2)), 0);
-    return { hourLabel: `${String(hour).padStart(2, '0')}:00`, count, isPeak: false };
-  });
-  const peak = Math.max(...hourly.map((h) => h.count));
-  hourly.forEach((h) => { h.isPeak = h.count === peak; });
-
-  const activeCustomers = Math.round(totalBookings * 0.62);
-
-  return {
-    summary: {
-      totalBookings,
-      totalRevenue,
-      completedBookings: Math.round(totalBookings * 0.86),
-      newCustomers: Math.round(totalBookings * 0.21),
-    },
-    daily,
-    serviceDistribution,
-    topServices,
-    topProducts,
-    hourly,
-    advanced: {
-      totalCustomers: 246,
-      activeCustomers,
-      avgVisitCycle: range === 'week' ? 34 : range === 'month' ? 38 : 42,
-      avgCustomerValue: activeCustomers ? Math.round(totalRevenue / activeCustomers) : 0,
-      serviceTrends: serviceNames.map((name, i) => ({
-        name,
-        bookings: Math.max(Math.round((totalBookings * (5 - i)) / 18), 1),
-        growth: [12.4, -6.8, 0, 24.1, -3.2][i] ?? 0,
-      })),
-    },
-  };
+function rangeDates(range: RangeKey): ReportQuery {
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - (RANGE_DAYS[range] - 1));
+  return { from: fmt(from), to: fmt(to) };
 }
 
 const todayFileDate = () => {
@@ -185,14 +80,8 @@ export default function ReportsPage() {
     setLoading(true);
     void (async () => {
       try {
-        await new Promise((r) => setTimeout(r, 320));
-        const serviceNames = byMode({
-          LOCAL_SHOP: SERVICE_NAMES_LOCAL_SHOP, GUIDE: SERVICE_NAMES_GUIDE, CLINIC: SERVICE_NAMES_CLINIC,
-        });
-        const productNames = byMode({
-          LOCAL_SHOP: PRODUCT_NAMES_LOCAL_SHOP, GUIDE: PRODUCT_NAMES_GUIDE, CLINIC: PRODUCT_NAMES_CLINIC,
-        });
-        if (alive) setData(buildReport(range, serviceNames, productNames));
+        const report = await getReportData(range, rangeDates(range));
+        if (alive) setData(report);
       } catch (e) {
         fail(t.errors.summary, e);
       } finally {
@@ -203,11 +92,17 @@ export default function ReportsPage() {
   }, [range, fail]);
 
   React.useEffect(() => {
+    let alive = true;
     void (async () => {
       try {
-        setStaff(await getStaffPerformance());
-      } catch (e) { fail(t.errors.topStaff, e); } finally { setLoadingStaff(false); }
+        const rows = await getTopStaff(rangeDates(range));
+        if (alive) setStaff(rows);
+      } catch (e) { fail(t.errors.topStaff, e); } finally { if (alive) setLoadingStaff(false); }
     })();
+    return () => { alive = false; };
+  }, [range, fail]);
+
+  React.useEffect(() => {
     void (async () => {
       try {
         const features = await listFeatures();
@@ -223,7 +118,10 @@ export default function ReportsPage() {
     setExportOpen(false);
     setExporting(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
+      /* real：直接導向匯出端點（檔案下載，不走 API 信封）；mock：no-op，僅照舊 toast。
+         Excel 選項對應顧客名單匯出、CSV 選項對應預約列表匯出（帶目前區間）。 */
+      if (ext === 'xlsx') await exportCustomersExcel();
+      else await exportBookingsCsv(rangeDates(range));
       toast.show(`${t.export.success}：${t.export.fileName(todayFileDate(), ext)}`);
     } catch {
       toast.show(t.export.failed, 'danger');
