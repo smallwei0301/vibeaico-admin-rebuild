@@ -7,7 +7,7 @@ import { requireTenant } from '@/server/tenant';
  * types.ts 沒有分類型別（鐵則 3 不得改），回應形狀依 mappers 慣例 camelCase：
  * { id, name, sortOrder }。
  */
-export function mapServiceCategory(r: any) {
+function mapServiceCategory(r: any) {
   return { id: r.id as string, name: r.name as string, sortOrder: r.sort_order as number };
 }
 
