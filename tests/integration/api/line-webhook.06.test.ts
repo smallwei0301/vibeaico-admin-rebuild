@@ -370,9 +370,9 @@ describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () =
     });
     expect(res.status).toBe(200); // 事件迴圈逐一 try/catch，不冒泡
 
-    // 兩個事件的 IN 訊息都寫入（寫入在 reply 之前）
+    // 兩個事件的 IN 訊息都寫入（寫入在 reply 之前）：前面關鍵字案例 1 筆 + 本案例 2 筆
     const ins = await chatMessagesIn(USER_WEBHOOK);
-    expect(ins.filter((m) => m.content?.text === KEYWORD).length).toBeGreaterThanOrEqual(3); // 前案例 1 + 本案例 2
+    expect(ins.filter((m) => m.content?.text === KEYWORD)).toHaveLength(3);
 
     // mock 收到兩次 reply 嘗試：第一次被 failNext 打 500，第二次成功
     const replies = mock.requestsFor('/v2/bot/message/reply');
