@@ -125,6 +125,9 @@ function spawnNextDevServer(): ChildProcess {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.TEST_SUPABASE_ANON_KEY ?? '',
       SUPABASE_SERVICE_ROLE_KEY: process.env.TEST_SUPABASE_SERVICE_ROLE_KEY ?? '',
       NEXT_PUBLIC_APP_URL: BASE_URL,
+      // cron 端點（/api/cron/*）的 Bearer 驗證（07 分冊）；測試以 TEST_ 前綴供值，
+      // 這裡映射進 server，feature-expiry.09 等 cron 整合測試才打得了正例。
+      CRON_SECRET: process.env.TEST_CRON_SECRET ?? '',
     },
   });
   child.on('error', (err) => {

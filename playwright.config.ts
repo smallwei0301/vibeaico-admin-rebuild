@@ -84,6 +84,8 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.TEST_SUPABASE_ANON_KEY ?? '',
       SUPABASE_SERVICE_ROLE_KEY: process.env.TEST_SUPABASE_SERVICE_ROLE_KEY ?? '',
       NEXT_PUBLIC_APP_URL: BASE_URL,
+      // 同 tests/integration/global-setup.ts：cron Bearer 驗證用（07 分冊）。
+      CRON_SECRET: process.env.TEST_CRON_SECRET ?? '',
     },
   },
 });

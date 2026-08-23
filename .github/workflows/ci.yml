@@ -27,6 +27,10 @@ jobs:
           TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
           SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
           AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
+          TEST_CRON_SECRET: ci-cron-secret-0711
+          # cron Bearer 驗證（07 分冊）：測試環境的固定值即可，非機密——它只
+          # 保護 CI 內自起的 next dev，不觸及正式部署的 CRON_SECRET。
+          TEST_CRON_SECRET: ci-cron-secret-0711
       # e2e 與 integration 共用同一組 TEST secrets（12 分冊 §7）。
       # 註：原文此處寫 `env: { }`，但 GitHub Actions 的 env 不會跨 step 繼承，
       #     留空會讓 e2e 完全拿不到 TEST_SUPABASE_*，Phase 2 起必然失敗，故展開列出。
