@@ -12,8 +12,8 @@ import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, Label, Select, Switch } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listFeatures } from '@/services/settings';
+import { getPointBalance } from '@/services/points';
 import { FEATURE_CODES, type FeatureCode, type FeatureSubscription } from '@/config/features';
-import { MOCK_POINT_BALANCE } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { featureStorePage as t } from '@/i18n/zh-TW/pages/feature-store';
@@ -112,8 +112,9 @@ export default function FeatureStorePage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      setSubs(await listFeatures());
-      setBalance(MOCK_POINT_BALANCE);
+      const [subs, { balance: bal }] = await Promise.all([listFeatures(), getPointBalance()]);
+      setSubs(subs);
+      setBalance(bal);
     } catch (e) {
       toast.show(
         `${t.messages.loadFeaturesFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,

@@ -17,12 +17,13 @@ import {
   CharCounter, FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { MOCK_POINT_BALANCE, MOCK_POINT_TRANSACTIONS, MOCK_TENANTS } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { pointsPage as t } from '@/i18n/zh-TW/pages/points';
 import { formatDateTime, formatNumber } from '@/lib/utils';
-import type { PointTransaction } from '@/lib/types';
+import type { PointTransaction, TenantSummary } from '@/lib/types';
+import { getPointBalance, listPointTransactions, transferPoints } from '@/services/points';
+import { myTenants } from '@/services/auth';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -34,43 +35,8 @@ import type { PointTransaction } from '@/lib/types';
  */
 type PointTxnType = keyof typeof t.types;
 type PointTxn = Omit<PointTransaction, 'type'> & { type: PointTxnType };
-
-/** 由 src/mock 的共用資料延伸，補上原站才有的其他異動類型 */
-const EXTRA_TRANSACTIONS: PointTxn[] = [
-  {
-    id: 'pt_x1', type: 'SUBSCRIPTION', amount: -49, balanceAfter: 4771,
-    description: '訂閱「進階顧客管理」1 個月', createdAt: '2026-08-14T10:05:00+08:00',
-  },
-  {
-    id: 'pt_x2', type: 'REFERRAL', amount: 500, balanceAfter: 4820,
-    description: '推薦「晴天美甲工作室」完成首次儲值', createdAt: '2026-07-05T14:22:00+08:00',
-  },
-  {
-    id: 'pt_x3', type: 'BONUS', amount: 250, balanceAfter: 4320,
-    description: '儲值贈送 5%', createdAt: '2026-06-28T09:12:00+08:00',
-  },
-  {
-    id: 'pt_x4', type: 'TRANSFER_OUT', amount: -800, balanceAfter: 4070,
-    description: '轉出至「示範診所」', createdAt: '2026-06-20T17:44:00+08:00',
-  },
-  {
-    id: 'pt_x5', type: 'PROCESSING', amount: 1000, balanceAfter: 4870,
-    description: '線上儲值（付款處理中）', createdAt: '2026-06-18T21:30:00+08:00',
-  },
-  {
-    id: 'pt_x6', type: 'REJECTED', amount: 0, balanceAfter: 3870,
-    description: '儲值申請未通過', createdAt: '2026-06-15T13:08:00+08:00',
-  },
-  {
-    id: 'pt_x7', type: 'EXPIRED', amount: -120, balanceAfter: 3870,
-    description: '活動贈點到期', createdAt: '2026-06-12T00:05:00+08:00',
-  },
-];
-
-const ALL_TRANSACTIONS: PointTxn[] = [
-  ...(MOCK_POINT_TRANSACTIONS as PointTxn[]),
-  ...EXTRA_TRANSACTIONS,
-];
+// 擴充類型的 mock 展示列（原 EXTRA_TRANSACTIONS）已移入 src/services/points.ts
+// 的 mock 分支——頁面接線後兩模式共用同一條「service → rows」路徑。
 
 const TYPE_TONE: Record<PointTxnType, 'success' | 'danger' | 'info' | 'warning' | 'purple' | 'neutral' | 'primary'> = {
   TOPUP: 'success',
@@ -111,8 +77,10 @@ export default function PointsPage() {
   const [topupOpen, setTopupOpen] = React.useState(false);
   const [transferOpen, setTransferOpen] = React.useState(false);
 
-  /** 只有帳號旗下有第二家店時才能轉點（原站預設隱藏此按鈕） */
-  const branches = MOCK_TENANTS.filter((x) => !x.current);
+  /** 只有帳號旗下有第二家店時才能轉點（原站預設隱藏此按鈕）；
+   *  清單走 myTenants()（mock 分支即原 MOCK_TENANTS，行為不變）。 */
+  const [tenants, setTenants] = React.useState<TenantSummary[]>([]);
+  const branches = tenants.filter((x) => !x.current);
   const canTransfer = branches.length > 0;
 
   React.useEffect(() => {
@@ -124,9 +92,17 @@ export default function PointsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 320));
-      setRows(ALL_TRANSACTIONS);
-      setBalance(MOCK_POINT_BALANCE);
+      // 交易紀錄一次取 200 筆、前端切頁（沿用原本的本地分頁 UI；店家錢包
+      // 交易量小，等真的超過 200 筆再改成伺服器分頁）。real 模式後端只回
+      // 契約 enum 的 5 種 type（PointTxn 聯集的子集，斷言必然成立）。
+      const [{ balance: bal }, paged, mine] = await Promise.all([
+        getPointBalance(),
+        listPointTransactions({ page: 0, size: 200 }),
+        myTenants(),
+      ]);
+      setRows(paged.content as PointTxn[]);
+      setBalance(bal);
+      setTenants(mine);
     } catch (e) {
       toast.show(
         `${t.messages.loadTransactionsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -282,7 +258,7 @@ export default function PointsPage() {
       <TransferModal
         open={transferOpen}
         balance={balance ?? 0}
-        branches={branches.map((b) => ({ id: b.id, name: b.name }))}
+        branches={branches.map((b) => ({ id: b.id, name: b.name, shopCode: b.shopCode }))}
         onClose={() => setTransferOpen(false)}
         onTransferred={() => { setTransferOpen(false); void load(); }}
       />
@@ -414,7 +390,7 @@ function TransferModal({
 }: {
   open: boolean;
   balance: number;
-  branches: { id: string; name: string }[];
+  branches: { id: string; name: string; shopCode: string }[];
   onClose: () => void;
   onTransferred: () => void;
 }) {
@@ -453,7 +429,10 @@ function TransferModal({
   const submit = async () => {
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      // POST /api/points/transfer（⚙OWNER；rpc 內兩筆交易同 DB 交易完成）。
+      // 後端以 shopCode 定位目標店；409「點數餘額不足」等訊息原樣 toast。
+      const toShopCode = branches.find((b) => b.id === target)?.shopCode ?? '';
+      await transferPoints({ toShopCode, amount });
       setConfirmOpen(false);
       toast.show(t.messages.transferred(formatNumber(amount), targetName));
       onTransferred();
