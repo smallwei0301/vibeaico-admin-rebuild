@@ -386,3 +386,44 @@ export type TourOrder = {
   note: string;
   createdAt: string;
 };
+
+/* -------------------------------------------------------------- 行事曆 */
+/**
+ * GET /api/calendar 的統一事件（04 分冊 §B-1）：行事曆頁唯一資料源，
+ * 「展示層合一、資料層仍分開」——四種來源合併成一個陣列，以 type 區辨：
+ *   BOOKING   服務預約（bookings）
+ *   DEPARTURE 行程團次（trip_departures，TOUR_MODULE 租戶才出現）
+ *   BLOCK     封鎖時段（block_times）
+ *   EXTERNAL  匯入的外部 ICS（external_calendars，唯讀）
+ */
+export type CalendarEventType = 'BOOKING' | 'DEPARTURE' | 'BLOCK' | 'EXTERNAL';
+
+export type CalendarEvent = {
+  /** 合併陣列內唯一：`<type 小寫>:<來源列 uuid>`（不同表的 uuid 理論上不撞，前綴保險） */
+  id: string;
+  type: CalendarEventType;
+  /** 顯示標題（BOOKING=服務·顧客；BLOCK=原因；DEPARTURE=行程·方案；EXTERNAL=外部事件標題） */
+  title: string;
+  /** ISO 起訖 */
+  start: string;
+  end: string;
+  /** 各 type 專屬的附加欄位，前端依 type 取用 */
+  meta?: {
+    /* BOOKING */
+    bookingId?: string;
+    bookingNo?: string;
+    status?: BookingStatus;
+    customerName?: string;
+    serviceName?: string;
+    /* BOOKING / BLOCK 共用：null = 全店（BLOCK）或未指定（BOOKING） */
+    staffId?: string | null;
+    staffName?: string | null;
+    /* DEPARTURE */
+    seatsBooked?: number;
+    capacity?: number;
+    /* BLOCK */
+    reason?: string;
+    /* EXTERNAL */
+    calendarName?: string;
+  };
+};
