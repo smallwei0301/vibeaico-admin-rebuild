@@ -4,7 +4,7 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 
 export const POST = handle(async (_req, { params }) => {
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenant();
   const { id } = await params;
 
   const { data, error } = await t.supabase.from('campaigns')
