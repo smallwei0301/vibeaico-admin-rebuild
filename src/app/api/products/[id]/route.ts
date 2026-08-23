@@ -122,11 +122,13 @@ export const DELETE = handle(async (_req, { params }) => {
       .from('products').update({ active: false })
       .eq('id', id).eq('tenant_id', t.tenantId);
     if (error) throw error;
-    return ok();
+    // 與 services DELETE 的回應形狀對齊：讓前端能分辨「下架保留」與「真刪」
+    // （頁面據此決定該列標停用還是移除）。
+    return ok({ deactivated: true });
   }
 
   const { error } = await t.supabase
     .from('products').delete().eq('id', id).eq('tenant_id', t.tenantId);
   if (error) throw error;
-  return ok();
+  return ok({ deleted: true });
 });
