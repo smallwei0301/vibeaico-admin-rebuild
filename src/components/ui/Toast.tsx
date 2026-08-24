@@ -11,6 +11,23 @@ type ToastItem = { id: number; tone: Tone; message: string };
 /** 未訂閱提示的節流記錄鍵（值是 YYYY-MM-DD，同一天內只提示一次） */
 const FEATURE_LOCKED_SEEN_KEY = 'vibeai.toast.featureLocked.date';
 
+/** 同時最多顯示幾則（超過就不再堆疊，避免整片洗版） */
+const MAX_VISIBLE = 3;
+
+/**
+ * 錯誤訊息的「根因」= 冒號後面那段。
+ *
+ * 頁面統一用 `${用途前綴}${error.message}` 組錯誤訊息（例如
+ * 「載入統計資料失敗：此帳號未加入任何店家」）。一個頁面同時打好幾支 API，
+ * 遇到 session／網路這種全域性失敗時每支都會失敗，於是同一個根因被不同前綴
+ * 包成六七則 toast 洗版——但對使用者來說那全是同一件事。以根因去重，
+ * 只留第一則。
+ */
+function errorCause(message: string): string {
+  const parts = message.split(/[:：]/);
+  return (parts.length > 1 ? parts[parts.length - 1] : message).trim();
+}
+
 /**
  * 未訂閱提示（FEAT_001）每天最多跳一次。
  *
@@ -51,9 +68,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const show = React.useCallback((message: string, tone: Tone = 'success') => {
     if (shouldThrottleFeatureLocked(message)) return;
     const id = Date.now() + Math.floor(Math.random() * 1000);
-    // 同一句話已經在畫面上就不再疊一則——多支 API 同時失敗時常會送出一模一樣的
-    // 訊息，疊起來只是把畫面塞滿，資訊量沒有增加。
-    setItems((s) => (s.some((t) => t.message === message) ? s : [...s, { id, tone, message }]));
+    setItems((s) => {
+      if (s.some((t) => t.message === message)) return s;            // 一模一樣的不重複
+      if (tone === 'danger' || tone === 'warning') {
+        // 同一個根因（冒號後那段）已經在畫面上就不再疊，且錯誤總數設上限
+        const cause = errorCause(message);
+        if (s.some((t) => (t.tone === 'danger' || t.tone === 'warning')
+          && errorCause(t.message) === cause)) return s;
+        if (s.length >= MAX_VISIBLE) return s;
+      }
+      return [...s, { id, tone, message }];
+    });
     setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), 3500);
   }, []);
 

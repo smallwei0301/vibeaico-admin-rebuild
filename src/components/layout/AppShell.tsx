@@ -59,8 +59,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
    * 存進 localStorage 讓重新整理／直接開網址時仍保持（真實後端對應
    * switch-tenant 的 cookie，見 03 分冊 §5）。
    */
+  // real 模式一開始沒有選定的店家（要等 my-tenants 回來）。這裡**不能**拿
+  // MOCK_TENANTS[0] 當預設值：那是示範店家，會讓 real 模式的第一次 render 就落在
+  // 示範模式，頁面先抓一輪假資料，接著 my-tenants 回來又切成真店家；更糟的是若
+  // 使用者接著點的正好是同一家示範店，current.id 沒變 → main 的 key 沒變 →
+  // 頁面不重掛載 → 看起來「點示範店家沒反應／沒東西」。
   const [tenantId, setTenantId] = React.useState(
-    (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id,
+    USE_MOCK ? (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id : '',
   );
 
   React.useEffect(() => {
@@ -73,21 +78,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [remoteTenants, setRemoteTenants] = React.useState<TenantSummary[]>([]);
   React.useEffect(() => {
     if (USE_MOCK) return;
+    // 上次停在示範店家就維持在示範店家——這步與 my-tenants 是否成功無關，
+    // 放在 .then() 裡的話，帳號還沒有店（403）時連示範店家都選不回來。
     const savedDemo = localStorage.getItem(DEMO_TENANT_STORAGE_KEY);
+    if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) setTenantId(savedDemo);
     myTenants().then((list) => {
       setRemoteTenants(list);
-      // 上次停在示範店家就維持在示範店家，否則回到後端 cookie 指定的那家。
-      if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) {
-        setTenantId(savedDemo);
-        return;
-      }
+      if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) return;
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
     }).catch(() => {});
   }, []);
 
   const tenants = USE_MOCK ? MOCK_TENANTS : [...remoteTenants, ...DEMO_TENANTS];
-  const current = tenants.find((tt) => tt.id === tenantId) ?? tenants[0] ?? EMPTY_TENANT;
+  // fallback 只能落在「自己的店」，不能落到示範店家——沒選定時（清單還沒回來、
+  // 或帳號真的沒有店）掉進示範模式，會讓真實店家看到假資料。
+  const current =
+    tenants.find((tt) => tt.id === tenantId)
+    ?? (USE_MOCK ? tenants[0] : remoteTenants[0])
+    ?? EMPTY_TENANT;
   const businessType = current.businessType ?? 'LOCAL_SHOP';
 
   // 資料來源的切換必須在 render 期完成（不能放 effect）——頁面元件的 effect 會在
