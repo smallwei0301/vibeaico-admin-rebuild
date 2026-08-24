@@ -23,6 +23,7 @@ import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
+import { cn } from '@/lib/utils';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
 
@@ -60,7 +61,8 @@ const ACCESS_TOKEN_MIN_LENGTH = 100;
 
 const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
-type VerifyCheck = { key: string; pass: boolean; message: string };
+/** severity 省略時視為 FAIL（後端未帶 = 舊行為） */
+type VerifyCheck = { key: string; pass: boolean; message: string; severity?: 'FAIL' | 'WARN' };
 
 /* -------------------------------------------------------------------------- */
 
@@ -400,7 +402,10 @@ export default function LineSettingsPage() {
     }
   };
 
-  const failCount = verifyChecks?.filter((c) => !c.pass).length ?? 0;
+  // 分開算：WARN 是「我們查不到／還沒做」，不該和「真的壞了」混在一起——
+  // 兩者混算會讓報告永遠不可能顯示「全部通過」，久了店家整份忽略。
+  const failCount = verifyChecks?.filter((c) => !c.pass && c.severity !== 'WARN').length ?? 0;
+  const warnCount = verifyChecks?.filter((c) => !c.pass && c.severity === 'WARN').length ?? 0;
 
   /* -------------------------------------------------------------- render */
 
@@ -1223,10 +1228,12 @@ export default function LineSettingsPage() {
         }
       >
         <div className="mb-3">
-          {failCount === 0 ? (
-            <Badge tone="success">{t.verifyReport.allPass}</Badge>
-          ) : (
+          {failCount > 0 ? (
             <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge>
+          ) : warnCount > 0 ? (
+            <Badge tone="warning">{t.verifyReport.warnCount(warnCount)}</Badge>
+          ) : (
+            <Badge tone="success">{t.verifyReport.allPass}</Badge>
           )}
         </div>
         <div className="flex flex-col gap-2">
@@ -1238,7 +1245,13 @@ export default function LineSettingsPage() {
               {c.pass ? (
                 <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-success" />
               ) : (
-                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-danger" />
+                <AlertTriangle
+                  size={16}
+                  className={cn(
+                    'mt-0.5 flex-shrink-0',
+                    c.severity === 'WARN' ? 'text-warning' : 'text-danger',
+                  )}
+                />
               )}
               <div className="min-w-0">
                 <div className="text-base font-semibold text-dark">

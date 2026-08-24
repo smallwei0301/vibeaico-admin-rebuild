@@ -42,7 +42,7 @@ export const testLineConnection = () =>
   );
 
 export const verifyLineSetup = () =>
-  adapt<{ checks: { key: string; pass: boolean; message: string }[] }>(
+  adapt<{ checks: { key: string; pass: boolean; message: string; severity?: 'FAIL' | 'WARN' }[] }>(
     () => ({
       checks: [
         { key: 'TOKEN', pass: true, message: 'Channel Access Token 有效' },
