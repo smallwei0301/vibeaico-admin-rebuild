@@ -1,0 +1,16 @@
+name = "vibeai-cron-pinger"
+main = "worker.js"
+compatibility_date = "2026-08-24"
+
+# 每小時整點觸發一次（Cloudflare 免費方案：每帳號最多 5 支 Cron Trigger，
+# 這支只佔 1 支）。
+[triggers]
+crons = ["0 * * * *"]
+
+# 非機密：目標網站網址，寫死在設定檔沒關係。
+[vars]
+TARGET_BASE_URL = "https://vibeaico-admin-rebuild.vercel.app"
+
+# CRON_SECRET 不放這裡——機密值一律用
+#   npx wrangler secret put CRON_SECRET
+# 互動輸入，才不會進 git。
