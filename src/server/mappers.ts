@@ -25,6 +25,12 @@ import type {
   PointTransaction,
   StaffPerformance,
   TenantSummary,
+  Trip,
+  TripPlan,
+  TripPlanSeason,
+  TripFaqItem,
+  TripSocialProofQuote,
+  TripPlanItineraryStep,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ 預約 */
@@ -234,5 +240,99 @@ export function mapTenantSummary(r: any, activeTenantId?: string): TenantSummary
     current: r.tenant_id === activeTenantId,
     businessType: r.tenants.business_type ?? undefined,
     extraModules: r.tenants.extra_modules ?? undefined,
+  };
+}
+
+/* -------------------------------------------------------------------------- *
+ * 行程領域（Phase 8a，migration 0016）                                        *
+ * -------------------------------------------------------------------------- */
+
+/** jsonb 陣列欄位防呆：DB 若存了非陣列（不該發生）也不要讓整頁掛掉。 */
+const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+/**
+ * trips 列 → Trip。
+ *
+ * `planCount` / `minPrice` / `upcomingDepartureCount` 是衍生欄位，不在 trips 表上：
+ * - 前兩者由查詢端 join trip_plans 聚合後，以第二參數傳進來；
+ * - upcomingDepartureCount 需要 trip_departures（Phase 8b 才建表），
+ *   在此之前一律回 0——這是「功能尚未實作」的誠實值，不是查詢漏掉。
+ */
+export function mapTrip(
+  r: any,
+  derived: { planCount?: number; minPrice?: number; upcomingDepartureCount?: number } = {},
+): Trip {
+  return {
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    tagline: r.tagline ?? '',
+    summary: r.summary ?? '',
+    description: r.description ?? '',
+    region: r.region ?? '',
+    category: r.category ?? '',
+    coverImageUrl: r.cover_image_url ?? '',
+    galleryUrls: arr<string>(r.gallery),
+    meetingPoint: r.meeting_point ?? '',
+    meetingPointMapUrl: r.meeting_point_map_url ?? '',
+    inclusions: arr<string>(r.inclusions),
+    exclusions: arr<string>(r.exclusions),
+    notices: arr<string>(r.notices),
+    safetyNotice: r.safety_notice ?? '',
+    refundPolicyType: r.refund_policy_type ?? 'STANDARD',
+    status: r.status,
+    midaoListing: r.midao_listing ?? 'NONE',
+    midaoListingNote: r.midao_listing_note ?? '',
+    planCount: derived.planCount ?? 0,
+    upcomingDepartureCount: derived.upcomingDepartureCount ?? 0,
+    minPrice: derived.minPrice ?? 0,
+    updatedAt: r.updated_at,
+    goodFor: arr<string>(r.good_for),
+    faq: arr<TripFaqItem>(r.faq),
+    socialProofQuotes: arr<TripSocialProofQuote>(r.social_proof_quotes),
+    durationMinutes: r.duration_minutes ?? undefined,
+    refundRules: arr<string>(r.refund_rules),
+  };
+}
+
+/** trip_plans 列 → TripPlan。 */
+export function mapTripPlan(r: any): TripPlan {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    description: r.description ?? '',
+    durationMinutes: r.duration_minutes ?? 60,
+    priceType: r.price_type ?? 'PER_PERSON',
+    basePrice: Number(r.base_price ?? 0),
+    childPrice: r.child_price === null || r.child_price === undefined ? null : Number(r.child_price),
+    minParticipants: r.min_participants ?? 1,
+    maxParticipants: r.max_participants ?? 10,
+    bookingType: r.booking_type ?? 'SCHEDULED',
+    depositMode: r.deposit_mode ?? 'FULL',
+    depositValue: Number(r.deposit_value ?? 0),
+    active: r.active ?? true,
+    yearRound: r.year_round ?? true,
+    seasons: arr<TripPlanSeason>(r.seasons),
+    reviewState: r.review_state ?? 'NONE',
+    reviewNote: r.review_note ?? '',
+    sortOrder: r.sort_order ?? 0,
+    slug: r.slug || undefined,
+    highlights: arr<string>(r.highlights),
+    planInclusions: arr<string>(r.plan_inclusions),
+    planExclusions: arr<string>(r.plan_exclusions),
+    planNotices: arr<string>(r.plan_notices),
+    planRefundRules: arr<string>(r.plan_refund_rules),
+    planItinerary: arr<TripPlanItineraryStep>(r.plan_itinerary),
+    meetingPointName: r.meeting_point_name || undefined,
+    meetingAddress: r.meeting_address || undefined,
+    experiencePointName: r.experience_point_name || undefined,
+    experienceAddress: r.experience_address || undefined,
+    language: r.language || undefined,
+    earliestDeparture: r.earliest_departure ?? undefined,
+    confirmByDays: r.confirm_by_days ?? undefined,
+    freeCancelDays: r.free_cancel_days ?? undefined,
+    detailsLinkText: r.details_link_text || undefined,
+    bookingBtnText: r.booking_btn_text || undefined,
   };
 }

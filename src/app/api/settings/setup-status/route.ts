@@ -15,13 +15,23 @@ import type { SetupStatus } from '@/lib/types';
 export const GET = handle(async () => {
   const t = await requireTenant();
 
+  // 業態決定「SERVICE」這一步要看哪張表：嚮導的目錄是行程（trips），
+  // 不是 services——嚮導不管建幾個行程，看 services 表永遠是 0，
+  // 設定進度會卡在 80% 且提示他去「新增服務」（那頁在嚮導模式根本不在選單裡）。
+  const [{ data: tenantRow, error: terr }] = await Promise.all([
+    t.supabase.from('tenants').select('business_type').eq('id', t.tenantId).maybeSingle(),
+  ]);
+  if (terr) throw terr;
+  const isGuide = tenantRow?.business_type === 'GUIDE';
+  const catalogTable = isGuide ? 'trips' : 'services';
+
   const [{ data: settingsRow, error: serr }, { count: staffCount, error: staffErr },
     { count: serviceCount, error: svcErr }] = await Promise.all([
     t.supabase.from('tenant_settings')
       .select('basic, business, line_channel_access_token_enc')
       .eq('tenant_id', t.tenantId).maybeSingle(),
     t.supabase.from('staff').select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
-    t.supabase.from('services').select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
+    t.supabase.from(catalogTable).select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId),
   ]);
   if (serr) throw serr;
   if (staffErr) throw staffErr;

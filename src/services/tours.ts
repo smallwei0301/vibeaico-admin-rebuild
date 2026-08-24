@@ -20,7 +20,9 @@ export const listTrips = () =>
 export const getTrip = (id: string) =>
   adapt<Trip | undefined>(
     () => MOCK_TRIPS.find((t) => t.id === id),
-    () => request<Trip>(`/api/trips/${id}`),
+    // 端點回 { trip, plans }（編輯頁一次要兩者，分兩支只會多一輪 loading）；
+    // 本函式的契約是單一 Trip，方案另由 listTripPlans() 取得。
+    () => request<{ trip: Trip }>(`/api/trips/${id}`).then((r) => r.trip),
   );
 
 export const createTrip = (payload: Partial<Trip>) =>
@@ -145,3 +147,19 @@ export const createManualTourOrder = (payload: {
 }) =>
   adapt(() => undefined, () =>
     request<void>('/api/tour-orders/manual', { method: 'POST', body: JSON.stringify(payload) }));
+
+/* -------------------------------------------------- tour-platform JSON 互通 */
+
+/**
+ * 匯入 tour-platform 匯出的行程 JSON（可一次多筆）。
+ * 欄位對照與「只新增不覆蓋方案」的規則在後端 /api/trips/import，前端只負責送檔。
+ */
+export const importTripsJson = (json: unknown) =>
+  adapt<{ imported: number; results: Array<{ title: string; created: boolean; plansAdded: number }> }>(
+    () => ({ imported: 0, results: [] }),
+    () => request('/api/trips/import', { method: 'POST', body: JSON.stringify(json) }),
+  );
+
+/** 匯出成 tour-platform 格式的行程 JSON（可再匯回本後台或匯進 tour-platform）。 */
+export const exportTripJson = (id: string) =>
+  adapt<unknown>(() => ({}), () => request(`/api/trips/${id}/export`));

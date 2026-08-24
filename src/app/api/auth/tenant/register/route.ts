@@ -5,6 +5,7 @@ import { consumeCode } from '@/server/verify-code';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
 import { BUSINESS_TYPES } from '@/config/modes';
 import { PAID_FEATURE_CODES } from '@/config/features';
+import { seedDemoData } from '@/server/demo-seed';
 
 /** 新店家的全功能試用天數：期間內所有付費功能可用，到期由 feature-expiry cron 收回。 */
 const TRIAL_DAYS = 7;
@@ -61,6 +62,14 @@ export const POST = handle(async (req) => {
         expires_at: trialExpiresAt, source: 'TRIAL', started_at: new Date().toISOString(),
       })),
     );
+    // 依業態鋪示範資料（三個服務／行程、一位員工、三個商品），讓新店家一進
+    // 後台就有東西可看可改，首頁提供「一鍵清空」整批移除。示範資料失敗不該
+    // 讓註冊失敗——店開好了才是關鍵，範例資料之後可從首頁自行補上。
+    try {
+      await seedDemoData(t.id, b.businessType ?? 'LOCAL_SHOP');
+    } catch (seedErr) {
+      console.error('[register] 示範資料建立失敗（不影響註冊）', seedErr);
+    }
   } catch (e) {
     await admin.auth.admin.deleteUser(userId);       // 補償：建店失敗就回滾帳號
     throw e;

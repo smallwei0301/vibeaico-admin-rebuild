@@ -273,6 +273,45 @@ export type Trip = {
   upcomingDepartureCount: number;
   minPrice: number;
   updatedAt: string;
+
+  /* ---- 以下為與 tour-platform 行程 JSON 對齊而新增的選填欄位（Phase 8a）----
+   * 對應 tour-platform `buildActivityExportTemplate()` 的輸出，讓該站管理者
+   * 匯出的 JSON 能原樣匯入本後台而不遺漏欄位。選填是因為既有 mock 資料與
+   * 手動建立的行程不一定有值（鐵則 3：只增不改）。 */
+  /** 適合對象（tour-platform goodFor） */
+  goodFor?: string[];
+  /** 常見問題（tour-platform faq） */
+  faq?: TripFaqItem[];
+  /** 社群口碑語錄（tour-platform socialProofQuotes） */
+  socialProofQuotes?: TripSocialProofQuote[];
+  /** 整體活動時長；方案層另有各自的 durationMinutes */
+  durationMinutes?: number;
+  /** 退款規則條列（tour-platform refundRules；與 refundPolicyType 併存） */
+  refundRules?: string[];
+};
+
+/** 常見問題一則（tour-platform faq[]） */
+export type TripFaqItem = { q: string; a: string };
+
+/** 社群口碑語錄一則（tour-platform socialProofQuotes[]） */
+export type TripSocialProofQuote = {
+  author: string;
+  rating: number;
+  text: string;
+  photos?: string[];
+};
+
+/**
+ * 方案「詳細行程」的一站（tour-platform planItinerary[]）。
+ * imageUrl 就是使用者要的「每個時間點可以上傳照片」。
+ */
+export type TripPlanItineraryStep = {
+  icon: string;
+  title: string;
+  /** 停留時間的自由文字，例如「約 40 分鐘」 */
+  duration: string;
+  description: string;
+  imageUrl?: string;
 };
 
 /** 計價方式：每人 / 每團 */
@@ -318,6 +357,36 @@ export type TripPlan = {
   reviewState: PlanReviewState;
   reviewNote: string;
   sortOrder: number;
+
+  /* ---- 與 tour-platform activityPlans[] 對齊而新增的選填欄位（Phase 8a）---- */
+  /** 方案英文代碼；未填時由名稱自動產生 */
+  slug?: string;
+  /** 方案亮點 */
+  highlights?: string[];
+  /** 方案層的費用包含 / 不包含（與行程層的同名欄位併存，方案優先） */
+  planInclusions?: string[];
+  planExclusions?: string[];
+  /** 方案層購買須知 / 取消政策 */
+  planNotices?: string[];
+  planRefundRules?: string[];
+  /** 「詳細行程」站點時間表，每站可帶一張圖 */
+  planItinerary?: TripPlanItineraryStep[];
+  /** 集合地點 / 體驗地點（方案層覆寫行程層） */
+  meetingPointName?: string;
+  meetingAddress?: string;
+  experiencePointName?: string;
+  experienceAddress?: string;
+  /** 導覽語言 */
+  language?: string;
+  /** 最早可出發日 YYYY-MM-DD */
+  earliestDeparture?: string;
+  /** 最晚幾天前回覆訂單結果 */
+  confirmByDays?: number;
+  /** 幾天前可免費取消 */
+  freeCancelDays?: number;
+  /** 前台按鈕文案 */
+  detailsLinkText?: string;
+  bookingBtnText?: string;
 };
 
 /** 販售季節（月/日區間，可跨年） */

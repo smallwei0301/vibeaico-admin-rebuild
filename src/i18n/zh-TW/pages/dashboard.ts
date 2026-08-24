@@ -1,4 +1,7 @@
 import { nav } from '@/i18n/zh-TW/nav';
+import type { SetupStatus } from '@/lib/types';
+
+type SetupStepKey = SetupStatus['steps'][number]['key'];
 
 /**
  * 儀表板（/tenant/dashboard）文案
@@ -43,6 +46,24 @@ export const dashboardPage = {
     done: '已完成',
     todo: '尚未完成',
   },
+
+  /**
+   * 設定步驟的**業態別**用字（同 nav.ts 的 navLabel 慣例）。
+   *
+   * 上面的 steps 是共用預設值；嚮導的目錄是行程而不是服務項目，員工是嚮導，
+   * 沿用預設會叫他去「設定服務項目」——那一頁在嚮導模式的選單裡根本不存在。
+   * 只列出需要覆寫的鍵，其餘 fallback 回 steps。
+   */
+  stepOverrides: {
+    GUIDE: {
+      SERVICE: '設定行程與方案',
+      STAFF: '設定嚮導資料',
+    },
+    CLINIC: {
+      SERVICE: '設定看診項目',
+      STAFF: '設定醫師資料',
+    },
+  } as Record<string, Partial<Record<SetupStepKey, string>>>,
 
   /* ------------------------------------------------------------ 頁面警示區 */
   cutoffExpired: {
@@ -203,6 +224,19 @@ export const dashboardPage = {
     dismiss: '知道了',
   },
 
+  demoData: {
+    title: '目前顯示的是示範資料',
+    body: (n: number) => `我們依照你選的營運模式，先鋪了 ${n} 筆範例（服務／行程、員工、商品），` +
+      '你可以直接改成自己的內容；不需要的話按右邊一鍵清空。',
+    clear: '一鍵清空示範資料',
+    clearing: '清除中…',
+    confirmTitle: '清空示範資料？',
+    confirmBody: '會移除所有名稱開頭仍是「[示範]」的服務／行程、員工與商品。' +
+      '你自己建立或已改過名稱的資料不會被動到，也不會影響任何預約紀錄。',
+    cleared: '示範資料已清空',
+    clearFailed: '清空示範資料失敗：',
+  },
+
   trialBanner: {
     title: '全功能試用中',
     bodyPrefix: '所有付費功能已為你開通，試用到 ',
@@ -254,3 +288,12 @@ export const dashboardPage = {
     loadFailed: '載入失敗',
   },
 } as const;
+
+/**
+ * 設定步驟顯示文字：有業態別覆寫就用覆寫，否則用共用預設值。
+ * 與 nav.ts 的 navLabel(key, businessType) 同一套慣例。
+ */
+export function setupStepLabel(key: SetupStepKey, businessType?: string): string {
+  return (businessType && dashboardPage.stepOverrides[businessType]?.[key])
+    ?? dashboardPage.setup.steps[key];
+}

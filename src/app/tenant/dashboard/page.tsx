@@ -18,6 +18,7 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
+import { clearDemoData, getDemoDataStatus } from '@/services/demo-data';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
@@ -27,7 +28,7 @@ import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
-import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
+import { dashboardPage as t, setupStepLabel } from '@/i18n/zh-TW/pages/dashboard';
 import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
 } from '@/lib/utils';
@@ -193,6 +194,33 @@ export default function DashboardPage() {
     try { localStorage.setItem(demoHintKey, 'true'); } catch { /* 無痕視窗：關掉這次就好 */ }
   };
 
+  /**
+   * 示範資料：新店註冊時依業態鋪好的範例。有殘留才顯示「一鍵清空」卡片。
+   * 示範店家（demo 模式）本來整站就是假資料，沒有這個子集合的概念，故不查。
+   */
+  const [demoCount, setDemoCount] = React.useState(0);
+  const [clearingDemo, setClearingDemo] = React.useState(false);
+  const [confirmClearDemo, setConfirmClearDemo] = React.useState(false);
+  const reloadDemoCount = React.useCallback(() => {
+    if (showSampleData) return;
+    void getDemoDataStatus().then((r) => setDemoCount(r.total)).catch(() => {});
+  }, [showSampleData]);
+  React.useEffect(() => { reloadDemoCount(); }, [reloadDemoCount]);
+
+  const doClearDemo = async () => {
+    setClearingDemo(true);
+    try {
+      await clearDemoData();
+      setDemoCount(0);
+      toast.show(t.demoData.cleared);
+    } catch (e) {
+      toast.show(`${t.demoData.clearFailed}${e instanceof Error ? e.message : ''}`, 'danger');
+    } finally {
+      setClearingDemo(false);
+      setConfirmClearDemo(false);
+    }
+  };
+
   const [focusOpen, setFocusOpen] = React.useState(true);
   const [confirmSkipFocus, setConfirmSkipFocus] = React.useState(false);
   const [calSyncPromoOpen, setCalSyncPromoOpen] = React.useState(true);
@@ -336,6 +364,35 @@ export default function DashboardPage() {
         </Alert>
       ) : null}
 
+      {/* ------------------------------------------ 示範資料提示＋一鍵清空 */}
+      {!showSampleData && demoCount > 0 ? (
+        <Alert tone="warning" className="mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 font-bold">{t.demoData.title}</div>
+              <p className="text-sm">{t.demoData.body(demoCount)}</p>
+            </div>
+            <Button
+              variant="outline" size="sm"
+              loading={clearingDemo} loadingText={t.demoData.clearing}
+              onClick={() => setConfirmClearDemo(true)}
+            >
+              {t.demoData.clear}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
+
+      <ConfirmModal
+        open={confirmClearDemo}
+        title={t.demoData.confirmTitle}
+        message={t.demoData.confirmBody}
+        danger
+        loading={clearingDemo}
+        onClose={() => setConfirmClearDemo(false)}
+        onConfirm={() => void doClearDemo()}
+      />
+
       {/* ------------------------------------------------ 3 分鐘開始收單 引導卡 */}
       {focusOpen ? (
         <Card className="mb-4 border-primary bg-gradient-primary text-neutral-0">
@@ -440,7 +497,7 @@ export default function DashboardPage() {
                     {s.done ? '✓' : '·'}
                   </span>
                   <span className={s.done ? 'text-sm text-secondary line-through' : 'text-sm font-semibold text-dark'}>
-                    {t.setup.steps[s.key]}
+                    {setupStepLabel(s.key, currentTenant.businessType)}
                   </span>
                 </li>
               ))}
