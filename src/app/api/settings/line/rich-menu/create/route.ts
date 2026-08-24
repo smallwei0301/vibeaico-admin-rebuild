@@ -1,8 +1,11 @@
+import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { lineSettingsSchema } from '@/config/tenant-settings';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+import { RICH_MENU_THEME_KEYS, RICH_MENU_THEME_COLORS } from '@/config/rich-menu-themes';
+import { solidColorPng } from '@/server/png';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
   lineSetDefaultRichMenu, lineDeleteRichMenu,
@@ -57,11 +60,20 @@ function buildRichMenuBody(theme: string, businessType: BusinessType) {
   };
 }
 
-/** 取得底圖 bytes + contentType；拿不到 → 丟 4xx 明確 message */
+/**
+ * 取得底圖 bytes + contentType。優先順序：
+ *   1. 店家自傳底圖（upload-bg-image 存進 bucket 的 public URL）
+ *   2. richmenu-assets bucket 裡預先上架的主題圖檔 themes/{THEME}.png|jpg
+ *   3. 現生成一張該主題色的純色 PNG（src/server/png.ts）
+ *
+ * 原本第 3 步不存在——bucket 裡沒圖就直接 404，等於「套用範本」永遠發布不出去，
+ * 因為平台從沒人手動上傳過六張主題底圖（2026-08-24 查證 richmenu-assets 是空的）。
+ * 純色底圖讓「選一個主題就能發布」在任何情況下都成立，之後要美化再補真圖即可，
+ * 不影響已發布的選單（換真圖只是重新整個 create 流程）。
+ */
 async function loadBackgroundImage(
   theme: string, bgImageUrl: string,
-): Promise<{ bytes: ArrayBuffer; contentType: string }> {
-  // 店家自傳底圖（upload-bg-image 存進 bucket 的 public URL）優先
+): Promise<{ bytes: ArrayBuffer | Buffer; contentType: string }> {
   if (bgImageUrl) {
     const res = await fetch(bgImageUrl).catch(() => null);
     if (!res?.ok)
@@ -71,26 +83,28 @@ async function loadBackgroundImage(
     return { bytes: await res.arrayBuffer(), contentType };
   }
 
-  // 主題底圖：richmenu-assets bucket 的 themes/{THEME}.png|jpg（0008 已建 bucket）
   const admin = createAdminSupabase();
   for (const [ext, contentType] of [['png', 'image/png'], ['jpg', 'image/jpeg']] as const) {
     const { data } = await admin.storage.from('richmenu-assets').download(`themes/${theme}.${ext}`);
     if (data) return { bytes: await data.arrayBuffer(), contentType };
   }
-  throw new ApiHttpError(
-    404,
-    `主題底圖尚未上架（richmenu-assets/themes/${theme}.png），請先於後台上傳自訂底圖，或聯絡平台補上主題圖檔`,
-    ERR.NOT_FOUND,
-  );
+
+  const bg = RICH_MENU_THEME_COLORS[theme as keyof typeof RICH_MENU_THEME_COLORS]?.bg ?? '#06c755';
+  return { bytes: solidColorPng(2500, 1686, bg), contentType: 'image/png' };
 }
 
-export const POST = handle(async () => {
+const bodySchema = z.object({ theme: z.enum(RICH_MENU_THEME_KEYS).optional() });
+
+export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  const body = bodySchema.parse(await req.json().catch(() => ({})));
 
   // 憑證 + 現行 line 設定（未設定 LINE → getLineCredentials 丟 400 LINE_001）
   const { token, lineConfig } = await getLineCredentials(t.tenantId);
   const line = lineSettingsSchema.partial().parse(lineConfig);
-  const theme = line.richMenuTheme ?? 'LINE_GREEN';
+  // 這次請求指定的主題優先（前端「一鍵套用範本」不必先呼叫 PUT 存設定再呼叫這支）；
+  // 否則用店家上次存的值，最後才落回預設綠色。
+  const theme = body.theme ?? line.richMenuTheme ?? 'LINE_GREEN';
 
   // 六格文案依業態（嚮導 → 行程/團次；診所 → 掛號/看診進度），見 MODE_PRESETS
   const { data: tenantRow } = await t.supabase.from('tenants')
@@ -118,8 +132,8 @@ export const POST = handle(async () => {
       .catch((e) => console.error('[rich-menu] 刪除舊選單失敗', t.tenantId, previousId, e));
   }
 
-  // ⑤ richMenuId 記到 line jsonb
-  const nextLine: Record<string, unknown> = { ...lineConfig, richMenuId };
+  // ⑤ richMenuId + 實際套用的主題記到 line jsonb（body.theme 可能覆寫了舊設定）
+  const nextLine: Record<string, unknown> = { ...lineConfig, richMenuId, richMenuTheme: theme };
   delete nextLine.channelSecret;
   delete nextLine.channelAccessToken;
   const { error } = await t.supabase

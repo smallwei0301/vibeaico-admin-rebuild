@@ -17,7 +17,8 @@ import {
   FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listFeatures } from '@/services/settings';
+import { listFeatures, getTenantSettings, createRichMenu, deleteRichMenu } from '@/services/settings';
+import { ApiError } from '@/lib/api';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
@@ -213,9 +214,23 @@ function RichMenuTab({
   const [publishing, setPublishing] = React.useState(false);
   const [confirm, setConfirm] = React.useState<null | 'publish' | 'restore' | 'delete' | 'apply'>(null);
   const [pendingName, setPendingName] = React.useState('');
+  const [pendingTheme, setPendingTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [popupCell, setPopupCell] = React.useState<number | null>(null);
   const [hasBackup, setHasBackup] = React.useState(false);
   const [guideCard, setGuideCard] = React.useState(true);
+  const [richMenuId, setRichMenuId] = React.useState('');
+
+  // 進頁面時把店家上次實際發布的主題／發布狀態讀回來，畫面才不會跟 LINE 端的
+  // 真實狀態脫節（例如已經發布過，卻一直顯示「未發布」的假狀態）。
+  React.useEffect(() => {
+    void (async () => {
+      const settings = await getTenantSettings().catch(() => null);
+      if (!settings) return;
+      const savedTheme = settings.line.richMenuTheme as ThemeKey | undefined;
+      if (savedTheme && THEMES.some((th) => th.key === savedTheme)) setTheme(savedTheme);
+      if (settings.line.richMenuId) { setRichMenuId(settings.line.richMenuId); setHasBackup(true); }
+    })();
+  }, []);
 
   const rows = LAYOUT_ROWS[layout] ?? LAYOUT_ROWS['3+4'];
   const cellCount = rows.reduce((a, b) => a + b, 0);
@@ -343,7 +358,7 @@ function RichMenuTab({
                         <Button variant="outline" size="sm" onClick={() => toast.show(t.scene.previewCaption, 'info')}>
                           <Eye size={13} />{t.scene.previewBtn}
                         </Button>
-                        <Button size="sm" onClick={() => { setPendingName(s.name); setConfirm('publish'); }}>
+                        <Button size="sm" onClick={() => { setPendingName(s.name); setPendingTheme(s.theme); setConfirm('publish'); }}>
                           <Send size={13} />{t.publish.publish}
                         </Button>
                       </div>
@@ -469,6 +484,7 @@ function RichMenuTab({
                 {t.cells.lockedHint}
               </Alert>
             )}
+            <Alert tone="info" className="m-4">{t.cells.publishUsesPreset}</Alert>
             {cellCount === 0 ? (
               <EmptyState title={t.layout.cardTitle} description={t.layout.note} />
             ) : (
@@ -617,6 +633,7 @@ function RichMenuTab({
                 const err = validate();
                 if (err) { toast.show(err, 'danger'); return; }
                 setPendingName(themeDef.label);
+                setPendingTheme(theme);
                 setConfirm('publish');
               }}
             >
@@ -628,7 +645,9 @@ function RichMenuTab({
             <Button block variant="outlineDanger" onClick={() => setConfirm('delete')}>
               <Trash2 size={14} />{t.publish.deletePublished}
             </Button>
-            <p className="form-text text-center">{t.publish.notPublished}</p>
+            <p className="form-text text-center">
+              {richMenuId ? t.publish.publishedStatus : t.publish.notPublished}
+            </p>
           </CardBody>
         </Card>
       </div>
@@ -643,10 +662,17 @@ function RichMenuTab({
         onConfirm={async () => {
           setConfirm(null);
           setPublishing(true);
-          await new Promise((r) => setTimeout(r, 500));
-          setPublishing(false);
-          setHasBackup(true);
-          toast.show(subscribed ? t.publish.published : t.feature.freeFallbackNotice, subscribed ? 'success' : 'warning');
+          try {
+            const result = await createRichMenu(pendingTheme);
+            setRichMenuId(result.richMenuId);
+            setTheme(pendingTheme);
+            setHasBackup(true);
+            toast.show(subscribed ? t.publish.published : t.feature.freeFallbackNotice, subscribed ? 'success' : 'warning');
+          } catch (e) {
+            toast.show(e instanceof ApiError ? e.message : t.publish.publishFailed, 'danger');
+          } finally {
+            setPublishing(false);
+          }
         }}
       />
       <ConfirmModal
@@ -679,7 +705,17 @@ function RichMenuTab({
         message={t.publish.deleteConfirm}
         confirmText={common.delete}
         onClose={() => setConfirm(null)}
-        onConfirm={() => { setConfirm(null); toast.show(t.publish.deleted); }}
+        onConfirm={async () => {
+          setConfirm(null);
+          try {
+            await deleteRichMenu();
+            setRichMenuId('');
+            setHasBackup(false);
+            toast.show(t.publish.deleted);
+          } catch (e) {
+            toast.show(e instanceof ApiError ? e.message : t.publish.publishFailed, 'danger');
+          }
+        }}
       />
       <FlexPopupModal
         open={popupCell !== null}

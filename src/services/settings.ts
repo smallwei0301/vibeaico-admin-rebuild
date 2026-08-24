@@ -58,6 +58,24 @@ export const verifyLineSetup = () =>
 export const getSetupStatus = () =>
   adapt<SetupStatus>(() => MOCK_SETUP_STATUS, () => request<SetupStatus>('/api/settings/setup-status'));
 
+/**
+ * 建立並發布 Rich Menu（POST /api/settings/line/rich-menu/create）。
+ * 骨架模式下模擬成功；真實模式失敗時讓 ApiError 往上拋，呼叫端用真正的錯誤訊息
+ * 顯示 toast——不可以像先前的頁面本地模擬那樣，不管成不成功都顯示「已發布」。
+ */
+export const createRichMenu = (theme: string) =>
+  adapt<{ richMenuId: string }>(
+    () => ({ richMenuId: 'mock-rich-menu-id' }),
+    () => request<{ richMenuId: string }>('/api/settings/line/rich-menu/create', {
+      method: 'POST',
+      body: JSON.stringify({ theme }),
+    }),
+  );
+
+/** 刪除目前已發布的 Rich Menu（DELETE /api/settings/line/rich-menu）。 */
+export const deleteRichMenu = () =>
+  adapt<void>(() => undefined, () => request<void>('/api/settings/line/rich-menu', { method: 'DELETE' }));
+
 export const listFeatures = () =>
   adapt<FeatureSubscription[]>(() => MOCK_FEATURES, () => request<FeatureSubscription[]>('/api/feature-store'));
 

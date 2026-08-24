@@ -19,15 +19,15 @@ export const lineSettingsPage = {
   /* --------------------------------------------- 🔴 設定完成後必做（警示） */
   mustDo: {
     title: '設定完成後必做！否則 Bot 不會回應',
-    lead: '請到 LINE Official Account Manager 關閉自動回應：',
+    lead: '請到 LINE Official Account Manager 關閉「聊天」：',
     steps: [
       '進入您的官方帳號 → 設定 → 回應設定',
-      '「回應方式」改為只有「 手動聊天 」',
-      '不要 勾選「自動回應訊息」',
+      '「回應功能」區塊找到「 聊天 」，把「開啟聊天畫面」關掉',
+      '畫面最上方會顯示「 聊天：關閉 」才算設定成功',
       '確認「Webhook」顯示為 啟用',
     ],
-    ctaLead: '點擊下方按鈕直接前往您的回應設定頁面，將「回應方式」改為「 手動聊天 」：',
-    cta: '一鍵前往關閉自動回應',
+    ctaLead: '點擊下方按鈕直接前往您的回應設定頁面，把「 聊天 」關掉：',
+    cta: '一鍵前往關閉聊天',
     ctaHref: 'https://manager.line.biz/',
     footer: '如果不關閉，LINE 會攔截所有訊息，您的 Bot 完全不會收到也不會回應。',
   },
@@ -92,7 +92,7 @@ export const lineSettingsPage = {
         lines: [
           '1. 回到 VibeAI 後台 LINE 設定，把剛剛複製的 Channel ID、Channel Secret、Channel Access Token 貼到對應欄位',
           '2. 按「 儲存設定 」，Webhook 網址會自動帶入',
-          '3. 回 LINE 官方帳號管理後台 → 設定 → 回應設定 → 改成「 手動聊天 」',
+          '3. 回 LINE 官方帳號管理後台 → 設定 → 回應設定 → 把「 聊天 」關掉',
         ],
         note: '',
       },
@@ -102,7 +102,7 @@ export const lineSettingsPage = {
       title: '必做三件事！',
       body: '缺一不可，否則 Bot 不會回應：',
       items: [
-        '① 回應設定 →「手動聊天」（關閉自動回應）',
+        '① 回應設定 → 回應功能 →「聊天」關閉（畫面顯示「聊天：關閉」）',
         '② Messaging API → Webhook URL 已填入',
         '③ LINE Developers Console →「Use webhook」已啟用',
       ],
@@ -217,8 +217,10 @@ export const lineSettingsPage = {
      */
     fixHints: {
       AUTO_REPLY: {
-        steps: '在 LINE 官方帳號管理後台依序點：右上角「設定」→ 左側「回應設定」→ ' +
-          '把「自動回應訊息」關閉（並確認「Webhook」為啟用）。',
+        steps: '在 LINE 官方帳號管理後台依序點：左側「設定」→「回應設定」→「回應功能」區塊的' +
+          '「聊天」欄位，把「開啟聊天畫面」關掉（畫面最上方會顯示「聊天：關閉」）。' +
+          '「回應方式：手動聊天／手動聊天＋自動回應訊息」是聊天開啟時才生效的子選項，' +
+          '不會讓這項變綠——一定要關掉「聊天」本身。',
         linkText: '前往 LINE 官方帳號管理後台 → 回應設定',
         href: 'https://manager.line.biz/',
       },
@@ -397,7 +399,7 @@ export const lineSettingsPage = {
       },
       {
         q: 'Q: Bot 不回應訊息？',
-        a: '1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉',
+        a: '1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 回應功能區塊把「聊天」關掉（顯示「聊天：關閉」） 3. 「回應方式：手動聊天／自動回應訊息」是聊天開啟時的子選項，不影響此項，重點是「聊天」本身要關',
       },
       {
         q: 'Q: Webhook 驗證是什麼？',

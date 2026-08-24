@@ -109,7 +109,7 @@ export async function lineCreateRichMenu(token: string, richMenu: unknown): Prom
 
 /** 上傳 Rich Menu 圖片（api-data.line.me，06 §6 ③）；jpeg/png */
 export async function lineUploadRichMenuImage(
-  token: string, richMenuId: string, image: ArrayBuffer, contentType: string,
+  token: string, richMenuId: string, image: ArrayBuffer | Buffer, contentType: string,
 ) {
   const res = await fetch(`${lineDataApiBase()}/v2/bot/richmenu/${richMenuId}/content`, {
     method: 'POST',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RICH_MENU_THEME_KEYS } from './rich-menu-themes';
 
 /**
  * 租戶設定（Tenant Settings）— 多店家客製化的核心
@@ -42,11 +43,12 @@ export const lineSettingsSchema = z.object({
   flexShowTip: z.boolean().default(true),
   campaignKeywordEnabled: z.boolean().default(true),
   /** Rich Menu */
-  richMenuTheme: z.enum(['LINE_GREEN', 'OCEAN_BLUE', 'ROYAL_PURPLE', 'SUNSET_ORANGE', 'DARK'])
-    .default('LINE_GREEN'),
+  richMenuTheme: z.enum(RICH_MENU_THEME_KEYS).default('LINE_GREEN'),
   richMenuBgImageUrl: z.string().default(''),
   richMenuNoOverlay: z.boolean().default(false),
   richMenuTextColor: z.string().default('#FFFFFF'),
+  /** 目前已發布到 LINE 的 Rich Menu ID；發布成功後由 rich-menu/create 端點寫入。 */
+  richMenuId: z.string().default(''),
 });
 
 /* ------------------------------------------------------------- 基本 / 營業 */

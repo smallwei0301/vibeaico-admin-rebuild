@@ -183,6 +183,10 @@ export const richMenuDesignPage = {
   cells: {
     cardTitle: '每格設定',
     hint: '點預覽格子可快速定位',
+    /** 目前「發布到 LINE」固定套用你營運模式的建議文案，逐格自訂文字/連結尚未接上
+     *  發布——不寫這句會讓人以為改了這裡發布就會生效，改了其實沒用（CLAUDE.md
+     *  「不要製造假的已知」）。 */
+    publishUsesPreset: '目前「發布到 LINE」會固定套用畫面右側預覽的六格文字（依你的營運模式預設），下方逐格自訂文字/連結尚未接上發布，之後會補上。',
     columns: { index: '#', label: '標籤', action: '動作', icon: '圖示' },
     labelPlaceholder: '顧客點擊後送出的文字',
     lockedHint: '每格設定需訂閱「進階自訂選單」',
@@ -251,6 +255,7 @@ export const richMenuDesignPage = {
     deletePublished: '刪除已發布',
     deleting: '刪除中...',
     notPublished: '未發布',
+    publishedStatus: '✅ 已發布到 LINE',
 
     draftSaved: '草稿已儲存（尚未發布到 LINE）',
     draftSaveFailed: '儲存 Rich Menu draft 失敗',

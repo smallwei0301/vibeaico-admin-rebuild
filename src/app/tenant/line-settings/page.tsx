@@ -37,7 +37,9 @@ import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
  *    （richMenuTheme / richMenuTextColor，見 src/config/tenant-settings.ts），
  *    是 LINE 官方選單底圖的配色，與本後台的佈景無關，因此不走 Tailwind token。
  */
-const THEME_PRESETS: { key: LineSettings['richMenuTheme']; swatch: string }[] = [
+/** BOUTIQUE 是進階主題（選單設計頁才開放，見 rich-menu-design.ts），這裡的快速
+ *  預覽只收原本 5 色，故排除它以免多一個沒有 i18n 文案的鍵。 */
+const THEME_PRESETS: { key: Exclude<LineSettings['richMenuTheme'], 'BOUTIQUE'>; swatch: string }[] = [
   { key: 'LINE_GREEN', swatch: '#06C755' },
   { key: 'OCEAN_BLUE', swatch: '#1E88E5' },
   { key: 'ROYAL_PURPLE', swatch: '#7E57C2' },

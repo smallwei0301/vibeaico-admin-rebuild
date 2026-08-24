@@ -17,7 +17,9 @@
 LINE Developers → 建 Messaging API channel → 把 Channel ID / Secret / Access Token
 貼進 `/tenant/line-settings` → 系統顯示該店專屬 Webhook URL
 `{APP_URL}/api/line/webhook/{shopCode}` → 店家貼回 LINE console 並啟用 webhook、
-關閉「自動回應訊息」。
+關閉「聊天」（設定 → 回應設定 → 回應功能 →「聊天」，畫面顯示「聊天：關閉」；
+「回應方式：手動聊天／手動聊天＋自動回應訊息」只是聊天開啟時的子選項，不會讓
+`chatMode` 變成 `bot`，一定要關「聊天」本身——2026-08-24 用真實 LINE 帳號實測驗證）。
 
 ---
 
