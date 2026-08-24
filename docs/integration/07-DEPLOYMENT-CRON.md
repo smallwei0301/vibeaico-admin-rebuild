@@ -35,6 +35,22 @@ Vercel → 專案 → Settings → Environment Variables，依 01 分冊 §3 總
 （cron 是 **UTC**：`0 1` = 台北 09:00 生日祝福；`0 6` = 台北 14:00 喚回，
 與原站文案一致；`30 16` = 台北 00:30 產生定期預約。）
 
+> ⚠️ **實作時修正（Hobby 方案限制，實際踩到）**：上表的 booking-reminders
+> （`0 * * * *`）與 tour-order-expiry（`30 * * * *`）是**每小時**，但 Vercel
+> **Hobby 方案只允許每天一次的 cron**，更頻繁的運算式會讓**整個部署在設定
+> 驗證階段被拒絕**（官方文件 *Usage & Pricing for Cron Jobs*：「Hobby accounts
+> are limited to cron jobs that run once per day. Cron expressions that would
+> run more frequently will fail during deployment.」Hobby 另有 ±59 分鐘的排程
+> 精度誤差）。
+>
+> 因此 repo 內的 `vercel.json` 六支全部改為每日一次；連帶
+> `booking-reminders` 的時間窗改為「節奏無關」的
+> `(now, now + reminderHoursBefore]`（原本 ±30min 的窗在每日節奏下會漏掉
+> 23/24 的預約），重複仍由 `reminder_sent_at` 擋掉。
+>
+> **升級 Pro 後**：把 `vercel.json` 的 booking-reminders 改回 `0 * * * *`、
+> tour-order-expiry 改回 `30 * * * *` 即可，route 邏輯不需變動。
+
 ### 共用保護 — 每個 cron route 開頭
 
 ```ts
