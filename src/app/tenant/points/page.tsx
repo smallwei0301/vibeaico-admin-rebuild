@@ -54,9 +54,15 @@ const TYPE_TONE: Record<PointTxnType, 'success' | 'danger' | 'info' | 'warning' 
 };
 
 /** 目前訂閱功能的月費合計；正式站由 /api/points/balance 一併回傳 */
-const MOCK_MONTHLY_COST = 196;
-/** 付款處理中的儲值點數 */
-const MOCK_PENDING_TOPUP = 1000;
+/*
+ * 「月費合計」與「處理中儲值」目前**沒有對應端點**（前者要彙總
+ * feature_subscriptions 的月費，後者要接上儲值金流）。
+ *
+ * 這裡刻意不給假數字：這兩張卡就排在「點數餘額」（真實資料）旁邊，
+ * 填 196 / 1000 會讓店家把捏造值當成自己的帳務數字，而畫面上完全沒有任何
+ * 線索能分辨哪個是真的。沒有資料就顯示 --，並在 hint 說明尚未提供。
+ * 見 CLAUDE.md「不要製造假的已知」。
+ */
 
 const TXN_PAGE_SIZE = 20;
 
@@ -204,14 +210,14 @@ export default function PointsPage() {
         />
         <StatCard
           label={t.stats.monthlyCost}
-          value={loading ? t.labels.dash : t.labels.points(MOCK_MONTHLY_COST)}
+          value={t.labels.dash}
           hint={t.stats.monthlyCostHint}
           icon={CreditCard}
           tone="success"
         />
         <StatCard
           label={t.stats.pendingTopup}
-          value={loading ? t.labels.dash : t.labels.points(MOCK_PENDING_TOPUP)}
+          value={t.labels.dash}
           hint={t.stats.pendingTopupHint}
           icon={Clock}
           tone="warning"

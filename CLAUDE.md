@@ -125,6 +125,47 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 7. Money columns use `formatCurrency()` with `numeric: true`; status columns use `<Badge tone>`
    with text from a `common.*` map. Icons are lucide-react only.
 
+## Never fabricate a "known" — the false-error lesson
+
+**A status the code did not actually determine must never be displayed as if it had been.**
+This was learned the expensive way: the LINE setup report's "自動回應訊息" row was hardcoded
+`pass: false` with a "no public API to check this" comment. It never checked anything. The user
+turned the setting off in LINE, re-ran the check, still saw a red failure, and reasonably asked
+whether the error was real. It wasn't — and every earlier run of that report had been lying too.
+
+Two compounding defects, both worth recognising on sight:
+
+1. **A reminder rendered as a measurement.** "Please go check X yourself" is useful; painting it
+   red next to items that *were* measured makes it indistinguishable from a real failure.
+2. **A check that can never pass.** Because the page counted every non-pass as a failure, the
+   report could not print "全部通過" under any configuration. A warning that is always on is
+   not a warning — users learn to ignore the whole panel, including the rows that are real.
+
+It also turned out "no public API" was only half true: `GET /v2/bot/info` returns `chatMode`,
+which covers the most common cause of the same symptom. **Before encoding "we can't know this",
+check the provider's current API reference** — LINE publishes an OpenAPI spec
+(`github.com/line/line-openapi`) that settles such questions in one grep. A spec doc claiming a
+limitation (06 分冊 §7 specified this very behaviour) is not evidence the limitation still holds.
+
+Rules that follow:
+
+- Distinguish **FAIL** (we checked, it's broken) from **WARN/INFO** (we could not check, or it
+  isn't built yet). Never collapse the second into the first.
+- If a value is unknown, render the unknown state (`--`, "未設定", "未知") — **never a plausible
+  placeholder**. Fabricated numbers are worst next to real ones: the points page showed a real
+  point balance beside a hardcoded `MOCK_MONTHLY_COST = 196` and `MOCK_PENDING_TOPUP = 1000`,
+  with nothing on screen to tell them apart. The dashboard likewise labelled every configured
+  account "輕量版" from a `MOCK_LINE_PLAN` constant, though LINE exposes no plan lookup at all.
+- State only what was verified. `linePlatformStatus` returns `CONNECTED` whenever a token
+  *string exists*, without ever calling LINE — so a revoked token still reads as connected.
+  Either verify, or name the state after what you actually know ("已設定", not "已連接").
+- Returning **empty** for a feature that isn't built yet is honest and fine (`/api/calendar`'s
+  DEPARTURE/EXTERNAL sources, `upcomingDepartureCount` before Phase 8b). Returning a **made-up
+  value** is not. The line is: absence of data ≠ invented data.
+- When a placeholder is genuinely unavoidable, say so *in the UI where the user reads it*, not
+  only in a code comment. The comment protects the next developer; the user is the one being
+  misled.
+
 ## Database changes: always apply to BOTH Supabase projects
 
 There are two Supabase projects and **every migration must be applied to both, in the same

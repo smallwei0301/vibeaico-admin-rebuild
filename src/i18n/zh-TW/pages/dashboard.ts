@@ -120,6 +120,8 @@ export const dashboardPage = {
     linePlanLite: '輕量版',
     linePlanPro: '專業版',
     lineNotConfigured: '未設定 LINE',
+    /** 已填 token；LINE 未開放查詢官方帳號方案，因此只陳述我們真的知道的事 */
+    lineConfigured: '已設定',
     unknown: '未知',
   },
 

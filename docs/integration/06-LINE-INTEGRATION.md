@@ -202,7 +202,7 @@ export async function notifyBookingStatus(
 |---|---|
 | TOKEN | `lineBotInfo()` 成功 |
 | WEBHOOK | `GET /v2/bot/channel/webhook/endpoint` 的 endpoint 等於本店 webhook URL 且 active |
-| AUTO_REPLY | 無公開 API 可查 → 恆回 `pass:false` + 提醒文案（與原站行為一致，提醒店家手動關閉） |
+| AUTO_REPLY | ⚠️ **本行原規格已修正，不要照抄。** 原文寫「無公開 API 可查 → 恆回 `pass:false` + 提醒文案」，實作後使用者實測：在 LINE 關閉自動回應仍看到紅色失敗，因為這項從不檢查任何東西。且頁面把所有非 pass 算成失敗，報告永遠不可能「全部通過」，久了整份被忽略。<br>另外「無公開 API」只對一半：`GET /v2/bot/info` 的 `chatMode` 查得到同一頁的「聊天」開關（`bot`=關、`chat`=開），那正是「Bot 沒反應」最常見的成因（LINE 官方 OpenAPI `BotInfoResponse.chatMode`）。<br>**現行實作**：以 `chatMode` 給真實結論；查不到的部分（自動回應開關本身）降級為 `severity:'WARN'` 提醒，不再是永久失敗。詳見 CLAUDE.md「不要製造假的已知」。 |
 | RICH_MENU | `GET /v2/bot/user/all/richmenu` 有值 |
 | QUOTA | `GET /v2/bot/message/quota/consumption` 對比 quota，回剩餘則數 |
 

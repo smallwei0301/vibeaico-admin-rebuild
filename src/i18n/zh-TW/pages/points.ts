@@ -12,9 +12,9 @@ export const pointsPage = {
     balance: '目前餘額',
     balanceHint: '可用於訂閱功能',
     monthlyCost: '每月訂閱費用',
-    monthlyCostHint: '目前訂閱功能的月費合計（下次續訂時扣）',
+    monthlyCostHint: '目前訂閱功能的月費合計（下次續訂時扣）；此統計尚未提供，接上後顯示',
     pendingTopup: '處理中儲值',
-    pendingTopupHint: '付款處理中',
+    pendingTopupHint: '付款處理中；儲值金流尚未接上，接上後顯示',
   },
 
   /* ---------------------------------------------------------- 付款結果 */

@@ -40,8 +40,14 @@ import type {
 /* 本頁專用的骨架假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
 /* -------------------------------------------------------------------------- */
 
-/** LINE 官方帳號方案：原站由 /api/settings/line 取得，骨架階段先固定 */
-const MOCK_LINE_PLAN: 'LITE' | 'PRO' = 'LITE';
+/*
+ * 這裡原本有一個 `MOCK_LINE_PLAN: 'LITE' | 'PRO' = 'LITE'`，只要 LINE 已設定就
+ * 一律把統計卡標成「輕量版」——不管店家實際買的是哪個方案。
+ *
+ * LINE 並未開放查詢官方帳號的推播方案，所以正確做法不是換一個預設值，而是
+ * 不要宣稱我們查不到的事：已設定就說「已設定」。
+ * 見 CLAUDE.md「不要製造假的已知」。
+ */
 
 type ActivityType =
   | 'BOOKING_CREATED' | 'BOOKING_CANCELLED' | 'BOOKING_COMPLETED'
@@ -294,7 +300,7 @@ export default function DashboardPage() {
   const linePlanLabel =
     stats?.linePlatformStatus === 'NOT_CONFIGURED' ? t.stats.lineNotConfigured
       : stats?.linePlatformStatus === 'ERROR' ? t.stats.unknown
-        : MOCK_LINE_PLAN === 'PRO' ? t.stats.linePlanPro : t.stats.linePlanLite;
+        : t.stats.lineConfigured;
 
   const todayColumns: Column<Booking>[] = [
     { key: 'time', header: t.todayBookings.columns.time, width: '84px', render: (b) => formatTime(b.startAt) },
