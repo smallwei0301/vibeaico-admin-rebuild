@@ -38,6 +38,17 @@ export type ModePreset = {
   keywordGroups: readonly string[];
   /** 公開商店頁的預設區塊順序（11 分冊 catalog 端點） */
   shopSections: readonly string[];
+  /**
+   * LINE 圖文選單（Rich Menu）的預設六格。
+   *
+   * 每格的 text 會同時是 LINE message action 送出的文字，因此**必須**對得上
+   * webhook 的內建指令與該模式的關鍵字組（keywordGroups）——嚮導按「服務項目」
+   * 送出的文字沒有任何 handler 認得，等於按了沒反應。
+   *
+   * 這裡放進 preset 而不是寫在 rich-menu route 裡，是因為 CLAUDE.md 明訂
+   * MODE_PRESETS 是所有「因模式而異」決策的唯一真相；六格文案正是這種決策。
+   */
+  richMenuCells: readonly { label: string; text: string }[];
 };
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
@@ -50,6 +61,14 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     staffTerm: '服務人員',
     keywordGroups: [],
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
+    richMenuCells: [
+      { label: '立即預約', text: '預約' },
+      { label: '我的預約', text: '我的預約' },
+      { label: '服務項目', text: '服務項目' },
+      { label: '會員卡', text: '會員卡' },
+      { label: '優惠票券', text: '優惠' },
+      { label: '聯絡我們', text: '聯絡我們' },
+    ],
   },
   GUIDE: {
     icon: Compass,
@@ -64,6 +83,15 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     staffTerm: '導遊',
     keywordGroups: ['TRIP', 'DEPARTURE'],
     shopSections: ['TRIPS', 'PORTFOLIO'],
+    // 嚮導賣的是行程與團次，不是「時段×員工」的預約；六格照這個語彙走
+    richMenuCells: [
+      { label: '所有行程', text: '行程' },
+      { label: '近期團次', text: '團次' },
+      { label: '我的訂單', text: '我的訂單' },
+      { label: '常見問題', text: '常見問題' },
+      { label: '優惠票券', text: '優惠' },
+      { label: '聯絡嚮導', text: '聯絡我們' },
+    ],
   },
   CLINIC: {
     icon: Hospital,
@@ -74,6 +102,14 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     staffTerm: '醫師',
     keywordGroups: [],
     shopSections: ['SERVICES'],
+    richMenuCells: [
+      { label: '線上掛號', text: '預約' },
+      { label: '我的掛號', text: '我的預約' },
+      { label: '看診項目', text: '服務項目' },
+      { label: '看診進度', text: '看診進度' },
+      { label: '門診時間', text: '營業時間' },
+      { label: '聯絡診所', text: '聯絡我們' },
+    ],
   },
 };
 

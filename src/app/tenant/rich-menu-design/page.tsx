@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listFeatures } from '@/services/settings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { richMenuDesignPage as t } from '@/i18n/zh-TW/pages/rich-menu-design';
@@ -178,10 +179,33 @@ function RichMenuTab({
   subscribed, toast,
 }: { subscribed: boolean; toast: ReturnType<typeof useToast> }) {
   const SHOP_NAME = useCurrentTenant().name;
+  const businessType = useBusinessType();
+
+  /**
+   * 這個業態實際會被發布的六格（MODE_PRESETS.richMenuCells）。
+   * 與 /api/settings/line/rich-menu/create 讀的是同一份 preset，因此畫面預覽
+   * 與顧客最後看到的選單一致——先前預覽固定是 DEFAULT_CELLS（美髮沙龍那組），
+   * 嚮導看到的預覽跟發布結果對不起來。
+   *
+   * 必須在 render 期算：模組層取值會在 AppShell 設定業態之前就凍結。
+   */
+  const modeCells: Cell[] = React.useMemo(
+    () => MODE_PRESETS[businessType].richMenuCells.map((c) => ({
+      label: c.label, action: 'SEND_TEXT' as CellAction, value: c.text, icon: '',
+    })),
+    [businessType],
+  );
+
   const [theme, setTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [layout, setLayout] = React.useState('3+4');
   const [bgUrl, setBgUrl] = React.useState('');
   const [cells, setCells] = React.useState<Cell[]>(DEFAULT_CELLS);
+  // 業態一確定就把六格換成該模式的推薦範本（使用者要求「依進入模式不同，
+  // 先預設好第一個範本」）。只在使用者還沒動過格子時套用，避免蓋掉他的編輯。
+  const [cellsTouched, setCellsTouched] = React.useState(false);
+  React.useEffect(() => {
+    if (!cellsTouched) setCells(modeCells);
+  }, [modeCells, cellsTouched]);
   const [activeCell, setActiveCell] = React.useState(0);
   const [sceneOpen, setSceneOpen] = React.useState(true);
   const [quickOpen, setQuickOpen] = React.useState(false);
@@ -199,8 +223,11 @@ function RichMenuTab({
   const layoutDef = t.layout.options.find((l) => l.key === layout);
   const isLarge = rows.length >= 3;
 
-  const updateCell = (i: number, patch: Partial<Cell>) =>
+  const updateCell = (i: number, patch: Partial<Cell>) => {
+    // 使用者一旦動過格子，就不再被業態預設覆寫（見上面的 cellsTouched effect）
+    setCellsTouched(true);
     setCells((c) => c.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+  };
 
   /** 發布前的驗證 —— 完整照原站規則 */
   const validate = (): string | null => {
@@ -304,7 +331,7 @@ function RichMenuTab({
                     <MenuPreview
                       theme={THEMES.find((x) => x.key === s.theme)!}
                       rows={[3, 4]}
-                      cells={DEFAULT_CELLS}
+                      cells={modeCells}
                       shopName={SHOP_NAME}
                       compact
                     />

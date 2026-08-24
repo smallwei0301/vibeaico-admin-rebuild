@@ -209,6 +209,26 @@ export const lineSettingsPage = {
     webhookOffHint:
       'Webhook 沒開啟 → LINE 不會把使用者點選/訊息送到本系統 → 看起來 Bot 像在睡覺。修好後馬上活過來。',
     gotoLineConsole: '直接前往 LINE 後台',
+
+    /**
+     * 各檢查項失敗時的「怎麼修」指引 + 可以直接點過去的連結。
+     * AUTO_REPLY 與 RICH_MENU 兩項光看訊息不知道要去哪裡設定，是使用者實測
+     * 回報的痛點——前者更是「按 Bot 沒反應」最常見的元兇。
+     */
+    fixHints: {
+      AUTO_REPLY: {
+        steps: '在 LINE 官方帳號管理後台依序點：右上角「設定」→ 左側「回應設定」→ ' +
+          '把「自動回應訊息」關閉（並確認「Webhook」為啟用）。',
+        linkText: '前往 LINE 官方帳號管理後台 → 回應設定',
+        href: 'https://manager.line.biz/',
+      },
+      RICH_MENU: {
+        steps: '圖文選單要先在本系統設計並發布，顧客的 LINE 聊天室下方才會出現選單。' +
+          '我們已依你的營運模式預設好一組範本，套用後即可發布。',
+        linkText: '前往圖文選單設計',
+        href: '/tenant/rich-menu-design',
+      },
+    } as Record<string, { steps: string; linkText: string; href: string }>,
   },
 
   /* ------------------------------------------------------- 加好友 QR Code */

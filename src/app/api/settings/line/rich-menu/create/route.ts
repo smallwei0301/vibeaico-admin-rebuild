@@ -2,6 +2,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { lineSettingsSchema } from '@/config/tenant-settings';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
   lineSetDefaultRichMenu, lineDeleteRichMenu,
@@ -31,10 +32,15 @@ const CELLS = [
   { x: 0, y: 0, w: 833, h: 843 }, { x: 833, y: 0, w: 833, h: 843 }, { x: 1666, y: 0, w: 834, h: 843 },
   { x: 0, y: 843, w: 833, h: 843 }, { x: 833, y: 843, w: 833, h: 843 }, { x: 1666, y: 843, w: 834, h: 843 },
 ];
-/** 六格的 message action 文字（對應 webhook 內建指令與關鍵字，06 §3/§6） */
-const CELL_TEXTS = ['預約', '我的預約', '服務項目', '會員卡', '優惠', '聯絡我們'];
-
-function buildRichMenuBody(theme: string) {
+/**
+ * 六格的 message action 文字改由 MODE_PRESETS.richMenuCells 決定。
+ *
+ * 原本這裡寫死 ['預約','我的預約','服務項目','會員卡','優惠','聯絡我們']，
+ * 三種業態共用——但嚮導賣的是行程與團次，他的顧客按「服務項目」送出的文字
+ * 沒有任何 handler 認得（那些關鍵字屬 LOCAL_SHOP），等於按了沒反應。
+ * CLAUDE.md 明訂模式差異一律進 MODE_PRESETS，不在各處散落 if。
+ */
+function buildRichMenuBody(theme: string, businessType: BusinessType) {
   return {
     size: { width: 2500, height: 1686 },
     selected: true,
@@ -42,7 +48,11 @@ function buildRichMenuBody(theme: string) {
     chatBarText: '選單',
     areas: CELLS.map((c, i) => ({
       bounds: { x: c.x, y: c.y, width: c.w, height: c.h },
-      action: { type: 'message', label: CELL_TEXTS[i], text: CELL_TEXTS[i] },
+      action: {
+        type: 'message',
+        label: MODE_PRESETS[businessType].richMenuCells[i].label,
+        text: MODE_PRESETS[businessType].richMenuCells[i].text,
+      },
     })),
   };
 }
@@ -82,11 +92,16 @@ export const POST = handle(async () => {
   const line = lineSettingsSchema.partial().parse(lineConfig);
   const theme = line.richMenuTheme ?? 'LINE_GREEN';
 
+  // 六格文案依業態（嚮導 → 行程/團次；診所 → 掛號/看診進度），見 MODE_PRESETS
+  const { data: tenantRow } = await t.supabase.from('tenants')
+    .select('business_type').eq('id', t.tenantId).maybeSingle();
+  const businessType = (tenantRow?.business_type ?? 'LOCAL_SHOP') as BusinessType;
+
   // ③ 的圖先取——圖拿不到就不要在 LINE 端留下半成品選單
   const image = await loadBackgroundImage(theme, line.richMenuBgImageUrl ?? '');
 
   // ② 建立 → ③ 傳圖 → ④ 設為預設
-  const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme));
+  const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme, businessType));
   try {
     await lineUploadRichMenuImage(token, richMenuId, image.bytes, image.contentType);
     await lineSetDefaultRichMenu(token, richMenuId);

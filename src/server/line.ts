@@ -130,3 +130,23 @@ export const lineSetDefaultRichMenu = (token: string, richMenuId: string) =>
 /** DELETE /v2/bot/richmenu/{id} — 換新選單時清掉舊的（呼叫端自行決定是否吞錯） */
 export const lineDeleteRichMenu = (token: string, richMenuId: string) =>
   lineFetch(token, `/v2/bot/richmenu/${richMenuId}`, { method: 'DELETE' });
+
+/**
+ * PUT /v2/bot/channel/webhook/endpoint — 把 webhook 網址直接設定到 LINE。
+ *
+ * 沒有這一步的話，後台顯示的 Webhook URL 只是「給店家自己複製去貼」的字串，
+ * LINE 那邊完全不知道——店家按了儲存卻發現「完整檢查」仍說網址不符，
+ * 因為那項檢查讀的是 LINE 伺服器上的實際設定。
+ *
+ * 不丟錯：呼叫端要能把失敗轉成畫面上的提示（例如 Channel 沒開 Messaging API
+ * 權限、或 token 只有部分權限），而不是讓整個「儲存設定」失敗。
+ */
+export async function lineSetWebhookEndpoint(token: string, endpoint: string) {
+  const res = await fetch(`${lineApiBase()}/v2/bot/channel/webhook/endpoint`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+  const body = await res.json().catch(() => ({}) as any);
+  return { ok: res.ok, status: res.status, body: body as Record<string, any> };
+}

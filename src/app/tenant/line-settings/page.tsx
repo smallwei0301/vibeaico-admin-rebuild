@@ -1251,6 +1251,31 @@ export default function LineSettingsPage() {
                 {!c.pass && c.key === 'WEBHOOK' ? (
                   <div className="form-text">{t.verifyReport.webhookOffHint}</div>
                 ) : null}
+                {/* 失敗項目附上「怎麼修 + 直接點過去」——只講哪裡錯、不講去哪修，
+                    店家只能自己猜（AUTO_REPLY／RICH_MENU 兩項使用者實測卡住） */}
+                {!c.pass && t.verifyReport.fixHints[c.key] ? (
+                  <>
+                    <div className="form-text">{t.verifyReport.fixHints[c.key].steps}</div>
+                    {t.verifyReport.fixHints[c.key].href.startsWith('/') ? (
+                      <Link
+                        className="btn btn-outline btn-sm mt-2"
+                        href={t.verifyReport.fixHints[c.key].href}
+                      >
+                        {t.verifyReport.fixHints[c.key].linkText}
+                      </Link>
+                    ) : (
+                      <a
+                        className="btn btn-outline btn-sm mt-2"
+                        href={t.verifyReport.fixHints[c.key].href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink size={13} />
+                        {t.verifyReport.fixHints[c.key].linkText}
+                      </a>
+                    )}
+                  </>
+                ) : null}
               </div>
             </div>
           ))}

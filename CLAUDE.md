@@ -125,6 +125,44 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 7. Money columns use `formatCurrency()` with `numeric: true`; status columns use `<Badge tone>`
    with text from a `common.*` map. Icons are lucide-react only.
 
+## Database changes: always apply to BOTH Supabase projects
+
+There are two Supabase projects and **every migration must be applied to both, in the same
+session you write it** — never to just one:
+
+| Project | ref | Used by |
+|---|---|---|
+| Vibeaico-admin-rebuild 正式 | `egehnijjpgijmccagxac` | Vercel **production** and **preview** (the branch preview URL is the manual-testing site) |
+| Vibeaico-admin-rebuild test | `nmwhwngojosmagjuvxol` | `npm run test:integration`, CI's `integration` job, Playwright E2E |
+
+Applying to only one is the single most common way to break things later: the app deploys fine
+but the *other* environment 500s on a missing column, and the failure surfaces hours later in a
+context where the cause is not obvious. Integration tests run against TEST; the preview site the
+user tests by hand runs against 正式 — a column added to one but not the other means one of those
+two will fail.
+
+Apply via the Management API (the only channel reachable from this sandbox — the sandbox proxy
+only passes HTTPS, so `psql` / `supabase db push` cannot connect):
+
+```js
+// SUPABASE_ACCESS_TOKEN (sbp_…) is in .env.local; project API keys do NOT work here.
+for (const ref of ['nmwhwngojosmagjuvxol', 'egehnijjpgijmccagxac']) {
+  await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: sql }),
+  });
+}
+```
+
+Run it with `NODE_USE_ENV_PROXY=1`, then **verify** (query `information_schema.columns` or
+`pg_class` on both) rather than trusting the 201. Migrations are one-shot `create` statements
+against a clean project, so re-running one errors — that is expected, not a failure to fix.
+
+⚠️ `scripts/test/reset-db.mjs` wipes every business table before each integration run. It has a
+hard safety lock refusing to touch 正式, so the preview site's data is safe — but anything created
+by hand in the **TEST** project will be destroyed by the next `npm run test:integration`.
+
 ## Key docs
 
 - `docs/CONVENTIONS.md` — read before adding a page
