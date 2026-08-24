@@ -196,6 +196,20 @@ export const dashboardPage = {
   },
 
   /* ------------------------------------------------------------ 圖表區 */
+  demoHint: {
+    title: '還沒有資料嗎？先看看示範店家',
+    body: '你的後台目前是全新的，各頁面都還沒有資料。可以從右上角的店家選單切換到「示範店家」，' +
+      '看看有實際資料時各功能長什麼樣子；看完再切回自己的店開始設定。',
+    dismiss: '知道了',
+  },
+
+  trialBanner: {
+    title: '全功能試用中',
+    bodyPrefix: '所有付費功能已為你開通，試用到 ',
+    bodySuffix: '。試用期結束後未訂閱的功能會自動關閉，可到功能商店選擇要留下的功能。',
+    cta: '看看功能商店',
+  },
+
   weeklyTrend: {
     title: '本週預約趨勢',
     detailReport: '詳細報表',
@@ -203,6 +217,7 @@ export const dashboardPage = {
     revenue: '營收 (NT$)',
     tooltipBookings: '預約數：',
     tooltipRevenue: '營收：NT$ ',
+    empty: '本週還沒有預約資料',
   },
 
   monthSource: {

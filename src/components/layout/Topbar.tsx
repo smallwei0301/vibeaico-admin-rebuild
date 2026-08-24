@@ -70,18 +70,34 @@ export function Topbar({
               <div className="px-3 py-2 text-2xs font-bold uppercase text-secondary">
                 {common.topbar.myShops}
               </div>
-              {tenants.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => { onSwitchTenant?.(t.id); setShopMenu(false); }}
-                  className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-neutral-100',
-                    t.id === currentTenant.id && 'font-semibold text-primary',
-                  )}
-                >
-                  <Building2 size={15} />
-                  <span className="truncate">{t.name}</span>
-                </button>
+              {tenants.map((t, i) => (
+                <React.Fragment key={t.id}>
+                  {/* 示範店家排在清單尾端，第一個示範店家前插一條分隔標題，
+                      讓使用者一眼看出以下不是自己的店 */}
+                  {t.demo && !tenants[i - 1]?.demo ? (
+                    <>
+                      <hr className="my-1 border-neutral-200" />
+                      <div className="px-3 py-2 text-2xs font-bold uppercase text-secondary">
+                        {common.topbar.demoShops}
+                      </div>
+                    </>
+                  ) : null}
+                  <button
+                    onClick={() => { onSwitchTenant?.(t.id); setShopMenu(false); }}
+                    className={cn(
+                      'flex w-full items-center gap-2 px-3 py-2 text-left text-base hover:bg-neutral-100',
+                      t.id === currentTenant.id && 'font-semibold text-primary',
+                    )}
+                  >
+                    <Building2 size={15} />
+                    <span className="truncate">{t.name}</span>
+                    {t.demo ? (
+                      <span className="ml-auto flex-shrink-0 rounded px-1.5 py-0.5 text-2xs bg-[var(--badge-info-bg)] text-[var(--badge-info-fg)]">
+                        {common.topbar.demoBadge}
+                      </span>
+                    ) : null}
+                  </button>
+                </React.Fragment>
               ))}
               <hr className="my-1 border-neutral-200" />
               <Link href="/tenant/settings" className="flex items-center gap-2 px-3 py-2 text-base text-neutral-700 hover:bg-neutral-100">

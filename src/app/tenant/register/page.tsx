@@ -13,7 +13,7 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { registerPage as t } from '@/i18n/zh-TW/pages/register';
 import { ApiError } from '@/lib/api';
-import { registerTenant, sendVerificationCode } from '@/services';
+import { login, registerTenant, sendVerificationCode } from '@/services';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁常數                                                                    */
@@ -127,15 +127,24 @@ export default function RegisterPage() {
     if (!validate()) return;
     setSubmitting(true);
     try {
+      const email = form.email.trim();
       await registerTenant({
-        email: form.email.trim(),
+        email,
         code: form.verificationCode.trim(),
         password: form.password,
         tenantName: form.name.trim(),
         shopCode: form.code.trim(),
+        businessType,
       });
       toast.show(t.messages.registerSuccess);
-      router.push('/tenant/login');
+      // 註冊完直接建立 session 進後台——剛剛才輸入過的帳密不該再要求輸入一次。
+      // 自動登入失敗（例如 cookie 被擋）不是註冊失敗，退回登入頁讓使用者手動登入即可。
+      try {
+        await login(email, form.password);
+        router.push('/tenant/dashboard');
+      } catch {
+        router.push('/tenant/login');
+      }
     } catch (err) {
       toast.show(
         `${t.messages.registerFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,

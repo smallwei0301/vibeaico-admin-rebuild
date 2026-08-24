@@ -5,15 +5,15 @@ import { mapTenantSummary } from '@/server/mappers';
 // GET /api/auth/my-tenants → TenantSummary[]（src/lib/types.ts）
 // current = 與 requireTenant() 解析出的 tenantId 相同者。
 //
-// tenants 表目前沒有 business_type / extra_modules 欄位（見 mapTenantSummary
-// 註解，這兩欄要等 migration 0014 才會加），所以這裡的 select 不去撈它們——
-// mapTenantSummary 對缺欄位已有 `?? undefined` 防呆，TenantSummary 上這兩個
-// 欄位本來就是 optional，省略即可，不用自己加欄位到 SQL。
+// business_type 由 migration 0015 補上，這裡要撈出來，否則註冊時選的業態模式
+// 到不了前端，所有真實店家都會 fallback 成 LOCAL_SHOP 的選單與名詞。
+// extra_modules 仍未有欄位（13 分冊的「斜槓店家加開模組」尚未定案儲存位置），
+// mapTenantSummary 對缺欄位有 `?? undefined` 防呆，省略即可。
 export const GET = handle(async () => {
   const t = await requireTenant();
   const { data, error } = await t.supabase
     .from('tenant_users')
-    .select('tenant_id, role, tenants(shop_code, name)')
+    .select('tenant_id, role, tenants(shop_code, name, business_type)')
     .eq('user_id', t.user.id);
   if (error) throw error;
   return ok((data ?? []).map((r: any) => mapTenantSummary(r, t.tenantId)));

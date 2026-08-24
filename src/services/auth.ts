@@ -1,5 +1,6 @@
 import { adapt, request } from '@/lib/api';
 import type { TenantSummary } from '@/lib/types';
+import type { BusinessType } from '@/config/modes';
 import { MOCK_TENANTS } from '@/mock';
 
 /**
@@ -38,6 +39,8 @@ export const registerTenant = (payload: {
   password: string;
   tenantName: string;
   shopCode: string;
+  /** 業態模式（13 分冊）；後端寫進 tenants.business_type，決定後台選單與名詞 */
+  businessType?: BusinessType;
 }) =>
   adapt(
     () => undefined,

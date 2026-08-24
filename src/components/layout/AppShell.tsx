@@ -9,6 +9,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
 import { USE_MOCK } from '@/config/env';
+import { setDemoMode } from '@/lib/api';
 import { myTenants, switchTenant as switchTenantApi } from '@/services';
 import type { TenantSummary } from '@/lib/types';
 
@@ -16,6 +17,19 @@ import type { TenantSummary } from '@/lib/types';
 const EMPTY_TENANT: TenantSummary = {
   id: '', shopCode: '', name: '', role: 'STAFF', current: true, businessType: 'LOCAL_SHOP',
 };
+
+/**
+ * real 模式下附加到店家清單尾端的示範店家（三種業態各一）。
+ * 新註冊的店家後台是空的，看不出各頁面實際長什麼樣；選到這裡的任何一家，
+ * 整站資料來源會臨時切回 src/mock（見 lib/api.ts 的 setDemoMode）。
+ * id 沿用 MOCK_TENANTS 的 t_1/t_2/t_3，與真實店家的 uuid 不會相撞。
+ */
+const DEMO_TENANTS: TenantSummary[] = MOCK_TENANTS.map((t) => ({
+  ...t, current: false, demo: true,
+}));
+const DEMO_TENANT_IDS = new Set(DEMO_TENANTS.map((t) => t.id));
+/** 選到示範店家時記住，重新整理仍停在示範店家（真實店家改由後端 cookie 記） */
+const DEMO_TENANT_STORAGE_KEY = 'vibeai.demoTenant.id';
 
 /**
  * 後台版面骨架 — 對應原站 #wrapper > #sidebar + #content-wrapper。
@@ -59,18 +73,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [remoteTenants, setRemoteTenants] = React.useState<TenantSummary[]>([]);
   React.useEffect(() => {
     if (USE_MOCK) return;
+    const savedDemo = localStorage.getItem(DEMO_TENANT_STORAGE_KEY);
     myTenants().then((list) => {
       setRemoteTenants(list);
+      // 上次停在示範店家就維持在示範店家，否則回到後端 cookie 指定的那家。
+      if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) {
+        setTenantId(savedDemo);
+        return;
+      }
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
     }).catch(() => {});
   }, []);
 
-  const tenants = USE_MOCK ? MOCK_TENANTS : remoteTenants;
+  const tenants = USE_MOCK ? MOCK_TENANTS : [...remoteTenants, ...DEMO_TENANTS];
   const current = tenants.find((tt) => tt.id === tenantId) ?? tenants[0] ?? EMPTY_TENANT;
   const businessType = current.businessType ?? 'LOCAL_SHOP';
-  if (USE_MOCK) {
-    // 骨架模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
+
+  // 資料來源的切換必須在 render 期完成（不能放 effect）——頁面元件的 effect 會在
+  // 本元件 render 之後才跑，那時 adapt() 讀到的旗標必須已經是正確值。
+  const demo = !USE_MOCK && !!current.demo;
+  setDemoMode(demo);
+  if (USE_MOCK || demo) {
+    // 骨架／示範模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
     applyMockMode(businessType);
   }
 
@@ -78,7 +103,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     if (USE_MOCK) {
       localStorage.setItem('vibeai.tenant.id', id);
       setTenantId(id);
+    } else if (DEMO_TENANT_IDS.has(id)) {
+      // 示範店家純前端，不打 switch-tenant（後端沒有這些店，會 403）。
+      localStorage.setItem(DEMO_TENANT_STORAGE_KEY, id);
+      setTenantId(id);
     } else {
+      localStorage.removeItem(DEMO_TENANT_STORAGE_KEY);
       void switchTenantApi(id).then(() => window.location.reload());
     }
   };
@@ -105,7 +135,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             userName={MOCK_USER.name}
             setupPercent={MOCK_SETUP_STATUS.percent}
           />
-          <main className="content-area" key={businessType}>{children}</main>
+          {/* key 用店家 id 而非業態：切到「同業態的示範店家」時業態不變，
+              只 key 業態的話頁面不會重掛載、會停在切換前的資料。 */}
+          <main className="content-area" key={current.id || businessType}>{children}</main>
           <Footer />
         </div>
       </div>

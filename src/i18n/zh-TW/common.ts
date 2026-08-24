@@ -119,6 +119,8 @@ export const common = {
   /* ---- 頂部列 ---- */
   topbar: {
     myShops: '我的店家',
+    demoShops: '示範店家（範例資料）',
+    demoBadge: '示範',
     switchShop: '切換店家',
     shopSettings: '店家設定',
     installApp: '安裝手機 App',

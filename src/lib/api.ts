@@ -62,9 +62,23 @@ export async function request<T>(
 /** 模擬網路延遲，讓 loading 狀態在骨架模式下也看得到 */
 export const delay = (ms = 320) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 示範店家模式（執行期切換）。
+ *
+ * `USE_MOCK` 是建置期的環境變數，整站要嘛全假資料、要嘛全真資料。但新店家剛註冊
+ * 完後台空空如也，看不出各頁面長什麼樣子，所以在真實模式下額外保留幾家「示範
+ * 店家」：選到示範店家時，資料來源臨時切回 src/mock，讓使用者有東西可以參考。
+ *
+ * 由 AppShell 在 render 期依目前選到的店家設定（與 applyMockMode 同一個時機），
+ * 因此頁面元件的 effect 跑起來時旗標已經是正確值。
+ */
+let demoMode = false;
+export const setDemoMode = (on: boolean) => { demoMode = on; };
+export const isDemoMode = () => demoMode;
+
 /** 在 mock 與真實 API 之間切換的小工具 */
 export async function adapt<T>(mock: () => T | Promise<T>, real: () => Promise<T>): Promise<T> {
-  if (USE_MOCK) {
+  if (USE_MOCK || demoMode) {
     await delay();
     return mock();
   }

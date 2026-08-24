@@ -22,7 +22,8 @@ import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { byMode } from '@/mock';
-import { APP_URL } from '@/config/env';
+import { isDemoMode } from '@/lib/api';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
@@ -172,6 +173,26 @@ export default function DashboardPage() {
   const [loadingActivity, setLoadingActivity] = React.useState(true);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
 
+  /** 骨架模式或正在看示範店家時才顯示尚無端點的展示用假資料 */
+  const showSampleData = USE_MOCK || isDemoMode();
+
+  /**
+   * 空後台指引：只給「真實模式、看自己的店、而且真的還沒有任何預約」的新店家，
+   * 關掉後記在 localStorage 不再出現（每家店各自記，換店不會互相影響）。
+   */
+  const demoHintKey = `vibeai.demoHint.dismissed.${currentTenant.id}`;
+  const [demoHintDismissed, setDemoHintDismissed] = React.useState(true);
+  React.useEffect(() => {
+    if (showSampleData || !currentTenant.id) return;
+    try {
+      setDemoHintDismissed(localStorage.getItem(demoHintKey) === 'true');
+    } catch { setDemoHintDismissed(false); }
+  }, [demoHintKey, showSampleData, currentTenant.id]);
+  const dismissDemoHint = () => {
+    setDemoHintDismissed(true);
+    try { localStorage.setItem(demoHintKey, 'true'); } catch { /* 無痕視窗：關掉這次就好 */ }
+  };
+
   const [focusOpen, setFocusOpen] = React.useState(true);
   const [confirmSkipFocus, setConfirmSkipFocus] = React.useState(false);
   const [calSyncPromoOpen, setCalSyncPromoOpen] = React.useState(true);
@@ -207,13 +228,23 @@ export default function DashboardPage() {
     void (async () => {
       try {
         await new Promise((r) => setTimeout(r, 320));
-        setActivity(byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC }));
+        // 這三塊（最近活動／週趨勢／預約來源）契約上還沒有對應端點（04 分冊只定義了
+        // dashboard、dashboard-alerts、staff-performance），骨架階段用假資料撐版面。
+        // 真實店家不能看到別家店的示範資料——新註冊的店後台必須是乾淨的，所以
+        // real 模式一律回空，由各自的 EmptyState 呈現。
+        setActivity(showSampleData
+          ? byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC })
+          : []);
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
-  }, [fail]);
+  }, [fail, showSampleData]);
 
-  const weeklyTrend = byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC });
-  const monthSources = byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC });
+  const weeklyTrend = showSampleData
+    ? byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC })
+    : [];
+  const monthSources = showSampleData
+    ? byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC })
+    : [];
 
   const copyPublicUrl = async () => {
     try {
@@ -281,9 +312,29 @@ export default function DashboardPage() {
   const maxWeeklyRevenue = Math.max(...weeklyTrend.map((d) => d.revenue), 1);
   const sourceTotal = monthSources.reduce((sum, s) => sum + s.count, 0);
 
+  // 有資料的店不需要這張指引卡——等 stats 載入完再判斷，避免載入中閃一下又消失。
+  const shopIsEmpty = !!stats
+    && stats.todayBookings === 0 && stats.pendingBookings === 0 && stats.totalCustomers === 0;
+  const showDemoHint = !showSampleData && !demoHintDismissed && shopIsEmpty;
+
   return (
     <>
       <PageHeader title={t.title} />
+
+      {/* -------------------------------------- 空後台指引：先去看示範店家長怎樣 */}
+      {showDemoHint ? (
+        <Alert tone="info" className="mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 font-bold">{t.demoHint.title}</div>
+              <p className="text-sm">{t.demoHint.body}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={dismissDemoHint}>
+              {t.demoHint.dismiss}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
 
       {/* ------------------------------------------------ 3 分鐘開始收單 引導卡 */}
       {focusOpen ? (
@@ -761,6 +812,10 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardBody>
+            {weeklyTrend.length === 0 ? (
+              <EmptyState icon={BarChart3} title={t.weeklyTrend.empty} />
+            ) : (
+            <>
             <div className="mb-3 flex items-center gap-4 text-xs text-secondary">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-4 rounded-xs bg-primary" />
@@ -790,6 +845,8 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
+            </>
+            )}
           </CardBody>
         </Card>
 

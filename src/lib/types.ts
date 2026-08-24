@@ -214,6 +214,11 @@ export type TenantSummary = {
   businessType?: 'LOCAL_SHOP' | 'GUIDE' | 'CLINIC';
   /** 斜槓店家加開的其他模組 */
   extraModules?: ('LOCAL_SHOP' | 'GUIDE' | 'CLINIC')[];
+  /**
+   * 示範店家：不是使用者真的擁有的店，資料全部來自 src/mock，供新註冊的店家
+   * 參考各頁面長什麼樣子。只由前端（AppShell）合成，後端永遠不會回這個欄位。
+   */
+  demo?: boolean;
 };
 
 export type SetupStatus = {
