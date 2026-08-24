@@ -207,8 +207,14 @@ create table tenant_payment_methods (
 );
 ```
 
-- 端點即 04 §B 既列的 `/api/payment-methods`（CRUD、`test-connection`、
-  `test-charge`——建 NT$1/5 實刷單走該租戶金流商 sandbox/正式、`toggle-active`）；
+- 端點定義如下（**2026-08-24 勘誤：原文寫「即 04 §B 既列」，但 04 分冊從未列過
+  `/api/payment-methods`——兩冊互指、實際誰都沒定義，這正是它至今零實作、
+  頁面卻已在假成功的原因之一。以本冊此處為準**）：
+  `GET/POST /api/payment-methods`、`PUT/DELETE /api/payment-methods/:id`、
+  `POST /api/payment-methods/:id/toggle-active`、`POST …/test-connection`、
+  `POST …/test-charge`（建 NT$1/5 實刷單走該租戶金流商 sandbox/正式；
+  **實作前，payment-methods 頁的「實刷測試」假成功必須先移除**——目前按下去
+  直接把 gatewayVerified 設 true，是金流級的假的已知）；
   秘密欄位遮罩/空字串不覆蓋規則與 LINE 相同。
 - 旅遊 checkout 的線上刷卡（下文）支援 ECPAY 與 NEWEBPAY 兩家，依該收款方式的
   `gateway_provider` 產生對應表單；QR 類型（LINE Pay/街口）在 checkout 呈現
@@ -236,6 +242,15 @@ create table tenant_payment_methods (
 | GET `/api/tour-orders`（分頁+篩選）、GET `:id` | 訂單列表/詳情 |
 | POST `/api/tour-orders/:id/confirm-payment‖complete‖cancel` | 狀態動作；cancel 釋放名額 |
 | POST `/api/tour-orders/manual` | 導遊代旅客下單（LINE 溝通後手動建單，source='MANUAL' 或 'LINE'） |
+| GET/POST `/api/trips/:id/addons`、PUT/DELETE `/api/trip-addons/:id` | **（2026-08-24 補記）** 行程加購項 CRUD——前端 `services/tours.ts` 與詳情頁 UI 已存在，原規格漏列 |
+| POST `/api/trips/import`、GET `/api/trips/:id/export` | **（2026-08-24 補記，實作先行）** tour-platform 行程 JSON 匯入/匯出（Phase 8a 已依使用者需求實作，schema 對齊見 §1 擴充欄位） |
+
+> ⚠️ **實作進度警告（2026-08-24 稽核，14 分冊）**：`src/services/tours.ts` 的 real
+> 分支已照上表呼叫 publish/unpublish、request-midao-listing、departures（含 batch）、
+> tour-orders 全組動作端點——**但這些 route 在 `src/app/api` 下都還不存在**，且
+> trips 兩頁的寫入按鈕目前是本地假成功（14 分冊 §1）。施工順序必須是：
+> 先建 route＋`tours.10.test.ts`（12 §4）→ 再接頁面 → 依 08 打勾規則舉證。
+> 順序反了就是「接上即 404」或「按了假成功」二選一。
 
 新頁面（**這是原 37 頁之外的擴充**，依 CONVENTIONS.md 流程：先建 i18n 字典
 `src/i18n/zh-TW/pages/trips.ts` 等、service 走 `adapt(mock, real)`、nav.ts 加

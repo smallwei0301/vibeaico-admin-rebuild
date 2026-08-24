@@ -166,6 +166,23 @@ Rules that follow:
   only in a code comment. The comment protects the next developer; the user is the one being
   misled.
 
+The same principle applies to **interactions and checklists**, learned via the same expensive
+route (2026-08-24 full audit, `docs/integration/14-GAP-AUDIT.md` — 25 pages found faking it):
+
+- **A success toast is a claim of fact.** A button that shows "已發布/已儲存" after only
+  mutating local React state (often behind a `setTimeout` fake delay) is fabricating a known.
+  The rich-menu 發布 button did exactly this — the API existed, was integration-tested green,
+  and the page had never called it. If the backend isn't wired yet, say "尚未生效" honestly.
+- **A checked checkbox is also a claim of fact.** No acceptance-checklist item
+  (`docs/integration/08-CHECKLIST.md`) may be checked without written evidence — test
+  file:case name, or a manual-test record (date + steps + result). "The API's integration
+  tests pass" is NOT evidence for a page-level feature: the handler → `src/services/*` →
+  endpoint chain must be shown intact (12 分冊 §6 items 9–11; 鐵則 12 in 00 分冊).
+- Watch for the structural blind spot that let this happen: unit tests don't cover pages,
+  integration tests deliberately don't test UI, and e2e only runs where the test matrix
+  names it — so page wiring belonged to no layer, and "all green" coexisted with a fake
+  button for weeks.
+
 ## Database changes: always apply to BOTH Supabase projects
 
 There are two Supabase projects and **every migration must be applied to both, in the same

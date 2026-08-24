@@ -206,6 +206,7 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
 | `tests/integration/api/feature-store.09.test.ts` | 餘額足訂閱：CONSUME 交易、到期日 +N 月；不足 409 POINTS_001 **且餘額未被扣**；續訂從原到期日累加；取消後到期前 isFeatureActive 仍 true；restore 不扣點；LITE 只扣一次 399×N 且 5 碼全開；LITE→PRO 升級 |
 | `tests/integration/api/gating.09.test.ts` | 閘門對應表逐條：未訂閱打對應端點 403 FEAT_001；第 4 位員工被擋；第 21 組關鍵字被擋；EXTRA_PUSH 額度 200↔700 |
 | `tests/integration/api/feature-expiry.09.test.ts` | 到期 cron：票券→PAUSED+旗標、商品下架；restore 還原並回報筆數 |
+| `tests/integration/api/reports-advanced.b6.test.ts` | **（2026-08-24 補列——原矩陣漏了 B-6，結果零測試也算通過 DoD 第 1 條）** `/api/reports/summary` 正例、`/api/export/*` 各格式表頭/筆數、advanced/top-* 端點 |
 | 其餘 B 組端點 | 照 §3 骨架，含各狀態機 409 |
 
 ### Phase 6（LINE）— 不打真 LINE API
@@ -221,6 +222,21 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
   （斜槓租戶）、含未來 14 天團次與正確剩餘名額；團次售完後重新組 context
   該筆不應再出現。AI 呼叫本身在單元層 mock（不打真 API），只驗 prompt 內容
   與逾時/失敗時回 null 落回 defaultReply。
+- **（2026-08-24 補列——以下四組原矩陣全部漏掉，是 rich menu 假發布等問題
+  能通過 DoD 的直接原因）**
+  - **rich menu**：`POST /api/settings/line/rich-menu/create` → mock LINE 依序收到
+    建立/傳圖/設預設三個請求、richMenuId 寫回 tenant_settings.line；傳圖失敗時
+    已建立的選單被刪（無孤兒）；`DELETE /api/settings/line/rich-menu` → mock 收到
+    刪除且 jsonb 的 richMenuId 清空；無自訂底圖且 bucket 無主題圖時，退回現生成
+    純色 PNG 而非 404。
+  - **verify 五項**：TOKEN/WEBHOOK/AUTO_REPLY/RICH_MENU/QUOTA 各自的
+    pass 與 fail/WARN 分支，用 line-mock 控制 `/v2/bot/info`（含 chatMode 三態）、
+    webhook endpoint、richmenu、quota 回應逐一驗證；無 token 時五項全 fail。
+  - **預約狀態推播**（line-notify 路徑）：confirm/cancel/complete/no-show 各 route
+    觸發後 mock LINE 收到 push、額度 -1；額度用盡時不呼叫 LINE 且 API 本身仍成功。
+  - **keyword-replies 端到端**：透過 `/api/settings/line/keyword-replies` 建立
+    （不是 service role 直插 DB——直插驗不到管理端寫入路徑）→ webhook 收該關鍵字
+    → mock LINE 收到設定的回覆；停用後不回。
 
 ### Phase 7（Cron）
 - 每個 cron：無 Bearer 401；正例（用 service role 預置符合條件的資料 → 打 cron →
@@ -284,6 +300,24 @@ it('兩個並發 checkout 搶最後名額，恰好一成一敗（10 分冊 §2�
 6. `NEXT_PUBLIC_USE_MOCK=true` 且其餘 env 全空時 `npm run build` 成功（鐵則 10 回歸）。
 7. 新 migration 已套用到 TEST 專案且 reset/seed 腳本同步更新。
 8. commit 訊息含：對應分冊章節 + 執行過的測試指令與結果摘要。
+
+**9–11 為 2026-08-24 稽核（14 分冊）後新增。** 起因：rich menu 假發布逐條套用
+上面 8 條**全數通過**——§4 矩陣沒列名的功能第 1 條免測、E2E 只有矩陣點名的
+Phase 才要求、§3 又規定整合測試不驗 UI，於是「頁面按鈕 → service → API」這段
+接線落在三層測試的夾縫，制度上無人負責。以下三條補這個洞：
+
+9. **08 分冊清單逐項附證據**：本任務對應的每個驗收項，打勾時註明
+   `測試檔名:案例名` 或人工實測的日期＋步驟＋結果（08 分冊打勾規則）。
+   對不上證據的項目不打勾，也不得宣稱該 Phase 完成。
+10. **使用者可見的寫入動作，必須有「按下去之後副作用真的發生」的證據**。
+    優先：Playwright 旅程斷言按下按鈕後 DB／外部 mock 的狀態改變。
+    最低替代標準：靜態核對「頁面 handler 呼叫的 service 函式，其 real 分支
+    打的端點」＝「整合測試覆蓋的端點」，鏈路三段（handler→service→route）
+    缺一段即不通過。§3「整合測試不驗 UI」照舊——但那句話的意思是分工，
+    不是「UI 接線可以沒人驗」。
+11. **成功訊息是斷言對象**：任何顯示成功 toast／成功狀態的路徑，對應測試必須
+    同時斷言副作用存在（DB 列、mock 收到請求、重新載入後資料仍在）。
+    只改本地 state 就報成功＝鐵則 12 違規（假的已知的 UI 版），該輪工作無效。
 
 ---
 

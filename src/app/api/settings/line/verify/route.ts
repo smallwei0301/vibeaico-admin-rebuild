@@ -12,8 +12,9 @@ import { lineGetRaw as lineGet } from '@/server/line';
  *   TOKEN       — 真檢查：GET /v2/bot/info 成功與否。
  *   WEBHOOK     — 真檢查：GET /v2/bot/channel/webhook/endpoint 的 endpoint 是否
  *                 等於本店 webhookUrl 且 active=true。
- *   AUTO_REPLY  — LINE 無公開 API 可查（06 §7 原文），恆回 pass:false 附提醒文案，
- *                 與原站行為一致，不是漏做。
+ *   AUTO_REPLY  — 以 GET /v2/bot/info 的 chatMode 給真實結論（bot=通過、chat=WARN、
+ *                 讀不到=WARN 提醒）。「自動回應訊息」開關本身無公開 API，該部分
+ *                 降級為文字提醒。（原版恆回 pass:false 是假錯誤，已修，見 06 §7）
  *   RICH_MENU   — 真檢查：GET /v2/bot/user/all/richmenu 是否有預設選單。
  *   QUOTA       — 真檢查：GET /v2/bot/message/quota + .../quota/consumption 算剩餘則數。
  * 無 token 時五項全部 pass:false、message 統一提示尚未設定。

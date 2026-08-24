@@ -12,7 +12,8 @@
  *
  * 佔位（本波不實作，落點見各處註解）：
  * - chat_sessions 下單對話 → 10 分冊 §6.2（Phase 9/10，表併入 0012 之後）
- * - 「行程」輪播 → trips 表尚不存在（Phase 10）
+ * - 「行程」輪播 → trips/trip_plans 表 0016 已建（2026-08-24 勘誤：原註「表尚不
+ *   存在」已過時），輪播可動工；團次（departures）仍屬 Phase 8b
  * - 自動綁定（06 §4.2）：LINE 端個資收集流程收到手機號 → 比對 customers.phone
  *   自動綁定／建新顧客。該流程屬 chat_sessions 個資收集（Phase 9/10），本波
  *   僅支援後台手動綁定（B-5 bind-line 端點），此處不實作。
@@ -208,9 +209,11 @@ async function onMessage(
     if (handled) return; // 該店沒有 active 服務時不攔截，落到 ⑤/⑥
   }
   if (text === '行程') {
-    // trips / trip_plans / trip_departures 表尚不存在（10 分冊，Phase 10 補行程 Flex 輪播，
-    // 資料來源 = 11 分冊 catalog 統一查詢）。佔位：不在此攔截，讓訊息落到
-    // ⑤ AI / ⑥ defaultReply（自動回覆開啟時顧客會收到 defaultReply）。
+    // trips/trip_plans 表 0016 migration 已建（2026-08-24 勘誤：原註「表尚不存在」
+    // 已過時），Flex 輪播已可實作；團次名額仍等 Phase 8b。佔位期間不在此攔截，
+    // 讓訊息落到 ⑤ AI / ⑥ defaultReply。⚠️ 06 分冊 §3 補列的關鍵字覆蓋規格
+    // （richMenuCells 全部格子文字 + 系統關鍵字 15 組含同義詞）尚未達成，
+    // 見 docs/integration/14-GAP-AUDIT.md 根因 B。
   }
   if (text === '我的預約') {
     await replyMyBookings(admin, tenant, token, replyToken, userId);
@@ -381,7 +384,7 @@ async function buildShopContext(
     description: String(basic.tenantDescription ?? ''),
     businessHours,
     services,
-    trips: [], // trips 表尚不存在（Phase 10 接 catalog 統一查詢）
+    trips: [], // 表 0016 已建但 catalog 統一查詢未做（11 分冊）；補上前誠實回空
     departures: [], // 同上：未來 14 天團次與即時剩餘名額（每次即時查、不快取）
     ai: { personaNotes: ai.personaNotes, faq: ai.faq },
     // 公開商店頁 Phase 8 落地；URL 規則以 tenant-settings.ts 的 helper 為單一事實來源

@@ -267,7 +267,8 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 | GET `/api/customers/tags` | 該店所有 tags 去重 |
 | GET `/api/customers/at-risk` | customers_view at_risk=true |
 | POST `/api/feature-store/:code/apply‖cancel‖restore` | 訂閱異動：完整規格（扣點、套裝、還原副作用）在 **09 分冊 §3**，照該冊實作 ⚙O |
-| POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能，MVP：寫進一張 `bug_reports` 表＋寄信給平台管理者即可 |
+| POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能，MVP：寫進一張 `bug_reports` 表＋寄信給平台管理者即可。**（2026-08-24 現況：bug-report 只做了寫表——email 模組缺通用寄信函式，寄信半沒做；support-chat 未實作。見 14 分冊）** |
+| GET/POST/DELETE `/api/demo-data` | **（2026-08-24 補記，實作先行）** 依業態鋪/計數/一鍵清空示範資料（名稱前綴 `[示範]` 判定，見 `src/server/demo-seed.ts` 檔頭）；註冊流程自動呼叫 seed |
 
 ---
 

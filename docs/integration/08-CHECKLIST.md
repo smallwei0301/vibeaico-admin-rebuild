@@ -6,6 +6,20 @@
 > 再加該 Phase 專屬項目。本清單的每一項都必須有對應的自動化測試，
 > 只有無法自動化的（收信、LINE 手機實測）才允許人工驗收並記錄。
 
+## 打勾規則（2026-08-24 稽核後加嚴；14 分冊記錄了為什麼）
+
+1. **每一勾必須在打勾處註明證據**：`測試檔名:案例名`，或人工驗收的
+   `日期＋操作步驟＋觀察到的結果`。寫不出證據＝不得打勾。
+2. **驗收項描述的是使用者功能時，「API 測試綠」不是打勾證據。**
+   必須舉證頁面 handler → `src/services/*` → 端點這條鏈路完整
+   （E2E 斷言副作用，或最低標準：靜態核對 + 該端點的整合測試綠，12 §6 第 10 條）。
+   先前「rich menu 建立/發布」就是只憑 API 測試打勾，頁面按鈕其實從未呼叫後端。
+3. **成功訊息是驗收對象**：操作後顯示成功的每一條路徑，都要能回答
+   「副作用寫到哪裡了？重新整理後還在嗎？外部系統（LINE/DB）真的變了嗎？」
+   三題任一答不出來就是假成功（鐵則 12），該項不但不能打勾，還要立案修。
+4. 曾打過的勾若被稽核推翻，作廢重開（見 14 分冊 §4 的重開清單），
+   重勾照本規則重新舉證。
+
 ## Phase 0 追加 — 測試基礎設施（12 分冊）
 - [ ] vitest + playwright、tests/ 骨架、fixtures、TEST Supabase 專案、reset-db 安全鎖
 - [ ] CI（check + integration jobs）上線，故意紅燈驗證關卡有效
@@ -30,6 +44,9 @@
 - [ ] `src/services/auth.ts` 建立並在 index.ts export
 - [ ] 4 個認證頁接線（只動 handler，不動版面）
 - [ ] 註冊→登入→登出→忘記→重設 全流程通
+      **（重開 2026-08-24：Topbar 登出只是 `<Link>` 導頁，從未呼叫 POST /api/auth/logout，
+      session 不失效；e2e 用 clearCookies 代打遮掉了這件事。重勾條件：登出按鈕真的
+      呼叫端點＋e2e 改為點按鈕後斷言 session cookie 已失效）**
 - [ ] 跨租戶隔離測試通過（兩帳號兩店互看不到）
 
 ## Phase 3 — 核心 API（04 分冊 §A）
@@ -50,11 +67,16 @@
 ## Phase 5 — 進階 API（04 分冊 §B）
 建議實作順序（前面的頁面使用率最高）：
 - [ ] B-1 預約進階（available-slots、手動建立、calendar、block-times）
+      **（重開 2026-08-24：block-times 頁完全未接線、available-slots 無任何頁面使用）**
 - [ ] B-2 服務/員工/班表 CRUD
 - [ ] B-3 商品/訂單/庫存
 - [ ] B-4 票券/會員/點數
-- [ ] B-6 報表進階/匯出
+- [ ] B-6 報表進階/匯出 **（重開 2026-08-24：零測試檔）**
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
+      **（重開 2026-08-24：無完成紀錄；依打勾規則 1，每頁的實測要留下日期＋步驟＋結果）**
+- [ ] 【新增】頁面接線驗收：本 Phase 涉及的每個頁面，其所有寫入按鈕都經過
+      `src/services/*` 呼叫真端點——逐頁列出「按鈕 → service 函式 → 端點」對照表
+      作為證據；發現本地假成功（只 setState + toast）＝該頁不通過（14 分冊 §1 有已知清單）
 
 ## Phase 5.5 — 功能商店（09 分冊）
 - [ ] migration 0011（訂閱欄位擴充 + subscribe_feature rpc + ai jsonb）
@@ -68,18 +90,42 @@
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
 - [ ] follow/message 事件處理 + keyword replies + 預設回覆
+      **（重開 2026-08-24：webhook 側 OK，但 keyword-replies 管理頁整頁假——載入吃
+      mock、儲存/刪除/啟停只 setState，店家設的關鍵字進不了 DB。重勾條件：頁面接線
+      ＋端到端案例「UI 存一組關鍵字 → webhook 收該字 → mock LINE 收到設定的回覆」）**
 - [ ] chat 頁雙向訊息
 - [ ] 預約狀態推播 + 額度控管
+      **（重開 2026-08-24：line-notify 實作在但 tests/ 全域零引用，推播路徑的額度
+      控管零覆蓋。重勾條件：12 §4 補列的 line-notify 案例綠）**
 - [ ] rich menu 基本建立/發布
+      **（重開 2026-08-24：原勾時頁面按鈕從未呼叫後端＝假發布，已於 commit 3a7429b
+      修正接線並用真實 LINE 頻道驗證；重勾條件：12 §4 補列的 create/delete 整合案例綠）**
 - [ ] verify 五項檢查
+      **（重開 2026-08-24：端點零測試，曾長期帶著 AUTO_REPLY 假錯誤無人發現。
+      重勾條件：五項各自的 pass/WARN/FAIL 分支都有 line-mock 整合案例）**
+- [ ] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
+      文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
+      停用的組不回應（06 §3 修正後規格）
+- [ ] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
+      收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
 
 ## Phase 7 — 收尾（07 分冊)
 - [ ] `vercel.json` 四個 cron + `CRON_SECRET` 保護
 - [ ] `/api/upload` 圖片上傳
+      **（重開 2026-08-24：API 測試矩陣全綠但全 src/ 無任何頁面呼叫它——對使用者
+      「圖片上傳」不存在。重勾條件：至少一個頁面（rich menu 背景圖上傳是現成的
+      死按鈕）真的接上並有接線證據）**
 - [ ] 上線前檢查表全過
 - [ ] `NEXT_PUBLIC_USE_MOCK=false` 正式切換
 
 ## Phase 8 — 行程領域（10 分冊）
+
+> ⚠️ 2026-08-24 稽核：Phase 8a（trips/trip_plans、migration 0016、匯入/匯出）曾對外
+> 宣稱完成，實況是：讀取面有接線；**寫入面頁面全假**（trips 列表的上下架/刪除/
+> Midao 申請、詳情頁的全部儲存都只 setState + toast，「新增行程」是空 onClick）；
+> `src/services/tours.ts` real 分支呼叫的 publish/departures/tour-orders 等多支
+> route **不存在**（接上即 404）；12 §4 指定的 tours.10 測試零檔。詳見 14 分冊。
+
 - [ ] migration 0012（trips/plans/departures/tour_orders/tenant_payment_methods + reserve_seats rpc）
 - [ ] 並發下單搶最後一席恰好一成一敗（TOUR_001）
 - [ ] 綠界 sandbox 全流程 + callback 冪等；匯款後五碼回報 + 確認收款

@@ -148,6 +148,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 | `message`(image/sticker…) | 只寫 `chat_messages` |
 | `postback` | 保留：`data` 格式 `action=xxx&…`，MVP 先 log |
 
+> ⚠️ **實作備註（2026-08-24 稽核，14 分冊）**：
+> 1. 上表 ④ 的「內建指令」實作只比對了 4 個字面值（預約/服務/我的預約/行程佔位），
+>    **關鍵字覆蓋規格補列如下，接手者必須補齊**：
+>    - `MODE_PRESETS.richMenuCells`（`src/config/modes.ts`）三種業態每個格子送出的
+>      文字（服務項目/會員卡/優惠/聯絡我們/團次/我的訂單/常見問題/看診進度/營業時間…）
+>      都必須有對應分支——**發布出去的按鈕文字沒有 handler ＝ 顧客按了沒反應**，
+>      這正是「按 Bot 沒反應」的來源之一。richMenuCells 與 handler 兩邊要用同一份
+>      常數，改一邊必動另一邊。
+>    - 系統關鍵字 15 組（`src/i18n/zh-TW/pages/keyword-replies.ts` 的 systemGroups）
+>      **含全部同義詞**（「我要預約」「立即預約」…）都要命中；各組的
+>      `systemGroupDisabled` 停用開關 webhook 必須讀，停用的組不回應。
+>    - 「選單」關鍵字 → 依 flex-menu 設定回 Flex Message（見 §6 現況標註）。
+> 2. 實作與本節範例的刻意偏離（合理，回寫記錄）：店未設定 channel 時回 404 結束
+>    而非讓 LINE_001 例外冒出；`timingSafeEqual` 前先比長度避免 throw。
+> 3. 範例程式註解「trips 表尚不存在」已過時——migration 0016 已建 trips/trip_plans，
+>    「行程」→ 行程輪播可以動工了（團次相關仍等 Phase 8b）。
+
 ---
 
 ## 4. 顧客綁定
@@ -191,10 +208,26 @@ export async function notifyBookingStatus(
 | POST `/api/settings/line/rich-menu/create` | ① 依 `richMenuTheme` 產生 2500×1686 選單設定（6 格：預約/我的預約/服務項目/會員卡/優惠/聯絡我們，action=message 或 uri 到公開頁）② `POST /v2/bot/richmenu` 建立 ③ 上傳圖片 `POST https://api-data.line.me/v2/bot/richmenu/{id}/content`（圖檔：MVP 用預先做好的主題底圖存 `richmenu-assets` bucket；設計器合成屬後期）④ `POST /v2/bot/user/all/richmenu/{id}` 設為預設 ⑤ richMenuId 記到 `tenant_settings.line` jsonb |
 | POST `/api/settings/line/rich-menu/upload-bg-image` | multipart 收圖 → 存 bucket → 回 URL |
 | POST `/api/settings/line/flex-menu` | 儲存 flex 設定（jsonb）；webhook 的「選單」關鍵字回這份 Flex Message |
+| DELETE `/api/settings/line/rich-menu` | **（2026-08-24 補記，實作先行）** 刪除已發布選單：mock LINE 收到 DELETE、jsonb 的 richMenuId 清空；無 richMenuId 時冪等回成功 |
 | POST `/api/settings/line/disconnect` | 清空兩個 `*_enc` 欄位與 line jsonb 的 channelId ⚙O |
 
+> ⚠️ **flex-menu 現況（2026-08-24 稽核）：三層只完成一層，勿再誤判為完成。**
+> ① 儲存端點：已做（只存開關/顏色/標題等設定值；**卡片內容清單目前沒有欄位可存**，
+> 補規格：卡片陣列 `[{title, subtitle, imageUrl, ad}]` 一併存入 line jsonb 的
+> `flexCards` 鍵，上限 12 張）。② webhook「選單」關鍵字回 Flex：**完全未實作**
+> （line-events.ts 無任何 flexMenu* 引用）。③ 選單設計頁 Flex 分頁的發布/重設/刪卡：
+> **全是本地假成功**。三層都補齊且過 08 清單「flex-menu 端到端」項才算完成。
+>
+> **rich menu 底圖**：richmenu-assets bucket 的六張主題圖從未有人上傳（bucket 為空），
+> 原規格「MVP 用預先做好的主題底圖」因此必然 404。現行實作：無自訂圖、bucket 也
+> 無圖時，後端以 `src/server/png.ts` 現生成該主題色的 2500×1686 純色 PNG，
+> 「選主題即可發布」不再依賴人工上傳；之後要美化再補真圖即可。
+
 進階設計器（rich-menu-design 頁的 create-advanced / preview-* 端點）標為 Phase 6+，
-留待 rich menu 基本流程可用後再逐一實作。
+留待 rich menu 基本流程可用後再逐一實作。**同屬未實作、但頁面已有 UI 的還有**：
+每格自訂文字/連結接上發布、儲存草稿、還原前次發布、背景圖上傳按鈕接 `/api/upload`
+（目前是無 onClick 的死按鈕）——在接上之前，頁面必須明示「尚未生效」（鐵則 12），
+不得顯示成功。
 
 ---
 

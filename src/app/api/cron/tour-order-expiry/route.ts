@@ -4,8 +4,9 @@
  * 正式邏輯屬 Phase 10（docs/integration/10-TOUR-DOMAIN.md §3）：
  *   - 綠界（線上刷卡）：下單 + 30 分鐘未付 → 釋放名額、訂單 CANCELLED
  *   - 匯款：下單 + 3 天未付 → 同上（hold_expires_at 名額保留期限）
- * tour_orders / trip_departures 等表尚未建（Phase 10 才落地），此端點先佔住
- * vercel.json 的 cron 排程位（30 * * * *，每小時），驗證 Bearer 後直接回報跳過。
+ * tour_orders / trip_departures 等表尚未建（Phase 8b 落地），此端點先佔住
+ * vercel.json 的 cron 排程位（Hobby 方案限制改為每日一次，見 07 分冊修正註；
+ * 原註「每小時」已過時），驗證 Bearer 後直接回報跳過。
  */
 import { NextResponse } from 'next/server';
 
