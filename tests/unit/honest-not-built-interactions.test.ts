@@ -299,17 +299,27 @@ describe('修復-1B：六處後端不存在的互動不得假成功', () => {
   /* ============================================================ 全域規則 */
   it('六頁在本次負責的區塊內都沒有 setTimeout 假延遲', () => {
     /*
-     * settings 仍有一個 setTimeout，位於「變更密碼」區塊——那是 issue #4 的範圍，
-     * 本 issue 不得改動，因此這裡只斷言它不在行事曆同步區。
+     * 本案例原本寫成「settings 頁剛好有 1 個 setTimeout，且位於變更密碼區塊」——
+     * 因為那個 480ms 假延遲屬 issue #4 的範圍，本 issue（修復-1B）不得改動，
+     * 該斷言是用來證明沒有越界動到別人的區域。
+     * issue #4 已完成（commit 5526ed2），把它換成真的 changePassword() service 呼叫，
+     * 所以 settings 頁的 setTimeout 數量成為 0，期望值隨之從 1 改為 0。
+     * 前提改變後的新斷言比舊的更嚴格：六頁一律不得有任何 setTimeout 假延遲。
      */
-    for (const key of ['bookings', 'calendarSync', 'promote', 'lineSettings', 'richMenuDesign'] as const) {
+    for (const key of [
+      'bookings',
+      'calendarSync',
+      'promote',
+      'lineSettings',
+      'richMenuDesign',
+      'settings',
+    ] as const) {
       expect(src(PAGES[key]), PAGES[key]).not.toContain('setTimeout');
     }
     const settings = withoutComments(src(PAGES.settings));
     const panel = section(settings, "tab === 'calendarSync'", "tab === 'security'");
     expect(panel).not.toContain('setTimeout');
-    expect((settings.match(/setTimeout/g) ?? []).length).toBe(1);
-    expect(section(settings, 'const submitPasswordChange', '};')).toContain('setTimeout');
+    expect((settings.match(/setTimeout/g) ?? []).length).toBe(0);
   });
 
   it('六個頁面元件都沒有中文字面量文案（新文案一律進各頁 i18n 字典）', () => {
