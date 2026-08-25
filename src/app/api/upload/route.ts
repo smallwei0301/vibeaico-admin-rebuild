@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+import { makeLinePreview, previewPathFor } from '@/server/image';
 
 /**
  * POST /api/upload —— 頁面用圖片統一上傳端點（07 分冊 §3）。
@@ -18,7 +19,10 @@ import { createAdminSupabase } from '@/server/supabase';
  *   路徑又由伺服器端組出，不受用戶端左右）。
  * - **公開性依 bucket 而不同**，見 PRIVATE_BUCKETS：public bucket 回
  *   getPublicUrl()，private bucket 回短效簽名 URL。
- * - 回 { url, path, bucket }（private bucket 另帶 urlExpiresInSeconds）；
+ * - **LINE 聊天圖另產一張 ≤1 MB 的縮圖**（`{uuid}.preview.{ext}`），見
+ *   LINE_PREVIEW_BUCKETS；`previewImageUrl` 的上限只有 1 MB，與原圖的 10 MB 不同。
+ * - 回 { url, path, bucket }（private bucket 另帶 urlExpiresInSeconds；有縮圖時
+ *   另帶 previewUrl / previewPath）；
  *   `path` 是 bucket 內路徑，給需要**存起來**的呼叫端用——簽名 URL 會過期，
  *   存 URL 只會存出一堆死連結（06 分冊 §8.5 第 5 條的既有技術債就是這樣來的：
  *   chat_messages 只存最終 URL，沒存 path，日後要清理得反解 URL）。
@@ -76,6 +80,29 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
  */
 const LINE_BOUND_BUCKETS = new Set(['chat-images', 'richmenu-assets']);
 
+/**
+ * 需要**額外產一張 ≤1 MB 縮圖**的 bucket —— 只有 `chat-images`（issue #28 ⑬ /
+ * 14 分冊 §8.15）。
+ *
+ * LINE 的 image message 有兩個圖片欄位，上限不同：`originalContentUrl` 10 MB、
+ * `previewImageUrl` **1 MB**。本端點放行到 5 MB，所以 1–5 MB 的圖（手機原圖幾乎
+ * 都在這個區間）當 preview 就已超規。縮圖在這裡一併產出，路徑是原圖路徑推導得到的
+ * `{uuid}.preview.{ext}`（推導規則與理由見 src/server/image.ts）。
+ *
+ * ⚠️ **`richmenu-assets` 是 LINE 去向，但不需要縮圖**，兩者不可混為一談：
+ * rich menu 是整張 2500×1686 的底圖，經
+ * `POST /v2/bot/richmenu/{id}/content`（src/app/api/settings/line/rich-menu/create）
+ * 把**位元組直接上傳給 LINE**，訊息裡根本沒有 previewImageUrl 這個欄位可指。
+ * 多產一張只是白花儲存空間，還會多一個沒有任何人讀的物件。
+ * 官方原文（Messaging API reference「Requirements for rich menu image」，
+ * 2026-08-25 重新抓取確認）：JPEG or PNG／寬 800–2500／高 ≥250／長寬比 ≥1.45／
+ * **Max file size: 1 MB**——注意那是**底圖本身**的上限，不是 preview 的概念。
+ *
+ * 其餘四個 bucket（商品圖、服務圖、作品集、員工頭像）只出現在自家網頁上，
+ * 沒有任何東西會去讀縮圖，同樣不產。限制與加工都要跟著「這張圖最後會流到哪裡」走。
+ */
+const LINE_PREVIEW_BUCKETS = new Set(['chat-images']);
+
 const WEB_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -114,12 +141,42 @@ export const POST = handle(async (req) => {
   if (file.size > MAX_BYTES)
     throw new ApiHttpError(400, '圖片超過 5MB 上限，請壓縮後再上傳', ERR.VALIDATION);
 
+  /**
+   * 縮圖**先產、後上傳**（issue #28 ⑬）。
+   *
+   * 順序是刻意的：產不出縮圖時，Storage 裡不會留下任何東西，也不會回一個
+   * 「上傳成功但這張圖永遠送不出去」的半成品。這就是「產不出縮圖時怎麼辦」的答案
+   * ——**擋下整次上傳，回一個說得出原因的 400**：
+   *
+   * - 不可以靜默退回「用原圖當 preview」：那正是本項要修的 bug，退回去等於把它
+   *   原封不動放回來，而且從此沒有任何訊號會提醒任何人（CLAUDE.md「不要偽造已知」）。
+   * - 不可以「原圖照上、縮圖之後再說」：使用者在上傳當下就得到成功，等到真的要送給
+   *   顧客時才失敗——失敗被推遲到使用者不在場、且是對外發送的那一刻，比當場擋下嚴重得多。
+   *   當場擋下，使用者還握著那個檔案，換一張就好。
+   */
+  const preview = LINE_PREVIEW_BUCKETS.has(bucket)
+    ? await makeLinePreview(Buffer.from(await file.arrayBuffer()), file.type)
+    : null;
+
   const path = `${t.tenantId}/${randomUUID()}.${ext}`;
   const admin = createAdminSupabase();
   const { error } = await admin.storage
     .from(bucket)
     .upload(path, file, { contentType: file.type, upsert: false });
   if (error) throw error;
+
+  let previewPath: string | null = null;
+  if (preview) {
+    previewPath = previewPathFor(path);
+    const { error: previewError } = await admin.storage
+      .from(bucket)
+      .upload(previewPath, preview.bytes, { contentType: preview.contentType, upsert: false });
+    if (previewError) {
+      // 原圖已經上去了但縮圖沒有 → 收掉原圖，不要留下一個「送出去就會超規」的物件。
+      await admin.storage.from(bucket).remove([path]);
+      throw previewError;
+    }
+  }
 
   if (PRIVATE_BUCKETS.has(bucket)) {
     const { data, error: signError } = await admin.storage
@@ -135,5 +192,8 @@ export const POST = handle(async (req) => {
   }
 
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
-  return ok({ url: data.publicUrl, path, bucket });
+  const previewUrl = previewPath
+    ? admin.storage.from(bucket).getPublicUrl(previewPath).data.publicUrl
+    : undefined;
+  return ok({ url: data.publicUrl, path, bucket, previewPath: previewPath ?? undefined, previewUrl });
 });

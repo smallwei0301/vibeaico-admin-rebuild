@@ -214,6 +214,12 @@ describe('POST /api/upload — chat-images bucket（0017 migration）', () => {
 
     const path = body.data!.url.split(`/chat-images/`)[1];
     uploadedPaths.push(path);
+    // issue #28 ⑬ 起，chat-images 的上傳會**多產一個** ≤1 MB 的縮圖物件
+    // （`{uuid}.preview.{ext}`）。清理沒跟上就會在 TEST 專案的 Storage 一路累積
+    // ——reset-db.mjs 只清資料表，不碰 Storage。縮圖內容本身由
+    // tests/integration/api/line-preview-image.28.test.ts 驗證，這裡只負責收拾。
+    const previewPath = (body.data as { previewPath?: string }).previewPath;
+    if (previewPath) uploadedPaths.push(previewPath);
   });
 });
 

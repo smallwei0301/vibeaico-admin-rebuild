@@ -1,6 +1,7 @@
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { consumePushQuota, getLineCredentials, lineMulticast } from '@/server/line';
+import { resolveLinePreviewImageUrl } from '@/server/image';
 
 /**
  * POST /api/marketing/pushes/:id/send — 立即發送（04 分冊 §B-5、06 分冊 §2/§5）。
@@ -95,16 +96,42 @@ export const POST = handle(async (_req, { params }) => {
       throw new ApiHttpError(409, '沒有符合條件的發送對象', ERR.CONFLICT);
     }
 
+    /**
+     * preview 與 original 分流（issue #28 ⑬ / 14 分冊 §8.15）——**chat 與這裡一起修**。
+     *
+     * LINE 的 `previewImageUrl` 上限只有 1 MB（原圖 10 MB），先前兩個欄位塞同一個
+     * URL。縮圖位置由原圖網址推導（規則見 src/server/image.ts）。
+     *
+     * ⚠️ 這一頁的圖片網址是**店家自己貼的外部網址**（marketing 頁的 `pushImageUrl`
+     * 是一個 type=url 的輸入框），不是 /api/upload 上傳的物件。那種網址我們沒託管、
+     * 量不到大小、也無從產縮圖 → resolveLinePreviewImageUrl 會原樣回傳，
+     * 用原圖當 preview（LINE 官方允許：「the image of the originalContentUrl
+     * property may be used as the preview image」）。**這不是退路，是另一種情形**：
+     * 有縮圖可產卻沒有產，才會被擋下來。
+     *
+     * 位置在扣額度**之前**：被擋下時不該吃掉店家 N 則額度，也不該留在 SENDING。
+     */
+    const c = (row.content ?? {}) as Record<string, any>;
+    const imageUrl = typeof c.imageUrl === 'string' ? c.imageUrl : '';
+    let previewImageUrl = '';
+    if (imageUrl) {
+      try {
+        previewImageUrl = await resolveLinePreviewImageUrl(t.supabase, imageUrl);
+      } catch (e) {
+        await revert(prevStatus);
+        throw e;
+      }
+    }
+
     // 額度不足 → 還原原狀態、不呼叫 LINE（06 分冊 §2）
     if (!(await consumePushQuota(t.tenantId, recipients.length))) {
       await revert(prevStatus);
       throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
     }
 
-    const c = (row.content ?? {}) as Record<string, any>;
     const messages: any[] = [{ type: 'text', text: typeof c.text === 'string' ? c.text : '' }];
-    if (typeof c.imageUrl === 'string' && c.imageUrl)
-      messages.push({ type: 'image', originalContentUrl: c.imageUrl, previewImageUrl: c.imageUrl });
+    if (imageUrl)
+      messages.push({ type: 'image', originalContentUrl: imageUrl, previewImageUrl });
 
     const { token } = await getLineCredentials(t.tenantId);
     try {

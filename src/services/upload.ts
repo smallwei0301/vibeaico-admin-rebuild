@@ -35,6 +35,19 @@ export type UploadResult = {
   bucket: UploadBucket;
   /** 只有 private bucket 會帶：url 的效期（秒）。 */
   urlExpiresInSeconds?: number;
+  /**
+   * 只有 `chat-images` 會帶：與原圖一起產出的 **≤1 MB 縮圖**網址／路徑
+   * （issue #28 ⑬；LINE image message 的 `previewImageUrl` 上限只有 1 MB，
+   * 原圖是 10 MB）。
+   *
+   * ⚠️ **呼叫端不需要、也不應該把它傳回伺服器**。送 LINE 時的 preview 位置一律由
+   * 伺服器端從原圖路徑推導（`src/server/image.ts`），不吃用戶端給的值——那條路徑
+   * 只要能被用戶端指定，preview 指向哪裡就不再是我們保證的事。
+   * 這兩個欄位存在的意義是**如實說明這次上傳到底產生了幾個物件**：端點多寫了一個
+   * 物件卻不講，日後清理的人就看不到它。
+   */
+  previewUrl?: string;
+  previewPath?: string;
 };
 
 /**
@@ -75,6 +88,8 @@ export async function uploadFile(file: File, bucket: UploadBucket): Promise<Uplo
     path: body.data.path,
     bucket,
     urlExpiresInSeconds: body.data.urlExpiresInSeconds,
+    previewUrl: body.data.previewUrl,
+    previewPath: body.data.previewPath,
   };
 }
 

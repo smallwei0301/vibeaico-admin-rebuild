@@ -3,6 +3,7 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
+import { resolveLinePreviewImageUrl } from '@/server/image';
 
 /**
  * /api/chat/messages（04 分冊 §B-5 / §B-5.1）。
@@ -18,8 +19,9 @@ import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
  *
  * 圖片訊息（修復-7 / issue #15）：前端先打 POST /api/upload（bucket=chat-images，
  * 0017 migration 新增）拿到 public URL，再把該 URL 以 `imageUrl` 傳進來，這裡送
- * LINE image message（originalContentUrl / previewImageUrl 同一張，LINE 只收
- * https 外連圖）並寫 message_type='image'、content={imageUrl}。
+ * LINE image message（originalContentUrl=原圖、**previewImageUrl=/api/upload 一併
+ * 產好的 ≤1 MB 縮圖**，issue #28 ⑬；LINE 只收 https 外連圖）並寫
+ * message_type='image'、content={imageUrl}——存的是原圖網址，縮圖位置一律推導。
  * **刻意不另開 `/api/chat/messages/:id/image`**：`[id]` 這一段在本路由樹已經是
  * 「訊息 id」（見 messages/[id]/read），再拿來當對話 id 會是同名不同義；而且
  * 額度檢查 → push → 寫 OUT 這條鏈只要複製一份就會有走鐘的一天。改成同一支
@@ -122,17 +124,33 @@ export const POST = handle(async (req) => {
   if (!lu.followed)
     throw new ApiHttpError(409, '對方已封鎖或取消追蹤，無法傳送訊息', ERR.CONFLICT);
 
+  const isImage = !!b.imageUrl;
+
+  /**
+   * preview 與 original 分流（issue #28 ⑬ / 14 分冊 §8.15）。
+   *
+   * LINE 對這兩個欄位的上限不同（original 10 MB、**preview 1 MB**），先前兩個欄位
+   * 塞同一個 URL，於是 1–5 MB 的圖（手機原圖）當 preview 就超規。縮圖由 /api/upload
+   * 上傳時一併產出，這裡**從原圖網址推導**出它的位置，不另外存一筆。
+   * 每一種結果分別代表什麼、哪一種會被擋下，見 resolveLinePreviewImageUrl 的註解。
+   *
+   * 位置在扣額度**之前**：被擋下時不該吃掉店家一則推播額度（與下面的額度不足
+   * 同一個道理——沒送出去的東西不收費）。
+   */
+  const previewImageUrl = isImage
+    ? await resolveLinePreviewImageUrl(t.supabase, b.imageUrl!)
+    : '';
+
   // 先扣額度；不足 → 409 且不打 LINE（06 分冊 §2）
   if (!(await consumePushQuota(t.tenantId, 1)))
     throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
 
   const { token } = await getLineCredentials(t.tenantId);
-  const isImage = !!b.imageUrl;
   await linePush(
     token,
     b.lineUserId,
     isImage
-      ? [{ type: 'image', originalContentUrl: b.imageUrl, previewImageUrl: b.imageUrl }]
+      ? [{ type: 'image', originalContentUrl: b.imageUrl, previewImageUrl }]
       : [{ type: 'text', text: b.text }],
   );
 
