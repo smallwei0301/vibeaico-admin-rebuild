@@ -73,10 +73,48 @@ function check(label, passed, detail) {
   console.log(`${passed ? '  [PASS]' : '  [FAIL]'} ${label}${detail ? ` — ${detail}` : ''}`);
 }
 
+
+/** sandbox 走出口 proxy，冷啟動時偶爾單次 goto 逾時；重試兩次再放棄 */
+async function gotoWithRetry(page, url) {
+  let last;
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90_000 });
+      return;
+    } catch (e) {
+      last = e;
+      await page.waitForTimeout(2000);
+    }
+  }
+  throw last;
+}
+
+/**
+ * 導頁後等到頁面「不會再被重掛載」為止。
+ * AppShell 的 `<main key={current.id || businessType}>`（src/components/layout/AppShell.tsx:149）
+ * 會在 /api/auth/my-tenants 回來、current.id 由空字串變成真正 tenant id 的瞬間換 key，
+ * 整個頁面 subtree 重新掛載、所有頁面 state（含已填欄位與已開啟的 ConfirmModal）被清空。
+ * 因此所有互動都必須等網路靜止之後再開始。
+ */
+async function gotoStable(page, url) {
+  page.setDefaultNavigationTimeout(90_000);
+  await gotoWithRetry(page, url);
+  await page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => {});
+  await page.waitForTimeout(500);
+}
+
 async function login(page, password) {
-  await page.goto(`${BASE}/tenant/login`, { waitUntil: 'commit' });
-  await page.locator('#username').fill(EMAIL);          // 15 分冊 §5：欄位是 #username
-  await page.locator('#password').fill(password);
+  page.setDefaultNavigationTimeout(90_000);
+  await gotoWithRetry(page, `${BASE}/tenant/login`);
+  // React 尚未 hydrate 前 fill 進去的值不會進 state，送出會變空字串 → 必須等欄位
+  // 真的可見、且填完後回讀確認值有進去，否則重填一次。
+  await page.locator('#username').waitFor({ state: 'visible', timeout: 45_000 });
+  for (let i = 0; i < 3; i += 1) {
+    await page.locator('#username').fill(EMAIL);
+    await page.locator('#password').fill(password);
+    if ((await page.locator('#username').inputValue()) === EMAIL) break;
+    await page.waitForTimeout(1000);
+  }
   await page.getByRole('button', { name: '登入', exact: true }).click();
 }
 
@@ -84,7 +122,7 @@ async function login(page, password) {
 async function loginSucceeds(page, password) {
   await login(page, password);
   try {
-    await page.waitForURL(/\/tenant\/dashboard/, { timeout: 20_000 });
+    await page.waitForURL(/\/tenant\/dashboard/, { timeout: 45_000 });
     return true;
   } catch {
     return false;
@@ -96,14 +134,31 @@ function modalButton(page, name) {
   return page.locator('[role="dialog"]').getByRole('button', { name, exact: true });
 }
 
+/**
+ * 點 ConfirmModal 的確認鈕。modal 有淡入動畫，剛開啟的瞬間點下去會被底層
+ * card-body 攔截 pointer events，Playwright 重試時 modal 已重繪 → 元素 detached，
+ * 於是整串 30s 逾時。等 dialog 穩定後再點，並容忍一次重試。
+ */
+async function clickModalButton(page, name) {
+  const dialog = page.locator('[role="dialog"]');
+  await dialog.waitFor({ state: 'visible', timeout: 20_000 });
+  await page.waitForTimeout(600);
+  const btn = modalButton(page, name);
+  try {
+    await btn.click({ timeout: 10_000 });
+  } catch {
+    if (await dialog.count()) await btn.click({ timeout: 10_000, force: true });
+  }
+}
+
 async function changePassword(page, currentPassword, newPassword) {
-  await page.goto(`${BASE}/tenant/settings#security`, { waitUntil: 'commit' });
+  await gotoStable(page, `${BASE}/tenant/settings#security`);
   await page.locator('#currentPassword').waitFor({ state: 'visible', timeout: 20_000 });
   await page.locator('#currentPassword').fill(currentPassword);
   await page.locator('#newPassword').fill(newPassword);
   await page.locator('#confirmPassword').fill(newPassword);
   await page.getByRole('button', { name: '更改密碼', exact: true }).first().click();
-  await modalButton(page, '更改密碼').click();
+  await clickModalButton(page, '更改密碼');
   // 成功 toast 只會在 POST /api/auth/change-password 真的 200 之後出現
   await page.getByText('密碼已更改', { exact: false }).waitFor({ timeout: 20_000 });
 }
@@ -163,6 +218,7 @@ async function main() {
       const page = await ctx.newPage();
       check('登入成功（前提）', await loginSucceeds(page, PASSWORD));
 
+      await page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => {});
       // .topbar-right 底下第二個 .relative 觸發鈕＝使用者選單（第一個是店家切換）
       await page.locator('.topbar-right > .relative > button').nth(1).click();
       await page.getByRole('button', { name: '登出', exact: true }).click();
@@ -170,7 +226,7 @@ async function main() {
       check('點登出後被導回登入頁', /\/tenant\/login/.test(page.url()), page.url());
       await shot(page, 'after-logout');
 
-      await page.goto(`${BASE}/tenant/dashboard`, { waitUntil: 'commit' });
+      await gotoWithRetry(page, `${BASE}/tenant/dashboard`);
       await page.waitForURL(/\/tenant\/login/, { timeout: 20_000 }).catch(() => {});
       const blocked = /\/tenant\/login/.test(page.url());
       check('登出後再訪 dashboard 被 middleware 擋回登入頁', blocked, page.url());
@@ -190,12 +246,13 @@ async function main() {
 
       // 解除連接
       await page.getByRole('button', { name: '解除綁定', exact: true }).first().click();
-      await modalButton(page, '解除綁定').click();
+      await clickModalButton(page, '解除綁定');
       await page.getByText('LINE 帳號已解除綁定', { exact: false }).waitFor({ timeout: 20_000 });
       await shot(page, 'line-disconnected-toast');
 
       // 重新整理後仍必須是未設定（舊版送空字串＝不變更，重整後 token 又回來了）
-      await page.reload({ waitUntil: 'commit' });
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForLoadState('networkidle', { timeout: 45_000 }).catch(() => {});
       await page.locator('#channelId').waitFor({ state: 'visible', timeout: 20_000 });
       const channelIdAfter = await page.locator('#channelId').inputValue();
       check('重整後 Channel ID 欄位為空', channelIdAfter === '', `實際值：「${channelIdAfter}」`);
@@ -230,17 +287,31 @@ async function main() {
   process.exit(failed.length === 0 ? 0 : 1);
 }
 
+/** 點該欄位那一列的「重新輸入」，直到欄位真的可編輯（最多 5 次） */
+async function unlockSecretField(page, inputId) {
+  const input = page.locator(`#${inputId}`);
+  await input.waitFor({ state: 'visible', timeout: 30_000 });
+  for (let i = 0; i < 5; i += 1) {
+    if (await input.isEditable()) return;
+    // Input 元件渲染成裸 <input>，其父層 flex 容器裡就是同一列的按鈕
+    const btn = input.locator('..').getByRole('button', { name: '重新輸入', exact: true });
+    if (await btn.count()) await btn.first().click({ timeout: 10_000 }).catch(() => {});
+    await page.waitForTimeout(1000);
+  }
+  throw new Error(`#${inputId} 按了「重新輸入」仍不可編輯`);
+}
+
 /** 在 line-settings 頁填入 Midao 三組金鑰並儲存（密文欄位要先按「重新輸入」才可填） */
 async function bindLine(page) {
-  await page.goto(`${BASE}/tenant/line-settings`, { waitUntil: 'commit' });
+  await gotoStable(page, `${BASE}/tenant/line-settings`);
   await page.locator('#channelId').waitFor({ state: 'visible', timeout: 20_000 });
   await page.locator('#channelId').fill(LINE_CHANNEL_ID);
 
-  // 已存有遮罩值時兩個密文欄位是唯讀，要先按「重新輸入」才變成可編輯空欄位
-  // （15 分冊 §5）。按下去之後該顆按鈕文字會變成「取消重新輸入」，所以由後往前
-  // 點，避免 nth 索引在點擊過程中位移。
-  const reenter = page.getByRole('button', { name: '重新輸入', exact: true });
-  for (let i = (await reenter.count()) - 1; i >= 0; i -= 1) await reenter.nth(i).click();
+  // 已存有遮罩值時兩個密文欄位是唯讀，要先按同一列的「重新輸入」才變成可編輯空欄位
+  // （15 分冊 §5）。用 nth 索引一次點兩顆並不可靠：React 尚未 hydrate 完時點下去
+  // 不會改 state，且點完 DOM 會重排。改為「逐欄位、確認真的變成可編輯為止」。
+  await unlockSecretField(page, 'channelSecret');
+  await unlockSecretField(page, 'channelAccessToken');
 
   await page.locator('#channelSecret').fill(LINE_CHANNEL_SECRET);
   await page.locator('#channelAccessToken').fill(LINE_ACCESS_TOKEN);
