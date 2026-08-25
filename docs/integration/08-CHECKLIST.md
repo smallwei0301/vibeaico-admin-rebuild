@@ -106,8 +106,32 @@
 - [ ] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）
-- [ ] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
+- [x] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
       收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
+      **（2026-08-25 打勾。打勾的依據是本項自己的定義——「存主選單 → webhook 收
+      『選單』→ mock LINE 收到 Flex；關閉時依 fallback 回應」——這幾件事逐條有證據；
+      §6.9-c 當初卡住這一項的「Preview ＋ 真實 LINE 實測」也補做了。
+      ⚠️ 但 issue #6 的第 5 條驗收**仍留白**，見底下最後一行；14 分冊 §6.9-d 記完整證據。）**
+      - 單元 100 綠：`tests/unit/flex-menu.06.test.ts`（空卡片／1 張／12 張／
+        含廣告卡／`{shopName}` 替換／HINT・SILENT 分支）
+      - 整合 38 綠：`tests/integration/api/flex-menu.06.test.ts`
+        （`存 N 張卡片 → 顧客打「選單」→ 收到 flex，carousel 有 N 個 bubble`、
+        `SILENT → **整個 mock.requests 為空**（bot 真的閉嘴，一則請求都沒發）`）
+      - 真實 LINE：`scripts/verify/flex-menu-validate.cjs`
+        （官方 `POST /v2/bot/message/validate/reply`，正向 11／負向對照 4／
+        scheme 探測 21，不符預期 0；不耗推播額度）
+      - Preview 站自主實測：`scripts/verify/flex-menu-preview-live.cjs`
+        （編卡→發布→重整仍在→簽章 webhook「選單」→ 正式 DB 留下該事件的
+        chat_messages 列 → 逐字還原並清理）
+      - 出站 reply 側錄：`scripts/verify/flex-menu-reply-capture.cjs`
+        （同一 commit、同一份正式資料，`LINE_API_BASE` 指向側錄轉發器，
+        逐字證明我們真的對 `api.line.me/v2/bot/message/reply` 送出了那份 Flex）
+      - ⚠️ **仍未驗到、也不打算假裝驗到的一段**：「訊息真的出現在顧客手機上」。
+        `replyToken` 是 LINE 在真實事件裡發的一次性 token，偽造不出來
+        （文件上那兩個「測試用」token 實測一樣回 400 Invalid reply token），
+        而 Midao 頻道目前零追蹤者（`line_users` 空、
+        `GET /v2/bot/followers/ids` 回 403 未開放），也沒有可推播的真實 userId。
+        這一段的完成條件是**有真人對 Midao 帳號打一次「選單」**，屬人工介入點。
 
 ## Phase 7 — 收尾（07 分冊)
 - [ ] `vercel.json` 四個 cron + `CRON_SECRET` 保護

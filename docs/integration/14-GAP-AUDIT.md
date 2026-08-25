@@ -1087,6 +1087,70 @@ issue #6 的驗收有一條要求對 **Preview 站**做 Playwright ＋ 真實 LI
 主導者已 push（`38e2320`），這一條可以補做——**但 08 分冊「flex-menu 端到端」
 在補做之前不打勾**。
 
+### 6.9-d 補做完成：Preview ＋ 真實 LINE 實測（2026-08-25）
+
+§6.9-c 那一條補做了，08 分冊「flex-menu 端到端」隨之打勾（依據是那一項自己的定義）。
+⚠️ **issue #6 本身仍 open**：它的第 5 條驗收要求「以 Midao token 查證回覆**送達**」，
+而送達這一段驗不到（原因見下表），依 08 打勾規則不打沒有證據的勾。受測的是
+`c5bb50f`（linkUrl 五種 scheme）之後的當前程式碼，**不是 `38e2320` 當時的舊輸出**
+——契約在中間擴充過，引用舊輸出等於引用另一個版本的證據。
+
+腳本：`scripts/verify/flex-menu-preview-live.cjs`（Preview＋正式 Supabase）、
+`scripts/verify/flex-menu-reply-capture.cjs`（出站 reply 側錄）、
+`scripts/verify/flex-menu-validate.cjs`（LINE 官方 validate，重跑）。
+
+⚠️ 閘門的範圍要看清楚：typecheck / build / unit 是在 rebase 後的 HEAD 上全量跑的；
+**整合測試在 rebase 後只跑了與本 issue 相關的 4 支**（`flex-menu.06`／`line-webhook.06`／
+`settings.a1`／`upload.07`，4 檔 64 例全綠）。這是主導者 2026-08-25 的流程調整——
+多個執行者各排一輪 16〜18 分鐘的全量等於重跑幾乎相同的測試，全量改由主導者在
+**合併後的樹**上跑一次。rebase 前的基底（`5d1b9b9`）上跑過全量並全綠
+（38 檔 348 例），細節記在 issue #6 的驗收第 7 條。
+
+#### 這一輪真正的價值：把「驗不到的那一段」量出邊界，而不是繞過它
+
+issue 的措辭是「以 Midao token 查證回覆送達」。**送達驗不到**，原因是硬的：
+
+| 想走的路 | 實測結果 | 結論 |
+|---|---|---|
+| 偽造 `replyToken` 讓 reply 成功 | `0`×32 / `f`×32 / 亂填 → 全部 `400 {"message":"Invalid reply token"}` | 走不通。連 LINE 文件上那兩個「測試用」token 都被退 |
+| `POST /v2/bot/message/push` 推給真實 userId | 正式 DB `line_users` **零列**；`GET /v2/bot/followers/ids` → `403 Access to this API is not available for your account` | 沒有可推的對象。**推播額度一則都沒動**（`/v2/bot/message/quota/consumption` 測前測後皆 `totalUsage: 0`） |
+| 從 Preview 外面看 server 到底有沒有打 reply | `/v1/deployments/:id/runtime-logs` → 404、`/v3/deployments/:id/events` → 403 Not authorized | 這個帳號的 Vercel token 讀不到 runtime logs |
+
+所以做法是：**能量的逐段量、量不到的明寫量不到**。
+
+⚠️ 特別記一條**沒有拿來當證據**的觀察，因為它很誘人：實測發現 LINE 是
+**先驗訊息內容、再驗 replyToken**（同一個假 token 配一則 `text: ""` 的訊息，
+回的是 `May not be empty` 而不是 `Invalid reply token`）。於是「reply 回
+400 Invalid reply token」其實代表內容那一關過了——但那只等於 `validate/reply`
+已經證過的事，**不等於送達**。本輪沒有用它冒充送達，這裡寫下來是為了讓
+下一個人也不要用。
+
+#### 逐段驗到了什麼
+
+1. **LINE → 我們**（LINE 自己發、自己簽）：`POST /v2/bot/channel/webhook/test`
+   → `{"success":true,"statusCode":200,"reason":"OK"}`。
+   ⚠️ 這一條會**因 Vercel 冷啟動假紅**：第一次跑回 `REQUEST_TIMEOUT / statusCode 0`，
+   先自己打一次把 function 叫醒後即 200。腳本已改成先暖機再重試三次並印出每一次原文
+   ——一次逾時就判 FAIL，是把量測不確定性當成產品缺陷。
+2. **驗簽**：無簽章／錯簽章 → `401 bad signature`；正確簽章 → `200 ok`。
+3. **查店 + 進 onMessage**：事件送出後，正式 DB 出現該事件的 `chat_messages` 列
+   （`content = {"text":"選單"}`）。這是從外部唯一看得到的「Preview 真的處理了它」。
+4. **意圖 → 組裝 → 出站**：側錄轉發器（`LINE_API_BASE` → 127.0.0.1 → `api.line.me`）
+   逐字錄到 `POST /v2/bot/message/reply`，body 是 `flex/carousel`、bubble 數＝店家
+   發布的卡片數、含剛發布的卡片標題、兩張卡的 `linkUrl` 都成了 `uri` action
+   （`https://` 與 `tel:`）、`{shopName}` 已替換。
+5. **內容合法性**：同一份側錄到的 payload 再送官方 `validate/reply` → 200。
+6. **送達**：❌ 沒有驗到。條件是**有真人對 Midao 帳號打一次「選單」**（人工介入點）。
+
+#### 資料污染的處理
+
+Preview 連的是**正式**專案（`egehnijjpgijmccagxac`），所以：測前把
+`tenant_settings.line` 的**整塊 jsonb 原文**存下來當基準（不是 `GET /api/settings`
+的回傳——後者會套 zod default，照著回寫會在 DB 裡多長出測前不存在的鍵，那不是還原），
+測後 API 還原＋逐字比對，發現多了一個 `flexCards: []` 鍵就用 service role 寫回原文，
+再查一次證明相同。探測事件用可辨識的假 userId（`U0000verify06probe…`），
+測後刪除並貼出殘留 0 的查詢輸出；`message` 事件不寫 `line_users`，實查亦為 0。
+
 ### 8.17 CLINIC 的三個名詞（擁有者裁決，解開 §8.13 規則 4 的「尚未設計」）
 
 | 概念 | 診所叫什麼 |
