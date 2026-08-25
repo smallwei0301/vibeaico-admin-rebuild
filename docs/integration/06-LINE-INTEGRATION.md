@@ -243,6 +243,232 @@ export async function notifyBookingStatus(
 
 ---
 
+## 8. 圖片訊息與 `chat-images` bucket —— LINE 抓圖行為查證紀錄
+
+> 對應 `docs/integration/14-GAP-AUDIT.md` §8.12。issue #15（migration `0017`）把
+> `chat-images` 建成 **public** bucket，`/tenant/chat` 傳圖時 `/api/upload` 回
+> `getPublicUrl()`，再原封不動塞進 image message 的 `originalContentUrl` /
+> `previewImageUrl`（`src/app/api/chat/messages/route.ts`）。
+> 本節記錄「能不能改成短效簽名 URL」的查證過程與結論。**查證日期：2026-08-25。**
+
+### 8.1 結論：**無法確認**（不是 A、也不是 B，是「官方沒寫」）
+
+核心問題是「LINE 什麼時候去抓 `originalContentUrl`」：
+
+- **(A) 發送當下抓一份存到 LINE 自己的伺服器** → 簽名 URL 可行
+- **(B) 顧客每次點開才即時回源抓** → 簽名 URL 會製造破圖 bug
+
+**查遍 LINE 官方 OpenAPI spec、Messaging API 參考文件、開發指南與 FAQ，沒有任何一句
+話直接說明 image message 的 `originalContentUrl` 在什麼時間點被誰抓取、LINE 端是否
+保留副本、保留多久。** 官方旁證兩邊都有一點，但沒有一條是針對 image message 的直述
+句，因此本節不下 A/B 的結論，也不寫「應該是」。
+
+**最高可信度來源直接落空**：LINE 官方 OpenAPI spec 的 `ImageMessage` 只有型別，
+沒有任何描述文字——
+[line/line-openapi `messaging-api.yml`](https://github.com/line/line-openapi/blob/main/messaging-api.yml)：
+
+```yaml
+ImageMessage:
+  externalDocs:
+    url: https://developers.line.biz/en/reference/messaging-api/#image-message
+  required: [originalContentUrl, previewImageUrl]
+  allOf:
+    - "$ref": "#/components/schemas/Message"
+    - type: object
+      properties:
+        originalContentUrl: { type: string, format: uri }
+        previewImageUrl:    { type: string, format: uri }
+```
+
+上次靠 `BotInfoResponse.chatMode` 一次解決爭議的那招（見 §7 AUTO_REPLY），這次在
+spec 裡查不到答案——spec 對這題完全沉默。
+
+### 8.2 傾向 (B)（回源、次數與收訊人數成正比）的官方旁證
+
+三條都是官方文件原文，但**都不是講 image message 的 `originalContentUrl`**：
+
+1. **法人開發指南「大量のアクセスへの対応 / Dealing with high volume access」**
+   （[ja](https://developers.line.biz/ja/docs/partner-docs/development-guidelines/)｜
+   [en](https://developers.line.biz/en/docs/partner-docs/development-guidelines/)）：
+   > メッセージの送信対象のユーザー数や、送信したメッセージの内容によっては、メッセージ
+   > に含まれるURLや画像などのコンテンツに対し、大量のアクセスが発生する場合があります。
+   > そのような場合に備え、CDNやロードバランサーなどの負荷分散の仕組みを利用したり、
+   > メッセージの送信を段階的に行ったりして、**コンテンツ保存元のサーバー**が大量の
+   > アクセスによってダウンしないように対応してください。
+
+   英文版：「a large volume of access may be generated to URLs, images, and other
+   content in the messages … so that **the server from which the content is stored**
+   doesn't go down」。
+   → 若 LINE 在發送當下抓一份自存，來源站的存取量不會隨收訊人數放大。這條指南的存在
+   本身就說明來源站會被反覆打。**但它把「URL（點連結）」和「画像」寫在同一句**，
+   點連結必然是逐人存取，所以無法排除放大效應只來自連結那一半。
+
+2. **同指南「HTTPS（TLS 1.2以上）の利用」**：
+   > 画像メッセージや画像コンポーネントを含むFlex Messageなどを送信する場合、
+   > **ファイルを保存するサーバー**はHTTPS（TLS 1.2以上）での通信に対応している必要があります。
+
+   → 官方一貫把來源站稱為「保存圖片的伺服器」，沒有任何「LINE 會轉存」的敘述。
+
+3. **imagemap message「How to configure an image」**
+   （[Messaging API reference](https://developers.line.biz/en/reference/messaging-api/#base-url)）：
+   > Make it possible to access images of 5 different sizes using the
+   > `baseUrl/{image width}` URL format. **LINE will then download an image at the
+   > appropriate resolution based on the device.**
+
+   → 「依裝置決定抓哪一張」＝抓取發生在知道裝置之後，不是發送當下。**但這是 imagemap，
+   不是 image message**，兩者是不同的訊息型別。
+
+4. **FAQ「メッセージとして送信した動画が再生できないのはなぜですか？」**
+   （[ja](https://developers.line.biz/ja/faq/)｜
+   [en `#why-cant-i-play-a-video-that-i-sent-as-a-message`](https://developers.line.biz/en/faq/)）：
+   > - 動画が再生可能なファイル形式（mp4）であること
+   > - 動画のファイルサイズが200MB以下であること
+   > - **動画をホストしているサーバーが、HTTPの範囲リクエスト（Range request）に対応していること**
+
+   → 要求來源站支援 Range request，意味著播放端是直接對來源站串流。**但這是 video
+   message**，不能直接推到 image message。
+
+### 8.3 傾向 (A)（LINE 端有副本）的第三方實測——非官方，僅供參考
+
+Qiita 問答
+[「LineMessageAPIで画像を署名付きURL(有効期限:1時間)で対応した際の挙動と対処法」](https://qiita.com/Forest_Bear/questions/4fe6be5bce9ee43dfa48)
+（2025-01-24，提問者 @Forest_Bear，主題正是「合約、收據等重要文件用簽名 URL 送」）。
+發問者實測（原文）：
+
+| 環境 | 條件 | 結果 |
+|---|---|---|
+| LINE App | 通信良好、送出後**在有效期限外**開啟聊天室 | **画像が表示される** |
+| LINE App | 通信良好、看過後在有效期限外再開 | 画像が表示される |
+| LINE App | 通信不良、送出後在有效期限外開啟 | 画像が表示されない |
+| OAM（Official Account Manager） | 通信良好、送出後**在有效期限外**開啟 | **画像が表示されない** |
+| OAM | 看過後在有效期限外再開 | 画像が表示されない |
+
+發問者自己寫明「**公式ドキュメントに詳しい仕様が記載されておらず**」（官方文件沒寫細節）。
+唯一的回答者（非 LINE 官方）只說「LINEアプリでは画像データはキャッシュされるので
+読み込まれた後はオフラインでも表示されます」——那解釋的是**看過之後**的離線快取，
+**沒有解釋第一次開啟就已過期卻仍顯示**的那一列。
+
+**這份實測能確定的、與不能確定的**：
+
+- ✅ 可確定：**店家端的 LINE Official Account Manager 會直接回源抓圖，簽名一過期就破圖。**
+  這一條與 A/B 無關，是獨立成立的事實。
+- ❌ 不能確定：LINE App 那一列到底是「LINE 平台有副本」還是「該裝置在期限內就背景預抓過」。
+  單一個人的實測、樣本一則、無法排除裝置背景預載，**不足以當作 (A) 成立的證據**。
+
+### 8.4 順帶查到的硬性限制（官方原文，均可直接引用）
+
+來源：[Messaging API reference — Image message](https://developers.line.biz/en/reference/messaging-api/#image-message)
+
+| 項目 | `originalContentUrl` | `previewImageUrl` |
+|---|---|---|
+| 最大字元數 | 2000 | 2000 |
+| 協定 | HTTPS（TLS 1.2 or later） | HTTPS（TLS 1.2 or later） |
+| 圖片格式 | **JPEG or PNG** | **JPEG or PNG** |
+| 最大檔案大小 | **10 MB** | **1 MB** |
+| 編碼 | URL 須以 UTF-8 percent-encode | 同左 |
+
+另附原文一句：「Depending on the situation of a user device, the image of the
+`originalContentUrl` property may be used as the preview image.」
+
+**⚠️ 由此發現本專案現有實作的兩個規格違反（本次查證的附帶產出，未在此次改動中修）：**
+
+1. `/api/upload`（`src/app/api/upload/route.ts`）的 `ALLOWED_TYPES` 收
+   `image/webp`，但 LINE image message **只接受 JPEG / PNG**。店家傳 WebP →
+   上傳成功、`chat_messages` 有紀錄、LINE 端可能顯示不出來。
+2. `src/app/api/chat/messages/route.ts` 與 `src/app/api/marketing/pushes/[id]/send/route.ts`
+   都把**同一個 URL 同時當 original 與 preview**。`/api/upload` 上限是 5 MB，
+   而 `previewImageUrl` 官方上限是 **1 MB** → 1~5 MB 的圖已超出 preview 規格。
+
+**未能確認的其他項目**（查過但官方沒有寫）：
+
+- **重試行為**：LINE 抓 `originalContentUrl` 失敗會不會重抓、重抓幾次。
+  查過 Messaging API reference 全文（`index.html.md`，約 69 萬字元）grep
+  `retry / retries / timeout / redirect`，只有 `X-Line-Retry-Key`（那是**你打 LINE**
+  的 API 重試，不是 LINE 抓你的圖），以及 webhook 的 `REQUEST_TIMEOUT`。**無此規格。**
+- **抓取逾時秒數**：同上，grep 不到任何針對 content URL 的逾時值。**無此規格。**
+- **LINE 端圖片保留期限**：官方只有針對「**使用者傳給 Bot** 的內容」寫過保留規則
+  （[Get content](https://developers.line.biz/en/reference/messaging-api/#get-content)：
+  「Content is automatically deleted after a certain period from when the message was
+  sent. There is no guarantee for how long content is stored.」）。
+  那條講的是 LINE 保存的**收訊**內容，**不適用於 Bot 送出、由我方伺服器託管的圖片**。
+  對後者，官方沒有任何保留期限敘述。
+- 另注意 `contentProvider.type: external` 那段（同上 reference）雖然寫著
+  「The server where the image file is located isn't provided by LY Corporation」，
+  **那是 webhook 收訊事件的欄位**，描述的是「使用者端收到的訊息其內容由誰提供」，
+  不能當成「Bot 送出的圖 LINE 不會存副本」的證據。
+
+### 8.5 `chat-images` 目前是 public 的理由與已知風險
+
+**理由**：LINE image message 只收「可外連的 HTTPS 網址」（見 8.4）。Supabase public
+bucket 的 `getPublicUrl()` 是目前唯一**已驗證可用**的形式（`tests/integration/api/chat-image.15.test.ts`）。
+
+**已知風險（照實記錄，不粉飾）**：
+
+1. **無身分檢查**：`storage.buckets.public = true` + `p_storage_read` 對此 bucket
+   `for select using (bucket_id in (...))` 無條件放行。任何人拿到網址即可開啟，
+   不需登入、不分租戶。
+2. **內容可能敏感**：CLINIC 模式的療程紀錄、訂單明細、含顧客姓名的截圖都可能被店家
+   直接傳出去。網址會出現在瀏覽器歷史、截圖、貼錯群組。
+3. **唯一的保護是「路徑不可猜」**：`/api/upload` 產生
+   `{tenantId}/{randomUUID()}.{ext}`，兩段都是 UUID，實務上無法枚舉。
+   **但這是 bearer-URL 模型，不是存取控制**——網址即權限，外流即失守。
+4. **無保留期限**：0017 沒有任何 lifecycle 設定，物件無限期累積，成本只增不減。
+5. **`chat_messages` 只存最終 URL，沒存 storage path**，日後要清理得反解 URL。
+
+### 8.6 建議做法
+
+**（1）現階段不得改用短效簽名 URL。** 理由不是「做不到」，是「沒有依據」：
+沒有任何官方文件保證 LINE 端有副本，而 8.3 已可確定 OAM 端一定破圖。在 (A) 未被
+證實前改成短效簽名，等於拿顧客看得到圖這件事去賭一個沒有出處的假設。
+
+**（2）保留期限也被同一個未知卡住，同樣不可先做。**
+若真相是 (B)，刪掉舊物件＝顧客回頭看舊訊息全部破圖；若是 (A)，刪掉無害。
+所以「清理策略」的參數（保留幾天）不是成本問題而是正確性問題，必須先解 8.1。
+**在解開之前，能做且無風險的只有**：
+- `/api/upload` 改成 chat-images 只收 JPEG / PNG（修 8.4 的違反 1），
+- preview 與 original 分流或限制 preview ≤ 1 MB（修 8.4 的違反 2），
+- `chat_messages` 補存 storage path，讓未來的清理工具有得刪，
+- 後台傳圖 UI 明示「此圖片將以公開網址提供給 LINE，請勿傳送身分證、病歷等文件」
+  ——這是使用者讀得到的地方，不是只寫在程式碼註解裡（CLAUDE.md 鐵則）。
+
+**（3）真正敏感的內容，無論 A/B 都不該用 image message 送。**
+關鍵結構性理由：**LINE 端抓圖時不會帶任何可辨識顧客的憑證**，所以「顧客點圖 →
+我們的伺服器驗身分 → 再回傳圖」這種代理層，掛在 `originalContentUrl` 後面是無效的
+——伺服器收到請求時無從得知對方是誰。而且官方明文
+「[we don't disclose the IP addresses of the LINE Platform](https://developers.line.biz/en/docs/messaging-api/development-guidelines/#prohibiting-ip-address-restrictions)」
+且要求「Don't restrict access by IP address」（該段落是講 webhook 來源，不可過度延伸，
+但足以說明 IP 白名單不是可行的替代方案）。
+→ 正確做法是**不送圖，送連結**：推一則含 LIFF / 短網址的訊息，顧客點開後在我方頁面
+以 LINE Login 取得 `userId` 驗明身分，再由伺服器發短效簽名 URL 顯示。這是獨立的工程，
+不屬於 issue #15 範圍。
+
+**（4）在此之前，維持 public + 不可猜路徑，並如實記錄風險（即本節）。**
+
+### 8.7 建議的實測驗證方法（需真實 LINE 頻道，留給主導者決定，勿自行執行）
+
+要把 8.1 從「無法確認」變成事實，唯一可行的是實測。**設計重點是排除裝置本機快取**
+——這正是 8.3 那份第三方實測最大的漏洞：
+
+1. 用**測試用 channel**，push 一則 image message，`originalContentUrl` /
+   `previewImageUrl` 指向有效期 **60 秒**的 Supabase 簽名 URL。
+2. 送出後**完全不要開啟該聊天室**（也不要讓 App 在前景），等 **5 分鐘**確定過期。
+   期間可在伺服器端記錄 access log，觀察這 60 秒內是否有來自 LINE 的抓取（有抓取
+   ≠ 有保存，但沒抓取幾乎可直接判定 (B)）。
+3. 用一台**從未收過該訊息的裝置**（或清除 App 資料後重新登入）第一次開啟聊天室：
+   - 縮圖與大圖都正常顯示 → 傾向 (A)，LINE 端有副本
+   - 破圖 → **確定 (B)**
+4. 分別確認 preview（聊天列表的縮圖）與 original（點開的大圖）是否行為一致
+   ——兩個欄位可能不同時機抓取。
+5. 同步在 LINE Official Account Manager 的聊天畫面確認（依 8.3 預期會破圖）。
+6. 補一輪：把物件從 Storage **刪除**（而非只是簽名過期）後，再從一台新裝置開啟舊訊息。
+   這一輪才真正回答「保留期限能設多短」。
+
+**實測結果請回填本節 8.1，並把 8.6 的建議一併改寫。** 在回填之前，8.1 必須維持
+「無法確認」——不得因為 8.2 的旁證較多就改寫成 (B)，那就是 CLAUDE.md 警告的
+「把沒有量到的狀態當成量到的」。
+
+---
+
 ## 本冊驗收
 
 - [ ] 測試店家貼上真實 channel 憑證 → `line/test` 回連線正常；DB 內兩個 `*_enc`
