@@ -13,7 +13,9 @@ export const paymentMethodsPage = {
     delete: '刪除',
     enable: '啟用',
     disable: '停用',
-    testCharge: '實刷測試並開通（藍新 NT$1／綠界 NT$5）',
+    /* ⚠️ 舊標籤「實刷測試並開通（藍新 NT$1／綠界 NT$5）」承諾了一個做不到的結果。
+       金流後端建置前，標籤只描述用途、不承諾開通。 */
+    testCharge: '金流實刷驗證',
     testConnection: '檢查金流設定',
   },
 
@@ -146,6 +148,7 @@ export const paymentMethodsPage = {
     testChargeConfirm:
       '金流後端尚未建置，本頁無法送出實刷測試，也不會因此開通金流。按下確定不會產生任何付款、也不會改變驗證狀態。',
     testChargeNotAvailable: '未執行實刷測試：金流後端尚未建置，此收款方式仍為「尚未驗證」。',
+    testChargeDisabledHint: '金流後端尚未建置，無法進行實刷驗證，也無法開通任何金流帳號',
   },
 
   /* -------------------------------------------------------- 實刷測試 */

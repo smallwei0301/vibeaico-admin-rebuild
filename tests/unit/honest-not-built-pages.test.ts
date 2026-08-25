@@ -189,6 +189,96 @@ describe('修復-1A：後端不存在的四頁不得假成功', () => {
     });
   });
 
+  /* ==========================================================================
+   * 修復-1A 補（調度者裁決 1–3）
+   * ========================================================================== */
+
+  describe('裁決 1：不得宣稱不存在的能力（與頁頂告示自相矛盾）', () => {
+    it('clinic-queue 不再宣稱「病患已可在 LINE 自助掛號」', () => {
+      const guide = Object.values(clinicQueuePage.guide).join('');
+      expect(guide).not.toContain('已可在 LINE 自助掛號');
+      expect(guide).not.toMatch(/病患已可/);
+      expect(clinicQueuePage.guide.lineSelfServiceStrong).toContain('尚未建置');
+    });
+
+    it('clinic-queue 未填電話警告不再隱含「有填電話就會收到通知」', () => {
+      const warning = clinicQueuePage.registerModal.noPhoneWarning;
+      expect(warning).not.toContain('無法收到任何系統通知');
+      expect(warning).toContain('系統不會發送任何通知');
+    });
+
+    it('donate 付款說明不再宣稱已可透過藍新金流付款', () => {
+      const hint = donatePage.form.payHint;
+      expect(hint).not.toContain('透過藍新金流安全付款');
+      expect(hint).not.toMatch(/支援信用卡/);
+      expect(hint).toContain('尚未接通');
+    });
+  });
+
+  describe('裁決 2：似真的假數字一律改未知態', () => {
+    it('donate 頁面原始碼裡沒有任何捏造的贊助金額', () => {
+      const code = withoutComments(src(PAGES.donate));
+      expect(code).not.toContain('MOCK_TOTAL_DONATED');
+      expect(code).not.toContain('MOCK_MY_DONATED');
+      expect(code).not.toContain('MOCK_DONORS');
+      expect(code).not.toMatch(/48650|48,650/);
+      // 統計值只能是字典裡的未知態，不能是任何數字字面量或格式化過的金額
+      expect(code).toContain('{t.notBuilt.unknownValue}');
+      expect(donatePage.notBuilt.unknownValue).toBe('--');
+      const statValue = code.slice(code.indexOf('stat-value'), code.indexOf('stat-value') + 120);
+      expect(statValue).toContain('t.notBuilt.unknownValue');
+      expect(statValue).not.toContain('formatCurrency');
+    });
+
+    it('donate 贊助名單不放示範記錄（改誠實 EmptyState）', () => {
+      const code = withoutComments(src(PAGES.donate));
+      expect(code).toContain('rows={[] as Donor[]}');
+      expect(code).toContain('title={t.notBuilt.donorsEmptyTitle}');
+      // 舊 EmptyState 宣稱「還沒有贊助記錄」——那是沒查過就下的結論，已刪除
+      expect(Object.keys(donatePage.donors)).not.toContain('emptyTitle');
+      expect(Object.keys(donatePage.donors)).not.toContain('firstDonorCallout');
+    });
+
+    it('referrals 四張統計卡都是未知態，不由假記錄推算', () => {
+      const code = withoutComments(src(PAGES.referrals));
+      expect(code).not.toContain('MOCK_REFERRALS');
+      expect(code).not.toContain('summary');
+      expect(code).not.toContain('formatNumber');
+      const cards = [...code.matchAll(/<StatCard[\s\S]*?\/>/g)].map((m) => m[0]);
+      expect(cards).toHaveLength(4);
+      for (const card of cards) {
+        expect(card).toContain('value={t.notBuilt.unknownValue}');
+      }
+      expect(referralsPage.notBuilt.unknownValue).toBe('--');
+    });
+
+    it('referrals 推薦歷史改誠實 EmptyState，沒有任何示範記錄', () => {
+      const code = withoutComments(src(PAGES.referrals));
+      expect(code).toContain('const rows: ReferralRecord[] = [];');
+      expect(code).toContain('title={t.notBuilt.historyEmptyTitle}');
+      expect(referralsPage.notBuilt.historyEmptyDescription).toContain('尚未建置');
+      // 舊 EmptyState 宣稱「還沒有推薦記錄」＋「雙方各獲得 500 點」，已刪除
+      expect(Object.keys(referralsPage)).not.toContain('empty');
+    });
+  });
+
+  describe('裁決 3：實刷測試按鈕不得承諾結果，且必須停用', () => {
+    it('按鈕標籤不再承諾「開通」', () => {
+      expect(paymentMethodsPage.actions.testCharge).not.toContain('開通');
+      expect(paymentMethodsPage.actions.testCharge).not.toContain('實刷測試並');
+    });
+
+    it('實刷測試按鈕為 disabled，並用 title 說明原因', () => {
+      const code = withoutComments(src(PAGES.paymentMethods));
+      const button = code.slice(code.indexOf('t.actions.testCharge') - 260,
+        code.indexOf('t.actions.testCharge'));
+      expect(button).toContain('<Button');
+      expect(button).toContain('disabled');
+      expect(button).toContain('title={t.notBuilt.testChargeDisabledHint}');
+      expect(paymentMethodsPage.notBuilt.testChargeDisabledHint).toContain('尚未建置');
+    });
+  });
+
   it('四頁都沒有 setTimeout 假延遲（假延遲讓假成功看起來像真的在跑）', () => {
     for (const path of Object.values(PAGES)) {
       expect(src(path), path).not.toContain('setTimeout');

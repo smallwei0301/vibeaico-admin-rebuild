@@ -21,6 +21,15 @@ export const referralsPage = {
     codeUnavailable: '尚未開通',
     linkUnavailable: '尚未開通（推薦連結需由後端配發）',
     disabledHint: '推薦碼尚未開通，無法複製或分享',
+    /**
+     * 未知態顯示值。CLAUDE.md：值不知道就顯示不知道，絕不填一個看起來合理的假值。
+     * 推薦數與累計獎勵點數是平台對店家的獎勵陳述，後端不存在就不得給數字
+     * （舊值是 MOCK_REFERRALS 五筆假記錄推算出來的 5／2／2／1000 點）。
+     */
+    unknownValue: '--',
+    historyEmptyTitle: '推薦歷史尚未開通',
+    historyEmptyDescription:
+      '推薦碼後端尚未建置，目前查不到任何推薦記錄；這裡不會放示範記錄，以免看起來像真的推薦成功過。',
   },
 
   /* ------------------------------------------------------------ 推薦碼卡 */
@@ -78,8 +87,4 @@ export const referralsPage = {
     unknownError: '未知錯誤',
   },
 
-  empty: {
-    title: '還沒有推薦記錄',
-    description: '把推薦碼或推薦連結分享給其他店家，對方註冊並完成首次儲值後，雙方各獲得 500 點。',
-  },
 } as const;

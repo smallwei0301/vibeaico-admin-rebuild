@@ -21,6 +21,16 @@ export const donatePage = {
     confirmMessage: (amount: string) =>
       `贊助金流後端尚未建置：按下確定不會以 ${amount} 建立任何付款，也不會導向金流頁面。這只會關閉此視窗。`,
     submitNotEffective: '未送出贊助：贊助金流後端尚未建置，沒有產生任何付款，你的帳戶不會被扣款。',
+    /**
+     * 未知態顯示值。CLAUDE.md：值不知道就顯示不知道，絕不填一個看起來合理的假值
+     * ——假值放在真值旁邊時傷害最大。累積贊助金額是平台對店家的財務陳述，
+     * 後端不存在就不得給數字（舊值為硬編碼的 48650 / 500）。
+     */
+    unknownValue: '--',
+    totalUnknownHint: '（贊助後端尚未建置，無法統計）',
+    myDonationUnknown: '你的累計贊助金額：--（贊助後端尚未建置，無法查詢）',
+    donorsEmptyTitle: '贊助名單尚未開通',
+    donorsEmptyDescription: '贊助後端尚未建置，目前查不到任何贊助記錄；這裡不會放示範名單，以免看起來像真的有人贊助過。',
   },
 
   /* ------------------------------------------------------------ 贊助卡 */
@@ -42,7 +52,9 @@ export const donatePage = {
     displayNameMax: 50,
     submit: '前往贊助',
     submitting: '處理中...',
-    payHint: '透過藍新金流安全付款，支援信用卡 / Apple Pay / Google Pay',
+    /* ⚠️ 舊文案「透過藍新金流安全付款，支援信用卡 / Apple Pay / Google Pay」
+       與頁頂告示直接矛盾——金流根本沒接。 */
+    payHint: '贊助金流尚未接通，目前無法用任何付款方式完成贊助。',
     amountInvalidInteger: '請輸入整數贊助金額',
     amountOutOfRange: '贊助金額須介於 NT$ 10 ~ 100,000',
     confirmTitle: '前往贊助',
@@ -76,14 +88,6 @@ export const donatePage = {
     loading: '載入中...',
     loadFailed: '載入失敗，請重新整理',
     thanksPrefix: '感謝 ',
-    firstDonorCallout: '☕ 成為第一位贊助者，讓 VibeAI 走得更遠 ❤',
-    emptyTitle: '還沒有贊助記錄，成為第一位支持者吧 ☕',
-    emptyDescription: '你的支持會直接用在平台的伺服器、推播與新功能開發上。',
-  },
-
-  labels: {
-    myDonationPrefix: '你已贊助 NT$ ',
-    myDonationSuffix: '，謝謝你 ❤',
   },
 
   /* --------------------------------------------------------------- 訊息 */

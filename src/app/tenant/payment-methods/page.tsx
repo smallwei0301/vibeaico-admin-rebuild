@@ -248,7 +248,11 @@ export default function PaymentMethodsPage() {
                     {m.active ? t.actions.disable : t.actions.enable}
                   </Button>
                   {m.methodType === 'ONLINE_PAYMENT' ? (
-                    <Button variant="success" size="sm" onClick={() => setTestTarget(m)}>
+                    <Button
+                      variant="success" size="sm" disabled
+                      title={t.notBuilt.testChargeDisabledHint}
+                      onClick={() => setTestTarget(m)}
+                    >
                       <ShieldCheck size={13} />{t.actions.testCharge}
                     </Button>
                   ) : null}
@@ -302,7 +306,11 @@ export default function PaymentMethodsPage() {
         }}
       />
 
-      {/* ---------------------------------------------- modal 3：實刷測試 */}
+      {/*
+        * modal 3：實刷測試。上面的按鈕已 disabled，正常情況打不開這個視窗；
+        * 這裡刻意保留為第二道防線 —— 就算有人把 disabled 拿掉，onConfirm 也
+        * 不會把任何收款方式設成已驗證。單元測試同時守住這兩層。
+        */}
       <ConfirmModal
         open={!!testTarget}
         title={t.actions.testCharge}
