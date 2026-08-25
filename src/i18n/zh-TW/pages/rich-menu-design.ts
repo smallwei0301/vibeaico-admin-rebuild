@@ -66,7 +66,6 @@ export const richMenuDesignPage = {
       { strong: '發布', text: '需訂閱「進階自訂選單」，會取代目前的底部選單，並覆蓋原本的 Flex 主選單自訂與「每格設定」草稿' },
       { strong: '注意', text: '：備份／還原端點尚未建置，發布前系統不會備份你目前的設計，發布後也無法一鍵還原（本區的「還原發布前的設計」已停用）' },
     ],
-    backupBar: '發布範本前的原設計已自動備份，隨時可一鍵還原。',
     restore: '還原發布前的設計',
     /**
      * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
@@ -101,31 +100,42 @@ export const richMenuDesignPage = {
 
     /** 發布 / 還原確認 */
     publishConfirmLead: '確定發布「',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 舊結尾寫「✅ 系統會自動備份你目前的設計，發布後可隨時一鍵還原」——
+     * 沒有任何備份／還原端點（services/settings.ts 只有 createRichMenu /
+     * deleteRichMenu），「還原發布前的設計」也已停用，等於在發布前給店家一張
+     * 不存在的保險。順帶修掉同一段裡另外兩句假話：發布端點只上傳主題底圖，
+     * 不會合成店名大字；也不會一起套用 Flex 主選單（Flex 儲存後端尚未建置）。
+     * 連帶刪除從未使用的 restoreFailed（沒有還原流程可失敗）。禁止復原。
+     */
     publishConfirmTail:
-      '」一頁式範本到 LINE？\n\n・會取代目前的底部選單（品牌大字帶入你的店名）\n・會同時套用整組配套的 Flex 主選單，原本的 Flex 設定與「每格設定」草稿會被覆蓋\n✅ 系統會自動備份你目前的設計，發布後可隨時一鍵還原。',
-    restoreFailed: '還原失敗，請稍後再試',
+      '」一頁式範本到 LINE？\n\n・會取代目前的底部選單（實際推送的是所選主題的底圖與系統預設六格文字）\n・聊天室的 Flex 主選單不會一起換——Flex 樣式的儲存後端尚未建置\n⚠️ 發布前系統不會備份你目前的設計，發布後也無法還原（備份／還原端點尚未建置），請先自行記下目前的每格設定。',
     cancelled: '已取消，尚未發布任何內容',
   },
 
   /* ================================================== 快速套用範本 */
+  /**
+   * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+   * 「快速套用範本」既沒有後端，也沒有任何前端副作用：舊實作按下確定只是
+   * setHasBackup(true) + toast「已套用並暫存…Flex 主選單已上線」，
+   * 但每格設定、主題、Flex 卡片一個都沒變，LINE 端更沒有任何東西上線。
+   * 連帶的「套用前會自動備份，套用後可一鍵反悔」也是假的——本專案沒有備份／
+   * 還原端點（services/settings.ts 只有 createRichMenu / deleteRichMenu）。
+   * 因此改為：點範本卡直接顯示「尚未生效」提示（比照「儲存草稿」），
+   * 移除那個為無副作用動作而開的確認視窗。
+   * 一併刪除的假宣稱鍵：applyConfirmLead / applyConfirmTail / appliedLead /
+   * appliedBackupNote / appliedBackupTail / appliedDraft / appliedUnsubscribed /
+   * restoreBackup / dismissBackup / backupFailed / restoreConfirmLead / restored。
+   * 禁止復原。
+   */
   quickTemplates: {
     cardTitle: '快速套用範本（選一個開始，再微調）',
     toggle: '展開 / 收合',
-    restoreBackup: '還原套用前的設定',
-    dismissBackup: '不用了',
-    applyConfirmLead: '套用「',
-    applyConfirmTail:
-      '」會覆蓋你目前的每格設定與 Flex 主選單樣式。\n\n放心：套用前會自動備份，套用後範本庫上方有「還原套用前的設定」可一鍵反悔。\n\n確定套用？',
-    appliedLead: '已套用「',
-    appliedBackupNote: '」。套用前的設定已備份（',
-    appliedBackupTail: '），反悔可一鍵還原。',
-    appliedUnsubscribed: (name: string) =>
-      `已套用「${name}」並暫存。您未訂閱「進階自訂選單」，顧客目前看到的是免費基本款；訂閱後此範本樣式才會完整生效`,
-    appliedDraft: (name: string) =>
-      `已套用並暫存「${name}」範本！Flex 主選單已上線；Rich Menu 還需按「發布到 LINE」才會推到顧客那邊`,
-    backupFailed: '套用前備份失敗（不擋套用）',
-    restoreConfirmLead: '將把每格設定與 Flex 主選單還原成套用範本前的樣子（',
-    restored: '已還原套用前的設定，頁面即將重新載入…',
+    notBuiltBody:
+      '範本套用尚未建置：本區沒有可套用範本的後端，點任一張範本卡都不會改變你的每格設定、主題或 Flex 主選單樣式，也不會有任何東西被備份或可還原。',
+    applyNotEffective: (name: string) =>
+      `未套用「${name}」：範本套用後端尚未建置，你的每格設定、主題與 Flex 主選單樣式都沒有變動，LINE 上的選單也沒有任何改變。要讓顧客看到新選單，請在下方選好主題後按「發布到 LINE」。`,
     templateWord: '範本',
   },
 
@@ -273,12 +283,19 @@ export const richMenuDesignPage = {
     draftNotEffective:
       '未儲存草稿：Rich Menu 草稿後端尚未建置，你的版型、主題與每格設定只存在這個瀏覽器分頁，重新整理或關閉頁面就會消失。要讓顧客看到請直接按「發布到 LINE」。',
     draftSaveFailed: '儲存 Rich Menu draft 失敗',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 發布只呼叫 createRichMenu(theme) → POST /api/settings/line/rich-menu/create，
+     * 該端點做的事只有：依主題產生 2500×1686 六格選單（格子文字取
+     * MODE_PRESETS.richMenuCells）、上傳底圖、設為預設、把 richMenuId 寫回
+     * tenant_settings。它**沒有**儲存 Flex 主選單樣式、預約步驟、功能頁面樣式——
+     * 這三者的後端都尚未建置（本頁的預約步驟卡與功能頁面樣式卡已自行標示
+     * 「尚未建置」，舊文案「…皆已儲存」與同一頁的告示自相矛盾）。
+     * 同理刪掉從未被使用、卻宣稱有「主選單樣式儲存」「配套 Flex 套版」這兩步的
+     * publishedFlexFailed / publishedSceneFlexFailed。禁止復原。
+     */
     published:
-      '已發布！Rich Menu 已推送到 LINE，主選單樣式 + 預約步驟 + 功能頁面樣式皆已儲存',
-    publishedFlexFailed:
-      'Rich Menu 已發布到 LINE，但主選單樣式儲存失敗，請到 Flex tab 手動儲存',
-    publishedSceneFlexFailed:
-      '底部選單已發布，但配套 Flex 主選單套版失敗——顧客聊天內主選單仍是舊樣式，請稍後重新發布一次',
+      'Rich Menu 已推送到 LINE：顧客下次開啟聊天室就會看到新的底部選單（套用所選主題的底圖與系統預設六格文字）。主選單樣式（Flex）、預約步驟、功能頁面樣式並未一併儲存——這三項的後端尚未建置。',
     publishFailed: 'Rich Menu 發布失敗',
     publishFailedPrefix: '發布失敗：',
     deleteConfirm: '確定要刪除已發布的 Rich Menu 嗎？\n\n刪除後顧客將看不到底部快捷選單。',

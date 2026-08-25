@@ -261,10 +261,27 @@ export const lineSettingsPage = {
   /* ------------------------------------------------------ 如何讓顧客加入 */
   promotion: {
     title: '如何讓顧客加入？',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 第 1、3 項原本寫「下載上方 QR Code 印出張貼在店內」「在名片、傳單上印製
+     * QR Code」，但上方那顆「下載 QR Code」按鈕已停用（本站沒有任何 QR 圖檔可
+     * 下載，方框裡是 lucide 圖示），等於教店家去按一顆按不動的按鈕。
+     * 官方 QR 只能在 LINE Official Account Manager 後台取得，這裡直接指過去。
+     * 第 2 項的「複製連結」是真的（加好友連結由 lineBasicId 組出、按鈕可用），
+     * 第 4 項只是搜尋 ID，兩者維持原樣。禁止把 QR 下載的指引改回來。
+     */
     items: [
-      { no: '1', title: '店內張貼 QR Code', desc: '下載上方 QR Code 印出張貼在店內' },
+      {
+        no: '1',
+        title: '店內張貼 QR Code',
+        desc: '到 LINE Official Account Manager 後台下載官方 QR Code，印出張貼在店內（本站的 QR 下載尚未建置）',
+      },
       { no: '2', title: '分享加好友連結', desc: '複製連結分享到社群媒體或官網' },
-      { no: '3', title: '名片或傳單', desc: '在名片、傳單上印製 QR Code' },
+      {
+        no: '3',
+        title: '名片或傳單',
+        desc: '在名片、傳單上印製同一張官方 QR Code（一樣到 LINE 官方帳號後台取得）',
+      },
       { no: '4', title: '搜尋 ID 加入', desc: '顧客在 LINE 搜尋 @xxx 加入' },
     ],
   },

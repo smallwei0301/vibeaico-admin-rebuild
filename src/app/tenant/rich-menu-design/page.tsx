@@ -212,7 +212,7 @@ function RichMenuTab({
   const [quickOpen, setQuickOpen] = React.useState(false);
   const [introOpen, setIntroOpen] = React.useState(false);
   const [publishing, setPublishing] = React.useState(false);
-  const [confirm, setConfirm] = React.useState<null | 'publish' | 'delete' | 'apply'>(null);
+  const [confirm, setConfirm] = React.useState<null | 'publish' | 'delete'>(null);
   const [pendingName, setPendingName] = React.useState('');
   const [pendingTheme, setPendingTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [popupCell, setPopupCell] = React.useState<number | null>(null);
@@ -390,13 +390,20 @@ function RichMenuTab({
           </CardHeader>
           {quickOpen && (
             <CardBody>
+              {/*
+                * ⚠️ 範本套用沒有任何後端，也沒有任何前端副作用：舊實作只是
+                * setHasBackup(true) + toast「已套用並暫存！Flex 主選單已上線」，
+                * 但每格設定、主題與 Flex 卡片一個都沒變，LINE 端也毫無動靜。
+                * 依 CLAUDE.md「Never fabricate a known」改為誠實提示。禁止復原。
+                */}
+              <Alert tone="warning" className="mb-3">{t.quickTemplates.notBuiltBody}</Alert>
               <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 {QUICK_TEMPLATES.map((q) => (
                   <button
                     key={q.id}
                     type="button"
                     className="rounded-lg border border-neutral-200 p-3 text-left transition-colors hover:border-primary"
-                    onClick={() => { setPendingName(q.name); setConfirm('apply'); }}
+                    onClick={() => toast.show(t.quickTemplates.applyNotEffective(q.name), 'warning')}
                   >
                     <div className="text-base font-semibold">{q.name}</div>
                     <div className="form-text">{q.style}</div>
@@ -699,22 +706,6 @@ function RichMenuTab({
           } finally {
             setPublishing(false);
           }
-        }}
-      />
-      <ConfirmModal
-        open={confirm === 'apply'}
-        title={t.quickTemplates.cardTitle}
-        message={`${t.quickTemplates.applyConfirmLead}${pendingName}${t.quickTemplates.applyConfirmTail}`}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => {
-          setConfirm(null);
-          setHasBackup(true);
-          toast.show(
-            subscribed
-              ? t.quickTemplates.appliedDraft(pendingName)
-              : t.quickTemplates.appliedUnsubscribed(pendingName),
-            subscribed ? 'success' : 'warning',
-          );
         }}
       />
       <ConfirmModal
