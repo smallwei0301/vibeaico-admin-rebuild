@@ -6,6 +6,7 @@ import { Footer } from './Footer';
 import { BugReportButton } from './BugReportModal';
 import { SupportChatWidget } from './SupportChatWidget';
 import { ToastProvider } from '@/components/ui/Toast';
+import { common } from '@/i18n/zh-TW/common';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
 import { USE_MOCK } from '@/config/env';
@@ -68,10 +69,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     USE_MOCK ? (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id : '',
   );
 
+  /**
+   * 店家身分是否已定案 —— 定案前不掛載頁面（見下方 <main>）。
+   *
+   * 為什麼需要這個旗標：<main> 的 key 是 current.id，第一次 render 時
+   * real 模式的 my-tenants 還沒回來、current.id 是空字串，等清單回來 id 才變成
+   * 真的 tenant id → key 改變 → 整個頁面 subtree 重新掛載 → 使用者填到一半的
+   * 表單、開著的確認視窗全部被清空。這不是切換店家，卻長得跟切換店家一模一樣。
+   * 把頁面延到 id 定案後才掛，key 從第一次掛載就是最終值，
+   * 「切換店家要重新掛載」的行為（下方註解說明的原意）完全保留。
+   *
+   * mock 模式沒有這段非同步，只需等 localStorage 讀完（同一個 mount effect 內、
+   * 不打網路），所以幾乎不會看到載入畫面。
+   */
+  const [tenantsResolved, setTenantsResolved] = React.useState(false);
+
   React.useEffect(() => {
     if (!USE_MOCK) return;
     const saved = localStorage.getItem('vibeai.tenant.id');
     if (saved && MOCK_TENANTS.some((t) => t.id === saved)) setTenantId(saved);
+    setTenantsResolved(true);
   }, []);
 
   /** real 模式：店家清單改打 GET /api/auth/my-tenants（mock 模式沿用 MOCK_TENANTS，行為不變） */
@@ -81,13 +98,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // 上次停在示範店家就維持在示範店家——這步與 my-tenants 是否成功無關，
     // 放在 .then() 裡的話，帳號還沒有店（403）時連示範店家都選不回來。
     const savedDemo = localStorage.getItem(DEMO_TENANT_STORAGE_KEY);
-    if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) setTenantId(savedDemo);
+    if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) {
+      setTenantId(savedDemo);
+      // 示範店家的身分不靠網路決定，已經定案 —— 後面 my-tenants 回來只會補上
+      // 切換器的清單，不會再改 current，所以不必為了它多等一趟往返。
+      setTenantsResolved(true);
+    }
     myTenants().then((list) => {
       setRemoteTenants(list);
       if (savedDemo && DEMO_TENANT_IDS.has(savedDemo)) return;
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
-    }).catch(() => {});
+    }).catch(() => {
+      // 失敗（例如帳號還沒有店、401/403）也要放行：頁面自己會顯示空狀態或導回登入，
+      // 卡在載入中只會讓使用者看到一片空白。
+    }).finally(() => setTenantsResolved(true));
   }, []);
 
   const tenants = USE_MOCK ? MOCK_TENANTS : [...remoteTenants, ...DEMO_TENANTS];
@@ -145,8 +170,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             setupPercent={MOCK_SETUP_STATUS.percent}
           />
           {/* key 用店家 id 而非業態：切到「同業態的示範店家」時業態不變，
-              只 key 業態的話頁面不會重掛載、會停在切換前的資料。 */}
-          <main className="content-area" key={current.id || businessType}>{children}</main>
+              只 key 業態的話頁面不會重掛載、會停在切換前的資料。
+              ⚠️ 有 key 就一定要配 tenantsResolved：id 尚未定案就把頁面掛上去，
+              「載入中 → 載入完成」會被 key 當成一次店家切換而清空整頁狀態。 */}
+          <main className="content-area" key={current.id || businessType}>
+            {tenantsResolved
+              ? children
+              : <div className="py-10 text-center text-muted">{common.loading}</div>}
+          </main>
           <Footer />
         </div>
       </div>
