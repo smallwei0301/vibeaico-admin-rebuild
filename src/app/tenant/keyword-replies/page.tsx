@@ -16,51 +16,27 @@ import {
   FormError, FormGroup, FormText, Input, Label, Select, Switch, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listFeatures } from '@/services/settings';
+import { ApiError } from '@/lib/api';
+import { getTenantSettings, listFeatures, saveLineSettings } from '@/services/settings';
+import {
+  createKeywordReply, deleteKeywordReply, listKeywordReplies, setKeywordReplyActive,
+  updateKeywordReply,
+  type KeywordActionType as ActionType, type KeywordMatchType as MatchType,
+  type KeywordReplyRow as KeywordReply,
+} from '@/services/keyword-replies';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { keywordRepliesPage as t } from '@/i18n/zh-TW/pages/keyword-replies';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁專用型別與假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
+/* 本頁的資料進出口一律走 src/services/keyword-replies.ts                        */
+/*                                                                            */
+/* ⚠️ 這一頁原本整頁 CRUD 都只有 setState + 「已儲存」toast，清單讀頁內的         */
+/*    MOCK_KEYWORD_REPLIES 常數（14 分冊 §1 根因 A）。端點與 webhook 分支 ②       */
+/*    （src/server/line-events.ts）明明都在跑，店家設好的關鍵字卻永遠進不了 DB    */
+/*    ——顧客在 LINE 打那個字一輩子不會有回應。示範資料已移到 service 的 mock     */
+/*    分支（依業態各一份），頁面只認得 service 函式。                             */
 /* -------------------------------------------------------------------------- */
-
-type MatchType = 'EXACT' | 'CONTAINS';
-type ActionType = 'REPLY_CONTENT' | 'START_PROFILE_COLLECTION';
-
-/** 原站 /api/settings/line/keyword-replies 的自訂關鍵字結構 */
-type KeywordReply = {
-  id: string;
-  keyword: string;
-  matchType: MatchType;
-  actionType: ActionType;
-  replyText: string;
-  imageUrl: string;
-  linkUrl: string;
-  linkLabel: string;
-  enabled: boolean;
-  /** 取代了哪一個系統內建關鍵字（空字串＝沒有取代） */
-  overridesSystem: string;
-};
-
-const MOCK_KEYWORD_REPLIES: KeywordReply[] = [
-  {
-    id: 'kw_1', keyword: '停車', matchType: 'CONTAINS', actionType: 'REPLY_CONTENT',
-    replyText: '店門口有 3 個機車位，汽車可停巷口的收費停車場（每小時 30 元）。',
-    imageUrl: '', linkUrl: '', linkLabel: '', enabled: true, overridesSystem: '',
-  },
-  {
-    id: 'kw_2', keyword: '價格', matchType: 'CONTAINS', actionType: 'REPLY_CONTENT',
-    replyText: t.custom.templates[0].reply,
-    imageUrl: '', linkUrl: 'https://example.com/price', linkLabel: '查看更多',
-    enabled: true, overridesSystem: '',
-  },
-  {
-    id: 'kw_3', keyword: '會員', matchType: 'EXACT', actionType: 'START_PROFILE_COLLECTION',
-    replyText: '', imageUrl: '', linkUrl: '', linkLabel: '',
-    enabled: false, overridesSystem: '會員',
-  },
-];
 
 /** 建議的最短「包含」關鍵字長度（原站 inline JS 規則） */
 const MIN_CONTAINS_LENGTH = 2;
@@ -87,7 +63,15 @@ export default function KeywordRepliesPage() {
 
   const [rows, setRows] = React.useState<KeywordReply[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [featureActive, setFeatureActive] = React.useState(true);
+  const [loadFailed, setLoadFailed] = React.useState(false);
+  /**
+   * KEYWORD_REPLY 訂閱狀態，三態：
+   *   true  已訂閱（設定對顧客生效）
+   *   false 未訂閱（設定存得下來，但 webhook 不套用——見 09 分冊 §5）
+   *   null  **不知道**（listFeatures 失敗）。不知道就說不知道，不能假裝已訂閱
+   *         而顯示「已儲存（已生效）」——CLAUDE.md「絕不捏造已知狀態」。
+   */
+  const [featureActive, setFeatureActive] = React.useState<boolean | null>(null);
   /** 內建關鍵字組可帶 feature 條件（例：行程組只給訂閱 TOUR_MODULE 的導遊型店家） */
   const [activeFeatures, setActiveFeatures] = React.useState<string[]>([]);
   const visibleGroups = React.useMemo(
@@ -97,10 +81,16 @@ export default function KeywordRepliesPage() {
     [activeFeatures],
   );
 
-  /** 系統內建關鍵字：每組一個開關（true = 系統照常回應） */
-  const [systemEnabled, setSystemEnabled] = React.useState<Record<string, boolean>>(
-    Object.fromEntries(t.system.groups.map((g) => [g.key, true])),
-  );
+  /**
+   * 被停用的系統內建關鍵字組（開關關掉的那些）。
+   * 儲存位置：`tenant_settings.line.systemKeywordGroupsDisabled`（jsonb），
+   * 由 `PUT /api/settings/line` 局部合併寫入；webhook 分支 ④
+   * （src/server/line-events.ts 的 isSystemGroupDisabled）讀的就是這個鍵。
+   */
+  const [disabledGroups, setDisabledGroups] = React.useState<string[]>([]);
+  const [systemLoaded, setSystemLoaded] = React.useState(false);
+  const [systemLoadFailed, setSystemLoadFailed] = React.useState(false);
+  const [systemSaving, setSystemSaving] = React.useState(false);
   const [disableTarget, setDisableTarget] = React.useState<string | null>(null);
 
   const [draft, setDraft] = React.useState<typeof EMPTY_DRAFT | null>(null);
@@ -109,20 +99,40 @@ export default function KeywordRepliesPage() {
   const [saving, setSaving] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<KeywordReply | null>(null);
 
-  /** 新關鍵字的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
-  const nextId = React.useRef(1);
+  /** 未訂閱時才真的鎖住自訂關鍵字的 CRUD（端點也 requireFeature，鎖與後端一致） */
+  const featureLocked = featureActive === false;
+
+  /** 「存好了」到底生不生效，只講我們真的知道的那一種 */
+  const savedMessage = () =>
+    featureActive === null
+      ? t.messages.savedUnknownSubscription
+      : featureActive ? t.messages.saved : t.messages.savedNotActive;
+  const enabledMessage = () =>
+    featureActive === null
+      ? t.messages.savedUnknownSubscription
+      : featureActive ? t.messages.enabled : t.messages.enabledNotActive;
+  const disabledGroupMessage = () =>
+    featureActive === null
+      ? t.messages.savedDisabledUnknown
+      : featureActive ? t.messages.systemGroupDisabled : t.messages.savedDisabled;
+  const errorMessage = (e: unknown) =>
+    e instanceof ApiError && e.message ? e.message : t.messages.saveFailed;
+
+  const reload = React.useCallback(async () => {
+    setLoading(true);
+    setLoadFailed(false);
+    try {
+      setRows(await listKeywordReplies());
+    } catch {
+      setLoadFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   React.useEffect(() => {
-    void (async () => {
-      try {
-        setRows(MOCK_KEYWORD_REPLIES);
-      } catch {
-        toast.show(t.messages.retryLater, 'danger');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [toast]);
+    void reload();
+  }, [reload]);
 
   React.useEffect(() => {
     void (async () => {
@@ -131,10 +141,25 @@ export default function KeywordRepliesPage() {
         setFeatureActive(features.some((f) => f.code === 'KEYWORD_REPLY' && f.active));
         setActiveFeatures(features.filter((f) => f.active).map((f) => f.code));
       } catch {
+        setFeatureActive(null); // 查不到就維持「未知」，不要退回「已訂閱」的樂觀猜測
         toast.show(t.messages.connectionError, 'danger');
       }
     })();
   }, [toast]);
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const settings = await getTenantSettings();
+        setDisabledGroups([...(settings.line.systemKeywordGroupsDisabled ?? [])]);
+        setSystemLoaded(true);
+      } catch {
+        // 讀不到就不顯示開關：全部畫成「開啟」會讓店家以為先前的停用設定不見了，
+        // 隨手一動就把整份清單覆寫掉（t.system.loadFailed 這句文案講的正是這件事）。
+        setSystemLoadFailed(true);
+      }
+    })();
+  }, []);
 
   /* -------------------------------------------------------------- 動作 */
 
@@ -171,43 +196,73 @@ export default function KeywordRepliesPage() {
       setFormError(t.messages.replyRequired);
       return;
     }
+    // id 不進 body：新增沒有 id，編輯的 id 走路徑參數
+    const { id, ...payload } = { ...draft, keyword };
     setSaving(true);
     try {
       if (editing) {
-        setRows((list) => list.map((r) => (r.id === draft.id ? { ...draft, keyword } : r)));
+        await updateKeywordReply(id, payload);
+        setRows((list) => list.map((r) => (r.id === id ? { ...payload, id } : r)));
       } else {
-        setRows((list) => [...list, { ...draft, keyword, id: `kw_new_${nextId.current++}` }]);
+        // 20 組上限（409）與未訂閱（403 FEAT_001）都由端點判定，訊息原樣顯示
+        const created = await createKeywordReply(payload);
+        setRows((list) => [...list, { ...payload, id: created.id }]);
       }
       setDraft(null);
-      toast.show(featureActive ? t.messages.saved : t.messages.savedNotActive);
-    } catch {
-      toast.show(t.messages.saveFailed, 'danger');
+      toast.show(savedMessage());
+    } catch (e) {
+      toast.show(errorMessage(e), 'danger');
     } finally {
       setSaving(false);
     }
   };
 
-  const remove = () => {
+  const remove = async () => {
     if (!deleteTarget) return;
-    setRows((list) => list.filter((r) => r.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    toast.show(t.messages.deleted);
+    const target = deleteTarget;
+    try {
+      await deleteKeywordReply(target.id);
+      setRows((list) => list.filter((r) => r.id !== target.id));
+      setDeleteTarget(null);
+      toast.show(t.messages.deleted);
+    } catch (e) {
+      toast.show(errorMessage(e), 'danger');
+    }
   };
 
-  const toggleRow = (row: KeywordReply) => {
+  const toggleRow = async (row: KeywordReply) => {
     const next = !row.enabled;
-    setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: next } : r)));
-    toast.show(
-      next
-        ? featureActive ? t.messages.enabled : t.messages.enabledNotActive
-        : t.messages.disabled,
-    );
+    try {
+      await setKeywordReplyActive(row.id, next);
+      setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: next } : r)));
+      toast.show(next ? enabledMessage() : t.messages.disabled);
+    } catch (e) {
+      // 失敗就不要動畫面上的開關：切了卻沒存進去 = 又一個假成功
+      toast.show(errorMessage(e), 'danger');
+    }
+  };
+
+  /**
+   * 把整份停用清單寫回 `tenant_settings.line.systemKeywordGroupsDisabled`。
+   * 寫入成功才更新畫面上的開關；失敗維持原狀並顯示錯誤。
+   */
+  const persistSystemDisabled = async (next: string[], restoring: boolean) => {
+    setSystemSaving(true);
+    try {
+      await saveLineSettings({ systemKeywordGroupsDisabled: next });
+      setDisabledGroups(next);
+      toast.show(restoring ? t.messages.systemGroupRestored : disabledGroupMessage());
+    } catch (e) {
+      toast.show(errorMessage(e), 'danger');
+    } finally {
+      setSystemSaving(false);
+    }
   };
 
   const requestSystemToggle = (key: string, next: boolean) => {
+    // 恢復（打開）不需要確認；停用（關閉）要先跳確認視窗
     if (next) {
-      setSystemEnabled((s) => ({ ...s, [key]: true }));
-      toast.show(t.messages.systemGroupRestored);
+      void persistSystemDisabled(disabledGroups.filter((k) => k !== key), true);
       return;
     }
     setDisableTarget(key);
@@ -215,9 +270,9 @@ export default function KeywordRepliesPage() {
 
   const confirmSystemDisable = () => {
     if (!disableTarget) return;
-    setSystemEnabled((s) => ({ ...s, [disableTarget]: false }));
+    const key = disableTarget;
     setDisableTarget(null);
-    toast.show(featureActive ? t.messages.systemGroupDisabled : t.messages.savedDisabled);
+    void persistSystemDisabled([...new Set([...disabledGroups, key])], false);
   };
 
   /* ------------------------------------------------------------ 表格欄 */
@@ -248,7 +303,7 @@ export default function KeywordRepliesPage() {
     {
       key: 'enabled', header: t.custom.columns.enabled, width: '80px',
       render: (r) => (
-        <Switch checked={r.enabled} onCheckedChange={() => toggleRow(r)} disabled={!featureActive} />
+        <Switch checked={r.enabled} onCheckedChange={() => void toggleRow(r)} disabled={featureLocked} />
       ),
     },
     {
@@ -258,7 +313,7 @@ export default function KeywordRepliesPage() {
           <Button
             variant="outline" size="sm"
             aria-label={t.actions.edit} title={t.actions.edit}
-            disabled={!featureActive}
+            disabled={featureLocked}
             onClick={() => openEdit(r)}
           >
             <Pencil size={13} />
@@ -266,7 +321,7 @@ export default function KeywordRepliesPage() {
           <Button
             variant="outlineDanger" size="sm"
             aria-label={t.actions.delete} title={t.actions.delete}
-            disabled={!featureActive}
+            disabled={featureLocked}
             onClick={() => setDeleteTarget(r)}
           >
             <Trash2 size={13} />
@@ -289,7 +344,7 @@ export default function KeywordRepliesPage() {
         actions={
           <>
             <Badge tone="purple">{t.priceBadge}</Badge>
-            <Button onClick={() => openCreate()} disabled={!featureActive}>
+            <Button onClick={() => openCreate()} disabled={featureLocked}>
               <Plus size={15} />
               {t.actions.create}
             </Button>
@@ -297,7 +352,7 @@ export default function KeywordRepliesPage() {
         }
       />
 
-      {!featureActive ? (
+      {featureLocked ? (
         <Alert tone="warning" className="mb-4">
           {t.feature.hint}
           <strong>{t.feature.hintStrong}</strong>
@@ -315,10 +370,22 @@ export default function KeywordRepliesPage() {
             <MessageSquareQuote size={16} />
             {t.custom.cardTitle}
           </CardTitle>
-          <Button variant="outline" size="sm" disabled={!featureActive} onClick={() => openCreate()}>
+          <Button variant="outline" size="sm" disabled={featureLocked} onClick={() => openCreate()}>
             {t.actions.createShort}
           </Button>
         </CardHeader>
+        {loadFailed ? (
+          <CardBody className="pb-0">
+            {/* 載入失敗要說出來：靜靜顯示「還沒有自訂關鍵字」會讓店家以為設定被清空了 */}
+            <Alert tone="danger" className="mb-0">
+              {t.custom.loadFailed}
+              <Button variant="outline" size="sm" className="ml-2" onClick={() => void reload()}>
+                {t.custom.retry}
+              </Button>
+              {t.custom.retryTail}
+            </Alert>
+          </CardBody>
+        ) : null}
         <CardBody className="p-0">
           <DataTable
             columns={columns}
@@ -338,7 +405,7 @@ export default function KeywordRepliesPage() {
                           key={tpl.keyword}
                           variant="outline"
                           size="sm"
-                          disabled={!featureActive}
+                          disabled={featureLocked}
                           onClick={() => applyTemplate(i)}
                         >
                           {tpl.button}
@@ -392,7 +459,7 @@ export default function KeywordRepliesPage() {
           <FormText>{t.system.campaignNote}</FormText>
           <FormText>{t.system.subscribeNote}</FormText>
 
-          {!featureActive ? (
+          {featureLocked ? (
             <Alert tone="warning" className="my-3 text-xs">
               {t.feature.systemHint}
               <strong>{t.feature.systemHintStrong}</strong>
@@ -400,32 +467,39 @@ export default function KeywordRepliesPage() {
             </Alert>
           ) : null}
 
-          <div className="mt-3">
-            {visibleGroups.map((g) => (
-              <SwitchField
-                key={g.key}
-                label={g.label}
-                description={
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {g.keywords.map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        disabled={!featureActive}
-                        className="badge badge-neutral disabled:opacity-60"
-                        onClick={() => openCreate({ keyword: k, overridesSystem: k })}
-                      >
-                        {k}
-                      </button>
-                    ))}
-                    {g.note ? <div className="form-text w-full">{g.note}</div> : null}
-                  </div>
-                }
-                checked={systemEnabled[g.key] ?? true}
-                onCheckedChange={(v) => requestSystemToggle(g.key, v)}
-              />
-            ))}
-          </div>
+          {systemLoadFailed ? (
+            <Alert tone="danger" className="my-3">{t.system.loadFailed}</Alert>
+          ) : !systemLoaded ? (
+            <FormText>{t.custom.loading}</FormText>
+          ) : (
+            <div className="mt-3">
+              {visibleGroups.map((g) => (
+                <SwitchField
+                  key={g.key}
+                  label={g.label}
+                  description={
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {g.keywords.map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          disabled={featureLocked}
+                          className="badge badge-neutral disabled:opacity-60"
+                          onClick={() => openCreate({ keyword: k, overridesSystem: k })}
+                        >
+                          {k}
+                        </button>
+                      ))}
+                      {g.note ? <div className="form-text w-full">{g.note}</div> : null}
+                    </div>
+                  }
+                  checked={!disabledGroups.includes(g.key)}
+                  disabled={systemSaving}
+                  onCheckedChange={(v) => requestSystemToggle(g.key, v)}
+                />
+              ))}
+            </div>
+          )}
         </CardBody>
       </Card>
 
@@ -448,7 +522,7 @@ export default function KeywordRepliesPage() {
       >
         {draft ? (
           <>
-            {!featureActive ? (
+            {featureLocked ? (
               <Alert tone="warning" className="mb-3 text-xs">
                 {t.form.unsubscribedLead}
                 <Link href="/tenant/feature-store" className="font-semibold">
@@ -536,7 +610,9 @@ export default function KeywordRepliesPage() {
 
                 <FormGroup>
                   <Label>{t.form.image}</Label>
-                  <Input type="file" accept="image/*" className="form-control-sm" />
+                  {/* 上傳尚未建置：停用欄位並在畫面上說明（理由見 i18n 的 imageNotBuilt） */}
+                  <Input type="file" accept="image/*" className="form-control-sm" disabled />
+                  <FormText>{t.form.imageNotBuilt}</FormText>
                   {draft.imageUrl ? (
                     <Button
                       variant="outlineDanger"
@@ -593,7 +669,7 @@ export default function KeywordRepliesPage() {
         danger
         confirmText={common.delete}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={remove}
+        onConfirm={() => void remove()}
       />
 
       <ConfirmModal
@@ -607,7 +683,7 @@ export default function KeywordRepliesPage() {
               : disableGroup
                 ? t.confirm.disableNoReply(disableGroup.keywords[0])
                 : ''}
-            {!featureActive && disableGroup ? (
+            {featureLocked && disableGroup ? (
               <>
                 {'\n\n'}
                 <AlertTriangle size={13} className="inline" />

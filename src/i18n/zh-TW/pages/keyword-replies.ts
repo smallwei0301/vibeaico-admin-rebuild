@@ -226,6 +226,21 @@ export const keywordRepliesPage = {
     replyText: '回覆文字',
     replyTextPlaceholder: '顧客打此關鍵字時 Bot 回覆的文字',
     image: '附加圖片（選填）',
+    /**
+     * ⚠️ 圖片上傳尚未建置（issue #5 施工時查證）。
+     *
+     * webhook 端其實已經會送圖：`src/server/line-events.ts` 的 keywordReplyMessage
+     * 在 reply_type='IMAGE' 且 content.imageUrl 有值時組 LINE image message；
+     * service 層 toApiPayload 也會據 imageUrl 決定 replyType。缺的是**上傳**這一段：
+     * `src/services/upload.ts` 的 UploadBucket 白名單與 `/api/upload` 端點都沒有
+     * 收關鍵字回覆圖片的 bucket（chat-images 是 LINE 聊天圖專用，且其公開性與
+     * 保留期限仍卡在 14 分冊 §8.12 的未決事項），要補得動 storage bucket 與端點
+     * 契約，屬另一個 issue 的量。
+     *
+     * 在補齊之前照 SupportChatWidget／回報問題截圖的前例：**在畫面上**說明尚未
+     * 建置並停用欄位，不留一個選了檔案卻悄悄沒反應的假按鈕（00 鐵則 12）。
+     */
+    imageNotBuilt: '附加圖片尚未建置，選了檔案也不會送出；需要放圖片的話，先把圖片網址寫進「附加連結按鈕」。',
     imageRemove: '移除',
     linkUrl: '附加連結按鈕（選填）',
     linkUrlPlaceholder: 'https://...',
