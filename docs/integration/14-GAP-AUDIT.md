@@ -285,3 +285,45 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
   「QR 元件載入失敗」、「QR 尚未產生」、檔名 `預約QRcode.png`、195 支端點清單中無 QR 端點），
   並記下「規格文件裡的『原站是這樣做的』也是一種已知，一樣需要證據」。
 - 本冊：issue 對照表補 #15–#26；新增本節。
+
+---
+
+## 6. 稽核結案紀錄（滾動更新）
+
+本節記錄 §1–§5 盤出來的項目**實際被關掉**的時間點與證據，讓「重開的勾」有一條可追溯的
+回填路徑。規則：**沒有本節的一列，08 分冊的勾就不准補回去。**
+
+### 6.1 issue #3（修復-1 誠實化）— 2026-08-25 結案
+
+- commits：`742f33d` / `88ffc9d` / `fb3d56b` / `d4cafdf`
+- 不可回歸測試：`tests/unit/honest-not-built-pages.test.ts`（25 案）、
+  `honest-not-built-interactions.test.ts`（20 案）、
+  `honest-not-built-rich-menu-design.test.ts`（31 案）、`honest-not-built-residuals.test.ts`
+- 每一條都做過**變異測試**：把誠實化改回假成功，測試必紅（這是本專案第一次把
+  「測試真的會抓到」本身也當成證據要求）
+- 頁面實測：`scripts/verify/issue3-honest-pages.cjs` → `scripts/verify/out/i3-*.png`
+- 一併修掉的真 bug：`aa06146` AppShell 整頁重掛載（`<main key>` 在載入完成時換值），
+  前後對照證據為 Playwright route interception 把 `my-tenants` 延遲 15 秒的截圖組
+  `appshell-01~04-*.png` ＋ `tests/unit/appshell-mount-stability.test.ts`
+
+⚠️ **§1 的 A-1 各列不因本 issue 而清空。** 誠實化只把「畫面在騙人」關掉，
+功能本身仍缺；A-1 每一列真正的關閉條件是它對應的補齊 issue（#16–#26）完成。
+本 issue 只清掉 A-1 的**誠實性**問題，不清掉**功能性**問題。
+
+### 6.2 issue #4（修復-2 帳號安全三件）— 2026-08-25 結案
+
+- commit：`5526ed2`
+- 整合測試：`tests/integration/api/security-wiring.04.test.ts` 三個 describe，
+  分別對應變更密碼／登出／LINE 解除連接
+- 頁面實測：`scripts/verify/issue4-security-wiring.cjs` → `out/01~10-*.png`
+- **可回填 §4 的一列**：Phase 2「註冊→登入→**登出**→忘記→重設全流程」——
+  登出已接後端，且測試斷言的是「原 session 打 `/api/auth/me` 回 401」，
+  不再是 e2e 用 `clearCookies` 遮掉。§4 其餘各列維持重開狀態。
+
+### 6.3 技術債（已知、已記錄、尚未還）
+
+| 項目 | 現況 | 影響 |
+|---|---|---|
+| `tests/integration/api/chat-link.06.test.ts` 偶發紅燈 | 用固定 port 4123 起本地 server，前一輪未釋放時會撞 | CI 偶發假紅；重跑即過。應改成 port 0 由 OS 配發 |
+| Agent worktree 隔離在本沙箱不可用 | `isolation: 'worktree'` 建出來的 worktree 基底是 `28a14cb`（已分岔 8 個 commit），不是當前 HEAD | 平行施工只能共用工作目錄，**因此必須由主導者手動切開檔案範圍**，且同一時間只能有一個 agent 跑 `npm run test:integration`（`reset-db.mjs` 會清空 TEST 專案，是全域序列化點） |
+| `src/services/settings.ts:11` 模組層 `const current = MOCK_TENANTS[0]` | CLAUDE.md 明文警告過這個陷阱，仍然犯了 | 骨架模式下 demo 租戶被凍結成 GUIDE，三種模式看到同一間店；且 mock 分支硬塞已設定的 LINE token，假裝成已連動狀態 |

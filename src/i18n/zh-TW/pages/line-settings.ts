@@ -385,10 +385,12 @@ export const lineSettingsPage = {
     },
 
     customBg: '或上傳自訂背景',
-    customBgHelp: '上傳背景圖片，系統會自動疊加描邊文字（不遮蓋背景）',
+    customBgHelp: '上傳背景圖片；目前會以原圖直接發布，系統不會在圖上加字或圖示',
     customBgUrlPlaceholder: '貼上圖片網址（https://...）',
     noOverlay: '直接使用背景圖（不疊加系統文字圖示）',
-    noOverlayHelp: '取消勾選可讓系統在背景上疊加「開始預約」等文字和圖示',
+    noOverlayHelp: '目前一律以原圖發布，所以這個選項不會有任何作用',
+    overlayNotBuilt: '文字與圖示疊圖尚未建置，選單一律以底圖原圖發布，因此這裡的疊圖選項與文字顏色調了也不會改變顧客看到的畫面。六格的文字是「按下去會送出的訊息」，不會被畫進圖裡。',
+    overlayNotBuiltHint: '疊圖功能尚未建置，調整不會影響發布結果',
 
     textColor: '文字顏色',
     textColors: {
@@ -401,9 +403,11 @@ export const lineSettingsPage = {
 
     create: '建立主題選單',
     creating: '建立中...',
-    created: 'Rich Menu 建立成功！顧客現在可以看到快捷選單了',
-    createdCustomBg: 'Rich Menu 建立成功！已使用自訂背景搭配描邊文字',
-    createdNoOverlay: 'Rich Menu 建立成功！直接使用背景圖',
+    created: 'Rich Menu 已發布到 LINE，顧客現在可以看到快捷選單了',
+    /* ⚠️ 舊文案是「已使用自訂背景搭配描邊文字」，但 create 端點是把底圖原圖直接
+     * 上傳，沒有任何文字／圖示合成（見該 route 開頭的 MVP 說明）。六格文字是
+     * 「點下去會送出的訊息」，不會被畫進圖裡——文案不可以宣稱做了沒做的事。 */
+    createdCustomBg: 'Rich Menu 已發布到 LINE，使用你上傳的背景圖（原圖，圖上不會疊加文字）',
     createFailedPrefix: '建立失敗：',
     imageFormat: '請上傳 PNG 或 JPG 格式的圖片',
 

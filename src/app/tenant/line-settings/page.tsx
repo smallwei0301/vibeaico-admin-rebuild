@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
+  createRichMenu as publishRichMenu,
   disconnectLine, getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
@@ -319,6 +320,21 @@ export default function LineSettingsPage() {
     toast.show(t.flexMenu.resetDone, 'info');
   };
 
+  /**
+   * 建立並發布 Rich Menu。
+   *
+   * ⚠️ 這裡曾經是一個**活體假成功**（兩輪稽核都漏掉）：舊實作只呼叫
+   * `saveLineSettings(...)` 把主題／底圖等「外觀偏好」寫進 tenant_settings，
+   * 然後就 toast「Rich Menu 建立成功！顧客現在可以看到快捷選單了」並把
+   * richMenuPublished 設成 true——但 LINE 端從頭到尾沒有被呼叫過一次，
+   * 顧客的 LINE 裡什麼選單都沒有。真正會發布的端點
+   * `POST /api/settings/line/rich-menu/create` 一直存在（選單設計頁在用，
+   * 且對 Midao 正式頻道實測過），這一頁從來沒接上去。
+   *
+   * 正確順序是**先存偏好、再發布**：create 端點會回頭讀 tenant_settings 裡的
+   * richMenuBgImageUrl 當底圖（見該 route 的 loadBackgroundImage），所以偏好
+   * 必須先落地；theme 則直接帶在 body 裡，不依賴前一步。
+   */
   const createRichMenu = async () => {
     setCreatingRichMenu(true);
     try {
@@ -328,14 +344,10 @@ export default function LineSettingsPage() {
       patchLocalLine({
         richMenuTheme, richMenuBgImageUrl, richMenuNoOverlay, richMenuTextColor,
       });
+      // 真的發布到 LINE；失敗會拋 ApiError，由下面的 catch 顯示真正的錯誤訊息
+      await publishRichMenu(richMenuTheme);
       setRichMenuPublished(true);
-      toast.show(
-        richMenuBgImageUrl
-          ? richMenuNoOverlay
-            ? t.richMenu.createdNoOverlay
-            : t.richMenu.createdCustomBg
-          : t.richMenu.created,
-      );
+      toast.show(richMenuBgImageUrl ? t.richMenu.createdCustomBg : t.richMenu.created);
     } catch (e) {
       toast.show(
         `${t.richMenu.createFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -1111,12 +1123,22 @@ export default function LineSettingsPage() {
             <FormText>{t.richMenu.customBgHelp}</FormText>
           </FormGroup>
 
+          {/*
+            * ⚠️ 疊圖相關控制項一律停用，直到 issue #19（Rich Menu 進階設計器）把
+            * 文字／圖示合成做出來為止。發布端點目前是把底圖**原圖**傳給 LINE，
+            * 沒有任何合成步驟（見 rich-menu/create route 開頭的 MVP 說明），所以
+            * 這兩個欄位不管怎麼調，顧客看到的選單都不會有一點差別。開著讓人調、
+            * 調完還存得下去，就是 CLAUDE.md 說的「畫面宣稱了一件沒發生的事」。
+            * 依擁有者方針，這裡是**停用＋說明**，不是刪除——功能由 #19 補齊。
+            */}
           <FormGroup>
-            <label className="flex items-start gap-2 text-base text-neutral-700">
+            <label className="flex items-start gap-2 text-base text-neutral-400">
               <input
                 type="checkbox"
                 className="mt-1"
                 checked={richMenuNoOverlay}
+                disabled
+                title={t.richMenu.overlayNotBuiltHint}
                 onChange={(e) => setRichMenuNoOverlay(e.target.checked)}
               />
               <span>
@@ -1126,7 +1148,7 @@ export default function LineSettingsPage() {
             </label>
           </FormGroup>
 
-          {/* 文字顏色 */}
+          {/* 文字顏色（同上，疊圖尚未建置） */}
           <FormGroup>
             <Label>{t.richMenu.textColor}</Label>
             <div className="flex flex-wrap gap-2">
@@ -1134,9 +1156,11 @@ export default function LineSettingsPage() {
                 <button
                   key={preset.key}
                   type="button"
+                  disabled
+                  title={t.richMenu.overlayNotBuiltHint}
                   data-active={richMenuTextColor === preset.value}
                   onClick={() => setRichMenuTextColor(preset.value)}
-                  className="flex items-center gap-2 rounded-md border border-neutral-250 px-3 py-1.5 text-xs data-[active=true]:border-primary data-[active=true]:shadow-focus"
+                  className="flex items-center gap-2 rounded-md border border-neutral-250 px-3 py-1.5 text-xs opacity-50 data-[active=true]:border-primary data-[active=true]:shadow-focus"
                 >
                   <span
                     className="inline-block h-4 w-4 rounded-pill border border-neutral-250"
@@ -1146,6 +1170,7 @@ export default function LineSettingsPage() {
                 </button>
               ))}
             </div>
+            <Alert tone="warning" className="mt-2 text-xs">{t.richMenu.overlayNotBuilt}</Alert>
           </FormGroup>
 
           <Button
