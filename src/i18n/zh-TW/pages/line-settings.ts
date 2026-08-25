@@ -343,6 +343,16 @@ export const lineSettingsPage = {
     headerSubtitle: '歡迎語',
     headerSubtitlePlaceholder: '歡迎光臨！請問需要什麼服務呢？',
     showTip: '顯示使用提示',
+    /**
+     * 14 分冊 §8.22-b／§8.22-c：這顆開關切得動、存得進 `tenant_settings.line`，
+     * 但 `src/server/` 目前零引用——顧客那端不會因為它而有任何不同。
+     * 擁有者裁決是 (b)「給它語意並補齊」，且指定併進 issue #19
+     * （進階選單設計器）一起做，因為原站規格裡它緊鄰 booking-step-guide 那一區。
+     *
+     * 在 #19 完成之前，畫面必須說實話——不然它就是一顆假開關（CLAUDE.md 第一優先）。
+     * #19 完成時要把這句換成真實行為描述，該替換已列進 #19 的驗收清單。
+     */
+    showTipNotBuilt: '此開關尚未生效：目前切換不會改變顧客在 LINE 收到的內容。已排入「進階選單設計器」（issue #19）一併實作。',
 
     save: '儲存主選單樣式',
     saving: '儲存中...',

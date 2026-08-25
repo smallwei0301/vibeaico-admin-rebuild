@@ -1064,6 +1064,7 @@ export default function LineSettingsPage() {
 
           <SwitchField
             label={t.flexMenu.showTip}
+            description={t.flexMenu.showTipNotBuilt}
             checked={flexShowTip}
             onCheckedChange={setFlexShowTip}
           />

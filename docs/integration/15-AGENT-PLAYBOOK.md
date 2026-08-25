@@ -148,6 +148,33 @@ git status --short -- src/app/api src/server src/config src/lib
 那條路徑。**「應該無關」不是證據。**
 
 
+## 在獨立 worktree 開工：第一件事是 rebase（2026-08-25 學到）
+
+`isolation: worktree` 幫執行者開的分支，**基底不是整合分支的當前 HEAD**。實際遇到的是
+落後 **66 個 commit**——三個執行者同時在一個舊版的樹上施工，症狀是：
+
+- 兩位回報「`tests/unit/` 只有 10 個檔案」，整合分支上是 41 個。
+- 其中一位為 `messages.addonDowngradePaid` 寫了一條斷言，而那個 i18n 鍵早在
+  `742f33d`（修復-1B）就整組被刪了——**他改的是一段上游已經誠實化過的文案**。
+- 另一位正在改 `src/app/api/line/webhook/[shopCode]/route.ts`，而該檔就在那 66 個
+  commit 改過的清單裡；再晚一步就會拿舊版當基準做架構調整。
+
+三個人的 typecheck 與單元測試**全都是綠的**——在各自那棵舊樹上。「全綠」證明的是
+「相對於我看到的那份程式碼沒問題」，不是「相對於別人正在推進的那份沒問題」。
+
+所以：
+
+1. **開工第一個指令**（在 worktree 裡）：
+   `git rebase claude/deploy-vercel-project-nnno59`
+   ——只當 commit-ish 用，**不要 checkout 它**（整合分支被主 worktree 佔用）。
+2. **rebase 之前讀到的行號全部作廢**，rebase 之後重讀一次派工單引用的每一個位置。
+3. rebase 有衝突就解；解不動就停下來回報，不要硬改成能編譯。
+4. 交件前若又過了一段時間，**再 rebase 一次**再跑最終的 typecheck / build / 測試。
+
+主導者這邊對應的責任：合併前一律先把執行者的分支 rebase 到當前 HEAD、重跑全套閘門，
+**不要直接 merge 一個舊基底的分支**。上面那條失效的斷言就是合併時才發現的——
+如果直接 merge，它會變成一條比對 `undefined` 的測試，而且不會紅。
+
 ## 1. 開工流程（每個 issue 一律照此順序）
 
 1. 讀完該 issue 全文 → 讀 issue 點名的每一個分冊章節 → 讀本冊。
