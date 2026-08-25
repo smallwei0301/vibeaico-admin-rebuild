@@ -1002,3 +1002,81 @@ migration 0019 ＋ 新 bucket `bug-report-attachments` ＋ `/api/upload` 白名�
 「handler **不存在**、service **不存在**」。那是對的：寫成完整就是假的已知。
 
 `marketing` 頁的接線屬 issue #7 乙段（已在該 issue 清單內）。
+
+### 6.9 issue #6（Flex 主選單三層補齊）— 2026-08-25 完成（commit `38e2320`）
+
+儲存層（`flexCards` 進 `tenant_settings.line` jsonb，無 migration）、webhook 層
+（「選單」→ Flex carousel）、頁面層三層都接真了。
+
+**主導者複驗**：commit 13 檔全是自己的、`npm run build` 通過
+（**這同時關掉了 `sharp` 那輪一直壓著沒跑的原生相依驗證**）、
+`comment-test-references` 由紅轉綠（`flex-menu.ts` 註解引用的測試檔已存在）。
+
+#### 這一輪最有價值的證據，以及它為什麼有效
+
+issue 要求把 Flex JSON 送去 LINE 官方的 `POST /v2/bot/message/validate/reply`
+（不耗推播額度）。7 個案例全 200。
+
+**但執行者自己補了一組負向對照**——因為七個 200 有可能只是端點在蓋橡皮圖章：
+
+```
+REJECTED  13 個 bubble        → 400 "must not be more than 12 items"
+REJECTED  text 元件是空字串    → 400 "must be non-empty text"
+REJECTED  hero 用 http        → 400 "invalid uri scheme"
+REJECTED  backgroundColor 非 hex → 400 "invalid property"
+```
+
+這四條同時是它自己四道防線的獨立佐證，而且
+`must not be more than 12 items` **就是 LINE 官方對 `MAX_FLEX_CARDS = 12` 的背書**。
+
+⚠️ 這是 §6.5「否定式斷言要配對照組」的同一個道理換一個場景：
+**「外部系統說 OK」本身也需要對照組**，否則分不出「它認可我們」與「它什麼都認可」。
+
+#### 一個藏了很久的矛盾被順手清掉
+
+字典裡同時有 `maxCards12`（'最多 12 張卡片'）與 `maxCards10`（'最多 10 張卡片'），
+後者全站零引用——**同一個上限兩個數字**，正是 `MAX_PAGE_SIZE` 那次的同型缺陷
+（頁面送的數字與後端收的數字不一致，整頁死掉）。
+
+現在 `MAX_FLEX_CARDS` 是單一來源，四個消費端（zod／頁面／文案／組裝層）全部引用它，
+並由 `「字典裡沒有任何寫死張數上限的句子」` 鎖住。
+
+#### 誠實標註：已實作、已測試、**刻意尚未被使用**
+
+`richMenuCellAction()` 的 `FLEX_POPUP` 分支目前**沒有任何設定能觸發**——
+每格自訂的儲存後端屬 issue #7，`MODE_PRESETS.richMenuCells` 也沒有一格標成 FLEX_POPUP。
+
+執行者比照 §8.8 對 `/api/bookings/available-slots` 的處理，把它標成
+「已實作、已單元測試、**刻意**尚未被使用」，而不是寫成已生效的功能。**這個區分要保住**：
+它不是假成功，也不是漏接。
+
+#### 三件執行者拒絕自行決定的事（都對）
+
+1. **廣告卡的「打開網址」是規格衝突。** 06 §6 的卡片契約只有
+   `{title, subtitle, imageUrl, ad}` 四個欄位、**沒有網址可放**，但頁面文案寫著
+   「插入廣告卡片（打開網址）」。它照契約做四欄、把文案改成實情，**沒有自行加欄位**。
+2. **Flex 主選單要不要收費。** `POST /api/settings/line/flex-menu` **從來沒有
+   `requireFeature`**，訂不訂閱存進去的都一樣。但頁面原本 toast
+   「您未訂閱進階自訂選單，已存為免費的基本款氣泡主選單」——那句話宣稱了**兩件都沒發生
+   的事**（① 當時根本沒有儲存 ② 平台沒有「基本款氣泡主選單」這種降級樣式）。
+   它刪了那句假話，**沒有自行加閘門**（收費邊界）。
+3. **`flexShowTip` 是存得下但沒人讀的欄位。** 分冊沒寫它該控制什麼，
+   頁面也沒有對應 UI（所以目前**沒有**假宣稱）。它不猜也不接。
+
+### 6.9-b 由 #6 衍生、待擁有者裁決的三項
+
+| # | 事項 | 選項 |
+|---|---|---|
+| 1 | **廣告卡能不能開連結** | (a) 擴充卡片契約加 optional `linkUrl`（06 §6 要改）／(b) 維持四欄，廣告卡只是多一行標示 |
+| 2 | **Flex 主選單要不要收費** | 若要擋，依 §8.16-b 的方向原則：新增／改卡片＝多做一件事→擋；`flexMenuEnabled: false`＝少做一件事→不擋。若不擋，維持現狀即可（現在沒有假宣稱了） |
+| 3 | **`flexShowTip` 給語意還是刪掉** | 留著一個沒人讀的欄位，遲早有人以為它有作用 |
+
+### 6.9-c 尚未完成：Preview 站 ＋ Midao 真實 webhook 實測
+
+issue #6 的驗收有一條要求對 **Preview 站**做 Playwright ＋ 真實 LINE 實測。
+執行者依派工「不要 push」而未做——**這個判斷是對的**：Preview 是從本分支自動部署，
+不 push 的話上面跑的是舊程式碼，對它斷言只會得到與本輪無關的結果，那才是假證據。
+
+**本輪的替代是本機 `next dev`（接 TEST 專案）**，已如實標註。
+主導者已 push（`38e2320`），這一條可以補做——**但 08 分冊「flex-menu 端到端」
+在補做之前不打勾**。
