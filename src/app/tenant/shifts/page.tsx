@@ -986,7 +986,7 @@ function TemplateModal({
     return '';
   };
 
-  const submit = () => {
+  const submit = async () => {
     const err = validate();
     setError(err);
     if (err) return;
@@ -996,26 +996,29 @@ function TemplateModal({
     };
     if (draft.id) {
       const id = draft.id;
+      /* 樂觀更新：先讓畫面反映輸入內容，但成功 toast 要等 await 過了才報（鐵則 12） */
       onChange(templates.map((x) => (x.id === id ? draft : x)));
-      toast.show(t.templateModal.updated);
-      void updateShiftTemplate(id, payload).catch((e) => {
+      setDraft(EMPTY);
+      try {
+        await updateShiftTemplate(id, payload);
+        toast.show(t.templateModal.updated);
+      } catch (e) {
         toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
-      });
+      }
     } else {
       if (templates.length >= TEMPLATE_MAX) return;
       const localId = `tpl_new_${nextId.current++}`;
       onChange([...templates, { ...draft, id: localId }]);
-      toast.show(t.templateModal.created);
-      /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-      void createShiftTemplate(payload)
-        .then((res) => {
-          if (res) onChange((list) => list.map((x) => (x.id === localId ? { ...x, id: res.id } : x)));
-        })
-        .catch((e) => {
-          toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
-        });
+      setDraft(EMPTY);
+      try {
+        /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
+        const res = await createShiftTemplate(payload);
+        if (res) onChange((list) => list.map((x) => (x.id === localId ? { ...x, id: res.id } : x)));
+        toast.show(t.templateModal.created);
+      } catch (e) {
+        toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
+      }
     }
-    setDraft(EMPTY);
   };
 
   return (
@@ -1158,16 +1161,17 @@ function TemplateModal({
         confirmText={common.delete}
         message={t.templateModal.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(templates.filter((x) => x.id !== id));
-            void deleteShiftTemplate(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
-          }
+        onConfirm={async () => {
+          if (!deleteTarget) { setDeleteTarget(null); return; }
+          const id = deleteTarget.id;
+          onChange(templates.filter((x) => x.id !== id));
           setDeleteTarget(null);
-          toast.show(t.templateModal.deleted);
+          try {
+            await deleteShiftTemplate(id);
+            toast.show(t.templateModal.deleted);
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+          }
         }}
       />
     </>
