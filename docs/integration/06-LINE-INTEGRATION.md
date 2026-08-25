@@ -165,6 +165,230 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 > 3. 範例程式註解「trips 表尚不存在」已過時——migration 0016 已建 trips/trip_plans，
 >    「行程」→ 行程輪播可以動工了（團次相關仍等 Phase 8b）。
 
+
+### 3.1 驗簽後**立刻回 200**，事件處理搬到 `after()`（issue #31，2026-08-25）
+
+**規格（新增，覆蓋 §3 範例程式最後那段 `for…await…` 的位置）：**
+
+```ts
+// 驗簽仍在回應之前 —— 簽章錯誤照樣 401，不進任何處理
+if (!got || expectBuf.length !== gotBuf.length || !timingSafeEqual(expectBuf, gotBuf))
+  return new Response('bad signature', { status: 401 });
+
+const { events } = JSON.parse(raw);
+after(async () => {                       // next/server（本專案 Next 15.5.23，實測可用）
+  try {
+    for (const ev of events ?? []) {
+      try { await handleEvent(admin, tenant, token, lineConfig, ev); }
+      catch (e) { /* 一定要 log */ }
+    }
+  } catch (e) { /* 迴圈外的意外也要 log，不能靜默死掉 */ }
+});
+return new Response('ok');                // ← 事件還沒處理就已經回應
+```
+
+三條必守：
+
+1. **驗簽留在回應之前。**「先回 200」指的是**事件處理**，不是驗簽。簽章失敗仍回 401，
+   且**一筆背景工作都不准排入**。
+2. **`after()` 內不得再碰 `request`**（回應已結束）。需要的東西（tenant、token、
+   lineConfig、events）在回應前就取出來帶進去。
+3. **`after()` 內的例外一定要 log。** 處理搬到背景之後，錯誤不再有任何使用者看得見的
+   出口——不 log 就是「後端每一步都成功」的假象。
+
+> `after()` 在 Vercel 上真的會執行嗎？**有實測**：對 preview 部署送一個簽章正確、
+> 但 `events` 不可迭代的 payload，HTTP 立刻回 200 `ok`，Vercel Runtime Logs 裡出現
+> `[line-webhook] sulawei0301 after() TypeError: (r ?? []) is not iterable`——
+> 那一行只可能在回應之後被印出來。（「文件說支援」不算查證過。）
+
+#### 同檔多出來的 `GET`：只給測試用的排空端點
+
+`after()` 一旦落地，整合測試就沒有「拿到 200 ＝ 處理完了」這回事。為了讓測試能
+**確定地**等到背景處理結束（12 §2.3 禁用 sleep 等待），route 同檔多了一個 `GET`：
+
+- `NODE_ENV === 'production'`（含 Vercel 的 preview 與 production 部署）→ 回 405，
+  跟沒有實作 GET 時一模一樣。**已在 preview 部署實測回 405。**
+- 其他環境（`next dev`，即整合測試的伺服器）→ await 掉所有還沒跑完的處理，
+  回 `{ drained, scheduled, errors }`。`scheduled` 是**累計**排入過幾筆背景工作，
+  「驗簽失敗不得排入任何工作」就是拿它前後相減來斷言的。
+
+測試端的包裝在 `tests/helpers/line-webhook.ts`（`drainWebhook`）。
+
+#### 為什麼要改（實測，不是推論）
+
+`POST /v2/bot/channel/webhook/test`（LINE 從**他們的伺服器**打我們，最有代表性）：
+
+| 時間 | 情境 | 結果 |
+|---|---|---|
+| 2026-08-25 16:00 UTC | 閒置後第一發 | `{"success":false,"statusCode":0,"reason":"REQUEST_TIMEOUT"}` |
+| 同上，緊接著 8 連打 | 暖機 | 6 次 `success:true`、**2 次 `REQUEST_TIMEOUT`** |
+
+⚠️ 第二列值得記下來：**暖機狀態也會逾時**（issue #31 原文寫「暖機後 8/8 成功」，
+重測是 8 取 2 失敗）。所以這不是純粹的冷啟動問題，而是「**我們的回應時間本來就
+壓在 LINE 的容忍線上**」，冷啟動只是把它推過去。
+
+我方直接以正確簽章打同一個路徑、**`events: []`（零事件、什麼都不用處理）**：
+
+```
+GET 同路徑（Next 回 405，不進我們的 handler）  0.934s   ← 網路與平台底噪
+run1 1.816s  run2 1.376s  run3 0.716s  run4 1.804s  run5 1.291s  run6 0.729s
+```
+
+也就是說，**在還沒處理任何一則訊息之前**，光是「查 tenants → 查 tenant_settings →
+解密 → 驗簽」就吃掉了 0.3〜1.7 秒。事件處理（reply、寫 chat_messages、AI 客服呼叫
+LLM）全部疊在這之上，而且 LINE 的**重送（redelivery）預設是關閉的**——逾時就是
+把顧客那則訊息丟掉，後台不會有任何異常。
+
+#### 一併做的：驗簽前只留一趟 DB
+
+原本驗簽前有兩趟 round-trip（`tenants`、`tenant_settings`）。`tenant_settings.tenant_id`
+是 `tenants(id)` 的 FK，PostgREST 可以內嵌，改成一趟：
+
+```ts
+.from('tenants')
+.select('id, shop_code, name, business_type, tenant_settings(line, line_channel_secret_enc, line_channel_access_token_enc)')
+.eq('shop_code', shopCode).maybeSingle()
+```
+
+解密與 LINE_001 的判斷抽成 `decryptLineCredentials()`（`src/server/line.ts`），
+`getLineCredentials()` 也改用它——兩條路徑共用同一份程式碼，不會慢慢分岔。
+
+#### 改後實測（同一套流程，改前改後各一次）
+
+冷啟動用**新部署的第一發**製造（方法與理由見 14 分冊 §6.11）：把同一份原始碼
+（改前＝未修改、改後＝已修改）各自 `vercel deploy` 成一個獨立的 preview 部署，
+READY 後立刻用 `POST /v2/bot/channel/webhook/test` 的 `endpoint` 參數打過去。
+
+| 回合 | 條件 | 改前（未修改） | 改後（已修改） |
+|---|---|---|---|
+| 1 | 新部署後的第一發（必冷） | `{"success":false,"statusCode":0,"reason":"REQUEST_TIMEOUT"}` | `{"success":true,"statusCode":200,"reason":"OK"}` |
+| 1 | 接著連打 8 次 | 8/8 `success:true` | 8/8 `success:true` |
+| 2 | 閒置約 5–7 分鐘後第一發 | `REQUEST_TIMEOUT` | `success:true` |
+| 3 | 閒置約 4 分鐘後第一發 | **`success:true`**（沒重現） | `success:true` |
+| 4 | **閒置約 17 分鐘後第一發** | `REQUEST_TIMEOUT` | **`REQUEST_TIMEOUT`（改後也逾時）** |
+| — | 零事件請求（我方直接打，暖機） | 1.15〜2.76s | **0.36〜1.39s** |
+
+⚠️ **第 3 回合改前也成功了，如實記下**：這個缺陷是機率性的，閒置得不夠久就可能
+不重現。所以「跑一次沒事」不能當成沒問題的證據——要能重現才有比較的意義，
+這也是為什麼冷啟動一定要用「新部署的第一發」來製造。
+
+🔴 **第 4 回合更重要：閒置夠久（約 17 分鐘）之後，改後的版本一樣拿到
+`REQUEST_TIMEOUT`。所以「`after()` 修好了冷啟動逾時」是不成立的說法，不要這樣寫。**
+精確的說法是：
+
+- `after()` 拿掉的是**事件處理**佔用的回應時間（這一段有確定性的測試釘住）；
+- 單趟 DB 把驗簽前的自有開銷從 1.15〜2.76s 壓到 0.36〜1.39s；
+- **但 Lambda 的冷啟動本身仍在回應路徑上**，閒置夠久時它自己就會超出 LINE 的容忍。
+
+同一發逾時的請求，在 Vercel Runtime Logs 裡是
+`17:09:27 POST /api/line/webhook/sulawei0301 200`，而 LINE 回報的逾時時間戳是
+`17:09:29`——**我們確實有回 200，是 LINE 先放棄等待**。這也代表改後的失敗形態
+和改前不同：事件已經進到我們手上並照樣在 `after()` 裡處理，不是「訊息被丟掉」；
+壞處變成「LINE 那邊記成失敗」（若之後開啟 redelivery，就會變成重送與重複）。
+⚠️ 這一段只斷言「我們有回 200」——顧客最後有沒有收到回覆**沒有實測**
+（LINE 的 webhook 測試端點送的不是 message 事件，見下方 §3.1 末的限制說明）。
+
+#### 一併做的：把 `line-events` 的模組載入也移出回應路徑
+
+冷啟動的時間不只是「執行程式」，還包括**把模組載進來**。`src/server/line-events.ts`
+會連帶拉進 `src/config/modes.ts`、i18n、`src/server/flex-menu.ts`、
+`src/server/ai-reply.ts`（後者又 `import Anthropic from '@anthropic-ai/sdk'`）——
+那一整包跟「回 200」這件事完全無關，卻整包算在冷啟動裡。
+
+所以 route **不在檔頭 import `handleEvent`**，改成在 `after()` 裡動態載入：
+
+```ts
+after(async () => {
+  const { handleEvent } = await import('@/server/line-events');
+  …
+});
+```
+
+回應路徑因此只剩 `crypto` + supabase 客戶端 + `src/server/line.ts`。**量化的部分**
+（`npm run build` 後看該路由的伺服器 bundle）：
+
+```
+.next/server/app/api/line/webhook/[shopCode]/route.js
+  檔頭 import handleEvent（改動前）  196,524 bytes
+  after() 內動態 import（改動後）     14,920 bytes   ← 回應前需要載入的量，約 1/13
+```
+
+⚠️ **但它沒有讓冷啟動那一發變成成功**：同樣閒置約 18 分鐘後，動態 import 版
+（`…-fthwynhwk…`）與檔頭 import 版（`…-1rte31p6z…`）**兩個都拿到
+`REQUEST_TIMEOUT`**（2026-08-25 17:32 UTC）。所以這一項的正確描述是
+「**回應路徑要載入的東西少了約 13 倍，但冷啟動仍會逾時**」——
+少載入是量到的，解決冷啟動不是。
+
+#### 憑證快取：**評估後決定不做**（issue #31 要求的明確答案）
+
+- **理由一：快取在最需要它的那一刻是空的。** 出事的是**冷啟動那一發**；那一發正好是
+  新的 serverless 實例、記憶體快取剛出生。省得到的是暖機請求那 100〜200ms，
+  而暖機請求本來就大多會過。**這是典型的「量錯地方的最佳化」。**
+- **理由二：換 token 的空窗是一種假的已知。** 店家在後台換了 Channel Access Token，
+  若快取還在，系統會繼續用舊 token 發訊息——**畫面上不會有任何異常**，訊息就是沒送到。
+  這正是本專案反覆在清的那一類缺陷。
+
+因此**「店家換 token 之後多久生效」的答案是：下一個進來的 webhook 請求就生效，沒有
+TTL 空窗。** 這句話能寫在這裡，是因為程式裡真的沒有快取層，不是因為 TTL 很短。
+
+> 未來若真要加快取，最低要求是**寫入端主動失效**（`/api/settings/line` 存檔時清掉該
+> tenant 的快取項），而且必須在本節寫明生效時間；只靠 TTL 到期不算。
+
+#### 殘留風險（`after()` 修不掉的部分，誠實列出）
+
+1. **冷啟動本身還在——而且已經量到它單獨就會逾時。** `after()` 讓「處理時間」
+   不再算進 LINE 的等待，但「Lambda 冷啟 + 一趟 DB + 解密 + 驗簽」仍在回應路徑上。
+   **實測第 4 回合（閒置約 17 分鐘）改後仍拿到 `REQUEST_TIMEOUT`**（見上表）。
+   **這一格沒有解決，不准打勾。** 下一步的候選在第 3 點，需要擁有者決策。
+2. **`after()` 的工作仍活在同一次函式呼叫裡，受 `maxDuration` 限制。**
+   回應送出後背景工作還要跑，若超過函式的上限就會被砍掉——**顧客一樣收不到回覆，
+   而且這次連 LINE 都以為成功了**。本專案 `vercel.json` 沒有設 `maxDuration`，
+   實際上限取決於 Vercel 方案與 Fluid 設定，**本輪沒有查證，不寫數字**。
+   ⚠️ 一旦 AI 客服真的啟用（見下方第 5 點），LLM 呼叫本身就設了 10 秒逾時，
+   這條限制會變成實際風險——那時要先確認上限、必要時在 route 明確
+   `export const maxDuration = …`。
+3. **可考慮的下一步**（未做，需要決策）：
+   - 把 `tenants`＋`tenant_settings` 那一趟改成走更靠近的資料來源／或在驗簽前加一層
+     只讀 secret 的輕量查詢；
+   - `cloudflare/` 的排程 pinger 目前是每小時一次，**保不住** Vercel 幾分鐘就回收的
+     實例；要真的壓住冷啟動需要更密的 ping 或 Vercel 的常駐設定（費用問題，屬擁有者決策）。
+     ⚠️ 實測給出的量級：閒置 4 分鐘還好、**閒置 17 分鐘就逾時**——若要用 ping 壓，
+     間隔得抓在分鐘級，不是小時級。Hobby 的 cron 最密只到每天一次（見 `vercel.json`
+     的註記與 commit `67eb054` 的 Cloudflare Worker），所以這條路要嘛加密 Worker 的
+     排程、要嘛換方案，兩者都要擁有者決定。
+   - 或者換個方向：**別讓冷啟動落在回應路徑上**——例如把 webhook 這一支改成
+     edge runtime（沒有 Node 冷啟那麼重）並只做「驗簽 + 入列」，處理交給另一支。
+     這會動到驗簽用的 `crypto`（edge 有 WebCrypto，可行但要改寫），屬於較大的改動，
+     本輪不做，列在這裡當下一步的候選。
+4. **LINE 端的 webhook redelivery 預設關閉**（官方原文：*"By default, webhook
+   redelivery is disabled."*，
+   <https://developers.line.biz/en/docs/messaging-api/receiving-messages/>）。
+   查證到的三件事，措辭照官方，不要放大：
+   - **設定位置是 LINE Developers Console → 該 channel → Messaging API 分頁**，
+     **不是** LINE Official Account Manager（issue #31 原文寫成後者，實查為前者）。
+   - **沒有公開 API 可以改。** `line/line-openapi` 的 `messaging-api.yml` 裡
+     `/v2/bot/channel/webhook/*` 只有 `endpoint`（GET/PUT）與 `test`（POST）
+     三個操作，全文 grep `redeliver` 只出現在 webhook 事件的說明欄位。
+   - 觸發條件官方寫的是「**bot server 沒有回 2xx**」；同一頁也提醒
+     **事件順序可能與發生順序不同**，去重要用 `webhookEventId`。
+   - ⚠️ **官方文件沒有寫 LINE 等多久算逾時**，所以本冊不列具體秒數；
+     我們只知道實測會拿到 `REQUEST_TIMEOUT`。
+
+   **本輪的評估：先不要開。** 兩個理由——(a) 逾時那一發我們其實**有回 200 也有
+   處理**（見上表第 4 回合的 Runtime Log 對照），redelivery 補的是「我們沒收到」，
+   而我們收到了；(b) 開啟後 LINE 會重送，
+   而我們**還沒有任何去重機制**（`webhookEventId` 沒有被記錄，也沒有唯一索引），
+   重送會變成重複回覆、重複寫 `chat_messages`——用一個看得見的錯換一個看不見的錯。
+   **要開之前的前置**：先把 `webhookEventId` 存下來並做冪等（唯一鍵），再請擁有者
+   到 LINE Developers Console 開啟。這件事目前沒有人在做，列在這裡等排程。
+5. **AI 客服目前在 Preview 上根本沒有在跑**（2026-08-25 查證）：
+   `vercel env ls preview` 的清單裡**沒有 `ANTHROPIC_API_KEY`**，而
+   `src/server/ai-reply.ts` 第一行就是「沒有 key 就直接回 `null`」。所以
+   issue #31 說的「AI 客服必逾時」在 Preview 上**現在不成立**——它不是慢，是沒跑。
+   程式路徑本身是真的；**補上 key 之後**，LLM 的秒級延遲就會出現在事件處理裡，
+   而那正是 `after()` 這次要擋在回應之外的東西。
+   補 key 屬平台層設定（CLAUDE.md 的兩層設定表），是**擁有者的動作**。
+
 ---
 
 ## 4. 顧客綁定

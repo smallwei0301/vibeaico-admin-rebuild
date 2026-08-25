@@ -29,6 +29,7 @@ import { createHmac } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { LineMockServer, type RecordedLineRequest } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { encryptSecret } from '@/server/crypto';
 import { BUSINESS_TYPES, MODE_PRESETS, type BusinessType } from '@/config/modes';
@@ -89,6 +90,9 @@ async function customerSays(text: string, replyToken = `rt-${Math.random().toStr
     body: raw,
   });
   expect(res.status, `webhook 對「${text}」回了 ${res.status}`).toBe(200);
+  // issue #31：回 200 後事件才在 after() 裡處理（06 §3.1），要等背景跑完再看 mock。
+  // drainWebhook 是 server 端的確定性完成訊號，不是 sleep 猜等（12 §2.3）。
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
   const replies = mock.requestsFor('/v2/bot/message/reply');
   if (replies.length === 0) return null;
   expect(replies).toHaveLength(1);
@@ -121,6 +125,9 @@ async function lineCallsFor(text: string): Promise<RecordedLineRequest[]> {
     body: raw,
   });
   expect(res.status, `webhook 對「${text}」回了 ${res.status}`).toBe(200);
+  // issue #31：同上——「bot 閉嘴了」這種反向斷言尤其不能靠時間猜，
+  // 否則背景工作只是還沒跑到，測試照樣綠。
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
   return [...mock.requests];
 }
 

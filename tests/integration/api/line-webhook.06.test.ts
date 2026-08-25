@@ -19,6 +19,12 @@
  * 的店 webhook 回 404」（route 的實作決策：無 secret 無從驗簽，回 5xx 只會讓
  * LINE 無限重送）。
  *
+ * issue #31 之後的等待紀律：route 驗簽後**立刻回 200**，事件處理在 after() 裡跑
+ * （06 §3.1）。所以「拿到 200」不等於「處理完了」——本檔一律用 postWebhook()
+ * （內含 drainWebhook：server 端 await 掉所有未完成的背景處理才回應）當入口，
+ * 只有要驗「回應早於處理」的案例才用 postWebhookRaw()。**不准改用 sleep 等**
+ * （12 §2.3），那種測試在反向斷言上會偶發綠燈，比沒有更糟。
+ *
  * 基線紀律：afterAll 刪除本檔造出的 keyword_replies（只刪自己插的 id）、
  * line_users、chat_messages（含畸形事件寫入的 line_user_id='' 列），
  * tenant_settings 還原快照；不動 SHOP_A 點數交易。
@@ -32,6 +38,7 @@ import {
   MOCK_PROFILE_NAME_PREFIX,
   MOCK_PROFILE_PICTURE_URL,
 } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -52,8 +59,8 @@ function sign(secret: string, rawBody: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('base64');
 }
 
-/** 以指定簽章（未給則用正確 secret 算）POST webhook；回原始 Response */
-async function postWebhook(
+/** 以指定簽章（未給則用正確 secret 算）POST webhook；**不等**背景處理 */
+async function postWebhookRaw(
   shopCode: string,
   payload: unknown,
   opts: { signature?: string | null; secret?: string } = {},
@@ -64,6 +71,24 @@ async function postWebhook(
     opts.signature === undefined ? sign(opts.secret ?? CHANNEL_SECRET, raw) : opts.signature;
   if (signature !== null) headers['x-line-signature'] = signature;
   return fetch(`${BASE_URL}/api/line/webhook/${shopCode}`, { method: 'POST', headers, body: raw });
+}
+
+/**
+ * POST webhook 並等到 after() 的事件處理跑完才回來（issue #31）。
+ *
+ * route 現在是「驗簽 → 回 200 → after() 才處理事件」（06 §3.1），所以拿到 200
+ * 的當下 reply 可能還沒送出、chat_messages 也可能還沒寫。這裡用
+ * helpers/line-webhook.ts 的 drainWebhook()——server 端 await 掉所有還沒跑完的
+ * 處理才回應，是**確定性的完成訊號**，不是 sleep 猜等（12 §2.3 禁用 sleep 等待）。
+ */
+async function postWebhook(
+  shopCode: string,
+  payload: unknown,
+  opts: { signature?: string | null; secret?: string } = {},
+): Promise<Response> {
+  const res = await postWebhookRaw(shopCode, payload, opts);
+  await drainWebhook(shopCode, BASE_URL);
+  return res;
 }
 
 function textMessageEvent(userId: string, text: string, replyToken: string) {
@@ -212,12 +237,21 @@ afterAll(async () => {
 });
 
 describe('簽章與店家識別（06 §3）', () => {
-  it('壞簽章 → 401；事件完全不被處理', async () => {
+  it('壞簽章 → 401；事件完全不進處理（after() 沒有排入任何工作）', async () => {
     mock.reset();
-    const res = await postWebhook(SHOP_A.shopCode, {
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+
+    const res = await postWebhookRaw(SHOP_A.shopCode, {
       events: [textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-bad-sig')],
     }, { signature: 'x'.repeat(44) });
     expect(res.status).toBe(401);
+
+    // issue #31：「先回 200、後處理」不得讓驗簽失敗的事件偷偷被處理。
+    // 這裡比的是 **server 端累計排入過的背景工作筆數**（scheduled，單調遞增）：
+    // 401 那條路徑連一筆都沒排入。不是「等了一下沒看到」——那種說法在背景
+    // 處理的世界裡不成立（只是還沒跑到），所以刻意不用「當下還在跑幾筆」當證據。
+    const after1 = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(after1.scheduled).toBe(before.scheduled);
     expect(mock.requests).toHaveLength(0);
     expect(await chatMessagesIn(USER_WEBHOOK)).toHaveLength(0);
   });
@@ -358,17 +392,23 @@ describe('text message → chat_messages IN + keyword_replies 命中（06 §3 �
 });
 
 describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () => {
-  it('LINE API 回 500 令 handler 丟錯 → webhook 仍 200，且同批後續事件照常處理', async () => {
+  it('LINE API 回 500 令 handler 丟錯 → webhook 仍 200、錯誤有留下紀錄，且同批後續事件照常處理', async () => {
     mock.reset();
     mock.failNext(500); // 第一個 reply 請求（rt-err）回 500 → lineReply 丟 ApiHttpError
 
-    const res = await postWebhook(SHOP_A.shopCode, {
+    const res = await postWebhookRaw(SHOP_A.shopCode, {
       events: [
         textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-err'),
         textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-after-err'),
       ],
     });
     expect(res.status).toBe(200); // 事件迴圈逐一 try/catch，不冒泡
+
+    // issue #31：處理移到 after() 之後，「錯誤被吞掉但沒人知道」的風險變高，
+    // 所以錯誤紀錄本身要被斷言（console.error 印在 next dev 的 stdout，測試
+    // process 攔不到；route 在非正式環境同步留一份供此處查核）。
+    const { errors } = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(errors.some((e) => e.includes(SHOP_A.shopCode) && e.includes('LINE API 錯誤'))).toBe(true);
 
     // 兩個事件的 IN 訊息都寫入（寫入在 reply 之前）：前面關鍵字案例 1 筆 + 本案例 2 筆
     const ins = await chatMessagesIn(USER_WEBHOOK);
@@ -381,10 +421,68 @@ describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () =
     expect(replies[1].body.replyToken).toBe('rt-after-err');
   });
 
+  it('after() 內迴圈外的意外（events 不可迭代）→ 仍 200 且錯誤有紀錄', async () => {
+    mock.reset();
+    // events 是數字 → `for…of` 直接丟 TypeError，落在事件迴圈的 try 之外，
+    // 驗的是 after() 最外層那道 catch：例外不能讓背景工作靜默死掉。
+    const res = await postWebhookRaw(SHOP_A.shopCode, { events: 42 });
+    expect(res.status).toBe(200);
+    const { errors } = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(errors.some((e) => e.includes('after()'))).toBe(true);
+  });
+
   it('畸形事件（無 source、無 message）→ 仍 200', async () => {
     const res = await postWebhook(SHOP_A.shopCode, {
       events: [{ type: 'message' }, { type: 'follow' }, { type: 'something-unknown' }],
     });
     expect(res.status).toBe(200);
+  });
+});
+
+/**
+ * issue #31：先回 200、事件處理搬到 after()。
+ *
+ * 這一組是本次修正的核心斷言。兩件事都要成立，缺一不可：
+ *   ① 回 200 **早於** 事件處理（否則冷啟動時 LINE 會逾時、顧客訊息被丟掉）；
+ *   ② 事件處理**還是有發生**（不能為了快就把事件吃掉）。
+ *
+ * ⚠️ 順序不是用時間差證明的。回 200 與「mock LINE 收到 reply」相差幾毫秒，
+ * 誰先誰後在 client 端觀察會翻轉；`sleep` 之後斷言更糟——反向斷言會偶發綠燈。
+ * 這裡用 mock 的 holdNext()：LINE 的回應被扣住，事件處理**卡在半路**，
+ * 此時若 route 還沒回應，`await posting` 就會一路等到 vitest 逾時（紅燈）。
+ * 也就是說，舊版（處理完才回 200）跑這個案例必然紅，新版必然綠——
+ * 這條斷言真的有分辨力，不是擺設。
+ */
+describe('先回 200、後處理事件（06 §3.1 / issue #31）', () => {
+  it('事件處理卡在 LINE 呼叫時，webhook 早已回 200；放行後處理照常完成', async () => {
+    mock.reset();
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const gate = mock.holdNext('/v2/bot/message/reply');
+
+    const posting = postWebhookRaw(SHOP_A.shopCode, {
+      events: [textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-after-1')],
+    });
+
+    await gate.hit;                       // ① 事件處理已開始並卡在 reply（mock 不回應）
+    const res = await posting;            // ★ 舊版在這裡會等到逾時
+    expect(res.status).toBe(200);
+
+    gate.release();                       // 放行 LINE 的回應
+    const settled = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(settled.scheduled).toBe(before.scheduled + 1);   // 這一次確實排入了背景工作
+
+    // ② 回 200 之後，事件仍然被完整處理：reply 送出去了、IN 訊息也寫進 DB
+    const replies = mock.requestsFor('/v2/bot/message/reply');
+    expect(replies).toHaveLength(1);
+    expect(replies[0].body.replyToken).toBe('rt-after-1');
+    expect(replies[0].body.messages).toEqual([{ type: 'text', text: KEYWORD_REPLY_TEXT }]);
+    const ins = await chatMessagesIn(USER_WEBHOOK);
+    expect(ins.filter((m) => m.content?.text === KEYWORD).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('排空端點在整合測試環境可用：閒置時 drained=0，且 scheduled 是累計值', async () => {
+    const { drained, scheduled } = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(drained).toBe(0);                     // 此刻沒有在跑的背景工作
+    expect(scheduled).toBeGreaterThan(0);        // 本檔前面的案例確實排入過工作
   });
 });

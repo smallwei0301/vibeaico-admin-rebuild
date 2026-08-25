@@ -25,6 +25,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { LineMockServer } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
@@ -160,6 +161,9 @@ beforeAll(async () => {
     body: raw,
   });
   expect(res.status).toBe(200);
+  // issue #31：webhook 回 200 後事件才在 after() 裡處理（06 §3.1）——這裡的
+  // follow 是後續案例的前置（line_users 要存在），必須等背景處理真的跑完。
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
 });
 
 afterAll(async () => {

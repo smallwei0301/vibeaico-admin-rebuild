@@ -35,6 +35,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { LineMockServer } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -91,7 +92,13 @@ function sign(rawBody: string): string {
   return createHmac('sha256', CHANNEL_SECRET).update(rawBody).digest('base64');
 }
 
-/** 以顧客身分送一則文字訊息進 webhook，回原始 Response */
+/**
+ * 以顧客身分送一則文字訊息進 webhook，回原始 Response。
+ *
+ * issue #31：webhook 驗簽後立刻回 200、事件處理在 after() 裡跑（06 §3.1），
+ * 所以送完必須等背景處理結束才能斷言 mock LINE／DB。drainWebhook 是 server 端
+ * 的確定性完成訊號（它 await 掉所有未完成的處理才回應），不是 sleep 猜等。
+ */
 async function sendCustomerMessage(text: string, replyToken: string): Promise<Response> {
   const raw = JSON.stringify({
     destination: 'Umockbot',
@@ -102,11 +109,13 @@ async function sendCustomerMessage(text: string, replyToken: string): Promise<Re
       message: { id: `m-${replyToken}`, type: 'text', text },
     }],
   });
-  return fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
+  const res = await fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-line-signature': sign(raw) },
     body: raw,
   });
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
+  return res;
 }
 
 /** 直查 tenant_settings 的兩個 jsonb（「附直查 DB 證據」的證據本身） */
