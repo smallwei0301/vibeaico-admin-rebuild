@@ -722,7 +722,16 @@ WIP `9ccb873` 寫好的 ②④ 分支，註解裡引用了
 | 父層級 | LOCAL_SHOP | GUIDE | CLINIC |
 |---|---|---|---|
 | **目錄**（賣什麼） | 服務項目 `/tenant/services` | 行程與方案 `/tenant/trips` | 診療項目 `/tenant/services`（**子層級尚未設計**，暫借 LOCAL_SHOP 的實作） |
-| **訂單**（誰買了） | 預約列表 `/tenant/bookings` | 團次訂單 `/tenant/tour-orders` | 掛號列表 `/tenant/bookings`（同上） |
+| **訂單**（誰買了） | 預約列表 `/tenant/bookings` | 團次訂單 `/tenant/tour-orders` | **預約列表** `/tenant/bookings`（同上） |
+
+⚠️ **本表初版把 CLINIC 的訂單寫成「掛號列表」——那是錯的**（主導者的筆誤，執行者
+在 issue #29 施工時查出來）。`nav.ts` 的 `navByMode.CLINIC` 只覆寫了 `services`
+（→ 診療項目），**沒有覆寫 `bookings`**，所以診所目前看到的就是「預約列表」。
+要改成「掛號列表」等於動診所的側邊欄文案，那屬於**尚未設計**的 CLINIC 子層級
+（見下方規則 4），因此**維持現狀並如實記錄**，不在 §8.13 這一輪動它。
+
+這件事本身就是本分冊反覆講的東西的一個實例：**表格裡寫一個沒有查證過的值，
+它就會被下一個人當成規格。**
 
 ⚠️ **這不是要合併資料表。** CLAUDE.md 明訂 `services` 與
 `trips`/`trip_plans`/`trip_departures` 是兩套不同的庫存模型、不得合併。
@@ -822,3 +831,30 @@ WIP `9ccb873` 寫好的 ②④ 分支，註解裡引用了
 ⚠️ 連帶要處理的：頁面的 `subscribeNote` 文案目前是照舊行為寫的（「已儲存停用設定
 （尚未生效…）」）。閘門改掉之後那句話立刻變成假的已知——**同一輪必須一起改**，
 否則就是用新的假成功換掉舊的（§6.5 記過同型的事）。
+
+
+### 8.13-b CLINIC 的名詞尚未統一（issue #29 執行者盤出，**待設計，不要逐處補丁**）
+
+同一個東西在診所眼裡目前有**四個名字**：
+
+| 出現位置 | 目前叫什麼 |
+|---|---|
+| 側邊欄（`nav.ts` navByMode.CLINIC） | 診療項目 |
+| 開店步驟（`dashboard.ts` 既有覆寫） | 看診項目 |
+| LINE 圖文選單格 label（`MODE_PRESETS.CLINIC.richMenuCells`） | 看診項目 |
+| LINE 圖文選單格**送出的文字**（同上） | 服務項目 |
+| 預約表單欄位（`bookings.ts`） | 服務項目 |
+
+這是 CLINIC 子層級尚未設計的徵兆，**需要一次命名裁決，不是逐處補丁**——
+逐處改只會讓下一個人看到第五種叫法。列在這裡等擁有者設計診所模式時一併處理。
+
+### 8.13-c 其他同型缺口（issue #29 執行者盤出，未處理）
+
+| 位置 | 問題 | 為什麼沒在 #29 處理 |
+|---|---|---|
+| `pages/ai-settings.ts:60` | 「所有服務項目與價格」（AI 知識庫來源清單） | 同型跨頁引用，#29 的 5 處清單漏列、不在白名單。**已列入該 issue 靜態鎖的例外清單，排到就刪那一行** |
+| `feature-store.ts` SERVICE_CATALOG 的 `where` | 寫「側邊欄 → **服務管理**」，但這個群組**在任何模式都不存在**（實際群組是 店家營運／行程營運／診所營運） | 既有錯誤，非 #29 造成。主導者已查證屬實 |
+| `pages/bookings.ts`（97/107/109/136/157/159 等） | 「服務項目 *」等寫死用語，CLINIC 也看得到這一頁 | #29 未提及、不在白名單 |
+| `pages/{clinic-queue,recurring-bookings}.ts` | 同型 | #29 明列不在範圍 |
+| GUIDE 的 `step1Title` 展開後是「確認行程與方案與價格」 | 兩個「與」連讀拗口 | 改前對嚮導是**錯的**，現在是**對但拗口**；執行者判斷不該為了通順自行發明文案（正確）。要順的話在 `dashboard.ts` 給 GUIDE 一個 `focus.step1Title` 覆寫 |
+| `/tenant/tour-orders`、`/tenant/trips` 不讀 searchParams | 嚮導從統計卡帶過去的 `?status=PENDING` / `?action=create` 被忽略，落在未篩選列表 | 是**團次訂單頁的功能缺**，屬 issue #8 範圍。不是死路（頁面在他選單裡），但篩選條件失效 |

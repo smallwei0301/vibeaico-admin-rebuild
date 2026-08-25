@@ -85,7 +85,7 @@ export const navLabel = (key: NavKey, businessType = 'LOCAL_SHOP'): string =>
  *
  * 跨頁文案提到目錄或訂單時**一律**呼叫下面兩個函式，不得寫死「服務項目」
  * 「預約管理」——嚮導的選單裡沒有那兩頁，寫死等於叫他去一個不存在的地方。
- * 由 tests/unit/mode-links.test.ts 的靜態鎖把關。
+ * 由 tests/unit/mode-parent-links.29.test.ts 的靜態鎖把關。
  */
 
 /** 這個模式的「目錄」叫什麼（賣什麼） */
