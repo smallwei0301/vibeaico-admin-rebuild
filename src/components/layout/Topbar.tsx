@@ -1,7 +1,10 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Bell, Building2, ChevronDown, LogOut, Menu, Settings, Smartphone } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { logout } from '@/services/auth';
 import { common } from '@/i18n/zh-TW/common';
 import { cn } from '@/lib/utils';
 import type { TenantSummary } from '@/lib/types';
@@ -29,6 +32,35 @@ export function Topbar({
 }) {
   const [shopMenu, setShopMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+  const router = useRouter();
+  const toast = useToast();
+
+  /**
+   * 登出（POST /api/auth/logout，03 分冊 §1/§4）。
+   *
+   * 先前這裡只是一個導去 /tenant/login 的 <Link>：換了頁，httpOnly 的 session
+   * cookie 卻還在，直接輸網址就能回到後台——畫面說「登出了」而副作用沒發生，
+   * 正是 00 分冊鐵則 12 禁止的假成功。現在改為先 await 後端把 session 失效，
+   * 成功才導向登入頁；失敗就留在原地並顯示真正的錯誤訊息，不假裝登出。
+   */
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await logout();
+      setUserMenu(false);
+      router.replace('/tenant/login');
+      router.refresh();   // 清掉 App Router 對已登入頁面的快取
+    } catch (e) {
+      toast.show(
+        `${common.topbar.logoutFailedPrefix}${e instanceof Error ? e.message : common.message.networkError}`,
+        'danger',
+      );
+    } finally {
+      setLoggingOut(false);
+    }
+  };
 
   return (
     <header className="topbar">
@@ -132,10 +164,15 @@ export function Topbar({
                 {common.topbar.enablePush}
               </button>
               <hr className="my-1 border-neutral-200" />
-              <Link href="/tenant/login" className="flex items-center gap-2 px-3 py-2 text-base text-danger hover:bg-neutral-100">
+              <button
+                type="button"
+                disabled={loggingOut}
+                onClick={() => { void handleLogout(); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-base text-danger hover:bg-neutral-100 disabled:opacity-60"
+              >
                 <LogOut size={15} />
                 {common.topbar.logout}
-              </Link>
+              </button>
             </DropdownPanel>
           )}
         </div>

@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
+  disconnectLine, getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
@@ -383,15 +383,18 @@ export default function LineSettingsPage() {
   const disconnect = async () => {
     setDisconnecting(true);
     try {
-      await saveLineSettings({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '',
-      });
-      setChannelId('');
-      setLineBasicId('');
+      // 必須打專用端點 POST /api/settings/line/disconnect（06 分冊 §6）。
+      // 先前這裡送的是 saveLineSettings({ channelSecret:'', channelAccessToken:'' })，
+      // 但依 04 分冊 §A-1／鐵則 6，secret 欄位的空字串代表「維持原值」——token
+      // 根本沒被清掉、webhook 照常運作，畫面卻顯示「已解除綁定」（鐵則 12 的假成功）。
+      await disconnectLine();
+      // 解除後重新讀一次設定，畫面顯示的就是後端真正的狀態——不再由前端自己
+      // 猜哪些欄位被清掉（端點只清 channelId 與兩個 *_enc，其餘外觀偏好保留，
+      // 見 06 分冊 §6）。舊寫法在本地把 lineBasicId/webhookUrl 也抹成空字串，
+      // 重新整理後又冒出來，等於顯示了一個沒發生的結果。
+      applySettings(await getTenantSettings());
       setRichMenuPublished(false);
-      patchLocalLine({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '', webhookUrl: '',
-      });
+      setVerifyChecks(null);   // 舊的檢查報告已經不代表目前狀態
       setConfirmDisconnect(false);
       toast.show(t.disconnect.done);
     } catch (e) {

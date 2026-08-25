@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { changePassword } from '@/services/auth';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -269,7 +270,11 @@ export default function SettingsPage() {
   const submitPasswordChange = async () => {
     setPasswordBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 480));
+      // 真的送到後端改密碼（POST /api/auth/change-password，03 分冊 §4：
+      // 後端會先用 currentPassword 重新驗證一次，錯的話回 400 AUTH_002）。
+      // 這裡先前是 480ms 的假延遲＋直接顯示「密碼已更改」——舊密碼其實永遠有效，
+      // 是 00 分冊鐵則 12 點名的假成功；成功 toast 只能出現在 await 成功之後。
+      await changePassword({ currentPassword, newPassword });
       setConfirmPasswordChange(false);
       setCurrentPassword('');
       setNewPassword('');

@@ -442,15 +442,20 @@ export const lineSettingsPage = {
   /* -------------------------------------------------------------- 解除綁定 */
   disconnect: {
     title: '解除 LINE 帳號綁定',
+    /* ⚠️ 這兩段字要跟 POST /api/settings/line/disconnect 真正做的事一致（06 分冊 §6：
+       只清 Channel ID 與兩個 *_enc 欄位）。原文寫「完全清除所有 LINE 設定，包含
+       Rich Menu、主選單配置」，但那些外觀偏好其實留著、LINE 官方帳號上已發布的
+       選單也不會被刪除——描述比實際做的多，屬鐵則 12 的假宣稱。 */
     body1:
-      '解除綁定後將完全清除所有 LINE 設定，包含 Channel ID、密鑰、Token、Rich Menu、主選單配置等。',
+      '解除綁定會清除本店的 Channel ID、Channel Secret 與 Channel Access Token，Bot 隨即停止回應。',
     body2:
-      '顧客的 LINE 對話記錄不受影響，但 Bot 將停止回應。如需重新啟用，請重新填寫 LINE 設定。',
+      '顧客的 LINE 對話記錄不受影響。自動回覆內容、選單主題等外觀設定會保留，重新填入金鑰即可再次啟用；'
+      + 'LINE 官方帳號上已發布的圖文選單不會被自動刪除（金鑰已清除，系統無法再代為呼叫 LINE），如需移除請自行到 LINE Developers 後台操作。',
     action: '解除綁定',
     processing: '處理中...',
     confirmTitle: '解除 LINE 綁定',
     confirmMessage:
-      '確定要解除 LINE 帳號綁定嗎？\n\n此操作將完全清除所有 LINE 設定（Channel ID、密鑰、Token、Rich Menu、主選單配置等），且無法復原。\n\n如需重新啟用，必須重新填寫所有 LINE 設定。',
+      '確定要解除 LINE 帳號綁定嗎？\n\n此操作會清除 Channel ID、Channel Secret 與 Channel Access Token，且無法復原，Bot 將立即停止回應。\n\n自動回覆內容與選單外觀設定會保留；如需重新啟用，請重新填入這三項金鑰。',
     done: 'LINE 帳號已解除綁定',
     doneRichMenuLeft:
       'LINE 帳號已解除綁定，但 Rich Menu 無法自動刪除（Token 已失效）。\n\n請到 LINE Developer Console 手動刪除 Rich Menu，否則顧客仍會看到舊選單。',

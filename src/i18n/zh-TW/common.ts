@@ -126,6 +126,8 @@ export const common = {
     installApp: '安裝手機 App',
     enablePush: '開啟新預約推播',
     logout: '登出',
+    /** 登出真的失敗時（POST /api/auth/logout 非 2xx）顯示，後面接後端訊息 */
+    logoutFailedPrefix: '登出失敗：',
     userFallback: '使用者',
     setupProgress: '設定進度',
     toggleSidebar: '切換選單',

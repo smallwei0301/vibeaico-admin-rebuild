@@ -35,6 +35,21 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
 export const saveLineSettings = (patch: Partial<LineSettings>) =>
   adapt(() => undefined, () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }));
 
+/**
+ * 解除 LINE 連動（POST /api/settings/line/disconnect，06 分冊 §6）。
+ *
+ * ⚠️ 不可以用 `saveLineSettings({ channelSecret: '', channelAccessToken: '' })` 代替：
+ * 依 04 分冊 §A-1 / 鐵則 6，secret 欄位送空字串的語意是「維持原值」，那樣寫
+ * token 根本不會被清掉，webhook 照常運作，畫面卻顯示「已解除綁定」——正是
+ * 00 分冊鐵則 12 禁止的假成功。必須打專用端點，由後端清空兩個 `*_enc`
+ * 與 line jsonb 的 channelId。
+ */
+export const disconnectLine = () =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/settings/line/disconnect', { method: 'POST' }),
+  );
+
 export const testLineConnection = () =>
   adapt<{ ok: boolean; message: string }>(
     () => ({ ok: true, message: '連線正常' }),
