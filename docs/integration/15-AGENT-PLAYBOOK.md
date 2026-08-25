@@ -55,6 +55,20 @@
 與擁有者原本「低階模型施工」的指示不符。記在這裡避免重犯。）
 
 
+## 實測腳本的兩條慣例
+
+**截圖與下載檔一律寫進 `scripts/verify/out/`。** 那個目錄被 gitignore 涵蓋，
+放別的地方會混進版本庫，而截圖進了 repo 之後很難清。
+（2026-08-25 有一支腳本寫成 `scripts/verify/.out-xxx.png`，`.out-` 前綴、直接放在
+`verify/` 底下，躲過了 `out/` 那條規則。`.gitignore` 已補檔名樣式當安全網，
+但正確做法還是寫進 `out/`。）
+
+**不要在整合測試跑的同時另起第二個 `next dev`。** 兩個 dev server 共用同一份
+`.next` 開發建置快取，會把 vendor chunk 寫壞——症狀是整批測試冒出
+`Cannot find module './vendor-chunks/@supabase.js'`、所有登入回 500，
+看起來像程式壞了，其實是快取被踩爛。若非起不可（例如要測的改動還沒 push、
+Preview 上沒有），**腳本收尾要 `rm -rf .next`**，並在檔頭寫明這個坑。
+
 ## 跑整合測試前：先確認別人沒在改你會用到的東西
 
 `flock /tmp/vibeaico-integration.lock` **只序列化「跑測試」，不序列化「改原始碼」**。
