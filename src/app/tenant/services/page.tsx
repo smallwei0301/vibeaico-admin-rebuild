@@ -1073,6 +1073,8 @@ function CategoryModal({
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ServiceCategory | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const nextId = React.useRef(1);
 
   /* 編輯分類 modal（issue #28 第 ⑭ 筆）—— 見下方 saveEdit 的註解 */
@@ -1090,7 +1092,21 @@ function CategoryModal({
     setError('');
   }, [open]);
 
-  const create = () => {
+  /**
+   * 新增分類——順序與同檔的 saveEdit 拉齊。
+   *
+   * 修改前：先把新列塞進本地 state、先 `toast.show(t.category.created)`，
+   * 才 `void createServiceCategory(...)` 射後不理。成功訊息早於它所宣稱的動作
+   * （00 分冊鐵則 12）：端點失敗時使用者會**同時**看到綠色的「分類建立成功」
+   * 與紅色的錯誤訊息，而那一列還留在畫面上。
+   *
+   * 同一個 CategoryModal 裡的「編輯」已於 `9829f12` / `a36cb71` 改成 await-first，
+   * 「新增」與「刪除」沒有一起改——本輪補齊，三個動作同型。
+   *
+   * mock 分支回 null → 沿用本地 id 與本地排序；真實 API 回 {id, sortOrder}
+   * 就用後端實際寫入的值，不自己猜一個顯示。
+   */
+  const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       setError(t.category.nameRequired);
@@ -1098,34 +1114,59 @@ function CategoryModal({
     }
     setError('');
     const trimmedDescription = description.trim();
-    const localId = `sc_new_${nextId.current++}`;
-    onChange([
-      ...categories,
-      {
-        id: localId,
-        name: trimmed,
-        description: trimmedDescription,
-        active: true,
-        sortOrder: categories.length + 1,
-      },
-    ]);
-    setName('');
-    setDescription('');
-    toast.show(t.category.created);
-    /* 說明欄自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
-       使用者填的說明重新整理就消失。
-       mock 分支回 null → 沿用本地 id；真實 API 回 {id, sortOrder} 後換成後端值 */
-    void createServiceCategory({ name: trimmed, description: trimmedDescription, active: true })
-      .then((res) => {
-        if (res) {
-          onChange((list) => list.map((c) => (
-            c.id === localId ? { ...c, id: res.id, sortOrder: res.sortOrder } : c
-          )));
-        }
-      })
-      .catch((e) => {
-        toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    setCreating(true);
+    try {
+      /* 說明欄自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
+         使用者填的說明重新整理就消失。 */
+      const res = await createServiceCategory({
+        name: trimmed, description: trimmedDescription, active: true,
       });
+      onChange((list) => [
+        ...list,
+        {
+          id: res ? res.id : `sc_new_${nextId.current++}`,
+          name: trimmed,
+          description: trimmedDescription,
+          active: true,
+          sortOrder: res ? res.sortOrder : list.length + 1,
+        },
+      ]);
+      setName('');
+      setDescription('');
+      toast.show(t.category.created);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  /**
+   * 刪除分類——同樣拉齊到 saveEdit 的順序。
+   *
+   * 修改前是樂觀更新：先 `onChange(categories.filter(...))` 把列拿掉、先 toast
+   * 「分類已刪除」，才 `void deleteServiceCategory(id).catch(...)`。後端拒絕時
+   * 畫面已經少了一列、成功訊息也已經出現，使用者只多看到一個紅色錯誤，
+   * 卻不知道那一列其實還在。
+   *
+   * 改成 await-first 之後多了一段等待時間，所以確認鈕採用 ConfirmModal 的
+   * `loading`（轉圈並停用按鈕），送出中也擋下關閉——不會變成「按了沒反應」，
+   * 也不會連按兩次送兩筆。
+   */
+  const removeCategory = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleting(true);
+    try {
+      await deleteServiceCategory(id);
+      onChange((list) => list.filter((c) => c.id !== id));
+      setDeleteTarget(null);
+      toast.show(t.category.deleted);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const move = (index: number, delta: number) => {
@@ -1305,7 +1346,7 @@ function CategoryModal({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <Button size="sm" onClick={create}>
+          <Button size="sm" loading={creating} onClick={() => void create()}>
             <Plus size={13} />{common.create}
           </Button>
         </div>
@@ -1365,21 +1406,12 @@ function CategoryModal({
       <ConfirmModal
         open={!!deleteTarget}
         danger
+        loading={deleting}
         title={common.delete}
         confirmText={common.delete}
         message={t.category.deleteConfirm}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(categories.filter((c) => c.id !== id));
-            void deleteServiceCategory(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
-          }
-          setDeleteTarget(null);
-          toast.show(t.category.deleted);
-        }}
+        onClose={() => { if (!deleting) setDeleteTarget(null); }}
+        onConfirm={() => void removeCategory()}
       />
     </>
   );

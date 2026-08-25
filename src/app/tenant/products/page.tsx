@@ -1041,11 +1041,17 @@ function CategoryModal({
   const toast = useToast();
 
   const [name, setName] = React.useState('');
+  /* 新增 modal 的「說明」欄：`a36cb71` 只給編輯 modal 加了這一欄，新增 modal 沒有。
+     欄位在 migration 0018 就已建好、`POST /api/product-categories` 也收得下
+     description（ProductCategoryInput），差的只是表單沒有那一格。 */
+  const [description, setDescription] = React.useState('');
   const [sortOrder, setSortOrder] = React.useState('0');
   const [active, setActive] = React.useState(true);
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ProductCategory | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
 
   /* 編輯分類 modal（issue #28 第 ⑭ 筆）—— 見下方 saveEdit 的註解 */
   const [editTarget, setEditTarget] = React.useState<ProductCategory | null>(null);
@@ -1058,6 +1064,7 @@ function CategoryModal({
   React.useEffect(() => {
     if (!open) return;
     setName('');
+    setDescription('');
     setSortOrder('0');
     setActive(true);
     setError('');
@@ -1065,23 +1072,33 @@ function CategoryModal({
 
   const reset = () => {
     setName('');
+    setDescription('');
     setSortOrder('0');
     setActive(true);
     setError('');
   };
 
+  /**
+   * 新增分類。順序本來就對（await 在前、成功才 onChange + toast），本輪只補兩件：
+   * 1. **說明欄真的送出**——`a36cb71` 只給編輯 modal 加了說明欄，新增 modal 沒有，
+   *    於是「新增時填不了、編輯時才填得到」。欄位與端點早就備好，差的是表單。
+   * 2. 送出中的 loading，避免連按兩次送兩筆。
+   */
   const create = async () => {
     if (!name.trim()) {
       setError(t.category.nameRequired);
       return;
     }
     setError('');
+    setCreating(true);
     try {
       /* 排序與啟用自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
          這兩個輸入從未離開瀏覽器。sortOrder 用後端回的實際值，不自己猜。 */
       const parsedSortOrder = Number(sortOrder);
+      const trimmedDescription = description.trim();
       const { id, sortOrder: savedSortOrder } = await createProductCategory({
         name: name.trim(),
+        description: trimmedDescription,
         active,
         sortOrder: Number.isFinite(parsedSortOrder) && sortOrder.trim() !== ''
           ? parsedSortOrder
@@ -1092,6 +1109,7 @@ function CategoryModal({
         {
           id,
           name: name.trim(),
+          description: trimmedDescription,
           active,
           sortOrder: savedSortOrder,
         },
@@ -1100,6 +1118,8 @@ function CategoryModal({
       toast.show(t.category.created);
     } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -1197,6 +1217,27 @@ function CategoryModal({
     }
   };
 
+  /**
+   * 刪除分類。順序本來就對（await 在前），本輪補上等待期間的 loading 回饋，
+   * 並把行內的 onConfirm 抽成具名 handler，與同檔的 create / saveEdit 同型
+   * ——三個動作長同一個樣子才鎖得住（tests/unit/category-action-order.28.test.ts）。
+   */
+  const removeCategory = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleting(true);
+    try {
+      await deleteProductCategory(id);
+      onChange(categories.filter((c) => c.id !== id));
+      setDeleteTarget(null);
+      toast.show(t.category.deleted);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const columns: Column<ProductCategory>[] = [
     { key: 'name', header: t.category.columns.name, render: (c) => c.name },
     {
@@ -1273,6 +1314,14 @@ function CategoryModal({
               onChange={(e) => setName(e.target.value)}
             />
           </div>
+          <div className="min-w-[12rem] flex-1">
+            <Label htmlFor="catDesc">{t.category.description}</Label>
+            <Input
+              id="catDesc" className="form-control-sm" value={description}
+              placeholder={t.category.descriptionPlaceholder}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
           <div className="w-24">
             <Label htmlFor="catSortOrder">{t.category.sortOrder}</Label>
             <Input
@@ -1285,7 +1334,7 @@ function CategoryModal({
             <span className="text-base text-neutral-700">{t.category.active}</span>
           </div>
           <div className="btn-group pb-1">
-            <Button size="sm" onClick={() => void create()}>
+            <Button size="sm" loading={creating} onClick={() => void create()}>
               <Plus size={13} />{t.category.create}
             </Button>
             <Button size="sm" variant="outline" onClick={reset}>{t.category.clear}</Button>
@@ -1347,21 +1396,12 @@ function CategoryModal({
       <ConfirmModal
         open={!!deleteTarget}
         danger
+        loading={deleting}
         title={common.delete}
         confirmText={common.delete}
         message={t.category.deleteConfirm}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={async () => {
-          if (!deleteTarget) return;
-          try {
-            await deleteProductCategory(deleteTarget.id);
-            onChange(categories.filter((c) => c.id !== deleteTarget.id));
-            setDeleteTarget(null);
-            toast.show(t.category.deleted);
-          } catch (e) {
-            toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
-          }
-        }}
+        onClose={() => { if (!deleting) setDeleteTarget(null); }}
+        onConfirm={() => void removeCategory()}
       />
     </>
   );
