@@ -26,7 +26,9 @@
  * 也沒有一格標成 FLEX_POPUP。它是「已實作、已單元測試、刻意尚未被使用」，
  * **不是**已經生效的功能，頁面不得宣稱每格設定會隨發布送出。
  */
-import { MAX_FLEX_CARDS, flexCardSchema, type FlexCard } from '@/config/tenant-settings';
+import {
+  MAX_FLEX_CARDS, flexCardSchema, isAllowedFlexLinkUrl, type FlexCard,
+} from '@/config/tenant-settings';
 
 /* ------------------------------------------------------------------ 文案 */
 /**
@@ -106,7 +108,7 @@ export function applyShopName(template: unknown, shopName: string): string {
  *   就整包 400，店家當場看得到哪裡錯、可以改。
  * - 讀取時已經來不及叫任何人來改了，顧客正在等回覆。所以這裡**先搶救再放棄**：
  *   圖片網址不是 https（LINE 只收 HTTPS）→ 只丟掉那張圖，卡片留著；
- *   連結網址不是 https（**本平台的規則**，非 LINE 限制，見 `cardAction()`）→
+ *   連結網址不在白名單（`isAllowedFlexLinkUrl()`，14 分冊 §8.20-b）→
  *   只丟掉那個連結，卡片留著，按鈕退回 message action（顧客還是按得動，只是不開網址）；
  *   連標題都沒有 → 那張卡真的畫不出來（標題同時是按鈕文字），才跳過它。
  *   讓一個壞掉的網址帶走整張卡，店家會看到後台卡片好好的、顧客那邊卻少一張。
@@ -120,8 +122,13 @@ export function normalizeFlexCards(raw: unknown): FlexCard[] {
   for (const item of raw) {
     const url = (item as { imageUrl?: unknown })?.imageUrl;
     const usable = typeof url === 'string' && url.trim().startsWith('https://') ? url : '';
+    /*
+     * 白名單與寫入驗證共用 `isAllowedFlexLinkUrl()`（唯一出處在
+     * `src/config/tenant-settings.ts`）。存進去的是 **trim 後**的值：
+     * LINE 對前置空白的網址回 400，留著空白等於把整份 carousel 送去被退。
+     */
     const link = (item as { linkUrl?: unknown })?.linkUrl;
-    const usableLink = typeof link === 'string' && link.trim().startsWith('https://') ? link : '';
+    const usableLink = isAllowedFlexLinkUrl(link) ? (link as string).trim() : '';
     const parsed = flexCardSchema.safeParse({
       ...(item as object), imageUrl: usable, linkUrl: usableLink,
     });
@@ -140,7 +147,7 @@ export function normalizeFlexCards(raw: unknown): FlexCard[] {
  * - `subtitle` 是空的 → 那個 text 元件不存在（LINE 的 text 元件不接受空字串，
  *   塞空字串整包會被退回 400）
  * - header 兩行都空 → 整個 header 區塊省略
- * - `linkUrl` 是空的或不是 https → 按鈕**退回 message action**（送出 title），
+ * - `linkUrl` 是空的或不在白名單 → 按鈕**退回 message action**（送出 title），
  *   不生一個假的網址、也不把按鈕拿掉。卡片不會因為沒填網址就變成一張壞卡。
  *
  * 底部按鈕**永遠只有一個 action**（14 分冊 §8.20 的實作選擇，見本檔下方 `cardAction()`）。
@@ -202,7 +209,9 @@ function buildBubble(
  * 一張卡片 → 底部按鈕的 action（14 分冊 §8.20：卡片契約多了 optional `linkUrl`）。
  *
  * 兩種 action 擇一，**不並存**：
- * - 有 `linkUrl`（https）→ `uri`，顧客按下去在 LINE 內建瀏覽器打開那個網址。
+ * - 有 `linkUrl`（白名單內的 scheme）→ `uri`，顧客按下去由 LINE 開啟它
+ *   （`https://`／`http://` 進內建瀏覽器，`line://` 跳 LINE 內頁，
+ *    `tel:` 撥號，`mailto:` 開郵件 app）。
  * - 沒有 → 維持原本的 `message`，label 與 text 都是 title：按鈕上寫什麼、
  *   按下去就送出什麼（schema 已把 title 限制在 LINE 的 label 上限 20 字內）。
  *
@@ -210,10 +219,12 @@ function buildBubble(
  * 一張卡兩個目的地，顧客按同一張卡會依按到哪裡得到不同結果，而店家在後台
  * 只填了一個網址、看不出還有第二個行為。一張卡一個動作，畫面上承諾什麼就做什麼。
  *
- * ⚠️ 只收 https 是**本平台的規則**，不是 LINE 的限制——LINE 的 `uri` action 實測
- * 收 http（也收 line://、tel:），只退 `javascript:`／`ftp:`／`data:`。
- * https-only 的是 hero 圖的 url，那是另一個欄位。完整實測數據見 `flexCardSchema`
- * 的說明與 `scripts/verify/flex-menu-validate.cjs`。
+ * ⚠️ 可用的 scheme 由 `isAllowedFlexLinkUrl()` 的**白名單**決定，內容完全等於
+ * LINE 的 `uri` action 實測收下的那一組（14 分冊 §8.20-b 擁有者裁決「廣告卡全開」）：
+ * `https://`／`http://`／`line://`／`tel:`／`mailto:`。
+ * 實測退回的 `sms:`／`javascript:`／`data:`／`ftp:`／`file://`／無 scheme 不在內。
+ * 完整回應碼見 `FLEX_LINK_URL_SCHEMES` 的說明與 `scripts/verify/flex-menu-validate.cjs`。
+ * （hero 圖的 `url` 才是 https-only，那是另一個欄位——§8.20 曾把兩者混為一談。）
  *
  * 這裡再過濾一次是**讀取路徑**的最後一道防線，理由與 imageUrl 那一段相同：
  * jsonb 是自由格式，繞過端點寫進來的網址可能是 LINE 真的會退的 scheme
@@ -221,7 +232,7 @@ function buildBubble(
  * 被退回——顧客一張卡都收不到，不是少一個連結。
  */
 function cardAction(card: FlexCard): LineMessage {
-  if (card.linkUrl.startsWith('https://')) {
+  if (isAllowedFlexLinkUrl(card.linkUrl)) {
     return { type: 'uri', label: card.title, uri: card.linkUrl };
   }
   return { type: 'message', label: card.title, text: card.title };

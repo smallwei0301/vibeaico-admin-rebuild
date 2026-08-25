@@ -269,30 +269,58 @@ describe('儲存層：POST /api/settings/line/flex-menu 收得下 flexCards', ()
     expect((await readLineJsonb()).flexCards).toEqual(cards);
   });
 
-  it('非 https 的連結網址被端點擋下（400），且 DB 不留半套', async () => {
-    /*
-     * ⚠️ 這條 400 是**本平台的規則**，不是替 LINE 提前擋。
-     * 實測（scripts/verify/flex-menu-validate.cjs）LINE 的 uri action 收 http，
-     * 回 200；被 LINE 退的是 javascript:／ftp:／data:（見下一條）。
-     * 14 分冊 §8.20 的 ⚠️ 段落把 hero 圖片的 https-only 誤植成 uri action 的限制。
-     * 仍然擋 http，是因為擁有者裁決要求 schema 擋在前面——但既然外部系統不會擋，
-     * 這條規則就只剩本檔與單元測試在守。
-     */
+  /*
+   * ⚠️ **前提變更（2026-08-25，擁有者裁決 §8.20-b「廣告卡全開」）。**
+   * 本檔原有一條「非 https 的連結網址被端點擋下（400）」——那條規則的理由
+   * （「LINE 的 uri action 只收 https」）已被實測推翻（那是 hero **圖片** url 的
+   * 限制被誤植）。理由消失後擁有者重裁「全開」：LINE 實測收什麼，端點就收什麼。
+   * 於是 http 從「該回 400」反轉成「該回 200 並存得下」，就是下面這一條。
+   */
+  it('http 的連結網址現在存得下（§8.20-b 反轉：舊斷言是「該被端點擋下 400」）', async () => {
+    const cards: FlexCard[] = [
+      { title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'http://example.com/x' },
+    ];
+    expect((await publishViaApi({ flexCards: cards })).status).toBe(200);
+    expect((await readLineJsonb()).flexCards).toEqual(cards);
+  });
+
+  it('line:／tel:／mailto: 也存得下（白名單＝LINE 實測收下的那一組）', async () => {
+    const cards: FlexCard[] = [
+      { title: '加好友', subtitle: '', imageUrl: '', ad: false, linkUrl: 'line://ti/p/@abc' },
+      { title: '打電話', subtitle: '', imageUrl: '', ad: false, linkUrl: 'tel:0212345678' },
+      { title: '寄信', subtitle: '', imageUrl: '', ad: false, linkUrl: 'mailto:shop@example.com' },
+    ];
+    expect((await publishViaApi({ flexCards: cards })).status).toBe(200);
+    expect((await readLineJsonb()).flexCards).toEqual(cards);
+  });
+
+  /*
+   * 白名單以外一律 400，且 DB 不留半套。
+   * 逐條列出來是為了讓紅燈直接指出是哪一個 scheme 漏了；
+   * javascript:／data:／ftp:／file:／sms: 是 LINE 實測會退的
+   * （400 invalid uri scheme，見 scripts/verify/flex-menu-validate.cjs），
+   * 端點擋它們是「不要等 LINE 把整包 carousel 退回」。
+   * 大小寫與空白變形則是**我們的**白名單在擋，與 LINE 怎麼回無關。
+   */
+  it.each([
+    'javascript:alert(1)',
+    'JavaScript:alert(1)',
+    ' javascript:alert(1)',
+    '\tjavascript:alert(1)',
+    'data:text/html,x',
+    'ftp://a.example/',
+    'file:///etc/passwd',
+    'sms:0212345678',
+    '/foo',
+  ])('白名單以外的連結網址 %j 被端點擋下（400），且 DB 不留半套', async (bad) => {
     const good = [card('保留')];
     await publishViaApi({ flexCards: good });
 
     const { status } = await publishViaApi({
-      flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'http://example.com/x' }],
+      flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: bad }],
     });
     expect(status).toBe(400);
     expect((await readLineJsonb()).flexCards).toEqual(good);
-  });
-
-  it('javascript: 的連結網址一樣被擋下（不是只擋 http）', async () => {
-    const { status } = await publishViaApi({
-      flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'javascript:alert(1)' }],
-    });
-    expect(status).toBe(400);
   });
 
   it('GET /api/settings 回讀得到剛存的卡片（頁面重新整理後卡片還在）', async () => {
@@ -372,6 +400,27 @@ describe('端到端：API 存卡片 → 顧客打「選單」→ mock LINE 收�
     expect(plainBubble.footer.contents[0].action).toEqual({
       type: 'message', label: '預約', text: '預約',
     });
+  });
+
+  it('非 https 的白名單連結也走完整條鏈路到顧客手上（§8.20-b 全開的終點）', async () => {
+    /*
+     * 只驗端點回 200 不夠：組裝層若還留著一份 https-only 的判斷，
+     * DB 是對的、後台顯示已儲存，顧客按下去卻只是送出一段文字——
+     * 那是本專案反覆抓到的「假成功」形狀，所以這條一路驗到 reply 訊息。
+     */
+    await publishViaApi({
+      flexCards: [
+        { title: '打電話', subtitle: '', imageUrl: '', ad: false, linkUrl: 'tel:0212345678' },
+        { title: '加好友', subtitle: '', imageUrl: '', ad: false, linkUrl: 'line://ti/p/@abc' },
+        { title: '官網', subtitle: '', imageUrl: '', ad: false, linkUrl: 'http://shop.example/' },
+      ],
+    });
+    const msg = await replyMessageFor('選單');
+    expect(msg.contents.contents.map((b: any) => b.footer.contents[0].action)).toEqual([
+      { type: 'uri', label: '打電話', uri: 'tel:0212345678' },
+      { type: 'uri', label: '加好友', uri: 'line://ti/p/@abc' },
+      { type: 'uri', label: '官網', uri: 'http://shop.example/' },
+    ]);
   });
 
   it('MENU 組的三個同義詞（主選單／選單／功能）都拿得到同一份 Flex', async () => {

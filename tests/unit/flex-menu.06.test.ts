@@ -29,7 +29,9 @@ import {
   normalizeFlexCards,
   richMenuCellAction,
 } from '@/server/flex-menu';
-import { MAX_FLEX_CARDS, lineSettingsSchema } from '@/config/tenant-settings';
+import {
+  FLEX_LINK_URL_SCHEMES, MAX_FLEX_CARDS, isAllowedFlexLinkUrl, lineSettingsSchema,
+} from '@/config/tenant-settings';
 import { resolveBuiltinIntent } from '@/server/line-events';
 
 const ROOT = process.cwd();
@@ -152,35 +154,110 @@ describe('buildFlexMenuOutcome — 卡片內容', () => {
 });
 
 /* ========================================================================== */
-/* linkUrl —— 14 分冊 §8.20 擁有者裁決：卡片契約多一個 optional 連結網址        */
+/* linkUrl —— 14 分冊 §8.20 / §8.20-b：卡片契約的 optional 連結網址            */
 /* ========================================================================== */
 /**
- * 為什麼這一組要寫得比較重：
+ * ⚠️ **前提變更（2026-08-25，擁有者裁決 §8.20-b「廣告卡全開」）。**
  *
- * 1. `linkUrl` 是**第五個欄位**，加錯的失敗模式是「後台看得到、顧客按了沒反應」，
- *    或更糟——LINE 把整包 carousel 退回，顧客一張卡都收不到。
- * 2. https-only 是**本平台自己的規則**（14 分冊 §8.20 擁有者裁決要求 schema 擋），
- *    **不是 LINE 的限制**——§8.20 的 ⚠️ 段落寫「LINE 的 uri action 只收 https」，
- *    實測是錯的：`scripts/verify/flex-menu-validate.cjs` 的 scheme 探測顯示
- *    LINE 對 uri action 的 http 回 200（line://、tel: 也 200），
- *    只有 javascript:／ftp:／data: 回 400 `invalid uri scheme`；
- *    https-only 的是 hero **圖片**網址那一個欄位。
- *    既然沒有外部系統會替我們擋，這條規則**只剩下這裡的測試在守**——
- *    refine 被拿掉的話，本地一路綠燈、LINE 也照收，沒有任何人會發現。
+ * 本組原本斷言「http 必須被擋」，那條規則是 §8.20 訂的 https-only。
+ * §8.20 給的理由是「LINE 的 uri action 只收 https」——**該理由已被實測推翻**
+ * （它把 hero **圖片** url 的 https-only 誤植成了 uri action 的限制）。
+ * 理由消失後回頭問擁有者，裁決是「全開」：LINE 實測收什麼，本平台就收什麼。
+ *
+ * 所以下面幾條 http 相關的斷言是**反轉的前提**，不是把測試改到綠：
+ *   舊：`parse('http://…').success === false`（該被擋）
+ *   新：`parse('http://…').success === true` （該被收）
+ * 三處（zod 寫入、normalizeFlexCards 讀取、cardAction 組裝）一起反轉。
+ *
+ * 白名單內容由實測決定，出處 `scripts/verify/flex-menu-validate.cjs`
+ * 對 LINE 官方 `POST /v2/bot/message/validate/reply` 的實跑（2026-08-25）：
+ *   200 收下 → 進白名單：https:// / http:// / line:// / tel: / mailto:
+ *   400 退回 → 不進白名單：sms: / javascript: / data: / ftp: / file:// / 無 scheme
+ *
+ * 為什麼這一組仍要寫得重：
+ *
+ * 1. `linkUrl` 加錯的失敗模式是「後台看得到、顧客按了沒反應」，或更糟——
+ *    LINE 把整包 carousel 退回，顧客一張卡都收不到。
+ * 2. 判斷是**白名單**（`isAllowedFlexLinkUrl()`）不是黑名單。黑名單漏掉一個
+ *    沒人想過的 scheme，那個 scheme 會直接送到顧客手上而**沒有任何測試會紅**；
+ *    白名單漏掉一個合法 scheme 只是少一個功能。兩種錯的代價不對等。
+ *    ⚠️ 所以下面必須有一條「白名單以外一律擋」的測試，而不是逐個列黑名單。
  * 3. 沒填網址的卡片**不得因此變成一張壞卡**——它必須原封不動地維持
- *    原本的 message action。這是本輪最容易被改壞、也最不容易被發現的一條。
+ *    原本的 message action。這是最容易被改壞、也最不容易被發現的一條。
  */
-describe('卡片的 linkUrl（§8.20）：填了才開網址，沒填不得把卡片弄壞', () => {
+describe('卡片的 linkUrl（§8.20-b 全開）：白名單內才開連結，白名單外不得把卡片弄壞', () => {
   const withLink = (linkUrl: string, ad = false) =>
     [{ title: '本月優惠', subtitle: '限時折扣', imageUrl: '', ad, linkUrl }];
-
-  it('填了 https 的網址 → 按鈕是 uri action，label 仍是標題、uri 就是那個網址', () => {
-    const [bubble] = bubblesOf(buildFlexMenuOutcome(
-      { flexCards: withLink('https://example.com/promo') }, SHOP,
-    ));
-    expect(bubble.footer.contents[0].action).toEqual({
-      type: 'uri', label: '本月優惠', uri: 'https://example.com/promo',
+  const parseCard = (linkUrl?: string) =>
+    lineSettingsSchema.pick({ flexCards: true }).safeParse({
+      flexCards: [{
+        title: 'A', subtitle: '', imageUrl: '', ad: false,
+        ...(linkUrl === undefined ? {} : { linkUrl }),
+      }],
     });
+
+  /** LINE 實測回 200 的那一組——每一個都必須被三層放行 */
+  const ALLOWED = [
+    'https://example.com/promo',
+    'http://example.com/promo',
+    'line://ti/p/@abc',
+    'tel:0212345678',
+    'mailto:shop@example.com',
+  ];
+  /**
+   * LINE 實測回 400 `invalid uri scheme` 的那一組，加上白名單一定要擋的變形。
+   * 變形那幾條的用途是釘住**我們的**判斷（trim + 轉小寫 + 必須以白名單 scheme 開頭），
+   * 不是「LINE 沒退就放行」——兩件事不要混。
+   */
+  const BLOCKED = [
+    // LINE 實測 400：
+    'sms:0212345678',
+    'javascript:alert(1)',
+    'data:text/html,x',
+    'ftp://a.example/',
+    'file:///etc/passwd',
+    '/foo',
+    'a.example/foo',
+    // 大小寫變形（LINE 對 JavaScript: 也回 400；白名單本來就擋）：
+    'JavaScript:alert(1)',
+    'JAVASCRIPT:alert(1)',
+    // 空白／控制字元藏在 scheme 前後或中間：
+    ' javascript:alert(1)',
+    '\tjavascript:alert(1)',
+    '\njavascript:alert(1)',
+    'java\tscript:alert(1)',
+    '\\tjavascript:alert(1)',   // 字面反斜線+t（兩個字元，不是控制字元）
+  ];
+
+  it.each(ALLOWED)('白名單 scheme %s → 按鈕是 uri action，label 仍是標題、uri 逐字相符', (url) => {
+    const [bubble] = bubblesOf(buildFlexMenuOutcome({ flexCards: withLink(url) }, SHOP));
+    expect(bubble.footer.contents[0].action).toEqual({
+      type: 'uri', label: '本月優惠', uri: url,
+    });
+  });
+
+  it.each(ALLOWED)('zod（寫入路徑）放行白名單 scheme %s', (url) => {
+    expect(parseCard(url).success).toBe(true);
+  });
+
+  it.each(ALLOWED)('normalizeFlexCards（讀取路徑）保留白名單 scheme %s', (url) => {
+    expect(normalizeFlexCards([
+      { title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: url },
+    ])[0].linkUrl).toBe(url);
+  });
+
+  /*
+   * ⚠️ 前提變更（§8.20-b）：這一條原本叫
+   * 「http（非 https）的網址：只丟掉那個連結，卡片留著並退回 message action」，
+   * 斷言 http 會被洗成空字串。擁有者裁決全開後 http 是**合法**的，
+   * 上面三條 it.each 已經把它釘成「該被收」。
+   */
+  it('http 的連結網址現在會真的開（§8.20-b 反轉：舊斷言是「該被擋」）', () => {
+    const [bubble] = bubblesOf(buildFlexMenuOutcome(
+      { flexCards: withLink('http://example.com/promo') }, SHOP,
+    ));
+    expect(bubble.footer.contents[0].action.type).toBe('uri');
+    expect(JSON.stringify(bubble)).toContain('http://example.com/promo');
   });
 
   it('沒有 linkUrl 這個鍵的老資料 → 按鈕原封不動是 message action（不得變成壞卡）', () => {
@@ -199,27 +276,98 @@ describe('卡片的 linkUrl（§8.20）：填了才開網址，沒填不得把�
     expect(textsOf(bubbles[0])).toContain('本月優惠');
   });
 
-  it('http（非 https）的網址：只丟掉那個連結，卡片留著並退回 message action', () => {
-    // 讀取路徑的搶救行為，與 imageUrl 同一個道理：一個壞網址不該帶走整張卡，
-    // 更不該讓 LINE 把整包 carousel 退回（那是顧客一張都收不到）
-    const bubbles = bubblesOf(buildFlexMenuOutcome(
-      { flexCards: withLink('http://example.com/promo') }, SHOP,
-    ));
+  /* ---------------------------------------------------------- 白名單以外 */
+
+  it.each(BLOCKED)('zod（寫入路徑）擋下白名單以外的 %j', (bad) => {
+    expect(parseCard(bad).success, `${JSON.stringify(bad)} 不該通過`).toBe(false);
+  });
+
+  it.each(BLOCKED)('normalizeFlexCards（讀取路徑）把 %j 洗成空字串，卡片留著', (bad) => {
+    const out = normalizeFlexCards([
+      { title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: bad },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].linkUrl).toBe('');
+    expect(out[0].title).toBe('A');
+  });
+
+  it.each(BLOCKED)('組裝路徑：%j 退回 message action，那串字不得出現在送出的 JSON 裡', (bad) => {
+    const bubbles = bubblesOf(buildFlexMenuOutcome({ flexCards: withLink(bad) }, SHOP));
     expect(bubbles).toHaveLength(1);
     expect(bubbles[0].footer.contents[0].action).toEqual({
       type: 'message', label: '本月優惠', text: '本月優惠',
     });
-    expect(JSON.stringify(bubbles[0])).not.toContain('http://example.com/promo');
+    expect(JSON.stringify(bubbles[0])).not.toContain(bad);
   });
 
-  it('normalizeFlexCards 把不是 https 的連結洗成空字串（不是整張卡丟掉）', () => {
-    const out = normalizeFlexCards([
-      { title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'http://a.example' },
-      { title: 'B', subtitle: '', imageUrl: '', ad: false, linkUrl: 'javascript:alert(1)' },
-      { title: 'C', subtitle: '', imageUrl: '', ad: false, linkUrl: 'https://c.example' },
+  /*
+   * 白名單的**負面保護**：不准用黑名單。
+   * 這一條餵的是「今天沒人想得到的 scheme」——黑名單一定漏，白名單一定擋。
+   * 缺了它，日後有人把 isAllowedFlexLinkUrl 改成列舉危險字串也照樣全綠。
+   */
+  it('白名單以外一律擋，即使是沒人列過的 scheme（證明不是黑名單）', () => {
+    for (const weird of [
+      'intent://scan/#Intent;scheme=zxing;end',
+      'chrome://settings',
+      'vbscript:msgbox(1)',
+      'jar:http://a.example!/x',
+      'blob:https://a.example/uuid',
+      'about:blank',
+      'ws://a.example/',
+      'httpss://a.example/',
+      'https:/a.example/',   // 只有一條斜線，不符合 https:// 前綴
+      'tel/0212345678',      // 缺冒號
+    ]) {
+      expect(parseCard(weird).success, `${weird} 不該通過`).toBe(false);
+      expect(isAllowedFlexLinkUrl(weird), `${weird} 不該進白名單`).toBe(false);
+    }
+  });
+
+  it('前後空白會被去掉再判斷，也去掉再存（LINE 對前置空白的網址回 400）', () => {
+    const parsed = parseCard('  https://example.com/promo  ');
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.flexCards[0].linkUrl).toBe('https://example.com/promo');
+
+    // 讀取路徑同樣要 trim，不能把帶空白的原字串送給 LINE
+    expect(normalizeFlexCards([
+      { title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: ' https://example.com/promo ' },
+    ])[0].linkUrl).toBe('https://example.com/promo');
+  });
+
+  it('scheme 比對不分大小寫（LINE 對 HTTPS:// 回 200），但路徑大小寫原樣保留', () => {
+    expect(isAllowedFlexLinkUrl('HTTPS://A.EXAMPLE/Promo')).toBe(true);
+    const parsed = parseCard('HTTPS://A.EXAMPLE/Promo');
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.flexCards[0].linkUrl).toBe('HTTPS://A.EXAMPLE/Promo');
+  });
+
+  it('白名單常數與判斷函式一致：每個 scheme 拼上內容都放行，且清單就是實測那五個', () => {
+    // 釘住清單本身——加一個沒實測過的 scheme 進去，這條會紅
+    expect([...FLEX_LINK_URL_SCHEMES]).toEqual([
+      'https://', 'http://', 'line://', 'tel:', 'mailto:',
     ]);
-    expect(out.map((c) => c.linkUrl)).toEqual(['', '', 'https://c.example']);
-    expect(out.map((c) => c.title)).toEqual(['A', 'B', 'C']);
+    for (const scheme of FLEX_LINK_URL_SCHEMES) {
+      expect(isAllowedFlexLinkUrl(`${scheme}x`), `${scheme} 應在白名單內`).toBe(true);
+    }
+    // 空字串／非字串不是「可用連結」；呼叫端各自決定它代表什麼
+    expect(isAllowedFlexLinkUrl('')).toBe(false);
+    expect(isAllowedFlexLinkUrl(undefined)).toBe(false);
+    expect(isAllowedFlexLinkUrl(null)).toBe(false);
+    expect(isAllowedFlexLinkUrl(123)).toBe(false);
+  });
+
+  it('三處共用同一支判斷函式（不得各寫一份 startsWith）', () => {
+    const schema = readFileSync(resolve(ROOT, 'src/config/tenant-settings.ts'), 'utf8');
+    const server = readFileSync(resolve(ROOT, 'src/server/flex-menu.ts'), 'utf8');
+    const page = readFileSync(resolve(ROOT, 'src/app/tenant/rich-menu-design/page.tsx'), 'utf8');
+
+    // 唯一出處在 tenant-settings.ts，另外兩處 import 它
+    expect(schema).toContain('export function isAllowedFlexLinkUrl');
+    expect(server).toContain('isAllowedFlexLinkUrl');
+    expect(page).toContain('isAllowedFlexLinkUrl');
+    // 另外兩處不得再自己寫一份 linkUrl 的 scheme 判斷
+    expect(server).not.toContain("linkUrl.startsWith('https://')");
+    expect(page).not.toContain("linkUrl.trim().startsWith('https://')");
   });
 
   it('一張卡只有一個 action：bubble 層與 hero 都不得再掛第二個目的地', () => {
@@ -242,49 +390,24 @@ describe('卡片的 linkUrl（§8.20）：填了才開網址，沒填不得把�
     const [normal, adCard] = bubblesOf(buildFlexMenuOutcome({
       flexCards: [
         { title: '官網', subtitle: '', imageUrl: '', ad: false, linkUrl: 'https://shop.example' },
-        { title: '本月優惠', subtitle: '', imageUrl: '', ad: true, linkUrl: 'https://ad.example' },
+        { title: '本月優惠', subtitle: '', imageUrl: '', ad: true, linkUrl: 'tel:0212345678' },
       ],
     }, SHOP));
     expect(normal.footer.contents[0].action).toEqual({
       type: 'uri', label: '官網', uri: 'https://shop.example',
     });
     expect(adCard.footer.contents[0].action).toEqual({
-      type: 'uri', label: '本月優惠', uri: 'https://ad.example',
+      type: 'uri', label: '本月優惠', uri: 'tel:0212345678',
     });
     // 廣告卡仍然有「廣告」標示（連結不取代標示）
     expect(textsOf(adCard)).toContain('廣告');
   });
 
-  it('zod（寫入路徑）：https 放行、http 擋下、空字串與缺鍵都當作「不開網址」', () => {
-    const parse = (linkUrl?: string) =>
-      lineSettingsSchema.pick({ flexCards: true }).safeParse({
-        flexCards: [{
-          title: 'A', subtitle: '', imageUrl: '', ad: false,
-          ...(linkUrl === undefined ? {} : { linkUrl }),
-        }],
-      });
-
-    expect(parse('https://example.com').success).toBe(true);
-    // ⚠️ LINE **不會**替我們擋這一條（實測 http 的 uri action 回 200），
-    // 所以這行斷言就是這條平台規則唯一的守門人
-    expect(parse('http://example.com').success).toBe(false);
-    expect(parse('').success).toBe(true);
-
-    const missing = parse(undefined);
+  it('空字串與缺鍵都當作「不開網址」，不是錯誤', () => {
+    expect(parseCard('').success).toBe(true);
+    const missing = parseCard(undefined);
     expect(missing.success).toBe(true);
     expect(missing.success && missing.data.flexCards[0].linkUrl).toBe('');
-  });
-
-  // 這一組裡的 javascript: / data: / ftp: 是 LINE **真的**會退的
-  // （400 invalid uri scheme，實測見 scripts/verify/flex-menu-validate.cjs）——
-  // zod 擋它們是「不要等 LINE 退回來」，與擋 http 的性質不同，別混為一談
-  it('zod 也擋 javascript: / data: / file: 這類 scheme（不是只擋 http）', () => {
-    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'file:///etc/passwd', 'ftp://a.example']) {
-      const r = lineSettingsSchema.pick({ flexCards: true }).safeParse({
-        flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: bad }],
-      });
-      expect(r.success, `${bad} 不該通過`).toBe(false);
-    }
   });
 
   it('頁面真的把 linkUrl 送進端點（不是只有一個存不進去的輸入框）', () => {
@@ -293,8 +416,9 @@ describe('卡片的 linkUrl（§8.20）：填了才開網址，沒填不得把�
     expect(page).toContain('({ title, subtitle, imageUrl, ad, linkUrl })');
     // 有可編輯的輸入框（不是唯讀顯示）
     expect(page).toContain('linkUrl: e.target.value');
-    // 發布前先擋非 https，讓店家看中文而不是端點的 400 原文
+    // 發布前先擋白名單以外的 scheme，讓店家看中文而不是端點的 400 原文
     expect(page).toContain('t.flex.linkUrlScheme');
+    expect(page).toContain('!isAllowedFlexLinkUrl(c.linkUrl)');
   });
 
   it('src/ 底下只有 flex-menu.ts 會組 uri action（頁面不得另寫一份組裝）', () => {

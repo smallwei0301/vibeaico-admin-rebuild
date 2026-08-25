@@ -89,6 +89,18 @@ const cases = [
   ['linkUrl 是空字串（不開網址 → 退回 message action，卡片不得變壞）', { flexCards: [
     card('預約', { linkUrl: '' }),
   ] }],
+  /*
+   * §8.20-b 全開後的白名單五種 scheme，走**真正的組裝路徑**送給 LINE 驗。
+   * 只驗 https 不夠：白名單放寬了，若組裝層還留著一份 https-only 的判斷，
+   * 這幾張卡會靜靜退回 message action，而本地測試與 DB 都看不出異狀。
+   */
+  ['白名單五種 scheme 各一張卡（§8.20-b 全開）', { flexCards: [
+    card('官網', { linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/' }),
+    card('舊站', { linkUrl: 'http://vibeaico-admin-rebuild.vercel.app/' }),
+    card('加好友', { linkUrl: 'line://ti/p/@786sojsi' }),
+    card('打電話', { linkUrl: 'tel:0212345678' }),
+    card('寄信', { linkUrl: 'mailto:shop@example.com' }),
+  ] }],
 ];
 
 const out = [];
@@ -142,8 +154,56 @@ const neg = [
  * 把它印成「探測」而不是「負向對照」，是 CLAUDE.md 那條 FAIL / WARN 的分界：
  * 一條永遠亮紅的對照，跟一個永遠開著的警告一樣，只會讓人學會忽略整個面板。
  */
-const probes = ['https://a.example/', 'http://a.example/', 'line://ti/p/@abc', 'tel:0212345678']
-  .map((uri) => ({ name: 'uri action scheme：' + uri, message: withScheme(uri) }));
+/*
+ * ⚠️ 這個陣列住在一層 **template literal 裡**（本檔用反引號把 gen.mts 寫出去），
+ * 所以字面量裡的跳脫序列會在 .cjs 求值時就先被吃掉一層。要送出**真的控制字元**，
+ * 一律用下面 TAB / LF / BSL 三個常數拼字串，不要在字面量裡寫跳脫序列——
+ * 兩層跳脫是「以為量了 A、其實量了 B」的溫床。
+ * （2026-08-25 複驗時曾被誤讀成「送出的是字面反斜線」；實際送出的是真控制字元，
+ *   但當時沒有任何東西讓讀的人一眼看出來，所以改成這種寫法，並把字面反斜線的
+ *   變形也單獨列一筆——那本來就是另一件值得量的事，只是名字要叫對。）
+ * ⚠️ 本檔內的註解不得出現反引號，會提前結束外層 template literal。
+ */
+const TAB = String.fromCharCode(9);
+const LF = String.fromCharCode(10);
+const BSL = String.fromCharCode(92);
+
+/*
+ * ⚠️ 白名單只由「候選 scheme」那幾條決定。底下的「變形」量的是 LINE 怎麼回，
+ * **不是**我們要不要放行：isAllowedFlexLinkUrl() 一律走
+ * 「trim 後、轉小寫、必須以某個已實測 scheme 開頭」，
+ * 就算 LINE 對某個變形回 200，我們照樣擋。兩件事不要混。
+ */
+const PROBE_URIS = [
+  // 2026-08-25 §8.20-b 擁有者重裁「廣告卡全開」→ 白名單必須由實測決定，
+  // 所以這一組從 4 個擴成完整候選集。沒被這裡量到的 scheme，不准寫進白名單。
+  ['https://a.example/', '候選 scheme'],
+  ['http://a.example/', '候選 scheme'],
+  ['line://ti/p/@abc', '候選 scheme'],
+  ['tel:0212345678', '候選 scheme'],
+  ['mailto:shop@example.com', '候選 scheme'],
+  ['sms:0212345678', '候選 scheme'],
+  ['javascript:alert(1)', '候選 scheme'],
+  ['data:text/html,x', '候選 scheme'],
+  ['ftp://a.example/', '候選 scheme'],
+  ['file:///etc/passwd', '候選 scheme'],
+  ['/foo', '無 scheme：相對路徑'],
+  ['a.example/foo', '無 scheme：裸網域'],
+  ['HTTPS://A.EXAMPLE/', '變形：全大寫（合法 scheme）'],
+  ['JavaScript:alert(1)', '變形：大小寫混合（危險 scheme）'],
+  [' https://a.example/', '變形：前置半形空白 + 合法 scheme'],
+  [' javascript:alert(1)', '變形：前置半形空白藏危險 scheme'],
+  [TAB + 'javascript:alert(1)', '變形：前置真 TAB（U+0009，一個字元）'],
+  [LF + 'javascript:alert(1)', '變形：前置真換行（U+000A，一個字元）'],
+  ['java' + TAB + 'script:alert(1)', '變形：scheme 中間插真 TAB（U+0009）'],
+  [BSL + 'tjavascript:alert(1)', '變形：字面反斜線+t（兩個字元，不是控制字元）'],
+  [BSL + 'njavascript:alert(1)', '變形：字面反斜線+n（兩個字元，不是控制字元）'],
+];
+const probes = PROBE_URIS
+  .map(([uri, kind]) => ({
+    name: '[' + kind + '] uri=' + JSON.stringify(uri),
+    message: withScheme(uri),
+  }));
 
 process.stdout.write(JSON.stringify({
   positive: out,
@@ -157,17 +217,32 @@ process.stdout.write(JSON.stringify({
   return JSON.parse(stdout.slice(stdout.indexOf('{')));
 }
 
-/** 送一則訊息給 LINE 的 validate 端點，回傳 { status, text }。 */
+/**
+ * 送一則訊息給 LINE 的 validate 端點，回傳 { status, text }。
+ *
+ * ⚠️ 連線層錯誤（sandbox 出口 proxy 偶發 ECONNRESET）**重試**，不當成 LINE 的回答。
+ * 把 TCP 斷線印成「LINE 退回」就是本專案一直在清的那種假的已知——
+ * 我們並沒有量到 LINE 說什麼。重試 3 次仍失敗就 throw，讓整支腳本紅掉。
+ */
 async function validate(message) {
-  const res = await fetch('https://api.line.me/v2/bot/message/validate/reply', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ messages: [message] }),
-  });
-  return { status: res.status, text: await res.text() };
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const res = await fetch('https://api.line.me/v2/bot/message/validate/reply', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ messages: [message] }),
+      });
+      return { status: res.status, text: await res.text() };
+    } catch (e) {
+      lastErr = e;
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+  }
+  throw lastErr;
 }
 
 async function main() {
@@ -218,8 +293,13 @@ async function main() {
     console.log(`INFO  ${c.name} → HTTP ${status}（${verdict}）${status === 200 ? '' : text}`);
   }
   console.log(
-    'INFO  ↑ http 被 LINE 收下 → flexCardSchema 的 https-only 是**本平台的規則**，' +
-      '不是 LINE 的限制（14 分冊 §8.20 的 ⚠️ 段落把 hero 圖的限制誤植成 uri action 的）。',
+    'INFO  ↑ 白名單＝上面回 200 的候選 scheme：https:// / http:// / line:// / tel: / mailto:。' +
+      '（§8.20-b 擁有者裁決「全開」＝LINE 收什麼就收什麼，一個都沒再扣。）',
+  );
+  console.log(
+    'INFO  ↑ 「變形」那幾條只是記錄 LINE 怎麼回，不決定我們放不放行：' +
+      'isAllowedFlexLinkUrl() 走「trim 後轉小寫、必須以某個上列 scheme 開頭」，' +
+      '就算 LINE 對某個變形回 200，我們照樣擋。',
   );
 
   console.log(

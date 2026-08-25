@@ -223,6 +223,53 @@ export async function notifyBookingStatus(
 > 無圖時，後端以 `src/server/png.ts` 現生成該主題色的 2500×1686 純色 PNG，
 > 「選主題即可發布」不再依賴人工上傳；之後要美化再補真圖即可。
 
+### 6.1 Flex 卡片契約 —— `linkUrl` 的可用 scheme（14 分冊 §8.20 / §8.20-b）
+
+卡片契約是 `{title, subtitle, imageUrl, ad, linkUrl?}`，存在 `tenant_settings.line`
+jsonb 的 `flexCards` 鍵，上限 12 張（LINE carousel 的 bubble 上限）。
+
+`linkUrl` 是 §8.20 擁有者裁決加上的第五欄：填了 → 卡片底部按鈕變成 `uri` action，
+沒填（空字串或缺鍵）→ 維持 `message` action（送出 title）。**兩種 action 擇一，不並存。**
+
+**可用 scheme（白名單）** —— 2026-08-25 擁有者裁決 §8.20-b「**廣告卡全開**」：
+LINE 的 `uri` action 實測收什麼，本平台就收什麼，一個都沒再扣。
+
+| scheme | LINE `validate/reply` | 進白名單 |
+|---|---|---|
+| `https://` | 200 | ✅ |
+| `http://` | 200 | ✅ |
+| `line://` | 200 | ✅ |
+| `tel:` | 200 | ✅ |
+| `mailto:` | 200 | ✅ |
+| `sms:` | 400 `invalid uri scheme` | ❌ |
+| `javascript:` / `data:` / `ftp:` / `file://` | 400 `invalid uri scheme` | ❌ |
+| 無 scheme（`/foo`、`a.example/foo`） | 400 `invalid uri` + `invalid uri scheme` | ❌ |
+
+實測出處：`scripts/verify/flex-menu-validate.cjs` 的「scheme 探測」段，
+打 LINE 官方 `POST /v2/bot/message/validate/reply`（不耗推播額度）。
+
+判斷規則（**唯一出處**：`src/config/tenant-settings.ts` 的 `isAllowedFlexLinkUrl()`，
+寫入驗證 / webhook 讀取路徑 / 頁面前端三處共用同一支）：
+
+1. 先 `trim()`，存進 jsonb 的也是 trim 後的值——LINE 對前置空白的網址回 400。
+2. scheme 比對 **case-insensitive**（LINE 對 `HTTPS://` 回 200）。
+3. 必須以白名單的某個 scheme 開頭。所以 `JavaScript:`、`" javascript:"`、
+   `<TAB>javascript:`、`java<TAB>script:` 等變形全部落在白名單外。
+
+⚠️ **必須是白名單，不得改成黑名單。** 黑名單只擋得住今天想得到的字串，明天多一個
+沒人想過的 scheme 就會直接送到顧客手上，而**沒有任何測試會紅**；白名單漏掉一個合法
+scheme 只是少一個功能、店家會反映。兩種錯的代價不對等。
+
+⚠️ **不要把 `linkUrl` 的規則寫成 https-only。** https-only 的是 **hero 圖的 `url`**
+（`imageUrl`，LINE 對 http 回 400），那是另一個欄位。14 分冊 §8.20 曾把兩者混為一談
+並附上一個不支持該主張的引用，§8.20-b 有完整經過。
+
+讀取路徑（`normalizeFlexCards()`）與寫入驗證刻意不同調：寫入時一張不合規整包 400，
+店家當場看得到；讀取時顧客正在等回覆，所以**只丟掉那個連結、卡片留著**、按鈕退回
+message action。一個壞連結不得帶走整張卡。
+
+---
+
 進階設計器（rich-menu-design 頁的 create-advanced / preview-* 端點）標為 Phase 6+，
 留待 rich menu 基本流程可用後再逐一實作。**同屬未實作、但頁面已有 UI 的還有**：
 每格自訂文字/連結接上發布、儲存草稿、還原前次發布、背景圖上傳按鈕接 `/api/upload`

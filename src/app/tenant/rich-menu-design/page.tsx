@@ -21,7 +21,7 @@ import {
   listFeatures, getTenantSettings, createRichMenu, deleteRichMenu, saveFlexMenu,
 } from '@/services/settings';
 import { uploadImage } from '@/services/upload';
-import { MAX_FLEX_CARDS, type FlexCard } from '@/config/tenant-settings';
+import { MAX_FLEX_CARDS, isAllowedFlexLinkUrl, type FlexCard } from '@/config/tenant-settings';
 import { ApiError } from '@/lib/api';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS } from '@/config/modes';
@@ -1038,12 +1038,12 @@ function FlexMenuTab({
       return;
     }
     /*
-     * 連結網址只收 https（**本平台的規則**，不是 LINE 的限制——LINE 的 uri action
-     * 實測收 http，見 src/config/tenant-settings.ts 的 flexCardSchema 說明）。
-     * 端點的 zod 也擋，這裡先擋一次是為了讓店家看到中文的哪裡錯，而不是一句
-     * 400 的原文——與上面擋空標題同一個理由。
+     * 連結網址的可用 scheme 走 `isAllowedFlexLinkUrl()`——與端點 zod、webhook
+     * 讀取路徑**同一支函式**（唯一出處 src/config/tenant-settings.ts）。
+     * 這裡先擋一次是為了讓店家看到中文的哪裡錯，而不是一句 400 的原文
+     * ——與上面擋空標題同一個理由；**不是**另寫一份判斷。
      */
-    if (cards.some((c) => c.linkUrl.trim() !== '' && !c.linkUrl.trim().startsWith('https://'))) {
+    if (cards.some((c) => c.linkUrl.trim() !== '' && !isAllowedFlexLinkUrl(c.linkUrl))) {
       toast.show(t.flex.linkUrlScheme, 'warning');
       return;
     }
@@ -1197,7 +1197,7 @@ function FlexMenuTab({
                           />
                           {c.linkUrl.trim() !== '' && (
                             <span className="form-text">
-                              {c.linkUrl.trim().startsWith('https://')
+                              {isAllowedFlexLinkUrl(c.linkUrl)
                                 ? t.flex.linkUrlSet
                                 : t.flex.linkUrlScheme}
                             </span>

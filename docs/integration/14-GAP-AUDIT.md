@@ -1219,6 +1219,11 @@ LINE 回的 `property` 路徑就是分辨兩者的關鍵：
 
 #### 執行者的處置（主導者複核通過）
 
+> 📌 **這一小節是 2026-08-25 上半場的歷史紀錄，不是現行規則。**
+> 當時執行者正確地保留了 §8.20 的 https-only 並只修正理由；同日下半場
+> 擁有者重裁「廣告卡全開」，https-only 已**不再有效**——現行規則見本節下方
+> 「擁有者裁決（2026-08-25）：**「廣告卡全開」**」。
+
 **https-only 照擁有者裁決保留**，沒有自行放寬——但把**每一處理由**改成事實：
 
 | | 舊（假的） | 新 |
@@ -1237,11 +1242,101 @@ LINE 回的 `property` 路徑就是分辨兩者的關鍵：
 > 既然 LINE 對 http 回 200，**沒有任何外部系統會替我們擋這條規則**——
 > 它只剩 `tests/unit/flex-menu.06.test.ts` 的兩條 zod 斷言在守。
 
-⚠️ **待擁有者裁決**：https-only 現在失去了原本的理由，要不要維持？
-- **(a) 維持**（目前實作）：理由改成「不讓店家把顧客導去未加密網址」的平台政策
-- **(b) 放寬成 LINE 的實際範圍**（http / https / `line://` / `tel:`），
-  `line://` 這種加好友連結也能用
-- **(c) 維持 https 但額外開放 `tel:`**——餐廳／診所的「打電話」卡片是很自然的用途
+⚠️ ~~**待擁有者裁決**：https-only 現在失去了原本的理由，要不要維持？~~
+**已裁決，見下一節。**
+
+#### 擁有者裁決（2026-08-25）：**「廣告卡全開」**
+
+選項 (b)。**「全開」的工程定義**（主導者裁示，不是執行者猜的）：
+
+> `linkUrl` 收 **LINE 實測會收的 scheme**，擋 **LINE 實測會退的 scheme**。
+> 實作方式必須是**白名單**，不是黑名單。
+
+**為什麼一定是白名單**：黑名單只擋得住我們今天想得到的字串，明天多一個沒人想過的
+scheme 就會直接送到顧客手上，而**沒有任何測試會紅**——這正是本冊反覆抓到的那類
+「負面保護」缺陷（同型討論見 §8 對 storage RESTRICTIVE 政策的那一段）。
+白名單漏掉一個合法 scheme 只是少一個功能、店家會反映；黑名單漏掉一個危險 scheme
+是顧客被導去 `javascript:`。**兩種錯的代價不對等。**
+
+##### 每一個 scheme 的實測結果（`scripts/verify/flex-menu-validate.cjs`，2026-08-25 實跑）
+
+送進 LINE 官方 `POST /v2/bot/message/validate/reply`（不耗推播額度），
+受測 JSON 由 `src/server/flex-menu.ts` **本尊**產生（腳本不重寫一份組裝邏輯）。
+
+| # | 送出的 `uri` | LINE 回應 | 進白名單 | 備註 |
+|---|---|---|---|---|
+| 1 | `https://a.example/` | **200** | ✅ | |
+| 2 | `http://a.example/` | **200** | ✅ | §8.20 曾誤稱會被退 |
+| 3 | `line://ti/p/@abc` | **200** | ✅ | 加好友／LINE 內頁 |
+| 4 | `tel:0212345678` | **200** | ✅ | 餐廳／診所的「打電話」卡 |
+| 5 | `mailto:shop@example.com` | **200** | ✅ | 本輪新量到 |
+| 6 | `sms:0212345678` | 400 `invalid uri scheme` | ❌ | 本輪新量到——**LINE 不收**，不要憑「tel: 可以所以 sms: 應該也可以」推測 |
+| 7 | `javascript:alert(1)` | 400 `invalid uri scheme` | ❌ | |
+| 8 | `data:text/html,x` | 400 `invalid uri scheme` | ❌ | |
+| 9 | `ftp://a.example/` | 400 `invalid uri scheme` | ❌ | |
+| 10 | `file:///etc/passwd` | 400 `invalid uri scheme` | ❌ | 本輪新量到 |
+| 11 | `/foo`（相對路徑） | 400 `invalid uri` + `invalid uri scheme` | ❌ | 沒有 scheme |
+| 12 | `a.example/foo`（裸網域） | 400 同上 | ❌ | 沒有 scheme |
+
+**實測 200 卻不進白名單的：一個都沒有。** 「全開」＝ LINE 收什麼就收什麼，
+本平台沒有再自行扣掉任何一個。（先前 (a) 案「http 未加密」的平台政策**沒有**被採用。）
+
+##### 變形的實測（這一組**不決定白名單**，只釘住我們自己的判斷函式）
+
+| # | 送出的 `uri` | LINE 回應 | 本平台 |
+|---|---|---|---|
+| 13 | `HTTPS://A.EXAMPLE/` | **200** | ✅ 放行（比對 case-insensitive） |
+| 14 | `JavaScript:alert(1)` | 400 | ❌ |
+| 15 | `" https://a.example/"`（前置空白） | 400 | ✅ 放行，但**存 trim 後的值** |
+| 16 | `" javascript:alert(1)"` | 400 | ❌ |
+| 17 | `<TAB>javascript:alert(1)`（真 U+0009） | 400 | ❌ |
+| 18 | `<LF>javascript:alert(1)`（真 U+000A） | 400 | ❌ |
+| 19 | `java<TAB>script:alert(1)` | 400 | ❌ |
+| 20 | 字面反斜線 `\t` + `javascript:`（兩個字元） | 400 | ❌ |
+| 21 | 字面反斜線 `\n` + `javascript:`（兩個字元） | 400 | ❌ |
+
+⚠️ **13–21 是「LINE 怎麼回」的紀錄，不是「我們要不要放行」的依據。**
+`isAllowedFlexLinkUrl()` 一律走「**trim → 轉小寫 → 必須以白名單的某個 scheme 開頭**」，
+就算 LINE 對某個變形回 200，本平台照樣擋。把兩者混起來，白名單就退化成
+「LINE 沒退就放行」的黑名單。
+
+##### 落地（2026-08-25）
+
+| 位置 | 改動 |
+|---|---|
+| `src/config/tenant-settings.ts` | 新增 `FLEX_LINK_URL_SCHEMES` 與 `isAllowedFlexLinkUrl()`——**唯一出處**；`flexCardSchema.linkUrl` 的 refine 改呼叫它 |
+| `src/server/flex-menu.ts` | `normalizeFlexCards()`（讀取搶救，改存 trim 後的值）與 `cardAction()` 都改呼叫同一支 |
+| `src/app/tenant/rich-menu-design/page.tsx` | `publish()` 前端擋與輸入框下方即時提示都改呼叫同一支 |
+| `src/i18n/zh-TW/pages/rich-menu-design.ts` | `linkUrlPlaceholder` / `linkUrlHint` / `linkUrlScheme` / `linkUrlSet` 與 `flexMenuSteps` 改成描述**可以填什麼**（列出五個 scheme 的例子），不再寫成 https-only |
+| `src/app/api/settings/line/flex-menu/route.ts` | 檔頭「只收 https」註解改成白名單與實測回應碼 |
+| `docs/integration/06-LINE-INTEGRATION.md` §6.1 | 卡片契約新增 `linkUrl` 規則與實測表 |
+
+三處共用同一支函式是刻意的：本冊已反覆抓到「同一件事寫兩份，短期一樣、長期一定分岔，
+而分岔的那一天沒有任何測試會紅」。`tests/unit/flex-menu.06.test.ts` 有一條
+「三處共用同一支判斷函式（不得各寫一份 startsWith）」把它釘住。
+
+##### 反轉的既有斷言（**前提變更，不是把測試改到綠**）
+
+| 檔案 | 舊斷言 | 新斷言 |
+|---|---|---|
+| `tests/unit/flex-menu.06.test.ts` | `parse('http://…').success === false` | `=== true`（併入 `it.each(ALLOWED)` 的 zod 那一條） |
+| 同上 | 「http 的網址：只丟掉那個連結，卡片留著並退回 message action」 | 「http 的連結網址現在會真的開」——按鈕是 `uri` action |
+| 同上 | `normalizeFlexCards` 把 `http://a.example` 洗成 `''` | 原樣保留 |
+| `tests/integration/api/flex-menu.06.test.ts` | 「非 https 的連結網址被端點擋下（400）」 | 「http 的連結網址現在存得下」——200 且逐欄回得來 |
+
+理由一致：那幾條斷言守的是 §8.20 的 https-only，而 https-only 的**理由**已被實測推翻，
+擁有者據此重裁「全開」。**前提變了，所以重新釘**——不是為了讓紅燈變綠而放寬。
+
+##### 變異測試（證明新測試真的抓得到，不是擺著好看）
+
+把 `isAllowedFlexLinkUrl()` 暫時改壞，各跑一次 `tests/unit/flex-menu.06.test.ts`：
+
+| 變異 | 結果 | 紅掉的案例 |
+|---|---|---|
+| A：改回 `startsWith('https://')` | **17 failed / 83 passed** | `白名單 scheme http:// … / line:// / tel: / mailto:`（uri action、zod、normalizeFlexCards 各 4 條）、`http 的連結網址現在會真的開`、`前後空白會被去掉再判斷`、`scheme 比對不分大小寫`、`白名單常數與判斷函式一致`、`linkUrl 不是廣告卡專屬` |
+| B：改成「什麼都收」 | **43 failed / 57 passed** | `zod（寫入路徑）擋下白名單以外的 …` ×14、`normalizeFlexCards（讀取路徑）把 … 洗成空字串` ×14、`組裝路徑：… 退回 message action` ×14、`白名單以外一律擋，即使是沒人列過的 scheme（證明不是黑名單）` |
+
+兩個方向都紅 ⇒ 這組測試同時釘住「該收的沒收」與「該擋的沒擋」。還原後 100 passed。
 
 ### 8.22-b §8.22 的兩句事實前提是錯的（需要重新裁決）
 

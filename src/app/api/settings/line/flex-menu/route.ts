@@ -18,12 +18,21 @@ import { lineSettingsSchema } from '@/config/tenant-settings';
  * 不做「默默砍掉多的」——店家編了 13 張卻只有 12 張生效而畫面說已儲存，
  * 就是一個沒人看得見的假成功。
  *
- * `linkUrl`（14 分冊 §8.20 擁有者裁決）：卡片的 optional 連結網址，**只收 https**。
+ * `linkUrl`（14 分冊 §8.20-b 擁有者裁決「廣告卡全開」）：卡片的 optional 連結網址。
+ * 可用 scheme ＝ LINE 的 uri action **實測收下**的那一組，一個都沒再扣：
+ * https:// / http:// / line:// / tel: / mailto:（皆回 HTTP 200）。
+ * 實測退回的 sms: / javascript: / data: / ftp: / file:// 與「沒有 scheme」不收
+ * （皆 400 invalid uri scheme）——收下這些等於把整份 carousel 送去被 LINE 退，
+ * 顧客一張卡都收不到。
  *
- * ⚠️ 這條 https-only 是**本平台的規則**。§8.20 寫的「LINE 的 uri action 只收 https」
- * 經實測是錯的（LINE 收 http），詳見 src/config/tenant-settings.ts 的 flexCardSchema
- * 說明與 scripts/verify/flex-menu-validate.cjs 的探測輸出。仍然擋，是因為擁有者
- * 裁決要求擋；但不要在任何地方把理由寫成「LINE 會退」。
+ * ⚠️ 判斷是**白名單**而不是黑名單，唯一出處是 src/config/tenant-settings.ts 的
+ * `isAllowedFlexLinkUrl()`（本端點 zod、webhook 讀取路徑、頁面前端三處共用）。
+ * 黑名單只擋得住今天想得到的字串，明天多一個沒人想過的 scheme 就會直接送到
+ * 顧客手上，而沒有任何測試會紅。實測回應碼見
+ * scripts/verify/flex-menu-validate.cjs 的 scheme 探測輸出。
+ *
+ * ⚠️ 舊註解曾寫「只收 https」並把理由掛在 LINE 頭上——§8.20 那句是把 hero
+ * **圖片** url 的 https-only 誤植過來的，已由實測推翻，不要再寫回去。
  */
 const bodySchema = lineSettingsSchema.pick({
   flexMenuEnabled: true,

@@ -53,23 +53,73 @@ export const MAX_FLEX_CARDS = 12;
  *   （截斷會讓兩者不一致，顧客按到的關鍵字與看到的字不同）。
  * - `imageUrl` 必須是 https：LINE 的 image 元件只收 HTTPS 網址，http 會被拒。
  *   空字串＝這張卡沒有主圖（合法，組裝時整個 hero 區塊省略）。
- * - `linkUrl` 必須是 https：**這一條是本平台自己的規則，不是 LINE 的限制。**
- *
- *   ⚠️ 這個區分是實測出來的，不要再把它寫成 LINE 的限制（14 分冊 §8.20 的
- *   ⚠️ 段落就是這樣寫的，而它是錯的）。`scripts/verify/flex-menu-validate.cjs`
- *   把各種 scheme 送進 LINE 官方的 `POST /v2/bot/message/validate/reply`：
- *
- *     uri action：https 200、**http 200**、line:// 200、tel: 200、
- *                 javascript: 400、ftp: 400、data: 400（皆 `invalid uri scheme`）
- *     hero 圖 url：http **400** `invalid uri scheme` ← https-only 的是**這個**欄位
- *
- *   §8.20 把 hero 圖的限制當成了 uri action 的限制。LINE 對 `uri` action 收 http。
- *   我們仍然只收 https，因為擁有者裁決要求 schema 擋在前面——但**理由是本平台
- *   不讓店家把顧客導去未加密的網址**，不是「LINE 會退」。照 LINE 的說法寫，
- *   下一個人會照著一個不存在的外部限制做決定。（已回報，等擁有者確認是否放寬。）
- *
+ * - `linkUrl` 的可用 scheme：見下方 `FLEX_LINK_URL_SCHEMES` / `isAllowedFlexLinkUrl()`。
  *   空字串＝這張卡不開網址（合法，組裝時按鈕退回 message action）。
  */
+
+/**
+ * 卡片 `linkUrl` 的**白名單** scheme（14 分冊 §8.20-b，擁有者裁決「廣告卡全開」）。
+ *
+ * 「全開」的工程定義：**LINE 的 `uri` action 實測收什麼，我們就收什麼**，一個都沒再扣。
+ * 這份清單的每一項都有 `scripts/verify/flex-menu-validate.cjs` 對 LINE 官方
+ * `POST /v2/bot/message/validate/reply` 的實測回應碼撐著（2026-08-25 實跑）：
+ *
+ *   收下（HTTP 200）→ 進白名單：
+ *     https://a.example/          200
+ *     http://a.example/           200
+ *     line://ti/p/@abc            200
+ *     tel:0212345678              200
+ *     mailto:shop@example.com     200
+ *   退回（HTTP 400 `invalid uri scheme`）→ 不進白名單：
+ *     sms:0212345678 / javascript:alert(1) / data:text/html,x /
+ *     ftp://a.example/ / file:///etc/passwd / `/foo`（相對路徑）/ `a.example/foo`
+ *
+ * ⚠️ **沒有被那支腳本量到的 scheme 不准加進這個陣列**，也不准在註解裡寫
+ * 「LINE 應該也收 X」。這一節的每一個數字都是量出來的，不是推出來的
+ * （§8.20 就是「把 hero 圖的限制推想成 uri action 的限制、還附了引用」而錯的）。
+ *
+ * ⚠️ 為什麼是**白名單**而不是黑名單：黑名單只擋得住今天想得到的字串，
+ * 明天多一個沒人想過的 scheme 就會直接送到顧客手上，而**沒有任何測試會紅**。
+ * 白名單漏掉一個合法 scheme 只是少一個功能、店家會反映；黑名單漏掉一個危險
+ * scheme 是顧客被導去 `javascript:`。兩種錯的代價不對等。
+ */
+export const FLEX_LINK_URL_SCHEMES = [
+  'https://',
+  'http://',
+  'line://',
+  'tel:',
+  'mailto:',
+] as const;
+
+/**
+ * `linkUrl` 是否可用（**寫入驗證、讀取搶救、頁面即時提示三處共用這一支**）。
+ *
+ * 三處共用是刻意的：本專案已經反覆抓到「同一件事寫兩份，短期一樣、長期一定分岔，
+ * 而分岔的那一天沒有任何測試會紅」。這裡若各寫一份 `startsWith()`，
+ * 失敗模式是頁面說可以、端點回 400，或更糟：端點收下了、顧客那一包被 LINE 整份退回。
+ *
+ * 判斷規則（三條缺一不可）：
+ * 1. **先 `trim()`**——前後空白／換行／Tab 由 zod 一併去掉，存進 DB 的也是去空白後的值。
+ *    LINE 對前置空白的 `" https://a.example/"` 回 400，所以「去掉再比對、也去掉再存」
+ *    才是一致的：畫面說可以，送出去的那一份 LINE 就真的收。
+ * 2. **case-insensitive**——LINE 對 `HTTPS://A.EXAMPLE/` 回 200，我們沒有理由更嚴。
+ * 3. **必須以白名單的某個 scheme 開頭**——所以「藏在 scheme 前後或中間」的變形
+ *    （`\tjavascript:`、`" javascript:"`、`java\tscript:`、`JavaScript:`）
+ *    全部落在白名單外，不需要另外列黑名單去追。相對路徑（沒有 scheme）也不在內。
+ *
+ * ⚠️ 判斷**不看 LINE 對某個變形回什麼**。就算 LINE 對某個變形回 200，這裡照樣擋——
+ * 白名單是「正規化後必須以已實測 scheme 開頭」，不是「LINE 沒退就放行」。
+ *
+ * 空字串回 `false`：呼叫端各自決定空字串代表什麼
+ * （schema：合法的「不開網址」；`cardAction()`：退回 message action）。
+ */
+export function isAllowedFlexLinkUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return FLEX_LINK_URL_SCHEMES.some((scheme) => normalized.startsWith(scheme));
+}
+
+/** 一張輪播卡片（欄位契約與各上限的來源見本檔上方那段說明）。 */
 export const flexCardSchema = z.object({
   title: z.string().trim().min(1, '卡片標題不可空白').max(20, '卡片標題最多 20 字'),
   subtitle: z.string().trim().max(60, '卡片說明最多 60 字').default(''),
@@ -84,7 +134,10 @@ export const flexCardSchema = z.object({
     .string()
     .trim()
     .max(2000)
-    .refine((v) => v === '' || v.startsWith('https://'), '連結網址必須是 https://')
+    .refine(
+      (v) => v === '' || isAllowedFlexLinkUrl(v),
+      '連結網址只接受 https://、http://、line://、tel:、mailto: 開頭',
+    )
     .default(''),
 });
 
