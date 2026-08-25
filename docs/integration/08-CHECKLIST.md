@@ -68,6 +68,14 @@
 建議實作順序（前面的頁面使用率最高）：
 - [ ] B-1 預約進階（available-slots、手動建立、calendar、block-times）
       **（重開 2026-08-24：block-times 頁完全未接線、available-slots 無任何頁面使用）**
+- [x] B-1.1 預約加購 `booking_addons`（issue #17，2026-08-25）
+      證據：契約 `04-API-CONTRACTS.md §B-1.1`；migration `0020_booking_addons`（兩個
+      Supabase 專案皆已套用並以 `information_schema.columns` / `pg_policy` 驗證，
+      輸出貼在 issue #17 留言）；端點測試
+      `tests/integration/api/booking-addons.17.test.ts`（16 例全綠：CRUD／回沖／0 元與
+      負數邊界／加購後調價再刪除／跨租戶 404／notify 三態／額度 409 零請求）；
+      頁面接線鏈路對照表與單元守門
+      `tests/unit/honest-not-built-interactions.test.ts:「bookings 加購 modal（已接上真實後端，且不得宣稱超出實際發生的事）」`
 - [ ] B-2 服務/員工/班表 CRUD
 - [ ] B-3 商品/訂單/庫存
 - [ ] B-4 票券/會員/點數

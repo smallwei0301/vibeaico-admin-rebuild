@@ -1,5 +1,7 @@
 import { adapt, request } from '@/lib/api';
-import type { Booking, BookingStatus, CalendarEvent, Paged } from '@/lib/types';
+import type {
+  Booking, BookingAddon, BookingAddonNotifyOutcome, BookingStatus, CalendarEvent, Paged,
+} from '@/lib/types';
 import { MOCK_BOOKINGS } from '@/mock';
 
 export type BookingQuery = {
@@ -129,6 +131,126 @@ export const applyBookingPoints = (id: string, points: number, mockBalance = Num
     () => request<{ finalPrice: number; customerPoints: number }>(`/api/bookings/${id}/apply-points`, {
       method: 'POST', body: JSON.stringify({ points }),
     }),
+  );
+
+/* ------------------------------------------------------------ 加購（§B-1.1） */
+
+/**
+ * GET /api/bookings/:id/addons — 該筆預約的加購明細。
+ *
+ * mock 分支回 `null` = 頁面沿用頁內 `byMode` 假資料（同 listRecurringBookings
+ * 的慣例）：假資料是頁面專屬的（含 staffName 之類 API 也有、但 id 對不上的欄位），
+ * 服務層不複製一份。
+ */
+export const listBookingAddons = (bookingId: string): Promise<BookingAddon[] | null> =>
+  adapt<BookingAddon[] | null>(
+    () => null,
+    () => request<BookingAddon[]>(`/api/bookings/${bookingId}/addons`),
+  );
+
+export type CreateBookingAddonPayload = {
+  /** 「從服務清單帶入」的來源服務；自由輸入（耗材／商品類）省略 */
+  serviceId?: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  durationMinutes: number;
+  /** 執行人員；省略 = 同本預約的人員 */
+  staffId?: string | null;
+  /** 原站 addonNotify：勾了才推 LINE 消費明細 */
+  notify: boolean;
+};
+
+export type CreateBookingAddonResult = {
+  addon: BookingAddon;
+  /** 加購後的預約金額（伺服器實算，不由頁面自行推） */
+  finalPrice: number;
+  endAt: string;
+  durationMinutes: number;
+  /** 消費明細通知**實際**的結果 */
+  notified: BookingAddonNotifyOutcome;
+};
+
+/**
+ * POST /api/bookings/:id/addons — 新增加購。
+ *
+ * 推播額度用完時 API 回 409（`REQ_003`）**但加購已經寫入**（04 §B-1.1）；
+ * 錯誤訊息本身會說明這件事，頁面照原文顯示並重新載入明細即可。
+ *
+ * mock 分支：合成一筆明細、金額以 MOCK_BOOKINGS 現值加總，
+ * `notified` 固定 `'NONE'` —— mock 模式沒有任何推播管道，什麼都沒送出去，
+ * 回 'NONE' 才是誠實的（同 updateBooking 的 notifyTriggered 註解）。
+ */
+export const createBookingAddon = (bookingId: string, payload: CreateBookingAddonPayload) =>
+  adapt<CreateBookingAddonResult>(
+    () => {
+      const b = MOCK_BOOKINGS.find((x) => x.id === bookingId);
+      const amount = payload.price * payload.quantity;
+      const minutes = payload.durationMinutes * payload.quantity;
+      return {
+        addon: {
+          id: `ba_mock_${Date.now()}`,
+          serviceId: payload.serviceId ?? null,
+          name: payload.name,
+          price: payload.price,
+          quantity: payload.quantity,
+          durationMinutes: payload.durationMinutes,
+          staffId: payload.staffId ?? null,
+          staffName: null,
+          appliedAmount: amount,
+          appliedMinutes: minutes,
+          notified: 'NONE',
+          createdAt: new Date().toISOString(),
+        },
+        finalPrice: (b?.finalPrice ?? 0) + amount,
+        endAt: b ? new Date(Date.parse(b.endAt) + minutes * 60_000).toISOString() : '',
+        durationMinutes: (b?.durationMinutes ?? 0) + minutes,
+        notified: 'NONE',
+      };
+    },
+    () => request<CreateBookingAddonResult>(`/api/bookings/${bookingId}/addons`, {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  );
+
+export type DeleteBookingAddonResult = {
+  finalPrice: number;
+  endAt: string;
+  durationMinutes: number;
+  /** 本次實際扣回的金額（伺服器實算；頁面照它顯示，不自行推算） */
+  revertedAmount: number;
+};
+
+/**
+ * DELETE /api/bookings/:id/addons/:addonId — 移除加購並回沖金額／時長。
+ *
+ * 「回沖」＝減去建立當下實際加上去的金額（`appliedAmount`），下限 0；
+ * 完整定義與兩種已知不精確的互動見 `src/app/api/bookings/[id]/addons/route.ts`
+ * 檔頭與 04 分冊 §B-1.1。
+ *
+ * `mockAddon` 只有 mock 分支會用（頁面把要刪的那筆帶進來），讓合成結果的數字
+ * 與畫面上顯示的一致。
+ */
+export const deleteBookingAddon = (
+  bookingId: string,
+  addonId: string,
+  mockAddon?: { appliedAmount: number; appliedMinutes: number },
+) =>
+  adapt<DeleteBookingAddonResult>(
+    () => {
+      const b = MOCK_BOOKINGS.find((x) => x.id === bookingId);
+      const amount = mockAddon?.appliedAmount ?? 0;
+      const minutes = mockAddon?.appliedMinutes ?? 0;
+      const finalPrice = Math.max(0, (b?.finalPrice ?? 0) - amount);
+      return {
+        finalPrice,
+        endAt: b ? new Date(Date.parse(b.endAt) - minutes * 60_000).toISOString() : '',
+        durationMinutes: Math.max(0, (b?.durationMinutes ?? 0) - minutes),
+        revertedAmount: (b?.finalPrice ?? 0) - finalPrice,
+      };
+    },
+    () => request<DeleteBookingAddonResult>(
+      `/api/bookings/${bookingId}/addons/${addonId}`, { method: 'DELETE' }),
   );
 
 /** POST /api/bookings/:id/mark-paid-offline — 標記現場已收款。 */

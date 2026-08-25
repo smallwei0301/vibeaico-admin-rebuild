@@ -51,6 +51,50 @@ export type Booking = {
   createdAt: string;
 };
 
+/**
+ * 預約加購明細（`booking_addons`，migration 0020；契約見 04 分冊 §B-1.1）。
+ *
+ * ⚠️ 與行程加購（10 分冊 §5 `trip_addons`）同名但**不是同一個資料模型**，
+ * 兩者不可互換使用（CLAUDE.md：services 與 trips 兩套庫存模型不得合併）。
+ */
+export type BookingAddon = {
+  id: string;
+  /** 「從服務清單帶入」的來源服務；自由輸入（耗材／商品類）為 null */
+  serviceId: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  durationMinutes: number;
+  /** 執行人員；null = 同本預約的人員。**不參與業績歸戶**（04 §B-1.1） */
+  staffId: string | null;
+  staffName: string | null;
+  /** 建立當下實際加進 booking.finalPrice 的金額（刪除時原數回沖） */
+  appliedAmount: number;
+  /** 建立當下實際加進 booking.durationMinutes 的分鐘（刪除時原數回沖） */
+  appliedMinutes: number;
+  /** 消費明細通知**實際**的結果（不是「有沒有要求通知」） */
+  notified: BookingAddonNotifyOutcome;
+  createdAt: string;
+};
+
+/** 加購消費明細通知的實際結果；每個值只描述真的發生過的事（04 §B-1.1） */
+export type BookingAddonNotifyOutcome =
+  /**
+   * 沒有送出任何通知：`addonNotify` 沒勾；或 mock 模式（沒有任何推播管道，
+   * 什麼都沒送出去，回 'NONE' 才是誠實的——同 updateBooking 的 notifyTriggered）
+   */
+  | 'NONE'
+  /** 已推播給顧客，扣 1 則推播額度 */
+  | 'LINE'
+  /** 顧客未綁定 LINE → 沒有管道可送 */
+  | 'NO_LINE'
+  /** 本店尚未設定 LINE Channel → 沒送出 */
+  | 'NOT_CONFIGURED'
+  /** 本月推播額度已用完 → 沒送出（API 以 409 回應，加購仍已寫入） */
+  | 'QUOTA_EXCEEDED'
+  /** 試著送了但 LINE 平台回錯 → 沒送成 */
+  | 'FAILED';
+
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';
 

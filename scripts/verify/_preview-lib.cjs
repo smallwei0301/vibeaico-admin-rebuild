@@ -24,6 +24,8 @@ const DEFAULT_PREVIEW_URL =
 const PROD_REF = 'egehnijjpgijmccagxac';
 
 const BASE = process.env.PREVIEW_URL || DEFAULT_PREVIEW_URL;
+/** BASE 是不是本機（決定要不要帶出口 proxy，見 launch()） */
+const LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/.test(BASE);
 const OUT_DIR = path.join(__dirname, 'out');
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -108,7 +110,14 @@ async function launch() {
   return chromium.launch({
     executablePath: '/opt/pw-browsers/chromium',
     headless: true,
-    proxy: { server: process.env.HTTPS_PROXY },   // 埠號每個 session 不同，讀環境變數
+    /*
+     * 出口 proxy 只在打**遠端** Preview 站時需要（埠號每個 session 不同，讀環境變數）。
+     * BASE 指向本機 dev server（PREVIEW_URL=http://localhost:PORT）時**整個不要帶
+     * proxy**：帶了瀏覽器會把 localhost 也送去 proxy，症狀是頁面永遠載不出來、
+     * 登入頁的 #username 等到逾時（2026-08-25 實測踩過；先試 `proxy.bypass` 仍然
+     * 連不上，所以是整段拿掉而不是加白名單）。
+     */
+    ...(LOCAL_BASE ? {} : { proxy: { server: process.env.HTTPS_PROXY } }),
     args: [
       '--no-sandbox',
       // 出口 proxy 的攔截 CA（三組 SPKI，缺一可能握手失敗）

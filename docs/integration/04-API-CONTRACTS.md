@@ -174,6 +174,93 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/calendar` | `?from&to`：**行事曆頁唯一資料源**，合併四種事件成一個陣列（展示層合一，資料層仍分開）：`{events: CalendarEvent[]}`，`CalendarEvent` 以 `type` 區辨 —— `BOOKING`（服務預約）／`DEPARTURE`（行程團次，含 `seatsBooked/capacity`）／`BLOCK`（封鎖時段）／`EXTERNAL`（匯入的外部 ICS，唯讀）。`DEPARTURE` 只在租戶有 `TOUR_MODULE` 時出現。共用型別加在 `src/lib/types.ts`（只新增） |
 | GET/POST `/api/block-times`、DELETE `/api/block-times/:id` | CRUD，欄位同表 |
 | GET/POST `/api/recurring-bookings`、PUT/DELETE `:id`、POST `:id/renew` | rule jsonb `{weekday(0-6), time'HH:mm', intervalWeeks, until}`；renew=依 rule 產生未來實體 bookings（source='RECURRING'） |
+| GET/POST `/api/bookings/:id/addons`、DELETE `/api/bookings/:id/addons/:addonId` | 預約加購明細，見 **§B-1.1** |
+
+### B-1.1 預約加購（`booking_addons`）
+
+> 補寫於 2026-08-25（GitHub issue #17 / 補齊-2）。原站有這個功能——
+> `docs/specs/bookings.json` 的 `jsApiCalls` 含 `/api/bookings/${b.id}/addons` 與
+> `/api/bookings/${bookingId}/addons/${itemId}`，`docs/REBUILD-SPEC.md:382–396`
+> 有加購對話框的 6 個欄位（含 `addonNotify`）——但本冊原本**零記載**，後端也零實作。
+>
+> ⚠️ **與行程加購（10 分冊 §5 `trip_addons`、Phase 8b）同名，但不是同一個資料模型。**
+> CLAUDE.md 明令 `services` 與 `trips` 兩套庫存模型不得合併；LOCAL_SHOP／CLINIC
+> 租戶不會開 `TOUR_MODULE`，卻一樣要有預約加購。issue #3 曾把本功能誤標為
+> 「Phase 8b 排期」，成因即此同名（記於 14 分冊 §8）。
+
+資料表 `booking_addons`（migration **0020**）：`id, tenant_id, booking_id, service_id?,
+name, price(≥0), quantity(≥1), duration_minutes(≥0), staff_id?, applied_amount,
+applied_minutes, notified, created_at`。RLS 四條 `is_tenant_member(tenant_id)`（02 §0006 慣例）。
+
+| 端點 | 要點 |
+|---|---|
+| GET `/api/bookings/:id/addons` | 回 `BookingAddon[]`（依 `created_at`）。預約不屬於本店 → 404（不回空陣列） |
+| POST `/api/bookings/:id/addons` | `{serviceId?, name, price, quantity, durationMinutes=0, staffId?, notify=false}`。回 `{addon, finalPrice, endAt, durationMinutes, notified}` |
+| DELETE `/api/bookings/:id/addons/:addonId` | 回 `{finalPrice, endAt, durationMinutes, revertedAmount}` |
+
+**金額與時長**
+
+- 新增：`bookings.final_price += price × quantity`；`duration_minutes += durationMinutes × quantity`
+  且 `end_at` 同步往後延。實際加上去的量寫進該列的 `applied_amount` / `applied_minutes`。
+- 刪除（**回沖**）：`final_price = max(0, final_price − applied_amount)`，時長同理往回收
+  （`end_at` 不得早於 `start_at`）。
+- 兩支都用 **compare-and-swap**（條件帶讀到的舊 `final_price` / `end_at`，最多重試 3 次）
+  避免併發 lost update，寫法同 `apply-points`。
+
+**「回沖」為什麼是「減去存下來的數字」而不是重算**
+
+`bookings.final_price` 在本專案是**流水餘額**：`adjust-price` 絕對覆寫且不留紀錄、
+`apply-coupon` / `apply-points` 都以「目前的 final_price」為基底加減。因此刪除加購時
+**無法重算**，只能反向掉當初那一次異動。存 `applied_*` 而不是刪除時重算
+`price × quantity`：兩者今天相等，但日後若開放編輯加購或計價規則變動就會分岔。
+
+已知**不精確**的兩種互動（不假裝沒有）：
+
+1. 加購後又套 **PERCENT 票券**：折扣連加購金額一起打了，回沖卻減全額 → 多減。
+   例：1000＋加購200＝1200，九折→1080，刪加購→880（精確值 900）。
+2. 加購後又**手動調價**：調價是絕對覆寫，回沖等於假設店家輸入的總價含這筆加購全額。
+
+兩者都無法從資料判定，所以**不猜**：刪除確認視窗把「將扣回多少錢」這個確定的數字
+直接寫給店家看（CLAUDE.md：不得已的取捨要寫在使用者讀得到的地方）。
+
+**員工業績**
+
+依 2026-08-25 **主導者裁示**（issue #1 comment-5412922443）：加購金額計入員工業績，
+算法為「**與主服務同一位服務人員、依實收金額全額計入**」。實作上不需額外程式——
+金額進 `final_price`，而 `/api/reports/staff-performance`、`/api/reports/top-staff`
+就是「`bookings.final_price` group by `bookings.staff_id`」。
+
+⚠️ **這個算法是我們選的，不是從原站還原的**（裁示原文如此要求標註）。
+`booking_addons.staff_id` 只記錄「誰做的」，不參與業績歸戶。日後若查到原站另有算法，
+要改的是算法，不是「要不要計入」。
+
+**`notify`（原站 `addonNotify`「通知顧客消費明細」）**
+
+勾選才送，且**不吃 `tenant_settings.notify` 的任何開關**（這則通知的開關就是勾選框本身，
+同 `notifyProductOrderReceipt`）。未綁 LINE **不改寄 Email**——那個勾選框的標籤沒有這句
+承諾（商品訂單那個有）。回應與 `booking_addons.notified` 記的都是**實際結果**：
+
+| `notified` | 意義 | HTTP |
+|---|---|---|
+| `NONE` | 沒有要求通知（或 mock 模式，沒有推播管道） | 200 |
+| `LINE` | 已推播，扣 1 則推播額度 | 200 |
+| `NO_LINE` | 顧客未綁定 LINE，**零 LINE 請求** | 200 |
+| `NOT_CONFIGURED` | 本店尚未設定 LINE Channel，零 LINE 請求 | 200 |
+| `QUOTA_EXCEEDED` | 本月推播額度用完，**零 LINE 請求**；**加購仍已寫入且金額已生效** | **409 REQ_003** |
+| `FAILED` | LINE 平台回錯，沒送成 | 200 |
+
+409 的 message 必須寫明「加購已新增」，否則店家會以為整筆失敗而重加一次。
+
+**錯誤碼**
+
+| 情況 | HTTP / code |
+|---|---|
+| `price < 0`、`quantity < 1`、`name` 空、`durationMinutes < 0` | 400 `REQ_001`（**`price = 0` 允許**：贈送／招待的項目要記得下來，只是不加錢） |
+| 預約／`serviceId`／`staffId` 查無或屬別店 | 404 `REQ_002` |
+| 加購項目查無或不屬於該預約 | 404 `REQ_002` |
+| 預約狀態不是 `PENDING`／`CONFIRMED`（已結案） | 409 `REQ_003` |
+| 延長後的時段與同一位員工的下一筆預約重疊（DB `23P01`） | 409 `REQ_003`（明細列一併收回） |
+| 推播額度用盡 | 409 `REQ_003`（加購仍已寫入，見上表） |
 
 ### B-2 服務 / 員工 / 班表
 

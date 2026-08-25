@@ -74,51 +74,121 @@ const section = (code: string, from: string, to: string): string => {
 
 describe('修復-1B：六處後端不存在的互動不得假成功', () => {
   /* ====================================================== 1. 加購 modal */
-  describe('bookings 加購 modal（謊報已寫入＋謊報已通知顧客）', () => {
+  /*
+   * ⚠️ 前提變更（GitHub issue #17 / 補齊-2，2026-08-25）
+   * ---------------------------------------------------------------------------
+   * 本區塊原本釘的是「加購後端不存在，所以畫面只准說『尚未生效』」。issue #17
+   * 把後端補齊了：migration 0020 `booking_addons` + `/api/bookings/:id/addons`
+   * （GET/POST）與 `/api/bookings/:id/addons/:addonId`（DELETE）+
+   * `src/services/bookings.ts` 的 listBookingAddons／createBookingAddon／
+   * deleteBookingAddon。**前提真的變了**，所以斷言重新釘，不是把它放寬。
+   *
+   * 重新釘之後守的東西**沒有變少**——原本擋的是「沒有後端卻報成功」，
+   * 現在擋的是「有後端但沒呼叫，或呼叫了卻宣稱比實際更多的事」：
+   *   - 仍不准有假延遲（setTimeout）
+   *   - 成功訊息只准出現在 `await` 真的成功之後（submit 內、catch 之外）
+   *   - **不准把「已通知顧客」寫死**：訊息必須依 API 回來的 `notified` 分支，
+   *     六種結果各自一句（這是舊實作最主要的那個謊）
+   *   - 刪除必須真的呼叫 DELETE，不准只關視窗
+   */
+  describe('bookings 加購 modal（已接上真實後端，且不得宣稱超出實際發生的事）', () => {
     const code = withoutComments(src(PAGES.bookings));
 
-    it('送出加購只給「尚未生效」提示，沒有假延遲、也不宣稱寫入或通知', () => {
-      /*
-       * 舊實作：submit() 內 `await new Promise(r => setTimeout(r, 400))` 後
-       * onAdded(notify, hasLine) → toast「加購已加入，顧客將收到 LINE 消費明細」。
-       * 加購後端（Phase 8b）不存在：src/app/api/bookings 底下沒有 addons 路由、
-       * src/services/bookings.ts 也沒有對應函式，所以資料與 LINE 訊息都不可能發生。
-       */
+    it('送出加購真的呼叫 createBookingAddon，沒有假延遲，成功訊息在 await 之後', () => {
       const modal = section(code, 'function AddonModal(', 'function ApplyCouponModal(');
       expect(modal).not.toContain('setTimeout');
-      expect(modal).toContain('onSubmitted()');
-      expect(code).toContain('toast.show(t.addonNotBuilt.submitNotEffective, \'warning\')');
-      expect(bookingsPage.addonNotBuilt.submitNotEffective).toContain('尚未建置');
-      expect(bookingsPage.addonNotBuilt.submitNotEffective).toContain('不會收到');
+      expect(modal).toContain('await createBookingAddon(booking.id, {');
+      // 送出結果整包往上傳（金額／時段／notified 都由 API 決定，不在前端拼湊）
+      expect(modal).toContain('onSubmitted(r)');
+      // 失敗走 setError，不會有成功 toast
+      expect(modal).toContain('t.messages.addonFailed');
     });
 
-    it('移除加購的確認與結果都明說沒有移除任何東西', () => {
-      expect(code).toContain('message={t.addonNotBuilt.removeConfirm}');
-      expect(code).toContain('toast.show(t.addonNotBuilt.removeNotEffective, \'warning\')');
-      expect(bookingsPage.addonNotBuilt.removeNotEffective).toContain('未移除加購');
-    });
-
-    it('加購 modal 頂部有常駐的「尚未建置」Alert，通知選項停用', () => {
+    it('失敗但可能已寫入（額度 409）不會留下過期畫面：關窗＋重新載入，只有 REQ_001 留在視窗', () => {
+      /*
+       * 額度用完時 API 回 409，但加購已經寫入且金額已生效。若照一般作法把錯誤
+       * 留在視窗裡，店家會對著舊金額再按一次「加入」而重複加購——那同樣是拿
+       * 過期畫面當現況。只有伺服器保證沒寫入的 REQ_001 才留在視窗就地修改。
+       */
       const modal = section(code, 'function AddonModal(', 'function ApplyCouponModal(');
-      expect(modal).toMatch(/<Alert[^>]*title=\{t\.addonNotBuilt\.modalTitle\}/);
-      expect(modal).toContain('{t.addonNotBuilt.modalBody}');
-      expect(modal).toMatch(/type="checkbox" checked=\{false\} readOnly disabled/);
-      expect(bookingsPage.addonNotBuilt.notifyDisabled).toContain('不會送出任何 LINE 訊息');
+      expect(modal).toContain("e.code === 'REQ_001'");
+      expect(modal).toContain('onFailed(message)');
+      // 結束點要用程式碼，不能用註解——withoutComments 已經把註解拿掉了
+      const wiring = section(code, '<AddonModal', '<ApplyCouponModal');
+      expect(wiring).toContain('onFailed={(message) => {');
+      expect(wiring).toContain('setAddonsVersion((v) => v + 1);');
+      expect(wiring).toContain('void load();');
     });
 
-    it('舊的加購成功文案已從字典移除，無法再被引用', () => {
-      for (const key of [
-        'addonAdded', 'addonAddedSilent', 'addonAddedNoLine',
-        'addonAddedRefreshFailed', 'addonRemoved', 'addonDowngradePaid',
-      ]) {
-        expect(Object.keys(bookingsPage.messages)).not.toContain(key);
+    it('成功訊息依 API 回來的 notified 分支，六種結果都各自對應一句', () => {
+      // 頁面把「實際結果 → 文案」集中在 addonAddedMessage()，逐一比對
+      const mapper = section(code, 'const addonAddedMessage =', 'const copyPayLink');
+      for (const [outcome, key] of [
+        ['LINE', 'addonAddedNotified'],
+        ['NO_LINE', 'addonAddedNoLine'],
+        ['NOT_CONFIGURED', 'addonAddedLineNotConfigured'],
+        ['FAILED', 'addonAddedNotifyFailed'],
+      ] as const) {
+        expect(mapper).toContain(`notified === '${outcome}'`);
+        expect(mapper).toContain(`m.${key}(amount)`);
+        expect(Object.keys(bookingsPage.messages)).toContain(key);
       }
-      expect(Object.keys(bookingsPage.confirmMessages)).not.toContain('removeAddon');
+      // 'NONE'（沒要求通知／mock 模式）走不提通知的那一句
+      expect(mapper).toContain('m.addonAdded(amount)');
+      // 'QUOTA_EXCEEDED' 不會走到這裡：API 以 409 回應（訊息本身說明加購已寫入）
+      expect(mapper).not.toContain('QUOTA_EXCEEDED');
+    });
+
+    it('沒有任何一句加購文案無條件宣稱「顧客會收到」', () => {
+      for (const text of allStrings(bookingsPage.messages)) {
+        expect(text).not.toMatch(/顧客將收到|顧客已收到/);
+      }
       for (const text of allStrings(bookingsPage.addonModal)) {
-        expect(text).not.toMatch(/顧客已收到/);
+        expect(text).not.toMatch(/顧客將收到|顧客已收到/);
       }
-      for (const text of allStrings(bookingsPage.addonNotBuilt)) {
-        expect(text).not.toMatch(/加購已加入|加購已移除/);
+      // 只有 LINE 真的送出去的那一句才敢說「已送給顧客」
+      expect(bookingsPage.messages.addonAddedNotified('$100')).toContain('已用 LINE 送給顧客');
+      expect(bookingsPage.messages.addonAdded('$100')).not.toMatch(/LINE|通知/);
+    });
+
+    it('移除加購真的呼叫 deleteBookingAddon，確認視窗寫出會扣回的金額', () => {
+      expect(code).toContain('await deleteBookingAddon(booking.id, addon.id, {');
+      expect(code).toContain('t.confirmMessages.removeAddon(');
+      expect(code).toContain('t.messages.addonRemoved(formatCurrency(r.revertedAmount))');
+      const confirmText = bookingsPage.confirmMessages.removeAddon('深層護髮', '$800', 30);
+      expect(confirmText).toContain('$800');
+      expect(confirmText).toContain('30 分鐘');
+    });
+
+    it('通知勾選框是真的可勾（不是 readOnly disabled 的裝飾）', () => {
+      const modal = section(code, 'function AddonModal(', 'function ApplyCouponModal(');
+      expect(modal).not.toMatch(/type="checkbox" checked=\{false\} readOnly disabled/);
+      expect(modal).toContain('checked={notify}');
+      expect(modal).toContain('onChange={(ev) => setNotify(ev.target.checked)}');
+      expect(modal).toContain('notify,');   // 真的送進 payload
+    });
+
+    it('明細載入中不得顯示「無資料」——那是把「還不知道」畫成「已知為空」', () => {
+      /*
+       * 2026-08-25 Playwright 實測抓到的：明細還在向 API 取的那 1〜5 秒，
+       * 金額欄位已經是加購後的數字、明細區卻寫「無資料」，讀起來像明細不見了。
+       * 三態的順序必須是 載入中 → 失敗 → 空，缺第一態就會退回那個假的已知。
+       */
+      const detail = section(code, 'function BookingDetailModal(', 'function AdjustPriceModal(');
+      expect(detail).toContain('addonsLoading ? (');
+      expect(detail).toContain('{d.addonLoading}');
+      // 「無資料」只能在 addonsLoading 為 false 之後才輪到
+      const branch = section(detail, '{addonsLoading ? (', 'ul className');
+      expect(branch.indexOf('d.addonLoading'))
+        .toBeLessThan(branch.indexOf('t.labels.noData'));
+      expect(bookingsPage.detailModal.addonLoading).toContain('載入中');
+    });
+
+    it('「尚未建置」那組誠實化文案已整組移除（後端存在後再說一次就是假的）', () => {
+      expect(Object.keys(bookingsPage)).not.toContain('addonNotBuilt');
+      expect(code).not.toContain('addonNotBuilt');
+      for (const text of allStrings(bookingsPage.addonModal)) {
+        expect(text).not.toContain('尚未建置');
       }
     });
   });

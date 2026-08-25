@@ -15,6 +15,8 @@
 
 import type {
   Booking,
+  BookingAddon,
+  BookingAddonNotifyOutcome,
   Customer,
   Service,
   Staff,
@@ -45,6 +47,32 @@ export function mapBooking(r: any): Booking {
     price: r.price, finalPrice: r.final_price,
     status: r.status, paymentStatus: r.payment_status, source: r.source,
     note: r.note ?? '', createdAt: r.created_at,
+  };
+}
+
+/**
+ * 預約加購明細（`booking_addons`，migration 0020；04 分冊 §B-1.1）。
+ * 來源：booking_addons + 巢狀 join `staff(name)`。巢狀 join 在無 Database 型別
+ * 時被靜態推成陣列、實際為多對一物件（同 apply-coupon/route.ts 的說明），
+ * 這裡收 `any` 直接取用。
+ *
+ * 放在 mappers.ts 而不是 route 檔內：Next.js route 檔只能 export HTTP method
+ * （build 會驗證匯出形狀），而 GET/POST 與 DELETE 兩支路由都要用同一個 mapper。
+ */
+export function mapBookingAddon(r: any): BookingAddon {
+  return {
+    id: r.id,
+    serviceId: r.service_id,
+    name: r.name,
+    price: Number(r.price),
+    quantity: Number(r.quantity),
+    durationMinutes: Number(r.duration_minutes),
+    staffId: r.staff_id,
+    staffName: r.staff?.name ?? null,
+    appliedAmount: Number(r.applied_amount),
+    appliedMinutes: Number(r.applied_minutes),
+    notified: r.notified as BookingAddonNotifyOutcome,
+    createdAt: r.created_at,
   };
 }
 

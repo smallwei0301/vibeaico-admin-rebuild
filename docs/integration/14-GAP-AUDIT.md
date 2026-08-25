@@ -118,7 +118,7 @@
 
 - [ ] 付款方式整頁（含「實刷測試」謊報刷卡成功並設 gatewayVerified=true——**金流級假成功，最優先移除**）
 - [ ] 診所叫號整頁（含「已 LINE 通知病患」謊報）
-- [ ] 預約加購 modal（謊報「顧客將收到 LINE 消費明細」）
+- [x] 預約加購 modal（謊報「顧客將收到 LINE 消費明細」）—— #3 已誠實化；**後端已於 issue #17 補齊並真實接線**（migration 0020 + 04 §B-1.1，見 §6.14），誠實化文案整組移除
 - [ ] 行事曆同步頁（ICS token 重生＝假安全操作、外部行事曆 CRUD）＋設定頁 ICS token 重生（硬編碼輪替陣列）
 - [ ] 贊助頁假送出、推薦頁硬編碼假推薦碼、兩處「QR 已下載」沒下載
 - [ ] rich-menu-design 殘留：FlexMenuTab 發布/重設/刪卡、每格彈窗、儲存草稿、還原、預約步驟、背景圖「上傳圖片」死按鈕（無 onClick）
@@ -259,7 +259,7 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 | 3 | 報表匯出接線 | 2 | 04 §B-6 已有契約 | #15 |
 | 4 | support-chat widget 誠實化 | — | — | #15 |
 | 5 | QR Code 產生與下載 | 0（前端產圖） | REBUILD-SPEC §9.2 已更正 | #16 |
-| 6 | 預約加購 `booking_addons` | 3 | 04 §B-1 零記載 | #17 |
+| 6 | 預約加購 `booking_addons` | 3 | ~~04 §B-1 零記載~~ → **已補寫 04 §B-1.1**，端點與頁面接線完成（§6.14） | #17 ✅ |
 | 7 | LINE 老闆通知 owner-notify | 4 | 06 分冊零記載 | #18 |
 | 8 | Rich Menu 進階設計器 | 11 | 06 §6 僅一句 | #19 |
 | 9 | 診所叫號 clinic-queue | 5 | **完全無分冊** | #20 |
@@ -329,6 +329,140 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 | `src/services/settings.ts:11` 模組層 `const current = MOCK_TENANTS[0]` | CLAUDE.md 明文警告過這個陷阱，仍然犯了 | 骨架模式下 demo 租戶被凍結成 GUIDE，三種模式看到同一間店；且 mock 分支硬塞已設定的 LINE token，假裝成已連動狀態 |
 
 ---
+
+---
+
+### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成
+
+補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`
+`/api/bookings/${b.id}/addons`、`/api/bookings/${bookingId}/addons/${itemId}`；
+`REBUILD-SPEC.md:382–396` 的 6 個欄位含 `addonNotify`），我方後端零實作、
+04 分冊 §B-1 零記載。本輪補：**04 分冊 §B-1.1 契約**（先寫規格再開工）、
+migration **0020_booking_addons**（兩個 Supabase 專案皆已套用並以
+`information_schema.columns` / `pg_policy` 驗證）、三支端點、`src/services/bookings.ts`
+三支函式、`bookings` 頁真實接線。
+
+#### ⚠️ issue #3 的「Phase 8b 排期」誤標：成因是**兩個同名但不同資料模型的 addons**
+
+issue #3 把預約加購的後端標成「Phase 8b 排期」。Phase 8b／10 分冊 §5 的 addons 是
+`/api/trips/:id/addons`（**行程加購**，資料表 `trip_addons`），與預約加購
+（`booking_addons`）是兩個完全不同的資料模型：
+
+| | 預約加購 | 行程加購 |
+|---|---|---|
+| 掛在 | `bookings`（服務預約） | `trip_departures` / `trip_plans`（行程團次） |
+| 資料表 | `booking_addons`（0020） | `trip_addons`（Phase 8b） |
+| 誰會用 | 三種模式**都會**用 | 只有開 `TOUR_MODULE` 的 GUIDE 租戶 |
+
+CLAUDE.md 明令 `services` 與 `trips` 兩套庫存模型不得合併，所以這兩個 addons 從來
+就不是同一件事；LOCAL_SHOP／CLINIC 租戶根本不會開 `TOUR_MODULE`，卻一樣需要預約加購。
+**只因為名字一樣，一個「還沒排到」的功能就被歸到另一個功能的 Phase 底下，
+於是它在計劃裡看起來「有人負責」，實際上沒有。** issue #3 內文已於本輪更正
+（工作項 6），並在文首加了更正說明。
+
+**同型風險（給日後看的）**：本專案還有其他同名不同模型的組合（例如「訂單」在
+LOCAL_SHOP 是 `product_orders`、在 GUIDE 是 `tour_orders`；「加購」如上）。
+在計劃文件裡看到一個名詞被歸到某個 Phase 時，要先確認**那個 Phase 講的是哪一個模型**，
+不能只看名字對上就當成同一件事。
+
+#### 「回沖」的定義（本輪定案，寫進 04 §B-1.1 與 route 檔頭）
+
+`bookings.final_price` 是**流水餘額**而非推導值（`adjust-price` 絕對覆寫且不留紀錄、
+`apply-coupon`／`apply-points` 都以目前的 `final_price` 為基底加減），所以刪除加購
+**無法重算**，只能反向掉當初那一次異動：減去該列上存的 `applied_amount`
+（建立當下真的加上去的數字），下限 0；時長同理。
+
+已知**不精確**的兩種互動（不假裝沒有，且不猜）：
+
+1. 加購後又套 **PERCENT 票券**：折扣連加購金額一起打了，回沖卻減全額 → 多減。
+   例：1000＋加購200＝1200，九折→1080，刪加購→880（精確值 900）。
+2. 加購後又**手動調價**：調價是絕對覆寫，回沖等於假設店家輸入的總價含這筆加購全額。
+
+兩者都無法從資料判定，因此處置是**把確定的數字攤在使用者眼前**——刪除確認視窗直接
+寫「預約金額將扣回 $X（這是該筆加購當初加上去的金額）」，並提醒調過價／用過打折票券
+時要再確認總金額。這是 CLAUDE.md「不得已的取捨要寫在使用者讀得到的地方，不能只寫在
+程式註解裡」的實作。整合測試把這個定義釘住
+（`tests/integration/api/booking-addons.17.test.ts:「加購後手動調價、再刪除加購：回沖是「減去當初加上去的金額」，不是重算」`），
+避免日後被「順手改成重算」。
+
+#### 員工業績：**主導者裁示**的算法，不是原站考據結果
+
+裁示（issue #1 comment-5412922443）：加購金額**計入**員工業績，算法為
+「與主服務同一位服務人員、依實收金額全額計入」。實作上零額外程式——金額進
+`final_price`，而 `/api/reports/staff-performance`、`/api/reports/top-staff` 就是
+「`bookings.final_price` group by `bookings.staff_id`」。
+
+⚠️ **算法是我們選的，不是從原站還原的**（裁示原文如此要求標註）。日後若查到原站
+另有算法，要改的是算法，不是「要不要計入」。
+
+##### 待覆核：原站文案指向的是「逐項歸戶」，與本裁示不同
+
+`docs/specs/bookings.json` 的 `jsStrings[112]`（原站 DOM 掃描結果，不是我方文案）是：
+
+> 此預約有 ${detailAddonCount} 筆加購明細。手動調整總價後，明細與總價將脫鉤
+> （明細僅供參考、**師父業績仍按明細歸戶**）。確定要手動調價嗎？
+
+而原站的加購表單有一個 `addonStaffSelect`，我方 i18n 原本照抄成
+「執行 服務人員 （**業績歸戶**）」。兩者合起來指向的是**逐項歸戶**（依每筆加購自己的
+服務人員），與本裁示的「一律歸本預約的服務人員」不同。
+
+本輪**照裁示實作**（裁示本身已預告可被推翻），並做了兩件保命的事：
+
+1. `booking_addons.staff_id` 照樣存下來——日後若改成逐項歸戶，不需要補資料。
+2. **把會宣稱假事實的文案改掉**：加購表單的 `staffLabel` 拿掉「（業績歸戶）」並補
+   `staffHelp` 明說業績實際歸給誰；`adjustPriceModal.withAddonsWarning` 不再說
+   「師父業績仍按明細歸戶」，改講手動調價與回沖的真實互動。
+   留著原句等於畫面宣稱一件程式沒有做的事（CLAUDE.md「Never fabricate a known」）。
+
+**這一項需要擁有者覆核**：若原站確實是逐項歸戶，要改的是 `staff-performance` 的聚合
+（把 `booking_addons.applied_amount` 依 `staff_id`／fallback 到 `bookings.staff_id` 分開計），
+以及上述兩處文案。
+
+#### `price = 0` 的判讀（issue 措辭有歧義，本輪定案並兩側都測）
+
+issue #17 驗收寫「金額計算邊界（0 元／負數應拒絕）」，中文上可讀成「0 元與負數都拒絕」
+或「列出 0 元與負數兩個邊界，其中負數應拒絕」。本輪採**後者**：`price = 0` 接受
+（贈送／招待的項目要記得下來，只是不加錢；表單的加購價欄位提示就是「優惠價」），
+`price < 0` 回 400。兩側都有測試案例，判讀寫進 04 §B-1.1，若擁有者認為 0 元也該拒絕，
+改的是 `bodySchema` 一行與那一條測試。
+
+#### `addonNotify` 未勾 → **零 LINE 請求**
+
+斷言寫成「整個 `mock.requests` 為空」而不是「`/push` 沒有被打」（本專案既有慣例，
+見 `line-events.ts` 的 SILENT 分支）。額度用盡時回 409 且零請求，**但加購本身仍寫入
+且金額已生效**——409 的 message 因此必須寫明「加購已新增」，否則店家會以為整筆失敗
+而重加一次。
+
+#### Playwright 實測抓到的一個假的已知（本輪順手修掉）
+
+第一輪對本機 dev server（接**正式** Supabase 專案＝Preview 站的同一個資料庫）跑
+`scripts/verify/booking-addons.17.cjs` 時，「重整後加購仍在」那一條紅了。截圖顯示
+**不是加購沒寫進去**——金額欄位已經是加購後的 `NT$1,700`——而是同一個視窗裡
+「加購明細」寫著**無資料**。
+
+成因：明細是開啟詳情之後才向 `/api/bookings/:id/addons` 取的（dev 模式一次 1〜5 秒），
+那段期間畫面直接落到「空清單」的分支。也就是**「還不知道」被畫成「已知為空」**，
+而且旁邊就擺著一個已經更新的金額——CLAUDE.md 說的「捏造的數值最糟的位置就是
+擺在真實數值旁邊」，這裡是同一個形狀。
+
+處置：明細區補上載入中狀態（`detailModal.addonLoading`），三態順序固定為
+**載入中 → 載入失敗 → 無資料**，並以單元測試釘住
+（`tests/unit/honest-not-built-interactions.test.ts:「明細載入中不得顯示「無資料」——那是把「還不知道」畫成「已知為空」」`）。
+實測腳本也改成等「載入中…」消失，而不是睡固定秒數——睡太短就會在載入狀態下斷言，
+那等於用一個不穩定的計時器決定紅綠。
+
+⚠️ 值得記一筆的是：**這個缺陷單元測試與整合測試都抓不到**（一個不掛載元件、
+一個不測 UI），是頁面層實測才看得見的那一類——正是 14 分冊 §1 C 項講的制度夾縫。
+
+#### 沒有做的事（誠實列出）
+
+- **付款狀態不隨加購變動**：舊文案 `messages.addonDowngradePaid` 講的是「加購把已付清
+  推回已付訂金」，但我方 schema 的 `payment_status` 是 enum
+  `UNPAID|PAID_ONLINE|PAID_OFFLINE|REFUNDED`，**沒有「已付訂金」這個狀態，也沒有
+  `paid_amount` 欄位**（頁面上的「已收金額」目前是頁內假資料 `BOOKING_EXTRAS_*`）。
+  在沒有金額型付款欄位之前，加購後降級付款狀態是做不到的，所以不做、也不宣稱做了。
+  該鍵已於 `742f33d`（修復-1B）刪除，本輪沒有復活它。要真的做，前置是「預約的實收
+  金額」欄位本身。
 
 ## 7. 三輪盤點（2026-08-25）：26 筆「呼叫了端點，但呼叫錯端點」
 

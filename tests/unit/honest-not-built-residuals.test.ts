@@ -148,15 +148,32 @@ describe('修復-1C：發布成功訊息與備份承諾等殘留假宣稱', () =
   });
 
   /* ============================================ 4. 調整金額 modal */
-  describe('4. 調整金額 modal 不再推薦不存在的加購能力', () => {
-    it('不再宣稱改用「加購」才會延長時段／記業績／通知顧客', () => {
-      const bullets = bookingsPage.adjustPriceModal.bullets;
-      const bullet = bullets[2];
-      expect(bullet).not.toContain('請改用「加購」');
-      expect(bullet).not.toMatch(/才會延長時段/);
-      expect(bullet).toContain('尚未建置');
-      // 加購本體的誠實告示（1B 的成果）仍在
-      expect(bookingsPage.addonNotBuilt.submitNotEffective).toContain('未新增加購');
+  /*
+   * ⚠️ 前提變更（issue #17 / 補齊-2，2026-08-25）：本節原本釘的是
+   * 「加購後端不存在，所以不准推薦加購」。#17 已把後端補齊（migration 0020 +
+   * /api/bookings/:id/addons），推薦加購變成正確的建議，斷言因此重新釘：
+   * 改為守「這一句只講程式真的會做的事」——延長時段與記業績是無條件會發生的，
+   * 通知顧客則要勾了 addonNotify 才會送，所以不准寫成無條件「會通知顧客」。
+   */
+  describe('4. 調整金額 modal 推薦加購時只講加購真的會做的事', () => {
+    it('推薦改用加購，且不宣稱無條件通知顧客', () => {
+      const bullet = bookingsPage.adjustPriceModal.bullets[2];
+      expect(bullet).toContain('加購');
+      expect(bullet).not.toContain('尚未建置');
+      // 真的會發生的兩件事
+      expect(bullet).toContain('延長預約時段');
+      expect(bullet).toContain('業績');
+      // 通知是選配 → 只能寫「可勾選通知」，不可寫成一定會通知
+      expect(bullet).toContain('可勾選通知顧客');
+      expect(bullet).not.toMatch(/並(會)?通知顧客(?!消費明細)/);
+    });
+
+    it('有加購明細時的調價警告改講真實互動（不再宣稱業績按明細歸戶）', () => {
+      // 主導者裁示的算法是「本預約的服務人員、實收金額全額計入」，不是逐項歸戶，
+      // 舊句「師父業績仍按明細歸戶」會宣稱一件程式沒有做的事。
+      const warn = bookingsPage.adjustPriceModal.withAddonsWarning(2);
+      expect(warn).not.toContain('業績仍按明細歸戶');
+      expect(warn).toContain('扣回');
     });
   });
 
