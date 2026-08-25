@@ -279,6 +279,44 @@ describe('修復-1A：後端不存在的四頁不得假成功', () => {
     });
   });
 
+  describe('裁決 4：referrals 不得以現在式承諾獎勵（那是對店家的金錢承諾）', () => {
+    /** 允許談獎勵的前提：句子本身要標明這是規劃中／尚未上線的規則 */
+    const PLANNED = /規劃中|尚未上線|上線前|以上線時公告/;
+
+    it('機制說明標明規劃中，並明說目前推薦不會發放任何點數', () => {
+      expect(referralsPage.explain.label).toMatch(PLANNED);
+      expect(referralsPage.explain.strong).toContain('不會發放任何點數');
+      const explain = Object.values(referralsPage.explain).join('');
+      // 舊承諾句型（「…完成首次儲值後，雙方各獲得 500 點獎勵」）不得再出現
+      expect(explain).not.toMatch(/後，雙方各獲得 500 點獎勵/);
+      expect(explain).toMatch(PLANNED);
+    });
+
+    it('字典裡任何談到獎勵發放的句子都帶有「規劃中／尚未上線」標記', () => {
+      /*
+       * 只掃「肯定會發獎勵」的句子：長度 >= 15（排除「累計獲得點數」這類欄位標籤），
+       * 且出現肯定語氣的發獎措辭。純否認句（「不會發放任何點數」）本身就是誠實化的
+       * 結果，不需要再帶標記，所以用 (?<!不) 把它排除在掃描之外。
+       * 反之「（註冊當下尚不會發放）」這種夾在承諾句裡的免責不算數 ——
+       * 舊文案就是靠它看起來有免責，整句實際上仍是現在式承諾，必須被抓到。
+       */
+      const AWARD_CLAIM = /(各|即可|將|可)獲得|獲得 \d+ 點|(?<!不)會發放/;
+      const sentences = allStrings(referralsPage)
+        .filter((text) => text.length >= 15 && AWARD_CLAIM.test(text));
+      expect(sentences.length).toBeGreaterThan(0);
+      for (const sentence of sentences) {
+        expect(sentence, sentence).toMatch(PLANNED);
+      }
+    });
+
+    it('頁頂告示不再自稱「示範資料」（統計已改未知態、歷史已改空表）', () => {
+      expect(referralsPage.notBuilt.body).not.toContain('示範資料');
+      expect(referralsPage.notBuilt.body).toContain('未知態');
+      expect(donatePage.notBuilt.body).not.toContain('示範資料');
+      expect(donatePage.notBuilt.body).toContain('未知態');
+    });
+  });
+
   it('四頁都沒有 setTimeout 假延遲（假延遲讓假成功看起來像真的在跑）', () => {
     for (const path of Object.values(PAGES)) {
       expect(src(path), path).not.toContain('setTimeout');
