@@ -73,10 +73,23 @@ export type UpdateBookingPayload = {
   note?: string;
 };
 
-/** PUT /api/bookings/:id — 改期／改員工／改備註。 */
+/**
+ * PUT /api/bookings/:id — 改期／改員工／改備註。
+ *
+ * 回 `{ notifyTriggered }`：本次有沒有觸發「預約已變更」的顧客端 LINE 推播
+ * （時間或服務人員實際有變才觸發；只改備註不推——issue #27 ②）。頁面靠它決定
+ * 成功訊息要不要提到「已通知顧客」，不可寫死（00 鐵則 12）。
+ *
+ * mock 分支固定回 `false`：mock 模式沒有任何推播管道，什麼都沒送出去，回 false
+ * 才是誠實的（絕不能為了讓 demo 好看而回 true）。
+ */
 export const updateBooking = (id: string, payload: UpdateBookingPayload) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/bookings/${id}`, { method: 'PUT', body: JSON.stringify(payload) }));
+  adapt<{ notifyTriggered: boolean }>(
+    () => ({ notifyTriggered: false }),
+    () => request<{ notifyTriggered: boolean }>(`/api/bookings/${id}`, {
+      method: 'PUT', body: JSON.stringify(payload),
+    }),
+  );
 
 /** POST /api/bookings/:id/adjust-price — 手動調價（需 MANAGER）。 */
 export const adjustBookingPrice = (id: string, finalPrice: number) =>

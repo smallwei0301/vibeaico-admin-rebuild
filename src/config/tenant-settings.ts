@@ -42,6 +42,18 @@ export const lineSettingsSchema = z.object({
   flexHeaderSubtitle: z.string().default(''),
   flexShowTip: z.boolean().default(true),
   campaignKeywordEnabled: z.boolean().default(true),
+  /**
+   * 停用的「系統內建關鍵字」組（keyword-replies 頁 15 組的 key，如 COUPON/MENU）。
+   * webhook（src/server/line-events.ts 分支 ④）讀這份清單：命中的組直接不回應。
+   *
+   * 為什麼放在 line jsonb 而不是新開一張表：這是**租戶設定**（CLAUDE.md「多租戶
+   * 設定的兩層」表的下半層），與 autoReplyEnabled/defaultReply 同一類、同一個
+   * 儲存位置、同一支 PUT /api/settings/line 端點，不需要 migration。
+   *
+   * 生效條件：停用/覆蓋屬「自訂關鍵字回覆」功能範圍（09 分冊 §5），未訂閱
+   * KEYWORD_REPLY 時設定可以先存，但 webhook 不套用——頁面文案講的就是這件事。
+   */
+  systemKeywordGroupsDisabled: z.array(z.string()).default([]),
   /** Rich Menu */
   richMenuTheme: z.enum(RICH_MENU_THEME_KEYS).default('LINE_GREEN'),
   richMenuBgImageUrl: z.string().default(''),

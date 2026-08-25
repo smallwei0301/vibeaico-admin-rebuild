@@ -10,8 +10,10 @@
  *
  * 偏離規格原文之處（均註明理由）：
  * - timingSafeEqual 兩 buffer 長度不同會 throw → 先比長度，不等直接 401。
- * - tenants select 多取 shop_code/name：handleEvent 的 AI 客服上下文（09 §7.2）
- *   需要店名與公開頁 URL，一次查省一趟 round-trip。
+ * - tenants select 多取 shop_code/name/business_type：handleEvent 的 AI 客服上下文
+ *   （09 §7.2）需要店名與公開頁 URL；business_type 決定內建指令要用哪一組
+ *   MODE_PRESETS.richMenuCells 的文字與回覆方式（06 §3 關鍵字覆蓋規格），
+ *   一次查省一趟 round-trip。
  * - getLineCredentials 丟 LINE_001（該店尚未設定 channel）時回 404 結束——
  *   沒有 secret 無從驗簽，回 5xx 只會讓 LINE 無限重送。
  */
@@ -26,7 +28,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
   const { shopCode } = await params;
   const admin = createAdminSupabase();
   const { data: tenant } = await admin.from('tenants')
-    .select('id, shop_code, name').eq('shop_code', shopCode).maybeSingle();
+    .select('id, shop_code, name, business_type').eq('shop_code', shopCode).maybeSingle();
   if (!tenant) return new Response('unknown shop', { status: 404 });
 
   const raw = await req.text();                     // 簽章要用原始 body

@@ -34,6 +34,11 @@ jobs:
           # 非機密；src/server/line.ts 的 lineApiBase() 延遲讀取。
           LINE_API_BASE: http://localhost:4123
           LINE_DATA_API_BASE: http://localhost:4123
+          # issue #27 ③ 整合測試打本地假 Resend（tests/helpers/resend-mock.ts 綁 4124）。
+          # 兩者都非機密：RESEND_API_KEY 是假值，只為繞過 send.ts「未設定就不寄信」
+          # 的短路；RESEND_BASE_URL 讓 resend 套件改打 localhost，永遠不會真的寄信。
+          RESEND_API_KEY: re_itest_fake_key_0000000000
+          RESEND_BASE_URL: http://localhost:4124
       # e2e 與 integration 共用同一組 TEST secrets（12 分冊 §7）。
       # 註：原文此處寫 `env: { }`，但 GitHub Actions 的 env 不會跨 step 繼承，
       #     留空會讓 e2e 完全拿不到 TEST_SUPABASE_*，Phase 2 起必然失敗，故展開列出。

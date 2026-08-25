@@ -20,6 +20,7 @@
 import { createAdminSupabase } from './supabase';
 import { notifySettingsSchema } from '@/config/tenant-settings';
 import { getLineCredentials, linePush, consumePushQuota } from './line';
+import { sendProductOrderReceiptEmail } from './email/send';
 
 export type BookingStatusKind =
   | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'MODIFIED' | 'NO_SHOW' | 'REMINDER';
@@ -104,5 +105,124 @@ export async function notifyBookingStatus(
     await linePush(token, customer.line_user_id, [{ type: 'text', text }]);
   } catch (e) {
     console.error('[line-notify] notifyBookingStatus 失敗', tenantId, bookingId, kind, e);
+  }
+}
+
+/* ====================================================================== ③
+ * 商品訂單「消費明細」通知（issue #27 ③）
+ *
+ * 手動建單視窗那個勾選框寫著：
+ *   「LINE 通知顧客消費明細（未綁 LINE 自動改寄 Email；每則扣 1 推播額度）」
+ * 以前它什麼後端都沒接，送出後卻跳一則把這句標籤逐字重播的 toast，讀起來就是
+ * 「已通知」。這裡把標籤上寫的那套規則真的實作出來：
+ *   LINE 優先 → 未綁 LINE 改寄 Email → LINE 每則扣 1 推播額度（Email 不扣）。
+ *
+ * 與上面 notifyBookingStatus 的兩點差異，都是刻意的：
+ *  1. **回傳結果、呼叫端 await**。06 分冊 §5 的 fire-and-forget 規約管的是預約
+ *     狀態推播——那些推播沒有任何 UI 在等結果。這裡相反：店家會在畫面上讀到
+ *     「已用 LINE 通知」還是「已改寄 Email」，分不出來就只能寫死一句話，那正是
+ *     這個 issue 要修掉的假的已知（00 鐵則 12）。所以要知道結果就必須等它。
+ *     函式本身永不拋錯（整段 try/catch），所以 await 它不會讓建單 API 失敗。
+ *  2. 不吃 tenant_settings.notify 的任何開關：這則通知的開關就是那個勾選框本身，
+ *     一單一勾。硬掛一個沒人設定過的開關等於讓勾選框再次失效。
+ * ==================================================================== */
+
+/** 消費明細通知的實際結果（回給頁面顯示；每個值都只描述真的發生過的事） */
+export type ProductOrderNotifyOutcome =
+  /** 沒有要求通知（勾選框沒勾） */
+  | 'NONE'
+  /** 顧客已綁 LINE → 已推播，扣 1 推播額度 */
+  | 'LINE'
+  /** 顧客未綁 LINE → 已改寄 Email（不扣推播額度） */
+  | 'EMAIL'
+  /** 顧客既未綁 LINE、也沒有 Email → 沒有任何管道可送 */
+  | 'NO_CONTACT'
+  /** 已綁 LINE 但本月推播額度不足 → 沒送出 */
+  | 'QUOTA_EXCEEDED'
+  /** 試著送了但沒送成（LINE 平台回錯／未設定 LINE 憑證／寄信失敗或未設定 Resend） */
+  | 'FAILED';
+
+/** 消費明細的 LINE 純文字版（純函式，供單元測試直接驗內容） */
+export function buildProductOrderReceiptText(v: {
+  shop: string;
+  orderNo: string;
+  items: { name: string; quantity: number; price: number }[];
+  totalAmount: number;
+}): string {
+  const lines = v.items.map(
+    (i) => `・${i.name} ×${i.quantity}　NT$ ${(i.price * i.quantity).toLocaleString()}`,
+  );
+  return [
+    `【${v.shop}】感謝您的購買 🧾`,
+    `訂單編號：${v.orderNo}`,
+    '——————————',
+    ...lines,
+    '——————————',
+    `合計：NT$ ${v.totalAmount.toLocaleString()}`,
+  ].join('\n');
+}
+
+/**
+ * 依「LINE 優先 → 未綁 LINE 改寄 Email」送出一筆商品訂單的消費明細。
+ * 永不拋錯：任何例外都轉成 'FAILED' 回傳（呼叫端據以顯示，不會讓建單失敗）。
+ */
+export async function notifyProductOrderReceipt(
+  tenantId: string,
+  orderId: string,
+): Promise<ProductOrderNotifyOutcome> {
+  try {
+    const admin = createAdminSupabase();
+
+    const { data: order } = await admin.from('product_orders')
+      .select('id, order_no, total_amount, customer_id')
+      .eq('id', orderId).eq('tenant_id', tenantId).maybeSingle();
+    if (!order) return 'FAILED';
+
+    const [{ data: itemRows }, { data: customer }, { data: tenant }] = await Promise.all([
+      admin.from('product_order_items').select('product_name, quantity, price')
+        .eq('order_id', orderId).eq('tenant_id', tenantId),
+      admin.from('customers').select('name, email, line_user_id')
+        .eq('id', order.customer_id).eq('tenant_id', tenantId).maybeSingle(),
+      admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
+    ]);
+    if (!customer) return 'FAILED';
+
+    const items = (itemRows ?? []).map((r) => ({
+      name: String(r.product_name ?? ''),
+      quantity: Number(r.quantity ?? 0),
+      price: Number(r.price ?? 0),
+    }));
+    const shop = tenant?.name ?? '';
+    const totalAmount = Number(order.total_amount ?? 0);
+
+    // ---- ① LINE 優先 ----
+    if (customer.line_user_id) {
+      const { token } = await getLineCredentials(tenantId);   // 未設定 → LINE_001 → catch
+      if (!(await consumePushQuota(tenantId, 1))) {
+        console.error('[line-notify] 消費明細：推播額度不足', tenantId, orderId);
+        return 'QUOTA_EXCEEDED';
+      }
+      const text = buildProductOrderReceiptText({
+        shop, orderNo: order.order_no, items, totalAmount,
+      });
+      await linePush(token, customer.line_user_id, [{ type: 'text', text }]);
+      return 'LINE';
+    }
+
+    // ---- ② 未綁 LINE → 改寄 Email（不扣推播額度）----
+    const email = String(customer.email ?? '').trim();
+    if (!email) return 'NO_CONTACT';
+    const result = await sendProductOrderReceiptEmail(email, {
+      shopName: shop,
+      orderNo: order.order_no,
+      customerName: String(customer.name ?? ''),
+      items: items.map((i) => ({ name: i.name, quantity: i.quantity, price: i.price })),
+      totalAmount,
+    });
+    // SKIPPED_NO_KEY / FAILED 都代表信根本沒出去 —— 不可報成 'EMAIL'
+    return result === 'SENT' ? 'EMAIL' : 'FAILED';
+  } catch (e) {
+    console.error('[line-notify] notifyProductOrderReceipt 失敗', tenantId, orderId, e);
+    return 'FAILED';
   }
 }

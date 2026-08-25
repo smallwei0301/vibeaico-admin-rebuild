@@ -21,6 +21,7 @@ import { listProductOrders, listProducts, listStaff } from '@/services/catalog';
 import {
   cancelProductOrder, completeProductOrder, confirmProductOrder,
   createManualProductOrder, markProductOrderPaidOffline,
+  type ProductOrderNotifyOutcome,
 } from '@/services/products';
 import { listCustomers } from '@/services/customers';
 import { listBookings } from '@/services/bookings';
@@ -65,6 +66,20 @@ type OrderExtras = {
   cancelReason: string;
   cancelledAt: string | null;
   fromBooking: boolean;
+};
+
+/**
+ * 手動建單勾選「LINE 通知顧客消費明細」後，後端回報的實際結果 → 要顯示的 toast
+ * （issue #27 ③）。'NONE' 不在表內：沒勾選就沒有任何事發生，也就沒有話要說。
+ */
+const NOTIFY_TOAST: Partial<Record<ProductOrderNotifyOutcome, {
+  message: string; tone: 'info' | 'warning' | 'danger';
+}>> = {
+  LINE: { message: t.messages.notifyResult.line, tone: 'info' },
+  EMAIL: { message: t.messages.notifyResult.email, tone: 'info' },
+  NO_CONTACT: { message: t.messages.notifyResult.noContact, tone: 'warning' },
+  QUOTA_EXCEEDED: { message: t.messages.notifyResult.quotaExceeded, tone: 'warning' },
+  FAILED: { message: t.messages.notifyResult.failed, tone: 'danger' },
 };
 
 const DEFAULT_EXTRAS: OrderExtras = {
@@ -828,6 +843,7 @@ function ManualOrderModal({
       const created = await createManualProductOrder({
         customerId: id,
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        notifyCustomer: notify,
       });
       /* 勾選「已收款並完成」→ 後端建單固定 PENDING/UNPAID，補打狀態端點對齊 */
       if (paidCompleted) {
@@ -836,7 +852,12 @@ function ManualOrderModal({
       }
       onCreated({ ...build(customerName, id), id: created.id, orderNo: created.orderNo });
       toast.show(paidCompleted ? t.messages.created : t.messages.createdNotCompleted);
-      if (notify) toast.show(t.manual.notify, 'info');
+      // 通知結果照後端**實際做了什麼**顯示（issue #27 ③）。以前這裡是把勾選框的
+      // 標籤原句再 toast 一次，讀起來像「已通知」，但後端根本沒接任何通知。
+      if (notify) {
+        const r = NOTIFY_TOAST[created.notify];
+        if (r) toast.show(r.message, r.tone);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.createOrderFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,

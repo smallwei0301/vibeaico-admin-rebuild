@@ -549,7 +549,12 @@ export default function BookingsPage() {
         open={!!editing}
         booking={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => { setEditing(null); toast.show(t.messages.updated); void load(); }}
+        onSaved={(res) => {
+          setEditing(null);
+          // 如實描述實際發生的事：有觸發推播才說「已送出」（00 鐵則 12）
+          toast.show(res?.notifyTriggered ? t.messages.updated : t.messages.updatedNoNotify);
+          void load();
+        }}
       />
 
       {/* ------------------------------------------------------ 3. 取消預約 */}
@@ -849,7 +854,11 @@ function BookingFormModal({
   open: boolean;
   booking: Booking | null;
   onClose: () => void;
-  onSaved: () => void;
+  /**
+   * 編輯模式會帶回 PUT /api/bookings/:id 的 `notifyTriggered`（本次有沒有觸發
+   * 顧客端「預約已變更」推播）；新增模式不適用，帶 undefined。
+   */
+  onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
   const isEdit = !!booking;
@@ -963,7 +972,9 @@ function BookingFormModal({
       const startAt = new Date(`${date}T${time}:00`).toISOString();
       if (isEdit && booking) {
         // duration 下拉僅供畫面試算：PUT /api/bookings/:id 以既有 duration_minutes 重算 end_at
-        await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        // 回應的 notifyTriggered 決定成功訊息要不要提通知（只改備註時後端不推播）
+        const res = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        onSaved(res);
       } else {
         await createBooking({
           customerId: await resolveCustomerId(),
@@ -972,8 +983,8 @@ function BookingFormModal({
           startAt,
           note: note || undefined,
         });
+        onSaved();
       }
-      onSaved();
     } catch (err2) {
       toast.show(
         `${isEdit ? t.messages.updateFailed : t.messages.createFailed}${err2 instanceof Error ? err2.message : t.messages.unknownError}`,
