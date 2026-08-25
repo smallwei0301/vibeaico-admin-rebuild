@@ -31,6 +31,28 @@
 > | [#13 建置-5](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/13) | Phase 10 Midao 整合（Partner API／審核流／搬遷腳本；tour-platform 側另列） | 11 §4 |
 > | [#14 建置-6](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/14) | 收尾：稽核殘項清零＋AI 測試補課＋端對端 10 條自動化＋正式切換 | 08 尾、09 §7、12 §4 |
 >
+> **2026-08-25 二輪盤點後新增「補齊系列」（#15–#26，同樣嚴格循序）。**
+> 方向來自擁有者：**「對齊原站功能是首要目的；若有缺少功能，請用補齊的方式，
+> 而不是刪除。」** 本輪盤點結果見下方 §5。
+>
+> | Issue | 內容 | 分冊狀態 |
+> |---|---|---|
+> | [#15 修復-7](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/15) | 本冊漏網的活體假成功四件（chat 送圖／三頁排序／報表匯出／客服 widget 誠實化） | 需補 04 §B-5/B-2/B-3/B-6 |
+> | [#16 補齊-1](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/16) | QR Code 真實產生與下載（promote／line-settings） | REBUILD-SPEC §9.2 已更正；⚠️ 編碼器選型待裁決 |
+> | [#17 補齊-2](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/17) | 預約加購 `booking_addons` 後端全套（＋更正 #3 的「屬 Phase 8b」誤標） | 04 §B-1 零記載，需補寫 |
+> | [#18 補齊-3](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/18) | LINE 老闆通知 owner-notify（4 支端點＋儀表板 UI） | 06 分冊零記載，需新增 §5.5 |
+> | [#19 補齊-4](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/19) | Rich Menu 進階設計器 11 支端點 | 06 §6 僅一句「Phase 6+ 再說」，需展開 |
+> | [#20 補齊-5](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/20) | 診所叫號 clinic-queue 後端全套（4 表＋5 端點＋1170 行頁面接線） | **完全無分冊，需新增 `16-CLINIC-QUEUE.md`** |
+> | [#21 補齊-6](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/21) | 外部行事曆匯入 external_calendars（＋ICS 拉取 cron＋staff token） | 10 §5.5 只有輸出面，需補 §5.6 |
+> | [#22 補齊-7](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/22) | shop-page 端點群 6 支＋settings 三支雜項＋staff/reorder | 04 §A-1 需補 |
+> | [#23 補齊-8](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/23) | 推廣成效統計 promotion/stats（埋點＋PV/UV＋7/30/90 天） | **完全無分冊，需補寫** |
+> | [#24 補齊-9](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/24) | 推薦碼與推薦獎勵 referrals（首次儲值雙方各 500 點） | **完全無分冊，需補寫**（規則原文 `REBUILD-SPEC.md:1020`） |
+> | [#25 補齊-10](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/25) | 平台級三項（support-chat 4 支／donate 金流／impersonate 判定） | 04 §B-6 僅一行，需展開 |
+> | [#26 補齊-11](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/26) | 第三方登入 OAuth（＋先做 5 分鐘小修：兩顆按鈕現在點下去 404） | **03 §7 規格已完整，不需補寫** |
+>
+> **補齊系列的共通鐵則**：凡「分冊需補寫」的 issue，**補寫分冊是該 issue 的第一個
+> 工作項，也是第一個驗收項**——沒有規格就開工正是本輪 19 項缺口的成因。
+>
 > 驗證方式以自動化為原則（單元/整合/Playwright 對 Preview 站實測，憑證自
 > Google Drive「#Supabase#midao」文件自主撈取）；人工只保留各 issue 列名的
 > 決策點與缺 token 時的 env 補填。**執行者共通紀律與環境要點見 15 分冊
@@ -163,3 +185,103 @@
 | 8(部分) | trips/plans | 寫入面頁面全假＋多支 route 不存在＋零測試 |
 
 重勾條件一律照修正後的 08 打勾規則與 12 §6 DoD 9–11。
+
+---
+
+## 5. 二輪盤點（2026-08-25）：19 項未排期缺口、68 支原站端點
+
+第一輪（§0–§4）盤的是「**打勾了但功能是壞的**」。二輪盤的是另一個問題：
+「**原站有、本專案的計劃書從頭到尾沒提過**」——這些項目不會在任何清單上出現，
+因為它們連格子都沒有。結果：**19 項未排期缺口，涉及原站 68 支端點。**
+
+### 5.1 共同根因：`02-SUPABASE-SCHEMA.md` 的一句懸空指標
+
+02 分冊原本寫著：
+
+> 「`clinic_queue_*`、`payment_methods`、`external_calendars`、`donations`、
+> `bug_reports`、`support_chat` 屬 Phase 5+ 的長尾功能：**先不建表**，等 04 分冊
+> §B 對應端點要實作時，依同樣模式補 migration。」
+
+**04 分冊 §B 從未定義這六者中任何一支端點。** 02 把責任交棒給 04、04 沒接，
+交棒處沒有任何一冊負責。六者中的四者——`clinic_queue_*`、`external_calendars`、
+`donations`、`support_chat`——因此在整份 00–13 裡完全沒有落點。前端頁面照原站
+做出來了（`clinic-queue` 約 1170 行、`calendar-sync`、`donate`、掛在每一頁上的
+`SupportChatWidget`），按下去全是假成功。
+
+這是本輪大部分缺口的共同來源。02 分冊該段已於 2026-08-25 改寫：作廢原句、
+逐表列出具名歸屬（issue 編號＋分冊章節），並在原地記下這則教訓。
+
+**一般化**：「等 X 冊要用的時候再補」只有在 **X 冊真的寫了那一項**時才成立。
+交棒必須指向一個**已經存在的章節**；指向「未來應該會有」的章節不叫排期，叫遺失。
+（與 §0 根因 B 同型，但更隱蔽——根因 B 是「沒人想到」，這裡是「以為有人負責」。）
+
+### 5.2 上一輪稽核為什麼漏掉版面元件——**稽核方法本身的缺陷**
+
+第一輪的 25 項假成功清單，**漏了 `src/components/layout/SupportChatWidget.tsx`**
+——一個掛在**每一個後台頁面**上的浮動客服按鈕，送出後顯示已送出，
+`/api/support-chat/*` 根本不存在。它是本專案曝光率最高的假成功之一，卻整輪沒被
+看過一眼。
+
+原因不是疏忽，是**掃描範圍寫死了**：第一輪只掃 `src/app/tenant/**/page.tsx`。
+這個 glob 的隱含假設是「使用者可按的東西都在頁面檔裡」——而版面元件、共用元件、
+Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒有被檢查。
+
+**訂正後的稽核範圍（下次盤點照此，不得再用單一 glob）**：
+
+| 範圍 | 為何必掃 |
+|---|---|
+| `src/app/**/page.tsx` | 頁面主體（第一輪唯一掃過的） |
+| `src/app/**/layout.tsx` | 版面層的互動 |
+| `src/components/**` | **第一輪的漏洞**：版面元件、共用元件、Modal、Widget |
+| `src/services/**` | 只回 mock 卻被當成真資料源的包裝函式 |
+| `src/app/api/**` vs 原站端點清單 | 綠燈孤兒（有端點沒人用）與反向缺口（有頁面沒端點） |
+
+**掃描訊號**（不只看 `setTimeout`）：成功 toast 的呼叫點、`setState` 後直接報成功、
+`onClick` 為空或不存在的按鈕、寫死的常數被渲染成數值、`disabled` 缺失的未實作入口。
+
+**一般化教訓**：稽核腳本的**掃描範圍本身就是一個「已知」**，一樣會是假的。
+「我掃過了」若沒有附上掃了哪些路徑，等同於 §0 根因 D 的無證據打勾——
+下一輪稽核的產出必須包含**實際使用的 glob 清單**，供人檢查它漏了什麼。
+
+### 5.3 二輪的四件活體假成功（第一輪漏網，已排 #15）
+
+- [ ] `/tenant/chat` 送圖／送檔只 append 本地 state，未走 `/api/upload`、未 push 給顧客
+- [ ] `/tenant/services`、`/tenant/products`、`/tenant/portfolio` 三頁「上移／下移」只改本地陣列，重整即還原
+- [ ] `/tenant/reports` 匯出顯示成功但無檔案產生
+- [ ] `src/components/layout/SupportChatWidget.tsx` 送出顯示已送出，端點不存在（**範圍缺陷漏掉的那一件**）
+
+### 5.4 19 項未排期缺口與歸屬
+
+| # | 缺口 | 原站端點數 | 分冊狀態 | Issue |
+|---|---|---|---|---|
+| 1 | chat 送圖 | 1 | 04 §B-5 需補 | #15 |
+| 2 | 三頁排序持久化 | 3 | 04 §B-2/B-3/B-5 已有契約，頁面未接 | #15 |
+| 3 | 報表匯出接線 | 2 | 04 §B-6 已有契約 | #15 |
+| 4 | support-chat widget 誠實化 | — | — | #15 |
+| 5 | QR Code 產生與下載 | 0（前端產圖） | REBUILD-SPEC §9.2 已更正 | #16 |
+| 6 | 預約加購 `booking_addons` | 3 | 04 §B-1 零記載 | #17 |
+| 7 | LINE 老闆通知 owner-notify | 4 | 06 分冊零記載 | #18 |
+| 8 | Rich Menu 進階設計器 | 11 | 06 §6 僅一句 | #19 |
+| 9 | 診所叫號 clinic-queue | 5 | **完全無分冊** | #20 |
+| 10 | 外部行事曆匯入 | 2（＋cron） | 10 §5.5 只有輸出面 | #21 |
+| 11 | 員工個人行事曆 token | 1 | 同上 | #21 |
+| 12 | shop-page 端點群 | 5 | 04 §A-1 零記載 | #22 |
+| 13 | banner-video presign/confirm | 併入上列 | 同上 | #22 |
+| 14 | settings 三支雜項 | 3 | 04 §A-1 零記載 | #22 |
+| 15 | staff/reorder | 1 | 04 §B-2 模式已有 | #22 |
+| 16 | 推廣成效統計 promotion/stats | 1（＋埋點） | **完全無分冊** | #23 |
+| 17 | 推薦碼與推薦獎勵 referrals | 2（＋註冊/儲值掛勾） | **完全無分冊** | #24 |
+| 18 | 平台級三項（support-chat／donate／impersonate） | 4＋金流＋1 | 04 §B-6 僅一行 | #25 |
+| 19 | 第三方登入 OAuth | 3 | **03 §7 規格已完整** | #26 |
+
+> 端點數為原站對照計數（68 支），本專案實作時的端點切分可能略有出入——
+> 以各 issue 第一個工作項所補寫的分冊契約為準。
+
+### 5.5 本輪同時完成的分冊修正
+
+- `02-SUPABASE-SCHEMA.md` 長尾表段落：作廢懸空指標，改為逐表具名歸屬＋教訓記錄。
+- `REBUILD-SPEC.md` §9.2：「QR Code —— 原站由後端出圖」更正為「原站是前端 JS 產圖」，
+  附 `docs/specs/promote.json` 的五項證據（`downloadQr()` inline onclick、
+  「QR 元件載入失敗」、「QR 尚未產生」、檔名 `預約QRcode.png`、195 支端點清單中無 QR 端點），
+  並記下「規格文件裡的『原站是這樣做的』也是一種已知，一樣需要證據」。
+- 本冊：issue 對照表補 #15–#26；新增本節。
