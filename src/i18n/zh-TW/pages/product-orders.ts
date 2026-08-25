@@ -117,8 +117,13 @@ export const productOrdersPage = {
     confirmText: '確定顧客已取貨完成？',
     couponCodeLabel: '輸入票券代碼',
     couponCodeRequired: '請輸入票券代碼',
-    couponApplied: (amount: string) => `票券已套用！折抵 ${amount}`,
-    couponAppliedButFailed: '票券已套用，但「完成訂單」失敗：',
+    /**
+     * 商品訂單的票券折抵後端尚無端點（issue #33 ①；原站對照
+     * `docs/specs/product-orders.json` 的 `/api/product-orders/${id}/apply-coupon`）。
+     * 這裡不承諾「已套用」——票券代碼從未離開瀏覽器，也沒有被核銷。
+     * 常駐顯示在表單裡（不只是一閃即逝的 toast），完成後也用同一句提醒。
+     */
+    couponNotBuilt: '票券折抵尚未串接後端（issue #33），本次完成取貨不會套用折抵金額',
   },
 
   /* ------------------------------------------------ modal 3：手動建立訂單 */

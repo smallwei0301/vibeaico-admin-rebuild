@@ -458,10 +458,13 @@ export default function ProductOrdersPage() {
       <CompleteOrderModal
         order={completeTarget}
         onClose={() => setCompleteTarget(null)}
-        onCompleted={(order, discount) => {
+        onCompleted={(order) => {
+          /*
+           * 沒有真的票券折抵資料可寫（issue #33 ①未建置），couponDiscount 維持
+           * 訂單原值——不做 "+ 0" 這種沒有意義的運算，也不虛構一個折抵金額。
+           */
           patchOrder(order.id, {
             status: 'COMPLETED',
-            couponDiscount: order.couponDiscount + discount,
             completedAt: new Date().toISOString(),
           });
           setCompleteTarget(null);
@@ -653,7 +656,7 @@ function CompleteOrderModal({
 }: {
   order: OrderRow | null;
   onClose: () => void;
-  onCompleted: (order: OrderRow, discount: number) => void;
+  onCompleted: (order: OrderRow) => void;
 }) {
   const toast = useToast();
   const [code, setCode] = React.useState('');
@@ -675,19 +678,16 @@ function CompleteOrderModal({
     setError('');
     setBusy(true);
     try {
-      /* 票券折抵後端尚無端點，折抵金額維持前端狀態；完成取貨走真 API */
+      /*
+       * 票券折抵後端尚無端點（issue #33 ①），這裡不呼叫、不核銷、不生折抵金額。
+       * 完成取貨本身走真 API；`withCoupon` 只決定要不要額外提醒「未套用」。
+       */
       await completeProductOrder(order.id);
-      const discount = withCoupon ? 100 : 0;
-      if (withCoupon) toast.show(t.complete.couponApplied(formatCurrency(discount)));
+      if (withCoupon) toast.show(t.complete.couponNotBuilt, 'warning');
       toast.show(t.messages.completed);
-      onCompleted(order, discount);
+      onCompleted(order);
     } catch (e) {
-      toast.show(
-        withCoupon
-          ? `${t.complete.couponAppliedButFailed}${e instanceof Error ? e.message : t.messages.unknownError}`
-          : (e instanceof Error ? e.message : t.messages.actionFailed),
-        'danger',
-      );
+      toast.show(e instanceof Error ? e.message : t.messages.actionFailed, 'danger');
     } finally {
       setBusy(false);
     }
@@ -721,6 +721,7 @@ function CompleteOrderModal({
           id="orderCouponCode" value={code}
           onChange={(e) => setCode(e.target.value)}
         />
+        <FormText>{t.complete.couponNotBuilt}</FormText>
       </FormGroup>
 
       {error ? <FormError>{error}</FormError> : null}
