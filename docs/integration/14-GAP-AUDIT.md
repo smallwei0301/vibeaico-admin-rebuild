@@ -332,249 +332,6 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 
 ---
 
-### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成
-
-補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`
-`/api/bookings/${b.id}/addons`、`/api/bookings/${bookingId}/addons/${itemId}`；
-`REBUILD-SPEC.md:382–396` 的 6 個欄位含 `addonNotify`），我方後端零實作、
-04 分冊 §B-1 零記載。本輪補：**04 分冊 §B-1.1 契約**（先寫規格再開工）、
-migration **0020_booking_addons**（兩個 Supabase 專案皆已套用並以
-`information_schema.columns` / `pg_policy` 驗證）、三支端點、`src/services/bookings.ts`
-三支函式、`bookings` 頁真實接線。
-
-#### ⚠️ issue #3 的「Phase 8b 排期」誤標：成因是**兩個同名但不同資料模型的 addons**
-
-issue #3 把預約加購的後端標成「Phase 8b 排期」。Phase 8b／10 分冊 §5 的 addons 是
-`/api/trips/:id/addons`（**行程加購**，資料表 `trip_addons`），與預約加購
-（`booking_addons`）是兩個完全不同的資料模型：
-
-| | 預約加購 | 行程加購 |
-|---|---|---|
-| 掛在 | `bookings`（服務預約） | `trip_departures` / `trip_plans`（行程團次） |
-| 資料表 | `booking_addons`（0020） | `trip_addons`（Phase 8b） |
-| 誰會用 | 三種模式**都會**用 | 只有開 `TOUR_MODULE` 的 GUIDE 租戶 |
-
-CLAUDE.md 明令 `services` 與 `trips` 兩套庫存模型不得合併，所以這兩個 addons 從來
-就不是同一件事；LOCAL_SHOP／CLINIC 租戶根本不會開 `TOUR_MODULE`，卻一樣需要預約加購。
-**只因為名字一樣，一個「還沒排到」的功能就被歸到另一個功能的 Phase 底下，
-於是它在計劃裡看起來「有人負責」，實際上沒有。** issue #3 內文已於本輪更正
-（工作項 6），並在文首加了更正說明。
-
-**同型風險（給日後看的）**：本專案還有其他同名不同模型的組合（例如「訂單」在
-LOCAL_SHOP 是 `product_orders`、在 GUIDE 是 `tour_orders`；「加購」如上）。
-在計劃文件裡看到一個名詞被歸到某個 Phase 時，要先確認**那個 Phase 講的是哪一個模型**，
-不能只看名字對上就當成同一件事。
-
-#### 「回沖」的定義（本輪定案，寫進 04 §B-1.1 與 route 檔頭）
-
-`bookings.final_price` 是**流水餘額**而非推導值（`adjust-price` 絕對覆寫且不留紀錄、
-`apply-coupon`／`apply-points` 都以目前的 `final_price` 為基底加減），所以刪除加購
-**無法重算**，只能反向掉當初那一次異動：減去該列上存的 `applied_amount`
-（建立當下真的加上去的數字），下限 0；時長同理。
-
-已知**不精確**的兩種互動（不假裝沒有，且不猜）：
-
-1. 加購後又套 **PERCENT 票券**：折扣連加購金額一起打了，回沖卻減全額 → 多減。
-   例：1000＋加購200＝1200，九折→1080，刪加購→880（精確值 900）。
-2. 加購後又**手動調價**：調價是絕對覆寫，回沖等於假設店家輸入的總價含這筆加購全額。
-
-兩者都無法從資料判定，因此處置是**把確定的數字攤在使用者眼前**——刪除確認視窗直接
-寫「預約金額將扣回 $X（這是該筆加購當初加上去的金額）」，並提醒調過價／用過打折票券
-時要再確認總金額。這是 CLAUDE.md「不得已的取捨要寫在使用者讀得到的地方，不能只寫在
-程式註解裡」的實作。整合測試把這個定義釘住
-（`tests/integration/api/booking-addons.17.test.ts:「加購後手動調價、再刪除加購：回沖是「減去當初加上去的金額」，不是重算」`），
-避免日後被「順手改成重算」。
-
-#### 員工業績：**主導者裁示**的算法，不是原站考據結果
-
-裁示（issue #1 comment-5412922443）：加購金額**計入**員工業績，算法為
-「與主服務同一位服務人員、依實收金額全額計入」。實作上零額外程式——金額進
-`final_price`，而 `/api/reports/staff-performance`、`/api/reports/top-staff` 就是
-「`bookings.final_price` group by `bookings.staff_id`」。
-
-⚠️ **算法是我們選的，不是從原站還原的**（裁示原文如此要求標註）。日後若查到原站
-另有算法，要改的是算法，不是「要不要計入」。
-
-##### 待覆核：原站文案指向的是「逐項歸戶」，與本裁示不同
-
-`docs/specs/bookings.json` 的 `jsStrings[112]`（原站 DOM 掃描結果，不是我方文案）是：
-
-> 此預約有 ${detailAddonCount} 筆加購明細。手動調整總價後，明細與總價將脫鉤
-> （明細僅供參考、**師父業績仍按明細歸戶**）。確定要手動調價嗎？
-
-而原站的加購表單有一個 `addonStaffSelect`，我方 i18n 原本照抄成
-「執行 服務人員 （**業績歸戶**）」。兩者合起來指向的是**逐項歸戶**（依每筆加購自己的
-服務人員），與本裁示的「一律歸本預約的服務人員」不同。
-
-本輪**照裁示實作**（裁示本身已預告可被推翻），並做了兩件保命的事：
-
-1. `booking_addons.staff_id` 照樣存下來——日後若改成逐項歸戶，不需要補資料。
-2. **把會宣稱假事實的文案改掉**：加購表單的 `staffLabel` 拿掉「（業績歸戶）」並補
-   `staffHelp` 明說業績實際歸給誰；`adjustPriceModal.withAddonsWarning` 不再說
-   「師父業績仍按明細歸戶」，改講手動調價與回沖的真實互動。
-   留著原句等於畫面宣稱一件程式沒有做的事（CLAUDE.md「Never fabricate a known」）。
-
-**這一項需要擁有者覆核**：若原站確實是逐項歸戶，要改的是 `staff-performance` 的聚合
-（把 `booking_addons.applied_amount` 依 `staff_id`／fallback 到 `bookings.staff_id` 分開計），
-以及上述兩處文案。
-
-#### `price = 0` 的判讀（issue 措辭有歧義，本輪定案並兩側都測）
-
-issue #17 驗收寫「金額計算邊界（0 元／負數應拒絕）」，中文上可讀成「0 元與負數都拒絕」
-或「列出 0 元與負數兩個邊界，其中負數應拒絕」。本輪採**後者**：`price = 0` 接受
-（贈送／招待的項目要記得下來，只是不加錢；表單的加購價欄位提示就是「優惠價」），
-`price < 0` 回 400。兩側都有測試案例，判讀寫進 04 §B-1.1，若擁有者認為 0 元也該拒絕，
-改的是 `bodySchema` 一行與那一條測試。
-
-#### `addonNotify` 未勾 → **零 LINE 請求**
-
-斷言寫成「整個 `mock.requests` 為空」而不是「`/push` 沒有被打」（本專案既有慣例，
-見 `line-events.ts` 的 SILENT 分支）。額度用盡時回 409 且零請求，**但加購本身仍寫入
-且金額已生效**——409 的 message 因此必須寫明「加購已新增」，否則店家會以為整筆失敗
-而重加一次。
-
-#### Playwright 實測抓到的一個假的已知（本輪順手修掉）
-
-第一輪對本機 dev server（接**正式** Supabase 專案＝Preview 站的同一個資料庫）跑
-`scripts/verify/booking-addons.17.cjs` 時，「重整後加購仍在」那一條紅了。截圖顯示
-**不是加購沒寫進去**——金額欄位已經是加購後的 `NT$1,700`——而是同一個視窗裡
-「加購明細」寫著**無資料**。
-
-成因：明細是開啟詳情之後才向 `/api/bookings/:id/addons` 取的（dev 模式一次 1〜5 秒），
-那段期間畫面直接落到「空清單」的分支。也就是**「還不知道」被畫成「已知為空」**，
-而且旁邊就擺著一個已經更新的金額——CLAUDE.md 說的「捏造的數值最糟的位置就是
-擺在真實數值旁邊」，這裡是同一個形狀。
-
-處置：明細區補上載入中狀態（`detailModal.addonLoading`），三態順序固定為
-**載入中 → 載入失敗 → 無資料**，並以單元測試釘住
-（`tests/unit/honest-not-built-interactions.test.ts:「明細載入中不得顯示「無資料」——那是把「還不知道」畫成「已知為空」」`）。
-實測腳本也改成等「載入中…」消失，而不是睡固定秒數——睡太短就會在載入狀態下斷言，
-那等於用一個不穩定的計時器決定紅綠。
-
-⚠️ 值得記一筆的是：**這個缺陷單元測試與整合測試都抓不到**（一個不掛載元件、
-一個不測 UI），是頁面層實測才看得見的那一類——正是 14 分冊 §1 C 項講的制度夾縫。
-
-#### 沒有做的事（誠實列出）
-
-- **付款狀態不隨加購變動**：舊文案 `messages.addonDowngradePaid` 講的是「加購把已付清
-  推回已付訂金」，但我方 schema 的 `payment_status` 是 enum
-  `UNPAID|PAID_ONLINE|PAID_OFFLINE|REFUNDED`，**沒有「已付訂金」這個狀態，也沒有
-  `paid_amount` 欄位**（頁面上的「已收金額」目前是頁內假資料 `BOOKING_EXTRAS_*`）。
-  在沒有金額型付款欄位之前，加購後降級付款狀態是做不到的，所以不做、也不宣稱做了。
-  該鍵已於 `742f33d`（修復-1B）刪除，本輪沒有復活它。要真的做，前置是「預約的實收
-  金額」欄位本身。
-
----
-
-### 6.15 issue #31（webhook 同步處理完才回 200）— 2026-08-25
-
-**缺陷**：`src/app/api/line/webhook/[shopCode]/route.ts` 把 LINE 的連線一路握到
-所有事件處理完才回 200。LINE 逾時就丟掉那則訊息（redelivery 預設關閉），而**後端
-每一步都成功**——錯誤只發生在 LINE 那一端，後台不會有任何異常可看。
-
-**修法**：驗簽仍在回應之前，事件處理搬進 `after()`；驗簽前的兩趟 DB 併成一趟
-（`tenants` 內嵌 `tenant_settings`）。規格與實測數據寫在 06 分冊 §3.1。
-
-#### 這一節真正要留下來的，是量測方法（可複用）
-
-**① mock 量不到真實延遲——這是一個結構性盲點，不是這次的個案。**
-
-整合測試的假 LINE（`tests/helpers/line-mock.ts`）是瞬間回應的本地 server，
-`next dev` 打它是 loopback。所以**「所有測試都綠」與「顧客收不到回覆」在這裡
-完全可以並存**：測試量的是「有沒有呼叫」，不是「多久回得完」。
-
-同型的盲點 CLAUDE.md「Never fabricate a 'known'」末段已經記過一次（單元測試不涵蓋
-頁面、整合測試刻意不測 UI、e2e 只跑矩陣點名的地方 → 頁面接線不屬於任何一層；
-本冊 §6.8-b 的 marketing 那一列也引用過同一句）。這次是**時間維度**的同一件事：
-**沒有任何一層在量延遲**，所以延遲缺陷可以在全綠的情況下活很久。
-
-> ⚠️ 順帶更正一個引用：issue #31 把這個盲點寫成「14 分冊 §7 記的」，但 §7 是
-> 「三輪盤點：26 筆呼叫錯端點」，講的不是測試分層。出處是 CLAUDE.md，不是 §7。
-> （這正是 15 分冊警告過的「附了一個不支持該主張的引用」——有引用比沒引用更可信，
-> 所以引用錯的代價更高。）
-
-> 規則：凡是「外部系統會等我們」的路徑（webhook、callback、OAuth redirect），
-> 驗收證據必須包含**對真實外部系統的一次實測**，mock 不能代替。
-
-**② 冷啟動要用「新部署的第一發」製造，不要靠等。**
-
-「等到閒置再打」不可重現（要等多久沒有定論，而且別的 agent 隨時會打醒它）。
-可重現的做法是：
-
-```
-# 用 Vercel CLI 從一份原始碼快照建立一個獨立的 preview 部署（不動分支別名）
-npx vercel deploy <目錄> --yes --archive=tgz     # 目錄內放 .vercel/project.json 指向既有專案
-# READY 後立刻打 LINE 官方測試端點，第一發就是冷啟動
-POST https://api.line.me/v2/bot/channel/webhook/test  {"endpoint":"<新部署網址>/api/line/webhook/<shopCode>"}
-```
-
-兩個關鍵：
-- `POST /v2/bot/channel/webhook/test` **收 `endpoint` 參數**（`line/line-openapi`
-  的 `TestWebhookEndpointRequest`），可以指定任意網址，**不必動頻道設定**——
-  改頻道 webhook 再改回來是會忘記還原的操作，能避就避。
-- 「改前」也要用同一套流程量一次（同一份原始碼、同一種部署方式），否則你比的是
-  兩種不同的冷啟動，不是同一個變因。
-
-**③ 實測結果（原始 JSON 見 issue #31 回報）**
-
-| | 改前（未修改的原始碼，新部署第一發） | 改後（同流程） |
-|---|---|---|
-| 冷啟動第一發 | `{"success":false,"statusCode":0,"reason":"REQUEST_TIMEOUT"}` | `{"success":true,"statusCode":200,"reason":"OK"}` |
-| 接著連打 8 次 | 8/8 成功 | 8/8 成功 |
-| 閒置 5–7 分鐘後第一發 | `REQUEST_TIMEOUT` | `success:true` |
-| 閒置約 4 分鐘後第一發 | **`success:true`（沒重現）** | `success:true` |
-| **閒置約 17 分鐘後第一發** | `REQUEST_TIMEOUT` | **`REQUEST_TIMEOUT`** |
-| 零事件請求（我方直接打，暖機） | 1.15〜2.76s | 0.36〜1.39s |
-
-⚠️ **第三列「改前也成功」如實留著**：這個缺陷是機率性的，閒置不夠久就不重現。
-「跑一次沒事」不是沒問題的證據——所以冷啟動一定要用可重現的方式（新部署第一發）
-製造，否則改前改後比的根本不是同一件事。
-
-🔴 **第四列是本輪最該記住的一列：閒置夠久之後，改後的版本一樣逾時。**
-所以 issue #31 那一格驗收（「改後必須看得到冷啟動那一發也回 success:true」）
-**沒有達成，不能打勾**。`after()` 解決的是「事件處理佔用回應時間」，
-解決不了「Lambda 冷啟本身佔用回應時間」——這兩件事被 issue 的標題綁在一起，
-但它們是不同的原因。**量到什麼就寫什麼；四個回合裡有一個推翻了想要的結論，
-那一個就是最有價值的資料。**（同一發在 Vercel Runtime Logs 是 `200`，
-LINE 卻回報逾時——我們有回，是 LINE 先放棄。）
-
-⚠️ **issue #31 原文說「暖機狀態下 8/8 成功」，重測發現不是永遠成立**：
-2026-08-25 16:01 UTC 對當時的 Preview 連打 8 次，**第 1、第 4 發都逾時**。
-所以精確的描述是「**我們的回應時間本來就壓在 LINE 的容忍線上**，冷啟動只是把它
-推過去」——不是「只有冷啟動會出事」。
-
-#### 順手更正兩處事實（issue #31 原文）
-
-1. **webhook redelivery 的開關在 LINE Developers Console → 該 channel →
-   Messaging API 分頁**，不是 LINE Official Account Manager。（官方文件原文；
-   `line/line-openapi` 全文亦無寫入該開關的端點。）
-2. **「AI 客服必逾時」目前在 Preview 上不成立**——`vercel env ls preview` 顯示
-   Preview 環境**沒有 `ANTHROPIC_API_KEY`**，而 `src/server/ai-reply.ts:35` 在
-   缺 key 時直接回 `null`，**LLM 從來沒被呼叫過**。也就是說 Preview 上的 AI 客服
-   現在是完全靜默的（不是慢，是沒有跑）。程式路徑本身仍然真實，一旦補上 key
-   就會照 issue 描述的方式吃掉回應時間——而那正是本次 `after()` 要擋的。
-   **補 key 是擁有者的動作**（平台層 env，見 CLAUDE.md 的兩層設定表）。
-
-#### 測試怎麼等 `after()`（不要用 sleep）
-
-`await sleep(500)` 之後斷言有兩種壞法：正向斷言偶發紅燈，**反向斷言（「不該有
-回覆」）偶發綠燈**——後者等於什麼都沒驗到，比沒有測試更糟。本輪用的是兩個
-**確定性訊號**：
-
-- **排空端點**：webhook route 在回 200 之前就把該次處理登記進模組內的 set，
-  同路徑的 `GET`（**僅 `NODE_ENV!=production`**，正式部署維持 405）會 await 掉
-  所有未完成的處理才回應，並回報 `scheduled`（累計排入過幾筆，單調遞增）。
-  「驗簽失敗不得排入任何工作」就是拿 `scheduled` 前後相減來斷言的——
-  不是「等了一下沒看到」。
-- **把 mock LINE 的回應扣住**（`LineMockServer.holdNext()`）：事件處理卡在半路時，
-  webhook 若還沒回應，測試就會一路等到逾時。**舊版跑這個案例必然紅、新版必然綠**，
-  這條斷言真的有分辨力。
-
-證據：`tests/integration/api/line-webhook.06.test.ts:「事件處理卡在 LINE 呼叫時，
-webhook 早已回 200；放行後處理照常完成」`、`:「壞簽章 → 401；事件完全不進處理
-（after() 沒有排入任何工作）」`、`:「LINE API 回 500 令 handler 丟錯 → webhook 仍
-200、錯誤有留下紀錄，且同批後續事件照常處理」`。
-
 ## 7. 三輪盤點（2026-08-25）：26 筆「呼叫了端點，但呼叫錯端點」
 
 ### 7.1 為什麼要有第三輪——前兩輪的判準本身有洞
@@ -1855,6 +1612,249 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 擁有者在 issue #16 的追加裁決留言已把驗收重點從「編碼正確性」移到「接線正確性」
 並明說「不要花力氣去測 `qrcode` 套件本身」，這一項因此**可能已經作廢**，
 但那是擁有者的裁決，不是執行者可以自行認定的——**留著不打勾，等裁決**。
+
+### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成
+
+補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`
+`/api/bookings/${b.id}/addons`、`/api/bookings/${bookingId}/addons/${itemId}`；
+`REBUILD-SPEC.md:382–396` 的 6 個欄位含 `addonNotify`），我方後端零實作、
+04 分冊 §B-1 零記載。本輪補：**04 分冊 §B-1.1 契約**（先寫規格再開工）、
+migration **0020_booking_addons**（兩個 Supabase 專案皆已套用並以
+`information_schema.columns` / `pg_policy` 驗證）、三支端點、`src/services/bookings.ts`
+三支函式、`bookings` 頁真實接線。
+
+#### ⚠️ issue #3 的「Phase 8b 排期」誤標：成因是**兩個同名但不同資料模型的 addons**
+
+issue #3 把預約加購的後端標成「Phase 8b 排期」。Phase 8b／10 分冊 §5 的 addons 是
+`/api/trips/:id/addons`（**行程加購**，資料表 `trip_addons`），與預約加購
+（`booking_addons`）是兩個完全不同的資料模型：
+
+| | 預約加購 | 行程加購 |
+|---|---|---|
+| 掛在 | `bookings`（服務預約） | `trip_departures` / `trip_plans`（行程團次） |
+| 資料表 | `booking_addons`（0020） | `trip_addons`（Phase 8b） |
+| 誰會用 | 三種模式**都會**用 | 只有開 `TOUR_MODULE` 的 GUIDE 租戶 |
+
+CLAUDE.md 明令 `services` 與 `trips` 兩套庫存模型不得合併，所以這兩個 addons 從來
+就不是同一件事；LOCAL_SHOP／CLINIC 租戶根本不會開 `TOUR_MODULE`，卻一樣需要預約加購。
+**只因為名字一樣，一個「還沒排到」的功能就被歸到另一個功能的 Phase 底下，
+於是它在計劃裡看起來「有人負責」，實際上沒有。** issue #3 內文已於本輪更正
+（工作項 6），並在文首加了更正說明。
+
+**同型風險（給日後看的）**：本專案還有其他同名不同模型的組合（例如「訂單」在
+LOCAL_SHOP 是 `product_orders`、在 GUIDE 是 `tour_orders`；「加購」如上）。
+在計劃文件裡看到一個名詞被歸到某個 Phase 時，要先確認**那個 Phase 講的是哪一個模型**，
+不能只看名字對上就當成同一件事。
+
+#### 「回沖」的定義（本輪定案，寫進 04 §B-1.1 與 route 檔頭）
+
+`bookings.final_price` 是**流水餘額**而非推導值（`adjust-price` 絕對覆寫且不留紀錄、
+`apply-coupon`／`apply-points` 都以目前的 `final_price` 為基底加減），所以刪除加購
+**無法重算**，只能反向掉當初那一次異動：減去該列上存的 `applied_amount`
+（建立當下真的加上去的數字），下限 0；時長同理。
+
+已知**不精確**的兩種互動（不假裝沒有，且不猜）：
+
+1. 加購後又套 **PERCENT 票券**：折扣連加購金額一起打了，回沖卻減全額 → 多減。
+   例：1000＋加購200＝1200，九折→1080，刪加購→880（精確值 900）。
+2. 加購後又**手動調價**：調價是絕對覆寫，回沖等於假設店家輸入的總價含這筆加購全額。
+
+兩者都無法從資料判定，因此處置是**把確定的數字攤在使用者眼前**——刪除確認視窗直接
+寫「預約金額將扣回 $X（這是該筆加購當初加上去的金額）」，並提醒調過價／用過打折票券
+時要再確認總金額。這是 CLAUDE.md「不得已的取捨要寫在使用者讀得到的地方，不能只寫在
+程式註解裡」的實作。整合測試把這個定義釘住
+（`tests/integration/api/booking-addons.17.test.ts:「加購後手動調價、再刪除加購：回沖是「減去當初加上去的金額」，不是重算」`），
+避免日後被「順手改成重算」。
+
+#### 員工業績：**主導者裁示**的算法，不是原站考據結果
+
+裁示（issue #1 comment-5412922443）：加購金額**計入**員工業績，算法為
+「與主服務同一位服務人員、依實收金額全額計入」。實作上零額外程式——金額進
+`final_price`，而 `/api/reports/staff-performance`、`/api/reports/top-staff` 就是
+「`bookings.final_price` group by `bookings.staff_id`」。
+
+⚠️ **算法是我們選的，不是從原站還原的**（裁示原文如此要求標註）。日後若查到原站
+另有算法，要改的是算法，不是「要不要計入」。
+
+##### 待覆核：原站文案指向的是「逐項歸戶」，與本裁示不同
+
+`docs/specs/bookings.json` 的 `jsStrings[112]`（原站 DOM 掃描結果，不是我方文案）是：
+
+> 此預約有 ${detailAddonCount} 筆加購明細。手動調整總價後，明細與總價將脫鉤
+> （明細僅供參考、**師父業績仍按明細歸戶**）。確定要手動調價嗎？
+
+而原站的加購表單有一個 `addonStaffSelect`，我方 i18n 原本照抄成
+「執行 服務人員 （**業績歸戶**）」。兩者合起來指向的是**逐項歸戶**（依每筆加購自己的
+服務人員），與本裁示的「一律歸本預約的服務人員」不同。
+
+本輪**照裁示實作**（裁示本身已預告可被推翻），並做了兩件保命的事：
+
+1. `booking_addons.staff_id` 照樣存下來——日後若改成逐項歸戶，不需要補資料。
+2. **把會宣稱假事實的文案改掉**：加購表單的 `staffLabel` 拿掉「（業績歸戶）」並補
+   `staffHelp` 明說業績實際歸給誰；`adjustPriceModal.withAddonsWarning` 不再說
+   「師父業績仍按明細歸戶」，改講手動調價與回沖的真實互動。
+   留著原句等於畫面宣稱一件程式沒有做的事（CLAUDE.md「Never fabricate a known」）。
+
+**這一項需要擁有者覆核**：若原站確實是逐項歸戶，要改的是 `staff-performance` 的聚合
+（把 `booking_addons.applied_amount` 依 `staff_id`／fallback 到 `bookings.staff_id` 分開計），
+以及上述兩處文案。
+
+#### `price = 0` 的判讀（issue 措辭有歧義，本輪定案並兩側都測）
+
+issue #17 驗收寫「金額計算邊界（0 元／負數應拒絕）」，中文上可讀成「0 元與負數都拒絕」
+或「列出 0 元與負數兩個邊界，其中負數應拒絕」。本輪採**後者**：`price = 0` 接受
+（贈送／招待的項目要記得下來，只是不加錢；表單的加購價欄位提示就是「優惠價」），
+`price < 0` 回 400。兩側都有測試案例，判讀寫進 04 §B-1.1，若擁有者認為 0 元也該拒絕，
+改的是 `bodySchema` 一行與那一條測試。
+
+#### `addonNotify` 未勾 → **零 LINE 請求**
+
+斷言寫成「整個 `mock.requests` 為空」而不是「`/push` 沒有被打」（本專案既有慣例，
+見 `line-events.ts` 的 SILENT 分支）。額度用盡時回 409 且零請求，**但加購本身仍寫入
+且金額已生效**——409 的 message 因此必須寫明「加購已新增」，否則店家會以為整筆失敗
+而重加一次。
+
+#### Playwright 實測抓到的一個假的已知（本輪順手修掉）
+
+第一輪對本機 dev server（接**正式** Supabase 專案＝Preview 站的同一個資料庫）跑
+`scripts/verify/booking-addons.17.cjs` 時，「重整後加購仍在」那一條紅了。截圖顯示
+**不是加購沒寫進去**——金額欄位已經是加購後的 `NT$1,700`——而是同一個視窗裡
+「加購明細」寫著**無資料**。
+
+成因：明細是開啟詳情之後才向 `/api/bookings/:id/addons` 取的（dev 模式一次 1〜5 秒），
+那段期間畫面直接落到「空清單」的分支。也就是**「還不知道」被畫成「已知為空」**，
+而且旁邊就擺著一個已經更新的金額——CLAUDE.md 說的「捏造的數值最糟的位置就是
+擺在真實數值旁邊」，這裡是同一個形狀。
+
+處置：明細區補上載入中狀態（`detailModal.addonLoading`），三態順序固定為
+**載入中 → 載入失敗 → 無資料**，並以單元測試釘住
+（`tests/unit/honest-not-built-interactions.test.ts:「明細載入中不得顯示「無資料」——那是把「還不知道」畫成「已知為空」」`）。
+實測腳本也改成等「載入中…」消失，而不是睡固定秒數——睡太短就會在載入狀態下斷言，
+那等於用一個不穩定的計時器決定紅綠。
+
+⚠️ 值得記一筆的是：**這個缺陷單元測試與整合測試都抓不到**（一個不掛載元件、
+一個不測 UI），是頁面層實測才看得見的那一類——正是 14 分冊 §1 C 項講的制度夾縫。
+
+#### 沒有做的事（誠實列出）
+
+- **付款狀態不隨加購變動**：舊文案 `messages.addonDowngradePaid` 講的是「加購把已付清
+  推回已付訂金」，但我方 schema 的 `payment_status` 是 enum
+  `UNPAID|PAID_ONLINE|PAID_OFFLINE|REFUNDED`，**沒有「已付訂金」這個狀態，也沒有
+  `paid_amount` 欄位**（頁面上的「已收金額」目前是頁內假資料 `BOOKING_EXTRAS_*`）。
+  在沒有金額型付款欄位之前，加購後降級付款狀態是做不到的，所以不做、也不宣稱做了。
+  該鍵已於 `742f33d`（修復-1B）刪除，本輪沒有復活它。要真的做，前置是「預約的實收
+  金額」欄位本身。
+
+---
+
+### 6.15 issue #31（webhook 同步處理完才回 200）— 2026-08-25
+
+**缺陷**：`src/app/api/line/webhook/[shopCode]/route.ts` 把 LINE 的連線一路握到
+所有事件處理完才回 200。LINE 逾時就丟掉那則訊息（redelivery 預設關閉），而**後端
+每一步都成功**——錯誤只發生在 LINE 那一端，後台不會有任何異常可看。
+
+**修法**：驗簽仍在回應之前，事件處理搬進 `after()`；驗簽前的兩趟 DB 併成一趟
+（`tenants` 內嵌 `tenant_settings`）。規格與實測數據寫在 06 分冊 §3.1。
+
+#### 這一節真正要留下來的，是量測方法（可複用）
+
+**① mock 量不到真實延遲——這是一個結構性盲點，不是這次的個案。**
+
+整合測試的假 LINE（`tests/helpers/line-mock.ts`）是瞬間回應的本地 server，
+`next dev` 打它是 loopback。所以**「所有測試都綠」與「顧客收不到回覆」在這裡
+完全可以並存**：測試量的是「有沒有呼叫」，不是「多久回得完」。
+
+同型的盲點 CLAUDE.md「Never fabricate a 'known'」末段已經記過一次（單元測試不涵蓋
+頁面、整合測試刻意不測 UI、e2e 只跑矩陣點名的地方 → 頁面接線不屬於任何一層；
+本冊 §6.8-b 的 marketing 那一列也引用過同一句）。這次是**時間維度**的同一件事：
+**沒有任何一層在量延遲**，所以延遲缺陷可以在全綠的情況下活很久。
+
+> ⚠️ 順帶更正一個引用：issue #31 把這個盲點寫成「14 分冊 §7 記的」，但 §7 是
+> 「三輪盤點：26 筆呼叫錯端點」，講的不是測試分層。出處是 CLAUDE.md，不是 §7。
+> （這正是 15 分冊警告過的「附了一個不支持該主張的引用」——有引用比沒引用更可信，
+> 所以引用錯的代價更高。）
+
+> 規則：凡是「外部系統會等我們」的路徑（webhook、callback、OAuth redirect），
+> 驗收證據必須包含**對真實外部系統的一次實測**，mock 不能代替。
+
+**② 冷啟動要用「新部署的第一發」製造，不要靠等。**
+
+「等到閒置再打」不可重現（要等多久沒有定論，而且別的 agent 隨時會打醒它）。
+可重現的做法是：
+
+```
+# 用 Vercel CLI 從一份原始碼快照建立一個獨立的 preview 部署（不動分支別名）
+npx vercel deploy <目錄> --yes --archive=tgz     # 目錄內放 .vercel/project.json 指向既有專案
+# READY 後立刻打 LINE 官方測試端點，第一發就是冷啟動
+POST https://api.line.me/v2/bot/channel/webhook/test  {"endpoint":"<新部署網址>/api/line/webhook/<shopCode>"}
+```
+
+兩個關鍵：
+- `POST /v2/bot/channel/webhook/test` **收 `endpoint` 參數**（`line/line-openapi`
+  的 `TestWebhookEndpointRequest`），可以指定任意網址，**不必動頻道設定**——
+  改頻道 webhook 再改回來是會忘記還原的操作，能避就避。
+- 「改前」也要用同一套流程量一次（同一份原始碼、同一種部署方式），否則你比的是
+  兩種不同的冷啟動，不是同一個變因。
+
+**③ 實測結果（原始 JSON 見 issue #31 回報）**
+
+| | 改前（未修改的原始碼，新部署第一發） | 改後（同流程） |
+|---|---|---|
+| 冷啟動第一發 | `{"success":false,"statusCode":0,"reason":"REQUEST_TIMEOUT"}` | `{"success":true,"statusCode":200,"reason":"OK"}` |
+| 接著連打 8 次 | 8/8 成功 | 8/8 成功 |
+| 閒置 5–7 分鐘後第一發 | `REQUEST_TIMEOUT` | `success:true` |
+| 閒置約 4 分鐘後第一發 | **`success:true`（沒重現）** | `success:true` |
+| **閒置約 17 分鐘後第一發** | `REQUEST_TIMEOUT` | **`REQUEST_TIMEOUT`** |
+| 零事件請求（我方直接打，暖機） | 1.15〜2.76s | 0.36〜1.39s |
+
+⚠️ **第三列「改前也成功」如實留著**：這個缺陷是機率性的，閒置不夠久就不重現。
+「跑一次沒事」不是沒問題的證據——所以冷啟動一定要用可重現的方式（新部署第一發）
+製造，否則改前改後比的根本不是同一件事。
+
+🔴 **第四列是本輪最該記住的一列：閒置夠久之後，改後的版本一樣逾時。**
+所以 issue #31 那一格驗收（「改後必須看得到冷啟動那一發也回 success:true」）
+**沒有達成，不能打勾**。`after()` 解決的是「事件處理佔用回應時間」，
+解決不了「Lambda 冷啟本身佔用回應時間」——這兩件事被 issue 的標題綁在一起，
+但它們是不同的原因。**量到什麼就寫什麼；四個回合裡有一個推翻了想要的結論，
+那一個就是最有價值的資料。**（同一發在 Vercel Runtime Logs 是 `200`，
+LINE 卻回報逾時——我們有回，是 LINE 先放棄。）
+
+⚠️ **issue #31 原文說「暖機狀態下 8/8 成功」，重測發現不是永遠成立**：
+2026-08-25 16:01 UTC 對當時的 Preview 連打 8 次，**第 1、第 4 發都逾時**。
+所以精確的描述是「**我們的回應時間本來就壓在 LINE 的容忍線上**，冷啟動只是把它
+推過去」——不是「只有冷啟動會出事」。
+
+#### 順手更正兩處事實（issue #31 原文）
+
+1. **webhook redelivery 的開關在 LINE Developers Console → 該 channel →
+   Messaging API 分頁**，不是 LINE Official Account Manager。（官方文件原文；
+   `line/line-openapi` 全文亦無寫入該開關的端點。）
+2. **「AI 客服必逾時」目前在 Preview 上不成立**——`vercel env ls preview` 顯示
+   Preview 環境**沒有 `ANTHROPIC_API_KEY`**，而 `src/server/ai-reply.ts:35` 在
+   缺 key 時直接回 `null`，**LLM 從來沒被呼叫過**。也就是說 Preview 上的 AI 客服
+   現在是完全靜默的（不是慢，是沒有跑）。程式路徑本身仍然真實，一旦補上 key
+   就會照 issue 描述的方式吃掉回應時間——而那正是本次 `after()` 要擋的。
+   **補 key 是擁有者的動作**（平台層 env，見 CLAUDE.md 的兩層設定表）。
+
+#### 測試怎麼等 `after()`（不要用 sleep）
+
+`await sleep(500)` 之後斷言有兩種壞法：正向斷言偶發紅燈，**反向斷言（「不該有
+回覆」）偶發綠燈**——後者等於什麼都沒驗到，比沒有測試更糟。本輪用的是兩個
+**確定性訊號**：
+
+- **排空端點**：webhook route 在回 200 之前就把該次處理登記進模組內的 set，
+  同路徑的 `GET`（**僅 `NODE_ENV!=production`**，正式部署維持 405）會 await 掉
+  所有未完成的處理才回應，並回報 `scheduled`（累計排入過幾筆，單調遞增）。
+  「驗簽失敗不得排入任何工作」就是拿 `scheduled` 前後相減來斷言的——
+  不是「等了一下沒看到」。
+- **把 mock LINE 的回應扣住**（`LineMockServer.holdNext()`）：事件處理卡在半路時，
+  webhook 若還沒回應，測試就會一路等到逾時。**舊版跑這個案例必然紅、新版必然綠**，
+  這條斷言真的有分辨力。
+
+證據：`tests/integration/api/line-webhook.06.test.ts:「事件處理卡在 LINE 呼叫時，
+webhook 早已回 200；放行後處理照常完成」`、`:「壞簽章 → 401；事件完全不進處理
+（after() 沒有排入任何工作）」`、`:「LINE API 回 500 令 handler 丟錯 → webhook 仍
+200、錯誤有留下紀錄，且同批後續事件照常處理」`。
 
 ## 9. 第四輪盤點（2026-08-25）：從**原站規格往前找**，而不是從程式碼往回找
 

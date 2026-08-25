@@ -291,3 +291,40 @@ const browser = await chromium.launch({
 - 每個 issue 完成＝一次（或少數幾次）commit + push + issue 留言貼證據 +
   更新 14 分冊勾選與 08 分冊對應項。
 - 卡住超過 3 次同一個錯（12 §2.2）：停，把嘗試過的方案與錯誤原文留言到 issue。
+
+## worktree 的 `node_modules` 是 symlink：**絕對不要 commit 它**（2026-08-25 學到，代價很實際）
+
+`isolation: worktree` 的 worktree 沒有自己的 `node_modules`，執行者常會自建一個
+symlink 指回主 worktree 的那一份。這件事本身沒問題——**把它 commit 進去才是問題**。
+
+實際發生的事：一位執行者的 commit 裡帶了 `create mode 120000 node_modules`。
+主導者把那個 commit 合併進主 worktree 之後：
+
+```
+$ readlink node_modules
+/home/user/vibeaico-admin-rebuild/node_modules      ← 指向自己
+$ ls node_modules/
+ls: cannot access 'node_modules/': Too many levels of symbolic links
+```
+
+**主 worktree 那份真的 `node_modules` 被那個 symlink 蓋掉了，193 個套件當場消失。**
+`.gitignore` 第 2 行就寫著 `node_modules/`，但那擋的是「未追蹤的檔案」，
+**擋不住一個已經被 `git add` 進去的項目**——一旦入了 index，gitignore 對它就完全無效。
+
+更陰險的是它**不會馬上炸**：`npm run typecheck` 在符號連結壞掉後仍然印出
+「> tsc --noEmit」然後安靜結束，看起來像通過。要跑到 `ls node_modules` 才看得出來。
+
+### 規則
+
+**執行者：**
+- 收尾前一定跑 `git status --short` 並**逐行看過**，確認沒有 `node_modules`、
+  `.next`、`.env*`、`scripts/verify/out/` 這類東西被加進去。
+- 自建的 symlink 與 `.env` 副本，**收工前自己移除**。
+- 用 `git show --stat <你的 commit>` 檢查檔案清單，特別注意 `create mode 120000`
+  （symlink）與 `create mode 100755` 這類非預期的模式。
+
+**主導者：**
+- 合併任何 worktree 分支**之前**先看 `git show --stat`，不要只看程式碼 diff。
+- 合併後若動到相依，**先 `ls node_modules | wc -l` 確認還在**，再跑閘門——
+  因為壞掉的 `node_modules` 會讓閘門「安靜地通過」。
+- 真的中了：`git rm --cached node_modules && rm -f node_modules && npm ci`。
