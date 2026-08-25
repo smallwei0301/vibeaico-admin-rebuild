@@ -704,3 +704,68 @@ WIP `9ccb873` 寫好的 ②④ 分支，註解裡引用了
 本輪照 `SupportChatWidget` 與回報問題截圖的前例停用欄位並在畫面上說明尚未建置。
 補齊需動 `/api/upload` 的 bucket 白名單，可能還要新 bucket——而 bucket 的公開性
 與保留期限仍卡在 §8.12 的未決事項。
+
+### 8.13 「服務項目／預約管理」是**父層級概念**，三種模式各有自己的子層級
+
+擁有者 2026-08-25 的架構定義（原話）：
+
+> 服務項目和預約管理這兩個應該是同一個父層級，按照三種模式使用三種子層級，
+> 例如嚮導就是行程相關，醫院目前還沒設計。其他功能有關係到服務時，應該是連結
+> 到父層級的服務項目，例如 line 回覆設定等等。
+
+| 父層級 | LOCAL_SHOP | GUIDE | CLINIC |
+|---|---|---|---|
+| **目錄**（賣什麼） | 服務項目 `/tenant/services` | 行程與方案 `/tenant/trips` | 診療項目 `/tenant/services`（**子層級尚未設計**，暫借 LOCAL_SHOP 的實作） |
+| **訂單**（誰買了） | 預約列表 `/tenant/bookings` | 團次訂單 `/tenant/tour-orders` | 掛號列表 `/tenant/bookings`（同上） |
+
+⚠️ **這不是要合併資料表。** CLAUDE.md 明訂 `services` 與
+`trips`/`trip_plans`/`trip_departures` 是兩套不同的庫存模型、不得合併。
+本節講的是**導覽與跨頁引用**：其他功能提到「服務」時，要指向**該租戶當下模式的
+那一頁**，而不是寫死指向 `/tenant/services`。
+
+#### 現況：抽象層已經存在，但**零個地方在用**
+
+`MODE_PRESETS` 早就定義了 `catalogHref` / `ordersHref`（`src/config/modes.ts:25,27`），
+三種模式的值也都填好了。但 `grep -rn "catalogHref\|ordersHref" src/`
+扣掉定義處之後——**一個呼叫端都沒有**。有人設計了這個抽象層，從來沒接上去。
+
+於是嚮導租戶會被導去自己選單裡根本沒有的頁面：
+
+| 位置 | 寫死指向 | 嚮導按下去會怎樣 |
+|---|---|---|
+| `dashboard/page.tsx:149` 快捷「新增預約」 | `/tenant/bookings` | 該頁在他的 `hiddenNavKeys` 裡 |
+| `dashboard/page.tsx:152` 快捷「服務項目」 | `/tenant/services` | 同上 |
+| `dashboard/page.tsx:425` 開店步驟 step1 | `/tenant/services` | 同上 |
+| `dashboard/page.tsx:616/624/703/799` 預約統計卡 | `/tenant/bookings` | 同上 |
+| `calendar/page.tsx:318/572` | `/tenant/bookings` | 同上 |
+| `product-orders/page.tsx:539/593` | `/tenant/bookings` | 同上 |
+
+文案側同樣寫死：`feature-store.ts:210` 寫「側邊欄 → 預約管理」、
+`payment-methods.ts:86` 寫「到『服務項目』把服務設為」、
+`staff.ts:101/105` 寫「可承接的服務項目」（嚮導的員工是導遊、承接的是行程）。
+
+#### 一個已經被發現、但只修了一處的前例
+
+`src/i18n/zh-TW/pages/dashboard.ts:53-54` 的註解寫著：
+
+> 嚮導的目錄是行程而不是服務項目，員工是嚮導，沿用預設會叫他去「設定服務項目」
+> ——那一頁在嚮導模式的選單裡根本不存在。
+
+有人在做開店步驟時發現了這件事，用 `byMode()` 修掉那一處，**但沒有回頭找同類**。
+這正是 §7 講的「補了一半」——修掉看得見的那個，留下十幾個同型的。
+
+#### 規則（往後一律照這個走）
+
+1. 任何跨頁連結指向「目錄」或「訂單」時，**一律走 `MODE_PRESETS[businessType].catalogHref` /
+   `.ordersHref`**，不得寫死 `/tenant/services` 或 `/tenant/bookings`。
+2. 文案提到目錄／訂單的**名稱**時，走 `navLabel(key, businessType)`，不得寫死
+   「服務項目」「預約管理」。
+3. 頁面自己的檔案內連到自己（例如 services 頁內部的錨點）不受此限。
+4. **CLINIC 的子層級尚未設計**，目前暫借 LOCAL_SHOP 的 `services`/`bookings` 實作，
+   僅換 nav 標籤（'診療項目'）。這是**已知的暫定狀態**，不是漏掉——真正的診所
+   目錄模型（診療項目 vs 醫師排班 vs 看診進度的關係）待設計。
+
+### 8.14 回報問題的截圖上傳 → **現在就補**（擁有者裁決）
+
+不停留在「停用＋說明尚未建置」。需要新 bucket ＋ `bug_reports` 附件欄位 ＋
+端點契約，另開 issue 處理。
