@@ -944,3 +944,61 @@ migration 0019 ＋ 新 bucket `bug-report-attachments` ＋ `/api/upload` 白名�
 這是**另一個 feature**，§8.16／§8.16-b 都沒有涵蓋。依同一個方向原則，
 「讓那兩組的停用開關在退訂後仍然可見可用」應該是對的，但那牽涉 TOUR_MODULE
 的收費邊界，留給擁有者。**未處理，未打勾。**
+
+### 6.8 issue #28 ⑬（LINE preview 縮圖）— 2026-08-25 完成（commit `5e5984e`）
+
+`previewImageUrl` 不再與 `originalContentUrl` 共用同一個網址。新增 `src/server/image.ts`，
+上傳到 `chat-images` 時同時產一張 ≤1 MB 的縮圖，路徑 `{uuid}.preview.{ext}`（純推導，
+不進 DB）。**`MAX_BYTES` 維持 5 MB 未動**——沒有用壓上傳上限來迴避問題。
+
+**主導者複驗**：`package.json` 是 `"sharp": "0.34.5"`（精確鎖版，非 caret——caret 達不到
+裁決要的「同一個原生二進位」）；commit 11 檔全是自己的；
+`tests/integration/api/chat-image.15.test.ts` 只 +6 行且**全在 `afterAll` 清理**，
+零個斷言被改（先前主導者曾標記要逐條核對這個檔）。
+
+#### 三個值得沿用的判斷
+
+1. **量的是「LINE 實際收到的那個網址」，不是我們以為的那個。**
+   測試從 `mock.requestsFor('/v2/bot/message/push')[0].body.messages[0].previewImageUrl`
+   反推 path 再下載量 bytes，而不是量自己剛產的縮圖。素材用 **2400×1800 隨機雜訊 JPEG**
+   （≈4.2 MB）——雜訊是壓縮率最差的素材，拿好壓的圖等於自己放水。
+   `1 MB` 取 **1,000,000** 而非 1,048,576：官方只寫「1 MB」，取小的那個兩種解讀都合規。
+
+2. **產不出縮圖時「當場擋下 400」，而不是靜默退回原圖。**
+   執行者排除另外兩條路的理由值得記：
+   - *靜默用原圖當 preview* ＝ 把本項要修的 bug 原封放回來，而且從此沒有任何訊號
+     （`/api/upload` 200、DB 有列、畫面顯示已送出，只有顧客的 LINE 端不對）
+   - *原圖照上、縮圖之後再說* ＝ 把失敗推遲到「使用者不在場、且正在對顧客發送」的那一刻
+   - *當場擋下* ＝ 使用者手上還握著那個檔案，換一張就好
+   並且**縮圖先產後上傳**，Storage 連半成品都不會留下。
+
+3. **遇到壞夾具時，沒有把閘門改得更嚴。**
+   全量跑抓到 `chat-image.15` 的 1×1 PNG 夾具其實是壞的（IHDR 宣告 RGBA、1×1 應有 5 bytes
+   掃描列，IDAT 只 inflate 出 3 bytes；libpng／瀏覽器會補齊照顯示，sharp 底層的 libspng 會丟錯）。
+   執行者原本寫 `failOn: 'error'`，等於把一張**別人都讀得出來**的圖擋在門口，於是改成
+   `failOn: 'none'`——理由是「本項要擋的是**產不出縮圖**，不是檔案不夠完美；
+   比改動前更嚴格等於拿本項當理由砍掉既有能力」。那正是擁有者方針的正確套用。
+
+#### 順手補的一個洞（主導者複核通過）
+
+`makeLinePreview` 會**實際解碼並比對宣告的 MIME**。先前 `/api/upload` 只信 `file.type`
+（用戶端說了算），所以一張**改名的 WebP 能偽裝成 `image/jpeg`** 通過 `11a174d` 的格式閘門，
+一路到 LINE 才失敗。現在會回 400。方向與 `11a174d` 一致，有測試覆蓋。
+
+#### 06 分冊 §8.4 的「兩個規格違反」現在是**零個**
+
+違反 1（WebP 送去 LINE）由 `11a174d` 修、違反 2（preview 超規）由本輪修。
+06 分冊該節文字待更新。
+
+### 6.8-b 兩支端點沒有任何呼叫端（執行者盤出，未處理）
+
+| 端點 | 狀況 |
+|---|---|
+| `/api/marketing/pushes/*`（四支） | `marketing` 頁**完全沒接線**——頁內是 `byMode()` 假資料、零個 `@/services` import。所以本輪對 marketing 那一半**只有端點層被驗證過**，正是 CLAUDE.md 說的「頁面接線不屬於任何一層」的結構盲點 |
+| `POST /api/settings/line/rich-menu/upload-bg-image` | `grep -rn "upload-bg-image" src/` 只有註解，零呼叫端 |
+| `/api/upload` 的 `richmenu-assets` 分支（5 MB） | 同樣零呼叫端；真正的 rich menu 底圖走上面那支、且它自己擋在 1 MB |
+
+⚠️ 執行者**沒有**把 marketing 寫成「鏈路完整」——它在 DoD 10 對照表裡明寫
+「handler **不存在**、service **不存在**」。那是對的：寫成完整就是假的已知。
+
+`marketing` 頁的接線屬 issue #7 乙段（已在該 issue 清單內）。
