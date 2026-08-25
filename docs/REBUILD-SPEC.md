@@ -1553,8 +1553,13 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
 骨架用 mock 資料 + 本地 state 模擬，行為正確但不落地：
 
 * 檔案上傳（頭像、商品圖、Rich Menu 底圖、作品集）—— UI 與驗證訊息都在，缺 upload endpoint
-* QR Code 產生 —— **原站是前端 JS 產圖**（2026-08-25 更正，見下方勘誤），骨架用佔位框；
-  補齊工作見 [#16 補齊-1](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/16)
+* ~~QR Code 產生~~ —— **已補齊，不需要後端**（2026-08-25，[#16 補齊-1](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/16)，
+  commit `e958b1d`）。原站就是前端 JS 產圖（見下方勘誤），本專案同樣在前端產：
+  擁有者裁決安裝 **`qrcode` 1.5.4（精確版本，不用 caret）**，不得自寫編碼器
+  （鐵則 9 要求的「分冊點名」落在 [01 分冊 §4](integration/01-ARCHITECTURE.md)
+  的相依清單，裁決紀錄在 14 分冊 §8.2）。共用實作 `src/lib/qr.ts`，
+  `promote`（公開預約網址，檔名「預約QRcode.png」）與 `line-settings`
+  （LINE 加好友連結，檔名「LINE加好友QRcode.png」）兩頁共用同一支，不各寫一份
 * 圖表 —— 原站用圖表套件，骨架用純 CSS bar（刻意不引入相依）
 * 拖曳排序 —— 原站用 SortableJS，骨架用上移／下移按鈕
 * 即時推播（Web Push、聊天）

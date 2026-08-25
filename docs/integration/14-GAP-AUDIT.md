@@ -735,6 +735,12 @@ WIP `9ccb873` 寫好的 ②④ 分支，註解裡引用了
 本節講的是**導覽與跨頁引用**：其他功能提到「服務」時，要指向**該租戶當下模式的
 那一頁**，而不是寫死指向 `/tenant/services`。
 
+> ✅ **現況已更新（2026-08-25，commit `23f732f`）：下面這張「零個呼叫端」的表已經
+> 不是現況。** 表列的 11 處寫死連結與 5 處寫死文案全部改走 `catalogHref` /
+> `ordersHref` 與 `{catalog}` / `{orders}` / `{navBooking}` 佔位符，並加了靜態鎖與
+> 三模式瀏覽器實測。逐處對照、變異測試與殘留項見 **§6.11**。下表**保留原文**作為
+> 當時的盤點紀錄，不要拿它當現況讀。
+
 #### 現況：抽象層已經存在，但**零個地方在用**
 
 `MODE_PRESETS` 早就定義了 `catalogHref` / `ordersHref`（`src/config/modes.ts:25,27`），
@@ -1479,3 +1485,64 @@ callback 屬建置-4）、#12 明確限定行程／團次訂單——整條顧�
 
 留一個指向錯誤 issue 的「尚未建置」說明，比不留更糟：它看起來已經有人在追，
 實際上那個 issue 不會做這件事——下一個人會因此不再檢查。
+### 6.12 issue #29（跨頁引用走父層級）— 2026-08-25 完成（commit `23f732f`，驗收 2026-08-25 補齊）
+
+§8.13 的現況表（「抽象層已經存在，但**零個地方在用**」）**已不再是現況**：
+`MODE_PRESETS.catalogHref` / `.ordersHref` 現在有 11 個呼叫端，該表列的 11 處寫死
+連結與 5 處寫死文案全部改走父層級。逐處 before/after 對照表貼在
+[issue #29](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/29) 的驗收清單裡。
+
+守門的東西（防止再長回來）：
+
+| 種類 | 位置 | 變異測試（把任一處改回寫死時真的轉紅） |
+|---|---|---|
+| 路徑靜態鎖 | `tests/unit/mode-parent-links.29.test.ts`「src/app/tenant/** 與 src/i18n/zh-TW/pages/** 只有頁面自己可以出現 /tenant/{services,bookings,trips,tour-orders}」 | 把 `dashboard/page.tsx` 的「查看全部」改回 `/tenant/bookings` → FAIL |
+| 文案靜態鎖 | 同檔「父層級的名稱只有四個子層級頁面自己可以寫死…」 | 把 `staff.ts` 的 `services` 改回「可承接的服務項目」→ FAIL |
+| 三模式瀏覽器實測 | `scripts/verify/mode-parent-links.29.cjs` | GUIDE／LOCAL_SHOP／CLINIC 各跑一次，逐一比對頁面連結是否落在該租戶側邊欄內 |
+
+⚠️ 該腳本對 `product-orders` 在 LOCAL_SHOP／GUIDE 量到了「來源預約／相關預約」兩條，
+但在 **CLINIC 印的是 `[N/A]`**——那一組 mock 的 productOrders 沒有任何一筆帶
+`bookingId`／`fromBooking`，瀏覽器實測**觸發不到**這兩條連結。腳本把它印成
+「沒測到」而不是「通過」，這是對的（CLAUDE.md：FAIL 與「查不到」不可互相冒充），
+該兩處改由路徑靜態鎖把關。
+
+#### 由本輪驗收新發現、**未處理**的一處（§8.13-c 的補充）
+
+`src/i18n/zh-TW/pages/product-orders.ts` 的 `labels.fromBooking`／`f.relatedBooking`
+文案寫死「預約」用語：GUIDE 租戶的明細 Modal 會出現「本單為預約現場加購（至**預約列表**
+查看）」，而連結本身已正確指向 `/tenant/tour-orders`。**連結對、名字不對**——同型於
+§8.13-c 已列的 `bookings.ts`、`ai-settings.ts`，一樣落在 #29 的 5 處清單之外。
+與 §8.13-b 一併等命名裁決，不要逐處補丁。
+
+### 6.13 issue #16（QR Code 真實產生與下載）— 2026-08-25 完成（commit `e958b1d` ＋ `09d0c03`）
+
+擁有者裁決見 §8.2（安裝 `qrcode`，不得自寫編碼器）。分冊點名落在
+`01-ARCHITECTURE.md` §4（`qrcode` 1.5.4 精確版本；測試用 `jsqr` 1.4.0 ／ `pngjs` 5.0.0）；
+`REBUILD-SPEC.md` §9.2 的「骨架用佔位框」已於本次驗收改寫為已完成狀態。
+
+兩處實作共用 `src/lib/qr.ts`，內容各自不同且各自正確：
+
+| 頁面 | QR 內容 | 下載檔名 |
+|---|---|---|
+| `/tenant/promote` | 公開預約網址（`publicUrl`） | `預約QRcode.png`（對齊 `docs/specs/promote.json:305`） |
+| `/tenant/line-settings` | LINE 加好友連結（`addFriendUrl`） | `LINE加好友QRcode.png` |
+
+#### 驗收補做的那一輪：**Preview 站**，不是骨架模式
+
+施工當輪的 `scripts/verify/qr-download.cjs` 測的是本機 `next dev` 的骨架模式
+（`NEXT_PUBLIC_USE_MOCK=true`，不登入、不連 Supabase）。在當時是合理的——那一輪還沒
+push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「**登入 Preview 站**」，
+兩者不是同一件事（真實登入、真實 Supabase、production build 的 client bundle，
+骨架模式一項都沒走到）。因此本次補做 `scripts/verify/qr-download-preview.16.cjs`，
+對 branch alias 的 Preview 站跑同一組斷言，**18/18 通過**，而不是把清單改成符合
+已做過的事。
+
+#### 一條沒打勾的驗收項（缺證據，留空）
+
+清單第 3 項要求「對已知輸入的輸出與**公開標準向量**比對（version/mask），期望值
+寫死並註明出處」。`tests/unit/qr-lib.test.ts` 的「已知輸入的健檢向量」只做了**往返**
+（編→解 === 原字串），沒有任何公開標準向量的引用。可用的期望值只有 `qrcode` 自己
+產出的中介資料——拿它來驗它自己等於自證，正是本冊反覆在清的那一類。
+擁有者在 issue #16 的追加裁決留言已把驗收重點從「編碼正確性」移到「接線正確性」
+並明說「不要花力氣去測 `qrcode` 套件本身」，這一項因此**可能已經作廢**，
+但那是擁有者的裁決，不是執行者可以自行認定的——**留著不打勾，等裁決**。
