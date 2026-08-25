@@ -327,3 +327,90 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 | `tests/integration/api/chat-link.06.test.ts` 偶發紅燈 | 用固定 port 4123 起本地 server，前一輪未釋放時會撞 | CI 偶發假紅；重跑即過。應改成 port 0 由 OS 配發 |
 | Agent worktree 隔離在本沙箱不可用 | `isolation: 'worktree'` 建出來的 worktree 基底是 `28a14cb`（已分岔 8 個 commit），不是當前 HEAD | 平行施工只能共用工作目錄，**因此必須由主導者手動切開檔案範圍**，且同一時間只能有一個 agent 跑 `npm run test:integration`（`reset-db.mjs` 會清空 TEST 專案，是全域序列化點） |
 | `src/services/settings.ts:11` 模組層 `const current = MOCK_TENANTS[0]` | CLAUDE.md 明文警告過這個陷阱，仍然犯了 | 骨架模式下 demo 租戶被凍結成 GUIDE，三種模式看到同一間店；且 mock 分支硬塞已設定的 LINE token，假裝成已連動狀態 |
+
+---
+
+## 7. 三輪盤點（2026-08-25）：26 筆「呼叫了端點，但呼叫錯端點」
+
+### 7.1 為什麼要有第三輪——前兩輪的判準本身有洞
+
+前兩輪找假成功用的規則是：
+- 按了只動本地 React state 就顯示成功 toast
+- 用 `setTimeout` 假延遲讓假動作看起來像在跑
+- 硬編碼的假資料／假狀態
+
+`line-settings` 的「建立 Rich Menu」**三條都不符合**，所以兩輪都放過它——它確實
+`await` 了一支真實端點（`PUT /api/settings/line`），只是那支端點做的事（存外觀偏好）
+跟成功訊息宣稱的事（已發布到 LINE、顧客看得到）無關。
+
+**第三輪的判準因此改成：**
+
+> 這則成功訊息宣稱的事，是**哪一支端點**做的？那支端點真的做了那件事嗎？
+
+用這條規則重掃 `src/app/tenant/**` 與 `src/components/**`，得到 **26 筆 MISMATCH**
+（高 12／中 12／低 2）。其中 5 筆與 Rich Menu 完全同型（有 await 真端點但端點不對），
+另 21 筆是「端點存在、service 函式甚至已寫好、頁面從頭到尾沒 import」。
+
+### 7.2 判準的第四層：可自動化的靜態鎖
+
+三輪下來，判準逐次變嚴：
+
+| 輪次 | 判準 | 漏掉什麼 |
+|---|---|---|
+| 一 | 只動本地 state／setTimeout 假延遲 | 版面元件（只掃了 `src/app/tenant/**/page.tsx`） |
+| 二 | 加掃 `src/components/**` | 有 await 真端點但端點不對的 |
+| 三 | 成功訊息宣稱的事是哪支端點做的 | （待第四輪驗證） |
+
+第三輪的規則可以部分自動化，建議補一條靜態測試：
+**頁面每一則非 danger／warning 的 `toast.show(...)`，都必須能在同一個函式內追到一個
+`await <service 函式>`。** 26 筆裡有 5 筆（campaigns／marketing／block-times／
+customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不必等人工稽核。
+
+⚠️ 但這條鎖**抓不到** MISMATCH 的核心型態（有 await、端點不對），所以它是補充、
+不是取代。端點對不對仍然只能靠人讀 route。
+
+### 7.3 最嚴重的一筆：AI 客服設定把提示詞當罐頭訊息推給顧客
+
+`src/app/tenant/ai-settings/page.tsx:79` 呼叫的是
+`saveLineSettings({ autoReplyEnabled, defaultReply: prompt })`，寫進
+`tenant_settings.line` jsonb。但 webhook 的 AI 分支（`src/server/line-events.ts` 分支 ⑤）
+讀的是 `tenant_settings.ai.enabled`，那個欄位永遠停在 zod 預設的 `false`。專用端點
+`PUT /api/ai-settings` 存在，**從來沒有被呼叫過**。
+
+實際後果不只是「AI 沒開起來」，而是**主動做錯事**：店家寫的「AI 提示詞」被原封不動
+存成 `defaultReply`，於是 webhook 分支 ⑥ 把那段提示詞**逐字推播給每一位顧客**。
+店家看到的是「AI 客服設定已儲存（已啟用）」。
+
+這一筆同時暴露一個設計衝突：`ai-settings` 與 `line-settings` **搶寫同一組**
+`line.autoReplyEnabled` / `line.defaultReply`，兩頁互相覆蓋。修的時候必須一併決定
+誰擁有這兩個欄位。
+
+### 7.4 26 筆的歸屬
+
+| 已排在既有 issue | 筆數 | issue |
+|---|---|---|
+| keyword-replies 全頁 | 1 | #5 |
+| trips／trip 詳情／tour-orders 三頁 | 3 | #8 |
+| customers 新增編輯／LINE 綁定解綁、block-times、points 儲值、marketing、campaigns、shifts 週班表與模式、shop-design 空 patch、rich-menu 底圖上傳 | 10 | #7 |
+| shop-page 端點群 | （併入 #7 的 shop-design 列） | #22 |
+
+| 本輪新開 | 筆數 | 新 issue |
+|---|---|---|
+| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 |
+| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 |
+
+`#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、
+歡迎卡片圖片上傳按鈕。
+
+### 7.5 本輪未判定（不准猜，列出來等決策）
+
+- `POST /api/settings/line/flex-menu` 無任何呼叫者。它與 `PUT /api/settings/line`
+  寫同一組 flex 欄位，所以不造成資料落差；但它是廢棄端點還是 issue #6 的預留，
+  無法從程式碼判定。
+- `notifyBookingStatus` 是 fire-and-forget（06 分冊 §5 明文要求不 await），函式內
+  吞錯只 `console.error`。因此推播實際失敗時，畫面仍顯示「已通知顧客」。這算不算
+  「宣稱了未驗證的事」是規約層級的取捨，需要決策而不是逕行判定為 MISMATCH。
+- `/tenant/promote` 的流量統計讀 `MOCK_PROMOTION_STATS`，程式碼註解誠實，但頁面上
+  有沒有對使用者說明那是示範數字，需要看渲染結果才能定論（假數字與真的公開網址並排）。
+- `shifts` 的「週排班」與「排班模式」是否本來就規劃為純前端概念——`/api/shifts` 的
+  契約不含這兩者。無論如何，目前顯示「已儲存」都不對。
