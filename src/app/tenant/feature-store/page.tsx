@@ -11,7 +11,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, Label, Select, Switch } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { applyFeature, cancelFeature, listFeatures, restoreFeature } from '@/services/settings';
+import {
+  applyFeature, cancelFeature, listFeatures, restoreFeature,
+  type FeatureRestoreResult,
+} from '@/services/settings';
 import { getPointBalance } from '@/services/points';
 import { ApiError } from '@/lib/api';
 import {
@@ -195,13 +198,37 @@ export default function FeatureStorePage() {
     setWorking(true);
     try {
       // POST /api/feature-store/:code/{cancel,restore}（09 §3）；mock 模擬成功。
+      let restoreResult: FeatureRestoreResult | undefined;
       if (kind === 'cancel') await cancelFeature(item.key);
-      else await restoreFeature(item.key);
+      else restoreResult = await restoreFeature(item.key);
       setPending(null);
       if (kind === 'cancel') {
         toast.show(sub?.expiresAt ? t.messages.cancelledUsable(name) : t.messages.cancelled(name));
+      } else if (restoreResult?.restoreSideEffectFailed) {
+        /**
+         * 訂閱本身恢復了，但 §6 的還原副作用（票券重新發布／商品重新上架）掛了。
+         * 端點刻意不讓副作用失敗連帶讓恢復失敗（restore/route.ts:78-83），所以
+         * 這裡不是 danger 而是 warning：恢復是真的成功，只有副作用要店家手動補。
+         * 先前這個旗標被整個丟棄，店家只看得到「訂閱已恢復！」，永遠不會知道
+         * 票券／商品還躺在下架狀態。
+         */
+        toast.show(
+          `${t.messages.restored(name)}${t.messages.restoreSideEffectFailed}`,
+          'warning',
+        );
       } else {
-        toast.show(t.messages.restored(name));
+        // 副作用成功：把實際恢復的數量講出來（0 就不提，不要憑空報一個數字）
+        const extras = [
+          restoreResult?.restoredCoupons
+            ? t.messages.couponsRestored(restoreResult.restoredCoupons) : '',
+          restoreResult?.restoredProducts
+            ? t.messages.productsRestored(restoreResult.restoredProducts) : '',
+        ].filter(Boolean);
+        toast.show(
+          extras.length
+            ? `${t.messages.restored(name)}\n${extras.join('\n')}`
+            : t.messages.restored(name),
+        );
       }
       void load();
     } catch (e) {

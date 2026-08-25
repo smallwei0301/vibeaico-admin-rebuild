@@ -145,11 +145,25 @@ export const common = {
       OTHER: '其他',
     },
     subject: '問題標題',
+    subjectPlaceholder: '用一句話描述問題',
     description: '詳細說明',
-    screenshot: '附上截圖（選填）',
-    screenshotHint: '支援 PNG、JPG、GIF、WebP，建議小於 5MB',
+    descriptionPlaceholder: '請說明操作步驟、預期結果與實際結果',
+    screenshot: '附上截圖',
+    /**
+     * ⚠️ 截圖上傳尚未建置：`POST /api/bug-report` 的契約（04 §B-6）只收
+     * category / subject / content / contactEmail / pageUrl，`bug_reports`
+     * 表也沒有附件欄位，Storage 白名單（0008/0017）沒有可放回報附件的 bucket。
+     * 依 CLAUDE.md「Never fabricate a known」，寧可停用並明說，也不要讓使用者
+     * 選了檔案、送出後收到道謝，而檔案其實被丟掉——那正是本次要修掉的缺陷本身。
+     */
+    screenshotNotBuilt: '截圖上傳尚未建置，選了檔案也不會被送出；請把畫面狀況寫進「詳細說明」。',
     contactEmail: '聯絡信箱',
+    contactEmailHint: '選填。留空時我們會回覆到你登入用的信箱。',
     submit: '送出回報',
+    subjectRequired: '請輸入問題標題',
+    descriptionRequired: '請輸入詳細說明',
+    submitted: '已收到您的回報，感謝協助！',
+    submitFailed: '回報送出失敗：',
   },
 
   /* ---- AI 客服助理（全站右下角）---- */

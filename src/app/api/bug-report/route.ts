@@ -1,5 +1,9 @@
 // POST /api/bug-report — 問題回報（04 分冊 §B-6 MVP：寫 bug_reports 表＋寄信
-// 給平台管理者）。body：{ category?, content, pageUrl? }。
+// 給平台管理者）。body：{ category?, subject, content, contactEmail?, pageUrl? }。
+//
+// subject / contact_email 是 migration 0018 補的欄位（issue #28 第 ① 筆）：modal
+// 收四個欄位，0012 建表時只有 category/content 有落點，另兩個沒有地方放。不併進
+// content 是刻意的——併起來就無法逐欄比對，也就無法證明「內容真的被收集了」。
 //
 // - 先 requireTenant()：本端點掛在店家後台（有租戶脈絡），reporter 存登入者 email。
 // - bug_reports 是平台級表（0012）：RLS enable 且**無 policy** = service role 專用，
@@ -17,7 +21,11 @@ import { createAdminSupabase } from '@/server/supabase';
 
 const bodySchema = z.object({
   category: z.string().max(50).optional(),
+  subject: z.string().min(1, '請輸入問題標題').max(200),
   content: z.string().min(1, '請輸入問題描述').max(5000),
+  // 回報者自填的回覆信箱：與登入帳號（reporter）分開存，可能刻意留別的信箱。
+  // 空字串＝沒填，照樣存空字串（表預設），不要塞 reporter 進去假裝有填。
+  contactEmail: z.string().max(200).optional(),
   pageUrl: z.string().max(500).optional(),
 });
 
@@ -31,7 +39,9 @@ export const POST = handle(async (req) => {
       tenant_id: t.tenantId,
       reporter: t.user.email ?? '',
       category: b.category || 'OTHER',   // 空字串/未帶 → 表預設語意 'OTHER'
+      subject: b.subject,
       content: b.content,
+      contact_email: b.contactEmail ?? '',
       page_url: b.pageUrl ?? '',
     })
     .select('id')

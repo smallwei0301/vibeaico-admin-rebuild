@@ -1067,15 +1067,23 @@ function CategoryModal({
     }
     setError('');
     try {
-      /* 後端只收 name（sort_order 自動取最大值+1、無 active 欄位）；排序值與啟用僅前端狀態 */
-      const { id } = await createProductCategory(name.trim());
+      /* 排序與啟用自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
+         這兩個輸入從未離開瀏覽器。sortOrder 用後端回的實際值，不自己猜。 */
+      const parsedSortOrder = Number(sortOrder);
+      const { id, sortOrder: savedSortOrder } = await createProductCategory({
+        name: name.trim(),
+        active,
+        sortOrder: Number.isFinite(parsedSortOrder) && sortOrder.trim() !== ''
+          ? parsedSortOrder
+          : undefined,
+      });
       onChange([
         ...categories,
         {
           id,
           name: name.trim(),
           active,
-          sortOrder: Number(sortOrder) || categories.length + 1,
+          sortOrder: savedSortOrder,
         },
       ]);
       reset();

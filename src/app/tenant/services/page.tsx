@@ -171,8 +171,10 @@ export default function ServicesPage() {
   React.useEffect(() => {
     void (async () => {
       try {
+        // description / active 自 0018 起是真欄位，照後端回的值用；
+        // 先前這裡硬補 `description: ''`／`active: true`，等於把剛存進去的值抹掉。
         const list = await listServiceCategories();
-        if (list) setCategories(list.map((c) => ({ ...c, description: '', active: true })));
+        if (list) setCategories(list);
       } catch {
         toast.show(t.messages.retryLater, 'danger');
       }
@@ -1085,13 +1087,14 @@ function CategoryModal({
       return;
     }
     setError('');
+    const trimmedDescription = description.trim();
     const localId = `sc_new_${nextId.current++}`;
     onChange([
       ...categories,
       {
         id: localId,
         name: trimmed,
-        description: description.trim(),
+        description: trimmedDescription,
         active: true,
         sortOrder: categories.length + 1,
       },
@@ -1099,10 +1102,16 @@ function CategoryModal({
     setName('');
     setDescription('');
     toast.show(t.category.created);
-    /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-    void createServiceCategory(trimmed)
+    /* 說明欄自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
+       使用者填的說明重新整理就消失。
+       mock 分支回 null → 沿用本地 id；真實 API 回 {id, sortOrder} 後換成後端值 */
+    void createServiceCategory({ name: trimmed, description: trimmedDescription, active: true })
       .then((res) => {
-        if (res) onChange((list) => list.map((c) => (c.id === localId ? { ...c, id: res.id } : c)));
+        if (res) {
+          onChange((list) => list.map((c) => (
+            c.id === localId ? { ...c, id: res.id, sortOrder: res.sortOrder } : c
+          )));
+        }
       })
       .catch((e) => {
         toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
