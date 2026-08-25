@@ -116,9 +116,22 @@ describe('頁面：只有旗標明確為 true 才敢說「已自動記錄」', (
 });
 
 describe('文案：兩句各自只講自己有依據的事', () => {
-  it('「已記錄」那句才提平台會處理；另一句維持要店家聯絡客服', () => {
+  /**
+   * ⚠️ 前提變更（主導者複核，2026-08-25）——**不是**把斷言放寬。
+   *
+   * 這一格原本釘的是「…此問題已自動記錄，**平台會協助處理**」。複核時判定後半句
+   * 仍然超出量到的範圍：端點量到的只有「`bug_reports` 那一列 insert 成功了」，
+   * 而「平台會處理」是平台端的**作業承諾**，系統無從得知，也沒有任何機制保證。
+   *
+   * 這是同一個病的小劑量版本——最初那句「（已通知平台處理）」錯在通知根本沒發生；
+   * 這句錯在把「記下來了」講成「有人會處理」。
+   *
+   * 釘子照樣是釘子（維持 `toBe`，沒有改成 `toContain`），只是釘在收緊後的字串上，
+   * 並在下方新增一組斷言把「不得承諾平台會處理」這個方向也鎖住。
+   */
+  it('「已記錄」那句只講已記錄，不承諾後續；另一句維持要店家聯絡客服', () => {
     expect(t.messages.restoreSideEffectFailedNotified).toBe(
-      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；此問題已自動記錄，平台會協助處理',
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；此問題已自動記錄給平台，若需要盡快處理請直接聯絡客服',
     );
     expect(t.messages.restoreSideEffectFailed).toBe(
       '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；若無法自行恢復，請聯絡平台客服協助處理',
@@ -136,5 +149,32 @@ describe('文案：兩句各自只講自己有依據的事', () => {
     // 兩句都必須保留店家自己該做的那件事
     expect(t.messages.restoreSideEffectFailedNotified).toContain('手動恢復');
     expect(t.messages.restoreSideEffectFailed).toContain('手動恢復');
+  });
+});
+
+/**
+ * 主導者複核時收緊的一條：`platformNotified === true` 那句一度寫成
+ * 「此問題已自動記錄，平台會協助處理」。
+ *
+ * 我們真正量到的只有一件事——`bug_reports` 那一列 insert 成功了。
+ * 「平台會處理」是平台端的**作業承諾**，系統無從得知，也沒有任何機制保證。
+ * 這是同一個病的小劑量版本：原句（「已通知平台處理」）錯在通知根本沒發生，
+ * 這句錯在把「記下來了」講成「有人會處理」。
+ */
+describe('連「已記錄」之後的那半句也不得超出量到的範圍', () => {
+  it('不承諾平台會處理，只陳述「已記錄」這個真的量到的事實', () => {
+    expect(t.messages.restoreSideEffectFailedNotified).not.toContain('平台會協助處理');
+    expect(t.messages.restoreSideEffectFailedNotified).not.toContain('平台會處理');
+    expect(t.messages.restoreSideEffectFailedNotified).toContain('已自動記錄給平台');
+  });
+
+  it('仍然給店家一個可以自己採取的動作（不是只丟一句話就沒了）', () => {
+    expect(t.messages.restoreSideEffectFailedNotified).toMatch(/請直接聯絡客服/);
+  });
+
+  it('兩句都仍不宣稱「已通知」（§8.10 通則沒有因為這次收緊而鬆掉）', () => {
+    for (const line of [t.messages.restoreSideEffectFailed, t.messages.restoreSideEffectFailedNotified]) {
+      expect(line).not.toContain('已通知');
+    }
   });
 });
