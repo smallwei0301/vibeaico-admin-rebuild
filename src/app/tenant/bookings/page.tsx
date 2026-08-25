@@ -127,6 +127,16 @@ const addonsOf = (b: Booking): AddonItem[] => byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
 })[b.id] ?? [];
 
+/**
+ * 付款頁（`/pay/:bookingNo`）尚未建置——屬於 Phase 9b／旅客 checkout（issue #12）
+ * 的範圍，`src/app/` 底下目前只有 `api`、`tenant`、`layout.tsx`、`page.tsx`，
+ * 顧客打開這個網址一定 404。
+ *
+ * 依擁有者裁決（issue #28 ②，補齊優先於刪除）：不建 `/pay` 頁，也不刪這段邏輯——
+ * 詳情 modal 的「複製付款連結」鈕已停用（見下方 `copyPayLink` 呼叫處與 JSX），
+ * 待 #12 把 `/pay` 頁真的建出來後，只需拿掉那顆鈕的 `disabled` 與旁邊的說明文字，
+ * 這裡的組網址／複製邏輯不用重寫。
+ */
 const payLinkOf = (b: Booking) => `${APP_URL.replace(/\/$/, '')}/pay/${b.bookingNo}`;
 
 /** 付款狀態顯示：已付清 / 已付訂金 / 待付款 */
@@ -254,6 +264,12 @@ export default function BookingsPage() {
     }
   };
 
+  /**
+   * 目前唯一的呼叫入口（詳情 modal 的「複製付款連結」鈕）已 disabled，
+   * 所以這支函式與底下剪貼簿失敗時把網址印進 toast 的退路都到不了——
+   * 保留是為了 issue #12 完成、`/pay` 頁真的存在後可以直接拿掉鈕的
+   * disabled 就恢復運作，不用重寫。見 payLinkOf 上方註解。
+   */
   const copyPayLink = async (b: Booking) => {
     try {
       await navigator.clipboard.writeText(payLinkOf(b));
@@ -1697,9 +1713,13 @@ function BookingDetailModal({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onCopyPayLink}>
-              <ClipboardCopy size={13} />{t.rowActions.copyPayLink}
-            </Button>
+            {/* issue #28 ②：/pay 頁尚未建置（issue #12），鈕停用＋畫面上直接說明，不只是 tooltip */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button variant="outline" size="sm" disabled onClick={onCopyPayLink}>
+                <ClipboardCopy size={13} />{t.rowActions.copyPayLink}
+              </Button>
+              <span className="text-xs text-secondary">{t.detailModal.payLinkUnavailable}</span>
+            </div>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
               {extras.paidAmount > 0 ? t.rowActions.markBalancePaid : t.rowActions.markPaidOffline}
