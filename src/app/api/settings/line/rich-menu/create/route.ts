@@ -6,6 +6,7 @@ import { lineSettingsSchema } from '@/config/tenant-settings';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { RICH_MENU_THEME_KEYS, RICH_MENU_THEME_COLORS } from '@/config/rich-menu-themes';
 import { solidColorPng } from '@/server/png';
+import { richMenuCellAction } from '@/server/flex-menu';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
   lineSetDefaultRichMenu, lineDeleteRichMenu,
@@ -51,11 +52,12 @@ function buildRichMenuBody(theme: string, businessType: BusinessType) {
     chatBarText: '選單',
     areas: CELLS.map((c, i) => ({
       bounds: { x: c.x, y: c.y, width: c.w, height: c.h },
-      action: {
-        type: 'message',
-        label: MODE_PRESETS[businessType].richMenuCells[i].label,
-        text: MODE_PRESETS[businessType].richMenuCells[i].text,
-      },
+      // action 一律由 src/server/flex-menu.ts 的 richMenuCellAction() 產生：
+      // 設成 FLEX_POPUP 的格子會送出 FLEX_POPUP_TRIGGER_TEXT，於是它與顧客
+      // 自己打「選單」走同一條路徑、由**同一支** buildFlexMenuOutcome() 回覆
+      // （issue #6 的單一事實來源要求）。在這裡自己組 action 物件，就是把
+      // 那個綁定複寫成第二份。
+      action: richMenuCellAction(MODE_PRESETS[businessType].richMenuCells[i]),
     })),
   };
 }

@@ -17,7 +17,11 @@ import {
   FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listFeatures, getTenantSettings, createRichMenu, deleteRichMenu } from '@/services/settings';
+import {
+  listFeatures, getTenantSettings, createRichMenu, deleteRichMenu, saveFlexMenu,
+} from '@/services/settings';
+import { uploadImage } from '@/services/upload';
+import { MAX_FLEX_CARDS, type FlexCard } from '@/config/tenant-settings';
 import { ApiError } from '@/lib/api';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS } from '@/config/modes';
@@ -37,7 +41,6 @@ import { cn } from '@/lib/utils';
  *   POST     /api/settings/line/rich-menu/create-scene
  *   POST     /api/settings/line/rich-menu/preview-advanced
  *   POST     /api/settings/line/rich-menu/restore-previous
- *   PUT      /api/settings/line/flex-menu
  *   PUT      /api/settings/line/booking-step-guide
  *
  * ⚠️ 下方的 hex 色碼是「要存進 tenant_settings 的資料值」（LINE 選單底圖配色），
@@ -137,7 +140,7 @@ export default function RichMenuDesignPage() {
         {loading ? <LoadingCard /> : <RichMenuTab subscribed={subscribed} toast={toast} />}
       </TabPanel>
       <TabPanel active={tab === 'flexMenu'}>
-        {loading ? <LoadingCard /> : <FlexMenuTab subscribed={subscribed} toast={toast} />}
+        {loading ? <LoadingCard /> : <FlexMenuTab toast={toast} />}
       </TabPanel>
     </>
   );
@@ -916,37 +919,160 @@ function FlexPopupModal({
 /* ==========================================================================
  * Flex 主選單（氣泡選單）
  * ======================================================================== */
-type FlexCard = { id: string; title: string; subtitle: string; imageUrl: string; ad: boolean };
+/**
+ * 編輯器裡的一列。`id` 只是 React key（送出前會被剝掉）——存進
+ * `tenant_settings.line.flexCards` 的形狀由 `flexCardSchema` 定義，
+ * 就是 06 分冊 §6 契約的四個欄位，這裡不得自行多存東西。
+ */
+type EditorCard = FlexCard & { id: string };
 
-const DEFAULT_FLEX_CARDS: FlexCard[] = [
-  { id: 'fc_1', title: '開始預約', subtitle: '選擇服務與時段', imageUrl: '', ad: false },
+/**
+ * 「恢復預設」用的示範卡片。
+ * ⚠️ 這是**編輯器的起始內容**，不是「系統預設樣式」——按下「恢復預設」只會把
+ * 編輯器換成這三張，要按「發布」才會寫進店家設定（`t.flex.resetConfirm` 逐字
+ * 講了這件事）。三張卡的文字對應 LOCAL_SHOP 的既有關鍵字，按下去打得到 handler。
+ */
+const DEFAULT_FLEX_CARDS: EditorCard[] = [
+  { id: 'fc_1', title: '預約', subtitle: '選擇服務與時段', imageUrl: '', ad: false },
   { id: 'fc_2', title: '我的預約', subtitle: '查詢或取消預約', imageUrl: '', ad: false },
-  { id: 'fc_3', title: '瀏覽商品', subtitle: '線上選購', imageUrl: '', ad: false },
+  { id: 'fc_3', title: '商品', subtitle: '線上選購', imageUrl: '', ad: false },
 ];
 
-const MAX_FLEX_CARDS = 12;
-
+/**
+ * Flex 主選單分頁。
+ *
+ * ⚠️ issue #6 之前這整個元件是**假的**（14 分冊 §1 根因 A）：卡片、開關、
+ * fallback 全在 React state 裡，「發布」只是 `toast.show(t.flex.saved)`，
+ * 沒有呼叫任何端點，重新整理就全部消失，而店家看到的是「主選單已儲存」。
+ *
+ * 現在的三段鏈路（DoD 10）：
+ *   載入  loadFlexMenu() → getTenantSettings() → GET  /api/settings（回 line.flexCards）
+ *   發布  publish()      → saveFlexMenu()      → POST /api/settings/line/flex-menu
+ *   清除  clearPublished() → saveFlexMenu({ flexCards: [] }) → 同上
+ *   傳圖  onPickImage()  → uploadImage(file, 'richmenu-assets') → POST /api/upload
+ *
+ * 「恢復預設」與「刪除卡片」刻意**只動編輯器**（文案逐字說了「要按發布才會存檔
+ * 生效」），所以那兩顆按鈕不呼叫端點——這不是漏接，是與畫面上的承諾一致。
+ */
 function FlexMenuTab({
-  subscribed, toast,
-}: { subscribed: boolean; toast: ReturnType<typeof useToast> }) {
+  toast,
+}: { toast: ReturnType<typeof useToast> }) {
   const SHOP_NAME = useCurrentTenant().name;
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
   const [enabled, setEnabled] = React.useState(true);
   const [fallback, setFallback] = React.useState<'HINT' | 'SILENT'>('HINT');
-  const [cards, setCards] = React.useState<FlexCard[]>(DEFAULT_FLEX_CARDS);
+  const [cards, setCards] = React.useState<EditorCard[]>([]);
   const [page, setPage] = React.useState(0);
   const [confirm, setConfirm] = React.useState<null | 'reset' | 'delete' | 'deleteCard'>(null);
-  const [target, setTarget] = React.useState<FlexCard | null>(null);
+  const [target, setTarget] = React.useState<EditorCard | null>(null);
+  const [uploadingId, setUploadingId] = React.useState<string | null>(null);
   const nextId = React.useRef(DEFAULT_FLEX_CARDS.length + 1);
 
+  const newId = () => { nextId.current += 1; return `fc_${nextId.current}`; };
+
+  /** 已存的設定（真實來源是 tenant_settings.line，不是本地預設值） */
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const s = await getTenantSettings();
+        setEnabled(s.line.flexMenuEnabled);
+        setFallback(s.line.flexMenuFallback);
+        setCards((s.line.flexCards ?? []).map((c) => ({ ...c, id: newId() })));
+      } catch (e) {
+        toast.show(
+          `${t.flex.loadStateFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+          'danger',
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 編輯器的列 → 端點契約的四個欄位（id 是 React key，不進資料庫） */
+  const toPayload = (rows: EditorCard[]): FlexCard[] =>
+    rows.map(({ title, subtitle, imageUrl, ad }) => ({ title, subtitle, imageUrl, ad }));
+
   const addCard = (ad: boolean) => {
-    if (cards.length >= MAX_FLEX_CARDS) { toast.show(t.flex.maxCards12, 'warning'); return; }
-    nextId.current += 1;
+    if (cards.length >= MAX_FLEX_CARDS) {
+      toast.show(t.flex.maxCards(MAX_FLEX_CARDS), 'warning');
+      return;
+    }
     setCards((c) => [...c, {
-      id: `fc_${nextId.current}`,
+      id: newId(),
       title: ad ? t.flex.adCardLabel : t.flex.newCard,
       subtitle: '', imageUrl: '', ad,
     }]);
   };
+
+  const onPickImage = async (id: string, file: File) => {
+    setUploadingId(id);
+    try {
+      // richmenu-assets：public bucket（網址永久有效，LINE 抓得到）且已在
+      // /api/upload 的 LINE_BOUND_BUCKETS 內＝只收 JPEG/PNG，正是 Flex 主圖的限制。
+      const url = await uploadImage(file, 'richmenu-assets');
+      setCards((cs) => cs.map((x) => (x.id === id ? { ...x, imageUrl: url } : x)));
+      toast.show(t.flex.imageUploaded);
+    } catch (e) {
+      toast.show(
+        `${t.flex.uploadFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  /**
+   * 發布＝真的把卡片與開關寫進 tenant_settings.line。
+   * 送出前先擋空標題：標題同時是卡片按鈕上的字，空字串會被端點的 zod 退回，
+   * 在這裡先講清楚哪裡沒填，比讓店家看一句 400 的原文有用。
+   */
+  const publish = async () => {
+    if (cards.some((c) => !c.title.trim())) {
+      toast.show(t.flex.titleRequired, 'warning');
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveFlexMenu({
+        flexMenuEnabled: enabled,
+        flexMenuFallback: fallback,
+        flexCards: toPayload(cards),
+      });
+      toast.show(t.flex.saved, 'success');
+    } catch (e) {
+      toast.show(
+        `${t.flex.saveFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** 清除已發布：把 flexCards 存成空陣列（webhook 因此落回文字關鍵字清單） */
+  const clearPublished = async () => {
+    setConfirm(null);
+    setSaving(true);
+    try {
+      await saveFlexMenu({ flexCards: [] });
+      setCards([]);
+      setPage(0);
+      toast.show(t.flex.resetToDefault);
+    } catch (e) {
+      toast.show(
+        `${t.flex.saveFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <LoadingCard />;
 
   const current = cards[Math.min(page, cards.length - 1)];
 
@@ -959,7 +1085,7 @@ function FlexMenuTab({
             <SwitchField
               label={t.flex.enabledLabel}
               checked={enabled}
-              onCheckedChange={(v) => { setEnabled(v); toast.show(v ? t.flex.enabledOn : t.flex.enabledOff); }}
+              onCheckedChange={setEnabled}
               description={
                 <>
                   {t.flex.enabledOffLead}
@@ -981,10 +1107,7 @@ function FlexMenuTab({
                       name="flexFallback"
                       className="mt-1"
                       checked={fallback === k}
-                      onChange={() => {
-                        setFallback(k);
-                        toast.show(k === 'SILENT' ? t.flex.silentSet : t.flex.hintSet);
-                      }}
+                      onChange={() => setFallback(k)}
                     />
                     <span>{label}</span>
                   </label>
@@ -1029,6 +1152,23 @@ function FlexMenuTab({
                             value={c.subtitle}
                             onChange={(e) => setCards((cs) => cs.map((x) => x.id === c.id ? { ...x, subtitle: e.target.value } : x))}
                           />
+                          <label className="mt-1 inline-flex cursor-pointer items-center gap-1 text-sm text-secondary">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = '';
+                                if (file) void onPickImage(c.id, file);
+                              }}
+                            />
+                            <Upload size={12} />
+                            {uploadingId === c.id ? common.loading : t.flex.uploadImage}
+                          </label>
+                          {c.imageUrl && (
+                            <span className="ml-2 text-sm text-success">{t.flex.imageUploaded}</span>
+                          )}
                         </td>
                         <td>
                           <Button
@@ -1055,6 +1195,7 @@ function FlexMenuTab({
             </div>
             <div className="border-t border-neutral-200 p-4">
               <FormText>{t.carouselPreview.note}</FormText>
+              <FormText>{t.flex.imageTypeHint}</FormText>
             </div>
           </CardBody>
         </Card>
@@ -1069,7 +1210,9 @@ function FlexMenuTab({
                 <div className="overflow-hidden rounded-lg border border-neutral-200">
                   <div className="bg-line px-3 py-2 text-sm font-bold text-white">{SHOP_NAME}</div>
                   <div className="flex aspect-[20/13] items-center justify-center bg-neutral-100 text-secondary">
-                    {current.imageUrl ? null : <ImageIcon size={28} />}
+                    {current.imageUrl
+                      ? <img src={current.imageUrl} alt="" className="h-full w-full object-cover" />
+                      : <ImageIcon size={28} />}
                   </div>
                   <div className="space-y-1 p-3">
                     <div className="text-base font-bold">{current.title}</div>
@@ -1097,13 +1240,13 @@ function FlexMenuTab({
 
         <Card>
           <CardBody className="space-y-2">
-            <Button block onClick={() => toast.show(subscribed ? t.flex.saved : t.feature.flexFreeFallback, subscribed ? 'success' : 'warning')}>
+            <Button block disabled={saving} onClick={() => void publish()}>
               <Send size={15} />{t.flex.publish}
             </Button>
-            <Button block variant="outline" onClick={() => setConfirm('reset')}>
+            <Button block variant="outline" disabled={saving} onClick={() => setConfirm('reset')}>
               <RotateCcw size={14} />{t.flex.reset}
             </Button>
-            <Button block variant="outlineDanger" onClick={() => setConfirm('delete')}>
+            <Button block variant="outlineDanger" disabled={saving} onClick={() => setConfirm('delete')}>
               <Trash2 size={14} />{t.flex.deletePublished}
             </Button>
           </CardBody>
@@ -1115,7 +1258,12 @@ function FlexMenuTab({
         title={t.flex.reset}
         message={t.flex.resetConfirm}
         onClose={() => setConfirm(null)}
-        onConfirm={() => { setConfirm(null); setCards(DEFAULT_FLEX_CARDS); setPage(0); toast.show(t.flex.resetDone); }}
+        onConfirm={() => {
+          setConfirm(null);
+          setCards(DEFAULT_FLEX_CARDS.map((c) => ({ ...c, id: newId() })));
+          setPage(0);
+          toast.show(t.flex.resetDone);
+        }}
       />
       <ConfirmModal
         open={confirm === 'delete'}
@@ -1124,7 +1272,7 @@ function FlexMenuTab({
         message={t.flex.deletePublishedConfirm}
         confirmText={common.delete}
         onClose={() => setConfirm(null)}
-        onConfirm={() => { setConfirm(null); toast.show(t.flex.resetToDefault); }}
+        onConfirm={() => void clearPublished()}
       />
       <ConfirmModal
         open={confirm === 'deleteCard'}
@@ -1134,7 +1282,6 @@ function FlexMenuTab({
         confirmText={common.delete}
         onClose={() => setConfirm(null)}
         onConfirm={() => {
-          if (cards.length <= 1) { toast.show(t.flex.minCards, 'warning'); setConfirm(null); return; }
           setCards((c) => c.filter((x) => x.id !== target?.id));
           setPage(0);
           setConfirm(null);

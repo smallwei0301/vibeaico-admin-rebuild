@@ -74,9 +74,25 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
   describe('0. 事實基準：發布端點真的只做這些事（判定假宣稱的依據）', () => {
     const route = src(CREATE_ROUTE);
 
+    /*
+     * ⚠️ 前提變更（issue #6）：這一條原本逐字比對
+     * `MODE_PRESETS[businessType].richMenuCells[i].label` / `.text` 兩個字面值。
+     * #6 把 action 的產生抽成 `richMenuCellAction()`（單一事實來源：FLEX_POPUP
+     * 的格子要與「選單」走同一支組裝函式），那兩個字面值因此不再出現。
+     *
+     * 但**這一條要證的事沒有變**：六格文字來自 MODE_PRESETS，與頁面的「每格設定」
+     * 無關。改成釘三件仍然成立、而且合起來比原本更嚴的事：
+     *   ① 餵給 action 產生器的就是 MODE_PRESETS[businessType].richMenuCells[i]
+     *   ② 端點的請求 body 只有 { theme }，沒有任何管道能從頁面帶 cells 進來
+     *   ③ label/text 真的來自那個 cell —— 由 richMenuCellAction() 的單元測試
+     *      （tests/unit/flex-menu.06.test.ts:「一般格子送出自己的文字；
+     *      FLEX_POPUP 格子改送 FLEX_POPUP_TRIGGER_TEXT」）證明
+     */
     it('六格文字取自 MODE_PRESETS.richMenuCells，與頁面的「每格設定」無關', () => {
-      expect(route).toContain('MODE_PRESETS[businessType].richMenuCells[i].label');
-      expect(route).toContain('MODE_PRESETS[businessType].richMenuCells[i].text');
+      expect(route).toContain('richMenuCellAction(MODE_PRESETS[businessType].richMenuCells[i])');
+      // 端點收得到的欄位只有 theme：頁面的 cells 沒有任何路徑進得來
+      expect(route).toContain('const bodySchema = z.object({ theme:');
+      expect(route).not.toMatch(/body\.cells|cells:\s*z\./);
     });
 
     it('版型固定 2500×1686 的 3×2 六格，與頁面的「佈局」無關', () => {
@@ -210,9 +226,22 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(cellStep).toContain('只影響本頁預覽');
       expect(popupStep).toContain('尚未建置');
       expect(publishStep).not.toContain('即生效');
-      // Flex 分頁的「發布」沒有呼叫任何端點，使用說明不得宣稱按了就儲存生效
-      expect(t.intro.flexMenuSteps[4]).not.toContain('儲存生效');
-      expect(t.intro.flexMenuSteps[4]).toContain('尚未接上儲存');
+      /*
+       * ⚠️ 前提變更（issue #6）：Flex 分頁的「發布」現在真的呼叫
+       * POST /api/settings/line/flex-menu，所以「尚未接上儲存」那句已經不成立，
+       * 留著反而變成新的謊（方向相反的那一種）。改釘仍然成立、而且更嚴格的事：
+       * 使用說明的最後一步必須描述**真的會發生的事**——寫入店家設定、
+       * 顧客輸入「選單」時收到——而不是 Rich Menu 那種「開啟聊天就看到」。
+       */
+      const flexPublishStep = t.intro.flexMenuSteps[t.intro.flexMenuSteps.length - 1];
+      expect(flexPublishStep).not.toContain('尚未接上儲存');
+      expect(flexPublishStep).toContain('發布 Flex 主選單到 LINE');
+      expect(flexPublishStep).toContain('選單');
+      // 使用說明不得再描述這個分頁沒有的欄位（Header 顏色／emoji／使用提示開關）
+      const stepText = t.intro.flexMenuSteps.join('\n');
+      for (const ghost of ['歡迎語', 'emoji', '使用提示']) {
+        expect(stepText, `使用說明提到畫面上沒有的「${ghost}」`).not.toContain(ghost);
+      }
     });
 
     it('佈局區常駐告示：選了也不會改變顧客看到的選單', () => {
@@ -324,10 +353,47 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(code).toContain('e instanceof ApiError ? e.message : t.publish.publishFailed');
     });
 
-    it('FlexMenuTab（issue #6，假成功刻意留著）未被本輪動到', () => {
-      expect(code).toContain('function FlexMenuTab(');
-      expect(code).toContain("toast.show(subscribed ? t.flex.saved : t.feature.flexFreeFallback, subscribed ? 'success' : 'warning')");
-      expect(t.flex.saved).toBe('主選單已儲存！顧客下次開啟聊天時會看到新樣式');
+    /*
+     * ⚠️ **前提變更（2026-08-25，issue #6）。**
+     *
+     * 這一條原本釘的是「FlexMenuTab 的假成功**刻意留著**」——
+     * issue #3 那一輪只做誠實化，把 Flex 分頁整個排給 #6，所以當時用
+     * 「發布鈕仍是 toast.show(...)」與「t.flex.saved 逐字不變」兩句
+     * 鎖住它別被順手動到。
+     *
+     * issue #6 就是來把它變真的那一輪，那個前提**在本輪失效**（體例比照
+     * tests/unit/feature-store-restore-result.28.test.ts 的同型註解）。
+     * 改寫規則：新斷言的強度不得低於舊的。舊斷言只證明「這裡還是假的」，
+     * 新斷言證明的是更強的一件事——**這裡不可以再是假的**：
+     *   ① 發布鈕真的 await 了 saveFlexMenu()（有端點被呼叫）
+     *   ② 成功 toast 只出現在 await 之後，不在 catch 之前
+     *   ③ 卡片是從 getTenantSettings() 載回來的，不是本地預設值
+     *   ④ 字典裡不得再有 flexFreeFallback（那句話宣稱了不存在的免費降級版）
+     * 這四條任何一條被改回去都會紅，比原本「逐字比對一句文案」更難繞過。
+     */
+    it('FlexMenuTab 已接上真後端：發布 = await saveFlexMenu()，成功訊息在其後', () => {
+      const flexTab = code.slice(code.indexOf('function FlexMenuTab('));
+      expect(flexTab).toContain('await saveFlexMenu({');
+      expect(flexTab).toContain('flexCards: toPayload(cards),');
+      expect(flexTab).toContain("toast.show(t.flex.saved, 'success');");
+      // 成功 toast 必須排在 await 之後（順序反了就是「先報喜再送出」）
+      expect(flexTab.indexOf('await saveFlexMenu({'))
+        .toBeLessThan(flexTab.indexOf("toast.show(t.flex.saved, 'success');"));
+      // 失敗有自己的分支，不會被成功訊息蓋掉
+      expect(flexTab).toContain('t.flex.saveFailedPrefix');
+    });
+
+    it('FlexMenuTab 的卡片來自 getTenantSettings()，不是本地預設值', () => {
+      const flexTab = code.slice(code.indexOf('function FlexMenuTab('));
+      expect(flexTab).toContain('await getTenantSettings()');
+      expect(flexTab).toContain('s.line.flexCards');
+      // 「清除已發布」真的把空陣列存回去，不是只清畫面
+      expect(flexTab).toContain('await saveFlexMenu({ flexCards: [] })');
+    });
+
+    it('字典不再宣稱有「免費的基本款氣泡主選單」（flexFreeFallback 已刪）', () => {
+      expect(Object.keys(t.feature)).not.toContain('flexFreeFallback');
+      expect(code).not.toContain('t.feature.flexFreeFallback');
     });
 
     it('背景圖「上傳圖片」按鈕的接線留給 issue #7（本輪只加說明）', () => {

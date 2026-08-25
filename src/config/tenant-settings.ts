@@ -19,6 +19,51 @@ import { RICH_MENU_THEME_KEYS } from './rich-menu-themes';
  *    回傳到前端時一律遮罩（見 maskSecret / SECRET_FIELDS）。
  */
 
+/* ------------------------------------------------------- Flex 主選單卡片 */
+/**
+ * LINE Flex carousel 一次最多能放幾個 bubble。
+ *
+ * ⚠️ **這是外部規格（LINE Messaging API），不是我們可以自己決定的數字**，
+ * 所以它必須只有一個出處。理由與 `src/server/paging.ts` 的 `MAX_PAGE_SIZE`
+ * 完全同型：那次是頁面送 `size: 200`、端點各自寫死 `.max(100)`，兩個數字分別
+ * 寫在兩個檔案、沒有人保證一致，於是清單頁在部署環境整頁載不出來。
+ *
+ * 這裡若把 12 抄成兩份（zod 一份、頁面一份），失敗模式是店家在頁面上編到第 13 張
+ * 才被伺服器擋掉、前面的工白做；抄成三份（再加一句「最多 12 張卡片」的文案）
+ * 就會出現文案說 10、程式擋 12 的情況——本檔改動前 `rich-menu-design.ts` 裡
+ * 同時存在 `maxCards12` 與 `maxCards10` 兩句，正是這個下場。
+ *
+ * 出處：LINE Messaging API reference — Flex Message「carousel」
+ * 的 `contents`：Max: 12 bubbles。
+ */
+export const MAX_FLEX_CARDS = 12;
+
+/**
+ * 一張輪播卡片。欄位就是 06 分冊 §6 補規格寫的四個：`{title, subtitle, imageUrl, ad}`，
+ * 不多不少（04 分冊的契約以此為準，不得自行擴充）。
+ *
+ * 各上限的來源都是 LINE 端的硬限制，不是憑感覺訂的：
+ * - `title` 20 字：卡片底部按鈕用的是 message action，LINE 規定 action 的
+ *   `label` 最多 20 字。刻意讓 `label` 與送出的 `text` 都等於 title——按鈕上寫
+ *   什麼、按下去就送出什麼，中間不做截斷（截斷會讓兩者不一致，顧客按到的
+ *   關鍵字與看到的字不同）。
+ * - `imageUrl` 必須是 https：LINE 的 image 元件只收 HTTPS 網址，http 會被拒。
+ *   空字串＝這張卡沒有主圖（合法，組裝時整個 hero 區塊省略）。
+ */
+export const flexCardSchema = z.object({
+  title: z.string().trim().min(1, '卡片標題不可空白').max(20, '卡片標題最多 20 字'),
+  subtitle: z.string().trim().max(60, '卡片說明最多 60 字').default(''),
+  imageUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === '' || v.startsWith('https://'), '圖片網址必須是 https://')
+    .default(''),
+  ad: z.boolean().default(false),
+});
+
+export type FlexCard = z.infer<typeof flexCardSchema>;
+
 /* ---------------------------------------------------------------- LINE 設定 */
 export const lineSettingsSchema = z.object({
   /** 純數字，例如：2005459361 */
@@ -41,6 +86,20 @@ export const lineSettingsSchema = z.object({
   flexHeaderTitle: z.string().default('✨ {shopName}'),
   flexHeaderSubtitle: z.string().default(''),
   flexShowTip: z.boolean().default(true),
+  /**
+   * Flex 主選單的輪播卡片（06 分冊 §6「2026-08-24 補規格」：卡片陣列一併存進
+   * line jsonb 的 `flexCards` 鍵，上限 12 張）。
+   *
+   * 為什麼放在 line jsonb 而不是新開一張表：與 `systemKeywordGroupsDisabled`／
+   * `ai.strictMode` 同一手法——這是租戶設定，`tenant_settings.line` 是既有的
+   * jsonb 欄位，新增鍵只是 zod 多一個 default，老資料由 `.parse(row.line ?? {})`
+   * 自動補 `[]`，**不需要 migration**。
+   *
+   * 生效點只有一個：`src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()`，
+   * 由 webhook 的「選單」內建指令（`src/server/line-events.ts` 分支 ④ → MENU）
+   * 呼叫。存得進來但沒有人讀，就是一顆假的開關。
+   */
+  flexCards: z.array(flexCardSchema).max(MAX_FLEX_CARDS).default([]),
   campaignKeywordEnabled: z.boolean().default(true),
   /**
    * 停用的「系統內建關鍵字」組（keyword-replies 頁 15 組的 key，如 COUPON/MENU）。

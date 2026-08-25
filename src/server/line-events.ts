@@ -45,6 +45,7 @@ import {
 import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
+import { buildFlexMenuOutcome } from './flex-menu';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name, business_type） */
 export type WebhookTenant = {
@@ -343,7 +344,9 @@ async function onMessage(
     // 停用的系統關鍵字組＝顧客打這些字「完全沒有回應」（頁面停用確認視窗的原話），
     // 因此這裡直接 return，不落到 ⑤ AI / ⑥ defaultReply。
     if (hit.group && isSystemGroupDisabled(lineConfig, hit.group)) return;
-    const handled = await replyBuiltin(hit.intent, { admin, tenant, token, replyToken, userId });
+    const handled = await replyBuiltin(hit.intent, {
+      admin, tenant, token, replyToken, userId, lineConfig,
+    });
     if (handled) return;
     // handled=false 只有一種情況：這家店本來就沒有這一類東西（例：美髮沙龍收到
     // 「行程」），交給 ⑤ AI / ⑥ defaultReply 比硬回一句「目前沒有行程」自然。
@@ -407,6 +410,13 @@ interface BuiltinCtx {
   token: string;
   replyToken: string;
   userId: string;
+  /**
+   * `tenant_settings.line` 的 jsonb 原文（webhook route 已查好、onMessage 一路帶下來）。
+   * MENU 的 Flex 主選單要讀 `flexMenuEnabled` / `flexMenuFallback` / `flexCards`，
+   * 不能在 handler 裡再查一次表——同一個請求裡讀兩次同一列，兩次之間店家剛好按下
+   * 儲存就會出現「開關已關、卡片還是舊的」這種自己跟自己不一致的回覆。
+   */
+  lineConfig: Record<string, any>;
 }
 
 /**
@@ -484,7 +494,12 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
     case 'ORDER':
       return replyOrders(ctx);
     case 'MENU':
+      // 「選單」組（主選單／選單／功能）→ Flex 輪播（06 §6）。
+      // 尚未編卡片時 replyFlexMenu 自己落回下面那份文字清單。
+      return replyFlexMenu(ctx);
     case 'HELP':
+      // 「說明／幫助」不是 06 §6 點名的 Flex 觸發字，維持純文字關鍵字清單：
+      // 顧客問「怎麼用」時，一份可以直接照打的字串清單比一組卡片有用。
       return replyMenu(ctx);
     case 'CANCEL':
       return replyText(ctx, MSG.cancelNoFlow);
@@ -531,10 +546,38 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
 
 /* --------------------------------------------------- 內建指令：選單 / 說明 */
 /**
- * 「選單」「主選單」「功能」「說明」「幫助」→ 這家店（依業態）可用的關鍵字清單。
+ * 「選單」「主選單」「功能」→ 店家在 rich-menu-design 頁編好的 Flex 輪播（06 §6）。
  *
- * ⚠️ 06 §6 要求「選單」關鍵字回 flex-menu 設定組出的 Flex Message——那一項
- * （flex-menu 三層）不在本次範圍，08 清單另列一項。這裡回的是純文字清單，
+ * 四種結果都來自 `src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()`——
+ * **全專案唯一**組 Flex JSON 的地方（issue #6 的單一事實來源要求；Rich Menu
+ * 設 FLEX_POPUP 的格子送出的文字也會走到這裡，見該檔檔頭）。
+ *
+ * ⚠️ SILENT 與 HINT 是**兩種不同的行為，不可以合併**：
+ * - HINT   → 回一句提示文字（畫面上那顆單選鈕逐字承諾了會回哪一句）
+ * - SILENT → **一則 LINE 請求都不發**。所以這裡回 true（＝已處理），
+ *   絕不能回 false 讓它落到 ⑤ AI／⑥ defaultReply——那樣顧客照樣會收到訊息，
+ *   店家選的「完全靜默」就變成一顆假的開關。
+ *   釘住這件事的斷言是「整個 mock.requests 為空」，不是「/reply 沒有被打」。
+ */
+async function replyFlexMenu(ctx: BuiltinCtx): Promise<boolean> {
+  const outcome = buildFlexMenuOutcome(ctx.lineConfig, ctx.tenant.name);
+  switch (outcome.kind) {
+    case 'FLEX':
+    case 'HINT':
+      await lineReply(ctx.token, ctx.replyToken, [outcome.message]);
+      return true;
+    case 'SILENT':
+      return true;
+    case 'NO_CARDS':
+      // 已啟用但店家還沒編任何卡片：不憑空生一張卡（那是編造內容），
+      // 回既有的文字關鍵字清單——列出來的每個字都保證有 handler。
+      return replyMenu(ctx);
+  }
+}
+
+/**
+ * 「說明」「幫助」→ 這家店（依業態）可用的關鍵字清單（純文字）。
+ * 也是 Flex 主選單「已啟用但一張卡片都沒有」時的落點。
  * 內容取自 MODE_PRESETS.richMenuCells，所以列出來的每一個字都保證有 handler。
  */
 async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {

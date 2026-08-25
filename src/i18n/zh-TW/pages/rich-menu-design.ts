@@ -51,20 +51,26 @@ export const richMenuDesignPage = {
       '點「 發布到 LINE 」——所選主題的底圖與預設六格文字才會真的推到顧客的聊天室',
     ],
     flexMenuTitle: 'Flex 主選單（對話氣泡選單）',
-    flexMenuLead: '顧客 輸入任何文字 時彈出的 Flex Message 選單卡片。',
+    /*
+     * ⚠️ 觸發條件寫實話（issue #6）。舊文案寫「顧客輸入任何文字時彈出」——不對：
+     * webhook 的分派順序裡，「任何文字」是分支 ⑤ AI 客服與 ⑥ 預設回覆的地盤，
+     * Flex 主選單掛在分支 ④ 的內建指令 MENU 組上，只有「主選單／選單／功能」
+     * 這三個字會觸發（src/i18n/zh-TW/pages/keyword-replies.ts 的 system.groups
+     * MENU 組，webhook 與這一頁引用的是同一份清單）。
+     */
+    flexMenuLead: '顧客輸入「選單」「主選單」「功能」時，LINE Bot 回覆的輪播卡片選單。',
+    /*
+     * ⚠️ 誠實化文案（issue #6 補齊後改寫）。舊步驟描述的是一組**不存在的欄位**
+     * （Header 顏色/標題/歡迎語、每顆按鈕的顏色與圖示 emoji、「使用提示」開關）——
+     * 這個分頁從來沒有那些輸入框。現在的步驟逐一對應畫面上真的有的東西。
+     */
     flexMenuSteps: [
-      '設定 Header 的顏色、標題、歡迎語',
-      '自訂每個 按鈕 的顏色、圖示 emoji、標題、副標題',
-      '開關「 使用提示 」區塊',
-      '下方即時預覽，所見即所得',
-      /*
-       * ⚠️ 誠實化文案。Flex 主選單分頁的「發布」按鈕只是 toast.show(t.flex.saved)，
-       * 沒有呼叫任何端點（src/services/settings.ts 內沒有任何 flex 函式）。
-       * 平台側雖有 POST /api/settings/line/flex-menu，但它只收
-       * flexMenuEnabled / fallback / header 顏色標題等欄位，**不含本頁編輯的輪播卡片**，
-       * 而且本頁從沒呼叫過它。FlexMenuTab 元件本體屬 issue #6，這裡只把使用說明講實話。
-       */
-      '點「 發布 Flex 主選單到 LINE 」——本頁尚未接上儲存，按下去不會寫入任何設定，顧客看到的樣式不會改變',
+      '新增卡片，填寫每張卡片的 標題 與 說明 （標題同時是卡片按鈕上的字，顧客按下去就送出這段文字）',
+      '需要主圖的卡片點「 上傳圖片 」——LINE 只接受 JPEG／PNG',
+      '要放廣告就點「 插入廣告卡片 」，卡片上會標示「廣告」',
+      '右側即時預覽可左右翻頁，確認顧客會看到的樣子',
+      '不想用輪播選單時關掉「 啟用 Flex 主選單 」，並選擇顧客打「選單」時要回提示文字還是完全靜默',
+      '點「 發布 Flex 主選單到 LINE 」——卡片與開關會寫入店家設定，顧客下次輸入「選單」就會收到新卡片',
     ],
     popupTitle: 'Flex 彈窗卡片怎麼用？',
     /* ⚠️ 誠實化文案：FlexPopupModal 按「儲存」只關視窗（見 cells.flexPopupNotEffective）。 */
@@ -428,22 +434,37 @@ export const richMenuDesignPage = {
       '免費基本款選單只能發佈固定的預設格子內容，您的每格修改「不會」出現在 LINE 選單上。',
     freeFallbackNotice:
       '⚠️ Rich Menu 已推送到 LINE，但送出的是所選主題的底圖與系統預設六格文字。您在「每格設定」「佈局」「背景圖片」的修改都沒有送出——這些欄位尚未接上發布，訂閱「進階自訂選單」也不會改變這一點。',
-    flexFreeFallback:
-      '您未訂閱「進階自訂選單」，已存為免費的基本款氣泡主選單（訂閱後可改用輪播卡片樣式）',
+    /*
+     * ⚠️ 刪除 flexFreeFallback（'您未訂閱「進階自訂選單」，已存為免費的基本款氣泡主選單
+     * （訂閱後可改用輪播卡片樣式）'）：那句話宣稱了**兩件都沒發生的事**——
+     * ① 當時整個分頁根本沒有儲存，什麼都沒「已存」；② 平台端沒有任何「基本款氣泡
+     * 主選單」這種降級樣式，`POST /api/settings/line/flex-menu` 也沒有 requireFeature，
+     * 訂不訂閱存進去的都是同一份 flexCards。留著它就是拿一個不存在的方案名去解釋
+     * 一個不存在的結果。禁止復原；要不要對 Flex 主選單收費是收費邊界，待擁有者裁決。
+     */
   },
 
   /* ======================================================= Flex 主選單 */
   flex: {
+    /*
+     * ⚠️ 兩處改寫（issue #6）：
+     * ① 觸發條件不是「任何文字」——Flex 主選單掛在 webhook 分支 ④ 的 MENU 組
+     *    （主選單／選單／功能），見 intro.flexMenuLead 的說明。
+     * ② 廣告卡「打開網址」是假的：06 分冊 §6 的卡片契約只有
+     *    `{title, subtitle, imageUrl, ad}` 四個欄位，**沒有網址可放**，
+     *    所以廣告卡與一般卡的差別只有卡面上多一行「廣告」標示。
+     *    要讓廣告卡真的能開網址得先擴充卡片契約，屬待裁決事項。
+     */
     intro:
-      '顧客 輸入任何文字 時，LINE Bot 回覆的主選單。可做成 1~12 張輪播卡片 （左右滑動），每張卡片有獨立背景圖和按鈕。還可以 插入廣告卡片 （打開網址）。',
+      '顧客輸入「選單」「主選單」「功能」時，LINE Bot 回覆的主選單。可做成 1~12 張輪播卡片 （左右滑動），每張卡片可放一張主圖、標題與說明。還可以 插入廣告卡片 （卡面標示「廣告」）。',
     enabledLabel: '啟用 Flex 主選單',
-    enabledOffLead: '關閉後：顧客輸入任何文字（含「選單」）都',
+    enabledOffLead: '關閉後：顧客輸入「選單」「主選單」「功能」時',
     enabledOffStrong: '不會',
-    enabledOffTail: '再彈出主選單，只會收到下方選擇的回應（提示文字或完全靜默）。',
+    enabledOffTail: '再收到輪播卡片，只會收到下方選擇的回應（提示文字或完全靜默）。其他訊息的處理方式不受影響。',
     richMenuStillWorks: '底部 Rich Menu 仍正常運作',
     richMenuStillWorksTail:
       '，所有功能（預約/商品/票券）不受影響——請確認已發布底部選單，否則顧客將沒有任何操作入口。',
-    fallbackLabel: '關閉時，顧客打閒聊文字的回應：',
+    fallbackLabel: '關閉時，顧客打「選單」的回應：',
     fallbackHint: '回提示文字「請點選下方選單使用 👇」（避免 Bot 看起來像死掉）',
     fallbackSilent: '完全靜默（店家在 LINE OA Manager 自己手動回覆）',
     enabledOn: 'Flex 主選單已啟用',
@@ -462,8 +483,15 @@ export const richMenuDesignPage = {
     cardCount: (n: number) => `共 ${n} 張卡片`,
     cardCountOfMax: (n: number, max: number) => `${n} / ${max} 張`,
     pageOf: (n: number, total: number) => `${n} / ${total}`,
-    maxCards12: '最多 12 張卡片',
-    maxCards10: '最多 10 張卡片',
+    /*
+     * ⚠️ 12 這個數字**不在這裡**。它是 LINE carousel 的 bubble 上限（外部規格），
+     * 單一出處是 `MAX_FLEX_CARDS`（src/config/tenant-settings.ts），
+     * zod 的 `.max()`、頁面的新增上限、這句文案全部引用同一個常數。
+     * 刪除 `maxCards10`（'最多 10 張卡片'）：全站零引用，而且**與 12 互相矛盾**——
+     * 同一個上限在字典裡有兩個數字，正是 `MAX_PAGE_SIZE` 那次「頁面送 200、
+     * 端點收 100」的同型缺陷（src/server/paging.ts 檔頭）。禁止復原。
+     */
+    maxCards: (max: number) => `最多 ${max} 張卡片`,
     minCards: '至少需要 1 張卡片',
     deleteCardLead: '確定刪除卡片「',
     deleteCardTail: '」？（要按「發布」才會存檔生效）',
@@ -471,10 +499,24 @@ export const richMenuDesignPage = {
       '將清空目前編輯器內的全部卡片自訂（文字/圖片/配色），恢復成預設的輪播卡片。\n此動作只影響編輯器，要按「發布」才會存檔生效。確定？',
     resetDone: '已恢復預設的輪播卡片',
     deletePublishedConfirm:
-      '確定要清除已發布的主選單自訂設定嗎？\n\n清除後將恢復系統預設樣式。',
-    saved: '主選單已儲存！顧客下次開啟聊天時會看到新樣式',
-    resetToDefault: '主選單已恢復預設',
+      '確定要清除已發布的主選單卡片嗎？\n\n清除後顧客輸入「選單」會收到系統預設的文字關鍵字清單，不再收到輪播卡片。',
+    /*
+     * ⚠️ 前提變更（issue #6）：這兩句在此之前是**假成功**——「發布」只是
+     * `toast.show(t.flex.saved)`，沒有任何端點被呼叫。現在按鈕真的
+     * `await saveFlexMenu(...)` 成功之後才顯示，句子才第一次為真。
+     * 措辭同時改成只宣稱系統真的做到的事：卡片存進了店家設定、顧客下次
+     * **輸入「選單」**時會收到——不寫「開啟聊天就會看到」（那是 Rich Menu 的行為）。
+     */
+    saved: '主選單已儲存：顧客下次輸入「選單」時會收到這組卡片',
+    resetToDefault: '已清除發布的卡片：顧客輸入「選單」時會收到系統預設的文字選單',
     saveFailedPrefix: 'Flex 主選單儲存失敗:',
+    /** 有卡片沒填標題就按發布：標題同時是按鈕文字，空的會被 LINE 整包退回 */
+    titleRequired: '每張卡片都要填標題（標題同時是卡片按鈕上的字），請補齊後再發布',
+    uploadImage: '上傳圖片',
+    imageUploaded: '圖片已上傳，記得按「發布」才會送到顧客那邊',
+    uploadFailedPrefix: '圖片上傳失敗:',
+    /** 圖片會被送進 LINE，格式限制跟著去向走（見 /api/upload 的 LINE_BOUND_BUCKETS） */
+    imageTypeHint: 'LINE 只接受 JPEG／PNG 圖片',
     loadFailed: '載入 Flex Menu 失敗',
     loadStateFailedPrefix: '載入 Flex 主選單狀態失敗:',
 
