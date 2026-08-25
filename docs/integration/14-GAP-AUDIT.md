@@ -574,10 +574,7 @@ API 文件**。先前「自動回應訊息無法檢查」就是這樣被證明�
    本輪把 `active` 變成真欄位之後，這顆按鈕的誤導性反而提高了（使用者現在
    有理由相信它存得進去）。**這是「補了一半反而更糟」的典型**，修正順序上
    應緊接本輪，不宜久放。
-2. **回報問題的截圖上傳**：`bug_reports` 無附件欄位、Storage 白名單無可用
-   bucket、`/api/bug-report` 契約無附件。本輪依 `SupportChatWidget` 的前例
-   停用欄位並**在畫面上**說明尚未建置（不是只寫在註解）。要補齊需要
-   新 bucket ＋ 欄位 ＋ 端點契約，屬另一個 issue 的量。
+2. ~~**回報問題的截圖上傳**~~ → **已完成**（issue #30，commit `c6d99b0`，見 §6.7）。
 3. **⑧ 第三分支（`restoreSideEffectFailed`）在 CI 會 skip，不是假綠。**
    該分支純資料無法誘發（`coupons` / `products` 上無任何 check/trigger 可違反），
    測試改用 Management API 在 **TEST 專案**臨時裝一個只對哨兵名稱 raise 的
@@ -858,3 +855,45 @@ WIP `9ccb873` 寫好的 ②④ 分支，註解裡引用了
 | `pages/{clinic-queue,recurring-bookings}.ts` | 同型 | #29 明列不在範圍 |
 | GUIDE 的 `step1Title` 展開後是「確認行程與方案與價格」 | 兩個「與」連讀拗口 | 改前對嚮導是**錯的**，現在是**對但拗口**；執行者判斷不該為了通順自行發明文案（正確）。要順的話在 `dashboard.ts` 給 GUIDE 一個 `focus.step1Title` 覆寫 |
 | `/tenant/tour-orders`、`/tenant/trips` 不讀 searchParams | 嚮導從統計卡帶過去的 `?status=PENDING` / `?action=create` 被忽略，落在未篩選列表 | 是**團次訂單頁的功能缺**，屬 issue #8 範圍。不是死路（頁面在他選單裡），但篩選條件失效 |
+
+
+### 6.7 issue #30（回報問題的截圖上傳）— 2026-08-25 完成（commit `c6d99b0`）
+
+migration 0019 ＋ 新 bucket `bug-report-attachments` ＋ `/api/upload` 白名單 ＋
+`/api/bug-report` 契約 ＋ modal 解除停用。
+
+**主導者獨立複驗**（不採信回報）：兩專案各查一次 →
+`bucket_public=false`、`attachment_path` 欄位在、**RESTRICTIVE 政策在**、
+且**沒有**混進 `p_storage_read` 的列舉白名單。`npm run build` 通過。
+
+#### 執行者做的一個加固，值得記下來當往後的作法
+
+派工只要求「bucket 不要照抄 `chat-images` 的 public」。執行者做到了，
+但**多做了一層**：除了不把新 bucket 加進 `p_storage_read` / `p_storage_write`
+的列舉白名單之外，另外加了一條 **RESTRICTIVE 政策**明確擋掉這個 bucket。
+
+它的理由（原話大意）：**「只是沒被列進白名單」是負向保護**——
+那六個 bucket 名字是一條列舉字串，未來任何一次重建政策時多打一個名字，
+就會把整個 bucket 曝出去，而且**沒有任何測試會紅**。RESTRICTIVE 政策是
+正向的：它必須被主動刪掉才會失效，而刪掉是一個顯眼的動作。
+
+驗證方式也對：不是查政策存不存在就算，而是**用真的登入的 owner（role
+`authenticated`）實際去操作**——`list → rows=0`、`download → BLOCKED`、
+`upload → BLOCKED (RLS)`、`createSignedUrl → BLOCKED`。
+
+**另一個正確的小決定**：DB 存的是 **storage path 而不是 URL**。
+簽名 URL 會過期，存 URL 等於存一堆死連結——這正是 06 分冊 §8 已經替
+`chat_messages` 記下的技術債，這裡沒有重蹈。
+
+#### 執行者提出、需要決策的一點（尚未處理）
+
+`PLATFORM_ADMIN_EMAIL` 目前未設定，所以 `/api/bug-report` 只寫 log 不寄信
+（issue #28 的既有狀態，本輪未動）。
+
+⚠️ 但情況已經變了：**回報現在可以夾帶含顧客資料的截圖**。所以在把那封通知信
+接上去之前，要先決定**那封信裡到底能不能放簽名 URL**——
+- 放了，等於把顧客資料的存取權從「有登入的平台人員」擴散到「收得到那封信、
+  或轉寄到那封信的任何人」，而簽名 URL 在有效期內不需要任何身分驗證
+- 不放，平台人員得自己登入後台去看，多一步但存取邊界清楚
+
+執行者**沒有自行建那封信**，把問題交上來——這是對的。
