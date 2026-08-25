@@ -394,10 +394,10 @@ customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不�
 | customers 新增編輯／LINE 綁定解綁、block-times、points 儲值、marketing、campaigns、shifts 週班表與模式、shop-design 空 patch、rich-menu 底圖上傳 | 10 | #7 |
 | shop-page 端點群 | （併入 #7 的 shop-design 列） | #22 |
 
-| 本輪新開 | 筆數 | 新 issue |
-|---|---|---|
-| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 |
-| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 |
+| 本輪新開 | 筆數 | 新 issue | 狀態 |
+|---|---|---|---|
+| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | 施工中 |
+| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | ①⑧⑨ 已完成（`3aee55e`），其餘待前置 |
 
 `#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、
 歡迎卡片圖片上傳按鈕。
@@ -543,3 +543,40 @@ API 文件**。先前「自動回應訊息無法檢查」就是這樣被證明�
   取 userId 驗身分後再發簽名 URL），屬獨立工程。
 - **在實測回填之前，06 分冊 §8.1 必須維持「無法確認」**，不得因為旁證偏向 (B)
   就改寫成 (B)——那正是本分冊反覆警告的「把沒有量到的狀態當成量到的」。
+
+
+### 6.4 issue #28 ①⑧⑨ — 2026-08-25 完成（commit `3aee55e`）
+
+| 項 | 內容 | 關鍵證據 |
+|---|---|---|
+| ① | `BugReportModal` 四欄改 controlled、真的打 `POST /api/bug-report` | `tests/integration/api/bug-report.28.test.ts:「modal 的四個欄位逐一落到 bug_reports：category / subject / content / contact_email 內容相符」`——每欄給不同可辨識值後以 service role 直查。**只驗「表裡多一列」不算通過**，原本的缺陷正是四個欄位全是 uncontrolled、內容從未被收集 |
+| ⑧ | `feature-store` 恢復訂閱依回傳值分三種結果顯示 | `feature-store-restore.28.test.ts` 五案；三句文案是**引用早就備好、全站零引用**的既有字典（`feature-store.ts:147-151`），不是新寫的 |
+| ⑨ | 分類的「說明／啟用」真的存得進去 | migration `0018`，兩專案 `information_schema.columns` 輸出逐字相同；`category-fields.28.test.ts` 五案含「不帶欄位的舊呼叫端走預設值不報錯」 |
+
+三次變異測試（拿掉 ① 的接線、把 ⑧ 的分支改回一律成功、拿掉 ⑨ 的欄位傳遞）全部轉紅。
+
+**主導者獨立複驗**（不採信 agent 回報）：兩專案各查一次 `information_schema.columns`
+→ `cat_cols=4`、`bug_cols=2` 皆相符；並額外查 `pg_trigger` / `pg_proc`
+→ `leftover_triggers=0`、`leftover_fns=0`（見下方技術債第 3 條）。
+
+#### 由本輪衍生、尚未處理的三件
+
+1. **分類的「編輯」（鉛筆）按鈕仍是假成功，而且本輪讓它更誤導。**
+   `services/page.tsx:1164` 與 `products/page.tsx` 同型：只切本地 `active` 並
+   toast「分類已更新」，從未打 `PUT /api/{service,product}-categories/:id`
+   ——而那支路由的 `bodySchema` 目前也只有 `{ name }`。
+   本輪把 `active` 變成真欄位之後，這顆按鈕的誤導性反而提高了（使用者現在
+   有理由相信它存得進去）。**這是「補了一半反而更糟」的典型**，修正順序上
+   應緊接本輪，不宜久放。
+2. **回報問題的截圖上傳**：`bug_reports` 無附件欄位、Storage 白名單無可用
+   bucket、`/api/bug-report` 契約無附件。本輪依 `SupportChatWidget` 的前例
+   停用欄位並**在畫面上**說明尚未建置（不是只寫在註解）。要補齊需要
+   新 bucket ＋ 欄位 ＋ 端點契約，屬另一個 issue 的量。
+3. **⑧ 第三分支（`restoreSideEffectFailed`）在 CI 會 skip，不是假綠。**
+   該分支純資料無法誘發（`coupons` / `products` 上無任何 check/trigger 可違反），
+   測試改用 Management API 在 **TEST 專案**臨時裝一個只對哨兵名稱 raise 的
+   trigger、`finally` 拆掉，因此需要 `SUPABASE_ACCESS_TOKEN`，而 CI 的
+   `.env.test` 沒有這個 token。
+   **這一格目前的證據是沙箱實跑，不是 CI 綠燈**——差別要講清楚，
+   否則下一輪稽核會把它當成已被 CI 覆蓋。要讓 CI 也涵蓋，需要把 Management
+   API token 加進 repo secrets（⚙ 只有擁有者能做）。
