@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { isFeatureActive } from '@/server/features';
-import { pageRange, toPaged } from '@/server/paging';
+import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 import { mapCustomer } from '@/server/mappers';
 
 /**
@@ -12,7 +12,7 @@ import { mapCustomer } from '@/server/mappers';
  */
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
-  size: z.coerce.number().int().min(1).max(200).default(20),
+  size: pageSizeSchema(20),
   keyword: z.string().optional(),
   atRisk: z.coerce.boolean().optional(),
   levelId: z.string().uuid().optional(),

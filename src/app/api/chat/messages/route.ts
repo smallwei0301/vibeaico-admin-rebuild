@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { pageRange, toPaged } from '@/server/paging';
+import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
 
 /**
@@ -42,7 +42,7 @@ function mapMessage(r: any) {
 const querySchema = z.object({
   lineUserId: z.string().min(1, '請指定對話對象'),
   page: z.coerce.number().int().min(0).default(0),
-  size: z.coerce.number().int().min(1).max(100).default(50),
+  size: pageSizeSchema(50),
   after: z.string().uuid().optional(),
 });
 

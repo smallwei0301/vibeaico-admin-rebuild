@@ -147,7 +147,11 @@ export const bookingsPage = {
   /* -------------------------------------------------------- 編輯預約 modal */
   editModal: {
     title: '編輯預約',
-    intro: '修改預約資訊後，系統將自動發送 LINE 通知給顧客。',
+    /* ⚠️ 舊文案是「修改預約資訊後，系統將自動發送 LINE 通知給顧客。」，與 issue #27
+     * 依 §8.7 做出來的行為互相矛盾：只改備註**不會**推播，而且推播只是「送出」，
+     * 系統無從得知顧客有沒有收到（§8.10）。使用者在同一個視窗裡先被告知一定會通知、
+     * 送出後卻拿到「未送出顧客通知」——這是 2026-08-25 Preview 實測抓到的。 */
+    intro: '修改預約時間或服務人員時，系統會送出 LINE 通知給顧客；只調整備註則不會送出通知。',
     customer: '顧客',
     customerHelp: '顧客資訊無法修改',
     service: '服務項目 *',
@@ -164,7 +168,8 @@ export const bookingsPage = {
     durationUnit: '分鐘',
     durationHelp: '可調整服務時長（30-480 分鐘，每 30 分鐘一檔）',
     noteToCustomer: '給顧客的備註',
-    noteToCustomerPlaceholder: '此備註會透過 LINE 通知顧客...',
+    /* 同上：備註本身不會觸發推播，只有時間／人員變動時才送出，而備註會一併帶在那則通知裡。 */
+    noteToCustomerPlaceholder: '若這次同時改了時間或人員，此備註會一併寫在送出的 LINE 通知裡...',
     noteMax: 500,
     submit: '儲存變更',
     submitting: '儲存中...',

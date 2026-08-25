@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { pageRange, toPaged } from '@/server/paging';
+import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 import { mapBooking } from '@/server/mappers';
 import { createAdminSupabase } from '@/server/supabase';
 import { notifyBookingEvent } from '@/server/email/notify';
@@ -10,7 +10,7 @@ import { taipeiTodayDateString } from '@/server/tz';
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
-  size: z.coerce.number().int().min(1).max(100).default(20),
+  size: pageSizeSchema(20),
   status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']).optional(),
   keyword: z.string().optional(),
   from: z.string().optional(), // ISO 日期

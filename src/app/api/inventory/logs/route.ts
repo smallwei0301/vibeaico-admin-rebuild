@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
-import { pageRange, toPaged } from '@/server/paging';
+import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 
 /**
  * GET /api/inventory/logs — `?productId?&page&size` 分頁（Paged 信封），
@@ -44,7 +44,7 @@ function mapInventoryLog(r: any) {
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
-  size: z.coerce.number().int().min(1).max(100).default(20),
+  size: pageSizeSchema(20),
   productId: z.string().uuid().optional(),
 });
 
