@@ -183,6 +183,19 @@ route (2026-08-24 full audit, `docs/integration/14-GAP-AUDIT.md` — 25 pages fo
   names it — so page wiring belonged to no layer, and "all green" coexisted with a fake
   button for weeks.
 
+## Issue-authoring convention (owner's standing preference)
+
+All work is dispatched as GitHub issues written for a **weak executor model**. Every issue must
+have: (1) 前置 issue link — strictly sequential, the previous issue's checklist must be fully
+checked *with evidence* first; (2) 背景與根因 linking the plan docs; (3) 對應文件 section
+naming exact 分冊/章節; (4) 驗收標準 as a checklist where **every item names its evidence**
+(test file:case name, or automated-run output) — no evidence, no checkmark, no next step;
+(5) verification is **automated by default** — unit/integration tests plus Playwright against
+the Preview site, with credentials the agent fetches itself from the owner's Google Drive
+credentials doc ("#Supabase#midao"); (6) a 人工介入點 section that lists ONLY decisions and
+missing-token env updates — never manual testing steps. Executor discipline lives in
+`docs/integration/15-AGENT-PLAYBOOK.md`; every issue links it instead of repeating it.
+
 ## Database changes: always apply to BOTH Supabase projects
 
 There are two Supabase projects and **every migration must be applied to both, in the same

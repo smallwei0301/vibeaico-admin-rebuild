@@ -131,7 +131,8 @@ supabase/
 | [`11-PARTNER-API.md`](11-PARTNER-API.md) | 共用旅客帳號、公開商店 API、評論、顧客自動建檔、Midao Partner API 與退役路線 |
 | [`12-TESTING-TDD.md`](12-TESTING-TDD.md) | **強制**：TDD 循環、單元/整合/E2E 標準、每 Phase 必寫測試矩陣、TEST 資料庫、CI 關卡、Definition of Done |
 | [`13-BUSINESS-MODES.md`](13-BUSINESS-MODES.md) | 業態模式（當地商店/嚮導/醫院）：註冊三選一決定選單/名詞/預設功能包；模式換門牌不換倉庫 |
-| [`14-GAP-AUDIT.md`](14-GAP-AUDIT.md) | 2026-08-24 全面稽核：四類根因（假勾/計劃漏/標準粗/標準被 bypass）、假成功互動全清單、重開的驗收項與重勾條件 |
+| [`14-GAP-AUDIT.md`](14-GAP-AUDIT.md) | 2026-08-24 全面稽核：四類根因（假勾/計劃漏/標準粗/標準被 bypass）、假成功互動全清單、重開的驗收項與重勾條件、修復/建置 issue 對照表（#3–#14） |
+| [`15-AGENT-PLAYBOOK.md`](15-AGENT-PLAYBOOK.md) | 執行者手冊：每個 issue 開工前必讀——證據格式、絕對禁令、憑證自主撈取、Playwright/LINE 環境要點、出貨慣例 |
 
 ---
 

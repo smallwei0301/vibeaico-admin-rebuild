@@ -1,0 +1,94 @@
+# 15 — 執行者手冊（每個 issue 開工前必讀，低階模型逐字照做）
+
+> 修復-1〜6（issue #3–#8）與建置系列（#9 起）的每一個 issue 都引用本冊。
+> 這裡是**共通紀律與環境操作要點**；各 issue 只寫該任務特有的內容。
+> 你（執行者）遇到本冊與分冊衝突 → 分冊為準；遇到規格內部衝突 → **停下，
+> 在該 issue 留言說明並附證據，等待決策，不准自行選一邊做下去。**
+
+---
+
+## 1. 開工流程（每個 issue 一律照此順序）
+
+1. 讀完該 issue 全文 → 讀 issue 點名的每一個分冊章節 → 讀本冊。
+2. 把 issue 的驗收清單**原樣**複製到你的工作 todo，不准刪項、不准改寫措辭。
+3. 照 12 分冊 TDD：先寫測試（紅）→ 最小實作（綠）→ 全量回歸。
+4. 每完成一個驗收項，**當下**在 issue 留言或 PR checklist 打勾並附證據
+   （格式見 §2）。全部打勾後才可宣告完成；宣告完成的留言必須含
+   typecheck / build / test / test:integration 四條指令的輸出尾段。
+5. 下一個 issue 在前一個全數打勾前**不得開工**（連「先看看」的探索性修改都不行）。
+
+## 2. 證據格式（08 分冊打勾規則的操作版）
+
+- 自動化測試：`tests/integration/api/xxx.test.ts:「案例名稱」`（檔案要真的存在、
+  案例要真的綠；引用不存在的測試 = 假的已知，該輪工作無效）。
+- 自動化實測：腳本路徑 + 執行輸出的關鍵行（貼原文，不准改寫或摘要成「成功」二字）。
+- 靜態鏈路證據（DoD 10 最低標準）：`頁面檔:行號 handler → services 函式 → 端點路徑`
+  三段逐一列出，並註明該端點的整合測試檔。
+- **禁止**的證據形式：「已確認」「應該可以」「邏輯上正確」——沒有輸出的主張不是證據。
+
+## 3. 絕對禁令（違反任何一條 = 該輪工作無效，重做）
+
+1. 不准為了讓測試過而改測試（12 §2.4 全清單）。
+2. 不准顯示成功訊息但副作用沒發生（00 鐵則 12）。做不到就顯示「尚未生效」。
+3. 不准跳過驗收項、合併驗收項、或「先做後面的再回頭補」。
+4. 不准自行發明規格。分冊沒寫的行為 → issue 留言問，等回覆。
+5. 不准把 secrets 寫進任何會 commit 的檔案、issue、PR 內文（含測試 fixture）。
+6. 不准對正式 Supabase 專案跑 reset/清庫類腳本（reset-db 有安全鎖，但不要測試它）。
+7. migration 編號一律取 `supabase/migrations/` 現有最大號 +1；**分冊裡寫死的編號
+   （0012/0013…）是撰寫當時的假設，已過時，不要照抄**。
+
+## 4. 憑證與環境（自主撈取，不留人工步驟）
+
+- **憑證來源**：Google Drive 文件「#Supabase#midao」（用 Google Drive 工具搜尋
+  該標題、讀取內容）。內含：Supabase Management API token（sbp_…）、兩個
+  Supabase 專案 ref 與 keys、Midao LINE Channel ID/Secret/長期 token、Vercel
+  token、Resend key。**缺哪個 token 就在 issue 留言列名請擁有者補**，不要繞路。
+- **測試帳號**：`sulawei0301@gmail.com` / `@Wei3362499`（Preview 站）。密碼對不上時
+  走「忘記密碼」流程：`POST /api/auth/forgot-password` → 用 Management API 查
+  `auth_verification_codes` 表取 code → `POST /api/auth/reset-password` 設回
+  `@Wei3362499`。**永遠設回這組**，擁有者只記這一組。
+- **兩個 Supabase 專案**：正式 `egehnijjpgijmccagxac`（Vercel production+preview 用）、
+  TEST `nmwhwngojosmagjuvxol`（整合測試/CI 用）。migration 兩邊都套、套完各自
+  query `information_schema` 驗證（CLAUDE.md 有 Management API 範例；`psql` 在
+  sandbox 連不上，一律走 Management API + `NODE_USE_ENV_PROXY=1`）。
+- **Preview 站**：`https://vibeaico-admin-rebuild-git-claude-70df20-smallwei0301s-projects.vercel.app`
+  （branch alias，push 後自動部署；打 API 前先確認最新 deployment READY）。
+
+## 5. Playwright 實測要點（sandbox 專屬，不照做會連不上）
+
+```js
+const browser = await chromium.launch({
+  executablePath: '/opt/pw-browsers/chromium',
+  headless: true,
+  proxy: { server: process.env.HTTPS_PROXY },   // 埠號每次 session 不同，必須讀環境變數
+  args: [
+    '--no-sandbox',
+    // 出口 proxy 的攔截 CA（三組 SPKI，缺一可能握手失敗）
+    '--ignore-certificate-errors-spki-list=gBdItbWylHhTkoJDRwIiMuweY/qX4F0bJmLNs5wosUQ=,KnP1OnzHv/y42eRQmbGwoYTHcSJF448m6CU5mdngwKk=,PS48cX347wDVcRynzq+DFqswl2PLNE1sG6uQvxMCOS0=',
+    '--ssl-version-max=tls1.2', // proxy 不支援 Chromium 的 TLS1.3 ClientHello，必加
+  ],
+});
+```
+
+- 腳本副檔名用 `.cjs`（CLAUDE.md 的全域 Playwright 要 `require()` 絕對路徑，
+  `.mjs` 會炸 `require is not defined`）。
+- 登入頁欄位 id：`#username` / `#password`（不是 #email）。
+- LINE 設定頁的 secret 欄位是遮罩唯讀，要先點「重新輸入」才可 fill。
+- Node 直接 fetch 外網要 `NODE_USE_ENV_PROXY=1`。
+
+## 6. 真實 LINE 驗證要點
+
+- Midao 頻道（憑證見 Drive 文件）**可以自由測**（擁有者已確認未營運）。
+  測完把狀態還原：webhook 指回 Preview、測試用 rich menu/keyword 清掉。
+- Flex/訊息 JSON 用 `POST /v2/bot/message/validate/reply|push` 驗格式——
+  **不耗推播額度**。真發訊息會耗每月 200 則額度，非必要別發。
+- 「自動回應」判定用 `GET /v2/bot/info` 的 `chatMode`（bot=關、chat=開）；
+  chatMode 由「回應功能→聊天」總開關決定，**無寫入 API**，不要嘗試自動改。
+
+## 7. 出貨與追蹤
+
+- 分支：`claude/deploy-vercel-project-nnno59`；commit 訊息繁中、描述使用者可見
+  變化；**Vercel 從 main 自動部署正式站**，只有擁有者說要上正式才碰 main。
+- 每個 issue 完成＝一次（或少數幾次）commit + push + issue 留言貼證據 +
+  更新 14 分冊勾選與 08 分冊對應項。
+- 卡住超過 3 次同一個錯（12 §2.2）：停，把嘗試過的方案與錯誤原文留言到 issue。
