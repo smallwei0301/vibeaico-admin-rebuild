@@ -174,6 +174,22 @@ export const aiSettingsSchema = z.object({
   faq: z.array(z.object({ q: z.string(), a: z.string() })).default([]),
   /** AI 判定無法回答（UNSURE）時引導真人接手的訊息 */
   handoffMessage: z.string().default(''),
+  /**
+   * 嚴格模式（issue #27 ①）——ai-settings 頁「嚴格模式：閒聊 / 亂碼 由專人處理」。
+   *
+   * 這個開關原本是頁面裡的純本地 state：可以撥、撥完顯示「AI 客服設定已儲存」，
+   * 但沒有任何端點收得到它，重新整理就回到 false。開關的說明文字寫著
+   * 「開啟後…AI 完全不回覆，讓店家專人親自接」，那是一個**行為承諾**，
+   * 存不進來就等於畫面在宣稱一件沒發生的事（00 鐵則 12）。
+   *
+   * 落在 `ai` jsonb 裡不需要 migration —— `tenant_settings.ai` 是 migration 0011
+   * 就建好的 jsonb 欄位，新增鍵只是 zod schema 多一個 default，老資料由
+   * `aiSettingsSchema.parse(row?.ai ?? {})` 自動補 false。
+   *
+   * 生效點：webhook 分支 ⑤（src/server/line-events.ts）—— 開啟時「明顯非詢問」
+   * 的訊息（純數字／純符號／單一字元…）直接不進 AI，見該處的 isLikelyChitchat。
+   */
+  strictMode: z.boolean().default(false),
 });
 
 export type AiSettings = z.infer<typeof aiSettingsSchema>;

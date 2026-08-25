@@ -200,10 +200,14 @@ export const productOrdersPage = {
      * `ProductOrderNotifyOutcome` 的一個值，只描述**真的發生過的事**（鐵則 12）。
      */
     notifyResult: {
-      /** 'LINE'：顧客已綁 LINE，明細已推播、扣 1 推播額度 */
-      line: '已用 LINE 傳送消費明細給顧客（扣 1 則推播額度）',
-      /** 'EMAIL'：顧客未綁 LINE，改寄 Email（不扣推播額度） */
-      email: '顧客未綁定 LINE，消費明細已改寄 Email（不扣推播額度）',
+      /**
+       * 'LINE'：顧客已綁 LINE，明細已推播、扣 1 推播額度。
+       * ⚠️ 只說「已送出」不說「已通知」（14 分冊 §8.10）——LINE 推播 API 回 200
+       * 只代表 LINE 收下了，不代表顧客手機上顯示出來了。
+       */
+      line: '消費明細已用 LINE 送出給顧客（扣 1 則推播額度）',
+      /** 'EMAIL'：顧客未綁 LINE，改用 Email 送出（不扣推播額度） */
+      email: '顧客未綁定 LINE，消費明細已改用 Email 送出（不扣推播額度）',
       /** 'NO_CONTACT'：既沒綁 LINE 也沒留 Email，沒有管道可送 */
       noContact: '顧客未綁定 LINE 也沒有 Email，消費明細未送出',
       /** 'QUOTA_EXCEEDED'：本月推播額度用完 */

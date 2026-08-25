@@ -135,7 +135,7 @@ describe('③ 手動建單的「LINE 通知顧客消費明細」勾選框真的�
   it('六種結果各有一句只描述實際發生過的事的文案', () => {
     const r = productOrdersPage.messages.notifyResult;
     expect(r.line).toContain('LINE');
-    expect(r.email).toMatch(/改寄 Email/);
+    expect(r.email).toMatch(/Email/);
     expect(r.email).toMatch(/不扣/);                    // email 不扣推播額度
     expect(r.noContact).toMatch(/未送出/);
     expect(r.quotaExceeded).toMatch(/未送出/);
@@ -144,5 +144,26 @@ describe('③ 手動建單的「LINE 通知顧客消費明細」勾選框真的�
     for (const message of Object.values(r)) {
       expect(message).not.toBe(productOrdersPage.manual.notify);
     }
+  });
+
+  /**
+   * 14 分冊 §8.10（全站通則）：推播／簡訊／email 之後的成功訊息只能宣稱
+   * 「已送出」，不得宣稱「已通知」「顧客已收到」。理由是技術天花板——LINE 回 200
+   * 只代表 LINE 收下了。這一條守本 issue 動到的兩個 i18n 檔。
+   */
+  it('§8.10：成功訊息只講「送出」，不講「已通知顧客／顧客已收到」', () => {
+    const claims = [
+      productOrdersPage.messages.notifyResult.line,
+      productOrdersPage.messages.notifyResult.email,
+      bookingsPage.messages.updated,
+      bookingsPage.messages.updatedNoNotify,
+    ];
+    for (const message of claims) {
+      expect(message).not.toMatch(/已通知|已收到|已發送通知/);
+    }
+    // 真的送出去的那兩句，必須明講「送出」
+    expect(productOrdersPage.messages.notifyResult.line).toContain('送出');
+    expect(productOrdersPage.messages.notifyResult.email).toContain('送出');
+    expect(bookingsPage.messages.updated).toContain('已送出');
   });
 });

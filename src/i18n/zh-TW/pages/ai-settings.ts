@@ -80,10 +80,18 @@ export const aiSettingsPage = {
   },
 
   /* ------------------------------------------------------------ 功能訂閱 */
+  /**
+   * ⚠️ lockedTail 原本是「，此頁設定可以儲存但不會生效。」——那句話在本頁還在
+   * 呼叫 `saveLineSettings`（LINE 設定端點，沒有 AI 訂閱閘門）的年代是真的。
+   * issue #27 ① 把本頁改接專用端點 `PUT /api/ai-settings` 之後就不再成立了：
+   * 該端點依 09 分冊 §7.1 帶 `requireFeature(AI_ASSISTANT)`，未訂閱一律回
+   * 403 FEAT_001，**存不進去**。留著原句就會變成新的假的已知（00 鐵則 12）——
+   * 使用者照它按下儲存，只會拿到一則紅色的「儲存失敗」。
+   */
   feature: {
     lockedLead: '未訂閱時 ',
     lockedStrong: 'AI 不會回覆顧客的任何問題',
-    lockedTail: '，此頁設定可以儲存但不會生效。',
+    lockedTail: '，此頁的設定也無法儲存（送出會被擋下）。',
     goToStore: '前往功能商店訂閱 →',
     name: 'AI 客服',
   },

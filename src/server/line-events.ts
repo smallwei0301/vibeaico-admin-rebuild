@@ -356,7 +356,13 @@ async function onMessage(
       .eq('tenant_id', tenant.id)
       .maybeSingle();
     const ai = aiSettingsSchema.parse(row?.ai ?? {});
-    if (ai.enabled) {
+    // 嚴格模式（issue #27 ①）：ai-settings 頁那顆開關的說明文字寫著
+    // 「開啟後，顧客若打純數字（如 1822）、亂碼、單字、符號等『明顯非詢問』訊息，
+    //   AI 完全不回覆，讓店家專人親自接。正常詢問（價格/時間/地址）AI 仍會正常回答。」
+    // 這裡是那句話唯一的生效點；沒有它，開關就只是一顆存得起來但什麼都不做的鈕。
+    // 只跳過分支 ⑤（AI 不回覆），⑥ 的靜態罐頭回覆歸 line-settings 管（§8.1 分家），
+    // 本處不代它決定。
+    if (ai.enabled && !(ai.strictMode && isLikelyChitchat(text))) {
       const shop = await buildShopContext(admin, tenant, row?.basic, row?.business, ai);
       const answer = await aiReply(text, shop);
       if (answer) {
@@ -770,6 +776,47 @@ async function replyMyBookings(ctx: BuiltinCtx): Promise<boolean> {
     return `・${formatTaipei(b.start_at)}｜${svc?.name ?? ''}${suffix}`;
   });
   return replyText(ctx, `${MSG.myBookingsTitle}\n${lines.join('\n')}`);
+}
+
+/**
+ * 「明顯非詢問」判定 —— ai-settings 頁「嚴格模式」開關的實作（issue #27 ①）。
+ *
+ * 判準逐字取自那顆開關自己的說明文字：「顧客若打**純數字（如 1822）、亂碼、
+ * 單字、符號**等『明顯非詢問』訊息…正常詢問（價格/時間/地址）AI 仍會正常回答」。
+ * 翻成可執行的規則，只認說明文字點名的四類，不多不少：
+ *
+ *   1. 純數字（含全形數字）—— 「1822」
+ *   2. 沒有任何中日韓文字或英文字母 —— 純符號、純表情、亂碼「!@#$」「👍」
+ *   3. 單一字元 —— 「好」「1」「a」
+ *   4. 只有英文字母且長度 ≤ 3 —— 「ok」「hi」「xxx」
+ *
+ * ⚠️ 刻意**不做**語意判斷。這個函式的錯誤方向要選對：誤判成閒聊會讓一則真的
+ * 詢問沒人回（顧客只看到已讀不回），誤判成詢問頂多是 AI 多回一句。所以規則
+ * 從嚴、只攔形狀上就不可能是問句的訊息，寧可漏攔。
+ *
+ * 中文「價格」「地址」都是兩個中日韓字元，規則 3/4 都不會攔到；
+ * 「多少錢」「幾點開」同理。
+ */
+export function isLikelyChitchat(raw: string): boolean {
+  const text = raw.trim();
+  if (!text) return true;                                  // 空白訊息本來就無從回答
+
+  // 1. 純數字（半形 0-9 與全形 ０-９，允許中間有空白／連字號，如「0912-345-678」）
+  if (/^[0-9０-９\s-]+$/.test(text)) return true;
+
+  // 2. 完全沒有文字（中日韓 or 拉丁字母）——純符號／表情／標點
+  const hasWordChar = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}A-Za-z]/u
+    .test(text);
+  if (!hasWordChar) return true;
+
+  // 3. 單一字元（用 Array.from 以碼點計，避免 emoji/罕用字被算成 2）
+  const codePoints = Array.from(text);
+  if (codePoints.length <= 1) return true;
+
+  // 4. 只有拉丁字母（可含空白）且 ≤ 3 個字元——「ok」「hi」「abc」
+  if (/^[A-Za-z\s]+$/.test(text) && codePoints.length <= 3) return true;
+
+  return false;
 }
 
 /* ------------------------------------------------------------ AI context */
