@@ -160,12 +160,6 @@ const WORD_EXCEPTIONS: { file: string; reason: string }[] = [
       + '文案清單未列、不在本輪白名單；已回報待排。',
   },
   {
-    file: 'src/i18n/zh-TW/pages/clinic-queue.ts',
-    reason:
-      'issue #29 明列不在範圍：CLINIC 專屬頁，指向 services 正確。'
-      + '（惟 CLINIC 的目錄標籤是「診療項目」，此處仍寫「服務項目」，已回報。）',
-  },
-  {
     file: 'src/i18n/zh-TW/pages/register.ts',
     reason:
       '註冊頁三選一卡片在**說明 LOCAL_SHOP 這個模式本身**（「用『服務項目』排預約」），'
@@ -213,8 +207,9 @@ describe('§8.13 父層級不變式：目錄／訂單一定落在該模式看得
 
     expect(ordersLabel('LOCAL_SHOP')).toBe('預約列表');
     expect(ordersLabel('GUIDE')).toBe('旅遊訂單');
-    // CLINIC 的子層級尚未設計（§8.13 規則 4），暫借 LOCAL_SHOP 的 bookings。
-    expect(ordersLabel('CLINIC')).toBe('預約列表');
+    // CLINIC 子層級的頁面仍借 LOCAL_SHOP 的 bookings 實作，但名稱已由
+    // 14 分冊 §8.17（擁有者裁決）收斂為「掛號紀錄」。
+    expect(ordersLabel('CLINIC')).toBe('掛號紀錄');
   });
 });
 

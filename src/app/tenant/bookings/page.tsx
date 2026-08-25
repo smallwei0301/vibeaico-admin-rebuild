@@ -29,10 +29,11 @@ import { listServices, listStaff } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import type { Booking, BookingStatus, Customer, Service, Staff } from '@/lib/types';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -861,6 +862,7 @@ function BookingFormModal({
   onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
+  const businessType = useBusinessType();
   const isEdit = !!booking;
   const c = t.createModal;
   const e = t.editModal;
@@ -936,7 +938,7 @@ function BookingFormModal({
         return c.customerInvalid;
       }
     }
-    if (!serviceId) return c.serviceInvalid;
+    if (!serviceId) return resolveNavTerms(c.serviceInvalid, businessType);
     if (REQUIRE_STAFF && !staffId) return `${c.staffRequired}${c.staffRequiredSuffix}`;
     if (!date) return c.dateInvalid;
     if (!isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
@@ -1014,7 +1016,9 @@ function BookingFormModal({
         </>
       }
     >
-      <p className="mb-4 text-base text-neutral-700">{isEdit ? e.intro : c.intro}</p>
+      <p className="mb-4 text-base text-neutral-700">
+        {resolveNavTerms(isEdit ? e.intro : c.intro, businessType)}
+      </p>
 
       {isEdit ? (
         <FormGroup>
@@ -1057,7 +1061,9 @@ function BookingFormModal({
 
       <div className="grid gap-x-4 md:grid-cols-2">
         <FormGroup>
-          <Label required htmlFor="bookingService">{isEdit ? e.service : c.service}</Label>
+          <Label required htmlFor="bookingService">
+            {resolveNavTerms(isEdit ? e.service : c.service, businessType)}
+          </Label>
           <Select id="bookingService" value={serviceId} onChange={(ev) => setServiceId(ev.target.value)}>
             <option value="">{c.servicePlaceholder}</option>
             {services.map((s) => (
@@ -1132,7 +1138,7 @@ function BookingFormModal({
               value={selectedService ? c.durationValue(selectedService.durationMinutes) : ''}
             />
           )}
-          <FormText>{isEdit ? e.durationHelp : c.durationHelp}</FormText>
+          <FormText>{resolveNavTerms(isEdit ? e.durationHelp : c.durationHelp, businessType)}</FormText>
         </FormGroup>
       </div>
 

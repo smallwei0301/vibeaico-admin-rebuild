@@ -94,7 +94,8 @@ export const bookingsPage = {
   /* -------------------------------------------------------- 新增預約 modal */
   createModal: {
     title: '新增預約',
-    intro: '請選擇顧客、服務項目、日期與時間來建立預約。新建立的預約狀態為「待確認」。',
+    /** `{catalog}` 由頁面在 render 期依當下模式展開（14 分冊 §8.13／§8.17） */
+    intro: '請選擇顧客、{catalog}、日期與時間來建立預約。新建立的預約狀態為「待確認」。',
     customer: '顧客 *',
     newCustomerToggle: '新顧客（直接輸入姓名與電話）',
     customerPlaceholder: '請選擇顧客',
@@ -104,9 +105,9 @@ export const bookingsPage = {
     newCustomerInvalid: '請填寫顧客姓名與正確手機號（台灣 09 開頭 10 碼；外籍請含國碼）',
     customerHelp: '系統會自動建檔；若手機號已存在則沿用既有顧客（不會覆蓋既有姓名）。',
 
-    service: '服務項目 *',
+    service: '{catalog} *',
     servicePlaceholder: '請選擇服務',
-    serviceInvalid: '請選擇服務項目',
+    serviceInvalid: '請選擇{catalog}',
     serviceHelp: '看診號碼掛號服務不在此列表，代客掛號請至左側「看診號碼掛號」頁操作。',
     serviceOption: (name: string, minutes: number, price: string) => `${name} (${minutes}分鐘 / ${price})`,
     stayServiceOption: (name: string, price: string) => `${name} 🌙住宿 (每晚 ${price})`,
@@ -133,7 +134,7 @@ export const bookingsPage = {
 
     duration: '服務時長',
     durationPlaceholder: '選擇服務後自動填入',
-    durationHelp: '服務時長由服務項目決定',
+    durationHelp: '服務時長由{catalog}決定',
     durationValue: (minutes: number) => `${minutes} 分鐘`,
 
     note: '備註',
@@ -154,9 +155,9 @@ export const bookingsPage = {
     intro: '修改預約時間或服務人員時，系統會送出 LINE 通知給顧客；只調整備註則不會送出通知。',
     customer: '顧客',
     customerHelp: '顧客資訊無法修改',
-    service: '服務項目 *',
+    service: '{catalog} *',
     servicePlaceholder: '請選擇服務',
-    serviceInvalid: '請選擇服務項目',
+    serviceInvalid: '請選擇{catalog}',
     staff: '服務人員',
     staffAuto: '不指定（系統自動分配）',
     staffHelp: '可選擇指定 服務人員 或由系統自動分配',

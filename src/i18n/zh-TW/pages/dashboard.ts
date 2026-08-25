@@ -56,16 +56,15 @@ export const dashboardPage = {
    * 沿用預設會叫他去一個他選單裡根本不存在的頁面。
    *
    * 目錄名稱本身已改用 `{catalog}` 佔位符（setupStepLabel 會展開成該模式的
-   * 目錄名：LOCAL_SHOP 服務項目／GUIDE 行程與方案／CLINIC 診療項目），因此
-   * 這裡只列**展開後仍不對**的鍵——例如診所的步驟叫「設定看診項目」而非
-   * 「設定診療項目」。其餘 fallback 回 steps。
+   * 目錄名：LOCAL_SHOP 服務項目／GUIDE 行程與方案／CLINIC 診療項目），
+   * `SERVICE` 步驟因此不需要 CLINIC 覆寫——`{catalog}` 展開已經是「設定診療
+   * 項目」。這裡只列**展開後仍不對**的鍵，目前只剩員工稱呼（14 分冊 §8.17）。
    */
   stepOverrides: {
     GUIDE: {
       STAFF: '設定嚮導資料',
     },
     CLINIC: {
-      SERVICE: '設定看診項目',
       STAFF: '設定醫師資料',
     },
   } as Record<string, Partial<Record<SetupStepKey, string>>>,

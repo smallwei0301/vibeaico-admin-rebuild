@@ -121,7 +121,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     richMenuCells: [
       { label: '線上掛號', text: '預約' },
       { label: '我的掛號', text: '我的預約' },
-      { label: '看診項目', text: '服務項目' },
+      { label: '診療項目', text: '服務項目' },
       { label: '看診進度', text: '看診進度' },
       { label: '門診時間', text: '營業時間' },
       { label: '聯絡診所', text: '聯絡我們' },

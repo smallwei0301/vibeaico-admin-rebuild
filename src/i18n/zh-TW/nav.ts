@@ -66,6 +66,12 @@ export const navByMode: Partial<Record<string, Partial<Record<NavKey, string>>>>
     navBooking: '看診管理',
     navOperation: '診所營運',
     services: '診療項目',
+    /**
+     * 14 分冊 §8.17（擁有者裁決）：CLINIC 的「訂單」叫「掛號紀錄」，不再沿用
+     * LOCAL_SHOP 的「預約列表」。之前沒覆寫是 §8.13 當時「CLINIC 子層級尚未
+     * 設計」的暫定狀態，§8.17 已收斂命名，這裡補上。
+     */
+    bookings: '掛號紀錄',
     staff: '醫師管理',
     calendar: '看診行事曆',
   },
@@ -81,7 +87,7 @@ export const navLabel = (key: NavKey, businessType = 'LOCAL_SHOP'): string =>
 /*
  * 「服務項目」與「預約管理」是**父層級概念**，三種模式各有自己的子層級：
  *   目錄  LOCAL_SHOP 服務項目 / GUIDE 行程與方案 / CLINIC 診療項目
- *   訂單  LOCAL_SHOP 預約列表 / GUIDE 旅遊訂單   / CLINIC 預約列表
+ *   訂單  LOCAL_SHOP 預約列表 / GUIDE 旅遊訂單   / CLINIC 掛號紀錄
  *
  * 跨頁文案提到目錄或訂單時**一律**呼叫下面兩個函式，不得寫死「服務項目」
  * 「預約管理」——嚮導的選單裡沒有那兩頁，寫死等於叫他去一個不存在的地方。

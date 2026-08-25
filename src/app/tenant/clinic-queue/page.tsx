@@ -20,10 +20,11 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listServices } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { clinicQueuePage as t } from '@/i18n/zh-TW/pages/clinic-queue';
 import { formatDate, formatNumber } from '@/lib/utils';
 import type { Service } from '@/lib/types';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -106,6 +107,7 @@ const toIsoDate = (d: Date) =>
 
 export default function ClinicQueuePage() {
   const toast = useToast();
+  const businessType = useBusinessType();
 
   const [services, setServices] = React.useState<Service[]>([]);
   const [serviceId, setServiceId] = React.useState('');
@@ -339,7 +341,7 @@ export default function ClinicQueuePage() {
               <p>{t.guide.steps}</p>
               <p className="font-semibold">{t.guide.allInPage}</p>
               <p>
-                {t.guide.alsoInServicesLead}
+                {resolveNavTerms(t.guide.alsoInServicesLead, businessType)}
                 <strong>{t.guide.lineSelfServiceStrong}</strong>
                 {t.guide.lineSelfServiceTail}
               </p>
