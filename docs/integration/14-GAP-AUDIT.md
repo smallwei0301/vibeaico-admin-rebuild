@@ -580,3 +580,58 @@ API 文件**。先前「自動回應訊息無法檢查」就是這樣被證明�
    **這一格目前的證據是沙箱實跑，不是 CI 綠燈**——差別要講清楚，
    否則下一輪稽核會把它當成已被 CI 覆蓋。要讓 CI 也涵蓋，需要把 Management
    API token 加進 repo secrets（⚙ 只有擁有者能做）。
+### 6.5 issue #27（LINE 對外行為三件）— 2026-08-25 完成（commit `38e714f`）
+
+| 項 | 關鍵證據 |
+|---|---|
+| ① ai-settings 走對端點 | `tests/integration/api/ai-settings.27.test.ts:「⚠️ webhook 送一則顧客訊息 → mock LINE 收到的訊息不含提示詞任何一段」` |
+| ② 預約 MODIFIED 通知 | `bookings-modified.27.test.ts` 五案：開→push+額度-1／**只改備註→零 push**（§8.7）／改人員→有 push／關→零 push 仍 200／額度用盡→零 push 仍 200 |
+| ③ 商品訂單 LINE/Email | `product-order-notify.27.test.ts` 六案，含未綁 LINE→走 Email 且**額度不變**、寄信失敗→回 `FAILED`（不報成 EMAIL） |
+
+三次變異測試全部轉紅並已還原（`grep -rn "MUTATION"` 零殘留）。
+主導者補跑 `npm run build` → 通過（agent 依指示未跑，見下方「唯一沒被 build 驗過的環節」）。
+
+#### 值得記錄的一個測試設計：對照組
+
+①的關鍵測試斷言「mock LINE 收到的**不是**提示詞原文」。這種**否定式斷言**有個
+先天弱點——如果那條路徑根本不會回訊息，斷言也會通過，測試就變成綠色的謊。
+
+執行者為此在同一個 describe 補了對照組：
+`「對照組：把提示詞塞回 line.defaultReply（＝修好前的存法）→ 顧客真的收到提示詞原文」`，
+刻意重現病徵並斷言 `reply === PROMPT`。
+
+**這個手法值得推廣**：凡是「斷言某件壞事沒有發生」的測試，都應該配一個
+「讓那件壞事發生、證明測得到」的對照組。否則無法區分「修好了」與「這條路
+根本沒被走到」。
+
+#### 執行者做出的兩個判斷（主導者已認可）
+
+1. **`strictMode` 不只存起來，還接上了 webhook 分支 ⑤。** 理由：開關說明
+   「開啟後…AI 完全不回覆」是一句**行為承諾**，只存不執行等於換一種方式說謊。
+   判準逐字對應說明文字的四類（純數字／亂碼符號／單字／≤3 個英文字母），
+   刻意不做語意判斷。
+2. **未訂閱時的文案改了。** `PUT /api/ai-settings` 依 09 §7.1 帶 `requireFeature`，
+   未訂閱回 403。接上專用端點後，原句「此頁設定**可以儲存**但不會生效」立刻
+   變成假的已知（使用者照它按下去只會拿到紅色的儲存失敗），改為「此頁的設定
+   也無法儲存（送出會被擋下）」。
+   ⚠️ 這是**修好一件事會讓旁邊一句話變成謊言**的例子——同一輪裡必須一起處理，
+   否則就是用新的假成功換掉舊的。
+
+#### 唯一沒被 build 驗過的環節（已補驗）
+
+`src/services/products.ts` 用 `import type` 從 `@/server/line-notify` 取型別。
+`isolatedModules: true` 且未設 `verbatimModuleSyntax` → 型別匯入會被完全抹除，
+不會把 server 程式碼帶進 client bundle。執行者依指示未跑 build，只有靜態推論；
+**主導者已補跑 `npm run build` 通過**，這一環節現在有輸出佐證。
+
+#### 由 §8.10 通則掃出、尚未處理的三處文案
+
+| 檔案:行 | 原文 | 判定 |
+|---|---|---|
+| `src/i18n/zh-TW/pages/calendar.ts:113` | `notified: '，已通知顧客'` | 明確違反 §8.10，與修好前的 bookings 同型 |
+| `src/i18n/zh-TW/pages/feature-store.ts:151` | `…（已通知平台處理）` | **捏造的已知**——主導者已查證 `restore/route.ts` 全檔零通知程式碼。店家被告知「平台已知道」，實際沒有任何人被通知，於是店家不會主動回報，問題就此消失 |
+| `src/i18n/zh-TW/pages/tour-orders.ts:124` | `…旅客會收到 LINE 通知。` | 確認視窗的未來式；`/api/tour-orders/**` 路由樹可能整個不存在（屬 #8） |
+
+已排除的非違規：`campaigns.ts:209`（§8.6 明令保留，缺的是實作不是文案）、
+`register.ts` / `forgot-password.ts`（「驗證碼已發送」＝已送出，合規）、
+`settings.ts` 的開關說明（描述功能，非事實主張）。
