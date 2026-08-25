@@ -156,3 +156,50 @@ describe('文案：說明欄用的字典鍵存在（鐵則 1）', () => {
     expect(productsPage.category.descriptionPlaceholder).toBe('選填');
   });
 });
+
+/**
+ * 第四顆按鈕：排序（move）。
+ *
+ * 本輪（issue #28 收尾）原本只派了新增／編輯／刪除三顆，執行者在報告裡指出
+ * **排序也是同一個缺陷，而且兩頁又分岔了**——服務頁是「先換位置＋toast，才
+ * void 送出」，商品頁早已 await-first。它依 playbook 不自行擴充範圍、把問題
+ * 交上來，主導者裁決後補上。
+ *
+ * 為什麼排序也要 await-first：即使接受「排序是少數樂觀更新可接受的場景」，
+ * 會說謊的也是那句 toast，不是換位置這個動作本身。而商品頁已經證明 await-first
+ * 在這裡體感沒問題（骨架模式下 adapt() 的 mock 分支同步 resolve）。
+ * 兩頁分岔本身就是缺陷：維護者讀到哪一邊就學到哪一種寫法。
+ */
+describe('第四顆按鈕：分類排序兩頁同型', () => {
+  for (const [label, file, fn] of [
+    ['服務分類', 'src/app/tenant/services/page.tsx', 'reorderServiceCategories'],
+    ['商品分類', 'src/app/tenant/products/page.tsx', 'reorderProductCategories'],
+  ] as const) {
+    it(`${label}：排序先 await 端點，換位置與 toast 才執行（鐵則 12）`, () => {
+      const code = src(file);
+      /* 兩個檔案裡都有兩個 `move`——一個排「服務／商品」本身、一個排「分類」。
+         所以不能用 indexOf 抓第一個（那會抓到前者），改為從分類的 reorder 呼叫
+         往回找它所屬的那個 move。 */
+      const callAt = code.indexOf(`${fn}(`);
+      expect(callAt, `${label}：整個檔案找不到 ${fn}(`).toBeGreaterThan(-1);
+      const start = code.lastIndexOf('const move = ', callAt);
+      expect(start, `${label}：找不到分類排序所屬的 move`).toBeGreaterThan(-1);
+      const body = code.slice(start, callAt + 400);
+
+      expect(body, `${label} 的分類 move 不是 async——表示還是舊的 void 寫法`)
+        .toMatch(/const move = async \(index: number, delta: number\)/);
+
+      const awaitAt = body.indexOf(`await ${fn}(`);
+      const onChangeAt = body.indexOf('onChange(next.map(');
+      const toastAt = body.indexOf('toast.show(t.category.reordered)');
+
+      expect(awaitAt, `${label}：找不到 await ${fn}(`).toBeGreaterThan(-1);
+      expect(onChangeAt).toBeGreaterThan(awaitAt);
+      expect(toastAt).toBeGreaterThan(awaitAt);
+    });
+
+    it(`${label}：排序不再用「射後不理」的 void 呼叫`, () => {
+      expect(src(file)).not.toMatch(new RegExp(`void ${fn}\\(`));
+    });
+  }
+});

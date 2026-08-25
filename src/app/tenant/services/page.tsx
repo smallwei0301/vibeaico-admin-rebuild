@@ -1169,16 +1169,33 @@ function CategoryModal({
     }
   };
 
-  const move = (index: number, delta: number) => {
+  /**
+   * 分類排序（第四顆按鈕）。
+   *
+   * 修改前是「先 onChange 換位置＋toast『分類排序已更新』，才 void 送出」——
+   * 與同檔的新增／編輯／刪除三顆按鈕不同型，也違反鐵則 12（成功訊息不得早於
+   * 它所宣稱的動作）。失敗時使用者會同時看到綠色成功與紅色錯誤，而畫面上的
+   * 順序已經換過去了。
+   *
+   * 商品頁的同一顆按鈕（products/page.tsx 的 move）**早就是 await-first**，
+   * 兩頁分岔本身就是缺陷：維護者讀到哪一邊就學到哪一種寫法。這裡對齊商品頁。
+   *
+   * 關於「排序不是樂觀更新可接受的少數場景嗎」——即使接受樂觀更新，會說謊的
+   * 也是那句 toast，不是換位置這個動作。而商品頁已經證明 await-first 在這裡
+   * 的體感沒有問題（骨架模式下 adapt() 的 mock 分支同步 resolve，完全無感）。
+   */
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= categories.length) return;
     const next = [...categories];
     [next[index], next[target]] = [next[target], next[index]];
-    onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
-    toast.show(t.category.reordered);
-    void reorderServiceCategories(next.map((c) => c.id)).catch((e) => {
+    try {
+      await reorderServiceCategories(next.map((c) => c.id));
+      onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+      toast.show(t.category.reordered);
+    } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
-    });
+    }
   };
 
   /**
@@ -1279,13 +1296,13 @@ function CategoryModal({
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-            disabled={i === 0} onClick={() => move(i, -1)}
+            disabled={i === 0} onClick={() => void move(i, -1)}
           >
             <ChevronUp size={13} />
           </Button>
           <Button
             variant="outline" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-            disabled={i === categories.length - 1} onClick={() => move(i, 1)}
+            disabled={i === categories.length - 1} onClick={() => void move(i, 1)}
           >
             <ChevronDown size={13} />
           </Button>
