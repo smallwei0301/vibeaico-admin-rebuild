@@ -26,7 +26,7 @@ import {
 import { listCustomers } from '@/services/customers';
 import { listBookings } from '@/services/bookings';
 import { common } from '@/i18n/zh-TW/common';
-import { navLabel } from '@/i18n/zh-TW/nav';
+import { navLabel, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS } from '@/config/modes';
 import { productOrdersPage as t } from '@/i18n/zh-TW/pages/product-orders';
@@ -254,7 +254,7 @@ export default function ProductOrdersPage() {
         <div className="min-w-0">
           <div className="font-semibold text-dark">{o.orderNo}</div>
           {o.fromBooking ? (
-            <div className="text-2xs text-secondary">{t.labels.fromBooking}</div>
+            <div className="text-2xs text-secondary">{resolveNavTerms(t.labels.fromBooking, businessType)}</div>
           ) : null}
           {o.payDueAt ? (
             <div className="text-2xs text-danger">{t.labels.payDue(formatDateTime(o.payDueAt))}</div>
@@ -557,7 +557,7 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
         <>
           {order.fromBooking ? (
             <Alert tone="info" className="mb-3">
-              <Link className="underline" href={ordersHref}>{t.labels.fromBooking}</Link>
+              <Link className="underline" href={ordersHref}>{resolveNavTerms(t.labels.fromBooking, detailBusinessType)}</Link>
             </Alert>
           ) : null}
 
@@ -609,7 +609,7 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
             <DetailRow label={f.staff}>
               {order.staffName ?? <span className="text-muted">{t.labels.notProvided}</span>}
             </DetailRow>
-            <DetailRow label={f.relatedBooking}>
+            <DetailRow label={resolveNavTerms(f.relatedBooking, detailBusinessType)}>
               {order.bookingId
                 ? <Link className="underline" href={ordersHref}>{order.bookingId}</Link>
                 : <span className="text-muted">{t.labels.none}</span>}

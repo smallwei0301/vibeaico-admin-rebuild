@@ -58,7 +58,16 @@ export const productOrdersPage = {
     shipping: '郵寄',
     taxId: (id: string) => `統編 ${id}`,
     payDue: (at: string) => `未付款自動取消期限：${at}`,
-    fromBooking: '本單為預約現場加購（至預約列表查看）',
+    /**
+     * 跨頁引用「訂單」父層級概念（14 分冊 §8.13／issue #29 已確立）。
+     * `{orders}` 與 `{navBooking}` 由頁面在 **render 期**用 `resolveNavTerms()`
+     * 展開——i18n 是模組層常數，模組求值早於 AppShell 決定模式，先算會凍住錯的模式。
+     *
+     * 原文寫死「預約」，嚮導租戶看到「本單為**預約**現場加購（至**預約列表**查看）」，
+     * 但他的側邊欄裡叫「旅遊訂單」——連結是對的（走 `ordersHref`），名字不對。
+     * §8.13 的靜態鎖只鎖「服務項目／預約管理」這兩個字串，鎖不到這裡。
+     */
+    fromBooking: '本單為{navBooking}現場加購（至{orders}查看）',
     quantityUnitPrice: (qty: number, unitPrice: string) => `${qty} × ${unitPrice}`,
     unassignedPayment: '未指定（下單後與顧客確認）',
   },
@@ -91,7 +100,8 @@ export const productOrdersPage = {
       onlinePayment: '線上收款',
       couponDiscount: '票券折抵',
       staff: '經手員工',
-      relatedBooking: '關聯預約',
+      /** 同上：`{navBooking}` 於 render 期展開。 */
+      relatedBooking: '關聯{navBooking}',
       note: '備註',
       taxId: '統一編號',
       shippingAddress: '收件地址',

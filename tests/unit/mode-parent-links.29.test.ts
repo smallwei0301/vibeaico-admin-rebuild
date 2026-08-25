@@ -289,3 +289,54 @@ describe('靜態鎖：快捷操作不得回到模組層 const', () => {
     expect(dashboard).toMatch(/const quickActions = buildQuickActions\(businessType\);/);
   });
 });
+
+/*
+ * ---------------------------------------------------------------------------
+ * 2026-08-25 追加：上面那組「跨頁不得寫死『服務項目』『預約管理』」的鎖，鎖的是
+ * **側邊欄那兩個詞**。但同一種缺陷還有另一個形狀——寫死的是「預約」本身：
+ *
+ *   product-orders.ts:61  '本單為預約現場加購（至預約列表查看）'
+ *
+ * 連結是對的（走 `MODE_PRESETS[...].ordersHref`），**名字不對**：嚮導租戶的側邊欄
+ * 裡叫「旅遊訂單」，畫面卻叫他去「預約列表」。issue #16 的驗收執行者在跑三模式
+ * Playwright 時看到的——腳本檢查的是「連結有沒有落在該模式看得見的頁面」，
+ * 落點是對的所以不會 MISS，是人看到文字才發現的。
+ *
+ * 值得記的是**為什麼上面那組鎖抓不到**：它鎖的是兩個具體字串。這一處用的是第三個
+ * 字串，鎖自然照不到。字串黑名單只擋得住已經想到的那幾個詞——所以這裡改用正向斷言：
+ * **跨頁引用一律走佔位符**，而不是再往黑名單加一個詞。
+ */
+describe('靜態鎖：跨頁引用一律走佔位符，不得寫死任何一種模式的說法', () => {
+  /** 這些 i18n 檔會指涉「訂單／預約」這個父層級概念，必須用 {orders} / {navBooking}。 */
+  const CROSS_PAGE_KEYS: Array<[string, string[]]> = [
+    ['src/i18n/zh-TW/pages/product-orders.ts', ['fromBooking', 'relatedBooking']],
+  ];
+
+  for (const [file, keys] of CROSS_PAGE_KEYS) {
+    for (const key of keys) {
+      it(`${file} 的 ${key} 用佔位符而非寫死「預約」`, () => {
+        const src = readFileSync(file, 'utf-8');
+        const line = src.split('\n').find((l) => l.includes(`${key}:`));
+        expect(line, `找不到 ${key}`).toBeTruthy();
+        // 正向：必須含佔位符
+        expect(line).toMatch(/\{orders\}|\{navBooking\}|\{catalog\}/);
+        // 負向：佔位符之外不得再出現寫死的「預約」二字
+        const withoutPlaceholders = line!.replace(/\{(orders|navBooking|catalog)\}/g, '');
+        expect(
+          withoutPlaceholders.replace(/\/\*.*/, ''),
+          `${key} 仍寫死「預約」——嚮導租戶會看到他選單裡沒有的名字`,
+        ).not.toMatch(/預約/);
+      });
+    }
+  }
+
+  it('頁面真的在 render 期展開這些佔位符（沒展開就會把 {orders} 原樣印給店家看）', () => {
+    const page = readFileSync('src/app/tenant/product-orders/page.tsx', 'utf-8');
+    expect(page).toContain('resolveNavTerms');
+    // 三個使用點都要包起來，漏一個就會漏出大括號
+    expect(page).toMatch(/resolveNavTerms\(t\.labels\.fromBooking,/);
+    expect(page).toMatch(/resolveNavTerms\(f\.relatedBooking,/);
+    const rawUses = page.match(/\{t\.labels\.fromBooking\}|\{f\.relatedBooking\}/g) ?? [];
+    expect(rawUses, `有 ${rawUses.length} 處直接渲染未展開的字串`).toHaveLength(0);
+  });
+});
