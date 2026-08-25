@@ -197,46 +197,73 @@ describe('修復-1B：六處後端不存在的互動不得假成功', () => {
   });
 
   /* ==================================================== 4+5. 兩處 QR 下載 */
-  describe('promote／line-settings 的「下載 QR」（按了卻沒有任何檔案）', () => {
+  /**
+   * ⚠️ **前提變更（主導者，2026-08-25，issue #16）——不是把斷言放寬。**
+   *
+   * 這一段原本斷言「這兩頁**不准**有 QR」。那在 issue #3 誠實化時是對的：當時兩頁
+   * 按了下載鈕只會 toast 成功、沒有任何檔案產生，所以正確的狀態是**停用＋說明**。
+   *
+   * issue #16 依擁有者裁決（14 分冊 §8.2）安裝 `qrcode` 套件把功能補齊，
+   * 前提因此反轉——現在兩頁**必須**有真的 QR。
+   *
+   * 但原本那三條斷言裡**綁了兩件不同的事**，這次拆開處理：
+   *   (a) 「不准自寫 QR 編碼器」——**永久有效**，是 §8.2 裁決的核心。
+   *       自寫編碼器的典型失敗是「看起來像 QR、掃不出來」，外觀正常、沒有錯誤訊息、
+   *       單元測試也會綠，要拿手機掃了才知道。這一條從「不准出現圖像資料」
+   *       改寫成**正向斷言必須走 `qrcode` 套件**——比原本更精確，因為它擋的是
+   *       「有人自己刻一個」而不是「有人產生了圖」。
+   *   (b) 「本 issue 不做這件事」——已由 #16 反轉，移除。
+   *
+   * 強度沒有下降：原本是 3 條否定式；現在是「內容必須解得出且逐字相符」的
+   * 端到端驗證（`tests/unit/qr-lib.test.ts`）＋ 接線正向斷言（`qr-wiring.test.ts`）
+   * ＋ 下面這一組防回歸。**下載到一張圖不代表它指向對的網址**，那才是真正要防的。
+   */
+  describe('promote／line-settings 的 QR 下載（issue #16 補齊後）', () => {
     const promoteCode = withoutComments(src(PAGES.promote));
     const lineCode = withoutComments(src(PAGES.lineSettings));
 
-    it('promote：下載按鈕停用並說明原因，QR 方框標示為不能掃描的版位示意', () => {
-      /*
-       * 查證結果：兩頁都沒有任何 QR 圖檔、dataURL 或產圖端點，方框裡畫的是
-       * lucide 的 <QrCode> 圖示。沒有圖可下載，因此按鈕停用（不是自製 QR 編碼器）。
-       */
-      expect(promoteCode).not.toContain('downloadStarted');
-      expect(promoteCode).not.toContain('QR_PLACEHOLDER_AVAILABLE');
-      expect(promoteCode).not.toContain('qrConfirmOpen');
-      expect(promoteCode).toMatch(/disabled title=\{t\.notBuilt\.downloadDisabledHint\}/);
-      expect(promoteCode).toContain('{t.notBuilt.qrPlaceholder}');
-      expect(promotePage.notBuilt.downloadDisabledHint).toContain('沒有可下載的 QR 圖檔');
-      expect(promotePage.notBuilt.qrPlaceholder).toContain('不能掃描');
-      expect(Object.keys(promotePage.messages)).not.toContain('downloadStarted');
-      expect(Object.keys(promotePage.qr)).not.toContain('filename');
-      expect(Object.keys(promotePage.qr)).not.toContain('confirmMessage');
-    });
-
-    it('line-settings：下載按鈕停用並指向 LINE 官方後台，「已下載」文案移除', () => {
-      const card = section(lineCode, '{t.botInfo.downloadQr}', '</Card>');
-      expect(lineCode).not.toContain('t.botInfo.downloaded');
-      expect(Object.keys(lineSettingsPage.botInfo)).not.toContain('downloaded');
-      const button = section(lineCode, '<Button\n                  variant="outline"\n                  disabled', '</Button>');
-      expect(button).toContain('title={t.botInfo.downloadDisabledHint}');
-      expect(button).not.toContain('onClick');
-      expect(lineSettingsPage.botInfo.downloadDisabledHint).toContain('尚未建置');
-      expect(card.length).toBeGreaterThan(0);
-      for (const text of allStrings(lineSettingsPage.botInfo)) {
-        expect(text).not.toMatch(/QR Code 已下載/);
+    it('兩頁都走 src/lib/qr.ts，不准自己刻 QR 編碼器（§8.2 裁決，永久有效）', () => {
+      for (const code of [promoteCode, lineCode]) {
+        expect(code).toMatch(/from '@\/lib\/qr'/);
+        expect(code).toContain('generateQrDataUrl');
+      }
+      const lib = withoutComments(src('src/lib/qr.ts'));
+      // 真的用套件，而不是自己實作 Reed–Solomon／版本矩陣
+      expect(lib).toMatch(/from 'qrcode'/);
+      for (const banned of ['reedSolomon', 'galois', 'GF256', 'generatorPolynomial', 'alignmentPattern']) {
+        expect(lib, `src/lib/qr.ts 出現 ${banned}——像是在自刻編碼器（§8.2 禁止）`)
+          .not.toContain(banned);
       }
     });
 
-    it('兩頁都沒有自製 QR 編碼器或新的圖像資料（本 issue 不做這件事）', () => {
+    it('兩頁的下載鈕都真的接上 handler，且成功旗標不早於產生', () => {
       for (const code of [promoteCode, lineCode]) {
-        expect(code).not.toContain('data:image');
-        expect(code).not.toContain('toDataURL');
-        expect(code).not.toContain('qrcode');
+        expect(code).toContain('onClick={downloadQr}');
+        expect(code).toContain('triggerDataUrlDownload');
+        // 沒有 dataURL 時擋下，不會產生一個空檔案還說成功
+        expect(code).toMatch(/if \(!qrDataUrl\) return;/);
+      }
+    });
+
+    it('QR 方框顯示真的圖，不再是「不能掃描」的佔位圖示', () => {
+      for (const code of [promoteCode, lineCode]) {
+        expect(code).toMatch(/<img src=\{qrDataUrl\}/);
+      }
+      // 舊的佔位文案已從字典移除（留著會變成沒人渲染的死字串）
+      expect(Object.keys(promotePage.notBuilt)).not.toContain('qrPlaceholder');
+      expect(Object.keys(promotePage.notBuilt)).not.toContain('downloadDisabledHint');
+    });
+
+    it('下載檔名不是兩頁共用一個——各自有自己的名字', () => {
+      expect(promotePage.qr.filename).toBeTruthy();
+      expect(lineSettingsPage.botInfo.qrFilename).toBeTruthy();
+      expect(promotePage.qr.filename).not.toBe(lineSettingsPage.botInfo.qrFilename);
+    });
+
+    it('產生失敗時不謊報成功（有 qrError 分支，且失敗時鈕是停用的）', () => {
+      for (const code of [promoteCode, lineCode]) {
+        expect(code).toContain('qrError');
+        expect(code).toMatch(/disabled=\{!qrDataUrl/);
       }
     });
   });

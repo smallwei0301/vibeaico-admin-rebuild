@@ -113,21 +113,37 @@ describe('修復-1C：發布成功訊息與備份承諾等殘留假宣稱', () =
   });
 
   /* ============================================ 3. line-settings 加入指引 */
-  describe('3. 「如何讓顧客加入」不再指向已停用的 QR 下載', () => {
-    it('第 1 項改指 LINE 官方後台，不再叫店家按停用的下載鍵', () => {
+  /**
+   * ⚠️ **前提變更（主導者，2026-08-25，issue #16）——不是把斷言放寬。**
+   *
+   * 這一段原本要求「加好友指引改指 LINE 官方後台」，因為當時 QR 下載鈕是**停用的**
+   * ——叫店家去按一顆按不下去的鈕才是不誠實。
+   *
+   * issue #16 把 QR 補齊成真的了（擁有者裁決 §8.2）。前提反轉之後，**繼續叫店家
+   * 繞去 LINE 官方後台反而變成新的不誠實**：本站明明就能下載，卻教他去別的地方。
+   *
+   * 所以這一段改為守住反方向：指引必須指向**本站真的能用的那顆鈕**，
+   * 且不得殘留「尚未建置」這類已經不成立的說法。
+   * 「不得指向停用功能」這個**原始意圖沒有變**，變的只是哪一邊才是停用的。
+   */
+  describe('3. 「如何讓顧客加入」指向本站真的能用的下載鈕（issue #16 後）', () => {
+    it('第 1 項指向本站的下載鈕，不再繞去 LINE 官方後台', () => {
       const [first] = lineSettingsPage.promotion.items;
-      expect(first.desc).not.toContain('下載上方 QR Code');
-      expect(first.desc).toContain('LINE Official Account Manager');
+      expect(first.desc).toContain('下載');
+      expect(first.desc, 'QR 已補齊，再叫店家去別的地方下載就是新的不誠實')
+        .not.toContain('LINE Official Account Manager');
     });
 
-    it('整段指引都沒有「下載上方 QR」這類指向停用功能的句子', () => {
+    it('整段指引沒有殘留「尚未建置」這類已不成立的說法', () => {
       for (const text of allStrings(lineSettingsPage.promotion)) {
-        expect(text).not.toMatch(/下載上方/);
+        expect(text).not.toMatch(/尚未建置|無法下載|不能下載/);
       }
-      // QR 下載按鈕本身仍停用（1B 的成果不得被本輪回退）
-      expect(lineSettingsPage.botInfo.downloadDisabledHint).toContain('尚未建置');
+      // downloadDisabledHint 現在的語意是「Basic ID 還沒填」這種過渡態，
+      // 不再是「功能不存在」——不得又退回宣稱功能沒建好
+      expect(lineSettingsPage.botInfo.downloadDisabledHint).not.toContain('尚未建置');
+      // 而且它只在「真的還不能下載」時當 title 用，不是無條件停用
       expect(withoutComments(src('src/app/tenant/line-settings/page.tsx')))
-        .toContain('title={t.botInfo.downloadDisabledHint}');
+        .toMatch(/title=\{!qrDataUrl \? t\.botInfo\.downloadDisabledHint : undefined\}/);
     });
   });
 
