@@ -4,11 +4,16 @@ import { resolve } from 'node:path';
 import { bookingsPage } from '@/i18n/zh-TW/pages/bookings';
 
 /**
- * issue #28 ②：`/pay/*` 路由不存在（屬 Phase 9b／issue #12 的範圍），但畫面曾經
+ * issue #28 ②：`/pay/*` 路由不存在，但畫面曾經
  * 叫店家「複製付款連結傳給顧客」——顧客打開必然 404。
  *
  * 依擁有者裁決（補齊優先於刪除）：不建 `/pay` 頁，`payLinkOf`／`copyPayLink` 邏輯
- * 與相關文案不刪除，只是複製鈕停用、旁邊直接顯示「付款頁尚未建置（issue #12）」。
+ * 與相關文案不刪除，只是複製鈕停用、旁邊直接顯示「付款頁尚未建置（issue #32）」。
+ *
+ * ⚠️ 指向的 issue 改過一次：停用當下寫的是 #12（旅客 checkout），因為那時看起來
+ * `/pay` 會由 #12 建出來。後來 #28 ⑩ 的執行者查證發現 #12 明確限定行程／團次訂單，
+ * 一般預約與商品訂單的顧客端付款**沒有任何 issue 涵蓋**，因此另開了 #32。
+ * 指錯 issue 的文案跟指錯的規格一樣會誤導下一個人，所以連同註解一起更正。
  *
  * 這份測試鎖住兩件事：
  *   1. 詳情 modal 的複製鈕在原始碼裡是 disabled、且鈕旁真的渲染了說明文字
@@ -61,15 +66,15 @@ describe('bookings 頁：付款連結鈕誠實化（issue #28 ②）', () => {
     expect(neighborhood).not.toMatch(/title=\{t\.detailModal\.payLinkUnavailable\}/);
   });
 
-  it('payLinkOf／copyPayLink 邏輯仍保留在原始碼中，供 issue #12 完成後回頭啟用（不是刪除功能）', () => {
+  it('payLinkOf／copyPayLink 邏輯仍保留在原始碼中，供 issue #32 完成後回頭啟用（不是刪除功能）', () => {
     expect(pageSource).toContain('const payLinkOf');
     expect(pageSource).toContain('const copyPayLink');
     expect(pageSource).toContain('navigator.clipboard.writeText(payLinkOf(b))');
   });
 
-  it('i18n：detailModal.payLinkUnavailable 指向 issue #12，且不宣稱付款頁可用', () => {
+  it('i18n：detailModal.payLinkUnavailable 指向 issue #32，且不宣稱付款頁可用', () => {
     const msg = bookingsPage.detailModal.payLinkUnavailable;
-    expect(msg).toMatch(/#12/);
+    expect(msg).toMatch(/#32/);
     expect(msg).not.toMatch(/傳給顧客|可貼給顧客|可付款/);
   });
 
@@ -86,7 +91,7 @@ describe('bookings 頁：付款連結鈕誠實化（issue #28 ②）', () => {
    * 鍵不存在，斷言就沒有意義；刪掉而不是留一條永遠比對 undefined 的測試。
    */
 
-  it('i18n：payLinkCopied／payLinkIntro／copyPayLink 標籤保留未刪除（#12 完成後要回頭啟用）', () => {
+  it('i18n：payLinkCopied／payLinkIntro／copyPayLink 標籤保留未刪除（#32 完成後要回頭啟用）', () => {
     expect(bookingsPage.messages.payLinkCopied).toBeTruthy();
     expect(bookingsPage.markPaidModal.payLinkIntro).toBeTruthy();
     expect(bookingsPage.rowActions.copyPayLink).toBeTruthy();

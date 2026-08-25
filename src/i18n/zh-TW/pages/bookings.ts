@@ -293,11 +293,11 @@ export const bookingsPage = {
     paidHint: '已付清，本次無需再向顧客收款。',
     depositHint: '下方「應收金額」已自動扣除，現場只需收尾款。',
     balanceHint:
-      '如需向顧客收取差額，請收現後按「標記尾款已結清」（線上付款連結尚未建置，詳見 issue #12）。',
+      '如需向顧客收取差額，請收現後按「標記尾款已結清」（線上付款連結尚未建置，詳見 issue #32）。',
     /**
-     * /pay/* 付款頁尚未建置（issue #12 才會做），此文案目前不應出現在任何渲染路徑；
+     * /pay/* 付款頁尚未建置（issue #32 才會做），此文案目前不應出現在任何渲染路徑；
      * 保留只是因為 copyPayLink 的複製動作邏輯本身仍在（見 page.tsx 的 copyPayLink），
-     * #12 完成、鈕重新啟用後才會再被用到。
+     * #32 完成、鈕重新啟用後才會再被用到。
      */
     payLinkIntro: '複製此付款連結傳給顧客：',
   },
@@ -315,8 +315,8 @@ export const bookingsPage = {
     pointsDiscount: (points: number) => `點數折抵 ${points} 點 = $${points}`,
     afterCoupon: '（再扣票券，以系統計算為準）',
     notConfirmed: '此預約尚未確認',
-    /** 複製付款連結鈕已停用時，鈕旁顯示的說明（issue #28 ②：/pay 頁待 issue #12 建置） */
-    payLinkUnavailable: '付款頁尚未建置，連結目前無法使用（詳見 issue #12）。',
+    /** 複製付款連結鈕已停用時，鈕旁顯示的說明（issue #28 ②：/pay 頁待 issue #32 建置） */
+    payLinkUnavailable: '付款頁尚未建置，連結目前無法使用（詳見 issue #32）。',
   },
 
   /* -------------------------------------------------------------- 確認訊息 */
@@ -366,7 +366,7 @@ export const bookingsPage = {
       `已收金額 ${paid} 高於新應付 ${net}，請確認是否退還差額`,
 
     /**
-     * /pay/* 付款頁尚未建置（issue #12），複製鈕目前 disabled，此文案不應出現在任何
+     * /pay/* 付款頁尚未建置（issue #32），複製鈕目前 disabled，此文案不應出現在任何
      * 渲染路徑。保留字串不刪，只是不再被 copyPayLink 呼叫——鈕重新啟用後才會再用到。
      */
     payLinkCopied: '付款連結已複製，可貼給顧客',
