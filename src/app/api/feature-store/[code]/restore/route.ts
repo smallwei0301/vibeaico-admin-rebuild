@@ -12,6 +12,60 @@ import { FEATURE_CATALOG } from '@/config/features';
  */
 
 /**
+ * 還原副作用失敗時，在 `bug_reports`（0012／0018）留一筆平台端待處理紀錄。
+ *
+ * 為什麼要有這個（14 分冊 §8.10 的同一條紀律，第三輪稽核）：先前這個失敗只有
+ * `console.error`，而畫面卻對店家說「（已通知平台處理）」——**沒有任何人被通知**。
+ * 店家因此不會主動回報，問題就這樣消失。而票券／商品的自動恢復是平台端邏輯，
+ * 店家自己修不好，沒人知道就真的沒人處理。
+ *
+ * 這筆紀錄必須一眼看得出是系統自動產生、不是使用者回報，所以：
+ * `reporter = 'system'`（使用者回報一律是登入者 email）、
+ * `category = 'SYSTEM_RESTORE_SIDE_EFFECT'`（使用者回報的類別來自 modal 下拉選單）。
+ *
+ * 寫入本身也可能失敗，所以整段 try/catch 吞錯並 log——但**畫面上不會宣稱
+ * 「已通知平台」**（見 feature-store.ts messages.restoreSideEffectFailed 的註解）：
+ * 沒有把握的事就不說，這正是本專案反覆栽過的「捏造的已知」。
+ */
+async function recordPlatformIssue(
+  admin: ReturnType<typeof createAdminSupabase>,
+  tenantId: string,
+  reporterEmail: string,
+  code: string,
+  cause: unknown,
+): Promise<void> {
+  try {
+    /*
+     * Supabase 丟出來的是 PostgrestError（普通物件，不是 Error 實例），
+     * 直接 String() 會變成 '[object Object]'——那筆紀錄就等於沒有原因，
+     * 平台端看到也修不了。所以物件走 JSON 序列化，保住 message/code/details/hint。
+     */
+    const detail = cause instanceof Error
+      ? `${cause.name}: ${cause.message}`
+      : (cause && typeof cause === 'object')
+        ? JSON.stringify(cause, Object.getOwnPropertyNames(cause))
+        : String(cause);
+    const { error } = await admin.from('bug_reports').insert({
+      tenant_id: tenantId,
+      reporter: 'system',
+      category: 'SYSTEM_RESTORE_SIDE_EFFECT',
+      subject: `[自動] 恢復訂閱的還原副作用失敗：${code}`,
+      content:
+        `功能代碼：${code}\n` +
+        `操作者：${reporterEmail || '(未知)'}\n` +
+        `失敗原因：${detail}\n\n` +
+        '訂閱本身已恢復（cancelled_at 已清空），但票券重新發布／商品重新上架失敗，' +
+        '需要平台端人工確認 auto_paused_by_feature 仍為 true 的資料。',
+      contact_email: reporterEmail || '',
+      page_url: '/tenant/feature-store',
+    });
+    if (error) throw error;
+  } catch (e) {
+    console.error('[feature-store] 無法寫入平台待處理紀錄（bug_reports）', code, e);
+  }
+}
+
+/**
  * §6 還原副作用（與 apply/route.ts 內同名函式刻意重複 —— 共用落點
  * src/server/features.ts 由另一 agent 負責，且 route.ts 不允許額外具名匯出）。
  */
@@ -79,6 +133,8 @@ export const POST = handle(async (_req, { params }) => {
     } catch (e) {
       // 還原失敗不可讓恢復失敗（09 分冊 §6）；前端已有對應警示文案
       console.error('[feature-store] restore side effect failed', code, e);
+      // 平台端待處理紀錄：這個失敗店家自己修不好，沒人知道就沒人處理（見上方註解）
+      await recordPlatformIssue(admin, t.tenantId, t.user.email ?? '', code, e);
       return ok({ restoreSideEffectFailed: true });
     }
   }

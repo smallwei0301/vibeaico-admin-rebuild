@@ -189,11 +189,25 @@ export const createServiceCategory = (input: ServiceCategoryInput) =>
     }),
   );
 
-/** PUT /api/service-categories/:id — 僅支援改名（active 切換無對應端點）。 */
-export const updateServiceCategory = (id: string, name: string) =>
+/**
+ * PUT /api/service-categories/:id 收的欄位（issue #28 第 ⑭ 筆）。
+ * 全部 optional＝只更新有帶的；排序另有 reorder 端點，這裡不收 sortOrder。
+ */
+export type ServiceCategoryUpdate = {
+  name?: string;
+  description?: string;
+  active?: boolean;
+};
+
+/**
+ * PUT /api/service-categories/:id。
+ * 修改前簽名是 `(id, name)`、body 只有 `{ name }`，所以分類管理的「編輯」鈕
+ * 切了 active 也無處可送，只能改本地 state 再顯示「分類已更新」。
+ */
+export const updateServiceCategory = (id: string, patch: ServiceCategoryUpdate) =>
   adapt(() => undefined, () =>
     request<void>(`/api/service-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+      method: 'PUT', body: JSON.stringify(patch),
     }));
 
 export const deleteServiceCategory = (id: string) =>

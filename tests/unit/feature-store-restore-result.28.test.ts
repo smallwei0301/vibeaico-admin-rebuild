@@ -68,9 +68,24 @@ describe('feature-store：restoreFeature 的回傳值不再被丟棄（issue #28
     expect(t.messages.restoreSideEffectFailed).toMatch(/票券\/商品自動恢復失敗/);
   });
 
-  it('三句文案不是新寫的（值與 issue #28 引述的既有字典一致）', () => {
+  /**
+   * 這一格原本釘住的是 ⑧ 當時「既有字典」的原字串：
+   *   '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復（已通知平台處理）'
+   *
+   * 第三輪稽核（14 分冊 §8.10）判定結尾那句「（已通知平台處理）」是**捏造的已知**：
+   * restore/route.ts 的失敗分支當時只有一行 console.error，零 email、零 notify、
+   * 零平台告警。店家被告知平台已經知道了，於是不會主動回報，問題就此消失。
+   *
+   * 所以這裡刻意**不是**把斷言放寬成 toContain 讓它繼續綠——那才是「改測試讓它過」。
+   * 釘子照樣是釘子，只是釘在修正後的字串上，並在 tests/unit/notify-copy-8-10.test.ts
+   * 另立一組斷言鎖住「不得再出現『已通知』」這個方向。⑧ 的另外兩句
+   * （couponsRestored / productsRestored）未動，仍由上面「分支 2」逐字比對。
+   */
+  it('警示文案已依 §8.10 修正，且仍來自字典而非頁面內嵌字面量', () => {
     expect(t.messages.restoreSideEffectFailed).toBe(
-      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復（已通知平台處理）',
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；若無法自行恢復，請聯絡平台客服協助處理',
     );
+    // 頁面只引用字典鍵，沒有把中文字面量寫死在 page.tsx（鐵則 1）
+    expect(code).not.toMatch(/票券\/商品自動恢復失敗/);
   });
 });

@@ -120,8 +120,21 @@ export const tourOrdersPage = {
 
   confirm: {
     confirmPaymentTitle: '確認收款',
+    /**
+     * 14 分冊 §8.10 的同一條紀律（第三輪稽核）。
+     *
+     * 原句結尾是「確認後訂單成立，旅客會收到 LINE 通知。」——查證結果：
+     * `/api/tour-orders/**` 這棵路由樹**整個不存在**（`find src/app/api -ipath '*tour*'`
+     * 只找得到 `cron/tour-order-expiry`，該檔也沒有任何 linePush／notify），
+     * `src/server/line-notify.ts` 的 `BookingStatusKind` 也沒有任何 tour／departure
+     * 事件。也就是說沒有任何一行程式碼會因為確認收款而送出 LINE——這句話是
+     * 純粹的捏造，不只是「已通知 vs 已送出」的措辭問題。
+     *
+     * 旅客端通知屬 issue #8 的範圍，本輪刻意不實作，只把話說回可驗證的範圍內：
+     * 明講尚未建置，並要店家自行告知旅客（比照 bookings.ts 對未建置功能的寫法）。
+     */
     confirmPayment: (orderNo: string) =>
-      `確認已收到訂單 ${orderNo} 的款項嗎？確認後訂單成立，旅客會收到 LINE 通知。`,
+      `確認已收到訂單 ${orderNo} 的款項嗎？確認後訂單成立。旅客端 LINE 通知尚未建置，系統不會送出任何通知，請自行告知旅客。`,
     completeTitle: '標記完成',
     complete: (orderNo: string) => `確定要把訂單 ${orderNo} 標記為已完成嗎？`,
     cancelTitle: '取消訂單',

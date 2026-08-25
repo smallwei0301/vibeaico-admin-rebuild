@@ -23,7 +23,7 @@ import {
   createService, createServiceCategory, deleteService, deleteServiceCategory,
   duplicateService, listServiceCategories, listServices, listStaff,
   reorderServiceCategories, reorderServices, reorderServicesLine,
-  toggleServiceLineFeatured, updateService,
+  toggleServiceLineFeatured, updateService, updateServiceCategory,
 } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -1071,6 +1071,7 @@ function CategoryModal({
   const [description, setDescription] = React.useState('');
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ServiceCategory | null>(null);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
   const nextId = React.useRef(1);
 
   React.useEffect(() => {
@@ -1130,6 +1131,26 @@ function CategoryModal({
     });
   };
 
+  /**
+   * 啟用／停用切換（issue #28 第 ⑭ 筆）。
+   * 修改前：只 onChange 切本地 active 就 toast「分類已更新」，從未打 PUT，
+   * 重新整理全部還原。0018 讓 active 變成真欄位之後這顆按鈕的誤導性更高，
+   * 所以改成先 await 端點、成功才改畫面並 toast。
+   */
+  const toggleActive = async (c: ServiceCategory) => {
+    const next = !c.active;
+    setSavingId(c.id);
+    try {
+      await updateServiceCategory(c.id, { active: next });
+      onChange((list) => list.map((x) => (x.id === c.id ? { ...x, active: next } : x)));
+      toast.show(t.category.updated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   const columns: Column<ServiceCategory>[] = [
     { key: 'name', header: t.category.columns.name, render: (c) => c.name },
     {
@@ -1160,10 +1181,8 @@ function CategoryModal({
           </Button>
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
-            onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
-            }}
+            disabled={savingId === c.id}
+            onClick={() => void toggleActive(c)}
           >
             <Pencil size={13} />
           </Button>

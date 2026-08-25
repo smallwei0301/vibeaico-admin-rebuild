@@ -91,11 +91,25 @@ export const createProductCategory = (input: ProductCategoryInput) =>
     }),
   );
 
-/** PUT /api/product-categories/:id — 只支援改名 */
-export const updateProductCategory = (id: string, name: string) =>
+/**
+ * PUT /api/product-categories/:id 收的欄位（issue #28 第 ⑭ 筆）。
+ * 全部 optional＝只更新有帶的；排序另有 reorder 端點，這裡不收 sortOrder。
+ */
+export type ProductCategoryUpdate = {
+  name?: string;
+  description?: string;
+  active?: boolean;
+};
+
+/**
+ * PUT /api/product-categories/:id。
+ * 修改前簽名是 `(id, name)`、body 只有 `{ name }`，所以分類管理的「編輯」鈕
+ * 切了 active 也無處可送，只能改本地 state 再顯示「分類已更新」。
+ */
+export const updateProductCategory = (id: string, patch: ProductCategoryUpdate) =>
   adapt(() => undefined, () =>
     request<void>(`/api/product-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+      method: 'PUT', body: JSON.stringify(patch),
     }));
 
 /** DELETE — FK on delete set null，底下商品自動變未分類 */

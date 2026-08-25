@@ -147,8 +147,20 @@ export const featureStorePage = {
     cancelledUsable: (name: string) => `已取消訂閱「${name}」，功能在到期前仍可使用`,
     couponsRestored: (rc: number) => `${rc} 張票券已自動恢復發布`,
     productsRestored: (rp: number) => `${rp} 項商品已自動重新上架`,
+    /**
+     * 還原副作用失敗（14 分冊 §8.10 的同一條紀律，第三輪稽核）。
+     *
+     * 原文結尾是「（已通知平台處理）」——`/api/feature-store/:code/restore` 的
+     * catch 分支當時只有一行 `console.error`，**零 email、零 notify、零平台告警**。
+     * 那句話讓店家以為平台已經知道了、會處理，於是不會主動回報，問題就此消失。
+     *
+     * 現在端點會在這個分支寫一筆 `bug_reports`（reporter='system'）當平台端待處理
+     * 紀錄，但**這裡刻意仍不宣稱「已通知平台」**：那筆寫入本身也可能失敗，而回應
+     * 裡沒有旗標可以讓畫面知道成敗。與其賭一個沒量到的狀態，不如只講必然為真的
+     * 兩件事——要店家手動恢復、恢復不了就聯絡平台。
+     */
     restoreSideEffectFailed:
-      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復（已通知平台處理）',
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；若無法自行恢復，請聯絡平台客服協助處理',
     subscribeFailed: '訂閱失敗:',
     subscribeFailedFull: '訂閱失敗：',
     cancelFailed: '取消訂閱失敗:',
