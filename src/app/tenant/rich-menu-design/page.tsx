@@ -922,7 +922,8 @@ function FlexPopupModal({
 /**
  * 編輯器裡的一列。`id` 只是 React key（送出前會被剝掉）——存進
  * `tenant_settings.line.flexCards` 的形狀由 `flexCardSchema` 定義，
- * 就是 06 分冊 §6 契約的四個欄位，這裡不得自行多存東西。
+ * 就是 06 分冊 §6 契約的 `{title, subtitle, imageUrl, ad, linkUrl?}`，
+ * 這裡不得自行多存東西。
  */
 type EditorCard = FlexCard & { id: string };
 
@@ -933,9 +934,9 @@ type EditorCard = FlexCard & { id: string };
  * 講了這件事）。三張卡的文字對應 LOCAL_SHOP 的既有關鍵字，按下去打得到 handler。
  */
 const DEFAULT_FLEX_CARDS: EditorCard[] = [
-  { id: 'fc_1', title: '預約', subtitle: '選擇服務與時段', imageUrl: '', ad: false },
-  { id: 'fc_2', title: '我的預約', subtitle: '查詢或取消預約', imageUrl: '', ad: false },
-  { id: 'fc_3', title: '商品', subtitle: '線上選購', imageUrl: '', ad: false },
+  { id: 'fc_1', title: '預約', subtitle: '選擇服務與時段', imageUrl: '', ad: false, linkUrl: '' },
+  { id: 'fc_2', title: '我的預約', subtitle: '查詢或取消預約', imageUrl: '', ad: false, linkUrl: '' },
+  { id: 'fc_3', title: '商品', subtitle: '線上選購', imageUrl: '', ad: false, linkUrl: '' },
 ];
 
 /**
@@ -991,9 +992,10 @@ function FlexMenuTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 編輯器的列 → 端點契約的四個欄位（id 是 React key，不進資料庫） */
+  /** 編輯器的列 → 端點契約的欄位（id 是 React key，不進資料庫） */
   const toPayload = (rows: EditorCard[]): FlexCard[] =>
-    rows.map(({ title, subtitle, imageUrl, ad }) => ({ title, subtitle, imageUrl, ad }));
+    rows.map(({ title, subtitle, imageUrl, ad, linkUrl }) =>
+      ({ title, subtitle, imageUrl, ad, linkUrl }));
 
   const addCard = (ad: boolean) => {
     if (cards.length >= MAX_FLEX_CARDS) {
@@ -1003,7 +1005,7 @@ function FlexMenuTab({
     setCards((c) => [...c, {
       id: newId(),
       title: ad ? t.flex.adCardLabel : t.flex.newCard,
-      subtitle: '', imageUrl: '', ad,
+      subtitle: '', imageUrl: '', ad, linkUrl: '',
     }]);
   };
 
@@ -1033,6 +1035,16 @@ function FlexMenuTab({
   const publish = async () => {
     if (cards.some((c) => !c.title.trim())) {
       toast.show(t.flex.titleRequired, 'warning');
+      return;
+    }
+    /*
+     * 連結網址只收 https（**本平台的規則**，不是 LINE 的限制——LINE 的 uri action
+     * 實測收 http，見 src/config/tenant-settings.ts 的 flexCardSchema 說明）。
+     * 端點的 zod 也擋，這裡先擋一次是為了讓店家看到中文的哪裡錯，而不是一句
+     * 400 的原文——與上面擋空標題同一個理由。
+     */
+    if (cards.some((c) => c.linkUrl.trim() !== '' && !c.linkUrl.trim().startsWith('https://'))) {
+      toast.show(t.flex.linkUrlScheme, 'warning');
       return;
     }
     setSaving(true);
@@ -1169,6 +1181,27 @@ function FlexMenuTab({
                           {c.imageUrl && (
                             <span className="ml-2 text-sm text-success">{t.flex.imageUploaded}</span>
                           )}
+                          {/*
+                            連結網址（14 分冊 §8.20）。所有卡片都給，不只廣告卡——
+                            契約把 linkUrl 定在卡片層級，只讓廣告卡填會造出一個
+                            「存得下但畫面設不了」的隱形欄位。
+                          */}
+                          <Input
+                            className="form-control-sm mt-1"
+                            type="url"
+                            inputMode="url"
+                            value={c.linkUrl}
+                            placeholder={t.flex.linkUrlPlaceholder}
+                            aria-label={t.flex.linkUrl}
+                            onChange={(e) => setCards((cs) => cs.map((x) => x.id === c.id ? { ...x, linkUrl: e.target.value } : x))}
+                          />
+                          {c.linkUrl.trim() !== '' && (
+                            <span className="form-text">
+                              {c.linkUrl.trim().startsWith('https://')
+                                ? t.flex.linkUrlSet
+                                : t.flex.linkUrlScheme}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <Button
@@ -1196,6 +1229,7 @@ function FlexMenuTab({
             <div className="border-t border-neutral-200 p-4">
               <FormText>{t.carouselPreview.note}</FormText>
               <FormText>{t.flex.imageTypeHint}</FormText>
+              <FormText>{t.flex.linkUrlHint}</FormText>
             </div>
           </CardBody>
         </Card>

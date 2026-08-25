@@ -15,6 +15,8 @@
  *      FLEX_POPUP_TRIGGER_TEXT → 走同一支 buildFlexMenuOutcome()。
  *   2. **12 只有一個出處**：`MAX_FLEX_CARDS`。zod 的 .max()、頁面的新增上限、
  *      文案三者引用同一個常數（同型缺陷見 src/server/paging.ts 檔頭）。
+ *   3. **`uri` action 也只在 flex-menu.ts 組**（14 分冊 §8.20 加了 `linkUrl` 之後）。
+ *      頁面另寫一份「組一個 uri action」是同一個分岔陷阱的新入口。
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
@@ -146,6 +148,172 @@ describe('buildFlexMenuOutcome — 卡片內容', () => {
       { flexCards: cards(1), flexHeaderColor: 'rgb(1,2,3)' }, SHOP,
     ));
     expect(bubble.header.backgroundColor).toBe('#06C755');
+  });
+});
+
+/* ========================================================================== */
+/* linkUrl —— 14 分冊 §8.20 擁有者裁決：卡片契約多一個 optional 連結網址        */
+/* ========================================================================== */
+/**
+ * 為什麼這一組要寫得比較重：
+ *
+ * 1. `linkUrl` 是**第五個欄位**，加錯的失敗模式是「後台看得到、顧客按了沒反應」，
+ *    或更糟——LINE 把整包 carousel 退回，顧客一張卡都收不到。
+ * 2. https-only 是**本平台自己的規則**（14 分冊 §8.20 擁有者裁決要求 schema 擋），
+ *    **不是 LINE 的限制**——§8.20 的 ⚠️ 段落寫「LINE 的 uri action 只收 https」，
+ *    實測是錯的：`scripts/verify/flex-menu-validate.cjs` 的 scheme 探測顯示
+ *    LINE 對 uri action 的 http 回 200（line://、tel: 也 200），
+ *    只有 javascript:／ftp:／data: 回 400 `invalid uri scheme`；
+ *    https-only 的是 hero **圖片**網址那一個欄位。
+ *    既然沒有外部系統會替我們擋，這條規則**只剩下這裡的測試在守**——
+ *    refine 被拿掉的話，本地一路綠燈、LINE 也照收，沒有任何人會發現。
+ * 3. 沒填網址的卡片**不得因此變成一張壞卡**——它必須原封不動地維持
+ *    原本的 message action。這是本輪最容易被改壞、也最不容易被發現的一條。
+ */
+describe('卡片的 linkUrl（§8.20）：填了才開網址，沒填不得把卡片弄壞', () => {
+  const withLink = (linkUrl: string, ad = false) =>
+    [{ title: '本月優惠', subtitle: '限時折扣', imageUrl: '', ad, linkUrl }];
+
+  it('填了 https 的網址 → 按鈕是 uri action，label 仍是標題、uri 就是那個網址', () => {
+    const [bubble] = bubblesOf(buildFlexMenuOutcome(
+      { flexCards: withLink('https://example.com/promo') }, SHOP,
+    ));
+    expect(bubble.footer.contents[0].action).toEqual({
+      type: 'uri', label: '本月優惠', uri: 'https://example.com/promo',
+    });
+  });
+
+  it('沒有 linkUrl 這個鍵的老資料 → 按鈕原封不動是 message action（不得變成壞卡）', () => {
+    const [bubble] = bubblesOf(buildFlexMenuOutcome(
+      { flexCards: [{ title: '預約', subtitle: '', imageUrl: '', ad: false }] }, SHOP,
+    ));
+    expect(bubble.footer.contents[0].action).toEqual({
+      type: 'message', label: '預約', text: '預約',
+    });
+  });
+
+  it('linkUrl 是空字串 → 一樣退回 message action，卡片照常出現', () => {
+    const bubbles = bubblesOf(buildFlexMenuOutcome({ flexCards: withLink('') }, SHOP));
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0].footer.contents[0].action.type).toBe('message');
+    expect(textsOf(bubbles[0])).toContain('本月優惠');
+  });
+
+  it('http（非 https）的網址：只丟掉那個連結，卡片留著並退回 message action', () => {
+    // 讀取路徑的搶救行為，與 imageUrl 同一個道理：一個壞網址不該帶走整張卡，
+    // 更不該讓 LINE 把整包 carousel 退回（那是顧客一張都收不到）
+    const bubbles = bubblesOf(buildFlexMenuOutcome(
+      { flexCards: withLink('http://example.com/promo') }, SHOP,
+    ));
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0].footer.contents[0].action).toEqual({
+      type: 'message', label: '本月優惠', text: '本月優惠',
+    });
+    expect(JSON.stringify(bubbles[0])).not.toContain('http://example.com/promo');
+  });
+
+  it('normalizeFlexCards 把不是 https 的連結洗成空字串（不是整張卡丟掉）', () => {
+    const out = normalizeFlexCards([
+      { title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'http://a.example' },
+      { title: 'B', subtitle: '', imageUrl: '', ad: false, linkUrl: 'javascript:alert(1)' },
+      { title: 'C', subtitle: '', imageUrl: '', ad: false, linkUrl: 'https://c.example' },
+    ]);
+    expect(out.map((c) => c.linkUrl)).toEqual(['', '', 'https://c.example']);
+    expect(out.map((c) => c.title)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('一張卡只有一個 action：bubble 層與 hero 都不得再掛第二個目的地', () => {
+    const [bubble] = bubblesOf(buildFlexMenuOutcome({
+      flexCards: [{
+        title: '本月優惠', subtitle: '限時折扣',
+        imageUrl: 'https://example.com/a.jpg', ad: true,
+        linkUrl: 'https://example.com/promo',
+      }],
+    }, SHOP));
+    // 一張卡兩個目的地 = 顧客按到哪裡就去哪裡，而店家只填了一個網址
+    expect(bubble.action).toBeUndefined();
+    expect(bubble.hero.action).toBeUndefined();
+    expect(bubble.body.action).toBeUndefined();
+    const uriActions = JSON.stringify(bubble).match(/"type":"uri"/g) ?? [];
+    expect(uriActions).toHaveLength(1);
+  });
+
+  it('linkUrl 不是廣告卡專屬：一般卡填了也生效（契約定在卡片層級）', () => {
+    const [normal, adCard] = bubblesOf(buildFlexMenuOutcome({
+      flexCards: [
+        { title: '官網', subtitle: '', imageUrl: '', ad: false, linkUrl: 'https://shop.example' },
+        { title: '本月優惠', subtitle: '', imageUrl: '', ad: true, linkUrl: 'https://ad.example' },
+      ],
+    }, SHOP));
+    expect(normal.footer.contents[0].action).toEqual({
+      type: 'uri', label: '官網', uri: 'https://shop.example',
+    });
+    expect(adCard.footer.contents[0].action).toEqual({
+      type: 'uri', label: '本月優惠', uri: 'https://ad.example',
+    });
+    // 廣告卡仍然有「廣告」標示（連結不取代標示）
+    expect(textsOf(adCard)).toContain('廣告');
+  });
+
+  it('zod（寫入路徑）：https 放行、http 擋下、空字串與缺鍵都當作「不開網址」', () => {
+    const parse = (linkUrl?: string) =>
+      lineSettingsSchema.pick({ flexCards: true }).safeParse({
+        flexCards: [{
+          title: 'A', subtitle: '', imageUrl: '', ad: false,
+          ...(linkUrl === undefined ? {} : { linkUrl }),
+        }],
+      });
+
+    expect(parse('https://example.com').success).toBe(true);
+    // ⚠️ LINE **不會**替我們擋這一條（實測 http 的 uri action 回 200），
+    // 所以這行斷言就是這條平台規則唯一的守門人
+    expect(parse('http://example.com').success).toBe(false);
+    expect(parse('').success).toBe(true);
+
+    const missing = parse(undefined);
+    expect(missing.success).toBe(true);
+    expect(missing.success && missing.data.flexCards[0].linkUrl).toBe('');
+  });
+
+  // 這一組裡的 javascript: / data: / ftp: 是 LINE **真的**會退的
+  // （400 invalid uri scheme，實測見 scripts/verify/flex-menu-validate.cjs）——
+  // zod 擋它們是「不要等 LINE 退回來」，與擋 http 的性質不同，別混為一談
+  it('zod 也擋 javascript: / data: / file: 這類 scheme（不是只擋 http）', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'file:///etc/passwd', 'ftp://a.example']) {
+      const r = lineSettingsSchema.pick({ flexCards: true }).safeParse({
+        flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: bad }],
+      });
+      expect(r.success, `${bad} 不該通過`).toBe(false);
+    }
+  });
+
+  it('頁面真的把 linkUrl 送進端點（不是只有一個存不進去的輸入框）', () => {
+    const page = readFileSync(resolve(ROOT, 'src/app/tenant/rich-menu-design/page.tsx'), 'utf8');
+    // toPayload 是頁面 → 端點契約的唯一轉換點
+    expect(page).toContain('({ title, subtitle, imageUrl, ad, linkUrl })');
+    // 有可編輯的輸入框（不是唯讀顯示）
+    expect(page).toContain('linkUrl: e.target.value');
+    // 發布前先擋非 https，讓店家看中文而不是端點的 400 原文
+    expect(page).toContain('t.flex.linkUrlScheme');
+  });
+
+  it('src/ 底下只有 flex-menu.ts 會組 uri action（頁面不得另寫一份組裝）', () => {
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full, out);
+        else if (/\.tsx?$/.test(full)) out.push(full);
+      }
+      return out;
+    };
+    const offenders = walk(resolve(ROOT, 'src'))
+      .filter((f) => {
+        const body = readFileSync(f, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+        return /type:\s*'uri'/.test(body);
+      })
+      .map((f) => relative(ROOT, f));
+    expect(offenders).toEqual(['src/server/flex-menu.ts']);
   });
 });
 

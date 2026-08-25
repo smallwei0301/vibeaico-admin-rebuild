@@ -17,6 +17,13 @@ import { lineSettingsSchema } from '@/config/tenant-settings';
  * 同一個出處，見 src/config/tenant-settings.ts 的說明）。超過就整包 400，
  * 不做「默默砍掉多的」——店家編了 13 張卻只有 12 張生效而畫面說已儲存，
  * 就是一個沒人看得見的假成功。
+ *
+ * `linkUrl`（14 分冊 §8.20 擁有者裁決）：卡片的 optional 連結網址，**只收 https**。
+ *
+ * ⚠️ 這條 https-only 是**本平台的規則**。§8.20 寫的「LINE 的 uri action 只收 https」
+ * 經實測是錯的（LINE 收 http），詳見 src/config/tenant-settings.ts 的 flexCardSchema
+ * 說明與 scripts/verify/flex-menu-validate.cjs 的探測輸出。仍然擋，是因為擁有者
+ * 裁決要求擋；但不要在任何地方把理由寫成「LINE 會退」。
  */
 const bodySchema = lineSettingsSchema.pick({
   flexMenuEnabled: true,

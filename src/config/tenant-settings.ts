@@ -39,16 +39,36 @@ import { RICH_MENU_THEME_KEYS } from './rich-menu-themes';
 export const MAX_FLEX_CARDS = 12;
 
 /**
- * 一張輪播卡片。欄位就是 06 分冊 §6 補規格寫的四個：`{title, subtitle, imageUrl, ad}`，
- * 不多不少（04 分冊的契約以此為準，不得自行擴充）。
+ * 一張輪播卡片。欄位是 06 分冊 §6 的契約
+ * `{title, subtitle, imageUrl, ad, linkUrl?}`（04 分冊的契約以此為準，不得自行擴充）。
+ *
+ * ⚠️ `linkUrl` 是 14 分冊 §8.20 的**擁有者裁決**加上去的第五個欄位：原本的四欄
+ * 沒有地方放網址，但這一頁的文案從一開始就寫著「插入廣告卡片（打開網址）」——
+ * 廣告卡不能點本身沒有意義，補齊比改掉文案更符合擁有者方針。
  *
  * 各上限的來源都是 LINE 端的硬限制，不是憑感覺訂的：
- * - `title` 20 字：卡片底部按鈕用的是 message action，LINE 規定 action 的
- *   `label` 最多 20 字。刻意讓 `label` 與送出的 `text` 都等於 title——按鈕上寫
- *   什麼、按下去就送出什麼，中間不做截斷（截斷會讓兩者不一致，顧客按到的
- *   關鍵字與看到的字不同）。
+ * - `title` 20 字：卡片底部按鈕的 action，LINE 規定 `label` 最多 20 字
+ *   （message 與 uri 兩種 action 同一個上限）。沒有 `linkUrl` 時刻意讓 `label`
+ *   與送出的 `text` 都等於 title——按鈕上寫什麼、按下去就送出什麼，中間不做截斷
+ *   （截斷會讓兩者不一致，顧客按到的關鍵字與看到的字不同）。
  * - `imageUrl` 必須是 https：LINE 的 image 元件只收 HTTPS 網址，http 會被拒。
  *   空字串＝這張卡沒有主圖（合法，組裝時整個 hero 區塊省略）。
+ * - `linkUrl` 必須是 https：**這一條是本平台自己的規則，不是 LINE 的限制。**
+ *
+ *   ⚠️ 這個區分是實測出來的，不要再把它寫成 LINE 的限制（14 分冊 §8.20 的
+ *   ⚠️ 段落就是這樣寫的，而它是錯的）。`scripts/verify/flex-menu-validate.cjs`
+ *   把各種 scheme 送進 LINE 官方的 `POST /v2/bot/message/validate/reply`：
+ *
+ *     uri action：https 200、**http 200**、line:// 200、tel: 200、
+ *                 javascript: 400、ftp: 400、data: 400（皆 `invalid uri scheme`）
+ *     hero 圖 url：http **400** `invalid uri scheme` ← https-only 的是**這個**欄位
+ *
+ *   §8.20 把 hero 圖的限制當成了 uri action 的限制。LINE 對 `uri` action 收 http。
+ *   我們仍然只收 https，因為擁有者裁決要求 schema 擋在前面——但**理由是本平台
+ *   不讓店家把顧客導去未加密的網址**，不是「LINE 會退」。照 LINE 的說法寫，
+ *   下一個人會照著一個不存在的外部限制做決定。（已回報，等擁有者確認是否放寬。）
+ *
+ *   空字串＝這張卡不開網址（合法，組裝時按鈕退回 message action）。
  */
 export const flexCardSchema = z.object({
   title: z.string().trim().min(1, '卡片標題不可空白').max(20, '卡片標題最多 20 字'),
@@ -60,6 +80,12 @@ export const flexCardSchema = z.object({
     .refine((v) => v === '' || v.startsWith('https://'), '圖片網址必須是 https://')
     .default(''),
   ad: z.boolean().default(false),
+  linkUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === '' || v.startsWith('https://'), '連結網址必須是 https://')
+    .default(''),
 });
 
 export type FlexCard = z.infer<typeof flexCardSchema>;

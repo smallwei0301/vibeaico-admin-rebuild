@@ -12,6 +12,17 @@
  *
  * validate 端點**不會真的送出訊息，不耗每月推播額度**（15 分冊 §6）。
  *
+ * ⚠️ **正向案例全綠不等於驗過了。** 一整排 200 也可能只是這個端點在蓋橡皮圖章。
+ * 所以本檔一定要同時跑「負向對照」——刻意送 LINE 應該退回的 JSON，看它是不是
+ * 真的會退。issue #6 的執行者發現了這件事（14 分冊 §6.9），本檔照它的形狀保留
+ * 並擴充。
+ *
+ * 📌 **本輪（§8.20 的 linkUrl）用這個方法抓到的第一件事，是我們自己的規格寫錯了：**
+ * §8.20 說「uri action 只收 https，http 會被回 invalid uri scheme」——實測 LINE
+ * 對 uri action 的 http 回 **200**。那句話是把 hero **圖片** url 的限制誤植過來的。
+ * 所以本檔多了第三類輸出「scheme 探測」，把 LINE 的實際回答原樣印出來，
+ * 讓「哪些限制是 LINE 給的、哪些是本平台自己加的」不必再靠記憶。
+ *
  * 用法：
  *   LINE_CHANNEL_ACCESS_TOKEN=<Midao 長期 token> NODE_USE_ENV_PROXY=1 \
  *     node scripts/verify/flex-menu-validate.cjs
@@ -66,6 +77,18 @@ const cases = [
     flexCards: [card('一二三四五六七八九十一二三四五六七八九十')],
   }],
   ['關閉 + HINT（純文字 fallback）', { flexMenuEnabled: false, flexMenuFallback: 'HINT' }],
+  // 14 分冊 §8.20：卡片契約多了 optional linkUrl → 按鈕變 uri action
+  ['廣告卡有 linkUrl（uri action，https）', { flexCards: [
+    card('本月優惠', { ad: true, linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/' }),
+  ] }],
+  ['一般卡也有 linkUrl，與沒填的卡混在同一份 carousel', { flexCards: [
+    card('官網', { linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/' }),
+    card('預約'),
+    card('本月優惠', { ad: true, linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/?x=1#a' }),
+  ] }],
+  ['linkUrl 是空字串（不開網址 → 退回 message action，卡片不得變壞）', { flexCards: [
+    card('預約', { linkUrl: '' }),
+  ] }],
 ];
 
 const out = [];
@@ -77,42 +100,132 @@ for (const [name, cfg] of cases) {
     out.push({ name, kind: o.kind, bubbles: null, message: null });
   }
 }
-process.stdout.write(JSON.stringify(out));
+
+/*
+ * ---------------------------------------------------------------- 負向對照
+ * 七個 200 有可能只是端點在蓋橡皮圖章。這幾條送的是**我們的防線擋掉之後就
+ * 不可能出現**的 JSON，LINE 必須把它們退回；退回了，才證明上面那一串 200
+ * 是「LINE 認可我們」而不是「LINE 什麼都認可」。
+ *
+ * ⚠️ 每一條負向案例都是**繞過本專案的防線硬做出來的**（直接改組好的 JSON），
+ * 因為正常路徑根本產不出這種訊息——那正是它要證明的事。
+ */
+const clone = (m) => JSON.parse(JSON.stringify(m));
+const oneCard = (extra) => buildFlexMenuOutcome({ flexCards: [card('本月優惠', extra)] }, SHOP).message;
+
+const linkBase = oneCard({ linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/' });
+const withScheme = (uri) => {
+  const m = clone(linkBase);
+  m.contents.contents[0].footer.contents[0].action.uri = uri;
+  return m;
+};
+
+const httpHero = clone(oneCard({ imageUrl: 'https://vibeaico-admin-rebuild.vercel.app/favicon.ico' }));
+httpHero.contents.contents[0].hero.url = 'http://vibeaico-admin-rebuild.vercel.app/favicon.ico';
+
+const neg = [
+  ['uri action 用 javascript:', withScheme('javascript:alert(1)')],
+  ['uri action 用 data:', withScheme('data:text/html,x')],
+  ['uri action 用 ftp:', withScheme('ftp://a.example/')],
+  ['hero 圖 url 用 http —— issue #6 留下的基準線，本輪重跑', httpHero],
+];
+
+/*
+ * ------------------------------------------------------------ scheme 探測
+ * 這一組**不做通過／失敗判定**，只記錄 LINE 對各種 scheme 的實際回答。
+ *
+ * 為什麼要有它：14 分冊 §8.20 寫「uri action 只收 https，http 會被回
+ * invalid uri scheme」，本輪一跑才發現那是把 hero 圖片的限制誤植過來的
+ * ——LINE 對 uri action 的 http 回 200。我們仍然只收 https（擁有者裁決），
+ * 但那是**本平台的規則**，沒有任何外部系統會替我們擋。
+ *
+ * 把它印成「探測」而不是「負向對照」，是 CLAUDE.md 那條 FAIL / WARN 的分界：
+ * 一條永遠亮紅的對照，跟一個永遠開著的警告一樣，只會讓人學會忽略整個面板。
+ */
+const probes = ['https://a.example/', 'http://a.example/', 'line://ti/p/@abc', 'tel:0212345678']
+  .map((uri) => ({ name: 'uri action scheme：' + uri, message: withScheme(uri) }));
+
+process.stdout.write(JSON.stringify({
+  positive: out,
+  negative: neg.map(([name, message]) => ({ name, message })),
+  probes,
+}));
 `);
   const stdout = execFileSync('npx', ['tsx', entry], {
     cwd: process.cwd(), encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
   });
-  return JSON.parse(stdout.slice(stdout.indexOf('[')));
+  return JSON.parse(stdout.slice(stdout.indexOf('{')));
+}
+
+/** 送一則訊息給 LINE 的 validate 端點，回傳 { status, text }。 */
+async function validate(message) {
+  const res = await fetch('https://api.line.me/v2/bot/message/validate/reply', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messages: [message] }),
+  });
+  return { status: res.status, text: await res.text() };
 }
 
 async function main() {
-  const cases = buildCases();
+  const { positive, negative, probes } = buildCases();
   let failed = 0;
 
-  for (const c of cases) {
+  console.log('=== 正向：我們真的會送給顧客的 JSON，LINE 要收得下 ===');
+  for (const c of positive) {
     if (!c.message) {
       console.log(`SKIP  ${c.name} —— kind=${c.kind}，沒有訊息可驗（這是預期行為）`);
       continue;
     }
-    const res = await fetch('https://api.line.me/v2/bot/message/validate/reply', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ messages: [c.message] }),
-    });
-    const text = await res.text();
+    const { status, text } = await validate(c.message);
     const bubbles = c.bubbles === null ? '-' : `${c.bubbles} bubble`;
-    if (res.status === 200) {
-      console.log(`PASS  ${c.name} [${c.kind}, ${bubbles}] → HTTP ${res.status} ${text || '{}'}`);
+    if (status === 200) {
+      console.log(`PASS  ${c.name} [${c.kind}, ${bubbles}] → HTTP ${status} ${text || '{}'}`);
     } else {
       failed += 1;
-      console.log(`FAIL  ${c.name} [${c.kind}, ${bubbles}] → HTTP ${res.status} ${text}`);
+      console.log(`FAIL  ${c.name} [${c.kind}, ${bubbles}] → HTTP ${status} ${text}`);
     }
   }
 
-  console.log(`\n合計 ${cases.length} 個案例，LINE 拒絕 ${failed} 個。`);
+  /*
+   * 負向對照的判定是**反過來的**：LINE 回 200 才叫失敗。
+   * 一條負向案例意外通過，代表的不是「我們多擋了也無妨」，而是
+   * 「這個 validate 端點對這一類錯誤根本不看」——上面那些 200 就少了一份重量，
+   * 必須當成紅燈查清楚，不能當成好消息。
+   */
+  console.log('\n=== 負向對照：繞過我們的防線做出來的 JSON，LINE 必須退回 ===');
+  for (const c of negative) {
+    const { status, text } = await validate(c.message);
+    if (status === 200) {
+      failed += 1;
+      console.log(`FAIL  ${c.name} → LINE 竟然收下了（HTTP 200）——這條對照失效`);
+    } else {
+      console.log(`REJECTED  ${c.name} → HTTP ${status} ${text}`);
+    }
+  }
+
+  /*
+   * 探測不計入 failed：這裡印的是「LINE 實際上怎麼回」，不是我們的斷言。
+   * 讀的人要能一眼看出哪些限制是 LINE 給的、哪些是本平台自己加的。
+   */
+  console.log('\n=== scheme 探測（不判定通過與否，只記錄 LINE 實際的回答）===');
+  for (const c of probes) {
+    const { status, text } = await validate(c.message);
+    const verdict = status === 200 ? 'LINE 收下' : 'LINE 退回';
+    console.log(`INFO  ${c.name} → HTTP ${status}（${verdict}）${status === 200 ? '' : text}`);
+  }
+  console.log(
+    'INFO  ↑ http 被 LINE 收下 → flexCardSchema 的 https-only 是**本平台的規則**，' +
+      '不是 LINE 的限制（14 分冊 §8.20 的 ⚠️ 段落把 hero 圖的限制誤植成 uri action 的）。',
+  );
+
+  console.log(
+    `\n合計 正向 ${positive.length} 條、負向對照 ${negative.length} 條、探測 ${probes.length} 條，` +
+      `不符預期 ${failed} 條。`,
+  );
   process.exit(failed === 0 ? 0 : 1);
 }
 

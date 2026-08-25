@@ -110,8 +110,17 @@ async function readLineJsonb(): Promise<Record<string, any>> {
   return (data?.line ?? {}) as Record<string, any>;
 }
 
+/*
+ * ⚠️ 前提變更（14 分冊 §8.20 擁有者裁決）：卡片契約從四欄擴為
+ * `{title, subtitle, imageUrl, ad, linkUrl}`。`linkUrl` 在 zod 是 optional
+ * （`.default('')`），但 **parse 之後的形狀恆有這個鍵**，所以：
+ *   - 這個 helper 補上 `linkUrl: ''`（＝這張卡不開網址）；
+ *   - 下方「逐欄相符」的斷言跟著補這一欄。
+ * 這不是把斷言放寬——`toEqual` 仍是逐欄全等，只是欄位數變了。
+ * 真正的「送什麼就存什麼」由新增的 linkUrl 案例守住。
+ */
 const card = (title: string, extra: Partial<FlexCard> = {}): FlexCard =>
-  ({ title, subtitle: `${title}的說明`, imageUrl: '', ad: false, ...extra });
+  ({ title, subtitle: `${title}的說明`, imageUrl: '', ad: false, linkUrl: '', ...extra });
 
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
@@ -180,9 +189,9 @@ afterAll(async () => {
 describe('儲存層：POST /api/settings/line/flex-menu 收得下 flexCards', () => {
   it('存 3 張卡 → service role 直查 line jsonb 的 flexCards 逐欄相符', async () => {
     const cards: FlexCard[] = [
-      { title: '預約', subtitle: '選擇服務與時段', imageUrl: '', ad: false },
-      { title: '我的預約', subtitle: '查詢或取消', imageUrl: 'https://example.com/a.png', ad: false },
-      { title: '本月優惠', subtitle: '限時折扣', imageUrl: '', ad: true },
+      { title: '預約', subtitle: '選擇服務與時段', imageUrl: '', ad: false, linkUrl: '' },
+      { title: '我的預約', subtitle: '查詢或取消', imageUrl: 'https://example.com/a.png', ad: false, linkUrl: '' },
+      { title: '本月優惠', subtitle: '限時折扣', imageUrl: '', ad: true, linkUrl: 'https://example.com/promo' },
     ];
     const { status } = await publishViaApi({
       flexMenuEnabled: true, flexMenuFallback: 'HINT', flexCards: cards,
@@ -248,6 +257,44 @@ describe('儲存層：POST /api/settings/line/flex-menu 收得下 flexCards', ()
     expect(status).toBe(400);
   });
 
+  /* --- linkUrl（14 分冊 §8.20 擁有者裁決） --------------------------------- */
+
+  it('存得下 linkUrl：廣告卡與一般卡的網址都逐欄回得來', async () => {
+    const cards: FlexCard[] = [
+      { title: '官網', subtitle: '看更多', imageUrl: '', ad: false, linkUrl: 'https://shop.example/' },
+      { title: '本月優惠', subtitle: '限時', imageUrl: '', ad: true, linkUrl: 'https://ad.example/x?a=1' },
+      { title: '預約', subtitle: '不開網址', imageUrl: '', ad: false, linkUrl: '' },
+    ];
+    expect((await publishViaApi({ flexCards: cards })).status).toBe(200);
+    expect((await readLineJsonb()).flexCards).toEqual(cards);
+  });
+
+  it('非 https 的連結網址被端點擋下（400），且 DB 不留半套', async () => {
+    /*
+     * ⚠️ 這條 400 是**本平台的規則**，不是替 LINE 提前擋。
+     * 實測（scripts/verify/flex-menu-validate.cjs）LINE 的 uri action 收 http，
+     * 回 200；被 LINE 退的是 javascript:／ftp:／data:（見下一條）。
+     * 14 分冊 §8.20 的 ⚠️ 段落把 hero 圖片的 https-only 誤植成 uri action 的限制。
+     * 仍然擋 http，是因為擁有者裁決要求 schema 擋在前面——但既然外部系統不會擋，
+     * 這條規則就只剩本檔與單元測試在守。
+     */
+    const good = [card('保留')];
+    await publishViaApi({ flexCards: good });
+
+    const { status } = await publishViaApi({
+      flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'http://example.com/x' }],
+    });
+    expect(status).toBe(400);
+    expect((await readLineJsonb()).flexCards).toEqual(good);
+  });
+
+  it('javascript: 的連結網址一樣被擋下（不是只擋 http）', async () => {
+    const { status } = await publishViaApi({
+      flexCards: [{ title: 'A', subtitle: '', imageUrl: '', ad: false, linkUrl: 'javascript:alert(1)' }],
+    });
+    expect(status).toBe(400);
+  });
+
   it('GET /api/settings 回讀得到剛存的卡片（頁面重新整理後卡片還在）', async () => {
     const cards = [card('預約'), card('商品')];
     await publishViaApi({ flexCards: cards });
@@ -301,6 +348,30 @@ describe('端到端：API 存卡片 → 顧客打「選單」→ mock LINE 收�
     const msg = await replyMessageFor('選單');
     expect(msg.contents.contents).toHaveLength(2);
     expect(msg.contents.contents[0].footer.contents[0].action.text).toBe('新卡片一');
+  });
+
+  it('存有 linkUrl 的卡片 → 顧客收到的那一張按鈕是 uri action，網址逐字相符', async () => {
+    /*
+     * §8.20 那條鏈路的終點：店家在後台填的網址，要真的出現在顧客手上那則訊息裡。
+     * 只驗「端點回 200 且 jsonb 有這個鍵」不夠——組裝層漏讀一個欄位，
+     * DB 照樣是對的、畫面照樣顯示已儲存，顧客按下去卻只是送出一段文字。
+     */
+    await publishViaApi({
+      flexCards: [
+        { title: '本月優惠', subtitle: '限時', imageUrl: '', ad: true, linkUrl: 'https://ad.example/x?a=1' },
+        card('預約'),
+      ],
+    });
+    const msg = await replyMessageFor('選單');
+    expect(msg.type).toBe('flex');
+    const [adBubble, plainBubble] = msg.contents.contents;
+    expect(adBubble.footer.contents[0].action).toEqual({
+      type: 'uri', label: '本月優惠', uri: 'https://ad.example/x?a=1',
+    });
+    // 沒填網址的那一張不受影響——仍然是送出標題的 message action
+    expect(plainBubble.footer.contents[0].action).toEqual({
+      type: 'message', label: '預約', text: '預約',
+    });
   });
 
   it('MENU 組的三個同義詞（主選單／選單／功能）都拿得到同一份 Flex', async () => {

@@ -106,6 +106,8 @@ export function applyShopName(template: unknown, shopName: string): string {
  *   就整包 400，店家當場看得到哪裡錯、可以改。
  * - 讀取時已經來不及叫任何人來改了，顧客正在等回覆。所以這裡**先搶救再放棄**：
  *   圖片網址不是 https（LINE 只收 HTTPS）→ 只丟掉那張圖，卡片留著；
+ *   連結網址不是 https（**本平台的規則**，非 LINE 限制，見 `cardAction()`）→
+ *   只丟掉那個連結，卡片留著，按鈕退回 message action（顧客還是按得動，只是不開網址）；
  *   連標題都沒有 → 那張卡真的畫不出來（標題同時是按鈕文字），才跳過它。
  *   讓一個壞掉的網址帶走整張卡，店家會看到後台卡片好好的、顧客那邊卻少一張。
  *
@@ -118,7 +120,11 @@ export function normalizeFlexCards(raw: unknown): FlexCard[] {
   for (const item of raw) {
     const url = (item as { imageUrl?: unknown })?.imageUrl;
     const usable = typeof url === 'string' && url.trim().startsWith('https://') ? url : '';
-    const parsed = flexCardSchema.safeParse({ ...(item as object), imageUrl: usable });
+    const link = (item as { linkUrl?: unknown })?.linkUrl;
+    const usableLink = typeof link === 'string' && link.trim().startsWith('https://') ? link : '';
+    const parsed = flexCardSchema.safeParse({
+      ...(item as object), imageUrl: usable, linkUrl: usableLink,
+    });
     if (parsed.success) out.push(parsed.data);
     if (out.length >= MAX_FLEX_CARDS) break;
   }
@@ -134,6 +140,10 @@ export function normalizeFlexCards(raw: unknown): FlexCard[] {
  * - `subtitle` 是空的 → 那個 text 元件不存在（LINE 的 text 元件不接受空字串，
  *   塞空字串整包會被退回 400）
  * - header 兩行都空 → 整個 header 區塊省略
+ * - `linkUrl` 是空的或不是 https → 按鈕**退回 message action**（送出 title），
+ *   不生一個假的網址、也不把按鈕拿掉。卡片不會因為沒填網址就變成一張壞卡。
+ *
+ * 底部按鈕**永遠只有一個 action**（14 分冊 §8.20 的實作選擇，見本檔下方 `cardAction()`）。
  */
 function buildBubble(
   card: FlexCard,
@@ -181,13 +191,40 @@ function buildBubble(
     type: 'box', layout: 'vertical',
     contents: [{
       type: 'button', style: 'primary', height: 'sm', color: header.color,
-      // label 與 text 都是 title：按鈕上寫什麼，按下去就送出什麼
-      // （schema 已把 title 限制在 LINE 的 label 上限 20 字內，不需要截斷）
-      action: { type: 'message', label: card.title, text: card.title },
+      action: cardAction(card),
     }],
   };
 
   return bubble;
+}
+
+/**
+ * 一張卡片 → 底部按鈕的 action（14 分冊 §8.20：卡片契約多了 optional `linkUrl`）。
+ *
+ * 兩種 action 擇一，**不並存**：
+ * - 有 `linkUrl`（https）→ `uri`，顧客按下去在 LINE 內建瀏覽器打開那個網址。
+ * - 沒有 → 維持原本的 `message`，label 與 text 都是 title：按鈕上寫什麼、
+ *   按下去就送出什麼（schema 已把 title 限制在 LINE 的 label 上限 20 字內）。
+ *
+ * ⚠️ 為什麼是「擇一」而不是「按鈕開網址、卡面再掛一個 bubble 層的 action」：
+ * 一張卡兩個目的地，顧客按同一張卡會依按到哪裡得到不同結果，而店家在後台
+ * 只填了一個網址、看不出還有第二個行為。一張卡一個動作，畫面上承諾什麼就做什麼。
+ *
+ * ⚠️ 只收 https 是**本平台的規則**，不是 LINE 的限制——LINE 的 `uri` action 實測
+ * 收 http（也收 line://、tel:），只退 `javascript:`／`ftp:`／`data:`。
+ * https-only 的是 hero 圖的 url，那是另一個欄位。完整實測數據見 `flexCardSchema`
+ * 的說明與 `scripts/verify/flex-menu-validate.cjs`。
+ *
+ * 這裡再過濾一次是**讀取路徑**的最後一道防線，理由與 imageUrl 那一段相同：
+ * jsonb 是自由格式，繞過端點寫進來的網址可能是 LINE 真的會退的 scheme
+ * （實測 `javascript:` → 400 `invalid uri scheme`），而那一退是整包 carousel
+ * 被退回——顧客一張卡都收不到，不是少一個連結。
+ */
+function cardAction(card: FlexCard): LineMessage {
+  if (card.linkUrl.startsWith('https://')) {
+    return { type: 'uri', label: card.title, uri: card.linkUrl };
+  }
+  return { type: 'message', label: card.title, text: card.title };
 }
 
 /* ------------------------------------------------------------ 對外主函式 */

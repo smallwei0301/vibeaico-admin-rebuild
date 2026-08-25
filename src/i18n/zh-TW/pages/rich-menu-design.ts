@@ -67,7 +67,7 @@ export const richMenuDesignPage = {
     flexMenuSteps: [
       '新增卡片，填寫每張卡片的 標題 與 說明 （標題同時是卡片按鈕上的字，顧客按下去就送出這段文字）',
       '需要主圖的卡片點「 上傳圖片 」——LINE 只接受 JPEG／PNG',
-      '要放廣告就點「 插入廣告卡片 」，卡片上會標示「廣告」',
+      '要放廣告就點「 插入廣告卡片 」，卡片上會標示「廣告」；填上 連結網址 （只收 https:// 開頭），顧客按那張卡的按鈕就會打開它',
       '右側即時預覽可左右翻頁，確認顧客會看到的樣子',
       '不想用輪播選單時關掉「 啟用 Flex 主選單 」，並選擇顧客打「選單」時要回提示文字還是完全靜默',
       '點「 發布 Flex 主選單到 LINE 」——卡片與開關會寫入店家設定，顧客下次輸入「選單」就會收到新卡片',
@@ -447,16 +447,21 @@ export const richMenuDesignPage = {
   /* ======================================================= Flex 主選單 */
   flex: {
     /*
-     * ⚠️ 兩處改寫（issue #6）：
+     * ⚠️ 改寫沿革：
      * ① 觸發條件不是「任何文字」——Flex 主選單掛在 webhook 分支 ④ 的 MENU 組
-     *    （主選單／選單／功能），見 intro.flexMenuLead 的說明。
-     * ② 廣告卡「打開網址」是假的：06 分冊 §6 的卡片契約只有
-     *    `{title, subtitle, imageUrl, ad}` 四個欄位，**沒有網址可放**，
-     *    所以廣告卡與一般卡的差別只有卡面上多一行「廣告」標示。
-     *    要讓廣告卡真的能開網址得先擴充卡片契約，屬待裁決事項。
+     *    （主選單／選單／功能），見 intro.flexMenuLead 的說明。（issue #6）
+     * ② 廣告卡的「打開網址」曾經是**假的**：當時 06 分冊 §6 的卡片契約只有
+     *    `{title, subtitle, imageUrl, ad}` 四欄、沒有網址可放，issue #6 因此把這句
+     *    改成實情（只有一行「廣告」標示），並把規格衝突交上去。
+     *    14 分冊 §8.20 的**擁有者裁決**是補齊欄位而不是改掉文案，於是契約擴為
+     *    `{…, linkUrl?}`，這句話現在描述的是真的會發生的事：
+     *    填了網址 → 卡片按鈕變成 uri action，顧客按下去真的會打開。
+     *    ⚠️ 只收 https，而且這是**本平台的規則**而不是 LINE 的限制
+     *    （實測 LINE 的 uri action 收 http，見 flex.linkUrl* 那一段的說明）。
+     *    文案要寫明限制，不能只寫「網址」讓店家貼一個 http 進來、到發布才失敗。
      */
     intro:
-      '顧客輸入「選單」「主選單」「功能」時，LINE Bot 回覆的主選單。可做成 1~12 張輪播卡片 （左右滑動），每張卡片可放一張主圖、標題與說明。還可以 插入廣告卡片 （卡面標示「廣告」）。',
+      '顧客輸入「選單」「主選單」「功能」時，LINE Bot 回覆的主選單。可做成 1~12 張輪播卡片 （左右滑動），每張卡片可放一張主圖、標題與說明。填了 連結網址 的卡片，顧客按下按鈕會打開該網址；沒填的卡片按下去則是送出標題那段文字。還可以 插入廣告卡片 （卡面標示「廣告」）。',
     enabledLabel: '啟用 Flex 主選單',
     enabledOffLead: '關閉後：顧客輸入「選單」「主選單」「功能」時',
     enabledOffStrong: '不會',
@@ -515,6 +520,25 @@ export const richMenuDesignPage = {
     uploadImage: '上傳圖片',
     imageUploaded: '圖片已上傳，記得按「發布」才會送到顧客那邊',
     uploadFailedPrefix: '圖片上傳失敗:',
+    /*
+     * 卡片連結網址（14 分冊 §8.20 擁有者裁決）。
+     *
+     * ⚠️ **不要把 https-only 說成「LINE 只收 https」**——那是假的已知。
+     * 實測（scripts/verify/flex-menu-validate.cjs，LINE 官方 validate/reply）：
+     * uri action 的 http 網址 LINE 回 200，line:// 與 tel: 也回 200；
+     * 只有 javascript:／ftp:／data: 被退。https-only 的是 hero **圖片**網址。
+     * 所以這幾句只陳述「本平台只接受 https」這件真的事，不冒用 LINE 的名義；
+     * 店家若照文案去查 LINE 文件，會發現對不上，那就是我們在說謊。
+     *
+     * ⚠️ 欄位對所有卡片都出現，不只廣告卡：契約把 `linkUrl` 定在卡片層級而不是
+     * 廣告卡層級，若 UI 只讓廣告卡填，就會出現「schema 存得下、畫面設不了」的
+     * 隱形欄位——那正是 14 分冊 §8.22 在清的那種東西。
+     */
+    linkUrl: '連結網址',
+    linkUrlPlaceholder: 'https://（選填）',
+    linkUrlHint: '選填。填了之後這張卡的按鈕會改成打開這個網址；為了顧客的連線安全，本平台只接受 https:// 開頭的網址。',
+    linkUrlScheme: '卡片連結網址只接受 https:// 開頭（本平台的規定；http 的連線未加密）',
+    linkUrlSet: '按下按鈕會打開此網址',
     /** 圖片會被送進 LINE，格式限制跟著去向走（見 /api/upload 的 LINE_BOUND_BUCKETS） */
     imageTypeHint: 'LINE 只接受 JPEG／PNG 圖片',
     loadFailed: '載入 Flex Menu 失敗',
