@@ -32,6 +32,36 @@
 「主導者」這個詞在整本手冊裡從未被定義過。）
 
 
+## 跑整合測試前：先確認別人沒在改你會用到的東西
+
+`flock /tmp/vibeaico-integration.lock` **只序列化「跑測試」，不序列化「改原始碼」**。
+這是 2026-08-25 一位執行者實測發現的：他跑全量整合測試的那 11 分鐘裡，另外兩位
+agent 正在改 `src/app/api/**` 與 `src/server/**`，共用的 `next dev` 熱重載讀到
+**半寫入的模組**，於是 291 個案例裡 100 個變成 `expected 500 to be 200`。
+
+那份紅燈**與他的改動完全無關**，但如果他當成自己的問題去追，會浪費很久；
+如果他當成「別人的問題」直接無視，又可能漏掉真的紅燈。
+
+**所以跑全量 `npm run test:integration` 之前，先看一眼：**
+
+```bash
+git status --short -- src/app/api src/server src/config src/lib
+```
+
+- **乾淨** → 全量跑，結果可信。
+- **有別人未提交的變更** → **不要跑全量**。改成只跑你自己的測試檔：
+  ```bash
+  flock /tmp/vibeaico-integration.lock npx vitest run \
+    tests/integration/api/你的檔案.test.ts --config vitest.integration.config.mts --no-file-parallelism
+  ```
+  逐檔跑不受熱重載影響，證據一樣有效。**在報告裡寫明你跑的是逐檔而非全量，以及為什麼**
+  ——這不是打折，是選了在當下條件下唯一可信的做法。
+
+⚠️ **不要把「別人在改東西」當成忽略紅燈的萬用理由。** 要無視某個紅燈，必須拿出反證，
+例如：同一支測試在你一行未改的情況下重跑就綠、或 `grep` 證明你改的檔案結構上到不了
+那條路徑。**「應該無關」不是證據。**
+
+
 ## 1. 開工流程（每個 issue 一律照此順序）
 
 1. 讀完該 issue 全文 → 讀 issue 點名的每一個分冊章節 → 讀本冊。
