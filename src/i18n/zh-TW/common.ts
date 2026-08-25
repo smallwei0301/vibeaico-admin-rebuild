@@ -150,13 +150,22 @@ export const common = {
     descriptionPlaceholder: '請說明操作步驟、預期結果與實際結果',
     screenshot: '附上截圖',
     /**
-     * ⚠️ 截圖上傳尚未建置：`POST /api/bug-report` 的契約（04 §B-6）只收
-     * category / subject / content / contactEmail / pageUrl，`bug_reports`
-     * 表也沒有附件欄位，Storage 白名單（0008/0017）沒有可放回報附件的 bucket。
-     * 依 CLAUDE.md「Never fabricate a known」，寧可停用並明說，也不要讓使用者
-     * 選了檔案、送出後收到道謝，而檔案其實被丟掉——那正是本次要修掉的缺陷本身。
+     * issue #30（14 分冊 §8.14 擁有者裁決）補齊後的文案。
+     *
+     * 先前是 `screenshotNotBuilt`（「截圖上傳尚未建置，選了檔案也不會被送出」）
+     * ——那句在 issue #28 ① 是誠實的，現在功能真的接上了，留著就變成反方向的
+     * 假的已知（明明會上傳卻叫使用者別傳）。所以那個鍵直接刪除，不是改字。
+     *
+     * 「不會公開」這句是**對使用者的承諾，必須與實作相符**：bucket
+     * `bug-report-attachments` 是 private（migration 0019，`public = false`），
+     * 且有一條 restrictive policy 擋掉 anon/authenticated 的直接存取，只有
+     * 伺服器端以 service role 簽發的短效 URL 打得開。這與 `chat-images`
+     * 被 LINE 逼成 public 的處境不同（06 分冊 §8.5）。
      */
-    screenshotNotBuilt: '截圖上傳尚未建置，選了檔案也不會被送出；請把畫面狀況寫進「詳細說明」。',
+    screenshotHint: '選填。支援 JPG / PNG / WebP，單檔 5MB 以內。截圖不公開，只有平台維運人員看得到。',
+    screenshotTooLarge: '截圖超過 5MB 上限，請壓縮後再上傳。',
+    screenshotBadType: '截圖僅支援 JPG / PNG / WebP 格式。',
+    screenshotUploadFailed: '截圖上傳失敗：',
     contactEmail: '聯絡信箱',
     contactEmailHint: '選填。留空時我們會回覆到你登入用的信箱。',
     submit: '送出回報',

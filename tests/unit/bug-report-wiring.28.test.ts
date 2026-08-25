@@ -102,15 +102,67 @@ describe('BugReportModal：零硬編碼中文字面量（鐵則 1）', () => {
   });
 });
 
-describe('BugReportModal：截圖上傳誠實化（CLAUDE.md「Never fabricate a known」）', () => {
+/**
+ * ⚠️ 這一段是 **前提改變後的改寫**，不是「把斷言放寬讓它繼續綠」。
+ * -----------------------------------------------------------------------------
+ * 原本這裡斷言的是：「截圖欄位 disabled，且畫面上（不是只在註解裡）說明尚未建置」。
+ * 那條在 issue #28 是正確的，因為當時三塊都缺（bug_reports 無附件欄位、Storage
+ * 白名單無可用 bucket、/api/bug-report 契約無附件），停用並明說是當下唯一誠實的做法。
+ *
+ * issue #30（14 分冊 §8.14，擁有者裁決）把三塊都補齊了：migration 0019 建了
+ * private bucket `bug-report-attachments` 與 `bug_reports.attachment_path`。
+ * **前提消滅了**——功能已經有了還把欄位停用、還在畫面上叫使用者別傳，
+ * 是反方向的假的已知（同一條鐵則，換一個方向違反）。
+ *
+ * 所以這裡改成釘在「真的會上傳」，而不是刪掉或放寬。**強度不得下降**，
+ * 因此新版比舊版多釘了三件舊版沒有的事：
+ *   (a) 上傳確實發生（有 await uploadFile，而不是只有一個能點的欄位）；
+ *   (b) 上傳排在成功訊息之前（鐵則 12：成功訊息不得早於動作）；
+ *   (c) 送出去的是 **path 不是 url**（private bucket 的簽名 URL 會過期，
+ *       存 URL 等於存死連結——這是這次唯一「存錯東西也一樣會綠」的陷阱）。
+ * 舊版唯一釘住而新版沒有的東西是「screenshotNotBuilt 存在」，新版反過來
+ * 斷言它**不存在**（在程式碼與字典兩邊都查），所以沒有留下缺口。
+ *
+ * 端點與資料庫那一段（附件欄位指向的物件真的存在於 storage.objects）由
+ * tests/integration/api/bug-report-attachment.30.test.ts 負責；
+ * 靜態面的完整清單見 tests/unit/bug-report-attachment.30.test.ts。
+ */
+describe('BugReportModal：截圖真的會上傳（issue #30 補齊；取代 #28 的誠實化前提）', () => {
   const code = withoutComments(src(MODAL));
 
-  it('截圖欄位停用，且畫面上（不是只在註解裡）說明尚未建置', () => {
+  it('截圖欄位不再停用，「尚未建置」的說明與字典鍵都已移除', () => {
     const tagStart = code.indexOf('id="bugShot"');
+    expect(tagStart, '找不到 id="bugShot"').toBeGreaterThan(-1);
     const tag = code.slice(tagStart, code.indexOf('/>', tagStart));
-    expect(tag).toMatch(/disabled/);
-    expect(code).toMatch(/t\.screenshotNotBuilt/);
-    expect(common.bugReport.screenshotNotBuilt).toMatch(/尚未建置/);
+    expect(tag).not.toMatch(/disabled/);
+    expect(code).not.toMatch(/screenshotNotBuilt/);
+    expect(common.bugReport).not.toHaveProperty('screenshotNotBuilt');
+  });
+
+  it('(a) 選到的檔案真的被上傳到 bug-report-attachments', () => {
+    expect(code).toMatch(/import \{ uploadFile \} from '@\/services\/upload'/);
+    expect(code).toMatch(/const \[screenshot, setScreenshot\] = React\.useState/);
+    const submit = code.slice(code.indexOf('const submit'), code.indexOf('return ('));
+    expect(submit).toMatch(/await uploadFile\(\s*screenshot,\s*'bug-report-attachments'\s*\)/);
+  });
+
+  it('(b) 上傳排在成功訊息之前（鐵則 12），上傳失敗顯示 danger 且不送出回報', () => {
+    const submit = code.slice(code.indexOf('const submit'), code.indexOf('return ('));
+    expect(submit.indexOf('await uploadFile(')).toBeGreaterThan(-1);
+    expect(submit.indexOf('await uploadFile(')).toBeLessThan(submit.indexOf('toast.show(t.submitted)'));
+    expect(submit).toMatch(/screenshotUploadFailed[\s\S]*'danger'/);
+  });
+
+  it('(c) 送給端點的是 path，不是會過期的簽名 url', () => {
+    const submit = code.slice(code.indexOf('const submit'), code.indexOf('return ('));
+    expect(submit).toMatch(/attachmentPath = uploaded\.path/);
+    expect(submit).not.toMatch(/attachmentPath = uploaded\.url/);
+    expect(submit).toMatch(/attachmentPath,/);
+  });
+
+  it('畫面上仍然有一句說明，且說得出「不公開」（隱私承諾寫在使用者讀得到的地方）', () => {
+    expect(code).toMatch(/t\.screenshotHint/);
+    expect(common.bugReport.screenshotHint).toMatch(/不公開/);
   });
 });
 

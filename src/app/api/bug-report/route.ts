@@ -15,9 +15,22 @@
 //   MVP 先只寫表、留 log；收件人 env（PLATFORM_ADMIN_EMAIL）未定義時也是跳過
 //   寄信只 log。待 send() 對外匯出後，在標註處補 fire-and-forget 寄信即可。
 import { z } from 'zod';
-import { handle, ok } from '@/server/http';
+import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+
+/**
+ * 回報截圖的落腳處（migration 0019）——**private** bucket。
+ *
+ * 與 `chat-images`（0017，public）的差別見 0019 檔頭與 06 分冊 §8.5：
+ * chat-images 被 LINE 抓圖逼成 public，代價是網址即權限、無身分檢查；
+ * 回報截圖沒有那個限制，而敏感度更高（使用者在畫面出問題的當下截圖，
+ * 幾乎必然含當時螢幕上的顧客資料），所以不公開，讀取一律由伺服器端現簽。
+ *
+ * 這裡存的是 **bucket 內路徑**（`{tenantId}/{uuid}.{ext}`），不是 URL：
+ * private bucket 的簽名 URL 會過期，存 URL 只會存出死連結。
+ */
+const BUG_REPORT_ATTACHMENT_BUCKET = 'bug-report-attachments';
 
 const bodySchema = z.object({
   category: z.string().max(50).optional(),
@@ -27,6 +40,11 @@ const bodySchema = z.object({
   // 空字串＝沒填，照樣存空字串（表預設），不要塞 reporter 進去假裝有填。
   contactEmail: z.string().max(200).optional(),
   pageUrl: z.string().max(500).optional(),
+  /**
+   * `/api/upload`（bucket=bug-report-attachments）回的 `path`。空字串／未帶＝沒附截圖。
+   * 下面會逐一驗證：必須是本租戶資料夾底下、而且該物件**真的存在**。
+   */
+  attachmentPath: z.string().max(500).optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -34,6 +52,25 @@ export const POST = handle(async (req) => {
   const b = bodySchema.parse(await req.json());
 
   const admin = createAdminSupabase();
+
+  // ---- 附件驗證 ----
+  // 兩件事都得驗，缺一都會存出一個「看起來有截圖、點開卻沒有」的紀錄：
+  //  1. 路徑必須在本租戶資料夾下——路徑是用戶端送上來的字串，不驗就等於允許
+  //     任何店家把附件指到別家店的物件（bucket 內第一段資料夾＝租戶 id，
+  //     與 0008 起的 storage RLS 規則同一套）。
+  //  2. 物件必須真的存在——沒有這一步，資料庫裡就會出現指向空氣的 attachment_path，
+  //     正是 CLAUDE.md「Never fabricate a known」說的那種假的已知。
+  const attachmentPath = (b.attachmentPath ?? '').trim();
+  if (attachmentPath) {
+    if (!attachmentPath.startsWith(`${t.tenantId}/`))
+      throw new ApiHttpError(400, '附件路徑不屬於這家店', ERR.VALIDATION);
+    const { error: infoError } = await admin.storage
+      .from(BUG_REPORT_ATTACHMENT_BUCKET)
+      .info(attachmentPath);
+    if (infoError)
+      throw new ApiHttpError(400, '找不到這個附件，請重新上傳截圖', ERR.VALIDATION);
+  }
+
   const { data, error } = await admin.from('bug_reports')
     .insert({
       tenant_id: t.tenantId,
@@ -43,6 +80,7 @@ export const POST = handle(async (req) => {
       content: b.content,
       contact_email: b.contactEmail ?? '',
       page_url: b.pageUrl ?? '',
+      attachment_path: attachmentPath,
     })
     .select('id')
     .single();

@@ -23,6 +23,15 @@ export type BugReportInput = {
   contactEmail?: string;
   /** 回報當下所在頁面（bug_reports.page_url） */
   pageUrl?: string;
+  /**
+   * 截圖在 storage 的 bucket 內路徑（bug_reports.attachment_path），
+   * 由 `uploadFile(file, 'bug-report-attachments')` 回的 `path` 而來。
+   *
+   * ⚠️ 這裡刻意是 **path 不是 url**：`bug-report-attachments` 是 private bucket
+   * （migration 0019），它的 URL 是短效簽名 URL，存進資料庫只會存出死連結。
+   * 端點會再驗一次「路徑屬於本租戶」且「物件真的存在」才寫入。
+   */
+  attachmentPath?: string;
 };
 
 let nextMockId = 1;
