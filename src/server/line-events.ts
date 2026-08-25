@@ -18,7 +18,8 @@
  *     少 handler 會自動紅。
  *   - 系統關鍵字 15 組（src/i18n/zh-TW/pages/keyword-replies.ts 的 system.groups）
  *     含全部同義詞都要命中；該組被店家停用（line.systemKeywordGroupsDisabled）
- *     時完全不回應。
+ *     時完全不回應——**不論有沒有訂閱 KEYWORD_REPLY**（14 分冊 §8.16 擁有者裁決：
+ *     停用一律生效，付費閘門只擋「自訂內容」）。
  *   - 尚未建的功能（團次名額、看診進度、行程訂單、店家通知開關）一律誠實回
  *     「尚未開放」，不沉默、也不假裝做得到（CLAUDE.md 誠實原則）。
  *
@@ -341,7 +342,7 @@ async function onMessage(
   if (hit) {
     // 停用的系統關鍵字組＝顧客打這些字「完全沒有回應」（頁面停用確認視窗的原話），
     // 因此這裡直接 return，不落到 ⑤ AI / ⑥ defaultReply。
-    if (hit.group && (await isSystemGroupDisabled(tenant, lineConfig, hit.group))) return;
+    if (hit.group && isSystemGroupDisabled(lineConfig, hit.group)) return;
     const handled = await replyBuiltin(hit.intent, { admin, tenant, token, replyToken, userId });
     if (handled) return;
     // handled=false 只有一種情況：這家店本來就沒有這一類東西（例：美髮沙龍收到
@@ -411,19 +412,23 @@ interface BuiltinCtx {
 /**
  * 該組系統關鍵字是否已被店家停用。
  *
- * 生效條件（keyword-replies 頁的文案原話：「停用/覆蓋屬『自訂關鍵字回覆』功能
- * 範圍，需訂閱才會對顧客生效（設定隨時可先存）」）：未訂閱 KEYWORD_REPLY 時，
- * 設定存得下來，但顧客端維持系統預設行為。這裡照那句話實作——**不是**設定存了
- * 就一定生效，否則頁面顯示的「尚未生效」就變成謊話。
+ * ⚠️ 這裡**沒有**、也不可以再有 KEYWORD_REPLY 的付費閘門（14 分冊 §8.16 擁有者裁決）。
+ * 舊版在此 `return isFeatureActive(tenant.id, 'KEYWORD_REPLY')`，等於未訂閱的店家
+ * 把開關關掉後 bot 照樣回話——**「關掉某個東西」不該需要付費**。一間停止訂閱的
+ * 診所沒辦法讓 bot 閉嘴，那不只是體驗問題，可能是合規問題（對外訊息必須全部由
+ * 專人處理）。付費閘門只擋「多做一件事」＝店家自己編一組新的關鍵字回覆
+ * （`keyword_replies` 表的寫入端點 requireFeature，見 09 分冊 §5），
+ * 不擋「少做一件事」＝關掉內建回覆。
+ *
+ * 釘住這條規則的測試：
+ *   tests/integration/api/keyword-replies.05.test.ts
+ *     「未訂閱也一律生效：停用該組後顧客打這些字 → mock LINE 零呼叫（bot 真的閉嘴）」
+ *   tests/unit/keyword-replies-wiring.05.test.ts
+ *     「isSystemGroupDisabled 內零 isFeatureActive／零 requireFeature（閘門真的拆了）」
  */
-async function isSystemGroupDisabled(
-  tenant: WebhookTenant,
-  lineConfig: Record<string, any>,
-  group: string,
-): Promise<boolean> {
+function isSystemGroupDisabled(lineConfig: Record<string, any>, group: string): boolean {
   const disabled = lineConfig.systemKeywordGroupsDisabled;
-  if (!Array.isArray(disabled) || !disabled.includes(group)) return false;
-  return isFeatureActive(tenant.id, 'KEYWORD_REPLY');
+  return Array.isArray(disabled) && disabled.includes(group);
 }
 
 /** 回一段純文字並回報「已處理」 */

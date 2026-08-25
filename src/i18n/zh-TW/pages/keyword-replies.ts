@@ -83,7 +83,13 @@ export const keywordRepliesPage = {
     overrideLead: '點某個字＝那個字改回你自己寫的內容',
     overrideTail: '，其他字不受影響。',
     campaignNote: '「活動」組請到 LINE 設定頁 → 主選單樣式卡片 的獨立開關管理。',
-    subscribeNote: '＊停用/覆蓋屬「自訂關鍵字回覆」功能範圍，需訂閱才會對顧客生效（設定隨時可先存）。',
+    /**
+     * 14 分冊 §8.16（擁有者裁決）後改寫。原文：
+     *   「＊停用/覆蓋屬「自訂關鍵字回覆」功能範圍，需訂閱才會對顧客生效（設定隨時可先存）。」
+     * 閘門拆掉後那句立刻變成假的已知——停用現在一律生效，只有「覆蓋」還要訂閱。
+     */
+    subscribeNote:
+      '＊關掉開關（停用內建關鍵字）一律生效，不需訂閱；「覆蓋」是自己寫一則新的回覆內容，屬「自訂關鍵字回覆」功能，需訂閱才能新增。',
     loadFailed:
       '系統關鍵字設定載入失敗——為避免誤覆寫你先前的停用設定，已暫停顯示開關。',
     overridePrefix: '取代內建：',
@@ -199,9 +205,16 @@ export const keywordRepliesPage = {
   form: {
     createTitle: '新增自訂關鍵字',
     editTitle: '編輯自訂關鍵字',
-    unsubscribedLead: '💡 尚未訂閱此功能——可以先把內容設定好存起來，',
+    /**
+     * 原文「可以先把內容設定好存起來，訂閱後立即生效。」是假的已知：
+     * POST/PUT /api/settings/line/keyword-replies 帶 requireFeature('KEYWORD_REPLY')，
+     * 未訂閱一律 403 FEAT_001（tests/integration/api/keyword-replies.05.test.ts
+     * 「自訂關鍵字寫入端點回 403（頁面因此把新增/編輯鎖住，與後端一致）」），
+     * 根本存不下來。比照 14 分冊 §6.5 ai-settings 的同型改法。
+     */
+    unsubscribedLead: '💡 尚未訂閱此功能——自訂關鍵字送出會被擋下（無法儲存），請先',
     unsubscribedLink: '訂閱',
-    unsubscribedTail: '後立即生效。',
+    unsubscribedTail: '。系統內建關鍵字的停用開關不受影響，未訂閱也照樣生效。',
 
     keyword: '關鍵字',
     keywordPlaceholder: '例：價格、地址、營業時間',
@@ -265,16 +278,21 @@ export const keywordRepliesPage = {
   },
 
   /* ---------------------------------------------------------- 功能訂閱 */
+  /*
+   * ⚠️ 這一段全部依 14 分冊 §8.16（擁有者裁決）改寫過。原文把「停用內建關鍵字」
+   * 也算進付費範圍（hint 甚至逐字寫著「含下方系統內建關鍵字的停用/覆蓋」），
+   * 閘門拆掉後那些句子全部變成假的已知。改寫後只講兩件實際量到的事：
+   *   1. 未訂閱 → 自訂關鍵字的寫入端點 403（存不下來，不是「存得下但不生效」）
+   *   2. 停用開關 → 一律生效，與訂閱狀態無關
+   */
   feature: {
-    hint:
-      '💡 尚未訂閱「自訂關鍵字回覆」——你可以先把內容設定好（含下方系統內建關鍵字的停用/覆蓋），',
-    hintStrong: '訂閱後立即生效',
-    hintTail: '；訂閱前顧客端維持系統預設行為。',
+    hint: '💡 尚未訂閱「自訂關鍵字回覆」——新增/編輯自訂關鍵字',
+    hintStrong: '送出會被擋下（無法儲存）',
+    hintTail: '；下方系統內建關鍵字的停用開關不受影響，關掉就立即生效。',
     goToStore: '前往功能商店訂閱 →',
-    systemHint: '💡 尚未訂閱——下方開關/覆蓋可先設定儲存，但',
-    systemHintStrong: '訂閱前顧客端不會生效',
-    systemHintTail: '（系統關鍵字照常回應）。',
-    unsubscribedBadge: '尚未訂閱（設定先存不生效）',
+    systemHint: '💡 尚未訂閱也沒關係——下方的停用開關',
+    systemHintStrong: '一律生效（關掉後顧客打那些字就完全沒有回應）',
+    systemHintTail: '；但「覆蓋」（點關鍵字改成你自己寫的內容）要訂閱後才能新增。',
   },
 
   /* --------------------------------------------------------------- 確認 */
@@ -285,23 +303,37 @@ export const keywordRepliesPage = {
     disableSystemTitle: '⚠️ 停用前請確認',
     disableEscape: (kw: string) =>
       `「${kw}」是顧客在對話中的逃生口（流程卡住時用的）。\n\n確定要停用嗎？`,
+    /**
+     * 這句現在對「已訂閱／未訂閱」都成立，所以確認視窗不再有訂閱分支。
+     * 已刪除的 disableUnsubscribedLead/Tail（原文：「這個停用設定會先儲存但
+     * 『不會生效』…訂閱後此設定才會讓顧客打這些字時完全沒有回應」）在 §8.16
+     * 之後是**反過來**的謊言：停用一律生效，再警告一次就是嚇阻使用者去用一個
+     * 其實已經可用的功能。
+     */
     disableNoReply: (kw: string) => `關鍵字「${kw}」將完全沒有回應！`,
-    disableUnsubscribedLead: '提醒：你尚未訂閱「自訂關鍵字回覆」，這個停用設定會先儲存但「不會生效」（顧客打「',
-    disableUnsubscribedTail:
-      '」等字 Bot 仍照常回應）。\n\n訂閱後此設定才會讓顧客打這些字時完全沒有回應。確定要先儲存停用設定嗎？',
   },
 
   /* --------------------------------------------------------------- 訊息 */
+  /*
+   * ⚠️ 已刪除的五個鍵（§8.16 之後全部是假的已知，不要再加回來）：
+   *   savedNotActive        '已儲存（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）'
+   *   savedUnknownSubscription '已儲存（無法確認訂閱狀態，請重新整理頁面確認是否生效）'
+   *   savedDisabled         '已儲存停用設定（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）'
+   *   savedDisabledUnknown  '已儲存停用設定（無法確認訂閱狀態，請重新整理頁面確認是否生效）'
+   *   enabledNotActive      '已啟用（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）'
+   *
+   * 兩條理由，都是「我們其實知道」：
+   * 1. 停用設定（savedDisabled*）→ §8.16 拆掉閘門後一律生效，沒有「尚未生效」這種狀態。
+   * 2. 自訂關鍵字（savedNotActive / enabledNotActive / savedUnknownSubscription）→
+   *    寫入端點帶 requireFeature，**回 200 這件事本身就是訂閱有效的量測結果**
+   *    （未訂閱一律 403 走 catch 分支）。再說一次「無法確認訂閱狀態」是捏造的
+   *    不確定性，和捏造確定性一樣是假的已知（CLAUDE.md：不知道才顯示不知道）。
+   */
   messages: {
     saved: '已儲存',
-    savedNotActive: '已儲存（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）',
-    savedUnknownSubscription: '已儲存（無法確認訂閱狀態，請重新整理頁面確認是否生效）',
-    savedDisabled: '已儲存停用設定（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）',
-    savedDisabledUnknown: '已儲存停用設定（無法確認訂閱狀態，請重新整理頁面確認是否生效）',
     saveFailed: '儲存失敗',
     deleted: '已刪除',
     enabled: '已啟用',
-    enabledNotActive: '已啟用（尚未生效——訂閱「自訂關鍵字回覆」後立即生效）',
     disabled: '已停用',
     systemGroupDisabled: '已停用該組系統關鍵字',
     systemGroupRestored: '已恢復該組系統關鍵字',

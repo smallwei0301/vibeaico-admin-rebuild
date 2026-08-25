@@ -2,7 +2,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  AlertTriangle, MessageSquareQuote, Pencil, Plus, Settings, Trash2,
+  MessageSquareQuote, Pencil, Plus, Settings, Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -66,10 +66,12 @@ export default function KeywordRepliesPage() {
   const [loadFailed, setLoadFailed] = React.useState(false);
   /**
    * KEYWORD_REPLY 訂閱狀態，三態：
-   *   true  已訂閱（設定對顧客生效）
-   *   false 未訂閱（設定存得下來，但 webhook 不套用——見 09 分冊 §5）
-   *   null  **不知道**（listFeatures 失敗）。不知道就說不知道，不能假裝已訂閱
-   *         而顯示「已儲存（已生效）」——CLAUDE.md「絕不捏造已知狀態」。
+   *   true  已訂閱
+   *   false 未訂閱 → **只**鎖住「自訂關鍵字」的 CRUD（端點 requireFeature 回 403，
+   *         畫面的鎖與後端一致）。**不影響**下方系統內建關鍵字的停用開關——
+   *         14 分冊 §8.16 擁有者裁決：停用一律生效，付費閘門只擋「自訂內容」。
+   *   null  **不知道**（listFeatures 失敗）。不知道就不上鎖，讓使用者按下去由端點
+   *         回真正的答案（200 或 403），而不是靠猜的畫面狀態代它宣告結果。
    */
   const [featureActive, setFeatureActive] = React.useState<boolean | null>(null);
   /** 內建關鍵字組可帶 feature 條件（例：行程組只給訂閱 TOUR_MODULE 的導遊型店家） */
@@ -102,19 +104,18 @@ export default function KeywordRepliesPage() {
   /** 未訂閱時才真的鎖住自訂關鍵字的 CRUD（端點也 requireFeature，鎖與後端一致） */
   const featureLocked = featureActive === false;
 
-  /** 「存好了」到底生不生效，只講我們真的知道的那一種 */
-  const savedMessage = () =>
-    featureActive === null
-      ? t.messages.savedUnknownSubscription
-      : featureActive ? t.messages.saved : t.messages.savedNotActive;
-  const enabledMessage = () =>
-    featureActive === null
-      ? t.messages.savedUnknownSubscription
-      : featureActive ? t.messages.enabled : t.messages.enabledNotActive;
-  const disabledGroupMessage = () =>
-    featureActive === null
-      ? t.messages.savedDisabledUnknown
-      : featureActive ? t.messages.systemGroupDisabled : t.messages.savedDisabled;
+  /*
+   * ⚠️ 這裡原本有三個依 featureActive 三態挑文案的 helper
+   * （savedMessage / enabledMessage / disabledGroupMessage），全部拿掉了。
+   * 14 分冊 §8.16（擁有者裁決）之後它們講的都不是我們真的知道的事：
+   *
+   * - 系統關鍵字的停用 → 一律生效，webhook 的 isSystemGroupDisabled 已無閘門，
+   *   所以只有一種結果可講：「已停用該組系統關鍵字」。
+   * - 自訂關鍵字的儲存/啟用 → 寫入端點帶 requireFeature('KEYWORD_REPLY')，
+   *   **能走到 toast 這一行就代表端點回了 200 ＝ 訂閱有效**；未訂閱會是 403，
+   *   由 catch 顯示錯誤。再掛一句「尚未生效／無法確認訂閱狀態」是捏造出來的
+   *   不確定性（CLAUDE.md：不知道才顯示不知道；已經知道就別裝不知道）。
+   */
   const errorMessage = (e: unknown) =>
     e instanceof ApiError && e.message ? e.message : t.messages.saveFailed;
 
@@ -209,7 +210,7 @@ export default function KeywordRepliesPage() {
         setRows((list) => [...list, { ...payload, id: created.id }]);
       }
       setDraft(null);
-      toast.show(savedMessage());
+      toast.show(t.messages.saved);
     } catch (e) {
       toast.show(errorMessage(e), 'danger');
     } finally {
@@ -235,7 +236,7 @@ export default function KeywordRepliesPage() {
     try {
       await setKeywordReplyActive(row.id, next);
       setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: next } : r)));
-      toast.show(next ? enabledMessage() : t.messages.disabled);
+      toast.show(next ? t.messages.enabled : t.messages.disabled);
     } catch (e) {
       // 失敗就不要動畫面上的開關：切了卻沒存進去 = 又一個假成功
       toast.show(errorMessage(e), 'danger');
@@ -251,7 +252,7 @@ export default function KeywordRepliesPage() {
     try {
       await saveLineSettings({ systemKeywordGroupsDisabled: next });
       setDisabledGroups(next);
-      toast.show(restoring ? t.messages.systemGroupRestored : disabledGroupMessage());
+      toast.show(restoring ? t.messages.systemGroupRestored : t.messages.systemGroupDisabled);
     } catch (e) {
       toast.show(errorMessage(e), 'danger');
     } finally {
@@ -677,21 +678,16 @@ export default function KeywordRepliesPage() {
         title={t.confirm.disableSystemTitle}
         danger
         message={
+          // ⚠️ 這裡原本還有一段 `featureLocked &&` 的提醒（「這個停用設定會先儲存但
+          //「不會生效」…訂閱後才會讓顧客打這些字時完全沒有回應」）。§8.16 拆掉閘門
+          // 之後那段話是反過來的謊言——停用一律生效，再警告一次只會讓店家不敢用一個
+          // 其實已經可用的功能。上面 disableNoReply 那句現在對兩種訂閱狀態都成立。
           <span className="whitespace-pre-line">
             {disableIsEscape && disableGroup
               ? t.confirm.disableEscape(disableGroup.keywords[0])
               : disableGroup
                 ? t.confirm.disableNoReply(disableGroup.keywords[0])
                 : ''}
-            {featureLocked && disableGroup ? (
-              <>
-                {'\n\n'}
-                <AlertTriangle size={13} className="inline" />
-                {t.confirm.disableUnsubscribedLead}
-                {disableGroup.keywords[0]}
-                {t.confirm.disableUnsubscribedTail}
-              </>
-            ) : null}
           </span>
         }
         onClose={() => setDisableTarget(null)}

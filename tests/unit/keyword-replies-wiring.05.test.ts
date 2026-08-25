@@ -99,11 +99,75 @@ describe('keyword-replies 頁：成功訊息只在副作用成功後才顯示（
     },
   );
 
-  it('訂閱狀態未知時用「無法確認訂閱狀態」文案，不假裝知道（CLAUDE.md 誠實原則）', () => {
-    // featureActive 是三態：true / false / null（listFeatures 失敗＝不知道）
-    expect(code).toMatch(/savedUnknownSubscription/);
-    expect(code).toMatch(/savedDisabledUnknown/);
+  /**
+   * ⚠️ 前提變更，不是標準放寬（14 分冊 §8.16 擁有者裁決）。
+   *
+   * 原案例名：「訂閱狀態未知時用『無法確認訂閱狀態』文案，不假裝知道」
+   * 原斷言：頁面必須出現 `savedUnknownSubscription` 與 `savedDisabledUnknown`
+   *         兩個鍵，也就是**強制**頁面在存檔成功後再掛一句「無法確認是否生效」。
+   *
+   * 為什麼那個斷言現在必須反過來：
+   * 1. 停用系統關鍵字 → §8.16 把 webhook 的閘門拆了，一律生效。「是否生效」
+   *    不再有未知狀態可言。
+   * 2. 自訂關鍵字 → 寫入端點帶 requireFeature('KEYWORD_REPLY')，未訂閱一律
+   *    403（tests/integration/api/keyword-replies.05.test.ts「自訂關鍵字寫入端點
+   *    回 403…」）。**能走到成功 toast 就代表端點回了 200 ＝ 訂閱有效**——
+   *    200 這件事本身就是量測結果。再說一次「無法確認訂閱狀態」是**捏造的不確定
+   *    性**，與捏造確定性同樣是假的已知。
+   *
+   * 新斷言的強度**高於**舊的，不是放寬：舊案例只要求「這兩個鍵有出現」（一個
+   * 存在性檢查）；新案例改成**禁止**這五個鍵與整批「尚未生效／無法確認」字串
+   * 出現在頁面與字典裡（否定式白名單，涵蓋的字面量更多、也擋得住日後有人把
+   * 舊文案抄回來）。三態 useState 的斷言原樣保留——featureActive 仍需要 null
+   * 來決定「不知道就不上鎖」。
+   */
+  it('成功 toast 不得再宣稱「尚未生效／無法確認訂閱狀態」（§8.16 後那是捏造的不確定性）', () => {
+    for (const dead of [
+      'savedNotActive', 'savedUnknownSubscription',
+      'savedDisabled', 'savedDisabledUnknown', 'enabledNotActive',
+    ]) {
+      expect(code, `頁面又用回被 §8.16 廢掉的文案鍵 ${dead}`)
+        .not.toMatch(new RegExp(dead));
+      expect(
+        (keywordRepliesPage.messages as Record<string, unknown>)[dead],
+        `字典又長回被 §8.16 廢掉的文案鍵 messages.${dead}`,
+      ).toBeUndefined();
+    }
+    // 字典裡任何一句都不准再出現這兩種說法（連新加的鍵也一起擋）
+    const dictionary = src('src/i18n/zh-TW/pages/keyword-replies.ts');
+    const strings = withoutComments(dictionary);
+    expect(strings, '字典又出現「尚未生效」').not.toMatch(/尚未生效/);
+    expect(strings, '字典又出現「無法確認訂閱狀態」').not.toMatch(/無法確認訂閱狀態/);
+    // featureActive 仍是三態（null＝不知道 → 不上鎖，交給端點回真答案）
     expect(code).toMatch(/React\.useState<boolean \| null>/);
+  });
+
+  /**
+   * §8.16 的另一半：**畫面上的鎖只能鎖自訂關鍵字，不准鎖停用開關**。
+   * 一旦有人把 featureLocked 加進那顆 SwitchField 的 disabled，未訂閱的店家
+   * 又會變成「後端肯關、前端不讓按」——閘門等於原地復活。
+   *
+   * 這裡把開關的三個 prop 連在一起比對（而不是抓整段 SwitchField 再搜字串）：
+   * SwitchField 的 description 裡包著「覆蓋」用的關鍵字按鈕，那些**本來就該**
+   * 帶 featureLocked（覆蓋＝自訂內容＝付費範圍），整段搜尋會誤判。
+   */
+  it('系統關鍵字停用開關的 disabled 只吃 systemSaving（§8.16：停用不該被付費閘門擋）', () => {
+    expect(
+      code,
+      '停用開關的 disabled 不再是單純的 {systemSaving}——featureLocked 可能被加回去了',
+    ).toMatch(
+      /checked=\{!disabledGroups\.includes\(g\.key\)\}\s*\n\s*disabled=\{systemSaving\}\s*\n\s*onCheckedChange=\{\(v\) => requestSystemToggle\(g\.key, v\)\}/,
+    );
+  });
+
+  /**
+   * 反向：閘門不准拆過頭。「覆蓋」是點某個系統關鍵字 → 開新增視窗建一筆
+   * keyword_replies（＝自訂內容，付費範圍），那顆按鈕**必須**還鎖著。
+   */
+  it('「覆蓋」用的關鍵字按鈕仍鎖在 featureLocked（自訂內容還是要付費）', () => {
+    expect(code).toMatch(
+      /disabled=\{featureLocked\}[\s\S]{0,200}?onClick=\{\(\) => openCreate\(\{ keyword: k, overridesSystem: k \}\)\}/,
+    );
   });
 
   it('清單／系統設定載入失敗時顯示既有的失敗文案，不是靜靜顯示空清單', () => {
@@ -169,14 +233,85 @@ describe('service 層的欄位對應與 webhook 讀的鍵一致（issue #5 ①�
 
 describe('頁面文案沿用既有字典（鐵則 1：頁面元件零硬編碼中文）', () => {
   it('本輪用到的 messages 鍵都真的存在（引用不存在的鍵 = typecheck 才會抓到的假接線）', () => {
+    // §8.16 之後這份清單少了五個鍵（savedNotActive / savedUnknownSubscription /
+    // savedDisabled / savedDisabledUnknown / enabledNotActive）——它們被刪掉是因為
+    // 描述的狀態不存在了，理由與「不得復活」的斷言寫在上面那個 it 裡。
     for (const key of [
-      'saved', 'savedNotActive', 'savedUnknownSubscription', 'savedDisabled',
-      'savedDisabledUnknown', 'saveFailed', 'deleted', 'enabled', 'enabledNotActive',
+      'saved', 'saveFailed', 'deleted', 'enabled',
       'disabled', 'systemGroupDisabled', 'systemGroupRestored',
     ] as const) {
       expect(keywordRepliesPage.messages[key], `messages.${key} 不存在`).toBeTruthy();
     }
     expect(keywordRepliesPage.custom.loadFailed).toBeTruthy();
     expect(keywordRepliesPage.system.loadFailed).toBeTruthy();
+  });
+});
+
+/* ========================================================================== */
+/* §8.16：停用系統內建關鍵字一律生效，付費閘門只擋「自訂內容」                    */
+/* ========================================================================== */
+
+/**
+ * 14 分冊 §8.16（**擁有者裁決**，不是主導者複核，不可翻案）：
+ *
+ *   > 停用設定一律生效，付費閘門只擋「自訂內容」（店家自己編一組新的關鍵字回覆）。
+ *
+ * 修改前 `isSystemGroupDisabled` 的最後一行是
+ * `return isFeatureActive(tenant.id, 'KEYWORD_REPLY')`——未訂閱的店家把開關關掉，
+ * 顧客照樣收到自動回覆。畫面文案有講（所以不是假成功），但行為本身不對：
+ * 「關掉某個東西」不該需要付費，診所業態甚至可能是合規問題。
+ *
+ * 這一組是**靜態鎖**（14 分冊 §7.2 的第四層判準）。真正證明 bot 閉嘴的是
+ * tests/integration/api/keyword-replies.05.test.ts 那條打 webhook 的案例；
+ * 這裡負責的是「有人手滑把閘門加回來，unit 就先紅」，不必等整合測試環境。
+ */
+describe('webhook 的系統關鍵字停用不得有付費閘門（14 分冊 §8.16 擁有者裁決）', () => {
+  const LINE_EVENTS = 'src/server/line-events.ts';
+  const code = withoutComments(src(LINE_EVENTS));
+
+  /** 取出一個 `function name(...) {...}` 宣告的完整原始碼（到下一個頂層宣告為止） */
+  function functionBody(source: string, name: string): string {
+    const start = source.indexOf(`function ${name}(`);
+    expect(start, `line-events.ts 找不到 function ${name}`).toBeGreaterThan(-1);
+    const rest = source.slice(start + 1);
+    const end = rest.search(/\n(async )?function /);
+    return rest.slice(0, end === -1 ? undefined : end);
+  }
+
+  it('isSystemGroupDisabled 內零 isFeatureActive／零 requireFeature（閘門真的拆了）', () => {
+    const body = functionBody(code, 'isSystemGroupDisabled');
+    expect(body, 'isSystemGroupDisabled 又長回 isFeatureActive 閘門（§8.16 禁止）')
+      .not.toMatch(/isFeatureActive/);
+    expect(body).not.toMatch(/requireFeature/);
+    expect(body).not.toMatch(/KEYWORD_REPLY/);
+    // 只讀 tenant_settings.line 的那份清單，別的都不看
+    expect(body).toMatch(/systemKeywordGroupsDisabled/);
+  });
+
+  it('呼叫端只看停用清單，不再帶 tenant 去查訂閱', () => {
+    expect(code).toMatch(/isSystemGroupDisabled\(lineConfig, hit\.group\)/);
+    expect(code, '呼叫端又把 tenant 傳進 isSystemGroupDisabled ＝ 準備查訂閱')
+      .not.toMatch(/isSystemGroupDisabled\(\s*tenant/);
+  });
+
+  /**
+   * 反向鎖：閘門**不准拆過頭**。KEYWORD_REPLY 擋的是「自訂內容」的寫入端點，
+   * 那三支 route 一定要留著 requireFeature，否則就從「該收費的沒收」變成漏洞。
+   */
+  it('自訂關鍵字的寫入端點仍然 requireFeature(KEYWORD_REPLY)（閘門沒被拆過頭）', () => {
+    const list = withoutComments(src('src/app/api/settings/line/keyword-replies/route.ts'));
+    const one = withoutComments(src('src/app/api/settings/line/keyword-replies/[id]/route.ts'));
+    expect(list, 'POST 少了 requireFeature').toMatch(/requireFeature\(t\.tenantId, 'KEYWORD_REPLY'\)/);
+    // PUT 與 DELETE 各一次
+    expect(one.match(/requireFeature\(t\.tenantId, 'KEYWORD_REPLY'\)/g) ?? []).toHaveLength(2);
+  });
+
+  /**
+   * webhook 分支 ④ 的停用判斷是同步函式了；若有人改回 async 又忘了 await，
+   * `if (Promise)` 恆為 truthy，會變成「所有內建關鍵字全部不回應」的大災難。
+   */
+  it('isSystemGroupDisabled 是同步函式（改成 async 而呼叫端沒 await 會全站靜音）', () => {
+    expect(code).toMatch(/\nfunction isSystemGroupDisabled\(/);
+    expect(code).not.toMatch(/async function isSystemGroupDisabled\(/);
   });
 });

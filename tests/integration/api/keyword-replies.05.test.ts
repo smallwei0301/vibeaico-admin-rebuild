@@ -28,7 +28,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
-import { LineMockServer } from '../../helpers/line-mock';
+import { LineMockServer, type RecordedLineRequest } from '../../helpers/line-mock';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { encryptSecret } from '@/server/crypto';
 import { BUSINESS_TYPES, MODE_PRESETS, type BusinessType } from '@/config/modes';
@@ -93,6 +93,45 @@ async function customerSays(text: string, replyToken = `rt-${Math.random().toStr
   if (replies.length === 0) return null;
   expect(replies).toHaveLength(1);
   return String(replies[0].body?.messages?.[0]?.text ?? '');
+}
+
+/**
+ * 打一則顧客訊息，回傳 mock LINE 在**這一輪**收到的全部請求。
+ *
+ * 「bot 閉嘴了」的最強斷言是這個陣列為空，而不是 `customerSays() === null`：
+ * customerSays 只翻 `/v2/bot/message/reply`，push / multicast 偷跑它抓不到。
+ * message 事件不會呼叫 `GET /v2/bot/profile`（那只在 follow 事件，見
+ * src/server/line-events.ts 的 onFollow），所以真的沒回應時這裡必須是 0 筆。
+ */
+async function lineCallsFor(text: string): Promise<RecordedLineRequest[]> {
+  mock.reset();
+  const replyToken = `rt-${Math.random().toString(36).slice(2)}`;
+  const raw = JSON.stringify({
+    destination: 'Umockbot',
+    events: [{
+      type: 'message',
+      replyToken,
+      source: { type: 'user', userId: USER },
+      message: { id: `m-${replyToken}`, type: 'text', text },
+    }],
+  });
+  const res = await fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-line-signature': sign(raw) },
+    body: raw,
+  });
+  expect(res.status, `webhook 對「${text}」回了 ${res.status}`).toBe(200);
+  return [...mock.requests];
+}
+
+/** 切換 SHOP_A 的 KEYWORD_REPLY 訂閱狀態（種子基線是 GRANTED，afterAll 會還原） */
+async function setKeywordReplyFeature(active: boolean): Promise<void> {
+  const { error } = await admin
+    .from('feature_subscriptions')
+    .update({ active })
+    .eq('tenant_id', SHOP_A.id)
+    .eq('code', 'KEYWORD_REPLY');
+  expect(error).toBeNull();
 }
 
 /** 頁面表單的一列 → 端點 body（**刻意走 service 層的 toApiPayload**，形狀與頁面完全相同） */
@@ -470,23 +509,27 @@ describe('20 組上限閘門（09 分冊 §5）在頁面走的端點上仍生效
 });
 
 /* ========================================================================== */
-/* ⑤ 未訂閱 KEYWORD_REPLY 的行為（設定存得下、顧客端不生效）                    */
+/* ⑤ 付費閘門的邊界（14 分冊 §8.16 擁有者裁決）                                 */
+/*                                                                            */
+/*    停用設定一律生效，付費閘門只擋「自訂內容」。                                */
+/*    ——「關掉某個東西」不該需要付費：一間停止訂閱的店家沒辦法讓 bot 閉嘴，       */
+/*      在診所這種要求對外訊息全部由專人處理的業態可能是合規問題。                */
 /* ========================================================================== */
-describe('未訂閱 KEYWORD_REPLY 時（09 分冊 §5、頁面文案）', () => {
+describe('未訂閱 KEYWORD_REPLY 時的閘門邊界（14 分冊 §8.16）', () => {
   beforeAll(async () => {
     await deleteAllKeywords();
     await setBusinessType('LOCAL_SHOP');
   });
   afterAll(async () => {
     // 還原贈與狀態（種子基線：18 項全部 GRANTED）
-    await admin.from('feature_subscriptions')
-      .update({ active: true }).eq('tenant_id', SHOP_A.id).eq('code', 'KEYWORD_REPLY');
+    await setKeywordReplyFeature(true);
     await patchLineJsonb({ systemKeywordGroupsDisabled: [] });
   });
 
+  /* ------------------------------------------------ 反向：閘門沒有被拆過頭 */
+
   it('自訂關鍵字寫入端點回 403（頁面因此把新增/編輯鎖住，與後端一致）', async () => {
-    await admin.from('feature_subscriptions')
-      .update({ active: false }).eq('tenant_id', SHOP_A.id).eq('code', 'KEYWORD_REPLY');
+    await setKeywordReplyFeature(false);
     const res = await api.post('/api/settings/line/keyword-replies', pagePayload({
       keyword: '整測未訂閱', matchType: 'EXACT', replyText: 'x',
     }));
@@ -494,17 +537,72 @@ describe('未訂閱 KEYWORD_REPLY 時（09 分冊 §5、頁面文案）', () => 
     expect((await res.json()).code).toBe('FEAT_001');
   });
 
-  it('系統關鍵字的停用設定仍存得下來，但顧客端維持系統預設行為（頁面 subscribeNote 的原話）', async () => {
-    // 存得下來：PUT /api/settings/line 不擋 feature
+  /* ------------------------------------------- 本輪最關鍵的一條（§8.16 ①） */
+
+  /**
+   * ⚠️ 前提變更（**不是**標準放寬）。本案例取代原本的
+   *   「系統關鍵字的停用設定仍存得下來，但顧客端維持系統預設行為（頁面 subscribeNote 的原話）」
+   * 那一條的斷言是 `expect(got).not.toBeNull()` ＋ `not.toBe(DEFAULT_REPLY)`
+   * ——它釘住的是「未訂閱時停用**不**生效」，也就是 §8.16 裁掉的舊行為。
+   * 舊行為既然被擁有者判定為錯的，釘著它的釘子當然要跟著改釘在新行為上。
+   *
+   * 新斷言的強度**高於**舊的：
+   *   舊：只看 /v2/bot/message/reply 有沒有一則非 defaultReply 的回覆（單一路徑）。
+   *   新：斷言 mock LINE 在整輪 webhook 裡收到的請求數 === 0，
+   *       連 push / multicast 偷跑都會被抓到（message 事件不會呼叫
+   *       GET /v2/bot/profile，那只在 follow 事件，所以「真的閉嘴」＝陣列為空）。
+   *   而且逐一列舉該組的**全部**同義詞，不是只驗一個。
+   */
+  it('未訂閱也一律生效：停用該組後顧客打這些字 → mock LINE 零呼叫（bot 真的閉嘴）', async () => {
+    await setKeywordReplyFeature(false);
+
+    // 存得下來：PUT /api/settings/line 不擋 feature（頁面 saveLineSettings 走的那支）
     const res = await api.put('/api/settings/line', { systemKeywordGroupsDisabled: ['MENU'] });
     expect(res.status).toBe(200);
     const { data } = await admin
       .from('tenant_settings').select('line').eq('tenant_id', SHOP_A.id).single();
     expect((data!.line as any).systemKeywordGroupsDisabled).toEqual(['MENU']);
 
-    // 但不生效：顧客打「選單」照常有回應
-    const got = await customerSays('選單');
-    expect(got).not.toBeNull();
-    expect(got).not.toBe(DEFAULT_REPLY);
-  });
+    // 而且**真的生效**：MENU 組三個同義詞，一則訊息都不准送出去
+    for (const k of ['主選單', '選單', '功能']) {
+      const calls = await lineCallsFor(k);
+      expect(
+        calls.map((c) => `${c.method} ${c.path}`),
+        `未訂閱 + 已停用，顧客打「${k}」時 bot 仍對 LINE 發了請求（§8.16 要求閉嘴）`,
+      ).toEqual([]);
+    }
+
+    // 「其他字不受影響」——沒被停用的組照常回應（證明不是整支 webhook 死掉了，
+    // 也證明未訂閱本身不會讓系統關鍵字全部靜音）
+    const other = await customerSays('優惠券');
+    expect(other, '未停用的組也沒回應 ＝ webhook 整個壞了，不是停用生效').not.toBeNull();
+    expect(other).not.toBe(DEFAULT_REPLY);
+  }, 30_000);
+
+  /* --------------------------------------------------------- 對照組（§8.16 ②） */
+
+  /**
+   * 對照組：**已訂閱**的租戶做同一件事必須得到同一個結果。
+   * 沒有這一條，上面那條無法排除「改成只有未訂閱才生效」這種把閘門反過來裝的錯誤
+   * ——那會是新的假成功換掉舊的（14 分冊 §6.5 的手法：凡是斷言「壞事沒發生」，
+   * 都要配一個能區分『修好了』與『這條路根本沒被走到』的對照）。
+   */
+  it('對照組：已訂閱的租戶停用同一組 → 行為完全一致（同樣零呼叫，不是只有未訂閱才生效）', async () => {
+    await setKeywordReplyFeature(true);
+    await patchLineJsonb({ systemKeywordGroupsDisabled: ['MENU'] });
+
+    for (const k of ['主選單', '選單', '功能']) {
+      const calls = await lineCallsFor(k);
+      expect(
+        calls.map((c) => `${c.method} ${c.path}`),
+        `已訂閱 + 已停用，顧客打「${k}」時 bot 仍有回應`,
+      ).toEqual([]);
+    }
+
+    // 恢復（清空清單）→ 兩種訂閱狀態下都要回得來，證明停用是唯一變因
+    await patchLineJsonb({ systemKeywordGroupsDisabled: [] });
+    expect(await customerSays('選單')).not.toBeNull();
+    await setKeywordReplyFeature(false);
+    expect(await customerSays('選單'), '未訂閱時恢復開關失效 ＝ 閘門偷偷還在').not.toBeNull();
+  }, 30_000);
 });

@@ -50,8 +50,10 @@ export const lineSettingsSchema = z.object({
    * 設定的兩層」表的下半層），與 autoReplyEnabled/defaultReply 同一類、同一個
    * 儲存位置、同一支 PUT /api/settings/line 端點，不需要 migration。
    *
-   * 生效條件：停用/覆蓋屬「自訂關鍵字回覆」功能範圍（09 分冊 §5），未訂閱
-   * KEYWORD_REPLY 時設定可以先存，但 webhook 不套用——頁面文案講的就是這件事。
+   * 生效條件：**無條件生效，不看 KEYWORD_REPLY 訂閱狀態**（14 分冊 §8.16 擁有者
+   * 裁決）。「關掉內建回覆」是少做一件事，不該需要付費；付費閘門只擋「覆蓋」
+   * ——也就是店家自己編一組新的關鍵字回覆（`keyword_replies` 表的寫入端點
+   * requireFeature('KEYWORD_REPLY')，09 分冊 §5）。
    */
   systemKeywordGroupsDisabled: z.array(z.string()).default([]),
   /** Rich Menu */
