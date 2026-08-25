@@ -74,14 +74,24 @@ export default function KeywordRepliesPage() {
    *         回真正的答案（200 或 403），而不是靠猜的畫面狀態代它宣告結果。
    */
   const [featureActive, setFeatureActive] = React.useState<boolean | null>(null);
-  /** 內建關鍵字組可帶 feature 條件（例：行程組只給訂閱 TOUR_MODULE 的導遊型店家） */
+  /** 內建關鍵字組可帶 feature 條件（例：行程組標了 TOUR_MODULE） */
   const [activeFeatures, setActiveFeatures] = React.useState<string[]>([]);
-  const visibleGroups = React.useMemo(
-    () => t.system.groups.filter(
-      (g) => !('feature' in g) || activeFeatures.includes((g as { feature: string }).feature),
-    ),
-    [activeFeatures],
-  );
+
+  /**
+   * ⚠️ **所有系統內建關鍵字組一律顯示，不依訂閱狀態過濾**（14 分冊 §8.19 擁有者裁決）。
+   *
+   * 舊寫法會把標了 `feature` 的組（行程／出團日期，TOUR_MODULE）從畫面上濾掉。
+   * 但 webhook 分支 ④ 對這些關鍵字**沒有任何 feature 閘門**——退訂之後顧客打
+   * 「行程」，bot 照樣回覆，而店家**看不到那個開關、關不掉**。
+   *
+   * 這與 §8.16／§8.16-b 是同一個原則：**收費擋的是「多做一件事」，不是「少做一件事」。**
+   * 一間退訂的店家沒辦法讓 bot 閉嘴，在某些業態是合規問題而不只是體驗問題。
+   * 同一個原則在專案裡不能只執行一半。
+   *
+   * `activeFeatures` 保留，但改成只用來**標示**「此組屬 XX 模組、你尚未訂閱、
+   * 但開關仍可用」（見下方 `unsubscribedModuleNote`），不再用來決定「看不看得到」。
+   */
+  const visibleGroups = t.system.groups;
 
   /**
    * 被停用的系統內建關鍵字組（開關關掉的那些）。
@@ -492,6 +502,15 @@ export default function KeywordRepliesPage() {
                         </button>
                       ))}
                       {g.note ? <div className="form-text w-full">{g.note}</div> : null}
+                      {'feature' in g
+                        && !activeFeatures.includes((g as { feature: string }).feature) ? (
+                          <div className="form-text w-full">
+                            {t.system.unsubscribedModuleNote(
+                              t.system.moduleNames[(g as { feature: string }).feature]
+                                ?? (g as { feature: string }).feature,
+                            )}
+                          </div>
+                        ) : null}
                     </div>
                   }
                   checked={!disabledGroups.includes(g.key)}

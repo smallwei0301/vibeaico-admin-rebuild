@@ -80,6 +80,17 @@ export const keywordRepliesPage = {
     offStrong2: '傳送文字',
     offMiddle2: '」類型的格子、或你在 LINE 官方後台自行建立',
     offTail: '的圖文選單「傳送訊息」按鈕，送出的是真文字，會一併沒有回應）；',
+    /**
+     * 標了 `feature` 的組（例如行程／出團日期屬 TOUR_MODULE）在**未訂閱時仍然顯示**
+     * ——因為 webhook 對這些關鍵字沒有 feature 閘門，退訂後 bot 照樣回覆，
+     * 店家必須有辦法關掉它（14 分冊 §8.19 擁有者裁決）。
+     * 這一句說明它為什麼會出現在這裡，免得店家以為是系統跑錯。
+     */
+    unsubscribedModuleNote: (moduleName: string) =>
+      `此組屬「${moduleName}」，你目前未訂閱該模組——但顧客打這些字 Bot 仍會回應，所以開關保持可用。`,
+    moduleNames: {
+      TOUR_MODULE: '行程模組',
+    } as Record<string, string>,
     overrideLead: '點某個字＝那個字改回你自己寫的內容',
     overrideTail: '，其他字不受影響。',
     campaignNote: '「活動」組請到 LINE 設定頁 → 主選單樣式卡片 的獨立開關管理。',
