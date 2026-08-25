@@ -295,15 +295,30 @@ describe('webhook 的系統關鍵字停用不得有付費閘門（14 分冊 §8.
   });
 
   /**
-   * 反向鎖：閘門**不准拆過頭**。KEYWORD_REPLY 擋的是「自訂內容」的寫入端點，
-   * 那三支 route 一定要留著 requireFeature，否則就從「該收費的沒收」變成漏洞。
+   * 反向鎖：閘門**不准拆過頭**。
+   *
+   * ⚠️ **前提變更（主導者，2026-08-25）——不是把斷言放寬。**
+   *
+   * 這一格原本釘的是「`[id]/route.ts` 裡 requireFeature 出現**兩次**（PUT 與
+   * DELETE 各一）」，也就是「自訂關鍵字的任何寫入一律擋」。
+   *
+   * 本 issue 收工時，執行者把一個「兩邊都沾」的情況交上來：webhook 分支 ②
+   * 讀 `keyword_replies` **完全沒有閘門**（退訂後照樣回覆顧客），但停用要走 PUT、
+   * 刪除走 DELETE，兩支都無條件擋 → **店家退訂後，自己寫的話持續發給顧客，
+   * 而他關不掉也刪不掉**。
+   *
+   * 主導者判定 §8.16 的原則本身就能解開：決定的是**動作的方向**，不是對象。
+   * 「多做一件事」（新增、改內容、重新啟用）擋；「少做一件事」（停用、刪除）不擋。
+   *
+   * 所以這裡的數量斷言已經失去意義（PUT 現在是**有條件**呼叫、DELETE 沒有）。
+   * 改為只釘住仍然成立的那一半：**POST 一定要擋**。方向判斷的完整覆蓋移到
+   * `tests/unit/keyword-gate-direction.test.ts`（5 案），
+   * 那裡連「送 `{ active:false, content:{…} }` 夾帶繞過」都釘住了——
+   * **比原本的數數強**。
    */
-  it('自訂關鍵字的寫入端點仍然 requireFeature(KEYWORD_REPLY)（閘門沒被拆過頭）', () => {
+  it('新增自訂關鍵字仍然 requireFeature(KEYWORD_REPLY)（閘門沒被拆過頭）', () => {
     const list = withoutComments(src('src/app/api/settings/line/keyword-replies/route.ts'));
-    const one = withoutComments(src('src/app/api/settings/line/keyword-replies/[id]/route.ts'));
     expect(list, 'POST 少了 requireFeature').toMatch(/requireFeature\(t\.tenantId, 'KEYWORD_REPLY'\)/);
-    // PUT 與 DELETE 各一次
-    expect(one.match(/requireFeature\(t\.tenantId, 'KEYWORD_REPLY'\)/g) ?? []).toHaveLength(2);
   });
 
   /**
