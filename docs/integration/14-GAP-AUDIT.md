@@ -769,3 +769,50 @@ WIP `9ccb873` 寫好的 ②④ 分支，註解裡引用了
 
 不停留在「停用＋說明尚未建置」。需要新 bucket ＋ `bug_reports` 附件欄位 ＋
 端點契約，另開 issue 處理。
+
+### 8.15 `previewImageUrl` 超出 LINE 的 1 MB → **加 `sharp` 產真正的縮圖**（不壓上傳上限）
+
+`src/app/api/chat/messages/route.ts` 與 `src/app/api/marketing/pushes/[id]/send/route.ts`
+都把**同一個 URL 同時當 `originalContentUrl` 與 `previewImageUrl`**，但 LINE 對這兩個
+欄位的大小上限不同（[Messaging API reference — Image message](https://developers.line.biz/en/reference/messaging-api/#image-message)）：
+
+| 欄位 | 上限 |
+|---|---|
+| `originalContentUrl` | 10 MB |
+| `previewImageUrl` | **1 MB** |
+
+而 `/api/upload` 的 `MAX_BYTES` 是 5 MB → **1–5 MB 的圖已超出 preview 規格**，
+手機拍的照片幾乎都落在這個區間。
+
+**裁決：上傳時同時產一張 ≤1 MB 的縮圖，`previewImageUrl` 指向它、`originalContentUrl`
+指向原圖。** 不採用「把上傳上限壓到 1 MB」——LINE 本來支援到 10 MB，壓下去等於店家
+不能傳手機原圖，是用刪除代替補齊。
+
+#### 主導者查證：`sharp` 的相容性風險**不存在**（原本評估過度保守）
+
+提案當時把「需新增原生相依、要確認 Vercel 相容性」列為代價。實際查證後：
+
+- **`sharp` 0.34.5 已經在 `node_modules` 裡**——它是 `next@15.5.23` 的相依
+  （Next 用它做 image optimization），所以**它本來就在 Vercel 的執行環境跑著**。
+- 沙箱實測通過：2000×1500 的 JPEG 縮成 1024 寬，17894 → 4877 bytes。
+
+所以真正的動作不是「引入一個新套件」，而是**把它從隱性相依轉成顯性相依**：
+加進 `package.json` 的 `dependencies`（版本對齊目前已裝的 0.34.5，避免拉到不同的
+原生二進位）。理由是**不要依賴別人的內部相依**——Next 哪天換掉 image optimization
+的實作，我們的縮圖就會無聲壞掉，而那種壞法（縮圖沒產出→preview 超規→LINE 顯示異常）
+正好是最難察覺的一種。
+
+### 8.16 未訂閱 KEYWORD_REPLY 時的「停用系統關鍵字」→ **一律生效**
+
+改為：**停用設定一律生效，付費閘門只擋「自訂內容」**（店家自己編一組新的關鍵字回覆）。
+
+現況是 `isSystemGroupDisabled` 內有 `isFeatureActive` 把關，所以未訂閱的店家關掉開關後
+**顧客照樣收到自動回覆**（文案有講，所以不是假成功，但行為本身不對）。
+
+**為什麼**：「關掉某個東西」不該需要付費。一間停止訂閱的店家沒辦法讓 bot 閉嘴——
+在診所這種要求對外訊息全部由專人處理的業態，這不只是體驗問題，可能是**合規問題**。
+收費應該擋的是「多做一件事」（自訂內容），不是「少做一件事」（關掉內建回覆）。
+
+⚠️ 連帶要處理的：頁面的 `subscribeNote` 文案目前是照舊行為寫的（「已儲存停用設定
+（尚未生效…）」）。閘門改掉之後那句話立刻變成假的已知——**同一輪必須一起改**，
+否則就是用新的假成功換掉舊的（§6.5 記過同型的事）。
