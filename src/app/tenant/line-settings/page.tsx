@@ -27,6 +27,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { cn } from '@/lib/utils';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
+import { generateQrDataUrl, triggerDataUrlDownload } from '@/lib/qr';
 
 /* -------------------------------------------------------------------------- */
 /* 常數                                                                        */
@@ -132,6 +133,12 @@ export default function LineSettingsPage() {
   const [verifyChecks, setVerifyChecks] = React.useState<VerifyCheck[] | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
 
+  /* --- 加好友 QR Code（issue #16：真的產生，內容＝加好友連結） --- */
+  const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+  const [qrGenerating, setQrGenerating] = React.useState(false);
+  const [qrError, setQrError] = React.useState(false);
+  const [downloadingQr, setDownloadingQr] = React.useState(false);
+
   /* ------------------------------------------------------------------ 載入 */
 
   const applySettings = React.useCallback((s: TenantSettings) => {
@@ -182,6 +189,31 @@ export default function LineSettingsPage() {
   const addFriendUrl = lineBasicId
     ? `https://line.me/R/ti/p/${encodeURIComponent(lineBasicId)}`
     : '';
+
+  React.useEffect(() => {
+    if (!addFriendUrl) { setQrDataUrl(null); setQrError(false); return; }
+    let cancelled = false;
+    setQrGenerating(true);
+    setQrError(false);
+    void generateQrDataUrl(addFriendUrl)
+      .then((dataUrl) => { if (!cancelled) setQrDataUrl(dataUrl); })
+      .catch(() => { if (!cancelled) { setQrDataUrl(null); setQrError(true); } })
+      .finally(() => { if (!cancelled) setQrGenerating(false); });
+    return () => { cancelled = true; };
+  }, [addFriendUrl]);
+
+  const downloadQr = () => {
+    if (!qrDataUrl) return;
+    setDownloadingQr(true);
+    try {
+      triggerDataUrlDownload(qrDataUrl, t.botInfo.qrFilename);
+      toast.show(t.botInfo.qrDownloaded);
+    } catch {
+      toast.show(t.botInfo.qrDownloadFailed, 'danger');
+    } finally {
+      setDownloadingQr(false);
+    }
+  };
 
   /** 三組金鑰都在（密文以「已存有遮罩值」或「本次重新輸入」判定）就視為已設定 */
   const hasSecret = secretEditing ? !!secretInput : !!settings?.line.channelSecret;
@@ -778,10 +810,22 @@ export default function LineSettingsPage() {
         <CardBody>
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-md border border-neutral-250 bg-neutral-50 text-center">
-              <QrCode size={48} className="text-neutral-400" />
-              <span className="px-2 text-2xs text-secondary">
-                {addFriendUrl ? t.botInfo.qrTitle : t.botInfo.noQr}
-              </span>
+              {!addFriendUrl ? (
+                <>
+                  <QrCode size={48} className="text-neutral-400" />
+                  <span className="px-2 text-2xs text-secondary">{t.botInfo.noQr}</span>
+                </>
+              ) : qrGenerating ? (
+                <span className="px-2 text-2xs text-secondary">{t.botInfo.qrGenerating}</span>
+              ) : qrError || !qrDataUrl ? (
+                <>
+                  <QrCode size={48} className="text-neutral-400" />
+                  <span className="px-2 text-2xs text-secondary">{t.botInfo.qrGenerateFailed}</span>
+                </>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrDataUrl} alt={t.botInfo.qrAlt} className="h-32 w-32" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="mb-1 text-base font-semibold text-dark">{t.botInfo.qrTitle}</div>
@@ -808,15 +852,11 @@ export default function LineSettingsPage() {
                   <Link2 size={14} />
                   {t.botInfo.copyLink}
                 </Button>
-                {/*
-                  * ⚠️ 本站沒有任何 QR 圖檔可下載（方框裡是 lucide 圖示，不是真 QR），
-                  * 舊實作只 toast「QR Code 已下載！」讓店家空等一個不存在的檔案。
-                  * 在真的能產出圖檔之前，按鈕一律停用並說明去哪裡拿。禁止復原。
-                  */}
                 <Button
                   variant="outline"
-                  disabled
-                  title={t.botInfo.downloadDisabledHint}
+                  disabled={!qrDataUrl || downloadingQr}
+                  title={!qrDataUrl ? t.botInfo.downloadDisabledHint : undefined}
+                  onClick={downloadQr}
                 >
                   <QrCode size={14} />
                   {t.botInfo.downloadQr}

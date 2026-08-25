@@ -18,6 +18,7 @@ import { APP_URL } from '@/config/env';
 import { nav } from '@/i18n/zh-TW/nav';
 import { promotePage as t } from '@/i18n/zh-TW/pages/promote';
 import { formatNumber } from '@/lib/utils';
+import { generateQrDataUrl, triggerDataUrlDownload } from '@/lib/qr';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -46,10 +47,10 @@ const MOCK_PROMOTION_STATS: Record<string, PromotionStat[]> = {
 };
 
 /*
- * ⚠️ QR Code 產生尚未建置：本頁沒有任何 QR 圖檔、dataURL 或產圖端點，
- * 方框內畫的是 lucide 的 `QrCode` 圖示（線條裝飾，掃不出東西）。
- * 舊實作的「下載 QR」按鈕只 toast「QR Code 已開始下載」，瀏覽器從未收到檔案。
- * 在真的能產出圖檔之前，按鈕一律停用，並在畫面上說明方框只是版位示意。禁止復原。
+ * QR Code：issue #16（補齊-1）已補上真的產生與下載，經 src/lib/qr.ts
+ * （擁有者裁決安裝 `qrcode` 套件，不得自寫編碼器——見 14 分冊 §8.2）。
+ * 內容＝下方 publicUrl 逐字編碼；publicUrl 尚未就緒（店家代碼未設定／
+ * 載入中）時不產生，方框顯示對應的誠實狀態，不畫假圖。
  */
 
 /* -------------------------------------------------------------------------- */
@@ -63,6 +64,11 @@ export default function PromotePage() {
   const [days, setDays] = React.useState('7');
   const [stats, setStats] = React.useState<PromotionStat[]>([]);
   const [loadingStats, setLoadingStats] = React.useState(true);
+
+  const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+  const [qrGenerating, setQrGenerating] = React.useState(false);
+  const [qrError, setQrError] = React.useState(false);
+  const [downloadingQr, setDownloadingQr] = React.useState(false);
 
   React.useEffect(() => {
     void (async () => {
@@ -89,6 +95,31 @@ export default function PromotePage() {
   }, [days]);
 
   const publicUrl = shopCode ? buildPublicBookingUrl(APP_URL, shopCode) : '';
+
+  React.useEffect(() => {
+    if (!publicUrl) { setQrDataUrl(null); setQrError(false); return; }
+    let cancelled = false;
+    setQrGenerating(true);
+    setQrError(false);
+    void generateQrDataUrl(publicUrl)
+      .then((dataUrl) => { if (!cancelled) setQrDataUrl(dataUrl); })
+      .catch(() => { if (!cancelled) { setQrDataUrl(null); setQrError(true); } })
+      .finally(() => { if (!cancelled) setQrGenerating(false); });
+    return () => { cancelled = true; };
+  }, [publicUrl]);
+
+  const downloadQr = () => {
+    if (!qrDataUrl) return;
+    setDownloadingQr(true);
+    try {
+      triggerDataUrlDownload(qrDataUrl, t.qr.filename);
+      toast.show(t.qr.downloaded);
+    } catch {
+      toast.show(t.qr.downloadFailed, 'danger');
+    } finally {
+      setDownloadingQr(false);
+    }
+  };
 
   const channelUrl = (utmSource: string) =>
     publicUrl ? `${publicUrl}?utm_source=${utmSource}` : '';
@@ -129,8 +160,7 @@ export default function PromotePage() {
       <PageHeader eyebrow={nav.navMarketing} title={t.title} />
 
       <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
-        <div>{t.notBuilt.body}</div>
-        <div className="mt-1">{t.notBuilt.statsBody}</div>
+        <div>{t.notBuilt.statsBody}</div>
       </Alert>
 
       {!loadingUrl && !shopCode ? (
@@ -174,20 +204,27 @@ export default function PromotePage() {
               <QrCode size={16} />{t.qr.heading}
             </h6>
             <div className="mx-auto flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-md border border-neutral-250 bg-neutral-50 p-2 text-center">
-              {loadingUrl ? (
-                <span className="text-xs text-muted">{t.publicUrl.loading}</span>
+              {loadingUrl || qrGenerating ? (
+                <span className="text-xs text-muted">
+                  {loadingUrl ? t.publicUrl.loading : t.qr.generating}
+                </span>
               ) : !publicUrl ? (
                 <span className="text-xs text-muted">{t.qr.notReady}</span>
-              ) : (
+              ) : qrError || !qrDataUrl ? (
                 <>
                   <QrCode size={72} className="text-neutral-400" aria-hidden />
-                  <span className="text-2xs text-secondary">{t.notBuilt.qrPlaceholder}</span>
+                  <span className="text-2xs text-secondary">{t.qr.generateFailed}</span>
                 </>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrDataUrl} alt={t.qr.alt} className="h-32 w-32" />
               )}
             </div>
             <Button
               variant="outline" size="sm" className="mt-3"
-              disabled title={t.notBuilt.downloadDisabledHint}
+              disabled={!qrDataUrl || downloadingQr}
+              title={!qrDataUrl ? (qrError ? t.qr.generateFailed : t.qr.notReady) : undefined}
+              onClick={downloadQr}
             >
               <Download size={14} />{t.qr.download}
             </Button>

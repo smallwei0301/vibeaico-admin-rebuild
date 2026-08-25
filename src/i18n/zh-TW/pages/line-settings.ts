@@ -234,6 +234,12 @@ export const lineSettingsPage = {
   },
 
   /* ------------------------------------------------------- 加好友 QR Code */
+  /**
+   * QR Code：issue #16（補齊-1）已補上真的產生與下載，經 src/lib/qr.ts
+   * （擁有者裁決安裝 `qrcode` 套件，不得自寫編碼器——見 14 分冊 §8.2）。
+   * 內容＝下方 addFriendUrl（`https://line.me/R/ti/p/{lineBasicId}`）逐字編碼，
+   * 與 promote 頁的公開商店頁 QR 是兩個不同的網址、不同的用途。
+   */
   botInfo: {
     title: '您的 LINE 官方帳號',
     subtitle: '顧客加好友後即可線上預約、購物、收通知',
@@ -245,42 +251,34 @@ export const lineSettingsPage = {
     copiedLink: '已複製加好友連結！',
     noQr: '尚未取得 QR Code',
     noLink: '尚未取得加好友連結',
-
-    /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 本頁從來沒有取得過任何 QR 圖檔：方框裡畫的是 lucide 的 `QrCode` 圖示，
-     * 也沒有向 LINE 或自家後端要過 QR 圖（LINE 的官方 QR 只能在 LINE Official
-     * Account Manager 後台下載，本站沒有對應端點）。
-     * 舊實作按「下載 QR Code」→ toast「QR Code 已下載！可列印張貼在店內」，
-     * 但瀏覽器從未收到任何檔案，店家會空等一個不存在的下載。禁止復原。
-     */
-    downloadDisabledHint:
-      'QR Code 下載尚未建置：本站沒有可下載的 QR 圖檔，請到 LINE Official Account Manager 後台下載官方 QR Code',
+    qrGenerating: 'QR Code 產生中...',
+    qrGenerateFailed: 'QR Code 產生失敗',
+    qrDownloaded: 'QR Code 已下載',
+    qrDownloadFailed: 'QR Code 下載失敗，請稍後重試',
+    qrAlt: 'LINE 加好友 QR Code',
+    qrFilename: 'LINE加好友QRcode.png',
+    downloadDisabledHint: '請先在上方設定「LINE Basic ID」，才會有可下載的加好友 QR Code',
   },
 
   /* ------------------------------------------------------ 如何讓顧客加入 */
   promotion: {
     title: '如何讓顧客加入？',
     /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 第 1、3 項原本寫「下載上方 QR Code 印出張貼在店內」「在名片、傳單上印製
-     * QR Code」，但上方那顆「下載 QR Code」按鈕已停用（本站沒有任何 QR 圖檔可
-     * 下載，方框裡是 lucide 圖示），等於教店家去按一顆按不動的按鈕。
-     * 官方 QR 只能在 LINE Official Account Manager 後台取得，這裡直接指過去。
-     * 第 2 項的「複製連結」是真的（加好友連結由 lineBasicId 組出、按鈕可用），
-     * 第 4 項只是搜尋 ID，兩者維持原樣。禁止把 QR 下載的指引改回來。
+     * issue #16（補齊-1）補上真的 QR 產生與下載後，第 1、3 項改回指引使用
+     * 上方那顆「下載 QR Code」按鈕（本站產生，內容＝加好友連結），不再繞去
+     * LINE Official Account Manager 後台。
      */
     items: [
       {
         no: '1',
         title: '店內張貼 QR Code',
-        desc: '到 LINE Official Account Manager 後台下載官方 QR Code，印出張貼在店內（本站的 QR 下載尚未建置）',
+        desc: '按上方「下載 QR Code」下載後，印出張貼在店內',
       },
       { no: '2', title: '分享加好友連結', desc: '複製連結分享到社群媒體或官網' },
       {
         no: '3',
         title: '名片或傳單',
-        desc: '在名片、傳單上印製同一張官方 QR Code（一樣到 LINE 官方帳號後台取得）',
+        desc: '在名片、傳單上印製同一張 QR Code',
       },
       { no: '4', title: '搜尋 ID 加入', desc: '顧客在 LINE 搜尋 @xxx 加入' },
     ],
