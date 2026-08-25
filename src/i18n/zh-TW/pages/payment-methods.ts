@@ -127,16 +127,34 @@ export const paymentMethodsPage = {
     requiredFields: '請填寫必填欄位',
   },
 
+  /* ---------------------------------------- 尚未建置：誠實告示（不可省略） */
+  /**
+   * ⚠️ 這一區塊是「誠實化」文案，對應 CLAUDE.md「Never fabricate a known」。
+   * 本頁沒有任何後端（無 /api/payment-methods、無 src/services 收款方式函式），
+   * 所有互動都只改瀏覽器內的 React state。在真後端接上（issue #9）之前，
+   * 頁面必須用這些文案說明「尚未生效」，不得再顯示任何成功訊息。
+   */
+  notBuilt: {
+    title: '金流／收款方式後端尚未建置，本頁設定尚未生效',
+    body:
+      '此頁的收款方式目前只存在於這個瀏覽器畫面：新增、編輯、刪除、啟用／停用都不會寫入資料庫，重新整理就會消失，顧客的付款流程也完全不受影響。畫面上的卡片為示範資料。',
+    verifyBody:
+      '「實刷測試並開通」需要呼叫金流商 API，該後端尚未建置，因此本頁無法驗證任何金流帳號。卡片上的「已驗證開通」只會反映後端資料，不會因為在本頁操作而變成已開通。',
+    savedNotEffective: '尚未生效：收款方式後端尚未建置，這筆內容只留在畫面上，未寫入資料庫。',
+    deletedNotEffective: '尚未生效：僅從畫面移除，收款方式後端尚未建置，資料庫沒有變更。',
+    toggleNotEffective: '尚未生效：啟用／停用只改變畫面，收款方式後端尚未建置，顧客端不受影響。',
+    testChargeConfirm:
+      '金流後端尚未建置，本頁無法送出實刷測試，也不會因此開通金流。按下確定不會產生任何付款、也不會改變驗證狀態。',
+    testChargeNotAvailable: '未執行實刷測試：金流後端尚未建置，此收款方式仍為「尚未驗證」。',
+  },
+
   /* -------------------------------------------------------- 實刷測試 */
   testCharge: {
-    confirm:
-      '將建立一筆小額實刷測試付款（藍新 NT$1／綠界 NT$5——綠界信用卡最低就是 5 元），並在本視窗前往金流付款頁。沙箱/示範環境用測試卡不扣真錢；正式環境會實刷（可事後在金流商後台退刷）。付款完成後會自動回到此頁顯示驗證結果。要繼續嗎？',
     saveFirst: '請先儲存後再測試',
     dirtyBeforeTest: '你剛修改了金流設定，請先按「儲存」再測試',
     dirtyBeforeCheck: '你剛修改了金流設定，請先按「儲存」再檢查',
     createFailedPrefix: '建立測試付款失敗：',
     noForm: '未取得付款表單，請稍後再試',
-    success: '測試付款成功！若藍新已回報，金流即顯示「已驗證開通」',
     failed: '測試付款未成功，請確認金流設定（商店代號 / HashKey / HashIV）或稍後再試',
     checkPassed: '檢查通過',
     checkFailed: '檢查未通過',
@@ -151,12 +169,6 @@ export const paymentMethodsPage = {
   },
 
   messages: {
-    created: '收款方式已新增',
-    updated: '收款方式已更新',
-    deleted: '已刪除',
-    statusUpdated: '狀態已更新',
-    createdHint: '已新增！請點該卡片「編輯」→「實刷測試並開通（藍新 NT$1／綠界 NT$5）」完成金流開通',
-    updatedHint: '已更新！可再按「實刷測試並開通（藍新 NT$1／綠界 NT$5）」重新驗證',
     saveFailed: '儲存失敗:',
     saveFailedFull: '儲存失敗：',
     deleteFailed: '刪除失敗:',

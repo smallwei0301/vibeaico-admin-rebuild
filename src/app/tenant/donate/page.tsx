@@ -56,7 +56,6 @@ export default function DonatePage() {
   const [displayName, setDisplayName] = React.useState('');
   const [error, setError] = React.useState('');
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -65,15 +64,10 @@ export default function DonatePage() {
   }, []);
 
   React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setDonors(MOCK_DONORS);
-      setTotal(MOCK_TOTAL_DONATED);
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+    /* 後端尚未建置：沒有 /api/donations/summary，直接讀本檔示範資料 */
+    setDonors(MOCK_DONORS);
+    setTotal(MOCK_TOTAL_DONATED);
+    setLoading(false);
   }, []);
 
   const numericAmount = Number(amount);
@@ -94,19 +88,13 @@ export default function DonatePage() {
     setConfirmOpen(true);
   };
 
-  const submit = async () => {
-    setSubmitting(true);
-    try {
-      await new Promise((r) => setTimeout(r, 420));
-      setConfirmOpen(false);
-    } catch (e) {
-      toast.show(
-        `${t.messages.payCreateFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
-        'danger',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+  const submit = () => {
+    /*
+     * ⚠️ 贊助金流後端尚未建置：這裡沒有任何付款可以建立。
+     * 舊實作是假延遲後靜默關窗，看起來像付款已送出 —— 禁止復原。
+     */
+    setConfirmOpen(false);
+    toast.show(t.notBuilt.submitNotEffective, 'warning');
   };
 
   const donorColumns: Column<Donor>[] = [
@@ -125,6 +113,10 @@ export default function DonatePage() {
   return (
     <>
       <PageHeader title={t.title} />
+
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-3">
+        {t.notBuilt.body}
+      </Alert>
 
       {paymentResult === 'success' ? (
         <Alert tone="success" className="mb-3">{t.payment.successText}</Alert>
@@ -194,11 +186,7 @@ export default function DonatePage() {
 
             {error ? <FormError>{error}</FormError> : null}
 
-            <Button
-              variant="danger" block
-              loading={submitting} loadingText={t.form.submitting}
-              onClick={ask}
-            >
+            <Button variant="danger" block onClick={ask}>
               <Heart size={15} />{t.form.submit}
             </Button>
             <p className="form-text mt-2">{t.form.payHint}</p>
@@ -243,12 +231,11 @@ export default function DonatePage() {
 
       <ConfirmModal
         open={confirmOpen}
-        loading={submitting}
         title={t.form.confirmTitle}
         confirmText={t.form.submit}
-        message={t.form.confirmMessage(formatCurrency(numericAmount || 0))}
+        message={t.notBuilt.confirmMessage(formatCurrency(numericAmount || 0))}
         onClose={() => setConfirmOpen(false)}
-        onConfirm={() => void submit()}
+        onConfirm={submit}
       />
     </>
   );

@@ -124,8 +124,7 @@ export default function PaymentMethodsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      /* 骨架階段：原站呼叫 /api/payment-methods */
-      await new Promise((r) => setTimeout(r, 320));
+      /* 後端尚未建置：沒有 /api/payment-methods，只讀本檔的示範資料 */
       setRows([...MOCK_METHODS].sort((a, b) => a.sortOrder - b.sortOrder));
     } catch (e) {
       toast.show(
@@ -142,7 +141,7 @@ export default function PaymentMethodsPage() {
 
   const toggleActive = (m: PaymentMethod) => {
     setRows((list) => list.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)));
-    toast.show(t.messages.statusUpdated);
+    toast.show(t.notBuilt.toggleNotEffective, 'warning');
   };
 
   const upsert = (draft: PaymentMethod) => {
@@ -162,6 +161,11 @@ export default function PaymentMethodsPage() {
           </Button>
         }
       />
+
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        <div>{t.notBuilt.body}</div>
+        <div className="mt-1">{t.notBuilt.verifyBody}</div>
+      </Alert>
 
       {loading ? (
         <div className="py-10 text-center text-muted">{common.loading}</div>
@@ -267,10 +271,7 @@ export default function PaymentMethodsPage() {
           const id = isEdit ? draft.id : `pm_new_${nextId.current++}`;
           upsert({ ...draft, id });
           setFormTarget(undefined);
-          toast.show(isEdit ? t.messages.updated : t.messages.created);
-          if (draft.methodType === 'ONLINE_PAYMENT') {
-            toast.show(isEdit ? t.messages.updatedHint : t.messages.createdHint, 'info');
-          }
+          toast.show(t.notBuilt.savedNotEffective, 'warning');
         }}
       />
 
@@ -287,10 +288,9 @@ export default function PaymentMethodsPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
             setRows((list) => list.filter((m) => m.id !== deleteTarget.id));
             setDeleteTarget(null);
-            toast.show(t.messages.deleted);
+            toast.show(t.notBuilt.deletedNotEffective, 'warning');
           } catch (e) {
             toast.show(
               `${t.messages.deleteFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -307,15 +307,16 @@ export default function PaymentMethodsPage() {
         open={!!testTarget}
         title={t.actions.testCharge}
         confirmText={common.confirmText}
-        message={t.testCharge.confirm}
+        message={t.notBuilt.testChargeConfirm}
         onClose={() => setTestTarget(null)}
         onConfirm={() => {
-          if (testTarget) {
-            setRows((list) => list.map((m) => (m.id === testTarget.id
-              ? { ...m, gatewayVerified: true }
-              : m)));
-            toast.show(t.testCharge.success);
-          }
+          /*
+           * ⚠️ 金流後端尚未建置：這裡絕對不可以動 gatewayVerified。
+           * 曾經的實作直接把 gatewayVerified 設為 true 並顯示「測試付款成功」，
+           * 店家會以為金流已開通而開始收單 —— 這是金流級的假成功，禁止復原。
+           * 驗證狀態只能由真正呼叫過金流商 API 的後端回傳。
+           */
+          toast.show(t.notBuilt.testChargeNotAvailable, 'warning');
           setTestTarget(null);
         }}
       />
@@ -395,7 +396,6 @@ function MethodFormModal({
     if (err) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
       onSaved(
         {
           ...draft,

@@ -14,10 +14,7 @@ import {
 } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Label } from '@/components/ui/Form';
-import { useToast } from '@/components/ui/Toast';
-import { APP_URL } from '@/config/env';
 import { nav } from '@/i18n/zh-TW/nav';
 import { referralsPage as t } from '@/i18n/zh-TW/pages/referrals';
 import { formatDateTime, formatNumber } from '@/lib/utils';
@@ -38,8 +35,6 @@ type ReferralRecord = {
   referredAt: string;
   completedAt: string | null;
 };
-
-const MOCK_REFERRAL_CODE = 'VIBE-DEMO-8421';
 
 const MOCK_REFERRALS: ReferralRecord[] = [
   {
@@ -80,24 +75,14 @@ const PAGE_SIZE = 20;
 /* -------------------------------------------------------------------------- */
 
 export default function ReferralsPage() {
-  const toast = useToast();
-
   const [rows, setRows] = React.useState<ReferralRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(0);
-  const [shareOpen, setShareOpen] = React.useState(false);
-
-  const referralLink = `${APP_URL.replace(/\/$/, '')}/register?ref=${MOCK_REFERRAL_CODE}`;
 
   React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setRows(MOCK_REFERRALS);
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+    /* 後端尚未建置：沒有 /api/referrals/dashboard，直接讀本檔示範資料 */
+    setRows(MOCK_REFERRALS);
+    setLoading(false);
   }, []);
 
   const summary = React.useMemo(() => ({
@@ -108,21 +93,6 @@ export default function ReferralsPage() {
   }), [rows]);
 
   const visible = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
-  const copy = async (text: string, message: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.show(message);
-    } catch {
-      toast.show(t.messages.copyFailed, 'warning');
-    }
-  };
-
-  const shareViaLine = () => {
-    setShareOpen(false);
-    const url = `https://line.me/R/msg/text/?${encodeURIComponent(t.code.shareText + referralLink)}`;
-    window.open(url, '_blank', 'noreferrer');
-  };
 
   const columns: Column<ReferralRecord>[] = [
     {
@@ -157,22 +127,31 @@ export default function ReferralsPage() {
     <>
       <PageHeader eyebrow={nav.navMarketing} title={t.title} />
 
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        {t.notBuilt.body}
+      </Alert>
+
       <Card className="mb-4">
         <CardBody>
           <h5 className="mb-3 text-lg font-bold text-dark">{t.code.heading}</h5>
 
+          {/*
+            * ⚠️ 推薦碼後端尚未建置：欄位不可以再填入任何看起來像真推薦碼的字串，
+            * 複製／分享也必須停用 —— 舊實作用硬編碼的假碼組出註冊連結給店家發出去。
+            */}
           <div className="input-group mb-4">
             <Input
               readOnly
+              disabled
               className="text-center font-mono"
               aria-label={t.code.heading}
-              value={MOCK_REFERRAL_CODE}
+              value={t.notBuilt.codeUnavailable}
             />
             <Button
               variant="outline"
-              title={t.code.copyCode}
+              disabled
+              title={t.notBuilt.disabledHint}
               aria-label={t.code.copyCode}
-              onClick={() => void copy(MOCK_REFERRAL_CODE, t.messages.codeCopied)}
             >
               <Clipboard size={14} />
             </Button>
@@ -180,14 +159,14 @@ export default function ReferralsPage() {
 
           <Label htmlFor="referralLink">{t.code.linkLabel}</Label>
           <div className="input-group">
-            <Input id="referralLink" readOnly className="text-center" value={referralLink} />
-            <Button
-              variant="outline"
-              onClick={() => void copy(referralLink, t.messages.linkCopied)}
-            >
+            <Input
+              id="referralLink" readOnly disabled className="text-center"
+              value={t.notBuilt.linkUnavailable}
+            />
+            <Button variant="outline" disabled title={t.notBuilt.disabledHint}>
               <Link2 size={14} />{t.code.copyLink}
             </Button>
-            <Button variant="success" onClick={() => setShareOpen(true)}>
+            <Button variant="success" disabled title={t.notBuilt.disabledHint}>
               <MessageCircle size={14} />{t.code.shareLine}
             </Button>
           </div>
@@ -248,15 +227,6 @@ export default function ReferralsPage() {
           <Pagination page={page} size={PAGE_SIZE} total={rows.length} onChange={setPage} />
         </DataTableFooter>
       </DataTableContainer>
-
-      <ConfirmModal
-        open={shareOpen}
-        title={t.code.shareConfirmTitle}
-        message={t.code.shareConfirmMessage}
-        confirmText={t.code.shareLine}
-        onClose={() => setShareOpen(false)}
-        onConfirm={shareViaLine}
-      />
     </>
   );
 }

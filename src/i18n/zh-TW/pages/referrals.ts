@@ -7,6 +7,22 @@ export const referralsPage = {
   title: '推薦好友',
   metaTitle: '推薦好友 - 店家後台',
 
+  /* ---------------------------------------- 尚未建置：誠實告示（不可省略） */
+  /**
+   * ⚠️ 這一區塊是「誠實化」文案，對應 CLAUDE.md「Never fabricate a known」。
+   * 推薦碼後端尚未建置：本店沒有任何真正配發的推薦碼。舊實作用硬編碼的
+   * 'VIBE-DEMO-8421' 組出註冊連結給店家複製去分享 —— 店家會發出一條無效連結，
+   * 對方註冊也不會算成推薦。因此推薦碼／連結一律顯示「尚未開通」，複製與分享停用。
+   */
+  notBuilt: {
+    title: '推薦碼功能尚未開通',
+    body:
+      '推薦碼後端尚未建置，本店尚未取得任何推薦碼，也還沒有可用的推薦連結，因此複製與 LINE 分享已停用 —— 這是為了避免你發出一條無法追蹤、對方註冊也不會算成推薦的連結。下方統計與推薦歷史為示範資料。',
+    codeUnavailable: '尚未開通',
+    linkUnavailable: '尚未開通（推薦連結需由後端配發）',
+    disabledHint: '推薦碼尚未開通，無法複製或分享',
+  },
+
   /* ------------------------------------------------------------ 推薦碼卡 */
   code: {
     heading: '您的推薦碼',
@@ -14,10 +30,6 @@ export const referralsPage = {
     linkLabel: '推薦連結',
     copyLink: '複製',
     shareLine: 'LINE 分享',
-    shareText:
-      '我正在使用VibeAI管理店家預約，推薦你也來試試！註冊並完成首次儲值後，雙方各獲得 500 點。\n',
-    shareConfirmTitle: 'LINE 分享',
-    shareConfirmMessage: '將開啟 LINE 分享視窗，把推薦連結傳給其他店家。',
   },
 
   /* ------------------------------------------------------------ 機制說明 */
@@ -60,9 +72,6 @@ export const referralsPage = {
 
   /* --------------------------------------------------------------- 訊息 */
   messages: {
-    codeCopied: '推薦碼已複製',
-    linkCopied: '推薦連結已複製',
-    copyFailed: '複製失敗，請手動複製',
     loadReferralsFailed: '載入推薦資料失敗:',
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',
