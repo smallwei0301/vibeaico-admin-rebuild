@@ -64,10 +64,21 @@ export const richMenuDesignPage = {
     bullets: [
       { strong: '預覽、自訂免費', text: '：每卡可先看帶自己店名的實際效果，可換六格功能與文字（版面與背景設計不變）' },
       { strong: '發布', text: '需訂閱「進階自訂選單」，會取代目前的底部選單，並覆蓋原本的 Flex 主選單自訂與「每格設定」草稿' },
-      { strong: '放心試', text: '：發布前系統自動備份你目前的設計，發布後隨時可在本區「還原發布前的設計」一鍵反悔' },
+      { strong: '注意', text: '：備份／還原端點尚未建置，發布前系統不會備份你目前的設計，發布後也無法一鍵還原（本區的「還原發布前的設計」已停用）' },
     ],
     backupBar: '發布範本前的原設計已自動備份，隨時可一鍵還原。',
     restore: '還原發布前的設計',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 「還原發布前的設計」從來沒有備份可還原：本頁沒有呼叫任何備份／還原端點
+     * （services/settings.ts 只有 createRichMenu / deleteRichMenu 兩支），
+     * tenant_settings 也沒有存放前一版設計的欄位。
+     * 舊實作按下確定只是 setHasBackup(false) + toast「已還原」——
+     * 店家會以為 LINE 上的選單已經被換回舊版，實際上 LINE 端毫無變化。禁止復原。
+     */
+    noBackupBar:
+      '注意：本系統目前不會備份發布前的設計，也無法還原——「還原發布前的設計」已停用（備份／還原端點尚未建置）。發布前請自行記下目前的每格設定。',
+    restoreDisabledHint: '備份／還原端點尚未建置，系統沒有任何可還原的舊設計',
     previewCaption: 'LINE 底部選單完整圖（品牌大字已帶入你的店名）',
     previewGenerating: '以你的店名產生實際預覽中…',
     previewCells: '六格功能（標籤留白＝用功能預設名）',
@@ -92,12 +103,7 @@ export const richMenuDesignPage = {
     publishConfirmLead: '確定發布「',
     publishConfirmTail:
       '」一頁式範本到 LINE？\n\n・會取代目前的底部選單（品牌大字帶入你的店名）\n・會同時套用整組配套的 Flex 主選單，原本的 Flex 設定與「每格設定」草稿會被覆蓋\n✅ 系統會自動備份你目前的設計，發布後可隨時一鍵還原。',
-    restoreConfirm:
-      '將還原成「發布一頁式範本之前」的設計（每格設定、Flex 主選單、卡片圖），並嘗試重新發布到 LINE。\n目前的一頁式範本選單會被取代。確定？',
-    restoreBackupSuffix: ' 的備份）。\n還原後頁面會重新載入。確定？',
-    restoreDone: '已還原',
     restoreFailed: '還原失敗，請稍後再試',
-    restoring: '還原中...',
     cancelled: '已取消，尚未發布任何內容',
   },
 
@@ -257,7 +263,15 @@ export const richMenuDesignPage = {
     notPublished: '未發布',
     publishedStatus: '✅ 已發布到 LINE',
 
-    draftSaved: '草稿已儲存（尚未發布到 LINE）',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 「儲存草稿」沒有任何後端：services/settings.ts 只有 createRichMenu /
+     * deleteRichMenu，tenant_settings 也沒有草稿欄位，`/api/settings/line/rich-menu`
+     * 只支援 DELETE。舊實作按下去直接 toast「草稿已儲存」，
+     * 但關掉分頁後版型與每格設定就全部消失。禁止復原。
+     */
+    draftNotEffective:
+      '未儲存草稿：Rich Menu 草稿後端尚未建置，你的版型、主題與每格設定只存在這個瀏覽器分頁，重新整理或關閉頁面就會消失。要讓顧客看到請直接按「發布到 LINE」。',
     draftSaveFailed: '儲存 Rich Menu draft 失敗',
     published:
       '已發布！Rich Menu 已推送到 LINE，主選單樣式 + 預約步驟 + 功能頁面樣式皆已儲存',
@@ -368,9 +382,19 @@ export const richMenuDesignPage = {
     desc: '自訂預約過程中每步的 Header 顏色與標題文字',
     guideLabel: '顯示「步驟說明卡」',
     guideHelp:
-      '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。關閉後顧客直接看到服務卡，「取消預約」鈕會自動補在每張服務卡上。此設定即時生效、與發布 Rich Menu 無關。',
-    guideOn: '已開啟步驟說明卡',
-    guideOff: '已關閉步驟說明卡（顧客將直接看到服務卡）',
+      '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。關閉後顧客直接看到服務卡，「取消預約」鈕會自動補在每張服務卡上。',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 預約流程步驟自訂沒有後端：tenant_settings 沒有 bookingStep* 欄位，
+     * 也沒有 `/api/settings/line/booking-step-guide` 端點（見本頁 page.tsx 檔頭
+     * 的待接清單）。開關與下方每步的顏色／標題輸入框都只存在瀏覽器記憶體。
+     * 舊實作切換開關就 toast「已開啟／已關閉步驟說明卡」，還在說明文字裡寫
+     * 「此設定即時生效」——顧客端的 carousel 從頭到尾沒有變過。禁止復原。
+     */
+    notBuiltBody:
+      '預約流程步驟自訂後端尚未建置：這個開關與下方每步的顏色、標題都不會寫入資料庫，顧客在 LINE 看到的預約流程維持系統預設，不會因為這裡的設定而改變。',
+    guideToggleNotEffective:
+      '未變更步驟說明卡：預約流程步驟自訂後端尚未建置，這個開關沒有寫入資料庫，顧客端的預約流程沒有任何改變。',
     stepImageUploaded: '步驟圖片上傳成功',
     flowTitle: '預約流程',
     steps: [
@@ -385,6 +409,14 @@ export const richMenuDesignPage = {
   featurePages: {
     cardTitle: '功能頁面樣式自訂',
     desc: '自訂各功能 Flex Message 的 Header 顏色、圖示與標題（例如我的預約、瀏覽商品等頁面）',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 這張卡片只有一段說明文字，從來沒有任何可以編輯的欄位，後端也沒有
+     * 對應的 tenant_settings 欄位或端點。卡片標題卻寫著「自訂」，
+     * 讓店家以為只是還沒展開——必須在畫面上說清楚這功能尚未建置。
+     */
+    notBuiltBody:
+      '功能頁面樣式自訂後端尚未建置：本區目前沒有任何可以編輯的欄位，各功能 Flex Message 的 Header 顏色、圖示與標題一律使用系統預設，無法在此修改。',
     imageUploaded: '功能圖片上傳成功',
   },
 

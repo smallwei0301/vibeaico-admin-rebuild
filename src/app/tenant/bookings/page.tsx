@@ -601,17 +601,17 @@ export default function BookingsPage() {
       </Modal>
 
       {/* ------------------------------------------------------ 4. 加購項目 */}
+      {/*
+        * ⚠️ 加購後端尚未建置（Phase 8b）：這個 modal 沒有可呼叫的 service／端點。
+        * 舊實作在這裡 toast「加購已加入，顧客將收到 LINE 消費明細」——資料沒寫、
+        * LINE 也沒送，是雙重謊報，禁止復原。
+        */}
       <AddonModal
         booking={addonTarget}
         onClose={() => setAddonTarget(null)}
-        onAdded={(notify, hasLine) => {
+        onSubmitted={() => {
           setAddonTarget(null);
-          toast.show(
-            !notify ? t.messages.addonAddedSilent
-              : hasLine ? t.messages.addonAdded
-                : t.messages.addonAddedNoLine,
-          );
-          void load();
+          toast.show(t.addonNotBuilt.submitNotEffective, 'warning');
         }}
       />
 
@@ -767,12 +767,12 @@ export default function BookingsPage() {
         danger
         title={t.rowActions.addon}
         confirmText={common.delete}
-        message={t.confirmMessages.removeAddon}
+        message={t.addonNotBuilt.removeConfirm}
         onClose={() => setRemoveAddonTarget(null)}
         onConfirm={() => {
+          /* 同上：沒有加購端點可刪，只能誠實說沒有移除任何東西 */
           setRemoveAddonTarget(null);
-          toast.show(t.messages.addonRemoved);
-          void load();
+          toast.show(t.addonNotBuilt.removeNotEffective, 'warning');
         }}
       />
 
@@ -1148,11 +1148,11 @@ function BookingFormModal({
 /* ========================================================================== */
 
 function AddonModal({
-  booking, onClose, onAdded,
+  booking, onClose, onSubmitted,
 }: {
   booking: Booking | null;
   onClose: () => void;
-  onAdded: (notify: boolean, hasLine: boolean) => void;
+  onSubmitted: () => void;
 }) {
   const toast = useToast();
   const a = t.addonModal;
@@ -1164,14 +1164,12 @@ function AddonModal({
   const [duration, setDuration] = React.useState('0');
   const [quantity, setQuantity] = React.useState('1');
   const [staffId, setStaffId] = React.useState('');
-  const [notify, setNotify] = React.useState(true);
   const [error, setError] = React.useState('');
-  const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!booking) return;
     setServiceId(''); setName(''); setPrice(''); setDuration('0');
-    setQuantity('1'); setStaffId(''); setNotify(true); setError('');
+    setQuantity('1'); setStaffId(''); setError('');
     void (async () => {
       try { setServices(await listServices()); }
       catch { toast.show(`${t.messages.loadAddonOptionsFailed}${t.messages.unknownError}`, 'danger'); }
@@ -1192,20 +1190,18 @@ function AddonModal({
     }
   };
 
-  const submit = async () => {
+  const submit = () => {
+    /*
+     * ⚠️ 加購後端尚未建置：沒有可呼叫的 service／端點，這裡不可能寫入任何資料。
+     * 表單驗證仍保留（欄位規則是既有規格），但送出後只誠實回報「沒有生效」。
+     */
     if (!name.trim()) { setError(t.messages.itemNameRequired); return; }
     if (!price || Number(price) < 0 || Number.isNaN(Number(price))) {
       setError(t.messages.invalidAmount);
       return;
     }
     setError('');
-    setSaving(true);
-    try {
-      await new Promise((r) => setTimeout(r, 400));
-      onAdded(notify, !!booking && booking.source === 'LINE');
-    } finally {
-      setSaving(false);
-    }
+    onSubmitted();
   };
 
   return (
@@ -1216,12 +1212,14 @@ function AddonModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={a.submitting} onClick={() => void submit()}>
-            {a.submit}
-          </Button>
+          <Button onClick={submit}>{a.submit}</Button>
         </>
       }
     >
+      <Alert tone="warning" title={t.addonNotBuilt.modalTitle} className="mb-3">
+        {t.addonNotBuilt.modalBody}
+      </Alert>
+
       <FormGroup>
         <Label htmlFor="addonServiceSelect">{a.fromServiceLabel}</Label>
         <Select
@@ -1284,16 +1282,13 @@ function AddonModal({
       </FormGroup>
 
       <FormGroup>
-        <label className="flex items-start gap-1.5 text-base">
-          <input
-            type="checkbox" checked={notify} className="mt-1"
-            onChange={(ev) => setNotify(ev.target.checked)}
-          />
-          {a.notify}
+        <label className="flex items-start gap-1.5 text-base text-secondary">
+          <input type="checkbox" checked={false} readOnly disabled className="mt-1" />
+          {t.addonNotBuilt.notifyDisabled}
         </label>
       </FormGroup>
 
-      <FormText>{a.footnote}</FormText>
+      <FormText>{t.addonNotBuilt.footnote}</FormText>
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );

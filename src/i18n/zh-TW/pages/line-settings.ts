@@ -243,9 +243,19 @@ export const lineSettingsPage = {
     copyLink: '複製連結',
     downloadQr: '下載 QR Code',
     copiedLink: '已複製加好友連結！',
-    downloaded: 'QR Code 已下載！可列印張貼在店內',
     noQr: '尚未取得 QR Code',
     noLink: '尚未取得加好友連結',
+
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 本頁從來沒有取得過任何 QR 圖檔：方框裡畫的是 lucide 的 `QrCode` 圖示，
+     * 也沒有向 LINE 或自家後端要過 QR 圖（LINE 的官方 QR 只能在 LINE Official
+     * Account Manager 後台下載，本站沒有對應端點）。
+     * 舊實作按「下載 QR Code」→ toast「QR Code 已下載！可列印張貼在店內」，
+     * 但瀏覽器從未收到任何檔案，店家會空等一個不存在的下載。禁止復原。
+     */
+    downloadDisabledHint:
+      'QR Code 下載尚未建置：本站沒有可下載的 QR 圖檔，請到 LINE Official Account Manager 後台下載官方 QR Code',
   },
 
   /* ------------------------------------------------------ 如何讓顧客加入 */

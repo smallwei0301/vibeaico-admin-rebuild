@@ -14,9 +14,6 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { calendarSyncPage as t } from '@/i18n/zh-TW/pages/calendar-sync';
-import { APP_URL } from '@/config/env';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
-import { formatDateTime } from '@/lib/utils';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -50,97 +47,74 @@ const MOCK_EXTERNAL_CALENDARS: ExternalCalendar[] = [
 
 
 
-/** 訂閱網址：原站由 /api/settings/calendar 取得（含密鑰 token） */
-const INITIAL_ICS_TOKEN = 'a1b2c3d4e5f6a7b8';
-const buildIcsUrl = (shopCode: string, token: string) =>
-  `${APP_URL.replace(/\/$/, '')}/ics/${shopCode}/${token}.ics`;
-
-/** 重新產生時使用（避免 render 期呼叫 Math.random 造成 hydration 不一致） */
-const REGENERATED_TOKENS = ['b7c8d9e0f1a2b3c4', 'c9d0e1f2a3b4c5d6', 'd1e2f3a4b5c6d7e8'];
-
-const LAST_SYNC_AT = '2026-08-20T09:15:00+08:00';
+/*
+ * ⚠️ 訂閱網址（ICS）後端尚未建置。
+ * `/ics/{shopCode}/{token}.ics` 這條路由在 src/app 底下不存在，也沒有
+ * `/api/settings/calendar` 可以發 token，因此本頁無法提供任何「可用的」訂閱網址。
+ * 舊實作在這裡放了一個假 token 與一個 REGENERATED_TOKENS 輪替陣列，
+ * 按「重新產生網址」就換下一個假值並 toast「已產生新網址」——
+ * 店家會以為舊連結已被撤銷（假的安全操作），實際上什麼都沒失效。禁止復原。
+ */
 
 /* -------------------------------------------------------------------------- */
 
 export default function CalendarSyncPage() {
   const toast = useToast();
 
-  const [icsToken, setIcsToken] = React.useState(INITIAL_ICS_TOKEN);
-  const [regenCount, setRegenCount] = React.useState(0);
-  const [lastSyncAt, setLastSyncAt] = React.useState<string | null>(LAST_SYNC_AT);
-  const [confirmRegen, setConfirmRegen] = React.useState(false);
-  const [regenBusy, setRegenBusy] = React.useState(false);
-
   const [externals, setExternals] = React.useState<ExternalCalendar[]>([]);
   const [loadingExternals, setLoadingExternals] = React.useState(true);
   const [name, setName] = React.useState('');
   const [url, setUrl] = React.useState('');
   const [color, setColor] = React.useState<string>(t.external.defaultColor);
-  const [adding, setAdding] = React.useState(false);
   const [deleting, setDeleting] = React.useState<ExternalCalendar | null>(null);
 
-  const currentTenant = useCurrentTenant();
-  const icsUrl = buildIcsUrl(currentTenant.shopCode, icsToken);
-  const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`;
-
   React.useEffect(() => {
-    void (async () => {
-      try {
-        await new Promise((r) => setTimeout(r, 320));
-        setExternals(MOCK_EXTERNAL_CALENDARS);
-      } catch {
-        toast.show(t.messages.loadFailed, 'danger');
-      } finally {
-        setLoadingExternals(false);
-      }
-    })();
-  }, [toast]);
+    /* 後端尚未建置：沒有外部行事曆端點，直接讀本檔示範資料 */
+    setExternals(MOCK_EXTERNAL_CALENDARS);
+    setLoadingExternals(false);
+  }, []);
 
-  const copy = async (text: string, message: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.show(message);
-    } catch {
-      toast.show(t.messages.networkError, 'warning');
-    }
-  };
-
-  const addExternal = async () => {
+  const addExternal = () => {
     if (!name.trim()) { toast.show(t.external.nameRequired, 'warning'); return; }
     if (!url.trim()) { toast.show(t.external.urlRequired, 'warning'); return; }
-    setAdding(true);
-    try {
-      await new Promise((r) => setTimeout(r, 400));
-      setExternals((s) => [
-        ...s,
-        {
-          id: `ec_new_${s.length + 1}`, name: name.trim(), url: url.trim(), color,
-          enabled: true, lastSyncAt: null, lastEventCount: 0, syncError: false,
-        },
-      ]);
-      setName(''); setUrl(''); setColor(t.external.defaultColor);
-      toast.show(t.external.added);
-    } catch {
-      toast.show(`${t.messages.loadFailedPrefix}${t.messages.unknownError}`, 'danger');
-    } finally {
-      setAdding(false);
-    }
+    /* 只加進本頁的示範清單；沒有端點可寫，因此提示必須明說「沒有生效」 */
+    setExternals((s) => [
+      ...s,
+      {
+        id: `ec_new_${s.length + 1}`, name: name.trim(), url: url.trim(), color,
+        enabled: true, lastSyncAt: null, lastEventCount: 0, syncError: false,
+      },
+    ]);
+    setName(''); setUrl(''); setColor(t.external.defaultColor);
+    toast.show(t.notBuilt.externalAdded, 'warning');
   };
 
   return (
     <>
       <PageHeader eyebrow={nav.navBooking} title={t.title} />
 
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        <div>{t.notBuilt.body}</div>
+        <div className="mt-1">{t.notBuilt.securityBody}</div>
+      </Alert>
+
       {/* ------------------------------------------------------------ 訂閱網址 */}
       <Card className="mb-4">
         <CardBody>
+          {/*
+            * ⚠️ 沒有 ICS 端點就沒有可用的訂閱網址：欄位不可再填入任何看起來像
+            * 真網址的字串，複製／加入 Google／重新產生一律停用（見檔案上方註解）。
+            */}
           <FormGroup>
             <Label htmlFor="calIcsUrl">{t.subscribe.urlLabel}</Label>
             <div className="input-group">
-              <Input id="calIcsUrl" readOnly value={icsUrl} className="font-mono" />
+              <Input
+                id="calIcsUrl" readOnly disabled className="font-mono"
+                value={t.notBuilt.urlUnavailable}
+              />
               <Button
-                variant="outline" aria-label={t.subscribe.copy}
-                onClick={() => void copy(icsUrl, t.subscribe.copied)}
+                variant="outline" disabled
+                aria-label={t.subscribe.copy} title={t.notBuilt.disabledHint}
               >
                 <ClipboardCopy size={14} />
               </Button>
@@ -148,17 +122,16 @@ export default function CalendarSyncPage() {
           </FormGroup>
 
           <div className="flex flex-wrap items-center gap-2">
-            <a href={googleUrl} target="_blank" rel="noreferrer" className="btn btn-primary btn-lg">
+            <Button size="lg" disabled title={t.notBuilt.disabledHint}>
               <CalendarPlus size={18} />
               {t.subscribe.google}
-            </a>
-            <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
+            </Button>
+            <Button variant="outlineDanger" size="sm" disabled title={t.notBuilt.disabledHint}>
               <RotateCcw size={13} />
               {t.subscribe.regenerate}
             </Button>
             <span className="text-xs text-secondary">
-              {t.subscribe.lastSync}：
-              {lastSyncAt ? formatDateTime(lastSyncAt) : t.subscribe.neverSynced}
+              {t.subscribe.lastSync}：{t.subscribe.neverSynced}
             </span>
           </div>
         </CardBody>
@@ -198,6 +171,7 @@ export default function CalendarSyncPage() {
               {t.external.title}
             </h5>
             <FormText className="mb-3">{t.external.description}</FormText>
+            <Alert tone="warning" className="mb-3">{t.notBuilt.externalBody}</Alert>
 
             <div className="grid gap-x-3 md:grid-cols-2">
               <FormGroup>
@@ -224,7 +198,7 @@ export default function CalendarSyncPage() {
                 onChange={(e) => setUrl(e.target.value)}
               />
             </FormGroup>
-            <Button size="sm" loading={adding} loadingText={common.processing} onClick={() => void addExternal()}>
+            <Button size="sm" onClick={addExternal}>
               <Plus size={13} />{t.external.add}
             </Button>
 
@@ -256,8 +230,11 @@ export default function CalendarSyncPage() {
                       <Button
                         size="sm"
                         variant={c.enabled ? 'outline' : 'secondary'}
-                        onClick={() => setExternals((s) =>
-                          s.map((x) => (x.id === c.id ? { ...x, enabled: !x.enabled } : x)))}
+                        onClick={() => {
+                          setExternals((s) =>
+                            s.map((x) => (x.id === c.id ? { ...x, enabled: !x.enabled } : x)));
+                          toast.show(t.notBuilt.externalToggled, 'warning');
+                        }}
                       >
                         {c.enabled ? t.external.disable : t.external.enable}
                       </Button>
@@ -291,30 +268,6 @@ export default function CalendarSyncPage() {
       </Card>
 
       <ConfirmModal
-        open={confirmRegen}
-        danger
-        loading={regenBusy}
-        title={t.subscribe.regenerate}
-        message={<span className="whitespace-pre-line">{t.subscribe.regenerateConfirm}</span>}
-        onClose={() => setConfirmRegen(false)}
-        onConfirm={async () => {
-          setRegenBusy(true);
-          try {
-            await new Promise((r) => setTimeout(r, 400));
-            setIcsToken(REGENERATED_TOKENS[regenCount % REGENERATED_TOKENS.length]);
-            setRegenCount((n) => n + 1);
-            setLastSyncAt(null);
-            toast.show(t.subscribe.regenerated);
-          } catch {
-            toast.show(t.subscribe.regenerateFailed, 'danger');
-          } finally {
-            setRegenBusy(false);
-            setConfirmRegen(false);
-          }
-        }}
-      />
-
-      <ConfirmModal
         open={!!deleting}
         danger
         title={common.delete}
@@ -328,7 +281,7 @@ export default function CalendarSyncPage() {
         onConfirm={() => {
           setExternals((s) => s.filter((x) => x.id !== deleting?.id));
           setDeleting(null);
-          toast.show(t.external.deleted);
+          toast.show(t.notBuilt.externalDeleted, 'warning');
         }}
       />
     </>

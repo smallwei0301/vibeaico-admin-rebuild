@@ -212,7 +212,7 @@ function RichMenuTab({
   const [quickOpen, setQuickOpen] = React.useState(false);
   const [introOpen, setIntroOpen] = React.useState(false);
   const [publishing, setPublishing] = React.useState(false);
-  const [confirm, setConfirm] = React.useState<null | 'publish' | 'restore' | 'delete' | 'apply'>(null);
+  const [confirm, setConfirm] = React.useState<null | 'publish' | 'delete' | 'apply'>(null);
   const [pendingName, setPendingName] = React.useState('');
   const [pendingTheme, setPendingTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [popupCell, setPopupCell] = React.useState<number | null>(null);
@@ -324,13 +324,21 @@ function RichMenuTab({
                 ))}
               </ul>
 
+              {/*
+                * ⚠️ 備份／還原端點尚未建置：本頁沒有任何備份可還原。
+                * 舊實作按「還原發布前的設計」只是 setHasBackup(false) + toast「已還原」，
+                * 店家會以為 LINE 上的選單已換回舊版，實際上 LINE 端毫無變化。禁止復原。
+                */}
               {hasBackup && (
-                <Alert tone="info" className="mb-4" action={
-                  <Button variant="outline" size="sm" onClick={() => setConfirm('restore')}>
+                <Alert tone="warning" className="mb-4" action={
+                  <Button
+                    variant="outline" size="sm"
+                    disabled title={t.scene.restoreDisabledHint}
+                  >
                     <RotateCcw size={13} />{t.scene.restore}
                   </Button>
                 }>
-                  {t.scene.backupBar}
+                  {t.scene.noBackupBar}
                 </Alert>
               )}
 
@@ -567,13 +575,19 @@ function RichMenuTab({
           <CardHeader><CardTitle>{t.bookingSteps.cardTitle}</CardTitle></CardHeader>
           <CardBody>
             <p className="form-text mb-3">{t.bookingSteps.desc}</p>
+            {/*
+              * ⚠️ 預約流程步驟自訂後端尚未建置（tenant_settings 無對應欄位、
+              * 也沒有 booking-step-guide 端點）：開關與下方輸入框都只存在瀏覽器記憶體。
+              * 舊實作切換就 toast「已開啟／已關閉步驟說明卡」，顧客端從未改變。禁止復原。
+              */}
+            <Alert tone="warning" className="mb-3">{t.bookingSteps.notBuiltBody}</Alert>
             <SwitchField
               label={t.bookingSteps.guideLabel}
               description={t.bookingSteps.guideHelp}
               checked={guideCard}
               onCheckedChange={(v) => {
                 setGuideCard(v);
-                toast.show(v ? t.bookingSteps.guideOn : t.bookingSteps.guideOff);
+                toast.show(t.bookingSteps.guideToggleNotEffective, 'warning');
               }}
             />
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -593,7 +607,11 @@ function RichMenuTab({
         {/* -------------------------------------- 功能頁面樣式自訂 */}
         <Card>
           <CardHeader><CardTitle>{t.featurePages.cardTitle}</CardTitle></CardHeader>
-          <CardBody><p className="form-text">{t.featurePages.desc}</p></CardBody>
+          <CardBody>
+            <p className="form-text">{t.featurePages.desc}</p>
+            {/* ⚠️ 本區從來沒有任何可編輯欄位，後端也沒有對應設定：必須明說尚未建置 */}
+            <Alert tone="warning" className="mt-3">{t.featurePages.notBuiltBody}</Alert>
+          </CardBody>
         </Card>
       </div>
 
@@ -639,7 +657,15 @@ function RichMenuTab({
             >
               <Send size={15} />{t.publish.publish}
             </Button>
-            <Button block variant="outline" onClick={() => toast.show(t.publish.draftSaved)}>
+            {/*
+              * ⚠️ 草稿後端尚未建置：沒有可呼叫的 service／端點（services/settings.ts
+              * 只有 createRichMenu / deleteRichMenu）。舊實作直接 toast「草稿已儲存」，
+              * 但關掉分頁設定就消失。禁止復原。
+              */}
+            <Button
+              block variant="outline"
+              onClick={() => toast.show(t.publish.draftNotEffective, 'warning')}
+            >
               {t.publish.saveDraft}
             </Button>
             <Button block variant="outlineDanger" onClick={() => setConfirm('delete')}>
@@ -690,13 +716,6 @@ function RichMenuTab({
             subscribed ? 'success' : 'warning',
           );
         }}
-      />
-      <ConfirmModal
-        open={confirm === 'restore'}
-        title={t.scene.restore}
-        message={t.scene.restoreConfirm}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => { setConfirm(null); setHasBackup(false); toast.show(t.scene.restoreDone); }}
       />
       <ConfirmModal
         open={confirm === 'delete'}

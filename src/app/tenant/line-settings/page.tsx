@@ -793,13 +793,15 @@ export default function LineSettingsPage() {
                   <Link2 size={14} />
                   {t.botInfo.copyLink}
                 </Button>
+                {/*
+                  * ⚠️ 本站沒有任何 QR 圖檔可下載（方框裡是 lucide 圖示，不是真 QR），
+                  * 舊實作只 toast「QR Code 已下載！」讓店家空等一個不存在的檔案。
+                  * 在真的能產出圖檔之前，按鈕一律停用並說明去哪裡拿。禁止復原。
+                  */}
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    addFriendUrl
-                      ? toast.show(t.botInfo.downloaded)
-                      : toast.show(t.botInfo.noQr, 'warning')
-                  }
+                  disabled
+                  title={t.botInfo.downloadDisabledHint}
                 >
                   <QrCode size={14} />
                   {t.botInfo.downloadQr}

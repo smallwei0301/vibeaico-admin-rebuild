@@ -59,10 +59,14 @@ const TAB_TO_HASH: Record<TabKey, string> = {
   security: '#security',
 };
 
-/** 行事曆訂閱網址的密鑰（原站由 /api/settings/calendar 取得） */
-const INITIAL_ICS_TOKEN = 'a1b2c3d4e5f6a7b8';
-/** 重新產生時輪替使用，避免 render 期呼叫 Math.random 造成 hydration 不一致 */
-const REGENERATED_ICS_TOKENS = ['b7c8d9e0f1a2b3c4', 'c9d0e1f2a3b4c5d6', 'd1e2f3a4b5c6d7e8'];
+/*
+ * ⚠️ ICS 訂閱網址（本檔「行事曆同步」分頁）後端尚未建置：
+ * `/ics/{shopCode}/{token}.ics` 這條路由在 src/app 底下不存在，也沒有
+ * `/api/settings/calendar` 可以發或撤 token。舊實作在這裡放了一個假 token
+ * 與 REGENERATED_ICS_TOKENS 輪替陣列，按「重新產生網址」就換下一個假值並
+ * toast「已產生新網址」——店家會以為舊網址已被撤銷（假的安全操作），
+ * 實際上什麼都沒失效。禁止復原。
+ */
 
 const MAX_CUSTOM_FIELDS = 5;
 const MAX_CUSTOM_FIELD_NAME = 20;
@@ -89,12 +93,6 @@ export default function SettingsPage() {
 
   /* 點數試算（原站 #testAmount，預設 100） */
   const [testAmount, setTestAmount] = React.useState('100');
-
-  /* 行事曆同步 */
-  const [icsToken, setIcsToken] = React.useState(INITIAL_ICS_TOKEN);
-  const [icsRegenCount, setIcsRegenCount] = React.useState(0);
-  const [confirmRegen, setConfirmRegen] = React.useState(false);
-  const [regenBusy, setRegenBusy] = React.useState(false);
 
   /* 帳號安全 */
   const [currentPassword, setCurrentPassword] = React.useState('');
@@ -266,25 +264,7 @@ export default function SettingsPage() {
     }
   };
 
-  const icsUrl = draft
-    ? `${APP_URL.replace(/\/$/, '')}/ics/${draft.basic.shopCode}/${icsToken}.ics`
-    : '';
   const publicUrl = draft ? buildPublicBookingUrl(APP_URL, draft.basic.shopCode) : '';
-
-  const regenerateIcs = async () => {
-    setRegenBusy(true);
-    try {
-      await new Promise((r) => setTimeout(r, 420));
-      setIcsToken(REGENERATED_ICS_TOKENS[icsRegenCount % REGENERATED_ICS_TOKENS.length]);
-      setIcsRegenCount((n) => n + 1);
-      setConfirmRegen(false);
-      toast.show(t.calendarSync.regenerated);
-    } catch {
-      toast.show(t.calendarSync.regenerateFailed, 'danger');
-    } finally {
-      setRegenBusy(false);
-    }
-  };
 
   const submitPasswordChange = async () => {
     setPasswordBusy(true);
@@ -1342,32 +1322,34 @@ export default function SettingsPage() {
               <CardBody>
                 <Alert tone="neutral" className="mb-4">{t.calendarSync.intro}</Alert>
 
+                <Alert tone="warning" title={t.calendarSync.notBuilt.title} className="mb-4">
+                  {t.calendarSync.notBuilt.body}
+                </Alert>
+
+                {/*
+                  * ⚠️ 沒有 ICS 端點就沒有可用的訂閱網址：欄位不可再填入任何看起來
+                  * 像真網址的字串，複製／加入 Google／重新產生一律停用（見檔案上方註解）。
+                  */}
                 <FormGroup>
                   <Label htmlFor="calIcsUrl">{t.calendarSync.urlLabel}</Label>
-                  <Input id="calIcsUrl" readOnly value={icsUrl} />
+                  <Input
+                    id="calIcsUrl" readOnly disabled
+                    value={t.calendarSync.notBuilt.urlUnavailable}
+                  />
                 </FormGroup>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      window.open(
-                        `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`,
-                        '_blank',
-                        'noopener',
-                      )
-                    }
-                  >
+                  <Button variant="outline" disabled title={t.calendarSync.notBuilt.disabledHint}>
                     <CalendarPlus size={14} />
                     {t.calendarSync.google}
                   </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void copy(icsUrl, t.calendarSync.copied)}
-                  >
+                  <Button variant="secondary" disabled title={t.calendarSync.notBuilt.disabledHint}>
                     {t.calendarSync.copy}
                   </Button>
-                  <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
+                  <Button
+                    variant="outlineDanger" size="sm"
+                    disabled title={t.calendarSync.notBuilt.disabledHint}
+                  >
                     <RotateCcw size={13} />
                     {t.calendarSync.regenerate}
                   </Button>
@@ -1443,20 +1425,6 @@ export default function SettingsPage() {
           </TabPanel>
         </>
       )}
-
-      {/* -------------------------------------------- 確認：重新產生 ICS 網址 */}
-      <ConfirmModal
-        open={confirmRegen}
-        danger
-        loading={regenBusy}
-        title={t.calendarSync.regenerateConfirmTitle}
-        confirmText={t.calendarSync.regenerate}
-        message={
-          <span className="whitespace-pre-line">{t.calendarSync.regenerateConfirm}</span>
-        }
-        onClose={() => setConfirmRegen(false)}
-        onConfirm={() => void regenerateIcs()}
-      />
 
       {/* ------------------------------------------------ 確認：更改密碼 */}
       <ConfirmModal

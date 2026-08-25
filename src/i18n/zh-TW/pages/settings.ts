@@ -366,13 +366,23 @@ export const settingsPage = {
     google: '加入 Google Calendar',
     copy: '複製訂閱網址',
     regenerate: '重新產生網址',
-    copied: '已複製訂閱網址',
-    regenerated: '已產生新網址，請重新加入 Google Calendar',
-    regenerateFailed: '重新產生失敗',
-    regenerateConfirmTitle: '重新產生訂閱網址',
-    regenerateConfirm:
-      '確定重新產生？\n\n舊網址將立即失效，已在 Google Calendar 訂閱的會停止更新（需重新加入）。',
     moreLinkText: '前往「行事曆同步」頁管理外部行事曆',
+
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * ICS 訂閱端點 `/ics/{shopCode}/{token}.ics` 在 src/app 底下並不存在，
+     * 也沒有 `/api/settings/calendar` 可以發或撤 token。
+     * 舊實作把一個硬編碼陣列（REGENERATED_ICS_TOKENS）輪替當成「新 token」，
+     * 按下去就 toast「已產生新網址」——店家會以為舊網址已失效（假的安全操作），
+     * 實際上沒有任何東西被撤銷，因為根本沒有任何網址是有效的。禁止復原。
+     */
+    notBuilt: {
+      title: 'ICS 訂閱端點尚未建置，此處無法提供可用的訂閱網址',
+      body:
+        '系統目前沒有 ICS 輸出端點，因此無法產生訂閱網址，Google Calendar 也訂閱不到任何預約；「重新產生網址」一併停用——在端點建置完成前，系統無從撤銷或換發任何網址，保留該按鈕只會讓你誤以為舊連結已失效。',
+      urlUnavailable: '尚未開通',
+      disabledHint: 'ICS 訂閱端點尚未建置，目前沒有可用的訂閱網址',
+    },
   },
 
   /* ------------------------------------------------------------ 帳號安全 */

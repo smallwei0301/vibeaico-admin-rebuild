@@ -10,13 +10,11 @@ import { Alert } from '@/components/ui/Alert';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings } from '@/services/settings';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
-import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { promotePage as t } from '@/i18n/zh-TW/pages/promote';
 import { formatNumber } from '@/lib/utils';
@@ -47,8 +45,12 @@ const MOCK_PROMOTION_STATS: Record<string, PromotionStat[]> = {
   '90': [],
 };
 
-/** QR Code 圖檔在骨架階段以本地占位圖代替；正式站由後端產生 */
-const QR_PLACEHOLDER_AVAILABLE = true;
+/*
+ * ⚠️ QR Code 產生尚未建置：本頁沒有任何 QR 圖檔、dataURL 或產圖端點，
+ * 方框內畫的是 lucide 的 `QrCode` 圖示（線條裝飾，掃不出東西）。
+ * 舊實作的「下載 QR」按鈕只 toast「QR Code 已開始下載」，瀏覽器從未收到檔案。
+ * 在真的能產出圖檔之前，按鈕一律停用，並在畫面上說明方框只是版位示意。禁止復原。
+ */
 
 /* -------------------------------------------------------------------------- */
 
@@ -61,8 +63,6 @@ export default function PromotePage() {
   const [days, setDays] = React.useState('7');
   const [stats, setStats] = React.useState<PromotionStat[]>([]);
   const [loadingStats, setLoadingStats] = React.useState(true);
-
-  const [qrConfirmOpen, setQrConfirmOpen] = React.useState(false);
 
   React.useEffect(() => {
     void (async () => {
@@ -83,14 +83,9 @@ export default function PromotePage() {
   }, [toast]);
 
   React.useEffect(() => {
-    let cancelled = false;
-    setLoadingStats(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setStats(MOCK_PROMOTION_STATS[days] ?? []);
-      setLoadingStats(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+    /* 流量統計後端尚未建置：沒有端點可打，直接讀本檔的示範數字 */
+    setStats(MOCK_PROMOTION_STATS[days] ?? []);
+    setLoadingStats(false);
   }, [days]);
 
   const publicUrl = shopCode ? buildPublicBookingUrl(APP_URL, shopCode) : '';
@@ -106,11 +101,6 @@ export default function PromotePage() {
     } catch {
       toast.show(t.messages.copyFailed, 'warning');
     }
-  };
-
-  const downloadQr = () => {
-    setQrConfirmOpen(false);
-    toast.show(t.messages.downloadStarted(t.qr.filename));
   };
 
   const sourceLabel = (source: string) => {
@@ -137,6 +127,11 @@ export default function PromotePage() {
   return (
     <>
       <PageHeader eyebrow={nav.navMarketing} title={t.title} />
+
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        <div>{t.notBuilt.body}</div>
+        <div className="mt-1">{t.notBuilt.statsBody}</div>
+      </Alert>
 
       {!loadingUrl && !shopCode ? (
         <Alert tone="warning" className="mb-4" title={t.publicUrl.notConfigured}>
@@ -178,21 +173,21 @@ export default function PromotePage() {
             <h6 className="mb-3 flex items-center justify-center gap-2 text-md font-bold text-dark">
               <QrCode size={16} />{t.qr.heading}
             </h6>
-            <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-md border border-neutral-250 bg-neutral-50">
+            <div className="mx-auto flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-md border border-neutral-250 bg-neutral-50 p-2 text-center">
               {loadingUrl ? (
                 <span className="text-xs text-muted">{t.publicUrl.loading}</span>
               ) : !publicUrl ? (
                 <span className="text-xs text-muted">{t.qr.notReady}</span>
-              ) : QR_PLACEHOLDER_AVAILABLE ? (
-                <QrCode size={96} className="text-dark" aria-hidden />
               ) : (
-                <span className="text-xs text-muted">{t.qr.widgetFailed}</span>
+                <>
+                  <QrCode size={72} className="text-neutral-400" aria-hidden />
+                  <span className="text-2xs text-secondary">{t.notBuilt.qrPlaceholder}</span>
+                </>
               )}
             </div>
             <Button
               variant="outline" size="sm" className="mt-3"
-              disabled={!publicUrl}
-              onClick={() => setQrConfirmOpen(true)}
+              disabled title={t.notBuilt.downloadDisabledHint}
             >
               <Download size={14} />{t.qr.download}
             </Button>
@@ -282,14 +277,6 @@ export default function PromotePage() {
         </CardBody>
       </Card>
 
-      <ConfirmModal
-        open={qrConfirmOpen}
-        title={t.qr.confirmTitle}
-        message={t.qr.confirmMessage}
-        confirmText={common.download}
-        onClose={() => setQrConfirmOpen(false)}
-        onConfirm={downloadQr}
-      />
     </>
   );
 }
