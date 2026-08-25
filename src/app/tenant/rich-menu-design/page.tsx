@@ -342,9 +342,23 @@ function RichMenuTab({
                 </Alert>
               )}
 
+              {/*
+                * ⚠️ 預覽與實際推送物不一致的常駐告示：卡片縮圖是 MenuPreview 用 CSS
+                * 畫的（店名＋每格標籤），但 create route 直接上傳底圖原圖，圖上沒有
+                * 任何文字。只改文案不夠——店家是看著縮圖按下發布的，說明必須放在
+                * 縮圖旁邊。⚠️ 不准改成去實作文字疊圖（Phase 6+ 進階設計器）。
+                */}
+              <Alert tone="warning" className="mb-3">{t.preview.notActualNote}</Alert>
+
+              {/*
+                * ⚠️ 行業分類 Badge 沒有任何 onClick，也沒有任何篩選狀態：舊樣式給了
+                * cursor-pointer + hover 變色，看起來像可以按的篩選鈕，按下去卻什麼
+                * 都不會發生（假互動）。本輪只做誠實化，因此移除那組「可按」的外觀，
+                * 不新增篩選功能。禁止把 cursor-pointer / hover 加回來。
+                */}
               <div className="mb-3 flex flex-wrap gap-1.5">
                 {t.library.industries.map((ind) => (
-                  <Badge key={ind} tone="neutral" className="cursor-pointer hover:bg-neutral-250">{ind}</Badge>
+                  <Badge key={ind} tone="neutral">{ind}</Badge>
                 ))}
               </div>
 
@@ -363,7 +377,14 @@ function RichMenuTab({
                       <div className="form-text">{s.tagline}</div>
                       <div className="text-2xs text-secondary">{s.style}</div>
                       <div className="flex gap-1.5 pt-2">
-                        <Button variant="outline" size="sm" onClick={() => toast.show(t.scene.previewCaption, 'info')}>
+                        {/*
+                          * ⚠️ 假互動：這顆「預覽」鈕沒有預覽視窗，舊實作按下去只跳一句
+                          * 「LINE 底部選單完整圖（品牌大字已帶入你的店名）」的 info toast，
+                          * 那句話本身也是假的（發布上傳底圖原圖，不合成店名）。
+                          * 範本預覽產生後端尚未建置 → 改成 warning + 直說沒有預覽可開。
+                          * ⚠️ 本輪只做誠實化，不准在這裡實作預覽視窗。
+                          */}
+                        <Button variant="outline" size="sm" onClick={() => toast.show(t.scene.previewNotBuilt, 'warning')}>
                           <Eye size={13} />{t.scene.previewBtn}
                         </Button>
                         <Button size="sm" onClick={() => { setPendingName(s.name); setPendingTheme(s.theme); setConfirm('publish'); }}>
@@ -417,7 +438,16 @@ function RichMenuTab({
         {/* ---------------------------------------------- 主題風格 */}
         <Card>
           <CardHeader><CardTitle>{t.theme.cardTitle}</CardTitle></CardHeader>
-          <CardBody className="flex flex-wrap gap-2">
+          <CardBody>
+            {/*
+              * ⚠️ 「進階」徽章暗示未訂閱就發不出這些主題，但 create route 對主題
+              * 沒有任何功能閘門（bodySchema 收全部六個 key，只檢查 MANAGER）。
+              * 徽章保留，但要說清楚它不擋發布。禁止復原成沒有說明的樣子。
+              */}
+            {!subscribed && (
+              <Alert tone="info" className="mb-3">{t.theme.advancedBadgeNote}</Alert>
+            )}
+            <div className="flex flex-wrap gap-2">
             {THEMES.map((th) => (
               <button
                 key={th.key}
@@ -433,6 +463,7 @@ function RichMenuTab({
                 {th.advanced && !subscribed && <Badge tone="warning">{t.theme.advancedBadge}</Badge>}
               </button>
             ))}
+            </div>
           </CardBody>
         </Card>
 
@@ -458,6 +489,12 @@ function RichMenuTab({
               ))}
             </div>
             <FormText>{t.layout.note}</FormText>
+            {/*
+              * ⚠️ 佈局沒有接上發布：create route 的 CELLS 常數寫死 3×2 六格、
+              * 2500×1686，發布請求也只帶 { theme }。畫面卻讓店家挑 7 格／11 格
+              * 並標「進階」徽章 —— 必須在挑選處就說明選了也不會生效。禁止復原。
+              */}
+            <Alert tone="warning" className="mt-3">{t.layout.publishFixedNote}</Alert>
           </CardBody>
         </Card>
 
@@ -477,6 +514,14 @@ function RichMenuTab({
               <FormText>{t.background.urlHint}</FormText>
             </FormGroup>
             <FormText>{t.background.help}</FormText>
+            {/*
+              * ⚠️ 這個網址欄位只寫進 bgUrl state，只影響右側預覽：createRichMenu(theme)
+              * 的請求裡沒有它。發布時真正被讀的自訂底圖是 tenant_settings.line
+              * .richMenuBgImageUrl（「LINE 設定 → 主選單樣式」頁存的），本頁從未寫入。
+              * 「上傳圖片」按鈕的 onClick 接線屬 issue #7（/api/upload），本輪不動接線，
+              * 但按鈕旁必須說明它目前尚未接上。禁止復原。
+              */}
+            <Alert tone="warning" className="mt-3">{t.background.notSentOnPublish}</Alert>
             {bgUrl ? (
               <Button variant="outlineDanger" size="sm" className="mt-2" onClick={() => setBgUrl('')}>
                 <X size={13} />{t.background.remove}
@@ -556,10 +601,19 @@ function RichMenuTab({
                             )}
                           </td>
                           <td className="!max-w-none">
-                            <Select className="form-select-sm" disabled={!subscribed} defaultValue={ICON_SIZES[1]}>
+                            {/*
+                              * ⚠️ 圖示尺寸下拉沒有 onChange、上傳鈕沒有 onClick：兩者都
+                              * 不會被任何程式碼讀取，發布端點也只上傳底圖原圖、不合成
+                              * 圖示。之前只靠 disabled={!subscribed} 表示「訂閱就能用」，
+                              * 但訂閱了一樣沒有接線 → 一律停用並在按鈕上附說明。
+                              */}
+                            <Select className="form-select-sm" disabled defaultValue={ICON_SIZES[1]}>
                               {ICON_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                             </Select>
-                            <Button variant="ghost" size="sm" className="mt-1" disabled={!subscribed}>
+                            <Button
+                              variant="ghost" size="sm" className="mt-1"
+                              disabled title={t.cells.iconUploadNotBuilt}
+                            >
                               <Upload size={12} />{t.cells.iconUpload}
                             </Button>
                           </td>
@@ -573,6 +627,8 @@ function RichMenuTab({
             <div className="border-t border-neutral-200 p-4">
               <FormText>{t.cells.iconSizeHint}</FormText>
               <FormText>{t.cells.sendTextHint}</FormText>
+              {/* ⚠️ 圖示上傳／尺寸欄位尚未接上任何程式碼與端點，必須在表格下方常駐說明 */}
+              <Alert tone="warning" className="mt-3">{t.cells.iconUploadNotBuilt}</Alert>
             </div>
           </CardBody>
         </Card>
@@ -645,6 +701,14 @@ function RichMenuTab({
                 bgUrl ? '' : ` / ${t.background.none}`,
               )}
             </p>
+            {/*
+              * ⚠️ 這塊預覽把店名與每格標籤用 CSS 畫在色塊上，但 create route 上傳的是
+              * 底圖原圖 —— 圖上沒有店名、沒有格子文字、沒有格線。店家是看著這塊預覽
+              * 按下「發布到 LINE」的，所以說明必須貼在預覽底下，不能只寫在註解裡
+              * （CLAUDE.md：placeholder 要在使用者讀得到的地方講）。
+              * ⚠️ 不准改成去實作文字疊圖來「讓預覽變成真的」——那是 Phase 6+ 的範圍。
+              */}
+            <Alert tone="warning" className="mt-3">{t.preview.notActualNote}</Alert>
           </CardBody>
         </Card>
 
@@ -727,10 +791,16 @@ function RichMenuTab({
           }
         }}
       />
+      {/*
+        * ⚠️ 假成功：舊實作按「儲存」toast「Flex 彈窗已儲存」，但視窗內的類型與圖片
+        * 比例只存在 FlexPopupModal 的 local state——沒有端點、沒有 service，也不會
+        * 寫回 cells，關掉視窗就沒了。依 CLAUDE.md「成功 toast 是一項事實主張」，
+        * 改為誠實提示（尚未生效）。禁止復原成「已儲存」。
+        */}
       <FlexPopupModal
         open={popupCell !== null}
         onClose={() => setPopupCell(null)}
-        onSave={() => { setPopupCell(null); toast.show(t.flex.popupSaved); }}
+        onSave={() => { setPopupCell(null); toast.show(t.cells.flexPopupNotEffective, 'warning'); }}
       />
     </div>
   );

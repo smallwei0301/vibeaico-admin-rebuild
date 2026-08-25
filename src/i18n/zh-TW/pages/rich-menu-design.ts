@@ -34,12 +34,21 @@ export const richMenuDesignPage = {
     richMenuLead: '顧客打開 LINE 聊天室時，',
     richMenuLeadStrong: '固定在螢幕底部',
     richMenuLeadTail: '的圖片選單。',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 「發布到 LINE」＝ createRichMenu(theme) → POST /api/settings/line/rich-menu/create。
+     * 該端點固定產生 2500×1686 的 3×2 六格（文字取 MODE_PRESETS.richMenuCells）、
+     * 上傳底圖、設為預設，請求內容只有 { theme } 一個欄位。因此**佈局、每格自訂
+     * 文字／動作、Flex 彈窗、本頁的背景圖網址都不會隨發布送出**。舊步驟把它們寫成
+     * 「照著做就會生效」，等於一步步教店家做無效的操作，最後一句還宣告「即生效」。
+     * 禁止復原。
+     */
     richMenuSteps: [
-      '選擇 主題風格 （精品風、LINE綠、藍等配色）',
-      '選擇 佈局 （3+4 = 7格、3+4+4 = 11格...）',
-      '設定每格的 文字 和 點擊動作',
-      '若動作選「Flex 彈窗」，可設計 輪播卡片 （放圖片、標題、按鈕）',
-      '點「 發布到 LINE 」即生效',
+      '選擇 主題風格 （精品風、LINE綠、藍等配色）——只有這一項會隨發布送出',
+      '選擇 佈局 （3+4 = 7格、3+4+4 = 11格...）——只影響本頁預覽；發布固定送出 3×2 六格',
+      '設定每格的 文字 和 點擊動作 ——只影響本頁預覽；發布固定套用你營運模式的預設六格',
+      '若動作選「Flex 彈窗」，可設計 輪播卡片 （放圖片、標題、按鈕）——彈窗設定的儲存尚未建置，不會保留也不會隨發布送出',
+      '點「 發布到 LINE 」——所選主題的底圖與預設六格文字才會真的推到顧客的聊天室',
     ],
     flexMenuTitle: 'Flex 主選單（對話氣泡選單）',
     flexMenuLead: '顧客 輸入任何文字 時彈出的 Flex Message 選單卡片。',
@@ -48,22 +57,46 @@ export const richMenuDesignPage = {
       '自訂每個 按鈕 的顏色、圖示 emoji、標題、副標題',
       '開關「 使用提示 」區塊',
       '下方即時預覽，所見即所得',
-      '點「 發布 Flex 主選單到 LINE 」儲存生效（顧客下次開啟聊天看到新樣式）',
+      /*
+       * ⚠️ 誠實化文案。Flex 主選單分頁的「發布」按鈕只是 toast.show(t.flex.saved)，
+       * 沒有呼叫任何端點（src/services/settings.ts 內沒有任何 flex 函式）。
+       * 平台側雖有 POST /api/settings/line/flex-menu，但它只收
+       * flexMenuEnabled / fallback / header 顏色標題等欄位，**不含本頁編輯的輪播卡片**，
+       * 而且本頁從沒呼叫過它。FlexMenuTab 元件本體屬 issue #6，這裡只把使用說明講實話。
+       */
+      '點「 發布 Flex 主選單到 LINE 」——本頁尚未接上儲存，按下去不會寫入任何設定，顧客看到的樣式不會改變',
     ],
     popupTitle: 'Flex 彈窗卡片怎麼用？',
-    popupText: '在 Rich Menu 的格子動作選「Flex 彈窗」，點右邊的 編',
+    /* ⚠️ 誠實化文案：FlexPopupModal 按「儲存」只關視窗（見 cells.flexPopupNotEffective）。 */
+    popupText: '在 Rich Menu 的格子動作選「Flex 彈窗」，點右邊的 編（彈窗卡片的儲存尚未建置，設定不會保留，也不會隨 Rich Menu 發布送到 LINE）',
   },
 
   /* ================================================== 一頁式設計範本 */
   scene: {
     cardTitle: '一頁式設計範本（整張構圖 · 一鍵發布）',
     toggle: '展開 / 收合',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 這三句是本頁最嚴重的假宣稱，因為它同時錯在「文案」與「畫面」兩層：
+     *   1. 「品牌大字自動帶入店名」——create route 的檔頭註明「richMenuNoOverlay /
+     *      richMenuTextColor 是文字疊圖合成用（§6 註明設計器合成屬後期），本端點
+     *      直接用底圖原圖上傳」。推到 LINE 的圖上**沒有**店名，也沒有六格文字；
+     *      卡片縮圖上的店名與格子文字是本頁 MenuPreview 用 CSS 畫的。
+     *      這是預覽與實際推送物不一致，比純文案假宣稱更嚴重 → 另見
+     *      preview.notActualNote，畫面上必須同時說明。
+     *   2. 「發布時同步套用聊天主選單（Flex）與預約步驟卡」——發布請求只有
+     *      { theme } 一個欄位，Flex 與預約步驟一個字都沒送。
+     *   3. 「發布需訂閱進階自訂選單」——create route 註明「CUSTOM_RICH_MENU 只擋
+     *      進階端點，基本主題（本端點）不擋」，未訂閱一樣發得出去。
+     * ⚠️ 修正方式只準改文案／加註說明，**不准去實作文字疊圖**（Phase 6+ 進階設計器）。
+     * 禁止復原。
+     */
     lead: '整張設計好的底部選單，',
-    leadStrong: '品牌大字自動帶入店名',
-    leadTail: '；發布時同步套用同風格的聊天主選單（Flex）與預約步驟卡＝整組視覺一致。',
+    leadStrong: '卡片縮圖是版位示意，不是實際推送物',
+    leadTail: '：發布時推到 LINE 的是所選主題的底圖原圖，圖上不會合成店名或六格文字，也不會一併套用聊天主選單（Flex）與預約步驟卡。',
     bullets: [
-      { strong: '預覽、自訂免費', text: '：每卡可先看帶自己店名的實際效果，可換六格功能與文字（版面與背景設計不變）' },
-      { strong: '發布', text: '需訂閱「進階自訂選單」，會取代目前的底部選單，並覆蓋原本的 Flex 主選單自訂與「每格設定」草稿' },
+      { strong: '預覽', text: '：縮圖上的店名與格子文字是本頁畫上去的示意，顧客不會在圖上看到它們；「預覽」鈕沒有預覽視窗（範本預覽產生後端尚未建置），換六格功能與文字也不會隨發布送出' },
+      { strong: '發布', text: '不需訂閱即可推送（基本主題不受「進階自訂選單」限制），會取代目前的底部選單；但不會覆蓋 Flex 主選單自訂，也不會儲存「每格設定」——這兩者的儲存後端尚未建置' },
       { strong: '注意', text: '：備份／還原端點尚未建置，發布前系統不會備份你目前的設計，發布後也無法一鍵還原（本區的「還原發布前的設計」已停用）' },
     ],
     restore: '還原發布前的設計',
@@ -78,25 +111,27 @@ export const richMenuDesignPage = {
     noBackupBar:
       '注意：本系統目前不會備份發布前的設計，也無法還原——「還原發布前的設計」已停用（備份／還原端點尚未建置）。發布前請自行記下目前的每格設定。',
     restoreDisabledHint: '備份／還原端點尚未建置，系統沒有任何可還原的舊設計',
-    previewCaption: 'LINE 底部選單完整圖（品牌大字已帶入你的店名）',
-    previewGenerating: '以你的店名產生實際預覽中…',
-    previewCells: '六格功能（標籤留白＝用功能預設名）',
-    previewBottom: '底部選單（改完按「更新預覽」；版面與背景設計不變）',
-    previewFlex: '聊天主選單（Flex）同步套用預覽',
-    previewFlexNote: '顧客在聊天室打字看到的主選單，發布時整組一起套用（同風格同功能）',
-    previewSyncNote: '自訂的功能與文字會同步進聊天主選單卡片（「傳送文字」格不放進卡片）',
-    textOnlyNote: '此格只出現在底部選單，不會放進聊天主選單卡片（LINE 卡片不支援傳送文字）',
-    customizeBtn: '自訂文字與功能',
-    updatePreviewBtn: '更新預覽',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 舊 previewCaption「LINE 底部選單完整圖（品牌大字已帶入你的店名）」被拿來當
+     * 範本卡「預覽」鈕的 toast——按下去只跳這句說明、沒有開任何預覽視窗，
+     * 是「假互動 ＋ 假宣稱」疊在一起：既沒有預覽可看，那句話描述的圖也不存在。
+     * 改名為 previewNotBuilt 並直說沒有預覽可開（本輪只做誠實化，不實作預覽視窗）。
+     *
+     * 一併刪除整組「範本預覽產生器」的假宣稱鍵——這個產生器從來不存在
+     * （沒有 preview-advanced/create-scene 端點，src/services 也沒有對應函式），
+     * 全部未被任何程式碼引用，卻描述著一套會合成店名、會同步 Flex 的流程：
+     *   previewGenerating（以你的店名產生實際預覽中）、previewCells、previewBottom、
+     *   previewFlex（Flex 同步套用預覽）、previewFlexNote（發布時整組一起套用）、
+     *   textOnlyNote、customizeBtn、updatePreviewBtn、previewHeading、customHeading、
+     *   labelBlankHint、generating、generateFailed、previewFailed、previewFailedRetry、
+     *   flexPreviewFailed。禁止復原。
+     */
+    previewNotBuilt:
+      '沒有可開啟的預覽：一頁式範本的預覽產生後端尚未建置。上方縮圖只是版位示意（店名與六格文字是本頁畫上去的），實際發布到 LINE 的是所選主題的底圖原圖，圖上不含店名與六格文字。',
+    previewSyncNote:
+      '發布只會送出所選主題的底圖與你營運模式的預設六格文字；本頁的每格自訂、佈局與背景圖網址都不會隨發布送出，聊天主選單（Flex）也不會一起更新。',
     previewBtn: '預覽',
-    previewHeading: '預覽',
-    customHeading: '自訂',
-    labelBlankHint: '文字（留白＝用預設）',
-    generating: '產生中...',
-    generateFailed: '產生失敗',
-    previewFailed: '預覽產生失敗，請檢查輸入內容後再試',
-    previewFailedRetry: '預覽產生失敗，請稍後再試',
-    flexPreviewFailed: 'Flex 預覽暫時無法產生',
 
     /** 發布 / 還原確認 */
     publishConfirmLead: '確定發布「',
@@ -110,7 +145,7 @@ export const richMenuDesignPage = {
      * 連帶刪除從未使用的 restoreFailed（沒有還原流程可失敗）。禁止復原。
      */
     publishConfirmTail:
-      '」一頁式範本到 LINE？\n\n・會取代目前的底部選單（實際推送的是所選主題的底圖與系統預設六格文字）\n・聊天室的 Flex 主選單不會一起換——Flex 樣式的儲存後端尚未建置\n⚠️ 發布前系統不會備份你目前的設計，發布後也無法還原（備份／還原端點尚未建置），請先自行記下目前的每格設定。',
+      '」的主題到 LINE？\n\n・會取代目前的底部選單。實際推送的是所選主題的底圖原圖——圖上不含店名，也不含六格文字（那六段文字是顧客點擊後送出的訊息內容，不會畫在圖上）\n・佈局、每格設定與本頁的背景圖網址都不會送出，六格文字固定用你營運模式的預設值\n・聊天室的 Flex 主選單不會一起換——Flex 樣式的儲存後端尚未建置\n⚠️ 發布前系統不會備份你目前的設計，發布後也無法還原（備份／還原端點尚未建置），請先自行記下目前的每格設定。',
     cancelled: '已取消，尚未發布任何內容',
   },
 
@@ -143,6 +178,16 @@ export const richMenuDesignPage = {
   theme: {
     cardTitle: '主題風格',
     advancedBadge: '進階',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 「進階」徽章讓未訂閱的店家以為選了這些主題就發布不出去，但發布端點
+     * （POST /api/settings/line/rich-menu/create）對主題沒有任何功能閘門：
+     * bodySchema 接受 RICH_MENU_THEME_KEYS 全部六個 key，權限只檢查 MANAGER，
+     * route 註解也明寫「CUSTOM_RICH_MENU 只擋進階端點，基本主題（本端點）不擋」。
+     * 徽章本身保留（config 確實標了 advanced 分級），但畫面要說清楚它不擋發布。
+     */
+    advancedBadgeNote:
+      '標「進階」的主題目前不會被擋下來：發布端點接受全部六個主題，未訂閱「進階自訂選單」一樣推送得出去，這個徽章目前只是分級標示。',
     options: {
       BOUTIQUE: '精品風',
       LINE_GREEN: 'LINE 綠',
@@ -160,6 +205,14 @@ export const richMenuDesignPage = {
     cardTitle: '佈局',
     advancedBadge: '進階',
     note: '3行佈局自動使用大尺寸（Full），2行使用標準尺寸（Half）',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 佈局從來沒有接上發布：create route 的 CELLS 常數寫死 3×2 六格、
+     * 2500×1686，發布請求也只帶 { theme }。舊畫面讓店家挑 7 格／11 格版型、
+     * 還標「進階」徽章，顧客看到的卻永遠是六格——必須在挑選處就說清楚。
+     */
+    publishFixedNote:
+      '佈局目前只影響本頁預覽：發布到 LINE 固定送出 2500×1686 的 3×2 六格版型，這裡選的行列數不會改變顧客看到的選單（版型自訂尚未接上發布）。',
     sizeStandard: '標準',
     sizeLarge: '大尺寸',
     options: [
@@ -176,8 +229,26 @@ export const richMenuDesignPage = {
   /* ========================================================= 背景圖片 */
   background: {
     cardTitle: '背景圖片（選填）',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 1. 舊 help 寫「系統會在上面疊加每格的圖示和文字」——create route 檔頭明寫
+     *    文字疊圖合成屬後期，本端點**直接用底圖原圖上傳**，沒有任何疊加。
+     * 2. 本頁這個網址欄位只寫進 React state（bgUrl），只影響右側預覽；
+     *    createRichMenu(theme) 的請求裡沒有它。發布時真正被讀的自訂底圖是
+     *    tenant_settings.line.richMenuBgImageUrl，那是「LINE 設定 → 主選單樣式」
+     *    頁存下來的欄位，本頁從來沒有寫入過。
+     * 3. 一併刪除三個未被引用、卻宣稱有雲端保存能力的鍵：
+     *    savedToCloud（背景圖已儲存到雲端，重整後也會還原）、
+     *    cloudFailed（上傳雲端失敗，會保留本機檔案至發布）、localFallback。
+     *    本頁沒有任何上傳程式碼，那句「重整後也會還原」在此頁永遠不成立。
+     * ⚠️「上傳圖片」按鈕的 onClick 接線屬 issue #7（/api/upload），本輪只改文案；
+     *    uploaded / uploadFailed / formatUnsupported 等中性訊息保留給該 issue 使用。
+     * 禁止復原。
+     */
     help:
-      '上傳背景圖，系統會在上面疊加每格的圖示和文字。PNG/JPG，建議 2500x843（標準）或 2500x1686（大尺寸）。不上傳則使用主題配色。',
+      '背景圖 PNG/JPG，建議 2500x1686（大尺寸）或 2500x843（標準）。系統不會在圖上疊加格子圖示或文字——推送到 LINE 的是底圖原圖。不指定則使用所選主題的底圖。',
+    notSentOnPublish:
+      '此處貼上的網址只影響本頁預覽，不會隨「發布到 LINE」送出；「上傳圖片」按鈕也尚未接上上傳後端。發布時使用的自訂底圖是「LINE 設定 → 主選單樣式」存下來的那一張，沒有存過就用所選主題的底圖。',
     remove: '移除背景',
     none: '無背景圖',
     urlHint: '貼上圖片 URL 即時預覽',
@@ -186,9 +257,6 @@ export const richMenuDesignPage = {
     uploadFailed: '上傳失敗',
     uploadFailedPrefix: '上傳失敗：',
     uploaded: '圖片上傳成功',
-    savedToCloud: '背景圖已儲存到雲端，重整後也會還原',
-    cloudFailed: '背景圖上傳雲端失敗，會保留本機檔案直到發布：',
-    localFallback: '背景圖上傳失敗，會保留本機檔案：',
     imageLoadFailed: '圖片無法載入',
     formatUnsupported: '無法處理此圖片格式',
     formatUnsupportedHint: '無法處理此圖片格式，請改存 JPG / PNG',
@@ -207,15 +275,32 @@ export const richMenuDesignPage = {
     labelPlaceholder: '顧客點擊後送出的文字',
     lockedHint: '每格設定需訂閱「進階自訂選單」',
     iconUpload: '上傳格子圖示（支援透明 PNG）',
-    iconUploaded: '已上傳圖示（點右方 ✕ 可移除）\n支援透明 PNG！',
-    iconNoneHint:
-      '此格不顯示任何 icon 圖示（向量 icon + 上傳的 icon 都會被跳過），只保留標籤文字。注意：不影響「範本背景圖」與「上傳的格子背景圖」',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 「上傳格子圖示」按鈕沒有 onClick，圖示尺寸／文字大小的下拉是 defaultValue
+     * 的非受控欄位（沒有 onChange、沒有 state），三者都不會被任何程式碼讀取；
+     * 發布端點也只上傳底圖原圖，不做任何圖示或文字合成。舊文案卻描述著一整套
+     * 合成規則（填滿會蓋掉文字、跳過向量 icon…），並備好「已上傳圖示」
+     * 「上傳雲端失敗，會保留本機檔案至發布」的成功／半成功訊息。
+     * 因此：按鈕改為停用並附說明，刪除 iconUploaded / iconNoneHint / iconCloudFailed
+     * 三個描述不存在流程的鍵（iconUploadFailed 是中性失敗訊息，留給日後接線）。
+     * 禁止復原。
+     */
+    iconUploadNotBuilt:
+      '格子圖示上傳與圖示／文字大小尚未建置：這些欄位不會被儲存，也不會影響推送到 LINE 的圖——發布送出的是底圖原圖，系統不會在上面合成圖示或文字。',
     iconSize: '圖示尺寸',
     iconSizeHint: '填滿=完全覆蓋格子(會裁切+蓋掉文字)；大=保持比例fit；中/小=較小邊比例',
     textSize: '文字大小',
     iconUploadFailed: (i: number, msg: string) => `格子 ${i} 圖示上傳失敗：${msg}`,
-    iconCloudFailed: (i: number, msg: string) =>
-      `格子 ${i} 圖示上傳雲端失敗，會保留本機檔案至發布：${msg}`,
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * FlexPopupModal（每格設定 →「Flex 彈窗」→ 點擊設定內容）按「儲存」原本
+     * toast「Flex 彈窗已儲存」，但視窗內的類型與圖片比例只存在該元件的 local state，
+     * 關掉就沒了：沒有端點、沒有 service、也不會寫回 cells。刪除 flex.popupSaved，
+     * 改用這句誠實提示。禁止復原。
+     */
+    flexPopupNotEffective:
+      '未儲存 Flex 彈窗：彈窗卡片的儲存後端尚未建置，這裡選的類型與圖片比例不會被保留，也不會隨 Rich Menu 發布送到 LINE。',
 
     /** 動作類型 */
     actions: {
@@ -259,6 +344,18 @@ export const richMenuDesignPage = {
     generating: '產生預覽中…',
     defaultShopName: '我的店家',
     defaultGreeting: '歡迎光臨！點選下方選單開始',
+    /**
+     * ⚠️ 預覽與實際推送物不一致的告示（CLAUDE.md「Never fabricate a known」）。
+     * MenuPreview 用 CSS 把店名與每格標籤畫在色塊上；但 create route 直接上傳
+     * 底圖原圖（自訂底圖／bucket 主題圖／現生成純色 PNG 三選一），
+     * **圖上沒有店名、沒有格子文字、沒有格線**。六格的文字只存在 message action
+     * 裡，是顧客點擊後送出的訊息內容，不會顯示在圖上。
+     * 預覽長得像成品、實際推送的卻是另一張圖，比單純的文案假宣稱更容易誤導，
+     * 因此在預覽區與範本卡下方都要常駐這段說明。
+     * ⚠️ 正確的修法是「說清楚」，不是去實作文字疊圖——那屬 Phase 6+ 進階設計器。
+     */
+    notActualNote:
+      '⚠️ 這是版位示意圖，不是實際推送物：發布到 LINE 的是所選主題的底圖原圖（或你在「LINE 設定」存的自訂底圖），圖上不會畫店名，也不會畫六格文字與格線——那六段文字只是顧客點擊後送出的訊息內容。此處的佈局、每格設定與背景圖網址都不會隨發布送出。',
     summary: (theme: string, layout: string, cells: number, size: string, bg: string) =>
       `${theme} / ${layout}（${cells}格）/ ${size}${bg}`,
   },
@@ -307,7 +404,21 @@ export const richMenuDesignPage = {
     name: '進階自訂選單',
     barLead: '自訂每格',
     barItems: ['文字／動作', '背景圖／自訂圖示', '非 3+4 版型', '打開網址／Flex 彈窗'],
-    barTail: '屬「進階自訂選單」付費功能（99 點/月）。未訂閱時發布只會套用系統預設款，您的這些修改不會出現在 LINE 選單上。',
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * 舊 barTail 的「未訂閱時…您的這些修改不會出現在 LINE 選單上」讀起來是
+     * 「訂閱之後就會出現」——但那是假的：進階發布端點（create-advanced）
+     * 在本專案裡根本不存在（src/app/api/settings/line/rich-menu 下只有
+     * create 與 upload-bg-image），create route 也永遠用 MODE_PRESETS 的六格。
+     * 也就是說**無論有沒有訂閱**，逐格自訂／版型／背景圖都不會出現在 LINE 上。
+     * 拿一個做不到的效果去推銷付費功能，比一般假宣稱更該修。
+     *
+     * 同理刪除三個未被引用、卻描述「訂閱才發得出去 / 降級就能免費發」這套
+     * 不存在閘門的鍵：advancedNeeded（發佈到 LINE 需要先訂閱——實際不擋）、
+     * cellEditNeeded、downgradeHint（把版型改回 3+4 就能免費發——版型根本不影響發布）。
+     * 禁止復原。
+     */
+    barTail: '屬「進階自訂選單」付費功能（99 點/月）。但這些自訂目前都還沒接上發布：無論是否訂閱，「發布到 LINE」都只會送出所選主題的底圖與你營運模式的預設六格文字，訂閱不會讓上列修改出現在 LINE 選單上。',
     required: '需要訂閱「進階自訂選單」',
     goSubscribe: '前往訂閱（設計會保留）',
     goto: '前往',
@@ -316,12 +427,7 @@ export const richMenuDesignPage = {
     freeOnlyWarn:
       '免費基本款選單只能發佈固定的預設格子內容，您的每格修改「不會」出現在 LINE 選單上。',
     freeFallbackNotice:
-      '⚠️ 提醒：這是免費基本款選單，您在「每格設定」修改的文字／動作並未套用，顧客看到的是系統預設格子。要套用自訂請訂閱「進階自訂選單」。',
-    advancedNeeded:
-      '您設計的是「進階樣式」選單（含背景圖／自訂圖示、非 3+4 版型、打開網址、傳送文字或 Flex 彈窗），發佈到 LINE 需要先訂閱「進階自訂選單」功能。\n\n',
-    cellEditNeeded: '您修改了「每格設定」的標籤或動作，這屬於「進階自訂選單」付費功能。\n\n',
-    downgradeHint:
-      '未訂閱的話，可自行把版型改回「3+4」並移除背景圖與自訂格子圖片，即可免費發佈基本款選單。',
+      '⚠️ Rich Menu 已推送到 LINE，但送出的是所選主題的底圖與系統預設六格文字。您在「每格設定」「佈局」「背景圖片」的修改都沒有送出——這些欄位尚未接上發布，訂閱「進階自訂選單」也不會改變這一點。',
     flexFreeFallback:
       '您未訂閱「進階自訂選單」，已存為免費的基本款氣泡主選單（訂閱後可改用輪播卡片樣式）',
   },
@@ -371,7 +477,6 @@ export const richMenuDesignPage = {
     saveFailedPrefix: 'Flex 主選單儲存失敗:',
     loadFailed: '載入 Flex Menu 失敗',
     loadStateFailedPrefix: '載入 Flex 主選單狀態失敗:',
-    popupSaved: 'Flex 彈窗已儲存',
 
     /** flexPopupModal */
     popup: {
@@ -412,7 +517,11 @@ export const richMenuDesignPage = {
       '預約流程步驟自訂後端尚未建置：這個開關與下方每步的顏色、標題都不會寫入資料庫，顧客在 LINE 看到的預約流程維持系統預設，不會因為這裡的設定而改變。',
     guideToggleNotEffective:
       '未變更步驟說明卡：預約流程步驟自訂後端尚未建置，這個開關沒有寫入資料庫，顧客端的預約流程沒有任何改變。',
-    stepImageUploaded: '步驟圖片上傳成功',
+    /*
+     * ⚠️ 刪除 stepImageUploaded（'步驟圖片上傳成功'）：本區從頭到尾沒有任何圖片
+     * 上傳 UI，也沒有端點；一句未被引用的成功訊息卻預告著一個不存在的流程，
+     * 與上方 notBuiltBody 自相矛盾。禁止復原。
+     */
     flowTitle: '預約流程',
     steps: [
       '選擇服務', '選擇項目', '選擇方案', '選擇課程', '選擇療程',
@@ -434,7 +543,10 @@ export const richMenuDesignPage = {
      */
     notBuiltBody:
       '功能頁面樣式自訂後端尚未建置：本區目前沒有任何可以編輯的欄位，各功能 Flex Message 的 Header 顏色、圖示與標題一律使用系統預設，無法在此修改。',
-    imageUploaded: '功能圖片上傳成功',
+    /*
+     * ⚠️ 刪除 imageUploaded（'功能圖片上傳成功'）：同上，本區連可編輯欄位都沒有
+     * （notBuiltBody 已明說），不該備著一句上傳成功訊息。禁止復原。
+     */
   },
 
   /* ===================================================== 輪播卡片預覽 */
@@ -583,7 +695,8 @@ export const richMenuDesignPage = {
       '霓虹狂熱風，搏擊拳館',
     ],
 
-    /** 範本的示範店名（品牌大字，實際發布時會換成店家自己的店名） */
+    /** 範本的示範店名。⚠️ 舊註解寫「實際發布時會換成店家自己的店名」是錯的：
+     *  create route 直接上傳底圖原圖，不做任何文字合成，店名不會出現在圖上。 */
     sceneNames: [
       '力量工業', '和風小動物', '和風湯屋', '和風理髮處', '和風美容室',
       '和風診療所', '和食料亭', '品味食光', '山林秘境SPA', '山林越野基地',
