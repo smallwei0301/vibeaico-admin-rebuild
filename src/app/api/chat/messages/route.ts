@@ -11,9 +11,19 @@ import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
  * GET `?lineUserId&after=<messageId>`：只回該筆之後的新訊息（5 秒輪詢用）；
  *   以該筆 created_at 為界、id 打平，全量回傳（不分頁）。
  *
- * POST `{lineUserId, text}`：店家後台主動回覆。replyToken 早已失效只能用 push，
- * 會佔推播額度 → 先 `consumePushQuota(tenantId, 1)`，不足回 409 REQ_003
- * 「本月推播額度已用完」且**不呼叫 LINE**；成功 → linePush + 寫 chat_messages(OUT)。
+ * POST `{lineUserId, text}` 或 `{lineUserId, imageUrl}`：店家後台主動回覆。
+ * replyToken 早已失效只能用 push，會佔推播額度 → 先 `consumePushQuota(tenantId, 1)`，
+ * 不足回 409 REQ_003「本月推播額度已用完」且**不呼叫 LINE**；成功 → linePush +
+ * 寫 chat_messages(OUT)。
+ *
+ * 圖片訊息（修復-7 / issue #15）：前端先打 POST /api/upload（bucket=chat-images，
+ * 0017 migration 新增）拿到 public URL，再把該 URL 以 `imageUrl` 傳進來，這裡送
+ * LINE image message（originalContentUrl / previewImageUrl 同一張，LINE 只收
+ * https 外連圖）並寫 message_type='image'、content={imageUrl}。
+ * **刻意不另開 `/api/chat/messages/:id/image`**：`[id]` 這一段在本路由樹已經是
+ * 「訊息 id」（見 messages/[id]/read），再拿來當對話 id 會是同名不同義；而且
+ * 額度檢查 → push → 寫 OUT 這條鏈只要複製一份就會有走鐘的一天。改成同一支
+ * POST 的可辨識聯集（text 或 imageUrl 二擇一），兩種訊息共用同一條鏈路。
  */
 
 function mapMessage(r: any) {
@@ -78,10 +88,23 @@ export const GET = handle(async (req) => {
   return ok(toPaged((data ?? []).map(mapMessage), count, page, size));
 });
 
-const postSchema = z.object({
-  lineUserId: z.string().min(1, '請指定對話對象'),
-  text: z.string().min(1, '請輸入訊息內容').max(5000, '訊息長度超過上限'),
-});
+const postSchema = z
+  .object({
+    lineUserId: z.string().min(1, '請指定對話對象'),
+    text: z.string().max(5000, '訊息長度超過上限').optional(),
+    /** 圖片訊息：必須是 /api/upload 回的 https public URL（LINE 不收 http / data:） */
+    imageUrl: z
+      .string()
+      .url('圖片網址格式錯誤')
+      .refine((u) => u.startsWith('https://'), 'LINE 只接受 https 圖片網址')
+      .optional(),
+  })
+  .refine((b) => !(b.text?.trim() && b.imageUrl), {
+    message: '一次只能傳送文字或圖片其中一種',
+  })
+  .refine((b) => !!b.imageUrl || !!b.text?.trim(), {
+    message: '請輸入訊息內容',
+  });
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
@@ -104,7 +127,14 @@ export const POST = handle(async (req) => {
     throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
 
   const { token } = await getLineCredentials(t.tenantId);
-  await linePush(token, b.lineUserId, [{ type: 'text', text: b.text }]);
+  const isImage = !!b.imageUrl;
+  await linePush(
+    token,
+    b.lineUserId,
+    isImage
+      ? [{ type: 'image', originalContentUrl: b.imageUrl, previewImageUrl: b.imageUrl }]
+      : [{ type: 'text', text: b.text }],
+  );
 
   const { data, error } = await t.supabase
     .from('chat_messages')
@@ -112,8 +142,8 @@ export const POST = handle(async (req) => {
       tenant_id: t.tenantId,
       line_user_id: b.lineUserId,
       direction: 'OUT',
-      message_type: 'text',
-      content: { text: b.text },
+      message_type: isImage ? 'image' : 'text',
+      content: isImage ? { imageUrl: b.imageUrl } : { text: b.text },
     })
     .select('*')
     .single();

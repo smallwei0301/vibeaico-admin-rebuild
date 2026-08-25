@@ -8,7 +8,8 @@ import { createAdminSupabase } from '@/server/supabase';
  * multipart/form-data：`file`（圖片）+ `bucket`（目的地 bucket 名）。
  *
  * - bucket 白名單 = 0008 migration 的五個（service-images / product-images /
- *   portfolio-images / staff-avatars / richmenu-assets）。
+ *   portfolio-images / staff-avatars / richmenu-assets）＋ 0017 的 chat-images
+ *   （顧客訊息傳送圖片，見 src/app/api/chat/messages/route.ts）。
  * - 驗證：≤5MB、image/jpeg | png | webp。
  * - 路徑 {tenantId}/{randomUUID()}.{ext}——第一段資料夾 = 租戶 id，
  *   與 0008 的 RLS 檢查規則一致。
@@ -23,6 +24,7 @@ const ALLOWED_BUCKETS = new Set([
   'portfolio-images',
   'staff-avatars',
   'richmenu-assets',
+  'chat-images',
 ]);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {

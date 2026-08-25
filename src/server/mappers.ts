@@ -92,6 +92,8 @@ export function mapService(r: any): Service {
     active: r.active,
     lineFeatured: r.line_featured,
     sortOrder: r.sort_order,
+    // 0017 新增；查詢未取這一欄時維持 undefined（不補 0 假裝有排序）
+    lineSortOrder: r.line_sort_order,
   };
 }
 
@@ -128,6 +130,8 @@ export function mapProduct(r: any): Product {
     active: r.active,
     lineFeatured: r.line_featured,
     sortOrder: r.sort_order,
+    // 0017 新增；查詢未取這一欄時維持 undefined（不補 0 假裝有排序）
+    lineSortOrder: r.line_sort_order,
   };
 }
 

@@ -2,6 +2,7 @@ import { USE_MOCK } from '@/config/env';
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import { uploadImage } from './upload';
 
 /**
  * 顧客訊息（/tenant/chat）service — 04 分冊 §B-5 / §B-5.1。
@@ -302,6 +303,42 @@ export function sendMessage(p: { lineUserId: string; text: string }): Promise<Ch
       const row = await request<RawMessage>('/api/chat/messages', {
         method: 'POST',
         body: JSON.stringify(p),
+      });
+      return toMessage(row);
+    },
+  );
+}
+
+/**
+ * 店家傳送圖片（修復-7 / issue #15）。
+ *
+ * 真實鏈路兩段，缺一不可：
+ *   1. POST /api/upload（multipart，bucket=chat-images，0017 migration 新增）
+ *      → 取得 Storage 的 https public URL。
+ *   2. POST /api/chat/messages（body 帶 imageUrl）→ 後端扣推播額度、送 LINE
+ *      image message、寫 chat_messages(OUT, message_type='image')。
+ * 任一段失敗都會拋 ApiError，頁面只在兩段都成功後才顯示已送出。
+ *
+ * 上傳走 services/upload.ts 的 uploadImage()（multipart，失敗一樣轉 ApiError）。
+ *
+ * mock：與 sendMessage 相同，合成一筆本地 SHOP 訊息（圖片以 objectURL 預覽）。
+ */
+export function sendImage(p: { lineUserId: string; file: File }): Promise<ChatMessage> {
+  return adapt(
+    () => ({
+      id: `m_local_${mockSeq++}`,
+      from: 'SHOP' as const,
+      type: 'IMAGE' as const,
+      text: '',
+      imageUrl: URL.createObjectURL(p.file),
+      at: new Date().toISOString(),
+      readAt: null,
+    }),
+    async () => {
+      const imageUrl = await uploadImage(p.file, 'chat-images');
+      const row = await request<RawMessage>('/api/chat/messages', {
+        method: 'POST',
+        body: JSON.stringify({ lineUserId: p.lineUserId, imageUrl }),
       });
       return toMessage(row);
     },

@@ -46,7 +46,7 @@ export const POST = handle(async (req) => {
 
   const { data: last, error: e0 } = await t.supabase
     .from('services')
-    .select('sort_order')
+    .select('sort_order, line_sort_order')
     .eq('tenant_id', t.tenantId)
     .order('sort_order', { ascending: false })
     .limit(1)
@@ -66,6 +66,8 @@ export const POST = handle(async (req) => {
       active: b.active ?? true,
       line_featured: b.lineFeatured ?? false,
       sort_order: (last?.sort_order ?? -1) + 1,
+      // 0017：新列同時排在 LINE 精選順序的最後，避免整批停在 0 變成無序
+      line_sort_order: (last?.line_sort_order ?? -1) + 1,
     })
     .select('id')
     .single();

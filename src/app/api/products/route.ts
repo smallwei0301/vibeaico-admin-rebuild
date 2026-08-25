@@ -27,7 +27,8 @@ export const GET = handle(async () => {
 
 /**
  * POST /api/products — 新增商品 ⚙MANAGER（B-3：同 services 模式）。
- * sort_order = 目前最大值 +1；categoryId 空字串＝未分類（存 null）。
+ * sort_order = body 帶的公開頁排序，未帶則取目前最大值 +1；categoryId 空字串＝
+ * 未分類（存 null）。
  * 初始 stock > 0 時寫一筆 inventory_logs（PURCHASE_IN），讓庫存帳自始完整。
  */
 const createSchema = z.object({
@@ -40,6 +41,8 @@ const createSchema = z.object({
   imageUrl: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
+  /** 公開頁排序；商品表單有這個欄位（未帶＝排最後），見 products/page.tsx */
+  sortOrder: z.coerce.number().int().optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -49,7 +52,7 @@ export const POST = handle(async (req) => {
 
   const { data: last, error: e0 } = await t.supabase
     .from('products')
-    .select('sort_order')
+    .select('sort_order, line_sort_order')
     .eq('tenant_id', t.tenantId)
     .order('sort_order', { ascending: false })
     .limit(1)
@@ -69,7 +72,9 @@ export const POST = handle(async (req) => {
       image_url: b.imageUrl ?? '',
       active: b.active ?? true,
       line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? 0) + 1,
+      sort_order: b.sortOrder ?? (last?.sort_order ?? 0) + 1,
+      // 0017：新列同時排在 LINE 精選順序的最後，避免整批停在 0 變成無序
+      line_sort_order: (last?.line_sort_order ?? 0) + 1,
     })
     .select('id')
     .single();

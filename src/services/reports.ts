@@ -213,3 +213,32 @@ export const exportBookingsCsv = (q?: ReportQuery) =>
       window.location.assign(`${API_BASE}/api/export/bookings${qs}`);
     },
   );
+
+/**
+ * 營運報表匯出（修復-7 / issue #15 第 ③ 項）。
+ *
+ * 先前這頁的「匯出」把 Excel 導到顧客名單、CSV 導到預約列表，卻 toast
+ * 「匯出成功：營運報表_日期.xlsx」——檔名宣稱是報表，內容不是。現在改打
+ * GET /api/export/reports/:format，匯出的就是本頁畫面上的統計。
+ *
+ * 回傳 `{ downloaded, fileName }`：
+ * - real：瀏覽器真的收到檔案（端點回 .csv，兩種 format 都是 CSV，見該 route 檔頭）
+ *   → downloaded=true，fileName 是真正會存下來的檔名。
+ * - mock／示範店家：`adapt()` 的 mock 分支沒有伺服器可打，也**不會**產生任何
+ *   檔案 → downloaded=false。頁面必須據此顯示「未匯出」而不是成功
+ *   （CLAUDE.md：成功訊息是一項事實宣稱）。
+ */
+export type ExportReportsResult = { downloaded: boolean; fileName: string };
+
+export const exportReports = (format: 'csv' | 'excel', q?: ReportQuery) =>
+  adapt<ExportReportsResult>(
+    () => ({ downloaded: false, fileName: '' }),
+    async () => {
+      const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
+      window.location.assign(`${API_BASE}/api/export/reports/${format}${qs}`);
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      return { downloaded: true, fileName: `reports-${date}.csv` };
+    },
+  );

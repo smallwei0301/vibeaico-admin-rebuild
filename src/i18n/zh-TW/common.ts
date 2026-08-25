@@ -155,9 +155,16 @@ export const common = {
   /* ---- AI 客服助理（全站右下角）---- */
   supportChat: {
     title: 'AI 客服助理',
-    greeting:
-      '您好！我是 VibeAI 平台的 AI 客服助理，可以幫您查 LINE 狀態、推播額度、最近異常日誌，或回答後台使用問題。請問需要什麼協助？',
-    placeholder: '輸入您的問題...',
+    /**
+     * 客服後端（原站的 /api/support-chat/{new-session,status,history,message}
+     * 四支）尚未建置：先前的 send() 只把輸入 push 進本地陣列，永遠不會有回覆，
+     * 畫面上卻沒有任何說明——依 CLAUDE.md「Never fabricate a known」，這裡改為
+     * 明說尚未建置並停用輸入，等四支端點做出來再接。
+     */
+    notBuiltTitle: '客服對話尚未開放',
+    notBuiltBody:
+      'AI 客服的後端（對話、歷史紀錄、線上狀態）尚未建置，這裡送出的訊息不會送到任何人手上，也不會有回覆。需要協助請改用「問題回報」，我們會收到。',
+    disabledPlaceholder: '客服後端尚未建置，暫時無法送出訊息',
     send: '送出',
   },
 

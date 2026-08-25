@@ -22,7 +22,8 @@ import { useToast } from '@/components/ui/Toast';
 import {
   createService, createServiceCategory, deleteService, deleteServiceCategory,
   duplicateService, listServiceCategories, listServices, listStaff,
-  reorderServiceCategories, reorderServices, toggleServiceLineFeatured, updateService,
+  reorderServiceCategories, reorderServices, reorderServicesLine,
+  toggleServiceLineFeatured, updateService,
 } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -74,21 +75,20 @@ type ServiceExtras = {
   onlinePaymentMode: 'NONE' | 'DEPOSIT_FIXED' | 'DEPOSIT_PERCENT' | 'FULL';
   onlineDepositValue: number;
   staffIds: string[];
-  publicSortOrder: number;
 };
 
 const DEFAULT_EXTRAS: ServiceExtras = {
   requiresStaff: true, maxCapacity: 1, overnightMode: false,
   checkInTime: '15:00', checkOutTime: '11:00', queueModeEnabled: false,
   bufferAfter: 0, onlinePaymentMode: 'NONE', onlineDepositValue: 0,
-  staffIds: [], publicSortOrder: 0,
+  staffIds: [],
 };
 
 const MOCK_SERVICE_EXTRAS: Record<string, Partial<ServiceExtras>> = {
-  sv_1: { staffIds: ['s_1', 's_2'], bufferAfter: 15, publicSortOrder: 1 },
-  sv_2: { staffIds: ['s_1'], bufferAfter: 30, onlinePaymentMode: 'DEPOSIT_FIXED', onlineDepositValue: 500, publicSortOrder: 2 },
-  sv_3: { staffIds: ['s_2', 's_3'], publicSortOrder: 3 },
-  sv_4: { requiresStaff: false, maxCapacity: 4, publicSortOrder: 4 },
+  sv_1: { staffIds: ['s_1', 's_2'], bufferAfter: 15 },
+  sv_2: { staffIds: ['s_1'], bufferAfter: 30, onlinePaymentMode: 'DEPOSIT_FIXED', onlineDepositValue: 500 },
+  sv_3: { staffIds: ['s_2', 's_3'] },
+  sv_4: { requiresStaff: false, maxCapacity: 4 },
 };
 
 /** LINE 精選最多顯示的件數（原站硬性上限） */
@@ -101,12 +101,20 @@ const CATEGORY_NONE = 'none';
 
 /* -------------------------------------------------------------------------- */
 
-type ServiceRow = Service & ServiceExtras;
+/**
+ * 兩套排序都來自 API（0017）：
+ *   sortOrder     = services.sort_order      → 公開頁排序（POST …/reorder）
+ *   lineSortOrder = services.line_sort_order → LINE 精選排序（POST …/reorder-line）
+ * Service.lineSortOrder 是選填（舊查詢可能沒取這一欄），頁面需要一個數字才能排，
+ * 缺值時退回 sortOrder（＝「與公開頁同序」，不是憑空捏一個名次）。
+ */
+type ServiceRow = Service & ServiceExtras & { lineSortOrder: number };
 
 const toRow = (s: Service): ServiceRow => ({
   ...s,
   ...DEFAULT_EXTRAS,
   ...(MOCK_SERVICE_EXTRAS[s.id] ?? {}),
+  lineSortOrder: s.lineSortOrder ?? s.sortOrder,
 });
 
 type SortMode = 'line' | 'public';
@@ -172,7 +180,7 @@ export default function ServicesPage() {
   }, [toast]);
 
   const orderOf = React.useCallback(
-    (s: ServiceRow) => (sortMode === 'line' ? s.sortOrder : s.publicSortOrder),
+    (s: ServiceRow) => (sortMode === 'line' ? s.lineSortOrder : s.sortOrder),
     [sortMode],
   );
 
@@ -188,28 +196,33 @@ export default function ServicesPage() {
   const lineFeaturedCount = rows.filter((s) => s.lineFeatured).length;
   const uncategorizedCount = rows.filter((s) => !s.categoryId).length;
 
-  /** LINE 排序落地（僅 line 模式；publicSortOrder 為頁面欄位，API 無對應端點） */
-  const persistLineOrder = (list: ServiceRow[]) => {
-    const ids = [...list].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => s.id);
-    void reorderServices(ids).catch((e) => {
-      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
-    });
-  };
+  /**
+   * 排序落地。兩種模式各自打自己的端點、各自寫自己的欄位，互不覆蓋：
+   *   line   → POST /api/services/reorder-line（line_sort_order）
+   *   public → POST /api/services/reorder     （sort_order）
+   */
+  const persistOrder = (idsInOrder: string[], mode: SortMode) =>
+    (mode === 'line' ? reorderServicesLine : reorderServices)(idsInOrder);
 
-  const move = (index: number, delta: number) => {
+  /** 先送出、成功才更新畫面與顯示成功；失敗顯示後端訊息，順序保持原樣 */
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= visible.length) return;
     const reordered = [...visible];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     const orderById = new Map(reordered.map((s, i) => [s.id, i + 1]));
-    const next = rows.map((s) => {
-      const order = orderById.get(s.id);
-      if (order === undefined) return s;
-      return sortMode === 'line' ? { ...s, sortOrder: order } : { ...s, publicSortOrder: order };
-    });
-    setRows(next);
-    toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
-    if (sortMode === 'line') persistLineOrder(next);
+    const isLine = sortMode === 'line';
+    try {
+      await persistOrder(reordered.map((s) => s.id), sortMode);
+      setRows(rows.map((s) => {
+        const order = orderById.get(s.id);
+        if (order === undefined) return s;
+        return isLine ? { ...s, lineSortOrder: order } : { ...s, sortOrder: order };
+      }));
+      toast.show(isLine ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+    }
   };
 
   const toggleLine = (s: ServiceRow) => {
@@ -235,7 +248,10 @@ export default function ServicesPage() {
   const duplicate = async (s: ServiceRow) => {
     try {
       const { id } = await duplicateService(s.id);
-      const copy: ServiceRow = { ...s, id, sortOrder: rows.length + 1 };
+      /* 後端的 duplicate 把複本排在兩套順序的最後（0017），畫面同步比照 */
+      const copy: ServiceRow = {
+        ...s, id, sortOrder: rows.length + 1, lineSortOrder: rows.length + 1,
+      };
       setRows((list) => [...list, copy]);
       toast.show(t.messages.duplicated);
     } catch (e) {
@@ -265,13 +281,13 @@ export default function ServicesPage() {
           <span className="btn-group">
             <Button
               variant="ghost" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-              disabled={i === 0} onClick={() => move(i, -1)}
+              disabled={i === 0} onClick={() => void move(i, -1)}
             >
               <ChevronUp size={13} />
             </Button>
             <Button
               variant="ghost" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-              disabled={i === visible.length - 1} onClick={() => move(i, 1)}
+              disabled={i === visible.length - 1} onClick={() => void move(i, 1)}
             >
               <ChevronDown size={13} />
             </Button>
@@ -547,15 +563,25 @@ export default function ServicesPage() {
         title={sortMode === 'line' ? t.toolbar.syncToPublic : t.toolbar.syncToLine}
         message={t.confirm.syncOrder(fromLabel, toModeLabel)}
         onClose={() => setSyncOpen(false)}
-        onConfirm={() => {
-          const next = rows.map((s) => (sortMode === 'line'
-            ? { ...s, publicSortOrder: s.sortOrder }
-            : { ...s, sortOrder: s.publicSortOrder }));
-          setRows(next);
-          setSyncOpen(false);
-          toast.show(t.messages.orderApplied(toModeLabel));
-          /* 公開頁 → LINE 才會改到 sortOrder（API 唯一的排序欄位），需要落地 */
-          if (sortMode === 'public') persistLineOrder(next);
+        onConfirm={async () => {
+          /* 把目前模式的順序套到另一種模式，並打另一支端點真的寫進去 */
+          const source = [...rows].sort((a, b) => (sortMode === 'line'
+            ? a.lineSortOrder - b.lineSortOrder
+            : a.sortOrder - b.sortOrder));
+          const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
+          const rankById = new Map(source.map((s, i) => [s.id, i + 1]));
+          try {
+            await persistOrder(source.map((s) => s.id), targetMode);
+            setRows(rows.map((s) => {
+              const rank = rankById.get(s.id);
+              if (rank === undefined) return s;
+              return targetMode === 'line' ? { ...s, lineSortOrder: rank } : { ...s, sortOrder: rank };
+            }));
+            setSyncOpen(false);
+            toast.show(t.messages.orderApplied(toModeLabel));
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+          }
         }}
       />
 
@@ -604,7 +630,7 @@ export default function ServicesPage() {
 const EMPTY_SERVICE: ServiceRow = {
   id: '', categoryId: null, categoryName: null, name: '', description: '',
   durationMinutes: 0, price: 0, imageUrl: '', active: true, lineFeatured: false,
-  sortOrder: 0, ...DEFAULT_EXTRAS,
+  sortOrder: 0, lineSortOrder: 0, ...DEFAULT_EXTRAS,
 };
 
 function ServiceFormModal({

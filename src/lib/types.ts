@@ -88,7 +88,10 @@ export type Service = {
   imageUrl: string;
   active: boolean;
   lineFeatured: boolean;
+  /** 公開頁排序（DB services.sort_order）；POST /api/services/reorder 落地 */
   sortOrder: number;
+  /** LINE 精選排序（DB services.line_sort_order，0017）；POST …/reorder-line 落地 */
+  lineSortOrder?: number;
 };
 
 export type Staff = {
@@ -117,7 +120,10 @@ export type Product = {
   imageUrl: string;
   active: boolean;
   lineFeatured: boolean;
+  /** 公開頁排序（DB products.sort_order）；POST /api/products/reorder 落地 */
   sortOrder: number;
+  /** LINE 精選排序（DB products.line_sort_order，0017）；POST …/reorder-line 落地 */
+  lineSortOrder?: number;
 };
 
 export type ProductOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';

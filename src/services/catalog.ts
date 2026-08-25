@@ -121,10 +121,21 @@ export const duplicateService = (id: string) =>
     () => request<{ id: string }>(`/api/services/${id}/duplicate`, { method: 'POST' }),
   );
 
-/** POST /api/services/reorder — 依 ids 順序寫 sort_order（= LINE 精選順序）。 */
+/** POST /api/services/reorder — 依 ids 順序寫 sort_order（＝**公開頁**排序）。 */
 export const reorderServices = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/services/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/**
+ * POST /api/services/reorder-line — 依 ids 順序寫 line_sort_order
+ * （＝**LINE 精選**排序，0017 新欄位）。與 reorderServices 是兩套獨立順序，
+ * 改其中一套不會覆蓋另一套。
+ */
+export const reorderServicesLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/services/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 
