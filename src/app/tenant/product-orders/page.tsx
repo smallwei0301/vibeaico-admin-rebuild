@@ -91,12 +91,28 @@ const DEFAULT_EXTRAS: OrderExtras = {
   completedAt: null, cancelReason: '', cancelledAt: null, fromBooking: false,
 };
 
+/**
+ * 商品訂單線上刷卡付款在原站是真實功能（`docs/specs/settings.json` 的
+ * `productOnlinePaymentEnabled`、`docs/specs/product-orders.json:486-535`），
+ * 但查過 `docs/integration/00`–`13` 分冊與現有 GitHub issue（#9 導遊自訂金流僅
+ * 涵蓋「收款方式」設定頁本身，不含商品訂單 checkout；#12 旅客 checkout 明確
+ * 限定行程／團次訂單，不含商品訂單）——**沒有任何一冊或一個 issue 規劃它**。
+ * 不同於 bookings 頁的同型缺陷（issue #28 ②可以指向 #12），這裡沒有可以誠實
+ * 指向的追蹤項目，所以不虛構一個。
+ *
+ * 因此示範資料不放一個看起來像真的網址：這個值只當「這張示範訂單原本會需要
+ * 線上付款」的旗標，複製鈕改為停用並如實標示「線上付款尚未建置」
+ * （見下方 `payLinkNotBuilt` 按鈕），不再讓店家複製到一個打開是 404 的網址、
+ * 還被告知「可傳給顧客用手機刷卡」。
+ */
+const PAY_LINK_NOT_BUILT = '__ONLINE_PAYMENT_NOT_BUILT__';
+
 const MOCK_ORDER_EXTRAS: Record<string, Partial<OrderExtras>> = {
   po_1: {
     lineUserId: 'U123',
     staffName: 'Amy',
     note: '顧客指定週五取貨',
-    payLink: 'https://pay.vibeaico.com/o/PO20260820001',
+    payLink: PAY_LINK_NOT_BUILT,
     payDueAt: '2026-08-21T18:00:00+08:00',
   },
   po_2: {
@@ -190,15 +206,12 @@ export default function ProductOrdersPage() {
   const patchOrder = (id: string, patch: Partial<OrderRow>) =>
     setRows((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)));
 
-  const copyPayLink = async (o: OrderRow) => {
-    if (!o.payLink) { toast.show(t.messages.noPayLink, 'warning'); return; }
-    try {
-      await navigator.clipboard.writeText(o.payLink);
-      toast.show(t.messages.payLinkCopied);
-    } catch {
-      toast.show(t.messages.copyPayLinkManually, 'warning');
-    }
-  };
+  /*
+   * 商品訂單線上付款尚未建置（見 PAY_LINK_NOT_BUILT 旁的說明）。原本這裡是
+   * `copyPayLink`：把 o.payLink 寫進剪貼簿並宣稱「可傳給顧客用手機刷卡」——
+   * 但沒有任何後端會產生真的付款連結，那句話是假的已知。故意不留一個
+   * 「複製了什麼但不說是幹嘛用的」半吊子按鈕：下方按鈕直接停用＋誠實標示。
+   */
 
   const runPendingAction = async () => {
     if (!pendingAction) return;
@@ -336,9 +349,8 @@ export default function ProductOrdersPage() {
           ) : null}
           {o.payLink ? (
             <Button
-              variant="outline" size="sm"
-              title={t.actions.copyPayLink} aria-label={t.actions.copyPayLink}
-              onClick={() => void copyPayLink(o)}
+              variant="outline" size="sm" disabled
+              title={t.actions.payLinkNotBuilt} aria-label={t.actions.payLinkNotBuilt}
             >
               <Copy size={13} />
             </Button>
