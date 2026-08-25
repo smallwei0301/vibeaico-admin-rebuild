@@ -181,6 +181,23 @@ export interface FeatureRestoreResult {
   restoredCoupons?: number;
   restoredProducts?: number;
   restoreSideEffectFailed?: boolean;
+  /**
+   * `restoreSideEffectFailed` 時，平台端待處理紀錄（`bug_reports`，reporter='system'）
+   * **是否真的寫進去了**（issue #28 第 ⑭ 筆的後續；鐵則 3：只新增 optional 欄位）。
+   *
+   * 為什麼需要這個旗標：這句文案原本結尾寫「（已通知平台處理）」，而當時
+   * `restore/route.ts` 的失敗分支只有一行 `console.error`——**零通知**。commit
+   * `9829f12` 補上了真正的 `bug_reports` 寫入，但那個寫入自己也可能失敗（route
+   * 內 try/catch 吞掉），所以在沒有旗標可據實分岔之前，畫面仍然不能宣稱「已通知
+   * 平台」——那還是拿一個沒量到的狀態當已知，跟原本那句同一種錯。
+   *
+   * 語意刻意分成三態，**`undefined` 不等於 `false` 的相反面**：
+   * - `true`：insert 真的成功（route 拿到 `error === null`）→ 畫面才可以說已自動記錄
+   * - `false`：insert 失敗（拋錯或回 error）→ 畫面必須說請聯絡平台客服
+   * - `undefined`：mock 分支、或舊版後端沒回這個欄位＝**我們不知道**
+   *   → 頁面一律當作不能宣稱（`=== true` 才走「已記錄」那句）
+   */
+  platformNotified?: boolean;
 }
 
 export const applyFeature = (code: string, months: number) =>

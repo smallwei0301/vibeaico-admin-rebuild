@@ -211,9 +211,18 @@ export default function FeatureStorePage() {
          * 這裡不是 danger 而是 warning：恢復是真的成功，只有副作用要店家手動補。
          * 先前這個旗標被整個丟棄，店家只看得到「訂閱已恢復！」，永遠不會知道
          * 票券／商品還躺在下架狀態。
+         *
+         * 兩句文案由 platformNotified 分岔：端點寫平台端待處理紀錄
+         * （bug_reports，reporter='system'）成功才敢說「已自動記錄」。
+         * 比對刻意寫成 `=== true`——false 與 undefined（mock 分支、舊版後端沒回
+         * 這欄）都是「沒量到」，一律走不宣稱的那一句。
          */
         toast.show(
-          `${t.messages.restored(name)}${t.messages.restoreSideEffectFailed}`,
+          `${t.messages.restored(name)}${
+            restoreResult.platformNotified === true
+              ? t.messages.restoreSideEffectFailedNotified
+              : t.messages.restoreSideEffectFailed
+          }`,
           'warning',
         );
       } else {

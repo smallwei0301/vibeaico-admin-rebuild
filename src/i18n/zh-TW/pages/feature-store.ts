@@ -154,13 +154,24 @@ export const featureStorePage = {
      * catch 分支當時只有一行 `console.error`，**零 email、零 notify、零平台告警**。
      * 那句話讓店家以為平台已經知道了、會處理，於是不會主動回報，問題就此消失。
      *
-     * 現在端點會在這個分支寫一筆 `bug_reports`（reporter='system'）當平台端待處理
-     * 紀錄，但**這裡刻意仍不宣稱「已通知平台」**：那筆寫入本身也可能失敗，而回應
-     * 裡沒有旗標可以讓畫面知道成敗。與其賭一個沒量到的狀態，不如只講必然為真的
-     * 兩件事——要店家手動恢復、恢復不了就聯絡平台。
+     * 端點會在這個分支寫一筆 `bug_reports`（reporter='system'）當平台端待處理紀錄，
+     * 但那筆寫入本身也可能失敗，所以文案分成兩句，由回應的 `platformNotified`
+     * 旗標（`src/services/settings.ts` 的 `FeatureRestoreResult`）決定用哪一句。
+     *
+     * **這一句是「不知道／沒記錄成功」時用的**：只講必然為真的兩件事——要店家
+     * 手動恢復、恢復不了就聯絡平台。旗標是 `false` 或 `undefined`（mock 分支、
+     * 舊版後端）都走這句：不知道就不准宣稱，這正是本專案反覆栽過的「捏造的已知」。
      */
     restoreSideEffectFailed:
       '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；若無法自行恢復，請聯絡平台客服協助處理',
+    /**
+     * 同一件事，但 `platformNotified === true`＝平台端待處理紀錄**確實寫進去了**
+     * （端點拿到 insert 的 `error === null`）。只有在真的量到這件事時才敢說
+     * 「已自動記錄」——這是原本那句「（已通知平台處理）」想講、卻沒有任何依據
+     * 支撐的話，現在有依據了才說得出口。
+     */
+    restoreSideEffectFailedNotified:
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；此問題已自動記錄，平台會協助處理',
     subscribeFailed: '訂閱失敗:',
     subscribeFailedFull: '訂閱失敗：',
     cancelFailed: '取消訂閱失敗:',

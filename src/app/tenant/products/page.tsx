@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle, Boxes, ChevronDown, ChevronUp, FolderPlus, Globe, Package, Pencil, Plus,
-  RefreshCcw, Sparkles, Star, Trash2,
+  RefreshCcw, Sparkles, Star, ToggleLeft, ToggleRight, Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +24,8 @@ import {
   adjustProductStock, createProduct, createProductCategory, deleteProduct, deleteProductCategory,
   listProductCategories, reorderProductCategories, reorderProducts, reorderProductsLine,
   toggleProductLineFeatured,
-  updateProduct, updateProductCategory, type ProductCategory,
+  updateProduct, updateProductCategory,
+  type ProductCategory, type ProductCategoryUpdate,
 } from '@/services/products';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
@@ -1046,6 +1047,14 @@ function CategoryModal({
   const [deleteTarget, setDeleteTarget] = React.useState<ProductCategory | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
 
+  /* 編輯分類 modal（issue #28 第 ⑭ 筆）—— 見下方 saveEdit 的註解 */
+  const [editTarget, setEditTarget] = React.useState<ProductCategory | null>(null);
+  const [editName, setEditName] = React.useState('');
+  const [editDescription, setEditDescription] = React.useState('');
+  const [editActive, setEditActive] = React.useState(true);
+  const [editError, setEditError] = React.useState('');
+  const [editSaving, setEditSaving] = React.useState(false);
+
   React.useEffect(() => {
     if (!open) return;
     setName('');
@@ -1128,8 +1137,72 @@ function CategoryModal({
     }
   };
 
+  const openEdit = (c: ProductCategory) => {
+    setEditTarget(c);
+    setEditName(c.name);
+    setEditDescription(c.description ?? '');
+    setEditActive(c.active);
+    setEditError('');
+  };
+
+  /**
+   * 真正的編輯（issue #28 第 ⑭ 筆的後續）。
+   *
+   * 先前這一列的「編輯」是鉛筆圖示 + common.edit 標籤，行為卻只是切換啟用狀態
+   * ——圖示與行為不符。依擁有者方針「對齊原站功能，缺少功能用補齊取代刪除」，
+   * 正解是補成真正的編輯（名稱／說明／啟用），而不是把鉛筆換成開關圖示。
+   *
+   * 兩個刻意的設計：
+   * 1. **只送有變的欄位**。PUT 的語意是「沒帶＝不動」（route.ts 的
+   *    `if (b.x !== undefined)`），整包送出雖然也會過，但一旦日後有人在別處
+   *    改了同一列，整包送就會把別人的值一起覆蓋回畫面載入時的舊值。
+   * 2. **sortOrder 不在這裡**。排序走 reorder 端點，兩條寫入路徑會互相打架
+   *    （tests/integration/api/category-edit.28.test.ts 有一條測試專門鎖這件事）。
+   *
+   * 什麼都沒改就按儲存＝不送出任何請求，所以顯示 info 而不是「分類已更新」：
+   * 沒發生的事不准報成功（00 分冊鐵則 12）。
+   */
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setEditError(t.category.nameRequired);
+      return;
+    }
+    setEditError('');
+
+    const trimmedDescription = editDescription.trim();
+    const patch: ProductCategoryUpdate = {};
+    if (trimmedName !== editTarget.name) patch.name = trimmedName;
+    if (trimmedDescription !== (editTarget.description ?? '')) patch.description = trimmedDescription;
+    if (editActive !== editTarget.active) patch.active = editActive;
+
+    if (Object.keys(patch).length === 0) {
+      setEditTarget(null);
+      toast.show(t.category.noChange, 'info');
+      return;
+    }
+
+    const id = editTarget.id;
+    setEditSaving(true);
+    try {
+      await updateProductCategory(id, patch);
+      onChange(categories.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      setEditTarget(null);
+      toast.show(t.category.updated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const columns: Column<ProductCategory>[] = [
     { key: 'name', header: t.category.columns.name, render: (c) => c.name },
+    {
+      key: 'description', header: t.category.columns.description,
+      render: (c) => c.description || <span className="text-muted">{common.none}</span>,
+    },
     {
       key: 'status', header: t.category.columns.status, width: '90px',
       render: (c) => (c.active
@@ -1137,7 +1210,7 @@ function CategoryModal({
         : <Badge tone="neutral">{t.labels.disabled}</Badge>),
     },
     {
-      key: 'actions', header: t.category.columns.actions, width: '160px',
+      key: 'actions', header: t.category.columns.actions, width: '200px',
       render: (c, i) => (
         <div className="btn-group">
           <Button
@@ -1152,10 +1225,20 @@ function CategoryModal({
           >
             <ChevronDown size={13} />
           </Button>
+          {/* 啟用／停用的快速切換：自己的圖示與標籤，不再冒用鉛筆＋「編輯」 */}
           <Button
-            variant="outline" size="sm" title={common.edit} aria-label={common.edit}
+            variant="outline" size="sm"
+            title={c.active ? t.category.disableAction : t.category.enableAction}
+            aria-label={c.active ? t.category.disableAction : t.category.enableAction}
             disabled={savingId === c.id}
             onClick={() => void toggleActive(c)}
+          >
+            {c.active ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+          </Button>
+          {/* 鉛筆＝真的開編輯 modal（名稱／說明／啟用） */}
+          <Button
+            variant="outline" size="sm" title={common.edit} aria-label={common.edit}
+            onClick={() => openEdit(c)}
           >
             <Pencil size={13} />
           </Button>
@@ -1220,6 +1303,45 @@ function CategoryModal({
             empty={<EmptyState icon={FolderPlus} title={t.category.empty} />}
           />
         </DataTableContainer>
+      </Modal>
+
+      {/* 編輯分類（issue #28 第 ⑭ 筆）：沿用「新增分類」的既有元件形狀，
+          多一個說明欄；排序不放這裡，走 reorder 端點 */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        title={t.category.editTitle}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)}>{common.cancel}</Button>
+            <Button loading={editSaving} onClick={() => void saveEdit()}>{common.save}</Button>
+          </>
+        }
+      >
+        <FormGroup>
+          <Label required htmlFor="editCatName">{t.category.name}</Label>
+          <Input
+            id="editCatName" value={editName}
+            placeholder={t.category.namePlaceholder}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label htmlFor="editCatDesc">{t.category.description}</Label>
+          <Input
+            id="editCatDesc" value={editDescription}
+            placeholder={t.category.descriptionPlaceholder}
+            onChange={(e) => setEditDescription(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <div className="flex items-center gap-2">
+            <Switch id="editCatIsActive" checked={editActive} onCheckedChange={setEditActive} />
+            <Label htmlFor="editCatIsActive">{t.category.editActive}</Label>
+          </div>
+          <FormText>{t.category.editActiveHelp}</FormText>
+        </FormGroup>
+        {editError ? <FormError>{editError}</FormError> : null}
       </Modal>
 
       <ConfirmModal

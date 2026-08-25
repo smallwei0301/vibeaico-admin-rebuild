@@ -23,9 +23,12 @@ import { FEATURE_CATALOG } from '@/config/features';
  * `reporter = 'system'`（使用者回報一律是登入者 email）、
  * `category = 'SYSTEM_RESTORE_SIDE_EFFECT'`（使用者回報的類別來自 modal 下拉選單）。
  *
- * 寫入本身也可能失敗，所以整段 try/catch 吞錯並 log——但**畫面上不會宣稱
- * 「已通知平台」**（見 feature-store.ts messages.restoreSideEffectFailed 的註解）：
- * 沒有把握的事就不說，這正是本專案反覆栽過的「捏造的已知」。
+ * 寫入本身也可能失敗，所以整段 try/catch 吞錯並 log——但**回傳值必須說實話**：
+ * 成功才回 `true`，失敗回 `false`，呼叫端據此填 `platformNotified`，畫面再據此
+ * 決定敢不敢說「已自動記錄」。這一段刻意不 `return true` 了事：這整件事本來就是
+ * 在清「宣稱一個沒量到的狀態」，實作若無條件回 true，就是在同一個地方再犯一次。
+ *
+ * @returns `bug_reports` 這筆 insert 是否真的成功（`error === null` 且沒拋錯）
  */
 async function recordPlatformIssue(
   admin: ReturnType<typeof createAdminSupabase>,
@@ -33,7 +36,7 @@ async function recordPlatformIssue(
   reporterEmail: string,
   code: string,
   cause: unknown,
-): Promise<void> {
+): Promise<boolean> {
   try {
     /*
      * Supabase 丟出來的是 PostgrestError（普通物件，不是 Error 實例），
@@ -60,8 +63,10 @@ async function recordPlatformIssue(
       page_url: '/tenant/feature-store',
     });
     if (error) throw error;
+    return true;
   } catch (e) {
     console.error('[feature-store] 無法寫入平台待處理紀錄（bug_reports）', code, e);
+    return false;
   }
 }
 
@@ -134,8 +139,14 @@ export const POST = handle(async (_req, { params }) => {
       // 還原失敗不可讓恢復失敗（09 分冊 §6）；前端已有對應警示文案
       console.error('[feature-store] restore side effect failed', code, e);
       // 平台端待處理紀錄：這個失敗店家自己修不好，沒人知道就沒人處理（見上方註解）
-      await recordPlatformIssue(admin, t.tenantId, t.user.email ?? '', code, e);
-      return ok({ restoreSideEffectFailed: true });
+      const platformNotified =
+        await recordPlatformIssue(admin, t.tenantId, t.user.email ?? '', code, e);
+      /*
+       * platformNotified 照實回傳，**不是無條件 true**：紀錄寫成功畫面才可以說
+       * 「已自動記錄」，寫失敗就得叫店家聯絡客服。這個旗標本身若說謊，就是把
+       * 「捏造的已知」從文案搬到了 API——同一個錯換個地方犯。
+       */
+      return ok({ restoreSideEffectFailed: true, platformNotified });
     }
   }
 
