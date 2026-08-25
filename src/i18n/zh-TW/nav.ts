@@ -1,3 +1,5 @@
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+
 /**
  * 側邊欄導航文案（zh-TW）
  * 鍵對應 src/config/nav.ts 的 key。換語系只需新增同結構的檔案。
@@ -72,3 +74,41 @@ export const navByMode: Partial<Record<string, Partial<Record<NavKey, string>>>>
 /** 取得某個業態模式下的選單文案 */
 export const navLabel = (key: NavKey, businessType = 'LOCAL_SHOP'): string =>
   navByMode[businessType]?.[key] ?? nav[key];
+
+/* -------------------------------------------------------------------------- */
+/* 父層級「目錄／訂單」的名稱（14 分冊 §8.13）                                    */
+/* -------------------------------------------------------------------------- */
+/*
+ * 「服務項目」與「預約管理」是**父層級概念**，三種模式各有自己的子層級：
+ *   目錄  LOCAL_SHOP 服務項目 / GUIDE 行程與方案 / CLINIC 診療項目
+ *   訂單  LOCAL_SHOP 預約列表 / GUIDE 旅遊訂單   / CLINIC 預約列表
+ *
+ * 跨頁文案提到目錄或訂單時**一律**呼叫下面兩個函式，不得寫死「服務項目」
+ * 「預約管理」——嚮導的選單裡沒有那兩頁，寫死等於叫他去一個不存在的地方。
+ * 由 tests/unit/mode-links.test.ts 的靜態鎖把關。
+ */
+
+/** 這個模式的「目錄」叫什麼（賣什麼） */
+export const catalogLabel = (businessType: BusinessType = 'LOCAL_SHOP'): string =>
+  navLabel(MODE_PRESETS[businessType].catalogNavKey, businessType);
+
+/** 這個模式的「訂單」叫什麼（誰買了） */
+export const ordersLabel = (businessType: BusinessType = 'LOCAL_SHOP'): string =>
+  navLabel(MODE_PRESETS[businessType].ordersNavKey, businessType);
+
+/**
+ * 文案裡的名詞佔位符解析。
+ *
+ * i18n 檔把跨頁引用寫成 `{catalog}` / `{orders}` / `{navBooking}`，頁面在
+ * **render 期**用當下的 businessType 呼叫本函式展開。之所以不在 i18n 檔直接算，
+ * 是因為 i18n 是模組層常數——模組求值早於 AppShell 決定模式，先算會凍住錯的模式
+ * （CLAUDE.md「mode-aware mock data」同一個陷阱）。
+ */
+export const resolveNavTerms = (
+  text: string,
+  businessType: BusinessType = 'LOCAL_SHOP',
+): string =>
+  text
+    .replace(/\{catalog\}/g, catalogLabel(businessType))
+    .replace(/\{orders\}/g, ordersLabel(businessType))
+    .replace(/\{navBooking\}/g, navLabel('navBooking', businessType));

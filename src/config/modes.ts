@@ -26,6 +26,14 @@ export type ModePreset = {
   /** 「收的單」槽位 */
   ordersHref: string;
   /**
+   * 「賣的東西」在側邊欄的 leaf key —— 跨頁文案要**怎麼稱呼**目錄，一律由這裡
+   * 推導（`catalogLabel()` in `src/i18n/zh-TW/nav.ts`），不准在文案裡寫死
+   * 「服務項目」。見 14 分冊 §8.13 規則 2。
+   */
+  catalogNavKey: 'services' | 'trips';
+  /** 「收的單」在側邊欄的 leaf key —— 同上，用 `ordersLabel()` 取名稱 */
+  ordersNavKey: 'bookings' | 'tour_orders';
+  /**
    * 這個模式**不顯示**的側邊欄葉節點 key（config/nav.ts 的 leaf key）。
    * 資料不會被刪，只是不顯示 —— 換回模式即可再看到。
    */
@@ -56,6 +64,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     icon: Store,
     catalogHref: '/tenant/services',
     ordersHref: '/tenant/bookings',
+    catalogNavKey: 'services',
+    ordersNavKey: 'bookings',
     hiddenNavKeys: ['trips', 'tour_orders', 'clinic_queue'],
     grantedFeatures: [],
     staffTerm: '服務人員',
@@ -74,6 +84,8 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     icon: Compass,
     catalogHref: '/tenant/trips',
     ordersHref: '/tenant/tour-orders',
+    catalogNavKey: 'trips',
+    ordersNavKey: 'tour_orders',
     // 嚮導不需要「時段×員工」那一套
     hiddenNavKeys: [
       'services', 'bookings', 'recurring_bookings',
@@ -97,6 +109,10 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     icon: Hospital,
     catalogHref: '/tenant/services',
     ordersHref: '/tenant/bookings',
+    // CLINIC 的子層級尚未設計（14 分冊 §8.13 規則 4），暫借 LOCAL_SHOP 的頁面，
+    // 只由 nav.ts 的 navByMode.CLINIC 換掉標籤（services → '診療項目'）。
+    catalogNavKey: 'services',
+    ordersNavKey: 'bookings',
     hiddenNavKeys: ['trips', 'tour_orders', 'portfolio'],
     grantedFeatures: [],
     staffTerm: '醫師',

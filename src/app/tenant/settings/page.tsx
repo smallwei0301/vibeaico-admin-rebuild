@@ -23,7 +23,8 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { settingsPage as t } from '@/i18n/zh-TW/pages/settings';
 
 /* -------------------------------------------------------------------------- */
@@ -85,6 +86,8 @@ const nonEmptyLines = (text: string): string[] =>
 /* -------------------------------------------------------------------------- */
 
 export default function SettingsPage() {
+  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
+  const businessType = useBusinessType();
   const toast = useToast();
 
   const [tab, setTab] = React.useState<TabKey>('basic');
@@ -983,7 +986,7 @@ export default function SettingsPage() {
                     <>
                       <div>{t.notification.staffMandatoryHelp}</div>
                       <div>{t.notification.staffMandatoryOffHint}</div>
-                      <div>{t.notification.staffMandatoryNotice}</div>
+                      <div>{resolveNavTerms(t.notification.staffMandatoryNotice, businessType)}</div>
                     </>
                   }
                   checked={draft.business.staffSelectionMandatory}

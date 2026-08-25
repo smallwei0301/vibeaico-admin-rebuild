@@ -26,7 +26,9 @@ import {
 import { listCustomers } from '@/services/customers';
 import { listBookings } from '@/services/bookings';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { navLabel } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
 import { productOrdersPage as t } from '@/i18n/zh-TW/pages/product-orders';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type { Booking, Customer, Product, ProductOrder, ProductOrderStatus, Staff } from '@/lib/types';
@@ -143,6 +145,7 @@ type PendingAction =
   | { kind: 'CANCEL'; order: OrderRow };
 
 export default function ProductOrdersPage() {
+  const businessType = useBusinessType();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<OrderRow[]>([]);
@@ -377,7 +380,7 @@ export default function ProductOrdersPage() {
   return (
     <>
       <PageHeader
-        eyebrow={nav.navOperation}
+        eyebrow={navLabel('navOperation', businessType)}
         title={t.title}
         actions={
           <Button onClick={() => setManualOpen(true)}>
@@ -511,6 +514,12 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose: () => void }) {
+  /**
+   * 「來源預約」連到父層級的訂單頁（14 分冊 §8.13）——嚮導的 /tenant/bookings
+   * 在他的 hiddenNavKeys 裡，寫死會把他導去自己選單中不存在的頁面。
+   */
+  const detailBusinessType = useBusinessType();
+  const ordersHref = MODE_PRESETS[detailBusinessType].ordersHref;
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
@@ -536,7 +545,7 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
         <>
           {order.fromBooking ? (
             <Alert tone="info" className="mb-3">
-              <Link className="underline" href="/tenant/bookings">{t.labels.fromBooking}</Link>
+              <Link className="underline" href={ordersHref}>{t.labels.fromBooking}</Link>
             </Alert>
           ) : null}
 
@@ -590,7 +599,7 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
             </DetailRow>
             <DetailRow label={f.relatedBooking}>
               {order.bookingId
-                ? <Link className="underline" href="/tenant/bookings">{order.bookingId}</Link>
+                ? <Link className="underline" href={ordersHref}>{order.bookingId}</Link>
                 : <span className="text-muted">{t.labels.none}</span>}
             </DetailRow>
             <DetailRow label={f.taxId}>

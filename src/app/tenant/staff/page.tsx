@@ -23,7 +23,8 @@ import {
 } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { staffPage as t } from '@/i18n/zh-TW/pages/staff';
 import { formatDate, formatNumber } from '@/lib/utils';
 import type { Service, Staff } from '@/lib/types';
@@ -491,6 +492,8 @@ function StaffFormModal({
   onClose: () => void;
   onSaved: (draft: StaffRow, isEdit: boolean) => void;
 }) {
+  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
+  const businessType = useBusinessType();
   const toast = useToast();
   const isEdit = !!staff;
 
@@ -672,7 +675,7 @@ function StaffFormModal({
         {/* ------------------------------------------------ 可承接的服務項目 */}
         <FormGroup>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <Label className="mb-0">{t.form.services}</Label>
+            <Label className="mb-0">{resolveNavTerms(t.form.services, businessType)}</Label>
             <div className="btn-group">
               <Button
                 variant="outline" size="sm"
@@ -701,7 +704,7 @@ function StaffFormModal({
               </label>
             ))}
           </div>
-          <FormText>{t.form.servicesHelp}</FormText>
+          <FormText>{resolveNavTerms(t.form.servicesHelp, businessType)}</FormText>
         </FormGroup>
 
         <label className="mb-2 flex items-center gap-2 text-base">
@@ -732,7 +735,7 @@ function StaffFormModal({
 
       <ConfirmModal
         open={!!confirmService}
-        title={t.form.services}
+        title={resolveNavTerms(t.form.services, businessType)}
         message={confirmService ? t.form.unlinkAllStaffConfirm(confirmService.name) : common.confirm.message}
         onClose={() => setConfirmService(null)}
         onConfirm={() => {

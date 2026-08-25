@@ -1,4 +1,5 @@
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import type { BusinessType } from '@/config/modes';
 import type { SetupStatus } from '@/lib/types';
 
 type SetupStepKey = SetupStatus['steps'][number]['key'];
@@ -19,7 +20,8 @@ export const dashboardPage = {
     step1Badge: '1',
     step2Badge: '2',
     /** 原站步驟標題由 JS 動態產生，spec 未收錄，依按鈕語意重建 */
-    step1Title: '確認服務項目與價格',
+    /** `{catalog}` 由頁面在 render 期依當下模式展開（14 分冊 §8.13） */
+    step1Title: '確認{catalog}與價格',
     step1Action: '去修改',
     step2Title: '複製預約網址，分享給顧客',
     step2Locked: '先完成第 1 步',
@@ -39,7 +41,7 @@ export const dashboardPage = {
     steps: {
       SHOP_INFO: '完善店家資訊',
       STAFF: '設定員工資料',
-      SERVICE: '設定服務項目',
+      SERVICE: '設定{catalog}',
       BUSINESS_HOURS: '設定營業時間',
       LINE_BOT: '連接 LINE Bot',
     },
@@ -51,12 +53,15 @@ export const dashboardPage = {
    * 設定步驟的**業態別**用字（同 nav.ts 的 navLabel 慣例）。
    *
    * 上面的 steps 是共用預設值；嚮導的目錄是行程而不是服務項目，員工是嚮導，
-   * 沿用預設會叫他去「設定服務項目」——那一頁在嚮導模式的選單裡根本不存在。
-   * 只列出需要覆寫的鍵，其餘 fallback 回 steps。
+   * 沿用預設會叫他去一個他選單裡根本不存在的頁面。
+   *
+   * 目錄名稱本身已改用 `{catalog}` 佔位符（setupStepLabel 會展開成該模式的
+   * 目錄名：LOCAL_SHOP 服務項目／GUIDE 行程與方案／CLINIC 診療項目），因此
+   * 這裡只列**展開後仍不對**的鍵——例如診所的步驟叫「設定看診項目」而非
+   * 「設定診療項目」。其餘 fallback 回 steps。
    */
   stepOverrides: {
     GUIDE: {
-      SERVICE: '設定行程與方案',
       STAFF: '設定嚮導資料',
     },
     CLINIC: {
@@ -155,13 +160,14 @@ export const dashboardPage = {
   /* -------------------------------------------------------------- 快速操作 */
   quickActions: {
     title: '快速操作',
-    /** 原站 6 顆按鈕由樣板迴圈產生，spec 未逐字收錄；此處取用側邊欄既有文案 */
-    newBooking: nav.bookings,
-    calendar: nav.calendar,
-    customers: nav.customers,
-    services: nav.services,
-    marketing: nav.marketing,
-    settings: nav.settings,
+    /*
+     * 原站 6 顆按鈕由樣板迴圈產生，spec 未逐字收錄；文案取用側邊欄既有文案。
+     *
+     * ⚠️ 這裡原本是 `newBooking: nav.bookings` 等 6 個模組層常數，取的是
+     * LOCAL_SHOP 的字面值，嚮導看到的仍是「預約列表」「服務項目」。已改由頁面
+     * 在 render 期呼叫 `navLabel/catalogLabel/ordersLabel(businessType)` 取得
+     * （見 dashboard/page.tsx 的 buildQuickActions）。
+     */
   },
 
   /* ---------------------------------------------------------- 公開預約網址 */
@@ -296,6 +302,7 @@ export const dashboardPage = {
  * 與 nav.ts 的 navLabel(key, businessType) 同一套慣例。
  */
 export function setupStepLabel(key: SetupStepKey, businessType?: string): string {
-  return (businessType && dashboardPage.stepOverrides[businessType]?.[key])
+  const raw = (businessType && dashboardPage.stepOverrides[businessType]?.[key])
     ?? dashboardPage.setup.steps[key];
+  return resolveNavTerms(raw, businessType as BusinessType | undefined);
 }

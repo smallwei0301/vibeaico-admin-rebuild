@@ -21,13 +21,15 @@ import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/se
 import { clearDemoData, getDemoDataStatus } from '@/services/demo-data';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { byMode } from '@/mock';
 import { isDemoMode } from '@/lib/api';
 import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
+import { catalogLabel, navLabel, ordersLabel, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { dashboardPage as t, setupStepLabel } from '@/i18n/zh-TW/pages/dashboard';
 import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
@@ -145,14 +147,26 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
   NO_SHOW: 'danger',
 };
 
-const QUICK_ACTIONS = [
-  { key: 'newBooking', href: '/tenant/bookings', icon: CalendarCheck },
-  { key: 'calendar', href: '/tenant/calendar', icon: CalendarDays },
-  { key: 'customers', href: '/tenant/customers', icon: Users },
-  { key: 'services', href: '/tenant/services', icon: Layers },
-  { key: 'marketing', href: '/tenant/marketing', icon: Megaphone },
-  { key: 'settings', href: '/tenant/settings', icon: Settings },
-] as const;
+/**
+ * 快速操作六格。
+ *
+ * ⚠️ 這裡原本是模組層的 `const QUICK_ACTIONS`，把 `/tenant/bookings` 與
+ * `/tenant/services` 寫死——那兩頁在嚮導的 `hiddenNavKeys` 裡，按下去會進到他
+ * 選單中根本不存在的頁面（14 分冊 §8.13）。而且模組層 const 在 AppShell 決定
+ * 模式**之前**就求值，就算改讀 preset 也會凍住錯的模式（CLAUDE.md 的模組層陷阱）。
+ * 因此改成函式，由頁面在 render 期帶著當下的 businessType 呼叫。
+ */
+function buildQuickActions(businessType: BusinessType) {
+  const preset = MODE_PRESETS[businessType];
+  return [
+    { key: 'newBooking', href: preset.ordersHref, label: ordersLabel(businessType), icon: CalendarCheck },
+    { key: 'calendar', href: '/tenant/calendar', label: navLabel('calendar', businessType), icon: CalendarDays },
+    { key: 'customers', href: '/tenant/customers', label: navLabel('customers', businessType), icon: Users },
+    { key: 'services', href: preset.catalogHref, label: catalogLabel(businessType), icon: Layers },
+    { key: 'marketing', href: '/tenant/marketing', label: navLabel('marketing', businessType), icon: Megaphone },
+    { key: 'settings', href: '/tenant/settings', label: navLabel('settings', businessType), icon: Settings },
+  ] as const;
+}
 
 /** 統計卡在資料載入前的佔位符（原站 DOM 即為「-」） */
 const PLACEHOLDER = '-';
@@ -166,6 +180,14 @@ const daysUntil = (isoDate: string) =>
 
 export default function DashboardPage() {
   const currentTenant = useCurrentTenant();
+  /**
+   * 「目錄／訂單」是父層級概念，三種模式各指向自己的子層級頁面（14 分冊 §8.13）。
+   * 這兩個值只能在 render 期取——模組層取會凍住錯的模式。
+   */
+  const businessType = useBusinessType();
+  const catalogHref = MODE_PRESETS[businessType].catalogHref;
+  const ordersHref = MODE_PRESETS[businessType].ordersHref;
+  const quickActions = buildQuickActions(businessType);
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
 
@@ -421,8 +443,8 @@ export default function DashboardPage() {
             <ol className="flex flex-col gap-3">
               <li className="flex flex-wrap items-center gap-3 rounded-lg bg-primary-deep p-3">
                 <Badge tone="neutral">{t.focus.step1Badge}</Badge>
-                <span className="flex-1 text-base font-semibold">{t.focus.step1Title}</span>
-                <Link href="/tenant/services" className="btn btn-secondary text-primary">
+                <span className="flex-1 text-base font-semibold">{resolveNavTerms(t.focus.step1Title, businessType)}</span>
+                <Link href={catalogHref} className="btn btn-secondary text-primary">
                   {t.focus.step1Action}
                 </Link>
               </li>
@@ -613,7 +635,7 @@ export default function DashboardPage() {
 
       {/* -------------------------------------------------------------- 統計卡 */}
       <div className="mb-4 grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-5">
-        <Link href="/tenant/bookings" className="no-underline">
+        <Link href={ordersHref} className="no-underline">
           <StatCard
             label={t.stats.todayBookings}
             value={stats ? formatNumber(stats.todayBookings) : PLACEHOLDER}
@@ -621,7 +643,7 @@ export default function DashboardPage() {
             tone="primary"
           />
         </Link>
-        <Link href="/tenant/bookings?status=PENDING" className="no-underline">
+        <Link href={`${ordersHref}?status=PENDING`} className="no-underline">
           <StatCard
             label={t.stats.pendingBookings}
             value={stats ? formatNumber(stats.pendingBookings) : PLACEHOLDER}
@@ -700,7 +722,7 @@ export default function DashboardPage() {
               </p>
             </div>
             <Link
-              href="/tenant/bookings?status=UNPROCESSED"
+              href={`${ordersHref}?status=UNPROCESSED`}
               className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap"
             >
               {t.alertCards.unprocessedBookings.action}
@@ -747,14 +769,14 @@ export default function DashboardPage() {
             {t.quickActions.title}
           </h2>
           <div className="grid gap-2 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-            {QUICK_ACTIONS.map(({ key, href, icon: Icon }) => (
+            {quickActions.map(({ key, href, label, icon: Icon }) => (
               <Link
                 key={key}
                 href={href}
                 className="flex flex-col items-center gap-2 rounded-lg bg-neutral-50 px-3 py-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
               >
                 <Icon size={20} className="text-primary" />
-                {t.quickActions[key]}
+                {label}
               </Link>
             ))}
           </div>
@@ -796,7 +818,7 @@ export default function DashboardPage() {
               {t.todayBookings.title}
               <span className="form-text">{t.todayBookings.count(todayRows.length)}</span>
             </CardTitle>
-            <Link href="/tenant/bookings" className="btn btn-primary btn-sm">
+            <Link href={ordersHref} className="btn btn-primary btn-sm">
               {t.todayBookings.viewAll}
             </Link>
           </CardHeader>

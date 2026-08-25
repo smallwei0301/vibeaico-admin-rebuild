@@ -98,11 +98,12 @@ export const staffPage = {
     bioMax: 500,
     maxConcurrentBookings: '同時段最大預約數',
     maxConcurrentBookingsHelp: '此員工同一時段可同時接待的預約數量（預設 1）',
-    services: '可承接的服務項目',
+    /** `{catalog}` 由頁面在 render 期展開：嚮導的員工承接的是行程與方案 */
+    services: '可承接的{catalog}',
     servicesSelectAll: '全選',
     servicesClear: '清除',
     servicesHelp:
-      '與「服務項目 → 可承接的服務人員」是同一份設定。標「全員可做」的服務目前未限制人員——取消勾選會把它改成「指定名單」（新進員工不再自動涵蓋）。',
+      '與「{catalog} → 可承接的服務人員」是同一份設定。標「全員可做」的服務目前未限制人員——取消勾選會把它改成「指定名單」（新進員工不再自動涵蓋）。',
     /** 取消勾選「全員可做」服務時的二次確認 */
     unlinkAllStaffConfirm: (serviceName: string) =>
       `「${serviceName}」原為全員可做；取消勾選後將改為「指定名單」（其餘人員保留、新進人員不再自動涵蓋）。確定嗎？`,

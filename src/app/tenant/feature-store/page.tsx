@@ -21,7 +21,8 @@ import {
   FEATURE_CATALOG, FEATURE_CODES, type FeatureCode, type FeatureSubscription,
 } from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { featureStorePage as t } from '@/i18n/zh-TW/pages/feature-store';
 import { formatDate, formatNumber } from '@/lib/utils';
 
@@ -61,6 +62,25 @@ const CATEGORY_KEYS = Object.keys(t.filters) as (keyof typeof t.filters)[];
 type PendingKind = 'cancel' | 'restore';
 
 export default function FeatureStorePage() {
+  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
+  const businessType = useBusinessType();
+  /**
+   * 功能文案裡的 `{catalog}` / `{orders}` / `{navBooking}` 佔位符展開成當下模式的
+   * 稱呼。必須在 render 期做——i18n 是模組層常數，先算會凍住錯的模式。
+   */
+  const featureCopy = (key: keyof typeof t.features) => {
+    const c = t.features[key];
+    const r = (line: string) => resolveNavTerms(line, businessType);
+    return {
+      ...c,
+      name: r(c.name),
+      summary: r(c.summary),
+      where: r(c.where),
+      lineWhere: r(c.lineWhere),
+      before: c.before.map(r),
+      after: c.after.map(r),
+    };
+  };
   const toast = useToast();
 
   const [subs, setSubs] = React.useState<FeatureSubscription[]>([]);
@@ -170,8 +190,8 @@ export default function FeatureStorePage() {
       setBalance(current - need);
       toast.show(
         active
-          ? t.messages.renewed(t.features[item.key].name, months)
-          : t.messages.activated(t.features[item.key].name),
+          ? t.messages.renewed(featureCopy(item.key).name, months)
+          : t.messages.activated(featureCopy(item.key).name),
       );
       void load();
     } catch (e) {
@@ -193,7 +213,7 @@ export default function FeatureStorePage() {
   const runPending = async () => {
     if (!pending) return;
     const { kind, item } = pending;
-    const name = t.features[item.key].name;
+    const name = featureCopy(item.key).name;
     const sub = subOf(item);
     setWorking(true);
     try {
@@ -256,7 +276,7 @@ export default function FeatureStorePage() {
   /* -------------------------------------------------------------- 卡片 */
 
   const renderCard = (item: CatalogItem) => {
-    const copy = t.features[item.key];
+    const copy = featureCopy(item.key);
     const sub = subOf(item);
     const active = isActive(item);
     const cancelled = CANCELLED_FEATURE_KEYS.has(item.key) && active;
@@ -377,8 +397,8 @@ export default function FeatureStorePage() {
     );
   };
 
-  const subscribeCopy = subscribeTarget ? t.features[subscribeTarget.key] : null;
-  const shortCopy = shortOf ? t.features[shortOf.item.key] : null;
+  const subscribeCopy = subscribeTarget ? featureCopy(subscribeTarget.key) : null;
+  const shortCopy = shortOf ? featureCopy(shortOf.item.key) : null;
   const needPoints = shortOf ? shortOf.item.price * shortOf.months : 0;
   const shortage = Math.max(0, needPoints - (balance ?? 0));
 
@@ -577,14 +597,14 @@ export default function FeatureStorePage() {
           !pending ? common.confirm.message
             : pending.kind === 'cancel' ? (
               <span className="whitespace-pre-wrap">
-                {t.confirm.cancel(t.features[pending.item.key].name)}
+                {t.confirm.cancel(featureCopy(pending.item.key).name)}
                 {subOf(pending.item)?.expiresAt
                   ? t.confirm.cancelKeepUntilExpiry
                   : t.confirm.cancelImmediately}
               </span>
             ) : (
               <span className="whitespace-pre-wrap">
-                {t.confirm.restore(t.features[pending.item.key].name)}
+                {t.confirm.restore(featureCopy(pending.item.key).name)}
               </span>
             )
         }
