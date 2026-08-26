@@ -14,9 +14,9 @@
 | 項目 | 值 |
 |---|---|
 | 開發分支 | `claude/deploy-vercel-project-nnno59`（**所有工作都在這裡，`main` 落後很多**） |
-| 本輪 commit 數 | 95（2026-08-25 ~ 08-26） |
-| 單元測試 | **56 檔 / 864 例全綠** |
-| 整合測試 | 最近一次全量 **49 檔 / 486 例全綠**（在 #8／#19 合併**之前**跑的，見 §5 的警告） |
+| 本輪 commit 數 | 110（2026-08-25 ~ 08-26） |
+| 單元測試 | **56 檔 / 867 例全綠** |
+| 整合測試 | **58 檔 / 677 例全綠**（`exit=0`，於最終 HEAD `ffd1ae0` 上跑完，**已涵蓋 #8／#19／#33**） |
 | typecheck / build | 皆綠 |
 | migration | 已到 `0026`，**全部已套用 TEST 與正式兩個專案並逐一查表驗證** |
 | Vercel | 分支 preview 自動部署，每次 push 約 1 分鐘後 READY |
@@ -104,22 +104,33 @@ npx vitest run tests/unit/   # 應為 56 檔 864 例全綠
 
 ## 5. ⚠️ 接手後**必須先做**的三件事
 
-### 5.1 跑一次全量整合測試，並用 CI 產生獨立證據
+### 5.1 CI 的獨立整合證據：**只有擁有者能觸發**（主導者被 403 擋下）
 
-最近一次全量是在 **#8／#19 合併之前**跑的（49 檔 486 例）。這兩個 issue 各加了
-14 支與 11 支端點，**合併後的全量還沒有人跑過**。
+**本機全量已經跑完了**：最終 HEAD `ffd1ae0` 上 **58 檔 / 677 例全綠**（`exit=0`），
+已涵蓋 #8／#19／#33 三批新端點。**所以「跑一次全量」這件事不用再做。**
 
-```bash
-npm run test:integration       # 約 21 分鐘
+但那份輸出的性質是「**主導者手動跑的、由跑的人自己保證**」。各 issue 驗收裡
+「`test:integration` 全綠」那一格要的是**任何人都點得進去看**的證據，也就是 CI。
+
+主導者嘗試觸發時被擋：
+
+```
+POST /actions/workflows/ci.yml/dispatches
+→ 403 Resource not accessible by integration
 ```
 
-然後**手動觸發一次 CI**（`workflow_dispatch`）產生任何人都點得進去看的證據：
-`integration` job 的觸發條件已加上 `workflow_dispatch`（commit `70dbe8d`）。
+這個 GitHub App 沒有 `Actions: write` 權限，**只有擁有者（或有寫入權限的人）能觸發**。
 
-> 為什麼要 CI：各 issue 的「`test:integration` 全綠」那一格，目前的證據都是
-> 「主導者手動跑的輸出」——**由跑的人自己保證**。CI 的輸出才是獨立的。
-> 開發分支的 push **刻意不自動跑** integration（它會 wipe 共用的 TEST 專案，
-> 而本機同時可能有 agent 在跑同一套，兩邊互相清資料）。
+**擁有者要做的（約 30 秒）**：GitHub → Actions → 選 `ci` workflow →
+右上角 **Run workflow** → branch 選 `claude/deploy-vercel-project-nnno59` → 執行。
+
+`integration` job 的 `if` 已經包含 `workflow_dispatch`（commit `70dbe8d`），所以
+手動觸發**會**跑整合測試（開發分支的一般 push 則刻意只跑 `check`——整合測試會
+wipe 共用的 TEST 專案，自動跑會與本機工作互相清資料）。
+
+⚠️ 跑之前確認**沒有人在本機跑整合測試**，兩邊會互相清掉對方的資料。
+
+CI 綠了之後，各 issue 那一格就可以用 run 連結當證據補打勾。
 
 ### 5.2 決定 `#33` 那個未合併分支怎麼處理
 
