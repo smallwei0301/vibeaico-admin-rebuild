@@ -1943,7 +1943,7 @@ issue #7（甲）跑回歸時發現：`tests/integration/api/flex-menu.06.test.t
 補齊 §5 第 7 項：原站有一組「老闆通知」（`docs/specs/dashboard.json` 的 `jsApiCalls`
 四支路徑＋二十餘句 `jsStrings`），我方 `grep -rn "owner-notify|ownerNotify|通知名單|接收者" src/`
 零命中、06 分冊零記載。本輪補：**06 分冊 §5.5 契約**（先寫規格再開工）、
-migration **0022_owner_notify**（兩個 Supabase 專案皆已套用並以
+migration **0023_owner_notify**（兩個 Supabase 專案皆已套用並以
 `information_schema.columns` / `pg_indexes` / `pg_policies` 驗證）、四支端點、
 `src/server/owner-notify.ts`、`GET /api/cron/owner-reminders`、
 `src/services/settings.ts` 六支函式、儀表板名單 UI。

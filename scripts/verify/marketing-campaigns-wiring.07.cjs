@@ -29,7 +29,12 @@ const {
 } = require('./_preview-lib.cjs');
 
 const REF = process.env.SUPABASE_REF || process.env.SUPABASE_TEST_REF;
-const TENANT_A = 'a1000000-0000-4000-8000-000000000001';
+/*
+ * 直查／清理鎖定的租戶。預設是 TEST 專案的種子租戶 A；打**已部署的 Preview 站**
+ * 時它接的是正式專案，登入帳號的租戶 id 不一樣，用 VERIFY_TENANT_ID 覆寫。
+ * （原本寫死，導致腳本無法指向 Preview——是腳本的缺陷，斷言一字未動。）
+ */
+const TENANT_A = process.env.VERIFY_TENANT_ID || 'a1000000-0000-4000-8000-000000000001';
 
 /** 本腳本造出的資料一律帶這個前綴，收尾只刪自己的 */
 const TAG = '#7乙實測';

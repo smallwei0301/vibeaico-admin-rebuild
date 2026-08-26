@@ -86,7 +86,12 @@ async function startDevServer() {
 }
 
 function stopDevServer() {
-  if (devProc) { devProc.kill('SIGTERM'); devProc = null; }
+  // 指向外部站台（Preview）時本檔沒起過 dev server，就**不准**去動 .next——
+  // 那份開發快取是主 worktree 共用的，別人正開著 dev server 時刪掉會把他的
+  // vendor chunk 弄壞（15 分冊「實測腳本的兩條慣例」講的正是這個症狀）。
+  if (!devProc) return;
+  devProc.kill('SIGTERM');
+  devProc = null;
   fs.rmSync(path.join(REPO_ROOT, '.next'), { recursive: true, force: true });
 }
 

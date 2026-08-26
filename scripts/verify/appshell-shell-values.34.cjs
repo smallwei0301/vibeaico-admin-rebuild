@@ -200,7 +200,12 @@ async function main() {
   /* ------------------------------------------------ ① 載入中不得先顯示 0 */
   await page.route('**/api/bookings**', async (route) => {
     await new Promise((r) => setTimeout(r, BADGE_DELAY_MS));
-    await route.continue();
+    /*
+     * 延遲期間頁面可能已經導走，此時該 route 已被 Playwright 自行處理，
+     * 再 continue() 會丟 "Route is already handled!" 並炸掉整支腳本。
+     * 那是本腳本的競態，不是受測站台的行為——吞掉即可（斷言不受影響）。
+     */
+    await route.continue().catch(() => {});
   });
   await page.goto(`${BASE}/tenant/bookings`, { waitUntil: 'domcontentloaded' });
   const placeholderVisible = await page.locator('[role="status"]').first()
@@ -268,6 +273,17 @@ async function main() {
   /* -------------------------------------------- ③ 開店進度 vs DB 自算百分比 */
   await page.goto(`${BASE}/tenant/dashboard`, { waitUntil: 'domcontentloaded' });
   await waitBadgesResolved(page);
+  /*
+   * 設定進度是另一支 fetch（/api/settings/setup-status），比徽章慢。
+   * 還在查的時候 Topbar 顯示的是「-- 設定進度 尚未取得」（未知態，issue #34 要的
+   * 就是這個），此時去讀等於量到載入中的畫面。等它離開未知態再讀——
+   * **只等它從「還不知道」變成「知道了」，不等它變成某個期望值**，
+   * 逾時就照樣往下斷言，讓紅燈是真的紅燈。
+   */
+  await page.locator('header.topbar')
+    .filter({ hasNot: page.locator('text=尚未取得') })
+    .waitFor({ state: 'visible', timeout: 30000 })
+    .catch(() => {});
   const setup = await expectedSetupPercent(tenantId);
   const topbarText = (await page.locator('header.topbar').innerText()).replace(/\s+/g, ' ');
   const shownPercent = (topbarText.match(/(\d+)%/) || [])[1];

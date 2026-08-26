@@ -35,9 +35,16 @@ const {
   BASE, OUT_DIR, required, check, summary, shot, gotoStable, launch, login, readToast, sql,
 } = require('./_preview-lib.cjs');
 
-/** 本腳本跑的是 TEST 專案（dev server 接的是它），不是 _preview-lib 預設的正式專案 */
+/** 本腳本預設跑 TEST 專案（dev server 接的是它）；打 Preview 站時改帶正式專案的 ref */
 const REF = process.env.SUPABASE_REF || process.env.SUPABASE_TEST_REF;
-const TENANT_A = 'a1000000-0000-4000-8000-000000000001';
+/*
+ * 直查鎖定的租戶。預設是 TEST 專案的種子租戶 A；打**已部署的 Preview 站**時它接的是
+ * 正式專案，登入帳號的租戶 id 不一樣，用 VERIFY_TENANT_ID 覆寫。
+ * （原本寫死，導致腳本無法指向 Preview——是腳本的缺陷，斷言一字未動。）
+ */
+const TENANT_A = process.env.VERIFY_TENANT_ID || 'a1000000-0000-4000-8000-000000000001';
+/** 設 VERIFY_NO_CLEANUP=1 可保留現場除錯；預設一律清乾淨 */
+const CLEANUP = process.env.VERIFY_NO_CLEANUP !== '1';
 
 /** 2×2 PNG，四個像素顏色各異（與整合測試同一張，方便交叉比對） */
 const BG_PNG = Buffer.from(
@@ -53,6 +60,10 @@ const BG_PNG = Buffer.from(
   const email = required('TEST_EMAIL');
   const password = required('TEST_PASSWORD');
 
+  /** 收尾要還原的東西（打正式專案時是店家真實資料，不能留下痕跡） */
+  let restoreBg = null;
+  let uploadedObject = null;
+
   const fixture = path.join(OUT_DIR, 'rich-menu-bg-fixture.png');
   fs.writeFileSync(fixture, BG_PNG);
 
@@ -64,6 +75,15 @@ const BG_PNG = Buffer.from(
     await login(page, email, password);
 
     // ---- 起點：先把設定清空，才知道之後看到的值是這次上傳造成的 ----
+    // 打 Preview 站時動到的是**正式專案裡店家真實的設定**，所以先記下原值，
+    // 收尾一定要放回去（見本檔結尾的 finally）。
+    const [{ bg: originalBg = null } = {}] = await sql(
+      `select line->>'richMenuBgImageUrl' as bg from tenant_settings
+       where tenant_id = '${TENANT_A}';`,
+      REF,
+    );
+    restoreBg = originalBg;
+    console.log(`  起點：原本的 richMenuBgImageUrl = ${originalBg === null ? '(無此鍵)' : originalBg || '(空字串)'}`);
     await sql(
       `update tenant_settings set line = jsonb_set(coalesce(line,'{}'::jsonb),
          '{richMenuBgImageUrl}', '""'::jsonb) where tenant_id = '${TENANT_A}';`,
@@ -119,6 +139,7 @@ const BG_PNG = Buffer.from(
       REF,
     );
     const savedUrl = settings[0].bg || '';
+    uploadedObject = objects[0] && objects[0].name;
     check(
       'tenant_settings.line.richMenuBgImageUrl 真的被寫入（發布才用得到）',
       savedUrl.includes(objects[0].name),
@@ -139,6 +160,42 @@ const BG_PNG = Buffer.from(
     await shot(page, 'richmenu-bg-99-error').catch(() => {});
   } finally {
     await browser.close();
+    /*
+     * 收尾：本腳本在正式專案上跑時，上面兩個副作用動到的是店家的真實資料
+     * （多一個 storage 物件、richMenuBgImageUrl 被覆寫），一定要還原並驗證。
+     * TEST 專案上跑則無害（reset-db 每次會清），還原一樣不會有副作用。
+     */
+    if (CLEANUP) {
+      if (uploadedObject) {
+        await sql(
+          `delete from storage.objects where bucket_id='richmenu-assets'
+           and name = '${uploadedObject.replace(/'/g, "''")}';`,
+          REF,
+        ).catch((e) => console.log(`  [清理失敗] 刪 storage 物件：${e.message}`));
+      }
+      await sql(
+        restoreBg === null
+          ? `update tenant_settings set line = coalesce(line,'{}'::jsonb) - 'richMenuBgImageUrl'
+             where tenant_id = '${TENANT_A}';`
+          : `update tenant_settings set line = jsonb_set(coalesce(line,'{}'::jsonb),
+               '{richMenuBgImageUrl}', to_jsonb('${String(restoreBg).replace(/'/g, "''")}'::text))
+             where tenant_id = '${TENANT_A}';`,
+        REF,
+      ).catch((e) => console.log(`  [清理失敗] 還原 richMenuBgImageUrl：${e.message}`));
+
+      const [left] = await sql(
+        `select count(*)::int as n from storage.objects
+         where bucket_id='richmenu-assets' and name = '${String(uploadedObject || '').replace(/'/g, "''")}';`,
+        REF,
+      ).catch(() => [{ n: -1 }]);
+      const [{ bg: nowBg = null } = {}] = await sql(
+        `select line->>'richMenuBgImageUrl' as bg from tenant_settings
+         where tenant_id = '${TENANT_A}';`,
+        REF,
+      ).catch(() => [{}]);
+      console.log(`  清理驗證：本次上傳的物件殘留 ${left.n} 筆；`
+        + `richMenuBgImageUrl 已還原為 ${nowBg === null ? '(無此鍵)' : nowBg || '(空字串)'}`);
+    }
   }
 
   const { fail } = summary();

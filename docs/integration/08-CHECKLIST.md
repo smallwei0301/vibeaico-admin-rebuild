@@ -182,7 +182,7 @@
 
 - [x] 【新增】老闆通知 owner-notify（issue #18 / 補齊-3；契約 06 分冊 §5.5，2026-08-26）
       **（打勾依據＝下列逐條證據；未達成的兩項寫在最後，沒有打勾。）**
-      - migration `0022_owner_notify` 已套用**兩個** Supabase 專案，各自以
+      - migration `0023_owner_notify` 已套用**兩個** Supabase 專案，各自以
         `information_schema.columns` / `pg_indexes` / `pg_policies` 查詢驗證
         （含「一租戶最多一位 `is_primary`」的部分唯一索引
         `u_owner_notify_recipients_primary … WHERE is_primary`，兩份輸出）
