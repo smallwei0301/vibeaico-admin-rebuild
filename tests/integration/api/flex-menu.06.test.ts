@@ -32,6 +32,7 @@ import { createHmac } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { LineMockServer, type RecordedLineRequest } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { encryptSecret } from '@/server/crypto';
 import { MAX_FLEX_CARDS, type FlexCard } from '@/config/tenant-settings';
@@ -82,6 +83,12 @@ async function lineCallsFor(text: string): Promise<RecordedLineRequest[]> {
     body: raw,
   });
   expect(res.status, `webhook 對「${text}」回了 ${res.status}`).toBe(200);
+  /*
+   * issue #31 之後 webhook 是「驗簽完立刻回 200、事件處理在 after() 裡跑」，
+   * 所以拿到 200 的當下 reply 還沒送到 mock LINE。少了這一行，本檔 38 案會紅 16 案。
+   * 用 route 自己的排空訊號等，不用 sleep 猜（理由見 tests/helpers/line-webhook.ts 檔頭）。
+   */
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
   return [...mock.requests];
 }
 
