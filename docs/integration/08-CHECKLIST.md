@@ -411,3 +411,118 @@
       ＋ 同檔 `:「畫面不得再說它「尚未生效」——功能已生效，那句話現在才是謊」`
       （⚠️ 該檔是一條**會隨事實翻面**的守門測試，本輪正是它翻面的時刻）
       ⚠️ Playwright 截圖未附（見上方留白說明）。
+## issue #33 ①〜⑤ — 三方對照剩餘 5 支無人認領端點（2026-08-26）
+
+> 第 ⑥ 筆 `/api/payment-methods/online-payment-meta` 已併入 #32，不在本輪範圍。
+> 契約見 `04-API-CONTRACTS.md` §A-1.2 / §B-4.1 / §B-6；盤點與裁決記錄見
+> `14-GAP-AUDIT.md` §14。
+
+**① `POST /api/product-orders/:id/apply-coupon`**
+
+- [x] 04 分冊補上契約（§B-4.1：request/response、六種錯誤碼、交易邊界、金額語意、
+      「適用範圍是我方選的」標註）
+- [x] 核銷邏輯只有一份：`src/server/coupon-redeem.ts`，三個呼叫端共用
+      （`redeem-by-code`／`bookings/:id/apply-coupon`／`product-orders/:id/apply-coupon`）
+      證據：`grep -rn "redeemed_at: new Date" src/` → **只有一行**
+      `src/server/coupon-redeem.ts:116`（＝全站只有一個地方會把票券標成已核銷；
+      `coupons/instances/:id/unredeem` 寫的是 `redeemed_at: null`，那是**取消**核銷，
+      不是同一件事）；
+      `tests/unit/product-order-coupon.33.test.ts:「核銷邏輯不是第三份拷貝：端點呼叫 src/server/coupon-redeem.ts 的共用函式」`
+- [x] 折抵金額由後端算並回傳
+      證據：`tests/integration/api/product-orders-coupon.33.test.ts:「AMOUNT 100：回應 couponDiscount=100，DB 的 total_amount / coupon_discount / redeemed_at 三者一致」`／
+      `:「PERCENT 10：折抵金額由後端依「目前應付金額」算（1000 → 900，折抵 100）」`／
+      `:「GIFT：只核銷不影響金額（couponDiscount = 0，total_amount 不動）」`／
+      `:「同一張訂單套第二張票券 → coupon_discount 累加、total_amount 再扣」`
+- [x] 四種拒絕情況各回對應錯誤碼且訂單金額不變
+      證據：同檔 `:「票券不存在 → 404 REQ_002，訂單金額前後相同」`／
+      `:「票券已核銷 → 409 REQ_003，訂單金額前後相同」`／
+      `:「票券已過期（coupons.end_at 在過去）→ 409 REQ_003，訂單金額不變且票券**沒有被核銷**」`／
+      `:「票券不屬於這張訂單的顧客 → 409 REQ_003，訂單金額不變且票券沒有被核銷」`／
+      `:「已完成的訂單不再接受套券 → 409 REQ_003（套券入口只出現在還沒完成的單）」`
+- [x] RLS：A 店的訂單不能用 B 店的票券
+      證據：同檔 `:「RLS：A 店的訂單不能用 B 店的票券（回 404，B 店的票券不會被核銷）」`／
+      `:「A 店的訂單，B 店的 owner 打不到（回 404，金額不變）」`
+- [x] 「套用票券成功但完成訂單失敗」符合分冊定案的兩段語意
+      證據：同檔 `:「兩段語意：套券成功之後「完成訂單」失敗，核銷仍然留著（原站 jsStrings[77]）」`
+- [x] `grep -n "withCoupon ? 100 : 0" src/` 輸出為空
+      證據：指令輸出為空；`tests/unit/product-order-coupon.33.test.ts:「原始碼不再出現 withCoupon ? 100 這種寫死折抵金額的三元運算」`
+- [x] 頁面接線靜態鏈路：`src/app/tenant/product-orders/page.tsx` `finish()`
+      → `src/services/products.ts` `applyProductOrderCoupon()`
+      → `POST /api/product-orders/:id/apply-coupon`
+      證據：`tests/unit/product-order-coupon.33.test.ts:「頁面 → service：finish() 呼叫 applyProductOrderCoupon(order.id, code)」`／
+      `:「service → 端點：applyProductOrderCoupon 打的是 /api/product-orders/:id/apply-coupon」`／
+      `:「finish() 裡出現的折抵金額只有一個來源：applyProductOrderCoupon 的回應」`；
+      整合測試檔＝`tests/integration/api/product-orders-coupon.33.test.ts`
+- [ ] Playwright 對 Preview 站實測 —— **留白**：本輪的指示是不 push，Preview 站上還沒有
+      這支端點。分支 push、Preview 重新部署之後才補得了（15 分冊「打 Preview 站補驗收時的三個坑」§坑 1：
+      「本機 next dev ＋ 正式專案」不滿足「對 Preview 站實測」的字面要求）
+
+**② `POST /api/settings/weekly-business-hours/draft` ＋自動封鎖鏈**
+
+- [x] 04 §A-1.2 補上契約，且**明寫「乾跑」是我方選定的語意、依據哪兩句、
+      反面證據是哪三句**（不得寫成考據結果）
+- [x] migration `0027_block_times_weekly_and_product_order_coupon.sql` 補齊
+      `title / recurrence / day_of_week / full_day / auto`，**兩個 Supabase 專案都套用並各自查詢驗證**
+      證據：`information_schema.columns` 兩份輸出（見本輪 issue 留言）
+- [x] `src/app/api/block-times/route.ts` 的 select 與回傳型別已含新欄位
+      證據：`tests/integration/api/business-hours-draft.33.test.ts:「GET /api/block-times 帶回 0027 的新欄位，且 WEEKLY 列不會被區間過濾掉」`
+- [x] 改逐日營業時間 → auto 封鎖被建立，筆數等於端點回報數（直查 DB 對照）
+      證據：同檔 `:「存逐日營業時間 → DB 的 auto 列筆數 === 回報的 autoBlockCreated，且欄位齊全」`
+- [x] **手動建立的封鎖一律不被刪除**
+      證據：同檔 `:「重建 auto 封鎖之後，兩筆手動封鎖都還在（前後直查同一列）」`／
+      `:「端點回報的 manualWeeklyBlockCount 與直查 DB 一致（且此刻非零）」`
+- [x] 衝突預約筆數與直查 DB 一致；零衝突時回 0 且頁面不顯示警告句
+      證據：同檔 `:「零衝突時回 0（沒有任何未來預約落在非營業時段）」`／
+      `:「塞一筆落在非營業時段的未來預約 → 回報數與直查 DB 一致（非零）」`／
+      `:「刪掉那筆預約 → 回報數剛好少 1（證明數字真的跟著資料動，不是常數）」`；
+      頁面端 `saveBusiness()` 的 `if (conflicts > 0)` 守門（`src/app/tenant/settings/page.tsx`）
+- [x] 再次修改逐日時間時 auto 封鎖全刪重建、不累積膨脹
+      證據：同檔 `:「再次修改逐日時間 → 全刪重建，auto 筆數不累積膨脹」`／
+      `:「關閉逐日模式 → auto 列全部清掉（回報 0）」`／
+      `:「不含 business 群組的 PUT 不會動到 auto 封鎖，也不回報數字」`
+- [x] RLS 跨租戶擋
+      證據：同檔 `:「B 店的 draft 只看得到自己的資料（A 店的手動每週封鎖不算進 B 店）」`／
+      `:「B 店存營業設定，不會刪掉 A 店的 auto 封鎖」`／
+      `:「B 店動不了 A 店的 auto 封鎖（PUT/DELETE 回 404，不是 409）」`
+- [x] 四句既有文案（`settings.ts` `autoBlockCreated` / `conflictWarning` /
+      `conflictWarningHours` / `manualBlockKept`）已被引用
+      證據：`grep -rn "autoBlockCreated\|conflictWarning\|conflictWarningHours\|manualBlockKept" src/app/`
+      → `src/app/tenant/settings/page.tsx` 四處（本輪之前為 0）
+- [x] 頁面接線靜態鏈路：`src/app/tenant/settings/page.tsx` `saveBusiness()`
+      → `src/services/settings.ts` `previewBusinessHours()` / `saveTenantSettings()`
+      → `POST /api/settings/weekly-business-hours/draft` / `PUT /api/settings`
+- [ ] Playwright 實測 —— **留白**，同 ① 的理由（本輪不 push）
+
+**③ `GET /api/export/bookings/:format`**
+
+- [x] 建立，白名單與 `/api/export/reports/[format]` 一致；非白名單格式回 400
+      證據：`tests/integration/api/export-bookings-format.33.test.ts:「白名單外的 format → 400 REQ_001，且回的是 JSON 信封不是檔案」`
+- [x] CSV 有 UTF-8 BOM（**位元組層級斷言**）、`Content-Type` 正確、
+      `Content-Disposition: attachment`、不走 `{success,data}` 信封；excel 分支同一組斷言
+      證據：同檔 `:「csv：回 text/csv + attachment 檔名 + UTF-8 BOM，不走 { success, data } 信封」`／
+      `:「excel：回 text/csv + attachment 檔名 + UTF-8 BOM，不走 { success, data } 信封」`／
+      `:「csv 與 excel 兩個分支拿到的是同一份內容（共用同一個產生器，不是兩份實作）」`／
+      `:「與無 format 段的舊端點內容一致（#28 ③ 的接線點不會因本輪改動而變）」`
+- [x] 頁面匯出入口的檔名一律取自後端 `Content-Disposition`
+      證據：`src/services/reports.ts` `exportBookingsCsv` 走 `downloadAttachment()`
+      （檔名唯一來源是 Content-Disposition，見 `src/lib/download.ts`）；
+      頁面兩個選單項各送自己的 format，不自組檔名
+- [ ] Playwright download 事件輸出 —— **留白**，同 ① 的理由（本輪不 push）
+
+**④⑤ 兩支用途未明**
+
+- [x] `/api/settings/onboarding-event`：判定結果＝**查不到**，已列出查過的位置與各自結果
+      證據：`14-GAP-AUDIT.md` §14.2 ＋本輪 issue #33 留言
+- [x] `/api/staff/calendar`：判定結果＝**查不到**（方向收斂到「員工排班模式」，
+      但形狀無從判定），已列出查過的位置
+      證據：`14-GAP-AUDIT.md` §14.2 ＋本輪 issue #33 留言
+- [x] `grep` 證明程式碼中沒有為這兩支留下半成品路徑或猜測性型別
+      證據：`grep -rn "staff/calendar\|onboarding-event\|onboardingEvent\|staffCalendar\|focusTrack" src/ tests/` → 輸出為空
+
+**共通**
+
+- [x] i18n：無新增硬編碼中文（`tests/unit/honest-not-built-interactions.test.ts` 的
+      「六個頁面元件都沒有中文字面量文案」涵蓋 settings 頁）；設計值全走 token
+- [x] `npm run typecheck` / `npm run build` / `npx vitest run tests/unit/` 全綠
+- [x] 整合測試：**逐檔跑，非全量**（多 agent 同時在改 `src/app/api/**`，
+      15 分冊「跑整合測試前」那一節）。跑了 12 檔 132 例全綠，清單見本輪 issue 留言

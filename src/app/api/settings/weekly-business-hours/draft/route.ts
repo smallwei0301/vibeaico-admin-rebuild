@@ -1,5 +1,5 @@
 // POST /api/settings/weekly-business-hours/draft — 逐日營業時間的**乾跑**
-//（issue #33 第 ② 筆；04 分冊 §A-1）。
+//（issue #33 第 ② 筆；04 分冊 §A-1.2）。
 //
 // 原站出處：docs/specs/settings.json 的 jsApiCalls
 //   `/api/settings/weekly-business-hours/draft`
@@ -11,7 +11,7 @@
 // 營業時間失敗」代表這一支會拿還沒存的輸入去算東西。原站另外三句文案是過去式
 // （「已依你的營業時段自動建立 N 筆」「設定已儲存」「已保留」），單看它們會
 // 讀成「這一支自己就會寫入」——完整的推論與反面證據寫在
-// src/server/business-hours-blocks.ts 的檔頭與 04 分冊 §A-1。
+// src/server/business-hours-blocks.ts 的檔頭與 04 分冊 §A-1.2。
 //
 // 本端點**一列都不寫**：只回報「照這份草稿存下去會發生什麼」。
 //   autoBlockCount        會自動建立幾筆封鎖時段

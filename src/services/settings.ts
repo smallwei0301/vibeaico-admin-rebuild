@@ -159,7 +159,7 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
  *
  * ⚠️ 「乾跑」這個語意是**我方選定**的，不是原站考據結果——原站只有路徑與
  * 四句文案，沒有 request/response 形狀。依據與反面證據見
- * `src/server/business-hours-blocks.ts` 檔頭與 04 分冊 §A-1。
+ * `src/server/business-hours-blocks.ts` 檔頭與 04 分冊 §A-1.2。
  */
 export const previewBusinessHours = (business: TenantSettings['business']) =>
   adapt<{

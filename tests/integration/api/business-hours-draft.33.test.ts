@@ -5,7 +5,7 @@
  *
  * ⚠️ 「乾跑」是**我方選定**的語意，不是原站考據結果——原站只給了路徑與四句
  * 文案，沒有 request/response 形狀。依據與反面證據見
- * `src/server/business-hours-blocks.ts` 檔頭與 04 分冊 §A-1。
+ * `src/server/business-hours-blocks.ts` 檔頭與 04 分冊 §A-1.2。
  *
  * 本檔驗證：
  *   ① draft 真的一列都不寫（前後 block_times 筆數相同）

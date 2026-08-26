@@ -120,7 +120,7 @@ export const PUT = handle(async (req) => {
   /*
    * issue #33 ②：存 business 群組時，把「沒開放的時段」重建成自動封鎖
    * （block_times.auto = true，migration 0027）。規則與依據見
-   * src/server/business-hours-blocks.ts 檔頭與 04 分冊 §A-1：
+   * src/server/business-hours-blocks.ts 檔頭與 04 分冊 §A-1.2：
    *   - **全刪重建**，所以重複存檔不會讓 auto 列愈積愈多。
    *   - **手動建立的封鎖（auto = false）一筆都不碰**——原站文案明講
    *     「已保留（不會自動刪除）」。
