@@ -1,4 +1,3 @@
-/**
  * Issue #8 — 後台行程管理端到端旅程。
  *
  * 這支測試刻意只有一條 serial 旅程，並使用唯一標題／旅客姓名前綴：
@@ -132,7 +131,11 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
     const selects = order.locator('select');
     await selects.nth(0).selectOption({ label: TRIP_TITLE });
     await selects.nth(1).selectOption({ label: PLAN_NAME });
-    await selects.nth(2).selectOption({ label: /2099-12-30/ });
+    const departureOption = selects.nth(2).locator('option').filter({ hasText: '2099-12-30' });
+    await expect(departureOption).toHaveCount(1);
+    const departureValue = await departureOption.getAttribute('value');
+    expect(departureValue).toBeTruthy();
+    await selects.nth(2).selectOption(departureValue!);
     await order.locator('input').nth(0).fill(CUSTOMER_NAME);
     await order.locator('input').nth(1).fill(CUSTOMER_PHONE);
     await order.locator('input[type="number"]').fill('2');
