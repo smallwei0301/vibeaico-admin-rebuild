@@ -29,18 +29,23 @@ import { formatDate } from '@/lib/utils';
 /* listBlockTimes），寫入走 createBlockTime / updateBlockTime / deleteBlockTime */
 /* ——與 /tenant/calendar 頁的快速封鎖用的是同一組 service 函式。                */
 /*                                                                            */
-/* ⚠️ block_times 表只有 staff_id / start_at / end_at / reason。接線前這一頁的 */
-/* 頁內假資料另外有「循環類型（每週）」「自動產生」「原因（第二個文字欄）」，   */
-/* 三者都沒有欄位可存也沒有端點會讀，因此不再呈現成可以儲存的東西：             */
-/*   - 每週循環 → 表單裡照實說明尚未支援（見 t.form.weeklyUnavailable）        */
-/*   - 自動產生 → 刪除（GET 沒有這個旗標）                                     */
-/*   - 原因     → 刪除（只有一個 text 欄位，留著就是打了字卻不會進資料庫）       */
+/* migration 0027（issue #33 ②）之後 block_times 有                            */
+/* title / recurrence / day_of_week / full_day / auto，所以這一頁恢復呈現：     */
+/*   - 每週循環 → 真的存得進去，且 /api/calendar 與 available-slots 會展開      */
+/*     成每一週的實際時段（＝真的擋得住預約）                                    */
+/*   - 自動產生 → auto 旗標由 GET /api/block-times 帶回；這些列不可編輯／刪除    */
+/*     （前端停用按鈕、後端 PUT/DELETE 回 409）                                  */
+/*   - 原因     → **仍然不呈現**：表單只填「封鎖名稱」，reason 跟著寫同一個值。 */
+/*     再開一個獨立的「原因」輸入框就會變成兩個欄位各自演化，而列表沒有那一欄。 */
 /* -------------------------------------------------------------------------- */
 
 type Draft = {
   id: string;
-  /** 存進 block_times.reason；行事曆頁也是拿這個欄位當封鎖標籤 */
+  /** 存進 block_times.title（migration 0027 之前只有 reason 一欄可用） */
   title: string;
+  recurrence: 'SINGLE' | 'WEEKLY';
+  /** WEEKLY 用，0 = 週日 */
+  dayOfWeek: number;
   date: string;
   fullDay: boolean;
   startTime: string;
@@ -55,7 +60,8 @@ const TIME_OPTIONS: string[] = Array.from({ length: 48 }, (_, i) => {
 });
 
 const emptyDraft = (): Draft => ({
-  id: '', title: '', date: '', fullDay: false, startTime: '10:00', endTime: '11:00',
+  id: '', title: '', recurrence: 'SINGLE', dayOfWeek: 1,
+  date: '', fullDay: false, startTime: '10:00', endTime: '11:00',
 });
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -68,32 +74,57 @@ const toLocalTime = (iso: string) => {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-/** 整天＝當地 00:00 起、剛好 24 小時（createBlockTime 在行事曆頁封整天時就是這樣寫的） */
+/**
+ * 整天＝當地 00:00 起、剛好 24 小時（createBlockTime 在行事曆頁封整天時就是
+ * 這樣寫的）。migration 0027 之後 `full_day` 是真欄位，優先用它——
+ * 舊資料沒有這個旗標，才退回用時間長度推。
+ */
 const isFullDay = (b: BlockTimeItem) =>
-  toLocalTime(b.startAt) === '00:00'
-  && Date.parse(b.endAt) - Date.parse(b.startAt) === 24 * 60 * 60_000;
+  b.fullDay
+  || (toLocalTime(b.startAt) === '00:00'
+    && Date.parse(b.endAt) - Date.parse(b.startAt) === 24 * 60 * 60_000);
 
 const toDraft = (b: BlockTimeItem): Draft => ({
   id: b.id,
-  title: b.reason,
+  title: b.title || b.reason,
+  recurrence: b.recurrence ?? 'SINGLE',
+  dayOfWeek: b.dayOfWeek ?? 1,
   date: toLocalDate(b.startAt),
   fullDay: isFullDay(b),
   startTime: toLocalTime(b.startAt),
   endTime: toLocalTime(b.endAt),
 });
 
-/** 表單值 → 端點的 ISO 起訖時間；整天＝當地 00:00 起算 24 小時 */
+/**
+ * 表單值 → 端點的 ISO 起訖時間；整天＝當地 00:00 起算 24 小時。
+ *
+ * WEEKLY 沒有「日期」可填，起訖時間存的是**參考週**裡的那一次
+ * （1970-01-04 是週日，同 src/server/business-hours-blocks.ts 的
+ * weeklyBlockRange，兩邊必須是同一個基準，否則同一筆封鎖會有兩種時間表示）。
+ *
+ * ⚠️ 這裡（與下面 SINGLE 的那一行）用的是**瀏覽器當地時區**，伺服器端則固定
+ * 用台北 +08:00。店家與員工都在台灣，兩者一致；這是本頁接線時就有的既有慣例
+ * （不是本輪引入的），一併記在這裡以免日後被當成新缺陷。
+ */
+const REFERENCE_SUNDAY = '1970-01-04';
+const weeklyDate = (dayOfWeek: number): string => {
+  const d = new Date(`${REFERENCE_SUNDAY}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dayOfWeek);
+  return d.toISOString().slice(0, 10);
+};
+
 const toRange = (d: Draft): { startAt: string; endAt: string } => {
+  const date = d.recurrence === 'WEEKLY' ? weeklyDate(d.dayOfWeek) : d.date;
   if (d.fullDay) {
-    const start = new Date(`${d.date}T00:00:00`);
+    const start = new Date(`${date}T00:00:00`);
     return {
       startAt: start.toISOString(),
       endAt: new Date(start.getTime() + 24 * 60 * 60_000).toISOString(),
     };
   }
   return {
-    startAt: new Date(`${d.date}T${d.startTime}:00`).toISOString(),
-    endAt: new Date(`${d.date}T${d.endTime}:00`).toISOString(),
+    startAt: new Date(`${date}T${d.startTime}:00`).toISOString(),
+    endAt: new Date(`${date}T${d.endTime}:00`).toISOString(),
   };
 };
 
@@ -156,21 +187,29 @@ export default function BlockTimesPage() {
     {
       key: 'title', header: t.columns.title,
       render: (b) => (
-        <span className="font-semibold text-dark">{b.reason || common.none}</span>
+        <span className="font-semibold text-dark">{b.title || b.reason || common.none}</span>
       ),
     },
     {
-      key: 'type', header: t.columns.type, width: '110px',
+      key: 'type', header: t.columns.type, width: '150px',
       render: (b) => (
-        <div className="flex items-center gap-1">
-          <Badge tone="primary">{t.tags.single}</Badge>
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge tone="primary">
+            {b.recurrence === 'WEEKLY' ? t.tags.weekly : t.tags.single}
+          </Badge>
           {isFullDay(b) ? <Badge tone="warning">{t.tags.fullDay}</Badge> : null}
+          {/* auto 旗標由 GET /api/block-times 帶回（migration 0027），不是頁內假資料 */}
+          {b.auto ? <Badge tone="neutral">{t.tags.auto}</Badge> : null}
         </div>
       ),
     },
     {
       key: 'date', header: t.columns.date, width: '140px',
-      render: (b) => formatDate(b.startAt),
+      // WEEKLY 的 startAt 是參考週的時間，印出來會是 1970 年的某一天——
+      // 對每週封鎖要印的是「星期幾」，不是那個沒有意義的日期。
+      render: (b) => (b.recurrence === 'WEEKLY' && b.dayOfWeek != null
+        ? common.weekdays[b.dayOfWeek]
+        : formatDate(b.startAt)),
     },
     {
       key: 'time', header: t.columns.time, width: '150px',
@@ -187,15 +226,22 @@ export default function BlockTimesPage() {
     {
       key: 'actions', header: t.columns.actions, width: '110px',
       render: (b) => (
+        /*
+         * auto 列（「每天不同營業時間」自動產生）不可編輯／刪除：下一次存營業
+         * 設定會整批重建，改了也留不住。按鈕停用並用 title 說明去哪裡調整；
+         * 後端也擋（PUT/DELETE /api/block-times/:id 回 409），不只靠畫面。
+         */
         <div className="btn-group">
           <Button
             variant="outline" size="sm" aria-label={common.edit}
+            disabled={b.auto} title={b.auto ? t.autoLocked : undefined}
             onClick={() => setEditing(toDraft(b))}
           >
             <Pencil size={13} />
           </Button>
           <Button
             variant="outlineDanger" size="sm" aria-label={common.delete}
+            disabled={b.auto} title={b.auto ? t.autoLocked : undefined}
             onClick={() => setDeleting(b)}
           >
             <Trash2 size={13} />
@@ -310,7 +356,8 @@ function BlockTimeModal({
 
   const validate = (): string => {
     if (!form.title.trim()) return t.validation.titleRequired;
-    if (!form.date) return t.validation.dateRequired;
+    // WEEKLY 沒有日期欄位（改成選星期幾），只有 SINGLE 要檢查日期
+    if (form.recurrence === 'SINGLE' && !form.date) return t.validation.dateRequired;
     if (!form.fullDay) {
       if (!form.startTime || !form.endTime) return t.validation.timeRequired;
       if (form.startTime >= form.endTime) return t.validation.startBeforeEnd;
@@ -339,8 +386,18 @@ function BlockTimeModal({
     setSaving(true);
     try {
       const { startAt, endAt } = toRange(form);
-      if (form.id) await updateBlockTime(form.id, { startAt, endAt, reason: form.title.trim() });
-      else await createBlockTime({ startAt, endAt, reason: form.title.trim() });
+      const payload = {
+        startAt, endAt,
+        title: form.title.trim(),
+        // reason 仍然一起送：行事曆頁與 0027 之前的資料都拿 reason 當標籤，
+        // 只寫 title 會讓行事曆上的既有封鎖突然沒有名字。
+        reason: form.title.trim(),
+        recurrence: form.recurrence,
+        dayOfWeek: form.recurrence === 'WEEKLY' ? form.dayOfWeek : null,
+        fullDay: form.fullDay,
+      };
+      if (form.id) await updateBlockTime(form.id, payload);
+      else await createBlockTime(payload);
       onSaved(!form.id);
     } catch (e) {
       toast.show(
@@ -375,29 +432,50 @@ function BlockTimeModal({
         />
       </FormGroup>
 
+      {/*
+        「每週」在 issue #33 ② 之後是真的：migration 0027 給 block_times 補了
+        recurrence / day_of_week，`/api/calendar` 與
+        `/api/bookings/available-slots` 都會把每週封鎖展開成實際發生的時段，
+        也就是**存下去真的會擋掉預約**。
+      */}
       <FormGroup>
         <Label>{t.form.recurrence}</Label>
         <div className="flex items-center gap-4">
-          <label className="flex items-center gap-1.5 text-base">
-            <input type="radio" name="btRecurrence" value="SINGLE" checked readOnly />
-            {t.form.single}
-          </label>
-          <label className="flex items-center gap-1.5 text-base text-muted">
-            <input type="radio" name="btRecurrence" value="WEEKLY" disabled />
-            {t.form.weekly}
-          </label>
+          {(['SINGLE', 'WEEKLY'] as const).map((r) => (
+            <label key={r} className="flex items-center gap-1.5 text-base">
+              <input
+                type="radio" name="btRecurrence" value={r}
+                checked={form.recurrence === r}
+                onChange={() => set('recurrence', r)}
+              />
+              {r === 'SINGLE' ? t.form.single : t.form.weekly}
+            </label>
+          ))}
         </div>
-        <FormText>{t.form.weeklyUnavailable}</FormText>
       </FormGroup>
 
       <div className="grid gap-x-4 md:grid-cols-2">
-        <FormGroup>
-          <Label required htmlFor="btDate">{t.form.date}</Label>
-          <Input
-            id="btDate" type="date" value={form.date}
-            onChange={(e) => set('date', e.target.value)}
-          />
-        </FormGroup>
+        {form.recurrence === 'WEEKLY' ? (
+          <FormGroup>
+            <Label required htmlFor="btDayOfWeek">{t.form.dayOfWeek}</Label>
+            <Select
+              id="btDayOfWeek" value={String(form.dayOfWeek)}
+              onChange={(e) => set('dayOfWeek', Number(e.target.value))}
+            >
+              {t.form.weekdays.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </Select>
+          </FormGroup>
+        ) : (
+          <FormGroup>
+            <Label required htmlFor="btDate">{t.form.date}</Label>
+            <Input
+              id="btDate" type="date" value={form.date}
+              onChange={(e) => set('date', e.target.value)}
+            />
+          </FormGroup>
+        )}
 
         <FormGroup>
           <Label htmlFor="btFullDay">{t.form.fullDay}</Label>

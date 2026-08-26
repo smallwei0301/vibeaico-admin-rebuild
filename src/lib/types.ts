@@ -192,10 +192,18 @@ export type ProductOrder = {
   customerId: string;
   customerName: string;
   items: { productId: string; productName: string; quantity: number; price: number }[];
+  /** 應付金額。套用票券後由後端扣減（見 /api/product-orders/:id/apply-coupon） */
   totalAmount: number;
   status: ProductOrderStatus;
   paymentStatus: PaymentStatus;
   createdAt: string;
+  /**
+   * 已發生的票券折抵金額累計（migration 0027 的 product_orders.coupon_discount）。
+   * null / undefined = 沒有折抵紀錄（mock 模式與 0027 之前的舊資料）。
+   * 兩者在畫面上都顯示「無」——那句話在「沒套過券」與「套了 0 元」兩種情況下
+   * 都成立；不得因此把 null 填成一個看起來像量測值的數字。
+   */
+  couponDiscount?: number | null;
 };
 
 /* ------------------------------------------------------------------ 票券 */

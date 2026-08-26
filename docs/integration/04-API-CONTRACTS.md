@@ -110,6 +110,72 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE=services 至少 1；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=token 已設定。percent = done 數/5*100 |
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 
+### A-1.2 逐日營業時間的乾跑與自動封鎖鏈（issue #33 ②，2026-08-26 補列）
+
+原站有 `POST /api/settings/weekly-business-hours/draft`（`docs/specs/settings.json`
+的 `jsApiCalls`），04 分冊原本零記載。
+
+| 端點 | 要點 |
+|---|---|
+| POST `/api/settings/weekly-business-hours/draft` | body = business 群組（同 `businessSettingsSchema`）。**乾跑：一列都不寫**。回 `{perDayMode, autoBlockCount, conflictBookingCount, manualWeeklyBlockCount}`。格式不合 → 400 `REQ_001`（對應原站文案「解析逐日營業時間失敗:」） |
+| PUT `/api/settings`（帶 business 群組時） | 存檔後**重建自動封鎖**，回 `{perDayMode, autoBlockCreated, conflictBookingCount, manualWeeklyBlockCount}`。不帶 business 時 `data` 為空（維持原本的 `ok()`） |
+
+#### ⚠️ 「乾跑 vs 存檔」是**我方選定**的語意，不是原站考據結果
+
+`docs/specs/settings.json` **只給了路徑與文案，沒有 request / response 形狀**。
+選「乾跑」的依據只有兩點：
+
+1. 端點路徑最後一段是 `draft`（草稿）。
+2. jsStrings[66]「**解析**逐日營業時間失敗:」——這一支會拿**還沒存**的輸入去算東西。
+
+**反面證據（一併記下，不藏起來）**：原站另外三句文案是過去式／已存檔語氣，
+單看它們會讀成「這一支自己就會寫入」——
+
+- jsStrings[37]+[7]「已依你的營業時段自動建立 N 筆封鎖時段（…）」
+- jsStrings[9]「… 設定已儲存，但這些預約「不會」自動取消。…」
+- jsStrings[6]「… 已保留（不會自動刪除）。…」
+
+我方的解讀是：這三句在**存檔完成之後**才顯示，所以過去式成立。頁面因此先乾跑
+拿「偵測到的」數字（衝突預約、手動每週封鎖），再 PUT 存檔拿「實際建立」的數字。
+**這個解讀沒有原站證據。** 若擁有者裁決 draft 應該自己寫入，要改的是
+`src/server/business-hours-blocks.ts` 與那兩支端點，四句文案不用動。
+
+#### 自動封鎖的產生／回收規則（我方定案）
+
+- **產生**：`perDayMode` 開啟時，把每一天「沒開放的時段」補成 `WEEKLY` 封鎖。
+  整天沒開放 → 一筆 `full_day` 整天封鎖；有開放但有空隙 → 每個空隙一筆。
+  `perDayMode` 關閉 → 不產生任何 auto 封鎖（一般營業時間的非營業時段本來就由
+  `available-slots` 的營業時間視窗擋掉）。
+- **回收**：**全刪重建**（不是差異更新）。每次存 business 群組先刪光本租戶
+  `auto = true` 的列，再依新的營業時段重新產生。差異更新需要「哪一筆對應哪一筆」
+  的比對規則，而 auto 列沒有穩定識別依據（時段本身就是識別），比對規則會自己
+  長出一套隱性狀態。代價是 id 會換——auto 列本來就不給人編輯。
+- **手動建立的封鎖（`auto = false`）一筆都不碰**（原站文案明講「已保留（不會自動刪除）」）。
+- auto 列不可編輯／刪除：`PUT`/`DELETE /api/block-times/:id` 回 409 `REQ_003`。
+- **衝突預約的口徑**：只看未來（`start_at >= now`）、只看 `PENDING`/`CONFIRMED`、
+  上限往後一年；「落在非營業時段」= 這筆預約**沒有整段**落在該星期幾的任何一個
+  開放時段裡。零衝突時回 0，頁面**不顯示**那一句警告（「有 0 筆預約落在非營業
+  時段」是一句沒有意義的警告）。
+
+#### `block_times` 的每週模型（migration 0027）
+
+新增欄位 `title / recurrence('SINGLE'|'WEEKLY') / day_of_week / full_day / auto`，
+逐欄出處見 migration 檔頭（原站 `blockTimeModal` 的五個欄位＋列表三欄）。
+
+**一列 = 一整條每週封鎖**，`start_at`/`end_at` 存的是**參考週**（1970-01-04 起的
+那一週，台北時間）裡的第一次發生，實際的每週重複**在讀取時展開**
+（`/api/calendar`、`/api/bookings/available-slots`，見
+`src/server/business-hours-blocks.ts` 的 `expandWeeklyBlock`）。
+
+為什麼不預先產生一堆具體日期的列：那需要一個定期往前推進視窗的排程，而那個排程
+不存在——**有排程才敢說「未來每一週都擋得住」**。原站也是「一列一整條」的模型：
+`docs/specs/calendar.json` jsStrings[31] 的刪除確認寫著「這是「每週重複」的封鎖，
+會把每一週的這個封鎖整條刪除。」
+
+⚠️ 連帶後果：`GET /api/block-times`、`/api/calendar`、`/api/bookings/available-slots`
+**不能**再用 `start_at` 做 SQL 區間過濾（WEEKLY 列的 start_at 是 1970 年，會被全部
+濾掉）。三支都改成整批取回、展開後在應用層過濾。
+
 ### A-1.1 LINE 老闆通知 owner-notify（`src/services/settings.ts` 呼叫，issue #18）
 
 原站有這四支（`docs/specs/dashboard.json` 的 `jsApiCalls` 逐字），04 分冊原本零記載。
@@ -318,6 +384,70 @@ applied_minutes, notified, created_at`。RLS 四條 `is_tenant_member(tenant_id)
 | GET `/api/points/balance` | `{balance}` = tenant_point_transactions 最新 balance_after（無紀錄=0） |
 | GET `/api/points/transactions` | 分頁 `Paged<PointTransaction>` |
 | POST `/api/points/transfer` | `{toShopCode, amount}`：兩筆交易（OUT/IN）需在一個 postgres function 內完成（寫 rpc） |
+| POST `/api/product-orders/:id/apply-coupon` | **（issue #33 ①，2026-08-26 補列）** 見下方 §B-4.1 |
+
+#### B-4.1 商品訂單套用票券（issue #33 ①，2026-08-26 補列）
+
+原站有 `POST /api/product-orders/${id}/apply-coupon`（`docs/specs/product-orders.json`
+的 `jsApiCalls`），04 分冊原本零記載。
+
+**request** `{ code: string }`（非空，否則 400 `REQ_001`）
+**response** `{ totalAmount: number, couponDiscount: number }`
+
+`couponDiscount` 的欄位名對齊原站 jsStrings[76]
+「票券已套用！折抵 `${formatMoney(couponRes.data?.couponDiscount || 0)}`」——
+也就是**折抵金額由後端算並回傳，前端只負責格式化**，不得自行組。
+
+| 情況 | HTTP / code | 訊息 |
+|---|---|---|
+| 票券代碼不存在（或不屬於本租戶） | 404 `REQ_002` | 找不到此票券 |
+| 票券已核銷 | 409 `REQ_003` | 此票券已核銷 |
+| 票券已過期（`coupons.end_at` 在過去；null = 不限期） | 409 `REQ_003` | 此票券已過期 |
+| 票券不是這張訂單的顧客的 | 409 `REQ_003` | 此票券不屬於該訂單的顧客 |
+| 訂單不存在 | 404 `REQ_002` | 找不到此訂單 |
+| 訂單已完成／已取消 | 409 `REQ_003` | 此訂單狀態已變更，請重新整理 |
+| 未訂閱 PRODUCT_SALES | 403 `FEAT_001` | （同其他商品端點） |
+
+⚠️ 被擋下的票券**不會被核銷**（過期／不是本人／訂單狀態不符都在 update 之前擋）。
+
+##### ⚠️ 適用範圍是**我方選定**的，不是原站考據結果
+
+issue #33 的人工介入點問的是「票券是否適用於商品訂單、有無品類限制」。
+**原站對此零字串**：`docs/specs/product-orders.json` 的 jsStrings 只有
+「票券已套用！折抵 …」「票券已套用，但「完成訂單」失敗：」「請輸入票券代碼」
+三句，沒有任何一句提到限制、品類或不適用；`coupons.json` 的 formModal 也沒有
+「適用範圍」欄位。
+
+我方採 issue 的預設值：**與 `/api/bookings/:id/apply-coupon` 完全同一套規則**
+——不限品類，只限票券持有人本人。這是**我方選的**，不是考據結果。
+規則寫在 `src/server/coupon-redeem.ts` 一處，日後要加品類限制只改那一個檔。
+
+##### 交易邊界：兩段獨立，照原站
+
+原站 jsStrings[77]「票券已套用，但「完成訂單」失敗：」代表原站是
+**先套票券、再完成訂單，兩段可以分開失敗**。我方照這個語意做：
+本端點**只做套券，不碰訂單狀態**，「完成取貨」仍是
+`POST /api/product-orders/:id/complete`。套券成功而完成失敗時，票券**已經核銷掉**
+——頁面必須說出這件事（用原站那句），不能只說「操作失敗」。
+
+##### 金額語意
+
+`product_orders` 只有一個金額欄位 `total_amount`（0004:166），沒有 bookings 的
+`price`/`final_price` 兩層；列表也只有一個「金額」欄
+（`docs/specs/product-orders.json` tables[0].columns）。所以：
+
+- `total_amount` = **應付金額**，套券後直接扣減。
+- `coupon_discount`（migration 0027）= 已發生的折抵金額**累計**，一張訂單套多張
+  票券就累加。`null` = 沒有折抵紀錄（畫面顯示「無」）。
+- `coupon_instance_id`（0027）= 追溯用；原始金額可由 `total_amount + coupon_discount`
+  還原，也可從 `product_order_items` 的單價快照重算。
+
+##### 核銷邏輯只有一份
+
+`src/server/coupon-redeem.ts` 是票券核銷的唯一實作，三個呼叫端共用：
+`/api/coupons/redeem-by-code`、`/api/bookings/:id/apply-coupon`、
+`/api/product-orders/:id/apply-coupon`。本輪之前前兩者各有一份拷貝，補第三支時
+就會變三份。
 
 ### B-5 行銷 / LINE 內容（依賴 06 分冊的 LINE 模組）
 
@@ -367,6 +497,7 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 |---|---|
 | GET `/api/reports/summary‖daily‖hourly‖top-services‖top-products‖top-staff‖advanced` | `?from&to`；各回聚合陣列，欄位命名照前端 reports 頁的 mock 形狀（實作前先讀該頁 mock） |
 | GET `/api/export/customers/excel`、`/api/export/bookings` | 產 CSV（UTF-8 BOM），`Content-Disposition: attachment`。**不走信封**，直接回檔案 |
+| GET `/api/export/bookings/:format` | **（issue #33 ③，2026-08-26 補列）** 原站的形狀（`docs/specs/bookings.json` jsApiCalls `/api/export/bookings/${format}`）。`format` 白名單 `csv`\|`excel`，其他值 400 `REQ_001`。**兩個 format 產出的都是 CSV**（本專案沒有裝 xlsx 產生器；把 CSV 命名成 .xlsx 是謊報檔案格式），內容與無 format 段的舊端點**完全相同**——兩支共用 `src/server/export-bookings.ts` 的 `buildBookingsCsv()`，不是兩份實作。檔名由後端決定（前端不得自組），頁面兩個選單項只是各送自己的 format |
 | GET `/api/customers/tags` | 該店所有 tags 去重 |
 | GET `/api/customers/at-risk` | customers_view at_risk=true |
 | POST `/api/feature-store/:code/apply‖cancel‖restore` | 訂閱異動：完整規格（扣點、套裝、還原副作用）在 **09 分冊 §3**，照該冊實作 ⚙O |

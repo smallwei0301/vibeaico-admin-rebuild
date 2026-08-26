@@ -130,8 +130,49 @@ export const getTenantSettings = () =>
     () => request<TenantSettings>('/api/settings'),
   );
 
+/**
+ * 存營業／逐日營業時間之後，端點回報的實際影響（issue #33 ②）。
+ * `null` = 這次的 patch 沒有 business 群組，或是示範模式——**沒有數字可報**，
+ * 頁面就不顯示那幾句「已建立 N 筆／偵測到 N 筆」。
+ */
+export type BusinessHoursImpact = {
+  perDayMode: boolean;
+  /** 這次實際建立的自動封鎖筆數（全刪重建後的總數） */
+  autoBlockCreated: number;
+  /** 落在新的非營業時段的既有預約筆數 */
+  conflictBookingCount: number;
+  /** 店家手動建立的每週封鎖筆數（一律保留） */
+  manualWeeklyBlockCount: number;
+};
+
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
-  adapt(() => undefined, () => request<void>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) }));
+  adapt<BusinessHoursImpact | null>(
+    () => null,
+    () => request<BusinessHoursImpact | null>(
+      '/api/settings', { method: 'PUT', body: JSON.stringify(patch) },
+    ),
+  );
+
+/**
+ * POST /api/settings/weekly-business-hours/draft — **乾跑**：把還沒存的營業
+ * 設定送過去，回報「照這份存下去會發生什麼」，一列都不寫（issue #33 ②）。
+ *
+ * ⚠️ 「乾跑」這個語意是**我方選定**的，不是原站考據結果——原站只有路徑與
+ * 四句文案，沒有 request/response 形狀。依據與反面證據見
+ * `src/server/business-hours-blocks.ts` 檔頭與 04 分冊 §A-1。
+ */
+export const previewBusinessHours = (business: TenantSettings['business']) =>
+  adapt<{
+    perDayMode: boolean;
+    autoBlockCount: number;
+    conflictBookingCount: number;
+    manualWeeklyBlockCount: number;
+  } | null>(
+    () => null,
+    () => request('/api/settings/weekly-business-hours/draft', {
+      method: 'POST', body: JSON.stringify(business),
+    }),
+  );
 
 export const saveLineSettings = (patch: Partial<LineSettings>) =>
   adapt(() => undefined, () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }));

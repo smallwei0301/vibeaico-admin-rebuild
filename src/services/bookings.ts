@@ -280,6 +280,17 @@ export type BlockTimeItem = {
   startAt: string;
   endAt: string;
   reason: string;
+  /* ---- migration 0027（issue #33 ②）。GET /api/calendar 的封鎖不帶這些欄位，
+         所以全部設成 optional，行事曆頁的既有用法不受影響。 ---- */
+  /** 封鎖名稱（原站 btTitle「封鎖名稱 *」）；reason 是另一個選填欄位 */
+  title?: string;
+  /** 'SINGLE' = 單次；'WEEKLY' = 每週的 dayOfWeek 這一天重複 */
+  recurrence?: 'SINGLE' | 'WEEKLY';
+  /** WEEKLY 用，0 = 週日 */
+  dayOfWeek?: number | null;
+  fullDay?: boolean;
+  /** true = 由「每天不同營業時間」自動產生，不可編輯／刪除 */
+  auto?: boolean;
 };
 
 export type CalendarExternalItem = { id: string; title: string; start: string; end: string };
@@ -355,8 +366,9 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
 /**
  * GET /api/block-times?from&to — 封鎖時段清單（/tenant/block-times 頁唯一資料源）。
  *
- * 端點回的就是表的欄位：block_times 沒有「循環」「整天」「名稱／原因兩欄」這些東西，
- * 頁面只能呈現這裡真的有的。回傳型別沿用上面行事曆區塊已經有的 `BlockTimeItem`
+ * 端點回的就是表的欄位。migration 0027（issue #33 ②）之後，
+ * 「循環（SINGLE/WEEKLY）」「星期幾」「整天」「名稱」「自動產生」都真的有欄位了，
+ * 所以頁面可以呈現它們。回傳型別沿用上面行事曆區塊已經有的 `BlockTimeItem`
  * （同一個端點家族、同一組欄位，不另外宣告第二份）。mock 分支回空陣列——骨架
  * 模式沒有任何封鎖時段可讀，編一組出來會讓示範店家看到永遠刪不掉的資料。
  */
@@ -366,9 +378,13 @@ export const listBlockTimes = (q: { from?: string; to?: string } = {}) =>
     () => request<BlockTimeItem[]>('/api/block-times', { query: q }),
   );
 
-/** POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖。 */
+/**
+ * POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖。
+ * recurrence = 'WEEKLY' 時 dayOfWeek 必填（端點會擋；不從 startAt 反推）。
+ */
 export const createBlockTime = (payload: {
   staffId?: string | null; startAt: string; endAt: string; reason?: string;
+  title?: string; recurrence?: 'SINGLE' | 'WEEKLY'; dayOfWeek?: number | null; fullDay?: boolean;
 }) =>
   adapt(
     () => ({ id: `bt_mock_${Date.now()}` }),
@@ -378,7 +394,10 @@ export const createBlockTime = (payload: {
 /** PUT /api/block-times/:id — 改時間／改名稱／改對象；只更新 body 裡出現的欄位。 */
 export const updateBlockTime = (
   id: string,
-  payload: { staffId?: string | null; startAt?: string; endAt?: string; reason?: string },
+  payload: {
+    staffId?: string | null; startAt?: string; endAt?: string; reason?: string;
+    title?: string; recurrence?: 'SINGLE' | 'WEEKLY'; dayOfWeek?: number | null; fullDay?: boolean;
+  },
 ) =>
   adapt(
     () => undefined,

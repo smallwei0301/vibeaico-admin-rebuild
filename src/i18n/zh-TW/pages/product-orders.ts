@@ -118,12 +118,29 @@ export const productOrdersPage = {
     couponCodeLabel: '輸入票券代碼',
     couponCodeRequired: '請輸入票券代碼',
     /**
-     * 商品訂單的票券折抵後端尚無端點（issue #33 ①；原站對照
-     * `docs/specs/product-orders.json` 的 `/api/product-orders/${id}/apply-coupon`）。
-     * 這裡不承諾「已套用」——票券代碼從未離開瀏覽器，也沒有被核銷。
-     * 常駐顯示在表單裡（不只是一閃即逝的 toast），完成後也用同一句提醒。
+     * issue #33 ① 完成：`POST /api/product-orders/:id/apply-coupon` 已建置，
+     * 票券真的會被核銷，折抵金額**由後端算並回傳**。
+     * 文案取自原站 `docs/specs/product-orders.json` jsStrings[76]，
+     * `amount` 一律是 API 回應的 `couponDiscount`，前端不得自行組。
      */
-    couponNotBuilt: '票券折抵尚未串接後端（issue #33），本次完成取貨不會套用折抵金額',
+    couponApplied: (amount: string) => `票券已套用！折抵 ${amount}`,
+    /**
+     * 原站 jsStrings[77]：套券與完成訂單是兩段獨立請求，第二段可以單獨失敗。
+     * 這種情況下票券**已經核銷掉了**，所以不能只說「操作失敗」——
+     * 那會讓店家以為票券還在。
+     */
+    couponAppliedButFailed: '票券已套用，但「完成訂單」失敗：',
+    /**
+     * 示範（mock）模式沒有票券資料庫可查，端點不會被呼叫，票券也不會被核銷。
+     * 這裡如實說明，不顯示任何折抵金額——編一個數字放在真實訂單金額旁邊，
+     * 正是 d7b8158 移除掉的那個缺陷。
+     */
+    couponMockOnly: '示範模式沒有票券資料，本次不會核銷票券，也不會套用折抵金額',
+    /**
+     * 表單裡的常駐說明。只陳述端點實際會做的事（核銷＋扣減金額），
+     * 不預告任何折抵數字——那個數字要等後端算完才知道。
+     */
+    couponHelp: '按「套用票券並完成」會核銷這張票券，並依票券內容扣減訂單金額；折抵金額由系統計算。',
   },
 
   /* ------------------------------------------------ modal 3：手動建立訂單 */

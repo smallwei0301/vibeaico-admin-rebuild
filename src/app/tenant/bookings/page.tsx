@@ -263,7 +263,8 @@ export default function BookingsPage() {
   React.useEffect(() => { void load(); }, [load]);
 
   /**
-   * 匯出預約列表（GET /api/export/bookings，帶畫面上的日期區間）—— issue #28 ③。
+   * 匯出預約列表（GET /api/export/bookings/:format，帶畫面上的日期區間）
+   * —— issue #28 ③ 接線、issue #33 ③ 改打原站的 format 段。
    *
    * 修改前這顆鈕的 onClick 整個內容是
    * `{ setExportOpen(false); toast.show(t.messages.exported); }`：什麼都沒下載，
@@ -272,11 +273,11 @@ export default function BookingsPage() {
    * src/lib/download.ts）；示範資料模式沒有伺服器可打、不會產生任何檔案，
    * 顯示「未匯出」而不是成功。
    */
-  const runExport = async () => {
+  const runExport = async (format: 'csv' | 'excel') => {
     setExportOpen(false);
     setExporting(true);
     try {
-      const { downloaded, fileName } = await exportBookingsCsv({
+      const { downloaded, fileName } = await exportBookingsCsv(format, {
         from: startDate || undefined,
         to: endDate || undefined,
       });
@@ -505,17 +506,21 @@ export default function BookingsPage() {
               {exportOpen ? (
                 <div className="absolute right-0 z-flyout mt-1 flex min-w-[14rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
                   {/*
-                    兩個選項打的是同一支端點（GET /api/export/bookings 沒有 format
-                    路徑段，見該 route 檔頭），所以拿到的是同一個 CSV —— 標籤照
-                    reports 頁的作法寫明實際格式，不寫「匯出 Excel」再送一個 .csv
-                    出去。格式段本身列在 issue #33 ③，補上之後這裡才會有兩種檔案。
+                    issue #33 ③：format 路徑段已補上（GET /api/export/bookings/:format），
+                    兩個選項各自送出自己的 format。**但兩者拿到的仍是同一份 CSV**
+                    ——專案沒有裝 xlsx 產生器（見 src/server/export-bookings.ts），
+                    所以標籤照 reports 頁的作法寫明實際格式，不寫「匯出 Excel」
+                    再送一個 .csv 出去。檔名一律取自後端 Content-Disposition。
                   */}
-                  {[t.actions.exportExcelCsv, t.actions.exportCsv].map((label) => (
+                  {([
+                    ['excel', t.actions.exportExcelCsv],
+                    ['csv', t.actions.exportCsv],
+                  ] as const).map(([format, label]) => (
                     <button
-                      key={label}
+                      key={format}
                       type="button"
                       className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
-                      onClick={() => { void runExport(); }}
+                      onClick={() => { void runExport(format); }}
                     >
                       {label}
                     </button>

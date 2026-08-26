@@ -18,7 +18,19 @@ const bodySchema = z.object({
   startAt: z.string().min(1).optional(),
   endAt: z.string().min(1).optional(),
   reason: z.string().optional(),
+  /* migration 0027 的欄位（issue #33 ②） */
+  title: z.string().optional(),
+  recurrence: z.enum(['SINGLE', 'WEEKLY']).optional(),
+  dayOfWeek: z.number().int().min(0).max(6).nullable().optional(),
+  fullDay: z.boolean().optional(),
 });
+
+/**
+ * auto 列（由「每天不同營業時間」自動產生）不可改也不可刪：它下一次存營業
+ * 設定時會被整批重建，就算改了也留不住——留一個「改得動但改完會被蓋掉」的
+ * 入口，就是 00 鐵則 12 的假成功。前端已把按鈕停用，這裡是後端的那一道。
+ */
+const AUTO_LOCKED = '這是自動產生的封鎖時段，請至「店家設定 → 營運時間」調整';
 
 export const PUT = handle(async (req, { params }) => {
   const t = await requireTenant();
@@ -27,11 +39,12 @@ export const PUT = handle(async (req, { params }) => {
 
   const { data: row, error: e0 } = await t.supabase
     .from('block_times')
-    .select('id, start_at, end_at')
+    .select('id, start_at, end_at, auto')
     .eq('id', id).eq('tenant_id', t.tenantId)
     .maybeSingle();
   if (e0) throw e0;
   if (!row) throw new ApiHttpError(404, '找不到此封鎖時段', ERR.NOT_FOUND);
+  if (row.auto) throw new ApiHttpError(409, AUTO_LOCKED, ERR.CONFLICT);
 
   const update: Record<string, unknown> = {};
 
@@ -55,6 +68,19 @@ export const PUT = handle(async (req, { params }) => {
   }
 
   if (b.reason !== undefined) update.reason = b.reason;
+  if (b.title !== undefined) update.title = b.title;
+  if (b.fullDay !== undefined) update.full_day = b.fullDay;
+  if (b.recurrence !== undefined) {
+    update.recurrence = b.recurrence;
+    // 改成 SINGLE 就沒有「每週的哪一天」；改成 WEEKLY 必須指定，
+    // 不從 startAt 反推（猜錯不會有紅燈）。
+    if (b.recurrence === 'SINGLE') update.day_of_week = null;
+    else if (b.dayOfWeek == null)
+      throw new ApiHttpError(400, '每週封鎖需指定星期幾', ERR.VALIDATION);
+    else update.day_of_week = b.dayOfWeek;
+  } else if (b.dayOfWeek !== undefined) {
+    update.day_of_week = b.dayOfWeek;
+  }
 
   if (Object.keys(update).length === 0) return ok();
 
@@ -70,6 +96,12 @@ export const PUT = handle(async (req, { params }) => {
 export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant();
   const { id } = await params;
+
+  const { data: row, error: e0 } = await t.supabase.from('block_times')
+    .select('id, auto').eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
+  if (e0) throw e0;
+  if (!row) throw new ApiHttpError(404, '找不到此封鎖時段', ERR.NOT_FOUND);
+  if (row.auto) throw new ApiHttpError(409, AUTO_LOCKED, ERR.CONFLICT);
 
   const { data, error } = await t.supabase.from('block_times')
     .delete()

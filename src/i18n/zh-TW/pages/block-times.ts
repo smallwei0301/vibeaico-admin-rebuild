@@ -18,14 +18,14 @@ export const blockTimesPage = {
   },
 
   /**
-   * ⚠️ 少了兩欄，都是因為**後端沒有那個欄位**（block_times 只有
-   * id / staff_id / start_at / end_at / reason）：
-   *   - 「原因」：接線前表單有「封鎖名稱」與「原因」兩個輸入框，但只有一個
-   *     text 欄位可以存。留著第二個輸入框＝使用者打了字、按了儲存、看到成功訊息，
-   *     內容卻沒有進資料庫（00 鐵則 12 的假成功）。因此只保留必填的「封鎖名稱」，
-   *     它存進 `reason`（行事曆頁也是拿這個欄位當標籤）。
-   *   - 「自動產生」徽章：來源是「每天不同營業時間」自動產生的休息時段，
-   *     GET /api/block-times 沒有這個旗標可讀，接線後永遠不會是 true。
+   * ⚠️ 「原因」欄仍然缺席，因為**後端還是只有一個 text 欄位可以存**
+   * （0027 補的是 title，reason 原本就在，但表單目前只填 title）：
+   * 留著第二個輸入框＝使用者打了字、按了儲存、看到成功訊息，內容卻沒有
+   * 進資料庫（00 鐵則 12 的假成功）。因此只保留必填的「封鎖名稱」。
+   *
+   * ✅ 「自動產生」徽章在 issue #33 ② 之後**是真的**：migration 0027 給
+   * block_times 補了 `auto` 欄位，`PUT /api/settings` 存逐日營業時間時會
+   * 重建這些列，`GET /api/block-times` 也會把旗標帶回來。
    */
   columns: {
     title: '名稱',
@@ -42,7 +42,18 @@ export const blockTimesPage = {
     weekly: '每週',
     fullDay: '整天',
     allStaff: '全店',
+    /** 由「每天不同營業時間」自動產生的列（block_times.auto = true） */
+    auto: '自動產生',
   },
+
+  /**
+   * auto 列的封鎖名稱（存進 block_times.title）。原站沒有留下這個字串，
+   * 這是我方取的——但它不是一個「量測值」，只是一個標籤，且列上同時有
+   * 「自動產生」徽章與下面那句說明，看得出它的來源。
+   */
+  autoTitle: '非營業時段（自動產生）',
+  /** auto 列不可編輯／刪除時的說明（原站 docs/specs/calendar.json jsStrings[78] 同義） */
+  autoLocked: '這是「每天不同營業時間」自動產生的休息時段，要調整請到 店家設定 → 營運時間',
 
   form: {
     createTitle: '新增封鎖時段',
@@ -52,14 +63,13 @@ export const blockTimesPage = {
     recurrence: '循環類型',
     single: '單次',
     weekly: '每週',
-    /**
-     * 「每週」目前**存不進去**：block_times 只有起訖時間，沒有循環欄位；
-     * 就算硬加一個欄位，判斷可預約時段的 `/api/bookings/available-slots`
-     * 與 `/api/calendar` 也都是照 start_at/end_at 過濾，不會認得循環規則——
-     * 也就是說存下去也不會真的擋掉預約。與其做成一個「有存到、但沒有效果」
-     * 的開關，不如照實說它還沒做。
+    /*
+     * ⚠️ 這裡曾經有一個 `weeklyUnavailable`：「每週循環尚未支援」。
+     * issue #33 ② 之後那句話是**假的**——migration 0027 補了
+     * recurrence / day_of_week，`/api/calendar` 與
+     * `/api/bookings/available-slots` 都會展開每週封鎖，存下去真的會擋預約。
+     * 所以整個鍵刪掉（不留死鍵，避免日後被誤用）。
      */
-    weeklyUnavailable: '每週循環尚未支援：目前只能新增單次封鎖，儲存後才會真的擋住預約。',
     date: '日期',
     dayOfWeek: '星期幾',
     weekdays: [

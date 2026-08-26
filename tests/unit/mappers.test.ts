@@ -338,7 +338,15 @@ describe('mapProductOrder (02 §0004 product_orders / product_order_items)', () 
       status: 'CONFIRMED',
       paymentStatus: 'PAID_OFFLINE',
       createdAt: '2026-08-10T00:00:00Z',
+      // migration 0027（issue #33 ①）：這一列沒有 coupon_discount → null
+      couponDiscount: null,
     });
+  });
+
+  it('coupon_discount 有值 → 轉成 number；沒有這一欄 → null（不是 0）', () => {
+    expect(mapProductOrder({ ...fullRow, coupon_discount: '100' }).couponDiscount).toBe(100);
+    expect(mapProductOrder({ ...fullRow, coupon_discount: 0 }).couponDiscount).toBe(0);
+    expect(mapProductOrder(fullRow).couponDiscount).toBeNull();
   });
 
   it('items null（查無明細）→ 空陣列', () => {

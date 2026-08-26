@@ -19,6 +19,7 @@ import { FormError, FormGroup, FormText, Input, Label, Select } from '@/componen
 import { useToast } from '@/components/ui/Toast';
 import { listProductOrders, listProducts, listStaff } from '@/services/catalog';
 import {
+  applyProductOrderCoupon,
   cancelProductOrder, completeProductOrder, confirmProductOrder,
   createManualProductOrder, markProductOrderPaidOffline,
   type ProductOrderNotifyOutcome,
@@ -140,6 +141,14 @@ const toRow = (o: ProductOrder): OrderRow => ({
   ...o,
   ...DEFAULT_EXTRAS,
   ...(MOCK_ORDER_EXTRAS[o.id] ?? {}),
+  /*
+   * 票券折抵**優先取後端回的值**（issue #33 ①：product_orders.coupon_discount，
+   * migration 0027）。mock 模式沒有這個欄位（undefined），才退回頁內示範值；
+   * 兩者都沒有就是 0，畫面顯示「無」。
+   */
+  couponDiscount: o.couponDiscount
+    ?? MOCK_ORDER_EXTRAS[o.id]?.couponDiscount
+    ?? DEFAULT_EXTRAS.couponDiscount,
 });
 
 const STATUS_TONE: Record<ProductOrderStatus, 'warning' | 'info' | 'success' | 'neutral'> = {
@@ -458,14 +467,19 @@ export default function ProductOrdersPage() {
       <CompleteOrderModal
         order={completeTarget}
         onClose={() => setCompleteTarget(null)}
-        onCompleted={(order) => {
+        onCompleted={(order, appliedDiscount) => {
           /*
-           * 沒有真的票券折抵資料可寫（issue #33 ①未建置），couponDiscount 維持
-           * 訂單原值——不做 "+ 0" 這種沒有意義的運算，也不虛構一個折抵金額。
+           * issue #33 ①：折抵金額來自 POST /api/product-orders/:id/apply-coupon
+           * 的回應（後端算的），沒有套券時是 null——此時只更新狀態，
+           * 不動 couponDiscount，也不做 "+ 0" 這種沒有意義的運算。
            */
           patchOrder(order.id, {
             status: 'COMPLETED',
             completedAt: new Date().toISOString(),
+            ...(appliedDiscount === null ? {} : {
+              couponDiscount: order.couponDiscount + appliedDiscount,
+              totalAmount: order.totalAmount - appliedDiscount,
+            }),
           });
           setCompleteTarget(null);
         }}
@@ -656,7 +670,8 @@ function CompleteOrderModal({
 }: {
   order: OrderRow | null;
   onClose: () => void;
-  onCompleted: (order: OrderRow) => void;
+  /** appliedDiscount：後端回的折抵金額；null = 這次沒有套券（或示範模式） */
+  onCompleted: (order: OrderRow, appliedDiscount: number | null) => void;
 }) {
   const toast = useToast();
   const [code, setCode] = React.useState('');
@@ -677,17 +692,38 @@ function CompleteOrderModal({
     }
     setError('');
     setBusy(true);
+    /*
+     * 原站是**兩段獨立的請求**：先 apply-coupon、再 complete，第二段可以單獨
+     * 失敗而第一段已經生效（jsStrings[77]「票券已套用，但「完成訂單」失敗：」）。
+     * 這裡照同一個語意——所以兩段各有自己的 try，不能包成一個。
+     */
+    let applied: number | null = null;
+    if (withCoupon) {
+      try {
+        const res = await applyProductOrderCoupon(order.id, code.trim());
+        // res === null 只發生在示範模式（services/products.ts 的 mock 分支）：
+        // 沒有票券資料可查，就不宣稱套用了什麼。
+        if (res === null) {
+          toast.show(t.complete.couponMockOnly, 'warning');
+        } else {
+          applied = res.couponDiscount;
+          // 金額來自後端回應的 couponDiscount，前端只負責格式化。
+          toast.show(t.complete.couponApplied(formatCurrency(applied)));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t.messages.actionFailed);
+        setBusy(false);
+        return; // 套券失敗就不往下完成訂單（原站的兩顆鈕本來就分得開）
+      }
+    }
     try {
-      /*
-       * 票券折抵後端尚無端點（issue #33 ①），這裡不呼叫、不核銷、不生折抵金額。
-       * 完成取貨本身走真 API；`withCoupon` 只決定要不要額外提醒「未套用」。
-       */
       await completeProductOrder(order.id);
-      if (withCoupon) toast.show(t.complete.couponNotBuilt, 'warning');
       toast.show(t.messages.completed);
-      onCompleted(order);
+      onCompleted(order, applied);
     } catch (e) {
-      toast.show(e instanceof Error ? e.message : t.messages.actionFailed, 'danger');
+      const msg = e instanceof Error ? e.message : t.messages.actionFailed;
+      // 票券已經核銷掉了，這一句必須說出來，否則店家會以為票券還在。
+      toast.show(applied === null ? msg : `${t.complete.couponAppliedButFailed}${msg}`, 'danger');
     } finally {
       setBusy(false);
     }
@@ -721,7 +757,7 @@ function CompleteOrderModal({
           id="orderCouponCode" value={code}
           onChange={(e) => setCode(e.target.value)}
         />
-        <FormText>{t.complete.couponNotBuilt}</FormText>
+        <FormText>{t.complete.couponHelp}</FormText>
       </FormGroup>
 
       {error ? <FormError>{error}</FormError> : null}

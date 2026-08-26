@@ -192,6 +192,8 @@ export function mapProductOrder(r: any): ProductOrder {
     status: r.status,
     paymentStatus: r.payment_status,
     createdAt: r.created_at,
+    // migration 0027：null = 沒有折抵紀錄，不轉成 0（0 會被讀成「折抵了 0 元」）
+    couponDiscount: r.coupon_discount == null ? null : Number(r.coupon_discount),
   };
 }
 

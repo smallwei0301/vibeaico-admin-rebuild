@@ -234,12 +234,23 @@ export const exportCustomersExcel = () =>
     () => downloadAttachment(`${API_BASE}/api/export/customers/excel`),
   );
 
-/** 預約列表匯出（GET /api/export/bookings?from&to） */
-export const exportBookingsCsv = (q?: Partial<ReportQuery>) =>
+/**
+ * 預約列表匯出（GET /api/export/bookings/:format?from&to）。
+ *
+ * ⚠️ issue #33 ③：原站打的是帶 format 路徑段的形狀
+ * （docs/specs/bookings.json jsApiCalls `/api/export/bookings/${format}`），
+ * 我方原本只有無 format 段的版本。現在改打格式段，形狀同 exportReports。
+ *
+ * ⚠️ **兩個 format 拿到的是同一份 CSV**（端點兩個分支共用同一個產生器）：
+ * 專案沒有裝 xlsx 產生器，所以 'excel' 不會產出真的 .xlsx——這一點在頁面
+ * 標籤上要說實話，不得寫成「匯出 Excel」再送一個 .csv 出去。
+ * 檔名一律取自後端的 Content-Disposition（#28 ④ 的規則），前端不自組。
+ */
+export const exportBookingsCsv = (format: 'csv' | 'excel', q?: Partial<ReportQuery>) =>
   adapt<DownloadedFile>(
     () => NOT_DOWNLOADED,
     () => downloadAttachment(
-      `${API_BASE}/api/export/bookings${queryString({ from: q?.from, to: q?.to })}`,
+      `${API_BASE}/api/export/bookings/${format}${queryString({ from: q?.from, to: q?.to })}`,
     ),
   );
 

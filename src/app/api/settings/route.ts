@@ -11,6 +11,10 @@ import {
   type TenantSettings,
 } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import {
+  countConflictingBookings, countManualWeeklyBlocks, rebuildAutoBlocks,
+} from '@/server/business-hours-blocks';
+import { blockTimesPage } from '@/i18n/zh-TW/pages/block-times';
 
 /**
  * GET /api/settings — 回 TenantSettings。
@@ -111,6 +115,31 @@ export const PUT = handle(async (req) => {
       .from('tenant_settings')
       .upsert({ tenant_id: t.tenantId, ...update }, { onConflict: 'tenant_id' });
     if (error) throw error;
+  }
+
+  /*
+   * issue #33 ②：存 business 群組時，把「沒開放的時段」重建成自動封鎖
+   * （block_times.auto = true，migration 0027）。規則與依據見
+   * src/server/business-hours-blocks.ts 檔頭與 04 分冊 §A-1：
+   *   - **全刪重建**，所以重複存檔不會讓 auto 列愈積愈多。
+   *   - **手動建立的封鎖（auto = false）一筆都不碰**——原站文案明講
+   *     「已保留（不會自動刪除）」。
+   * 回傳的三個數字是頁面那四句既有文案（settings.ts 的 autoBlockCreated /
+   * conflictWarning / conflictWarningHours / manualBlockKept）的唯一來源；
+   * 端點回不出來的數字，頁面就不顯示那一句。
+   */
+  if (b.business) {
+    const [autoBlockCreated, conflictBookingCount, manualWeeklyBlockCount] = [
+      await rebuildAutoBlocks(t, b.business, blockTimesPage.autoTitle),
+      await countConflictingBookings(t, b.business),
+      await countManualWeeklyBlocks(t),
+    ];
+    return ok({
+      perDayMode: b.business.perDayMode,
+      autoBlockCreated,
+      conflictBookingCount,
+      manualWeeklyBlockCount,
+    });
   }
 
   return ok();

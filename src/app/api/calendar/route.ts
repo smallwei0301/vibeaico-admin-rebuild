@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import type { CalendarEvent } from '@/lib/types';
+import { expandWeeklyBlock } from '@/server/business-hours-blocks';
 
 const querySchema = z.object({
   from: z.string().min(1, '請提供起始時間'),
@@ -27,10 +28,15 @@ export const GET = handle(async (req) => {
       .eq('tenant_id', t.tenantId)
       .in('status', ['PENDING', 'CONFIRMED', 'COMPLETED'])
       .lt('start_at', q.to).gt('end_at', q.from),
+    /*
+     * ⚠️ 這裡**不能**用 .lt('start_at', to).gt('end_at', from) 過濾：
+     * WEEKLY 的列（migration 0027）存的是參考週的起訖時間，不是實際發生的
+     * 日期，用區間比對會把每一筆每週封鎖都濾掉。改成整批取回、在下面展開後
+     * 再過濾（店家量級小，同其他列表端點的口徑）。
+     */
     t.supabase.from('block_times')
-      .select('id, staff_id, start_at, end_at, reason, staff(name)')
-      .eq('tenant_id', t.tenantId)
-      .lt('start_at', q.to).gt('end_at', q.from),
+      .select('id, staff_id, start_at, end_at, reason, title, recurrence, day_of_week, auto, staff(name)')
+      .eq('tenant_id', t.tenantId),
   ]);
   if (bErr) throw bErr;
   if (blErr) throw blErr;
@@ -48,20 +54,38 @@ export const GET = handle(async (req) => {
         staffId: r.staff_id, staffName: r.staff_name,
       },
     })),
-    ...(blocks ?? []).map((r): CalendarEvent => ({
-      id: `block:${r.id}`,
-      type: 'BLOCK',
+    ...(blocks ?? []).flatMap((r): CalendarEvent[] => {
       // 巢狀 join 在無 Database 型別時被靜態推成陣列，實際為多對一物件
       //（同 src/server/email/notify.ts 說明）。
-      title: r.reason || '封鎖時段',
-      start: r.start_at,
-      end: r.end_at,
-      meta: {
+      const staffName = (r as unknown as { staff: { name: string } | null }).staff?.name ?? null;
+      const label = r.title || r.reason || '封鎖時段';
+      const meta = {
         reason: r.reason ?? '',
         staffId: r.staff_id,
-        staffName: (r as unknown as { staff: { name: string } | null }).staff?.name ?? null,
-      },
-    })),
+        staffName,
+        recurrence: (r.recurrence ?? 'SINGLE') as string,
+        auto: !!r.auto,
+      };
+      if ((r.recurrence ?? 'SINGLE') !== 'WEEKLY') {
+        // SINGLE：照原本的區間過濾（重疊判定 start < to 且 end > from）
+        if (!(r.start_at < q.to && r.end_at > q.from)) return [];
+        return [{
+          id: `block:${r.id}`, type: 'BLOCK', title: label,
+          start: r.start_at, end: r.end_at, meta,
+        }];
+      }
+      // WEEKLY：一列 = 一整條每週封鎖，在查詢區間內展開成每一次發生
+      //（原站的刪除確認也是這個模型：docs/specs/calendar.json jsStrings[31]
+      //  「會把每一週的這個封鎖整條刪除」）。
+      return expandWeeklyBlock(r, q.from, q.to).map((occ) => ({
+        id: `block:${r.id}:${occ.start}`,
+        type: 'BLOCK' as const,
+        title: label,
+        start: occ.start,
+        end: occ.end,
+        meta: { ...meta, blockId: r.id },
+      }));
+    }),
     // DEPARTURE / EXTERNAL：對應資料表尚未建（見檔頭註解），先恆為空。
   ].sort((a, b) => a.start.localeCompare(b.start));
 

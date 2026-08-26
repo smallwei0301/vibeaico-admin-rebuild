@@ -17,7 +17,7 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/services/settings';
 import { changePassword } from '@/services/auth';
 import { uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
@@ -158,13 +158,17 @@ export default function SettingsPage() {
   ) => {
     setSavingSection(section);
     try {
-      await saveTenantSettings(patch);
+      // 帶 business 群組時端點會回報自動封鎖／衝突預約的實際筆數（issue #33 ②）；
+      // 其他群組回 null。呼叫端據此決定要不要多說幾句。
+      const impact = await saveTenantSettings(patch);
       toast.show(successMessage);
+      return impact;
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
         'danger',
       );
+      return null;
     } finally {
       setSavingSection(null);
     }
@@ -215,6 +219,20 @@ export default function SettingsPage() {
     return '';
   };
 
+  /**
+   * 營業設定的儲存（issue #33 ②）——比其他分頁多兩件事：
+   *
+   * 1. 存檔**前**先打 `POST /api/settings/weekly-business-hours/draft`（乾跑）
+   *    拿「偵測到的」數字：落在非營業時段的既有預約、店家手動建立的每週封鎖。
+   *    這一支一列都不寫。⚠️ 乾跑是**我方選定**的語意，不是原站考據結果
+   *    （見 src/server/business-hours-blocks.ts 檔頭）。
+   * 2. 存檔本身走 `PUT /api/settings`，它會重建自動封鎖並回報**實際建立**的
+   *    筆數。「已依你的營業時段自動建立 N 筆」用的是這個數字（真的發生了），
+   *    不是乾跑的預測值。
+   *
+   * ⚠️ 端點沒有回報的數字就不顯示那一句——不為了讓文案有東西可印而估一個數。
+   * 零筆時也不顯示（「⚠️ 有 0 筆預約落在非營業時段」是一句沒有意義的警告）。
+   */
   const saveBusiness = async () => {
     if (!draft) return;
     const err = validateBusiness(draft.business);
@@ -222,7 +240,31 @@ export default function SettingsPage() {
       toast.show(`${t.business.validation.checkPrefix}${err}`, 'warning');
       return;
     }
-    await persist('business', { business: draft.business }, t.business.saved);
+
+    // 乾跑失敗不擋存檔：它只是拿來多說幾句話的，擋住反而讓存不了設定。
+    let preview: Awaited<ReturnType<typeof previewBusinessHours>> = null;
+    try { preview = await previewBusinessHours(draft.business); } catch { preview = null; }
+
+    const impact = await persist('business', { business: draft.business }, t.business.saved);
+    // 存檔失敗，或示範模式沒有數字可報
+    if (!impact) return;
+
+    if (impact.autoBlockCreated > 0)
+      toast.show(t.business.autoBlockCreated(impact.autoBlockCreated), 'info');
+
+    const conflicts = preview?.conflictBookingCount ?? impact.conflictBookingCount;
+    if (conflicts > 0) {
+      // 逐日模式的「非營業時段」同時涵蓋整天公休，用的是另一句文案。
+      toast.show(
+        impact.perDayMode
+          ? t.business.conflictWarning(conflicts)
+          : t.business.conflictWarningHours(conflicts),
+        'warning',
+      );
+    }
+
+    const manualKept = preview?.manualWeeklyBlockCount ?? impact.manualWeeklyBlockCount;
+    if (manualKept > 0) toast.show(t.business.manualBlockKept(manualKept), 'info');
   };
 
   const saveNotification = async () => {

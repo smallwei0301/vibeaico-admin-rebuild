@@ -2798,3 +2798,95 @@ issue #3／#6 那幾輪為「尚未建置」寫的守門測試，在功能補齊
 
 ⚠️ 值得記的是那個**誤判**：把 A 錯誤當成 B 錯誤靜默吞掉，會讓失敗出現在無關的地方。
 `isMissingSchemaError()` 目前分不出「表不存在」與「欄位不存在」，這一點尚未處理。
+
+---
+
+## 15. issue #33 ①〜⑤：三方對照剩下的五支端點（2026-08-26）
+
+第五輪「三方對照」（§10）盤出 6 支**原站有、我方沒有、也沒有 issue 認領**的端點。
+第 ⑥ 筆 `/api/payment-methods/online-payment-meta` 已併入 #32，本節記其餘五支。
+它們的共同根因與 §0「根因 B：計劃漏掉」相同——`docs/REBUILD-SPEC.md` §9.1 的 195 支
+清單裡都在，但 `04-API-CONTRACTS.md` 從未把它們收編成契約，於是沒有任何格子可以漏勾。
+
+### 15.1 三支已補齊
+
+| 筆 | 端點 | 契約 | 測試 |
+|---|---|---|---|
+| ① | `POST /api/product-orders/:id/apply-coupon` | 04 §B-4.1 | `tests/integration/api/product-orders-coupon.33.test.ts` |
+| ② | `POST /api/settings/weekly-business-hours/draft` ＋ auto 封鎖鏈 | 04 §A-1.2 | `tests/integration/api/business-hours-draft.33.test.ts` |
+| ③ | `GET /api/export/bookings/:format` | 04 §B-6 | `tests/integration/api/export-bookings-format.33.test.ts` |
+
+**兩個「我方選的、不是原站考據結果」的決定**，兩處都在契約與程式碼註解裡標明：
+
+1. **①的票券適用範圍**：原站對「票券能不能用在商品訂單、有沒有品類限制」**零字串**
+   （`product-orders.json` 的三句票券文案都沒提，`coupons.json` 的 formModal 也沒有
+   「適用範圍」欄位）。採 issue 預設值＝與預約版完全同一套規則（不限品類、只限票券
+   持有人本人）。規則集中在 `src/server/coupon-redeem.ts` 一處。
+2. **②的乾跑語意**：原站只給路徑與四句文案，**沒有 request/response 形狀**。選「乾跑」
+   的依據只有「路徑最後一段是 draft」與「解析逐日營業時間失敗」兩點；**反面證據
+   （另外三句是過去式／已存檔語氣）一併記在 04 §A-1.2**，沒有藏起來。
+
+### 15.2 ④⑤ 兩支查證結果：**用途仍判定不出來，因此不實作**
+
+issue #33 要求「判定得出來就做、判定不出來就留言請示」。本輪把兩支都重查了一遍
+（`docs/specs/*.json` 的 `jsStrings` / `buttons` / `modals` / `looseFields` / `alerts` /
+`headings`、`docs/integration/**`、`src/**`、`REBUILD-SPEC.md`）。
+
+**`/api/settings/onboarding-event`（dashboard 頁）**
+
+issue 只寫了「整份 jsStrings 找不到任何一句可以歸給它」。本輪在 **`buttons[].onclick`**
+找到 issue 沒列的三條線索：
+
+- `focusTrack('focus_edit_service')`（「去修改」鈕）
+- `focusTrack('focus_open_shop')`（「開啟」鈕）
+- `skipFocusCard()`（引導卡的關閉鈕）
+- 另有 `dismissCalSyncPromo()`（issue 已提）
+
+再加上 `_tokens.json` 的一整組 `onboarding-*` class（card / header / steps /
+progress-bar / progress-fill / complete / close / next-actions）與 `onboardingReadyBanner`
+警示條，可以說**這支端點很可能是記錄引導卡的互動事件**（`focusTrack` 是 dashboard
+唯一「像 tracking」的函式，而 dashboard 的 jsApiCalls 裡唯一沒有其他解釋的就是它）。
+
+**但那是消去法的推論，不是判定**：規格沒有捕捉 inline JS 的內容（只有
+`inlineJsBytes: 66026` 這個位元組數），所以「`focusTrack` 打的是不是這一支」沒有直接
+證據；**request/response 形狀、事件模型、誰會讀回這些事件，全部未知**
+（`/api/settings/setup-status` 是另一支、我方已實作，它算的是設定完成度，不是事件）。
+實作它就等於發明一個 onboarding 事件模型——issue 明文禁止。
+
+**`/api/staff/calendar`（calendar 頁）**
+
+本輪把用途**收斂了一格**，但仍不足以實作。calendar 頁的 `buttons` 有一組模式切換：
+
+- `switchCalendarMode('booking')`（「顧客預約」，`btnModeBooking`）
+- `switchCalendarMode('staff')`（「員工排班」，`btnModeStaff`）
+
+而該頁的 `looseFields` **只有一個** staff 下拉（`staffFilter`，選項「全部員工」），
+`jsApiCalls` 裡也**沒有** `/api/shifts`。所以「`/api/staff/calendar` 服務的是
+員工排班模式」是目前最強的候選——但這仍是消去法。決定性的資訊缺口是：
+
+- 它與 `/api/staff/bookable` 的回傳差在哪？（只多欄位？還是連班表一起回？）
+- 有沒有日期參數？回的是員工清單還是「員工 × 時段」的格子？
+
+`jsStrings` 裡與員工有關的只有一句「載入員工列表失敗」，**分不出是哪一支的錯誤訊息**
+（issue 已指出）。issue 也明文禁止「拿 `/api/staff/bookable` 的形狀去猜它」。
+
+**結論**：④⑤ 兩支**不實作**，程式碼裡不留任何半成品路徑或猜測性型別
+（`grep -rn "staff/calendar\|onboarding-event" src/ tests/` 輸出為空）。
+等擁有者裁決。**「不做，在分冊記錄查不到與日期」是 issue 自己列出的有效答案。**
+
+### 15.3 issue #33 內文與現況不符的三處（以程式碼為準並回報）
+
+| issue #33 寫的 | 實際 |
+|---|---|
+| ②「封鎖時段頁也已經畫好了那個標記：`block-times.ts:34` `auto: '自動產生'`、`page.tsx:100`（`{b.auto ? … : null}`）、`:134/:140`（auto 列的按鈕 disabled）」 | **這些在 issue 建立時就已經不存在了**。`816c6f6`（issue #7 乙）接線時把 `auto` 徽章、每週循環、第二個文字欄一起移除並在檔頭寫明理由。本輪是**重新加回來**（因為 0027 讓它們變成真的），不是「接上既有的畫面」 |
+| ②「migration 編號取現有最大號 **0019 +1 = 0020**」 | 撰寫當時的假設，早已過時：0020–0024 都已使用。本輪依主導者指定用 **0027**（0025 給 #19、0026 給 #8） |
+| ③ 「#28 ③ 應已完成，接線點直接沿用」 | 屬實（`exportBookingsCsv` 已接上），但該接線送的是**無 format 段**的端點；本輪把它改成送 format，並把頁面那段「格式段補上之後這裡才會有兩種檔案」的註解改掉——**補上 format 段之後兩種選項拿到的仍是同一份 CSV**（沒有 xlsx 產生器），註解原本的預期不成立 |
+
+
+### 15.4 順帶：`scripts/test/seed.mjs` 的 `price_per_person`
+
+本輪也獨立撞到並修好了這一處（它讓 `reset-db` 以非零狀態碼結束，
+**整個整合測試套件一個案例都跑不起來**）。合併時發現 issue #19 的執行者
+已經修過同一行且記得更完整（見上方 §14 對應段落，並補了
+`price_type` / `max_participants`），**本輪的修改讓給那一份**，這裡只留交叉註記：
+同一個坑在同一天被三個 issue 的執行者各自撞到，是它夠隱蔽的證據。

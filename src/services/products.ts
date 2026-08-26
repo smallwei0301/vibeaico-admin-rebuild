@@ -452,6 +452,24 @@ export const completeProductOrder = (id: string) =>
   adapt(() => undefined, () =>
     request<void>(`/api/product-orders/${id}/complete`, { method: 'POST' }));
 
+/**
+ * 套用票券（issue #33 ①）。折抵金額**由後端算並回傳**——原站那句
+ * 「票券已套用！折抵 ${formatMoney(couponRes.data?.couponDiscount || 0)}」
+ * 讀的就是回應的 couponDiscount（docs/specs/product-orders.json jsStrings[76]）。
+ * 前端不得自行組這個數字。
+ *
+ * mock 模式沒有票券資料庫可查，回 null 表示「這裡沒有折抵可算」，
+ * 呼叫端據此顯示「未套用」而不是一個編出來的金額。
+ */
+export const applyProductOrderCoupon = (id: string, code: string) =>
+  adapt<{ totalAmount: number; couponDiscount: number } | null>(
+    () => null,
+    () => request<{ totalAmount: number; couponDiscount: number }>(
+      `/api/product-orders/${id}/apply-coupon`,
+      { method: 'POST', body: JSON.stringify({ code }) },
+    ),
+  );
+
 /** 取消並回補庫存（reason 目前後端未落地儲存，仍隨 body 送出以備擴充） */
 export const cancelProductOrder = (id: string, reason?: string) =>
   adapt(() => undefined, () =>

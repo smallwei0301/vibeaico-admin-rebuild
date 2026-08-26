@@ -381,9 +381,11 @@ export async function runSeed(admin) {
         // 修正欄位名，並補上 price_type / max_participants，讓 §5 的並發
         // 測試有明確的計價依據。
         //
-        // ⚠️ issue #8 與 issue #19 的執行者**各自獨立撞到並修好**同一處，
-        // 兩份 diff 在合併時撞在一起——那本身就是這個坑夠隱蔽的證據：
+        // ⚠️ issue #8、#19、#33 **三位執行者各自獨立撞到並修好**同一處，
+        // 三份 diff 在合併時接連撞在一起——那本身就是這個坑夠隱蔽的證據：
         // 錯誤訊息指向 trip_departures 的外鍵，真正的原因在這一行。
+        // #33 的執行者還多查出一層後果：reset-db 以非零狀態碼結束，
+        // **整個整合測試套件一個案例都跑不起來**。
         base_price: 3000,
         price_type: 'PER_PERSON',
         max_participants: 10,
