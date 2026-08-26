@@ -252,6 +252,23 @@ origin/wip/issue-33-partial                  ← §5.2 那一支，未合併
 
 ---
 
+## 7.5 ⚠️ 本環境對 `api.github.com` 的直連是 **403**
+
+本輪多位執行者回報：sandbox 內 `curl https://api.github.com/...` 一律 **403**，
+且沒有 `gh` CLI。**唯一能動 GitHub 的管道是 GitHub MCP 工具。**
+
+這造成一個實際的限制：**MCP 讀回的 issue body 是 HTML 實體轉義過的**
+（`>` → `&gt;`、`'` → `&#39;`），而拿不到原始 body 就**沒有比對基準**，
+也就無法做 §7.4 那三項 delta 自驗。
+
+因此本輪有兩位執行者**刻意不動 issue body、只留言**，並把驗收清單完整回填到
+`08-CHECKLIST.md`。**那是對的判斷**——寧可留一份「留言裡有、body 沒勾」的落差，
+也不要交一份被二次轉義弄壞的清單（body 裡有前人辛苦貼的證據）。
+
+> **接手人若在能直連 GitHub API 的環境**（例如有 `gh` 或 token 沒被擋），
+> 可以取得原始 body 做安全的最小替換，把這些落差補起來。
+> 落差清單見各 issue 的留言與 `08-CHECKLIST.md`。
+
 ## 8. 憑證與環境
 
 所有 token 在擁有者 Google Drive 的 **`midao.env`** 文件裡（Supabase 兩專案、
