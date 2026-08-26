@@ -167,11 +167,29 @@ const BG_PNG = Buffer.from(
      */
     if (CLEANUP) {
       if (uploadedObject) {
-        await sql(
-          `delete from storage.objects where bucket_id='richmenu-assets'
-           and name = '${uploadedObject.replace(/'/g, "''")}';`,
-          REF,
-        ).catch((e) => console.log(`  [清理失敗] 刪 storage 物件：${e.message}`));
+        /*
+         * 優先走 Storage API：它會把後端真正的檔案一起刪掉。直接 delete
+         * storage.objects 只清得掉索引列，實體檔案會變成沒人指得到的孤兒。
+         * 沒有 service role key 時退回 SQL（至少不留可查詢到的痕跡）。
+         */
+        const sbUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
+        const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        let removed = false;
+        if (sbUrl && sbKey) {
+          const res = await fetch(`${sbUrl}/storage/v1/object/richmenu-assets/${uploadedObject}`, {
+            method: 'DELETE',
+            headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
+          }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
+          removed = res.ok;
+          if (!res.ok) console.log(`  [清理] Storage API 刪檔回 ${res.status}，改用 SQL`);
+        }
+        if (!removed) {
+          await sql(
+            `delete from storage.objects where bucket_id='richmenu-assets'
+             and name = '${uploadedObject.replace(/'/g, "''")}';`,
+            REF,
+          ).catch((e) => console.log(`  [清理失敗] 刪 storage 物件：${e.message}`));
+        }
       }
       await sql(
         restoreBg === null
