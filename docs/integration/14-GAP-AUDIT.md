@@ -2349,3 +2349,130 @@ toast「圖片上傳成功」。**每一步都是真的，整體仍然是假成�
 上限是 **1 MB**，且 create 端點是把位元組原樣轉送。頁面因此自己先卡 1 MB——
 不卡的話，失敗會被推遲到「發布」那一刻，也就是使用者已經離開這個畫面、
 手上不再握著那個檔案的時候。**限制要擋在使用者還能換一張圖的地方。**
+## 附錄 Y — issue #35（三頁的「假欄位混在真資料列裡」）盤點與處置（2026-08-26）
+
+> 本節只新增、不改動既有段落。issue #35 的第 1 步是盤點，本節就是那張表。
+> §6.14「沒有做的事」記過 `bookings` 沒有 `paid_amount`，那一條**經本輪查證成立**；
+> `coupons` 與 `membership-levels` 兩處 issue 內文留空，由本輪盤出。
+
+### Y.1 盤點表（畫面名稱／來源常數／DB 欄位／原站有無）
+
+「原站有無」一律寫成「在 `docs/specs/X.json` 裡（搜不到｜搜到，出處）」——
+**搜不到 ≠ 原站沒有**，§9.4 已列出 `docs/specs` 的六個盲區（它只記 DOM 與 JS 字串，
+不記 API 回傳欄位形狀，且 JS 生成的 modal 內容整段看不到）。
+
+#### `src/app/tenant/bookings/page.tsx`（`BOOKING_EXTRAS_*`）
+
+| 畫面名稱 | 來源常數 | DB 欄位（本輪前 → 後） | 原站有無（出處） | 處置 |
+|---|---|---|---|---|
+| 已收金額（列上「（已收 $X）」、詳情「已收金額」、取消／批次取消的退款警語金額、標記付款鈕在「標記尾款已結清／標記已線下收款」之間切換、調價的「已收高於新應付」提醒） | `BOOKING_EXTRAS_*.paidAmount` | **無 → 仍無**（0004 建表無 `paid_amount`，0013 只加 `reminder_sent_at`） | **搜到**：`bookings.json` jsStrings[48] `'>（已收 ${formatMoney(b.paidAmount)}）</span>'`、[88] `'已收金額 ${formatMoney(b.paidAmount)} 高於新應付…'` | **移除＋待裁決**（見 Y.3） |
+| 票券折抵 | `BOOKING_EXTRAS_*.couponDiscount` | 無 → **`bookings.coupon_discount`（0022）** | **搜到**：`bookings.json` jsStrings[127] `'票券折抵 ${formatMoney(couponRes.data?.couponDiscount \|\| 0)}'`（原站 **apply-coupon 的回應欄位**；作為預約列/詳情的**持久**欄位在 spec 裡搜不到，detailModal 的 bodyText 是空的、內容由 JS 生成） | **補欄位＋接線** |
+| 點數折抵 | `BOOKING_EXTRAS_*.pointsRedeemed` | 無 → **`bookings.points_redeemed`（0022）** | **搜到**：`bookings.json` jsStrings[170] `'點數折抵 ${result.points} 點 = $${result.points}'`（同上，是 apply-points 的**回應**） | **補欄位＋接線** |
+| 顧客可用點數（「使用點數」modal 的餘額） | `BOOKING_EXTRAS_*.customerPoints` | **已有 `customers.points`**（0004），只是沒被 `bookings_view` 帶出來 → 0022 補 `customer_points` | 在 `bookings.json` 裡**搜不到**這個欄位名（餘額顯示在 JS 生成的 modal 裡）；但欄位本身是我方既有真實資料 | **純接線** |
+
+#### `src/app/tenant/coupons/page.tsx`（`COUPON_EXTRAS_*`）
+
+| 畫面名稱 | 來源常數 | DB 欄位（本輪前 → 後） | 原站有無（出處） | 處置 |
+|---|---|---|---|---|
+| 類型（折價／折扣／兌換／加購券） | `COUPON_EXTRAS_*.type` | `coupons.discount_type`（**本來就有**） | **搜到**：`coupons.json` `modals[formModal].fields.type` 四個選項 | **移除常數**（值一直可由真實的 `discountType` 推導，常數是重複資料；移除後畫面不變） |
+| 最低消費 | `.minOrderAmount` | 無 → **`coupons.min_order_amount`（0022）** | **搜到**：formModal `minOrderAmount`「最低消費金額」＋詳情 `'<strong>最低消費：</strong>NT$ ${d.minOrderAmount}'` | **補欄位＋接線** |
+| 最高折抵 | `.maxDiscountAmount` | 無 → **`coupons.max_discount_amount`（0022）** | **搜到**：formModal `maxDiscountAmount`「最高折抵金額」＋詳情 `最高折抵：` | **補欄位＋接線** |
+| 兌換項目 | `.giftItem` | 無 → **`coupons.gift_item`（0022）** | **搜到**：formModal `giftItem`「兌換項目 *」＋詳情 `兌換項目：` | **補欄位＋接線** |
+| 每人限領 | `.limitPerCustomer` | 無 → **`coupons.limit_per_customer`（0022）** | **搜到**：formModal `limitPerCustomer`「每人限領數量」（help：不填則每人限領 1 張） | **補欄位＋接線** |
+| 🔒 私密票券 | `.privateMode` | 無 → **`coupons.private_mode`（0022）** | **搜到**：formModal `privateMode`「🔒 私密票券」＋列表徽章 `'>🔒 私密</span>'` | **補欄位＋接線** |
+| 最近核銷代碼（決定「還原票券（反核銷）」鈕出不出現） | `.lastRedeemedCode` | 無欄位（**由 `coupon_instances` 即時算**，同 issued/redeemed 計數的既有手法） | **搜到**：`coupons.json` 有 `/api/coupons/instances/${redeemUndoTargetId}/unredeem` 與 `｜代碼：${d.code}`（核銷成功訊息裡的**實例**代碼） | **純接線**（`GET /api/coupons` 附掛） |
+| 票券代碼（列表票券名稱下方那一行） | `.code` | 無 | 在 `coupons.json` 裡**搜不到**任何「票券層級代碼」——formModal 沒有這個欄位，列表欄位是「票券名稱／類型／折扣／使用期限／已發放／狀態／操作」，`${d.code}` 只出現在核銷成功訊息（那是實例代碼） | **移除**（我方無寫入路徑，留著只會顯示編出來的字串） |
+| 適用服務（詳情） | `.applicableServices` | 無 | **搜到（但只有一半）**：詳情有 `'<strong>適用服務：</strong>${d.applicableServices.map(...)}'`，但原站 formModal **沒有任何欄位可以設定它**（全文只有詳情那一處） | **移除**（補一個永遠是空陣列的欄位沒有意義；日後若找到設定入口再補，見 Y.4） |
+| 顯示狀態 | `.displayStatus` | 等同 `coupons.status` | — | **收斂成 `status`**（常數從未覆寫它，是別名不是假資料） |
+
+#### `src/app/tenant/membership-levels/page.tsx`（`LEVEL_EXTRAS_*`）
+
+| 畫面名稱 | 來源常數 | DB 欄位（本輪前 → 後） | 原站有無（出處） | 處置 |
+|---|---|---|---|---|
+| 等級說明（列表名稱下方、表單 textarea） | `LEVEL_EXTRAS_*.description` | 無 → **`membership_levels.description`（0022）** | **搜到**：`membership-levels.json` `modals[levelModal].fields.description`「等級說明」 | **補欄位＋接線** |
+| 狀態（啟用／停用徽章、表單 checkbox） | `.active` | 無 → **`membership_levels.active`（0022）** | **搜到**：levelModal `isActive`「啟用此等級」＋ jsStrings `'啟用'` / `'停用'` ＋表格有「狀態」欄 | **補欄位＋接線** |
+| 「預設」徽章、表單 checkbox | `.isDefault` | 無 → **`membership_levels.is_default`（0022，每租戶 partial unique index）** | **搜到**：levelModal `isDefault`「設為預設等級（新顧客自動套用）」＋ jsStrings `'>預設</span>'` | **補欄位＋接線** |
+
+### Y.2 三處**不是**同一個解法（issue #35 自己提醒過的事，實測成立）
+
+- `membership-levels`：三個欄位全部「原站有、我方沒有」→ 一致的補欄位。
+- `coupons`：**五補、一算、三移除**（見表）。把它當成和 membership-levels 同型會多補
+  兩個永遠沒有寫入路徑的欄位。
+- `bookings`：**兩補、一接、一移除**，而且移除的那一個（已收金額）是唯一牽涉金額、
+  唯一需要裁決的。
+
+### Y.3 待擁有者裁決：**只有一格**——`bookings.paid_amount`（已收金額）
+
+原站的 `b.paidAmount` 來自**線上金流交易**：
+
+- 「確定標記此預約為『已線下收款』嗎？（…標記為已付清；**不會建立線上金流交易**）」
+- 「⚠️ 其中 N 筆**已線上收款**（共 $X），系統不會自動退款，請記得至您的金流後台手動退款」
+- 「加購後金額提高，此預約已從『已付清』變回『已付訂金』」
+
+我方**整套顧客端線上付款都還沒建**（issue #32；`supabase/migrations/` 沒有任何金流交易表，
+`/pay/:bookingNo` 頁不存在），`payment_status` enum 也沒有「已付訂金」。所以補 `paid_amount`
+不是接線，而是要先定**訂金／尾款／退款怎麼連動**的業務規則。**不自行發明**，列在此等裁決。
+
+本輪已經做完的、與裁決無關的那一半（拿掉謊言）：畫面上凡是需要「收了多少錢」的地方，
+一律改用真的知道的 `payment_status`（已付清／待付款）：
+
+| 位置 | 本輪前 | 本輪後 |
+|---|---|---|
+| 金額欄「（已收 $X）」 | 頁內常數 | **不顯示**（`labels.received` 已刪） |
+| 詳情「已收金額 $X」 | 頁內常數 | **不顯示**（`detailModal.paidLabel` 已刪） |
+| 詳情付款徽章 | 已付清／**已付訂金**／待付款 | 已付清／待付款（`payment.deposit` 判定不出來 → 無渲染路徑，字串保留） |
+| 取消警語「已線上收款 $X」 | 帶假金額 | 無金額版本（**原站自己**就寫成 `${amt ? …}` 條件式，我方一律走無金額那一支） |
+| 批次取消警語「（共 $X）」 | 帶假金額 | 只講筆數 |
+| 標記付款 modal 標題 | 假的 `paidAmount>0` 決定「標記尾款已結清」 | 一律「標記已線下收款」 |
+| 調價「已收高於新應付」提醒 | 帶假金額 | **不顯示**（`messages.paidOverNet` 保留字串、無渲染路徑） |
+| 確認／完成 modal 的付款分支 | 假的 `paidAmount` | `paymentStatus` |
+
+⚠️ 連帶的**測試前提變更**（不是放寬斷言）：`tests/unit/bookings-pay-link.test.ts` 原本要求
+`markPaidModal.balanceHint` 指向「標記尾款已結清」。那顆鈕當時看得到，正是因為它吃假的
+`paidAmount>0`；假資料拿掉後它沒有任何渲染路徑，再叫店家去按它就是第二個假的已知。
+斷言的**意圖**（文案不得指向走不通的路，#28 ②）原封不動，只把路名換成真的存在的
+「標記已線下收款」，並在該檔留下說明。
+
+### Y.4 本輪**沒有**處理、誠實列出
+
+- **票券的「加購券」型別（ADDON）存不下來**：`discount_type` enum 只有
+  `AMOUNT|PERCENT|GIFT`，頁面 `DISCOUNT_FROM_TYPE.ADDON = 'GIFT'`，選了加購券存檔後
+  重新載入會變成兌換券，`addonItem`／`addonPrice` 兩個欄位跟著無處可存。這**不是**
+  #35 的「假欄位」（那兩個欄位從來沒有被任何 mode 常數餵過值，一直是預設值），
+  但它是一顆會靜默改掉使用者選擇的表單。補它要先定「加購券怎麼折抵一筆預約」，
+  屬新的業務規則。
+- **票券圖片（`imageUrl`）沒有接線**：`<Input type="file">` 連 `onChange` 都沒有，
+  上傳路徑屬 `/api/upload`（issue #7）範圍，本輪未動，也沒有補欄位。
+- **票券的 `ENDED`（已結束）狀態**：原站狀態篩選有 `ENDED`（`coupons.json` 的
+  `couponStatusFilter`），我方 `coupon_status` enum 只有 `DRAFT|PUBLISHED|PAUSED|EXPIRED`。
+  這不是假欄位（`displayStatus` 一直等於真的 `status`），但是一個缺的狀態。
+- **`applicableServices` 的設定入口**：見 Y.1 註記。原站詳情有這一行、表單沒有入口，
+  可能在 `docs/specs` 掃不到的地方（§9.4 盲區 1／3）。找到入口之前不補欄位。
+- **Preview 站實測**：issue #35 驗收清單有一項要求在 Preview 站比對畫面金額與 service role
+  直查 DB 的值。本輪依派工單規定**不 push**，Preview 站沒有本輪的程式碼，因此**這一項留白**，
+  不打勾。
+
+### Y.5 `active` / `is_default` 的語意是從**原站自己的標籤文字**推導的（待覆核）
+
+`docs/specs/membership-levels.json` 只給了欄位與標籤，沒有給行為。本輪的判斷是：
+**把旗標存下來卻不讓它影響任何事，等於做了一顆假開關**，所以照標籤字面實作：
+
+| 標籤（原站逐字） | 本輪實作 |
+|---|---|
+| 「啟用此等級」 | `recalcMemberships` 只考慮 `active` 的等級（停用的不會被自動升級指派） |
+| 「設為預設等級（**新顧客自動套用**）」 | ① `POST /api/customers` 未指定等級時套用該租戶 `is_default且active` 的等級；② `recalcMemberships` 門檻都不符時落到預設等級而非 `null`；③ 設新的預設之前先清掉舊的（每租戶至多一個，0022 partial unique index） |
+
+⚠️ 這是**執行者的推導＋主導者可覆核**的層級，**不是**擁有者裁決、也不是從原站掃描還原的
+行為。若日後查到原站另有算法，要改的是算法，欄位本身不用重補。
+
+### Y.6 本輪的 migration 與驗證
+
+`supabase/migrations/0022_page_local_display_fields.sql`，兩個 Supabase 專案皆已套用並各自以
+`information_schema.columns` 驗證（輸出貼在 issue #35 的留言）。
+
+實作上踩到的一個坑值得記：`bookings_view` 是 `select b.*, …`，本輪替 `bookings` 加了欄位之後
+`b.*` 展開的順序改變，`create or replace view` 會直接回
+`ERROR: 42P16: cannot change name of view column "customer_name" to "reminder_sent_at"`，
+必須改成 `drop view if exists` ＋ `create view`。drop/create 之後已另外查
+`information_schema.role_table_grants` 確認 `anon`/`authenticated`/`service_role` 的 SELECT 權限
+仍在（view 是 `security_invoker`，RLS 照舊由底表決定）。

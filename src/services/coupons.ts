@@ -21,6 +21,12 @@ export type CouponPayload = {
   /** 空字串 = 未設定／清空 */
   startAt?: string;
   endAt?: string;
+  /* --- migration 0022（issue #35）：原站 formModal 既有欄位；null = 未設定／清空 --- */
+  minOrderAmount?: number | null;
+  maxDiscountAmount?: number | null;
+  giftItem?: string;
+  limitPerCustomer?: number | null;
+  privateMode?: boolean;
 };
 
 /** 新增票券；real 回 { id }（新票券一律 DRAFT），mock 回 undefined（頁面自產本地 id） */
@@ -131,6 +137,10 @@ export type MembershipLevelPayload = {
   discountPercent?: number;
   pointRateMultiplier?: number;
   sortOrder?: number;
+  /* --- migration 0022（issue #35）：原站 levelModal 既有欄位 --- */
+  description?: string;
+  active?: boolean;
+  isDefault?: boolean;
 };
 
 /**

@@ -101,16 +101,23 @@ export const adjustBookingPrice = (id: string, finalPrice: number) =>
     }));
 
 /**
- * POST /api/bookings/:id/apply-coupon — 核銷票券，回 { finalPrice }（折抵後金額）。
+ * POST /api/bookings/:id/apply-coupon — 核銷票券，回
+ * `{ finalPrice, couponDiscount }`（折抵後金額、本次實際折抵金額）。
+ *
+ * `couponDiscount` 是原站就有的回應欄位（`docs/specs/bookings.json` jsStrings[127]
+ * 「票券折抵 ${couponRes.data?.couponDiscount || 0}」），issue #35 一併補上；
+ * 後端同時把它累計進 `bookings.coupon_discount`（migration 0022），詳情才有得顯示。
+ *
  * mock 依頁面既有假邏輯合成：固定折 200、不超過目前金額（讓折抵/實收 toast 數字不變）。
  */
 export const applyBookingCoupon = (id: string, code: string) =>
   adapt(
     () => {
       const price = MOCK_BOOKINGS.find((b) => b.id === id)?.finalPrice ?? 0;
-      return { finalPrice: price - Math.min(200, price) };
+      const discount = Math.min(200, price);
+      return { finalPrice: price - discount, couponDiscount: discount };
     },
-    () => request<{ finalPrice: number }>(`/api/bookings/${id}/apply-coupon`, {
+    () => request<{ finalPrice: number; couponDiscount: number }>(`/api/bookings/${id}/apply-coupon`, {
       method: 'POST', body: JSON.stringify({ code }),
     }),
   );

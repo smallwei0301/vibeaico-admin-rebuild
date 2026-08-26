@@ -44,37 +44,25 @@ import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 Booking 另有付款/折抵欄位，骨架階段以 module 常數補齊 */
-type BookingExtras = {
-  paidAmount: number;
-  couponDiscount: number;
-  pointsRedeemed: number;
-  /** 顧客可用點數 */
-  customerPoints: number;
-};
-
-const DEFAULT_EXTRAS: BookingExtras = {
-  paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
-};
-
-const BOOKING_EXTRAS_LOCAL_SHOP: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
-  b_2: { paidAmount: 1000, couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
-  b_3: { paidAmount: 1080, couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
-};
-
-const BOOKING_EXTRAS_GUIDE: Record<string, BookingExtras> = {
-  b_g1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
-};
-
-const BOOKING_EXTRAS_CLINIC: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 300, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
-  b_2: { paidAmount: 6800, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
-  b_3: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
-};
-
+/*
+ * issue #35：本檔原本有 `BOOKING_EXTRAS_LOCAL_SHOP|GUIDE|CLINIC` 三份頁內常數，
+ * 把「已收金額」「票券折抵」「點數折抵」「顧客可用點數」四個值寫死在頁面裡，
+ * 與同一列的真實資料（顧客、時間、服務、金額）混著顯示。逐欄處置見
+ * `docs/integration/14-GAP-AUDIT.md` §6.17：
+ *
+ *   · couponDiscount / pointsRedeemed → migration 0022 補 `bookings.coupon_discount`
+ *     / `points_redeemed`，由 apply-coupon / apply-points 在折抵發生的當下寫入，
+ *     GET /api/bookings 帶出來。**null = 沒有紀錄**，畫面就不顯示那一行（不是 0）。
+ *   · customerPoints → `customers.points` 一直存在，只是沒被帶出來；0022 的
+ *     `bookings_view.customer_points` 補上。
+ *   · **paidAmount（已收金額）→ 本輪移除，不補**。原站的 `b.paidAmount`
+ *     （docs/specs/bookings.json jsStrings[48]「（已收 ${formatMoney(b.paidAmount)}）」）
+ *     來自線上金流交易，而顧客端線上付款整塊還沒建（issue #32），我方連一張金流
+ *     交易表都沒有。要補這個欄位得先定訂金／尾款／退款怎麼連動——那是業務規則，
+ *     不是接線，已列為 issue #35 的待裁決項。在裁決之前，畫面上凡是需要「收了多少
+ *     錢」的地方一律改用真的知道的 `paymentStatus`（已付清／待付款），
+ *     **不顯示一個編出來的金額**。
+ */
 /**
  * 頁面假資料用的最小加購形狀；`toMockAddon` 補齊成 API 契約的 `BookingAddon`
  * （mock 模式下服務層回 null，畫面沿用這份假資料——同 listRecurringBookings 的慣例）。
@@ -145,9 +133,9 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
 
 const REAL_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
-const extrasOf = (b: Booking): BookingExtras => byMode({
-  LOCAL_SHOP: BOOKING_EXTRAS_LOCAL_SHOP, GUIDE: BOOKING_EXTRAS_GUIDE, CLINIC: BOOKING_EXTRAS_CLINIC,
-})[b.id] ?? DEFAULT_EXTRAS;
+/** 已收款＝我們真的知道的那一半：payment_status 說已付清（線上或線下）。 */
+const isPaid = (b: Booking) =>
+  b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE';
 
 const addonsOf = (b: Booking): BookingAddon[] => (byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
@@ -165,13 +153,13 @@ const addonsOf = (b: Booking): BookingAddon[] => (byMode({
  */
 const payLinkOf = (b: Booking) => `${APP_URL.replace(/\/$/, '')}/pay/${b.bookingNo}`;
 
-/** 付款狀態顯示：已付清 / 已付訂金 / 待付款 */
-const paymentLabel = (b: Booking) => {
-  const { paidAmount } = extrasOf(b);
-  if (b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE') return t.payment.paid;
-  if (paidAmount > 0) return t.payment.deposit;
-  return t.payment.pending;
-};
+/*
+ * 付款狀態顯示：已付清 / 待付款。
+ * 原站另有「已付訂金」，判定條件是 `paidAmount > 0 且未付清`——我方沒有金額型的
+ * 付款欄位（見檔頭 issue #35 說明、14 分冊 §6.14），**判定不出來就不顯示**，
+ * 不用一個編出來的金額把它撐出來。
+ */
+const paymentLabel = (b: Booking) => (isPaid(b) ? t.payment.paid : t.payment.pending);
 
 /* -------------------------------------------------------------------------- */
 
@@ -341,9 +329,8 @@ export default function BookingsPage() {
   const selectedRows = rows.filter((r) => selected.includes(r.id));
   const batchPending = selectedRows.filter((r) => r.status === 'PENDING');
   const batchCancellable = selectedRows.filter((r) => r.status === 'PENDING' || r.status === 'CONFIRMED');
-  const batchPaid = batchCancellable.filter((r) => extrasOf(r).paidAmount > 0);
-  const batchPaidTotal = batchPaid.reduce((sum, r) => sum + extrasOf(r).paidAmount, 0);
-  const batchUnpaid = batchPending.filter((r) => extrasOf(r).paidAmount === 0);
+  const batchPaid = batchCancellable.filter(isPaid);
+  const batchUnpaid = batchPending.filter((r) => !isPaid(r));
 
   const openBatchConfirm = () => {
     if (selected.length === 0) { toast.show(t.messages.selectConfirmFirst, 'warning'); return; }
@@ -405,22 +392,14 @@ export default function BookingsPage() {
     },
     {
       key: 'amount', header: t.columns.amount, numeric: true, width: '140px',
-      render: (b) => {
-        const { paidAmount } = extrasOf(b);
-        return (
-          <div className="min-w-0">
-            <div>{formatCurrency(b.finalPrice)}</div>
-            {b.finalPrice !== b.price ? (
-              <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
-            ) : null}
-            {paidAmount > 0 ? (
-              <div className="text-2xs text-secondary">
-                {t.labels.received(formatCurrency(paidAmount))}
-              </div>
-            ) : null}
-          </div>
-        );
-      },
+      render: (b) => (
+        <div className="min-w-0">
+          <div>{formatCurrency(b.finalPrice)}</div>
+          {b.finalPrice !== b.price ? (
+            <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'status', header: t.columns.status, width: '110px',
@@ -659,10 +638,10 @@ export default function BookingsPage() {
         }
       >
         <p className="mb-3 text-base">{t.cancelModal.intro}</p>
-        {cancelTarget && extrasOf(cancelTarget).paidAmount > 0 ? (
+        {cancelTarget && isPaid(cancelTarget) ? (
           <Alert tone="warning" className="mb-3">
             <span className="whitespace-pre-line">
-              {t.confirmMessages.cancelPaidWarning(formatCurrency(extrasOf(cancelTarget).paidAmount))}
+              {t.confirmMessages.cancelPaidWarning}
             </span>
           </Alert>
         ) : null}
@@ -740,16 +719,12 @@ export default function BookingsPage() {
       {/* ------------------------------------------------------ 8. 標記付款 */}
       <ConfirmModal
         open={!!markPaidTarget}
-        title={markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-          ? t.markPaidModal.titleBalance
-          : t.markPaidModal.titleOffline}
+        /* issue #35：原站用「已收金額 > 0」在「標記尾款已結清」與「標記已線下收款」
+           之間切換；我方沒有金額型付款欄位，判定不出有沒有尾款 → 一律走「標記已線下
+           收款」，不用假的金額把另一支撐出來。 */
+        title={t.markPaidModal.titleOffline}
         message={
-          <span className="whitespace-pre-line">
-            {t.markPaidModal.confirmOffline}
-            {markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-              ? `\n${t.markPaidModal.depositHint}`
-              : ''}
-          </span>
+          <span className="whitespace-pre-line">{t.markPaidModal.confirmOffline}</span>
         }
         onClose={() => setMarkPaidTarget(null)}
         onConfirm={() => {
@@ -786,7 +761,7 @@ export default function BookingsPage() {
         title={t.rowActions.confirm}
         message={
           <span className="whitespace-pre-line">
-            {confirmTarget && extrasOf(confirmTarget).paidAmount === 0 && confirmTarget.paymentStatus === 'UNPAID'
+            {confirmTarget && confirmTarget.paymentStatus === 'UNPAID'
               ? `${t.confirmMessages.confirmBooking}\n\n${t.confirmMessages.manualConfirm}`
               : t.confirmMessages.confirmBooking}
           </span>
@@ -806,7 +781,7 @@ export default function BookingsPage() {
         title={t.rowActions.complete}
         message={
           <span className="whitespace-pre-line">
-            {completeTarget && extrasOf(completeTarget).paidAmount === 0
+            {completeTarget && !isPaid(completeTarget)
               ? t.markPaidModal.balanceHint
               : t.markPaidModal.paidHint}
           </span>
@@ -935,7 +910,7 @@ export default function BookingsPage() {
             {t.confirmMessages.batchCancel(
               batchCancellable.length,
               batchPaid.length > 0
-                ? t.confirmMessages.batchRefundWarning(batchPaid.length, formatCurrency(batchPaidTotal))
+                ? t.confirmMessages.batchRefundWarning(batchPaid.length)
                 : '',
             )}
           </span>
@@ -1486,10 +1461,9 @@ function ApplyCouponModal({
     setError('');
     setSaving(true);
     try {
-      // API 回折抵後金額；折抵數 = 折抵前 − 折抵後（mock 分支合成同現行假邏輯的數字）
-      const price = booking.finalPrice;
+      // API 直接回本次折抵金額（issue #35 補的 couponDiscount，原站也有這個欄位）
       const res = await applyBookingCoupon(booking.id, code.trim());
-      onApplied(price - res.finalPrice, res.finalPrice);
+      onApplied(res.couponDiscount, res.finalPrice);
     } catch (e) {
       // 404 找不到票券／409 已核銷、不屬此顧客 → 把 server message 顯示出來
       toast.show(e instanceof Error ? e.message : t.messages.couponFailed, 'danger');
@@ -1587,8 +1561,11 @@ function AdjustPriceModal({
     }
   };
 
-  const paid = booking ? extrasOf(booking).paidAmount : 0;
-  const overpaid = paid - Number(amount || 0);
+  /*
+   * issue #35：原站在這裡會比對「已收金額」與新的應付金額，多收就提醒退差額。
+   * 我方沒有 paid_amount 欄位（見檔頭），比不出來 → **不顯示**這則提醒，
+   * 而不是拿一個編出來的已收金額去算差額。待「已收金額」裁決落地後補回。
+   */
 
   return (
     <Modal
@@ -1621,11 +1598,6 @@ function AdjustPriceModal({
         />
       </FormGroup>
 
-      {paid > 0 && overpaid > 0 ? (
-        <Alert tone="warning">
-          {t.messages.paidOverNet(formatCurrency(paid), formatCurrency(Number(amount || 0)))}
-        </Alert>
-      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );
@@ -1647,7 +1619,12 @@ function ApplyPointsModal({
   const [points, setPoints] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const balance = booking ? extrasOf(booking).customerPoints : 0;
+  /*
+   * issue #35：餘額改吃真的 `customers.points`（0022 起由 bookings_view 帶出）。
+   * `null`／`undefined` = 這一列沒有帶到餘額 → 顯示 `--` 並在畫面上說明，
+   * **不顯示 0**（0 是「沒有點數」，是另一個答案）。
+   */
+  const balance = booking?.customerPoints ?? null;
 
   React.useEffect(() => { setPoints(''); setError(''); }, [booking]);
 
@@ -1664,7 +1641,7 @@ function ApplyPointsModal({
       // 實際折抵數 = 折抵前 − API 回的折抵後金額；balance 只餵 mock 分支
       // （合成「夾在餘額／金額內」的現行假結果），真模式由後端驗證並回 409 訊息。
       const price = booking.finalPrice;
-      const res = await applyBookingPoints(booking.id, value, balance);
+      const res = await applyBookingPoints(booking.id, value, balance ?? undefined);
       onApplied(price - res.finalPrice);
     } catch (e) {
       // 409 顧客點數不足（POINTS_001）等 → 把 server message 顯示出來
@@ -1693,7 +1670,10 @@ function ApplyPointsModal({
       <p className="mb-3 text-base">{pm.intro}</p>
       <FormGroup>
         <Label>{pm.balanceLabel}</Label>
-        <div className="text-lg font-bold text-dark">{balance}</div>
+        <div className="text-lg font-bold text-dark">
+          {balance === null ? pm.balanceUnknown : balance}
+        </div>
+        {balance === null ? <FormText>{pm.balanceUnknownHint}</FormText> : null}
       </FormGroup>
       <FormGroup>
         <Label required htmlFor="applyPoints">{pm.label}</Label>
@@ -1739,8 +1719,18 @@ function BookingDetailModal({
   const d = t.detailModal;
   const toast = useToast();
   const [addons, setAddons] = React.useState<BookingAddon[]>([]);
-  const extras = booking ? extrasOf(booking) : DEFAULT_EXTRAS;
-  const net = (booking?.finalPrice ?? 0) - extras.couponDiscount - extras.pointsRedeemed;
+  /*
+   * issue #35：折抵金額改吃真的欄位（0022 的 bookings.coupon_discount /
+   * points_redeemed，由 apply-coupon / apply-points 在折抵當下寫入）。
+   *
+   * ⚠️「應收金額」就是 `finalPrice` 本身，**不可以再減一次折抵**——apply-coupon /
+   * apply-points 已經把差額寫進 final_price 了（原站文案也是這樣講的：
+   * 「下方『應收金額』已自動扣除」）。舊版用假資料時把折抵當成「還沒扣」的數字再減
+   * 一次，接上真實資料後就會變成扣兩次。
+   */
+  const couponDiscount = booking?.couponDiscount ?? null;
+  const pointsRedeemed = booking?.pointsRedeemed ?? null;
+  const net = booking?.finalPrice ?? 0;
   /** 加購會動到金額與時段，與 API 同一條規則：只有未結案的預約可以增刪 */
   const addonsEditable = booking?.status === 'PENDING' || booking?.status === 'CONFIRMED';
 
@@ -1894,17 +1884,11 @@ function BookingDetailModal({
               <span>{d.amountLabel}</span>
               <strong className="tabular-nums">{formatCurrency(net)}</strong>
             </div>
-            {extras.couponDiscount > 0 ? (
-              <div className="form-text">{d.couponDiscount(formatCurrency(extras.couponDiscount))}</div>
+            {couponDiscount !== null && couponDiscount > 0 ? (
+              <div className="form-text">{d.couponDiscount(formatCurrency(couponDiscount))}</div>
             ) : null}
-            {extras.pointsRedeemed > 0 ? (
-              <div className="form-text">{d.pointsDiscount(extras.pointsRedeemed)}</div>
-            ) : null}
-            {extras.paidAmount > 0 ? (
-              <div className="form-text">
-                {d.paidLabel}
-                {formatCurrency(extras.paidAmount)}
-              </div>
+            {pointsRedeemed !== null && pointsRedeemed > 0 ? (
+              <div className="form-text">{d.pointsDiscount(pointsRedeemed)}</div>
             ) : null}
           </div>
 
@@ -1922,7 +1906,7 @@ function BookingDetailModal({
             </div>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
-              {extras.paidAmount > 0 ? t.rowActions.markBalancePaid : t.rowActions.markPaidOffline}
+              {t.rowActions.markPaidOffline}
             </Button>
             {booking.source === 'LINE' ? (
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>

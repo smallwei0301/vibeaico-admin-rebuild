@@ -61,6 +61,11 @@ export const bookingsPage = {
     revert: '還原為已確認',
     copyPayLink: '複製付款連結',
     markPaidOffline: '標記已線下收款',
+    /*
+     * issue #35：「標記尾款已結清」原本靠頁內假的「已收金額 > 0」決定要不要顯示。
+     * 我方沒有金額型付款欄位（14 分冊 §6.14／§6.17），判定不出「還有沒有尾款」，
+     * 所以這個標題目前沒有任何渲染路徑會用到——待「已收金額」的裁決落地後才會回來。
+     */
     markBalancePaid: '標記尾款已結清',
     stayNotEditable: '住宿訂單不可編輯',
     queueNotEditable: '號碼掛號不可編輯',
@@ -72,7 +77,6 @@ export const bookingsPage = {
     unprocessed: '未處理',
     memberPrice: '(會員價)',
     deletedService: '（此服務已刪除）',
-    received: (amount: string) => `（已收 ${amount}）`,
     discounted: (amount: string) => `（已折抵 ${amount}）`,
     unassigned: '未指定',
     noStaffNeeded: '無需指定',
@@ -86,6 +90,11 @@ export const bookingsPage = {
 
   payment: {
     paid: '已付清',
+    /*
+     * issue #35：原站的「已付訂金」＝ `paidAmount > 0 且未付清`。我方 payment_status
+     * enum 沒有這個狀態、也沒有 paid_amount 欄位，判定不出來 → 目前沒有渲染路徑，
+     * 保留字串等「已收金額」裁決落地後才會用到（同 markBalancePaid）。
+     */
     deposit: '已付訂金',
     pending: '待付款',
     unpaid: '尚未付款',
@@ -276,6 +285,13 @@ export const bookingsPage = {
     title: '使用點數',
     intro: '以顧客的點數折抵此筆預約金額。',
     balanceLabel: '顧客可用點數',
+    /**
+     * issue #35：餘額來自 `customers.points`（經 bookings_view.customer_points）。
+     * 這一列還沒帶到餘額時顯示 `--`，**不可以顯示 0**——0 是「這位顧客沒有點數」，
+     * 是一個有意義的答案，拿它當「還不知道」會讓店家以為顧客無點可折。
+     */
+    balanceUnknown: '--',
+    balanceUnknownHint: '這筆預約沒有帶到顧客的點數餘額，數字不是 0，是還不知道。',
     label: '折抵點數',
     placeholder: '請輸入折抵點數',
     help: '1 點折抵 $1，最多折抵至應付金額為止。',
@@ -291,7 +307,7 @@ export const bookingsPage = {
     paidHint: '已付清，本次無需再向顧客收款。',
     depositHint: '下方「應收金額」已自動扣除，現場只需收尾款。',
     balanceHint:
-      '如需向顧客收取差額，請收現後按「標記尾款已結清」（線上付款連結尚未建置，詳見 issue #32）。',
+      '此預約尚未標記收款。若已收現金／轉帳，請按「標記已線下收款」（線上付款連結尚未建置，詳見 issue #32）。',
     /**
      * /pay/* 付款頁尚未建置（issue #32 才會做），此文案目前不應出現在任何渲染路徑；
      * 保留只是因為 copyPayLink 的複製動作邏輯本身仍在（見 page.tsx 的 copyPayLink），
@@ -314,7 +330,6 @@ export const bookingsPage = {
     addonLoading: '加購明細載入中…',
     addonLoadFailed: '加購明細載入失敗（可能仍有加購項目，請重新開啟詳情確認）',
     amountLabel: '應收金額',
-    paidLabel: '已收金額',
     couponDiscount: (amount: string) => `票券折抵 ${amount}`,
     pointsDiscount: (points: number) => `點數折抵 ${points} 點 = $${points}`,
     afterCoupon: '（再扣票券，以系統計算為準）',
@@ -342,16 +357,22 @@ export const bookingsPage = {
       `確定要移除加購「${name}」嗎？\n\n・預約金額將扣回 ${amount}（這是該筆加購當初加上去的金額）`
       + (minutes > 0 ? `\n・預約結束時間將往前 ${minutes} 分鐘` : '')
       + '\n\n若這筆加購之後曾手動調價或套用過打折的票券，扣回後的總金額請再確認一次。',
-    cancelPaidWarning: (amount: string) =>
-      `⚠️ 此預約已線上收款${amount}。取消後系統不會自動退款，請記得至您的金流後台手動退款給顧客。確定要取消嗎？`,
+    /*
+     * issue #35：金額拿掉了。原站是 `⚠️ 此預約已線上收款${amt ? …}`——**原站自己**
+     * 就把金額寫成條件式，因為它也可能不知道；我方沒有 paid_amount 欄位，一律走
+     * 無金額的那一支，而不是編一個數字填進去。
+     */
+    cancelPaidWarning:
+      '⚠️ 此預約已收款。取消後系統不會自動退款，請記得至您的金流後台手動退款給顧客。確定要取消嗎？',
     batchConfirm: (n: number) =>
       `確定要批次確認 ${n} 筆預約嗎？\n\n確認後這些時段都會被佔用。確定要全部確認嗎？`,
     batchUnpaidWarning: (selected: number, unpaid: number) =>
       `⚠️ 選取的 ${selected} 筆中，有 ${unpaid} 筆需線上付款但尚未收足：\n\n`,
     batchUnpaidMore: (n: number) => `・…等共 ${n} 筆`,
     batchCancel: (n: number, refundWarn: string) => `確定批次取消 ${n} 筆預約嗎？${refundWarn}`,
-    batchRefundWarning: (n: number, total: string) =>
-      `\n\n⚠️ 其中 ${n} 筆已線上收款（共 ${total}），系統不會自動退款，請記得至您的金流後台手動退款給顧客。`,
+    /** issue #35：同 cancelPaidWarning，金額（共 $X）拿掉——我方算不出這個總額。 */
+    batchRefundWarning: (n: number) =>
+      `\n\n⚠️ 其中 ${n} 筆已收款，系統不會自動退款，請記得至您的金流後台手動退款給顧客。`,
     revert:
       '確定要還原為「已確認」嗎？\n\n此操作會：\n• 預約回到「已確認」狀態\n• 扣回顧客累計消費與到訪次數（報表營收同步更新）\n保留不動（保護顧客既得權益）：\n• 已升等的會員等級\n• 已套用的票券\n• 已發給顧客的點數\n• 加購項目（不受還原影響，要移除請至詳情逐項刪）',
   },
@@ -378,6 +399,11 @@ export const bookingsPage = {
     pointsApplied: (points: number) => `點數折抵 ${points} 點 = $${points}`,
     overpaidWarning: (amount: string) =>
       `⚠️ 折抵後顧客已多付 ${amount}，請至您的金流後台手動退差額給顧客`,
+    /**
+     * issue #35：調價後「已收金額高於新應付」的提醒需要 paid_amount，我方沒有這個
+     * 欄位（14 分冊 §6.14／§6.17），比不出來就不顯示 → 目前沒有渲染路徑。
+     * 保留字串，待「已收金額」的裁決落地後接回。
+     */
     paidOverNet: (paid: string, net: string) =>
       `已收金額 ${paid} 高於新應付 ${net}，請確認是否退還差額`,
 

@@ -27,7 +27,7 @@ export const POST = handle(async (req, { params }) => {
   const b = bodySchema.parse(await req.json());
 
   const { data: booking, error: bErr } = await t.supabase.from('bookings')
-    .select('id, customer_id, final_price, custom_fields')
+    .select('id, customer_id, final_price, custom_fields, coupon_discount')
     .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
   if (bErr) throw bErr;
   if (!booking) throw new ApiHttpError(404, '找不到此預約', ERR.NOT_FOUND);
@@ -64,9 +64,20 @@ export const POST = handle(async (req, { params }) => {
   // （不與預約自訂欄位填答的一般鍵衝突），保住票券↔預約的追溯性。
   const newFinal = applyDiscount(
     Number(booking.final_price), coupon.discount_type, Number(coupon.discount_value));
+  /*
+   * issue #35：折抵了多少錢以前沒有留下來，於是 bookings 頁的「票券折抵」只能吃
+   * 頁內假資料。這裡把**實際發生的折抵金額**累計進 `coupon_discount`
+   * （migration 0022），一筆預約套多張票券就累加。原站的 apply-coupon 回應本來
+   * 就有 `couponDiscount`（docs/specs/bookings.json jsStrings[127]
+   * 「票券折抵 ${couponRes.data?.couponDiscount || 0}」），本輪一併補上回應欄位。
+   */
+  const couponDiscount = Number(booking.final_price) - newFinal;
+  const totalCouponDiscount = Number(booking.coupon_discount ?? 0) + couponDiscount;
+
   const { error: uErr } = await t.supabase.from('bookings')
     .update({
       final_price: newFinal,
+      coupon_discount: totalCouponDiscount,
       custom_fields: {
         ...(booking.custom_fields ?? {}),
         _coupon: {
@@ -78,5 +89,5 @@ export const POST = handle(async (req, { params }) => {
     .eq('id', id).eq('tenant_id', t.tenantId);
   if (uErr) throw uErr;
 
-  return ok({ finalPrice: newFinal });
+  return ok({ finalPrice: newFinal, couponDiscount });
 });

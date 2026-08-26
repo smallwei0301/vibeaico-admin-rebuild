@@ -17,6 +17,12 @@ const bodySchema = z.object({
   totalQuantity: z.number().int().min(0).optional(),
   startAt: z.string().optional(),
   endAt: z.string().optional(),
+  /* --- migration 0022（issue #35）：原站 formModal 既有欄位；null = 明確清空 --- */
+  minOrderAmount: z.number().min(0).nullable().optional(),
+  maxDiscountAmount: z.number().min(0).nullable().optional(),
+  giftItem: z.string().optional(),
+  limitPerCustomer: z.number().int().min(1).nullable().optional(),
+  privateMode: z.boolean().optional(),
 });
 
 export const PUT = handle(async (req, { params }) => {
@@ -33,6 +39,11 @@ export const PUT = handle(async (req, { params }) => {
   if (b.totalQuantity !== undefined) update.total_quantity = b.totalQuantity;
   if (b.startAt !== undefined) update.start_at = b.startAt ? b.startAt : null;
   if (b.endAt !== undefined) update.end_at = b.endAt ? b.endAt : null;
+  if (b.minOrderAmount !== undefined) update.min_order_amount = b.minOrderAmount;
+  if (b.maxDiscountAmount !== undefined) update.max_discount_amount = b.maxDiscountAmount;
+  if (b.giftItem !== undefined) update.gift_item = b.giftItem;
+  if (b.limitPerCustomer !== undefined) update.limit_per_customer = b.limitPerCustomer;
+  if (b.privateMode !== undefined) update.private_mode = b.privateMode;
 
   if (Object.keys(update).length === 0) {
     const { data, error } = await t.supabase

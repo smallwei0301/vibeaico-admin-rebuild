@@ -78,10 +78,22 @@ describe('bookings 頁：付款連結鈕誠實化（issue #28 ②）', () => {
     expect(msg).not.toMatch(/傳給顧客|可貼給顧客|可付款/);
   });
 
-  it('i18n：markPaidModal.balanceHint 不再教店家用「複製付款連結」傳給顧客，但保留「標記尾款已結清」這條真的可行的路', () => {
+  /*
+   * ⚠️ 前提變更（issue #35，非放寬斷言）：這條原本要求 balanceHint 指向
+   * 「標記尾款已結清」。那顆鈕當時看得到，是因為它的顯示條件吃頁內假資料
+   * `BOOKING_EXTRAS_*.paidAmount > 0`——我方沒有 `bookings.paid_amount`，
+   * 判定不出「還有沒有尾款」。#35 把假資料拿掉之後，「標記尾款已結清」**沒有
+   * 任何渲染路徑**，再叫店家去按它就變成第二個假的已知。
+   *
+   * 這條斷言當初防的是「文案指向一條走不通的路」（#28 ② 的 /pay 頁不存在）。
+   * 那個意圖原封不動保留，只把「真的可行的那條路」的名字換成現在真的存在的
+   * 「標記已線下收款」——不是為了讓測試變綠而放寬。
+   */
+  it('i18n：markPaidModal.balanceHint 不教店家用不存在的路（不提「複製付款連結」，也不提沒有渲染路徑的「標記尾款已結清」），而是指向真的按得到的「標記已線下收款」', () => {
     const msg = bookingsPage.markPaidModal.balanceHint;
     expect(msg).not.toContain('複製付款連結');
-    expect(msg).toContain('標記尾款已結清');
+    expect(msg).not.toContain('標記尾款已結清');
+    expect(msg).toContain('標記已線下收款');
   });
 
   /*

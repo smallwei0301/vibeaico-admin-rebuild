@@ -184,19 +184,25 @@ describe('AppShell：外框三值必須走 service，不得直接吃 mock 常數
  *   #7 營運頁接線批次：campaigns / marketing / staff / shop-design / customers
  *   有明確分支、屬正常用法：dashboard（showSampleData＝USE_MOCK||isDemoMode）、
  *     services 與 recurring-bookings（service 的 mock 分支回 null 時才用頁內資料）
- *   **未歸屬**（本輪盤出，已回報，尚無 issue）：
- *     bookings（BOOKING_EXTRAS_* 的「已收金額」——schema 沒有 paid_amount 欄位，
- *       14 分冊 §6.14「沒有做的事」已記，但沒有 issue 認領）
- *     coupons（COUPON_EXTRAS_*）、membership-levels（LEVEL_EXTRAS_*）
- *   這三處是「假欄位混在真資料列裡」，比整頁假資料更難發現，需要一個 issue。
+ *   **issue #35（假欄位混在真資料列裡）**：本輪盤出的三處已由 #35 認領並處理完畢——
+ *     · coupons / membership-levels：頁內 EXTRAS 常數全數移除，欄位由 migration 0022
+ *       落地（`coupons.min_order_amount` 等 5 欄、`membership_levels.description` 等
+ *       3 欄），兩頁**已不再 import byMode**，因此從下面這份快照移除。
+ *     · bookings：`BOOKING_EXTRAS_*` 已移除（couponDiscount / pointsRedeemed /
+ *       customerPoints 改吃 0022 的真實欄位；paidAmount 移除待裁決）。本頁仍在快照裡，
+ *       但**留下的原因換了**——剩下的 `byMode` 只餵 `ADDON_ITEMS_*`（加購明細的
+ *       mock：`listBookingAddons` 在 mock 分支回 null，頁面才沿用它，與
+ *       recurring-bookings 同一個既有慣例），歸屬 #17，不是無主假資料。
  */
 const BYMODE_IMPORTERS = [
   'src/app/tenant/bookings/page.tsx',
   // campaigns / marketing 已於 issue #7 (乙) 接線：頁內 byMode 假資料整組搬進
   // src/services/campaigns.ts、src/services/marketing.ts 的 mock 分支，頁面不再 import byMode。
-  'src/app/tenant/coupons/page.tsx',
+  // 2026-08-26（issue #35）：coupons 與 membership-levels 也移出這份快照——
+  // 兩頁的 COUPON_EXTRAS_* / LEVEL_EXTRAS_* 已刪除，欄位改由 migration 0022 的
+  // 真實欄位供給，頁面不再 import byMode。
+  // 這條鎖守的是「不得再增加」，四頁一起少掉正是它要的方向。
   'src/app/tenant/dashboard/page.tsx',
-  'src/app/tenant/membership-levels/page.tsx',
   'src/app/tenant/recurring-bookings/page.tsx',
   'src/app/tenant/services/page.tsx',
   // 2026-08-26（issue #7 乙）：shop-design 頁移出這份快照——它的公開頁內容

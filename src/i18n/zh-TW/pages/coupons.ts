@@ -72,7 +72,6 @@ export const couponsPage = {
     unknown: '未知',
     discountPrefix: '折抵 ',
     giftItem: '兌換品',
-    listSeparator: '、',
     gift: (item: string) => `兌換：${item}`,
     discountAmount: (amount: string) => `折抵 ${amount}`,
     percentOff: (percent: number) => `${percent}% off`,
@@ -248,7 +247,11 @@ export const couponsPage = {
     giftItem: '兌換項目：',
     addonItem: '加購項目：',
     addonPrice: '加購價：',
-    applicableServices: '適用服務：',
+    /*
+     * issue #35：`applicableServices`（適用服務：）已隨欄位一併移除——原站詳情有這一行，
+     * 但原站 formModal 沒有任何欄位可以設定它（docs/specs/coupons.json 全文只有詳情那
+     * 一處出現），我方也沒有寫入路徑，留著等於永遠不會出現的死文案。
+     */
     usageDescription: '使用說明：',
     visibility: '可見性：',
     visibilityPrivate: '🔒 私密票券（不在公開頁與 LINE 顯示，僅限「發放」指定顧客）',

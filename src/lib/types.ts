@@ -49,6 +49,20 @@ export type Booking = {
   source: 'LINE' | 'PUBLIC_PAGE' | 'MANUAL' | 'RECURRING';
   note: string;
   createdAt: string;
+  /**
+   * 票券折抵累計金額（`bookings.coupon_discount`，migration 0022；issue #35）。
+   * **`null` = 沒有紀錄**（這筆預約沒套過票券，或套用發生在 0022 之前），
+   * 不是 0——0 是「折抵了 0 元」，兩者不可互相冒充（CLAUDE.md「載入中不要顯示 0」
+   * 的同一條原則用在「無紀錄」上）。
+   */
+  couponDiscount?: number | null;
+  /** 點數折抵累計點數（`bookings.points_redeemed`，1 點 = 1 元）。`null` = 無紀錄。 */
+  pointsRedeemed?: number | null;
+  /**
+   * 顧客目前可用點數（`customers.points`，經 `bookings_view.customer_points`）。
+   * 「使用點數」modal 的餘額來源。`null` = 這個回應沒有帶（例如舊版端點）。
+   */
+  customerPoints?: number | null;
 };
 
 /**
@@ -199,6 +213,22 @@ export type Coupon = {
   startAt: string;
   endAt: string;
   status: CouponStatus;
+  /* --- migration 0022（issue #35）：原站 formModal 既有欄位，補進契約 --- */
+  /** 最低消費門檻；`null` = 無門檻 */
+  minOrderAmount: number | null;
+  /** 最高折抵金額（百分比折扣用）；`null` = 無上限 */
+  maxDiscountAmount: number | null;
+  /** 兌換券的兌換項目；`''` = 未填 */
+  giftItem: string;
+  /** 每人限領張數；`null` = 未設定（原站說明：不填則每人限領 1 張） */
+  limitPerCustomer: number | null;
+  /** 私密票券：不在公開頁與 LINE 顯示，僅限「發放」指定顧客 */
+  privateMode: boolean;
+  /**
+   * 最近一張已核銷實例的 8 碼代碼（由 `coupon_instances` 即時算出，非欄位）。
+   * `null` = 這張票券沒有任何已核銷的實例 → 頁面不顯示「還原票券」。
+   */
+  lastRedeemedCode: string | null;
 };
 
 /* -------------------------------------------------------------- 會員等級 */
@@ -211,6 +241,13 @@ export type MembershipLevel = {
   pointRateMultiplier: number;
   customerCount: number;
   sortOrder: number;
+  /* --- migration 0022（issue #35）：原站 levelModal 既有欄位，補進契約 --- */
+  /** 等級說明（原站「等級說明」textarea） */
+  description: string;
+  /** 啟用此等級；停用的等級不會被自動升級指派 */
+  active: boolean;
+  /** 預設等級（新顧客自動套用）；每租戶至多一個（0022 的 partial unique index） */
+  isDefault: boolean;
 };
 
 /* ------------------------------------------------------------------ 報表 */

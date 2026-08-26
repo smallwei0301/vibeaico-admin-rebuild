@@ -47,6 +47,14 @@ export function mapBooking(r: any): Booking {
     price: r.price, finalPrice: r.final_price,
     status: r.status, paymentStatus: r.payment_status, source: r.source,
     note: r.note ?? '', createdAt: r.created_at,
+    /*
+     * issue #35：三個欄位以前是 bookings 頁的頁內常數（BOOKING_EXTRAS_*）。
+     * `?? null` 而**不是** `?? 0`：`null` 是「沒有紀錄」，0 是「折抵了 0 元」，
+     * 兩者在畫面上是不同的答案（CLAUDE.md「Never fabricate a known」）。
+     */
+    couponDiscount: r.coupon_discount == null ? null : Number(r.coupon_discount),
+    pointsRedeemed: r.points_redeemed == null ? null : Number(r.points_redeemed),
+    customerPoints: r.customer_points == null ? null : Number(r.customer_points),
   };
 }
 
@@ -201,6 +209,14 @@ export function mapCoupon(r: any): Coupon {
     startAt: r.start_at ?? '',
     endAt: r.end_at ?? '',
     status: r.status,
+    /* --- migration 0022（issue #35）--- */
+    minOrderAmount: r.min_order_amount == null ? null : Number(r.min_order_amount),
+    maxDiscountAmount: r.max_discount_amount == null ? null : Number(r.max_discount_amount),
+    giftItem: r.gift_item ?? '',
+    limitPerCustomer: r.limit_per_customer == null ? null : Number(r.limit_per_customer),
+    privateMode: r.private_mode ?? false,
+    /** 由 route 依 coupon_instances 算出後附掛；沒有已核銷實例 → null */
+    lastRedeemedCode: r.last_redeemed_code ?? null,
   };
 }
 
@@ -217,6 +233,10 @@ export function mapMembershipLevel(r: any): MembershipLevel {
     pointRateMultiplier: r.point_rate_multiplier,
     customerCount: r.customer_count ?? 0,
     sortOrder: r.sort_order,
+    /* --- migration 0022（issue #35）--- */
+    description: r.description ?? '',
+    active: r.active ?? true,
+    isDefault: r.is_default ?? false,
   };
 }
 

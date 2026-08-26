@@ -19,7 +19,6 @@ import {
   createMembershipLevel, deleteMembershipLevel, updateMembershipLevel,
 } from '@/services/coupons';
 import { listFeatures } from '@/services/settings';
-import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { membershipLevelsPage as t } from '@/i18n/zh-TW/pages/membership-levels';
@@ -27,49 +26,27 @@ import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { MembershipLevel } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
+/* 欄位來源                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 MembershipLevel 另有說明／啟用／預設旗標，骨架階段以 module 常數補齊 */
-type LevelExtras = {
-  description: string;
-  active: boolean;
-  isDefault: boolean;
-};
-
-const DEFAULT_EXTRAS: LevelExtras = { description: '', active: true, isDefault: false };
-
-const LEVEL_EXTRAS_LOCAL_SHOP: Record<string, LevelExtras> = {
-  ml_1: { description: '所有新顧客的預設等級', active: true, isDefault: true },
-  ml_2: { description: '生日當月贈送護髮體驗一次', active: true, isDefault: false },
-  ml_3: { description: '專屬設計師優先排程、免費造型諮詢', active: true, isDefault: false },
-};
-
-const LEVEL_EXTRAS_GUIDE: Record<string, LevelExtras> = {
-  ml_1: { description: '所有新旅客的預設等級', active: true, isDefault: true },
-  ml_2: { description: '生日當月贈送裝備租借券一張', active: true, isDefault: false },
-  ml_3: { description: '揪團優先候補、免費裝備升級', active: true, isDefault: false },
-};
-
-const LEVEL_EXTRAS_CLINIC: Record<string, LevelExtras> = {
-  ml_1: { description: '所有新病患的預設等級', active: true, isDefault: true },
-  ml_2: { description: '需長期追蹤治療的病患，享回診提醒與優先候補', active: true, isDefault: false },
-  ml_3: { description: '年度健檢會員，享健檢加項優惠與報告解說預約', active: true, isDefault: false },
-};
+/*
+ * issue #35：`description` / `active` / `isDefault` 三個欄位以前是本檔的
+ * `LEVEL_EXTRAS_LOCAL_SHOP|GUIDE|CLINIC` 常數，值寫死在頁面裡、與同一列的
+ * 真實資料（名稱、門檻、折扣、顧客數）混在一起顯示。
+ *
+ * 三個都是原站 levelModal 既有欄位（`docs/specs/membership-levels.json` 的
+ * `modals[levelModal].fields`：`description`「等級說明」、`isActive`「啟用此等級」、
+ * `isDefault`「設為預設等級（新顧客自動套用）」），我方 schema 沒有 → migration
+ * 0022 補欄位，端點收發，這裡直接讀 `MembershipLevel`。
+ * mock 模式下的示範文字改放在 `src/mock/index.ts` 的三套 dataset 裡。
+ */
 
 /** 新增等級時的預設顏色（同 mock 的一般會員灰） */
 const DEFAULT_LEVEL_COLOR = '#86868b';
 
 /* -------------------------------------------------------------------------- */
 
-type LevelRow = MembershipLevel & LevelExtras;
-
-const toRow = (l: MembershipLevel): LevelRow => {
-  const extras = byMode({
-    LOCAL_SHOP: LEVEL_EXTRAS_LOCAL_SHOP, GUIDE: LEVEL_EXTRAS_GUIDE, CLINIC: LEVEL_EXTRAS_CLINIC,
-  });
-  return { ...l, ...(extras[l.id] ?? DEFAULT_EXTRAS) };
-};
+type LevelRow = MembershipLevel;
 
 export default function MembershipLevelsPage() {
   const toast = useToast();
@@ -90,7 +67,7 @@ export default function MembershipLevelsPage() {
     setLoading(true);
     try {
       const list = await listMembershipLevels();
-      setRows([...list].sort((a, b) => a.sortOrder - b.sortOrder).map(toRow));
+      setRows([...list].sort((a, b) => a.sortOrder - b.sortOrder));
     } catch {
       toast.show(t.messages.loadFailed, 'danger');
       setRows([]);
@@ -263,7 +240,7 @@ export default function MembershipLevelsPage() {
         onSaved={(draft, isEdit, fresh) => {
           if (fresh) {
             /* real：後端儲存後已全店重算等級，直接以重拉的列表（含新 customerCount）更新 */
-            setRows([...fresh].sort((a, b) => a.sortOrder - b.sortOrder).map(toRow));
+            setRows([...fresh].sort((a, b) => a.sortOrder - b.sortOrder));
           } else {
             const id = isEdit ? draft.id : `ml_new_${nextId.current++}`;
             upsert({ ...draft, id });
@@ -288,7 +265,7 @@ export default function MembershipLevelsPage() {
             const fresh = await deleteMembershipLevel(deleteTarget.id);
             if (fresh) {
               /* real：刪除後受影響顧客已重算落到次高等級，以重拉的列表更新 */
-              setRows([...fresh].sort((a, b) => a.sortOrder - b.sortOrder).map(toRow));
+              setRows([...fresh].sort((a, b) => a.sortOrder - b.sortOrder));
             } else {
               setRows((list) => list.filter((l) => l.id !== deleteTarget.id));
             }
@@ -358,7 +335,8 @@ function LevelFormModal({
     setError('');
     setSaving(true);
     try {
-      /* description / active / isDefault 為骨架期頁內欄位，後端契約尚無對應欄位 */
+      /* issue #35：description / active / isDefault 已由 migration 0022 落地，
+         端點收得到，這裡照送——不再只改本地 state。 */
       const payload = {
         name: draft.name,
         color: draft.color,
@@ -366,6 +344,9 @@ function LevelFormModal({
         discountPercent: draft.discountPercent,
         pointRateMultiplier: draft.pointRateMultiplier,
         sortOrder: draft.sortOrder,
+        description: draft.description,
+        active: draft.active,
+        isDefault: draft.isDefault,
       };
       const fresh = isEdit
         ? await updateMembershipLevel(draft.id, payload)
