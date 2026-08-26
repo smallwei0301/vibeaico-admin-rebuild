@@ -182,10 +182,30 @@
 
 ## Phase 7 — 收尾（07 分冊)
 - [ ] `vercel.json` 四個 cron + `CRON_SECRET` 保護
-- [ ] `/api/upload` 圖片上傳
+- [x] `/api/upload` 圖片上傳
       **（重開 2026-08-24：API 測試矩陣全綠但全 src/ 無任何頁面呼叫它——對使用者
       「圖片上傳」不存在。重勾條件：至少一個頁面（rich menu 背景圖上傳是現成的
       死按鈕）真的接上並有接線證據）**
+      **重勾 2026-08-26（issue #7 (乙)）：重開條件點名的那顆死按鈕已接上。**
+      - 鏈路：`src/app/tenant/rich-menu-design/page.tsx` `uploadBackground()`
+        → `uploadImage(file,'richmenu-assets')`（`src/services/upload.ts`）
+        → `POST /api/upload` → 接著 `saveLineSettings({richMenuBgImageUrl})`
+        → `PUT /api/settings/line`（**這一步不可省**：發布端點
+        `/api/settings/line/rich-menu/create` 的 `loadBackgroundImage()` 讀的是
+        `tenant_settings.line.richMenuBgImageUrl`，不是發布請求的 body）。
+      - `tests/integration/api/rich-menu-bg-upload.07.test.ts`（5/5 綠）
+        `:「上傳 PNG → 200，且 service role 直查 storage.objects 時該物件真的在 bucket 裡」`
+        `:「上傳 → 存進 line.richMenuBgImageUrl → 發布：LINE 收到的位元組就是我們上傳的那張圖」`
+        `:「清空 richMenuBgImageUrl 後再發布 → LINE 收到的不再是那張圖（退回主題底圖）」`
+        `:「上傳 WebP → 400，且 bucket 裡不會多出任何物件（LINE 只收 JPEG/PNG）」`
+      - 頁面層：`scripts/verify/rich-menu-bg-upload.07.cjs` 實跑 5/5 PASS
+        （判準是直查 `storage.objects` 與 `tenant_settings`，不是 toast）。
+      - `tests/unit/honest-not-built-rich-menu-design.test.ts`
+        `:「背景圖上傳真的接上 /api/upload，且結果有寫進 tenant_settings（否則發布用不到）」`
+      - ⚠️ 更正重開理由的一句事實：**「全 src/ 無任何頁面呼叫它」在 2026-08-24 成立，
+        今天已不成立**——`portfolio`（封面圖）、客服聊天送圖、選單設計的 Flex 卡片圖、
+        回報問題的截圖都已在呼叫 `/api/upload`（分別來自 issue #15 / #6 / #28）。
+        本輪關掉的是重開條件點名的**那一顆按鈕**，不是「第一個真實用戶」。
 - [ ] 上線前檢查表全過
 - [ ] `NEXT_PUBLIC_USE_MOCK=false` 正式切換
 

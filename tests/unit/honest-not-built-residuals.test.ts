@@ -212,9 +212,16 @@ describe('修復-1C：發布成功訊息與備份承諾等殘留假宣稱', () =
       expect(code).toContain("confirm === 'delete'");
     });
 
-    it('FlexMenuTab（issue #6）與背景圖上傳按鈕（issue #7）原樣保留', () => {
+    /**
+     * ⚠️ 前提變更（issue #7 (乙)）：背景圖上傳按鈕在 issue #7 接上了 /api/upload，
+     * 上傳中會改顯示 common.loading，所以 `{t.background.uploadImage}` 這個字面
+     * 已經不再原樣出現。改釘仍然成立的事：按鈕還在、文案鍵還在用。
+     * 「按鈕真的接上鏈路」的斷言在 honest-not-built-rich-menu-design.test.ts
+     * 的「背景圖上傳真的接上 /api/upload…」那一條，不在這裡重複。
+     */
+    it('FlexMenuTab（issue #6）與背景圖上傳按鈕仍在（按鈕已於 issue #7 接線）', () => {
       expect(code).toContain('function FlexMenuTab(');
-      expect(code).toContain('{t.background.uploadImage}');
+      expect(code).toContain('t.background.uploadImage');
     });
   });
 });

@@ -2288,3 +2288,64 @@ customers 屬 #7；dashboard（`showSampleData` 分支）、services 與 recurri
   這一條在 §10.4 的白名單裡歸屬 #7，但 issue #7 的表格沒有列它，本輪未動。
 - `block-times` 的「每週循環」（見 X.3）。
 
+
+---
+
+## 附錄 Y — issue #7（乙）後半四列接線時實測抓到的三件事（2026-08-26）
+
+> 與上面的「附錄 X」是同一個 issue 的另一半（marketing / campaigns / portfolio /
+> rich-menu-design 背景圖），由另一位執行者同時進行。只新增，不重排既有段落。
+
+接線 `marketing` / `campaigns` / `portfolio` / `rich-menu-design 背景圖` 這四列時，
+有三件事與當時手上的敘述不符。三件都是**照著錯的前提做下去就不會有紅燈**的那一類，
+記在這裡避免下一輪重犯。
+
+### Y.1 兩句「發布成功」文案在宣稱沒有發生的事（campaigns）
+
+`src/i18n/zh-TW/pages/campaigns.ts` 的兩句成功 toast：
+
+| 舊文案 | 實際 |
+|---|---|
+| 「活動已發布，**LINE 推播已發送**」 | `POST /api/campaigns/:id/publish` 只把 `status` 從 DRAFT 改成 PUBLISHED，**一則 LINE 訊息都沒有送出**。主動推播是 `/tenant/marketing` 那一頁的事。 |
+| 「活動已啟用，**將於對應時機自動觸發推播**」 | 沒有任何東西讀 `content.isAutoTrigger`。生日祝賀與顧客喚回兩支 cron（`src/app/api/cron/birthday-greetings`、`customer-recall`）讀的是 `tenant_settings.notify` 的開關與文案，**從頭到尾不查 campaigns 表**。 |
+
+第二句比第一句嚴重：它是**對一個不存在的排程做出的承諾**，而且要等到「對應時機」
+沒發生才會有人發現——那時候沒有人會把它連回這句 toast。
+
+兩句都已改成陳述真正發生的事（發布＝顧客在 LINE 查得到），並在 i18n 註記禁止復原。
+發布的真實效果由 `tests/integration/api/campaigns.07.test.ts` 從顧客那一端驗證。
+
+⚠️ 這一則的通則：**「發布」這個動作的成功訊息，要描述「顧客那邊會發生什麼」，
+不是「我們這邊改了哪個欄位」。** 兩者剛好都能寫成一句自信的中文，但只有前者
+是使用者關心、而且驗得出來的。
+
+### Y.2 `/api/upload` 的「零真實用戶」已經過期（08 分冊 Phase 7 重開理由）
+
+08 分冊 Phase 7 的重開理由寫著「API 測試矩陣全綠但**全 src/ 無任何頁面呼叫它**」。
+那句話在 2026-08-24 成立，但在本輪接線之前就**已經不成立**了：`portfolio` 的封面圖、
+客服聊天送圖、選單設計 Flex 卡片的圖、回報問題的截圖都已經在呼叫 `/api/upload`
+（分別來自 issue #15 / #6 / #28）。
+
+本輪關掉的是重開條件點名的**那一顆按鈕**（rich menu 背景圖），不是「第一個真實用戶」。
+差別有實際後果：如果照「第一個用戶」的前提去做，會以為整條上傳鏈路都還沒被驗證過，
+而實際上該補的只有「這一頁有沒有接上」與「上傳完有沒有存進發布會讀的欄位」。
+
+**重開理由本身也會過期**——重勾之前要重讀一次它敘述的事實，而不是只確認條件達成。
+
+### Y.3 「上傳成功」與「發布會用到那張圖」之間隔著一個沒人驗過的假設
+
+這一列最容易做錯的版本是：按鈕接上 `/api/upload`，拿到 url 後 `setBgUrl(url)`，
+toast「圖片上傳成功」。**每一步都是真的，整體仍然是假成功**——因為
+`/api/settings/line/rich-menu/create` 的 `loadBackgroundImage()` 讀的是
+`tenant_settings.line.richMenuBgImageUrl`，不是發布請求的 body，也不是頁面的 state。
+店家會看到上傳成功、發布成功，然後顧客的 LINE 裡是主題色底圖。
+
+所以接線是兩段而不是一段：`uploadImage()` → **`saveLineSettings({richMenuBgImageUrl})`**
+→ 才算數。整合測試因此不驗「回 200」，而是比對 mock LINE 在
+`/v2/bot/richmenu/{id}/content` 收到的**位元組**是否等於上傳的那張圖，並補一條
+「清空設定後再發布 → 收到的不再是那張圖」防止「不管設定是什麼都送同一張」的巧合。
+
+順帶：`/api/upload` 對 `richmenu-assets` 放行到 5 MB，但 LINE 對 rich menu 圖片的
+上限是 **1 MB**，且 create 端點是把位元組原樣轉送。頁面因此自己先卡 1 MB——
+不卡的話，失敗會被推遲到「發布」那一刻，也就是使用者已經離開這個畫面、
+手上不再握著那個檔案的時候。**限制要擋在使用者還能換一張圖的地方。**

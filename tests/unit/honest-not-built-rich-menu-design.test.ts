@@ -250,13 +250,53 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(code).toContain('{t.layout.publishFixedNote}');
     });
 
-    it('背景圖區：不再宣稱系統會疊加圖示與文字，也說明網址不會隨發布送出', () => {
+    it('背景圖區：不再宣稱系統會疊加圖示與文字', () => {
       // 只准以否定句出現（「系統不會在圖上疊加…」），不准再宣稱系統會疊加
       expect(t.background.help).not.toMatch(/(?<!不)會在(上面|圖上)疊加/);
       expect(t.background.help).toContain('系統不會在圖上疊加');
       expect(t.background.help).toContain('推送到 LINE 的是底圖原圖');
-      expect(t.background.notSentOnPublish).toContain('不會隨「發布到 LINE」送出');
-      expect(code).toContain('{t.background.notSentOnPublish}');
+    });
+
+    /**
+     * ⚠️ 前提變更（issue #7 (乙)）：底圖**真的接上了**，所以舊斷言
+     * `t.background.notSentOnPublish` 要求的那句「不會隨『發布到 LINE』送出」
+     * 已經不成立，留著就變成方向相反的謊——使用者會以為剛存的底圖不會生效。
+     * 處理方式與正上方 issue #6 那次相同：不是放寬，是**改釘更嚴格的事**——
+     * 那句話不准回來，而且鏈路的每一段都要在程式碼裡看得到。
+     *
+     * 這條在防的是：有人把上傳按鈕改回「只 setBgUrl 就 toast 成功」。
+     * 那樣改完畫面一模一樣、發布也回 200，但顧客看到的仍是主題底圖——
+     * 因為 `/api/settings/line/rich-menu/create` 的 loadBackgroundImage() 讀的是
+     * tenant_settings.line.richMenuBgImageUrl，不是發布請求的 body。
+     */
+    it('背景圖上傳真的接上 /api/upload，且結果有寫進 tenant_settings（否則發布用不到）', () => {
+      // 過期的「尚未接上／不會隨發布送出」文案必須整個消失，不能只是不引用
+      expect(Object.keys(t.background)).not.toContain('notSentOnPublish');
+      for (const text of allStrings(t.background)) {
+        expect(text).not.toContain('不會隨「發布到 LINE」送出');
+        expect(text).not.toContain('尚未接上上傳後端');
+      }
+      // ① 檔案 → /api/upload 的 richmenu-assets bucket
+      expect(code).toContain("uploadImage(file, 'richmenu-assets')");
+      // ② 上傳回來的網址寫進 tenant_settings.line.richMenuBgImageUrl —— 少了這一步，
+      //    發布時讀到的仍是舊值，畫面卻已經 toast 成功
+      expect(code).toContain('saveLineSettings({ richMenuBgImageUrl: url })');
+      // ③ 成功 toast 只能在兩個 await 都回來之後
+      const uploadFn = code.slice(
+        code.indexOf('const uploadBackground'),
+        code.indexOf('const saveBackgroundUrl'),
+      );
+      expect(uploadFn).not.toBe('');
+      expect(uploadFn.indexOf('saveLineSettings'))
+        .toBeLessThan(uploadFn.indexOf('toast.show(t.background.uploaded)'));
+      // ④ 進頁面要把已存的底圖讀回來，否則欄位永遠空白＝畫面與事實不符
+      expect(code).toContain('settings.line.richMenuBgImageUrl');
+      // ⑤ 1MB 上限（LINE 對圖文選單圖片的硬限制）要在上傳前就擋，不能等發布才失敗
+      expect(code).toContain('RICH_MENU_BG_MAX_BYTES');
+      expect(t.background.tooLarge).toContain('1MB');
+      // ⑥ 「還沒儲存」的警告只在草稿與已存值不同時出現，不是永遠掛著的紅字
+      expect(code).toContain('bgUrlDraft !== bgUrl ? (');
+      expect(code).toContain('{t.background.unsavedDraft}');
     });
 
     it('背景圖區不再有任何「已存到雲端／重整後會還原」的雲端保存宣稱', () => {
@@ -396,8 +436,21 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(code).not.toContain('t.feature.flexFreeFallback');
     });
 
-    it('背景圖「上傳圖片」按鈕的接線留給 issue #7（本輪只加說明）', () => {
-      expect(code).toContain('<Button variant="outline"><Upload size={14} />{t.background.uploadImage}</Button>');
+    /**
+     * ⚠️ 前提變更（issue #7 (乙)）：這條原本釘的是「按鈕**必須**維持成沒有 onClick
+     * 的死按鈕」，理由是接線留給 issue #7。issue #7 就是這一輪，接線已完成，
+     * 所以繼續釘住那個字面 JSX 等於禁止本 issue 交付它要交付的東西。
+     * 依 12 §2.4：不是放寬斷言，是**把它換成接線完成後才成立的更嚴格條件**——
+     * 按鈕必須有 onClick，而且點下去要走到 uploadBackground()（真正的鏈路斷言
+     * 在上方「背景圖上傳真的接上 /api/upload…」那一條）。
+     */
+    it('背景圖「上傳圖片」按鈕不再是死按鈕（issue #7 接線完成）', () => {
+      expect(code).not.toContain('<Button variant="outline"><Upload size={14} />{t.background.uploadImage}</Button>');
+      expect(code).toContain('bgFileRef.current?.click()');
+      expect(code).toContain('if (file) void uploadBackground(file);');
+      // 只收 LINE 允許的兩種格式（/api/upload 的 LINE_BOUND_BUCKETS 也會擋，
+      // 這裡讓使用者在選檔對話框就看得到）
+      expect(code).toContain('accept="image/jpeg,image/png"');
     });
 
     it('1A/1B/1C 的誠實化成果沒有被本輪回退', () => {

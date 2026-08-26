@@ -18,7 +18,11 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listMembershipLevels } from '@/services/catalog';
 import { getDashboardStats } from '@/services/reports';
-import { byMode } from '@/mock';
+import {
+  cancelPush, createPush, deletePush, listPushes, sendPush, updatePush,
+  type MarketingPush, type PushStatus, type PushTargetType,
+} from '@/services/marketing';
+import { ApiError } from '@/lib/api';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
@@ -26,155 +30,13 @@ import { formatDateTime } from '@/lib/utils';
 import type { MembershipLevel } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
+/* 型別與假資料都搬進 src/services/marketing.ts                                  */
+/*                                                                            */
+/* 原本這裡有 150 行的三組 mock 陣列，而頁面唯一的「資料來源」就是它們——連           */
+/* 送出、取消、刪除都只是 setTimeout + toast。issue #7 (乙) 把它們接到              */
+/* `/api/marketing/pushes*`，依「頁面永不 fetch」一律經 src/services/marketing.ts。 */
+/* mock 分支的假資料原封搬進該 service，USE_MOCK=true 的畫面完全不變。             */
 /* -------------------------------------------------------------------------- */
-
-type PushStatus = keyof typeof t.status;
-type PushTargetType = keyof typeof t.targetType;
-
-/** 原站 /api/marketing/pushes */
-type MarketingPush = {
-  id: string;
-  title: string;
-  content: string;
-  targetType: PushTargetType;
-  /** MEMBERSHIP_LEVEL 時為會員等級 id；TAG 時為標籤名稱；CUSTOM 時為 LINE User ID 清單 */
-  targetValue: string;
-  targetLabel: string;
-  estimatedCount: number;
-  sentCount: number;
-  failedCount: number;
-  status: PushStatus;
-  imageUrl: string;
-  scheduledAt: string | null;
-  sentAt: string | null;
-  note: string;
-  createdAt: string;
-};
-
-const PUSHES_LOCAL_SHOP: MarketingPush[] = [
-  {
-    id: 'mp_1', title: '本週特惠活動通知',
-    content: '本週來店指定設計師洗剪只要 499，名額有限，快來 LINE 預約！',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 246, sentCount: 0, failedCount: 0,
-    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '待確認文案', createdAt: '2026-08-20T09:30:00+08:00',
-  },
-  {
-    id: 'mp_2', title: '中秋公休公告',
-    content: '9/25～9/27 中秋連假公休，造成不便敬請見諒。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 246, sentCount: 0, failedCount: 0,
-    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-09-18T10:00:00+08:00',
-    sentAt: null, note: '', createdAt: '2026-08-18T14:12:00+08:00',
-  },
-  {
-    id: 'mp_3', title: '鑽石卡限定：秋季護髮 8 折',
-    content: '親愛的鑽石卡會員，本季護髮課程享 8 折，回覆「護髮」即可預約。',
-    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: '鑽石卡',
-    estimatedCount: 18, sentCount: 0, failedCount: 0,
-    status: 'SENDING', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '', createdAt: '2026-08-19T08:05:00+08:00',
-  },
-  {
-    id: 'mp_4', title: '新品上架：修護洗髮精',
-    content: '沙龍級修護洗髮精開賣，前 30 名下單享 9 折。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 240, sentCount: 238, failedCount: 2,
-    status: 'COMPLETED', imageUrl: 'https://example.com/image.jpg',
-    scheduledAt: null, sentAt: '2026-08-12T11:00:00+08:00',
-    note: '', createdAt: '2026-08-12T10:40:00+08:00',
-  },
-  {
-    id: 'mp_5', title: '限時優惠：指定名單回饋',
-    content: '感謝您長期支持，出示此訊息即可折抵 200 元。',
-    targetType: 'CUSTOM', targetValue: 'U1234567890abcdef\nU0987654321fedcba',
-    targetLabel: '', estimatedCount: 2, sentCount: 0, failedCount: 2,
-    status: 'FAILED', imageUrl: '', scheduledAt: null,
-    sentAt: '2026-08-08T19:20:00+08:00', note: '額度不足', createdAt: '2026-08-08T19:00:00+08:00',
-  },
-  {
-    id: 'mp_6', title: '父親節問候',
-    content: '祝所有爸爸節日快樂！本週來店贈送造型服務一次。',
-    targetType: 'TAG', targetValue: '熟客', targetLabel: '熟客',
-    estimatedCount: 42, sentCount: 0, failedCount: 0,
-    status: 'CANCELLED', imageUrl: '', scheduledAt: '2026-08-08T09:00:00+08:00',
-    sentAt: null, note: '改用行銷活動發送', createdAt: '2026-08-05T16:30:00+08:00',
-  },
-];
-
-const PUSHES_GUIDE: MarketingPush[] = [
-  {
-    id: 'mp_g1', title: '9 月賞鯨團次開賣',
-    content: '9 月團次開放報名囉！出團前 30 天報名享 9 折，週末場次每次都秒殺 🐬',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 412, sentCount: 0, failedCount: 0,
-    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '等封面照確認', createdAt: '2026-08-20T09:30:00+08:00',
-  },
-  {
-    id: 'mp_g2', title: '颱風備案通知',
-    content: '本週有颱風接近，8/23 前的團次將於出團前一日 18:00 前發送最終確認，如取消全額退費。',
-    targetType: 'CUSTOM', targetValue: 'U901\nU902\nU905', targetLabel: '',
-    estimatedCount: 34, sentCount: 0, failedCount: 0,
-    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-08-22T18:00:00+08:00',
-    sentAt: null, note: '只發近期出團的旅客', createdAt: '2026-08-20T11:05:00+08:00',
-  },
-  {
-    id: 'mp_g3', title: '祕島之友限定：新路線先行報名',
-    content: '新開的太魯閣秘境路線，先開放祕島之友報名，回覆「新路線」了解詳情。',
-    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: '祕島之友',
-    estimatedCount: 20, sentCount: 0, failedCount: 0,
-    status: 'SENDING', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '', createdAt: '2026-08-19T08:05:00+08:00',
-  },
-  {
-    id: 'mp_g4', title: '溯溪季倒數',
-    content: '溯溪季只到 10/15，還沒體驗過的旅人把握最後檔期！',
-    targetType: 'TAG', targetValue: '溯溪', targetLabel: '溯溪',
-    estimatedCount: 96, sentCount: 94, failedCount: 2,
-    status: 'COMPLETED', imageUrl: 'https://example.com/river.jpg',
-    scheduledAt: null, sentAt: '2026-08-12T11:00:00+08:00',
-    note: '', createdAt: '2026-08-12T10:40:00+08:00',
-  },
-  {
-    id: 'mp_g5', title: '推播額度提醒測試',
-    content: '本月推播額度即將用完，測試發送。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 412, sentCount: 0, failedCount: 412,
-    status: 'FAILED', imageUrl: '', scheduledAt: null,
-    sentAt: '2026-08-10T19:20:00+08:00', note: '推播額度不足（168/200）', createdAt: '2026-08-10T19:00:00+08:00',
-  },
-];
-
-const PUSHES_CLINIC: MarketingPush[] = [
-  {
-    id: 'mp_c1', title: '流感疫苗開打通知',
-    content: '本院流感疫苗已到貨，公費對象請攜帶健保卡，線上可預約看診號碼。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 1864, sentCount: 0, failedCount: 0,
-    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-08-25T10:00:00+08:00',
-    sentAt: null, note: '分批發送避免當日湧入', createdAt: '2026-08-18T14:12:00+08:00',
-  },
-  {
-    id: 'mp_c2', title: '中秋連假休診公告',
-    content: '9/25～9/27 中秋連假休診，急診請至鄰近醫院，造成不便敬請見諒。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 1864, sentCount: 0, failedCount: 0,
-    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '', createdAt: '2026-08-20T09:00:00+08:00',
-  },
-  {
-    id: 'mp_c3', title: '年度健檢提醒',
-    content: '距離您上次健檢已滿一年，現在預約享早鳥折 800，名額有限。',
-    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: 'VIP 健檢',
-    estimatedCount: 46, sentCount: 46, failedCount: 0,
-    status: 'COMPLETED', imageUrl: '', scheduledAt: null,
-    sentAt: '2026-08-14T09:00:00+08:00', note: '', createdAt: '2026-08-14T08:30:00+08:00',
-  },
-];
-
 const STATUS_TONE: Record<PushStatus, 'neutral' | 'info' | 'primary' | 'success' | 'danger'> = {
   DRAFT: 'neutral',
   SCHEDULED: 'info',
@@ -204,11 +66,11 @@ export default function MarketingPage() {
   const [pending, setPending] = React.useState<PendingAction | null>(null);
   const [working, setWorking] = React.useState(false);
 
+  /** GET /api/marketing/pushes（mock 分支＝service 內的三組假資料） */
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 320));
-      setRows(byMode({ LOCAL_SHOP: PUSHES_LOCAL_SHOP, GUIDE: PUSHES_GUIDE, CLINIC: PUSHES_CLINIC }));
+      setRows(await listPushes());
     } catch (e) {
       toast.show(
         `${t.messages.loadPushesFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -250,24 +112,39 @@ export default function MarketingPage() {
       ? t.targetType[p.targetType]
       : t.labels.targetWithValue(t.targetType[p.targetType], p.targetLabel);
 
+  /**
+   * 刪除／取消／立即發送。
+   *
+   * ⚠️ 成功訊息一律在 `await` 真的回來之後才顯示（CLAUDE.md「成功 toast 是一項
+   * 事實主張」）。「立即發送」尤其：`sendPush()` 會真的打 LINE multicast 並扣掉
+   * 推播額度，回傳實際送出的人數——所以 toast 報的是後端算出來的那個數字，不是
+   * 頁面猜的。額度不足或沒有符合條件的收件人時後端回 409，一則都不會送出，
+   * 這裡把後端的原文顯示出來，不會有任何「已開始發送」。
+   */
   const runPending = async () => {
     if (!pending) return;
-    const { kind } = pending;
+    const { kind, push } = pending;
     setWorking(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
+      if (kind === 'delete') {
+        await deletePush(push.id);
+        toast.show(t.messages.deleted);
+      } else if (kind === 'cancel') {
+        await cancelPush(push.id);
+        toast.show(t.messages.cancelled);
+      } else {
+        const { sentCount } = await sendPush(push.id);
+        toast.show(t.messages.sent(sentCount));
+      }
       setPending(null);
+      await load();
+    } catch (e) {
+      const detail = e instanceof ApiError ? e.message
+        : e instanceof Error ? e.message : t.messages.retryLater;
       toast.show(
-        kind === 'delete' ? t.messages.deleted
-          : kind === 'cancel' ? t.messages.cancelled
-            : t.messages.sending,
-      );
-      void load();
-    } catch {
-      toast.show(
-        kind === 'delete' ? t.messages.deleteFailed
-          : kind === 'cancel' ? t.messages.cancelFailed
-            : `${t.messages.sendFailedPrefix}${t.messages.retryLater}`,
+        kind === 'delete' ? `${t.messages.deleteFailed}：${detail}`
+          : kind === 'cancel' ? `${t.messages.cancelFailed}：${detail}`
+            : `${t.messages.sendFailedPrefix}${detail}`,
         'danger',
       );
     } finally {
@@ -296,8 +173,15 @@ export default function MarketingPage() {
       render: (p) => <Badge tone="info">{targetText(p)}</Badge>,
     },
     {
+      /**
+       * 預估人數。真實模式沒有這個數字（沒有「試算受眾」端點，名單是發送當下才
+       * 算的），service 回 null → 顯示「--」並附上說明。填 0 會讓「沒有人」與
+       * 「我們沒有在算」長得一模一樣，那正是 CLAUDE.md 禁止的捏造已知。
+       */
       key: 'estimated', header: t.columns.estimated, numeric: true, width: '110px',
-      render: (p) => t.labels.people(p.estimatedCount),
+      render: (p) => (p.estimatedCount === null
+        ? <span className="text-muted" title={t.labels.estimatedUnknownHint}>{t.labels.unknownValue}</span>
+        : t.labels.people(p.estimatedCount)),
     },
     {
       key: 'result', header: t.columns.result, width: '140px',
@@ -431,9 +315,16 @@ export default function MarketingPage() {
             />
           }
         />
-        <DataTableFooter>
-          <Pagination page={page} size={PAGE_SIZE} total={rows.length} onChange={setPage} />
-        </DataTableFooter>
+        {/*
+          * 載入中不掛頁尾：`total={rows.length}` 在還沒拿到資料時是 0，會印出
+          * 「共 0 筆」——那是一個「已知的答案」被拿來當「還不知道」用（#34 / #17
+          * 同一個坑）。DataTable 自己的 loading 狀態已經蓋掉表身，頁尾也一起等。
+          */}
+        {loading ? null : (
+          <DataTableFooter>
+            <Pagination page={page} size={PAGE_SIZE} total={rows.length} onChange={setPage} />
+          </DataTableFooter>
+        )}
       </DataTableContainer>
 
       <PushFormModal
@@ -441,10 +332,10 @@ export default function MarketingPage() {
         push={formTarget ?? null}
         levels={levels}
         onClose={() => setFormTarget(undefined)}
-        onSaved={() => {
+        onSaved={async (edited) => {
           setFormTarget(undefined);
-          toast.show(t.messages.created);
-          void load();
+          toast.show(edited ? t.messages.updated : t.messages.created);
+          await load();
         }}
       />
 
@@ -472,7 +363,9 @@ export default function MarketingPage() {
             <div>
               <dt className="form-label">{t.columns.estimated}</dt>
               <dd className="text-base tabular-nums text-dark">
-                {t.labels.people(viewTarget.estimatedCount)}
+                {viewTarget.estimatedCount === null
+                  ? <span className="text-muted">{t.labels.estimatedUnknown}</span>
+                  : t.labels.people(viewTarget.estimatedCount)}
               </dd>
             </div>
             <div className="md:col-span-2">
@@ -494,9 +387,12 @@ export default function MarketingPage() {
             <div className="md:col-span-2">
               <dt className="form-label">{t.columns.result}</dt>
               <dd className="text-base tabular-nums text-dark">
-                {viewTarget.sentCount || viewTarget.failedCount
-                  ? `${t.labels.resultSuccess(viewTarget.sentCount)} / ${t.labels.resultFailed(viewTarget.failedCount)}`
+                {viewTarget.sentCount
+                  ? t.labels.resultSuccess(viewTarget.sentCount)
                   : t.labels.notSent}
+                {viewTarget.failedCount
+                  ? ` / ${t.labels.resultFailed(viewTarget.failedCount)}`
+                  : ''}
               </dd>
             </div>
           </dl>
@@ -540,7 +436,7 @@ function PushFormModal({
   push: MarketingPush | null;
   levels: MembershipLevel[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (edited: boolean) => void | Promise<void>;
 }) {
   const toast = useToast();
   const isEdit = !!push;
@@ -550,7 +446,6 @@ function PushFormModal({
   const [targetType, setTargetType] = React.useState<PushTargetType>('ALL');
   const [targetValue, setTargetValue] = React.useState('');
   const [customTargets, setCustomTargets] = React.useState('');
-  const [imageName, setImageName] = React.useState('');
   const [imageUrl, setImageUrl] = React.useState('');
   const [scheduledAt, setScheduledAt] = React.useState('');
   const [note, setNote] = React.useState('');
@@ -565,22 +460,11 @@ function PushFormModal({
     setTargetType(push?.targetType ?? 'ALL');
     setTargetValue(push?.targetType === 'MEMBERSHIP_LEVEL' ? push.targetValue : '');
     setCustomTargets(push?.targetType === 'CUSTOM' ? push.targetValue : '');
-    setImageName('');
     setImageUrl(push?.imageUrl ?? '');
     setScheduledAt(push?.scheduledAt ? push.scheduledAt.slice(0, 16) : '');
     setNote(push?.note ?? '');
   }, [open, push]);
 
-  const pickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      e.target.value = '';
-      toast.show(t.messages.imageTooLarge, 'warning');
-      return;
-    }
-    setImageName(file.name);
-  };
 
   const validate = (): string => {
     if (!title.trim()) return t.form.titleRequired;
@@ -591,14 +475,34 @@ function PushFormModal({
     return '';
   };
 
+  /**
+   * 建立／編輯推播 —— POST 或 PUT `/api/marketing/pushes`。
+   * 成功 toast 由 onSaved() 在 await 回來之後才顯示（CLAUDE.md 鐵則）；
+   * 失敗時把後端訊息原文帶出來（例如「此推播已發送或取消，無法編輯」）。
+   */
   const submit = async () => {
     const err = validate();
     setError(err);
     if (err) { toast.show(err, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onSaved();
+      const payload = {
+        title: title.trim(),
+        content,
+        imageUrl,
+        note,
+        targetType,
+        targetValue: targetType === 'MEMBERSHIP_LEVEL' ? targetValue
+          : targetType === 'CUSTOM' ? customTargets : '',
+        targetLabel: targetType === 'MEMBERSHIP_LEVEL'
+          ? (levels.find((l) => l.id === targetValue)?.name ?? '')
+          : '',
+        // datetime-local 沒有時區，補上台北時區才是後端 zod 收的 ISO 8601 offset 格式
+        scheduledAt: scheduledAt ? `${scheduledAt}:00+08:00` : null,
+      };
+      if (push) await updatePush(push.id, payload);
+      else await createPush(payload);
+      await onSaved(!!push);
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -683,18 +587,21 @@ function PushFormModal({
         </FormGroup>
       ) : null}
 
+      {/*
+        * ⚠️ 檔案選擇器**停用**（issue #7 (乙) 接線這一輪）。
+        * 它原本會把檔名記進 imageName 就沒了——沒有上傳、沒有 service、送出時也
+        * 不會帶走，等於使用者選了一張圖、畫面顯示檔名，然後那張圖被靜靜丟掉。
+        * 在整頁其餘動作都變成真的之後，這種控制項比先前更危險（旁邊的東西都真的
+        * 生效了，只有它沒有）。依 CLAUDE.md「placeholder 必須在使用者讀得到的地方
+        * 說明」，這裡是停用＋說明，不是刪除；真正的上傳鏈路由後續 issue 補。
+        * 目前唯一會隨推播送出的圖片來源是下面那個網址欄位（後端 content.imageUrl）。
+        * 禁止在沒有接上 /api/upload 之前把 disabled 拿掉。
+        */}
       <FormGroup>
         <Label htmlFor="pushImageInput">{t.form.image}</Label>
-        <Input id="pushImageInput" type="file" accept="image/*" onChange={pickImage} />
-        <div className="flex items-center justify-between">
-          <FormText>{t.form.imageUploadHint}</FormText>
-          {imageName ? (
-            <Button variant="ghost" size="sm" onClick={() => setImageName('')}>
-              {t.form.imageRemove}
-            </Button>
-          ) : null}
-        </div>
+        <Input id="pushImageInput" type="file" accept="image/*" disabled />
         <FormText>{t.form.imageFormatHint}</FormText>
+        <Alert tone="warning" className="mt-2">{t.form.imageUploadNotWired}</Alert>
       </FormGroup>
 
       <FormGroup>

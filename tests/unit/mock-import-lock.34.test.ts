@@ -192,10 +192,10 @@ describe('AppShell：外框三值必須走 service，不得直接吃 mock 常數
  */
 const BYMODE_IMPORTERS = [
   'src/app/tenant/bookings/page.tsx',
-  'src/app/tenant/campaigns/page.tsx',
+  // campaigns / marketing 已於 issue #7 (乙) 接線：頁內 byMode 假資料整組搬進
+  // src/services/campaigns.ts、src/services/marketing.ts 的 mock 分支，頁面不再 import byMode。
   'src/app/tenant/coupons/page.tsx',
   'src/app/tenant/dashboard/page.tsx',
-  'src/app/tenant/marketing/page.tsx',
   'src/app/tenant/membership-levels/page.tsx',
   'src/app/tenant/recurring-bookings/page.tsx',
   'src/app/tenant/services/page.tsx',

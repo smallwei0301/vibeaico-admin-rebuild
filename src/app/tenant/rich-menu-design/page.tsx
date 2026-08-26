@@ -19,6 +19,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import {
   listFeatures, getTenantSettings, createRichMenu, deleteRichMenu, saveFlexMenu,
+  saveLineSettings,
 } from '@/services/settings';
 import { uploadImage } from '@/services/upload';
 import { MAX_FLEX_CARDS, isAllowedFlexLinkUrl, type FlexCard } from '@/config/tenant-settings';
@@ -62,6 +63,16 @@ const THEMES = [
 type ThemeKey = (typeof THEMES)[number]['key'];
 
 /** 佈局：每行的格數 */
+/**
+ * Rich menu 底圖大小上限 —— **1 MB，比 `/api/upload` 自己的 5 MB 嚴**。
+ *
+ * LINE 官方「Requirements for rich menu image」寫明 Max file size: 1 MB，而
+ * `/api/settings/line/rich-menu/create` 是把這張圖的位元組**原樣**上傳給 LINE。
+ * 放 2 MB 進來的話上傳會過、儲存會過，然後在「發布」那一刻才失敗——失敗被推遲到
+ * 使用者已經離開這個畫面、也不再握著那個檔案的時候。當場擋下才換得掉。
+ */
+const RICH_MENU_BG_MAX_BYTES = 1024 * 1024;
+
 const LAYOUT_ROWS: Record<string, number[]> = {
   '3+4': [3, 4], '2x3': [3, 3], '2+3': [2, 3], '2x2': [2, 2],
   '1+2': [1, 2], '3+4+4': [3, 4, 4], '4+4': [4, 4],
@@ -222,8 +233,13 @@ function RichMenuTab({
   const [hasBackup, setHasBackup] = React.useState(false);
   const [guideCard, setGuideCard] = React.useState(true);
   const [richMenuId, setRichMenuId] = React.useState('');
+  const [bgUploading, setBgUploading] = React.useState(false);
+  const [bgSaving, setBgSaving] = React.useState(false);
+  /** 網址輸入框的草稿值（尚未存進 tenant_settings）；bgUrl 才是已落地的值 */
+  const [bgUrlDraft, setBgUrlDraft] = React.useState('');
+  const bgFileRef = React.useRef<HTMLInputElement>(null);
 
-  // 進頁面時把店家上次實際發布的主題／發布狀態讀回來，畫面才不會跟 LINE 端的
+  // 進頁面時把店家上次實際發布的主題／底圖／發布狀態讀回來，畫面才不會跟 LINE 端的
   // 真實狀態脫節（例如已經發布過，卻一直顯示「未發布」的假狀態）。
   React.useEffect(() => {
     void (async () => {
@@ -231,9 +247,73 @@ function RichMenuTab({
       if (!settings) return;
       const savedTheme = settings.line.richMenuTheme as ThemeKey | undefined;
       if (savedTheme && THEMES.some((th) => th.key === savedTheme)) setTheme(savedTheme);
+      // 底圖同樣要讀回來：發布時真正被用的就是 tenant_settings.line.richMenuBgImageUrl，
+      // 欄位卻永遠空白的話，店家會以為自己沒設過底圖（畫面與事實不符）。
+      if (settings.line.richMenuBgImageUrl) {
+        setBgUrl(settings.line.richMenuBgImageUrl);
+        setBgUrlDraft(settings.line.richMenuBgImageUrl);
+      }
       if (settings.line.richMenuId) { setRichMenuId(settings.line.richMenuId); setHasBackup(true); }
     })();
   }, []);
+
+  /**
+   * 底圖上傳 —— `/api/upload`，bucket `richmenu-assets`（issue #7 (乙)）。
+   *
+   * 為什麼上傳完要**接著寫進 tenant_settings**：發布端點
+   * `/api/settings/line/rich-menu/create` 的 loadBackgroundImage() 讀的是
+   * `line.richMenuBgImageUrl`，**不是**這個請求的 body。只把網址放進 React state
+   * 就 toast「上傳成功」，等於再造一個假成功——發布出去的還是主題底圖。
+   *
+   * ⚠️ 大小上限這裡卡 1 MB，比 `/api/upload` 自己的 5 MB 嚴：LINE 的
+   * rich menu 圖片上限就是 1 MB（Messaging API「Requirements for rich menu image」），
+   * 而 create 端點是把這張圖的**位元組原樣**丟給 LINE。放 2 MB 進來的話，上傳會成功、
+   * 儲存會成功，然後在「發布」那一刻才失敗——失敗被推遲到使用者已經離開這個畫面、
+   * 手上也不再握著那個檔案的時候。當場擋下才換得掉。
+   * 格式同理只收 JPEG/PNG：`/api/upload` 的 LINE_BOUND_BUCKETS 已經擋掉 WebP，
+   * 這裡的 accept 只是讓使用者在選檔對話框就看得到，不是重複驗證。
+   */
+  const uploadBackground = async (file: File) => {
+    if (file.size > RICH_MENU_BG_MAX_BYTES) {
+      toast.show(t.background.tooLarge, 'warning');
+      return;
+    }
+    setBgUploading(true);
+    try {
+      const url = await uploadImage(file, 'richmenu-assets');
+      // 先落地再顯示成功：這一步才是「發布會用到這張圖」成立的原因
+      await saveLineSettings({ richMenuBgImageUrl: url });
+      setBgUrl(url);
+      setBgUrlDraft(url);
+      toast.show(t.background.uploaded);
+    } catch (e) {
+      toast.show(
+        `${t.background.uploadFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+    } finally {
+      setBgUploading(false);
+      if (bgFileRef.current) bgFileRef.current.value = '';
+    }
+  };
+
+  /** 把網址欄位（貼上的外部網址或剛上傳的網址）存進 tenant_settings，發布才用得到 */
+  const saveBackgroundUrl = async (url: string) => {
+    setBgSaving(true);
+    try {
+      await saveLineSettings({ richMenuBgImageUrl: url });
+      setBgUrl(url);
+      setBgUrlDraft(url);
+      toast.show(url ? t.background.saved : t.background.removed);
+    } catch (e) {
+      toast.show(
+        `${t.background.saveFailedPrefix}${e instanceof Error ? e.message : ''}`,
+        'danger',
+      );
+    } finally {
+      setBgSaving(false);
+    }
+  };
 
   const rows = LAYOUT_ROWS[layout] ?? LAYOUT_ROWS['3+4'];
   const cellCount = rows.reduce((a, b) => a + b, 0);
@@ -505,28 +585,61 @@ function RichMenuTab({
         <Card>
           <CardHeader><CardTitle><ImageIcon size={16} />{t.background.cardTitle}</CardTitle></CardHeader>
           <CardBody>
+            {/*
+              * issue #7 (乙)：底圖真的接上了。兩條路徑都**寫進 tenant_settings.line
+              * .richMenuBgImageUrl**，因為 `/api/settings/line/rich-menu/create` 的
+              * loadBackgroundImage() 讀的是那個欄位，不是發布請求的 body：
+              *   上傳 → uploadImage(file,'richmenu-assets') → POST /api/upload
+              *        → saveLineSettings({richMenuBgImageUrl}) → PUT /api/settings/line
+              *   貼網址 → 「儲存底圖」→ saveLineSettings(...) → PUT /api/settings/line
+              * 只改 React state 就 toast 成功（先前的狀態）＝發布出去的仍是主題底圖。
+              * 禁止把任一條改回只動 state。
+              */}
             <FormGroup>
               <div className="input-group">
                 <Input
-                  value={bgUrl}
-                  onChange={(e) => setBgUrl(e.target.value)}
+                  value={bgUrlDraft}
+                  onChange={(e) => setBgUrlDraft(e.target.value)}
                   placeholder={t.background.urlPlaceholder}
                 />
-                <Button variant="outline"><Upload size={14} />{t.background.uploadImage}</Button>
+                <Button
+                  variant="outline"
+                  disabled={bgUploading || bgSaving || bgUrlDraft === bgUrl}
+                  onClick={() => void saveBackgroundUrl(bgUrlDraft.trim())}
+                >
+                  {t.background.saveUrl}
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={bgUploading || bgSaving}
+                  onClick={() => bgFileRef.current?.click()}
+                >
+                  <Upload size={14} />
+                  {bgUploading ? common.loading : t.background.uploadImage}
+                </Button>
               </div>
+              <input
+                ref={bgFileRef}
+                type="file"
+                className="hidden"
+                accept="image/jpeg,image/png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadBackground(file);
+                }}
+              />
               <FormText>{t.background.urlHint}</FormText>
             </FormGroup>
             <FormText>{t.background.help}</FormText>
-            {/*
-              * ⚠️ 這個網址欄位只寫進 bgUrl state，只影響右側預覽：createRichMenu(theme)
-              * 的請求裡沒有它。發布時真正被讀的自訂底圖是 tenant_settings.line
-              * .richMenuBgImageUrl（「LINE 設定 → 主選單樣式」頁存的），本頁從未寫入。
-              * 「上傳圖片」按鈕的 onClick 接線屬 issue #7（/api/upload），本輪不動接線，
-              * 但按鈕旁必須說明它目前尚未接上。禁止復原。
-              */}
-            <Alert tone="warning" className="mt-3">{t.background.notSentOnPublish}</Alert>
+            {bgUrlDraft !== bgUrl ? (
+              <Alert tone="warning" className="mt-3">{t.background.unsavedDraft}</Alert>
+            ) : null}
             {bgUrl ? (
-              <Button variant="outlineDanger" size="sm" className="mt-2" onClick={() => setBgUrl('')}>
+              <Button
+                variant="outlineDanger" size="sm" className="mt-2"
+                disabled={bgUploading || bgSaving}
+                onClick={() => void saveBackgroundUrl('')}
+              >
                 <X size={13} />{t.background.remove}
               </Button>
             ) : (
@@ -691,7 +804,7 @@ function RichMenuTab({
               rows={rows}
               cells={cells}
               shopName={SHOP_NAME}
-              bgUrl={bgUrl}
+              bgUrl={bgUrlDraft}
               activeCell={activeCell}
               onCellClick={setActiveCell}
             />
@@ -701,7 +814,7 @@ function RichMenuTab({
                 layoutDef?.label ?? layout,
                 cellCount,
                 isLarge ? t.layout.sizeLarge : t.layout.sizeStandard,
-                bgUrl ? '' : ` / ${t.background.none}`,
+                bgUrlDraft ? '' : ` / ${t.background.none}`,
               )}
             </p>
             {/*

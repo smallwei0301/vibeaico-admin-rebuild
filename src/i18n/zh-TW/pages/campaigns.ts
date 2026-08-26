@@ -87,6 +87,15 @@ export const campaignsPage = {
     pushMessage: '推播訊息',
     campaignName: '活動名稱',
     thresholdAmount: '滿額門檻金額',
+    /**
+     * 「參與人數」在真實模式是**還不知道**，不是 0（issue #7 (乙)）。
+     * `campaigns` 表沒有這個欄位，也沒有任何一張表把「顧客參加了哪個活動」記下來
+     * （自動觸發發的是票券與點數，兩者都沒有回指活動）。顯示 0 會讓「沒有人參加」
+     * 與「我們沒有在算」長得一模一樣——CLAUDE.md 點名的捏造已知。
+     */
+    unknownValue: '--',
+    participantsUnknown: '尚未統計',
+    participantsUnknownHint: '尚未統計：目前沒有任何一張表把「顧客參加了哪個活動」記下來，這裡的「--」是還不知道，不是 0 人。',
   },
 
   /* --------------------------------------------------------------- 動作 */
@@ -133,8 +142,13 @@ export const campaignsPage = {
     descriptionMax: 500,
 
     image: '活動圖片',
-    imageUploadHint: '點擊上傳圖片（最大 2MB）',
-    imageRemove: '移除圖片',
+    /**
+     * ⚠️ 一併刪除兩個宣稱「上傳能力」而該能力不存在的鍵（issue #7 (乙)）：
+     * imageUploadHint（點擊上傳圖片（最大 2MB））、imageRemove（移除圖片）。
+     * 這一頁從來沒有上傳程式碼，「最大 2MB」這種限制描述只會讓人以為背後有一條
+     * 上傳鏈路。禁止復原。
+     */
+    imageUploadNotWired: '活動圖片上傳尚未接上，選檔不會有作用，也不會隨活動送出。',
 
     sectionReward: '推播與獎勵設定',
 
@@ -206,8 +220,26 @@ export const campaignsPage = {
     created: '活動已建立（草稿狀態）',
     updated: '活動已更新',
     deleted: '活動已刪除',
-    published: '活動已發布，LINE 推播已發送',
-    publishedAuto: '活動已啟用，將於對應時機自動觸發推播',
+    /**
+     * ⚠️ 誠實化（issue #7 (乙) 接線時實測抓到的）。兩句舊文案都在宣稱沒有發生的事：
+     *
+     * 1. 舊 published =「活動已發布，**LINE 推播已發送**」。
+     *    `POST /api/campaigns/:id/publish` 只把 status 從 DRAFT 改成 PUBLISHED，
+     *    **一則 LINE 訊息都沒有送出**（要主動推播是 /tenant/marketing 那一頁的事）。
+     *    發布真正的效果是「顧客來問的時候查得到」——那才是可以講的話。
+     * 2. 舊 publishedAuto =「活動已啟用，**將於對應時機自動觸發推播**」。
+     *    沒有任何東西讀 content.isAutoTrigger：生日祝賀與顧客喚回兩支 cron
+     *    （src/app/api/cron/birthday-greetings、customer-recall）讀的是
+     *    `tenant_settings.notify` 的開關與文案，**從頭到尾不看 campaigns 表**。
+     *    這句是對一個不存在的排程做出的承諾，而且要等到「對應時機」沒發生才會有人發現。
+     *
+     * 禁止復原。要恢復第 2 句，必須先有真的會讀 campaigns 的觸發器。
+     */
+    published: '活動已發布：顧客在 LINE 輸入「活動」或這個活動的關鍵字時就查得到了',
+    publishedAuto:
+      '活動已發布：顧客在 LINE 輸入「活動」時查得到。'
+      + '注意「自動觸發」目前只會存下來、還沒有接上自動發送——生日祝賀與顧客喚回的推播'
+      + '是由「LINE 設定 → 通知」的開關獨立控制的，與這個活動無關。',
     paused: '活動已暫停',
     resumed: '活動已恢復',
     ended: '活動已結束',
@@ -218,7 +250,6 @@ export const campaignsPage = {
     pauseFailed: '暫停失敗',
     resumeFailed: '恢復失敗',
     endFailed: '結束失敗',
-    imageTooLarge: '圖片大小不可超過 2MB',
     loadCampaignsFailed: '載入活動失敗:',
     loadDetailFailed: '載入活動詳情失敗',
     loadDetailFailedPrefix: '載入活動詳情失敗:',
