@@ -92,7 +92,16 @@ describe('文案：不得再宣稱範本改動會連動 shifts 表（除非查�
 
 describe('編輯／新增：成功 toast 必須排在 await 端點之後（鐵則 12）', () => {
   const page = withoutComments(src(PAGE));
-  const submit = page.match(/const submit = async \(\) => \{[\s\S]*?\n  \};/)?.[0];
+  /**
+   * ⚠️ 2026-08-26（issue #7 乙）：這裡原本是對整個檔案抓**第一個**
+   * `const submit = async () => {`。那時 shifts 頁只有一個 submit（TemplateModal 的）；
+   * 週排班接線後 `WeeklyScheduleModal` 也有了一個，而且排在前面，於是這三條
+   * 斷言開始檢查錯的函式。**斷言本身一字未改**（TemplateModal 的成功 toast 仍然
+   * 必須排在 await 之後、失敗仍然必須 'danger'），只是把取樣範圍限縮到
+   * TemplateModal 這個元件內，讓它不再受「檔案裡有幾個 submit」影響。
+   */
+  const templateModal = page.slice(page.indexOf('function TemplateModal('));
+  const submit = templateModal.match(/const submit = async \(\) => \{[\s\S]*?\n  \};/)?.[0];
 
   it('submit 函式存在且為 async（不是舊的 void 射後不理）', () => {
     expect(submit).toBeDefined();
@@ -133,9 +142,15 @@ describe('刪除：成功 toast 必須排在 await deleteShiftTemplate 之後（
   const page = withoutComments(src(PAGE));
   // onConfirm 是 ConfirmModal 的 prop，用「onConfirm={async () => {」定位，
   // 收尾抓到下一個 `}}`（ConfirmModal 這顆 JSX 屬性值的結尾）。
-  const startAt = page.indexOf('onConfirm={async () => {');
-  const endAt = page.indexOf('}}', startAt);
-  const onConfirm = startAt > -1 && endAt > -1 ? page.slice(startAt, endAt) : undefined;
+  /**
+   * ⚠️ 2026-08-26（issue #7 乙）：同上，取樣範圍限縮到 TemplateModal 元件內。
+   * 排班模式切換接線後，主元件也有一個 `onConfirm={async () => {`，而且排在
+   * 這個刪除確認之前——原本抓「檔案裡第一個」會檢查到錯的地方。斷言未改。
+   */
+  const templateModalSrc = page.slice(page.indexOf('function TemplateModal('));
+  const startAt = templateModalSrc.indexOf('onConfirm={async () => {');
+  const endAt = templateModalSrc.indexOf('}}', startAt);
+  const onConfirm = startAt > -1 && endAt > -1 ? templateModalSrc.slice(startAt, endAt) : undefined;
 
   it('onConfirm 是 async（不是舊的同步 + void 射後不理）', () => {
     expect(onConfirm).toBeDefined();

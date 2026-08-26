@@ -95,8 +95,19 @@ export const pointsPage = {
       { value: '5000', label: 'NT$ 5,000（獲得 5,750 點，贈送 15%）' },
       { value: '10000', label: 'NT$ 10,000（獲得 12,000 點，贈送 20%）' },
     ],
-    payMethods: '支援信用卡 / Apple Pay / Google Pay / Samsung Pay',
-    payRedirectHint: '點擊「前往付款」後將導向藍新金流安全付款頁面',
+    /**
+     * ⚠️ 原本這兩句是「支援信用卡 / Apple Pay / Google Pay / Samsung Pay」與
+     * 「點擊『前往付款』後將導向藍新金流安全付款頁面」。兩句都不成立：
+     * `POST /api/points/topup/pay` 依 09 分冊 §4 一律回 501「請聯絡平台客服儲值」，
+     * 平台沒有接任何金流，也沒有任何頁面會導向藍新。寫在按鈕旁邊等於向店家
+     * 承諾一段不會發生的流程（00 鐵則 12）。改成照實說明目前的儲值方式。
+     */
+    payMethods: '目前尚未開放線上刷卡，儲值一律由平台客服協助處理。',
+    payRedirectHint: '送出後畫面會顯示平台客服的回覆，不會導向付款頁面。',
+    /** accepted=false 時的標題；後端的原文接在它後面顯示 */
+    unavailableTitle: '尚未開放線上付款',
+    /** mock／示範模式：沒有後端可問，用這句說明（不可假裝送出成功） */
+    unavailableMock: '骨架模式沒有金流也沒有平台客服系統，這個申請不會送出到任何地方。',
     invoiceUbn: '統一編號',
     invoiceOptional: '（選填）',
     invoiceUbnPlaceholder: '8 碼數字，需開三聯式發票時填寫',
@@ -107,7 +118,7 @@ export const pointsPage = {
     remark: '備註',
     remarkPlaceholder: '如有特殊需求可在此說明...',
     remarkMax: 200,
-    submit: '前往付款',
+    submit: '送出儲值申請',
     submitting: '處理中...',
   },
 

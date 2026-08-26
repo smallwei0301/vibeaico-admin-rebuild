@@ -17,12 +17,22 @@ export const blockTimesPage = {
     create: '新增封鎖',
   },
 
+  /**
+   * ⚠️ 少了兩欄，都是因為**後端沒有那個欄位**（block_times 只有
+   * id / staff_id / start_at / end_at / reason）：
+   *   - 「原因」：接線前表單有「封鎖名稱」與「原因」兩個輸入框，但只有一個
+   *     text 欄位可以存。留著第二個輸入框＝使用者打了字、按了儲存、看到成功訊息，
+   *     內容卻沒有進資料庫（00 鐵則 12 的假成功）。因此只保留必填的「封鎖名稱」，
+   *     它存進 `reason`（行事曆頁也是拿這個欄位當標籤）。
+   *   - 「自動產生」徽章：來源是「每天不同營業時間」自動產生的休息時段，
+   *     GET /api/block-times 沒有這個旗標可讀，接線後永遠不會是 true。
+   */
   columns: {
     title: '名稱',
     type: '類型',
-    date: '日期/星期',
+    date: '日期',
     time: '時段',
-    reason: '原因',
+    staff: '對象',
     actions: '操作',
   },
 
@@ -31,7 +41,7 @@ export const blockTimesPage = {
     single: '單次',
     weekly: '每週',
     fullDay: '整天',
-    auto: '自動產生',
+    allStaff: '全店',
   },
 
   form: {
@@ -39,11 +49,17 @@ export const blockTimesPage = {
     editTitle: '編輯封鎖時段',
     title: '封鎖名稱',
     titlePlaceholder: '例如：店休、團隊會議',
-    reason: '原因',
-    reasonPlaceholder: '選填',
     recurrence: '循環類型',
     single: '單次',
     weekly: '每週',
+    /**
+     * 「每週」目前**存不進去**：block_times 只有起訖時間，沒有循環欄位；
+     * 就算硬加一個欄位，判斷可預約時段的 `/api/bookings/available-slots`
+     * 與 `/api/calendar` 也都是照 start_at/end_at 過濾，不會認得循環規則——
+     * 也就是說存下去也不會真的擋掉預約。與其做成一個「有存到、但沒有效果」
+     * 的開關，不如照實說它還沒做。
+     */
+    weeklyUnavailable: '每週循環尚未支援：目前只能新增單次封鎖，儲存後才會真的擋住預約。',
     date: '日期',
     dayOfWeek: '星期幾',
     weekdays: [
@@ -64,6 +80,9 @@ export const blockTimesPage = {
     title: '尚未設定封鎖時段',
     description: '封鎖時段內不接受預約，適用所有預約入口（公開頁面、LINE Bot、後台新增預約）',
   },
+
+  /** 依目前營業時間做的時段檢查；查不到營業時間就不做這組檢查（見頁面註解） */
+  businessHoursUnknown: '目前查不到營業時間設定，因此不檢查時段是否落在營業時間內。',
 
   messages: {
     created: '封鎖時段已新增',

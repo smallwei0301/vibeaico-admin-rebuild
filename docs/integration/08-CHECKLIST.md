@@ -232,3 +232,36 @@
 8. 第二家店註冊 → 看不到第一家店任何資料
 9. 忘記密碼 → 重設 → 新密碼登入
 10. Dashboard 數字與實際資料一致
+
+---
+
+## 附錄 — issue #7（乙）前半六頁接線（2026-08-26）
+
+> 只新增，不重排既有項目。issue #7 的表格共十列，本節記的是其中**六列**；
+> 另外四列（marketing / campaigns / portfolio / rich-menu 底圖上傳）由另一位執行者處理。
+
+- [x] customers：新增／編輯真的落庫；LINE 綁定與解除綁定改打專用端點
+      證據：`tests/integration/api/ops-pages-wiring.07.test.ts:「POST /api/customers/:id/bind-line → 兩張表都寫上（雙向），且該好友離開未綁定清單」`／
+      `:「POST /api/customers/:id/unbind-line → 兩張表都清空（不是只清顧客那一側）」`／
+      `:「GET /api/line-users/unbound 含這位尚未綁定的好友（綁定 modal 的清單來源）」`；
+      頁面鏈路靜態鎖 `tests/unit/ops-pages-wiring.07.test.ts:「表單 submit：await createCustomer / updateCustomer 在 onSaved(isEdit) 之前」` 等 6 例
+- [x] block-times：整頁改吃 `/api/block-times`（含本輪新增的 PUT）
+      證據：`tests/integration/api/ops-pages-wiring.07.test.ts:「POST 後 GET /api/block-times 查得到剛建立的那筆（頁面重新整理仍在）」`／
+      `:「PUT /api/block-times/:id 改時間與名稱 → service role 直查資料庫是新值」`／
+      `:「PUT 只送 endAt 且早於既有 startAt → 400 REQ_001，且資料庫沒被改到」`；
+      實測 `scripts/verify/ops-pages-wiring.07.cjs`（新增 → 重整仍在 → 刪除，10/10 通過）
+- [x] points 儲值：如實呈現 501 客服文案，不做成成功
+      證據：`tests/integration/api/ops-pages-wiring.07.test.ts:「回 501 且訊息是客服提示 —— 頁面要如實顯示這句話，不是顯示成功」`；
+      實測 `scripts/verify/ops-pages-wiring.07.cjs`「畫面顯示後端 501 的原文『請聯絡平台客服儲值』」＋
+      「儲值 modal 沒有關閉」＋「畫面沒有任何成功字樣」＋「沒有任何 TOPUP 交易被寫進資料庫」
+- [x] staff 自訂稱呼 → `tenant_settings.basic.staffTerm`
+      證據：`tests/integration/api/ops-pages-wiring.07.test.ts:「PUT /api/settings { basic } 帶 staffTerm → 直查 tenant_settings.basic.staffTerm 是新值」`
+- [x] shifts 週班表 → `/api/shifts`；排班模式 → `tenant_settings.business.staffScheduleModes`
+      證據：`tests/integration/api/ops-pages-wiring.07.test.ts:「repeat-cycle 七天全 null 清空 → POST /api/shifts 寫入上班日 → 直查 shifts 只剩新排的那幾天」`／
+      `:「PUT /api/settings { business } → 直查 business jsonb 含 staffScheduleModes；GET 回讀相同」`
+- [x] shop-design 儲存送出真的 branding patch（migration `0021_tenant_settings_branding`，兩個 Supabase 專案皆已套用並以 `information_schema.columns` 驗證）
+      證據：`tests/integration/api/ops-pages-wiring.07.test.ts:「PUT /api/settings { branding } → service role 直查 tenant_settings.branding 是送出的值；GET 回讀相同」`／
+      `:「只送 branding 不會動到 basic（群組彼此獨立…）」`
+
+⚠️ 尚未關閉、屬於這六頁但不在 issue #7 表格範圍內的，見 `14-GAP-AUDIT.md` 附錄 X.6。
+

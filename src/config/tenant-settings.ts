@@ -247,6 +247,16 @@ export const businessSettingsSchema = z.object({
   productOnlinePaymentEnabled: z.boolean().default(false),
   /** 預約自訂欄位，一行一個，行尾 * 表必填 */
   bookingCustomFields: z.string().default(''),
+  /**
+   * 每位員工的排班模式（/tenant/shifts 頁的「固定休息 / 輪休」按鈕）：
+   * key = staff.id，值二選一。缺 key = 尚未設定，頁面視為 ROTATING。
+   *
+   * ⚠️ 為什麼落在 `business` 而不是新開一個群組或新欄位：這是店家的營運設定，
+   * `business` jsonb 已經存在，新增一個 zod 鍵不需要 migration；/tenant/settings
+   * 頁儲存 business 群組時是把 GET 回來的整包再送回去（見該頁 patchBusiness），
+   * 所以這個鍵會原樣往返，不會被洗掉。
+   */
+  staffScheduleModes: z.record(z.string(), z.enum(['FIXED_REST', 'ROTATING'])).default({}),
 });
 
 /* --------------------------------------------------------------- 通知設定 */
@@ -300,6 +310,45 @@ export const pointsSettingsSchema = z.object({
   rounding: z.enum(['FLOOR', 'ROUND', 'CEIL']).default('FLOOR'),
 });
 
+/* ------------------------------------------------------ 公開頁外觀（品牌） */
+/**
+ * 公開預約頁的外觀設定 — 存 `tenant_settings.branding` jsonb（migration 0021），
+ * 由 /tenant/shop-design 頁讀寫（本檔開頭的分組對照表從一開始就寫著
+ * `branding → /tenant/shop-design`，但這個群組實際上一直不存在）。
+ *
+ * ⚠️ 為什麼需要新的群組而不是塞進 `basic`：`PUT /api/settings` 是**群組整包覆蓋**，
+ * `basic` 是 /tenant/settings 頁的，兩頁各存各的欄位卻共用一包，先儲存的那一邊
+ * 會被後儲存的那一邊洗掉。分組是這個端點的隔離單位。
+ */
+export const brandingSettingsSchema = z.object({
+  /** 公開頁標題；空字串 = 沿用店家名稱 */
+  shopName: z.string().default(''),
+  logoUrl: z.string().default(''),
+  logoHidden: z.boolean().default(false),
+  bannerUrl: z.string().default(''),
+  bannerVideoUrl: z.string().default(''),
+  bannerVideoSound: z.boolean().default(true),
+  announcement: z.string().default(''),
+  aboutTitle: z.string().default(''),
+  aboutContent: z.string().default(''),
+  aboutImageUrl: z.string().default(''),
+  gallery: z.array(z.object({
+    id: z.string(),
+    url: z.string().default(''),
+    caption: z.string().default(''),
+  })).default([]),
+  /** 品牌主色（公開頁用的資料值，不是後台的設計 token） */
+  themeColor: z.string().default('#6366f1'),
+  facebook: z.string().default(''),
+  instagram: z.string().default(''),
+  line: z.string().default(''),
+  threads: z.string().default(''),
+  googleMaps: z.string().default(''),
+  contactEmail: z.string().default(''),
+});
+
+export type BrandingSettings = z.infer<typeof brandingSettingsSchema>;
+
 /* -------------------------------------------------------------- AI 客服 */
 /**
  * AI 客服（AI_ASSISTANT）設定 — 存 tenant_settings.ai jsonb（migration 0011）。
@@ -342,6 +391,7 @@ export const tenantSettingsSchema = z.object({
   privacy: privacySettingsSchema,
   points: pointsSettingsSchema,
   line: lineSettingsSchema,
+  branding: brandingSettingsSchema,
 });
 
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
@@ -375,4 +425,5 @@ export const DEFAULT_TENANT_SETTINGS = (shopCode: string, tenantName: string): T
     privacy: {},
     points: {},
     line: {},
+    branding: {},
   });

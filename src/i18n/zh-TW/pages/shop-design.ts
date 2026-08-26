@@ -137,8 +137,14 @@ export const shopDesignPage = {
     saved: '設定已儲存',
     saveFailed: '儲存失敗',
     loadFailed: '載入設定失敗',
-    imageAdded: '圖片已新增',
-    imageDeleted: '圖片已刪除',
+    /**
+     * ⚠️ 這兩則只改畫面上的草稿，要按右上角「儲存」才會寫進
+     * `tenant_settings.branding`。原文「圖片已新增／圖片已刪除」講得像已經生效，
+     * 但同一頁其他欄位（店名、公告…）改了都不會跳訊息，唯獨相簿跳，
+     * 使用者很容易以為相簿是即時存的、其他是要按儲存的。改成講清楚時機。
+     */
+    imageAdded: '已加入相簿清單，按「儲存」後才會生效',
+    imageDeleted: '已從相簿清單移除，按「儲存」後才會生效',
     imageTooLargePrefix: '圖片大小不可超過 ',
     imageTooLarge2mb: '圖片大小不可超過 2MB',
     imageUnreadable: '圖片無法讀取（可能是 HEIC 格式，請改存成 JPG/PNG 再上傳）',

@@ -199,7 +199,10 @@ const BYMODE_IMPORTERS = [
   'src/app/tenant/membership-levels/page.tsx',
   'src/app/tenant/recurring-bookings/page.tsx',
   'src/app/tenant/services/page.tsx',
-  'src/app/tenant/shop-design/page.tsx',
+  // 2026-08-26（issue #7 乙）：shop-design 頁移出這份快照——它的公開頁內容
+  // 已改吃 `tenant_settings.branding`（migration 0021），三種業態的示範內容
+  // 移進 `services/settings.ts` 的 mock 分支，頁面不再 import byMode。
+  // 快照守的是「不得再增加」，少一個是這條鎖要的方向。
   'src/app/tenant/staff/page.tsx',
 ];
 

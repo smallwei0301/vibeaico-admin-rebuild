@@ -17,11 +17,9 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
-import { buildPublicBookingUrl } from '@/config/tenant-settings';
-import type { TenantSettings } from '@/config/tenant-settings';
+import { buildPublicBookingUrl, brandingSettingsSchema } from '@/config/tenant-settings';
+import type { BrandingSettings, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
-import { byMode } from '@/mock';
-import type { BusinessType } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { shopDesignPage as t } from '@/i18n/zh-TW/pages/shop-design';
@@ -44,97 +42,17 @@ const THEME_COLOR_PRESETS = [
 /** 原站 themeColorPicker 的 value 預設值 */
 const DEFAULT_THEME_COLOR = THEME_COLOR_PRESETS[0];
 
-/** 原站 /api/settings/shop-page 回傳的公開頁設定；骨架階段以 module 常數提供 */
-type GalleryImage = { id: string; url: string; caption: string };
-
-type ShopPageConfig = {
-  shopName: string;
-  logoUrl: string;
-  logoHidden: boolean;
-  bannerUrl: string;
-  bannerVideoUrl: string;
-  bannerVideoSound: boolean;
-  announcement: string;
-  aboutTitle: string;
-  aboutContent: string;
-  aboutImageUrl: string;
-  gallery: GalleryImage[];
-  themeColor: string;
-  facebook: string;
-  instagram: string;
-  line: string;
-  threads: string;
-  googleMaps: string;
-  contactEmail: string;
-};
-
-const BLANK_SHOP_PAGE: ShopPageConfig = {
-  shopName: '', logoUrl: '', logoHidden: false, bannerUrl: '', bannerVideoUrl: '',
-  bannerVideoSound: true, announcement: '', aboutTitle: '', aboutContent: '',
-  aboutImageUrl: '', gallery: [], themeColor: DEFAULT_THEME_COLOR,
-  facebook: '', instagram: '', line: '', threads: '', googleMaps: '', contactEmail: '',
-};
-
-/** 三種業態的公開頁示範內容（見 docs/integration/13-BUSINESS-MODES.md） */
-const SHOP_PAGE_BY_MODE: Record<BusinessType, ShopPageConfig> = {
-  LOCAL_SHOP: {
-    ...BLANK_SHOP_PAGE,
-    shopName: '示範美髮沙龍',
-    announcement: '8/25–8/28 公休，造型預約請提前於 LINE 預訂，感謝支持！',
-    aboutTitle: '關於我們',
-    aboutContent:
-      '成立於 2018 年的小型沙龍，每位設計師一次只服務一位客人，'
-      + '從頭皮檢測到造型建議都慢慢聊。使用低敏染劑與植萃護理，敏感頭皮也能安心。',
-    gallery: [
-      { id: 'g_1', url: '', caption: '一樓洗髮區' },
-      { id: 'g_2', url: '', caption: '設計師工作台' },
-      { id: 'g_3', url: '', caption: '護理專區' },
-    ],
-    instagram: 'https://instagram.com/demo_salon',
-    line: 'https://line.me/R/ti/p/@demo1234',
-    googleMaps: 'https://maps.example.com/demo-salon',
-    contactEmail: 'hello@demo-salon.example.com',
-  },
-  GUIDE: {
-    ...BLANK_SHOP_PAGE,
-    shopName: '祕島嚮導工作室',
-    announcement: '9 月賞鯨團次已開放報名，颱風季請留意出團前一日的最終確認通知。',
-    aboutTitle: '關於祕島',
-    aboutContent:
-      '我們是一群在宜蘭、花蓮長大的在地嚮導，帶你走進觀光路線之外的祕境。'
-      + '所有海域行程由持證船長領航，山域行程每 6 人配置 1 名教練，'
-      + '全程投保高山嚮導責任險。人數不多，走得慢一點，看得多一點。',
-    gallery: [
-      { id: 'g_1', url: '', caption: '龜山島牛奶海' },
-      { id: 'g_2', url: '', caption: '飛旋海豚出沒' },
-      { id: 'g_3', url: '', caption: '砂婆礑溪谷' },
-      { id: 'g_4', url: '', caption: '九份夜色' },
-    ],
-    themeColor: THEME_COLOR_PRESETS[1] ?? DEFAULT_THEME_COLOR,
-    instagram: 'https://instagram.com/midao_guide',
-    line: 'https://line.me/R/ti/p/@midao888',
-    googleMaps: 'https://maps.example.com/wushi-harbor',
-    contactEmail: 'hi@midao.example.com',
-  },
-  CLINIC: {
-    ...BLANK_SHOP_PAGE,
-    shopName: '示範診所',
-    announcement:
-      '流感疫苗開打中，公費對象請攜帶健保卡。中秋連假 9/25–9/27 休診，急診請至鄰近醫院。',
-    aboutTitle: '門診資訊',
-    aboutContent:
-      '家庭醫學科、內科一般門診，附設健檢中心。'
-      + '看診時間：週一至週五 09:00–12:00、14:00–17:30、18:30–21:00；週六上午診。'
-      + '線上預約可查看即時看診號碼，減少現場等候。',
-    gallery: [
-      { id: 'g_1', url: '', caption: '候診區' },
-      { id: 'g_2', url: '', caption: '健檢中心' },
-    ],
-    line: 'https://line.me/R/ti/p/@democlinic',
-    googleMaps: 'https://maps.example.com/demo-clinic',
-    contactEmail: 'service@demo-clinic.example.com',
-  },
-};
+/**
+ * 這一頁編的是 `tenant_settings.branding`（migration 0021）——型別就是
+ * `BrandingSettings`，頁面不再自己宣告一份 `ShopPageConfig`。
+ *
+ * ⚠️ 接線前的樣子：型別、空白預設、三種業態的示範內容全部寫在這個檔案裡，
+ * 而「儲存」呼叫的是 `saveTenantSettings({})`——一個空 patch。端點收到空物件
+ * 什麼都不寫，畫面卻顯示「已儲存」（14 分冊 §1 A-1：形似有接、持久化為零）。
+ * 示範內容已移入 `services/settings.ts` 的 mock 分支，因為接線後頁面的初始值
+ * 只有一條路徑（`getTenantSettings().branding`）。
+ */
+type GalleryImage = BrandingSettings['gallery'][number];
 
 /** 偵測到已連接 LINE Bot 時，「點此自動填入連結」要填的網址前綴 */
 const LINE_ADD_FRIEND_PREFIX = 'https://line.me/R/ti/p/';
@@ -159,7 +77,7 @@ export default function ShopDesignPage() {
   const [saving, setSaving] = React.useState(false);
   const [tab, setTab] = React.useState<TabKey>('profile');
   const [settings, setSettings] = React.useState<TenantSettings | null>(null);
-  const [config, setConfig] = React.useState<ShopPageConfig>(byMode(SHOP_PAGE_BY_MODE));
+  const [config, setConfig] = React.useState<BrandingSettings>(() => brandingSettingsSchema.parse({}));
   const [deleteTarget, setDeleteTarget] = React.useState<GalleryImage | null>(null);
 
   /** 新增圖片的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
@@ -170,7 +88,8 @@ export default function ShopDesignPage() {
       try {
         const s = await getTenantSettings();
         setSettings(s);
-        setConfig((c) => ({ ...c, shopName: c.shopName || s.basic.tenantName }));
+        /* 公開頁標題留空 = 沿用店家名稱（schema 註解），載入時就補上讓欄位有東西可編 */
+        setConfig({ ...s.branding, shopName: s.branding.shopName || s.basic.tenantName });
       } catch {
         toast.show(t.messages.loadFailed, 'danger');
       } finally {
@@ -179,18 +98,22 @@ export default function ShopDesignPage() {
     })();
   }, [toast]);
 
-  const patch = (p: Partial<ShopPageConfig>) => setConfig((c) => ({ ...c, ...p }));
+  const patch = (p: Partial<BrandingSettings>) => setConfig((c) => ({ ...c, ...p }));
 
   const publicUrl = settings
     ? buildPublicBookingUrl(APP_URL, settings.basic.shopCode)
     : '';
   const lineBasicId = settings?.line.lineBasicId ?? '';
 
+  /**
+   * PUT /api/settings，body = `{ branding: <整包> }`。
+   * 端點對每個群組是**整包覆蓋**，所以這裡送的就是畫面上的完整 config，
+   * 成功訊息只在 await 真的回來之後才顯示（00 鐵則 12）。
+   */
   const save = async () => {
     setSaving(true);
     try {
-      /* 骨架階段沿用 saveTenantSettings：真實後端為 /api/settings/shop-page */
-      await saveTenantSettings({});
+      await saveTenantSettings({ branding: config });
       toast.show(t.messages.saved);
     } catch (e) {
       toast.show(

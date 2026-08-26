@@ -2204,3 +2204,87 @@ block-times）」直接 `import { MOCK_* }`。逐檔查證：
 customers 屬 #7；dashboard（`showSampleData` 分支）、services 與 recurring-bookings
 （service 的 mock 分支回 null 時才用頁內資料）屬正常用法。
 靜態鎖對這一層只做**盤點快照**（再長出新的一處就紅），**不是核可**。
+
+---
+
+## 附錄 X — issue #7（乙）前半六頁接線紀錄（2026-08-26）
+
+> 只新增，不重排既有段落。本節記的是 §1 A-1 清單裡屬於這六頁的那幾條怎麼修的，
+> 以及**修的過程中查證出來、與既有敘述不符的事實**。
+
+### X.1 六頁的鏈路（DoD 10）
+
+| 頁 | 頁面 handler | services 函式 | 端點 |
+|---|---|---|---|
+| customers | `CustomerFormModal.submit` | `createCustomer` / `updateCustomer` | `POST /api/customers`、`PUT /api/customers/:id` |
+| customers | `BindLineModal` 載入 / `bind` | `listUnboundLineUsers`（**chat 服務**）/ `bindCustomerLine` | `GET /api/line-users/unbound`、`POST /api/customers/:id/bind-line` |
+| customers | 解除綁定 `ConfirmModal.onConfirm` | `unbindCustomerLine` | `POST /api/customers/:id/unbind-line` |
+| block-times | `load` / `BlockTimeModal.submit` / 刪除 `onConfirm` | `listBlockTimes` / `createBlockTime`＋`updateBlockTime` / `deleteBlockTime` | `GET|POST /api/block-times`、`PUT|DELETE /api/block-times/:id` |
+| points | `TopupModal.submit` | `requestPointTopup` | `POST /api/points/topup/pay`（回 501） |
+| staff | `StaffTermModal.submit` | `saveTenantSettings` | `PUT /api/settings`（`basic.staffTerm`） |
+| shifts | `WeeklyScheduleModal.submit` | `repeatShiftCycles` → `saveShifts` | `POST /api/shifts/repeat-cycle`、`POST /api/shifts` |
+| shifts | 模式切換 `ConfirmModal.onConfirm` | `saveTenantSettings` | `PUT /api/settings`（`business.staffScheduleModes`） |
+| shop-design | `save` | `saveTenantSettings` | `PUT /api/settings`（`branding`） |
+
+### X.2 接線時查出來、與既有敘述不符的事
+
+1. **`/api/points/topup` 不存在**，端點是 `/api/points/topup/**pay**`。§1 A-1 與
+   issue #7 的表格都寫成前者；照著打會拿到 404，畫面顯示的就變成「找不到」，
+   而不是規格要的客服提示。
+2. **`branding` 群組不存在**。`src/config/tenant-settings.ts` 開頭的分組對照表
+   從一開始就寫著 `branding → /tenant/shop-design`，但 `tenantSettingsSchema`
+   沒有這個群組、`tenant_settings` 也沒有這個欄位。本輪補
+   migration `0021_tenant_settings_branding`（兩個 Supabase 專案皆已套用並以
+   `information_schema.columns` 驗證）。
+3. **`listUnboundLineUsers` 早就存在於 `src/services/chat.ts`**（聊天室頁在用）。
+   customers 頁接線時若照 issue 敘述另寫一份，就會有兩份同名同語意的函式。
+   已改成共用既有那一支。
+4. **`block_times` 沒有循環／整天／名稱＋原因兩欄**。原站的封鎖時段表單有
+   「每週」循環與「原因」欄，我們的表只有 `staff_id/start_at/end_at/reason`。
+   本輪**沒有**擴表，理由見 X.3。
+
+### X.3 block-times 的「每週循環」為什麼標成尚未支援，而不是補欄位
+
+補一個 `recurrence` 欄位是容易的；難的是**讓它真的擋住預約**。
+`/api/bookings/available-slots` 與 `/api/calendar` 都是照 `start_at/end_at`
+做區間過濾，不認得任何循環規則。只加欄位的話，店家會存到一筆「每週二公休」，
+系統照樣接受週二的預約——那是比整頁假資料更糟的一種假成功（有寫入、看得到、
+但沒有效果）。因此本輪的處理是：表單裡照實說明尚未支援（`t.form.weeklyUnavailable`），
+單次封鎖則完整接上。要做循環，得連同可預約時段的計算一起改，屬另一個 issue。
+
+同理，`shifts` 的休息時間與備註（表沒有這兩欄）、`block_times` 的第二個文字欄
+（表只有一個 `reason`），本輪一律改成 UI 上講清楚或移除，不留「打了字但不會存」的欄位。
+
+### X.4 順手修掉的三個「捏造的已知」（都在這六頁上，且都會被店家當成事實讀）
+
+- `block-times`：`BUSINESS_HOURS = { open:'10:00', close:'21:00', … }` 寫死，
+  驗證訊息會對店家說「開始時間不能早於營業開始時間（10:00）」——那個 10:00
+  與他自己設的營業時間無關。改讀 `/api/settings`；查不到就不做這組檢查。
+- `shifts`：同型的 `BUSINESS_HOURS = { start:'10:00', end:'20:00' … }`，而且不只
+  用來驗證，還直接印在格子的 tooltip 上（「營業時間 10:00–20:00」）。同樣改讀設定。
+- `customers`：`AUTO_CREATED_CUSTOMER_IDS = new Set(['c_2'])` 被拿來在列表上掛
+  「自動建立檔案」徽章，以及未綁定清單的 `ORPHAN`／`AUTO_CREATED` 兩種 kind——
+  三者都沒有任何資料來源。已刪除（查不到的狀態就不顯示）。
+
+### X.5 文案層面改掉的幾句「承諾了沒發生的事」
+
+| 位置 | 原文 | 為什麼不成立 |
+|---|---|---|
+| points 儲值 modal | 「支援信用卡 / Apple Pay…」「將導向藍新金流安全付款頁面」 | 端點一律回 501，平台沒有接任何金流 |
+| staff 自訂稱呼 | 「此稱呼會套用到後台、公開預約頁、LINE 與通知信」 | **沒有任何地方讀 `basic.staffTerm`**；後台走 `navLabel/MODE_PRESETS` |
+| shifts 週排班 | 「儲存後本週與未來各週都會套用」 | 後端沒有「週規則」，只有一天一列的 shifts，實際只套用到目前檢視區間 |
+| shifts 班表 modal | （只在程式註解裡寫「休息／備註不在 API 契約內」） | 註解保護的是下一個工程師，被誤導的是店家 → 移到畫面上 |
+| shop-design 相簿 | 「圖片已新增／圖片已刪除」 | 只改草稿，要按「儲存」才寫入 |
+| customers 綁定清單 | 「以下是綁定異常的 LINE 用戶（…顧客已被刪但 LINE 殘留）」 | 端點只回「已加好友且尚未綁定」一種列 |
+
+### X.6 本輪**沒有**處理、留給後續的（誠實列出）
+
+- `shifts/page.tsx` 的 `MOCK_LEAVE_BY_KEY`（格子 tooltip 的「請假中」）與
+  `MOCK_BLOCKED_DATES`（「店休」底色）仍是頁內假資料，鍵是 `s_2`/`s_3` 這種
+  骨架 id，真實模式永遠對不上，所以不會顯示錯的東西，但它們也**不會顯示對的東西**
+  （真的請假／真的封鎖不會反映在班表格子上）。`/api/staff/:id/leaves` 與
+  `/api/block-times` 都存在，接得起來，但不在 issue #7 這一列的範圍。
+- `customers` 頁的標籤下拉仍由 `MOCK_CUSTOMERS` 推導（`/api/customers/tags` 存在未用）。
+  這一條在 §10.4 的白名單裡歸屬 #7，但 issue #7 的表格沒有列它，本輪未動。
+- `block-times` 的「每週循環」（見 X.3）。
+

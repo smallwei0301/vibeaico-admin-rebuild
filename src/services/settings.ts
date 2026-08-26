@@ -1,12 +1,13 @@
 import { ApiError, adapt, request } from '@/lib/api';
 import { APP_URL } from '@/config/env';
 import {
-  DEFAULT_TENANT_SETTINGS, buildWebhookUrl, aiSettingsSchema,
-  type AiSettings, type LineSettings, type TenantSettings,
+  DEFAULT_TENANT_SETTINGS, buildWebhookUrl, aiSettingsSchema, brandingSettingsSchema,
+  type AiSettings, type BrandingSettings, type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
 import type { FeatureSubscription } from '@/config/features';
+import type { BusinessType } from '@/config/modes';
 import type { SetupStatus } from '@/lib/types';
-import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_MODE, MOCK_TENANTS } from '@/mock';
+import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_MODE, MOCK_TENANTS, byMode } from '@/mock';
 
 /**
  * 目前這一間示範店家。
@@ -31,6 +32,79 @@ const demoTenant = () => MOCK_TENANTS.find((t) => t.businessType === MOCK_MODE) 
 const demoLineUnavailable = () =>
   new ApiError('示範店家沒有連動 LINE 官方帳號，這個動作不會真的送到 LINE', 'DEMO_NO_LINE', 400);
 
+
+/* --------------------------------------------------- 公開頁外觀（branding）
+ * `tenant_settings.branding`（migration 0021）——/tenant/shop-design 頁讀寫。
+ *
+ * ⚠️ 示範內容為什麼放在這裡而不是頁面裡：接線後頁面的初始值一律來自
+ * `getTenantSettings().branding`，沒有第二條路徑。示範店家的三份公開頁內容
+ * 因此得由 mock 分支供應（同 chat 服務的 byMode 對話資料）；留在頁面裡的話，
+ * 真實模式下新開的店會看到「示範美髮沙龍」的文案被當成自己的設定。
+ */
+
+const DEMO_BRANDING_BY_MODE: Record<BusinessType, Partial<BrandingSettings>> = {
+  LOCAL_SHOP: {
+    shopName: '示範美髮沙龍',
+    announcement: '8/25–8/28 公休，造型預約請提前於 LINE 預訂，感謝支持！',
+    aboutTitle: '關於我們',
+    aboutContent:
+      '成立於 2018 年的小型沙龍，每位設計師一次只服務一位客人，'
+      + '從頭皮檢測到造型建議都慢慢聊。使用低敏染劑與植萃護理，敏感頭皮也能安心。',
+    gallery: [
+      { id: 'g_1', url: '', caption: '一樓洗髮區' },
+      { id: 'g_2', url: '', caption: '設計師工作台' },
+      { id: 'g_3', url: '', caption: '護理專區' },
+    ],
+    instagram: 'https://instagram.com/demo_salon',
+    line: 'https://line.me/R/ti/p/@demo1234',
+    googleMaps: 'https://maps.example.com/demo-salon',
+    contactEmail: 'hello@demo-salon.example.com',
+  },
+  GUIDE: {
+    shopName: '祕島嚮導工作室',
+    announcement: '9 月賞鯨團次已開放報名，颱風季請留意出團前一日的最終確認通知。',
+    aboutTitle: '關於祕島',
+    aboutContent:
+      '我們是一群在宜蘭、花蓮長大的在地嚮導，帶你走進觀光路線之外的祕境。'
+      + '所有海域行程由持證船長領航，山域行程每 6 人配置 1 名教練，'
+      + '全程投保高山嚮導責任險。人數不多，走得慢一點，看得多一點。',
+    gallery: [
+      { id: 'g_1', url: '', caption: '龜山島牛奶海' },
+      { id: 'g_2', url: '', caption: '飛旋海豚出沒' },
+      { id: 'g_3', url: '', caption: '砂婆礑溪谷' },
+      { id: 'g_4', url: '', caption: '九份夜色' },
+    ],
+    themeColor: '#4361ee',
+    instagram: 'https://instagram.com/midao_guide',
+    line: 'https://line.me/R/ti/p/@midao888',
+    googleMaps: 'https://maps.example.com/wushi-harbor',
+    contactEmail: 'hi@midao.example.com',
+  },
+  CLINIC: {
+    shopName: '示範診所',
+    announcement:
+      '流感疫苗開打中，公費對象請攜帶健保卡。中秋連假 9/25–9/27 休診，急診請至鄰近醫院。',
+    aboutTitle: '門診資訊',
+    aboutContent:
+      '家庭醫學科、內科一般門診，附設健檢中心。'
+      + '看診時間：週一至週五 09:00–12:00、14:00–17:30、18:30–21:00；週六上午診。'
+      + '線上預約可查看即時看診號碼，減少現場等候。',
+    gallery: [
+      { id: 'g_1', url: '', caption: '候診區' },
+      { id: 'g_2', url: '', caption: '健檢中心' },
+    ],
+    line: 'https://line.me/R/ti/p/@democlinic',
+    googleMaps: 'https://maps.example.com/demo-clinic',
+    contactEmail: 'service@demo-clinic.example.com',
+  },
+};
+
+/** ⚠️ 必須在 callback 內求值：模組層取 byMode() 會凍在 applyMockMode() 之前的模式 */
+const demoBranding = (fallbackName: string): BrandingSettings => {
+  const preset = byMode(DEMO_BRANDING_BY_MODE);
+  return brandingSettingsSchema.parse({ shopName: fallbackName, ...preset });
+};
+
 /**
  * 讀租戶設定。
  * 🔐 line.channelSecret / line.channelAccessToken 一律以遮罩形式回傳，
@@ -48,6 +122,7 @@ export const getTenantSettings = () =>
       const s = DEFAULT_TENANT_SETTINGS(current.shopCode, current.name);
       // webhook URL 由 shopCode 推出來，是真的可以算出來的值，保留。
       s.line.webhookUrl = buildWebhookUrl(APP_URL, current.shopCode);
+      s.branding = demoBranding(current.name);
       return s;
     },
     () => request<TenantSettings>('/api/settings'),

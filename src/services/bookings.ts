@@ -345,6 +345,20 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
   );
 }
 
+/**
+ * GET /api/block-times?from&to — 封鎖時段清單（/tenant/block-times 頁唯一資料源）。
+ *
+ * 端點回的就是表的欄位：block_times 沒有「循環」「整天」「名稱／原因兩欄」這些東西，
+ * 頁面只能呈現這裡真的有的。回傳型別沿用上面行事曆區塊已經有的 `BlockTimeItem`
+ * （同一個端點家族、同一組欄位，不另外宣告第二份）。mock 分支回空陣列——骨架
+ * 模式沒有任何封鎖時段可讀，編一組出來會讓示範店家看到永遠刪不掉的資料。
+ */
+export const listBlockTimes = (q: { from?: string; to?: string } = {}) =>
+  adapt<BlockTimeItem[]>(
+    () => [],
+    () => request<BlockTimeItem[]>('/api/block-times', { query: q }),
+  );
+
 /** POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖。 */
 export const createBlockTime = (payload: {
   staffId?: string | null; startAt: string; endAt: string; reason?: string;
@@ -352,6 +366,16 @@ export const createBlockTime = (payload: {
   adapt(
     () => ({ id: `bt_mock_${Date.now()}` }),
     () => request<{ id: string }>('/api/block-times', { method: 'POST', body: JSON.stringify(payload) }),
+  );
+
+/** PUT /api/block-times/:id — 改時間／改名稱／改對象；只更新 body 裡出現的欄位。 */
+export const updateBlockTime = (
+  id: string,
+  payload: { staffId?: string | null; startAt?: string; endAt?: string; reason?: string },
+) =>
+  adapt(
+    () => undefined,
+    () => request<void>(`/api/block-times/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   );
 
 /** DELETE /api/block-times/:id */
