@@ -359,6 +359,28 @@ export async function markThreadRead(messages: ChatMessage[]): Promise<void> {
   await Promise.allSettled(unread.map((m) => markRead(m.id)));
 }
 
+/**
+ * 未讀訊息總數（側邊欄徽章 `unreadChatBadge`，issue #34）。
+ *
+ * **查證結論：不補新端點。** `GET /api/chat/conversations` 已經逐對話回
+ * `unread`（route 用 direction='IN' 且 read_at is null 計數，見該檔 §2），
+ * 加總即是徽章要的數字；再補一支 `/api/chat/unread/count` 會變成同一件事
+ * 寫兩份、兩邊各自漂移。
+ *
+ * 這裡不呼叫 `listConversations()`，因為那支在完整載入時會額外打
+ * `/api/line-users/unbound`（尚未綁定的好友，未讀恆為 0），徽章不需要。
+ */
+export const unreadChatCount = () =>
+  adapt<number>(
+    () =>
+      byMode({ LOCAL_SHOP: CONV_LOCAL_SHOP, GUIDE: CONV_GUIDE, CLINIC: CONV_CLINIC })
+        .reduce((sum, c) => sum + c.unread, 0),
+    async () => {
+      const rows = await request<RawConversation[]>('/api/chat/conversations');
+      return rows.reduce((sum, r) => sum + (r.unread ?? 0), 0);
+    },
+  );
+
 /** 未綁定顧客的 LINE 好友（followed=true 且 customer_id is null）。mock：[]。 */
 export const listUnboundLineUsers = () =>
   adapt<UnboundLineUser[]>(() => [], () => request<UnboundLineUser[]>('/api/line-users/unbound'));

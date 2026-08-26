@@ -27,8 +27,17 @@ export function Topbar({
   currentTenant: TenantSummary;
   /** 切換目前操作的店家（真實後端對應 POST /api/auth/switch-tenant） */
   onSwitchTenant?: (tenantId: string) => void;
-  userName: string;
-  setupPercent: number;
+  /**
+   * 登入者顯示名稱（real＝`GET /api/auth/me` 的 email，mock＝MOCK_USER.name）。
+   * `null` = 還沒問到，此時顯示「--」而不是猜一個名字（issue #34）。
+   */
+  userName: string | null;
+  /**
+   * 開店進度百分比（`GET /api/settings/setup-status`）。
+   * `null` = 還沒問到／問不到 → 顯示「--」並在同一顆膠囊裡說明，
+   * **不得顯示任何百分比數字**（issue #34 的擁有者裁示）。
+   */
+  setupPercent: number | null;
 }) {
   const [shopMenu, setShopMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
@@ -74,7 +83,22 @@ export function Topbar({
           <Menu size={20} />
         </button>
 
-        {setupPercent < 100 && (
+        {/* 進度未知（載入中或取得失敗）→ 顯示「--」並附一句說明；
+            已知且未滿 100% → 顯示百分比；已知且 100% → 整塊收起（既有行為）。
+            ⚠️ 未知時不可退回 0% 或任何佔位數字（issue #34）。 */}
+        {setupPercent === null ? (
+          <Link
+            href="/tenant/settings"
+            title={common.topbar.setupProgressUnknownHint}
+            className="hidden items-center gap-2 rounded-pill bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-200 sm:flex"
+          >
+            <span className="tabular-nums">{common.topbar.unknownValue}</span>
+            <span>{common.topbar.setupProgress}</span>
+            <span className="font-normal text-secondary">
+              {common.topbar.setupProgressUnknown}
+            </span>
+          </Link>
+        ) : setupPercent < 100 ? (
           <Link
             href="/tenant/settings"
             className="hidden items-center gap-2 rounded-pill bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-200 sm:flex"
@@ -82,7 +106,7 @@ export function Topbar({
             <span className="tabular-nums">{setupPercent}%</span>
             <span>{common.topbar.setupProgress}</span>
           </Link>
-        )}
+        ) : null}
       </div>
 
       <div className="topbar-right">
@@ -147,10 +171,13 @@ export function Topbar({
             className="btn btn-ghost gap-2"
             onClick={() => { setUserMenu((v) => !v); setShopMenu(false); }}
           >
+            {/* 名字還沒問到就顯示「--」，不要用店名／email 猜一個看起來像人名的字 */}
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-              {userName.charAt(0).toUpperCase()}
+              {userName ? userName.charAt(0).toUpperCase() : '?'}
             </span>
-            <span className="hidden sm:inline">{userName}</span>
+            <span className="hidden max-w-[12rem] truncate sm:inline">
+              {userName ?? common.topbar.unknownValue}
+            </span>
             <ChevronDown size={14} />
           </button>
           {userMenu && (

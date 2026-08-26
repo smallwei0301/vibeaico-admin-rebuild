@@ -8,10 +8,13 @@ import { SupportChatWidget } from './SupportChatWidget';
 import { ToastProvider } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
-import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
+import { MOCK_TENANTS, applyMockMode } from '@/mock';
 import { USE_MOCK } from '@/config/env';
 import { setDemoMode } from '@/lib/api';
-import { myTenants, switchTenant as switchTenantApi } from '@/services';
+import {
+  currentUser, getSetupStatus, myTenants, sidebarCounts,
+  switchTenant as switchTenantApi, type SidebarCounts,
+} from '@/services';
 import type { TenantSummary } from '@/lib/types';
 
 /** real 模式下清單尚未從 /api/auth/my-tenants 載入完成時的暫用值，避免 current 為 undefined */
@@ -133,6 +136,48 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     applyMockMode(businessType);
   }
 
+  /**
+   * 外框的三個值（issue #34）——先前是三個寫死的 mock 常數，**沒有任何分支**：
+   * `counts={MOCK_SIDEBAR_COUNTS}`、`setupPercent={MOCK_SETUP_STATUS.percent}`、
+   * `userName={MOCK_USER.name}`。`USE_MOCK=false` 之後它們不會報錯、不會變空，
+   * 只是繼續顯示同一組數字，而店家點開一筆待處理預約都沒有。
+   *
+   * 現在一律走 service 層（`adapt()` 內含 mock／示範店家／real 三條路）：
+   *   sidebarCounts() → services/shell.ts → /api/bookings?status=PENDING
+   *                                       + /api/product-orders/pending/count
+   *                                       + /api/chat/conversations
+   *   getSetupStatus() → services/settings.ts → /api/settings/setup-status
+   *   currentUser()    → services/auth.ts     → /api/auth/me
+   *
+   * ⚠️ 初始值一律是 `null`＝「還不知道」，不是 0 也不是 60%。
+   * 查失敗時**保持 null**（進度／名稱）或讓該 key 缺席（徽章），不退回假值。
+   */
+  const [counts, setCounts] = React.useState<SidebarCounts | null>(null);
+  const [setupPercent, setSetupPercent] = React.useState<number | null>(null);
+  const [userName, setUserName] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    // 店家身分未定案前不查：real 模式此時 tenantId 還是空字串，
+    // 查回來的會是後端 cookie 指到的另一家店，數字會先閃錯的再跳掉。
+    if (!tenantsResolved) return;
+    let alive = true;
+    // 切換店家＝重新查；在查回來之前回到「還不知道」，不可留著上一家店的數字
+    setCounts(null);
+    setSetupPercent(null);
+    setUserName(null);
+    void sidebarCounts()
+      .then((c) => { if (alive) setCounts(c); })
+      // 三支全掛（例如整個離線）：把徽章定在「查不到」（空物件），不是 0
+      .catch(() => { if (alive) setCounts({}); });
+    void getSetupStatus()
+      .then((s) => { if (alive) setSetupPercent(s.percent); })
+      .catch(() => { /* 保持 null → Topbar 顯示「--」並說明 */ });
+    void currentUser()
+      .then((u) => { if (alive) setUserName(u.displayName); })
+      .catch(() => { /* 保持 null → Topbar 顯示「--」 */ });
+    return () => { alive = false; };
+  }, [tenantsResolved, current.id, businessType]);
+
   const handleSwitchTenant = (id: string) => {
     if (USE_MOCK) {
       localStorage.setItem('vibeai.tenant.id', id);
@@ -156,7 +201,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}
-          counts={MOCK_SIDEBAR_COUNTS}
+          counts={counts}
           businessType={businessType}
           extraModules={current.extraModules}
         />
@@ -166,8 +211,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             tenants={tenants}
             currentTenant={current}
             onSwitchTenant={handleSwitchTenant}
-            userName={MOCK_USER.name}
-            setupPercent={MOCK_SETUP_STATUS.percent}
+            userName={userName}
+            setupPercent={setupPercent}
           />
           {/* key 用店家 id 而非業態：切到「同業態的示範店家」時業態不變，
               只 key 業態的話頁面不會重掛載、會停在切換前的資料。

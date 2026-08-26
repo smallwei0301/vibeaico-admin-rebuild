@@ -19,6 +19,20 @@ export const listProducts = () =>
 export const listProductOrders = () =>
   adapt<ProductOrder[]>(() => MOCK_PRODUCT_ORDERS, () => request<ProductOrder[]>('/api/product-orders'));
 
+/**
+ * 待處理商品訂單筆數（側邊欄徽章 `pendingOrderBadge`，04 分冊 §B-3）。
+ *
+ * 走既有端點 `GET /api/product-orders/pending/count`——它先前是**孤兒端點**
+ * （有實作、有整合測試、零呼叫端），畫面那頭則是寫死的 `MOCK_SIDEBAR_COUNTS`；
+ * issue #34 把兩端接起來，沒有新增任何端點。
+ * mock 分支數 MOCK_PRODUCT_ORDERS 裡的 PENDING，與商品訂單頁的假資料一致。
+ */
+export const pendingProductOrderCount = () =>
+  adapt<number>(
+    () => MOCK_PRODUCT_ORDERS.filter((o) => o.status === 'PENDING').length,
+    async () => (await request<{ count: number }>('/api/product-orders/pending/count')).count,
+  );
+
 export const listCoupons = () =>
   adapt<Coupon[]>(() => MOCK_COUPONS, () => request<Coupon[]>('/api/coupons'));
 

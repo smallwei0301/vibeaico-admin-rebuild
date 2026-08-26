@@ -2098,3 +2098,84 @@ issue #7（甲）跑回歸時發現：`tests/integration/api/flex-menu.06.test.t
    的每一處：這個模式在 `USE_MOCK=false` 之後不會報錯，只會安靜地繼續顯示假資料。
    本輪已撞見 4 處整頁級的（customers 標籤下拉、campaigns、marketing、block-times）。
 5. 測試檔與 `scripts/verify/*` 本輪**刻意不算呼叫端**（測試綠燈正是孤兒的偽裝）。
+
+---
+
+### 10.5 issue #34（全站外框吃寫死常數）— 2026-08-26 完成
+
+§10.2 的那三個值已改為依 `USE_MOCK` 分支，real 分支一律走 `src/services/*`。
+端點對照與三態表示法寫在 04 分冊 §S（本輪新增的一節），這裡只記**盤點結果**與
+**與原本記載不符的地方**。
+
+#### 查證結論：四個徽章，沒有補任何一支新端點
+
+issue 要求「先查證有沒有既有端點可用，有就接；沒有就補」。查證方式是逐支開檔讀
+route 實作（不是 grep 檔名），結果三支有、一支的資料表根本不存在：
+
+| 徽章 | 結論 | 依據 |
+|---|---|---|
+| `pendingOrderBadge` | 接既有孤兒端點 `GET /api/product-orders/pending/count` | `src/app/api/product-orders/pending/count/route.ts` |
+| `pendingBookingBadge` | 接既有 `GET /api/bookings?status=PENDING&size=1` 的 `totalElements` | `src/app/api/bookings/route.ts` 的 `querySchema` 有 `status`，`toPaged()` 回 `totalElements` |
+| `unreadChatBadge` | 接既有 `GET /api/chat/conversations` 的 `unread` 加總 | `src/app/api/chat/conversations/route.ts` 已逐對話算 `direction='IN' && read_at is null` |
+| `pendingTourOrderBadge` | **不接、也不補** | `find src/app/api -ipath '*tour*'` 只有 `cron/tour-order-expiry`；`tour_orders` 表屬 Phase 8b（issue #8）。查不到就不給值——寫 0 是「已知為零」 |
+
+`setupPercent` 同樣**不需要補**：`GET /api/settings/setup-status` 與
+`getSetupStatus()` 早就存在（dashboard 頁已在呼叫），只是外框沒接。
+issue 的人工介入點把它寫成「沒有真實來源」，那個前提不成立（詳見 04 分冊 §S 末段）。
+
+`userName` 接 `GET /api/auth/me`，但該端點**沒有姓名欄位**，`auth.users` 也沒存
+display name（`register/route.ts:13-34` 的 `bodySchema` 不收姓名，`createUser()`
+也沒帶 `user_metadata`）。所以 real 模式顯示的是帳號 email——不從 email 猜一個
+像人名的字串，那會是「貌似合理的佔位值」。
+
+#### 三態：這一輪真正的收穫是「載入中」
+
+徽章只有 `count > 0` 才畫，所以**「還在查」與「查到 0 筆」在畫面上長得一模一樣**。
+0 是一個有意義的答案，拿它當「還不知道」會誤導——與 §6.14 抓到的「明細還在載入卻
+寫『無資料』」同型。處置：`counts === null`（尚未載入）時，在徽章位置放一顆
+「查詢中」占位（`CountBadgeLoading`），查完才換成數字或什麼都不放。
+
+實測有把這一段拉長來看：把 `/api/bookings` 延後 4 秒，斷言查詢期間畫面上
+**一個數字徽章都沒有**（`scripts/verify/appshell-shell-values.34.cjs` 檢查①）。
+
+#### §10.4 第 4 點的清單有兩處與程式碼不符（更正，不是補充）
+
+那一點寫「本輪已撞見 4 處整頁級的（customers 標籤下拉、campaigns、marketing、
+block-times）」直接 `import { MOCK_* }`。逐檔查證：
+
+- `customers/page.tsx` — 屬實（`import { MOCK_CUSTOMERS } from '@/mock'`）。
+- `campaigns/page.tsx`、`marketing/page.tsx` — import 的是 **`byMode`**，不是
+  `MOCK_*` 常數；假資料是頁內宣告的（`CAMPAIGNS_LOCAL_SHOP` 等）。病是同一個，
+  但**字面掃 `MOCK_*` 抓不到它們**。
+- `block-times/page.tsx` — **沒有任何 `from '@/mock'`**，它的假資料是頁內
+  `const MOCK_BLOCK_TIMES`。同樣抓不到。
+
+這件事本身就是 §10.3「『查不到』的可信度取決於你查過幾種方式」的續集：
+**掃描條件寫成 `MOCK_*` 具名 import，就只會看見一種寫法的地雷。**
+因此靜態鎖（`tests/unit/mock-import-lock.34.test.ts`）分成兩層，並在檔頭
+誠實寫明**沒有覆蓋到的**是哪一類（頁內自行宣告的假資料常數）。
+
+#### 白名單與歸屬（沒有歸屬的不准進白名單）
+
+| 位置 | 為什麼還留著 | 歸屬 |
+|---|---|---|
+| `src/components/layout/AppShell.tsx`（`MOCK_TENANTS`） | 示範店家清單，有明確的 `USE_MOCK`／`demo` 分支 | #34（本 issue 建立分支；示範店家是刻意設計，長期保留） |
+| `src/app/tenant/customers/page.tsx`（`MOCK_CUSTOMERS`） | 標籤下拉直接從假顧客推導 | #7（營運頁接線批次） |
+
+`BusinessTypeContext.tsx` 原本用 `MOCK_TENANTS[0]` 當 context 預設值，本輪順手改成
+空店家：預設值只有在沒有 Provider 時才讀得到，那種情況該顯示空白，不是一家假店。
+
+#### 尚未歸屬（本輪盤出，需要一個 issue）
+
+`byMode()` 頁內假資料裡有三處是**「假欄位混在真資料列裡」**，比整頁假資料更難發現，
+而且目前沒有任何 issue 認領：
+
+- `bookings/page.tsx` `BOOKING_EXTRAS_*`（「已收金額」——schema 沒有 `paid_amount`，
+  §6.14「沒有做的事」已記，但沒有 issue）
+- `coupons/page.tsx` `COUPON_EXTRAS_*`
+- `membership-levels/page.tsx` `LEVEL_EXTRAS_*`
+
+其餘 `byMode` 使用處都有歸屬或有分支：campaigns／marketing／staff／shop-design／
+customers 屬 #7；dashboard（`showSampleData` 分支）、services 與 recurring-bookings
+（service 的 mock 分支回 null 時才用頁內資料）屬正常用法。
+靜態鎖對這一層只做**盤點快照**（再長出新的一處就紅），**不是核可**。

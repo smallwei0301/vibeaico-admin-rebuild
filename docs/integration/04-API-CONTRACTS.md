@@ -389,3 +389,44 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 - [ ] settings 儲存後重新整理值仍在；LINE secret 顯示為遮罩
 - [ ] 未登入呼叫任一 §A 端點回 401 AUTH_001
 - [ ] B 店帳號帶 A 店資源 id 呼叫回 404（跨租戶測試）
+
+---
+
+## §S 全站外框（AppShell）取值 — issue #34（2026-08-26 新增）
+
+外框（側邊欄徽章／開店進度／使用者名稱）先前**沒有任何 USE_MOCK 分支**，
+一律吃寫死的 mock 常數。本節記錄它現在取值的來源。
+
+⚠️ **本節沒有新增任何端點**——issue #34 要求「先查證有沒有既有端點可用，有就接」，
+查證結果是四項裡有三項已經有端點，第四項的資料表根本還不存在。
+
+| 徽章／值 | service | 端點 | 查證結論 |
+|---|---|---|---|
+| `pendingBookingBadge` | `services/bookings.ts` `listBookings({status:'PENDING',size:1})` | `GET /api/bookings?status=PENDING&size=1` 的 `totalElements` | **既有端點**。列表端點本來就吃 `status` 篩選並回 `totalElements`（Spring 式信封），`size=1` 只取筆數不搬資料，不需要另開計數 API |
+| `pendingOrderBadge` | `services/catalog.ts` `pendingProductOrderCount()` | `GET /api/product-orders/pending/count` | **既有端點，先前是孤兒**（有實作、有整合測試、零呼叫端）。本 issue 是它的第一個呼叫端 |
+| `unreadChatBadge` | `services/chat.ts` `unreadChatCount()` | `GET /api/chat/conversations` 的 `unread` 加總 | **既有端點**。該端點已逐對話回 `unread`（`direction='IN'` 且 `read_at is null`），加總即所求；另開 `/api/chat/unread/count` 會變成同一件事寫兩份 |
+| `pendingTourOrderBadge` | —— | —— | **沒有資料來源**：`/api/tour-orders/**` 這棵路由樹不存在、`tour_orders` 表也還沒建（Phase 8b／issue #8）。**刻意不給值**——寫 0 會變成「已知為零」 |
+| `setupPercent` | `services/settings.ts` `getSetupStatus()` | `GET /api/settings/setup-status` | **既有端點**（本冊 §A-1 已定義，dashboard 頁已在用）。issue #34 內文假設「查證有無既有來源；沒有就補」，實際查證：**已經有**，只是外框沒接 |
+| `userName` | `services/auth.ts` `currentUser()` | `GET /api/auth/me` | **既有端點，先前是孤兒**。⚠️ 該端點回的是 `{email, tenantId, tenantName, shopCode, role}`，**沒有姓名欄位**（`auth.users` 也沒存 display name，註冊流程不收），所以 real 模式的顯示名稱就是帳號 email，不從 email 猜一個像人名的字串 |
+
+### 三種狀態的表示法（呼叫端必須分得開）
+
+`sidebarCounts()` 回 `Record<string, number>`：
+
+- **key 有值** → 查到了，`>0` 才畫紅點（`0` 是「沒有待處理」，是一個答案）
+- **key 不存在** → 查不到（該徽章沒有來源，或這次查詢失敗）→ 什麼都不畫
+- **整個回傳值還沒到** → 呼叫端以 `null` 表示「載入中」→ 畫「查詢中」占位
+
+⚠️ 任一支失敗只讓該 key 缺席（`Promise.allSettled`），不影響其他兩支；
+外框不能因為一個徽章查不到就整片壞掉，也不能用 0 頂替。
+
+`setupPercent` 與 `userName` 取不到時一律保持 `null`，畫面顯示「--」並附一句說明
+（issue #34 人工介入點的預設值，主導者採用：顯示「--」而非整塊隱藏——
+隱藏會讓店家以為功能不見了，而原站有這塊）。
+
+⚠️ 但那個決策的**前提是錯的**：它問的是「`setupPercent` 沒有真實來源時要怎麼顯示」，
+而 `GET /api/settings/setup-status` 與 `services/settings.ts` 的 `getSetupStatus()`
+**早就存在**（dashboard 頁已在呼叫）。所以「--」不是常態，而是**載入中／取得失敗**
+時的樣子；正常情況顯示的是後端算出來的真實百分比。
+（15 分冊：裁示的效力來自它背後的事實，事實錯了裁示就不成立——這裡採用了裁示的
+結論「顯示 --」，但把它放回它真正適用的狀態。）

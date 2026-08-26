@@ -16,6 +16,16 @@ export default defineConfig({
   resolve: {
     alias: { '@': resolve(import.meta.dirname, 'src') },
   },
+  /**
+   * tsconfig 的 `jsx: "preserve"` 是 Next.js 需要的（由 Next 自己編譯 JSX），
+   * 但 vitest（Vite 8 / oxc）直接讀 .tsx 會因此 parse 失敗
+   * （`Failed to parse source for import analysis … make sure to not set jsx to preserve`）。
+   * 這裡對測試用的轉換明確指定 automatic runtime，
+   * 讓單元測試能用 `react-dom/server` 把元件渲染成字串來驗**畫面上真正的字**
+   * （issue #34：「開店進度未知時不得印出任何百分比」這種事，只讀原始碼驗不準）。
+   * 仍然沒有 jsdom：能渲染不代表能測互動，互動一律走 Playwright 實測。
+   */
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],

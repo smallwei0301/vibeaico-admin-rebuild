@@ -56,6 +56,8 @@ export const common = {
 
   /* ---- 狀態 ---- */
   loading: '載入中...',
+  /** 側邊欄徽章尚在查詢中（issue #34：不可先顯示 0，0 是「沒有待處理」） */
+  badgeLoading: '查詢中',
   noData: '目前沒有資料',
   noResult: '找不到符合條件的資料',
   required: '必填',
@@ -131,6 +133,14 @@ export const common = {
     userFallback: '使用者',
     setupProgress: '設定進度',
     toggleSidebar: '切換選單',
+    /**
+     * 開店進度／使用者名稱「還不知道」時顯示的值（issue #34）。
+     * 不可用 0%、60% 這種貌似合理的數字頂替——那是捏造的已知。
+     */
+    unknownValue: '--',
+    /** 進度取不到時就在店家讀得到的地方說明，而不是只寫在程式註解裡 */
+    setupProgressUnknown: '尚未取得',
+    setupProgressUnknownHint: '目前讀不到設定進度，數字不是 0，是還不知道。點進店家設定可以看每一步的狀態。',
   },
 
   /* ---- 回報問題（全站共用 modal）---- */
