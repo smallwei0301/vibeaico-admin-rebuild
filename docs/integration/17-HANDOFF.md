@@ -126,8 +126,21 @@ npm run test:integration       # 約 21 分鐘
 `worktree-agent-af2377e7450256f84` 上有 #33 的施工成果（①②③ 完成、④⑤ 待查證），
 **含一支未套用驗證的 migration `0027`**。
 
-⚠️ **那支 migration 是否已套用到兩個 Supabase 專案，接手時務必自己查一次**，
-不要相信任何人的說法（包含本檔）。查法見 `CLAUDE.md` 的「Database changes」一節。
+**migration `0027` 的狀態（主導者已獨立查證）**：**兩個專案都已完整套用**，
+七個欄位逐一比對相同 ——
+`block_times.{title,recurrence,day_of_week,full_day,auto}`、
+`product_orders.{coupon_discount,coupon_instance_id}`。
+
+⚠️ 儘管如此，**接手時仍請自己查一次**（查法見 `CLAUDE.md` 的「Database changes」一節）。
+本檔也是「別人的說法」。
+
+> 順帶一個查證方法上的小坑：主導者第一次查的時候用 `column_name like '%weekly%'`
+> 去猜欄位名，結果只查到一半，差點誤判成「只套用了部分」。**要用實際 SQL 檔裡的
+> 欄位名去查，不要憑 migration 的檔名或功能名去猜。**
+
+**這個分支未經完整閘門**（typecheck / build / 全量測試），且 ④⑤ 兩支端點的
+用途查證**尚未產出**——issue #33 明文寫那兩支無法從規格判定用途，派工單要求
+「查不到就回報請示，不准發明」。合併前請先補完這一步。
 
 ### 5.3 清掉本機殘留的 worktree 分支
 
