@@ -72,7 +72,7 @@
       證據：契約 `04-API-CONTRACTS.md §B-1.1`；migration `0020_booking_addons`（兩個
       Supabase 專案皆已套用並以 `information_schema.columns` / `pg_policy` 驗證，
       輸出貼在 issue #17 留言）；端點測試
-      `tests/integration/api/booking-addons.17.test.ts`（16 例全綠：CRUD／回沖／0 元與
+      `tests/integration/api/booking-addons.17.test.ts`（17 例全綠：CRUD／回沖／0 元與
       負數邊界／加購後調價再刪除／跨租戶 404／notify 三態／額度 409 零請求）；
       頁面接線鏈路對照表與單元守門
       `tests/unit/honest-not-built-interactions.test.ts:「bookings 加購 modal（已接上真實後端，且不得宣稱超出實際發生的事）」`

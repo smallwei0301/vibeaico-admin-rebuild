@@ -29,7 +29,12 @@ jobs:
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
   integration:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
+    # 加上 workflow_dispatch：開發分支的 push **刻意不跑**這個 job（整合測試會 wipe
+    # 共用的 TEST 專案，而本機同時可能有多個 agent 在跑同一套，兩邊互相清資料），
+    # 但需要一份「不是我自己說的」獨立證據時，可以在沒有本機工作時手動觸發一次。
+    # 每個 issue 的驗收都有「test:integration 全綠」這一格，手動跑本機的輸出
+    # 只能由跑的人自己保證；CI 的輸出則任何人都能點進去看。
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
