@@ -8,9 +8,11 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
 import { SHOP_A } from '../fixtures';
 
-const PREFIX = `e2e-issue8-${Date.now()}`;
+const PRODUCTION_SUPABASE_HOSTNAME = 'egehnijjpgijmccagxac.supabase.co';
+const PREFIX = `e2e-issue8-${randomUUID()}`;
 const TRIP_TITLE = `${PREFIX} 行程`;
 const PLAN_NAME = `${PREFIX} 方案`;
 const CUSTOMER_NAME = `${PREFIX} 旅客`;
@@ -20,6 +22,18 @@ function adminClient(): SupabaseClient {
   const url = process.env.TEST_SUPABASE_URL;
   const key = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('E2E cleanup requires TEST_SUPABASE_URL and TEST_SUPABASE_SERVICE_ROLE_KEY');
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error('E2E safety lock: TEST_SUPABASE_URL is not a valid URL');
+  }
+  if (parsed.hostname === PRODUCTION_SUPABASE_HOSTNAME) {
+    throw new Error('E2E safety lock: TEST_SUPABASE_URL points to the production project');
+  }
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL === url) {
+    throw new Error('E2E safety lock: TEST_SUPABASE_URL equals NEXT_PUBLIC_SUPABASE_URL');
+  }
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
@@ -39,22 +53,24 @@ async function dialog(page: Page) {
 
 async function deleteRows(admin: SupabaseClient, table: string, column: string, values: string[]) {
   if (values.length === 0) return;
-  const { error } = await admin.from(table).delete().in(column, values);
+  const { error } = await admin.from(table).delete().eq('tenant_id', SHOP_A.id).in(column, values);
   if (error) throw new Error(`cleanup ${table}: ${error.message}`);
 }
 
 test.describe('Issue #8 行程管理端到端旅程', () => {
   test.describe.configure({ mode: 'serial' });
+  // next dev 冷啟動會逐頁編譯；本旅程跨三頁且每個寫入後都 reload。
+  test.setTimeout(180_000);
 
   test.afterAll(async () => {
     const admin = adminClient();
     const { data: trips, error: tripError } = await admin
-      .from('trips').select('id').like('title', `${PREFIX}%`);
+      .from('trips').select('id').eq('tenant_id', SHOP_A.id).like('title', `${PREFIX}%`);
     if (tripError) throw new Error(`cleanup trips lookup: ${tripError.message}`);
     const tripIds = (trips ?? []).map((row) => row.id as string);
 
     const { data: orders, error: orderLookupError } = tripIds.length
-      ? await admin.from('tour_orders').select('id').in('trip_id', tripIds)
+      ? await admin.from('tour_orders').select('id').eq('tenant_id', SHOP_A.id).in('trip_id', tripIds)
       : { data: [], error: null };
     if (orderLookupError) throw new Error(`cleanup orders lookup: ${orderLookupError.message}`);
     await deleteRows(admin, 'tour_orders', 'id', (orders ?? []).map((row) => row.id as string));
@@ -65,10 +81,12 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
     await deleteRows(admin, 'trips', 'id', tripIds);
 
     const { count: tripCount, error: tripResidualError } = await admin
-      .from('trips').select('id', { count: 'exact', head: true }).like('title', `${PREFIX}%`);
+      .from('trips').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id).like('title', `${PREFIX}%`);
     if (tripResidualError) throw new Error(`cleanup trips residual lookup: ${tripResidualError.message}`);
     const { count: orderCount, error: orderResidualError } = await admin
-      .from('tour_orders').select('id', { count: 'exact', head: true }).like('customer_name', `${PREFIX}%`);
+      .from('tour_orders').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id).like('customer_name', `${PREFIX}%`);
     if (orderResidualError) throw new Error(`cleanup orders residual lookup: ${orderResidualError.message}`);
     expect(tripCount ?? 0, 'trip cleanup residual').toBe(0);
     expect(orderCount ?? 0, 'order cleanup residual').toBe(0);
@@ -118,10 +136,11 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
     await expect(page.getByText('2099-12-30', { exact: true })).toBeVisible();
 
     const { data: trip, error: tripLookupError } = await admin
-      .from('trips').select('id').like('title', `${PREFIX}%`).single();
+      .from('trips').select('id').eq('tenant_id', SHOP_A.id).like('title', `${PREFIX}%`).single();
     if (tripLookupError || !trip) throw new Error(`created trip lookup failed: ${tripLookupError?.message ?? 'missing'}`);
     const { data: departureRow, error: departureLookupError } = await admin
-      .from('trip_departures').select('id, seats_booked').eq('trip_id', trip.id).single();
+      .from('trip_departures').select('id, seats_booked')
+      .eq('tenant_id', SHOP_A.id).eq('trip_id', trip.id).single();
     if (departureLookupError || !departureRow) throw new Error(`created departure lookup failed: ${departureLookupError?.message ?? 'missing'}`);
     expect(departureRow.seats_booked).toBe(0);
 
@@ -146,12 +165,14 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
     await expect(page.getByText(CUSTOMER_NAME, { exact: true })).toBeVisible();
 
     const { data: createdOrder, error: orderLookupError } = await admin
-      .from('tour_orders').select('id, status, payment_status').eq('customer_name', CUSTOMER_NAME).single();
+      .from('tour_orders').select('id, status, payment_status')
+      .eq('tenant_id', SHOP_A.id).eq('customer_name', CUSTOMER_NAME).single();
     if (orderLookupError || !createdOrder) throw new Error(`created order lookup failed: ${orderLookupError?.message ?? 'missing'}`);
     expect(createdOrder.status).toBe('PENDING');
     expect(createdOrder.payment_status).toBe('UNPAID');
     const { data: occupied, error: occupiedError } = await admin
-      .from('trip_departures').select('seats_booked').eq('id', departureRow.id).single();
+      .from('trip_departures').select('seats_booked')
+      .eq('tenant_id', SHOP_A.id).eq('id', departureRow.id).single();
     if (occupiedError || !occupied) throw new Error(`occupied departure lookup failed: ${occupiedError?.message ?? 'missing'}`);
     expect(occupied.seats_booked).toBe(2);
 
@@ -173,7 +194,8 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
     await page.reload();
     await expect(page.locator('tr').filter({ hasText: CUSTOMER_NAME }).getByText('已取消', { exact: true })).toBeVisible();
     const { data: released, error: releasedError } = await admin
-      .from('trip_departures').select('seats_booked').eq('id', departureRow.id).single();
+      .from('trip_departures').select('seats_booked')
+      .eq('tenant_id', SHOP_A.id).eq('id', departureRow.id).single();
     if (releasedError || !released) throw new Error(`released departure lookup failed: ${releasedError?.message ?? 'missing'}`);
     expect(released.seats_booked).toBe(0);
   });
