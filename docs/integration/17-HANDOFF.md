@@ -121,16 +121,20 @@ POST /actions/workflows/ci.yml/dispatches
 
 這個 GitHub App 沒有 `Actions: write` 權限，**只有擁有者（或有寫入權限的人）能觸發**。
 
-**擁有者要做的（約 30 秒）**：GitHub → Actions → 選 `ci` workflow →
-右上角 **Run workflow** → branch 選 `claude/deploy-vercel-project-nnno59` → 執行。
+**✅ 已完成（2026-08-26 08:47 UTC）**：擁有者開放權限後，主導者用 GitHub MCP
+成功觸發 `workflow_dispatch`，**Run #65 全綠**：
 
-`integration` job 的 `if` 已經包含 `workflow_dispatch`（commit `70dbe8d`），所以
-手動觸發**會**跑整合測試（開發分支的一般 push 則刻意只跑 `check`——整合測試會
-wipe 共用的 TEST 專案，自動跑會與本機工作互相清資料）。
+https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/32947638422
+
+`check` 與 `integration` 兩個 job 皆 `success`，耗時 22 分鐘（08:25→08:47 UTC），
+跑在 HEAD `5bc777c` 上。**這是任何人都點得進去看的獨立整合測試證據**，
+各 issue「`test:integration` 全綠」那一格可以直接引用這個 run 連結。
+
+若之後又需要重跑一次（例如 HEAD 前進了）：GitHub → Actions → 選 `ci` workflow →
+右上角 **Run workflow** → branch 選 `claude/deploy-vercel-project-nnno59` → 執行。
+`integration` job 的 `if` 已含 `workflow_dispatch`（commit `70dbe8d`）。
 
 ⚠️ 跑之前確認**沒有人在本機跑整合測試**，兩邊會互相清掉對方的資料。
-
-CI 綠了之後，各 issue 那一格就可以用 run 連結當證據補打勾。
 
 ### 5.2 決定 `#33` 那個未合併分支怎麼處理
 
