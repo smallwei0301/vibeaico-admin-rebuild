@@ -415,7 +415,7 @@
 
 > 第 ⑥ 筆 `/api/payment-methods/online-payment-meta` 已併入 #32，不在本輪範圍。
 > 契約見 `04-API-CONTRACTS.md` §A-1.2 / §B-4.1 / §B-6；盤點與裁決記錄見
-> `14-GAP-AUDIT.md` §14。
+> `14-GAP-AUDIT.md` §15。
 
 **① `POST /api/product-orders/:id/apply-coupon`**
 
@@ -512,10 +512,10 @@
 **④⑤ 兩支用途未明**
 
 - [x] `/api/settings/onboarding-event`：判定結果＝**查不到**，已列出查過的位置與各自結果
-      證據：`14-GAP-AUDIT.md` §14.2 ＋本輪 issue #33 留言
+      證據：`14-GAP-AUDIT.md` §15.2 ＋本輪 issue #33 留言
 - [x] `/api/staff/calendar`：判定結果＝**查不到**（方向收斂到「員工排班模式」，
       但形狀無從判定），已列出查過的位置
-      證據：`14-GAP-AUDIT.md` §14.2 ＋本輪 issue #33 留言
+      證據：`14-GAP-AUDIT.md` §15.2 ＋本輪 issue #33 留言
 - [x] `grep` 證明程式碼中沒有為這兩支留下半成品路徑或猜測性型別
       證據：`grep -rn "staff/calendar\|onboarding-event\|onboardingEvent\|staffCalendar\|focusTrack" src/ tests/` → 輸出為空
 

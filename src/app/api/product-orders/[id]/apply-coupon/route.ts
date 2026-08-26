@@ -15,7 +15,7 @@
 // ⚠️ 適用範圍是**我方選定**的，不是原站考據結果：原站對「票券能不能用在商品
 // 訂單、有沒有品類限制」零字串。我方採「與 /api/bookings/:id/apply-coupon
 // 完全同一套規則」——不限品類，只限票券持有人本人。理由與出處寫在
-// src/server/coupon-redeem.ts 的檔頭、04 分冊 §B-4.1 與 14 分冊 §14.1。
+// src/server/coupon-redeem.ts 的檔頭、04 分冊 §B-4.1 與 14 分冊 §15.1。
 //
 // 金額語意：product_orders 只有一個金額欄位 total_amount（0004:166），
 // 沒有 bookings 的 price/final_price 兩層。列表頁的「金額」欄與詳情頁的
