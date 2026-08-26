@@ -361,10 +361,24 @@ describe('衝突預約筆數：非零那一支真的被執行到', () => {
   /** 塞入測試預約之後端點回報的衝突筆數（下一個案例拿來比 delta） */
   let conflictWithBooking = -1;
 
-  it('零衝突時回 0（沒有任何未來預約落在非營業時段）', async () => {
-    // 24 小時全開的一週 → 不可能有預約落在非營業時段
+  it('B 店在查證同一時窗沒有活躍未來預約後，零衝突時回 0', async () => {
+    // A 店 seed 用「現在 +1h」建立預約；台北晚間跑 CI 時那筆會跨過午夜，
+    // 即使每天 00:00–24:00 也會依既定規則正確算成跨日衝突。不能把執行
+    // 時刻剛好在白天當成「零資料」證據。改用沒有 booking seed 的 B 店，
+    // 並先直查端點使用的同一個狀態／時間範圍確實為 0，讓零分支有障壁。
+    const now = new Date();
+    const horizon = new Date(now.getTime() + 365 * 86_400_000);
+    const { count, error } = await admin.from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_B.id)
+      .in('status', ['PENDING', 'CONFIRMED'])
+      .gte('start_at', now.toISOString())
+      .lt('start_at', horizon.toISOString());
+    expect(error).toBeNull();
+    expect(count ?? 0).toBe(0);
+
     const allDay = Array.from({ length: 7 }, () => ([{ start: '00:00', end: '24:00' }]));
-    const res = await ownerA.post('/api/settings/weekly-business-hours/draft',
+    const res = await ownerB.post('/api/settings/weekly-business-hours/draft',
       business({ perDayMode: true, perDayHours: allDay }));
     expect(res.status).toBe(200);
     const d = (await readJson<Draft>(res)).data!;

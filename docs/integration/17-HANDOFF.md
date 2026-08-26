@@ -380,3 +380,39 @@ group 刻意不含分支名，因為 PR、`main` 與手動觸發共用的是同�
 未認證的 `api.github.com` 公開唯讀請求也已實測可用（與 §7.5 的上一輪環境不同）；
 Google Drive plugin 顯示已安裝且已允許讀取，但 Drive 動作沒有載入目前 session。
 因此尚未讀取擁有者指定的 `midao.md`，也沒有用瀏覽器繞過連接器取得憑證。
+
+---
+
+## 11. 2026-08-26 續報：遠端 blob 污染與 full integration 的時間相依前提
+
+### 11.1 #19 遠端 blob 曾被寫成二進位；本機檢查不能代替遠端證據
+
+`0da9c4d` 的本機來源 `src/app/tenant/rich-menu-design/page.tsx` 是 93466 bytes、
+NUL 數 0，但重組後實際寫進 GitHub 的 blob 只有 90059 bytes、含 3 個 NUL，
+CI Run #77 因 `TS1490: File appears to be binary` 失敗。主導者先前宣稱本批無 NUL
+是錯的，已在 PR #36 公開更正。
+
+修正 commit `946fda5` 以 base64 建立該 blob；更新 ref 後重新 fetch 遠端驗證：
+93466 bytes、NUL 數 0、blob SHA `c9b717e9552535789ebc0714df955b64a493cabf`。
+本機隔離 worktree 的 typecheck、#19 四個 unit test files／49 tests、mock build 全綠。
+新 CI 全綠前，`0da9c4d` 的 Run #76/#77 都不是驗收證據。
+
+### 11.2 Run #75 證明 #7 customer tags 新測試通過，但整輪仍不可算綠
+
+Run #75（`32981612609`）在 `449b173` 上執行，check 的 typecheck/unit/build 全綠；
+full integration 中新檔 `customers-tags.07.test.ts` 4/4 全綠，包含 sentinel 非零、
+排序／去重、停用顧客、租戶隔離、feature gate 與精確還原。可是整輪最後仍為 failure，
+所以不能替 #7 或 #8 打總驗收勾。
+
+唯一失敗是既有 `business-hours-draft.33.test.ts` 的「全天營業必定零衝突」前提：
+seed 用「現在 +1h」建立 A 店預約；CI 在台北晚間跑時該預約跨過午夜，而 production
+規則明定跨日預約即使 00:00–24:00 也算衝突，故正確收到 1，不是 0。修正只改測試
+障壁：零分支改用沒有 booking seed 的 B 店，先以 service role 直查端點相同狀態與
+一年時窗確實為 0，再斷言端點回 0；A 店的非零分支與 production 算法均不改。
+
+### 11.3 Google Drive 重新載入後仍是 session 工具掛載問題
+
+Plugin 管理資料已再次查證：Google Drive 已安裝、啟用、使用者啟用，connector
+依賴無 unresolved app，權限為 Allow all actions；但目前 session 的 callable tool
+清單仍為 `drive: []`。這不是擁有者設定錯誤，也不是文件權限錯誤。不得用瀏覽器繞過
+連接器讀憑證；若後續仍未掛載，需在新的 Work Mode 對話重新選取 Google Drive。

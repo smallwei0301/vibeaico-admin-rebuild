@@ -522,3 +522,27 @@ GitHub MCP 讀回的 body 是 **HTML 實體轉義過的**（`>` → `&gt;`、`'`
 任一項對不上就**停手回報**，不要硬改。
 讓插入的內容**完全不含 `& < > ' "`**，可以把第 2、3 項變成穩定的 0，自驗更乾淨。
 （本輪兩次：#17 delta +1128＝1397−269、#34 delta +2006＝2100−94，兩項 entity delta 皆 0。）
+
+---
+
+## 遠端 commit/blob 也要驗：本機乾淨不代表 GitHub 上的檔案乾淨
+
+2026-08-26 主導者把 #19 的本機成果重組成 GitHub commit 時，本機來源檔
+`src/app/tenant/rich-menu-design/page.tsx` 是 93466 bytes、NUL 數 0，相關
+typecheck 與 unit tests 也通過；但實際寫進 GitHub 的 blob 只有 90059 bytes、
+含 3 個 NUL，而且開頭已不是 UTF-8 程式碼。CI Run #77 因此以
+`TS1490: File appears to be binary` 失敗。
+
+主導者先前的「無 NUL」結論只檢查本機來源，沒有檢查遠端 commit，所以是錯的；
+已在 PR #36 公開更正。修正 commit `946fda5` 使用 base64 建立 blob，並在更新 ref
+後重新 fetch，驗證遠端檔案為 93466 bytes、NUL 數 0、blob SHA
+`c9b717e9552535789ebc0714df955b64a493cabf`。
+
+新增收尾規則：
+
+1. 以 GitHub API/MCP 重組 commit、或任何不是一般 `git push` 的方式送檔後，
+   **所有二進位風險檢查都要對遠端 ref 重跑**；本機來源的結果不能代替遠端證據。
+2. 至少重新 fetch 遠端 ref，再逐一檢查本批 changed files 的 mode、大小、symlink、
+   NUL；大型文字檔另比對預期 blob SHA。
+3. CI 的 `TS1490` 不是「runner 編碼差異」；先查遠端 blob。新 CI 全綠前，
+   被污染 commit 及其 pending/rerun 都不得算驗收證據。
