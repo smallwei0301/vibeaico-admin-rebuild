@@ -372,14 +372,26 @@ export async function runSeed(admin) {
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         name: '標準團（測試）',
-        price_per_person: 3000,
+        // ⚠️ 這裡原本寫 `price_per_person`（10 分冊 §1 的原始欄位名）。
+        // migration 0016 實際建的欄位是 `base_price`，於是 PostgREST 回
+        // 「Could not find the 'price_per_person' column … in the schema cache」，
+        // 而 isMissingSchemaError() 把含 "schema cache" 的訊息一律當成
+        // 「表還沒建立」跳過——所以 **trip_plans 與其後的 trip_departures
+        // 從 0016 之後就一直沒有被種進去，而且是靜默的**。
+        // 修正欄位名，並補上 price_type / max_participants，讓 §5 的並發
+        // 測試有明確的計價依據。
+        base_price: 3000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
       },
       {
         id: TRIP_A.planA2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         name: '包團（測試）',
-        price_per_person: 5000,
+        base_price: 5000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
       },
     ],
     'trip_plans',

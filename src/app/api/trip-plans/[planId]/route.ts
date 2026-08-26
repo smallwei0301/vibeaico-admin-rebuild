@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripPlan } from '@/server/mappers';
-import { planRowFromImport } from '@/server/trip-payload';
+import { planAdminFields, planRowFromImport } from '@/server/trip-payload';
 
 type Ctx = { params: Promise<{ planId: string }> };
 
@@ -32,8 +32,19 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   const row = planRowFromImport(b, t.tenantId, existing.trip_id, existing.sort_order ?? 0);
   const { tenant_id: _t, trip_id: _tr, ...patch } = row;
 
+  // 已在 Midao 前台上架的行程，方案異動需重新送審（見 POST /api/trips/:id/plans
+  // 的同一段註解）。頁面的「方案已儲存並送出審核」靠這一行成真。
+  const { data: trip } = await t.supabase.from('trips')
+    .select('midao_listing').eq('tenant_id', t.tenantId).eq('id', existing.trip_id).maybeSingle();
+  const reviewPatch = trip?.midao_listing === 'LISTED' ? { review_state: 'PENDING' } : {};
+
   const { data, error } = await t.supabase.from('trip_plans')
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({
+      ...patch,
+      ...planAdminFields(b),
+      ...reviewPatch,
+      updated_at: new Date().toISOString(),
+    })
     .eq('tenant_id', t.tenantId).eq('id', planId).select('*').maybeSingle();
   if (error) throw error;
   if (!data) return fail(404, '找不到此方案', ERR.NOT_FOUND);
@@ -41,12 +52,28 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   return ok(mapTripPlan(data));
 });
 
+/**
+ * DELETE /api/trip-plans/[planId] ⚙M。
+ *
+ * 有訂單的方案不刪（`tour_orders.plan_id` 是 on delete restrict，
+ * migration 0026）；團次則由 `trip_departures.plan_id` 的 cascade 一併移除。
+ * 沒有這個防護的話會撞外鍵回 500，畫面只能顯示「系統發生錯誤」。
+ */
 export const DELETE = handle(async (_req, ctx: Ctx) => {
   const { planId } = await (ctx.params);
   const t = await requireTenant('MANAGER');
 
+  const { count, error: cerr } = await t.supabase
+    .from('tour_orders').select('id', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId).eq('plan_id', planId);
+  if (cerr) throw cerr;
+  if ((count ?? 0) > 0)
+    return fail(409, `此方案已有 ${count} 筆訂單，無法刪除；請改為停用此方案`, ERR.CONFLICT);
+
   const { data, error } = await t.supabase.from('trip_plans')
     .delete().eq('tenant_id', t.tenantId).eq('id', planId).select('id').maybeSingle();
+  if (error?.code === '23503')
+    return fail(409, '此方案已有訂單，無法刪除；請改為停用此方案', ERR.CONFLICT);
   if (error) throw error;
   if (!data) return fail(404, '找不到此方案', ERR.NOT_FOUND);
 

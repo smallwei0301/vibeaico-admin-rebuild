@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripPlan } from '@/server/mappers';
-import { planRowFromImport } from '@/server/trip-payload';
+import { planAdminFields, planRowFromImport } from '@/server/trip-payload';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -35,7 +35,7 @@ export const POST = handle(async (req, ctx: Ctx) => {
 
   // 先確認行程屬於本租戶，否則等於允許往別人的行程掛方案
   const { data: trip, error: terr } = await t.supabase.from('trips')
-    .select('id').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+    .select('id, midao_listing').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (terr) throw terr;
   if (!trip) return fail(404, '找不到此行程', ERR.NOT_FOUND);
 
@@ -44,7 +44,14 @@ export const POST = handle(async (req, ctx: Ctx) => {
     .eq('tenant_id', t.tenantId).eq('trip_id', id);
 
   const { data, error } = await t.supabase.from('trip_plans')
-    .insert(planRowFromImport(b, t.tenantId, id, count ?? 0))
+    .insert({
+      ...planRowFromImport(b, t.tenantId, id, count ?? 0),
+      ...planAdminFields(b),
+      // 已在 Midao 前台上架的行程，方案異動需重新送審（10/11 分冊）。
+      // 頁面的成功訊息本來就寫「方案已儲存並送出審核」——這一行是讓那句話成真。
+      // 審核端點在 Midao 那邊（11 分冊 §4.2，Phase 10），這裡只寫狀態。
+      review_state: trip.midao_listing === 'LISTED' ? 'PENDING' : 'NONE',
+    })
     .select('*').single();
   if (error) throw error;
 

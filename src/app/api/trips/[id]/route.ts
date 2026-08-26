@@ -3,6 +3,7 @@ import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTrip, mapTripPlan } from '@/server/mappers';
 import { slugify, toStringArray } from '@/server/trip-payload';
+import { taipeiTodayDateString } from '@/server/tz';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -26,12 +27,21 @@ export const GET = handle(async (_req, ctx: Ctx) => {
     .order('sort_order', { ascending: true });
   if (perr) throw perr;
 
+  // 即將出團數（0026 起）：departs_on >= 今天（台北）且 status = 'OPEN'，
+  // 與 GET /api/trips 的定義一致。
+  const { count: upcoming, error: derr } = await t.supabase
+    .from('trip_departures').select('id', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId).eq('trip_id', id).eq('status', 'OPEN')
+    .gte('departs_on', taipeiTodayDateString());
+  if (derr) throw derr;
+
   const rows = plans ?? [];
   const prices = rows.filter((p: any) => p.active).map((p: any) => Number(p.base_price));
   return ok({
     trip: mapTrip(trip, {
       planCount: rows.length,
       minPrice: prices.length ? Math.min(...prices) : 0,
+      upcomingDepartureCount: upcoming ?? 0,
     }),
     plans: rows.map(mapTripPlan),
   });
@@ -97,15 +107,44 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   return ok(mapTrip(data));
 });
 
-/** DELETE /api/trips/[id] — 刪除行程 ⚙M（方案由 FK on delete cascade 一併移除）。 */
+/**
+ * DELETE /api/trips/[id] — 刪除行程 ⚙M（方案／團次／加購由 FK on delete cascade
+ * 一併移除）。
+ *
+ * **有訂單 → 改為 ARCHIVED 而不是刪除**（10 分冊 §5 端點表明列）。理由不只是
+ * 保留歷史：`tour_orders.trip_id` 是 `on delete restrict`（migration 0026），
+ * 硬刪會撞外鍵回 500。回應帶 `archived: true` 與一句訊息，讓畫面說得出
+ * 「為什麼那一列還在」——與 `DELETE /api/services/:id` 的 `deactivated` 同形狀。
+ */
 export const DELETE = handle(async (_req, ctx: Ctx) => {
   const { id } = await (ctx.params);
   const t = await requireTenant('MANAGER');
 
+  const { count, error: cerr } = await t.supabase
+    .from('tour_orders').select('id', { count: 'exact', head: true })
+    .eq('tenant_id', t.tenantId).eq('trip_id', id);
+  if (cerr) throw cerr;
+
+  if ((count ?? 0) > 0) {
+    const { data: archived, error: aerr } = await t.supabase.from('trips')
+      .update({ status: 'ARCHIVED', updated_at: new Date().toISOString() })
+      .eq('tenant_id', t.tenantId).eq('id', id).select('*').maybeSingle();
+    if (aerr) throw aerr;
+    if (!archived) return fail(404, '找不到此行程', ERR.NOT_FOUND);
+    return ok({
+      deleted: false,
+      archived: true,
+      message: `此行程已有 ${count} 筆訂單，已改為封存（保留在清單中）`,
+      trip: mapTrip(archived),
+    });
+  }
+
   const { data, error } = await t.supabase.from('trips')
     .delete().eq('tenant_id', t.tenantId).eq('id', id).select('id').maybeSingle();
+  // 23503：計數與刪除之間有人剛建了訂單（TOCTOU）→ 409 而不是 500
+  if (error?.code === '23503') return fail(409, '此行程已有訂單，無法刪除', ERR.CONFLICT);
   if (error) throw error;
   if (!data) return fail(404, '找不到此行程', ERR.NOT_FOUND);
 
-  return ok({ deleted: true });
+  return ok({ deleted: true, archived: false });
 });

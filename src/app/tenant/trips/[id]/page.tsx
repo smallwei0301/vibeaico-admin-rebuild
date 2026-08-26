@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
+  batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan,
   getTrip, listTripAddons, listTripDepartures, listTripPlans,
+  saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -79,8 +81,10 @@ export default function TripDetailPage() {
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
   const [addons, setAddons] = React.useState<TripAddon[]>([]);
 
-  /* 編輯中的表單狀態（骨架：只存在記憶體） */
+  /* 編輯中的表單狀態 */
   const [form, setForm] = React.useState<Trip | null>(null);
+  /** 有寫入請求在飛：儲存鈕轉圈並鎖住，避免重複送出 */
+  const [busy, setBusy] = React.useState(false);
   const [planDraft, setPlanDraft] = React.useState<TripPlan | null>(null);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
@@ -118,24 +122,70 @@ export default function TripDetailPage() {
   const lines = (arr: string[]) => arr.join('\n');
   const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-  const saveBasic = () => {
+  /**
+   * 以下每一個寫入動作都是 **await 端點成功之後**才改畫面與 toast
+   * （00 鐵則 12）。修改前它們只改本地 state（外加一顆假的成功訊息），
+   * 重新整理就會全部消失。
+   * 一律用端點回傳的那一份資料回填，而不是自己手上的草稿——後端會重算
+   * 欄位（方案的 slug/sort_order、團次的 planName、審核狀態），
+   * 用草稿回填會讓畫面顯示一份資料庫裡不存在的值。
+   */
+  const failMessage = (e: unknown) =>
+    (e instanceof Error && e.message ? e.message : t.messages.actionFailed);
+
+  const saveBasic = async () => {
     if (!form) return;
-    setTrip(form);
-    toast.show(t.messages.updated);
+    setBusy(true);
+    try {
+      const saved = await updateTrip(form.id, {
+        title: form.title,
+        slug: form.slug,
+        tagline: form.tagline,
+        summary: form.summary,
+        description: form.description,
+        region: form.region,
+        category: form.category,
+        coverImageUrl: form.coverImageUrl,
+        galleryUrls: form.galleryUrls,
+        meetingPoint: form.meetingPoint,
+        meetingPointMapUrl: form.meetingPointMapUrl,
+        inclusions: form.inclusions,
+        exclusions: form.exclusions,
+        notices: form.notices,
+        safetyNotice: form.safetyNotice,
+      });
+      setTrip(saved);
+      setForm(saved);
+      toast.show(t.messages.updated);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   /* ------------------------------------------------------------- 方案 */
-  const savePlan = () => {
+  const savePlan = async () => {
     if (!planDraft) return;
     const isNew = !planDraft.id;
-    const saved: TripPlan = isNew
-      ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
-      : planDraft;
-    setPlans((prev) => (isNew ? [...prev, saved] : prev.map((p) => (p.id === saved.id ? saved : p))));
-    setPlanDraft(null);
-    // 已上架 Midao 的行程，方案異動需送審（10/11 分冊）
-    const needsReview = trip?.midaoListing === 'LISTED';
-    toast.show(needsReview ? t.messages.planSubmitted : t.messages.planSaved);
+    setBusy(true);
+    try {
+      const saved = await saveTripPlan(tripId, planDraft);
+      setPlans((prev) => (isNew
+        ? [...prev, saved]
+        : prev.map((p) => (p.id === saved.id ? saved : p))));
+      setPlanDraft(null);
+      /*
+       * 「已送出審核」這句以前是純文案：頁面看 trip.midaoListing === 'LISTED'
+       * 就這樣講，而後端根本沒有寫 review_state。現在改成看**端點回傳的**
+       * reviewState —— 說「已送審」的依據是資料庫真的變成 PENDING 了。
+       */
+      toast.show(saved.reviewState === 'PENDING' ? t.messages.planSubmitted : t.messages.planSaved);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const patchPlan = (p: Partial<TripPlan>) => setPlanDraft((d) => (d ? { ...d, ...p } : d));
@@ -161,24 +211,35 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 團次 */
-  const saveDeparture = () => {
+  const saveDeparture = async () => {
     if (!departureDraft) return;
-    const plan = plans.find((p) => p.id === departureDraft.planId);
+    // 前端先擋一次是為了給出人話（後端與 DB 各自也擋，見 0026 的 check 約束）
     if (departureDraft.capacity < departureDraft.seatsBooked) {
       toast.show(t.departures.capacityTooLow(departureDraft.seatsBooked), 'danger');
       return;
     }
     const isNew = !departureDraft.id;
-    const saved: TripDeparture = {
-      ...departureDraft,
-      id: departureDraft.id || `dp_new_${departures.length + 1}`,
-      planName: plan?.name ?? '',
-    };
-    setDepartures((prev) => (isNew
-      ? [...prev, saved].sort((a, b) => a.departsOn.localeCompare(b.departsOn))
-      : prev.map((d) => (d.id === saved.id ? saved : d))));
-    setDepartureDraft(null);
-    toast.show(isNew ? t.messages.departureCreated : t.messages.departureUpdated);
+    setBusy(true);
+    try {
+      const saved = await saveTripDeparture(tripId, {
+        id: departureDraft.id || undefined,
+        planId: departureDraft.planId,
+        departsOn: departureDraft.departsOn,
+        startTime: departureDraft.startTime,
+        capacity: departureDraft.capacity,
+        status: departureDraft.status,
+        note: departureDraft.note,
+      });
+      setDepartures((prev) => (isNew
+        ? [...prev, saved].sort((a, b) => a.departsOn.localeCompare(b.departsOn))
+        : prev.map((d) => (d.id === saved.id ? saved : d))));
+      setDepartureDraft(null);
+      toast.show(isNew ? t.messages.departureCreated : t.messages.departureUpdated);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const batchCount = React.useMemo(() => {
@@ -193,53 +254,102 @@ export default function TripDetailPage() {
     return n;
   }, [batch]);
 
-  const runBatch = () => {
+  /**
+   * 批次開團：日期展開交給後端（`POST …/departures/batch`），前端的
+   * `batchCount` 只是**預覽**。回應的 `created` / `skipped` 要照實顯示——
+   * 已存在的日期會被跳過，把 skipped 併進 created 報成「已建立 N 個」
+   * 就是在虛報一個沒發生的數字。
+   */
+  const runBatch = async () => {
     const plan = plans.find((p) => p.id === batch.planId);
     if (!plan || batchCount === 0) return;
-    const created: TripDeparture[] = [];
-    const from = new Date(batch.from);
-    const to = new Date(batch.to);
-    let i = 0;
-    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      if (!batch.weekdays.includes(d.getDay())) continue;
-      i += 1;
-      created.push({
-        id: `dp_batch_${i}`, tripId, planId: plan.id, planName: plan.name,
-        departsOn: d.toISOString().slice(0, 10), startTime: batch.startTime,
-        capacity: batch.capacity, seatsBooked: 0, status: 'OPEN', note: '',
+    setBusy(true);
+    try {
+      const res = await batchCreateDepartures(tripId, {
+        planId: plan.id,
+        from: batch.from,
+        to: batch.to,
+        weekdays: batch.weekdays,
+        startTime: batch.startTime,
+        capacity: batch.capacity,
       });
+      setDepartures((prev) => [...prev, ...res.departures]
+        .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
+      setBatchOpen(false);
+      toast.show(res.skipped > 0
+        ? t.messages.departureBatchPartial(res.created, res.skipped)
+        : t.messages.departureBatchCreated(res.created));
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
     }
-    setDepartures((prev) => [...prev, ...created]
-      .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
-    setBatchOpen(false);
-    toast.show(t.messages.departureBatchCreated(created.length));
   };
 
-  const setDepartureStatus = (id: string, status: DepartureStatus) => {
-    setDepartures((prev) => prev.map((d) => (d.id === id ? { ...d, status } : d)));
-    toast.show(t.messages.departureUpdated);
+  const setDepartureStatus = async (id: string, status: DepartureStatus) => {
+    setBusy(true);
+    try {
+      const saved = await saveTripDeparture(tripId, { id, status });
+      setDepartures((prev) => prev.map((d) => (d.id === saved.id ? saved : d)));
+      toast.show(t.messages.departureUpdated);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   /* ------------------------------------------------------------- 加購 */
-  const saveAddon = () => {
+  const saveAddon = async () => {
     if (!addonDraft) return;
     const isNew = !addonDraft.id;
-    const saved: TripAddon = isNew
-      ? { ...addonDraft, id: `ad_new_${addons.length + 1}`, sortOrder: addons.length + 1 }
-      : addonDraft;
-    setAddons((prev) => (isNew ? [...prev, saved] : prev.map((a) => (a.id === saved.id ? saved : a))));
-    setAddonDraft(null);
-    toast.show(t.messages.addonSaved);
+    setBusy(true);
+    try {
+      const saved = await saveTripAddon(tripId, {
+        id: addonDraft.id || undefined,
+        name: addonDraft.name,
+        price: addonDraft.price,
+        unit: addonDraft.unit,
+        stock: addonDraft.stock,
+        active: addonDraft.active,
+      });
+      setAddons((prev) => (isNew
+        ? [...prev, saved]
+        : prev.map((a) => (a.id === saved.id ? saved : a))));
+      setAddonDraft(null);
+      toast.show(t.messages.addonSaved);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   /* ------------------------------------------------------------- 刪除 */
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!deleteTarget) return;
     const { kind, id } = deleteTarget;
-    if (kind === 'plan') { setPlans((p) => p.filter((x) => x.id !== id)); toast.show(t.messages.planDeleted); }
-    if (kind === 'addon') { setAddons((a) => a.filter((x) => x.id !== id)); toast.show(t.messages.addonDeleted); }
-    if (kind === 'departure') { setDepartures((d) => d.filter((x) => x.id !== id)); toast.show(t.messages.departureDeleted); }
-    setDeleteTarget(null);
+    setBusy(true);
+    try {
+      if (kind === 'plan') {
+        await deleteTripPlan(id);
+        setPlans((p) => p.filter((x) => x.id !== id));
+        toast.show(t.messages.planDeleted);
+      } else if (kind === 'addon') {
+        await deleteTripAddon(id);
+        setAddons((a) => a.filter((x) => x.id !== id));
+        toast.show(t.messages.addonDeleted);
+      } else {
+        await deleteTripDeparture(id);
+        setDepartures((d) => d.filter((x) => x.id !== id));
+        toast.show(t.messages.departureDeleted);
+      }
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (loading || !form || !trip) {
@@ -392,7 +502,8 @@ export default function TripDetailPage() {
             <Button
               variant="outline" size="sm"
               title={t.departures.closeAction} aria-label={t.departures.closeAction}
-              onClick={() => setDepartureStatus(d.id, 'CLOSED')}
+              disabled={busy}
+              onClick={() => { void setDepartureStatus(d.id, 'CLOSED'); }}
             >
               {t.departures.closeAction}
             </Button>
@@ -400,7 +511,8 @@ export default function TripDetailPage() {
             <Button
               variant="outline" size="sm"
               title={t.departures.reopenAction} aria-label={t.departures.reopenAction}
-              onClick={() => setDepartureStatus(d.id, 'OPEN')}
+              disabled={busy}
+              onClick={() => { void setDepartureStatus(d.id, 'OPEN'); }}
             >
               {t.departures.reopenAction}
             </Button>
@@ -474,7 +586,7 @@ export default function TripDetailPage() {
             <Button variant="outline" onClick={() => router.push('/tenant/trips')}>
               {t.actions.back}
             </Button>
-            <Button onClick={saveBasic}>{t.actions.save}</Button>
+            <Button loading={busy} onClick={() => { void saveBasic(); }}>{t.actions.save}</Button>
           </>
         }
       />
@@ -809,7 +921,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setPlanDraft(null)}>{common.cancel}</Button>
-            <Button onClick={savePlan}>{common.save}</Button>
+            <Button loading={busy} onClick={() => { void savePlan(); }}>{common.save}</Button>
           </>
         }
       >
@@ -1042,7 +1154,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDepartureDraft(null)}>{common.cancel}</Button>
-            <Button onClick={saveDeparture}>{common.save}</Button>
+            <Button loading={busy} onClick={() => { void saveDeparture(); }}>{common.save}</Button>
           </>
         }
       >
@@ -1101,7 +1213,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setBatchOpen(false)}>{common.cancel}</Button>
-            <Button onClick={runBatch} disabled={batchCount === 0}>
+            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0}>
               {t.departures.batch.confirm}
             </Button>
           </>
@@ -1172,7 +1284,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setAddonDraft(null)}>{common.cancel}</Button>
-            <Button onClick={saveAddon}>{common.save}</Button>
+            <Button loading={busy} onClick={() => { void saveAddon(); }}>{common.save}</Button>
           </>
         }
       >
@@ -1232,7 +1344,8 @@ export default function TripDetailPage() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={doDelete}
+        loading={busy}
+        onConfirm={() => { void doDelete(); }}
         title={t.confirm.deleteTitle}
         message={
           deleteTarget?.kind === 'plan' ? t.confirm.deletePlan(deleteTarget.name)

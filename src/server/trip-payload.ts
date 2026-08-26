@@ -31,6 +31,29 @@ function upperEnum<T extends string>(v: unknown, allowed: readonly T[], fallback
 
 const PRICE_TYPES = ['PER_PERSON', 'PER_GROUP'] as const;
 const BOOKING_TYPES = ['INSTANT', 'REQUEST', 'SCHEDULED'] as const;
+const DEPOSIT_MODES = ['NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL'] as const;
+
+/**
+ * 後台方案表單有、但 tour-platform JSON **沒有**的欄位。
+ *
+ * 為什麼要單獨一支：`planRowFromImport()` 的欄位清單是照 tour-platform 的匯出
+ * 格式列的，裡面不含定金設定、啟用開關與販售季節。方案編輯畫面
+ * （`/tenant/trips/[id]` 的方案 Modal）**有**這些欄位，若 route 只走
+ * `planRowFromImport()`，按下儲存會回 200、畫面顯示「方案已儲存」，
+ * 而定金模式與季節其實一個字都沒進資料庫——那正是本專案在清的假成功。
+ *
+ * 只有「這次真的送了這個鍵」才寫入（`!== undefined`），所以 JSON 匯入
+ * 那條路徑不受影響（它不會送這些鍵，欄位維持 DB 預設值）。
+ */
+export function planAdminFields(p: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (p.depositMode !== undefined) out.deposit_mode = upperEnum(p.depositMode, DEPOSIT_MODES, 'FULL');
+  if (p.depositValue !== undefined) out.deposit_value = Number(p.depositValue) || 0;
+  if (p.active !== undefined) out.active = !!p.active;
+  if (p.yearRound !== undefined) out.year_round = !!p.yearRound;
+  if (p.seasons !== undefined) out.seasons = Array.isArray(p.seasons) ? p.seasons : [];
+  return out;
+}
 
 /** 由名稱產生 slug；tour-platform 未填 slug 時的行為與該站一致。 */
 export function slugify(name: string, fallback: string): string {

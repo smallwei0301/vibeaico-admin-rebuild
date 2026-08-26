@@ -35,6 +35,52 @@ import {
 import { resolveBuiltinIntent } from '@/server/line-events';
 
 const ROOT = process.cwd();
+
+/**
+ * 允許組 Flex JSON 的檔案清單（下面兩條靜態鎖共用）。
+ *
+ * ⚠️ issue #8 把這兩條鎖從「只有 flex-menu.ts」改成一份**明列**的清單。
+ * 這是前提改變，不是把斷言放寬——先說清楚兩者的差別：
+ *
+ * 這兩條鎖當初要防的是「**同一個成品**在第二個地方被重組一次，短期一樣、
+ * 長期分岔」。寫下來的時候，全專案只有一個 Flex 成品（Rich Menu 的主選單），
+ * 所以「唯一的成品」與「唯一的檔案」剛好是同一件事，用檔名當代理沒問題。
+ *
+ * 10 分冊 §6.1 要求的「行程 Flex 輪播」是**第二個成品**：資料來源是 `trips`
+ * 表而不是店家編的卡片，觸發字（行程／報名／揪團）、卡片欄位（封面／標語／
+ * 最低價）、按鈕動作（uri → 商店頁該行程）全都不同。把它塞進 flex-menu.ts
+ * 不會消除分岔風險，只會讓一支檔案同時是兩件事的事實來源——那才是這條鎖
+ * 真正想避免的情況。
+ *
+ * 所以清單**維持精確比對**（`toEqual`，不是 `toContain`）：多出第三個檔案
+ * 一樣會紅，逼下一個人回來說明它是不是又一個獨立成品。
+ */
+const FLEX_BUILDER_FILES = [
+  'src/server/flex-menu.ts',   // Rich Menu / 「選單」的主選單輪播（issue #6）
+  'src/server/trip-flex.ts',   // 「行程」關鍵字的行程輪播（issue #8、10 分冊 §6.1）
+];
+
+/** src/ 底下所有 .ts / .tsx（兩條靜態鎖共用的走訪） */
+function walkSrcFiles(dir: string, out: string[] = []): string[] {
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) walkSrcFiles(full, out);
+    else if (/\.tsx?$/.test(full)) out.push(full);
+  }
+  return out;
+}
+
+/** 去掉註解後比對——註解裡提到 `type: 'uri'` 不算「組了一份」 */
+function srcFilesMatching(re: RegExp): string[] {
+  return walkSrcFiles(resolve(ROOT, 'src'))
+    .filter((f) => {
+      const body = readFileSync(f, 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+      return re.test(body);
+    })
+    .map((f) => relative(ROOT, f))
+    .sort();
+}
 const SHOP = '示範美髮沙龍';
 
 /** 產生 n 張可用卡片 */
@@ -421,23 +467,8 @@ describe('卡片的 linkUrl（§8.20-b 全開）：白名單內才開連結，�
     expect(page).toContain('!isAllowedFlexLinkUrl(c.linkUrl)');
   });
 
-  it('src/ 底下只有 flex-menu.ts 會組 uri action（頁面不得另寫一份組裝）', () => {
-    const walk = (dir: string, out: string[] = []): string[] => {
-      for (const name of readdirSync(dir)) {
-        const full = join(dir, name);
-        if (statSync(full).isDirectory()) walk(full, out);
-        else if (/\.tsx?$/.test(full)) out.push(full);
-      }
-      return out;
-    };
-    const offenders = walk(resolve(ROOT, 'src'))
-      .filter((f) => {
-        const body = readFileSync(f, 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-        return /type:\s*'uri'/.test(body);
-      })
-      .map((f) => relative(ROOT, f));
-    expect(offenders).toEqual(['src/server/flex-menu.ts']);
+  it('src/ 底下只有 FLEX_BUILDER_FILES 會組 uri action（頁面不得另寫一份組裝）', () => {
+    expect(srcFilesMatching(/type:\s*'uri'/)).toEqual([...FLEX_BUILDER_FILES].sort());
   });
 });
 
@@ -548,23 +579,22 @@ describe('FLEX_POPUP 格子與「選單」共用同一組組裝函式（單一�
     expect(src).toContain("case 'MENU':");
   });
 
-  it('src/ 底下只有 flex-menu.ts 會組 bubble / carousel（第二份組裝邏輯 = 遲早分岔）', () => {
-    const walk = (dir: string, out: string[] = []): string[] => {
-      for (const name of readdirSync(dir)) {
-        const full = join(dir, name);
-        if (statSync(full).isDirectory()) walk(full, out);
-        else if (/\.tsx?$/.test(full)) out.push(full);
-      }
-      return out;
-    };
-    const offenders = walk(resolve(ROOT, 'src'))
-      .filter((f) => {
-        const body = readFileSync(f, 'utf8')
-          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-        return /type:\s*'bubble'/.test(body) || /type:\s*'carousel'/.test(body);
-      })
-      .map((f) => relative(ROOT, f));
-    expect(offenders).toEqual(['src/server/flex-menu.ts']);
+  it('src/ 底下只有 FLEX_BUILDER_FILES 會組 bubble / carousel（第三份組裝邏輯 = 遲早分岔）', () => {
+    expect(srcFilesMatching(/type:\s*'(bubble|carousel)'/)).toEqual([...FLEX_BUILDER_FILES].sort());
+  });
+
+  it('行程輪播與主選單是兩個獨立成品：flex-menu.ts 不碰 trips，trip-flex.ts 不碰 flexCards', () => {
+    const strip = (f: string) => readFileSync(resolve(ROOT, f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const menu = strip('src/server/flex-menu.ts');
+    const trip = strip('src/server/trip-flex.ts');
+    // 兩支互不 import、也互不碰對方的資料來源——這才是「沒有分岔風險」的實質條件。
+    // 比對的是去掉註解後的程式碼：檔頭互相說明「為什麼分成兩支」是應該的，
+    // 那不是耦合。
+    expect(menu).not.toMatch(/from\s+'\.\/trip-flex'/);
+    expect(trip).not.toMatch(/from\s+'\.\/flex-menu'/);
+    expect(trip).not.toContain('flexCards');
+    expect(menu).not.toContain('trip_plans');
   });
 });
 

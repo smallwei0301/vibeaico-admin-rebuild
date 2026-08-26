@@ -46,6 +46,7 @@ import { APP_URL } from '@/config/env';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 import { buildFlexMenuOutcome } from './flex-menu';
+import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name, business_type） */
 export type WebhookTenant = {
@@ -96,6 +97,21 @@ const MSG = {
   portfolioEmpty: '目前還沒有上傳作品。',
   tripTitle: '目前開放報名的行程：',
   tripEmptyGuide: '目前還沒有上架行程，敬請期待！',
+  /* --- 行程 Flex 輪播（10 分冊 §6.1）--- */
+  tripCarouselAlt: '目前開放報名的行程',
+  tripPriceFrom: '最低',
+  /** 沒有任何啟用方案 → 價格「不知道」，不可顯示 NT$ 0（那是捏造的已知） */
+  tripPriceUnknown: '價格洽詢',
+  tripBookCta: '我要預約',
+  /* --- 團次／名額（10 分冊 §6.1 的 DEPARTURE 組）--- */
+  departureTitle: '未來 14 天可報名的團次：',
+  departureEmpty:
+    '未來 14 天目前沒有開放報名的團次。\n請輸入「行程」看看有哪些行程，或直接留言告訴我們您想出發的日期，我們會幫您安排。',
+  departureFull: '已額滿',
+  departureSeatsLeft: (n: number) => `剩 ${n} 位`,
+  /* --- 旅遊訂單查詢（GUIDE 的「訂單查詢」）--- */
+  tourOrderEmpty: '查不到您的行程訂單。\n如果剛報名完還沒顯示，請直接留言告訴我們您的大名，我們幫您確認。',
+  tourOrderTitle: '您的行程訂單：',
   orderTitle: '您最近的訂單：',
   orderEmpty: '您目前沒有訂單紀錄。',
   memberTitle: '您的會員資訊：',
@@ -114,13 +130,15 @@ const MSG = {
    * 尚未開放的功能一律用這組文案。
    * CLAUDE.md：沒建好就誠實說沒建好——沉默（顧客按了沒反應）與假裝做得到
    * （回一個編出來的進度）都不行。
+   *
+   * ⚠️ issue #8 移除了兩個鍵：`notReadyDeparture`（團次／名額）與
+   * `notReadyTourOrder`（行程訂單查詢）。它們在 migration 0026 之前是誠實的
+   * ——那兩張表真的不存在。表建好之後「還在準備中」就變成假話，所以連同
+   * 那兩句文案一起刪掉，而不是留著當備用：留著的話，下一個人讀到這組常數
+   * 會以為那兩個功能仍未建置。
    */
-  notReadyDeparture:
-    '「團次／出團日期」的名額查詢還在準備中，目前無法自動查詢。\n請輸入「行程」看看有哪些行程，或直接留言告訴我們您想出發的日期，我們會幫您安排。',
   notReadyClinicQueue:
     '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
-  notReadyTourOrder:
-    '行程訂單的自動查詢還在準備中。\n請直接留言告訴我們您的大名與電話，我們幫您查詢報名狀態。',
   notReadyNotifyToggle:
     '店家通知的開關目前還不能在這裡自行設定。\n如果您不想再收到通知，直接留言告訴我們就可以，我們會為您處理。',
 } as const;
@@ -514,11 +532,9 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
     case 'TRIP':
       return replyTrips(ctx);
     case 'DEPARTURE':
-      // 團次／名額屬 Phase 8b（trip_departures 表尚未建）。嚮導的選單有這一格，
-      // 一定要有回應；其他業態不攔截。
-      return businessTypeOf(ctx.tenant) === 'GUIDE'
-        ? replyText(ctx, MSG.notReadyDeparture)
-        : false;
+      // 團次／名額（10 分冊 §6.1）。migration 0026 起查得到，不再回「準備中」。
+      // 其他業態沒有團次這個概念，replyDepartures 內部會回 false 不攔截。
+      return replyDepartures(ctx);
     case 'CLINIC_QUEUE':
       // 看診進度（叫號）尚未實作；只有診所的選單有這一格。
       return businessTypeOf(ctx.tenant) === 'CLINIC'
@@ -654,35 +670,141 @@ async function replyPortfolios(ctx: BuiltinCtx): Promise<boolean> {
 
 /* -------------------------------------------------------- 內建指令：行程 */
 /**
- * 「行程」「所有行程」…→ 已發布的行程清單。
- * 表 0016 已建；Flex 輪播（06 §3 原文的「行程輪播」）屬後續美化，先回文字清單，
- * 至少讓嚮導的選單第一格按下去有東西看。
+ * 「行程」「所有行程」…→ 已發布行程的 **Flex 輪播**（10 分冊 §6.1）。
+ *
+ * 卡片欄位（封面／標語／最低價／「我要預約」按鈕）與 LINE 的各項限制都在
+ * `src/server/trip-flex.ts`，這裡只負責查資料。
+ *
+ * 最低價 = 該行程所有 **active** 方案的最低 `base_price`。
+ * 沒有任何 active 方案 → `minPrice: null`（卡片顯示「價格洽詢」）。
+ * **不可以退回 0**：0 會被顧客讀成「免費」，那是一個編出來的價格。
  */
 async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
   const { data } = await ctx.admin
     .from('trips')
-    .select('title, tagline, summary')
+    .select('slug, title, tagline, summary, cover_image_url, trip_plans(base_price, active)')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'PUBLISHED')
     .order('created_at', { ascending: false })
-    .limit(SERVICE_LIST_LIMIT);
+    .limit(TRIP_CAROUSEL_MAX);
   if (!data?.length) {
     // 沒有行程的一般店家（美髮沙龍收到「行程」）交給 AI／預設回覆比較自然；
     // 嚮導的選單有這一格，必須有回應。
     return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.tripEmptyGuide) : false;
   }
-  const lines = data.map((t: any) => {
-    const sub = String(t.tagline || t.summary || '').split('\n')[0];
-    return sub ? `・${t.title}：${sub}` : `・${t.title}`;
+
+  const url = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  const cards: TripCardSource[] = data.map((t: any) => {
+    const plans: any[] = Array.isArray(t.trip_plans) ? t.trip_plans : [];
+    const prices = plans.filter((p) => p.active).map((p) => Number(p.base_price));
+    return {
+      slug: t.slug,
+      title: t.title,
+      tagline: t.tagline ?? '',
+      summary: t.summary ?? '',
+      coverImageUrl: t.cover_image_url ?? '',
+      minPrice: prices.length ? Math.min(...prices) : null,
+    };
+  });
+
+  const flex = buildTripCarousel(cards, url, {
+    altText: MSG.tripCarouselAlt,
+    priceFrom: MSG.tripPriceFrom,
+    priceUnknown: MSG.tripPriceUnknown,
+    bookCta: MSG.tripBookCta,
+  });
+  if (!flex) return replyText(ctx, MSG.tripEmptyGuide);
+
+  await lineReply(ctx.token, ctx.replyToken, [flex as any]);
+  return true;
+}
+
+/* ------------------------------------------------- 內建指令：團次／名額 */
+/**
+ * 「出團日期」「還有位子嗎」「名額」…→ 未來 14 天可報名的團次與**即時剩餘名額**
+ * （10 分冊 §6.1 的 `DEPARTURE` 組）。
+ *
+ * 剩餘名額一律現算 `capacity - seats_booked`（10 分冊 §2：不做任何快取）。
+ * 只列 `status='OPEN'` 且行程本身 `PUBLISHED` 的團次——關閉／取消的團次，
+ * 以及還沒發布的行程，顧客不該看得到。
+ *
+ * ⚠️ 這一格在 migration 0026 之前回的是 `MSG.notReadyDeparture`（「還在準備中」）。
+ * 那句話當時是誠實的（`trip_departures` 表真的不存在）；表建好之後它就會變成
+ * 一句假話，所以跟著換掉。
+ */
+async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
+  if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10);
+  const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const { data } = await ctx.admin
+    .from('trip_departures')
+    .select('departs_on, start_time, capacity, seats_booked, trips!inner(title, status), trip_plans(name)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'OPEN')
+    .eq('trips.status', 'PUBLISHED')
+    .gte('departs_on', from)
+    .lte('departs_on', to)
+    .order('departs_on', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+
+  if (!data?.length) return replyText(ctx, MSG.departureEmpty);
+
+  const lines = data.map((d: any) => {
+    const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
+    const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
+    const plan = d.trip_plans?.name ? `（${d.trip_plans.name}）` : '';
+    const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
+    return `・${d.departs_on}${time} ${d.trips?.title ?? ''}${plan}　${seats}`;
   });
   const url = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
-  return replyText(ctx, `${MSG.tripTitle}\n${lines.join('\n')}\n\n${url}`);
+  return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${url}`);
+}
+
+/* ------------------------------------------------- 內建指令：旅遊訂單查詢 */
+/**
+ * 嚮導的「訂單查詢」＝行程訂單（10 分冊 §6.1：`ORDER` 合併回傳）。
+ *
+ * ⚠️ 與 `replyDepartures` 同理：0026 之前這裡回 `MSG.notReadyTourOrder`
+ * （「還在準備中」），表建好之後那句話就不再成立。
+ *
+ * 只查**已綁定 LINE 的顧客**的訂單。手動建單目前不會寫 `customer_id`
+ * （後台沒有挑選顧客的介面），所以那類訂單在這裡查不到——查不到就說查不到，
+ * 不要拿電話或姓名去模糊比對湊出一筆「可能是您的訂單」。
+ */
+async function replyTourOrders(ctx: BuiltinCtx): Promise<boolean> {
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data } = await ctx.admin
+    .from('tour_orders')
+    .select('order_no, party_size, total_amount, status, trips(title), trip_departures(departs_on)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+
+  if (!data?.length) return replyText(ctx, MSG.tourOrderEmpty);
+
+  const statusText: Record<string, string> = {
+    PENDING: '待確認', CONFIRMED: '已確認',
+    COMPLETED: '已完成', CANCELLED: '已取消',
+  };
+  const lines = data.map((o: any) => {
+    const day = o.trip_departures?.departs_on ?? '';
+    return `・${o.order_no}　${o.trips?.title ?? ''}${day ? ` ${day}` : ''}`
+      + `　${o.party_size} 位　NT$ ${Number(o.total_amount).toLocaleString('en-US')}`
+      + `　${statusText[o.status] ?? o.status}`;
+  });
+  return replyText(ctx, `${MSG.tourOrderTitle}\n${lines.join('\n')}`);
 }
 
 /* -------------------------------------------------------- 內建指令：訂單 */
 async function replyOrders(ctx: BuiltinCtx): Promise<boolean> {
-  // 嚮導的「我的訂單」是行程訂單（tour_orders 表屬 Phase 8b，尚未建）
-  if (businessTypeOf(ctx.tenant) === 'GUIDE') return replyText(ctx, MSG.notReadyTourOrder);
+  // 嚮導的「我的訂單」是行程訂單（10 分冊 §6.1）。migration 0026 起查得到。
+  if (businessTypeOf(ctx.tenant) === 'GUIDE') return replyTourOrders(ctx);
 
   const customerId = await boundCustomerId(ctx);
   if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);

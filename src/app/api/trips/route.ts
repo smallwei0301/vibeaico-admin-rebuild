@@ -3,22 +3,25 @@ import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTrip } from '@/server/mappers';
 import { slugify, toStringArray } from '@/server/trip-payload';
+import { taipeiTodayDateString } from '@/server/tz';
 
 /**
  * GET /api/trips — 行程列表（10 分冊 §5，Phase 8a）。
  *
- * planCount / minPrice 是列表要顯示的衍生欄位，靠一次 join 帶回 trip_plans
- * 後在記憶體聚合——行程數量是「一個導遊的商品目錄」等級（十來筆），
- * 不值得為它建 view 或做 N+1 查詢。
- * upcomingDepartureCount 需要 trip_departures（Phase 8b 才建表），現階段恆 0，
- * mapTrip 的註解有記錄這件事。
+ * planCount / minPrice / upcomingDepartureCount 是列表要顯示的衍生欄位，靠一次
+ * join 帶回 trip_plans 與 trip_departures 後在記憶體聚合——行程數量是
+ * 「一個導遊的商品目錄」等級（十來筆），不值得為它建 view 或做 N+1 查詢。
+ *
+ * 「即將出團」的定義：`departs_on >= 今天（台北）` 且 `status = 'OPEN'`。
+ * CLOSED/CANCELLED 的團次不算——列表那一欄要回答的是「還有幾團可以賣」。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
 
+  const today = taipeiTodayDateString();
   const { data, error } = await t.supabase
     .from('trips')
-    .select('*, trip_plans(base_price, active)')
+    .select('*, trip_plans(base_price, active), trip_departures(departs_on, status)')
     .eq('tenant_id', t.tenantId)
     .order('updated_at', { ascending: false });
   if (error) throw error;
@@ -27,9 +30,13 @@ export const GET = handle(async () => {
     (data ?? []).map((r: any) => {
       const plans: any[] = Array.isArray(r.trip_plans) ? r.trip_plans : [];
       const prices = plans.filter((p) => p.active).map((p) => Number(p.base_price));
+      const departures: any[] = Array.isArray(r.trip_departures) ? r.trip_departures : [];
       return mapTrip(r, {
         planCount: plans.length,
         minPrice: prices.length ? Math.min(...prices) : 0,
+        upcomingDepartureCount: departures.filter(
+          (d) => d.status === 'OPEN' && String(d.departs_on) >= today,
+        ).length,
       });
     }),
   );

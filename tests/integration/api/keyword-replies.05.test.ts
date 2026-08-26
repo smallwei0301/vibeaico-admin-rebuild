@@ -96,7 +96,29 @@ async function customerSays(text: string, replyToken = `rt-${Math.random().toStr
   const replies = mock.requestsFor('/v2/bot/message/reply');
   if (replies.length === 0) return null;
   expect(replies).toHaveLength(1);
-  return String(replies[0].body?.messages?.[0]?.text ?? '');
+  return replyToSearchableText(replies[0].body?.messages?.[0]);
+}
+
+/**
+ * 一則 LINE 回覆 → 可以拿去 `toContain()` 的字串。
+ *
+ * ⚠️ 這支是 issue #8 補的，補的理由值得寫下來：原本這裡是
+ * `String(messages[0].text ?? '')`，也就是**預設每一則回覆都是 text 訊息**。
+ * 「行程」關鍵字改成 Flex 輪播（10 分冊 §6.1）之後，Flex 訊息沒有 `.text`
+ * 這個欄位，於是它回空字串——測試紅在「expected '' to contain …」，
+ * 看起來像 handler 壞了，其實是**觀測方式**只看得到一種訊息型別。
+ *
+ * 所以這裡不是把斷言放寬，是把觀測補齊：text 取 `.text`，flex 取
+ * `altText` 加上整份 contents 的 JSON。卡片標題、價格、按鈕文字都在那份
+ * JSON 裡，`toContain('A 店測試行程')` 因此仍然是在檢查**顧客真的看得到
+ * 那個行程名**，而不是檢查一個代理欄位。
+ */
+function replyToSearchableText(msg: any): string {
+  if (!msg) return '';
+  if (msg.type === 'flex') {
+    return `${String(msg.altText ?? '')}\n${JSON.stringify(msg.contents ?? {})}`;
+  }
+  return String(msg.text ?? '');
 }
 
 /**
@@ -378,10 +400,36 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
     });
   }
 
-  it('尚未建置的功能誠實說「還在準備中」，不沉默也不編造進度（CLAUDE.md 誠實原則）', async () => {
+  /**
+   * ⚠️ issue #8 讓這一條的前提改變了一半，斷言因此**分成兩半重寫**。
+   *
+   * 原本三個功能都回「還在準備中」：`團次`、`我的訂單`（嚮導）、`看診進度`。
+   * migration 0026 建了 `trip_departures` / `tour_orders` 之後，前兩個**查得到
+   * 真的資料**了——那句「還在準備中」從誠實變成假話，所以連同文案一起換掉
+   * （`MSG.notReadyDeparture` / `MSG.notReadyTourOrder` 已刪除）。
+   *
+   * 這裡要保住的東西沒有變：**沉默不可接受，編造進度也不可接受**。
+   * 所以已建好的兩個改成驗「回的是真資料」，還沒建的那個維持驗「誠實說沒建好」。
+   */
+  it('已建好的功能回真資料（團次／行程訂單），還沒建好的仍誠實說「還在準備中」', async () => {
     await setBusinessType('GUIDE');
-    expect(await customerSays('團次')).toContain('準備中');
-    expect(await customerSays('我的訂單')).toContain('準備中');
+
+    // 團次：種子的 A 店有一筆 +7 天的 OPEN 團次 → 回未來 14 天清單與即時餘額
+    const departures = await customerSays('團次');
+    expect(departures).not.toBeNull();
+    expect(departures).not.toContain('準備中');
+    expect(departures).toContain('A 店測試行程');
+    expect(departures, '剩餘名額必須現算（capacity - seats_booked），不是寫死的字')
+      .toMatch(/剩 \d+ 位|已額滿/);
+
+    // 行程訂單：這位 LINE 使用者沒有綁定顧客 → 誠實說查不到你是誰，
+    // 而不是「還在準備中」（功能已經建好了），也不是猜一筆訂單給他
+    const orders = await customerSays('我的訂單');
+    expect(orders).not.toBeNull();
+    expect(orders).not.toContain('準備中');
+    expect(orders).toContain('還沒有找到您的顧客資料');
+
+    // 看診進度（叫號）確實還沒建 → 這一句仍然是誠實的
     await setBusinessType('CLINIC');
     expect(await customerSays('看診進度')).toContain('準備中');
   });
@@ -419,10 +467,14 @@ describe('系統內建關鍵字 15 組（issue #5 ④；06 §3 補列規格）',
    * GUIDE」——`replyTrips` 先查 trips，查得到就照回，不看業態（斜槓店家把行程賣給
    * 一般顧客是合理的）。第一版測試把條件寫成前者而紅，修正的是測試不是實作。
    */
-  it('「行程」：有上架行程就照回；一筆都沒有時一般店家才落到 ⑥、嚮導則誠實說敬請期待', async () => {
+  it('「行程」：有上架行程就回 Flex 輪播；一筆都沒有時一般店家才落到 ⑥、嚮導則誠實說敬請期待', async () => {
     await setBusinessType('LOCAL_SHOP');
-    // (1) 種子的 A 店有一筆 PUBLISHED 行程 → 業態是一般店家也照樣回清單
-    expect(await customerSays('行程')).toContain('A 店測試行程');
+    // (1) 種子的 A 店有一筆 PUBLISHED 行程 → 業態是一般店家也照樣回
+    //     （issue #8 起是 Flex 輪播；customerSays 會把 contents 攤成 JSON 讓這裡搜得到）
+    const trips = await customerSays('行程');
+    expect(trips).toContain('A 店測試行程');
+    expect(trips, '10 分冊 §6.1 要的是輪播，不是文字清單').toContain('"type":"carousel"');
+    expect(trips, '卡片上必須有「我要預約」按鈕').toContain('我要預約');
 
     // (2) 全部下架 → 這時才走到 handled=false 那條路
     const { data: before } = await admin

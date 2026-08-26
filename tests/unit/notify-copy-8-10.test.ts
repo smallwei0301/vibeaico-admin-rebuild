@@ -100,11 +100,29 @@ describe('③ 旅遊訂單確認收款的確認視窗（未來式，但無推播
     expect(msg).toContain('自行告知旅客');
   });
 
-  it('這句話的前提仍成立：/api/tour-orders 這棵路由樹不存在', () => {
-    // 若哪天 issue #8 把推播做出來了，這個測試會紅，提醒把文案改回「會送出」句式
+  /**
+   * ⚠️ 這一條的前提在 issue #8 改變了，斷言因此**重新釘位**（不是放寬）。
+   *
+   * 原本的寫法是 `existsSync('src/app/api/tour-orders') === false`，用「整棵
+   * 路由樹不存在」當作「不會送通知」的代理。#8 建了 `/api/tour-orders/**`
+   * （migration 0026 + 狀態動作端點），代理條件失效——但**文案宣稱的那件事
+   * 本身沒有變**：confirm-payment 仍然沒有送出任何通知。
+   *
+   * 原註解寫「若哪天 issue #8 把推播做出來了，這個測試會紅」。#8 做的是
+   * 端點，**不是推播**，所以那個觸發條件其實沒有發生；紅的是代理，不是事實。
+   * 因此改成直接量測要保護的東西：**確認收款那支 route 檔裡沒有任何一行
+   * 會送通知**。日後真的把推播接上去（旅客端 LINE / Email），這一條會紅，
+   * 提醒同時把文案改回「已送出通知」句式（14 分冊 §8.10）。
+   */
+  it('這句話的前提仍成立：confirm-payment 端點沒有任何通知呼叫', () => {
     const { existsSync } = require('node:fs') as typeof import('node:fs');
     const dir = fileURLToPath(new URL('../../src/app/api/tour-orders', import.meta.url));
-    expect(existsSync(dir)).toBe(false);
+    // 路由樹現在存在了（#8）——存在本身不是問題，「有沒有送通知」才是
+    expect(existsSync(dir)).toBe(true);
+
+    const route = src('src/app/api/tour-orders/[id]/confirm-payment/route.ts');
+    expect(route).not.toMatch(/notify|linePush|pushMessage|sendMail|resend/i);
+
     // line-notify 的事件種類也沒有任何 tour／departure 事件
     const notify = src('src/server/line-notify.ts');
     expect(notify).not.toMatch(/TOUR_ORDER|DEPARTURE/);

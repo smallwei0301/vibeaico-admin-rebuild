@@ -3,6 +3,7 @@ import { MOCK_SIDEBAR_COUNTS } from '@/mock';
 import { listBookings } from './bookings';
 import { pendingProductOrderCount } from './catalog';
 import { unreadChatCount } from './chat';
+import { listTourOrders } from './tours';
 
 /**
  * 全站外框（AppShell）的資料入口 — issue #34。
@@ -38,28 +39,36 @@ export type SidebarCounts = Record<string, number>;
  *                         （整合測試 tests/integration/api/chat-link.06.test.ts
  *                           :「未讀 = 2 筆 IN、最後訊息 = 最新的 OUT 回覆、displayName 來自 mock profile」）
  *
- * ⚠️ `pendingTourOrderBadge`（嚮導模式的「旅遊訂單」）**刻意不設值**：
- * `/api/tour-orders/**` 這棵路由樹整個不存在、`tour_orders` 表也還沒建
- * （Phase 8b／issue #8），所以「待處理旅遊訂單有幾筆」這件事我們**查不到**。
- * 查不到就不寫進回傳值——寫 0 會變成「已知為零」，那正是本 issue 要清掉的病。
- * issue #8 把 `/api/tour-orders` 做出來之後，在這裡補一行即可。
+ *   pendingTourOrderBadge → services/tours.ts listTourOrders({status:'PENDING', size:1})
+ *                         → GET /api/tour-orders?status=PENDING&size=1 的 totalElements
+ *                         （整合測試 tests/integration/api/tour-orders.10.test.ts
+ *                           :「status 篩選：只回該狀態」＋「回 Spring 風格分頁信封，
+ *                             且只含本租戶的訂單」）
  *
- * 任一支失敗只讓該 key 缺席，不影響其他兩支（外框不能因為一個徽章查不到就整片壞掉）。
+ * ⚠️ `pendingTourOrderBadge` 在 issue #34 當時**刻意不設值**：`/api/tour-orders/**`
+ * 這棵路由樹整個不存在、`tour_orders` 表也還沒建，所以「待處理旅遊訂單有幾筆」
+ * 我們查不到，寫 0 會變成「已知為零」。issue #8（migration 0026 + 端點）
+ * 之後這件事查得到了，所以補上——而「查不到就不給值」的紀律不變：
+ * `Promise.allSettled` 失敗的那一支仍然不會寫進回傳值。
+ *
+ * 任一支失敗只讓該 key 缺席，不影響其他幾支（外框不能因為一個徽章查不到就整片壞掉）。
  */
 export function sidebarCounts(): Promise<SidebarCounts> {
   return adapt<SidebarCounts>(
     // mock／示範店家：維持骨架 demo 的固定數字（骨架要看得出徽章長什麼樣）
     () => ({ ...MOCK_SIDEBAR_COUNTS }),
     async () => {
-      const [booking, order, chat] = await Promise.allSettled([
+      const [booking, order, chat, tour] = await Promise.allSettled([
         listBookings({ status: 'PENDING', size: 1 }).then((p) => p.totalElements),
         pendingProductOrderCount(),
         unreadChatCount(),
+        listTourOrders({ status: 'PENDING', size: 1 }).then((p) => p.totalElements),
       ]);
       const counts: SidebarCounts = {};
       if (booking.status === 'fulfilled') counts.pendingBookingBadge = booking.value;
       if (order.status === 'fulfilled') counts.pendingOrderBadge = order.value;
       if (chat.status === 'fulfilled') counts.unreadChatBadge = chat.value;
+      if (tour.status === 'fulfilled') counts.pendingTourOrderBadge = tour.value;
       return counts;
     },
   );

@@ -33,6 +33,9 @@ import type {
   TripFaqItem,
   TripSocialProofQuote,
   TripPlanItineraryStep,
+  TripDeparture,
+  TripAddon,
+  TourOrder,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ 預約 */
@@ -305,10 +308,14 @@ const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 /**
  * trips 列 → Trip。
  *
- * `planCount` / `minPrice` / `upcomingDepartureCount` 是衍生欄位，不在 trips 表上：
- * - 前兩者由查詢端 join trip_plans 聚合後，以第二參數傳進來；
- * - upcomingDepartureCount 需要 trip_departures（Phase 8b 才建表），
- *   在此之前一律回 0——這是「功能尚未實作」的誠實值，不是查詢漏掉。
+ * `planCount` / `minPrice` / `upcomingDepartureCount` 是衍生欄位，不在 trips 表上，
+ * 一律由查詢端聚合後以第二參數傳進來（planCount/minPrice 走 join trip_plans，
+ * upcomingDepartureCount 走 join trip_departures，migration 0026 起可用）。
+ *
+ * ⚠️ 沒傳第二參數時三者都是 0。這在「剛建立的行程」是正確答案（真的是 0），
+ * 但在**列表查詢忘了 join** 時會變成一個看起來合理的假數字。所以
+ * `GET /api/trips` 與 `GET /api/trips/[id]` 一定要帶著聚合結果呼叫，
+ * 新增其他呼叫端時同理。
  */
 export function mapTrip(
   r: any,
@@ -386,5 +393,83 @@ export function mapTripPlan(r: any): TripPlan {
     freeCancelDays: r.free_cancel_days ?? undefined,
     detailsLinkText: r.details_link_text || undefined,
     bookingBtnText: r.booking_btn_text || undefined,
+  };
+}
+
+/**
+ * trip_departures 列 → TripDeparture（migration 0026）。
+ *
+ * `planName` 不在 trip_departures 表上，靠查詢端 join `trip_plans(name)` 帶回；
+ * 沒 join 到就是空字串——**不是**猜一個名字填上去。
+ * `startTime` 是 `time` 欄位（可為 null）：Postgres 回 `HH:MM:SS`，前端表單用
+ * `HH:MM`，這裡切到 5 碼；null → `''`（TripDeparture.startTime 宣告為非 null
+ * string，「未指定時間」在 UI 就是留白，10 分冊 §5.5 稱之為「整日忙碌」）。
+ */
+export function mapTripDeparture(r: any): TripDeparture {
+  const planName = r.trip_plans?.name ?? r.plan_name ?? '';
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    planId: r.plan_id,
+    planName,
+    departsOn: r.departs_on,
+    startTime: typeof r.start_time === 'string' ? r.start_time.slice(0, 5) : '',
+    capacity: Number(r.capacity ?? 0),
+    seatsBooked: Number(r.seats_booked ?? 0),
+    status: r.status,
+    note: r.note ?? '',
+  };
+}
+
+/** trip_addons 列 → TripAddon（migration 0026）。`stock: null` = 不限量，保留 null。 */
+export function mapTripAddon(r: any): TripAddon {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    price: Number(r.price ?? 0),
+    unit: r.unit ?? 'PER_PERSON',
+    stock: r.stock === null || r.stock === undefined ? null : Number(r.stock),
+    active: r.active ?? true,
+    sortOrder: r.sort_order ?? 0,
+  };
+}
+
+/**
+ * tour_orders 列 → TourOrder（migration 0026）。
+ *
+ * ⚠️ `paymentMethodLabel` 恆為空字串，這是**誠實的未知**而不是漏寫：
+ * 收款方式的顯示名稱只能來自 `tenant_payment_methods`，那張表屬 10 分冊 §4
+ * （Phase 8c / issue #9），現在不存在。編一個名字填進去會讓畫面在真金額旁邊
+ * 顯示一個沒有來源的字串（CLAUDE.md「Never fabricate a known」）。
+ * #9 建表後，這裡改成 join 該表的 display_name。
+ *
+ * `tripTitle` / `planName` / `departsOn` / `startTime` 同樣靠查詢端 join 帶回，
+ * 沒 join 到就留白。
+ */
+export function mapTourOrder(r: any): TourOrder {
+  const startTime = r.trip_departures?.start_time ?? r.start_time ?? null;
+  return {
+    id: r.id,
+    orderNo: r.order_no,
+    tripId: r.trip_id,
+    tripTitle: r.trips?.title ?? r.trip_title ?? '',
+    planName: r.trip_plans?.name ?? r.plan_name ?? '',
+    departsOn: r.trip_departures?.departs_on ?? r.departs_on ?? '',
+    startTime: typeof startTime === 'string' ? startTime.slice(0, 5) : '',
+    customerName: r.customer_name ?? '',
+    customerPhone: r.customer_phone ?? '',
+    partySize: Number(r.party_size ?? 0),
+    unitPrice: Number(r.unit_price ?? 0),
+    totalAmount: Number(r.total_amount ?? 0),
+    depositAmount: Number(r.deposit_amount ?? 0),
+    status: r.status,
+    paymentStatus: r.payment_status,
+    paymentMethodLabel: '',
+    paymentRef: r.payment_ref ?? '',
+    source: r.source,
+    holdExpiresAt: r.hold_expires_at ?? null,
+    note: r.note ?? '',
+    createdAt: r.created_at,
   };
 }

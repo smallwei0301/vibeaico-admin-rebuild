@@ -14,6 +14,12 @@ export const tourOrdersPage = {
     unpaid: '待收款',
     upcoming: '近 7 天出團',
     monthRevenue: '本月營收',
+    /**
+     * 統計還沒載回來（或查不到）時顯示的值。
+     * 不可用 0 頂替——0 是「真的沒有待處理訂單」這個有意義的答案，
+     * 拿它當「尚未載入」就是在宣稱一件我們還不知道的事。
+     */
+    unknown: '--',
   },
 
   actions: {
@@ -99,6 +105,8 @@ export const tourOrdersPage = {
     partyUnit: (n: number) => `${n} 位`,
     noRef: '尚未回報',
     noNote: '無',
+    /** 收款方式尚未建置（見 create.paymentNotAvailable），欄位一律留白顯示這個 */
+    noMethod: '未設定',
   },
 
   create: {
@@ -112,6 +120,14 @@ export const tourOrdersPage = {
     phoneLabel: '聯絡電話',
     partyLabel: '人數',
     paymentLabel: '收款方式',
+    /**
+     * 收款方式的資料表（`tenant_payment_methods`）與 `/tenant/payment-methods`
+     * 的後端屬 10 分冊 §4（Phase 8c，GitHub issue #9），目前還沒建。
+     * 這個欄位原本是一組寫死的三個選項（LINE Pay／銀行轉帳／線上刷卡），
+     * 選了之後會把那個名稱顯示在訂單的「收款方式」欄——一個沒有任何來源的
+     * 字串顯示在真金額旁邊。改成如實說明尚未建置。
+     */
+    paymentNotAvailable: '收款方式設定尚未建置，建立的訂單暫時不會記錄收款方式。',
     noteLabel: '備註',
     totalPreview: (amount: string) => `訂單金額 ${amount}`,
     seatsLeft: (n: number) => `（剩 ${n} 位）`,
