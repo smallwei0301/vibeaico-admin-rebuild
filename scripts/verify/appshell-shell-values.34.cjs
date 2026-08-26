@@ -18,7 +18,13 @@
  *   BASE_URL                    受測站台
  *   TEST_EMAIL / TEST_PASSWORD  測試帳號（15 分冊 §4）
  *   SUPABASE_URL                受測站台**同一個**專案的 URL
- *   SUPABASE_SERVICE_ROLE_KEY   直查用（只讀）
+ *   SUPABASE_SERVICE_ROLE_KEY   直查用（開了 VERIFY_SEED_PENDING_ORDER 才會寫）
+ *
+ * ── 選項 ──────────────────────────────────────────────────────────────────
+ *   VERIFY_SEED_PENDING_ORDER=1 先塞一筆 PENDING 商品訂單再比對，收尾刪掉並驗證。
+ *     受測租戶三個徽章的 DB 筆數若**全是 0**（Preview 站的測試租戶就是這樣），
+ *     「畫面數字＝DB 筆數」那條斷言只會走 `shown === null` 那半段，等於沒被驗到。
+ *     打 Preview／正式資料庫時建議帶上，讓非零那半段也真的跑一次。
  *
  * ── 執行 ──────────────────────────────────────────────────────────────────
  *   受測站台必須以 real 模式跑（NEXT_PUBLIC_USE_MOCK=false 是建置期變數，
@@ -43,6 +49,17 @@ const SB_URL = required('SUPABASE_URL').replace(/\/$/, '');
 const SB_KEY = required('SUPABASE_SERVICE_ROLE_KEY');
 /** 延後 /api/bookings 幾毫秒，把「還在查」的那一段拉長到看得見 */
 const BADGE_DELAY_MS = Number(process.env.BADGE_DELAY_MS || 4000);
+/*
+ * VERIFY_SEED_PENDING_ORDER=1 時，先塞一筆 PENDING 商品訂單再比對。
+ *
+ * 為什麼需要這個開關（2026-08-26 對已部署的 Preview 站實跑時發現）：那個租戶三個
+ * 徽章的 DB 筆數**全都是 0**，於是下面 `expected === 0 ? shown === null : …` 這行
+ * 永遠只走前半段——「畫面數字等於 DB 筆數」那條斷言一次都沒有真的執行過。
+ * 一個「永遠回 0」的壞實作照樣全綠。塞一筆進去才逼得出後半段。
+ * 收尾一律刪掉（見 cleanupSeed），刪不掉會印出殘留的 order_no 而不是默默結束。
+ */
+const SEED_ORDER = process.env.VERIFY_SEED_PENDING_ORDER === '1';
+const SEED_ORDER_NO = `VERIFY34${Date.now().toString(36).toUpperCase().slice(-6)}`;
 
 const OUT_DIR = path.join(__dirname, 'out');
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -87,6 +104,53 @@ async function sbCount(table, query) {
   const total = Number(range.split('/')[1]);
   if (!Number.isFinite(total)) throw new Error(`${table} 讀不到 content-range：${range}`);
   return total;
+}
+
+/* ------------------------------------------- 測試用 PENDING 商品訂單（可選） */
+
+let seededOrderId = null;
+
+/** 塞一筆 PENDING 商品訂單，讓「畫面數字＝DB 筆數」那條斷言真的走到 */
+async function seedPendingOrder(tenantId) {
+  const [customer] = await sbSelect(
+    'customers', `select=id,name&tenant_id=eq.${tenantId}&limit=1`,
+  );
+  if (!customer) {
+    console.log('  [SKIP] 種子訂單：這個租戶沒有任何顧客，無法建立商品訂單');
+    return;
+  }
+  const res = await fetch(`${SB_URL}/rest/v1/product_orders`, {
+    method: 'POST',
+    headers: {
+      apikey: SB_KEY,
+      Authorization: `Bearer ${SB_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+    },
+    body: JSON.stringify({
+      tenant_id: tenantId,
+      order_no: SEED_ORDER_NO,
+      customer_id: customer.id,
+      total_amount: 0,
+      status: 'PENDING',
+    }),
+  });
+  if (!res.ok) throw new Error(`種子訂單建立失敗 ${res.status}：${await res.text()}`);
+  seededOrderId = (await res.json())[0].id;
+  console.log(`  種子：建立 PENDING 商品訂單 ${SEED_ORDER_NO}（顧客 ${customer.name}）`);
+}
+
+/** 刪掉種子訂單並**驗證真的沒了**（殘留就大聲說出來，不要默默收工） */
+async function cleanupSeed() {
+  if (!seededOrderId) return;
+  const res = await fetch(
+    `${SB_URL}/rest/v1/product_orders?id=eq.${seededOrderId}`,
+    { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } },
+  );
+  const left = await sbCount('product_orders', `order_no=eq.${SEED_ORDER_NO}`);
+  console.log(`  種子清理：DELETE HTTP ${res.status}；殘留 ${SEED_ORDER_NO} 的訂單數 = ${left}`);
+  if (left !== 0) console.log(`  [警告] 種子訂單沒刪乾淨，請手動刪除 order_no=${SEED_ORDER_NO}`);
+  seededOrderId = null;
 }
 
 /** 側邊欄未讀徽章的期望值：followed=true 的 line_user 底下、direction=IN 且未讀的訊息數 */
@@ -196,6 +260,8 @@ async function main() {
   const tenantId = me?.data?.tenantId;
   if (!tenantId) throw new Error(`/api/auth/me 沒有回 tenantId：${JSON.stringify(me)}`);
   console.log(`  目前店家：${me.data.tenantName}（${tenantId}）\n`);
+
+  if (SEED_ORDER) await seedPendingOrder(tenantId);
 
   /* ------------------------------------------------ ① 載入中不得先顯示 0 */
   await page.route('**/api/bookings**', async (route) => {
@@ -313,6 +379,7 @@ async function main() {
 
   /* --------------------------------------------------------------- 收尾 */
   await browser.close();
+  await cleanupSeed();
 
   console.log('\n—— 逐項比對 ——');
   console.log(`  待確認預約   畫面 vs DB：${expectedBooking}`);
@@ -328,7 +395,9 @@ async function main() {
   }
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error(e);
+  // 半路炸掉也要把種子訂單刪掉——它躺在店家真實的資料庫裡
+  await cleanupSeed().catch((err) => console.error('  種子清理也失敗了：', err.message));
   process.exit(1);
 });

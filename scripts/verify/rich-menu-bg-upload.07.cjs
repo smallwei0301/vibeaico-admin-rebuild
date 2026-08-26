@@ -9,8 +9,16 @@
  *      （這是發布端點 loadBackgroundImage() 唯一會讀的地方，少了它上傳就白傳）；
  *   ③ **重新整理後欄位還在** → 不是只活在 React state 裡。
  *
- * ⚠️ 這支跑的是**本機 dev server**，不是 Preview 站：本 issue 的改動還沒 push，
- * Preview 上沒有這顆接好線的按鈕。用法：
+ * ⚠️ 撰寫當時這支只能跑**本機 dev server**（改動尚未 push，Preview 上沒有這顆按鈕）。
+ * 分支 push、Preview 重新部署之後，同一支可以原封不動打**已部署的 Preview 站**：
+ *
+ *   PREVIEW_URL=<branch alias>  SUPABASE_REF=$SUPABASE_PROD_REF \
+ *   SUPABASE_URL=https://<正式 ref>.supabase.co \
+ *   SUPABASE_SERVICE_ROLE_KEY=<正式專案的 service role key>  # 收尾刪 storage 物件要用
+ *   VERIFY_TENANT_ID=<測試帳號在正式專案的租戶 id> \
+ *   TEST_EMAIL=… TEST_PASSWORD=… node scripts/verify/rich-menu-bg-upload.07.cjs
+ *
+ * 本機 dev server 的用法：
  *
  *   # 另一個終端先起 dev server（TEST 專案的變數；不要和整合測試同時跑）
  *   NEXT_PUBLIC_USE_MOCK=false \
@@ -168,27 +176,25 @@ const BG_PNG = Buffer.from(
     if (CLEANUP) {
       if (uploadedObject) {
         /*
-         * 優先走 Storage API：它會把後端真正的檔案一起刪掉。直接 delete
-         * storage.objects 只清得掉索引列，實體檔案會變成沒人指得到的孤兒。
-         * 沒有 service role key 時退回 SQL（至少不留可查詢到的痕跡）。
+         * 刪 storage 物件一定要走 **Storage API**，不能下 `delete from storage.objects`：
+         * Supabase 有 `storage.protect_delete()` 觸發器，直接刪表會被擋下
+         *   ERROR: 42501 Direct deletion from storage tables is not allowed. Use the Storage API instead.
+         * 2026-08-26 對已部署的 Preview 站跑這一支時實際踩到：斷言全綠、
+         * 清理卻默默失敗，測試用的圖就留在店家真實的 bucket 裡了
+         * （welcome-card-upload.28.cjs 一開始就是走 Storage API，這裡補齊成同一種做法）。
+         * 需要 SUPABASE_SERVICE_ROLE_KEY（受測站台同一個專案的）。
          */
-        const sbUrl = (process.env.SUPABASE_URL || '').replace(/\/$/, '');
-        const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        let removed = false;
-        if (sbUrl && sbKey) {
-          const res = await fetch(`${sbUrl}/storage/v1/object/richmenu-assets/${uploadedObject}`, {
-            method: 'DELETE',
-            headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` },
-          }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
-          removed = res.ok;
-          if (!res.ok) console.log(`  [清理] Storage API 刪檔回 ${res.status}，改用 SQL`);
-        }
-        if (!removed) {
-          await sql(
-            `delete from storage.objects where bucket_id='richmenu-assets'
-             and name = '${uploadedObject.replace(/'/g, "''")}';`,
-            REF,
-          ).catch((e) => console.log(`  [清理失敗] 刪 storage 物件：${e.message}`));
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const sbUrl = (process.env.SUPABASE_URL || `https://${REF}.supabase.co`).replace(/\/$/, '');
+        if (!serviceKey) {
+          console.log('  [未清理] 缺 SUPABASE_SERVICE_ROLE_KEY，測試用 storage 物件留在 bucket 裡：'
+            + uploadedObject);
+        } else {
+          const del = await fetch(
+            `${sbUrl}/storage/v1/object/richmenu-assets/${uploadedObject.split('/').map(encodeURIComponent).join('/')}`,
+            { method: 'DELETE', headers: { Authorization: `Bearer ${serviceKey}` } },
+          ).catch((e) => ({ status: 0, text: async () => e.message }));
+          console.log(`  刪除測試用 storage 物件：HTTP ${del.status} ${(await del.text()).slice(0, 120)}`);
         }
       }
       await sql(

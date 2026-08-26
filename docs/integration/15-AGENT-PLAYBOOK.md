@@ -398,3 +398,90 @@ ls: cannot access 'node_modules/': Too many levels of symbolic links
 - 合併後若動到相依，**先 `ls node_modules | wc -l` 確認還在**，再跑閘門——
   因為壞掉的 `node_modules` 會讓閘門「安靜地通過」。
 - 真的中了：`git rm --cached node_modules && rm -f node_modules && npm ci`。
+
+## 打 Preview 站補驗收時的三個坑（2026-08-26 學到，一輪就踩到全部三個）
+
+多個 issue 的驗收項寫的是「對 Preview 站實測」，但施工當下規則是「不要 push」，
+於是那些格子被正確地留白。分支 push、Preview 重新部署之後，那一批格子可以補了——
+補的過程踩到三個坑，都值得記。
+
+### 坑 1：「連上了正式資料庫」不等於「測的是部署後的站」
+
+中間隔著 production build、Vercel 的 runtime、middleware、真實登入流程。
+前一輪的腳本跑的是**本機 `next dev` ＋ 正式 Supabase 專案**——資料庫是對的，
+跑的程式碼卻是本機那份。那不滿足「對 Preview 站實測」的字面要求，
+前一輪的執行者留白並寫明原因，是對的判斷。
+
+**所以第一件事永遠是證明你打的是最新的部署**，不要猜網址：
+
+```js
+// GET https://api.vercel.com/v6/deployments?limit=40  （Bearer VERCEL_TOKEN）
+// 取 state=READY 且 meta.githubCommitRef = 整合分支的最新一筆
+// 再 GET /v13/deployments/<url> 讀 alias[]（那才是 branch alias）
+```
+
+然後**比對 `meta.githubCommitSha` 與 `git rev-parse HEAD`**。不相等就代表部署還沒
+跟上或失敗——**停下來回報，不要在舊版上測**，量到的是舊行為。
+
+⚠️ 憑證檔裡寫死的 `PREVIEW_BASE_URL` 曾經指向 main 的正式站而不是分支 preview。
+**以查到的 branch alias 為準**（本輪查證：`_preview-lib.cjs` 的 `DEFAULT_PREVIEW_URL`
+與 `campaign.env` 的 `PREVIEW_BASE_URL` 目前都是對的，但這是查過才知道，不是預設可信）。
+
+### 坑 2：斷言全綠，**清理默默失敗**——而 Preview 接的是正式專案
+
+`rich-menu-bg-upload.07.cjs` 的收尾是 `delete from storage.objects …`，被 Supabase 的
+`storage.protect_delete()` 觸發器擋下：
+
+```
+ERROR: 42501: Direct deletion from storage tables is not allowed. Use the Storage API instead.
+```
+
+五條斷言全部 PASS、腳本 exit 0，**測試用的圖留在店家真實的 bucket 裡**。
+在 TEST 專案上永遠看不出來（`reset-db` 每次會清），只有打正式專案才會現形。
+
+規則：
+- **刪 storage 物件一律走 Storage API**（`DELETE {SUPABASE_URL}/storage/v1/object/<bucket>/<path>`，
+  帶 service role key），不要下 SQL。
+- **清理要有驗證步驟並印出殘留筆數**，不要 `.catch(() => {})` 吞掉就收工。
+  殘留不為 0 就大聲印出來（本輪把兩支腳本都補成這樣）。
+- 打正式專案的腳本，測試資料一律帶可辨認前綴（`VERIFY17…`、`VERIFY34…`、`#7乙實測`），
+  收尾逐項查一次殘留數並貼進報告。
+
+### 坑 3：DB 全是 0 的時候，「畫面數字＝DB 筆數」那條斷言**一次都沒執行過**
+
+`appshell-shell-values.34.cjs` 比對徽章的寫法是：
+
+```js
+const ok = expected === 0 ? shown === null : shown === String(expected);
+```
+
+Preview 那個測試租戶三個徽章的 DB 筆數**全是 0**，於是永遠只走前半段。
+一個「永遠回 0」的壞實作照樣全綠——**這條斷言看起來很嚴謹，實際上沒被驗到**。
+
+這與本手冊反覆在講的「假的已知」是同一種東西，只是長在**測試**這一側：
+斷言存在 ≠ 斷言執行過。
+
+規則：**比對型斷言要確認非零那一支真的走到**。做法是加一個 opt-in 的種子
+（本輪加了 `VERIFY_SEED_PENDING_ORDER=1`：先塞一筆 PENDING 商品訂單、收尾刪掉並驗證殘留為 0），
+**既有斷言一字不動**，只是把它推進到會執行的分支。
+
+### 附帶：修腳本可以，改斷言不行
+
+補驗收時若某支腳本寫死了 localhost 而無法指向 Preview，**改成可用環境變數覆寫是對的**
+（那是腳本的缺陷）；清理路徑壞了、比對分支跑不到，補起來也是對的。
+但**斷言一個字都不要動**——否則「對 Preview 跑過」就變成另一種形式的自證。
+
+### 附帶：改 issue 內文的自驗法
+
+GitHub MCP 讀回的 body 是 **HTML 實體轉義過的**（`>` → `&gt;`、`'` → `&#39;`）；
+`issue_write` 會對稱地還原回去，所以**照讀回來的樣子寫回去**是正確的做法。
+但要證明自己只做了最小範圍替換，送出前後各驗三個數字：
+
+1. 長度差是否**等於**「插入內容長度 − 移除內容長度」；
+2. `&gt;` 的出現次數 delta 是否為 0；
+3. `&amp;` 的出現次數 delta 是否為 0（若 write 沒有還原，`&gt;` 會變成 `&amp;gt;`，
+   這一項會立刻跳起來）。
+
+任一項對不上就**停手回報**，不要硬改。
+讓插入的內容**完全不含 `& < > ' "`**，可以把第 2、3 項變成穩定的 0，自驗更乾淨。
+（本輪兩次：#17 delta +1128＝1397−269、#34 delta +2006＝2100−94，兩項 entity delta 皆 0。）
