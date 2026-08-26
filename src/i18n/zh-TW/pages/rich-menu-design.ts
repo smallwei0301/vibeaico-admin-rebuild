@@ -34,21 +34,13 @@ export const richMenuDesignPage = {
     richMenuLead: '顧客打開 LINE 聊天室時，',
     richMenuLeadStrong: '固定在螢幕底部',
     richMenuLeadTail: '的圖片選單。',
-    /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 「發布到 LINE」＝ createRichMenu(theme) → POST /api/settings/line/rich-menu/create。
-     * 該端點固定產生 2500×1686 的 3×2 六格（文字取 MODE_PRESETS.richMenuCells）、
-     * 上傳底圖、設為預設，請求內容只有 { theme } 一個欄位。因此**佈局、每格自訂
-     * 文字／動作、Flex 彈窗、本頁的背景圖網址都不會隨發布送出**。舊步驟把它們寫成
-     * 「照著做就會生效」，等於一步步教店家做無效的操作，最後一句還宣告「即生效」。
-     * 禁止復原。
-     */
+    /** 訂閱時固定版型走 create-advanced，自訂格數走 create-custom；未訂閱走基本六格。 */
     richMenuSteps: [
-      '選擇 主題風格 （精品風、LINE綠、藍等配色）——只有這一項會隨發布送出',
-      '選擇 佈局 （3+4 = 7格、3+4+4 = 11格...）——只影響本頁預覽；發布固定送出 3×2 六格',
-      '設定每格的 文字 和 點擊動作 ——只影響本頁預覽；發布固定套用你營運模式的預設六格',
+      '選擇 主題風格 （精品風、LINE綠、藍等配色）——訂閱「進階自訂選單」後會隨發布送出',
+      '選擇 固定佈局，或在「自訂格數」選行數／列數後按 套用 ——訂閱後會隨發布送出',
+      '設定每格的 文字 和 點擊動作 ——訂閱後會隨發布送出；未訂閱時會改用業態預設六格',
       '若動作選「Flex 彈窗」，可設計 輪播卡片 （放圖片、標題、按鈕）——彈窗設定的儲存尚未建置，不會保留也不會隨發布送出',
-      '點「 發布到 LINE 」——所選主題的底圖與預設六格文字才會真的推到顧客的聊天室',
+      '點「 發布到 LINE 」——訂閱後會把所選版型與每格設定送到 LINE；未訂閱時才會改送業態預設六格文字。',
     ],
     flexMenuTitle: 'Flex 主選單（對話氣泡選單）',
     /*
@@ -236,14 +228,10 @@ export const richMenuDesignPage = {
     cardTitle: '佈局',
     advancedBadge: '進階',
     note: '3行佈局自動使用大尺寸（Full），2行使用標準尺寸（Half）',
-    /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 佈局從來沒有接上發布：create route 的 CELLS 常數寫死 3×2 六格、
-     * 2500×1686，發布請求也只帶 { theme }。舊畫面讓店家挑 7 格／11 格版型、
-     * 還標「進階」徽章，顧客看到的卻永遠是六格——必須在挑選處就說清楚。
-     */
     publishFixedNote:
-      '佈局目前只影響本頁預覽：發布到 LINE 固定送出 2500×1686 的 3×2 六格版型，這裡選的行列數不會改變顧客看到的選單（版型自訂尚未接上發布）。',
+      '訂閱「進階自訂選單」後，固定佈局與每格設定會隨發布送到 LINE；未訂閱時才會改送基本主題與業態預設六格。',
+    publishedConfigUnavailable:
+      '目前已發布的自訂選單使用本頁無法忠實呈現的任意座標區塊。LINE 上的設定沒有被改動；為避免把它假裝成固定版型，本頁暫停編輯與發布。',
     sizeStandard: '標準',
     sizeLarge: '大尺寸',
     options: [
@@ -255,6 +243,21 @@ export const richMenuDesignPage = {
       { key: '3+4+4', label: '3+4+4', cells: 11, advanced: true },
       { key: '4+4', label: '4+4', cells: 8, advanced: true },
     ],
+    customGridTitle: '自訂格數',
+    customRows: '行數',
+    customColumns: '列數',
+    customRowOptions: [1, 2, 3, 4],
+    customColumnOptions: [1, 2, 3, 4, 5],
+    applyCustomGrid: '套用',
+    customGridHelp: '自由定義格數；套用後可在下方為每一格各別設定標籤與動作。',
+    customLayoutLabel: (rows: number, columns: number) => `自訂 ${rows}×${columns}`,
+    customBindingChoice:
+      '自訂格數會等分 LINE 選單畫布後發布到 create-custom。原站 DOM 沒有留下座標請求格式；等分格線是我們選的實作，不是還原的原站行為。',
+    customDraftPreviewUnavailable:
+      '這份自訂格數可直接發布，但現有草稿與「看實際會推送的圖」端點只支援固定佈局；為避免把另一份設定冒充成你的自訂格數，兩項功能在此模式不會執行。',
+    customGridNotApplied: '尚未套用自訂格數',
+    customDraftUnsupported: '自訂格數目前不能儲存草稿：現有草稿端點沒有自訂座標欄位，未送出任何儲存請求。',
+    customPreviewUnavailable: '自訂格數目前不能取得實際預覽：現有預覽端點沒有自訂座標欄位，未送出任何預覽請求。',
   },
 
   /* ========================================================= 背景圖片 */
@@ -450,17 +453,7 @@ export const richMenuDesignPage = {
      */
     draftSaved: '草稿已儲存：下次打開這一頁會回到這份設定。⚠️ 這還沒有送到 LINE——要讓顧客看到，請按「發布到 LINE」。',
     draftSaveFailed: '草稿儲存失敗，請稍後再試',
-    /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 發布只呼叫 createRichMenu(theme) → POST /api/settings/line/rich-menu/create，
-     * 該端點做的事只有：依主題產生 2500×1686 六格選單（格子文字取
-     * MODE_PRESETS.richMenuCells）、上傳底圖、設為預設、把 richMenuId 寫回
-     * tenant_settings。它**沒有**儲存 Flex 主選單樣式、預約步驟、功能頁面樣式——
-     * 這三者的後端都尚未建置（本頁的預約步驟卡與功能頁面樣式卡已自行標示
-     * 「尚未建置」，舊文案「…皆已儲存」與同一頁的告示自相矛盾）。
-     * 同理刪掉從未被使用、卻宣稱有「主選單樣式儲存」「配套 Flex 套版」這兩步的
-     * publishedFlexFailed / publishedSceneFlexFailed。禁止復原。
-     */
+    /** Rich Menu 發布不會連帶發布 Flex 主選單或預約步驟；三者的寫入路徑各自獨立。 */
     published:
       'Rich Menu 已推送到 LINE：顧客下次開啟聊天室就會看到新的底部選單。系統已把上一份保留成還原點（只保留最近一份）。聊天室的 Flex 主選單與預約步驟引導不會一併送出——它們各自有自己的儲存按鈕。',
     publishFailed: 'Rich Menu 發布失敗',
@@ -474,21 +467,8 @@ export const richMenuDesignPage = {
     name: '進階自訂選單',
     barLead: '自訂每格',
     barItems: ['文字／動作', '背景圖／自訂圖示', '非 3+4 版型', '打開網址／Flex 彈窗'],
-    /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 舊 barTail 的「未訂閱時…您的這些修改不會出現在 LINE 選單上」讀起來是
-     * 「訂閱之後就會出現」——但那是假的：進階發布端點（create-advanced）
-     * 在本專案裡根本不存在（src/app/api/settings/line/rich-menu 下只有
-     * create 與 upload-bg-image），create route 也永遠用 MODE_PRESETS 的六格。
-     * 也就是說**無論有沒有訂閱**，逐格自訂／版型／背景圖都不會出現在 LINE 上。
-     * 拿一個做不到的效果去推銷付費功能，比一般假宣稱更該修。
-     *
-     * 同理刪除三個未被引用、卻描述「訂閱才發得出去 / 降級就能免費發」這套
-     * 不存在閘門的鍵：advancedNeeded（發佈到 LINE 需要先訂閱——實際不擋）、
-     * cellEditNeeded、downgradeHint（把版型改回 3+4 就能免費發——版型根本不影響發布）。
-     * 禁止復原。
-     */
-    barTail: '屬「進階自訂選單」付費功能（99 點/月）。但這些自訂目前都還沒接上發布：無論是否訂閱，「發布到 LINE」都只會送出所選主題的底圖與你營運模式的預設六格文字，訂閱不會讓上列修改出現在 LINE 選單上。',
+    /** 進階發布受 CUSTOM_RICH_MENU 閘門保護；未訂閱時保留基本六格發布。 */
+    barTail: '屬「進階自訂選單」付費功能（99 點/月）。訂閱後，固定佈局或自訂格數與每格設定會隨發布送出；未訂閱時「發布到 LINE」只會送出所選主題與你營運模式的預設六格文字。',
     required: '需要訂閱「進階自訂選單」',
     goSubscribe: '前往訂閱（設計會保留）',
     goto: '前往',
@@ -497,7 +477,7 @@ export const richMenuDesignPage = {
     freeOnlyWarn:
       '免費基本款選單只能發佈固定的預設格子內容，您的每格修改「不會」出現在 LINE 選單上。',
     freeFallbackNotice:
-      '⚠️ Rich Menu 已推送到 LINE，但送出的是所選主題的底圖與系統預設六格文字。您在「每格設定」「佈局」「背景圖片」的修改都沒有送出——這些欄位尚未接上發布，訂閱「進階自訂選單」也不會改變這一點。',
+      '⚠️ Rich Menu 已推送到 LINE，但送出的是所選主題與系統預設六格文字。未訂閱「進階自訂選單」時，您在「每格設定」「佈局」「背景圖片」的修改不會送出；訂閱後才可發布這些設定。',
     /*
      * ⚠️ 刪除 flexFreeFallback（'您未訂閱「進階自訂選單」，已存為免費的基本款氣泡主選單
      * （訂閱後可改用輪播卡片樣式）'）：那句話宣稱了**兩件都沒發生的事**——

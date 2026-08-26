@@ -4,7 +4,7 @@ import { requireFeature } from '@/server/features';
 import { getLineCredentials, lineSetDefaultRichMenu } from '@/server/line';
 import { type BusinessType } from '@/config/modes';
 import {
-  richMenuDesignSchema, buildRichMenuPayload, publishRichMenu, readDesign, writeDesign,
+  buildRestoreRichMenuInput, publishRichMenu, readDesign, writeDesign,
 } from '@/server/rich-menu';
 
 /**
@@ -74,19 +74,19 @@ export const POST = handle(async () => {
   }
 
   // ── 路徑 2：id 失效（或從來沒有）→ 用 config 重建
-  const design = richMenuDesignSchema.parse(restorePoint.config ?? {});
   const { data: tenantRow } = await t.supabase.from('tenants')
     .select('business_type').eq('id', t.tenantId).maybeSingle();
   const businessType = (tenantRow?.business_type ?? 'LOCAL_SHOP') as BusinessType;
+  const restored = buildRestoreRichMenuInput(restorePoint.config, businessType);
 
   const result = await publishRichMenu({
     supabase: t.supabase,
     tenantId: t.tenantId,
     token,
-    payload: buildRichMenuPayload(design, businessType),
+    payload: restored.payload,
     config: restorePoint.config,
-    theme: design.theme,
-    bgImageUrl: design.bgImageUrl,
+    theme: restored.theme,
+    bgImageUrl: restored.bgImageUrl,
     lineConfig,
   });
 

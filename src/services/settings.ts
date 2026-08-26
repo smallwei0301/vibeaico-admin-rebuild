@@ -9,6 +9,7 @@ import type { BusinessType } from '@/config/modes';
 import type {
   BindableLineUser, OwnerNotifyRecipient, OwnerNotifyState, SetupStatus,
 } from '@/lib/types';
+import type { RichMenuCustomPublishedConfig } from '@/lib/rich-menu-published-config';
 import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_MODE, MOCK_TENANTS, byMode } from '@/mock';
 
 /**
@@ -467,6 +468,12 @@ export type RichMenuDesignPayload = {
   name?: string;
 };
 
+/** create-custom 的請求本體；後端發布後才加上 `kind: 'CUSTOM'` 存為 PUBLISHED config。 */
+export type RichMenuCustomPayload = Omit<RichMenuCustomPublishedConfig, 'kind'>;
+
+/** GET advanced-config 的 published.config 可能是固定版型或任意座標 custom。 */
+export type RichMenuPublishedConfig = RichMenuDesignPayload | RichMenuCustomPublishedConfig;
+
 /** 建立並發布自訂版型／每格設定的選單（會維護還原點，§6.2.2 三代輪替）。 */
 export const createAdvancedRichMenu = (design: RichMenuDesignPayload) =>
   adapt<{ richMenuId: string }>(
@@ -480,28 +487,12 @@ export const createAdvancedRichMenu = (design: RichMenuDesignPayload) =>
 /**
  * 完全自訂座標區塊的發布（§6.2.4）。
  *
- * ⚠️ **誠實標註：本函式目前沒有任何呼叫端**（比照 `src/server/flex-menu.ts` 的
- * `FLEX_POPUP` 分支、14 分冊 §8.8 對 `/api/bookings/available-slots` 的處理）。
+ * 選單設計頁的「自訂格數」已接上本函式：原站 DOM 只留行／列與逐格設定，沒有
+ * 座標 payload。頁面採等分格線後交給本端點；該幾何規則是實作選擇，不宣稱還原。
  *
- * 原因不是忘了接，是**選單設計頁沒有自由座標編輯器**：那一頁只有 `RICH_MENU_LAYOUTS`
- * 的七種格線版型，畫不出「任意矩形」。端點與這支包裝是照規格（`create-custom` 在
- * `docs/specs/line-settings.json:1600`）補齊的能力，**已實作、已整合測試、
- * 刻意尚未被使用**——不是已經生效的功能。
- *
- * ⚠️ 它與 14 分冊 §10 那種「綠燈孤兒」**不同性質**，這個區別很重要：
- * `upload-bg-image` 是被更好的實作取代的**過去能力**（所以刪掉），
- * 這一支是還沒有 UI 可以觸發的**未來能力**（所以留著並標註）。
- * 判斷標準是「有沒有第二條路在做同一件事」——這裡沒有。
- *
- * ⚠️ 頁面**不得**因為這支存在就宣稱支援自由座標排版。要接上它，先做那個編輯器。
+ * 這仍不是任意拖拉矩形編輯器：端點可收任意 bounds，但頁面目前只產生等分格線。
  */
-export const createCustomRichMenu = (body: {
-  theme?: string;
-  areas: { bounds: { x: number; y: number; width: number; height: number } }[];
-  bgImageUrl?: string;
-  chatBarText?: string;
-  name?: string;
-}) =>
+export const createCustomRichMenu = (body: RichMenuCustomPayload) =>
   adapt<{ richMenuId: string }>(
     () => { throw demoLineUnavailable(); },
     () => request<{ richMenuId: string }>('/api/settings/line/rich-menu/create-custom', {
@@ -591,7 +582,7 @@ export const restorePreviousRichMenu = () =>
 
 export type AdvancedConfig = {
   draft: (RichMenuDesignPayload & { updatedAt: string }) | null;
-  published: { config: RichMenuDesignPayload; richMenuId: string; updatedAt: string } | null;
+  published: { config: RichMenuPublishedConfig; richMenuId: string; updatedAt: string } | null;
   /** 只回時間，不回整份設計（畫面只需要知道有沒有、是什麼時候的） */
   restorePoint: { updatedAt: string } | null;
 };

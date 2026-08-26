@@ -277,13 +277,23 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
 
   /* ================================================== 4. 自行掃出的同類項目 */
   describe('4. 同類殘留（自行掃描）', () => {
-    it('使用說明的每一步都標明哪些只影響預覽、哪些才會真的送出', () => {
+    it('使用說明把訂閱後真正會送出的固定／自訂版型，與未訂閱的基本款講清楚', () => {
       const [themeStep, layoutStep, cellStep, popupStep, publishStep] = t.intro.richMenuSteps;
-      expect(themeStep).toContain('只有這一項會隨發布送出');
-      expect(layoutStep).toContain('只影響本頁預覽');
-      expect(cellStep).toContain('只影響本頁預覽');
+      /*
+       * ⚠️ 前提變更（issue #19 + 原站 line-settings DOM 的 advCustomRows/Cols）：
+       * create-advanced 已讓固定版型與每格設定真的送出；本輪補上 create-custom
+       * 的行／列 UI。舊斷言把舊 basic create 的限制套到已訂閱路徑，會反過來
+       * 要求店家頁面說假話。新斷言同時釘住兩條真實路徑與未訂閱降級。
+       */
+      expect(themeStep).toContain('訂閱「進階自訂選單」後會隨發布送出');
+      expect(layoutStep).toContain('自訂格數');
+      expect(layoutStep).toContain('會隨發布送出');
+      expect(cellStep).toContain('訂閱後會隨發布送出');
+      expect(cellStep).toContain('未訂閱');
+      expect(publishStep).toContain('訂閱後會把所選版型與每格設定送到 LINE');
+      expect(publishStep).toContain('未訂閱時才會改送業態預設六格');
       expect(popupStep).toContain('尚未建置');
-      expect(publishStep).not.toContain('即生效');
+      expect(publishStep).not.toContain('所選主題的底圖與預設六格文字');
       /*
        * ⚠️ 前提變更（issue #6）：Flex 分頁的「發布」現在真的呼叫
        * POST /api/settings/line/flex-menu，所以「尚未接上儲存」那句已經不成立，
@@ -302,9 +312,9 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       }
     });
 
-    it('佈局區常駐告示：選了也不會改變顧客看到的選單', () => {
-      expect(t.layout.publishFixedNote).toContain('只影響本頁預覽');
-      expect(t.layout.publishFixedNote).toContain('3×2 六格');
+    it('佈局區常駐告示：訂閱後會發布，未訂閱才會降級為基本六格', () => {
+      expect(t.layout.publishFixedNote).toContain('固定佈局與每格設定會隨發布送到 LINE');
+      expect(t.layout.publishFixedNote).toContain('未訂閱');
       expect(code).toContain('{t.layout.publishFixedNote}');
     });
 
@@ -399,10 +409,11 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(t.cells.flexPopupNotEffective).toContain('尚未建置');
     });
 
-    it('付費升級文案不再暗示「訂閱後自訂就會出現在 LINE 上」', () => {
-      expect(t.feature.barTail).toContain('訂閱不會讓上列修改出現在 LINE 選單上');
-      expect(t.feature.freeFallbackNotice).toContain('尚未接上發布');
-      expect(t.feature.freeFallbackNotice).not.toMatch(/要套用自訂請訂閱/);
+    it('付費升級文案只承諾已存在的進階發布，並說清楚未訂閱的降級', () => {
+      expect(t.feature.barTail).toContain('自訂格數與每格設定會隨發布送出');
+      expect(t.feature.barTail).toContain('未訂閱');
+      expect(t.feature.freeFallbackNotice).toContain('未訂閱「進階自訂選單」時');
+      expect(t.feature.freeFallbackNotice).toContain('不會送出');
       // 描述「不存在的訂閱閘門」的三個鍵已刪除
       const keys = Object.keys(t.feature);
       for (const dead of ['advancedNeeded', 'cellEditNeeded', 'downgradeHint']) {
@@ -496,7 +507,7 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
        * ⚠️ 未訂閱時必須走基本 `create`：進階端點擋 CUSTOM_RICH_MENU（09 分冊 §5），
        * 一律改打進階端點會讓免費店家的發布鈕直接 403——把一顆本來會動的按鈕弄壞。
        */
-      expect(code).toMatch(/subscribed\s*\r?\n?\s*\?\s*await createAdvancedRichMenu/);
+      expect(code).toMatch(/subscribed\s*\?\s*customGrid\s*\?\s*await createCustomRichMenu\(customDesignPayload\(\)\)\s*:\s*await createAdvancedRichMenu\(designPayload\(\)\)/);
     });
 
     /*

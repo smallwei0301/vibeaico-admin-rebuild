@@ -177,6 +177,56 @@ export function buildCustomRichMenuPayload(
   };
 }
 
+/**
+ * 把 RESTORE_POINT 裡已存的 config 還原成可重新發布的資料。
+ *
+ * LINE 還留著舊 richMenuId 時 restore route 只切回預設，不會走這裡；只有店家
+ * 在 OA Manager 手動刪了那張選單時才需要重建。此時不能拿 CUSTOM 的 `areas`
+ * 丟給 fixed schema（它會套 default 3+4），否則會把 LINE 上原本的任意座標悄悄
+ * 換成另一張選單。反過來，殘缺的舊資料也不准靠 schema defaults 猜一張出來。
+ */
+export type RestoreRichMenuInput = {
+  kind: 'CUSTOM' | 'FIXED';
+  payload: ReturnType<typeof buildCustomRichMenuPayload> | ReturnType<typeof buildRichMenuPayload>;
+  theme: string;
+  bgImageUrl: string;
+};
+
+const FIXED_RESTORE_KEYS = ['theme', 'layout', 'cells', 'bgImageUrl', 'chatBarText', 'name'] as const;
+
+const restoreConfigInvalid = () => new ApiHttpError(
+  400,
+  '已儲存的 Rich Menu 設定不完整或類型不支援，無法忠實重建；請不要發布另一張預設選單。',
+  ERR.VALIDATION,
+);
+
+export function buildRestoreRichMenuInput(
+  config: Record<string, unknown>, businessType: BusinessType,
+): RestoreRichMenuInput {
+  if (config.kind === 'CUSTOM') {
+    const parsed = richMenuCustomSchema.safeParse(config);
+    if (!parsed.success) throw restoreConfigInvalid();
+    return {
+      kind: 'CUSTOM',
+      payload: buildCustomRichMenuPayload(parsed.data),
+      theme: parsed.data.theme,
+      bgImageUrl: parsed.data.bgImageUrl,
+    };
+  }
+
+  // `kind` 是存檔格式的 discriminant；未知 kind 不能當成 fixed config 忽略掉。
+  if ('kind' in config || !FIXED_RESTORE_KEYS.every((key) => Object.hasOwn(config, key)))
+    throw restoreConfigInvalid();
+  const parsed = richMenuDesignSchema.safeParse(config);
+  if (!parsed.success) throw restoreConfigInvalid();
+  return {
+    kind: 'FIXED',
+    payload: buildRichMenuPayload(parsed.data, businessType),
+    theme: parsed.data.theme,
+    bgImageUrl: parsed.data.bgImageUrl,
+  };
+}
+
 /* ------------------------------------------------------------------ 底圖 */
 
 /**

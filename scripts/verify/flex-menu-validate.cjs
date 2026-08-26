@@ -77,6 +77,11 @@ const cases = [
     flexCards: [card('一二三四五六七八九十一二三四五六七八九十')],
   }],
   ['關閉 + HINT（純文字 fallback）', { flexMenuEnabled: false, flexMenuFallback: 'HINT' }],
+  // issue #19：Flex carousel 後會多送一則使用提示；必須整包交給 LINE 驗證。
+  ['flexShowTip 開啟（兩則訊息：Flex + 使用提示）', {
+    flexCards: [card('預約')],
+    flexShowTip: true,
+  }],
   // 14 分冊 §8.20：卡片契約多了 optional linkUrl → 按鈕變 uri action
   ['廣告卡有 linkUrl（uri action，https）', { flexCards: [
     card('本月優惠', { ad: true, linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/' }),
@@ -107,9 +112,9 @@ const out = [];
 for (const [name, cfg] of cases) {
   const o = buildFlexMenuOutcome(cfg, SHOP);
   if (o.kind === 'FLEX' || o.kind === 'HINT') {
-    out.push({ name, kind: o.kind, bubbles: o.bubbleCount ?? null, message: o.message });
+    out.push({ name, kind: o.kind, bubbles: o.bubbleCount ?? null, messages: o.messages });
   } else {
-    out.push({ name, kind: o.kind, bubbles: null, message: null });
+    out.push({ name, kind: o.kind, bubbles: null, messages: [] });
   }
 }
 
@@ -123,7 +128,7 @@ for (const [name, cfg] of cases) {
  * 因為正常路徑根本產不出這種訊息——那正是它要證明的事。
  */
 const clone = (m) => JSON.parse(JSON.stringify(m));
-const oneCard = (extra) => buildFlexMenuOutcome({ flexCards: [card('本月優惠', extra)] }, SHOP).message;
+const oneCard = (extra) => buildFlexMenuOutcome({ flexCards: [card('本月優惠', extra)] }, SHOP).messages[0];
 
 const linkBase = oneCard({ linkUrl: 'https://vibeaico-admin-rebuild.vercel.app/' });
 const withScheme = (uri) => {
@@ -135,11 +140,22 @@ const withScheme = (uri) => {
 const httpHero = clone(oneCard({ imageUrl: 'https://vibeaico-admin-rebuild.vercel.app/favicon.ico' }));
 httpHero.contents.contents[0].hero.url = 'http://vibeaico-admin-rebuild.vercel.app/favicon.ico';
 
+/*
+ * issue #19 的必要反向控制：不是只驗第一則 Flex，而是把**第二則**提示文字弄壞。
+ * 若這條也拿到 200，正向的兩則訊息 200 不能當作「LINE 驗了整個陣列」的證據。
+ */
+const tipOutcome = buildFlexMenuOutcome({ flexCards: [card('預約')], flexShowTip: true }, SHOP);
+if (tipOutcome.kind !== 'FLEX' || tipOutcome.messages.length !== 2)
+  throw new Error('flexShowTip=true 沒有產生預期的兩則訊息，停止 LINE validate');
+const invalidTip = clone(tipOutcome.messages);
+invalidTip[1].text = '';
+
 const neg = [
-  ['uri action 用 javascript:', withScheme('javascript:alert(1)')],
-  ['uri action 用 data:', withScheme('data:text/html,x')],
-  ['uri action 用 ftp:', withScheme('ftp://a.example/')],
-  ['hero 圖 url 用 http —— issue #6 留下的基準線，本輪重跑', httpHero],
+  ['uri action 用 javascript:', [withScheme('javascript:alert(1)')]],
+  ['uri action 用 data:', [withScheme('data:text/html,x')]],
+  ['uri action 用 ftp:', [withScheme('ftp://a.example/')]],
+  ['hero 圖 url 用 http —— issue #6 留下的基準線，本輪重跑', [httpHero]],
+  ['flexShowTip 第二則使用提示為空字串', invalidTip],
 ];
 
 /*
@@ -202,12 +218,12 @@ const PROBE_URIS = [
 const probes = PROBE_URIS
   .map(([uri, kind]) => ({
     name: '[' + kind + '] uri=' + JSON.stringify(uri),
-    message: withScheme(uri),
+    messages: [withScheme(uri)],
   }));
 
 process.stdout.write(JSON.stringify({
   positive: out,
-  negative: neg.map(([name, message]) => ({ name, message })),
+  negative: neg.map(([name, messages]) => ({ name, messages })),
   probes,
 }));
 `);
@@ -218,13 +234,15 @@ process.stdout.write(JSON.stringify({
 }
 
 /**
- * 送一則訊息給 LINE 的 validate 端點，回傳 { status, text }。
+ * 送完整訊息陣列給 LINE 的 validate 端點，回傳 { status, text }。
  *
  * ⚠️ 連線層錯誤（sandbox 出口 proxy 偶發 ECONNRESET）**重試**，不當成 LINE 的回答。
  * 把 TCP 斷線印成「LINE 退回」就是本專案一直在清的那種假的已知——
  * 我們並沒有量到 LINE 說什麼。重試 3 次仍失敗就 throw，讓整支腳本紅掉。
  */
-async function validate(message) {
+async function validate(messages) {
+  if (!Array.isArray(messages) || messages.length === 0)
+    throw new Error('validate/reply 必須收到至少一則訊息；空陣列不是驗證成功');
   let lastErr;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
@@ -234,7 +252,7 @@ async function validate(message) {
           Authorization: `Bearer ${TOKEN}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ messages: [message] }),
+        body: JSON.stringify({ messages }),
       });
       return { status: res.status, text: await res.text() };
     } catch (e) {
@@ -251,14 +269,14 @@ async function main() {
 
   console.log('=== 正向：我們真的會送給顧客的 JSON，LINE 要收得下 ===');
   for (const c of positive) {
-    if (!c.message) {
+    if (!c.messages?.length) {
       console.log(`SKIP  ${c.name} —— kind=${c.kind}，沒有訊息可驗（這是預期行為）`);
       continue;
     }
-    const { status, text } = await validate(c.message);
+    const { status, text } = await validate(c.messages);
     const bubbles = c.bubbles === null ? '-' : `${c.bubbles} bubble`;
     if (status === 200) {
-      console.log(`PASS  ${c.name} [${c.kind}, ${bubbles}] → HTTP ${status} ${text || '{}'}`);
+      console.log(`PASS  ${c.name} [${c.kind}, ${bubbles}, ${c.messages.length} 則] → HTTP ${status} ${text || '{}'}`);
     } else {
       failed += 1;
       console.log(`FAIL  ${c.name} [${c.kind}, ${bubbles}] → HTTP ${status} ${text}`);
@@ -273,7 +291,7 @@ async function main() {
    */
   console.log('\n=== 負向對照：繞過我們的防線做出來的 JSON，LINE 必須退回 ===');
   for (const c of negative) {
-    const { status, text } = await validate(c.message);
+    const { status, text } = await validate(c.messages);
     if (status === 200) {
       failed += 1;
       console.log(`FAIL  ${c.name} → LINE 竟然收下了（HTTP 200）——這條對照失效`);
@@ -288,7 +306,7 @@ async function main() {
    */
   console.log('\n=== scheme 探測（不判定通過與否，只記錄 LINE 實際的回答）===');
   for (const c of probes) {
-    const { status, text } = await validate(c.message);
+    const { status, text } = await validate(c.messages);
     const verdict = status === 200 ? 'LINE 收下' : 'LINE 退回';
     console.log(`INFO  ${c.name} → HTTP ${status}（${verdict}）${status === 200 ? '' : text}`);
   }
