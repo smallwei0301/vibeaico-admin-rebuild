@@ -110,6 +110,21 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE=services 至少 1；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=token 已設定。percent = done 數/5*100 |
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 
+### A-1.1 LINE 老闆通知 owner-notify（`src/services/settings.ts` 呼叫，issue #18）
+
+原站有這四支（`docs/specs/dashboard.json` 的 `jsApiCalls` 逐字），04 分冊原本零記載。
+**完整契約（method、body、錯誤、狀態語意、觸發事件、額度 n 倍行為）寫在
+`06-LINE-INTEGRATION.md` §5.5**，這裡只列索引避免兩處分岔：
+
+| 端點 | method | 說明 |
+|---|---|---|
+| `/api/settings/line/owner-notify` | `GET` / `DELETE` | 狀態＋名單＋`maxRecipients` ／ 解除全部 |
+| `/api/settings/line/owner-notify/line-users` | `GET` | 可加入的 LINE 好友（已 follow 且不在名單中） |
+| `/api/settings/line/owner-notify/bind` | `POST` | 本人自我認領（「是我，綁定通知」） |
+| `/api/settings/line/owner-notify/recipients/:id` | `POST` / `DELETE` | 加入 ／ 移出名單（`:id` = `line_user_id`） |
+
+⚠️ **原站沒有 `toggle` 端點**——「關掉通知」＝移除接收者。不得自行補一支。
+
 ### A-2 預約（`src/services/bookings.ts`）
 
 | 端點 | 規格 |

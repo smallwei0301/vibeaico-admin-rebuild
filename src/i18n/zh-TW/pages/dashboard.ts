@@ -111,6 +111,69 @@ export const dashboardPage = {
     resetHint: '額度將於每月 1 號重置。如需更多額度請聯繫客服。',
   },
 
+  /* ---------------------------------------------- 老闆通知（owner-notify）
+   * 文案逐字取自 docs/specs/dashboard.json 的 jsStrings（原站唯一事實來源），
+   * 契約見 06 分冊 §5.5。標「我方新增」的那幾句規格未載，理由寫在該行。
+   */
+  ownerNotify: {
+    title: 'LINE 老闆通知',
+    /** 三態逐字；noRecipients 是我方新增（規格三態蓋不住「名單為空」，見 §5.5） */
+    status: {
+      enabled: 'LINE 通知已開啟',
+      disconnected: 'LINE 通知已綁定（連線中斷）',
+      noRecipients: 'LINE 已設定，尚未加入接收者',
+      notConfigured: '未設定 LINE',
+    },
+    /** 連線中斷時的說明（逐字，含指向 LINE 設定頁的連結文字） */
+    disconnectedHint: 'LINE 連線已中斷，通知暫停發送中——請至 ',
+    disconnectedHintLink: 'LINE 設定頁',
+    disconnectedHintTail: ' 檢查並重新儲存設定以恢復。',
+    /** 我方新增：名單為空時要說清楚「現在一則都不會發」，不可留白讓人以為有在發 */
+    noRecipientsHint: '通知名單目前是空的，新預約不會發出任何 LINE 通知。',
+    /** 我方新增：未設定 LINE 時的指引 */
+    notConfiguredHint: '尚未設定 LINE Channel，無法發送老闆通知。',
+    /** 逐字：`></i>每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）` */
+    fanout: (n: number) => `每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）`,
+    /** 逐字：`></i>「主要」接收者另外會收到訂閱到期／儲值提醒（僅發給主要一位）。` */
+    primaryHint: '「主要」接收者另外會收到訂閱到期／儲值提醒（僅發給主要一位）。',
+    primaryBadge: '主要',
+    /** 逐字：顯示名稱缺漏時的 fallback */
+    unnamed: '(LINE 用戶)',
+    addRecipient: '新增接收者',
+    /** 逐字：`>尚無可加入的 LINE 好友</option>` */
+    noBindableUsers: '尚無可加入的 LINE 好友',
+    selectPlaceholder: '選擇要加入通知名單的 LINE 好友',
+    /** 逐字：`>已達上限 ${_notify.maxRecipients} 位</span>` */
+    atLimit: (max: number) => `已達上限 ${max} 位`,
+    bindSelf: '是我，綁定通知',
+    unbindAll: '解除全部',
+    confirm: {
+      /** 逐字 */
+      bindSelf: '確認是您本人嗎？',
+      add: '確認將此人加入通知名單？',
+      removeOther: '確定將此人移出通知名單？其他接收者不受影響。',
+      /** 逐字（`${next}` 是遞補者的顯示名稱） */
+      removePrimary: (next: string) =>
+        `此人是「主要」接收者。移除後「${next}」將成為主要接收者（訂閱到期／儲值提醒改發給他）。確定移除？`,
+      /** 逐字 */
+      removeLast: '這是最後一位接收者，移除後將不再收到 LINE 即時通知。確定移除？',
+      /** 逐字 */
+      unbindAll: (n: number) =>
+        `確定解除全部 ${n} 位接收者的綁定？之後不會再收到 LINE 即時通知。`,
+    },
+    toast: {
+      /** 逐字 */
+      bound: '綁定成功！之後有新預約會即時通知綁定的 LINE。',
+      bindFailed: '綁定失敗',
+      removed: '已移除接收者',
+      unbound: '已解除綁定',
+      added: '已加入通知名單',
+    },
+    errors: {
+      load: '無法載入老闆通知設定',
+    },
+  },
+
   /* -------------------------------------------------------------- 統計卡 */
   stats: {
     todayBookings: '今日預約',

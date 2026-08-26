@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowRightCircle, BarChart3, Bell, CalendarCheck, CalendarDays,
   CalendarPlus, ClipboardCopy, Clock, Copy, DollarSign, ExternalLink, Eye,
   Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
-  Settings, Ticket, TrendingDown, Trophy, Users, X, Zap,
+  Settings, Star, Ticket, Trash2, TrendingDown, Trophy, UserPlus, Users, X, Zap,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -16,10 +16,14 @@ import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
 import { clearDemoData, getDemoDataStatus } from '@/services/demo-data';
-import { getSetupStatus } from '@/services/settings';
+import {
+  addOwnerNotifyRecipient, bindOwnerNotify, clearOwnerNotify, getOwnerNotify,
+  getSetupStatus, listOwnerNotifyLineUsers, removeOwnerNotifyRecipient,
+} from '@/services/settings';
 import { listBookings } from '@/services/bookings';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
@@ -35,7 +39,8 @@ import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
 } from '@/lib/utils';
 import type {
-  Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance,
+  BindableLineUser, Booking, BookingStatus, DashboardAlerts, DashboardStats,
+  OwnerNotifyRecipient, OwnerNotifyState, SetupStatus, StaffPerformance,
 } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -249,6 +254,29 @@ export default function DashboardPage() {
     }
   };
 
+  /* ------------------------------------------ 老闆通知（owner-notify，issue #18）
+   * 名單、可加入的好友、四支端點的 handler。狀態一律來自後端（getOwnerNotify），
+   * 頁面不自己推導「應該是已開啟吧」——三＋一態的判定見 06 分冊 §5.5。
+   */
+  const [ownerNotify, setOwnerNotify] = React.useState<OwnerNotifyState | null>(null);
+  const [bindable, setBindable] = React.useState<BindableLineUser[]>([]);
+  const [pickedLineUser, setPickedLineUser] = React.useState('');
+  const [ownerNotifyBusy, setOwnerNotifyBusy] = React.useState(false);
+  /** 開著的確認視窗：新增／本人綁定／移除某一位／解除全部 */
+  const [onConfirm, setOnConfirm] = React.useState<
+    | { kind: 'ADD' | 'BIND_SELF' }
+    | { kind: 'REMOVE'; recipient: OwnerNotifyRecipient }
+    | { kind: 'CLEAR' }
+    | null
+  >(null);
+
+  const reloadOwnerNotify = React.useCallback(async () => {
+    const [state, users] = await Promise.all([getOwnerNotify(), listOwnerNotifyLineUsers()]);
+    setOwnerNotify(state);
+    setBindable(users.lineUsers);
+    setPickedLineUser((prev) => (users.lineUsers.some((u) => u.lineUserId === prev) ? prev : ''));
+  }, []);
+
   const [focusOpen, setFocusOpen] = React.useState(true);
   const [confirmSkipFocus, setConfirmSkipFocus] = React.useState(false);
   const [calSyncPromoOpen, setCalSyncPromoOpen] = React.useState(true);
@@ -268,6 +296,9 @@ export default function DashboardPage() {
     })();
     void (async () => {
       try { setSetup(await getSetupStatus()); } catch (e) { fail(t.errors.setupStatus, e); }
+    })();
+    void (async () => {
+      try { await reloadOwnerNotify(); } catch (e) { fail(t.ownerNotify.errors.load, e); }
     })();
     void (async () => {
       try {
@@ -293,7 +324,7 @@ export default function DashboardPage() {
           : []);
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
-  }, [fail, showSampleData]);
+  }, [fail, reloadOwnerNotify, showSampleData]);
 
   const weeklyTrend = showSampleData
     ? byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC })
@@ -308,6 +339,83 @@ export default function DashboardPage() {
       toast.show(t.publicUrl.copied);
     } catch {
       toast.show(`${t.publicUrl.manualCopy}${PUBLIC_BOOKING_URL}`, 'warning');
+    }
+  };
+
+  /* --------------------------------------- 老闆通知的四個動作（每個都真的打端點）
+   * 成功訊息一律在端點回來之後才顯示；失敗就顯示端點回的 message（例如
+   * 「已達上限 3 位…」），不吞掉、也不改寫成一句籠統的「操作失敗」。
+   */
+  const ownerRecipients = ownerNotify?.recipients ?? [];
+  const ownerMax = ownerNotify?.maxRecipients ?? 0;
+  const ownerAtLimit = !!ownerNotify && ownerRecipients.length >= ownerMax;
+  const recipientName = (r: { displayName: string }) => r.displayName || t.ownerNotify.unnamed;
+  /** 移除某一位之後會遞補成主要的那一位（＝名單順序的下一位） */
+  const nextAfter = (r: OwnerNotifyRecipient) =>
+    ownerRecipients.find((x) => x.lineUserId !== r.lineUserId) ?? null;
+
+  const runOwnerNotify = async (action: () => Promise<void>, successMessage: string) => {
+    setOwnerNotifyBusy(true);
+    try {
+      await action();
+      await reloadOwnerNotify();
+      toast.show(successMessage);
+    } catch (e) {
+      toast.show(
+        e instanceof Error && e.message ? e.message : t.ownerNotify.toast.bindFailed,
+        'danger',
+      );
+    } finally {
+      setOwnerNotifyBusy(false);
+      setOnConfirm(null);
+    }
+  };
+
+  const confirmOwnerNotify = () => {
+    if (!onConfirm) return;
+    if (onConfirm.kind === 'BIND_SELF')
+      void runOwnerNotify(
+        async () => { await bindOwnerNotify(pickedLineUser); },
+        t.ownerNotify.toast.bound,
+      );
+    else if (onConfirm.kind === 'ADD')
+      void runOwnerNotify(
+        async () => { await addOwnerNotifyRecipient(pickedLineUser); },
+        t.ownerNotify.toast.added,
+      );
+    else if (onConfirm.kind === 'REMOVE') {
+      const { recipient } = onConfirm;
+      void runOwnerNotify(
+        async () => { await removeOwnerNotifyRecipient(recipient.lineUserId); },
+        t.ownerNotify.toast.removed,
+      );
+    } else void runOwnerNotify(async () => { await clearOwnerNotify(); }, t.ownerNotify.toast.unbound);
+  };
+
+  /** 三種移除確認文案（規格逐字）：最後一位／主要（帶遞補者名字）／其他 */
+  const removeMessage = (r: OwnerNotifyRecipient): string => {
+    if (ownerRecipients.length === 1) return t.ownerNotify.confirm.removeLast;
+    if (r.isPrimary) {
+      const next = nextAfter(r);
+      return t.ownerNotify.confirm.removePrimary(next ? recipientName(next) : t.ownerNotify.unnamed);
+    }
+    return t.ownerNotify.confirm.removeOther;
+  };
+
+  const ownerConfirmMessage = (): string => {
+    if (!onConfirm) return '';
+    if (onConfirm.kind === 'BIND_SELF') return t.ownerNotify.confirm.bindSelf;
+    if (onConfirm.kind === 'ADD') return t.ownerNotify.confirm.add;
+    if (onConfirm.kind === 'REMOVE') return removeMessage(onConfirm.recipient);
+    return t.ownerNotify.confirm.unbindAll(ownerRecipients.length);
+  };
+
+  const ownerStatusLabel = (): string => {
+    switch (ownerNotify?.status) {
+      case 'ENABLED': return t.ownerNotify.status.enabled;
+      case 'DISCONNECTED': return t.ownerNotify.status.disconnected;
+      case 'NO_RECIPIENTS': return t.ownerNotify.status.noRecipients;
+      default: return t.ownerNotify.status.notConfigured;
     }
   };
 
@@ -632,6 +740,139 @@ export default function DashboardPage() {
           </CardBody>
         </Card>
       ) : null}
+
+      {/* ------------------------------------------ LINE 老闆通知（issue #18） */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>
+            <Bell size={16} />
+            {t.ownerNotify.title}
+          </CardTitle>
+          <Badge
+            tone={
+              ownerNotify?.status === 'ENABLED' ? 'success'
+                : ownerNotify?.status === 'DISCONNECTED' ? 'danger' : 'neutral'
+            }
+          >
+            {ownerNotify ? ownerStatusLabel() : PLACEHOLDER}
+          </Badge>
+        </CardHeader>
+        <CardBody>
+          {ownerNotify?.status === 'DISCONNECTED' ? (
+            <Alert tone="danger" className="mb-3">
+              {t.ownerNotify.disconnectedHint}
+              <Link href="/tenant/line-settings">{t.ownerNotify.disconnectedHintLink}</Link>
+              {t.ownerNotify.disconnectedHintTail}
+            </Alert>
+          ) : null}
+          {ownerNotify?.status === 'NOT_CONFIGURED' ? (
+            <Alert tone="warning" className="mb-3">{t.ownerNotify.notConfiguredHint}</Alert>
+          ) : null}
+
+          {ownerRecipients.length === 0 ? (
+            <EmptyState
+              icon={Bell}
+              title={t.ownerNotify.status.noRecipients}
+              description={t.ownerNotify.noRecipientsHint}
+            />
+          ) : (
+            <>
+              <ul className="mb-3 flex flex-col gap-2">
+                {ownerRecipients.map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold text-dark">{recipientName(r)}</span>
+                      {r.isPrimary ? (
+                        <Badge tone="primary">
+                          <Star size={12} />
+                          {t.ownerNotify.primaryBadge}
+                        </Badge>
+                      ) : null}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={ownerNotifyBusy}
+                      onClick={() => setOnConfirm({ kind: 'REMOVE', recipient: r })}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <p className="form-text">{t.ownerNotify.fanout(ownerRecipients.length)}</p>
+              <p className="form-text">{t.ownerNotify.primaryHint}</p>
+            </>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Select
+              className="max-w-xs"
+              value={pickedLineUser}
+              disabled={ownerNotifyBusy || ownerAtLimit || bindable.length === 0}
+              onChange={(e) => setPickedLineUser(e.target.value)}
+            >
+              <option value="">
+                {bindable.length === 0
+                  ? t.ownerNotify.noBindableUsers
+                  : t.ownerNotify.selectPlaceholder}
+              </option>
+              {bindable.map((u) => (
+                <option key={u.lineUserId} value={u.lineUserId}>
+                  {u.displayName || t.ownerNotify.unnamed}
+                </option>
+              ))}
+            </Select>
+            {ownerRecipients.length === 0 ? (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={ownerNotifyBusy || !pickedLineUser}
+                onClick={() => setOnConfirm({ kind: 'BIND_SELF' })}
+              >
+                <Bell size={14} />
+                {t.ownerNotify.bindSelf}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={ownerNotifyBusy || !pickedLineUser || ownerAtLimit}
+                onClick={() => setOnConfirm({ kind: 'ADD' })}
+              >
+                <UserPlus size={14} />
+                {t.ownerNotify.addRecipient}
+              </Button>
+            )}
+            {ownerAtLimit ? (
+              <span className="text-sm text-warning">{t.ownerNotify.atLimit(ownerMax)}</span>
+            ) : null}
+            {ownerRecipients.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={ownerNotifyBusy}
+                onClick={() => setOnConfirm({ kind: 'CLEAR' })}
+              >
+                {t.ownerNotify.unbindAll}
+              </Button>
+            ) : null}
+          </div>
+        </CardBody>
+      </Card>
+
+      <ConfirmModal
+        open={!!onConfirm}
+        onClose={() => setOnConfirm(null)}
+        onConfirm={confirmOwnerNotify}
+        title={t.ownerNotify.title}
+        message={ownerConfirmMessage()}
+        danger={onConfirm?.kind === 'REMOVE' || onConfirm?.kind === 'CLEAR'}
+        loading={ownerNotifyBusy}
+      />
 
       {/* -------------------------------------------------------------- 統計卡 */}
       <div className="mb-4 grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-5">

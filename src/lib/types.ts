@@ -308,6 +308,43 @@ export type TenantSummary = {
   demo?: boolean;
 };
 
+/* -------------------------------------------------- 老闆通知（owner-notify）
+ * issue #18 / 06 分冊 §5.5。名單來源＝該店已加入的 LINE 好友（line_users），
+ * 一位「主要」接收者另外會收到訂閱到期／儲值提醒。
+ */
+
+export type OwnerNotifyRecipient = {
+  id: string;
+  lineUserId: string;
+  /** 可能是空字串（LINE 沒給暱稱）；畫面 fallback 成「(LINE 用戶)」 */
+  displayName: string;
+  pictureUrl: string;
+  isPrimary: boolean;
+  createdAt: string;
+};
+
+/**
+ * `ENABLED`        名單非空，且剛剛真的問過 LINE（GET /v2/bot/info）回 200
+ * `DISCONNECTED`   名單非空，但 LINE 連線異常 → 通知暫停發送中
+ * `NO_RECIPIENTS`  LINE 已設定，但名單是空的 → 一則都不會發
+ * `NOT_CONFIGURED` 尚未設定 LINE Channel
+ */
+export type OwnerNotifyStatus = 'ENABLED' | 'DISCONNECTED' | 'NO_RECIPIENTS' | 'NOT_CONFIGURED';
+
+export type OwnerNotifyState = {
+  status: OwnerNotifyStatus;
+  recipients: OwnerNotifyRecipient[];
+  /** 名單人數上限（後端提供；預設 3，見 migration 0022 檔頭） */
+  maxRecipients: number;
+};
+
+/** 可加入名單的 LINE 好友（已 follow 且尚未在名單中） */
+export type BindableLineUser = {
+  lineUserId: string;
+  displayName: string;
+  pictureUrl: string;
+};
+
 export type SetupStatus = {
   /** 0–100 */
   percent: number;

@@ -180,6 +180,46 @@
         `GET /v2/bot/followers/ids` 回 403 未開放），也沒有可推播的真實 userId。
         這一段的完成條件是**有真人對 Midao 帳號打一次「選單」**，屬人工介入點。
 
+- [x] 【新增】老闆通知 owner-notify（issue #18 / 補齊-3；契約 06 分冊 §5.5，2026-08-26）
+      **（打勾依據＝下列逐條證據；未達成的兩項寫在最後，沒有打勾。）**
+      - migration `0022_owner_notify` 已套用**兩個** Supabase 專案，各自以
+        `information_schema.columns` / `pg_indexes` / `pg_policies` 查詢驗證
+        （含「一租戶最多一位 `is_primary`」的部分唯一索引
+        `u_owner_notify_recipients_primary … WHERE is_primary`，兩份輸出）
+      - 整合 23 綠：`tests/integration/api/owner-notify.18.test.ts`
+        - `:「只回「已加入好友、且尚未在名單中」的人（已在名單者與已封鎖者都被排除）」`
+        - `:「本人認領後名單寫入 DB（service role 直查有這一列）」`、
+          `:「名單原本為空時，第一位自動成為主要（直查 is_primary=true）」`
+        - `:「加入第二位後，主要仍是第一位（新加入者不是主要）」`、
+          `:「達 maxRecipients（3 位）時第 4 位被拒，錯誤訊息說得出上限是幾位」`
+        - `:「移除非主要 → 其他接收者不受影響（主要沒有換人）」`、
+          `:「移除主要 → 下一位自動遞補為主要（直查 is_primary）」`、
+          `:「移除最後一位 → 名單為空（規格逐字：之後不再收到 LINE 即時通知）」`
+        - `:「解除全部後名單為空」`、
+          `:「解除全部後建立預約 → 整個 mock 一個請求都沒有（只有障壁那一則），額度不變」`
+        - **額度與人數連動（至少兩種 n）**：`:「名單 1 位 → mock LINE 恰好 1 則、push_quota_usage +1」`、
+          `:「名單 3 位 → mock LINE 恰好 3 則（收件者＝名單三位）、push_quota_usage +3」`、
+          `:「名單 0 位 → 零 LINE 請求、額度 +0」`
+        - `:「訂閱到期提醒：名單 3 位時 mock LINE 恰好 1 則，且收件者＝is_primary 那位」`、
+          `:「儲值提醒：點數不足時同樣只發主要一位」`、
+          `:「同一張訂閱不會重複提醒：連打兩次 cron，第二次零 LINE 請求」`
+        - `:「(a) 有名單且 LINE 回得動 → ENABLED」`、
+          `:「(b) 有名單但 LINE 連線異常 → DISCONNECTED，且不謊報通知會送達」`、
+          `:「(c) 未設定 LINE Channel → NOT_CONFIGURED」`
+        - `:「B 店讀不到 A 店的接收者，也不能移除 A 店的接收者」`（RLS）
+      - 單元 15 綠：`tests/unit/owner-notify.18.test.ts`（三種推播文案的內容、
+        儀表板 → `src/services/settings.ts` → 端點的靜態鏈路、規格逐字文案不可回歸、
+        「綁定碼」殘留檢查）
+      - 變異測試（證明上面那些斷言真的在防東西）：
+        額度改寫死 `1` → `:「名單 3 位 → …+3」` 轉紅（`expected 1 to be 3`）；
+        提醒改發給全部人 → `:「訂閱到期提醒：…恰好 1 則…」` 轉紅；
+        移除主要時不遞補 → `:「移除主要 → 下一位自動遞補為主要」` 轉紅
+      - 真實 LINE（Midao 頻道，不耗推播額度）：三種推播文案過
+        `POST /v2/bot/message/validate/push`，皆回 `200 OK {}`
+      - ⚠️ **未做、未打勾的兩項**（見 14 分冊 §6.17「沒有做的事」）：
+        「額度用盡時狀態標示 `notified:false` 與原因」（fire-and-forget 沒有承載處）、
+        Playwright 對 Preview 站的實測（本輪未 push，Preview 上還沒有這些端點）
+
 ## Phase 7 — 收尾（07 分冊)
 - [ ] `vercel.json` 四個 cron + `CRON_SECRET` 保護
 - [x] `/api/upload` 圖片上傳

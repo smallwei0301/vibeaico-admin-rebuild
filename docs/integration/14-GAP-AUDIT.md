@@ -260,7 +260,7 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 | 4 | support-chat widget 誠實化 | — | — | #15 |
 | 5 | QR Code 產生與下載 | 0（前端產圖） | REBUILD-SPEC §9.2 已更正 | #16 |
 | 6 | 預約加購 `booking_addons` | 3 | ~~04 §B-1 零記載~~ → **已補寫 04 §B-1.1**，端點與頁面接線完成（§6.14） | #17 ✅ |
-| 7 | LINE 老闆通知 owner-notify | 4 | 06 分冊零記載 | #18 |
+| 7 | LINE 老闆通知 owner-notify | 4 | ~~06 分冊零記載~~ → **已補寫 06 §5.5**，四支端點＋儀表板名單 UI＋`owner-reminders` cron 完成（§6.17） | #18 ✅ |
 | 8 | Rich Menu 進階設計器 | 11 | 06 §6 僅一句 | #19 |
 | 9 | 診所叫號 clinic-queue | 5 | **完全無分冊** | #20 |
 | 10 | 外部行事曆匯入 | 2（＋cron） | 10 §5.5 只有輸出面 | #21 |
@@ -1937,6 +1937,66 @@ issue #7（甲）跑回歸時發現：`tests/integration/api/flex-menu.06.test.t
 修法：把 `lineCallsFor()` 的 `expect(res.status).toBe(200)` 之後補一行
 `await drainWebhook(SHOP_A.shopCode, BASE_URL);` 再讀 `mock.requests`。
 本輪未動它——它屬 issue #6 的驗收檔，改動應由該 issue 的負責人做，以免兩邊互踩。
+
+### 6.17 issue #18（LINE 老闆通知 owner-notify 全套）— 2026-08-26 完成
+
+補齊 §5 第 7 項：原站有一組「老闆通知」（`docs/specs/dashboard.json` 的 `jsApiCalls`
+四支路徑＋二十餘句 `jsStrings`），我方 `grep -rn "owner-notify|ownerNotify|通知名單|接收者" src/`
+零命中、06 分冊零記載。本輪補：**06 分冊 §5.5 契約**（先寫規格再開工）、
+migration **0022_owner_notify**（兩個 Supabase 專案皆已套用並以
+`information_schema.columns` / `pg_indexes` / `pg_policies` 驗證）、四支端點、
+`src/server/owner-notify.ts`、`GET /api/cron/owner-reminders`、
+`src/services/settings.ts` 六支函式、儀表板名單 UI。
+
+#### 複驗結果：改寫後的 issue 與 `docs/specs/dashboard.json` **完全一致**
+
+2026-08-25 的改寫（從「一次性綁定碼」改成「從好友清單挑人＋本人認領＋多接收者
+＋一位主要」）逐條複驗過，四支端點路徑、二十餘句逐字文案全部對得上。
+**只找到一筆與程式碼／規格不符的敘述，而且是在派工單而非 issue 內文**：
+
+> 派工單提醒「`bind` 那一步是顧客在 LINE 裡點的，要用 `drainWebhook()` 等」。
+
+實際：`bind` 是**後台儀表板上的按鈕**——`jsApiCalls` 把
+`/api/settings/line/owner-notify/bind` 列在 dashboard 頁的呼叫清單裡，確認文案
+「確認是您本人嗎？」是後台的 confirm 視窗。整條流程**不經過 webhook**，
+`handleEvent`（§3）因此不需要、也不得為此新增任何分支。
+
+#### 三件規格沒有回答、由我方決定並在文件標明的事
+
+| 決定 | 是誰決定的 |
+|---|---|
+| `maxRecipients = 3` | **擁有者裁示**（issue #1 裁示總表）。理由：額度 200 則/月、每次發 n 位吃 n 則 |
+| 不納入「顧客自行取消」觸發 | **擁有者裁示**。規格只載明新預約與訂閱到期／儲值提醒 |
+| `:id` ＝ `line_user_id`；`NO_RECIPIENTS` 第四態；儲值提醒門檻＝「餘額 < 即將到期訂閱的續訂所需」 | **我方設計**，逐項寫在 06 §5.5 並標明 |
+
+「移除最後一位」**不在**上表——它是規格逐字寫的：
+`這是最後一位接收者，移除後將不再收到 LINE 即時通知。確定移除？`
+所以行為就是「名單為空、之後不再發送」，不需要任何人裁決。
+
+#### 這一輪特別要記的兩件測試設計
+
+1. **額度斷言必須與人數連動，而且至少測兩種 n。**
+   規格逐字是「每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）」。
+   驗收若寫成「收到恰好一則、額度 +1」就釘錯數字——n=1 時，
+   `consumePushQuota(tenantId, 1)` 與 `consumePushQuota(tenantId, recipients.length)`
+   看起來一模一樣。本檔因此有 n=1／n=3／n=0 三個案例；變異測試把它改回寫死 1
+   之後，n=3 那條如預期轉紅（n=1 那條仍綠——這正是為什麼要兩種 n）。
+
+2. **「一租戶最多一位主要」必須是 DB 約束，不是應用層判斷。**
+   應用層的「先 count 再 insert」在併發下兩個請求都會讀到 0 位主要。
+   0022 用部分唯一索引 `on (tenant_id) where is_primary`；
+   `addOwnerNotifyRecipient` 撞 23505 時退回「非主要」再寫一次。
+
+#### 沒有做的事（留白，不要當成做完）
+
+- 驗收清單的「額度用盡時…狀態標示 `notified:false` 與原因」**沒有實作也沒有打勾**：
+  老闆通道是 fire-and-forget（`void notifyOwnerNewBooking(...)`，同 §5 規約），
+  建立預約的回應與 `bookings` 列都沒有地方承載這個結果。已驗的是
+  「額度用盡 → 預約仍成立、一則都不發、額度不變」。要補這一格需要先決定
+  它要顯示在哪裡（多一個欄位而沒有畫面讀它，就是另一種假的已知）。
+- Playwright 對 Preview 站的實測**未執行**：本輪的程式碼還沒 push，Preview 上沒有
+  這些端點與畫面；而在整合測試跑完之後另起第二個 `next dev` 會踩壞 `.next`
+  快取（15 分冊「實測腳本的兩條慣例」）。合併並部署後補做。
 
 ## 9. 第四輪盤點（2026-08-25）：從**原站規格往前找**，而不是從程式碼往回找
 

@@ -423,6 +423,157 @@ export async function notifyBookingStatus(
 
 ---
 
+## 5.5 老闆通知（owner-notify）— `src/server/owner-notify.ts`（issue #18，2026-08-26 新增）
+
+> **本節在 06 分冊原本零記載。** 不是做壞了，是規格從來沒寫（14 分冊 §0 根因 B）。
+> 原站事實基準是 `docs/specs/dashboard.json`（owner-notify 的 UI 全在 JS 裡動態
+> 渲染，證據集中在 `jsStrings` 與 `jsApiCalls`）。
+>
+> ⚠️ 規格只記錄**路徑字串**，**不記錄 HTTP method 與 request/response 形狀**
+> （14 分冊 §9.4 第 1 點）。下面的 method 與契約形狀**是我方設計**，不是原站考據結果。
+
+### 5.5.0 與 §5（顧客通道）的關係：兩條通道，不得合併
+
+| | 顧客通道 §5 `line-notify.ts` | 老闆通道 §5.5 `owner-notify.ts` |
+|---|---|---|
+| 對象 | 該筆預約的顧客一人 | 店家團隊（老闆＋主管），名單 n 位 |
+| 名單來源 | `customers.line_user_id` | `owner_notify_recipients`（從已 follow 的好友挑人） |
+| 觸發 | 預約狀態變更（confirm/cancel/…） | 新預約（全部）／訂閱到期・儲值提醒（僅主要） |
+| 額度 | 每次 1 則 | **每次 n 則**（n = 名單人數） |
+| 開關 | `tenant_settings.notify.*` | 名單本身（名單為空＝不發，原站沒有獨立 toggle） |
+
+### 5.5.1 資料模型（migration 0022）
+
+```sql
+owner_notify_recipients(id, tenant_id, line_user_id, is_primary, created_at)
+  unique (tenant_id, line_user_id)
+  foreign key (tenant_id, line_user_id) → line_users(tenant_id, line_user_id) on delete cascade
+  create unique index … on (tenant_id) where is_primary   -- ★ 一租戶最多一位主要
+tenants.owner_notify_max_recipients int not null default 3
+owner_notify_reminder_log(tenant_id, kind, ref, sent_at)  -- 提醒去重
+```
+
+- **「一租戶最多一位 `is_primary`」由 DB 的部分唯一索引保證，不是靠應用層先查後寫。**
+  應用層的 `count` 再 `insert` 在併發下擋不住（兩個請求都讀到 0 位主要）。
+- `display_name` **不存在本表**：唯一事實來源是 `line_users.display_name`，
+  存副本會在店主改暱稱後分岔。顯示時 join；名稱為空時前端顯示規格的
+  fallback 文案 `(LINE 用戶)`。
+- `max_recipients` **預設 3**。規格證明這個欄位存在（`>已達上限 ${_notify.maxRecipients} 位`，
+  由後端提供），但**沒有任何一句記錄它是幾**——3 是**擁有者 2026-08-25 的裁示**
+  （issue #1 裁示總表），理由：推播額度 200 則/月，而通知每次發給 n 位就消耗 n 則，
+  上限直接決定額度燒速；老闆＋兩位主管是常見規模。**我們選的數字，不是原站考據結果。**
+
+### 5.5.2 認領流程：沒有綁定碼，也沒有 webhook 分支
+
+原站的流程是：
+
+```
+GET  …/owner-notify/line-users        取「已加入好友、且尚未在名單中」的人
+  ↓  （後台下拉選單；空集合時顯示 `尚無可加入的 LINE 好友`）
+POST …/owner-notify/bind              本人按「是我，綁定通知」→ `確認是您本人嗎？`
+  ↓                                    成功 `綁定成功！之後有新預約會即時通知綁定的 LINE。`
+POST …/owner-notify/recipients/:id    之後要加同事按「新增接收者」→ `確認將此人加入通知名單？`
+```
+
+⚠️ issue #18 原本設計的「後台產生一次性**綁定碼** → 店主在 LINE 傳該碼 → webhook 認出」
+在規格裡毫無出處（`grep -rn '綁定碼' docs/` 零命中），2026-08-25 已整段作廢。
+**`bind` 是後台按鈕，不是 LINE 端事件**——確認文案「確認是您本人嗎？」是後台的
+confirm 視窗，`jsApiCalls` 把它列在 dashboard 頁的呼叫清單裡。因此 webhook
+（§3 的 `handleEvent`）**不需要也不得**為此新增任何分支。
+
+`bind` 與 `recipients/:id` 的寫入行為是同一件事（差別只在畫面語意與文案），
+因此兩支端點共用 `addOwnerNotifyRecipient()`——分成兩份實作會慢慢分岔，
+而分岔那天不會有測試紅。
+
+### 5.5.3 四支端點契約（method 與形狀＝我方設計）
+
+| 端點 | method | body / 回應 | 備註 |
+|---|---|---|---|
+| `/api/settings/line/owner-notify` | `GET` | → `{ status, recipients[], maxRecipients }` | 見 5.5.5 狀態語意 |
+| 同上 | `DELETE` | → `{ removed: n }` | 「解除全部」（`確定解除全部 ${n} 位接收者的綁定？`）。需 MANAGER |
+| `…/owner-notify/line-users` | `GET` | → `{ lineUsers: [{ lineUserId, displayName, pictureUrl }] }` | 已 follow 且不在名單中 |
+| `…/owner-notify/bind` | `POST` | `{ lineUserId }` → `{ recipient, maxRecipients }` | 本人認領。需 MANAGER |
+| `…/owner-notify/recipients/:id` | `POST` | → `{ recipient, maxRecipients }` | 加入名單。需 MANAGER |
+| 同上 | `DELETE` | → `{ promoted: Recipient \| null }` | 移出名單。需 MANAGER |
+
+`:id` ＝ **`line_user_id`**（我方設計）。理由：加入時畫面手上只有 `line-users`
+回的 `lineUserId`；加入與移除若用不同的鍵，同一條路徑會有兩種鍵。
+
+⚠️ **原站沒有獨立的 toggle 端點**（`jsApiCalls` 全文沒有 `toggle`）。
+「關掉通知」＝移除接收者（單筆或全部）。**不得自行補一支 `toggle`。**
+
+錯誤：非該店好友或已封鎖 → `404 REQ_002`；已在名單中 → `409 REQ_003`；
+達上限 → `409 REQ_003`，message 逐字含 `已達上限 ${max} 位`。
+
+### 5.5.4 加入與移除規則
+
+- 名單原本為空 → 加入的**第一位自動成為主要**。
+- 已達 `max_recipients` → 加入被拒（前端顯示 `已達上限 ${n} 位`）。
+- 移除**非主要** → 其他接收者不受影響（`確定將此人移出通知名單？其他接收者不受影響。`）。
+- 移除**主要** → 名單順序（`created_at` 遞增）的**下一位自動遞補為主要**
+  （`此人是「主要」接收者。移除後「…」將成為主要接收者（訂閱到期／儲值提醒改發給他）。`）。
+  先刪再升，順序不可反——反過來會有一瞬間兩位主要，撞唯一索引。
+- 移除**最後一位** → 名單為空、之後不再發送。**這不是我方選擇，是規格逐字**：
+  `這是最後一位接收者，移除後將不再收到 LINE 即時通知。確定移除？`
+  所以不擋、不自動關閉任何東西、也不留下「殘存的主要」。
+
+### 5.5.5 狀態語意：三態＋一個規格沒蓋到的態
+
+```
+NOT_CONFIGURED  沒有 Channel Access Token（解密後為空）          → `未設定 LINE`
+NO_RECIPIENTS   有 token，但名單是空的                            → 我方新增，見下
+DISCONNECTED    有名單，但 GET /v2/bot/info 打不通                → `LINE 通知已綁定（連線中斷）`
+ENABLED         有名單，且剛剛真的問過 LINE 且回 200              → `LINE 通知已開啟`
+```
+
+- **每一態都是實際查證過的事實。** 特別是 `ENABLED` 與 `DISCONNECTED` 的分界：
+  這裡**不沿用** `DashboardStats.linePlatformStatus`——那一支「有 token 字串就叫
+  CONNECTED」，從未呼叫過 LINE（CLAUDE.md 點名的例子）。「已綁定」與「連線正常」
+  是兩件事，要分得開就必須真的問一次。`GET /v2/bot/info` 不佔推播額度。
+- `NO_RECIPIENTS` 是**我方新增**（規格三態蓋不住）：LINE 設好了但名單是空的時候，
+  一則通知都不會發出去，說「已開啟」就是假的已知。畫面照實說「尚未加入接收者」。
+- `DISCONNECTED` 時畫面顯示規格逐字的
+  `LINE 連線已中斷，通知暫停發送中——請至 LINE 設定頁 檢查並重新儲存設定以恢復。`
+
+### 5.5.6 觸發事件與額度
+
+| 事件 | 收件者 | 額度 | 觸發點 |
+|---|---|---|---|
+| 新預約 | 名單**全部** n 位 | **n 則** | `POST /api/bookings`（`void notifyOwnerNewBooking(...)`） |
+| 訂閱到期提醒 | **僅主要一位** | 1 則 | `GET /api/cron/owner-reminders`（每日） |
+| 儲值提醒 | **僅主要一位** | 1 則 | 同上 |
+
+- 規格逐字：`每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）`、
+  `「主要」接收者另外會收到訂閱到期／儲值提醒（僅發給主要一位）。`
+- **不用 multicast，逐一 `push`**：畫面說的則數與實際送出的請求數必須對得起來；
+  multicast 一次呼叫送 n 人，送失敗時分不出是哪一位。
+- 額度**先整包扣 n 則**再送；扣不到就**一則都不送**（半套送出會讓一部分人收到、
+  一部分沒收到，而畫面說的是「同時發給 n 位」）。額度不足時**預約仍然成立**，
+  通知失敗只 log（fire-and-forget，同 §5 規約）。
+- **「顧客自行取消」不納入。** `dashboard.json` 全文沒有任何一句把取消與老闆通知
+  綁在一起；擁有者 2026-08-25 裁示不納入（issue #1 裁示總表）——加一個觸發很便宜，
+  發一堆沒人要的通知把 200 則/月的額度燒光很貴。日後找到出處再加。
+
+### 5.5.7 `owner-reminders` cron 的判定條件（一個既有、一個我方設計）
+
+| 提醒 | 判定 | 出處 |
+|---|---|---|
+| 訂閱到期 | `feature_subscriptions.active` 且 `expires_at ∈ (now, now + FEATURE_EXPIRY_WARNING_DAYS]` | **既有常數**（`src/config/features.ts`；`/api/reports/dashboard-alerts` 的 `expiringFeatures` 用同一個窗） |
+| 儲值 | 點數餘額 < 上述即將到期訂閱的續訂所需點數總和 | ⚠️ **我方設計** |
+
+⚠️ 儲值提醒的門檻**規格未載**（`grep -rn 儲值 docs/specs/` 的命中全部在點數頁與
+功能商店頁，都是儲值流程本身，沒有一句記錄提醒門檻）。選這個條件的理由：
+它不引進任何新的魔術數字——兩個數都是系統裡已經有的（餘額 = `tenant_point_transactions`
+最新一筆的 `balance_after`；所需 = `FEATURE_CATALOG` 的月費），而且它解釋了規格為什麼
+把「訂閱到期」與「儲值」寫成同一組提醒（`feature-store.json`：「點數不足時可前往
+『點數管理』儲值」）。**已在 issue #18 留言列為規格缺口，找到出處再改。**
+
+去重（每日跑，同一件事不可以連發七天）走 `owner_notify_reminder_log`：
+訂閱到期 `ref = '<code>@<expires_at>'`（一張訂閱一次）、儲值 `ref = 台北月份鍵`
+（一個月一次）。**推播真的送出去了才寫紀錄**——否則這次沒送到、下次也不會再送。
+
+---
+
 ## 6. Rich Menu / Flex 選單（line-settings、rich-menu-design 頁）
 
 端點（原站清單 `/api/settings/line/rich-menu*`）最小可用集：

@@ -6,7 +6,9 @@ import {
 } from '@/config/tenant-settings';
 import type { FeatureSubscription } from '@/config/features';
 import type { BusinessType } from '@/config/modes';
-import type { SetupStatus } from '@/lib/types';
+import type {
+  BindableLineUser, OwnerNotifyRecipient, OwnerNotifyState, SetupStatus,
+} from '@/lib/types';
 import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_MODE, MOCK_TENANTS, byMode } from '@/mock';
 
 /**
@@ -183,6 +185,64 @@ export const verifyLineSetup = () =>
 
 export const getSetupStatus = () =>
   adapt<SetupStatus>(() => MOCK_SETUP_STATUS, () => request<SetupStatus>('/api/settings/setup-status'));
+
+/* ------------------------------------------------ 老闆通知（owner-notify）
+ * 四支端點（規格逐字路徑見 docs/specs/dashboard.json 的 jsApiCalls），
+ * 契約見 06 分冊 §5.5。儀表板是唯一呼叫端。
+ *
+ * ⚠️ 示範分支：示範店家沒有任何 LINE 官方帳號，也就沒有好友、沒有名單。
+ * 據實回「未設定 LINE ＋ 空名單」，不得編一組看起來像已綁定的接收者——
+ * 那正是 CLAUDE.md 點名的假的已知（同一檔 getTenantSettings 的先例）。
+ */
+
+export const getOwnerNotify = () =>
+  adapt<OwnerNotifyState>(
+    () => ({ status: 'NOT_CONFIGURED', recipients: [], maxRecipients: 3 }),
+    () => request<OwnerNotifyState>('/api/settings/line/owner-notify'),
+  );
+
+export const listOwnerNotifyLineUsers = () =>
+  adapt<{ lineUsers: BindableLineUser[] }>(
+    () => ({ lineUsers: [] }),
+    () => request<{ lineUsers: BindableLineUser[] }>('/api/settings/line/owner-notify/line-users'),
+  );
+
+/** 本人自我認領（「是我，綁定通知」）。示範店家沒有 LINE 可綁 → 丟真正的錯誤。 */
+export const bindOwnerNotify = (lineUserId: string) =>
+  adapt<{ recipient: OwnerNotifyRecipient; maxRecipients: number }>(
+    () => { throw demoLineUnavailable(); },
+    () => request('/api/settings/line/owner-notify/bind', {
+      method: 'POST',
+      body: JSON.stringify({ lineUserId }),
+    }),
+  );
+
+/** 加入通知名單（「新增接收者」）。:id ＝ lineUserId（見該 route 檔頭）。 */
+export const addOwnerNotifyRecipient = (lineUserId: string) =>
+  adapt<{ recipient: OwnerNotifyRecipient; maxRecipients: number }>(
+    () => { throw demoLineUnavailable(); },
+    () => request(
+      `/api/settings/line/owner-notify/recipients/${encodeURIComponent(lineUserId)}`,
+      { method: 'POST' },
+    ),
+  );
+
+/** 移出通知名單。回傳 promoted ＝ 遞補為主要的那一位（沒有遞補時 null）。 */
+export const removeOwnerNotifyRecipient = (lineUserId: string) =>
+  adapt<{ promoted: OwnerNotifyRecipient | null }>(
+    () => { throw demoLineUnavailable(); },
+    () => request(
+      `/api/settings/line/owner-notify/recipients/${encodeURIComponent(lineUserId)}`,
+      { method: 'DELETE' },
+    ),
+  );
+
+/** 解除全部接收者的綁定。回傳實際移除幾位。 */
+export const clearOwnerNotify = () =>
+  adapt<{ removed: number }>(
+    () => { throw demoLineUnavailable(); },
+    () => request('/api/settings/line/owner-notify', { method: 'DELETE' }),
+  );
 
 /**
  * 建立並發布 Rich Menu（POST /api/settings/line/rich-menu/create）。
