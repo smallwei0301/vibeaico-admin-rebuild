@@ -104,9 +104,21 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(route).toContain('lineUploadRichMenuImage(token, richMenuId, image.bytes, image.contentType)');
       // route 檔頭自陳：疊圖合成屬後期，本端點用原圖
       expect(route).toContain('本端點直接用底圖原圖上傳');
-      // 端點沒有引入任何繪圖／合成能力，唯一的圖片產生器是純色 PNG
-      expect(route).toContain("import { solidColorPng } from '@/server/png'");
+      /*
+       * 端點沒有引入任何繪圖／合成能力，唯一的圖片產生器是純色 PNG。
+       *
+       * ⚠️ issue #19：底圖取得那一段從本 route 搬到 `src/server/rich-menu.ts` 的
+       * `loadRichMenuBackground()`（進階那四支發布端點要用**完全相同**的優先序，
+       * 留兩份會分岔）。**要守的事實沒變**——這條發布路徑上沒有任何合成能力，
+       * 所以斷言跟著程式碼走：route 委派給誰，就一起檢查誰。
+       * 這是加檢一個檔案，不是放寬。
+       */
+      expect(route).toContain("import { loadRichMenuBackground } from '@/server/rich-menu'");
       expect(route).not.toMatch(/drawText|composite|overlay\(/i);
+
+      const shared = src('src/server/rich-menu.ts');
+      expect(shared).toContain("import { solidColorPng } from './png'");
+      expect(shared).not.toMatch(/drawText|composite|overlay\(/i);
     });
 
     it('前端只送出 { theme } 一個欄位', () => {
@@ -163,15 +175,28 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
 
     it('scene.leadTail / bullets 改為明說 Flex 與預約步驟不會被一起套用', () => {
       expect(t.scene.leadTail).toContain('也不會一併套用聊天主選單（Flex）與預約步驟卡');
+      /*
+       * ⚠️ issue #19：舊斷言要求「發布」那一條寫著「不會覆蓋 Flex 主選單自訂」
+       * ＋「尚未建置」。每格設定現在**真的會**隨發布送出（create-advanced），
+       * 那句話已經不對；「尚未建置」更早在 issue #6 就不對（Flex 儲存已建置）。
+       * 仍然為真、因此改守的是：發布**不含** Flex 主選單——這一點在
+       * leadTail 與 previewSyncNote 兩處都寫著（上一行與下一個案例）。
+       * 這裡改守「發布」那一條有沒有把「需訂閱才送出每格設定」講清楚，
+       * 因為未訂閱時走基本端點、每格設定真的不會送出，那是店家最容易誤會的一點。
+       */
       const publishBullet = t.scene.bullets.find((b) => b.strong === '發布');
-      expect(publishBullet?.text).toContain('不會覆蓋 Flex 主選單自訂');
-      expect(publishBullet?.text).toContain('尚未建置');
+      expect(publishBullet?.text).toContain('進階自訂選單');
+      expect(publishBullet?.text).toContain('未訂閱');
     });
 
     it('previewSyncNote 不再宣稱自訂會同步進聊天主選單卡片', () => {
       expect(t.scene.previewSyncNote).not.toMatch(/會同步進/);
-      expect(t.scene.previewSyncNote).toContain('不會隨發布送出');
-      expect(t.scene.previewSyncNote).toContain('Flex）也不會一起更新');
+      /*
+       * ⚠️ issue #19：「每格設定不會隨發布送出」已不成立（create-advanced 會送）。
+       * 仍然為真、也是這一節真正要守的那一句：**Flex 主選單不會跟著一起換**。
+       */
+      expect(t.scene.previewSyncNote).toContain('Flex');
+      expect(t.scene.previewSyncNote).toContain('不會一起更新');
     });
 
     it('整組不存在的「範本預覽產生器」假宣稱鍵全數刪除', () => {
@@ -180,8 +205,15 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
         'previewCaption', 'previewGenerating', 'previewCells', 'previewBottom',
         'previewFlex', 'previewFlexNote', 'textOnlyNote', 'customizeBtn',
         'updatePreviewBtn', 'previewHeading', 'customHeading', 'labelBlankHint',
-        'generating', 'generateFailed', 'previewFailed', 'previewFailedRetry',
+        'generating', 'generateFailed', 'previewFailedRetry',
         'flexPreviewFailed',
+        /*
+         * ⚠️ issue #19：`previewFailed` 從這張「假宣稱鍵」清單移除。
+         * 它當初被刪，是因為**沒有預覽流程可以失敗**（整個產生器不存在）。
+         * 現在 `POST …/rich-menu/preview-scene` 真的存在、也真的可能失敗，
+         * 一句失敗訊息不再是假宣稱，而是必要的。其餘 16 個鍵描述的流程
+         * （合成店名、同步 Flex、雲端保留…）至今仍不存在，一律維持禁止。
+         */
       ]) {
         expect(keys, dead).not.toContain(dead);
         expect(code, dead).not.toContain(`t.scene.${dead}`);
@@ -189,31 +221,57 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
     });
 
     it('發布確認視窗逐條列出「不會送出」的東西', () => {
+      /*
+       * ⚠️ issue #19：「佈局、每格設定與背景圖網址都不會送出」已經不對了——
+       * 它們現在真的會送出。改守仍然為真、而且是店家最需要在按下去之前知道的三件事。
+       */
       const tail = t.scene.publishConfirmTail;
       expect(tail).toContain('圖上不含店名');
-      expect(tail).toContain('佈局、每格設定與本頁的背景圖網址都不會送出');
       expect(tail).toContain('Flex 主選單不會一起換');
+      // 只保留最近一份還原點——不得讓店家以為可以一直往前回溯
+      expect(tail).toContain('只保留最近一份');
+
+      // 情境範本另有一段尾文，必須先講「範本只帶主題配色」（規格缺口，不得憑空補回）
+      expect(t.scene.sceneConfirmTail).toContain('只決定');
+      expect(t.scene.sceneConfirmTail).toContain('已經遺失');
     });
   });
 
-  /* ================================================== 3. 範本卡「預覽」假互動 */
-  describe('3. 一頁式範本卡的「預覽」鈕不再假裝有預覽', () => {
-    it('按鈕改跳 warning 級的「沒有預覽可開」提示，而不是 info 級的說明文', () => {
-      expect(code).toContain("toast.show(t.scene.previewNotBuilt, 'warning')");
-      expect(code).not.toContain('t.scene.previewCaption');
-      expect(code).not.toMatch(/toast\.show\(t\.scene\.\w+, 'info'\)/);
+  /* ================================================== 3. 範本卡「預覽」 */
+  /*
+   * ⚠️ **前提已於 issue #19 翻面**：`POST …/rich-menu/preview-scene` 已建置
+   * （06 分冊 §6.2.5），所以「沒有可開啟的預覽／尚未建置」現在才是謊。
+   * 這一組改成守接線後該守的三件事，強度沒有降低：
+   *   1. 按的是**預覽**端點，不是發布端點（最容易寫錯的一處）
+   *   2. 預覽視窗照實說那張圖是純色底圖、範本只帶配色
+   *   3. 沒有把預覽做成「順手也發布出去」
+   */
+  describe('3. 一頁式範本卡的「預覽」鈕接上 preview-scene（且絕不發布）', () => {
+    it('呼叫的是 previewSceneRichMenu()，不是任何 create-*', () => {
+      expect(code).toContain('void openScenePreview(s)');
+      expect(code).toContain('await previewSceneRichMenu(scene.id)');
+      expect(code).not.toContain('previewNotBuilt');
+      expect(Object.keys(t.scene)).not.toContain('previewNotBuilt');
     });
 
-    it('提示直說預覽後端尚未建置、縮圖只是示意', () => {
-      const msg = t.scene.previewNotBuilt;
-      expect(msg).toContain('沒有可開啟的預覽');
-      expect(msg).toContain('尚未建置');
-      expect(msg).toContain('版位示意');
+    it('⚠️ 預覽的處理函式裡沒有任何發布呼叫（按預覽把選單換掉是本組最大的風險）', () => {
+      const fn = code.slice(
+        code.indexOf('const openScenePreview'),
+        code.indexOf('const uploadCellIcon'),
+      );
+      expect(fn.length).toBeGreaterThan(0);
+      for (const publisher of [
+        'createSceneRichMenu', 'createAdvancedRichMenu', 'createCustomRichMenu', 'createRichMenu',
+      ]) {
+        expect(fn, `預覽函式裡出現了 ${publisher}()`).not.toContain(publisher);
+      }
     });
 
-    it('沒有偷偷補一個預覽視窗（本輪只做誠實化）', () => {
-      expect(code).not.toContain("confirm === 'preview'");
-      expect(code).not.toMatch(/scenePreviewOpen|setPreviewOpen/);
+    it('預覽視窗照實說：圖是純色底圖、範本只帶主題配色', () => {
+      expect(code).toContain('{t.scene.previewFlatColorNote}');
+      expect(code).toContain('{t.scene.previewModeDefaultsNote}');
+      expect(t.scene.previewFlatColorNote).toContain('沒有店名');
+      expect(t.scene.previewModeDefaultsNote).toContain('已經遺失');
     });
   });
 
@@ -310,14 +368,27 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       }
     });
 
-    it('格子圖示上傳：欄位一律停用並附說明，成功／雲端訊息已刪除', () => {
+    /*
+     * ⚠️ **前提已於 issue #19 翻面**：`POST …/rich-menu/upload-cell-icon` 已建置。
+     * 圖示真的會上傳、會存進草稿、會讀得回來——但**不會被畫進 LINE 選單的底圖**
+     * （本專案沒有影像合成能力）。所以守的東西從「一律停用」改成
+     * 「上傳是真的，而那個仍然為假的部分必須繼續說出來」。
+     * 舊的 `iconNoneHint` / `iconCloudFailed`（描述不存在的雲端流程）仍不得復活。
+     */
+    it('格子圖示上傳接上端點，但畫面仍要說「不會畫進底圖」', () => {
       const keys = Object.keys(t.cells);
-      for (const dead of ['iconUploaded', 'iconNoneHint', 'iconCloudFailed']) {
+      for (const dead of ['iconNoneHint', 'iconCloudFailed', 'iconUploadNotBuilt']) {
         expect(keys, dead).not.toContain(dead);
       }
-      expect(t.cells.iconUploadNotBuilt).toContain('尚未建置');
-      expect(code).toContain('disabled title={t.cells.iconUploadNotBuilt}');
-      expect(code).toContain('{t.cells.iconUploadNotBuilt}');
+      expect(code).toContain('await uploadRichMenuCellIcon(file, index)');
+      // await-first：成功 toast 在 await 之後
+      expect(code).toMatch(/await uploadRichMenuCellIcon\([\s\S]{0,200}toast\.show\(t\.cells\.iconUploaded/);
+      // 仍然為假的那一半要常駐在畫面上
+      expect(code).toContain('{t.cells.iconNotComposed}');
+      expect(t.cells.iconNotComposed).toContain('不會被畫進');
+      expect(t.cells.iconUploaded).toContain('不會出現在 LINE 選單的底圖');
+      // 尺寸下拉仍然沒有後端欄位 → 必須維持停用，不得順手做成「看起來能用」
+      expect(code).toMatch(/<Select className="form-select-sm" disabled defaultValue=\{ICON_SIZES\[1\]\}>/);
     });
 
     it('Flex 彈窗視窗按「儲存」改為誠實提示，不再 toast「已儲存」', () => {
@@ -369,12 +440,33 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       }
     });
 
-    it('頁面沒有任何「假成功」toast：非 danger 的成功訊息只出現在真的呼叫了端點之處', () => {
-      // RichMenuTab 內唯一的 'success' toast 是發布成功（createRichMenu 已回傳）
-      const richMenuTab = code.slice(code.indexOf('function RichMenuTab('), code.indexOf('function MenuPreview('));
-      const successToasts = richMenuTab.match(/toast\.show\([^;]*'success'[^;]*\)/g) ?? [];
-      expect(successToasts).toHaveLength(1);
-      expect(successToasts[0]).toContain('t.publish.published');
+    it('頁面沒有任何「假成功」toast：每一則成功訊息都在 await 到端點之後', () => {
+      /*
+       * ⚠️ 前提變更（issue #19）。舊斷言是「success toast 恰好 1 則」——那在
+       * 當時等價於「只有發布是真的」，因為其餘五處都還沒有端點。
+       * #19 之後有六處真的接上了端點，數字守不住了。
+       *
+       * 但**要守的事沒有變**，而且可以直接守：
+       *   **每一則 'success' toast 的前面，都必須有一個 `await <service>(…)`。**
+       * 這比數數字強——數字只擋得住「多了一則」，擋不住「那一則是假的」。
+       * 判定方式：把每一則 success toast 之前的那一段程式碼切出來，
+       * 檢查裡面有沒有 `await xxx(`。純改 local state 就 toast 的寫法會被抓到。
+       */
+      const richMenuTab = code.slice(
+        code.indexOf('function RichMenuTab('), code.indexOf('function MenuPreview('),
+      );
+      const successToasts = [...richMenuTab.matchAll(/toast\.show\([^;]*'success'[^;]*\)/g)];
+      expect(successToasts.length, 'RichMenuTab 連一則成功訊息都沒有了？').toBeGreaterThan(0);
+
+      for (const m of successToasts) {
+        // 往前看 600 字：涵蓋 try { … await … } 的整段
+        const before = richMenuTab.slice(Math.max(0, m.index! - 600), m.index!);
+        expect(
+          before,
+          `這則成功訊息前面沒有任何 await，可能是假成功：${m[0]}`,
+        ).toMatch(/await\s+\w+\(/);
+      }
+
       // 刪除成功的 toast 走預設 tone，同樣在 deleteRichMenu() 之後
       expect(richMenuTab).toContain('await deleteRichMenu();');
     });
@@ -382,15 +474,29 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
 
   /* ================================================== 禁區守門 */
   describe('禁區未被動到（本輪只准改文案與說明）', () => {
-    it('Rich Menu 發布／刪除的程式邏輯一行未改', () => {
-      expect(code).toContain('const result = await createRichMenu(pendingTheme);');
+    /*
+     * ⚠️ 前提變更（issue #19）。這一條原本是 issue #3 那一輪的「禁區」守門：
+     * 那一輪只准改文案，所以要求發布／刪除的程式邏輯**一行未改**。
+     * #19 的任務就是改它（未訂閱走基本 create、已訂閱走 create-advanced 並維護
+     * 還原點），所以「一行未改」不再是該守的東西。
+     *
+     * 改守仍然成立、而且是這一段真正的價值所在：**發布與刪除都是真的**
+     * ——真的 await 到 service、真的更新狀態、失敗時顯示端點回來的原文。
+     */
+    it('Rich Menu 發布／刪除仍然是真的（await service、更新狀態、失敗顯示原文）', () => {
+      expect(code).toContain('await createRichMenu(pendingTheme)');
+      expect(code).toContain('await createAdvancedRichMenu(designPayload())');
       expect(code).toContain('setRichMenuId(result.richMenuId);');
-      expect(code).toContain('setTheme(pendingTheme);');
       expect(code).toContain('await deleteRichMenu();');
       expect(code).toContain("setRichMenuId('');");
       expect(code).toContain("confirm === 'publish'");
       expect(code).toContain("confirm === 'delete'");
       expect(code).toContain('e instanceof ApiError ? e.message : t.publish.publishFailed');
+      /*
+       * ⚠️ 未訂閱時必須走基本 `create`：進階端點擋 CUSTOM_RICH_MENU（09 分冊 §5），
+       * 一律改打進階端點會讓免費店家的發布鈕直接 403——把一顆本來會動的按鈕弄壞。
+       */
+      expect(code).toMatch(/subscribed\s*\r?\n?\s*\?\s*await createAdvancedRichMenu/);
     });
 
     /*
@@ -453,13 +559,27 @@ describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
       expect(code).toContain('accept="image/jpeg,image/png"');
     });
 
-    it('1A/1B/1C 的誠實化成果沒有被本輪回退', () => {
-      expect(t.publish.published).toContain('尚未建置');
-      expect(t.publish.draftNotEffective).toContain('尚未建置');
-      expect(t.scene.noBackupBar).toContain('尚未建置');
+    /*
+     * ⚠️ issue #19 把其中四項真的補齊了（草稿／還原／預約步驟／範本預覽），
+     * 所以它們的「尚未建置」文案被刪除是**正確的**，不是回退。
+     * 這一條因此只留下**仍然沒有後端**的那兩項——它們的誠實標註不得被順手刪掉：
+     *   - quickTemplates：規格裡沒有任何對應端點，至今零後端
+     *   - featurePages：該區從來沒有可編輯欄位
+     */
+    it('仍然沒有後端的兩區，誠實標註沒有被本輪順手刪掉', () => {
       expect(t.quickTemplates.notBuiltBody).toContain('尚未建置');
-      expect(t.bookingSteps.notBuiltBody).toContain('尚未建置');
       expect(t.featurePages.notBuiltBody).toContain('尚未建置');
+    });
+
+    it('已補齊的四項：不得再留著「尚未建置」的字樣（那句話現在才是謊）', () => {
+      expect(t.publish.draftSaved).not.toContain('尚未建置');
+      expect(t.scene.restoreAvailable).not.toContain('尚未建置');
+      /*
+       * ⚠️ bookingSteps 不在這一條裡：它的文案**應該**出現「尚未建置」——
+       * 指的是 LINE 端的對話式預約流程（carousel），那個確實還沒有。
+       * 端點建好了、carousel 沒有，是兩件事，不可以被同一條斷言一起掃掉。
+       */
+      expect(t.scene.previewFlatColorNote).not.toContain('尚未建置');
     });
   });
 });

@@ -1,11 +1,10 @@
 import { z } from 'zod';
-import { handle, ok, ApiHttpError, ERR } from '@/server/http';
+import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { createAdminSupabase } from '@/server/supabase';
 import { lineSettingsSchema } from '@/config/tenant-settings';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
-import { RICH_MENU_THEME_KEYS, RICH_MENU_THEME_COLORS } from '@/config/rich-menu-themes';
-import { solidColorPng } from '@/server/png';
+import { RICH_MENU_THEME_KEYS } from '@/config/rich-menu-themes';
+import { loadRichMenuBackground } from '@/server/rich-menu';
 import { richMenuCellAction } from '@/server/flex-menu';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
@@ -63,37 +62,11 @@ function buildRichMenuBody(theme: string, businessType: BusinessType) {
 }
 
 /**
- * 取得底圖 bytes + contentType。優先順序：
- *   1. 店家自傳底圖（upload-bg-image 存進 bucket 的 public URL）
- *   2. richmenu-assets bucket 裡預先上架的主題圖檔 themes/{THEME}.png|jpg
- *   3. 現生成一張該主題色的純色 PNG（src/server/png.ts）
- *
- * 原本第 3 步不存在——bucket 裡沒圖就直接 404，等於「套用範本」永遠發布不出去，
- * 因為平台從沒人手動上傳過六張主題底圖（2026-08-24 查證 richmenu-assets 是空的）。
- * 純色底圖讓「選一個主題就能發布」在任何情況下都成立，之後要美化再補真圖即可，
- * 不影響已發布的選單（換真圖只是重新整個 create 流程）。
+ * 底圖取得（優先序：店家自傳 → bucket 主題圖 → 現生成純色 PNG）已搬到
+ * `src/server/rich-menu.ts` 的 `loadRichMenuBackground()`，因為 issue #19 的
+ * 四支進階發布端點需要**完全相同**的優先序。留兩份的話會出現「基本發布看得到
+ * 自訂底圖、進階發布看不到」這種只有店家會發現的分岔。
  */
-async function loadBackgroundImage(
-  theme: string, bgImageUrl: string,
-): Promise<{ bytes: ArrayBuffer | Buffer; contentType: string }> {
-  if (bgImageUrl) {
-    const res = await fetch(bgImageUrl).catch(() => null);
-    if (!res?.ok)
-      throw new ApiHttpError(404, '自訂底圖已無法讀取，請重新上傳底圖後再試', ERR.NOT_FOUND);
-    const type = res.headers.get('content-type') ?? '';
-    const contentType = type.includes('png') ? 'image/png' : 'image/jpeg';
-    return { bytes: await res.arrayBuffer(), contentType };
-  }
-
-  const admin = createAdminSupabase();
-  for (const [ext, contentType] of [['png', 'image/png'], ['jpg', 'image/jpeg']] as const) {
-    const { data } = await admin.storage.from('richmenu-assets').download(`themes/${theme}.${ext}`);
-    if (data) return { bytes: await data.arrayBuffer(), contentType };
-  }
-
-  const bg = RICH_MENU_THEME_COLORS[theme as keyof typeof RICH_MENU_THEME_COLORS]?.bg ?? '#06c755';
-  return { bytes: solidColorPng(2500, 1686, bg), contentType: 'image/png' };
-}
 
 const bodySchema = z.object({ theme: z.enum(RICH_MENU_THEME_KEYS).optional() });
 
@@ -114,7 +87,7 @@ export const POST = handle(async (req) => {
   const businessType = (tenantRow?.business_type ?? 'LOCAL_SHOP') as BusinessType;
 
   // ③ 的圖先取——圖拿不到就不要在 LINE 端留下半成品選單
-  const image = await loadBackgroundImage(theme, line.richMenuBgImageUrl ?? '');
+  const image = await loadRichMenuBackground(theme, line.richMenuBgImageUrl ?? '');
 
   // ② 建立 → ③ 傳圖 → ④ 設為預設
   const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme, businessType));

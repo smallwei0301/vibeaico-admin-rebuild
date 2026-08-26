@@ -16,7 +16,10 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const src = readFileSync(resolve(process.cwd(), 'src/app/api/upload/route.ts'), 'utf8');
+/*
+ * ⚠️ issue #19：上傳邏輯抽到 src/server/upload.ts（三支端點共用），規則未變。
+ */
+const src = readFileSync(resolve(process.cwd(), 'src/server/upload.ts'), 'utf8');
 const stripComments = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 const code = stripComments(src);

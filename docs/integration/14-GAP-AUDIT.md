@@ -2670,3 +2670,131 @@ issue #7（乙）那一輪實際做的事：
 （`campaigns.07.test.ts` 三條刪除案例）在 issue #7（乙）就已經存在。契約表漏列一支
 已實作端點，下一個讀契約的人會以為那個功能不存在、或者以為要新寫一份。本輪補上，
 同時把 publish 那一列改成明說它會推播與扣額度（見 §11）。
+
+---
+
+## 14. issue #19 結案紀錄：進階設計器 11 支端點 ＋ `flexShowTip`（2026-08-26）
+
+### 14.1 `flexShowTip` 的判定結果（§8.22-b / §8.22-c 結案）
+
+issue #19 要求「做 `booking-step-guide` 時**一併判定** `flexShowTip` 是否屬於步驟引導；
+判定得出來就照原站語意做並寫明依據，判定不出來才走預設語意並明標為我們選的」。
+
+**判定結果是「一半判得出來、一半判不出來」，兩半都要照實記：**
+
+**(一) 判得出來——它不屬於步驟引導，屬於 Flex 主選單那一組。** 四條依據，
+全部可在 `docs/specs/line-settings.json` 的 `looseFields` 逐字驗證：
+
+| # | 依據 | 步驟引導那七組 | `flexShowTip` |
+|---|---|---|---|
+| 1 | id 前綴 | 一律 `step*`（`stepServiceColor`…`stepSuccessColor`） | `flex*`，與 `flexMenuEnabledToggle`／`flexMenuFallback*`／`flexHeaderColor/Title/Subtitle` 同族 |
+| 2 | CSS class | 14 個欄位全帶 `flex-step-color` / `flex-step-title` | 只有 `form-check-input`，與 `flexMenuEnabledToggle` 相同 |
+| 3 | `help` 屬性 | 每個都寫著它屬於哪一步（選擇服務／選擇日期／…） | 空字串，與前一個欄位 `flexHeaderSubtitle` 一致 |
+| 4 | 有沒有自己的開關 | 步驟引導**已經有**：`bookingStepGuideToggle`（`docs/specs/rich-menu-design.json:243`），label 完整描述了它控制什麼 | — |
+
+第 4 條特別值得記：主導者當初的推論是「DOM 上相鄰 → 可能是同一區」。相鄰是真的，
+但**步驟引導在另一頁已經有一顆有完整說明的開關**了。同一件事在兩頁各有一顆開關、
+其中一顆還沒有任何說明文字——證據不支持這個讀法。§8.22-c 已經自己標注過
+「位置相鄰只是相鄰，不是證據」，這一輪把它查完了。
+
+**(二) 判不出來——它具體控制什麼文字、出現在哪裡。**
+`help` 是空字串；`jsStrings` 全文只有「已設為純文字提示模式」一句含「提示」，
+而那句屬於 fallback 模式；沒有任何 card 的 bodyText 提到「顯示使用提示」。
+`grep '顯示使用提示' docs/specs/` 全站只命中這一個欄位定義本身。**原站語意救不回來。**
+
+### 14.2 因此採用的語意 —— **這是我們選的，不是還原的**
+
+> ⚠️ 後來的人不要把下面這段當考據結果引用。它是 issue #19 的預設語意
+> （擁有者 2026-08-25 裁決 (b)「給它語意並補齊」時一併指定），
+> 不是從 `docs/specs` 還原出來的原站行為。
+
+`flexShowTip=true` 時，Flex 主選單 carousel 之**後**多送一則純文字使用提示。
+只在 `buildFlexMenuOutcome()` 回 `FLEX` 時生效；`HINT`／`SILENT`／`NO_CARDS` 一律不加。
+提示文字在 `src/server/flex-menu.ts` 的 `MSG.usageTip`（對顧客說的話，不進 `src/i18n/`）。
+完整理由與「為什麼不插在 carousel 最前面」見 06 分冊 §6.2.10。
+
+**值得記的是：(一) 的判定結果與這個預設語意方向一致**（都落在 Flex 主選單那一區），
+所以它是一個**旁證**，不是「反正判不出來就隨便選一個」。但它只支持「屬於哪一區」，
+不支持「那句話原本寫什麼」——兩者不可混為一談。
+
+### 14.3 連帶的結構修正：`FlexMenuOutcome` 從單數 `message` 改成 `messages` 陣列
+
+`src/server/line-events.ts` 原本寫死 `lineReply(ctx.token, ctx.replyToken, [outcome.message])`。
+留著單數欄位不改，就會出現「開關開了、第二則沒送出去」——**換一種寫法的同一顆假開關**。
+
+守門測試（`tests/unit/flex-menu.06.test.ts`）：
+- 「守門：src/ 底下沒有任何程式碼只送 outcome 的第一則訊息」——比對前先剝掉註解，
+  因為 flex-menu.ts 與 line-events.ts 的說明文字裡刻意留著這個字串記錄「原本是什麼」。
+  連註解一起比會永遠紅，而永遠紅的守門測試遲早會被人放寬掉。
+- 「守門：line-events 把整包 messages 交給 lineReply（不是自己挑一則）」。
+
+### 14.4 `booking-step-guide`：存得到，但顧客收不到（新的誠實邊界）
+
+原站的引導卡是「預約 carousel **最前面**那張『👈 往左滑動 ＋ 步驟清單』指引卡」
+（`docs/REBUILD-SPEC.md` 的 `bookingStepGuideToggle` label 逐字）。
+**本專案沒有那個 carousel**：`src/server/line-events.ts` 的 `replyServiceList()`
+對「預約 / 服務 / 服務項目」回的是**純文字服務清單**。
+
+所以設定會被存下來、讀得回來、payload 也過 LINE 驗證，**但顧客端不會因為這個開關
+而看到任何變化**。畫面上以 `t.bookingSteps.savedButNotDelivered` 常駐說明這件事。
+
+⚠️ 這是「absence of data ≠ invented data」的同一條線：把設定存起來是誠實的，
+顯示「已套用，顧客現在會看到引導卡」則是編造。**端點建好了 ≠ 功能生效了**，
+這兩件事在本輪之後仍然要分開講。
+
+### 14.5 `upload-cell-icon`：同型的誠實邊界
+
+圖示會被上傳、存進草稿、下次開頁面讀得回來——但**不會出現在 LINE 選單的底圖上**，
+因為本專案沒有影像合成能力（`src/server/png.ts` 只產純色矩形）。
+畫面以 `t.cells.iconNotComposed` 常駐說明，成功 toast 也逐字寫出這件事。
+
+圖示**尺寸**下拉維持停用：它至今沒有任何程式碼會讀、也沒有後端欄位。
+⚠️ 接了上傳就順手把尺寸也做成「看起來能用」，等於在修假開關的同一輪再造一顆。
+
+### 14.6 `upload-image` 與 §6.1「底圖上傳單一入口」的關係
+
+§6.1（2026-08-26）才剛因為「同一件事兩份實作」刪掉 `upload-bg-image`，而 issue #19
+的範圍表要求補 `upload-image`。這**看起來**是直接牴觸，實際不是：
+
+§6.1 反對的是第二份**實作**（它逐字寫的是「短期看起來一樣、長期一定分岔，而分岔
+那天沒有任何測試會紅」），不是第二個路徑名。本輪的作法是把 `/api/upload` 的驗證與
+落地邏輯抽成 `src/server/upload.ts` 的 `uploadToBucket()`，**三支路由共用同一支函式**
+（`/api/upload` 自己也改成呼叫它）。沒有第二份可以分岔的邏輯，1 MB 守門與 MIME
+解碼比對三支一體適用。
+
+`upload-image` 多做的那一件事＝它存在的理由：上傳完**順手寫進**
+`tenant_settings.line.richMenuBgImageUrl`。發布端點讀的是那個欄位而不是請求 body，
+少了這一步，「上傳成功」就只是半個事實。頁面因此從「兩段式」（`uploadImage()` +
+`saveLineSettings()`）改成一個請求——兩段式的中間可能只成功一半。
+
+### 14.7 這一輪翻面的守門測試（前提變更，不是放寬）
+
+issue #3／#6 那幾輪為「尚未建置」寫的守門測試，在功能補齊之後會**反過來要求把那句
+話拿掉**——否則就變成新的不誠實。本輪據此改寫了下列案例，每一條都在測試檔裡寫明
+「原本守什麼、為什麼前提變了、改成守什麼」：
+
+| 檔案 | 原本守 | 改成守 |
+|---|---|---|
+| `flex-show-tip-honest.test.ts` | 沒人讀 `flexShowTip` → 畫面要說「尚未生效」 | 有人讀了 → 那句話**不得再存在**，且說明要逐字描述真實行為 |
+| `honest-not-built-interactions.test.ts` | 草稿／還原／預約步驟三處要顯示「尚未建置」 | 三處都要真的呼叫 service，成功 toast **await-first**，仍為假的部分（草稿≠發布、引導卡送不出去）繼續說 |
+| `honest-not-built-rich-menu-design.test.ts` | 範本預覽鈕要跳「沒有預覽可開」；圖示欄位一律停用；success toast 恰好 1 則 | 預覽鈕要呼叫 **preview** 端點且函式內不得出現任何 `create*`；圖示上傳是真的但要說「不會畫進底圖」；**每一則 success toast 前面都必須有 `await`** |
+| `honest-not-built-residuals.test.ts` | 發布成功訊息要含「尚未建置」；確認視窗要寫「不會備份、無法還原」 | 成功訊息要點名 Flex／預約步驟**不會一併送出**；確認視窗要寫「會保留還原點，但**只保留最近一份**」 |
+| `bug-report-attachment.30` / `upload-line-bound-types` / `line-preview-image.28` / `welcome-card-upload-wiring.28` | 讀 `src/app/api/upload/route.ts` 的常數 | 同樣的常數，改讀 `src/server/upload.ts`（**規則一字未改，只是換了檔案**） |
+
+⚠️ 「success toast 恰好 1 則」那一條的替換值得單獨記：數字守得住「多了一則」，
+守不住「那一則是假的」。改成「每一則成功訊息前面都必須有 `await`」之後，
+它擋的正是這一整批工作在清的那個缺陷本身，而不是它當時的計數。
+
+### 14.8 順手抓到、與 issue #19 無關的一個既有缺陷
+
+`scripts/test/seed.mjs` 的 `trip_plans` 種子用的欄位名是 `price_per_person`，
+而 `0016_tour_domain_core.sql:71` 定義的是 **`base_price`**（兩個 Supabase 專案都查過，
+從來沒有 `price_per_person` 這個欄位）。
+
+它之所以沒被發現，是因為 `safeUpsert()` 的 `isMissingSchemaError()` 把 PostgREST 的
+「找不到欄位」誤判成「資料表尚未建立（Phase 1 未執行）」而**整個跳過** `trip_plans`，
+接著 `trip_departures` 才炸在外鍵上——錯誤訊息指向 departures，真正的原因在 plans。
+本輪改成 `base_price` 才跑得動整合測試。
+
+⚠️ 值得記的是那個**誤判**：把 A 錯誤當成 B 錯誤靜默吞掉，會讓失敗出現在無關的地方。
+`isMissingSchemaError()` 目前分不出「表不存在」與「欄位不存在」，這一點尚未處理。

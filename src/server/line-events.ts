@@ -580,7 +580,15 @@ async function replyFlexMenu(ctx: BuiltinCtx): Promise<boolean> {
   switch (outcome.kind) {
     case 'FLEX':
     case 'HINT':
-      await lineReply(ctx.token, ctx.replyToken, [outcome.message]);
+      /*
+       * ⚠️ **整包送 `outcome.messages`，不要只取第一則。**
+       * 這裡原本寫死 `[outcome.message]`（單數）。`flexShowTip` 開啟時
+       * carousel 之後還有第二則使用提示，只送第一則的話開關切了什麼都不會發生
+       * ——換一種寫法的同一顆假開關（06 分冊 §6.2.10、14 分冊 §8.22-c）。
+       * `tests/unit/flex-menu.06.test.ts` 有一條守門測試 grep 全專案不得再出現
+       * `[outcome.message]` 這種寫法。
+       */
+      await lineReply(ctx.token, ctx.replyToken, outcome.messages);
       return true;
     case 'SILENT':
       return true;

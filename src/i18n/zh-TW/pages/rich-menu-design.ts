@@ -100,23 +100,28 @@ export const richMenuDesignPage = {
     lead: '整張設計好的底部選單，',
     leadStrong: '卡片縮圖是版位示意，不是實際推送物',
     leadTail: '：發布時推到 LINE 的是所選主題的底圖原圖，圖上不會合成店名或六格文字，也不會一併套用聊天主選單（Flex）與預約步驟卡。',
+    /*
+     * ⚠️ issue #19 更新：這三句原本描述的是「預覽鈕沒有視窗、每格設定不會送出、
+     * 沒有備份可還原」的舊事實。那三件事現在都成立了（preview-scene /
+     * create-advanced / restore-previous），所以文案跟著改——**留著才是說謊**。
+     * 仍然為真、因此保留的：底圖是純色原圖（本專案沒有影像合成能力）。
+     */
     bullets: [
-      { strong: '預覽', text: '：縮圖上的店名與格子文字是本頁畫上去的示意，顧客不會在圖上看到它們；「預覽」鈕沒有預覽視窗（範本預覽產生後端尚未建置），換六格功能與文字也不會隨發布送出' },
-      { strong: '發布', text: '不需訂閱即可推送（基本主題不受「進階自訂選單」限制），會取代目前的底部選單；但不會覆蓋 Flex 主選單自訂，也不會儲存「每格設定」——這兩者的儲存後端尚未建置' },
-      { strong: '注意', text: '：備份／還原端點尚未建置，發布前系統不會備份你目前的設計，發布後也無法一鍵還原（本區的「還原發布前的設計」已停用）' },
+      { strong: '預覽', text: '：「預覽」鈕會向伺服器要一份預覽（不會發布任何東西）。縮圖上的店名與格子文字是本頁畫上去的示意——實際推到 LINE 的底圖上沒有任何文字' },
+      { strong: '發布', text: '：訂閱「進階自訂選單」後，佈局與每格設定會真的一起送出；未訂閱時發布的是基本主題（六格文字用你營運模式的預設值）' },
+      { strong: '還原', text: '：發布會自動保留**上一次**發布的那一份，可用下方的「還原發布前的設計」切回去。只保留最近一份，再往前的版本無法還原' },
     ],
     restore: '還原發布前的設計',
-    /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 「還原發布前的設計」從來沒有備份可還原：本頁沒有呼叫任何備份／還原端點
-     * （services/settings.ts 只有 createRichMenu / deleteRichMenu 兩支），
-     * tenant_settings 也沒有存放前一版設計的欄位。
-     * 舊實作按下確定只是 setHasBackup(false) + toast「已還原」——
-     * 店家會以為 LINE 上的選單已經被換回舊版，實際上 LINE 端毫無變化。禁止復原。
-     */
-    noBackupBar:
-      '注意：本系統目前不會備份發布前的設計，也無法還原——「還原發布前的設計」已停用（備份／還原端點尚未建置）。發布前請自行記下目前的每格設定。',
-    restoreDisabledHint: '備份／還原端點尚未建置，系統沒有任何可還原的舊設計',
+    /* ⚠️ 三態文案：載入中／有還原點／確定沒有。三句話不可以合併成兩句—— */
+    /*    「還不知道」與「已經查過、確實沒有」在店家眼裡是兩件事。 */
+    restoreLoading: '正在讀取還原點…',
+    restoreAvailable:
+      '系統保留了你上一次發布的那一份設計，可以一鍵切回去。⚠️ 只保留**最近一份**：還原之後，現在這一份會變成新的還原點。',
+    restoreNonePoint:
+      '目前沒有可還原的設計：還原點是在「發布」時建立的，記錄的是被換掉的那一份。你還沒有發布過第二次，所以沒有上一次可以回去。',
+    restoring: '還原中...',
+    restoreDone: '已切回上一次發布的選單，顧客現在看到的是那一份',
+    restoreFailed: '還原失敗，選單維持原狀',
     /**
      * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
      * 舊 previewCaption「LINE 底部選單完整圖（品牌大字已帶入你的店名）」被拿來當
@@ -133,10 +138,22 @@ export const richMenuDesignPage = {
      *   labelBlankHint、generating、generateFailed、previewFailed、previewFailedRetry、
      *   flexPreviewFailed。禁止復原。
      */
-    previewNotBuilt:
-      '沒有可開啟的預覽：一頁式範本的預覽產生後端尚未建置。上方縮圖只是版位示意（店名與六格文字是本頁畫上去的），實際發布到 LINE 的是所選主題的底圖原圖，圖上不含店名與六格文字。',
+    /*
+     * ⚠️ issue #19：`previewNotBuilt`（「沒有可開啟的預覽」）已刪除——預覽端點
+     * `POST …/rich-menu/preview-scene` 已建置，那句話現在是假的。
+     * 換成預覽視窗裡真正需要說的兩件事，兩句都**仍然為真**：
+     *   1. 預覽圖是純色底圖（本專案沒有影像合成能力，發布上傳的就是這張）
+     *   2. 範本只帶主題配色，六格文案是業態預設值（原站的對應已遺失，
+     *      REBUILD-SPEC §9.3 第 1 點，不得憑空補回）
+     */
+    previewLoading: '產生預覽中...',
+    previewFailed: '預覽產生失敗，請稍後再試',
+    previewFlatColorNote:
+      '這張預覽圖就是發布時會上傳給 LINE 的底圖：單一底色，**圖上沒有店名、沒有格子文字、也沒有格線**。下方列出的是每一格按下去會送出什麼——那些字不會畫在圖上。',
+    previewModeDefaultsNote:
+      '這個範本只決定**主題配色**。原站「哪一組文案屬於哪一個範本」的資料已經遺失，所以六格文字用的是你營運模式的預設值，不是範本專屬文案。',
     previewSyncNote:
-      '發布只會送出所選主題的底圖與你營運模式的預設六格文字；本頁的每格自訂、佈局與背景圖網址都不會隨發布送出，聊天主選單（Flex）也不會一起更新。',
+      '發布會送出所選主題的底圖、佈局與每格設定（需訂閱「進階自訂選單」）；聊天室的 Flex 主選單是另一個分頁，不會一起更新。',
     previewBtn: '預覽',
 
     /** 發布 / 還原確認 */
@@ -151,7 +168,15 @@ export const richMenuDesignPage = {
      * 連帶刪除從未使用的 restoreFailed（沒有還原流程可失敗）。禁止復原。
      */
     publishConfirmTail:
-      '」的主題到 LINE？\n\n・會取代目前的底部選單。實際推送的是所選主題的底圖原圖——圖上不含店名，也不含六格文字（那六段文字是顧客點擊後送出的訊息內容，不會畫在圖上）\n・佈局、每格設定與本頁的背景圖網址都不會送出，六格文字固定用你營運模式的預設值\n・聊天室的 Flex 主選單不會一起換——Flex 樣式的儲存後端尚未建置\n⚠️ 發布前系統不會備份你目前的設計，發布後也無法還原（備份／還原端點尚未建置），請先自行記下目前的每格設定。',
+      '」到 LINE？\n\n・會取代目前的底部選單。實際推送的底圖是單一底色——圖上不含店名，也不含六格文字（那些文字是顧客點擊後送出的訊息內容，不會畫在圖上）\n・訂閱「進階自訂選單」後，佈局與每格設定會一起送出；未訂閱時送出的是基本主題與你營運模式的預設六格文字\n・聊天室的 Flex 主選單不會一起換（那是另一個分頁）\n・系統會把**目前**這一份保留成還原點，發布後可以用「還原發布前的設計」切回去（只保留最近一份）',
+    /**
+     * 情境範本的發布確認尾段。與上面那一段刻意分開：範本多了一件必須先講的事
+     * ——它**只帶得動主題配色**。店家看到「海鮮餐廳」範本，合理預期會拿到海鮮
+     * 餐廳的六格文案；原站那份對應已遺失（REBUILD-SPEC §9.3 第 1 點）且不得憑空
+     * 補回，所以要在他按下去之前講清楚，不是事後才發現。
+     */
+    sceneConfirmTail:
+      '」這個範本到 LINE？\n\n・這個範本只決定**主題配色**。六格文字用的是你營運模式的預設值——原站「哪一組文案屬於哪一個範本」的資料已經遺失，我們不會憑空編一組給你\n・會取代目前的底部選單；底圖是單一底色，圖上不含店名與文字\n・系統會把目前這一份保留成還原點，可以再切回去（只保留最近一份）',
     cancelled: '已取消，尚未發布任何內容',
   },
 
@@ -289,7 +314,10 @@ export const richMenuDesignPage = {
     /** 目前「發布到 LINE」固定套用你營運模式的建議文案，逐格自訂文字/連結尚未接上
      *  發布——不寫這句會讓人以為改了這裡發布就會生效，改了其實沒用（CLAUDE.md
      *  「不要製造假的已知」）。 */
-    publishUsesPreset: '目前「發布到 LINE」會固定套用畫面右側預覽的六格文字（依你的營運模式預設），下方逐格自訂文字/連結尚未接上發布，之後會補上。',
+    /* ⚠️ issue #19：每格自訂**已經**會隨發布送出（create-advanced），舊句子
+     *  「尚未接上發布，之後會補上」現在是假的。改寫成仍然為真的那一半：
+     *  未訂閱時走的是基本端點，六格固定用營運模式的預設值。 */
+    publishUsesPreset: '訂閱「進階自訂選單」後，下方每一格的文字與連結會隨「發布到 LINE」一起送出；未訂閱時發布的是基本主題，六格文字固定用你營運模式的預設值。',
     columns: { index: '#', label: '標籤', action: '動作', icon: '圖示' },
     labelPlaceholder: '顧客點擊後送出的文字',
     lockedHint: '每格設定需訂閱「進階自訂選單」',
@@ -305,12 +333,26 @@ export const richMenuDesignPage = {
      * 三個描述不存在流程的鍵（iconUploadFailed 是中性失敗訊息，留給日後接線）。
      * 禁止復原。
      */
-    iconUploadNotBuilt:
-      '格子圖示上傳與圖示／文字大小尚未建置：這些欄位不會被儲存，也不會影響推送到 LINE 的圖——發布送出的是底圖原圖，系統不會在上面合成圖示或文字。',
+    /**
+     * ⚠️ issue #19：上傳**已經接上** `POST …/rich-menu/upload-cell-icon`——圖會進
+     * bucket、網址會存進草稿的那一格、下次打開這一頁讀得回來。
+     *
+     * 但**圖示不會出現在 LINE 選單的底圖上**：本專案沒有影像合成能力
+     * （`src/server/png.ts` 只產純色矩形，沒有裝 sharp/canvas），發布上傳給 LINE 的
+     * 是底圖原圖。店家上傳完看到「已上傳」，合理預期它會出現在選單上——
+     * 所以這句話必須留在畫面上，不能只寫在註解裡。
+     *
+     * 圖示**尺寸**下拉仍然沒有任何程式碼會讀它，也沒有對應的後端欄位 → 維持停用。
+     * 接了上傳就順手把尺寸也做成「看起來能用」，等於再造一顆假開關。
+     */
+    iconNotComposed:
+      '格子圖示會上傳並存進你的草稿（下次打開看得到），但**不會被畫進推送到 LINE 的底圖**——本系統不做圖片合成，發布送出的是底圖原圖。「圖示尺寸」目前沒有對應的後端設定，維持停用。',
+    iconUploaded: '圖示已上傳並存進草稿（不會出現在 LINE 選單的底圖上，見表格下方說明）',
+    iconUploadedShort: '已上傳（不會畫進底圖）',
     iconSize: '圖示尺寸',
     iconSizeHint: '填滿=完全覆蓋格子(會裁切+蓋掉文字)；大=保持比例fit；中/小=較小邊比例',
     textSize: '文字大小',
-    iconUploadFailed: (i: number, msg: string) => `格子 ${i} 圖示上傳失敗：${msg}`,
+    iconUploadFailed: '圖示上傳失敗，請稍後再試',
     /**
      * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
      * FlexPopupModal（每格設定 →「Flex 彈窗」→ 點擊設定內容）按「儲存」原本
@@ -357,6 +399,12 @@ export const richMenuDesignPage = {
   /* ============================================================= 預覽 */
   preview: {
     cardTitle: 'Rich Menu 預覽',
+    /*
+     * 「看實際會推送的圖」（issue #19 接上 preview-advanced）。
+     * 上面那塊 CSS 預覽畫的是版位示意；這顆按鈕拿回來的是伺服器真的會上傳給 LINE
+     * 的那張圖。一句「這不是實際推送物」的告示解釋得了落差，但看不到落差本身。
+     */
+    showActualBtn: '看實際會推送的圖',
     waiting: '等待變更...',
     pending: '等待中...',
     loading: '載入預覽中...',
@@ -374,7 +422,7 @@ export const richMenuDesignPage = {
      * ⚠️ 正確的修法是「說清楚」，不是去實作文字疊圖——那屬 Phase 6+ 進階設計器。
      */
     notActualNote:
-      '⚠️ 這是版位示意圖，不是實際推送物：發布到 LINE 的是所選主題的底圖原圖（或你在「LINE 設定」存的自訂底圖），圖上不會畫店名，也不會畫六格文字與格線——那六段文字只是顧客點擊後送出的訊息內容。此處的佈局、每格設定與背景圖網址都不會隨發布送出。',
+      '⚠️ 這是版位示意圖，不是實際推送物：發布到 LINE 的是所選主題的底圖原圖（或你上傳的自訂底圖），圖上不會畫店名，也不會畫格子文字與格線——那些文字只是顧客點擊後送出的訊息內容。（佈局與每格設定本身會隨發布送出，需訂閱「進階自訂選單」。）',
     summary: (theme: string, layout: string, cells: number, size: string, bg: string) =>
       `${theme} / ${layout}（${cells}格）/ ${size}${bg}`,
   },
@@ -388,17 +436,20 @@ export const richMenuDesignPage = {
     deleting: '刪除中...',
     notPublished: '未發布',
     publishedStatus: '✅ 已發布到 LINE',
+    /* ⚠️ 三態的第三句：載入中不要顯示「未發布」——那是我們還沒查到的答案。 */
+    statusLoading: '讀取發布狀態中...',
+    draftStatus: '已存有草稿（草稿不影響顧客看到的選單）',
 
     /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 「儲存草稿」沒有任何後端：services/settings.ts 只有 createRichMenu /
-     * deleteRichMenu，tenant_settings 也沒有草稿欄位，`/api/settings/line/rich-menu`
-     * 只支援 DELETE。舊實作按下去直接 toast「草稿已儲存」，
-     * 但關掉分頁後版型與每格設定就全部消失。禁止復原。
+     * ⚠️ issue #19：草稿端點已建置（`PUT …/rich-menu/advanced-config`），
+     * 舊的 `draftNotEffective`（「未儲存草稿：後端尚未建置」）已刪除。
+     *
+     * ⚠️ 成功文案必須講清楚**草稿不是發布**：存成功只代表下次打開這一頁看得到
+     * 同樣的設定，顧客的選單一點都沒變。寫成「已儲存」三個字，店家會以為
+     * 顧客那端也跟著換了（鐵則 12）。
      */
-    draftNotEffective:
-      '未儲存草稿：Rich Menu 草稿後端尚未建置，你的版型、主題與每格設定只存在這個瀏覽器分頁，重新整理或關閉頁面就會消失。要讓顧客看到請直接按「發布到 LINE」。',
-    draftSaveFailed: '儲存 Rich Menu draft 失敗',
+    draftSaved: '草稿已儲存：下次打開這一頁會回到這份設定。⚠️ 這還沒有送到 LINE——要讓顧客看到，請按「發布到 LINE」。',
+    draftSaveFailed: '草稿儲存失敗，請稍後再試',
     /**
      * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
      * 發布只呼叫 createRichMenu(theme) → POST /api/settings/line/rich-menu/create，
@@ -411,7 +462,7 @@ export const richMenuDesignPage = {
      * publishedFlexFailed / publishedSceneFlexFailed。禁止復原。
      */
     published:
-      'Rich Menu 已推送到 LINE：顧客下次開啟聊天室就會看到新的底部選單（套用所選主題的底圖與系統預設六格文字）。主選單樣式（Flex）、預約步驟、功能頁面樣式並未一併儲存——這三項的後端尚未建置。',
+      'Rich Menu 已推送到 LINE：顧客下次開啟聊天室就會看到新的底部選單。系統已把上一份保留成還原點（只保留最近一份）。聊天室的 Flex 主選單與預約步驟引導不會一併送出——它們各自有自己的儲存按鈕。',
     publishFailed: 'Rich Menu 發布失敗',
     publishFailedPrefix: '發布失敗：',
     deleteConfirm: '確定要刪除已發布的 Rich Menu 嗎？\n\n刪除後顧客將看不到底部快捷選單。',
@@ -500,6 +551,18 @@ export const richMenuDesignPage = {
     publish: '發布 Flex 主選單到 LINE',
     reset: '恢復預設',
     deletePublished: '清除已發布',
+    /*
+     * 「顧客實際會收到什麼」（issue #19 接上 `POST …/rich-menu/preview-scene-flex`）。
+     *
+     * ⚠️ 逐字寫明它讀的是**已儲存**的設定，不是畫面上還沒發布的草稿——
+     *    寫成「預覽你現在的設定」會變成一個答非所問的按鈕。
+     * ⚠️ 則數是重點：`flexShowTip` 開著時是 2 則（輪播 ＋ 使用提示），
+     *    而左邊那塊卡片預覽完全看不出這件事。
+     */
+    previewCustomerBtn: '顧客實際會收到什麼',
+    previewCustomerResult: (messages: number, bubbles: number) =>
+      `依你已儲存的設定：顧客打「選單」會收到 ${messages} 則訊息，其中輪播有 ${bubbles} 張卡片。（尚未發布的修改不算在內）`,
+    previewCustomerFailed: '無法取得顧客端預覽，請稍後再試',
     cardCount: (n: number) => `共 ${n} 張卡片`,
     cardCountOfMax: (n: number, max: number) => `${n} / ${max} 張`,
     pageOf: (n: number, total: number) => `${n} / ${total}`,
@@ -590,19 +653,41 @@ export const richMenuDesignPage = {
     desc: '自訂預約過程中每步的 Header 顏色與標題文字',
     guideLabel: '顯示「步驟說明卡」',
     guideHelp:
-      '預約 carousel 最前面那張「👈 往左滑動 + 步驟清單」指引卡。關閉後顧客直接看到服務卡，「取消預約」鈕會自動補在每張服務卡上。',
+      '原站的做法是在預約 carousel 最前面放一張「👈 往左滑動 + 步驟清單」指引卡。',
     /**
-     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
-     * 預約流程步驟自訂沒有後端：tenant_settings 沒有 bookingStep* 欄位，
-     * 也沒有 `/api/settings/line/booking-step-guide` 端點（見本頁 page.tsx 檔頭
-     * 的待接清單）。開關與下方每步的顏色／標題輸入框都只存在瀏覽器記憶體。
-     * 舊實作切換開關就 toast「已開啟／已關閉步驟說明卡」，還在說明文字裡寫
-     * 「此設定即時生效」——顧客端的 carousel 從頭到尾沒有變過。禁止復原。
+     * ⚠️ issue #19：端點已建置（`PUT /api/settings/line/booking-step-guide`），
+     * 設定**真的存得進** `tenant_settings.line.bookingStepGuide`、讀得回來、
+     * 產出的卡片也過 LINE 的 JSON 驗證。
+     *
+     * 但**顧客目前收不到它**，而且這件事必須講：本專案沒有原站那個「預約 carousel」
+     * ——`src/server/line-events.ts` 的 `replyServiceList()` 對「預約／服務／服務項目」
+     * 回的是純文字服務清單。引導卡沒有可以被插在前面的東西。
+     *
+     * 把設定存起來是誠實的；顯示「已套用，顧客現在會看到引導卡」則是編造
+     * （CLAUDE.md：absence of data ≠ invented data）。舊文案「後端尚未建置」現在
+     * 也不對了——存得進去，只是送不出去。兩者不可混為一談。
      */
-    notBuiltBody:
-      '預約流程步驟自訂後端尚未建置：這個開關與下方每步的顏色、標題都不會寫入資料庫，顧客在 LINE 看到的預約流程維持系統預設，不會因為這裡的設定而改變。',
-    guideToggleNotEffective:
-      '未變更步驟說明卡：預約流程步驟自訂後端尚未建置，這個開關沒有寫入資料庫，顧客端的預約流程沒有任何改變。',
+    savedButNotDelivered:
+      '這一區的設定會真的存起來（下次打開看得到、卡片格式也已通過 LINE 驗證），但**顧客目前不會收到這張引導卡**：本系統的「預約」關鍵字回的是純文字服務清單，沒有原站那種預約輪播卡，引導卡沒有可以插在前面的地方。LINE 端的對話式預約流程尚未建置。',
+    loading: '讀取設定中...',
+    save: '儲存步驟設定',
+    saved: '步驟設定已儲存（顧客端的預約流程仍為純文字清單，見上方說明）',
+    saveFailed: '步驟設定儲存失敗，請稍後再試',
+    stepTitlePlaceholder: '留空則使用系統預設標題',
+    /**
+     * 七個步驟的顯示名稱。key 與 `src/server/booking-step-guide.ts` 的
+     * `BOOKING_STEP_KEYS` 一一對應，名稱逐字取自 `docs/specs/line-settings.json`
+     * 那七組欄位的 `help`（選擇服務／選擇日期／選擇員工／選擇時段／備註／確認預約／預約成功）。
+     */
+    stepLabels: {
+      SERVICE: '選擇服務',
+      DATE: '選擇日期',
+      STAFF: '選擇員工',
+      TIME: '選擇時段',
+      NOTE: '備註',
+      CONFIRM: '確認預約',
+      SUCCESS: '預約成功',
+    } as Record<string, string>,
     /*
      * ⚠️ 刪除 stepImageUploaded（'步驟圖片上傳成功'）：本區從頭到尾沒有任何圖片
      * 上傳 UI，也沒有端點；一句未被引用的成功訊息卻預告著一個不存在的流程，

@@ -65,8 +65,19 @@ describe('修復-1C：發布成功訊息與備份承諾等殘留假宣稱', () =
       expect(published).not.toContain('皆已儲存');
       expect(published).not.toMatch(/主選單樣式 \+ 預約步驟/);
       expect(published).toContain('Rich Menu 已推送到 LINE');
-      // 三項沒發生的事必須被點名，否則同頁的「尚未建置」告示與成功訊息互相矛盾
-      expect(published).toContain('尚未建置');
+      /*
+       * ⚠️ 前提變更（issue #19）。原本這裡要求成功訊息含「尚未建置」——那時
+       * 「Flex 主選單／預約步驟／功能頁面樣式」三項確實都沒有後端，成功訊息若不
+       * 點名它們，就會與同頁的「尚未建置」告示互相矛盾（14 分冊反覆抓到的那種
+       * 「改了一半的誠實化」）。
+       *
+       * #19 之後 Flex 與預約步驟都有自己的儲存端點了，「尚未建置」不再是實情。
+       * 但**要守的事沒有變**：發布**不含**它們這件事必須繼續講，
+       * 否則店家按完發布會以為那兩區也一起存了。所以改成點名它們沒有被一起送出。
+       */
+      expect(published).toContain('不會一併送出');
+      expect(published).toContain('Flex');
+      expect(published).toContain('預約步驟');
     });
 
     it('刪掉從未使用、卻宣稱有「Flex 樣式儲存」這一步的失敗文案', () => {
@@ -81,20 +92,35 @@ describe('修復-1C：發布成功訊息與備份承諾等殘留假宣稱', () =
   /* ============================================ 2. 備份承諾 */
   describe('2. 一頁式範本／快速套用範本都不再承諾備份與還原', () => {
     it('發布確認視窗不再寫「系統會自動備份…可一鍵還原」', () => {
+      /*
+       * ⚠️ 前提變更（issue #19）。原句「發布前不會備份、發布後也無法還原」在
+       * `restore-previous` 建置之後**變成了假話**——系統現在真的會保留上一份。
+       *
+       * 但那條裁決留下的限制仍在，而且正是店家會誤會的地方：
+       * **只保留最近 1 份**（擁有者裁決，只支援還原到上一次發布）。
+       * 所以斷言從「不會備份」改成「會備份，但只有一份」，強度沒有降低——
+       * 它擋的是「讓店家以為可以一路往回退版」這個新的假宣稱。
+       */
       const tail = richMenuDesignPage.scene.publishConfirmTail;
       expect(tail).not.toMatch(/自動備份/);
-      expect(tail).not.toMatch(/一鍵還原/);
-      expect(tail).toContain('不會備份');
-      expect(tail).toContain('無法還原');
+      expect(tail).toContain('還原點');
+      expect(tail).toContain('只保留最近一份');
     });
 
     it('scene 字典整區沒有任何備份／還原承諾，假鍵也已刪除', () => {
       const keys = Object.keys(richMenuDesignPage.scene);
       expect(keys).not.toContain('backupBar');     // 「原設計已自動備份」
-      expect(keys).not.toContain('restoreFailed'); // 沒有還原流程可失敗
+      /*
+       * ⚠️ issue #19：`restoreFailed` 從禁用鍵移除。它當初被刪是因為
+       * **沒有還原流程可以失敗**；現在 `restore-previous` 真的存在、也真的會失敗
+       * （例如 LINE 端那張選單被店家手動刪掉且重建也失敗），一句失敗訊息是必要的。
+       * `backupBar`（「原設計已自動備份」）維持禁用——我們保留的是**設計快照**，
+       * 不是 LINE 端的整份備份，那個措辭會讓店家高估我們保證了什麼。
+       */
       for (const text of allStrings(richMenuDesignPage.scene)) {
         expect(text).not.toMatch(/自動備份/);
-        expect(text).not.toMatch(/可(隨時)?一鍵還原/);
+        // 「隨時一鍵還原」仍禁：只保留最近 1 份，不是隨時回到任何一版
+        expect(text).not.toMatch(/隨時一鍵還原/);
       }
     });
 
@@ -204,7 +230,13 @@ describe('修復-1C：發布成功訊息與備份承諾等殘留假宣稱', () =
   /* ============================================ 禁區守門 */
   describe('禁區未被動到（本輪只准改文案）', () => {
     it('Rich Menu 發布／刪除仍是真的：service 呼叫、try/catch、狀態更新都在', () => {
-      expect(code).toContain('const result = await createRichMenu(pendingTheme);');
+      /*
+       * ⚠️ 前提變更（issue #19）：發布改成「已訂閱 → create-advanced；
+       * 未訂閱 → 基本 create」，所以不再是單一行 `await createRichMenu(...)`。
+       * 兩條路徑都要在，而且都要是真的 await。
+       */
+      expect(code).toContain('await createRichMenu(pendingTheme)');
+      expect(code).toContain('await createAdvancedRichMenu(designPayload())');
       expect(code).toContain('setRichMenuId(result.richMenuId);');
       expect(code).toContain('await deleteRichMenu();');
       expect(code).toContain("setRichMenuId('');");

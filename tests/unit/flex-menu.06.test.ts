@@ -92,7 +92,9 @@ const cards = (n: number, extra: Partial<{ ad: boolean; imageUrl: string }> = {}
 /** 從 FLEX 結果取出 carousel 的 bubble 陣列 */
 function bubblesOf(outcome: ReturnType<typeof buildFlexMenuOutcome>): any[] {
   expect(outcome.kind).toBe('FLEX');
-  const msg = (outcome as { message: any }).message;
+  // FlexMenuOutcome 改成 messages 陣列之後，carousel 永遠是**第一則**
+  // （flexShowTip 的使用提示是第二則，見 06 分冊 §6.2.10）。
+  const msg = (outcome as { messages: any[] }).messages[0];
   expect(msg.type).toBe('flex');
   expect(msg.contents.type).toBe('carousel');
   return msg.contents.contents;
@@ -497,7 +499,7 @@ describe('buildFlexMenuOutcome — {shopName} 替換', () => {
     const outcome = buildFlexMenuOutcome(
       { flexCards: cards(1), flexHeaderTitle: '✨ {shopName}' }, SHOP,
     );
-    expect((outcome as { message: any }).message.altText).toBe(`✨ ${SHOP}`);
+    expect((outcome as { messages: any[] }).messages[0].altText).toBe(`✨ ${SHOP}`);
   });
 });
 
@@ -507,8 +509,8 @@ describe('buildFlexMenuOutcome — 關閉時的 HINT / SILENT 兩種行為', () 
       { flexMenuEnabled: false, flexMenuFallback: 'HINT', flexCards: cards(3) }, SHOP,
     );
     expect(outcome.kind).toBe('HINT');
-    expect((outcome as { message: any }).message)
-      .toEqual({ type: 'text', text: '請點選下方選單使用 👇' });
+    expect((outcome as { messages: any[] }).messages)
+      .toEqual([{ type: 'text', text: '請點選下方選單使用 👇' }]);
   });
 
   it('flexMenuEnabled=false + SILENT → SILENT，**完全沒有 message 可送**（呼叫端一則都不准發）', () => {
@@ -517,6 +519,7 @@ describe('buildFlexMenuOutcome — 關閉時的 HINT / SILENT 兩種行為', () 
     );
     expect(outcome.kind).toBe('SILENT');
     expect(outcome).not.toHaveProperty('message');
+    expect(outcome).not.toHaveProperty('messages');
   });
 
   it('關閉時就算有 12 張卡片也不組 carousel（開關真的是開關）', () => {
@@ -532,7 +535,7 @@ describe('buildFlexMenuOutcome — 關閉時的 HINT / SILENT 兩種行為', () 
   it('畫面上承諾的提示文字與 server 真的送出的那一句一致（兩處不得漂掉）', async () => {
     const { richMenuDesignPage } = await import('@/i18n/zh-TW/pages/rich-menu-design');
     const outcome = buildFlexMenuOutcome({ flexMenuEnabled: false, flexMenuFallback: 'HINT' }, SHOP);
-    const sent = (outcome as { message: any }).message.text as string;
+    const sent = (outcome as { messages: any[] }).messages[0].text as string;
     // 單選鈕的說明是「回提示文字『…』」，顧客實際收到的必須就是引號裡那一句
     expect(
       richMenuDesignPage.flex.fallbackHint,
@@ -633,5 +636,119 @@ describe('卡片上限 12 的單一事實來源（MAX_FLEX_CARDS）', () => {
     expect(Object.keys(richMenuDesignPage.flex)).not.toContain('maxCards12');
     expect(Object.keys(richMenuDesignPage.flex)).not.toContain('maxCards10');
     expect(richMenuDesignPage.flex.maxCards(MAX_FLEX_CARDS)).toBe('最多 12 張卡片');
+  });
+});
+
+/* ==========================================================================
+ * flexShowTip（issue #19 併入範圍 / 14 分冊 §8.22-c / 06 分冊 §6.2.10）
+ *
+ * 這一組釘的是**一顆在 2026-08-26 之前完全沒有效果的假開關**：店家切得動、
+ * 存得進 DB、「恢復預設」也會重設它，而 src/server/ 對它零引用。
+ * 所以每一條斷言的重點都是「切了到底有沒有差」，不是「回傳值長得對」。
+ * ========================================================================== */
+describe('buildFlexMenuOutcome — flexShowTip', () => {
+  it('flexShowTip=true → 送兩則：第 1 則是 flex carousel、第 2 則是 text 使用提示', () => {
+    const outcome = buildFlexMenuOutcome({ flexCards: cards(3), flexShowTip: true }, SHOP);
+    expect(outcome.kind).toBe('FLEX');
+    const messages = (outcome as { messages: any[] }).messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[0].type).toBe('flex');
+    expect(messages[0].contents.type).toBe('carousel');
+    expect(messages[1].type).toBe('text');
+    expect(typeof messages[1].text).toBe('string');
+    expect(messages[1].text.length).toBeGreaterThan(0);
+  });
+
+  it('flexShowTip=false → 只送 1 則（開關真的是開關）', () => {
+    const outcome = buildFlexMenuOutcome({ flexCards: cards(3), flexShowTip: false }, SHOP);
+    expect(outcome.kind).toBe('FLEX');
+    expect((outcome as { messages: any[] }).messages).toHaveLength(1);
+    expect((outcome as { messages: any[] }).messages[0].type).toBe('flex');
+  });
+
+  it('沒有 flexShowTip 這個鍵時預設開啟（與 zod 的 default true 一致，老資料不會靜默少一則）', () => {
+    const outcome = buildFlexMenuOutcome({ flexCards: cards(1) }, SHOP);
+    expect((outcome as { messages: any[] }).messages).toHaveLength(2);
+    expect(lineSettingsSchema.parse({}).flexShowTip).toBe(true);
+  });
+
+  it('提示卡不插在 carousel 最前面——12 張卡片時 bubble 數仍是 12，一張都沒被擠掉', () => {
+    const outcome = buildFlexMenuOutcome(
+      { flexCards: cards(MAX_FLEX_CARDS), flexShowTip: true }, SHOP,
+    );
+    expect(outcome.kind).toBe('FLEX');
+    expect((outcome as { bubbleCount: number }).bubbleCount).toBe(MAX_FLEX_CARDS);
+    const messages = (outcome as { messages: any[] }).messages;
+    expect(messages[0].contents.contents).toHaveLength(MAX_FLEX_CARDS);
+    // 提示是**第二則訊息**，不是 carousel 裡的第 13 個 bubble
+    expect(messages[1].type).toBe('text');
+  });
+
+  it('HINT 不受 flexShowTip 影響（fallback 本身就是一句提示，再補一句是重複）', () => {
+    for (const flexShowTip of [true, false]) {
+      const outcome = buildFlexMenuOutcome(
+        { flexMenuEnabled: false, flexMenuFallback: 'HINT', flexCards: cards(3), flexShowTip },
+        SHOP,
+      );
+      expect(outcome.kind).toBe('HINT');
+      expect(
+        (outcome as { messages: any[] }).messages,
+        `flexShowTip=${flexShowTip} 時 HINT 的訊息數被改掉了`,
+      ).toHaveLength(1);
+    }
+  });
+
+  it('SILENT 不受 flexShowTip 影響（店家明講「完全不回」，加任何東西都是把開關做假）', () => {
+    for (const flexShowTip of [true, false]) {
+      const outcome = buildFlexMenuOutcome(
+        { flexMenuEnabled: false, flexMenuFallback: 'SILENT', flexCards: cards(3), flexShowTip },
+        SHOP,
+      );
+      expect(outcome.kind).toBe('SILENT');
+      expect(outcome).not.toHaveProperty('messages');
+    }
+  });
+
+  it('NO_CARDS 不受 flexShowTip 影響（不憑空生一張卡，也不憑空生一則提示）', () => {
+    for (const flexShowTip of [true, false]) {
+      const outcome = buildFlexMenuOutcome({ flexCards: [], flexShowTip }, SHOP);
+      expect(outcome.kind).toBe('NO_CARDS');
+      expect(outcome).not.toHaveProperty('messages');
+    }
+  });
+
+  /**
+   * 守門：全專案不得再出現 `[outcome.message]` 這種只送第一則的寫法。
+   *
+   * ⚠️ 比對前先把註解剝掉——flex-menu.ts 與 line-events.ts 的說明文字裡刻意留著
+   * 這個字串（記錄「原本是什麼、為什麼改」），連註解一起比會永遠紅，
+   * 而那種永遠紅的守門測試遲早會被人放寬掉（CLAUDE.md：一直亮的警告不是警告）。
+   */
+  it('守門：src/ 底下沒有任何程式碼只送 outcome 的第一則訊息', () => {
+    const walk = (dir: string, out: string[] = []): string[] => {
+      for (const name of readdirSync(dir)) {
+        const full = join(dir, name);
+        if (statSync(full).isDirectory()) walk(full, out);
+        else if (/\.tsx?$/.test(full)) out.push(full);
+      }
+      return out;
+    };
+    const stripComments = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+    const offenders = walk(resolve(ROOT, 'src'))
+      .filter((f) => /\[\s*outcome\.message\s*\]/.test(stripComments(readFileSync(f, 'utf8'))))
+      .map((f) => relative(ROOT, f));
+
+    expect(
+      offenders,
+      `這些檔案只送了 outcome 的第一則訊息，flexShowTip 的第二則會被丟掉：${offenders.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('守門：line-events 把整包 messages 交給 lineReply（不是自己挑一則）', () => {
+    const src = readFileSync(resolve(ROOT, 'src/server/line-events.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(src).toMatch(/lineReply\(\s*ctx\.token,\s*ctx\.replyToken,\s*outcome\.messages\s*\)/);
   });
 });

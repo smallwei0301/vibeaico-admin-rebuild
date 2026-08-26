@@ -380,6 +380,10 @@ export async function runSeed(admin) {
         // 從 0016 之後就一直沒有被種進去，而且是靜默的**。
         // 修正欄位名，並補上 price_type / max_participants，讓 §5 的並發
         // 測試有明確的計價依據。
+        //
+        // ⚠️ issue #8 與 issue #19 的執行者**各自獨立撞到並修好**同一處，
+        // 兩份 diff 在合併時撞在一起——那本身就是這個坑夠隱蔽的證據：
+        // 錯誤訊息指向 trip_departures 的外鍵，真正的原因在這一行。
         base_price: 3000,
         price_type: 'PER_PERSON',
         max_participants: 10,

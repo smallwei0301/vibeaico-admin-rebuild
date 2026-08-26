@@ -20,12 +20,19 @@ import { useToast } from '@/components/ui/Toast';
 import {
   listFeatures, getTenantSettings, createRichMenu, deleteRichMenu, saveFlexMenu,
   saveLineSettings,
+  // issue #19：進階設計器的 11 支端點（06 分冊 §6.2）
+  createAdvancedRichMenu, createSceneRichMenu, previewSceneRichMenu, previewAdvancedRichMenu,
+  previewSceneFlex,
+  restorePreviousRichMenu, getAdvancedConfig, saveAdvancedConfig,
+  getBookingStepGuide, saveBookingStepGuide,
+  type RichMenuDesignPayload, type RichMenuPreview, type BookingStepGuidePayload,
 } from '@/services/settings';
-import { uploadImage } from '@/services/upload';
+import { uploadImage, uploadRichMenuBackground, uploadRichMenuCellIcon } from '@/services/upload';
 import { MAX_FLEX_CARDS, isAllowedFlexLinkUrl, type FlexCard } from '@/config/tenant-settings';
 import { ApiError } from '@/lib/api';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS } from '@/config/modes';
+import { SCENE_TEMPLATES as SHARED_SCENE_TEMPLATES } from '@/config/rich-menu-scenes';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { richMenuDesignPage as t } from '@/i18n/zh-TW/pages/rich-menu-design';
@@ -96,16 +103,14 @@ const DEFAULT_CELLS: Cell[] = [
   { label: '', action: 'SEND_TEXT', value: '', icon: '' },
 ];
 
-/** 一頁式範本示範資料。原站是 inline JS 的完整範本庫；spec 只留下扁平字串，
- *  無法還原「哪一句屬於哪一個範本」，這裡以 library.* 的原文組出示範卡。 */
-const SCENE_TEMPLATES = t.library.industries.slice(0, 6).map((industry, i) => ({
-  id: `scene_${i}`,
-  industry,
-  name: t.library.sceneNames[i] ?? industry,
-  tagline: t.library.industryTaglines[i] ?? '',
-  style: t.library.styleDescriptions[i] ?? '',
-  theme: THEMES[i % THEMES.length].key as ThemeKey,
-}));
+/**
+ * 一頁式範本。issue #19 起改由 `src/config/rich-menu-scenes.ts` 提供——
+ * `POST …/rich-menu/create-scene` 與 `…/preview-scene` 要用**同一份** id → 設定
+ * 的對應，各留一份的話畫面上按的那張卡與後端建立的那一份會分岔。
+ *
+ * ⚠️ 內容一字未動（仍是 `t.library.industries.slice(0, 6)` 那六張），只是搬檔。
+ */
+const SCENE_TEMPLATES = SHARED_SCENE_TEMPLATES;
 
 const QUICK_TEMPLATES = t.library.styleDescriptions.slice(0, 8).map((style, i) => ({
   id: `quick_${i}`,
@@ -226,18 +231,66 @@ function RichMenuTab({
   const [quickOpen, setQuickOpen] = React.useState(false);
   const [introOpen, setIntroOpen] = React.useState(false);
   const [publishing, setPublishing] = React.useState(false);
-  const [confirm, setConfirm] = React.useState<null | 'publish' | 'delete'>(null);
+  const [confirm, setConfirm] = React.useState<null | 'publish' | 'publishScene' | 'delete'>(null);
   const [pendingName, setPendingName] = React.useState('');
   const [pendingTheme, setPendingTheme] = React.useState<ThemeKey>('LINE_GREEN');
+  /** 「發布這個情境範本」確認視窗指向的那一張卡 */
+  const [pendingScene, setPendingScene] =
+    React.useState<null | (typeof SCENE_TEMPLATES)[number]>(null);
   const [popupCell, setPopupCell] = React.useState<number | null>(null);
-  const [hasBackup, setHasBackup] = React.useState(false);
-  const [guideCard, setGuideCard] = React.useState(true);
   const [richMenuId, setRichMenuId] = React.useState('');
   const [bgUploading, setBgUploading] = React.useState(false);
   const [bgSaving, setBgSaving] = React.useState(false);
   /** 網址輸入框的草稿值（尚未存進 tenant_settings）；bgUrl 才是已落地的值 */
   const [bgUrlDraft, setBgUrlDraft] = React.useState('');
   const bgFileRef = React.useRef<HTMLInputElement>(null);
+
+  /* ---------------------------------------------- issue #19 接上的後端狀態
+   * ⚠️ 這一整組在 #19 之前不存在，所以「還原前次發布」「儲存草稿」「情境範本預覽」
+   *    「單格圖示上傳」「預約步驟引導」都只能顯示誠實的「尚未建置」。現在有端點了。
+   *
+   * ⚠️ 三態，不是兩態：`null` = **還不知道**（正在載入），與「已載入且沒有」不同。
+   *    載入中把「沒有還原點」顯示成事實，是拿一個我們還沒查到的答案當已知
+   *    （CLAUDE.md：不知道就渲染未知，不要顯示一個看起來合理的值）。
+   */
+  const [configLoading, setConfigLoading] = React.useState(true);
+  const [restorePointAt, setRestorePointAt] = React.useState<string | null>(null);
+  const [draftSavedAt, setDraftSavedAt] = React.useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = React.useState(false);
+  const [restoring, setRestoring] = React.useState(false);
+  /** 情境範本預覽視窗（preview-scene 的結果；null = 沒開） */
+  const [scenePreview, setScenePreview] = React.useState<
+    null | { name: string; loading: boolean; data: RichMenuPreview | null }
+  >(null);
+  /** 「看實際會推送的圖」視窗（preview-advanced 的結果；null = 沒開） */
+  const [actualPreview, setActualPreview] = React.useState<
+    null | { loading: boolean; data: RichMenuPreview | null }
+  >(null);
+  /** 單格圖示上傳中的那一格（null = 沒有正在上傳的） */
+  const [iconUploading, setIconUploading] = React.useState<number | null>(null);
+  const iconFileRef = React.useRef<HTMLInputElement>(null);
+  const iconTargetCell = React.useRef<number>(0);
+  /** 預約步驟引導（booking-step-guide，§6.2.9） */
+  const [guideCard, setGuideCard] = React.useState(true);
+  const [guideSteps, setGuideSteps] = React.useState<BookingStepGuidePayload['steps']>([]);
+  const [savingGuide, setSavingGuide] = React.useState(false);
+
+  /** 目前畫面上的設定 → 端點要的那一份設計（草稿、預覽、發布共用同一個轉換） */
+  const designPayload = React.useCallback((): RichMenuDesignPayload => ({
+    theme,
+    layout,
+    cells: cells.slice(0, LAYOUT_ROWS[layout]?.reduce((a, b) => a + b, 0) ?? cells.length)
+      .map((c) => ({ label: c.label, action: c.action, value: c.value, icon: c.icon })),
+    bgImageUrl: bgUrl,
+    /*
+     * ⚠️ `chatBarText` 刻意**不從這裡送**：那是顧客在 LINE 聊天室下方看到的字，
+     * 預設值由 `richMenuDesignSchema` 決定（server 端 zh-TW，與 flex-menu.ts 的
+     * MSG 同一層）。在頁面寫一個中文字面量會違反鐵則 1，放進頁面 i18n 又會讓
+     * 「顧客看到的字」與「後台介面的字」混在同一本字典裡。這一頁目前也沒有
+     * 讓店家編輯它的欄位——有了再談。
+     */
+    name: '',
+  }), [theme, layout, cells, bgUrl]);
 
   // 進頁面時把店家上次實際發布的主題／底圖／發布狀態讀回來，畫面才不會跟 LINE 端的
   // 真實狀態脫節（例如已經發布過，卻一直顯示「未發布」的假狀態）。
@@ -253,7 +306,48 @@ function RichMenuTab({
         setBgUrl(settings.line.richMenuBgImageUrl);
         setBgUrlDraft(settings.line.richMenuBgImageUrl);
       }
-      if (settings.line.richMenuId) { setRichMenuId(settings.line.richMenuId); setHasBackup(true); }
+      if (settings.line.richMenuId) setRichMenuId(settings.line.richMenuId);
+    })();
+  }, []);
+
+  /*
+   * 草稿／已發布／還原點（GET advanced-config）與預約步驟引導。
+   *
+   * ⚠️ 有草稿就以草稿為準：店家上次按了「儲存草稿」，這一頁再打開卻是別的設定，
+   *    等於那顆按鈕又變成假的。已發布的設定只在沒有草稿時當起點。
+   * ⚠️ 失敗時**不要**把狀態當成「沒有」——`configLoading` 留在 true，
+   *    畫面顯示未知而不是「沒有可還原的設計」（那句話會是編出來的）。
+   */
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const [config, guide] = await Promise.all([
+          getAdvancedConfig(),
+          getBookingStepGuide().catch(() => null),
+        ]);
+        setRestorePointAt(config.restorePoint?.updatedAt ?? '');
+        setDraftSavedAt(config.draft?.updatedAt ?? '');
+        const source = config.draft ?? config.published?.config ?? null;
+        if (source) {
+          if (THEMES.some((th) => th.key === source.theme)) setTheme(source.theme as ThemeKey);
+          if (LAYOUT_ROWS[source.layout]) setLayout(source.layout);
+          if (source.cells?.length) {
+            setCellsTouched(true);
+            setCells(source.cells.map((c) => ({
+              label: c.label, action: c.action as CellAction, value: c.value, icon: c.icon ?? '',
+            })));
+          }
+        }
+        if (guide) {
+          setGuideCard(guide.enabled);
+          setGuideSteps(guide.steps);
+        }
+        setConfigLoading(false);
+      } catch {
+        // 讀不到就停在「未知」——不要退回一個看起來合理的預設值
+        setConfigLoading(false);
+        setRestorePointAt(null);
+      }
     })();
   }, []);
 
@@ -280,9 +374,14 @@ function RichMenuTab({
     }
     setBgUploading(true);
     try {
-      const url = await uploadImage(file, 'richmenu-assets');
-      // 先落地再顯示成功：這一步才是「發布會用到這張圖」成立的原因
-      await saveLineSettings({ richMenuBgImageUrl: url });
+      /*
+       * issue #19：改走 `POST …/rich-menu/upload-image`，它在**同一個請求裡**
+       * 上傳並寫進 `tenant_settings.line.richMenuBgImageUrl`。
+       * 原本是 `uploadImage()` + `saveLineSettings()` 兩段——中間只成功一半時
+       * （圖進了 bucket、設定沒寫）畫面已經顯示「上傳成功」，而發布出去的還是
+       * 主題底圖。一個請求做完就沒有那個中間狀態。
+       */
+      const { url } = await uploadRichMenuBackground(file);
       setBgUrl(url);
       setBgUrlDraft(url);
       toast.show(t.background.uploaded);
@@ -342,6 +441,110 @@ function RichMenuTab({
       }
     }
     return null;
+  };
+
+  /* ══════════════════════════ issue #19 接上的動作（06 分冊 §6.2）
+   *
+   * ⚠️ 共同紀律：**成功訊息一律 await-first**。每一支都是先 `await` 端點回來、
+   *    確定成功，才 `toast.show(...)`。這一頁在 #19 之前有六處是反過來做的
+   *    （改本地 state → 立刻顯示成功），那正是本專案在清的假成功。
+   */
+
+  /** 儲存草稿（PUT advanced-config）。⚠️ 草稿不是發布，文案不得寫成「已上線」。 */
+  const saveDraft = async () => {
+    setSavingDraft(true);
+    try {
+      const { updatedAt } = await saveAdvancedConfig(designPayload());
+      setDraftSavedAt(updatedAt);
+      toast.show(t.publish.draftSaved, 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t.publish.draftSaveFailed, 'danger');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  /**
+   * 還原上一次發布（POST restore-previous）。
+   *
+   * 沒有還原點時端點回 404，訊息說明「為什麼沒有」——這裡照原文顯示，
+   * 不吞掉、也不改寫成含糊的「操作失敗」。
+   */
+  const restorePrevious = async () => {
+    setRestoring(true);
+    try {
+      const result = await restorePreviousRichMenu();
+      setRichMenuId(result.richMenuId);
+      // 還原之後，剛被換下來的那一份成為新的還原點（可以再還原回去一次來回）
+      setRestorePointAt(new Date().toISOString());
+      toast.show(t.scene.restoreDone, 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t.scene.restoreFailed, 'danger');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  /** 情境範本預覽（POST preview-scene）。⚠️ 這一支不會發布任何東西。 */
+  const openScenePreview = async (scene: { id: string; name: string }) => {
+    setScenePreview({ name: scene.name, loading: true, data: null });
+    try {
+      const data = await previewSceneRichMenu(scene.id);
+      setScenePreview({ name: scene.name, loading: false, data });
+    } catch (e) {
+      setScenePreview(null);
+      toast.show(e instanceof ApiError ? e.message : t.scene.previewFailed, 'danger');
+    }
+  };
+
+  /**
+   * 「看實際會推送的圖」（POST preview-advanced）。
+   * ⚠️ 這一支不會發布任何東西——與 openScenePreview 同一條紀律。
+   */
+  const openActualPreview = async () => {
+    setActualPreview({ loading: true, data: null });
+    try {
+      const data = await previewAdvancedRichMenu(designPayload());
+      setActualPreview({ loading: false, data });
+    } catch (e) {
+      setActualPreview(null);
+      toast.show(e instanceof ApiError ? e.message : t.scene.previewFailed, 'danger');
+    }
+  };
+
+  /** 單格圖示上傳（POST upload-cell-icon）。⚠️ 存得到，但不會畫進 LINE 選單底圖。 */
+  const uploadCellIcon = async (file: File, index: number) => {
+    if (file.size > RICH_MENU_BG_MAX_BYTES) {
+      toast.show(t.background.tooLarge, 'warning');
+      return;
+    }
+    setIconUploading(index);
+    try {
+      const { url } = await uploadRichMenuCellIcon(file, index);
+      updateCell(index, { icon: url });
+      // ⚠️ 逐字說出真實效果：已存進草稿、但顧客的選單上看不到它
+      toast.show(t.cells.iconUploaded, 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t.cells.iconUploadFailed, 'danger');
+    } finally {
+      setIconUploading(null);
+      if (iconFileRef.current) iconFileRef.current.value = '';
+    }
+  };
+
+  /** 預約步驟引導（PUT booking-step-guide）。⚠️ 存得到，但顧客端目前收不到。 */
+  const saveGuide = async (next: { enabled: boolean; steps: BookingStepGuidePayload['steps'] }) => {
+    setSavingGuide(true);
+    try {
+      const saved = await saveBookingStepGuide(next);
+      setGuideCard(saved.enabled);
+      setGuideSteps(saved.steps);
+      toast.show(t.bookingSteps.saved, 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t.bookingSteps.saveFailed, 'danger');
+    } finally {
+      setSavingGuide(false);
+    }
   };
 
   return (
@@ -408,21 +611,31 @@ function RichMenuTab({
               </ul>
 
               {/*
-                * ⚠️ 備份／還原端點尚未建置：本頁沒有任何備份可還原。
-                * 舊實作按「還原發布前的設計」只是 setHasBackup(false) + toast「已還原」，
-                * 店家會以為 LINE 上的選單已換回舊版，實際上 LINE 端毫無變化。禁止復原。
+                * 還原前次發布（issue #19 接上 `POST …/rich-menu/restore-previous`）。
+                *
+                * ⚠️ 三態，不是兩態：
+                *   configLoading      → **還不知道**，顯示載入中，不寫「沒有可還原的」
+                *   restorePointAt===''→ 已查過，確實沒有（第一次發布之後本來就沒有上一次）
+                *   restorePointAt有值 → 有還原點，按鈕可用
+                * 載入中把「沒有」當事實顯示出來，就是拿一個還沒查到的答案冒充已知。
                 */}
-              {hasBackup && (
-                <Alert tone="warning" className="mb-4" action={
+              {configLoading ? (
+                <Alert tone="info" className="mb-4">{t.scene.restoreLoading}</Alert>
+              ) : restorePointAt ? (
+                <Alert tone="info" className="mb-4" action={
                   <Button
                     variant="outline" size="sm"
-                    disabled title={t.scene.restoreDisabledHint}
+                    loading={restoring}
+                    loadingText={t.scene.restoring}
+                    onClick={() => void restorePrevious()}
                   >
                     <RotateCcw size={13} />{t.scene.restore}
                   </Button>
                 }>
-                  {t.scene.noBackupBar}
+                  {t.scene.restoreAvailable}
                 </Alert>
+              ) : (
+                <Alert tone="info" className="mb-4">{t.scene.restoreNonePoint}</Alert>
               )}
 
               {/*
@@ -461,16 +674,23 @@ function RichMenuTab({
                       <div className="text-2xs text-secondary">{s.style}</div>
                       <div className="flex gap-1.5 pt-2">
                         {/*
-                          * ⚠️ 假互動：這顆「預覽」鈕沒有預覽視窗，舊實作按下去只跳一句
-                          * 「LINE 底部選單完整圖（品牌大字已帶入你的店名）」的 info toast，
-                          * 那句話本身也是假的（發布上傳底圖原圖，不合成店名）。
-                          * 範本預覽產生後端尚未建置 → 改成 warning + 直說沒有預覽可開。
-                          * ⚠️ 本輪只做誠實化，不准在這裡實作預覽視窗。
+                          * issue #19：接上 `POST …/rich-menu/preview-scene`。
+                          * ⚠️ 那支端點**一行都不碰 LINE**（06 分冊 §6.2.5），
+                          *    整合測試斷言 mock LINE 的 richmenu 建立次數為 0。
+                          *    這裡絕對不可以順手改叫 create-scene——按預覽把顧客的
+                          *    選單換掉，畫面上看起來會一模一樣。
                           */}
-                        <Button variant="outline" size="sm" onClick={() => toast.show(t.scene.previewNotBuilt, 'warning')}>
+                        <Button
+                          variant="outline" size="sm"
+                          onClick={() => void openScenePreview(s)}
+                        >
                           <Eye size={13} />{t.scene.previewBtn}
                         </Button>
-                        <Button size="sm" onClick={() => { setPendingName(s.name); setPendingTheme(s.theme); setConfirm('publish'); }}>
+                        {/*
+                          * issue #19：範本發布改走 `POST …/rich-menu/create-scene`
+                          * （原本借用基本 create，只送 theme，範本 id 根本沒到後端）。
+                          */}
+                        <Button size="sm" onClick={() => { setPendingScene(s); setConfirm('publishScene'); }}>
                           <Send size={13} />{t.publish.publish}
                         </Button>
                       </div>
@@ -718,20 +938,35 @@ function RichMenuTab({
                           </td>
                           <td className="!max-w-none">
                             {/*
-                              * ⚠️ 圖示尺寸下拉沒有 onChange、上傳鈕沒有 onClick：兩者都
-                              * 不會被任何程式碼讀取，發布端點也只上傳底圖原圖、不合成
-                              * 圖示。之前只靠 disabled={!subscribed} 表示「訂閱就能用」，
-                              * 但訂閱了一樣沒有接線 → 一律停用並在按鈕上附說明。
+                              * issue #19：上傳鈕接上 `POST …/rich-menu/upload-cell-icon`
+                              * （圖進 bucket、網址存進草稿的那一格、下次開頁面讀得回來）。
+                              *
+                              * ⚠️ **圖示不會出現在 LINE 選單的底圖上**——本專案沒有影像
+                              *    合成能力，發布上傳的是底圖原圖。這件事寫在表格下方的
+                              *    常駐說明與成功 toast 裡，不是只寫在註解（CLAUDE.md：
+                              *    註解保護的是下一個開發者，被誤導的還是店家）。
+                              *
+                              * ⚠️ 圖示**尺寸**下拉仍然沒有任何程式碼會讀它，發布端點也沒有
+                              *    對應欄位 → 維持停用。接了上傳就順手把尺寸也「看起來能用」，
+                              *    等於再造一顆假開關。
                               */}
                             <Select className="form-select-sm" disabled defaultValue={ICON_SIZES[1]}>
                               {ICON_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                             </Select>
                             <Button
                               variant="ghost" size="sm" className="mt-1"
-                              disabled title={t.cells.iconUploadNotBuilt}
+                              disabled={!subscribed}
+                              loading={iconUploading === i}
+                              onClick={() => {
+                                iconTargetCell.current = i;
+                                iconFileRef.current?.click();
+                              }}
                             >
                               <Upload size={12} />{t.cells.iconUpload}
                             </Button>
+                            {c.icon && (
+                              <FormText className="break-all">{t.cells.iconUploadedShort}</FormText>
+                            )}
                           </td>
                         </tr>
                       );
@@ -743,8 +978,24 @@ function RichMenuTab({
             <div className="border-t border-neutral-200 p-4">
               <FormText>{t.cells.iconSizeHint}</FormText>
               <FormText>{t.cells.sendTextHint}</FormText>
-              {/* ⚠️ 圖示上傳／尺寸欄位尚未接上任何程式碼與端點，必須在表格下方常駐說明 */}
-              <Alert tone="warning" className="mt-3">{t.cells.iconUploadNotBuilt}</Alert>
+              {/*
+                * ⚠️ 常駐說明（issue #19 更新）：圖示現在**真的會上傳並存進草稿**，
+                * 但**不會被畫進 LINE 選單的底圖**，尺寸下拉也還沒有對應的後端欄位。
+                * 這句話必須留在店家讀得到的地方——他上傳完看到「已上傳」，
+                * 合理預期它會出現在選單上。
+                */}
+              <Alert tone="warning" className="mt-3">{t.cells.iconNotComposed}</Alert>
+              {/* 圖示檔案選擇器（共用一個 input，目標格子記在 iconTargetCell） */}
+              <input
+                ref={iconFileRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadCellIcon(file, iconTargetCell.current);
+                }}
+              />
             </div>
           </CardBody>
         </Card>
@@ -755,31 +1006,64 @@ function RichMenuTab({
           <CardBody>
             <p className="form-text mb-3">{t.bookingSteps.desc}</p>
             {/*
-              * ⚠️ 預約流程步驟自訂後端尚未建置（tenant_settings 無對應欄位、
-              * 也沒有 booking-step-guide 端點）：開關與下方輸入框都只存在瀏覽器記憶體。
-              * 舊實作切換就 toast「已開啟／已關閉步驟說明卡」，顧客端從未改變。禁止復原。
+              * issue #19：接上 `PUT /api/settings/line/booking-step-guide`
+              * （路徑**不在 rich-menu/ 底下**，規格逐字如此，06 分冊 §6.2.0 第 (2) 點）。
+              *
+              * ⚠️ 設定真的存得進 `tenant_settings.line.bookingStepGuide`、讀得回來、
+              *    產出的卡片 payload 也過 LINE 驗證——**但顧客目前收不到它**。
+              *    原站的引導卡插在「預約 carousel」最前面，而本專案的「預約」回的是
+              *    純文字服務清單，沒有那個 carousel（`line-events.ts` 的
+              *    `replyServiceList()`）。這句話必須留在畫面上：把設定存起來是誠實的，
+              *    顯示「顧客現在會看到引導卡」則是編造（06 分冊 §6.2.9）。
               */}
-            <Alert tone="warning" className="mb-3">{t.bookingSteps.notBuiltBody}</Alert>
+            <Alert tone="warning" className="mb-3">{t.bookingSteps.savedButNotDelivered}</Alert>
             <SwitchField
               label={t.bookingSteps.guideLabel}
               description={t.bookingSteps.guideHelp}
               checked={guideCard}
+              disabled={savingGuide}
               onCheckedChange={(v) => {
-                setGuideCard(v);
-                toast.show(t.bookingSteps.guideToggleNotEffective, 'warning');
+                // 成功訊息 await-first：先送出、成功了才顯示（saveGuide 內部處理）
+                void saveGuide({ enabled: v, steps: guideSteps });
               }}
             />
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {t.bookingSteps.steps.map((s) => (
-                <div key={s} className="rounded-lg border border-neutral-200 p-3">
-                  <Label>{s}</Label>
-                  <div className="flex gap-2">
-                    <Input type="color" defaultValue="#06c755" className="h-9 w-14 p-1" />
-                    <Input className="form-control-sm" defaultValue={s} />
-                  </div>
+            {configLoading ? (
+              /* ⚠️ 載入中顯示「載入中」，不要先畫出一組預設值當成店家存過的設定 */
+              <p className="form-text mt-4">{t.bookingSteps.loading}</p>
+            ) : (
+              <>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {guideSteps.map((s, i) => (
+                    <div key={s.key} className="rounded-lg border border-neutral-200 p-3">
+                      <Label>{t.bookingSteps.stepLabels[s.key] ?? s.key}</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="color" className="h-9 w-14 p-1" value={s.color}
+                          onChange={(e) => setGuideSteps(
+                            (prev) => prev.map((x, xi) => (xi === i ? { ...x, color: e.target.value } : x)),
+                          )}
+                        />
+                        <Input
+                          className="form-control-sm" value={s.title}
+                          placeholder={t.bookingSteps.stepTitlePlaceholder}
+                          onChange={(e) => setGuideSteps(
+                            (prev) => prev.map((x, xi) => (xi === i ? { ...x, title: e.target.value } : x)),
+                          )}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+                <Button
+                  className="mt-3"
+                  variant="outline"
+                  loading={savingGuide}
+                  onClick={() => void saveGuide({ enabled: guideCard, steps: guideSteps })}
+                >
+                  {t.bookingSteps.save}
+                </Button>
+              </>
+            )}
           </CardBody>
         </Card>
 
@@ -825,6 +1109,24 @@ function RichMenuTab({
               * ⚠️ 不准改成去實作文字疊圖來「讓預覽變成真的」——那是 Phase 6+ 的範圍。
               */}
             <Alert tone="warning" className="mt-3">{t.preview.notActualNote}</Alert>
+            {/*
+              * 「看實際會推送的圖」——`POST …/rich-menu/preview-advanced`。
+              *
+              * 上面那塊 CSS 預覽畫的是**版位示意**（店名與格子文字是本頁畫上去的）；
+              * 這顆按鈕拿回來的是**伺服器真的會上傳給 LINE 的那張圖**。
+              * 一句「這不是實際推送物」的告示解釋得了落差，但看不到落差本身；
+              * 兩張圖擺在一起，店家才真的知道差在哪。
+              *
+              * ⚠️ 它呼叫的是 preview，不是 create——按「看實際圖」把顧客的選單換掉，
+              *    畫面上會完全看不出來。
+              */}
+            <Button
+              block variant="outline" className="mt-3"
+              loading={actualPreview?.loading ?? false}
+              onClick={() => void openActualPreview()}
+            >
+              <Eye size={14} />{t.preview.showActualBtn}
+            </Button>
           </CardBody>
         </Card>
 
@@ -845,22 +1147,32 @@ function RichMenuTab({
               <Send size={15} />{t.publish.publish}
             </Button>
             {/*
-              * ⚠️ 草稿後端尚未建置：沒有可呼叫的 service／端點（services/settings.ts
-              * 只有 createRichMenu / deleteRichMenu）。舊實作直接 toast「草稿已儲存」，
-              * 但關掉分頁設定就消失。禁止復原。
+              * issue #19：接上 `PUT …/rich-menu/advanced-config`。
+              * ⚠️ **草稿不是發布**：存成功只代表下次打開這一頁看得到同樣的設定，
+              *    顧客的選單一點都沒變。成功文案必須這樣寫（鐵則 12）。
               */}
             <Button
               block variant="outline"
-              onClick={() => toast.show(t.publish.draftNotEffective, 'warning')}
+              loading={savingDraft}
+              onClick={() => void saveDraft()}
             >
               {t.publish.saveDraft}
             </Button>
             <Button block variant="outlineDanger" onClick={() => setConfirm('delete')}>
               <Trash2 size={14} />{t.publish.deletePublished}
             </Button>
+            {/*
+              * ⚠️ 三態：載入中不要顯示「尚未發布」——那是一個我們還沒查到的答案。
+              *    「未發布」與「還不知道」在店家眼裡是兩件事。
+              */}
             <p className="form-text text-center">
-              {richMenuId ? t.publish.publishedStatus : t.publish.notPublished}
+              {configLoading
+                ? t.publish.statusLoading
+                : richMenuId ? t.publish.publishedStatus : t.publish.notPublished}
             </p>
+            {!configLoading && draftSavedAt && (
+              <p className="form-text text-center">{t.publish.draftStatus}</p>
+            )}
           </CardBody>
         </Card>
       </div>
@@ -876,11 +1188,23 @@ function RichMenuTab({
           setConfirm(null);
           setPublishing(true);
           try {
-            const result = await createRichMenu(pendingTheme);
+            /*
+             * issue #19：訂閱了就走 `create-advanced`（版型、每格設定、底圖全部
+             * 真的送出去，並維護還原點）；沒訂閱的維持基本 `create`——進階端點
+             * 擋 CUSTOM_RICH_MENU（09 分冊 §5），基本 5 主題不擋，
+             * 直接打進階端點只會拿到 403，等於把免費店家的發布鈕弄壞。
+             */
+            const result = subscribed
+              ? await createAdvancedRichMenu(designPayload())
+              : await createRichMenu(pendingTheme);
             setRichMenuId(result.richMenuId);
-            setTheme(pendingTheme);
-            setHasBackup(true);
-            toast.show(subscribed ? t.publish.published : t.feature.freeFallbackNotice, subscribed ? 'success' : 'warning');
+            if (!subscribed) setTheme(pendingTheme);
+            // 這次發布把「剛被換下來的那一份」變成還原點
+            if (subscribed) setRestorePointAt(new Date().toISOString());
+            toast.show(
+              subscribed ? t.publish.published : t.feature.freeFallbackNotice,
+              subscribed ? 'success' : 'warning',
+            );
           } catch (e) {
             toast.show(e instanceof ApiError ? e.message : t.publish.publishFailed, 'danger');
           } finally {
@@ -888,6 +1212,71 @@ function RichMenuTab({
           }
         }}
       />
+      {/*
+        * 情境範本發布（`POST …/rich-menu/create-scene`）。
+        * ⚠️ 確認文案必須說出「範本只帶主題配色、六格文案是業態預設」——
+        *    店家看到「海鮮餐廳」範本，合理預期會拿到海鮮餐廳的六格文案，
+        *    而原站那份對應已遺失且不得憑空補回（REBUILD-SPEC §9.3 第 1 點）。
+        */}
+      <ConfirmModal
+        open={confirm === 'publishScene'}
+        title={t.publish.publish}
+        message={`${t.scene.publishConfirmLead}${pendingScene?.name ?? ''}${t.scene.sceneConfirmTail}`}
+        confirmText={t.publish.publish}
+        onClose={() => { setConfirm(null); setPendingScene(null); }}
+        onConfirm={async () => {
+          const scene = pendingScene;
+          setConfirm(null);
+          setPendingScene(null);
+          if (!scene) return;
+          setPublishing(true);
+          try {
+            const result = await createSceneRichMenu(scene.id);
+            setRichMenuId(result.richMenuId);
+            setTheme(scene.theme as ThemeKey);
+            setRestorePointAt(new Date().toISOString());
+            toast.show(t.publish.published, 'success');
+          } catch (e) {
+            toast.show(e instanceof ApiError ? e.message : t.publish.publishFailed, 'danger');
+          } finally {
+            setPublishing(false);
+          }
+        }}
+      />
+      {/*
+        * 情境範本預覽視窗（`POST …/rich-menu/preview-scene`）。
+        * ⚠️ 預覽圖是**純色底圖**：沒有店名、沒有格子文字、沒有格線——因為發布真的
+        *    上傳給 LINE 的就是這樣一張圖。視窗裡必須照實說，不然這個視窗本身
+        *    就變成新的「預覽與實際不一致」。
+        */}
+      <Modal
+        open={scenePreview !== null}
+        title={scenePreview?.name ?? t.scene.previewBtn}
+        onClose={() => setScenePreview(null)}
+      >
+        {scenePreview?.loading ? (
+          <p className="form-text">{t.scene.previewLoading}</p>
+        ) : scenePreview?.data ? (
+          <div className="space-y-3">
+            <img
+              src={scenePreview.data.imageDataUrl}
+              alt={scenePreview.name}
+              className="w-full rounded-lg border border-neutral-200"
+            />
+            <Alert tone="warning">{t.scene.previewFlatColorNote}</Alert>
+            {scenePreview.data.cellsAreModeDefaults && (
+              <Alert tone="info">{t.scene.previewModeDefaultsNote}</Alert>
+            )}
+            <ul className="space-y-1 text-xs text-neutral-600">
+              {scenePreview.data.areas.map((a, i) => (
+                <li key={i}>
+                  {i + 1}. {String((a.action as { label?: string })?.label ?? '')}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </Modal>
       <ConfirmModal
         open={confirm === 'delete'}
         danger
@@ -900,7 +1289,6 @@ function RichMenuTab({
           try {
             await deleteRichMenu();
             setRichMenuId('');
-            setHasBackup(false);
             toast.show(t.publish.deleted);
           } catch (e) {
             toast.show(e instanceof ApiError ? e.message : t.publish.publishFailed, 'danger');
@@ -913,6 +1301,35 @@ function RichMenuTab({
         * 寫回 cells，關掉視窗就沒了。依 CLAUDE.md「成功 toast 是一項事實主張」，
         * 改為誠實提示（尚未生效）。禁止復原成「已儲存」。
         */}
+      {/*
+        * 「看實際會推送的圖」的視窗。內容與範本預覽同一組說明——因為那句話
+        * 在這裡更該講：店家剛剛才看過上面那塊有店名的 CSS 預覽。
+        */}
+      <Modal
+        open={actualPreview !== null}
+        title={t.preview.showActualBtn}
+        onClose={() => setActualPreview(null)}
+      >
+        {actualPreview?.loading ? (
+          <p className="form-text">{t.scene.previewLoading}</p>
+        ) : actualPreview?.data ? (
+          <div className="space-y-3">
+            <img
+              src={actualPreview.data.imageDataUrl}
+              alt={t.preview.showActualBtn}
+              className="w-full rounded-lg border border-neutral-200"
+            />
+            <Alert tone="warning">{t.scene.previewFlatColorNote}</Alert>
+            <ul className="space-y-1 text-xs text-neutral-600">
+              {actualPreview.data.areas.map((a, i) => (
+                <li key={i}>
+                  {i + 1}. {String((a.action as { label?: string })?.label ?? '')}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </Modal>
       <FlexPopupModal
         open={popupCell !== null}
         onClose={() => setPopupCell(null)}
@@ -1074,6 +1491,26 @@ function FlexMenuTab({
   const SHOP_NAME = useCurrentTenant().name;
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [flexPreviewLoading, setFlexPreviewLoading] = React.useState(false);
+
+  /**
+   * 「顧客實際會收到什麼」——問伺服器要一份 `buildFlexMenuOutcome()` 的結果。
+   *
+   * ⚠️ 讀的是**已儲存**的設定，不是畫面上還沒發布的草稿：說的是「顧客現在會收到
+   * 什麼」，不是「你按發布之後會收到什麼」。文案必須跟著這樣寫，不然它就變成
+   * 一個看起來像預覽、實際上答非所問的按鈕。
+   */
+  const previewCustomerMessages = async () => {
+    setFlexPreviewLoading(true);
+    try {
+      const result = await previewSceneFlex();
+      toast.show(t.flex.previewCustomerResult(result.messageCount, result.bubbleCount), 'success');
+    } catch (e) {
+      toast.show(e instanceof ApiError ? e.message : t.flex.previewCustomerFailed, 'danger');
+    } finally {
+      setFlexPreviewLoading(false);
+    }
+  };
   const [enabled, setEnabled] = React.useState(true);
   const [fallback, setFallback] = React.useState<'HINT' | 'SILENT'>('HINT');
   const [cards, setCards] = React.useState<EditorCard[]>([]);
@@ -1395,6 +1832,23 @@ function FlexMenuTab({
             </Button>
             <Button block variant="outlineDanger" disabled={saving} onClick={() => setConfirm('delete')}>
               <Trash2 size={14} />{t.flex.deletePublished}
+            </Button>
+            {/*
+              * 「顧客實際會收到什麼」——`POST …/rich-menu/preview-scene-flex`。
+              *
+              * 它回的是**同一支** `buildFlexMenuOutcome()` 組出來的那一包，不是另外
+              * 為預覽組一份 JSON（issue #6 的單一事實來源要求）。所以
+              * `flexShowTip` 開著時這裡會顯示「2 則」——店家在這裡看到幾則，
+              * 顧客就會收到幾則。左邊的卡片預覽看不出「會不會多送一則提示」。
+              *
+              * ⚠️ 一行都不碰 LINE，也不會發布。
+              */}
+            <Button
+              block variant="outline"
+              loading={flexPreviewLoading}
+              onClick={() => void previewCustomerMessages()}
+            >
+              <Eye size={14} />{t.flex.previewCustomerBtn}
             </Button>
           </CardBody>
         </Card>

@@ -164,7 +164,27 @@ export const lineSettingsSchema = z.object({
   flexHeaderColor: z.string().default('#06C755'),
   flexHeaderTitle: z.string().default('✨ {shopName}'),
   flexHeaderSubtitle: z.string().default(''),
+  /**
+   * 「顯示使用提示」：開啟時，Flex 主選單 carousel 之**後**多送一則純文字提示。
+   *
+   * ⚠️ **這個語意是我們選的，不是從原站還原的**（06 分冊 §6.2.10、14 分冊 §8.22-c）。
+   * 原站規格對它只留下一行 label，`help` 是空字串，全站 spec 沒有第二句話提到它。
+   * **判定得出來的只有它屬於哪一組**（Flex 主選單，不是預約步驟引導）。
+   *
+   * 生效點只有一個：`src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()`，
+   * 且**只在回 `FLEX` 時生效**（HINT/SILENT/NO_CARDS 一律不加，理由見該檔）。
+   * 在 2026-08-26 之前這是一顆店家切得動、存得進去、但什麼都不會發生的假開關。
+   */
   flexShowTip: z.boolean().default(true),
+  /**
+   * 預約步驟引導卡的設定（06 分冊 §6.2.9，`PUT /api/settings/line/booking-step-guide`）。
+   * 形狀與預設值見 `src/server/booking-step-guide.ts`；放 line jsonb 的理由同 flexCards。
+   *
+   * ⚠️ 存得到、讀得回來、payload 也過 LINE 驗證，**但目前顧客收不到**：
+   * 原站的引導卡插在「預約 carousel」最前面，而本專案的「預約」回的是純文字服務清單，
+   * 沒有那個 carousel。畫面上必須明講（§6.2.9）。
+   */
+  bookingStepGuide: z.unknown().optional(),
   /**
    * Flex 主選單的輪播卡片（06 分冊 §6「2026-08-24 補規格」：卡片陣列一併存進
    * line jsonb 的 `flexCards` 鍵，上限 12 張）。

@@ -99,3 +99,68 @@ export async function uploadFile(file: File, bucket: UploadBucket): Promise<Uplo
 export async function uploadImage(file: File, bucket: UploadBucket): Promise<string> {
   return (await uploadFile(file, bucket)).url;
 }
+
+/* ══════════════════════ Rich Menu 專用的兩支上傳（issue #19 / 06 §6.2.8）
+ *
+ * ⚠️ 它們**不是** `/api/upload` 的第二份實作：伺服器端三支路由共用同一支
+ * `uploadToBucket()`（`src/server/upload.ts`），所以格式檢查、1 MB 上限、
+ * MIME 解碼比對完全一致。各自多做的那一件事才是它們存在的理由：
+ *   - upload-image      → 順手寫進 `tenant_settings.line.richMenuBgImageUrl`
+ *                         （發布端點讀的是那個欄位，不是請求 body）
+ *   - upload-cell-icon  → 順手寫進草稿的那一格 `cells[i].icon`
+ *
+ * 走 fetch 而不是 `request()`，理由同 `uploadFile()`：那支固定送 JSON。
+ */
+
+async function postMultipart<T>(path: string, form: FormData, failMessage: string): Promise<T> {
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
+  const res = await fetch(`${base}${path}`, { method: 'POST', body: form, credentials: 'include' });
+
+  let body: { success?: boolean; data?: any; message?: string; code?: string };
+  try {
+    body = await res.json();
+  } catch {
+    throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
+  }
+  if (!res.ok || body.success === false || !body.data) {
+    throw new ApiError(body.message ?? failMessage, body.code, res.status);
+  }
+  return body.data as T;
+}
+
+/**
+ * 上傳選單底圖，並**同時存進店家設定**（發布時真正會被用到的那個欄位）。
+ *
+ * 這一支取代了頁面原本「`uploadImage()` 再 `saveLineSettings()`」的兩段式做法：
+ * 兩段式的中間可能只成功一半——圖進了 bucket、設定沒寫，而畫面已經 toast
+ * 「上傳成功」，發布出去的卻還是主題底圖。
+ */
+export async function uploadRichMenuBackground(
+  file: File,
+): Promise<{ url: string; path: string; savedTo: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  return postMultipart(
+    '/api/settings/line/rich-menu/upload-image', form, '底圖上傳失敗，請稍後再試',
+  );
+}
+
+/**
+ * 上傳某一格的圖示，存進草稿的那一格。
+ *
+ * ⚠️ 回應的 `composedIntoMenuImage` 恆為 `false`：圖示存得到、讀得回，
+ * **但不會出現在 LINE 選單的底圖上**（本專案沒有影像合成能力，`png.ts` 只產純色
+ * 矩形，發布上傳的是底圖原圖）。呼叫端必須把這件事寫在使用者讀得到的地方，
+ * 不能只顯示「已上傳」——店家會合理預期它出現在選單上（06 分冊 §6.2.8）。
+ */
+export async function uploadRichMenuCellIcon(
+  file: File,
+  cellIndex: number,
+): Promise<{ url: string; path: string; cellIndex: number; composedIntoMenuImage: boolean }> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('cellIndex', String(cellIndex));
+  return postMultipart(
+    '/api/settings/line/rich-menu/upload-cell-icon', form, '圖示上傳失敗，請稍後再試',
+  );
+}

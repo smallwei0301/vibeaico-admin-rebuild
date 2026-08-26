@@ -651,6 +651,10 @@ message action。一個壞連結不得帶走整張卡。
 （目前是無 onClick 的死按鈕）——在接上之前，頁面必須明示「尚未生效」（鐵則 12），
 不得顯示成功。
 
+> **（2026-08-26，issue #19 更新）** 上面這一段是本節被展開之前的狀態，保留供追溯。
+> 進階設計器的 11 支端點契約、狀態機、回滾與還原點策略**已展開為下方 §6.2**，
+> 該組端點不再是「Phase 6+ 待實作」。§6.2 是這一組的唯一規格出處。
+
 ### 6.1 底圖上傳的單一入口（2026-08-26 新增）
 
 Rich Menu 底圖的上傳**只有一個入口**：`POST /api/upload`，`bucket=richmenu-assets`。
@@ -678,6 +682,319 @@ Rich Menu 底圖的上傳**只有一個入口**：`POST /api/upload`，`bucket=r
 所以守門**搬到有流量的那一支**：`/api/upload` 新增 `BUCKET_MAX_BYTES`
 （`richmenu-assets` → 1 MB，其餘 bucket 維持 5 MB）。限制跟著「這張圖最後會流到
 哪裡」走，與該檔既有的 `LINE_BOUND_BUCKETS` / `LINE_PREVIEW_BUCKETS` 同一條原則。
+
+---
+
+## 6.2 進階選單設計器：11 支端點（issue #19，2026-08-26 展開）
+
+本節把原本那一句「標為 Phase 6+，留待……再逐一實作」展開成完整規格。
+在此之前這一組**沒有契約、沒有 schema、沒有驗收格子**，所以清單上永遠不會出現漏勾
+（14 分冊 §0 根因 B ＋ 根因 C）。
+
+### 6.2.0 先講三件會影響整節怎麼讀的事實
+
+**(1) 原站規格只留下路徑，沒有留下 method 與形狀。**
+`docs/specs/rich-menu-design.json` 的 `jsApiCalls`、`docs/specs/line-settings.json`
+與 `docs/specs/_endpoints.json` 是**扁平的字串清單**，只有 URL。原站的 inline JS
+（590 KB）沒有被抓進 spec，所以：
+
+> **下方每一支端點的 method、request body、response 形狀，全部是「我方設計」，
+> 不是還原的原站契約。** 比照 §5.5.3 老闆通知那一組的標註慣例。
+
+看到本節的欄位名時不要當成考據結果——它們沒有出處，只有設計理由。
+
+**(2) `booking-step-guide` 不在 `rich-menu/` 底下。**
+規格逐字是 `/api/settings/line/booking-step-guide`
+（`docs/specs/rich-menu-design.json:1420`、`docs/specs/_endpoints.json:144`），
+**不是** `/api/settings/line/rich-menu/booking-step-guide`。issue #19 的範圍表用
+`POST …/booking-step-guide` 表示，而該表的 `…` 展開是 `/api/settings/line/rich-menu`
+——照抄會做出一支規格上不存在的路徑。以規格為準。
+
+**(3) `preview-custom` 不存在。**
+40 個 spec 檔零命中；規格的第三支預覽端點是 `preview-scene-flex`
+（`docs/specs/rich-menu-design.json:1431`）。issue #19 已於 2026-08-25 更名。
+
+### 6.2.1 資料模型（migration 0025）
+
+一張表 `rich_menu_designs`，主鍵 `(tenant_id, kind)`，`kind` 三態：
+
+| kind | 意義 | 幾份 |
+|---|---|---|
+| `DRAFT` | `advanced-config` 讀寫的草稿。**與 LINE 無關**，存了不代表顧客看得到 | 每租戶 1 |
+| `PUBLISHED` | 目前真的掛在 LINE 上、且是預設選單的那一份設計 | 每租戶 1 |
+| `RESTORE_POINT` | 上一次發布（被現在這一份取代掉的那一份） | 每租戶 **1** |
+
+```sql
+create table rich_menu_designs (
+  tenant_id         uuid not null references tenants(id) on delete cascade,
+  kind              text not null check (kind in ('DRAFT','PUBLISHED','RESTORE_POINT')),
+  config            jsonb not null default '{}'::jsonb,
+  line_rich_menu_id text not null default '',
+  updated_at        timestamptz not null default now(),
+  primary key (tenant_id, kind)
+);
+```
+
+**「保留幾份」＝ 1 份，而且是主鍵保證的，不是靠清理排程。**
+擁有者 2026-08-25 裁決「只支援還原到上一次發布」（#1 裁示總表）。
+用 `(tenant_id, kind)` 當主鍵、一律 upsert，份數上限就是資料庫結構本身的性質——
+沒有「保留 N 份」的設定值可以被改壞，也沒有需要跑的 GC。
+
+⚠️ **草稿不是發布。** `DRAFT` 存在不代表 LINE 端有任何東西。頁面顯示草稿狀態時
+不得寫成「已套用」「已上線」之類的字（鐵則 12）。
+
+### 6.2.2 還原點策略（**先寫得出這一段，才可以動 `restore-previous`**）
+
+還原點**同時**存兩樣東西，因為它們會在不同情況下失效：
+
+| 存什麼 | 用途 | 什麼時候沒用 |
+|---|---|---|
+| `config` jsonb（整份設計） | 重建用 | 永遠有效 |
+| `line_rich_menu_id` | 直接切回去用 | 店家在 LINE OA Manager 手動刪過、或 token 換頻道 |
+
+**發布時的三代輪替**（`publishRichMenu()`，`src/server/rich-menu.ts`）：
+
+```
+發布前：  RESTORE_POINT = A(舊舊)        PUBLISHED = B(現行, LINE 上是預設)
+發布後：  RESTORE_POINT = B              PUBLISHED = C(新)
+LINE 端： A 的選單被刪除                 B 的選單「保留但不再是預設」    C 設為預設
+```
+
+所以 LINE 端每租戶最多留 **2** 張選單（現行 + 可還原的上一張），不是無限累積。
+**B 的選單刻意不刪**——留著，`restore-previous` 就只要 `POST
+/v2/bot/user/all/richmenu/{B}` 把它切回預設，不必重新上傳底圖，還原到的是
+**位元組完全相同的那一張**，不是「照設計重畫一張很像的」。
+
+⚠️ 這一點與基本 `create` 端點的行為**不同**：`create`（§6 表格）換新之後
+best-effort 刪掉舊選單。進階這一組刻意不刪，理由就是上面那一句。改動任何一邊之前
+先讀懂另一邊為什麼不一樣。
+
+**`restore-previous` 的兩條路徑（都要實作，不得只做第一條）：**
+
+1. `line_rich_menu_id` 還在 → `lineSetDefaultRichMenu()` 切回去。回 `source:'LINE_MENU_REUSED'`。
+2. 上面那一步被 LINE 退（選單已被手動刪除 / id 失效）→ **用 `config` 重跑一次建立序列**
+   （建立→上傳底圖→設預設），產生新的 richMenuId。回 `source:'RECREATED'`。
+
+**沒有還原點時回 404，訊息要說清楚「為什麼沒有」，不得靜默成功。**
+第一次發布之後本來就沒有上一次可還原——這不是錯誤，是狀態，訊息要講出這件事。
+
+**還原之後，還原點換成剛剛被換下來的那一份**（C），也就是還原是可以再還原回去的
+一次來回。這是「只保留 1 份」的必然結果，不是額外功能：只要不引入第二份，
+「上一次」永遠只有一個意思。
+
+### 6.2.3 回滾：兩種孤兒都要處理
+
+建立一張選單是 **LINE 端 3 個呼叫 ＋ 我方 DB 2 個寫入**的複合動作，中間任何一步失敗
+都可能留下**孤兒**。兩個方向都要處理，只堵一邊等於沒堵：
+
+| 失敗點 | 孤兒長什麼樣 | 處理 |
+|---|---|---|
+| LINE 建立成功、**上傳底圖或設預設失敗** | LINE 端多一張沒有圖、也沒人用的選單 | `lineDeleteRichMenu(newId)` 後把原錯誤丟出去。**已在基本 `create` 實作，進階沿用同一段** |
+| LINE 全成功、**DB 寫入失敗** | DB 說還是舊的，LINE 端卻已經換成新的——**顧客看到的與後台顯示的不一致** | 把預設選單切回舊的 `PUBLISHED.line_rich_menu_id`（有的話），刪掉剛建立的 `newId`，然後丟 500。**不得吞掉 DB 錯誤只回成功** |
+| DB 寫入成功、**best-effort 刪除三代前的選單失敗** | LINE 端多留一張舊選單 | 只 `console.error`，**不影響結果**。這一張不影響任何人看到的畫面，為它把一次成功的發布回滾才是更糟的選擇 |
+
+⚠️ 第二列是最容易被寫漏的一列：`await supabase.upsert()` 的 `error` 不丟出去，
+畫面就會顯示「已發布」而 DB 沒有那一列——下一次發布會拿錯的東西當還原點。
+**`upsert` 的 `{ error }` 一律要檢查並丟出。**
+
+### 6.2.4 三支 `create-*`
+
+共同前置：`requireTenant('MANAGER')` → `requireFeature('CUSTOM_RICH_MENU')`
+（09 分冊 §5：進階端點擋，基本 5 主題不擋）→ `getLineCredentials()`。
+共同流程：§6.2.2 的三代輪替 ＋ §6.2.3 的回滾。
+共同 response：`{ richMenuId: string }`。
+
+| 端點 | request body | 差別 |
+|---|---|---|
+| `POST …/create-advanced` | `{ theme, layout, cells[], bgImageUrl?, chatBarText?, name? }` | 用 `layout` 的**格線**算 areas |
+| `POST …/create-custom` | `{ areas: [{ bounds:{x,y,width,height}, label, action, value }], bgImageUrl?, chatBarText?, name? }` | 呼叫端自己給座標，不套格線 |
+
+> ⚠️ **`create-custom` 目前沒有任何呼叫端**，而且這是刻意的：選單設計頁只有
+> `RICH_MENU_LAYOUTS` 的七種格線版型，**沒有自由座標編輯器**，畫不出任意矩形。
+> 端點與 `src/services/settings.ts` 的包裝是照規格補齊的能力——**已實作、已整合測試、
+> 刻意尚未被使用**，不是已經生效的功能（標註方式比照 `flex-menu.ts` 的 `FLEX_POPUP`
+> 分支與 14 分冊 §8.8）。
+>
+> 它與 §6.1 刪掉的 `upload-bg-image` **不同性質**：那一支是被更好的實作取代的
+> **過去能力**（留著只會讓人以為還有一條路可以接），這一支是還沒有 UI 可以觸發的
+> **未來能力**。判準是「有沒有第二條路在做同一件事」——這裡沒有。
+> **頁面不得因為它存在就宣稱支援自由座標排版。**
+| `POST …/create-scene` | `{ sceneId }` | 從 `SCENE_TEMPLATES` 取設定 |
+
+`layout` 可用值與格數（`RICH_MENU_LAYOUTS`，`src/config/rich-menu-layouts.ts`，
+頁面與後端共用同一份）：
+`3+4`(7)、`2x3`(6)、`2+3`(5)、`2x2`(4)、`1+2`(3)、`3+4+4`(11)、`4+4`(8)。
+
+底圖尺寸**固定 2500×1686**（LINE 只收 2500×1686 或 2500×843；本專案的版型都 ≥2 列，
+一律用 1686）。列高、欄寬用整數除法，**餘數補到最後一列／最後一欄**——不補的話
+會在圖的右緣或下緣留下一條沒有任何 area 蓋到的死區，顧客按下去沒反應。
+
+每格 action 一律經 `richMenuCellAction()`（§6 的單一事實來源要求）：
+
+| 頁面上的 action | 送給 LINE 的 | 備註 |
+|---|---|---|
+| `SEND_TEXT` | `{type:'message', label, text: value}` | `value` ≤ 300 字（LINE 上限） |
+| `OPEN_URL` / `OPEN_URL_AD` | `{type:'uri', label, uri: value}` | scheme 走 `isAllowedFlexLinkUrl()` 白名單（§6.1） |
+| `FLEX_POPUP` | `{type:'message', label, text: FLEX_POPUP_TRIGGER_TEXT}` | 與顧客自己打「選單」走同一條路徑 |
+
+`label` ≤ 20 字（LINE 的 action label 上限）；areas ≤ 20 個（LINE 的 rich menu 上限）。
+
+**`create-scene` 的已知規格缺口（不得憑空補回）：**
+`REBUILD-SPEC` §9.3 第 1 點記載原站「哪一句文案屬於哪一個範本」的對應**已遺失**
+（spec 只留下排序後的扁平字串）。所以情境範本目前**只決定主題配色**，每格文案一律
+用 `MODE_PRESETS[businessType].richMenuCells`、版型用預設 `3+4`。
+⚠️ 這件事**必須寫在店家讀得到的畫面上**，不能只寫在這裡：店家看到「海鮮餐廳」範本，
+合理預期會拿到海鮮餐廳的六格文案。
+
+### 6.2.5 三支 `preview-*`：**零 LINE 呼叫**，這是硬性條件
+
+| 端點 | request | response |
+|---|---|---|
+| `POST …/preview-advanced` | 同 create-advanced 的 body | `{ size, areas[], background, imageDataUrl }` |
+| `POST …/preview-scene` | `{ sceneId }` | 同上 |
+| `POST …/preview-scene-flex` | `{ sceneId? }` | `{ kind, messages[] }`（聊天室 Flex 主選單的預覽 payload） |
+
+> **預覽端點一行都不准碰 LINE。** 不呼叫 `/v2/bot/richmenu`、不呼叫
+> `/v2/bot/user/all/richmenu`、不上傳任何 content。這是這一組**最容易寫成
+> 「按了預覽結果真的發出去了」**的地方：預覽與發布共用同一段組裝程式碼，
+> 只要順手把 `publishRichMenu()` 叫下去，畫面上看起來一模一樣，而顧客的選單被換掉了。
+>
+> 釘住這件事的斷言是 **mock LINE 的 richmenu 建立次數為 0**，不是「回傳值長得對」。
+
+`imageDataUrl` 是 `data:image/png;base64,…` 的**縮圖**（500×337，`solidColorPng()`），
+不是 2500×1686 原圖——預覽不需要原尺寸，塞原尺寸只是讓 response 變大。
+
+⚠️ **預覽圖是純色底圖，圖上沒有店名、沒有格子文字、沒有格線**，因為
+`create` 上傳給 LINE 的就是這樣一張圖（`src/server/png.ts` 只會產純色矩形，
+本專案沒有裝任何影像合成套件）。頁面右側那塊 CSS 預覽把文字畫在色塊上，
+**那是後台的示意圖，不是顧客會看到的東西**——這句話已經常駐在頁面上，
+接上真預覽之後仍然要留著。
+
+### 6.2.6 `GET/PUT …/advanced-config`（草稿）
+
+| method | request | response |
+|---|---|---|
+| `GET` | — | `{ draft: Design\|null, published: {config, richMenuId, updatedAt}\|null, restorePoint: {updatedAt}\|null }` |
+| `PUT` | `Design` | `{ updatedAt }` |
+
+- `GET` 不擋功能閘門（唯讀、不打 LINE、不寫 DB）；`PUT` 擋 `CUSTOM_RICH_MENU`。
+- **往返一致**：`PUT` 存什麼，`GET` 就要拿回什麼（含 cells 的順序與空字串欄位）。
+  這是這一支唯一有意義的驗收——存進去被 normalize 掉一半，店家重整就發現設定變了。
+- `restorePoint` 只回 `updatedAt`，**不回 config**：畫面只需要知道「有沒有可還原的」
+  與「是什麼時候的」。回整份設計沒有畫面在用，只是多一份可以分岔的資料。
+
+### 6.2.7 `POST …/restore-previous`
+
+request `{}`；response `{ richMenuId, source: 'LINE_MENU_REUSED' | 'RECREATED' }`。
+行為與失敗語意見 §6.2.2。沒有還原點 → **404**，`code = REQ_002`。
+
+### 6.2.8 兩支上傳端點與 §6.1「單一入口」的關係
+
+§6.1（2026-08-26）裁定底圖上傳**只有一個入口** `POST /api/upload`，並據此刪掉了
+`upload-bg-image`。本節新增 `upload-image` / `upload-cell-icon` 兩支，**不牴觸那條規則**，
+因為 §6.1 反對的是**第二份實作**（它逐字寫的是「同一件事兩份實作……短期看起來一樣、
+長期一定分岔」），而不是第二個路徑名。
+
+作法：`/api/upload` 的驗證與落地邏輯抽成 `src/server/upload.ts` 的
+`uploadToBucket()`，三支路由**共用同一支函式**，`/api/upload` 自己也改成呼叫它。
+沒有第二份可以分岔的邏輯，`BUCKET_MAX_BYTES`（`richmenu-assets` → 1 MB）
+與 MIME 解碼比對三支一體適用。
+
+| 端點 | 多做的那件事（＝它存在的理由） |
+|---|---|
+| `POST …/upload-image` | 上傳完**順手寫進 `tenant_settings.line.richMenuBgImageUrl`**。發布端點讀的是這個欄位而不是請求 body，少了這一步，「上傳成功」就只是半個事實 |
+| `POST …/upload-cell-icon` | 上傳完寫進 `DRAFT.config.cells[i].icon` |
+
+⚠️ **`upload-cell-icon` 的誠實邊界**：圖示會被上傳、會被存進草稿、下次開頁面會讀回來
+——但**不會出現在 LINE 選單的底圖上**，因為本專案沒有影像合成能力
+（`png.ts` 只產純色矩形）。這句話**必須寫在按鈕旁邊**，不能只寫在這裡：
+店家上傳一個圖示、看到「已上傳」，合理預期它會出現在選單上。
+
+### 6.2.9 `PUT /api/settings/line/booking-step-guide`
+
+**路徑不在 `rich-menu/` 底下**（§6.2.0 第 (2) 點）。method 用 `PUT`
+（＝我方設計，與 `advanced-config` 的寫入一致；`rich-menu-design/page.tsx` 檔頭
+原本就寫 `PUT`）。**不擋功能閘門**——§8.21 已裁決 Flex 主選單不收費，
+步驟引導屬同一區。
+
+存進 `tenant_settings.line.bookingStepGuide`：
+
+```ts
+{ enabled: boolean, steps: [{ key, title, color }] }   // 七步，key 固定
+```
+
+七個 key 與預設值逐字取自 `docs/specs/line-settings.json` 的 `looseFields[20..33]`
+（`placeholder` 是原站的預設標題，`value` 是原站的預設色）：
+
+| key | 預設 title | 預設 color | spec 出處 |
+|---|---|---|---|
+| `SERVICE` | `✂️ 選擇您的服務` | `#4A90D9` | `stepServiceTitle` / `stepServiceColor` |
+| `DATE` | `📅 選擇預約日期` | `#1DB446` | `stepDateTitle` / `stepDateColor` |
+| `STAFF` | `👤 選擇服務人員` | `#4A90D9` | `stepStaffTitle` / `stepStaffColor` |
+| `TIME` | `⏰ 選擇時段` | `#4A90D9` | `stepTimeTitle` / `stepTimeColor` |
+| `NOTE` | `📝 備註事項` | `#5C6BC0` | `stepNoteTitle` / `stepNoteColor` |
+| `CONFIRM` | `📋 確認預約資訊` | `#1DB446` | `stepConfirmTitle` / `stepConfirmColor` |
+| `SUCCESS` | （空，用系統預設標題） | `#1DB446` | `stepSuccessColor`（title 欄在原站就是唯讀提示） |
+
+response 一併回**引導卡的 Flex bubble payload**（`buildBookingStepGuideCard()`），
+好讓它能過 LINE 的 `POST /v2/bot/message/validate/reply` 而不必真的發訊息。
+
+> ### ⚠️ 這一支目前**存得到、但顧客收不到**，而且必須這樣說
+>
+> 原站的引導卡是「預約 carousel **最前面**那張『👈 往左滑動 ＋ 步驟清單』指引卡」
+> （`docs/REBUILD-SPEC.md` `bookingStepGuideToggle` 的 label 逐字）。
+> **本專案沒有那個 carousel**：`src/server/line-events.ts` 的 `replyServiceList()`
+> 對「預約 / 服務 / 服務項目」回的是**純文字服務清單**，不是 Flex carousel。
+>
+> 所以引導卡沒有可以被插在前面的東西。設定會被存下來、讀得回來、payload 也過 LINE
+> 驗證，**但顧客端目前不會因為這個開關而看到任何變化**。
+>
+> 這是「absence of data ≠ invented data」的同一條線：把設定存起來是誠實的，
+> 顯示「已套用，顧客現在會看到引導卡」則是編造。**畫面上必須明講**。
+> LINE 端的對話式預約流程（carousel）屬於尚未建置的範圍，不在 issue #19。
+
+### 6.2.10 `flexShowTip`：判定結果與採用的語意（14 分冊 §8.22-b/-c 結案）
+
+**判定得出來的部分：`flexShowTip` 不屬於步驟引導，屬於 Flex 主選單那一組。**
+依據四條，全部可在 `docs/specs/line-settings.json` 的 `looseFields` 逐字驗證：
+
+1. **id 前綴**：七組步驟欄位一律 `step*`（`stepServiceColor`…`stepSuccessColor`）；
+   `flexShowTip` 是 `flex*`，與 `flexMenuEnabledToggle`、`flexMenuFallbackHint/Silent`、
+   `flexHeaderColor/Title/Subtitle` 同一族。
+2. **CSS class**：14 個步驟欄位全部帶 `flex-step-color` / `flex-step-title`；
+   `flexShowTip` 只有 `form-check-input`，與 `flexMenuEnabledToggle` 相同。
+3. **`help` 屬性**：每一個步驟欄位的 `help` 都寫著它屬於哪一步（選擇服務／選擇日期／…）；
+   `flexShowTip` 的 `help` 是空字串，與它前面的 `flexHeaderTitle`/`flexHeaderSubtitle` 一致。
+4. **步驟引導已經有自己的開關，而且在另一頁**：`bookingStepGuideToggle`
+   （`docs/specs/rich-menu-design.json:243`），label 完整描述了它控制什麼。
+   同一件事在兩頁各有一顆開關、其中一顆還沒有任何說明文字——證據不支持這個讀法。
+
+**判定不出來的部分：它具體控制什麼文字、出現在哪裡。**
+`help` 是空字串；`jsStrings` 全文只有「已設為純文字提示模式」一句含「提示」，
+而那句屬於 fallback 模式；沒有任何 card 的 bodyText 提到「顯示使用提示」。
+`grep '顯示使用提示' docs/specs/` 全站只命中這一個欄位定義本身。**原站語意救不回來。**
+
+於是照 issue #19 的規則走預設語意——
+
+> **⚠️ 以下語意是我們選的，不是從原站還原的。**
+> 後來的人不要把它當考據結果引用。
+
+`flexShowTip=true` 時，Flex 主選單 carousel 之**後**多送一則純文字使用提示。
+
+- **只在 `buildFlexMenuOutcome()` 回 `FLEX` 時生效。** `HINT`／`SILENT`／`NO_CARDS`
+  一律不加：`HINT` 本身就是一句提示，再補一句是重複；`SILENT` 是店家明講「完全不回」，
+  在那裡加任何東西就是把開關做假。
+- **不做成「carousel 最前面插一張提示卡」。** carousel 上限 12 bubbles
+  （`MAX_FLEX_CARDS`），店家編滿 12 張時提示卡會擠掉第 12 張：要嘛整包被 LINE 退
+  （顧客一張都收不到），要嘛我們自己砍一張而畫面說已儲存。
+- 提示文字是**對顧客說的話**，放 `src/server/flex-menu.ts` 的 `MSG` 常數
+  （與 `fallbackHint`、`adBadge` 同一層），不進 `src/i18n/`。
+- **預設值是 `true`**：既有店家一上線就會多收到一則。這是裁決要的效果。
+
+**連帶的結構修正（沒有它，開關還是假的）：**
+`FlexMenuOutcome` 從單數 `message` 改成 `messages: LineMessage[]`，
+`line-events.ts` 整包送。留著單數欄位不改，就會出現「開關開了、第二則沒送出去」
+——換一種寫法的同一顆假開關。守門測試 `grep` 全專案不得再出現 `[outcome.message]`。
 
 ---
 

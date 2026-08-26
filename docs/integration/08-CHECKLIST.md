@@ -325,3 +325,89 @@
 
 ⚠️ 尚未關閉、屬於這六頁但不在 issue #7 表格範圍內的，見 `14-GAP-AUDIT.md` 附錄 X.6。
 
+
+---
+
+## Phase 6 追加：進階選單設計器 11 支端點 ＋ `flexShowTip`（issue #19，2026-08-26）
+
+規格出處：`docs/integration/06-LINE-INTEGRATION.md` **§6.2**（本 issue 第 1 步把原本那一句
+「標為 Phase 6+」展開成的完整章節：11 支端點契約、狀態機、回滾、還原點策略）。
+判定與誠實邊界的沿革見 `14-GAP-AUDIT.md` §14。
+
+- [x] 06 §6 展開為完整章節（§6.2.0–§6.2.10）
+      11 支端點的 request/response 契約、對 LINE 的呼叫序列、**兩種孤兒的回滾**、
+      草稿 vs 已發布的狀態欄位、`restore-previous` 的還原點存哪裡與保留幾份，全部到齊。
+      ⚠️ §6.2.0 開頭三條事實先講清楚：原站 spec **只留下路徑**（method 與形狀＝我方設計）、
+      `booking-step-guide` **不在 `rich-menu/` 底下**、不存在 `preview-custom`。
+- [x] migration `0025_rich_menu_designs.sql`（`(tenant_id, kind)` 主鍵，kind ∈
+      DRAFT／PUBLISHED／RESTORE_POINT）**兩個 Supabase 專案都已套用並各自查詢驗證**
+      （`information_schema.columns` 5 欄一致、4 條 RLS policy、`relrowsecurity=true`）。
+      「保留最近 1 份」由主鍵保證，不是設定值——沒有可被改壞的份數參數，也沒有清理排程。
+- [x] 三支 create-*：`tests/integration/api/rich-menu-advanced.test.ts`
+      `:「create-advanced：mock LINE 依序收到三個請求，DB 的 richMenuId 被更新」`、
+      `:「create-custom：座標由呼叫端給，三連請求照樣完成且 richMenuId 寫回 DB」`、
+      `:「create-scene：依 SCENE_TEMPLATES 建立，主題跟著範本走、richMenuId 寫回 DB」`
+- [x] 三支 preview-*：**mock LINE 零發布呼叫**（斷言 `mock.requests` 整個為空，
+      不只是「richmenu 建立次數為 0」）
+      `:「preview-advanced：回得出 areas 與預覽圖，且 mock LINE 零呼叫」`、
+      `:「preview-scene：回得出範本預覽，且 mock LINE 零呼叫」`、
+      `:「preview-scene-flex：回得出顧客會收到的 Flex 訊息包，且 mock LINE 零呼叫」`
+      ＋ 靜態守門 `tests/unit/honest-not-built-rich-menu-design.test.ts`
+      `:「⚠️ 預覽的處理函式裡沒有任何發布呼叫（按預覽把選單換掉是本組最大的風險）」`
+- [x] `restore-previous` 有／無還原點兩條路徑
+      `:「有還原點時還原成功：切回上一張選單，PUBLISHED 與 RESTORE_POINT 對調」`、
+      `:「沒有還原點時回 404 並說得出原因——**不得靜默成功**」`
+      ＋ `:「只保留最近 1 份：發布三次之後，還原點是第二次那一份（不是第一次）」`
+- [x] `advanced-config` 往返一致、兩支上傳端點回可用 URL
+      `:「PUT 存什麼、GET 就拿回什麼（含 cells 順序與空字串欄位）」`、
+      `:「upload-image：回可用 URL，且**順手寫進 line.richMenuBgImageUrl**（發布讀的是那個欄位）」`、
+      `:「upload-cell-icon：回可用 URL 並寫進草稿那一格，且誠實回報不會合成進底圖」`
+- [x] `booking-step-guide` 的 payload
+      `:「存得進、讀得回，七步補齊，且產出的 card payload 結構合法」`
+      （斷言含「無空字串 text」——LINE 的 text 元件不收空字串，塞了整包退回 400）
+- [x] 建立失敗不留孤兒（**兩個方向都堵**）
+      `:「LINE 傳圖失敗 → 已建立的選單被刪，DB 一列都沒寫」`、
+      `:「LINE 全成功但 DB 寫入失敗 → 剛建立的選單被刪、預設切回舊的，DB 維持原狀」`
+      ⚠️ 第二條用 jsonb 存不下的 U+0000 製造真實 DB 失敗，走的是真的資料庫，不 mock client。
+- [x] 租戶隔離 `:「跨租戶隔離：B 店讀不到 A 店的草稿」`、
+      `:「B 店發布不會動到 A 店的資料列（rich_menu_designs 依租戶隔離）」`
+      ＋ 閘門 `:「未訂閱 CUSTOM_RICH_MENU → 進階發布 403 FEAT_001，且 LINE 零呼叫」`、
+      `:「未登入 → 401，所有進階端點一致」`
+- [x] `flexShowTip` 落地（7 條見下）
+- [ ] **Playwright 實測（playbook §5）＋真實 LINE 驗證（playbook §6）——未執行，留白**
+      理由：本輪未 push，Preview 站上沒有這些端點；真實 LINE 驗證亦未執行。
+      這兩項是本 issue 唯二沒有證據的驗收格子，**不得由「整合測試全綠」代打**
+      （12 分冊 §6 items 9–11：API 綠不是頁面級功能的證據）。
+      靜態鏈路證據（handler → services → 端點）已在 issue 留言逐列列出。
+
+### `flexShowTip` 那一段的 7 條
+
+- [x] 判定結果寫進 14 分冊 §14.1／§14.2：**一半判得出來**（屬 Flex 主選單、不屬步驟引導，
+      四條 spec 依據）、**一半判不出來**（原本顯示什麼文字救不回來），
+      因此採預設語意並**明標為「我們選的，不是還原的」**
+- [x] `FlexMenuOutcome` 已改 `messages` 陣列、`line-events.ts` 整包送
+      `tests/integration/api/flex-menu.06.test.ts:「flexShowTip=true → mock LINE 收到的 messages 長度為 2，第 1 則 flex、第 2 則 text」`
+- [x] 守門：`tests/unit/flex-menu.06.test.ts:「守門：src/ 底下沒有任何程式碼只送 outcome 的第一則訊息」`
+      （比對前剝掉註解——那兩個檔案的說明文字裡刻意留著這個字串記錄「原本是什麼」，
+      連註解一起比會永遠紅，而永遠紅的守門遲早被人放寬）
+      ＋ `:「守門：line-events 把整包 messages 交給 lineReply（不是自己挑一則）」`
+- [x] `flexShowTip=false` 只送 1 則
+      `tests/integration/api/flex-menu.06.test.ts:「flexShowTip=false → 只送 1 則（開關真的是開關，不是裝飾）」`
+- [x] `HINT` / `SILENT` / `NO_CARDS` 三態不受影響
+      `:「HINT 不受 flexShowTip 影響：開或關都只回一句提示文字」`、
+      `:「SILENT 不受 flexShowTip 影響：整個 mock.requests 為空（不是「/reply 沒被打」）」`、
+      `:「NO_CARDS 不受 flexShowTip 影響：回關鍵字清單純文字，不多送提示」`
+- [ ] **LINE 官方 `validate/reply` 驗證兩則 payload——未執行，留白**
+      理由同上（真實 LINE 驗證本輪未跑）。`scripts/verify/**` 另有執行者在用，本輪未動。
+- [x] 變異測試（單元層與整合層各跑一次）
+      常數 `true` → 單元 `:「flexShowTip=false → 只送 1 則（開關真的是開關）」` 轉紅；
+      整合 `:「flexShowTip=false → 只送 1 則（開關真的是開關，不是裝飾）」` 轉紅。
+      常數 `false` → 單元三條轉紅
+      （`:「flexShowTip=true → 送兩則…」`、`:「沒有 flexShowTip 這個鍵時預設開啟…」`、
+      `:「提示卡不插在 carousel 最前面——12 張卡片時 bubble 數仍是 12，一張都沒被擠掉」`）；
+      整合 10 條轉紅（`replyMessageFor()` 的型別契約守門全數命中）。
+- [x] `showTipHelp` 文案已上並逐字描述真實行為（多一則／哪些情況不會出現）
+      `tests/unit/flex-show-tip-honest.test.ts:「文案逐字描述真實行為：多一則、以及哪些情況不會出現」`
+      ＋ 同檔 `:「畫面不得再說它「尚未生效」——功能已生效，那句話現在才是謊」`
+      （⚠️ 該檔是一條**會隨事實翻面**的守門測試，本輪正是它翻面的時刻）
+      ⚠️ Playwright 截圖未附（見上方留白說明）。

@@ -46,6 +46,22 @@ const MSG = {
   fallbackHint: '請點選下方選單使用 👇',
   /** 廣告卡上的標示。台灣《公平交易法》與 LINE 的廣告規範都要求可辨識。 */
   adBadge: '廣告',
+  /**
+   * `flexShowTip=true` 時，carousel 之**後**多送的那一則使用提示（14 分冊 §8.22-c、
+   * 06 分冊 §6.2.10）。
+   *
+   * ⚠️ **這句話的語意是我們選的，不是從原站還原的。**
+   * 原站規格對 `flexShowTip` 只留下一行 label「顯示使用提示」，`help` 是空字串，
+   * `jsStrings` 全文沒有任何一句提到它，`grep '顯示使用提示' docs/specs/` 全站只命中
+   * 欄位定義本身。**它原本顯示什麼文字、出現在哪裡，救不回來。**
+   * 後來的人不要把這句話當考據結果引用。
+   *
+   * （**判定得出來的部分**：這個欄位屬於 Flex 主選單那一組，**不屬於**步驟引導——
+   *  id 前綴 `flex*` vs `step*`、CSS class 只有 `form-check-input` 而七組步驟欄位
+   *  一律帶 `flex-step-*`、`help` 為空而每個步驟欄位的 `help` 都寫著它屬於哪一步、
+   *  步驟引導在另一頁已經有自己的開關 `bookingStepGuideToggle`。詳見 §6.2.10。）
+   */
+  usageTip: '💡 點選卡片上的按鈕即可繼續，或直接輸入文字告訴我們您的需求。',
 } as const;
 
 /** Flex 訊息的 altText（通知列與不支援 Flex 的環境會顯示這一句） */
@@ -55,21 +71,40 @@ const ALT_TEXT_MAX = 400;
 /** LINE Messaging API 的訊息物件；欄位形狀由 LINE 決定，這裡不再自訂型別樹。 */
 export type LineMessage = Record<string, unknown>;
 
+/**
+ * ⚠️ `messages` 是**陣列**，呼叫端必須整包送（`lineReply(token, replyToken, outcome.messages)`）。
+ *
+ * 它原本是單數 `message`，而 `line-events.ts` 寫死 `lineReply(..., [outcome.message])`。
+ * `flexShowTip` 要在 carousel 之後多送一則，單數欄位裝不下第二則——留著不改，
+ * 就會出現「開關開了、第二則沒送出去」：**換一種寫法的同一顆假開關**
+ * （14 分冊 §8.22-c、06 分冊 §6.2.10）。
+ *
+ * 守門測試 `grep` 全專案不得再出現 `[outcome.message]` 這種只送第一則的寫法。
+ */
 export type FlexMenuOutcome =
-  /** 有卡片且已啟用 → 回 Flex carousel。`bubbleCount` 恆等於卡片數。 */
-  | { kind: 'FLEX'; message: LineMessage; bubbleCount: number }
+  /** 有卡片且已啟用 → 回 Flex carousel（＋ flexShowTip 開啟時的第二則提示）。 */
+  | { kind: 'FLEX'; messages: LineMessage[]; bubbleCount: number }
   /** 已關閉且 fallback=HINT → 回一句提示文字 */
-  | { kind: 'HINT'; message: LineMessage }
+  | { kind: 'HINT'; messages: LineMessage[] }
   /** 已關閉且 fallback=SILENT → **完全不回**（呼叫端一則請求都不准發） */
   | { kind: 'SILENT' }
   /** 已啟用但店家一張卡片都還沒編 → 交還給呼叫端決定（不得憑空生一張卡） */
   | { kind: 'NO_CARDS' };
 
-/** Rich Menu 每一格的設定形狀。`action` 省略＝送出 `text`（目前唯一會發生的情況）。 */
+/**
+ * Rich Menu 每一格的設定形狀。`action` 省略＝送出 `text`。
+ *
+ * `OPEN_URL` 是 issue #19 的進階設計器加的（`src/server/rich-menu.ts`）：
+ * 那一格按下去由 LINE 開啟 `uri`。**組裝仍然留在本檔**——本專案有一條守門測試
+ * 釘住「src/ 底下只有 flex-menu.ts 會組 uri action」，而那條規則的理由
+ * （同一件事兩份實作、長期一定分岔）對 rich menu 的格子一樣成立。
+ */
 export type RichMenuCell = {
   label: string;
   text: string;
-  action?: 'SEND_TEXT' | 'FLEX_POPUP';
+  action?: 'SEND_TEXT' | 'FLEX_POPUP' | 'OPEN_URL';
+  /** `action === 'OPEN_URL'` 時的目的地。呼叫端要先過 `isAllowedFlexLinkUrl()`。 */
+  uri?: string;
 };
 
 /**
@@ -253,7 +288,8 @@ export function buildFlexMenuOutcome(
   // 只有明確存成 false 才算關閉（schema 預設 true；老資料沒有這個鍵＝啟用）
   if (lineConfig.flexMenuEnabled === false) {
     if (lineConfig.flexMenuFallback === 'SILENT') return { kind: 'SILENT' };
-    return { kind: 'HINT', message: { type: 'text', text: MSG.fallbackHint } };
+    // ⚠️ HINT 不受 flexShowTip 影響：fallback 本身就是一句提示，再補一句是重複。
+    return { kind: 'HINT', messages: [{ type: 'text', text: MSG.fallbackHint }] };
   }
 
   const cards = normalizeFlexCards(lineConfig.flexCards);
@@ -268,11 +304,28 @@ export function buildFlexMenuOutcome(
   // 不編造第三個字串——這兩者都是店家自己輸入的內容。
   const altText = (title || cards[0].title).slice(0, ALT_TEXT_MAX);
 
-  return {
-    kind: 'FLEX',
-    bubbleCount: bubbles.length,
-    message: { type: 'flex', altText, contents: { type: 'carousel', contents: bubbles } },
+  const carousel: LineMessage = {
+    type: 'flex', altText, contents: { type: 'carousel', contents: bubbles },
   };
+
+  /*
+   * `flexShowTip`（06 分冊 §6.2.10，語意是我們選的——見 MSG.usageTip 的說明）：
+   * 開啟時在 carousel **之後**多送一則純文字提示。
+   *
+   * ⚠️ 只有明確存成 false 才算關閉（schema 預設 true；老資料沒有這個鍵＝開啟），
+   *    寫法與上面的 flexMenuEnabled 一致。
+   * ⚠️ **只在 FLEX 生效**：HINT 本身就是一句提示、SILENT 是店家明講「完全不回」，
+   *    NO_CARDS 交給呼叫端決定——在那三種情況加東西就是把開關做假。
+   * ⚠️ **不做成「carousel 最前面插一張提示卡」**：carousel 上限 12 bubbles
+   *    （MAX_FLEX_CARDS），店家編滿 12 張時提示卡會擠掉第 12 張，要嘛整包被 LINE 退
+   *    （顧客一張都收不到），要嘛我們自己砍一張而畫面說已儲存。
+   */
+  const showTip = lineConfig.flexShowTip !== false;
+  const messages = showTip
+    ? [carousel, { type: 'text', text: MSG.usageTip } as LineMessage]
+    : [carousel];
+
+  return { kind: 'FLEX', bubbleCount: bubbles.length, messages };
 }
 
 /* ------------------------------------------------- Rich Menu 格子的 action */
@@ -285,9 +338,55 @@ export function buildFlexMenuOutcome(
  * 兩處不會有兩份 Flex 組裝邏輯可以分岔。
  */
 export function richMenuCellAction(cell: RichMenuCell): LineMessage {
+  if (cell.action === 'OPEN_URL') {
+    return { type: 'uri', label: cell.label, uri: cell.uri ?? '' };
+  }
   return {
     type: 'message',
     label: cell.label,
     text: cell.action === 'FLEX_POPUP' ? FLEX_POPUP_TRIGGER_TEXT : cell.text,
+  };
+}
+
+/* ------------------------------------------------- 預約步驟引導卡的 bubble */
+/**
+ * 預約步驟引導卡（06 分冊 §6.2.9）的 bubble。
+ *
+ * ⚠️ **為什麼組裝在這裡而不是 `src/server/booking-step-guide.ts`：**
+ * 本專案有一條守門測試釘住「src/ 底下只有 flex-menu.ts 會組 bubble / carousel」。
+ * 引導卡確實是一種新的卡片、不是主選單卡的第二份，但把 Flex JSON 的組裝散出去
+ * 之後，那條守門就只能靠白名單維持——白名單一開，下一個人加第三個檔案時
+ * 不會有任何東西攔他。步驟資料與 schema 留在 booking-step-guide.ts，
+ * **只有「變成 Flex JSON」這一步在本檔**。
+ *
+ * `title` 為空的步驟**跳過不畫**：LINE 的 text 元件不接受空字串，塞空字串整包會被
+ * 退回 400——那是「顧客一則都收不到」而不是「少一行」（同上面 subtitle 的處理）。
+ * 原站的 `SUCCESS` 那一格就是空的（規格裡它是唯讀提示，不是可填欄位）。
+ */
+export function buildStepGuideBubble(
+  steps: { title: string; color: string }[],
+  header: { title: string; hint: string },
+): LineMessage {
+  const visible = steps.filter((s) => s.title);
+  return {
+    type: 'bubble',
+    header: {
+      type: 'box', layout: 'vertical', paddingAll: '12px',
+      backgroundColor: safeColor(visible[0]?.color),
+      contents: [
+        { type: 'text', text: header.title, color: '#FFFFFF', weight: 'bold', size: 'sm', wrap: true },
+        { type: 'text', text: header.hint, color: '#FFFFFF', size: 'xs', wrap: true },
+      ],
+    },
+    body: {
+      type: 'box', layout: 'vertical', spacing: 'sm',
+      contents: visible.map((s, i) => ({
+        type: 'box', layout: 'baseline', spacing: 'sm',
+        contents: [
+          { type: 'text', text: String(i + 1), color: safeColor(s.color), size: 'sm', flex: 1, weight: 'bold' },
+          { type: 'text', text: s.title, size: 'sm', color: '#333333', flex: 9, wrap: true },
+        ],
+      })),
+    },
   };
 }

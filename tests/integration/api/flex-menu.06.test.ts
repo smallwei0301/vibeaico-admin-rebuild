@@ -92,14 +92,38 @@ async function lineCallsFor(text: string): Promise<RecordedLineRequest[]> {
   return [...mock.requests];
 }
 
-/** 顧客打一段字 → mock LINE 收到的那一則 reply message（沒回覆＝null） */
-async function replyMessageFor(text: string): Promise<any | null> {
+/** 顧客打一段字 → mock LINE 那一次 reply 裡的**整包** messages（沒回覆＝null） */
+async function replyMessagesFor(text: string): Promise<any[] | null> {
   const calls = await lineCallsFor(text);
   const replies = calls.filter((c) => c.path.startsWith('/v2/bot/message/reply'));
   if (replies.length === 0) return null;
-  expect(replies, `對「${text}」回了不只一則`).toHaveLength(1);
+  expect(replies, `對「${text}」回了不只一次 reply`).toHaveLength(1);
   const messages = replies[0].body?.messages ?? [];
-  expect(messages, `對「${text}」的 reply 沒有 messages`).toHaveLength(1);
+  expect(messages.length, `對「${text}」的 reply 沒有 messages`).toBeGreaterThan(0);
+  return messages;
+}
+
+/**
+ * 顧客打一段字 → mock LINE 收到的**第一則** reply message（沒回覆＝null）。
+ *
+ * ⚠️ 這裡原本寫死 `expect(messages).toHaveLength(1)`。issue #19 之後
+ * `flexShowTip`（預設 true）會在 carousel **之後**再送一則純文字使用提示
+ * （06 分冊 §6.2.10、14 分冊 §8.22-c 擁有者裁決），所以 FLEX 的回覆是**兩則**。
+ *
+ * 前提變了，但**斷言沒有被放寬**：改成依回覆型別各自釘死，
+ * flex 的情況比原本多驗了一件事（第二則必須存在、而且必須是 text）。
+ * 直接改成讀 `messages[0]` 不驗長度才是放寬——那樣「第二則沒送出去」
+ * 與「送出了」在測試裡會長得一模一樣，正是這顆開關當初壞掉的方式。
+ */
+async function replyMessageFor(text: string): Promise<any | null> {
+  const messages = await replyMessagesFor(text);
+  if (!messages) return null;
+  if (messages[0]?.type === 'flex') {
+    expect(messages, `對「${text}」的 flex 回覆應為 carousel ＋ 使用提示兩則`).toHaveLength(2);
+    expect(messages[1].type, 'flexShowTip 的第二則不是純文字').toBe('text');
+  } else {
+    expect(messages, `對「${text}」的非 flex 回覆應只有一則`).toHaveLength(1);
+  }
   return messages[0];
 }
 
@@ -566,5 +590,91 @@ describe('不打壞 #5 已釘住的分派順序', () => {
     const msg = await replyMessageFor('說明');
     expect(msg.type).toBe('text');
     expect(String(msg.text)).toContain('關鍵字');
+  });
+});
+
+/* ==========================================================================
+ * flexShowTip 端到端（issue #19 併入範圍 / 06 分冊 §6.2.10 / 14 分冊 §8.22-c）
+ *
+ * 單元測試釘的是 `buildFlexMenuOutcome()` 回什麼；這一組釘的是**顧客真的收到幾則**。
+ * 兩層都要有，因為這顆開關壞掉的方式正是「組出來了、沒送出去」——
+ * `line-events.ts` 曾經寫死 `lineReply(..., [outcome.message])` 只送第一則。
+ * 只有單元測試的話，那個寫法照樣全綠。
+ * ========================================================================== */
+describe('flexShowTip：顧客收到幾則訊息（端到端）', () => {
+  beforeEach(async () => {
+    await publishViaApi({ flexMenuEnabled: true, flexMenuFallback: 'HINT' });
+  });
+
+  it('flexShowTip=true → mock LINE 收到的 messages 長度為 2，第 1 則 flex、第 2 則 text', async () => {
+    expect((await publishViaApi({
+      flexCards: [card('提示測試卡')], flexShowTip: true,
+    })).status).toBe(200);
+    expect(await readLineJsonb()).toMatchObject({ flexShowTip: true });
+
+    const messages = await replyMessagesFor('選單');
+    expect(messages, '顧客打「選單」完全沒有回應').not.toBeNull();
+    expect(messages!, 'flexShowTip 開著，但顧客只收到一則').toHaveLength(2);
+    expect(messages![0].type).toBe('flex');
+    expect(messages![1].type).toBe('text');
+    expect(String(messages![1].text).length).toBeGreaterThan(0);
+  });
+
+  it('flexShowTip=false → 只送 1 則（開關真的是開關，不是裝飾）', async () => {
+    expect((await publishViaApi({
+      flexCards: [card('提示測試卡')], flexShowTip: false,
+    })).status).toBe(200);
+    expect(await readLineJsonb()).toMatchObject({ flexShowTip: false });
+
+    const messages = await replyMessagesFor('選單');
+    expect(messages!, 'flexShowTip 關著，顧客卻收到不只一則').toHaveLength(1);
+    expect(messages![0].type).toBe('flex');
+  });
+
+  it('HINT 不受 flexShowTip 影響：開或關都只回一句提示文字', async () => {
+    for (const flexShowTip of [true, false]) {
+      await publishViaApi({
+        flexMenuEnabled: false, flexMenuFallback: 'HINT',
+        flexCards: [card('提示測試卡')], flexShowTip,
+      });
+      const messages = await replyMessagesFor('選單');
+      expect(messages!, `flexShowTip=${flexShowTip} 時 HINT 的則數被改掉了`).toHaveLength(1);
+      expect(messages![0].type).toBe('text');
+    }
+  });
+
+  it('SILENT 不受 flexShowTip 影響：整個 mock.requests 為空（不是「/reply 沒被打」）', async () => {
+    for (const flexShowTip of [true, false]) {
+      await publishViaApi({
+        flexMenuEnabled: false, flexMenuFallback: 'SILENT',
+        flexCards: [card('提示測試卡')], flexShowTip,
+      });
+      expect(
+        await lineCallsFor('選單'),
+        `flexShowTip=${flexShowTip} 時 SILENT 竟然發出了請求`,
+      ).toEqual([]);
+    }
+  });
+
+  it('NO_CARDS 不受 flexShowTip 影響：回關鍵字清單純文字，不多送提示', async () => {
+    for (const flexShowTip of [true, false]) {
+      await publishViaApi({ flexMenuEnabled: true, flexCards: [], flexShowTip });
+      const messages = await replyMessagesFor('選單');
+      expect(messages!, `flexShowTip=${flexShowTip} 時 NO_CARDS 的則數被改掉了`).toHaveLength(1);
+      expect(messages![0].type).toBe('text');
+    }
+  });
+
+  it('12 張卡片＋flexShowTip=true：carousel 仍是 12 個 bubble，提示是另一則', async () => {
+    const cards = Array.from({ length: MAX_FLEX_CARDS }, (_, i) => card(`滿版卡${i + 1}`));
+    expect((await publishViaApi({ flexCards: cards, flexShowTip: true })).status).toBe(200);
+
+    const messages = await replyMessagesFor('選單');
+    expect(messages!).toHaveLength(2);
+    expect(
+      messages![0].contents.contents,
+      '提示被塞進 carousel 裡，把第 12 張卡擠掉了',
+    ).toHaveLength(MAX_FLEX_CARDS);
+    expect(messages![1].type).toBe('text');
   });
 });

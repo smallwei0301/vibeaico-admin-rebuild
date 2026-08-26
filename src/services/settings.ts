@@ -395,3 +395,211 @@ export const cancelFeatureBundle = (key: 'LITE' | 'PRO') =>
     () => undefined,
     () => request<void>(`/api/feature-store/bundle/${key}/cancel`, { method: 'POST' }),
   );
+
+/* ═══════════════════════════════════════ 進階選單設計器（issue #19）
+ * 端點契約：docs/integration/06-LINE-INTEGRATION.md §6.2
+ *
+ * ⚠️ 這一整組在 issue #19 之前**全部不存在**，所以 rich-menu-design 頁的
+ * 「情境範本預覽／發布」「快速套用範本」「儲存草稿」「還原前次發布」「單格圖示上傳」
+ * 「預約步驟引導」六處都是本地假成功或死按鈕（14 分冊 §1、issue #3／#6 已改成
+ * 誠實提示）。現在它們有真的端點可以打了。
+ *
+ * mock 分支一律 `throw demoLineUnavailable()`：骨架模式沒有 LINE 頻道，
+ * 假裝成功正是這一輪在清的東西。
+ */
+
+/** 一格的設定（與 src/server/rich-menu.ts 的 richMenuCellSchema 同形） */
+export type RichMenuCellPayload = {
+  label: string;
+  action: 'SEND_TEXT' | 'OPEN_URL' | 'OPEN_URL_AD' | 'FLEX_POPUP';
+  value: string;
+  icon: string;
+};
+
+/** 一份進階設計（advanced-config 的草稿、create-advanced 的 body 都是這個形狀） */
+export type RichMenuDesignPayload = {
+  theme: string;
+  layout: string;
+  cells: RichMenuCellPayload[];
+  bgImageUrl?: string;
+  chatBarText?: string;
+  name?: string;
+};
+
+/** 建立並發布自訂版型／每格設定的選單（會維護還原點，§6.2.2 三代輪替）。 */
+export const createAdvancedRichMenu = (design: RichMenuDesignPayload) =>
+  adapt<{ richMenuId: string }>(
+    () => { throw demoLineUnavailable(); },
+    () => request<{ richMenuId: string }>('/api/settings/line/rich-menu/create-advanced', {
+      method: 'POST',
+      body: JSON.stringify(design),
+    }),
+  );
+
+/**
+ * 完全自訂座標區塊的發布（§6.2.4）。
+ *
+ * ⚠️ **誠實標註：本函式目前沒有任何呼叫端**（比照 `src/server/flex-menu.ts` 的
+ * `FLEX_POPUP` 分支、14 分冊 §8.8 對 `/api/bookings/available-slots` 的處理）。
+ *
+ * 原因不是忘了接，是**選單設計頁沒有自由座標編輯器**：那一頁只有 `RICH_MENU_LAYOUTS`
+ * 的七種格線版型，畫不出「任意矩形」。端點與這支包裝是照規格（`create-custom` 在
+ * `docs/specs/line-settings.json:1600`）補齊的能力，**已實作、已整合測試、
+ * 刻意尚未被使用**——不是已經生效的功能。
+ *
+ * ⚠️ 它與 14 分冊 §10 那種「綠燈孤兒」**不同性質**，這個區別很重要：
+ * `upload-bg-image` 是被更好的實作取代的**過去能力**（所以刪掉），
+ * 這一支是還沒有 UI 可以觸發的**未來能力**（所以留著並標註）。
+ * 判斷標準是「有沒有第二條路在做同一件事」——這裡沒有。
+ *
+ * ⚠️ 頁面**不得**因為這支存在就宣稱支援自由座標排版。要接上它，先做那個編輯器。
+ */
+export const createCustomRichMenu = (body: {
+  theme?: string;
+  areas: { bounds: { x: number; y: number; width: number; height: number } }[];
+  bgImageUrl?: string;
+  chatBarText?: string;
+  name?: string;
+}) =>
+  adapt<{ richMenuId: string }>(
+    () => { throw demoLineUnavailable(); },
+    () => request<{ richMenuId: string }>('/api/settings/line/rich-menu/create-custom', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  );
+
+/**
+ * 依情境範本一鍵建立（§6.2.4）。
+ *
+ * ⚠️ 範本**只決定主題配色**：原站「哪一句文案屬於哪一個範本」的對應已遺失
+ * （REBUILD-SPEC §9.3 第 1 點），六格文案一律用業態預設值。頁面必須照實說。
+ */
+export const createSceneRichMenu = (sceneId: string) =>
+  adapt<{ richMenuId: string; sceneId: string }>(
+    () => { throw demoLineUnavailable(); },
+    () => request<{ richMenuId: string; sceneId: string }>(
+      '/api/settings/line/rich-menu/create-scene',
+      { method: 'POST', body: JSON.stringify({ sceneId }) },
+    ),
+  );
+
+export type RichMenuPreview = {
+  size: { width: number; height: number };
+  chatBarText: string;
+  areas: { bounds: { x: number; y: number; width: number; height: number }; action: any }[];
+  theme: string;
+  imageDataUrl: string;
+  /** 預覽圖是純色底圖：沒有店名、沒有格子文字、沒有格線（§6.2.5） */
+  imageIsFlatColor: boolean;
+  sceneId?: string;
+  sceneName?: string;
+  /** 範本只決定配色，六格文案是業態預設值 */
+  cellsAreModeDefaults?: boolean;
+};
+
+/**
+ * 產生預覽（§6.2.5）。
+ *
+ * ⚠️ **這三支絕對不會發布任何東西**——不呼叫 LINE 的建立／設預設／上傳。
+ * 端點那一側有整合測試斷言「mock LINE 的 richmenu 建立次數為 0」。
+ */
+export const previewAdvancedRichMenu = (design: RichMenuDesignPayload) =>
+  adapt<RichMenuPreview>(
+    () => { throw demoLineUnavailable(); },
+    () => request<RichMenuPreview>('/api/settings/line/rich-menu/preview-advanced', {
+      method: 'POST',
+      body: JSON.stringify(design),
+    }),
+  );
+
+export const previewSceneRichMenu = (sceneId: string) =>
+  adapt<RichMenuPreview>(
+    () => { throw demoLineUnavailable(); },
+    () => request<RichMenuPreview>('/api/settings/line/rich-menu/preview-scene', {
+      method: 'POST',
+      body: JSON.stringify({ sceneId }),
+    }),
+  );
+
+/** 聊天室 Flex 主選單的預覽 payload（顧客真的會收到的那一包，含 flexShowTip 的第二則）。 */
+export const previewSceneFlex = () =>
+  adapt<{ kind: string; messages: unknown[]; messageCount: number; bubbleCount: number }>(
+    () => { throw demoLineUnavailable(); },
+    () => request('/api/settings/line/rich-menu/preview-scene-flex', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  );
+
+/**
+ * 還原上一次發布的選單（§6.2.2 / §6.2.7）。
+ *
+ * 還原點只保留最近 1 份（擁有者裁決）。沒有還原點時端點回 **404**，
+ * ApiError 的 message 會說明「為什麼沒有」——呼叫端照原文顯示，不要吞掉改寫成
+ * 「還原成功」或含糊的「操作失敗」。
+ */
+export const restorePreviousRichMenu = () =>
+  adapt<{ richMenuId: string; source: 'LINE_MENU_REUSED' | 'RECREATED' }>(
+    () => { throw demoLineUnavailable(); },
+    () => request('/api/settings/line/rich-menu/restore-previous', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+  );
+
+export type AdvancedConfig = {
+  draft: (RichMenuDesignPayload & { updatedAt: string }) | null;
+  published: { config: RichMenuDesignPayload; richMenuId: string; updatedAt: string } | null;
+  /** 只回時間，不回整份設計（畫面只需要知道有沒有、是什麼時候的） */
+  restorePoint: { updatedAt: string } | null;
+};
+
+/** 讀草稿／已發布／有無還原點（§6.2.6）。 */
+export const getAdvancedConfig = () =>
+  adapt<AdvancedConfig>(
+    () => { throw demoLineUnavailable(); },
+    () => request<AdvancedConfig>('/api/settings/line/rich-menu/advanced-config'),
+  );
+
+/**
+ * 儲存草稿（§6.2.6）。
+ *
+ * ⚠️ **草稿不是發布。** 存成功只代表「下次打開這一頁看得到同樣的設定」，
+ * 不代表顧客的選單有任何改變。頁面的成功訊息必須這樣寫（鐵則 12）。
+ */
+export const saveAdvancedConfig = (design: RichMenuDesignPayload) =>
+  adapt<{ updatedAt: string }>(
+    () => { throw demoLineUnavailable(); },
+    () => request<{ updatedAt: string }>('/api/settings/line/rich-menu/advanced-config', {
+      method: 'PUT',
+      body: JSON.stringify(design),
+    }),
+  );
+
+export type BookingStepGuidePayload = {
+  enabled: boolean;
+  steps: { key: string; title: string; color: string }[];
+};
+
+/**
+ * 預約步驟引導（§6.2.9）。路徑**不在 rich-menu/ 底下**（規格逐字）。
+ *
+ * ⚠️ 存得到、讀得回、payload 也過 LINE 驗證，**但目前顧客收不到**：原站的引導卡
+ * 插在「預約 carousel」最前面，而本專案的「預約」回的是純文字服務清單，沒有那個
+ * carousel。回應的 `deliveredToCustomers` 就是這件事的旗標，頁面必須照它說實話。
+ */
+export const getBookingStepGuide = () =>
+  adapt<BookingStepGuidePayload & { card: unknown; deliveredToCustomers: boolean }>(
+    () => { throw demoLineUnavailable(); },
+    () => request('/api/settings/line/booking-step-guide'),
+  );
+
+export const saveBookingStepGuide = (body: BookingStepGuidePayload) =>
+  adapt<BookingStepGuidePayload & { card: unknown; deliveredToCustomers: boolean }>(
+    () => { throw demoLineUnavailable(); },
+    () => request('/api/settings/line/booking-step-guide', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  );

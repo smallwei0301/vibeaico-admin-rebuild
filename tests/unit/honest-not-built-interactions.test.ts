@@ -342,38 +342,64 @@ describe('修復-1B：六處後端不存在的互動不得假成功', () => {
   describe('rich-menu-design 四處本地假成功', () => {
     const code = withoutComments(src(PAGES.richMenuDesign));
 
-    it('「儲存草稿」改為誠實提示（草稿沒有任何後端可存）', () => {
-      expect(code).toContain("toast.show(t.publish.draftNotEffective, 'warning')");
-      expect(Object.keys(richMenuDesignPage.publish)).not.toContain('draftSaved');
-      expect(richMenuDesignPage.publish.draftNotEffective).toContain('尚未建置');
-      expect(richMenuDesignPage.publish.draftNotEffective).toContain('未儲存草稿');
+    /*
+     * ⚠️ **前提已於 issue #19 翻面**（06 分冊 §6.2）。
+     *
+     * 下面三項原本守的是「這三個東西沒有後端，所以畫面必須說尚未建置」。
+     * 三支端點現在都存在了（advanced-config / restore-previous /
+     * booking-step-guide），所以「尚未建置」那句話**現在才是謊**——守著它
+     * 等於要求畫面繼續騙人。
+     *
+     * 斷言因此改成守**接線後**該守的東西，強度沒有降低：
+     *   1. 按鈕真的呼叫 service（不是 toast 了事）
+     *   2. 成功訊息 await-first（在 `await` 之後才 toast）
+     *   3. 仍然為假的那一部分（草稿≠發布、引導卡顧客收不到）必須繼續說出來
+     */
+    it('「儲存草稿」真的呼叫端點，且成功文案講明「草稿不是發布」', () => {
+      expect(code).toContain('void saveDraft()');
+      // 假成功的舊寫法不得復活
+      expect(code).not.toContain('draftNotEffective');
+      expect(Object.keys(richMenuDesignPage.publish)).not.toContain('draftNotEffective');
+      // await-first：toast 在 await 之後
+      expect(code).toMatch(/await saveAdvancedConfig\([\s\S]{0,200}toast\.show\(t\.publish\.draftSaved/);
+      // 草稿不是發布——這一句仍然是事實，必須留在成功訊息裡
+      expect(richMenuDesignPage.publish.draftSaved).toContain('還沒有送到 LINE');
     });
 
-    it('「還原發布前的設計」停用，且不再宣稱系統做過備份', () => {
-      /*
-       * 舊實作：onConfirm 只是 setHasBackup(false) + toast「已還原」，
-       * LINE 端毫無變化；連帶「發布前系統自動備份」的說明也是假的。
-       */
-      expect(code).not.toContain("confirm === 'restore'");
-      expect(code).not.toContain('t.scene.restoreDone');
-      expect(code).not.toContain('t.scene.backupBar');
-      expect(code).toContain('{t.scene.noBackupBar}');
-      expect(code).toMatch(/disabled title=\{t\.scene\.restoreDisabledHint\}/);
-      expect(Object.keys(richMenuDesignPage.scene)).not.toContain('restoreDone');
-      expect(Object.keys(richMenuDesignPage.scene)).not.toContain('restoreConfirm');
-      expect(richMenuDesignPage.scene.noBackupBar).toContain('不會備份');
-      for (const text of allStrings(richMenuDesignPage.scene.bullets)) {
-        expect(text).not.toMatch(/自動備份/);
-      }
+    it('「還原發布前的設計」真的呼叫端點，且不宣稱保留超過一份', () => {
+      expect(code).toContain('void restorePrevious()');
+      expect(code).toContain('await restorePreviousRichMenu()');
+      // 舊的「已停用／沒有備份」文案不得留著（端點已建置）
+      expect(code).not.toContain('noBackupBar');
+      expect(code).not.toContain('restoreDisabledHint');
+      expect(Object.keys(richMenuDesignPage.scene)).not.toContain('noBackupBar');
+      // await-first
+      expect(code).toMatch(/await restorePreviousRichMenu\(\)[\s\S]{0,300}toast\.show\(t\.scene\.restoreDone/);
+      // ⚠️ 只保留最近 1 份（擁有者裁決）——文案不得讓店家以為可以一直往前回溯
+      expect(richMenuDesignPage.scene.restoreAvailable).toContain('最近一份');
+      // 三態：載入中、有還原點、確定沒有，三句話都要在
+      expect(code).toContain('t.scene.restoreLoading');
+      expect(code).toContain('t.scene.restoreNonePoint');
     });
 
-    it('預約流程步驟開關顯示尚未生效，且不再宣稱「即時生效」', () => {
-      expect(code).toContain("toast.show(t.bookingSteps.guideToggleNotEffective, 'warning')");
-      expect(code).toContain('{t.bookingSteps.notBuiltBody}');
+    it('預約流程步驟真的存得進去，但畫面仍要說「顧客收不到」', () => {
+      expect(code).toContain('void saveGuide(');
+      expect(code).toContain('await saveBookingStepGuide(');
+      expect(code).not.toContain('guideToggleNotEffective');
+      expect(Object.keys(richMenuDesignPage.bookingSteps)).not.toContain('notBuiltBody');
       expect(Object.keys(richMenuDesignPage.bookingSteps)).not.toContain('guideOn');
       expect(Object.keys(richMenuDesignPage.bookingSteps)).not.toContain('guideOff');
       expect(richMenuDesignPage.bookingSteps.guideHelp).not.toContain('即時生效');
-      expect(richMenuDesignPage.bookingSteps.notBuiltBody).toContain('不會寫入資料庫');
+      // await-first
+      expect(code).toMatch(/await saveBookingStepGuide\([\s\S]{0,300}toast\.show\(t\.bookingSteps\.saved/);
+      /*
+       * ⚠️ 仍然為假的那一半必須繼續說：本專案沒有原站那個「預約 carousel」
+       * （line-events.ts 的 replyServiceList() 回純文字），引導卡沒有地方可插。
+       * 存得進去 ≠ 顧客看得到，兩件事不可以被同一句「已儲存」蓋過去。
+       */
+      expect(code).toContain('{t.bookingSteps.savedButNotDelivered}');
+      expect(richMenuDesignPage.bookingSteps.savedButNotDelivered).toContain('顧客目前不會收到');
+      expect(richMenuDesignPage.bookingSteps.saved).toContain('純文字');
     });
 
     it('功能頁面樣式自訂區明說尚未建置（該區從來沒有可編輯欄位）', () => {

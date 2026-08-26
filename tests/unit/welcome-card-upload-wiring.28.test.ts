@@ -95,7 +95,13 @@ describe('③ 移除鈕也真的存回資料庫', () => {
 });
 
 describe('④ welcome-card-images bucket 三處一致', () => {
-  const route = src('src/app/api/upload/route.ts');
+  /*
+   * ⚠️ 上傳的驗證與落地邏輯在 issue #19 從 `src/app/api/upload/route.ts` 抽到
+   * `src/server/upload.ts`（三支上傳端點共用同一支 `uploadToBucket()`，
+   * 06 分冊 §6.2.8）。**規則本身一字未改**，只是換了檔案，所以這裡跟著改路徑，
+   * 斷言內容維持原樣——放寬斷言才是不可以做的事。
+   */
+  const route = src('src/server/upload.ts');
 
   it('/api/upload 的 ALLOWED_BUCKETS 有它', () => {
     const allowed = route.slice(route.indexOf('const ALLOWED_BUCKETS'), route.indexOf('const MAX_BYTES'));

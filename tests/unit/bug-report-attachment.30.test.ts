@@ -33,7 +33,10 @@ import { describe, expect, it } from 'vitest';
 import { common } from '@/i18n/zh-TW/common';
 
 const MODAL = 'src/components/layout/BugReportModal.tsx';
-const UPLOAD_ROUTE = 'src/app/api/upload/route.ts';
+/*
+ * ⚠️ issue #19：上傳邏輯抽到 src/server/upload.ts（三支端點共用），規則未變。
+ */
+const UPLOAD_ROUTE = 'src/server/upload.ts';
 const UPLOAD_SERVICE = 'src/services/upload.ts';
 const REPORT_ROUTE = 'src/app/api/bug-report/route.ts';
 const REPORT_SERVICE = 'src/services/bug-report.ts';
@@ -72,7 +75,16 @@ describe('/api/upload：bug-report-attachments 是白名單內、但不是 LINE 
   });
 
   it('回應多帶 path（資料庫要存路徑而不是會過期的簽名 URL）', () => {
-    expect(code).toMatch(/ok\(\{[\s\S]{0,200}path[\s\S]{0,200}\}\)/);
+    /*
+     * ⚠️ issue #19：這段程式從 route 的 `return ok({...})` 變成
+     * `uploadToBucket()` 的 `return {...}`（route 再包 `ok()`）。
+     * **要守的事實沒變**——回傳值裡必須有 `path`，否則呼叫端只拿得到會過期的
+     * 簽名 URL，存進 DB 就是一堆死連結。所以斷言跟著形狀改，強度不變：
+     * private 分支與最後的公開分支**兩個 return 都**要帶 path。
+     */
+    const returns = code.match(/return \{[\s\S]{0,300}?\};/g) ?? [];
+    expect(returns.length).toBeGreaterThanOrEqual(2);
+    for (const r of returns) expect(r).toContain('path');
   });
 });
 

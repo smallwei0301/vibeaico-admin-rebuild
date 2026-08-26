@@ -179,12 +179,12 @@ describe('靜態接線鎖：preview 不准再指回原圖', () => {
   });
 
   it('/api/upload 只對 chat-images 產縮圖', () => {
-    const code = stripComments(read('src/app/api/upload/route.ts'));
+    const code = stripComments(read('src/server/upload.ts'));
     expect(code).toMatch(/LINE_PREVIEW_BUCKETS\s*=\s*new Set\(\[[^\]]*'chat-images'[^\]]*\]\)/);
   });
 
   it('richmenu-assets 不在產縮圖名單內（是 LINE 去向，但 rich menu 沒有 preview 這回事）', () => {
-    const code = stripComments(read('src/app/api/upload/route.ts'));
+    const code = stripComments(read('src/server/upload.ts'));
     const decl = code.slice(
       code.indexOf('const LINE_PREVIEW_BUCKETS'),
       code.indexOf('const WEB_TYPES'),
@@ -195,7 +195,7 @@ describe('靜態接線鎖：preview 不准再指回原圖', () => {
   });
 
   it('縮圖先產、後上傳 —— 產不出來時 Storage 不留半成品', () => {
-    const code = stripComments(read('src/app/api/upload/route.ts'));
+    const code = stripComments(read('src/server/upload.ts'));
     const previewAt = code.indexOf('makeLinePreview');
     const uploadAt = code.indexOf('.upload(path, file');
     expect(previewAt).toBeGreaterThan(-1);
