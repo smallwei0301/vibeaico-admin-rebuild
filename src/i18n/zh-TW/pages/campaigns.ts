@@ -13,7 +13,16 @@ export const campaignsPage = {
     heading: '行銷活動是什麼？',
     lead: '行銷活動可以',
     leadStrong: '綁定票券和點數獎勵',
-    leadTail: '，發布時自動推播 LINE 訊息給所有追蹤者，並自動發放獎勵。',
+    /**
+     * 前半句（發布時推播給所有追蹤者）**是真的**：`/api/campaigns/:id/publish`
+     * 會 multicast 給本店 followed=true 的 line_users 並扣推播額度
+     * （14 分冊 §8.6 擁有者裁決，本輪補齊）。
+     *
+     * 後半句「並自動發放獎勵」**是假的**，因此改寫：發布不會發券、也不會給點數，
+     * 全站沒有任何一處會依 campaigns 發放獎勵（grep「發放票券」只在 coupons 頁的
+     * 手動發放；兩支 cron 讀 tenant_settings.notify，從頭到尾不看 campaigns 表）。
+     */
+    leadTail: '，發布時會自動推播 LINE 訊息給所有追蹤者。（綁定的票券與點數目前只會存下來，還沒有接上自動發放。）',
     useCaseLabel: '適合用來：',
     useCaseText: '生日送折扣券、新客優惠、老客喚回、消費滿額送點數',
     crossLead: '如果只是要發一則通知訊息（不需要票券/點數），請用「',
@@ -67,10 +76,18 @@ export const campaignsPage = {
     REFERRAL: '推薦新顧客獎勵',
   },
 
-  /** 自動觸發活動的排程說明（原站顯示在活動卡片與確認訊息） */
+  /**
+   * 自動觸發活動的說明（原站顯示在活動卡片）。
+   *
+   * ⚠️ 原站寫的是「生日當天自動發送票券/點數」「久未到訪時自動發送票券/點數」，
+   * 那是**對一個不存在的排程做出的承諾**：`src/app/api/cron/birthday-greetings`
+   * 與 `customer-recall` 讀的是 `tenant_settings.notify` 的開關與文案，
+   * **從頭到尾不看 campaigns 表**，而且它們只推一則文字訊息，不發券也不給點數。
+   * 這與 messages.publishedAuto 的註解是同一件事——那裡改對了，這裡先前漏改。
+   */
   autoTriggerHint: {
-    BIRTHDAY: '生日當天自動發送票券/點數',
-    RECALL: '久未到訪時自動發送票券/點數',
+    BIRTHDAY: '生日當天觸發（自動發送尚未接上）',
+    RECALL: '久未到訪時觸發（自動發送尚未接上）',
   },
 
   /** 原站的自動活動預設名稱 */
@@ -153,20 +170,31 @@ export const campaignsPage = {
     sectionReward: '推播與獎勵設定',
 
     pushMessage: '推播訊息 *',
+    /**
+     * 這兩句原站文案**保留原文**——它們現在是真的：發布會 multicast 給本店
+     * followed=true 的追蹤者（14 分冊 §8.6）。help 只補上「自動觸發活動除外」，
+     * 因為原站的確認視窗自己就說那類活動「不會在發布當下群發」。
+     */
     pushMessagePlaceholder: '發布活動時將推送此訊息給所有 LINE 追蹤者',
-    pushMessageHelp: '發布時會透過 LINE 推播通知給所有追蹤者（必填）',
+    pushMessageHelp: '發布時會透過 LINE 推播通知給所有追蹤者（必填）；勾選「啟用排程自動觸發」的活動不會在發布當下群發',
     pushMessageRequired: '請先編輯活動並填寫「推播訊息」後再發布',
 
     couponId: '關聯票券',
     couponNone: '不關聯票券',
-    couponHelp: '發布時自動發放票券給追蹤者',
+    /**
+     * ⚠️ 原站寫「發布時自動發放票券給追蹤者」——**沒有任何實作**。
+     * 發布端點只做狀態轉換與 LINE 推播，一張券都不會發；全站唯一的發券入口是
+     * 「票券」頁的手動發放。這是本輪 grep 出來、與 §8.6 無關的另一筆假宣稱。
+     */
+    couponHelp: '關聯後會記錄在活動裡，但發布時不會自動發券——票券目前要到「票券」頁手動發放',
     couponPrivateLabel: (name: string) => `🔒 ${name}（私密券）`,
     couponPrivateWarning:
       '⚠️ 私密票券：只有「已建立顧客資料」的好友會收到券；沒有資料的好友收到推播後也無法自行領取這張券。',
 
     bonusPoints: '贈送點數',
     bonusPointsPlaceholder: '0',
-    bonusPointsHelp: '排程觸發時自動贈送點數',
+    /** 同 couponHelp：沒有任何一支排程會依 campaigns 贈點（兩支 cron 不看這張表） */
+    bonusPointsHelp: '會記錄在活動裡，但排程自動贈點尚未接上',
 
     thresholdAmount: '滿額門檻金額 *',
     thresholdAmountPrefix: 'NT$',
@@ -179,7 +207,11 @@ export const campaignsPage = {
     recallDaysHelp: '超過此天數未到訪的顧客將被觸發',
 
     isAutoTrigger: '啟用排程自動觸發',
-    isAutoTriggerHelp: '勾選後系統會依排程自動發送獎勵',
+    /**
+     * 原站：「勾選後系統會依排程自動發送獎勵」——假的（沒有排程讀 campaigns）。
+     * 勾選**真正會發生的事**只有一件：發布時不會群發推播。照實寫。
+     */
+    isAutoTriggerHelp: '勾選後這個活動不會在發布當下群發推播；排程自動發送獎勵尚未接上',
   },
 
   /* -------------------------------------------------- 自動活動前提檢查 */
@@ -188,7 +220,12 @@ export const campaignsPage = {
     checkLabel: '請檢查：',
     featureMissing: (featureName: string) => `尚未訂閱「${featureName}」功能（49 點/月）`,
     switchOff: (switchName: string) => `店家設定 → 通知設定的「${switchName}」開關尚未開啟`,
-    tail: '活動仍可以建立並保存，補齊上面的條件後就會開始自動發送。',
+    /**
+     * 原句尾是「補齊上面的條件後就會開始自動發送」——會開始發送的是
+     * `tenant_settings.notify` 那一則生日／喚回文字推播，**與這個活動無關**
+     * （兩支 cron 不讀 campaigns，也不發券、不給點）。改成只講真的會發生的事。
+     */
+    tail: '活動仍可以建立並保存。補齊上面的條件後開始自動發送的是「LINE 設定 → 通知」的生日／喚回文字推播，不是這個活動綁定的票券與點數。',
     /** 自動觸發活動對應的通知設定開關名稱 */
     switchNames: {
       BIRTHDAY: '自動推播生日祝福',
@@ -204,9 +241,29 @@ export const campaignsPage = {
     deleteTitle: '刪除活動',
     delete: (name: string) => `確定要刪除活動「${name}」嗎？此操作無法復原。`,
     publishTitle: '發布活動',
-    publish: '確定要發布此活動嗎？發布後將立即推送 LINE 訊息給所有追蹤者。',
+    /**
+     * ⚠️ **確認視窗是動作「之前」的承諾：它說了什麼，端點就要做什麼。**
+     *
+     * 原站第一句「發布後將立即推送 LINE 訊息給所有追蹤者」現在**成立**
+     * （§8.6 補齊的實作），所以原文保留為首句；後面補的兩句不是修飾，是把端點
+     * 真正會發生的另外兩件事講出來：會扣推播額度、額度不足或未設定 LINE 時
+     * 「活動照發、推播不送」（理由見 /api/campaigns/:id/publish 檔頭）。
+     * 少了它們，使用者會以為推播是必然的，而那正是 §8.6 要清掉的那種落差。
+     */
+    publish:
+      '確定要發布此活動嗎？發布後將立即推送 LINE 訊息給所有追蹤者，'
+      + '每位追蹤者計 1 則本月推播額度。'
+      + '若本月額度不足或尚未設定 LINE Channel，活動仍會發布，但推播不會送出。',
+    /**
+     * ⚠️ 原站第二句承諾「發布後會於對應時機（生日當天／…）自動發送」——
+     * **那個排程不存在**（兩支 cron 不讀 campaigns，見 autoTriggerHint 的註解）。
+     * 一句在動作前做出的承諾，如果動作不會兌現它，比事後的假成功更難察覺。
+     * 保留原站真正成立的那半句（不會在發布當下群發），把假的那半句改成實情。
+     */
     publishAuto:
-      '確定要發布此活動嗎？此為「自動觸發」活動，發布後會於對應時機（生日當天／成為新客／消費滿額／久未到訪）自動發送，不會在發布當下群發。',
+      '確定要發布此活動嗎？此為「自動觸發」活動，不會在發布當下群發推播。'
+      + '⚠️ 對應時機（生日當天／成為新客／消費滿額／久未到訪）的自動發送目前尚未接上，'
+      + '發布的效果是顧客在 LINE 查得到這一筆活動。',
     pauseTitle: '暫停活動',
     pause: '確定要暫停此活動嗎？',
     resumeTitle: '恢復活動',
@@ -221,23 +278,47 @@ export const campaignsPage = {
     updated: '活動已更新',
     deleted: '活動已刪除',
     /**
-     * ⚠️ 誠實化（issue #7 (乙) 接線時實測抓到的）。兩句舊文案都在宣稱沒有發生的事：
+     * ⚠️ 這一組文案的來歷，讀之前先看完（14 分冊 §11）：
      *
-     * 1. 舊 published =「活動已發布，**LINE 推播已發送**」。
-     *    `POST /api/campaigns/:id/publish` 只把 status 從 DRAFT 改成 PUBLISHED，
-     *    **一則 LINE 訊息都沒有送出**（要主動推播是 /tenant/marketing 那一頁的事）。
-     *    發布真正的效果是「顧客來問的時候查得到」——那才是可以講的話。
-     * 2. 舊 publishedAuto =「活動已啟用，**將於對應時機自動觸發推播**」。
-     *    沒有任何東西讀 content.isAutoTrigger：生日祝賀與顧客喚回兩支 cron
-     *    （src/app/api/cron/birthday-greetings、customer-recall）讀的是
-     *    `tenant_settings.notify` 的開關與文案，**從頭到尾不看 campaigns 表**。
-     *    這句是對一個不存在的排程做出的承諾，而且要等到「對應時機」沒發生才會有人發現。
+     * issue #7 (乙) 那一輪把 published 從原站的「活動已發布，**LINE 推播已發送**」
+     * 改成只講可見度，並在這裡註明「禁止復原」。**那個處置與擁有者裁決相反**——
+     * 14 分冊 §8.6 明文寫著：
      *
-     * 禁止復原。要恢復第 2 句，必須先有真的會讀 campaigns 的觸發器。
+     *   > 文案「活動已發布，LINE 推播已發送」保留，`POST /api/campaigns/:id/publish`
+     *   > 要補上實際的推播與額度扣減。**缺的是實作而不是文案。**
+     *
+     * 所以本輪依 §8.6 **復原那句文案並補上實作**，同時移除那句「禁止復原」的註記
+     * （它是在沒有查過既有裁決的情況下寫下的）。
+     *
+     * 但 §8.6 只管「推播」這一件事，它**沒有**推翻當時另一項正確的發現：
+     * `publishedAuto` 的「將於對應時機自動觸發推播」仍然是對一個不存在的排程
+     * 做出的承諾——生日祝賀與顧客喚回兩支 cron（src/app/api/cron/birthday-greetings、
+     * customer-recall）讀的是 `tenant_settings.notify` 的開關與文案，
+     * **從頭到尾不看 campaigns 表**。那一句因此維持誠實版本，
+     * 要恢復必須先有真的會讀 campaigns 的觸發器。
+     *
+     * ── 為什麼是一句話拆成六句 ─────────────────────────────────────
+     * 「發布」與「推播」是兩件會分開發生的事（端點檔頭有完整理由），
+     * 所以成功訊息不能只有一句。端點回 `pushed` / `sentCount` / `pushSkipReason`，
+     * 頁面照它挑下面對應的那一句。**沒送出的時候絕不可以顯示 published**。
      */
-    published: '活動已發布：顧客在 LINE 輸入「活動」或這個活動的關鍵字時就查得到了',
+    /** 真的 multicast 出去之後才顯示（§8.6 的原句保留為首段） */
+    published: (recipients: number) => `活動已發布，LINE 推播已發送給 ${recipients} 位追蹤者`,
+    /** 發布成立、但這一次沒有送出推播——與下面 noPush* 其中一句組合使用 */
+    publishedNoPush: '活動已發布：顧客在 LINE 輸入「活動」或這個活動的關鍵字時就查得到了',
+    noPushNoRecipients: '。目前沒有任何 LINE 追蹤者，所以沒有送出推播。',
+    noPushQuota: '。但本月推播額度已用完，這一則推播沒有送出；補足額度後可到「行銷推播」手動補送。',
+    noPushLineNotConfigured: '。尚未設定 LINE Channel，所以沒有送出推播。',
+    noPushNoMessage: '。這個活動沒有推播訊息，所以沒有送出推播。',
+    /**
+     * 額度已扣、LINE 平台回錯。**用 danger 色顯示**：這一句同時報告一個成功
+     * （活動發布了）與一個失敗（推播沒送成），不能混在綠色的成功訊息裡。
+     */
+    publishedPushFailed: (detail: string) =>
+      `活動已發布，但 LINE 推播送出失敗：${detail}。活動本身已生效（顧客在 LINE 查得到），`
+      + '推播可到「行銷推播」重送。',
     publishedAuto:
-      '活動已發布：顧客在 LINE 輸入「活動」時查得到。'
+      '活動已發布：顧客在 LINE 輸入「活動」時查得到，依規格不會在發布當下群發推播。'
       + '注意「自動觸發」目前只會存下來、還沒有接上自動發送——生日祝賀與顧客喚回的推播'
       + '是由「LINE 設定 → 通知」的開關獨立控制的，與這個活動無關。',
     paused: '活動已暫停',

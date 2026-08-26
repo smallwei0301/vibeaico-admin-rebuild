@@ -430,7 +430,7 @@ export async function notifyBookingStatus(
 | 端點 | 做法 |
 |---|---|
 | POST `/api/settings/line/rich-menu/create` | ① 依 `richMenuTheme` 產生 2500×1686 選單設定（6 格：預約/我的預約/服務項目/會員卡/優惠/聯絡我們，action=message 或 uri 到公開頁）② `POST /v2/bot/richmenu` 建立 ③ 上傳圖片 `POST https://api-data.line.me/v2/bot/richmenu/{id}/content`（圖檔：MVP 用預先做好的主題底圖存 `richmenu-assets` bucket；設計器合成屬後期）④ `POST /v2/bot/user/all/richmenu/{id}` 設為預設 ⑤ richMenuId 記到 `tenant_settings.line` jsonb |
-| POST `/api/settings/line/rich-menu/upload-bg-image` | multipart 收圖 → 存 bucket → 回 URL |
+| ~~POST `/api/settings/line/rich-menu/upload-bg-image`~~ | **（2026-08-26 刪除）** 這件事由 `POST /api/upload`（`bucket=richmenu-assets`，07 分冊 §3）承擔，選單設計頁走的一直是它；本端點零呼叫端且只信 `file.type`（缺 `/api/upload` 的解碼比對），留著只會是同一件事的第二份實作。它唯一多出來的 1 MB 伺服器端守門已搬進 `/api/upload` 的 `BUCKET_MAX_BYTES`，見下方「§6.1 底圖上傳的單一入口」 |
 | POST `/api/settings/line/flex-menu` | 儲存 flex 設定（jsonb）；webhook 的「選單」關鍵字回這份 Flex Message |
 | DELETE `/api/settings/line/rich-menu` | **（2026-08-24 補記，實作先行）** 刪除已發布選單：mock LINE 收到 DELETE、jsonb 的 richMenuId 清空；無 richMenuId 時冪等回成功 |
 | POST `/api/settings/line/disconnect` | 清空兩個 `*_enc` 欄位與 line jsonb 的 channelId ⚙O |
@@ -499,6 +499,34 @@ message action。一個壞連結不得帶走整張卡。
 每格自訂文字/連結接上發布、儲存草稿、還原前次發布、背景圖上傳按鈕接 `/api/upload`
 （目前是無 onClick 的死按鈕）——在接上之前，頁面必須明示「尚未生效」（鐵則 12），
 不得顯示成功。
+
+### 6.1 底圖上傳的單一入口（2026-08-26 新增）
+
+Rich Menu 底圖的上傳**只有一個入口**：`POST /api/upload`，`bucket=richmenu-assets`。
+
+先前有第二支 `POST /api/settings/line/rich-menu/upload-bg-image`。它是綠燈孤兒
+（14 分冊 §10：有實作、有守門、**零呼叫端**），本輪刪除，理由三條：
+
+1. **接上去會是退步。** 它只看 `file.type` 就決定格式，而 `/api/upload` 會實際解碼
+   並比對宣告的 MIME——那道檢查正是為了堵「改名的 WebP 冒充 `image/jpeg`」而加的
+   （見 14 分冊 §6.7 的「順手補的一個洞」）。換過去等於把已修好的漏洞放回來。
+2. **同一件事兩份實作**是本專案反覆抓到的缺陷家族：短期看起來一樣、長期一定分岔，
+   而分岔那天沒有任何測試會紅。這一支與 `/api/upload` 的 `richmenu-assets` 分支
+   目標完全相同（同 bucket、同格式限制、同回傳形狀）。
+3. 它與 `flex-menu.ts` 的 `FLEX_POPUP` 分支**不同性質**，所以不適用那種「已實作、
+   已測試、刻意尚未被使用」的誠實標註：FLEX_POPUP 是還沒有觸發條件的**未來能力**，
+   這一支則是已經被更好的實作取代的**過去能力**——標註它只會讓下一個人以為
+   還有一條路可以接。
+
+它唯一比 `/api/upload` 強的地方是 **1 MB 的伺服器端上限**（LINE
+「Requirements for rich menu image」的 Max file size: 1 MB）。因為零呼叫端，那道
+守門從來沒有生效過；真正走的 `/api/upload` 放行到 5 MB，1 MB 只在選單設計頁的
+前端 `RICH_MENU_BG_MAX_BYTES` 擋，繞過前端就能塞 5 MB 進來，然後在「發布」那一刻
+才被 LINE 退回——失敗被推遲到使用者已經離開畫面、手上也不再握著那個檔案的時候。
+
+所以守門**搬到有流量的那一支**：`/api/upload` 新增 `BUCKET_MAX_BYTES`
+（`richmenu-assets` → 1 MB，其餘 bucket 維持 5 MB）。限制跟著「這張圖最後會流到
+哪裡」走，與該檔既有的 `LINE_BOUND_BUCKETS` / `LINE_PREVIEW_BUCKETS` 同一條原則。
 
 ---
 

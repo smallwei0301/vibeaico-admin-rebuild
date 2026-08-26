@@ -311,7 +311,8 @@ applied_minutes, notified, created_at`。RLS 四條 `is_tenant_member(tenant_id)
 | GET/POST `/api/marketing/pushes`、PUT/DELETE `:id` | 草稿 CRUD |
 | POST `/api/marketing/pushes/:id/send` | 立即發送：解析 audience → line_users → multicast（06 分冊 §5）→ 寫 sent_count、扣 push_quota_usage |
 | POST `/api/marketing/pushes/:id/cancel` | SCHEDULED→CANCELLED |
-| GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | 狀態機同票券 |
+| GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | 狀態機同票券。**`publish` 不只是狀態轉換**：非「自動觸發」的活動會 multicast 給本店 `followed=true` 的 `line_users` 並扣 `push_quota_usage`（14 分冊 §8.6 擁有者裁決），回 `{pushed, sentCount, pushSkipReason?, pushErrorMessage?}` 照實回報這一次有沒有推出去 |
+| DELETE `/api/campaigns/:id` | **（2026-08-26 補列；端點與測試早已存在，本表先前漏列）** ⚙M；先查存在且屬於本店，否則 404 `REQ_002`——不可對不存在的 id 靜靜回成功。實作 `src/app/api/campaigns/[id]/route.ts`，測試 `tests/integration/api/campaigns.07.test.ts` |
 | GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | keyword_replies CRUD |
 | GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
 | GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |

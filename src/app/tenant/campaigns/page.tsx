@@ -68,6 +68,22 @@ const AUTO_TRIGGER_PREREQ: Partial<Record<CampaignType, {
 
 const PAGE_SIZE = 20;
 
+/**
+ * 「發布成功、但這一次沒有送出推播」的四種原因 → 對應的補述文案。
+ *
+ * AUTO_TRIGGER 與 LINE_ERROR 不在這張表裡：前者有自己的整句（publishedAuto）、
+ * 後者是 danger 色的另一句（publishedPushFailed），兩者都不是「成功但沒推」。
+ */
+const NO_PUSH_SUFFIX: Record<
+  'NO_MESSAGE' | 'NO_RECIPIENTS' | 'LINE_NOT_CONFIGURED' | 'QUOTA_EXCEEDED',
+  string
+> = {
+  NO_MESSAGE: t.messages.noPushNoMessage,
+  NO_RECIPIENTS: t.messages.noPushNoRecipients,
+  LINE_NOT_CONFIGURED: t.messages.noPushLineNotConfigured,
+  QUOTA_EXCEEDED: t.messages.noPushQuota,
+};
+
 type PendingKind = 'delete' | 'publish' | 'pause' | 'resume' | 'end';
 type PendingAction = { kind: PendingKind; campaign: Campaign };
 
@@ -163,8 +179,24 @@ export default function CampaignsPage() {
         await deleteCampaign(campaign.id);
         toast.show(t.messages.deleted);
       } else if (kind === 'publish') {
-        await publishCampaign(campaign.id);
-        toast.show(campaign.isAutoTrigger ? t.messages.publishedAuto : t.messages.published);
+        /**
+         * 發布有兩個副作用，而且**會分開發生**：狀態轉 PUBLISHED（顧客在 LINE
+         * 查得到）與 multicast 給所有追蹤者（14 分冊 §8.6）。額度不足、沒有追蹤者、
+         * 未設定 LINE Channel 時，前者成立而後者不成立，所以端點回 `pushed` /
+         * `sentCount` / `pushSkipReason`，這裡照它挑訊息。
+         * **一律顯示「LINE 推播已發送」就是 CLAUDE.md 說的假成功。**
+         */
+        const r = await publishCampaign(campaign.id);
+        if (r.pushed) {
+          toast.show(t.messages.published(r.sentCount));
+        } else if (r.pushSkipReason === 'LINE_ERROR') {
+          // 發布成功＋推播失敗 → 用 danger，不要混進綠色的成功訊息
+          toast.show(t.messages.publishedPushFailed(r.pushErrorMessage ?? ''), 'danger');
+        } else if (r.pushSkipReason === 'AUTO_TRIGGER' || campaign.isAutoTrigger) {
+          toast.show(t.messages.publishedAuto);
+        } else {
+          toast.show(`${t.messages.publishedNoPush}${NO_PUSH_SUFFIX[r.pushSkipReason ?? 'NO_MESSAGE']}`);
+        }
       } else if (kind === 'pause') {
         await pauseCampaign(campaign.id);
         toast.show(t.messages.paused);

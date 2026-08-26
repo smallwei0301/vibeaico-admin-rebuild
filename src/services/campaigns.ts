@@ -350,10 +350,45 @@ export const deleteCampaign = (id: string) =>
 
 /* ------------------------------------------------------------ 狀態機 */
 
-/** DRAFT → PUBLISHED。副作用：顧客在 LINE 打關鍵字／「活動」就收得到這一筆。 */
+/**
+ * 發布沒有推播出去時的原因（端點的 PushSkipReason，逐字對應）。
+ * 這些**都不是錯誤**——活動已經發布了，只是那一則 LINE 推播沒有送出。
+ */
+export type CampaignPushSkipReason =
+  | 'AUTO_TRIGGER'
+  | 'NO_MESSAGE'
+  | 'NO_RECIPIENTS'
+  | 'LINE_NOT_CONFIGURED'
+  | 'QUOTA_EXCEEDED'
+  | 'LINE_ERROR';
+
+/**
+ * 發布的結果。
+ *
+ * ⚠️ **`pushed` 一定要看**：頁面不可以一律顯示「LINE 推播已發送」。
+ * 發布與推播是兩件會分開發生的事（端點檔頭有完整理由），端點照實回報哪一件
+ * 真的發生了，畫面就得照實顯示——這是 14 分冊 §8.6 這一輪要修的核心。
+ */
+export type CampaignPublishResult = {
+  pushed: boolean;
+  /** 真的被 multicast 送出去的收件人數 */
+  sentCount: number;
+  pushSkipReason?: CampaignPushSkipReason;
+  /** pushSkipReason==='LINE_ERROR' 時 LINE 回的原文 */
+  pushErrorMessage?: string;
+};
+
+/**
+ * DRAFT → PUBLISHED。副作用有兩個，**兩個都是真的**：
+ *   1. 顧客在 LINE 打關鍵字／「活動」就收得到這一筆（line-events.ts 只回 PUBLISHED）。
+ *   2. 非「自動觸發」的活動會**立刻 multicast 給本店所有追蹤者**並扣推播額度
+ *      （14 分冊 §8.6 擁有者裁決；實作見 /api/campaigns/:id/publish）。
+ */
 export const publishCampaign = (id: string) =>
-  adapt<void>(() => undefined,
-    () => request<void>(`/api/campaigns/${id}/publish`, { method: 'POST' }));
+  adapt<CampaignPublishResult>(
+    // mock 分支沒有 LINE，也沒有額度——照實回「沒有推」，不要假裝推了
+    () => ({ pushed: false, sentCount: 0, pushSkipReason: 'LINE_NOT_CONFIGURED' }),
+    () => request<CampaignPublishResult>(`/api/campaigns/${id}/publish`, { method: 'POST' }));
 
 /** PUBLISHED → PAUSED。副作用：webhook 立刻不再回這一筆。 */
 export const pauseCampaign = (id: string) =>

@@ -12,7 +12,8 @@ import { makeLinePreview, previewPathFor } from '@/server/image';
  *   portfolio-images / staff-avatars / richmenu-assets）＋ 0017 的 chat-images
  *   （顧客訊息傳送圖片，見 src/app/api/chat/messages/route.ts）＋ 0019 的
  *   bug-report-attachments（回報問題的截圖，見 src/app/api/bug-report/route.ts）。
- * - 驗證：≤5MB；**允許的圖片格式依 bucket 而不同**，見 LINE_BOUND_BUCKETS。
+ * - 驗證：預設 ≤5MB，**部分 bucket 更嚴**（見 BUCKET_MAX_BYTES：richmenu-assets 1MB）；
+ *   **允許的圖片格式依 bucket 而不同**，見 LINE_BOUND_BUCKETS。
  * - 路徑 {tenantId}/{randomUUID()}.{ext}——第一段資料夾 = 租戶 id，
  *   與 0008 的 RLS 檢查規則一致。
  * - 以 service role 上傳（requireTenant() 已先驗明成員身分與租戶歸屬，
@@ -39,6 +40,24 @@ const ALLOWED_BUCKETS = new Set([
   'bug-report-attachments',
 ]);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+
+/**
+ * **比 5 MB 更嚴的 per-bucket 上限**（2026-08-26，14 分冊 §10 綠燈孤兒那一列）。
+ *
+ * 由來：`POST /api/settings/line/rich-menu/upload-bg-image` 曾經是第二支上傳端點，
+ * 它有一道 1 MB 的伺服器端守門（LINE「Requirements for rich menu image」的
+ * Max file size: 1 MB），但**零呼叫端**——選單設計頁走的是本端點，1 MB 只在
+ * 前端 `RICH_MENU_BG_MAX_BYTES` 擋，繞過前端就能塞 5 MB 進來，直到「發布」那一刻
+ * 才被 LINE 退回。那支端點本輪已刪除（它只信 `file.type`，沒有本端點的解碼比對，
+ * 接上去等於把已修好的 WebP 偽裝漏洞放回來；同一件事留兩份實作也正是本專案
+ * 反覆抓到的分岔缺陷），**守門搬到真的有流量的這裡**。
+ *
+ * ⚠️ 限制跟著「這張圖最後會流到哪裡」走，不是跟著端點走——與 LINE_BOUND_BUCKETS
+ * 和 LINE_PREVIEW_BUCKETS 同一條原則。其餘 bucket 維持 5 MB。
+ */
+const BUCKET_MAX_BYTES: Record<string, number> = {
+  'richmenu-assets': 1024 * 1024, // 1MB（LINE Rich Menu 圖片上限）
+};
 
 /**
  * **非公開**的 bucket —— 這裡的物件不得有可外連的永久網址。
@@ -138,8 +157,15 @@ export const POST = handle(async (req) => {
         : '僅支援 JPEG / PNG / WebP 圖片',
       ERR.VALIDATION,
     );
-  if (file.size > MAX_BYTES)
-    throw new ApiHttpError(400, '圖片超過 5MB 上限，請壓縮後再上傳', ERR.VALIDATION);
+  const maxBytes = BUCKET_MAX_BYTES[bucket] ?? MAX_BYTES;
+  if (file.size > maxBytes)
+    throw new ApiHttpError(
+      400,
+      maxBytes === MAX_BYTES
+        ? '圖片超過 5MB 上限，請壓縮後再上傳'
+        : `圖片超過 ${Math.round(maxBytes / 1024 / 1024)}MB 上限（LINE 圖文選單圖片限制），請壓縮後再上傳`,
+      ERR.VALIDATION,
+    );
 
   /**
    * 縮圖**先產、後上傳**（issue #28 ⑬）。
