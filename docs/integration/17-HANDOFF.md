@@ -343,3 +343,40 @@ Vercel、LINE Midao 頻道、Resend、Cloudflare）。測試帳號在同一份�
    14 分冊 §9.4 第 6 點的疑慮（規格對它們全盲）**不成立——不是漏抓，是本來就沒有**。
 2. **`docs/specs/*.json` 是對齊原站的唯一事實來源。** 分冊與 issue 都可能寫錯
    （本輪抓到六個 issue 的範圍與規格不符），**衝突時一律以 `docs/specs` 為準並回報**。
+
+---
+
+## 10. 2026-08-26 接手續報：CI 序列化與 #8 驗收
+
+### 10.1 主導者錯誤公開記錄：兩輪完整 CI 被錯誤地重疊觸發
+
+為取得 #8 的獨立整合證據，建立了 **draft PR #36**（開發分支 → `main`）；該 PR
+只用來觸發 `pull_request` CI，**不得合併**，因為 `main` 會觸發 production 部署。
+
+主導者在 Run #71（`32978764543`）的 `integration` job 尚未結束時，又更新開發分支，
+因此 Run #73（`32979074676`）也進入 `npm run test:integration`。兩輪共用、且都會
+清空同一個 TEST Supabase，違反 15 分冊的序列化規則。**即使其中任一輪顯示綠燈，
+也不得用作 #8 或其他 issue 的驗收證據。**
+
+修正：`.github/workflows/ci.yml` 的 `integration` job 加入全 repo 共用的固定
+`concurrency` group `shared-test-supabase-integration`，`cancel-in-progress: false`。
+group 刻意不含分支名，因為 PR、`main` 與手動觸發共用的是同一個 TEST 專案。
+只有在 #71/#73 都完全停止、此修正已生效後，才能再觸發一輪乾淨的完整 CI。
+
+### 10.2 #8 新增的 E2E 證據仍須滿足的條件
+
+`tests/e2e/tour-admin.spec.ts` 已涵蓋登入 → 建行程 → 規劃 → 開團 → 人工建單 →
+確認付款 → 取消，且每次寫入後重整；DB 斷言名額 `0 → 2 → 0`。清理後直接查
+`trips`、`trip_plans`、`trip_departures`、`tour_orders` 四表，必須全部為 0。
+
+但 #8 仍不可結案：除了上述乾淨 CI，還缺 Preview 同旅程、截圖清單與正式資料庫
+測試資料 residual=0 證據。Preview 沒有安全的四表 cleanup route；`DELETE trip` 在有
+訂單時只會 archive，外鍵也會阻擋直接刪除。因此在取得管理式、可精確限定測試 ID
+的清理權限以前，**不得先在 Preview 建資料**。
+
+### 10.3 本環境連接器狀態（須重新實測，不可當永久結論）
+
+本 session 的 GitHub MCP 可讀寫、`git ls-remote` 可讀，但 git push 沒有可用認證；
+未認證的 `api.github.com` 公開唯讀請求也已實測可用（與 §7.5 的上一輪環境不同）；
+Google Drive plugin 顯示已安裝且已允許讀取，但 Drive 動作沒有載入目前 session。
+因此尚未讀取擁有者指定的 `midao.md`，也沒有用瀏覽器繞過連接器取得憑證。

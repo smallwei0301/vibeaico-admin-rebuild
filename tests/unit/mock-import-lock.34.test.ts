@@ -90,12 +90,6 @@ const ALLOWED: Record<string, Allowance> = {
       + 'src/mock（setDemoMode）。有明確分支，不是無條件吃假資料。',
     owner: '#34（本 issue 建立分支；示範店家機制是刻意設計，長期保留、不拆）',
   },
-  'src/app/tenant/customers/page.tsx': {
-    bindings: ['MOCK_CUSTOMERS'],
-    reason:
-      '標籤下拉的選項從假顧客推導：real 模式下會列出這家店根本沒有的標籤。',
-    owner: '#7（營運頁假成功批次接線，customers 那一列）',
-  },
 };
 
 describe('靜態鎖：src/app/tenant/** 與 src/components/** 不得直接吃 MOCK_* 常數', () => {

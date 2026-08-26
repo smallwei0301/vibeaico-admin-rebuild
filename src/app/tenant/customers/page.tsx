@@ -18,14 +18,13 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  bindCustomerLine, createCustomer, deleteCustomer, listCustomers,
+  bindCustomerLine, createCustomer, deleteCustomer, listCustomerTags, listCustomers,
   unbindCustomerLine, updateCustomer,
 } from '@/services/customers';
 /* 待綁定 LINE 好友的唯一實作在 chat 服務（聊天室頁也用同一支），不另外複製一份 */
 import { listUnboundLineUsers, type UnboundLineUser } from '@/services/chat';
 import { listMembershipLevels } from '@/services/catalog';
 import { exportCustomersExcel } from '@/services/reports';
-import { MOCK_CUSTOMERS } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { customersPage as t } from '@/i18n/zh-TW/pages/customers';
@@ -48,13 +47,6 @@ import type { Customer, Gender, MembershipLevel } from '@/lib/types';
  *     等於這個徽章在真實資料下從來不會出現、在示範資料下永遠掛在同一列。
  * 兩者都不改成別的猜法，直接刪除：查不到的狀態就不顯示。
  */
-
-/**
- * 原站 /api/customers/tags；骨架階段由假資料推導，避免與 mock 脫節。
- * 必須在 render 時求值 —— 假資料會隨業態模式切換（見 src/mock/index.ts）。
- */
-const customerTags = (): string[] =>
-  Array.from(new Set(MOCK_CUSTOMERS.flatMap((c) => c.tags)));
 
 const GENDER_OPTIONS = Object.entries(common.gender) as [Gender, string][];
 
@@ -84,6 +76,7 @@ export default function CustomersPage() {
   const [page, setPage] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [levels, setLevels] = React.useState<MembershipLevel[]>([]);
+  const [customerTags, setCustomerTags] = React.useState<string[]>([]);
   const [helpTipOpen, setHelpTipOpen] = React.useState(true);
   const [exporting, setExporting] = React.useState(false);
 
@@ -113,7 +106,12 @@ export default function CustomersPage() {
   React.useEffect(() => {
     void (async () => {
       try {
-        setLevels(await listMembershipLevels());
+        const [membershipLevels, tags] = await Promise.all([
+          listMembershipLevels(),
+          listCustomerTags(),
+        ]);
+        setLevels(membershipLevels);
+        setCustomerTags(tags);
       } catch {
         toast.show(t.messages.loadFailedRetry, 'danger');
       }
@@ -392,7 +390,7 @@ export default function CustomersPage() {
                 onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))}
               >
                 <option value="">{t.search.tagAll}</option>
-                {customerTags().map((tag) => (
+                {customerTags.map((tag) => (
                   <option key={tag} value={tag}>{tag}</option>
                 ))}
               </Select>

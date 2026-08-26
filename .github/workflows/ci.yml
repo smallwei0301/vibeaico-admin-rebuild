@@ -29,6 +29,12 @@ jobs:
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
   integration:
     runs-on: ubuntu-latest
+    # 所有完整整合測試共用同一個 TEST Supabase，而且 test:integration 會清空資料。
+    # 固定 group（不能按分支分組）確保 PR、main 與手動觸發彼此不會重疊。
+    # 不取消正在執行的輪次；被排隊的新輪次必須等前一輪完全結束。
+    concurrency:
+      group: shared-test-supabase-integration
+      cancel-in-progress: false
     # 加上 workflow_dispatch：開發分支的 push **刻意不跑**這個 job（整合測試會 wipe
     # 共用的 TEST 專案，而本機同時可能有多個 agent 在跑同一套，兩邊互相清資料），
     # 但需要一份「不是我自己說的」獨立證據時，可以在沒有本機工作時手動觸發一次。

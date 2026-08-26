@@ -7,6 +7,13 @@ export type CustomerQuery = {
   levelId?: string; tag?: string; minSpent?: number; maxSpent?: number; minVisits?: number;
 };
 
+/** GET /api/customers/tags — 該店所有顧客標籤去重排序。 */
+export const listCustomerTags = () =>
+  adapt<string[]>(
+    () => Array.from(new Set(MOCK_CUSTOMERS.flatMap((customer) => customer.tags))),
+    async () => (await request<{ tags: string[] }>('/api/customers/tags')).tags,
+  );
+
 export function listCustomers(q: CustomerQuery = {}): Promise<Paged<Customer>> {
   return adapt(
     () => {
