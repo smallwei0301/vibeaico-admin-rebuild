@@ -234,6 +234,20 @@ against a clean project, so re-running one errors — that is expected, not a fa
 hard safety lock refusing to touch 正式, so the preview site's data is safe — but anything created
 by hand in the **TEST** project will be destroyed by the next `npm run test:integration`.
 
+## Handing off / picking this up
+
+If you are picking this project up without the previous session's machine, read
+`docs/integration/17-HANDOFF.md` **first**. It carries the current branch state, the
+per-issue acceptance status, the owner's 7 open decisions, and — most importantly — a
+complete index of the traps that made gates pass while the thing was actually broken
+(a committed `node_modules` symlink that silently emptied `node_modules` while
+`typecheck` still "passed", a cleanup that was blocked by a DB trigger while the script
+exited 0, a comparison assertion whose non-zero branch never ran, CI that had not
+executed for 66 commits). Every one of them is the same family: **green does not mean
+verified**.
+
+All work lives on `claude/deploy-vercel-project-nnno59`, not `main`.
+
 ## Key docs
 
 - `docs/CONVENTIONS.md` — read before adding a page
