@@ -1,4 +1,5 @@
 import { adapt, request } from '@/lib/api';
+import { downloadAttachment, type DownloadedFile } from '@/lib/download';
 import type { DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
@@ -194,24 +195,71 @@ export const getTopStaff = (q: ReportQuery) =>
 /* ------------------------------------------------------------------ 匯出 */
 
 /**
- * 匯出端點不走 { success, data } 信封，是檔案下載：real 分支直接導向端點 URL
- * （同源 cookie 會帶上，瀏覽器觸發下載）；mock 分支 no-op，頁面照舊 toast。
+ * 匯出端點不走 { success, data } 信封，是檔案下載（見各 route 檔頭）。
+ *
+ * 三支（reports / bookings / customers / inventory）**共用同一條路**：
+ * `downloadAttachment()`（src/lib/download.ts）真的把位元組收下來、存成檔案，
+ * 並把**伺服器 `Content-Disposition` 給的檔名**回傳給頁面。
+ *
+ * ⚠️ 這裡以前是 `window.location.assign(url)`：一行就能觸發下載，但呼叫端
+ * 拿不到回應，於是「檔名」只能由頁面自己用當天日期組一個字串出來——
+ * issue #28 ④⑤ 的捏造檔名就是這樣長出來的（顧客頁報 `顧客清單_20260825.xlsx`，
+ * 伺服器實際送的是 `customers-2026-08-25.csv`）。檔名只有伺服器知道。
+ *
+ * 回傳 `{ downloaded, fileName }`：
+ * - real：檔案真的到了瀏覽器 → downloaded=true，fileName 是真正存下來的檔名
+ *   （伺服器沒給檔名時是空字串，**不編一個**）。
+ * - mock／示範店家：沒有伺服器可打，也不會產生任何檔案 → downloaded=false。
+ *   頁面必須據此顯示「未匯出」而不是成功（CLAUDE.md：成功訊息是一項事實宣稱）。
  */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
+export type ExportFileResult = DownloadedFile;
+/** @deprecated 舊名，語意同 ExportFileResult（保留避免呼叫端一次全改） */
+export type ExportReportsResult = DownloadedFile;
+
+const NOT_DOWNLOADED: DownloadedFile = { downloaded: false, fileName: '' };
+
+/** `?a=1&b=2`；值為 undefined／空字串的參數整個不送（送 `from=undefined` 會被後端擋掉） */
+function queryString(params: Record<string, string | undefined>): string {
+  const usable = Object.entries(params).filter(([, v]) => v !== undefined && v !== '');
+  if (!usable.length) return '';
+  return `?${new URLSearchParams(usable as [string, string][]).toString()}`;
+}
+
+/** 顧客名單匯出（GET /api/export/customers/excel；內容是 CSV，見該 route 檔頭） */
 export const exportCustomersExcel = () =>
-  adapt<void>(
-    () => undefined,
-    async () => { window.location.assign(`${API_BASE}/api/export/customers/excel`); },
+  adapt<DownloadedFile>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(`${API_BASE}/api/export/customers/excel`),
   );
 
-export const exportBookingsCsv = (q?: ReportQuery) =>
-  adapt<void>(
-    () => undefined,
-    async () => {
-      const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
-      window.location.assign(`${API_BASE}/api/export/bookings${qs}`);
-    },
+/** 預約列表匯出（GET /api/export/bookings?from&to） */
+export const exportBookingsCsv = (q?: Partial<ReportQuery>) =>
+  adapt<DownloadedFile>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(
+      `${API_BASE}/api/export/bookings${queryString({ from: q?.from, to: q?.to })}`,
+    ),
+  );
+
+/**
+ * 庫存異動匯出（GET /api/export/inventory/:format，issue #28 第 ⑤ 筆新增）。
+ *
+ * `productId` / `type` 帶的是**頁面當下的兩個篩選**——匯出前的確認視窗寫著
+ * 「確定要匯出目前篩選的異動記錄嗎？」，那句話得是真的：只送分頁參數而不送
+ * 篩選，匯出的就會是全部資料，與畫面上看到的不同。
+ */
+export const exportInventoryLogs = (
+  format: 'csv' | 'excel',
+  q?: { productId?: string; type?: string },
+) =>
+  adapt<DownloadedFile>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(
+      `${API_BASE}/api/export/inventory/${format}`
+      + queryString({ productId: q?.productId, type: q?.type }),
+    ),
   );
 
 /**
@@ -221,24 +269,15 @@ export const exportBookingsCsv = (q?: ReportQuery) =>
  * 「匯出成功：營運報表_日期.xlsx」——檔名宣稱是報表，內容不是。現在改打
  * GET /api/export/reports/:format，匯出的就是本頁畫面上的統計。
  *
- * 回傳 `{ downloaded, fileName }`：
- * - real：瀏覽器真的收到檔案（端點回 .csv，兩種 format 都是 CSV，見該 route 檔頭）
- *   → downloaded=true，fileName 是真正會存下來的檔名。
- * - mock／示範店家：`adapt()` 的 mock 分支沒有伺服器可打，也**不會**產生任何
- *   檔案 → downloaded=false。頁面必須據此顯示「未匯出」而不是成功
- *   （CLAUDE.md：成功訊息是一項事實宣稱）。
+ * ⚠️ 2026-08-26（issue #28 ④）：這支原本雖然真的導到端點，但回傳的 fileName
+ * 是前端用當天日期**自己組的** `reports-YYYY-MM-DD.csv`。它碰巧與伺服器的
+ * 命名規則一致，所以看起來沒問題——但那是兩份各自演化的規則，端點哪天改了
+ * 檔名，畫面會若無其事地繼續報舊的那個。改成一律取自 Content-Disposition。
  */
-export type ExportReportsResult = { downloaded: boolean; fileName: string };
-
 export const exportReports = (format: 'csv' | 'excel', q?: ReportQuery) =>
-  adapt<ExportReportsResult>(
-    () => ({ downloaded: false, fileName: '' }),
-    async () => {
-      const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
-      window.location.assign(`${API_BASE}/api/export/reports/${format}${qs}`);
-      const d = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      return { downloaded: true, fileName: `reports-${date}.csv` };
-    },
+  adapt<DownloadedFile>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(
+      `${API_BASE}/api/export/reports/${format}${queryString({ from: q?.from, to: q?.to })}`,
+    ),
   );

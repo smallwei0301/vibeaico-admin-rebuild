@@ -28,6 +28,7 @@ import {
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { exportBookingsCsv } from '@/services/reports';
 import { byMode } from '@/mock';
 import { ApiError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
@@ -180,6 +181,7 @@ export default function BookingsPage() {
   /** 「未處理」= 時間已過但仍停在待確認/已確認；在載入時算好，render 期不碰 Date.now() */
   const [unprocessedIds, setUnprocessedIds] = React.useState<string[]>([]);
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   /* modal 狀態（8 個 modal） */
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -259,6 +261,36 @@ export default function BookingsPage() {
   }, [page, keyword, status, startDate, endDate, showCancelled, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  /**
+   * 匯出預約列表（GET /api/export/bookings，帶畫面上的日期區間）—— issue #28 ③。
+   *
+   * 修改前這顆鈕的 onClick 整個內容是
+   * `{ setExportOpen(false); toast.show(t.messages.exported); }`：什麼都沒下載，
+   * 畫面卻說匯出成功。現在成功訊息只在**檔案真的到了瀏覽器**時才顯示，而且
+   * 顯示的是伺服器 Content-Disposition 給的檔名（前端不得自組，見
+   * src/lib/download.ts）；示範資料模式沒有伺服器可打、不會產生任何檔案，
+   * 顯示「未匯出」而不是成功。
+   */
+  const runExport = async () => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const { downloaded, fileName } = await exportBookingsCsv({
+        from: startDate || undefined,
+        to: endDate || undefined,
+      });
+      if (!downloaded) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(fileName ? t.messages.exportedAs(fileName) : t.messages.exported);
+    } catch (e) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const isUnprocessed = (b: Booking) => unprocessedIds.includes(b.id);
 
@@ -463,17 +495,27 @@ export default function BookingsPage() {
         actions={
           <>
             <div className="relative">
-              <Button variant="outline" onClick={() => setExportOpen((v) => !v)}>
-                <Download size={15} />{t.actions.export}
+              <Button
+                variant="outline"
+                disabled={exporting}
+                onClick={() => setExportOpen((v) => !v)}
+              >
+                <Download size={15} />{exporting ? t.actions.exporting : t.actions.export}
               </Button>
               {exportOpen ? (
-                <div className="absolute right-0 z-flyout mt-1 flex min-w-[10rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
-                  {[common.exportExcel, common.exportCsv].map((label) => (
+                <div className="absolute right-0 z-flyout mt-1 flex min-w-[14rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
+                  {/*
+                    兩個選項打的是同一支端點（GET /api/export/bookings 沒有 format
+                    路徑段，見該 route 檔頭），所以拿到的是同一個 CSV —— 標籤照
+                    reports 頁的作法寫明實際格式，不寫「匯出 Excel」再送一個 .csv
+                    出去。格式段本身列在 issue #33 ③，補上之後這裡才會有兩種檔案。
+                  */}
+                  {[t.actions.exportExcelCsv, t.actions.exportCsv].map((label) => (
                     <button
                       key={label}
                       type="button"
                       className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
-                      onClick={() => { setExportOpen(false); toast.show(t.messages.exported); }}
+                      onClick={() => { void runExport(); }}
                     >
                       {label}
                     </button>

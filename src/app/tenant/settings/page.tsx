@@ -19,6 +19,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
 import { changePassword } from '@/services/auth';
+import { uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -94,6 +95,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [draft, setDraft] = React.useState<TenantSettings | null>(null);
   const [savingSection, setSavingSection] = React.useState<TabKey | null>(null);
+
+  /* 歡迎卡片圖片上傳（issue #28 ⑥）：隱藏的 <input type="file"> 由按鈕觸發 */
+  const welcomeImageFileRef = React.useRef<HTMLInputElement>(null);
+  const [welcomeImageBusy, setWelcomeImageBusy] = React.useState(false);
 
   /* 點數試算（原站 #testAmount，預設 100） */
   const [testAmount, setTestAmount] = React.useState('100');
@@ -246,6 +251,68 @@ export default function SettingsPage() {
       },
       t.notification.saved,
     );
+  };
+
+  /**
+   * 歡迎卡片圖片：選檔 → 上傳 → **存進 tenant_settings** → 顯示成功（issue #28 ⑥）。
+   *
+   * 修改前這顆鈕的 onClick 整個內容是 `() => toast.show(t.notification
+   * .welcomeCardImageUpdated)`：不開檔案選擇器、不上傳、不改任何 state，
+   * 畫面卻說「歡迎卡片圖片已更新」——全站最赤裸的一筆假成功。
+   *
+   * 為什麼上傳完要**接著存回資料庫**（而不是只 patchNotify 等使用者按儲存）：
+   * 作法對齊 issue #7 已經定下的 rich-menu 底圖那條路（先 uploadImage、再
+   * saveLineSettings、最後才 toast）。成功訊息說的是「已更新」，那就得真的更新到
+   * 重整後還在；只放進 React state 的話，使用者離開頁面圖就沒了，而畫面已經說成功。
+   *
+   * ⚠️ 代價據實寫在畫面上（`welcomeCardImageUpdated` 文案）：這一步會把「通知設定」
+   * 這一組**當下的其他未儲存變更一起存進去**——PUT /api/settings 是整組覆蓋，
+   * 只送 welcomeCardImageUrl 會把同組其他欄位打回預設值，那才是真的災難。
+   */
+  const uploadWelcomeCardImage = async (file: File) => {
+    if (!draft) return;
+    setWelcomeImageBusy(true);
+    try {
+      const url = await uploadImage(file, 'welcome-card-images');
+      const notify = { ...draft.notify, welcomeCardImageUrl: url };
+      await saveTenantSettings({ notify });
+      patchNotify({ welcomeCardImageUrl: url });
+      toast.show(t.notification.welcomeCardImageUpdated);
+    } catch (e) {
+      toast.show(
+        `${t.notification.welcomeCardImageUploadFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+      if (welcomeImageFileRef.current) welcomeImageFileRef.current.value = '';
+    }
+  };
+
+  /**
+   * 移除歡迎卡片圖片 —— 同樣要真的存回去（原本只清本地 state 就報「已移除」）。
+   *
+   * ⚠️ 只清掉 tenant_settings 裡的網址，**不刪 Storage 物件**：那張圖可能還被
+   * 別處引用，而且刪檔失敗與清欄位失敗要分開處理。孤兒物件的清理是既有技術債
+   * （06 分冊 §8.5 第 5 條同一類），畫面上的文案因此只說「移除歡迎卡片圖片」，
+   * 不宣稱檔案被刪掉。
+   */
+  const removeWelcomeCardImage = async () => {
+    if (!draft) return;
+    setWelcomeImageBusy(true);
+    try {
+      const notify = { ...draft.notify, welcomeCardImageUrl: '' };
+      await saveTenantSettings({ notify });
+      patchNotify({ welcomeCardImageUrl: '' });
+      toast.show(t.notification.welcomeCardImageRemoved);
+    } catch (e) {
+      toast.show(
+        `${t.notification.welcomeCardImageRemoveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
   };
 
   const savePoints = async () => {
@@ -1088,22 +1155,39 @@ export default function SettingsPage() {
                       placeholder={t.notification.welcomeCardImage}
                       onChange={(e) => patchNotify({ welcomeCardImageUrl: e.target.value })}
                     />
+                    {/*
+                      * issue #28 ⑥：這顆鈕以前的 onClick 整個內容就是一句
+                      * toast.show('歡迎卡片圖片已更新')。現在是
+                      *   選檔 → uploadImage(file,'welcome-card-images') → POST /api/upload
+                      *        → saveTenantSettings({notify}) → PUT /api/settings
+                      * 成功訊息排在兩個 await **之後**。禁止改回只跳 toast。
+                      */}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => toast.show(t.notification.welcomeCardImageUpdated)}
+                      disabled={welcomeImageBusy}
+                      onClick={() => welcomeImageFileRef.current?.click()}
                     >
                       <Upload size={13} />
-                      {t.notification.welcomeCardImageUpload}
+                      {welcomeImageBusy ? common.loading : t.notification.welcomeCardImageUpload}
                     </Button>
+                    <input
+                      ref={welcomeImageFileRef}
+                      type="file"
+                      className="hidden"
+                      /* LINE 的圖片訊息只收 JPEG / PNG，見 /api/upload 的 LINE_BOUND_BUCKETS */
+                      accept="image/jpeg,image/png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadWelcomeCardImage(file);
+                      }}
+                    />
                     {draft.notify.welcomeCardImageUrl ? (
                       <Button
                         variant="outlineDanger"
                         size="sm"
-                        onClick={() => {
-                          patchNotify({ welcomeCardImageUrl: '' });
-                          toast.show(t.notification.welcomeCardImageRemoved);
-                        }}
+                        disabled={welcomeImageBusy}
+                        onClick={() => { void removeWelcomeCardImage(); }}
                       >
                         <Trash2 size={13} />
                         {t.notification.welcomeCardImageRemove}

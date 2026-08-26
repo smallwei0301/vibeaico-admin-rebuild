@@ -17,6 +17,8 @@ export type UploadBucket =
   | 'staff-avatars'
   | 'richmenu-assets'
   | 'chat-images'
+  /** 加好友歡迎卡片的圖片（0023；public，去向是 LINE，只收 JPEG/PNG） */
+  | 'welcome-card-images'
   /** 回報問題的截圖（0019；**private** bucket，url 是短效簽名 URL，見下方 UploadResult） */
   | 'bug-report-attachments';
 

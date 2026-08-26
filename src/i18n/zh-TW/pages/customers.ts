@@ -74,7 +74,14 @@ export const customersPage = {
 
   /* --------------------------------------------------------------- 動作 */
   actions: {
-    export: '匯出 Excel',
+    /**
+     * `GET /api/export/customers/excel` 產的是 UTF-8 加 BOM 的 CSV（路徑沿用
+     * 原站命名，見該 route 檔頭），檔名是 `customers-YYYY-MM-DD.csv`。標籤照
+     * reports 頁的作法寫明實際格式——寫「匯出 Excel」卻送一個 .csv 出去，
+     * 就是謊報檔案格式（CLAUDE.md「Never fabricate a known」）。
+     */
+    export: '匯出 Excel 可開啟的 CSV',
+    exporting: '匯出中…',
     create: '新增顧客',
     edit: '編輯顧客',
     delete: '刪除顧客',
@@ -152,6 +159,14 @@ export const customersPage = {
     deleted: '顧客已刪除',
     deleteFailed: '刪除失敗',
     exported: '顧客匯出成功',
+    /**
+     * 檔名一律取自伺服器回的 `Content-Disposition`（issue #28 ④）。原本這裡
+     * 搭配的是 `exportFile.filename()`——前端用當天日期拼出「顧客清單_20260825.xlsx」
+     * 再報成功，既沒有下載、檔名也與伺服器實際送出的不同。該函式已刪除。
+     */
+    exportedAs: (fileName: string) => `顧客匯出成功：${fileName}`,
+    /** 示範資料模式沒有伺服器可打，沒有檔案產生——不得顯示成功 */
+    exportNotDownloaded: '示範資料模式不會產生檔案，未匯出任何顧客；請切換到實際店家後再匯出',
     exportFailed: '匯出失敗，請稍後再試',
     exportFailedPrefix: '匯出失敗:',
     saveFailedPrefix: '儲存失敗: ',
@@ -175,11 +190,6 @@ export const customersPage = {
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',
     unknownError: '未知錯誤',
-  },
-
-  /* --------------------------------------------------------------- 匯出 */
-  exportFile: {
-    filename: (date: string) => `顧客清單_${date}.xlsx`,
   },
 
   empty: {

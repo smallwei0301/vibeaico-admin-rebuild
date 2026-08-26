@@ -11,7 +11,9 @@ import { makeLinePreview, previewPathFor } from '@/server/image';
  * - bucket 白名單 = 0008 migration 的五個（service-images / product-images /
  *   portfolio-images / staff-avatars / richmenu-assets）＋ 0017 的 chat-images
  *   （顧客訊息傳送圖片，見 src/app/api/chat/messages/route.ts）＋ 0019 的
- *   bug-report-attachments（回報問題的截圖，見 src/app/api/bug-report/route.ts）。
+ *   bug-report-attachments（回報問題的截圖，見 src/app/api/bug-report/route.ts）
+ *   ＋ 0023 的 welcome-card-images（加好友歡迎卡片的圖片，店家設定→通知設定，
+ *   issue #28 ⑥）。
  * - 驗證：預設 ≤5MB，**部分 bucket 更嚴**（見 BUCKET_MAX_BYTES：richmenu-assets 1MB）；
  *   **允許的圖片格式依 bucket 而不同**，見 LINE_BOUND_BUCKETS。
  * - 路徑 {tenantId}/{randomUUID()}.{ext}——第一段資料夾 = 租戶 id，
@@ -38,6 +40,7 @@ const ALLOWED_BUCKETS = new Set([
   'richmenu-assets',
   'chat-images',
   'bug-report-attachments',
+  'welcome-card-images',
 ]);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -78,7 +81,7 @@ const PRIVATE_BUCKETS = new Set(['bug-report-attachments']);
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 
 /**
- * 會被送進 LINE 的 bucket —— 這兩個的可用格式**比其他 bucket 窄**。
+ * 會被送進 LINE 的 bucket —— 這三個的可用格式**比其他 bucket 窄**。
  *
  * LINE 的 image message 與 rich menu 圖片都只收 **JPEG / PNG**
  * （Messaging API reference「Image message」：originalContentUrl /
@@ -96,8 +99,17 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
  * ⚠️ 不可以因此全站禁 WebP —— 其餘四個 bucket（商品圖、服務圖、作品集、
  * 員工頭像）只會出現在自家網頁上，WebP 在那裡是更好的選擇（同畫質更小），
  * 砍掉純粹是損失。限制要跟著「這張圖最後會流到哪裡」走，不是跟著上傳端點走。
+ *
+ * `welcome-card-images`（0023，issue #28 ⑥）＝店家設定 → 通知設定 →「歡迎卡片
+ * 圖片（自訂）」，用途是顧客加好友時收到的那張卡片，畫面文案也是這樣告訴店家的
+ * （`line-settings.ts` 的說明文字），所以套同一條 JPEG/PNG 限制。
+ * ⚠️ **但目前沒有任何程式碼會把這張圖送給 LINE**：`src/server/line-events.ts` 的
+ * follow 事件只送 `notify.welcomeMessageText` 純文字，歡迎卡片的 flex 尚未組出來
+ * （已在 issue #28 回報）。先擋 WebP 是刻意的——等卡片接上去那天，WebP 會在顧客端
+ * **靜默破圖**而我們這邊每一步都成功，正是上面 chat-images 那段記的教訓；
+ * 而現在就擋掉的代價只是店家得傳 JPEG/PNG。
  */
-const LINE_BOUND_BUCKETS = new Set(['chat-images', 'richmenu-assets']);
+const LINE_BOUND_BUCKETS = new Set(['chat-images', 'richmenu-assets', 'welcome-card-images']);
 
 /**
  * 需要**額外產一張 ≤1 MB 縮圖**的 bucket —— 只有 `chat-images`（issue #28 ⑬ /

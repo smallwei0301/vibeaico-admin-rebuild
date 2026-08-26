@@ -287,8 +287,20 @@ export const settingsPage = {
     welcomeCardImage: '歡迎卡片圖片（自訂）',
     welcomeCardImageUpload: '上傳圖片',
     welcomeCardImageRemove: '移除圖片',
-    welcomeCardImageUpdated: '歡迎卡片圖片已更新',
-    welcomeCardImageRemoved: '已移除歡迎卡片圖片',
+    /**
+     * issue #28 ⑥：上傳鈕以前的 onClick 整個內容就是顯示這一句，什麼都沒發生。
+     * 現在它排在 `POST /api/upload` 與 `PUT /api/settings` 兩個 await 之後，
+     * 所以「已更新」是真的（重整後圖片還在）。
+     *
+     * 括號那半句不是客套話：`PUT /api/settings` 是**整組覆蓋**，存這個欄位就
+     * 一定會把「通知設定」這一組當下的其他未儲存變更一起存進去。使用者讀得到
+     * 的地方要講出來，不能只寫在程式碼註解裡（CLAUDE.md）。
+     */
+    welcomeCardImageUpdated: '歡迎卡片圖片已更新（通知設定的其他變更也一併儲存了）',
+    welcomeCardImageUploadFailedPrefix: '圖片上傳失敗:',
+    /** 只清掉設定裡的網址，不刪 Storage 檔案——所以只說「移除歡迎卡片圖片」 */
+    welcomeCardImageRemoved: '已移除歡迎卡片圖片（通知設定的其他變更也一併儲存了）',
+    welcomeCardImageRemoveFailedPrefix: '移除圖片失敗:',
     welcomeFeatureListText: '歡迎卡片功能介紹清單（自訂）',
     welcomeFeatureListTextPlaceholder: '一行一項，例：預約到店試穿',
     welcomeFeatureListTextHelp:

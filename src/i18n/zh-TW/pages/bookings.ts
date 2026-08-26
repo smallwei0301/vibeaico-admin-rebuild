@@ -27,6 +27,15 @@ export const bookingsPage = {
   /* ------------------------------------------------------------------ 動作 */
   actions: {
     export: '匯出',
+    exporting: '匯出中…',
+    /**
+     * 兩個匯出選項目前打的是同一支端點（`GET /api/export/bookings` 沒有 format
+     * 路徑段），拿到的是同一個 UTF-8 加 BOM 的 CSV。標籤照 reports 頁的作法
+     * 寫明實際格式——寫「匯出 Excel」卻送一個 .csv 出去就是謊報檔案格式。
+     * 格式段列在 issue #33 ③，補上後這兩個選項才會真的不同。
+     */
+    exportExcelCsv: '匯出 Excel 可開啟的 CSV',
+    exportCsv: '匯出 CSV',
     create: '新增預約',
     createShort: '新增',
     batchConfirm: '確認',
@@ -414,9 +423,16 @@ export const bookingsPage = {
     payLinkCopied: '付款連結已複製，可貼給顧客',
 
     exported: '預約匯出成功',
+    /**
+     * 檔名一律取自伺服器回的 `Content-Disposition`（issue #28 ③④）。
+     * 前端不得自組檔名——`exportFileName` 那種「用當天日期拼一個看起來合理的
+     * 檔名」正是本輪要清掉的假的已知。
+     */
+    exportedAs: (fileName: string) => `預約匯出成功：${fileName}`,
+    /** 示範資料模式沒有伺服器可打，沒有檔案產生——不得顯示成功 */
+    exportNotDownloaded: '示範資料模式不會產生檔案，未匯出任何預約；請切換到實際店家後再匯出',
     exportFailed: '匯出失敗，請稍後再試',
     exportFailedPrefix: '匯出失敗:',
-    exportFileName: (start: string, end: string, ext: string) => `預約清單_${start}_${end}.${ext}`,
 
     batchConfirmed: (n: number) => `成功確認 ${n} 筆預約`,
     batchCancelled: (n: number) => `成功取消 ${n} 筆預約`,

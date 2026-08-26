@@ -24,6 +24,7 @@ import {
 /* 待綁定 LINE 好友的唯一實作在 chat 服務（聊天室頁也用同一支），不另外複製一份 */
 import { listUnboundLineUsers, type UnboundLineUser } from '@/services/chat';
 import { listMembershipLevels } from '@/services/catalog';
+import { exportCustomersExcel } from '@/services/reports';
 import { MOCK_CUSTOMERS } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -84,6 +85,7 @@ export default function CustomersPage() {
   const [loading, setLoading] = React.useState(true);
   const [levels, setLevels] = React.useState<MembershipLevel[]>([]);
   const [helpTipOpen, setHelpTipOpen] = React.useState(true);
+  const [exporting, setExporting] = React.useState(false);
 
   /* 搜尋列 */
   const [keywordDraft, setKeywordDraft] = React.useState('');
@@ -159,10 +161,29 @@ export default function CustomersPage() {
   const applyAdvanced = () => { setApplied(draft); setPage(0); };
   const clearAdvanced = () => { setDraft(EMPTY_ADVANCED); setApplied(EMPTY_ADVANCED); setPage(0); };
 
-  const exportExcel = () => {
-    /* 事件處理器內才取當下日期；render 期不碰 Date */
-    const today = formatDate(new Date().toISOString()).replace(/\//g, '');
-    toast.show(`${t.messages.exported} ${t.exportFile.filename(today)}`);
+  /**
+   * 匯出顧客名單（GET /api/export/customers/excel）—— issue #28 ④。
+   *
+   * 修改前：`toast.show('顧客匯出成功 顧客清單_20260825.xlsx')` —— 沒有任何檔案
+   * 被下載，而且那個檔名是前端用當天日期**自己組**的，與伺服器實際送出的
+   * `customers-2026-08-25.csv` 既不同名也不同副檔名（CLAUDE.md「絕不用貌似
+   * 合理的佔位值」）。檔名現在一律取自 Content-Disposition，見
+   * src/lib/download.ts；示範資料模式不會產生檔案，顯示「未匯出」而非成功。
+   */
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const { downloaded, fileName } = await exportCustomersExcel();
+      if (!downloaded) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(fileName ? t.messages.exportedAs(fileName) : t.messages.exported);
+    } catch (e) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   /* ------------------------------------------------------------------ 欄位 */
@@ -268,8 +289,8 @@ export default function CustomersPage() {
         subtitle={t.subtitle}
         actions={
           <>
-            <Button variant="ghost" onClick={exportExcel}>
-              <Download size={15} />{t.actions.export}
+            <Button variant="ghost" disabled={exporting} onClick={() => { void exportExcel(); }}>
+              <Download size={15} />{exporting ? t.actions.exporting : t.actions.export}
             </Button>
             <Button onClick={() => setFormTarget(null)}>
               <Plus size={15} />{t.actions.create}
