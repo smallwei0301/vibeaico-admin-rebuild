@@ -80,6 +80,20 @@
 - [ ] B-3 商品/訂單/庫存
 - [ ] B-4 票券/會員/點數
 - [ ] B-6 報表進階/匯出 **（重開 2026-08-24：零測試檔）**
+      **2026-08-26（issue #7 甲）：重開理由「零測試檔」已消除，但本項仍不打勾。**
+      測試檔已建立並全綠：`tests/integration/api/reports-advanced.b6.test.ts` 20/20，
+      含 `:「顯式區間：totalBookings／totalRevenue／completedBookings／newCustomers 與直查資料庫現算相符」`、
+      `:「totalCustomers／activeCustomers／avgVisitCycle／avgCustomerValue／serviceTrends 與直查現算相符」`、
+      top-services／top-products／top-staff 各一條、
+      `:「表頭八欄、資料筆數等於資料庫筆數、UTF-8 BOM 與 attachment 標頭」`、
+      `:「表頭八欄、筆數等於該店顧客數（含停用），檔名為 .csv 而非謊報 .xlsx」`、
+      `:「csv：五個區塊表頭齊全、統計區間正確、每日趨勢逐日補 0（區間天數）」`。
+      變異驗證：把 summary 的營收口徑改成「不分狀態全算」、把 export/bookings 的
+      UTF-8 BOM 拿掉 → 對應三條轉紅。
+      **不打勾的理由**：本項的範圍不只端點——bookings 頁與 customers 頁的「匯出」
+      按鈕目前仍是死按鈕（`/api/export/bookings`、`/api/export/customers/excel`
+      零呼叫端，已列入 issue #28 第 ③④ 筆）。端點有測試 ≠ 使用者匯得出來
+      （12 分冊 §6 DoD 10、鐵則 12）。頁面接線關閉後才可打勾。
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
       **（重開 2026-08-24：無完成紀錄；依打勾規則 1，每頁的實測要留下日期＋步驟＋結果）**
 - [ ] 【新增】頁面接線驗收：本 Phase 涉及的每個頁面，其所有寫入按鈕都經過
@@ -102,15 +116,40 @@
       mock、儲存/刪除/啟停只 setState，店家設的關鍵字進不了 DB。重勾條件：頁面接線
       ＋端到端案例「UI 存一組關鍵字 → webhook 收該字 → mock LINE 收到設定的回覆」）**
 - [ ] chat 頁雙向訊息
-- [ ] 預約狀態推播 + 額度控管
+- [x] 預約狀態推播 + 額度控管
       **（重開 2026-08-24：line-notify 實作在但 tests/ 全域零引用，推播路徑的額度
       控管零覆蓋。重勾條件：12 §4 補列的 line-notify 案例綠）**
-- [ ] rich menu 基本建立/發布
+      **重勾 2026-08-26（issue #7 甲，14 分冊 §6.16）**：
+      `tests/integration/api/line-booking-notify.06.test.ts:「confirm → mock LINE 收到「預約已確認」push，推播額度 -1」`、
+      `:「cancel → mock LINE 收到「預約已取消」push，推播額度 -1」`、
+      `:「complete → mock LINE 收到「感謝您今日的光臨」push，推播額度 -1」`、
+      `:「no-show → mock LINE 收到「我們今日未能等到您」push，推播額度 -1」`、
+      `:「confirm：額度填滿 → 整個 mock 一個請求都沒收到，API 仍 200、預約仍轉成 CONFIRMED」`、
+      `:「complete：額度填滿 → 零 LINE 請求，但完成動作與其副作用照常成立」`、
+      `:「notifyBookingNoShow=false → no-show 仍 200，但零 LINE 請求、額度不變」`（7/7 綠）。
+      變異驗證：拿掉 `src/server/line-notify.ts` 的額度閘門 → 上列兩條「額度填滿」轉紅（14 分冊 §6.16-a）。
+- [x] rich menu 基本建立/發布
       **（重開 2026-08-24：原勾時頁面按鈕從未呼叫後端＝假發布，已於 commit 3a7429b
       修正接線並用真實 LINE 頻道驗證；重勾條件：12 §4 補列的 create/delete 整合案例綠）**
-- [ ] verify 五項檢查
+      **重勾 2026-08-26（issue #7 甲）**：
+      `tests/integration/api/line-rich-menu.06.test.ts:「建立 → 傳圖 → 設預設：mock LINE 依序收到三個請求，richMenuId 寫回 tenant_settings.line」`、
+      `:「無自訂底圖且 bucket 無主題圖 → 退回現生成的純色 PNG（不是 404）」`、
+      `:「傳圖失敗 → 剛建立的選單被刪掉（LINE 端不留孤兒）、不設預設、richMenuId 不落庫」`、
+      `:「已發布 → mock LINE 收到 DELETE，且 jsonb 的 richMenuId 被清空」`、
+      `:「沒有已發布選單 → 冪等回成功，且不打 LINE」`（7/7 綠）。
+      變異驗證：拿掉 create 的 `lineSetDefaultRichMenu` 呼叫 → 第一條轉紅。
+- [x] verify 五項檢查
       **（重開 2026-08-24：端點零測試，曾長期帶著 AUTO_REPLY 假錯誤無人發現。
       重勾條件：五項各自的 pass/WARN/FAIL 分支都有 line-mock 整合案例）**
+      **重勾 2026-08-26（issue #7 甲）**：`tests/integration/api/line-verify.06.test.ts` 16/16 綠，
+      含 `:「五項全部通過：報告在正常設定下真的能是全綠（沒有任何 FAIL，也沒有任何 WARN）」`、
+      `:「未設定 Channel Access Token → 五項全 fail、統一提示，且一個 LINE 請求都不發」`、
+      chatMode 三態 `:「chatMode=bot → AUTO_REPLY 通過（不是永遠的紅色失敗）」`／
+      `:「chatMode=chat → AUTO_REPLY 是 WARN 而非 FAIL，其餘四項仍全綠」`／
+      `:「chatMode 讀不到（/v2/bot/info 回應沒有這個欄位）→ AUTO_REPLY 是 WARN 提醒，不是失敗」`，
+      以及 TOKEN／WEBHOOK／RICH_MENU／QUOTA 各自的 pass 與 FAIL/WARN 分支。
+      變異驗證：把 AUTO_REPLY 改回「永遠 `pass:false`」→ 「五項全部通過」那條轉紅
+      （＝那條斷言真的在防「報告永遠不可能全綠」）。
 - [ ] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）

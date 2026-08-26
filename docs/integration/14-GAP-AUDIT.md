@@ -1856,6 +1856,88 @@ webhook 早已回 200；放行後處理照常完成」`、`:「壞簽章 → 401
 （after() 沒有排入任何工作）」`、`:「LINE API 回 500 令 handler 丟錯 → webhook 仍
 200、錯誤有留下紀錄，且同批後續事件照常處理」`。
 
+### 6.16 issue #7（甲）Phase 6 零測試三組 ＋ B-6 報表測試 — 2026-08-26
+
+§4「重開的 08 清單項」裡的四項，**重勾條件是「有對應的自動化案例且綠」**，
+本輪補齊。四支測試檔全部只新增，未改動任何 `src/`（見本節末「未改動 src」）。
+
+| 補的組 | 檔 | 案例數 |
+|---|---|---|
+| rich menu create/delete | `tests/integration/api/line-rich-menu.06.test.ts` | 7 |
+| verify 五項全分支 | `tests/integration/api/line-verify.06.test.ts` | 16 |
+| 預約狀態推播（line-notify） | `tests/integration/api/line-booking-notify.06.test.ts` | 7 |
+| B-6 報表進階/匯出 | `tests/integration/api/reports-advanced.b6.test.ts` | 20 |
+
+三處值得記下來的判斷：
+
+**(1) 純色底圖那條不 import `src/server/png.ts`。** 拿受測程式自己的產生器當
+期望值，等於用它證明它自己。改成依 PNG 規格自行解析上傳的位元組（簽章 → IHDR
+寬高/位元深度/色彩型別 → inflate IDAT 讀第一個像素），期望值取自
+`src/config/rich-menu-themes.ts` 的主題色。同一條案例也先斷言 bucket 真的沒有
+`themes/{THEME}.png|jpg`——不驗前置條件的話，那條退路可能根本沒被走到。
+
+**(2) verify 那一組除了逐項 pass/fail，另外釘死兩件事。** 這一節整個存在的理由
+就是 CLAUDE.md 開頭那個「永遠紅的 AUTO_REPLY」，所以案例不只驗「各項回什麼」：
+- **WARN 不得被算成 FAIL**：判準寫成 `!pass && severity !== 'WARN'`，逐案例斷言
+  哪些是真失敗、哪些只是提醒。
+- **報告在正常設定下真的能全綠**：`「五項全部通過」` 那一條。變異測試把
+  AUTO_REPLY 改回「永遠 `pass:false`」時，紅的正是這一條——**一個永遠不可能全綠
+  的檢查等於沒有檢查**，這條斷言就是它的探針。
+`chatMode` 三態（`bot` / `chat` / 讀不到）各一條。
+
+**(3) 「額度用盡 → 零請求」不能用固定秒數等。** 見下方 §6.16-a。
+
+**未改動 `src/`**：本輪只新增 `tests/integration/api/*.test.ts` 四支，並在
+`tests/helpers/line-mock.ts` 加了三個**純新增**的能力（`respondTo()` 覆寫單一路徑
+回應、`failNextFor()` 只讓指定路徑的下一個請求失敗、紀錄裡多帶 `rawBuffer`
+供驗二進位上傳）。既有預設行為一字未動，11 支既有的 line-mock 使用者實跑驗證
+（見下）。
+
+### 6.16-a 反向斷言不要用固定秒數：`expectNoPush` 的 1 秒窗口太短（實測）
+
+`tests/integration/api/bookings-modified.27.test.ts` 的 `expectNoPush()` 是
+「1 秒內持續斷言仍為零」。issue #7（甲）寫作時對 `src/server/line-notify.ts`
+做變異測試（把額度閘門拿掉，讓額度用盡照樣推），結果：
+
+- 本該轉紅的 `「confirm：額度填滿…」` **沒有紅**；
+- 紅的是**後面兩個**案例——那則被錯誤送出的 push 在 1 秒之後才抵達 mock，
+  於是汙染了下一個案例的紀錄，由它們去紅。
+
+也就是說那種寫法的紅燈會落在**錯的案例**上，而在只有一個負向案例的檔案裡會
+直接**假綠**。`notifyBookingStatus` 一趟要打 5~6 次遠端 Supabase 往返，
+超過 1 秒是常態，不是機器慢。
+
+**本檔改用障壁（barrier）**：受測動作觸發後，改在 **SHOP_B**（獨立的
+`push_quota_usage` 列、獨立的 notify 設定、獨立的 LINE 憑證）觸發一則必定會推的
+通知，等它抵達 mock，再斷言 mock 收到的請求**只有障壁那一則**。成立的理由是
+兩條通知走同一支函式、同一組 DB 往返，而受測那次**更早**發動（障壁的 HTTP 請求
+要等前一個回應完才送出）；兩次觸發之間**沒有任何 DB 寫入**（額度用不同租戶隔開，
+不是靠改數字），所以也沒有「改到一半被讀走」的競態。換成障壁之後，同一個變異
+紅在**正確的兩個案例**上。
+
+斷言的對象是 **`mock.requests` 整個為空**（扣掉障壁），不是「`/push` 沒被呼叫」——
+比照 `chat-link.06` 對 SILENT 分支的處理：斷言某一支沒被打，擋不住「改成打了別支」。
+
+> **待處理（不在 #7（甲）範圍）**：`bookings-modified.27.test.ts` 的 `expectNoPush()`
+> 仍是 1 秒窗口，依上面的實測它可能假綠。建議比照本檔改成障壁。
+
+### 6.16-b `flex-menu.06.test.ts` 在整合分支上是紅的（16/38），與 #7（甲）無關
+
+issue #7（甲）跑回歸時發現：`tests/integration/api/flex-menu.06.test.ts` 有 16 個
+案例紅，症狀是「顧客打『選單』完全沒有回應」。
+
+**不是 #7 造成的**——把 `tests/helpers/line-mock.ts` 還原成 HEAD 版本重跑，
+16 個紅燈**一模一樣**。
+
+根因：該檔的 `lineCallsFor()`（:66-85）在 webhook 回 200 之後**立刻**讀
+`mock.requests`，沒有呼叫 `drainWebhook()`。issue #31（commit `d45c2ca`）把事件處理
+搬到 `after()` 之後，200 就早於 reply 送出了——這支測試檔沒有跟著改。
+`line-webhook.06` 已改（用 `tests/helpers/line-webhook.ts`），`flex-menu.06` 漏了。
+
+修法：把 `lineCallsFor()` 的 `expect(res.status).toBe(200)` 之後補一行
+`await drainWebhook(SHOP_A.shopCode, BASE_URL);` 再讀 `mock.requests`。
+本輪未動它——它屬 issue #6 的驗收檔，改動應由該 issue 的負責人做，以免兩邊互踩。
+
 ## 9. 第四輪盤點（2026-08-25）：從**原站規格往前找**，而不是從程式碼往回找
 
 前三輪都是從程式碼往回找——掃「哪個按鈕沒接後端」「哪個成功訊息不是它宣稱的端點做的」。

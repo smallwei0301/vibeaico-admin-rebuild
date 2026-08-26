@@ -24,6 +24,13 @@
 //   - failNext(status) 佇列：下一個進來的請求改回該狀態 —— 用來模擬
 //     「LINE 平台回錯 → lineFetch 丟 ApiHttpError → webhook 事件處理失敗」，
 //     驗證 route 的 try/catch 仍回 200。
+//   - failNextFor(matcher, status)：同上，但只攔**指定路徑**的下一個請求。
+//     issue #7（甲）rich menu 的「傳圖失敗要清孤兒」需要它 —— 那條路徑是
+//     「建立成功、傳圖失敗」，用 failNext 會打到序列中的第一個（建立）而不是
+//     第二個（傳圖）。
+//   - respondTo(path, {status,body})：把某條路徑的回應整個換掉（持續生效到
+//     reset()）。issue #7（甲）verify 五項要逐項控制 /v2/bot/info 的 chatMode
+//     三態、webhook endpoint、richmenu、quota 的回應內容才驗得出 pass/WARN/FAIL。
 //
 // 匯出介面（任務指定）：start / stop / requests / reset（掛在 LineMockServer 上）。
 
@@ -37,6 +44,20 @@ export interface RecordedLineRequest {
   /** JSON.parse 成功時為物件，否則為 null（rawBody 永遠保留原文） */
   body: any;
   rawBody: string;
+  /**
+   * 未經解碼的請求本體。二進位上傳（rich menu 底圖是 PNG）用 utf8 轉字串會把
+   * 0x89 之類的位元組換成 U+FFFD，rawBody 因此驗不了圖檔內容——要驗 PNG 簽章、
+   * IHDR 寬高或像素顏色一律讀這個。
+   */
+  rawBuffer: Buffer;
+}
+
+/** respondTo() 的回應覆寫設定 */
+export interface LineMockResponse {
+  /** HTTP 狀態碼，預設 200 */
+  status?: number;
+  /** 回應本體；物件會 JSON.stringify，字串原樣送出。預設 `{}` */
+  body?: unknown;
 }
 
 /** 從 LINE_API_BASE 解析 mock 該綁的 port；預設 4123（.env.test 的固定值） */
@@ -62,6 +83,10 @@ export class LineMockServer {
 
   private server: Server | undefined;
   private failQueue: number[] = [];
+  /** failNextFor()：只攔特定路徑的一次性失敗，先進先出 */
+  private targetedFailQueue: { match: (path: string) => boolean; status: number }[] = [];
+  /** respondTo()：路徑 → 覆寫回應（持續到 reset()） */
+  private overrides = new Map<string, LineMockResponse>();
   /** holdNext() 掛住的下一個請求（見 holdNext 說明） */
   private hold: {
     path: string;
@@ -82,7 +107,8 @@ export class LineMockServer {
       const chunks: Buffer[] = [];
       req.on('data', (c: Buffer) => chunks.push(c));
       req.on('end', () => {
-        const rawBody = Buffer.concat(chunks).toString('utf8');
+        const rawBuffer = Buffer.concat(chunks);
+        const rawBody = rawBuffer.toString('utf8');
         let body: any = null;
         try {
           body = rawBody ? JSON.parse(rawBody) : null;
@@ -96,6 +122,7 @@ export class LineMockServer {
           headers: { ...req.headers },
           body,
           rawBody,
+          rawBuffer,
         });
 
         // holdNext：把這一個請求掛住不回應，直到測試呼叫 release()
@@ -111,11 +138,30 @@ export class LineMockServer {
           return;
         }
 
+        // failNextFor 佇列：只攔指定路徑的下一個請求（先於無差別的 failNext 判斷，
+        // 否則「序列中的第 n 個請求要壞」這種情境寫不出來）
+        const targetedIndex = this.targetedFailQueue.findIndex((f) => f.match(path));
+        if (targetedIndex >= 0) {
+          const [targeted] = this.targetedFailQueue.splice(targetedIndex, 1);
+          res.writeHead(targeted.status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ message: `mock forced failure (${targeted.status}) for ${path}` }));
+          return;
+        }
+
         // failNext 佇列：模擬 LINE 平台錯誤（lineFetch 會轉成 502 ApiHttpError）
         const failStatus = this.failQueue.shift();
         if (failStatus !== undefined) {
           res.writeHead(failStatus, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ message: `mock forced failure (${failStatus})` }));
+          return;
+        }
+
+        // respondTo 覆寫：測試指定了這條路徑的回應就照它回，不再走下面的預設
+        const override = this.overrides.get(path);
+        if (override) {
+          res.writeHead(override.status ?? 200, { 'Content-Type': 'application/json' });
+          const payload = override.body ?? {};
+          res.end(typeof payload === 'string' ? payload : JSON.stringify(payload));
           return;
         }
 
@@ -180,6 +226,8 @@ export class LineMockServer {
   reset(): void {
     this.requests.length = 0;
     this.failQueue = [];
+    this.targetedFailQueue = [];
+    this.overrides.clear();
     // 上一個案例若忘了 release，那條連線會一直掛著（webhook 的 after() 也就
     // 永遠跑不完）——在這裡放掉，讓忘記 release 只是髒，不會拖垮下一個案例。
     this.hold?.release?.();
@@ -225,6 +273,33 @@ export class LineMockServer {
   /** 讓「下一個」進來的請求回指定狀態碼（預設 500）；可疊加多次排隊 */
   failNext(status = 500): void {
     this.failQueue.push(status);
+  }
+
+  /**
+   * 讓「下一個打到 matcher 的請求」回指定狀態碼（其餘路徑照常）。一次性。
+   *
+   * 用途：一支端點會**依序**打好幾條 LINE 路徑時（rich menu 是建立 → 傳圖 →
+   * 設預設），要指定序列中的哪一步壞掉。無差別的 failNext() 只會打到第一步。
+   *
+   * @param matcher 字串為完全比對；RegExp 為部分比對（如 /\/content$/）。
+   */
+  failNextFor(matcher: string | RegExp, status = 500): void {
+    const match = typeof matcher === 'string'
+      ? (path: string) => path === matcher
+      : (path: string) => matcher.test(path);
+    this.targetedFailQueue.push({ match, status });
+  }
+
+  /**
+   * 覆寫某條路徑的回應（狀態碼與本體），持續生效到 reset()。
+   *
+   * verify 五項的分支全靠它：`/v2/bot/info` 的 chatMode 三態、
+   * `/v2/bot/channel/webhook/endpoint` 的 endpoint/active、
+   * `/v2/bot/user/all/richmenu` 有無 richMenuId、quota/consumption 的數字。
+   * 沒有覆寫的路徑一律走本檔預設（見檔頭「回應行為」）。
+   */
+  respondTo(path: string, response: LineMockResponse): void {
+    this.overrides.set(path, response);
   }
 
   /** 依路徑過濾請求（如 '/v2/bot/message/reply'） */
