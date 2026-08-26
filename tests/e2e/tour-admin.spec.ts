@@ -57,6 +57,19 @@ async function deleteRows(admin: SupabaseClient, table: string, column: string, 
   if (error) throw new Error(`cleanup ${table}: ${error.message}`);
 }
 
+async function residualCount(
+  admin: SupabaseClient,
+  table: string,
+  column: string,
+  values: string[],
+): Promise<number> {
+  if (values.length === 0) return 0;
+  const { count, error } = await admin.from(table).select('id', { count: 'exact', head: true })
+    .eq('tenant_id', SHOP_A.id).in(column, values);
+  if (error) throw new Error(`cleanup ${table} residual lookup: ${error.message}`);
+  return count ?? 0;
+}
+
 test.describe('Issue #8 行程管理端到端旅程', () => {
   test.describe.configure({ mode: 'serial' });
   // next dev 冷啟動會逐頁編譯；本旅程跨三頁且每個寫入後都 reload。
@@ -88,7 +101,11 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
       .from('tour_orders').select('id', { count: 'exact', head: true })
       .eq('tenant_id', SHOP_A.id).like('customer_name', `${PREFIX}%`);
     if (orderResidualError) throw new Error(`cleanup orders residual lookup: ${orderResidualError.message}`);
+    const planCount = await residualCount(admin, 'trip_plans', 'trip_id', tripIds);
+    const departureCount = await residualCount(admin, 'trip_departures', 'trip_id', tripIds);
     expect(tripCount ?? 0, 'trip cleanup residual').toBe(0);
+    expect(planCount, 'plan cleanup residual').toBe(0);
+    expect(departureCount, 'departure cleanup residual').toBe(0);
     expect(orderCount ?? 0, 'order cleanup residual').toBe(0);
   });
 
