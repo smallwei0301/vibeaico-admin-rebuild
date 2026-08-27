@@ -27,6 +27,8 @@ export const tripsPage = {
     manageDepartures: '團次與名額',
     back: '返回行程列表',
     save: '儲存',
+    importJson: '匯入行程 JSON',
+    exportJson: '匯出行程 JSON',
   },
   columns: {
     trip: '行程',
@@ -356,6 +358,11 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    imported: '行程已匯入',
+    importInvalid: 'JSON 檔案格式無效',
+    importNotDownloaded: '示範模式未匯入任何資料',
+    exported: '行程 JSON 已下載',
+    exportNotDownloaded: '示範模式未匯出任何檔案',
     /** 端點回了錯誤訊息就顯示那一句；連訊息都沒有時才用這句 */
     actionFailed: '操作失敗，請稍後再試',
     /**

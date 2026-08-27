@@ -24,14 +24,15 @@
  * 清理紀律：本檔自建專屬行程（不動 seed 的 TRIP_A —— tour-orders.10 的並發
  * 案例依賴它的 departureCap2），afterAll 依 FK 方向刪回去。
  */
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SHOP_A, SHOP_B } from '../../fixtures';
+import { SHOP_A, SHOP_B, STAFF_A2 } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 
 type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const baseUrl = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 
 /** 未來第 n 天的 YYYY-MM-DD（與其他測試檔的日期區間錯開，避免撞唯一鍵） */
 function futureDate(daysAhead: number): string {
@@ -45,9 +46,13 @@ async function readJson<T = unknown>(res: Response): Promise<Envelope<T>> {
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
 let ownerB: AuthedApi;
+let staffA: AuthedApi;
+let managerRpc: SupabaseClient;
+let staffRpc: SupabaseClient;
 
 /** 本檔專屬的行程與方案（不動 seed 的 TRIP_A） */
 let tripId = '';
+let tripSlug = '';
 let planId = '';
 /** 有訂單、用來驗 DELETE→ARCHIVED 的第二個行程 */
 let tripWithOrderId = '';
@@ -60,6 +65,7 @@ const createdAddons: string[] = [];
 
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
+  expect(process.env.TEST_SUPABASE_ANON_KEY).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
 
   admin = createClient(
@@ -70,11 +76,27 @@ beforeAll(async () => {
 
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
   ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+  staffA = await loginAs(STAFF_A2.email, STAFF_A2.password);
+  managerRpc = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: managerLoginError } = await managerRpc.auth.signInWithPassword({
+    email: SHOP_A.owner.email, password: SHOP_A.owner.password,
+  });
+  expect(managerLoginError).toBeNull();
+  staffRpc = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: staffLoginError } = await staffRpc.auth.signInWithPassword({
+    email: STAFF_A2.email, password: STAFF_A2.password,
+  });
+  expect(staffLoginError).toBeNull();
 
   // 受測行程：走真實端點建立，順便當成 POST /api/trips 的鏈路證據
+  tripSlug = `itest-tours-10-${Date.now()}`;
   const res = await ownerA.post('/api/trips', {
     title: '賞鯨半日遊（tours.10 測試）',
-    slug: `itest-tours-10-${Date.now()}`,
+    slug: tripSlug,
     region: '花蓮',
     status: 'DRAFT',
   });
@@ -647,78 +669,222 @@ describe('方案：後台表單欄位真的有進資料庫', () => {
 
 /* ===================================================== 複製行程 */
 describe('POST /api/trips/:id/duplicate', () => {
-  it('複本是 DRAFT / midao NONE、方案與加購跟著複製、團次不複製', async () => {
-    // 先確保來源有 1 個加購與若干方案、且處於「已發布 + 已上架 Midao」
-    const { data: addon } = await admin.from('trip_addons').insert({
-      tenant_id: SHOP_A.id, trip_id: tripId, name: '複製測試加購', price: 150,
-    }).select('id').single();
-    createdAddons.push(addon!.id);
-    await admin.from('trips')
-      .update({ status: 'PUBLISHED', midao_listing: 'LISTED' }).eq('id', tripId);
+  let sourcePlanCount = 0;
+  let sourceAddonCount = 0;
+  let sourceDepartureCount = 0;
+  let pendingCopyIds: string[] = [];
+  let behaviorCopyId = '';
+  let authTripCountBaseline = 0;
+  let shopBTripCountBaseline = 0;
+  let checkAuthTripCount = false;
+  let checkShopBTripCount = false;
 
-    const { count: srcPlans } = await admin.from('trip_plans')
-      .select('id', { count: 'exact', head: true }).eq('trip_id', tripId);
-    const { count: srcDeps } = await admin.from('trip_departures')
-      .select('id', { count: 'exact', head: true }).eq('trip_id', tripId);
-    expect(srcDeps).toBeGreaterThan(0);   // 來源確實有團次，才證明得了「沒被複製」
+  beforeAll(async () => {
+    // Fixture setup belongs to the hook budget, not to the 30-second behavior
+    // budget of the duplicate endpoint itself.
+    const [{ data: addon, error: addonError }, { data: departure, error: departureError }, statusUpdate] = await Promise.all([
+      admin.from('trip_addons').insert({
+        tenant_id: SHOP_A.id, trip_id: tripId, name: '複製測試加購', price: 150,
+      }).select('id').single(),
+      admin.from('trip_departures').insert({
+        tenant_id: SHOP_A.id, trip_id: tripId, plan_id: planId,
+        departs_on: futureDate(1000), capacity: 9, status: 'OPEN', note: '複製測試團次',
+      }).select('id').single(),
+      admin.from('trips').update({ status: 'PUBLISHED', midao_listing: 'LISTED' }).eq('id', tripId),
+    ]);
+    expect(statusUpdate.error).toBeNull();
+    expect(addonError).toBeNull();
+    expect(departureError).toBeNull();
+    expect(addon).not.toBeNull();
+    expect(departure).not.toBeNull();
+    createdAddons.push(addon!.id);
+    createdDepartures.push(departure!.id);
+
+    const [
+      { count: plans, error: plansError },
+      { count: addons, error: addonsError },
+      { count: departures, error: departuresError },
+      { count: copies, error: copiesError },
+      { count: shopBTrips, error: shopBTripsError },
+    ] = await Promise.all([
+      admin.from('trip_plans').select('id', { count: 'exact', head: true }).eq('trip_id', tripId),
+      admin.from('trip_addons').select('id', { count: 'exact', head: true }).eq('trip_id', tripId),
+      admin.from('trip_departures').select('id', { count: 'exact', head: true }).eq('trip_id', tripId),
+      admin.from('trips').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', SHOP_A.id).like('slug', `${tripSlug}-copy%`),
+      admin.from('trips').select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_B.id),
+    ]);
+    expect(plansError).toBeNull();
+    expect(addonsError).toBeNull();
+    expect(departuresError).toBeNull();
+    expect(copiesError).toBeNull();
+    expect(shopBTripsError).toBeNull();
+    sourcePlanCount = plans ?? 0;
+    sourceAddonCount = addons ?? 0;
+    sourceDepartureCount = departures ?? 0;
+    authTripCountBaseline = copies ?? 0;
+    shopBTripCountBaseline = shopBTrips ?? 0;
+  });
+
+  afterEach(async () => {
+    if (behaviorCopyId) {
+      const copyId = behaviorCopyId;
+      try {
+        const [
+          { count: copyPlans, error: plansError },
+          { count: copyAddons, error: addonsError },
+          { count: copyDeps, error: depsError },
+          { data: copyPlanRows, error: copyPlansError },
+        ] = await Promise.all([
+          admin.from('trip_plans').select('id', { count: 'exact', head: true }).eq('trip_id', copyId),
+          admin.from('trip_addons').select('id', { count: 'exact', head: true }).eq('trip_id', copyId),
+          admin.from('trip_departures').select('id', { count: 'exact', head: true }).eq('trip_id', copyId),
+          admin.from('trip_plans').select('review_state').eq('trip_id', copyId),
+        ]);
+        expect(plansError).toBeNull();
+        expect(addonsError).toBeNull();
+        expect(depsError).toBeNull();
+        expect(copyPlansError).toBeNull();
+        expect(copyPlans).toBe(sourcePlanCount);
+        expect(copyPlans).toBeGreaterThan(0);
+        expect(copyAddons).toBe(sourceAddonCount);
+        expect(copyAddons).toBeGreaterThan(0);
+        expect(copyDeps).toBe(0);
+        expect((copyPlanRows ?? []).every((p) => p.review_state === 'NONE')).toBe(true);
+      } finally {
+        const { error } = await admin.from('trips').delete().eq('id', copyId);
+        if (!error) behaviorCopyId = '';
+        expect(error).toBeNull();
+      }
+    }
+
+    if (pendingCopyIds.length) {
+      const ids = pendingCopyIds;
+      const { error } = await admin.from('trips').delete().in('id', ids);
+      if (!error) pendingCopyIds = [];
+      expect(error).toBeNull();
+    }
+
+    if (checkShopBTripCount) {
+      const { count: after } = await admin.from('trips')
+        .select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_B.id);
+      expect(after).toBe(shopBTripCountBaseline);
+      checkShopBTripCount = false;
+    }
+
+    if (checkAuthTripCount) {
+      const { count: after } = await admin.from('trips')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', SHOP_A.id).like('slug', `${tripSlug}-copy%`);
+      expect(after).toBe(authTripCountBaseline);
+      checkAuthTripCount = false;
+    }
+  });
+
+  afterAll(async () => {
+    const reset = await admin.from('trips')
+      .update({ status: 'DRAFT', midao_listing: 'NONE' }).eq('id', tripId);
+    const copies = tripSlug
+      ? await admin.from('trips').select('id').eq('tenant_id', SHOP_A.id)
+        .like('slug', `${tripSlug}-copy%`)
+      : { data: [], error: null };
+    const copyIds = (copies.data ?? []).map((row) => row.id);
+    const copyDelete = copyIds.length
+      ? await admin.from('trips').delete().in('id', copyIds)
+      : { error: null };
+    const remaining = tripSlug
+      ? await admin.from('trips').select('id', { count: 'exact', head: true })
+        .eq('tenant_id', SHOP_A.id).like('slug', `${tripSlug}-copy%`)
+      : { count: 0, error: null };
+    expect(reset.error).toBeNull();
+    expect(copies.error).toBeNull();
+    expect(copyDelete.error).toBeNull();
+    expect(remaining.error).toBeNull();
+    expect(remaining.count).toBe(0);
+  });
+
+  it('HTTP requires login and MANAGER before it reaches the duplicate RPC', async () => {
+    checkAuthTripCount = true;
+    const [anonymous, staff] = await Promise.all([
+      fetch(`${baseUrl}/api/trips/${tripId}/duplicate`, { method: 'POST' }),
+      staffA.post(`/api/trips/${tripId}/duplicate`),
+    ]);
+    const [anonymousBody, staffBody] = await Promise.all([readJson(anonymous), readJson(staff)]);
+    expect(anonymous.status).toBe(401);
+    expect(anonymousBody).toMatchObject({ success: false, code: 'AUTH_001' });
+    expect(staff.status).toBe(403);
+    expect(staffBody).toMatchObject({ success: false, code: 'AUTH_005' });
+  });
+
+  it('direct RPC rejects STAFF', async () => {
+    const { error: staffError } = await staffRpc.rpc('duplicate_trip_atomic', {
+      p_tenant_id: SHOP_A.id, p_source_trip_id: tripId,
+    });
+    expect(staffError).not.toBeNull();
+    expect(staffError!.code).toBe('42501');
+  });
+
+  it('direct RPC rejects a manager targeting another tenant', async () => {
+    checkShopBTripCount = true;
+    const { error: crossTenantError } = await managerRpc.rpc('duplicate_trip_atomic', {
+      p_tenant_id: SHOP_B.id, p_source_trip_id: tripId,
+    });
+    expect(crossTenantError).not.toBeNull();
+    expect(crossTenantError!.code).toBe('42501');
+  });
+
+  it('複本是 DRAFT / midao NONE、方案與加購跟著複製、團次不複製', async () => {
+    expect(sourceDepartureCount).toBeGreaterThan(0); // source 確實有團次
 
     const res = await ownerA.post(`/api/trips/${tripId}/duplicate`);
     const body = await readJson<{ id: string; title: string; slug: string; status: string; midaoListing: string; planCount: number; upcomingDepartureCount: number }>(res);
     expect(res.status, JSON.stringify(body)).toBe(200);
 
-    const copyId = body.data!.id;
+    const copyId = body.data?.id;
+    if (copyId) behaviorCopyId = copyId;
+    expect(copyId).toBeTruthy();
     expect(body.data!.title).toContain('（複本）');
     expect(body.data!.slug).toContain('-copy');
     expect(body.data!.status).toBe('DRAFT');
     expect(body.data!.midaoListing).toBe('NONE');
-    expect(body.data!.planCount).toBe(srcPlans);
+    expect(body.data!.planCount).toBe(sourcePlanCount);
     expect(body.data!.upcomingDepartureCount).toBe(0);
-
-    const { count: copyPlans } = await admin.from('trip_plans')
-      .select('id', { count: 'exact', head: true }).eq('trip_id', copyId);
-    expect(copyPlans).toBe(srcPlans);
-
-    const { count: copyAddons } = await admin.from('trip_addons')
-      .select('id', { count: 'exact', head: true }).eq('trip_id', copyId);
-    expect(copyAddons).toBeGreaterThan(0);
-
-    const { count: copyDeps } = await admin.from('trip_departures')
-      .select('id', { count: 'exact', head: true }).eq('trip_id', copyId);
-    expect(copyDeps).toBe(0);
-
-    // 複本的方案審核狀態一律歸零（來源是 LISTED，複本從未被 Midao 看過）
-    const { data: copyPlanRows } = await admin.from('trip_plans')
-      .select('review_state').eq('trip_id', copyId);
-    expect((copyPlanRows ?? []).every((p) => p.review_state === 'NONE')).toBe(true);
-
-    await admin.from('trips').delete().eq('id', copyId);
-    await admin.from('trips')
-      .update({ status: 'DRAFT', midao_listing: 'NONE' }).eq('id', tripId);
   });
 
   it('連續複製兩次 → slug 不撞（-copy、-copy-2）', async () => {
     const first = await ownerA.post(`/api/trips/${tripId}/duplicate`);
     const f = await readJson<{ id: string; slug: string }>(first);
+    if (f.data?.id) pendingCopyIds.push(f.data.id);
     expect(first.status, JSON.stringify(f)).toBe(200);
 
     const second = await ownerA.post(`/api/trips/${tripId}/duplicate`);
     const s = await readJson<{ id: string; slug: string }>(second);
+    if (s.data?.id) pendingCopyIds.push(s.data.id);
     expect(second.status, JSON.stringify(s)).toBe(200);
     expect(s.data!.slug).not.toBe(f.data!.slug);
+  });
 
-    await admin.from('trips').delete().in('id', [f.data!.id, s.data!.id]);
+  it('並發複製同一來源 → source lock 分配唯一且連續的 slug', async () => {
+    const [first, second] = await Promise.all([
+      ownerA.post(`/api/trips/${tripId}/duplicate`),
+      ownerA.post(`/api/trips/${tripId}/duplicate`),
+    ]);
+    const f = await readJson<{ id: string; slug: string }>(first);
+    if (f.data?.id) pendingCopyIds.push(f.data.id);
+    const s = await readJson<{ id: string; slug: string }>(second);
+    if (s.data?.id) pendingCopyIds.push(s.data.id);
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect([f.data!.slug, s.data!.slug].sort()).toEqual([
+      `${tripSlug}-copy`,
+      `${tripSlug}-copy-2`,
+    ]);
   });
 
   it('B 店複製 A 店的行程 → 404，且 B 店沒有多出任何行程', async () => {
-    const { count: before } = await admin.from('trips')
-      .select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_B.id);
+    checkShopBTripCount = true;
 
     const res = await ownerB.post(`/api/trips/${tripId}/duplicate`);
     expect(res.status).toBe(404);
-
-    const { count: after } = await admin.from('trips')
-      .select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_B.id);
-    expect(after).toBe(before);
   });
 });
 

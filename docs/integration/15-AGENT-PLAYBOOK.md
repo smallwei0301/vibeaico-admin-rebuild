@@ -546,3 +546,61 @@ typecheck 與 unit tests 也通過；但實際寫進 GitHub 的 blob 只有 9005
    NUL；大型文字檔另比對預期 blob SHA。
 3. CI 的 `TS1490` 不是「runner 編碼差異」；先查遠端 blob。新 CI 全綠前，
    被污染 commit 及其 pending/rerun 都不得算驗收證據。
+
+## 2026-08-27 恢復與 TEST runner 的新教訓
+
+### 坑 4：GitHub connector 已連結，不等於 shell 的 Git 有 credential helper
+
+本輪 `git` over HTTPS 在 shell 仍是 unauthenticated；GitHub MCP 卻可讀寫。不要把
+「connector 顯示已連結」當成 `git push` 一定可用，也不要把 token 寫進 remote URL。
+先用唯讀方式確認兩條通道，再選擇 MCP 建 commit/ref/PR 或已驗證的 push。完成後仍要
+重新讀遠端 ref/blob 與 CI，不能只看本機 branch。
+
+### 坑 5：環境文件與 connector 可能屬於不同 Supabase 帳號
+
+本輪一開始 connector 看不到 `midao.env` 指向的 TEST 專案；重連後才恢復同一個
+project ref。遇到「專案不存在／無法查詢」時，先比較 connector project ref 與
+測試環境文件的 ref（只比對識別碼，不輸出 key），再決定是權限問題還是程式問題。
+TEST reset、migration、function deploy 的授權不代表 production 授權；每個命令仍要
+在參數層固定 TEST project id。
+
+### 坑 6：seed 的欄位錯誤不能被 optional-table skip 吞掉
+
+舊 CI job checkout 的 seed 使用不存在的 `trip_plans.price_per_person`，錯誤被當成
+「可跳過」後才在 `trip_departures` 外鍵處失敗；後面的「No test files found」只是
+global setup 未完成的次級訊息。optional table 只能依明確的 missing-table code 跳過；
+schema cache、欄位、外鍵、權限與任何未知錯誤都必須 fail closed。報告 CI 時同時記錄
+checkout SHA，舊 SHA 的紅燈不可直接歸因於當前 HEAD。
+
+### 坑 7：Node 24 runner 的介面權限錯誤不是應用程式測試結果
+
+本地 Node 24 在 Next 啟動前遇到 `uv_interface_addresses` permission error；用 loopback
+shim 只作為本地 harness fallback，不能提交成產品程式，也不能把「server 沒啟動」
+算成 integration pass。固定 Node 22 的 CI 才是正式整合證據；本地若使用 shim，報告
+時要保留原始限制與實際 exit code。
+
+### 坑 8：遠端 TEST 延遲要隔離 hook 與 test budget，不能改全域 timeout 假綠
+
+`tours.10` 的登入、fixture 建立與資料庫 postcondition 查詢在 TEST 的冷啟動可能各耗
+十幾秒。將 fixture/清理放在 hook 可以讓單一 endpoint test 保持 30 秒門檻，但每個
+成功建立的 copy 必須立即登記，並在 `afterAll` 以唯一 slug prefix 做最後 sweep；所有
+查詢都要檢查 error，不能以空陣列的 `every()` 產生 vacuous pass。命令列暫時放寬
+hookTimeout 只用來診斷 runner，不得改 repo 的全域 testTimeout 或把未取得 exit code
+寫成通過。
+
+### 坑 9：跨 writer 的複製不能靠 route 端多次 Data API 呼叫拼成「看似原子」
+
+duplicate route 先後寫 trips、plans、addons 時，任何中途錯誤都可能留下半套資料，
+而 UI writer 與 RPC writer 也會競態分配相同 slug。最後方案改為 `SECURITY INVOKER`
+的單一 `duplicate_trip_atomic` function：在 DB 內做 auth/tenant 檢查、source row
+lock、slug allocation 與所有 child inserts；route 只做一次 RPC 與明確錯誤映射。曾
+否決 service-role RPC，因為本專案 service role 僅限 webhook/cron/auth registration；
+一般 API 必須以 session client 加 RLS/`auth.uid()` 守門。
+
+### 模型分工紀錄
+
+本輪恢復後的輸出必須標示模型：Luna（主導當前 session）負責機械修補、測試整理與
+證據收集；Terra（`gpt-5.6-terra`）負責工程修正與標準 review；Sol
+（`gpt-5.6-sol`）負責規格、安全、整合與最終裁決。低階 agent 的列舉或 checklist
+必須先通過欄位數量等機械守門，再交給 Sol/Luna 判定，不能把 agent 自報的「綠」當成
+主導者證據。

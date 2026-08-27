@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   CalendarDays, ChevronDown, ChevronUp, Copy, ExternalLink, Eye, EyeOff,
-  Layers, MapPin, Pencil, Plus, Route, Send, Sparkles, Trash2,
+  Layers, MapPin, Pencil, Plus, Route, Send, Sparkles, Trash2, Upload,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -19,7 +19,7 @@ import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, FormText, Input, Label, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  createTrip, deleteTrip, duplicateTrip, listTrips, publishTrip, requestMidaoListing,
+  createTrip, deleteTrip, duplicateTrip, importTripsJson, listTrips, publishTrip, requestMidaoListing,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -64,6 +64,8 @@ export default function TripsPage() {
 
   /** 有寫入請求在飛：確認鈕轉圈並鎖住，避免重複送出 */
   const [busy, setBusy] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
+  const importInputRef = React.useRef<HTMLInputElement>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [draft, setDraft] = React.useState({ title: '', slug: '', region: '', category: '' });
 
@@ -207,6 +209,24 @@ export default function TripsPage() {
     }
   };
 
+  const importJson = async (file: File) => {
+    setImporting(true);
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const result = await importTripsJson(payload);
+      if (!result) toast.show(t.messages.importNotDownloaded, 'warning');
+      else {
+        toast.show(t.messages.imported);
+        await load();
+      }
+    } catch (e) {
+      toast.show(e instanceof SyntaxError ? t.messages.importInvalid : failMessage(e), 'danger');
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
+  };
+
   const columns: Column<Trip>[] = [
     {
       key: 'trip', header: t.columns.trip,
@@ -325,6 +345,14 @@ export default function TripsPage() {
         title={t.title}
         actions={
           <>
+            <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden"
+              aria-label={t.actions.importJson} onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importJson(file);
+              }} />
+            <Button variant="outline" loading={importing} onClick={() => importInputRef.current?.click()}>
+              <Upload size={15} />{t.actions.importJson}
+            </Button>
             <Link href={publicShopUrl} target="_blank">
               <Button variant="outline">
                 <ExternalLink size={15} />{t.actions.viewShop}

@@ -328,11 +328,30 @@ export const createManualTourOrder = (payload: {
  * 欄位對照與「只新增不覆蓋方案」的規則在後端 /api/trips/import，前端只負責送檔。
  */
 export const importTripsJson = (json: unknown) =>
-  adapt<{ imported: number; results: Array<{ title: string; created: boolean; plansAdded: number }> }>(
-    () => ({ imported: 0, results: [] }),
-    () => request('/api/trips/import', { method: 'POST', body: JSON.stringify(json) }),
+  adapt<{ imported: number; results: Array<{ title: string; tripId: string; created: boolean; plansAdded: number }> } | null>(
+    () => null,
+    () => request<{ imported: number; results: Array<{ title: string; tripId: string; created: boolean; plansAdded: number }> }>(
+      '/api/trips/import', { method: 'POST', body: JSON.stringify(json) }),
   );
 
 /** 匯出成 tour-platform 格式的行程 JSON（可再匯回本後台或匯進 tour-platform）。 */
 export const exportTripJson = (id: string) =>
-  adapt<unknown>(() => ({}), () => request(`/api/trips/${id}/export`));
+  adapt<{ downloaded: boolean; fileName: string } | null>(
+    () => null,
+    async () => {
+      const json = await request<unknown>(`/api/trips/${id}/export`);
+      const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = href;
+      anchor.download = `trip-${id}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      setTimeout(() => { document.body.removeChild(anchor); URL.revokeObjectURL(href); }, 0);
+      return { downloaded: true, fileName: anchor.download };
+    },
+  );
+
+/** 語意較短的別名，供頁面與外部呼叫端使用。 */
+export const importTrips = importTripsJson;
+export const exportTrip = exportTripJson;

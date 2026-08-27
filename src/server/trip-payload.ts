@@ -170,6 +170,7 @@ export function toTourPlatformJson(trip: Trip, plans: TripPlan[]) {
       version: 'VibeAI 後台匯出（欄位與 tour-platform 行程 JSON 對齊，可雙向匯入）',
       note: '_instructions 只做說明，匯入時會被忽略。',
     },
+    slug: trip.slug,
     title: trip.title,
     region: trip.region,
     category: trip.category,
@@ -192,8 +193,10 @@ export function toTourPlatformJson(trip: Trip, plans: TripPlan[]) {
     activityPlans: plans.map((p) => ({
       name: p.name,
       slug: p.slug,
+      description: p.description,
       priceType: lower(p.priceType),
       basePrice: p.basePrice,
+      childPrice: p.childPrice,
       durationMinutes: p.durationMinutes,
       bookingType: lower(p.bookingType),
       minParticipants: p.minParticipants,

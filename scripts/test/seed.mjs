@@ -83,12 +83,9 @@ function isMissingSchemaError(error) {
   const message = (error?.message ?? '').toLowerCase();
   return (
     code === '42P01' ||
-    code === 'PGRST205' || // PostgREST：schema cache 裡找不到這張表
-    code === 'PGRST202' ||
-    code === '42883' ||
+    code === 'PGRST205' || // PostgREST：找不到關係表
     /relation "[^"]+" does not exist/.test(message) ||
-    message.includes('could not find the table') ||
-    message.includes('schema cache')
+    message.includes('could not find the table')
   );
 }
 
@@ -363,7 +360,7 @@ export async function runSeed(admin) {
     'trips',
   );
 
-  await safeUpsert(
+  const tripPlansSeeded = await safeUpsert(
     admin,
     'trip_plans',
     [
@@ -371,6 +368,9 @@ export async function runSeed(admin) {
         id: TRIP_A.planA1,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        // 0028 makes (tenant_id, trip_id, slug) a real import idempotency key.
+        // Seed data must exercise that contract too; never rely on the old ''.
+        slug: 'standard-test',
         name: '標準團（測試）',
         // ⚠️ 這裡原本寫 `price_per_person`（10 分冊 §1 的原始欄位名）。
         // migration 0016 實際建的欄位是 `base_price`，於是 PostgREST 回
@@ -394,6 +394,7 @@ export async function runSeed(admin) {
         id: TRIP_A.planA2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        slug: 'private-group-test',
         name: '包團（測試）',
         base_price: 5000,
         price_type: 'PER_PERSON',
@@ -402,6 +403,12 @@ export async function runSeed(admin) {
     ],
     'trip_plans',
   );
+  if (!tripPlansSeeded) {
+    throw new Error(
+      '[seed] trip_plans seed is required before trip_departures; '
+      + 'the parent table is unavailable, so dependent departure rows were not attempted.',
+    );
+  }
 
   const oneDayMs = 24 * hourMs;
   await safeUpsert(

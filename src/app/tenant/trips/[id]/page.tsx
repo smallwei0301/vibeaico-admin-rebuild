@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertTriangle, CalendarDays, CalendarPlus, Clock, Image as ImageIcon, Layers,
+  AlertTriangle, CalendarDays, CalendarPlus, Clock, Download, Image as ImageIcon, Layers,
   ListPlus, Package, Pencil, Plus, Send, Trash2, Upload, Users,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -24,7 +24,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan,
   getTrip, listTripAddons, listTripDepartures, listTripPlans,
-  saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
+  exportTripJson, saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -157,6 +157,19 @@ export default function TripDetailPage() {
       setTrip(saved);
       setForm(saved);
       toast.show(t.messages.updated);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportJson = async () => {
+    setBusy(true);
+    try {
+      const result = await exportTripJson(tripId);
+      if (!result) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(t.messages.exported);
     } catch (e) {
       toast.show(failMessage(e), 'danger');
     } finally {
@@ -585,6 +598,9 @@ export default function TripDetailPage() {
             </Badge>
             <Button variant="outline" onClick={() => router.push('/tenant/trips')}>
               {t.actions.back}
+            </Button>
+            <Button variant="outline" loading={busy} onClick={() => { void exportJson(); }}>
+              <Download size={14} />{t.actions.exportJson}
             </Button>
             <Button loading={busy} onClick={() => { void saveBasic(); }}>{t.actions.save}</Button>
           </>

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { handle, ok, fail, ERR } from '@/server/http';
+import { ApiHttpError, handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripPlan } from '@/server/mappers';
 import { planAdminFields, planRowFromImport } from '@/server/trip-payload';
@@ -53,6 +53,12 @@ export const POST = handle(async (req, ctx: Ctx) => {
       review_state: trip.midao_listing === 'LISTED' ? 'PENDING' : 'NONE',
     })
     .select('*').single();
+  // `trip_plan_limit_guard` is the authoritative, transaction-safe check.
+  // The earlier count only supplies a stable default sort order; concurrent
+  // requests can both observe 99, so never use it as the admission decision.
+  if (error?.code === 'P0001' && error.message.includes('TRIP_PLAN_LIMIT')) {
+    throw new ApiHttpError(409, '每個行程最多 100 個方案', ERR.CONFLICT);
+  }
   if (error) throw error;
 
   return ok(mapTripPlan(data));
