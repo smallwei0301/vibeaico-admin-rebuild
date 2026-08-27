@@ -17,12 +17,15 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/services/settings';
+import { changePassword } from '@/services/auth';
+import { uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { settingsPage as t } from '@/i18n/zh-TW/pages/settings';
 
 /* -------------------------------------------------------------------------- */
@@ -59,10 +62,14 @@ const TAB_TO_HASH: Record<TabKey, string> = {
   security: '#security',
 };
 
-/** 行事曆訂閱網址的密鑰（原站由 /api/settings/calendar 取得） */
-const INITIAL_ICS_TOKEN = 'a1b2c3d4e5f6a7b8';
-/** 重新產生時輪替使用，避免 render 期呼叫 Math.random 造成 hydration 不一致 */
-const REGENERATED_ICS_TOKENS = ['b7c8d9e0f1a2b3c4', 'c9d0e1f2a3b4c5d6', 'd1e2f3a4b5c6d7e8'];
+/*
+ * ⚠️ ICS 訂閱網址（本檔「行事曆同步」分頁）後端尚未建置：
+ * `/ics/{shopCode}/{token}.ics` 這條路由在 src/app 底下不存在，也沒有
+ * `/api/settings/calendar` 可以發或撤 token。舊實作在這裡放了一個假 token
+ * 與 REGENERATED_ICS_TOKENS 輪替陣列，按「重新產生網址」就換下一個假值並
+ * toast「已產生新網址」——店家會以為舊網址已被撤銷（假的安全操作），
+ * 實際上什麼都沒失效。禁止復原。
+ */
 
 const MAX_CUSTOM_FIELDS = 5;
 const MAX_CUSTOM_FIELD_NAME = 20;
@@ -80,6 +87,8 @@ const nonEmptyLines = (text: string): string[] =>
 /* -------------------------------------------------------------------------- */
 
 export default function SettingsPage() {
+  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
+  const businessType = useBusinessType();
   const toast = useToast();
 
   const [tab, setTab] = React.useState<TabKey>('basic');
@@ -87,14 +96,12 @@ export default function SettingsPage() {
   const [draft, setDraft] = React.useState<TenantSettings | null>(null);
   const [savingSection, setSavingSection] = React.useState<TabKey | null>(null);
 
+  /* 歡迎卡片圖片上傳（issue #28 ⑥）：隱藏的 <input type="file"> 由按鈕觸發 */
+  const welcomeImageFileRef = React.useRef<HTMLInputElement>(null);
+  const [welcomeImageBusy, setWelcomeImageBusy] = React.useState(false);
+
   /* 點數試算（原站 #testAmount，預設 100） */
   const [testAmount, setTestAmount] = React.useState('100');
-
-  /* 行事曆同步 */
-  const [icsToken, setIcsToken] = React.useState(INITIAL_ICS_TOKEN);
-  const [icsRegenCount, setIcsRegenCount] = React.useState(0);
-  const [confirmRegen, setConfirmRegen] = React.useState(false);
-  const [regenBusy, setRegenBusy] = React.useState(false);
 
   /* 帳號安全 */
   const [currentPassword, setCurrentPassword] = React.useState('');
@@ -151,13 +158,17 @@ export default function SettingsPage() {
   ) => {
     setSavingSection(section);
     try {
-      await saveTenantSettings(patch);
+      // 帶 business 群組時端點會回報自動封鎖／衝突預約的實際筆數（issue #33 ②）；
+      // 其他群組回 null。呼叫端據此決定要不要多說幾句。
+      const impact = await saveTenantSettings(patch);
       toast.show(successMessage);
+      return impact;
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
         'danger',
       );
+      return null;
     } finally {
       setSavingSection(null);
     }
@@ -208,6 +219,20 @@ export default function SettingsPage() {
     return '';
   };
 
+  /**
+   * 營業設定的儲存（issue #33 ②）——比其他分頁多兩件事：
+   *
+   * 1. 存檔**前**先打 `POST /api/settings/weekly-business-hours/draft`（乾跑）
+   *    拿「偵測到的」數字：落在非營業時段的既有預約、店家手動建立的每週封鎖。
+   *    這一支一列都不寫。⚠️ 乾跑是**我方選定**的語意，不是原站考據結果
+   *    （見 src/server/business-hours-blocks.ts 檔頭）。
+   * 2. 存檔本身走 `PUT /api/settings`，它會重建自動封鎖並回報**實際建立**的
+   *    筆數。「已依你的營業時段自動建立 N 筆」用的是這個數字（真的發生了），
+   *    不是乾跑的預測值。
+   *
+   * ⚠️ 端點沒有回報的數字就不顯示那一句——不為了讓文案有東西可印而估一個數。
+   * 零筆時也不顯示（「⚠️ 有 0 筆預約落在非營業時段」是一句沒有意義的警告）。
+   */
   const saveBusiness = async () => {
     if (!draft) return;
     const err = validateBusiness(draft.business);
@@ -215,7 +240,31 @@ export default function SettingsPage() {
       toast.show(`${t.business.validation.checkPrefix}${err}`, 'warning');
       return;
     }
-    await persist('business', { business: draft.business }, t.business.saved);
+
+    // 乾跑失敗不擋存檔：它只是拿來多說幾句話的，擋住反而讓存不了設定。
+    let preview: Awaited<ReturnType<typeof previewBusinessHours>> = null;
+    try { preview = await previewBusinessHours(draft.business); } catch { preview = null; }
+
+    const impact = await persist('business', { business: draft.business }, t.business.saved);
+    // 存檔失敗，或示範模式沒有數字可報
+    if (!impact) return;
+
+    if (impact.autoBlockCreated > 0)
+      toast.show(t.business.autoBlockCreated(impact.autoBlockCreated), 'info');
+
+    const conflicts = preview?.conflictBookingCount ?? impact.conflictBookingCount;
+    if (conflicts > 0) {
+      // 逐日模式的「非營業時段」同時涵蓋整天公休，用的是另一句文案。
+      toast.show(
+        impact.perDayMode
+          ? t.business.conflictWarning(conflicts)
+          : t.business.conflictWarningHours(conflicts),
+        'warning',
+      );
+    }
+
+    const manualKept = preview?.manualWeeklyBlockCount ?? impact.manualWeeklyBlockCount;
+    if (manualKept > 0) toast.show(t.business.manualBlockKept(manualKept), 'info');
   };
 
   const saveNotification = async () => {
@@ -246,6 +295,68 @@ export default function SettingsPage() {
     );
   };
 
+  /**
+   * 歡迎卡片圖片：選檔 → 上傳 → **存進 tenant_settings** → 顯示成功（issue #28 ⑥）。
+   *
+   * 修改前這顆鈕的 onClick 整個內容是 `() => toast.show(t.notification
+   * .welcomeCardImageUpdated)`：不開檔案選擇器、不上傳、不改任何 state，
+   * 畫面卻說「歡迎卡片圖片已更新」——全站最赤裸的一筆假成功。
+   *
+   * 為什麼上傳完要**接著存回資料庫**（而不是只 patchNotify 等使用者按儲存）：
+   * 作法對齊 issue #7 已經定下的 rich-menu 底圖那條路（先 uploadImage、再
+   * saveLineSettings、最後才 toast）。成功訊息說的是「已更新」，那就得真的更新到
+   * 重整後還在；只放進 React state 的話，使用者離開頁面圖就沒了，而畫面已經說成功。
+   *
+   * ⚠️ 代價據實寫在畫面上（`welcomeCardImageUpdated` 文案）：這一步會把「通知設定」
+   * 這一組**當下的其他未儲存變更一起存進去**——PUT /api/settings 是整組覆蓋，
+   * 只送 welcomeCardImageUrl 會把同組其他欄位打回預設值，那才是真的災難。
+   */
+  const uploadWelcomeCardImage = async (file: File) => {
+    if (!draft) return;
+    setWelcomeImageBusy(true);
+    try {
+      const url = await uploadImage(file, 'welcome-card-images');
+      const notify = { ...draft.notify, welcomeCardImageUrl: url };
+      await saveTenantSettings({ notify });
+      patchNotify({ welcomeCardImageUrl: url });
+      toast.show(t.notification.welcomeCardImageUpdated);
+    } catch (e) {
+      toast.show(
+        `${t.notification.welcomeCardImageUploadFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+      if (welcomeImageFileRef.current) welcomeImageFileRef.current.value = '';
+    }
+  };
+
+  /**
+   * 移除歡迎卡片圖片 —— 同樣要真的存回去（原本只清本地 state 就報「已移除」）。
+   *
+   * ⚠️ 只清掉 tenant_settings 裡的網址，**不刪 Storage 物件**：那張圖可能還被
+   * 別處引用，而且刪檔失敗與清欄位失敗要分開處理。孤兒物件的清理是既有技術債
+   * （06 分冊 §8.5 第 5 條同一類），畫面上的文案因此只說「移除歡迎卡片圖片」，
+   * 不宣稱檔案被刪掉。
+   */
+  const removeWelcomeCardImage = async () => {
+    if (!draft) return;
+    setWelcomeImageBusy(true);
+    try {
+      const notify = { ...draft.notify, welcomeCardImageUrl: '' };
+      await saveTenantSettings({ notify });
+      patchNotify({ welcomeCardImageUrl: '' });
+      toast.show(t.notification.welcomeCardImageRemoved);
+    } catch (e) {
+      toast.show(
+        `${t.notification.welcomeCardImageRemoveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
+  };
+
   const savePoints = async () => {
     if (!draft) return;
     if (draft.points.pointEarnRate < 1 || draft.points.pointEarnRate > 1000) {
@@ -266,30 +377,16 @@ export default function SettingsPage() {
     }
   };
 
-  const icsUrl = draft
-    ? `${APP_URL.replace(/\/$/, '')}/ics/${draft.basic.shopCode}/${icsToken}.ics`
-    : '';
   const publicUrl = draft ? buildPublicBookingUrl(APP_URL, draft.basic.shopCode) : '';
-
-  const regenerateIcs = async () => {
-    setRegenBusy(true);
-    try {
-      await new Promise((r) => setTimeout(r, 420));
-      setIcsToken(REGENERATED_ICS_TOKENS[icsRegenCount % REGENERATED_ICS_TOKENS.length]);
-      setIcsRegenCount((n) => n + 1);
-      setConfirmRegen(false);
-      toast.show(t.calendarSync.regenerated);
-    } catch {
-      toast.show(t.calendarSync.regenerateFailed, 'danger');
-    } finally {
-      setRegenBusy(false);
-    }
-  };
 
   const submitPasswordChange = async () => {
     setPasswordBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 480));
+      // 真的送到後端改密碼（POST /api/auth/change-password，03 分冊 §4：
+      // 後端會先用 currentPassword 重新驗證一次，錯的話回 400 AUTH_002）。
+      // 這裡先前是 480ms 的假延遲＋直接顯示「密碼已更改」——舊密碼其實永遠有效，
+      // 是 00 分冊鐵則 12 點名的假成功；成功 toast 只能出現在 await 成功之後。
+      await changePassword({ currentPassword, newPassword });
       setConfirmPasswordChange(false);
       setCurrentPassword('');
       setNewPassword('');
@@ -998,7 +1095,7 @@ export default function SettingsPage() {
                     <>
                       <div>{t.notification.staffMandatoryHelp}</div>
                       <div>{t.notification.staffMandatoryOffHint}</div>
-                      <div>{t.notification.staffMandatoryNotice}</div>
+                      <div>{resolveNavTerms(t.notification.staffMandatoryNotice, businessType)}</div>
                     </>
                   }
                   checked={draft.business.staffSelectionMandatory}
@@ -1100,22 +1197,39 @@ export default function SettingsPage() {
                       placeholder={t.notification.welcomeCardImage}
                       onChange={(e) => patchNotify({ welcomeCardImageUrl: e.target.value })}
                     />
+                    {/*
+                      * issue #28 ⑥：這顆鈕以前的 onClick 整個內容就是一句
+                      * toast.show('歡迎卡片圖片已更新')。現在是
+                      *   選檔 → uploadImage(file,'welcome-card-images') → POST /api/upload
+                      *        → saveTenantSettings({notify}) → PUT /api/settings
+                      * 成功訊息排在兩個 await **之後**。禁止改回只跳 toast。
+                      */}
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => toast.show(t.notification.welcomeCardImageUpdated)}
+                      disabled={welcomeImageBusy}
+                      onClick={() => welcomeImageFileRef.current?.click()}
                     >
                       <Upload size={13} />
-                      {t.notification.welcomeCardImageUpload}
+                      {welcomeImageBusy ? common.loading : t.notification.welcomeCardImageUpload}
                     </Button>
+                    <input
+                      ref={welcomeImageFileRef}
+                      type="file"
+                      className="hidden"
+                      /* LINE 的圖片訊息只收 JPEG / PNG，見 /api/upload 的 LINE_BOUND_BUCKETS */
+                      accept="image/jpeg,image/png"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadWelcomeCardImage(file);
+                      }}
+                    />
                     {draft.notify.welcomeCardImageUrl ? (
                       <Button
                         variant="outlineDanger"
                         size="sm"
-                        onClick={() => {
-                          patchNotify({ welcomeCardImageUrl: '' });
-                          toast.show(t.notification.welcomeCardImageRemoved);
-                        }}
+                        disabled={welcomeImageBusy}
+                        onClick={() => { void removeWelcomeCardImage(); }}
                       >
                         <Trash2 size={13} />
                         {t.notification.welcomeCardImageRemove}
@@ -1342,32 +1456,34 @@ export default function SettingsPage() {
               <CardBody>
                 <Alert tone="neutral" className="mb-4">{t.calendarSync.intro}</Alert>
 
+                <Alert tone="warning" title={t.calendarSync.notBuilt.title} className="mb-4">
+                  {t.calendarSync.notBuilt.body}
+                </Alert>
+
+                {/*
+                  * ⚠️ 沒有 ICS 端點就沒有可用的訂閱網址：欄位不可再填入任何看起來
+                  * 像真網址的字串，複製／加入 Google／重新產生一律停用（見檔案上方註解）。
+                  */}
                 <FormGroup>
                   <Label htmlFor="calIcsUrl">{t.calendarSync.urlLabel}</Label>
-                  <Input id="calIcsUrl" readOnly value={icsUrl} />
+                  <Input
+                    id="calIcsUrl" readOnly disabled
+                    value={t.calendarSync.notBuilt.urlUnavailable}
+                  />
                 </FormGroup>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      window.open(
-                        `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`,
-                        '_blank',
-                        'noopener',
-                      )
-                    }
-                  >
+                  <Button variant="outline" disabled title={t.calendarSync.notBuilt.disabledHint}>
                     <CalendarPlus size={14} />
                     {t.calendarSync.google}
                   </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => void copy(icsUrl, t.calendarSync.copied)}
-                  >
+                  <Button variant="secondary" disabled title={t.calendarSync.notBuilt.disabledHint}>
                     {t.calendarSync.copy}
                   </Button>
-                  <Button variant="outlineDanger" size="sm" onClick={() => setConfirmRegen(true)}>
+                  <Button
+                    variant="outlineDanger" size="sm"
+                    disabled title={t.calendarSync.notBuilt.disabledHint}
+                  >
                     <RotateCcw size={13} />
                     {t.calendarSync.regenerate}
                   </Button>
@@ -1443,20 +1559,6 @@ export default function SettingsPage() {
           </TabPanel>
         </>
       )}
-
-      {/* -------------------------------------------- 確認：重新產生 ICS 網址 */}
-      <ConfirmModal
-        open={confirmRegen}
-        danger
-        loading={regenBusy}
-        title={t.calendarSync.regenerateConfirmTitle}
-        confirmText={t.calendarSync.regenerate}
-        message={
-          <span className="whitespace-pre-line">{t.calendarSync.regenerateConfirm}</span>
-        }
-        onClose={() => setConfirmRegen(false)}
-        onConfirm={() => void regenerateIcs()}
-      />
 
       {/* ------------------------------------------------ 確認：更改密碼 */}
       <ConfirmModal

@@ -83,12 +83,9 @@ function isMissingSchemaError(error) {
   const message = (error?.message ?? '').toLowerCase();
   return (
     code === '42P01' ||
-    code === 'PGRST205' || // PostgREST：schema cache 裡找不到這張表
-    code === 'PGRST202' ||
-    code === '42883' ||
+    code === 'PGRST205' || // PostgREST：找不到關係表
     /relation "[^"]+" does not exist/.test(message) ||
-    message.includes('could not find the table') ||
-    message.includes('schema cache')
+    message.includes('could not find the table')
   );
 }
 
@@ -363,7 +360,7 @@ export async function runSeed(admin) {
     'trips',
   );
 
-  await safeUpsert(
+  const tripPlansSeeded = await safeUpsert(
     admin,
     'trip_plans',
     [
@@ -371,19 +368,47 @@ export async function runSeed(admin) {
         id: TRIP_A.planA1,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        // 0028 makes (tenant_id, trip_id, slug) a real import idempotency key.
+        // Seed data must exercise that contract too; never rely on the old ''.
+        slug: 'standard-test',
         name: '標準團（測試）',
-        price_per_person: 3000,
+        // ⚠️ 這裡原本寫 `price_per_person`（10 分冊 §1 的原始欄位名）。
+        // migration 0016 實際建的欄位是 `base_price`，於是 PostgREST 回
+        // 「Could not find the 'price_per_person' column … in the schema cache」，
+        // 而 isMissingSchemaError() 把含 "schema cache" 的訊息一律當成
+        // 「表還沒建立」跳過——所以 **trip_plans 與其後的 trip_departures
+        // 從 0016 之後就一直沒有被種進去，而且是靜默的**。
+        // 修正欄位名，並補上 price_type / max_participants，讓 §5 的並發
+        // 測試有明確的計價依據。
+        //
+        // ⚠️ issue #8、#19、#33 **三位執行者各自獨立撞到並修好**同一處，
+        // 三份 diff 在合併時接連撞在一起——那本身就是這個坑夠隱蔽的證據：
+        // 錯誤訊息指向 trip_departures 的外鍵，真正的原因在這一行。
+        // #33 的執行者還多查出一層後果：reset-db 以非零狀態碼結束，
+        // **整個整合測試套件一個案例都跑不起來**。
+        base_price: 3000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
       },
       {
         id: TRIP_A.planA2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        slug: 'private-group-test',
         name: '包團（測試）',
-        price_per_person: 5000,
+        base_price: 5000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
       },
     ],
     'trip_plans',
   );
+  if (!tripPlansSeeded) {
+    throw new Error(
+      '[seed] trip_plans seed is required before trip_departures; '
+      + 'the parent table is unavailable, so dependent departure rows were not attempted.',
+    );
+  }
 
   const oneDayMs = 24 * hourMs;
   await safeUpsert(

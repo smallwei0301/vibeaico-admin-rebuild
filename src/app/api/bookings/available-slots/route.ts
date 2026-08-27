@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { businessSettingsSchema } from '@/config/tenant-settings';
+import { expandWeeklyBlock } from '@/server/business-hours-blocks';
 
 const querySchema = z.object({
   serviceId: z.string().uuid(),
@@ -118,9 +119,10 @@ export const GET = handle(async (req) => {
     t.supabase.from('bookings').select('staff_id, start_at, end_at')
       .eq('tenant_id', t.tenantId).in('status', ['PENDING', 'CONFIRMED'])
       .lt('start_at', dayEndIso).gt('end_at', dayStartIso),
-    t.supabase.from('block_times').select('staff_id, start_at, end_at')
-      .eq('tenant_id', t.tenantId)
-      .lt('start_at', dayEndIso).gt('end_at', dayStartIso),
+    // ⚠️ 不能只用區間過濾：WEEKLY 的列（migration 0027）存的是參考週的起訖
+    // 時間，用區間比對會把每一筆每週封鎖都濾掉。整批取回後在下面展開。
+    t.supabase.from('block_times').select('staff_id, start_at, end_at, recurrence, day_of_week')
+      .eq('tenant_id', t.tenantId),
     t.supabase.from('shifts').select('staff_id, start_time, end_time')
       .eq('tenant_id', t.tenantId).eq('work_date', q.date),
   ]);
@@ -137,6 +139,32 @@ export const GET = handle(async (req) => {
   }
 
   const overlaps = (aS: number, aE: number, bS: number, bE: number) => aS < bE && aE > bS;
+
+  /*
+   * 封鎖時段展開成「這一天實際佔住的區間」：
+   *   SINGLE → 就是它自己的 start_at/end_at（先用當日區間濾掉無關的列，
+   *            那是原本在 SQL 做的事）。
+   *   WEEKLY → 用 expandWeeklyBlock 展開到這一天（migration 0027，issue #33 ②）。
+   * staff_id 一起帶著走，判斷時仍分「該員工／全店」。
+   */
+  const blockRanges: Array<{ staffId: string | null; start: number; end: number }> = [];
+  for (const bl of (blocks ?? []) as Array<{
+    staff_id: string | null; start_at: string; end_at: string;
+    recurrence: string | null; day_of_week: number | null;
+  }>) {
+    if ((bl.recurrence ?? 'SINGLE') === 'WEEKLY') {
+      for (const occ of expandWeeklyBlock(bl, dayStartIso, dayEndIso)) {
+        blockRanges.push({
+          staffId: bl.staff_id, start: Date.parse(occ.start), end: Date.parse(occ.end),
+        });
+      }
+      continue;
+    }
+    const s = Date.parse(bl.start_at);
+    const e = Date.parse(bl.end_at);
+    if (s < Date.parse(dayEndIso) && e > Date.parse(dayStartIso))
+      blockRanges.push({ staffId: bl.staff_id, start: s, end: e });
+  }
 
   // 2+4. 產時段並逐員工檢查
   const slots: Array<{ start: string; end: string; staffIds: string[] }> = [];
@@ -157,8 +185,8 @@ export const GET = handle(async (req) => {
           overlaps(slotStartMs, slotEndMs, Date.parse(b.start_at), Date.parse(b.end_at))))
           return false;
         // 封鎖時段（該員工或全店）重疊
-        if ((blocks ?? []).some((bl) => (bl.staff_id === null || bl.staff_id === staffId) &&
-          overlaps(slotStartMs, slotEndMs, Date.parse(bl.start_at), Date.parse(bl.end_at))))
+        if (blockRanges.some((bl) => (bl.staffId === null || bl.staffId === staffId) &&
+          overlaps(slotStartMs, slotEndMs, bl.start, bl.end)))
           return false;
         return true;
       });

@@ -26,6 +26,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { LineMockServer, MOCK_PROFILE_NAME_PREFIX } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
@@ -46,14 +47,22 @@ function sign(secret: string, rawBody: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('base64');
 }
 
-/** 以正確簽章 POST webhook（顧客端「傳入」半邊的入口） */
+/**
+ * 以正確簽章 POST webhook（顧客端「傳入」半邊的入口）。
+ *
+ * issue #31：webhook 驗簽後立刻回 200、事件處理在 after() 裡跑（06 §3.1），
+ * 所以要用 drainWebhook 等背景處理結束才能斷言 chat_messages／mock LINE。
+ * 那是 server 端的確定性完成訊號，不是 sleep 猜等（12 §2.3）。
+ */
 async function postWebhook(payload: unknown): Promise<Response> {
   const raw = JSON.stringify(payload);
-  return fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
+  const res = await fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-line-signature': sign(CHANNEL_SECRET, raw) },
     body: raw,
   });
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
+  return res;
 }
 
 function textMessageEvent(text: string, replyToken: string) {

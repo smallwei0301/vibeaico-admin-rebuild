@@ -1,5 +1,11 @@
 # dependencies
 node_modules/
+# ⚠️ 上面那行**擋不住 symlink**：`node_modules/` 的尾斜線只比對目錄，
+# 而 worktree 執行者常建一個名為 node_modules 的**符號連結**指回主 worktree。
+# 2026-08-25 就是這樣讓一個 `120000 node_modules` 進了 commit，合併後把主
+# worktree 那份真的 node_modules 蓋成指向自己的死連結（193 個套件消失，
+# 而 `npm run typecheck` 仍然安靜地「通過」）。所以再加一行不帶斜線的。
+node_modules
 .pnp
 .pnp.js
 
@@ -43,3 +49,10 @@ yarn-error.log*
 # editor
 .idea/
 .vscode/
+
+# 實測腳本產出的截圖／下載檔一律不進版控。
+# `out/` 那條規則只涵蓋 scripts/verify/out/；2026-08-25 有一支腳本把截圖寫成
+# scripts/verify/.out-flex-menu-page.png（`.out-` 前綴、直接放在 verify/ 底下），
+# 躲過了那條規則。截圖進了 repo 之後很難清，所以這裡用檔名樣式再補一層。
+scripts/verify/*.png
+scripts/verify/.out-*

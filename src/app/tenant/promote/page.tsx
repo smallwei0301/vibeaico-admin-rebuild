@@ -10,16 +10,15 @@ import { Alert } from '@/components/ui/Alert';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings } from '@/services/settings';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
-import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { promotePage as t } from '@/i18n/zh-TW/pages/promote';
 import { formatNumber } from '@/lib/utils';
+import { generateQrDataUrl, triggerDataUrlDownload } from '@/lib/qr';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -47,8 +46,12 @@ const MOCK_PROMOTION_STATS: Record<string, PromotionStat[]> = {
   '90': [],
 };
 
-/** QR Code 圖檔在骨架階段以本地占位圖代替；正式站由後端產生 */
-const QR_PLACEHOLDER_AVAILABLE = true;
+/*
+ * QR Code：issue #16（補齊-1）已補上真的產生與下載，經 src/lib/qr.ts
+ * （擁有者裁決安裝 `qrcode` 套件，不得自寫編碼器——見 14 分冊 §8.2）。
+ * 內容＝下方 publicUrl 逐字編碼；publicUrl 尚未就緒（店家代碼未設定／
+ * 載入中）時不產生，方框顯示對應的誠實狀態，不畫假圖。
+ */
 
 /* -------------------------------------------------------------------------- */
 
@@ -62,7 +65,10 @@ export default function PromotePage() {
   const [stats, setStats] = React.useState<PromotionStat[]>([]);
   const [loadingStats, setLoadingStats] = React.useState(true);
 
-  const [qrConfirmOpen, setQrConfirmOpen] = React.useState(false);
+  const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+  const [qrGenerating, setQrGenerating] = React.useState(false);
+  const [qrError, setQrError] = React.useState(false);
+  const [downloadingQr, setDownloadingQr] = React.useState(false);
 
   React.useEffect(() => {
     void (async () => {
@@ -83,17 +89,37 @@ export default function PromotePage() {
   }, [toast]);
 
   React.useEffect(() => {
-    let cancelled = false;
-    setLoadingStats(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setStats(MOCK_PROMOTION_STATS[days] ?? []);
-      setLoadingStats(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+    /* 流量統計後端尚未建置：沒有端點可打，直接讀本檔的示範數字 */
+    setStats(MOCK_PROMOTION_STATS[days] ?? []);
+    setLoadingStats(false);
   }, [days]);
 
   const publicUrl = shopCode ? buildPublicBookingUrl(APP_URL, shopCode) : '';
+
+  React.useEffect(() => {
+    if (!publicUrl) { setQrDataUrl(null); setQrError(false); return; }
+    let cancelled = false;
+    setQrGenerating(true);
+    setQrError(false);
+    void generateQrDataUrl(publicUrl)
+      .then((dataUrl) => { if (!cancelled) setQrDataUrl(dataUrl); })
+      .catch(() => { if (!cancelled) { setQrDataUrl(null); setQrError(true); } })
+      .finally(() => { if (!cancelled) setQrGenerating(false); });
+    return () => { cancelled = true; };
+  }, [publicUrl]);
+
+  const downloadQr = () => {
+    if (!qrDataUrl) return;
+    setDownloadingQr(true);
+    try {
+      triggerDataUrlDownload(qrDataUrl, t.qr.filename);
+      toast.show(t.qr.downloaded);
+    } catch {
+      toast.show(t.qr.downloadFailed, 'danger');
+    } finally {
+      setDownloadingQr(false);
+    }
+  };
 
   const channelUrl = (utmSource: string) =>
     publicUrl ? `${publicUrl}?utm_source=${utmSource}` : '';
@@ -106,11 +132,6 @@ export default function PromotePage() {
     } catch {
       toast.show(t.messages.copyFailed, 'warning');
     }
-  };
-
-  const downloadQr = () => {
-    setQrConfirmOpen(false);
-    toast.show(t.messages.downloadStarted(t.qr.filename));
   };
 
   const sourceLabel = (source: string) => {
@@ -137,6 +158,10 @@ export default function PromotePage() {
   return (
     <>
       <PageHeader eyebrow={nav.navMarketing} title={t.title} />
+
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        <div>{t.notBuilt.statsBody}</div>
+      </Alert>
 
       {!loadingUrl && !shopCode ? (
         <Alert tone="warning" className="mb-4" title={t.publicUrl.notConfigured}>
@@ -178,21 +203,28 @@ export default function PromotePage() {
             <h6 className="mb-3 flex items-center justify-center gap-2 text-md font-bold text-dark">
               <QrCode size={16} />{t.qr.heading}
             </h6>
-            <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-md border border-neutral-250 bg-neutral-50">
-              {loadingUrl ? (
-                <span className="text-xs text-muted">{t.publicUrl.loading}</span>
+            <div className="mx-auto flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-md border border-neutral-250 bg-neutral-50 p-2 text-center">
+              {loadingUrl || qrGenerating ? (
+                <span className="text-xs text-muted">
+                  {loadingUrl ? t.publicUrl.loading : t.qr.generating}
+                </span>
               ) : !publicUrl ? (
                 <span className="text-xs text-muted">{t.qr.notReady}</span>
-              ) : QR_PLACEHOLDER_AVAILABLE ? (
-                <QrCode size={96} className="text-dark" aria-hidden />
+              ) : qrError || !qrDataUrl ? (
+                <>
+                  <QrCode size={72} className="text-neutral-400" aria-hidden />
+                  <span className="text-2xs text-secondary">{t.qr.generateFailed}</span>
+                </>
               ) : (
-                <span className="text-xs text-muted">{t.qr.widgetFailed}</span>
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrDataUrl} alt={t.qr.alt} className="h-32 w-32" />
               )}
             </div>
             <Button
               variant="outline" size="sm" className="mt-3"
-              disabled={!publicUrl}
-              onClick={() => setQrConfirmOpen(true)}
+              disabled={!qrDataUrl || downloadingQr}
+              title={!qrDataUrl ? (qrError ? t.qr.generateFailed : t.qr.notReady) : undefined}
+              onClick={downloadQr}
             >
               <Download size={14} />{t.qr.download}
             </Button>
@@ -282,14 +314,6 @@ export default function PromotePage() {
         </CardBody>
       </Card>
 
-      <ConfirmModal
-        open={qrConfirmOpen}
-        title={t.qr.confirmTitle}
-        message={t.qr.confirmMessage}
-        confirmText={common.download}
-        onClose={() => setQrConfirmOpen(false)}
-        onConfirm={downloadQr}
-      />
     </>
   );
 }

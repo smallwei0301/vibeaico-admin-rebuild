@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   AlertTriangle, Boxes, ChevronDown, ChevronUp, FolderPlus, Globe, Package, Pencil, Plus,
-  RefreshCcw, Sparkles, Star, Trash2,
+  RefreshCcw, Sparkles, Star, ToggleLeft, ToggleRight, Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -22,8 +22,10 @@ import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import {
   adjustProductStock, createProduct, createProductCategory, deleteProduct, deleteProductCategory,
-  listProductCategories, reorderProductCategories, reorderProducts, toggleProductLineFeatured,
-  updateProduct, type ProductCategory,
+  listProductCategories, reorderProductCategories, reorderProducts, reorderProductsLine,
+  toggleProductLineFeatured,
+  updateProduct, updateProductCategory,
+  type ProductCategory, type ProductCategoryUpdate,
 } from '@/services/products';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
@@ -37,13 +39,13 @@ import type { Product } from '@/lib/types';
 /* -------------------------------------------------------------------------- */
 
 /**
- * 原站 Product 另有「是否追蹤庫存 / 單次限購 / 公開頁排序 / 草稿」等欄位，
- * 尚未收錄進 lib/types.ts 的 Product，骨架階段用本頁常數補齊。
+ * 原站 Product 另有「是否追蹤庫存 / 單次限購 / 草稿」等欄位，尚未收錄進
+ * lib/types.ts 的 Product，骨架階段用本頁常數補齊。
+ * （公開頁排序已不在此列：0017 之後它就是 API 的 sortOrder。）
  */
 type ProductExtras = {
   trackInventory: boolean;
   maxPerOrder: number | null;
-  publicSortOrder: number;
   draft: boolean;
   extraImages: string[];
 };
@@ -51,15 +53,13 @@ type ProductExtras = {
 const DEFAULT_EXTRAS: ProductExtras = {
   trackInventory: true,
   maxPerOrder: null,
-  publicSortOrder: 0,
   draft: false,
   extraImages: [],
 };
 
 const MOCK_PRODUCT_EXTRAS: Record<string, Partial<ProductExtras>> = {
-  p_1: { publicSortOrder: 1, maxPerOrder: 5 },
-  p_2: { publicSortOrder: 2 },
-  p_3: { trackInventory: false, publicSortOrder: 3, draft: true },
+  p_1: { maxPerOrder: 5 },
+  p_3: { trackInventory: false, draft: true },
 };
 
 /** LINE 精選最多顯示的件數（原站硬性上限） */
@@ -72,12 +72,20 @@ const CATEGORY_NONE = 'none';
 
 /* -------------------------------------------------------------------------- */
 
-type ProductRow = Product & ProductExtras;
+/**
+ * 兩套排序都來自 API（0017）：
+ *   sortOrder     = products.sort_order      → 公開頁排序（POST …/reorder）
+ *   lineSortOrder = products.line_sort_order → LINE 精選排序（POST …/reorder-line）
+ * Product.lineSortOrder 是選填（舊查詢可能沒取這一欄），頁面需要一個數字才能排，
+ * 缺值時退回 sortOrder（＝「與公開頁同序」，不是憑空捏一個名次）。
+ */
+type ProductRow = Product & ProductExtras & { lineSortOrder: number };
 
 const toRow = (p: Product): ProductRow => ({
   ...p,
   ...DEFAULT_EXTRAS,
   ...(MOCK_PRODUCT_EXTRAS[p.id] ?? {}),
+  lineSortOrder: p.lineSortOrder ?? p.sortOrder,
 });
 
 type SortMode = 'line' | 'public';
@@ -148,7 +156,7 @@ export default function ProductsPage() {
   }, [toast]);
 
   const orderOf = React.useCallback(
-    (p: ProductRow) => (sortMode === 'line' ? p.sortOrder : p.publicSortOrder),
+    (p: ProductRow) => (sortMode === 'line' ? p.lineSortOrder : p.sortOrder),
     [sortMode],
   );
 
@@ -166,24 +174,30 @@ export default function ProductsPage() {
   const uncategorizedCount = rows.filter((p) => !p.categoryId).length;
   const lowStockCount = rows.filter(isLowStock).length;
 
+  /**
+   * 排序落地。兩種模式各自打自己的端點、各自寫自己的欄位，互不覆蓋：
+   *   line   → POST /api/products/reorder-line（line_sort_order）
+   *   public → POST /api/products/reorder     （sort_order）
+   */
+  const persistOrder = (idsInOrder: string[], mode: SortMode) =>
+    (mode === 'line' ? reorderProductsLine : reorderProducts)(idsInOrder);
+
+  /** 先送出、成功才更新畫面與顯示成功；失敗顯示後端訊息，順序保持原樣 */
   const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= visible.length) return;
     const reordered = [...visible];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     const orderById = new Map(reordered.map((p, i) => [p.id, i + 1]));
-    const nextRows = rows.map((p) => {
-      const order = orderById.get(p.id);
-      if (order === undefined) return p;
-      return sortMode === 'line' ? { ...p, sortOrder: order } : { ...p, publicSortOrder: order };
-    });
+    const isLine = sortMode === 'line';
     try {
-      /* 後端只儲存 LINE 排序（sort_order）；公開頁排序尚無端點，僅前端狀態 */
-      if (sortMode === 'line') {
-        await reorderProducts([...nextRows].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id));
-      }
-      setRows(nextRows);
-      toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
+      await persistOrder(reordered.map((p) => p.id), sortMode);
+      setRows(rows.map((p) => {
+        const order = orderById.get(p.id);
+        if (order === undefined) return p;
+        return isLine ? { ...p, lineSortOrder: order } : { ...p, sortOrder: order };
+      }));
+      toast.show(isLine ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
     } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.sortFailed, 'danger');
     }
@@ -572,17 +586,19 @@ export default function ProductsPage() {
         message={t.confirm.syncOrder(fromLabel, toModeLabel)}
         onClose={() => setSyncOpen(false)}
         onConfirm={async () => {
-          const nextRows = rows.map((p) => (sortMode === 'line'
-            ? { ...p, publicSortOrder: p.sortOrder }
-            : { ...p, sortOrder: p.publicSortOrder }));
+          /* 把目前模式的順序套到另一種模式，並打另一支端點真的寫進去 */
+          const source = [...rows].sort((a, b) => (sortMode === 'line'
+            ? a.lineSortOrder - b.lineSortOrder
+            : a.sortOrder - b.sortOrder));
+          const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
+          const rankById = new Map(source.map((p, i) => [p.id, i + 1]));
           try {
-            /* 公開頁 → LINE 會改動後端的 sort_order；反向（LINE → 公開頁）僅前端狀態 */
-            if (sortMode === 'public') {
-              await reorderProducts(
-                [...nextRows].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id),
-              );
-            }
-            setRows(nextRows);
+            await persistOrder(source.map((p) => p.id), targetMode);
+            setRows(rows.map((p) => {
+              const rank = rankById.get(p.id);
+              if (rank === undefined) return p;
+              return targetMode === 'line' ? { ...p, lineSortOrder: rank } : { ...p, sortOrder: rank };
+            }));
             setSyncOpen(false);
             toast.show(t.messages.orderApplied(toModeLabel));
           } catch (e) {
@@ -639,7 +655,7 @@ export default function ProductsPage() {
 const EMPTY_PRODUCT: ProductRow = {
   id: '', categoryId: null, categoryName: null, name: '', description: '',
   price: 0, stock: 0, safetyStock: 0, imageUrl: '', active: true, lineFeatured: false,
-  sortOrder: 0, ...DEFAULT_EXTRAS,
+  sortOrder: 0, lineSortOrder: 0, ...DEFAULT_EXTRAS,
 };
 
 function ProductFormModal({
@@ -681,7 +697,8 @@ function ProductFormModal({
     if (list.length) { toast.show(t.messages.checkFields, 'warning'); return; }
     setSaving(true);
     try {
-      /* ProductExtras（trackInventory / maxPerOrder / publicSortOrder…）後端未落地，不隨 payload 送出 */
+      /* ProductExtras（trackInventory / maxPerOrder / draft…）後端未落地，不隨 payload 送出；
+         sortOrder（公開頁排序）0017 之後是真欄位，隨 payload 一起寫回 */
       const payload = {
         name: draft.name,
         categoryId: draft.categoryId ?? '',
@@ -692,6 +709,7 @@ function ProductFormModal({
         imageUrl: draft.imageUrl,
         active: draft.active,
         lineFeatured: draft.lineFeatured,
+        sortOrder: draft.sortOrder,
       };
       if (isEdit) {
         await updateProduct(draft.id, payload);
@@ -822,8 +840,8 @@ function ProductFormModal({
         <FormGroup>
           <Label htmlFor="productSortOrder">{t.form.sortOrder}</Label>
           <Input
-            id="productSortOrder" type="number" value={draft.publicSortOrder}
-            onChange={(e) => patch({ publicSortOrder: Number(e.target.value) })}
+            id="productSortOrder" type="number" value={draft.sortOrder}
+            onChange={(e) => patch({ sortOrder: Number(e.target.value) })}
           />
           <FormText>{t.form.sortOrderHelp}</FormText>
         </FormGroup>
@@ -1023,14 +1041,30 @@ function CategoryModal({
   const toast = useToast();
 
   const [name, setName] = React.useState('');
+  /* 新增 modal 的「說明」欄：`a36cb71` 只給編輯 modal 加了這一欄，新增 modal 沒有。
+     欄位在 migration 0018 就已建好、`POST /api/product-categories` 也收得下
+     description（ProductCategoryInput），差的只是表單沒有那一格。 */
+  const [description, setDescription] = React.useState('');
   const [sortOrder, setSortOrder] = React.useState('0');
   const [active, setActive] = React.useState(true);
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ProductCategory | null>(null);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+
+  /* 編輯分類 modal（issue #28 第 ⑭ 筆）—— 見下方 saveEdit 的註解 */
+  const [editTarget, setEditTarget] = React.useState<ProductCategory | null>(null);
+  const [editName, setEditName] = React.useState('');
+  const [editDescription, setEditDescription] = React.useState('');
+  const [editActive, setEditActive] = React.useState(true);
+  const [editError, setEditError] = React.useState('');
+  const [editSaving, setEditSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setName('');
+    setDescription('');
     setSortOrder('0');
     setActive(true);
     setError('');
@@ -1038,33 +1072,54 @@ function CategoryModal({
 
   const reset = () => {
     setName('');
+    setDescription('');
     setSortOrder('0');
     setActive(true);
     setError('');
   };
 
+  /**
+   * 新增分類。順序本來就對（await 在前、成功才 onChange + toast），本輪只補兩件：
+   * 1. **說明欄真的送出**——`a36cb71` 只給編輯 modal 加了說明欄，新增 modal 沒有，
+   *    於是「新增時填不了、編輯時才填得到」。欄位與端點早就備好，差的是表單。
+   * 2. 送出中的 loading，避免連按兩次送兩筆。
+   */
   const create = async () => {
     if (!name.trim()) {
       setError(t.category.nameRequired);
       return;
     }
     setError('');
+    setCreating(true);
     try {
-      /* 後端只收 name（sort_order 自動取最大值+1、無 active 欄位）；排序值與啟用僅前端狀態 */
-      const { id } = await createProductCategory(name.trim());
+      /* 排序與啟用自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
+         這兩個輸入從未離開瀏覽器。sortOrder 用後端回的實際值，不自己猜。 */
+      const parsedSortOrder = Number(sortOrder);
+      const trimmedDescription = description.trim();
+      const { id, sortOrder: savedSortOrder } = await createProductCategory({
+        name: name.trim(),
+        description: trimmedDescription,
+        active,
+        sortOrder: Number.isFinite(parsedSortOrder) && sortOrder.trim() !== ''
+          ? parsedSortOrder
+          : undefined,
+      });
       onChange([
         ...categories,
         {
           id,
           name: name.trim(),
+          description: trimmedDescription,
           active,
-          sortOrder: Number(sortOrder) || categories.length + 1,
+          sortOrder: savedSortOrder,
         },
       ]);
       reset();
       toast.show(t.category.created);
     } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -1082,8 +1137,113 @@ function CategoryModal({
     }
   };
 
+  /**
+   * 啟用／停用切換（issue #28 第 ⑭ 筆）。
+   * 修改前：只切本地 active 就 toast「分類已更新」，從未打 PUT，重新整理全部還原。
+   * 0018 讓 active 變成真欄位之後這顆按鈕的誤導性更高，改成先 await 端點、
+   * 成功才改畫面並 toast。
+   */
+  const toggleActive = async (c: ProductCategory) => {
+    const next = !c.active;
+    setSavingId(c.id);
+    try {
+      await updateProductCategory(c.id, { active: next });
+      onChange(categories.map((x) => (x.id === c.id ? { ...x, active: next } : x)));
+      toast.show(t.category.updated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const openEdit = (c: ProductCategory) => {
+    setEditTarget(c);
+    setEditName(c.name);
+    setEditDescription(c.description ?? '');
+    setEditActive(c.active);
+    setEditError('');
+  };
+
+  /**
+   * 真正的編輯（issue #28 第 ⑭ 筆的後續）。
+   *
+   * 先前這一列的「編輯」是鉛筆圖示 + common.edit 標籤，行為卻只是切換啟用狀態
+   * ——圖示與行為不符。依擁有者方針「對齊原站功能，缺少功能用補齊取代刪除」，
+   * 正解是補成真正的編輯（名稱／說明／啟用），而不是把鉛筆換成開關圖示。
+   *
+   * 兩個刻意的設計：
+   * 1. **只送有變的欄位**。PUT 的語意是「沒帶＝不動」（route.ts 的
+   *    `if (b.x !== undefined)`），整包送出雖然也會過，但一旦日後有人在別處
+   *    改了同一列，整包送就會把別人的值一起覆蓋回畫面載入時的舊值。
+   * 2. **sortOrder 不在這裡**。排序走 reorder 端點，兩條寫入路徑會互相打架
+   *    （tests/integration/api/category-edit.28.test.ts 有一條測試專門鎖這件事）。
+   *
+   * 什麼都沒改就按儲存＝不送出任何請求，所以顯示 info 而不是「分類已更新」：
+   * 沒發生的事不准報成功（00 分冊鐵則 12）。
+   */
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setEditError(t.category.nameRequired);
+      return;
+    }
+    setEditError('');
+
+    const trimmedDescription = editDescription.trim();
+    const patch: ProductCategoryUpdate = {};
+    if (trimmedName !== editTarget.name) patch.name = trimmedName;
+    if (trimmedDescription !== (editTarget.description ?? '')) patch.description = trimmedDescription;
+    if (editActive !== editTarget.active) patch.active = editActive;
+
+    if (Object.keys(patch).length === 0) {
+      setEditTarget(null);
+      toast.show(t.category.noChange, 'info');
+      return;
+    }
+
+    const id = editTarget.id;
+    setEditSaving(true);
+    try {
+      await updateProductCategory(id, patch);
+      onChange(categories.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      setEditTarget(null);
+      toast.show(t.category.updated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  /**
+   * 刪除分類。順序本來就對（await 在前），本輪補上等待期間的 loading 回饋，
+   * 並把行內的 onConfirm 抽成具名 handler，與同檔的 create / saveEdit 同型
+   * ——三個動作長同一個樣子才鎖得住（tests/unit/category-action-order.28.test.ts）。
+   */
+  const removeCategory = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleting(true);
+    try {
+      await deleteProductCategory(id);
+      onChange(categories.filter((c) => c.id !== id));
+      setDeleteTarget(null);
+      toast.show(t.category.deleted);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const columns: Column<ProductCategory>[] = [
     { key: 'name', header: t.category.columns.name, render: (c) => c.name },
+    {
+      key: 'description', header: t.category.columns.description,
+      render: (c) => c.description || <span className="text-muted">{common.none}</span>,
+    },
     {
       key: 'status', header: t.category.columns.status, width: '90px',
       render: (c) => (c.active
@@ -1091,7 +1251,7 @@ function CategoryModal({
         : <Badge tone="neutral">{t.labels.disabled}</Badge>),
     },
     {
-      key: 'actions', header: t.category.columns.actions, width: '160px',
+      key: 'actions', header: t.category.columns.actions, width: '200px',
       render: (c, i) => (
         <div className="btn-group">
           <Button
@@ -1106,12 +1266,20 @@ function CategoryModal({
           >
             <ChevronDown size={13} />
           </Button>
+          {/* 啟用／停用的快速切換：自己的圖示與標籤，不再冒用鉛筆＋「編輯」 */}
+          <Button
+            variant="outline" size="sm"
+            title={c.active ? t.category.disableAction : t.category.enableAction}
+            aria-label={c.active ? t.category.disableAction : t.category.enableAction}
+            disabled={savingId === c.id}
+            onClick={() => void toggleActive(c)}
+          >
+            {c.active ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+          </Button>
+          {/* 鉛筆＝真的開編輯 modal（名稱／說明／啟用） */}
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
-            onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
-            }}
+            onClick={() => openEdit(c)}
           >
             <Pencil size={13} />
           </Button>
@@ -1146,6 +1314,14 @@ function CategoryModal({
               onChange={(e) => setName(e.target.value)}
             />
           </div>
+          <div className="min-w-[12rem] flex-1">
+            <Label htmlFor="catDesc">{t.category.description}</Label>
+            <Input
+              id="catDesc" className="form-control-sm" value={description}
+              placeholder={t.category.descriptionPlaceholder}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
           <div className="w-24">
             <Label htmlFor="catSortOrder">{t.category.sortOrder}</Label>
             <Input
@@ -1158,7 +1334,7 @@ function CategoryModal({
             <span className="text-base text-neutral-700">{t.category.active}</span>
           </div>
           <div className="btn-group pb-1">
-            <Button size="sm" onClick={() => void create()}>
+            <Button size="sm" loading={creating} onClick={() => void create()}>
               <Plus size={13} />{t.category.create}
             </Button>
             <Button size="sm" variant="outline" onClick={reset}>{t.category.clear}</Button>
@@ -1178,24 +1354,54 @@ function CategoryModal({
         </DataTableContainer>
       </Modal>
 
+      {/* 編輯分類（issue #28 第 ⑭ 筆）：沿用「新增分類」的既有元件形狀，
+          多一個說明欄；排序不放這裡，走 reorder 端點 */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        title={t.category.editTitle}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)}>{common.cancel}</Button>
+            <Button loading={editSaving} onClick={() => void saveEdit()}>{common.save}</Button>
+          </>
+        }
+      >
+        <FormGroup>
+          <Label required htmlFor="editCatName">{t.category.name}</Label>
+          <Input
+            id="editCatName" value={editName}
+            placeholder={t.category.namePlaceholder}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label htmlFor="editCatDesc">{t.category.description}</Label>
+          <Input
+            id="editCatDesc" value={editDescription}
+            placeholder={t.category.descriptionPlaceholder}
+            onChange={(e) => setEditDescription(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <div className="flex items-center gap-2">
+            <Switch id="editCatIsActive" checked={editActive} onCheckedChange={setEditActive} />
+            <Label htmlFor="editCatIsActive">{t.category.editActive}</Label>
+          </div>
+          <FormText>{t.category.editActiveHelp}</FormText>
+        </FormGroup>
+        {editError ? <FormError>{editError}</FormError> : null}
+      </Modal>
+
       <ConfirmModal
         open={!!deleteTarget}
         danger
+        loading={deleting}
         title={common.delete}
         confirmText={common.delete}
         message={t.category.deleteConfirm}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={async () => {
-          if (!deleteTarget) return;
-          try {
-            await deleteProductCategory(deleteTarget.id);
-            onChange(categories.filter((c) => c.id !== deleteTarget.id));
-            setDeleteTarget(null);
-            toast.show(t.category.deleted);
-          } catch (e) {
-            toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
-          }
-        }}
+        onClose={() => { if (!deleting) setDeleteTarget(null); }}
+        onConfirm={() => void removeCategory()}
       />
     </>
   );

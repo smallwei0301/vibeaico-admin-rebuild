@@ -147,8 +147,37 @@ export const featureStorePage = {
     cancelledUsable: (name: string) => `已取消訂閱「${name}」，功能在到期前仍可使用`,
     couponsRestored: (rc: number) => `${rc} 張票券已自動恢復發布`,
     productsRestored: (rp: number) => `${rp} 項商品已自動重新上架`,
+    /**
+     * 還原副作用失敗（14 分冊 §8.10 的同一條紀律，第三輪稽核）。
+     *
+     * 原文結尾是「（已通知平台處理）」——`/api/feature-store/:code/restore` 的
+     * catch 分支當時只有一行 `console.error`，**零 email、零 notify、零平台告警**。
+     * 那句話讓店家以為平台已經知道了、會處理，於是不會主動回報，問題就此消失。
+     *
+     * 端點會在這個分支寫一筆 `bug_reports`（reporter='system'）當平台端待處理紀錄，
+     * 但那筆寫入本身也可能失敗，所以文案分成兩句，由回應的 `platformNotified`
+     * 旗標（`src/services/settings.ts` 的 `FeatureRestoreResult`）決定用哪一句。
+     *
+     * **這一句是「不知道／沒記錄成功」時用的**：只講必然為真的兩件事——要店家
+     * 手動恢復、恢復不了就聯絡平台。旗標是 `false` 或 `undefined`（mock 分支、
+     * 舊版後端）都走這句：不知道就不准宣稱，這正是本專案反覆栽過的「捏造的已知」。
+     */
     restoreSideEffectFailed:
-      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復（已通知平台處理）',
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；若無法自行恢復，請聯絡平台客服協助處理',
+    /**
+     * 同一件事，但 `platformNotified === true`＝平台端待處理紀錄**確實寫進去了**
+     * （端點拿到 insert 的 `error === null`）。只有在真的量到這件事時才敢說
+     * 「已自動記錄」——這是原本那句「（已通知平台處理）」想講、卻沒有任何依據
+     * 支撐的話，現在有依據了才說得出口。
+     *
+     * ⚠️ 但**只到「已記錄」為止**。初版寫的是「此問題已自動記錄，平台會協助處理」，
+     * 後半句仍然超出量到的範圍：我們量到的是「`bug_reports` 那一列寫進去了」，
+     * 而「平台會處理」是平台端的**作業承諾**，系統無從得知，也沒有任何機制保證。
+     * 那是同一個病的小劑量版本——原句錯在通知根本沒發生，這句錯在把「記下來了」
+     * 講成「有人會處理」。所以改成只陳述事實，再給一個店家真的可以採取的動作。
+     */
+    restoreSideEffectFailedNotified:
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復；此問題已自動記錄給平台，若需要盡快處理請直接聯絡客服',
     subscribeFailed: '訂閱失敗:',
     subscribeFailedFull: '訂閱失敗：',
     cancelFailed: '取消訂閱失敗:',
@@ -172,13 +201,18 @@ export const featureStorePage = {
      每個功能的完整文案
      name / summary（效益）/ where（後台位置）/ lineWhere（LINE 位置）
      before（沒有這個功能時）/ after（訂閱後可以）
+
+     ⚠️ 提到「目錄／訂單」這兩個父層級概念時一律寫佔位符 `{catalog}` /
+     `{orders}` / `{navBooking}`，由頁面在 render 期依當下模式展開
+     （14 分冊 §8.13；嚮導的目錄是「行程與方案」，診所是「診療項目」）。
      ====================================================================== */
   features: {
     /* ------------------------------------------------------------ 免費 */
     ONLINE_BOOKING: {
       name: '線上預約',
       summary: '24 小時線上預約，不漏單',
-      where: '側邊欄 → 預約管理',
+      /** `{navBooking}` 由頁面在 render 期展開（嚮導叫「訂單管理」、診所叫「看診管理」） */
+      where: '側邊欄 → {navBooking}',
       lineWhere: '主選單 → 開始預約',
       before: ['電話/現場接受預約'],
       after: [
@@ -190,13 +224,13 @@ export const featureStorePage = {
       ],
     },
     SERVICE_CATALOG: {
-      name: '服務項目',
+      name: '{catalog}',
       summary: '清楚展示服務內容與價格',
       where: '側邊欄 → 服務管理',
       lineWhere: '預約流程 → 選擇服務',
-      before: ['口頭說明服務項目'],
+      before: ['口頭說明{catalog}'],
       after: [
-        '建立服務項目與分類',
+        '建立{catalog}與分類',
         '設定服務時長與價格',
         '支援分類管理（如：髮型、美甲、攝影）',
         '指定可服務的員工',

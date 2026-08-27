@@ -56,6 +56,8 @@ export const common = {
 
   /* ---- 狀態 ---- */
   loading: '載入中...',
+  /** 側邊欄徽章尚在查詢中（issue #34：不可先顯示 0，0 是「沒有待處理」） */
+  badgeLoading: '查詢中',
   noData: '目前沒有資料',
   noResult: '找不到符合條件的資料',
   required: '必填',
@@ -119,14 +121,26 @@ export const common = {
   /* ---- 頂部列 ---- */
   topbar: {
     myShops: '我的店家',
+    demoShops: '示範店家（範例資料）',
+    demoBadge: '示範',
     switchShop: '切換店家',
     shopSettings: '店家設定',
     installApp: '安裝手機 App',
     enablePush: '開啟新預約推播',
     logout: '登出',
+    /** 登出真的失敗時（POST /api/auth/logout 非 2xx）顯示，後面接後端訊息 */
+    logoutFailedPrefix: '登出失敗：',
     userFallback: '使用者',
     setupProgress: '設定進度',
     toggleSidebar: '切換選單',
+    /**
+     * 開店進度／使用者名稱「還不知道」時顯示的值（issue #34）。
+     * 不可用 0%、60% 這種貌似合理的數字頂替——那是捏造的已知。
+     */
+    unknownValue: '--',
+    /** 進度取不到時就在店家讀得到的地方說明，而不是只寫在程式註解裡 */
+    setupProgressUnknown: '尚未取得',
+    setupProgressUnknownHint: '目前讀不到設定進度，數字不是 0，是還不知道。點進店家設定可以看每一步的狀態。',
   },
 
   /* ---- 回報問題（全站共用 modal）---- */
@@ -141,19 +155,49 @@ export const common = {
       OTHER: '其他',
     },
     subject: '問題標題',
+    subjectPlaceholder: '用一句話描述問題',
     description: '詳細說明',
-    screenshot: '附上截圖（選填）',
-    screenshotHint: '支援 PNG、JPG、GIF、WebP，建議小於 5MB',
+    descriptionPlaceholder: '請說明操作步驟、預期結果與實際結果',
+    screenshot: '附上截圖',
+    /**
+     * issue #30（14 分冊 §8.14 擁有者裁決）補齊後的文案。
+     *
+     * 先前是 `screenshotNotBuilt`（「截圖上傳尚未建置，選了檔案也不會被送出」）
+     * ——那句在 issue #28 ① 是誠實的，現在功能真的接上了，留著就變成反方向的
+     * 假的已知（明明會上傳卻叫使用者別傳）。所以那個鍵直接刪除，不是改字。
+     *
+     * 「不會公開」這句是**對使用者的承諾，必須與實作相符**：bucket
+     * `bug-report-attachments` 是 private（migration 0019，`public = false`），
+     * 且有一條 restrictive policy 擋掉 anon/authenticated 的直接存取，只有
+     * 伺服器端以 service role 簽發的短效 URL 打得開。這與 `chat-images`
+     * 被 LINE 逼成 public 的處境不同（06 分冊 §8.5）。
+     */
+    screenshotHint: '選填。支援 JPG / PNG / WebP，單檔 5MB 以內。截圖不公開，只有平台維運人員看得到。',
+    screenshotTooLarge: '截圖超過 5MB 上限，請壓縮後再上傳。',
+    screenshotBadType: '截圖僅支援 JPG / PNG / WebP 格式。',
+    screenshotUploadFailed: '截圖上傳失敗：',
     contactEmail: '聯絡信箱',
+    contactEmailHint: '選填。留空時我們會回覆到你登入用的信箱。',
     submit: '送出回報',
+    subjectRequired: '請輸入問題標題',
+    descriptionRequired: '請輸入詳細說明',
+    submitted: '已收到您的回報，感謝協助！',
+    submitFailed: '回報送出失敗：',
   },
 
   /* ---- AI 客服助理（全站右下角）---- */
   supportChat: {
     title: 'AI 客服助理',
-    greeting:
-      '您好！我是 VibeAI 平台的 AI 客服助理，可以幫您查 LINE 狀態、推播額度、最近異常日誌，或回答後台使用問題。請問需要什麼協助？',
-    placeholder: '輸入您的問題...',
+    /**
+     * 客服後端（原站的 /api/support-chat/{new-session,status,history,message}
+     * 四支）尚未建置：先前的 send() 只把輸入 push 進本地陣列，永遠不會有回覆，
+     * 畫面上卻沒有任何說明——依 CLAUDE.md「Never fabricate a known」，這裡改為
+     * 明說尚未建置並停用輸入，等四支端點做出來再接。
+     */
+    notBuiltTitle: '客服對話尚未開放',
+    notBuiltBody:
+      'AI 客服的後端（對話、歷史紀錄、線上狀態）尚未建置，這裡送出的訊息不會送到任何人手上，也不會有回覆。需要協助請改用「問題回報」，我們會收到。',
+    disabledPlaceholder: '客服後端尚未建置，暫時無法送出訊息',
     send: '送出',
   },
 

@@ -10,9 +10,23 @@
  *   ④ 內建指令 ⑤ AI 客服（09 分冊 §7）⑥ defaultReply ⑦ 不回。
  *   無論是否回覆，一律先寫入 chat_messages（direction='IN'）。
  *
+ * ④ 的關鍵字覆蓋（06 §3「2026-08-24 補列」的規格，本次補齊）：
+ *   - `MODE_PRESETS.richMenuCells`（src/config/modes.ts）三種業態共 18 格送出的
+ *     文字，每一段都必須有 handler。**發布出去的按鈕文字沒有 handler ＝ 顧客
+ *     按了沒反應**，這正是「按 Bot 沒反應」的來源之一；兩邊引用同一份常數，
+ *     tests/unit/line-keyword-coverage.test.ts 以列舉方式強制覆蓋，改 cells
+ *     少 handler 會自動紅。
+ *   - 系統關鍵字 15 組（src/i18n/zh-TW/pages/keyword-replies.ts 的 system.groups）
+ *     含全部同義詞都要命中；該組被店家停用（line.systemKeywordGroupsDisabled）
+ *     時完全不回應——**不論有沒有訂閱 KEYWORD_REPLY**（14 分冊 §8.16 擁有者裁決：
+ *     停用一律生效，付費閘門只擋「自訂內容」）。
+ *   - 尚未建的功能（團次名額、看診進度、行程訂單、店家通知開關）一律誠實回
+ *     「尚未開放」，不沉默、也不假裝做得到（CLAUDE.md 誠實原則）。
+ *
  * 佔位（本波不實作，落點見各處註解）：
  * - chat_sessions 下單對話 → 10 分冊 §6.2（Phase 9/10，表併入 0012 之後）
- * - 「行程」輪播 → trips 表尚不存在（Phase 10）
+ * - 「行程」輪播 → trips/trip_plans 表 0016 已建（2026-08-24 勘誤：原註「表尚不
+ *   存在」已過時），輪播可動工；團次（departures）仍屬 Phase 8b
  * - 自動綁定（06 §4.2）：LINE 端個資收集流程收到手機號 → 比對 customers.phone
  *   自動綁定／建新顧客。該流程屬 chat_sessions 個資收集（Phase 9/10），本波
  *   僅支援後台手動綁定（B-5 bind-line 端點），此處不實作。
@@ -29,9 +43,25 @@ import {
   buildPublicBookingUrl,
 } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
+import { buildFlexMenuOutcome } from './flex-menu';
+import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 
-/** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
-export type WebhookTenant = { id: string; shop_code: string; name: string };
+/** webhook 端已查好的店家列（route.ts select id, shop_code, name, business_type） */
+export type WebhookTenant = {
+  id: string;
+  shop_code: string;
+  name: string;
+  /** 0015 migration；舊資料或查不到時以 LOCAL_SHOP 保底（modes.ts 的預設業態） */
+  business_type?: string | null;
+};
+
+/** 店家業態（決定 richMenuCells 那一組文字與部分內建指令的回覆方式） */
+function businessTypeOf(tenant: WebhookTenant): BusinessType {
+  const bt = String(tenant.business_type ?? '');
+  return bt in MODE_PRESETS ? (bt as BusinessType) : 'LOCAL_SHOP';
+}
 
 /* ------------------------------------------------------------------ 文案 */
 /**
@@ -48,10 +78,134 @@ const MSG = {
     '還沒有找到您的顧客資料，請提供您的大名與電話，我們幫您查詢與建檔！',
   myBookingsEmpty: '您目前沒有即將到來的預約，歡迎輸入「預約」查看服務項目！',
   statusPending: '（待確認）',
+
+  /* ---- 以下為 06 §3 關鍵字覆蓋補齊（richMenuCells 18 格 + 系統關鍵字 15 組）---- */
+  serviceListEmpty: (url: string) =>
+    `目前還沒有上架的服務項目，您可以直接留言告訴我們您的需求 😊\n${url}`,
+  menuTitle: '您可以直接輸入下面這些關鍵字：',
+  menuFooter: '也可以直接留言，我們看到會盡快回覆您 😊',
+  cancelNoFlow:
+    '目前沒有進行中的流程可以取消。\n若要更改或取消已成立的預約，請輸入「我的預約」查詢，或直接留言告訴我們。',
+  campaignTitle: '目前進行中的活動：',
+  campaignEmpty: '目前沒有進行中的活動，敬請期待！',
+  couponTitle: '目前開放領取的優惠：',
+  couponEmpty: '目前沒有開放領取的優惠票券。',
+  couponHowTo: '想索取請直接留言告訴我們，我們會幫您登記 🎫',
+  productTitle: '目前販售的商品：',
+  productEmpty: '目前還沒有上架商品。',
+  portfolioTitle: '我們的作品：',
+  portfolioEmpty: '目前還沒有上傳作品。',
+  tripTitle: '目前開放報名的行程：',
+  tripEmptyGuide: '目前還沒有上架行程，敬請期待！',
+  /* --- 行程 Flex 輪播（10 分冊 §6.1）--- */
+  tripCarouselAlt: '目前開放報名的行程',
+  tripPriceFrom: '最低',
+  /** 沒有任何啟用方案 → 價格「不知道」，不可顯示 NT$ 0（那是捏造的已知） */
+  tripPriceUnknown: '價格洽詢',
+  tripBookCta: '我要預約',
+  /* --- 團次／名額（10 分冊 §6.1 的 DEPARTURE 組）--- */
+  departureTitle: '未來 14 天可報名的團次：',
+  departureEmpty:
+    '未來 14 天目前沒有開放報名的團次。\n請輸入「行程」看看有哪些行程，或直接留言告訴我們您想出發的日期，我們會幫您安排。',
+  departureFull: '已額滿',
+  departureSeatsLeft: (n: number) => `剩 ${n} 位`,
+  /* --- 旅遊訂單查詢（GUIDE 的「訂單查詢」）--- */
+  tourOrderEmpty: '查不到您的行程訂單。\n如果剛報名完還沒顯示，請直接留言告訴我們您的大名，我們幫您確認。',
+  tourOrderTitle: '您的行程訂單：',
+  orderTitle: '您最近的訂單：',
+  orderEmpty: '您目前沒有訂單紀錄。',
+  memberTitle: '您的會員資訊：',
+  memberPoints: (n: number) => `・目前點數：${n} 點`,
+  memberLevel: (name: string) => `・會員等級：${name}`,
+  memberNoLevel: '・會員等級：一般會員',
+  contactTitle: '聯絡我們：',
+  contactEmpty: '店家的聯絡資訊還沒設定完成，您可以直接在這裡留言，我們會盡快回覆您。',
+  hoursTitle: '我們的營業時間：',
+  faqTitle: '常見問題：',
+  faqEmpty: '目前還沒有整理常見問題，您想問什麼都可以直接留言，我們會盡快回覆 😊',
+  mapTitle: '導航到我們這裡：',
+  mapEmpty: '店家地址還沒設定完成，您可以直接留言詢問，我們會回覆詳細位置。',
+
+  /**
+   * 尚未開放的功能一律用這組文案。
+   * CLAUDE.md：沒建好就誠實說沒建好——沉默（顧客按了沒反應）與假裝做得到
+   * （回一個編出來的進度）都不行。
+   *
+   * ⚠️ issue #8 移除了兩個鍵：`notReadyDeparture`（團次／名額）與
+   * `notReadyTourOrder`（行程訂單查詢）。它們在 migration 0026 之前是誠實的
+   * ——那兩張表真的不存在。表建好之後「還在準備中」就變成假話，所以連同
+   * 那兩句文案一起刪掉，而不是留著當備用：留著的話，下一個人讀到這組常數
+   * 會以為那兩個功能仍未建置。
+   */
+  notReadyClinicQueue:
+    '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
+  notReadyNotifyToggle:
+    '店家通知的開關目前還不能在這裡自行設定。\n如果您不想再收到通知，直接留言告訴我們就可以，我們會為您處理。',
 } as const;
 
-/** 服務清單最多列出筆數（06 §3 內建指令 MVP） */
+/** 清單類回覆最多列出筆數（06 §3 內建指令 MVP） */
 const SERVICE_LIST_LIMIT = 10;
+
+/* -------------------------------------------------- 內建指令的關鍵字對照表 */
+/**
+ * 內建意圖。前 15 個與 keyword-replies 頁「系統內建關鍵字」的 15 組 key 一一對應
+ * （可被店家停用）；其後五個是 Rich Menu 才用得到、頁面上沒有開關的常駐意圖。
+ */
+export type BuiltinIntent =
+  | 'BOOKING' | 'MY_BOOKING' | 'ORDER' | 'MENU' | 'HELP' | 'CANCEL' | 'CAMPAIGN'
+  | 'COUPON' | 'PRODUCT' | 'TRIP' | 'DEPARTURE' | 'MEMBER' | 'PORTFOLIO'
+  | 'NOTIFY' | 'MAP'
+  | 'SERVICE' | 'CONTACT' | 'HOURS' | 'FAQ' | 'CLINIC_QUEUE';
+
+/**
+ * 系統內建關鍵字 15 組（含全部同義詞）。
+ * **單一事實來源是 src/i18n/zh-TW/pages/keyword-replies.ts 的 system.groups**——
+ * 那份就是後台頁面上列給店家看、可逐組停用的清單。在這裡複寫一份的話，
+ * 頁面顯示「已停用」而 webhook 照回，或頁面列了同義詞而 webhook 不認得。
+ */
+export const SYSTEM_KEYWORD_GROUPS: Record<string, readonly string[]> = Object.fromEntries(
+  keywordRepliesPage.system.groups.map((g) => [g.key, g.keywords]),
+);
+
+/**
+ * Rich Menu 六格送出的文字 → 內建意圖。
+ * MODE_PRESETS.richMenuCells 三業態共 18 格的每一段文字都必須在這裡（或在系統
+ * 關鍵字 15 組裡）查得到，否則顧客按下去就是沒反應。
+ * 有幾段刻意不在系統 15 組內（「服務項目」「會員卡」「優惠」「團次」「營業時間」
+ * 「常見問題」「看診進度」「聯絡我們」），所以需要這張表補上。
+ */
+export const RICH_MENU_TEXT_INTENT: Record<string, BuiltinIntent> = {
+  預約: 'BOOKING',
+  我的預約: 'MY_BOOKING',
+  服務項目: 'SERVICE',
+  服務: 'SERVICE',
+  會員卡: 'MEMBER',
+  優惠: 'COUPON',
+  聯絡我們: 'CONTACT',
+  行程: 'TRIP',
+  團次: 'DEPARTURE',
+  我的訂單: 'ORDER',
+  常見問題: 'FAQ',
+  看診進度: 'CLINIC_QUEUE',
+  營業時間: 'HOURS',
+};
+
+/**
+ * 文字 → 內建意圖（完全比對）。
+ * group 非 null 代表該意圖屬於店家可停用的 15 組之一（停用時完全不回應）。
+ * 先查 Rich Menu 表：同一段文字若兩邊都有（例：「預約」），以 Rich Menu 表為準，
+ * 兩者指向同一個意圖，group 仍由 15 組決定，停用開關照樣有效。
+ */
+export function resolveBuiltinIntent(
+  text: string,
+): { intent: BuiltinIntent; group: string | null } | null {
+  const direct = RICH_MENU_TEXT_INTENT[text];
+  if (direct) return { intent: direct, group: direct in SYSTEM_KEYWORD_GROUPS ? direct : null };
+  for (const [key, words] of Object.entries(SYSTEM_KEYWORD_GROUPS)) {
+    if (words.includes(text)) return { intent: key as BuiltinIntent, group: key };
+  }
+  return null;
+}
 
 /* ------------------------------------------------------------------ 分派 */
 export async function handleEvent(
@@ -168,14 +322,14 @@ async function onMessage(
   //    佔位：屆時查 chat_sessions(tenant_id, line_user_id) 有 step 就交給下單流程，
   //    命中即 return。現在直接往下走。
 
-  // ② keyword_replies（active，keywords 陣列「完全比對」，任一命中即回覆）
+  // ② keyword_replies（active；EXACT 完全比對、CONTAINS 含此字即命中——見 pickKeywordReply）
   const { data: krs } = await admin
     .from('keyword_replies')
     .select('keywords, reply_type, content')
     .eq('tenant_id', tenant.id)
     .eq('active', true)
     .order('sort_order', { ascending: true });
-  const kr = (krs ?? []).find((r: any) => (r.keywords ?? []).includes(text));
+  const kr = pickKeywordReply(krs ?? [], text);
   if (kr) {
     const m = keywordReplyMessage(kr);
     if (m) {
@@ -202,19 +356,18 @@ async function onMessage(
     }
   }
 
-  // ④ 內建指令（MVP）
-  if (text === '預約' || text === '服務') {
-    const handled = await replyServiceList(admin, tenant, token, replyToken);
-    if (handled) return; // 該店沒有 active 服務時不攔截，落到 ⑤/⑥
-  }
-  if (text === '行程') {
-    // trips / trip_plans / trip_departures 表尚不存在（10 分冊，Phase 10 補行程 Flex 輪播，
-    // 資料來源 = 11 分冊 catalog 統一查詢）。佔位：不在此攔截，讓訊息落到
-    // ⑤ AI / ⑥ defaultReply（自動回覆開啟時顧客會收到 defaultReply）。
-  }
-  if (text === '我的預約') {
-    await replyMyBookings(admin, tenant, token, replyToken, userId);
-    return;
+  // ④ 內建指令（06 §3 補列的關鍵字覆蓋規格：richMenuCells 18 格 + 系統關鍵字 15 組）
+  const hit = resolveBuiltinIntent(text);
+  if (hit) {
+    // 停用的系統關鍵字組＝顧客打這些字「完全沒有回應」（頁面停用確認視窗的原話），
+    // 因此這裡直接 return，不落到 ⑤ AI / ⑥ defaultReply。
+    if (hit.group && isSystemGroupDisabled(lineConfig, hit.group)) return;
+    const handled = await replyBuiltin(hit.intent, {
+      admin, tenant, token, replyToken, userId, lineConfig,
+    });
+    if (handled) return;
+    // handled=false 只有一種情況：這家店本來就沒有這一類東西（例：美髮沙龍收到
+    // 「行程」），交給 ⑤ AI / ⑥ defaultReply 比硬回一句「目前沒有行程」自然。
   }
 
   // ⑤ AI 客服（09 分冊 §7：AI_ASSISTANT 訂閱有效 且 ai.enabled）
@@ -225,7 +378,13 @@ async function onMessage(
       .eq('tenant_id', tenant.id)
       .maybeSingle();
     const ai = aiSettingsSchema.parse(row?.ai ?? {});
-    if (ai.enabled) {
+    // 嚴格模式（issue #27 ①）：ai-settings 頁那顆開關的說明文字寫著
+    // 「開啟後，顧客若打純數字（如 1822）、亂碼、單字、符號等『明顯非詢問』訊息，
+    //   AI 完全不回覆，讓店家專人親自接。正常詢問（價格/時間/地址）AI 仍會正常回答。」
+    // 這裡是那句話唯一的生效點；沒有它，開關就只是一顆存得起來但什麼都不做的鈕。
+    // 只跳過分支 ⑤（AI 不回覆），⑥ 的靜態罐頭回覆歸 line-settings 管（§8.1 分家），
+    // 本處不代它決定。
+    if (ai.enabled && !(ai.strictMode && isLikelyChitchat(text))) {
       const shop = await buildShopContext(admin, tenant, row?.basic, row?.business, ai);
       const answer = await aiReply(text, shop);
       if (answer) {
@@ -261,80 +420,581 @@ async function onMessage(
   // ⑦ 都沒有 → 不回
 }
 
-/* ------------------------------------------------------- 內建指令：服務 */
-/** 「預約」「服務」→ active 服務清單（名稱+價格+時長，最多 10 筆）+ 結尾引導語 */
-async function replyServiceList(
-  admin: SupabaseClient,
-  tenant: WebhookTenant,
-  token: string,
-  replyToken: string,
-): Promise<boolean> {
-  const { data: svcs } = await admin
-    .from('services')
-    .select('name, price, duration_minutes')
-    .eq('tenant_id', tenant.id)
+/* ------------------------------------------------- 內建指令：分派與共用工具 */
+
+interface BuiltinCtx {
+  admin: SupabaseClient;
+  tenant: WebhookTenant;
+  token: string;
+  replyToken: string;
+  userId: string;
+  /**
+   * `tenant_settings.line` 的 jsonb 原文（webhook route 已查好、onMessage 一路帶下來）。
+   * MENU 的 Flex 主選單要讀 `flexMenuEnabled` / `flexMenuFallback` / `flexCards`，
+   * 不能在 handler 裡再查一次表——同一個請求裡讀兩次同一列，兩次之間店家剛好按下
+   * 儲存就會出現「開關已關、卡片還是舊的」這種自己跟自己不一致的回覆。
+   */
+  lineConfig: Record<string, any>;
+}
+
+/**
+ * 該組系統關鍵字是否已被店家停用。
+ *
+ * ⚠️ 這裡**沒有**、也不可以再有 KEYWORD_REPLY 的付費閘門（14 分冊 §8.16 擁有者裁決）。
+ * 舊版在此 `return isFeatureActive(tenant.id, 'KEYWORD_REPLY')`，等於未訂閱的店家
+ * 把開關關掉後 bot 照樣回話——**「關掉某個東西」不該需要付費**。一間停止訂閱的
+ * 診所沒辦法讓 bot 閉嘴，那不只是體驗問題，可能是合規問題（對外訊息必須全部由
+ * 專人處理）。付費閘門只擋「多做一件事」＝店家自己編一組新的關鍵字回覆
+ * （`keyword_replies` 表的寫入端點 requireFeature，見 09 分冊 §5），
+ * 不擋「少做一件事」＝關掉內建回覆。
+ *
+ * 釘住這條規則的測試：
+ *   tests/integration/api/keyword-replies.05.test.ts
+ *     「未訂閱也一律生效：停用該組後顧客打這些字 → mock LINE 零呼叫（bot 真的閉嘴）」
+ *   tests/unit/keyword-replies-wiring.05.test.ts
+ *     「isSystemGroupDisabled 內零 isFeatureActive／零 requireFeature（閘門真的拆了）」
+ */
+function isSystemGroupDisabled(lineConfig: Record<string, any>, group: string): boolean {
+  const disabled = lineConfig.systemKeywordGroupsDisabled;
+  return Array.isArray(disabled) && disabled.includes(group);
+}
+
+/** 回一段純文字並回報「已處理」 */
+async function replyText(ctx: BuiltinCtx, text: string): Promise<boolean> {
+  await lineReply(ctx.token, ctx.replyToken, [{ type: 'text', text }]);
+  return true;
+}
+
+/** 這位 LINE 使用者綁定到的 customers.id（未綁定回空字串） */
+async function boundCustomerId(ctx: BuiltinCtx): Promise<string> {
+  const { data } = await ctx.admin
+    .from('line_users')
+    .select('customer_id')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('line_user_id', ctx.userId)
+    .maybeSingle();
+  return (data?.customer_id as string | null) ?? '';
+}
+
+/** tenant_settings 的 basic / business / ai 三個 jsonb（一次查完，handler 共用） */
+async function loadSettingsRow(ctx: BuiltinCtx): Promise<Record<string, any>> {
+  const { data } = await ctx.admin
+    .from('tenant_settings')
+    .select('basic, business, ai')
+    .eq('tenant_id', ctx.tenant.id)
+    .maybeSingle();
+  return (data ?? {}) as Record<string, any>;
+}
+
+/** 營業時間摘要（AI 上下文與「營業時間」內建指令共用同一份表述） */
+function formatBusinessHours(biz: ReturnType<typeof businessSettingsSchema.parse>): string {
+  const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+  let out = `${biz.businessStart}–${biz.businessEnd}`;
+  if (biz.breakStart && biz.breakEnd) out += `（休息 ${biz.breakStart}–${biz.breakEnd}）`;
+  if (biz.closedDays.length)
+    out += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
+  return out;
+}
+
+/**
+ * 內建意圖分派。
+ * 回 false＝這家店沒有這一類東西、刻意不攔截（落到 ⑤ AI / ⑥ defaultReply）。
+ * 其餘一律回一則訊息——**Rich Menu 的格子按下去必須有反應**，沒建好的功能就
+ * 誠實說「還在準備中」，不能沉默（06 §3 / CLAUDE.md）。
+ */
+async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boolean> {
+  switch (intent) {
+    case 'BOOKING':
+    case 'SERVICE':
+      return replyServiceList(ctx);
+    case 'MY_BOOKING':
+      return replyMyBookings(ctx);
+    case 'ORDER':
+      return replyOrders(ctx);
+    case 'MENU':
+      // 「選單」組（主選單／選單／功能）→ Flex 輪播（06 §6）。
+      // 尚未編卡片時 replyFlexMenu 自己落回下面那份文字清單。
+      return replyFlexMenu(ctx);
+    case 'HELP':
+      // 「說明／幫助」不是 06 §6 點名的 Flex 觸發字，維持純文字關鍵字清單：
+      // 顧客問「怎麼用」時，一份可以直接照打的字串清單比一組卡片有用。
+      return replyMenu(ctx);
+    case 'CANCEL':
+      return replyText(ctx, MSG.cancelNoFlow);
+    case 'CAMPAIGN':
+      return replyCampaigns(ctx);
+    case 'COUPON':
+      return replyCoupons(ctx);
+    case 'PRODUCT':
+      return replyProducts(ctx);
+    case 'PORTFOLIO':
+      return replyPortfolios(ctx);
+    case 'TRIP':
+      return replyTrips(ctx);
+    case 'DEPARTURE':
+      // 團次／名額（10 分冊 §6.1）。migration 0026 起查得到，不再回「準備中」。
+      // 其他業態沒有團次這個概念，replyDepartures 內部會回 false 不攔截。
+      return replyDepartures(ctx);
+    case 'CLINIC_QUEUE':
+      // 看診進度（叫號）尚未實作；只有診所的選單有這一格。
+      return businessTypeOf(ctx.tenant) === 'CLINIC'
+        ? replyText(ctx, MSG.notReadyClinicQueue)
+        : false;
+    case 'MEMBER':
+      return replyMember(ctx);
+    case 'CONTACT':
+      return replyContact(ctx);
+    case 'HOURS':
+      return replyBusinessHours(ctx);
+    case 'FAQ':
+      return replyFaq(ctx);
+    case 'MAP':
+      return replyMap(ctx);
+    case 'NOTIFY':
+      // 「開啟/關閉店家通知」目前沒有儲存位置（line_users 無對應欄位），推播也
+      // 還沒有讀任何開關。做一個寫得進去卻沒人讀的欄位，等於回一句做不到的
+      // 「已為您開啟」——照 CLAUDE.md 誠實原則，先明說還不能自助設定。
+      return replyText(ctx, MSG.notReadyNotifyToggle);
+    default:
+      return false;
+  }
+}
+
+/* --------------------------------------------------- 內建指令：選單 / 說明 */
+/**
+ * 「選單」「主選單」「功能」→ 店家在 rich-menu-design 頁編好的 Flex 輪播（06 §6）。
+ *
+ * 四種結果都來自 `src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()`——
+ * **全專案唯一**組 Flex JSON 的地方（issue #6 的單一事實來源要求；Rich Menu
+ * 設 FLEX_POPUP 的格子送出的文字也會走到這裡，見該檔檔頭）。
+ *
+ * ⚠️ SILENT 與 HINT 是**兩種不同的行為，不可以合併**：
+ * - HINT   → 回一句提示文字（畫面上那顆單選鈕逐字承諾了會回哪一句）
+ * - SILENT → **一則 LINE 請求都不發**。所以這裡回 true（＝已處理），
+ *   絕不能回 false 讓它落到 ⑤ AI／⑥ defaultReply——那樣顧客照樣會收到訊息，
+ *   店家選的「完全靜默」就變成一顆假的開關。
+ *   釘住這件事的斷言是「整個 mock.requests 為空」，不是「/reply 沒有被打」。
+ */
+async function replyFlexMenu(ctx: BuiltinCtx): Promise<boolean> {
+  const outcome = buildFlexMenuOutcome(ctx.lineConfig, ctx.tenant.name);
+  switch (outcome.kind) {
+    case 'FLEX':
+    case 'HINT':
+      /*
+       * ⚠️ **整包送 `outcome.messages`，不要只取第一則。**
+       * 這裡原本寫死 `[outcome.message]`（單數）。`flexShowTip` 開啟時
+       * carousel 之後還有第二則使用提示，只送第一則的話開關切了什麼都不會發生
+       * ——換一種寫法的同一顆假開關（06 分冊 §6.2.10、14 分冊 §8.22-c）。
+       * `tests/unit/flex-menu.06.test.ts` 有一條守門測試 grep 全專案不得再出現
+       * `[outcome.message]` 這種寫法。
+       */
+      await lineReply(ctx.token, ctx.replyToken, outcome.messages);
+      return true;
+    case 'SILENT':
+      return true;
+    case 'NO_CARDS':
+      // 已啟用但店家還沒編任何卡片：不憑空生一張卡（那是編造內容），
+      // 回既有的文字關鍵字清單——列出來的每個字都保證有 handler。
+      return replyMenu(ctx);
+  }
+}
+
+/**
+ * 「說明」「幫助」→ 這家店（依業態）可用的關鍵字清單（純文字）。
+ * 也是 Flex 主選單「已啟用但一張卡片都沒有」時的落點。
+ * 內容取自 MODE_PRESETS.richMenuCells，所以列出來的每一個字都保證有 handler。
+ */
+async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {
+  const cells = MODE_PRESETS[businessTypeOf(ctx.tenant)].richMenuCells;
+  const lines = [...new Set(cells.map((c) => c.text))].map((t) => `・${t}`);
+  return replyText(ctx, `${MSG.menuTitle}\n${lines.join('\n')}\n\n${MSG.menuFooter}`);
+}
+
+/* -------------------------------------------------------- 內建指令：活動 */
+async function replyCampaigns(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('campaigns')
+    .select('name, content')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.campaignEmpty);
+  const lines = data.map((c: any) => {
+    const text = String((c.content as any)?.text ?? '').split('\n')[0];
+    return text ? `・${c.name}：${text}` : `・${c.name}`;
+  });
+  return replyText(ctx, `${MSG.campaignTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------------- 內建指令：票券 */
+async function replyCoupons(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('coupons')
+    .select('name, description, discount_type, discount_value')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.couponEmpty);
+  const lines = data.map((c: any) => {
+    const value = Number(c.discount_value);
+    const amount = c.discount_type === 'PERCENT' ? `${value} 折` : `折抵 NT$${value.toLocaleString('zh-TW')}`;
+    return `・${c.name}｜${amount}`;
+  });
+  return replyText(ctx, `${MSG.couponTitle}\n${lines.join('\n')}\n\n${MSG.couponHowTo}`);
+}
+
+/* -------------------------------------------------------- 內建指令：商品 */
+async function replyProducts(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('products')
+    .select('name, price')
+    .eq('tenant_id', ctx.tenant.id)
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .limit(SERVICE_LIST_LIMIT);
-  if (!svcs?.length) return false;
+  if (!data?.length) return replyText(ctx, MSG.productEmpty);
+  const lines = data.map(
+    (p: any) => `・${p.name}｜NT$${Number(p.price).toLocaleString('zh-TW')}`,
+  );
+  return replyText(ctx, `${MSG.productTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------------- 內建指令：作品 */
+async function replyPortfolios(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('portfolios')
+    .select('title, description')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.portfolioEmpty);
+  const lines = data.map((p: any) => `・${p.title}`);
+  const url = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  return replyText(ctx, `${MSG.portfolioTitle}\n${lines.join('\n')}\n\n${url}`);
+}
+
+/* -------------------------------------------------------- 內建指令：行程 */
+/**
+ * 「行程」「所有行程」…→ 已發布行程的 **Flex 輪播**（10 分冊 §6.1）。
+ *
+ * 卡片欄位（封面／標語／最低價／「我要預約」按鈕）與 LINE 的各項限制都在
+ * `src/server/trip-flex.ts`，這裡只負責查資料。
+ *
+ * 最低價 = 該行程所有 **active** 方案的最低 `base_price`。
+ * 沒有任何 active 方案 → `minPrice: null`（卡片顯示「價格洽詢」）。
+ * **不可以退回 0**：0 會被顧客讀成「免費」，那是一個編出來的價格。
+ */
+async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('trips')
+    .select('slug, title, tagline, summary, cover_image_url, trip_plans(base_price, active)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(TRIP_CAROUSEL_MAX);
+  if (!data?.length) {
+    // 沒有行程的一般店家（美髮沙龍收到「行程」）交給 AI／預設回覆比較自然；
+    // 嚮導的選單有這一格，必須有回應。
+    return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.tripEmptyGuide) : false;
+  }
+
+  const url = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  const cards: TripCardSource[] = data.map((t: any) => {
+    const plans: any[] = Array.isArray(t.trip_plans) ? t.trip_plans : [];
+    const prices = plans.filter((p) => p.active).map((p) => Number(p.base_price));
+    return {
+      slug: t.slug,
+      title: t.title,
+      tagline: t.tagline ?? '',
+      summary: t.summary ?? '',
+      coverImageUrl: t.cover_image_url ?? '',
+      minPrice: prices.length ? Math.min(...prices) : null,
+    };
+  });
+
+  const flex = buildTripCarousel(cards, url, {
+    altText: MSG.tripCarouselAlt,
+    priceFrom: MSG.tripPriceFrom,
+    priceUnknown: MSG.tripPriceUnknown,
+    bookCta: MSG.tripBookCta,
+  });
+  if (!flex) return replyText(ctx, MSG.tripEmptyGuide);
+
+  await lineReply(ctx.token, ctx.replyToken, [flex as any]);
+  return true;
+}
+
+/* ------------------------------------------------- 內建指令：團次／名額 */
+/**
+ * 「出團日期」「還有位子嗎」「名額」…→ 未來 14 天可報名的團次與**即時剩餘名額**
+ * （10 分冊 §6.1 的 `DEPARTURE` 組）。
+ *
+ * 剩餘名額一律現算 `capacity - seats_booked`（10 分冊 §2：不做任何快取）。
+ * 只列 `status='OPEN'` 且行程本身 `PUBLISHED` 的團次——關閉／取消的團次，
+ * 以及還沒發布的行程，顧客不該看得到。
+ *
+ * ⚠️ 這一格在 migration 0026 之前回的是 `MSG.notReadyDeparture`（「還在準備中」）。
+ * 那句話當時是誠實的（`trip_departures` 表真的不存在）；表建好之後它就會變成
+ * 一句假話，所以跟著換掉。
+ */
+async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
+  if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10);
+  const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const { data } = await ctx.admin
+    .from('trip_departures')
+    .select('departs_on, start_time, capacity, seats_booked, trips!inner(title, status), trip_plans(name)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'OPEN')
+    .eq('trips.status', 'PUBLISHED')
+    .gte('departs_on', from)
+    .lte('departs_on', to)
+    .order('departs_on', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+
+  if (!data?.length) return replyText(ctx, MSG.departureEmpty);
+
+  const lines = data.map((d: any) => {
+    const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
+    const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
+    const plan = d.trip_plans?.name ? `（${d.trip_plans.name}）` : '';
+    const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
+    return `・${d.departs_on}${time} ${d.trips?.title ?? ''}${plan}　${seats}`;
+  });
+  const url = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${url}`);
+}
+
+/* ------------------------------------------------- 內建指令：旅遊訂單查詢 */
+/**
+ * 嚮導的「訂單查詢」＝行程訂單（10 分冊 §6.1：`ORDER` 合併回傳）。
+ *
+ * ⚠️ 與 `replyDepartures` 同理：0026 之前這裡回 `MSG.notReadyTourOrder`
+ * （「還在準備中」），表建好之後那句話就不再成立。
+ *
+ * 只查**已綁定 LINE 的顧客**的訂單。手動建單目前不會寫 `customer_id`
+ * （後台沒有挑選顧客的介面），所以那類訂單在這裡查不到——查不到就說查不到，
+ * 不要拿電話或姓名去模糊比對湊出一筆「可能是您的訂單」。
+ */
+async function replyTourOrders(ctx: BuiltinCtx): Promise<boolean> {
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data } = await ctx.admin
+    .from('tour_orders')
+    .select('order_no, party_size, total_amount, status, trips(title), trip_departures(departs_on)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+
+  if (!data?.length) return replyText(ctx, MSG.tourOrderEmpty);
+
+  const statusText: Record<string, string> = {
+    PENDING: '待確認', CONFIRMED: '已確認',
+    COMPLETED: '已完成', CANCELLED: '已取消',
+  };
+  const lines = data.map((o: any) => {
+    const day = o.trip_departures?.departs_on ?? '';
+    return `・${o.order_no}　${o.trips?.title ?? ''}${day ? ` ${day}` : ''}`
+      + `　${o.party_size} 位　NT$ ${Number(o.total_amount).toLocaleString('en-US')}`
+      + `　${statusText[o.status] ?? o.status}`;
+  });
+  return replyText(ctx, `${MSG.tourOrderTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------------- 內建指令：訂單 */
+async function replyOrders(ctx: BuiltinCtx): Promise<boolean> {
+  // 嚮導的「我的訂單」是行程訂單（10 分冊 §6.1）。migration 0026 起查得到。
+  if (businessTypeOf(ctx.tenant) === 'GUIDE') return replyTourOrders(ctx);
+
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data } = await ctx.admin
+    .from('product_orders')
+    .select('order_no, total_amount, status, created_at')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.orderEmpty);
+
+  const statusText: Record<string, string> = {
+    PENDING: '待確認', CONFIRMED: '已確認', COMPLETED: '已完成', CANCELLED: '已取消',
+  };
+  const lines = data.map(
+    (o: any) =>
+      `・${o.order_no}｜NT$${Number(o.total_amount).toLocaleString('zh-TW')}｜${statusText[o.status] ?? o.status}`,
+  );
+  return replyText(ctx, `${MSG.orderTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------------- 內建指令：會員 */
+async function replyMember(ctx: BuiltinCtx): Promise<boolean> {
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data } = await ctx.admin
+    .from('customers')
+    .select('points, membership_levels(name)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('id', customerId)
+    .maybeSingle();
+  const level = Array.isArray((data as any)?.membership_levels)
+    ? (data as any).membership_levels[0]
+    : (data as any)?.membership_levels;
+  const lines = [
+    MSG.memberPoints(Number(data?.points ?? 0)),
+    level?.name ? MSG.memberLevel(level.name) : MSG.memberNoLevel,
+  ];
+  return replyText(ctx, `${MSG.memberTitle}\n${lines.join('\n')}`);
+}
+
+/* ---------------------------------------------------- 內建指令：聯絡資訊 */
+async function replyContact(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const basic = (row.basic ?? {}) as Record<string, any>;
+  const lines: string[] = [];
+  const name = String(basic.tenantName || ctx.tenant.name || '');
+  if (name) lines.push(`・${name}`);
+  if (basic.tenantPhone) lines.push(`・電話：${basic.tenantPhone}`);
+  if (basic.tenantAddress) lines.push(`・地址：${basic.tenantAddress}`);
+  if (basic.tenantEmail) lines.push(`・Email：${basic.tenantEmail}`);
+  if (lines.length <= 1 && !basic.tenantPhone && !basic.tenantAddress && !basic.tenantEmail)
+    return replyText(ctx, MSG.contactEmpty);
+  lines.push(buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code));
+  return replyText(ctx, `${MSG.contactTitle}\n${lines.join('\n')}`);
+}
+
+/* ---------------------------------------------------- 內建指令：營業時間 */
+async function replyBusinessHours(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const parsed = businessSettingsSchema.safeParse(row.business ?? {});
+  const biz = parsed.success ? parsed.data : businessSettingsSchema.parse({});
+  return replyText(ctx, `${MSG.hoursTitle}\n${formatBusinessHours(biz)}`);
+}
+
+/* -------------------------------------------------- 內建指令：常見問題 */
+/** 常見問題取自 tenant_settings.ai.faq（AI 客服設定頁店家自己填的那份，同一份資料） */
+async function replyFaq(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const ai = aiSettingsSchema.parse(row.ai ?? {});
+  const faq = (ai.faq ?? []).filter((f) => f?.q && f?.a).slice(0, 5);
+  if (!faq.length) return replyText(ctx, MSG.faqEmpty);
+  const blocks = faq.map((f) => `Q：${f.q}\nA：${f.a}`);
+  return replyText(ctx, `${MSG.faqTitle}\n\n${blocks.join('\n\n')}`);
+}
+
+/* ------------------------------------------------------ 內建指令：地圖 */
+async function replyMap(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const address = String((row.basic ?? {}).tenantAddress ?? '');
+  if (!address) return replyText(ctx, MSG.mapEmpty);
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  return replyText(ctx, `${MSG.mapTitle}\n${address}\n${url}`);
+}
+
+/* ------------------------------------------------------- 內建指令：服務 */
+/**
+ * 「預約」「服務」「服務項目」→ active 服務清單（名稱+價格+時長，最多 10 筆）+ 引導語。
+ *
+ * 沒有 active 服務時原本回 false（落到 ⑤/⑥）——但 Rich Menu 的第一格就是這個字，
+ * 一家還沒上架服務的新店，顧客按下去會完全沒反應。改為誠實回「還沒有上架服務」
+ * 並附公開頁連結：說的是實情，也保證按鈕一定有回應（06 §3）。
+ */
+async function replyServiceList(ctx: BuiltinCtx): Promise<boolean> {
+  const { data: svcs } = await ctx.admin
+    .from('services')
+    .select('name, price, duration_minutes')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code); // 公開頁 Phase 8 落地
+  if (!svcs?.length) return replyText(ctx, MSG.serviceListEmpty(shopUrl));
 
   const lines = svcs.map(
     (s: any) =>
       `・${s.name}｜NT$${Number(s.price).toLocaleString('zh-TW')}｜${s.duration_minutes} 分鐘`,
   );
-  const shopUrl = buildPublicBookingUrl(APP_URL, tenant.shop_code); // 公開頁 Phase 8 落地
-  await lineReply(token, replyToken, [
-    {
-      type: 'text',
-      text: `${MSG.serviceListTitle}\n${lines.join('\n')}\n\n${MSG.serviceListFooter(shopUrl)}`,
-    },
-  ]);
-  return true;
+  return replyText(
+    ctx,
+    `${MSG.serviceListTitle}\n${lines.join('\n')}\n\n${MSG.serviceListFooter(shopUrl)}`,
+  );
 }
 
 /* --------------------------------------------------- 內建指令：我的預約 */
 /** 「我的預約」→ 已綁定顧客的未來 PENDING/CONFIRMED bookings 文字清單；未綁定→引導 */
-async function replyMyBookings(
-  admin: SupabaseClient,
-  tenant: WebhookTenant,
-  token: string,
-  replyToken: string,
-  userId: string,
-): Promise<void> {
-  const { data: lu } = await admin
-    .from('line_users')
-    .select('customer_id')
-    .eq('tenant_id', tenant.id)
-    .eq('line_user_id', userId)
-    .maybeSingle();
-  if (!lu?.customer_id) {
-    await lineReply(token, replyToken, [{ type: 'text', text: MSG.myBookingsNotBound }]);
-    return;
-  }
+async function replyMyBookings(ctx: BuiltinCtx): Promise<boolean> {
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
 
   // Phase 10：這裡要合併 tour_orders（10 分冊 §6.1 的 MY_BOOKING/ORDER 合併規則）
-  const { data: bs } = await admin
+  const { data: bs } = await ctx.admin
     .from('bookings')
     .select('start_at, status, services(name)')
-    .eq('tenant_id', tenant.id)
-    .eq('customer_id', lu.customer_id)
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('customer_id', customerId)
     .in('status', ['PENDING', 'CONFIRMED'])
     .gte('start_at', new Date().toISOString())
     .order('start_at', { ascending: true })
-    .limit(10);
-  if (!bs?.length) {
-    await lineReply(token, replyToken, [{ type: 'text', text: MSG.myBookingsEmpty }]);
-    return;
-  }
+    .limit(SERVICE_LIST_LIMIT);
+  if (!bs?.length) return replyText(ctx, MSG.myBookingsEmpty);
 
   const lines = bs.map((b: any) => {
     const svc = Array.isArray(b.services) ? b.services[0] : b.services;
     const suffix = b.status === 'PENDING' ? MSG.statusPending : '';
     return `・${formatTaipei(b.start_at)}｜${svc?.name ?? ''}${suffix}`;
   });
-  await lineReply(token, replyToken, [
-    { type: 'text', text: `${MSG.myBookingsTitle}\n${lines.join('\n')}` },
-  ]);
+  return replyText(ctx, `${MSG.myBookingsTitle}\n${lines.join('\n')}`);
+}
+
+/**
+ * 「明顯非詢問」判定 —— ai-settings 頁「嚴格模式」開關的實作（issue #27 ①）。
+ *
+ * 判準逐字取自那顆開關自己的說明文字：「顧客若打**純數字（如 1822）、亂碼、
+ * 單字、符號**等『明顯非詢問』訊息…正常詢問（價格/時間/地址）AI 仍會正常回答」。
+ * 翻成可執行的規則，只認說明文字點名的四類，不多不少：
+ *
+ *   1. 純數字（含全形數字）—— 「1822」
+ *   2. 沒有任何中日韓文字或英文字母 —— 純符號、純表情、亂碼「!@#$」「👍」
+ *   3. 單一字元 —— 「好」「1」「a」
+ *   4. 只有英文字母且長度 ≤ 3 —— 「ok」「hi」「xxx」
+ *
+ * ⚠️ 刻意**不做**語意判斷。這個函式的錯誤方向要選對：誤判成閒聊會讓一則真的
+ * 詢問沒人回（顧客只看到已讀不回），誤判成詢問頂多是 AI 多回一句。所以規則
+ * 從嚴、只攔形狀上就不可能是問句的訊息，寧可漏攔。
+ *
+ * 中文「價格」「地址」都是兩個中日韓字元，規則 3/4 都不會攔到；
+ * 「多少錢」「幾點開」同理。
+ */
+export function isLikelyChitchat(raw: string): boolean {
+  const text = raw.trim();
+  if (!text) return true;                                  // 空白訊息本來就無從回答
+
+  // 1. 純數字（半形 0-9 與全形 ０-９，允許中間有空白／連字號，如「0912-345-678」）
+  if (/^[0-9０-９\s-]+$/.test(text)) return true;
+
+  // 2. 完全沒有文字（中日韓 or 拉丁字母）——純符號／表情／標點
+  const hasWordChar = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}A-Za-z]/u
+    .test(text);
+  if (!hasWordChar) return true;
+
+  // 3. 單一字元（用 Array.from 以碼點計，避免 emoji/罕用字被算成 2）
+  const codePoints = Array.from(text);
+  if (codePoints.length <= 1) return true;
+
+  // 4. 只有拉丁字母（可含空白）且 ≤ 3 個字元——「ok」「hi」「abc」
+  if (/^[A-Za-z\s]+$/.test(text) && codePoints.length <= 3) return true;
+
+  return false;
 }
 
 /* ------------------------------------------------------------ AI context */
@@ -368,20 +1028,16 @@ async function buildShopContext(
       `${s.name} · ${s.duration_minutes} 分鐘 · NT$${Number(s.price).toLocaleString('zh-TW')}`,
   );
 
-  // 營業時間摘要（perDayMode 逐日時段的完整表述留給 Phase 10 的 catalog 整合）
-  const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
-  let businessHours = `${biz.businessStart}–${biz.businessEnd}`;
-  if (biz.breakStart && biz.breakEnd)
-    businessHours += `（休息 ${biz.breakStart}–${biz.breakEnd}）`;
-  if (biz.closedDays.length)
-    businessHours += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
+  // 營業時間摘要（perDayMode 逐日時段的完整表述留給 Phase 10 的 catalog 整合）；
+  // 與「營業時間」內建指令共用同一支 formatBusinessHours，兩處講的話才會一致。
+  const businessHours = formatBusinessHours(biz);
 
   return {
     name: basic.tenantName || tenant.name,
     description: String(basic.tenantDescription ?? ''),
     businessHours,
     services,
-    trips: [], // trips 表尚不存在（Phase 10 接 catalog 統一查詢）
+    trips: [], // 表 0016 已建但 catalog 統一查詢未做（11 分冊）；補上前誠實回空
     departures: [], // 同上：未來 14 天團次與即時剩餘名額（每次即時查、不快取）
     ai: { personaNotes: ai.personaNotes, faq: ai.faq },
     // 公開商店頁 Phase 8 落地；URL 規則以 tenant-settings.ts 的 helper 為單一事實來源
@@ -390,6 +1046,29 @@ async function buildShopContext(
 }
 
 /* ----------------------------------------------------------------- utils */
+/**
+ * 自訂關鍵字比對（06 §3 分支 ②）。
+ *
+ * 規格原文只寫「keywords 完全比對」，但關鍵字回覆頁的「觸發方式」自原站起就有
+ * EXACT／CONTAINS 兩種、**預設還是 CONTAINS**（「訊息裡有這個字就回（建議）」）。
+ * 只做完全比對的話：店家選了「包含」、畫面顯示已儲存，顧客打「請問價格多少」
+ * 卻永遠沒有回應——頁面存得下來的設定，webhook 就必須認得。
+ *
+ * 順序：先找完全相同（較精確），再找包含；同類型內依 sort_order（查詢已排序）。
+ * 沒有 matchType 的舊列（或由其他途徑寫入的列）視為 EXACT，行為與過去一致。
+ */
+function pickKeywordReply(rows: any[], text: string): any | null {
+  const exact = rows.find((r: any) => (r.keywords ?? []).some((k: string) => k === text));
+  if (exact) return exact;
+  return (
+    rows.find(
+      (r: any) =>
+        (r.content ?? {}).matchType === 'CONTAINS'
+        && (r.keywords ?? []).some((k: string) => k && text.includes(k)),
+    ) ?? null
+  );
+}
+
 /** keyword_replies 列 → LINE message 物件（TEXT / IMAGE / FLEX；組不出來回 null） */
 function keywordReplyMessage(r: { reply_type: string; content: any }): any | null {
   const c = r.content ?? {};
@@ -402,8 +1081,14 @@ function keywordReplyMessage(r: { reply_type: string; content: any }): any | nul
   if (r.reply_type === 'FLEX' && c.contents)
     return { type: 'flex', altText: String(c.altText ?? '訊息'), contents: c.contents };
   // TEXT（content 形狀以 keyword-replies 寫入端點為準；相容 text / replyText 兩種鍵）
-  const text = c.text ?? c.replyText ?? '';
-  return text ? { type: 'text', text: String(text) } : null;
+  const text = String(c.text ?? c.replyText ?? '');
+  if (!text) return null;
+  // 「附加連結按鈕」是頁面上存得進去的欄位；不附在訊息裡的話，店家設了連結、
+  // 顧客永遠看不到。LINE 的文字訊息會自動把 URL 變成可點的連結。
+  const linkUrl = String(c.linkUrl ?? '').trim();
+  if (!linkUrl) return { type: 'text', text };
+  const linkLabel = String(c.linkLabel ?? '').trim();
+  return { type: 'text', text: `${text}\n\n${linkLabel ? `${linkLabel}\n` : ''}${linkUrl}` };
 }
 
 /** timestamptz ISO → 台北時間「M/D（週）HH:mm」（比照 src/server/tz.ts 的固定 +08:00 做法） */

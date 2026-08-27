@@ -19,13 +19,6 @@ GUIDE 的行事曆 UI 文案與操作需依業態調整：不再顯示「顧客�
 
 ICS / Google Calendar / Apple Calendar 的定位是「已經被占用的事情」，因此不輸出大量「可接案」空檔。預設只輸出實際占用事件、不可接案例外，以及租戶另有啟用其他模組時的其他占用事件。
 
-## 單導遊／多導遊 UX 後續裁示
+## 尚未裁示
 
-Owner 已進一步裁示：**不做顯式 SOLO／TEAM 模式開關，改由系統依 `active && bookable` 導遊數量自動適應 UI。**
-
-- 0 位：導向 onboarding，先建立可帶團導遊。
-- 1 位：單人簡化 UX；隱藏主／協同選擇，但後端仍寫入唯一導遊的 PRIMARY assignment。
-- 2 位以上：自動展開主／協同導遊與團隊篩選。
-- 人員停用不刪歷史團次、訂單或業績關聯。
-
-完整理由與未來導遊席次收費方向見 `docs/decisions/2026-08-27-guide-solo-team-auto-ui.md`。
+單導遊與多導遊團隊的 UI 是否由顯式開關切換，或由系統依實際 active/bookable 導遊數量自動適應，留待下一輪 Owner 決策。

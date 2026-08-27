@@ -17,7 +17,7 @@ async function recalcMemberships(t: Awaited<ReturnType<typeof requireTenant>>) {
   const [{ data: levels, error: e1 }, { data: customers, error: e2 }] = await Promise.all([
     t.supabase
       .from('membership_levels')
-      .select('id, threshold_spent')
+      .select('id, threshold_spent, active, is_default')
       .eq('tenant_id', t.tenantId),
     t.supabase
       .from('customers_view')
@@ -27,14 +27,26 @@ async function recalcMemberships(t: Awaited<ReturnType<typeof requireTenant>>) {
   if (e1) throw e1;
   if (e2) throw e2;
 
-  const sorted = (levels ?? [])
+  /*
+   * issue #35（migration 0022）：`active` / `is_default` 兩個旗標本來是 membership-levels
+   * 頁的頁內假資料。存下來之後，這裡是它們唯一有意義的地方——
+   *   · `active=false`（原站標籤「啟用此等級」）：停用的等級不參與自動升級。
+   *     一個按了「停用」卻照樣把顧客升上去的開關，就是一顆假按鈕。
+   *   · `is_default`（原站標籤「設為預設等級（新顧客自動套用）」）：門檻都不符時
+   *     落到預設等級，而不是 null。新顧客的那一半在 POST /api/customers。
+   * ⚠️ 兩條語意是從**原站自己的標籤文字**推導的（docs/specs/membership-levels.json
+   * 的 levelModal），不是掃描到的行為；14 分冊 §6.17 已標註待覆核。
+   */
+  const usable = (levels ?? []).filter((l: any) => l.active !== false);
+  const defaultLevelId = (usable.find((l: any) => l.is_default)?.id as string | undefined) ?? null;
+  const sorted = usable
     .map((l: any) => ({ id: l.id as string, threshold: Number(l.threshold_spent) }))
     .sort((a, b) => b.threshold - a.threshold); // 門檻高 → 低
 
   const moves = new Map<string | null, string[]>();
   for (const c of customers ?? []) {
     const spent = Number(c.total_spent ?? 0);
-    const target = sorted.find((l) => l.threshold <= spent)?.id ?? null;
+    const target = sorted.find((l) => l.threshold <= spent)?.id ?? defaultLevelId;
     if (target !== (c.membership_level_id ?? null)) {
       const list = moves.get(target) ?? [];
       list.push(c.id);
@@ -63,6 +75,10 @@ const bodySchema = z.object({
   discountPercent: z.number().min(0).optional(),
   pointRateMultiplier: z.number().min(0).optional(),
   sortOrder: z.number().int().optional(),
+  /* --- migration 0022（issue #35）：原站 levelModal 既有欄位 --- */
+  description: z.string().optional(),
+  active: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export const PUT = handle(async (req, { params }) => {
@@ -78,6 +94,9 @@ export const PUT = handle(async (req, { params }) => {
   if (b.discountPercent !== undefined) update.discount_percent = b.discountPercent;
   if (b.pointRateMultiplier !== undefined) update.point_rate_multiplier = b.pointRateMultiplier;
   if (b.sortOrder !== undefined) update.sort_order = b.sortOrder;
+  if (b.description !== undefined) update.description = b.description;
+  if (b.active !== undefined) update.active = b.active;
+  if (b.isDefault !== undefined) update.is_default = b.isDefault;
 
   if (Object.keys(update).length === 0) {
     const { data, error } = await t.supabase
@@ -86,6 +105,14 @@ export const PUT = handle(async (req, { params }) => {
     if (error) throw error;
     if (!data) throw new ApiHttpError(404, '找不到此會員等級', ERR.NOT_FOUND);
     return ok();
+  }
+
+  /* 每租戶至多一個預設等級（0022 的 partial unique index）；換之前先清掉舊的。 */
+  if (b.isDefault) {
+    const { error: cErr } = await t.supabase
+      .from('membership_levels').update({ is_default: false })
+      .eq('tenant_id', t.tenantId).eq('is_default', true).neq('id', id);
+    if (cErr) throw cErr;
   }
 
   const { data, error } = await t.supabase

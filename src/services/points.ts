@@ -1,11 +1,11 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import type { Paged, PointTransaction } from '@/lib/types';
 import { MOCK_POINT_BALANCE, MOCK_POINT_TRANSACTIONS } from '@/mock';
 
 /**
- * 店家平台點數錢包（04 分冊 §B-4：balance / transactions / transfer）。
- * 目前 /tenant/points 頁仍是頁內自組 mock，尚未接線（該頁不在本次接線範圍）；
- * 這裡先備齊 adapt 雙模函式，接線時頁面只需改呼叫這幾支。
+ * 店家平台點數錢包（04 分冊 §B-4：balance / transactions / transfer）＋
+ * 儲值申請（09 分冊 §4）。/tenant/points 頁的餘額、異動記錄、轉點、儲值
+ * 都走這一組函式。
  */
 
 /** GET /api/points/balance — 目前點數餘額 */
@@ -86,4 +86,50 @@ export const transferPoints = (payload: { toShopCode: string; amount: number }) 
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  );
+
+/* --------------------------------------------------------------- 儲值 */
+
+/**
+ * 線上儲值的結果。`accepted:false` **不是錯誤**，是規格內的誠實回覆：
+ * MVP 階段不接金流（09 分冊 §4），`POST /api/points/topup/pay` 一律回
+ * 501 +「請聯絡平台客服儲值」，平台管理者收到轉帳後才用 service role 寫 TOPUP 交易。
+ */
+export type TopupOutcome = {
+  /** true = 真的建立了付款；目前後端不可能回 true，留著是為了將來接上金流不用改頁面 */
+  accepted: boolean;
+  /** 後端給的說明原文；null = mock 分支（沒有後端可問，由頁面用自己的文案說明） */
+  message: string | null;
+};
+
+/**
+ * POST /api/points/topup/pay。
+ *
+ * ⚠️ 端點路徑是 `/api/points/topup/**pay**`，不是 `/api/points/topup`
+ * （後者不存在，打過去會是 404，訊息就變成「找不到」而不是客服提示）。
+ *
+ * 501 在這裡**刻意不往上丟成例外**：頁面若用 catch 顯示，訊息會被歸進
+ * 「付款建立失敗：…」那類紅色錯誤，看起來像系統壞了；實際上是這個功能就是要
+ * 走客服。因此轉成 `{accepted:false, message}` 讓頁面照實呈現後端說的那句話。
+ * 其他狀態碼（401/403/500…）仍然是真的錯誤，照常往上丟。
+ *
+ * mock 分支同樣回 `accepted:false`：骨架模式一樣沒有金流，回成功就是假成功。
+ */
+export const requestPointTopup = (payload: { amount: number; invoiceUbn?: string; invoiceTitle?: string; remark?: string }) =>
+  adapt<TopupOutcome>(
+    () => ({ accepted: false, message: null }),
+    async () => {
+      try {
+        await request<unknown>('/api/points/topup/pay', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        return { accepted: true, message: null };
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 501) {
+          return { accepted: false, message: e.message };
+        }
+        throw e;
+      }
+    },
   );

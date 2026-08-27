@@ -8,15 +8,51 @@ export const clinicQueuePage = {
   title: '看診號碼掛號',
   metaTitle: '看診號碼掛號 - 店家後台',
 
+  /* ---------------------------------------- 尚未建置：誠實告示（不可省略） */
+  /**
+   * ⚠️ 這一區塊是「誠實化」文案，對應 CLAUDE.md「Never fabricate a known」。
+   * 本頁沒有任何後端（無 /api/clinic-queue、無對應的 src/services 函式），所有互動
+   * 都只改瀏覽器內的 React state，也不會發送任何 LINE／Email 給病患。
+   * 在真後端接上之前，頁面不得再顯示成功訊息或「已通知病患」之類的對外行為宣稱。
+   */
+  notBuilt: {
+    title: '看診號碼掛號後端尚未建置，本頁操作尚未生效',
+    body:
+      '此頁的看診項目、診次、掛號名單與當日鎖號都只存在於這個瀏覽器畫面：不會寫入資料庫，重新整理就會消失。畫面上的號碼與病患為示範資料。',
+    notifyBody:
+      '本頁不會發送任何 LINE、Email 或簡訊給病患 —— 通知後端尚未建置。掛號、取消、改號、休診一律請自行致電告知病患。',
+    serviceCreated: (name: string) =>
+      `尚未生效：「${name}」只加在畫面上，看診項目後端尚未建置，未寫入資料庫。`,
+    sessionSaved: '尚未生效：診次只留在畫面上，後端尚未建置，未寫入資料庫。',
+    sessionDeleted: '尚未生效：僅從畫面移除，後端尚未建置，資料庫沒有變更。',
+    registered: (num: number) =>
+      `尚未生效：畫面上先給了 ${num} 號，但掛號後端尚未建置，沒有寫入資料庫，系統也不會通知病患。`,
+    cancelConfirm: (num: number) =>
+      `確定要在畫面上把 ${num} 號標記為取消嗎？掛號後端尚未建置：這不會寫入資料庫，系統也不會通知病患，請務必自行致電告知。`,
+    cancelled: (num: number) =>
+      `尚未生效：${num} 號只在畫面上標記為取消，未寫入資料庫，系統未通知病患，請自行致電。`,
+    completed: (num: number) =>
+      `尚未生效：${num} 號只在畫面上標記為看完診，後端尚未建置，未寫入資料庫。`,
+    lockApplied: '尚未生效：當日設定只留在畫面上，後端尚未建置，未寫入資料庫，也不會影響病患端。',
+    lockRestored: '尚未生效：只還原了畫面上的當日設定，後端尚未建置，資料庫沒有變更。',
+    lockPreviewTail:
+      '（本頁只會把它們在畫面上標記為取消；後端尚未建置，不會寫入資料庫，系統也不會通知任何病患，請自行致電。）',
+    lockRestoreConfirm:
+      '恢復此日設定為診次預設（清除畫面上的鎖號／休診／上限設定）。\n\n提醒：當日設定後端尚未建置，這些操作從頭到尾都只影響畫面，不會寫入資料庫，系統也沒有通知過任何病患。確定要恢復嗎？',
+  },
+
   /* ------------------------------------------------------------ 使用步驟卡 */
   guide: {
     title: '使用步驟',
     steps:
       '① 在此頁建立「看診項目」（例：看診）→ ② 替它新增診次（早/午/晚，各設號數上限與發號規則）→ ③ 選診次+日期看逐號看板、代客掛號、鎖號/休診。',
     allInPage: '全部在本頁完成，不用到其他頁面。',
-    alsoInServicesLead: '看診項目也會出現在「服務項目」頁（進階設定可去那裡改）；',
-    lineSelfServiceStrong: '病患已可在 LINE 自助掛號',
-    lineSelfServiceTail: '（選日期→診次→系統發線上號段號碼）；公開頁自助掛號為後續階段。',
+    /** `{catalog}` 由頁面在 render 期依當下模式展開（14 分冊 §8.13／§8.17） */
+    alsoInServicesLead: '看診項目也會出現在「{catalog}」頁（進階設定可去那裡改）；',
+    /* ⚠️ 舊文案寫「病患已可在 LINE 自助掛號」——那個功能並不存在，
+       與頁頂的「尚未建置」告示自相矛盾。措辭一律不得宣稱既成事實。 */
+    lineSelfServiceStrong: '病患自助掛號（LINE 與公開頁）都尚未建置',
+    lineSelfServiceTail: '——規劃中的流程是「選日期→診次→系統發線上號段號碼」，目前只能由店家在本頁代客掛號。',
   },
 
   /* --------------------------------------------------------- 建立看診項目 */
@@ -102,7 +138,6 @@ export const clinicQueuePage = {
     help: '號碼掛號不需要填價格與時長；建好後接著新增診次（早/午/晚）即可開始掛號。',
     submit: '建立',
     nameRequired: '請填項目名稱',
-    created: (name: string) => `已建立「${name}」！接著新增診次（早/午/晚）就能開始掛號`,
     createFailedPrefix: '建立失敗：',
   },
 
@@ -145,8 +180,10 @@ export const clinicQueuePage = {
     phoneHelpTail: '。',
     name: '病患姓名',
     namePlaceholder: '例：王小明',
+    /* ⚠️ 舊文案「將無法收到任何系統通知」隱含有填電話就會收到——通知後端尚未建置，
+       任何人都不會收到。改為中性描述：電話只是給店家自己聯絡用的欄位。 */
     noPhoneWarning:
-      '⚠️ 未填電話：這位病患將無法收到任何系統通知（取消／變更都要口頭告知），之後也無法用電話搜尋到他。',
+      '⚠️ 未填電話：電話欄位僅供你自行聯絡病患使用（系統不會發送任何通知），未填則這位病患在名單上沒有可聯絡的號碼。',
     noNotifyWarning: '⚠️ 系統不會自動通知病患，發號後請口頭／電話告知病患號碼。',
     submit: '發號掛號',
     submitOnline: '發號掛號（📞 預約）',
@@ -154,7 +191,6 @@ export const clinicQueuePage = {
     requireNameOrPhone: '請至少填寫病患姓名或電話其中一項',
     pickSessionFirst: '請先選擇診次與日期',
     success: '掛號成功',
-    successNumber: (num: number) => `✅ 已發號：${num} 號　—　請口頭告知病患此號碼（系統不會自動通知病患）`,
     failedPrefix: '掛號失敗：',
   },
 
@@ -176,43 +212,25 @@ export const clinicQueuePage = {
     restoreDefault: '恢復當日預設',
     apply: '套用',
     applyConfirm: '確認取消並套用',
-    restoreConfirm:
-      '恢復此日設定為診次預設（清除當日的鎖號/休診/上限設定）。\n\n注意：這不會取消目前有效的掛號，但也「無法救回先前已被取消的病患」——他們已收到取消通知，如需恢復請個別聯繫重新掛號。確定要恢復嗎？',
     lowerReserveHint: '「降低現場保留號數」',
     /** 套用前的影響預覽 */
     previewLead: (affected: number) => `此操作將取消 ${affected} 筆已掛號預約`,
-    previewTail: '（有 LINE／Email 且店家已開啟取消通知者，系統會嘗試通知）：',
-    previewItem: (number: number, name: string) => `${number} 號　${name}`,
-    previewNeedCall: (n: number) => `⚠️ 其中 ${n} 位系統無法自動通知，請自行致電：`,
-    previewNoContact: (n: number) => `其中 ${n} 位系統無法自動通知，請自行致電。`,
     previewConfirmAgain: '確定要繼續嗎？請再按一次「套用」確認取消。',
     previewFailedPrefix: '查詢影響失敗：',
-    cancelledSummary: (n: number) => `已取消 ${n} 筆掛號`,
-    applied: '已套用',
-    appliedWithCancel: (n: number) => `已套用，取消 ${n} 筆掛號`,
     applyFailedPrefix: '套用失敗：',
-    restored: '已恢復當日預設',
   },
 
   /* ---------------------------------------------------------- 取消 / 完成 */
   cancel: {
-    confirm: (number: number, notifyMsg: string) => `確定要取消 ${number} 號的掛號嗎？${notifyMsg}`,
-    notifyOk: '系統會嘗試以 LINE／Email 通知病患。',
-    notifyNone: '⚠️ 系統「無法」自動通知此病患，取消後請務必自行致電告知！',
-    successNotified: (number: number) => `已取消 ${number} 號掛號（系統已嘗試通知病患）`,
-    successManual: (number: number) => `已取消 ${number} 號掛號 — 請記得自行致電告知病患`,
     failedPrefix: '取消失敗：',
   },
 
   complete: {
     confirm: (number: number) => `確定要標記 ${number} 號「看完診」嗎？`,
-    success: (number: number) => `${number} 號已標記看完診`,
   },
 
   /* ---------------------------------------------------------------- 訊息 */
   messages: {
-    saved: '已儲存',
-    deleted: '已刪除',
     saveFailedPrefix: '儲存失敗：',
     deleteFailedPrefix: '刪除失敗：',
     operationFailedPrefix: '操作失敗：',

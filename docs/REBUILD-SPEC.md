@@ -1553,10 +1553,39 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
 骨架用 mock 資料 + 本地 state 模擬，行為正確但不落地：
 
 * 檔案上傳（頭像、商品圖、Rich Menu 底圖、作品集）—— UI 與驗證訊息都在，缺 upload endpoint
-* QR Code 產生 —— 原站由後端出圖，骨架用佔位框
+* ~~QR Code 產生~~ —— **已補齊，不需要後端**（2026-08-25，[#16 補齊-1](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/16)，
+  commit `e958b1d`）。原站就是前端 JS 產圖（見下方勘誤），本專案同樣在前端產：
+  擁有者裁決安裝 **`qrcode` 1.5.4（精確版本，不用 caret）**，不得自寫編碼器
+  （鐵則 9 要求的「分冊點名」落在 [01 分冊 §4](integration/01-ARCHITECTURE.md)
+  的相依清單，裁決紀錄在 14 分冊 §8.2）。共用實作 `src/lib/qr.ts`，
+  `promote`（公開預約網址，檔名「預約QRcode.png」）與 `line-settings`
+  （LINE 加好友連結，檔名「LINE加好友QRcode.png」）兩頁共用同一支，不各寫一份
 * 圖表 —— 原站用圖表套件，骨架用純 CSS bar（刻意不引入相依）
 * 拖曳排序 —— 原站用 SortableJS，骨架用上移／下移按鈕
 * 即時推播（Web Push、聊天）
+
+> **勘誤（2026-08-25）：QR Code 那一條原本寫「原站由後端出圖」，是錯的。**
+> 證據全部來自 `docs/specs/promote.json`（原站 DOM 抓取，本專案 fidelity 的
+> 唯一真實來源）：
+>
+> | 證據 | 位置 | 說明 |
+> |---|---|---|
+> | `"onclick": "downloadQr()"` | `promote.json:147` | 下載動作是**頁面 inline JS 函式**，不是連結到某支端點 |
+> | `"QR 元件載入失敗"` | `promote.json:261` | 「元件」載入失敗＝前端有一個 QR **產生元件**；後端出圖不會有這種錯誤字串 |
+> | `"QR 尚未產生"` | `promote.json:271` | 「尚未產生」是前端渲染前的狀態，不是「尚未下載」 |
+> | `"預約QRcode.png"` | `promote.json:305` | 檔名由前端指定給 `<a download>`，非 `Content-Disposition` |
+> | 195 支端點清單中**無任何 QR 端點** | §9.1 端點清單 | 若由後端出圖，清單裡必然有一支 |
+>
+> 這條錯誤的實際後果：修復-1（#3）處理「兩處『QR 已下載』沒下載」時，處置寫的是
+> 「做不到就移除按鈕」——因為本專案既沒有 QR 套件也沒有 QR 端點，執行者依這條
+> 誤述會以為要等後端，於是走了「移除」那條路，功能就此缺著。擁有者方向是
+> 「**對齊原站功能是首要目的；若有缺少功能，請用補齊的方式，而不是刪除**」，
+> 補齊工作見 #16（該 issue 含「編碼器從哪來」的待裁決依賴選項）。
+>
+> 一般化的教訓，與 CLAUDE.md「Never fabricate a known」同源：**規格文件裡的
+> 「原站是這樣做的」也是一種「已知」，一樣需要證據。** 這句話當初沒有任何
+> spec 佐證，卻被後續施工當成事實依賴了一輪。寫「原站如何如何」時請附
+> `docs/specs/*.json` 的行號。
 
 ### 9.3 已知的規格缺口
 

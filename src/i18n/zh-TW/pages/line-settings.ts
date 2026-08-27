@@ -19,15 +19,15 @@ export const lineSettingsPage = {
   /* --------------------------------------------- 🔴 設定完成後必做（警示） */
   mustDo: {
     title: '設定完成後必做！否則 Bot 不會回應',
-    lead: '請到 LINE Official Account Manager 關閉自動回應：',
+    lead: '請到 LINE Official Account Manager 關閉「聊天」：',
     steps: [
       '進入您的官方帳號 → 設定 → 回應設定',
-      '「回應方式」改為只有「 手動聊天 」',
-      '不要 勾選「自動回應訊息」',
+      '「回應功能」區塊找到「 聊天 」，把「開啟聊天畫面」關掉',
+      '畫面最上方會顯示「 聊天：關閉 」才算設定成功',
       '確認「Webhook」顯示為 啟用',
     ],
-    ctaLead: '點擊下方按鈕直接前往您的回應設定頁面，將「回應方式」改為「 手動聊天 」：',
-    cta: '一鍵前往關閉自動回應',
+    ctaLead: '點擊下方按鈕直接前往您的回應設定頁面，把「 聊天 」關掉：',
+    cta: '一鍵前往關閉聊天',
     ctaHref: 'https://manager.line.biz/',
     footer: '如果不關閉，LINE 會攔截所有訊息，您的 Bot 完全不會收到也不會回應。',
   },
@@ -92,7 +92,7 @@ export const lineSettingsPage = {
         lines: [
           '1. 回到 VibeAI 後台 LINE 設定，把剛剛複製的 Channel ID、Channel Secret、Channel Access Token 貼到對應欄位',
           '2. 按「 儲存設定 」，Webhook 網址會自動帶入',
-          '3. 回 LINE 官方帳號管理後台 → 設定 → 回應設定 → 改成「 手動聊天 」',
+          '3. 回 LINE 官方帳號管理後台 → 設定 → 回應設定 → 把「 聊天 」關掉',
         ],
         note: '',
       },
@@ -102,7 +102,7 @@ export const lineSettingsPage = {
       title: '必做三件事！',
       body: '缺一不可，否則 Bot 不會回應：',
       items: [
-        '① 回應設定 →「手動聊天」（關閉自動回應）',
+        '① 回應設定 → 回應功能 →「聊天」關閉（畫面顯示「聊天：關閉」）',
         '② Messaging API → Webhook URL 已填入',
         '③ LINE Developers Console →「Use webhook」已啟用',
       ],
@@ -209,9 +209,37 @@ export const lineSettingsPage = {
     webhookOffHint:
       'Webhook 沒開啟 → LINE 不會把使用者點選/訊息送到本系統 → 看起來 Bot 像在睡覺。修好後馬上活過來。',
     gotoLineConsole: '直接前往 LINE 後台',
+
+    /**
+     * 各檢查項失敗時的「怎麼修」指引 + 可以直接點過去的連結。
+     * AUTO_REPLY 與 RICH_MENU 兩項光看訊息不知道要去哪裡設定，是使用者實測
+     * 回報的痛點——前者更是「按 Bot 沒反應」最常見的元兇。
+     */
+    fixHints: {
+      AUTO_REPLY: {
+        steps: '在 LINE 官方帳號管理後台依序點：左側「設定」→「回應設定」→「回應功能」區塊的' +
+          '「聊天」欄位，把「開啟聊天畫面」關掉（畫面最上方會顯示「聊天：關閉」）。' +
+          '「回應方式：手動聊天／手動聊天＋自動回應訊息」是聊天開啟時才生效的子選項，' +
+          '不會讓這項變綠——一定要關掉「聊天」本身。',
+        linkText: '前往 LINE 官方帳號管理後台 → 回應設定',
+        href: 'https://manager.line.biz/',
+      },
+      RICH_MENU: {
+        steps: '圖文選單要先在本系統設計並發布，顧客的 LINE 聊天室下方才會出現選單。' +
+          '我們已依你的營運模式預設好一組範本，套用後即可發布。',
+        linkText: '前往圖文選單設計',
+        href: '/tenant/rich-menu-design',
+      },
+    } as Record<string, { steps: string; linkText: string; href: string }>,
   },
 
   /* ------------------------------------------------------- 加好友 QR Code */
+  /**
+   * QR Code：issue #16（補齊-1）已補上真的產生與下載，經 src/lib/qr.ts
+   * （擁有者裁決安裝 `qrcode` 套件，不得自寫編碼器——見 14 分冊 §8.2）。
+   * 內容＝下方 addFriendUrl（`https://line.me/R/ti/p/{lineBasicId}`）逐字編碼，
+   * 與 promote 頁的公開商店頁 QR 是兩個不同的網址、不同的用途。
+   */
   botInfo: {
     title: '您的 LINE 官方帳號',
     subtitle: '顧客加好友後即可線上預約、購物、收通知',
@@ -221,18 +249,37 @@ export const lineSettingsPage = {
     copyLink: '複製連結',
     downloadQr: '下載 QR Code',
     copiedLink: '已複製加好友連結！',
-    downloaded: 'QR Code 已下載！可列印張貼在店內',
     noQr: '尚未取得 QR Code',
     noLink: '尚未取得加好友連結',
+    qrGenerating: 'QR Code 產生中...',
+    qrGenerateFailed: 'QR Code 產生失敗',
+    qrDownloaded: 'QR Code 已下載',
+    qrDownloadFailed: 'QR Code 下載失敗，請稍後重試',
+    qrAlt: 'LINE 加好友 QR Code',
+    qrFilename: 'LINE加好友QRcode.png',
+    downloadDisabledHint: '請先在上方設定「LINE Basic ID」，才會有可下載的加好友 QR Code',
   },
 
   /* ------------------------------------------------------ 如何讓顧客加入 */
   promotion: {
     title: '如何讓顧客加入？',
+    /**
+     * issue #16（補齊-1）補上真的 QR 產生與下載後，第 1、3 項改回指引使用
+     * 上方那顆「下載 QR Code」按鈕（本站產生，內容＝加好友連結），不再繞去
+     * LINE Official Account Manager 後台。
+     */
     items: [
-      { no: '1', title: '店內張貼 QR Code', desc: '下載上方 QR Code 印出張貼在店內' },
+      {
+        no: '1',
+        title: '店內張貼 QR Code',
+        desc: '按上方「下載 QR Code」下載後，印出張貼在店內',
+      },
       { no: '2', title: '分享加好友連結', desc: '複製連結分享到社群媒體或官網' },
-      { no: '3', title: '名片或傳單', desc: '在名片、傳單上印製 QR Code' },
+      {
+        no: '3',
+        title: '名片或傳單',
+        desc: '在名片、傳單上印製同一張 QR Code',
+      },
       { no: '4', title: '搜尋 ID 加入', desc: '顧客在 LINE 搜尋 @xxx 加入' },
     ],
   },
@@ -296,6 +343,24 @@ export const lineSettingsPage = {
     headerSubtitle: '歡迎語',
     headerSubtitlePlaceholder: '歡迎光臨！請問需要什麼服務呢？',
     showTip: '顯示使用提示',
+    /**
+     * issue #19 已接線（2026-08-26）。原本這裡是一句「此開關尚未生效」的誠實標註
+     * （14 分冊 §8.22-b／§8.22-c：開關切得動、存得進 DB，但 `src/server/` 零引用），
+     * 現在 `src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()` 真的讀它了，
+     * 所以那句話反過來變成不誠實——功能已生效、畫面卻說沒有。
+     * `tests/unit/flex-show-tip-honest.test.ts` 就是設計來在這一刻翻面的那條守門測試。
+     *
+     * ⚠️ 這句話要**逐字描述真實行為**：開了會多送第幾則、哪些情況下不會出現。
+     * 寫成「開啟後顧客會收到使用提示」這種模糊句，店家在 SILENT 模式下切開它、
+     * 什麼都沒發生，又會回到同一種困惑。
+     *
+     * ⚠️ 語意本身是**我們選的，不是還原原站的**（06 分冊 §6.2.10）。這件事寫在
+     * 分冊與程式註解裡，不寫進店家看的文案——店家要知道的是「切了會怎樣」，
+     * 不是我們的考據過程。
+     */
+    showTipHelp: '開啟後，顧客打「選單」收到主選單卡片時，卡片之後會**再多收到一則**純文字使用提示。'
+      + '以下三種情況不會出現：Flex 主選單已關閉（回提示文字或完全靜默時，本來就只有一則）、'
+      + '以及你一張卡片都還沒新增的時候。',
 
     save: '儲存主選單樣式',
     saving: '儲存中...',
@@ -336,10 +401,12 @@ export const lineSettingsPage = {
     },
 
     customBg: '或上傳自訂背景',
-    customBgHelp: '上傳背景圖片，系統會自動疊加描邊文字（不遮蓋背景）',
+    customBgHelp: '上傳背景圖片；目前會以原圖直接發布，系統不會在圖上加字或圖示',
     customBgUrlPlaceholder: '貼上圖片網址（https://...）',
     noOverlay: '直接使用背景圖（不疊加系統文字圖示）',
-    noOverlayHelp: '取消勾選可讓系統在背景上疊加「開始預約」等文字和圖示',
+    noOverlayHelp: '目前一律以原圖發布，所以這個選項不會有任何作用',
+    overlayNotBuilt: '文字與圖示疊圖尚未建置，選單一律以底圖原圖發布，因此這裡的疊圖選項與文字顏色調了也不會改變顧客看到的畫面。六格的文字是「按下去會送出的訊息」，不會被畫進圖裡。',
+    overlayNotBuiltHint: '疊圖功能尚未建置，調整不會影響發布結果',
 
     textColor: '文字顏色',
     textColors: {
@@ -352,9 +419,11 @@ export const lineSettingsPage = {
 
     create: '建立主題選單',
     creating: '建立中...',
-    created: 'Rich Menu 建立成功！顧客現在可以看到快捷選單了',
-    createdCustomBg: 'Rich Menu 建立成功！已使用自訂背景搭配描邊文字',
-    createdNoOverlay: 'Rich Menu 建立成功！直接使用背景圖',
+    created: 'Rich Menu 已發布到 LINE，顧客現在可以看到快捷選單了',
+    /* ⚠️ 舊文案是「已使用自訂背景搭配描邊文字」，但 create 端點是把底圖原圖直接
+     * 上傳，沒有任何文字／圖示合成（見該 route 開頭的 MVP 說明）。六格文字是
+     * 「點下去會送出的訊息」，不會被畫進圖裡——文案不可以宣稱做了沒做的事。 */
+    createdCustomBg: 'Rich Menu 已發布到 LINE，使用你上傳的背景圖（原圖，圖上不會疊加文字）',
     createFailedPrefix: '建立失敗：',
     imageFormat: '請上傳 PNG 或 JPG 格式的圖片',
 
@@ -377,7 +446,7 @@ export const lineSettingsPage = {
       },
       {
         q: 'Q: Bot 不回應訊息？',
-        a: '1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 確認為「手動聊天」 3. 確認「自動回應訊息」已關閉',
+        a: '1. 請先重新點一次「儲存設定」觸發自動連線 2. 到 LINE 官方帳號管理後台 →「設定」→「回應設定」→ 回應功能區塊把「聊天」關掉（顯示「聊天：關閉」） 3. 「回應方式：手動聊天／自動回應訊息」是聊天開啟時的子選項，不影響此項，重點是「聊天」本身要關',
       },
       {
         q: 'Q: Webhook 驗證是什麼？',
@@ -393,15 +462,20 @@ export const lineSettingsPage = {
   /* -------------------------------------------------------------- 解除綁定 */
   disconnect: {
     title: '解除 LINE 帳號綁定',
+    /* ⚠️ 這兩段字要跟 POST /api/settings/line/disconnect 真正做的事一致（06 分冊 §6：
+       只清 Channel ID 與兩個 *_enc 欄位）。原文寫「完全清除所有 LINE 設定，包含
+       Rich Menu、主選單配置」，但那些外觀偏好其實留著、LINE 官方帳號上已發布的
+       選單也不會被刪除——描述比實際做的多，屬鐵則 12 的假宣稱。 */
     body1:
-      '解除綁定後將完全清除所有 LINE 設定，包含 Channel ID、密鑰、Token、Rich Menu、主選單配置等。',
+      '解除綁定會清除本店的 Channel ID、Channel Secret 與 Channel Access Token，Bot 隨即停止回應。',
     body2:
-      '顧客的 LINE 對話記錄不受影響，但 Bot 將停止回應。如需重新啟用，請重新填寫 LINE 設定。',
+      '顧客的 LINE 對話記錄不受影響。自動回覆內容、選單主題等外觀設定會保留，重新填入金鑰即可再次啟用；'
+      + 'LINE 官方帳號上已發布的圖文選單不會被自動刪除（金鑰已清除，系統無法再代為呼叫 LINE），如需移除請自行到 LINE Developers 後台操作。',
     action: '解除綁定',
     processing: '處理中...',
     confirmTitle: '解除 LINE 綁定',
     confirmMessage:
-      '確定要解除 LINE 帳號綁定嗎？\n\n此操作將完全清除所有 LINE 設定（Channel ID、密鑰、Token、Rich Menu、主選單配置等），且無法復原。\n\n如需重新啟用，必須重新填寫所有 LINE 設定。',
+      '確定要解除 LINE 帳號綁定嗎？\n\n此操作會清除 Channel ID、Channel Secret 與 Channel Access Token，且無法復原，Bot 將立即停止回應。\n\n自動回覆內容與選單外觀設定會保留；如需重新啟用，請重新填入這三項金鑰。',
     done: 'LINE 帳號已解除綁定',
     doneRichMenuLeft:
       'LINE 帳號已解除綁定，但 Rich Menu 無法自動刪除（Token 已失效）。\n\n請到 LINE Developer Console 手動刪除 Rich Menu，否則顧客仍會看到舊選單。',

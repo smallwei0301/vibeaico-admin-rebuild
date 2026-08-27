@@ -251,7 +251,7 @@ export const settingsPage = {
       '開啟後，顧客在 LINE、公開頁、後台代客建單預約時， 必須選擇一位 服務人員 ，沒選就無法送出（不再由系統自動分配）。適合多人店家、希望每筆預約都指定誰來服務。',
     staffMandatoryOffHint: '關閉：沿用「可不指定，系統自動安排」。',
     staffMandatoryNotice:
-      '注意 ：開啟前請先確認每個服務項目都有可服務的人員，否則顧客會找不到可選的 服務人員。',
+      '注意 ：開啟前請先確認每個{catalog}都有可服務的人員，否則顧客會找不到可選的 服務人員。',
 
     /* --- 隱私防護 --- */
     privacySection: '隱私防護',
@@ -287,8 +287,20 @@ export const settingsPage = {
     welcomeCardImage: '歡迎卡片圖片（自訂）',
     welcomeCardImageUpload: '上傳圖片',
     welcomeCardImageRemove: '移除圖片',
-    welcomeCardImageUpdated: '歡迎卡片圖片已更新',
-    welcomeCardImageRemoved: '已移除歡迎卡片圖片',
+    /**
+     * issue #28 ⑥：上傳鈕以前的 onClick 整個內容就是顯示這一句，什麼都沒發生。
+     * 現在它排在 `POST /api/upload` 與 `PUT /api/settings` 兩個 await 之後，
+     * 所以「已更新」是真的（重整後圖片還在）。
+     *
+     * 括號那半句不是客套話：`PUT /api/settings` 是**整組覆蓋**，存這個欄位就
+     * 一定會把「通知設定」這一組當下的其他未儲存變更一起存進去。使用者讀得到
+     * 的地方要講出來，不能只寫在程式碼註解裡（CLAUDE.md）。
+     */
+    welcomeCardImageUpdated: '歡迎卡片圖片已更新（通知設定的其他變更也一併儲存了）',
+    welcomeCardImageUploadFailedPrefix: '圖片上傳失敗:',
+    /** 只清掉設定裡的網址，不刪 Storage 檔案——所以只說「移除歡迎卡片圖片」 */
+    welcomeCardImageRemoved: '已移除歡迎卡片圖片（通知設定的其他變更也一併儲存了）',
+    welcomeCardImageRemoveFailedPrefix: '移除圖片失敗:',
     welcomeFeatureListText: '歡迎卡片功能介紹清單（自訂）',
     welcomeFeatureListTextPlaceholder: '一行一項，例：預約到店試穿',
     welcomeFeatureListTextHelp:
@@ -366,13 +378,23 @@ export const settingsPage = {
     google: '加入 Google Calendar',
     copy: '複製訂閱網址',
     regenerate: '重新產生網址',
-    copied: '已複製訂閱網址',
-    regenerated: '已產生新網址，請重新加入 Google Calendar',
-    regenerateFailed: '重新產生失敗',
-    regenerateConfirmTitle: '重新產生訂閱網址',
-    regenerateConfirm:
-      '確定重新產生？\n\n舊網址將立即失效，已在 Google Calendar 訂閱的會停止更新（需重新加入）。',
     moreLinkText: '前往「行事曆同步」頁管理外部行事曆',
+
+    /**
+     * ⚠️ 誠實化文案（CLAUDE.md「Never fabricate a known」）。
+     * ICS 訂閱端點 `/ics/{shopCode}/{token}.ics` 在 src/app 底下並不存在，
+     * 也沒有 `/api/settings/calendar` 可以發或撤 token。
+     * 舊實作把一個硬編碼陣列（REGENERATED_ICS_TOKENS）輪替當成「新 token」，
+     * 按下去就 toast「已產生新網址」——店家會以為舊網址已失效（假的安全操作），
+     * 實際上沒有任何東西被撤銷，因為根本沒有任何網址是有效的。禁止復原。
+     */
+    notBuilt: {
+      title: 'ICS 訂閱端點尚未建置，此處無法提供可用的訂閱網址',
+      body:
+        '系統目前沒有 ICS 輸出端點，因此無法產生訂閱網址，Google Calendar 也訂閱不到任何預約；「重新產生網址」一併停用——在端點建置完成前，系統無從撤銷或換發任何網址，保留該按鈕只會讓你誤以為舊連結已失效。',
+      urlUnavailable: '尚未開通',
+      disabledHint: 'ICS 訂閱端點尚未建置，目前沒有可用的訂閱網址',
+    },
   },
 
   /* ------------------------------------------------------------ 帳號安全 */

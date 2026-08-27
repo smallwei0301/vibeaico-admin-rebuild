@@ -3,7 +3,7 @@ import * as React from 'react';
 import Link from 'next/link';
 import {
   ChevronDown, ChevronUp, Copy, FolderPlus, Globe, ListChecks, Pencil, Plus,
-  RefreshCcw, Sparkles, Star, Trash2,
+  RefreshCcw, Sparkles, Star, ToggleLeft, ToggleRight, Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -16,13 +16,15 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import {
-  FormError, FormGroup, FormText, Input, Label, Select, Textarea,
+  FormError, FormGroup, FormText, Input, Label, Select, Switch, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
   createService, createServiceCategory, deleteService, deleteServiceCategory,
   duplicateService, listServiceCategories, listServices, listStaff,
-  reorderServiceCategories, reorderServices, toggleServiceLineFeatured, updateService,
+  reorderServiceCategories, reorderServices, reorderServicesLine,
+  toggleServiceLineFeatured, updateService, updateServiceCategory,
+  type ServiceCategoryUpdate,
 } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -74,21 +76,20 @@ type ServiceExtras = {
   onlinePaymentMode: 'NONE' | 'DEPOSIT_FIXED' | 'DEPOSIT_PERCENT' | 'FULL';
   onlineDepositValue: number;
   staffIds: string[];
-  publicSortOrder: number;
 };
 
 const DEFAULT_EXTRAS: ServiceExtras = {
   requiresStaff: true, maxCapacity: 1, overnightMode: false,
   checkInTime: '15:00', checkOutTime: '11:00', queueModeEnabled: false,
   bufferAfter: 0, onlinePaymentMode: 'NONE', onlineDepositValue: 0,
-  staffIds: [], publicSortOrder: 0,
+  staffIds: [],
 };
 
 const MOCK_SERVICE_EXTRAS: Record<string, Partial<ServiceExtras>> = {
-  sv_1: { staffIds: ['s_1', 's_2'], bufferAfter: 15, publicSortOrder: 1 },
-  sv_2: { staffIds: ['s_1'], bufferAfter: 30, onlinePaymentMode: 'DEPOSIT_FIXED', onlineDepositValue: 500, publicSortOrder: 2 },
-  sv_3: { staffIds: ['s_2', 's_3'], publicSortOrder: 3 },
-  sv_4: { requiresStaff: false, maxCapacity: 4, publicSortOrder: 4 },
+  sv_1: { staffIds: ['s_1', 's_2'], bufferAfter: 15 },
+  sv_2: { staffIds: ['s_1'], bufferAfter: 30, onlinePaymentMode: 'DEPOSIT_FIXED', onlineDepositValue: 500 },
+  sv_3: { staffIds: ['s_2', 's_3'] },
+  sv_4: { requiresStaff: false, maxCapacity: 4 },
 };
 
 /** LINE 精選最多顯示的件數（原站硬性上限） */
@@ -101,12 +102,20 @@ const CATEGORY_NONE = 'none';
 
 /* -------------------------------------------------------------------------- */
 
-type ServiceRow = Service & ServiceExtras;
+/**
+ * 兩套排序都來自 API（0017）：
+ *   sortOrder     = services.sort_order      → 公開頁排序（POST …/reorder）
+ *   lineSortOrder = services.line_sort_order → LINE 精選排序（POST …/reorder-line）
+ * Service.lineSortOrder 是選填（舊查詢可能沒取這一欄），頁面需要一個數字才能排，
+ * 缺值時退回 sortOrder（＝「與公開頁同序」，不是憑空捏一個名次）。
+ */
+type ServiceRow = Service & ServiceExtras & { lineSortOrder: number };
 
 const toRow = (s: Service): ServiceRow => ({
   ...s,
   ...DEFAULT_EXTRAS,
   ...(MOCK_SERVICE_EXTRAS[s.id] ?? {}),
+  lineSortOrder: s.lineSortOrder ?? s.sortOrder,
 });
 
 type SortMode = 'line' | 'public';
@@ -163,8 +172,10 @@ export default function ServicesPage() {
   React.useEffect(() => {
     void (async () => {
       try {
+        // description / active 自 0018 起是真欄位，照後端回的值用；
+        // 先前這裡硬補 `description: ''`／`active: true`，等於把剛存進去的值抹掉。
         const list = await listServiceCategories();
-        if (list) setCategories(list.map((c) => ({ ...c, description: '', active: true })));
+        if (list) setCategories(list);
       } catch {
         toast.show(t.messages.retryLater, 'danger');
       }
@@ -172,7 +183,7 @@ export default function ServicesPage() {
   }, [toast]);
 
   const orderOf = React.useCallback(
-    (s: ServiceRow) => (sortMode === 'line' ? s.sortOrder : s.publicSortOrder),
+    (s: ServiceRow) => (sortMode === 'line' ? s.lineSortOrder : s.sortOrder),
     [sortMode],
   );
 
@@ -188,28 +199,33 @@ export default function ServicesPage() {
   const lineFeaturedCount = rows.filter((s) => s.lineFeatured).length;
   const uncategorizedCount = rows.filter((s) => !s.categoryId).length;
 
-  /** LINE 排序落地（僅 line 模式；publicSortOrder 為頁面欄位，API 無對應端點） */
-  const persistLineOrder = (list: ServiceRow[]) => {
-    const ids = [...list].sort((a, b) => a.sortOrder - b.sortOrder).map((s) => s.id);
-    void reorderServices(ids).catch((e) => {
-      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
-    });
-  };
+  /**
+   * 排序落地。兩種模式各自打自己的端點、各自寫自己的欄位，互不覆蓋：
+   *   line   → POST /api/services/reorder-line（line_sort_order）
+   *   public → POST /api/services/reorder     （sort_order）
+   */
+  const persistOrder = (idsInOrder: string[], mode: SortMode) =>
+    (mode === 'line' ? reorderServicesLine : reorderServices)(idsInOrder);
 
-  const move = (index: number, delta: number) => {
+  /** 先送出、成功才更新畫面與顯示成功；失敗顯示後端訊息，順序保持原樣 */
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= visible.length) return;
     const reordered = [...visible];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     const orderById = new Map(reordered.map((s, i) => [s.id, i + 1]));
-    const next = rows.map((s) => {
-      const order = orderById.get(s.id);
-      if (order === undefined) return s;
-      return sortMode === 'line' ? { ...s, sortOrder: order } : { ...s, publicSortOrder: order };
-    });
-    setRows(next);
-    toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
-    if (sortMode === 'line') persistLineOrder(next);
+    const isLine = sortMode === 'line';
+    try {
+      await persistOrder(reordered.map((s) => s.id), sortMode);
+      setRows(rows.map((s) => {
+        const order = orderById.get(s.id);
+        if (order === undefined) return s;
+        return isLine ? { ...s, lineSortOrder: order } : { ...s, sortOrder: order };
+      }));
+      toast.show(isLine ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+    }
   };
 
   const toggleLine = (s: ServiceRow) => {
@@ -235,7 +251,10 @@ export default function ServicesPage() {
   const duplicate = async (s: ServiceRow) => {
     try {
       const { id } = await duplicateService(s.id);
-      const copy: ServiceRow = { ...s, id, sortOrder: rows.length + 1 };
+      /* 後端的 duplicate 把複本排在兩套順序的最後（0017），畫面同步比照 */
+      const copy: ServiceRow = {
+        ...s, id, sortOrder: rows.length + 1, lineSortOrder: rows.length + 1,
+      };
       setRows((list) => [...list, copy]);
       toast.show(t.messages.duplicated);
     } catch (e) {
@@ -265,13 +284,13 @@ export default function ServicesPage() {
           <span className="btn-group">
             <Button
               variant="ghost" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-              disabled={i === 0} onClick={() => move(i, -1)}
+              disabled={i === 0} onClick={() => void move(i, -1)}
             >
               <ChevronUp size={13} />
             </Button>
             <Button
               variant="ghost" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-              disabled={i === visible.length - 1} onClick={() => move(i, 1)}
+              disabled={i === visible.length - 1} onClick={() => void move(i, 1)}
             >
               <ChevronDown size={13} />
             </Button>
@@ -547,15 +566,25 @@ export default function ServicesPage() {
         title={sortMode === 'line' ? t.toolbar.syncToPublic : t.toolbar.syncToLine}
         message={t.confirm.syncOrder(fromLabel, toModeLabel)}
         onClose={() => setSyncOpen(false)}
-        onConfirm={() => {
-          const next = rows.map((s) => (sortMode === 'line'
-            ? { ...s, publicSortOrder: s.sortOrder }
-            : { ...s, sortOrder: s.publicSortOrder }));
-          setRows(next);
-          setSyncOpen(false);
-          toast.show(t.messages.orderApplied(toModeLabel));
-          /* 公開頁 → LINE 才會改到 sortOrder（API 唯一的排序欄位），需要落地 */
-          if (sortMode === 'public') persistLineOrder(next);
+        onConfirm={async () => {
+          /* 把目前模式的順序套到另一種模式，並打另一支端點真的寫進去 */
+          const source = [...rows].sort((a, b) => (sortMode === 'line'
+            ? a.lineSortOrder - b.lineSortOrder
+            : a.sortOrder - b.sortOrder));
+          const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
+          const rankById = new Map(source.map((s, i) => [s.id, i + 1]));
+          try {
+            await persistOrder(source.map((s) => s.id), targetMode);
+            setRows(rows.map((s) => {
+              const rank = rankById.get(s.id);
+              if (rank === undefined) return s;
+              return targetMode === 'line' ? { ...s, lineSortOrder: rank } : { ...s, sortOrder: rank };
+            }));
+            setSyncOpen(false);
+            toast.show(t.messages.orderApplied(toModeLabel));
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+          }
         }}
       />
 
@@ -604,7 +633,7 @@ export default function ServicesPage() {
 const EMPTY_SERVICE: ServiceRow = {
   id: '', categoryId: null, categoryName: null, name: '', description: '',
   durationMinutes: 0, price: 0, imageUrl: '', active: true, lineFeatured: false,
-  sortOrder: 0, ...DEFAULT_EXTRAS,
+  sortOrder: 0, lineSortOrder: 0, ...DEFAULT_EXTRAS,
 };
 
 function ServiceFormModal({
@@ -1043,7 +1072,18 @@ function CategoryModal({
   const [description, setDescription] = React.useState('');
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ServiceCategory | null>(null);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const nextId = React.useRef(1);
+
+  /* 編輯分類 modal（issue #28 第 ⑭ 筆）—— 見下方 saveEdit 的註解 */
+  const [editTarget, setEditTarget] = React.useState<ServiceCategory | null>(null);
+  const [editName, setEditName] = React.useState('');
+  const [editDescription, setEditDescription] = React.useState('');
+  const [editActive, setEditActive] = React.useState(true);
+  const [editError, setEditError] = React.useState('');
+  const [editSaving, setEditSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
@@ -1052,47 +1092,190 @@ function CategoryModal({
     setError('');
   }, [open]);
 
-  const create = () => {
+  /**
+   * 新增分類——順序與同檔的 saveEdit 拉齊。
+   *
+   * 修改前：先把新列塞進本地 state、先 `toast.show(t.category.created)`，
+   * 才 `void createServiceCategory(...)` 射後不理。成功訊息早於它所宣稱的動作
+   * （00 分冊鐵則 12）：端點失敗時使用者會**同時**看到綠色的「分類建立成功」
+   * 與紅色的錯誤訊息，而那一列還留在畫面上。
+   *
+   * 同一個 CategoryModal 裡的「編輯」已於 `9829f12` / `a36cb71` 改成 await-first，
+   * 「新增」與「刪除」沒有一起改——本輪補齊，三個動作同型。
+   *
+   * mock 分支回 null → 沿用本地 id 與本地排序；真實 API 回 {id, sortOrder}
+   * 就用後端實際寫入的值，不自己猜一個顯示。
+   */
+  const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       setError(t.category.nameRequired);
       return;
     }
     setError('');
-    const localId = `sc_new_${nextId.current++}`;
-    onChange([
-      ...categories,
-      {
-        id: localId,
-        name: trimmed,
-        description: description.trim(),
-        active: true,
-        sortOrder: categories.length + 1,
-      },
-    ]);
-    setName('');
-    setDescription('');
-    toast.show(t.category.created);
-    /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-    void createServiceCategory(trimmed)
-      .then((res) => {
-        if (res) onChange((list) => list.map((c) => (c.id === localId ? { ...c, id: res.id } : c)));
-      })
-      .catch((e) => {
-        toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    const trimmedDescription = description.trim();
+    setCreating(true);
+    try {
+      /* 說明欄自 0018 起真的送到後端（issue #28 第 ⑨ 筆）；先前只送 name，
+         使用者填的說明重新整理就消失。 */
+      const res = await createServiceCategory({
+        name: trimmed, description: trimmedDescription, active: true,
       });
+      onChange((list) => [
+        ...list,
+        {
+          id: res ? res.id : `sc_new_${nextId.current++}`,
+          name: trimmed,
+          description: trimmedDescription,
+          active: true,
+          sortOrder: res ? res.sortOrder : list.length + 1,
+        },
+      ]);
+      setName('');
+      setDescription('');
+      toast.show(t.category.created);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setCreating(false);
+    }
   };
 
-  const move = (index: number, delta: number) => {
+  /**
+   * 刪除分類——同樣拉齊到 saveEdit 的順序。
+   *
+   * 修改前是樂觀更新：先 `onChange(categories.filter(...))` 把列拿掉、先 toast
+   * 「分類已刪除」，才 `void deleteServiceCategory(id).catch(...)`。後端拒絕時
+   * 畫面已經少了一列、成功訊息也已經出現，使用者只多看到一個紅色錯誤，
+   * 卻不知道那一列其實還在。
+   *
+   * 改成 await-first 之後多了一段等待時間，所以確認鈕採用 ConfirmModal 的
+   * `loading`（轉圈並停用按鈕），送出中也擋下關閉——不會變成「按了沒反應」，
+   * 也不會連按兩次送兩筆。
+   */
+  const removeCategory = async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setDeleting(true);
+    try {
+      await deleteServiceCategory(id);
+      onChange((list) => list.filter((c) => c.id !== id));
+      setDeleteTarget(null);
+      toast.show(t.category.deleted);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  /**
+   * 分類排序（第四顆按鈕）。
+   *
+   * 修改前是「先 onChange 換位置＋toast『分類排序已更新』，才 void 送出」——
+   * 與同檔的新增／編輯／刪除三顆按鈕不同型，也違反鐵則 12（成功訊息不得早於
+   * 它所宣稱的動作）。失敗時使用者會同時看到綠色成功與紅色錯誤，而畫面上的
+   * 順序已經換過去了。
+   *
+   * 商品頁的同一顆按鈕（products/page.tsx 的 move）**早就是 await-first**，
+   * 兩頁分岔本身就是缺陷：維護者讀到哪一邊就學到哪一種寫法。這裡對齊商品頁。
+   *
+   * 關於「排序不是樂觀更新可接受的少數場景嗎」——即使接受樂觀更新，會說謊的
+   * 也是那句 toast，不是換位置這個動作。而商品頁已經證明 await-first 在這裡
+   * 的體感沒有問題（骨架模式下 adapt() 的 mock 分支同步 resolve，完全無感）。
+   */
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= categories.length) return;
     const next = [...categories];
     [next[index], next[target]] = [next[target], next[index]];
-    onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
-    toast.show(t.category.reordered);
-    void reorderServiceCategories(next.map((c) => c.id)).catch((e) => {
+    try {
+      await reorderServiceCategories(next.map((c) => c.id));
+      onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+      toast.show(t.category.reordered);
+    } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
-    });
+    }
+  };
+
+  /**
+   * 啟用／停用切換（issue #28 第 ⑭ 筆）。
+   * 修改前：只 onChange 切本地 active 就 toast「分類已更新」，從未打 PUT，
+   * 重新整理全部還原。0018 讓 active 變成真欄位之後這顆按鈕的誤導性更高，
+   * 所以改成先 await 端點、成功才改畫面並 toast。
+   */
+  const toggleActive = async (c: ServiceCategory) => {
+    const next = !c.active;
+    setSavingId(c.id);
+    try {
+      await updateServiceCategory(c.id, { active: next });
+      onChange((list) => list.map((x) => (x.id === c.id ? { ...x, active: next } : x)));
+      toast.show(t.category.updated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const openEdit = (c: ServiceCategory) => {
+    setEditTarget(c);
+    setEditName(c.name);
+    setEditDescription(c.description ?? '');
+    setEditActive(c.active);
+    setEditError('');
+  };
+
+  /**
+   * 真正的編輯（issue #28 第 ⑭ 筆的後續）。
+   *
+   * 先前這一列的「編輯」是鉛筆圖示 + common.edit 標籤，行為卻只是切換啟用狀態
+   * ——圖示與行為不符。依擁有者方針「對齊原站功能，缺少功能用補齊取代刪除」，
+   * 正解是補成真正的編輯（名稱／說明／啟用），而不是把鉛筆換成開關圖示。
+   *
+   * 兩個刻意的設計：
+   * 1. **只送有變的欄位**。PUT 的語意是「沒帶＝不動」（route.ts 的
+   *    `if (b.x !== undefined)`），整包送出雖然也會過，但一旦日後有人在別處
+   *    改了同一列，整包送就會把別人的值一起覆蓋回畫面載入時的舊值。
+   * 2. **sortOrder 不在這裡**。排序走 reorder 端點，兩條寫入路徑會互相打架
+   *    （tests/integration/api/category-edit.28.test.ts 有一條測試專門鎖這件事）。
+   *
+   * 什麼都沒改就按儲存＝不送出任何請求，所以顯示 info 而不是「分類已更新」：
+   * 沒發生的事不准報成功（00 分冊鐵則 12）。
+   */
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      setEditError(t.category.nameRequired);
+      return;
+    }
+    setEditError('');
+
+    const trimmedDescription = editDescription.trim();
+    const patch: ServiceCategoryUpdate = {};
+    if (trimmedName !== editTarget.name) patch.name = trimmedName;
+    if (trimmedDescription !== (editTarget.description ?? '')) patch.description = trimmedDescription;
+    if (editActive !== editTarget.active) patch.active = editActive;
+
+    if (Object.keys(patch).length === 0) {
+      setEditTarget(null);
+      toast.show(t.category.noChange, 'info');
+      return;
+    }
+
+    const id = editTarget.id;
+    setEditSaving(true);
+    try {
+      await updateServiceCategory(id, patch);
+      onChange((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      setEditTarget(null);
+      toast.show(t.category.updated);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
   const columns: Column<ServiceCategory>[] = [
@@ -1108,27 +1291,35 @@ function CategoryModal({
         : <Badge tone="neutral">{t.labels.inactive}</Badge>),
     },
     {
-      key: 'actions', header: t.category.columns.actions, width: '160px',
+      key: 'actions', header: t.category.columns.actions, width: '200px',
       render: (c, i) => (
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-            disabled={i === 0} onClick={() => move(i, -1)}
+            disabled={i === 0} onClick={() => void move(i, -1)}
           >
             <ChevronUp size={13} />
           </Button>
           <Button
             variant="outline" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-            disabled={i === categories.length - 1} onClick={() => move(i, 1)}
+            disabled={i === categories.length - 1} onClick={() => void move(i, 1)}
           >
             <ChevronDown size={13} />
           </Button>
+          {/* 啟用／停用的快速切換：自己的圖示與標籤，不再冒用鉛筆＋「編輯」 */}
+          <Button
+            variant="outline" size="sm"
+            title={c.active ? t.category.disableAction : t.category.enableAction}
+            aria-label={c.active ? t.category.disableAction : t.category.enableAction}
+            disabled={savingId === c.id}
+            onClick={() => void toggleActive(c)}
+          >
+            {c.active ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+          </Button>
+          {/* 鉛筆＝真的開編輯 modal（名稱／說明／啟用） */}
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
-            onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
-            }}
+            onClick={() => openEdit(c)}
           >
             <Pencil size={13} />
           </Button>
@@ -1172,7 +1363,7 @@ function CategoryModal({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <Button size="sm" onClick={create}>
+          <Button size="sm" loading={creating} onClick={() => void create()}>
             <Plus size={13} />{common.create}
           </Button>
         </div>
@@ -1190,24 +1381,54 @@ function CategoryModal({
         </DataTableContainer>
       </Modal>
 
+      {/* 編輯分類（issue #28 第 ⑭ 筆）：沿用「新增分類」的既有元件形狀，
+          多一個啟用開關；排序不放這裡，走 reorder 端點 */}
+      <Modal
+        open={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        title={t.category.editTitle}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)}>{common.cancel}</Button>
+            <Button loading={editSaving} onClick={() => void saveEdit()}>{common.save}</Button>
+          </>
+        }
+      >
+        <FormGroup>
+          <Label required htmlFor="editCategoryName">{t.category.name}</Label>
+          <Input
+            id="editCategoryName" value={editName}
+            placeholder={t.category.namePlaceholder}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label htmlFor="editCategoryDesc">{t.category.description}</Label>
+          <Input
+            id="editCategoryDesc" value={editDescription}
+            placeholder={t.category.descriptionPlaceholder}
+            onChange={(e) => setEditDescription(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <div className="flex items-center gap-2">
+            <Switch id="editCategoryActive" checked={editActive} onCheckedChange={setEditActive} />
+            <Label htmlFor="editCategoryActive">{t.category.editActive}</Label>
+          </div>
+          <FormText>{t.category.editActiveHelp}</FormText>
+        </FormGroup>
+        {editError ? <FormError>{editError}</FormError> : null}
+      </Modal>
+
       <ConfirmModal
         open={!!deleteTarget}
         danger
+        loading={deleting}
         title={common.delete}
         confirmText={common.delete}
         message={t.category.deleteConfirm}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(categories.filter((c) => c.id !== id));
-            void deleteServiceCategory(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
-          }
-          setDeleteTarget(null);
-          toast.show(t.category.deleted);
-        }}
+        onClose={() => { if (!deleting) setDeleteTarget(null); }}
+        onConfirm={() => void removeCategory()}
       />
     </>
   );

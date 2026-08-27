@@ -37,6 +37,10 @@ describe('mapBooking (01 §5.5)', () => {
       source: 'LINE',
       note: '需要停車位',
       created_at: '2026-08-20T00:00:00Z',
+      /* migration 0022（issue #35）：折抵金額與顧客點數餘額 */
+      coupon_discount: '150',
+      points_redeemed: 50,
+      customer_points: 386,
     };
     expect(mapBooking(row)).toEqual({
       id: 'bk_1',
@@ -58,6 +62,9 @@ describe('mapBooking (01 §5.5)', () => {
       source: 'LINE',
       note: '需要停車位',
       createdAt: '2026-08-20T00:00:00Z',
+      couponDiscount: 150,
+      pointsRedeemed: 50,
+      customerPoints: 386,
     });
   });
 
@@ -331,7 +338,15 @@ describe('mapProductOrder (02 §0004 product_orders / product_order_items)', () 
       status: 'CONFIRMED',
       paymentStatus: 'PAID_OFFLINE',
       createdAt: '2026-08-10T00:00:00Z',
+      // migration 0027（issue #33 ①）：這一列沒有 coupon_discount → null
+      couponDiscount: null,
     });
+  });
+
+  it('coupon_discount 有值 → 轉成 number；沒有這一欄 → null（不是 0）', () => {
+    expect(mapProductOrder({ ...fullRow, coupon_discount: '100' }).couponDiscount).toBe(100);
+    expect(mapProductOrder({ ...fullRow, coupon_discount: 0 }).couponDiscount).toBe(0);
+    expect(mapProductOrder(fullRow).couponDiscount).toBeNull();
   });
 
   it('items null（查無明細）→ 空陣列', () => {
@@ -353,6 +368,13 @@ describe('mapCoupon (02 §0004 coupons / coupon_instances)', () => {
     start_at: '2026-08-01T00:00:00Z',
     end_at: '2026-09-01T00:00:00Z',
     status: 'PUBLISHED',
+    /* migration 0022（issue #35）：原站 formModal 既有欄位 */
+    min_order_amount: '1000',
+    max_discount_amount: null,
+    gift_item: '',
+    limit_per_customer: 2,
+    private_mode: true,
+    last_redeemed_code: 'ABC12345',
   };
 
   it('全欄位比對', () => {
@@ -368,6 +390,12 @@ describe('mapCoupon (02 §0004 coupons / coupon_instances)', () => {
       startAt: '2026-08-01T00:00:00Z',
       endAt: '2026-09-01T00:00:00Z',
       status: 'PUBLISHED',
+      minOrderAmount: 1000,
+      maxDiscountAmount: null,
+      giftItem: '',
+      limitPerCustomer: 2,
+      privateMode: true,
+      lastRedeemedCode: 'ABC12345',
     });
   });
 
@@ -399,6 +427,10 @@ describe('mapMembershipLevel (02 §0004 membership_levels)', () => {
     point_rate_multiplier: 1.5,
     customer_count: 87,
     sort_order: 1,
+    /* migration 0022（issue #35）：原站 levelModal 既有欄位 */
+    description: '生日當月贈送護髮體驗一次',
+    active: true,
+    is_default: false,
   };
 
   it('全欄位比對', () => {
@@ -411,6 +443,9 @@ describe('mapMembershipLevel (02 §0004 membership_levels)', () => {
       pointRateMultiplier: 1.5,
       customerCount: 87,
       sortOrder: 1,
+      description: '生日當月贈送護髮體驗一次',
+      active: true,
+      isDefault: false,
     });
   });
 

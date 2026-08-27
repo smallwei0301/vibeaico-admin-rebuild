@@ -19,15 +19,35 @@ export const promotePage = {
     notConfiguredHint: '請先到「店家設定」設定店家代碼，才會有公開預約頁。',
   },
 
+  /* ------------------------------------ 尚未建置：誠實告示（不可省略） */
+  /**
+   * ⚠️ 這一區塊是「誠實化」文案，對應 CLAUDE.md「Never fabricate a known」。
+   * QR Code 已在 issue #16 補齊為真的前端產生（見下方 `qr` 區塊），此處只剩
+   * 「推廣成效」仍是示範資料：MOCK_PROMOTION_STATS 是本檔寫死的示範數字，
+   * 不是實際流量——流量統計後端尚未建置。
+   */
+  notBuilt: {
+    title: '下方「推廣成效」為示範資料',
+    statsBody:
+      '下方「推廣成效」的瀏覽數字是本頁內建的示範資料，不是你的實際流量統計——流量統計後端尚未建置。',
+  },
+
   /* ---------------------------------------------------------- 卡片 2：QR */
+  /**
+   * QR Code：issue #16（補齊-1）補上真的產生與下載，經 `src/lib/qr.ts`
+   * （擁有者裁決安裝 `qrcode` 套件，見 14 分冊 §8.2）。內容＝上方那個
+   * 公開預約網址逐字編碼，不是佔位圖示。
+   */
   qr: {
     heading: '預約 QR Code',
     download: '下載 QR（印門口 / 名片）',
+    generating: '產生中...',
     notReady: 'QR 尚未產生',
-    widgetFailed: 'QR 元件載入失敗',
+    generateFailed: 'QR Code 產生失敗，請稍後重試',
+    downloadFailed: 'QR Code 下載失敗，請稍後重試',
+    downloaded: 'QR Code 已下載',
+    alt: '預約頁 QR Code',
     filename: '預約QRcode.png',
-    confirmTitle: '下載 QR Code',
-    confirmMessage: '將下載「預約QRcode.png」，可直接列印張貼於門口或名片上。',
   },
 
   /* ------------------------------------------------------ 卡片 3：各通路 */
@@ -132,7 +152,6 @@ export const promotePage = {
     copied: '已複製',
     urlCopied: '網址已複製',
     copyFailed: '複製失敗，請手動複製',
-    downloadStarted: (filename: string) => `QR Code 已開始下載（${filename}）`,
     loadPromotionFailed: '載入推廣資料失敗:',
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',

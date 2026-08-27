@@ -16,15 +16,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, FormText, Input, Label, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listTourOrders } from '@/services/tours';
-import { MOCK_TRIPS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS } from '@/mock/tours';
+import {
+  cancelTourOrder, completeTourOrder, confirmTourOrderPayment, createManualTourOrder,
+  getTourOrderSummary, listTourOrders, listTripDepartures, listTripPlans, listTrips,
+  type TourOrderSummary,
+} from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
-  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, TripPlan,
+  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
+  Trip, TripDeparture, TripPlan,
 } from '@/lib/types';
 
 const PAGE_SIZE = 20;
@@ -32,6 +36,10 @@ const PAGE_SIZE = 20;
 /**
  * 應收定金（10 分冊 §1）：每人計價 → 定金×人數；每團計價 → 收一筆。
  * FULL = 全額線上收（定金欄位記 0）；NONE = 不線上收。
+ *
+ * ⚠️ 這裡算的是**下單前的預覽**。實際存進資料庫的金額一律由後端
+ * （rpc `create_tour_order`）依方案現值重算，前端送什麼都不採信——
+ * 所以建立成功之後畫面用的是端點回傳的那一筆，不是這個預覽值。
  */
 function depositOf(plan: TripPlan, total: number, partySize = 1): number {
   if (plan.depositMode === 'DEPOSIT_FIXED') {
@@ -53,13 +61,6 @@ const SOURCE_TONE: Record<TourOrderSource, 'primary' | 'info' | 'success' | 'neu
   MIDAO: 'primary', VIBEAI_SHOP: 'info', LINE: 'success', MANUAL: 'neutral',
 };
 
-/** 骨架用：收款方式取自 /tenant/payment-methods 設定 */
-const MOCK_PAYMENT_METHODS = [
-  { id: 'pm_2', label: '國泰世華銀行轉帳' },
-  { id: 'pm_3', label: '線上刷卡付款' },
-  { id: 'pm_1', label: 'LINE Pay' },
-];
-
 export default function TourOrdersPage() {
   const toast = useToast();
   const businessType = useBusinessType();
@@ -80,10 +81,25 @@ export default function TourOrdersPage() {
     { kind: 'confirmPayment' | 'complete' | 'cancel'; order: TourOrder } | null
   >(null);
 
-  const [draft, setDraft] = React.useState({
+  const emptyDraft = {
     tripId: '', planId: '', departureId: '', customerName: '',
-    customerPhone: '', partySize: 2, paymentMethodId: MOCK_PAYMENT_METHODS[0].id, note: '',
-  });
+    customerPhone: '', partySize: 2, note: '',
+  };
+  const [draft, setDraft] = React.useState(emptyDraft);
+  /** 有寫入請求在飛：確認鈕轉圈並鎖住，避免重複送出 */
+  const [busy, setBusy] = React.useState(false);
+
+  /**
+   * 統計卡的數字。
+   *
+   * `null` = 還沒載回來，畫面顯示「--」而不是 0：0 是有意義的答案
+   * （「真的沒有待處理訂單」），拿它當「還沒載入」會讓使用者在載入的那一瞬間
+   * 讀到一個錯誤的事實。
+   *
+   * 數字來自 `GET /api/tour-orders/summary`（全店統計），不是當前這一頁的
+   * 20 筆——舊版拿 `rows` 去 filter/reduce，第 2 頁以後的訂單完全沒被算到。
+   */
+  const [summary, setSummary] = React.useState<TourOrderSummary | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -101,47 +117,98 @@ export default function TourOrdersPage() {
     }
   }, [page, keyword, statusFilter, sourceFilter, paymentFilter, toast]);
 
-  React.useEffect(() => { void load(); }, [load]);
+  const loadSummary = React.useCallback(async () => {
+    try {
+      setSummary(await getTourOrderSummary());
+    } catch {
+      // 統計載不到就維持 null（畫面顯示「--」）。不要退回 0——那會宣稱
+      // 一個我們沒有查到的事實。列表本身的錯誤已由 load() 提示過。
+      setSummary(null);
+    }
+  }, []);
 
-  /* --------------------------------------------------------------- 統計 */
-  const stats = React.useMemo(() => {
-    const now = new Date();
-    const in7 = new Date(now.getTime() + 7 * 86_400_000);
-    return {
-      pending: rows.filter((o) => o.status === 'PENDING').length,
-      unpaid: rows.filter((o) => o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED').length,
-      upcoming: rows.filter((o) => {
-        const d = new Date(o.departsOn);
-        return o.status === 'CONFIRMED' && d >= now && d <= in7;
-      }).length,
-      revenue: rows
-        .filter((o) => o.paymentStatus === 'PAID'
-          && o.createdAt.slice(0, 7) === now.toISOString().slice(0, 7))
-        .reduce((sum, o) => sum + o.totalAmount, 0),
-    };
-  }, [rows]);
+  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => { void loadSummary(); }, [loadSummary]);
+
+  /* --------------------------------------------------- 手動建單的資料源 */
+  /**
+   * 行程／方案／團次一律走 services（`adapt(mock, real)`）。
+   * 舊版直接 import `@/mock/tours` 的 MOCK_* 陣列，於是在真實模式下，
+   * 手動建單的下拉選單列的是**示範資料裡的行程**——選了送出必然失敗，
+   * 而且會讓店家以為系統裡有那些行程。
+   */
+  const [tripOptions, setTripOptions] = React.useState<Trip[]>([]);
+  const [planOptions, setPlanOptions] = React.useState<TripPlan[]>([]);
+  const [departureOptions, setDepartureOptions] = React.useState<TripDeparture[]>([]);
+
+  React.useEffect(() => {
+    if (!createOpen) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const list = await listTrips();
+        if (alive) setTripOptions(list.filter((tr) => tr.status !== 'ARCHIVED'));
+      } catch {
+        if (alive) setTripOptions([]);
+      }
+    })();
+    return () => { alive = false; };
+  }, [createOpen]);
+
+  React.useEffect(() => {
+    if (!draft.tripId) { setPlanOptions([]); setDepartureOptions([]); return; }
+    let alive = true;
+    void (async () => {
+      try {
+        const [pl, dp] = await Promise.all([
+          listTripPlans(draft.tripId), listTripDepartures(draft.tripId),
+        ]);
+        if (!alive) return;
+        setPlanOptions(pl.filter((p) => p.active));
+        setDepartureOptions(dp);
+      } catch {
+        if (alive) { setPlanOptions([]); setDepartureOptions([]); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [draft.tripId]);
 
   /* ----------------------------------------------------------- 狀態動作 */
-  const runAction = () => {
+  const failMessage = (e: unknown) =>
+    (e instanceof Error && e.message ? e.message : t.messages.loadFailed);
+
+  /**
+   * 三個狀態動作全部 **await 端點成功之後**才改畫面與 toast（00 鐵則 12）。
+   * 修改前它們只改本地 state：畫面顯示「已確認收款」，資料庫沒有任何變化，
+   * 名額也沒有被釋放——重整就打回原形。
+   */
+  const runAction = async () => {
     if (!action) return;
     const { kind, order } = action;
-    setRows((prev) => prev.map((o) => {
-      if (o.id !== order.id) return o;
-      if (kind === 'confirmPayment') return { ...o, paymentStatus: 'PAID', status: 'CONFIRMED', holdExpiresAt: null };
-      if (kind === 'complete') return { ...o, status: 'COMPLETED' };
-      return { ...o, status: 'CANCELLED' };
-    }));
-    toast.show(
-      kind === 'confirmPayment' ? t.messages.paymentConfirmed
-        : kind === 'complete' ? t.messages.completed
-          : t.messages.cancelled,
-    );
-    setAction(null);
+    setBusy(true);
+    try {
+      const updated = kind === 'confirmPayment' ? await confirmTourOrderPayment(order.id)
+        : kind === 'complete' ? await completeTourOrder(order.id)
+          : await cancelTourOrder(order.id);
+      setRows((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+      setDetail((d) => (d && d.id === updated.id ? updated : d));
+      toast.show(
+        kind === 'confirmPayment' ? t.messages.paymentConfirmed
+          : kind === 'complete' ? t.messages.completed
+            : t.messages.cancelled,
+      );
+      setAction(null);
+      void loadSummary();
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   /* ------------------------------------------------------- 手動建立訂單 */
-  const draftPlans = MOCK_TRIP_PLANS.filter((p) => p.tripId === draft.tripId);
-  const draftDepartures = MOCK_TRIP_DEPARTURES.filter(
+  const draftPlans = planOptions.filter((p) => p.tripId === draft.tripId);
+  const draftDepartures = departureOptions.filter(
     (d) => d.planId === draft.planId && d.status === 'OPEN' && d.capacity > d.seatsBooked,
   );
   const draftPlan = draftPlans.find((p) => p.id === draft.planId);
@@ -150,32 +217,30 @@ export default function TourOrdersPage() {
     : 0;
   const draftDeposit = draftPlan ? depositOf(draftPlan, draftTotal, draft.partySize) : 0;
 
-  const submitDraft = () => {
-    const trip = MOCK_TRIPS.find((x) => x.id === draft.tripId);
-    const departure = draftDepartures.find((d) => d.id === draft.departureId);
-    if (!trip || !draftPlan || !departure) return;
-    const order: TourOrder = {
-      id: `to_new_${rows.length + 1}`,
-      orderNo: `T${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${String(rows.length + 1).padStart(4, '0')}`,
-      tripId: trip.id, tripTitle: trip.title, planName: draftPlan.name,
-      departsOn: departure.departsOn, startTime: departure.startTime,
-      customerName: draft.customerName, customerPhone: draft.customerPhone,
-      partySize: draft.partySize,
-      unitPrice: draftPlan.basePrice, totalAmount: draftTotal,
-      depositAmount: draftDeposit,
-      status: 'PENDING', paymentStatus: 'UNPAID',
-      paymentMethodLabel: MOCK_PAYMENT_METHODS.find((m) => m.id === draft.paymentMethodId)?.label ?? '',
-      paymentRef: '', source: 'MANUAL', holdExpiresAt: null,
-      note: draft.note, createdAt: new Date().toISOString(),
-    };
-    setRows((prev) => [order, ...prev]);
-    setTotal((n) => n + 1);
-    setCreateOpen(false);
-    setDraft({
-      tripId: '', planId: '', departureId: '', customerName: '',
-      customerPhone: '', partySize: 2, paymentMethodId: MOCK_PAYMENT_METHODS[0].id, note: '',
-    });
-    toast.show(t.messages.created);
+  const submitDraft = async () => {
+    if (!draft.departureId) return;
+    setBusy(true);
+    try {
+      // 只送「後端無法自己推導」的欄位。金額、單號、行程/方案 id 都由後端
+      // 依 departureId 查出來並重算，前端送了也不會被採信。
+      const order = await createManualTourOrder({
+        departureId: draft.departureId,
+        customerName: draft.customerName.trim(),
+        customerPhone: draft.customerPhone.trim(),
+        partySize: draft.partySize,
+        note: draft.note,
+      });
+      setRows((prev) => [order, ...prev]);
+      setTotal((n) => n + 1);
+      setCreateOpen(false);
+      setDraft(emptyDraft);
+      toast.show(t.messages.created);
+      void loadSummary();
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const columns: Column<TourOrder>[] = [
@@ -239,7 +304,9 @@ export default function TourOrdersPage() {
               {t.depositBadge} {formatCurrency(o.depositAmount)}
             </div>
           ) : null}
-          <div className="mt-0.5 truncate text-2xs text-secondary">{o.paymentMethodLabel}</div>
+          <div className="mt-0.5 truncate text-2xs text-secondary">
+            {o.paymentMethodLabel || t.detail.noMethod}
+          </div>
           {o.holdExpiresAt ? (
             <div className="text-2xs text-warning">
               {t.hold.expiring(formatDateTime(o.holdExpiresAt))}
@@ -311,10 +378,27 @@ export default function TourOrdersPage() {
       />
 
       <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t.stats.pending} value={formatNumber(stats.pending)} icon={ClipboardList} tone="warning" />
-        <StatCard label={t.stats.unpaid} value={formatNumber(stats.unpaid)} icon={Wallet} tone="danger" />
-        <StatCard label={t.stats.upcoming} value={formatNumber(stats.upcoming)} icon={CalendarClock} tone="info" />
-        <StatCard label={t.stats.monthRevenue} value={formatCurrency(stats.revenue)} icon={BadgeDollarSign} tone="success" />
+        {/*
+          summary === null 代表「還沒載回來 / 查不到」，一律顯示 t.stats.unknown（--）。
+          這裡刻意不退回 0：0 是有意義的答案（真的沒有待處理訂單），
+          拿它當「尚未載入」會在載入的那一瞬間宣稱一件我們還不知道的事。
+        */}
+        <StatCard
+          label={t.stats.pending} icon={ClipboardList} tone="warning"
+          value={summary ? formatNumber(summary.pending) : t.stats.unknown}
+        />
+        <StatCard
+          label={t.stats.unpaid} icon={Wallet} tone="danger"
+          value={summary ? formatNumber(summary.unpaid) : t.stats.unknown}
+        />
+        <StatCard
+          label={t.stats.upcoming} icon={CalendarClock} tone="info"
+          value={summary ? formatNumber(summary.upcoming) : t.stats.unknown}
+        />
+        <StatCard
+          label={t.stats.monthRevenue} icon={BadgeDollarSign} tone="success"
+          value={summary ? formatCurrency(summary.monthRevenue) : t.stats.unknown}
+        />
       </div>
 
       <DataTableContainer>
@@ -422,7 +506,8 @@ export default function TourOrdersPage() {
                     </dd>
                   </>
                 ) : null}
-                <dt className="text-secondary">{t.detail.fields.method}</dt><dd>{detail.paymentMethodLabel}</dd>
+                <dt className="text-secondary">{t.detail.fields.method}</dt>
+                <dd>{detail.paymentMethodLabel || <span className="text-muted">{t.detail.noMethod}</span>}</dd>
                 <dt className="text-secondary">{t.detail.fields.ref}</dt>
                 <dd>{detail.paymentRef || <span className="text-muted">{t.detail.noRef}</span>}</dd>
                 <dt className="text-secondary">{t.detail.fields.createdAt}</dt>
@@ -449,7 +534,8 @@ export default function TourOrdersPage() {
           <>
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>{common.cancel}</Button>
             <Button
-              onClick={submitDraft}
+              loading={busy}
+              onClick={() => { void submitDraft(); }}
               disabled={!draft.departureId || !draft.customerName || !draft.customerPhone}
             >
               {t.create.submit}
@@ -467,7 +553,7 @@ export default function TourOrdersPage() {
               onChange={(e) => setDraft({ ...draft, tripId: e.target.value, planId: '', departureId: '' })}
             >
               <option value="">{t.create.tripLabel}</option>
-              {MOCK_TRIPS.map((tr) => <option key={tr.id} value={tr.id}>{tr.title}</option>)}
+              {tripOptions.map((tr) => <option key={tr.id} value={tr.id}>{tr.title}</option>)}
             </Select>
           </FormGroup>
 
@@ -526,15 +612,12 @@ export default function TourOrdersPage() {
               />
             </FormGroup>
             <FormGroup>
-              <Label required>{t.create.paymentLabel}</Label>
-              <Select
-                value={draft.paymentMethodId}
-                onChange={(e) => setDraft({ ...draft, paymentMethodId: e.target.value })}
-              >
-                {MOCK_PAYMENT_METHODS.map((m) => (
-                  <option key={m.id} value={m.id}>{m.label}</option>
-                ))}
-              </Select>
+              <Label>{t.create.paymentLabel}</Label>
+              {/*
+                收款方式沒有可選的來源（tenant_payment_methods 屬 issue #9，尚未建表），
+                所以這裡不給一組編出來的選項，而是如實說明。
+              */}
+              <FormText>{t.create.paymentNotAvailable}</FormText>
             </FormGroup>
           </div>
 
@@ -565,7 +648,8 @@ export default function TourOrdersPage() {
       <ConfirmModal
         open={!!action}
         onClose={() => setAction(null)}
-        onConfirm={runAction}
+        loading={busy}
+        onConfirm={() => { void runAction(); }}
         title={
           action?.kind === 'confirmPayment' ? t.confirm.confirmPaymentTitle
             : action?.kind === 'complete' ? t.confirm.completeTitle

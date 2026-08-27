@@ -19,13 +19,17 @@ import { FormError, FormGroup, FormText, Input, Label, Select } from '@/componen
 import { useToast } from '@/components/ui/Toast';
 import { listProductOrders, listProducts, listStaff } from '@/services/catalog';
 import {
+  applyProductOrderCoupon,
   cancelProductOrder, completeProductOrder, confirmProductOrder,
   createManualProductOrder, markProductOrderPaidOffline,
+  type ProductOrderNotifyOutcome,
 } from '@/services/products';
 import { listCustomers } from '@/services/customers';
 import { listBookings } from '@/services/bookings';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { navLabel, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
 import { productOrdersPage as t } from '@/i18n/zh-TW/pages/product-orders';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type { Booking, Customer, Product, ProductOrder, ProductOrderStatus, Staff } from '@/lib/types';
@@ -67,6 +71,20 @@ type OrderExtras = {
   fromBooking: boolean;
 };
 
+/**
+ * 手動建單勾選「LINE 通知顧客消費明細」後，後端回報的實際結果 → 要顯示的 toast
+ * （issue #27 ③）。'NONE' 不在表內：沒勾選就沒有任何事發生，也就沒有話要說。
+ */
+const NOTIFY_TOAST: Partial<Record<ProductOrderNotifyOutcome, {
+  message: string; tone: 'info' | 'warning' | 'danger';
+}>> = {
+  LINE: { message: t.messages.notifyResult.line, tone: 'info' },
+  EMAIL: { message: t.messages.notifyResult.email, tone: 'info' },
+  NO_CONTACT: { message: t.messages.notifyResult.noContact, tone: 'warning' },
+  QUOTA_EXCEEDED: { message: t.messages.notifyResult.quotaExceeded, tone: 'warning' },
+  FAILED: { message: t.messages.notifyResult.failed, tone: 'danger' },
+};
+
 const DEFAULT_EXTRAS: OrderExtras = {
   lineUserId: null, staffName: null, paymentMethodName: null, bookingId: null,
   note: '', taxId: '', deliveryType: 'PICKUP', shippingAddress: '',
@@ -74,12 +92,28 @@ const DEFAULT_EXTRAS: OrderExtras = {
   completedAt: null, cancelReason: '', cancelledAt: null, fromBooking: false,
 };
 
+/**
+ * 商品訂單線上刷卡付款在原站是真實功能（`docs/specs/settings.json` 的
+ * `productOnlinePaymentEnabled`、`docs/specs/product-orders.json:486-535`），
+ * 但查過 `docs/integration/00`–`13` 分冊與現有 GitHub issue（#9 導遊自訂金流僅
+ * 涵蓋「收款方式」設定頁本身，不含商品訂單 checkout；#12 旅客 checkout 明確
+ * 限定行程／團次訂單，不含商品訂單）——**沒有任何一冊或一個 issue 規劃它**。
+ * 不同於 bookings 頁的同型缺陷（issue #28 ②可以指向 #12），這裡沒有可以誠實
+ * 指向的追蹤項目，所以不虛構一個。
+ *
+ * 因此示範資料不放一個看起來像真的網址：這個值只當「這張示範訂單原本會需要
+ * 線上付款」的旗標，複製鈕改為停用並如實標示「線上付款尚未建置」
+ * （見下方 `payLinkNotBuilt` 按鈕），不再讓店家複製到一個打開是 404 的網址、
+ * 還被告知「可傳給顧客用手機刷卡」。
+ */
+const PAY_LINK_NOT_BUILT = '__ONLINE_PAYMENT_NOT_BUILT__';
+
 const MOCK_ORDER_EXTRAS: Record<string, Partial<OrderExtras>> = {
   po_1: {
     lineUserId: 'U123',
     staffName: 'Amy',
     note: '顧客指定週五取貨',
-    payLink: 'https://pay.vibeaico.com/o/PO20260820001',
+    payLink: PAY_LINK_NOT_BUILT,
     payDueAt: '2026-08-21T18:00:00+08:00',
   },
   po_2: {
@@ -107,6 +141,14 @@ const toRow = (o: ProductOrder): OrderRow => ({
   ...o,
   ...DEFAULT_EXTRAS,
   ...(MOCK_ORDER_EXTRAS[o.id] ?? {}),
+  /*
+   * 票券折抵**優先取後端回的值**（issue #33 ①：product_orders.coupon_discount，
+   * migration 0027）。mock 模式沒有這個欄位（undefined），才退回頁內示範值；
+   * 兩者都沒有就是 0，畫面顯示「無」。
+   */
+  couponDiscount: o.couponDiscount
+    ?? MOCK_ORDER_EXTRAS[o.id]?.couponDiscount
+    ?? DEFAULT_EXTRAS.couponDiscount,
 });
 
 const STATUS_TONE: Record<ProductOrderStatus, 'warning' | 'info' | 'success' | 'neutral'> = {
@@ -128,6 +170,7 @@ type PendingAction =
   | { kind: 'CANCEL'; order: OrderRow };
 
 export default function ProductOrdersPage() {
+  const businessType = useBusinessType();
   const toast = useToast();
 
   const [rows, setRows] = React.useState<OrderRow[]>([]);
@@ -172,15 +215,12 @@ export default function ProductOrdersPage() {
   const patchOrder = (id: string, patch: Partial<OrderRow>) =>
     setRows((list) => list.map((o) => (o.id === id ? { ...o, ...patch } : o)));
 
-  const copyPayLink = async (o: OrderRow) => {
-    if (!o.payLink) { toast.show(t.messages.noPayLink, 'warning'); return; }
-    try {
-      await navigator.clipboard.writeText(o.payLink);
-      toast.show(t.messages.payLinkCopied);
-    } catch {
-      toast.show(t.messages.copyPayLinkManually, 'warning');
-    }
-  };
+  /*
+   * 商品訂單線上付款尚未建置（見 PAY_LINK_NOT_BUILT 旁的說明）。原本這裡是
+   * `copyPayLink`：把 o.payLink 寫進剪貼簿並宣稱「可傳給顧客用手機刷卡」——
+   * 但沒有任何後端會產生真的付款連結，那句話是假的已知。故意不留一個
+   * 「複製了什麼但不說是幹嘛用的」半吊子按鈕：下方按鈕直接停用＋誠實標示。
+   */
 
   const runPendingAction = async () => {
     if (!pendingAction) return;
@@ -223,7 +263,7 @@ export default function ProductOrdersPage() {
         <div className="min-w-0">
           <div className="font-semibold text-dark">{o.orderNo}</div>
           {o.fromBooking ? (
-            <div className="text-2xs text-secondary">{t.labels.fromBooking}</div>
+            <div className="text-2xs text-secondary">{resolveNavTerms(t.labels.fromBooking, businessType)}</div>
           ) : null}
           {o.payDueAt ? (
             <div className="text-2xs text-danger">{t.labels.payDue(formatDateTime(o.payDueAt))}</div>
@@ -318,9 +358,8 @@ export default function ProductOrdersPage() {
           ) : null}
           {o.payLink ? (
             <Button
-              variant="outline" size="sm"
-              title={t.actions.copyPayLink} aria-label={t.actions.copyPayLink}
-              onClick={() => void copyPayLink(o)}
+              variant="outline" size="sm" disabled
+              title={t.actions.payLinkNotBuilt} aria-label={t.actions.payLinkNotBuilt}
             >
               <Copy size={13} />
             </Button>
@@ -362,7 +401,7 @@ export default function ProductOrdersPage() {
   return (
     <>
       <PageHeader
-        eyebrow={nav.navOperation}
+        eyebrow={navLabel('navOperation', businessType)}
         title={t.title}
         actions={
           <Button onClick={() => setManualOpen(true)}>
@@ -428,11 +467,19 @@ export default function ProductOrdersPage() {
       <CompleteOrderModal
         order={completeTarget}
         onClose={() => setCompleteTarget(null)}
-        onCompleted={(order, discount) => {
+        onCompleted={(order, appliedDiscount) => {
+          /*
+           * issue #33 ①：折抵金額來自 POST /api/product-orders/:id/apply-coupon
+           * 的回應（後端算的），沒有套券時是 null——此時只更新狀態，
+           * 不動 couponDiscount，也不做 "+ 0" 這種沒有意義的運算。
+           */
           patchOrder(order.id, {
             status: 'COMPLETED',
-            couponDiscount: order.couponDiscount + discount,
             completedAt: new Date().toISOString(),
+            ...(appliedDiscount === null ? {} : {
+              couponDiscount: order.couponDiscount + appliedDiscount,
+              totalAmount: order.totalAmount - appliedDiscount,
+            }),
           });
           setCompleteTarget(null);
         }}
@@ -496,6 +543,12 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 }
 
 function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose: () => void }) {
+  /**
+   * 「來源預約」連到父層級的訂單頁（14 分冊 §8.13）——嚮導的 /tenant/bookings
+   * 在他的 hiddenNavKeys 裡，寫死會把他導去自己選單中不存在的頁面。
+   */
+  const detailBusinessType = useBusinessType();
+  const ordersHref = MODE_PRESETS[detailBusinessType].ordersHref;
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
@@ -521,7 +574,7 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
         <>
           {order.fromBooking ? (
             <Alert tone="info" className="mb-3">
-              <Link className="underline" href="/tenant/bookings">{t.labels.fromBooking}</Link>
+              <Link className="underline" href={ordersHref}>{resolveNavTerms(t.labels.fromBooking, detailBusinessType)}</Link>
             </Alert>
           ) : null}
 
@@ -573,9 +626,9 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
             <DetailRow label={f.staff}>
               {order.staffName ?? <span className="text-muted">{t.labels.notProvided}</span>}
             </DetailRow>
-            <DetailRow label={f.relatedBooking}>
+            <DetailRow label={resolveNavTerms(f.relatedBooking, detailBusinessType)}>
               {order.bookingId
-                ? <Link className="underline" href="/tenant/bookings">{order.bookingId}</Link>
+                ? <Link className="underline" href={ordersHref}>{order.bookingId}</Link>
                 : <span className="text-muted">{t.labels.none}</span>}
             </DetailRow>
             <DetailRow label={f.taxId}>
@@ -617,7 +670,8 @@ function CompleteOrderModal({
 }: {
   order: OrderRow | null;
   onClose: () => void;
-  onCompleted: (order: OrderRow, discount: number) => void;
+  /** appliedDiscount：後端回的折抵金額；null = 這次沒有套券（或示範模式） */
+  onCompleted: (order: OrderRow, appliedDiscount: number | null) => void;
 }) {
   const toast = useToast();
   const [code, setCode] = React.useState('');
@@ -638,20 +692,38 @@ function CompleteOrderModal({
     }
     setError('');
     setBusy(true);
+    /*
+     * 原站是**兩段獨立的請求**：先 apply-coupon、再 complete，第二段可以單獨
+     * 失敗而第一段已經生效（jsStrings[77]「票券已套用，但「完成訂單」失敗：」）。
+     * 這裡照同一個語意——所以兩段各有自己的 try，不能包成一個。
+     */
+    let applied: number | null = null;
+    if (withCoupon) {
+      try {
+        const res = await applyProductOrderCoupon(order.id, code.trim());
+        // res === null 只發生在示範模式（services/products.ts 的 mock 分支）：
+        // 沒有票券資料可查，就不宣稱套用了什麼。
+        if (res === null) {
+          toast.show(t.complete.couponMockOnly, 'warning');
+        } else {
+          applied = res.couponDiscount;
+          // 金額來自後端回應的 couponDiscount，前端只負責格式化。
+          toast.show(t.complete.couponApplied(formatCurrency(applied)));
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t.messages.actionFailed);
+        setBusy(false);
+        return; // 套券失敗就不往下完成訂單（原站的兩顆鈕本來就分得開）
+      }
+    }
     try {
-      /* 票券折抵後端尚無端點，折抵金額維持前端狀態；完成取貨走真 API */
       await completeProductOrder(order.id);
-      const discount = withCoupon ? 100 : 0;
-      if (withCoupon) toast.show(t.complete.couponApplied(formatCurrency(discount)));
       toast.show(t.messages.completed);
-      onCompleted(order, discount);
+      onCompleted(order, applied);
     } catch (e) {
-      toast.show(
-        withCoupon
-          ? `${t.complete.couponAppliedButFailed}${e instanceof Error ? e.message : t.messages.unknownError}`
-          : (e instanceof Error ? e.message : t.messages.actionFailed),
-        'danger',
-      );
+      const msg = e instanceof Error ? e.message : t.messages.actionFailed;
+      // 票券已經核銷掉了，這一句必須說出來，否則店家會以為票券還在。
+      toast.show(applied === null ? msg : `${t.complete.couponAppliedButFailed}${msg}`, 'danger');
     } finally {
       setBusy(false);
     }
@@ -685,6 +757,7 @@ function CompleteOrderModal({
           id="orderCouponCode" value={code}
           onChange={(e) => setCode(e.target.value)}
         />
+        <FormText>{t.complete.couponHelp}</FormText>
       </FormGroup>
 
       {error ? <FormError>{error}</FormError> : null}
@@ -828,6 +901,7 @@ function ManualOrderModal({
       const created = await createManualProductOrder({
         customerId: id,
         items: items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        notifyCustomer: notify,
       });
       /* 勾選「已收款並完成」→ 後端建單固定 PENDING/UNPAID，補打狀態端點對齊 */
       if (paidCompleted) {
@@ -836,7 +910,12 @@ function ManualOrderModal({
       }
       onCreated({ ...build(customerName, id), id: created.id, orderNo: created.orderNo });
       toast.show(paidCompleted ? t.messages.created : t.messages.createdNotCompleted);
-      if (notify) toast.show(t.manual.notify, 'info');
+      // 通知結果照後端**實際做了什麼**顯示（issue #27 ③）。以前這裡是把勾選框的
+      // 標籤原句再 toast 一次，讀起來像「已通知」，但後端根本沒接任何通知。
+      if (notify) {
+        const r = NOTIFY_TOAST[created.notify];
+        if (r) toast.show(r.message, r.tone);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.createOrderFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,

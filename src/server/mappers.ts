@@ -15,6 +15,8 @@
 
 import type {
   Booking,
+  BookingAddon,
+  BookingAddonNotifyOutcome,
   Customer,
   Service,
   Staff,
@@ -25,6 +27,15 @@ import type {
   PointTransaction,
   StaffPerformance,
   TenantSummary,
+  Trip,
+  TripPlan,
+  TripPlanSeason,
+  TripFaqItem,
+  TripSocialProofQuote,
+  TripPlanItineraryStep,
+  TripDeparture,
+  TripAddon,
+  TourOrder,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ 預約 */
@@ -39,6 +50,40 @@ export function mapBooking(r: any): Booking {
     price: r.price, finalPrice: r.final_price,
     status: r.status, paymentStatus: r.payment_status, source: r.source,
     note: r.note ?? '', createdAt: r.created_at,
+    /*
+     * issue #35：三個欄位以前是 bookings 頁的頁內常數（BOOKING_EXTRAS_*）。
+     * `?? null` 而**不是** `?? 0`：`null` 是「沒有紀錄」，0 是「折抵了 0 元」，
+     * 兩者在畫面上是不同的答案（CLAUDE.md「Never fabricate a known」）。
+     */
+    couponDiscount: r.coupon_discount == null ? null : Number(r.coupon_discount),
+    pointsRedeemed: r.points_redeemed == null ? null : Number(r.points_redeemed),
+    customerPoints: r.customer_points == null ? null : Number(r.customer_points),
+  };
+}
+
+/**
+ * 預約加購明細（`booking_addons`，migration 0020；04 分冊 §B-1.1）。
+ * 來源：booking_addons + 巢狀 join `staff(name)`。巢狀 join 在無 Database 型別
+ * 時被靜態推成陣列、實際為多對一物件（同 apply-coupon/route.ts 的說明），
+ * 這裡收 `any` 直接取用。
+ *
+ * 放在 mappers.ts 而不是 route 檔內：Next.js route 檔只能 export HTTP method
+ * （build 會驗證匯出形狀），而 GET/POST 與 DELETE 兩支路由都要用同一個 mapper。
+ */
+export function mapBookingAddon(r: any): BookingAddon {
+  return {
+    id: r.id,
+    serviceId: r.service_id,
+    name: r.name,
+    price: Number(r.price),
+    quantity: Number(r.quantity),
+    durationMinutes: Number(r.duration_minutes),
+    staffId: r.staff_id,
+    staffName: r.staff?.name ?? null,
+    appliedAmount: Number(r.applied_amount),
+    appliedMinutes: Number(r.applied_minutes),
+    notified: r.notified as BookingAddonNotifyOutcome,
+    createdAt: r.created_at,
   };
 }
 
@@ -86,6 +131,8 @@ export function mapService(r: any): Service {
     active: r.active,
     lineFeatured: r.line_featured,
     sortOrder: r.sort_order,
+    // 0017 新增；查詢未取這一欄時維持 undefined（不補 0 假裝有排序）
+    lineSortOrder: r.line_sort_order,
   };
 }
 
@@ -122,6 +169,8 @@ export function mapProduct(r: any): Product {
     active: r.active,
     lineFeatured: r.line_featured,
     sortOrder: r.sort_order,
+    // 0017 新增；查詢未取這一欄時維持 undefined（不補 0 假裝有排序）
+    lineSortOrder: r.line_sort_order,
   };
 }
 
@@ -143,6 +192,8 @@ export function mapProductOrder(r: any): ProductOrder {
     status: r.status,
     paymentStatus: r.payment_status,
     createdAt: r.created_at,
+    // migration 0027：null = 沒有折抵紀錄，不轉成 0（0 會被讀成「折抵了 0 元」）
+    couponDiscount: r.coupon_discount == null ? null : Number(r.coupon_discount),
   };
 }
 
@@ -163,6 +214,14 @@ export function mapCoupon(r: any): Coupon {
     startAt: r.start_at ?? '',
     endAt: r.end_at ?? '',
     status: r.status,
+    /* --- migration 0022（issue #35）--- */
+    minOrderAmount: r.min_order_amount == null ? null : Number(r.min_order_amount),
+    maxDiscountAmount: r.max_discount_amount == null ? null : Number(r.max_discount_amount),
+    giftItem: r.gift_item ?? '',
+    limitPerCustomer: r.limit_per_customer == null ? null : Number(r.limit_per_customer),
+    privateMode: r.private_mode ?? false,
+    /** 由 route 依 coupon_instances 算出後附掛；沒有已核銷實例 → null */
+    lastRedeemedCode: r.last_redeemed_code ?? null,
   };
 }
 
@@ -179,6 +238,10 @@ export function mapMembershipLevel(r: any): MembershipLevel {
     pointRateMultiplier: r.point_rate_multiplier,
     customerCount: r.customer_count ?? 0,
     sortOrder: r.sort_order,
+    /* --- migration 0022（issue #35）--- */
+    description: r.description ?? '',
+    active: r.active ?? true,
+    isDefault: r.is_default ?? false,
   };
 }
 
@@ -234,5 +297,181 @@ export function mapTenantSummary(r: any, activeTenantId?: string): TenantSummary
     current: r.tenant_id === activeTenantId,
     businessType: r.tenants.business_type ?? undefined,
     extraModules: r.tenants.extra_modules ?? undefined,
+  };
+}
+
+/* -------------------------------------------------------------------------- *
+ * 行程領域（Phase 8a，migration 0016）                                        *
+ * -------------------------------------------------------------------------- */
+
+/** jsonb 陣列欄位防呆：DB 若存了非陣列（不該發生）也不要讓整頁掛掉。 */
+const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+
+/**
+ * trips 列 → Trip。
+ *
+ * `planCount` / `minPrice` / `upcomingDepartureCount` 是衍生欄位，不在 trips 表上，
+ * 一律由查詢端聚合後以第二參數傳進來（planCount/minPrice 走 join trip_plans，
+ * upcomingDepartureCount 走 join trip_departures，migration 0026 起可用）。
+ *
+ * ⚠️ 沒傳第二參數時三者都是 0。這在「剛建立的行程」是正確答案（真的是 0），
+ * 但在**列表查詢忘了 join** 時會變成一個看起來合理的假數字。所以
+ * `GET /api/trips` 與 `GET /api/trips/[id]` 一定要帶著聚合結果呼叫，
+ * 新增其他呼叫端時同理。
+ */
+export function mapTrip(
+  r: any,
+  derived: { planCount?: number; minPrice?: number; upcomingDepartureCount?: number } = {},
+): Trip {
+  return {
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    tagline: r.tagline ?? '',
+    summary: r.summary ?? '',
+    description: r.description ?? '',
+    region: r.region ?? '',
+    category: r.category ?? '',
+    coverImageUrl: r.cover_image_url ?? '',
+    galleryUrls: arr<string>(r.gallery),
+    meetingPoint: r.meeting_point ?? '',
+    meetingPointMapUrl: r.meeting_point_map_url ?? '',
+    inclusions: arr<string>(r.inclusions),
+    exclusions: arr<string>(r.exclusions),
+    notices: arr<string>(r.notices),
+    safetyNotice: r.safety_notice ?? '',
+    refundPolicyType: r.refund_policy_type ?? 'STANDARD',
+    status: r.status,
+    midaoListing: r.midao_listing ?? 'NONE',
+    midaoListingNote: r.midao_listing_note ?? '',
+    planCount: derived.planCount ?? 0,
+    upcomingDepartureCount: derived.upcomingDepartureCount ?? 0,
+    minPrice: derived.minPrice ?? 0,
+    updatedAt: r.updated_at,
+    goodFor: arr<string>(r.good_for),
+    faq: arr<TripFaqItem>(r.faq),
+    socialProofQuotes: arr<TripSocialProofQuote>(r.social_proof_quotes),
+    durationMinutes: r.duration_minutes ?? undefined,
+    refundRules: arr<string>(r.refund_rules),
+  };
+}
+
+/** trip_plans 列 → TripPlan。 */
+export function mapTripPlan(r: any): TripPlan {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    description: r.description ?? '',
+    durationMinutes: r.duration_minutes ?? 60,
+    priceType: r.price_type ?? 'PER_PERSON',
+    basePrice: Number(r.base_price ?? 0),
+    childPrice: r.child_price === null || r.child_price === undefined ? null : Number(r.child_price),
+    minParticipants: r.min_participants ?? 1,
+    maxParticipants: r.max_participants ?? 10,
+    bookingType: r.booking_type ?? 'SCHEDULED',
+    depositMode: r.deposit_mode ?? 'FULL',
+    depositValue: Number(r.deposit_value ?? 0),
+    active: r.active ?? true,
+    yearRound: r.year_round ?? true,
+    seasons: arr<TripPlanSeason>(r.seasons),
+    reviewState: r.review_state ?? 'NONE',
+    reviewNote: r.review_note ?? '',
+    sortOrder: r.sort_order ?? 0,
+    slug: r.slug || undefined,
+    highlights: arr<string>(r.highlights),
+    planInclusions: arr<string>(r.plan_inclusions),
+    planExclusions: arr<string>(r.plan_exclusions),
+    planNotices: arr<string>(r.plan_notices),
+    planRefundRules: arr<string>(r.plan_refund_rules),
+    planItinerary: arr<TripPlanItineraryStep>(r.plan_itinerary),
+    meetingPointName: r.meeting_point_name || undefined,
+    meetingAddress: r.meeting_address || undefined,
+    experiencePointName: r.experience_point_name || undefined,
+    experienceAddress: r.experience_address || undefined,
+    language: r.language || undefined,
+    earliestDeparture: r.earliest_departure ?? undefined,
+    confirmByDays: r.confirm_by_days ?? undefined,
+    freeCancelDays: r.free_cancel_days ?? undefined,
+    detailsLinkText: r.details_link_text || undefined,
+    bookingBtnText: r.booking_btn_text || undefined,
+  };
+}
+
+/**
+ * trip_departures 列 → TripDeparture（migration 0026）。
+ *
+ * `planName` 不在 trip_departures 表上，靠查詢端 join `trip_plans(name)` 帶回；
+ * 沒 join 到就是空字串——**不是**猜一個名字填上去。
+ * `startTime` 是 `time` 欄位（可為 null）：Postgres 回 `HH:MM:SS`，前端表單用
+ * `HH:MM`，這裡切到 5 碼；null → `''`（TripDeparture.startTime 宣告為非 null
+ * string，「未指定時間」在 UI 就是留白，10 分冊 §5.5 稱之為「整日忙碌」）。
+ */
+export function mapTripDeparture(r: any): TripDeparture {
+  const planName = r.trip_plans?.name ?? r.plan_name ?? '';
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    planId: r.plan_id,
+    planName,
+    departsOn: r.departs_on,
+    startTime: typeof r.start_time === 'string' ? r.start_time.slice(0, 5) : '',
+    capacity: Number(r.capacity ?? 0),
+    seatsBooked: Number(r.seats_booked ?? 0),
+    status: r.status,
+    note: r.note ?? '',
+  };
+}
+
+/** trip_addons 列 → TripAddon（migration 0026）。`stock: null` = 不限量，保留 null。 */
+export function mapTripAddon(r: any): TripAddon {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    price: Number(r.price ?? 0),
+    unit: r.unit ?? 'PER_PERSON',
+    stock: r.stock === null || r.stock === undefined ? null : Number(r.stock),
+    active: r.active ?? true,
+    sortOrder: r.sort_order ?? 0,
+  };
+}
+
+/**
+ * tour_orders 列 → TourOrder（migration 0026）。
+ *
+ * ⚠️ `paymentMethodLabel` 恆為空字串，這是**誠實的未知**而不是漏寫：
+ * 收款方式的顯示名稱只能來自 `tenant_payment_methods`，那張表屬 10 分冊 §4
+ * （Phase 8c / issue #9），現在不存在。編一個名字填進去會讓畫面在真金額旁邊
+ * 顯示一個沒有來源的字串（CLAUDE.md「Never fabricate a known」）。
+ * #9 建表後，這裡改成 join 該表的 display_name。
+ *
+ * `tripTitle` / `planName` / `departsOn` / `startTime` 同樣靠查詢端 join 帶回，
+ * 沒 join 到就留白。
+ */
+export function mapTourOrder(r: any): TourOrder {
+  const startTime = r.trip_departures?.start_time ?? r.start_time ?? null;
+  return {
+    id: r.id,
+    orderNo: r.order_no,
+    tripId: r.trip_id,
+    tripTitle: r.trips?.title ?? r.trip_title ?? '',
+    planName: r.trip_plans?.name ?? r.plan_name ?? '',
+    departsOn: r.trip_departures?.departs_on ?? r.departs_on ?? '',
+    startTime: typeof startTime === 'string' ? startTime.slice(0, 5) : '',
+    customerName: r.customer_name ?? '',
+    customerPhone: r.customer_phone ?? '',
+    partySize: Number(r.party_size ?? 0),
+    unitPrice: Number(r.unit_price ?? 0),
+    totalAmount: Number(r.total_amount ?? 0),
+    depositAmount: Number(r.deposit_amount ?? 0),
+    status: r.status,
+    paymentStatus: r.payment_status,
+    paymentMethodLabel: '',
+    paymentRef: r.payment_ref ?? '',
+    source: r.source,
+    holdExpiresAt: r.hold_expires_at ?? null,
+    note: r.note ?? '',
+    createdAt: r.created_at,
   };
 }

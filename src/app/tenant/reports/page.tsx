@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import {
-  exportBookingsCsv, exportCustomersExcel, getReportData, getTopStaff,
+  exportReports, getReportData, getTopStaff,
   type ReportData, type ReportQuery, type ReportRange,
   type ServiceTrend, type TopProduct, type TopService,
 } from '@/services/reports';
@@ -46,11 +46,6 @@ function rangeDates(range: RangeKey): ReportQuery {
   from.setDate(from.getDate() - (RANGE_DAYS[range] - 1));
   return { from: fmt(from), to: fmt(to) };
 }
-
-const todayFileDate = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 
 const RANK_TONE = ['warning', 'neutral', 'info'] as const;
 
@@ -114,15 +109,19 @@ export default function ReportsPage() {
     })();
   }, [fail]);
 
-  const runExport = async (ext: string) => {
+  /**
+   * 匯出營運報表（GET /api/export/reports/:format，帶目前區間）。
+   * 成功訊息只在**真的收到檔案**時顯示，且顯示的是實際檔名；mock／示範店家沒有
+   * 伺服器可打、不會產生任何檔案，改顯示「未匯出」提示（CLAUDE.md：成功訊息
+   * 是一項事實宣稱，不能在沒有副作用時照樣顯示）。
+   */
+  const runExport = async (format: 'csv' | 'excel') => {
     setExportOpen(false);
     setExporting(true);
     try {
-      /* real：直接導向匯出端點（檔案下載，不走 API 信封）；mock：no-op，僅照舊 toast。
-         Excel 選項對應顧客名單匯出、CSV 選項對應預約列表匯出（帶目前區間）。 */
-      if (ext === 'xlsx') await exportCustomersExcel();
-      else await exportBookingsCsv(rangeDates(range));
-      toast.show(`${t.export.success}：${t.export.fileName(todayFileDate(), ext)}`);
+      const { downloaded, fileName } = await exportReports(format, rangeDates(range));
+      if (downloaded) toast.show(`${t.export.success}：${fileName}`);
+      else toast.show(t.export.mockNotDownloaded, 'warning');
     } catch {
       toast.show(t.export.failed, 'danger');
     } finally {
@@ -244,7 +243,7 @@ export default function ReportsPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm btn-block justify-start"
-                    onClick={() => void runExport('xlsx')}
+                    onClick={() => void runExport('excel')}
                   >
                     {t.export.excel}
                   </button>

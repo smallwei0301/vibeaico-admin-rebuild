@@ -17,12 +17,22 @@ export const blockTimesPage = {
     create: '新增封鎖',
   },
 
+  /**
+   * ⚠️ 「原因」欄仍然缺席，因為**後端還是只有一個 text 欄位可以存**
+   * （0027 補的是 title，reason 原本就在，但表單目前只填 title）：
+   * 留著第二個輸入框＝使用者打了字、按了儲存、看到成功訊息，內容卻沒有
+   * 進資料庫（00 鐵則 12 的假成功）。因此只保留必填的「封鎖名稱」。
+   *
+   * ✅ 「自動產生」徽章在 issue #33 ② 之後**是真的**：migration 0027 給
+   * block_times 補了 `auto` 欄位，`PUT /api/settings` 存逐日營業時間時會
+   * 重建這些列，`GET /api/block-times` 也會把旗標帶回來。
+   */
   columns: {
     title: '名稱',
     type: '類型',
-    date: '日期/星期',
+    date: '日期',
     time: '時段',
-    reason: '原因',
+    staff: '對象',
     actions: '操作',
   },
 
@@ -31,19 +41,35 @@ export const blockTimesPage = {
     single: '單次',
     weekly: '每週',
     fullDay: '整天',
+    allStaff: '全店',
+    /** 由「每天不同營業時間」自動產生的列（block_times.auto = true） */
     auto: '自動產生',
   },
+
+  /**
+   * auto 列的封鎖名稱（存進 block_times.title）。原站沒有留下這個字串，
+   * 這是我方取的——但它不是一個「量測值」，只是一個標籤，且列上同時有
+   * 「自動產生」徽章與下面那句說明，看得出它的來源。
+   */
+  autoTitle: '非營業時段（自動產生）',
+  /** auto 列不可編輯／刪除時的說明（原站 docs/specs/calendar.json jsStrings[78] 同義） */
+  autoLocked: '這是「每天不同營業時間」自動產生的休息時段，要調整請到 店家設定 → 營運時間',
 
   form: {
     createTitle: '新增封鎖時段',
     editTitle: '編輯封鎖時段',
     title: '封鎖名稱',
     titlePlaceholder: '例如：店休、團隊會議',
-    reason: '原因',
-    reasonPlaceholder: '選填',
     recurrence: '循環類型',
     single: '單次',
     weekly: '每週',
+    /*
+     * ⚠️ 這裡曾經有一個 `weeklyUnavailable`：「每週循環尚未支援」。
+     * issue #33 ② 之後那句話是**假的**——migration 0027 補了
+     * recurrence / day_of_week，`/api/calendar` 與
+     * `/api/bookings/available-slots` 都會展開每週封鎖，存下去真的會擋預約。
+     * 所以整個鍵刪掉（不留死鍵，避免日後被誤用）。
+     */
     date: '日期',
     dayOfWeek: '星期幾',
     weekdays: [
@@ -64,6 +90,9 @@ export const blockTimesPage = {
     title: '尚未設定封鎖時段',
     description: '封鎖時段內不接受預約，適用所有預約入口（公開頁面、LINE Bot、後台新增預約）',
   },
+
+  /** 依目前營業時間做的時段檢查；查不到營業時間就不做這組檢查（見頁面註解） */
+  businessHoursUnknown: '目前查不到營業時間設定，因此不檢查時段是否落在營業時間內。',
 
   messages: {
     created: '封鎖時段已新增',

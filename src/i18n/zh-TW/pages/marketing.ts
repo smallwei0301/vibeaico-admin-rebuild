@@ -75,6 +75,15 @@ export const marketingPage = {
     people: (n: number) => `${n} 人`,
     notSent: '—',
     noImage: '未附圖片',
+    /**
+     * 「預估人數」在真實模式是**還不知道**，不是 0（issue #7 (乙)）。
+     * 平台沒有「試算受眾」端點，真正的收件名單是 `/api/marketing/pushes/:id/send`
+     * 在發送當下由 line_users ∩ customers 算出來的。顯示 0 會讓「沒有人符合」
+     * 與「我們沒有在算」長得一模一樣——CLAUDE.md 點名的捏造已知。
+     */
+    unknownValue: '--',
+    estimatedUnknown: '尚未試算',
+    estimatedUnknownHint: '尚未試算：實際收件名單會在按下「立即發送」時才計算，這裡的「--」是還不知道，不是 0 人。',
   },
 
   /* --------------------------------------------------------------- 動作 */
@@ -112,16 +121,27 @@ export const marketingPage = {
     customTargetsPlaceholder: 'U1234567890abcdef\nU0987654321fedcba',
     customTargetsRequired: '請輸入自訂推播名單（每行一個 LINE 用戶 ID）',
     image: '圖片',
-    imageUploadHint: '點擊上傳圖片（最大 2MB）',
-    imageRemove: '移除圖片',
+    /**
+     * ⚠️ 一併刪除三個宣稱「上傳能力」而該能力不存在的鍵（issue #7 (乙)）：
+     * imageUploadHint（點擊上傳圖片（最大 2MB））、imageRemove（移除圖片）、
+     * imageTooLarge（圖片大小不可超過 2MB）。頁面從來沒有上傳程式碼，
+     * 「最大 2MB」這種限制描述只會讓人以為背後有一條上傳鏈路。禁止復原。
+     */
     imageFormatHint: '支援 JPG、PNG、WebP 格式，建議尺寸 1040x1040',
     imageUrl: '圖片網址（選填）',
     imageUrlPlaceholder: 'https://example.com/image.jpg',
-    imageUrlHelp: '或直接輸入圖片網址（上傳圖片優先）',
+    /** 舊字串是「或直接輸入圖片網址（上傳圖片優先）」——沒有上傳，也就沒有優先順序可言。 */
+    imageUrlHelp: '直接輸入圖片網址；這是目前唯一會隨推播送給顧客的圖片來源。',
     scheduledAt: '排程發送時間（選填）',
     scheduledAtHelp: '不填則儲存為草稿，手動發送',
     note: '備註',
     notePlaceholder: '內部備註，顧客不會看到',
+    /**
+     * 檔案選擇器目前是停用的（issue #7 (乙)）：它以前只把檔名記進本地 state，
+     * 從來沒有上傳過，送出時也不會帶走。整頁其餘動作接上真實後端之後，一個
+     * 「看起來能選、選了會被丟掉」的控制項比先前更容易誤導，所以停用並在此說明。
+     */
+    imageUploadNotWired: '圖片上傳尚未接上，選檔不會有作用；目前唯一會隨推播送給顧客的圖片是下方的「圖片網址」。',
   },
 
   /* --------------------------------------------------------------- 確認 */
@@ -137,16 +157,22 @@ export const marketingPage = {
   /* --------------------------------------------------------------- 訊息 */
   messages: {
     created: '推播已建立',
+    updated: '推播已更新',
     deleted: '推播已刪除',
     cancelled: '推播已取消',
-    sending: '推播已開始發送',
+    /**
+     * ⚠️ 舊字串是「推播已開始發送」，而當時頁面根本沒有呼叫任何端點
+     * （14 分冊 §1）。`/api/marketing/pushes/:id/send` 是**同步**的：回應回來時
+     * multicast 已經送完、額度已經扣掉，回傳的 sentCount 是後端數出來的實際人數。
+     * 所以這裡報的是完成式與真實數字，不是「開始」這種無法查證的說法。
+     */
+    sent: (n: number) => `推播已送出給 ${n} 位顧客`,
     saveFailedPrefix: '儲存失敗: ',
     saveFailedRetry: '儲存失敗，請稍後再試',
     savePushFailed: '儲存推播失敗:',
     deleteFailed: '刪除失敗',
     cancelFailed: '取消失敗',
     sendFailedPrefix: '發送失敗: ',
-    imageTooLarge: '圖片大小不可超過 2MB',
     loadPushesFailed: '載入推播失敗:',
     loadDetailFailed: '載入推播詳情失敗',
     loadDetailFailedPrefix: '載入推播詳情失敗:',

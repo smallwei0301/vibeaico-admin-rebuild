@@ -21,9 +21,12 @@ import {
   createStaff, createStaffLeave, deleteStaff, deleteStaffLeave,
   listServices, listStaff, listStaffLeaves, updateStaff, type StaffLeave,
 } from '@/services/catalog';
+import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import type { TenantSettings } from '@/config/tenant-settings';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { staffPage as t } from '@/i18n/zh-TW/pages/staff';
 import { formatDate, formatNumber } from '@/lib/utils';
 import type { Service, Staff } from '@/lib/types';
@@ -118,7 +121,13 @@ export default function StaffPage() {
   const [rows, setRows] = React.useState<StaffRow[]>([]);
   const [services, setServices] = React.useState<Service[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [staffTerm, setStaffTerm] = React.useState('');
+  /**
+   * 自訂員工稱呼 = `tenant_settings.basic.staffTerm`（PUT /api/settings 的 basic 群組）。
+   * 端點是**整包覆蓋**該群組，所以必須留著整份 settings，儲存時只覆寫 staffTerm
+   * 再送回去——否則店家名稱／電話／地址等欄位會被 zod 預設值洗掉。
+   */
+  const [settings, setSettings] = React.useState<TenantSettings | null>(null);
+  const staffTerm = settings?.basic.staffTerm ?? '';
   const [termOpen, setTermOpen] = React.useState(false);
 
   const [formTarget, setFormTarget] = React.useState<StaffRow | null | undefined>(undefined);
@@ -150,6 +159,16 @@ export default function StaffPage() {
         setServices(await listServices());
       } catch {
         toast.show(t.messages.loadFailedRetry, 'danger');
+      }
+    })();
+  }, [toast]);
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        setSettings(await getTenantSettings());
+      } catch {
+        toast.show(t.staffTerm.loadFailed, 'danger');
       }
     })();
   }, [toast]);
@@ -355,11 +374,12 @@ export default function StaffPage() {
       {/* --------------------------------------------- modal 1：自訂員工稱呼 */}
       <StaffTermModal
         open={termOpen}
-        value={staffTerm}
+        settings={settings}
         onClose={() => setTermOpen(false)}
-        onSaved={(val) => {
-          setStaffTerm(val);
+        onSaved={(next) => {
+          setSettings(next);
           setTermOpen(false);
+          const val = next.basic.staffTerm;
           toast.show(val ? t.staffTerm.changed(val) : t.staffTerm.restored);
         }}
       />
@@ -422,18 +442,49 @@ export default function StaffPage() {
 /* 自訂員工稱呼                                                                */
 /* ========================================================================== */
 
+/**
+ * 自訂員工稱呼。
+ *
+ * ⚠️ 接線前這裡是 `await new Promise(r => setTimeout(r, 320))` 之後直接 onSaved()，
+ * 於是畫面顯示「已將稱呼改為…」但沒有任何請求送出去，重新整理就回到空值
+ * （14 分冊 §1 A-1）。現在寫進 `tenant_settings.basic.staffTerm`，成功訊息
+ * 只在 `await saveTenantSettings(...)` 真的回來之後才由 onSaved() 觸發。
+ */
 function StaffTermModal({
-  open, value, onClose, onSaved,
+  open, settings, onClose, onSaved,
 }: {
   open: boolean;
-  value: string;
+  settings: TenantSettings | null;
   onClose: () => void;
-  onSaved: (val: string) => void;
+  onSaved: (next: TenantSettings) => void;
 }) {
+  const toast = useToast();
   const [draft, setDraft] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
-  React.useEffect(() => { if (open) setDraft(value); }, [open, value]);
+  React.useEffect(() => {
+    if (open) setDraft(settings?.basic.staffTerm ?? '');
+  }, [open, settings]);
+
+  const submit = async () => {
+    if (!settings) return;
+    const next: TenantSettings = {
+      ...settings,
+      basic: { ...settings.basic, staffTerm: draft.trim() },
+    };
+    setSaving(true);
+    try {
+      await saveTenantSettings({ basic: next.basic });
+      onSaved(next);
+    } catch (e) {
+      toast.show(
+        `${t.staffTerm.saveFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Modal
@@ -444,16 +495,8 @@ function StaffTermModal({
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
           <Button
-            loading={saving} loadingText={common.saving}
-            onClick={async () => {
-              setSaving(true);
-              try {
-                await new Promise((r) => setTimeout(r, 320));
-                onSaved(draft.trim());
-              } finally {
-                setSaving(false);
-              }
-            }}
+            loading={saving} loadingText={common.saving} disabled={!settings}
+            onClick={() => void submit()}
           >
             {common.save}
           </Button>
@@ -491,6 +534,8 @@ function StaffFormModal({
   onClose: () => void;
   onSaved: (draft: StaffRow, isEdit: boolean) => void;
 }) {
+  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
+  const businessType = useBusinessType();
   const toast = useToast();
   const isEdit = !!staff;
 
@@ -672,7 +717,7 @@ function StaffFormModal({
         {/* ------------------------------------------------ 可承接的服務項目 */}
         <FormGroup>
           <div className="mb-2 flex items-center justify-between gap-2">
-            <Label className="mb-0">{t.form.services}</Label>
+            <Label className="mb-0">{resolveNavTerms(t.form.services, businessType)}</Label>
             <div className="btn-group">
               <Button
                 variant="outline" size="sm"
@@ -701,7 +746,7 @@ function StaffFormModal({
               </label>
             ))}
           </div>
-          <FormText>{t.form.servicesHelp}</FormText>
+          <FormText>{resolveNavTerms(t.form.servicesHelp, businessType)}</FormText>
         </FormGroup>
 
         <label className="mb-2 flex items-center gap-2 text-base">
@@ -732,7 +777,7 @@ function StaffFormModal({
 
       <ConfirmModal
         open={!!confirmService}
-        title={t.form.services}
+        title={resolveNavTerms(t.form.services, businessType)}
         message={confirmService ? t.form.unlinkAllStaffConfirm(confirmService.name) : common.confirm.message}
         onClose={() => setConfirmService(null)}
         onConfirm={() => {

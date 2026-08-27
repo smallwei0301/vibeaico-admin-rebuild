@@ -46,6 +46,7 @@ export const chatPage = {
   /* --------------------------------------------------------------- 訊息 */
   messages: {
     imageTooLarge: '圖片大小不可超過 5MB',
+    imageSent: '圖片已送出',
     imageSendFailed: '圖片發送失敗',
     sendFailed: '發送失敗',
     notBound: '無法開啟此顧客對話，可能尚未綁定 LINE',

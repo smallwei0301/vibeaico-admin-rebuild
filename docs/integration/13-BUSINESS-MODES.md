@@ -79,39 +79,7 @@ GUIDE 行事曆的文案與主要視圖不得沿用一般店家的「顧客預�
 
 ICS／Google Calendar／Apple Calendar 的定位是「我已經被什麼事情占用了」，因此 GUIDE 預設**不輸出大量『可接案』空檔**；輸出實際團次、不可接案例外，以及該租戶另外啟用其他模組時的其他實際占用事件。
 
-### 3.2 GUIDE 單導遊／團隊 UI 自動適應（Owner 2026-08-27）
-
-**不新增「單導遊／多導遊」模式開關，也不新增 `SOLO/TEAM` tenant 欄位。** 系統直接以該租戶目前 `active && bookable` 的導遊數量作為事實來源：
-
-- **0 位**：顯示 onboarding，要求先建立第一位可帶團導遊。可詢問「你本人也會帶團嗎？」以快速建立本人導遊資料；沒有導遊時不得默默建立未指派的新 OPEN 團。
-- **1 位**：自動採單導遊簡化 UX。開團時隱藏「主導遊／協同導遊」選擇器與「全部導遊」篩選；後端仍把唯一導遊正式寫入 `trip_departure_staff`，角色為 `PRIMARY`，不能因 UI 簡化而省略資料。
-- **2 位以上**：自動展開團隊 UX。開團時顯示 PRIMARY 選擇、ASSISTANT 複選與每位導遊的可用／衝突原因；行事曆顯示團隊人員篩選。
-
-導遊數量增加或減少時，UI 自動轉換，不要求使用者切另一個模式。停用導遊只讓他退出未來可指派名單；歷史團次、訂單、業績與 audit 仍保留原人員關聯。
-
-這是**呈現層自動適應，不是資料模型切換**。不論 1 位或 10 位導遊，都使用同一套 `staff + shifts + block_times + trip_departure_staff`。
-
-若未來 SaaS 方案要區分個人版／團隊版，限制應放在「可啟用導遊席次數」而不是 UI 模式，例如 `guideSeats=1/5`。本次只保留架構方向，不在此處實作收費限制。
-
-### 3.3 每位導遊獨立的可接案策略（Owner 2026-08-27）
-
-可接案策略是**每位導遊自己的屬性**，不是全租戶共用設定。建議 `staff` 增加：
-
-```sql
-availability_policy text not null default 'DEFAULT_AVAILABLE'
-  check (availability_policy in ('DEFAULT_AVAILABLE','EXPLICIT_ONLY'))
-```
-
-GUIDE UI 只顯示自然語言：
-
-- **平常可接案（DEFAULT_AVAILABLE）**：檢查某個候選時間時，不要求另外存在一筆 `shift`；仍要排除不可接案、既有 booking、團次與其他 busy event。
-- **僅指定時間可接案（EXPLICIT_ONLY）**：候選時間必須完整被 `shifts` 覆蓋，否則不可指派。
-
-`DEFAULT_AVAILABLE` **不代表 24 小時自動產生可售時段**。候選時間仍由方案販售方式、固定團次或其他產品規則產生；這個 policy 只決定「該導遊是否還需要 shift coverage」這一道判斷。
-
-既有人員 migration 預設 `DEFAULT_AVAILABLE`，避免新欄位上線時讓原本可排的人突然全部不可排。團隊內可以混用，例如 Wayne＝平常可接案、Amy＝僅指定時間可接案。
-
-共用 availability engine 必須讀取 staff policy，固定團次、動態預約與斜槓服務都不得各自解讀一套。
+單導遊與多導遊團隊是否需要顯式模式開關，或由系統依實際 active/bookable 導遊數量自動適應，尚待 Owner 下一輪裁示；不得在未裁示前自行新增 `solo/team` 永久設定欄位。
 
 ## 4. 驗收（併入 08 清單 Phase 8）
 
@@ -121,16 +89,9 @@ GUIDE UI 只顯示自然語言：
 - [ ] GUIDE 可接案時間沿用 `shifts`，不可接案沿用 `block_times`，不新增重複 availability 資料表
 - [ ] GUIDE 的實際團次會占用 PRIMARY/ASSISTANT 時間；團次建立與可接案計算共用同一 availability engine
 - [ ] GUIDE 的 ICS 不輸出大量可接案空檔，只輸出實際占用與不可接案例外
-- [ ] 0 位可帶團導遊 → 行事曆／開團入口引導先完成導遊設定，不建立未指派 OPEN 團
-- [ ] 1 位可帶團導遊 → UI 自動簡化，無 PRIMARY/ASSISTANT 選擇器，但建立團次後 DB 有唯一導遊的 PRIMARY assignment
-- [ ] 2 位以上 → UI 自動顯示主／協同導遊與團隊篩選；不需要任何 SOLO/TEAM 開關
-- [ ] 導遊從 1→2 或 2→1 時 UI 自動適應；停用人員歷史團次／業績仍可追溯
-- [ ] 同一租戶兩位導遊可分別設定 DEFAULT_AVAILABLE／EXPLICIT_ONLY，availability engine 依各自 policy 正確判斷
-- [ ] DEFAULT_AVAILABLE 無 shift 仍可通過 shift gate，但 block／booking／departure 衝突仍會阻擋
-- [ ] EXPLICIT_ONLY 無完整 shift coverage 時不可被指派；完整 coverage 且無其他衝突時可指派
 - [ ] 註冊選 LOCAL_SHOP → 與現行完全相同；看不到行程相關頁
 - [ ] settings 換模式 → 選單即時切換；原模式資料未刪（切回可見）
 - [ ] 加開其他模組 → 兩套選單並存
 - [ ] LINE：GUIDE 店打「行程」有回應；LOCAL_SHOP 店打「行程」不觸發內建組
 - [ ] 測試（12 分冊）：`modes.13.test.ts` —— preset 表逐模式斷言 nav 組成、
-      預設功能、關鍵字組；換模式不刪資料；GUIDE 0/1/2+ 導遊 UI capability 與 availability policy 判定都有案例
+      預設功能、關鍵字組；換模式不刪資料

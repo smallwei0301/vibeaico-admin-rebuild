@@ -19,6 +19,8 @@ import {
   clearShiftDay, createShiftTemplate, deleteShiftTemplate, listShifts,
   listShiftTemplates, listStaff, repeatShiftCycles, saveShifts, updateShiftTemplate,
 } from '@/services/catalog';
+import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import type { TenantSettings } from '@/config/tenant-settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { shiftsPage as t } from '@/i18n/zh-TW/pages/shifts';
@@ -30,7 +32,16 @@ import type { Staff } from '@/lib/types';
 /* -------------------------------------------------------------------------- */
 
 /** 原站 /api/settings 的營業時間，用於班別時間驗證 */
-const BUSINESS_HOURS = { start: '10:00', end: '20:00', breakStart: '14:00', breakEnd: '15:00' };
+/**
+ * 營業時間。
+ *
+ * ⚠️ 接線前這裡是寫死的 `{ start:'10:00', end:'20:00', … }`，而且不只拿來驗證，
+ * 還直接印在格子的 tooltip 上（「營業時間 10:00–20:00」）——那是一個**畫成事實的
+ * 捏造值**，跟店家自己在設定頁填的營業時間毫無關係。改成讀 /api/settings 的
+ * business 群組；查不到就顯示／驗證都跳過，不拿假的時間擋人（CLAUDE.md
+ * 「不要製造假的已知」）。
+ */
+type BusinessHours = { start: string; end: string };
 
 /** 原站 /api/shift-templates */
 type ShiftTemplate = {
@@ -72,11 +83,13 @@ const MOCK_SHIFTS: Record<string, ShiftRecord> = {
 /** 排班模式：FIXED_REST 走週排班、ROTATING 逐日排班 */
 type ScheduleMode = 'FIXED_REST' | 'ROTATING';
 
-const MOCK_STAFF_MODES: Record<string, ScheduleMode> = {
-  s_1: 'ROTATING',
-  s_2: 'ROTATING',
-  s_3: 'FIXED_REST',
-};
+/**
+ * 排班模式存在 `tenant_settings.business.staffScheduleModes`（key = staff.id）。
+ * 接線前是一組寫死的 `{ s_1:'ROTATING', s_2:'ROTATING', s_3:'FIXED_REST' }`：
+ * 那三個 id 是骨架假資料的，真實模式永遠對不上，切換之後也只活在記憶體裡
+ * （14 分冊 §1 A-1）。缺 key = 尚未設定，視為輪休（與接線前的 `?? 'ROTATING'` 同）。
+ */
+const DEFAULT_SCHEDULE_MODE: ScheduleMode = 'ROTATING';
 
 /** 原站週排班：index 0–6 對應週日–週六 */
 type WeeklyRow = {
@@ -143,7 +156,13 @@ export default function ShiftsPage() {
 
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [modes, setModes] = React.useState<Record<string, ScheduleMode>>(MOCK_STAFF_MODES);
+  /** 整份租戶設定：排班模式要整包覆蓋 business 群組送回去，不能只送一個鍵 */
+  const [settings, setSettings] = React.useState<TenantSettings | null>(null);
+  const modes = settings?.business.staffScheduleModes ?? {};
+  /** null = 還沒查到營業時間（載入中或查詢失敗）→ 不做營業時間相關的檢查與顯示 */
+  const hours: BusinessHours | null = settings
+    ? { start: settings.business.businessStart, end: settings.business.businessEnd }
+    : null;
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>(MOCK_TEMPLATES);
   const [shifts, setShifts] = React.useState<Record<string, ShiftRecord>>(MOCK_SHIFTS);
   const [weekly, setWeekly] = React.useState<Record<string, WeeklyRow[]>>({});
@@ -157,6 +176,7 @@ export default function ShiftsPage() {
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [repeatOpen, setRepeatOpen] = React.useState(false);
   const [modeTarget, setModeTarget] = React.useState<{ staff: Staff; next: ScheduleMode } | null>(null);
+  const [modeSaving, setModeSaving] = React.useState(false);
 
   React.useEffect(() => {
     setAnchor(toIsoDate(startOfWeek(new Date())));
@@ -173,6 +193,16 @@ export default function ShiftsPage() {
         setStaff([]);
       } finally {
         setLoading(false);
+      }
+    })();
+  }, [toast]);
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        setSettings(await getTenantSettings());
+      } catch {
+        toast.show(t.messages.loadSettingsFailed, 'danger');
       }
     })();
   }, [toast]);
@@ -377,7 +407,7 @@ export default function ShiftsPage() {
                 </tr>
               ) : (
                 staff.map((s) => {
-                  const mode = modes[s.id] ?? 'ROTATING';
+                  const mode = modes[s.id] ?? DEFAULT_SCHEDULE_MODE;
                   return (
                     <tr key={s.id}>
                       <td>
@@ -411,6 +441,7 @@ export default function ShiftsPage() {
                           mode={mode}
                           shift={shifts[toKey(s.id, d)]}
                           weekly={weeklyOf(s.id)[new Date(`${d}T00:00:00`).getDay()]}
+                          hours={hours}
                           templates={templates}
                           onOpen={() => setShiftTarget({ staff: s, date: d })}
                         />
@@ -428,6 +459,7 @@ export default function ShiftsPage() {
       <ShiftModal
         target={shiftTarget}
         templates={templates}
+        hours={hours}
         record={shiftTarget ? shifts[toKey(shiftTarget.staff.id, shiftTarget.date)] : undefined}
         onClose={() => setShiftTarget(null)}
         onSave={(record) => {
@@ -442,12 +474,15 @@ export default function ShiftsPage() {
       <WeeklyScheduleModal
         staff={weeklyTarget}
         rows={weeklyTarget ? weeklyOf(weeklyTarget.id) : DEFAULT_WEEKLY}
+        hours={hours}
+        days={days}
         onClose={() => setWeeklyTarget(null)}
-        onSave={(rows) => {
+        onSaved={(rows) => {
           if (!weeklyTarget) return;
           setWeekly((map) => ({ ...map, [weeklyTarget.id]: rows }));
           setWeeklyTarget(null);
-          toast.show(t.messages.weeklySaved);
+          toast.show(t.messages.weeklySaved(days[0], days[days.length - 1]));
+          void loadShifts();
         }}
       />
 
@@ -455,6 +490,7 @@ export default function ShiftsPage() {
       <TemplateModal
         open={templatesOpen}
         templates={templates}
+        hours={hours}
         onClose={() => setTemplatesOpen(false)}
         onChange={setTemplates}
       />
@@ -473,15 +509,37 @@ export default function ShiftsPage() {
       {/* ------------------------------------------------ modal 5：切換模式 */}
       <ConfirmModal
         open={!!modeTarget}
+        loading={modeSaving}
         title={t.columns.mode}
         message={modeTarget ? t.modeSwitchConfirm(t.modes[modeTarget.next]) : common.confirm.message}
         onClose={() => setModeTarget(null)}
-        onConfirm={() => {
-          if (modeTarget) {
-            setModes((map) => ({ ...map, [modeTarget.staff.id]: modeTarget.next }));
+        onConfirm={async () => {
+          if (!modeTarget || !settings) return;
+          /* business 群組整包覆蓋：只送一個鍵會把其他營業設定洗成 zod 預設值 */
+          const next: TenantSettings = {
+            ...settings,
+            business: {
+              ...settings.business,
+              staffScheduleModes: {
+                ...settings.business.staffScheduleModes,
+                [modeTarget.staff.id]: modeTarget.next,
+              },
+            },
+          };
+          setModeSaving(true);
+          try {
+            await saveTenantSettings({ business: next.business });
+            setSettings(next);
             toast.show(t.modeSwitched(t.modes[modeTarget.next]));
+            setModeTarget(null);
+          } catch (e) {
+            toast.show(
+              `${t.messages.modeSaveFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+              'danger',
+            );
+          } finally {
+            setModeSaving(false);
           }
-          setModeTarget(null);
         }}
       />
     </>
@@ -493,7 +551,7 @@ export default function ShiftsPage() {
 /* ========================================================================== */
 
 function ShiftCell({
-  staff, date, mode, shift, weekly, templates, onOpen,
+  staff, date, mode, shift, weekly, templates, hours, onOpen,
 }: {
   staff: Staff;
   date: string;
@@ -501,6 +559,8 @@ function ShiftCell({
   shift?: ShiftRecord;
   weekly: WeeklyRow;
   templates: ShiftTemplate[];
+  /** null = 查不到營業時間 → tooltip 不顯示那一行（不編一個出來） */
+  hours: BusinessHours | null;
   onOpen: () => void;
 }) {
   const blocked = MOCK_BLOCKED_DATES.has(date);
@@ -510,7 +570,7 @@ function ShiftCell({
     : undefined;
 
   const tooltip = [
-    `${t.tooltip.businessHoursLabel}${BUSINESS_HOURS.start}–${BUSINESS_HOURS.end}`,
+    hours ? `${t.tooltip.businessHoursLabel}${hours.start}–${hours.end}` : '',
     weekly.working
       ? `${t.tooltip.weeklyLabel(common.weekdays[new Date(`${date}T00:00:00`).getDay()])}${weekly.startTime}–${weekly.endTime}`
       : `${t.tooltip.weeklyLabel(common.weekdays[new Date(`${date}T00:00:00`).getDay()])}${t.cell.off}`,
@@ -578,11 +638,12 @@ function ShiftCell({
 /* ========================================================================== */
 
 function ShiftModal({
-  target, templates, record, onClose, onSave,
+  target, templates, record, hours, onClose, onSave,
 }: {
   target: { staff: Staff; date: string } | null;
   templates: ShiftTemplate[];
   record?: ShiftRecord;
+  hours: BusinessHours | null;
   onClose: () => void;
   onSave: (record: ShiftRecord | null) => void;
 }) {
@@ -598,10 +659,12 @@ function ShiftModal({
     if (!target) return;
     setError('');
     setDraft(record ?? {
-      type: 'WORKING', startTime: BUSINESS_HOURS.start, endTime: BUSINESS_HOURS.end,
+      type: 'WORKING',
+      /* 查不到營業時間就留空讓使用者自己選，不預填一個編出來的 10:00–20:00 */
+      startTime: hours?.start ?? '', endTime: hours?.end ?? '',
       breakStart: '', breakEnd: '', note: '', templateId: '',
     });
-  }, [target, record]);
+  }, [target, record, hours]);
 
   const patch = (p: Partial<ShiftRecord>) => setDraft((d) => ({ ...d, ...p }));
 
@@ -610,8 +673,9 @@ function ShiftModal({
     const { startTime: s, endTime: e, breakStart: bs, breakEnd: be } = draft;
     if (!s || !e) return t.validation.timeRequired;
     if (e <= s) return t.validation.endAfterStartWith(s, e);
-    if (s < BUSINESS_HOURS.start) return t.validation.shiftStartBeforeBusiness(s, BUSINESS_HOURS.start);
-    if (e > BUSINESS_HOURS.end) return t.validation.shiftEndAfterBusiness(e, BUSINESS_HOURS.end);
+    /* 營業時間查不到就跳過這兩項——不拿捏造的時間擋人 */
+    if (hours && s < hours.start) return t.validation.shiftStartBeforeBusiness(s, hours.start);
+    if (hours && e > hours.end) return t.validation.shiftEndAfterBusiness(e, hours.end);
     if (bs && !be) return t.validation.breakEndMissing;
     if (!bs && be) return t.validation.breakStartMissing;
     if (bs && be) {
@@ -799,14 +863,33 @@ function ShiftModal({
 /* 編輯週排班                                                                  */
 /* ========================================================================== */
 
+/**
+ * 編輯週排班 → 展開寫進 `shifts`。
+ *
+ * ⚠️ 接線前這裡是 `await new Promise(r => setTimeout(r, 320))` 之後
+ * `onSave(draft)`，週排班只活在頁面的 `weekly` state 裡，重新整理就沒了，
+ * 而且 intro 還寫著「儲存後本週與未來各週都會套用」（14 分冊 §1 A-1）。
+ *
+ * 現在的寫法（後端沒有「週規則」這種東西，只有一天一筆的 shifts 列）：
+ *   1. `repeatShiftCycles`（POST /api/shifts/repeat-cycle）以 weekPattern
+ *      七天全 null，清掉檢視區間內這位員工既有的班——不先清的話，改過時間的
+ *      日子會留下舊班（shifts 唯一鍵含 start_time，upsert 蓋不掉起始時間變動的那筆，
+ *      這一點 repeat-cycle 端點的註解也寫過）。
+ *   2. `saveShifts`（POST /api/shifts）批次寫入標記為上班的那幾天。
+ * 因此作用範圍只有**目前檢視的區間**，UI 也照實這樣講（t.weeklyModal.range）。
+ */
 function WeeklyScheduleModal({
-  staff, rows, onClose, onSave,
+  staff, rows, hours, days, onClose, onSaved,
 }: {
   staff: Staff | null;
   rows: WeeklyRow[];
+  hours: BusinessHours | null;
+  /** 目前檢視的日期（YYYY-MM-DD，已按檢視週數展開） */
+  days: string[];
   onClose: () => void;
-  onSave: (rows: WeeklyRow[]) => void;
+  onSaved: (rows: WeeklyRow[]) => void;
 }) {
+  const toast = useToast();
   const [draft, setDraft] = React.useState<WeeklyRow[]>(DEFAULT_WEEKLY);
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
@@ -827,11 +910,11 @@ function WeeklyScheduleModal({
       const day = common.weekdays[i];
       if (!r.startTime || !r.endTime) return t.validation.weeklyTimeRequired(day);
       if (r.endTime <= r.startTime) return t.validation.weeklyEndAfterStart(day, r.startTime, r.endTime);
-      if (r.startTime < BUSINESS_HOURS.start) {
-        return t.validation.weeklyStartBeforeBusiness(day, r.startTime, BUSINESS_HOURS.start);
+      if (hours && r.startTime < hours.start) {
+        return t.validation.weeklyStartBeforeBusiness(day, r.startTime, hours.start);
       }
-      if (r.endTime > BUSINESS_HOURS.end) {
-        return t.validation.weeklyEndAfterBusiness(day, r.endTime, BUSINESS_HOURS.end);
+      if (hours && r.endTime > hours.end) {
+        return t.validation.weeklyEndAfterBusiness(day, r.endTime, hours.end);
       }
       if (Boolean(r.breakStart) !== Boolean(r.breakEnd)) return t.validation.weeklyBreakBoth(day);
       if (r.breakStart && r.breakEnd) {
@@ -840,6 +923,43 @@ function WeeklyScheduleModal({
       }
     }
     return '';
+  };
+
+  const submit = async () => {
+    const err = validate();
+    setError(err);
+    if (err) return;
+    if (!staff || days.length === 0) return;
+    const from = days[0];
+    const to = days[days.length - 1];
+    setSaving(true);
+    try {
+      /* ① 先清乾淨：七天全 null＝把區間內這位員工的班整段清掉 */
+      await repeatShiftCycles(
+        [{ staffId: staff.id, weekPattern: { 0: null, 1: null, 2: null, 3: null, 4: null, 5: null, 6: null } }],
+        from,
+        to,
+      );
+      /* ② 再依週表寫回上班的日子；全休（一天都沒排）就只有清除，不送空陣列（端點 min(1)） */
+      const items = days
+        .map((date) => ({ date, row: draft[new Date(`${date}T00:00:00`).getDay()] }))
+        .filter((x) => x.row?.working)
+        .map((x) => ({
+          staffId: staff.id,
+          workDate: x.date,
+          startTime: x.row.startTime,
+          endTime: x.row.endTime,
+        }));
+      if (items.length > 0) await saveShifts(items);
+      onSaved(draft);
+    } catch (e) {
+      toast.show(
+        `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -853,18 +973,7 @@ function WeeklyScheduleModal({
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
           <Button
             loading={saving} loadingText={common.saving}
-            onClick={async () => {
-              const err = validate();
-              setError(err);
-              if (err) return;
-              setSaving(true);
-              try {
-                await new Promise((r) => setTimeout(r, 320));
-                onSave(draft);
-              } finally {
-                setSaving(false);
-              }
-            }}
+            onClick={() => void submit()}
           >
             {common.save}
           </Button>
@@ -872,6 +981,10 @@ function WeeklyScheduleModal({
       }
     >
       <p className="form-text mb-3">{t.weeklyModal.intro}</p>
+      {days.length > 0 ? (
+        <p className="form-text mb-3">{t.weeklyModal.range(days[0], days[days.length - 1])}</p>
+      ) : null}
+      <p className="form-text mb-3">{t.weeklyModal.breakNotStored}</p>
 
       <div className="data-table-body">
         <table className="data-table">
@@ -940,10 +1053,11 @@ function WeeklyScheduleModal({
 /* ========================================================================== */
 
 function TemplateModal({
-  open, templates, onClose, onChange,
+  open, templates, hours, onClose, onChange,
 }: {
   open: boolean;
   templates: ShiftTemplate[];
+  hours: BusinessHours | null;
   onClose: () => void;
   onChange: React.Dispatch<React.SetStateAction<ShiftTemplate[]>>;
 }) {
@@ -971,11 +1085,11 @@ function TemplateModal({
     if (!draft.name.trim()) return t.templateModal.nameRequired;
     if (!draft.startTime || !draft.endTime) return t.validation.timeRequired;
     if (draft.endTime <= draft.startTime) return t.validation.endAfterStart;
-    if (draft.startTime < BUSINESS_HOURS.start) {
-      return `${t.validation.beforeBusinessStart}${BUSINESS_HOURS.start}`;
+    if (hours && draft.startTime < hours.start) {
+      return `${t.validation.beforeBusinessStart}${hours.start}`;
     }
-    if (draft.endTime > BUSINESS_HOURS.end) {
-      return `${t.validation.afterBusinessEnd}${BUSINESS_HOURS.end}`;
+    if (hours && draft.endTime > hours.end) {
+      return `${t.validation.afterBusinessEnd}${hours.end}`;
     }
     if (Boolean(draft.breakStart) !== Boolean(draft.breakEnd)) return t.validation.breakBothRequired;
     if (draft.breakStart && draft.breakEnd) {
@@ -986,7 +1100,7 @@ function TemplateModal({
     return '';
   };
 
-  const submit = () => {
+  const submit = async () => {
     const err = validate();
     setError(err);
     if (err) return;
@@ -996,26 +1110,29 @@ function TemplateModal({
     };
     if (draft.id) {
       const id = draft.id;
+      /* 樂觀更新：先讓畫面反映輸入內容，但成功 toast 要等 await 過了才報（鐵則 12） */
       onChange(templates.map((x) => (x.id === id ? draft : x)));
-      toast.show(t.templateModal.updated);
-      void updateShiftTemplate(id, payload).catch((e) => {
+      setDraft(EMPTY);
+      try {
+        await updateShiftTemplate(id, payload);
+        toast.show(t.templateModal.updated);
+      } catch (e) {
         toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
-      });
+      }
     } else {
       if (templates.length >= TEMPLATE_MAX) return;
       const localId = `tpl_new_${nextId.current++}`;
       onChange([...templates, { ...draft, id: localId }]);
-      toast.show(t.templateModal.created);
-      /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-      void createShiftTemplate(payload)
-        .then((res) => {
-          if (res) onChange((list) => list.map((x) => (x.id === localId ? { ...x, id: res.id } : x)));
-        })
-        .catch((e) => {
-          toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
-        });
+      setDraft(EMPTY);
+      try {
+        /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
+        const res = await createShiftTemplate(payload);
+        if (res) onChange((list) => list.map((x) => (x.id === localId ? { ...x, id: res.id } : x)));
+        toast.show(t.templateModal.created);
+      } catch (e) {
+        toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
+      }
     }
-    setDraft(EMPTY);
   };
 
   return (
@@ -1158,16 +1275,17 @@ function TemplateModal({
         confirmText={common.delete}
         message={t.templateModal.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(templates.filter((x) => x.id !== id));
-            void deleteShiftTemplate(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
-          }
+        onConfirm={async () => {
+          if (!deleteTarget) { setDeleteTarget(null); return; }
+          const id = deleteTarget.id;
+          onChange(templates.filter((x) => x.id !== id));
           setDeleteTarget(null);
-          toast.show(t.templateModal.deleted);
+          try {
+            await deleteShiftTemplate(id);
+            toast.show(t.templateModal.deleted);
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+          }
         }}
       />
     </>

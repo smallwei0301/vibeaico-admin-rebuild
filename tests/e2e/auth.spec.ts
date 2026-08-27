@@ -46,7 +46,7 @@ test.describe('登入保護與旅程（12 分冊 §4 Phase 2）', () => {
     await expect(page).toHaveURL(new RegExp(DASHBOARD_PATH.replace(/\//g, '\\/')), { timeout: 15_000 });
   });
 
-  test('登出後再訪 dashboard 被擋', async ({ page, context }) => {
+  test('登出後再訪 dashboard 被擋', async ({ page }) => {
     await login(page);
     await expect(page).toHaveURL(new RegExp(DASHBOARD_PATH.replace(/\//g, '\\/')), { timeout: 15_000 });
 
@@ -56,24 +56,24 @@ test.describe('登入保護與旅程（12 分冊 §4 Phase 2）', () => {
     // 它換成真實登入者資料，換掉的話用文字定位會失準）——改用結構定位：
     // .topbar-right 底下第二個 .relative 觸發鈕（第一個是店家切換選單）。
     await page.locator('.topbar-right > .relative > button').nth(1).click();
-    await page.getByRole('link', { name: '登出' }).click();
 
-    // ⚠️ Topbar 目前的登出項目只是一個導去 /tenant/login 的 <Link>，並沒有呼叫
-    // POST /api/auth/logout 讓後端把 httpOnly session cookie 失效（見 Topbar.tsx：
-    // `<Link href="/tenant/login">…{common.topbar.logout}</Link>`，03 分冊也沒有把
-    // Topbar 登出接線列進 §6.3 的四頁例外清單）。光是換頁不會讓已登入的 session
-    // 失效，直接再訪 dashboard 不會被擋，會是假陰性。因此這裡額外用
-    // context.clearCookies() 補上「登出後 session 已失效」這個狀態——這是任務
-    // 指示明確認可的替代驗法。等 Topbar 真的接上 POST /api/auth/logout，這行
-    // 也不會讓測試變弱：驗的是「登出後」這個最終狀態，不是登出當下呼叫了什麼。
-    await context.clearCookies();
+    // 登出項目是 <button>（不是 <Link>）：它 await POST /api/auth/logout 成功
+    // 讓後端把 httpOnly session cookie 失效，之後才導向登入頁。
+    // ⚠️ 本測試先前在這裡補了一行「由測試自己把瀏覽器 cookie 清掉」的代打——
+    // 當時 Topbar 只是一個 <Link href="/tenant/login">，換頁不會讓 session 失效，
+    // 那行等於幫產品把它沒做的事做掉，測到的是被測程式以外的東西（12 §2.4
+    // 「不准為了讓測試過而改測試」）。Topbar 接上端點後代打已移除：現在下面
+    // 「再訪 dashboard 被擋」若紅，就是登出真的沒生效。
+    await page.getByRole('button', { name: '登出', exact: true }).click();
+
+    // 登出成功會被導回登入頁（router.replace('/tenant/login')）
+    await expect(page).toHaveURL(/\/tenant\/login/, { timeout: 15_000 });
 
     // waitUntil:'commit' 而非預設 'load'：實測（拋棄式 debug spec）證實此導航的
     // redirect 與渲染完全正常——middleware 8 秒內已把人導到
     // /tenant/login?next=%2Ftenant%2Fdashboard 且表單齊全——卡住的只是 window
     // 'load' 事件（Next dev 串流回應在重導後偶發不關閉）。等 'load' 不是本測試
-    // 要驗的行為；下面兩個斷言（URL 已導向 + 登入表單可見）才是，且比原版多了
-    // 表單可見這條，是收緊不是放寬。
+    // 要驗的行為；下面兩個斷言（URL 已導向 + 登入表單可見）才是。
     await page.goto(DASHBOARD_PATH, { waitUntil: 'commit' });
     await expect(page).toHaveURL(/\/tenant\/login/, { timeout: 15_000 });
     await expect(page.locator('#username')).toBeVisible({ timeout: 15_000 });

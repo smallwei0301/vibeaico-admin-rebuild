@@ -74,6 +74,7 @@ Vercel 會自動帶 `Authorization: Bearer ${CRON_SECRET}`（專案 env 有設�
 | recurring-bookings | active 的 recurring_bookings：依 rule 檢查未來 7 天應存在的場次，缺的補建 bookings（source='RECURRING'，status=CONFIRMED） |
 | feature-expiry | 功能訂閱到期副作用（票券暫停/商品下架），邏輯見 09 分冊 §6（台北 01:00 執行） |
 | tour-order-expiry | 逾期未付款旅遊訂單釋放名額（綠界 30 分鐘/匯款 3 天），邏輯見 10 分冊 §3 |
+| owner-reminders | **老闆通知的「訂閱到期／儲值提醒」（issue #18，2026-08-26 新增，台北 02:00 執行）**。逐店：只處理名單上有「主要」接收者的店 → 即將到期訂閱（`FEATURE_EXPIRY_WARNING_DAYS` 窗，與 dashboard-alerts 同一個窗）與點數不足 → `notifyOwnerPrimary()`，**只發主要一位**。去重走 `owner_notify_reminder_log`（一張訂閱一次／一個月一次），**推播真的送出去了才寫紀錄**。判定條件與「儲值門檻是我方設計」的說明見 06 分冊 §5.5.7 |
 
 ---
 

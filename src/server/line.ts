@@ -26,16 +26,38 @@ export const lineApiBase = () => process.env.LINE_API_BASE ?? 'https://api.line.
 export const lineDataApiBase = () =>
   process.env.LINE_DATA_API_BASE ?? 'https://api-data.line.me';
 
+/** getLineCredentials 需要的 tenant_settings 欄位（webhook 以 embed 一次撈時同形狀） */
+export type LineSettingsRow = {
+  line?: unknown;
+  line_channel_secret_enc?: string | null;
+  line_channel_access_token_enc?: string | null;
+} | null | undefined;
+
+/**
+ * 把一列 tenant_settings 解密成 LINE 憑證；未設定 access token → 丟 LINE_001。
+ *
+ * 抽成純函式的理由（issue #31）：webhook 為了省一趟 DB round-trip，改成用
+ * `tenants` 內嵌 `tenant_settings` 一次查完，拿到的是同一個形狀的列——解密與
+ * LINE_001 的判斷必須跟 getLineCredentials 走同一份程式碼，否則兩邊會慢慢分岔。
+ *
+ * ⚠️ **這裡沒有快取，也刻意不做快取**（issue #31 評估結論，理由見
+ * docs/integration/06-LINE-INTEGRATION.md §3.1）：店家在後台換了 Channel
+ * Access Token，**下一個進來的 webhook 請求就會用新 token**，沒有 TTL 空窗。
+ */
+export function decryptLineCredentials(row: LineSettingsRow) {
+  const token = decryptSecret(row?.line_channel_access_token_enc ?? '');
+  const secret = decryptSecret(row?.line_channel_secret_enc ?? '');
+  if (!token) throw new ApiHttpError(400, '尚未設定 LINE Channel', ERR.LINE_NOT_CONFIGURED);
+  return { token, secret, lineConfig: (row?.line ?? {}) as Record<string, any> };
+}
+
 /** 讀出該店解密後的 LINE 憑證；未設定 → 丟 LINE_001 */
 export async function getLineCredentials(tenantId: string) {
   const admin = createAdminSupabase();
   const { data } = await admin.from('tenant_settings')
     .select('line, line_channel_secret_enc, line_channel_access_token_enc')
     .eq('tenant_id', tenantId).single();
-  const token = decryptSecret(data?.line_channel_access_token_enc ?? '');
-  const secret = decryptSecret(data?.line_channel_secret_enc ?? '');
-  if (!token) throw new ApiHttpError(400, '尚未設定 LINE Channel', ERR.LINE_NOT_CONFIGURED);
-  return { token, secret, lineConfig: (data!.line ?? {}) as Record<string, any> };
+  return decryptLineCredentials(data as LineSettingsRow);
 }
 
 async function lineFetch(token: string, path: string, init?: RequestInit) {
@@ -109,7 +131,7 @@ export async function lineCreateRichMenu(token: string, richMenu: unknown): Prom
 
 /** 上傳 Rich Menu 圖片（api-data.line.me，06 §6 ③）；jpeg/png */
 export async function lineUploadRichMenuImage(
-  token: string, richMenuId: string, image: ArrayBuffer, contentType: string,
+  token: string, richMenuId: string, image: ArrayBuffer | Buffer, contentType: string,
 ) {
   const res = await fetch(`${lineDataApiBase()}/v2/bot/richmenu/${richMenuId}/content`, {
     method: 'POST',
@@ -130,3 +152,23 @@ export const lineSetDefaultRichMenu = (token: string, richMenuId: string) =>
 /** DELETE /v2/bot/richmenu/{id} — 換新選單時清掉舊的（呼叫端自行決定是否吞錯） */
 export const lineDeleteRichMenu = (token: string, richMenuId: string) =>
   lineFetch(token, `/v2/bot/richmenu/${richMenuId}`, { method: 'DELETE' });
+
+/**
+ * PUT /v2/bot/channel/webhook/endpoint — 把 webhook 網址直接設定到 LINE。
+ *
+ * 沒有這一步的話，後台顯示的 Webhook URL 只是「給店家自己複製去貼」的字串，
+ * LINE 那邊完全不知道——店家按了儲存卻發現「完整檢查」仍說網址不符，
+ * 因為那項檢查讀的是 LINE 伺服器上的實際設定。
+ *
+ * 不丟錯：呼叫端要能把失敗轉成畫面上的提示（例如 Channel 沒開 Messaging API
+ * 權限、或 token 只有部分權限），而不是讓整個「儲存設定」失敗。
+ */
+export async function lineSetWebhookEndpoint(token: string, endpoint: string) {
+  const res = await fetch(`${lineApiBase()}/v2/bot/channel/webhook/endpoint`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint }),
+  });
+  const body = await res.json().catch(() => ({}) as any);
+  return { ok: res.ok, status: res.status, body: body as Record<string, any> };
+}

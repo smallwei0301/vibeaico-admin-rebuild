@@ -21,54 +21,53 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import {
   adjustBookingPrice, applyBookingCoupon, applyBookingPoints, cancelBooking,
-  completeBooking, confirmBooking, createBooking, listBookings,
+  completeBooking, confirmBooking, createBooking, createBookingAddon,
+  deleteBookingAddon, listBookingAddons, listBookings,
   markBookingPaidOffline, markNoShow, revertBookingComplete, updateBooking,
+  type CreateBookingAddonResult,
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { exportBookingsCsv } from '@/services/reports';
 import { byMode } from '@/mock';
+import { ApiError } from '@/lib/api';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
-import type { Booking, BookingStatus, Customer, Service, Staff } from '@/lib/types';
+import type {
+  Booking, BookingAddon, BookingAddonNotifyOutcome, BookingStatus, Customer, Service, Staff,
+} from '@/lib/types';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 Booking 另有付款/折抵欄位，骨架階段以 module 常數補齊 */
-type BookingExtras = {
-  paidAmount: number;
-  couponDiscount: number;
-  pointsRedeemed: number;
-  /** 顧客可用點數 */
-  customerPoints: number;
-};
-
-const DEFAULT_EXTRAS: BookingExtras = {
-  paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
-};
-
-const BOOKING_EXTRAS_LOCAL_SHOP: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
-  b_2: { paidAmount: 1000, couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
-  b_3: { paidAmount: 1080, couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
-};
-
-const BOOKING_EXTRAS_GUIDE: Record<string, BookingExtras> = {
-  b_g1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
-};
-
-const BOOKING_EXTRAS_CLINIC: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 300, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
-  b_2: { paidAmount: 6800, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
-  b_3: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
-};
-
+/*
+ * issue #35：本檔原本有 `BOOKING_EXTRAS_LOCAL_SHOP|GUIDE|CLINIC` 三份頁內常數，
+ * 把「已收金額」「票券折抵」「點數折抵」「顧客可用點數」四個值寫死在頁面裡，
+ * 與同一列的真實資料（顧客、時間、服務、金額）混著顯示。逐欄處置見
+ * `docs/integration/14-GAP-AUDIT.md` §6.17：
+ *
+ *   · couponDiscount / pointsRedeemed → migration 0022 補 `bookings.coupon_discount`
+ *     / `points_redeemed`，由 apply-coupon / apply-points 在折抵發生的當下寫入，
+ *     GET /api/bookings 帶出來。**null = 沒有紀錄**，畫面就不顯示那一行（不是 0）。
+ *   · customerPoints → `customers.points` 一直存在，只是沒被帶出來；0022 的
+ *     `bookings_view.customer_points` 補上。
+ *   · **paidAmount（已收金額）→ 本輪移除，不補**。原站的 `b.paidAmount`
+ *     （docs/specs/bookings.json jsStrings[48]「（已收 ${formatMoney(b.paidAmount)}）」）
+ *     來自線上金流交易，而顧客端線上付款整塊還沒建（issue #32），我方連一張金流
+ *     交易表都沒有。要補這個欄位得先定訂金／尾款／退款怎麼連動——那是業務規則，
+ *     不是接線，已列為 issue #35 的待裁決項。在裁決之前，畫面上凡是需要「收了多少
+ *     錢」的地方一律改用真的知道的 `paymentStatus`（已付清／待付款），
+ *     **不顯示一個編出來的金額**。
+ */
+/**
+ * 頁面假資料用的最小加購形狀；`toMockAddon` 補齊成 API 契約的 `BookingAddon`
+ * （mock 模式下服務層回 null，畫面沿用這份假資料——同 listRecurringBookings 的慣例）。
+ */
 type AddonItem = {
   id: string;
   name: string;
@@ -77,6 +76,23 @@ type AddonItem = {
   durationMinutes: number;
   staffName: string | null;
 };
+
+/** 假資料 → BookingAddon：applied_* 在真實資料是「當初實際加上去的量」，
+ *  假資料沒有那段歷史，就用 price×quantity 推得（mock 模式不會有回沖不一致的問題）。 */
+const toMockAddon = (s: AddonItem): BookingAddon => ({
+  id: s.id,
+  serviceId: null,
+  name: s.name,
+  price: s.price,
+  quantity: s.quantity,
+  durationMinutes: s.durationMinutes,
+  staffId: null,
+  staffName: s.staffName,
+  appliedAmount: s.price * s.quantity,
+  appliedMinutes: s.durationMinutes * s.quantity,
+  notified: 'NONE',
+  createdAt: '',
+});
 
 const ADDON_ITEMS_LOCAL_SHOP: Record<string, AddonItem[]> = {
   b_2: [
@@ -118,23 +134,33 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
 
 const REAL_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
-const extrasOf = (b: Booking): BookingExtras => byMode({
-  LOCAL_SHOP: BOOKING_EXTRAS_LOCAL_SHOP, GUIDE: BOOKING_EXTRAS_GUIDE, CLINIC: BOOKING_EXTRAS_CLINIC,
-})[b.id] ?? DEFAULT_EXTRAS;
+/** 已收款＝我們真的知道的那一半：payment_status 說已付清（線上或線下）。 */
+const isPaid = (b: Booking) =>
+  b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE';
 
-const addonsOf = (b: Booking): AddonItem[] => byMode({
+const addonsOf = (b: Booking): BookingAddon[] => (byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
-})[b.id] ?? [];
+})[b.id] ?? []).map(toMockAddon);
 
+/**
+ * 付款頁（`/pay/:bookingNo`）尚未建置——歸屬於 issue #32（顧客端線上付款）
+ * 的範圍，`src/app/` 底下目前只有 `api`、`tenant`、`layout.tsx`、`page.tsx`，
+ * 顧客打開這個網址一定 404。
+ *
+ * 依擁有者裁決（issue #28 ②，補齊優先於刪除）：不建 `/pay` 頁，也不刪這段邏輯——
+ * 詳情 modal 的「複製付款連結」鈕已停用（見下方 `copyPayLink` 呼叫處與 JSX），
+ * 待 #32 把 `/pay` 頁真的建出來後，只需拿掉那顆鈕的 `disabled` 與旁邊的說明文字，
+ * 這裡的組網址／複製邏輯不用重寫。
+ */
 const payLinkOf = (b: Booking) => `${APP_URL.replace(/\/$/, '')}/pay/${b.bookingNo}`;
 
-/** 付款狀態顯示：已付清 / 已付訂金 / 待付款 */
-const paymentLabel = (b: Booking) => {
-  const { paidAmount } = extrasOf(b);
-  if (b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE') return t.payment.paid;
-  if (paidAmount > 0) return t.payment.deposit;
-  return t.payment.pending;
-};
+/*
+ * 付款狀態顯示：已付清 / 待付款。
+ * 原站另有「已付訂金」，判定條件是 `paidAmount > 0 且未付清`——我方沒有金額型的
+ * 付款欄位（見檔頭 issue #35 說明、14 分冊 §6.14），**判定不出來就不顯示**，
+ * 不用一個編出來的金額把它撐出來。
+ */
+const paymentLabel = (b: Booking) => (isPaid(b) ? t.payment.paid : t.payment.pending);
 
 /* -------------------------------------------------------------------------- */
 
@@ -155,6 +181,7 @@ export default function BookingsPage() {
   /** 「未處理」= 時間已過但仍停在待確認/已確認；在載入時算好，render 期不碰 Date.now() */
   const [unprocessedIds, setUnprocessedIds] = React.useState<string[]>([]);
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   /* modal 狀態（8 個 modal） */
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -174,7 +201,9 @@ export default function BookingsPage() {
   const [noShowTarget, setNoShowTarget] = React.useState<Booking | null>(null);
   const [revertTarget, setRevertTarget] = React.useState<Booking | null>(null);
   const [batchConfirmOpen, setBatchConfirmOpen] = React.useState(false);
-  const [removeAddonTarget, setRemoveAddonTarget] = React.useState<AddonItem | null>(null);
+  const [removeAddonTarget, setRemoveAddonTarget] = React.useState<BookingAddon | null>(null);
+  /** 加購新增／移除後 +1，讓詳情 modal 重新向 API 取一次明細（不靠本地拼湊） */
+  const [addonsVersion, setAddonsVersion] = React.useState(0);
 
   const [cancelReason, setCancelReason] = React.useState('');
 
@@ -233,6 +262,37 @@ export default function BookingsPage() {
 
   React.useEffect(() => { void load(); }, [load]);
 
+  /**
+   * 匯出預約列表（GET /api/export/bookings/:format，帶畫面上的日期區間）
+   * —— issue #28 ③ 接線、issue #33 ③ 改打原站的 format 段。
+   *
+   * 修改前這顆鈕的 onClick 整個內容是
+   * `{ setExportOpen(false); toast.show(t.messages.exported); }`：什麼都沒下載，
+   * 畫面卻說匯出成功。現在成功訊息只在**檔案真的到了瀏覽器**時才顯示，而且
+   * 顯示的是伺服器 Content-Disposition 給的檔名（前端不得自組，見
+   * src/lib/download.ts）；示範資料模式沒有伺服器可打、不會產生任何檔案，
+   * 顯示「未匯出」而不是成功。
+   */
+  const runExport = async (format: 'csv' | 'excel') => {
+    setExportOpen(false);
+    setExporting(true);
+    try {
+      const { downloaded, fileName } = await exportBookingsCsv(format, {
+        from: startDate || undefined,
+        to: endDate || undefined,
+      });
+      if (!downloaded) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(fileName ? t.messages.exportedAs(fileName) : t.messages.exported);
+    } catch (e) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const isUnprocessed = (b: Booking) => unprocessedIds.includes(b.id);
 
   const toggleRow = (id: string) =>
@@ -253,6 +313,41 @@ export default function BookingsPage() {
     }
   };
 
+  /* ------------------------------------------------------------------ 加購
+   * issue #17：加購後端（migration 0020 + /api/bookings/:id/addons）已建置，
+   * 這裡是真實接線。三個要點：
+   *  1. toast 只在 API 真的回成功之後才顯示，內容依 API 回來的 `notified`
+   *     分支——不可寫死「顧客將收到消費明細」（00 鐵則 12）。
+   *  2. 金額／時長用 API 回傳的值更新畫面上開著的那筆預約，不在前端自行加總。
+   *  3. 明細清單不在本地拼湊，改 `addonsVersion` 讓詳情 modal 重新向 API 取。
+   */
+
+  /** 把 API 回來的金額／時段套到目前開著的詳情預約上 */
+  const applyAddonResult = (r: { finalPrice: number; endAt: string; durationMinutes: number }) => {
+    setDetailTarget((prev) => (prev
+      ? { ...prev, finalPrice: r.finalPrice, endAt: r.endAt, durationMinutes: r.durationMinutes }
+      : prev));
+    setAddonsVersion((v) => v + 1);
+    void load();
+  };
+
+  /** notified（API 實際結果）→ 對應的成功訊息；一種結果一句話 */
+  const addonAddedMessage = (notified: BookingAddonNotifyOutcome, amount: string): string => {
+    const m = t.messages;
+    if (notified === 'LINE') return m.addonAddedNotified(amount);
+    if (notified === 'NO_LINE') return m.addonAddedNoLine(amount);
+    if (notified === 'NOT_CONFIGURED') return m.addonAddedLineNotConfigured(amount);
+    if (notified === 'FAILED') return m.addonAddedNotifyFailed(amount);
+    // 'NONE'：沒有要求通知（或 mock 模式，沒有任何推播管道）
+    return m.addonAdded(amount);
+  };
+
+  /**
+   * 目前唯一的呼叫入口（詳情 modal 的「複製付款連結」鈕）已 disabled，
+   * 所以這支函式與底下剪貼簿失敗時把網址印進 toast 的退路都到不了——
+   * 保留是為了 issue #32 完成、`/pay` 頁真的存在後可以直接拿掉鈕的
+   * disabled 就恢復運作，不用重寫。見 payLinkOf 上方註解。
+   */
   const copyPayLink = async (b: Booking) => {
     try {
       await navigator.clipboard.writeText(payLinkOf(b));
@@ -267,9 +362,8 @@ export default function BookingsPage() {
   const selectedRows = rows.filter((r) => selected.includes(r.id));
   const batchPending = selectedRows.filter((r) => r.status === 'PENDING');
   const batchCancellable = selectedRows.filter((r) => r.status === 'PENDING' || r.status === 'CONFIRMED');
-  const batchPaid = batchCancellable.filter((r) => extrasOf(r).paidAmount > 0);
-  const batchPaidTotal = batchPaid.reduce((sum, r) => sum + extrasOf(r).paidAmount, 0);
-  const batchUnpaid = batchPending.filter((r) => extrasOf(r).paidAmount === 0);
+  const batchPaid = batchCancellable.filter(isPaid);
+  const batchUnpaid = batchPending.filter((r) => !isPaid(r));
 
   const openBatchConfirm = () => {
     if (selected.length === 0) { toast.show(t.messages.selectConfirmFirst, 'warning'); return; }
@@ -331,22 +425,14 @@ export default function BookingsPage() {
     },
     {
       key: 'amount', header: t.columns.amount, numeric: true, width: '140px',
-      render: (b) => {
-        const { paidAmount } = extrasOf(b);
-        return (
-          <div className="min-w-0">
-            <div>{formatCurrency(b.finalPrice)}</div>
-            {b.finalPrice !== b.price ? (
-              <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
-            ) : null}
-            {paidAmount > 0 ? (
-              <div className="text-2xs text-secondary">
-                {t.labels.received(formatCurrency(paidAmount))}
-              </div>
-            ) : null}
-          </div>
-        );
-      },
+      render: (b) => (
+        <div className="min-w-0">
+          <div>{formatCurrency(b.finalPrice)}</div>
+          {b.finalPrice !== b.price ? (
+            <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'status', header: t.columns.status, width: '110px',
@@ -410,17 +496,31 @@ export default function BookingsPage() {
         actions={
           <>
             <div className="relative">
-              <Button variant="outline" onClick={() => setExportOpen((v) => !v)}>
-                <Download size={15} />{t.actions.export}
+              <Button
+                variant="outline"
+                disabled={exporting}
+                onClick={() => setExportOpen((v) => !v)}
+              >
+                <Download size={15} />{exporting ? t.actions.exporting : t.actions.export}
               </Button>
               {exportOpen ? (
-                <div className="absolute right-0 z-flyout mt-1 flex min-w-[10rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
-                  {[common.exportExcel, common.exportCsv].map((label) => (
+                <div className="absolute right-0 z-flyout mt-1 flex min-w-[14rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
+                  {/*
+                    issue #33 ③：format 路徑段已補上（GET /api/export/bookings/:format），
+                    兩個選項各自送出自己的 format。**但兩者拿到的仍是同一份 CSV**
+                    ——專案沒有裝 xlsx 產生器（見 src/server/export-bookings.ts），
+                    所以標籤照 reports 頁的作法寫明實際格式，不寫「匯出 Excel」
+                    再送一個 .csv 出去。檔名一律取自後端 Content-Disposition。
+                  */}
+                  {([
+                    ['excel', t.actions.exportExcelCsv],
+                    ['csv', t.actions.exportCsv],
+                  ] as const).map(([format, label]) => (
                     <button
-                      key={label}
+                      key={format}
                       type="button"
                       className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
-                      onClick={() => { setExportOpen(false); toast.show(t.messages.exported); }}
+                      onClick={() => { void runExport(format); }}
                     >
                       {label}
                     </button>
@@ -549,7 +649,12 @@ export default function BookingsPage() {
         open={!!editing}
         booking={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => { setEditing(null); toast.show(t.messages.updated); void load(); }}
+        onSaved={(res) => {
+          setEditing(null);
+          // 如實描述實際發生的事：有觸發推播才說「已送出」（00 鐵則 12）
+          toast.show(res?.notifyTriggered ? t.messages.updated : t.messages.updatedNoNotify);
+          void load();
+        }}
       />
 
       {/* ------------------------------------------------------ 3. 取消預約 */}
@@ -580,10 +685,10 @@ export default function BookingsPage() {
         }
       >
         <p className="mb-3 text-base">{t.cancelModal.intro}</p>
-        {cancelTarget && extrasOf(cancelTarget).paidAmount > 0 ? (
+        {cancelTarget && isPaid(cancelTarget) ? (
           <Alert tone="warning" className="mb-3">
             <span className="whitespace-pre-line">
-              {t.confirmMessages.cancelPaidWarning(formatCurrency(extrasOf(cancelTarget).paidAmount))}
+              {t.confirmMessages.cancelPaidWarning}
             </span>
           </Alert>
         ) : null}
@@ -601,17 +706,27 @@ export default function BookingsPage() {
       </Modal>
 
       {/* ------------------------------------------------------ 4. 加購項目 */}
+      {/*
+        * issue #3 曾把這裡改成「尚未建置」的誠實提示（舊實作 toast
+        * 「加購已加入，顧客將收到 LINE 消費明細」，但資料沒寫、LINE 也沒送）。
+        * issue #17 補齊了後端，這裡改為真實接線：成功訊息只在 API 回成功後顯示，
+        * 且依 API 實際回來的 notified 決定要不要提到「已通知顧客」。
+        */}
       <AddonModal
         booking={addonTarget}
         onClose={() => setAddonTarget(null)}
-        onAdded={(notify, hasLine) => {
+        onSubmitted={(result) => {
           setAddonTarget(null);
-          toast.show(
-            !notify ? t.messages.addonAddedSilent
-              : hasLine ? t.messages.addonAdded
-                : t.messages.addonAddedNoLine,
-          );
+          applyAddonResult(result);
+          toast.show(addonAddedMessage(result.notified, formatCurrency(result.finalPrice)));
+        }}
+        onFailed={(message) => {
+          // 可能已經寫入（額度 409）→ 關掉詳情、重新載入，別讓店家看著過期畫面再按一次
+          setAddonTarget(null);
+          setDetailTarget(null);
+          setAddonsVersion((v) => v + 1);
           void load();
+          toast.show(message, 'danger');
         }}
       />
 
@@ -651,16 +766,12 @@ export default function BookingsPage() {
       {/* ------------------------------------------------------ 8. 標記付款 */}
       <ConfirmModal
         open={!!markPaidTarget}
-        title={markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-          ? t.markPaidModal.titleBalance
-          : t.markPaidModal.titleOffline}
+        /* issue #35：原站用「已收金額 > 0」在「標記尾款已結清」與「標記已線下收款」
+           之間切換；我方沒有金額型付款欄位，判定不出有沒有尾款 → 一律走「標記已線下
+           收款」，不用假的金額把另一支撐出來。 */
+        title={t.markPaidModal.titleOffline}
         message={
-          <span className="whitespace-pre-line">
-            {t.markPaidModal.confirmOffline}
-            {markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-              ? `\n${t.markPaidModal.depositHint}`
-              : ''}
-          </span>
+          <span className="whitespace-pre-line">{t.markPaidModal.confirmOffline}</span>
         }
         onClose={() => setMarkPaidTarget(null)}
         onConfirm={() => {
@@ -677,6 +788,7 @@ export default function BookingsPage() {
       {/* -------------------------------------------------------- 預約詳情 */}
       <BookingDetailModal
         booking={detailTarget}
+        addonsVersion={addonsVersion}
         onClose={() => setDetailTarget(null)}
         onAddon={() => setAddonTarget(detailTarget)}
         onCoupon={() => setCouponTarget(detailTarget)}
@@ -696,7 +808,7 @@ export default function BookingsPage() {
         title={t.rowActions.confirm}
         message={
           <span className="whitespace-pre-line">
-            {confirmTarget && extrasOf(confirmTarget).paidAmount === 0 && confirmTarget.paymentStatus === 'UNPAID'
+            {confirmTarget && confirmTarget.paymentStatus === 'UNPAID'
               ? `${t.confirmMessages.confirmBooking}\n\n${t.confirmMessages.manualConfirm}`
               : t.confirmMessages.confirmBooking}
           </span>
@@ -716,7 +828,7 @@ export default function BookingsPage() {
         title={t.rowActions.complete}
         message={
           <span className="whitespace-pre-line">
-            {completeTarget && extrasOf(completeTarget).paidAmount === 0
+            {completeTarget && !isPaid(completeTarget)
               ? t.markPaidModal.balanceHint
               : t.markPaidModal.paidHint}
           </span>
@@ -762,17 +874,46 @@ export default function BookingsPage() {
         }}
       />
 
+      {/*
+        * 移除加購：確認視窗直接寫出「將扣回多少錢／收回多少分鐘」這兩個確定的數字
+        * （回沖＝減去該筆加購當初實際加上去的量，見 addons route 檔頭）。
+        * 之後若又調過價或套過打折票券，扣回值可能與店家預期不同——那兩種情況
+        * 無法從資料判定，所以不猜，直接把數字攤在使用者眼前。
+        */}
       <ConfirmModal
         open={!!removeAddonTarget}
         danger
         title={t.rowActions.addon}
         confirmText={common.delete}
-        message={t.confirmMessages.removeAddon}
+        message={
+          <span className="whitespace-pre-line">
+            {removeAddonTarget ? t.confirmMessages.removeAddon(
+              removeAddonTarget.name,
+              formatCurrency(removeAddonTarget.appliedAmount),
+              removeAddonTarget.appliedMinutes,
+            ) : ''}
+          </span>
+        }
         onClose={() => setRemoveAddonTarget(null)}
         onConfirm={() => {
+          const addon = removeAddonTarget;
+          const booking = detailTarget;
           setRemoveAddonTarget(null);
-          toast.show(t.messages.addonRemoved);
-          void load();
+          if (!addon || !booking) return;
+          void (async () => {
+            try {
+              const r = await deleteBookingAddon(booking.id, addon.id, {
+                appliedAmount: addon.appliedAmount, appliedMinutes: addon.appliedMinutes,
+              });
+              applyAddonResult(r);
+              toast.show(t.messages.addonRemoved(formatCurrency(r.revertedAmount)));
+            } catch (e) {
+              toast.show(
+                `${t.messages.removeAddonFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+                'danger',
+              );
+            }
+          })();
         }}
       />
 
@@ -816,7 +957,7 @@ export default function BookingsPage() {
             {t.confirmMessages.batchCancel(
               batchCancellable.length,
               batchPaid.length > 0
-                ? t.confirmMessages.batchRefundWarning(batchPaid.length, formatCurrency(batchPaidTotal))
+                ? t.confirmMessages.batchRefundWarning(batchPaid.length)
                 : '',
             )}
           </span>
@@ -849,9 +990,14 @@ function BookingFormModal({
   open: boolean;
   booking: Booking | null;
   onClose: () => void;
-  onSaved: () => void;
+  /**
+   * 編輯模式會帶回 PUT /api/bookings/:id 的 `notifyTriggered`（本次有沒有觸發
+   * 顧客端「預約已變更」推播）；新增模式不適用，帶 undefined。
+   */
+  onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
+  const businessType = useBusinessType();
   const isEdit = !!booking;
   const c = t.createModal;
   const e = t.editModal;
@@ -927,7 +1073,7 @@ function BookingFormModal({
         return c.customerInvalid;
       }
     }
-    if (!serviceId) return c.serviceInvalid;
+    if (!serviceId) return resolveNavTerms(c.serviceInvalid, businessType);
     if (REQUIRE_STAFF && !staffId) return `${c.staffRequired}${c.staffRequiredSuffix}`;
     if (!date) return c.dateInvalid;
     if (!isEdit && checkoutDate && checkoutDate <= date) return c.checkoutInvalid;
@@ -963,7 +1109,9 @@ function BookingFormModal({
       const startAt = new Date(`${date}T${time}:00`).toISOString();
       if (isEdit && booking) {
         // duration 下拉僅供畫面試算：PUT /api/bookings/:id 以既有 duration_minutes 重算 end_at
-        await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        // 回應的 notifyTriggered 決定成功訊息要不要提通知（只改備註時後端不推播）
+        const res = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        onSaved(res);
       } else {
         await createBooking({
           customerId: await resolveCustomerId(),
@@ -972,8 +1120,8 @@ function BookingFormModal({
           startAt,
           note: note || undefined,
         });
+        onSaved();
       }
-      onSaved();
     } catch (err2) {
       toast.show(
         `${isEdit ? t.messages.updateFailed : t.messages.createFailed}${err2 instanceof Error ? err2.message : t.messages.unknownError}`,
@@ -1003,7 +1151,9 @@ function BookingFormModal({
         </>
       }
     >
-      <p className="mb-4 text-base text-neutral-700">{isEdit ? e.intro : c.intro}</p>
+      <p className="mb-4 text-base text-neutral-700">
+        {resolveNavTerms(isEdit ? e.intro : c.intro, businessType)}
+      </p>
 
       {isEdit ? (
         <FormGroup>
@@ -1046,7 +1196,9 @@ function BookingFormModal({
 
       <div className="grid gap-x-4 md:grid-cols-2">
         <FormGroup>
-          <Label required htmlFor="bookingService">{isEdit ? e.service : c.service}</Label>
+          <Label required htmlFor="bookingService">
+            {resolveNavTerms(isEdit ? e.service : c.service, businessType)}
+          </Label>
           <Select id="bookingService" value={serviceId} onChange={(ev) => setServiceId(ev.target.value)}>
             <option value="">{c.servicePlaceholder}</option>
             {services.map((s) => (
@@ -1121,7 +1273,7 @@ function BookingFormModal({
               value={selectedService ? c.durationValue(selectedService.durationMinutes) : ''}
             />
           )}
-          <FormText>{isEdit ? e.durationHelp : c.durationHelp}</FormText>
+          <FormText>{resolveNavTerms(isEdit ? e.durationHelp : c.durationHelp, businessType)}</FormText>
         </FormGroup>
       </div>
 
@@ -1148,11 +1300,13 @@ function BookingFormModal({
 /* ========================================================================== */
 
 function AddonModal({
-  booking, onClose, onAdded,
+  booking, onClose, onSubmitted, onFailed,
 }: {
   booking: Booking | null;
   onClose: () => void;
-  onAdded: (notify: boolean, hasLine: boolean) => void;
+  onSubmitted: (result: CreateBookingAddonResult) => void;
+  /** 失敗但可能已經寫入（例：額度 409）→ 交給父層關窗＋重新載入，見 submit 的註解 */
+  onFailed: (message: string) => void;
 }) {
   const toast = useToast();
   const a = t.addonModal;
@@ -1164,14 +1318,14 @@ function AddonModal({
   const [duration, setDuration] = React.useState('0');
   const [quantity, setQuantity] = React.useState('1');
   const [staffId, setStaffId] = React.useState('');
-  const [notify, setNotify] = React.useState(true);
-  const [error, setError] = React.useState('');
+  const [notify, setNotify] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
 
   React.useEffect(() => {
     if (!booking) return;
     setServiceId(''); setName(''); setPrice(''); setDuration('0');
-    setQuantity('1'); setStaffId(''); setNotify(true); setError('');
+    setQuantity('1'); setStaffId(''); setNotify(false); setSaving(false); setError('');
     void (async () => {
       try { setServices(await listServices()); }
       catch { toast.show(`${t.messages.loadAddonOptionsFailed}${t.messages.unknownError}`, 'danger'); }
@@ -1192,7 +1346,13 @@ function AddonModal({
     }
   };
 
-  const submit = async () => {
+  /**
+   * 送出＝真的呼叫 POST /api/bookings/:id/addons（issue #17）。
+   * 成功回應才 onSubmitted()，由呼叫端依 API 回來的 notified 顯示訊息；
+   * 失敗（含推播額度用完的 409——那個訊息本身會說明加購已寫入）一律原文顯示。
+   */
+  const submit = () => {
+    if (!booking || saving) return;
     if (!name.trim()) { setError(t.messages.itemNameRequired); return; }
     if (!price || Number(price) < 0 || Number.isNaN(Number(price))) {
       setError(t.messages.invalidAmount);
@@ -1200,12 +1360,35 @@ function AddonModal({
     }
     setError('');
     setSaving(true);
-    try {
-      await new Promise((r) => setTimeout(r, 400));
-      onAdded(notify, !!booking && booking.source === 'LINE');
-    } finally {
-      setSaving(false);
-    }
+    void (async () => {
+      try {
+        const r = await createBookingAddon(booking.id, {
+          serviceId: serviceId || null,
+          name: name.trim(),
+          price: Number(price),
+          quantity: Math.max(1, Number(quantity) || 1),
+          durationMinutes: Number(duration) || 0,
+          staffId: staffId || null,
+          notify,
+        });
+        onSubmitted(r);
+      } catch (e) {
+        const message = `${t.messages.addonFailed}${e instanceof Error ? e.message : t.messages.unknownError}`;
+        /*
+         * ⚠️ 失敗**不一定代表什麼都沒發生**：推播額度用完時 API 回 409，但加購
+         * 已經寫入且金額已生效（04 §B-1.1）。若照一般作法把錯誤留在視窗裡、
+         * 讓表單原樣停著，店家很可能再按一次「加入」而重複加購，畫面上的金額
+         * 也還是舊的——那就是拿一個過期的畫面當現況。
+         *
+         * 所以只有「輸入格式錯誤」（REQ_001，伺服器保證沒有寫入）才留在視窗裡
+         * 讓店家就地改；其餘一律關掉視窗並重新載入，由 onFailed 處理。
+         */
+        if (e instanceof ApiError && e.code === 'REQ_001') setError(message);
+        else onFailed(message);
+      } finally {
+        setSaving(false);
+      }
+    })();
   };
 
   return (
@@ -1216,9 +1399,7 @@ function AddonModal({
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>{common.cancel}</Button>
-          <Button loading={saving} loadingText={a.submitting} onClick={() => void submit()}>
-            {a.submit}
-          </Button>
+          <Button onClick={submit} disabled={saving}>{a.submit}</Button>
         </>
       }
     >
@@ -1281,16 +1462,19 @@ function AddonModal({
           <option value="">{a.staffSame}</option>
           {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </Select>
+        {/* 業績歸戶不看這一欄（主導者裁示：計入本預約的服務人員），所以說明白 */}
+        <FormText>{a.staffHelp}</FormText>
       </FormGroup>
 
       <FormGroup>
-        <label className="flex items-start gap-1.5 text-base">
+        <label className="flex items-start gap-1.5 text-base text-secondary">
           <input
-            type="checkbox" checked={notify} className="mt-1"
-            onChange={(ev) => setNotify(ev.target.checked)}
+            id="addonNotify" type="checkbox" className="mt-1"
+            checked={notify} onChange={(ev) => setNotify(ev.target.checked)}
           />
-          {a.notify}
+          {a.notifyLabel}
         </label>
+        <FormText>{a.notifyHelp}</FormText>
       </FormGroup>
 
       <FormText>{a.footnote}</FormText>
@@ -1324,10 +1508,9 @@ function ApplyCouponModal({
     setError('');
     setSaving(true);
     try {
-      // API 回折抵後金額；折抵數 = 折抵前 − 折抵後（mock 分支合成同現行假邏輯的數字）
-      const price = booking.finalPrice;
+      // API 直接回本次折抵金額（issue #35 補的 couponDiscount，原站也有這個欄位）
       const res = await applyBookingCoupon(booking.id, code.trim());
-      onApplied(price - res.finalPrice, res.finalPrice);
+      onApplied(res.couponDiscount, res.finalPrice);
     } catch (e) {
       // 404 找不到票券／409 已核銷、不屬此顧客 → 把 server message 顯示出來
       toast.show(e instanceof Error ? e.message : t.messages.couponFailed, 'danger');
@@ -1384,11 +1567,26 @@ function AdjustPriceModal({
   const [amount, setAmount] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const addonCount = booking ? addonsOf(booking).length : 0;
+  /*
+   * 加購筆數要向 API 取（issue #17）。先前只讀頁內 byMode 假資料，接上真實後端後
+   * 那份假資料在正式模式一定是空的 —— 於是「此預約有 N 筆加購明細」的警告
+   * 會**永遠不出現**，店家在有加購的預約上手動調價卻收不到提醒。
+   * 取不到就當 0（不顯示警告），不亂猜一個數字。
+   */
+  const [addonCount, setAddonCount] = React.useState(0);
 
   React.useEffect(() => {
     setAmount(booking ? String(booking.finalPrice) : '');
     setError('');
+    if (!booking) { setAddonCount(0); return; }
+    let alive = true;
+    void (async () => {
+      try {
+        const rows = await listBookingAddons(booking.id);
+        if (alive) setAddonCount((rows ?? addonsOf(booking)).length);
+      } catch { if (alive) setAddonCount(0); }
+    })();
+    return () => { alive = false; };
   }, [booking]);
 
   const submit = async () => {
@@ -1410,8 +1608,11 @@ function AdjustPriceModal({
     }
   };
 
-  const paid = booking ? extrasOf(booking).paidAmount : 0;
-  const overpaid = paid - Number(amount || 0);
+  /*
+   * issue #35：原站在這裡會比對「已收金額」與新的應付金額，多收就提醒退差額。
+   * 我方沒有 paid_amount 欄位（見檔頭），比不出來 → **不顯示**這則提醒，
+   * 而不是拿一個編出來的已收金額去算差額。待「已收金額」裁決落地後補回。
+   */
 
   return (
     <Modal
@@ -1444,11 +1645,6 @@ function AdjustPriceModal({
         />
       </FormGroup>
 
-      {paid > 0 && overpaid > 0 ? (
-        <Alert tone="warning">
-          {t.messages.paidOverNet(formatCurrency(paid), formatCurrency(Number(amount || 0)))}
-        </Alert>
-      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );
@@ -1470,7 +1666,12 @@ function ApplyPointsModal({
   const [points, setPoints] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const balance = booking ? extrasOf(booking).customerPoints : 0;
+  /*
+   * issue #35：餘額改吃真的 `customers.points`（0022 起由 bookings_view 帶出）。
+   * `null`／`undefined` = 這一列沒有帶到餘額 → 顯示 `--` 並在畫面上說明，
+   * **不顯示 0**（0 是「沒有點數」，是另一個答案）。
+   */
+  const balance = booking?.customerPoints ?? null;
 
   React.useEffect(() => { setPoints(''); setError(''); }, [booking]);
 
@@ -1487,7 +1688,7 @@ function ApplyPointsModal({
       // 實際折抵數 = 折抵前 − API 回的折抵後金額；balance 只餵 mock 分支
       // （合成「夾在餘額／金額內」的現行假結果），真模式由後端驗證並回 409 訊息。
       const price = booking.finalPrice;
-      const res = await applyBookingPoints(booking.id, value, balance);
+      const res = await applyBookingPoints(booking.id, value, balance ?? undefined);
       onApplied(price - res.finalPrice);
     } catch (e) {
       // 409 顧客點數不足（POINTS_001）等 → 把 server message 顯示出來
@@ -1516,7 +1717,10 @@ function ApplyPointsModal({
       <p className="mb-3 text-base">{pm.intro}</p>
       <FormGroup>
         <Label>{pm.balanceLabel}</Label>
-        <div className="text-lg font-bold text-dark">{balance}</div>
+        <div className="text-lg font-bold text-dark">
+          {balance === null ? pm.balanceUnknown : balance}
+        </div>
+        {balance === null ? <FormText>{pm.balanceUnknownHint}</FormText> : null}
       </FormGroup>
       <FormGroup>
         <Label required htmlFor="applyPoints">{pm.label}</Label>
@@ -1541,10 +1745,12 @@ function ApplyPointsModal({
 /* ========================================================================== */
 
 function BookingDetailModal({
-  booking, onClose, onAddon, onCoupon, onPoints, onAdjust, onMarkPaid,
+  booking, addonsVersion, onClose, onAddon, onCoupon, onPoints, onAdjust, onMarkPaid,
   onCopyPayLink, onComplete, onCancel, onRevert, onRemoveAddon,
 }: {
   booking: Booking | null;
+  /** 父層在加購新增／移除後 +1，用來重新向 API 取一次明細 */
+  addonsVersion: number;
   onClose: () => void;
   onAddon: () => void;
   onCoupon: () => void;
@@ -1555,12 +1761,64 @@ function BookingDetailModal({
   onComplete: () => void;
   onCancel: () => void;
   onRevert: () => void;
-  onRemoveAddon: (item: AddonItem) => void;
+  onRemoveAddon: (item: BookingAddon) => void;
 }) {
   const d = t.detailModal;
-  const addons = booking ? addonsOf(booking) : [];
-  const extras = booking ? extrasOf(booking) : DEFAULT_EXTRAS;
-  const net = (booking?.finalPrice ?? 0) - extras.couponDiscount - extras.pointsRedeemed;
+  const toast = useToast();
+  const [addons, setAddons] = React.useState<BookingAddon[]>([]);
+  /*
+   * issue #35：折抵金額改吃真的欄位（0022 的 bookings.coupon_discount /
+   * points_redeemed，由 apply-coupon / apply-points 在折抵當下寫入）。
+   *
+   * ⚠️「應收金額」就是 `finalPrice` 本身，**不可以再減一次折抵**——apply-coupon /
+   * apply-points 已經把差額寫進 final_price 了（原站文案也是這樣講的：
+   * 「下方『應收金額』已自動扣除」）。舊版用假資料時把折抵當成「還沒扣」的數字再減
+   * 一次，接上真實資料後就會變成扣兩次。
+   */
+  const couponDiscount = booking?.couponDiscount ?? null;
+  const pointsRedeemed = booking?.pointsRedeemed ?? null;
+  const net = booking?.finalPrice ?? 0;
+  /** 加購會動到金額與時段，與 API 同一條規則：只有未結案的預約可以增刪 */
+  const addonsEditable = booking?.status === 'PENDING' || booking?.status === 'CONFIRMED';
+
+  /*
+   * 加購明細一律向 API 取（issue #17）。mock 模式服務層回 null，畫面沿用頁內
+   * byMode 假資料——這是既有慣例（listRecurringBookings），不是假成功：
+   * mock 模式本來就沒有資料庫。載入失敗顯示既有的 addonLoadFailed 文案，
+   * **不顯示空清單**（空清單會讓店家以為這筆預約沒有加購）。
+   */
+  const [loadFailed, setLoadFailed] = React.useState(false);
+  /*
+   * ⚠️ 載入中要顯示「載入中」，不可以先顯示「無資料」。
+   * 2026-08-25 的 Playwright 實測抓到：明細還在向 API 取的那 1〜5 秒內，
+   * 畫面寫著「無資料」而金額欄位已經是加購後的金額——店家會讀成
+   * 「錢加了但明細不見了」。那是把「還不知道」畫成「已知為空」，
+   * 正是 CLAUDE.md「Never fabricate a known」要擋的東西。
+   */
+  const [addonsLoading, setAddonsLoading] = React.useState(false);
+  React.useEffect(() => {
+    if (!booking) { setAddons([]); setLoadFailed(false); setAddonsLoading(false); return; }
+    let alive = true;
+    setAddonsLoading(true);
+    void (async () => {
+      try {
+        const rows = await listBookingAddons(booking.id);
+        if (!alive) return;
+        setAddons(rows ?? addonsOf(booking));
+        setLoadFailed(false);
+      } catch (e) {
+        if (!alive) return;
+        setLoadFailed(true);
+        toast.show(
+          `${t.messages.loadAddonsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+          'danger',
+        );
+      } finally {
+        if (alive) setAddonsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [booking, addonsVersion, toast]);
 
   return (
     <Modal
@@ -1637,7 +1895,11 @@ function BookingDetailModal({
           {/* 加購明細 */}
           <div>
             <h6 className="mb-2 text-base font-bold">{d.addonSection}</h6>
-            {addons.length === 0 ? (
+            {addonsLoading ? (
+              <p className="form-text">{d.addonLoading}</p>
+            ) : loadFailed ? (
+              <p className="form-text text-danger">{d.addonLoadFailed}</p>
+            ) : addons.length === 0 ? (
               <p className="form-text">{t.labels.noData}</p>
             ) : (
               <ul className="flex flex-col gap-1">
@@ -1648,12 +1910,15 @@ function BookingDetailModal({
                       {item.staffName ?? t.labels.sameStaff}
                     </span>
                     <span className="tabular-nums">{formatCurrency(item.price * item.quantity)}</span>
-                    <Button
-                      size="sm" variant="outlineDanger" aria-label={common.delete}
-                      onClick={() => onRemoveAddon(item)}
-                    >
-                      <Trash2 size={13} />
-                    </Button>
+                    {/* 已結案的預約不能增刪加購（同 API 規則）→ 不提供會 409 的按鈕 */}
+                    {addonsEditable ? (
+                      <Button
+                        size="sm" variant="outlineDanger" aria-label={common.delete}
+                        onClick={() => onRemoveAddon(item)}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
+                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -1666,17 +1931,11 @@ function BookingDetailModal({
               <span>{d.amountLabel}</span>
               <strong className="tabular-nums">{formatCurrency(net)}</strong>
             </div>
-            {extras.couponDiscount > 0 ? (
-              <div className="form-text">{d.couponDiscount(formatCurrency(extras.couponDiscount))}</div>
+            {couponDiscount !== null && couponDiscount > 0 ? (
+              <div className="form-text">{d.couponDiscount(formatCurrency(couponDiscount))}</div>
             ) : null}
-            {extras.pointsRedeemed > 0 ? (
-              <div className="form-text">{d.pointsDiscount(extras.pointsRedeemed)}</div>
-            ) : null}
-            {extras.paidAmount > 0 ? (
-              <div className="form-text">
-                {d.paidLabel}
-                {formatCurrency(extras.paidAmount)}
-              </div>
+            {pointsRedeemed !== null && pointsRedeemed > 0 ? (
+              <div className="form-text">{d.pointsDiscount(pointsRedeemed)}</div>
             ) : null}
           </div>
 
@@ -1685,12 +1944,16 @@ function BookingDetailModal({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onCopyPayLink}>
-              <ClipboardCopy size={13} />{t.rowActions.copyPayLink}
-            </Button>
+            {/* issue #28 ②：/pay 頁尚未建置（issue #32），鈕停用＋畫面上直接說明，不只是 tooltip */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button variant="outline" size="sm" disabled onClick={onCopyPayLink}>
+                <ClipboardCopy size={13} />{t.rowActions.copyPayLink}
+              </Button>
+              <span className="text-xs text-secondary">{t.detailModal.payLinkUnavailable}</span>
+            </div>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
-              {extras.paidAmount > 0 ? t.rowActions.markBalancePaid : t.rowActions.markPaidOffline}
+              {t.rowActions.markPaidOffline}
             </Button>
             {booking.source === 'LINE' ? (
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>

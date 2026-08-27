@@ -58,7 +58,16 @@ export const productOrdersPage = {
     shipping: '郵寄',
     taxId: (id: string) => `統編 ${id}`,
     payDue: (at: string) => `未付款自動取消期限：${at}`,
-    fromBooking: '本單為預約現場加購（至預約列表查看）',
+    /**
+     * 跨頁引用「訂單」父層級概念（14 分冊 §8.13／issue #29 已確立）。
+     * `{orders}` 與 `{navBooking}` 由頁面在 **render 期**用 `resolveNavTerms()`
+     * 展開——i18n 是模組層常數，模組求值早於 AppShell 決定模式，先算會凍住錯的模式。
+     *
+     * 原文寫死「預約」，嚮導租戶看到「本單為**預約**現場加購（至**預約列表**查看）」，
+     * 但他的側邊欄裡叫「旅遊訂單」——連結是對的（走 `ordersHref`），名字不對。
+     * §8.13 的靜態鎖只鎖「服務項目／預約管理」這兩個字串，鎖不到這裡。
+     */
+    fromBooking: '本單為{navBooking}現場加購（至{orders}查看）',
     quantityUnitPrice: (qty: number, unitPrice: string) => `${qty} × ${unitPrice}`,
     unassignedPayment: '未指定（下單後與顧客確認）',
   },
@@ -72,7 +81,8 @@ export const productOrdersPage = {
     complete: '完成取貨',
     cancel: '取消',
     markPaidOffline: '標記已線下收款',
-    copyPayLink: '複製付款連結',
+    /** 商品訂單線上付款尚未建置，複製鈕改停用；文案只誠實標示現況，不承諾能刷卡。 */
+    payLinkNotBuilt: '線上付款尚未建置，暫無法產生付款連結',
     applyCouponAndComplete: '套用票券並完成',
     completeWithoutCoupon: '直接完成（無票券）',
     applyAndComplete: '套用並完成',
@@ -90,7 +100,8 @@ export const productOrdersPage = {
       onlinePayment: '線上收款',
       couponDiscount: '票券折抵',
       staff: '經手員工',
-      relatedBooking: '關聯預約',
+      /** 同上：`{navBooking}` 於 render 期展開。 */
+      relatedBooking: '關聯{navBooking}',
       note: '備註',
       taxId: '統一編號',
       shippingAddress: '收件地址',
@@ -106,8 +117,30 @@ export const productOrdersPage = {
     confirmText: '確定顧客已取貨完成？',
     couponCodeLabel: '輸入票券代碼',
     couponCodeRequired: '請輸入票券代碼',
+    /**
+     * issue #33 ① 完成：`POST /api/product-orders/:id/apply-coupon` 已建置，
+     * 票券真的會被核銷，折抵金額**由後端算並回傳**。
+     * 文案取自原站 `docs/specs/product-orders.json` jsStrings[76]，
+     * `amount` 一律是 API 回應的 `couponDiscount`，前端不得自行組。
+     */
     couponApplied: (amount: string) => `票券已套用！折抵 ${amount}`,
+    /**
+     * 原站 jsStrings[77]：套券與完成訂單是兩段獨立請求，第二段可以單獨失敗。
+     * 這種情況下票券**已經核銷掉了**，所以不能只說「操作失敗」——
+     * 那會讓店家以為票券還在。
+     */
     couponAppliedButFailed: '票券已套用，但「完成訂單」失敗：',
+    /**
+     * 示範（mock）模式沒有票券資料庫可查，端點不會被呼叫，票券也不會被核銷。
+     * 這裡如實說明，不顯示任何折抵金額——編一個數字放在真實訂單金額旁邊，
+     * 正是 d7b8158 移除掉的那個缺陷。
+     */
+    couponMockOnly: '示範模式沒有票券資料，本次不會核銷票券，也不會套用折抵金額',
+    /**
+     * 表單裡的常駐說明。只陳述端點實際會做的事（核銷＋扣減金額），
+     * 不預告任何折抵數字——那個數字要等後端算完才知道。
+     */
+    couponHelp: '按「套用票券並完成」會核銷這張票券，並依票券內容扣減訂單金額；折抵金額由系統計算。',
   },
 
   /* ------------------------------------------------ modal 3：手動建立訂單 */
@@ -179,9 +212,6 @@ export const productOrdersPage = {
     cancelled: '訂單已取消，庫存已回補',
     cancelledRefundReminder: '訂單已取消，庫存已回補。請記得退款給顧客。',
     markedPaid: '已標記為已收款',
-    payLinkCopied: '付款連結已複製，可傳給顧客用手機刷卡',
-    noPayLink: '此訂單目前沒有可用的付款連結',
-    copyPayLinkManually: '請手動複製付款連結',
     actionFailed: '操作失敗',
     createOrderFailed: '建立訂單失敗:',
     loadOrdersFailed: '載入訂單失敗:',
@@ -191,6 +221,30 @@ export const productOrdersPage = {
     loadFailed: '載入失敗',
     connectionError: '連線錯誤，請稍後再試',
     unknownError: '未知錯誤',
+
+    /**
+     * 手動建單勾選「LINE 通知顧客消費明細」後的結果訊息（issue #27 ③）。
+     *
+     * 以前這裡沒有東西 —— 頁面直接把勾選框的標籤原句再 toast 一次，讀起來像
+     * 「已通知」，但後端根本沒有通知任何人。現在每一句都對應
+     * `ProductOrderNotifyOutcome` 的一個值，只描述**真的發生過的事**（鐵則 12）。
+     */
+    notifyResult: {
+      /**
+       * 'LINE'：顧客已綁 LINE，明細已推播、扣 1 推播額度。
+       * ⚠️ 只說「已送出」不說「已通知」（14 分冊 §8.10）——LINE 推播 API 回 200
+       * 只代表 LINE 收下了，不代表顧客手機上顯示出來了。
+       */
+      line: '消費明細已用 LINE 送出給顧客（扣 1 則推播額度）',
+      /** 'EMAIL'：顧客未綁 LINE，改用 Email 送出（不扣推播額度） */
+      email: '顧客未綁定 LINE，消費明細已改用 Email 送出（不扣推播額度）',
+      /** 'NO_CONTACT'：既沒綁 LINE 也沒留 Email，沒有管道可送 */
+      noContact: '顧客未綁定 LINE 也沒有 Email，消費明細未送出',
+      /** 'QUOTA_EXCEEDED'：本月推播額度用完 */
+      quotaExceeded: '本月推播額度已用完，消費明細未送出',
+      /** 'FAILED'：送了但沒送成（LINE 平台回錯、未設定 LINE 憑證、寄信失敗…） */
+      failed: '消費明細發送失敗，訂單已建立，請改用其他方式通知顧客',
+    },
   },
 
   empty: {

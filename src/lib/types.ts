@@ -49,7 +49,65 @@ export type Booking = {
   source: 'LINE' | 'PUBLIC_PAGE' | 'MANUAL' | 'RECURRING';
   note: string;
   createdAt: string;
+  /**
+   * 票券折抵累計金額（`bookings.coupon_discount`，migration 0022；issue #35）。
+   * **`null` = 沒有紀錄**（這筆預約沒套過票券，或套用發生在 0022 之前），
+   * 不是 0——0 是「折抵了 0 元」，兩者不可互相冒充（CLAUDE.md「載入中不要顯示 0」
+   * 的同一條原則用在「無紀錄」上）。
+   */
+  couponDiscount?: number | null;
+  /** 點數折抵累計點數（`bookings.points_redeemed`，1 點 = 1 元）。`null` = 無紀錄。 */
+  pointsRedeemed?: number | null;
+  /**
+   * 顧客目前可用點數（`customers.points`，經 `bookings_view.customer_points`）。
+   * 「使用點數」modal 的餘額來源。`null` = 這個回應沒有帶（例如舊版端點）。
+   */
+  customerPoints?: number | null;
 };
+
+/**
+ * 預約加購明細（`booking_addons`，migration 0020；契約見 04 分冊 §B-1.1）。
+ *
+ * ⚠️ 與行程加購（10 分冊 §5 `trip_addons`）同名但**不是同一個資料模型**，
+ * 兩者不可互換使用（CLAUDE.md：services 與 trips 兩套庫存模型不得合併）。
+ */
+export type BookingAddon = {
+  id: string;
+  /** 「從服務清單帶入」的來源服務；自由輸入（耗材／商品類）為 null */
+  serviceId: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  durationMinutes: number;
+  /** 執行人員；null = 同本預約的人員。**不參與業績歸戶**（04 §B-1.1） */
+  staffId: string | null;
+  staffName: string | null;
+  /** 建立當下實際加進 booking.finalPrice 的金額（刪除時原數回沖） */
+  appliedAmount: number;
+  /** 建立當下實際加進 booking.durationMinutes 的分鐘（刪除時原數回沖） */
+  appliedMinutes: number;
+  /** 消費明細通知**實際**的結果（不是「有沒有要求通知」） */
+  notified: BookingAddonNotifyOutcome;
+  createdAt: string;
+};
+
+/** 加購消費明細通知的實際結果；每個值只描述真的發生過的事（04 §B-1.1） */
+export type BookingAddonNotifyOutcome =
+  /**
+   * 沒有送出任何通知：`addonNotify` 沒勾；或 mock 模式（沒有任何推播管道，
+   * 什麼都沒送出去，回 'NONE' 才是誠實的——同 updateBooking 的 notifyTriggered）
+   */
+  | 'NONE'
+  /** 已推播給顧客，扣 1 則推播額度 */
+  | 'LINE'
+  /** 顧客未綁定 LINE → 沒有管道可送 */
+  | 'NO_LINE'
+  /** 本店尚未設定 LINE Channel → 沒送出 */
+  | 'NOT_CONFIGURED'
+  /** 本月推播額度已用完 → 沒送出（API 以 409 回應，加購仍已寫入） */
+  | 'QUOTA_EXCEEDED'
+  /** 試著送了但 LINE 平台回錯 → 沒送成 */
+  | 'FAILED';
 
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';
@@ -88,7 +146,10 @@ export type Service = {
   imageUrl: string;
   active: boolean;
   lineFeatured: boolean;
+  /** 公開頁排序（DB services.sort_order）；POST /api/services/reorder 落地 */
   sortOrder: number;
+  /** LINE 精選排序（DB services.line_sort_order，0017）；POST …/reorder-line 落地 */
+  lineSortOrder?: number;
 };
 
 export type Staff = {
@@ -117,7 +178,10 @@ export type Product = {
   imageUrl: string;
   active: boolean;
   lineFeatured: boolean;
+  /** 公開頁排序（DB products.sort_order）；POST /api/products/reorder 落地 */
   sortOrder: number;
+  /** LINE 精選排序（DB products.line_sort_order，0017）；POST …/reorder-line 落地 */
+  lineSortOrder?: number;
 };
 
 export type ProductOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
@@ -128,10 +192,18 @@ export type ProductOrder = {
   customerId: string;
   customerName: string;
   items: { productId: string; productName: string; quantity: number; price: number }[];
+  /** 應付金額。套用票券後由後端扣減（見 /api/product-orders/:id/apply-coupon） */
   totalAmount: number;
   status: ProductOrderStatus;
   paymentStatus: PaymentStatus;
   createdAt: string;
+  /**
+   * 已發生的票券折抵金額累計（migration 0027 的 product_orders.coupon_discount）。
+   * null / undefined = 沒有折抵紀錄（mock 模式與 0027 之前的舊資料）。
+   * 兩者在畫面上都顯示「無」——那句話在「沒套過券」與「套了 0 元」兩種情況下
+   * 都成立；不得因此把 null 填成一個看起來像量測值的數字。
+   */
+  couponDiscount?: number | null;
 };
 
 /* ------------------------------------------------------------------ 票券 */
@@ -149,6 +221,22 @@ export type Coupon = {
   startAt: string;
   endAt: string;
   status: CouponStatus;
+  /* --- migration 0022（issue #35）：原站 formModal 既有欄位，補進契約 --- */
+  /** 最低消費門檻；`null` = 無門檻 */
+  minOrderAmount: number | null;
+  /** 最高折抵金額（百分比折扣用）；`null` = 無上限 */
+  maxDiscountAmount: number | null;
+  /** 兌換券的兌換項目；`''` = 未填 */
+  giftItem: string;
+  /** 每人限領張數；`null` = 未設定（原站說明：不填則每人限領 1 張） */
+  limitPerCustomer: number | null;
+  /** 私密票券：不在公開頁與 LINE 顯示，僅限「發放」指定顧客 */
+  privateMode: boolean;
+  /**
+   * 最近一張已核銷實例的 8 碼代碼（由 `coupon_instances` 即時算出，非欄位）。
+   * `null` = 這張票券沒有任何已核銷的實例 → 頁面不顯示「還原票券」。
+   */
+  lastRedeemedCode: string | null;
 };
 
 /* -------------------------------------------------------------- 會員等級 */
@@ -161,6 +249,13 @@ export type MembershipLevel = {
   pointRateMultiplier: number;
   customerCount: number;
   sortOrder: number;
+  /* --- migration 0022（issue #35）：原站 levelModal 既有欄位，補進契約 --- */
+  /** 等級說明（原站「等級說明」textarea） */
+  description: string;
+  /** 啟用此等級；停用的等級不會被自動升級指派 */
+  active: boolean;
+  /** 預設等級（新顧客自動套用）；每租戶至多一個（0022 的 partial unique index） */
+  isDefault: boolean;
 };
 
 /* ------------------------------------------------------------------ 報表 */
@@ -214,6 +309,48 @@ export type TenantSummary = {
   businessType?: 'LOCAL_SHOP' | 'GUIDE' | 'CLINIC';
   /** 斜槓店家加開的其他模組 */
   extraModules?: ('LOCAL_SHOP' | 'GUIDE' | 'CLINIC')[];
+  /**
+   * 示範店家：不是使用者真的擁有的店，資料全部來自 src/mock，供新註冊的店家
+   * 參考各頁面長什麼樣子。只由前端（AppShell）合成，後端永遠不會回這個欄位。
+   */
+  demo?: boolean;
+};
+
+/* -------------------------------------------------- 老闆通知（owner-notify）
+ * issue #18 / 06 分冊 §5.5。名單來源＝該店已加入的 LINE 好友（line_users），
+ * 一位「主要」接收者另外會收到訂閱到期／儲值提醒。
+ */
+
+export type OwnerNotifyRecipient = {
+  id: string;
+  lineUserId: string;
+  /** 可能是空字串（LINE 沒給暱稱）；畫面 fallback 成「(LINE 用戶)」 */
+  displayName: string;
+  pictureUrl: string;
+  isPrimary: boolean;
+  createdAt: string;
+};
+
+/**
+ * `ENABLED`        名單非空，且剛剛真的問過 LINE（GET /v2/bot/info）回 200
+ * `DISCONNECTED`   名單非空，但 LINE 連線異常 → 通知暫停發送中
+ * `NO_RECIPIENTS`  LINE 已設定，但名單是空的 → 一則都不會發
+ * `NOT_CONFIGURED` 尚未設定 LINE Channel
+ */
+export type OwnerNotifyStatus = 'ENABLED' | 'DISCONNECTED' | 'NO_RECIPIENTS' | 'NOT_CONFIGURED';
+
+export type OwnerNotifyState = {
+  status: OwnerNotifyStatus;
+  recipients: OwnerNotifyRecipient[];
+  /** 名單人數上限（後端提供；預設 3，見 migration 0022 檔頭） */
+  maxRecipients: number;
+};
+
+/** 可加入名單的 LINE 好友（已 follow 且尚未在名單中） */
+export type BindableLineUser = {
+  lineUserId: string;
+  displayName: string;
+  pictureUrl: string;
 };
 
 export type SetupStatus = {
@@ -268,6 +405,45 @@ export type Trip = {
   upcomingDepartureCount: number;
   minPrice: number;
   updatedAt: string;
+
+  /* ---- 以下為與 tour-platform 行程 JSON 對齊而新增的選填欄位（Phase 8a）----
+   * 對應 tour-platform `buildActivityExportTemplate()` 的輸出，讓該站管理者
+   * 匯出的 JSON 能原樣匯入本後台而不遺漏欄位。選填是因為既有 mock 資料與
+   * 手動建立的行程不一定有值（鐵則 3：只增不改）。 */
+  /** 適合對象（tour-platform goodFor） */
+  goodFor?: string[];
+  /** 常見問題（tour-platform faq） */
+  faq?: TripFaqItem[];
+  /** 社群口碑語錄（tour-platform socialProofQuotes） */
+  socialProofQuotes?: TripSocialProofQuote[];
+  /** 整體活動時長；方案層另有各自的 durationMinutes */
+  durationMinutes?: number;
+  /** 退款規則條列（tour-platform refundRules；與 refundPolicyType 併存） */
+  refundRules?: string[];
+};
+
+/** 常見問題一則（tour-platform faq[]） */
+export type TripFaqItem = { q: string; a: string };
+
+/** 社群口碑語錄一則（tour-platform socialProofQuotes[]） */
+export type TripSocialProofQuote = {
+  author: string;
+  rating: number;
+  text: string;
+  photos?: string[];
+};
+
+/**
+ * 方案「詳細行程」的一站（tour-platform planItinerary[]）。
+ * imageUrl 就是使用者要的「每個時間點可以上傳照片」。
+ */
+export type TripPlanItineraryStep = {
+  icon: string;
+  title: string;
+  /** 停留時間的自由文字，例如「約 40 分鐘」 */
+  duration: string;
+  description: string;
+  imageUrl?: string;
 };
 
 /** 計價方式：每人 / 每團 */
@@ -313,6 +489,36 @@ export type TripPlan = {
   reviewState: PlanReviewState;
   reviewNote: string;
   sortOrder: number;
+
+  /* ---- 與 tour-platform activityPlans[] 對齊而新增的選填欄位（Phase 8a）---- */
+  /** 方案英文代碼；未填時由名稱自動產生 */
+  slug?: string;
+  /** 方案亮點 */
+  highlights?: string[];
+  /** 方案層的費用包含 / 不包含（與行程層的同名欄位併存，方案優先） */
+  planInclusions?: string[];
+  planExclusions?: string[];
+  /** 方案層購買須知 / 取消政策 */
+  planNotices?: string[];
+  planRefundRules?: string[];
+  /** 「詳細行程」站點時間表，每站可帶一張圖 */
+  planItinerary?: TripPlanItineraryStep[];
+  /** 集合地點 / 體驗地點（方案層覆寫行程層） */
+  meetingPointName?: string;
+  meetingAddress?: string;
+  experiencePointName?: string;
+  experienceAddress?: string;
+  /** 導覽語言 */
+  language?: string;
+  /** 最早可出發日 YYYY-MM-DD */
+  earliestDeparture?: string;
+  /** 最晚幾天前回覆訂單結果 */
+  confirmByDays?: number;
+  /** 幾天前可免費取消 */
+  freeCancelDays?: number;
+  /** 前台按鈕文案 */
+  detailsLinkText?: string;
+  bookingBtnText?: string;
 };
 
 /** 販售季節（月/日區間，可跨年） */

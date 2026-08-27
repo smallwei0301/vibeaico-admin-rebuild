@@ -95,17 +95,17 @@ const LOCAL_SHOP: ModeDataset = {
     { id: 'c_4', name: '陳雅婷', phone: '0955-777-888', email: '', gender: 'FEMALE', birthday: '1995-06-20', note: '', lineUserId: 'U789', lineDisplayName: 'Ting', membershipLevelId: 'ml_3', membershipLevelName: '鑽石卡', tags: ['VIP'], bookingCount: 52, totalSpent: 96400, points: 964, lastVisitAt: iso(-2, 13), atRisk: false, active: true, createdAt: iso(-700, 12) },
   ],
   bookings: [
-    { id: 'b_1', bookingNo: 'BK20260820001', customerId: 'c_1', customerName: '王小明', customerPhone: '0912-000-111', serviceId: 'sv_1', serviceName: '精緻剪髮', staffId: 's_1', staffName: 'Amy', startAt: iso(0, 10), endAt: iso(0, 11), durationMinutes: 60, price: 600, finalPrice: 600, status: 'CONFIRMED', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(-2, 9) },
-    { id: 'b_2', bookingNo: 'BK20260820002', customerId: 'c_2', customerName: '李美華', customerPhone: '0922-333-444', serviceId: 'sv_2', serviceName: '全頭染髮', staffId: 's_1', staffName: 'Amy', startAt: iso(0, 13, 30), endAt: iso(0, 16), durationMinutes: 150, price: 2800, finalPrice: 2520, status: 'PENDING', paymentStatus: 'UNPAID', source: 'PUBLIC_PAGE', note: '想染霧棕色', createdAt: iso(-1, 20) },
-    { id: 'b_3', bookingNo: 'BK20260819007', customerId: 'c_4', customerName: '陳雅婷', customerPhone: '0955-777-888', serviceId: 'sv_3', serviceName: '深層護髮', staffId: 's_2', staffName: 'Ben', startAt: iso(-1, 15), endAt: iso(-1, 15, 45), durationMinutes: 45, price: 1200, finalPrice: 1080, status: 'COMPLETED', paymentStatus: 'PAID_OFFLINE', source: 'MANUAL', note: '', createdAt: iso(-3, 11) },
-    { id: 'b_4', bookingNo: 'BK20260821001', customerId: 'c_3', customerName: '張大偉', customerPhone: '0933-555-666', serviceId: 'sv_1', serviceName: '精緻剪髮', staffId: null, staffName: null, startAt: iso(1, 11), endAt: iso(1, 12), durationMinutes: 60, price: 600, finalPrice: 600, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(0, 8) },
-    { id: 'b_5', bookingNo: 'BK20260818003', customerId: 'c_1', customerName: '王小明', customerPhone: '0912-000-111', serviceId: 'sv_1', serviceName: '精緻剪髮', staffId: 's_2', staffName: 'Ben', startAt: iso(-2, 17), endAt: iso(-2, 18), durationMinutes: 60, price: 600, finalPrice: 600, status: 'NO_SHOW', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(-5, 14) },
-    { id: 'b_6', bookingNo: 'BK20260817002', customerId: 'c_4', customerName: '陳雅婷', customerPhone: '0955-777-888', serviceId: 'sv_2', serviceName: '全頭染髮', staffId: 's_1', staffName: 'Amy', startAt: iso(-3, 9), endAt: iso(-3, 11, 30), durationMinutes: 150, price: 2800, finalPrice: 2800, status: 'CANCELLED', paymentStatus: 'UNPAID', source: 'PUBLIC_PAGE', note: '臨時有事', createdAt: iso(-6, 10) },
+    { id: 'b_1', bookingNo: 'BK20260820001', customerId: 'c_1', customerName: '王小明', customerPhone: '0912-000-111', serviceId: 'sv_1', serviceName: '精緻剪髮', staffId: 's_1', staffName: 'Amy', startAt: iso(0, 10), endAt: iso(0, 11), durationMinutes: 60, price: 600, finalPrice: 600, status: 'CONFIRMED', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(-2, 9), customerPoints: 386 },
+    { id: 'b_2', bookingNo: 'BK20260820002', customerId: 'c_2', customerName: '李美華', customerPhone: '0922-333-444', serviceId: 'sv_2', serviceName: '全頭染髮', staffId: 's_1', staffName: 'Amy', startAt: iso(0, 13, 30), endAt: iso(0, 16), durationMinutes: 150, price: 2800, finalPrice: 2520, status: 'PENDING', paymentStatus: 'UNPAID', source: 'PUBLIC_PAGE', note: '想染霧棕色', createdAt: iso(-1, 20), customerPoints: 92 },
+    { id: 'b_3', bookingNo: 'BK20260819007', customerId: 'c_4', customerName: '陳雅婷', customerPhone: '0955-777-888', serviceId: 'sv_3', serviceName: '深層護髮', staffId: 's_2', staffName: 'Ben', startAt: iso(-1, 15), endAt: iso(-1, 15, 45), durationMinutes: 45, price: 1200, finalPrice: 1080, status: 'COMPLETED', paymentStatus: 'PAID_OFFLINE', source: 'MANUAL', note: '', createdAt: iso(-3, 11), customerPoints: 964 },
+    { id: 'b_4', bookingNo: 'BK20260821001', customerId: 'c_3', customerName: '張大偉', customerPhone: '0933-555-666', serviceId: 'sv_1', serviceName: '精緻剪髮', staffId: null, staffName: null, startAt: iso(1, 11), endAt: iso(1, 12), durationMinutes: 60, price: 600, finalPrice: 600, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(0, 8), customerPoints: 18 },
+    { id: 'b_5', bookingNo: 'BK20260818003', customerId: 'c_1', customerName: '王小明', customerPhone: '0912-000-111', serviceId: 'sv_1', serviceName: '精緻剪髮', staffId: 's_2', staffName: 'Ben', startAt: iso(-2, 17), endAt: iso(-2, 18), durationMinutes: 60, price: 600, finalPrice: 600, status: 'NO_SHOW', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(-5, 14), customerPoints: 386 },
+    { id: 'b_6', bookingNo: 'BK20260817002', customerId: 'c_4', customerName: '陳雅婷', customerPhone: '0955-777-888', serviceId: 'sv_2', serviceName: '全頭染髮', staffId: 's_1', staffName: 'Amy', startAt: iso(-3, 9), endAt: iso(-3, 11, 30), durationMinutes: 150, price: 2800, finalPrice: 2800, status: 'CANCELLED', paymentStatus: 'UNPAID', source: 'PUBLIC_PAGE', note: '臨時有事', createdAt: iso(-6, 10), customerPoints: 964 },
   ],
   membershipLevels: [
-    { id: 'ml_1', name: '一般會員', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 180, sortOrder: 1 },
-    { id: 'ml_2', name: '金卡', color: '#ff9f0a', thresholdSpent: 20000, discountPercent: 5, pointRateMultiplier: 1.5, customerCount: 48, sortOrder: 2 },
-    { id: 'ml_3', name: '鑽石卡', color: '#4361ee', thresholdSpent: 60000, discountPercent: 10, pointRateMultiplier: 2, customerCount: 18, sortOrder: 3 },
+    { id: 'ml_1', name: '一般會員', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 180, sortOrder: 1, description: '所有新顧客的預設等級', active: true, isDefault: true },
+    { id: 'ml_2', name: '金卡', color: '#ff9f0a', thresholdSpent: 20000, discountPercent: 5, pointRateMultiplier: 1.5, customerCount: 48, sortOrder: 2, description: '生日當月贈送護髮體驗一次', active: true, isDefault: false },
+    { id: 'ml_3', name: '鑽石卡', color: '#4361ee', thresholdSpent: 60000, discountPercent: 10, pointRateMultiplier: 2, customerCount: 18, sortOrder: 3, description: '專屬設計師優先排程、免費造型諮詢', active: true, isDefault: false },
   ],
   products: [
     { id: 'p_1', categoryId: 'pc_1', categoryName: '洗護', name: '修護洗髮精 500ml', description: '受損髮專用', price: 880, stock: 24, safetyStock: 10, imageUrl: '', active: true, lineFeatured: true, sortOrder: 1 },
@@ -117,9 +117,9 @@ const LOCAL_SHOP: ModeDataset = {
     { id: 'po_2', orderNo: 'PO20260819004', customerId: 'c_4', customerName: '陳雅婷', items: [{ productId: 'p_2', productName: '護髮油 100ml', quantity: 2, price: 1200 }], totalAmount: 2400, status: 'COMPLETED', paymentStatus: 'PAID_ONLINE', createdAt: iso(-1, 16) },
   ],
   coupons: [
-    { id: 'cp_1', name: '新客體驗 8 折', description: '首次到店適用', discountType: 'PERCENT', discountValue: 20, totalQuantity: 100, issuedQuantity: 62, redeemedQuantity: 31, startAt: iso(-30, 0), endAt: iso(30, 23), status: 'PUBLISHED' },
-    { id: 'cp_2', name: '護髮折 200', description: '', discountType: 'AMOUNT', discountValue: 200, totalQuantity: 50, issuedQuantity: 50, redeemedQuantity: 44, startAt: iso(-60, 0), endAt: iso(-1, 23), status: 'EXPIRED' },
-    { id: 'cp_3', name: '生日禮：免費瀏海修剪', description: '', discountType: 'GIFT', discountValue: 0, totalQuantity: 0, issuedQuantity: 12, redeemedQuantity: 5, startAt: iso(-10, 0), endAt: iso(90, 23), status: 'DRAFT' },
+    { id: 'cp_1', name: '新客體驗 8 折', description: '首次到店適用', discountType: 'PERCENT', discountValue: 20, totalQuantity: 100, issuedQuantity: 62, redeemedQuantity: 31, startAt: iso(-30, 0), endAt: iso(30, 23), status: 'PUBLISHED', minOrderAmount: null, maxDiscountAmount: 500, giftItem: '', limitPerCustomer: 1, privateMode: false, lastRedeemedCode: 'ABC12345' },
+    { id: 'cp_2', name: '護髮折 200', description: '', discountType: 'AMOUNT', discountValue: 200, totalQuantity: 50, issuedQuantity: 50, redeemedQuantity: 44, startAt: iso(-60, 0), endAt: iso(-1, 23), status: 'EXPIRED', minOrderAmount: 1000, maxDiscountAmount: null, giftItem: '', limitPerCustomer: 2, privateMode: false, lastRedeemedCode: 'XYZ98765' },
+    { id: 'cp_3', name: '生日禮：免費瀏海修剪', description: '', discountType: 'GIFT', discountValue: 0, totalQuantity: 0, issuedQuantity: 12, redeemedQuantity: 5, startAt: iso(-10, 0), endAt: iso(90, 23), status: 'DRAFT', minOrderAmount: null, maxDiscountAmount: null, giftItem: '免費瀏海修剪', limitPerCustomer: null, privateMode: true, lastRedeemedCode: null },
   ],
   staffPerformance: [
     { staffId: 's_1', staffName: 'Amy', bookingCount: 62, completionRate: 94.2, revenue: 78600 },
@@ -186,12 +186,12 @@ const GUIDE: ModeDataset = {
   ],
   // 嚮導的「預約」是旅遊訂單（見 src/mock/tours.ts）；此處保留少量包團諮詢
   bookings: [
-    { id: 'b_g1', bookingNo: 'BK20260821005', customerId: 'c_5', customerName: '張家豪', customerPhone: '0933-702-889', serviceId: 'sv_g1', serviceName: '客製包團諮詢', staffId: 's_2', staffName: '小雨', startAt: iso(1, 15), endAt: iso(1, 15, 30), durationMinutes: 30, price: 0, finalPrice: 0, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '想規劃三天兩夜花東行程', createdAt: iso(0, 10) },
+    { id: 'b_g1', bookingNo: 'BK20260821005', customerId: 'c_5', customerName: '張家豪', customerPhone: '0933-702-889', serviceId: 'sv_g1', serviceName: '客製包團諮詢', staffId: 's_2', staffName: '小雨', startAt: iso(1, 15), endAt: iso(1, 15, 30), durationMinutes: 30, price: 0, finalPrice: 0, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '想規劃三天兩夜花東行程', createdAt: iso(0, 10), customerPoints: 1320 },
   ],
   membershipLevels: [
-    { id: 'ml_1', name: '一般旅人', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 320, sortOrder: 1 },
-    { id: 'ml_2', name: '常客旅人', color: '#0a84ff', thresholdSpent: 15000, discountPercent: 5, pointRateMultiplier: 1.5, customerCount: 72, sortOrder: 2 },
-    { id: 'ml_3', name: '祕島之友', color: '#30d158', thresholdSpent: 50000, discountPercent: 12, pointRateMultiplier: 2, customerCount: 20, sortOrder: 3 },
+    { id: 'ml_1', name: '一般旅人', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 320, sortOrder: 1, description: '所有新旅客的預設等級', active: true, isDefault: true },
+    { id: 'ml_2', name: '常客旅人', color: '#0a84ff', thresholdSpent: 15000, discountPercent: 5, pointRateMultiplier: 1.5, customerCount: 72, sortOrder: 2, description: '生日當月贈送裝備租借券一張', active: true, isDefault: false },
+    { id: 'ml_3', name: '祕島之友', color: '#30d158', thresholdSpent: 50000, discountPercent: 12, pointRateMultiplier: 2, customerCount: 20, sortOrder: 3, description: '揪團優先候補、免費裝備升級', active: true, isDefault: false },
   ],
   products: [
     { id: 'p_1', categoryId: 'pc_1', categoryName: '裝備', name: '防水袋 20L', description: '溯溪、獨木舟適用', price: 680, stock: 18, safetyStock: 6, imageUrl: '', active: true, lineFeatured: true, sortOrder: 1 },
@@ -204,10 +204,10 @@ const GUIDE: ModeDataset = {
     { id: 'po_2', orderNo: 'PO20260819008', customerId: 'c_5', customerName: '張家豪', items: [{ productId: 'p_3', productName: '祕島明信片組（6 入）', quantity: 12, price: 250 }], totalAmount: 3000, status: 'COMPLETED', paymentStatus: 'PAID_ONLINE', createdAt: iso(-1, 15) },
   ],
   coupons: [
-    { id: 'cp_1', name: '早鳥報名 9 折', description: '出團前 30 天報名適用', discountType: 'PERCENT', discountValue: 10, totalQuantity: 200, issuedQuantity: 88, redeemedQuantity: 41, startAt: iso(-40, 0), endAt: iso(60, 23), status: 'PUBLISHED' },
-    { id: 'cp_2', name: '揪團折 500', description: '4 人以上同行', discountType: 'AMOUNT', discountValue: 500, totalQuantity: 100, issuedQuantity: 34, redeemedQuantity: 12, startAt: iso(-15, 0), endAt: iso(45, 23), status: 'PUBLISHED' },
-    { id: 'cp_3', name: '回訪禮：免費裝備租借', description: '一年內再次報名', discountType: 'GIFT', discountValue: 0, totalQuantity: 0, issuedQuantity: 26, redeemedQuantity: 9, startAt: iso(-90, 0), endAt: iso(180, 23), status: 'PUBLISHED' },
-    { id: 'cp_4', name: '暑期溯溪季 85 折', description: '', discountType: 'PERCENT', discountValue: 15, totalQuantity: 80, issuedQuantity: 80, redeemedQuantity: 71, startAt: iso(-120, 0), endAt: iso(-5, 23), status: 'EXPIRED' },
+    { id: 'cp_1', name: '早鳥報名 9 折', description: '出團前 30 天報名適用', discountType: 'PERCENT', discountValue: 10, totalQuantity: 200, issuedQuantity: 88, redeemedQuantity: 41, startAt: iso(-40, 0), endAt: iso(60, 23), status: 'PUBLISHED', minOrderAmount: null, maxDiscountAmount: 800, giftItem: '', limitPerCustomer: 1, privateMode: false, lastRedeemedCode: 'GBR20260' },
+    { id: 'cp_2', name: '揪團折 500', description: '4 人以上同行', discountType: 'AMOUNT', discountValue: 500, totalQuantity: 100, issuedQuantity: 34, redeemedQuantity: 12, startAt: iso(-15, 0), endAt: iso(45, 23), status: 'PUBLISHED', minOrderAmount: 4000, maxDiscountAmount: null, giftItem: '', limitPerCustomer: 3, privateMode: false, lastRedeemedCode: 'GRP99213' },
+    { id: 'cp_3', name: '回訪禮：免費裝備租借', description: '一年內再次報名', discountType: 'GIFT', discountValue: 0, totalQuantity: 0, issuedQuantity: 26, redeemedQuantity: 9, startAt: iso(-90, 0), endAt: iso(180, 23), status: 'PUBLISHED', minOrderAmount: null, maxDiscountAmount: null, giftItem: '免費裝備租借（防水袋或防曬帽任選）', limitPerCustomer: null, privateMode: true, lastRedeemedCode: null },
+    { id: 'cp_4', name: '暑期溯溪季 85 折', description: '', discountType: 'PERCENT', discountValue: 15, totalQuantity: 80, issuedQuantity: 80, redeemedQuantity: 71, startAt: iso(-120, 0), endAt: iso(-5, 23), status: 'EXPIRED', minOrderAmount: null, maxDiscountAmount: 600, giftItem: '', limitPerCustomer: 1, privateMode: false, lastRedeemedCode: null },
   ],
   staffPerformance: [
     { staffId: 's_1', staffName: '阿海', bookingCount: 48, completionRate: 95.8, revenue: 142600 },
@@ -276,16 +276,16 @@ const CLINIC: ModeDataset = {
     { id: 'c_4', name: '蔡淑芬', phone: '0919-337-885', email: 'fen@example.com', gender: 'FEMALE', birthday: '1966-01-25', note: '每年健檢常客', lineUserId: 'U804', lineDisplayName: '淑芬', membershipLevelId: 'ml_3', membershipLevelName: 'VIP 健檢', tags: ['健檢', 'VIP'], bookingCount: 22, totalSpent: 98400, points: 984, lastVisitAt: iso(-5, 9), atRisk: false, active: true, createdAt: iso(-1500, 10) },
   ],
   bookings: [
-    { id: 'b_1', bookingNo: 'BK20260820101', customerId: 'c_1', customerName: '劉建國', customerPhone: '0912-556-201', serviceId: 'sv_2', serviceName: '複診', staffId: 's_1', staffName: '林醫師', startAt: iso(0, 9, 30), endAt: iso(0, 9, 45), durationMinutes: 15, price: 300, finalPrice: 300, status: 'CONFIRMED', paymentStatus: 'PAID_OFFLINE', source: 'LINE', note: '血壓藥續領', createdAt: iso(-3, 10) },
-    { id: 'b_2', bookingNo: 'BK20260820102', customerId: 'c_4', customerName: '蔡淑芬', customerPhone: '0919-337-885', serviceId: 'sv_3', serviceName: '成人健康檢查', staffId: 's_2', staffName: '陳醫師', startAt: iso(0, 8), endAt: iso(0, 9, 30), durationMinutes: 90, price: 6800, finalPrice: 6800, status: 'COMPLETED', paymentStatus: 'PAID_OFFLINE', source: 'PUBLIC_PAGE', note: '需空腹', createdAt: iso(-14, 11) },
-    { id: 'b_3', bookingNo: 'BK20260820103', customerId: 'c_2', customerName: '周佩琪', customerPhone: '0928-114-330', serviceId: 'sv_1', serviceName: '初診（含健康評估）', staffId: null, staffName: null, startAt: iso(0, 14), endAt: iso(0, 14, 30), durationMinutes: 30, price: 500, finalPrice: 500, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '喉嚨痛三天', createdAt: iso(0, 8) },
-    { id: 'b_4', bookingNo: 'BK20260821101', customerId: 'c_3', customerName: '許文彥', customerPhone: '0966-902-447', serviceId: 'sv_4', serviceName: '流感疫苗接種', staffId: 's_3', staffName: '王醫師', startAt: iso(1, 10), endAt: iso(1, 10, 15), durationMinutes: 15, price: 800, finalPrice: 800, status: 'PENDING', paymentStatus: 'UNPAID', source: 'PUBLIC_PAGE', note: '', createdAt: iso(0, 19) },
-    { id: 'b_5', bookingNo: 'BK20260819105', customerId: 'c_1', customerName: '劉建國', customerPhone: '0912-556-201', serviceId: 'sv_2', serviceName: '複診', staffId: 's_1', staffName: '林醫師', startAt: iso(-1, 11), endAt: iso(-1, 11, 15), durationMinutes: 15, price: 300, finalPrice: 300, status: 'NO_SHOW', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(-6, 9) },
+    { id: 'b_1', bookingNo: 'BK20260820101', customerId: 'c_1', customerName: '劉建國', customerPhone: '0912-556-201', serviceId: 'sv_2', serviceName: '複診', staffId: 's_1', staffName: '林醫師', startAt: iso(0, 9, 30), endAt: iso(0, 9, 45), durationMinutes: 15, price: 300, finalPrice: 300, status: 'CONFIRMED', paymentStatus: 'PAID_OFFLINE', source: 'LINE', note: '血壓藥續領', createdAt: iso(-3, 10), customerPoints: 412 },
+    { id: 'b_2', bookingNo: 'BK20260820102', customerId: 'c_4', customerName: '蔡淑芬', customerPhone: '0919-337-885', serviceId: 'sv_3', serviceName: '成人健康檢查', staffId: 's_2', staffName: '陳醫師', startAt: iso(0, 8), endAt: iso(0, 9, 30), durationMinutes: 90, price: 6800, finalPrice: 6800, status: 'COMPLETED', paymentStatus: 'PAID_OFFLINE', source: 'PUBLIC_PAGE', note: '需空腹', createdAt: iso(-14, 11), customerPoints: 984 },
+    { id: 'b_3', bookingNo: 'BK20260820103', customerId: 'c_2', customerName: '周佩琪', customerPhone: '0928-114-330', serviceId: 'sv_1', serviceName: '初診（含健康評估）', staffId: null, staffName: null, startAt: iso(0, 14), endAt: iso(0, 14, 30), durationMinutes: 30, price: 500, finalPrice: 500, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '喉嚨痛三天', createdAt: iso(0, 8), customerPoints: 126 },
+    { id: 'b_4', bookingNo: 'BK20260821101', customerId: 'c_3', customerName: '許文彥', customerPhone: '0966-902-447', serviceId: 'sv_4', serviceName: '流感疫苗接種', staffId: 's_3', staffName: '王醫師', startAt: iso(1, 10), endAt: iso(1, 10, 15), durationMinutes: 15, price: 800, finalPrice: 800, status: 'PENDING', paymentStatus: 'UNPAID', source: 'PUBLIC_PAGE', note: '', createdAt: iso(0, 19), customerPoints: 13 },
+    { id: 'b_5', bookingNo: 'BK20260819105', customerId: 'c_1', customerName: '劉建國', customerPhone: '0912-556-201', serviceId: 'sv_2', serviceName: '複診', staffId: 's_1', staffName: '林醫師', startAt: iso(-1, 11), endAt: iso(-1, 11, 15), durationMinutes: 15, price: 300, finalPrice: 300, status: 'NO_SHOW', paymentStatus: 'UNPAID', source: 'LINE', note: '', createdAt: iso(-6, 9), customerPoints: 412 },
   ],
   membershipLevels: [
-    { id: 'ml_1', name: '一般病患', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 1620, sortOrder: 1 },
-    { id: 'ml_2', name: '長期追蹤', color: '#0a84ff', thresholdSpent: 10000, discountPercent: 0, pointRateMultiplier: 1.5, customerCount: 198, sortOrder: 2 },
-    { id: 'ml_3', name: 'VIP 健檢', color: '#bf5af2', thresholdSpent: 50000, discountPercent: 5, pointRateMultiplier: 2, customerCount: 46, sortOrder: 3 },
+    { id: 'ml_1', name: '一般病患', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 1620, sortOrder: 1, description: '所有新病患的預設等級', active: true, isDefault: true },
+    { id: 'ml_2', name: '長期追蹤', color: '#0a84ff', thresholdSpent: 10000, discountPercent: 0, pointRateMultiplier: 1.5, customerCount: 198, sortOrder: 2, description: '需長期追蹤治療的病患，享回診提醒與優先候補', active: true, isDefault: false },
+    { id: 'ml_3', name: 'VIP 健檢', color: '#bf5af2', thresholdSpent: 50000, discountPercent: 5, pointRateMultiplier: 2, customerCount: 46, sortOrder: 3, description: '年度健檢會員，享健檢加項優惠與報告解說預約', active: true, isDefault: false },
   ],
   products: [
     { id: 'p_1', categoryId: 'pc_1', categoryName: '保健品', name: '綜合維他命（90 錠）', description: '', price: 780, stock: 32, safetyStock: 10, imageUrl: '', active: true, lineFeatured: true, sortOrder: 1 },
@@ -296,8 +296,8 @@ const CLINIC: ModeDataset = {
     { id: 'po_1', orderNo: 'PO20260820021', customerId: 'c_4', customerName: '蔡淑芬', items: [{ productId: 'p_1', productName: '綜合維他命（90 錠）', quantity: 2, price: 780 }], totalAmount: 1560, status: 'COMPLETED', paymentStatus: 'PAID_OFFLINE', createdAt: iso(0, 10) },
   ],
   coupons: [
-    { id: 'cp_1', name: '健檢早鳥折 800', description: '提前 14 天預約健檢', discountType: 'AMOUNT', discountValue: 800, totalQuantity: 150, issuedQuantity: 96, redeemedQuantity: 58, startAt: iso(-45, 0), endAt: iso(45, 23), status: 'PUBLISHED' },
-    { id: 'cp_2', name: '疫苗季家庭方案', description: '同戶 3 人以上', discountType: 'PERCENT', discountValue: 10, totalQuantity: 100, issuedQuantity: 20, redeemedQuantity: 4, startAt: iso(-5, 0), endAt: iso(90, 23), status: 'PUBLISHED' },
+    { id: 'cp_1', name: '健檢早鳥折 800', description: '提前 14 天預約健檢', discountType: 'AMOUNT', discountValue: 800, totalQuantity: 150, issuedQuantity: 96, redeemedQuantity: 58, startAt: iso(-45, 0), endAt: iso(45, 23), status: 'PUBLISHED', minOrderAmount: 3000, maxDiscountAmount: null, giftItem: '', limitPerCustomer: 1, privateMode: false, lastRedeemedCode: 'HC48120' },
+    { id: 'cp_2', name: '疫苗季家庭方案', description: '同戶 3 人以上', discountType: 'PERCENT', discountValue: 10, totalQuantity: 100, issuedQuantity: 20, redeemedQuantity: 4, startAt: iso(-5, 0), endAt: iso(90, 23), status: 'PUBLISHED', minOrderAmount: null, maxDiscountAmount: 300, giftItem: '', limitPerCustomer: 4, privateMode: false, lastRedeemedCode: null },
   ],
   staffPerformance: [
     { staffId: 's_1', staffName: '林醫師', bookingCount: 286, completionRate: 96.9, revenue: 186400 },

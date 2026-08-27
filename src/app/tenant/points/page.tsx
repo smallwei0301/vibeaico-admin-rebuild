@@ -22,7 +22,7 @@ import { nav } from '@/i18n/zh-TW/nav';
 import { pointsPage as t } from '@/i18n/zh-TW/pages/points';
 import { formatDateTime, formatNumber } from '@/lib/utils';
 import type { PointTransaction, TenantSummary } from '@/lib/types';
-import { getPointBalance, listPointTransactions, transferPoints } from '@/services/points';
+import { getPointBalance, listPointTransactions, requestPointTopup, transferPoints } from '@/services/points';
 import { myTenants } from '@/services/auth';
 
 /* -------------------------------------------------------------------------- */
@@ -54,9 +54,15 @@ const TYPE_TONE: Record<PointTxnType, 'success' | 'danger' | 'info' | 'warning' 
 };
 
 /** 目前訂閱功能的月費合計；正式站由 /api/points/balance 一併回傳 */
-const MOCK_MONTHLY_COST = 196;
-/** 付款處理中的儲值點數 */
-const MOCK_PENDING_TOPUP = 1000;
+/*
+ * 「月費合計」與「處理中儲值」目前**沒有對應端點**（前者要彙總
+ * feature_subscriptions 的月費，後者要接上儲值金流）。
+ *
+ * 這裡刻意不給假數字：這兩張卡就排在「點數餘額」（真實資料）旁邊，
+ * 填 196 / 1000 會讓店家把捏造值當成自己的帳務數字，而畫面上完全沒有任何
+ * 線索能分辨哪個是真的。沒有資料就顯示 --，並在 hint 說明尚未提供。
+ * 見 CLAUDE.md「不要製造假的已知」。
+ */
 
 const TXN_PAGE_SIZE = 20;
 
@@ -204,14 +210,14 @@ export default function PointsPage() {
         />
         <StatCard
           label={t.stats.monthlyCost}
-          value={loading ? t.labels.dash : t.labels.points(MOCK_MONTHLY_COST)}
+          value={t.labels.dash}
           hint={t.stats.monthlyCostHint}
           icon={CreditCard}
           tone="success"
         />
         <StatCard
           label={t.stats.pendingTopup}
-          value={loading ? t.labels.dash : t.labels.points(MOCK_PENDING_TOPUP)}
+          value={t.labels.dash}
           hint={t.stats.pendingTopupHint}
           icon={Clock}
           tone="warning"
@@ -279,6 +285,8 @@ function TopupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [remark, setRemark] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  /** 後端對這次申請的回覆（501 的客服文案）；null = 還沒送出過 */
+  const [outcome, setOutcome] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -287,6 +295,7 @@ function TopupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
     setUbn('');
     setInvoiceTitle('');
     setRemark('');
+    setOutcome(null);
   }, [open]);
 
   const validate = (): string => {
@@ -296,14 +305,31 @@ function TopupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
     return '';
   };
 
+  /**
+   * POST /api/points/topup/pay（services/points.ts 的 requestPointTopup）。
+   *
+   * ⚠️ 這一支端點**依規格一律回 501**「請聯絡平台客服儲值」（09 分冊 §4：MVP
+   * 不接金流）。那不是錯誤，是誠實的回覆，所以這裡：
+   *   - 不顯示成功、也不關閉 modal（接線前的寫法是 setTimeout 之後直接 onClose()，
+   *     店家會以為申請送出去了）
+   *   - 不歸進紅色的「付款建立失敗」，而是把後端說的那句話原樣顯示在表單裡
+   *   - 只有真的成功（將來接上金流後 accepted=true）才會關閉並報成功
+   */
   const submit = async () => {
     const err = validate();
     setError(err);
     if (err) { toast.show(err, 'warning'); return; }
     setSaving(true);
+    setOutcome(null);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onClose();
+      const res = await requestPointTopup({
+        amount: Number(amount),
+        invoiceUbn: ubn.trim() || undefined,
+        invoiceTitle: invoiceTitle.trim() || undefined,
+        remark: remark.trim() || undefined,
+      });
+      if (res.accepted) { onClose(); return; }
+      setOutcome(res.message ?? t.topup.unavailableMock);
     } catch (e) {
       toast.show(
         `${t.messages.payCreateFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -376,6 +402,9 @@ function TopupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
       </FormGroup>
 
+      {outcome ? (
+        <Alert tone="warning" title={t.topup.unavailableTitle}>{outcome}</Alert>
+      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );

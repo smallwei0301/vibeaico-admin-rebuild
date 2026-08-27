@@ -1,63 +1,33 @@
-import { randomUUID } from 'node:crypto';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { createAdminSupabase } from '@/server/supabase';
+import { readUploadForm, uploadToBucket } from '@/server/upload';
 
 /**
  * POST /api/upload —— 頁面用圖片統一上傳端點（07 分冊 §3）。
  * multipart/form-data：`file`（圖片）+ `bucket`（目的地 bucket 名）。
  *
- * - bucket 白名單 = 0008 migration 的五個（service-images / product-images /
- *   portfolio-images / staff-avatars / richmenu-assets）。
- * - 驗證：≤5MB、image/jpeg | png | webp。
- * - 路徑 {tenantId}/{randomUUID()}.{ext}——第一段資料夾 = 租戶 id，
- *   與 0008 的 RLS 檢查規則一致。
- * - 以 service role 上傳（requireTenant() 已先驗明成員身分與租戶歸屬，
- *   路徑又由伺服器端組出，不受用戶端左右）；bucket 皆 public → 回 getPublicUrl。
- * - 回 { url }；前端 services（services/products/portfolio/staff/rich-menu）
- *   先打這支拿 url，再把 url 塞進資源 payload。
+ * ⚠️ **驗證與落地邏輯全部在 `src/server/upload.ts`**（issue #19 抽出）。
+ * 本檔只負責「解析請求 → 驗身分 → 交給 uploadToBucket()」。
+ * 規格上還有兩支 rich-menu 專用的上傳端點（`…/rich-menu/upload-image`、
+ * `…/rich-menu/upload-cell-icon`），它們呼叫的是**同一支** uploadToBucket()——
+ * 06 分冊 §6.1 刪掉 `upload-bg-image` 的理由是「同一件事兩份實作」，
+ * 抽成共用函式之後就沒有第二份可以分岔（§6.2.8）。
+ *
+ * 回 { url, path, bucket }（private bucket 另帶 urlExpiresInSeconds；有縮圖時
+ * 另帶 previewUrl / previewPath）。`path` 是 bucket 內路徑，給需要**存起來**的
+ * 呼叫端用——簽名 URL 會過期，存 URL 只會存出一堆死連結。
  */
-const ALLOWED_BUCKETS = new Set([
-  'service-images',
-  'product-images',
-  'portfolio-images',
-  'staff-avatars',
-  'richmenu-assets',
-]);
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
-const ALLOWED_TYPES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-};
-
 export const POST = handle(async (req) => {
   const t = await requireTenant();
 
-  const form = await req.formData().catch(() => {
-    throw new ApiHttpError(400, '請以 multipart/form-data 上傳圖片', ERR.VALIDATION);
-  });
+  const form = await readUploadForm(req);
   const file = form.get('file');
   const bucket = form.get('bucket');
 
   if (!(file instanceof File))
     throw new ApiHttpError(400, '缺少圖片檔案（欄位名 file）', ERR.VALIDATION);
-  if (typeof bucket !== 'string' || !ALLOWED_BUCKETS.has(bucket))
+  if (typeof bucket !== 'string')
     throw new ApiHttpError(400, '不允許的 bucket', ERR.VALIDATION);
 
-  const ext = ALLOWED_TYPES[file.type];
-  if (!ext)
-    throw new ApiHttpError(400, '僅支援 JPEG / PNG / WebP 圖片', ERR.VALIDATION);
-  if (file.size > MAX_BYTES)
-    throw new ApiHttpError(400, '圖片超過 5MB 上限，請壓縮後再上傳', ERR.VALIDATION);
-
-  const path = `${t.tenantId}/${randomUUID()}.${ext}`;
-  const admin = createAdminSupabase();
-  const { error } = await admin.storage
-    .from(bucket)
-    .upload(path, file, { contentType: file.type, upsert: false });
-  if (error) throw error;
-
-  const { data } = admin.storage.from(bucket).getPublicUrl(path);
-  return ok({ url: data.publicUrl });
+  return ok(await uploadToBucket({ tenantId: t.tenantId, file, bucket }));
 });

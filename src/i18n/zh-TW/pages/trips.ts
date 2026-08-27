@@ -27,6 +27,8 @@ export const tripsPage = {
     manageDepartures: '團次與名額',
     back: '返回行程列表',
     save: '儲存',
+    importJson: '匯入行程 JSON',
+    exportJson: '匯出行程 JSON',
   },
   columns: {
     trip: '行程',
@@ -80,6 +82,13 @@ export const tripsPage = {
   channelNote: {
     title: '兩個上架通道是分開的',
     text: '「發布到商店頁」由你自己決定，按下去旅客立刻能從你的公開商店頁與 LINE 訂購；「上架 Midao」需要 Midao 管理者審核通過才會在 Midao 前台曝光。兩者互不影響。',
+  },
+
+  /* ----------------------------------------------------- 新增行程（列表頁） */
+  createForm: {
+    title: '新增行程',
+    hint: '先填行程名稱就能建立，其餘欄位（簡介、集合地點、費用包含…）建立後在編輯頁補齊。',
+    submit: '建立行程',
   },
 
   /* --------------------------------------------------------------- 分頁籤 */
@@ -349,5 +358,18 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    imported: '行程已匯入',
+    importInvalid: 'JSON 檔案格式無效',
+    importNotDownloaded: '示範模式未匯入任何資料',
+    exported: '行程 JSON 已下載',
+    exportNotDownloaded: '示範模式未匯出任何檔案',
+    /** 端點回了錯誤訊息就顯示那一句；連訊息都沒有時才用這句 */
+    actionFailed: '操作失敗，請稍後再試',
+    /**
+     * 批次開團的結果一律照實說：跳過的是「同方案同日同時間已有團次」，
+     * 把 skipped 併進 created 報成「已建立 N 個」就是在虛報。
+     */
+    departureBatchPartial: (created: number, skipped: number) =>
+      `已建立 ${created} 個團次，${skipped} 個日期已有團次而略過`,
   },
 } as const;

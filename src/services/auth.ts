@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import type { TenantSummary } from '@/lib/types';
-import { MOCK_TENANTS } from '@/mock';
+import type { BusinessType } from '@/config/modes';
+import { MOCK_TENANTS, MOCK_USER } from '@/mock';
 
 /**
  * 認證 service —— 頁面（login/register/forgot-password/reset-password）與
@@ -38,6 +39,8 @@ export const registerTenant = (payload: {
   password: string;
   tenantName: string;
   shopCode: string;
+  /** 業態模式（13 分冊）；後端寫進 tenants.business_type，決定後台選單與名詞 */
+  businessType?: BusinessType;
 }) =>
   adapt(
     () => undefined,
@@ -72,6 +75,33 @@ export const changePassword = (payload: { currentPassword: string; newPassword: 
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  );
+
+/**
+ * 目前登入者（GET /api/auth/me，04 分冊 §A-0）— issue #34。
+ *
+ * ⚠️ **後端沒有「姓名」這個欄位。** `/api/auth/me` 回的是
+ * `{email, tenantId, tenantName, shopCode, role}`，`auth.users` 也沒有存
+ * display name（註冊只收 email／驗證碼／密碼／店名／店代碼／業態，
+ * `admin.auth.admin.createUser()` 也沒帶 user_metadata，見
+ * `src/app/api/auth/tenant/register/route.ts:13-34`）。所以 real 模式的顯示名稱
+ * **就是帳號 email**，不是從 email 猜一個像人名的字串出來——那會是
+ * 「貌似合理的佔位值」，正是 issue #34 在清的東西。
+ * 骨架模式仍用 MOCK_USER.name（demo 要有個像樣的名字）。
+ */
+export type CurrentUser = {
+  /** Topbar 顯示用；real＝email，mock＝MOCK_USER.name */
+  displayName: string;
+  email: string;
+};
+
+export const currentUser = () =>
+  adapt<CurrentUser>(
+    () => ({ displayName: MOCK_USER.name, email: MOCK_USER.email }),
+    async () => {
+      const me = await request<{ email: string }>('/api/auth/me');
+      return { displayName: me.email, email: me.email };
+    },
   );
 
 export const myTenants = () =>

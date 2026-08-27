@@ -19,6 +19,7 @@
  */
 import { createAdminSupabase } from './supabase';
 import { ApiHttpError, ERR } from './http';
+import { FEATURE_LOCKED_MESSAGE } from '@/lib/feature-gate';
 
 export async function isFeatureActive(tenantId: string, code: string): Promise<boolean> {
   const admin = createAdminSupabase();
@@ -30,5 +31,5 @@ export async function isFeatureActive(tenantId: string, code: string): Promise<b
 
 export async function requireFeature(tenantId: string, code: string) {
   if (!(await isFeatureActive(tenantId, code)))
-    throw new ApiHttpError(403, '此功能尚未訂閱，請至功能商店開通', ERR.FEATURE_LOCKED);
+    throw new ApiHttpError(403, FEATURE_LOCKED_MESSAGE, ERR.FEATURE_LOCKED);
 }

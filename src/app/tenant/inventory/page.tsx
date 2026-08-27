@@ -17,11 +17,12 @@ import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import { listInventoryLogs, type InventoryLog, type InventoryLogType } from '@/services/products';
+import { exportInventoryLogs } from '@/services/reports';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { inventoryPage as t } from '@/i18n/zh-TW/pages/inventory';
-import { formatDate, formatDateTime, formatNumber } from '@/lib/utils';
+import { formatDateTime, formatNumber } from '@/lib/utils';
 import type { Product } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -55,6 +56,9 @@ export default function InventoryPage() {
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
   const [exportOpen, setExportOpen] = React.useState(false);
+  /** 匯出格式（兩個選項都產 CSV，見 /api/export/inventory/:format 檔頭） */
+  const [exportFormat, setExportFormat] = React.useState<'csv' | 'excel'>('excel');
+  const [exporting, setExporting] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -102,11 +106,34 @@ export default function InventoryPage() {
   const visible = filtered;
   const displayTotal = typeFilter ? filtered.length : total;
 
-  const exportCsv = () => {
-    /* 事件處理器內才取當下日期；render 期不碰 Date */
-    const today = formatDate(new Date().toISOString()).replace(/\//g, '');
-    setExportOpen(false);
-    toast.show(`${t.messages.exported} ${t.exportFile.filename(today)}`);
+  /**
+   * 匯出庫存異動（GET /api/export/inventory/:format）—— issue #28 ⑤。
+   *
+   * 修改前這裡只跳一則「異動記錄匯出成功 庫存異動_20260825.csv」：沒有端點、
+   * 沒有檔案，連檔名都是前端用當天日期自己組的。端點本輪新增，檔名一律取自
+   * 伺服器的 Content-Disposition（src/lib/download.ts）。
+   *
+   * 兩個篩選都要送出去——確認視窗寫的是「確定要匯出**目前篩選**的異動記錄嗎？」，
+   * 只送分頁參數的話匯出的會是全部資料，那句話就成了假的。
+   */
+  const runExport = async () => {
+    setExporting(true);
+    try {
+      const { downloaded, fileName } = await exportInventoryLogs(exportFormat, {
+        productId: productFilter || undefined,
+        type: typeFilter || undefined,
+      });
+      setExportOpen(false);
+      if (!downloaded) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(fileName ? t.messages.exportedAs(fileName) : t.messages.exported);
+    } catch (e) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns: Column<InventoryLog>[] = [
@@ -235,9 +262,24 @@ export default function InventoryPage() {
         open={exportOpen}
         title={t.confirm.exportTitle}
         confirmText={t.actions.export}
-        message={t.confirm.export}
+        loading={exporting}
+        message={(
+          <>
+            {t.confirm.export}
+            <span className="mt-3 flex items-center gap-2">
+              {t.confirm.formatLabel}
+              <Select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as 'csv' | 'excel')}
+              >
+                <option value="excel">{t.actions.exportExcelCsv}</option>
+                <option value="csv">{t.actions.exportCsv}</option>
+              </Select>
+            </span>
+          </>
+        )}
         onClose={() => setExportOpen(false)}
-        onConfirm={exportCsv}
+        onConfirm={() => { void runExport(); }}
       />
     </>
   );

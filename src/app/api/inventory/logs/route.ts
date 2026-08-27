@@ -2,49 +2,23 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
-import { pageRange, toPaged } from '@/server/paging';
+import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
+import { mapInventoryLog } from '@/server/inventory-log';
 
 /**
  * GET /api/inventory/logs — `?productId?&page&size` 分頁（Paged 信封），
  * join products 拿商品名稱，created_at desc。
  *
  * 回傳形狀對齊 /tenant/inventory 頁的 InventoryLog（該型別未收進
- * src/lib/types.ts，鐵則 3 只限「新增」，故 mapper 放本檔）：
- * DB inventory_logs 只有 delta / reason / stock_after ——
- *   quantity    = delta
- *   stockAfter  = stock_after
- *   stockBefore = stock_after - delta（推算）
- *   type/reason = reason 欄位存「TYPE:明細」複合格式（寫入端：adjust-stock、
- *                 product-orders manual/cancel、products POST），這裡拆回兩欄；
- *                 前綴不是已知 type 時整串當 reason、type 視為 MANUAL。
- *   operator    = DB 無此欄位 → 一律 null（已回報）。
+ * src/lib/types.ts，鐵則 3 只限「新增」）。
+ *
+ * mapper 已搬到 `src/server/inventory-log.ts`：匯出端點
+ * （GET /api/export/inventory/:format，issue #28 ⑤）必須與本端點同一套口徑，
+ * 各留一份會分岔（欄位說明見該檔）。
  */
-const KNOWN_TYPES = new Set([
-  'PURCHASE_IN', 'SALE_OUT', 'STOCKTAKE', 'MANUAL', 'DAMAGE', 'RETURN_IN', 'ORDER_CANCELLED',
-]);
-
-function mapInventoryLog(r: any) {
-  const raw: string = r.reason ?? '';
-  const idx = raw.indexOf(':');
-  const prefix = idx > 0 ? raw.slice(0, idx) : raw;
-  const known = KNOWN_TYPES.has(prefix);
-  return {
-    id: r.id,
-    createdAt: r.created_at,
-    productId: r.product_id,
-    productName: r.products?.name ?? '',
-    type: known ? prefix : 'MANUAL',
-    quantity: r.delta,
-    stockBefore: r.stock_after - r.delta,
-    stockAfter: r.stock_after,
-    reason: known ? (idx > 0 ? raw.slice(idx + 1) : '') : raw,
-    operator: null as string | null,
-  };
-}
-
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
-  size: z.coerce.number().int().min(1).max(100).default(20),
+  size: pageSizeSchema(20),
   productId: z.string().uuid().optional(),
 });
 

@@ -19,7 +19,9 @@ import {
 } from '@/services/bookings';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { navLabel } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
 import { calendarPage as t } from '@/i18n/zh-TW/pages/calendar';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import type { Booking, BookingStatus, Staff } from '@/lib/types';
@@ -124,6 +126,12 @@ const toExternalEvent = (e: CalendarExternalItem): ExternalEvent => {
 /* -------------------------------------------------------------------------- */
 
 export default function CalendarPage() {
+  /**
+   * 「訂單」是父層級概念（14 分冊 §8.13）：嚮導的 /tenant/bookings 在他的
+   * hiddenNavKeys 裡，寫死會把他導去自己選單中不存在的頁面。
+   */
+  const businessType = useBusinessType();
+  const ordersHref = MODE_PRESETS[businessType].ordersHref;
   const toast = useToast();
 
   /** 只在瀏覽器端決定「今天」，避免 SSR/CSR 產生不同輸出 */
@@ -312,10 +320,10 @@ export default function CalendarPage() {
   return (
     <>
       <PageHeader
-        eyebrow={nav.navBooking}
+        eyebrow={navLabel('navBooking', businessType)}
         title={t.title}
         actions={
-          <Link href="/tenant/bookings?action=create" className="btn btn-primary">
+          <Link href={`${ordersHref}?action=create`} className="btn btn-primary">
             <Plus size={15} />{t.actions.createBooking}
           </Link>
         }
@@ -569,7 +577,7 @@ export default function CalendarPage() {
           detail ? (
             <>
               <Button variant="secondary" onClick={() => setDetail(null)}>{t.detail.close}</Button>
-              <Link href="/tenant/bookings" className="btn btn-outline">{t.detail.viewDetail}</Link>
+              <Link href={ordersHref} className="btn btn-outline">{t.detail.viewDetail}</Link>
               {detail.status === 'PENDING' ? (
                 <Button onClick={() => setConfirmTarget(detail)}>{t.detail.confirm}</Button>
               ) : null}

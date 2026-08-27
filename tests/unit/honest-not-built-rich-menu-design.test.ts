@@ -1,0 +1,596 @@
+/**
+ * 「假成功誠實化」不可回歸測試（GitHub issue #3 / 修復-1D：選單設計頁掃描清零）
+ * -----------------------------------------------------------------------------
+ * 1A/1B/1C 是照「列舉清單」逐項修，每輪結束都再冒出同類殘留——因為列舉本身不完整。
+ * 本輪改成掃描式：把 /tenant/rich-menu-design（頁面 + 字典）裡「宣稱了實際不會
+ * 發生的事」一次全部找出來清乾淨。判定的唯一事實依據是
+ * `src/app/api/settings/line/rich-menu/create/route.ts`——按下「發布到 LINE」
+ * 真正會發生的事只有：
+ *
+ *   ① 請求只帶 { theme }（services/settings.ts 的 createRichMenu(theme)）
+ *   ② 端點固定產生 2500×1686 的 3×2 六格，文字取 MODE_PRESETS[businessType]
+ *      .richMenuCells——與頁面「每格設定」「佈局」無關
+ *   ③ 底圖三選一：tenant_settings.line.richMenuBgImageUrl（「LINE 設定」頁存的）
+ *      → richmenu-assets bucket 的 themes/{THEME} → 現生成純色 PNG
+ *   ④ **直接用底圖原圖上傳**（route 檔頭：文字疊圖合成屬後期）→ 圖上沒有店名，
+ *      也沒有六格文字
+ *   ⑤ 設為預設選單、best-effort 刪舊選單、richMenuId + richMenuTheme 寫回
+ *      tenant_settings
+ *
+ * 因此以下每一件事**都不會**在發布時發生，畫面不得宣稱它會：合成店名／六格文字、
+ * 套用佈局、送出每格自訂、送出本頁的背景圖網址、儲存或套用 Flex 主選單、
+ * 儲存預約步驟或功能頁面樣式、備份與還原。
+ *
+ * ⚠️ 為什麼是「讀原始碼」而不是 render 測試：本專案沒有 @testing-library/react，
+ *    vitest 跑在 node 環境（vitest.config.mts），無法掛載 React 元件。這裡測的是
+ *    「原始碼中不存在任何會謊報的路徑」——對不變條件的靜態證明。與
+ *    honest-not-built-pages.test.ts（1A）／-interactions.test.ts（1B）／
+ *    -residuals.test.ts（1C）同一層，刻意分檔避免衝突（那三檔一字未改）。
+ */
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+import { richMenuDesignPage } from '@/i18n/zh-TW/pages/rich-menu-design';
+
+const src = (relative: string): string =>
+  readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf-8');
+
+const RICH_MENU_PAGE = 'src/app/tenant/rich-menu-design/page.tsx';
+const CREATE_ROUTE = 'src/app/api/settings/line/rich-menu/create/route.ts';
+
+/** 去掉註解，避免「解釋為什麼不能這樣寫」的註解被誤判成違規程式碼／文案 */
+const withoutComments = (code: string): string =>
+  code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/** 把字典裡所有字串（含樣板函式的產出）攤平，方便對文案下斷言 */
+const allStrings = (dict: unknown): string[] => {
+  const out: string[] = [];
+  const walk = (value: unknown): void => {
+    if (typeof value === 'string') { out.push(value); return; }
+    if (typeof value === 'function') {
+      try { walk((value as (a: unknown, b: unknown) => unknown)('X', 'Y')); } catch { /* 參數型別不合就跳過 */ }
+      return;
+    }
+    if (Array.isArray(value)) { value.forEach(walk); return; }
+    if (value && typeof value === 'object') { Object.values(value).forEach(walk); return; }
+  };
+  walk(dict);
+  return out;
+};
+
+const t = richMenuDesignPage;
+/** 字典裡「會被畫面讀到」的區塊。library 是 spec 原文清單（示範資料），不在文案掃描範圍 */
+const COPY_SECTIONS = [
+  t.intro, t.scene, t.quickTemplates, t.theme, t.layout,
+  t.background, t.cells, t.preview, t.publish, t.feature,
+  t.bookingSteps, t.featurePages,
+] as const;
+
+describe('修復-1D：選單設計頁假宣稱掃描清零', () => {
+  const code = withoutComments(src(RICH_MENU_PAGE));
+
+  /* ================================================== 事實基準 */
+  describe('0. 事實基準：發布端點真的只做這些事（判定假宣稱的依據）', () => {
+    const route = src(CREATE_ROUTE);
+
+    /*
+     * ⚠️ 前提變更（issue #6）：這一條原本逐字比對
+     * `MODE_PRESETS[businessType].richMenuCells[i].label` / `.text` 兩個字面值。
+     * #6 把 action 的產生抽成 `richMenuCellAction()`（單一事實來源：FLEX_POPUP
+     * 的格子要與「選單」走同一支組裝函式），那兩個字面值因此不再出現。
+     *
+     * 但**這一條要證的事沒有變**：六格文字來自 MODE_PRESETS，與頁面的「每格設定」
+     * 無關。改成釘三件仍然成立、而且合起來比原本更嚴的事：
+     *   ① 餵給 action 產生器的就是 MODE_PRESETS[businessType].richMenuCells[i]
+     *   ② 端點的請求 body 只有 { theme }，沒有任何管道能從頁面帶 cells 進來
+     *   ③ label/text 真的來自那個 cell —— 由 richMenuCellAction() 的單元測試
+     *      （tests/unit/flex-menu.06.test.ts:「一般格子送出自己的文字；
+     *      FLEX_POPUP 格子改送 FLEX_POPUP_TRIGGER_TEXT」）證明
+     */
+    it('六格文字取自 MODE_PRESETS.richMenuCells，與頁面的「每格設定」無關', () => {
+      expect(route).toContain('richMenuCellAction(MODE_PRESETS[businessType].richMenuCells[i])');
+      // 端點收得到的欄位只有 theme：頁面的 cells 沒有任何路徑進得來
+      expect(route).toContain('const bodySchema = z.object({ theme:');
+      expect(route).not.toMatch(/body\.cells|cells:\s*z\./);
+    });
+
+    it('版型固定 2500×1686 的 3×2 六格，與頁面的「佈局」無關', () => {
+      expect(route).toContain('size: { width: 2500, height: 1686 }');
+      expect(route.match(/\{ x: \d+, y: \d+, w: \d+, h: \d+ \}/g)).toHaveLength(6);
+    });
+
+    it('底圖直接原圖上傳，端點沒有任何文字／圖示合成', () => {
+      expect(route).toContain('lineUploadRichMenuImage(token, richMenuId, image.bytes, image.contentType)');
+      // route 檔頭自陳：疊圖合成屬後期，本端點用原圖
+      expect(route).toContain('本端點直接用底圖原圖上傳');
+      /*
+       * 端點沒有引入任何繪圖／合成能力，唯一的圖片產生器是純色 PNG。
+       *
+       * ⚠️ issue #19：底圖取得那一段從本 route 搬到 `src/server/rich-menu.ts` 的
+       * `loadRichMenuBackground()`（進階那四支發布端點要用**完全相同**的優先序，
+       * 留兩份會分岔）。**要守的事實沒變**——這條發布路徑上沒有任何合成能力，
+       * 所以斷言跟著程式碼走：route 委派給誰，就一起檢查誰。
+       * 這是加檢一個檔案，不是放寬。
+       */
+      expect(route).toContain("import { loadRichMenuBackground } from '@/server/rich-menu'");
+      expect(route).not.toMatch(/drawText|composite|overlay\(/i);
+
+      const shared = src('src/server/rich-menu.ts');
+      expect(shared).toContain("import { solidColorPng } from './png'");
+      expect(shared).not.toMatch(/drawText|composite|overlay\(/i);
+    });
+
+    it('前端只送出 { theme } 一個欄位', () => {
+      expect(withoutComments(src('src/services/settings.ts')))
+        .toContain('body: JSON.stringify({ theme })');
+      expect(code).toContain('await createRichMenu(pendingTheme)');
+    });
+  });
+
+  /* ================================================== 1. 品牌大字帶入店名 */
+  describe('1. 「品牌大字帶入店名」家族：預覽與實際推送物不一致', () => {
+    it('字典任何一處都不再宣稱店名／品牌大字會被帶進圖裡', () => {
+      for (const section of COPY_SECTIONS) {
+        for (const text of allStrings(section)) {
+          expect(text).not.toMatch(/品牌大字(自動)?帶入/);
+          expect(text).not.toMatch(/(已|自動)帶入(你的)?店名/);
+          expect(text).not.toMatch(/以你的店名產生/);
+        }
+      }
+    });
+
+    it('一頁式範本的開場白改說縮圖是版位示意、圖上不含店名與六格文字', () => {
+      expect(t.scene.leadStrong).toContain('版位示意');
+      expect(t.scene.leadTail).toContain('底圖原圖');
+      expect(t.scene.leadTail).toContain('不會合成店名');
+    });
+
+    it('預覽區有常駐告示，說明實際推送的是底圖、文字只是點擊後送出的訊息', () => {
+      const note = t.preview.notActualNote;
+      expect(note).toContain('版位示意');
+      expect(note).toContain('底圖原圖');
+      expect(note).toContain('不會畫店名');
+      expect(note).toContain('點擊後送出的訊息');
+      // 右側預覽卡與範本卡片區都要有（店家是看著這兩處按下發布的）
+      expect(code.match(/\{t\.preview\.notActualNote\}/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    });
+
+    it('本輪不准為了讓預覽變成真的而去實作文字疊圖', () => {
+      expect(code).not.toMatch(/canvas|toDataURL|drawImage|fillText/i);
+    });
+  });
+
+  /* ================================================== 2. 同步套用 Flex／預約步驟 */
+  describe('2. 「發布時同步套用 Flex／預約步驟卡」家族全數清除', () => {
+    it('字典沒有任何「發布會一起套用／同步」Flex 或預約步驟的句子', () => {
+      for (const section of COPY_SECTIONS) {
+        for (const text of allStrings(section)) {
+          expect(text).not.toMatch(/同步套用/);
+          expect(text).not.toMatch(/整組(一起|視覺)/);
+          expect(text).not.toMatch(/發布時.*(一起|同時)套用/);
+        }
+      }
+    });
+
+    it('scene.leadTail / bullets 改為明說 Flex 與預約步驟不會被一起套用', () => {
+      expect(t.scene.leadTail).toContain('也不會一併套用聊天主選單（Flex）與預約步驟卡');
+      /*
+       * ⚠️ issue #19：舊斷言要求「發布」那一條寫著「不會覆蓋 Flex 主選單自訂」
+       * ＋「尚未建置」。每格設定現在**真的會**隨發布送出（create-advanced），
+       * 那句話已經不對；「尚未建置」更早在 issue #6 就不對（Flex 儲存已建置）。
+       * 仍然為真、因此改守的是：發布**不含** Flex 主選單——這一點在
+       * leadTail 與 previewSyncNote 兩處都寫著（上一行與下一個案例）。
+       * 這裡改守「發布」那一條有沒有把「需訂閱才送出每格設定」講清楚，
+       * 因為未訂閱時走基本端點、每格設定真的不會送出，那是店家最容易誤會的一點。
+       */
+      const publishBullet = t.scene.bullets.find((b) => b.strong === '發布');
+      expect(publishBullet?.text).toContain('進階自訂選單');
+      expect(publishBullet?.text).toContain('未訂閱');
+    });
+
+    it('previewSyncNote 不再宣稱自訂會同步進聊天主選單卡片', () => {
+      expect(t.scene.previewSyncNote).not.toMatch(/會同步進/);
+      /*
+       * ⚠️ issue #19：「每格設定不會隨發布送出」已不成立（create-advanced 會送）。
+       * 仍然為真、也是這一節真正要守的那一句：**Flex 主選單不會跟著一起換**。
+       */
+      expect(t.scene.previewSyncNote).toContain('Flex');
+      expect(t.scene.previewSyncNote).toContain('不會一起更新');
+    });
+
+    it('整組不存在的「範本預覽產生器」假宣稱鍵全數刪除', () => {
+      const keys = Object.keys(t.scene);
+      for (const dead of [
+        'previewCaption', 'previewGenerating', 'previewCells', 'previewBottom',
+        'previewFlex', 'previewFlexNote', 'textOnlyNote', 'customizeBtn',
+        'updatePreviewBtn', 'previewHeading', 'customHeading', 'labelBlankHint',
+        'generating', 'generateFailed', 'previewFailedRetry',
+        'flexPreviewFailed',
+        /*
+         * ⚠️ issue #19：`previewFailed` 從這張「假宣稱鍵」清單移除。
+         * 它當初被刪，是因為**沒有預覽流程可以失敗**（整個產生器不存在）。
+         * 現在 `POST …/rich-menu/preview-scene` 真的存在、也真的可能失敗，
+         * 一句失敗訊息不再是假宣稱，而是必要的。其餘 16 個鍵描述的流程
+         * （合成店名、同步 Flex、雲端保留…）至今仍不存在，一律維持禁止。
+         */
+      ]) {
+        expect(keys, dead).not.toContain(dead);
+        expect(code, dead).not.toContain(`t.scene.${dead}`);
+      }
+    });
+
+    it('發布確認視窗逐條列出「不會送出」的東西', () => {
+      /*
+       * ⚠️ issue #19：「佈局、每格設定與背景圖網址都不會送出」已經不對了——
+       * 它們現在真的會送出。改守仍然為真、而且是店家最需要在按下去之前知道的三件事。
+       */
+      const tail = t.scene.publishConfirmTail;
+      expect(tail).toContain('圖上不含店名');
+      expect(tail).toContain('Flex 主選單不會一起換');
+      // 只保留最近一份還原點——不得讓店家以為可以一直往前回溯
+      expect(tail).toContain('只保留最近一份');
+
+      // 情境範本另有一段尾文，必須先講「範本只帶主題配色」（規格缺口，不得憑空補回）
+      expect(t.scene.sceneConfirmTail).toContain('只決定');
+      expect(t.scene.sceneConfirmTail).toContain('已經遺失');
+    });
+  });
+
+  /* ================================================== 3. 範本卡「預覽」 */
+  /*
+   * ⚠️ **前提已於 issue #19 翻面**：`POST …/rich-menu/preview-scene` 已建置
+   * （06 分冊 §6.2.5），所以「沒有可開啟的預覽／尚未建置」現在才是謊。
+   * 這一組改成守接線後該守的三件事，強度沒有降低：
+   *   1. 按的是**預覽**端點，不是發布端點（最容易寫錯的一處）
+   *   2. 預覽視窗照實說那張圖是純色底圖、範本只帶配色
+   *   3. 沒有把預覽做成「順手也發布出去」
+   */
+  describe('3. 一頁式範本卡的「預覽」鈕接上 preview-scene（且絕不發布）', () => {
+    it('呼叫的是 previewSceneRichMenu()，不是任何 create-*', () => {
+      expect(code).toContain('void openScenePreview(s)');
+      expect(code).toContain('await previewSceneRichMenu(scene.id)');
+      expect(code).not.toContain('previewNotBuilt');
+      expect(Object.keys(t.scene)).not.toContain('previewNotBuilt');
+    });
+
+    it('⚠️ 預覽的處理函式裡沒有任何發布呼叫（按預覽把選單換掉是本組最大的風險）', () => {
+      const fn = code.slice(
+        code.indexOf('const openScenePreview'),
+        code.indexOf('const uploadCellIcon'),
+      );
+      expect(fn.length).toBeGreaterThan(0);
+      for (const publisher of [
+        'createSceneRichMenu', 'createAdvancedRichMenu', 'createCustomRichMenu', 'createRichMenu',
+      ]) {
+        expect(fn, `預覽函式裡出現了 ${publisher}()`).not.toContain(publisher);
+      }
+    });
+
+    it('預覽視窗照實說：圖是純色底圖、範本只帶主題配色', () => {
+      expect(code).toContain('{t.scene.previewFlatColorNote}');
+      expect(code).toContain('{t.scene.previewModeDefaultsNote}');
+      expect(t.scene.previewFlatColorNote).toContain('沒有店名');
+      expect(t.scene.previewModeDefaultsNote).toContain('已經遺失');
+    });
+  });
+
+  /* ================================================== 4. 自行掃出的同類項目 */
+  describe('4. 同類殘留（自行掃描）', () => {
+    it('使用說明把訂閱後真正會送出的固定／自訂版型，與未訂閱的基本款講清楚', () => {
+      const [themeStep, layoutStep, cellStep, popupStep, publishStep] = t.intro.richMenuSteps;
+      /*
+       * ⚠️ 前提變更（issue #19 + 原站 line-settings DOM 的 advCustomRows/Cols）：
+       * create-advanced 已讓固定版型與每格設定真的送出；本輪補上 create-custom
+       * 的行／列 UI。舊斷言把舊 basic create 的限制套到已訂閱路徑，會反過來
+       * 要求店家頁面說假話。新斷言同時釘住兩條真實路徑與未訂閱降級。
+       */
+      expect(themeStep).toContain('訂閱「進階自訂選單」後會隨發布送出');
+      expect(layoutStep).toContain('自訂格數');
+      expect(layoutStep).toContain('會隨發布送出');
+      expect(cellStep).toContain('訂閱後會隨發布送出');
+      expect(cellStep).toContain('未訂閱');
+      expect(publishStep).toContain('訂閱後會把所選版型與每格設定送到 LINE');
+      expect(publishStep).toContain('未訂閱時才會改送業態預設六格');
+      expect(popupStep).toContain('尚未建置');
+      expect(publishStep).not.toContain('所選主題的底圖與預設六格文字');
+      /*
+       * ⚠️ 前提變更（issue #6）：Flex 分頁的「發布」現在真的呼叫
+       * POST /api/settings/line/flex-menu，所以「尚未接上儲存」那句已經不成立，
+       * 留著反而變成新的謊（方向相反的那一種）。改釘仍然成立、而且更嚴格的事：
+       * 使用說明的最後一步必須描述**真的會發生的事**——寫入店家設定、
+       * 顧客輸入「選單」時收到——而不是 Rich Menu 那種「開啟聊天就看到」。
+       */
+      const flexPublishStep = t.intro.flexMenuSteps[t.intro.flexMenuSteps.length - 1];
+      expect(flexPublishStep).not.toContain('尚未接上儲存');
+      expect(flexPublishStep).toContain('發布 Flex 主選單到 LINE');
+      expect(flexPublishStep).toContain('選單');
+      // 使用說明不得再描述這個分頁沒有的欄位（Header 顏色／emoji／使用提示開關）
+      const stepText = t.intro.flexMenuSteps.join('\n');
+      for (const ghost of ['歡迎語', 'emoji', '使用提示']) {
+        expect(stepText, `使用說明提到畫面上沒有的「${ghost}」`).not.toContain(ghost);
+      }
+    });
+
+    it('佈局區常駐告示：訂閱後會發布，未訂閱才會降級為基本六格', () => {
+      expect(t.layout.publishFixedNote).toContain('固定佈局與每格設定會隨發布送到 LINE');
+      expect(t.layout.publishFixedNote).toContain('未訂閱');
+      expect(code).toContain('{t.layout.publishFixedNote}');
+    });
+
+    it('背景圖區：不再宣稱系統會疊加圖示與文字', () => {
+      // 只准以否定句出現（「系統不會在圖上疊加…」），不准再宣稱系統會疊加
+      expect(t.background.help).not.toMatch(/(?<!不)會在(上面|圖上)疊加/);
+      expect(t.background.help).toContain('系統不會在圖上疊加');
+      expect(t.background.help).toContain('推送到 LINE 的是底圖原圖');
+    });
+
+    /**
+     * ⚠️ 前提變更（issue #7 (乙)）：底圖**真的接上了**，所以舊斷言
+     * `t.background.notSentOnPublish` 要求的那句「不會隨『發布到 LINE』送出」
+     * 已經不成立，留著就變成方向相反的謊——使用者會以為剛存的底圖不會生效。
+     * 處理方式與正上方 issue #6 那次相同：不是放寬，是**改釘更嚴格的事**——
+     * 那句話不准回來，而且鏈路的每一段都要在程式碼裡看得到。
+     *
+     * 這條在防的是：有人把上傳按鈕改回「只 setBgUrl 就 toast 成功」。
+     * 那樣改完畫面一模一樣、發布也回 200，但顧客看到的仍是主題底圖——
+     * 因為 `/api/settings/line/rich-menu/create` 的 loadBackgroundImage() 讀的是
+     * tenant_settings.line.richMenuBgImageUrl，不是發布請求的 body。
+     */
+    it('背景圖上傳真的接上 /api/upload，且結果有寫進 tenant_settings（否則發布用不到）', () => {
+      // 過期的「尚未接上／不會隨發布送出」文案必須整個消失，不能只是不引用
+      expect(Object.keys(t.background)).not.toContain('notSentOnPublish');
+      for (const text of allStrings(t.background)) {
+        expect(text).not.toContain('不會隨「發布到 LINE」送出');
+        expect(text).not.toContain('尚未接上上傳後端');
+      }
+      // ① 檔案 → /api/upload 的 richmenu-assets bucket
+      expect(code).toContain("uploadImage(file, 'richmenu-assets')");
+      // ② 上傳回來的網址寫進 tenant_settings.line.richMenuBgImageUrl —— 少了這一步，
+      //    發布時讀到的仍是舊值，畫面卻已經 toast 成功
+      expect(code).toContain('saveLineSettings({ richMenuBgImageUrl: url })');
+      // ③ 成功 toast 只能在兩個 await 都回來之後
+      const uploadFn = code.slice(
+        code.indexOf('const uploadBackground'),
+        code.indexOf('const saveBackgroundUrl'),
+      );
+      expect(uploadFn).not.toBe('');
+      expect(uploadFn.indexOf('saveLineSettings'))
+        .toBeLessThan(uploadFn.indexOf('toast.show(t.background.uploaded)'));
+      // ④ 進頁面要把已存的底圖讀回來，否則欄位永遠空白＝畫面與事實不符
+      expect(code).toContain('settings.line.richMenuBgImageUrl');
+      // ⑤ 1MB 上限（LINE 對圖文選單圖片的硬限制）要在上傳前就擋，不能等發布才失敗
+      expect(code).toContain('RICH_MENU_BG_MAX_BYTES');
+      expect(t.background.tooLarge).toContain('1MB');
+      // ⑥ 「還沒儲存」的警告只在草稿與已存值不同時出現，不是永遠掛著的紅字
+      expect(code).toContain('bgUrlDraft !== bgUrl ? (');
+      expect(code).toContain('{t.background.unsavedDraft}');
+    });
+
+    it('背景圖區不再有任何「已存到雲端／重整後會還原」的雲端保存宣稱', () => {
+      const keys = Object.keys(t.background);
+      for (const dead of ['savedToCloud', 'cloudFailed', 'localFallback']) {
+        expect(keys, dead).not.toContain(dead);
+      }
+      for (const text of allStrings(t.background)) {
+        expect(text).not.toMatch(/雲端/);
+        expect(text).not.toMatch(/重整後也會還原/);
+      }
+    });
+
+    /*
+     * ⚠️ **前提已於 issue #19 翻面**：`POST …/rich-menu/upload-cell-icon` 已建置。
+     * 圖示真的會上傳、會存進草稿、會讀得回來——但**不會被畫進 LINE 選單的底圖**
+     * （本專案沒有影像合成能力）。所以守的東西從「一律停用」改成
+     * 「上傳是真的，而那個仍然為假的部分必須繼續說出來」。
+     * 舊的 `iconNoneHint` / `iconCloudFailed`（描述不存在的雲端流程）仍不得復活。
+     */
+    it('格子圖示上傳接上端點，但畫面仍要說「不會畫進底圖」', () => {
+      const keys = Object.keys(t.cells);
+      for (const dead of ['iconNoneHint', 'iconCloudFailed', 'iconUploadNotBuilt']) {
+        expect(keys, dead).not.toContain(dead);
+      }
+      expect(code).toContain('await uploadRichMenuCellIcon(file, index)');
+      // await-first：成功 toast 在 await 之後
+      expect(code).toMatch(/await uploadRichMenuCellIcon\([\s\S]{0,200}toast\.show\(t\.cells\.iconUploaded/);
+      // 仍然為假的那一半要常駐在畫面上
+      expect(code).toContain('{t.cells.iconNotComposed}');
+      expect(t.cells.iconNotComposed).toContain('不會被畫進');
+      expect(t.cells.iconUploaded).toContain('不會出現在 LINE 選單的底圖');
+      // 尺寸下拉仍然沒有後端欄位 → 必須維持停用，不得順手做成「看起來能用」
+      expect(code).toMatch(/<Select className="form-select-sm" disabled defaultValue=\{ICON_SIZES\[1\]\}>/);
+    });
+
+    it('Flex 彈窗視窗按「儲存」改為誠實提示，不再 toast「已儲存」', () => {
+      expect(Object.keys(t.flex)).not.toContain('popupSaved');
+      expect(code).not.toContain('t.flex.popupSaved');
+      expect(code).toContain("toast.show(t.cells.flexPopupNotEffective, 'warning')");
+      expect(t.cells.flexPopupNotEffective).toContain('未儲存');
+      expect(t.cells.flexPopupNotEffective).toContain('尚未建置');
+    });
+
+    it('付費升級文案只承諾已存在的進階發布，並說清楚未訂閱的降級', () => {
+      expect(t.feature.barTail).toContain('自訂格數與每格設定會隨發布送出');
+      expect(t.feature.barTail).toContain('未訂閱');
+      expect(t.feature.freeFallbackNotice).toContain('未訂閱「進階自訂選單」時');
+      expect(t.feature.freeFallbackNotice).toContain('不會送出');
+      // 描述「不存在的訂閱閘門」的三個鍵已刪除
+      const keys = Object.keys(t.feature);
+      for (const dead of ['advancedNeeded', 'cellEditNeeded', 'downgradeHint']) {
+        expect(keys, dead).not.toContain(dead);
+      }
+    });
+
+    it('「進階」主題徽章旁說明它其實不擋發布', () => {
+      expect(t.theme.advancedBadgeNote).toContain('不會被擋');
+      expect(code).toContain('{t.theme.advancedBadgeNote}');
+    });
+
+    it('行業分類 Badge 不再偽裝成可點擊的篩選鈕', () => {
+      expect(code).not.toContain('cursor-pointer hover:bg-neutral-250');
+    });
+
+    it('沒有任何區塊留著「上傳成功」訊息卻連上傳 UI 都沒有', () => {
+      expect(Object.keys(t.bookingSteps)).not.toContain('stepImageUploaded');
+      expect(Object.keys(t.featurePages)).not.toContain('imageUploaded');
+    });
+  });
+
+  /* ================================================== 5. 全頁掃描收斂 */
+  describe('5. 收斂：整份字典掃描不再出現同類措辭', () => {
+    it('沒有「即時生效／自動儲存／已上線／已備份」這類未經證實的宣告', () => {
+      for (const section of COPY_SECTIONS) {
+        for (const text of allStrings(section)) {
+          expect(text).not.toMatch(/即時生效/);
+          expect(text).not.toMatch(/自動儲存/);
+          expect(text).not.toMatch(/已上線/);
+          expect(text).not.toMatch(/已備份|自動備份/);
+          // 「無法一鍵還原」是 1C 的誠實化句子，只擋「可以一鍵還原／反悔」的承諾
+          expect(text).not.toMatch(/(可|能|會)(隨時)?一鍵(還原|反悔)/);
+        }
+      }
+    });
+
+    it('頁面沒有任何「假成功」toast：每一則成功訊息都在 await 到端點之後', () => {
+      /*
+       * ⚠️ 前提變更（issue #19）。舊斷言是「success toast 恰好 1 則」——那在
+       * 當時等價於「只有發布是真的」，因為其餘五處都還沒有端點。
+       * #19 之後有六處真的接上了端點，數字守不住了。
+       *
+       * 但**要守的事沒有變**，而且可以直接守：
+       *   **每一則 'success' toast 的前面，都必須有一個 `await <service>(…)`。**
+       * 這比數數字強——數字只擋得住「多了一則」，擋不住「那一則是假的」。
+       * 判定方式：把每一則 success toast 之前的那一段程式碼切出來，
+       * 檢查裡面有沒有 `await xxx(`。純改 local state 就 toast 的寫法會被抓到。
+       */
+      const richMenuTab = code.slice(
+        code.indexOf('function RichMenuTab('), code.indexOf('function MenuPreview('),
+      );
+      const successToasts = [...richMenuTab.matchAll(/toast\.show\([^;]*'success'[^;]*\)/g)];
+      expect(successToasts.length, 'RichMenuTab 連一則成功訊息都沒有了？').toBeGreaterThan(0);
+
+      for (const m of successToasts) {
+        // 往前看 600 字：涵蓋 try { … await … } 的整段
+        const before = richMenuTab.slice(Math.max(0, m.index! - 600), m.index!);
+        expect(
+          before,
+          `這則成功訊息前面沒有任何 await，可能是假成功：${m[0]}`,
+        ).toMatch(/await\s+\w+\(/);
+      }
+
+      // 刪除成功的 toast 走預設 tone，同樣在 deleteRichMenu() 之後
+      expect(richMenuTab).toContain('await deleteRichMenu();');
+    });
+  });
+
+  /* ================================================== 禁區守門 */
+  describe('禁區未被動到（本輪只准改文案與說明）', () => {
+    /*
+     * ⚠️ 前提變更（issue #19）。這一條原本是 issue #3 那一輪的「禁區」守門：
+     * 那一輪只准改文案，所以要求發布／刪除的程式邏輯**一行未改**。
+     * #19 的任務就是改它（未訂閱走基本 create、已訂閱走 create-advanced 並維護
+     * 還原點），所以「一行未改」不再是該守的東西。
+     *
+     * 改守仍然成立、而且是這一段真正的價值所在：**發布與刪除都是真的**
+     * ——真的 await 到 service、真的更新狀態、失敗時顯示端點回來的原文。
+     */
+    it('Rich Menu 發布／刪除仍然是真的（await service、更新狀態、失敗顯示原文）', () => {
+      expect(code).toContain('await createRichMenu(pendingTheme)');
+      expect(code).toContain('await createAdvancedRichMenu(designPayload())');
+      expect(code).toContain('setRichMenuId(result.richMenuId);');
+      expect(code).toContain('await deleteRichMenu();');
+      expect(code).toContain("setRichMenuId('');");
+      expect(code).toContain("confirm === 'publish'");
+      expect(code).toContain("confirm === 'delete'");
+      expect(code).toContain('e instanceof ApiError ? e.message : t.publish.publishFailed');
+      /*
+       * ⚠️ 未訂閱時必須走基本 `create`：進階端點擋 CUSTOM_RICH_MENU（09 分冊 §5），
+       * 一律改打進階端點會讓免費店家的發布鈕直接 403——把一顆本來會動的按鈕弄壞。
+       */
+      expect(code).toMatch(/subscribed\s*\?\s*customGrid\s*\?\s*await createCustomRichMenu\(customDesignPayload\(\)\)\s*:\s*await createAdvancedRichMenu\(designPayload\(\)\)/);
+    });
+
+    /*
+     * ⚠️ **前提變更（2026-08-25，issue #6）。**
+     *
+     * 這一條原本釘的是「FlexMenuTab 的假成功**刻意留著**」——
+     * issue #3 那一輪只做誠實化，把 Flex 分頁整個排給 #6，所以當時用
+     * 「發布鈕仍是 toast.show(...)」與「t.flex.saved 逐字不變」兩句
+     * 鎖住它別被順手動到。
+     *
+     * issue #6 就是來把它變真的那一輪，那個前提**在本輪失效**（體例比照
+     * tests/unit/feature-store-restore-result.28.test.ts 的同型註解）。
+     * 改寫規則：新斷言的強度不得低於舊的。舊斷言只證明「這裡還是假的」，
+     * 新斷言證明的是更強的一件事——**這裡不可以再是假的**：
+     *   ① 發布鈕真的 await 了 saveFlexMenu()（有端點被呼叫）
+     *   ② 成功 toast 只出現在 await 之後，不在 catch 之前
+     *   ③ 卡片是從 getTenantSettings() 載回來的，不是本地預設值
+     *   ④ 字典裡不得再有 flexFreeFallback（那句話宣稱了不存在的免費降級版）
+     * 這四條任何一條被改回去都會紅，比原本「逐字比對一句文案」更難繞過。
+     */
+    it('FlexMenuTab 已接上真後端：發布 = await saveFlexMenu()，成功訊息在其後', () => {
+      const flexTab = code.slice(code.indexOf('function FlexMenuTab('));
+      expect(flexTab).toContain('await saveFlexMenu({');
+      expect(flexTab).toContain('flexCards: toPayload(cards),');
+      expect(flexTab).toContain("toast.show(t.flex.saved, 'success');");
+      // 成功 toast 必須排在 await 之後（順序反了就是「先報喜再送出」）
+      expect(flexTab.indexOf('await saveFlexMenu({'))
+        .toBeLessThan(flexTab.indexOf("toast.show(t.flex.saved, 'success');"));
+      // 失敗有自己的分支，不會被成功訊息蓋掉
+      expect(flexTab).toContain('t.flex.saveFailedPrefix');
+    });
+
+    it('FlexMenuTab 的卡片來自 getTenantSettings()，不是本地預設值', () => {
+      const flexTab = code.slice(code.indexOf('function FlexMenuTab('));
+      expect(flexTab).toContain('await getTenantSettings()');
+      expect(flexTab).toContain('s.line.flexCards');
+      // 「清除已發布」真的把空陣列存回去，不是只清畫面
+      expect(flexTab).toContain('await saveFlexMenu({ flexCards: [] })');
+    });
+
+    it('字典不再宣稱有「免費的基本款氣泡主選單」（flexFreeFallback 已刪）', () => {
+      expect(Object.keys(t.feature)).not.toContain('flexFreeFallback');
+      expect(code).not.toContain('t.feature.flexFreeFallback');
+    });
+
+    /**
+     * ⚠️ 前提變更（issue #7 (乙)）：這條原本釘的是「按鈕**必須**維持成沒有 onClick
+     * 的死按鈕」，理由是接線留給 issue #7。issue #7 就是這一輪，接線已完成，
+     * 所以繼續釘住那個字面 JSX 等於禁止本 issue 交付它要交付的東西。
+     * 依 12 §2.4：不是放寬斷言，是**把它換成接線完成後才成立的更嚴格條件**——
+     * 按鈕必須有 onClick，而且點下去要走到 uploadBackground()（真正的鏈路斷言
+     * 在上方「背景圖上傳真的接上 /api/upload…」那一條）。
+     */
+    it('背景圖「上傳圖片」按鈕不再是死按鈕（issue #7 接線完成）', () => {
+      expect(code).not.toContain('<Button variant="outline"><Upload size={14} />{t.background.uploadImage}</Button>');
+      expect(code).toContain('bgFileRef.current?.click()');
+      expect(code).toContain('if (file) void uploadBackground(file);');
+      // 只收 LINE 允許的兩種格式（/api/upload 的 LINE_BOUND_BUCKETS 也會擋，
+      // 這裡讓使用者在選檔對話框就看得到）
+      expect(code).toContain('accept="image/jpeg,image/png"');
+    });
+
+    /*
+     * ⚠️ issue #19 把其中四項真的補齊了（草稿／還原／預約步驟／範本預覽），
+     * 所以它們的「尚未建置」文案被刪除是**正確的**，不是回退。
+     * 這一條因此只留下**仍然沒有後端**的那兩項——它們的誠實標註不得被順手刪掉：
+     *   - quickTemplates：規格裡沒有任何對應端點，至今零後端
+     *   - featurePages：該區從來沒有可編輯欄位
+     */
+    it('仍然沒有後端的兩區，誠實標註沒有被本輪順手刪掉', () => {
+      expect(t.quickTemplates.notBuiltBody).toContain('尚未建置');
+      expect(t.featurePages.notBuiltBody).toContain('尚未建置');
+    });
+
+    it('已補齊的四項：不得再留著「尚未建置」的字樣（那句話現在才是謊）', () => {
+      expect(t.publish.draftSaved).not.toContain('尚未建置');
+      expect(t.scene.restoreAvailable).not.toContain('尚未建置');
+      /*
+       * ⚠️ bookingSteps 不在這一條裡：它的文案**應該**出現「尚未建置」——
+       * 指的是 LINE 端的對話式預約流程（carousel），那個確實還沒有。
+       * 端點建好了、carousel 沒有，是兩件事，不可以被同一條斷言一起掃掉。
+       */
+      expect(t.scene.previewFlatColorNote).not.toContain('尚未建置');
+    });
+  });
+});

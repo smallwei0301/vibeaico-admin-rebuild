@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { isFeatureActive } from '@/server/features';
-import { pageRange, toPaged } from '@/server/paging';
+import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 import { mapCustomer } from '@/server/mappers';
 
 /**
@@ -12,7 +12,7 @@ import { mapCustomer } from '@/server/mappers';
  */
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
-  size: z.coerce.number().int().min(1).max(200).default(20),
+  size: pageSizeSchema(20),
   keyword: z.string().optional(),
   atRisk: z.coerce.boolean().optional(),
   levelId: z.string().uuid().optional(),
@@ -74,6 +74,25 @@ export const POST = handle(async (req) => {
   const t = await requireTenant();
   const b = bodySchema.parse(await req.json());
 
+  /*
+   * 「預設等級」（`membership_levels.is_default`，migration 0022 / issue #35）。
+   * 原站該欄位的標籤逐字是「設為預設等級（**新顧客自動套用**）」
+   * （docs/specs/membership-levels.json 的 levelModal.isDefault），所以旗標存下來
+   * 之後，新顧客沒有指定等級時就要套用它——否則畫面上那句括號是一個程式沒做的
+   * 宣稱（CLAUDE.md「Never fabricate a known」）。
+   * 只在呼叫端**沒有**指定 membershipLevelId 時套用；停用（active=false）的等級
+   * 不套用。
+   */
+  let levelId: string | null = b.membershipLevelId ? b.membershipLevelId : null;
+  if (!levelId) {
+    const { data: def, error: dErr } = await t.supabase
+      .from('membership_levels').select('id')
+      .eq('tenant_id', t.tenantId).eq('is_default', true).eq('active', true)
+      .maybeSingle();
+    if (dErr) throw dErr;
+    levelId = def?.id ?? null;
+  }
+
   const { data, error } = await t.supabase
     .from('customers')
     .insert({
@@ -85,7 +104,7 @@ export const POST = handle(async (req) => {
       birthday: b.birthday ? b.birthday : null,
       note: b.note ?? '',
       tags: b.tags ?? [],
-      membership_level_id: b.membershipLevelId ? b.membershipLevelId : null,
+      membership_level_id: levelId,
     })
     .select('id')
     .single();

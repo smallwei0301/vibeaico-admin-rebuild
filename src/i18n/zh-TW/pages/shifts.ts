@@ -86,7 +86,13 @@ export const shiftsPage = {
     end: '結束時間 *',
     breakStart: '休息開始（選填）',
     breakEnd: '休息結束（選填）',
-    breakHelp: '休息時間必須在上班時段內。不需要休息請保持空白。',
+    /**
+     * ⚠️ 加上後半句：`shifts` 表沒有休息欄位（04 分冊 §B-2 只有
+     * work_date/start_time/end_time/template_id），這一格填了不會進資料庫。
+     * 原本這件事只寫在 page.tsx 的一行註解裡（「休息／備註不在 API 契約內，
+     * 僅留本地顯示」）——註解保護的是下一個工程師，被誤導的是店家。
+     */
+    breakHelp: '休息時間必須在上班時段內。不需要休息請保持空白。休息時間與備註目前只用於畫面試算，不會寫進資料庫（班表 API 沒有這兩個欄位）。',
     note: '備註（班別名稱，選填）',
     notePlaceholder: '例如：早班、晚班、加班',
     clearConfirm: '清除這筆班表？\n\n清除後該員工當日將沿用週排班。',
@@ -95,7 +101,22 @@ export const shiftsPage = {
   /* -------------------------------------------------- modal：編輯週排班 */
   weeklyModal: {
     title: '編輯週排班',
-    intro: '此員工為「固定休息」模式，直接編輯每週固定時段。儲存後本週與未來各週都會套用。',
+    /**
+     * ⚠️ 原文是「儲存後本週與未來各週都會套用」。接線後這句不成立：週排班是
+     * 展開成一筆一筆的 `shifts` 列寫進資料庫（`POST /api/shifts`），沒有「規則」
+     * 這種東西存在後端，所以只會套用到**目前檢視的區間**。要往後排更多週，
+     * 就把上方的檢視週數調大再存一次，或用「循環重複排班」。
+     */
+    intro: '此員工為「固定休息」模式，直接編輯每週固定時段。',
+    /** 儲存前先講清楚會寫到哪幾天——這是使用者按下去之後真的會發生的事 */
+    range: (from: string, to: string) =>
+      `儲存後會套用到目前檢視的區間（${from} ~ ${to}）：先清掉這段期間此員工既有的班，再依下表重新排。要排更遠請把上方「檢視週數」調大再存一次。`,
+    /**
+     * ⚠️ 休息時間存不進去：`shifts` 表只有 work_date / start_time / end_time /
+     * template_id，沒有休息欄位（04 分冊 §B-2）。留著欄位而不說，就是讓店家
+     * 打了字、看到「已儲存」、資料卻沒進去。
+     */
+    breakNotStored: '休息時間目前只用於畫面試算，不會寫進資料庫（班表 API 沒有休息欄位）。',
     columns: {
       weekday: '星期',
       working: '上班',
@@ -133,10 +154,10 @@ export const shiftsPage = {
     edit: '編輯',
     delete: '刪除',
     nameRequired: '請填寫班別名稱',
-    deleteConfirm: '確定刪除此班別範本？\n已套用此範本的班表會一併清除（日期變為「未排班」）',
+    deleteConfirm: '確定刪除此班別範本？\n已套用此範本的班表不受影響（時間會保留，僅不再標示所屬範本）',
     created: '班別範本已新增',
-    updated: '班別範本已更新（班表時間已同步）',
-    deleted: '班別範本已刪除（相關班表已清除）',
+    updated: '班別範本已更新（僅影響之後排班時的預設值，不會更動已排定的班表）',
+    deleted: '班別範本已刪除（已套用的班表不受影響）',
     loadFailed: '載入班別範本失敗',
   },
 
@@ -202,7 +223,10 @@ export const shiftsPage = {
   messages: {
     shiftSaved: '班表已儲存',
     shiftSavedWithConflict: '班表已儲存（衝突由店家自行通知）',
-    weeklySaved: '週排班已儲存',
+    weeklySaved: (from: string, to: string) => `週排班已套用到 ${from} ~ ${to}`,
+    /** 排班模式存在 tenant_settings.business.staffScheduleModes */
+    modeSaveFailed: '切換模式失敗：',
+    loadSettingsFailed: '載入店家設定失敗，本頁的營業時間檢查與排班模式暫時無法使用',
     cleared: '已清除',
     saveFailed: '儲存失敗',
     saveFailedCheck: '儲存失敗，請確認資料',

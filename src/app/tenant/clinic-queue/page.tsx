@@ -20,10 +20,11 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listServices } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { clinicQueuePage as t } from '@/i18n/zh-TW/pages/clinic-queue';
 import { formatDate, formatNumber } from '@/lib/utils';
 import type { Service } from '@/lib/types';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -106,6 +107,7 @@ const toIsoDate = (d: Date) =>
 
 export default function ClinicQueuePage() {
   const toast = useToast();
+  const businessType = useBusinessType();
 
   const [services, setServices] = React.useState<Service[]>([]);
   const [serviceId, setServiceId] = React.useState('');
@@ -159,16 +161,12 @@ export default function ClinicQueuePage() {
       setSessionsLoading(false);
       return;
     }
+    /* 後端尚未建置：沒有 /api/clinic-queue/sessions，直接讀本檔示範資料 */
     setSessionsLoading(true);
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      const list = MOCK_SESSIONS.filter((s) => s.serviceId === serviceId);
-      setSessions(list);
-      setBoardSessionId((prev) => (list.some((s) => s.id === prev) ? prev : list[0]?.id ?? ''));
-      setSessionsLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+    const list = MOCK_SESSIONS.filter((s) => s.serviceId === serviceId);
+    setSessions(list);
+    setBoardSessionId((prev) => (list.some((s) => s.id === prev) ? prev : list[0]?.id ?? ''));
+    setSessionsLoading(false);
   }, [serviceId]);
 
   React.useEffect(() => {
@@ -176,14 +174,10 @@ export default function ClinicQueuePage() {
       setRoster([]);
       return;
     }
+    /* 後端尚未建置：沒有 /api/clinic-queue/roster，直接讀本檔示範資料 */
     setRosterLoading(true);
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setRoster(MOCK_ROSTER[boardSessionId] ?? []);
-      setRosterLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
+    setRoster(MOCK_ROSTER[boardSessionId] ?? []);
+    setRosterLoading(false);
   }, [boardSessionId, boardDate]);
 
   const session = sessions.find((s) => s.id === boardSessionId) ?? null;
@@ -323,6 +317,11 @@ export default function ClinicQueuePage() {
         }
       />
 
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-3">
+        <div>{t.notBuilt.body}</div>
+        <div className="mt-1">{t.notBuilt.notifyBody}</div>
+      </Alert>
+
       {/* ------------------------------------------------------- 使用步驟卡 */}
       <Card className="mb-3">
         <CardBody>
@@ -342,7 +341,7 @@ export default function ClinicQueuePage() {
               <p>{t.guide.steps}</p>
               <p className="font-semibold">{t.guide.allInPage}</p>
               <p>
-                {t.guide.alsoInServicesLead}
+                {resolveNavTerms(t.guide.alsoInServicesLead, businessType)}
                 <strong>{t.guide.lineSelfServiceStrong}</strong>
                 {t.guide.lineSelfServiceTail}
               </p>
@@ -546,7 +545,7 @@ export default function ClinicQueuePage() {
           }]);
           setServiceId(id);
           setServiceModalOpen(false);
-          toast.show(t.serviceModal.created(name));
+          toast.show(t.notBuilt.serviceCreated(name), 'warning');
         }}
       />
 
@@ -560,7 +559,7 @@ export default function ClinicQueuePage() {
           upsertSession({ ...draft, id, serviceId });
           if (!boardSessionId) setBoardSessionId(id);
           setSessionTarget(undefined);
-          toast.show(t.messages.saved);
+          toast.show(t.notBuilt.sessionSaved, 'warning');
         }}
       />
 
@@ -573,7 +572,7 @@ export default function ClinicQueuePage() {
         onRegistered={(entry) => {
           setRoster((list) => [...list, entry]);
           setRegisterOpen(false);
-          toast.show(t.registerModal.successNumber(entry.queueNumber));
+          toast.show(t.notBuilt.registered(entry.queueNumber), 'warning');
         }}
         nextNumber={() => {
           if (!session) return 1;
@@ -594,11 +593,11 @@ export default function ClinicQueuePage() {
         value={override}
         affected={roster.filter((r) => r.status === 'WAITING').length}
         onClose={() => setLockOpen(false)}
-        onApply={(next, cancelled) => {
+        onApply={(next) => {
           if (!session) return;
           setOverrides((map) => ({ ...map, [toKey(session.id, boardDate)]: next }));
           setLockOpen(false);
-          toast.show(cancelled > 0 ? t.lockModal.appliedWithCancel(cancelled) : t.lockModal.applied);
+          toast.show(t.notBuilt.lockApplied, 'warning');
         }}
         onRestore={() => {
           if (!session) return;
@@ -608,7 +607,7 @@ export default function ClinicQueuePage() {
             return copy;
           });
           setLockOpen(false);
-          toast.show(t.lockModal.restored);
+          toast.show(t.notBuilt.lockRestored, 'warning');
         }}
       />
 
@@ -623,7 +622,7 @@ export default function ClinicQueuePage() {
         onConfirm={() => {
           if (deleteTarget) setSessions((list) => list.filter((s) => s.id !== deleteTarget.id));
           setDeleteTarget(null);
-          toast.show(t.messages.deleted);
+          toast.show(t.notBuilt.sessionDeleted, 'warning');
         }}
       />
 
@@ -634,20 +633,20 @@ export default function ClinicQueuePage() {
         title={t.board.cancel}
         confirmText={t.board.cancel}
         message={cancelTarget
-          ? t.cancel.confirm(
-            cancelTarget.queueNumber,
-            cancelTarget.notifiable ? t.cancel.notifyOk : t.cancel.notifyNone,
-          )
+          ? t.notBuilt.cancelConfirm(cancelTarget.queueNumber)
           : common.confirm.message}
         onClose={() => setCancelTarget(null)}
         onConfirm={() => {
+          /*
+           * ⚠️ 通知後端尚未建置：這裡不可以再宣稱「已通知病患」。
+           * 舊實作依 notifiable 顯示「系統已嘗試通知病患」—— 那是謊報對外行為，
+           * 頁面從頭到尾沒有送出任何 LINE／Email。禁止復原。
+           */
           if (cancelTarget) {
             setRoster((list) => list.map((r) => (r.bookingId === cancelTarget.bookingId
               ? { ...r, status: 'CANCELLED' as const }
               : r)));
-            toast.show(cancelTarget.notifiable
-              ? t.cancel.successNotified(cancelTarget.queueNumber)
-              : t.cancel.successManual(cancelTarget.queueNumber));
+            toast.show(t.notBuilt.cancelled(cancelTarget.queueNumber), 'warning');
           }
           setCancelTarget(null);
         }}
@@ -665,7 +664,7 @@ export default function ClinicQueuePage() {
             setRoster((list) => list.map((r) => (r.bookingId === completeTarget.bookingId
               ? { ...r, status: 'DONE' as const }
               : r)));
-            toast.show(t.complete.success(completeTarget.queueNumber));
+            toast.show(t.notBuilt.completed(completeTarget.queueNumber), 'warning');
           }
           setCompleteTarget(null);
         }}
@@ -711,7 +710,6 @@ function QueueServiceModal({
               setError('');
               setSaving(true);
               try {
-                await new Promise((r) => setTimeout(r, 380));
                 onCreated(name.trim());
               } catch (e) {
                 toast.show(
@@ -797,7 +795,6 @@ function SessionModal({
               if (err) return;
               setSaving(true);
               try {
-                await new Promise((r) => setTimeout(r, 380));
                 onSaved(draft);
               } catch (e) {
                 toast.show(
@@ -924,7 +921,6 @@ function RegisterModal({
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
       onRegistered({
         bookingId: `q_new_${seq.current++}`,
         queueNumber: nextNumber(),
@@ -1078,7 +1074,6 @@ function LockModal({
     }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
       onApply(
         {
           closed,
@@ -1155,7 +1150,7 @@ function LockModal({
 
         {willCancel > 0 ? (
           <Alert tone="warning" title={t.lockModal.previewLead(willCancel)}>
-            <div>{t.lockModal.previewTail}</div>
+            <div>{t.notBuilt.lockPreviewTail}</div>
             {confirmStage ? <div>{t.lockModal.previewConfirmAgain}</div> : null}
           </Alert>
         ) : null}
@@ -1168,7 +1163,7 @@ function LockModal({
         danger
         title={t.lockModal.restoreDefault}
         confirmText={t.lockModal.restoreDefault}
-        message={t.lockModal.restoreConfirm}
+        message={t.notBuilt.lockRestoreConfirm}
         onClose={() => setRestoreOpen(false)}
         onConfirm={() => { setRestoreOpen(false); onRestore(); }}
       />

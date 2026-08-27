@@ -499,9 +499,44 @@ create table recurring_bookings (
 );
 ```
 
-> `clinic_queue_*`、`payment_methods`、`external_calendars`、`donations`、
-> `bug_reports`、`support_chat` 屬 Phase 5+ 的長尾功能：**先不建表**，等 04 分冊
-> §B 對應端點要實作時，依同樣模式（tenant_id + RLS 樣板）補 migration。
+> ### ⚠️ 長尾表：這裡曾經有一句話，讓四個功能整組失蹤
+>
+> **原文（2026-08-25 作廢）**：「`clinic_queue_*`、`payment_methods`、
+> `external_calendars`、`donations`、`bug_reports`、`support_chat` 屬 Phase 5+ 的
+> 長尾功能：**先不建表**，等 04 分冊 §B 對應端點要實作時，依同樣模式
+> （tenant_id + RLS 樣板）補 migration。」
+>
+> **這句話是一個懸空指標。** 它把六張表的責任交棒給「04 分冊 §B 對應端點」——
+> 而 04 分冊 §B **從未定義這六者中任何一支端點**。02 丟給 04、04 沒接，交棒處
+> 沒有任何一冊負責，於是六者中的四者（`clinic_queue_*`、`external_calendars`、
+> `donations`、`support_chat`）在整份 00–13 計劃裡完全沒有落點：沒有 schema、
+> 沒有契約、沒有 08 清單的格子——**連「漏勾」都不可能發生，因為根本沒有格子**。
+> 前端頁面照著原站做出來了（`clinic-queue` 約 1170 行、`calendar-sync`、`donate`、
+> 掛在每一頁上的 `SupportChatWidget`），按下去全是假成功。
+> 這是 2026-08-25 盤點出的 19 項未排期缺口中**大部分的共同來源**
+> （見 `14-GAP-AUDIT.md` §5）。
+>
+> **教訓（與 14 分冊 §0 根因 B 同型，寫在這裡是因為這句話是加害者）**：
+> 「等 X 冊要用的時候再補」只有在 **X 冊真的寫了那一項**時才成立。交棒必須指向
+> 一個**已經存在的章節**，不能指向一個「未來應該會有」的章節。若接手處還不存在，
+> 就不叫排期，叫遺失。
+>
+> **現行歸屬（每一張表都指向具體的 issue／章節，不再有懸空指標）**：
+>
+> | 表 | 歸屬 | 狀態 |
+> |---|---|---|
+> | `payment_methods`（`tenant_payment_methods`） | `10-TOUR-DOMAIN.md` §4 · [#9 建置-1](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/9) | 已有規格 |
+> | `booking_addons`（同批遺漏，原文未列） | `04-API-CONTRACTS.md` §B-1（待 #17 補寫）· [#17 補齊-2](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/17) | 規格待補 |
+> | `clinic_queue_*`（4 張） | **`16-CLINIC-QUEUE.md`（待 #20 新建）** · [#20 補齊-5](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/20) | 規格待補 |
+> | `external_calendars` | `10-TOUR-DOMAIN.md` §5.6（待 #21 補寫；§5.5 只有 ICS 輸出面）· [#21 補齊-6](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/21) | 規格待補 |
+> | `page_view_events`（同批遺漏，原文未列） | `04-API-CONTRACTS.md` §B-6（待 #23 補寫）· [#23 補齊-8](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/23) | 規格待補 |
+> | `referrals`（同批遺漏，原文未列） | 待 #24 補寫（規則原文 `REBUILD-SPEC.md:1020`）· [#24 補齊-9](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/24) | 規格待補 |
+> | `donations`、`support_chat_*` | `04-API-CONTRACTS.md` §B-6（待 #25 展開）· [#25 補齊-10](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/25) | 規格待補 |
+> | `bug_reports` | `04-API-CONTRACTS.md` §B-6 · 表已建、寄信段由 [#25](https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/25) 補齊 | 部分完成 |
+>
+> **仍然成立的部分**：這些表確實不必在 Phase 2 建；建的時候一律照本冊慣例
+> （tenant_id + 0006 RLS 樣板）。變的是——**建表的排期綁在具名的 issue 上，
+> 不再綁在一個不存在的章節上**。
 
 ## 0006 — RLS 樣板（一次套到所有業務表）
 

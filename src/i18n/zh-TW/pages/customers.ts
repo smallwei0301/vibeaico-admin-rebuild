@@ -74,7 +74,14 @@ export const customersPage = {
 
   /* --------------------------------------------------------------- 動作 */
   actions: {
-    export: '匯出 Excel',
+    /**
+     * `GET /api/export/customers/excel` 產的是 UTF-8 加 BOM 的 CSV（路徑沿用
+     * 原站命名，見該 route 檔頭），檔名是 `customers-YYYY-MM-DD.csv`。標籤照
+     * reports 頁的作法寫明實際格式——寫「匯出 Excel」卻送一個 .csv 出去，
+     * 就是謊報檔案格式（CLAUDE.md「Never fabricate a known」）。
+     */
+    export: '匯出 Excel 可開啟的 CSV',
+    exporting: '匯出中…',
     create: '新增顧客',
     edit: '編輯顧客',
     delete: '刪除顧客',
@@ -83,13 +90,16 @@ export const customersPage = {
     unbindLine: '解除 LINE 綁定',
   },
 
+  /**
+   * ⚠️ 移除了 `orphan: '殘留綁定'` 與 `autoCreated: '自動建立檔案'`：這兩個徽章
+   * 沒有任何資料來源（line_users 與 customers 都沒有對應欄位），接線前是靠一個
+   * 寫死的 id 集合與頁內假資料掛上去的。查不到的狀態就不顯示。
+   */
   status: {
     active: '正常',
     atRisk: '流失風險',
     inactive: '已停用',
     unbound: '未綁定',
-    orphan: '殘留綁定',
-    autoCreated: '自動建立檔案',
   },
 
   /* -------------------------------------------------- modal 1：新增/編輯 */
@@ -120,11 +130,15 @@ export const customersPage = {
   /* ------------------------------------------------- modal 2：綁定 LINE */
   bindLine: {
     title: (name: string) => `綁定 LINE 用戶 — ${name}`,
-    intro:
-      '以下是綁定異常的 LINE 用戶（未綁定 / 顧客已被刪但 LINE 殘留）。點選對應暱稱／頭像綁回此顧客：',
+    /**
+     * ⚠️ 原文是「以下是綁定異常的 LINE 用戶（未綁定 / 顧客已被刪但 LINE 殘留）」。
+     * 端點 GET /api/line-users/unbound 只回「已加好友且尚未綁定顧客」一種列，
+     * 沒有任何欄位能判斷「顧客已被刪但 LINE 殘留」——留著那半句會讓店家以為
+     * 清單裡混有殘留帳號並據此做判斷。文案改成只講端點真的查得到的事。
+     */
+    intro: '以下是已加入官方帳號、但尚未綁定任何顧客的 LINE 用戶。點選對應暱稱／頭像綁到此顧客：',
     loading: '載入中...',
     binding: '綁定中...',
-    mergeHint: '已有自動建立的空白檔案，綁定時會自動合併',
     emptyTitle: '目前沒有待綁定的 LINE 用戶',
     emptyDescription: '顧客加入官方帳號並傳送訊息後，會出現在這份清單中。',
     loadFailed: '載入失敗，請稍後再試',
@@ -145,6 +159,14 @@ export const customersPage = {
     deleted: '顧客已刪除',
     deleteFailed: '刪除失敗',
     exported: '顧客匯出成功',
+    /**
+     * 檔名一律取自伺服器回的 `Content-Disposition`（issue #28 ④）。原本這裡
+     * 搭配的是 `exportFile.filename()`——前端用當天日期拼出「顧客清單_20260825.xlsx」
+     * 再報成功，既沒有下載、檔名也與伺服器實際送出的不同。該函式已刪除。
+     */
+    exportedAs: (fileName: string) => `顧客匯出成功：${fileName}`,
+    /** 示範資料模式沒有伺服器可打，沒有檔案產生——不得顯示成功 */
+    exportNotDownloaded: '示範資料模式不會產生檔案，未匯出任何顧客；請切換到實際店家後再匯出',
     exportFailed: '匯出失敗，請稍後再試',
     exportFailedPrefix: '匯出失敗:',
     saveFailedPrefix: '儲存失敗: ',
@@ -168,11 +190,6 @@ export const customersPage = {
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',
     unknownError: '未知錯誤',
-  },
-
-  /* --------------------------------------------------------------- 匯出 */
-  exportFile: {
-    filename: (date: string) => `顧客清單_${date}.xlsx`,
   },
 
   empty: {

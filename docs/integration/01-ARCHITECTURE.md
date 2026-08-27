@@ -87,13 +87,45 @@ CRON_SECRET: z.string().optional(),
 
 ---
 
-## 4. 允許安裝的套件（僅此三個）
+## 4. 允許安裝的套件
+
+00 分冊鐵則 9：**不新增依賴，除非分冊點名。** 這一節就是那份點名清單——
+不在這裡的一律不裝，要裝先改這一節並說明理由。
+
+### 4.1 Phase 0 的三個
 
 ```bash
 npm install @supabase/supabase-js@^2 @supabase/ssr@^0.6 resend@^4
 ```
 
 不要安裝 ORM（prisma/drizzle）。查詢一律用 supabase-js。
+
+### 4.2 後續由擁有者裁決加入的（2026-08-25）
+
+| 套件 | 版本 | 用途 | 裁決 |
+|---|---|---|---|
+| `sharp` | **0.34.5**（精確，非 caret） | LINE 圖片訊息的 `previewImageUrl` 縮圖（1 MB 上限） | 14 分冊 §8.15 |
+| `qrcode` | **1.5.4**（精確） | promote／line-settings 兩處的 QR Code 產生 | 14 分冊 §8.2 |
+| `@types/qrcode` | 1.5.6 | 型別（devDependency） | 同上 |
+| `jsqr` | 1.4.0 | **測試用**的獨立解碼器（devDependency） | 同上 |
+| `pngjs` | 5.0.0 | 測試把 PNG 還原成像素餵給 `jsqr`（devDependency） | 同上 |
+| `@types/pngjs` | 6.0.5 | 型別（devDependency） | 同上 |
+
+**三件要記住的事：**
+
+1. **一律精確版本，不用 caret。** `sharp` 是原生二進位，caret 會在不同環境拉到不同的
+   建置；`qrcode` 則是因為 QR 的正確性沒有便宜的驗證方式，版本飄移不會有紅燈告訴你。
+2. **`sharp` 在裝之前就已經在 `node_modules` 裡了**——它是 `next` 的相依（Next 用它做
+   image optimization）。所以那次的動作不是「引入新套件」，而是**把隱性相依轉成顯性**。
+   理由是不要依賴別人的內部相依：Next 哪天換掉實作，我們的縮圖會**無聲壞掉**，
+   而那種壞法（縮圖沒產出 → preview 超規 → LINE 顯示異常）最難察覺。
+3. **`jsqr` 是刻意選的「第三方」解碼器。** 用 `qrcode` 自己的中介資料去驗證自己
+   等於自證，證明不了「別人的掃描器讀得出來」。QR 自寫編碼器的典型失敗就是
+   「看起來像 QR、掃不出來」，所以驗證必須來自編碼器以外的實作。
+
+⚠️ **`npm ci` 會比對 `package-lock.json` 與 `package.json`**，CI 兩處都跑它。
+裝套件時 lock 一定要一起更新（`npm install <pkg>@<版本> --save-exact`），
+並用 `npm ci --dry-run` 驗證同步——只改一邊 CI 會直接失敗。
 
 ---
 

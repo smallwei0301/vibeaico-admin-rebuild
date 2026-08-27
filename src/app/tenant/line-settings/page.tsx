@@ -17,14 +17,17 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
+  createRichMenu as publishRichMenu,
+  disconnectLine, getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
+import { cn } from '@/lib/utils';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
+import { generateQrDataUrl, triggerDataUrlDownload } from '@/lib/qr';
 
 /* -------------------------------------------------------------------------- */
 /* 常數                                                                        */
@@ -36,7 +39,9 @@ import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
  *    （richMenuTheme / richMenuTextColor，見 src/config/tenant-settings.ts），
  *    是 LINE 官方選單底圖的配色，與本後台的佈景無關，因此不走 Tailwind token。
  */
-const THEME_PRESETS: { key: LineSettings['richMenuTheme']; swatch: string }[] = [
+/** BOUTIQUE 是進階主題（選單設計頁才開放，見 rich-menu-design.ts），這裡的快速
+ *  預覽只收原本 5 色，故排除它以免多一個沒有 i18n 文案的鍵。 */
+const THEME_PRESETS: { key: Exclude<LineSettings['richMenuTheme'], 'BOUTIQUE'>; swatch: string }[] = [
   { key: 'LINE_GREEN', swatch: '#06C755' },
   { key: 'OCEAN_BLUE', swatch: '#1E88E5' },
   { key: 'ROYAL_PURPLE', swatch: '#7E57C2' },
@@ -60,7 +65,8 @@ const ACCESS_TOKEN_MIN_LENGTH = 100;
 
 const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
-type VerifyCheck = { key: string; pass: boolean; message: string };
+/** severity 省略時視為 FAIL（後端未帶 = 舊行為） */
+type VerifyCheck = { key: string; pass: boolean; message: string; severity?: 'FAIL' | 'WARN' };
 
 /* -------------------------------------------------------------------------- */
 
@@ -127,6 +133,12 @@ export default function LineSettingsPage() {
   const [verifyChecks, setVerifyChecks] = React.useState<VerifyCheck[] | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
 
+  /* --- 加好友 QR Code（issue #16：真的產生，內容＝加好友連結） --- */
+  const [qrDataUrl, setQrDataUrl] = React.useState<string | null>(null);
+  const [qrGenerating, setQrGenerating] = React.useState(false);
+  const [qrError, setQrError] = React.useState(false);
+  const [downloadingQr, setDownloadingQr] = React.useState(false);
+
   /* ------------------------------------------------------------------ 載入 */
 
   const applySettings = React.useCallback((s: TenantSettings) => {
@@ -177,6 +189,31 @@ export default function LineSettingsPage() {
   const addFriendUrl = lineBasicId
     ? `https://line.me/R/ti/p/${encodeURIComponent(lineBasicId)}`
     : '';
+
+  React.useEffect(() => {
+    if (!addFriendUrl) { setQrDataUrl(null); setQrError(false); return; }
+    let cancelled = false;
+    setQrGenerating(true);
+    setQrError(false);
+    void generateQrDataUrl(addFriendUrl)
+      .then((dataUrl) => { if (!cancelled) setQrDataUrl(dataUrl); })
+      .catch(() => { if (!cancelled) { setQrDataUrl(null); setQrError(true); } })
+      .finally(() => { if (!cancelled) setQrGenerating(false); });
+    return () => { cancelled = true; };
+  }, [addFriendUrl]);
+
+  const downloadQr = () => {
+    if (!qrDataUrl) return;
+    setDownloadingQr(true);
+    try {
+      triggerDataUrlDownload(qrDataUrl, t.botInfo.qrFilename);
+      toast.show(t.botInfo.qrDownloaded);
+    } catch {
+      toast.show(t.botInfo.qrDownloadFailed, 'danger');
+    } finally {
+      setDownloadingQr(false);
+    }
+  };
 
   /** 三組金鑰都在（密文以「已存有遮罩值」或「本次重新輸入」判定）就視為已設定 */
   const hasSecret = secretEditing ? !!secretInput : !!settings?.line.channelSecret;
@@ -315,6 +352,21 @@ export default function LineSettingsPage() {
     toast.show(t.flexMenu.resetDone, 'info');
   };
 
+  /**
+   * 建立並發布 Rich Menu。
+   *
+   * ⚠️ 這裡曾經是一個**活體假成功**（兩輪稽核都漏掉）：舊實作只呼叫
+   * `saveLineSettings(...)` 把主題／底圖等「外觀偏好」寫進 tenant_settings，
+   * 然後就 toast「Rich Menu 建立成功！顧客現在可以看到快捷選單了」並把
+   * richMenuPublished 設成 true——但 LINE 端從頭到尾沒有被呼叫過一次，
+   * 顧客的 LINE 裡什麼選單都沒有。真正會發布的端點
+   * `POST /api/settings/line/rich-menu/create` 一直存在（選單設計頁在用，
+   * 且對 Midao 正式頻道實測過），這一頁從來沒接上去。
+   *
+   * 正確順序是**先存偏好、再發布**：create 端點會回頭讀 tenant_settings 裡的
+   * richMenuBgImageUrl 當底圖（見該 route 的 loadBackgroundImage），所以偏好
+   * 必須先落地；theme 則直接帶在 body 裡，不依賴前一步。
+   */
   const createRichMenu = async () => {
     setCreatingRichMenu(true);
     try {
@@ -324,14 +376,10 @@ export default function LineSettingsPage() {
       patchLocalLine({
         richMenuTheme, richMenuBgImageUrl, richMenuNoOverlay, richMenuTextColor,
       });
+      // 真的發布到 LINE；失敗會拋 ApiError，由下面的 catch 顯示真正的錯誤訊息
+      await publishRichMenu(richMenuTheme);
       setRichMenuPublished(true);
-      toast.show(
-        richMenuBgImageUrl
-          ? richMenuNoOverlay
-            ? t.richMenu.createdNoOverlay
-            : t.richMenu.createdCustomBg
-          : t.richMenu.created,
-      );
+      toast.show(richMenuBgImageUrl ? t.richMenu.createdCustomBg : t.richMenu.created);
     } catch (e) {
       toast.show(
         `${t.richMenu.createFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -379,15 +427,18 @@ export default function LineSettingsPage() {
   const disconnect = async () => {
     setDisconnecting(true);
     try {
-      await saveLineSettings({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '',
-      });
-      setChannelId('');
-      setLineBasicId('');
+      // 必須打專用端點 POST /api/settings/line/disconnect（06 分冊 §6）。
+      // 先前這裡送的是 saveLineSettings({ channelSecret:'', channelAccessToken:'' })，
+      // 但依 04 分冊 §A-1／鐵則 6，secret 欄位的空字串代表「維持原值」——token
+      // 根本沒被清掉、webhook 照常運作，畫面卻顯示「已解除綁定」（鐵則 12 的假成功）。
+      await disconnectLine();
+      // 解除後重新讀一次設定，畫面顯示的就是後端真正的狀態——不再由前端自己
+      // 猜哪些欄位被清掉（端點只清 channelId 與兩個 *_enc，其餘外觀偏好保留，
+      // 見 06 分冊 §6）。舊寫法在本地把 lineBasicId/webhookUrl 也抹成空字串，
+      // 重新整理後又冒出來，等於顯示了一個沒發生的結果。
+      applySettings(await getTenantSettings());
       setRichMenuPublished(false);
-      patchLocalLine({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '', webhookUrl: '',
-      });
+      setVerifyChecks(null);   // 舊的檢查報告已經不代表目前狀態
       setConfirmDisconnect(false);
       toast.show(t.disconnect.done);
     } catch (e) {
@@ -400,7 +451,10 @@ export default function LineSettingsPage() {
     }
   };
 
-  const failCount = verifyChecks?.filter((c) => !c.pass).length ?? 0;
+  // 分開算：WARN 是「我們查不到／還沒做」，不該和「真的壞了」混在一起——
+  // 兩者混算會讓報告永遠不可能顯示「全部通過」，久了店家整份忽略。
+  const failCount = verifyChecks?.filter((c) => !c.pass && c.severity !== 'WARN').length ?? 0;
+  const warnCount = verifyChecks?.filter((c) => !c.pass && c.severity === 'WARN').length ?? 0;
 
   /* -------------------------------------------------------------- render */
 
@@ -756,10 +810,22 @@ export default function LineSettingsPage() {
         <CardBody>
           <div className="flex flex-wrap items-center gap-6">
             <div className="flex h-40 w-40 flex-col items-center justify-center gap-2 rounded-md border border-neutral-250 bg-neutral-50 text-center">
-              <QrCode size={48} className="text-neutral-400" />
-              <span className="px-2 text-2xs text-secondary">
-                {addFriendUrl ? t.botInfo.qrTitle : t.botInfo.noQr}
-              </span>
+              {!addFriendUrl ? (
+                <>
+                  <QrCode size={48} className="text-neutral-400" />
+                  <span className="px-2 text-2xs text-secondary">{t.botInfo.noQr}</span>
+                </>
+              ) : qrGenerating ? (
+                <span className="px-2 text-2xs text-secondary">{t.botInfo.qrGenerating}</span>
+              ) : qrError || !qrDataUrl ? (
+                <>
+                  <QrCode size={48} className="text-neutral-400" />
+                  <span className="px-2 text-2xs text-secondary">{t.botInfo.qrGenerateFailed}</span>
+                </>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={qrDataUrl} alt={t.botInfo.qrAlt} className="h-32 w-32" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="mb-1 text-base font-semibold text-dark">{t.botInfo.qrTitle}</div>
@@ -788,11 +854,9 @@ export default function LineSettingsPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() =>
-                    addFriendUrl
-                      ? toast.show(t.botInfo.downloaded)
-                      : toast.show(t.botInfo.noQr, 'warning')
-                  }
+                  disabled={!qrDataUrl || downloadingQr}
+                  title={!qrDataUrl ? t.botInfo.downloadDisabledHint : undefined}
+                  onClick={downloadQr}
                 >
                   <QrCode size={14} />
                   {t.botInfo.downloadQr}
@@ -1000,6 +1064,7 @@ export default function LineSettingsPage() {
 
           <SwitchField
             label={t.flexMenu.showTip}
+            description={t.flexMenu.showTipHelp}
             checked={flexShowTip}
             onCheckedChange={setFlexShowTip}
           />
@@ -1099,12 +1164,22 @@ export default function LineSettingsPage() {
             <FormText>{t.richMenu.customBgHelp}</FormText>
           </FormGroup>
 
+          {/*
+            * ⚠️ 疊圖相關控制項一律停用，直到 issue #19（Rich Menu 進階設計器）把
+            * 文字／圖示合成做出來為止。發布端點目前是把底圖**原圖**傳給 LINE，
+            * 沒有任何合成步驟（見 rich-menu/create route 開頭的 MVP 說明），所以
+            * 這兩個欄位不管怎麼調，顧客看到的選單都不會有一點差別。開著讓人調、
+            * 調完還存得下去，就是 CLAUDE.md 說的「畫面宣稱了一件沒發生的事」。
+            * 依擁有者方針，這裡是**停用＋說明**，不是刪除——功能由 #19 補齊。
+            */}
           <FormGroup>
-            <label className="flex items-start gap-2 text-base text-neutral-700">
+            <label className="flex items-start gap-2 text-base text-neutral-400">
               <input
                 type="checkbox"
                 className="mt-1"
                 checked={richMenuNoOverlay}
+                disabled
+                title={t.richMenu.overlayNotBuiltHint}
                 onChange={(e) => setRichMenuNoOverlay(e.target.checked)}
               />
               <span>
@@ -1114,7 +1189,7 @@ export default function LineSettingsPage() {
             </label>
           </FormGroup>
 
-          {/* 文字顏色 */}
+          {/* 文字顏色（同上，疊圖尚未建置） */}
           <FormGroup>
             <Label>{t.richMenu.textColor}</Label>
             <div className="flex flex-wrap gap-2">
@@ -1122,9 +1197,11 @@ export default function LineSettingsPage() {
                 <button
                   key={preset.key}
                   type="button"
+                  disabled
+                  title={t.richMenu.overlayNotBuiltHint}
                   data-active={richMenuTextColor === preset.value}
                   onClick={() => setRichMenuTextColor(preset.value)}
-                  className="flex items-center gap-2 rounded-md border border-neutral-250 px-3 py-1.5 text-xs data-[active=true]:border-primary data-[active=true]:shadow-focus"
+                  className="flex items-center gap-2 rounded-md border border-neutral-250 px-3 py-1.5 text-xs opacity-50 data-[active=true]:border-primary data-[active=true]:shadow-focus"
                 >
                   <span
                     className="inline-block h-4 w-4 rounded-pill border border-neutral-250"
@@ -1134,6 +1211,7 @@ export default function LineSettingsPage() {
                 </button>
               ))}
             </div>
+            <Alert tone="warning" className="mt-2 text-xs">{t.richMenu.overlayNotBuilt}</Alert>
           </FormGroup>
 
           <Button
@@ -1223,10 +1301,12 @@ export default function LineSettingsPage() {
         }
       >
         <div className="mb-3">
-          {failCount === 0 ? (
-            <Badge tone="success">{t.verifyReport.allPass}</Badge>
-          ) : (
+          {failCount > 0 ? (
             <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge>
+          ) : warnCount > 0 ? (
+            <Badge tone="warning">{t.verifyReport.warnCount(warnCount)}</Badge>
+          ) : (
+            <Badge tone="success">{t.verifyReport.allPass}</Badge>
           )}
         </div>
         <div className="flex flex-col gap-2">
@@ -1238,7 +1318,13 @@ export default function LineSettingsPage() {
               {c.pass ? (
                 <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-success" />
               ) : (
-                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-danger" />
+                <AlertTriangle
+                  size={16}
+                  className={cn(
+                    'mt-0.5 flex-shrink-0',
+                    c.severity === 'WARN' ? 'text-warning' : 'text-danger',
+                  )}
+                />
               )}
               <div className="min-w-0">
                 <div className="text-base font-semibold text-dark">
@@ -1250,6 +1336,31 @@ export default function LineSettingsPage() {
                 ) : null}
                 {!c.pass && c.key === 'WEBHOOK' ? (
                   <div className="form-text">{t.verifyReport.webhookOffHint}</div>
+                ) : null}
+                {/* 失敗項目附上「怎麼修 + 直接點過去」——只講哪裡錯、不講去哪修，
+                    店家只能自己猜（AUTO_REPLY／RICH_MENU 兩項使用者實測卡住） */}
+                {!c.pass && t.verifyReport.fixHints[c.key] ? (
+                  <>
+                    <div className="form-text">{t.verifyReport.fixHints[c.key].steps}</div>
+                    {t.verifyReport.fixHints[c.key].href.startsWith('/') ? (
+                      <Link
+                        className="btn btn-outline btn-sm mt-2"
+                        href={t.verifyReport.fixHints[c.key].href}
+                      >
+                        {t.verifyReport.fixHints[c.key].linkText}
+                      </Link>
+                    ) : (
+                      <a
+                        className="btn btn-outline btn-sm mt-2"
+                        href={t.verifyReport.fixHints[c.key].href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink size={13} />
+                        {t.verifyReport.fixHints[c.key].linkText}
+                      </a>
+                    )}
+                  </>
                 ) : null}
               </div>
             </div>

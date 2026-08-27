@@ -36,3 +36,24 @@ export function CountBadge({ count, className }: { count: number; className?: st
     <span className={cn('badge badge-count', className)}>{count > 99 ? '99+' : count}</span>
   );
 }
+
+/**
+ * 「還在查」的徽章占位（issue #34）。
+ *
+ * 為什麼需要它：徽章只有 `count > 0` 才會出現，所以「載入中」與「查到 0 筆」
+ * 在畫面上長得一模一樣。0 是一個有意義的答案（沒有待處理），拿它當「還不知道」
+ * 會誤導——這與 issue #17 抓到的「明細還在載入卻寫『無資料』」是同一個病。
+ * 因此查詢期間放一顆灰色的「…」，查完才換成真的數字（或什麼都不放）。
+ */
+export function CountBadgeLoading({ label, className }: { label: string; className?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className={cn('badge badge-count bg-neutral-400 opacity-70', className)}
+    >
+      …
+    </span>
+  );
+}

@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { paymentMethodsPage as t } from '@/i18n/zh-TW/pages/payment-methods';
 import { formatNumber } from '@/lib/utils';
 
@@ -124,8 +125,7 @@ export default function PaymentMethodsPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      /* 骨架階段：原站呼叫 /api/payment-methods */
-      await new Promise((r) => setTimeout(r, 320));
+      /* 後端尚未建置：沒有 /api/payment-methods，只讀本檔的示範資料 */
       setRows([...MOCK_METHODS].sort((a, b) => a.sortOrder - b.sortOrder));
     } catch (e) {
       toast.show(
@@ -142,7 +142,7 @@ export default function PaymentMethodsPage() {
 
   const toggleActive = (m: PaymentMethod) => {
     setRows((list) => list.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)));
-    toast.show(t.messages.statusUpdated);
+    toast.show(t.notBuilt.toggleNotEffective, 'warning');
   };
 
   const upsert = (draft: PaymentMethod) => {
@@ -162,6 +162,11 @@ export default function PaymentMethodsPage() {
           </Button>
         }
       />
+
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        <div>{t.notBuilt.body}</div>
+        <div className="mt-1">{t.notBuilt.verifyBody}</div>
+      </Alert>
 
       {loading ? (
         <div className="py-10 text-center text-muted">{common.loading}</div>
@@ -244,7 +249,11 @@ export default function PaymentMethodsPage() {
                     {m.active ? t.actions.disable : t.actions.enable}
                   </Button>
                   {m.methodType === 'ONLINE_PAYMENT' ? (
-                    <Button variant="success" size="sm" onClick={() => setTestTarget(m)}>
+                    <Button
+                      variant="success" size="sm" disabled
+                      title={t.notBuilt.testChargeDisabledHint}
+                      onClick={() => setTestTarget(m)}
+                    >
                       <ShieldCheck size={13} />{t.actions.testCharge}
                     </Button>
                   ) : null}
@@ -267,10 +276,7 @@ export default function PaymentMethodsPage() {
           const id = isEdit ? draft.id : `pm_new_${nextId.current++}`;
           upsert({ ...draft, id });
           setFormTarget(undefined);
-          toast.show(isEdit ? t.messages.updated : t.messages.created);
-          if (draft.methodType === 'ONLINE_PAYMENT') {
-            toast.show(isEdit ? t.messages.updatedHint : t.messages.createdHint, 'info');
-          }
+          toast.show(t.notBuilt.savedNotEffective, 'warning');
         }}
       />
 
@@ -287,10 +293,9 @@ export default function PaymentMethodsPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
             setRows((list) => list.filter((m) => m.id !== deleteTarget.id));
             setDeleteTarget(null);
-            toast.show(t.messages.deleted);
+            toast.show(t.notBuilt.deletedNotEffective, 'warning');
           } catch (e) {
             toast.show(
               `${t.messages.deleteFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -302,20 +307,25 @@ export default function PaymentMethodsPage() {
         }}
       />
 
-      {/* ---------------------------------------------- modal 3：實刷測試 */}
+      {/*
+        * modal 3：實刷測試。上面的按鈕已 disabled，正常情況打不開這個視窗；
+        * 這裡刻意保留為第二道防線 —— 就算有人把 disabled 拿掉，onConfirm 也
+        * 不會把任何收款方式設成已驗證。單元測試同時守住這兩層。
+        */}
       <ConfirmModal
         open={!!testTarget}
         title={t.actions.testCharge}
         confirmText={common.confirmText}
-        message={t.testCharge.confirm}
+        message={t.notBuilt.testChargeConfirm}
         onClose={() => setTestTarget(null)}
         onConfirm={() => {
-          if (testTarget) {
-            setRows((list) => list.map((m) => (m.id === testTarget.id
-              ? { ...m, gatewayVerified: true }
-              : m)));
-            toast.show(t.testCharge.success);
-          }
+          /*
+           * ⚠️ 金流後端尚未建置：這裡絕對不可以動 gatewayVerified。
+           * 曾經的實作直接把 gatewayVerified 設為 true 並顯示「測試付款成功」，
+           * 店家會以為金流已開通而開始收單 —— 這是金流級的假成功，禁止復原。
+           * 驗證狀態只能由真正呼叫過金流商 API 的後端回傳。
+           */
+          toast.show(t.notBuilt.testChargeNotAvailable, 'warning');
           setTestTarget(null);
         }}
       />
@@ -343,6 +353,8 @@ function MethodFormModal({
   onClose: () => void;
   onSaved: (draft: PaymentMethod, isEdit: boolean) => void;
 }) {
+  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
+  const businessType = useBusinessType();
   const toast = useToast();
   const isEdit = !!method;
 
@@ -395,7 +407,6 @@ function MethodFormModal({
     if (err) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
       onSaved(
         {
           ...draft,
@@ -542,7 +553,7 @@ function MethodFormModal({
           <p className="form-text">
             {t.form.onlineStepLead}
             <strong>{t.form.onlineStepStrong}</strong>
-            {t.form.onlineStepMiddle}
+            {resolveNavTerms(t.form.onlineStepMiddle, businessType)}
             <strong>{t.form.onlineStepStrong2}</strong>
             {t.form.onlineStepTail}
           </p>

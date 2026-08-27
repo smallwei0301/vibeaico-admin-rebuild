@@ -14,6 +14,12 @@ export const tourOrdersPage = {
     unpaid: '待收款',
     upcoming: '近 7 天出團',
     monthRevenue: '本月營收',
+    /**
+     * 統計還沒載回來（或查不到）時顯示的值。
+     * 不可用 0 頂替——0 是「真的沒有待處理訂單」這個有意義的答案，
+     * 拿它當「尚未載入」就是在宣稱一件我們還不知道的事。
+     */
+    unknown: '--',
   },
 
   actions: {
@@ -99,6 +105,8 @@ export const tourOrdersPage = {
     partyUnit: (n: number) => `${n} 位`,
     noRef: '尚未回報',
     noNote: '無',
+    /** 收款方式尚未建置（見 create.paymentNotAvailable），欄位一律留白顯示這個 */
+    noMethod: '未設定',
   },
 
   create: {
@@ -112,6 +120,14 @@ export const tourOrdersPage = {
     phoneLabel: '聯絡電話',
     partyLabel: '人數',
     paymentLabel: '收款方式',
+    /**
+     * 收款方式的資料表（`tenant_payment_methods`）與 `/tenant/payment-methods`
+     * 的後端屬 10 分冊 §4（Phase 8c，GitHub issue #9），目前還沒建。
+     * 這個欄位原本是一組寫死的三個選項（LINE Pay／銀行轉帳／線上刷卡），
+     * 選了之後會把那個名稱顯示在訂單的「收款方式」欄——一個沒有任何來源的
+     * 字串顯示在真金額旁邊。改成如實說明尚未建置。
+     */
+    paymentNotAvailable: '收款方式設定尚未建置，建立的訂單暫時不會記錄收款方式。',
     noteLabel: '備註',
     totalPreview: (amount: string) => `訂單金額 ${amount}`,
     seatsLeft: (n: number) => `（剩 ${n} 位）`,
@@ -120,8 +136,21 @@ export const tourOrdersPage = {
 
   confirm: {
     confirmPaymentTitle: '確認收款',
+    /**
+     * 14 分冊 §8.10 的同一條紀律（第三輪稽核）。
+     *
+     * 原句結尾是「確認後訂單成立，旅客會收到 LINE 通知。」——查證結果：
+     * `/api/tour-orders/**` 這棵路由樹**整個不存在**（`find src/app/api -ipath '*tour*'`
+     * 只找得到 `cron/tour-order-expiry`，該檔也沒有任何 linePush／notify），
+     * `src/server/line-notify.ts` 的 `BookingStatusKind` 也沒有任何 tour／departure
+     * 事件。也就是說沒有任何一行程式碼會因為確認收款而送出 LINE——這句話是
+     * 純粹的捏造，不只是「已通知 vs 已送出」的措辭問題。
+     *
+     * 旅客端通知屬 issue #8 的範圍，本輪刻意不實作，只把話說回可驗證的範圍內：
+     * 明講尚未建置，並要店家自行告知旅客（比照 bookings.ts 對未建置功能的寫法）。
+     */
     confirmPayment: (orderNo: string) =>
-      `確認已收到訂單 ${orderNo} 的款項嗎？確認後訂單成立，旅客會收到 LINE 通知。`,
+      `確認已收到訂單 ${orderNo} 的款項嗎？確認後訂單成立。旅客端 LINE 通知尚未建置，系統不會送出任何通知，請自行告知旅客。`,
     completeTitle: '標記完成',
     complete: (orderNo: string) => `確定要把訂單 ${orderNo} 標記為已完成嗎？`,
     cancelTitle: '取消訂單',

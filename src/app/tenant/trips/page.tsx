@@ -1,9 +1,10 @@
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   CalendarDays, ChevronDown, ChevronUp, Copy, ExternalLink, Eye, EyeOff,
-  Layers, MapPin, Pencil, Plus, Route, Send, Sparkles, Trash2,
+  Layers, MapPin, Pencil, Plus, Route, Send, Sparkles, Trash2, Upload,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -14,10 +15,13 @@ import {
   DataTable, DataTableContainer, DataTableHeader, type Column,
 } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ConfirmModal } from '@/components/ui/Modal';
-import { Input, Select } from '@/components/ui/Form';
+import { ConfirmModal, Modal } from '@/components/ui/Modal';
+import { FormGroup, FormText, Input, Label, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listTrips } from '@/services/tours';
+import {
+  createTrip, deleteTrip, duplicateTrip, importTripsJson, listTrips, publishTrip, requestMidaoListing,
+} from '@/services/tours';
+import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
@@ -41,6 +45,7 @@ const MIDAO_TONE: Record<MidaoListing, 'primary' | 'info' | 'danger' | 'neutral'
 
 export default function TripsPage() {
   const toast = useToast();
+  const router = useRouter();
   const businessType = useBusinessType();
   const currentTenant = useCurrentTenant();
   const publicShopUrl = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
@@ -56,6 +61,13 @@ export default function TripsPage() {
   const [deleteTarget, setDeleteTarget] = React.useState<Trip | null>(null);
   const [unpublishTarget, setUnpublishTarget] = React.useState<Trip | null>(null);
   const [midaoTarget, setMidaoTarget] = React.useState<Trip | null>(null);
+
+  /** 有寫入請求在飛：確認鈕轉圈並鎖住，避免重複送出 */
+  const [busy, setBusy] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
+  const importInputRef = React.useRef<HTMLInputElement>(null);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState({ title: '', slug: '', region: '', category: '' });
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -80,43 +92,139 @@ export default function TripsPage() {
     return true;
   }), [rows, statusFilter, midaoFilter, keyword]);
 
+  /**
+   * 以下每一個寫入動作都是 **await 成功之後**才更新畫面與 toast
+   * （00 鐵則 12）：修改前它們只改本地 state，重新整理就會打回原形，
+   * 而使用者已經看到「行程已發布」了。
+   * 一律用端點回傳的那一份資料回填，不是自己手上的草稿——後端可能重算
+   * 欄位（slug、狀態），用草稿回填會讓畫面與資料庫短暫不一致。
+   */
+  const failMessage = (e: unknown) =>
+    (e instanceof Error && e.message ? e.message : t.messages.actionFailed);
+
+  const replaceRow = (next: Trip) =>
+    setRows((prev) => prev.map((r) => (r.id === next.id ? { ...r, ...next } : r)));
+
   /** 只切換商店頁可見性；Midao 前台不受影響 */
-  const togglePublish = (trip: Trip) => {
+  const togglePublish = async (trip: Trip) => {
     if (trip.status === 'PUBLISHED') { setUnpublishTarget(trip); return; }
-    setRows((prev) => prev.map((r) => (r.id === trip.id ? { ...r, status: 'PUBLISHED' } : r)));
-    toast.show(t.messages.published);
+    setBusy(true);
+    try {
+      replaceRow(await publishTrip(trip.id, true));
+      toast.show(t.messages.published);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const doUnpublish = () => {
+  const doUnpublish = async () => {
     if (!unpublishTarget) return;
-    setRows((prev) => prev.map((r) => (r.id === unpublishTarget.id ? { ...r, status: 'DRAFT' } : r)));
-    setUnpublishTarget(null);
-    toast.show(t.messages.unpublished);
+    setBusy(true);
+    try {
+      replaceRow(await publishTrip(unpublishTarget.id, false));
+      setUnpublishTarget(null);
+      toast.show(t.messages.unpublished);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const doRequestMidao = () => {
+  const doRequestMidao = async () => {
     if (!midaoTarget) return;
-    setRows((prev) => prev.map((r) => (
-      r.id === midaoTarget.id ? { ...r, midaoListing: 'PENDING', midaoListingNote: '' } : r
-    )));
-    setMidaoTarget(null);
-    toast.show(t.messages.midaoRequested);
+    setBusy(true);
+    try {
+      replaceRow(await requestMidaoListing(midaoTarget.id));
+      setMidaoTarget(null);
+      toast.show(t.messages.midaoRequested);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const doDelete = () => {
+  /**
+   * 刪除：後端對「已有訂單的行程」會改為封存而不是刪除，回傳 `archived: true`
+   * 與一句說明。畫面必須照著分：封存的行程**留在清單上並改狀態**，
+   * 訊息也用後端那一句，否則會出現「顯示已刪除、重整後它還在」。
+   */
+  const doDelete = async () => {
     if (!deleteTarget) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    toast.show(t.messages.deleted);
+    setBusy(true);
+    try {
+      const res = await deleteTrip(deleteTarget.id);
+      if (res.archived) {
+        setRows((prev) => prev.map((r) => (
+          r.id === deleteTarget.id ? { ...r, ...(res.trip ?? {}), status: 'ARCHIVED' } : r
+        )));
+        toast.show(res.message ?? t.messages.archived, 'warning');
+      } else {
+        setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+        toast.show(t.messages.deleted);
+      }
+      setDeleteTarget(null);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const duplicate = (trip: Trip) => {
-    setRows((prev) => [
-      { ...trip, id: `${trip.id}_copy`, title: `${trip.title}（複本）`, slug: `${trip.slug}-copy`,
-        status: 'DRAFT', midaoListing: 'NONE', midaoListingNote: '' },
-      ...prev,
-    ]);
-    toast.show(t.messages.duplicated);
+  const duplicate = async (trip: Trip) => {
+    setBusy(true);
+    try {
+      const copy = await duplicateTrip(trip.id);
+      setRows((prev) => [copy, ...prev]);
+      toast.show(t.messages.duplicated);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitCreate = async () => {
+    if (!draft.title.trim()) return;
+    setBusy(true);
+    try {
+      const created = await createTrip({
+        title: draft.title.trim(),
+        slug: draft.slug.trim() || undefined,
+        region: draft.region.trim(),
+        category: draft.category.trim(),
+      });
+      toast.show(t.messages.created);
+      setCreateOpen(false);
+      setDraft({ title: '', slug: '', region: '', category: '' });
+      // 建立後直接進編輯頁補齊其餘欄位（列表頁沒有那些欄位的表單）
+      router.push(`/tenant/trips/${created.id}`);
+    } catch (e) {
+      toast.show(failMessage(e), 'danger');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const importJson = async (file: File) => {
+    setImporting(true);
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      const result = await importTripsJson(payload);
+      if (!result) toast.show(t.messages.importNotDownloaded, 'warning');
+      else {
+        toast.show(t.messages.imported);
+        await load();
+      }
+    } catch (e) {
+      toast.show(e instanceof SyntaxError ? t.messages.importInvalid : failMessage(e), 'danger');
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = '';
+    }
   };
 
   const columns: Column<Trip>[] = [
@@ -167,7 +275,8 @@ export default function TripsPage() {
             variant="ghost" size="sm"
             title={r.status === 'PUBLISHED' ? t.actions.unpublish : t.actions.publish}
             aria-label={r.status === 'PUBLISHED' ? t.actions.unpublish : t.actions.publish}
-            onClick={() => togglePublish(r)}
+            disabled={busy}
+            onClick={() => { void togglePublish(r); }}
           >
             {r.status === 'PUBLISHED' ? <Eye size={14} className="text-success" />
               : <EyeOff size={14} className="text-neutral-400" />}
@@ -211,7 +320,8 @@ export default function TripsPage() {
           </Link>
           <Button
             variant="outline" size="sm" title={t.actions.duplicate} aria-label={t.actions.duplicate}
-            onClick={() => duplicate(r)}
+            disabled={busy}
+            onClick={() => { void duplicate(r); }}
           >
             <Copy size={13} />
           </Button>
@@ -235,12 +345,20 @@ export default function TripsPage() {
         title={t.title}
         actions={
           <>
+            <input ref={importInputRef} type="file" accept="application/json,.json" className="hidden"
+              aria-label={t.actions.importJson} onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importJson(file);
+              }} />
+            <Button variant="outline" loading={importing} onClick={() => importInputRef.current?.click()}>
+              <Upload size={15} />{t.actions.importJson}
+            </Button>
             <Link href={publicShopUrl} target="_blank">
               <Button variant="outline">
                 <ExternalLink size={15} />{t.actions.viewShop}
               </Button>
             </Link>
-            <Button onClick={() => { /* 骨架：新增行程表單 */ }}>
+            <Button onClick={() => setCreateOpen(true)}>
               <Plus size={15} />{t.actions.create}
             </Button>
           </>
@@ -323,7 +441,11 @@ export default function TripsPage() {
               icon={Route}
               title={t.empty.title}
               description={t.empty.description}
-              action={<Button><Plus size={15} />{t.actions.create}</Button>}
+              action={(
+                <Button onClick={() => setCreateOpen(true)}>
+                  <Plus size={15} />{t.actions.create}
+                </Button>
+              )}
             />
           }
         />
@@ -331,8 +453,9 @@ export default function TripsPage() {
 
       <ConfirmModal
         open={!!deleteTarget}
+        loading={busy}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={doDelete}
+        onConfirm={() => { void doDelete(); }}
         title={t.confirm.deleteTitle}
         message={deleteTarget ? t.confirm.delete(deleteTarget.title) : ''}
         confirmText={t.actions.delete}
@@ -341,8 +464,9 @@ export default function TripsPage() {
 
       <ConfirmModal
         open={!!unpublishTarget}
+        loading={busy}
         onClose={() => setUnpublishTarget(null)}
-        onConfirm={doUnpublish}
+        onConfirm={() => { void doUnpublish(); }}
         title={t.confirm.unpublishTitle}
         message={t.confirm.unpublish}
         confirmText={t.actions.unpublish}
@@ -351,12 +475,73 @@ export default function TripsPage() {
 
       <ConfirmModal
         open={!!midaoTarget}
+        loading={busy}
         onClose={() => setMidaoTarget(null)}
-        onConfirm={doRequestMidao}
+        onConfirm={() => { void doRequestMidao(); }}
         title={t.confirm.requestMidaoTitle}
         message={t.confirm.requestMidao}
         confirmText={t.actions.requestMidao}
       />
+
+      {/* ================================================== 新增行程 */}
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title={t.createForm.title}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setCreateOpen(false)}>{common.cancel}</Button>
+            <Button
+              loading={busy}
+              disabled={!draft.title.trim()}
+              onClick={() => { void submitCreate(); }}
+            >
+              {t.createForm.submit}
+            </Button>
+          </>
+        )}
+      >
+        <div className="flex flex-col gap-3">
+          <FormText>{t.createForm.hint}</FormText>
+
+          <FormGroup>
+            <Label required>{t.form.titleLabel}</Label>
+            <Input
+              value={draft.title}
+              placeholder={t.form.titlePlaceholder}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+            />
+          </FormGroup>
+
+          <FormGroup>
+            <Label>{t.form.slugLabel}</Label>
+            <Input
+              value={draft.slug}
+              placeholder={t.form.slugPlaceholder}
+              onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+            />
+            <FormText>{t.form.slugHelp}</FormText>
+          </FormGroup>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormGroup>
+              <Label>{t.form.regionLabel}</Label>
+              <Input
+                value={draft.region}
+                placeholder={t.form.regionPlaceholder}
+                onChange={(e) => setDraft({ ...draft, region: e.target.value })}
+              />
+            </FormGroup>
+            <FormGroup>
+              <Label>{t.form.categoryLabel}</Label>
+              <Input
+                value={draft.category}
+                onChange={(e) => setDraft({ ...draft, category: e.target.value })}
+              />
+            </FormGroup>
+          </div>
+        </div>
+      </Modal>
     </>
   );
 }

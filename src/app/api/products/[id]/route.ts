@@ -21,6 +21,8 @@ const bodySchema = z.object({
   imageUrl: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
+  /** 公開頁排序（商品表單的「排序」欄位）；LINE 精選排序走 …/reorder-line */
+  sortOrder: z.coerce.number().int().optional(),
 });
 
 export const PUT = handle(async (req, { params }) => {
@@ -38,6 +40,7 @@ export const PUT = handle(async (req, { params }) => {
   if (b.imageUrl !== undefined) update.image_url = b.imageUrl;
   if (b.active !== undefined) update.active = b.active;
   if (b.lineFeatured !== undefined) update.line_featured = b.lineFeatured;
+  if (b.sortOrder !== undefined) update.sort_order = b.sortOrder;
 
   if (Object.keys(update).length > 0) {
     const { data, error } = await t.supabase

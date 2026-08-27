@@ -49,25 +49,43 @@ export const inventoryPage = {
 
   /* ------------------------------------------------------------------ 動作 */
   actions: {
-    export: '匯出 CSV',
+    /**
+     * 原站沒有庫存匯出端點（`docs/specs/inventory.json` 的 jsApiCalls 只有
+     * /api/inventory/logs），這一支是 issue #28 ⑤ 新增的，依擁有者裁決同時提供
+     * CSV 與 Excel 兩個選項（格式在確認視窗裡選，所以按鈕不再寫死 CSV）。
+     */
+    export: '匯出',
+    exporting: '匯出中…',
+    /**
+     * 兩個選項產出的都是 UTF-8 加 BOM 的 CSV（專案沒有 xlsx 產生器，把 CSV
+     * 命名成 .xlsx 就是謊報檔案格式）——標籤照 reports 頁的作法寫明實際格式。
+     */
+    exportExcelCsv: '匯出 Excel 可開啟的 CSV',
+    exportCsv: '匯出 CSV',
   },
 
   confirm: {
-    exportTitle: '匯出 CSV',
+    exportTitle: '匯出異動記錄',
     export: '確定要匯出目前篩選的異動記錄嗎？',
+    formatLabel: '格式：',
   },
 
   /* ------------------------------------------------------------------ 訊息 */
   messages: {
     exported: '異動記錄匯出成功',
+    /**
+     * 檔名一律取自伺服器回的 `Content-Disposition`（issue #28 ⑤）。原本這裡
+     * 搭配的是 `exportFile.filename()`——前端用當天日期拼出「庫存異動_20260825.csv」
+     * 再報成功，既沒有端點也沒有檔案。該函式已刪除。
+     */
+    exportedAs: (fileName: string) => `異動記錄匯出成功：${fileName}`,
+    /** 示範資料模式沒有伺服器可打，沒有檔案產生——不得顯示成功 */
+    exportNotDownloaded: '示範資料模式不會產生檔案，未匯出任何異動記錄；請切換到實際店家後再匯出',
+    exportFailedPrefix: '匯出失敗:',
     loadLogsFailed: '載入異動記錄失敗:',
     loadFailed: '載入失敗',
     connectionError: '連線錯誤，請稍後再試',
     unknownError: '未知錯誤',
-  },
-
-  exportFile: {
-    filename: (date: string) => `庫存異動_${date}.csv`,
   },
 
   empty: {

@@ -1,6 +1,11 @@
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+// 型別匯入（`import type` 編譯期即被抹除，不會把 server 端程式碼帶進前端 bundle）；
+// 通知結果的定義只留一份在 server 端，避免兩邊字串聯集各寫各的而漂移。
+import type { ProductOrderNotifyOutcome } from '@/server/line-notify';
+
+export type { ProductOrderNotifyOutcome };
 
 /**
  * 商品 / 庫存 / 商品訂單 — 寫入操作與頁內讀取的 service 層（04 分冊 §B-3）。
@@ -13,10 +18,15 @@ import { byMode } from '@/mock';
 
 /* ------------------------------------------------------------ 商品分類 */
 
-/** 原站 /api/product-categories（active 欄位 DB 未落地，後端一律回 true） */
+/**
+ * 原站 /api/product-categories。
+ * `active` 曾經是「DB 沒這欄、後端一律回 true」的假值，migration 0018 補上
+ * description / active 兩欄後改為照實回傳（issue #28 第 ⑨ 筆）。
+ */
 export type ProductCategory = {
   id: string;
   name: string;
+  description?: string;
   active: boolean;
   sortOrder: number;
 };
@@ -59,20 +69,47 @@ export const listProductCategories = () =>
 
 let nextMockCategoryId = 1;
 
-/** POST /api/product-categories — 後端只收 name（sort_order 取最大值+1） */
-export const createProductCategory = (name: string) =>
-  adapt<{ id: string }>(
-    () => ({ id: `pc_new_${nextMockCategoryId++}` }),
-    () => request<{ id: string }>('/api/product-categories', {
-      method: 'POST', body: JSON.stringify({ name }),
+/** POST /api/product-categories 收的欄位（sortOrder 未帶時後端取最大值+1）。 */
+export type ProductCategoryInput = {
+  name: string;
+  description?: string;
+  active?: boolean;
+  sortOrder?: number;
+};
+
+/**
+ * POST /api/product-categories。
+ * 修改前只送 name，modal 上的「排序」與「啟用」兩個輸入純粹留在瀏覽器裡
+ * （issue #28 第 ⑨ 筆）；0018 補欄位後三者都真的送出去。
+ * 回傳 sortOrder＝後端實際寫入的排序值，頁面不再自己猜一個顯示。
+ */
+export const createProductCategory = (input: ProductCategoryInput) =>
+  adapt<{ id: string; sortOrder: number }>(
+    () => ({ id: `pc_new_${nextMockCategoryId++}`, sortOrder: input.sortOrder ?? 0 }),
+    () => request<{ id: string; sortOrder: number }>('/api/product-categories', {
+      method: 'POST', body: JSON.stringify(input),
     }),
   );
 
-/** PUT /api/product-categories/:id — 只支援改名 */
-export const updateProductCategory = (id: string, name: string) =>
+/**
+ * PUT /api/product-categories/:id 收的欄位（issue #28 第 ⑭ 筆）。
+ * 全部 optional＝只更新有帶的；排序另有 reorder 端點，這裡不收 sortOrder。
+ */
+export type ProductCategoryUpdate = {
+  name?: string;
+  description?: string;
+  active?: boolean;
+};
+
+/**
+ * PUT /api/product-categories/:id。
+ * 修改前簽名是 `(id, name)`、body 只有 `{ name }`，所以分類管理的「編輯」鈕
+ * 切了 active 也無處可送，只能改本地 state 再顯示「分類已更新」。
+ */
+export const updateProductCategory = (id: string, patch: ProductCategoryUpdate) =>
   adapt(() => undefined, () =>
     request<void>(`/api/product-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+      method: 'PUT', body: JSON.stringify(patch),
     }));
 
 /** DELETE — FK on delete set null，底下商品自動變未分類 */
@@ -99,6 +136,8 @@ export type ProductPayload = {
   imageUrl?: string;
   active?: boolean;
   lineFeatured?: boolean;
+  /** 公開頁排序（商品表單的「排序」欄位）；LINE 精選排序走 reorderProductsLine */
+  sortOrder?: number;
 };
 
 let nextMockProductId = 1;
@@ -130,10 +169,20 @@ export const deleteProduct = (id: string) =>
     ),
   );
 
-/** POST /api/products/reorder — 依 ids 順序寫 sort_order（LINE 精選排序） */
+/** POST /api/products/reorder — 依 ids 順序寫 sort_order（＝**公開頁**排序） */
 export const reorderProducts = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/products/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/**
+ * POST /api/products/reorder-line — 依 ids 順序寫 line_sort_order
+ * （＝**LINE 精選**排序，0017 新欄位）；與 reorderProducts 兩套順序互不覆蓋。
+ */
+export const reorderProductsLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/products/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 
@@ -372,19 +421,26 @@ export function listInventoryLogs(q: InventoryLogQuery = {}): Promise<Paged<Inve
 let nextMockOrderId = 1;
 
 /**
- * POST /api/product-orders/manual — `{customerId, items:[{productId, quantity}]}`
- * 回 `{id, orderNo}`。庫存不足時後端回 409（message 例：「『X』庫存不足，
+ * POST /api/product-orders/manual — `{customerId, items:[{productId, quantity}], notifyCustomer}`
+ * 回 `{id, orderNo, notify}`。庫存不足時後端回 409（message 例：「『X』庫存不足，
  * 無法建立訂單」），頁面原樣顯示。
+ *
+ * `notifyCustomer`＝建單視窗「LINE 通知顧客消費明細」勾選框。`notify` 是那次通知
+ * **實際發生的事**（LINE／改寄 Email／沒送出），頁面照它顯示訊息，不可重播勾選框
+ * 標籤字面（issue #27 ③、00 鐵則 12）。
+ *
+ * mock 分支固定回 'NONE'：mock 模式沒有 LINE 也沒有寄信，什麼都沒送出去。
  */
 export const createManualProductOrder = (payload: {
   customerId: string;
   items: { productId: string; quantity: number }[];
+  notifyCustomer?: boolean;
 }) =>
-  adapt<{ id: string; orderNo: string }>(
-    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}` }),
-    () => request<{ id: string; orderNo: string }>('/api/product-orders/manual', {
-      method: 'POST', body: JSON.stringify(payload),
-    }),
+  adapt<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}`, notify: 'NONE' }),
+    () => request<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+      '/api/product-orders/manual', { method: 'POST', body: JSON.stringify(payload) },
+    ),
   );
 
 /** 狀態機（同 bookings 模式）：條件不符時後端回 409「此訂單狀態已變更」 */
@@ -395,6 +451,24 @@ export const confirmProductOrder = (id: string) =>
 export const completeProductOrder = (id: string) =>
   adapt(() => undefined, () =>
     request<void>(`/api/product-orders/${id}/complete`, { method: 'POST' }));
+
+/**
+ * 套用票券（issue #33 ①）。折抵金額**由後端算並回傳**——原站那句
+ * 「票券已套用！折抵 ${formatMoney(couponRes.data?.couponDiscount || 0)}」
+ * 讀的就是回應的 couponDiscount（docs/specs/product-orders.json jsStrings[76]）。
+ * 前端不得自行組這個數字。
+ *
+ * mock 模式沒有票券資料庫可查，回 null 表示「這裡沒有折抵可算」，
+ * 呼叫端據此顯示「未套用」而不是一個編出來的金額。
+ */
+export const applyProductOrderCoupon = (id: string, code: string) =>
+  adapt<{ totalAmount: number; couponDiscount: number } | null>(
+    () => null,
+    () => request<{ totalAmount: number; couponDiscount: number }>(
+      `/api/product-orders/${id}/apply-coupon`,
+      { method: 'POST', body: JSON.stringify({ code }) },
+    ),
+  );
 
 /** 取消並回補庫存（reason 目前後端未落地儲存，仍隨 body 送出以備擴充） */
 export const cancelProductOrder = (id: string, reason?: string) =>

@@ -14,13 +14,10 @@ import {
 } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Label } from '@/components/ui/Form';
-import { useToast } from '@/components/ui/Toast';
-import { APP_URL } from '@/config/env';
 import { nav } from '@/i18n/zh-TW/nav';
 import { referralsPage as t } from '@/i18n/zh-TW/pages/referrals';
-import { formatDateTime, formatNumber } from '@/lib/utils';
+import { formatDateTime } from '@/lib/utils';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -39,35 +36,13 @@ type ReferralRecord = {
   completedAt: string | null;
 };
 
-const MOCK_REFERRAL_CODE = 'VIBE-DEMO-8421';
-
-const MOCK_REFERRALS: ReferralRecord[] = [
-  {
-    id: 'rf_1', shopName: '晴天美甲工作室', shopCode: 'sunny-nail',
-    status: 'COMPLETED', rewardPoints: 500,
-    referredAt: '2026-07-02T10:15:00+08:00', completedAt: '2026-07-05T14:22:00+08:00',
-  },
-  {
-    id: 'rf_2', shopName: '木子按摩會館', shopCode: 'muzi-spa',
-    status: 'COMPLETED', rewardPoints: 500,
-    referredAt: '2026-06-18T09:40:00+08:00', completedAt: '2026-06-19T11:03:00+08:00',
-  },
-  {
-    id: 'rf_3', shopName: '樂活寵物美容', shopCode: 'loha-pet',
-    status: 'PENDING', rewardPoints: 0,
-    referredAt: '2026-08-11T16:30:00+08:00', completedAt: null,
-  },
-  {
-    id: 'rf_4', shopName: '光影攝影棚', shopCode: 'light-studio',
-    status: 'PENDING', rewardPoints: 0,
-    referredAt: '2026-08-05T13:05:00+08:00', completedAt: null,
-  },
-  {
-    id: 'rf_5', shopName: '小樹牙醫診所', shopCode: 'tree-dental',
-    status: 'EXPIRED', rewardPoints: 0,
-    referredAt: '2026-03-14T08:50:00+08:00', completedAt: null,
-  },
-];
+/*
+ * ⚠️ 這裡曾有 MOCK_REFERRALS：五筆假推薦記錄（含店名、獎勵點數、完成時間），
+ * 四張統計卡的 5／2／2／1,000 點就是從它們算出來的。推薦後端不存在，
+ * 那是平台對店家的獎勵陳述，店家可能據此以為自己已賺到點數。
+ * 依 CLAUDE.md「未知就顯示未知」，統計一律 `--`、歷史一律空表，版面保留。
+ * 禁止再放示範記錄。
+ */
 
 const STATUS_TONE: Record<ReferralStatus, 'success' | 'warning' | 'neutral'> = {
   COMPLETED: 'success',
@@ -80,49 +55,10 @@ const PAGE_SIZE = 20;
 /* -------------------------------------------------------------------------- */
 
 export default function ReferralsPage() {
-  const toast = useToast();
-
-  const [rows, setRows] = React.useState<ReferralRecord[]>([]);
-  const [loading, setLoading] = React.useState(true);
   const [page, setPage] = React.useState(0);
-  const [shareOpen, setShareOpen] = React.useState(false);
 
-  const referralLink = `${APP_URL.replace(/\/$/, '')}/register?ref=${MOCK_REFERRAL_CODE}`;
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setRows(MOCK_REFERRALS);
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, []);
-
-  const summary = React.useMemo(() => ({
-    total: rows.length,
-    completed: rows.filter((r) => r.status === 'COMPLETED').length,
-    pending: rows.filter((r) => r.status === 'PENDING').length,
-    points: rows.reduce((sum, r) => sum + r.rewardPoints, 0),
-  }), [rows]);
-
-  const visible = rows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-
-  const copy = async (text: string, message: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.show(message);
-    } catch {
-      toast.show(t.messages.copyFailed, 'warning');
-    }
-  };
-
-  const shareViaLine = () => {
-    setShareOpen(false);
-    const url = `https://line.me/R/msg/text/?${encodeURIComponent(t.code.shareText + referralLink)}`;
-    window.open(url, '_blank', 'noreferrer');
-  };
+  /* 後端尚未建置：沒有 /api/referrals/dashboard，也就沒有任何推薦記錄可讀 */
+  const rows: ReferralRecord[] = [];
 
   const columns: Column<ReferralRecord>[] = [
     {
@@ -157,22 +93,31 @@ export default function ReferralsPage() {
     <>
       <PageHeader eyebrow={nav.navMarketing} title={t.title} />
 
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
+        {t.notBuilt.body}
+      </Alert>
+
       <Card className="mb-4">
         <CardBody>
           <h5 className="mb-3 text-lg font-bold text-dark">{t.code.heading}</h5>
 
+          {/*
+            * ⚠️ 推薦碼後端尚未建置：欄位不可以再填入任何看起來像真推薦碼的字串，
+            * 複製／分享也必須停用 —— 舊實作用硬編碼的假碼組出註冊連結給店家發出去。
+            */}
           <div className="input-group mb-4">
             <Input
               readOnly
+              disabled
               className="text-center font-mono"
               aria-label={t.code.heading}
-              value={MOCK_REFERRAL_CODE}
+              value={t.notBuilt.codeUnavailable}
             />
             <Button
               variant="outline"
-              title={t.code.copyCode}
+              disabled
+              title={t.notBuilt.disabledHint}
               aria-label={t.code.copyCode}
-              onClick={() => void copy(MOCK_REFERRAL_CODE, t.messages.codeCopied)}
             >
               <Clipboard size={14} />
             </Button>
@@ -180,14 +125,14 @@ export default function ReferralsPage() {
 
           <Label htmlFor="referralLink">{t.code.linkLabel}</Label>
           <div className="input-group">
-            <Input id="referralLink" readOnly className="text-center" value={referralLink} />
-            <Button
-              variant="outline"
-              onClick={() => void copy(referralLink, t.messages.linkCopied)}
-            >
+            <Input
+              id="referralLink" readOnly disabled className="text-center"
+              value={t.notBuilt.linkUnavailable}
+            />
+            <Button variant="outline" disabled title={t.notBuilt.disabledHint}>
               <Link2 size={14} />{t.code.copyLink}
             </Button>
-            <Button variant="success" onClick={() => setShareOpen(true)}>
+            <Button variant="success" disabled title={t.notBuilt.disabledHint}>
               <MessageCircle size={14} />{t.code.shareLine}
             </Button>
           </div>
@@ -201,28 +146,32 @@ export default function ReferralsPage() {
         {t.explain.tail}
       </Alert>
 
+      {/*
+        * ⚠️ 四張統計卡一律顯示未知態：後端沒查過，就不能給數字。
+        * 版面保留，接上真後端後把 t.notBuilt.unknownValue 換成真值即可。
+        */}
       <div className="card-grid mb-4">
         <StatCard
           label={t.stats.total}
-          value={loading ? '—' : formatNumber(summary.total)}
+          value={t.notBuilt.unknownValue}
           icon={Users}
           tone="primary"
         />
         <StatCard
           label={t.stats.completed}
-          value={loading ? '—' : formatNumber(summary.completed)}
+          value={t.notBuilt.unknownValue}
           icon={CheckCircle2}
           tone="success"
         />
         <StatCard
           label={t.stats.pending}
-          value={loading ? '—' : formatNumber(summary.pending)}
+          value={t.notBuilt.unknownValue}
           icon={Hourglass}
           tone="warning"
         />
         <StatCard
           label={t.stats.earnedPoints}
-          value={loading ? '—' : t.labels.points(summary.points)}
+          value={t.notBuilt.unknownValue}
           icon={Coins}
           tone="info"
         />
@@ -232,15 +181,14 @@ export default function ReferralsPage() {
         <DataTableHeader title={t.tableTitle} />
         <DataTable
           columns={columns}
-          rows={visible}
-          loading={loading}
+          rows={rows}
           rowKey={(r) => r.id}
           scroll
           empty={
             <EmptyState
               icon={Share2}
-              title={t.empty.title}
-              description={t.empty.description}
+              title={t.notBuilt.historyEmptyTitle}
+              description={t.notBuilt.historyEmptyDescription}
             />
           }
         />
@@ -248,15 +196,6 @@ export default function ReferralsPage() {
           <Pagination page={page} size={PAGE_SIZE} total={rows.length} onChange={setPage} />
         </DataTableFooter>
       </DataTableContainer>
-
-      <ConfirmModal
-        open={shareOpen}
-        title={t.code.shareConfirmTitle}
-        message={t.code.shareConfirmMessage}
-        confirmText={t.code.shareLine}
-        onClose={() => setShareOpen(false)}
-        onConfirm={shareViaLine}
-      />
     </>
   );
 }

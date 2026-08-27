@@ -110,7 +110,20 @@ export const calendarPage = {
     completed: '預約已完成',
     cancelled: '預約已取消',
     markedNoShow: '已標記爽約',
-    notified: '，已通知顧客',
+    /**
+     * 取消預約後接在「預約已取消」後面的補述（14 分冊 §8.10 全站通則）。
+     *
+     * 原文是「，已通知顧客」——`/api/bookings/:id/cancel` 的
+     * `void notifyBookingStatus(..., 'CANCELLED')` 是 fire-and-forget（06 分冊 §5），
+     * 失敗只寫 log，所以推播真的失敗時畫面照樣顯示「已通知顧客」。而且就算改成
+     * await，LINE 回 200 也只代表 LINE 收下了，不代表顧客手機顯示出來——
+     * 沒有任何實作方式能讓「已通知顧客」為真。
+     *
+     * 括號內兩種收不到的情形對應 line-notify.ts 的前兩道 return：
+     * 顧客未綁定 line_user_id、店家把 notifyBookingCancelled 關掉。
+     * 句式與 bookings.ts messages.updated 一致（issue #27）。
+     */
+    notified: '，已送出取消通知給顧客（未綁定 LINE 或已關閉此通知者不會收到）',
     loadFailed: '載入行事曆資料失敗:',
     loadStaffFailed: '載入員工列表失敗',
     confirmFailed: '確認預約失敗：',

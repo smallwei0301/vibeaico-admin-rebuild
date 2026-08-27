@@ -2,6 +2,7 @@ import { USE_MOCK } from '@/config/env';
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import { uploadImage } from './upload';
 
 /**
  * 顧客訊息（/tenant/chat）service — 04 分冊 §B-5 / §B-5.1。
@@ -308,6 +309,42 @@ export function sendMessage(p: { lineUserId: string; text: string }): Promise<Ch
   );
 }
 
+/**
+ * 店家傳送圖片（修復-7 / issue #15）。
+ *
+ * 真實鏈路兩段，缺一不可：
+ *   1. POST /api/upload（multipart，bucket=chat-images，0017 migration 新增）
+ *      → 取得 Storage 的 https public URL。
+ *   2. POST /api/chat/messages（body 帶 imageUrl）→ 後端扣推播額度、送 LINE
+ *      image message、寫 chat_messages(OUT, message_type='image')。
+ * 任一段失敗都會拋 ApiError，頁面只在兩段都成功後才顯示已送出。
+ *
+ * 上傳走 services/upload.ts 的 uploadImage()（multipart，失敗一樣轉 ApiError）。
+ *
+ * mock：與 sendMessage 相同，合成一筆本地 SHOP 訊息（圖片以 objectURL 預覽）。
+ */
+export function sendImage(p: { lineUserId: string; file: File }): Promise<ChatMessage> {
+  return adapt(
+    () => ({
+      id: `m_local_${mockSeq++}`,
+      from: 'SHOP' as const,
+      type: 'IMAGE' as const,
+      text: '',
+      imageUrl: URL.createObjectURL(p.file),
+      at: new Date().toISOString(),
+      readAt: null,
+    }),
+    async () => {
+      const imageUrl = await uploadImage(p.file, 'chat-images');
+      const row = await request<RawMessage>('/api/chat/messages', {
+        method: 'POST',
+        body: JSON.stringify({ lineUserId: p.lineUserId, imageUrl }),
+      });
+      return toMessage(row);
+    },
+  );
+}
+
 /** 單筆訊息標記已讀（read_at=now；已讀過不覆蓋）。mock：no-op。 */
 export const markRead = (messageId: string) =>
   adapt(() => undefined, () => request<void>(`/api/chat/messages/${messageId}/read`, { method: 'POST' }));
@@ -321,6 +358,28 @@ export async function markThreadRead(messages: ChatMessage[]): Promise<void> {
   const unread = messages.filter((m) => m.from === 'CUSTOMER' && !m.readAt);
   await Promise.allSettled(unread.map((m) => markRead(m.id)));
 }
+
+/**
+ * 未讀訊息總數（側邊欄徽章 `unreadChatBadge`，issue #34）。
+ *
+ * **查證結論：不補新端點。** `GET /api/chat/conversations` 已經逐對話回
+ * `unread`（route 用 direction='IN' 且 read_at is null 計數，見該檔 §2），
+ * 加總即是徽章要的數字；再補一支 `/api/chat/unread/count` 會變成同一件事
+ * 寫兩份、兩邊各自漂移。
+ *
+ * 這裡不呼叫 `listConversations()`，因為那支在完整載入時會額外打
+ * `/api/line-users/unbound`（尚未綁定的好友，未讀恆為 0），徽章不需要。
+ */
+export const unreadChatCount = () =>
+  adapt<number>(
+    () =>
+      byMode({ LOCAL_SHOP: CONV_LOCAL_SHOP, GUIDE: CONV_GUIDE, CLINIC: CONV_CLINIC })
+        .reduce((sum, c) => sum + c.unread, 0),
+    async () => {
+      const rows = await request<RawConversation[]>('/api/chat/conversations');
+      return rows.reduce((sum, r) => sum + (r.unread ?? 0), 0);
+    },
+  );
 
 /** 未綁定顧客的 LINE 好友（followed=true 且 customer_id is null）。mock：[]。 */
 export const listUnboundLineUsers = () =>

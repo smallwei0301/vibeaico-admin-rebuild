@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowRightCircle, BarChart3, Bell, CalendarCheck, CalendarDays,
   CalendarPlus, ClipboardCopy, Clock, Copy, DollarSign, ExternalLink, Eye,
   Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
-  Settings, Ticket, TrendingDown, Trophy, Users, X, Zap,
+  Settings, Star, Ticket, Trash2, TrendingDown, Trophy, UserPlus, Users, X, Zap,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -16,30 +16,45 @@ import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
+import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
-import { getSetupStatus } from '@/services/settings';
+import { clearDemoData, getDemoDataStatus } from '@/services/demo-data';
+import {
+  addOwnerNotifyRecipient, bindOwnerNotify, clearOwnerNotify, getOwnerNotify,
+  getSetupStatus, listOwnerNotifyLineUsers, removeOwnerNotifyRecipient,
+} from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { byMode } from '@/mock';
-import { APP_URL } from '@/config/env';
+import { isDemoMode } from '@/lib/api';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
 import { common } from '@/i18n/zh-TW/common';
-import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
+import { catalogLabel, navLabel, ordersLabel, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import { dashboardPage as t, setupStepLabel } from '@/i18n/zh-TW/pages/dashboard';
 import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
 } from '@/lib/utils';
 import type {
-  Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance,
+  BindableLineUser, Booking, BookingStatus, DashboardAlerts, DashboardStats,
+  OwnerNotifyRecipient, OwnerNotifyState, SetupStatus, StaffPerformance,
 } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用的骨架假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
 /* -------------------------------------------------------------------------- */
 
-/** LINE 官方帳號方案：原站由 /api/settings/line 取得，骨架階段先固定 */
-const MOCK_LINE_PLAN: 'LITE' | 'PRO' = 'LITE';
+/*
+ * 這裡原本有一個 `MOCK_LINE_PLAN: 'LITE' | 'PRO' = 'LITE'`，只要 LINE 已設定就
+ * 一律把統計卡標成「輕量版」——不管店家實際買的是哪個方案。
+ *
+ * LINE 並未開放查詢官方帳號的推播方案，所以正確做法不是換一個預設值，而是
+ * 不要宣稱我們查不到的事：已設定就說「已設定」。
+ * 見 CLAUDE.md「不要製造假的已知」。
+ */
 
 type ActivityType =
   | 'BOOKING_CREATED' | 'BOOKING_CANCELLED' | 'BOOKING_COMPLETED'
@@ -137,14 +152,26 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
   NO_SHOW: 'danger',
 };
 
-const QUICK_ACTIONS = [
-  { key: 'newBooking', href: '/tenant/bookings', icon: CalendarCheck },
-  { key: 'calendar', href: '/tenant/calendar', icon: CalendarDays },
-  { key: 'customers', href: '/tenant/customers', icon: Users },
-  { key: 'services', href: '/tenant/services', icon: Layers },
-  { key: 'marketing', href: '/tenant/marketing', icon: Megaphone },
-  { key: 'settings', href: '/tenant/settings', icon: Settings },
-] as const;
+/**
+ * 快速操作六格。
+ *
+ * ⚠️ 這裡原本是模組層的 `const QUICK_ACTIONS`，把 `/tenant/bookings` 與
+ * `/tenant/services` 寫死——那兩頁在嚮導的 `hiddenNavKeys` 裡，按下去會進到他
+ * 選單中根本不存在的頁面（14 分冊 §8.13）。而且模組層 const 在 AppShell 決定
+ * 模式**之前**就求值，就算改讀 preset 也會凍住錯的模式（CLAUDE.md 的模組層陷阱）。
+ * 因此改成函式，由頁面在 render 期帶著當下的 businessType 呼叫。
+ */
+function buildQuickActions(businessType: BusinessType) {
+  const preset = MODE_PRESETS[businessType];
+  return [
+    { key: 'newBooking', href: preset.ordersHref, label: ordersLabel(businessType), icon: CalendarCheck },
+    { key: 'calendar', href: '/tenant/calendar', label: navLabel('calendar', businessType), icon: CalendarDays },
+    { key: 'customers', href: '/tenant/customers', label: navLabel('customers', businessType), icon: Users },
+    { key: 'services', href: preset.catalogHref, label: catalogLabel(businessType), icon: Layers },
+    { key: 'marketing', href: '/tenant/marketing', label: navLabel('marketing', businessType), icon: Megaphone },
+    { key: 'settings', href: '/tenant/settings', label: navLabel('settings', businessType), icon: Settings },
+  ] as const;
+}
 
 /** 統計卡在資料載入前的佔位符（原站 DOM 即為「-」） */
 const PLACEHOLDER = '-';
@@ -158,6 +185,14 @@ const daysUntil = (isoDate: string) =>
 
 export default function DashboardPage() {
   const currentTenant = useCurrentTenant();
+  /**
+   * 「目錄／訂單」是父層級概念，三種模式各指向自己的子層級頁面（14 分冊 §8.13）。
+   * 這兩個值只能在 render 期取——模組層取會凍住錯的模式。
+   */
+  const businessType = useBusinessType();
+  const catalogHref = MODE_PRESETS[businessType].catalogHref;
+  const ordersHref = MODE_PRESETS[businessType].ordersHref;
+  const quickActions = buildQuickActions(businessType);
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
 
@@ -171,6 +206,76 @@ export default function DashboardPage() {
   const [loadingPerformance, setLoadingPerformance] = React.useState(true);
   const [loadingActivity, setLoadingActivity] = React.useState(true);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
+
+  /** 骨架模式或正在看示範店家時才顯示尚無端點的展示用假資料 */
+  const showSampleData = USE_MOCK || isDemoMode();
+
+  /**
+   * 空後台指引：只給「真實模式、看自己的店、而且真的還沒有任何預約」的新店家，
+   * 關掉後記在 localStorage 不再出現（每家店各自記，換店不會互相影響）。
+   */
+  const demoHintKey = `vibeai.demoHint.dismissed.${currentTenant.id}`;
+  const [demoHintDismissed, setDemoHintDismissed] = React.useState(true);
+  React.useEffect(() => {
+    if (showSampleData || !currentTenant.id) return;
+    try {
+      setDemoHintDismissed(localStorage.getItem(demoHintKey) === 'true');
+    } catch { setDemoHintDismissed(false); }
+  }, [demoHintKey, showSampleData, currentTenant.id]);
+  const dismissDemoHint = () => {
+    setDemoHintDismissed(true);
+    try { localStorage.setItem(demoHintKey, 'true'); } catch { /* 無痕視窗：關掉這次就好 */ }
+  };
+
+  /**
+   * 示範資料：新店註冊時依業態鋪好的範例。有殘留才顯示「一鍵清空」卡片。
+   * 示範店家（demo 模式）本來整站就是假資料，沒有這個子集合的概念，故不查。
+   */
+  const [demoCount, setDemoCount] = React.useState(0);
+  const [clearingDemo, setClearingDemo] = React.useState(false);
+  const [confirmClearDemo, setConfirmClearDemo] = React.useState(false);
+  const reloadDemoCount = React.useCallback(() => {
+    if (showSampleData) return;
+    void getDemoDataStatus().then((r) => setDemoCount(r.total)).catch(() => {});
+  }, [showSampleData]);
+  React.useEffect(() => { reloadDemoCount(); }, [reloadDemoCount]);
+
+  const doClearDemo = async () => {
+    setClearingDemo(true);
+    try {
+      await clearDemoData();
+      setDemoCount(0);
+      toast.show(t.demoData.cleared);
+    } catch (e) {
+      toast.show(`${t.demoData.clearFailed}${e instanceof Error ? e.message : ''}`, 'danger');
+    } finally {
+      setClearingDemo(false);
+      setConfirmClearDemo(false);
+    }
+  };
+
+  /* ------------------------------------------ 老闆通知（owner-notify，issue #18）
+   * 名單、可加入的好友、四支端點的 handler。狀態一律來自後端（getOwnerNotify），
+   * 頁面不自己推導「應該是已開啟吧」——三＋一態的判定見 06 分冊 §5.5。
+   */
+  const [ownerNotify, setOwnerNotify] = React.useState<OwnerNotifyState | null>(null);
+  const [bindable, setBindable] = React.useState<BindableLineUser[]>([]);
+  const [pickedLineUser, setPickedLineUser] = React.useState('');
+  const [ownerNotifyBusy, setOwnerNotifyBusy] = React.useState(false);
+  /** 開著的確認視窗：新增／本人綁定／移除某一位／解除全部 */
+  const [onConfirm, setOnConfirm] = React.useState<
+    | { kind: 'ADD' | 'BIND_SELF' }
+    | { kind: 'REMOVE'; recipient: OwnerNotifyRecipient }
+    | { kind: 'CLEAR' }
+    | null
+  >(null);
+
+  const reloadOwnerNotify = React.useCallback(async () => {
+    const [state, users] = await Promise.all([getOwnerNotify(), listOwnerNotifyLineUsers()]);
+    setOwnerNotify(state);
+    setBindable(users.lineUsers);
+    setPickedLineUser((prev) => (users.lineUsers.some((u) => u.lineUserId === prev) ? prev : ''));
+  }, []);
 
   const [focusOpen, setFocusOpen] = React.useState(true);
   const [confirmSkipFocus, setConfirmSkipFocus] = React.useState(false);
@@ -193,6 +298,9 @@ export default function DashboardPage() {
       try { setSetup(await getSetupStatus()); } catch (e) { fail(t.errors.setupStatus, e); }
     })();
     void (async () => {
+      try { await reloadOwnerNotify(); } catch (e) { fail(t.ownerNotify.errors.load, e); }
+    })();
+    void (async () => {
       try {
         setPerformance(await getStaffPerformance());
       } catch (e) { fail(t.errors.staffPerformance, e); } finally { setLoadingPerformance(false); }
@@ -207,13 +315,23 @@ export default function DashboardPage() {
     void (async () => {
       try {
         await new Promise((r) => setTimeout(r, 320));
-        setActivity(byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC }));
+        // 這三塊（最近活動／週趨勢／預約來源）契約上還沒有對應端點（04 分冊只定義了
+        // dashboard、dashboard-alerts、staff-performance），骨架階段用假資料撐版面。
+        // 真實店家不能看到別家店的示範資料——新註冊的店後台必須是乾淨的，所以
+        // real 模式一律回空，由各自的 EmptyState 呈現。
+        setActivity(showSampleData
+          ? byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC })
+          : []);
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
-  }, [fail]);
+  }, [fail, reloadOwnerNotify, showSampleData]);
 
-  const weeklyTrend = byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC });
-  const monthSources = byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC });
+  const weeklyTrend = showSampleData
+    ? byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC })
+    : [];
+  const monthSources = showSampleData
+    ? byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC })
+    : [];
 
   const copyPublicUrl = async () => {
     try {
@@ -221,6 +339,83 @@ export default function DashboardPage() {
       toast.show(t.publicUrl.copied);
     } catch {
       toast.show(`${t.publicUrl.manualCopy}${PUBLIC_BOOKING_URL}`, 'warning');
+    }
+  };
+
+  /* --------------------------------------- 老闆通知的四個動作（每個都真的打端點）
+   * 成功訊息一律在端點回來之後才顯示；失敗就顯示端點回的 message（例如
+   * 「已達上限 3 位…」），不吞掉、也不改寫成一句籠統的「操作失敗」。
+   */
+  const ownerRecipients = ownerNotify?.recipients ?? [];
+  const ownerMax = ownerNotify?.maxRecipients ?? 0;
+  const ownerAtLimit = !!ownerNotify && ownerRecipients.length >= ownerMax;
+  const recipientName = (r: { displayName: string }) => r.displayName || t.ownerNotify.unnamed;
+  /** 移除某一位之後會遞補成主要的那一位（＝名單順序的下一位） */
+  const nextAfter = (r: OwnerNotifyRecipient) =>
+    ownerRecipients.find((x) => x.lineUserId !== r.lineUserId) ?? null;
+
+  const runOwnerNotify = async (action: () => Promise<void>, successMessage: string) => {
+    setOwnerNotifyBusy(true);
+    try {
+      await action();
+      await reloadOwnerNotify();
+      toast.show(successMessage);
+    } catch (e) {
+      toast.show(
+        e instanceof Error && e.message ? e.message : t.ownerNotify.toast.bindFailed,
+        'danger',
+      );
+    } finally {
+      setOwnerNotifyBusy(false);
+      setOnConfirm(null);
+    }
+  };
+
+  const confirmOwnerNotify = () => {
+    if (!onConfirm) return;
+    if (onConfirm.kind === 'BIND_SELF')
+      void runOwnerNotify(
+        async () => { await bindOwnerNotify(pickedLineUser); },
+        t.ownerNotify.toast.bound,
+      );
+    else if (onConfirm.kind === 'ADD')
+      void runOwnerNotify(
+        async () => { await addOwnerNotifyRecipient(pickedLineUser); },
+        t.ownerNotify.toast.added,
+      );
+    else if (onConfirm.kind === 'REMOVE') {
+      const { recipient } = onConfirm;
+      void runOwnerNotify(
+        async () => { await removeOwnerNotifyRecipient(recipient.lineUserId); },
+        t.ownerNotify.toast.removed,
+      );
+    } else void runOwnerNotify(async () => { await clearOwnerNotify(); }, t.ownerNotify.toast.unbound);
+  };
+
+  /** 三種移除確認文案（規格逐字）：最後一位／主要（帶遞補者名字）／其他 */
+  const removeMessage = (r: OwnerNotifyRecipient): string => {
+    if (ownerRecipients.length === 1) return t.ownerNotify.confirm.removeLast;
+    if (r.isPrimary) {
+      const next = nextAfter(r);
+      return t.ownerNotify.confirm.removePrimary(next ? recipientName(next) : t.ownerNotify.unnamed);
+    }
+    return t.ownerNotify.confirm.removeOther;
+  };
+
+  const ownerConfirmMessage = (): string => {
+    if (!onConfirm) return '';
+    if (onConfirm.kind === 'BIND_SELF') return t.ownerNotify.confirm.bindSelf;
+    if (onConfirm.kind === 'ADD') return t.ownerNotify.confirm.add;
+    if (onConfirm.kind === 'REMOVE') return removeMessage(onConfirm.recipient);
+    return t.ownerNotify.confirm.unbindAll(ownerRecipients.length);
+  };
+
+  const ownerStatusLabel = (): string => {
+    switch (ownerNotify?.status) {
+      case 'ENABLED': return t.ownerNotify.status.enabled;
+      case 'DISCONNECTED': return t.ownerNotify.status.disconnected;
+      case 'NO_RECIPIENTS': return t.ownerNotify.status.noRecipients;
+      default: return t.ownerNotify.status.notConfigured;
     }
   };
 
@@ -235,7 +430,7 @@ export default function DashboardPage() {
   const linePlanLabel =
     stats?.linePlatformStatus === 'NOT_CONFIGURED' ? t.stats.lineNotConfigured
       : stats?.linePlatformStatus === 'ERROR' ? t.stats.unknown
-        : MOCK_LINE_PLAN === 'PRO' ? t.stats.linePlanPro : t.stats.linePlanLite;
+        : t.stats.lineConfigured;
 
   const todayColumns: Column<Booking>[] = [
     { key: 'time', header: t.todayBookings.columns.time, width: '84px', render: (b) => formatTime(b.startAt) },
@@ -281,9 +476,58 @@ export default function DashboardPage() {
   const maxWeeklyRevenue = Math.max(...weeklyTrend.map((d) => d.revenue), 1);
   const sourceTotal = monthSources.reduce((sum, s) => sum + s.count, 0);
 
+  // 有資料的店不需要這張指引卡——等 stats 載入完再判斷，避免載入中閃一下又消失。
+  const shopIsEmpty = !!stats
+    && stats.todayBookings === 0 && stats.pendingBookings === 0 && stats.totalCustomers === 0;
+  const showDemoHint = !showSampleData && !demoHintDismissed && shopIsEmpty;
+
   return (
     <>
       <PageHeader title={t.title} />
+
+      {/* -------------------------------------- 空後台指引：先去看示範店家長怎樣 */}
+      {showDemoHint ? (
+        <Alert tone="info" className="mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 font-bold">{t.demoHint.title}</div>
+              <p className="text-sm">{t.demoHint.body}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={dismissDemoHint}>
+              {t.demoHint.dismiss}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
+
+      {/* ------------------------------------------ 示範資料提示＋一鍵清空 */}
+      {!showSampleData && demoCount > 0 ? (
+        <Alert tone="warning" className="mb-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 font-bold">{t.demoData.title}</div>
+              <p className="text-sm">{t.demoData.body(demoCount)}</p>
+            </div>
+            <Button
+              variant="outline" size="sm"
+              loading={clearingDemo} loadingText={t.demoData.clearing}
+              onClick={() => setConfirmClearDemo(true)}
+            >
+              {t.demoData.clear}
+            </Button>
+          </div>
+        </Alert>
+      ) : null}
+
+      <ConfirmModal
+        open={confirmClearDemo}
+        title={t.demoData.confirmTitle}
+        message={t.demoData.confirmBody}
+        danger
+        loading={clearingDemo}
+        onClose={() => setConfirmClearDemo(false)}
+        onConfirm={() => void doClearDemo()}
+      />
 
       {/* ------------------------------------------------ 3 分鐘開始收單 引導卡 */}
       {focusOpen ? (
@@ -307,8 +551,8 @@ export default function DashboardPage() {
             <ol className="flex flex-col gap-3">
               <li className="flex flex-wrap items-center gap-3 rounded-lg bg-primary-deep p-3">
                 <Badge tone="neutral">{t.focus.step1Badge}</Badge>
-                <span className="flex-1 text-base font-semibold">{t.focus.step1Title}</span>
-                <Link href="/tenant/services" className="btn btn-secondary text-primary">
+                <span className="flex-1 text-base font-semibold">{resolveNavTerms(t.focus.step1Title, businessType)}</span>
+                <Link href={catalogHref} className="btn btn-secondary text-primary">
                   {t.focus.step1Action}
                 </Link>
               </li>
@@ -389,7 +633,7 @@ export default function DashboardPage() {
                     {s.done ? '✓' : '·'}
                   </span>
                   <span className={s.done ? 'text-sm text-secondary line-through' : 'text-sm font-semibold text-dark'}>
-                    {t.setup.steps[s.key]}
+                    {setupStepLabel(s.key, currentTenant.businessType)}
                   </span>
                 </li>
               ))}
@@ -497,9 +741,142 @@ export default function DashboardPage() {
         </Card>
       ) : null}
 
+      {/* ------------------------------------------ LINE 老闆通知（issue #18） */}
+      <Card className="mb-4">
+        <CardHeader>
+          <CardTitle>
+            <Bell size={16} />
+            {t.ownerNotify.title}
+          </CardTitle>
+          <Badge
+            tone={
+              ownerNotify?.status === 'ENABLED' ? 'success'
+                : ownerNotify?.status === 'DISCONNECTED' ? 'danger' : 'neutral'
+            }
+          >
+            {ownerNotify ? ownerStatusLabel() : PLACEHOLDER}
+          </Badge>
+        </CardHeader>
+        <CardBody>
+          {ownerNotify?.status === 'DISCONNECTED' ? (
+            <Alert tone="danger" className="mb-3">
+              {t.ownerNotify.disconnectedHint}
+              <Link href="/tenant/line-settings">{t.ownerNotify.disconnectedHintLink}</Link>
+              {t.ownerNotify.disconnectedHintTail}
+            </Alert>
+          ) : null}
+          {ownerNotify?.status === 'NOT_CONFIGURED' ? (
+            <Alert tone="warning" className="mb-3">{t.ownerNotify.notConfiguredHint}</Alert>
+          ) : null}
+
+          {ownerRecipients.length === 0 ? (
+            <EmptyState
+              icon={Bell}
+              title={t.ownerNotify.status.noRecipients}
+              description={t.ownerNotify.noRecipientsHint}
+            />
+          ) : (
+            <>
+              <ul className="mb-3 flex flex-col gap-2">
+                {ownerRecipients.map((r) => (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate font-semibold text-dark">{recipientName(r)}</span>
+                      {r.isPrimary ? (
+                        <Badge tone="primary">
+                          <Star size={12} />
+                          {t.ownerNotify.primaryBadge}
+                        </Badge>
+                      ) : null}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={ownerNotifyBusy}
+                      onClick={() => setOnConfirm({ kind: 'REMOVE', recipient: r })}
+                    >
+                      <Trash2 size={14} />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <p className="form-text">{t.ownerNotify.fanout(ownerRecipients.length)}</p>
+              <p className="form-text">{t.ownerNotify.primaryHint}</p>
+            </>
+          )}
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Select
+              className="max-w-xs"
+              value={pickedLineUser}
+              disabled={ownerNotifyBusy || ownerAtLimit || bindable.length === 0}
+              onChange={(e) => setPickedLineUser(e.target.value)}
+            >
+              <option value="">
+                {bindable.length === 0
+                  ? t.ownerNotify.noBindableUsers
+                  : t.ownerNotify.selectPlaceholder}
+              </option>
+              {bindable.map((u) => (
+                <option key={u.lineUserId} value={u.lineUserId}>
+                  {u.displayName || t.ownerNotify.unnamed}
+                </option>
+              ))}
+            </Select>
+            {ownerRecipients.length === 0 ? (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={ownerNotifyBusy || !pickedLineUser}
+                onClick={() => setOnConfirm({ kind: 'BIND_SELF' })}
+              >
+                <Bell size={14} />
+                {t.ownerNotify.bindSelf}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={ownerNotifyBusy || !pickedLineUser || ownerAtLimit}
+                onClick={() => setOnConfirm({ kind: 'ADD' })}
+              >
+                <UserPlus size={14} />
+                {t.ownerNotify.addRecipient}
+              </Button>
+            )}
+            {ownerAtLimit ? (
+              <span className="text-sm text-warning">{t.ownerNotify.atLimit(ownerMax)}</span>
+            ) : null}
+            {ownerRecipients.length > 0 ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={ownerNotifyBusy}
+                onClick={() => setOnConfirm({ kind: 'CLEAR' })}
+              >
+                {t.ownerNotify.unbindAll}
+              </Button>
+            ) : null}
+          </div>
+        </CardBody>
+      </Card>
+
+      <ConfirmModal
+        open={!!onConfirm}
+        onClose={() => setOnConfirm(null)}
+        onConfirm={confirmOwnerNotify}
+        title={t.ownerNotify.title}
+        message={ownerConfirmMessage()}
+        danger={onConfirm?.kind === 'REMOVE' || onConfirm?.kind === 'CLEAR'}
+        loading={ownerNotifyBusy}
+      />
+
       {/* -------------------------------------------------------------- 統計卡 */}
       <div className="mb-4 grid gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-5">
-        <Link href="/tenant/bookings" className="no-underline">
+        <Link href={ordersHref} className="no-underline">
           <StatCard
             label={t.stats.todayBookings}
             value={stats ? formatNumber(stats.todayBookings) : PLACEHOLDER}
@@ -507,7 +884,7 @@ export default function DashboardPage() {
             tone="primary"
           />
         </Link>
-        <Link href="/tenant/bookings?status=PENDING" className="no-underline">
+        <Link href={`${ordersHref}?status=PENDING`} className="no-underline">
           <StatCard
             label={t.stats.pendingBookings}
             value={stats ? formatNumber(stats.pendingBookings) : PLACEHOLDER}
@@ -586,7 +963,7 @@ export default function DashboardPage() {
               </p>
             </div>
             <Link
-              href="/tenant/bookings?status=UNPROCESSED"
+              href={`${ordersHref}?status=UNPROCESSED`}
               className="btn btn-primary btn-sm flex-shrink-0 whitespace-nowrap"
             >
               {t.alertCards.unprocessedBookings.action}
@@ -633,14 +1010,14 @@ export default function DashboardPage() {
             {t.quickActions.title}
           </h2>
           <div className="grid gap-2 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-            {QUICK_ACTIONS.map(({ key, href, icon: Icon }) => (
+            {quickActions.map(({ key, href, label, icon: Icon }) => (
               <Link
                 key={key}
                 href={href}
                 className="flex flex-col items-center gap-2 rounded-lg bg-neutral-50 px-3 py-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
               >
                 <Icon size={20} className="text-primary" />
-                {t.quickActions[key]}
+                {label}
               </Link>
             ))}
           </div>
@@ -682,7 +1059,7 @@ export default function DashboardPage() {
               {t.todayBookings.title}
               <span className="form-text">{t.todayBookings.count(todayRows.length)}</span>
             </CardTitle>
-            <Link href="/tenant/bookings" className="btn btn-primary btn-sm">
+            <Link href={ordersHref} className="btn btn-primary btn-sm">
               {t.todayBookings.viewAll}
             </Link>
           </CardHeader>
@@ -761,6 +1138,10 @@ export default function DashboardPage() {
             </Link>
           </CardHeader>
           <CardBody>
+            {weeklyTrend.length === 0 ? (
+              <EmptyState icon={BarChart3} title={t.weeklyTrend.empty} />
+            ) : (
+            <>
             <div className="mb-3 flex items-center gap-4 text-xs text-secondary">
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-4 rounded-xs bg-primary" />
@@ -790,6 +1171,8 @@ export default function DashboardPage() {
                 </div>
               ))}
             </div>
+            </>
+            )}
           </CardBody>
         </Card>
 

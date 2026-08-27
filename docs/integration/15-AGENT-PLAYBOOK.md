@@ -1,0 +1,606 @@
+# 15 — 執行者手冊（每個 issue 開工前必讀，低階模型逐字照做）
+
+> 修復-1〜6（issue #3–#8）與建置系列（#9 起）的每一個 issue 都引用本冊。
+> 這裡是**共通紀律與環境操作要點**；各 issue 只寫該任務特有的內容。
+> 你（執行者）遇到本冊與分冊衝突 → 分冊為準；遇到規格內部衝突 → **停下，
+> 在該 issue 留言說明並附證據，等待決策，不准自行選一邊做下去。**
+
+---
+
+## 名詞：誰是「擁有者」、誰是「主導者」
+
+分冊裡這兩個詞指不同的人，**效力也不同**。看到任何一個詞時先確認是哪一個：
+
+| 詞 | 是誰 | 效力 |
+|---|---|---|
+| **擁有者** | 這個專案的人類擁有者 | **裁決**。記在 `14-GAP-AUDIT.md` §8，執行時照做，不要重新思考、不要自行變通 |
+| **主導者** | 派工給你的那個 Claude（orchestrator） | **複核**。讀過你的推導並認為成立，是工程判斷；日後有更好的理由可以推翻 |
+| **執行者** | 你 | 依 issue 施工並提出證據 |
+
+所以：
+
+- 「**擁有者已裁決**」＝ 不要動它，照做。
+- 「**主導者複核通過**」＝ 有人看過、目前成立，但**不是**擁有者點過頭。
+  你若發現更好的理由，提出來是對的。
+- 「**待擁有者裁決**」＝ 還沒有人拍板，**不准猜**，寫進報告問。
+
+⚠️ 這三種狀態不可互相冒充。把「執行者自己推導出來的」寫成「擁有者已認可」，
+就是本專案反覆在清的那種假的已知——日後的稽核者讀到「已認可」就不會再開這個案子。
+**看到不對就指出來，即使指出的是主導者寫的東西。**（2026-08-25 就發生過一次：
+一位執行者正確地質疑了主導者寫在 14 分冊 §6.6 的一行措辭，該行因此改寫。
+那次是措辭歧義而非造假——但質疑本身是對的，因為當時這一節還不存在，
+「主導者」這個詞在整本手冊裡從未被定義過。）
+
+
+## 派工單裡的每一句事實陳述，也要先查證（給主導者看的）
+
+**這條是寫給主導者自己的**，因為 2026-08-25 一天之內犯了兩次，兩次都是執行者抓到的：
+
+| 我在派工單裡寫的 | 實際 | 誰抓到 |
+|---|---|---|
+| 「服務頁有這個問題，**商品頁同型**」 | 商品頁的新增與刪除早已正確 | 分類按鈕那一輪 |
+| 「`pages/bookings.ts` **在例外清單裡**、註明待排」 | 它不在清單裡，也不需要在——它是子層級的擁有者檔案，結構上就豁免 | CLINIC 名詞那一輪 |
+
+兩次都是**推論被寫成事實**：一個是「A 有問題所以 B 應該一樣」，一個是「我記得那張表上有它」。
+
+**危害不是「派工單有小錯」，是執行者會照著做。** 第一次那位如果聽話，就會去重寫一段
+已經正確的程式碼；第二次那位如果聽話，就會去找一行不存在的清單項目、然後困惑。
+更糟的情況是他**照著錯誤前提改了東西**，而那個改動沒有任何測試會擋。
+
+**規則：派工單裡凡是「某檔案有／沒有某內容」這種陳述，寫下去之前先 `grep`。**
+不確定就寫成「請自行確認 X 是否為真，是的話……」——把不確定性交出去，
+而不是把它包裝成事實。
+
+### 更嚴重的一種：**附了一個不支持該主張的引用**
+
+同一天的第三次，性質與前兩次不同，值得單獨列：
+
+> 我在 14 分冊 §8.20 寫「⚠️ 實作限制（**LINE 已用 `validate/reply` 驗證過，見 §6.9**）：
+> `uri` action 只收 https，http 會被回 `invalid uri scheme`」。
+>
+> §6.9 記的是 `REJECTED **hero** 用 http`——那是**圖片網址**，不是 `uri` action。
+> 我把兩個不同欄位的規則混成一條，**還附上出處**。
+
+前兩次是「推論寫成事實」；這一次是**「事實 A 被當成事實 B 的證據」**，
+而且因為有引用，它比沒有引用**更可信、更難被質疑**。
+
+執行者照著寫完 schema 才發現 LINE 收下了 http。它把那個意外當紅燈追下去，
+做了完整的 scheme 探測、推翻了那條限制，然後——**保留擁有者的裁決（https-only），
+只把每一處「理由」改成事實**，包括店家看得到的文案。
+
+**規則：引用一份文件之前，回去讀那一段。** 「我記得那裡寫過」不算讀過。
+引用讓一個主張看起來被驗證過，所以引用錯的代價比沒有引用更高——
+這正是本手冊與 14 分冊反覆在講的「假的已知」，只是長在**上游**。
+
+⚠️ 執行者遇到「實測結果與派工單不符」時：**追下去，不要當成自己做錯了**。
+三次都是這樣抓到的。
+
+⚠️ 這與本手冊要求執行者的標準是**同一條**（「不准把推論寫成已知」）。
+主導者不因為在上游就有豁免；反而因為在上游，錯誤會被放大。
+
+**執行者看到派工單與實際不符時，回報是對的，不要為了對齊派工單去改動正確的程式碼。**
+（兩次都有人這樣做了，那是這套流程要保住的東西。）
+
+## 誠實化之前，先查這個功能有沒有既有裁決（2026-08-26 學到，代價是一次反向執行）
+
+「畫面宣稱了一件沒發生的事」有**兩種**修法：
+
+1. **誠實化**——把宣稱改成實情（停用按鈕、改文案、標「尚未建置」）。
+2. **補齊**——把宣稱的那件事真的做出來。
+
+擁有者的標準方針是**補齊優先於刪除**，但實務上執行者手上握著一整套現成的誠實化
+模式（本專案已經做過十幾輪），於是很容易直接套用——**而沒有先問這一項是不是
+已經被裁決過要補齊。**
+
+`§8.6` 就是這樣被反向執行的。裁決原文寫得非常清楚：
+
+> 文案「活動已發布，LINE 推播已發送」**保留**，`POST /api/campaigns/:id/publish`
+> 要補上實際的推播與額度扣減。**缺的是實作而不是文案。**
+
+實際做出來的是：端點一行未動（零 LINE 呼叫），**文案被刪掉並加註「禁止復原」**。
+
+### 而且只改了一半，這讓情況更糟
+
+同一份字典裡至少還有六處仍在宣稱推播（`confirm.publish`：「發布後將立即推送
+LINE 訊息給所有追蹤者」）。於是**確認視窗與成功訊息對同一個動作給出互相矛盾的
+事實主張**——使用者無從判斷哪一句是真的。
+
+> **改了一半的誠實化，比兩邊都錯更難發現。** 兩邊都錯至少是一致的錯；
+> 一邊改一邊沒改，會讓後來的人以為「有人處理過了」。
+
+### 規則
+
+**動手誠實化任何一處宣稱之前**，先做兩件事：
+
+1. `grep` 一次 `docs/integration/14-GAP-AUDIT.md` 的 §8（擁有者裁決紀錄），
+   確認這一項有沒有被裁決過。**裁決過要補齊的，就補齊，不要誠實化。**
+2. 決定要改文案時，`grep` 整份 i18n 字典把**所有**宣稱同一件事的句子找出來，
+   一次改完。確認視窗（動作**前**的承諾）與成功訊息（動作**後**的宣稱）
+   一定要一起看——它們對同一個動作說話。
+
+**主導者：** 派誠實化的工作時，派工單裡要指名「先查 §8 有沒有既有裁決」。
+這一次是驗收整合的執行者在複驗留言時才發現的，而那已經是三批工作之後。
+
+## issue 內文的事實陳述，也要先查證（給主導者看的）
+
+手冊已經有一節在講「派工單裡的每一句事實陳述，也要先查證」。實務上主導者最常
+違反它的方式**不是自己編**，而是**把 issue 內文的表格原文抄進派工單**——issue 是
+擁有者寫的、看起來就是規格，於是那些句子不經查證就被當成事實傳下去。
+
+`#7` 的 (乙) 表格一次貢獻了三筆（執行者全部抓到並回報）：
+
+| issue 寫的 | 實際 |
+|---|---|
+| `/api/points/topup` | 只有 `/api/points/topup/**pay**`。照著打會 404，畫面訊息會變成「找不到」而不是規格要的客服提示 |
+| 「`saveTenantSettings` 帶真欄位（**branding 群組**）」——讀起來像已經有了 | schema 與 DB 都沒有 `branding`；只有 `tenant-settings.ts` 開頭的分組對照表寫著。要新增 migration |
+| `listUnboundLineUsers` 列在 customers 那一列的「後端」欄 | 它在 `services/chat.ts`。讀起來像要新寫，實際上寫了就是第二份 |
+
+第三筆特別值得記：執行者**真的先寫了一份**，是 `services/index.ts` 撞名才發現既有的。
+差一點就種下本專案最常抓到的那種缺陷（同一件事兩份實作，短期一樣、長期分岔、
+分岔那天沒有測試會紅）。
+
+**同一批工作已經證明 issue 內文會錯得更離譜**：第四輪盤點（14 分冊 §9.2）發現
+六個 issue 的範圍與 `docs/specs` 不符，其中 #20 的端點、資料模型、狀態機三者全錯。
+
+### 規則
+
+- 把 issue 的表格抄進派工單**之前**，逐格 grep 一次。抄一段不需要查證的東西進去，
+  等於替它背書。
+- 抄不動的（例如「後端已存在」這種概括），就在派工單裡**明說那是 issue 的說法、
+  要執行者自己查**，不要寫成我已經確認過的樣子。
+- 執行者發現 issue 內文與程式碼不符時，**以程式碼為準並回報**，不要照著錯的做，
+  也不要默默繞過——回報是為了讓 issue 被修正，下一個人才不會再撞。
+
+## 派工要選模型（給主導者看的）
+
+擁有者 2026-08-25 裁決：**混用**。派工時在 `Agent` 呼叫裡明確帶 `model`，
+**不要留空**——留空會繼承主導者當下的模型，而 session 的模型可能被切換過，
+等於讓「這件事該用哪個模型」變成一件碰運氣的事。
+
+| 工作性質 | 模型 | 判準 |
+|---|---|---|
+| 純接線、照抄同檔案／隔壁頁既有形狀、文案替換、寫重複結構的測試、機械性批次修改 | **Sonnet** | 「正確答案已經寫在別的地方，這一輪是把它複製到對的位置」 |
+| 安全邊界、收費邊界、**測試前提變更**、外部規格查證、稽核、任何要判斷「這算不算假成功」的事 | **Opus** | 「做錯了不會有紅燈告訴我們」 |
+
+⚠️ **分界不是看工作量，是看「做錯時會不會被測試抓到」。**
+一個 300 行的機械替換用 Sonnet 沒問題；一個 5 行的閘門判斷要用 Opus，
+因為閘門放寬了測試照樣綠。
+
+⚠️ **測試前提變更一律 Opus。** 這是本專案最危險的動作——
+「把斷言放寬讓它繼續綠」和「前提真的變了所以重新釘」外表一模一樣，
+分辨它們需要理解那條斷言當初在防什麼。這條沒有折扣。
+
+（2026-08-25 之前主導者一直沒帶 `model`，於是 16 個 agent 全繼承成 Opus，
+與擁有者原本「低階模型施工」的指示不符。記在這裡避免重犯。）
+
+
+## 實測腳本的兩條慣例
+
+**截圖與下載檔一律寫進 `scripts/verify/out/`。** 那個目錄被 gitignore 涵蓋，
+放別的地方會混進版本庫，而截圖進了 repo 之後很難清。
+（2026-08-25 有一支腳本寫成 `scripts/verify/.out-xxx.png`，`.out-` 前綴、直接放在
+`verify/` 底下，躲過了 `out/` 那條規則。`.gitignore` 已補檔名樣式當安全網，
+但正確做法還是寫進 `out/`。）
+
+**不要在整合測試跑的同時另起第二個 `next dev`。** 兩個 dev server 共用同一份
+`.next` 開發建置快取，會把 vendor chunk 寫壞——症狀是整批測試冒出
+`Cannot find module './vendor-chunks/@supabase.js'`、所有登入回 500，
+看起來像程式壞了，其實是快取被踩爛。若非起不可（例如要測的改動還沒 push、
+Preview 上沒有），**腳本收尾要 `rm -rf .next`**，並在檔頭寫明這個坑。
+
+## 跑整合測試前：先確認別人沒在改你會用到的東西
+
+`flock /tmp/vibeaico-integration.lock` **只序列化「跑測試」，不序列化「改原始碼」**。
+這是 2026-08-25 一位執行者實測發現的：他跑全量整合測試的那 11 分鐘裡，另外兩位
+agent 正在改 `src/app/api/**` 與 `src/server/**`，共用的 `next dev` 熱重載讀到
+**半寫入的模組**，於是 291 個案例裡 100 個變成 `expected 500 to be 200`。
+
+那份紅燈**與他的改動完全無關**，但如果他當成自己的問題去追，會浪費很久；
+如果他當成「別人的問題」直接無視，又可能漏掉真的紅燈。
+
+**所以跑全量 `npm run test:integration` 之前，先看一眼：**
+
+```bash
+git status --short -- src/app/api src/server src/config src/lib
+```
+
+- **乾淨** → 全量跑，結果可信。
+- **有別人未提交的變更** → **不要跑全量**。改成只跑你自己的測試檔：
+  ```bash
+  flock /tmp/vibeaico-integration.lock npx vitest run \
+    tests/integration/api/你的檔案.test.ts --config vitest.integration.config.mts --no-file-parallelism
+  ```
+  逐檔跑不受熱重載影響，證據一樣有效。**在報告裡寫明你跑的是逐檔而非全量，以及為什麼**
+  ——這不是打折，是選了在當下條件下唯一可信的做法。
+
+⚠️ **不要把「別人在改東西」當成忽略紅燈的萬用理由。** 要無視某個紅燈，必須拿出反證，
+例如：同一支測試在你一行未改的情況下重跑就綠、或 `grep` 證明你改的檔案結構上到不了
+那條路徑。**「應該無關」不是證據。**
+
+
+## issue 的「人工介入點」本身也可能建立在錯誤的前提上（2026-08-25 學到）
+
+擁有者授權主導者在他休息期間「盡量減少需要他決策的項目」，主導者因此把 #7〜#28 的
+人工介入點一次讀完、**凡有預設值一律採預設**，做成一張裁示總表。
+
+那個做法有一個當時沒看見的漏洞：
+
+> **採用一個問題的預設答案，等於連同這個問題的前提一起簽收了。**
+
+#20（診所叫號）的兩個決策就是這樣被簽收的：
+
+| 我裁的 | 實際 |
+|---|---|
+| 號碼牌編號規則＝每診次每日從 1 起、跨日重置 | 規格早就寫死了整套發號規則（前 N 號現場保留／奇偶分流／當日上限／鎖定號碼／整天休診），**不需要任何人裁決** |
+| 過號回補＝過號票可手動叫回，插在當前號之後 | **原站根本沒有「過號」，也沒有「叫號」**——`docs/specs/clinic-queue.json` 全文統計：`叫號` 0 次、`過號` 0 次 |
+
+第二項尤其值得記：那不是選錯預設值，是**對一個不存在的概念做了決定**。
+
+### 規則
+
+拿到任何一項「人工介入點」時（無論是要回答它、還是要採它的預設值），先問兩件事：
+
+1. **這個概念在原站存在嗎？** 去 `docs/specs/*.json` 查，不要從 issue 的敘述推。
+2. **規格是不是已經回答了？** 已經回答的問題不該進裁示總表——那不是決策，是查證。
+
+確認過這兩件事，才輪到「要不要採預設」。
+
+### 給執行者的對應規則
+
+拿到主導者的裁示（或 issue 的預設值）時，**若發現 `docs/specs/*.json` 與它衝突，一律以規格為準並回報**，不要照著裁示做。裁示的效力來自它背後的事實，事實錯了裁示就不成立——這與「派工單裡的事實陳述也要先查證」是同一條原則的延伸。
+
+## 在獨立 worktree 開工：第一件事是 rebase（2026-08-25 學到）
+
+`isolation: worktree` 幫執行者開的分支，**基底不是整合分支的當前 HEAD**。實際遇到的是
+落後 **66 個 commit**——三個執行者同時在一個舊版的樹上施工，症狀是：
+
+- 兩位回報「`tests/unit/` 只有 10 個檔案」，整合分支上是 41 個。
+- 其中一位為 `messages.addonDowngradePaid` 寫了一條斷言，而那個 i18n 鍵早在
+  `742f33d`（修復-1B）就整組被刪了——**他改的是一段上游已經誠實化過的文案**。
+- 另一位正在改 `src/app/api/line/webhook/[shopCode]/route.ts`，而該檔就在那 66 個
+  commit 改過的清單裡；再晚一步就會拿舊版當基準做架構調整。
+
+三個人的 typecheck 與單元測試**全都是綠的**——在各自那棵舊樹上。「全綠」證明的是
+「相對於我看到的那份程式碼沒問題」，不是「相對於別人正在推進的那份沒問題」。
+
+所以：
+
+1. **開工第一個指令**（在 worktree 裡）：
+   `git rebase claude/deploy-vercel-project-nnno59`
+   ——只當 commit-ish 用，**不要 checkout 它**（整合分支被主 worktree 佔用）。
+2. **rebase 之前讀到的行號全部作廢**，rebase 之後重讀一次派工單引用的每一個位置。
+3. rebase 有衝突就解；解不動就停下來回報，不要硬改成能編譯。
+4. 交件前若又過了一段時間，**再 rebase 一次**再跑最終的 typecheck / build / 測試。
+
+主導者這邊對應的責任：合併前一律先把執行者的分支 rebase 到當前 HEAD、重跑全套閘門，
+**不要直接 merge 一個舊基底的分支**。上面那條失效的斷言就是合併時才發現的——
+如果直接 merge，它會變成一條比對 `undefined` 的測試，而且不會紅。
+
+## 1. 開工流程（每個 issue 一律照此順序）
+
+1. 讀完該 issue 全文 → 讀 issue 點名的每一個分冊章節 → 讀本冊。
+2. 把 issue 的驗收清單**原樣**複製到你的工作 todo，不准刪項、不准改寫措辭。
+3. 照 12 分冊 TDD：先寫測試（紅）→ 最小實作（綠）→ 全量回歸。
+4. 每完成一個驗收項，**當下**在 issue 留言或 PR checklist 打勾並附證據
+   （格式見 §2）。全部打勾後才可宣告完成；宣告完成的留言必須含
+   typecheck / build / test / test:integration 四條指令的輸出尾段。
+5. 下一個 issue 在前一個全數打勾前**不得開工**（連「先看看」的探索性修改都不行）。
+
+## 2. 證據格式（08 分冊打勾規則的操作版）
+
+- 自動化測試：`tests/integration/api/xxx.test.ts:「案例名稱」`（檔案要真的存在、
+  案例要真的綠；引用不存在的測試 = 假的已知，該輪工作無效）。
+- 自動化實測：腳本路徑 + 執行輸出的關鍵行（貼原文，不准改寫或摘要成「成功」二字）。
+- 靜態鏈路證據（DoD 10 最低標準）：`頁面檔:行號 handler → services 函式 → 端點路徑`
+  三段逐一列出，並註明該端點的整合測試檔。
+- **禁止**的證據形式：「已確認」「應該可以」「邏輯上正確」——沒有輸出的主張不是證據。
+
+## 3. 絕對禁令（違反任何一條 = 該輪工作無效，重做）
+
+1. 不准為了讓測試過而改測試（12 §2.4 全清單）。
+2. 不准顯示成功訊息但副作用沒發生（00 鐵則 12）。做不到就顯示「尚未生效」。
+3. 不准跳過驗收項、合併驗收項、或「先做後面的再回頭補」。
+4. 不准自行發明規格。分冊沒寫的行為 → issue 留言問，等回覆。
+5. 不准把 secrets 寫進任何會 commit 的檔案、issue、PR 內文（含測試 fixture）。
+6. 不准對正式 Supabase 專案跑 reset/清庫類腳本（reset-db 有安全鎖，但不要測試它）。
+7. migration 編號一律取 `supabase/migrations/` 現有最大號 +1；**分冊裡寫死的編號
+   （0012/0013…）是撰寫當時的假設，已過時，不要照抄**。
+
+## 4. 憑證與環境（自主撈取，不留人工步驟）
+
+- **憑證來源**：Google Drive 文件「#Supabase#midao」（用 Google Drive 工具搜尋
+  該標題、讀取內容）。內含：Supabase Management API token（sbp_…）、兩個
+  Supabase 專案 ref 與 keys、Midao LINE Channel ID/Secret/長期 token、Vercel
+  token、Resend key。**缺哪個 token 就在 issue 留言列名請擁有者補**，不要繞路。
+- **測試帳號**：`sulawei0301@gmail.com` / `@Wei3362499`（Preview 站）。密碼對不上時
+  走「忘記密碼」流程：`POST /api/auth/forgot-password` → 用 Management API 查
+  `auth_verification_codes` 表取 code → `POST /api/auth/reset-password` 設回
+  `@Wei3362499`。**永遠設回這組**，擁有者只記這一組。
+- **兩個 Supabase 專案**：正式 `egehnijjpgijmccagxac`（Vercel production+preview 用）、
+  TEST `nmwhwngojosmagjuvxol`（整合測試/CI 用）。migration 兩邊都套、套完各自
+  query `information_schema` 驗證（CLAUDE.md 有 Management API 範例；`psql` 在
+  sandbox 連不上，一律走 Management API + `NODE_USE_ENV_PROXY=1`）。
+- **Preview 站**：`https://vibeaico-admin-rebuild-git-claude-70df20-smallwei0301s-projects.vercel.app`
+  （branch alias，push 後自動部署；打 API 前先確認最新 deployment READY）。
+
+## 5. Playwright 實測要點（sandbox 專屬，不照做會連不上）
+
+```js
+const browser = await chromium.launch({
+  executablePath: '/opt/pw-browsers/chromium',
+  headless: true,
+  proxy: { server: process.env.HTTPS_PROXY },   // 埠號每次 session 不同，必須讀環境變數
+  args: [
+    '--no-sandbox',
+    // 出口 proxy 的攔截 CA（三組 SPKI，缺一可能握手失敗）
+    '--ignore-certificate-errors-spki-list=gBdItbWylHhTkoJDRwIiMuweY/qX4F0bJmLNs5wosUQ=,KnP1OnzHv/y42eRQmbGwoYTHcSJF448m6CU5mdngwKk=,PS48cX347wDVcRynzq+DFqswl2PLNE1sG6uQvxMCOS0=',
+    '--ssl-version-max=tls1.2', // proxy 不支援 Chromium 的 TLS1.3 ClientHello，必加
+  ],
+});
+```
+
+- 腳本副檔名用 `.cjs`（CLAUDE.md 的全域 Playwright 要 `require()` 絕對路徑，
+  `.mjs` 會炸 `require is not defined`）。
+- 登入頁欄位 id：`#username` / `#password`（不是 #email）。
+- LINE 設定頁的 secret 欄位是遮罩唯讀，要先點「重新輸入」才可 fill。
+- Node 直接 fetch 外網要 `NODE_USE_ENV_PROXY=1`。
+
+## 6. 真實 LINE 驗證要點
+
+- Midao 頻道（憑證見 Drive 文件）**可以自由測**（擁有者已確認未營運）。
+  測完把狀態還原：webhook 指回 Preview、測試用 rich menu/keyword 清掉。
+- Flex/訊息 JSON 用 `POST /v2/bot/message/validate/reply|push` 驗格式——
+  **不耗推播額度**。真發訊息會耗每月 200 則額度，非必要別發。
+- 「自動回應」判定用 `GET /v2/bot/info` 的 `chatMode`（bot=關、chat=開）；
+  chatMode 由「回應功能→聊天」總開關決定，**無寫入 API**，不要嘗試自動改。
+
+## 7. 出貨與追蹤
+
+- 分支：`claude/deploy-vercel-project-nnno59`；commit 訊息繁中、描述使用者可見
+  變化；**Vercel 從 main 自動部署正式站**，只有擁有者說要上正式才碰 main。
+- 每個 issue 完成＝一次（或少數幾次）commit + push + issue 留言貼證據 +
+  更新 14 分冊勾選與 08 分冊對應項。
+- 卡住超過 3 次同一個錯（12 §2.2）：停，把嘗試過的方案與錯誤原文留言到 issue。
+
+## 搶救 agent 的施工中資料時：**先確認它不是變異測試的中間態**（2026-08-26 學到）
+
+主導者 session 收尾時要把還在施工的 agent 成果存檔推上 GitHub，免得只留在本機。
+這件事本身是對的，但有一個一步之差的陷阱：
+
+**變異測試會故意把程式碼改壞再還原。** 如果剛好在那個窗口提交，存進去的就是
+**被刻意弄壞的版本**——而且它會長得像正常的 diff，commit 訊息還會寫著「WIP 存檔」。
+下一個人 checkout 出來會拿到一份不會動的程式碼，卻找不到原因。
+
+### 檢查方法
+
+提交前先看 `git status`，找這幾種痕跡：
+
+```
+?? src/server/coupon-redeem.ts.mutbak     ← 變異備份，代表**本體正處於變異狀態**
+?? *.bak / *.orig / *.mut*
+ M <某支剛好只有一行被改掉的檔案>
+```
+
+看到備份檔就**不要提交那一輪**，等變異測試跑完（備份檔會消失、本體會被還原）。
+
+若已經提交了，**用備份檔驗證**：
+
+```bash
+git show <commit>:<path> > /tmp/pushed.ts
+diff -q /tmp/pushed.ts <path>.mutbak && echo "乾淨" || echo "存到變異態了"
+```
+
+### 為什麼這一則值得單獨記
+
+本輪真的走到這一步了——存檔時 agent 正在跑變異測試，`coupon-redeem.ts.mutbak`
+就在工作區裡。**提交的那一刻剛好在變異之前，所以逃過一劫**，事後用上面那個
+`diff` 確認才知道。**不是因為謹慎，是因為運氣。**
+
+這與本冊其他幾條同一個家族：**存檔／清理／驗證這些「輔助動作」本身也會出錯，
+而它們出錯時通常沒有任何紅燈。**
+
+## worktree 的 `node_modules` 是 symlink：**絕對不要 commit 它**（2026-08-25 學到，代價很實際）
+
+`isolation: worktree` 的 worktree 沒有自己的 `node_modules`，執行者常會自建一個
+symlink 指回主 worktree 的那一份。這件事本身沒問題——**把它 commit 進去才是問題**。
+
+實際發生的事：一位執行者的 commit 裡帶了 `create mode 120000 node_modules`。
+主導者把那個 commit 合併進主 worktree 之後：
+
+```
+$ readlink node_modules
+/home/user/vibeaico-admin-rebuild/node_modules      ← 指向自己
+$ ls node_modules/
+ls: cannot access 'node_modules/': Too many levels of symbolic links
+```
+
+**主 worktree 那份真的 `node_modules` 被那個 symlink 蓋掉了，193 個套件當場消失。**
+`.gitignore` 第 2 行就寫著 `node_modules/`，但那擋的是「未追蹤的檔案」，
+**擋不住一個已經被 `git add` 進去的項目**——一旦入了 index，gitignore 對它就完全無效。
+
+更陰險的是它**不會馬上炸**：`npm run typecheck` 在符號連結壞掉後仍然印出
+「> tsc --noEmit」然後安靜結束，看起來像通過。要跑到 `ls node_modules` 才看得出來。
+
+### 規則
+
+**執行者：**
+- 收尾前一定跑 `git status --short` 並**逐行看過**，確認沒有 `node_modules`、
+  `.next`、`.env*`、`scripts/verify/out/` 這類東西被加進去。
+- 自建的 symlink 與 `.env` 副本，**收工前自己移除**。
+- 用 `git show --stat <你的 commit>` 檢查檔案清單，特別注意 `create mode 120000`
+  （symlink）與 `create mode 100755` 這類非預期的模式。
+
+**主導者：**
+- 合併任何 worktree 分支**之前**先看 `git show --stat`，不要只看程式碼 diff。
+- 合併後若動到相依，**先 `ls node_modules | wc -l` 確認還在**，再跑閘門——
+  因為壞掉的 `node_modules` 會讓閘門「安靜地通過」。
+- 真的中了：`git rm --cached node_modules && rm -f node_modules && npm ci`。
+
+## 打 Preview 站補驗收時的三個坑（2026-08-26 學到，一輪就踩到全部三個）
+
+多個 issue 的驗收項寫的是「對 Preview 站實測」，但施工當下規則是「不要 push」，
+於是那些格子被正確地留白。分支 push、Preview 重新部署之後，那一批格子可以補了——
+補的過程踩到三個坑，都值得記。
+
+### 坑 1：「連上了正式資料庫」不等於「測的是部署後的站」
+
+中間隔著 production build、Vercel 的 runtime、middleware、真實登入流程。
+前一輪的腳本跑的是**本機 `next dev` ＋ 正式 Supabase 專案**——資料庫是對的，
+跑的程式碼卻是本機那份。那不滿足「對 Preview 站實測」的字面要求，
+前一輪的執行者留白並寫明原因，是對的判斷。
+
+**所以第一件事永遠是證明你打的是最新的部署**，不要猜網址：
+
+```js
+// GET https://api.vercel.com/v6/deployments?limit=40  （Bearer VERCEL_TOKEN）
+// 取 state=READY 且 meta.githubCommitRef = 整合分支的最新一筆
+// 再 GET /v13/deployments/<url> 讀 alias[]（那才是 branch alias）
+```
+
+然後**比對 `meta.githubCommitSha` 與 `git rev-parse HEAD`**。不相等就代表部署還沒
+跟上或失敗——**停下來回報，不要在舊版上測**，量到的是舊行為。
+
+⚠️ 憑證檔裡寫死的 `PREVIEW_BASE_URL` 曾經指向 main 的正式站而不是分支 preview。
+**以查到的 branch alias 為準**（本輪查證：`_preview-lib.cjs` 的 `DEFAULT_PREVIEW_URL`
+與 `campaign.env` 的 `PREVIEW_BASE_URL` 目前都是對的，但這是查過才知道，不是預設可信）。
+
+### 坑 2：斷言全綠，**清理默默失敗**——而 Preview 接的是正式專案
+
+`rich-menu-bg-upload.07.cjs` 的收尾是 `delete from storage.objects …`，被 Supabase 的
+`storage.protect_delete()` 觸發器擋下：
+
+```
+ERROR: 42501: Direct deletion from storage tables is not allowed. Use the Storage API instead.
+```
+
+五條斷言全部 PASS、腳本 exit 0，**測試用的圖留在店家真實的 bucket 裡**。
+在 TEST 專案上永遠看不出來（`reset-db` 每次會清），只有打正式專案才會現形。
+
+規則：
+- **刪 storage 物件一律走 Storage API**（`DELETE {SUPABASE_URL}/storage/v1/object/<bucket>/<path>`，
+  帶 service role key），不要下 SQL。
+- **清理要有驗證步驟並印出殘留筆數**，不要 `.catch(() => {})` 吞掉就收工。
+  殘留不為 0 就大聲印出來（本輪把兩支腳本都補成這樣）。
+- 打正式專案的腳本，測試資料一律帶可辨認前綴（`VERIFY17…`、`VERIFY34…`、`#7乙實測`），
+  收尾逐項查一次殘留數並貼進報告。
+
+### 坑 3：DB 全是 0 的時候，「畫面數字＝DB 筆數」那條斷言**一次都沒執行過**
+
+`appshell-shell-values.34.cjs` 比對徽章的寫法是：
+
+```js
+const ok = expected === 0 ? shown === null : shown === String(expected);
+```
+
+Preview 那個測試租戶三個徽章的 DB 筆數**全是 0**，於是永遠只走前半段。
+一個「永遠回 0」的壞實作照樣全綠——**這條斷言看起來很嚴謹，實際上沒被驗到**。
+
+這與本手冊反覆在講的「假的已知」是同一種東西，只是長在**測試**這一側：
+斷言存在 ≠ 斷言執行過。
+
+規則：**比對型斷言要確認非零那一支真的走到**。做法是加一個 opt-in 的種子
+（本輪加了 `VERIFY_SEED_PENDING_ORDER=1`：先塞一筆 PENDING 商品訂單、收尾刪掉並驗證殘留為 0），
+**既有斷言一字不動**，只是把它推進到會執行的分支。
+
+### 附帶：修腳本可以，改斷言不行
+
+補驗收時若某支腳本寫死了 localhost 而無法指向 Preview，**改成可用環境變數覆寫是對的**
+（那是腳本的缺陷）；清理路徑壞了、比對分支跑不到，補起來也是對的。
+但**斷言一個字都不要動**——否則「對 Preview 跑過」就變成另一種形式的自證。
+
+### 附帶：改 issue 內文的自驗法
+
+GitHub MCP 讀回的 body 是 **HTML 實體轉義過的**（`>` → `&gt;`、`'` → `&#39;`）；
+`issue_write` 會對稱地還原回去，所以**照讀回來的樣子寫回去**是正確的做法。
+但要證明自己只做了最小範圍替換，送出前後各驗三個數字：
+
+1. 長度差是否**等於**「插入內容長度 − 移除內容長度」；
+2. `&gt;` 的出現次數 delta 是否為 0；
+3. `&amp;` 的出現次數 delta 是否為 0（若 write 沒有還原，`&gt;` 會變成 `&amp;gt;`，
+   這一項會立刻跳起來）。
+
+任一項對不上就**停手回報**，不要硬改。
+讓插入的內容**完全不含 `& < > ' "`**，可以把第 2、3 項變成穩定的 0，自驗更乾淨。
+（本輪兩次：#17 delta +1128＝1397−269、#34 delta +2006＝2100−94，兩項 entity delta 皆 0。）
+
+---
+
+## 遠端 commit/blob 也要驗：本機乾淨不代表 GitHub 上的檔案乾淨
+
+2026-08-26 主導者把 #19 的本機成果重組成 GitHub commit 時，本機來源檔
+`src/app/tenant/rich-menu-design/page.tsx` 是 93466 bytes、NUL 數 0，相關
+typecheck 與 unit tests 也通過；但實際寫進 GitHub 的 blob 只有 90059 bytes、
+含 3 個 NUL，而且開頭已不是 UTF-8 程式碼。CI Run #77 因此以
+`TS1490: File appears to be binary` 失敗。
+
+主導者先前的「無 NUL」結論只檢查本機來源，沒有檢查遠端 commit，所以是錯的；
+已在 PR #36 公開更正。修正 commit `946fda5` 使用 base64 建立 blob，並在更新 ref
+後重新 fetch，驗證遠端檔案為 93466 bytes、NUL 數 0、blob SHA
+`c9b717e9552535789ebc0714df955b64a493cabf`。
+
+新增收尾規則：
+
+1. 以 GitHub API/MCP 重組 commit、或任何不是一般 `git push` 的方式送檔後，
+   **所有二進位風險檢查都要對遠端 ref 重跑**；本機來源的結果不能代替遠端證據。
+2. 至少重新 fetch 遠端 ref，再逐一檢查本批 changed files 的 mode、大小、symlink、
+   NUL；大型文字檔另比對預期 blob SHA。
+3. CI 的 `TS1490` 不是「runner 編碼差異」；先查遠端 blob。新 CI 全綠前，
+   被污染 commit 及其 pending/rerun 都不得算驗收證據。
+
+## 2026-08-27 恢復與 TEST runner 的新教訓
+
+### 坑 4：GitHub connector 已連結，不等於 shell 的 Git 有 credential helper
+
+本輪 `git` over HTTPS 在 shell 仍是 unauthenticated；GitHub MCP 卻可讀寫。不要把
+「connector 顯示已連結」當成 `git push` 一定可用，也不要把 token 寫進 remote URL。
+先用唯讀方式確認兩條通道，再選擇 MCP 建 commit/ref/PR 或已驗證的 push。完成後仍要
+重新讀遠端 ref/blob 與 CI，不能只看本機 branch。
+
+### 坑 5：環境文件與 connector 可能屬於不同 Supabase 帳號
+
+本輪一開始 connector 看不到 `midao.env` 指向的 TEST 專案；重連後才恢復同一個
+project ref。遇到「專案不存在／無法查詢」時，先比較 connector project ref 與
+測試環境文件的 ref（只比對識別碼，不輸出 key），再決定是權限問題還是程式問題。
+TEST reset、migration、function deploy 的授權不代表 production 授權；每個命令仍要
+在參數層固定 TEST project id。
+
+### 坑 6：seed 的欄位錯誤不能被 optional-table skip 吞掉
+
+舊 CI job checkout 的 seed 使用不存在的 `trip_plans.price_per_person`，錯誤被當成
+「可跳過」後才在 `trip_departures` 外鍵處失敗；後面的「No test files found」只是
+global setup 未完成的次級訊息。optional table 只能依明確的 missing-table code 跳過；
+schema cache、欄位、外鍵、權限與任何未知錯誤都必須 fail closed。報告 CI 時同時記錄
+checkout SHA，舊 SHA 的紅燈不可直接歸因於當前 HEAD。
+
+### 坑 7：Node 24 runner 的介面權限錯誤不是應用程式測試結果
+
+本地 Node 24 在 Next 啟動前遇到 `uv_interface_addresses` permission error；用 loopback
+shim 只作為本地 harness fallback，不能提交成產品程式，也不能把「server 沒啟動」
+算成 integration pass。固定 Node 22 的 CI 才是正式整合證據；本地若使用 shim，報告
+時要保留原始限制與實際 exit code。
+
+### 坑 8：遠端 TEST 延遲要隔離 hook 與 test budget，不能改全域 timeout 假綠
+
+`tours.10` 的登入、fixture 建立與資料庫 postcondition 查詢在 TEST 的冷啟動可能各耗
+十幾秒。將 fixture/清理放在 hook 可以讓單一 endpoint test 保持 30 秒門檻，但每個
+成功建立的 copy 必須立即登記，並在 `afterAll` 以唯一 slug prefix 做最後 sweep；所有
+查詢都要檢查 error，不能以空陣列的 `every()` 產生 vacuous pass。命令列暫時放寬
+hookTimeout 只用來診斷 runner，不得改 repo 的全域 testTimeout 或把未取得 exit code
+寫成通過。
+
+### 坑 9：跨 writer 的複製不能靠 route 端多次 Data API 呼叫拼成「看似原子」
+
+duplicate route 先後寫 trips、plans、addons 時，任何中途錯誤都可能留下半套資料，
+而 UI writer 與 RPC writer 也會競態分配相同 slug。最後方案改為 `SECURITY INVOKER`
+的單一 `duplicate_trip_atomic` function：在 DB 內做 auth/tenant 檢查、source row
+lock、slug allocation 與所有 child inserts；route 只做一次 RPC 與明確錯誤映射。曾
+否決 service-role RPC，因為本專案 service role 僅限 webhook/cron/auth registration；
+一般 API 必須以 session client 加 RLS/`auth.uid()` 守門。
+
+### 模型分工紀錄
+
+本輪恢復後的輸出必須標示模型：Luna（主導當前 session）負責機械修補、測試整理與
+證據收集；Terra（`gpt-5.6-terra`）負責工程修正與標準 review；Sol
+（`gpt-5.6-sol`）負責規格、安全、整合與最終裁決。低階 agent 的列舉或 checklist
+必須先通過欄位數量等機械守門，再交給 Sol/Luna 判定，不能把 agent 自報的「綠」當成
+主導者證據。

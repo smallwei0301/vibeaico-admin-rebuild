@@ -1,7 +1,11 @@
-import { handle, ok, ApiHttpError, ERR } from '@/server/http';
+import { z } from 'zod';
+import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { createAdminSupabase } from '@/server/supabase';
 import { lineSettingsSchema } from '@/config/tenant-settings';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+import { RICH_MENU_THEME_KEYS } from '@/config/rich-menu-themes';
+import { loadRichMenuBackground } from '@/server/rich-menu';
+import { richMenuCellAction } from '@/server/flex-menu';
 import {
   getLineCredentials, lineCreateRichMenu, lineUploadRichMenuImage,
   lineSetDefaultRichMenu, lineDeleteRichMenu,
@@ -31,10 +35,15 @@ const CELLS = [
   { x: 0, y: 0, w: 833, h: 843 }, { x: 833, y: 0, w: 833, h: 843 }, { x: 1666, y: 0, w: 834, h: 843 },
   { x: 0, y: 843, w: 833, h: 843 }, { x: 833, y: 843, w: 833, h: 843 }, { x: 1666, y: 843, w: 834, h: 843 },
 ];
-/** 六格的 message action 文字（對應 webhook 內建指令與關鍵字，06 §3/§6） */
-const CELL_TEXTS = ['預約', '我的預約', '服務項目', '會員卡', '優惠', '聯絡我們'];
-
-function buildRichMenuBody(theme: string) {
+/**
+ * 六格的 message action 文字改由 MODE_PRESETS.richMenuCells 決定。
+ *
+ * 原本這裡寫死 ['預約','我的預約','服務項目','會員卡','優惠','聯絡我們']，
+ * 三種業態共用——但嚮導賣的是行程與團次，他的顧客按「服務項目」送出的文字
+ * 沒有任何 handler 認得（那些關鍵字屬 LOCAL_SHOP），等於按了沒反應。
+ * CLAUDE.md 明訂模式差異一律進 MODE_PRESETS，不在各處散落 if。
+ */
+function buildRichMenuBody(theme: string, businessType: BusinessType) {
   return {
     size: { width: 2500, height: 1686 },
     selected: true,
@@ -42,51 +51,46 @@ function buildRichMenuBody(theme: string) {
     chatBarText: '選單',
     areas: CELLS.map((c, i) => ({
       bounds: { x: c.x, y: c.y, width: c.w, height: c.h },
-      action: { type: 'message', label: CELL_TEXTS[i], text: CELL_TEXTS[i] },
+      // action 一律由 src/server/flex-menu.ts 的 richMenuCellAction() 產生：
+      // 設成 FLEX_POPUP 的格子會送出 FLEX_POPUP_TRIGGER_TEXT，於是它與顧客
+      // 自己打「選單」走同一條路徑、由**同一支** buildFlexMenuOutcome() 回覆
+      // （issue #6 的單一事實來源要求）。在這裡自己組 action 物件，就是把
+      // 那個綁定複寫成第二份。
+      action: richMenuCellAction(MODE_PRESETS[businessType].richMenuCells[i]),
     })),
   };
 }
 
-/** 取得底圖 bytes + contentType；拿不到 → 丟 4xx 明確 message */
-async function loadBackgroundImage(
-  theme: string, bgImageUrl: string,
-): Promise<{ bytes: ArrayBuffer; contentType: string }> {
-  // 店家自傳底圖（upload-bg-image 存進 bucket 的 public URL）優先
-  if (bgImageUrl) {
-    const res = await fetch(bgImageUrl).catch(() => null);
-    if (!res?.ok)
-      throw new ApiHttpError(404, '自訂底圖已無法讀取，請重新上傳底圖後再試', ERR.NOT_FOUND);
-    const type = res.headers.get('content-type') ?? '';
-    const contentType = type.includes('png') ? 'image/png' : 'image/jpeg';
-    return { bytes: await res.arrayBuffer(), contentType };
-  }
+/**
+ * 底圖取得（優先序：店家自傳 → bucket 主題圖 → 現生成純色 PNG）已搬到
+ * `src/server/rich-menu.ts` 的 `loadRichMenuBackground()`，因為 issue #19 的
+ * 四支進階發布端點需要**完全相同**的優先序。留兩份的話會出現「基本發布看得到
+ * 自訂底圖、進階發布看不到」這種只有店家會發現的分岔。
+ */
 
-  // 主題底圖：richmenu-assets bucket 的 themes/{THEME}.png|jpg（0008 已建 bucket）
-  const admin = createAdminSupabase();
-  for (const [ext, contentType] of [['png', 'image/png'], ['jpg', 'image/jpeg']] as const) {
-    const { data } = await admin.storage.from('richmenu-assets').download(`themes/${theme}.${ext}`);
-    if (data) return { bytes: await data.arrayBuffer(), contentType };
-  }
-  throw new ApiHttpError(
-    404,
-    `主題底圖尚未上架（richmenu-assets/themes/${theme}.png），請先於後台上傳自訂底圖，或聯絡平台補上主題圖檔`,
-    ERR.NOT_FOUND,
-  );
-}
+const bodySchema = z.object({ theme: z.enum(RICH_MENU_THEME_KEYS).optional() });
 
-export const POST = handle(async () => {
+export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  const body = bodySchema.parse(await req.json().catch(() => ({})));
 
   // 憑證 + 現行 line 設定（未設定 LINE → getLineCredentials 丟 400 LINE_001）
   const { token, lineConfig } = await getLineCredentials(t.tenantId);
   const line = lineSettingsSchema.partial().parse(lineConfig);
-  const theme = line.richMenuTheme ?? 'LINE_GREEN';
+  // 這次請求指定的主題優先（前端「一鍵套用範本」不必先呼叫 PUT 存設定再呼叫這支）；
+  // 否則用店家上次存的值，最後才落回預設綠色。
+  const theme = body.theme ?? line.richMenuTheme ?? 'LINE_GREEN';
+
+  // 六格文案依業態（嚮導 → 行程/團次；診所 → 掛號/看診進度），見 MODE_PRESETS
+  const { data: tenantRow } = await t.supabase.from('tenants')
+    .select('business_type').eq('id', t.tenantId).maybeSingle();
+  const businessType = (tenantRow?.business_type ?? 'LOCAL_SHOP') as BusinessType;
 
   // ③ 的圖先取——圖拿不到就不要在 LINE 端留下半成品選單
-  const image = await loadBackgroundImage(theme, line.richMenuBgImageUrl ?? '');
+  const image = await loadRichMenuBackground(theme, line.richMenuBgImageUrl ?? '');
 
   // ② 建立 → ③ 傳圖 → ④ 設為預設
-  const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme));
+  const richMenuId = await lineCreateRichMenu(token, buildRichMenuBody(theme, businessType));
   try {
     await lineUploadRichMenuImage(token, richMenuId, image.bytes, image.contentType);
     await lineSetDefaultRichMenu(token, richMenuId);
@@ -103,8 +107,8 @@ export const POST = handle(async () => {
       .catch((e) => console.error('[rich-menu] 刪除舊選單失敗', t.tenantId, previousId, e));
   }
 
-  // ⑤ richMenuId 記到 line jsonb
-  const nextLine: Record<string, unknown> = { ...lineConfig, richMenuId };
+  // ⑤ richMenuId + 實際套用的主題記到 line jsonb（body.theme 可能覆寫了舊設定）
+  const nextLine: Record<string, unknown> = { ...lineConfig, richMenuId, richMenuTheme: theme };
   delete nextLine.channelSecret;
   delete nextLine.channelAccessToken;
   const { error } = await t.supabase

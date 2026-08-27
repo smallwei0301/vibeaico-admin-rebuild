@@ -243,6 +243,20 @@ export const servicesPage = {
     description: '描述',
     descriptionPlaceholder: '選填',
     dragHint: '拖曳左側圖示可調整分類順序',
+
+    /* -------------------------------------------------- 編輯分類（issue #28 ⑭）
+     * 先前這一列的「編輯」是鉛筆圖示 + common.edit 標籤，按下去卻只切換啟用狀態
+     * ——圖示與行為不符。依擁有者方針「對齊原站功能，缺少功能用補齊取代刪除」，
+     * 補成真正的編輯 modal（名稱／說明／啟用三欄），快速切換另外給自己的圖示與標籤。
+     * 排序刻意不放進 modal：排序走 reorder 端點，兩條寫入路徑會打架。 */
+    editTitle: '編輯分類',
+    editActive: '啟用此分類',
+    editActiveHelp: '停用後顧客端不會看到這個分類，底下的服務不會被刪除',
+    /** 快速切換鈕的 tooltip：依目前狀態顯示按下去會發生什麼事 */
+    enableAction: '啟用分類',
+    disableAction: '停用分類',
+    /** 什麼都沒改就按儲存：沒有送出任何請求，所以不能報「已更新」 */
+    noChange: '沒有變更任何欄位，未送出更新',
     columns: {
       name: '分類名稱',
       description: '描述',

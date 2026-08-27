@@ -17,9 +17,14 @@ import {
   CharCounter, FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { deleteCustomer, listCustomers } from '@/services/customers';
+import {
+  bindCustomerLine, createCustomer, deleteCustomer, listCustomerTags, listCustomers,
+  unbindCustomerLine, updateCustomer,
+} from '@/services/customers';
+/* 待綁定 LINE 好友的唯一實作在 chat 服務（聊天室頁也用同一支），不另外複製一份 */
+import { listUnboundLineUsers, type UnboundLineUser } from '@/services/chat';
 import { listMembershipLevels } from '@/services/catalog';
-import { MOCK_CUSTOMERS } from '@/mock';
+import { exportCustomersExcel } from '@/services/reports';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { customersPage as t } from '@/i18n/zh-TW/pages/customers';
@@ -30,32 +35,18 @@ import type { Customer, Gender, MembershipLevel } from '@/lib/types';
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 /api/line-users/unbound：綁定異常的 LINE 用戶 */
-type UnboundLineUser = {
-  id: string;
-  displayName: string | null;
-  /** UNBOUND：從未綁定；ORPHAN：顧客已刪但 LINE 殘留；AUTO_CREATED：系統自動建了空白檔案 */
-  kind: 'UNBOUND' | 'ORPHAN' | 'AUTO_CREATED';
-  /** kind = AUTO_CREATED 時，那份空白檔案的顯示名稱 */
-  autoProfileName: string | null;
-};
-
-const MOCK_UNBOUND_LINE_USERS: UnboundLineUser[] = [
-  { id: 'lu_1', displayName: 'Kevin', kind: 'UNBOUND', autoProfileName: null },
-  { id: 'lu_2', displayName: null, kind: 'UNBOUND', autoProfileName: null },
-  { id: 'lu_3', displayName: 'sunny_1988', kind: 'ORPHAN', autoProfileName: null },
-  { id: 'lu_4', displayName: 'Joyce', kind: 'AUTO_CREATED', autoProfileName: 'LINE Joyce' },
-];
-
-/** 原站以「自動建檔」旗標區分：LINE 加好友後系統先開的空白顧客檔 */
-const AUTO_CREATED_CUSTOMER_IDS = new Set<string>(['c_2']);
-
 /**
- * 原站 /api/customers/tags；骨架階段由假資料推導，避免與 mock 脫節。
- * 必須在 render 時求值 —— 假資料會隨業態模式切換（見 src/mock/index.ts）。
+ * 待綁定 LINE 用戶清單改由 `listUnboundLineUsers()` 供應（GET /api/line-users/unbound）。
+ *
+ * ⚠️ 同時移除的還有兩個**沒有任何資料來源**的標記：
+ *   - `kind: 'ORPHAN' | 'AUTO_CREATED'` —— 端點只回「未綁定」一種狀態，
+ *     殘留綁定／自動建檔在 line_users 沒有對應欄位可判斷。
+ *   - `AUTO_CREATED_CUSTOMER_IDS = new Set(['c_2'])` —— 一個寫死的顧客 id
+ *     被拿來在列表上掛「自動建立檔案」徽章。那不是查出來的，是編出來的
+ *     （CLAUDE.md「不要製造假的已知」），而且 real 模式的 uuid 永遠不會等於 'c_2'，
+ *     等於這個徽章在真實資料下從來不會出現、在示範資料下永遠掛在同一列。
+ * 兩者都不改成別的猜法，直接刪除：查不到的狀態就不顯示。
  */
-const customerTags = (): string[] =>
-  Array.from(new Set(MOCK_CUSTOMERS.flatMap((c) => c.tags)));
 
 const GENDER_OPTIONS = Object.entries(common.gender) as [Gender, string][];
 
@@ -85,7 +76,9 @@ export default function CustomersPage() {
   const [page, setPage] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [levels, setLevels] = React.useState<MembershipLevel[]>([]);
+  const [customerTags, setCustomerTags] = React.useState<string[]>([]);
   const [helpTipOpen, setHelpTipOpen] = React.useState(true);
+  const [exporting, setExporting] = React.useState(false);
 
   /* 搜尋列 */
   const [keywordDraft, setKeywordDraft] = React.useState('');
@@ -102,6 +95,7 @@ export default function CustomersPage() {
   const [unbindTarget, setUnbindTarget] = React.useState<Customer | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<Customer | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [unbinding, setUnbinding] = React.useState(false);
 
   /** 原站以 /tenant/customers?atRisk=true 從儀表板的流失預警進入本頁 */
   React.useEffect(() => {
@@ -112,7 +106,12 @@ export default function CustomersPage() {
   React.useEffect(() => {
     void (async () => {
       try {
-        setLevels(await listMembershipLevels());
+        const [membershipLevels, tags] = await Promise.all([
+          listMembershipLevels(),
+          listCustomerTags(),
+        ]);
+        setLevels(membershipLevels);
+        setCustomerTags(tags);
       } catch {
         toast.show(t.messages.loadFailedRetry, 'danger');
       }
@@ -160,10 +159,29 @@ export default function CustomersPage() {
   const applyAdvanced = () => { setApplied(draft); setPage(0); };
   const clearAdvanced = () => { setDraft(EMPTY_ADVANCED); setApplied(EMPTY_ADVANCED); setPage(0); };
 
-  const exportExcel = () => {
-    /* 事件處理器內才取當下日期；render 期不碰 Date */
-    const today = formatDate(new Date().toISOString()).replace(/\//g, '');
-    toast.show(`${t.messages.exported} ${t.exportFile.filename(today)}`);
+  /**
+   * 匯出顧客名單（GET /api/export/customers/excel）—— issue #28 ④。
+   *
+   * 修改前：`toast.show('顧客匯出成功 顧客清單_20260825.xlsx')` —— 沒有任何檔案
+   * 被下載，而且那個檔名是前端用當天日期**自己組**的，與伺服器實際送出的
+   * `customers-2026-08-25.csv` 既不同名也不同副檔名（CLAUDE.md「絕不用貌似
+   * 合理的佔位值」）。檔名現在一律取自 Content-Disposition，見
+   * src/lib/download.ts；示範資料模式不會產生檔案，顯示「未匯出」而非成功。
+   */
+  const exportExcel = async () => {
+    setExporting(true);
+    try {
+      const { downloaded, fileName } = await exportCustomersExcel();
+      if (!downloaded) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(fileName ? t.messages.exportedAs(fileName) : t.messages.exported);
+    } catch (e) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   /* ------------------------------------------------------------------ 欄位 */
@@ -220,9 +238,6 @@ export default function CustomersPage() {
             <Badge tone="success">{t.status.active}</Badge>
           )}
           {!c.lineUserId ? <Badge tone="neutral">{t.status.unbound}</Badge> : null}
-          {AUTO_CREATED_CUSTOMER_IDS.has(c.id) ? (
-            <Badge tone="info">{t.status.autoCreated}</Badge>
-          ) : null}
         </div>
       ),
     },
@@ -272,8 +287,8 @@ export default function CustomersPage() {
         subtitle={t.subtitle}
         actions={
           <>
-            <Button variant="ghost" onClick={exportExcel}>
-              <Download size={15} />{t.actions.export}
+            <Button variant="ghost" disabled={exporting} onClick={() => { void exportExcel(); }}>
+              <Download size={15} />{exporting ? t.actions.exporting : t.actions.export}
             </Button>
             <Button onClick={() => setFormTarget(null)}>
               <Plus size={15} />{t.actions.create}
@@ -375,7 +390,7 @@ export default function CustomersPage() {
                 onChange={(e) => setDraft((d) => ({ ...d, tag: e.target.value }))}
               >
                 <option value="">{t.search.tagAll}</option>
-                {customerTags().map((tag) => (
+                {customerTags.map((tag) => (
                   <option key={tag} value={tag}>{tag}</option>
                 ))}
               </Select>
@@ -472,14 +487,28 @@ export default function CustomersPage() {
       <ConfirmModal
         open={!!unbindTarget}
         danger
+        loading={unbinding}
         title={t.confirm.unbindTitle}
         confirmText={t.actions.unbindLine}
         message={unbindTarget ? t.confirm.unbindLine(unbindTarget.name) : common.confirm.message}
         onClose={() => setUnbindTarget(null)}
-        onConfirm={() => {
-          setUnbindTarget(null);
-          toast.show(t.messages.lineUnbound);
-          void load();
+        onConfirm={async () => {
+          if (!unbindTarget) return;
+          setUnbinding(true);
+          try {
+            /* 成功訊息只能在 await 真的過了之後才出現（00 鐵則 12） */
+            await unbindCustomerLine(unbindTarget.id);
+            toast.show(t.messages.lineUnbound);
+            setUnbindTarget(null);
+            void load();
+          } catch (e) {
+            toast.show(
+              `${t.messages.unbindFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+              'danger',
+            );
+          } finally {
+            setUnbinding(false);
+          }
         }}
       />
 
@@ -554,13 +583,33 @@ function CustomerFormModal({
     return '';
   };
 
+  /**
+   * 新增 → POST /api/customers；編輯 → PUT /api/customers/:id。
+   *
+   * ⚠️ 這裡原本是 `await new Promise(r => setTimeout(r, 420))` 然後直接 onSaved()，
+   * 於是上層無條件顯示「顧客建立成功／顧客資料已更新」，但沒有任何請求送出去——
+   * 重新整理後那筆資料就蒸發（14 分冊 §1 A-1）。成功訊息必須等 await 真的回來
+   * 才由 onSaved() 觸發（00 鐵則 12）。
+   *
+   * 送出的欄位對齊端點 zod：gender / birthday 送空字串 = 明確清空（端點存 null），
+   * 與表單「不選性別 / 不填生日」的語意一致。
+   */
   const submit = async () => {
     const err = validate();
     setError(err);
     if (err) { toast.show(t.messages.checkFields, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      const payload = {
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        gender,
+        birthday,
+        note,
+      };
+      if (isEdit && customer) await updateCustomer(customer.id, payload);
+      else await createCustomer(payload);
       onSaved(isEdit);
     } catch (e) {
       toast.show(
@@ -670,37 +719,54 @@ function BindLineModal({
 }) {
   const toast = useToast();
   const [users, setUsers] = React.useState<UnboundLineUser[]>([]);
+  /**
+   * `loaded` 與 `loading` 要分開：載入中不可以顯示「目前沒有待綁定的 LINE 用戶」，
+   * 那是把「還不知道」畫成「已知答案是零」（#34／#17 的同一個坑）。
+   */
   const [loading, setLoading] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
   const [bindingId, setBindingId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!customer) return;
-    setLoading(true);
     let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setUsers(MOCK_UNBOUND_LINE_USERS);
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [customer]);
+    setLoading(true);
+    setLoaded(false);
+    void (async () => {
+      try {
+        const list = await listUnboundLineUsers();
+        if (cancelled) return;
+        setUsers(list);
+        setLoaded(true);
+      } catch (e) {
+        if (cancelled) return;
+        setUsers([]);
+        toast.show(
+          `${t.messages.loadUnboundFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+          'danger',
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [customer, toast]);
 
+  /** 成功訊息（onBound → toast「LINE 用戶綁定成功」）只在 await 真的回來之後才觸發。 */
   const bind = async (u: UnboundLineUser) => {
-    setBindingId(u.id);
+    if (!customer) return;
+    setBindingId(u.lineUserId);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      await bindCustomerLine(customer.id, u.lineUserId);
       onBound();
-    } catch {
-      toast.show(t.messages.bindFailedRetry, 'danger');
+    } catch (e) {
+      toast.show(
+        `${t.messages.bindFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
     } finally {
       setBindingId(null);
     }
-  };
-
-  const kindBadge = (kind: UnboundLineUser['kind']) => {
-    if (kind === 'ORPHAN') return <Badge tone="warning">{t.status.orphan}</Badge>;
-    if (kind === 'AUTO_CREATED') return <Badge tone="info">{t.status.autoCreated}</Badge>;
-    return <Badge tone="neutral">{t.status.unbound}</Badge>;
   };
 
   return (
@@ -713,7 +779,7 @@ function BindLineModal({
     >
       <p className="mb-4 text-base text-neutral-700">{t.bindLine.intro}</p>
 
-      {loading ? (
+      {loading || !loaded ? (
         <div className="py-8 text-center text-muted">{t.bindLine.loading}</div>
       ) : users.length === 0 ? (
         <EmptyState title={t.bindLine.emptyTitle} description={t.bindLine.emptyDescription} />
@@ -721,32 +787,24 @@ function BindLineModal({
         <div className="flex flex-col gap-2">
           {users.map((u) => (
             <button
-              key={u.id}
+              key={u.lineUserId}
               type="button"
               disabled={bindingId !== null}
               onClick={() => void bind(u)}
               className="flex items-center gap-3 rounded-md border border-neutral-250 px-3 py-2.5 text-left transition-colors hover:bg-neutral-100 disabled:opacity-60"
             >
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-pill bg-neutral-200 text-xs font-semibold text-neutral-600">
-                {(u.displayName ?? '?').slice(0, 1).toUpperCase()}
+                {(u.displayName || '?').slice(0, 1).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-base font-semibold text-dark">
-                  {u.displayName ?? t.labels.noNickname}
+                  {u.displayName || t.labels.noNickname}
                 </span>
-                {u.kind === 'AUTO_CREATED' && u.autoProfileName ? (
-                  <>
-                    <span className="block truncate text-2xs text-secondary">
-                      {u.autoProfileName}{t.labels.and}{customer?.name}
-                    </span>
-                    <span className="form-text block">{t.bindLine.mergeHint}</span>
-                  </>
-                ) : null}
               </span>
-              {bindingId === u.id ? (
+              {bindingId === u.lineUserId ? (
                 <span className="text-xs text-secondary">{t.bindLine.binding}</span>
               ) : (
-                kindBadge(u.kind)
+                <Badge tone="neutral">{t.status.unbound}</Badge>
               )}
             </button>
           ))}

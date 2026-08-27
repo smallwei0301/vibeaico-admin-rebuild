@@ -22,19 +22,12 @@ import { formatCurrency, formatDateTime } from '@/lib/utils';
 /** 原站 /api/donations/summary 的名單列（displayName 為店家自填的顯示名稱） */
 type Donor = { id: string; displayName: string; donatedAt: string };
 
-const MOCK_DONORS: Donor[] = [
-  { id: 'dn_1', displayName: '晴天美甲工作室', donatedAt: '2026-08-18T21:04:00+08:00' },
-  { id: 'dn_2', displayName: '木子按摩會館', donatedAt: '2026-08-15T13:27:00+08:00' },
-  { id: 'dn_3', displayName: '匿名好心人', donatedAt: '2026-08-09T10:12:00+08:00' },
-  { id: 'dn_4', displayName: '光影攝影棚', donatedAt: '2026-07-30T19:48:00+08:00' },
-  { id: 'dn_5', displayName: '示範美髮沙龍', donatedAt: '2026-07-21T08:35:00+08:00' },
-];
-
-/** 全平台累積贊助金額（原站 /api/donations/summary.totalAmount） */
-const MOCK_TOTAL_DONATED = 48650;
-
-/** 本店已贊助金額；0 代表尚未贊助過 */
-const MOCK_MY_DONATED = 500;
+/*
+ * ⚠️ 這裡曾有 MOCK_DONORS（5 家店的贊助記錄）、MOCK_TOTAL_DONATED = 48650、
+ * MOCK_MY_DONATED = 500。贊助後端不存在，那些是憑空捏造的財務陳述與公開記錄，
+ * 店家可能據此判斷要不要贊助。依 CLAUDE.md「未知就顯示未知」，一律改為 `--`
+ * 與空名單，版面保留給之後接上真後端時填回。禁止再放示範數字或示範名單。
+ */
 
 const MIN_AMOUNT = 10;
 const MAX_AMOUNT = 100000;
@@ -47,33 +40,17 @@ type PaymentResult = 'success' | 'failed' | null;
 export default function DonatePage() {
   const toast = useToast();
 
-  const [donors, setDonors] = React.useState<Donor[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [total, setTotal] = React.useState<number | null>(null);
   const [paymentResult, setPaymentResult] = React.useState<PaymentResult>(null);
 
   const [amount, setAmount] = React.useState('');
   const [displayName, setDisplayName] = React.useState('');
   const [error, setError] = React.useState('');
   const [confirmOpen, setConfirmOpen] = React.useState(false);
-  const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const value = params.get('payment');
     if (value === 'success' || value === 'failed') setPaymentResult(value);
-  }, []);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setDonors(MOCK_DONORS);
-      setTotal(MOCK_TOTAL_DONATED);
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
   }, []);
 
   const numericAmount = Number(amount);
@@ -94,19 +71,13 @@ export default function DonatePage() {
     setConfirmOpen(true);
   };
 
-  const submit = async () => {
-    setSubmitting(true);
-    try {
-      await new Promise((r) => setTimeout(r, 420));
-      setConfirmOpen(false);
-    } catch (e) {
-      toast.show(
-        `${t.messages.payCreateFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
-        'danger',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+  const submit = () => {
+    /*
+     * ⚠️ 贊助金流後端尚未建置：這裡沒有任何付款可以建立。
+     * 舊實作是假延遲後靜默關窗，看起來像付款已送出 —— 禁止復原。
+     */
+    setConfirmOpen(false);
+    toast.show(t.notBuilt.submitNotEffective, 'warning');
   };
 
   const donorColumns: Column<Donor>[] = [
@@ -125,6 +96,10 @@ export default function DonatePage() {
   return (
     <>
       <PageHeader title={t.title} />
+
+      <Alert tone="warning" title={t.notBuilt.title} className="mb-3">
+        {t.notBuilt.body}
+      </Alert>
 
       {paymentResult === 'success' ? (
         <Alert tone="success" className="mb-3">{t.payment.successText}</Alert>
@@ -145,17 +120,10 @@ export default function DonatePage() {
         <Card>
           <CardBody>
             <div className="stat-label">{t.form.totalLabel}</div>
-            <div className="stat-value mb-4">
-              {total === null ? common.loading : formatCurrency(total)}
-            </div>
+            <div className="stat-value mb-4">{t.notBuilt.unknownValue}</div>
+            <p className="form-text mb-3">{t.notBuilt.totalUnknownHint}</p>
 
-            {MOCK_MY_DONATED > 0 ? (
-              <p className="form-text mb-3">
-                {t.labels.myDonationPrefix}
-                {MOCK_MY_DONATED.toLocaleString('zh-TW')}
-                {t.labels.myDonationSuffix}
-              </p>
-            ) : null}
+            <p className="form-text mb-3">{t.notBuilt.myDonationUnknown}</p>
 
             <FormGroup>
               <Label>{t.form.amountLabel}</Label>
@@ -194,11 +162,7 @@ export default function DonatePage() {
 
             {error ? <FormError>{error}</FormError> : null}
 
-            <Button
-              variant="danger" block
-              loading={submitting} loadingText={t.form.submitting}
-              onClick={ask}
-            >
+            <Button variant="danger" block onClick={ask}>
               <Heart size={15} />{t.form.submit}
             </Button>
             <p className="form-text mt-2">{t.form.payHint}</p>
@@ -217,15 +181,13 @@ export default function DonatePage() {
           </CardHeader>
           <DataTable
             columns={donorColumns}
-            rows={donors}
-            loading={loading}
+            rows={[] as Donor[]}
             rowKey={(d) => d.id}
             empty={
               <EmptyState
                 icon={Heart}
-                title={t.donors.emptyTitle}
-                description={t.donors.emptyDescription}
-                action={<span className="text-sm text-secondary">{t.donors.firstDonorCallout}</span>}
+                title={t.notBuilt.donorsEmptyTitle}
+                description={t.notBuilt.donorsEmptyDescription}
               />
             }
           />
@@ -243,12 +205,11 @@ export default function DonatePage() {
 
       <ConfirmModal
         open={confirmOpen}
-        loading={submitting}
         title={t.form.confirmTitle}
         confirmText={t.form.submit}
-        message={t.form.confirmMessage(formatCurrency(numericAmount || 0))}
+        message={t.notBuilt.confirmMessage(formatCurrency(numericAmount || 0))}
         onClose={() => setConfirmOpen(false)}
-        onConfirm={() => void submit()}
+        onConfirm={submit}
       />
     </>
   );

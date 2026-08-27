@@ -13,7 +13,7 @@ export const POST = handle(async (req, { params }) => {
   const b = bodySchema.parse(await req.json());
 
   const { data: booking, error: bErr } = await t.supabase.from('bookings')
-    .select('id, customer_id, final_price')
+    .select('id, customer_id, final_price, points_redeemed')
     .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
   if (bErr) throw bErr;
   if (!booking) throw new ApiHttpError(404, '找不到此預約', ERR.NOT_FOUND);
@@ -57,8 +57,16 @@ export const POST = handle(async (req, { params }) => {
   });
   if (lErr) throw lErr;
 
+  /*
+   * issue #35：折抵掉多少點以前沒有留下來，於是 bookings 頁詳情的「點數折抵」
+   * 只能吃頁內假資料（BOOKING_EXTRAS_*）。這裡累計進 `points_redeemed`
+   * （migration 0022）；同一筆預約分兩次折抵就相加。
+   */
   const { error: uErr } = await t.supabase.from('bookings')
-    .update({ final_price: newFinal })
+    .update({
+      final_price: newFinal,
+      points_redeemed: Number(booking.points_redeemed ?? 0) + b.points,
+    })
     .eq('id', id).eq('tenant_id', t.tenantId);
   if (uErr) throw uErr;
 

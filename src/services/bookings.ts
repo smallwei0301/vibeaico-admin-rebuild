@@ -1,5 +1,7 @@
 import { adapt, request } from '@/lib/api';
-import type { Booking, BookingStatus, CalendarEvent, Paged } from '@/lib/types';
+import type {
+  Booking, BookingAddon, BookingAddonNotifyOutcome, BookingStatus, CalendarEvent, Paged,
+} from '@/lib/types';
 import { MOCK_BOOKINGS } from '@/mock';
 
 export type BookingQuery = {
@@ -73,10 +75,23 @@ export type UpdateBookingPayload = {
   note?: string;
 };
 
-/** PUT /api/bookings/:id — 改期／改員工／改備註。 */
+/**
+ * PUT /api/bookings/:id — 改期／改員工／改備註。
+ *
+ * 回 `{ notifyTriggered }`：本次有沒有觸發「預約已變更」的顧客端 LINE 推播
+ * （時間或服務人員實際有變才觸發；只改備註不推——issue #27 ②）。頁面靠它決定
+ * 成功訊息要不要提到「已通知顧客」，不可寫死（00 鐵則 12）。
+ *
+ * mock 分支固定回 `false`：mock 模式沒有任何推播管道，什麼都沒送出去，回 false
+ * 才是誠實的（絕不能為了讓 demo 好看而回 true）。
+ */
 export const updateBooking = (id: string, payload: UpdateBookingPayload) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/bookings/${id}`, { method: 'PUT', body: JSON.stringify(payload) }));
+  adapt<{ notifyTriggered: boolean }>(
+    () => ({ notifyTriggered: false }),
+    () => request<{ notifyTriggered: boolean }>(`/api/bookings/${id}`, {
+      method: 'PUT', body: JSON.stringify(payload),
+    }),
+  );
 
 /** POST /api/bookings/:id/adjust-price — 手動調價（需 MANAGER）。 */
 export const adjustBookingPrice = (id: string, finalPrice: number) =>
@@ -86,16 +101,23 @@ export const adjustBookingPrice = (id: string, finalPrice: number) =>
     }));
 
 /**
- * POST /api/bookings/:id/apply-coupon — 核銷票券，回 { finalPrice }（折抵後金額）。
+ * POST /api/bookings/:id/apply-coupon — 核銷票券，回
+ * `{ finalPrice, couponDiscount }`（折抵後金額、本次實際折抵金額）。
+ *
+ * `couponDiscount` 是原站就有的回應欄位（`docs/specs/bookings.json` jsStrings[127]
+ * 「票券折抵 ${couponRes.data?.couponDiscount || 0}」），issue #35 一併補上；
+ * 後端同時把它累計進 `bookings.coupon_discount`（migration 0022），詳情才有得顯示。
+ *
  * mock 依頁面既有假邏輯合成：固定折 200、不超過目前金額（讓折抵/實收 toast 數字不變）。
  */
 export const applyBookingCoupon = (id: string, code: string) =>
   adapt(
     () => {
       const price = MOCK_BOOKINGS.find((b) => b.id === id)?.finalPrice ?? 0;
-      return { finalPrice: price - Math.min(200, price) };
+      const discount = Math.min(200, price);
+      return { finalPrice: price - discount, couponDiscount: discount };
     },
-    () => request<{ finalPrice: number }>(`/api/bookings/${id}/apply-coupon`, {
+    () => request<{ finalPrice: number; couponDiscount: number }>(`/api/bookings/${id}/apply-coupon`, {
       method: 'POST', body: JSON.stringify({ code }),
     }),
   );
@@ -118,6 +140,126 @@ export const applyBookingPoints = (id: string, points: number, mockBalance = Num
     }),
   );
 
+/* ------------------------------------------------------------ 加購（§B-1.1） */
+
+/**
+ * GET /api/bookings/:id/addons — 該筆預約的加購明細。
+ *
+ * mock 分支回 `null` = 頁面沿用頁內 `byMode` 假資料（同 listRecurringBookings
+ * 的慣例）：假資料是頁面專屬的（含 staffName 之類 API 也有、但 id 對不上的欄位），
+ * 服務層不複製一份。
+ */
+export const listBookingAddons = (bookingId: string): Promise<BookingAddon[] | null> =>
+  adapt<BookingAddon[] | null>(
+    () => null,
+    () => request<BookingAddon[]>(`/api/bookings/${bookingId}/addons`),
+  );
+
+export type CreateBookingAddonPayload = {
+  /** 「從服務清單帶入」的來源服務；自由輸入（耗材／商品類）省略 */
+  serviceId?: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  durationMinutes: number;
+  /** 執行人員；省略 = 同本預約的人員 */
+  staffId?: string | null;
+  /** 原站 addonNotify：勾了才推 LINE 消費明細 */
+  notify: boolean;
+};
+
+export type CreateBookingAddonResult = {
+  addon: BookingAddon;
+  /** 加購後的預約金額（伺服器實算，不由頁面自行推） */
+  finalPrice: number;
+  endAt: string;
+  durationMinutes: number;
+  /** 消費明細通知**實際**的結果 */
+  notified: BookingAddonNotifyOutcome;
+};
+
+/**
+ * POST /api/bookings/:id/addons — 新增加購。
+ *
+ * 推播額度用完時 API 回 409（`REQ_003`）**但加購已經寫入**（04 §B-1.1）；
+ * 錯誤訊息本身會說明這件事，頁面照原文顯示並重新載入明細即可。
+ *
+ * mock 分支：合成一筆明細、金額以 MOCK_BOOKINGS 現值加總，
+ * `notified` 固定 `'NONE'` —— mock 模式沒有任何推播管道，什麼都沒送出去，
+ * 回 'NONE' 才是誠實的（同 updateBooking 的 notifyTriggered 註解）。
+ */
+export const createBookingAddon = (bookingId: string, payload: CreateBookingAddonPayload) =>
+  adapt<CreateBookingAddonResult>(
+    () => {
+      const b = MOCK_BOOKINGS.find((x) => x.id === bookingId);
+      const amount = payload.price * payload.quantity;
+      const minutes = payload.durationMinutes * payload.quantity;
+      return {
+        addon: {
+          id: `ba_mock_${Date.now()}`,
+          serviceId: payload.serviceId ?? null,
+          name: payload.name,
+          price: payload.price,
+          quantity: payload.quantity,
+          durationMinutes: payload.durationMinutes,
+          staffId: payload.staffId ?? null,
+          staffName: null,
+          appliedAmount: amount,
+          appliedMinutes: minutes,
+          notified: 'NONE',
+          createdAt: new Date().toISOString(),
+        },
+        finalPrice: (b?.finalPrice ?? 0) + amount,
+        endAt: b ? new Date(Date.parse(b.endAt) + minutes * 60_000).toISOString() : '',
+        durationMinutes: (b?.durationMinutes ?? 0) + minutes,
+        notified: 'NONE',
+      };
+    },
+    () => request<CreateBookingAddonResult>(`/api/bookings/${bookingId}/addons`, {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  );
+
+export type DeleteBookingAddonResult = {
+  finalPrice: number;
+  endAt: string;
+  durationMinutes: number;
+  /** 本次實際扣回的金額（伺服器實算；頁面照它顯示，不自行推算） */
+  revertedAmount: number;
+};
+
+/**
+ * DELETE /api/bookings/:id/addons/:addonId — 移除加購並回沖金額／時長。
+ *
+ * 「回沖」＝減去建立當下實際加上去的金額（`appliedAmount`），下限 0；
+ * 完整定義與兩種已知不精確的互動見 `src/app/api/bookings/[id]/addons/route.ts`
+ * 檔頭與 04 分冊 §B-1.1。
+ *
+ * `mockAddon` 只有 mock 分支會用（頁面把要刪的那筆帶進來），讓合成結果的數字
+ * 與畫面上顯示的一致。
+ */
+export const deleteBookingAddon = (
+  bookingId: string,
+  addonId: string,
+  mockAddon?: { appliedAmount: number; appliedMinutes: number },
+) =>
+  adapt<DeleteBookingAddonResult>(
+    () => {
+      const b = MOCK_BOOKINGS.find((x) => x.id === bookingId);
+      const amount = mockAddon?.appliedAmount ?? 0;
+      const minutes = mockAddon?.appliedMinutes ?? 0;
+      const finalPrice = Math.max(0, (b?.finalPrice ?? 0) - amount);
+      return {
+        finalPrice,
+        endAt: b ? new Date(Date.parse(b.endAt) - minutes * 60_000).toISOString() : '',
+        durationMinutes: Math.max(0, (b?.durationMinutes ?? 0) - minutes),
+        revertedAmount: (b?.finalPrice ?? 0) - finalPrice,
+      };
+    },
+    () => request<DeleteBookingAddonResult>(
+      `/api/bookings/${bookingId}/addons/${addonId}`, { method: 'DELETE' }),
+  );
+
 /** POST /api/bookings/:id/mark-paid-offline — 標記現場已收款。 */
 export const markBookingPaidOffline = (id: string) =>
   adapt(() => undefined, () =>
@@ -138,6 +280,17 @@ export type BlockTimeItem = {
   startAt: string;
   endAt: string;
   reason: string;
+  /* ---- migration 0027（issue #33 ②）。GET /api/calendar 的封鎖不帶這些欄位，
+         所以全部設成 optional，行事曆頁的既有用法不受影響。 ---- */
+  /** 封鎖名稱（原站 btTitle「封鎖名稱 *」）；reason 是另一個選填欄位 */
+  title?: string;
+  /** 'SINGLE' = 單次；'WEEKLY' = 每週的 dayOfWeek 這一天重複 */
+  recurrence?: 'SINGLE' | 'WEEKLY';
+  /** WEEKLY 用，0 = 週日 */
+  dayOfWeek?: number | null;
+  fullDay?: boolean;
+  /** true = 由「每天不同營業時間」自動產生，不可編輯／刪除 */
+  auto?: boolean;
 };
 
 export type CalendarExternalItem = { id: string; title: string; start: string; end: string };
@@ -210,13 +363,45 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
   );
 }
 
-/** POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖。 */
+/**
+ * GET /api/block-times?from&to — 封鎖時段清單（/tenant/block-times 頁唯一資料源）。
+ *
+ * 端點回的就是表的欄位。migration 0027（issue #33 ②）之後，
+ * 「循環（SINGLE/WEEKLY）」「星期幾」「整天」「名稱」「自動產生」都真的有欄位了，
+ * 所以頁面可以呈現它們。回傳型別沿用上面行事曆區塊已經有的 `BlockTimeItem`
+ * （同一個端點家族、同一組欄位，不另外宣告第二份）。mock 分支回空陣列——骨架
+ * 模式沒有任何封鎖時段可讀，編一組出來會讓示範店家看到永遠刪不掉的資料。
+ */
+export const listBlockTimes = (q: { from?: string; to?: string } = {}) =>
+  adapt<BlockTimeItem[]>(
+    () => [],
+    () => request<BlockTimeItem[]>('/api/block-times', { query: q }),
+  );
+
+/**
+ * POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖。
+ * recurrence = 'WEEKLY' 時 dayOfWeek 必填（端點會擋；不從 startAt 反推）。
+ */
 export const createBlockTime = (payload: {
   staffId?: string | null; startAt: string; endAt: string; reason?: string;
+  title?: string; recurrence?: 'SINGLE' | 'WEEKLY'; dayOfWeek?: number | null; fullDay?: boolean;
 }) =>
   adapt(
     () => ({ id: `bt_mock_${Date.now()}` }),
     () => request<{ id: string }>('/api/block-times', { method: 'POST', body: JSON.stringify(payload) }),
+  );
+
+/** PUT /api/block-times/:id — 改時間／改名稱／改對象；只更新 body 裡出現的欄位。 */
+export const updateBlockTime = (
+  id: string,
+  payload: {
+    staffId?: string | null; startAt?: string; endAt?: string; reason?: string;
+    title?: string; recurrence?: 'SINGLE' | 'WEEKLY'; dayOfWeek?: number | null; fullDay?: boolean;
+  },
+) =>
+  adapt(
+    () => undefined,
+    () => request<void>(`/api/block-times/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   );
 
 /** DELETE /api/block-times/:id */

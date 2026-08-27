@@ -19,6 +19,20 @@ export const listProducts = () =>
 export const listProductOrders = () =>
   adapt<ProductOrder[]>(() => MOCK_PRODUCT_ORDERS, () => request<ProductOrder[]>('/api/product-orders'));
 
+/**
+ * 待處理商品訂單筆數（側邊欄徽章 `pendingOrderBadge`，04 分冊 §B-3）。
+ *
+ * 走既有端點 `GET /api/product-orders/pending/count`——它先前是**孤兒端點**
+ * （有實作、有整合測試、零呼叫端），畫面那頭則是寫死的 `MOCK_SIDEBAR_COUNTS`；
+ * issue #34 把兩端接起來，沒有新增任何端點。
+ * mock 分支數 MOCK_PRODUCT_ORDERS 裡的 PENDING，與商品訂單頁的假資料一致。
+ */
+export const pendingProductOrderCount = () =>
+  adapt<number>(
+    () => MOCK_PRODUCT_ORDERS.filter((o) => o.status === 'PENDING').length,
+    async () => (await request<{ count: number }>('/api/product-orders/pending/count')).count,
+  );
+
 export const listCoupons = () =>
   adapt<Coupon[]>(() => MOCK_COUPONS, () => request<Coupon[]>('/api/coupons'));
 
@@ -121,10 +135,21 @@ export const duplicateService = (id: string) =>
     () => request<{ id: string }>(`/api/services/${id}/duplicate`, { method: 'POST' }),
   );
 
-/** POST /api/services/reorder — 依 ids 順序寫 sort_order（= LINE 精選順序）。 */
+/** POST /api/services/reorder — 依 ids 順序寫 sort_order（＝**公開頁**排序）。 */
 export const reorderServices = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/services/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/**
+ * POST /api/services/reorder-line — 依 ids 順序寫 line_sort_order
+ * （＝**LINE 精選**排序，0017 新欄位）。與 reorderServices 是兩套獨立順序，
+ * 改其中一套不會覆蓋另一套。
+ */
+export const reorderServicesLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/services/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 
@@ -142,8 +167,25 @@ export const toggleServiceLineFeatured = (id: string, next: boolean) =>
 
 /* -------------------------------------------------------------- 服務分類 */
 
-/** API 回應形狀（無 description/active 欄位；頁面自行補顯示預設值）。 */
-export type ServiceCategorySummary = { id: string; name: string; sortOrder: number };
+/**
+ * API 回應形狀。description / active 由 migration 0018 落地（issue #28 第 ⑨ 筆）：
+ * 先前這裡沒有這兩個欄位，頁面只能在載入時硬補 `description: ''`、`active: true`，
+ * 於是使用者填的說明重新整理就不見了。
+ */
+export type ServiceCategorySummary = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+/** POST /api/service-categories 收的欄位。 */
+export type ServiceCategoryInput = {
+  name: string;
+  description?: string;
+  active?: boolean;
+};
 
 /** GET /api/service-categories — mock 回 null（頁面維持 byMode 頁內假資料）。 */
 export const listServiceCategories = () =>
@@ -153,19 +195,33 @@ export const listServiceCategories = () =>
   );
 
 /** POST /api/service-categories — mock 回 null（頁面沿用本地 id，行為不變）。 */
-export const createServiceCategory = (name: string) =>
-  adapt<{ id: string } | null>(
+export const createServiceCategory = (input: ServiceCategoryInput) =>
+  adapt<{ id: string; sortOrder: number } | null>(
     () => null,
-    () => request<{ id: string }>('/api/service-categories', {
-      method: 'POST', body: JSON.stringify({ name }),
+    () => request<{ id: string; sortOrder: number }>('/api/service-categories', {
+      method: 'POST', body: JSON.stringify(input),
     }),
   );
 
-/** PUT /api/service-categories/:id — 僅支援改名（active 切換無對應端點）。 */
-export const updateServiceCategory = (id: string, name: string) =>
+/**
+ * PUT /api/service-categories/:id 收的欄位（issue #28 第 ⑭ 筆）。
+ * 全部 optional＝只更新有帶的；排序另有 reorder 端點，這裡不收 sortOrder。
+ */
+export type ServiceCategoryUpdate = {
+  name?: string;
+  description?: string;
+  active?: boolean;
+};
+
+/**
+ * PUT /api/service-categories/:id。
+ * 修改前簽名是 `(id, name)`、body 只有 `{ name }`，所以分類管理的「編輯」鈕
+ * 切了 active 也無處可送，只能改本地 state 再顯示「分類已更新」。
+ */
+export const updateServiceCategory = (id: string, patch: ServiceCategoryUpdate) =>
   adapt(() => undefined, () =>
     request<void>(`/api/service-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+      method: 'PUT', body: JSON.stringify(patch),
     }));
 
 export const deleteServiceCategory = (id: string) =>

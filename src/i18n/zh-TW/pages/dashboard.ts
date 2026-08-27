@@ -1,4 +1,8 @@
-import { nav } from '@/i18n/zh-TW/nav';
+import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
+import type { BusinessType } from '@/config/modes';
+import type { SetupStatus } from '@/lib/types';
+
+type SetupStepKey = SetupStatus['steps'][number]['key'];
 
 /**
  * 儀表板（/tenant/dashboard）文案
@@ -16,7 +20,8 @@ export const dashboardPage = {
     step1Badge: '1',
     step2Badge: '2',
     /** 原站步驟標題由 JS 動態產生，spec 未收錄，依按鈕語意重建 */
-    step1Title: '確認服務項目與價格',
+    /** `{catalog}` 由頁面在 render 期依當下模式展開（14 分冊 §8.13） */
+    step1Title: '確認{catalog}與價格',
     step1Action: '去修改',
     step2Title: '複製預約網址，分享給顧客',
     step2Locked: '先完成第 1 步',
@@ -36,13 +41,33 @@ export const dashboardPage = {
     steps: {
       SHOP_INFO: '完善店家資訊',
       STAFF: '設定員工資料',
-      SERVICE: '設定服務項目',
+      SERVICE: '設定{catalog}',
       BUSINESS_HOURS: '設定營業時間',
       LINE_BOT: '連接 LINE Bot',
     },
     done: '已完成',
     todo: '尚未完成',
   },
+
+  /**
+   * 設定步驟的**業態別**用字（同 nav.ts 的 navLabel 慣例）。
+   *
+   * 上面的 steps 是共用預設值；嚮導的目錄是行程而不是服務項目，員工是嚮導，
+   * 沿用預設會叫他去一個他選單裡根本不存在的頁面。
+   *
+   * 目錄名稱本身已改用 `{catalog}` 佔位符（setupStepLabel 會展開成該模式的
+   * 目錄名：LOCAL_SHOP 服務項目／GUIDE 行程與方案／CLINIC 診療項目），
+   * `SERVICE` 步驟因此不需要 CLINIC 覆寫——`{catalog}` 展開已經是「設定診療
+   * 項目」。這裡只列**展開後仍不對**的鍵，目前只剩員工稱呼（14 分冊 §8.17）。
+   */
+  stepOverrides: {
+    GUIDE: {
+      STAFF: '設定嚮導資料',
+    },
+    CLINIC: {
+      STAFF: '設定醫師資料',
+    },
+  } as Record<string, Partial<Record<SetupStepKey, string>>>,
 
   /* ------------------------------------------------------------ 頁面警示區 */
   cutoffExpired: {
@@ -86,6 +111,69 @@ export const dashboardPage = {
     resetHint: '額度將於每月 1 號重置。如需更多額度請聯繫客服。',
   },
 
+  /* ---------------------------------------------- 老闆通知（owner-notify）
+   * 文案逐字取自 docs/specs/dashboard.json 的 jsStrings（原站唯一事實來源），
+   * 契約見 06 分冊 §5.5。標「我方新增」的那幾句規格未載，理由寫在該行。
+   */
+  ownerNotify: {
+    title: 'LINE 老闆通知',
+    /** 三態逐字；noRecipients 是我方新增（規格三態蓋不住「名單為空」，見 §5.5） */
+    status: {
+      enabled: 'LINE 通知已開啟',
+      disconnected: 'LINE 通知已綁定（連線中斷）',
+      noRecipients: 'LINE 已設定，尚未加入接收者',
+      notConfigured: '未設定 LINE',
+    },
+    /** 連線中斷時的說明（逐字，含指向 LINE 設定頁的連結文字） */
+    disconnectedHint: 'LINE 連線已中斷，通知暫停發送中——請至 ',
+    disconnectedHintLink: 'LINE 設定頁',
+    disconnectedHintTail: ' 檢查並重新儲存設定以恢復。',
+    /** 我方新增：名單為空時要說清楚「現在一則都不會發」，不可留白讓人以為有在發 */
+    noRecipientsHint: '通知名單目前是空的，新預約不會發出任何 LINE 通知。',
+    /** 我方新增：未設定 LINE 時的指引 */
+    notConfiguredHint: '尚未設定 LINE Channel，無法發送老闆通知。',
+    /** 逐字：`></i>每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）` */
+    fanout: (n: number) => `每次通知會同時發給 ${n} 位（消耗 ${n} 則推播額度）`,
+    /** 逐字：`></i>「主要」接收者另外會收到訂閱到期／儲值提醒（僅發給主要一位）。` */
+    primaryHint: '「主要」接收者另外會收到訂閱到期／儲值提醒（僅發給主要一位）。',
+    primaryBadge: '主要',
+    /** 逐字：顯示名稱缺漏時的 fallback */
+    unnamed: '(LINE 用戶)',
+    addRecipient: '新增接收者',
+    /** 逐字：`>尚無可加入的 LINE 好友</option>` */
+    noBindableUsers: '尚無可加入的 LINE 好友',
+    selectPlaceholder: '選擇要加入通知名單的 LINE 好友',
+    /** 逐字：`>已達上限 ${_notify.maxRecipients} 位</span>` */
+    atLimit: (max: number) => `已達上限 ${max} 位`,
+    bindSelf: '是我，綁定通知',
+    unbindAll: '解除全部',
+    confirm: {
+      /** 逐字 */
+      bindSelf: '確認是您本人嗎？',
+      add: '確認將此人加入通知名單？',
+      removeOther: '確定將此人移出通知名單？其他接收者不受影響。',
+      /** 逐字（`${next}` 是遞補者的顯示名稱） */
+      removePrimary: (next: string) =>
+        `此人是「主要」接收者。移除後「${next}」將成為主要接收者（訂閱到期／儲值提醒改發給他）。確定移除？`,
+      /** 逐字 */
+      removeLast: '這是最後一位接收者，移除後將不再收到 LINE 即時通知。確定移除？',
+      /** 逐字 */
+      unbindAll: (n: number) =>
+        `確定解除全部 ${n} 位接收者的綁定？之後不會再收到 LINE 即時通知。`,
+    },
+    toast: {
+      /** 逐字 */
+      bound: '綁定成功！之後有新預約會即時通知綁定的 LINE。',
+      bindFailed: '綁定失敗',
+      removed: '已移除接收者',
+      unbound: '已解除綁定',
+      added: '已加入通知名單',
+    },
+    errors: {
+      load: '無法載入老闆通知設定',
+    },
+  },
+
   /* -------------------------------------------------------------- 統計卡 */
   stats: {
     todayBookings: '今日預約',
@@ -99,6 +187,8 @@ export const dashboardPage = {
     linePlanLite: '輕量版',
     linePlanPro: '專業版',
     lineNotConfigured: '未設定 LINE',
+    /** 已填 token；LINE 未開放查詢官方帳號方案，因此只陳述我們真的知道的事 */
+    lineConfigured: '已設定',
     unknown: '未知',
   },
 
@@ -132,13 +222,14 @@ export const dashboardPage = {
   /* -------------------------------------------------------------- 快速操作 */
   quickActions: {
     title: '快速操作',
-    /** 原站 6 顆按鈕由樣板迴圈產生，spec 未逐字收錄；此處取用側邊欄既有文案 */
-    newBooking: nav.bookings,
-    calendar: nav.calendar,
-    customers: nav.customers,
-    services: nav.services,
-    marketing: nav.marketing,
-    settings: nav.settings,
+    /*
+     * 原站 6 顆按鈕由樣板迴圈產生，spec 未逐字收錄；文案取用側邊欄既有文案。
+     *
+     * ⚠️ 這裡原本是 `newBooking: nav.bookings` 等 6 個模組層常數，取的是
+     * LOCAL_SHOP 的字面值，嚮導看到的仍是「預約列表」「服務項目」。已改由頁面
+     * 在 render 期呼叫 `navLabel/catalogLabel/ordersLabel(businessType)` 取得
+     * （見 dashboard/page.tsx 的 buildQuickActions）。
+     */
   },
 
   /* ---------------------------------------------------------- 公開預約網址 */
@@ -196,6 +287,33 @@ export const dashboardPage = {
   },
 
   /* ------------------------------------------------------------ 圖表區 */
+  demoHint: {
+    title: '還沒有資料嗎？先看看示範店家',
+    body: '你的後台目前是全新的，各頁面都還沒有資料。可以從右上角的店家選單切換到「示範店家」，' +
+      '看看有實際資料時各功能長什麼樣子；看完再切回自己的店開始設定。',
+    dismiss: '知道了',
+  },
+
+  demoData: {
+    title: '目前顯示的是示範資料',
+    body: (n: number) => `我們依照你選的營運模式，先鋪了 ${n} 筆範例（服務／行程、員工、商品），` +
+      '你可以直接改成自己的內容；不需要的話按右邊一鍵清空。',
+    clear: '一鍵清空示範資料',
+    clearing: '清除中…',
+    confirmTitle: '清空示範資料？',
+    confirmBody: '會移除所有名稱開頭仍是「[示範]」的服務／行程、員工與商品。' +
+      '你自己建立或已改過名稱的資料不會被動到，也不會影響任何預約紀錄。',
+    cleared: '示範資料已清空',
+    clearFailed: '清空示範資料失敗：',
+  },
+
+  trialBanner: {
+    title: '全功能試用中',
+    bodyPrefix: '所有付費功能已為你開通，試用到 ',
+    bodySuffix: '。試用期結束後未訂閱的功能會自動關閉，可到功能商店選擇要留下的功能。',
+    cta: '看看功能商店',
+  },
+
   weeklyTrend: {
     title: '本週預約趨勢',
     detailReport: '詳細報表',
@@ -203,6 +321,7 @@ export const dashboardPage = {
     revenue: '營收 (NT$)',
     tooltipBookings: '預約數：',
     tooltipRevenue: '營收：NT$ ',
+    empty: '本週還沒有預約資料',
   },
 
   monthSource: {
@@ -239,3 +358,13 @@ export const dashboardPage = {
     loadFailed: '載入失敗',
   },
 } as const;
+
+/**
+ * 設定步驟顯示文字：有業態別覆寫就用覆寫，否則用共用預設值。
+ * 與 nav.ts 的 navLabel(key, businessType) 同一套慣例。
+ */
+export function setupStepLabel(key: SetupStepKey, businessType?: string): string {
+  const raw = (businessType && dashboardPage.stepOverrides[businessType]?.[key])
+    ?? dashboardPage.setup.steps[key];
+  return resolveNavTerms(raw, businessType as BusinessType | undefined);
+}
