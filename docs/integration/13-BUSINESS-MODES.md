@@ -60,10 +60,35 @@ alter table tenants add column if not exists business_type business_type
   clinic-queue 提升為預設顯示。
 - 行事曆、顧客、LINE 聊天、收款方式、點數、功能商店：**全模式共用，不分支**。
 
+### 3.1 GUIDE 的「班表」能力收斂到行事曆（Owner 2026-08-27）
+
+GUIDE 模式仍維持 `shifts`、`block_times` 側邊欄隱藏；不要把一般店家的「員工班表／封鎖時段」介面原封不動搬給導遊。
+
+但隱藏頁面不代表刪除底層能力。GUIDE 在 `/tenant/calendar` 以導遊語境操作同一份資料：
+
+- `shifts` → **可接案時間**。
+- `block_times` → **不可接案／私人行程／休假**。
+- `trip_departure_staff + trip_departures` → **已被團次占用**。
+- 外部行事曆未來接入後的 busy event → 同一套 availability engine 的另一種占用來源。
+
+不新增另一張 `guide_availability` 表，避免同一件事有兩套真相。
+
+GUIDE 行事曆的文案與主要視圖不得沿用一般店家的「顧客預約／員工排班」，應改成導遊自然理解的「我的行程／可接案時間／團隊行程」等語境。`src/config/modes.ts` 應提供相應 mode-aware 設定，頁面不得散寫 GUIDE 判斷。
+
+團次建立／修改時，PRIMARY 與 ASSISTANT 都必須查同一套 availability engine。前端顯示可用／忙碌原因只為 UX，後端儲存前仍需再次檢查，不能只靠畫面限制。
+
+ICS／Google Calendar／Apple Calendar 的定位是「我已經被什麼事情占用了」，因此 GUIDE 預設**不輸出大量『可接案』空檔**；輸出實際團次、不可接案例外，以及該租戶另外啟用其他模組時的其他實際占用事件。
+
+單導遊與多導遊團隊是否需要顯式模式開關，或由系統依實際 active/bookable 導遊數量自動適應，尚待 Owner 下一輪裁示；不得在未裁示前自行新增 `solo/team` 永久設定欄位。
+
 ## 4. 驗收（併入 08 清單 Phase 8）
 
 - [ ] 註冊選 GUIDE → 後台選單看到「行程與方案／旅遊訂單」，看不到
       服務項目/預約列表/班表；TOUR_MODULE 已自動開通
+- [ ] GUIDE 行事曆不顯示一般店家「顧客預約／員工排班」語境；能操作可接案與不可接案時間
+- [ ] GUIDE 可接案時間沿用 `shifts`，不可接案沿用 `block_times`，不新增重複 availability 資料表
+- [ ] GUIDE 的實際團次會占用 PRIMARY/ASSISTANT 時間；團次建立與可接案計算共用同一 availability engine
+- [ ] GUIDE 的 ICS 不輸出大量可接案空檔，只輸出實際占用與不可接案例外
 - [ ] 註冊選 LOCAL_SHOP → 與現行完全相同；看不到行程相關頁
 - [ ] settings 換模式 → 選單即時切換；原模式資料未刪（切回可見）
 - [ ] 加開其他模組 → 兩套選單並存
