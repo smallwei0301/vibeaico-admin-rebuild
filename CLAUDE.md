@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Mandatory start — read main before touching code
+
+Before working on any Issue:
+
+1. `git fetch origin`.
+2. Read `origin/main:AGENTS.md` and `origin/main:docs/DOCUMENTATION-GOVERNANCE.md`.
+3. Read the Issue's canonical `docs/integration/**` files from `main`.
+4. Base implementation work on latest `main`, or on a designated integration branch that already contains the latest main documentation commit.
+
+Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**.
+
 ## Commands
 
 ```bash
@@ -32,7 +43,7 @@ routes identical to the original site.
 **It is currently mock-only.** `NEXT_PUBLIC_USE_MOCK=true` (the default) means no database or
 backend is needed — everything reads from `src/mock/`. There is no `src/app/api/**` and no
 `src/server/**` yet. Wiring up the real backend (Supabase + Resend + LINE) is planned in detail
-across `docs/integration/00-13`, tracked by GitHub issue #1, and has not started.
+across `docs/integration/00-13`, tracked by GitHub issue #1, and has not started on this branch.
 
 ## Architecture
 
@@ -125,143 +136,27 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 7. Money columns use `formatCurrency()` with `numeric: true`; status columns use `<Badge tone>`
    with text from a `common.*` map. Icons are lucide-react only.
 
-## Never fabricate a "known" — the false-error lesson
-
-**A status the code did not actually determine must never be displayed as if it had been.**
-This was learned the expensive way: the LINE setup report's "自動回應訊息" row was hardcoded
-`pass: false` with a "no public API to check this" comment. It never checked anything. The user
-turned the setting off in LINE, re-ran the check, still saw a red failure, and reasonably asked
-whether the error was real. It wasn't — and every earlier run of that report had been lying too.
-
-Two compounding defects, both worth recognising on sight:
-
-1. **A reminder rendered as a measurement.** "Please go check X yourself" is useful; painting it
-   red next to items that *were* measured makes it indistinguishable from a real failure.
-2. **A check that can never pass.** Because the page counted every non-pass as a failure, the
-   report could not print "全部通過" under any configuration. A warning that is always on is
-   not a warning — users learn to ignore the whole panel, including the rows that are real.
-
-It also turned out "no public API" was only half true: `GET /v2/bot/info` returns `chatMode`,
-which covers the most common cause of the same symptom. **Before encoding "we can't know this",
-check the provider's current API reference** — LINE publishes an OpenAPI spec
-(`github.com/line/line-openapi`) that settles such questions in one grep. A spec doc claiming a
-limitation (06 分冊 §7 specified this very behaviour) is not evidence the limitation still holds.
-
-Rules that follow:
-
-- Distinguish **FAIL** (we checked, it's broken) from **WARN/INFO** (we could not check, or it
-  isn't built yet). Never collapse the second into the first.
-- If a value is unknown, render the unknown state (`--`, "未設定", "未知") — **never a plausible
-  placeholder**. Fabricated numbers are worst next to real ones: the points page showed a real
-  point balance beside a hardcoded `MOCK_MONTHLY_COST = 196` and `MOCK_PENDING_TOPUP = 1000`,
-  with nothing on screen to tell them apart. The dashboard likewise labelled every configured
-  account "輕量版" from a `MOCK_LINE_PLAN` constant, though LINE exposes no plan lookup at all.
-- State only what was verified. `linePlatformStatus` returns `CONNECTED` whenever a token
-  *string exists*, without ever calling LINE — so a revoked token still reads as connected.
-  Either verify, or name the state after what you actually know ("已設定", not "已連接").
-- Returning **empty** for a feature that isn't built yet is honest and fine (`/api/calendar`'s
-  DEPARTURE/EXTERNAL sources, `upcomingDepartureCount` before Phase 8b). Returning a **made-up
-  value** is not. The line is: absence of data ≠ invented data.
-- When a placeholder is genuinely unavoidable, say so *in the UI where the user reads it*, not
-  only in a code comment. The comment protects the next developer; the user is the one being
-  misled.
-
-The same principle applies to **interactions and checklists**, learned via the same expensive
-route (2026-08-24 full audit, `docs/integration/14-GAP-AUDIT.md` — 25 pages found faking it):
-
-- **A success toast is a claim of fact.** A button that shows "已發布/已儲存" after only
-  mutating local React state (often behind a `setTimeout` fake delay) is fabricating a known.
-  The rich-menu 發布 button did exactly this — the API existed, was integration-tested green,
-  and the page had never called it. If the backend isn't wired yet, say "尚未生效" honestly.
-- **A checked checkbox is also a claim of fact.** No acceptance-checklist item
-  (`docs/integration/08-CHECKLIST.md`) may be checked without written evidence — test
-  file:case name, or a manual-test record (date + steps + result). "The API's integration
-  tests pass" is NOT evidence for a page-level feature: the handler → `src/services/*` →
-  endpoint chain must be shown intact (12 分冊 §6 items 9–11; 鐵則 12 in 00 分冊).
-- Watch for the structural blind spot that let this happen: unit tests don't cover pages,
-  integration tests deliberately don't test UI, and e2e only runs where the test matrix
-  names it — so page wiring belonged to no layer, and "all green" coexisted with a fake
-  button for weeks.
-
-## Issue-authoring convention (owner's standing preference)
-
-All work is dispatched as GitHub issues written for a **weak executor model**. Every issue must
-have: (1) 前置 issue link — strictly sequential, the previous issue's checklist must be fully
-checked *with evidence* first; (2) 背景與根因 linking the plan docs; (3) 對應文件 section
-naming exact 分冊/章節; (4) 驗收標準 as a checklist where **every item names its evidence**
-(test file:case name, or automated-run output) — no evidence, no checkmark, no next step;
-(5) verification is **automated by default** — unit/integration tests plus Playwright against
-the Preview site, with credentials the agent fetches itself from the owner's Google Drive
-credentials doc ("#Supabase#midao"); (6) a 人工介入點 section that lists ONLY decisions and
-missing-token env updates — never manual testing steps. Executor discipline lives in
-`docs/integration/15-AGENT-PLAYBOOK.md`; every issue links it instead of repeating it.
-
-## Database changes: always apply to BOTH Supabase projects
-
-There are two Supabase projects and **every migration must be applied to both, in the same
-session you write it** — never to just one:
-
-| Project | ref | Used by |
-|---|---|---|
-| Vibeaico-admin-rebuild 正式 | `egehnijjpgijmccagxac` | Vercel **production** and **preview** (the branch preview URL is the manual-testing site) |
-| Vibeaico-admin-rebuild test | `nmwhwngojosmagjuvxol` | `npm run test:integration`, CI's `integration` job, Playwright E2E |
-
-Applying to only one is the single most common way to break things later: the app deploys fine
-but the *other* environment 500s on a missing column, and the failure surfaces hours later in a
-context where the cause is not obvious. Integration tests run against TEST; the preview site the
-user tests by hand runs against 正式 — a column added to one but not the other means one of those
-two will fail.
-
-Apply via the Management API (the only channel reachable from this sandbox — the sandbox proxy
-only passes HTTPS, so `psql` / `supabase db push` cannot connect):
-
-```js
-// SUPABASE_ACCESS_TOKEN (sbp_…) is in .env.local; project API keys do NOT work here.
-for (const ref of ['nmwhwngojosmagjuvxol', 'egehnijjpgijmccagxac']) {
-  await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: sql }),
-  });
-}
-```
-
-Run it with `NODE_USE_ENV_PROXY=1`, then **verify** (query `information_schema.columns` or
-`pg_class` on both) rather than trusting the 201. Migrations are one-shot `create` statements
-against a clean project, so re-running one errors — that is expected, not a failure to fix.
-
-⚠️ `scripts/test/reset-db.mjs` wipes every business table before each integration run. It has a
-hard safety lock refusing to touch 正式, so the preview site's data is safe — but anything created
-by hand in the **TEST** project will be destroyed by the next `npm run test:integration`.
-
-## Handing off / picking this up
-
-If you are picking this project up without the previous session's machine, read
-`docs/integration/17-HANDOFF.md` **first**. It carries the current branch state, the
-per-issue acceptance status, the owner's 7 open decisions, and — most importantly — a
-complete index of the traps that made gates pass while the thing was actually broken
-(a committed `node_modules` symlink that silently emptied `node_modules` while
-`typecheck` still "passed", a cleanup that was blocked by a DB trigger while the script
-exited 0, a comparison assertion whose non-zero branch never ran, CI that had not
-executed for 66 commits). Every one of them is the same family: **green does not mean
-verified**.
-
-All work lives on `claude/deploy-vercel-project-nnno59`, not `main`.
-
 ## Key docs
 
+- `AGENTS.md` — mandatory agent entry point
+- `docs/DOCUMENTATION-GOVERNANCE.md` — canonical docs, direct-main docs-only rule, branch policy
 - `docs/CONVENTIONS.md` — read before adding a page
 - `docs/REBUILD-SPEC.md` — design system spec + per-page section/copy inventory
 - `docs/specs/*.json` — DOM specs scraped from the original site, one per page; the source of
   truth for fidelity work
-- `docs/integration/00-MASTER-PLAN.md` — backend integration entry point: 11 guardrails and the
+- `docs/integration/00-MASTER-PLAN.md` — backend integration entry point: guardrails and the
   Phase 0–10 order. Phases must be executed in order; each ends with typecheck + build + its
   checklist in `08-CHECKLIST.md`.
+- `docs/integration/10-TOUR-DOMAIN.md` — canonical tour-domain spec, including departure guide assignments and scheduling
+- `docs/integration/10-TOUR-DOMAIN-CHECKLIST.md` — Phase 8c.5 guide-assignment acceptance checklist
 - `docs/integration/13-BUSINESS-MODES.md` — the business-modes design, already implemented in the
   mock frontend
 
-## Git
+## Git and documentation governance
 
-Work happens on `claude/deploy-vercel-project-nnno59`; **Vercel auto-deploys from `main`**, so
-changes meant to be visible on the deployment must reach `main` too. Commit messages in this repo
-are mostly Traditional Chinese, describing the user-visible change.
+- **Canonical product, architecture, API and acceptance documentation lives on `main`.** Issue text should reference stable repo paths on main, not a temporary branch URL.
+- Owner-approved docs-only changes may go directly to `main`, but the commit must contain only allowed documentation paths. See `docs/DOCUMENTATION-GOVERNANCE.md`.
+- Runtime code, migrations, dependencies, workflows and deployment configuration use a feature branch → PR → CI → review flow.
+- `main` auto-deploys on Vercel. A docs-only main push is not permission for Production DDL/DML or runtime deployment; changes that alter production behavior require explicit Owner authorization.
+- Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch, but it must already contain the latest canonical main documentation commit.
+- Commit messages are mostly Traditional Chinese and should describe the user-visible or governance change.
