@@ -93,6 +93,26 @@ ICS／Google Calendar／Apple Calendar 的定位是「我已經被什麼事情�
 
 若未來 SaaS 方案要區分個人版／團隊版，限制應放在「可啟用導遊席次數」而不是 UI 模式，例如 `guideSeats=1/5`。本次只保留架構方向，不在此處實作收費限制。
 
+### 3.3 每位導遊獨立的可接案策略（Owner 2026-08-27）
+
+可接案策略是**每位導遊自己的屬性**，不是全租戶共用設定。建議 `staff` 增加：
+
+```sql
+availability_policy text not null default 'DEFAULT_AVAILABLE'
+  check (availability_policy in ('DEFAULT_AVAILABLE','EXPLICIT_ONLY'))
+```
+
+GUIDE UI 只顯示自然語言：
+
+- **平常可接案（DEFAULT_AVAILABLE）**：檢查某個候選時間時，不要求另外存在一筆 `shift`；仍要排除不可接案、既有 booking、團次與其他 busy event。
+- **僅指定時間可接案（EXPLICIT_ONLY）**：候選時間必須完整被 `shifts` 覆蓋，否則不可指派。
+
+`DEFAULT_AVAILABLE` **不代表 24 小時自動產生可售時段**。候選時間仍由方案販售方式、固定團次或其他產品規則產生；這個 policy 只決定「該導遊是否還需要 shift coverage」這一道判斷。
+
+既有人員 migration 預設 `DEFAULT_AVAILABLE`，避免新欄位上線時讓原本可排的人突然全部不可排。團隊內可以混用，例如 Wayne＝平常可接案、Amy＝僅指定時間可接案。
+
+共用 availability engine 必須讀取 staff policy，固定團次、動態預約與斜槓服務都不得各自解讀一套。
+
 ## 4. 驗收（併入 08 清單 Phase 8）
 
 - [ ] 註冊選 GUIDE → 後台選單看到「行程與方案／旅遊訂單」，看不到
@@ -105,9 +125,12 @@ ICS／Google Calendar／Apple Calendar 的定位是「我已經被什麼事情�
 - [ ] 1 位可帶團導遊 → UI 自動簡化，無 PRIMARY/ASSISTANT 選擇器，但建立團次後 DB 有唯一導遊的 PRIMARY assignment
 - [ ] 2 位以上 → UI 自動顯示主／協同導遊與團隊篩選；不需要任何 SOLO/TEAM 開關
 - [ ] 導遊從 1→2 或 2→1 時 UI 自動適應；停用人員歷史團次／業績仍可追溯
+- [ ] 同一租戶兩位導遊可分別設定 DEFAULT_AVAILABLE／EXPLICIT_ONLY，availability engine 依各自 policy 正確判斷
+- [ ] DEFAULT_AVAILABLE 無 shift 仍可通過 shift gate，但 block／booking／departure 衝突仍會阻擋
+- [ ] EXPLICIT_ONLY 無完整 shift coverage 時不可被指派；完整 coverage 且無其他衝突時可指派
 - [ ] 註冊選 LOCAL_SHOP → 與現行完全相同；看不到行程相關頁
 - [ ] settings 換模式 → 選單即時切換；原模式資料未刪（切回可見）
 - [ ] 加開其他模組 → 兩套選單並存
 - [ ] LINE：GUIDE 店打「行程」有回應；LOCAL_SHOP 店打「行程」不觸發內建組
 - [ ] 測試（12 分冊）：`modes.13.test.ts` —— preset 表逐模式斷言 nav 組成、
-      預設功能、關鍵字組；換模式不刪資料；GUIDE 0/1/2+ 導遊 UI capability 判定有案例
+      預設功能、關鍵字組；換模式不刪資料；GUIDE 0/1/2+ 導遊 UI capability 與 availability policy 判定都有案例
