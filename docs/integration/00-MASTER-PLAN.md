@@ -2,6 +2,8 @@
 
 > **這份文件是入口。** 依序讀完本檔後，按照 Phase 順序執行各分冊。
 > 執行者假設是一個 AI 編碼模型：**每一步都必須照文件字面執行，不要自行發明架構。**
+>
+> 開工前另必讀：`AGENTS.md` 與 `docs/DOCUMENTATION-GOVERNANCE.md`。正式產品／架構／API／驗收文件以 `main` 為準。
 
 ---
 
@@ -43,13 +45,24 @@
    LINE webhook、Vercel Cron、auth 註冊流程。一般 API 一律走帶使用者 session 的
    client（RLS 生效）。service role key 絕不能出現在任何 `NEXT_PUBLIC_*` 變數或前端 bundle。
 8. **每完成一個 Phase 都要過驗收**：`npm run typecheck` 零錯誤、`npm run build` 成功、
-   該 Phase 的驗收清單（08 分冊）全數打勾，才能進下一個 Phase。
+   該 Phase 的驗收清單（08 分冊或該領域 checklist）全數打勾，才能進下一個 Phase。
 9. **不新增依賴，除非分冊點名。** 各分冊明確列出允許安裝的套件與版本，其餘不裝。
 10. **mock 模式必須永遠可用。** `NEXT_PUBLIC_USE_MOCK=true` 時全站行為與現在完全相同。
     所有真實邏輯都寫在 `adapt(mock, real)` 的 real 分支與 `src/app/api/**`、`src/server/**`。
 11. **一切工作照 12 分冊的 TDD 紀律進行**：先寫測試（紅）→ 實作（綠）→ 回歸全綠
     才算完成；12 分冊 §4 列名的測試檔是任務清單的一部分；**永遠不准為了過關而
     改測試**（12 §2.4 的禁止清單，違反 = 該輪工作無效）；紅燈不得 merge。
+12. **正式文件以 `main` 為唯一入口。** Owner 裁示後，產品規格、架構、API 契約與驗收規則要回併既有 canonical 分冊並進 `main`；不得讓 Issue 只依賴某個暫時分支的補充文件。Decision 記錄原因，Issue 記錄施工，不另造一套互相覆蓋的規格。
+
+### 1.1 文件與程式的分流規則
+
+- Owner 明確核准的純文件更新，可以直接進 `main`。
+- docs-only commit 不得混入 `src/**`、`supabase/**`、依賴、workflow、env 或部署設定。
+- 程式、migration、依賴與部署變更仍走 feature branch → PR → CI → 審核。
+- 程式分支需以最新 `main`，或已包含最新 main 文件 commit 的指定整合分支為 base。
+- Production DDL／DML、正式部署與會改變正式行為的 main merge，仍需 Owner 另行授權。
+
+完整規則見 `docs/DOCUMENTATION-GOVERNANCE.md`。
 
 ---
 
@@ -65,13 +78,15 @@ Phase 5  進階 API        04 分冊§B   coupons / products 寫入面 / points 
 Phase 5.5 功能商店訂閱制  09 分冊     22 項功能目錄、扣點訂閱、套裝方案、功能閘門、到期副作用
 Phase 6  LINE 連動       06 分冊     webhook、推播、rich menu、顧客綁定
 Phase 7  排程與收尾      07 分冊     Vercel Cron、Storage、上線檢查
-Phase 8  行程領域        10 分冊     行程/方案/團次/名額、旅遊訂單、導遊自訂金流（綠界/匯款）
+Phase 8  行程領域        10 分冊     行程/方案/團次/導遊指派/雙向撞班/名額、旅遊訂單、導遊自訂金流
 Phase 9  旅客與公開 API   11 分冊     共用旅客帳號、VibeAI 商店頁、評論、顧客自動建檔
 Phase 10 Midao 整合      11 分冊§4   Midao 前台接入、Partner API、Midao 金流退役
 ```
 
 依賴關係：Phase 2 依賴 1；Phase 3 依賴 2；Phase 4 可與 3 並行（但驗證碼寄信被
 Phase 2 的註冊流程用到，故建議順序執行）；Phase 6 依賴 3 的 settings API。
+
+Phase 8 內部順序：團次／訂單基礎 → 團次導遊指派與共用 availability engine → calendar／ICS／一般預約雙向整合。不得在沒有實際人員指派資料前，用「全店有團就全店封鎖」代替人員級判斷。
 
 ---
 
@@ -117,10 +132,17 @@ supabase/
 | [`07-DEPLOYMENT-CRON.md`](07-DEPLOYMENT-CRON.md) | Vercel 環境變數、Cron Jobs、Storage buckets、上線檢查表 |
 | [`08-CHECKLIST.md`](08-CHECKLIST.md) | 全部 Phase 的逐條驗收清單（執行時照抄成 todo） |
 | [`09-FEATURE-STORE.md`](09-FEATURE-STORE.md) | 功能商店訂閱制：22 項功能目錄、點數扣款、套裝方案、功能閘門對應表、到期副作用、AI 客服（Claude API） |
-| [`10-TOUR-DOMAIN.md`](10-TOUR-DOMAIN.md) | 行程領域：行程/方案/團次 schema、名額原子扣減、旅遊訂單、導遊自訂金流（綠界/匯款）、後台新頁面 |
+| [`10-TOUR-DOMAIN.md`](10-TOUR-DOMAIN.md) | 行程領域 canonical 規格：行程/方案/團次、主／協同導遊、雙向撞班、名額、訂單、加購業績與金流 |
+| [`10-TOUR-DOMAIN-CHECKLIST.md`](10-TOUR-DOMAIN-CHECKLIST.md) | Phase 8c.5 團次導遊指派、雙向撞班與加購 C+ 的施工／驗收清單 |
 | [`11-PARTNER-API.md`](11-PARTNER-API.md) | 共用旅客帳號、公開商店 API、評論、顧客自動建檔、Midao Partner API 與退役路線 |
 | [`12-TESTING-TDD.md`](12-TESTING-TDD.md) | **強制**：TDD 循環、單元/整合/E2E 標準、每 Phase 必寫測試矩陣、TEST 資料庫、CI 關卡、Definition of Done |
 | [`13-BUSINESS-MODES.md`](13-BUSINESS-MODES.md) | 業態模式（當地商店/嚮導/醫院）：註冊三選一決定選單/名詞/預設功能包；模式換門牌不換倉庫 |
+
+專案級文件治理：
+
+- `../../AGENTS.md`
+- `../DOCUMENTATION-GOVERNANCE.md`
+- `../decisions/**`
 
 ---
 
