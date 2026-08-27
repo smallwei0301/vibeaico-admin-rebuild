@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Mandatory start — read main before touching code
+
+Before working on any Issue:
+
+1. `git fetch origin`.
+2. Read `origin/main:AGENTS.md` and `origin/main:docs/DOCUMENTATION-GOVERNANCE.md`.
+3. Read the Issue's canonical `docs/integration/**` files from `main`.
+4. Base implementation work on latest `main`, or on a designated integration branch that already contains the latest main documentation commit.
+
+Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**.
+
 ## Commands
 
 ```bash
@@ -32,7 +43,7 @@ routes identical to the original site.
 **It is currently mock-only.** `NEXT_PUBLIC_USE_MOCK=true` (the default) means no database or
 backend is needed — everything reads from `src/mock/`. There is no `src/app/api/**` and no
 `src/server/**` yet. Wiring up the real backend (Supabase + Resend + LINE) is planned in detail
-across `docs/integration/00-13`, tracked by GitHub issue #1, and has not started.
+across `docs/integration/00-13`, tracked by GitHub issue #1, and has not started on this branch.
 
 ## Architecture
 
@@ -127,18 +138,25 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 
 ## Key docs
 
+- `AGENTS.md` — mandatory agent entry point
+- `docs/DOCUMENTATION-GOVERNANCE.md` — canonical docs, direct-main docs-only rule, branch policy
 - `docs/CONVENTIONS.md` — read before adding a page
 - `docs/REBUILD-SPEC.md` — design system spec + per-page section/copy inventory
 - `docs/specs/*.json` — DOM specs scraped from the original site, one per page; the source of
   truth for fidelity work
-- `docs/integration/00-MASTER-PLAN.md` — backend integration entry point: 11 guardrails and the
+- `docs/integration/00-MASTER-PLAN.md` — backend integration entry point: guardrails and the
   Phase 0–10 order. Phases must be executed in order; each ends with typecheck + build + its
   checklist in `08-CHECKLIST.md`.
+- `docs/integration/10-TOUR-DOMAIN.md` — canonical tour-domain spec, including departure guide assignments and scheduling
+- `docs/integration/10-TOUR-DOMAIN-CHECKLIST.md` — Phase 8c.5 guide-assignment acceptance checklist
 - `docs/integration/13-BUSINESS-MODES.md` — the business-modes design, already implemented in the
   mock frontend
 
-## Git
+## Git and documentation governance
 
-Work happens on `claude/deploy-vercel-project-nnno59`; **Vercel auto-deploys from `main`**, so
-changes meant to be visible on the deployment must reach `main` too. Commit messages in this repo
-are mostly Traditional Chinese, describing the user-visible change.
+- **Canonical product, architecture, API and acceptance documentation lives on `main`.** Issue text should reference stable repo paths on main, not a temporary branch URL.
+- Owner-approved docs-only changes may go directly to `main`, but the commit must contain only allowed documentation paths. See `docs/DOCUMENTATION-GOVERNANCE.md`.
+- Runtime code, migrations, dependencies, workflows and deployment configuration use a feature branch → PR → CI → review flow.
+- `main` auto-deploys on Vercel. A docs-only main push is not permission for Production DDL/DML or runtime deployment; changes that alter production behavior require explicit Owner authorization.
+- Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch, but it must already contain the latest canonical main documentation commit.
+- Commit messages are mostly Traditional Chinese and should describe the user-visible or governance change.
