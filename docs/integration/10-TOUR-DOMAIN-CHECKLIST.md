@@ -1,7 +1,7 @@
-# 16 — 團次導遊指派與撞班防護：施工／驗收清單
+# Phase 8c.5 — 團次導遊指派與撞班防護：施工／驗收清單
 
-> 對應規格：`docs/integration/16-TOUR-GUIDE-SCHEDULING.md`
-> Owner 決策：2026-08-27。
+> Canonical 規格：`docs/integration/10-TOUR-DOMAIN.md` 的團次人員、雙向撞班與加購業績章節。
+> Owner Decision：`docs/decisions/2026-08-27-tour-guide-assignment.md`。
 > 原則：先測試（紅）→ 實作（綠）→ 回歸；不得用前端隱藏選項取代後端衝突檢查。
 
 ## A. 規格與型別
@@ -9,7 +9,6 @@
 - [ ] `src/lib/types.ts`：`TripDeparture` 增加主／協同導遊欄位（只新增 optional 相容欄位）
 - [ ] 新增 `DepartureStaffRole`／團次指派型別
 - [ ] 新增 `TourOrderAddon`／`AddonPerformanceMode`
-- [ ] `docs/integration/10-TOUR-DOMAIN.md` 回併 16 分冊定案內容，移除與本文件衝突的舊敘述
 - [ ] `docs/integration/04-API-CONTRACTS.md` 回併團次人員／availability／order addon 契約
 
 ## B. Source-only migration
@@ -20,15 +19,15 @@
 - [ ] RLS 四條 policy
 - [ ] 新增 `tour_order_addons`，金額不可負數、數量 >= 1
 - [ ] 加購業績模式 `PRIMARY / SPECIFIC_STAFF / NONE`
-- [ ] 正式資料庫套用前停在 owner gate，不自行執行 Production DDL
+- [ ] 正式資料庫套用前停在 Owner gate，不自行執行 Production DDL
 
 ## C. 共用人員可用性引擎
 
 - [ ] 新增／抽出 `src/server/staff-availability.ts`
-- [ ] 同一引擎同時讀 `shifts`
-- [ ] 同一引擎同時讀 `bookings(PENDING/CONFIRMED)`
-- [ ] 同一引擎同時讀 `block_times`
-- [ ] 同一引擎同時讀 `trip_departure_staff + trip_departures + trip_plans.duration_minutes`
+- [ ] 同一引擎讀 `shifts`
+- [ ] 同一引擎讀 `bookings(PENDING/CONFIRMED)`
+- [ ] 同一引擎讀 `block_times`
+- [ ] 同一引擎讀 `trip_departure_staff + trip_departures + trip_plans.duration_minutes`
 - [ ] `CANCELLED` 團次不占用
 - [ ] 無 `start_time` 團次視為整日占用
 - [ ] PRIMARY 與 ASSISTANT 都占用時間
@@ -53,7 +52,7 @@
 - [ ] 忙碌人員顯示衝突原因，不只消失
 - [ ] batch UI 可指定主／協同導遊
 - [ ] batch 結果顯示 created / skipped / conflicts 真實數字
-- [ ] 既有未指派團次顯示「未指派」，不得假造 owner
+- [ ] 既有未指派團次顯示「未指派」，不得假造人員
 
 ## F. 一般預約反向防撞
 
@@ -86,7 +85,7 @@
 
 ## I. 必測案例
 
-- [ ] 一般預約撞團次 → 團次建立 409
+- [ ] 一般預約撞團次 → 團次建立 409 且零半成品資料
 - [ ] 團次撞一般預約 → available-slots 不回該人
 - [ ] 團次撞團次 → 409
 - [ ] CANCELLED 團次釋放
@@ -101,7 +100,7 @@
 ## J. Definition of Done
 
 - [ ] 上述項目全數有證據
-- [ ] 16 分冊內容已回併 10／04／08／12／14 相關章節
-- [ ] #10 的 `available-slots` 驗收改成「依實際團次導遊指派排除」，不再以全店團次粗略封鎖
+- [ ] 04／08／12／14 相關章節已回併並附 commit hash
+- [ ] #10 的 `available-slots` 驗收採「依實際團次導遊指派排除」，不以全店團次粗略封鎖
 - [ ] #17 的 C+ 業績裁示已落實，不再沿用舊的「全部算主服務人員」
-- [ ] Production migration / deploy 維持 owner 明確授權門檻
+- [ ] Production migration / deploy 維持 Owner 明確授權門檻
