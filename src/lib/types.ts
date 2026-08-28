@@ -538,6 +538,13 @@ export type TripPlanSeason = {
 };
 
 export type DepartureStatus = 'OPEN' | 'CLOSED' | 'CANCELLED';
+export type DepartureStaffRole = 'PRIMARY' | 'ASSISTANT';
+
+export type DepartureStaffAssignment = {
+  staffId: string;
+  staffName: string;
+  role: DepartureStaffRole;
+};
 
 export type TripDeparture = {
   id: string;
@@ -573,6 +580,23 @@ export type TripAddon = {
   stock: number | null;
   active: boolean;
   sortOrder: number;
+};
+
+export type AddonPerformanceMode = 'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE';
+
+/** 旅遊訂單成立時保存的加購快照；完成訂單後業績欄位即凍結。 */
+export type TourOrderAddon = {
+  id: string;
+  tripAddonId: string | null;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+  appliedAmount: number;
+  performanceMode: AddonPerformanceMode;
+  specificStaffId: string | null;
+  performanceStaffId: string | null;
+  performanceAmount: number | null;
+  createdAt: string;
 };
 
 export type TourOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
@@ -639,6 +663,15 @@ export type CalendarEvent = {
     staffId?: string | null;
     staffName?: string | null;
     /* DEPARTURE */
+    departureId?: string;
+    tripId?: string;
+    tripTitle?: string;
+    planName?: string;
+    departureStatus?: DepartureStatus;
+    primaryStaffId?: string | null;
+    primaryStaffName?: string | null;
+    assistantStaffIds?: string[];
+    assistantStaffNames?: string[];
     seatsBooked?: number;
     capacity?: number;
     /* BLOCK */

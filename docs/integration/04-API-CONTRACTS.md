@@ -252,7 +252,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/bookings/:id/revert-complete` | COMPLETED→PENDING，並回沖完成時發的點數 ⚙M |
 | GET `/api/bookings/available-slots` | `?serviceId&staffId?&date`：以共用 staff availability engine 讀 business 設定（時段間隔/營業時間/公休）+ shifts（依 staff `availability_policy`）+ bookings + block_times + 已指派團次 → 回 `{slots:[{start,end,staffIds[]}]}`；只排除實際被指派的 PRIMARY／ASSISTANT，不做全店粗略封鎖 |
 | GET `/api/bookings/calendar` | `?from&to`：回該區間全部（不分頁）。**僅服務預約**；行事曆頁請改用下面的統一端點 |
-| GET `/api/calendar` | `?from&to`：**行事曆頁唯一資料源**，合併四種事件成一個陣列（展示層合一，資料層仍分開）：`{events: CalendarEvent[]}`，`CalendarEvent` 以 `type` 區辨 —— `BOOKING`（服務預約）／`DEPARTURE`（行程團次，含 `seatsBooked/capacity`）／`BLOCK`（封鎖時段）／`EXTERNAL`（匯入的外部 ICS，唯讀）。`DEPARTURE` 只在租戶有 `TOUR_MODULE` 時出現。共用型別加在 `src/lib/types.ts`（只新增） |
+| GET `/api/calendar` | `?from&to`：**行事曆頁唯一資料源**，合併四種事件成一個陣列（展示層合一，資料層仍分開）：`{events: CalendarEvent[]}`，`CalendarEvent` 以 `type` 區辨 —— `BOOKING`（服務預約）／`DEPARTURE`（行程團次，含 `seatsBooked/capacity`、`primaryStaffId/Name`、`assistantStaffIds/Names`）／`BLOCK`（封鎖時段）／`EXTERNAL`（匯入的外部 ICS，唯讀）。沒有團次資料的租戶自然回空；GUIDE 的 `TOUR_MODULE` 是隨業態贈送，不以付費訂閱列判斷。共用型別加在 `src/lib/types.ts`（只新增） |
 | GET/POST `/api/block-times`、DELETE `/api/block-times/:id` | CRUD，欄位同表 |
 | GET/POST `/api/recurring-bookings`、PUT/DELETE `:id`、POST `:id/renew` | rule jsonb `{weekday(0-6), time'HH:mm', intervalWeeks, until}`；renew=依 rule 產生未來實體 bookings（source='RECURRING'） |
 | GET/POST `/api/bookings/:id/addons`、DELETE `/api/bookings/:id/addons/:addonId` | 預約加購明細，見 **§B-1.1** |

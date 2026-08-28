@@ -257,6 +257,7 @@ export const tripsPage = {
     columns: {
       date: '出團日期',
       plan: '方案',
+      guides: '帶團人員',
       seats: '名額',
       status: '狀態',
       note: '備註',
@@ -301,6 +302,8 @@ export const tripsPage = {
     available: '可帶團',
     busy: '無法帶團',
     conflict: (reason: string) => `衝突：${reason}`,
+    unassigned: '未指派',
+    assistants: (names: string) => `協同：${names}`,
   },
 
   /* --------------------------------------------------------------- 加購 */

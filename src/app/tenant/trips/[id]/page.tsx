@@ -513,6 +513,19 @@ export default function TripDetailPage() {
     },
     { key: 'plan', header: t.departures.columns.plan, render: (d) => d.planName },
     {
+      key: 'guides', header: t.departures.columns.guides,
+      render: (d) => (
+        <div className="text-2xs">
+          <div className={d.primaryStaffName ? 'text-dark' : 'text-warning'}>
+            {d.primaryStaffName ?? t.departures.unassigned}
+          </div>
+          {(d.assistantStaffNames?.length ?? 0) > 0 ? (
+            <div className="text-secondary">{t.departures.assistants(d.assistantStaffNames!.join('、'))}</div>
+          ) : null}
+        </div>
+      ),
+    },
+    {
       key: 'seats', header: t.departures.columns.seats, numeric: true, width: '150px',
       render: (d) => {
         const left = d.capacity - d.seatsBooked;

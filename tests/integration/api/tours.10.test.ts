@@ -267,6 +267,7 @@ describe('團次 CRUD（/api/trips/:id/departures、/api/trip-departures/:id）'
       capacity: 8,
       // #37 的 2+ 導遊契約：測試種子有兩位可指派人員，必須明確選 PRIMARY。
       primaryStaffId: SHOP_A.staffA1,
+      assistantStaffIds: [SHOP_A.staffA2],
       // 刻意送一個不該被採信的值
       seatsBooked: 99,
     });
@@ -305,6 +306,24 @@ describe('團次 CRUD（/api/trips/:id/departures、/api/trip-departures/:id）'
     expect(res.status, JSON.stringify(body)).toBe(200);
     expect(body.data!.some((d) => d.id === departureId)).toBe(true);
     expect(body.data!.find((d) => d.id === departureId)!.planName).toBe('標準團（tours.10）');
+  });
+
+  it('GET /api/calendar：團次帶主導遊、協同導遊與名額', async () => {
+    const day = futureDate(410);
+    const res = await ownerA.get(`/api/calendar?from=${day}T00%3A00%3A00.000Z&to=${day}T23%3A59%3A59.999Z`);
+    const body = await readJson<{ events: Array<{
+      id: string; type: string; meta?: {
+        departureId?: string; primaryStaffId?: string | null; assistantStaffIds?: string[];
+        seatsBooked?: number; capacity?: number;
+      };
+    }> }>(res);
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    const event = body.data!.events.find((item) => item.meta?.departureId === departureId);
+    expect(event?.type).toBe('DEPARTURE');
+    expect(event?.meta?.primaryStaffId).toBe(SHOP_A.staffA1);
+    expect(event?.meta?.assistantStaffIds).toEqual([SHOP_A.staffA2]);
+    expect(event?.meta?.seatsBooked).toBe(0);
+    expect(event?.meta?.capacity).toBe(8);
   });
 
   it('PUT：改 capacity 與 status，DB 跟著變', async () => {

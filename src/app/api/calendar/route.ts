@@ -1,27 +1,31 @@
 // GET /api/calendar?from&to — 行事曆頁唯一資料源（04 §B-1）：四種事件合併成
 // 一個陣列 { events: CalendarEvent[] }（展示層合一，資料層仍分開）。
 //
-// 現階段實作 BOOKING + BLOCK 兩種：
-//   - DEPARTURE（行程團次）：trips / trip_departures 表屬 Phase 10 TOUR_MODULE
-//     （0004 migration 尾註：長尾功能先不建表；10-TOUR-DOMAIN.md），表未建 →
-//     恆回空，Phase 10 建表後在此補查詢（僅 TOUR_MODULE 租戶）。
-//   - EXTERNAL（外部 ICS）：external_calendars 表同樣未建（0004 尾註）→ 恆回空。
+// 現階段實作 BOOKING + BLOCK + DEPARTURE；EXTERNAL 的資料表尚未建立，仍為空。
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import type { CalendarEvent } from '@/lib/types';
 import { expandWeeklyBlock } from '@/server/business-hours-blocks';
+import { departureInterval } from '@/server/staff-availability';
 
 const querySchema = z.object({
-  from: z.string().min(1, '請提供起始時間'),
-  to: z.string().min(1, '請提供結束時間'),
+  from: z.string().datetime({ offset: true }).min(1, '請提供起始時間'),
+  to: z.string().datetime({ offset: true }).min(1, '請提供結束時間'),
 });
 
 export const GET = handle(async (req) => {
   const t = await requireTenant();
   const q = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
+  const fromDate = q.from.slice(0, 10);
+  // API 的 `to` 是不含端點；日期欄位查詢改成最後一個仍在區間內的日期。
+  const toDate = new Date(Date.parse(q.to) - 1).toISOString().slice(0, 10);
 
-  const [{ data: bookings, error: bErr }, { data: blocks, error: blErr }] = await Promise.all([
+  const [
+    { data: bookings, error: bErr },
+    { data: blocks, error: blErr },
+    { data: departures, error: dErr },
+  ] = await Promise.all([
     // 行事曆只顯示還「佔住時段」或已履行的預約；CANCELLED/NO_SHOW 不佔格。
     t.supabase.from('bookings_view')
       .select('id, booking_no, status, start_at, end_at, customer_name, service_name, staff_id, staff_name')
@@ -37,9 +41,16 @@ export const GET = handle(async (req) => {
     t.supabase.from('block_times')
       .select('id, staff_id, start_at, end_at, reason, title, recurrence, day_of_week, auto, staff(name)')
       .eq('tenant_id', t.tenantId),
+    // TOUR_MODULE 是 GUIDE 業態的隨模式贈送能力，不一定有 feature_subscriptions
+    // 資料列（13 分冊）；直接依租戶查團次，沒有行程的業態自然得到空陣列。
+    t.supabase.from('trip_departures')
+      .select('id, trip_id, departs_on, start_time, capacity, seats_booked, status, trips(title), trip_plans(name, duration_minutes), trip_departure_staff(staff_id, role, staff(name))')
+      .eq('tenant_id', t.tenantId)
+      .gte('departs_on', fromDate).lte('departs_on', toDate),
   ]);
   if (bErr) throw bErr;
   if (blErr) throw blErr;
+  if (dErr) throw dErr;
 
   const events: CalendarEvent[] = [
     ...(bookings ?? []).map((r): CalendarEvent => ({
@@ -86,7 +97,40 @@ export const GET = handle(async (req) => {
         meta: { ...meta, blockId: r.id },
       }));
     }),
-    // DEPARTURE / EXTERNAL：對應資料表尚未建（見檔頭註解），先恆為空。
+    ...(departures ?? []).map((row): CalendarEvent => {
+      const r = row as unknown as {
+        id: string; trip_id: string; departs_on: string; start_time: string | null;
+        capacity: number; seats_booked: number; status: 'OPEN' | 'CLOSED' | 'CANCELLED';
+        trips: { title: string } | null;
+        trip_plans: { name: string; duration_minutes: number } | null;
+        trip_departure_staff: Array<{
+          staff_id: string; role: 'PRIMARY' | 'ASSISTANT'; staff: { name: string } | null;
+        }>;
+      };
+      const interval = departureInterval(
+        r.departs_on, r.start_time?.slice(0, 5) ?? '', r.trip_plans?.duration_minutes ?? 60,
+      );
+      const primary = r.trip_departure_staff.find((item) => item.role === 'PRIMARY');
+      const assistants = r.trip_departure_staff.filter((item) => item.role === 'ASSISTANT');
+      return {
+        id: `departure:${r.id}`,
+        type: 'DEPARTURE',
+        title: `${r.trips?.title ?? '行程'}・${r.trip_plans?.name ?? '方案'}`,
+        start: interval.start,
+        end: interval.end,
+        meta: {
+          departureId: r.id, tripId: r.trip_id,
+          tripTitle: r.trips?.title ?? '', planName: r.trip_plans?.name ?? '',
+          departureStatus: r.status,
+          primaryStaffId: primary?.staff_id ?? null,
+          primaryStaffName: primary?.staff?.name ?? null,
+          assistantStaffIds: assistants.map((item) => item.staff_id),
+          assistantStaffNames: assistants.map((item) => item.staff?.name ?? '').filter(Boolean),
+          seatsBooked: Number(r.seats_booked), capacity: Number(r.capacity),
+        },
+      };
+    }),
+    // EXTERNAL：對應資料表尚未建，先恆為空。
   ].sort((a, b) => a.start.localeCompare(b.start));
 
   return ok({ events });
