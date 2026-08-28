@@ -343,6 +343,13 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  -- Moving a qualifying order changes both departures; re-evaluate the old
+  -- departure before the new one so it can enter AT_RISK when appropriate.
+  if tg_op = 'UPDATE'
+     and old.departure_id is distinct from new.departure_id
+     and old.departure_id is not null then
+    perform public.refresh_departure_formation(old.departure_id);
+  end if;
   if new.departure_id is not null then
     perform public.refresh_departure_formation(new.departure_id);
   end if;
@@ -351,7 +358,7 @@ end;
 $$;
 drop trigger if exists t_tour_orders_refresh_formation on tour_orders;
 create trigger t_tour_orders_refresh_formation
-  after insert or update of status, payment_status on tour_orders
+  after insert or update of status, payment_status, paid_amount, refunded_amount, party_size, departure_id on tour_orders
   for each row execute function public.refresh_tour_order_formation_trigger();
 
 -- deadline cron calls this function. 不足只進 REVIEW_REQUIRED，絕不自動取消／退款。

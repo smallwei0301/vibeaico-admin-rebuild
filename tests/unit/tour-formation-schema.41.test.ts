@@ -47,4 +47,13 @@ describe('#41 schema migration ordering', () => {
     expect(normalizedMigration).toMatch(/create trigger t_trip_plans_participation_mode_41 before insert or update of booking_type, participation_mode/);
     expect(normalizedMigration).toMatch(/if new\.booking_type in \('INSTANT', 'REQUEST'\) then new\.participation_mode := 'PRIVATE'/);
   });
+
+  it('refreshes formation whenever an order field that changes qualification, headcount, or departure changes', () => {
+    expect(normalizedMigration).toMatch(
+      /create trigger t_tour_orders_refresh_formation after insert or update of status, payment_status, paid_amount, refunded_amount, party_size, departure_id on tour_orders/,
+    );
+    expect(normalizedMigration).toMatch(/old\.departure_id is distinct from new\.departure_id/);
+    expect(normalizedMigration).toMatch(/refresh_departure_formation\(old\.departure_id\)/);
+    expect(normalizedMigration).toMatch(/refresh_departure_formation\(new\.departure_id\)/);
+  });
 });
