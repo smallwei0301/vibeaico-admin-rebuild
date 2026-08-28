@@ -11,7 +11,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import { SHOP_A } from '../fixtures';
 
-const TEST_PROJECT_REF = 'nmwhwngojosmagjuvxol';
+const TEST_SUPABASE_HOSTNAME = 'nmwhwngojosmagjuvxol.supabase.co';
 const PREFIX = `issue35-e2e-${randomUUID().slice(0, 8)}`;
 const FIXTURE = {
   customerId: randomUUID(),
@@ -26,7 +26,7 @@ const FIXTURE = {
   amountCouponName: `${PREFIX}-最低消費`,
   percentCouponName: `${PREFIX}-最高折抵`,
   giftCouponName: `${PREFIX}-兌換項目`,
-  description: `${PREFIX}-停用但仍為預設的會員權益`,
+  description: `${PREFIX}-停用且非預設的會員權益`,
   giftItem: `${PREFIX}-免費護髮`,
   couponDiscount: 321,
   pointsRedeemed: 45,
@@ -38,8 +38,6 @@ const FIXTURE = {
 } as const;
 
 let admin: SupabaseClient;
-let previousDefaultLevelIds: string[] = [];
-
 function adminClient(): SupabaseClient {
   const url = process.env.TEST_SUPABASE_URL;
   const key = process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
@@ -52,7 +50,7 @@ function adminClient(): SupabaseClient {
   } catch {
     throw new Error('Issue #35 E2E safety lock: TEST_SUPABASE_URL is not a valid URL');
   }
-  if (parsed.hostname.split('.')[0] !== TEST_PROJECT_REF) {
+  if (parsed.protocol !== 'https:' || parsed.hostname !== TEST_SUPABASE_HOSTNAME) {
     throw new Error('Issue #35 E2E safety lock: TEST_SUPABASE_URL is not the authorized TEST project');
   }
   if (process.env.NEXT_PUBLIC_SUPABASE_URL === url) {
@@ -87,22 +85,25 @@ async function cleanupFixtures(): Promise<void> {
   };
 
   // 外鍵方向：booking → customer，coupon_instances（若日後 route 行為有改）→ coupon。
-  await attempt('cleanup booking', () => admin.from('bookings').delete().eq('id', FIXTURE.bookingId));
+  await attempt('cleanup booking', () => admin.from('bookings').delete()
+    .eq('tenant_id', SHOP_A.id).eq('id', FIXTURE.bookingId));
   await attempt('cleanup coupons', () => admin.from('coupons').delete()
+    .eq('tenant_id', SHOP_A.id)
     .in('id', [FIXTURE.amountCouponId, FIXTURE.percentCouponId, FIXTURE.giftCouponId]));
-  await attempt('cleanup customer', () => admin.from('customers').delete().eq('id', FIXTURE.customerId));
+  await attempt('cleanup customer', () => admin.from('customers').delete()
+    .eq('tenant_id', SHOP_A.id).eq('id', FIXTURE.customerId));
   await attempt('cleanup membership level', () => admin.from('membership_levels').delete()
-    .eq('id', FIXTURE.membershipLevelId));
-  if (previousDefaultLevelIds.length > 0) {
-    await attempt('restore previous default membership level', () => admin.from('membership_levels')
-      .update({ is_default: true }).in('id', previousDefaultLevelIds));
-  }
+    .eq('tenant_id', SHOP_A.id).eq('id', FIXTURE.membershipLevelId));
 
   const residualChecks = await Promise.all([
-    admin.from('bookings').select('id', { count: 'exact', head: true }).eq('id', FIXTURE.bookingId),
-    admin.from('customers').select('id', { count: 'exact', head: true }).eq('id', FIXTURE.customerId),
-    admin.from('membership_levels').select('id', { count: 'exact', head: true }).eq('id', FIXTURE.membershipLevelId),
+    admin.from('bookings').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id).eq('id', FIXTURE.bookingId),
+    admin.from('customers').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id).eq('id', FIXTURE.customerId),
+    admin.from('membership_levels').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id).eq('id', FIXTURE.membershipLevelId),
     admin.from('coupons').select('id', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id)
       .in('id', [FIXTURE.amountCouponId, FIXTURE.percentCouponId, FIXTURE.giftCouponId]),
   ]);
   for (const [index, result] of residualChecks.entries()) {
@@ -118,23 +119,16 @@ test.describe('Issue #35 三頁真實欄位 Preview 驗收', () => {
 
   test.beforeAll(async () => {
     admin = adminClient();
-    const defaults = await admin.from('membership_levels').select('id')
-      .eq('tenant_id', SHOP_A.id).eq('is_default', true);
-    await expectNoDbError(defaults, 'snapshot default membership levels');
-    previousDefaultLevelIds = (defaults.data ?? []).map((row) => row.id as string);
 
     try {
-      if (previousDefaultLevelIds.length > 0) {
-        await expectNoDbError(await admin.from('membership_levels').update({ is_default: false })
-          .eq('tenant_id', SHOP_A.id).in('id', previousDefaultLevelIds), 'clear prior default membership level');
-      }
       await expectNoDbError(await admin.from('membership_levels').insert({
         id: FIXTURE.membershipLevelId,
         tenant_id: SHOP_A.id,
         name: FIXTURE.membershipName,
         description: FIXTURE.description,
         active: false,
-        is_default: true,
+        // 不改寫既有 default：partial unique index 仍由現有租戶資料維持。
+        is_default: false,
         threshold_spent: 8888,
         discount_percent: 12,
         point_rate_multiplier: 2,
@@ -237,18 +231,18 @@ test.describe('Issue #35 三頁真實欄位 Preview 驗收', () => {
     await verifyCoupon(FIXTURE.giftCouponName, [`兌換項目：${FIXTURE.giftItem}`]);
   });
 
-  test('會員等級逐值呈現 DB 的說明、停用與預設旗標', async ({ page }) => {
+  test('會員等級逐值呈現 DB 的說明、停用與非預設旗標', async ({ page }) => {
     await login(page);
     await page.goto('/tenant/membership-levels');
     const row = page.locator('tr', { hasText: FIXTURE.membershipName });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText(FIXTURE.description);
     await expect(row).toContainText('停用');
-    await expect(row).toContainText('預設');
+    await expect(row).not.toContainText('預設');
     await row.getByRole('button', { name: '編輯會員等級' }).click();
     const dialog = page.getByRole('dialog').last();
     await expect(dialog.locator('#levelDescription')).toHaveValue(FIXTURE.description);
     await expect(dialog.getByLabel('啟用此等級')).not.toBeChecked();
-    await expect(dialog.getByLabel('設為預設等級（新顧客自動套用）')).toBeChecked();
+    await expect(dialog.getByLabel('設為預設等級（新顧客自動套用）')).not.toBeChecked();
   });
 });

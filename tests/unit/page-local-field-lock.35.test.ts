@@ -33,6 +33,7 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf-8');
 const BOOKINGS = 'src/app/tenant/bookings/page.tsx';
 const COUPONS = 'src/app/tenant/coupons/page.tsx';
 const LEVELS = 'src/app/tenant/membership-levels/page.tsx';
+const PREVIEW_E2E = 'tests/e2e/page-local-fields.35.spec.ts';
 
 /** 去掉註解再比對：本輪的註解本來就會逐字提到那些被移除的常數名。 */
 const codeOf = (rel: string) => read(rel)
@@ -193,5 +194,34 @@ describe('表單真的把新欄位送給後端（issue #35）', () => {
       description: '說明', active: false, is_default: true,
     });
     expect(l).toMatchObject({ description: '說明', active: false, isDefault: true });
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* ⑤ Preview E2E 自建 fixture 的安全鎖                                          */
+/* -------------------------------------------------------------------------- */
+
+describe('Preview E2E fixture 的 TEST 隔離（issue #35）', () => {
+  it('只接受精確 HTTPS TEST hostname，不可用 project-ref prefix 偽造 host', () => {
+    const src = codeOf(PREVIEW_E2E);
+    expect(src).toContain("const TEST_SUPABASE_HOSTNAME = 'nmwhwngojosmagjuvxol.supabase.co'");
+    expect(src).toContain("parsed.protocol !== 'https:' || parsed.hostname !== TEST_SUPABASE_HOSTNAME");
+    expect(src).not.toContain("hostname.split('.')[0]");
+  });
+
+  it('cleanup 與 residual query 全部同時鎖 fixture id 與 SHOP_A tenant', () => {
+    const src = codeOf(PREVIEW_E2E);
+    const cleanup = src.slice(src.indexOf('async function cleanupFixtures'), src.indexOf("test.describe"));
+    expect(cleanup.match(/\.eq\('tenant_id', SHOP_A\.id\)/g)).toHaveLength(8);
+  });
+
+  it('不改寫既有 membership default，fixture 只驗證自己的非預設狀態', () => {
+    const src = codeOf(PREVIEW_E2E);
+    const fixtureSetup = src.slice(src.indexOf('test.beforeAll'), src.indexOf('test.afterAll'));
+    const cleanup = src.slice(src.indexOf('async function cleanupFixtures'), src.indexOf("test.describe"));
+    expect(fixtureSetup).toContain('is_default: false');
+    expect(fixtureSetup).not.toContain("from('membership_levels').update");
+    expect(cleanup).not.toContain('is_default');
+    expect(src).not.toContain('previousDefaultLevelIds');
   });
 });
