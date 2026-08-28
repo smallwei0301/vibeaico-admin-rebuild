@@ -27,6 +27,7 @@
  *     打 Preview／正式資料庫時建議帶上，讓非零那半段也真的跑一次。
  *   VERIFY_LOCAL_SHOP_PENDING_BOOKING=1 只接受 canonical LOCAL_SHOP fixture 帳號
  *     `owner-a@test.local`：透過登入 session 的
+ *     GUIDE 刻意不支援：該業態隱藏 bookings 導覽，不能拿來證明側邊欄徽章。
  *     POST /api/bookings 建一筆 PENDING 預約，再比對同一個 GET /api/bookings
  *     回應、DB 精確筆數與側邊欄徽章。若帳號沒有可用顧客／服務，會先用同一組
  *     API 建最小 fixture；全數在收尾刪除並驗證無殘留。
