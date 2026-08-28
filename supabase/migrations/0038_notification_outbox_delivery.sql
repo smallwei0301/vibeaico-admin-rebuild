@@ -369,6 +369,11 @@ $$;
 
 revoke execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.enqueue_booking_notification_event() from public, anon, authenticated;
+-- Supabase projects may grant newly-created public functions to service_role
+-- through existing default privileges. These two are trigger-internal entry
+-- points, not server RPCs, so revoke that inherited grant explicitly too.
+revoke execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) from service_role;
+revoke execute on function public.enqueue_booking_notification_event() from service_role;
 revoke execute on function public.claim_notification_deliveries(integer) from public, anon, authenticated;
 revoke execute on function public.refresh_notification_outbox_status(uuid) from public, anon, authenticated;
 revoke execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) from public, anon, authenticated;

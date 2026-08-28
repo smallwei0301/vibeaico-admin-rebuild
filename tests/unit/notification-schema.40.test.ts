@@ -64,6 +64,8 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
       expect(migration).toMatch(new RegExp(`grant execute on function public\\.${fn}\\([^;]+\\) to service_role`, 'i'));
     }
     expect(migration).not.toMatch(/grant execute on function public\.enqueue_notification_event\([^;]+\) to service_role/i);
+    expect(migration).toMatch(/revoke execute on function public\.enqueue_notification_event\([^;]+\) from service_role/i);
+    expect(migration).toMatch(/revoke execute on function public\.enqueue_booking_notification_event\(\) from service_role/i);
   });
 
   it('pins every SECURITY DEFINER notification function to an empty path and schema-qualifies its objects', () => {
