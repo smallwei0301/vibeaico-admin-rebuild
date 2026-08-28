@@ -66,7 +66,8 @@ export const PUT = handle(async (req, { params }) => {
 
   const nextReplyType = b.replyType ?? existing.reply_type;
   const nextContent = b.content ?? existing.content;
-  if (nextReplyType === 'IMAGE')
+  const imagePayloadChanged = b.replyType !== undefined || b.content !== undefined;
+  if (nextReplyType === 'IMAGE' && imagePayloadChanged)
     await requireKeywordReplyImage(nextContent, t.tenantId, createAdminSupabase());
 
   const update: Record<string, unknown> = {};

@@ -113,7 +113,8 @@ describe('④ welcome-card-images bucket 三處一致', () => {
   });
 
   it('不在 LINE_PREVIEW_BUCKETS（歡迎卡片沒有 previewImageUrl 可指，多產一張是浪費）', () => {
-    expect(route).toMatch(/const LINE_PREVIEW_BUCKETS = new Set\(\['chat-images'\]\)/);
+    expect(route).toMatch(/const LINE_PREVIEW_BUCKETS = new Set\(\['chat-images', KEYWORD_REPLY_IMAGES_BUCKET\]\)/);
+    expect(route).not.toMatch(/LINE_PREVIEW_BUCKETS[^;]*welcome-card-images/);
   });
 
   it('services/upload.ts 的 UploadBucket 型別有它', () => {

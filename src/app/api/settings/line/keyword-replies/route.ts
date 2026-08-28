@@ -41,11 +41,11 @@ export const GET = handle(async () => {
     .order('created_at', { ascending: true });
   if (error) throw error;
 
-  // 讀取也不把已被手動刪除、跨租戶或偽造的 IMAGE URL 當成可用資料回給 UI。
-  // 這讓「reload 後圖片還在」代表 DB ref 和 Storage object 仍是一件真事。
+  // 新版 IMAGE ref 會驗 object；只有裸 imageUrl 的 legacy row 繼續唯讀相容，避免
+  // 一筆舊資料讓整個 GET 400。legacy row 下次編輯圖片時仍須走新版 upload/ref 契約。
   const admin = createAdminSupabase();
   for (const row of data ?? []) {
-    if (row.reply_type === 'IMAGE')
+    if (row.reply_type === 'IMAGE' && row.content?.imageStorageRef)
       await requireKeywordReplyImage(row.content ?? {}, t.tenantId, admin);
   }
 

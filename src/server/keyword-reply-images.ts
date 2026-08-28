@@ -1,5 +1,6 @@
 import { ApiHttpError, ERR } from '@/server/http';
 import type { KeywordReplyImageStorageRef } from '@/lib/types';
+import { previewPathFor } from '@/server/image';
 
 /**
  * 關鍵字回覆素材與 chat / rich menu 分開：三者的引用模型、生命週期與 cleanup
@@ -8,7 +9,10 @@ import type { KeywordReplyImageStorageRef } from '@/lib/types';
 export const KEYWORD_REPLY_IMAGES_BUCKET = 'keyword-reply-images';
 
 export type KeywordReplyImageRef = KeywordReplyImageStorageRef;
-type KeywordReplyImageRefCandidate = { bucket: string; path: string; url: string };
+type KeywordReplyImageRefCandidate = {
+  bucket: string; path: string; url: string;
+  previewPath?: string; previewUrl?: string;
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -17,15 +21,22 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export function readKeywordReplyImageRef(content: unknown): KeywordReplyImageRef | null {
   if (!isRecord(content) || !isRecord(content.imageStorageRef)) return null;
   const ref = content.imageStorageRef;
-  if (typeof ref.bucket !== 'string' || typeof ref.path !== 'string' || typeof ref.url !== 'string') return null;
-  return { bucket: ref.bucket as typeof KEYWORD_REPLY_IMAGES_BUCKET, path: ref.path, url: ref.url };
+  if (typeof ref.bucket !== 'string' || typeof ref.path !== 'string' || typeof ref.url !== 'string'
+    || typeof ref.previewPath !== 'string' || typeof ref.previewUrl !== 'string') return null;
+  return {
+    bucket: ref.bucket as typeof KEYWORD_REPLY_IMAGES_BUCKET,
+    path: ref.path, url: ref.url, previewPath: ref.previewPath, previewUrl: ref.previewUrl,
+  };
 }
 
 export function isKeywordReplyImageReferenced(
   rows: readonly { content: unknown }[],
   path: string,
 ): boolean {
-  return rows.some((row) => readKeywordReplyImageRef(row.content)?.path === path);
+  return rows.some((row) => {
+    const ref = readKeywordReplyImageRef(row.content);
+    return ref?.path === path || ref?.previewPath === path;
+  });
 }
 
 /**
@@ -57,6 +68,26 @@ export function validateKeywordReplyImageRef(
   }
   if (url.protocol !== 'https:' || url.origin !== trustedOrigin || decodedPath !== expectedPath)
     throw new ApiHttpError(400, '圖片 URL 與 Storage 位置不一致', ERR.VALIDATION);
+
+  const expectedPreviewPath = previewPathFor(ref.path);
+  if (ref.previewPath !== expectedPreviewPath || typeof ref.previewUrl !== 'string')
+    throw new ApiHttpError(400, '圖片縮圖與 Storage 位置不一致', ERR.VALIDATION);
+  let previewUrl: URL;
+  try {
+    previewUrl = new URL(ref.previewUrl);
+  } catch {
+    throw new ApiHttpError(400, '圖片縮圖與 Storage 位置不一致', ERR.VALIDATION);
+  }
+  let decodedPreviewPath: string;
+  try {
+    decodedPreviewPath = decodeURIComponent(previewUrl.pathname);
+  } catch {
+    throw new ApiHttpError(400, '圖片縮圖與 Storage 位置不一致', ERR.VALIDATION);
+  }
+  const expectedPreviewUrlPath = `/storage/v1/object/public/${ref.bucket}/${expectedPreviewPath}`;
+  if (previewUrl.protocol !== 'https:' || previewUrl.origin !== trustedOrigin
+    || decodedPreviewPath !== expectedPreviewUrlPath)
+    throw new ApiHttpError(400, '圖片縮圖與 Storage 位置不一致', ERR.VALIDATION);
   return ref as KeywordReplyImageRef;
 }
 
@@ -79,10 +110,14 @@ export async function requireKeywordReplyImage(
   const ref = readKeywordReplyImageRef(content);
   if (!ref) throw new ApiHttpError(400, '請先完成關鍵字圖片上傳', ERR.VALIDATION);
   validateKeywordReplyImageRef(ref, tenantId, storageOrigin());
-  if (!isRecord(content) || content.imageUrl !== ref.url)
+  if (!isRecord(content) || content.imageUrl !== ref.url || content.previewImageUrl !== ref.previewUrl)
     throw new ApiHttpError(400, '圖片 URL 與 Storage 位置不一致', ERR.VALIDATION);
-  const { error } = await admin.storage.from(ref.bucket).info(ref.path);
-  if (error) throw new ApiHttpError(400, '找不到已上傳的關鍵字圖片，請重新上傳', ERR.VALIDATION);
+  const [{ error }, { error: previewError }] = await Promise.all([
+    admin.storage.from(ref.bucket).info(ref.path),
+    admin.storage.from(ref.bucket).info(ref.previewPath),
+  ]);
+  if (error || previewError)
+    throw new ApiHttpError(400, '找不到已上傳的關鍵字圖片或縮圖，請重新上傳', ERR.VALIDATION);
   return ref;
 }
 
@@ -119,17 +154,19 @@ export async function removeUnreferencedKeywordReplyImage(
   const stillReferenced = isKeywordReplyImageReferenced(rows ?? [], ref.path);
   if (stillReferenced) return;
 
-  const { error: removeError } = await admin.storage.from(ref.bucket).remove([ref.path]);
+  const paths = [ref.path, ref.previewPath];
+  const { error: removeError } = await admin.storage.from(ref.bucket).remove(paths);
   if (!removeError) return;
 
+  const jobs = paths.map((path) => ({
+    tenant_id: tenantId,
+    bucket: ref.bucket,
+    path,
+    last_error: String((removeError as Error).message ?? removeError),
+  }));
   const { error: queueError } = await admin
     .from('keyword_reply_image_cleanup')
-    .upsert({
-      tenant_id: tenantId,
-      bucket: ref.bucket,
-      path: ref.path,
-      last_error: String((removeError as Error).message ?? removeError),
-    }, { onConflict: 'bucket,path' });
+    .upsert(jobs, { onConflict: 'bucket,path' });
   if (queueError) throw queueError;
 }
 

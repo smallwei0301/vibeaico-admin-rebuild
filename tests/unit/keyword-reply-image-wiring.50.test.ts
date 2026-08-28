@@ -29,11 +29,34 @@ describe('Issue #50：keyword reply 圖片的完整 source wiring', () => {
     expect(dictionary).not.toContain('imageNotBuilt');
   });
 
+  it('modal 關閉與重疊上傳以 session/generation 決定 ownership，失去 ownership 的結果自行清理', () => {
+    const page = withoutComments(read('src/app/tenant/keyword-replies/page.tsx'));
+    expect(page).toContain('draftSessionRef.current !== session');
+    expect(page).toContain('uploadGenerationRef.current !== generation');
+    expect(page).toContain('discardProvisionalImage(uploadedRef)');
+    expect(page).toContain('discardProvisionalImage(provisionalImageRef.current)');
+    expect(page).not.toContain("disabled={imageUploadState === 'uploading'}");
+  });
+
+  it('save in-flight 時 Cancel/backdrop/Escape/X 共用 close guard，不得刪除即將持久化的 provisional ref', () => {
+    const page = withoutComments(read('src/app/tenant/keyword-replies/page.tsx'));
+    const modal = withoutComments(read('src/components/ui/Modal.tsx'));
+    expect(page).toContain('savingRef.current = true');
+    expect(page).toMatch(/const closeDraft = \(\) => \{\s*if \(savingRef\.current\) return;/);
+    expect(page).toContain('disabled={saving} onClick={closeDraft}');
+    expect(page).toContain('onClose={closeDraft}');
+    expect(modal).toContain('modal-backdrop" onClick={onClose}');
+    expect(modal).toContain("e.key === 'Escape' && onClose()");
+    expect(modal).toMatch(/aria-label=\{common\.close\}[^>]+onClick=\{onClose\}/);
+  });
+
   it('service payload 會帶 imageStorageRef，不只是一個可偽造的 imageUrl', () => {
     const imageStorageRef = {
       bucket: 'keyword-reply-images' as const,
       path: '11111111-1111-4111-8111-111111111111/x.png',
       url: 'https://project.supabase.co/storage/v1/object/public/keyword-reply-images/11111111-1111-4111-8111-111111111111/x.png',
+      previewPath: '11111111-1111-4111-8111-111111111111/x.preview.png',
+      previewUrl: 'https://project.supabase.co/storage/v1/object/public/keyword-reply-images/11111111-1111-4111-8111-111111111111/x.preview.png',
     };
     const payload = toApiPayload({
       keyword: '圖片', matchType: 'EXACT', actionType: 'REPLY_CONTENT', replyText: '圖在這裡',
@@ -42,6 +65,7 @@ describe('Issue #50：keyword reply 圖片的完整 source wiring', () => {
     });
     expect(payload.replyType).toBe('IMAGE');
     expect(payload.content.imageStorageRef).toEqual(imageStorageRef);
+    expect(payload.content.previewImageUrl).toBe(imageStorageRef.previewUrl);
   });
 
   it('create/update/get 都驗 tenant-owned object 存在，替換、刪除或取消選檔都清理', () => {
@@ -49,20 +73,25 @@ describe('Issue #50：keyword reply 圖片的完整 source wiring', () => {
     const detail = withoutComments(read('src/app/api/settings/line/keyword-replies/[id]/route.ts'));
     const images = withoutComments(read('src/server/keyword-reply-images.ts'));
     expect(create).toContain('requireKeywordReplyImage');
-    expect(create).toContain("if (row.reply_type === 'IMAGE')");
+    expect(create).toContain("if (row.reply_type === 'IMAGE' && row.content?.imageStorageRef)");
     expect(detail).toContain('requireKeywordReplyImage(nextContent');
     expect(detail.match(/cleanupReplacedKeywordReplyImage/g)?.length).toBe(3);
     expect(images).toContain('.info(ref.path)');
     expect(images).toContain(".from('keyword_reply_image_cleanup')");
     expect(images).toContain(".select('tenant_id, bucket, path, attempts')");
     expect(images).toContain('isKeywordReplyImageReferenced(refs ?? [], job.path)');
-    expect(read('src/app/api/settings/line/keyword-replies/image/route.ts')).toContain('removeUnreferencedKeywordReplyImage');
+    expect(images).toContain('ref.previewPath');
+    const discard = read('src/app/api/settings/line/keyword-replies/image/route.ts');
+    expect(discard).toContain('removeUnreferencedKeywordReplyImage');
+    expect(discard).toContain('previewPath: z.string()');
+    expect(discard).toContain('previewUrl: z.string()');
   });
 
   it('storage ref 只有一份 frontend/backend contract，不在各層複製匿名結構', () => {
     const contract = read('src/lib/types.ts');
     expect(contract).toContain('export type StorageRef');
     expect(contract).toContain('export type KeywordReplyImageStorageRef');
+    expect(contract).toContain('previewPath: string');
     expect(read('src/services/keyword-replies.ts')).toContain("import type { KeywordReplyImageStorageRef } from '@/lib/types'");
     expect(read('src/services/upload.ts')).toContain("import type { StorageRef } from '@/lib/types'");
   });

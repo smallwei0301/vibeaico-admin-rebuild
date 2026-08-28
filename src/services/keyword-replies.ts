@@ -71,6 +71,7 @@ export function toApiPayload(row: Omit<KeywordReplyRow, 'id'>): KeywordReplyPayl
       actionType: row.actionType,
       imageUrl: row.imageUrl,
       ...(row.imageStorageRef ? { imageStorageRef: row.imageStorageRef } : {}),
+      ...(row.imageStorageRef ? { previewImageUrl: row.imageStorageRef.previewUrl } : {}),
       linkUrl: row.linkUrl,
       linkLabel: row.linkLabel,
       overridesSystem: row.overridesSystem,
@@ -102,7 +103,8 @@ function isKeywordReplyImageRef(value: unknown): value is NonNullable<KeywordRep
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const ref = value as Record<string, unknown>;
   return ref.bucket === 'keyword-reply-images'
-    && typeof ref.path === 'string' && typeof ref.url === 'string';
+    && typeof ref.path === 'string' && typeof ref.url === 'string'
+    && typeof ref.previewPath === 'string' && typeof ref.previewUrl === 'string';
 }
 
 /**

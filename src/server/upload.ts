@@ -83,11 +83,12 @@ const LINE_BOUND_BUCKETS = new Set([
 ]);
 
 /**
- * 需要**額外產一張 ≤1 MB 縮圖**的 bucket —— 只有 `chat-images`（14 分冊 §8.15）。
+ * 需要**額外產一張 ≤1 MB 縮圖**的 bucket。chat 與 keyword reply 最終都會成為
+ * LINE image message，因此不能把最高 5 MB 的原圖同時塞進 previewImageUrl。
  * ⚠️ `richmenu-assets` 是 LINE 去向，但**不需要縮圖**：rich menu 是整張 2500×1686
  * 的底圖，位元組直接上傳給 LINE，訊息裡根本沒有 previewImageUrl 這個欄位可指。
  */
-const LINE_PREVIEW_BUCKETS = new Set(['chat-images']);
+const LINE_PREVIEW_BUCKETS = new Set(['chat-images', KEYWORD_REPLY_IMAGES_BUCKET]);
 
 const WEB_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -121,7 +122,10 @@ export type UploadResult = {
   previewPath?: string;
   previewUrl?: string;
   /** 可持久化的 public object reference；資源 API 必須驗 tenant ownership + existence。 */
-  storageRef: { bucket: string; path: string; url: string };
+  storageRef: {
+    bucket: string; path: string; url: string;
+    previewPath?: string; previewUrl?: string;
+  };
 };
 
 /**
@@ -228,6 +232,9 @@ export async function uploadToBucket(args: {
     : undefined;
   return {
     url: data.publicUrl, path, bucket, previewPath: previewPath ?? undefined, previewUrl,
-    storageRef: { bucket, path, url: data.publicUrl },
+    storageRef: {
+      bucket, path, url: data.publicUrl,
+      ...(previewPath && previewUrl ? { previewPath, previewUrl } : {}),
+    },
   };
 }

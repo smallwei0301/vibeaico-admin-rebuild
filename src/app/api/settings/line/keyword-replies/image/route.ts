@@ -9,7 +9,10 @@ import {
 } from '@/server/keyword-reply-images';
 
 const bodySchema = z.object({
-  storageRef: z.object({ bucket: z.string(), path: z.string(), url: z.string() }),
+  storageRef: z.object({
+    bucket: z.string(), path: z.string(), url: z.string(),
+    previewPath: z.string(), previewUrl: z.string(),
+  }),
 });
 
 /**

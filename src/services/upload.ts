@@ -41,7 +41,7 @@ export type UploadResult = {
   /** 只有 private bucket 會帶：url 的效期（秒）。 */
   urlExpiresInSeconds?: number;
   /**
-   * 只有 `chat-images` 會帶：與原圖一起產出的 **≤1 MB 縮圖**網址／路徑
+   * `chat-images` 與 `keyword-reply-images` 會帶：與原圖一起產出的 **≤1 MB 縮圖**網址／路徑
    * （issue #28 ⑬；LINE image message 的 `previewImageUrl` 上限只有 1 MB，
    * 原圖是 10 MB）。
    *

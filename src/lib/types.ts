@@ -690,4 +690,7 @@ export type StorageRef = {
 /** LINE 關鍵字回覆的公開圖片；bucket 固定，避免混用聊天或 Rich Menu 素材。 */
 export type KeywordReplyImageStorageRef = StorageRef & {
   bucket: 'keyword-reply-images';
+  /** LINE image message 的獨立 <=1 MB preview 物件。 */
+  previewPath: string;
+  previewUrl: string;
 };

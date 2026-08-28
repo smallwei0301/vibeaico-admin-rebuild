@@ -111,8 +111,14 @@ export default function KeywordRepliesPage() {
   const [editing, setEditing] = React.useState(false);
   const [formError, setFormError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  // state commit 前也要立刻生效：使用者按儲存後同一個 event turn 點到背景/X 時，
+  // 只看 `saving` closure 仍可能是 false，進而刪掉即將被 POST/PUT 引用的 provisional image。
+  const savingRef = React.useRef(false);
   const [imageUploadState, setImageUploadState] = React.useState<'idle' | 'uploading' | 'uploaded' | 'failed'>('idle');
-  const [persistedImageRef, setPersistedImageRef] = React.useState<KeywordReply['imageStorageRef']>();
+  const persistedImageRefRef = React.useRef<KeywordReply['imageStorageRef']>(undefined);
+  const provisionalImageRef = React.useRef<KeywordReply['imageStorageRef']>(undefined);
+  const draftSessionRef = React.useRef(0);
+  const uploadGenerationRef = React.useRef(0);
   const [deleteTarget, setDeleteTarget] = React.useState<KeywordReply | null>(null);
 
   /** 未訂閱時才真的鎖住自訂關鍵字的 CRUD（端點也 requireFeature，鎖與後端一致） */
@@ -179,23 +185,29 @@ export default function KeywordRepliesPage() {
   /* -------------------------------------------------------------- 動作 */
 
   const openCreate = (preset?: Partial<typeof EMPTY_DRAFT>) => {
+    draftSessionRef.current += 1;
+    uploadGenerationRef.current += 1;
+    provisionalImageRef.current = undefined;
     setEditing(false);
     setFormError('');
     setDraft({ ...EMPTY_DRAFT, ...preset });
     setImageUploadState(preset?.imageUrl ? 'uploaded' : 'idle');
-    setPersistedImageRef(undefined);
+    persistedImageRefRef.current = undefined;
   };
 
   const openEdit = (row: KeywordReply) => {
+    draftSessionRef.current += 1;
+    uploadGenerationRef.current += 1;
+    provisionalImageRef.current = undefined;
     setEditing(true);
     setFormError('');
     setDraft({ ...row });
     setImageUploadState(row.imageUrl ? 'uploaded' : 'idle');
-    setPersistedImageRef(row.imageStorageRef);
+    persistedImageRefRef.current = row.imageStorageRef;
   };
 
   const discardProvisionalImage = (ref: KeywordReply['imageStorageRef']) => {
-    if (!ref || ref.path === persistedImageRef?.path) return;
+    if (!ref || ref.path === persistedImageRefRef.current?.path) return;
     void discardKeywordReplyImage(ref).catch(() => {
       // Server has already queued a retry when Storage delete fails. The modal is closing, so
       // there is no longer a useful inline position for this recoverable cleanup notice.
@@ -203,25 +215,41 @@ export default function KeywordRepliesPage() {
   };
 
   const closeDraft = () => {
-    discardProvisionalImage(draft?.imageStorageRef);
+    // Modal 的 Cancel、backdrop、Escape、X 全都匯入這支；寫入完成前不得收掉圖片。
+    if (savingRef.current) return;
+    draftSessionRef.current += 1;
+    uploadGenerationRef.current += 1;
+    discardProvisionalImage(provisionalImageRef.current);
+    provisionalImageRef.current = undefined;
     setDraft(null);
-    setPersistedImageRef(undefined);
+    persistedImageRefRef.current = undefined;
     setImageUploadState('idle');
   };
 
   const uploadKeywordReplyImage = async (file: File) => {
+    const session = draftSessionRef.current;
+    const generation = ++uploadGenerationRef.current;
     setImageUploadState('uploading');
     setFormError('');
     try {
       const uploaded = await uploadFile(file, 'keyword-reply-images');
-      discardProvisionalImage(draft?.imageStorageRef);
+      const uploadedRef = uploaded.storageRef as NonNullable<KeywordReply['imageStorageRef']>;
+      if (draftSessionRef.current !== session || uploadGenerationRef.current !== generation) {
+        // Modal 已關閉或較新的 upload 已取得 ownership：這個完成結果必須自行收尾，
+        // 不能依賴已消失/已被覆蓋的 React state。
+        discardProvisionalImage(uploadedRef);
+        return;
+      }
+      discardProvisionalImage(provisionalImageRef.current);
+      provisionalImageRef.current = uploadedRef;
       setDraft((current) => current ? {
         ...current,
         imageUrl: uploaded.url,
-        imageStorageRef: uploaded.storageRef as NonNullable<KeywordReply['imageStorageRef']>,
+        imageStorageRef: uploadedRef,
       } : current);
       setImageUploadState('uploaded');
     } catch (e) {
+      if (draftSessionRef.current !== session || uploadGenerationRef.current !== generation) return;
       setImageUploadState('failed');
       setFormError(errorMessage(e));
     }
@@ -234,7 +262,7 @@ export default function KeywordRepliesPage() {
   };
 
   const save = async () => {
-    if (!draft) return;
+    if (!draft || imageUploadState === 'uploading') return;
     const keyword = draft.keyword.trim();
     if (!keyword) {
       setFormError(t.messages.keywordRequired);
@@ -250,6 +278,7 @@ export default function KeywordRepliesPage() {
     }
     // id 不進 body：新增沒有 id，編輯的 id 走路徑參數
     const { id, ...payload } = { ...draft, keyword };
+    savingRef.current = true;
     setSaving(true);
     try {
       if (editing) {
@@ -260,12 +289,15 @@ export default function KeywordRepliesPage() {
         const created = await createKeywordReply(payload);
         setRows((list) => [...list, { ...payload, id: created.id }]);
       }
-      setPersistedImageRef(payload.imageStorageRef);
+      persistedImageRefRef.current = payload.imageStorageRef;
+      provisionalImageRef.current = undefined;
+      uploadGenerationRef.current += 1;
       setDraft(null);
       toast.show(t.messages.saved);
     } catch (e) {
       toast.show(errorMessage(e), 'danger');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -573,7 +605,7 @@ export default function KeywordRepliesPage() {
         title={editing ? t.form.editTitle : t.form.createTitle}
         footer={
           <>
-            <Button variant="secondary" size="sm" onClick={closeDraft}>
+            <Button variant="secondary" size="sm" disabled={saving} onClick={closeDraft}>
               {common.cancel}
             </Button>
             <Button size="sm" loading={saving || imageUploadState === 'uploading'} loadingText={common.saving} onClick={() => void save()}>
@@ -676,7 +708,6 @@ export default function KeywordRepliesPage() {
                     type="file"
                     accept="image/jpeg,image/png"
                     className="form-control-sm"
-                    disabled={imageUploadState === 'uploading'}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       e.target.value = '';
@@ -695,7 +726,9 @@ export default function KeywordRepliesPage() {
                         variant="outlineDanger"
                         size="sm"
                         onClick={() => {
-                          discardProvisionalImage(draft.imageStorageRef);
+                          uploadGenerationRef.current += 1;
+                          discardProvisionalImage(provisionalImageRef.current);
+                          provisionalImageRef.current = undefined;
                           setDraft({ ...draft, imageUrl: '', imageStorageRef: undefined });
                           setImageUploadState('idle');
                         }}

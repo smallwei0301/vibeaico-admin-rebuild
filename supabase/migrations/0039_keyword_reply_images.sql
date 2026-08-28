@@ -1,8 +1,8 @@
 -- 0039 — Issue #50：關鍵字回覆圖片專用 bucket 與可重試的孤兒清理佇列
 --
 -- 不重用 richmenu-assets：它是 1MB 的 Rich Menu 底圖，且沒有「某一筆 keyword
--- reply 不再引用時刪掉素材」的生命週期。也不重用 chat-images：它一張原圖會連帶
--- 產 preview，且聊天訊息要保留歷史。keyword reply 素材是 LINE 要抓的店家行銷圖，
+-- reply 不再引用時刪掉素材」的生命週期。keyword reply 與 chat image 都會產獨立
+-- preview，但聊天訊息要保留歷史，不能共用清理生命週期。keyword reply 素材是 LINE 要抓的店家行銷圖，
 -- 因此 public=true（URL 即權限）；路徑第一段仍是 tenant id，API 另驗 object 存在。
 
 insert into storage.buckets (id, name, public) values
@@ -38,3 +38,7 @@ create table if not exists keyword_reply_image_cleanup (
 );
 alter table keyword_reply_image_cleanup enable row level security;
 -- service role only：店家不應能讀寫別人的 cleanup 狀態。
+
+-- 既有 IMAGE row 只有 imageUrl，無法從任意外部 URL 安全推回本租戶 Storage object，
+-- 因此不做猜測式 SQL backfill。API 保留唯讀/停用相容；重新選圖時才寫入同時包含
+-- 原圖與 preview 的 imageStorageRef，之後的寫入一律驗租戶、URL 與兩個 object。
