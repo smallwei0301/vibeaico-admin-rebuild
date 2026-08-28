@@ -187,9 +187,10 @@ export function maskSecret(value: string): string {
   return `${value.slice(0, 4)}${'•'.repeat(12)}${value.slice(-4)}`;
 }
 
-/** 依 shopCode 組出該店家的 LINE Webhook URL（原站規則） */
-export function buildWebhookUrl(appUrl: string, shopCode: string): string {
-  return `${appUrl.replace(/\/$/, '')}/api/line/webhook/${shopCode}`;
+/** 依 shopCode 組出該店家的 LINE Webhook URL；credential 為伺服器產生的密文膠囊。 */
+export function buildWebhookUrl(appUrl: string, shopCode: string, credential?: string): string {
+  const base = `${appUrl.replace(/\/$/, '')}/api/line/webhook/${shopCode}`;
+  return credential ? `${base}?credential=${encodeURIComponent(credential)}` : base;
 }
 
 /** 依 shopCode 組出公開預約頁網址 */
