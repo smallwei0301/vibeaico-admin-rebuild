@@ -10,6 +10,7 @@ import { bookingHtml } from '@/server/email/templates';
 import { createAdminSupabase } from '@/server/supabase';
 import { deliveryTransition, type DeliveryStatus, type NotificationChannel, type TransportOutcome } from './delivery';
 import { sendEmailWithResend, sendTelegramTransport } from './transports';
+import { hashRecipientEmail } from './resend-webhook';
 
 type Admin = ReturnType<typeof createAdminSupabase>;
 
@@ -143,6 +144,15 @@ async function resolveTelegramDestination(admin: Admin, delivery: ClaimedDeliver
   return data?.chat_id === undefined || data?.chat_id === null ? null : String(data.chat_id);
 }
 
+async function emailRecipientHealthy(admin: Admin, email: string): Promise<boolean> {
+  const healthKey = process.env.RESEND_WEBHOOK_SECRET;
+  if (!healthKey) return true;
+  const { data, error } = await admin.from('email_recipient_health').select('healthy')
+    .eq('recipient_hash', hashRecipientEmail(email, healthKey)).maybeSingle();
+  if (error) throw error;
+  return data?.healthy !== false;
+}
+
 function bookingMessage(outbox: OutboxRow, booking: BookingRow): { subject: string; html: string; telegram: string } {
   const title = outbox.event_name === 'BOOKING_CREATED' ? '新預約通知' : '預約取消通知';
   const shopName = booking.tenants?.name ?? 'VibeAI';
@@ -191,9 +201,9 @@ async function sendClaimedDelivery(admin: Admin, delivery: ClaimedDelivery): Pro
     const message = healthMessage(payload);
     if (delivery.channel === 'EMAIL') {
       const destination = await resolveEmailDestination(admin, delivery);
-      return destination
-        ? sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html })
-        : { kind: 'skipped', code: 'NOT_CONFIGURED' };
+      if (!destination) return { kind: 'skipped', code: 'NOT_CONFIGURED' };
+      if (!(await emailRecipientHealthy(admin, destination))) return { kind: 'skipped', code: 'EMAIL_UNHEALTHY' };
+      return sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html });
     }
     if (delivery.channel === 'TELEGRAM') {
       const destination = await resolveTelegramDestination(admin, delivery);
@@ -209,9 +219,9 @@ async function sendClaimedDelivery(admin: Admin, delivery: ClaimedDelivery): Pro
     const message = bookingMessage(outbox, booking);
     if (delivery.channel === 'EMAIL') {
       const destination = await resolveEmailDestination(admin, delivery);
-      return destination
-        ? sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html })
-        : { kind: 'skipped', code: 'NO_RECIPIENT' };
+      if (!destination) return { kind: 'skipped', code: 'NO_RECIPIENT' };
+      if (!(await emailRecipientHealthy(admin, destination))) return { kind: 'skipped', code: 'EMAIL_UNHEALTHY' };
+      return sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html });
     }
     if (delivery.channel === 'TELEGRAM') {
       const destination = await resolveTelegramDestination(admin, delivery);
