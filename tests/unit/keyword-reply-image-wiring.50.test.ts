@@ -100,8 +100,12 @@ describe('Issue #50：keyword reply 圖片的完整 source wiring', () => {
     const migration = read('supabase/migrations/0039_keyword_reply_images.sql');
     const cron = read('src/app/api/cron/keyword-reply-image-cleanup/route.ts');
     const config = read('vercel.json');
-    expect(migration).toContain("('keyword-reply-images', 'keyword-reply-images', true)");
+    expect(migration).toMatch(/\('keyword-reply-images', 'keyword-reply-images', true,/);
+    expect(migration).toContain('file_size_limit');
+    expect(migration).toContain("array['image/jpeg','image/png']::text[]");
+    expect(migration).toMatch(/on conflict \(id\) do update set[\s\S]*public = excluded\.public/);
     expect(migration).toContain('keyword_reply_image_cleanup');
+    expect(migration).toMatch(/revoke all on table public\.keyword_reply_image_cleanup from anon, authenticated/i);
     expect(cron).toContain('Bearer ${process.env.CRON_SECRET}');
     expect(config).toContain('/api/cron/keyword-reply-image-cleanup');
   });

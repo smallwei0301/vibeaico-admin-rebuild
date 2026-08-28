@@ -5,9 +5,14 @@
 -- preview，但聊天訊息要保留歷史，不能共用清理生命週期。keyword reply 素材是 LINE 要抓的店家行銷圖，
 -- 因此 public=true（URL 即權限）；路徑第一段仍是 tenant id，API 另驗 object 存在。
 
-insert into storage.buckets (id, name, public) values
-  ('keyword-reply-images', 'keyword-reply-images', true)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values
+  ('keyword-reply-images', 'keyword-reply-images', true, 5242880,
+    array['image/jpeg','image/png']::text[])
+on conflict (id) do update set
+  name = excluded.name,
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 -- p_storage_write/read 是歷史列舉式 policy；重建時保留所有既有 public bucket。
 drop policy if exists p_storage_write on storage.objects;
@@ -38,6 +43,9 @@ create table if not exists keyword_reply_image_cleanup (
 );
 alter table keyword_reply_image_cleanup enable row level security;
 -- service role only：店家不應能讀寫別人的 cleanup 狀態。
+-- RLS 不保護 TRUNCATE；Supabase 的 public schema default privileges 可能
+-- 仍給 browser roles 完整 table grant，所以必須連 table ACL 一起收掉。
+revoke all on table public.keyword_reply_image_cleanup from anon, authenticated;
 
 -- 既有 IMAGE row 只有 imageUrl，無法從任意外部 URL 安全推回本租戶 Storage object，
 -- 因此不做猜測式 SQL backfill。API 保留唯讀/停用相容；重新選圖時才寫入同時包含
