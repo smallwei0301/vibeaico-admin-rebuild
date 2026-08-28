@@ -34,11 +34,31 @@ const BOOKINGS = 'src/app/tenant/bookings/page.tsx';
 const COUPONS = 'src/app/tenant/coupons/page.tsx';
 const LEVELS = 'src/app/tenant/membership-levels/page.tsx';
 const PREVIEW_E2E = 'tests/e2e/page-local-fields.35.spec.ts';
+const PREVIEW_VERIFY = 'scripts/verify/page-local-fields.35.cjs';
 
 /** 去掉註解再比對：本輪的註解本來就會逐字提到那些被移除的常數名。 */
 const codeOf = (rel: string) => read(rel)
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^\s*\/\/.*$/gm, '');
+
+describe('Preview DB/UI 比對腳本使用真實 schema 語意（issue #35）', () => {
+  it('WHERE 只使用 DB 欄位 discount_type，不引用同層 SELECT alias type', () => {
+    const src = codeOf(PREVIEW_VERIFY);
+    expect(src).toContain("discount_type = 'AMOUNT'");
+    expect(src).toContain("discount_type = 'PERCENT'");
+    expect(src).toContain("discount_type = 'GIFT'");
+    expect(src).not.toContain("and ((type = 'DISCOUNT_");
+  });
+
+  it('把 DB enum 明確映射成頁面 type enum，coverage 不會把 AMOUNT/PERCENT 誤判缺資料', () => {
+    const src = codeOf(PREVIEW_VERIFY);
+    expect(src).toContain("when 'AMOUNT' then 'DISCOUNT_AMOUNT'");
+    expect(src).toContain("when 'PERCENT' then 'DISCOUNT_PERCENT'");
+    expect(src).toContain("when 'GIFT' then 'GIFT'");
+    expect(src).toContain("c.type === 'DISCOUNT_AMOUNT'");
+    expect(src).toContain("c.type === 'DISCOUNT_PERCENT'");
+  });
+});
 
 /* -------------------------------------------------------------------------- */
 /* ① 頁內 EXTRAS 常數不得復活（變異測試目標）                                    */

@@ -129,7 +129,7 @@ export const unredeemCouponInstance = (instanceId: string) =>
 
 /* -------------------------------------------------------------- 會員等級 */
 
-/** POST /api/membership-levels、PUT :id 接受的欄位（description/active/isDefault 後端尚無） */
+/** POST /api/membership-levels、PUT :id 接受的欄位（含 migration 0022 的頁面欄位） */
 export type MembershipLevelPayload = {
   name: string;
   color?: string;
