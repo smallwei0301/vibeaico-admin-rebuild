@@ -2903,3 +2903,29 @@ progress-bar / progress-fill / complete / close / next-actions）與 `onboarding
 RPC、deterministic staff advisory locks、completion CAS 與 `performance_frozen_at` 補上資料庫邊界。
 0034 也修正 composite FK 的 `ON DELETE SET NULL`，避免意外將 `tenant_id` 設為 null。仍待 Owner
 授權後的 migration／整合測試，不能據此宣稱環境已驗證。
+
+## #50 關鍵字回覆圖片：source-only 候選與未完成驗證（2026-08-28）
+
+issue #5 為避免假功能，曾把沒有 `onChange` 的「附加圖片」停用；#50 的候選
+`a2736ffd96e2bdaf473c9ee18d316304092a561f` 已補齊 source 端鏈路：頁面只收 JPEG/PNG，
+呼叫共用 `/api/upload`，顯示上傳中／失敗／完成與真實預覽；保存成功必須等 upload 與
+keyword reply 寫入都完成。選圖被較新的 upload 或 modal session 取代時，失去 ownership
+的結果會自行清理；save in-flight 時 Cancel／backdrop／Escape／X 不能刪掉即將持久化的圖。
+
+資料契約不再把 `imageUrl` 字串當證據。新 IMAGE row 同時保存原圖與 preview 的
+`imageStorageRef`；POST／PUT／新版 GET 會驗專用 bucket、本租戶 path、可信 HTTPS origin、
+URL/path 一致與兩個 Storage object 存在。webhook 沿用既有 IMAGE 分支，圖片取代文字，
+原圖與 preview 分別取 DB 保存值。舊 IMAGE row 若只有裸 `imageUrl`，保留唯讀／停用相容，
+不從任意外部 URL 猜 tenant object；再次選圖時才升級。
+
+bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 public 才能讓 LINE 抓圖，
+所以「A tenant 無法讀 B tenant public URL」不是可成立的保證；真正可驗收的隔離是 A 不得
+寫入、在自己的 reply 引用或 cleanup 刪除 B 的物件；規格也因此禁止上傳私密內容。替換、
+移除、刪除與取消未儲存選圖都先確認 DB 無活引用再刪原圖＋preview；暫時刪除失敗進
+`keyword_reply_image_cleanup`，每日 cron 重試前再查引用，避免已重新被使用的物件遭誤刪。
+
+目前證據邊界必須保持誠實：候選只完成 typecheck、targeted unit 與 mock build 的 source
+驗證；migration `0039`、bucket/policy/cleanup table 尚未套 TEST，service-role object existence、
+跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
+reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
+#50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
