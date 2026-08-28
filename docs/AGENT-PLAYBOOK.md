@@ -60,6 +60,21 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 不屬 PB-001～PB-007 的新根因從 `PB-008` 開始；已有完整事件條目的相同根因只更新
 原條目，不另編號。
 
+### PB-002 — 共用 TEST reset／migration 必須使用同一把跨分支鎖
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：3
+- Issue／PR／CI：PR #49 Run 164／PR #53 Run 168、Run 172；Issue #40／#50 TEST rollout
+- 分類：CI／TEST DB／Agent
+- 事件：舊 main／PR workflow 在另一輪 integration 中途 reset 共用 TEST，讓 tenant、session 與 seed 消失；後續人工序列化 rollout 期間，又在 `0039` 前 14 秒出現未由該工作線排程的 `0040_notification_booking_modification_revision`。
+- 證據：Run 172 global setup 成功後 155 例通過，尾端 restore/upsert 以 `23503` 指向已消失的 `tenant-a`／`tenant-b`；migration history 顯示 `0040_notification_booking_modification_revision` 於 13:43:02 UTC、`0039_keyword_reply_images` 於 13:43:16 UTC 寫入。
+- 根因：只有新 PR 具固定 concurrency group，舊 main／PR workflow 與其他 session 的 Management API migration 不共享同一鎖；「本 agent 沒有啟動第二條 TEST 線」不等於整個 project 已單線化。
+- 影響：Run 164／168／172 的 integration 尾端與 E2E 不可作候選證據；0040 的來源與 schema 契約需先分類，#41 不可盲目用相同 prefix 再套 migration。
+- 修正：停止第三次盲目重跑；每次 TEST DDL 前後回查 migration history，發現外部寫入立即停止下一條 DDL 並改做唯讀稽核；不 reset 或回滾未知變更。
+- 預防：所有 reset／seed workflow 必須先在 main 收斂到相同跨分支 concurrency group；人工／agent TEST DDL 另需一個 project-level lease（含 session、issue、預期 migration），CI 與 Management API 共用。
+- 驗證：Run 172 已精確分類並回填 PR #53；0038／0039 各自完成 post-DDL live ACL 驗證，但未知 0040 尚待來源與 schema 稽核。
+- 狀態：仍待處理
+
 ### PB-003 — seed 把缺欄位誤判成 optional table
 
 - 首次／最近：2026-08-28／2026-08-28
