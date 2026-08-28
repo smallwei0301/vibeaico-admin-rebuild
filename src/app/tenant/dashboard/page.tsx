@@ -20,7 +20,9 @@ import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { GuideActionInbox } from '@/components/dashboard/GuideActionInbox';
+import { MODE_PRESETS } from '@/config/modes';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
@@ -158,6 +160,7 @@ const daysUntil = (isoDate: string) =>
 
 export default function DashboardPage() {
   const currentTenant = useCurrentTenant();
+  const businessType = useBusinessType();
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
 
@@ -284,6 +287,8 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader title={t.title} />
+
+      {MODE_PRESETS[businessType].showGuideActionInbox ? <GuideActionInbox /> : null}
 
       {/* ------------------------------------------------ 3 分鐘開始收單 引導卡 */}
       {focusOpen ? (

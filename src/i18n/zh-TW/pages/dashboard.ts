@@ -9,6 +9,45 @@ export const dashboardPage = {
   title: '儀表板',
   metaTitle: '儀表板 - 店家後台',
 
+  guideInbox: {
+    title: '現在最該處理的事',
+    loading: '正在整理需要處理的事情',
+    loadFailed: '目前無法讀取行動收件匣，請稍後再試。',
+    emptyTitle: '目前沒有待辦',
+    emptyDescription: '訂單、付款、成團與通知目前都沒有需要你處理的事情。',
+    sections: {
+      immediate: '立即處理',
+      today: '今天處理',
+      upcoming: '接下來',
+    },
+    deadline: (value: string) => `截止：${value}`,
+    overdue: '已逾期',
+    reasons: {
+      REQUEST_PENDING: '旅客送出申請，正在等你接受或拒絕',
+      PAYMENT_DUE: '這筆訂單仍在等待付款',
+      FORMATION_COLLECTING: '訂金已收，正在等待達到成團人數',
+      REVIEW_REQUIRED: '成團截止時人數不足，需要你決定',
+      AT_RISK: '已成團後人數下降，需要你決定是否照常出團',
+      REFUND_PENDING: '旅客款項仍在等待退款完成',
+      DEPARTURE_UPCOMING: '團次即將出發，請確認行前資訊',
+      GUIDE_UNASSIGNED: '這個團次還沒有指派主導遊',
+      SCHEDULE_CONFLICT: '導遊時間發生衝突，可能無法履約',
+      DELIVERY_DEAD: '重要通知永久失敗，需要檢查收件方式',
+    },
+    actions: {
+      REQUEST_PENDING: '查看申請',
+      PAYMENT_DUE: '查看付款',
+      FORMATION_COLLECTING: '查看成團進度',
+      REVIEW_REQUIRED: '決定是否成團',
+      AT_RISK: '處理風險',
+      REFUND_PENDING: '處理退款',
+      DEPARTURE_UPCOMING: '查看團次',
+      GUIDE_UNASSIGNED: '指派導遊',
+      SCHEDULE_CONFLICT: '處理衝突',
+      DELIVERY_DEAD: '檢查通知',
+    },
+  },
+
   /* ------------------------------------------------ 「3 分鐘開始收單」引導卡 */
   focus: {
     title: '3 分鐘開始收單',
