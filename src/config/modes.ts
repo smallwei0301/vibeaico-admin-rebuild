@@ -57,6 +57,8 @@ export type ModePreset = {
    * MODE_PRESETS 是所有「因模式而異」決策的唯一真相；六格文案正是這種決策。
    */
   richMenuCells: readonly { label: string; text: string }[];
+  /** 首頁的首要工作區；GUIDE 以行動收件匣取代圖表優先。 */
+  dashboardPrimary: 'STANDARD' | 'ACTION_INBOX';
 };
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
@@ -79,6 +81,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
       { label: '優惠票券', text: '優惠' },
       { label: '聯絡我們', text: '聯絡我們' },
     ],
+    dashboardPrimary: 'STANDARD',
   },
   GUIDE: {
     icon: Compass,
@@ -104,6 +107,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
       { label: '優惠票券', text: '優惠' },
       { label: '聯絡嚮導', text: '聯絡我們' },
     ],
+    dashboardPrimary: 'ACTION_INBOX',
   },
   CLINIC: {
     icon: Hospital,
@@ -126,6 +130,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
       { label: '門診時間', text: '營業時間' },
       { label: '聯絡診所', text: '聯絡我們' },
     ],
+    dashboardPrimary: 'STANDARD',
   },
 };
 

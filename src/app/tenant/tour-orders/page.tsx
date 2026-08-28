@@ -101,6 +101,13 @@ export default function TourOrdersPage() {
    */
   const [summary, setSummary] = React.useState<TourOrderSummary | null>(null);
 
+  // 收件匣的 deep link 只在瀏覽器端讀取；避免 Next 15 的 useSearchParams()
+  // 靜態 prerender 需要額外 Suspense boundary，並保留一般直接開頁的空篩選預設。
+  React.useEffect(() => {
+    const deepLinkKeyword = new URLSearchParams(window.location.search).get('keyword');
+    if (deepLinkKeyword) setKeyword(deepLinkKeyword);
+  }, []);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {

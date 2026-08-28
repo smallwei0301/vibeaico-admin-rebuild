@@ -631,6 +631,22 @@ export type TourOrder = {
   createdAt: string;
 };
 
+/** GUIDE 首頁的推導行動；資料真相仍留在訂單、團次、指派與通知帳本。 */
+export type GuideActionReason =
+  | 'REQUEST_PENDING' | 'PAYMENT_DUE' | 'DEPARTURE_UPCOMING' | 'GUIDE_UNASSIGNED';
+export type GuideActionUrgency = 'IMMEDIATE' | 'TODAY' | 'UPCOMING';
+export type GuideActionSource = {
+  id: string;
+  reason: GuideActionReason;
+  subject: string;
+  detail: string;
+  dueAt: string | null;
+  createdAt: string | null;
+  href: string;
+};
+export type GuideActionItem = GuideActionSource & { urgency: GuideActionUrgency; overdue: boolean };
+export type GuideActionInbox = { immediate: GuideActionItem[]; today: GuideActionItem[]; upcoming: GuideActionItem[]; timeZone?: string };
+
 /* -------------------------------------------------------------- 行事曆 */
 /**
  * GET /api/calendar 的統一事件（04 分冊 §B-1）：行事曆頁唯一資料源，

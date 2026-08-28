@@ -332,6 +332,31 @@ export const dashboardPage = {
     publicPage: '公開頁面',
   },
 
+  guideInbox: {
+    title: '今天優先處理',
+    loading: '正在整理需要處理的行動…',
+    loadFailed: '無法載入行動收件匣，請稍後再試。',
+    emptyTitle: '目前沒有需要處理的行動',
+    emptyDescription: '新的訂單、團次或通知需要你處理時，會誠實地顯示在這裡。',
+    emptySection: '這個區段目前沒有待辦。',
+    overdue: '已逾期',
+    deadline: (time: string) => `期限／時間：${time}`,
+    receivedAt: (time: string) => `收到時間：${time}`,
+    sections: { immediate: '立即處理', today: '今天處理', upcoming: '接下來' },
+    reasons: {
+      REQUEST_PENDING: '有新的申請等待決定',
+      PAYMENT_DUE: '等待付款',
+      DEPARTURE_UPCOMING: '近期有團次要執行',
+      GUIDE_UNASSIGNED: '團次尚未指派導遊',
+    },
+    actions: {
+      REQUEST_PENDING: '查看申請',
+      PAYMENT_DUE: '查看訂單',
+      DEPARTURE_UPCOMING: '查看團次',
+      GUIDE_UNASSIGNED: '指派導遊',
+    },
+  },
+
   /* ----------------------------------------------------- 功能名稱對照（提醒用） */
   featureNames: {
     BASIC_REPORT: nav.reports,

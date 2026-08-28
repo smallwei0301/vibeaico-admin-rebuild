@@ -27,6 +27,7 @@ import {
 import { listBookings } from '@/services/bookings';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+import { GuideActionInbox } from '@/components/guide/GuideActionInbox';
 import { byMode } from '@/mock';
 import { isDemoMode } from '@/lib/api';
 import { APP_URL, USE_MOCK } from '@/config/env';
@@ -484,6 +485,8 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader title={t.title} />
+
+      {MODE_PRESETS[businessType].dashboardPrimary === 'ACTION_INBOX' ? <GuideActionInbox /> : null}
 
       {/* -------------------------------------- 空後台指引：先去看示範店家長怎樣 */}
       {showDemoHint ? (
