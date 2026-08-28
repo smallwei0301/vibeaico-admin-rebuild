@@ -265,6 +265,8 @@ describe('團次 CRUD（/api/trips/:id/departures、/api/trip-departures/:id）'
       departsOn: futureDate(410),
       startTime: '09:00',
       capacity: 8,
+      // #37 的 2+ 導遊契約：測試種子有兩位可指派人員，必須明確選 PRIMARY。
+      primaryStaffId: SHOP_A.staffA1,
       // 刻意送一個不該被採信的值
       seatsBooked: 99,
     });
@@ -285,7 +287,7 @@ describe('團次 CRUD（/api/trips/:id/departures、/api/trip-departures/:id）'
 
   it('POST：同方案同日同時間重複 → 409（唯一鍵）', async () => {
     const res = await ownerA.post(`/api/trips/${tripId}/departures`, {
-      planId, departsOn: futureDate(410), startTime: '09:00', capacity: 8,
+      planId, departsOn: futureDate(410), startTime: '09:00', capacity: 8, primaryStaffId: SHOP_A.staffA1,
     });
     expect(res.status).toBe(409);
   });
@@ -363,7 +365,7 @@ describe('團次 CRUD（/api/trips/:id/departures、/api/trip-departures/:id）'
     const targetWeekday = weekdaysOf(from, to)[0];
 
     const res = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
-      planId, from, to, weekdays: [targetWeekday], startTime: '14:00', capacity: 6,
+      planId, from, to, weekdays: [targetWeekday], startTime: '14:00', capacity: 6, primaryStaffId: SHOP_A.staffA1,
     });
     const body = await readJson<{ created: number; skipped: number; departures: Array<{ id: string }> }>(res);
     expect(res.status, JSON.stringify(body)).toBe(200);
@@ -378,7 +380,7 @@ describe('團次 CRUD（/api/trips/:id/departures、/api/trip-departures/:id）'
 
     // 再跑一次同樣的區間：全部都已存在 → created 0 / skipped 2
     const again = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
-      planId, from, to, weekdays: [targetWeekday], startTime: '14:00', capacity: 6,
+      planId, from, to, weekdays: [targetWeekday], startTime: '14:00', capacity: 6, primaryStaffId: SHOP_A.staffA1,
     });
     const againBody = await readJson<{ created: number; skipped: number }>(again);
     expect(again.status, JSON.stringify(againBody)).toBe(200);

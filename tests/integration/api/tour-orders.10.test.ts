@@ -111,17 +111,17 @@ beforeAll(async () => {
     {
       tenant_id: SHOP_A.id, trip_id: tripId, name: '全額團', base_price: 2000,
       price_type: 'PER_PERSON', deposit_mode: 'FULL', deposit_value: 0,
-      max_participants: 8, sort_order: 0,
+      max_participants: 8, sort_order: 0, slug: 'full',
     },
     {
       tenant_id: SHOP_A.id, trip_id: tripId, name: '定金三成團', base_price: 3000,
       price_type: 'PER_PERSON', deposit_mode: 'DEPOSIT_PERCENT', deposit_value: 30,
-      max_participants: 8, sort_order: 1,
+      max_participants: 8, sort_order: 1, slug: 'percent',
     },
     {
       tenant_id: SHOP_A.id, trip_id: tripId, name: '包團', base_price: 9000,
       price_type: 'PER_GROUP', deposit_mode: 'DEPOSIT_FIXED', deposit_value: 500,
-      max_participants: 8, sort_order: 2,
+      max_participants: 8, sort_order: 2, slug: 'group-fixed',
     },
   ]).select('id, name');
   expect(plans.error, JSON.stringify(plans.error)).toBeNull();

@@ -47,7 +47,9 @@ import type { BookingAddonNotifyOutcome } from '@/lib/types';
 const EDITABLE_STATUSES = ['PENDING', 'CONFIRMED'];
 
 const SELECT = 'id, service_id, name, price, quantity, duration_minutes, staff_id, performance_mode, performance_staff_id, ' +
-  'applied_amount, applied_minutes, notified, created_at, staff(name)';
+  // 0034 adds a second booking_addons → staff FK for performance.  Name the
+  // execution-staff relationship so PostgREST does not raise PGRST201.
+  'applied_amount, applied_minutes, notified, created_at, staff!booking_addons_staff_id_fkey(name)';
 
 /* ------------------------------------------------------------------- GET */
 

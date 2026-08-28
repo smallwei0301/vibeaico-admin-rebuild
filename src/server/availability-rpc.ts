@@ -18,6 +18,11 @@ export function throwAvailabilityRpcError(error: any): never {
   if (message.startsWith('PRIMARY_STAFF_REQUIRED')) {
     throw new ApiHttpError(409, '請選擇主要導遊', ERR.CONFLICT);
   }
+  if (message.startsWith('AVAILABILITY_BOOKING')) {
+    // Preserve the existing booking API contract while the same database
+    // engine also reports broader block/shift/departure conflicts.
+    throw new ApiHttpError(409, '該時段已有預約', ERR.CONFLICT);
+  }
   if (message.startsWith('AVAILABILITY_')) {
     throw new ApiHttpError(409, '人員在該時段不可用（班表、預約、封鎖或團次衝突）', ERR.CONFLICT);
   }

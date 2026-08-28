@@ -9,6 +9,7 @@ const batchRoute = readFileSync('src/app/api/trips/[id]/departures/batch/route.t
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingUpdateRoute = readFileSync('src/app/api/bookings/[id]/route.ts', 'utf8');
 const completionRoute = readFileSync('src/app/api/tour-orders/[id]/complete/route.ts', 'utf8');
+const bookingAddonRoute = readFileSync('src/app/api/bookings/[id]/addons/route.ts', 'utf8');
 
 describe('issue #37 source migration contract', () => {
   it('adds tenant-scoped assignments, C+ snapshots, and no SOLO/TEAM mode', () => {
@@ -49,5 +50,9 @@ describe('issue #37 source migration contract', () => {
     expect(bookingRoute).toMatch(/rpc\('create_booking_with_availability'/);
     expect(bookingUpdateRoute).toMatch(/rpc\('update_booking_with_availability'/);
     expect(completionRoute).toMatch(/rpc\('complete_tour_order_with_performance'/);
+  });
+
+  it('disambiguates the booking execution-staff join added by the performance FK', () => {
+    expect(bookingAddonRoute).toMatch(/staff!booking_addons_staff_id_fkey\(name\)/);
   });
 });
