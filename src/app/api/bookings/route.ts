@@ -4,8 +4,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged } from '@/server/paging';
 import { mapBooking } from '@/server/mappers';
-import { createAdminSupabase } from '@/server/supabase';
-import { notifyBookingEvent } from '@/server/email/notify';
+import { dispatchAfterCommit } from '@/server/notifications/outbox';
 import { taipeiTodayDateString } from '@/server/tz';
 
 const querySchema = z.object({
@@ -137,8 +136,8 @@ export const POST = handle(async (req) => {
   }
   if (!bookingId) throw new ApiHttpError(409, '預約單號產生失敗，請重試', ERR.CONFLICT);
 
-  // Email 通知（05 分冊 §3 notifyNewBooking / notifyStaffBooking）：不 await ——
-  // 寄信慢或失敗都不可拖垮回應，函式內部已吞錯（比照 cancel/route.ts）。
-  void notifyBookingEvent(createAdminSupabase(), t.tenantId, bookingId, 'NEW');
+  // 0037 trigger writes BOOKING_CREATED in the same database transaction as
+  // this insert. Dispatch is best-effort after commit; the outbox is durable.
+  dispatchAfterCommit();
   return ok({ id: bookingId });
 });
