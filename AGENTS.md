@@ -8,7 +8,8 @@
 4. `docs/DOCUMENTATION-GOVERNANCE.md`
 5. `docs/OWNER-DECISIONS.md`
 6. 該 Issue 指定的 `docs/integration/**` canonical 文件
-7. `docs/integration/12-TESTING-TDD.md`
+7. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
+8. `docs/integration/12-TESTING-TDD.md`
 
 ## 強制規則
 
@@ -17,6 +18,7 @@
 - Owner 已核准的純文件更新可以直接進 `main`；程式碼、migration、依賴、workflow 與部署設定仍必須走 feature branch → PR → CI → 審核。
 - `docs/AGENT-EXECUTION.md` 是常駐自主執行、派工、TEST 授權、停損與停止條件的唯一正式版本；不得在 Issue 或 agent 提示裡另造一套互相衝突的流程。
 - 一個主題只留一份 canonical 規格。Owner Decision 記錄理由，Issue 記錄施工，兩者不得變成另一套互相覆蓋的完整規格。
+- GUIDE 產品體驗任務以 `19-GUIDE-PRODUCT-EXPERIENCE.md` 定義的 P0／P1／P2 為優先級覆蓋，但不得跳過 10／17／18 分冊的資料、安全、付款與通知依賴。
 - 工作分支必須以最新 `main`，或已包含最新 `main` 文件 commit 的整合分支為 base。
 - 若 branch 文件與 `main` 衝突，以 `main` 中較新的 Owner Decision 與 canonical 文件為準。
 - Production DDL／DML、正式部署、會改變正式網站行為的 main merge，皆需 Owner 明確授權。

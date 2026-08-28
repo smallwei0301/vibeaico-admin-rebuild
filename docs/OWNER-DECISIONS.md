@@ -21,6 +21,14 @@
 | #41 / #12 | 訂金／尾款與成團 | **收款政策沿用 Service；線上付款成功自動推進，匯款才人工確認；付款狀態與成團狀態分軸** | 至少表達 UNPAID/PARTIAL/PAID/REFUND_PENDING/REFUNDED；最後一筆 qualifying payment 原子成團且只產生一次通知 event。 |
 | #42 | GUIDE 方案管理 UX | **快速編輯 → 進階設定兩層 UI，但共用同一 TripPlan/API/schema** | 快速層只給名稱／內容／價格等高頻欄位；成團、販售、季節、訂金等放進階 page/drawer。既有 Departure snapshot 不被 Plan 後改污染。 |
 | #42 / #25 | Midao 協助代建方案 | **平台可代建，但導遊仍是可編輯的資料 owner；使用 platform-admin/impersonation + audit，不共用密碼** | 建議 provenance `GUIDE / PLATFORM_ASSISTED / IMPORTED` 只做來源 badge；LISTED 修改仍走 review。 |
+| #43～#48 / GUIDE | HOTCAKE 競品策略 | **採「HOTCAKE 的簡單 × Midao 的旅遊領域深度」；不複製整套美業 CRM，也不以功能數量競賽** | 北極星是「旅客不用問，導遊不用回」；正式規格為 `19-GUIDE-PRODUCT-EXPERIENCE.md`，研究與理由分別見 research／decision 文件。 |
+| #46 | LINE-first 旅客自助 | **旅客不需下載 App；先選方案再看日期／時間；第一屏只收 3～5 個必要資料，完成頁誠實顯示付款、成團與下一步** | 固定團次、自選時間、先申請再確認各有手機 E2E；沒有 LINE 的旅客仍可用 Email／手機完成。 |
+| #43 | GUIDE 行動收件匣 | **首頁先回答「現在最該處理什麼」；待辦優先於圖表，並由正式訂單／團次／付款／通知狀態推導** | 立即處理／今天／接下來；每張卡片能直接開到對應資料，不另建第二套手動訂單狀態。 |
+| #44 | 旅客履約風險 | **只做租戶私有的客觀紀錄、標籤與預約政策；不做跨導遊共享黑名單或公開信用分數** | 可強制定金、改為 REQUEST_ONLY、禁止自行下單；原因、操作者、時間需 audit，旅客端不洩漏內部備註。 |
+| #45 | GUIDE 營運報表 | **使用旅遊口徑；報表為 P1，完整分析放次層，不占滿 GUIDE 首頁** | 實收營收、平均客單、取消／未付款、成團、熱門行程／方案、來源、重複旅客與 C+ 業績；沒有可靠詢問事件前不顯示假成交率。 |
+| #47 | LINE 開通精靈 | **把 Token／Webhook／圖文選單／額度與測試訊息包成白話自助診斷；每店只用自己的憑證** | 供應商接受不冒充已讀；失敗可重試且不清空已正確設定，測試派送接 #40 帳本。 |
+| #48 | 低風險進場收費 | **不直接照抄競品 NT$400，也不以一定更便宜定位；個人／團隊差異限制導遊席次，不做 SOLO／TEAM 開關** | 免費／個人／團隊草案先做驗證；基本交易、安全、退款、Email、Telegram 通知不可被進階付費鎖住；正式價格仍需 Owner 再拍板。 |
+| GUIDE / P2 | 回流功能排序 | **票券、點數與會員分級保留，但不是 GUIDE P0 主角** | 主流程穩定後優先跨行程推薦、分享與推薦獎勵；AI 經營建議須建立在可信報表上。 |
 | repo / TEST | TEST 資料庫驗證 | **長期授權：可在 Vibe Ai TEST 執行 open Issue 所需的 migration、schema/function、DDL/DML、reset、seed、schema cache 與整合/E2E；後續新 migration 不必逐支再問** | 僅限 project ref `nmwhwngojosmagjuvxol`；每次先驗 project ref 與基線並留下證據。不含其他 Supabase、Production、正式付款／通知、部署或 runtime main merge。詳見 `docs/AGENT-EXECUTION.md` §3.1。 |
 
 ## 2026-08-27 已裁示
