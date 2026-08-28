@@ -368,6 +368,7 @@ export async function runSeed(admin) {
         id: TRIP_A.planA1,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        slug: 'standard-test-plan',
         name: '標準團（測試）',
         // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
         // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
@@ -377,6 +378,7 @@ export async function runSeed(admin) {
         id: TRIP_A.planA2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        slug: 'private-test-plan',
         name: '包團（測試）',
         base_price: 5000,
       },

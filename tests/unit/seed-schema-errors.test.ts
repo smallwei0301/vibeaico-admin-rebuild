@@ -15,5 +15,7 @@ describe('seed schema error classification', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
     expect(source).toContain('base_price: 3000');
     expect(source).not.toContain('price_per_person:');
+    expect(source).toContain("slug: 'standard-test-plan'");
+    expect(source).toContain("slug: 'private-test-plan'");
   });
 });
