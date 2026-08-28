@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 20124)
+Total output lines: 1996
+
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -88,6 +91,8 @@ const toMockAddon = (s: AddonItem): BookingAddon => ({
   durationMinutes: s.durationMinutes,
   staffId: null,
   staffName: s.staffName,
+  performanceMode: 'PRIMARY',
+  performanceStaffId: null,
   appliedAmount: s.price * s.quantity,
   appliedMinutes: s.durationMinutes * s.quantity,
   notified: 'NONE',
@@ -964,24 +969,7 @@ export default function BookingsPage() {
         }
         onClose={() => setBatchCancelOpen(false)}
         onConfirm={async () => {
-          const ids = batchCancellable.map((b) => b.id);
-          setBatchCancelOpen(false);
-          try {
-            await Promise.all(ids.map((id) => cancelBooking(id)));
-            toast.show(t.messages.batchCancelled(ids.length));
-            setSelected([]);
-            void load();
-          } catch {
-            toast.show(t.messages.batchCancelFailed, 'danger');
-          }
-        }}
-      />
-    </>
-  );
-}
-
-/* ========================================================================== */
-/* 新增 / 編輯預約                                                             */
+          co…124 tokens truncated…* 新增 / 編輯預約                                                             */
 /* ========================================================================== */
 
 function BookingFormModal({
@@ -1318,6 +1306,8 @@ function AddonModal({
   const [duration, setDuration] = React.useState('0');
   const [quantity, setQuantity] = React.useState('1');
   const [staffId, setStaffId] = React.useState('');
+  const [performanceMode, setPerformanceMode] = React.useState<'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE'>('PRIMARY');
+  const [performanceStaffId, setPerformanceStaffId] = React.useState('');
   const [notify, setNotify] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -1325,7 +1315,7 @@ function AddonModal({
   React.useEffect(() => {
     if (!booking) return;
     setServiceId(''); setName(''); setPrice(''); setDuration('0');
-    setQuantity('1'); setStaffId(''); setNotify(false); setSaving(false); setError('');
+    setQuantity('1'); setStaffId(''); setPerformanceMode('PRIMARY'); setPerformanceStaffId(''); setNotify(false); setSaving(false); setError('');
     void (async () => {
       try { setServices(await listServices()); }
       catch { toast.show(`${t.messages.loadAddonOptionsFailed}${t.messages.unknownError}`, 'danger'); }
@@ -1369,6 +1359,8 @@ function AddonModal({
           quantity: Math.max(1, Number(quantity) || 1),
           durationMinutes: Number(duration) || 0,
           staffId: staffId || null,
+          performanceMode,
+          performanceStaffId: performanceMode === 'SPECIFIC_STAFF' ? performanceStaffId || null : null,
           notify,
         });
         onSubmitted(r);
@@ -1465,6 +1457,30 @@ function AddonModal({
         {/* 業績歸戶不看這一欄（主導者裁示：計入本預約的服務人員），所以說明白 */}
         <FormText>{a.staffHelp}</FormText>
       </FormGroup>
+
+      <FormGroup>
+        <Label htmlFor="addonPerformanceMode">{a.performanceLabel}</Label>
+        <Select
+          id="addonPerformanceMode" className="form-select-sm" value={performanceMode}
+          onChange={(event) => setPerformanceMode(event.target.value as 'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE')}
+        >
+          <option value="PRIMARY">{a.performancePrimary}</option>
+          <option value="SPECIFIC_STAFF">{a.performanceSpecific}</option>
+          <option value="NONE">{a.performanceNone}</option>
+        </Select>
+      </FormGroup>
+      {performanceMode === 'SPECIFIC_STAFF' ? (
+        <FormGroup>
+          <Label required htmlFor="addonPerformanceStaff">{a.performanceStaffLabel}</Label>
+          <Select
+            id="addonPerformanceStaff" className="form-select-sm" value={performanceStaffId}
+            onChange={(event) => setPerformanceStaffId(event.target.value)}
+          >
+            <option value="">{a.performanceStaffLabel}</option>
+            {staff.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </Select>
+        </FormGroup>
+      ) : null}
 
       <FormGroup>
         <label className="flex items-start gap-1.5 text-base text-secondary">

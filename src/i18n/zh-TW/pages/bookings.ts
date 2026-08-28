@@ -228,18 +228,14 @@ export const bookingsPage = {
       { value: '120', label: '120 分鐘' },
     ],
     quantity: '數量',
-    /*
-     * ⚠️ 原站這個欄位的標籤是「執行 服務人員 （業績歸戶）」。
-     * 依 2026-08-25 主導者裁示（issue #1 comment-5412922443），加購金額的業績
-     * 算法是「與主服務同一位服務人員、依實收金額全額計入」——也就是**不看**這一欄。
-     * 標籤若照原站留著「（業績歸戶）」，畫面就會宣稱一件程式沒有做的事
-     * （CLAUDE.md「Never fabricate a known」），所以改成描述它真正的作用，
-     * 並用 staffHelp 明說業績實際歸給誰。
-     * 若日後改採逐項歸戶，這兩行文案要跟著算法一起改回。
-     */
     staffLabel: '執行 服務人員',
     staffSame: '同本預約的人員',
-    staffHelp: '此欄只記錄「這項加購由誰執行」；加購金額的業績一律計入本預約的服務人員（依實收金額全額計入）。',
+    staffHelp: '此欄只記錄實際執行人員；業績歸屬請在下一欄明確選擇。',
+    performanceLabel: '個人業績歸屬',
+    performancePrimary: '繼承本預約的人員',
+    performanceSpecific: '指定人員',
+    performanceNone: '不計個人業績',
+    performanceStaffLabel: '指定業績人員',
     notifyLabel:
       '通知顧客消費明細（連續加多項時可先勾掉、最後一項再通知，避免顧客連收多則）',
     notifyHelp:

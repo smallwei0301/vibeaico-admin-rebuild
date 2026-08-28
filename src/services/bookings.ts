@@ -164,6 +164,8 @@ export type CreateBookingAddonPayload = {
   durationMinutes: number;
   /** 執行人員；省略 = 同本預約的人員 */
   staffId?: string | null;
+  performanceMode?: 'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE';
+  performanceStaffId?: string | null;
   /** 原站 addonNotify：勾了才推 LINE 消費明細 */
   notify: boolean;
 };
@@ -204,6 +206,9 @@ export const createBookingAddon = (bookingId: string, payload: CreateBookingAddo
           durationMinutes: payload.durationMinutes,
           staffId: payload.staffId ?? null,
           staffName: null,
+          performanceMode: payload.performanceMode ?? 'PRIMARY',
+          performanceStaffId: payload.performanceMode === 'SPECIFIC_STAFF'
+            ? payload.performanceStaffId ?? null : null,
           appliedAmount: amount,
           appliedMinutes: minutes,
           notified: 'NONE',

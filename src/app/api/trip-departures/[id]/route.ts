@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripDeparture } from '@/server/mappers';
+import { replaceDepartureAssignments, resolveOpenDepartureAssignments } from '@/server/departure-staff';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,6 +14,8 @@ const updateSchema = z.object({
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0').optional(),
   status: z.enum(['OPEN', 'CLOSED', 'CANCELLED']).optional(),
   note: z.string().optional(),
+  primaryStaffId: z.string().uuid().nullable().optional(),
+  assistantStaffIds: z.array(z.string().uuid()).optional(),
 });
 
 /**
@@ -31,7 +34,7 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   const b = updateSchema.parse(await req.json());
 
   const { data: cur, error: rerr } = await t.supabase
-    .from('trip_departures').select('id, seats_booked')
+    .from('trip_departures').select('id, seats_booked, departs_on, start_time, status, plan_id, trip_departure_staff(staff_id, role), trip_plans(duration_minutes)')
     .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (rerr) throw rerr;
   if (!cur) return fail(404, '找不到此團次', ERR.NOT_FOUND);
@@ -46,6 +49,21 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   if (b.status !== undefined) patch.status = b.status;
   if (b.note !== undefined) patch.note = b.note;
 
+  const nextStatus = b.status ?? cur.status;
+  const nextDate = b.departsOn ?? cur.departs_on;
+  const nextTime = b.startTime === undefined ? cur.start_time : (b.startTime || null);
+  const currentAssignments = (cur.trip_departure_staff ?? []) as Array<{ staff_id: string; role: 'PRIMARY' | 'ASSISTANT' }>;
+  const currentPrimary = currentAssignments.find((assignment) => assignment.role === 'PRIMARY')?.staff_id ?? null;
+  const currentAssistants = currentAssignments.filter((assignment) => assignment.role === 'ASSISTANT').map((assignment) => assignment.staff_id);
+  const plan = Array.isArray(cur.trip_plans) ? cur.trip_plans[0] : cur.trip_plans;
+  const assignments = nextStatus === 'OPEN' ? await resolveOpenDepartureAssignments({
+    supabase: t.supabase, tenantId: t.tenantId, departsOn: nextDate,
+    startTime: nextTime, durationMinutes: Number(plan?.duration_minutes ?? 0),
+    primaryStaffId: b.primaryStaffId === undefined ? currentPrimary : b.primaryStaffId,
+    assistantStaffIds: b.assistantStaffIds === undefined ? currentAssistants : b.assistantStaffIds,
+    excludeDepartureId: id,
+  }) : currentAssignments.map((assignment) => ({ staffId: assignment.staff_id, role: assignment.role }));
+
   const { data, error } = await t.supabase.from('trip_departures')
     .update(patch).eq('tenant_id', t.tenantId).eq('id', id)
     .select('*, trip_plans(name)').maybeSingle();
@@ -53,7 +71,11 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   if (error) throw error;
   if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
 
-  return ok(mapTripDeparture(data));
+  await replaceDepartureAssignments(t.supabase, t.tenantId, id, assignments);
+
+  return ok(mapTripDeparture({ ...data, trip_departure_staff: assignments.map((assignment) => ({
+    staff_id: assignment.staffId, role: assignment.role,
+  })) }));
 });
 
 /**

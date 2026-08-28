@@ -250,7 +250,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/bookings/:id/apply-points` | `{points}`：顧客點數足夠 → 扣點寫 log、final_price -= points（1 點 = 1 元） |
 | POST `/api/bookings/:id/mark-paid-offline` | payment_status=PAID_OFFLINE |
 | POST `/api/bookings/:id/revert-complete` | COMPLETED→PENDING，並回沖完成時發的點數 ⚙M |
-| GET `/api/bookings/available-slots` | `?serviceId&staffId?&date`：讀 business 設定（時段間隔/營業時間/公休）+ 已有 bookings + block_times + shifts → 回 `{slots:[{start,end,staffIds[]}]}` |
+| GET `/api/bookings/available-slots` | `?serviceId&staffId?&date`：以共用 staff availability engine 讀 business 設定（時段間隔/營業時間/公休）+ shifts（依 staff `availability_policy`）+ bookings + block_times + 已指派團次 → 回 `{slots:[{start,end,staffIds[]}]}`；只排除實際被指派的 PRIMARY／ASSISTANT，不做全店粗略封鎖 |
 | GET `/api/bookings/calendar` | `?from&to`：回該區間全部（不分頁）。**僅服務預約**；行事曆頁請改用下面的統一端點 |
 | GET `/api/calendar` | `?from&to`：**行事曆頁唯一資料源**，合併四種事件成一個陣列（展示層合一，資料層仍分開）：`{events: CalendarEvent[]}`，`CalendarEvent` 以 `type` 區辨 —— `BOOKING`（服務預約）／`DEPARTURE`（行程團次，含 `seatsBooked/capacity`）／`BLOCK`（封鎖時段）／`EXTERNAL`（匯入的外部 ICS，唯讀）。`DEPARTURE` 只在租戶有 `TOUR_MODULE` 時出現。共用型別加在 `src/lib/types.ts`（只新增） |
 | GET/POST `/api/block-times`、DELETE `/api/block-times/:id` | CRUD，欄位同表 |
@@ -270,13 +270,14 @@ export const POST = handle(async (_req, { params }) => {
 > 「Phase 8b 排期」，成因即此同名（記於 14 分冊 §8）。
 
 資料表 `booking_addons`（migration **0020**）：`id, tenant_id, booking_id, service_id?,
-name, price(≥0), quantity(≥1), duration_minutes(≥0), staff_id?, applied_amount,
-applied_minutes, notified, created_at`。RLS 四條 `is_tenant_member(tenant_id)`（02 §0006 慣例）。
+name, price(≥0), quantity(≥1), duration_minutes(≥0), staff_id?, `performance_mode`
+(`PRIMARY|SPECIFIC_STAFF|NONE`), `performance_staff_id?`, applied_amount, applied_minutes,
+notified, created_at`。RLS 四條 `is_tenant_member(tenant_id)`（02 §0006 慣例）。
 
 | 端點 | 要點 |
 |---|---|
 | GET `/api/bookings/:id/addons` | 回 `BookingAddon[]`（依 `created_at`）。預約不屬於本店 → 404（不回空陣列） |
-| POST `/api/bookings/:id/addons` | `{serviceId?, name, price, quantity, durationMinutes=0, staffId?, notify=false}`。回 `{addon, finalPrice, endAt, durationMinutes, notified}` |
+| POST `/api/bookings/:id/addons` | `{serviceId?, name, price, quantity, durationMinutes=0, staffId?, performanceMode=PRIMARY, performanceStaffId?, notify=false}`。`SPECIFIC_STAFF` 必須帶同租戶人員；`NONE` 明確不計個人業績。回 `{addon, finalPrice, endAt, durationMinutes, notified}` |
 | DELETE `/api/bookings/:id/addons/:addonId` | 回 `{finalPrice, endAt, durationMinutes, revertedAmount}` |
 
 **金額與時長**
@@ -306,14 +307,8 @@ applied_minutes, notified, created_at`。RLS 四條 `is_tenant_member(tenant_id)
 
 **員工業績**
 
-依 2026-08-25 **主導者裁示**（issue #1 comment-5412922443）：加購金額計入員工業績，
-算法為「**與主服務同一位服務人員、依實收金額全額計入**」。實作上不需額外程式——
-金額進 `final_price`，而 `/api/reports/staff-performance`、`/api/reports/top-staff`
-就是「`bookings.final_price` group by `bookings.staff_id`」。
-
-⚠️ **這個算法是我們選的，不是從原站還原的**（裁示原文如此要求標註）。
-`booking_addons.staff_id` 只記錄「誰做的」，不參與業績歸戶。日後若查到原站另有算法，
-要改的是算法，不是「要不要計入」。
+依 Owner 的 C+ 決策：`PRIMARY` 繼承 `bookings.staff_id`、`SPECIFIC_STAFF` 歸指定人員、
+`NONE` 只算店家營收；`null` 不可再同時代表繼承與 NONE。`staff_id` 仍只記執行人員。
 
 **`notify`（原站 `addonNotify`「通知顧客消費明細」）**
 

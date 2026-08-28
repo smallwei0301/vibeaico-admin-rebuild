@@ -79,9 +79,12 @@ export type BookingAddon = {
   price: number;
   quantity: number;
   durationMinutes: number;
-  /** 執行人員；null = 同本預約的人員。**不參與業績歸戶**（04 §B-1.1） */
+  /** 執行人員；null = 同本預約的人員。 */
   staffId: string | null;
   staffName: string | null;
+  /** C+：PRIMARY=繼承預約人員、SPECIFIC_STAFF=指定、NONE=不計個人業績。 */
+  performanceMode: 'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE';
+  performanceStaffId: string | null;
   /** 建立當下實際加進 booking.finalPrice 的金額（刪除時原數回沖） */
   appliedAmount: number;
   /** 建立當下實際加進 booking.durationMinutes 的分鐘（刪除時原數回沖） */
@@ -547,6 +550,17 @@ export type TripDeparture = {
   seatsBooked: number;
   status: DepartureStatus;
   note: string;
+  primaryStaffId?: string | null;
+  primaryStaffName?: string | null;
+  assistantStaffIds?: string[];
+  assistantStaffNames?: string[];
+};
+
+export type DepartureStaffAvailability = {
+  staffId: string;
+  staffName: string;
+  available: boolean;
+  conflicts: Array<{ reason: 'SHIFT' | 'BOOKING' | 'BLOCK' | 'DEPARTURE'; conflictStart?: string; conflictEnd?: string }>;
 };
 
 export type TripAddon = {

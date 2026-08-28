@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripDeparture } from '@/server/mappers';
+import { replaceDepartureAssignments, resolveOpenDepartureAssignments } from '@/server/departure-staff';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -25,7 +26,7 @@ export const GET = handle(async (_req, ctx: Ctx) => {
 
   const { data, error } = await t.supabase
     .from('trip_departures')
-    .select('*, trip_plans(name)')
+    .select('*, trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
     .eq('tenant_id', t.tenantId).eq('trip_id', id)
     .order('departs_on', { ascending: true })
     .order('start_time', { ascending: true, nullsFirst: true });
@@ -41,6 +42,8 @@ const createSchema = z.object({
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0'),
   status: z.enum(['OPEN', 'CLOSED', 'CANCELLED']).optional(),
   note: z.string().optional(),
+  primaryStaffId: z.string().uuid().nullable().optional(),
+  assistantStaffIds: z.array(z.string().uuid()).optional(),
 });
 
 /**
@@ -57,11 +60,17 @@ export const POST = handle(async (req, ctx: Ctx) => {
 
   // 方案必須屬於同一租戶的同一個行程，否則會建出一個掛錯行程的團次
   const { data: plan, error: perr } = await t.supabase
-    .from('trip_plans').select('id, trip_id')
+    .from('trip_plans').select('id, trip_id, duration_minutes')
     .eq('tenant_id', t.tenantId).eq('id', b.planId).maybeSingle();
   if (perr) throw perr;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
 
+  const status = b.status ?? 'OPEN';
+  const assignments = status === 'OPEN' ? await resolveOpenDepartureAssignments({
+    supabase: t.supabase, tenantId: t.tenantId, departsOn: b.departsOn,
+    startTime: b.startTime ?? '', durationMinutes: Number(plan.duration_minutes),
+    primaryStaffId: b.primaryStaffId, assistantStaffIds: b.assistantStaffIds,
+  }) : [];
   const { data, error } = await t.supabase.from('trip_departures').insert({
     tenant_id: t.tenantId,
     trip_id: id,
@@ -69,7 +78,7 @@ export const POST = handle(async (req, ctx: Ctx) => {
     departs_on: b.departsOn,
     start_time: b.startTime ? b.startTime : null,
     capacity: b.capacity,
-    status: b.status ?? 'OPEN',
+    status,
     note: b.note ?? '',
   }).select('*, trip_plans(name)').single();
 
@@ -77,5 +86,15 @@ export const POST = handle(async (req, ctx: Ctx) => {
   if (error?.code === '23505') return fail(409, '同方案同日期同時間的團次已存在', ERR.CONFLICT);
   if (error) throw error;
 
-  return ok(mapTripDeparture(data));
+  try {
+    await replaceDepartureAssignments(t.supabase, t.tenantId, data.id, assignments);
+  } catch (assignmentError) {
+    // No OPEN departure is left behind if its required assignment cannot be persisted.
+    await t.supabase.from('trip_departures').delete().eq('tenant_id', t.tenantId).eq('id', data.id);
+    throw assignmentError;
+  }
+
+  return ok(mapTripDeparture({ ...data, trip_departure_staff: assignments.map((assignment) => ({
+    staff_id: assignment.staffId, role: assignment.role,
+  })) }));
 });
