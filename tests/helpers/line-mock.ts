@@ -19,6 +19,8 @@
 //   - GET  /v2/bot/profile/{userId} → 200 { displayName, userId, pictureUrl }
 //   - GET  /v2/bot/info → 200 { basicId, displayName, … }
 //   - 其他路徑 → 200 {}（rich menu 等端點本波測試不驗內容）
+//   - holdNext(path)：暫停一個指定路徑的回應；用來證明 webhook 的 HTTP 200
+//     不會等待背景事件處理完成（issue #31）。
 //   - failNext(status) 佇列：下一個進來的請求改回該狀態 —— 用來模擬
 //     「LINE 平台回錯 → lineFetch 丟 ApiHttpError → webhook 事件處理失敗」，
 //     驗證 route 的 try/catch 仍回 200。
@@ -60,6 +62,12 @@ export class LineMockServer {
 
   private server: Server | undefined;
   private failQueue: number[] = [];
+  private hold: {
+    path: string;
+    hit: boolean;
+    onHit: () => void;
+    release: (() => void) | null;
+  } | null = null;
 
   constructor(readonly port: number = lineMockPort()) {}
 
@@ -87,6 +95,20 @@ export class LineMockServer {
           body,
           rawBody,
         });
+
+        // Keep exactly one response pending.  The test can then prove that the
+        // webhook has returned before the asynchronous event handler finishes,
+        // without relying on a timing-based assertion.
+        if (this.hold && !this.hold.hit && this.hold.path === path) {
+          const hold = this.hold;
+          hold.hit = true;
+          hold.release = () => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end('{}');
+          };
+          hold.onHit();
+          return;
+        }
 
         // failNext 佇列：模擬 LINE 平台錯誤（lineFetch 會轉成 502 ApiHttpError）
         const failStatus = this.failQueue.shift();
@@ -153,10 +175,31 @@ export class LineMockServer {
     });
   }
 
-  /** 清空請求紀錄與 failNext 佇列（案例之間隔離用） */
+  /** 清空請求紀錄、failNext 與 holdNext（案例之間隔離用） */
   reset(): void {
     this.requests.length = 0;
     this.failQueue = [];
+    this.hold?.release?.();
+    this.hold = null;
+  }
+
+  /**
+   * 暫停下一個指定路徑的回應，直到呼叫 release()。
+   *
+   * 這刻意讓事件處理卡住，使測試能以因果關係而非 sleep 證明「先回 200」。
+   */
+  holdNext(path: string): { hit: Promise<void>; release: () => void } {
+    let onHit!: () => void;
+    const hit = new Promise<void>((resolve) => { onHit = resolve; });
+    const hold = { path, hit: false, onHit, release: null as (() => void) | null };
+    this.hold = hold;
+    return {
+      hit,
+      release: () => {
+        hold.release?.();
+        hold.release = null;
+      },
+    };
   }
 
   /** 讓「下一個」進來的請求回指定狀態碼（預設 500）；可疊加多次排隊 */

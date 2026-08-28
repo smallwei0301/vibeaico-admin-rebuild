@@ -20,7 +20,7 @@
 // 未以純函式形式匯出，無法在「不碰網路/DB」（12 分冊 §3）前提下單元化 ——
 // 由 line-webhook.06 整合測試以真資料覆蓋（keyword 命中回覆、未命中不回）。
 
-import { describe, it, expect, afterAll, vi } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 // src/server/line.ts →（經 ./supabase）→ next/headers：在 vitest node 環境
@@ -28,7 +28,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 // Supabase 的 lineApiBase/lineDataApiBase，mock 永遠不會被真的用到）。
 vi.mock('next/headers', () => ({ cookies: () => Promise.resolve({ getAll: () => [], set: () => {} }) }));
 
-import { lineApiBase, lineDataApiBase } from '@/server/line';
+import { encryptSecret } from '@/server/crypto';
+import { decryptLineCredentials, lineApiBase, lineDataApiBase } from '@/server/line';
 
 /* ------------------------------------------------------------------------- */
 /* 1. 簽章計算/驗證 —— route.ts 演算法的逐字重現（見檔頭說明）                  */
@@ -102,12 +103,41 @@ describe('LINE webhook 簽章（06 §3；演算法鏡像自 route.ts）', () => 
 
 const ORIGINAL_API_BASE = process.env.LINE_API_BASE;
 const ORIGINAL_DATA_API_BASE = process.env.LINE_DATA_API_BASE;
+const ORIGINAL_SETTINGS_KEY = process.env.SETTINGS_ENCRYPTION_KEY;
+
+beforeAll(() => {
+  process.env.SETTINGS_ENCRYPTION_KEY = 'c'.repeat(64);
+});
 
 afterAll(() => {
   if (ORIGINAL_API_BASE === undefined) delete process.env.LINE_API_BASE;
   else process.env.LINE_API_BASE = ORIGINAL_API_BASE;
   if (ORIGINAL_DATA_API_BASE === undefined) delete process.env.LINE_DATA_API_BASE;
   else process.env.LINE_DATA_API_BASE = ORIGINAL_DATA_API_BASE;
+  if (ORIGINAL_SETTINGS_KEY === undefined) delete process.env.SETTINGS_ENCRYPTION_KEY;
+  else process.env.SETTINGS_ENCRYPTION_KEY = ORIGINAL_SETTINGS_KEY;
+});
+
+describe('decryptLineCredentials — shared settings-row seam (06 §3.1)', () => {
+  it('解密嵌入 webhook 查詢拿到的 row，保留 line 設定', () => {
+    const result = decryptLineCredentials({
+      line: { autoReplyEnabled: true },
+      line_channel_secret_enc: encryptSecret('channel-secret'),
+      line_channel_access_token_enc: encryptSecret('channel-token'),
+    });
+    expect(result).toEqual({
+      secret: 'channel-secret',
+      token: 'channel-token',
+      lineConfig: { autoReplyEnabled: true },
+    });
+  });
+
+  it('缺 access token → LINE_NOT_CONFIGURED，不產生半套憑證', () => {
+    expect(() => decryptLineCredentials({
+      line_channel_secret_enc: encryptSecret('channel-secret'),
+      line_channel_access_token_enc: '',
+    })).toThrow('尚未設定 LINE Channel');
+  });
 });
 
 describe('lineApiBase / lineDataApiBase — 延遲讀 LINE_API_BASE（12 分冊 Phase 6 前提）', () => {

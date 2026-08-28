@@ -146,6 +146,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 | `message`(image/sticker…) | 只寫 `chat_messages` |
 | `postback` | 保留：`data` 格式 `action=xxx&…`，MVP 先 log |
 
+### 3.1 驗簽後立即回 200，事件處理放入 `after()`（issue #31）
+
+簽章驗證、店家與 LINE 憑證查詢仍留在回應前；壞簽章回 `401`，且不得排入背景
+工作。**只要簽章正確，route 一律立即回 `200 ok`**，後續事件處理交給
+`next/server` 的 `after()`：背景處理的個別事件失敗、畸形 JSON 或不可迭代的 events
+都必須 `console.error`，不得把例外帶回 LINE 或中止同批後續事件。
+
+- `after()` 不得再讀取 request；必要的 raw body、tenant、token、lineConfig 必須在
+  回應前取得。
+- `line-events` 必須在 `after()` 內動態 import，避免把不參與驗簽的模組載入成本放在
+  LINE 的回應路徑。
+- tenant 與 `tenant_settings` 可用 PostgREST 內嵌一次讀完；憑證解密與
+  `LINE_NOT_CONFIGURED` 判定必須共用 `decryptLineCredentials()`，避免兩條路徑漂移。
+- 測試不得用 sleep 猜背景工作完成。route `GET` 僅在整合測試 server 明確設定
+  `LINE_WEBHOOK_DRAIN_ENABLED=true` 時可排空 pending `after()` 工作；所有一般
+  development、Preview 與正式部署都必須回 `405`，並且不得回傳錯誤內容。
+
+此變更只拿掉「事件處理」對 LINE 回應時間的占用；serverless 冷啟動、驗簽前資料庫
+查詢仍在回應路徑，不能宣稱已消除所有 timeout。若日後開啟 LINE redelivery，須先為
+`webhookEventId` 做冪等處理，避免重送造成重複回覆。
+
 ---
 
 ## 4. 顧客綁定

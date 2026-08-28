@@ -32,6 +32,7 @@ import {
   MOCK_PROFILE_NAME_PREFIX,
   MOCK_PROFILE_PICTURE_URL,
 } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -53,17 +54,34 @@ function sign(secret: string, rawBody: string): string {
 }
 
 /** 以指定簽章（未給則用正確 secret 算）POST webhook；回原始 Response */
-async function postWebhook(
+async function postWebhookRaw(
   shopCode: string,
   payload: unknown,
   opts: { signature?: string | null; secret?: string } = {},
 ): Promise<Response> {
-  const raw = JSON.stringify(payload);
+  return postWebhookRawBody(shopCode, JSON.stringify(payload), opts);
+}
+
+async function postWebhookRawBody(
+  shopCode: string,
+  raw: string,
+  opts: { signature?: string | null; secret?: string } = {},
+): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const signature =
     opts.signature === undefined ? sign(opts.secret ?? CHANNEL_SECRET, raw) : opts.signature;
   if (signature !== null) headers['x-line-signature'] = signature;
   return fetch(`${BASE_URL}/api/line/webhook/${shopCode}`, { method: 'POST', headers, body: raw });
+}
+
+async function postWebhook(
+  shopCode: string,
+  payload: unknown,
+  opts: { signature?: string | null; secret?: string } = {},
+): Promise<Response> {
+  const res = await postWebhookRaw(shopCode, payload, opts);
+  await drainWebhook(shopCode, BASE_URL);
+  return res;
 }
 
 function textMessageEvent(userId: string, text: string, replyToken: string) {
@@ -212,12 +230,15 @@ afterAll(async () => {
 });
 
 describe('簽章與店家識別（06 §3）', () => {
-  it('壞簽章 → 401；事件完全不被處理', async () => {
+  it('壞簽章 → 401；事件完全不被處理或排入 after()', async () => {
     mock.reset();
-    const res = await postWebhook(SHOP_A.shopCode, {
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const res = await postWebhookRaw(SHOP_A.shopCode, {
       events: [textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-bad-sig')],
     }, { signature: 'x'.repeat(44) });
     expect(res.status).toBe(401);
+    const settled = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(settled.scheduled).toBe(before.scheduled);
     expect(mock.requests).toHaveLength(0);
     expect(await chatMessagesIn(USER_WEBHOOK)).toHaveLength(0);
   });
@@ -362,13 +383,15 @@ describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () =
     mock.reset();
     mock.failNext(500); // 第一個 reply 請求（rt-err）回 500 → lineReply 丟 ApiHttpError
 
-    const res = await postWebhook(SHOP_A.shopCode, {
+    const res = await postWebhookRaw(SHOP_A.shopCode, {
       events: [
         textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-err'),
         textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-after-err'),
       ],
     });
     expect(res.status).toBe(200); // 事件迴圈逐一 try/catch，不冒泡
+    const settled = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(settled.errors.some((error) => error.includes(SHOP_A.shopCode) && error.includes('LINE API 錯誤'))).toBe(true);
 
     // 兩個事件的 IN 訊息都寫入（寫入在 reply 之前）：前面關鍵字案例 1 筆 + 本案例 2 筆
     const ins = await chatMessagesIn(USER_WEBHOOK);
@@ -386,5 +409,35 @@ describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () =
       events: [{ type: 'message' }, { type: 'follow' }, { type: 'something-unknown' }],
     });
     expect(res.status).toBe(200);
+  });
+
+  it('簽章正確但 JSON 畸形 → 仍 200；背景錯誤有留下紀錄', async () => {
+    const raw = '{"events":';
+    const res = await postWebhookRawBody(SHOP_A.shopCode, raw);
+    expect(res.status).toBe(200);
+    const settled = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(settled.errors.some((error) => error.includes('after()') && error.includes('SyntaxError'))).toBe(true);
+  });
+});
+
+describe('先回 200、後處理事件（06 §3.1 / issue #31）', () => {
+  it('事件處理卡在 LINE 呼叫時，webhook 已回 200；放行後事件仍完成', async () => {
+    mock.reset();
+    const gate = mock.holdNext('/v2/bot/message/reply');
+
+    const posting = postWebhookRaw(SHOP_A.shopCode, {
+      events: [textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-after-31')],
+    });
+
+    await gate.hit;
+    const res = await posting;
+    expect(res.status).toBe(200);
+
+    gate.release();
+    const settled = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(settled.scheduled).toBeGreaterThan(0);
+    const replies = mock.requestsFor('/v2/bot/message/reply');
+    expect(replies).toHaveLength(1);
+    expect(replies[0].body.replyToken).toBe('rt-after-31');
   });
 });

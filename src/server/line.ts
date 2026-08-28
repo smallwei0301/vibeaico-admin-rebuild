@@ -26,16 +26,32 @@ export const lineApiBase = () => process.env.LINE_API_BASE ?? 'https://api.line.
 export const lineDataApiBase = () =>
   process.env.LINE_DATA_API_BASE ?? 'https://api-data.line.me';
 
+/** The tenant_settings fields needed to decrypt a Messaging API credential. */
+export type LineSettingsRow = {
+  line?: unknown;
+  line_channel_secret_enc?: string | null;
+  line_channel_access_token_enc?: string | null;
+} | null | undefined;
+
+/**
+ * Decrypt one tenant_settings row for both ordinary LINE calls and webhook
+ * verification. Keeping this at one seam prevents the fast webhook query
+ * from acquiring subtly different credential semantics.
+ */
+export function decryptLineCredentials(row: LineSettingsRow) {
+  const token = decryptSecret(row?.line_channel_access_token_enc ?? '');
+  const secret = decryptSecret(row?.line_channel_secret_enc ?? '');
+  if (!token) throw new ApiHttpError(400, '尚未設定 LINE Channel', ERR.LINE_NOT_CONFIGURED);
+  return { token, secret, lineConfig: (row?.line ?? {}) as Record<string, any> };
+}
+
 /** 讀出該店解密後的 LINE 憑證；未設定 → 丟 LINE_001 */
 export async function getLineCredentials(tenantId: string) {
   const admin = createAdminSupabase();
   const { data } = await admin.from('tenant_settings')
     .select('line, line_channel_secret_enc, line_channel_access_token_enc')
     .eq('tenant_id', tenantId).single();
-  const token = decryptSecret(data?.line_channel_access_token_enc ?? '');
-  const secret = decryptSecret(data?.line_channel_secret_enc ?? '');
-  if (!token) throw new ApiHttpError(400, '尚未設定 LINE Channel', ERR.LINE_NOT_CONFIGURED);
-  return { token, secret, lineConfig: (data!.line ?? {}) as Record<string, any> };
+  return decryptLineCredentials(data as LineSettingsRow);
 }
 
 async function lineFetch(token: string, path: string, init?: RequestInit) {
