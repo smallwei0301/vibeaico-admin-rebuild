@@ -260,13 +260,17 @@ async function enqueueImmediateDeadAlert(admin: Admin, delivery: ClaimedDelivery
 
 async function persistOutcome(admin: Admin, delivery: ClaimedDelivery, outcome: TransportOutcome): Promise<void> {
   const transition = deliveryTransition(outcome, new Date(), delivery.attempt_count);
-  const { error } = await admin.from('notification_deliveries').update({
+  const { data: persisted, error } = await admin.from('notification_deliveries').update({
     status: transition.status, attempt_count: transition.attemptCount, next_attempt_at: transition.nextAttemptAt,
     provider_message_id: transition.providerMessageId, last_error_code: transition.lastErrorCode,
     last_error_message: transition.lastErrorMessage, accepted_at: transition.acceptedAt,
     delivered_at: transition.deliveredAt, claim_token: null, processing_started_at: null,
-  }).eq('id', delivery.id).eq('claim_token', delivery.claim_token);
+  }).eq('id', delivery.id).eq('claim_token', delivery.claim_token).select('id').maybeSingle();
   if (error) throw error;
+  // A worker can finish after its 10-minute lease was reclaimed. The claim
+  // token is the compare-and-swap guard: a stale result must not invalidate a
+  // binding, refresh the outbox, or emit a DEAD alert owned by the new worker.
+  if (!persisted) return;
   if (transition.bindingInvalid) {
     await admin.from('telegram_bindings').update({ active: false, invalid_reason: transition.lastErrorCode, invalidated_at: new Date().toISOString() })
       .eq('subject_type', delivery.recipient_type === 'STAFF' ? 'STAFF' : 'TENANT_USER')
