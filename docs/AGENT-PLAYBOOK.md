@@ -48,6 +48,8 @@
 | PB-010 | PR 多檔遠端更新必須原子提交 | Contents API 每檔一 commit 會讓同一 PR 同時啟動多輪 TEST；先建 blobs/tree，再一次 create commit + update ref。 | `docs/AGENT-EXECUTION.md` §6、§7 |
 | PB-011 | TEST 寫入前掃全 repo active runs | 只看已知 PR 會漏掉新啟動的 workflow；每次 migration/reset/seed 前即時查全 repo `in_progress`／`queued` runs。 | `docs/AGENT-EXECUTION.md` §7；`12-TESTING-TDD.md` §1.5 |
 | PB-012 | 平行 agent 不共用 checkout | 不同 agent 即使改不同檔，切換同一 worktree 的 branch 仍會污染 HEAD、測試與 commit；每條寫入線使用獨立 worktree／clone。 | `docs/AGENT-EXECUTION.md` §6 |
+| PB-013 | 多端點整合逾時要標出單一步驟 | 總 timeout 只能證明整條流程太慢；每個 HTTP／DB／Auth 步驟都要有較短上限與穩定 label，先分出真回歸與外部延遲。 | `12-TESTING-TDD.md` §2.3.1、§6 |
+| PB-014 | 權限 migration 同時驗 deny 與 allow | 只測 anon/authenticated 已撤權不夠；每個 server-only table/RPC 還要明確 grant `service_role` 並驗證正向可用。 | `02-SUPABASE-SCHEMA.md`；`12-TESTING-TDD.md` §6 |
 
 ## 事件紀錄
 
@@ -147,5 +149,35 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 影響：#34 的 typecheck/build 證據被 #35 未完成檔案污染，兩條 staging branch 暫時共享錯誤 ancestry；提交沒有遺失，但需要額外整理與回讀。
 - 修正：停止共享 worktree 的 checkout/reset；保留 #34 commit 到自有 branch，#35 改在獨立 worktree／clone 或以 Git Data API 從精確 base 建乾淨 ref。
 - 預防：每位會寫檔或提交的平行 agent 必須有獨立 worktree／clone；只讀 agent 可共用。派工前記錄 worktree path，提交前核對 symbolic HEAD、parent、changed files，遠端同步後再核對 ancestry/tree。
-- 驗證：#34 branch `test/issue-34-guide-pending-booking-badge` 已回指 parent 正確的 `97d272d`；#35 待在隔離工作區建立只含自身變更的乾淨 branch。
+- 驗證：#34 已在隔離 clone 建立遠端 branch `test/issue-34-guide-pending-booking-badge`；#35 已在另一個隔離 clone 建立 `test/issue-35-preview-e2e-acceptance`，遠端 compare 只含各自目標檔。後續 #35 安全修正仍以 non-force fast-forward 更新同一獨立 branch，未再污染 #34。
+- 狀態：已解決
+
+### PB-013 — 真實 auth 流程只放寬總 timeout，仍看不出卡在哪一步
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：PR #49；CI run 33167858331（run #162）
+- 分類：CI／測試／外部服務
+- 事件：`tests/integration/api/auth.03.test.ts` 的「寄碼 → 註冊 → 登入 → me」在固定 30 秒總預算被 Vitest 截斷；四個端點實際都有成功跡象，但 E2E 因 integration job 失敗未開始。
+- 證據：run #162 唯一失敗在 `auth.03.test.ts:128`；register 約 12.374 秒、login 約 10.344 秒，整條約 30 秒。原案例還有一次明確 login 後再由 `loginAs()` login，且 `/me` 也重複 preflight／斷言。
+- 根因：單一總 timeout 包住多個真實 HTTP、PostgREST 與 Supabase Auth admin 步驟，錯誤只回報案例逾時，不能定位是哪個外部呼叫停住；測試中的重複登入也消耗不必要預算。
+- 影響：一次外部延遲被表現成整條 auth flow 失敗；只把總 timeout 改 60 秒可讓候選繼續驗證，但下一次卡住仍缺精確診斷。
+- 修正：保留 60 秒總上限作整體防線，另在 staging `codex/auth03-diagnostics` 為每個 endpoint／DB／Auth admin 步驟加入 20 秒界線與可搜尋 label；沒有吞錯或放寬 assertion。
+- 預防：凡一個 integration case 串三個以上外部步驟，每步都要有 AbortSignal／timeout race 與穩定操作名稱；總 timeout 只負責最後兜底。重複 helper preflight 要在案例設計時明列，不可默默增加一次完整登入。
+- 驗證：staging typecheck、72 files／924 unit tests、mock build 通過；真實 TEST integration 尚待 #49 唯一工作釋放後，以 exact-head CI 驗證。
+- 狀態：監看中
+
+### PB-014 — 只撤銷瀏覽器 RPC 權限，漏掉 service role 正向授權
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：Issue #40；migration `0038_notification_outbox_delivery.sql`
+- 分類：資料庫／安全／測試
+- 事件：#40 source migration 已 `revoke` anon/authenticated/PUBLIC 的 ledger 與 privileged RPC，但最初版本沒有明確 `grant` `service_role`；單元測試也只數 revoke，沒有驗 server worker／webhook 的正向能力。
+- 證據：migration 審查時六條 `revoke execute` 存在，但沒有任何 `grant execute ... to service_role`；若專案 default privileges 不同，claim、status refresh、Resend callback 與 Telegram bind RPC 會在 TEST 才報 permission denied。
+- 根因：把 Supabase 專案可能存在的 default grants 當成 migration 契約，權限測試只看「誰不能做」，沒看「唯一應該能做的人是否真的能做」。
+- 影響：安全面看似收緊，實際 server-only 路徑可能全部不可用；錯誤會延後到 migration 套用後才出現。
+- 修正：0038 明確 grant service role ledger table access與五支 server RPC execute；trigger-only function 維持無 API execute。schema unit 同時鎖正向 grant 與負向 revoke。
+- 預防：每個 ACL migration 建立角色矩陣：anon、authenticated、service_role 逐一寫 allow／deny；測試不得只用 revoke 數量代表完成。
+- 驗證：#40 schema／delivery 相關 147 個 unit tests與 typecheck 通過；TEST 真實 `has_function_privilege`／RPC 呼叫待序列化 migration 後驗證。
 - 狀態：監看中
