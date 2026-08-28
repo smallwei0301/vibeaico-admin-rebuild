@@ -13,14 +13,12 @@
 - 階段性進度只能是非終止更新；更新後立刻繼續。不得把「已查到狀態」、
   「CI 還在跑」或「已建立 PR」當成任務完成。
 - **長程 `/goal` 的 final 防呆**：未符合 §10 任一停止條件時，禁止送出 final 回覆。
-  即使本回合完成了一個 commit、測試或單一 Issue，也只能發非終止進度，並立刻
-  轉往下一個不衝突工作；若暫時沒有可執行工作，必須留下下一個自動檢查動作與
-  等待條件，而不是以 final 結束。送出 final 前，主力必須逐項核對 §10 並在工作
-  記錄寫出符合的是哪一項。
-- 等待 CI、agent 或外部讀取時，若有不會碰撞的工作，應繼續下一條工作流。
+  即使本回合完成一個 commit、測試或單一 Issue，也只能發非終止進度，並立刻轉往
+  下一個不衝突工作。送出 final 前，必須逐項核對 §10 並記錄符合哪一項。
+- 等待 CI、agent 或外部讀取時，若有不會碰撞的工作，繼續下一條工作流。
 - 每次開工都重新讀 GitHub 的 open Issue、open PR、分支、最新提交與 CI；
   舊對話、舊清單與 Issue 內過時勾選只能當線索，不能當目前事實。
-- 先接續既有可用 PR／分支，不為同一題重開一組平行實作。
+- 先接續既有可用 PR／分支，不為同一題重開平行實作。
 
 ## 2. 強制開工順序
 
@@ -29,9 +27,10 @@
    `docs/DOCUMENTATION-GOVERNANCE.md` 與 `docs/OWNER-DECISIONS.md`。
 3. 讀 Issue 指定的 canonical 分冊、驗收清單與
    `docs/integration/12-TESTING-TDD.md`；以 Issue、錯誤碼或領域關鍵字搜尋
-   `docs/AGENT-PLAYBOOK.md` 的相關教訓，只讀直接相關檔案，不重讀整個 repo。
+   `docs/AGENT-PLAYBOOK.md`，只讀直接相關教訓。
 4. 確認目前 base、head、既有 PR、migration 編號、CI 與 TEST schema 基線。
-5. 建立精簡責任表：`Issue → 負責者 → branch/PR → 依賴 → DB 使用 → 驗證 → 狀態`。
+5. 建立精簡責任表：
+   `Issue → 階段 → 指定模型 → branch/PR → 依賴 → DB 使用 → 驗證 → 狀態`。
 6. 將工作分為：
    - **A：可直接施工**；
    - **B：等其他 Issue／PR，但可先做不衝突部分**；
@@ -45,7 +44,7 @@
 | 讀 repo、Issue、PR、CI、Preview 與文件 | 允許 | 使用目前狀態，不洩漏秘密 |
 | 修改程式、測試、文件；建立 branch、commit、PR | 允許 | 遵守 Issue 範圍與文件治理 |
 | 更新 PR 描述、review 回覆、Issue 證據與標籤 | 允許 | 內容必須有可驗證證據 |
-| 關閉已完成的 Issue | 允許 | 最終分支已包含實作，且 Issue 每項驗收都有證據 |
+| 關閉已完成的 Issue | 允許 | 最終分支包含實作、驗收有證據，且 §5 AUDIT 回覆 `CLOSE_APPROVED` |
 | 執行型別、單元、整合、E2E 與 build | 允許 | TEST 資料庫工作依 §7 序列化 |
 | Vercel Preview 驗證 | 允許 | 不得提升為 Production |
 | Owner 已核准的 docs-only commit 直進 `main` | 允許 | changed files 僅限文件治理白名單 |
@@ -92,33 +91,139 @@ open Issue 所需的 schema／function／migration、DDL／DML、reset、seed、
   行為不得自行發明。將它們整理成 Owner 決策項，但不要打斷其他工作。
 - 看不到必要 canonical 文件或高順位文件互相矛盾時，該路線停止；不得用猜測補規格。
 
-## 5. 多模型派工與節流
+## 5. 角色式模型路由與節流
 
-- **目前對話選擇的模型是總體主力**：負責目標、依賴、風險、整合、最終判定與回報。
-- **Luna 處理低風險、可審核且互不重疊的工作**：例如狀態盤點、CI 日誌整理、
-  既有模式接線、格式修正、測試準備與文件核對。可平行使用多條 Luna 工作流，
-  但每條必須有不同檔案／問題邊界與明確交付。
-- **一個中大型 Issue 只交一位 Terra 完整負責**：由同一位讀最少必要規格、診斷、
-  修改、跑針對性測試並提交。禁止多位 Terra 重複讀同一題或競作不同修法。
-- **Sol 只在整個高風險變更鏈最後做一次唯讀終審**。主力若已是 Sol，不另派 Sol。
-- 模型或 sub-agent 功能不可用時，由主力按相同責任邊界繼續；不可把「無法派模型」
-  當成程式工作阻塞。
-- agent 交接只提供：目標、必要文件、base/head、指定範圍、驗收、最新錯誤、安全界線。
-  禁止預設複製完整舊對話或讓多個 agent 全量重讀 repo。
-- 回報時區分「要求使用的模型」與「平台可驗證的實際模型」；無法驗證就寫 unknown。
+**工作角色優先於目前對話選到的模型。** 目前對話模型負責保持任務不中斷、使用工具與
+轉交工作，但不得跳過下列角色閘門。標準流程固定為：
+
+```text
+SCOUT → TRIAGE → BUILD → DIAGNOSE → AUDIT → CLOSEOUT
+Luna      Sol      Terra    Terra/Sol     Sol       Luna
+```
+
+### 5.1 六階段責任
+
+| 階段 | 指定模型 | 主要工作 | 必交產物 | 禁止事項 |
+|---|---|---|---|---|
+| `SCOUT` | Luna | 盤點 open Issue／PR／branch／CI、依賴、TEST 占用與現有證據 | 只含事實的精簡責任表 | 不決定優先順序，不做產品／安全判斷，不關 Issue |
+| `TRIAGE` | Sol | 決定下一個 Issue、依賴順序、風險與驗收閘門 | `NEXT`、`DEPENDENCIES`、`RISK`、`GATES` | 不親自做大量機械施工，不重讀完整舊對話 |
+| `BUILD` | Terra | 一個中大型 Issue 由同一位端到端讀必要 code、修改、跑 targeted tests、提交 | commit、變更檔、測試、未驗證項 | 不改驗收標準，不擴大 scope，不自行關 Issue |
+| `DIAGNOSE` | Terra／Sol | 明確程式錯誤由 Terra 修；模糊 CI、環境與測試責任由 Sol 判案 | `CODE`／`TEST`／`ENVIRONMENT`／`UNKNOWN` 分類與下一步 | 未分類前不得改 assertion、timeout 或宣稱環境問題 |
+| `AUDIT` | Sol | 高風險設計審查與 Issue 最終驗收 | `CLOSE_APPROVED`、`FIX_REQUIRED` 或 `OWNER_BLOCKED` | 不以「大部分完成」放行，不親自做 close 的機械操作 |
+| `CLOSEOUT` | Luna | 依 Sol 結論整理文件、PR／Issue 證據並執行關閉 | 完整證據留言、文件同步、狀態更新 | 沒有 `CLOSE_APPROVED` 不得關 Issue |
+
+### 5.2 什麼時候一定要使用 Sol
+
+- 排 open Issue 的下一題與依賴順序。
+- 資料庫、migration、付款、登入、權限、跨租戶、安全、真實通知的設計或變更。
+- 同一 commit 前後結果不一致、一次多個無關 suite 失敗、大量 401／403、
+  schema cache、共用 TEST 污染、並發或責任不明的 CI。
+- 想修改 assertion、提高 timeout、把失敗標為環境問題，或跳過驗收。
+- 最後判斷 Issue 能否關閉。
+
+一般 Issue 的 Sol 接觸次數目標為 **2 次**：TRIAGE 一次、AUDIT 一次。只有新增高風險
+證據或模糊 CI 才可增加 DIAGNOSE；不得讓 Sol 常駐做搬運、讀完整 log 或一般施工。
+
+### 5.3 Terra 與 Luna 的硬邊界
+
+- **一個中大型 Issue 只交一位 Terra。** 不得多位 Terra 重複讀同一題、競作不同修法，
+  或讓 Terra 在每次狀態更新後重新接收完整背景。
+- Terra 可自行修明確的型別、編譯、單一測試與可重現程式錯誤；若錯誤責任不明，
+  先由 Luna 壓縮事實，再交 Sol 判案。
+- Luna 可平行處理互不重疊的狀態盤點、CI 摘要、檔案核對、格式修正、文件同步與
+  已有標準答案的機械修改；不得自行做產品、安全、金流、權限或 close 決策。
+- 關閉 Issue 的按鈕可由 Luna 或主 agent 執行，但決策必須來自 Sol 的
+  `CLOSE_APPROVED`。
+
+### 5.4 固定交接包
+
+agent 交接只提供以下欄位，不傳完整舊對話，也不要求收件者全量重讀 repo：
+
+```text
+ISSUE:
+STAGE:
+BASE / HEAD:
+GOAL:
+REQUIRED_DOCS:
+SCOPE:
+CHANGED:
+ACCEPTANCE_EVIDENCE:
+LATEST_ERROR:
+TEST_RESULT:
+RISK:
+UNPROVEN:
+REQUESTED_DECISION:
+REQUESTED_MODEL / ACTUAL_MODEL:
+```
+
+- 原始 CI log 只附失敗 step、suite、案例與前後必要片段；不貼整份 log。
+- Sol AUDIT 只讀 Issue 驗收、相關 diff、測試證據、風險與未完成項。
+- 若平台無法驗證實際 delegated model，寫 `actual=unknown`，不得假裝已使用指定模型。
+
+### 5.5 CI 兩層分流
+
+1. Luna 先摘錄 exact head、job／step、suite／case、錯誤碼、重現性、同時執行中的
+   TEST workflow 與最近環境變化。
+2. 明確的程式錯誤交 Terra；模糊、跨 suite、前後不一致、共用 TEST、Auth／DB／權限
+   或想改測試標準的情況交 Sol。
+3. Sol 必須輸出分類與最小下一步；`UNKNOWN` 不可被改寫成 `ENVIRONMENT`。
+4. 同一 commit、同一環境、同一命令不得盲目重跑。只有程式、設定、權限、服務狀態、
+   測試資料或其他可驗證條件改變後，才算新嘗試。
+
+### 5.6 Scope Firewall（範圍防火牆）
+
+新發現只有符合下列任一條件，才可成為會阻塞目前 goal 的 Issue：
+
+- 原站或既有 UI 宣稱可用，但實際沒有副作用或資料不會保存。
+- 存在安全、跨租戶、資料損失、付款、退款、權限或真實通知風險。
+- 原 Issue／canonical 文件已明定的驗收缺失。
+
+純美化、未來產品想法、目前可正常使用的效能優化與非必要重構，只進 backlog，
+不得阻塞目前 Issue，也不得讓「關 1 個、再開 2 個」成為常態。
+
+### 5.7 模型不可用與 skill 邊界
+
+- 若平台暫時不能派指定模型，主 agent 先完成不受影響的低風險工作；需要 Sol 閘門的
+  Issue 標記 `SOL_GATE_PENDING`，不得自行關閉，但不得因此停止其他工作流。
+- 若目前主模型本身就是指定模型，不另派同模型重複讀取。
+- `.agents/skills/vibeaico-agent-orchestration/SKILL.md` 是本流程的執行轉接器，
+  用來在 `/goal`、CI 判案與 closeout 時啟動固定階段；**本文件仍是唯一正式規則**。
+  skill 與本文件衝突時，以 `origin/main:docs/AGENT-EXECUTION.md` 為準。
+
+### 5.8 初始成本目標與量測
+
+初始工作量目標：
+
+| 模型 | 目標占比 |
+|---|---:|
+| Sol | 10%～20% |
+| Terra | 60%～70% |
+| Luna | 15%～25% |
+
+無法取得平台真實 token 時，不可編造數字。每個完成 Issue 至少記錄：
+
+- Sol 接觸次數；
+- full CI 次數與無效重跑次數；
+- AUDIT 退回 Terra 次數；
+- 新增 blocking Issue 數；
+- requested model 與 platform-verifiable actual model。
+
+先以 10 個 Issue 為一輪觀察，目標是 Sol 一般不超過 2～3 次接觸、無效 CI 重跑為 0，
+並且關閉 Issue 的速度上升而非只增加審計文件。
 
 ## 6. Branch、PR 與 CI 流程
 
 1. 一個 Issue／緊密相依的小批次使用一條責任清楚的 branch；若已有 PR，優先接續。
-2. 程式、migration、依賴、workflow 與部署設定走 feature branch → PR → CI → review。
+2. 程式、migration、依賴、workflow、agent skill 與部署設定走
+   feature branch → PR → CI → review。
 3. migration 平行施工前先分配不重複編號；合併前依 base 順序核對 drift 與相依性。
 4. 先跑單一失敗測試與相關型別／單元測試；有新提交或新環境證據後才跑完整 CI。
 5. 完全相同的 commit 與環境失敗不得反覆 rerun 碰運氣。
 6. PR 合併前逐項核對 changed files、base/head、驗收證據、migration、秘密掃描與 CI。
 7. 合併到指定整合分支後重新核對該分支；未取得 Production 授權時，停在 Ready 或
    已驗證整合分支，繼續處理其他 Issue。
-8. Issue 只有在它要求的最終分支已包含實作且驗收全部成立時才關閉；傘狀 Issue 不得
-   因其中一小段完成就關閉。
+8. Issue 只有在它要求的最終分支已包含實作、驗收全部成立，且 Sol AUDIT 回覆
+   `CLOSE_APPROVED` 時才關閉；傘狀 Issue 不得因其中一小段完成就關閉。
 
 ## 7. 測試與共用 TEST 資源
 
@@ -149,7 +254,7 @@ open Issue 所需的 schema／function／migration、DDL／DML、reset、seed、
   其他環境條件真的改變後才重新計數。這與 TDD 的「實作修改三次仍紅」是不同規則。
 - 停止該路線後，保存最小錯誤、已試條件與下一個可驗證假設；改走不同安全路線，
   或先做其他不相依 Issue。不得因此結束整個專案 goal。
-- agent 長時間沒有提交時，主力要求最小檢查點：變更檔、目前 commit、重現指令、
+- agent 長時間沒有提交時，要求最小檢查點：變更檔、目前 commit、重現指令、
   技術阻塞與可推送內容。拿回檢查點後整合、換路或重新派工。
 - 不以刪測試、放寬斷言、隱藏按鈕、mock 假成功或靜默略過錯誤解除阻塞。
 
@@ -162,7 +267,8 @@ open Issue 所需的 schema／function／migration、DDL／DML、reset、seed、
 - 實際執行指令、結果與 CI 連結；
 - TEST migration 基線／套用／schema cache／目標查詢證據；
 - 未驗證範圍、殘餘風險、環境錯誤次數與 Owner 待辦；
-- 主力、已指定 agent 模型與平台可驗證模型。
+- SCOUT／TRIAGE／BUILD／DIAGNOSE／AUDIT／CLOSEOUT 的負責模型與結果；
+- Sol 接觸、full CI、無效重跑、AUDIT 退回與新增 blocking Issue 的量測。
 
 每次發生會造成 CI／測試失敗、環境重試、錯誤診斷、半成品、權限阻塞或 agent
 停滯的事件，都要依固定格式新增或更新 `docs/AGENT-PLAYBOOK.md`。至少記：事件、證據、
@@ -175,10 +281,10 @@ open Issue 所需的 schema／function／migration、DDL／DML、reset、seed、
 只有下列情況可結束一輪長程 goal：
 
 1. 所有 open Issue 都已具備完整驗收證據、合併到其要求的最終分支並關閉；或
-2. 所有剩餘項目都確實只缺 Owner 決策、外部權限／憑證或 Production 授權，且其他
-   可施工項目已全部完成；或
+2. 所有剩餘項目都確實只缺 Owner 決策、外部權限／憑證、Production 授權或
+   `SOL_GATE_PENDING`，且其他可施工項目已全部完成；或
 3. 執行平台本身無法繼續，且已留下另一位 agent 可直接接手的精確檢查點。
 
 最終報告必須包含：已關閉 Issue／合併 PR、測試與 CI、TEST migration、Production
-未變更確認、剩餘阻塞與推薦決策、agent 分工、環境錯誤、playbook 更新。不得只回報
-「目前進度」或要求 Owner 重複已給過的授權。
+未變更確認、剩餘阻塞與推薦決策、agent 分工、環境錯誤、playbook 更新，以及
+§5.8 的模型與重工量測。不得只回報「目前進度」或要求 Owner 重複已給過的授權。
