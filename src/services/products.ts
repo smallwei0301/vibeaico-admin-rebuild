@@ -1,6 +1,11 @@
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+// 型別匯入（`import type` 編譯期即被抹除，不會把 server 端程式碼帶進前端 bundle）；
+// 通知結果的定義只留一份在 server 端，避免兩邊字串聯集各寫各的而漂移。
+import type { ProductOrderNotifyOutcome } from '@/server/line-notify';
+
+export type { ProductOrderNotifyOutcome };
 
 /**
  * 商品 / 庫存 / 商品訂單 — 寫入操作與頁內讀取的 service 層（04 分冊 §B-3）。
@@ -99,6 +104,8 @@ export type ProductPayload = {
   imageUrl?: string;
   active?: boolean;
   lineFeatured?: boolean;
+  /** 公開頁排序（商品表單的「排序」欄位）；LINE 精選排序走 reorderProductsLine */
+  sortOrder?: number;
 };
 
 let nextMockProductId = 1;
@@ -130,10 +137,20 @@ export const deleteProduct = (id: string) =>
     ),
   );
 
-/** POST /api/products/reorder — 依 ids 順序寫 sort_order（LINE 精選排序） */
+/** POST /api/products/reorder — 依 ids 順序寫 sort_order（＝**公開頁**排序） */
 export const reorderProducts = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/products/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/**
+ * POST /api/products/reorder-line — 依 ids 順序寫 line_sort_order
+ * （＝**LINE 精選**排序，0017 新欄位）；與 reorderProducts 兩套順序互不覆蓋。
+ */
+export const reorderProductsLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/products/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 
@@ -372,19 +389,26 @@ export function listInventoryLogs(q: InventoryLogQuery = {}): Promise<Paged<Inve
 let nextMockOrderId = 1;
 
 /**
- * POST /api/product-orders/manual — `{customerId, items:[{productId, quantity}]}`
- * 回 `{id, orderNo}`。庫存不足時後端回 409（message 例：「『X』庫存不足，
+ * POST /api/product-orders/manual — `{customerId, items:[{productId, quantity}], notifyCustomer}`
+ * 回 `{id, orderNo, notify}`。庫存不足時後端回 409（message 例：「『X』庫存不足，
  * 無法建立訂單」），頁面原樣顯示。
+ *
+ * `notifyCustomer`＝建單視窗「LINE 通知顧客消費明細」勾選框。`notify` 是那次通知
+ * **實際發生的事**（LINE／改寄 Email／沒送出），頁面照它顯示訊息，不可重播勾選框
+ * 標籤字面（issue #27 ③、00 鐵則 12）。
+ *
+ * mock 分支固定回 'NONE'：mock 模式沒有 LINE 也沒有寄信，什麼都沒送出去。
  */
 export const createManualProductOrder = (payload: {
   customerId: string;
   items: { productId: string; quantity: number }[];
+  notifyCustomer?: boolean;
 }) =>
-  adapt<{ id: string; orderNo: string }>(
-    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}` }),
-    () => request<{ id: string; orderNo: string }>('/api/product-orders/manual', {
-      method: 'POST', body: JSON.stringify(payload),
-    }),
+  adapt<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}`, notify: 'NONE' }),
+    () => request<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+      '/api/product-orders/manual', { method: 'POST', body: JSON.stringify(payload) },
+    ),
   );
 
 /** 狀態機（同 bookings 模式）：條件不符時後端回 409「此訂單狀態已變更」 */

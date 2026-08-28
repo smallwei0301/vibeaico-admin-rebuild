@@ -1,8 +1,8 @@
 import { adapt, request } from '@/lib/api';
 import { APP_URL } from '@/config/env';
 import {
-  DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
-  type LineSettings, type TenantSettings,
+  DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret, aiSettingsSchema,
+  type AiSettings, type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
@@ -57,6 +57,46 @@ export const verifyLineSetup = () =>
 
 export const getSetupStatus = () =>
   adapt<SetupStatus>(() => MOCK_SETUP_STATUS, () => request<SetupStatus>('/api/settings/setup-status'));
+
+/* ------------------------------------------------------------- AI 客服設定
+ * `GET/PUT /api/ai-settings`（09 分冊 §7.1）—— /tenant/ai-settings 頁專用。
+ *
+ * ⚠️ 為什麼這裡非有不可（issue #27 ①）：ai-settings 頁原本呼叫的是
+ * `saveLineSettings({ autoReplyEnabled, defaultReply: prompt })`，也就是把
+ * **AI 提示詞**寫進 `tenant_settings.line.defaultReply`。那個欄位是 webhook
+ * 分支 ⑥ 的「沒有 AI 時的靜態罐頭回覆」，於是店家寫給 AI 的指令
+ * （「你是一間美髮沙龍的客服…」）被逐字推播給每一位傳訊息來的顧客，
+ * 畫面卻顯示「AI 客服設定已儲存（已啟用）」。同時 webhook 分支 ⑤ 讀的
+ * `tenant_settings.ai.enabled` 永遠停在 zod 預設的 false ——「已啟用」是假的。
+ *
+ * 14 分冊 §8.1 的裁決是**分家**：
+ *   - `line.autoReplyEnabled` / `line.defaultReply` 只由 line-settings 頁寫
+ *   - `ai.*` 只由 ai-settings 頁寫（就是這兩支函式）
+ * 兩頁從此不再搶同一組欄位。
+ */
+
+export const getAiSettings = () =>
+  adapt<AiSettings>(
+    // 示範分支：沒有任何 AI 訂閱、沒有 ANTHROPIC_API_KEY，據實回 schema 預設值
+    // （enabled=false）。不可為了畫面好看回 true —— 那又是一個捏造的已知。
+    () => aiSettingsSchema.parse({}),
+    () => request<AiSettings>('/api/ai-settings'),
+  );
+
+/**
+ * 寫回整包 AI 設定。
+ *
+ * 端點契約是**整包覆蓋**（09 §7.1：`body = AiSettings`，`aiSettingsSchema.parse`
+ * 之後直接 upsert 進 `ai` jsonb），所以呼叫端必須送**完整**物件。頁面的作法是
+ * 載入時把 GET 回來的整包留著，儲存時只覆寫自己編輯的欄位再送回去 —— 否則
+ * `faq` / `handoffMessage` 會被 zod 的 default 洗成空值（頁面上沒有那兩個欄位，
+ * 使用者不會知道自己弄丟了什麼）。
+ */
+export const saveAiSettings = (value: AiSettings) =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(value) }),
+  );
 
 export const listFeatures = () =>
   adapt<FeatureSubscription[]>(() => MOCK_FEATURES, () => request<FeatureSubscription[]>('/api/feature-store'));

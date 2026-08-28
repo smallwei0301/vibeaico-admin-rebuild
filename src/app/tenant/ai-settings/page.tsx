@@ -9,7 +9,8 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { CharCounter, FormText, SwitchField, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, listFeatures, saveLineSettings } from '@/services/settings';
+import { getAiSettings, listFeatures, saveAiSettings } from '@/services/settings';
+import type { AiSettings } from '@/config/tenant-settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { aiSettingsPage as t } from '@/i18n/zh-TW/pages/ai-settings';
@@ -40,9 +41,19 @@ export default function AiSettingsPage() {
   const [saving, setSaving] = React.useState(false);
   const [featureActive, setFeatureActive] = React.useState(true);
 
-  const [enabled, setEnabled] = React.useState(true);
+  const [enabled, setEnabled] = React.useState(false);
   const [strictMode, setStrictMode] = React.useState(false);
   const [prompt, setPrompt] = React.useState('');
+
+  /**
+   * GET /api/ai-settings 回來的整包，原樣留著。
+   *
+   * `PUT /api/ai-settings` 是**整包覆蓋**（09 分冊 §7.1），而本頁只編輯
+   * enabled / strictMode / personaNotes 三個欄位；不把 faq、handoffMessage
+   * 一起送回去的話，zod 的 default 會把它們洗成 []／''，使用者在別處（webhook
+   * 的常見問答、真人接手訊息）設定的東西就這樣不聲不響消失了。
+   */
+  const loadedRef = React.useRef<AiSettings | null>(null);
 
   const [templateTarget, setTemplateTarget] = React.useState<TemplateKey | null>(null);
   const [clearConfirm, setClearConfirm] = React.useState(false);
@@ -50,10 +61,18 @@ export default function AiSettingsPage() {
   React.useEffect(() => {
     void (async () => {
       try {
-        /* AI 設定與 LINE 設定同源（原站 /api/settings/line） */
-        const s = await getTenantSettings();
-        setEnabled(s.line.autoReplyEnabled);
-        setPrompt(s.line.defaultReply);
+        /**
+         * AI 設定的唯一來源是 `tenant_settings.ai`（GET /api/ai-settings）。
+         *
+         * ⚠️ 以前這裡讀的是 `getTenantSettings().line`，把 LINE 的靜態罐頭回覆
+         * 當成 AI 設定顯示，儲存時再寫回去 —— 提示詞於是被逐字推播給顧客
+         * （14 分冊 §7.3）。§8.1 裁決分家後，本頁不再讀寫 `line.*` 的任何欄位。
+         */
+        const ai = await getAiSettings();
+        loadedRef.current = ai;
+        setEnabled(ai.enabled);
+        setStrictMode(ai.strictMode);
+        setPrompt(ai.personaNotes);
       } catch {
         toast.show(t.messages.loadFailed, 'danger');
       } finally {
@@ -76,7 +95,20 @@ export default function AiSettingsPage() {
   const save = async () => {
     setSaving(true);
     try {
-      await saveLineSettings({ autoReplyEnabled: enabled, defaultReply: prompt });
+      /**
+       * 只寫 `tenant_settings.ai`（§8.1 分家）。`faq` / `handoffMessage` 是本頁
+       * 沒有 UI、但同一支端點整包覆蓋會清掉的欄位 —— 從載入時留下的整包帶回去。
+       */
+      const base = loadedRef.current;
+      const next: AiSettings = {
+        faq: base?.faq ?? [],
+        handoffMessage: base?.handoffMessage ?? '',
+        enabled,
+        strictMode,
+        personaNotes: prompt,
+      };
+      await saveAiSettings(next);
+      loadedRef.current = next;
       toast.show(enabled ? t.messages.savedEnabled : t.messages.savedDisabled);
     } catch (e) {
       toast.show(
