@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 20124)
-Total output lines: 1996
-
 'use client';
 import * as React from 'react';
 import Link from 'next/link';
@@ -969,7 +966,24 @@ export default function BookingsPage() {
         }
         onClose={() => setBatchCancelOpen(false)}
         onConfirm={async () => {
-          co…124 tokens truncated…* 新增 / 編輯預約                                                             */
+          const ids = batchCancellable.map((b) => b.id);
+          setBatchCancelOpen(false);
+          try {
+            await Promise.all(ids.map((id) => cancelBooking(id)));
+            toast.show(t.messages.batchCancelled(ids.length));
+            setSelected([]);
+            void load();
+          } catch {
+            toast.show(t.messages.batchCancelFailed, 'danger');
+          }
+        }}
+      />
+    </>
+  );
+}
+
+/* ========================================================================== */
+/* 新增 / 編輯預約                                                             */
 /* ========================================================================== */
 
 function BookingFormModal({
