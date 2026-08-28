@@ -172,9 +172,8 @@ function isMissingSchemaError(error) {
   return (
     code === '42P01' || // undefined_table
     code === 'PGRST205' || // PostgREST：schema cache 裡找不到這張表
-    message.includes('does not exist') ||
-    message.includes('could not find the table') ||
-    message.includes('schema cache')
+    /relation "[^"]+" does not exist/.test(message) ||
+    message.includes('could not find the table')
   );
 }
 
