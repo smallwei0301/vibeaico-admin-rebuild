@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  calculateFormationDeadline,
   qualifiesForFormation,
   transitionFormation,
   type FormationStatus,
@@ -39,6 +40,34 @@ describe('qualifiesForFormation (#41, 18 §5)', () => {
     expect(qualifiesForFormation({
       depositMode: 'FULL', orderStatus: 'CONFIRMED', paymentStatus: 'REFUNDED',
     })).toBe(false);
+    expect(qualifiesForFormation({
+      depositMode: 'NONE', orderStatus: 'CONFIRMED', paymentStatus: 'REFUND_PENDING',
+    })).toBe(false);
+  });
+});
+
+describe('calculateFormationDeadline (#41, 18 §2)', () => {
+  const departureAt = new Date('2026-12-31T02:00:00.000Z');
+  const now = new Date('2026-08-28T00:00:00.000Z');
+
+  it.each([0, 3, 5, 7, 14, 90])('%d 天都保留為團次 snapshot，不受 Plan 後改影響', (daysBefore) => {
+    const deadline = calculateFormationDeadline({ departureAt, daysBefore, now });
+    expect(deadline.toISOString()).toBe(new Date(departureAt.getTime() - daysBefore * 86_400_000).toISOString());
+  });
+
+  it('短期開團不會靜默產生已過期截止時間', () => {
+    expect(() => calculateFormationDeadline({
+      departureAt: new Date('2026-08-30T02:00:00.000Z'), daysBefore: 7, now,
+    })).toThrow('FORMATION_DEADLINE_INVALID');
+  });
+
+  it('允許導遊為短期團次明確覆寫未來截止時間', () => {
+    expect(calculateFormationDeadline({
+      departureAt: new Date('2026-08-30T02:00:00.000Z'),
+      daysBefore: 7,
+      override: new Date('2026-08-29T02:00:00.000Z'),
+      now,
+    }).toISOString()).toBe('2026-08-29T02:00:00.000Z');
   });
 });
 
@@ -63,6 +92,21 @@ describe('transitionFormation (#41, 18 §3/§6)', () => {
 
   it('已成團後掉到門檻下只進 AT_RISK，絕不自動倒退 COLLECTING', () => {
     expectStatus('FORMED', { qualifyingParticipants: 3, minToDepart: 4, trigger: 'QUALIFYING_CANCELLATION' }, 'AT_RISK');
+  });
+
+  it('導遊可延長募集、取消未成團團次，或確認高風險團繼續出團', () => {
+    expectStatus('REVIEW_REQUIRED', {
+      qualifyingParticipants: 3, minToDepart: 4, trigger: 'GUIDE_EXTEND',
+    }, 'COLLECTING');
+    expectStatus('REVIEW_REQUIRED', {
+      qualifyingParticipants: 3, minToDepart: 4, trigger: 'GUIDE_CANCEL',
+    }, 'FAILED');
+    expectStatus('AT_RISK', {
+      qualifyingParticipants: 3, minToDepart: 4, trigger: 'GUIDE_CONTINUE',
+    }, 'FORMED');
+    expectStatus('AT_RISK', {
+      qualifyingParticipants: 3, minToDepart: 4, trigger: 'GUIDE_CANCEL',
+    }, 'FAILED');
   });
 
   it('不接受不合法的人工轉移', () => {
