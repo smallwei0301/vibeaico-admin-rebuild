@@ -86,6 +86,7 @@ create table tour_formation_decisions (
 );
 alter table tour_formation_decisions enable row level security;
 revoke all on tour_formation_decisions from anon, authenticated;
+grant all on table tour_formation_decisions to service_role;
 
 create or replace function public.qualifying_tour_participants_41(p_departure uuid) returns integer language sql stable security definer set search_path = public, pg_temp as $$
   select coalesce(sum(o.party_size),0)::integer from tour_orders o join trip_plans p on p.id=o.plan_id and p.tenant_id=o.tenant_id
@@ -137,7 +138,11 @@ end $$;
 -- TODO(#41): payment deadlines, refund execution, and recipient/channel policy require their own
 -- decided interfaces. This migration creates logical events only; it does not claim delivery or refunds.
 revoke execute on function public.snapshot_trip_departure_formation_41() from public, anon, authenticated;
+revoke execute on function public.guard_tour_order_formation_41() from public, anon, authenticated;
 revoke execute on function public.qualifying_tour_participants_41(uuid) from public, anon, authenticated;
 revoke execute on function public.refresh_departure_formation_41(uuid,uuid) from public, anon, authenticated;
 revoke execute on function public.refresh_tour_order_formation_41() from public, anon, authenticated;
 revoke execute on function public.review_expired_tour_formations_41(timestamptz) from public, anon, authenticated;
+grant execute on function public.qualifying_tour_participants_41(uuid) to service_role;
+grant execute on function public.refresh_departure_formation_41(uuid,uuid) to service_role;
+grant execute on function public.review_expired_tour_formations_41(timestamptz) to service_role;

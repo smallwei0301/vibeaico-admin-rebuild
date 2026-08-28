@@ -24,4 +24,24 @@ describe('#41 schema/RPC source contract', () => {
     expect(migration).toContain("formation_status='AT_RISK'");
     expect(migration).toContain('TOUR_ORDER_TENANT_PARENT_MISMATCH');
   });
+
+  it('keeps every SECURITY DEFINER formation helper private, then grants only server and cron RPCs to service_role', () => {
+    for (const signature of [
+      'snapshot_trip_departure_formation_41()',
+      'guard_tour_order_formation_41()',
+      'qualifying_tour_participants_41(uuid)',
+      'refresh_departure_formation_41(uuid,uuid)',
+      'refresh_tour_order_formation_41()',
+      'review_expired_tour_formations_41(timestamptz)',
+    ]) {
+      expect(migration).toContain(`revoke execute on function public.${signature} from public, anon, authenticated;`);
+    }
+    for (const signature of [
+      'qualifying_tour_participants_41(uuid)',
+      'refresh_departure_formation_41(uuid,uuid)',
+      'review_expired_tour_formations_41(timestamptz)',
+    ]) expect(migration).toContain(`grant execute on function public.${signature} to service_role;`);
+    expect(migration).not.toContain('grant execute on function public.guard_tour_order_formation_41() to service_role;');
+    expect(migration).toContain('grant all on table tour_formation_decisions to service_role;');
+  });
 });
