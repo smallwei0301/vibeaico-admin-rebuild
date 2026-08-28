@@ -17,7 +17,7 @@
  * ── 憑證（絕不寫進本檔，15 分冊 §3 禁令 5）────────────────────────────────
  *   BASE_URL                    受測站台
  *   TEST_EMAIL / TEST_PASSWORD  測試帳號（15 分冊 §4）
- *   SUPABASE_URL                受測站台**同一個**專案的 URL
+ *   SUPABASE_URL                僅限 TEST `nmwhwngojosmagjuvxol.supabase.co`
  *   SUPABASE_SERVICE_ROLE_KEY   直查用（開了 VERIFY_SEED_PENDING_ORDER 才會寫）
  *
  * ── 選項 ──────────────────────────────────────────────────────────────────
@@ -25,6 +25,14 @@
  *     受測租戶三個徽章的 DB 筆數若**全是 0**（Preview 站的測試租戶就是這樣），
  *     「畫面數字＝DB 筆數」那條斷言只會走 `shown === null` 那半段，等於沒被驗到。
  *     打 Preview／正式資料庫時建議帶上，讓非零那半段也真的跑一次。
+ *   VERIFY_GUIDE_PENDING_BOOKING=1 只接受 GUIDE 帳號：透過登入 session 的
+ *     POST /api/bookings 建一筆 PENDING 預約，再比對同一個 GET /api/bookings
+ *     回應、DB 精確筆數與側邊欄徽章。若帳號沒有可用顧客／服務，會先用同一組
+ *     API 建最小 fixture；全數在收尾刪除並驗證無殘留。
+ *
+ * ⚠️ 這個選項會寫入資料。只可指向獲授權的 TEST／非正式 Preview 環境；不得拿
+ *    Production 的帳號或資料庫執行。沒有互動憑證或已部署的相同版本時，保留為
+ *    未執行驗收，不可把本檔的靜態／unit 綠燈當成 Preview 證據。
  *
  * ── 執行 ──────────────────────────────────────────────────────────────────
  *   受測站台必須以 real 模式跑（NEXT_PUBLIC_USE_MOCK=false 是建置期變數，
@@ -39,14 +47,14 @@
 const path = require('node:path');
 const fs = require('node:fs');
 
-// CLAUDE.md：Playwright 裝在全域，不在本專案 node_modules，必須 require 絕對路徑
-const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-
 const BASE = process.env.BASE_URL || 'http://localhost:3117';
 const EMAIL = required('TEST_EMAIL');
 const PASSWORD = required('TEST_PASSWORD');
 const SB_URL = required('SUPABASE_URL').replace(/\/$/, '');
 const SB_KEY = required('SUPABASE_SERVICE_ROLE_KEY');
+const TEST_SUPABASE_HOST = 'nmwhwngojosmagjuvxol.supabase.co';
+/** Preview 的 branch deployment；不接受沒有 `git-` 的 Production deployment。 */
+const VERCEL_PREVIEW_HOST = /^vibeaico-admin-rebuild-git-[a-z0-9-]+\.vercel\.app$/;
 /** 延後 /api/bookings 幾毫秒，把「還在查」的那一段拉長到看得見 */
 const BADGE_DELAY_MS = Number(process.env.BADGE_DELAY_MS || 4000);
 /*
@@ -60,6 +68,8 @@ const BADGE_DELAY_MS = Number(process.env.BADGE_DELAY_MS || 4000);
  */
 const SEED_ORDER = process.env.VERIFY_SEED_PENDING_ORDER === '1';
 const SEED_ORDER_NO = `VERIFY34${Date.now().toString(36).toUpperCase().slice(-6)}`;
+const SEED_GUIDE_BOOKING = process.env.VERIFY_GUIDE_PENDING_BOOKING === '1';
+const SEED_BOOKING_NOTE = `issue34-guide-badge-${Date.now().toString(36)}`;
 
 const OUT_DIR = path.join(__dirname, 'out');
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -72,6 +82,49 @@ function required(name) {
   }
   return v;
 }
+
+/**
+ * P0：這支驗收可建立／刪除受控資料，URL 必須 fail closed。守門在 require Playwright、
+ * login、service-role query 與任何 seed 前執行，避免把「Preview」誤指到正式資料。
+ */
+function assertSafeTarget() {
+  let base;
+  let supabase;
+  try {
+    base = new URL(BASE);
+    supabase = new URL(SB_URL);
+  } catch {
+    console.error('[安全鎖] 拒絕執行：BASE_URL 與 SUPABASE_URL 必須是完整 URL。');
+    process.exit(2);
+  }
+
+  if (supabase.protocol !== 'https:'
+    || supabase.hostname !== TEST_SUPABASE_HOST
+    || supabase.port !== ''
+    || supabase.username
+    || supabase.password) {
+    console.error(`[安全鎖] 拒絕執行：SUPABASE_URL 必須精確為 https://${TEST_SUPABASE_HOST}`);
+    process.exit(2);
+  }
+
+  const localBase = base.protocol === 'http:'
+    && (base.hostname === 'localhost' || base.hostname === '127.0.0.1');
+  const previewBase = base.protocol === 'https:'
+    && base.port === ''
+    && !base.username
+    && !base.password
+    && VERCEL_PREVIEW_HOST.test(base.hostname);
+  if (base.hostname.includes('midao.com.tw') || (!localBase && !previewBase)) {
+    console.error('[安全鎖] 拒絕執行：BASE_URL 只允許 localhost 或 Vercel branch Preview，禁止 Production deployment。');
+    process.exit(2);
+  }
+}
+
+assertSafeTarget();
+
+// CLAUDE.md：Playwright 裝在全域，不在本專案 node_modules，必須 require 絕對路徑。
+// 安全鎖必須在它之前：guard regression test 不得依賴瀏覽器是否安裝。
+const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 
 const results = [];
 function check(label, passed, detail) {
@@ -109,6 +162,9 @@ async function sbCount(table, query) {
 /* ------------------------------------------- 測試用 PENDING 商品訂單（可選） */
 
 let seededOrderId = null;
+let seededBookingId = null;
+let seededCustomerId = null;
+let seededServiceId = null;
 
 /** 塞一筆 PENDING 商品訂單，讓「畫面數字＝DB 筆數」那條斷言真的走到 */
 async function seedPendingOrder(tenantId) {
@@ -140,16 +196,107 @@ async function seedPendingOrder(tenantId) {
   console.log(`  種子：建立 PENDING 商品訂單 ${SEED_ORDER_NO}（顧客 ${customer.name}）`);
 }
 
-/** 刪掉種子訂單並**驗證真的沒了**（殘留就大聲說出來，不要默默收工） */
-async function cleanupSeed() {
-  if (!seededOrderId) return;
-  const res = await fetch(
-    `${SB_URL}/rest/v1/product_orders?id=eq.${seededOrderId}`,
-    { method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` } },
+/** 以登入中的 session 呼叫真實 API；fixture 與 booking 都不繞過 route。 */
+async function postApi(page, pathName, body) {
+  return page.evaluate(async ({ path, payload }) => {
+    const res = await fetch(path, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return { status: res.status, body: await res.json() };
+  }, { path: pathName, payload: body });
+}
+
+/**
+ * GUIDE 本身不保證已有「一般預約」的顧客／服務。這兩個依賴若缺，就用後台 API
+ * 補最小 fixture；真正要驗的 booking 一律走 POST /api/bookings，不能 service-role
+ * 直插而略過 availability 與 route contract。
+ */
+async function seedGuidePendingBooking(page, tenantId) {
+  const [tenant] = await sbSelect('tenants', `select=business_type&id=eq.${tenantId}`);
+  const businessType = tenant?.business_type;
+  if (businessType !== 'GUIDE') {
+    throw new Error(`VERIFY_GUIDE_PENDING_BOOKING 需要 GUIDE 帳號，現在是 ${businessType ?? '未知'}`);
+  }
+
+  let [customer] = await sbSelect(
+    'customers', `select=id&tenant_id=eq.${tenantId}&active=is.true&limit=1`,
   );
-  const left = await sbCount('product_orders', `order_no=eq.${SEED_ORDER_NO}`);
-  console.log(`  種子清理：DELETE HTTP ${res.status}；殘留 ${SEED_ORDER_NO} 的訂單數 = ${left}`);
-  if (left !== 0) console.log(`  [警告] 種子訂單沒刪乾淨，請手動刪除 order_no=${SEED_ORDER_NO}`);
+  if (!customer) {
+    const created = await postApi(page, '/api/customers', {
+      name: SEED_BOOKING_NOTE, note: SEED_BOOKING_NOTE,
+    });
+    if (created.status !== 200 || !created.body?.success || !created.body?.data?.id) {
+      throw new Error(`GUIDE fixture 顧客建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
+    }
+    seededCustomerId = created.body.data.id;
+    customer = { id: seededCustomerId };
+  }
+
+  let [service] = await sbSelect(
+    'services', `select=id&tenant_id=eq.${tenantId}&active=is.true&limit=1`,
+  );
+  if (!service) {
+    const created = await postApi(page, '/api/services', {
+      name: SEED_BOOKING_NOTE, description: SEED_BOOKING_NOTE,
+      durationMinutes: 15, price: 0,
+    });
+    if (created.status !== 200 || !created.body?.success || !created.body?.data?.id) {
+      throw new Error(`GUIDE fixture 服務建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
+    }
+    seededServiceId = created.body.data.id;
+    service = { id: seededServiceId };
+  }
+
+  const created = await postApi(page, '/api/bookings', {
+    customerId: customer.id,
+    serviceId: service.id,
+    // 遠期且未指定 staff：不和現有預約／團次搶時段，仍經 route 的真實寫入鏈路。
+    startAt: '2099-12-31T08:00:00.000Z',
+    note: SEED_BOOKING_NOTE,
+  });
+  if (created.status !== 200 || !created.body?.success || !created.body?.data?.id) {
+    throw new Error(`GUIDE pending booking 建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
+  }
+  seededBookingId = created.body.data.id;
+
+  const persisted = await sbCount(
+    'bookings', `id=eq.${seededBookingId}&tenant_id=eq.${tenantId}&status=eq.PENDING`,
+  );
+  if (persisted !== 1) {
+    throw new Error(`GUIDE pending booking 未以 PENDING 寫入資料庫（id=${seededBookingId}，筆數=${persisted}）`);
+  }
+  console.log(`  種子：POST /api/bookings 建立 GUIDE PENDING 預約 ${seededBookingId}`);
+}
+
+async function cleanupSeedRow(table, id, label) {
+  if (!id) return;
+  const res = await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'DELETE', headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+  });
+  const left = await sbCount(table, `id=eq.${id}`);
+  console.log(`  種子清理：${label} DELETE HTTP ${res.status}；殘留 ${left}`);
+  if (!res.ok || left !== 0) throw new Error(`${label} 清理失敗（HTTP ${res.status}、殘留 ${left}）`);
+}
+
+/** 刪掉所有種子並**驗證真的沒了**（殘留就失敗，不要默默收工） */
+async function cleanupSeed() {
+  if (seededBookingId) {
+    await cleanupSeedRow('bookings', seededBookingId, `GUIDE PENDING booking ${seededBookingId}`);
+    seededBookingId = null;
+  }
+  if (seededServiceId) {
+    await cleanupSeedRow('services', seededServiceId, `GUIDE fixture service ${seededServiceId}`);
+    seededServiceId = null;
+  }
+  if (seededCustomerId) {
+    await cleanupSeedRow('customers', seededCustomerId, `GUIDE fixture customer ${seededCustomerId}`);
+    seededCustomerId = null;
+  }
+  if (seededOrderId) {
+    await cleanupSeedRow('product_orders', seededOrderId, `PENDING 商品訂單 ${SEED_ORDER_NO}`);
+  }
   seededOrderId = null;
 }
 
@@ -262,6 +409,7 @@ async function main() {
   console.log(`  目前店家：${me.data.tenantName}（${tenantId}）\n`);
 
   if (SEED_ORDER) await seedPendingOrder(tenantId);
+  if (SEED_GUIDE_BOOKING) await seedGuidePendingBooking(page, tenantId);
 
   /* ------------------------------------------------ ① 載入中不得先顯示 0 */
   await page.route('**/api/bookings**', async (route) => {
@@ -294,6 +442,36 @@ async function main() {
     'product_orders', `tenant_id=eq.${tenantId}&status=eq.PENDING`,
   );
   const expectedChat = await expectedUnread(tenantId);
+
+  /*
+   * GUIDE 的 pending booking 不可沿用「DB 是 0 就不畫」那條分支，也不可因為
+   * 沒資料而 SKIP。先等 AppShell 真正收到它賴以計數的 API 回應，再比 API 信封、
+   * service-role DB 精確筆數與畫面上的 badge；沒有用 sleep 或猜 React 已經 render。
+   */
+  if (SEED_GUIDE_BOOKING) {
+    const pendingBookingsResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname === '/api/bookings'
+        && url.searchParams.get('status') === 'PENDING'
+        && url.searchParams.get('size') === '1'
+        && response.status() === 200;
+    }, { timeout: 30000 });
+    await page.goto(`${BASE}/tenant/bookings`, { waitUntil: 'domcontentloaded' });
+    const pendingPayload = await (await pendingBookingsResponse).json();
+    const apiPendingTotal = pendingPayload?.data?.totalElements;
+    if (!Number.isInteger(apiPendingTotal)) {
+      throw new Error(`GET /api/bookings 的 pending totalElements 不合法：${JSON.stringify(pendingPayload)}`);
+    }
+    await waitBadgesResolved(page);
+    const shown = await readBadge(page, '/tenant/bookings');
+    check(
+      '② GUIDE 受控 PENDING 預約：API totalElements、DB 精確筆數與側邊欄徽章一致',
+      apiPendingTotal === expectedBooking && shown === String(apiPendingTotal),
+      `API=${apiPendingTotal}、DB=${expectedBooking}、畫面=${shown ?? '（無）'}、seed=${seededBookingId}`,
+    );
+    await shot(page, 'shell-02-guide-pending-booking');
+  }
 
   const targets = [
     ['待確認預約', '/tenant/bookings', expectedBooking],

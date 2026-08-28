@@ -20,6 +20,8 @@ import { loginAs } from '../../helpers/auth';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const JSON_HEADERS = { 'Content-Type': 'application/json' } as const;
+const ENDPOINT_TIMEOUT_MS = 20_000;
+const DB_TIMEOUT_MS = 20_000;
 
 /** `src/lib/api.ts` 假設的固定回應信封（見 CLAUDE.md「Pages never fetch」一節）。 */
 type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
@@ -42,8 +44,38 @@ function uniqueShopCode(prefix: string): string {
   return `${prefix}-${uniqueSuffix()}`;
 }
 
-function postJson(path: string, body: unknown): Promise<Response> {
-  return fetch(`${BASE}${path}`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+async function postJson(label: string, path: string, body: unknown): Promise<Response> {
+  try {
+    return await fetch(`${BASE}${path}`, {
+      method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ENDPOINT_TIMEOUT_MS),
+    });
+  } catch (cause) {
+    const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+    throw new Error(`[auth.03] endpoint '${label}' timed out or failed: ${detail}`, {
+      cause: cause instanceof Error ? cause : undefined,
+    });
+  }
+}
+
+/** Bound every PostgREST/Auth admin step so a stall identifies its exact operation. */
+async function dbQuery<T>(label: string, query: (signal: AbortSignal) => PromiseLike<T>): Promise<T> {
+  const signal = AbortSignal.timeout(DB_TIMEOUT_MS);
+  const timeout = new Promise<never>((_, reject) => {
+    signal.addEventListener('abort', () => reject(new Error(
+      `[auth.03] DB operation '${label}' exceeded ${DB_TIMEOUT_MS}ms`,
+    )), { once: true });
+  });
+  try {
+    // Auth admin methods do not expose abortSignal; racing keeps those calls
+    // bounded too, while PostgREST methods also receive the real signal.
+    return await Promise.race([query(signal), timeout]);
+  } catch (cause) {
+    const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+    throw new Error(`[auth.03] DB operation '${label}' timed out or failed: ${detail}`, {
+      cause: cause instanceof Error ? cause : undefined,
+    });
+  }
 }
 
 /** 直查 `auth_verification_codes` 拿最新一筆碼（測試環境收不到信，規格允許的取碼方式，見任務指示）。 */
@@ -52,14 +84,15 @@ async function latestCode(
   email: string,
   purpose: 'REGISTER' | 'RESET_PASSWORD',
 ): Promise<string> {
-  const { data, error } = await admin
+  const { data, error } = await dbQuery(`latest ${purpose} code for ${email}`, (signal) => admin
     .from('auth_verification_codes')
     .select('code')
+    .abortSignal(signal)
     .eq('email', email)
     .eq('purpose', purpose)
     .order('created_at', { ascending: false })
     .limit(1)
-    .maybeSingle();
+    .maybeSingle());
   expect(error).toBeNull();
   expect(data).not.toBeNull();
   return (data as { code: string }).code;
@@ -72,12 +105,12 @@ async function insertValidCode(
   code: string,
   purpose: 'REGISTER' | 'RESET_PASSWORD',
 ): Promise<void> {
-  const { error } = await admin.from('auth_verification_codes').insert({
+  const { error } = await dbQuery(`insert ${purpose} code for ${email}`, (signal) => admin.from('auth_verification_codes').insert({
     email,
     code,
     purpose,
     expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-  });
+  }).abortSignal(signal));
   expect(error).toBeNull();
 }
 
@@ -86,7 +119,8 @@ async function authUserExists(admin: SupabaseClient, email: string): Promise<boo
   let page = 1;
   const perPage = 200;
   for (;;) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    const { data, error } = await dbQuery(`list auth users page ${page} for ${email}`, () =>
+      admin.auth.admin.listUsers({ page, perPage }));
     expect(error).toBeNull();
     if (data!.users.some((u) => u.email === email)) return true;
     if (data!.users.length < perPage) return false;
@@ -99,13 +133,13 @@ async function registerFullFlow(
   admin: SupabaseClient,
   params: { email: string; shopCode: string; password: string; tenantName: string },
 ): Promise<Response> {
-  const sendRes = await postJson('/api/auth/send-verification-code', {
+  const sendRes = await postJson('register flow: send verification code', '/api/auth/send-verification-code', {
     email: params.email,
     purpose: 'REGISTER',
   });
   expect(sendRes.status).toBe(200);
   const code = await latestCode(admin, params.email, 'REGISTER');
-  return postJson('/api/auth/tenant/register', {
+  return postJson('register flow: create tenant', '/api/auth/tenant/register', {
     email: params.email,
     code,
     password: params.password,
@@ -131,7 +165,7 @@ describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => 
     const password = 'Passw0rd!flow';
     const tenantName = '流程測試店';
 
-    const sendRes = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    const sendRes = await postJson('full flow: send verification code', '/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(sendRes.status).toBe(200);
     const sendBody = await readJson<{ sent: boolean }>(sendRes);
     expect(sendBody.success).toBe(true);
@@ -140,7 +174,7 @@ describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => 
     const code = await latestCode(admin, email, 'REGISTER');
     expect(code).toMatch(/^\d{6}$/);
 
-    const registerRes = await postJson('/api/auth/tenant/register', {
+    const registerRes = await postJson('full flow: register tenant', '/api/auth/tenant/register', {
       email, code, password, tenantName, shopCode,
     });
     expect(registerRes.status).toBe(200);
@@ -148,7 +182,7 @@ describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => 
     expect(registerBody.success).toBe(true);
     expect(registerBody.data!.registered).toBe(true);
 
-    const loginRes = await postJson('/api/auth/login', { email, password });
+    const loginRes = await postJson('full flow: explicit login', '/api/auth/login', { email, password });
     expect(loginRes.status).toBe(200);
     const loginBody = await readJson<{ loggedIn: boolean }>(loginRes);
     expect(loginBody.success).toBe(true);
@@ -170,11 +204,11 @@ describe('POST /api/auth/send-verification-code 60 秒防重寄（03 §2）', ()
   it('同 email 同 purpose 60 秒內重寄 → 429 REQ_003', async () => {
     const email = uniqueEmail('resend');
 
-    const first = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    const first = await postJson('resend throttle: first send', '/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(first.status).toBe(200);
     expect((await readJson(first)).success).toBe(true);
 
-    const second = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
+    const second = await postJson('resend throttle: second send', '/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(second.status).toBe(429);
     const secondBody = await readJson(second);
     expect(secondBody.success).toBe(false);
@@ -187,7 +221,7 @@ describe('POST /api/auth/tenant/register 錯碼/過期碼（03 §2 consumeCode�
     const email = uniqueEmail('badcode');
     const shopCode = uniqueShopCode('badcode');
 
-    const res = await postJson('/api/auth/tenant/register', {
+    const res = await postJson('invalid code: register attempt', '/api/auth/tenant/register', {
       email, code: '000000', password: 'Passw0rd!bad', tenantName: '壞碼測試店', shopCode,
     });
     expect(res.status).toBe(400);
@@ -217,7 +251,7 @@ describe('POST /api/auth/tenant/register 重複 email（03 §3 createUser 失敗
     // 「shopCode 不重複、驗碼通過、但 createUser 因 email 已註冊而失敗」分支。
     const code2 = '135790';
     await insertValidCode(admin, email, code2, 'REGISTER');
-    const secondReg = await postJson('/api/auth/tenant/register', {
+    const secondReg = await postJson('duplicate email: register attempt', '/api/auth/tenant/register', {
       email,
       code: code2,
       password: 'Passw0rd!dup2',
@@ -238,7 +272,7 @@ describe('POST /api/auth/tenant/register shopCode 重複（03 §3 dup 檢查）'
     // 同樣是為了繞過枚舉防護、湊出一筆「有效碼」，見上一個 describe 的註解。
     await insertValidCode(admin, email, code, 'REGISTER');
 
-    const res = await postJson('/api/auth/tenant/register', {
+    const res = await postJson('duplicate shop code: register attempt', '/api/auth/tenant/register', {
       email,
       code,
       password: 'Passw0rd!ds',
@@ -252,13 +286,14 @@ describe('POST /api/auth/tenant/register shopCode 重複（03 §3 dup 檢查）'
 
     // 03 §3 的順序是「shopCode 查重 → consumeCode → createUser」，shopCode 409
     // 這條路根本還沒走到 consumeCode，驗證碼應該仍是「未消耗」、可再利用。
-    const { data: row, error } = await admin
+    const { data: row, error } = await dbQuery(`verify code remains unconsumed for ${email}`, (signal) => admin
       .from('auth_verification_codes')
       .select('consumed_at')
+      .abortSignal(signal)
       .eq('email', email)
       .eq('purpose', 'REGISTER')
       .eq('code', code)
-      .maybeSingle();
+      .maybeSingle());
     expect(error).toBeNull();
     expect(row).not.toBeNull();
     expect((row as { consumed_at: string | null }).consumed_at).toBeNull();
@@ -281,7 +316,7 @@ describe('register 失敗補償：shopCode 409 路徑不留下 auth user（03 §
     const code = '975310';
     await insertValidCode(admin, email, code, 'REGISTER');
 
-    const res = await postJson('/api/auth/tenant/register', {
+    const res = await postJson('compensation: duplicate shop code register attempt', '/api/auth/tenant/register', {
       email,
       code,
       password: 'Passw0rd!cmp',
@@ -297,7 +332,7 @@ describe('register 失敗補償：shopCode 409 路徑不留下 auth user（03 §
 
 describe('POST /api/auth/login 錯密碼（03 §4）', () => {
   it('密碼錯誤 → 401 AUTH_002', async () => {
-    const res = await postJson('/api/auth/login', {
+    const res = await postJson('bad credentials: login attempt', '/api/auth/login', {
       email: SHOP_A.owner.email,
       password: 'DefinitelyNotTheRightPassword!',
     });
@@ -322,7 +357,7 @@ describe('忘記密碼 → 重設 → 新密碼可登入（03 §2, §4）', () =
     });
     expect(reg.status).toBe(200);
 
-    const forgotRes = await postJson('/api/auth/forgot-password', { email });
+    const forgotRes = await postJson('forgot password: send code', '/api/auth/forgot-password', { email });
     expect(forgotRes.status).toBe(200);
     const forgotBody = await readJson<{ sent: boolean }>(forgotRes);
     expect(forgotBody.success).toBe(true);
@@ -330,13 +365,13 @@ describe('忘記密碼 → 重設 → 新密碼可登入（03 §2, §4）', () =
 
     const code = await latestCode(admin, email, 'RESET_PASSWORD');
 
-    const resetRes = await postJson('/api/auth/reset-password', { email, code, newPassword });
+    const resetRes = await postJson('forgot password: reset password', '/api/auth/reset-password', { email, code, newPassword });
     expect(resetRes.status).toBe(200);
     const resetBody = await readJson<{ reset: boolean }>(resetRes);
     expect(resetBody.success).toBe(true);
     expect(resetBody.data!.reset).toBe(true);
 
-    const oldLoginRes = await postJson('/api/auth/login', { email, password: oldPassword });
+    const oldLoginRes = await postJson('forgot password: old password login', '/api/auth/login', { email, password: oldPassword });
     expect(oldLoginRes.status).toBe(401);
     expect((await readJson(oldLoginRes)).code).toBe('AUTH_002');
 
