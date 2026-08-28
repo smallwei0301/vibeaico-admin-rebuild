@@ -31,6 +31,9 @@ import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import {
+  batchDeparturePresentation, departureGuidePresentation, guideAssignmentPresentation,
+} from '@/lib/tour-guide-ui';
 import type {
   DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
   DepartureStaffAvailability, TripBookingType, TripDeparture, TripPlan, TripPlanSeason,
@@ -339,11 +342,12 @@ export default function TripDetailPage() {
       });
       setDepartures((prev) => [...prev, ...res.departures]
         .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
-      setBatchConflicts(res.conflicts ?? []);
-      if ((res.conflicts?.length ?? 0) === 0) setBatchOpen(false);
-      toast.show(res.skipped > 0
-        ? t.messages.departureBatchPartial(res.created, res.skipped)
-        : t.messages.departureBatchCreated(res.created));
+      const presentation = batchDeparturePresentation(res);
+      setBatchConflicts(presentation.conflicts);
+      if (!presentation.keepDialogOpen) setBatchOpen(false);
+      toast.show(presentation.skipped > 0
+        ? t.messages.departureBatchPartial(presentation.created, presentation.skipped)
+        : t.messages.departureBatchCreated(presentation.created));
     } catch (e) {
       toast.show(failMessage(e), 'danger');
     } finally {
@@ -531,16 +535,19 @@ export default function TripDetailPage() {
     { key: 'plan', header: t.departures.columns.plan, render: (d) => d.planName },
     {
       key: 'guides', header: t.departures.columns.guides,
-      render: (d) => (
-        <div className="text-2xs">
-          <div className={d.primaryStaffName ? 'text-dark' : 'text-warning'}>
-            {d.primaryStaffName ?? t.departures.unassigned}
+      render: (d) => {
+        const guides = departureGuidePresentation(d);
+        return (
+          <div className="text-2xs">
+            <div className={guides.primary ? 'text-dark' : 'text-warning'}>
+              {guides.primary ?? t.departures.unassigned}
+            </div>
+            {guides.assistants.length > 0 ? (
+              <div className="text-secondary">{t.departures.assistants(guides.assistants.join('、'))}</div>
+            ) : null}
           </div>
-          {(d.assistantStaffNames?.length ?? 0) > 0 ? (
-            <div className="text-secondary">{t.departures.assistants(d.assistantStaffNames!.join('、'))}</div>
-          ) : null}
-        </div>
-      ),
+        );
+      },
     },
     {
       key: 'seats', header: t.departures.columns.seats, numeric: true, width: '150px',
@@ -645,6 +652,8 @@ export default function TripDetailPage() {
   ];
 
   const pendingPlans = plans.filter((p) => p.reviewState !== 'NONE');
+  const departureGuideUi = guideAssignmentPresentation(departureStaff);
+  const batchGuideUi = guideAssignmentPresentation(batchStaff);
 
   return (
     <>
@@ -1274,15 +1283,15 @@ export default function TripDetailPage() {
                 <Alert tone="info" role="status" aria-live="polite">{common.loading}</Alert>
               ) : departureStaffLoadFailed ? (
                 <Alert tone="danger">{common.message.networkError}</Alert>
-              ) : departureStaff.length === 0 ? (
-                <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
-              ) : departureStaff.length === 1 ? (
-                <Alert tone={departureStaff[0].available ? 'info' : 'danger'}>
-                  {t.departures.singleGuide(departureStaff[0].staffName)}
-                  {!departureStaff[0].available && departureStaff[0].conflicts[0]
-                    ? ` ${t.departures.conflict(departureStaff[0].conflicts[0].reason)}` : ''}
-                </Alert>
-              ) : (
+            ) : departureGuideUi.mode === 'ONBOARDING' ? (
+              <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
+            ) : departureGuideUi.mode === 'SOLO' ? (
+              <Alert tone={departureGuideUi.soleGuide.available ? 'info' : 'danger'}>
+                {t.departures.singleGuide(departureGuideUi.soleGuide.staffName)}
+                {!departureGuideUi.soleGuide.available && departureGuideUi.unavailable[0]?.reason
+                  ? ` ${t.departures.conflict(departureGuideUi.unavailable[0].reason)}` : ''}
+              </Alert>
+            ) : (
                 <>
                   <FormGroup>
                     <Label required>{t.departures.fields.primaryGuideLabel}</Label>
@@ -1291,7 +1300,7 @@ export default function TripDetailPage() {
                       onChange={(event) => setDepartureDraft({ ...departureDraft, primaryStaffId: event.target.value || null })}
                     >
                       <option value="">{t.departures.fields.primaryGuideLabel}</option>
-                      {departureStaff.map((staff) => (
+                      {departureGuideUi.guides.map((staff) => (
                         <option key={staff.staffId} value={staff.staffId} disabled={!staff.available}>
                           {staff.staffName} · {staff.available ? t.departures.available : t.departures.busy}
                         </option>
@@ -1307,7 +1316,7 @@ export default function TripDetailPage() {
                         assistantStaffIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
                       })}
                     >
-                      {departureStaff.map((staff) => (
+                      {departureGuideUi.guides.map((staff) => (
                         <option key={staff.staffId} value={staff.staffId}
                           disabled={!staff.available || staff.staffId === departureDraft.primaryStaffId}>
                           {staff.staffName} · {staff.available ? t.departures.available : t.departures.busy}
@@ -1317,8 +1326,8 @@ export default function TripDetailPage() {
                   </FormGroup>
                   <div className="flex flex-col gap-1 text-2xs text-secondary">
                     <span>{t.departures.fields.guideAvailabilityLabel}</span>
-                    {departureStaff.filter((staff) => !staff.available).map((staff) => (
-                      <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.conflicts[0]?.reason ?? '')}</span>
+                    {departureGuideUi.unavailable.map((staff) => (
+                      <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.reason ?? '')}</span>
                     ))}
                   </div>
                 </>
@@ -1352,7 +1361,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setBatchOpen(false)}>{common.cancel}</Button>
-            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0 || batchStaff.length === 0 || batchStaff.every((staff) => !staff.available)}>
+            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0 || batchGuideUi.mode === 'ONBOARDING' || batchStaff.every((staff) => !staff.available)}>
               {t.departures.batch.confirm}
             </Button>
           </>
@@ -1376,43 +1385,45 @@ export default function TripDetailPage() {
               <Input type="date" value={batch.to} onChange={(e) => setBatch({ ...batch, to: e.target.value })} />
             </FormGroup>
           </div>
-          {batch.planId && batch.from && batchStaff.length === 0 ? (
-            <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
-          ) : batchStaff.length === 1 ? (
-            <Alert tone={batchStaff[0].available ? 'info' : 'danger'}>
-              {t.departures.singleGuide(batchStaff[0].staffName)} {!batchStaff[0].available && batchStaff[0].conflicts[0]
-                ? t.departures.conflict(batchStaff[0].conflicts[0].reason) : ''}
-            </Alert>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormGroup>
-                <Label required>{t.departures.fields.primaryGuideLabel}</Label>
-                <Select value={batch.primaryStaffId ?? ''}
-                  onChange={(event) => setBatch({ ...batch, primaryStaffId: event.target.value || null })}>
-                  <option value="">{t.departures.fields.primaryGuideLabel}</option>
-                  {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId} disabled={!staff.available}>
-                    {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
-                  </option>)}
-                </Select>
-              </FormGroup>
-              <FormGroup>
-                <Label>{t.departures.fields.assistantGuidesLabel}</Label>
-                <select multiple className="form-select" value={batch.assistantStaffIds}
-                  onChange={(event) => setBatch({
-                    ...batch, assistantStaffIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
-                  })}>
-                  {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId}
-                    disabled={!staff.available || staff.staffId === batch.primaryStaffId}>
-                    {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
-                  </option>)}
-                </select>
-              </FormGroup>
-            </div>
-          )}
-          {batchStaff.filter((staff) => !staff.available).length > 0 ? (
+          {batch.planId && batch.from ? (
+            batchGuideUi.mode === 'ONBOARDING' ? (
+              <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
+            ) : batchGuideUi.mode === 'SOLO' ? (
+              <Alert tone={batchGuideUi.soleGuide.available ? 'info' : 'danger'}>
+                {t.departures.singleGuide(batchGuideUi.soleGuide.staffName)} {!batchGuideUi.soleGuide.available && batchGuideUi.unavailable[0]?.reason
+                  ? t.departures.conflict(batchGuideUi.unavailable[0].reason) : ''}
+              </Alert>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <FormGroup>
+                  <Label required>{t.departures.fields.primaryGuideLabel}</Label>
+                  <Select value={batch.primaryStaffId ?? ''}
+                    onChange={(event) => setBatch({ ...batch, primaryStaffId: event.target.value || null })}>
+                    <option value="">{t.departures.fields.primaryGuideLabel}</option>
+                    {batchGuideUi.guides.map((staff) => <option key={staff.staffId} value={staff.staffId} disabled={!staff.available}>
+                      {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
+                    </option>)}
+                  </Select>
+                </FormGroup>
+                <FormGroup>
+                  <Label>{t.departures.fields.assistantGuidesLabel}</Label>
+                  <select multiple className="form-select" value={batch.assistantStaffIds}
+                    onChange={(event) => setBatch({
+                      ...batch, assistantStaffIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
+                    })}>
+                    {batchGuideUi.guides.map((staff) => <option key={staff.staffId} value={staff.staffId}
+                      disabled={!staff.available || staff.staffId === batch.primaryStaffId}>
+                      {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
+                    </option>)}
+                  </select>
+                </FormGroup>
+              </div>
+            )
+          ) : null}
+          {batchGuideUi.unavailable.length > 0 ? (
             <div className="flex flex-col gap-1 text-2xs text-secondary">
-              {batchStaff.filter((staff) => !staff.available).map((staff) => (
-                <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.conflicts[0]?.reason ?? '')}</span>
+              {batchGuideUi.unavailable.map((staff) => (
+                <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.reason ?? '')}</span>
               ))}
             </div>
           ) : null}
