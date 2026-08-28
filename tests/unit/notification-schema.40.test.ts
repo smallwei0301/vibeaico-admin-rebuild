@@ -61,6 +61,20 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/primary key \(bot_id, update_id\)/i);
   });
 
+  it('explicitly grants the internal RPCs only to the service role', () => {
+    for (const signature of [
+      'enqueue_notification_event(uuid, text, text, text, text, jsonb)',
+      'claim_notification_deliveries(integer)',
+      'refresh_notification_outbox_status(uuid)',
+      'apply_resend_delivery_event(text, text, text, text, bytea)',
+      'consume_telegram_bind_code(text, bigint, bytea, bigint)',
+    ]) {
+      expect(migration).toContain(`grant execute on function public.${signature} to service_role;`);
+    }
+    expect(migration).toMatch(/grant all on table notification_outbox,[\s\S]*?to service_role;/i);
+    expect(migration).not.toContain('grant execute on function public.enqueue_booking_notification_event() to service_role;');
+  });
+
   it('applies Resend delivery evidence idempotently without storing webhook bodies', () => {
     expect(migration).toMatch(/create or replace function public\.apply_resend_delivery_event/i);
     expect(migration).toMatch(/insert into notification_provider_webhook_events/i);

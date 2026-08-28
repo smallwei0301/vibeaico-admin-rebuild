@@ -144,6 +144,9 @@ alter table telegram_webhook_updates enable row level security;
 revoke all on table notification_outbox, notification_deliveries, notification_health_reports,
   notification_provider_webhook_events, email_recipient_health,
   telegram_bindings, telegram_bind_codes, telegram_webhook_updates from anon, authenticated;
+grant all on table notification_outbox, notification_deliveries, notification_health_reports,
+  notification_provider_webhook_events, email_recipient_health,
+  telegram_bindings, telegram_bind_codes, telegram_webhook_updates to service_role;
 
 -- Internal-only primitive. It is SECURITY DEFINER because booking writes run
 -- under RLS; EXECUTE is revoked from every API-facing role below.
@@ -371,3 +374,8 @@ revoke execute on function public.claim_notification_deliveries(integer) from pu
 revoke execute on function public.refresh_notification_outbox_status(uuid) from public, anon, authenticated;
 revoke execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) from public, anon, authenticated;
 revoke execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) from public, anon, authenticated;
+grant execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) to service_role;
+grant execute on function public.claim_notification_deliveries(integer) to service_role;
+grant execute on function public.refresh_notification_outbox_status(uuid) to service_role;
+grant execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) to service_role;
+grant execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) to service_role;
