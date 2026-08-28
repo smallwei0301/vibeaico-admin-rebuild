@@ -1,4 +1,4 @@
--- 0037 — #40 Reliable notification delivery (17-NOTIFICATION-DELIVERY.md)
+-- 0038 — #40 Reliable notification delivery (17-NOTIFICATION-DELIVERY.md)
 --
 -- This migration is source-only until an explicitly authorised TEST rollout.
 -- It stores no provider secret, payment credential, or full delivery payload.

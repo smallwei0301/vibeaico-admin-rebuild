@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const migration = readFileSync('supabase/migrations/0037_notification_outbox_delivery.sql', 'utf8');
+const migration = readFileSync('supabase/migrations/0038_notification_outbox_delivery.sql', 'utf8');
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
 const settingsPage = readFileSync('src/app/tenant/settings/page.tsx', 'utf8');
