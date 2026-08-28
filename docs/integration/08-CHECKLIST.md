@@ -141,9 +141,12 @@
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
 - [ ] follow/message 事件處理 + keyword replies + 預設回覆
-      **（重開 2026-08-24：webhook 側 OK，但 keyword-replies 管理頁整頁假——載入吃
-      mock、儲存/刪除/啟停只 setState，店家設的關鍵字進不了 DB。重勾條件：頁面接線
-      ＋端到端案例「UI 存一組關鍵字 → webhook 收該字 → mock LINE 收到設定的回覆」）**
+      **（issue #5 的頁面接線與 webhook 覆蓋已完成：commit `faa7c22`；
+      `keyword-replies.05.test.ts` 驗證 API 建立後 webhook 會回設定內容，
+      `keyword-replies-wiring.05.test.ts` 驗證頁面 CRUD 接線。PR #49 exact
+      `cadab19` 的 run #163 已通過完整 unit／integration／E2E。此合併項仍留白，
+      因為 Preview 的「UI 建立 → 簽章 webhook → LINE mock 捕捉 → 清理」尚未執行，
+      且本項還包含不屬 #5 的 follow／預設回覆整體驗收。）**
 - [ ] chat 頁雙向訊息
 - [x] 預約狀態推播 + 額度控管
       **（重開 2026-08-24：line-notify 實作在但 tests/ 全域零引用，推播路徑的額度
@@ -179,9 +182,12 @@
       以及 TOKEN／WEBHOOK／RICH_MENU／QUOTA 各自的 pass 與 FAIL/WARN 分支。
       變異驗證：把 AUTO_REPLY 改回「永遠 `pass:false`」→ 「五項全部通過」那條轉紅
       （＝那條斷言真的在防「報告永遠不可能全綠」）。
-- [ ] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
+- [x] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）
+      **（issue #5：`line-keyword-coverage.test.ts` 逐項守住三業態 18 格與 15 組
+      系統關鍵字；`keyword-replies.05.test.ts` 驗證自訂優先、停用與完整矩陣。
+      PR #49 `cadab19` run #163 的完整 gates 全綠。）**
 - [x] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
       收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
       **（2026-08-25 打勾。打勾的依據是本項自己的定義——「存主選單 → webhook 收
