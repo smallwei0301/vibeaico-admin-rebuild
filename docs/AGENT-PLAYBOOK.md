@@ -47,6 +47,7 @@
 | PB-007 | 關鍵寫入不可先查再分段寫 | 並發時兩邊都可能通過舊快照，留下撞班、超賣或半套資料；使用 transaction／atomic RPC 並測競爭。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-010 | PR 多檔遠端更新必須原子提交 | Contents API 每檔一 commit 會讓同一 PR 同時啟動多輪 TEST；先建 blobs/tree，再一次 create commit + update ref。 | `docs/AGENT-EXECUTION.md` §6、§7 |
 | PB-011 | TEST 寫入前掃全 repo active runs | 只看已知 PR 會漏掉新啟動的 workflow；每次 migration/reset/seed 前即時查全 repo `in_progress`／`queued` runs。 | `docs/AGENT-EXECUTION.md` §7；`12-TESTING-TDD.md` §1.5 |
+| PB-012 | 平行 agent 不共用 checkout | 不同 agent 即使改不同檔，切換同一 worktree 的 branch 仍會污染 HEAD、測試與 commit；每條寫入線使用獨立 worktree／clone。 | `docs/AGENT-EXECUTION.md` §6 |
 
 ## 事件紀錄
 
@@ -131,4 +132,20 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：停止其他 TEST 寫入；CI workflow 加入固定 `shared-test-supabase-integration` concurrency group，並以 repo-wide active run 查詢確認只剩一條工作。
 - 預防：每次 TEST migration、reset、seed、完整 integration 或 E2E 前，重新查詢整個 repo 的 `queued`／`in_progress` Actions，不得只讀 PR 清單、責任表或先前查詢；發現未知 workflow 時立即排隊。
 - 驗證：PR #52 run 33164035229 完整綠燈後，PR #49 run 33163685282 attempt 2 才取得 concurrency lock 並開始 integration，兩條工作未再重疊。
+- 狀態：監看中
+
+
+### PB-012 — 平行 agent 共用 worktree，branch 與未追蹤檔互相污染
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：Issue #34、#35；staging branches `test/issue-34-guide-pending-booking-badge`、`test/issue-35-preview-e2e-acceptance`
+- 分類：Agent／其他
+- 事件：#34 與 #35 雖修改不同檔案，卻在同一 Git worktree 平行切 branch；#35 的未追蹤 E2E 檔進入 #34 的 typecheck 視野，#34 commit 建立時 HEAD 已被切到 #35 branch。
+- 證據：#34 typecheck 因非本工作建立的 `tests/e2e/page-local-fields.35.spec.ts` 發生 TS2739；commit `97d272d` 的 parent 雖正確是 `7eb63d81`，建立當下 symbolic HEAD 指向 #35 branch，需另把 #34 自有 ref 指回該 commit。
+- 根因：派工只隔離「檔案範圍」，沒有隔離 Git index、HEAD、未追蹤檔與建置輸出；不同 branch 的 shell 操作仍共享同一 checkout。
+- 影響：#34 的 typecheck/build 證據被 #35 未完成檔案污染，兩條 staging branch 暫時共享錯誤 ancestry；提交沒有遺失，但需要額外整理與回讀。
+- 修正：停止共享 worktree 的 checkout/reset；保留 #34 commit 到自有 branch，#35 改在獨立 worktree／clone 或以 Git Data API 從精確 base 建乾淨 ref。
+- 預防：每位會寫檔或提交的平行 agent 必須有獨立 worktree／clone；只讀 agent 可共用。派工前記錄 worktree path，提交前核對 symbolic HEAD、parent、changed files，遠端同步後再核對 ancestry/tree。
+- 驗證：#34 branch `test/issue-34-guide-pending-booking-badge` 已回指 parent 正確的 `97d272d`；#35 待在隔離工作區建立只含自身變更的乾淨 branch。
 - 狀態：監看中
