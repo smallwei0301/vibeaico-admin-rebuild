@@ -14,6 +14,11 @@ jobs:
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
   integration:
     runs-on: ubuntu-latest
+    # All PR/main integration and E2E jobs share one TEST Supabase reset/seed.
+    # A fixed group prevents another branch from deleting this job's fixtures.
+    concurrency:
+      group: shared-test-supabase-integration
+      cancel-in-progress: false
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
