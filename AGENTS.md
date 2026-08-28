@@ -48,5 +48,6 @@
 - Supabase connector 與環境文件可能屬不同帳號。看到專案不存在或 401，先比對 project ref，再判斷權限或程式問題。
 - seed 的 optional-table 邏輯只能跳過明確的「表不存在」錯誤；欄位、外鍵、權限、schema cache 或未知錯誤必須 fail closed（失敗就停止），不可靜默跳過。
 - 整合測試的 401 必須先分流：先辨認它是否是測試刻意驗證的「未登入」，再依序確認 seed 建帳號、登入端點、`/api/auth/me` 與受保護請求是否持續帶 cookie。禁止只看最後一串 401 就直接修改 domain route、cookie 或 seed；必須保留每一段的實際 status 證據。
+- **新增 migration 後的 `PGRST202` 必須先視為 TEST 未套用 schema／PostgREST schema cache 的環境訊號**：先確認 migration 是否已在該 TEST 專案成功套用、必要時刷新 schema cache；未確認前不得把 500 直接歸咎於 route 邏輯、更不得用重跑 CI 取代資料庫驗證。若套用需要 DDL 權限，記錄 RPC 名稱與錯誤後停下，等待 Owner 授權。
 
 完成或停工時，記錄主力模型、已指定／可驗證的 agent 模型、範圍、測試證據、未完成風險、環境錯誤次數與是否需要 Owner 決策；新失敗模式補入對應 canonical 文件。
