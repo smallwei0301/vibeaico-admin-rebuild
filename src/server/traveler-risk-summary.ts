@@ -4,7 +4,8 @@ export type TravelerRiskFact =
   | { kind: 'NO_SHOW'; occurredAt: string }
   | { kind: 'UNPAID_EXPIRED'; occurredAt: string }
   | { kind: 'REFUND_PENDING'; occurredAt: string }
-  | { kind: 'REFUND_DISPUTED'; occurredAt: string };
+  | { kind: 'REFUND_DISPUTED'; occurredAt: string }
+  | { kind: 'REFUNDED'; occurredAt: string };
 
 export type TravelerRiskSummary = {
   completed: number;
@@ -13,12 +14,14 @@ export type TravelerRiskSummary = {
   noShow: number;
   unpaidExpired: number;
   refundPendingOrDisputed: number;
+  refunded: number;
   lastOccurredAt: string | null;
 };
 
 /**
  * Summarizes tenant-owned, factual fulfillment events without producing a
- * score or guessing who caused an unclassified cancellation.
+ * score or guessing who caused an unclassified cancellation. Facts with an
+ * invalid timestamp are excluded before they can affect the summary.
  */
 export function summarizeTravelerRiskFacts(facts: readonly TravelerRiskFact[]): TravelerRiskSummary {
   const summary: TravelerRiskSummary = {
@@ -28,12 +31,15 @@ export function summarizeTravelerRiskFacts(facts: readonly TravelerRiskFact[]): 
     noShow: 0,
     unpaidExpired: 0,
     refundPendingOrDisputed: 0,
+    refunded: 0,
     lastOccurredAt: null,
   };
   let latestTimestamp = Number.NEGATIVE_INFINITY;
 
   for (const fact of facts) {
     const timestamp = Date.parse(fact.occurredAt);
+    if (!Number.isFinite(timestamp)) continue;
+
     if (timestamp > latestTimestamp) {
       latestTimestamp = timestamp;
       summary.lastOccurredAt = fact.occurredAt;
@@ -56,6 +62,9 @@ export function summarizeTravelerRiskFacts(facts: readonly TravelerRiskFact[]): 
       case 'REFUND_PENDING':
       case 'REFUND_DISPUTED':
         summary.refundPendingOrDisputed += 1;
+        break;
+      case 'REFUNDED':
+        summary.refunded += 1;
         break;
       default:
         assertNever(fact);
