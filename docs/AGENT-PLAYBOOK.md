@@ -45,7 +45,11 @@
 | PB-005 | 新 migration 後先查 TEST 基線與 cache | `PGRST202` 常是 migration 未套用或 schema cache 未刷新；不能先猜 route 壞掉。 | `docs/AGENT-EXECUTION.md` §3.1、§7.1 |
 | PB-006 | 測試要鎖行為，不鎖無關字串排列 | 精確比對查詢欄位字串會讓安全新增欄位誤報回歸；斷言必要欄位與真正副作用。 | `12-TESTING-TDD.md` §2.3、§6 |
 | PB-007 | 關鍵寫入不可先查再分段寫 | 並發時兩邊都可能通過舊快照，留下撞班、超賣或半套資料；使用 transaction／atomic RPC 並測競爭。 | `docs/AGENT-EXECUTION.md` §7.1 |
+| PB-008 | GitHub connector 寫入不等於 CI 已觸發 | connector 與 shell 是不同認證通道，且 Git Data／Contents 寫入可能不產生 Actions run；必須回查 exact-head workflow。 | `docs/AGENT-EXECUTION.md` §6、§7 |
 | PB-010 | PR 多檔遠端更新必須原子提交 | Contents API 每檔一 commit 會讓同一 PR 同時啟動多輪 TEST；先建 blobs/tree，再一次 create commit + update ref。 | `docs/AGENT-EXECUTION.md` §6、§7 |
+| PB-011 | 驗收帳號必須能看見受測入口 | GUIDE 隱藏一般預約導覽，不能驗 bookings badge；先由產品閘門選可見入口的 fixture。 | `docs/AGENT-EXECUTION.md` §7 |
+| PB-012 | 靜態檢查不能驗證 SQL 語意 | SELECT alias 不能在同層 WHERE 使用，且 DB enum 與 UI enum 不同；對 DB 實跑或鎖 schema mapping。 | `docs/AGENT-EXECUTION.md` §7.1 |
+| PB-013 | build workspace artifact 可在編譯後失敗 | page collection 清理殘留 artifact 時可報 `ENOTEMPTY`；保留首個完整證據、清 workspace 後單次重驗。 | `docs/AGENT-EXECUTION.md` §7 |
 
 ## 事件紀錄
 
@@ -71,20 +75,20 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：本次尚未修復；`check` job 的 typecheck、107 個 unit tests 與 build 通過，integration／E2E 未通過。
 - 狀態：仍待處理
 
-### PB-008 — GitHub connector 與 shell git 是不同認證通道
+### PB-008 — GitHub connector 寫入成功不代表 exact-head CI 已觸發
 
 - 首次／最近：2026-08-28／2026-08-28
-- 發生次數：1
-- Issue／PR／CI：專案 agent 常駐自主執行規則文件更新
+- 發生次數：3
+- Issue／PR／CI：專案 agent 常駐自主執行規則文件更新；`main` docs-only commits
 - 分類：權限
-- 事件：本機 commit 完成後，使用 shell `git push origin main` 無法取得 GitHub HTTPS 認證。
-- 證據：push 回傳 `fatal: could not read Username for 'https://github.com': No such device or address`。
-- 根因：ChatGPT 已連結的 GitHub connector 與執行環境中的 shell git 使用不同認證通道；connector 可用不代表 shell 已配置 username／token。
-- 影響：第一次遠端推送路徑被阻塞，但本機 commit 與檔案內容未受損。
-- 修正：改用已授權的 GitHub connector，以 Git Data API 原子建立 tree／commit 並更新 `main` ref。
-- 預防：需要遠端寫入時先辨識可用通道；shell 未配置認證就直接使用 connector，不重試或要求輸出秘密。
-- 驗證：從 remote `main` 回讀新 commit 與八份變更檔，並比對其 tree 內容與本機一致。
-- 狀態：已防止
+- 事件：shell `git push` 無 GitHub HTTPS 認證；改用 connector 的 Git Data 與 Contents 路徑後，commit/ref 都成功更新，但兩種路徑都沒有為 exact HEAD 建立 Actions run。
+- 證據：shell 回傳 `fatal: could not read Username for 'https://github.com': No such device or address`；connector 回讀 commit/ref 正確，但 `fetch_commit_workflow_runs` 對新 SHA 持續回傳 `[]`。
+- 根因：connector 與 shell git 是不同認證通道；connector 寫 ref 的事件來源亦不保證觸發 GitHub Actions，因此「遠端已有 commit」與「CI 已排程」是兩個獨立事實。
+- 影響：文件可安全落到遠端，但不能拿不存在的 workflow 當 exact-head CI 證據；需要 CI 的 Issue 仍未完成。
+- 修正：保留已回讀一致的 docs commit，將缺少 Actions run 精確標成環境 blocker；Git Data、Contents 各已證明一次後停止第三次盲目寫入。
+- 預防：每次 connector 更新 ref 後，同時回查 ref SHA 與該 SHA 的 workflow runs；空陣列不得解讀為綠燈，也不得靠重複無實質差異的 commit 刺激 CI。
+- 驗證：remote ref/tree 與預期一致；exact-head workflow 查詢仍為 `[]`，故 CI 觸發問題仍待外部環境解除。
+- 狀態：仍待處理
 
 ### PB-009 — 長程 goal 誤把階段回報送成 final
 
@@ -115,3 +119,48 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：凡已開 PR 的遠端多檔修改，先建立所有 blobs 與單一 tree，再一次 create commit + update ref；若工具無法原子提交，先在未開 PR 的 staging branch 完成所有檔案，再以一次 ref 更新接到 PR head。workflow 另應加入以 PR/ref 為 key 的 concurrency + cancel-in-progress。
 - 驗證：待 #156/#157/#158 全部終止後，確認只有 #158 的 exact HEAD 可進下一步，並在後續首次原子多檔更新時回查只建立一個 CI run。
 - 狀態：監看中
+
+### PB-011 — GUIDE 隱藏受測導覽，驗收 fixture 選錯產品型態
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：Issue #34；PR #49；舊候選 `d057481`、修正 `1d0896d`
+- 分類：CI／其他
+- 事件：Preview verifier 用 GUIDE 帳號建立 PENDING booking，再期待側邊欄顯示 `/tenant/bookings` badge；但 GUIDE 的產品閘門本來就隱藏該導覽。
+- 證據：GUIDE run 無法定位 bookings nav；修正後的 unit 契約明確鎖定 GUIDE 不得作此 fixture。
+- 根因：驗收腳本只檢查資料能否建立，沒有先檢查受測 business type 是否可看見 UI 入口。
+- 影響：舊 run 的 badge 結果無效且被新 HEAD 淘汰，不能作 #34 驗收證據。
+- 修正：改用 canonical `owner-a@test.local`／`LOCAL_SHOP` fixture，要求非零 API、DB 與可見 badge 三方相等；舊 run 標為 superseded。
+- 預防：寫 Preview verifier 前先由 nav／feature gating 契約確認 fixture 可見受測入口，並在入口 fail-fast 驗證角色與 business type。
+- 驗證：`1d0896d` 的 focused unit 33、contract 8、`node --check` 與 diff-check 通過；Preview 仍須以新候選執行。
+- 狀態：監看中
+
+### PB-012 — SELECT alias 與跨層 enum 讓 Preview SQL 靜態通過、實際無效
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：Issue #35；`bf35c62`、修正候選 `acca8c2`
+- 分類：TEST DB／其他
+- 事件：唯讀 Preview SQL 將 `discount_type as type` 後在同層 `WHERE` 使用 `type`，同時以 UI 值 `DISCOUNT_AMOUNT`／`DISCOUNT_PERCENT` 比對 DB 值。
+- 證據：原查詢含 `select ... discount_type as type ... where ... type = 'DISCOUNT_AMOUNT'`；DB schema／integration fixture 使用 `AMOUNT`、`PERCENT`、`GIFT`。
+- 根因：JavaScript 語法與文字契約檢查不會解析 PostgreSQL name resolution，也沒有明確維護 DB enum→UI enum mapping。
+- 影響：腳本通過 `node --check` 仍會在真 DB 失敗或找不到代表資料，無法產生可信的 DB→UI 證據。
+- 修正：`WHERE` 改用真欄位與 DB enum，`SELECT CASE` 再映射成 UI enum 供覆蓋判斷。
+- 預防：含 SQL 的 verifier 至少對相同 schema 執行唯讀 prepare/query；另以測試鎖定欄位名、DB enum 與 UI mapping。
+- 驗證：修正 SQL 已在 `acca8c2` 收斂並通過 diff-check；真 Preview DB/UI 驗收仍待執行。
+- 狀態：監看中
+
+### PB-013 — mock build 編譯成功後因 workspace artifact 清理失敗
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：2
+- Issue／PR／CI：Issue #43；mock build page collection
+- 分類：CI／其他
+- 事件：compile 與 type success 後，page collection 清理 workspace artifact 時以 `ENOTEMPTY` 失敗；同一環境再次出現後停止第三次盲目 retry。
+- 證據：build 已完成 compilation/type checking，後續 filesystem step 回傳 `ENOTEMPTY`，而非 TypeScript、route 或 page compile error。
+- 根因：共用 workspace 留有或競爭寫入 build artifact，清理目錄時仍非空；問題位於 workspace lifecycle，不是 #43 source 語意。
+- 影響：該次 mock build 沒有完整成功終態，不能用前段 compile success 代替 build gate。
+- 修正：保留完整錯誤分類與已通過的獨立 type/unit 證據；第二次同環境錯誤後改由乾淨 workspace／CI 候選驗證。
+- 預防：每個 build 使用獨立、乾淨的 output/worktree；清理前確認沒有其他 process 使用 artifact，第二次相同環境錯誤即改變診斷方式。
+- 驗證：#43 focused tests、full unit 與 typecheck 通過；乾淨候選的完整 build 尚待驗證。
+- 狀態：仍待處理
