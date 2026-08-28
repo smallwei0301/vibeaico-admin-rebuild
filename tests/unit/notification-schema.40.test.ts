@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const appliedMigration = readFileSync('supabase/migrations/0038_notification_outbox_delivery.sql', 'utf8');
+const appliedRestrictionMigration = readFileSync('supabase/migrations/0038a_restrict_internal_notification_functions.sql', 'utf8');
 const bookingModificationMigration = readFileSync('supabase/migrations/0040_notification_booking_modification_revision.sql', 'utf8');
-const migration = `${appliedMigration}\n${bookingModificationMigration}`;
+const securityAlignmentMigration = readFileSync('supabase/migrations/0041_notification_delivery_security_alignment.sql', 'utf8');
+const migration = `${appliedMigration}\n${appliedRestrictionMigration}\n${bookingModificationMigration}\n${securityAlignmentMigration}`;
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
 const settingsPage = readFileSync('src/app/tenant/settings/page.tsx', 'utf8');
@@ -31,11 +33,12 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/after insert or update of [^\n]+ on bookings/i);
     expect(migration).toMatch(/enqueue_notification_event/i);
     expect(migration).toMatch(/for update skip locked/i);
-    expect(migration).toMatch(/processing_started_at < now\(\) - interval '10 minutes'/i);
+    expect(migration).toMatch(/processing_started_at < pg_catalog\.now\(\) - interval '10 minutes'/i);
   });
 
-  it('keeps provider ACCEPTED deliveries open until delivery evidence or a terminal outcome exists', () => {
-    expect(migration).toContain("status in ('PENDING', 'PROCESSING', 'RETRY', 'ACCEPTED')) then 'OPEN'");
+  it('treats provider ACCEPTED as terminal while retaining its precise delivery status', () => {
+    expect(appliedMigration).toContain("status in ('PENDING', 'PROCESSING', 'RETRY')) then 'OPEN'");
+    expect(appliedMigration).not.toContain("status in ('PENDING', 'PROCESSING', 'RETRY', 'ACCEPTED')) then 'OPEN'");
   });
 
   it('looks up a delivery booking within the outbox tenant boundary', () => {
@@ -65,9 +68,10 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/primary key \(bot_id, update_id\)/i);
   });
 
-  it('explicitly grants the internal RPCs only to the service role', () => {
+  it('keeps trigger-internal RPCs unavailable even to service role while granting worker RPCs only there', () => {
+    expect(appliedRestrictionMigration).toMatch(/revoke execute on function public\.enqueue_notification_event\([^;]+\)\s+from service_role/i);
+    expect(appliedRestrictionMigration).toMatch(/revoke execute on function public\.enqueue_booking_notification_event\(\)\s+from service_role/i);
     for (const signature of [
-      'enqueue_notification_event(uuid, text, text, text, text, jsonb)',
       'claim_notification_deliveries(integer)',
       'refresh_notification_outbox_status(uuid)',
       'apply_resend_delivery_event(text, text, text, text, bytea)',
@@ -75,20 +79,20 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     ]) {
       expect(migration).toContain(`grant execute on function public.${signature} to service_role;`);
     }
-    expect(migration).toMatch(/grant all on table notification_outbox,[\s\S]*?to service_role;/i);
+    expect(migration).not.toContain('grant execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) to service_role;');
     expect(migration).not.toContain('grant execute on function public.enqueue_booking_notification_event() to service_role;');
   });
 
   it('applies Resend delivery evidence idempotently without storing webhook bodies', () => {
     expect(migration).toMatch(/create or replace function public\.apply_resend_delivery_event/i);
-    expect(migration).toMatch(/insert into notification_provider_webhook_events/i);
+    expect(migration).toMatch(/insert into public\.notification_provider_webhook_events/i);
     expect(migration).toMatch(/on conflict do nothing/i);
     expect(migration).toMatch(/where provider_message_id = p_provider_message_id/i);
     expect(migration).toMatch(/if affected_outbox is null then return 'NOT_FOUND'/i);
     expect(migration).toMatch(/if affected_status = 'DEAD' and p_status = 'DELIVERED' then return 'IGNORED'/i);
     expect(migration).toMatch(/'PLATFORM_NOTIFICATION_ALERT'/i);
     expect(migration).toMatch(/'CRITICAL_DELIVERY_DEAD'/i);
-    expect(migration).toMatch(/insert into email_recipient_health/i);
+    expect(migration).toMatch(/insert into public\.email_recipient_health/i);
     expect(resetDb).toContain("table: 'notification_provider_webhook_events'");
     expect(resetDb).toContain("table: 'email_recipient_health'");
   });
@@ -103,7 +107,8 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
 
   it('routes booking-status LINE messages through the delivery ledger instead of direct provider sends', () => {
     expect(migration).toContain("'BOOKING_LINE_CONFIRMED'");
-    expect(lineNotify).toContain("event_name: `BOOKING_LINE_${kind}`");
+    expect(lineNotify).toContain("admin.rpc('enqueue_booking_line_reminder'");
+    expect(lineNotify).not.toContain("admin.rpc('enqueue_notification_event'");
     for (const route of [
       readFileSync('src/app/api/bookings/[id]/confirm/route.ts', 'utf8'),
       readFileSync('src/app/api/bookings/[id]/complete/route.ts', 'utf8'),
@@ -129,6 +134,53 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(bookingModificationMigration).toMatch(/revoke execute on function public\.enqueue_booking_notification_event\(\) from public, anon, authenticated/i);
   });
 
+  it('uses 0041 only for forward auth, tenant binding, and trigger security alignment', () => {
+    expect(appliedMigration).not.toContain('reclaimable');
+    expect(appliedMigration).toMatch(/unique nulls not distinct \(tenant_id, subject_type, subject_ref\)/i);
+    expect(bookingModificationMigration).toContain("set search_path = public, pg_temp");
+    expect(securityAlignmentMigration).toMatch(/add column if not exists reclaimable boolean not null default true/i);
+    expect(securityAlignmentMigration).toMatch(/create or replace function public\.enqueue_auth_verification_delivery/i);
+    expect(securityAlignmentMigration).toMatch(/create or replace function public\.issue_tenant_telegram_bind_code/i);
+    expect(securityAlignmentMigration).toMatch(/set search_path = ''/i);
+    expect(securityAlignmentMigration).toMatch(/revoke execute on function public\.enqueue_booking_notification_event\(\) from service_role/i);
+    expect(securityAlignmentMigration).toMatch(/telegram_bind_codes_tenant_id_idx/i);
+  });
+
+  it('passes the six-argument enqueue contract for every 0041 booking event', () => {
+    const calls = [...securityAlignmentMigration.matchAll(/perform public\.enqueue_notification_event\(([\s\S]*?)\n\s*\);/g)];
+    expect(calls).toHaveLength(7);
+    for (const [, args] of calls) {
+      expect(args).toMatch(/pg_catalog\.jsonb_build_object\('bookingId', new\.id::text\)/);
+    }
+  });
+
+  it('keeps tenant binding lookup and invalidation scoped while preserving the platform-owner null branch', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).toContain("if (delivery.destination_ref === 'PLATFORM_OWNER_TELEGRAM') return process.env.PLATFORM_TELEGRAM_CHAT_ID?.trim() || null;");
+    expect(outbox).toMatch(/from\('telegram_bindings'\)\.select\('chat_id'\)[\s\S]*?\.eq\('tenant_id', delivery\.tenant_id\)/);
+    expect(outbox).toMatch(/from\('telegram_bindings'\)\.update[\s\S]*?\.eq\('tenant_id', delivery\.tenant_id\)/);
+  });
+
+  it('does not treat a missing recipient-health key as a healthy Email recipient', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).not.toContain('if (!healthKey) return true;');
+    expect(outbox).toContain("return { kind: 'retryable', code: 'RECIPIENT_HEALTH_KEY_MISSING' };");
+    expect(outbox).toContain("code: 'EMAIL_UNHEALTHY'");
+    expect((outbox.match(/const recipientGate = await emailRecipientGate\(admin, destination\);\s*if \(recipientGate\) return recipientGate;\s*return sendEmailWithResend/g) ?? []).length).toBe(2);
+  });
+
+  it('uses a service-only, booking-scoped reminder writer instead of the generic internal enqueue RPC', () => {
+    const lineNotify = readFileSync('src/server/line-notify.ts', 'utf8');
+    expect(lineNotify).not.toContain("admin.rpc('enqueue_notification_event'");
+    expect(lineNotify).toContain("admin.rpc('enqueue_booking_line_reminder'");
+    expect(securityAlignmentMigration).toMatch(/create or replace function public\.enqueue_booking_line_reminder/i);
+    expect(securityAlignmentMigration).toMatch(/from public\.bookings b[\s\S]*?b\.id = p_booking_id[\s\S]*?b\.tenant_id = p_tenant_id/i);
+    expect(securityAlignmentMigration).toMatch(/grant execute on function public\.enqueue_booking_line_reminder\(uuid, uuid\) to service_role/i);
+    expect(securityAlignmentMigration).not.toMatch(/grant execute on function public\.enqueue_notification_event\([^;]+\) to service_role/i);
+    const reminderCron = readFileSync('src/app/api/cron/booking-reminders/route.ts', 'utf8');
+    expect(reminderCron.indexOf("await notifyBookingStatus(tenantId, b.id as string, 'REMINDER');")).toBeLessThan(reminderCron.indexOf('reminded++;'));
+  });
+
   it('records interactive auth Email attempts in the delivery ledger before using Resend', () => {
     expect(authSendCode).toContain('dispatchAuthVerificationEmail');
     expect(authSendCode).not.toContain('sendVerificationCodeEmail');
@@ -138,7 +190,7 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
   it('does not reclaim an address-less auth delivery after an inline sender crash', () => {
     expect(migration).toMatch(/reclaimable\s+boolean\s+not null default true/i);
     expect(migration).toMatch(/'AUTH_VERIFICATION_EMAIL'[\s\S]*?'PROCESSING', false/i);
-    expect(migration).toContain("d.status = 'PROCESSING' and d.reclaimable and");
+    expect(migration).toMatch(/d\.status = 'PROCESSING' and d\.reclaimable\s+and/i);
   });
 
   it('keeps the normal booking route on its tenant-scoped client', () => {

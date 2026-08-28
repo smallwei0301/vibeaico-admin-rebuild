@@ -1,6 +1,6 @@
 import { createAdminSupabase } from '@/server/supabase';
 import { fail, ok } from '@/server/http';
-import { hashRecipientEmail, mapResendDeliveryEvent, verifyResendWebhook } from '@/server/notifications/resend-webhook';
+import { hashRecipientEmail, mapResendDeliveryEvent, recipientHealthKeyRequired, verifyResendWebhook } from '@/server/notifications/resend-webhook';
 
 export const runtime = 'nodejs';
 
@@ -29,8 +29,11 @@ export async function POST(req: Request) {
   const providerMessageId = event.data?.email_id ?? event.data?.email?.id;
   if (!providerMessageId || !webhookId) return fail(400, 'bad request');
   const recipient = event.data?.to?.[0]?.trim().toLowerCase();
+  const recipientHealthKey = process.env.RESEND_RECIPIENT_HEALTH_KEY;
+  if (recipientHealthKeyRequired(evidence, recipient, recipientHealthKey))
+    return fail(503, 'recipient health key not configured');
   const recipientHash = evidence.unhealthy && recipient
-    ? hashRecipientEmail(recipient, process.env.RESEND_WEBHOOK_SECRET!) : null;
+    ? hashRecipientEmail(recipient, recipientHealthKey!) : null;
   const { data, error } = await createAdminSupabase().rpc('apply_resend_delivery_event', {
     p_webhook_event_id: webhookId,
     p_provider_message_id: providerMessageId,

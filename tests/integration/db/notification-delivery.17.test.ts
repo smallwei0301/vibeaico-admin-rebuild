@@ -21,15 +21,23 @@ afterEach(async () => {
   if (outboxIds.length) expect((await admin.from('notification_outbox').delete().in('id', outboxIds.splice(0))).error).toBeNull();
 });
 
-async function enqueue() {
-  const aggregateId = randomUUID();
-  const { data, error } = await admin.rpc('enqueue_notification_event', {
-    p_tenant_id: SHOP_A.id, p_event_name: 'BOOKING_CREATED', p_aggregate_type: 'BOOKING',
-    p_aggregate_id: aggregateId, p_idempotency_key: `itest-40-${randomUUID()}`, p_payload: { bookingId: aggregateId },
+async function createBooking() {
+  const bookingId = randomUUID();
+  bookingIds.push(bookingId);
+  const { error } = await admin.from('bookings').insert({
+    id: bookingId, tenant_id: SHOP_A.id, booking_no: `N40-${randomUUID()}`,
+    customer_id: SHOP_A.customerA1, service_id: SHOP_A.serviceA1,
+    start_at: '2031-01-04T10:00:00.000Z', end_at: '2031-01-04T11:00:00.000Z',
+    duration_minutes: 60, price: 1, final_price: 1,
   });
   expect(error).toBeNull();
-  outboxIds.push(data as string);
-  return data as string;
+  const event = await admin.from('notification_outbox').select('id', { count: 'exact' })
+    .eq('aggregate_id', bookingId).eq('event_name', 'BOOKING_CREATED');
+  expect(event.error).toBeNull();
+  expect(event.count).toBe(1);
+  const outboxId = (event.data as Array<{ id: string }>)[0]!.id;
+  outboxIds.push(outboxId);
+  return { bookingId, outboxId };
 }
 
 describe('notification delivery ledger (17 §7)', () => {
@@ -61,15 +69,16 @@ describe('notification delivery ledger (17 §7)', () => {
   });
 
   it('is idempotent and gives a pending delivery to exactly one of two concurrent service workers', async () => {
-    const aggregateId = randomUUID();
-    const key = `itest-idempotency-${randomUUID()}`;
-    const args = { p_tenant_id: SHOP_A.id, p_event_name: 'BOOKING_CREATED', p_aggregate_type: 'BOOKING', p_aggregate_id: aggregateId, p_idempotency_key: key, p_payload: { bookingId: aggregateId } };
-    const first = await admin.rpc('enqueue_notification_event', args);
-    const second = await admin.rpc('enqueue_notification_event', args);
-    expect(first.error).toBeNull(); expect(second.error).toBeNull(); expect(second.data).toBe(first.data);
-    outboxIds.push(first.data as string);
+    const { bookingId, outboxId } = await createBooking();
+    // A repeated statement that does not change status cannot manufacture a
+    // second event; the trigger remains the sole event writer.
+    expect((await admin.from('bookings').update({ status: 'PENDING' }).eq('id', bookingId)).error).toBeNull();
+    const events = await admin.from('notification_outbox').select('id', { count: 'exact' })
+      .eq('aggregate_id', bookingId).eq('event_name', 'BOOKING_CREATED');
+    expect(events.error).toBeNull();
+    expect(events.count).toBe(1);
     const delivery = await admin.from('notification_deliveries').insert({
-      outbox_id: first.data, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
+      outbox_id: outboxId, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
       channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
     }).select('id').single();
     expect(delivery.error).toBeNull();
@@ -81,7 +90,7 @@ describe('notification delivery ledger (17 §7)', () => {
   });
 
   it('runs the real dispatcher transition through retry backoff and the fifth attempt to DEAD with a fake transport', async () => {
-    const outboxId = await enqueue();
+    const { outboxId } = await createBooking();
     const inserted = await admin.from('notification_deliveries').insert({
       outbox_id: outboxId, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
       channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
@@ -116,6 +125,18 @@ describe('notification delivery ledger (17 §7)', () => {
     expect((await client.rpc('claim_notification_deliveries', { p_limit: 1 })).error?.code).toBe('42501');
     expect((await client.auth.signInWithPassword(SHOP_A.owner)).error).toBeNull();
     expect((await client.rpc('claim_notification_deliveries', { p_limit: 1 })).error?.code).toBe('42501');
+  });
+
+  it('rejects direct trigger-internal event enqueue RPCs for service, anonymous, and authenticated callers', async () => {
+    const args = {
+      p_tenant_id: SHOP_A.id, p_event_name: 'BOOKING_CREATED', p_aggregate_type: 'BOOKING',
+      p_aggregate_id: randomUUID(), p_idempotency_key: `forbidden-${randomUUID()}`, p_payload: {},
+    };
+    expect((await admin.rpc('enqueue_notification_event', args)).error?.code).toBe('42501');
+    const client = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
+    expect((await client.rpc('enqueue_notification_event', args)).error?.code).toBe('42501');
+    expect((await client.auth.signInWithPassword(SHOP_A.owner)).error).toBeNull();
+    expect((await client.rpc('enqueue_notification_event', args)).error?.code).toBe('42501');
   });
 
   it('never lease-reclaims an address-less auth delivery after its inline sender crashes', async () => {

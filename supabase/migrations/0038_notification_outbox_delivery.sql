@@ -36,10 +36,6 @@ create table notification_deliveries (
                       check (status in ('PENDING', 'PROCESSING', 'ACCEPTED', 'DELIVERED', 'RETRY', 'DEAD', 'SKIPPED')),
   attempt_count       integer not null default 0 check (attempt_count >= 0 and attempt_count <= 5),
   next_attempt_at     timestamptz default now(),
-  -- Interactive auth Email stores no replayable destination/code in the
-  -- ledger. It is sent synchronously and must never be lease-reclaimed by the
-  -- generic worker after a process crash.
-  reclaimable         boolean not null default true,
   claim_token         uuid,
   processing_started_at timestamptz,
   provider_message_id text,
@@ -109,8 +105,10 @@ create table telegram_bindings (
   bound_at       timestamptz not null default now(),
   invalidated_at timestamptz,
   updated_at     timestamptz not null default now(),
-  unique (subject_type, subject_ref),
-  unique (chat_id)
+  -- PLATFORM_OWNER deliberately has no tenant_id; NULLS NOT DISTINCT makes its
+  -- rebind use the same conflict target instead of accumulating NULL duplicates.
+  unique nulls not distinct (tenant_id, subject_type, subject_ref),
+  unique nulls not distinct (tenant_id, chat_id)
 );
 create trigger t_telegram_bindings_u before update on telegram_bindings
   for each row execute function set_updated_at();
@@ -148,9 +146,6 @@ alter table telegram_webhook_updates enable row level security;
 revoke all on table notification_outbox, notification_deliveries, notification_health_reports,
   notification_provider_webhook_events, email_recipient_health,
   telegram_bindings, telegram_bind_codes, telegram_webhook_updates from anon, authenticated;
-grant all on table notification_outbox, notification_deliveries, notification_health_reports,
-  notification_provider_webhook_events, email_recipient_health,
-  telegram_bindings, telegram_bind_codes, telegram_webhook_updates to service_role;
 
 -- Internal-only primitive. It is SECURITY DEFINER because booking writes run
 -- under RLS; EXECUTE is revoked from every API-facing role below.
@@ -164,15 +159,15 @@ create or replace function public.enqueue_notification_event(
 ) returns uuid
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare event_id uuid;
 begin
-  insert into notification_outbox (
+  insert into public.notification_outbox (
     tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key, payload
   ) values (
     p_tenant_id, p_event_name, p_aggregate_type, p_aggregate_id, p_idempotency_key,
-    coalesce(p_payload, '{}'::jsonb)
+    coalesce(p_payload, '{}'::pg_catalog.jsonb)
   )
   on conflict (event_name, aggregate_type, aggregate_id, idempotency_key)
   do update set idempotency_key = excluded.idempotency_key
@@ -187,81 +182,21 @@ create or replace function public.enqueue_booking_notification_event()
 returns trigger
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 begin
   if tg_op = 'INSERT' then
     perform public.enqueue_notification_event(
       new.tenant_id, 'BOOKING_CREATED', 'BOOKING', new.id::text,
-      'booking-created:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+      'booking-created:' || new.id::text, pg_catalog.jsonb_build_object('bookingId', new.id::text)
     );
   elsif new.status is distinct from old.status and new.status = 'CANCELLED' then
     perform public.enqueue_notification_event(
       new.tenant_id, 'BOOKING_CANCELLED', 'BOOKING', new.id::text,
-      'booking-cancelled:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
-    );
-    perform public.enqueue_notification_event(
-      new.tenant_id, 'BOOKING_LINE_CANCELLED', 'BOOKING', new.id::text,
-      'booking-line-cancelled:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
-    );
-  elsif new.status is distinct from old.status and new.status = 'CONFIRMED' then
-    perform public.enqueue_notification_event(
-      new.tenant_id, 'BOOKING_LINE_CONFIRMED', 'BOOKING', new.id::text,
-      'booking-line-confirmed:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
-    );
-  elsif new.status is distinct from old.status and new.status = 'COMPLETED' then
-    perform public.enqueue_notification_event(
-      new.tenant_id, 'BOOKING_LINE_COMPLETED', 'BOOKING', new.id::text,
-      'booking-line-completed:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
-    );
-  elsif new.status is distinct from old.status and new.status = 'NO_SHOW' then
-    perform public.enqueue_notification_event(
-      new.tenant_id, 'BOOKING_LINE_NO_SHOW', 'BOOKING', new.id::text,
-      'booking-line-no-show:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
-    );
-  elsif new.status is not distinct from old.status and (
-    new.start_at is distinct from old.start_at or new.staff_id is distinct from old.staff_id
-  ) then
-    perform public.enqueue_notification_event(
-      new.tenant_id, 'BOOKING_LINE_MODIFIED', 'BOOKING', new.id::text,
-      'booking-line-modified:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+      'booking-cancelled:' || new.id::text, pg_catalog.jsonb_build_object('bookingId', new.id::text)
     );
   end if;
   return new;
-end;
-$$;
-
--- Auth Email remains synchronous for interactive latency, but its attempt is
--- still durable and auditable before Resend is called. The recipient is an
--- application-side hash, never an address or verification code.
-create or replace function public.enqueue_auth_verification_delivery(
-  p_recipient_ref text,
-  p_idempotency_key text
-) returns notification_deliveries
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare event_id uuid;
-        delivery notification_deliveries%rowtype;
-begin
-  insert into notification_outbox (
-    tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key, payload
-  ) values (
-    null, 'AUTH_VERIFICATION_EMAIL', 'AUTH_VERIFICATION', p_recipient_ref,
-    p_idempotency_key, '{}'::jsonb
-  ) on conflict (event_name, aggregate_type, aggregate_id, idempotency_key)
-  do update set idempotency_key = excluded.idempotency_key
-  returning id into event_id;
-
-  insert into notification_deliveries (
-    outbox_id, tenant_id, recipient_type, recipient_ref, channel, destination_ref, status, reclaimable, processing_started_at
-  ) values (
-    event_id, null, 'TRAVELER', p_recipient_ref, 'EMAIL', 'AUTH_VERIFICATION_EMAIL', 'PROCESSING', false, now()
-  ) on conflict (outbox_id, recipient_type, recipient_ref, channel)
-  do update set status = notification_deliveries.status
-  returning * into delivery;
-  return delivery;
 end;
 $$;
 drop trigger if exists t_bookings_notification_outbox on bookings;
@@ -272,10 +207,10 @@ create trigger t_bookings_notification_outbox
 -- Worker-safe claim. SKIP LOCKED means two dispatchers never receive the same
 -- live row. A 10-minute lease makes a crashed worker eligible for a later retry.
 create or replace function public.claim_notification_deliveries(p_limit integer default 20)
-returns setof notification_deliveries
+returns setof public.notification_deliveries
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 begin
   if p_limit is null or p_limit < 1 or p_limit > 100 then
@@ -284,15 +219,15 @@ begin
   return query
   with candidates as (
     select d.id
-    from notification_deliveries d
-    where (d.status in ('PENDING', 'RETRY') and d.next_attempt_at <= now())
-       or (d.status = 'PROCESSING' and d.reclaimable and d.processing_started_at < now() - interval '10 minutes')
+    from public.notification_deliveries d
+    where (d.status in ('PENDING', 'RETRY') and d.next_attempt_at <= pg_catalog.now())
+       or (d.status = 'PROCESSING' and d.processing_started_at < pg_catalog.now() - interval '10 minutes')
     order by d.next_attempt_at, d.created_at
     for update skip locked
     limit p_limit
   )
-  update notification_deliveries d
-  set status = 'PROCESSING', claim_token = gen_random_uuid(), processing_started_at = now(), last_attempt_at = now()
+  update public.notification_deliveries d
+  set status = 'PROCESSING', claim_token = pg_catalog.gen_random_uuid(), processing_started_at = pg_catalog.now(), last_attempt_at = pg_catalog.now()
   from candidates
   where d.id = candidates.id
   returning d.*;
@@ -303,17 +238,17 @@ create or replace function public.refresh_notification_outbox_status(p_outbox_id
 returns text
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare next_status text;
 begin
   select case
-    when exists (select 1 from notification_deliveries where outbox_id = p_outbox_id and status in ('PENDING', 'PROCESSING', 'RETRY', 'ACCEPTED')) then 'OPEN'
-    when exists (select 1 from notification_deliveries where outbox_id = p_outbox_id and status = 'DEAD') then 'DEAD'
+    when exists (select 1 from public.notification_deliveries where outbox_id = p_outbox_id and status in ('PENDING', 'PROCESSING', 'RETRY')) then 'OPEN'
+    when exists (select 1 from public.notification_deliveries where outbox_id = p_outbox_id and status = 'DEAD') then 'DEAD'
     else 'COMPLETE'
   end into next_status;
-  update notification_outbox
-  set status = next_status, completed_at = case when next_status = 'OPEN' then null else now() end
+  update public.notification_outbox
+  set status = next_status, completed_at = case when next_status = 'OPEN' then null else pg_catalog.now() end
   where id = p_outbox_id;
   return next_status;
 end;
@@ -330,7 +265,7 @@ create or replace function public.apply_resend_delivery_event(
 ) returns text
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare affected_outbox uuid;
         affected_status text;
@@ -346,12 +281,12 @@ begin
   -- apply it later instead of permanently losing final delivery evidence.
   select outbox_id, status, recipient_type, id
     into affected_outbox, affected_status, affected_recipient_type, affected_delivery_id
-  from notification_deliveries
+  from public.notification_deliveries
   where provider_message_id = p_provider_message_id and channel = 'EMAIL'
   for update;
   if affected_outbox is null then return 'NOT_FOUND'; end if;
 
-  insert into notification_provider_webhook_events (provider, event_id, event_type)
+  insert into public.notification_provider_webhook_events (provider, event_id, event_type)
   values ('RESEND', p_webhook_event_id, p_status)
   on conflict do nothing;
   if not found then return 'DUPLICATE'; end if;
@@ -359,9 +294,9 @@ begin
   -- be resurrected by an older delivered callback arriving out of order.
   if affected_status = 'DEAD' and p_status = 'DELIVERED' then return 'IGNORED'; end if;
 
-  update notification_deliveries
+  update public.notification_deliveries
   set status = p_status,
-      delivered_at = case when p_status = 'DELIVERED' then now() else delivered_at end,
+      delivered_at = case when p_status = 'DELIVERED' then pg_catalog.now() else delivered_at end,
       last_error_code = p_error_code,
       next_attempt_at = null
   where provider_message_id = p_provider_message_id
@@ -370,8 +305,8 @@ begin
   ;
 
   if p_status = 'DEAD' and p_recipient_hash is not null then
-    insert into email_recipient_health (recipient_hash, healthy, reason_code, last_event_at)
-    values (p_recipient_hash, false, p_error_code, now())
+    insert into public.email_recipient_health (recipient_hash, healthy, reason_code, last_event_at)
+    values (p_recipient_hash, false, p_error_code, pg_catalog.now())
     on conflict (recipient_hash) do update
     set healthy = false, reason_code = excluded.reason_code, last_event_at = excluded.last_event_at;
   end if;
@@ -379,17 +314,17 @@ begin
     perform public.refresh_notification_outbox_status(affected_outbox);
   end if;
   if p_status = 'DEAD' and affected_recipient_type <> 'PLATFORM_OWNER' then
-    insert into notification_outbox (
+    insert into public.notification_outbox (
       tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key, payload
     ) values (
       null, 'PLATFORM_NOTIFICATION_ALERT', 'NOTIFICATION_DELIVERY', affected_delivery_id::text,
       'delivery-dead:' || affected_delivery_id::text,
-      jsonb_build_object('alertCode', 'CRITICAL_DELIVERY_DEAD')
+      pg_catalog.jsonb_build_object('alertCode', 'CRITICAL_DELIVERY_DEAD')
     )
     on conflict (event_name, aggregate_type, aggregate_id, idempotency_key)
     do update set idempotency_key = excluded.idempotency_key
     returning id into alert_outbox;
-    insert into notification_deliveries (
+    insert into public.notification_deliveries (
       outbox_id, tenant_id, recipient_type, recipient_ref, channel, destination_ref
     ) values
       (alert_outbox, null, 'PLATFORM_OWNER', 'platform-owner', 'EMAIL', 'PLATFORM_OWNER_EMAIL'),
@@ -409,39 +344,45 @@ create or replace function public.consume_telegram_bind_code(
 ) returns boolean
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
-declare bind_row telegram_bind_codes%rowtype;
+declare bind_row public.telegram_bind_codes%rowtype;
 begin
-  insert into telegram_webhook_updates (bot_id, update_id)
+  insert into public.telegram_webhook_updates (bot_id, update_id)
   values (p_bot_id, p_update_id)
   on conflict do nothing;
   if not found then return false; end if;
 
-  select * into bind_row from telegram_bind_codes
-  where code_hash = p_code_hash and consumed_at is null and expires_at > now()
+  select * into bind_row from public.telegram_bind_codes
+  where code_hash = p_code_hash and consumed_at is null and expires_at > pg_catalog.now()
   for update;
   if not found then return false; end if;
 
-  insert into telegram_bindings (tenant_id, subject_type, subject_ref, chat_id, active, invalid_reason, invalidated_at)
+  insert into public.telegram_bindings (tenant_id, subject_type, subject_ref, chat_id, active, invalid_reason, invalidated_at)
   values (bind_row.tenant_id, bind_row.subject_type, bind_row.subject_ref, p_chat_id, true, null, null)
-  on conflict (subject_type, subject_ref) do update
+  on conflict (tenant_id, subject_type, subject_ref) do update
   set chat_id = excluded.chat_id, active = true, invalid_reason = null, invalidated_at = null;
-  update telegram_bind_codes set consumed_at = now() where id = bind_row.id;
+  update public.telegram_bind_codes set consumed_at = pg_catalog.now() where id = bind_row.id;
   return true;
 end;
 $$;
 
 revoke execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) from public, anon, authenticated;
 revoke execute on function public.enqueue_booking_notification_event() from public, anon, authenticated;
+-- Supabase projects may grant newly-created public functions to service_role
+-- through existing default privileges. These two are trigger-internal entry
+-- points, not server RPCs, so revoke that inherited grant explicitly too.
+revoke execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) from service_role;
+revoke execute on function public.enqueue_booking_notification_event() from service_role;
 revoke execute on function public.claim_notification_deliveries(integer) from public, anon, authenticated;
 revoke execute on function public.refresh_notification_outbox_status(uuid) from public, anon, authenticated;
 revoke execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) from public, anon, authenticated;
 revoke execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) from public, anon, authenticated;
-revoke execute on function public.enqueue_auth_verification_delivery(text, text) from public, anon, authenticated;
-grant execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) to service_role;
+
+-- These RPCs are called only by server-side routes/workers through the
+-- Supabase service key. Revoking PUBLIC closes the browser path, so restore
+-- the minimal execute grants explicitly for service_role.
 grant execute on function public.claim_notification_deliveries(integer) to service_role;
 grant execute on function public.refresh_notification_outbox_status(uuid) to service_role;
 grant execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) to service_role;
 grant execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) to service_role;
-grant execute on function public.enqueue_auth_verification_delivery(text, text) to service_role;

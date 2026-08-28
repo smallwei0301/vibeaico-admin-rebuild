@@ -12,6 +12,15 @@ export function hashRecipientEmail(email: string, key: string): string {
   return `\\x${createHmac('sha256', key).update(email.trim().toLowerCase()).digest('hex')}`;
 }
 
+/** A known bounce/complaint must not silently skip recipient-health recording. */
+export function recipientHealthKeyRequired(
+  evidence: ResendDeliveryEvidence,
+  recipient: string | undefined,
+  key: string | undefined,
+): boolean {
+  return evidence.unhealthy && Boolean(recipient) && !key;
+}
+
 /** Map only events that prove a final delivery outcome. Opens/clicks are not delivery evidence. */
 export function mapResendDeliveryEvent(type: string): ResendDeliveryEvidence | null {
   if (type === 'email.delivered') return { status: 'DELIVERED', errorCode: null, unhealthy: false };

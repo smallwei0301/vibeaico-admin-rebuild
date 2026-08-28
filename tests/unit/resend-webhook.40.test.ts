@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { hashRecipientEmail, mapResendDeliveryEvent, verifyResendWebhook } from '@/server/notifications/resend-webhook';
+import { hashRecipientEmail, mapResendDeliveryEvent, recipientHealthKeyRequired, verifyResendWebhook } from '@/server/notifications/resend-webhook';
 
 const SECRET = `whsec_${Buffer.from('test-webhook-secret').toString('base64')}`;
 const BODY = JSON.stringify({ type: 'email.delivered', data: { email_id: 're_123' } });
@@ -42,5 +42,12 @@ describe('Resend delivery webhook (#40, 17 §3)', () => {
     expect(hashRecipientEmail('owner@example.com', SECRET)).toMatch(/^\\x[0-9a-f]{64}$/);
     expect(hashRecipientEmail('owner@example.com', SECRET)).not.toContain('owner');
     expect(hashRecipientEmail('owner@example.com', SECRET)).not.toBe(hashRecipientEmail('owner@example.com', `${SECRET}-other`));
+  });
+
+  it('fails closed when a known unhealthy recipient has no dedicated health key', () => {
+    const bounce = mapResendDeliveryEvent('email.bounced')!;
+    expect(recipientHealthKeyRequired(bounce, 'owner@example.com', undefined)).toBe(true);
+    expect(recipientHealthKeyRequired(bounce, undefined, undefined)).toBe(false);
+    expect(recipientHealthKeyRequired(bounce, 'owner@example.com', 'dedicated-recipient-health-key')).toBe(false);
   });
 });

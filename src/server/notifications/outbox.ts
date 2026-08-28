@@ -181,18 +181,19 @@ async function resolveTelegramDestination(admin: Admin, delivery: ClaimedDeliver
   if (delivery.destination_ref === 'PLATFORM_OWNER_TELEGRAM') return process.env.PLATFORM_TELEGRAM_CHAT_ID?.trim() || null;
   const subjectType = delivery.recipient_type === 'STAFF' ? 'STAFF' : 'TENANT_USER';
   const { data, error } = await admin.from('telegram_bindings').select('chat_id')
-    .eq('subject_type', subjectType).eq('subject_ref', delivery.recipient_ref).eq('active', true).maybeSingle();
+    .eq('tenant_id', delivery.tenant_id).eq('subject_type', subjectType)
+    .eq('subject_ref', delivery.recipient_ref).eq('active', true).maybeSingle();
   if (error) throw error;
   return data?.chat_id === undefined || data?.chat_id === null ? null : String(data.chat_id);
 }
 
-async function emailRecipientHealthy(admin: Admin, email: string): Promise<boolean> {
-  const healthKey = process.env.RESEND_WEBHOOK_SECRET;
-  if (!healthKey) return true;
+async function emailRecipientGate(admin: Admin, email: string): Promise<TransportOutcome | null> {
+  const healthKey = process.env.RESEND_RECIPIENT_HEALTH_KEY;
+  if (!healthKey) return { kind: 'retryable', code: 'RECIPIENT_HEALTH_KEY_MISSING' };
   const { data, error } = await admin.from('email_recipient_health').select('healthy')
     .eq('recipient_hash', hashRecipientEmail(email, healthKey)).maybeSingle();
   if (error) throw error;
-  return data?.healthy !== false;
+  return data?.healthy === false ? { kind: 'skipped', code: 'EMAIL_UNHEALTHY' } : null;
 }
 
 function bookingMessage(outbox: OutboxRow, booking: BookingRow): { subject: string; html: string; telegram: string } {
@@ -279,7 +280,8 @@ async function sendClaimedDelivery(admin: Admin, delivery: ClaimedDelivery): Pro
     if (delivery.channel === 'EMAIL') {
       const destination = await resolveEmailDestination(admin, delivery);
       if (!destination) return { kind: 'skipped', code: 'NOT_CONFIGURED' };
-      if (!(await emailRecipientHealthy(admin, destination))) return { kind: 'skipped', code: 'EMAIL_UNHEALTHY' };
+      const recipientGate = await emailRecipientGate(admin, destination);
+      if (recipientGate) return recipientGate;
       return sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html });
     }
     if (delivery.channel === 'TELEGRAM') {
@@ -297,7 +299,8 @@ async function sendClaimedDelivery(admin: Admin, delivery: ClaimedDelivery): Pro
     if (delivery.channel === 'EMAIL') {
       const destination = await resolveEmailDestination(admin, delivery);
       if (!destination) return { kind: 'skipped', code: 'NO_RECIPIENT' };
-      if (!(await emailRecipientHealthy(admin, destination))) return { kind: 'skipped', code: 'EMAIL_UNHEALTHY' };
+      const recipientGate = await emailRecipientGate(admin, destination);
+      if (recipientGate) return recipientGate;
       return sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html });
     }
     if (delivery.channel === 'TELEGRAM') {
@@ -396,6 +399,7 @@ async function persistOutcome(admin: Admin, delivery: ClaimedDelivery, outcome: 
   if (!persisted) return;
   if (transition.bindingInvalid) {
     await admin.from('telegram_bindings').update({ active: false, invalid_reason: transition.lastErrorCode, invalidated_at: new Date().toISOString() })
+      .eq('tenant_id', delivery.tenant_id)
       .eq('subject_type', delivery.recipient_type === 'STAFF' ? 'STAFF' : 'TENANT_USER')
       .eq('subject_ref', delivery.recipient_ref);
   }

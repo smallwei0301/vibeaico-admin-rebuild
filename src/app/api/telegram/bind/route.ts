@@ -1,7 +1,7 @@
-import { z } from 'zod';
+import { randomBytes } from 'node:crypto';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { issueTelegramBindCode } from '@/server/notifications/telegram-binding';
+import { hashBindCodeBytea } from '@/server/notifications/telegram-binding';
 
 /**
  * Issues a one-time deep link for the currently signed-in tenant manager.
@@ -15,10 +15,11 @@ export const POST = handle(async () => {
   const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
   if (!username || !botToken || !webhookSecret)
     throw new ApiHttpError(409, 'Telegram 綁定尚未由平台啟用', ERR.CONFLICT);
-  const code = await issueTelegramBindCode({
-    tenantId: t.tenantId,
-    subjectType: 'TENANT_USER',
-    subjectRef: t.user.id,
+  const code = randomBytes(24).toString('base64url');
+  const { error } = await t.supabase.rpc('issue_tenant_telegram_bind_code', {
+    p_tenant_id: t.tenantId,
+    p_code_hash: hashBindCodeBytea(code),
   });
+  if (error) throw error;
   return ok({ deepLink: `https://t.me/${username}?start=${code}`, expiresInMinutes: 15 });
 });
