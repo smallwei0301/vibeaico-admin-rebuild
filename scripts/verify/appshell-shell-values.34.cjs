@@ -17,7 +17,7 @@
  * ── 憑證（絕不寫進本檔，15 分冊 §3 禁令 5）────────────────────────────────
  *   BASE_URL                    受測站台
  *   TEST_EMAIL / TEST_PASSWORD  測試帳號（15 分冊 §4）
- *   SUPABASE_URL                受測站台**同一個**專案的 URL
+ *   SUPABASE_URL                僅限 TEST `nmwhwngojosmagjuvxol.supabase.co`
  *   SUPABASE_SERVICE_ROLE_KEY   直查用（開了 VERIFY_SEED_PENDING_ORDER 才會寫）
  *
  * ── 選項 ──────────────────────────────────────────────────────────────────
@@ -47,14 +47,14 @@
 const path = require('node:path');
 const fs = require('node:fs');
 
-// CLAUDE.md：Playwright 裝在全域，不在本專案 node_modules，必須 require 絕對路徑
-const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-
 const BASE = process.env.BASE_URL || 'http://localhost:3117';
 const EMAIL = required('TEST_EMAIL');
 const PASSWORD = required('TEST_PASSWORD');
 const SB_URL = required('SUPABASE_URL').replace(/\/$/, '');
 const SB_KEY = required('SUPABASE_SERVICE_ROLE_KEY');
+const TEST_SUPABASE_HOST = 'nmwhwngojosmagjuvxol.supabase.co';
+/** Preview 的 branch deployment；不接受沒有 `git-` 的 Production deployment。 */
+const VERCEL_PREVIEW_HOST = /^vibeaico-admin-rebuild-git-[a-z0-9-]+\.vercel\.app$/;
 /** 延後 /api/bookings 幾毫秒，把「還在查」的那一段拉長到看得見 */
 const BADGE_DELAY_MS = Number(process.env.BADGE_DELAY_MS || 4000);
 /*
@@ -82,6 +82,49 @@ function required(name) {
   }
   return v;
 }
+
+/**
+ * P0：這支驗收可建立／刪除受控資料，URL 必須 fail closed。守門在 require Playwright、
+ * login、service-role query 與任何 seed 前執行，避免把「Preview」誤指到正式資料。
+ */
+function assertSafeTarget() {
+  let base;
+  let supabase;
+  try {
+    base = new URL(BASE);
+    supabase = new URL(SB_URL);
+  } catch {
+    console.error('[安全鎖] 拒絕執行：BASE_URL 與 SUPABASE_URL 必須是完整 URL。');
+    process.exit(2);
+  }
+
+  if (supabase.protocol !== 'https:'
+    || supabase.hostname !== TEST_SUPABASE_HOST
+    || supabase.port !== ''
+    || supabase.username
+    || supabase.password) {
+    console.error(`[安全鎖] 拒絕執行：SUPABASE_URL 必須精確為 https://${TEST_SUPABASE_HOST}`);
+    process.exit(2);
+  }
+
+  const localBase = base.protocol === 'http:'
+    && (base.hostname === 'localhost' || base.hostname === '127.0.0.1');
+  const previewBase = base.protocol === 'https:'
+    && base.port === ''
+    && !base.username
+    && !base.password
+    && VERCEL_PREVIEW_HOST.test(base.hostname);
+  if (base.hostname.includes('midao.com.tw') || (!localBase && !previewBase)) {
+    console.error('[安全鎖] 拒絕執行：BASE_URL 只允許 localhost 或 Vercel branch Preview，禁止 Production deployment。');
+    process.exit(2);
+  }
+}
+
+assertSafeTarget();
+
+// CLAUDE.md：Playwright 裝在全域，不在本專案 node_modules，必須 require 絕對路徑。
+// 安全鎖必須在它之前：guard regression test 不得依賴瀏覽器是否安裝。
+const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 
 const results = [];
 function check(label, passed, detail) {

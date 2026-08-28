@@ -6,6 +6,7 @@
  * scripts/verify/appshell-shell-values.34.cjs：建立 → API/DB/UI 三方比對 → 清理。
  */
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 
 const script = readFileSync('scripts/verify/appshell-shell-values.34.cjs', 'utf8');
@@ -34,5 +35,44 @@ describe('GUIDE pending booking badge 的 Preview 驗收（issue #34）', () => 
     expect(script).toMatch(/cleanupSeed\(\)\.catch/);
     expect(script).toContain("const left = await sbCount(table, `id=eq.${id}`)");
     expect(script).toContain('!res.ok || left !== 0');
+  });
+});
+
+describe('Preview 驗收的目標環境安全鎖（issue #34 P0）', () => {
+  it('只接受精確 TEST Supabase host，並限制 BASE_URL 為 localhost 或 branch Preview', () => {
+    expect(script).toContain("const TEST_SUPABASE_HOST = 'nmwhwngojosmagjuvxol.supabase.co'");
+    expect(script).toContain("supabase.protocol !== 'https:'");
+    expect(script).toContain('supabase.hostname !== TEST_SUPABASE_HOST');
+    expect(script).toContain("base.hostname === 'localhost'");
+    expect(script).toContain("base.hostname === '127.0.0.1'");
+    expect(script).toContain('VERCEL_PREVIEW_HOST.test(base.hostname)');
+    expect(script).toContain("base.hostname.includes('midao.com.tw')");
+  });
+
+  it('在任何 login、service-role API 或 seed 前執行安全鎖', () => {
+    const guardAt = script.indexOf('assertSafeTarget();');
+    expect(guardAt).toBeGreaterThan(-1);
+    expect(guardAt).toBeLessThan(script.indexOf('async function sbSelect'));
+    expect(guardAt).toBeLessThan(script.indexOf('async function main'));
+  });
+
+  it.each([
+    ['Production Supabase', 'http://localhost:3117', 'https://egehnijjpgijmccagxac.supabase.co'],
+    ['midao Production deployment', 'https://midao.com.tw', 'https://nmwhwngojosmagjuvxol.supabase.co'],
+  ])('在 %s 時 fail closed，未觸發登入或 API', (_caseName, baseUrl, supabaseUrl) => {
+    const run = spawnSync(process.execPath, ['scripts/verify/appshell-shell-values.34.cjs'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        BASE_URL: baseUrl,
+        SUPABASE_URL: supabaseUrl,
+        TEST_EMAIL: 'safety@test.local',
+        TEST_PASSWORD: 'not-used',
+        SUPABASE_SERVICE_ROLE_KEY: 'not-used',
+      },
+    });
+    expect(run.status).toBe(2);
+    expect(`${run.stdout}\n${run.stderr}`).toMatch(/安全鎖|拒絕/);
   });
 });
