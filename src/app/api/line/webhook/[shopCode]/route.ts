@@ -7,8 +7,10 @@
  */
 import { createHmac, timingSafeEqual } from 'crypto';
 import { after } from 'next/server';
-import { createAdminSupabase } from '@/server/supabase';
-import { decryptLineCredentials, type LineSettingsRow } from '@/server/line';
+import { decryptLineCredentials, type LineSettingsRow } from '@/server/line-credentials';
+import { decryptSecret } from '@/server/crypto';
+import { openLineWebhookCapsule } from '@/server/line-webhook-capsule';
+import type { createAdminSupabase } from '@/server/supabase';
 
 export const runtime = 'nodejs';
 
@@ -41,6 +43,53 @@ export async function GET() {
 
 export async function POST(req: Request, { params }: { params: Promise<{ shopCode: string }> }) {
   const { shopCode } = await params;
+  const raw = await req.text();
+  const capsuleValue = new URL(req.url).searchParams.get('credential');
+
+  // The capsule keeps the cold response path local: platform HMAC, secret
+  // decrypt and LINE signature verification. Database access starts only in
+  // after(). Legacy URLs remain functional while an owner replaces the URL in
+  // LINE Console, but retain their old cold-start limitation.
+  if (capsuleValue) {
+    let capsule: ReturnType<typeof openLineWebhookCapsule>;
+    let secret: string;
+    try {
+      capsule = openLineWebhookCapsule(capsuleValue, shopCode);
+      secret = decryptSecret(capsule.channelSecretEncrypted);
+    } catch {
+      return new Response('bad credential', { status: 401 });
+    }
+    if (!validLineSignature(raw, req.headers.get('x-line-signature'), secret)) {
+      return new Response('bad signature', { status: 401 });
+    }
+
+    scheduleEventWork(shopCode, async () => {
+      const { createAdminSupabase } = await import('@/server/supabase');
+      const admin = createAdminSupabase();
+      const { data: row } = await admin
+        .from('tenants')
+        .select('id, shop_code, name, tenant_settings(line, line_channel_secret_enc, line_channel_access_token_enc)')
+        .eq('id', capsule.tenantId)
+        .eq('shop_code', shopCode)
+        .maybeSingle();
+      if (!row) throw new Error('LINE webhook tenant no longer exists');
+
+      const embedded = (row as Record<string, unknown>).tenant_settings;
+      const settings = (Array.isArray(embedded) ? embedded[0] : embedded) as LineSettingsRow;
+      if (settings?.line_channel_secret_enc !== capsule.channelSecretEncrypted) {
+        throw new Error('LINE webhook credential has been rotated');
+      }
+      const { token, lineConfig } = decryptLineCredentials(settings);
+      await dispatchEvents(admin, {
+        id: row.id as string,
+        shop_code: row.shop_code as string,
+        name: row.name as string,
+      }, token, lineConfig, raw, shopCode);
+    });
+    return new Response('ok');
+  }
+
+  const { createAdminSupabase } = await import('@/server/supabase');
   const admin = createAdminSupabase();
 
   // One DB round trip before the response: the tenant and its LINE settings.
@@ -51,7 +100,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
     .maybeSingle();
   if (!row) return new Response('unknown shop', { status: 404 });
 
-  const raw = await req.text();
   const embedded = (row as Record<string, unknown>).tenant_settings;
   const settings = (Array.isArray(embedded) ? embedded[0] : embedded) as LineSettingsRow;
 
@@ -63,11 +111,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
   }
   const { token, secret, lineConfig } = credentials;
 
-  const expected = createHmac('sha256', secret).update(raw).digest('base64');
-  const received = req.headers.get('x-line-signature') ?? '';
-  const expectedBuffer = Buffer.from(expected);
-  const receivedBuffer = Buffer.from(received);
-  if (!received || expectedBuffer.length !== receivedBuffer.length || !timingSafeEqual(expectedBuffer, receivedBuffer)) {
+  if (!validLineSignature(raw, req.headers.get('x-line-signature'), secret)) {
     return new Response('bad signature', { status: 401 });
   }
 
@@ -77,6 +121,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
     name: row.name as string,
   };
 
+  scheduleEventWork(shopCode, () => dispatchEvents(admin, tenant, token, lineConfig, raw, shopCode));
+  return new Response('ok');
+}
+
+function validLineSignature(raw: string, received: string | null, secret: string): boolean {
+  if (!received) return false;
+  const expectedBuffer = Buffer.from(createHmac('sha256', secret).update(raw).digest('base64'));
+  const receivedBuffer = Buffer.from(received);
+  return expectedBuffer.length === receivedBuffer.length && timingSafeEqual(expectedBuffer, receivedBuffer);
+}
+
+function scheduleEventWork(shopCode: string, callback: () => Promise<void>): void {
   let markDone!: () => void;
   const work = new Promise<void>((resolve) => { markDone = resolve; });
   pendingEventWork.add(work);
@@ -84,17 +140,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 
   after(async () => {
     try {
-      // Event handling imports a much larger module graph; keep it out of the
-      // signature/response path and never access req after this point.
-      const { events } = JSON.parse(raw);
-      const { handleEvent } = await import('@/server/line-events');
-      for (const event of events ?? []) {
-        try {
-          await handleEvent(admin, tenant, token, lineConfig, event);
-        } catch (error) {
-          noteEventError(shopCode, event?.type, error);
-        }
-      }
+      await callback();
     } catch (error) {
       noteEventError(shopCode, 'after()', error);
     } finally {
@@ -102,6 +148,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
       markDone();
     }
   });
+}
 
-  return new Response('ok');
+async function dispatchEvents(
+  admin: ReturnType<typeof createAdminSupabase>,
+  tenant: { id: string; shop_code: string; name: string },
+  token: string,
+  lineConfig: Record<string, any>,
+  raw: string,
+  shopCode: string,
+): Promise<void> {
+  // Event handling imports a much larger module graph; keep it out of the
+  // signature/response path and never access req after this point.
+  const { events } = JSON.parse(raw);
+  const { handleEvent } = await import('@/server/line-events');
+  for (const event of events ?? []) {
+    try {
+      await handleEvent(admin, tenant, token, lineConfig, event);
+    } catch (error) {
+      noteEventError(shopCode, event?.type, error);
+    }
+  }
 }
