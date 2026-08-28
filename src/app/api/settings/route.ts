@@ -10,6 +10,7 @@ import {
   type TenantSettings,
 } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import { createLineWebhookCapsule } from '@/server/line-webhook-capsule';
 
 /**
  * GET /api/settings — 回 TenantSettings。
@@ -44,7 +45,15 @@ export const GET = handle(async () => {
   // 🔐 secret 欄位絕不以明文回傳；*_enc 欄位也絕不出現在回應。
   settings.line.channelSecret = maskSecret(decryptSecret(row?.line_channel_secret_enc ?? ''));
   settings.line.channelAccessToken = maskSecret(decryptSecret(row?.line_channel_access_token_enc ?? ''));
-  settings.line.webhookUrl = buildWebhookUrl(APP_URL, t.shopCode);
+  const secretEncrypted = row?.line_channel_secret_enc ?? '';
+  const credential = secretEncrypted
+    ? createLineWebhookCapsule({
+        tenantId: t.tenantId,
+        shopCode: t.shopCode,
+        channelSecretEncrypted: secretEncrypted,
+      })
+    : undefined;
+  settings.line.webhookUrl = buildWebhookUrl(APP_URL, t.shopCode, credential);
 
   return ok(settings);
 });
