@@ -36,6 +36,10 @@ create table notification_deliveries (
                       check (status in ('PENDING', 'PROCESSING', 'ACCEPTED', 'DELIVERED', 'RETRY', 'DEAD', 'SKIPPED')),
   attempt_count       integer not null default 0 check (attempt_count >= 0 and attempt_count <= 5),
   next_attempt_at     timestamptz default now(),
+  -- Interactive auth Email stores no replayable destination/code in the
+  -- ledger. It is sent synchronously and must never be lease-reclaimed by the
+  -- generic worker after a process crash.
+  reclaimable         boolean not null default true,
   claim_token         uuid,
   processing_started_at timestamptz,
   provider_message_id text,
@@ -196,8 +200,68 @@ begin
       new.tenant_id, 'BOOKING_CANCELLED', 'BOOKING', new.id::text,
       'booking-cancelled:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
     );
+    perform public.enqueue_notification_event(
+      new.tenant_id, 'BOOKING_LINE_CANCELLED', 'BOOKING', new.id::text,
+      'booking-line-cancelled:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+    );
+  elsif new.status is distinct from old.status and new.status = 'CONFIRMED' then
+    perform public.enqueue_notification_event(
+      new.tenant_id, 'BOOKING_LINE_CONFIRMED', 'BOOKING', new.id::text,
+      'booking-line-confirmed:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+    );
+  elsif new.status is distinct from old.status and new.status = 'COMPLETED' then
+    perform public.enqueue_notification_event(
+      new.tenant_id, 'BOOKING_LINE_COMPLETED', 'BOOKING', new.id::text,
+      'booking-line-completed:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+    );
+  elsif new.status is distinct from old.status and new.status = 'NO_SHOW' then
+    perform public.enqueue_notification_event(
+      new.tenant_id, 'BOOKING_LINE_NO_SHOW', 'BOOKING', new.id::text,
+      'booking-line-no-show:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+    );
+  elsif new.status is not distinct from old.status and (
+    new.start_at is distinct from old.start_at or new.staff_id is distinct from old.staff_id
+  ) then
+    perform public.enqueue_notification_event(
+      new.tenant_id, 'BOOKING_LINE_MODIFIED', 'BOOKING', new.id::text,
+      'booking-line-modified:' || new.id::text, jsonb_build_object('bookingId', new.id::text)
+    );
   end if;
   return new;
+end;
+$$;
+
+-- Auth Email remains synchronous for interactive latency, but its attempt is
+-- still durable and auditable before Resend is called. The recipient is an
+-- application-side hash, never an address or verification code.
+create or replace function public.enqueue_auth_verification_delivery(
+  p_recipient_ref text,
+  p_idempotency_key text
+) returns notification_deliveries
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare event_id uuid;
+        delivery notification_deliveries%rowtype;
+begin
+  insert into notification_outbox (
+    tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key, payload
+  ) values (
+    null, 'AUTH_VERIFICATION_EMAIL', 'AUTH_VERIFICATION', p_recipient_ref,
+    p_idempotency_key, '{}'::jsonb
+  ) on conflict (event_name, aggregate_type, aggregate_id, idempotency_key)
+  do update set idempotency_key = excluded.idempotency_key
+  returning id into event_id;
+
+  insert into notification_deliveries (
+    outbox_id, tenant_id, recipient_type, recipient_ref, channel, destination_ref, status, reclaimable, processing_started_at
+  ) values (
+    event_id, null, 'TRAVELER', p_recipient_ref, 'EMAIL', 'AUTH_VERIFICATION_EMAIL', 'PROCESSING', false, now()
+  ) on conflict (outbox_id, recipient_type, recipient_ref, channel)
+  do update set status = notification_deliveries.status
+  returning * into delivery;
+  return delivery;
 end;
 $$;
 drop trigger if exists t_bookings_notification_outbox on bookings;
@@ -222,7 +286,7 @@ begin
     select d.id
     from notification_deliveries d
     where (d.status in ('PENDING', 'RETRY') and d.next_attempt_at <= now())
-       or (d.status = 'PROCESSING' and d.processing_started_at < now() - interval '10 minutes')
+       or (d.status = 'PROCESSING' and d.reclaimable and d.processing_started_at < now() - interval '10 minutes')
     order by d.next_attempt_at, d.created_at
     for update skip locked
     limit p_limit
@@ -374,8 +438,10 @@ revoke execute on function public.claim_notification_deliveries(integer) from pu
 revoke execute on function public.refresh_notification_outbox_status(uuid) from public, anon, authenticated;
 revoke execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) from public, anon, authenticated;
 revoke execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) from public, anon, authenticated;
+revoke execute on function public.enqueue_auth_verification_delivery(text, text) from public, anon, authenticated;
 grant execute on function public.enqueue_notification_event(uuid, text, text, text, text, jsonb) to service_role;
 grant execute on function public.claim_notification_deliveries(integer) to service_role;
 grant execute on function public.refresh_notification_outbox_status(uuid) to service_role;
 grant execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) to service_role;
 grant execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) to service_role;
+grant execute on function public.enqueue_auth_verification_delivery(text, text) to service_role;

@@ -103,7 +103,7 @@ export function classifyTransportFailure(
   message = '',
 ): Extract<TransportOutcome, { kind: 'retryable' | 'permanent' }> {
   const normalized = message.toLowerCase();
-  if (channel === 'TELEGRAM' && status === 403 &&
+  if (channel === 'TELEGRAM' && (status === 403 || status === 400) &&
     (normalized.includes('blocked') || normalized.includes('chat not found') || normalized.includes('user is deactivated')))
     return { kind: 'permanent', code: 'TELEGRAM_BLOCKED', invalidateBinding: true };
   if (status === 400 || status === 401 || status === 403 || status === 404 || status === 422)

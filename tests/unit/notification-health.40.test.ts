@@ -83,6 +83,7 @@ describe('notification health digest (#40, 17 §6)', () => {
       { tenantId: 'tenant-c', channel: 'LINE', status: 'SKIPPED', createdAt: '2030-06-04T23:00:00.000Z' },
     ], new Date('2030-06-05T00:00:00.000Z'), 7);
 
+    expect(formatHealthDigest(digest)).toContain('Period: 2030-06-04T00:00:00.000Z → 2030-06-05T00:00:00.000Z');
     expect(formatHealthDigest(digest)).toContain('Email accepted 1; delivered 1; retry 0; dead 0; skipped 1; invalid binding 0');
     expect(formatHealthDigest(digest)).toContain('Telegram accepted 0; delivered 0; retry 1; dead 1; skipped 0; invalid binding 1');
     expect(formatHealthDigest(digest)).toContain('LINE accepted 1; delivered 0; retry 0; dead 0; skipped 1; invalid binding 0');

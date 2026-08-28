@@ -6,6 +6,8 @@ const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
 const settingsPage = readFileSync('src/app/tenant/settings/page.tsx', 'utf8');
 const emailNotify = readFileSync('src/server/email/notify.ts', 'utf8');
+const authSendCode = readFileSync('src/server/send-code.ts', 'utf8');
+const lineNotify = readFileSync('src/server/line-notify.ts', 'utf8');
 const resetDb = readFileSync('scripts/test/reset-db.mjs', 'utf8');
 
 describe('notification outbox schema contract (#40, 17 §1–4)', () => {
@@ -95,6 +97,47 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
       expect(route).not.toMatch(/notifyBookingEvent\(/);
       expect(route).not.toMatch(/sendBookingNotifyEmail\(/);
     }
+  });
+
+  it('routes booking-status LINE messages through the delivery ledger instead of direct provider sends', () => {
+    expect(migration).toContain("'BOOKING_LINE_CONFIRMED'");
+    expect(lineNotify).toContain("event_name: `BOOKING_LINE_${kind}`");
+    for (const route of [
+      readFileSync('src/app/api/bookings/[id]/confirm/route.ts', 'utf8'),
+      readFileSync('src/app/api/bookings/[id]/complete/route.ts', 'utf8'),
+      readFileSync('src/app/api/bookings/[id]/no-show/route.ts', 'utf8'),
+    ]) expect(route).not.toContain('notifyBookingStatus');
+  });
+
+  it('writes BOOKING_LINE_MODIFIED in the booking update transaction and wakes dispatch only after commit', () => {
+    const bookingUpdateRoute = readFileSync('src/app/api/bookings/[id]/route.ts', 'utf8');
+    expect(migration).toContain("'BOOKING_LINE_MODIFIED'");
+    expect(migration).toMatch(/new\.start_at is distinct from old\.start_at[\s\S]*?BOOKING_LINE_MODIFIED/i);
+    expect(bookingUpdateRoute).toContain('dispatchAfterCommit()');
+  });
+
+  it('records interactive auth Email attempts in the delivery ledger before using Resend', () => {
+    expect(authSendCode).toContain('dispatchAuthVerificationEmail');
+    expect(authSendCode).not.toContain('sendVerificationCodeEmail');
+    expect(migration).toContain('enqueue_auth_verification_delivery');
+  });
+
+  it('does not reclaim an address-less auth delivery after an inline sender crash', () => {
+    expect(migration).toMatch(/reclaimable\s+boolean\s+not null default true/i);
+    expect(migration).toMatch(/'AUTH_VERIFICATION_EMAIL'[\s\S]*?'PROCESSING', false/i);
+    expect(migration).toContain("d.status = 'PROCESSING' and d.reclaimable and");
+  });
+
+  it('keeps the normal booking route on its tenant-scoped client', () => {
+    expect(bookingRoute).not.toContain('createAdminSupabase');
+  });
+
+  it('parses notify settings and dispatches provider, stale-pending, and DEAD alerts without waiting for daily cron', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).toContain('notifySettingsSchema.parse(settingsRaw?.notify ?? {})');
+    expect(outbox).toContain('enqueueLiveProviderAlert');
+    expect(outbox).toContain('enqueueStalePendingAlert');
+    expect(outbox).toContain('dispatchPendingNotifications(admin, limit, false, sender)');
   });
 
   it('does not leave the basic booking Email path behind the paid feature gate', () => {

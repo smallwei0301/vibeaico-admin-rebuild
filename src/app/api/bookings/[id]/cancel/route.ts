@@ -2,7 +2,6 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { notifyBookingStatus } from '@/server/line-notify';
 import { dispatchAfterCommit } from '@/server/notifications/outbox';
 
 const bodySchema = z.object({ reason: z.string().optional() });
@@ -21,8 +20,5 @@ export const POST = handle(async (req, { params }) => {
   // 0037 booking trigger transactionally records BOOKING_CANCELLED. The
   // worker is best-effort only; retry durability lives in the delivery ledger.
   dispatchAfterCommit();
-  // LINE 顧客端推播（06 分冊 §5：notifyBookingCancelled 開關）——與上面的 email
-  // 通知並存不互斥（email 寄店家、LINE 推顧客），同為 fire-and-forget。
-  void notifyBookingStatus(t.tenantId, id, 'CANCELLED');
   return ok();
 });

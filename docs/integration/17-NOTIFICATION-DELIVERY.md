@@ -106,6 +106,7 @@ id
 
 - Transport 沿用 05 分冊 Resend。
 - 驗證碼 / 密碼重設屬互動式 auth email，可以保留同步送 provider 的低延遲路徑，但仍需留下 delivery audit；不可因排隊器故障讓登入流程等一天。
+- auth audit 只保存 recipient hash，不能保存可重播的地址、驗證碼或 reset link；因此 inline sender 在 provider 結果寫回前 crash 時，該 `PROCESSING` row **不得**被通用 worker lease-reclaim 成 `SKIPPED` 或重寄。它保留為非重試 audit，由 stale-pending health alert 顯示，使用者可安全地重新索取驗證碼。
 - 訂單、成團、取消、付款、退款、營運告警等事件 email 走 outbox。
 - Resend API 成功只記 `ACCEPTED`。
 - 若接 Resend webhook，`delivered / bounced / complained` 需回寫 delivery；只有收到 delivery evidence 才標 `DELIVERED`。

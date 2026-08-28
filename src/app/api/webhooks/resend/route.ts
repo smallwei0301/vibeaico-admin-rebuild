@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/server/supabase';
+import { fail, ok } from '@/server/http';
 import { hashRecipientEmail, mapResendDeliveryEvent, verifyResendWebhook } from '@/server/notifications/resend-webhook';
 
 export const runtime = 'nodejs';
@@ -16,18 +16,18 @@ export async function POST(req: Request) {
     id: webhookId,
     timestamp: req.headers.get('svix-timestamp'),
     signature: req.headers.get('svix-signature'),
-  }, process.env.RESEND_WEBHOOK_SECRET)) return new Response('unauthorized', { status: 401 });
+  }, process.env.RESEND_WEBHOOK_SECRET)) return fail(401, 'unauthorized');
 
   let event: ResendEvent;
   try {
     event = JSON.parse(body) as ResendEvent;
   } catch {
-    return new Response('bad request', { status: 400 });
+    return fail(400, 'bad request');
   }
   const evidence = mapResendDeliveryEvent(event.type ?? '');
-  if (!evidence) return NextResponse.json({ accepted: true, applied: false });
+  if (!evidence) return ok({ accepted: true, applied: false });
   const providerMessageId = event.data?.email_id ?? event.data?.email?.id;
-  if (!providerMessageId || !webhookId) return new Response('bad request', { status: 400 });
+  if (!providerMessageId || !webhookId) return fail(400, 'bad request');
   const recipient = event.data?.to?.[0]?.trim().toLowerCase();
   const recipientHash = evidence.unhealthy && recipient
     ? hashRecipientEmail(recipient, process.env.RESEND_WEBHOOK_SECRET!) : null;
@@ -40,8 +40,8 @@ export async function POST(req: Request) {
   });
   if (error) {
     console.error('[resend-webhook] apply failed', error.message);
-    return new Response('webhook apply failed', { status: 500 });
+    return fail(500, 'webhook apply failed');
   }
-  if (data === 'NOT_FOUND') return new Response('delivery not ready', { status: 503 });
-  return NextResponse.json({ accepted: true, applied: data === 'APPLIED' });
+  if (data === 'NOT_FOUND') return fail(503, 'delivery not ready');
+  return ok({ accepted: true, applied: data === 'APPLIED' });
 }

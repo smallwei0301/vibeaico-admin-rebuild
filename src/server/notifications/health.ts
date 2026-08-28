@@ -117,6 +117,7 @@ export function formatHealthDigest(digest: HealthDigest): string {
     : 'none';
   return [
     'VibeAI notification health (previous 24h)',
+    `Period: ${digest.periodStart} → ${digest.periodEnd}`,
     `Logical events: ${digest.logicalEvents}`,
     channel('Email', digest.channels.EMAIL),
     channel('Telegram', digest.channels.TELEGRAM),

@@ -18,7 +18,7 @@
 import { randomInt } from 'crypto';
 import { ApiHttpError, ERR } from './http';
 import { createAdminSupabase } from './supabase';
-import { sendVerificationCodeEmail } from './email/send';
+import { dispatchAuthVerificationEmail } from './notifications/outbox';
 
 export async function dispatchVerificationCode(email: string, purpose: 'REGISTER' | 'RESET_PASSWORD') {
   const admin = createAdminSupabase();
@@ -37,5 +37,5 @@ export async function dispatchVerificationCode(email: string, purpose: 'REGISTER
   await admin.from('auth_verification_codes').insert({
     email, code, purpose, expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   });
-  await sendVerificationCodeEmail(email, code, purpose);
+  await dispatchAuthVerificationEmail({ to: email, code, purpose }, admin);
 }

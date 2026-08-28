@@ -37,6 +37,11 @@ describe('notification delivery lifecycle (#40, 17 §1–2)', () => {
       .toMatchObject({ status: 'DEAD', attemptCount: 1, lastErrorCode: 'TELEGRAM_BLOCKED' });
   });
 
+  it('also invalidates Telegram bindings when chat-not-found is reported as HTTP 400', () => {
+    expect(classifyTransportFailure('TELEGRAM', 400, 'Bad Request: chat not found'))
+      .toEqual({ kind: 'permanent', code: 'TELEGRAM_BLOCKED', invalidateBinding: true });
+  });
+
   it('only completes an outbox event when every delivery has reached a terminal state', () => {
     const delivery = (status: DeliveryRow['status']): DeliveryRow => ({ id: status, status });
     expect(completionStatus([delivery('ACCEPTED'), delivery('SKIPPED')])).toBe('OPEN');

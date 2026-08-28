@@ -164,7 +164,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 
 ## 5. 事件推播 — `src/server/line-notify.ts`
 
-預約狀態變更時呼叫（04 分冊 A-2 註明的 hook 點）：
+預約狀態變更時由 17 分冊的 transactional outbox 產生 `LINE` delivery（取代舊的 route 內 direct send）：
 
 ```ts
 export async function notifyBookingStatus(
@@ -179,7 +179,7 @@ export async function notifyBookingStatus(
 */ }
 ```
 
-呼叫規約：動作端點內 `void notifyBookingStatus(...)`，不 await、不影響 API 結果。
+呼叫規約：普通動作端點只在交易 commit 後喚醒 dispatcher，不直接使用 service role 或呼叫 LINE provider；cron-owned reminder 可寫入同一 outbox event 後喚醒 dispatcher。LINE webhook 的 provider-specific raw 200 例外維持不變，因 LINE 明定成功驗簽後若不回 200 會重送。
 
 ---
 
