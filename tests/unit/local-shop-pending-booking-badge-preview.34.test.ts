@@ -1,9 +1,8 @@
 /**
- * issue #34 的 GUIDE Preview 驗收腳本契約。
+ * issue #34 的 LOCAL_SHOP Preview 驗收腳本契約。
  *
  * Preview 需要互動登入與同一個非正式資料庫，不能在 unit CI 偽造成功；這裡只鎖
- * 驗收腳本本身不能再把 GUIDE 的 pending booking 路徑 SKIP 掉。真正的判準仍在
- * scripts/verify/appshell-shell-values.34.cjs：建立 → API/DB/UI 三方比對 → 清理。
+ * 驗收腳本使用 canonical LOCAL_SHOP fixture，並實際要求非零 API/DB/UI 三方相等。
  */
 import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -11,20 +10,28 @@ import { describe, expect, it } from 'vitest';
 
 const script = readFileSync('scripts/verify/appshell-shell-values.34.cjs', 'utf8');
 
-describe('GUIDE pending booking badge 的 Preview 驗收（issue #34）', () => {
-  it('有 opt-in 的 GUIDE 受控 pending booking，不能因資料為 0 而 SKIP', () => {
-    expect(script).toContain('VERIFY_GUIDE_PENDING_BOOKING');
-    expect(script).toContain("businessType !== 'GUIDE'");
-    expect(script).toContain("'/api/bookings'");
-    expect(script).toMatch(/method:\s*'POST'/);
-    expect(script).toMatch(/status:\s*'PENDING'/);
+describe('LOCAL_SHOP pending booking badge 的 Preview 驗收（issue #34）', () => {
+  it('只接受 canonical LOCAL_SHOP fixture，不能誤用隱藏 bookings nav 的 GUIDE', () => {
+    expect(script).toContain('VERIFY_LOCAL_SHOP_PENDING_BOOKING');
+    expect(script).toContain("const CANONICAL_LOCAL_SHOP_EMAIL = 'owner-a@test.local'");
+    expect(script).toContain("businessType !== 'LOCAL_SHOP'");
+    expect(script).not.toContain('VERIFY_GUIDE_PENDING_BOOKING');
+    expect(script).not.toContain("businessType !== 'GUIDE'");
   });
 
-  it('等待真實 pending-bookings API 回應，並讓 API、DB 與側邊欄徽章相等', () => {
+  it('透過真實 booking API 建立受控 PENDING 預約', () => {
+    expect(script).toContain("'/api/bookings'");
+    expect(script).toMatch(/method:\s*'POST'/);
+    expect(script).toMatch(/status=eq\.PENDING/);
+  });
+
+  it('等待真實 pending-bookings API，要求非零 API、DB 與可見側邊欄徽章相等', () => {
     expect(script).toContain('page.waitForResponse');
     expect(script).toContain("url.pathname === '/api/bookings'");
     expect(script).toContain("url.searchParams.get('status') === 'PENDING'");
+    expect(script).toContain('apiPendingTotal > 0');
     expect(script).toContain('apiPendingTotal === expectedBooking');
+    expect(script).toContain('shown !== undefined');
     expect(script).toContain('shown === String(apiPendingTotal)');
   });
 

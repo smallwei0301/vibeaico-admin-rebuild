@@ -25,7 +25,8 @@
  *     受測租戶三個徽章的 DB 筆數若**全是 0**（Preview 站的測試租戶就是這樣），
  *     「畫面數字＝DB 筆數」那條斷言只會走 `shown === null` 那半段，等於沒被驗到。
  *     打 Preview／正式資料庫時建議帶上，讓非零那半段也真的跑一次。
- *   VERIFY_GUIDE_PENDING_BOOKING=1 只接受 GUIDE 帳號：透過登入 session 的
+ *   VERIFY_LOCAL_SHOP_PENDING_BOOKING=1 只接受 canonical LOCAL_SHOP fixture 帳號
+ *     `owner-a@test.local`：透過登入 session 的
  *     POST /api/bookings 建一筆 PENDING 預約，再比對同一個 GET /api/bookings
  *     回應、DB 精確筆數與側邊欄徽章。若帳號沒有可用顧客／服務，會先用同一組
  *     API 建最小 fixture；全數在收尾刪除並驗證無殘留。
@@ -68,8 +69,9 @@ const BADGE_DELAY_MS = Number(process.env.BADGE_DELAY_MS || 4000);
  */
 const SEED_ORDER = process.env.VERIFY_SEED_PENDING_ORDER === '1';
 const SEED_ORDER_NO = `VERIFY34${Date.now().toString(36).toUpperCase().slice(-6)}`;
-const SEED_GUIDE_BOOKING = process.env.VERIFY_GUIDE_PENDING_BOOKING === '1';
-const SEED_BOOKING_NOTE = `issue34-guide-badge-${Date.now().toString(36)}`;
+const SEED_LOCAL_SHOP_BOOKING = process.env.VERIFY_LOCAL_SHOP_PENDING_BOOKING === '1';
+const CANONICAL_LOCAL_SHOP_EMAIL = 'owner-a@test.local';
+const SEED_BOOKING_NOTE = `issue34-local-shop-badge-${Date.now().toString(36)}`;
 
 const OUT_DIR = path.join(__dirname, 'out');
 fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -209,15 +211,19 @@ async function postApi(page, pathName, body) {
 }
 
 /**
- * GUIDE 本身不保證已有「一般預約」的顧客／服務。這兩個依賴若缺，就用後台 API
+ * canonical LOCAL_SHOP fixture 應已有「一般預約」的顧客／服務；若 Preview fixture
+ * 漂移而缺少依賴，就用後台 API
  * 補最小 fixture；真正要驗的 booking 一律走 POST /api/bookings，不能 service-role
  * 直插而略過 availability 與 route contract。
  */
-async function seedGuidePendingBooking(page, tenantId) {
+async function seedLocalShopPendingBooking(page, tenantId) {
   const [tenant] = await sbSelect('tenants', `select=business_type&id=eq.${tenantId}`);
   const businessType = tenant?.business_type;
-  if (businessType !== 'GUIDE') {
-    throw new Error(`VERIFY_GUIDE_PENDING_BOOKING 需要 GUIDE 帳號，現在是 ${businessType ?? '未知'}`);
+  if (EMAIL !== CANONICAL_LOCAL_SHOP_EMAIL || businessType !== 'LOCAL_SHOP') {
+    throw new Error(
+      `VERIFY_LOCAL_SHOP_PENDING_BOOKING 只接受 canonical ${CANONICAL_LOCAL_SHOP_EMAIL}`
+      + `／LOCAL_SHOP 帳號，現在是 ${EMAIL}／${businessType ?? '未知'}`,
+    );
   }
 
   let [customer] = await sbSelect(
@@ -228,7 +234,7 @@ async function seedGuidePendingBooking(page, tenantId) {
       name: SEED_BOOKING_NOTE, note: SEED_BOOKING_NOTE,
     });
     if (created.status !== 200 || !created.body?.success || !created.body?.data?.id) {
-      throw new Error(`GUIDE fixture 顧客建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
+      throw new Error(`LOCAL_SHOP fixture 顧客建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
     }
     seededCustomerId = created.body.data.id;
     customer = { id: seededCustomerId };
@@ -243,7 +249,7 @@ async function seedGuidePendingBooking(page, tenantId) {
       durationMinutes: 15, price: 0,
     });
     if (created.status !== 200 || !created.body?.success || !created.body?.data?.id) {
-      throw new Error(`GUIDE fixture 服務建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
+      throw new Error(`LOCAL_SHOP fixture 服務建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
     }
     seededServiceId = created.body.data.id;
     service = { id: seededServiceId };
@@ -257,7 +263,7 @@ async function seedGuidePendingBooking(page, tenantId) {
     note: SEED_BOOKING_NOTE,
   });
   if (created.status !== 200 || !created.body?.success || !created.body?.data?.id) {
-    throw new Error(`GUIDE pending booking 建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
+    throw new Error(`LOCAL_SHOP pending booking 建立失敗 HTTP ${created.status}：${JSON.stringify(created.body)}`);
   }
   seededBookingId = created.body.data.id;
 
@@ -265,9 +271,9 @@ async function seedGuidePendingBooking(page, tenantId) {
     'bookings', `id=eq.${seededBookingId}&tenant_id=eq.${tenantId}&status=eq.PENDING`,
   );
   if (persisted !== 1) {
-    throw new Error(`GUIDE pending booking 未以 PENDING 寫入資料庫（id=${seededBookingId}，筆數=${persisted}）`);
+    throw new Error(`LOCAL_SHOP pending booking 未以 PENDING 寫入資料庫（id=${seededBookingId}，筆數=${persisted}）`);
   }
-  console.log(`  種子：POST /api/bookings 建立 GUIDE PENDING 預約 ${seededBookingId}`);
+  console.log(`  種子：POST /api/bookings 建立 LOCAL_SHOP PENDING 預約 ${seededBookingId}`);
 }
 
 async function cleanupSeedRow(table, id, label) {
@@ -283,15 +289,15 @@ async function cleanupSeedRow(table, id, label) {
 /** 刪掉所有種子並**驗證真的沒了**（殘留就失敗，不要默默收工） */
 async function cleanupSeed() {
   if (seededBookingId) {
-    await cleanupSeedRow('bookings', seededBookingId, `GUIDE PENDING booking ${seededBookingId}`);
+    await cleanupSeedRow('bookings', seededBookingId, `LOCAL_SHOP PENDING booking ${seededBookingId}`);
     seededBookingId = null;
   }
   if (seededServiceId) {
-    await cleanupSeedRow('services', seededServiceId, `GUIDE fixture service ${seededServiceId}`);
+    await cleanupSeedRow('services', seededServiceId, `LOCAL_SHOP fixture service ${seededServiceId}`);
     seededServiceId = null;
   }
   if (seededCustomerId) {
-    await cleanupSeedRow('customers', seededCustomerId, `GUIDE fixture customer ${seededCustomerId}`);
+    await cleanupSeedRow('customers', seededCustomerId, `LOCAL_SHOP fixture customer ${seededCustomerId}`);
     seededCustomerId = null;
   }
   if (seededOrderId) {
@@ -408,8 +414,8 @@ async function main() {
   if (!tenantId) throw new Error(`/api/auth/me 沒有回 tenantId：${JSON.stringify(me)}`);
   console.log(`  目前店家：${me.data.tenantName}（${tenantId}）\n`);
 
+  if (SEED_LOCAL_SHOP_BOOKING) await seedLocalShopPendingBooking(page, tenantId);
   if (SEED_ORDER) await seedPendingOrder(tenantId);
-  if (SEED_GUIDE_BOOKING) await seedGuidePendingBooking(page, tenantId);
 
   /* ------------------------------------------------ ① 載入中不得先顯示 0 */
   await page.route('**/api/bookings**', async (route) => {
@@ -444,11 +450,11 @@ async function main() {
   const expectedChat = await expectedUnread(tenantId);
 
   /*
-   * GUIDE 的 pending booking 不可沿用「DB 是 0 就不畫」那條分支，也不可因為
+   * LOCAL_SHOP 的 pending booking 不可沿用「DB 是 0 就不畫」那條分支，也不可因為
    * 沒資料而 SKIP。先等 AppShell 真正收到它賴以計數的 API 回應，再比 API 信封、
    * service-role DB 精確筆數與畫面上的 badge；沒有用 sleep 或猜 React 已經 render。
    */
-  if (SEED_GUIDE_BOOKING) {
+  if (SEED_LOCAL_SHOP_BOOKING) {
     const pendingBookingsResponse = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return response.request().method() === 'GET'
@@ -466,11 +472,14 @@ async function main() {
     await waitBadgesResolved(page);
     const shown = await readBadge(page, '/tenant/bookings');
     check(
-      '② GUIDE 受控 PENDING 預約：API totalElements、DB 精確筆數與側邊欄徽章一致',
-      apiPendingTotal === expectedBooking && shown === String(apiPendingTotal),
+      '② LOCAL_SHOP 受控 PENDING 預約：API totalElements、DB 精確筆數與可見側邊欄徽章一致',
+      apiPendingTotal > 0
+        && apiPendingTotal === expectedBooking
+        && shown !== undefined
+        && shown === String(apiPendingTotal),
       `API=${apiPendingTotal}、DB=${expectedBooking}、畫面=${shown ?? '（無）'}、seed=${seededBookingId}`,
     );
-    await shot(page, 'shell-02-guide-pending-booking');
+    await shot(page, 'shell-02-local-shop-pending-booking');
   }
 
   const targets = [
