@@ -3,6 +3,9 @@
 > 多租戶 LINE Messaging API：**每家店自己的 Channel token**（存 DB、加密），
 > 一個部署服務所有店。平台不需要任何 LINE env 變數（LINE_LOGIN_* 是另一回事，
 > 只給 03 分冊 §7 的 OAuth 登入用）。
+>
+> Telegram 的平台單一 Bot、one-time `/start <code>` 綁定、`update_id` 冪等與
+> delivery ledger 屬 `17-NOTIFICATION-DELIVERY.md`；不得把它混進每租戶 LINE channel。
 
 ---
 

@@ -23,6 +23,7 @@ Vercel → 專案 → Settings → Environment Variables，依 01 分冊 §3 總
 {
   "crons": [
     { "path": "/api/cron/booking-reminders", "schedule": "0 * * * *" },
+    { "path": "/api/cron/notification-health", "schedule": "0 2 * * *" },
     { "path": "/api/cron/birthday-greetings", "schedule": "0 1 * * *" },
     { "path": "/api/cron/customer-recall",    "schedule": "0 6 * * *" },
     { "path": "/api/cron/recurring-bookings", "schedule": "30 16 * * *" },
@@ -69,6 +70,7 @@ Vercel 會自動帶 `Authorization: Bearer ${CRON_SECRET}`（專案 env 有設�
 | job | 邏輯 |
 |---|---|
 | booking-reminders | 逐店：`notify.notifyBookingReminder` 開啟者，找 `start_at` 落在「now + reminderHoursBefore ± 30min」且 CONFIRMED 且未提醒過的預約 → `notifyBookingStatus(..,'REMINDER')`。防重發：bookings 加欄位 `reminder_sent_at timestamptz`（補一條 migration） |
+| notification-health | 報表以每日台北 09:00（01:00 UTC）為固定 cutoff，建立前一個已完成 24h bucket，**0 failure 也建立**；排程設為 02:00 UTC（台北 10:00），確保 Hobby 最早約 59 分鐘提前執行時仍在 cutoff 之後。再建立平台 owner Email + Telegram delivery ledger，由 dispatcher 嘗試送出。Hobby cron 可能有延遲，因此持久 retry 不得宣稱分鐘級 SLA。 |
 | birthday-greetings | 逐店：`enableBirthdayGreeting` 開啟者，customers 生日=今天（月日比對）且已綁 LINE → 推 `birthdayGreetingMessage`，過額度就停 |
 | customer-recall | 逐店：`enableCustomerRecall` 開啟者，customers_view `last_visit_at < now()-recallDays` 且綁 LINE，**每店每日上限 50 位**（原站規則）→ 推 `customerRecallMessage`。防重複：customers 加 `last_recall_at`，30 天內不重推 |
 | recurring-bookings | active 的 recurring_bookings：依 rule 檢查未來 7 天應存在的場次，缺的補建 bookings（source='RECURRING'，status=CONFIRMED） |
