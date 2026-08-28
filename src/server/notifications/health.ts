@@ -17,6 +17,18 @@ export interface ChannelHealth {
   invalidBinding: number;
 }
 
+export type SyntheticProbeOutcome = 'NOT_RUN' | 'OK' | 'FAILED';
+
+/**
+ * Transport smoke results are injected by a future probe runner. Building or
+ * formatting a digest never calls an external provider by itself.
+ */
+export interface SyntheticTransportProbe {
+  email: SyntheticProbeOutcome;
+  telegram: SyntheticProbeOutcome;
+  line: SyntheticProbeOutcome;
+}
+
 export interface HealthDigest {
   periodStart: string;
   periodEnd: string;
@@ -27,6 +39,7 @@ export interface HealthDigest {
   /** Complete non-PII error counts for threshold evaluation; reports render only topErrorCodes. */
   errorCounts: Record<string, number>;
   impactedTenantIds: string[];
+  syntheticTransportProbe: SyntheticTransportProbe;
 }
 
 /** Fixed first-version thresholds. They are deliberately visible in one place
@@ -36,12 +49,19 @@ const PENDING_AGE_THRESHOLD_SECONDS = 30 * 60;
 const PROVIDER_BURST_THRESHOLD = 5;
 
 const emptyChannel = (): ChannelHealth => ({ accepted: 0, delivered: 0, retry: 0, dead: 0, skipped: 0, invalidBinding: 0 });
+const defaultSyntheticTransportProbe = (): SyntheticTransportProbe => ({ email: 'NOT_RUN', telegram: 'NOT_RUN', line: 'NOT_RUN' });
 
 /**
  * Builds the persisted digest payload. It accepts pre-filtered rows so the
  * database query remains an I/O concern and this contract is fully unit-testable.
  */
-export function buildHealthDigest(rows: HealthDelivery[], end = new Date(), logicalEvents = 0, pendingRows: HealthDelivery[] = rows): HealthDigest {
+export function buildHealthDigest(
+  rows: HealthDelivery[],
+  end = new Date(),
+  logicalEvents = 0,
+  pendingRows: HealthDelivery[] = rows,
+  syntheticTransportProbe: Partial<SyntheticTransportProbe> = {},
+): HealthDigest {
   const periodEnd = end.toISOString();
   const periodStart = new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString();
   const channels: Record<NotificationChannel, ChannelHealth> = {
@@ -84,7 +104,28 @@ export function buildHealthDigest(rows: HealthDelivery[], end = new Date(), logi
       .map(([code, count]) => ({ code, count })),
     errorCounts: Object.fromEntries(errors),
     impactedTenantIds: [...impacted].sort(),
+    syntheticTransportProbe: { ...defaultSyntheticTransportProbe(), ...syntheticTransportProbe },
   };
+}
+
+/** Render the complete, PII-minimal 17 §6 operator digest payload. */
+export function formatHealthDigest(digest: HealthDigest): string {
+  const channel = (name: 'Email' | 'Telegram' | 'LINE', stats: ChannelHealth) =>
+    `${name} accepted ${stats.accepted}; delivered ${stats.delivered}; retry ${stats.retry}; dead ${stats.dead}; skipped ${stats.skipped}; invalid binding ${stats.invalidBinding}`;
+  const errors = digest.topErrorCodes.length
+    ? digest.topErrorCodes.map(({ code, count }) => `${code} (${count})`).join(', ')
+    : 'none';
+  return [
+    'VibeAI notification health (previous 24h)',
+    `Logical events: ${digest.logicalEvents}`,
+    channel('Email', digest.channels.EMAIL),
+    channel('Telegram', digest.channels.TELEGRAM),
+    channel('LINE', digest.channels.LINE),
+    `Oldest pending: ${digest.oldestPendingAgeSeconds === null ? 'none' : `${digest.oldestPendingAgeSeconds}s`}`,
+    `Top errors: ${errors}`,
+    `Impacted tenants: ${digest.impactedTenantIds.length ? digest.impactedTenantIds.join(', ') : 'none'}`,
+    `Synthetic transport probe: Email ${digest.syntheticTransportProbe.email}; Telegram ${digest.syntheticTransportProbe.telegram}; LINE ${digest.syntheticTransportProbe.line}`,
+  ].join('\n');
 }
 
 /** Platform alert events to enqueue; these codes contain no recipient PII. */

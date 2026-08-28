@@ -6,7 +6,8 @@ export const runtime = 'nodejs';
 
 /** Daily 09:00 Asia/Taipei report (00:00 UTC). Vercel Hobby may delay it. */
 export async function GET(req: Request) {
-  if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`)
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`)
     return new Response('unauthorized', { status: 401 });
   try {
     const digest = await createDailyHealthReport();

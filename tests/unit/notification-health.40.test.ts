@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildHealthDigest, immediateAlertCodes, type HealthDelivery } from '@/server/notifications/health';
+import { buildHealthDigest, formatHealthDigest, immediateAlertCodes, type HealthDelivery } from '@/server/notifications/health';
 
 describe('notification health digest (#40, 17 §6)', () => {
   it('creates a report even when the preceding day has zero failures', () => {
@@ -70,5 +70,25 @@ describe('notification health digest (#40, 17 §6)', () => {
     expect(digest.channels.EMAIL.retry).toBe(0);
     expect(digest.oldestPendingAgeSeconds).toBe(104_400);
     expect(immediateAlertCodes(digest)).toContain('PENDING_TOO_OLD');
+  });
+
+  it('formats every canonical owner-digest dimension without performing a transport probe', () => {
+    const digest = buildHealthDigest([
+      { tenantId: 'tenant-a', channel: 'EMAIL', status: 'ACCEPTED', createdAt: '2030-06-04T21:00:00.000Z' },
+      { tenantId: 'tenant-a', channel: 'EMAIL', status: 'DELIVERED', createdAt: '2030-06-04T21:00:00.000Z' },
+      { tenantId: 'tenant-a', channel: 'EMAIL', status: 'SKIPPED', createdAt: '2030-06-04T21:00:00.000Z' },
+      { tenantId: 'tenant-b', channel: 'TELEGRAM', status: 'RETRY', createdAt: '2030-06-04T22:00:00.000Z', lastErrorCode: 'HTTP_429' },
+      { tenantId: 'tenant-b', channel: 'TELEGRAM', status: 'DEAD', createdAt: '2030-06-04T23:00:00.000Z', lastErrorCode: 'TELEGRAM_BLOCKED' },
+      { tenantId: 'tenant-c', channel: 'LINE', status: 'ACCEPTED', createdAt: '2030-06-04T23:00:00.000Z' },
+      { tenantId: 'tenant-c', channel: 'LINE', status: 'SKIPPED', createdAt: '2030-06-04T23:00:00.000Z' },
+    ], new Date('2030-06-05T00:00:00.000Z'), 7);
+
+    expect(formatHealthDigest(digest)).toContain('Email accepted 1; delivered 1; retry 0; dead 0; skipped 1; invalid binding 0');
+    expect(formatHealthDigest(digest)).toContain('Telegram accepted 0; delivered 0; retry 1; dead 1; skipped 0; invalid binding 1');
+    expect(formatHealthDigest(digest)).toContain('LINE accepted 1; delivered 0; retry 0; dead 0; skipped 1; invalid binding 0');
+    expect(formatHealthDigest(digest)).toContain('Oldest pending: 7200s');
+    expect(formatHealthDigest(digest)).toContain('Top errors: HTTP_429 (1), TELEGRAM_BLOCKED (1)');
+    expect(formatHealthDigest(digest)).toContain('Impacted tenants: tenant-b');
+    expect(formatHealthDigest(digest)).toContain('Synthetic transport probe: Email NOT_RUN; Telegram NOT_RUN; LINE NOT_RUN');
   });
 });

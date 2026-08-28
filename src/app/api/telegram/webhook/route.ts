@@ -19,8 +19,15 @@ export async function POST(req: Request) {
   if (!verifyTelegramWebhookSecret(process.env.TELEGRAM_WEBHOOK_SECRET,
     req.headers.get('x-telegram-bot-api-secret-token')))
     return new Response('unauthorized', { status: 401 });
+  let update: TelegramUpdate;
   try {
-    const update = await req.json() as TelegramUpdate;
+    update = await req.json() as TelegramUpdate;
+  } catch {
+    // An authentic malformed update has no bind code to retry; acknowledge it
+    // so Telegram does not redeliver it indefinitely.
+    return NextResponse.json({ accepted: true, bound: false });
+  }
+  try {
     const text = update.message?.text?.trim() ?? '';
     const code = text.startsWith('/start ') ? text.slice('/start '.length).trim() : '';
     const chatId = update.message?.chat?.id;
@@ -35,6 +42,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ accepted: true, bound: Boolean(bound) });
   } catch (error) {
     console.error('[telegram-webhook] processing failed', error instanceof Error ? error.message : 'unknown');
-    return NextResponse.json({ accepted: true, bound: false });
+    // Telegram retries 5xx responses. Returning 200 here would permanently
+    // lose a valid one-time bind code after a transient DB/RPC failure.
+    return new Response('telegram webhook processing failed', { status: 500 });
   }
 }

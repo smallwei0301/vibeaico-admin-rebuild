@@ -30,6 +30,15 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/processing_started_at < now\(\) - interval '10 minutes'/i);
   });
 
+  it('keeps provider ACCEPTED deliveries open until delivery evidence or a terminal outcome exists', () => {
+    expect(migration).toContain("status in ('PENDING', 'PROCESSING', 'RETRY', 'ACCEPTED')) then 'OPEN'");
+  });
+
+  it('looks up a delivery booking within the outbox tenant boundary', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).toContain(".eq('id', bookingId).eq('tenant_id', outbox.tenant_id).maybeSingle()");
+  });
+
   it('creates an immediate platform alert event when a non-platform delivery becomes DEAD', () => {
     const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
     expect(outbox).toContain("event_name: 'PLATFORM_NOTIFICATION_ALERT'");
