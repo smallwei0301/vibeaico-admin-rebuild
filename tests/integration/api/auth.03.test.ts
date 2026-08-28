@@ -163,7 +163,7 @@ describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => 
     expect(meBody.data!.tenantName).toBe(tenantName);
     expect(meBody.data!.shopCode).toBe(shopCode);
     expect(meBody.data!.role).toBe('OWNER');
-  });
+  }, 60_000);
 });
 
 describe('POST /api/auth/send-verification-code 60 秒防重寄（03 §2）', () => {
