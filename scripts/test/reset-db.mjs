@@ -67,6 +67,8 @@ const INDEPENDENT_TABLES = [
   // 刪不到它，必須獨立清。
   { table: 'bug_reports', keyColumn: 'id' },
   { table: 'notification_health_reports', keyColumn: 'id' },
+  { table: 'notification_provider_webhook_events', keyColumn: 'event_id' },
+  { table: 'email_recipient_health', keyColumn: 'recipient_hash' },
   { table: 'notification_outbox', keyColumn: 'id' },
   { table: 'telegram_bindings', keyColumn: 'id' },
   { table: 'telegram_bind_codes', keyColumn: 'id' },
