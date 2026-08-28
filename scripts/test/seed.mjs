@@ -83,7 +83,7 @@ export function isMissingSchemaError(error) {
   const message = (error?.message ?? '').toLowerCase();
   return (
     code === '42P01' ||
-    code === 'PGRST205' || // PostgREST：schema cache 裡找不到這張表
+    code === 'PGRST205' || // PostgREST：找不到資料表 relation
     /relation "[^"]+" does not exist/.test(message) ||
     message.includes('could not find the table')
   );
