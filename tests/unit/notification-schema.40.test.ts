@@ -27,7 +27,7 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/after insert or update of status on bookings/i);
     expect(migration).toMatch(/enqueue_notification_event/i);
     expect(migration).toMatch(/for update skip locked/i);
-    expect(migration).toMatch(/processing_started_at < now\(\) - interval '10 minutes'/i);
+    expect(migration).toMatch(/processing_started_at < pg_catalog\.now\(\) - interval '10 minutes'/i);
   });
 
   it('treats provider ACCEPTED as terminal for the logical event while retaining its precise delivery status', () => {
@@ -66,6 +66,28 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).not.toMatch(/grant execute on function public\.enqueue_notification_event\([^;]+\) to service_role/i);
   });
 
+  it('pins every SECURITY DEFINER notification function to an empty path and schema-qualifies its objects', () => {
+    const functions = [
+      'enqueue_notification_event', 'enqueue_booking_notification_event',
+      'claim_notification_deliveries', 'refresh_notification_outbox_status',
+      'apply_resend_delivery_event', 'consume_telegram_bind_code',
+    ];
+    for (const fn of functions) {
+      const start = migration.search(new RegExp(`create or replace function public\\.${fn}\\(`, 'i'));
+      expect(start).toBeGreaterThanOrEqual(0);
+      const end = migration.indexOf('$$;', start);
+      const body = migration.slice(start, end);
+      expect(body).toContain("set search_path = ''");
+      expect(body).not.toMatch(/set search_path\s*=\s*public|pg_temp/i);
+    }
+    expect(migration).toContain('insert into public.notification_outbox');
+    expect(migration).toContain('from public.notification_deliveries');
+    expect(migration).toContain('perform public.refresh_notification_outbox_status');
+    expect(migration).toContain('public.telegram_bind_codes%rowtype');
+    expect(migration).toContain('pg_catalog.gen_random_uuid()');
+    expect(migration).toContain('pg_catalog.jsonb_build_object');
+  });
+
   it('keeps Telegram bindings tenant-scoped for lookup, invalidation, and rebinding', () => {
     expect(migration).toMatch(/unique nulls not distinct \(tenant_id, subject_type, subject_ref\)/i);
     expect(migration).toMatch(/unique nulls not distinct \(tenant_id, chat_id\)/i);
@@ -99,14 +121,14 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
 
   it('applies Resend delivery evidence idempotently without storing webhook bodies', () => {
     expect(migration).toMatch(/create or replace function public\.apply_resend_delivery_event/i);
-    expect(migration).toMatch(/insert into notification_provider_webhook_events/i);
+    expect(migration).toMatch(/insert into public\.notification_provider_webhook_events/i);
     expect(migration).toMatch(/on conflict do nothing/i);
     expect(migration).toMatch(/where provider_message_id = p_provider_message_id/i);
     expect(migration).toMatch(/if affected_outbox is null then return 'NOT_FOUND'/i);
     expect(migration).toMatch(/if affected_status = 'DEAD' and p_status = 'DELIVERED' then return 'IGNORED'/i);
     expect(migration).toMatch(/'PLATFORM_NOTIFICATION_ALERT'/i);
     expect(migration).toMatch(/'CRITICAL_DELIVERY_DEAD'/i);
-    expect(migration).toMatch(/insert into email_recipient_health/i);
+    expect(migration).toMatch(/insert into public\.email_recipient_health/i);
     expect(resetDb).toContain("table: 'notification_provider_webhook_events'");
     expect(resetDb).toContain("table: 'email_recipient_health'");
   });
