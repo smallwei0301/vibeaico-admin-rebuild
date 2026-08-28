@@ -21,7 +21,9 @@ set min_party_size = greatest(coalesce(min_party_size, min_participants, 1), 1),
 where min_party_size is null or max_party_size is null;
 
 alter table trip_plans
+  alter column min_party_size set default 1,
   alter column min_party_size set not null,
+  alter column max_party_size set default 10,
   alter column max_party_size set not null;
 
 alter table trip_plans
@@ -46,9 +48,10 @@ alter table tour_orders
   alter column payment_status set default 'UNPAID',
   add column if not exists upfront_required_amount numeric not null default 0,
   add column if not exists paid_amount numeric not null default 0,
-  add column if not exists refunded_amount numeric not null default 0;
+  add column if not exists refunded_amount numeric not null default 0,
+  add column if not exists deposit_mode_snapshot text;
 
-update tour_orders
+update tour_orders o
 set paid_amount = case
       when payment_status = 'PAID' then total_amount
       when payment_status = 'REFUNDED' then total_amount
@@ -60,17 +63,30 @@ set paid_amount = case
     end,
     upfront_required_amount = case
       when upfront_required_amount > 0 then upfront_required_amount
-      when payment_status = 'PAID' then total_amount
+      when p.deposit_mode = 'NONE' then 0
+      when p.deposit_mode = 'FULL' then total_amount
       else deposit_amount
-    end;
+    end,
+    deposit_mode_snapshot = coalesce(o.deposit_mode_snapshot, p.deposit_mode)
+from trip_plans p
+where p.id = o.plan_id and p.tenant_id = o.tenant_id;
+
+alter table tour_orders alter column deposit_mode_snapshot set not null;
 
 alter table tour_orders
   drop constraint if exists tour_orders_payment_status_check,
   add constraint tour_orders_payment_status_check
     check (payment_status in ('UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED')),
+  drop constraint if exists tour_orders_deposit_mode_snapshot_check,
+  add constraint tour_orders_deposit_mode_snapshot_check
+    check (deposit_mode_snapshot in ('NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL')),
   drop constraint if exists tour_orders_payment_amounts_nonnegative,
   add constraint tour_orders_payment_amounts_nonnegative
-    check (upfront_required_amount >= 0 and paid_amount >= 0 and refunded_amount >= 0);
+    check (
+      upfront_required_amount >= 0 and upfront_required_amount <= total_amount
+      and paid_amount >= 0 and paid_amount <= total_amount
+      and refunded_amount >= 0 and refunded_amount <= paid_amount
+    );
 
 -- --------------------------------------------------------- Departure snapshot
 alter table trip_departures
@@ -94,7 +110,7 @@ alter table trip_departures alter column min_to_depart_snapshot set not null;
 alter table trip_departures
   drop constraint if exists trip_departures_formation_snapshot_check,
   add constraint trip_departures_formation_snapshot_check
-    check (min_to_depart_snapshot >= 1),
+    check (min_to_depart_snapshot >= 1 and min_to_depart_snapshot <= capacity),
   drop constraint if exists trip_departures_formation_status_check,
   add constraint trip_departures_formation_status_check
     check (formation_status in ('COLLECTING', 'FORMED', 'REVIEW_REQUIRED', 'AT_RISK', 'FAILED')),
@@ -117,6 +133,7 @@ as $$
 declare
   v_plan trip_plans%rowtype;
   v_departure_at timestamptz;
+  v_timezone text;
 begin
   select * into v_plan
   from trip_plans
@@ -129,9 +146,11 @@ begin
     new.min_to_depart_snapshot := v_plan.min_to_depart;
   end if;
 
-  -- GUIDE 目前沒有持久化 tenant timezone 欄位，依 canonical 預設 Asia/Taipei。
+  select coalesce(nullif(basic->>'timezone', ''), 'Asia/Taipei') into v_timezone
+  from tenant_settings where tenant_id = new.tenant_id;
+  v_timezone := coalesce(v_timezone, 'Asia/Taipei');
   v_departure_at := (new.departs_on + coalesce(new.start_time, time '00:00'))
-    at time zone 'Asia/Taipei';
+    at time zone v_timezone;
   if new.formation_deadline_at is null then
     new.formation_deadline_at := v_departure_at
       - make_interval(days => v_plan.formation_deadline_days_before);
@@ -145,8 +164,40 @@ $$;
 
 drop trigger if exists t_trip_departures_formation_snapshot on trip_departures;
 create trigger t_trip_departures_formation_snapshot
-  before insert on trip_departures
+  before insert or update of departs_on, start_time, formation_deadline_at, min_to_depart_snapshot, capacity
+  on trip_departures
   for each row execute function public.snapshot_trip_departure_formation();
+
+-- 訂單保留下單當下的收款規則；Plan 日後修改不得重新定義舊訂單。
+create or replace function public.snapshot_tour_order_payment_policy()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare v_plan trip_plans%rowtype;
+begin
+  if new.deposit_mode_snapshot is null then
+    select * into v_plan from trip_plans
+    where id = new.plan_id and tenant_id = new.tenant_id;
+    if not found then raise exception 'PLAN_NOT_FOUND' using errcode = 'P0002'; end if;
+    new.deposit_mode_snapshot := v_plan.deposit_mode;
+  end if;
+  if new.upfront_required_amount = 0 then
+    new.upfront_required_amount := case new.deposit_mode_snapshot
+      when 'NONE' then 0
+      when 'DEPOSIT_FIXED' then new.deposit_amount
+      when 'DEPOSIT_PERCENT' then new.deposit_amount
+      when 'FULL' then new.total_amount
+    end;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists t_tour_orders_payment_policy_snapshot on tour_orders;
+create trigger t_tour_orders_payment_policy_snapshot
+  before insert on tour_orders
+  for each row execute function public.snapshot_tour_order_payment_policy();
 
 -- -------------------------------------------------------- Atomic formation
 create table if not exists tour_formation_decisions (
@@ -173,11 +224,10 @@ set search_path = public, pg_temp
 as $$
   select coalesce(sum(o.party_size), 0)::integer
   from tour_orders o
-  join trip_plans p on p.id = o.plan_id and p.tenant_id = o.tenant_id
   where o.departure_id = p_departure
     and o.status in ('CONFIRMED', 'COMPLETED')
-    and o.payment_status <> 'REFUNDED'
-    and case p.deposit_mode
+    and o.payment_status not in ('REFUND_PENDING', 'REFUNDED')
+    and case o.deposit_mode_snapshot
       when 'NONE' then true
       when 'DEPOSIT_FIXED' then o.payment_status in ('PARTIAL', 'PAID')
       when 'DEPOSIT_PERCENT' then o.payment_status in ('PARTIAL', 'PAID')
@@ -257,7 +307,7 @@ end;
 $$;
 drop trigger if exists t_tour_orders_refresh_formation on tour_orders;
 create trigger t_tour_orders_refresh_formation
-  after update of status, payment_status on tour_orders
+  after insert or update of status, payment_status on tour_orders
   for each row execute function public.refresh_tour_order_formation_trigger();
 
 -- deadline cron calls this function. 不足只進 REVIEW_REQUIRED，絕不自動取消／退款。
@@ -279,7 +329,10 @@ begin
     for update skip locked
   loop
     v_participants := public.qualifying_tour_participants(v_dep.id);
-    if v_participants < v_dep.min_to_depart_snapshot then
+    if v_participants >= v_dep.min_to_depart_snapshot then
+      perform public.refresh_departure_formation(v_dep.id);
+      v_changed := v_changed + 1;
+    else
       update trip_departures set formation_status = 'REVIEW_REQUIRED',
         formation_decided_at = p_now, formation_decision = 'SYSTEM_DEADLINE_REVIEW'
       where id = v_dep.id;
@@ -300,8 +353,109 @@ begin
 end;
 $$;
 
+-- 導遊只能處理系統無法自己決定的分支。所有狀態、audit、退款待辦
+-- 與 logical event 都在同一交易完成，不由 API 分段寫入。
+create or replace function public.decide_tour_formation(
+  p_tenant uuid,
+  p_departure uuid,
+  p_decision text,
+  p_actor_user uuid,
+  p_new_deadline timestamptz default null,
+  p_note text default ''
+) returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_dep trip_departures%rowtype;
+  v_previous text;
+  v_next text;
+  v_participants integer;
+  v_departure_at timestamptz;
+  v_timezone text;
+begin
+  select * into v_dep from trip_departures
+  where id = p_departure and tenant_id = p_tenant for update;
+  if not found then raise exception 'DEPARTURE_NOT_FOUND' using errcode = 'P0002'; end if;
+  v_previous := v_dep.formation_status;
+  v_participants := public.qualifying_tour_participants(v_dep.id);
+  select coalesce(nullif(basic->>'timezone', ''), 'Asia/Taipei') into v_timezone
+  from tenant_settings where tenant_id = v_dep.tenant_id;
+  v_departure_at := (v_dep.departs_on + coalesce(v_dep.start_time, time '00:00'))
+    at time zone coalesce(v_timezone, 'Asia/Taipei');
+
+  if p_decision = 'STILL_FORM' and v_previous = 'REVIEW_REQUIRED' then
+    v_next := 'FORMED';
+    update trip_departures set formation_status = v_next, formed_at = now(),
+      formed_by = 'GUIDE_OVERRIDE', formed_participants = v_participants,
+      formation_decided_at = now(), formation_decided_by = p_actor_user,
+      formation_decision = p_decision, formation_decision_note = coalesce(p_note, '')
+    where id = v_dep.id;
+    perform public.enqueue_notification_event(
+      v_dep.tenant_id, 'TOUR_GROUP_FORMED', 'TOUR_DEPARTURE', v_dep.id::text,
+      'tour-group-formed:' || v_dep.id::text,
+      jsonb_build_object('departureId', v_dep.id::text, 'participants', v_participants,
+                         'minToDepart', v_dep.min_to_depart_snapshot)
+    );
+  elsif p_decision = 'EXTEND' and v_previous = 'REVIEW_REQUIRED' then
+    if p_new_deadline is null or p_new_deadline <= now() or p_new_deadline > v_departure_at then
+      raise exception 'FORMATION_DEADLINE_INVALID' using errcode = 'P0001';
+    end if;
+    v_next := 'COLLECTING';
+    update trip_departures set formation_status = v_next,
+      formation_deadline_at = p_new_deadline, formation_decided_at = now(),
+      formation_decided_by = p_actor_user, formation_decision = p_decision,
+      formation_decision_note = coalesce(p_note, '') where id = v_dep.id;
+  elsif p_decision = 'CONTINUE' and v_previous = 'AT_RISK' then
+    v_next := 'FORMED';
+    update trip_departures set formation_status = v_next,
+      formation_decided_at = now(), formation_decided_by = p_actor_user,
+      formation_decision = p_decision, formation_decision_note = coalesce(p_note, '')
+    where id = v_dep.id;
+  elsif p_decision = 'CANCEL' and v_previous in ('REVIEW_REQUIRED', 'AT_RISK') then
+    v_next := 'FAILED';
+    update trip_departures set status = 'CANCELLED', seats_booked = 0,
+      formation_status = v_next, formation_decided_at = now(),
+      formation_decided_by = p_actor_user, formation_decision = p_decision,
+      formation_decision_note = coalesce(p_note, '') where id = v_dep.id;
+    update tour_orders set status = 'CANCELLED',
+      payment_status = case when paid_amount > refunded_amount then 'REFUND_PENDING' else payment_status end,
+      updated_at = now()
+    where tenant_id = p_tenant and departure_id = p_departure
+      and status in ('PENDING', 'CONFIRMED');
+    perform public.enqueue_notification_event(
+      v_dep.tenant_id, 'TOUR_GROUP_CANCELLED', 'TOUR_DEPARTURE', v_dep.id::text,
+      'tour-group-cancelled:' || v_dep.id::text,
+      jsonb_build_object(
+        'departureId', v_dep.id::text,
+        'refundPending', exists (
+          select 1 from tour_orders where tenant_id = p_tenant and departure_id = p_departure
+            and payment_status = 'REFUND_PENDING'
+        )
+      )
+    );
+  else
+    raise exception 'FORMATION_DECISION_INVALID' using errcode = 'P0001';
+  end if;
+
+  insert into tour_formation_decisions (
+    tenant_id, departure_id, previous_status, next_status, decision,
+    actor_user_id, participants, note
+  ) values (
+    v_dep.tenant_id, v_dep.id, v_previous, v_next, p_decision,
+    p_actor_user, v_participants, coalesce(p_note, '')
+  );
+  return v_next;
+end;
+$$;
+
 revoke execute on function public.snapshot_trip_departure_formation() from public, anon, authenticated;
+revoke execute on function public.snapshot_tour_order_payment_policy() from public, anon, authenticated;
 revoke execute on function public.qualifying_tour_participants(uuid) from public, anon, authenticated;
 revoke execute on function public.refresh_departure_formation(uuid) from public, anon, authenticated;
 revoke execute on function public.refresh_tour_order_formation_trigger() from public, anon, authenticated;
 revoke execute on function public.review_expired_tour_formations(timestamptz) from public, anon, authenticated;
+revoke execute on function public.decide_tour_formation(uuid, uuid, text, uuid, timestamptz, text) from public, anon, authenticated;
+grant execute on function public.review_expired_tour_formations(timestamptz) to service_role;
+grant execute on function public.decide_tour_formation(uuid, uuid, text, uuid, timestamptz, text) to service_role;
