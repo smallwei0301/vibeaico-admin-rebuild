@@ -64,19 +64,51 @@ describe('GUIDE 行動收件匣（#43）', () => {
       departures: [
         {
           id: 'review', trip_id: 'trip-review', departs_on: '2026-08-29', start_time: '10:00:00',
+          status: 'OPEN',
           trips: { title: '太魯閣健行' }, trip_plans: { name: '健行團', booking_type: 'SCHEDULED' },
         },
       ],
       assignments: [],
-    });
+    }, 'Asia/Taipei', now);
 
     expect(sources.map((item) => item.reason)).toEqual([
-      'REQUEST_PENDING', 'PAYMENT_DUE', 'GUIDE_UNASSIGNED', 'DEPARTURE_UPCOMING',
+      'REQUEST_PENDING', 'PAYMENT_DUE', 'GUIDE_UNASSIGNED',
     ]);
     expect(sources.find((item) => item.id === 'request:request')?.href)
       .toBe('/tenant/tour-orders?keyword=T-001');
-    expect(sources.find((item) => item.id === 'departure:review')?.href)
+    expect(sources.find((item) => item.id === 'unassigned:review')?.href)
       .toBe('/tenant/trips/trip-review?tab=departures');
+  });
+
+  it('只列出尚可處理的 OPEN 未來團次，且未指派時不重複產生近期卡', () => {
+    const sources = sourcesFromRows({
+      orders: [],
+      departures: [
+        { id: 'past', trip_id: 'trip-1', departs_on: '2026-08-28', start_time: '09:00:00', status: 'OPEN' },
+        { id: 'closed', trip_id: 'trip-2', departs_on: '2026-08-29', start_time: '10:00:00', status: 'CLOSED' },
+        { id: 'assigned', trip_id: 'trip-3', departs_on: '2026-08-29', start_time: '11:00:00', status: 'OPEN' },
+        { id: 'unassigned', trip_id: 'trip-4', departs_on: '2026-08-30', start_time: '12:00:00', status: 'OPEN' },
+      ],
+      assignments: [{ departure_id: 'assigned' }],
+    }, 'Asia/Taipei', now);
+
+    expect(sources.map((item) => item.id)).toEqual([
+      'departure:assigned', 'unassigned:unassigned',
+    ]);
+  });
+
+  it('缺少開始時間時保留無期限，不偽造當日午夜', () => {
+    const sources = sourcesFromRows({
+      orders: [],
+      departures: [
+        { id: 'no-time', trip_id: 'trip-1', departs_on: '2026-08-29', start_time: null, status: 'OPEN' },
+      ],
+      assignments: [{ departure_id: 'no-time' }],
+    }, 'Asia/Taipei', now);
+
+    expect(sources).toEqual([
+      expect.objectContaining({ id: 'departure:no-time', dueAt: null, detail: '2026-08-29' }),
+    ]);
   });
 
   it('以租戶時區劃分今天，避免 UTC 換日把行動放錯區段', () => {
@@ -86,4 +118,12 @@ describe('GUIDE 行動收件匣（#43）', () => {
     expect(losAngeles.fromDate).toBe('2026-08-27');
     expect(losAngeles.departureToDate).toBe('2026-09-03');
   });
+
+  it('租戶時區無效時回退預設時區，不讓 Intl 中斷 API', () => {
+    const fallback = guideInboxWindow(now, 'Not/A_Timezone');
+
+    expect(fallback.timeZone).toBe('Asia/Taipei');
+    expect(fallback.fromDate).toBe('2026-08-28');
+  });
+
 });

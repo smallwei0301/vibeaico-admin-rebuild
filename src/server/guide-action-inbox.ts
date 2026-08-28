@@ -1,5 +1,6 @@
 import type {
-  GuideActionInbox, GuideActionItem, GuideActionReason, GuideActionSource, GuideActionUrgency,
+  DepartureStatus, GuideActionInbox, GuideActionItem, GuideActionReason, GuideActionSource,
+  GuideActionUrgency,
 } from '@/lib/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
@@ -18,6 +19,7 @@ type OrderRow = {
 };
 type DepartureRow = {
   id: string; trip_id: string; departs_on: string; start_time?: string | null; created_at?: string | null;
+  status: DepartureStatus;
   trips?: EmbeddedTrip | EmbeddedTrip[] | null; trip_plans?: EmbeddedPlan | EmbeddedPlan[] | null;
 };
 type GuideInboxRows = { orders: OrderRow[]; departures: DepartureRow[]; assignments: Array<{ departure_id: string }> };
@@ -27,6 +29,19 @@ const ALWAYS_IMMEDIATE = new Set<GuideActionReason>([
 ]);
 
 const relation = <T>(value: T | T[] | null | undefined): T | undefined => Array.isArray(value) ? value[0] : value ?? undefined;
+
+const DEFAULT_TIME_ZONE = 'Asia/Taipei';
+
+/** Tenant settings are user-controlled; an invalid IANA value must not turn the inbox into a 500. */
+export function normalizeGuideTimeZone(timeZone: string | null | undefined) {
+  const candidate = timeZone?.trim() || DEFAULT_TIME_ZONE;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: candidate }).format();
+    return candidate;
+  } catch {
+    return DEFAULT_TIME_ZONE;
+  }
+}
 
 const dateParts = (value: Date, timeZone: string) => Object.fromEntries(
   new Intl.DateTimeFormat('en-CA', {
@@ -61,20 +76,22 @@ const localDateTimeUtc = (date: string, time: string | null | undefined, timeZon
 };
 
 /** 將 tenant 今天和接下來七天轉成 UTC 邊界，避免直接以伺服器日期分區。 */
-export function guideInboxWindow(now: Date, timeZone: string) {
-  const current = dateParts(now, timeZone);
+export function guideInboxWindow(now: Date, timeZone?: string | null) {
+  const normalizedTimeZone = normalizeGuideTimeZone(timeZone);
+  const current = dateParts(now, normalizedTimeZone);
   const localToday = new Date(Date.UTC(current.year, current.month - 1, current.day));
   const tomorrow = new Date(localToday.getTime() + 86_400_000);
   const eighthDay = new Date(localToday.getTime() + 8 * 86_400_000);
   const tomorrowUtc = localMidnightUtc(
-    tomorrow.getUTCFullYear(), tomorrow.getUTCMonth() + 1, tomorrow.getUTCDate(), timeZone,
+    tomorrow.getUTCFullYear(), tomorrow.getUTCMonth() + 1, tomorrow.getUTCDate(), normalizedTimeZone,
   );
   const eighthDayUtc = localMidnightUtc(
-    eighthDay.getUTCFullYear(), eighthDay.getUTCMonth() + 1, eighthDay.getUTCDate(), timeZone,
+    eighthDay.getUTCFullYear(), eighthDay.getUTCMonth() + 1, eighthDay.getUTCDate(), normalizedTimeZone,
   );
   const dateKey = (date: Date) => date.toISOString().slice(0, 10);
   return {
     now,
+    timeZone: normalizedTimeZone,
     todayEndsAt: new Date(tomorrowUtc - 1),
     upcomingEndsAt: new Date(eighthDayUtc - 1),
     fromDate: dateKey(localToday),
@@ -119,7 +136,12 @@ export function buildGuideActionInbox(
 }
 
 /** 將 PR49 已有的訂單／團次／指派事實轉成行動契約，不建立另一張待辦表。 */
-export function sourcesFromRows(rows: GuideInboxRows, timeZone = 'Asia/Taipei'): GuideActionSource[] {
+export function sourcesFromRows(
+  rows: GuideInboxRows,
+  timeZone = DEFAULT_TIME_ZONE,
+  now = new Date(),
+): GuideActionSource[] {
+  const normalizedTimeZone = normalizeGuideTimeZone(timeZone);
   const departures = new Map(rows.departures.map((row) => [row.id as string, row]));
   const assigned = new Set(rows.assignments.map((row) => row.departure_id as string));
   const sources: GuideActionSource[] = [];
@@ -142,16 +164,23 @@ export function sourcesFromRows(rows: GuideInboxRows, timeZone = 'Asia/Taipei'):
   }
 
   for (const departure of rows.departures) {
+    if (departure.status !== 'OPEN') continue;
     const trip = relation(departure.trips);
     const plan = relation(departure.trip_plans);
     const subject = trip?.title ?? plan?.name ?? departure.id;
     const detail = `${departure.departs_on} ${String(departure.start_time ?? '').slice(0, 5)}`.trim();
     const href = `/tenant/trips/${departure.trip_id}?tab=departures`;
-    const dueAt = localDateTimeUtc(departure.departs_on, departure.start_time, timeZone);
+    const dueAt = departure.start_time
+      ? localDateTimeUtc(departure.departs_on, departure.start_time, normalizedTimeZone)
+      : null;
     const createdAt = departure.created_at ?? null;
+
+    // A departure whose actual start time has passed is no longer an upcoming action.
+    if (dueAt && new Date(dueAt).getTime() < now.getTime()) continue;
 
     if (!assigned.has(departure.id)) {
       sources.push({ id: `unassigned:${departure.id}`, reason: 'GUIDE_UNASSIGNED', subject, detail, dueAt, createdAt, href });
+      continue;
     }
     sources.push({ id: `departure:${departure.id}`, reason: 'DEPARTURE_UPCOMING', subject, detail, dueAt, createdAt, href });
   }
@@ -165,15 +194,16 @@ export async function loadGuideActionSources(params: {
   fromDate: string;
   departureToDate: string;
   timeZone?: string;
+  now?: Date;
 }): Promise<GuideActionSource[]> {
-  const { supabase, tenantId, fromDate, departureToDate, timeZone } = params;
+  const { supabase, tenantId, fromDate, departureToDate, timeZone, now } = params;
   const [ordersResult, departuresResult, assignmentsResult] = await Promise.all([
     supabase.from('tour_orders')
       .select('id,order_no,customer_name,status,payment_status,hold_expires_at,departure_id,created_at,trip_plans(name,booking_type,trips(title))')
       .eq('tenant_id', tenantId).in('status', ['PENDING', 'CONFIRMED']),
     supabase.from('trip_departures')
       .select('id,trip_id,departs_on,start_time,status,created_at,trips(title),trip_plans(name,booking_type)')
-      .eq('tenant_id', tenantId).neq('status', 'CANCELLED')
+      .eq('tenant_id', tenantId).eq('status', 'OPEN')
       .gte('departs_on', fromDate).lte('departs_on', departureToDate),
     supabase.from('trip_departure_staff').select('departure_id').eq('tenant_id', tenantId),
   ]);
@@ -181,5 +211,5 @@ export async function loadGuideActionSources(params: {
   return sourcesFromRows({
     orders: ordersResult.data ?? [], departures: departuresResult.data ?? [],
     assignments: assignmentsResult.data ?? [],
-  }, timeZone);
+  }, timeZone, now);
 }

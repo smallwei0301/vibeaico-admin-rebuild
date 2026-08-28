@@ -8,11 +8,12 @@ export const GET = handle(async () => {
     .from('tenant_settings').select('basic').eq('tenant_id', tenant.tenantId).maybeSingle();
   if (error) throw error;
   const basic = (settings?.basic ?? {}) as Record<string, unknown>;
-  const timeZone = typeof basic.timezone === 'string' && basic.timezone ? basic.timezone : 'Asia/Taipei';
+  const timeZone = typeof basic.timezone === 'string' ? basic.timezone : undefined;
   const window = guideInboxWindow(new Date(), timeZone);
   const sources = await loadGuideActionSources({
     supabase: tenant.supabase, tenantId: tenant.tenantId,
-    fromDate: window.fromDate, departureToDate: window.departureToDate, timeZone,
+    fromDate: window.fromDate, departureToDate: window.departureToDate,
+    timeZone: window.timeZone, now: window.now,
   });
-  return ok({ ...buildGuideActionInbox(sources, window), timeZone });
+  return ok({ ...buildGuideActionInbox(sources, window), timeZone: window.timeZone });
 });

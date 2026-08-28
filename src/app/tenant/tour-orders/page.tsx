@@ -71,6 +71,7 @@ export default function TourOrdersPage() {
   const [loading, setLoading] = React.useState(true);
 
   const [keyword, setKeyword] = React.useState('');
+  const [deepLinkReady, setDeepLinkReady] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState('');
   const [sourceFilter, setSourceFilter] = React.useState('');
   const [paymentFilter, setPaymentFilter] = React.useState('');
@@ -106,6 +107,7 @@ export default function TourOrdersPage() {
   React.useEffect(() => {
     const deepLinkKeyword = new URLSearchParams(window.location.search).get('keyword');
     if (deepLinkKeyword) setKeyword(deepLinkKeyword);
+    setDeepLinkReady(true);
   }, []);
 
   const load = React.useCallback(async () => {
@@ -134,7 +136,9 @@ export default function TourOrdersPage() {
     }
   }, []);
 
-  React.useEffect(() => { void load(); }, [load]);
+  React.useEffect(() => {
+    if (deepLinkReady) void load();
+  }, [deepLinkReady, load]);
   React.useEffect(() => { void loadSummary(); }, [loadSummary]);
 
   /* --------------------------------------------------- 手動建單的資料源 */
