@@ -60,8 +60,16 @@ async function postJson(label: string, path: string, body: unknown): Promise<Res
 
 /** Bound every PostgREST/Auth admin step so a stall identifies its exact operation. */
 async function dbQuery<T>(label: string, query: (signal: AbortSignal) => PromiseLike<T>): Promise<T> {
+  const signal = AbortSignal.timeout(DB_TIMEOUT_MS);
+  const timeout = new Promise<never>((_, reject) => {
+    signal.addEventListener('abort', () => reject(new Error(
+      `[auth.03] DB operation '${label}' exceeded ${DB_TIMEOUT_MS}ms`,
+    )), { once: true });
+  });
   try {
-    return await query(AbortSignal.timeout(DB_TIMEOUT_MS));
+    // Auth admin methods do not expose abortSignal; racing keeps those calls
+    // bounded too, while PostgREST methods also receive the real signal.
+    return await Promise.race([query(signal), timeout]);
   } catch (cause) {
     const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
     throw new Error(`[auth.03] DB operation '${label}' timed out or failed: ${detail}`, {
