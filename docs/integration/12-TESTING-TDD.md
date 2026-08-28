@@ -260,6 +260,11 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
 ### Phase 7（Cron）
 - 每個 cron：無 Bearer 401；正例（用 service role 預置符合條件的資料 → 打 cron →
   驗結果）；防重發（reminder_sent_at / last_recall_at）；每日 50 上限。
+- #40 notification：outbox rollback 零殘留／commit 恰一筆、recipient×channel fan-out
+  冪等、雙 worker `SKIP LOCKED` claim、retry/backoff/MAX attempts/DEAD、Email `ACCEPTED`
+  與 `DELIVERED` 不混用、Telegram blocked invalidates binding、每日 health digest 0 failure
+  仍保存，且 digest 兩通道各自失敗都有 ledger。Provider smoke 僅限明確授權的 TEST
+  transport；不可在一般測試呼叫真實 Email／Telegram。
 
 ### Phase 8（行程）
 | 檔 | 案例 |

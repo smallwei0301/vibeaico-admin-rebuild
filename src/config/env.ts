@@ -29,6 +29,17 @@ const serverSchema = z.object({
 
   /** Resend 寄信（Phase 4，見 05 分冊） */
   RESEND_API_KEY: z.string().optional(),
+  /** Resend delivery webhook signing secret (whsec_...), server-only. */
+  RESEND_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
+
+  /** #40 平台單一 Telegram Bot 與每日健康報告收件端；全為 server-only。 */
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_BOT_ID: z.string().optional(),
+  /** Bot username only; this is used to create a public t.me deep link. */
+  TELEGRAM_BOT_USERNAME: z.string().regex(/^@?[A-Za-z0-9_]{5,}$/).optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
+  PLATFORM_OWNER_EMAIL: z.string().email().optional(),
+  PLATFORM_TELEGRAM_CHAT_ID: z.string().regex(/^-?\d+$/).optional(),
 
   /** Vercel Cron 呼叫 /api/cron/* 的 Bearer token（Phase 7，見 07 分冊） */
   CRON_SECRET: z.string().optional(),

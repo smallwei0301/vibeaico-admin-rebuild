@@ -600,7 +600,7 @@ export type TourOrderAddon = {
 };
 
 export type TourOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
-export type TourPaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED';
+export type TourPaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'REFUND_PENDING' | 'REFUNDED';
 export type TourOrderSource = 'MIDAO' | 'VIBEAI_SHOP' | 'LINE' | 'MANUAL';
 
 export type TourOrder = {

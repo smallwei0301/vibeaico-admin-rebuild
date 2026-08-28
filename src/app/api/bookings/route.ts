@@ -4,10 +4,10 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged, pageSizeSchema } from '@/server/paging';
 import { mapBooking } from '@/server/mappers';
-import { createAdminSupabase } from '@/server/supabase';
-import { notifyBookingEvent } from '@/server/email/notify';
-import { notifyOwnerNewBooking } from '@/server/owner-notify';
 import { throwAvailabilityRpcError } from '@/server/availability-rpc';
+import { notifyOwnerNewBooking } from '@/server/owner-notify';
+import { dispatchAfterCommit } from '@/server/notifications/outbox';
+import { taipeiTodayDateString } from '@/server/tz';
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
@@ -89,15 +89,11 @@ export const POST = handle(async (req) => {
   });
   if (rpcError) throwAvailabilityRpcError(rpcError);
 
-  // Email 通知（05 分冊 §3 notifyNewBooking / notifyStaffBooking）：不 await ——
-  // 寄信慢或失敗都不可拖垮回應，函式內部已吞錯（比照 cancel/route.ts）。
-  void notifyBookingEvent(createAdminSupabase(), t.tenantId, bookingId, 'NEW');
-
-  // 老闆通知（06 分冊 §5.5，issue #18）：新預約 → 推給通知名單上的**每一位**
-  // （n 位＝n 則＝額度 -n）。名單為空就一則都不發。同樣 fire-and-forget，
-  // 函式內部整段 try/catch 吞錯。
-  // ⚠️ 與上面那行的 Email 通知是兩條獨立通道（一條寄信給店家信箱、一條推 LINE
-  // 給名單），不可互相取代。
+  // Owner recipients remain a distinct recipient policy. Delivery itself is
+  // durable through #40's outbox and this post-commit dispatch is best-effort.
   void notifyOwnerNewBooking(t.tenantId, bookingId);
+  // 0037 trigger writes BOOKING_CREATED in the same database transaction as
+  // this insert. Dispatch is best-effort after commit; the outbox is durable.
+  dispatchAfterCommit();
   return ok({ id: bookingId });
 });

@@ -372,6 +372,12 @@ export const saveAiSettings = (value: AiSettings) =>
     () => request<void>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(value) }),
   );
 
+export const createTelegramBindLink = () =>
+  adapt<{ deepLink: string; expiresInMinutes: number }>(
+    () => ({ deepLink: 'https://t.me/vibeai_demo_bot?start=demo-telegram-link', expiresInMinutes: 15 }),
+    () => request('/api/telegram/bind', { method: 'POST' }),
+  );
+
 export const listFeatures = () =>
   adapt<FeatureSubscription[]>(() => MOCK_FEATURES, () => request<FeatureSubscription[]>('/api/feature-store'));
 

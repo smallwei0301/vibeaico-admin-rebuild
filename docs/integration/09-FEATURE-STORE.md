@@ -24,7 +24,7 @@
 | CUSTOMER_RECALL | 行銷 | 49 | ✔ | 07 cron customer-recall + §5 閘門 |
 | POINT_SYSTEM | 顧客 | 49 | ✔ | 04 §A-2 complete 累點邏輯 + §5 閘門 |
 | ADVANCED_CUSTOMER | 顧客 | 49 | ✔ | 04 §A-3 篩選/§B-6 tags、匯出 + §5 閘門 |
-| EMAIL_NOTIFICATION | 系統 | 49 | ✔ | 05 通知信 + §5 閘門 |
+| EMAIL_NOTIFICATION | 系統 | 49 | ✔ | **進階** Email 自動化／模板／行銷；基本交易／營運 Email 是免費 baseline（17 分冊） |
 | BASIC_REPORT | 系統 | 99 | ✔ | 04 §A-5/§B-6 + §5 閘門 |
 | MEMBERSHIP_SYSTEM | 顧客 | 49 | ✔ | 04 §B-4 + §5 閘門 |
 | COUPON_SYSTEM | 行銷 | 49 | ✔ | 04 §B-4 + §6 到期副作用 |
@@ -177,7 +177,7 @@ export async function requireFeature(tenantId: string, code: string) {
 | CUSTOMER_RECALL | cron customer-recall 逐店過濾 |
 | POINT_SYSTEM | complete 端點的累點段、`apply-points` 折抵端點 |
 | ADVANCED_CUSTOMER | `/api/customers/tags`、匯出 Excel、`minSpent/maxSpent/minVisits/tag` 篩選參數（未訂閱時忽略這些參數即可，不用整條擋） |
-| EMAIL_NOTIFICATION | 05 分冊的預約/訂單通知信（驗證碼信與密碼重設**不受此限**） |
+| EMAIL_NOTIFICATION | 僅進階 Email 自動化／模板／行銷；**不得**擋 05／17 分冊的基本交易與營運通知 |
 | BASIC_REPORT | `/api/reports/*` 除 dashboard 與 dashboard-alerts 外全部 |
 | MEMBERSHIP_SYSTEM | `/api/membership-levels` 寫入端點 |
 | COUPON_SYSTEM | `/api/coupons*` 寫入端點 |

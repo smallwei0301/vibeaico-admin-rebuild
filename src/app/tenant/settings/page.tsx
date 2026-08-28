@@ -17,7 +17,7 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/services/settings';
+import { createTelegramBindLink, getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/services/settings';
 import { changePassword } from '@/services/auth';
 import { uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
@@ -109,6 +109,7 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [confirmPasswordChange, setConfirmPasswordChange] = React.useState(false);
   const [passwordBusy, setPasswordBusy] = React.useState(false);
+  const [telegramBusy, setTelegramBusy] = React.useState(false);
 
   React.useEffect(() => {
     const hash = window.location.hash;
@@ -354,6 +355,20 @@ export default function SettingsPage() {
       );
     } finally {
       setWelcomeImageBusy(false);
+      if (welcomeImageFileRef.current) welcomeImageFileRef.current.value = '';
+    }
+  };
+
+  const bindTelegram = async () => {
+    setTelegramBusy(true);
+    try {
+      const { deepLink } = await createTelegramBindLink();
+      window.open(deepLink, '_blank', 'noopener,noreferrer');
+      toast.show(t.notification.telegramLinkOpened);
+    } catch (e) {
+      toast.show(`${t.notification.telegramBindFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
+    } finally {
+      setTelegramBusy(false);
     }
   };
 
@@ -1012,17 +1027,15 @@ export default function SettingsPage() {
                   <Mail size={15} />
                   {t.notification.emailSection}
                 </h3>
-                <Alert
-                  tone="warning"
-                  className="mb-3"
-                  action={
-                    <Link className="btn btn-outline btn-sm" href="/tenant/feature-store">
-                      {t.notification.emailLockedCta}
-                    </Link>
-                  }
-                >
-                  {t.notification.emailLocked}
-                </Alert>
+                <Alert tone="info" className="mb-3">{t.notification.emailBaseline}</Alert>
+                <h3 className="mb-3 mt-6 flex items-center gap-2 text-md font-bold text-dark">
+                  <MessageSquareText size={15} />
+                  {t.notification.telegramSection}
+                </h3>
+                <Alert tone="neutral" className="mb-3">{t.notification.telegramHelp}</Alert>
+                <Button type="button" variant="secondary" onClick={() => void bindTelegram()} loading={telegramBusy}>
+                  {t.notification.telegramBind}
+                </Button>
                 <SwitchField
                   label={t.notification.newBooking}
                   description={t.notification.newBookingHelp}

@@ -208,10 +208,14 @@ export const settingsPage = {
 
     /* --- Email 預約通知 --- */
     emailSection: 'Email 預約通知',
-    emailLocked: '此功能需訂閱「Email 預約通知」或輕量版/專業版方案。',
-    emailLockedCta: '前往開通（49 點/月）',
+    emailBaseline: '基本交易／營運 Email 通知為免費功能；進階自動化與行銷 Email 另依方案提供。',
+    telegramSection: 'Telegram 營運通知',
+    telegramHelp: 'Telegram 也是免費基本通知。按下後會開啟 Telegram；在 Bot 對話按開始，即完成此帳號的綁定。連結 15 分鐘後失效。',
+    telegramBind: '開啟 Telegram 並綁定',
+    telegramLinkOpened: '已開啟 Telegram 綁定連結，請在 Bot 對話按「開始」。',
+    telegramBindFailedPrefix: '無法建立 Telegram 綁定連結：',
     newBooking: '店家：新預約 / 確認通知',
-    newBookingHelp: '新預約建立和確認時，Email 通知店家',
+    newBookingHelp: '新預約建立時，Email 通知店家',
     bookingCancel: '店家：取消預約通知',
     bookingCancelHelp: '預約被取消時，Email 通知店家',
     staffBooking: '員工：預約 Email 通知',
@@ -264,7 +268,7 @@ export const settingsPage = {
     collectEmailHelp:
       '開啟（預設）：LINE 預約個資收集會多問一步 Email（顧客可跳過）；隱私表單也會顯示 Email 欄位。',
     collectEmailExtra: '關閉：LINE 不再詢問 Email、隱私表單不顯示 Email 欄位，縮短預約流程。',
-    collectEmailTip: '提示 ：未訂閱 Email 通知功能時，收集到的 Email 不會用於寄送預約通知。',
+    collectEmailTip: '提示：Email 僅會用於已開啟的基本交易通知或您另行啟用的進階功能。',
     collectBirthday: '預約時收集顧客生日',
     collectBirthdayHelp: '開啟（預設）：LINE 預約 / 隱私表單會請顧客填生日。關閉：不再詢問生日。',
     collectBirthdayExtra:

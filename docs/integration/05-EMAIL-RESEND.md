@@ -2,6 +2,10 @@
 
 > 目標：驗證碼信、密碼重設信、預約/訂單通知信。全部經由一個寄信模組，
 > 通知類信件必須尊重 `tenant_settings.notify` 的開關。
+>
+> #40 起，重要交易／營運通知的可靠送達、retry 與 audit 以
+> `17-NOTIFICATION-DELIVERY.md` 的 transactional outbox 為準。Resend 成功只代表
+> `ACCEPTED`；沒有 provider delivery webhook 證據時不得寫成已送達收件匣。
 
 ---
 
@@ -12,6 +16,17 @@
    `MAIL_FROM` 用該網域，例如 `VibeAI <noreply@yourdomain.com>`。
 3. 還沒有網域時的過渡做法：`MAIL_FROM="onboarding@resend.dev"`
    （只能寄給自己帳號的信箱，夠開發用；**上線前必須換驗證網域**）。
+
+### Delivery webhook（送達回報）
+
+- 在 Resend 設定 webhook URL：`/api/webhooks/resend`，事件至少選
+  `email.delivered`、`email.bounced`、`email.complained`。
+- 把簽章秘密放在 server-only `RESEND_WEBHOOK_SECRET`；不得放進前端或資料庫。
+- `/emails` 成功只代表 `ACCEPTED`。只有簽章驗證通過的 `email.delivered` 才能把
+  ledger 更新為 `DELIVERED`；bounce／complaint 記為 `DEAD`，並以帶 server secret
+  的 Email HMAC（不保存地址本身）記錄收件健康，避免對已知壞地址反覆寄送。
+- Webhook callback 若早於 worker 保存 provider message id，端點回 503 讓 Resend
+  重試；event id 在成功套用後才記入冪等表，不會吃掉尚未能對應的送達證據。
 
 ---
 
@@ -116,8 +131,10 @@ const esc = (s: string) => s.replace(/[&<>"']/g,
 
 實作規約：
 
-- 在動作端點成功寫 DB 之後呼叫，**用 `void sendXxx(...)` 不 await**（寄信慢或失敗
-  都不可拖垮 API 回應；函式內部已吞錯）。
+- 驗證碼／密碼重設可走同步低延遲 transport，但仍要留 provider audit。
+- 訂單、預約、取消等重要事件**不得在 domain route 直接 `void sendXxx()`**；資料庫
+  transaction 寫 outbox event，commit 後由唯一 dispatcher fan-out／派送。provider 暫時
+  失敗由 delivery ledger retry，不能只 console.error。
 - 讀開關：`tenant_settings.notify` jsonb → `notifySettingsSchema.parse()` 補預設。
 - 「顧客端」通知（確認/提醒/取消推播）走 **LINE 推播**，不是 email —— 見 06 分冊；
   預約提醒與生日/喚回屬排程 —— 見 07 分冊。

@@ -54,8 +54,8 @@ function depositOf(plan: TripPlan, total: number, partySize = 1): number {
 const STATUS_TONE: Record<TourOrderStatus, 'warning' | 'success' | 'primary' | 'neutral'> = {
   PENDING: 'warning', CONFIRMED: 'success', COMPLETED: 'primary', CANCELLED: 'neutral',
 };
-const PAYMENT_TONE: Record<TourPaymentStatus, 'danger' | 'success' | 'neutral'> = {
-  UNPAID: 'danger', PAID: 'success', REFUNDED: 'neutral',
+const PAYMENT_TONE: Record<TourPaymentStatus, 'warning' | 'danger' | 'success' | 'neutral'> = {
+  UNPAID: 'danger', PARTIAL: 'warning', PAID: 'success', REFUND_PENDING: 'warning', REFUNDED: 'neutral',
 };
 const SOURCE_TONE: Record<TourOrderSource, 'primary' | 'info' | 'success' | 'neutral'> = {
   MIDAO: 'primary', VIBEAI_SHOP: 'info', LINE: 'success', MANUAL: 'neutral',
