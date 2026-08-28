@@ -35,7 +35,7 @@ create table notification_deliveries (
   status              text not null default 'PENDING'
                       check (status in ('PENDING', 'PROCESSING', 'ACCEPTED', 'DELIVERED', 'RETRY', 'DEAD', 'SKIPPED')),
   attempt_count       integer not null default 0 check (attempt_count >= 0 and attempt_count <= 5),
-  next_attempt_at     timestamptz not null default now(),
+  next_attempt_at     timestamptz default now(),
   claim_token         uuid,
   processing_started_at timestamptz,
   provider_message_id text,
@@ -56,6 +56,9 @@ create index notification_deliveries_claim_idx
 create index notification_deliveries_processing_idx
   on notification_deliveries (processing_started_at)
   where status = 'PROCESSING';
+create unique index notification_deliveries_email_provider_id
+  on notification_deliveries (provider_message_id)
+  where channel = 'EMAIL' and provider_message_id is not null;
 
 create table notification_health_reports (
   id             uuid primary key default gen_random_uuid(),
@@ -66,6 +69,27 @@ create table notification_health_reports (
   check (period_end > period_start),
   unique (period_start, period_end)
 );
+
+-- Provider webhook bodies may contain PII, so only the provider event id and
+-- final classification are retained. Recipient health uses a normalized-email
+-- SHA-256 hash; the address itself remains in tenant/staff source data only.
+create table notification_provider_webhook_events (
+  provider       text not null check (provider in ('RESEND')),
+  event_id       text not null,
+  event_type     text not null,
+  received_at   timestamptz not null default now(),
+  primary key (provider, event_id)
+);
+
+create table email_recipient_health (
+  recipient_hash bytea primary key,
+  healthy        boolean not null default true,
+  reason_code    text,
+  last_event_at  timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+create trigger t_email_recipient_health_u before update on email_recipient_health
+  for each row execute function set_updated_at();
 
 -- A binding belongs to one subject (tenant user, staff, or platform owner),
 -- not an email address. Chat id is necessary transport state; bind codes are
@@ -112,10 +136,13 @@ create table telegram_webhook_updates (
 alter table notification_outbox enable row level security;
 alter table notification_deliveries enable row level security;
 alter table notification_health_reports enable row level security;
+alter table notification_provider_webhook_events enable row level security;
+alter table email_recipient_health enable row level security;
 alter table telegram_bindings enable row level security;
 alter table telegram_bind_codes enable row level security;
 alter table telegram_webhook_updates enable row level security;
 revoke all on table notification_outbox, notification_deliveries, notification_health_reports,
+  notification_provider_webhook_events, email_recipient_health,
   telegram_bindings, telegram_bind_codes, telegram_webhook_updates from anon, authenticated;
 
 -- Internal-only primitive. It is SECURITY DEFINER because booking writes run
@@ -225,6 +252,87 @@ begin
 end;
 $$;
 
+-- Idempotently apply final Resend evidence. This RPC stores no webhook body,
+-- email address, signature, or provider secret.
+create or replace function public.apply_resend_delivery_event(
+  p_webhook_event_id text,
+  p_provider_message_id text,
+  p_status text,
+  p_error_code text default null,
+  p_recipient_hash bytea default null
+) returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare affected_outbox uuid;
+        affected_status text;
+        affected_recipient_type text;
+        affected_delivery_id uuid;
+        alert_outbox uuid;
+begin
+  if p_status not in ('DELIVERED', 'DEAD') then
+    raise exception 'unsupported Resend delivery status';
+  end if;
+  -- A provider callback can race the worker persisting provider_message_id.
+  -- Return NOT_FOUND without consuming event_id so the provider's retry can
+  -- apply it later instead of permanently losing final delivery evidence.
+  select outbox_id, status, recipient_type, id
+    into affected_outbox, affected_status, affected_recipient_type, affected_delivery_id
+  from notification_deliveries
+  where provider_message_id = p_provider_message_id and channel = 'EMAIL'
+  for update;
+  if affected_outbox is null then return 'NOT_FOUND'; end if;
+
+  insert into notification_provider_webhook_events (provider, event_id, event_type)
+  values ('RESEND', p_webhook_event_id, p_status)
+  on conflict do nothing;
+  if not found then return 'DUPLICATE'; end if;
+  -- Final provider evidence is monotonic: a bounce/complaint (DEAD) must not
+  -- be resurrected by an older delivered callback arriving out of order.
+  if affected_status = 'DEAD' and p_status = 'DELIVERED' then return 'IGNORED'; end if;
+
+  update notification_deliveries
+  set status = p_status,
+      delivered_at = case when p_status = 'DELIVERED' then now() else delivered_at end,
+      last_error_code = p_error_code,
+      next_attempt_at = null
+  where provider_message_id = p_provider_message_id
+    and channel = 'EMAIL'
+    and status in ('ACCEPTED', 'DELIVERED', 'DEAD')
+  ;
+
+  if p_status = 'DEAD' and p_recipient_hash is not null then
+    insert into email_recipient_health (recipient_hash, healthy, reason_code, last_event_at)
+    values (p_recipient_hash, false, p_error_code, now())
+    on conflict (recipient_hash) do update
+    set healthy = false, reason_code = excluded.reason_code, last_event_at = excluded.last_event_at;
+  end if;
+  if affected_outbox is not null then
+    perform public.refresh_notification_outbox_status(affected_outbox);
+  end if;
+  if p_status = 'DEAD' and affected_recipient_type <> 'PLATFORM_OWNER' then
+    insert into notification_outbox (
+      tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key, payload
+    ) values (
+      null, 'PLATFORM_NOTIFICATION_ALERT', 'NOTIFICATION_DELIVERY', affected_delivery_id::text,
+      'delivery-dead:' || affected_delivery_id::text,
+      jsonb_build_object('alertCode', 'CRITICAL_DELIVERY_DEAD')
+    )
+    on conflict (event_name, aggregate_type, aggregate_id, idempotency_key)
+    do update set idempotency_key = excluded.idempotency_key
+    returning id into alert_outbox;
+    insert into notification_deliveries (
+      outbox_id, tenant_id, recipient_type, recipient_ref, channel, destination_ref
+    ) values
+      (alert_outbox, null, 'PLATFORM_OWNER', 'platform-owner', 'EMAIL', 'PLATFORM_OWNER_EMAIL'),
+      (alert_outbox, null, 'PLATFORM_OWNER', 'platform-owner', 'TELEGRAM', 'PLATFORM_OWNER_TELEGRAM')
+    on conflict (outbox_id, recipient_type, recipient_ref, channel) do nothing;
+  end if;
+  return 'APPLIED';
+end;
+$$;
+
 -- Atomically bind a one-time Telegram deep-link code and remember update_id.
 create or replace function public.consume_telegram_bind_code(
   p_bot_id text,
@@ -261,4 +369,5 @@ revoke execute on function public.enqueue_notification_event(uuid, text, text, t
 revoke execute on function public.enqueue_booking_notification_event() from public, anon, authenticated;
 revoke execute on function public.claim_notification_deliveries(integer) from public, anon, authenticated;
 revoke execute on function public.refresh_notification_outbox_status(uuid) from public, anon, authenticated;
+revoke execute on function public.apply_resend_delivery_event(text, text, text, text, bytea) from public, anon, authenticated;
 revoke execute on function public.consume_telegram_bind_code(text, bigint, bytea, bigint) from public, anon, authenticated;
