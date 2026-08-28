@@ -1,7 +1,11 @@
-import { randomUUID } from 'node:crypto';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+import {
+  buildTenantAssetPath,
+  validateImageBytes,
+  validateImageUpload,
+} from '@/server/upload-assets';
 
 /**
  * POST /api/upload —— 頁面用圖片統一上傳端點（07 分冊 §3）。
@@ -14,8 +18,8 @@ import { createAdminSupabase } from '@/server/supabase';
  *   與 0008 的 RLS 檢查規則一致。
  * - 以 service role 上傳（requireTenant() 已先驗明成員身分與租戶歸屬，
  *   路徑又由伺服器端組出，不受用戶端左右）；bucket 皆 public → 回 getPublicUrl。
- * - 回 { url }；前端 services（services/products/portfolio/staff/rich-menu）
- *   先打這支拿 url，再把 url 塞進資源 payload。
+ * - 回 `{ url, storageRef: { bucket, path, url } }`；保留 url 向後相容，storageRef
+ *   讓資源 API 可驗證 tenant ownership 與真實物件，不必只信任 URL 字串。
  */
 const ALLOWED_BUCKETS = new Set([
   'service-images',
@@ -24,13 +28,6 @@ const ALLOWED_BUCKETS = new Set([
   'staff-avatars',
   'richmenu-assets',
 ]);
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
-const ALLOWED_TYPES: Record<string, string> = {
-  'image/jpeg': 'jpg',
-  'image/png': 'png',
-  'image/webp': 'webp',
-};
-
 export const POST = handle(async (req) => {
   const t = await requireTenant();
 
@@ -45,13 +42,10 @@ export const POST = handle(async (req) => {
   if (typeof bucket !== 'string' || !ALLOWED_BUCKETS.has(bucket))
     throw new ApiHttpError(400, '不允許的 bucket', ERR.VALIDATION);
 
-  const ext = ALLOWED_TYPES[file.type];
-  if (!ext)
-    throw new ApiHttpError(400, '僅支援 JPEG / PNG / WebP 圖片', ERR.VALIDATION);
-  if (file.size > MAX_BYTES)
-    throw new ApiHttpError(400, '圖片超過 5MB 上限，請壓縮後再上傳', ERR.VALIDATION);
+  const { extension } = validateImageUpload({ contentType: file.type, size: file.size });
+  validateImageBytes(new Uint8Array(await file.arrayBuffer()), extension);
 
-  const path = `${t.tenantId}/${randomUUID()}.${ext}`;
+  const path = buildTenantAssetPath(t.tenantId, extension);
   const admin = createAdminSupabase();
   const { error } = await admin.storage
     .from(bucket)
@@ -59,5 +53,8 @@ export const POST = handle(async (req) => {
   if (error) throw error;
 
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
-  return ok({ url: data.publicUrl });
+  return ok({
+    url: data.publicUrl,
+    storageRef: { bucket, path, url: data.publicUrl },
+  });
 });
