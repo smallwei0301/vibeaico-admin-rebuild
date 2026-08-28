@@ -22,6 +22,7 @@ import { TRAVELER_1 } from '../fixtures';
 
 /** 整合測試伺服器位址 —— 與 tests/integration/global-setup.ts 起的 next dev 一致。 */
 const INTEGRATION_BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
+const AUTH_STEP_TIMEOUT_MS = 20_000;
 
 /** `src/lib/api.ts` 假設的固定回應信封（見 CLAUDE.md「Pages never fetch」一節）。 */
 interface ApiEnvelope<T = unknown> {
@@ -44,6 +45,20 @@ export interface AuthedApi {
 
 function resolveUrl(path: string): string {
   return path.startsWith('http://') || path.startsWith('https://') ? path : `${INTEGRATION_BASE_URL}${path}`;
+}
+
+/** Bound each helper request so a stalled auth endpoint names the exact step. */
+async function fetchAuthStep(label: string, url: string, init: RequestInit): Promise<Response> {
+  const timeout = AbortSignal.timeout(AUTH_STEP_TIMEOUT_MS);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+  try {
+    return await fetch(url, { ...init, signal });
+  } catch (cause) {
+    const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
+    throw new Error(`[auth helper] '${label}' timed out or failed: ${detail}`, {
+      cause: cause instanceof Error ? cause : undefined,
+    });
+  }
 }
 
 function withJsonBody(init: RequestInit | undefined, body: unknown): RequestInit {
@@ -92,7 +107,7 @@ export async function loginAs(email: string, password: string): Promise<AuthedAp
     [...jar.entries()].map(([n, v]) => `${n}=${v}`).join('; ');
 
   const signIn = async (): Promise<void> => {
-    const res = await fetch(resolveUrl('/api/auth/login'), {
+    const res = await fetchAuthStep('POST /api/auth/login', resolveUrl('/api/auth/login'), {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
@@ -108,7 +123,8 @@ export async function loginAs(email: string, password: string): Promise<AuthedAp
   };
 
   const request = async (path: string, init?: RequestInit): Promise<Response> => {
-    const response = await fetch(resolveUrl(path), {
+    const method = init?.method ?? 'GET';
+    const response = await fetchAuthStep(`${method} ${path}`, resolveUrl(path), {
       ...init, headers: { ...(init?.headers ?? {}), Cookie: cookieHeader() },
     });
     ingest(response);
@@ -169,7 +185,7 @@ export async function travelerJwt(email: string, password?: string): Promise<str
     );
   }
 
-  const res = await fetch(resolveUrl('/api/public/auth/login'), {
+  const res = await fetchAuthStep('POST /api/public/auth/login', resolveUrl('/api/public/auth/login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password: resolvedPassword }),
