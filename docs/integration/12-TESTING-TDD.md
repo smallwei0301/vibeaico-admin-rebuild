@@ -37,6 +37,10 @@ AUTH_SECRET=<測試專用>
 規則：
 - 02/09/10/11 各分冊的 migrations 必須同步套進 TEST 專案（新 migration 的
   Definition of Done 包含「TEST 專案已套用」）。
+- 對 TEST 專案執行 migration 前，必須取得明確的 TEST 環境授權，並記錄授權者、
+  project ref、目前 migration／schema 基線與驗證結果；未完成基線驗證或無授權時，
+  禁止執行。若 migration 新增／修改 API 會使用的資料表、欄位或 RPC，套用後必須刷新
+  schema cache，並以目標查詢驗證可用。
 - **重置腳本 `scripts/test/reset-db.mjs`**（service role）：truncate 全部業務表
   （`auth_verification_codes` 到 `tour_orders`，restart identity cascade）→
   刪除測試 auth users（email 以 `@test.local` 結尾者）→ 執行種子（§1.3）。
@@ -127,6 +131,13 @@ globalSetup 是設定層級而非檔案層級，會重置 TEST 資料庫並啟�
 - 測試資料只用 §1.3 種子常數或測試內自建（自建的要在測試內清理或依賴 reset）。
 - 禁用 `sleep` 等待：輪詢條件（間隔 ≤200ms、上限 10s）。
 
+#### 2.3.1 401 的契約判讀
+
+- 遇到 401，先依 canonical API 契約確認該路徑是否預期未登入即拒絕；預期的 401
+  不得直接判定為登入（Auth）bug。
+- 若該請求理應已登入，才以最小流程驗證：登入 → `/api/auth/me` → 同一受保護端點；
+  同時核對 cookie／Bearer、回應錯誤碼與伺服器日誌，區分測試、契約或 Auth 實作問題。
+
 ### 2.4 絕對禁止（做了 = 該輪工作無效）
 
 1. 修改/刪除/註解既有測試讓它變綠（唯一例外：分冊本身改了，且 commit 訊息
@@ -135,6 +146,13 @@ globalSetup 是設定層級而非檔案層級，會重置 TEST 資料庫並啟�
 3. 放寬斷言（`toBe(403)` 改 `toBeGreaterThan(0)` 之類）。
 4. 在測試裡直接用 service role 幫 API「補做」它該做的事。
 5. 未跑 §6 全套就宣稱完成（「應該會過」＝未完成）。
+
+### 2.5 新行為與既有契約的核對
+
+- 新行為不得只新增測試而忽略既有測試契約。實作前必須逐項檢查受影響的既有測試、
+  canonical 文件與 API 回應契約。
+- 行為確實變更時，先更新 canonical 文件，並在 commit／PR 說明舊契約、新契約及
+  所有受影響測試；若契約未變更，既有測試必須保留原斷言。
 
 ---
 
