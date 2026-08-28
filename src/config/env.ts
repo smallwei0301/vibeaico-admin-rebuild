@@ -29,6 +29,8 @@ const serverSchema = z.object({
 
   /** Resend 寄信（Phase 4，見 05 分冊） */
   RESEND_API_KEY: z.string().optional(),
+  /** Resend delivery webhook signing secret (whsec_...), server-only. */
+  RESEND_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
 
   /** #40 平台單一 Telegram Bot 與每日健康報告收件端；全為 server-only。 */
   TELEGRAM_BOT_TOKEN: z.string().optional(),
