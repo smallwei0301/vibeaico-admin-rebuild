@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { ApiHttpError, ERR } from './http';
 import { createAdminSupabase } from './supabase';
 import { makeLinePreview, previewPathFor } from './image';
+import { KEYWORD_REPLY_IMAGES_BUCKET } from './keyword-reply-images';
 
 /**
  * bucket 白名單 = 0008 migration 的五個（service-images / product-images /
@@ -33,6 +34,7 @@ export const ALLOWED_BUCKETS = new Set([
   'chat-images',
   'bug-report-attachments',
   'welcome-card-images',
+  KEYWORD_REPLY_IMAGES_BUCKET,
 ]);
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
@@ -76,7 +78,9 @@ const SIGNED_URL_TTL_SECONDS = 60 * 60;
  *
  * ⚠️ 不可以因此全站禁 WebP —— 其餘四個 bucket 只會出現在自家網頁上。
  */
-const LINE_BOUND_BUCKETS = new Set(['chat-images', 'richmenu-assets', 'welcome-card-images']);
+const LINE_BOUND_BUCKETS = new Set([
+  'chat-images', 'richmenu-assets', 'welcome-card-images', KEYWORD_REPLY_IMAGES_BUCKET,
+]);
 
 /**
  * 需要**額外產一張 ≤1 MB 縮圖**的 bucket —— 只有 `chat-images`（14 分冊 §8.15）。
@@ -90,6 +94,19 @@ const WEB_TYPES: Record<string, string> = {
   'image/png': 'png',
   'image/webp': 'webp',
 };
+
+function validateImageBytes(bytes: Uint8Array, extension: string): void {
+  const startsWith = (signature: number[]) => signature.every((byte, i) => bytes[i] === byte);
+  const valid = extension === 'jpg'
+    ? startsWith([0xff, 0xd8, 0xff])
+    : extension === 'png'
+      ? startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      : extension === 'webp'
+        ? startsWith([0x52, 0x49, 0x46, 0x46]) && bytes[8] === 0x57 && bytes[9] === 0x45
+          && bytes[10] === 0x42 && bytes[11] === 0x50
+        : false;
+  if (!valid) throw new ApiHttpError(400, '圖片內容與宣告格式不一致', ERR.VALIDATION);
+}
 /** LINE 只收 JPEG / PNG（見 LINE_BOUND_BUCKETS 的說明） */
 const LINE_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -103,6 +120,8 @@ export type UploadResult = {
   urlExpiresInSeconds?: number;
   previewPath?: string;
   previewUrl?: string;
+  /** 可持久化的 public object reference；資源 API 必須驗 tenant ownership + existence。 */
+  storageRef: { bucket: string; path: string; url: string };
 };
 
 /**
@@ -161,12 +180,15 @@ export async function uploadToBucket(args: {
       ERR.VALIDATION,
     );
 
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  validateImageBytes(bytes, ext);
+
   /**
    * 縮圖**先產、後上傳**（issue #28 ⑬）。產不出縮圖時 Storage 裡不會留下任何東西，
    * 也不會回一個「上傳成功但這張圖永遠送不出去」的半成品。
    */
   const preview = LINE_PREVIEW_BUCKETS.has(bucket)
-    ? await makeLinePreview(Buffer.from(await file.arrayBuffer()), file.type)
+    ? await makeLinePreview(Buffer.from(bytes), file.type)
     : null;
 
   const path = `${tenantId}/${randomUUID()}.${ext}`;
@@ -194,12 +216,18 @@ export async function uploadToBucket(args: {
       .from(bucket)
       .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
     if (signError) throw signError;
-    return { url: data.signedUrl, path, bucket, urlExpiresInSeconds: SIGNED_URL_TTL_SECONDS };
+    return {
+      url: data.signedUrl, path, bucket, urlExpiresInSeconds: SIGNED_URL_TTL_SECONDS,
+      storageRef: { bucket, path, url: data.signedUrl },
+    };
   }
 
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
   const previewUrl = previewPath
     ? admin.storage.from(bucket).getPublicUrl(previewPath).data.publicUrl
     : undefined;
-  return { url: data.publicUrl, path, bucket, previewPath: previewPath ?? undefined, previewUrl };
+  return {
+    url: data.publicUrl, path, bucket, previewPath: previewPath ?? undefined, previewUrl,
+    storageRef: { bucket, path, url: data.publicUrl },
+  };
 }

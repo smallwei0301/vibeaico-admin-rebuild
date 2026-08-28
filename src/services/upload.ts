@@ -1,4 +1,5 @@
 import { ApiError } from '@/lib/api';
+import type { StorageRef } from '@/lib/types';
 
 /**
  * POST /api/upload —— 圖片上傳（07 分冊 §3）。
@@ -19,6 +20,8 @@ export type UploadBucket =
   | 'chat-images'
   /** 加好友歡迎卡片的圖片（0023；public，去向是 LINE，只收 JPEG/PNG） */
   | 'welcome-card-images'
+  /** 關鍵字回覆用的 LINE 圖片（0039；public，僅 JPEG/PNG） */
+  | 'keyword-reply-images'
   /** 回報問題的截圖（0019；**private** bucket，url 是短效簽名 URL，見下方 UploadResult） */
   | 'bug-report-attachments';
 
@@ -50,6 +53,8 @@ export type UploadResult = {
    */
   previewUrl?: string;
   previewPath?: string;
+  /** 公開物件的持久引用；關鍵字回覆 API 以此驗 tenant ownership 與存在性。 */
+  storageRef: StorageRef & { bucket: UploadBucket };
 };
 
 /**
@@ -82,7 +87,7 @@ export async function uploadFile(file: File, bucket: UploadBucket): Promise<Uplo
   } catch {
     throw new ApiError('伺服器回應格式錯誤', undefined, res.status);
   }
-  if (!res.ok || body.success === false || !body.data?.url || !body.data?.path) {
+  if (!res.ok || body.success === false || !body.data?.url || !body.data?.path || !body.data?.storageRef) {
     throw new ApiError(body.message ?? '圖片上傳失敗，請稍後再試', body.code, res.status);
   }
   return {
@@ -92,6 +97,7 @@ export async function uploadFile(file: File, bucket: UploadBucket): Promise<Uplo
     urlExpiresInSeconds: body.data.urlExpiresInSeconds,
     previewUrl: body.data.previewUrl,
     previewPath: body.data.previewPath,
+    storageRef: body.data.storageRef as UploadResult['storageRef'],
   };
 }
 

@@ -17,10 +17,11 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/api';
+import { uploadFile } from '@/services/upload';
 import { getTenantSettings, listFeatures, saveLineSettings } from '@/services/settings';
 import {
-  createKeywordReply, deleteKeywordReply, listKeywordReplies, setKeywordReplyActive,
-  updateKeywordReply,
+  createKeywordReply, deleteKeywordReply, discardKeywordReplyImage, listKeywordReplies,
+  setKeywordReplyActive, updateKeywordReply,
   type KeywordActionType as ActionType, type KeywordMatchType as MatchType,
   type KeywordReplyRow as KeywordReply,
 } from '@/services/keyword-replies';
@@ -50,6 +51,7 @@ const EMPTY_DRAFT: Omit<KeywordReply, 'id'> & { id: string } = {
   actionType: 'REPLY_CONTENT',
   replyText: '',
   imageUrl: '',
+  imageStorageRef: undefined,
   linkUrl: '',
   linkLabel: '',
   enabled: true,
@@ -109,6 +111,8 @@ export default function KeywordRepliesPage() {
   const [editing, setEditing] = React.useState(false);
   const [formError, setFormError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [imageUploadState, setImageUploadState] = React.useState<'idle' | 'uploading' | 'uploaded' | 'failed'>('idle');
+  const [persistedImageRef, setPersistedImageRef] = React.useState<KeywordReply['imageStorageRef']>();
   const [deleteTarget, setDeleteTarget] = React.useState<KeywordReply | null>(null);
 
   /** 未訂閱時才真的鎖住自訂關鍵字的 CRUD（端點也 requireFeature，鎖與後端一致） */
@@ -178,12 +182,49 @@ export default function KeywordRepliesPage() {
     setEditing(false);
     setFormError('');
     setDraft({ ...EMPTY_DRAFT, ...preset });
+    setImageUploadState(preset?.imageUrl ? 'uploaded' : 'idle');
+    setPersistedImageRef(undefined);
   };
 
   const openEdit = (row: KeywordReply) => {
     setEditing(true);
     setFormError('');
     setDraft({ ...row });
+    setImageUploadState(row.imageUrl ? 'uploaded' : 'idle');
+    setPersistedImageRef(row.imageStorageRef);
+  };
+
+  const discardProvisionalImage = (ref: KeywordReply['imageStorageRef']) => {
+    if (!ref || ref.path === persistedImageRef?.path) return;
+    void discardKeywordReplyImage(ref).catch(() => {
+      // Server has already queued a retry when Storage delete fails. The modal is closing, so
+      // there is no longer a useful inline position for this recoverable cleanup notice.
+    });
+  };
+
+  const closeDraft = () => {
+    discardProvisionalImage(draft?.imageStorageRef);
+    setDraft(null);
+    setPersistedImageRef(undefined);
+    setImageUploadState('idle');
+  };
+
+  const uploadKeywordReplyImage = async (file: File) => {
+    setImageUploadState('uploading');
+    setFormError('');
+    try {
+      const uploaded = await uploadFile(file, 'keyword-reply-images');
+      discardProvisionalImage(draft?.imageStorageRef);
+      setDraft((current) => current ? {
+        ...current,
+        imageUrl: uploaded.url,
+        imageStorageRef: uploaded.storageRef as NonNullable<KeywordReply['imageStorageRef']>,
+      } : current);
+      setImageUploadState('uploaded');
+    } catch (e) {
+      setImageUploadState('failed');
+      setFormError(errorMessage(e));
+    }
   };
 
   const applyTemplate = (index: number) => {
@@ -219,6 +260,7 @@ export default function KeywordRepliesPage() {
         const created = await createKeywordReply(payload);
         setRows((list) => [...list, { ...payload, id: created.id }]);
       }
+      setPersistedImageRef(payload.imageStorageRef);
       setDraft(null);
       toast.show(t.messages.saved);
     } catch (e) {
@@ -526,15 +568,15 @@ export default function KeywordRepliesPage() {
       {/* --------------------------------------------- modal：自訂關鍵字 */}
       <Modal
         open={!!draft}
-        onClose={() => setDraft(null)}
+        onClose={closeDraft}
         size="lg"
         title={editing ? t.form.editTitle : t.form.createTitle}
         footer={
           <>
-            <Button variant="secondary" size="sm" onClick={() => setDraft(null)}>
+            <Button variant="secondary" size="sm" onClick={closeDraft}>
               {common.cancel}
             </Button>
-            <Button size="sm" loading={saving} loadingText={common.saving} onClick={() => void save()}>
+            <Button size="sm" loading={saving || imageUploadState === 'uploading'} loadingText={common.saving} onClick={() => void save()}>
               {common.save}
             </Button>
           </>
@@ -630,18 +672,37 @@ export default function KeywordRepliesPage() {
 
                 <FormGroup>
                   <Label>{t.form.image}</Label>
-                  {/* 上傳尚未建置：停用欄位並在畫面上說明（理由見 i18n 的 imageNotBuilt） */}
-                  <Input type="file" accept="image/*" className="form-control-sm" disabled />
-                  <FormText>{t.form.imageNotBuilt}</FormText>
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="form-control-sm"
+                    disabled={imageUploadState === 'uploading'}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) void uploadKeywordReplyImage(file);
+                    }}
+                  />
+                  <FormText>
+                    {imageUploadState === 'uploading' ? t.form.imageUploading
+                      : imageUploadState === 'uploaded' ? t.form.imageUploaded
+                        : imageUploadState === 'failed' ? t.form.imageFailed : t.form.imageHelp}
+                  </FormText>
                   {draft.imageUrl ? (
-                    <Button
-                      variant="outlineDanger"
-                      size="sm"
-                      className="mt-2"
-                      onClick={() => setDraft({ ...draft, imageUrl: '' })}
-                    >
-                      {t.form.imageRemove}
-                    </Button>
+                    <div className="mt-2 space-y-2">
+                      <img src={draft.imageUrl} alt={t.form.imagePreviewAlt} className="max-h-40 w-full rounded-lg object-contain" />
+                      <Button
+                        variant="outlineDanger"
+                        size="sm"
+                        onClick={() => {
+                          discardProvisionalImage(draft.imageStorageRef);
+                          setDraft({ ...draft, imageUrl: '', imageStorageRef: undefined });
+                          setImageUploadState('idle');
+                        }}
+                      >
+                        {t.form.imageRemove}
+                      </Button>
+                    </div>
                   ) : null}
                 </FormGroup>
 

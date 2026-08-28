@@ -680,3 +680,14 @@ export type CalendarEvent = {
     calendarName?: string;
   };
 };
+/** 永久 Storage 物件引用；資源 API 必須驗證 bucket、path、URL、租戶與物件存在。 */
+export type StorageRef = {
+  bucket: string;
+  path: string;
+  url: string;
+};
+
+/** LINE 關鍵字回覆的公開圖片；bucket 固定，避免混用聊天或 Rich Menu 素材。 */
+export type KeywordReplyImageStorageRef = StorageRef & {
+  bucket: 'keyword-reply-images';
+};

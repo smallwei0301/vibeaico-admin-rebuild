@@ -2,6 +2,11 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { createAdminSupabase } from '@/server/supabase';
+import {
+  cleanupReplacedKeywordReplyImage,
+  requireKeywordReplyImage,
+} from '@/server/keyword-reply-images';
 
 /**
  * PUT/DELETE /api/settings/line/keyword-replies/:id（04 分冊 §B-5）。
@@ -53,6 +58,17 @@ export const PUT = handle(async (req, { params }) => {
     && b.content === undefined && b.sortOrder === undefined;
   if (!onlyDeactivating) await requireFeature(t.tenantId, 'KEYWORD_REPLY');
 
+  const { data: existing, error: existingError } = await t.supabase
+    .from('keyword_replies').select('id, reply_type, content')
+    .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+
+  const nextReplyType = b.replyType ?? existing.reply_type;
+  const nextContent = b.content ?? existing.content;
+  if (nextReplyType === 'IMAGE')
+    await requireKeywordReplyImage(nextContent, t.tenantId, createAdminSupabase());
+
   const update: Record<string, unknown> = {};
   if (b.keywords !== undefined) update.keywords = b.keywords;
   if (b.replyType !== undefined) update.reply_type = b.replyType;
@@ -61,11 +77,6 @@ export const PUT = handle(async (req, { params }) => {
   if (b.sortOrder !== undefined) update.sort_order = b.sortOrder;
 
   if (Object.keys(update).length === 0) {
-    const { data, error } = await t.supabase
-      .from('keyword_replies').select('id')
-      .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
-    if (error) throw error;
-    if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
     return ok();
   }
 
@@ -76,6 +87,11 @@ export const PUT = handle(async (req, { params }) => {
   if (error) throw error;
   if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
 
+  await cleanupReplacedKeywordReplyImage({
+    admin: createAdminSupabase(), tenantId: t.tenantId,
+    oldContent: existing.content, nextContent,
+  });
+
   return ok();
 });
 
@@ -84,12 +100,23 @@ export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
   const { id } = await params;
 
+  const { data: existing, error: existingError } = await t.supabase
+    .from('keyword_replies').select('id, content')
+    .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
+  if (existingError) throw existingError;
+  if (!existing) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+
   const { data, error } = await t.supabase
     .from('keyword_replies').delete()
     .eq('id', id).eq('tenant_id', t.tenantId)
     .select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+
+  await cleanupReplacedKeywordReplyImage({
+    admin: createAdminSupabase(), tenantId: t.tenantId,
+    oldContent: existing.content, nextContent: {},
+  });
 
   return ok({ deleted: true });
 });

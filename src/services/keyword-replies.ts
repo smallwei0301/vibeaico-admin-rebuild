@@ -1,4 +1,5 @@
 import { adapt, request } from '@/lib/api';
+import type { KeywordReplyImageStorageRef } from '@/lib/types';
 import { byMode } from '@/mock';
 
 /**
@@ -31,6 +32,7 @@ export interface KeywordReplyRow {
   actionType: KeywordActionType;
   replyText: string;
   imageUrl: string;
+  imageStorageRef?: KeywordReplyImageStorageRef;
   linkUrl: string;
   linkLabel: string;
   enabled: boolean;
@@ -68,6 +70,7 @@ export function toApiPayload(row: Omit<KeywordReplyRow, 'id'>): KeywordReplyPayl
       matchType: row.matchType,
       actionType: row.actionType,
       imageUrl: row.imageUrl,
+      ...(row.imageStorageRef ? { imageStorageRef: row.imageStorageRef } : {}),
       linkUrl: row.linkUrl,
       linkLabel: row.linkLabel,
       overridesSystem: row.overridesSystem,
@@ -87,11 +90,19 @@ export function fromApiRow(r: KeywordReplyApiRow): KeywordReplyRow {
       str(c.actionType) === 'START_PROFILE_COLLECTION' ? 'START_PROFILE_COLLECTION' : 'REPLY_CONTENT',
     replyText: str(c.text) || str(c.replyText),
     imageUrl: str(c.imageUrl),
+    imageStorageRef: isKeywordReplyImageRef(c.imageStorageRef) ? c.imageStorageRef : undefined,
     linkUrl: str(c.linkUrl),
     linkLabel: str(c.linkLabel),
     enabled: !!r.active,
     overridesSystem: str(c.overridesSystem),
   };
+}
+
+function isKeywordReplyImageRef(value: unknown): value is NonNullable<KeywordReplyRow['imageStorageRef']> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const ref = value as Record<string, unknown>;
+  return ref.bucket === 'keyword-reply-images'
+    && typeof ref.path === 'string' && typeof ref.url === 'string';
 }
 
 /**
@@ -203,3 +214,10 @@ export const deleteKeywordReply = (id: string) =>
     () => undefined,
     () => request<void>(`/api/settings/line/keyword-replies/${id}`, { method: 'DELETE' }),
   );
+
+/** 取消尚未寫入 keyword_replies 的選檔，避免隨機 UUID 物件成為孤兒。 */
+export const discardKeywordReplyImage = (storageRef: KeywordReplyImageStorageRef) =>
+  request<void>('/api/settings/line/keyword-replies/image', {
+    method: 'DELETE',
+    body: JSON.stringify({ storageRef }),
+  });

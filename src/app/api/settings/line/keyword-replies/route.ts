@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { createAdminSupabase } from '@/server/supabase';
+import { requireKeywordReplyImage } from '@/server/keyword-reply-images';
 
 /**
  * /api/settings/line/keyword-replies（04 分冊 §B-5）— keyword_replies CRUD。
@@ -39,6 +41,14 @@ export const GET = handle(async () => {
     .order('created_at', { ascending: true });
   if (error) throw error;
 
+  // 讀取也不把已被手動刪除、跨租戶或偽造的 IMAGE URL 當成可用資料回給 UI。
+  // 這讓「reload 後圖片還在」代表 DB ref 和 Storage object 仍是一件真事。
+  const admin = createAdminSupabase();
+  for (const row of data ?? []) {
+    if (row.reply_type === 'IMAGE')
+      await requireKeywordReplyImage(row.content ?? {}, t.tenantId, admin);
+  }
+
   return ok((data ?? []).map(mapKeywordReply));
 });
 
@@ -53,6 +63,8 @@ export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'KEYWORD_REPLY');
   const b = createSchema.parse(await req.json());
+  if ((b.replyType ?? 'TEXT') === 'IMAGE')
+    await requireKeywordReplyImage(b.content ?? {}, t.tenantId, createAdminSupabase());
 
   // 每店上限 20 組（09 分冊 §5）
   const { count, error: e0 } = await t.supabase
