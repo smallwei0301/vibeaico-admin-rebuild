@@ -89,6 +89,8 @@ export default function TripDetailPage() {
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   const [departureStaff, setDepartureStaff] = React.useState<DepartureStaffAvailability[]>([]);
+  const [departureStaffLoading, setDepartureStaffLoading] = React.useState(false);
+  const [departureStaffLoadFailed, setDepartureStaffLoadFailed] = React.useState(false);
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [batchStaff, setBatchStaff] = React.useState<DepartureStaffAvailability[]>([]);
   const [batchConflicts, setBatchConflicts] = React.useState<Array<{ date: string; staffId: string; staffName: string; reason: string }>>([]);
@@ -123,18 +125,33 @@ export default function TripDetailPage() {
   React.useEffect(() => { void load(); }, [load]);
 
   React.useEffect(() => {
-    if (!departureDraft?.planId || !departureDraft.departsOn) {
+    if (!departureDraft?.planId || !departureDraft.departsOn || departureDraft.status !== 'OPEN') {
       setDepartureStaff([]);
+      setDepartureStaffLoading(false);
+      setDepartureStaffLoadFailed(false);
       return;
     }
     let cancelled = false;
+    setDepartureStaff([]);
+    setDepartureStaffLoading(true);
+    setDepartureStaffLoadFailed(false);
     void getDepartureStaffAvailability(tripId, {
       planId: departureDraft.planId, departsOn: departureDraft.departsOn,
       startTime: departureDraft.startTime, excludeDepartureId: departureDraft.id || undefined,
-    }).then((result) => { if (!cancelled) setDepartureStaff(result.staff); })
-      .catch(() => { if (!cancelled) setDepartureStaff([]); });
+    }).then((result) => {
+      if (!cancelled) {
+        setDepartureStaff(result.staff);
+        setDepartureStaffLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setDepartureStaff([]);
+        setDepartureStaffLoading(false);
+        setDepartureStaffLoadFailed(true);
+      }
+    });
     return () => { cancelled = true; };
-  }, [departureDraft?.id, departureDraft?.planId, departureDraft?.departsOn, departureDraft?.startTime, tripId]);
+  }, [departureDraft?.id, departureDraft?.planId, departureDraft?.departsOn, departureDraft?.startTime, departureDraft?.status, tripId]);
 
   React.useEffect(() => {
     if (!batchOpen || !batch.planId || !batch.from) { setBatchStaff([]); return; }
@@ -1218,7 +1235,10 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDepartureDraft(null)}>{common.cancel}</Button>
-            <Button loading={busy} onClick={() => { void saveDeparture(); }}>{common.save}</Button>
+            <Button loading={busy} disabled={departureStaffLoading || departureStaffLoadFailed}
+              onClick={() => { void saveDeparture(); }}>
+              {common.save}
+            </Button>
           </>
         }
       >
@@ -1250,7 +1270,11 @@ export default function TripDetailPage() {
               </FormGroup>
             </div>
             {departureDraft.status === 'OPEN' ? (
-              departureStaff.length === 0 ? (
+              departureStaffLoading ? (
+                <Alert tone="info" role="status" aria-live="polite">{common.loading}</Alert>
+              ) : departureStaffLoadFailed ? (
+                <Alert tone="danger">{common.message.networkError}</Alert>
+              ) : departureStaff.length === 0 ? (
                 <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
               ) : departureStaff.length === 1 ? (
                 <Alert tone={departureStaff[0].available ? 'info' : 'danger'}>
