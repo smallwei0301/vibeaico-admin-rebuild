@@ -26,7 +26,7 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
   });
 
   it('uses a transactional booking trigger and SKIP LOCKED claim rather than a best-effort direct provider call', () => {
-    expect(migration).toMatch(/after insert or update of status on bookings/i);
+    expect(migration).toMatch(/after insert or update of [^\n]+ on bookings/i);
     expect(migration).toMatch(/enqueue_notification_event/i);
     expect(migration).toMatch(/for update skip locked/i);
     expect(migration).toMatch(/processing_started_at < now\(\) - interval '10 minutes'/i);
@@ -112,6 +112,7 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
   it('writes BOOKING_LINE_MODIFIED in the booking update transaction and wakes dispatch only after commit', () => {
     const bookingUpdateRoute = readFileSync('src/app/api/bookings/[id]/route.ts', 'utf8');
     expect(migration).toContain("'BOOKING_LINE_MODIFIED'");
+    expect(migration).toMatch(/after insert or update of status, start_at, staff_id on bookings/i);
     expect(migration).toMatch(/new\.start_at is distinct from old\.start_at[\s\S]*?BOOKING_LINE_MODIFIED/i);
     expect(bookingUpdateRoute).toContain('dispatchAfterCommit()');
   });
