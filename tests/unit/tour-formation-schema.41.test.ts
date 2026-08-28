@@ -78,4 +78,9 @@ describe('#41 schema migration ordering', () => {
     expect(normalizedHardeningMigration).toContain('::pg_catalog.int4');
     expect(normalizedHardeningMigration).not.toContain('pg_catalog.integer');
   });
+
+  it('does not schema-qualify SQL special forms', () => {
+    expect(normalizedHardeningMigration).not.toContain('pg_catalog.coalesce');
+    expect(normalizedHardeningMigration).not.toContain('pg_catalog.nullif');
+  });
 });
