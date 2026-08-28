@@ -283,6 +283,8 @@ export type TripBookingType = 'INSTANT' | 'REQUEST' | 'SCHEDULED';
 
 /** 方案送審狀態（Midao 管理者審核方案內容與定價） */
 export type PlanReviewState = 'NONE' | 'PENDING' | 'CHANGES_REQUESTED';
+export type ParticipationMode = 'SHARED' | 'PRIVATE';
+export type FormationStatus = 'COLLECTING' | 'FORMED' | 'REVIEW_REQUIRED' | 'AT_RISK' | 'FAILED';
 
 export type TripPlan = {
   id: string;
@@ -296,6 +298,12 @@ export type TripPlan = {
   childPrice: number | null;
   minParticipants: number;
   maxParticipants: number;
+  /** #41 新契約：單筆下單人數與整團成團門檻分開。 */
+  minPartySize?: number;
+  maxPartySize?: number;
+  minToDepart?: number;
+  participationMode?: ParticipationMode;
+  formationDeadlineDaysBefore?: number;
   bookingType: TripBookingType;
   /**
    * 線上收款模式（與服務項目同一套選項）
@@ -340,6 +348,12 @@ export type TripDeparture = {
   capacity: number;
   seatsBooked: number;
   status: DepartureStatus;
+  minToDepartSnapshot?: number;
+  formationDeadlineAt?: string | null;
+  formationStatus?: FormationStatus;
+  formedAt?: string | null;
+  formedBy?: 'SYSTEM' | 'GUIDE_OVERRIDE' | null;
+  formedParticipants?: number | null;
   note: string;
 };
 
@@ -382,6 +396,9 @@ export type TourOrder = {
   totalAmount: number;
   /** 已收定金；0 = 全額或未收。待收尾款 = totalAmount - depositAmount */
   depositAmount: number;
+  upfrontRequiredAmount?: number;
+  paidAmount?: number;
+  refundedAmount?: number;
   status: TourOrderStatus;
   paymentStatus: TourPaymentStatus;
   /** 收款方式顯示名稱（來自 tenant_payment_methods） */
