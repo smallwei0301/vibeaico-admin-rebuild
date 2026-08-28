@@ -12,6 +12,11 @@ export function throwAvailabilityRpcError(error: any): never {
   if (message.startsWith('DEPARTURE_CAPACITY_BELOW_BOOKED')) {
     throw new ApiHttpError(409, '名額不得少於已報名人數', ERR.CONFLICT);
   }
+  if (message.startsWith('STAFF_NOT_ASSIGNABLE')) {
+    // Do not reveal whether the UUID belongs to another tenant.  Both foreign
+    // and inactive/non-bookable staff are absent from this tenant's assignable pool.
+    throw new ApiHttpError(404, '找不到可指派導遊', ERR.NOT_FOUND);
+  }
   if (message.startsWith('GUIDE_ONBOARDING_REQUIRED')) {
     throw new ApiHttpError(409, '尚無可指派導遊，請先完成導遊建檔', ERR.CONFLICT);
   }
