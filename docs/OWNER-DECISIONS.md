@@ -17,7 +17,7 @@
 | #41 / #12 | 訂金／尾款與成團 | **收款政策沿用 Service；線上付款成功自動推進，匯款才人工確認；付款狀態與成團狀態分軸** | 至少表達 UNPAID/PARTIAL/PAID/REFUND_PENDING/REFUNDED；最後一筆 qualifying payment 原子成團且只產生一次通知 event。 |
 | #42 | GUIDE 方案管理 UX | **快速編輯 → 進階設定兩層 UI，但共用同一 TripPlan/API/schema** | 快速層只給名稱／內容／價格等高頻欄位；成團、販售、季節、訂金等放進階 page/drawer。既有 Departure snapshot 不被 Plan 後改污染。 |
 | #42 / #25 | Midao 協助代建方案 | **平台可代建，但導遊仍是可編輯的資料 owner；使用 platform-admin/impersonation + audit，不共用密碼** | 建議 provenance `GUIDE / PLATFORM_ASSISTED / IMPORTED` 只做來源 badge；LISTED 修改仍走 review。 |
-| #37 / TEST | TEST 資料庫驗證 | **長期授權：可在 Vibe Ai test 套用 `0034`、`0035`，並刷新 PostgREST schema cache** | 限 `nmwhwngojosmagjuvxol`（TEST）；不包含 Production DDL／DML、部署或 main merge。新 migration 仍須另外確認。 |
+| #37 / TEST | TEST 資料庫驗證 | **長期授權：可在 Vibe Ai test 套用 `0034`、`0035`、`0036`，並刷新 PostgREST schema cache** | 限 `nmwhwngojosmagjuvxol`（TEST）；不包含 Production DDL／DML、部署或 main merge。後續新 migration 仍須另外確認。 |
 
 ## 2026-08-27 已裁示
 
