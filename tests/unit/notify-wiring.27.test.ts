@@ -55,12 +55,18 @@ describe('② PUT /api/bookings/:id 真的呼叫 notifyBookingStatus(..., MODIFI
     const code = withoutComments(src(FILES.bookingPutRoute));
 
     // 要能比對，就必須把現值一起讀出來（只讀 duration_minutes 是修好前的樣子）
-    expect(code).toMatch(/select\('id, duration_minutes, start_at, staff_id'\)/);
+    // Update availability RPC also needs the current internal note. Verify the
+    // required selection fields without coupling this notification test to the
+    // exact field order or future safe additions.
+    const selectFields = code.match(/select\('([^']*)'\)/)?.[1] ?? '';
+    for (const field of ['id', 'duration_minutes', 'start_at', 'staff_id', 'note']) {
+      expect(selectFields.split(',').map((value) => value.trim())).toContain(field);
+    }
     expect(code).toMatch(/notifyTriggered\s*=\s*true/);
-    // 備註那一行後面不得把 notifyTriggered 設成 true
-    const noteLine = code.split('\n').find((l) => l.includes('update.note = b.note'));
-    expect(noteLine).toBeTruthy();
-    expect(noteLine).not.toMatch(/notifyTriggered\s*=\s*true/);
+    // RPC payload keeps note separately; this assignment must not flip the
+    // notification flag (only startAt/staffId comparisons above may do so).
+    expect(code).toMatch(/const nextNote = b\.note === undefined \? existing\.note : b\.note/);
+    expect(code).not.toMatch(/b\.note[^\n]*notifyTriggered\s*=\s*true/);
     // 回應要把結果帶回頁面，頁面才有辦法照實顯示
     expect(code).toMatch(/return ok\(\{\s*notifyTriggered\s*\}\)/);
   });
