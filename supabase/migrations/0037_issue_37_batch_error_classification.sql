@@ -54,10 +54,8 @@ begin
       -- codes are eligible for partial success.  Do not broaden this branch:
       -- GUIDE_ONBOARDING_REQUIRED, PRIMARY_STAFF_REQUIRED, malformed input,
       -- cross-tenant staff and all unknown failures must abort and roll back.
-      if sqlstate = 'P0001' and (
-        sqlerrm like 'AVAILABILITY_%'
-        or sqlerrm = 'DEPARTURE_DUPLICATE'
-      ) then
+      if (sqlstate = 'P0001' and sqlerrm like 'AVAILABILITY_%')
+         or (sqlstate = '23505' and sqlerrm = 'DEPARTURE_DUPLICATE') then
         v_conflicts := v_conflicts || jsonb_build_array(jsonb_build_object(
           'date', v_day,
           'staffId', coalesce(p_primary_staff_id::text, ''),

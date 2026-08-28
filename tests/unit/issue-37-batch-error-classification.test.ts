@@ -11,11 +11,11 @@ describe('issue #37 batch RPC error classification', () => {
     expect(migration).toMatch(
       /create or replace function public\.create_trip_departures_batch_with_staff/is,
     );
-    expect(migration).toMatch(/sqlstate = 'P0001'/);
-    expect(migration).toMatch(/sqlerrm like 'AVAILABILITY_%'/);
-    expect(migration).toMatch(/sqlerrm = 'DEPARTURE_DUPLICATE'/);
+    expect(migration).toMatch(/sqlstate = 'P0001' and sqlerrm like 'AVAILABILITY_%'/);
+    expect(migration).toMatch(
+      /sqlstate = '23505' and sqlerrm = 'DEPARTURE_DUPLICATE'/,
+    );
     expect(migration).not.toMatch(/sqlstate in \('P0001', '23505'\)/);
-    expect(migration).not.toMatch(/sqlstate = '23505'/);
   });
 
   it('rethrows onboarding, missing-primary, and unknown configuration failures', () => {
