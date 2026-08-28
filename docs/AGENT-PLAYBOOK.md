@@ -99,3 +99,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：每次準備送 final 前先寫出 §10 的 1／2／3 哪一項成立；寫不出即不得送 final。等待 CI 時優先處理不碰共用 TEST 的工作。
 - 驗證：後續 `/goal` 由主力以此條目作開工檢查；未完成 Issue、未驗證測試與排隊工作必須保留在責任表。
 - 狀態：監看中
+
+### PB-010 — webhook 背景化仍被驗簽前資料庫查詢拖慢
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：Issue #31／`feature/issue-31-line-webhook`
+- 分類：其他
+- 事件：LINE 事件處理已搬入 `after()`，Preview 閒置約 17 分鐘後的第一則真實訊息仍顯示 `REQUEST_TIMEOUT`。
+- 證據：舊 route 在回 `200` 前仍等待 Supabase tenant/settings 查詢；最小單元重現令該查詢直接丟錯時，舊實作無法回 200。改用本機 credential capsule 路徑後，同一測試確認回 200 前資料庫呼叫次數為 0。
+- 根因：只把事件處理背景化，沒有移除驗簽前的外部資料庫 round trip；serverless 冷啟動與首次 DB 連線延遲仍疊加在 LINE 回應時限內。
+- 影響：暖機後成功不能代表冷啟動第一發成功，#31 的真實 LINE 驗收不能勾選。
+- 修正：新 webhook URL 帶受平台 HMAC 保護、跨租戶綁定的密文 credential capsule；回應前只做本機解密與嚴格 LINE 驗簽，資料庫查詢及事件處理延後。背景再比對目前密文，已輪替的舊 capsule 不產生副作用。
+- 預防：webhook 延遲測試要讓回應前外部依賴永久 pending／丟錯，並斷言有效簽章仍可先回 200；不能只卡住 LINE reply 這類後段工作。
+- 驗證：`npm test -- --run tests/unit/line-webhook-route.test.ts` 綠；真實 Preview 冷啟動第一發仍待新 URL 設定後驗收。
+- 狀態：監看中
