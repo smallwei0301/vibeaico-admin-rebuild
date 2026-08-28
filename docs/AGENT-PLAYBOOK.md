@@ -45,6 +45,7 @@
 | PB-005 | 新 migration 後先查 TEST 基線與 cache | `PGRST202` 常是 migration 未套用或 schema cache 未刷新；不能先猜 route 壞掉。 | `docs/AGENT-EXECUTION.md` §3.1、§7.1 |
 | PB-006 | 測試要鎖行為，不鎖無關字串排列 | 精確比對查詢欄位字串會讓安全新增欄位誤報回歸；斷言必要欄位與真正副作用。 | `12-TESTING-TDD.md` §2.3、§6 |
 | PB-007 | 關鍵寫入不可先查再分段寫 | 並發時兩邊都可能通過舊快照，留下撞班、超賣或半套資料；使用 transaction／atomic RPC 並測競爭。 | `docs/AGENT-EXECUTION.md` §7.1 |
+| PB-010 | 已套用 migration 只能前進 | TEST migration history 已記錄後，改寫同編號 source 會令 fresh install 與既有 schema 漂移；還原已套用檔並新增下一個未保留編號的 forward migration。 | `AGENTS.md`；`docs/AGENT-EXECUTION.md` §3.1、§6 |
 
 ## 事件紀錄
 
@@ -99,3 +100,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：每次準備送 final 前先寫出 §10 的 1／2／3 哪一項成立；寫不出即不得送 final。等待 CI 時優先處理不碰共用 TEST 的工作。
 - 驗證：後續 `/goal` 由主力以此條目作開工檢查；未完成 Issue、未驗證測試與排隊工作必須保留在責任表。
 - 狀態：監看中
+
+### PB-010 — 已套用 migration 被後續修正改寫
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：#40
+- 分類：Migration／TEST DB
+- 事件：TEST 已記錄 `0038_notification_outbox_delivery` 後，後續 booking modified trigger 與 revision 修正仍直接編輯 `0038` source。
+- 證據：TEST schema 只有舊的 `AFTER INSERT OR UPDATE OF status` trigger，且缺少 `bookings.notification_revision`；本地 `0038` 則含後續定義。
+- 根因：施工前未以 TEST migration history 作為 source immutable 邊界，也未避開已保留的 `0039` 編號。
+- 影響：既有 TEST 與 fresh install 的 notification booking-event schema 會分歧。
+- 修正：還原 `0038` 已套用版本，將兩項修正移入 forward-only `0040`。
+- 預防：每次改 migration 前先核對已套用／已保留編號；已記錄的檔案不得改寫，後續 DDL 一律新增 migration。
+- 驗證：focused source unit 同時鎖定 immutable `0038` 與 `0040` 的 revision、trigger、revoke 契約。
+- 狀態：已防止

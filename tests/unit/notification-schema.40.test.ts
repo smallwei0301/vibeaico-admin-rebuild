@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const migration = readFileSync('supabase/migrations/0038_notification_outbox_delivery.sql', 'utf8');
+const appliedMigration = readFileSync('supabase/migrations/0038_notification_outbox_delivery.sql', 'utf8');
+const bookingModificationMigration = readFileSync('supabase/migrations/0040_notification_booking_modification_revision.sql', 'utf8');
+const migration = `${appliedMigration}\n${bookingModificationMigration}`;
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
 const settingsPage = readFileSync('src/app/tenant/settings/page.tsx', 'utf8');
@@ -115,6 +117,16 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/after insert or update of status, start_at, staff_id on bookings/i);
     expect(migration).toMatch(/new\.start_at is distinct from old\.start_at[\s\S]*?BOOKING_LINE_MODIFIED/i);
     expect(bookingUpdateRoute).toContain('dispatchAfterCommit()');
+  });
+
+  it('gives each distinct schedule or staff edit a durable modified-event key without retry randomness', () => {
+    expect(appliedMigration).toMatch(/after insert or update of status on bookings/i);
+    expect(appliedMigration).not.toContain('notification_revision');
+    expect(bookingModificationMigration).toMatch(/add column if not exists notification_revision bigint not null default 0/i);
+    expect(bookingModificationMigration).toMatch(/new\.notification_revision := old\.notification_revision \+ 1/i);
+    expect(bookingModificationMigration).toMatch(/after insert or update of status, start_at, staff_id on bookings/i);
+    expect(bookingModificationMigration).toContain("'booking-line-modified:' || new.id::text || ':v' || new.notification_revision::text");
+    expect(bookingModificationMigration).toMatch(/revoke execute on function public\.enqueue_booking_notification_event\(\) from public, anon, authenticated/i);
   });
 
   it('records interactive auth Email attempts in the delivery ledger before using Resend', () => {

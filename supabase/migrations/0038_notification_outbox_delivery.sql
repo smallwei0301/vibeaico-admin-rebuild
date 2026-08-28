@@ -266,7 +266,7 @@ end;
 $$;
 drop trigger if exists t_bookings_notification_outbox on bookings;
 create trigger t_bookings_notification_outbox
-  after insert or update of status, start_at, staff_id on bookings
+  after insert or update of status on bookings
   for each row execute function public.enqueue_booking_notification_event();
 
 -- Worker-safe claim. SKIP LOCKED means two dispatchers never receive the same
