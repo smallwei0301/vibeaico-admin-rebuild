@@ -17,6 +17,17 @@
 3. 還沒有網域時的過渡做法：`MAIL_FROM="onboarding@resend.dev"`
    （只能寄給自己帳號的信箱，夠開發用；**上線前必須換驗證網域**）。
 
+### Delivery webhook（送達回報）
+
+- 在 Resend 設定 webhook URL：`/api/webhooks/resend`，事件至少選
+  `email.delivered`、`email.bounced`、`email.complained`。
+- 把簽章秘密放在 server-only `RESEND_WEBHOOK_SECRET`；不得放進前端或資料庫。
+- `/emails` 成功只代表 `ACCEPTED`。只有簽章驗證通過的 `email.delivered` 才能把
+  ledger 更新為 `DELIVERED`；bounce／complaint 記為 `DEAD`，並以帶 server secret
+  的 Email HMAC（不保存地址本身）記錄收件健康，避免對已知壞地址反覆寄送。
+- Webhook callback 若早於 worker 保存 provider message id，端點回 503 讓 Resend
+  重試；event id 在成功套用後才記入冪等表，不會吃掉尚未能對應的送達證據。
+
 ---
 
 ## 2. 寄信模組
