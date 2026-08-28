@@ -111,10 +111,13 @@
       `:「csv：五個區塊表頭齊全、統計區間正確、每日趨勢逐日補 0（區間天數）」`。
       變異驗證：把 summary 的營收口徑改成「不分狀態全算」、把 export/bookings 的
       UTF-8 BOM 拿掉 → 對應三條轉紅。
-      **不打勾的理由**：本項的範圍不只端點——bookings 頁與 customers 頁的「匯出」
-      按鈕目前仍是死按鈕（`/api/export/bookings`、`/api/export/customers/excel`
-      零呼叫端，已列入 issue #28 第 ③④ 筆）。端點有測試 ≠ 使用者匯得出來
-      （12 分冊 §6 DoD 10、鐵則 12）。頁面接線關閉後才可打勾。
+      **2026-08-28 更正**：bookings／customers／inventory 三個匯出入口已接上
+      真實下載。issue #28 comment `#5420941482` 留有 deployed `0db681f` 的
+      Preview 腳本輸出（18/18 PASS），涵蓋 download event、後端
+      `Content-Disposition` 檔名與 UTF-8 BOM；對應 source 守門為
+      `export-download-wiring.28.test.ts`／`export-inventory.28.test.ts`。
+      本項仍不打勾：目前候選 HEAD 尚缺相同 Preview 腳本重跑截圖與 full CI 證據；
+      舊的「死按鈕／零呼叫端」敘述已被後續實作推翻，不再作為 blocker。
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
       **（重開 2026-08-24：無完成紀錄；依打勾規則 1，每頁的實測要留下日期＋步驟＋結果）**
 - [ ] 【新增】頁面接線驗收：本 Phase 涉及的每個頁面，其所有寫入按鈕都經過
