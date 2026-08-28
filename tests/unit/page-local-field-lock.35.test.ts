@@ -58,6 +58,33 @@ describe('Preview DB/UI 比對腳本使用真實 schema 語意（issue #35）', 
     expect(src).toContain("c.type === 'DISCOUNT_AMOUNT'");
     expect(src).toContain("c.type === 'DISCOUNT_PERCENT'");
   });
+
+  it('私密票券以詳情 modal 的 canonical 可見性文字精確比對，不沿用已移除的「可見範圍」文案', () => {
+    const src = codeOf(PREVIEW_VERIFY);
+    expect(src).toContain("const PRIVATE_VISIBILITY = '可見性：🔒 私密票券（不在公開頁與 LINE 顯示，僅限「發放」指定顧客）'");
+    expect(src).toContain('dialog.getByText(PRIVATE_VISIBILITY, { exact: true })');
+    expect(src).not.toContain('可見範圍：私密');
+  });
+
+  it('資料庫證據使用登入後 Preview session 的 /api/auth/me active tenant，不任選最早 membership', () => {
+    const src = codeOf(PREVIEW_VERIFY);
+    expect(src).toContain("fetch('/api/auth/me', { credentials: 'same-origin' })");
+    expect(src).toContain('async function activeTenantIdForPreview(page)');
+    expect(src).toContain('const tenantId = await activeTenantIdForPreview(page);');
+    expect(src).not.toContain('async function tenantIdFor(');
+    expect(src).not.toContain('from tenant_users');
+    expect(src).not.toContain('order by tu.created_at');
+  });
+
+  it('只把各票券類型會顯示的 DB 欄位交給 UI 斷言，忽略其他類型遺留值', () => {
+    const src = codeOf(PREVIEW_VERIFY);
+    expect(src).toContain("case when discount_type = 'AMOUNT' then min_order_amount end as min_order_amount");
+    expect(src).toContain("case when discount_type = 'PERCENT' then max_discount_amount end as max_discount_amount");
+    expect(src).toContain("case when discount_type = 'GIFT' then gift_item end as gift_item");
+    expect(src).toContain("row.type === 'DISCOUNT_AMOUNT' && row.min_order_amount !== null");
+    expect(src).toContain("row.type === 'DISCOUNT_PERCENT' && row.max_discount_amount !== null");
+    expect(src).toContain("row.type === 'GIFT' && row.gift_item");
+  });
 });
 
 /* -------------------------------------------------------------------------- */

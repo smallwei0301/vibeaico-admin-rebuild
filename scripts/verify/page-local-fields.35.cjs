@@ -15,17 +15,18 @@ const {
 
 const sqlLiteral = (value) => `'${String(value).replace(/'/g, "''")}'`;
 const money = (value) => `NT$${Number(value).toLocaleString('en-US')}`;
+const PRIVATE_VISIBILITY = '可見性：🔒 私密票券（不在公開頁與 LINE 顯示，僅限「發放」指定顧客）';
 
-async function tenantIdFor(email) {
-  const [row] = await sql(`
-    select tu.tenant_id
-    from tenant_users tu
-    join auth.users u on u.id = tu.user_id
-    where lower(u.email) = lower(${sqlLiteral(email)})
-    order by tu.created_at
-    limit 1`);
-  if (!row?.tenant_id) throw new Error(`找不到 ${email} 所屬租戶`);
-  return row.tenant_id;
+async function activeTenantIdForPreview(page) {
+  const session = await page.evaluate(async () => {
+    const response = await fetch('/api/auth/me', { credentials: 'same-origin' });
+    const body = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, tenantId: body?.data?.tenantId ?? null };
+  });
+  if (!session.ok || !session.tenantId) {
+    throw new Error(`/api/auth/me 沒有回傳 Preview 目前租戶（HTTP ${session.status}）`);
+  }
+  return session.tenantId;
 }
 
 async function verifyDeployment() {
@@ -58,13 +59,15 @@ async function bookingEvidence(tenantId) {
 async function couponEvidence(tenantId) {
   return sql(`
     select id, name,
-           case discount_type
-             when 'AMOUNT' then 'DISCOUNT_AMOUNT'
-             when 'PERCENT' then 'DISCOUNT_PERCENT'
-             when 'GIFT' then 'GIFT'
-           end as type,
-           min_order_amount, max_discount_amount,
-           gift_item, limit_per_customer, private_mode
+            case discount_type
+              when 'AMOUNT' then 'DISCOUNT_AMOUNT'
+              when 'PERCENT' then 'DISCOUNT_PERCENT'
+              when 'GIFT' then 'GIFT'
+            end as type,
+           case when discount_type = 'AMOUNT' then min_order_amount end as min_order_amount,
+           case when discount_type = 'PERCENT' then max_discount_amount end as max_discount_amount,
+           case when discount_type = 'GIFT' then gift_item end as gift_item,
+           limit_per_customer, private_mode
     from coupons
     where tenant_id = ${sqlLiteral(tenantId)}
       and ((discount_type = 'AMOUNT' and min_order_amount is not null)
@@ -117,17 +120,17 @@ async function openCoupon(page, row, index) {
   await dialog.getByText('載入中...').waitFor({ state: 'detached', timeout: 5_000 }).catch(() => {});
   const text = await dialog.innerText();
   check(`票券「${row.name}」詳情名稱和 DB 一致`, text.includes(row.name));
-  if (row.min_order_amount !== null) {
+  if (row.type === 'DISCOUNT_AMOUNT' && row.min_order_amount !== null) {
     check('最低消費金額和 DB 一致',
       new RegExp(`最低消費：\\s*${money(row.min_order_amount).replace('$', '\\$')}`).test(text),
       `${row.name}: DB=${row.min_order_amount}`);
   }
-  if (row.max_discount_amount !== null) {
+  if (row.type === 'DISCOUNT_PERCENT' && row.max_discount_amount !== null) {
     check('最高折抵金額和 DB 一致',
       new RegExp(`最高折抵：\\s*${money(row.max_discount_amount).replace('$', '\\$')}`).test(text),
       `${row.name}: DB=${row.max_discount_amount}`);
   }
-  if (row.gift_item) {
+  if (row.type === 'GIFT' && row.gift_item) {
     check('兌換項目和 DB 一致', text.includes(`兌換項目：${row.gift_item}`),
       `${row.name}: DB=${row.gift_item}`);
   }
@@ -137,7 +140,8 @@ async function openCoupon(page, row, index) {
       `${row.name}: DB=${row.limit_per_customer}`);
   }
   if (row.private_mode) {
-    check('私密票券狀態和 DB 一致', text.includes('可見範圍：私密'), `${row.name}: DB=true`);
+    const visibility = dialog.getByText(PRIVATE_VISIBILITY, { exact: true });
+    check('私密票券狀態和 DB 一致', await visibility.count() === 1, `${row.name}: DB=true`);
   }
   await shot(page, `issue35-coupon-${index + 1}-db-match`);
 }
@@ -147,15 +151,17 @@ async function main() {
   const password = required('TEST_PASSWORD');
   required('SUPABASE_ACCESS_TOKEN');
   await verifyDeployment();
-  const tenantId = await tenantIdFor(email);
-  const booking = await bookingEvidence(tenantId);
-  const coupons = await couponEvidence(tenantId);
-
-  console.log(`受測站台：${BASE}\n租戶：${tenantId}\n`);
   const browser = await launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
     await login(page, email, password);
+    const tenantId = await activeTenantIdForPreview(page);
+    const [booking, coupons] = await Promise.all([
+      bookingEvidence(tenantId),
+      couponEvidence(tenantId),
+    ]);
+
+    console.log(`受測站台：${BASE}\n租戶：${tenantId}\n`);
     if (booking) await openBooking(page, booking);
     else blocked('預約三欄 DB→畫面比對',
       '租戶沒有 coupon_discount 與 points_redeemed 都大於 0 的代表預約');
