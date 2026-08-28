@@ -388,7 +388,7 @@ export async function runSeed(admin) {
 
   const oneDayMs = 24 * hourMs;
   if (!tripPlansSeeded) {
-    console.warn('[seed] 跳過 trip_departures：trip_plans 尚未建立，避免留下不完整的父子種子。');
+    console.warn('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   } else await safeUpsert(
     admin,
     'trip_departures',
