@@ -4,6 +4,7 @@ import { decryptSecret } from '@/server/crypto';
 import { buildWebhookUrl } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { lineGetRaw as lineGet } from '@/server/line';
+import { createLineWebhookCapsule } from '@/server/line-webhook-capsule';
 
 /**
  * POST /api/settings/line/verify — 五項檢查（06 分冊 §7）。
@@ -30,7 +31,7 @@ export const POST = handle(async () => {
   const t = await requireTenant();
   const { data: row, error } = await t.supabase
     .from('tenant_settings')
-    .select('line_channel_access_token_enc')
+    .select('line_channel_access_token_enc, line_channel_secret_enc')
     .eq('tenant_id', t.tenantId)
     .maybeSingle();
   if (error) throw error;
@@ -59,7 +60,14 @@ export const POST = handle(async () => {
 
   // WEBHOOK
   try {
-    const expected = buildWebhookUrl(APP_URL, t.shopCode);
+    const credential = row?.line_channel_secret_enc
+      ? createLineWebhookCapsule({
+          tenantId: t.tenantId,
+          shopCode: t.shopCode,
+          channelSecretEncrypted: row.line_channel_secret_enc,
+        })
+      : undefined;
+    const expected = buildWebhookUrl(APP_URL, t.shopCode, credential);
     const wh = await lineGet(token, '/v2/bot/channel/webhook/endpoint');
     const passed = wh.ok && wh.body?.endpoint === expected && wh.body?.active === true;
     checks.push(
