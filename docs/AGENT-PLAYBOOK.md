@@ -46,6 +46,7 @@
 | PB-006 | 測試要鎖行為，不鎖無關字串排列 | 精確比對查詢欄位字串會讓安全新增欄位誤報回歸；斷言必要欄位與真正副作用。 | `12-TESTING-TDD.md` §2.3、§6 |
 | PB-007 | 關鍵寫入不可先查再分段寫 | 並發時兩邊都可能通過舊快照，留下撞班、超賣或半套資料；使用 transaction／atomic RPC 並測競爭。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-010 | PR 多檔遠端更新必須原子提交 | Contents API 每檔一 commit 會讓同一 PR 同時啟動多輪 TEST；先建 blobs/tree，再一次 create commit + update ref。 | `docs/AGENT-EXECUTION.md` §6、§7 |
+| PB-011 | TEST 寫入前掃全 repo active runs | 只看已知 PR 會漏掉新啟動的 workflow；每次 migration/reset/seed 前即時查全 repo `in_progress`／`queued` runs。 | `docs/AGENT-EXECUTION.md` §7；`12-TESTING-TDD.md` §1.5 |
 
 ## 事件紀錄
 
@@ -114,4 +115,20 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：停止新增 TEST 工作，只以最新 HEAD `9f7070a` 的 run #158 作候選；#156/#157 視為 superseded，不重跑、不作驗收證據。
 - 預防：凡已開 PR 的遠端多檔修改，先建立所有 blobs 與單一 tree，再一次 create commit + update ref；若工具無法原子提交，先在未開 PR 的 staging branch 完成所有檔案，再以一次 ref 更新接到 PR head。workflow 另應加入以 PR/ref 為 key 的 concurrency + cancel-in-progress。
 - 驗證：待 #156/#157/#158 全部終止後，確認只有 #158 的 exact HEAD 可進下一步，並在後續首次原子多檔更新時回查只建立一個 CI run。
+- 狀態：監看中
+
+
+### PB-011 — TEST 寫入前只看已知佇列，漏掉新啟動的整合測試
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：PR #49、PR #52；CI run 33163294908、33163685282
+- 分類：CI／TEST DB／Agent
+- 事件：套用 TEST migration 0037 前只核對既有責任表與已知 PR，沒有重新掃描整個 repository 的 active Actions；因此 migration 在 PR #52 舊 integration 的尾端執行。
+- 證據：TEST migration ledger 為 `20260828103045 0037_issue_37_batch_error_classification`；PR #52 integration job 98822645398 的執行區間是 10:25:26–10:32:21 UTC，兩者時間重疊。
+- 根因：把「責任表中只有一條 TEST 工作」誤當成「GitHub 現在只有一條 active TEST 工作」，缺少每一次破壞性或結構性 TEST 寫入前的全 repo 即時門檻。
+- 影響：違反共用 TEST 序列化規則，讓 PR #52 舊失敗的歸因風險升高。0037 只替換團次 batch RPC，沒有碰該輪失敗的 rich-menu／通知資料，後續 #37 目標整合案例也通過；目前沒有證據顯示 0037 造成該輪失敗，但這不降低流程缺口的嚴重性。
+- 修正：停止其他 TEST 寫入；CI workflow 加入固定 `shared-test-supabase-integration` concurrency group，並以 repo-wide active run 查詢確認只剩一條工作。
+- 預防：每次 TEST migration、reset、seed、完整 integration 或 E2E 前，重新查詢整個 repo 的 `queued`／`in_progress` Actions，不得只讀 PR 清單、責任表或先前查詢；發現未知 workflow 時立即排隊。
+- 驗證：PR #52 run 33164035229 完整綠燈後，PR #49 run 33163685282 attempt 2 才取得 concurrency lock 並開始 integration，兩條工作未再重疊。
 - 狀態：監看中
