@@ -1,20 +1,5 @@
 name: ci
-# ⚠️ 2026-08-25：原本只有 `push: [main]`，而所有開發都在
-# `claude/deploy-vercel-project-nnno59` 上、且沒有開 PR——結果該分支連續 66 個
-# commit **完全沒有跑過 CI**（最後一次是 08-24 的 run #26，來自一個 pull_request
-# 事件）。這期間新增了 sharp 與 qrcode 兩個相依，issue #16 的驗收項「CI 的
-# install 步驟通過」因此無從佐證。
-#
-# 本機 `npm run build` 通過 ≠ CI 的 `npm ci` 通過：前者用既有的 node_modules，
-# 後者從 lockfile 全新安裝。兩者會分岔的典型情況正是原生相依（sharp）與
-# lockfile 沒同步。把開發分支加進 push 觸發，讓這件事有人看著。
-#
-# `integration` job 仍只在 pull_request 或 main 上跑（見該 job 的 if），
-# 所以開發分支的每次 push 只跑不需秘密的 check job。
-on:
-  push: { branches: [main, claude/deploy-vercel-project-nnno59] }
-  pull_request: {}
-  workflow_dispatch: {}
+on: { push: { branches: [main] }, pull_request: {}, workflow_dispatch: {} }
 jobs:
   check:                       # 無秘密即可跑：擋最常見的壞 commit
     runs-on: ubuntu-latest
@@ -29,18 +14,11 @@ jobs:
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
   integration:
     runs-on: ubuntu-latest
-    # 所有完整整合測試共用同一個 TEST Supabase，而且 test:integration 會清空資料。
-    # 固定 group（不能按分支分組）確保 PR、main 與手動觸發彼此不會重疊。
-    # 不取消正在執行的輪次；被排隊的新輪次必須等前一輪完全結束。
+    # test:integration 會 reset/seed 共用 TEST；所有 PR、main 工作必須跨分支序列化。
     concurrency:
       group: shared-test-supabase-integration
       cancel-in-progress: false
-    # 加上 workflow_dispatch：開發分支的 push **刻意不跑**這個 job（整合測試會 wipe
-    # 共用的 TEST 專案，而本機同時可能有多個 agent 在跑同一套，兩邊互相清資料），
-    # 但需要一份「不是我自己說的」獨立證據時，可以在沒有本機工作時手動觸發一次。
-    # 每個 issue 的驗收都有「test:integration 全綠」這一格，手動跑本機的輸出
-    # 只能由跑的人自己保證；CI 的輸出則任何人都能點進去看。
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -60,11 +38,6 @@ jobs:
           # 非機密；src/server/line.ts 的 lineApiBase() 延遲讀取。
           LINE_API_BASE: http://localhost:4123
           LINE_DATA_API_BASE: http://localhost:4123
-          # issue #27 ③ 整合測試打本地假 Resend（tests/helpers/resend-mock.ts 綁 4124）。
-          # 兩者都非機密：RESEND_API_KEY 是假值，只為繞過 send.ts「未設定就不寄信」
-          # 的短路；RESEND_BASE_URL 讓 resend 套件改打 localhost，永遠不會真的寄信。
-          RESEND_API_KEY: re_itest_fake_key_0000000000
-          RESEND_BASE_URL: http://localhost:4124
       # e2e 與 integration 共用同一組 TEST secrets（12 分冊 §7）。
       # 註：原文此處寫 `env: { }`，但 GitHub Actions 的 env 不會跨 step 繼承，
       #     留空會讓 e2e 完全拿不到 TEST_SUPABASE_*，Phase 2 起必然失敗，故展開列出。
