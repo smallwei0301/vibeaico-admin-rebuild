@@ -21,7 +21,10 @@ export type FormationTrigger =
   | 'QUALIFYING_PAYMENT'
   | 'QUALIFYING_CANCELLATION'
   | 'DEADLINE_REACHED'
-  | 'GUIDE_OVERRIDE_FORM';
+  | 'GUIDE_OVERRIDE_FORM'
+  | 'GUIDE_EXTEND'
+  | 'GUIDE_CANCEL'
+  | 'GUIDE_CONTINUE';
 
 export type FormationDecision = {
   status: FormationStatus;
@@ -40,12 +43,44 @@ export type FormationTransitionInput = {
   trigger: FormationTrigger;
 };
 
+export type FormationDeadlineInput = {
+  departureAt: Date;
+  daysBefore: number;
+  now: Date;
+  override?: Date;
+};
+
+const DAY_MS = 86_400_000;
+
+/**
+ * 產生要存進 Departure 的具體截止時間。時區轉換由呼叫端先完成，
+ * 這個邊界只負責 0–90 天、不得過期與不得晚於出發的不變規則。
+ */
+export function calculateFormationDeadline(input: FormationDeadlineInput): Date {
+  const departureMs = input.departureAt.getTime();
+  const nowMs = input.now.getTime();
+  const overrideMs = input.override?.getTime();
+  if (!Number.isFinite(departureMs) || !Number.isFinite(nowMs)
+      || !Number.isInteger(input.daysBefore) || input.daysBefore < 0 || input.daysBefore > 90
+      || (input.override && !Number.isFinite(overrideMs))) {
+    throw new Error('FORMATION_DEADLINE_INVALID');
+  }
+
+  const deadlineMs = overrideMs ?? departureMs - input.daysBefore * DAY_MS;
+  if (departureMs <= nowMs || deadlineMs <= nowMs || deadlineMs > departureMs) {
+    throw new Error('FORMATION_DEADLINE_INVALID');
+  }
+  return new Date(deadlineMs);
+}
+
 /**
  * 成團資格與「暫占名額」刻意分開。未完成付款的 PENDING 訂單可能佔 capacity，
  * 但從不會因此被數進 formation。
  */
 export function qualifiesForFormation(input: FormationEligibilityInput): boolean {
-  if (input.orderStatus === 'CANCELLED' || input.paymentStatus === 'REFUNDED') return false;
+  if (input.orderStatus === 'CANCELLED'
+      || input.paymentStatus === 'REFUND_PENDING'
+      || input.paymentStatus === 'REFUNDED') return false;
   if (input.orderStatus !== 'CONFIRMED' && input.orderStatus !== 'COMPLETED') return false;
 
   switch (input.depositMode) {
@@ -91,8 +126,21 @@ export function transitionFormation(
     return { status: current };
   }
 
-  if (current === 'REVIEW_REQUIRED') {
+  if (input.trigger === 'GUIDE_OVERRIDE_FORM' && current === 'REVIEW_REQUIRED') {
     return { status: 'FORMED', formedBy: 'GUIDE_OVERRIDE' };
+  }
+
+  if (input.trigger === 'GUIDE_EXTEND' && current === 'REVIEW_REQUIRED') {
+    return { status: 'COLLECTING' };
+  }
+
+  if (input.trigger === 'GUIDE_CONTINUE' && current === 'AT_RISK') {
+    return { status: 'FORMED' };
+  }
+
+  if (input.trigger === 'GUIDE_CANCEL'
+      && (current === 'REVIEW_REQUIRED' || current === 'AT_RISK')) {
+    return { status: 'FAILED' };
   }
 
   throw new Error('FORMATION_TRANSITION_INVALID');
