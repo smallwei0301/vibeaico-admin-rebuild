@@ -9,7 +9,7 @@
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
 | repo governance | Agent 常駐自主執行 | **長程任務預設持續推進到所有可施工項目完成；階段性回報後不得停工，也不得重問已記錄的授權／裁示** | 依 `docs/AGENT-EXECUTION.md` 盤點 A/B/C、派工、序列化 TEST、保存證據；驗收與最終分支成立後可自主關閉 Issue，只剩真正 Owner／Production 阻塞才結束。 |
-| repo governance | 多模型派工 | **目前對話模型統籌；低風險工作盡量分派 Luna；一個中大型 Issue 只交一位 Terra；Sol 只做一次最後高風險審計** | 不重複閱讀、不複製完整舊對話；模型不可用時主力自行依相同邊界完成。 |
+| repo governance | 角色式模型派工 | **固定採 `SCOUT(Luna) → TRIAGE(Sol) → BUILD(Terra) → DIAGNOSE(Terra/Sol) → AUDIT(Sol) → CLOSEOUT(Luna)`；工作角色優先於目前對話模型** | Sol 決定下一題、模糊 CI、高風險設計與 close verdict；一個中大型 Issue 只交一位 Terra；Luna 做盤點、log、文件與機械收尾。只有 Sol 回覆 `CLOSE_APPROVED` 才可關 Issue。`.agents/skills/vibeaico-agent-orchestration/SKILL.md` 只作執行轉接器，正式規則仍以 `docs/AGENT-EXECUTION.md` 為準。 |
 | repo governance | 憑證取得 | **可從已連結 Google Drive `midao.md`／`midao.env` 取得本專案必要憑證，Owner 不負責 seed、登入、cookie 或 API 排錯** | 秘密不可輸出、提交或轉交 agent；真的缺權限才列 Owner 待辦，並繼續其他工作。 |
 | repo governance | 發布界線 | **文件可依治理規則直進 main；程式可自主做到 PR／CI／Ready 與非 Production 整合分支合併；Production 仍需明確發布授權** | 目前 main 會自動發布，所以會改正式行為的 main merge 不可假裝只是一般 git 動作。 |
 | #40 | 通知可靠性／免費基礎通道 | **免費用戶至少具備基本 Email + Telegram；重要通知走 transactional outbox + delivery ledger；平台 Owner 每日收到送達健康報告** | Email accepted 不冒充 delivered；Telegram 200 不冒充已讀；每日 digest 即使 0 failure 也建立並 Email+Telegram 雙送。canonical：`17-NOTIFICATION-DELIVERY.md`。 |
