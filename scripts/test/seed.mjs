@@ -78,17 +78,14 @@ const TRIP_A = {
  *    「column "id" does not exist」（onConflict 欄位寫錯的真 bug）被舊版寬鬆
  *    比對吞掉、誤報成「表未建立」，差點掩蓋錯誤。
  */
-function isMissingSchemaError(error) {
+export function isMissingSchemaError(error) {
   const code = error?.code ?? '';
   const message = (error?.message ?? '').toLowerCase();
   return (
     code === '42P01' ||
     code === 'PGRST205' || // PostgREST：schema cache 裡找不到這張表
-    code === 'PGRST202' ||
-    code === '42883' ||
     /relation "[^"]+" does not exist/.test(message) ||
-    message.includes('could not find the table') ||
-    message.includes('schema cache')
+    message.includes('could not find the table')
   );
 }
 
@@ -363,7 +360,7 @@ export async function runSeed(admin) {
     'trips',
   );
 
-  await safeUpsert(
+  const tripPlansSeeded = await safeUpsert(
     admin,
     'trip_plans',
     [
@@ -386,7 +383,9 @@ export async function runSeed(admin) {
   );
 
   const oneDayMs = 24 * hourMs;
-  await safeUpsert(
+  if (!tripPlansSeeded) {
+    console.warn('[seed] 跳過 trip_departures：trip_plans 尚未建立，避免留下不完整的父子種子。');
+  } else await safeUpsert(
     admin,
     'trip_departures',
     [
