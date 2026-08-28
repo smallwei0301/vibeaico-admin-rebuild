@@ -39,9 +39,10 @@ describe('notification delivery lifecycle (#40, 17 §1–2)', () => {
 
   it('only completes an outbox event when every delivery has reached a terminal state', () => {
     const delivery = (status: DeliveryRow['status']): DeliveryRow => ({ id: status, status });
-    expect(completionStatus([delivery('ACCEPTED'), delivery('SKIPPED')])).toBe('COMPLETE');
+    expect(completionStatus([delivery('ACCEPTED'), delivery('SKIPPED')])).toBe('OPEN');
     expect(completionStatus([delivery('DEAD'), delivery('DELIVERED')])).toBe('DEAD');
     expect(completionStatus([delivery('RETRY'), delivery('ACCEPTED')])).toBe('OPEN');
+    expect(completionStatus([delivery('DELIVERED'), delivery('SKIPPED')])).toBe('COMPLETE');
   });
 
   it('redacts destination values, bearer tokens and provider bodies before persisting an error', () => {

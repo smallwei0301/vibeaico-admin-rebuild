@@ -89,7 +89,9 @@ export function deliveryTransition(
 }
 
 export function completionStatus(deliveries: DeliveryRow[]): OutboxStatus {
-  if (deliveries.some((delivery) => delivery.status === 'PENDING' || delivery.status === 'PROCESSING' || delivery.status === 'RETRY'))
+  if (deliveries.some((delivery) =>
+    delivery.status === 'PENDING' || delivery.status === 'PROCESSING' ||
+    delivery.status === 'RETRY' || delivery.status === 'ACCEPTED'))
     return 'OPEN';
   return deliveries.some((delivery) => delivery.status === 'DEAD') ? 'DEAD' : 'COMPLETE';
 }

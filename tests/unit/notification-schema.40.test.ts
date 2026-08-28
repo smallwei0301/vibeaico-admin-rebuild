@@ -46,6 +46,13 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(outbox).toContain("if (transition.status === 'DEAD') await enqueueImmediateDeadAlert(admin, delivery)");
   });
 
+  it('does not run stale-worker side effects after a delivery claim lease was lost', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).toMatch(/\.eq\('claim_token', delivery\.claim_token\)[\s\S]{0,80}\.select\('id'\)\.maybeSingle\(\)/);
+    expect(outbox).toMatch(/if \(!persisted\) return;/);
+    expect(outbox.indexOf('if (!persisted) return;')).toBeLessThan(outbox.indexOf('if (transition.bindingInvalid)'));
+  });
+
   it('keeps ledger and privileged RPCs unavailable to browser roles', () => {
     expect(migration).toMatch(/alter table notification_outbox enable row level security/i);
     expect(migration).toMatch(/revoke all on table notification_outbox,[\s\S]*?from anon, authenticated/i);
