@@ -75,13 +75,13 @@ end;
 $$;
 
 create or replace function public.qualifying_tour_participants(p_departure pg_catalog.uuid)
-returns pg_catalog.integer
+returns pg_catalog.int4
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select pg_catalog.coalesce(pg_catalog.sum(o.party_size), 0)::pg_catalog.integer
+  select pg_catalog.coalesce(pg_catalog.sum(o.party_size), 0)::pg_catalog.int4
   from public.tour_orders o
   where o.departure_id = p_departure
     and o.status in ('CONFIRMED', 'COMPLETED')
@@ -105,7 +105,7 @@ set search_path = ''
 as $$
 declare
   v_dep public.trip_departures%rowtype;
-  v_participants pg_catalog.integer;
+  v_participants pg_catalog.int4;
 begin
   select * into v_dep from public.trip_departures where id = p_departure for update;
   if not found then raise exception 'DEPARTURE_NOT_FOUND' using errcode = 'P0002'; end if;
@@ -177,15 +177,15 @@ end;
 $$;
 
 create or replace function public.review_expired_tour_formations(p_now pg_catalog.timestamptz default pg_catalog.now())
-returns pg_catalog.integer
+returns pg_catalog.int4
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
   v_dep public.trip_departures%rowtype;
-  v_participants pg_catalog.integer;
-  v_changed pg_catalog.integer := 0;
+  v_participants pg_catalog.int4;
+  v_changed pg_catalog.int4 := 0;
 begin
   for v_dep in
     select * from public.trip_departures
@@ -234,7 +234,7 @@ declare
   v_dep public.trip_departures%rowtype;
   v_previous pg_catalog.text;
   v_next pg_catalog.text;
-  v_participants pg_catalog.integer;
+  v_participants pg_catalog.int4;
   v_departure_at pg_catalog.timestamptz;
   v_timezone pg_catalog.text;
 begin

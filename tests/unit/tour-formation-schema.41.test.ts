@@ -72,4 +72,10 @@ describe('#41 schema migration ordering', () => {
       expect(source).toMatch(/grant execute on function public\.decide_tour_formation\(pg_catalog\.uuid, pg_catalog\.uuid, pg_catalog\.text, pg_catalog\.uuid, pg_catalog\.timestamptz, pg_catalog\.text\) to service_role/);
     }
   });
+
+  it('uses pg_catalog.int4 rather than the unavailable pg_catalog.integer alias', () => {
+    expect(normalizedHardeningMigration).toContain('returns pg_catalog.int4');
+    expect(normalizedHardeningMigration).toContain('::pg_catalog.int4');
+    expect(normalizedHardeningMigration).not.toContain('pg_catalog.integer');
+  });
 });
