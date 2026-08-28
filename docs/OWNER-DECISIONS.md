@@ -9,7 +9,7 @@
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
 | #40 | 通知可靠性／免費基礎通道 | **免費用戶至少具備基本 Email + Telegram；重要通知走 transactional outbox + delivery ledger；平台 Owner 每日收到送達健康報告** | Email accepted 不冒充 delivered；Telegram 200 不冒充已讀；每日 digest 即使 0 failure 也建立並 Email+Telegram 雙送。canonical：`17-NOTIFICATION-DELIVERY.md`。 |
-| #40 / #9 feature governance | Email 功能商業規則 | **基本交易／營運 Email 不再被 `EMAIL_NOTIFICATION` 付費 gate 擋住** | 若保留該 feature code，只能代表進階 Email 自動化／模板／行銷能力；09 catalog/i18n/gate 必須同步收斂。 |
+| #40 / Feature Store | Email 功能商業規則 | **基本交易／營運 Email 不再被 `EMAIL_NOTIFICATION` 付費 gate 擋住** | 若保留該 feature code，只能代表進階 Email 自動化／模板／行銷能力；09 catalog/i18n/gate 必須同步收斂。 |
 | #9 / #12 | GUIDE tenant 自有金流 | **每個 GUIDE tenant／工作室用自己的 merchant credentials 完成 checkout→callback；絕不 fallback 平台 key** | 兩階段驗證：connection verified + e2e verified。Key 修改就清驗證；正式旅客只可使用完整 E2E verified method。canonical：`18-GUIDE-COMMERCE-LIFECYCLE.md` §8。 |
 | #41 | 真正散客併團 | **單筆最少人數與最低成團人數分離；1 人可先報 4 人成團方案** | 多 TourOrder 直接加入同一 SHARED Departure；capacity hold 與 formation qualifying count 分開。 |
 | #41 | 成團截止日 | **Plan 預設出發前 7 天，可改 0–90 天；單一 Departure 可 override 並保存 snapshot** | 短期開團不可偷偷保存已過期 deadline；UI 可建議出發前 24h，但導遊需確認。 |
