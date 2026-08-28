@@ -8,6 +8,10 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
+| repo governance | Agent 常駐自主執行 | **長程任務預設持續推進到所有可施工項目完成；階段性回報後不得停工，也不得重問已記錄的授權／裁示** | 依 `docs/AGENT-EXECUTION.md` 盤點 A/B/C、派工、序列化 TEST、保存證據；驗收與最終分支成立後可自主關閉 Issue，只剩真正 Owner／Production 阻塞才結束。 |
+| repo governance | 多模型派工 | **目前對話模型統籌；低風險工作盡量分派 Luna；一個中大型 Issue 只交一位 Terra；Sol 只做一次最後高風險審計** | 不重複閱讀、不複製完整舊對話；模型不可用時主力自行依相同邊界完成。 |
+| repo governance | 憑證取得 | **可從已連結 Google Drive `midao.md`／`midao.env` 取得本專案必要憑證，Owner 不負責 seed、登入、cookie 或 API 排錯** | 秘密不可輸出、提交或轉交 agent；真的缺權限才列 Owner 待辦，並繼續其他工作。 |
+| repo governance | 發布界線 | **文件可依治理規則直進 main；程式可自主做到 PR／CI／Ready 與非 Production 整合分支合併；Production 仍需明確發布授權** | 目前 main 會自動發布，所以會改正式行為的 main merge 不可假裝只是一般 git 動作。 |
 | #40 | 通知可靠性／免費基礎通道 | **免費用戶至少具備基本 Email + Telegram；重要通知走 transactional outbox + delivery ledger；平台 Owner 每日收到送達健康報告** | Email accepted 不冒充 delivered；Telegram 200 不冒充已讀；每日 digest 即使 0 failure 也建立並 Email+Telegram 雙送。canonical：`17-NOTIFICATION-DELIVERY.md`。 |
 | #40 / Feature Store | Email 功能商業規則 | **基本交易／營運 Email 不再被 `EMAIL_NOTIFICATION` 付費 gate 擋住** | 若保留該 feature code，只能代表進階 Email 自動化／模板／行銷能力；09 catalog/i18n/gate 必須同步收斂。 |
 | #9 / #12 | GUIDE tenant 自有金流 | **每個 GUIDE tenant／工作室用自己的 merchant credentials 完成 checkout→callback；絕不 fallback 平台 key** | 兩階段驗證：connection verified + e2e verified。Key 修改就清驗證；正式旅客只可使用完整 E2E verified method。canonical：`18-GUIDE-COMMERCE-LIFECYCLE.md` §8。 |
@@ -17,7 +21,7 @@
 | #41 / #12 | 訂金／尾款與成團 | **收款政策沿用 Service；線上付款成功自動推進，匯款才人工確認；付款狀態與成團狀態分軸** | 至少表達 UNPAID/PARTIAL/PAID/REFUND_PENDING/REFUNDED；最後一筆 qualifying payment 原子成團且只產生一次通知 event。 |
 | #42 | GUIDE 方案管理 UX | **快速編輯 → 進階設定兩層 UI，但共用同一 TripPlan/API/schema** | 快速層只給名稱／內容／價格等高頻欄位；成團、販售、季節、訂金等放進階 page/drawer。既有 Departure snapshot 不被 Plan 後改污染。 |
 | #42 / #25 | Midao 協助代建方案 | **平台可代建，但導遊仍是可編輯的資料 owner；使用 platform-admin/impersonation + audit，不共用密碼** | 建議 provenance `GUIDE / PLATFORM_ASSISTED / IMPORTED` 只做來源 badge；LISTED 修改仍走 review。 |
-| #37 / TEST | TEST 資料庫驗證 | **長期授權：可在 Vibe Ai test 套用 `0034`、`0035`、`0036`，並刷新 PostgREST schema cache** | 限 `nmwhwngojosmagjuvxol`（TEST）；不包含 Production DDL／DML、部署或 main merge。後續新 migration 仍須另外確認。 |
+| repo / TEST | TEST 資料庫驗證 | **長期授權：可在 Vibe Ai TEST 執行 open Issue 所需的 migration、schema/function、DDL/DML、reset、seed、schema cache 與整合/E2E；後續新 migration 不必逐支再問** | 僅限 project ref `nmwhwngojosmagjuvxol`；每次先驗 project ref 與基線並留下證據。不含其他 Supabase、Production、正式付款／通知、部署或 runtime main merge。詳見 `docs/AGENT-EXECUTION.md` §3.1。 |
 
 ## 2026-08-27 已裁示
 
@@ -45,3 +49,5 @@
 2. 若 Issue body 還殘留舊的「人工介入點」，以本索引、對應 Owner Decision comment 與較新的 canonical 文件為準。
 3. 實作時要把對應決策回併該領域 canonical 文件，不能永久只靠本索引。
 4. Production DDL／DML、正式部署與會改變 runtime 的 Production merge，仍需 Owner 另行明確授權。
+5. 某一路線缺權限或等待外部服務時，只將該路線列為阻塞；其他可施工項目繼續，不得以狀態報告提前結束 goal。
+6. 每次實質失敗必須新增或更新 `docs/AGENT-PLAYBOOK.md`；相同根因更新原條目，不把教訓散落成多份規格。
