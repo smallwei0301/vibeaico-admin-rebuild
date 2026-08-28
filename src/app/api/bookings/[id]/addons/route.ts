@@ -33,8 +33,8 @@
  * ─────────────────────────────────────────────────────────────────────────
  * 員工業績：C+ 明確歸戶
  * ─────────────────────────────────────────────────────────────────────────
- * `PRIMARY` 繼承本預約服務人員、`SPECIFIC_STAFF` 歸指定人、`NONE` 只算店家。
- * null 不再同時表示「繼承」與「不計個人業績」。
+ * 有執行人員的 addon 一律歸該人；未指定執行人員才繼承本預約服務人員；
+ * `NONE` 只算店家。null 不再同時表示「繼承」與「不計個人業績」。
  */
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
@@ -115,14 +115,12 @@ export const POST = handle(async (req, { params }) => {
     if (error) throw error;
     if (!s) throw new ApiHttpError(404, '找不到此服務人員', ERR.NOT_FOUND);
   }
-  if (b.performanceMode === 'SPECIFIC_STAFF' && !b.performanceStaffId)
-    throw new ApiHttpError(400, '請選擇業績歸屬人員', ERR.VALIDATION);
-  if (b.performanceStaffId) {
-    const { data: staff, error } = await t.supabase.from('staff').select('id')
-      .eq('id', b.performanceStaffId).eq('tenant_id', t.tenantId).maybeSingle();
-    if (error) throw error;
-    if (!staff) throw new ApiHttpError(404, '找不到業績歸屬人員', ERR.NOT_FOUND);
-  }
+  // #37 audit: execution staff is the performance owner.  The legacy
+  // performanceStaffId input is intentionally ignored so it cannot disagree
+  // with execution; only NONE opts out, otherwise no execution staff inherits.
+  const performanceMode = b.performanceMode === 'NONE'
+    ? 'NONE' : b.staffId ? 'SPECIFIC_STAFF' : 'PRIMARY';
+  const performanceStaffId = performanceMode === 'SPECIFIC_STAFF' ? b.staffId : null;
 
   const appliedAmount = b.price * b.quantity;
   const appliedMinutes = b.durationMinutes * b.quantity;
@@ -138,8 +136,8 @@ export const POST = handle(async (req, { params }) => {
       quantity: b.quantity,
       duration_minutes: b.durationMinutes,
       staff_id: b.staffId ?? null,
-      performance_mode: b.performanceMode,
-      performance_staff_id: b.performanceMode === 'SPECIFIC_STAFF' ? b.performanceStaffId : null,
+      performance_mode: performanceMode,
+      performance_staff_id: performanceStaffId,
       applied_amount: appliedAmount,
       applied_minutes: appliedMinutes,
     })

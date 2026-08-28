@@ -28,7 +28,7 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { businessSettingsSchema } from '@/config/tenant-settings';
-import { departureInterval, loadStaffAvailability, type AvailabilityStaff } from '@/server/staff-availability';
+import { departureInterval, evaluateStaffAvailabilityWithFacts, loadAvailabilityFacts, type AvailabilityStaff } from '@/server/staff-availability';
 
 const querySchema = z.object({
   serviceId: z.string().uuid(),
@@ -117,14 +117,16 @@ export const GET = handle(async (req) => {
   }
   if (pool.length === 0) return ok({ slots: [] });
 
-  // 2+4. 產時段並將每位候選交給共用 availability engine。
+  // 2+4. 佔用來源只讀一次，再把每個候選交給共用 availability engine；不做
+  // 「每個 slot 都重新查四張表」的 N+1 查詢。
+  const facts = await loadAvailabilityFacts({
+    supabase: t.supabase, tenantId: t.tenantId, date: q.date,
+  });
   const slots: Array<{ start: string; end: string; staffIds: string[] }> = [];
   for (const w of windows) {
     for (let min = w.start; min + duration <= w.end; min += biz.slotInterval) {
       const candidate = departureInterval(q.date, `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`, duration);
-      const availability = await loadStaffAvailability({
-        supabase: t.supabase, tenantId: t.tenantId, date: q.date, staff: pool, interval: candidate,
-      });
+      const availability = evaluateStaffAvailabilityWithFacts(pool, candidate, facts);
       const staffIds = availability.filter((item) => item.available).map((item) => item.staffId);
 
       if (staffIds.length > 0) {

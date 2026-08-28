@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { handle, ok, fail, ERR, ApiHttpError } from '@/server/http';
+import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripDeparture } from '@/server/mappers';
-import { replaceDepartureAssignments, resolveOpenDepartureAssignments } from '@/server/departure-staff';
+import { throwAvailabilityRpcError } from '@/server/availability-rpc';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -47,75 +47,29 @@ export const POST = handle(async (req, ctx: Ctx) => {
   if (spanDays > MAX_DAYS) return fail(400, `批次開團最多一次 ${MAX_DAYS} 天`, ERR.VALIDATION);
 
   const { data: plan, error: perr } = await t.supabase
-    .from('trip_plans').select('id, trip_id, duration_minutes')
+    .from('trip_plans').select('id, trip_id')
     .eq('tenant_id', t.tenantId).eq('id', b.planId).maybeSingle();
   if (perr) throw perr;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
 
-  const startTime = b.startTime ? b.startTime : null;
-  const wanted: string[] = [];
-  for (const d = new Date(from); d <= to; d.setUTCDate(d.getUTCDate() + 1)) {
-    if (b.weekdays.includes(d.getUTCDay())) wanted.push(d.toISOString().slice(0, 10));
-  }
-  if (wanted.length === 0) return ok({ created: 0, skipped: 0, departures: [] });
-
-  // 先查已存在的日期，才能回報「跳過幾筆」——靠 insert 的 23505 只會知道
-  // 「有撞到」，不會知道撞了幾筆。
-  const existingQuery = t.supabase
-    .from('trip_departures').select('departs_on')
-    .eq('tenant_id', t.tenantId).eq('plan_id', b.planId).in('departs_on', wanted);
-  const { data: existing, error: eerr } = startTime === null
-    ? await existingQuery.is('start_time', null)
-    : await existingQuery.eq('start_time', startTime);
-  if (eerr) throw eerr;
-
-  const taken = new Set((existing ?? []).map((r: any) => r.departs_on));
-  const conflicts: Array<{ date: string; staffId: string; staffName: string; reason: string }> = [];
-  const rows: Array<Record<string, unknown>> = [];
-  const assignmentByDate = new Map<string, Awaited<ReturnType<typeof resolveOpenDepartureAssignments>>>();
-  for (const date of wanted.filter((candidate) => !taken.has(candidate))) {
-    try {
-      const assignments = await resolveOpenDepartureAssignments({
-        supabase: t.supabase, tenantId: t.tenantId, departsOn: date,
-        startTime, durationMinutes: Number(plan.duration_minutes),
-        primaryStaffId: b.primaryStaffId, assistantStaffIds: b.assistantStaffIds,
-      });
-      assignmentByDate.set(date, assignments);
-      rows.push({
-        tenant_id: t.tenantId, trip_id: id, plan_id: b.planId, departs_on: date,
-        start_time: startTime, capacity: b.capacity, status: 'OPEN', note: '',
-      });
-    } catch (error) {
-      if (!(error instanceof ApiHttpError)) throw error;
-      conflicts.push({ date, staffId: '', staffName: '', reason: error.message });
-    }
-  }
-
-  if (rows.length === 0) return ok({ created: 0, skipped: wanted.length, conflicts, departures: [] });
-
-  const { data, error } = await t.supabase
-    .from('trip_departures').insert(rows).select('*, trip_plans(name)');
+  const { data: rpcData, error: rpcError } = await t.supabase.rpc('create_trip_departures_batch_with_staff', {
+    p_tenant: t.tenantId, p_trip_id: id, p_plan_id: b.planId, p_from: b.from, p_to: b.to,
+    p_weekdays: b.weekdays, p_start_time: b.startTime || null, p_capacity: b.capacity,
+    p_primary_staff_id: b.primaryStaffId ?? null, p_assistant_staff_ids: b.assistantStaffIds ?? null,
+  });
+  if (rpcError) throwAvailabilityRpcError(rpcError);
+  const result = rpcData as { createdIds?: string[]; skipped?: number; conflicts?: Array<{ date: string; staffId: string; staffName: string; reason: string }> };
+  const createdIds = result.createdIds ?? [];
+  const { data, error } = createdIds.length === 0
+    ? { data: [], error: null }
+    : await t.supabase.from('trip_departures')
+      .select('*, trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
+      .eq('tenant_id', t.tenantId).in('id', createdIds);
   if (error) throw error;
-
-  try {
-    for (const departure of data ?? []) {
-      await replaceDepartureAssignments(
-        t.supabase, t.tenantId, departure.id,
-        assignmentByDate.get(departure.departs_on) ?? [],
-      );
-    }
-  } catch (assignmentError) {
-    // The migration's FK/RLS is the last safety net; remove only this request's
-    // newly-created rows instead of reporting a successful but unassigned batch.
-    await t.supabase.from('trip_departures').delete().eq('tenant_id', t.tenantId)
-      .in('id', (data ?? []).map((departure: any) => departure.id));
-    throw assignmentError;
-  }
-
   return ok({
     created: data?.length ?? 0,
-    skipped: wanted.length - (data?.length ?? 0),
-    conflicts,
+    skipped: result.skipped ?? 0,
+    conflicts: result.conflicts ?? [],
     departures: (data ?? []).map(mapTripDeparture),
   });
 });

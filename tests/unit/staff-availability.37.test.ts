@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  departureInterval, evaluateStaffAvailability, type AvailabilityInput,
+  departureInterval, evaluateStaffAvailability, evaluateStaffAvailabilityWithFacts, type AvailabilityInput,
 } from '@/server/staff-availability';
 import { aggregatePerformance } from '@/server/addon-performance';
 
@@ -61,6 +61,16 @@ describe('staff availability engine (#37)', () => {
     expect(evaluateStaffAvailability(input({
       departures: [{ id: 'departure-1', start: allDay.start, end: allDay.end, staffIds: ['guide-a'], status: 'OPEN' }],
     })).conflicts[0]?.reason).toBe('DEPARTURE');
+  });
+
+  it('同一份 facts 可供整個 slot grid 重用，仍保留每個候選的衝突結果', () => {
+    const next = departureInterval(DAY, '11:00', 60);
+    const facts = {
+      shifts: [], bookings: [{ staffId: 'guide-a', start: interval.start, end: interval.end }],
+      blocks: [], departures: [],
+    };
+    expect(evaluateStaffAvailabilityWithFacts([input().staff], interval, facts)[0].available).toBe(false);
+    expect(evaluateStaffAvailabilityWithFacts([input().staff], next, facts)[0].available).toBe(true);
   });
 });
 

@@ -51,34 +51,71 @@ create table tour_order_addons (
   specific_staff_id     uuid,
   performance_staff_id  uuid,
   performance_amount    numeric check (performance_amount is null or performance_amount >= 0),
+  -- Completion records this once.  It makes an intentionally empty NONE
+  -- snapshot distinguishable from an addon that has not been frozen yet.
+  performance_frozen_at timestamptz,
   created_at            timestamptz not null default now(),
   foreign key (tenant_id, order_id)
     references tour_orders (tenant_id, id) on delete cascade,
-  foreign key (tenant_id, trip_addon_id)
-    references trip_addons (tenant_id, id) on delete set null,
-  foreign key (tenant_id, specific_staff_id)
-    references staff (tenant_id, id) on delete set null,
-  foreign key (tenant_id, performance_staff_id)
-    references staff (tenant_id, id) on delete set null,
-  check (
-    (performance_mode = 'SPECIFIC_STAFF' and specific_staff_id is not null)
-    or performance_mode <> 'SPECIFIC_STAFF'
-  )
+  -- API/RPC creation validates SPECIFIC_STAFF.  The database must still allow
+  -- the FK action to clear a deleted staff id without attempting to null the
+  -- non-null tenant_id in the same composite relationship.
+  check (performance_mode in ('PRIMARY', 'SPECIFIC_STAFF', 'NONE'))
 );
 create index tour_order_addons_order_idx on tour_order_addons(tenant_id, order_id, created_at);
+
+-- PostgreSQL 17 permits a column list for SET NULL on a composite FK.  Earlier
+-- supported versions need the nullable id FK plus a tenant-scoping composite
+-- FK.  Do not use bare `ON DELETE SET NULL` here: it would also null tenant_id.
+do $$
+begin
+  if current_setting('server_version_num')::int >= 170000 then
+    execute 'alter table tour_order_addons add constraint tour_order_addons_trip_addon_fkey
+      foreign key (tenant_id, trip_addon_id) references trip_addons (tenant_id, id)
+      on delete set null (trip_addon_id)';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_specific_staff_fkey
+      foreign key (tenant_id, specific_staff_id) references staff (tenant_id, id)
+      on delete set null (specific_staff_id)';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_performance_staff_fkey
+      foreign key (tenant_id, performance_staff_id) references staff (tenant_id, id)
+      on delete set null (performance_staff_id)';
+  else
+    execute 'alter table tour_order_addons add constraint tour_order_addons_trip_addon_id_fkey
+      foreign key (trip_addon_id) references trip_addons (id) on delete set null';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_trip_addon_tenant_fkey
+      foreign key (tenant_id, trip_addon_id) references trip_addons (tenant_id, id) on delete no action';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_specific_staff_id_fkey
+      foreign key (specific_staff_id) references staff (id) on delete set null';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_specific_staff_tenant_fkey
+      foreign key (tenant_id, specific_staff_id) references staff (tenant_id, id) on delete no action';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_performance_staff_id_fkey
+      foreign key (performance_staff_id) references staff (id) on delete set null';
+    execute 'alter table tour_order_addons add constraint tour_order_addons_performance_staff_tenant_fkey
+      foreign key (tenant_id, performance_staff_id) references staff (tenant_id, id) on delete no action';
+  end if;
+end;
+$$;
 
 -- Existing booking addons retain their execution-staff field. Performance gets
 -- an explicit mode so null can no longer ambiguously mean inherit or NONE.
 alter table booking_addons
   add column if not exists performance_mode addon_performance_mode not null default 'PRIMARY',
-  add column if not exists performance_staff_id uuid,
-  add constraint booking_addons_performance_staff_fkey
-    foreign key (tenant_id, performance_staff_id)
-    references staff (tenant_id, id) on delete set null,
-  add constraint booking_addons_performance_mode_chk check (
-    (performance_mode = 'SPECIFIC_STAFF' and performance_staff_id is not null)
-    or performance_mode <> 'SPECIFIC_STAFF'
-  );
+  add column if not exists performance_staff_id uuid;
+
+do $$
+begin
+  if current_setting('server_version_num')::int >= 170000 then
+    execute 'alter table booking_addons add constraint booking_addons_performance_staff_fkey
+      foreign key (tenant_id, performance_staff_id) references staff (tenant_id, id)
+      on delete set null (performance_staff_id)';
+  else
+    execute 'alter table booking_addons add constraint booking_addons_performance_staff_id_fkey
+      foreign key (performance_staff_id) references staff (id) on delete set null';
+    execute 'alter table booking_addons add constraint booking_addons_performance_staff_tenant_fkey
+      foreign key (tenant_id, performance_staff_id) references staff (tenant_id, id) on delete no action';
+  end if;
+end;
+$$;
 
 alter table trip_departure_staff enable row level security;
 alter table tour_order_addons enable row level security;

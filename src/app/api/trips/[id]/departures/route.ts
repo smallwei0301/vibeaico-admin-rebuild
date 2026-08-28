@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripDeparture } from '@/server/mappers';
-import { replaceDepartureAssignments, resolveOpenDepartureAssignments } from '@/server/departure-staff';
+import { throwAvailabilityRpcError } from '@/server/availability-rpc';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -60,41 +60,24 @@ export const POST = handle(async (req, ctx: Ctx) => {
 
   // 方案必須屬於同一租戶的同一個行程，否則會建出一個掛錯行程的團次
   const { data: plan, error: perr } = await t.supabase
-    .from('trip_plans').select('id, trip_id, duration_minutes')
+    .from('trip_plans').select('id, trip_id')
     .eq('tenant_id', t.tenantId).eq('id', b.planId).maybeSingle();
   if (perr) throw perr;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
 
-  const status = b.status ?? 'OPEN';
-  const assignments = status === 'OPEN' ? await resolveOpenDepartureAssignments({
-    supabase: t.supabase, tenantId: t.tenantId, departsOn: b.departsOn,
-    startTime: b.startTime ?? '', durationMinutes: Number(plan.duration_minutes),
-    primaryStaffId: b.primaryStaffId, assistantStaffIds: b.assistantStaffIds,
-  }) : [];
-  const { data, error } = await t.supabase.from('trip_departures').insert({
-    tenant_id: t.tenantId,
-    trip_id: id,
-    plan_id: b.planId,
-    departs_on: b.departsOn,
-    start_time: b.startTime ? b.startTime : null,
-    capacity: b.capacity,
-    status,
-    note: b.note ?? '',
-  }).select('*, trip_plans(name)').single();
+  const { data: departureId, error: rpcError } = await t.supabase.rpc('save_trip_departure_with_staff', {
+    p_tenant: t.tenantId, p_trip_id: id, p_plan_id: b.planId, p_departure_id: null,
+    p_departs_on: b.departsOn, p_start_time: b.startTime || null, p_capacity: b.capacity,
+    p_status: b.status ?? 'OPEN', p_note: b.note ?? '',
+    p_primary_staff_id: b.primaryStaffId ?? null,
+    p_assistant_staff_ids: b.assistantStaffIds ?? null,
+  });
+  if (rpcError) throwAvailabilityRpcError(rpcError);
 
-  // unique (tenant_id, plan_id, departs_on, start_time)
-  if (error?.code === '23505') return fail(409, '同方案同日期同時間的團次已存在', ERR.CONFLICT);
+  const { data, error } = await t.supabase.from('trip_departures')
+    .select('*, trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
+    .eq('tenant_id', t.tenantId).eq('id', departureId).maybeSingle();
   if (error) throw error;
-
-  try {
-    await replaceDepartureAssignments(t.supabase, t.tenantId, data.id, assignments);
-  } catch (assignmentError) {
-    // No OPEN departure is left behind if its required assignment cannot be persisted.
-    await t.supabase.from('trip_departures').delete().eq('tenant_id', t.tenantId).eq('id', data.id);
-    throw assignmentError;
-  }
-
-  return ok(mapTripDeparture({ ...data, trip_departure_staff: assignments.map((assignment) => ({
-    staff_id: assignment.staffId, role: assignment.role,
-  })) }));
+  if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
+  return ok(mapTripDeparture(data));
 });

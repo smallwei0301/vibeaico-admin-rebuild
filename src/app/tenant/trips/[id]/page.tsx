@@ -91,6 +91,7 @@ export default function TripDetailPage() {
   const [departureStaff, setDepartureStaff] = React.useState<DepartureStaffAvailability[]>([]);
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [batchStaff, setBatchStaff] = React.useState<DepartureStaffAvailability[]>([]);
+  const [batchConflicts, setBatchConflicts] = React.useState<Array<{ date: string; staffId: string; staffName: string; reason: string }>>([]);
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
     weekdays: [6, 0] as number[],
@@ -144,6 +145,8 @@ export default function TripDetailPage() {
       .catch(() => { if (!cancelled) setBatchStaff([]); });
     return () => { cancelled = true; };
   }, [batchOpen, batch.planId, batch.from, batch.startTime, tripId]);
+
+  React.useEffect(() => { if (!batchOpen) setBatchConflicts([]); }, [batchOpen]);
 
   const patch = (p: Partial<Trip>) => setForm((f) => (f ? { ...f, ...p } : f));
   const lines = (arr: string[]) => arr.join('\n');
@@ -319,7 +322,8 @@ export default function TripDetailPage() {
       });
       setDepartures((prev) => [...prev, ...res.departures]
         .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
-      setBatchOpen(false);
+      setBatchConflicts(res.conflicts ?? []);
+      if ((res.conflicts?.length ?? 0) === 0) setBatchOpen(false);
       toast.show(res.skipped > 0
         ? t.messages.departureBatchPartial(res.created, res.skipped)
         : t.messages.departureBatchCreated(res.created));
@@ -1311,7 +1315,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setBatchOpen(false)}>{common.cancel}</Button>
-            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0}>
+            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0 || batchStaff.length === 0 || batchStaff.every((staff) => !staff.available)}>
               {t.departures.batch.confirm}
             </Button>
           </>
@@ -1335,9 +1339,12 @@ export default function TripDetailPage() {
               <Input type="date" value={batch.to} onChange={(e) => setBatch({ ...batch, to: e.target.value })} />
             </FormGroup>
           </div>
-          {batchStaff.length === 0 ? null : batchStaff.length === 1 ? (
+          {batch.planId && batch.from && batchStaff.length === 0 ? (
+            <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
+          ) : batchStaff.length === 1 ? (
             <Alert tone={batchStaff[0].available ? 'info' : 'danger'}>
-              {t.departures.singleGuide(batchStaff[0].staffName)}
+              {t.departures.singleGuide(batchStaff[0].staffName)} {!batchStaff[0].available && batchStaff[0].conflicts[0]
+                ? t.departures.conflict(batchStaff[0].conflicts[0].reason) : ''}
             </Alert>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1346,8 +1353,8 @@ export default function TripDetailPage() {
                 <Select value={batch.primaryStaffId ?? ''}
                   onChange={(event) => setBatch({ ...batch, primaryStaffId: event.target.value || null })}>
                   <option value="">{t.departures.fields.primaryGuideLabel}</option>
-                  {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId}>
-                    {staff.staffName}
+                  {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId} disabled={!staff.available}>
+                    {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
                   </option>)}
                 </Select>
               </FormGroup>
@@ -1358,11 +1365,20 @@ export default function TripDetailPage() {
                     ...batch, assistantStaffIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
                   })}>
                   {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId}
-                    disabled={staff.staffId === batch.primaryStaffId}>{staff.staffName}</option>)}
+                    disabled={!staff.available || staff.staffId === batch.primaryStaffId}>
+                    {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
+                  </option>)}
                 </select>
               </FormGroup>
             </div>
           )}
+          {batchStaff.filter((staff) => !staff.available).length > 0 ? (
+            <div className="flex flex-col gap-1 text-2xs text-secondary">
+              {batchStaff.filter((staff) => !staff.available).map((staff) => (
+                <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.conflicts[0]?.reason ?? '')}</span>
+              ))}
+            </div>
+          ) : null}
           <FormGroup>
             <Label>{t.departures.batch.weekdaysLabel}</Label>
             <div className="flex flex-wrap gap-1.5">
@@ -1399,6 +1415,13 @@ export default function TripDetailPage() {
             </FormGroup>
           </div>
           <Alert tone="info">{t.departures.batch.preview(batchCount)}</Alert>
+          {batchConflicts.length > 0 ? (
+            <Alert tone="danger">
+              {batchConflicts.map((conflict) => (
+                <div key={`${conflict.date}-${conflict.staffId}`}>{conflict.date}：{conflict.reason}</div>
+              ))}
+            </Alert>
+          ) : null}
         </div>
       </Modal>
 

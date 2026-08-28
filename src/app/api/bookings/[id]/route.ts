@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { notifyBookingStatus } from '@/server/line-notify';
+import { throwAvailabilityRpcError } from '@/server/availability-rpc';
 
 const bodySchema = z.object({
   startAt: z.string().optional(),
@@ -34,12 +35,11 @@ export const PUT = handle(async (req, { params }) => {
   const b = bodySchema.parse(await req.json());
 
   const { data: existing, error: e0 } = await t.supabase.from('bookings')
-    .select('id, duration_minutes, start_at, staff_id')
+    .select('id, duration_minutes, start_at, staff_id, note')
     .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
   if (e0) throw e0;
   if (!existing) throw new ApiHttpError(404, '找不到此預約', ERR.NOT_FOUND);
 
-  const update: Record<string, unknown> = {};
   /** 時間或人員實際有變 → 才值得推播給顧客（見檔頭） */
   let notifyTriggered = false;
 
@@ -47,8 +47,6 @@ export const PUT = handle(async (req, { params }) => {
     const startMs = Date.parse(b.startAt);
     if (Number.isNaN(startMs))
       throw new ApiHttpError(400, '開始時間格式錯誤', ERR.VALIDATION);
-    update.start_at = new Date(startMs).toISOString();
-    update.end_at = new Date(startMs + existing.duration_minutes * 60_000).toISOString();
     // 用毫秒比，不比字串：DB 回的是 '+00:00' 尾巴、送進來的是 'Z'，同一時刻兩種寫法
     if (Date.parse(existing.start_at) !== startMs) notifyTriggered = true;
   }
@@ -59,21 +57,20 @@ export const PUT = handle(async (req, { params }) => {
       if (error) throw error;
       if (!staff) throw new ApiHttpError(404, '找不到此服務人員', ERR.NOT_FOUND);
     }
-    update.staff_id = b.staffId; // null = 清除
     if ((existing.staff_id ?? null) !== (b.staffId ?? null)) notifyTriggered = true;
   }
-  if (b.note !== undefined) update.note = b.note;   // 備註不影響 notifyTriggered
+  const hasChange = b.startAt !== undefined || b.staffId !== undefined || b.note !== undefined;
 
-  if (Object.keys(update).length === 0) return ok({ notifyTriggered: false }); // 沒有要改的欄位
+  if (!hasChange) return ok({ notifyTriggered: false }); // 沒有要改的欄位
 
-  const { error } = await t.supabase.from('bookings')
-    .update(update)
-    .eq('id', id).eq('tenant_id', t.tenantId);
-  if (error) {
-    if (error.code === '23P01')
-      throw new ApiHttpError(409, '該時段已有預約', ERR.CONFLICT);
-    throw error;
-  }
+  const nextStart = b.startAt === undefined ? existing.start_at : new Date(Date.parse(b.startAt)).toISOString();
+  const nextStaff = b.staffId === undefined ? existing.staff_id : b.staffId;
+  const nextNote = b.note === undefined ? existing.note : b.note;
+  const { error: rpcError } = await t.supabase.rpc('update_booking_with_availability', {
+    p_tenant: t.tenantId, p_booking_id: id, p_start: nextStart,
+    p_staff_id: nextStaff, p_note: nextNote,
+  });
+  if (rpcError) throwAvailabilityRpcError(rpcError);
 
   // LINE 顧客端推播（06 分冊 §5：notifyBookingModified 開關）——同 cancel/confirm/
   // complete，一律 `void` 不 await：推播慢或失敗都不可拖垮這支 API 的回應，

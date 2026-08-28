@@ -378,3 +378,8 @@ jobs:
 - [ ] `npm run test:integration` 可從零跑起（globalSetup 起 server、跑完清掉）
 - [ ] CI 兩個 job 上線且 main 綠燈
 - [ ] 故意寫一個必敗測試 → CI 紅 → 修好 → 綠（驗證關卡真的會擋）
+## #37 availability atomic boundary — targeted contract coverage
+
+- 單元測試覆蓋 pure availability evaluator、booking addon 歸屬優先序與 slot-grid 共用 facts。
+- Schema contract 測試鎖定 source-only RPC：advisory transaction lock、booking/departure 共用 assertion、batch conflicts、completion CAS／freeze、以及 composite FK 的欄位指定 SET NULL fallback。
+- 本輪不會套 migration 或執行 integration/E2E；那些需要 Owner 授權的 Supabase 環境。

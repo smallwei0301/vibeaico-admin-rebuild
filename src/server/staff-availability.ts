@@ -36,6 +36,12 @@ export type AvailabilityInput = {
   /** 編輯團次時不能把自己當作衝突。 */
   excludeDepartureId?: string;
 };
+export type AvailabilityFacts = {
+  shifts: Array<AvailabilityInterval & { staffId: string }>;
+  bookings: AvailabilityBooking[];
+  blocks: AvailabilityBlock[];
+  departures: AvailabilityDeparture[];
+};
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 
@@ -105,14 +111,11 @@ export function evaluateStaffAvailability(input: AvailabilityInput): StaffAvaila
  * candidate to the pure evaluator above.  `supabase` is intentionally narrow
  * (`any`) because this repository has no generated Database type yet.
  */
-export async function loadStaffAvailability(params: {
+export async function loadAvailabilityFacts(params: {
   supabase: any;
   tenantId: string;
   date: string;
-  staff: AvailabilityStaff[];
-  interval: AvailabilityInterval;
-  excludeDepartureId?: string;
-}): Promise<StaffAvailability[]> {
+}): Promise<AvailabilityFacts> {
   const [year, month, day] = params.date.split('-').map(Number);
   const dayStartMs = Date.UTC(year, month - 1, day) - TAIPEI_OFFSET_MS;
   const dayStart = new Date(dayStartMs).toISOString();
@@ -177,15 +180,33 @@ export async function loadStaffAvailability(params: {
     staffId: booking.staff_id, start: booking.start_at, end: booking.end_at,
   }));
 
-  return params.staff.map((staff) => evaluateStaffAvailability({
-    staff,
-    interval: params.interval,
+  return {
     shifts: shiftRanges,
     bookings: bookingRanges,
     blocks: blockRanges,
     departures: [...departureMap.values()],
-    excludeDepartureId: params.excludeDepartureId,
+  };
+}
+
+/** Evaluate any number of candidate intervals against one fetched fact set. */
+export function evaluateStaffAvailabilityWithFacts(
+  staff: AvailabilityStaff[], interval: AvailabilityInterval, facts: AvailabilityFacts,
+  excludeDepartureId?: string,
+): StaffAvailability[] {
+  return staff.map((staff) => evaluateStaffAvailability({
+    staff,
+    interval, shifts: facts.shifts, bookings: facts.bookings, blocks: facts.blocks,
+    departures: facts.departures, excludeDepartureId,
   }));
+}
+
+/** Compatibility adapter for a one-interval route. Prefer facts + evaluator for slot grids. */
+export async function loadStaffAvailability(params: {
+  supabase: any; tenantId: string; date: string; staff: AvailabilityStaff[];
+  interval: AvailabilityInterval; excludeDepartureId?: string;
+}): Promise<StaffAvailability[]> {
+  const facts = await loadAvailabilityFacts(params);
+  return evaluateStaffAvailabilityWithFacts(params.staff, params.interval, facts, params.excludeDepartureId);
 }
 
 function minutesBetween(start: string, end: string): number {

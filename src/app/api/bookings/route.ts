@@ -7,7 +7,7 @@ import { mapBooking } from '@/server/mappers';
 import { createAdminSupabase } from '@/server/supabase';
 import { notifyBookingEvent } from '@/server/email/notify';
 import { notifyOwnerNewBooking } from '@/server/owner-notify';
-import { taipeiTodayDateString } from '@/server/tz';
+import { throwAvailabilityRpcError } from '@/server/availability-rpc';
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
@@ -52,33 +52,9 @@ const createSchema = z.object({
 });
 
 /**
- * booking_no = 'B' + yymmdd + 4 碼流水（unique (tenant_id, booking_no)）。
- * yymmdd 取「建立當下」的台北日期（taipeiTodayDateString），流水 = 查該租戶
- * 同前綴的最大單號 +1 補零。兩個併發請求可能取到同一個流水（撞 23505 unique
- * violation），呼叫端以 retry 迴圈處理。
- *
- * ⚠️ 同樣的產號邏輯在 recurring-bookings/[id]/renew/route.ts 也有一份：
- * Next.js route 檔只能 export HTTP method（build 會驗證匯出形狀），而 §B-1
- * 分工僅允許本 agent 動 route 檔與 types.ts，無法放進共用模組，故兩處各留
- * 一份並互相註記；日後抽出時兩處一起改。
+ * 手動建單走 `create_booking_with_availability`：產單號、讀服務時長、共用
+ * availability check 與 insert 都在同一 transaction，避免和團次指派互相穿透。
  */
-async function nextBookingNo(
-  supabase: Awaited<ReturnType<typeof requireTenant>>['supabase'],
-  tenantId: string,
-): Promise<string> {
-  const yymmdd = taipeiTodayDateString().slice(2).replace(/-/g, '');
-  const prefix = `B${yymmdd}`;
-  const { data, error } = await supabase.from('bookings')
-    .select('booking_no')
-    .eq('tenant_id', tenantId)
-    .like('booking_no', `${prefix}%`)
-    .order('booking_no', { ascending: false })
-    .limit(1);
-  if (error) throw error;
-  const lastSeq = data?.[0] ? Number(data[0].booking_no.slice(prefix.length)) : 0;
-  return `${prefix}${String((Number.isFinite(lastSeq) ? lastSeq : 0) + 1).padStart(4, '0')}`;
-}
-
 export const POST = handle(async (req) => {
   const t = await requireTenant();
   const b = createSchema.parse(await req.json());
@@ -90,7 +66,7 @@ export const POST = handle(async (req) => {
   // 404 規則（04 §0 第 7 條）：customerId/serviceId/staffId 查無或屬別店都回 404，
   // 不能只靠 FK —— FK 擋不住「指到別店資源」的情況（RLS 只管本次查詢，不管外鍵值）。
   const [{ data: service, error: sErr }, { data: customer, error: cErr }] = await Promise.all([
-    t.supabase.from('services').select('id, duration_minutes, price')
+    t.supabase.from('services').select('id')
       .eq('id', b.serviceId).eq('tenant_id', t.tenantId).maybeSingle(),
     t.supabase.from('customers').select('id')
       .eq('id', b.customerId).eq('tenant_id', t.tenantId).maybeSingle(),
@@ -107,36 +83,11 @@ export const POST = handle(async (req) => {
   }
 
   const startAt = new Date(startMs).toISOString();
-  const endAt = new Date(startMs + service.duration_minutes * 60_000).toISOString();
-
-  // booking_no 撞號（併發）重試最多 3 次；重疊（DB 排除約束 x_bookings_overlap）
-  // 是業務衝突不重試，直接 409。
-  let bookingId: string | null = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { data, error } = await t.supabase.from('bookings')
-      .insert({
-        tenant_id: t.tenantId,
-        booking_no: await nextBookingNo(t.supabase, t.tenantId),
-        customer_id: b.customerId,
-        service_id: b.serviceId,
-        staff_id: b.staffId ?? null,
-        start_at: startAt,
-        end_at: endAt,
-        duration_minutes: service.duration_minutes,
-        price: service.price,
-        final_price: service.price,
-        source: 'MANUAL',
-        note: b.note ?? '',
-      })
-      .select('id')
-      .single();
-    if (!error) { bookingId = data.id; break; }
-    if (error.code === '23P01')
-      throw new ApiHttpError(409, '該時段已有預約', ERR.CONFLICT);
-    if (error.code === '23505' && attempt < 2) continue; // 單號撞號 → 重取流水再試
-    throw error;
-  }
-  if (!bookingId) throw new ApiHttpError(409, '預約單號產生失敗，請重試', ERR.CONFLICT);
+  const { data: bookingId, error: rpcError } = await t.supabase.rpc('create_booking_with_availability', {
+    p_tenant: t.tenantId, p_customer_id: b.customerId, p_service_id: b.serviceId,
+    p_staff_id: b.staffId ?? null, p_start: startAt, p_note: b.note ?? '',
+  });
+  if (rpcError) throwAvailabilityRpcError(rpcError);
 
   // Email 通知（05 分冊 §3 notifyNewBooking / notifyStaffBooking）：不 await ——
   // 寄信慢或失敗都不可拖垮回應，函式內部已吞錯（比照 cancel/route.ts）。
