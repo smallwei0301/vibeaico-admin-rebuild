@@ -15,7 +15,8 @@
 - API 契約與整合分冊
 - 測試／驗收標準
 - Owner 決策紀錄
-- 專案級 agent 指示（`CLAUDE.md`、`AGENTS.md`）
+- 專案級 agent 指示（`CLAUDE.md`、`AGENTS.md`、`docs/AGENT-EXECUTION.md`）
+- Agent 失敗／教訓索引（`docs/AGENT-PLAYBOOK.md`，不得取代 canonical 規格）
 
 功能分支可以有施工筆記與草稿，但**不得把 branch-only 文件當作最後規格**。Issue 也不得只指向某個暫時分支才看得到的正式文件。
 
@@ -69,11 +70,16 @@ Production DDL／DML、正式環境部署與會改變正式行為的 `main` merg
 每個 agent 接 Issue 後必須：
 
 1. `git fetch origin`。
-2. 先讀 `origin/main:AGENTS.md`、`origin/main:CLAUDE.md` 與本文件。
-3. 從 Issue 找到對應 canonical 文件，**以 `main` 版本為準**。
-4. 程式施工分支必須以最新 `main`，或「已包含最新 main 文件 commit」的指定整合分支作 base。
-5. 若工作分支的舊文件與 `main` 衝突，以 `main` 的產品／架構規格為準；不得用舊 branch 文件覆蓋新決策。
-6. 看不到 Issue 指定的 `main` 文件時停止施工並回報，不自行猜測。
+2. 先讀 `origin/main:AGENTS.md`、`origin/main:CLAUDE.md`、
+   `origin/main:docs/AGENT-EXECUTION.md` 與本文件。
+3. 讀 `origin/main:docs/OWNER-DECISIONS.md`，不得重問已裁示題目。
+4. 以 Issue、錯誤碼、測試或領域關鍵字搜尋 `origin/main:docs/AGENT-PLAYBOOK.md`，
+   只讀相關教訓。
+5. 從 Issue 找到對應 canonical 文件，**以 `main` 版本為準**。
+6. 程式施工分支必須以最新 `main`，或「已包含最新 main 文件 commit」的指定整合分支作 base。
+7. 若工作分支的舊文件與 `main` 衝突，以 `main` 的產品／架構規格為準；不得用舊 branch 文件覆蓋新決策。
+8. 看不到 Issue 指定的 `main` 文件時只停止受影響路線並回報；其他可施工項目依
+   `docs/AGENT-EXECUTION.md` 繼續，不自行猜測。
 
 Issue 應引用穩定 repo path，例如：
 
@@ -119,9 +125,10 @@ git diff --name-only origin/main...HEAD
 同一主題出現矛盾時，依序採用：
 
 1. `main` 中最新且明確的 Owner Decision
-2. `main` 中該領域 canonical 規格
-3. `main` 中 API／測試分冊
-4. Issue 施工與驗收描述
-5. branch 草稿、舊留言、歷史 migration 註解
+2. `main` 中 `docs/AGENT-EXECUTION.md` 的執行／權限／安全規則
+3. `main` 中該領域 canonical 規格
+4. `main` 中 API／測試分冊
+5. Issue 施工與驗收描述
+6. branch 草稿、舊留言、歷史 migration 註解
 
 低順位內容不得覆蓋高順位的新裁示。

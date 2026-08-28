@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripDeparture } from '@/server/mappers';
+import { throwAvailabilityRpcError } from '@/server/availability-rpc';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -13,6 +14,8 @@ const updateSchema = z.object({
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0').optional(),
   status: z.enum(['OPEN', 'CLOSED', 'CANCELLED']).optional(),
   note: z.string().optional(),
+  primaryStaffId: z.string().uuid().nullable().optional(),
+  assistantStaffIds: z.array(z.string().uuid()).optional(),
 });
 
 /**
@@ -31,7 +34,7 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   const b = updateSchema.parse(await req.json());
 
   const { data: cur, error: rerr } = await t.supabase
-    .from('trip_departures').select('id, seats_booked')
+    .from('trip_departures').select('id, seats_booked, capacity, departs_on, start_time, status, plan_id, note')
     .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (rerr) throw rerr;
   if (!cur) return fail(404, '找不到此團次', ERR.NOT_FOUND);
@@ -39,20 +42,21 @@ export const PUT = handle(async (req, ctx: Ctx) => {
   if (b.capacity !== undefined && b.capacity < cur.seats_booked)
     return fail(409, `名額不得少於已報名人數（${cur.seats_booked} 人）`, ERR.CONFLICT);
 
-  const patch: Record<string, unknown> = {};
-  if (b.departsOn !== undefined) patch.departs_on = b.departsOn;
-  if (b.startTime !== undefined) patch.start_time = b.startTime ? b.startTime : null;
-  if (b.capacity !== undefined) patch.capacity = b.capacity;
-  if (b.status !== undefined) patch.status = b.status;
-  if (b.note !== undefined) patch.note = b.note;
-
+  const { data: savedId, error: rpcError } = await t.supabase.rpc('save_trip_departure_with_staff', {
+    p_tenant: t.tenantId, p_trip_id: null, p_plan_id: cur.plan_id, p_departure_id: id,
+    p_departs_on: b.departsOn ?? cur.departs_on,
+    p_start_time: b.startTime === undefined ? cur.start_time : (b.startTime || null),
+    p_capacity: b.capacity ?? cur.capacity,
+    p_status: b.status ?? cur.status, p_note: b.note ?? cur.note,
+    p_primary_staff_id: b.primaryStaffId ?? null,
+    p_assistant_staff_ids: b.assistantStaffIds ?? null,
+  });
+  if (rpcError) throwAvailabilityRpcError(rpcError);
   const { data, error } = await t.supabase.from('trip_departures')
-    .update(patch).eq('tenant_id', t.tenantId).eq('id', id)
-    .select('*, trip_plans(name)').maybeSingle();
-  if (error?.code === '23505') return fail(409, '同方案同日期同時間的團次已存在', ERR.CONFLICT);
+    .select('*, trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
+    .eq('tenant_id', t.tenantId).eq('id', savedId).maybeSingle();
   if (error) throw error;
   if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
-
   return ok(mapTripDeparture(data));
 });
 

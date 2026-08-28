@@ -14,6 +14,7 @@ import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { taipeiMonthRange } from '@/server/tz';
 import { mapStaffPerformance } from '@/server/mappers';
+import { aggregatePerformance } from '@/server/addon-performance';
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,28 +37,29 @@ export const GET = handle(async (req) => {
   const fromIso = q.from ? taipeiDayIso(q.from) : month.fromIso;
   const toIso = q.to ? taipeiDayIso(q.to, 1) : month.toIso;
 
-  const [{ data: staffRows, error: e1 }, { data: bookingRows, error: e2 }] = await Promise.all([
+  const [{ data: staffRows, error: e1 }, { data: bookingRows, error: e2 },
+    { data: bookingAddonRows, error: e3 }, { data: tourAddonRows, error: e4 }] = await Promise.all([
     t.supabase.from('staff').select('id, name')
       .eq('tenant_id', t.tenantId).eq('active', true),
-    t.supabase.from('bookings').select('staff_id, status, final_price')
+    t.supabase.from('bookings').select('id, staff_id, status, final_price')
       .eq('tenant_id', t.tenantId).gte('start_at', fromIso).lt('start_at', toIso),
+    t.supabase.from('booking_addons').select('booking_id, applied_amount, performance_mode, performance_staff_id')
+      .eq('tenant_id', t.tenantId),
+    t.supabase.from('tour_order_addons')
+      .select('performance_staff_id, performance_amount, tour_orders!inner(status, updated_at)')
+      .eq('tenant_id', t.tenantId).eq('tour_orders.status', 'COMPLETED')
+      .gte('tour_orders.updated_at', fromIso).lt('tour_orders.updated_at', toIso),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
-
-  const byStaff = new Map<string, { bookingCount: number; completed: number; revenue: number }>();
-  for (const s of staffRows ?? []) byStaff.set(s.id, { bookingCount: 0, completed: 0, revenue: 0 });
-
-  for (const b of bookingRows ?? []) {
-    if (!b.staff_id) continue;
-    const agg = byStaff.get(b.staff_id);
-    if (!agg) continue;
-    agg.bookingCount += 1;
-    if (b.status === 'COMPLETED') {
-      agg.completed += 1;
-      agg.revenue += Number(b.final_price);
-    }
-  }
+  if (e3) throw e3;
+  if (e4) throw e4;
+  const byStaff = aggregatePerformance(
+    (staffRows ?? []).map((staff: any) => staff.id),
+    (bookingRows ?? []).map((booking: any) => ({ id: booking.id, staffId: booking.staff_id, status: booking.status, finalPrice: Number(booking.final_price) })),
+    (bookingAddonRows ?? []).map((addon: any) => ({ bookingId: addon.booking_id, appliedAmount: Number(addon.applied_amount), performanceMode: addon.performance_mode ?? 'PRIMARY', performanceStaffId: addon.performance_staff_id })),
+    (tourAddonRows ?? []).map((addon: any) => ({ performanceStaffId: addon.performance_staff_id, performanceAmount: addon.performance_amount == null ? null : Number(addon.performance_amount) })),
+  );
 
   const rows = (staffRows ?? [])
     .map((s) => {

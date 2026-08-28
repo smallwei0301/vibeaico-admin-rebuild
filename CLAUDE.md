@@ -7,11 +7,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Before working on any Issue:
 
 1. `git fetch origin`.
-2. Read `origin/main:AGENTS.md` and `origin/main:docs/DOCUMENTATION-GOVERNANCE.md`.
-3. Read the Issue's canonical `docs/integration/**` files from `main`.
-4. Base implementation work on latest `main`, or on a designated integration branch that already contains the latest main documentation commit.
+2. Read `origin/main:AGENTS.md`, `origin/main:docs/AGENT-EXECUTION.md`,
+   `origin/main:docs/DOCUMENTATION-GOVERNANCE.md`, and
+   `origin/main:docs/OWNER-DECISIONS.md`.
+3. Search `origin/main:docs/AGENT-PLAYBOOK.md` by Issue, error code, test, or domain and read
+   the relevant lessons only.
+4. Read the Issue's canonical `docs/integration/**` files and
+   `docs/integration/12-TESTING-TDD.md` from `main`.
+5. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
+6. Base implementation work on latest `main`, or on a designated integration branch that already contains the latest main documentation commit.
 
 Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**.
+
+## Default execution mode
+
+Follow `docs/AGENT-EXECUTION.md`. The default is continuous autonomous progress: a status update
+is not a stopping point, blocked work is parked while unrelated work continues, and already
+recorded Owner decisions are not asked again. The same document defines model delegation,
+standing TEST authorization, credentials, CI/DB serialization, evidence, and stop conditions.
 
 ## Commands
 
@@ -20,19 +33,19 @@ npm run dev         # http://localhost:3000/tenant/dashboard
 npm run build       # production build (also runs full type check)
 npm run start       # serve production build
 npm run typecheck   # tsc --noEmit — the primary gate; must be zero errors
+npm test            # all unit tests
+npm run test:integration  # HTTP + real TEST Supabase; serial only
+npm run test:e2e    # Playwright user journeys
+npm run test:all    # typecheck + unit + integration + E2E
 ```
 
 `npm run lint` is `next lint`, which is deprecated in Next 15 and **hangs on an interactive
 ESLint-setup prompt** — no ESLint config exists yet. Use `npm run typecheck` + `npm run build`
 as the verification gate instead.
 
-No test runner is installed yet. `docs/integration/12-TESTING-TDD.md` specifies the intended
-setup (Vitest for unit/integration, Playwright for E2E, a separate TEST Supabase project);
-it gets built in Phase 0 of the backend integration plan.
-
-Chromium for ad-hoc browser verification lives at `/opt/pw-browsers/chromium`; Playwright is
-installed globally at `/opt/node22/lib/node_modules/playwright` (not in this project's
-`node_modules`), so scripts must `require()` that absolute path.
+Vitest and Playwright are installed in this repo. Integration and E2E share one TEST Supabase,
+so never run them concurrently with another reset/seed/migration lane. Use the repo scripts and
+Node 22; do not hardcode one machine's global Playwright or Chromium path.
 
 ## What this repo is
 
@@ -40,10 +53,10 @@ A rebuild of the `vibeaico.com/tenant/*` multi-tenant shop-admin panel as a clea
 App Router skeleton (React 19, TypeScript strict, Tailwind 3, lucide-react, zod). ~40 pages,
 routes identical to the original site.
 
-**It is currently mock-only.** `NEXT_PUBLIC_USE_MOCK=true` (the default) means no database or
-backend is needed — everything reads from `src/mock/`. There is no `src/app/api/**` and no
-`src/server/**` yet. Wiring up the real backend (Supabase + Resend + LINE) is planned in detail
-across `docs/integration/00-13`, tracked by GitHub issue #1, and has not started on this branch.
+The repo now contains both paths: `NEXT_PUBLIC_USE_MOCK=true` remains the no-backend regression
+and demo mode, while `src/app/api/**`, `src/server/**`, Supabase migrations and integration tests
+implement the real backend in phases. Never assume the project is still mock-only; inspect the
+latest `main`, open Issues and their canonical phase documents before claiming completeness.
 
 ## Architecture
 
@@ -139,6 +152,8 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 ## Key docs
 
 - `AGENTS.md` — mandatory agent entry point
+- `docs/AGENT-EXECUTION.md` — canonical autonomous execution, delegation, permissions, safety and stop rules
+- `docs/AGENT-PLAYBOOK.md` — required failure/lesson log; search only entries relevant to the task
 - `docs/DOCUMENTATION-GOVERNANCE.md` — canonical docs, direct-main docs-only rule, branch policy
 - `docs/CONVENTIONS.md` — read before adding a page
 - `docs/REBUILD-SPEC.md` — design system spec + per-page section/copy inventory

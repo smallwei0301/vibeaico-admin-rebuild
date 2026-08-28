@@ -1,11 +1,12 @@
 import { adapt, request } from '@/lib/api';
 import type {
-  Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged,
+  Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged, DepartureStaffAvailability,
 } from '@/lib/types';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
 } from '@/mock/tours';
+import { MOCK_STAFF } from '@/mock';
 
 /**
  * 導遊模組（TOUR_MODULE）資料入口。
@@ -153,6 +154,24 @@ export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture
       : request<TripDeparture>(`/api/trips/${tripId}/departures`, { method: 'POST', body: JSON.stringify(payload) })),
   );
 
+export type DepartureStaffAvailabilityResult = {
+  count: number;
+  staff: DepartureStaffAvailability[];
+};
+
+export const getDepartureStaffAvailability = (
+  tripId: string, params: { planId: string; departsOn: string; startTime?: string; excludeDepartureId?: string },
+) => adapt<DepartureStaffAvailabilityResult>(
+  () => {
+    const staff = MOCK_STAFF.filter((item) => item.active && item.bookable)
+      .map((item) => ({ staffId: item.id, staffName: item.name, available: true, conflicts: [] }));
+    return { count: staff.length, staff };
+  },
+  () => request<DepartureStaffAvailabilityResult>(`/api/trips/${tripId}/departures/staff-availability`, {
+    query: params as Record<string, string>,
+  }),
+);
+
 /**
  * 批次開團：後端依 weekdays 展開日期區間。
  * `skipped` = 已存在而跳過的筆數（同方案同日同時間已有團次）——
@@ -161,12 +180,13 @@ export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture
 export type BatchDepartureResult = {
   created: number;
   skipped: number;
+  conflicts?: Array<{ date: string; staffId: string; staffName: string; reason: string }>;
   departures: TripDeparture[];
 };
 
 export const batchCreateDepartures = (
   tripId: string,
-  payload: { planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number },
+  payload: { planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number; primaryStaffId?: string | null; assistantStaffIds?: string[] },
 ) =>
   adapt<BatchDepartureResult>(
     () => ({ created: 0, skipped: 0, departures: [] }),

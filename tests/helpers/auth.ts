@@ -64,22 +64,6 @@ function withJsonBody(init: RequestInit | undefined, body: unknown): RequestInit
  * 時請展開為 `loginAs(SHOP_A.owner.email, SHOP_A.owner.password)`。
  */
 export async function loginAs(email: string, password: string): Promise<AuthedApi> {
-  const res = await fetch(resolveUrl('/api/auth/login'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-
-  if (!res.ok) {
-    let detail = '';
-    try {
-      detail = JSON.stringify(await res.json());
-    } catch {
-      // ignore：非 JSON 回應就不附加細節
-    }
-    throw new Error(`loginAs(${email}) 失敗：POST /api/auth/login 回 ${res.status} ${detail}`);
-  }
-
   // ⚠️ 真正的 cookie jar（實跑抓到的坑，勿簡化回「登入當下快照」）：
   //   1. `headers.get('set-cookie')` 會把多個 Set-Cookie 併成一條逗號字串，
   //      舊寫法 `.split(';')[0]` 只留下第一個 cookie —— @supabase/ssr 的
@@ -107,17 +91,48 @@ export async function loginAs(email: string, password: string): Promise<AuthedAp
   const cookieHeader = (): string =>
     [...jar.entries()].map(([n, v]) => `${n}=${v}`).join('; ');
 
-  ingest(res);
-  if (jar.size === 0) {
-    throw new Error(`loginAs(${email}) 失敗：回應是 2xx 但沒有 Set-Cookie header，無法建立已登入的 session。`);
-  }
+  const signIn = async (): Promise<void> => {
+    const res = await fetch(resolveUrl('/api/auth/login'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      let detail = '';
+      try { detail = JSON.stringify(await res.json()); } catch { /* non-JSON */ }
+      throw new Error(`loginAs(${email}) 失敗：POST /api/auth/login 回 ${res.status} ${detail}`);
+    }
+    ingest(res);
+    if (jar.size === 0) {
+      throw new Error(`loginAs(${email}) 失敗：回應是 2xx 但沒有 Set-Cookie header，無法建立已登入的 session。`);
+    }
+  };
 
-  const authedFetch = async (path: string, init?: RequestInit): Promise<Response> => {
+  const request = async (path: string, init?: RequestInit): Promise<Response> => {
     const response = await fetch(resolveUrl(path), {
-      ...init,
-      headers: { ...(init?.headers ?? {}), Cookie: cookieHeader() },
+      ...init, headers: { ...(init?.headers ?? {}), Cookie: cookieHeader() },
     });
     ingest(response);
+    return response;
+  };
+
+  await signIn();
+  // A successful login must immediately establish a tenant session.  This
+  // preflight catches a bad jar before a long integration suite turns it into
+  // unrelated 401/404 cascades.
+  const me = await request('/api/auth/me');
+  if (!me.ok) throw new Error(`loginAs(${email}) preflight：GET /api/auth/me 回 ${me.status}`);
+
+  const authedFetch = async (path: string, init?: RequestInit): Promise<Response> => {
+    let response = await request(path, init);
+    // Long serialized integration runs can encounter a renewed or invalidated
+    // test cookie. Renew once so later assertions exercise their route rather
+    // than cascading from the same stale session.
+    if (response.status === 401 && path !== '/api/auth/me') {
+      await signIn();
+      const renewed = await request('/api/auth/me');
+      if (!renewed.ok) throw new Error(`loginAs(${email}) renewal preflight：GET /api/auth/me 回 ${renewed.status}`);
+      response = await request(path, init);
+    }
     return response;
   };
 

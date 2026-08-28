@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapTripDeparture } from '@/server/mappers';
+import { throwAvailabilityRpcError } from '@/server/availability-rpc';
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,6 +16,8 @@ const batchSchema = z.object({
   weekdays: z.array(z.number().int().min(0).max(6)).min(1, '請至少選一個星期'),
   startTime: z.string().refine((v) => v === '' || TIME_RE.test(v), '出發時間格式錯誤').optional(),
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0'),
+  primaryStaffId: z.string().uuid().nullable().optional(),
+  assistantStaffIds: z.array(z.string().uuid()).optional(),
 });
 
 /** 上限：一次批次最多開 366 天（一年），避免一個打錯的日期區間寫爆整張表。 */
@@ -49,44 +52,24 @@ export const POST = handle(async (req, ctx: Ctx) => {
   if (perr) throw perr;
   if (!plan || plan.trip_id !== id) return fail(404, '找不到此方案', ERR.NOT_FOUND);
 
-  const startTime = b.startTime ? b.startTime : null;
-  const wanted: string[] = [];
-  for (const d = new Date(from); d <= to; d.setUTCDate(d.getUTCDate() + 1)) {
-    if (b.weekdays.includes(d.getUTCDay())) wanted.push(d.toISOString().slice(0, 10));
-  }
-  if (wanted.length === 0) return ok({ created: 0, skipped: 0, departures: [] });
-
-  // 先查已存在的日期，才能回報「跳過幾筆」——靠 insert 的 23505 只會知道
-  // 「有撞到」，不會知道撞了幾筆。
-  const existingQuery = t.supabase
-    .from('trip_departures').select('departs_on')
-    .eq('tenant_id', t.tenantId).eq('plan_id', b.planId).in('departs_on', wanted);
-  const { data: existing, error: eerr } = startTime === null
-    ? await existingQuery.is('start_time', null)
-    : await existingQuery.eq('start_time', startTime);
-  if (eerr) throw eerr;
-
-  const taken = new Set((existing ?? []).map((r: any) => r.departs_on));
-  const rows = wanted.filter((d) => !taken.has(d)).map((d) => ({
-    tenant_id: t.tenantId,
-    trip_id: id,
-    plan_id: b.planId,
-    departs_on: d,
-    start_time: startTime,
-    capacity: b.capacity,
-    status: 'OPEN' as const,
-    note: '',
-  }));
-
-  if (rows.length === 0) return ok({ created: 0, skipped: wanted.length, departures: [] });
-
-  const { data, error } = await t.supabase
-    .from('trip_departures').insert(rows).select('*, trip_plans(name)');
+  const { data: rpcData, error: rpcError } = await t.supabase.rpc('create_trip_departures_batch_with_staff', {
+    p_tenant: t.tenantId, p_trip_id: id, p_plan_id: b.planId, p_from: b.from, p_to: b.to,
+    p_weekdays: b.weekdays, p_start_time: b.startTime || null, p_capacity: b.capacity,
+    p_primary_staff_id: b.primaryStaffId ?? null, p_assistant_staff_ids: b.assistantStaffIds ?? null,
+  });
+  if (rpcError) throwAvailabilityRpcError(rpcError);
+  const result = rpcData as { createdIds?: string[]; skipped?: number; conflicts?: Array<{ date: string; staffId: string; staffName: string; reason: string }> };
+  const createdIds = result.createdIds ?? [];
+  const { data, error } = createdIds.length === 0
+    ? { data: [], error: null }
+    : await t.supabase.from('trip_departures')
+      .select('*, trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
+      .eq('tenant_id', t.tenantId).in('id', createdIds);
   if (error) throw error;
-
   return ok({
     created: data?.length ?? 0,
-    skipped: wanted.length - (data?.length ?? 0),
+    skipped: result.skipped ?? 0,
+    conflicts: result.conflicts ?? [],
     departures: (data ?? []).map(mapTripDeparture),
   });
 });

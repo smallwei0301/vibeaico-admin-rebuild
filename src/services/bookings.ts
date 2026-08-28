@@ -164,6 +164,8 @@ export type CreateBookingAddonPayload = {
   durationMinutes: number;
   /** 執行人員；省略 = 同本預約的人員 */
   staffId?: string | null;
+  performanceMode?: 'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE';
+  performanceStaffId?: string | null;
   /** 原站 addonNotify：勾了才推 LINE 消費明細 */
   notify: boolean;
 };
@@ -204,6 +206,9 @@ export const createBookingAddon = (bookingId: string, payload: CreateBookingAddo
           durationMinutes: payload.durationMinutes,
           staffId: payload.staffId ?? null,
           staffName: null,
+          performanceMode: payload.performanceMode ?? 'PRIMARY',
+          performanceStaffId: payload.performanceMode === 'SPECIFIC_STAFF'
+            ? payload.performanceStaffId ?? null : null,
           appliedAmount: amount,
           appliedMinutes: minutes,
           notified: 'NONE',
@@ -295,8 +300,26 @@ export type BlockTimeItem = {
 
 export type CalendarExternalItem = { id: string; title: string; start: string; end: string };
 
+export type CalendarDepartureItem = {
+  id: string;
+  tripId: string;
+  title: string;
+  tripTitle: string;
+  planName: string;
+  start: string;
+  end: string;
+  status: 'OPEN' | 'CLOSED' | 'CANCELLED';
+  primaryStaffId: string | null;
+  primaryStaffName: string | null;
+  assistantStaffIds: string[];
+  assistantStaffNames: string[];
+  seatsBooked: number;
+  capacity: number;
+};
+
 export type CalendarData = {
   bookings: Booking[];
+  departures: CalendarDepartureItem[];
   /**
    * null = mock 模式：封鎖／外部事件的假資料（含每週重複、自動休息等頁面專屬欄位）
    * 住在 calendar 頁內，服務層不複製一份 —— 頁面收到 null 就沿用自己的假資料 state。
@@ -340,13 +363,29 @@ function calendarEventToBooking(e: CalendarEvent): Booking {
 /** GET /api/calendar?from&to — 行事曆頁唯一資料源；mock 分支回完整 MOCK_BOOKINGS（維持現行組裝）。 */
 export function listCalendarData(from: string, to: string): Promise<CalendarData> {
   return adapt<CalendarData>(
-    () => ({ bookings: [...MOCK_BOOKINGS], blocks: null, externals: null }),
+    () => ({ bookings: [...MOCK_BOOKINGS], departures: [], blocks: null, externals: null }),
     async () => {
       const { events } = await request<{ events: CalendarEvent[] }>('/api/calendar', {
         query: { from, to },
       });
       return {
         bookings: events.filter((e) => e.type === 'BOOKING').map(calendarEventToBooking),
+        departures: events.filter((e) => e.type === 'DEPARTURE').map((e) => ({
+          id: e.meta?.departureId ?? e.id.replace(/^departure:/, ''),
+          tripId: e.meta?.tripId ?? '',
+          title: e.title,
+          tripTitle: e.meta?.tripTitle ?? '',
+          planName: e.meta?.planName ?? '',
+          start: e.start,
+          end: e.end,
+          status: e.meta?.departureStatus ?? 'OPEN',
+          primaryStaffId: e.meta?.primaryStaffId ?? null,
+          primaryStaffName: e.meta?.primaryStaffName ?? null,
+          assistantStaffIds: e.meta?.assistantStaffIds ?? [],
+          assistantStaffNames: e.meta?.assistantStaffNames ?? [],
+          seatsBooked: e.meta?.seatsBooked ?? 0,
+          capacity: e.meta?.capacity ?? 0,
+        })),
         blocks: events.filter((e) => e.type === 'BLOCK').map((e) => ({
           id: e.id.replace(/^block:/, ''), // /api/block-times 端點吃來源列 uuid，去掉合併陣列的前綴
           staffId: e.meta?.staffId ?? null,

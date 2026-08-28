@@ -144,8 +144,25 @@ test.describe('Issue #8 行程管理端到端旅程', () => {
     await page.getByRole('tab', { name: '團次與名額', exact: true }).click();
     await page.getByRole('button', { name: '新增團次', exact: true }).first().click();
     const departure = await dialog(page);
+    const staffAvailability = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return response.request().method() === 'GET'
+        && url.pathname.endsWith('/departures/staff-availability')
+        && url.searchParams.get('departsOn') === '2099-12-30'
+        && response.status() === 200;
+    });
     await departure.locator('input[type="date"]').fill('2099-12-30');
     await departure.locator('input[type="number"]').fill('2');
+    await staffAvailability;
+    // #37：開放中的團次必須指派主導遊。TEST 的固定資料有兩位可帶團人員，
+    // 所以這裡不能仰賴「只有一位時自動帶入」的 UI 便利行為。
+    const primaryGuide = departure.locator('select').filter({ hasText: '主導遊' });
+    await expect(primaryGuide).toHaveCount(1);
+    const availableGuide = primaryGuide.locator('option').filter({ hasText: '可帶團' }).first();
+    await expect(availableGuide).toBeEnabled();
+    const primaryGuideId = await availableGuide.getAttribute('value');
+    expect(primaryGuideId).toBeTruthy();
+    await primaryGuide.selectOption(primaryGuideId!);
     await departure.getByRole('button', { name: '儲存', exact: true }).click();
     await expect(departure).toBeHidden();
     await page.reload();

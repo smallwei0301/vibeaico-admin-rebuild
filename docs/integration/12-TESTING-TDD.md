@@ -37,10 +37,11 @@ AUTH_SECRET=<測試專用>
 規則：
 - 02/09/10/11 各分冊的 migrations 必須同步套進 TEST 專案（新 migration 的
   Definition of Done 包含「TEST 專案已套用」）。
-- 對 TEST 專案執行 migration 前，必須取得明確的 TEST 環境授權，並記錄授權者、
-  project ref、目前 migration／schema 基線與驗證結果；未完成基線驗證或無授權時，
-  禁止執行。若 migration 新增／修改 API 會使用的資料表、欄位或 RPC，套用後必須刷新
-  schema cache，並以目標查詢驗證可用。
+- Owner 已對 Vibe Ai TEST project ref `nmwhwngojosmagjuvxol` 提供 repo 層級長期授權；
+  範圍與禁止事項以 `docs/AGENT-EXECUTION.md` §3.1 及 `docs/OWNER-DECISIONS.md` 為準，
+  不得再逐支 migration 重問。執行前仍須核對精確 project ref、目前 migration／schema
+  基線與預計檔案；新增／修改 API 使用的資料表、欄位或 RPC 後必須刷新 schema cache，
+  並以目標查詢驗證。其他 Supabase 專案仍須另行明確授權。
 - **重置腳本 `scripts/test/reset-db.mjs`**（service role）：truncate 全部業務表
   （`auth_verification_codes` 到 `tour_orders`，restart identity cascade）→
   刪除測試 auth users（email 以 `@test.local` 結尾者）→ 執行種子（§1.3）。
@@ -396,3 +397,8 @@ jobs:
 - [ ] `npm run test:integration` 可從零跑起（globalSetup 起 server、跑完清掉）
 - [ ] CI 兩個 job 上線且 main 綠燈
 - [ ] 故意寫一個必敗測試 → CI 紅 → 修好 → 綠（驗證關卡真的會擋）
+## #37 availability atomic boundary — targeted contract coverage
+
+- 單元測試覆蓋 pure availability evaluator、booking addon 歸屬優先序與 slot-grid 共用 facts。
+- Schema contract 測試鎖定 source-only RPC：advisory transaction lock、booking/departure 共用 assertion、batch conflicts、completion CAS／freeze、以及 composite FK 的欄位指定 SET NULL fallback。
+- 本輪不會套 migration 或執行 integration/E2E；那些需要 Owner 授權的 Supabase 環境。

@@ -134,3 +134,9 @@ GUIDE UI 只顯示自然語言：
 - [ ] LINE：GUIDE 店打「行程」有回應；LOCAL_SHOP 店打「行程」不觸發內建組
 - [ ] 測試（12 分冊）：`modes.13.test.ts` —— preset 表逐模式斷言 nav 組成、
       預設功能、關鍵字組；換模式不刪資料；GUIDE 0/1/2+ 導遊 UI capability 與 availability policy 判定都有案例
+
+### #37 atomic enforcement clarification
+
+availability engine 沒有新增 solo/team mode。前端的 0/1/2+ 導遊顯示只協助操作；所有
+booking 與非 CANCELLED departure（含 CLOSED 的時間／人員調整）皆由同一 DB transaction
+availability assertion 最終裁定。批次逐日衝突回傳 `conflicts[]`，不得把預覽視為寫入保證。

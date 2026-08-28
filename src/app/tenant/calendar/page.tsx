@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   cancelBooking, completeBooking, confirmBooking, createBlockTime, deleteBlockTime,
   listCalendarData, markNoShow,
-  type BlockTimeItem, type CalendarExternalItem,
+  type BlockTimeItem, type CalendarDepartureItem, type CalendarExternalItem,
 } from '@/services/bookings';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
@@ -132,6 +132,7 @@ export default function CalendarPage() {
    */
   const businessType = useBusinessType();
   const ordersHref = MODE_PRESETS[businessType].ordersHref;
+  const catalogHref = MODE_PRESETS[businessType].catalogHref;
   const toast = useToast();
 
   /** 只在瀏覽器端決定「今天」，避免 SSR/CSR 產生不同輸出 */
@@ -142,12 +143,14 @@ export default function CalendarPage() {
   const [staffId, setStaffId] = React.useState('');
 
   const [bookings, setBookings] = React.useState<Booking[]>([]);
+  const [departures, setDepartures] = React.useState<CalendarDepartureItem[]>([]);
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [blocks, setBlocks] = React.useState<CalendarBlock[]>(MOCK_CALENDAR_BLOCKS);
   const [externals, setExternals] = React.useState<ExternalEvent[]>(MOCK_EXTERNAL_EVENTS);
 
   const [detail, setDetail] = React.useState<Booking | null>(null);
+  const [departureDetail, setDepartureDetail] = React.useState<CalendarDepartureItem | null>(null);
   const [cancelTarget, setCancelTarget] = React.useState<Booking | null>(null);
   const [cancelReason, setCancelReason] = React.useState('');
   const [confirmTarget, setConfirmTarget] = React.useState<Booking | null>(null);
@@ -173,6 +176,7 @@ export default function CalendarPage() {
         new Date(now.getFullYear() + 1, now.getMonth() + 1, 1).toISOString(),
       );
       setBookings(data.bookings);
+      setDepartures(data.departures);
       // null = mock 模式：封鎖／外部事件沿用本頁假資料 state（含每週重複、自動休息）
       if (data.blocks) setBlocks(data.blocks.map(toCalendarBlock));
       if (data.externals) setExternals(data.externals.map(toExternalEvent));
@@ -197,6 +201,12 @@ export default function CalendarPage() {
     [bookings, staffId],
   );
 
+  const visibleDepartures = React.useMemo(
+    () => departures.filter((departure) => !staffId
+      || departure.primaryStaffId === staffId || departure.assistantStaffIds.includes(staffId)),
+    [departures, staffId],
+  );
+
   const bookingsByDate = React.useMemo(() => {
     const map = new Map<string, Booking[]>();
     visibleBookings.forEach((b) => {
@@ -206,6 +216,16 @@ export default function CalendarPage() {
     map.forEach((list) => list.sort((a, b) => a.startAt.localeCompare(b.startAt)));
     return map;
   }, [visibleBookings]);
+
+  const departuresByDate = React.useMemo(() => {
+    const map = new Map<string, CalendarDepartureItem[]>();
+    visibleDepartures.forEach((departure) => {
+      const key = dateKey(new Date(departure.start));
+      map.set(key, [...(map.get(key) ?? []), departure]);
+    });
+    map.forEach((list) => list.sort((a, b) => a.start.localeCompare(b.start)));
+    return map;
+  }, [visibleDepartures]);
 
   const shift = (delta: number) => {
     if (!anchor) return;
@@ -302,6 +322,17 @@ export default function CalendarPage() {
         >
           {e.startTime} {e.title}
         </div>
+      ))}
+      {(departuresByDate.get(key) ?? []).map((departure) => (
+        <button
+          key={departure.id}
+          type="button"
+          className="w-full truncate rounded-sm bg-violet-100 px-1 py-0.5 text-left text-2xs text-violet-800"
+          onClick={(event) => { event.stopPropagation(); setDepartureDetail(departure); }}
+        >
+          {formatTime(departure.start)} {departure.tripTitle || departure.title}
+          {compact || !departure.planName ? '' : ` · ${departure.planName}`}
+        </button>
       ))}
       {(bookingsByDate.get(key) ?? []).map((b) => (
         <button
@@ -410,8 +441,20 @@ export default function CalendarPage() {
                     {weekDays.map((d) => {
                       const key = dateKey(d);
                       const items = (bookingsByDate.get(key) ?? []).filter((b) => b.staffId === s.id);
+                      const departureItems = (departuresByDate.get(key) ?? []).filter((departure) =>
+                        departure.primaryStaffId === s.id || departure.assistantStaffIds.includes(s.id));
                       return (
                         <div key={key} className="flex min-h-[3.5rem] flex-col gap-0.5 border-l border-neutral-150 p-1">
+                          {departureItems.map((departure) => (
+                            <button
+                              key={departure.id}
+                              type="button"
+                              className="w-full truncate rounded-sm bg-violet-100 px-1 py-0.5 text-left text-2xs text-violet-800"
+                              onClick={() => setDepartureDetail(departure)}
+                            >
+                              {formatTime(departure.start)} {departure.tripTitle || departure.title}
+                            </button>
+                          ))}
                           {items.map((b) => (
                             <button
                               key={b.id}
@@ -493,6 +536,8 @@ export default function CalendarPage() {
                       const key = dateKey(d);
                       const items = (bookingsByDate.get(key) ?? [])
                         .filter((b) => new Date(b.startAt).getHours() === h);
+                      const departureItems = (departuresByDate.get(key) ?? [])
+                        .filter((departure) => new Date(departure.start).getHours() === h);
                       const blockItems = blocksOn(key)
                         .filter((b) => !b.fullDay && Number(b.startTime.slice(0, 2)) === h);
                       const extItems = externalsOn(key)
@@ -523,6 +568,16 @@ export default function CalendarPage() {
                               {e.title}
                             </span>
                           ))}
+                          {departureItems.map((departure) => (
+                            <button
+                              key={departure.id}
+                              type="button"
+                              className="w-full truncate rounded-sm bg-violet-100 px-1 py-0.5 text-left text-2xs text-violet-800"
+                              onClick={(event) => { event.stopPropagation(); setDepartureDetail(departure); }}
+                            >
+                              {formatTime(departure.start)} {departure.tripTitle || departure.title}
+                            </button>
+                          ))}
                           {items.map((b) => (
                             <span
                               key={b.id}
@@ -544,7 +599,7 @@ export default function CalendarPage() {
             </div>
           )}
 
-          {anchor && !loading && visibleBookings.length === 0 ? (
+          {anchor && !loading && visibleBookings.length === 0 && visibleDepartures.length === 0 ? (
             <EmptyState title={t.empty.title} description={t.empty.description} />
           ) : null}
 
@@ -563,6 +618,10 @@ export default function CalendarPage() {
             <span className="flex items-center gap-1">
               <span aria-hidden className="h-3 w-3 rounded-sm bg-neutral-100" />
               {t.legend.external}
+            </span>
+            <span className="flex items-center gap-1">
+              <span aria-hidden className="h-3 w-3 rounded-sm bg-violet-100" />
+              {t.legend.departure}
             </span>
           </div>
         </CardBody>
@@ -635,6 +694,54 @@ export default function CalendarPage() {
         ) : (
           <div className="py-8 text-center text-secondary">{t.detail.loading}</div>
         )}
+      </Modal>
+
+      {/* -------------------------------------------------------- 團次詳情 */}
+      <Modal
+        open={!!departureDetail}
+        onClose={() => setDepartureDetail(null)}
+        title={t.departureDetail.title}
+        footer={
+          departureDetail ? (
+            <>
+              <Button variant="secondary" onClick={() => setDepartureDetail(null)}>{t.detail.close}</Button>
+              {departureDetail.tripId ? (
+                <Link href={`${catalogHref}/${departureDetail.tripId}`} className="btn btn-outline">
+                  {t.departureDetail.viewTrip}
+                </Link>
+              ) : null}
+            </>
+          ) : null
+        }
+      >
+        {departureDetail ? (
+          <div className="flex flex-col gap-2 text-base">
+            <div className="flex flex-wrap items-center gap-2">
+              <strong className="text-md">{departureDetail.tripTitle || departureDetail.title}</strong>
+              <Badge tone={departureDetail.status === 'CANCELLED' ? 'neutral' : departureDetail.status === 'OPEN' ? 'success' : 'warning'}>
+                {t.departureDetail.status[departureDetail.status]}
+              </Badge>
+            </div>
+            <div><strong>{t.departureDetail.plan}</strong>{departureDetail.planName || '—'}</div>
+            <div>
+              <strong>{t.detail.time}</strong>
+              {formatDate(departureDetail.start)} {formatTime(departureDetail.start)} - {formatTime(departureDetail.end)}
+            </div>
+            <div>
+              <strong>{t.departureDetail.guide}</strong>
+              {departureDetail.primaryStaffName ?? t.legend.unassigned}
+            </div>
+            <div>
+              <strong>{t.departureDetail.assistants}</strong>
+              {departureDetail.assistantStaffNames.length > 0
+                ? departureDetail.assistantStaffNames.join('、') : t.departureDetail.none}
+            </div>
+            <div>
+              <strong>{t.departureDetail.seats}</strong>
+              {departureDetail.seatsBooked} / {departureDetail.capacity}
+            </div>
+          </div>
+        ) : null}
       </Modal>
 
       {/* -------------------------------------------------------- 取消預約 */}

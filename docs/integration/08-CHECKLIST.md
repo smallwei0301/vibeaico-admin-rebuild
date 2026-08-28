@@ -547,3 +547,10 @@
 - [x] `npm run typecheck` / `npm run build` / `npx vitest run tests/unit/` 全綠
 - [x] 整合測試：**逐檔跑，非全量**（多 agent 同時在改 `src/app/api/**`，
       15 分冊「跑整合測試前」那一節）。跑了 12 檔 132 例全綠，清單見本輪 issue 留言
+## #37 Sol audit closure (source-only)
+
+- [x] 導遊指派單筆／修改／批次均經 migration-defined RPC：availability check 與 departure／assignment 寫入同一交易。
+- [x] booking 新增／修改亦經相同 DB availability boundary；available-slots 僅為 UX 預覽。
+- [x] `CONFIRMED → COMPLETED` 以 CAS 凍結全部 tour addon performance snapshot；`performance_frozen_at` 後不可重寫。
+- [x] 批次 UI 顯示零位導遊 onboarding、忙碌停用與原因、以及 RPC 回傳的逐日 conflicts。
+- [ ] 由 Owner 授權後才可對任何 Supabase 環境套用 0034/0035 並做整合驗證。

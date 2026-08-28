@@ -28,7 +28,7 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { businessSettingsSchema } from '@/config/tenant-settings';
-import { expandWeeklyBlock } from '@/server/business-hours-blocks';
+import { departureInterval, evaluateStaffAvailabilityWithFacts, loadAvailabilityFacts, type AvailabilityStaff } from '@/server/staff-availability';
 
 const querySchema = z.object({
   serviceId: z.string().uuid(),
@@ -89,112 +89,50 @@ export const GET = handle(async (req) => {
   if (windows.length === 0) return ok({ slots: [] });
 
   // 3. 員工池
-  let pool: string[] = [];
+  let pool: AvailabilityStaff[] = [];
   if (q.staffId) {
-    const { data: staff, error } = await t.supabase.from('staff').select('id')
+    const { data: staff, error } = await t.supabase.from('staff').select('id, name, availability_policy')
       .eq('id', q.staffId).eq('tenant_id', t.tenantId)
       .eq('active', true).eq('bookable', true).maybeSingle();
     if (error) throw error;
     if (!staff) throw new ApiHttpError(404, '找不到此服務人員', ERR.NOT_FOUND);
-    pool = [staff.id];
+    pool = [{ id: staff.id, name: staff.name, availabilityPolicy: staff.availability_policy ?? 'DEFAULT_AVAILABLE' }];
   } else {
     const [{ data: allStaff, error: stErr }, { data: links, error: lkErr }] = await Promise.all([
-      t.supabase.from('staff').select('id')
+      t.supabase.from('staff').select('id, name, availability_policy')
         .eq('tenant_id', t.tenantId).eq('active', true).eq('bookable', true),
       t.supabase.from('staff_services').select('staff_id')
         .eq('tenant_id', t.tenantId).eq('service_id', q.serviceId),
     ]);
     if (stErr) throw stErr;
     if (lkErr) throw lkErr;
-    const bookableIds = (allStaff ?? []).map((s) => s.id);
+    const bookable = (allStaff ?? []).map((s: any) => ({
+      id: s.id, name: s.name, availabilityPolicy: s.availability_policy ?? 'DEFAULT_AVAILABLE',
+    } satisfies AvailabilityStaff));
+    const bookableIds = bookable.map((s) => s.id);
     const linked = new Set((links ?? []).map((l) => l.staff_id));
     const linkedBookable = bookableIds.filter((id) => linked.has(id));
-    pool = linkedBookable.length > 0 ? linkedBookable : bookableIds;
+    const selected = linkedBookable.length > 0 ? new Set(linkedBookable) : new Set(bookableIds);
+    pool = bookable.filter((staff) => selected.has(staff.id));
   }
   if (pool.length === 0) return ok({ slots: [] });
 
-  // 該日既有負載（重疊判定用 start < dayEnd && end > dayStart 撈整天）
-  const [{ data: bookings, error: bErr }, { data: blocks, error: blErr },
-         { data: shifts, error: shErr }] = await Promise.all([
-    t.supabase.from('bookings').select('staff_id, start_at, end_at')
-      .eq('tenant_id', t.tenantId).in('status', ['PENDING', 'CONFIRMED'])
-      .lt('start_at', dayEndIso).gt('end_at', dayStartIso),
-    // ⚠️ 不能只用區間過濾：WEEKLY 的列（migration 0027）存的是參考週的起訖
-    // 時間，用區間比對會把每一筆每週封鎖都濾掉。整批取回後在下面展開。
-    t.supabase.from('block_times').select('staff_id, start_at, end_at, recurrence, day_of_week')
-      .eq('tenant_id', t.tenantId),
-    t.supabase.from('shifts').select('staff_id, start_time, end_time')
-      .eq('tenant_id', t.tenantId).eq('work_date', q.date),
-  ]);
-  if (bErr) throw bErr;
-  if (blErr) throw blErr;
-  if (shErr) throw shErr;
-
-  const tenantHasShiftsToday = (shifts ?? []).length > 0;
-  const shiftsByStaff = new Map<string, Array<{ start: number; end: number }>>();
-  for (const s of shifts ?? []) {
-    const list = shiftsByStaff.get(s.staff_id) ?? [];
-    list.push({ start: hmToMin(s.start_time), end: hmToMin(s.end_time) });
-    shiftsByStaff.set(s.staff_id, list);
-  }
-
-  const overlaps = (aS: number, aE: number, bS: number, bE: number) => aS < bE && aE > bS;
-
-  /*
-   * 封鎖時段展開成「這一天實際佔住的區間」：
-   *   SINGLE → 就是它自己的 start_at/end_at（先用當日區間濾掉無關的列，
-   *            那是原本在 SQL 做的事）。
-   *   WEEKLY → 用 expandWeeklyBlock 展開到這一天（migration 0027，issue #33 ②）。
-   * staff_id 一起帶著走，判斷時仍分「該員工／全店」。
-   */
-  const blockRanges: Array<{ staffId: string | null; start: number; end: number }> = [];
-  for (const bl of (blocks ?? []) as Array<{
-    staff_id: string | null; start_at: string; end_at: string;
-    recurrence: string | null; day_of_week: number | null;
-  }>) {
-    if ((bl.recurrence ?? 'SINGLE') === 'WEEKLY') {
-      for (const occ of expandWeeklyBlock(bl, dayStartIso, dayEndIso)) {
-        blockRanges.push({
-          staffId: bl.staff_id, start: Date.parse(occ.start), end: Date.parse(occ.end),
-        });
-      }
-      continue;
-    }
-    const s = Date.parse(bl.start_at);
-    const e = Date.parse(bl.end_at);
-    if (s < Date.parse(dayEndIso) && e > Date.parse(dayStartIso))
-      blockRanges.push({ staffId: bl.staff_id, start: s, end: e });
-  }
-
-  // 2+4. 產時段並逐員工檢查
+  // 2+4. 佔用來源只讀一次，再把每個候選交給共用 availability engine；不做
+  // 「每個 slot 都重新查四張表」的 N+1 查詢。
+  const facts = await loadAvailabilityFacts({
+    supabase: t.supabase, tenantId: t.tenantId, date: q.date,
+  });
   const slots: Array<{ start: string; end: string; staffIds: string[] }> = [];
   for (const w of windows) {
     for (let min = w.start; min + duration <= w.end; min += biz.slotInterval) {
-      const slotStartMs = dayStartMs + min * 60_000;
-      const slotEndMs = slotStartMs + duration * 60_000;
-
-      const staffIds = pool.filter((staffId) => {
-        // shifts：該日有排班資料時，只有自己班段涵蓋整個時段的員工可排
-        if (tenantHasShiftsToday) {
-          const myShifts = shiftsByStaff.get(staffId);
-          if (!myShifts) return false; // 當天沒排班 = 不上班
-          if (!myShifts.some((s) => s.start <= min && min + duration <= s.end)) return false;
-        }
-        // 既有預約（該員工）重疊
-        if ((bookings ?? []).some((b) => b.staff_id === staffId &&
-          overlaps(slotStartMs, slotEndMs, Date.parse(b.start_at), Date.parse(b.end_at))))
-          return false;
-        // 封鎖時段（該員工或全店）重疊
-        if (blockRanges.some((bl) => (bl.staffId === null || bl.staffId === staffId) &&
-          overlaps(slotStartMs, slotEndMs, bl.start, bl.end)))
-          return false;
-        return true;
-      });
+      const candidate = departureInterval(q.date, `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`, duration);
+      const availability = evaluateStaffAvailabilityWithFacts(pool, candidate, facts);
+      const staffIds = availability.filter((item) => item.available).map((item) => item.staffId);
 
       if (staffIds.length > 0) {
         slots.push({
-          start: new Date(slotStartMs).toISOString(),
-          end: new Date(slotEndMs).toISOString(),
+          start: candidate.start,
+          end: candidate.end,
           staffIds,
         });
       }

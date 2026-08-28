@@ -88,6 +88,16 @@ Phase 2 的註冊流程用到，故建議順序執行）；Phase 6 依賴 3 的 
 
 Phase 8 內部順序：團次／訂單基礎 → 團次導遊指派與共用 availability engine → calendar／ICS／一般預約雙向整合。不得在沒有實際人員指派資料前，用「全店有團就全店封鎖」代替人員級判斷。
 
+### 2.1 GUIDE 產品優先級覆蓋
+
+19 分冊不替代上面的資料與安全 Phase，而是規定 GUIDE 使用者先看到什麼、怎麼完成：
+
+1. **P0**：#46 旅客自助、#43 行動收件匣、#44 旅客風險、#42 方案分層、#40/#41 提醒與成團。
+2. **P1**：#45 GUIDE 報表、#47 LINE 開通精靈、#48 收費與成長驗證。
+3. **P2**：跨行程推薦、GUIDE 特化會員功能、可信數據之上的 AI 建議。
+
+這個排序代表商業價值優先，不代表可跳過依賴。沒有 #37 的人員防撞、#41 的付款成團、#40 的可靠派送，就不能用前端假狀態宣稱 P0 完成。
+
 ---
 
 ## 3. 目錄與檔案地圖（做完後長這樣）
@@ -137,12 +147,16 @@ supabase/
 | [`11-PARTNER-API.md`](11-PARTNER-API.md) | 共用旅客帳號、公開商店 API、評論、顧客自動建檔、Midao Partner API 與退役路線 |
 | [`12-TESTING-TDD.md`](12-TESTING-TDD.md) | **強制**：TDD 循環、單元/整合/E2E 標準、每 Phase 必寫測試矩陣、TEST 資料庫、CI 關卡、Definition of Done |
 | [`13-BUSINESS-MODES.md`](13-BUSINESS-MODES.md) | 業態模式（當地商店/嚮導/醫院）：註冊三選一決定選單/名詞/預設功能包；模式換門牌不換倉庫 |
+| [`17-NOTIFICATION-DELIVERY.md`](17-NOTIFICATION-DELIVERY.md) | 可靠通知：outbox、逐通道派送帳本、免費 Email/Telegram、每日健康報告 |
+| [`18-GUIDE-COMMERCE-LIFECYCLE.md`](18-GUIDE-COMMERCE-LIFECYCLE.md) | GUIDE 散客併團、訂金／尾款、成團截止、自動與人工狀態責任、租戶自有金流驗證 |
+| [`19-GUIDE-PRODUCT-EXPERIENCE.md`](19-GUIDE-PRODUCT-EXPERIENCE.md) | GUIDE 產品體驗：LINE-first 自助、行動收件匣、旅客風險、提醒、報表、開通與優先級 |
 
 專案級文件治理：
 
 - `../../AGENTS.md`
 - `../DOCUMENTATION-GOVERNANCE.md`
 - `../decisions/**`
+- `../research/**`
 
 ---
 

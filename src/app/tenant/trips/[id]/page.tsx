@@ -24,7 +24,7 @@ import { useToast } from '@/components/ui/Toast';
 import {
   batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan,
   getTrip, listTripAddons, listTripDepartures, listTripPlans,
-  exportTripJson, saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
+  exportTripJson, getDepartureStaffAvailability, saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -33,7 +33,7 @@ import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type {
   DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
-  TripBookingType, TripDeparture, TripPlan, TripPlanSeason,
+  DepartureStaffAvailability, TripBookingType, TripDeparture, TripPlan, TripPlanSeason,
 } from '@/lib/types';
 
 const GALLERY_MAX = 8;
@@ -88,10 +88,16 @@ export default function TripDetailPage() {
   const [planDraft, setPlanDraft] = React.useState<TripPlan | null>(null);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
+  const [departureStaff, setDepartureStaff] = React.useState<DepartureStaffAvailability[]>([]);
+  const [departureStaffLoading, setDepartureStaffLoading] = React.useState(false);
+  const [departureStaffLoadFailed, setDepartureStaffLoadFailed] = React.useState(false);
   const [batchOpen, setBatchOpen] = React.useState(false);
+  const [batchStaff, setBatchStaff] = React.useState<DepartureStaffAvailability[]>([]);
+  const [batchConflicts, setBatchConflicts] = React.useState<Array<{ date: string; staffId: string; staffName: string; reason: string }>>([]);
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
     weekdays: [6, 0] as number[],
+    primaryStaffId: null as string | null, assistantStaffIds: [] as string[],
   });
   const [deleteTarget, setDeleteTarget] = React.useState<
     { kind: 'plan' | 'addon' | 'departure'; id: string; name: string } | null
@@ -117,6 +123,47 @@ export default function TripDetailPage() {
   }, [tripId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  React.useEffect(() => {
+    if (!departureDraft?.planId || !departureDraft.departsOn || departureDraft.status !== 'OPEN') {
+      setDepartureStaff([]);
+      setDepartureStaffLoading(false);
+      setDepartureStaffLoadFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setDepartureStaff([]);
+    setDepartureStaffLoading(true);
+    setDepartureStaffLoadFailed(false);
+    void getDepartureStaffAvailability(tripId, {
+      planId: departureDraft.planId, departsOn: departureDraft.departsOn,
+      startTime: departureDraft.startTime, excludeDepartureId: departureDraft.id || undefined,
+    }).then((result) => {
+      if (!cancelled) {
+        setDepartureStaff(result.staff);
+        setDepartureStaffLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setDepartureStaff([]);
+        setDepartureStaffLoading(false);
+        setDepartureStaffLoadFailed(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [departureDraft?.id, departureDraft?.planId, departureDraft?.departsOn, departureDraft?.startTime, departureDraft?.status, tripId]);
+
+  React.useEffect(() => {
+    if (!batchOpen || !batch.planId || !batch.from) { setBatchStaff([]); return; }
+    let cancelled = false;
+    void getDepartureStaffAvailability(tripId, {
+      planId: batch.planId, departsOn: batch.from, startTime: batch.startTime,
+    }).then((result) => { if (!cancelled) setBatchStaff(result.staff); })
+      .catch(() => { if (!cancelled) setBatchStaff([]); });
+    return () => { cancelled = true; };
+  }, [batchOpen, batch.planId, batch.from, batch.startTime, tripId]);
+
+  React.useEffect(() => { if (!batchOpen) setBatchConflicts([]); }, [batchOpen]);
 
   const patch = (p: Partial<Trip>) => setForm((f) => (f ? { ...f, ...p } : f));
   const lines = (arr: string[]) => arr.join('\n');
@@ -242,6 +289,8 @@ export default function TripDetailPage() {
         capacity: departureDraft.capacity,
         status: departureDraft.status,
         note: departureDraft.note,
+        primaryStaffId: departureDraft.primaryStaffId,
+        assistantStaffIds: departureDraft.assistantStaffIds,
       });
       setDepartures((prev) => (isNew
         ? [...prev, saved].sort((a, b) => a.departsOn.localeCompare(b.departsOn))
@@ -285,10 +334,13 @@ export default function TripDetailPage() {
         weekdays: batch.weekdays,
         startTime: batch.startTime,
         capacity: batch.capacity,
+        primaryStaffId: batch.primaryStaffId,
+        assistantStaffIds: batch.assistantStaffIds,
       });
       setDepartures((prev) => [...prev, ...res.departures]
         .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
-      setBatchOpen(false);
+      setBatchConflicts(res.conflicts ?? []);
+      if ((res.conflicts?.length ?? 0) === 0) setBatchOpen(false);
       toast.show(res.skipped > 0
         ? t.messages.departureBatchPartial(res.created, res.skipped)
         : t.messages.departureBatchCreated(res.created));
@@ -477,6 +529,19 @@ export default function TripDetailPage() {
       ),
     },
     { key: 'plan', header: t.departures.columns.plan, render: (d) => d.planName },
+    {
+      key: 'guides', header: t.departures.columns.guides,
+      render: (d) => (
+        <div className="text-2xs">
+          <div className={d.primaryStaffName ? 'text-dark' : 'text-warning'}>
+            {d.primaryStaffName ?? t.departures.unassigned}
+          </div>
+          {(d.assistantStaffNames?.length ?? 0) > 0 ? (
+            <div className="text-secondary">{t.departures.assistants(d.assistantStaffNames!.join('、'))}</div>
+          ) : null}
+        </div>
+      ),
+    },
     {
       key: 'seats', header: t.departures.columns.seats, numeric: true, width: '150px',
       render: (d) => {
@@ -1170,7 +1235,10 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDepartureDraft(null)}>{common.cancel}</Button>
-            <Button loading={busy} onClick={() => { void saveDeparture(); }}>{common.save}</Button>
+            <Button loading={busy} disabled={departureStaffLoading || departureStaffLoadFailed}
+              onClick={() => { void saveDeparture(); }}>
+              {common.save}
+            </Button>
           </>
         }
       >
@@ -1201,6 +1269,61 @@ export default function TripDetailPage() {
                 />
               </FormGroup>
             </div>
+            {departureDraft.status === 'OPEN' ? (
+              departureStaffLoading ? (
+                <Alert tone="info" role="status" aria-live="polite">{common.loading}</Alert>
+              ) : departureStaffLoadFailed ? (
+                <Alert tone="danger">{common.message.networkError}</Alert>
+              ) : departureStaff.length === 0 ? (
+                <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
+              ) : departureStaff.length === 1 ? (
+                <Alert tone={departureStaff[0].available ? 'info' : 'danger'}>
+                  {t.departures.singleGuide(departureStaff[0].staffName)}
+                  {!departureStaff[0].available && departureStaff[0].conflicts[0]
+                    ? ` ${t.departures.conflict(departureStaff[0].conflicts[0].reason)}` : ''}
+                </Alert>
+              ) : (
+                <>
+                  <FormGroup>
+                    <Label required>{t.departures.fields.primaryGuideLabel}</Label>
+                    <Select
+                      value={departureDraft.primaryStaffId ?? ''}
+                      onChange={(event) => setDepartureDraft({ ...departureDraft, primaryStaffId: event.target.value || null })}
+                    >
+                      <option value="">{t.departures.fields.primaryGuideLabel}</option>
+                      {departureStaff.map((staff) => (
+                        <option key={staff.staffId} value={staff.staffId} disabled={!staff.available}>
+                          {staff.staffName} · {staff.available ? t.departures.available : t.departures.busy}
+                        </option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label>{t.departures.fields.assistantGuidesLabel}</Label>
+                    <select
+                      multiple className="form-select" value={departureDraft.assistantStaffIds ?? []}
+                      onChange={(event) => setDepartureDraft({
+                        ...departureDraft,
+                        assistantStaffIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
+                      })}
+                    >
+                      {departureStaff.map((staff) => (
+                        <option key={staff.staffId} value={staff.staffId}
+                          disabled={!staff.available || staff.staffId === departureDraft.primaryStaffId}>
+                          {staff.staffName} · {staff.available ? t.departures.available : t.departures.busy}
+                        </option>
+                      ))}
+                    </select>
+                  </FormGroup>
+                  <div className="flex flex-col gap-1 text-2xs text-secondary">
+                    <span>{t.departures.fields.guideAvailabilityLabel}</span>
+                    {departureStaff.filter((staff) => !staff.available).map((staff) => (
+                      <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.conflicts[0]?.reason ?? '')}</span>
+                    ))}
+                  </div>
+                </>
+              )
+            ) : null}
             <FormGroup>
               <Label required>{t.departures.fields.capacityLabel}</Label>
               <Input
@@ -1229,7 +1352,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setBatchOpen(false)}>{common.cancel}</Button>
-            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0}>
+            <Button loading={busy} onClick={() => { void runBatch(); }} disabled={batchCount === 0 || batchStaff.length === 0 || batchStaff.every((staff) => !staff.available)}>
               {t.departures.batch.confirm}
             </Button>
           </>
@@ -1253,6 +1376,46 @@ export default function TripDetailPage() {
               <Input type="date" value={batch.to} onChange={(e) => setBatch({ ...batch, to: e.target.value })} />
             </FormGroup>
           </div>
+          {batch.planId && batch.from && batchStaff.length === 0 ? (
+            <Alert tone="warning">{t.departures.noGuideOnboarding}</Alert>
+          ) : batchStaff.length === 1 ? (
+            <Alert tone={batchStaff[0].available ? 'info' : 'danger'}>
+              {t.departures.singleGuide(batchStaff[0].staffName)} {!batchStaff[0].available && batchStaff[0].conflicts[0]
+                ? t.departures.conflict(batchStaff[0].conflicts[0].reason) : ''}
+            </Alert>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FormGroup>
+                <Label required>{t.departures.fields.primaryGuideLabel}</Label>
+                <Select value={batch.primaryStaffId ?? ''}
+                  onChange={(event) => setBatch({ ...batch, primaryStaffId: event.target.value || null })}>
+                  <option value="">{t.departures.fields.primaryGuideLabel}</option>
+                  {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId} disabled={!staff.available}>
+                    {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
+                  </option>)}
+                </Select>
+              </FormGroup>
+              <FormGroup>
+                <Label>{t.departures.fields.assistantGuidesLabel}</Label>
+                <select multiple className="form-select" value={batch.assistantStaffIds}
+                  onChange={(event) => setBatch({
+                    ...batch, assistantStaffIds: Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
+                  })}>
+                  {batchStaff.map((staff) => <option key={staff.staffId} value={staff.staffId}
+                    disabled={!staff.available || staff.staffId === batch.primaryStaffId}>
+                    {staff.staffName} · {staff.available ? t.departures.available : `${t.departures.busy}（${t.departures.conflict(staff.conflicts[0]?.reason ?? '')}）`}
+                  </option>)}
+                </select>
+              </FormGroup>
+            </div>
+          )}
+          {batchStaff.filter((staff) => !staff.available).length > 0 ? (
+            <div className="flex flex-col gap-1 text-2xs text-secondary">
+              {batchStaff.filter((staff) => !staff.available).map((staff) => (
+                <span key={staff.staffId}>{staff.staffName}：{t.departures.conflict(staff.conflicts[0]?.reason ?? '')}</span>
+              ))}
+            </div>
+          ) : null}
           <FormGroup>
             <Label>{t.departures.batch.weekdaysLabel}</Label>
             <div className="flex flex-wrap gap-1.5">
@@ -1289,6 +1452,13 @@ export default function TripDetailPage() {
             </FormGroup>
           </div>
           <Alert tone="info">{t.departures.batch.preview(batchCount)}</Alert>
+          {batchConflicts.length > 0 ? (
+            <Alert tone="danger">
+              {batchConflicts.map((conflict) => (
+                <div key={`${conflict.date}-${conflict.staffId}`}>{conflict.date}：{conflict.reason}</div>
+              ))}
+            </Alert>
+          ) : null}
         </div>
       </Modal>
 

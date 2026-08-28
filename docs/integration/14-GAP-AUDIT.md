@@ -2890,3 +2890,10 @@ progress-bar / progress-fill / complete / close / next-actions）與 `onboarding
 已經修過同一行且記得更完整（見上方 §14 對應段落，並補了
 `price_type` / `max_participants`），**本輪的修改讓給那一份**，這裡只留交叉註記：
 同一個坑在同一天被三個 issue 的執行者各自撞到，是它夠隱蔽的證據。
+## #37 Sol audit — closed source gap
+
+原先 route 層的 check-then-insert/update 可能在併發 booking 與 departure assignment 間穿透，
+且 completion 先寫 addon、再寫 order，無法保證 snapshot 原子或不可覆寫。0035 以 source-only
+RPC、deterministic staff advisory locks、completion CAS 與 `performance_frozen_at` 補上資料庫邊界。
+0034 也修正 composite FK 的 `ON DELETE SET NULL`，避免意外將 `tenant_id` 設為 null。仍待 Owner
+授權後的 migration／整合測試，不能據此宣稱環境已驗證。

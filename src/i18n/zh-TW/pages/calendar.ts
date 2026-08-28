@@ -30,6 +30,7 @@ export const calendarPage = {
   legend: {
     external: '外部行事曆事件（唯讀）',
     block: '封鎖時段',
+    departure: '行程團次',
     unassigned: '未指定',
     unprocessed: '未處理',
   },
@@ -61,6 +62,21 @@ export const calendarPage = {
     cancel: '取消',
     close: '關閉',
     notConfirmed: '此預約尚未確認',
+  },
+
+  departureDetail: {
+    title: '團次詳情',
+    plan: '方案：',
+    guide: '主導遊：',
+    assistants: '協同導遊：',
+    seats: '報名人數：',
+    none: '無',
+    viewTrip: '查看行程',
+    status: {
+      OPEN: '銷售中',
+      CLOSED: '已停售',
+      CANCELLED: '已取消',
+    },
   },
 
   confirmMessages: {

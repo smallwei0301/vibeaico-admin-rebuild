@@ -80,6 +80,8 @@ export function mapBookingAddon(r: any): BookingAddon {
     durationMinutes: Number(r.duration_minutes),
     staffId: r.staff_id,
     staffName: r.staff?.name ?? null,
+    performanceMode: r.performance_mode ?? 'PRIMARY',
+    performanceStaffId: r.performance_staff_id ?? null,
     appliedAmount: Number(r.applied_amount),
     appliedMinutes: Number(r.applied_minutes),
     notified: r.notified as BookingAddonNotifyOutcome,
@@ -409,6 +411,9 @@ export function mapTripPlan(r: any): TripPlan {
  */
 export function mapTripDeparture(r: any): TripDeparture {
   const planName = r.trip_plans?.name ?? r.plan_name ?? '';
+  const assignments = Array.isArray(r.trip_departure_staff) ? r.trip_departure_staff : [];
+  const primary = assignments.find((assignment: any) => assignment.role === 'PRIMARY');
+  const assistants = assignments.filter((assignment: any) => assignment.role === 'ASSISTANT');
   return {
     id: r.id,
     tripId: r.trip_id,
@@ -420,6 +425,10 @@ export function mapTripDeparture(r: any): TripDeparture {
     seatsBooked: Number(r.seats_booked ?? 0),
     status: r.status,
     note: r.note ?? '',
+    primaryStaffId: primary?.staff_id ?? null,
+    primaryStaffName: primary?.staff?.name ?? null,
+    assistantStaffIds: assistants.map((assignment: any) => assignment.staff_id),
+    assistantStaffNames: assistants.map((assignment: any) => assignment.staff?.name ?? '').filter(Boolean),
   };
 }
 

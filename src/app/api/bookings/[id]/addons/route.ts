@@ -31,20 +31,10 @@
  * 自己再調一次價。這是刻意選的處理方式，不是疏漏。
  *
  * ─────────────────────────────────────────────────────────────────────────
- * 員工業績：加購金額計入「本預約的服務人員」
+ * 員工業績：C+ 明確歸戶
  * ─────────────────────────────────────────────────────────────────────────
- * 依 2026-08-25 **主導者裁示**（issue #1 留言 comment-5412922443）：加購金額
- * 計入員工業績，算法為「與主服務同一位服務人員、依實收金額全額計入」。
- * 實作上不需要任何額外程式：加購金額進 `bookings.final_price`，而
- * `/api/reports/staff-performance` 與 `/api/reports/top-staff` 就是
- * 「`bookings.final_price` group by `bookings.staff_id`」，加購額自然歸到本預約
- * 的服務人員名下。
- *
- * ⚠️ **這個算法是我們選的，不是從原站還原的**（裁示原文如此要求標註）。
- * `booking_addons.staff_id`（原站 addonStaffSelect）只記錄「誰做的」，
- * **不參與**業績歸戶；原站文案「師父業績仍按明細歸戶」暗示的是逐項歸戶，與本
- * 裁示不同，已在 14 分冊 §8 記為待覆核項。日後若查到原站另有算法，要改的是
- * 算法，不是「要不要計入」。
+ * 有執行人員的 addon 一律歸該人；未指定執行人員才繼承本預約服務人員；
+ * `NONE` 只算店家。null 不再同時表示「繼承」與「不計個人業績」。
  */
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
@@ -56,8 +46,10 @@ import type { BookingAddonNotifyOutcome } from '@/lib/types';
 /** 可加購的預約狀態：加購會動到金額與時段，只在「還沒結案」的預約上開放 */
 const EDITABLE_STATUSES = ['PENDING', 'CONFIRMED'];
 
-const SELECT = 'id, service_id, name, price, quantity, duration_minutes, staff_id, ' +
-  'applied_amount, applied_minutes, notified, created_at, staff(name)';
+const SELECT = 'id, service_id, name, price, quantity, duration_minutes, staff_id, performance_mode, performance_staff_id, ' +
+  // 0034 adds a second booking_addons → staff FK for performance.  Name the
+  // execution-staff relationship so PostgREST does not raise PGRST201.
+  'applied_amount, applied_minutes, notified, created_at, staff!booking_addons_staff_id_fkey(name)';
 
 /* ------------------------------------------------------------------- GET */
 
@@ -93,6 +85,8 @@ const bodySchema = z.object({
   durationMinutes: z.number().int().min(0, '佔用時長不可為負').default(0),
   /** 執行人員；省略或 null = 同本預約的人員 */
   staffId: z.string().uuid().nullable().optional(),
+  performanceMode: z.enum(['PRIMARY', 'SPECIFIC_STAFF', 'NONE']).default('PRIMARY'),
+  performanceStaffId: z.string().uuid().nullable().optional(),
   /** 原站 addonNotify：勾了才推 LINE 消費明細 */
   notify: z.boolean().default(false),
 });
@@ -123,6 +117,12 @@ export const POST = handle(async (req, { params }) => {
     if (error) throw error;
     if (!s) throw new ApiHttpError(404, '找不到此服務人員', ERR.NOT_FOUND);
   }
+  // #37 audit: execution staff is the performance owner.  The legacy
+  // performanceStaffId input is intentionally ignored so it cannot disagree
+  // with execution; only NONE opts out, otherwise no execution staff inherits.
+  const performanceMode = b.performanceMode === 'NONE'
+    ? 'NONE' : b.staffId ? 'SPECIFIC_STAFF' : 'PRIMARY';
+  const performanceStaffId = performanceMode === 'SPECIFIC_STAFF' ? b.staffId : null;
 
   const appliedAmount = b.price * b.quantity;
   const appliedMinutes = b.durationMinutes * b.quantity;
@@ -138,6 +138,8 @@ export const POST = handle(async (req, { params }) => {
       quantity: b.quantity,
       duration_minutes: b.durationMinutes,
       staff_id: b.staffId ?? null,
+      performance_mode: performanceMode,
+      performance_staff_id: performanceStaffId,
       applied_amount: appliedAmount,
       applied_minutes: appliedMinutes,
     })

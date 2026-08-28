@@ -257,6 +257,7 @@ export const tripsPage = {
     columns: {
       date: '出團日期',
       plan: '方案',
+      guides: '帶團人員',
       seats: '名額',
       status: '狀態',
       note: '備註',
@@ -270,6 +271,9 @@ export const tripsPage = {
       capacityHelp: '調整名額時不可低於已售出的人數。',
       noteLabel: '備註',
       notePlaceholder: '只有你看得到，例：船班已確認',
+      primaryGuideLabel: '主導遊',
+      assistantGuidesLabel: '協同導遊',
+      guideAvailabilityLabel: '導遊可接案狀態',
     },
     batch: {
       title: '批次開團',
@@ -293,6 +297,13 @@ export const tripsPage = {
     cancelAction: '取消團次',
     cancelConfirm: '取消團次後，已成立的訂單需要你另行聯繫旅客處理。確定要取消嗎？',
     capacityTooLow: (booked: number) => `名額不可低於已售出的 ${booked} 位`,
+    noGuideOnboarding: '請先新增至少一位可帶團導遊，才能建立銷售中的團次。',
+    singleGuide: (name: string) => `將自動指派 ${name} 為主導遊。`,
+    available: '可帶團',
+    busy: '無法帶團',
+    conflict: (reason: string) => `衝突：${reason}`,
+    unassigned: '未指派',
+    assistants: (names: string) => `協同：${names}`,
   },
 
   /* --------------------------------------------------------------- 加購 */
