@@ -174,6 +174,13 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // beforeAll 可能在環境契約或 mock server 啟動前就失敗；teardown 不應用
+  // undefined admin 製造第二個錯誤，掩蓋真正的 setup 根因。
+  if (!admin) {
+    await lineMock.stop();
+    await resendMock.stop();
+    return;
+  }
   for (const id of createdOrderIds) {
     await admin.from('product_order_items').delete().eq('order_id', id);
     await admin.from('product_orders').delete().eq('id', id);
