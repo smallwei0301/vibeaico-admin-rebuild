@@ -14,6 +14,10 @@ jobs:
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
   integration:
     runs-on: ubuntu-latest
+    # test:integration 會 reset/seed 共用 TEST；所有 PR、main 工作必須跨分支序列化。
+    concurrency:
+      group: shared-test-supabase-integration
+      cancel-in-progress: false
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
