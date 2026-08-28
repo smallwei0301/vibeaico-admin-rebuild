@@ -148,8 +148,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 
 ### 3.1 驗簽後立即回 200，事件處理放入 `after()`（issue #31）
 
-簽章驗證、店家與 LINE 憑證查詢仍留在回應前；壞簽章回 `401`，且不得排入背景
-工作。**只要簽章正確，route 一律立即回 `200 ok`**，後續事件處理交給
+簽章驗證仍留在回應前；壞簽章回 `401`，且不得排入背景工作。**只要簽章正確，
+route 一律立即回 `200 ok`**，後續事件處理交給
 `next/server` 的 `after()`：背景處理的個別事件失敗、畸形 JSON 或不可迭代的 events
 都必須 `console.error`，不得把例外帶回 LINE 或中止同批後續事件。
 
@@ -157,15 +157,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
   回應前取得。
 - `line-events` 必須在 `after()` 內動態 import，避免把不參與驗簽的模組載入成本放在
   LINE 的回應路徑。
-- tenant 與 `tenant_settings` 可用 PostgREST 內嵌一次讀完；憑證解密與
-  `LINE_NOT_CONFIGURED` 判定必須共用 `decryptLineCredentials()`，避免兩條路徑漂移。
+- 後台顯示的 webhook URL 帶 `credential` 膠囊：內容是 tenant id、shop code 與資料庫
+  已加密的 channel secret，並由 `SETTINGS_ENCRYPTION_KEY` 做 HMAC（訊息驗證碼）綁定。
+  URL 不含 LINE secret 明文，也不能剪貼到另一店使用。
+- 冷路徑只在本機驗膠囊、解密 channel secret、驗 LINE 簽章；不得先查資料庫或載入
+  `line-events`。通過後才排入 `after()`，再用 tenant id + shop code 查目前設定。
+- 背景查詢必須精確比對目前 `line_channel_secret_enc` 與膠囊中的密文。店家重存或
+  輪替 secret 後，舊 URL 即使收到以舊 secret 正確簽署的要求，也不得寫資料或回訊息。
+- 尚未帶 `credential` 的舊 URL 暫時保留相容路徑；它仍會在回應前查資料庫。店家必須
+  將後台新 URL 更新到 LINE Console，冷啟動改善與舊憑證撤銷才完整生效。
 - 測試不得用 sleep 猜背景工作完成。route `GET` 僅在整合測試 server 明確設定
   `LINE_WEBHOOK_DRAIN_ENABLED=true` 時可排空 pending `after()` 工作；所有一般
   development、Preview 與正式部署都必須回 `405`，並且不得回傳錯誤內容。
 
-此變更只拿掉「事件處理」對 LINE 回應時間的占用；serverless 冷啟動、驗簽前資料庫
-查詢仍在回應路徑，不能宣稱已消除所有 timeout。若日後開啟 LINE redelivery，須先為
-`webhookEventId` 做冪等處理，避免重送造成重複回覆。
+此變更拿掉「事件處理」及「驗簽前資料庫查詢」對新 URL 回應時間的占用；仍須以閒置
+Preview 的真實 LINE 第一發證據驗收 serverless 本身的冷啟動時間。若日後開啟 LINE
+redelivery，須先為 `webhookEventId` 做冪等處理，避免重送造成重複回覆。
 
 ---
 
