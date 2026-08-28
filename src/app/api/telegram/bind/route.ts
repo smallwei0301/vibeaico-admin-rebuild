@@ -11,7 +11,10 @@ import { issueTelegramBindCode } from '@/server/notifications/telegram-binding';
 export const POST = handle(async () => {
   const t = await requireTenant('MANAGER');
   const username = process.env.TELEGRAM_BOT_USERNAME?.replace(/^@/, '').trim();
-  if (!username) throw new ApiHttpError(409, 'Telegram 綁定尚未由平台啟用', ERR.CONFLICT);
+  const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim();
+  if (!username || !botToken || !webhookSecret)
+    throw new ApiHttpError(409, 'Telegram 綁定尚未由平台啟用', ERR.CONFLICT);
   const code = await issueTelegramBindCode({
     tenantId: t.tenantId,
     subjectType: 'TENANT_USER',

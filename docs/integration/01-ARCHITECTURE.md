@@ -66,8 +66,8 @@ Supabase
 | `SETTINGS_ENCRYPTION_KEY` | server | Phase 2 | 64 hex，加密租戶 LINE secrets |
 | `RESEND_API_KEY` | server | Phase 4 | Resend API key |
 | `MAIL_FROM` | server | Phase 4 | 例如 `VibeAI <noreply@yourdomain.com>`（需在 Resend 驗證網域） |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_ID` | server | #40 | 平台單一 Telegram Bot；不得放進 `NEXT_PUBLIC_*` |
-| `TELEGRAM_WEBHOOK_SECRET` | server | #40 | Telegram webhook 的 secret header 驗證值 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_BOT_ID` / `TELEGRAM_BOT_USERNAME` | server | #40 | 平台單一 Telegram Bot；username 只用於產生後台 `/start <code>` deep link；不得放進 `NEXT_PUBLIC_*` |
+| `TELEGRAM_WEBHOOK_SECRET` | server | #40 | Telegram webhook 的 secret header 驗證值；後台不得在它或 Bot token 未設定時發出無法完成的綁定連結 |
 | `PLATFORM_OWNER_EMAIL` / `PLATFORM_TELEGRAM_CHAT_ID` | server | #40 | 每日 notification health digest 的平台收件端；不入 DB／前端 |
 | `CRON_SECRET` | server | Phase 7 | Vercel Cron 呼叫 `/api/cron/*` 的 Bearer token |
 | `ANTHROPIC_API_KEY` | server | Phase 5.5（選） | AI 客服（AI_ASSISTANT 功能），見 09 分冊 §7 |
