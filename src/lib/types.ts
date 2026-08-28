@@ -356,7 +356,15 @@ export type TripAddon = {
 };
 
 export type TourOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
-export type TourPaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED';
+/**
+ * #41：付款進度與訂單／成團狀態分開；PARTIAL 表示已收訂金、仍有尾款。
+ */
+export type TourPaymentStatus =
+  | 'UNPAID'
+  | 'PARTIAL'
+  | 'PAID'
+  | 'REFUND_PENDING'
+  | 'REFUNDED';
 export type TourOrderSource = 'MIDAO' | 'VIBEAI_SHOP' | 'LINE' | 'MANUAL';
 
 export type TourOrder = {
