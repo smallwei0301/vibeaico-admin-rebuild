@@ -176,10 +176,10 @@ begin
     new.min_to_depart_snapshot := v_plan.min_to_depart;
   end if;
 
-  select pg_catalog.coalesce(pg_catalog.nullif(basic->>'timezone', ''), 'Asia/Taipei') into v_timezone
+  select coalesce(nullif(basic->>'timezone', ''), 'Asia/Taipei') into v_timezone
   from public.tenant_settings where tenant_id = new.tenant_id;
-  v_timezone := pg_catalog.coalesce(v_timezone, 'Asia/Taipei');
-  v_departure_at := (new.departs_on + pg_catalog.coalesce(new.start_time, '00:00'::pg_catalog.time))
+  v_timezone := coalesce(v_timezone, 'Asia/Taipei');
+  v_departure_at := (new.departs_on + coalesce(new.start_time, '00:00'::pg_catalog.time))
     at time zone v_timezone;
   if new.formation_deadline_at is null then
     new.formation_deadline_at := v_departure_at
@@ -247,13 +247,13 @@ alter table tour_formation_decisions enable row level security;
 revoke all on table tour_formation_decisions from anon, authenticated;
 
 create or replace function public.qualifying_tour_participants(p_departure pg_catalog.uuid)
-returns pg_catalog.integer
+returns pg_catalog.int4
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select pg_catalog.coalesce(pg_catalog.sum(o.party_size), 0)::pg_catalog.integer
+  select coalesce(pg_catalog.sum(o.party_size), 0)::pg_catalog.int4
   from public.tour_orders o
   where o.departure_id = p_departure
     and o.status in ('CONFIRMED', 'COMPLETED')
@@ -277,7 +277,7 @@ set search_path = ''
 as $$
 declare
   v_dep public.trip_departures%rowtype;
-  v_participants pg_catalog.integer;
+  v_participants pg_catalog.int4;
 begin
   select * into v_dep from public.trip_departures where id = p_departure for update;
   if not found then raise exception 'DEPARTURE_NOT_FOUND' using errcode = 'P0002'; end if;
@@ -363,15 +363,15 @@ create trigger t_tour_orders_refresh_formation
 
 -- deadline cron calls this function. 不足只進 REVIEW_REQUIRED，絕不自動取消／退款。
 create or replace function public.review_expired_tour_formations(p_now pg_catalog.timestamptz default pg_catalog.now())
-returns pg_catalog.integer
+returns pg_catalog.int4
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
   v_dep public.trip_departures%rowtype;
-  v_participants pg_catalog.integer;
-  v_changed pg_catalog.integer := 0;
+  v_participants pg_catalog.int4;
+  v_changed pg_catalog.int4 := 0;
 begin
   for v_dep in
     select * from public.trip_departures
@@ -422,7 +422,7 @@ declare
   v_dep public.trip_departures%rowtype;
   v_previous pg_catalog.text;
   v_next pg_catalog.text;
-  v_participants pg_catalog.integer;
+  v_participants pg_catalog.int4;
   v_departure_at pg_catalog.timestamptz;
   v_timezone pg_catalog.text;
 begin
@@ -438,10 +438,10 @@ begin
   end if;
   v_previous := v_dep.formation_status;
   v_participants := public.qualifying_tour_participants(v_dep.id);
-  select pg_catalog.coalesce(pg_catalog.nullif(basic->>'timezone', ''), 'Asia/Taipei') into v_timezone
+  select coalesce(nullif(basic->>'timezone', ''), 'Asia/Taipei') into v_timezone
   from public.tenant_settings where tenant_id = v_dep.tenant_id;
-  v_departure_at := (v_dep.departs_on + pg_catalog.coalesce(v_dep.start_time, '00:00'::pg_catalog.time))
-    at time zone pg_catalog.coalesce(v_timezone, 'Asia/Taipei');
+  v_departure_at := (v_dep.departs_on + coalesce(v_dep.start_time, '00:00'::pg_catalog.time))
+    at time zone coalesce(v_timezone, 'Asia/Taipei');
 
   if p_decision = 'STILL_FORM' and v_previous = 'REVIEW_REQUIRED' then
     v_next := 'FORMED';
@@ -449,7 +449,7 @@ begin
       formed_by = 'GUIDE_OVERRIDE', formed_participants = v_participants,
       formation_risk_accepted_participants = v_participants,
       formation_decided_at = pg_catalog.now(), formation_decided_by = p_actor_user,
-      formation_decision = p_decision, formation_decision_note = pg_catalog.coalesce(p_note, '')
+      formation_decision = p_decision, formation_decision_note = coalesce(p_note, '')
     where id = v_dep.id;
     perform public.enqueue_notification_event(
       v_dep.tenant_id, 'TOUR_GROUP_FORMED', 'TOUR_DEPARTURE', v_dep.id::pg_catalog.text,
@@ -465,20 +465,20 @@ begin
     update public.trip_departures set formation_status = v_next,
       formation_deadline_at = p_new_deadline, formation_decided_at = pg_catalog.now(),
       formation_decided_by = p_actor_user, formation_decision = p_decision,
-      formation_decision_note = pg_catalog.coalesce(p_note, '') where id = v_dep.id;
+      formation_decision_note = coalesce(p_note, '') where id = v_dep.id;
   elsif p_decision = 'CONTINUE' and v_previous = 'AT_RISK' then
     v_next := 'FORMED';
     update public.trip_departures set formation_status = v_next,
       formation_risk_accepted_participants = v_participants,
       formation_decided_at = pg_catalog.now(), formation_decided_by = p_actor_user,
-      formation_decision = p_decision, formation_decision_note = pg_catalog.coalesce(p_note, '')
+      formation_decision = p_decision, formation_decision_note = coalesce(p_note, '')
     where id = v_dep.id;
   elsif p_decision = 'CANCEL' and v_previous in ('REVIEW_REQUIRED', 'AT_RISK') then
     v_next := 'FAILED';
     update public.trip_departures set status = 'CANCELLED', seats_booked = 0,
       formation_status = v_next, formation_decided_at = pg_catalog.now(),
       formation_decided_by = p_actor_user, formation_decision = p_decision,
-      formation_decision_note = pg_catalog.coalesce(p_note, '') where id = v_dep.id;
+      formation_decision_note = coalesce(p_note, '') where id = v_dep.id;
     update public.tour_orders set status = 'CANCELLED',
       payment_status = case when paid_amount > refunded_amount then 'REFUND_PENDING' else payment_status end,
       updated_at = pg_catalog.now()
@@ -504,7 +504,7 @@ begin
     actor_user_id, participants, note
   ) values (
     v_dep.tenant_id, v_dep.id, v_previous, v_next, p_decision,
-    p_actor_user, v_participants, pg_catalog.coalesce(p_note, '')
+    p_actor_user, v_participants, coalesce(p_note, '')
   );
   return v_next;
 end;

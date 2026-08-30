@@ -74,13 +74,17 @@ describe('#41 schema migration ordering', () => {
   });
 
   it('uses pg_catalog.int4 rather than the unavailable pg_catalog.integer alias', () => {
-    expect(normalizedHardeningMigration).toContain('returns pg_catalog.int4');
-    expect(normalizedHardeningMigration).toContain('::pg_catalog.int4');
-    expect(normalizedHardeningMigration).not.toContain('pg_catalog.integer');
+    for (const source of [normalizedMigration, normalizedHardeningMigration]) {
+      expect(source).toContain('returns pg_catalog.int4');
+      expect(source).toContain('::pg_catalog.int4');
+      expect(source).not.toContain('pg_catalog.integer');
+    }
   });
 
   it('does not schema-qualify SQL special forms', () => {
-    expect(normalizedHardeningMigration).not.toContain('pg_catalog.coalesce');
-    expect(normalizedHardeningMigration).not.toContain('pg_catalog.nullif');
+    for (const source of [normalizedMigration, normalizedHardeningMigration]) {
+      expect(source).not.toContain('pg_catalog.coalesce');
+      expect(source).not.toContain('pg_catalog.nullif');
+    }
   });
 });
