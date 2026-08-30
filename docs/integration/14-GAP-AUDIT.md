@@ -404,7 +404,9 @@ customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不�
 
 | 本輪新開 | 筆數 | 新 issue | 狀態 |
 |---|---|---|---|
-| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | Source、unit、integration、E2E 已完成（`38e714f`；PR #49 exact HEAD `5cc70ba` CI run #159 attempt 2 全綠）；Preview 三路徑仍待租戶登入實證 |
+| ai-settings 走錯端點 | 1 | #27 | **已完成**：`src/app/tenant/ai-settings/page.tsx` → `saveAiSettings`；`tests/unit/ai-settings-wiring.27.test.ts`、`tests/integration/api/ai-settings.27.test.ts`；PR #56 HEAD `5dfba431` 已包含修復。 authenticated Preview Playwright 仍留白 |
+| 預約 MODIFIED 通知 | 1 | #27 | **已完成**：`tests/integration/api/bookings-modified.27.test.ts` 五案（開／只改備註／改人員／關閉／額度用盡）；PR #56 HEAD `5dfba431` 已包含修復。 authenticated Preview Playwright 仍留白 |
+| 商品訂單 LINE/Email 通知 | 1 | #27 | **已完成**：`tests/integration/api/product-order-notify.27.test.ts` 六案（含未綁 LINE 走 Email、寄信失敗回 `FAILED`）；PR #56 HEAD `5dfba431` 已包含修復。 authenticated Preview Playwright 仍留白 |
 | 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | ①②⑦⑧⑨ source 已完成；③–⑥ 亦有 deployed `0db681f` Preview 輸出（exports 18/18、welcome upload 8/8），但 current-head 截圖／full CI 待補，故 issue 維持 open |
 
 `#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、

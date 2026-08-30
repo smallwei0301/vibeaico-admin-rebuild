@@ -132,11 +132,15 @@
 - [ ] cron feature-expiry 副作用與 restore 自動還原
 - [ ] 點數儲值 MVP（501 + 客服文案）；金流供應商決策留待平台擁有者
 - [x] AI 客服（選配）：ai-settings 儲存 + webhook AI 回覆 + UNSURE 轉人工
-      （issue #27：`ai-settings-wiring.27.test.ts`、`ai-settings.27.test.ts`；把頁面
-      接線變異回 `saveLineSettings` 時 3/30 紅，還原後 30/30 綠；PR #49
-      exact HEAD `5cc70ba` 的 CI run #159 attempt 2 已通過 unit、63 files / 703
-      integration cases 與 Playwright E2E。租戶 Preview 三頁截圖另列為 issue #27
-      尚未完成的站點驗收，不把 CI E2E 冒充 Preview 證據。）
+      （issue #27；`tests/unit/ai-settings-wiring.27.test.ts`、
+      `tests/integration/api/ai-settings.27.test.ts`；修復已在 PR #56 HEAD
+      `5dfba431`。authenticated Preview Playwright 站點驗收仍留白。）
+- [x] 預約 MODIFIED 通知（issue #27）：
+      `tests/integration/api/bookings-modified.27.test.ts` 五案——開啟推播、只改備註不推播、
+      改人員推播、關閉仍 200 且不推播、額度用盡仍不推播。
+- [x] 商品訂單 LINE/Email 通知（issue #27）：
+      `tests/integration/api/product-order-notify.27.test.ts` 六案——含未綁 LINE 改走 Email
+      且額度不變、寄信失敗回 `FAILED`。
 
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
