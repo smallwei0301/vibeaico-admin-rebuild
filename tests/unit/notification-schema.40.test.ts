@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const appliedMigration = readFileSync('supabase/migrations/0038_notification_outbox_delivery.sql', 'utf8');
 const appliedRestrictionMigration = readFileSync('supabase/migrations/0038a_restrict_internal_notification_functions.sql', 'utf8');
-const bookingModificationMigration = readFileSync('supabase/migrations/0040_notification_booking_modification_revision.sql', 'utf8');
-const securityAlignmentMigration = readFileSync('supabase/migrations/0041_notification_delivery_security_alignment.sql', 'utf8');
+const bookingModificationMigration = readFileSync('supabase/migrations/0042_notification_booking_modification_revision.sql', 'utf8');
+const securityAlignmentMigration = readFileSync('supabase/migrations/0043_notification_delivery_security_alignment.sql', 'utf8');
 const migration = `${appliedMigration}\n${appliedRestrictionMigration}\n${bookingModificationMigration}\n${securityAlignmentMigration}`;
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
@@ -27,6 +27,29 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(migration).toMatch(/next_attempt_at\s+timestamptz\s+default now\(\)/i);
     expect(migration).not.toMatch(/next_attempt_at\s+timestamptz\s+not null/i);
     expect(migration).toMatch(/unique index notification_deliveries_email_provider_id/i);
+  });
+
+  it('isolates idempotency by tenant while treating NULL as one platform scope', () => {
+    expect(securityAlignmentMigration).toMatch(/drop index if exists public\.notification_outbox_idempotency/i);
+    expect(securityAlignmentMigration).toMatch(
+      /create unique index notification_outbox_tenant_idempotency\s+on public\.notification_outbox \(tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key\) nulls not distinct/i,
+    );
+    expect(securityAlignmentMigration).toMatch(/group by event_name, aggregate_type, aggregate_id, idempotency_key\s+having count\(\*\) > 1/i);
+    expect(securityAlignmentMigration).toMatch(/on conflict \(tenant_id, event_name, aggregate_type, aggregate_id, idempotency_key\)/i);
+    expect(readFileSync('src/server/notifications/health-report.ts', 'utf8'))
+      .toContain("onConflict: 'tenant_id,event_name,aggregate_type,aggregate_id,idempotency_key'");
+    expect(readFileSync('src/server/notifications/outbox.ts', 'utf8'))
+      .toContain("onConflict: 'tenant_id,event_name,aggregate_type,aggregate_id,idempotency_key'");
+  });
+
+  it('uses #40 forward migration prefixes after #41-owned 0040 and 0041', () => {
+    const migrations = readdirSync('supabase/migrations');
+    expect(migrations).toContain('0042_notification_booking_modification_revision.sql');
+    expect(migrations).toContain('0043_notification_delivery_security_alignment.sql');
+    expect(migrations).not.toContain('0040_notification_booking_modification_revision.sql');
+    expect(migrations).not.toContain('0041_notification_delivery_security_alignment.sql');
+    expect(bookingModificationMigration).toContain('Prefixes 0040 and 0041 belong to the independently applied #41 formation');
+    expect(securityAlignmentMigration).toContain('Prefixes 0040 and 0041 are already owned by #41 formation migrations.');
   });
 
   it('uses a transactional booking trigger and SKIP LOCKED claim rather than a best-effort direct provider call', () => {
@@ -134,7 +157,7 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(bookingModificationMigration).toMatch(/revoke execute on function public\.enqueue_booking_notification_event\(\) from public, anon, authenticated/i);
   });
 
-  it('uses 0041 only for forward auth, tenant binding, and trigger security alignment', () => {
+  it('uses 0043 only for forward auth, tenant binding, and trigger security alignment', () => {
     expect(appliedMigration).not.toContain('reclaimable');
     expect(appliedMigration).toMatch(/unique nulls not distinct \(tenant_id, subject_type, subject_ref\)/i);
     expect(bookingModificationMigration).toContain("set search_path = public, pg_temp");
@@ -146,7 +169,7 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(securityAlignmentMigration).toMatch(/telegram_bind_codes_tenant_id_idx/i);
   });
 
-  it('passes the six-argument enqueue contract for every 0041 booking event', () => {
+  it('passes the six-argument enqueue contract for every 0043 booking event', () => {
     const calls = [...securityAlignmentMigration.matchAll(/perform public\.enqueue_notification_event\(([\s\S]*?)\n\s*\);/g)];
     expect(calls).toHaveLength(7);
     for (const [, args] of calls) {

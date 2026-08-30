@@ -187,7 +187,12 @@ async function resolveTelegramDestination(admin: Admin, delivery: ClaimedDeliver
   return data?.chat_id === undefined || data?.chat_id === null ? null : String(data.chat_id);
 }
 
-async function emailRecipientGate(admin: Admin, email: string): Promise<TransportOutcome | null> {
+/**
+ * Recipient-health hashes are only comparable when the dedicated key is set.
+ * Fail closed (retryable) rather than treating an uncheckable recipient as
+ * healthy and bypassing a known bounce/complaint suppression record.
+ */
+export async function emailRecipientGate(admin: Admin, email: string): Promise<TransportOutcome | null> {
   const healthKey = process.env.RESEND_RECIPIENT_HEALTH_KEY;
   if (!healthKey) return { kind: 'retryable', code: 'RECIPIENT_HEALTH_KEY_MISSING' };
   const { data, error } = await admin.from('email_recipient_health').select('healthy')
@@ -335,7 +340,7 @@ async function enqueueImmediateDeadAlert(admin: Admin, delivery: ClaimedDelivery
       aggregate_id: delivery.id,
       idempotency_key: `delivery-dead:${delivery.id}`,
       payload: { alertCode: 'CRITICAL_DELIVERY_DEAD' },
-    }, { onConflict: 'event_name,aggregate_type,aggregate_id,idempotency_key' }).select('id').single();
+    }, { onConflict: 'tenant_id,event_name,aggregate_type,aggregate_id,idempotency_key' }).select('id').single();
     if (alertError) throw alertError;
     const { error: recipientsError } = await admin.from('notification_deliveries').upsert([
       { outbox_id: alert.id, tenant_id: null, recipient_type: 'PLATFORM_OWNER', recipient_ref: 'platform-owner', channel: 'EMAIL', destination_ref: 'PLATFORM_OWNER_EMAIL' },
@@ -354,7 +359,7 @@ async function enqueueImmediateProviderAlert(admin: Admin, alertCode: string, ag
     aggregate_type: 'NOTIFICATION_HEALTH_LIVE', aggregate_id: aggregateId,
     idempotency_key: `live-alert:${alertCode}:${aggregateId}:${bucket}`,
     payload: { alertCode },
-  }, { onConflict: 'event_name,aggregate_type,aggregate_id,idempotency_key' }).select('id').single();
+  }, { onConflict: 'tenant_id,event_name,aggregate_type,aggregate_id,idempotency_key' }).select('id').single();
   if (alertError) throw alertError;
   const { error: recipientsError } = await admin.from('notification_deliveries').upsert([
     { outbox_id: alert.id, tenant_id: null, recipient_type: 'PLATFORM_OWNER', recipient_ref: 'platform-owner', channel: 'EMAIL', destination_ref: 'PLATFORM_OWNER_EMAIL' },

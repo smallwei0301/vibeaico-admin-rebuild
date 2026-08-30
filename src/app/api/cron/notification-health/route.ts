@@ -4,7 +4,7 @@ import { createDailyHealthReport } from '@/server/notifications/health-report';
 
 export const runtime = 'nodejs';
 
-/** Daily 09:00 Asia/Taipei report (00:00 UTC). Vercel Hobby may delay it. */
+/** Daily 09:00 Asia/Taipei report (01:00 UTC). Vercel Hobby may delay it. */
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`)

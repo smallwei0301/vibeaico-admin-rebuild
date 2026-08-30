@@ -111,6 +111,7 @@ id
 - Resend API 成功只記 `ACCEPTED`。
 - 若接 Resend webhook，`delivered / bounced / complained` 需回寫 delivery；只有收到 delivery evidence 才標 `DELIVERED`。
 - bounce/complaint 不得每天重寄同一地址；應標記 recipient health 並提醒租戶修正 email。
+- `RESEND_RECIPIENT_HEALTH_KEY` 是 recipient-health hash 的平台密鑰。未設定時，Email dispatcher 必須以 `RECIPIENT_HEALTH_KEY_MISSING` 暫時失敗，不得把地址當作健康而繞過已知 bounce/complaint 抑制；設定後才可查 ledger hash。
 
 ### 免費權益
 
@@ -157,7 +158,7 @@ id
 
 每天固定產生一份前 24 小時 digest，**即使 0 failures 也要產生**，讓「完全沒收到任何報警」不等於「系統一定正常」。
 
-建議台北時間 09:00 執行，內容至少：
+建議台北時間 09:00（`01:00 UTC`）執行，內容至少：
 
 ```text
 期間
@@ -177,6 +178,7 @@ DEAD rows 數與 top error codes
 - 同時送 platform owner Telegram chat / ops group。
 - digest 本身也寫 `notification_health_reports`（或等價 audit table），保留查詢紀錄。
 - 若 digest 的 Email / Telegram 自己失敗，該失敗必須落 delivery ledger；不能因「報警通道壞了」就完全無紀錄。
+- Vercel Hobby 的 daily cron 可能有 ±59 分鐘 jitter；digest 的前 24 小時窗口以 route 實際執行的時間為 cutoff，不假裝固定在精確 01:00 UTC。詳見 07 分冊。
 
 ### 即時告警
 

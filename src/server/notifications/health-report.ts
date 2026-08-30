@@ -70,7 +70,7 @@ async function createPlatformNotificationEvent(
       tenant_id: null, event_name: input.eventName, aggregate_type: 'NOTIFICATION_HEALTH_REPORT',
       aggregate_id: input.reportId, idempotency_key: input.idempotencyKey,
       payload: { reportId: input.reportId, ...(input.alertCode ? { alertCode: input.alertCode } : {}) },
-    }, { onConflict: 'event_name,aggregate_type,aggregate_id,idempotency_key' })
+    }, { onConflict: 'tenant_id,event_name,aggregate_type,aggregate_id,idempotency_key' })
     .select('id').single();
   if (outboxError) throw outboxError;
   const { error: recipientError } = await admin.from('notification_deliveries').upsert([

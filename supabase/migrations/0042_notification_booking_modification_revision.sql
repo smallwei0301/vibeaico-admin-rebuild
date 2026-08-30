@@ -1,8 +1,8 @@
--- 0040 — #40 booking modification notification follow-up
+-- 0042 — #40 booking modification notification follow-up
 --
--- 0038 is already recorded in TEST migration history. Keep it immutable and
--- apply this forward-only repair so TEST and fresh installs share the same
--- booking event contract.
+-- Prefixes 0040 and 0041 belong to the independently applied #41 formation
+-- migrations. Keep 0038/0038a immutable and apply this repair forward-only
+-- so TEST and fresh installs share the same booking event contract.
 
 alter table bookings
   add column if not exists notification_revision bigint not null default 0;
