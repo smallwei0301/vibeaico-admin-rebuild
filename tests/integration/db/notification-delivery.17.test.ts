@@ -79,7 +79,7 @@ describe('notification delivery ledger (17 §7)', () => {
     expect(events.count).toBe(1);
     const delivery = await admin.from('notification_deliveries').insert({
       outbox_id: outboxId, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
-      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date(0).toISOString(),
+      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
     }).select('id').single();
     expect(delivery.error).toBeNull();
     const workerTwo = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -112,7 +112,7 @@ describe('notification delivery ledger (17 §7)', () => {
         expect(Date.parse(delivery.data!.next_attempt_at as string)).toBeGreaterThan(Date.now() - 1_000);
         // Advance only the due time; the dispatcher itself computes attempt,
         // retry state, and the terminal fifth failure.
-        expect((await admin.from('notification_deliveries').update({ next_attempt_at: new Date().toISOString() })
+        expect((await admin.from('notification_deliveries').update({ next_attempt_at: new Date(0).toISOString() })
           .eq('id', inserted.data!.id)).error).toBeNull();
       } else {
         expect(delivery.data).toEqual({ status: 'DEAD', attempt_count: 5, next_attempt_at: null });
