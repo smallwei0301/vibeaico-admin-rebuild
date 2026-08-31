@@ -25,8 +25,10 @@ function escapeRegExp(value) {
 }
 
 export function readField(body = "", field) {
+  // Spaces and tabs are allowed around one metadata line. Do not use \s here because it also
+  // consumes newlines and can accidentally treat the next metadata row as the current value.
   const pattern = new RegExp(
-    `^\\s*[-*]?\\s*${escapeRegExp(field)}\\s*:\\s*(.*?)\\s*$`,
+    `^[ \\t]*[-*]?[ \\t]*${escapeRegExp(field)}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`,
     "mi",
   );
   return (String(body).match(pattern)?.[1] ?? "").trim();
