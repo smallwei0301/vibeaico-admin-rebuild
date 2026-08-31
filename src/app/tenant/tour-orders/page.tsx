@@ -13,10 +13,13 @@ import {
 } from '@/components/ui/DataTable';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ConfirmModal, Modal } from '@/components/ui/Modal';
+import { Modal } from '@/components/ui/Modal';
 import { FormGroup, FormText, Input, Label, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listTourOrders } from '@/services/tours';
+import {
+  cancelTourOrder, completeTourOrder, confirmTourOrderPayment, listTourOrders,
+} from '@/services/tours';
+import { USE_MOCK } from '@/config/env';
 import { MOCK_TRIPS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS } from '@/mock/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -79,6 +82,10 @@ export default function TourOrdersPage() {
   const [action, setAction] = React.useState<
     { kind: 'confirmPayment' | 'complete' | 'cancel'; order: TourOrder } | null
   >(null);
+  const [paymentAmount, setPaymentAmount] = React.useState('');
+  const [receiptReference, setReceiptReference] = React.useState('');
+  const [cancelReason, setCancelReason] = React.useState('');
+  const [actionLoading, setActionLoading] = React.useState(false);
 
   const [draft, setDraft] = React.useState({
     tripId: '', planId: '', departureId: '', customerName: '',
@@ -122,21 +129,54 @@ export default function TourOrdersPage() {
   }, [rows]);
 
   /* ----------------------------------------------------------- 狀態動作 */
-  const runAction = () => {
+  const openAction = (kind: 'confirmPayment' | 'complete' | 'cancel', order: TourOrder) => {
+    setAction({ kind, order });
+    setPaymentAmount(String(order.balanceDue ?? Math.max(order.totalAmount - (order.paidAmount ?? 0), 0)));
+    setReceiptReference('');
+    setCancelReason('');
+  };
+
+  const runAction = async () => {
     if (!action) return;
     const { kind, order } = action;
-    setRows((prev) => prev.map((o) => {
-      if (o.id !== order.id) return o;
-      if (kind === 'confirmPayment') return { ...o, paymentStatus: 'PAID', status: 'CONFIRMED', holdExpiresAt: null };
-      if (kind === 'complete') return { ...o, status: 'COMPLETED' };
-      return { ...o, status: 'CANCELLED' };
-    }));
-    toast.show(
-      kind === 'confirmPayment' ? t.messages.paymentConfirmed
-        : kind === 'complete' ? t.messages.completed
-          : t.messages.cancelled,
-    );
-    setAction(null);
+    const amount = Number(paymentAmount);
+    if (kind === 'confirmPayment' && (!Number.isFinite(amount) || amount <= 0 || !receiptReference.trim())) {
+      toast.show(t.messages.paymentReceiptRequired, 'danger');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      if (USE_MOCK) {
+        // Mock mode stays explicitly local so it never pretends to call the
+        // receipt/cancellation RPCs that only exist in real mode.
+        setRows((prev) => prev.map((o) => {
+          if (o.id !== order.id) return o;
+          if (kind === 'confirmPayment') return { ...o, paymentStatus: 'PAID', status: 'CONFIRMED', holdExpiresAt: null };
+          if (kind === 'complete') return { ...o, status: 'COMPLETED' };
+          return { ...o, status: 'CANCELLED' };
+        }));
+      } else if (kind === 'confirmPayment') {
+        await confirmTourOrderPayment(order.id, { amount, receiptReference: receiptReference.trim() });
+      } else if (kind === 'complete') {
+        await completeTourOrder(order.id);
+      } else {
+        await cancelTourOrder(order.id, cancelReason.trim() || undefined);
+      }
+
+      if (!USE_MOCK) await load();
+      toast.show(
+        kind === 'confirmPayment' ? t.messages.paymentConfirmed
+          : kind === 'complete' ? t.messages.completed
+            : t.messages.cancelled,
+      );
+      setDetail(null);
+      setAction(null);
+    } catch (error) {
+      toast.show(error instanceof Error ? error.message : t.messages.actionFailed, 'danger');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   /* ------------------------------------------------------- 手動建立訂單 */
@@ -270,7 +310,7 @@ export default function TourOrdersPage() {
             <Button
               variant="outline" size="sm"
               title={t.actions.confirmPayment} aria-label={t.actions.confirmPayment}
-              onClick={() => setAction({ kind: 'confirmPayment', order: o })}
+              onClick={() => openAction('confirmPayment', o)}
             >
               <CheckCircle2 size={13} className="text-success" />
             </Button>
@@ -279,7 +319,7 @@ export default function TourOrdersPage() {
             <Button
               variant="outline" size="sm"
               title={t.actions.complete} aria-label={t.actions.complete}
-              onClick={() => setAction({ kind: 'complete', order: o })}
+              onClick={() => openAction('complete', o)}
             >
               <BadgeDollarSign size={13} />
             </Button>
@@ -288,7 +328,7 @@ export default function TourOrdersPage() {
             <Button
               variant="outlineDanger" size="sm"
               title={t.actions.cancel} aria-label={t.actions.cancel}
-              onClick={() => setAction({ kind: 'cancel', order: o })}
+              onClick={() => openAction('cancel', o)}
             >
               <XCircle size={13} />
             </Button>
@@ -562,29 +602,57 @@ export default function TourOrdersPage() {
         </div>
       </Modal>
 
-      <ConfirmModal
+      <Modal
         open={!!action}
-        onClose={() => setAction(null)}
-        onConfirm={runAction}
+        onClose={() => !actionLoading && setAction(null)}
         title={
           action?.kind === 'confirmPayment' ? t.confirm.confirmPaymentTitle
             : action?.kind === 'complete' ? t.confirm.completeTitle
               : t.confirm.cancelTitle
         }
-        message={
-          action
-            ? action.kind === 'confirmPayment' ? t.confirm.confirmPayment(action.order.orderNo)
-              : action.kind === 'complete' ? t.confirm.complete(action.order.orderNo)
-                : t.confirm.cancel(action.order.orderNo)
-            : ''
+        footer={
+          <>
+            <Button variant="secondary" disabled={actionLoading} onClick={() => setAction(null)}>{common.cancel}</Button>
+            <Button
+              variant={action?.kind === 'cancel' ? 'danger' : 'primary'}
+              loading={actionLoading}
+              onClick={() => { void runAction(); }}
+            >
+              {action?.kind === 'confirmPayment' ? t.actions.confirmPayment
+                : action?.kind === 'complete' ? t.actions.complete : t.actions.cancel}
+            </Button>
+          </>
         }
-        confirmText={
-          action?.kind === 'confirmPayment' ? t.actions.confirmPayment
-            : action?.kind === 'complete' ? t.actions.complete
-              : t.actions.cancel
-        }
-        danger={action?.kind === 'cancel'}
-      />
+      >
+        {action ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-base">
+              {action.kind === 'confirmPayment' ? t.confirm.confirmPayment(action.order.orderNo)
+                : action.kind === 'complete' ? t.confirm.complete(action.order.orderNo)
+                  : t.confirm.cancel(action.order.orderNo)}
+            </p>
+            {action.kind === 'confirmPayment' ? (
+              <>
+                <FormGroup>
+                  <Label required>{t.confirm.paymentAmount}</Label>
+                  <Input type="number" min="0.01" step="0.01" value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)} />
+                </FormGroup>
+                <FormGroup>
+                  <Label required>{t.confirm.receiptReference}</Label>
+                  <Input value={receiptReference} onChange={(e) => setReceiptReference(e.target.value)} />
+                </FormGroup>
+              </>
+            ) : null}
+            {action.kind === 'cancel' ? (
+              <FormGroup>
+                <Label>{t.confirm.cancelReason}</Label>
+                <Textarea rows={2} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} />
+              </FormGroup>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 }

@@ -269,6 +269,10 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
 - 完成出團需要 #37 的人員／業績凍結同一交易。其 contract 尚不存在時
   `POST /api/tour-orders/:id/complete` 回
   `TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37`，不得改寫單張訂單為 `COMPLETED`。
+- 單張訂單取消使用 `cancel_tour_order_41`，同一 transaction 依
+  `Departure → Plan → TourOrder` 鎖定、取消訂單並釋出名額。已收而未退的金額只會
+  標記 `REFUND_PENDING`；退款比例、沒收、實際匯回都仍受 cancellation-policy／
+  #9 的明確契約限制。
 
 ---
 

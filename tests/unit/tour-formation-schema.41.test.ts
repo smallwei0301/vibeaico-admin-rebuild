@@ -10,6 +10,7 @@ const departureOrderFoundationMigration = '0026_tour_departures_addons_orders.sq
 const notificationOutboxMigration = '0038_notification_outbox_delivery.sql';
 const issue41BalancePolicyMigration = '0047_issue_41_balance_policy_snapshots.sql';
 const issue41RuntimeContractMigration = '0048_issue_41_atomic_runtime_contracts.sql';
+const issue41CancellationMigration = '0049_issue_41_atomic_order_cancellation.sql';
 const migration = readFileSync(`${migrationDirectory}/${issue41Migration}`, 'utf8');
 const normalizedMigration = migration.replace(/\s+/g, ' ');
 const hardeningMigration = readFileSync(`${migrationDirectory}/${issue41HardeningMigration}`, 'utf8');
@@ -42,6 +43,7 @@ describe('#41 schema migration ordering', () => {
     expect(migrationFiles).toContain(notificationOutboxMigration);
     expect(migrationFiles).toContain(issue41BalancePolicyMigration);
     expect(migrationFiles).toContain(issue41RuntimeContractMigration);
+    expect(migrationFiles).toContain(issue41CancellationMigration);
     expect(migrationFiles.indexOf(tripPlanFoundationMigration)).toBeLessThan(migrationFiles.indexOf(departureOrderFoundationMigration));
     expect(migrationFiles.indexOf(departureOrderFoundationMigration)).toBeLessThan(migrationFiles.indexOf(notificationOutboxMigration));
     expect(migrationFiles.indexOf(notificationOutboxMigration)).toBeLessThan(migrationFiles.indexOf(issue41Migration));
@@ -176,7 +178,10 @@ describe('#41 schema migration ordering', () => {
   it('keeps bank payment atomic, idempotent, and makes unavailable runtime dependencies fail closed', () => {
     const runtime = readFileSync(`${migrationDirectory}/${issue41RuntimeContractMigration}`, 'utf8')
       .replace(/\s+/g, ' ');
+    const cancellation = readFileSync(`${migrationDirectory}/${issue41CancellationMigration}`, 'utf8')
+      .replace(/\s+/g, ' ');
     const bankRoute = readFileSync('src/app/api/tour-orders/[id]/confirm-payment/route.ts', 'utf8');
+    const cancelRoute = readFileSync('src/app/api/tour-orders/[id]/cancel/route.ts', 'utf8');
     const providerRoute = readFileSync('src/app/api/tour-orders/[id]/provider-success/route.ts', 'utf8');
     const completionRoute = readFileSync('src/app/api/tour-orders/[id]/complete/route.ts', 'utf8');
     const decisionRoute = readFileSync('src/app/api/trip-departures/[id]/formation-decision/route.ts', 'utf8');
@@ -185,16 +190,36 @@ describe('#41 schema migration ordering', () => {
     expect(runtime).toMatch(/unique \(tenant_id, channel, receipt_reference\)/);
     expect(runtime).toMatch(/for update;.*for key share;.*for update;/);
     expect(runtime).toContain('TOUR_ORDER_LINEAGE_INVALID');
+    expect(runtime).toContain('where id = p_order and tenant_id = p_tenant');
+    expect(runtime).toContain('hold_expires_at = case when v_order.deposit_mode_snapshot = \'NONE\'');
     expect(runtime).toContain('PAYMENT_AMOUNT_EXCEEDS_TOTAL');
     expect(runtime).toContain('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37');
     expect(runtime).toMatch(/grant execute on function public\.record_tour_order_payment_41\([\s\S]*?\) to service_role/);
     expect(bankRoute).toContain("p_channel: 'BANK_MANUAL'");
     expect(bankRoute).toContain('receiptReference');
+    expect(cancellation).toMatch(/for update;.*for key share;.*for update;/);
+    expect(cancellation).toContain("when paid_amount > refunded_amount then 'REFUND_PENDING'");
+    expect(cancellation).toContain('TOUR_ORDER_COMPLETED_NOT_CANCELLABLE');
+    expect(cancellation).toContain('TOUR_ORDER_ALREADY_CANCELLED');
+    expect(cancellation).not.toMatch(/refund_percent|refundPercentage/i);
+    expect(cancelRoute).toContain("rpc('cancel_tour_order_41'");
     expect(providerRoute).toContain('PAYMENT_PROVIDER_BLOCKED_BY_DEPENDENCY_9');
     expect(completionRoute).toContain('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37');
     expect(decisionRoute).toContain("rpc('decide_tour_formation'");
     expect(decisionRoute).toContain("requireTenant('MANAGER')");
     expect(reviewCron).toContain("rpc('review_expired_tour_formations'");
     expect(reviewCron).toContain('CRON_SECRET');
+  });
+
+  it('wires real-mode order actions to services while keeping mock mutations explicit', () => {
+    const page = readFileSync('src/app/tenant/tour-orders/page.tsx', 'utf8');
+
+    expect(page).toContain("import { USE_MOCK } from '@/config/env'");
+    expect(page).toContain('if (USE_MOCK)');
+    expect(page).toContain('await confirmTourOrderPayment(order.id, { amount, receiptReference: receiptReference.trim() })');
+    expect(page).toContain('await completeTourOrder(order.id)');
+    expect(page).toContain('await cancelTourOrder(order.id, cancelReason.trim() || undefined)');
+    expect(page).toContain('if (!USE_MOCK) await load()');
+    expect(page).toContain('paymentReceiptRequired');
   });
 });
