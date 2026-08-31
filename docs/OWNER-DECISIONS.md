@@ -8,8 +8,9 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
-| repo governance | Owner 控制訊號與 Issue 來源 | **Owner 為切換模型速度／等級／角色而重送 `/goal`、`/steer` 或「繼續」，不等於 Agent 自行停工；沒有 `AGENT_DISCOVERED` 來源標記的歷史 Issue 一律是 owner-or-unknown** | 只有找到 assistant 終止性回覆且當時仍有自主工作，才能記 `AGENT_PREMATURE_STOP`。Agent 新建 Issue 必須使用來源表單／等價欄位；詳見 `docs/decisions/2026-08-31-agent-control-signals-and-issue-provenance.md`。 |
-| repo governance | Close-first TRIAGE 與全域 WIP lanes | **整個 repo 同時最多一條 Terra 中大型 BUILD、一條 Luna Closure Sweep、一條共用 TEST 驗證；active candidate PR 上限為 2** | Sol 依 READY → NEAR → UNBLOCKER → BUILDABLE → BLOCKED 排序。只要有可在一輪完成的既有候選，不得先啟動明知依賴 Owner／外部人類／另一張大型 Issue 的新 BUILD。使用 PR metadata、`lane:*`／`candidate:*` labels 與 `agent-wip-lanes.yml` 防撞；詳見 `docs/decisions/2026-08-31-close-first-wip-lanes.md`。 |
+| #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
+| #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |
+| #41 / #12 | 尾款逾期 | **到期未付不自動取消、不自動釋放名額、不自動沒收訂金；先通知導遊與旅客，由導遊決定延長或取消** | 預設快速選項為「到期未付 → 通知我處理」；現場收尾款／全額的方案在出發前不走一般尾款逾期。canonical decision：`docs/decisions/2026-08-31-guide-balance-payment-deadline.md`。 |
 
 ## 2026-08-28 已裁示
 
