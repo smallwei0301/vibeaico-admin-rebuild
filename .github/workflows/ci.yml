@@ -27,6 +27,9 @@ jobs:
           TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
           SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
           AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
+          # issue #27 product-order email branch uses the in-process Resend mock (port 4124).
+          RESEND_BASE_URL: http://localhost:4124
+          RESEND_API_KEY: ci-test-resend-key
           # cron Bearer 驗證（07 分冊）：測試環境的固定值即可，非機密——它只
           # 保護 CI 內自起的 next dev，不觸及正式部署的 CRON_SECRET。
           TEST_CRON_SECRET: ci-cron-secret-0711

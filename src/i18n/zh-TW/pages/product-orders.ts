@@ -191,6 +191,30 @@ export const productOrdersPage = {
     loadFailed: '載入失敗',
     connectionError: '連線錯誤，請稍後再試',
     unknownError: '未知錯誤',
+
+    /**
+     * 手動建單勾選「LINE 通知顧客消費明細」後的結果訊息（issue #27 ③）。
+     *
+     * 以前這裡沒有東西 —— 頁面直接把勾選框的標籤原句再 toast 一次，讀起來像
+     * 「已通知」，但後端根本沒有通知任何人。現在每一句都對應
+     * `ProductOrderNotifyOutcome` 的一個值，只描述**真的發生過的事**（鐵則 12）。
+     */
+    notifyResult: {
+      /**
+       * 'LINE'：顧客已綁 LINE，明細已推播、扣 1 推播額度。
+       * ⚠️ 只說「已送出」不說「已通知」（14 分冊 §8.10）——LINE 推播 API 回 200
+       * 只代表 LINE 收下了，不代表顧客手機上顯示出來了。
+       */
+      line: '消費明細已用 LINE 送出給顧客（扣 1 則推播額度）',
+      /** 'EMAIL'：顧客未綁 LINE，改用 Email 送出（不扣推播額度） */
+      email: '顧客未綁定 LINE，消費明細已改用 Email 送出（不扣推播額度）',
+      /** 'NO_CONTACT'：既沒綁 LINE 也沒留 Email，沒有管道可送 */
+      noContact: '顧客未綁定 LINE 也沒有 Email，消費明細未送出',
+      /** 'QUOTA_EXCEEDED'：本月推播額度用完 */
+      quotaExceeded: '本月推播額度已用完，消費明細未送出',
+      /** 'FAILED'：送了但沒送成（LINE 平台回錯、未設定 LINE 憑證、寄信失敗…） */
+      failed: '消費明細發送失敗，訂單已建立，請改用其他方式通知顧客',
+    },
   },
 
   empty: {
