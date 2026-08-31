@@ -1,5 +1,11 @@
 import { createAdminSupabase } from '@/server/supabase';
-import { buildHealthDigest, immediateAlertCodes, type HealthDelivery, type HealthDigest } from './health';
+import {
+  buildHealthDigest,
+  immediateAlertCodes,
+  syntheticTransportProbeFromLedger,
+  type HealthDelivery,
+  type HealthDigest,
+} from './health';
 
 type Admin = ReturnType<typeof createAdminSupabase>;
 
@@ -7,6 +13,8 @@ type DbDelivery = {
   tenant_id: string | null; channel: 'EMAIL' | 'TELEGRAM' | 'LINE'; status: HealthDelivery['status'];
   created_at: string; last_error_code: string | null;
 };
+
+type DbProbeDelivery = Pick<DbDelivery, 'channel' | 'status' | 'last_error_code'>;
 
 /**
  * Persist the daily health report and its two platform-owner ledger rows.
@@ -20,7 +28,7 @@ export async function createDailyHealthReport(
 ): Promise<HealthDigest> {
   const periodEnd = end.toISOString();
   const periodStart = new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  const [{ data: deliveries, error: deliveryError }, { data: pending, error: pendingError }, { count: logicalEvents, error: eventsError }] = await Promise.all([
+  const [{ data: deliveries, error: deliveryError }, { data: pending, error: pendingError }, { count: logicalEvents, error: eventsError }, { data: probeRows, error: probeError }] = await Promise.all([
     admin.from('notification_deliveries')
       .select('tenant_id, channel, status, created_at, last_error_code')
       .gte('created_at', periodStart).lt('created_at', periodEnd),
@@ -30,10 +38,16 @@ export async function createDailyHealthReport(
     admin.from('notification_outbox')
       .select('*', { count: 'exact', head: true })
       .gte('created_at', periodStart).lt('created_at', periodEnd),
+    admin.from('notification_deliveries')
+      .select('channel, status, last_error_code, notification_outbox!inner(event_name)')
+      .eq('notification_outbox.event_name', 'PLATFORM_NOTIFICATION_HEALTH')
+      .in('channel', ['EMAIL', 'TELEGRAM'])
+      .gte('created_at', periodStart).lt('created_at', periodEnd),
   ]);
   if (deliveryError) throw deliveryError;
   if (pendingError) throw pendingError;
   if (eventsError) throw eventsError;
+  if (probeError) throw probeError;
   const mapDelivery = (row: DbDelivery): HealthDelivery => ({
     tenantId: row.tenant_id,
     channel: row.channel,
@@ -41,8 +55,15 @@ export async function createDailyHealthReport(
     createdAt: row.created_at,
     lastErrorCode: row.last_error_code,
   });
+  const mapProbeDelivery = (row: DbProbeDelivery) => ({
+    channel: row.channel,
+    status: row.status,
+    lastErrorCode: row.last_error_code,
+  });
   const digest = buildHealthDigest(((deliveries ?? []) as DbDelivery[]).map(mapDelivery), end, logicalEvents ?? 0,
-    ((pending ?? []) as DbDelivery[]).map(mapDelivery));
+    ((pending ?? []) as DbDelivery[]).map(mapDelivery), syntheticTransportProbeFromLedger(
+      ((probeRows ?? []) as unknown as DbProbeDelivery[]).map(mapProbeDelivery),
+    ));
 
   const { data: report, error: reportError } = await admin.from('notification_health_reports')
     .upsert({ period_start: periodStart, period_end: periodEnd, summary: digest }, { onConflict: 'period_start,period_end' })

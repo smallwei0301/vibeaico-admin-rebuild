@@ -29,6 +29,36 @@ export interface SyntheticTransportProbe {
   line: SyntheticProbeOutcome;
 }
 
+export interface SyntheticProbeDelivery {
+  channel: NotificationChannel;
+  status: DeliveryStatus;
+  lastErrorCode?: string | null;
+}
+
+/**
+ * The preceding platform-health delivery is the synthetic probe: it reaches
+ * the same platform Email/Telegram transports without sending a second probe
+ * message. Provider evidence remains truthful—only ACCEPTED/DELIVERED is OK.
+ */
+export function syntheticTransportProbeFromLedger(rows: SyntheticProbeDelivery[]): SyntheticTransportProbe {
+  const probe = defaultSyntheticTransportProbe();
+  const set = (channel: 'EMAIL' | 'TELEGRAM', outcome: SyntheticProbeOutcome) => {
+    const current = channel === 'EMAIL' ? probe.email : probe.telegram;
+    // A later positive callback must not hide a retry/dead configuration or
+    // transport failure recorded for the same probe window.
+    if (current === 'FAILED' || (current === 'OK' && outcome === 'NOT_RUN')) return;
+    if (channel === 'EMAIL') probe.email = outcome;
+    else probe.telegram = outcome;
+  };
+  for (const row of rows) {
+    if (row.channel !== 'EMAIL' && row.channel !== 'TELEGRAM') continue;
+    if (row.status === 'ACCEPTED' || row.status === 'DELIVERED') set(row.channel, 'OK');
+    if (row.status === 'RETRY' || row.status === 'DEAD'
+      || (row.status === 'SKIPPED' && row.lastErrorCode === 'NOT_CONFIGURED')) set(row.channel, 'FAILED');
+  }
+  return probe;
+}
+
 export interface HealthDigest {
   periodStart: string;
   periodEnd: string;
@@ -136,11 +166,13 @@ export function immediateAlertCodes(digest: HealthDigest): string[] {
   const authFailures = [...errors.entries()].some(([code, count]) => (code === 'HTTP_401' || code === 'HTTP_403') && count >= AUTH_FAILURE_THRESHOLD);
   const rateLimitBurst = (errors.get('HTTP_429') ?? 0) >= PROVIDER_BURST_THRESHOLD;
   const serverFailureBurst = [...errors.entries()].some(([code, count]) => /^HTTP_5\d\d$/.test(code) && count >= PROVIDER_BURST_THRESHOLD);
+  const syntheticTransportFailure = Object.values(digest.syntheticTransportProbe).includes('FAILED');
   return [
     ...(dead ? ['CRITICAL_DELIVERY_DEAD'] : []),
     ...(authFailures ? ['PROVIDER_AUTH_FAILURE'] : []),
     ...(digest.oldestPendingAgeSeconds !== null && digest.oldestPendingAgeSeconds >= PENDING_AGE_THRESHOLD_SECONDS ? ['PENDING_TOO_OLD'] : []),
     ...(rateLimitBurst ? ['PROVIDER_RATE_LIMIT_BURST'] : []),
     ...(serverFailureBurst ? ['PROVIDER_5XX_BURST'] : []),
+    ...(syntheticTransportFailure ? ['SYNTHETIC_TRANSPORT_FAILURE'] : []),
   ];
 }

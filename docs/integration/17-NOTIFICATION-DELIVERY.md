@@ -178,6 +178,7 @@ DEAD rows 數與 top error codes
 - 同時送 platform owner Telegram chat / ops group。
 - digest 本身也寫 `notification_health_reports`（或等價 audit table），保留查詢紀錄。
 - 若 digest 的 Email / Telegram 自己失敗，該失敗必須落 delivery ledger；不能因「報警通道壞了」就完全無紀錄。
+- 前一個 24h 內的 `PLATFORM_NOTIFICATION_HEALTH` Email／Telegram delivery ledger 就是 synthetic transport probe：只有 `ACCEPTED`／`DELIVERED` 是 `OK`；`RETRY`／`DEAD` 或 `NOT_CONFIGURED` 是 `FAILED`。這不額外呼叫 provider 或多送一封 probe；沒有先前證據則如實記 `NOT_RUN`。
 - Vercel Hobby 的 daily cron 可能有 ±59 分鐘 jitter；digest 的前 24 小時窗口以 route 實際執行的時間為 cutoff，不假裝固定在精確 01:00 UTC。詳見 07 分冊。
 
 ### 即時告警
