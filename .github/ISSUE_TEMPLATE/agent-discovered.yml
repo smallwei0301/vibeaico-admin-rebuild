@@ -1,0 +1,96 @@
+name: Agent-discovered issue
+description: Required when an agent decides a newly discovered gap must become a separate Issue.
+title: "[Agent-discovered] "
+body:
+  - type: input
+    id: origin
+    attributes:
+      label: Issue origin
+      description: Keep this fixed marker so the provenance hook can classify the Issue.
+      value: AGENT_DISCOVERED
+    validations:
+      required: true
+
+  - type: input
+    id: parent
+    attributes:
+      label: Parent Issue / PR
+      description: Link the Issue or PR where this gap was discovered.
+      placeholder: "#123 / PR #456"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Discovered stage
+      options:
+        - SCOUT
+        - TRIAGE
+        - BUILD
+        - DIAGNOSE
+        - AUDIT
+        - CLOSEOUT
+    validations:
+      required: true
+
+  - type: dropdown
+    id: firewall
+    attributes:
+      label: Scope Firewall reason
+      description: Only these three reasons may create a blocking Issue.
+      options:
+        - Claimed feature has no real side effect or persistence
+        - Security, cross-tenant, data-loss, payment, refund, permission or real-notification risk
+        - Acceptance item already required by the parent Issue or canonical spec
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-separate
+    attributes:
+      label: Why this cannot remain in the parent Issue
+      description: Explain why a separate Issue is necessary instead of finishing it in the parent scope.
+      placeholder: "State the ownership, dependency or acceptance boundary."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: blocks-goal
+    attributes:
+      label: Blocks current goal
+      options:
+        - "Yes"
+        - "No, backlog only"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include exact files, tests, logs, screenshots or API behavior. Do not paste secrets.
+      placeholder: "File:line, failing case, response code, or reproducible behavior."
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Requested model / actual model
+      description: Use actual=unknown when the platform cannot verify the delegated model.
+      placeholder: "requested=Terra, actual=unknown"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Agent confirmation
+      options:
+        - label: I checked that this is not cosmetic work, a future idea, an optional refactor or a non-blocking performance improvement.
+          required: true
+        - label: I searched existing open Issues and PRs and did not find an existing owner for this gap.
+          required: true
+        - label: I will continue the parent goal after opening this Issue; creating it is not a stopping condition.
+          required: true
