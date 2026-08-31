@@ -135,6 +135,14 @@ export const tripsPage = {
     create: '新增方案',
     editTitle: (name: string) => `編輯方案「${name}」`,
     createTitle: '新增方案',
+    editor: {
+      quick: '快速編輯',
+      advanced: '進階設定',
+      quickHint: '先處理最常調整的名稱、內容與價格；其他規則會保留不變。',
+      advancedHint: '這些規則會套用到之後的新團次；既有團次維持原本快照。',
+      preview: '查看公開頁預覽',
+      pendingFields: '成團門檻與截止日將在成團模型完成後提供。',
+    },
     empty: {
       title: '還沒有方案',
       description: '至少要有一個方案，旅客才能下單。',
