@@ -2,9 +2,18 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-08-28。
+> 最後更新：2026-08-31。
 
-## 2026-08-28 已裁示
+## 2026-08-31 已裁示
+
+| Issue | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
+| #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |
+| #41 / #12 | 尾款逾期 | **到期未付不自動取消、不自動釋放名額、不自動沒收訂金；先通知導遊與旅客，由導遊決定延長或取消** | 預設快速選項為「到期未付 → 通知我處理」；現場收尾款／全額的方案在出發前不走一般尾款逾期。canonical decision：`docs/decisions/2026-08-31-guide-balance-payment-deadline.md`。 |
+| #41 / #12 / #42 / #46 | 旅客取消／退款規則 | **每個導遊、每個 Trip Plan 可自行設定取消／退款規則；Midao 提供預設範本，不全平台硬綁同一套，也不要求每次人工臨時決定** | Plan 進階設定提供「使用 Midao 建議規則／自行設定」；成交時 snapshot，之後改 Plan 不影響舊訂單；旅客下單前與訂單頁需看到白話政策。預設範本的實際天數／退款比例另逐題裁示。canonical decision：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
+
+| repo governance | PR lifecycle Janitor | **不同 Issue 可平行 BUILD；同一 Issue 僅一個 ACTIVE candidate 與最多一個短命 VALIDATION；共享 TEST 仍單一 holder** | 以 `docs/PR-LIFECYCLE.md` 為機械規則；Janitor 只能在明確 metadata、同 Issue、同 repo、祖先關係及 target 未變時關閉 superseded PR，否則 `JANITOR_REVIEW`。 |\n\n## 2026-08-28 已裁示
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
