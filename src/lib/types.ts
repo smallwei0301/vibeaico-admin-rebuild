@@ -387,6 +387,61 @@ export type TourOrder = {
   createdAt: string;
 };
 
+/**
+ * GUIDE 首頁的推導行動。真實狀態仍只存在訂單、團次與指派資料；此契約不代表
+ * 另一張可手動編輯的待辦表。
+ */
+export type GuideActionReason =
+  | 'REQUEST_PENDING'
+  | 'PAYMENT_DUE'
+  | 'BALANCE_DUE'
+  | 'FORMATION_REVIEW_REQUIRED'
+  | 'FORMATION_AT_RISK'
+  | 'REFUND_PENDING'
+  | 'DEPARTURE_UPCOMING'
+  | 'GUIDE_UNASSIGNED'
+  | 'DEPARTURE_CONFLICT'
+  | 'NOTIFICATION_DELIVERY_FAILED';
+
+export type GuideActionUrgency = 'IMMEDIATE' | 'TODAY' | 'UPCOMING';
+export type GuideActionPrimaryAction =
+  | 'REVIEW_REQUEST'
+  | 'REVIEW_PAYMENT'
+  | 'REVIEW_FORMATION'
+  | 'REVIEW_REFUND'
+  | 'VIEW_DEPARTURE'
+  | 'ASSIGN_GUIDE'
+  | 'RESOLVE_CONFLICT'
+  | 'RETRY_NOTIFICATION';
+
+export type GuideActionSource = {
+  /** Stable derived identifier: `<reason>:<real state row id>`. */
+  id: string;
+  reason: GuideActionReason;
+  /** One truthful primary action; execution remains on the deep-linked real-state page. */
+  primaryAction: GuideActionPrimaryAction;
+  subject: string;
+  detail: string;
+  /** ISO timestamp supplied by the source state; null means no deadline is known. */
+  dueAt: string | null;
+  /** A known date without a deadline time, e.g. an all-day departure. */
+  actionDate: string | null;
+  createdAt: string | null;
+  /** Internal deep link to the real order or departure, never a synthetic task page. */
+  href: string;
+};
+
+export type GuideActionItem = GuideActionSource & {
+  urgency: GuideActionUrgency;
+  overdue: boolean;
+};
+
+export type GuideActionInbox = {
+  immediate: GuideActionItem[];
+  today: GuideActionItem[];
+  upcoming: GuideActionItem[];
+};
+
 /* -------------------------------------------------------------- 行事曆 */
 /**
  * GET /api/calendar 的統一事件（04 分冊 §B-1）：行事曆頁唯一資料源，
