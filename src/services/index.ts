@@ -16,3 +16,4 @@ export * from './reports';
 export * from './settings';
 export * from './shell';
 export * from './tours';
+export * from './payment-methods';

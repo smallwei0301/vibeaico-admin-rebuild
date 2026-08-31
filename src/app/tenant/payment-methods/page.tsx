@@ -19,6 +19,11 @@ import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { paymentMethodsPage as t } from '@/i18n/zh-TW/pages/payment-methods';
 import { formatNumber } from '@/lib/utils';
+import { USE_MOCK } from '@/config/env';
+import {
+  createPaymentMethod, deletePaymentMethod, listPaymentMethods, testPaymentCharge,
+  testPaymentConnection, togglePaymentMethodActive, updatePaymentMethod,
+} from '@/services/payment-methods';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -45,8 +50,13 @@ type PaymentMethod = {
   gatewayHashKeySet: boolean;
   gatewayHashIvSet: boolean;
   gatewaySandbox: boolean;
-  /** 實刷小額測試通過才算開通 */
+  /** 實刷小額測試完成才算完整收款流程驗證 */
   gatewayVerified: boolean;
+  connectionVerified?: boolean;
+  e2eVerified?: boolean;
+  verificationError?: string | null;
+  gatewayHashKey?: string;
+  gatewayHashIv?: string;
   sortOrder: number;
   active: boolean;
   instructions: string;
@@ -119,14 +129,19 @@ export default function PaymentMethodsPage() {
   const [deleteTarget, setDeleteTarget] = React.useState<PaymentMethod | null>(null);
   const [testTarget, setTestTarget] = React.useState<PaymentMethod | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
 
   const nextId = React.useRef(1);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      /* 後端尚未建置：沒有 /api/payment-methods，只讀本檔的示範資料 */
-      setRows([...MOCK_METHODS].sort((a, b) => a.sortOrder - b.sortOrder));
+      if (USE_MOCK) {
+        setRows([...MOCK_METHODS].sort((a, b) => a.sortOrder - b.sortOrder));
+      } else {
+        const data = await listPaymentMethods();
+        setRows((data ?? []) as PaymentMethod[]);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -140,9 +155,41 @@ export default function PaymentMethodsPage() {
 
   React.useEffect(() => { void load(); }, [load]);
 
-  const toggleActive = (m: PaymentMethod) => {
-    setRows((list) => list.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)));
-    toast.show(t.notBuilt.toggleNotEffective, 'warning');
+  const toggleActive = async (m: PaymentMethod) => {
+    try {
+      if (USE_MOCK) {
+        setRows((list) => list.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)));
+      } else {
+        const saved = await togglePaymentMethodActive(m.id, !m.active);
+        if (saved) upsert(saved as PaymentMethod);
+      }
+      toast.show(t.messages.statusUpdated, 'success');
+    } catch (e) {
+      toast.show(
+        `${t.messages.toggleFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    }
+  };
+
+  const checkConnection = async (m: PaymentMethod) => {
+    try {
+      if (USE_MOCK) {
+        toast.show(t.testCharge.checkIncomplete, 'warning');
+        return;
+      }
+      const result = await testPaymentConnection(m.id);
+      if (result?.method) upsert(result.method as PaymentMethod);
+      toast.show(
+        result?.message ?? t.testCharge.checkIncomplete,
+        result?.ok ? 'success' : 'warning',
+      );
+    } catch (e) {
+      toast.show(
+        `${t.messages.connectionError}${e instanceof Error ? ` ${e.message}` : ''}`,
+        'danger',
+      );
+    }
   };
 
   const upsert = (draft: PaymentMethod) => {
@@ -163,9 +210,9 @@ export default function PaymentMethodsPage() {
         }
       />
 
-      <Alert tone="warning" title={t.notBuilt.title} className="mb-4">
-        <div>{t.notBuilt.body}</div>
-        <div className="mt-1">{t.notBuilt.verifyBody}</div>
+      <Alert tone="info" title={t.status.title} className="mb-4">
+        <div>{t.status.body}</div>
+        <div className="mt-1">{t.status.verificationBody}</div>
       </Alert>
 
       {loading ? (
@@ -223,11 +270,16 @@ export default function PaymentMethodsPage() {
                       <Badge tone="info">{t.badges.demo}</Badge>
                     ) : null}
                     {m.gatewaySandbox ? <Badge tone="warning">{t.badges.sandbox}</Badge> : null}
-                    {m.gatewayVerified ? (
-                      <Badge tone="success">{t.badges.verified}</Badge>
+                    {m.e2eVerified || m.gatewayVerified ? (
+                      <Badge tone="success">{t.badges.e2eVerified}</Badge>
+                    ) : m.connectionVerified ? (
+                      <Badge tone="info">{t.badges.connectionVerified}</Badge>
                     ) : (
                       <Badge tone="danger">{t.badges.notVerifiedLong}</Badge>
                     )}
+                    {m.verificationError ? (
+                      <span className="text-xs text-secondary">{m.verificationError}</span>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -245,17 +297,23 @@ export default function PaymentMethodsPage() {
                   <Button variant="outline" size="sm" onClick={() => setFormTarget(m)}>
                     <Pencil size={13} />{common.edit}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => toggleActive(m)}>
+                  <Button variant="outline" size="sm" onClick={() => void toggleActive(m)}>
                     {m.active ? t.actions.disable : t.actions.enable}
                   </Button>
                   {m.methodType === 'ONLINE_PAYMENT' ? (
-                    <Button
-                      variant="success" size="sm" disabled
-                      title={t.notBuilt.testChargeDisabledHint}
-                      onClick={() => setTestTarget(m)}
-                    >
-                      <ShieldCheck size={13} />{t.actions.testCharge}
-                    </Button>
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => void checkConnection(m)}>
+                        <ShieldCheck size={13} />{t.actions.testConnection}
+                      </Button>
+                      <Button
+                        variant="success" size="sm"
+                        disabled={!m.connectionVerified && !m.e2eVerified && !m.gatewayVerified}
+                        title={t.testCharge.pendingHint}
+                        onClick={() => setTestTarget(m)}
+                      >
+                        <ShieldCheck size={13} />{t.actions.testCharge}
+                      </Button>
+                    </>
                   ) : null}
                   <Button variant="outlineDanger" size="sm" onClick={() => setDeleteTarget(m)}>
                     <Trash2 size={13} />{t.actions.delete}
@@ -272,11 +330,20 @@ export default function PaymentMethodsPage() {
         open={formTarget !== undefined}
         method={formTarget ?? null}
         onClose={() => setFormTarget(undefined)}
-        onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `pm_new_${nextId.current++}`;
-          upsert({ ...draft, id });
+        onSaved={async (draft, isEdit) => {
+          if (USE_MOCK) {
+            const id = isEdit ? draft.id : `pm_new_${nextId.current++}`;
+            upsert({ ...draft, id });
+          } else {
+            const payload = { ...draft };
+            const saved = isEdit
+              ? await updatePaymentMethod(draft.id, payload)
+              : await createPaymentMethod(payload);
+            if (!saved) throw new Error(t.messages.saveFailedFull);
+            upsert(saved as PaymentMethod);
+          }
           setFormTarget(undefined);
-          toast.show(t.notBuilt.savedNotEffective, 'warning');
+          toast.show(t.messages.saved, 'success');
         }}
       />
 
@@ -293,9 +360,14 @@ export default function PaymentMethodsPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            setRows((list) => list.filter((m) => m.id !== deleteTarget.id));
+            if (USE_MOCK) {
+              setRows((list) => list.filter((m) => m.id !== deleteTarget.id));
+            } else {
+              await deletePaymentMethod(deleteTarget.id);
+              setRows((list) => list.filter((m) => m.id !== deleteTarget.id));
+            }
             setDeleteTarget(null);
-            toast.show(t.notBuilt.deletedNotEffective, 'warning');
+            toast.show(t.messages.deleted, 'success');
           } catch (e) {
             toast.show(
               `${t.messages.deleteFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -307,26 +379,33 @@ export default function PaymentMethodsPage() {
         }}
       />
 
-      {/*
-        * modal 3：實刷測試。上面的按鈕已 disabled，正常情況打不開這個視窗；
-        * 這裡刻意保留為第二道防線 —— 就算有人把 disabled 拿掉，onConfirm 也
-        * 不會把任何收款方式設成已驗證。單元測試同時守住這兩層。
-        */}
+      {/* modal 3：完整收款流程測試；由 #12 checkout/callback 實作真正閉環。 */}
       <ConfirmModal
         open={!!testTarget}
+        loading={testing}
         title={t.actions.testCharge}
         confirmText={common.confirmText}
-        message={t.notBuilt.testChargeConfirm}
+        message={t.testCharge.pendingMessage}
         onClose={() => setTestTarget(null)}
-        onConfirm={() => {
-          /*
-           * ⚠️ 金流後端尚未建置：這裡絕對不可以動 gatewayVerified。
-           * 曾經的實作直接把 gatewayVerified 設為 true 並顯示「測試付款成功」，
-           * 店家會以為金流已開通而開始收單 —— 這是金流級的假成功，禁止復原。
-           * 驗證狀態只能由真正呼叫過金流商 API 的後端回傳。
-           */
-          toast.show(t.notBuilt.testChargeNotAvailable, 'warning');
-          setTestTarget(null);
+        onConfirm={async () => {
+          if (!testTarget) return;
+          setTesting(true);
+          try {
+            if (USE_MOCK) {
+              toast.show(t.testCharge.pendingMessage, 'warning');
+            } else {
+              const result = await testPaymentCharge(testTarget.id);
+              toast.show(result?.message ?? t.testCharge.pendingMessage, 'warning');
+            }
+          } catch (e) {
+            toast.show(
+              `${t.messages.connectionError}${e instanceof Error ? ` ${e.message}` : ''}`,
+              'danger',
+            );
+          } finally {
+            setTesting(false);
+            setTestTarget(null);
+          }
         }}
       />
     </>
@@ -351,7 +430,7 @@ function MethodFormModal({
   open: boolean;
   method: PaymentMethod | null;
   onClose: () => void;
-  onSaved: (draft: PaymentMethod, isEdit: boolean) => void;
+  onSaved: (draft: PaymentMethod, isEdit: boolean) => void | Promise<void>;
 }) {
   /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
   const businessType = useBusinessType();
@@ -407,11 +486,13 @@ function MethodFormModal({
     if (err) return;
     setSaving(true);
     try {
-      onSaved(
+      await onSaved(
         {
           ...draft,
           gatewayHashKeySet: draft.gatewayHashKeySet || !!hashKey.trim(),
           gatewayHashIvSet: draft.gatewayHashIvSet || !!hashIv.trim(),
+          gatewayHashKey: hashKey,
+          gatewayHashIv: hashIv,
         },
         isEdit,
       );
@@ -652,8 +733,10 @@ function MethodFormModal({
 
           {gatewayDirty ? (
             <Alert tone="warning">{t.testCharge.dirtyBeforeTest}</Alert>
-          ) : draft.gatewayVerified ? (
-            <Alert tone="success" icon={<BadgeCheck size={16} />}>{t.badges.verified}</Alert>
+          ) : draft.e2eVerified || draft.gatewayVerified ? (
+            <Alert tone="success" icon={<BadgeCheck size={16} />}>{t.badges.e2eVerified}</Alert>
+          ) : draft.connectionVerified ? (
+            <Alert tone="info" icon={<BadgeCheck size={16} />}>{t.badges.connectionVerified}</Alert>
           ) : (
             <Alert tone="warning">{t.badges.notVerifiedLong}</Alert>
           )}

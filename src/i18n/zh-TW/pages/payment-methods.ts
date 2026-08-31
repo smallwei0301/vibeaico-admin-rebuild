@@ -44,6 +44,8 @@ export const paymentMethodsPage = {
     active: '啟用',
     inactive: '停用',
     verified: '已驗證開通',
+    e2eVerified: '完整收款流程已驗證',
+    connectionVerified: '連線已驗證（尚未完成收款閉環）',
     notVerified: '尚未驗證',
     notVerifiedLong: '尚未驗證（需實刷小額測試）',
     sandbox: '測試環境',
@@ -130,30 +132,16 @@ export const paymentMethodsPage = {
     requiredFields: '請填寫必填欄位',
   },
 
-  /* ---------------------------------------- 尚未建置：誠實告示（不可省略） */
-  /**
-   * ⚠️ 這一區塊是「誠實化」文案，對應 CLAUDE.md「Never fabricate a known」。
-   * 本頁沒有任何後端（無 /api/payment-methods、無 src/services 收款方式函式），
-   * 所有互動都只改瀏覽器內的 React state。在真後端接上（issue #9）之前，
-   * 頁面必須用這些文案說明「尚未生效」，不得再顯示任何成功訊息。
-   */
-  notBuilt: {
-    title: '金流／收款方式後端尚未建置，本頁設定尚未生效',
-    body:
-      '此頁的收款方式目前只存在於這個瀏覽器畫面：新增、編輯、刪除、啟用／停用都不會寫入資料庫，重新整理就會消失，顧客的付款流程也完全不受影響。畫面上的卡片為示範資料。',
-    verifyBody:
-      '「實刷測試並開通」需要呼叫金流商 API，該後端尚未建置，因此本頁無法驗證任何金流帳號。卡片上的「已驗證開通」只會反映後端資料，不會因為在本頁操作而變成已開通。',
-    savedNotEffective: '尚未生效：收款方式後端尚未建置，這筆內容只留在畫面上，未寫入資料庫。',
-    deletedNotEffective: '尚未生效：僅從畫面移除，收款方式後端尚未建置，資料庫沒有變更。',
-    toggleNotEffective: '尚未生效：啟用／停用只改變畫面，收款方式後端尚未建置，顧客端不受影響。',
-    testChargeConfirm:
-      '金流後端尚未建置，本頁無法送出實刷測試，也不會因此開通金流。按下確定不會產生任何付款、也不會改變驗證狀態。',
-    testChargeNotAvailable: '未執行實刷測試：金流後端尚未建置，此收款方式仍為「尚未驗證」。',
-    testChargeDisabledHint: '金流後端尚未建置，無法進行實刷驗證，也無法開通任何金流帳號',
+  status: {
+    title: '收款設定已接上租戶資料庫',
+    body: '新增、編輯、刪除與啟用狀態會透過租戶隔離 API 持久化；API 永不回傳 merchant secret 原文。',
+    verificationBody: '「連線已驗證」只代表後端完成可驗證的憑證檢查；「完整收款流程已驗證」必須等同一租戶的 checkout／callback 測試完成，兩者不會互相冒充。',
   },
 
   /* -------------------------------------------------------- 實刷測試 */
   testCharge: {
+    pendingHint: '完整收款閉環由 #12 checkout／callback 驗證；尚未執行扣款',
+    pendingMessage: '目前只會回報是否可驗證，不會執行真實扣款；完整收款流程測試由 Issue #12 的 checkout／callback 閉環提供。',
     saveFirst: '請先儲存後再測試',
     dirtyBeforeTest: '你剛修改了金流設定，請先按「儲存」再測試',
     dirtyBeforeCheck: '你剛修改了金流設定，請先按「儲存」再檢查',
@@ -182,6 +170,9 @@ export const paymentMethodsPage = {
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',
     unknownError: '未知錯誤',
+    saved: '收款方式已儲存',
+    deleted: '收款方式已刪除',
+    statusUpdated: '收款方式狀態已更新',
   },
 
   empty: {
