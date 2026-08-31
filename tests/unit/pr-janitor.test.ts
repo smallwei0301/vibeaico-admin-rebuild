@@ -82,6 +82,7 @@ function mockJanitorApi({
   vi.stubGlobal("fetch", fetchMock);
   vi.stubEnv("GITHUB_REPOSITORY", "acme/repo");
   vi.stubEnv("GITHUB_TOKEN", "test-token");
+  vi.stubEnv("GITHUB_EVENT_PATH", "");
   return { calls, fetchMock, getSourceFetches: () => sourceFetches, getTargetFetches: () => targetFetches };
 }
 
