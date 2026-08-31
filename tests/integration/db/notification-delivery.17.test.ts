@@ -79,14 +79,19 @@ describe('notification delivery ledger (17 §7)', () => {
     expect(events.count).toBe(1);
     const delivery = await admin.from('notification_deliveries').insert({
       outbox_id: outboxId, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
-      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
+      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date(0).toISOString(),
     }).select('id').single();
     expect(delivery.error).toBeNull();
     const workerTwo = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
     const [one, two] = await Promise.all([admin.rpc('claim_notification_deliveries', { p_limit: 1 }), workerTwo.rpc('claim_notification_deliveries', { p_limit: 1 })]);
     expect(one.error).toBeNull(); expect(two.error).toBeNull();
+    const oneIds: string[] = (one.data ?? []).map((claim: { id: string }) => claim.id);
+    const twoIds: string[] = (two.data ?? []).map((claim: { id: string }) => claim.id);
+    const targetId = delivery.data!.id;
+    const details = `target=${targetId}; workerOne=${oneIds.join(',')}; workerTwo=${twoIds.join(',')}`;
     expect((one.data?.length ?? 0) + (two.data?.length ?? 0)).toBe(1);
-    expect(one.data?.[0]?.id ?? two.data?.[0]?.id).toBe(delivery.data!.id);
+    expect([...oneIds, ...twoIds].filter((id) => id === targetId), details).toHaveLength(1);
+    expect(oneIds.filter((id) => twoIds.includes(id)), details).toEqual([]);
   });
 
   it('runs the real dispatcher transition through retry backoff and the fifth attempt to DEAD with a fake transport', async () => {
