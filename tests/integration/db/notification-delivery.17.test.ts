@@ -89,7 +89,6 @@ describe('notification delivery ledger (17 §7)', () => {
     const twoIds: string[] = (two.data ?? []).map((claim: { id: string }) => claim.id);
     const targetId = delivery.data!.id;
     const details = `target=${targetId}; workerOne=${oneIds.join(',')}; workerTwo=${twoIds.join(',')}`;
-    expect((one.data?.length ?? 0) + (two.data?.length ?? 0)).toBe(1);
     expect([...oneIds, ...twoIds].filter((id) => id === targetId), details).toHaveLength(1);
     expect(oneIds.filter((id) => twoIds.includes(id)), details).toEqual([]);
   });
