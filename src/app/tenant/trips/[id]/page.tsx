@@ -32,6 +32,9 @@ import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import {
+  checkPlanEditFieldOwnership, getCurrentAdvancedPlanFields, getQuickPlanFields,
+} from '@/lib/trip-plan-editor';
 import type {
   DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
   TripBookingType, TripDeparture, TripPlan, TripPlanSeason,
@@ -138,6 +141,28 @@ export default function TripDetailPage() {
 
   const savePlan = async () => {
     if (!planDraft) return;
+
+    // Keep the shipped editor and its contract in lock-step: the visible section
+    // owns only its declared fields, while the API still receives the complete plan.
+    const quickView = getQuickPlanFields(planDraft, {
+      childPriceExpanded: true,
+      preview: { summary: t.plans.editor.preview, href: publicShopUrl },
+    });
+    const quickPatch: Partial<TripPlan> = {
+      name: quickView.name,
+      description: quickView.description,
+      basePrice: quickView.basePrice,
+      childPrice: quickView.childPrice ?? null,
+      active: quickView.active,
+    };
+    const ownership = planEditorSection === 'quick'
+      ? checkPlanEditFieldOwnership('quick', quickPatch)
+      : checkPlanEditFieldOwnership('advanced', getCurrentAdvancedPlanFields(planDraft));
+    if (!ownership.ok) {
+      toast.show(t.messages.loadFailed, 'danger');
+      return;
+    }
+
     try {
       // Quick and Advanced edits both submit the complete plan through one API.
       await saveTripPlan(tripId, planDraft);
