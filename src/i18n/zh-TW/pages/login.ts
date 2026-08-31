@@ -31,9 +31,9 @@ export const loginPage = {
   oauth: {
     divider: '或使用第三方登入',
     line: '用 LINE 登入',
-    lineHref: '/api/auth/oauth/line/authorize',
     google: '用 Google 登入',
-    googleHref: '/api/auth/oauth/google/authorize',
+    notConfigured: '第三方登入尚未完成設定，預計後續支援。',
+    comingSoon: '即將支援',
     /** #oauthErrorBox：第三方導回失敗時顯示 */
     failedPrefix: '第三方登入失敗：',
   },
