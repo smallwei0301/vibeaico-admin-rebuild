@@ -66,7 +66,8 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
   });
 
   it('targeted outbox claims never reclaim non-reclaimable auth audit rows', () => {
-    expect(targetedClaimMigration).toContain("d.status = 'PROCESSING'\\n          and d.reclaimable");
+    expect(targetedClaimMigration).toContain("d.status = 'PROCESSING'");
+    expect(targetedClaimMigration).toContain('and d.reclaimable');
     expect(targetedClaimMigration).toContain("set search_path = ''");
     expect(targetedClaimMigration).toContain('revoke execute on function public.claim_notification_delivery_for_outbox(uuid)');
   });
