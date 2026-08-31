@@ -93,7 +93,7 @@ describe('notification delivery ledger (17 §7)', () => {
     const { outboxId } = await createBooking();
     const inserted = await admin.from('notification_deliveries').insert({
       outbox_id: outboxId, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
-      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
+      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date(0).toISOString(),
     }).select('id').single();
     expect(inserted.error).toBeNull();
     const claimedIds: string[] = [];
