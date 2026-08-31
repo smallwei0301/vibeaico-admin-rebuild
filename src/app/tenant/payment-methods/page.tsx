@@ -23,6 +23,7 @@ import { USE_MOCK } from '@/config/env';
 import {
   createPaymentMethod, deletePaymentMethod, listPaymentMethods, testPaymentCharge,
   testPaymentConnection, togglePaymentMethodActive, updatePaymentMethod,
+  type PaymentMethodPayload,
 } from '@/services/payment-methods';
 
 /* -------------------------------------------------------------------------- */
@@ -335,7 +336,10 @@ export default function PaymentMethodsPage() {
             const id = isEdit ? draft.id : `pm_new_${nextId.current++}`;
             upsert({ ...draft, id });
           } else {
-            const payload = { ...draft };
+            const payload: PaymentMethodPayload = {
+              ...draft,
+              methodType: draft.methodType as PaymentMethodPayload['methodType'],
+            };
             const saved = isEdit
               ? await updatePaymentMethod(draft.id, payload)
               : await createPaymentMethod(payload);

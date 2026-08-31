@@ -142,11 +142,13 @@ function configFromInput(input: PaymentMethodInput, current?: PaymentMethodRow |
 function gatewayChanged(input: PaymentMethodInput, current?: PaymentMethodRow | null) {
   if (!current) return true;
   const oldConfig = current.config ?? {};
+  const suppliedHashKey = input.gatewayHashKey?.trim() ?? '';
+  const suppliedHashIv = input.gatewayHashIv?.trim() ?? '';
   return (
     (input.gatewayProvider !== undefined && input.gatewayProvider !== current.gateway_provider)
     || (input.gatewayMerchantId !== undefined && input.gatewayMerchantId.trim() !== current.gateway_merchant_id)
-    || (input.gatewayHashKey?.trim() !== undefined && input.gatewayHashKey.trim() !== '')
-    || (input.gatewayHashIv?.trim() !== undefined && input.gatewayHashIv.trim() !== '')
+    || suppliedHashKey !== ''
+    || suppliedHashIv !== ''
     || (input.gatewaySource !== undefined && input.gatewaySource !== configText(oldConfig, 'gatewaySource'))
   );
 }

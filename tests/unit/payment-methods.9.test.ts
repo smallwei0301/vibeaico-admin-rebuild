@@ -19,7 +19,7 @@ describe('tenant payment methods (#9)', () => {
     const row = { id: 'pm-a', tenant_id: 'tenant-a', method_type: 'ONLINE_PAYMENT', display_name: 'ECPay', qr_image_url: '', config: { gatewaySource: 'own', gatewaySandbox: true }, gateway_provider: 'ECPAY', gateway_merchant_id: '2000132', gateway_hash_key_enc: 'cipher-key', gateway_hash_iv_enc: 'cipher-iv', gateway_verified_at: null, connection_verified_at: '2026-08-31T00:00:00Z', e2e_verified_at: null, verification_error: null, active: true, sort_order: 0 } as const;
     const view = mapPaymentMethodRow(row);
     expect(view.gatewayHashKeySet).toBe(true); expect(view.gatewayHashIvSet).toBe(true);
-    expect((view as Record<string, unknown>).gatewayHashKey).toBeUndefined();
+    expect((view as unknown as Record<string, unknown>).gatewayHashKey).toBeUndefined();
     expect(view.connectionVerified).toBe(true); expect(view.e2eVerified).toBe(false); expect(paymentMethodIsOnlineReady(row)).toBe(false);
   });
   it('preserves existing config and encrypted secrets when update omits empty secret fields', () => {
