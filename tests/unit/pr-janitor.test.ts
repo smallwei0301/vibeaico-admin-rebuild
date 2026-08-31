@@ -115,7 +115,7 @@ describe("PR budget", () => {
     const violations = findBudgetViolations(rows);
     expect(violations).toHaveLength(1);
     expect(violations[0].issue).toBe(40);
-    expect(violations[0].active.map((row) => row.number)).toEqual([10, 11]);
+    expect(violations[0].active.map((row: { number: number }) => row.number)).toEqual([10, 11]);
   });
 
   it("keeps one ACTIVE plus one VALIDATION within budget", () => {
