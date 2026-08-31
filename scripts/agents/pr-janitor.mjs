@@ -42,18 +42,8 @@ export function parseLifecycleMetadata(body = "") {
   };
 }
 
-export function inferIssueNumber(pr) {
-  const metadata = parseLifecycleMetadata(pr.body ?? "");
-  if (metadata?.issue) return metadata.issue;
-
-  const haystacks = [pr.title ?? "", pr.body ?? "", pr.head?.ref ?? ""];
+function collectIssueCandidates(haystacks, patterns) {
   const candidates = new Set();
-  const patterns = [
-    /(?:issue|fix(?:es|ed)?|close(?:s|d)?|resolve(?:s|d)?)[\s:()_-]*#?(\d+)/gi,
-    /(?:^|[^\w])#(\d+)(?:\b|$)/g,
-    /issue[-_/](\d+)(?:\b|[-_/])/gi,
-  ];
-
   for (const haystack of haystacks) {
     for (const pattern of patterns) {
       pattern.lastIndex = 0;
@@ -62,8 +52,29 @@ export function inferIssueNumber(pr) {
       }
     }
   }
+  return candidates;
+}
 
-  return candidates.size === 1 ? [...candidates][0] : null;
+export function inferIssueNumber(pr) {
+  const metadata = parseLifecycleMetadata(pr.body ?? "");
+  if (metadata?.issue) return metadata.issue;
+
+  const primaryCandidates = collectIssueCandidates(
+    [pr.title ?? "", pr.head?.ref ?? ""],
+    [
+      /(?:issue|fix(?:es|ed)?|close(?:s|d)?|resolve(?:s|d)?)[\s:()_-]*#?(\d+)/gi,
+      /(?:^|[^\w])#(\d+)(?:\b|$)/g,
+      /issue[-_/](\d+)(?:\b|[-_/])/gi,
+    ],
+  );
+  if (primaryCandidates.size === 1) return [...primaryCandidates][0];
+  if (primaryCandidates.size > 1) return null;
+
+  const bodyCandidates = collectIssueCandidates(
+    [pr.body ?? ""],
+    [/(?:issue|fix(?:es|ed)?|close(?:s|d)?|resolve(?:s|d)?)[\s:()_-]*#?(\d+)/gi],
+  );
+  return bodyCandidates.size === 1 ? [...bodyCandidates][0] : null;
 }
 
 export function classifyPr(pr) {
@@ -82,6 +93,9 @@ export function evaluateDeclaredSupersession({ source, target, compareStatus }) 
   if (!sourceMeta) return { safe: false, reason: "SOURCE_METADATA_MISSING" };
   if (sourceMeta.state !== "ACTIVE") {
     return { safe: false, reason: "SOURCE_NOT_ACTIVE" };
+  }
+  if (source.number === target.number) {
+    return { safe: false, reason: "SELF_SUPERSESSION" };
   }
   if (!sourceMeta.supersedes.includes(target.number)) {
     return { safe: false, reason: "TARGET_NOT_DECLARED" };
@@ -282,6 +296,11 @@ export async function runJanitor({ apply = false } = {}) {
     }
 
     for (const targetNumber of sourceMeta.supersedes) {
+      if (targetNumber === source.number) {
+        reviews.push({ source: source.number, target: targetNumber, reason: "SELF_SUPERSESSION" });
+        continue;
+      }
+
       const target = byNumber.get(targetNumber);
       if (!target) continue;
 
