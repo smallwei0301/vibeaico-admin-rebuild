@@ -67,7 +67,11 @@ describe('#41 schema migration ordering', () => {
   it('hardens fresh and already-applied #41 definer functions without exposing internal RPCs', () => {
     for (const source of [normalizedMigration, normalizedHardeningMigration]) {
       expect(source).not.toContain('set search_path = public, pg_temp');
-      expect(source.match(/security definer set search_path = ''/g)).toHaveLength(8);
+      expect(source.match(/security definer set search_path = ''/g)).toHaveLength(9);
+      expect(source).toMatch(/create or replace function public\.enqueue_formation_notification_41\(/);
+      expect(source).toMatch(/pg_catalog\.to_regprocedure\( 'public\.enqueue_notification_event\(uuid,text,text,text,text,jsonb\)' \)/);
+      expect(source).not.toMatch(/perform public\.enqueue_notification_event\(/);
+      expect(source).toMatch(/revoke execute on function public\.enqueue_formation_notification_41\(pg_catalog\.uuid, pg_catalog\.text, pg_catalog\.text, pg_catalog\.text, pg_catalog\.text, pg_catalog\.jsonb\) from public, anon, authenticated, service_role/);
       expect(source).toMatch(/revoke execute on function public\.qualifying_tour_participants\(pg_catalog\.uuid\) from public, anon, authenticated, service_role/);
       expect(source).toMatch(/revoke execute on function public\.refresh_departure_formation\(pg_catalog\.uuid\) from public, anon, authenticated, service_role/);
       expect(source).toMatch(/revoke execute on function public\.refresh_tour_order_formation_trigger\(\) from public, anon, authenticated, service_role/);

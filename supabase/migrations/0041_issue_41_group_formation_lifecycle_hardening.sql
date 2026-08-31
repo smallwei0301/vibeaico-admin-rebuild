@@ -97,6 +97,29 @@ as $$
     end;
 $$;
 
+create or replace function public.enqueue_formation_notification_41(
+  p_tenant pg_catalog.uuid,
+  p_event_name pg_catalog.text,
+  p_aggregate_type pg_catalog.text,
+  p_aggregate_id pg_catalog.text,
+  p_idempotency_key pg_catalog.text,
+  p_payload pg_catalog.jsonb
+) returns pg_catalog.void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if pg_catalog.to_regprocedure(
+    'public.enqueue_notification_event(uuid,text,text,text,text,jsonb)'
+  ) is not null then
+    execute 'select public.enqueue_notification_event($1, $2, $3, $4, $5, $6)'
+      using p_tenant, p_event_name, p_aggregate_type, p_aggregate_id,
+        p_idempotency_key, p_payload;
+  end if;
+end;
+$$;
+
 create or replace function public.refresh_departure_formation(p_departure pg_catalog.uuid)
 returns pg_catalog.text
 language plpgsql
@@ -126,7 +149,7 @@ begin
     insert into public.tour_formation_decisions (
       tenant_id, departure_id, previous_status, next_status, decision, participants
     ) values (v_dep.tenant_id, v_dep.id, 'COLLECTING', 'FORMED', 'SYSTEM_THRESHOLD', v_participants);
-    perform public.enqueue_notification_event(
+    perform public.enqueue_formation_notification_41(
       v_dep.tenant_id, 'TOUR_GROUP_FORMED', 'TOUR_DEPARTURE', v_dep.id::pg_catalog.text,
       'tour-group-formed:' || v_dep.id::pg_catalog.text,
       pg_catalog.jsonb_build_object('departureId', v_dep.id::pg_catalog.text, 'participants', v_participants,
@@ -145,7 +168,7 @@ begin
     insert into public.tour_formation_decisions (
       tenant_id, departure_id, previous_status, next_status, decision, participants
     ) values (v_dep.tenant_id, v_dep.id, 'FORMED', 'AT_RISK', 'SYSTEM_AT_RISK', v_participants);
-    perform public.enqueue_notification_event(
+    perform public.enqueue_formation_notification_41(
       v_dep.tenant_id, 'TOUR_GROUP_AT_RISK', 'TOUR_DEPARTURE', v_dep.id::pg_catalog.text,
       'tour-group-at-risk:' || v_dep.id::pg_catalog.text || ':' || v_participants::pg_catalog.text,
       pg_catalog.jsonb_build_object('departureId', v_dep.id::pg_catalog.text, 'participants', v_participants,
@@ -205,7 +228,7 @@ begin
         tenant_id, departure_id, previous_status, next_status, decision, participants
       ) values (v_dep.tenant_id, v_dep.id, 'COLLECTING', 'REVIEW_REQUIRED',
                 'SYSTEM_DEADLINE_REVIEW', v_participants);
-      perform public.enqueue_notification_event(
+      perform public.enqueue_formation_notification_41(
         v_dep.tenant_id, 'TOUR_GROUP_REVIEW_REQUIRED', 'TOUR_DEPARTURE', v_dep.id::pg_catalog.text,
         'tour-group-review-required:' || v_dep.id::pg_catalog.text,
         pg_catalog.jsonb_build_object('departureId', v_dep.id::pg_catalog.text, 'participants', v_participants,
@@ -262,7 +285,7 @@ begin
       formation_decided_at = pg_catalog.now(), formation_decided_by = p_actor_user,
       formation_decision = p_decision, formation_decision_note = coalesce(p_note, '')
     where id = v_dep.id;
-    perform public.enqueue_notification_event(
+    perform public.enqueue_formation_notification_41(
       v_dep.tenant_id, 'TOUR_GROUP_FORMED', 'TOUR_DEPARTURE', v_dep.id::pg_catalog.text,
       'tour-group-formed:' || v_dep.id::pg_catalog.text,
       pg_catalog.jsonb_build_object('departureId', v_dep.id::pg_catalog.text, 'participants', v_participants,
@@ -295,7 +318,7 @@ begin
       updated_at = pg_catalog.now()
     where tenant_id = p_tenant and departure_id = p_departure
       and status in ('PENDING', 'CONFIRMED');
-    perform public.enqueue_notification_event(
+    perform public.enqueue_formation_notification_41(
       v_dep.tenant_id, 'TOUR_GROUP_CANCELLED', 'TOUR_DEPARTURE', v_dep.id::pg_catalog.text,
       'tour-group-cancelled:' || v_dep.id::pg_catalog.text,
       pg_catalog.jsonb_build_object(
@@ -323,6 +346,7 @@ $$;
 revoke execute on function public.snapshot_trip_departure_formation() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_trip_plan_participation_mode_41() from public, anon, authenticated, service_role;
 revoke execute on function public.snapshot_tour_order_payment_policy() from public, anon, authenticated, service_role;
+revoke execute on function public.enqueue_formation_notification_41(pg_catalog.uuid, pg_catalog.text, pg_catalog.text, pg_catalog.text, pg_catalog.text, pg_catalog.jsonb) from public, anon, authenticated, service_role;
 revoke execute on function public.qualifying_tour_participants(pg_catalog.uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.refresh_departure_formation(pg_catalog.uuid) from public, anon, authenticated, service_role;
 revoke execute on function public.refresh_tour_order_formation_trigger() from public, anon, authenticated, service_role;
