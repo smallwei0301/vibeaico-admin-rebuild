@@ -6,6 +6,7 @@ const appliedRestrictionMigration = readFileSync('supabase/migrations/0038a_rest
 const bookingModificationMigration = readFileSync('supabase/migrations/0042_notification_booking_modification_revision.sql', 'utf8');
 const securityAlignmentMigration = readFileSync('supabase/migrations/0043_notification_delivery_security_alignment.sql', 'utf8');
 const targetedClaimMigration = readFileSync('supabase/migrations/0044_notification_targeted_claim.sql', 'utf8');
+const targetedClaimGuardMigration = readFileSync('supabase/migrations/0045_notification_targeted_claim_reclaimable_guard.sql', 'utf8');
 const migration = `${appliedMigration}\n${appliedRestrictionMigration}\n${bookingModificationMigration}\n${securityAlignmentMigration}`;
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
@@ -65,11 +66,13 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(appliedMigration).not.toContain("status in ('PENDING', 'PROCESSING', 'RETRY', 'ACCEPTED')) then 'OPEN'");
   });
 
-  it('targeted outbox claims never reclaim non-reclaimable auth audit rows', () => {
+  it('keeps the applied 0044 claim text immutable and applies the reclaimable guard only in 0045', () => {
     expect(targetedClaimMigration).toContain("d.status = 'PROCESSING'");
-    expect(targetedClaimMigration).toContain('and d.reclaimable');
+    expect(targetedClaimMigration).not.toContain('and d.reclaimable');
     expect(targetedClaimMigration).toContain("set search_path = ''");
     expect(targetedClaimMigration).toContain('revoke execute on function public.claim_notification_delivery_for_outbox(uuid)');
+    expect(targetedClaimGuardMigration).toContain('and d.reclaimable');
+    expect(targetedClaimGuardMigration).toContain('repair TEST drift in targeted notification delivery claims');
   });
 
   it('looks up a delivery booking within the outbox tenant boundary', () => {
@@ -82,6 +85,24 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect(outbox).toContain("event_name: 'PLATFORM_NOTIFICATION_ALERT'");
     expect(outbox).toContain("idempotency_key: `delivery-dead:${delivery.id}`");
     expect(outbox).toContain("if (transition.status === 'DEAD') await enqueueImmediateDeadAlert(admin, delivery)");
+  });
+
+  it('never recursively turns a platform owner health or alert delivery failure into another alert', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).toContain("if (delivery.recipient_type === 'PLATFORM_OWNER') return true;");
+    expect(outbox).toContain("data?.event_name === 'PLATFORM_NOTIFICATION_ALERT'");
+    expect(outbox).toContain("data?.event_name === 'PLATFORM_NOTIFICATION_HEALTH'");
+    expect(outbox).toMatch(/if \(!\(await isPlatformAlertDelivery\(admin, delivery\)\)\) \{[\s\S]*?if \(transition\.status === 'DEAD'\) await enqueueImmediateDeadAlert/);
+  });
+
+  it('uses an explicit five-minute live failure bucket and the canonical alert thresholds', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    const health = readFileSync('src/server/notifications/health.ts', 'utf8');
+    expect(outbox).toContain(".gte('last_attempt_at', bucketStart)");
+    expect(outbox).toContain('HEALTH_ALERT_POLICY.providerBurstWindowMs');
+    expect(outbox).toContain('HEALTH_ALERT_POLICY.authFailureThreshold');
+    expect(outbox).toContain('HEALTH_ALERT_POLICY.providerBurstThreshold');
+    expect(health).toContain('pendingAgeSeconds: 30 * 60');
   });
 
   it('does not run stale-worker side effects after a delivery claim lease was lost', () => {
@@ -134,6 +155,13 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
       expect(route).not.toMatch(/notifyBookingEvent\(/);
       expect(route).not.toMatch(/sendBookingNotifyEmail\(/);
     }
+  });
+
+  it('registers post-commit dispatch with Next after() instead of detaching a promise', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    expect(outbox).toContain("import { after } from 'next/server';");
+    expect(outbox).toMatch(/after\(async \(\) => \{[\s\S]*?await dispatchPendingNotifications/);
+    expect(outbox).not.toMatch(/void dispatchPendingNotifications\(/);
   });
 
   it('routes booking-status LINE messages through the delivery ledger instead of direct provider sends', () => {

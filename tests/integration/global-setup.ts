@@ -128,6 +128,16 @@ function spawnNextDevServer(): ChildProcess {
       // cron 端點（/api/cron/*）的 Bearer 驗證（07 分冊）；測試以 TEST_ 前綴供值，
       // 這裡映射進 server，feature-expiry.09 等 cron 整合測試才打得了正例。
       CRON_SECRET: process.env.TEST_CRON_SECRET ?? '',
+      // #40 notification HTTP tests use deterministic TEST-only credentials.
+      // They authenticate local route handling only; neither value authorizes a
+      // real Telegram/Resend provider call.
+      TELEGRAM_BOT_USERNAME: process.env.TEST_TELEGRAM_BOT_USERNAME ?? 'vibeai_test_bot',
+      TELEGRAM_BOT_TOKEN: process.env.TEST_TELEGRAM_BOT_TOKEN ?? 'test-telegram-bot-token',
+      TELEGRAM_BOT_ID: process.env.TEST_TELEGRAM_BOT_ID ?? 'test-platform-bot',
+      TELEGRAM_WEBHOOK_SECRET: process.env.TEST_TELEGRAM_WEBHOOK_SECRET ?? 'test-telegram-webhook-secret',
+      RESEND_WEBHOOK_SECRET: process.env.TEST_RESEND_WEBHOOK_SECRET
+        ?? `whsec_${Buffer.from('test-resend-webhook-secret').toString('base64')}`,
+      RESEND_RECIPIENT_HEALTH_KEY: process.env.TEST_RESEND_RECIPIENT_HEALTH_KEY ?? 'test-recipient-health-key',
     },
   });
   child.on('error', (err) => {

@@ -5,10 +5,6 @@
  * 拆兩層方便單元測試（12 分冊 §3：純函式邏輯與 I/O 分離）：
  *  - `resolveBookingNotifications()`：純函式，只做「開關 + 資料是否齊全」的
  *    收件人判斷，不碰網路/DB。
- *  - `notifyBookingEvent()`：舊相容入口；事件本身已由 0037 DB trigger 和
- *    `notifications/outbox` 收斂，這裡只喚醒 post-commit dispatcher，絕不直接
- *    呼叫 Email provider。
- *    整段 try/catch 吞錯，只 `console.error`——寄信絕不可拖垮呼叫端的 API 回應。
  *
  * ⚠️ 開關鍵名：店家/員工收到的「新預約 email」對應 `notifyNewBooking`/
  * `notifyStaffBooking`；取消時寄店家用的是 `notifyBookingCancel`（不是
@@ -18,7 +14,6 @@
  */
 
 import { notifySettingsSchema } from '@/config/tenant-settings';
-import { dispatchAfterCommit } from '@/server/notifications/outbox';
 
 export type BookingNotifyKind = 'NEW' | 'CANCELLED';
 
@@ -62,18 +57,4 @@ export function resolveBookingNotifications(
   }
 
   return targets;
-}
-
-/**
- * @deprecated #40 keeps this symbol for callers from older branches. New
- * domain routes must only write their business row; the 0037 trigger records
- * the event transactionally and this function merely wakes the shared worker.
- */
-export async function notifyBookingEvent(
-  _adminSupabase: unknown,
-  _tenantId: string,
-  _bookingId: string,
-  _kind: BookingNotifyKind,
-): Promise<void> {
-  dispatchAfterCommit();
 }

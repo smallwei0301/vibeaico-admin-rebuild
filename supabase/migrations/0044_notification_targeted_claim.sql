@@ -26,7 +26,6 @@ begin
         (d.status in ('PENDING', 'RETRY') and d.next_attempt_at <= pg_catalog.now())
         or (
           d.status = 'PROCESSING'
-          and d.reclaimable
           and d.processing_started_at < pg_catalog.now() - interval '10 minutes'
         )
       )

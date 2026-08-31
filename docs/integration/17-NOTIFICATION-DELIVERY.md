@@ -186,11 +186,14 @@ DEAD rows 數與 top error codes
 除 daily digest 外，以下至少要建立即時 platform alert event：
 
 - 任一 critical event 進 `DEAD`。
-- 同一 provider 持續認證失敗。
-- pending 最老超過設定門檻。
-- 短時間大量 429/5xx。
+- 同一 provider 在同一 5 分鐘 bucket 內累計 3 次 401/403 認證失敗。
+- pending 最老超過 30 分鐘。
+- 同一 provider 在同一 5 分鐘 bucket 內累計 5 次 429 或 5xx。
 
-第一版閾值可先固定在 config，之後再做可調整。
+第一版閾值固定在共用 alert policy，之後再做可調整。`CRITICAL_DELIVERY_DEAD`
+只可由非 `PLATFORM_OWNER` delivery 觸發；`PLATFORM_OWNER` 或父 event 為
+`PLATFORM_NOTIFICATION_HEALTH` / `PLATFORM_NOTIFICATION_ALERT` 的失敗只寫入
+delivery ledger，絕不可再排出新的 platform alert，避免告警通道故障遞迴放大。
 
 ---
 

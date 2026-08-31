@@ -7,13 +7,14 @@
  * path as recovery, so a lost serverless after-hook cannot lose the event.
  */
 import { createHash } from 'node:crypto';
+import { after } from 'next/server';
 import { bookingHtml, verificationHtml } from '@/server/email/templates';
 import { APP_URL } from '@/config/env';
 import { notifySettingsSchema } from '@/config/tenant-settings';
 import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
 import { createAdminSupabase } from '@/server/supabase';
 import { deliveryTransition, type DeliveryStatus, type NotificationChannel, type TransportOutcome } from './delivery';
-import { formatHealthDigest, type HealthDigest } from './health';
+import { formatHealthDigest, HEALTH_ALERT_POLICY, type HealthDigest } from './health';
 import { sendEmailWithResend, sendTelegramTransport } from './transports';
 import { hashRecipientEmail } from './resend-webhook';
 
@@ -360,7 +361,7 @@ async function enqueueImmediateDeadAlert(admin: Admin, delivery: ClaimedDelivery
 }
 
 async function enqueueImmediateProviderAlert(admin: Admin, alertCode: string, aggregateId: string): Promise<void> {
-  const bucket = Math.floor(Date.now() / (5 * 60_000));
+  const bucket = Math.floor(Date.now() / HEALTH_ALERT_POLICY.providerBurstWindowMs);
   const { data: alert, error: alertError } = await admin.from('notification_outbox').upsert({
     tenant_id: null, event_name: 'PLATFORM_NOTIFICATION_ALERT',
     aggregate_type: 'NOTIFICATION_HEALTH_LIVE', aggregate_id: aggregateId,
@@ -375,25 +376,57 @@ async function enqueueImmediateProviderAlert(admin: Admin, alertCode: string, ag
   if (recipientsError) throw recipientsError;
 }
 
+/** A platform health/alert failure is evidence, never an alert trigger itself. */
+async function isPlatformAlertDelivery(admin: Admin, delivery: Pick<ClaimedDelivery, 'outbox_id' | 'recipient_type'>): Promise<boolean> {
+  if (delivery.recipient_type === 'PLATFORM_OWNER') return true;
+  const { data, error } = await admin.from('notification_outbox')
+    .select('event_name').eq('id', delivery.outbox_id).maybeSingle();
+  if (error) throw error;
+  return data?.event_name === 'PLATFORM_NOTIFICATION_ALERT' || data?.event_name === 'PLATFORM_NOTIFICATION_HEALTH';
+}
+
 async function enqueueLiveProviderAlert(admin: Admin, transition: ReturnType<typeof deliveryTransition>, delivery: ClaimedDelivery): Promise<boolean> {
   const code = transition.lastErrorCode;
-  const alertCode = code === 'HTTP_401' || code === 'HTTP_403' ? 'PROVIDER_AUTH_FAILURE'
-    : code === 'HTTP_429' ? 'PROVIDER_RATE_LIMIT_BURST'
-      : code && /^HTTP_5\d\d$/.test(code) ? 'PROVIDER_5XX_BURST' : null;
+  if (!code || !/^(HTTP_401|HTTP_403|HTTP_429|HTTP_5\d\d)$/.test(code)) return false;
+  if (await isPlatformAlertDelivery(admin, delivery)) return false;
+
+  // Use the same explicit five-minute bucket as the alert idempotency key.
+  // This prevents a long historical error tail from satisfying a live burst.
+  const bucketStart = new Date(
+    Math.floor(Date.now() / HEALTH_ALERT_POLICY.providerBurstWindowMs) * HEALTH_ALERT_POLICY.providerBurstWindowMs,
+  ).toISOString();
+  const { data, error } = await admin.from('notification_deliveries')
+    .select('last_error_code, notification_outbox!inner(event_name)')
+    .in('status', ['RETRY', 'DEAD'])
+    .gte('last_attempt_at', bucketStart);
+  if (error) throw error;
+  const errors = (data ?? [])
+    .filter((row: any) => row.notification_outbox?.event_name !== 'PLATFORM_NOTIFICATION_ALERT'
+      && row.notification_outbox?.event_name !== 'PLATFORM_NOTIFICATION_HEALTH')
+    .map((row: any) => row.last_error_code as string | null);
+  const authFailures = errors.filter((value) => value === 'HTTP_401' || value === 'HTTP_403').length;
+  const rateLimitFailures = errors.filter((value) => value === 'HTTP_429').length;
+  const serverFailures = errors.filter((value) => value !== null && /^HTTP_5\d\d$/.test(value)).length;
+  const alertCode = authFailures >= HEALTH_ALERT_POLICY.authFailureThreshold ? 'PROVIDER_AUTH_FAILURE'
+    : rateLimitFailures >= HEALTH_ALERT_POLICY.providerBurstThreshold ? 'PROVIDER_RATE_LIMIT_BURST'
+      : serverFailures >= HEALTH_ALERT_POLICY.providerBurstThreshold ? 'PROVIDER_5XX_BURST' : null;
   if (!alertCode) return false;
-  await enqueueImmediateProviderAlert(admin, alertCode, delivery.id);
+  await enqueueImmediateProviderAlert(admin, alertCode, delivery.channel);
   return true;
 }
 
 async function enqueueStalePendingAlert(admin: Admin): Promise<boolean> {
-  const threshold = new Date(Date.now() - 30 * 60_000).toISOString();
-  const { data, error } = await admin.from('notification_deliveries').select('id')
+  const threshold = new Date(Date.now() - HEALTH_ALERT_POLICY.pendingAgeSeconds * 1_000).toISOString();
+  const { data, error } = await admin.from('notification_deliveries').select('id, outbox_id, recipient_type')
     .in('status', ['PENDING', 'PROCESSING', 'RETRY']).lt('created_at', threshold)
-    .order('created_at', { ascending: true }).limit(1).maybeSingle();
+    .order('created_at', { ascending: true }).limit(20);
   if (error) throw error;
-  if (!data) return false;
-  await enqueueImmediateProviderAlert(admin, 'PENDING_TOO_OLD', data.id);
-  return true;
+  for (const row of data ?? []) {
+    if (await isPlatformAlertDelivery(admin, row as Pick<ClaimedDelivery, 'outbox_id' | 'recipient_type'>)) continue;
+    await enqueueImmediateProviderAlert(admin, 'PENDING_TOO_OLD', row.id);
+    return true;
+  }
+  return false;
 }
 
 async function persistOutcome(admin: Admin, delivery: ClaimedDelivery, outcome: TransportOutcome): Promise<void> {
@@ -417,8 +450,10 @@ async function persistOutcome(admin: Admin, delivery: ClaimedDelivery, outcome: 
   }
   const { error: refreshError } = await admin.rpc('refresh_notification_outbox_status', { p_outbox_id: delivery.outbox_id });
   if (refreshError) throw refreshError;
-  if (transition.status === 'DEAD') await enqueueImmediateDeadAlert(admin, delivery);
-  await enqueueLiveProviderAlert(admin, transition, delivery);
+  if (!(await isPlatformAlertDelivery(admin, delivery))) {
+    if (transition.status === 'DEAD') await enqueueImmediateDeadAlert(admin, delivery);
+    await enqueueLiveProviderAlert(admin, transition, delivery);
+  }
 }
 
 /** Best-effort post-commit dispatcher; it never changes the completed business response. */
@@ -456,14 +491,18 @@ export async function dispatchPendingNotifications(
 
 /** Call this only after the business write has committed. It intentionally swallows failures. */
 export function dispatchAfterCommit(targetOutboxId?: string): void {
-  void dispatchPendingNotifications(
-    createAdminSupabase(),
-    targetOutboxId ? 1 : 20,
-    true,
-    undefined,
-    targetOutboxId,
-  ).catch((error: unknown) => {
-    console.error('[notifications] post-commit dispatch failed', error instanceof Error ? error.message : 'unknown');
+  after(async () => {
+    try {
+      await dispatchPendingNotifications(
+        createAdminSupabase(),
+        targetOutboxId ? 1 : 20,
+        true,
+        undefined,
+        targetOutboxId,
+      );
+    } catch (error) {
+      console.error('[notifications] post-commit dispatch failed', error instanceof Error ? error.message : 'unknown');
+    }
   });
 }
 

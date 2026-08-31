@@ -139,7 +139,7 @@ function pushRequests(to?: string) {
 }
 
 /** Deferred outbox dispatch is post-commit; wait for the target mock request before asserting/resetting. */
-async function waitForPush(to: string, timeoutMs = 15_000) {
+async function waitForPush(to: string, timeoutMs = 10_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const pushes = pushRequests(to);

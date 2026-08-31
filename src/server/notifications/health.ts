@@ -72,11 +72,16 @@ export interface HealthDigest {
   syntheticTransportProbe: SyntheticTransportProbe;
 }
 
-/** Fixed first-version thresholds. They are deliberately visible in one place
- * until the product adds an operator-configurable alert policy. */
-const AUTH_FAILURE_THRESHOLD = 3;
-const PENDING_AGE_THRESHOLD_SECONDS = 30 * 60;
-const PROVIDER_BURST_THRESHOLD = 5;
+/**
+ * Fixed first-version thresholds. Keep the live dispatcher and daily digest on
+ * this one policy until the product adds operator-configurable alert rules.
+ */
+export const HEALTH_ALERT_POLICY = {
+  authFailureThreshold: 3,
+  pendingAgeSeconds: 30 * 60,
+  providerBurstThreshold: 5,
+  providerBurstWindowMs: 5 * 60_000,
+} as const;
 
 const emptyChannel = (): ChannelHealth => ({ accepted: 0, delivered: 0, retry: 0, dead: 0, skipped: 0, invalidBinding: 0 });
 const defaultSyntheticTransportProbe = (): SyntheticTransportProbe => ({ email: 'NOT_RUN', telegram: 'NOT_RUN', line: 'NOT_RUN' });
@@ -163,14 +168,16 @@ export function formatHealthDigest(digest: HealthDigest): string {
 export function immediateAlertCodes(digest: HealthDigest): string[] {
   const errors = new Map(Object.entries(digest.errorCounts));
   const dead = Object.values(digest.channels).some((channel) => channel.dead > 0);
-  const authFailures = [...errors.entries()].some(([code, count]) => (code === 'HTTP_401' || code === 'HTTP_403') && count >= AUTH_FAILURE_THRESHOLD);
-  const rateLimitBurst = (errors.get('HTTP_429') ?? 0) >= PROVIDER_BURST_THRESHOLD;
-  const serverFailureBurst = [...errors.entries()].some(([code, count]) => /^HTTP_5\d\d$/.test(code) && count >= PROVIDER_BURST_THRESHOLD);
+  const authFailures = [...errors.entries()]
+    .filter(([code]) => code === 'HTTP_401' || code === 'HTTP_403')
+    .reduce((total, [, count]) => total + count, 0) >= HEALTH_ALERT_POLICY.authFailureThreshold;
+  const rateLimitBurst = (errors.get('HTTP_429') ?? 0) >= HEALTH_ALERT_POLICY.providerBurstThreshold;
+  const serverFailureBurst = [...errors.entries()].some(([code, count]) => /^HTTP_5\d\d$/.test(code) && count >= HEALTH_ALERT_POLICY.providerBurstThreshold);
   const syntheticTransportFailure = Object.values(digest.syntheticTransportProbe).includes('FAILED');
   return [
     ...(dead ? ['CRITICAL_DELIVERY_DEAD'] : []),
     ...(authFailures ? ['PROVIDER_AUTH_FAILURE'] : []),
-    ...(digest.oldestPendingAgeSeconds !== null && digest.oldestPendingAgeSeconds >= PENDING_AGE_THRESHOLD_SECONDS ? ['PENDING_TOO_OLD'] : []),
+    ...(digest.oldestPendingAgeSeconds !== null && digest.oldestPendingAgeSeconds >= HEALTH_ALERT_POLICY.pendingAgeSeconds ? ['PENDING_TOO_OLD'] : []),
     ...(rateLimitBurst ? ['PROVIDER_RATE_LIMIT_BURST'] : []),
     ...(serverFailureBurst ? ['PROVIDER_5XX_BURST'] : []),
     ...(syntheticTransportFailure ? ['SYNTHETIC_TRANSPORT_FAILURE'] : []),

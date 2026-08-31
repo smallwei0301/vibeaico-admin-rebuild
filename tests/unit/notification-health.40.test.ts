@@ -3,12 +3,22 @@ import { createDailyHealthReport } from '@/server/notifications/health-report';
 import {
   buildHealthDigest,
   formatHealthDigest,
+  HEALTH_ALERT_POLICY,
   immediateAlertCodes,
   syntheticTransportProbeFromLedger,
   type HealthDelivery,
 } from '@/server/notifications/health';
 
 describe('notification health digest (#40, 17 §6)', () => {
+  it('keeps the v1 live and daily-alert thresholds in one explicit policy', () => {
+    expect(HEALTH_ALERT_POLICY).toEqual({
+      authFailureThreshold: 3,
+      pendingAgeSeconds: 30 * 60,
+      providerBurstThreshold: 5,
+      providerBurstWindowMs: 5 * 60_000,
+    });
+  });
+
   it('creates a report even when the preceding day has zero failures', () => {
     const report = buildHealthDigest([], new Date('2030-06-05T01:00:00.000Z'));
     expect(report.periodStart).toBe('2030-06-04T01:00:00.000Z');
@@ -53,6 +63,15 @@ describe('notification health digest (#40, 17 §6)', () => {
     expect(immediateAlertCodes(digest)).toEqual([
       'CRITICAL_DELIVERY_DEAD', 'PROVIDER_AUTH_FAILURE', 'PENDING_TOO_OLD', 'PROVIDER_RATE_LIMIT_BURST',
     ]);
+  });
+
+  it('combines 401 and 403 counts for the three-failure auth threshold', () => {
+    const digest = buildHealthDigest([
+      { tenantId: 'tenant-a', channel: 'EMAIL', status: 'RETRY', createdAt: '2030-06-04T20:00:00.000Z', lastErrorCode: 'HTTP_401' },
+      { tenantId: 'tenant-b', channel: 'EMAIL', status: 'RETRY', createdAt: '2030-06-04T20:00:00.000Z', lastErrorCode: 'HTTP_403' },
+      { tenantId: 'tenant-c', channel: 'EMAIL', status: 'RETRY', createdAt: '2030-06-04T20:00:00.000Z', lastErrorCode: 'HTTP_403' },
+    ], new Date('2030-06-05T01:00:00.000Z'));
+    expect(immediateAlertCodes(digest)).toContain('PROVIDER_AUTH_FAILURE');
   });
 
   it('derives synthetic probe evidence from prior platform-health ledger rows without calling a provider', () => {
