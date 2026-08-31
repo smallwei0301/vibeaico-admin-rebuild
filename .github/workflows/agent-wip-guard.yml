@@ -1,0 +1,223 @@
+name: agent-wip-guard
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate agent lane metadata and global WIP limits
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const current = context.payload.pull_request;
+            const marker = '<!-- agent-wip-guard -->';
+
+            const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const readField = (body, field) => {
+              const pattern = new RegExp(
+                `^\\s*[-*]?\\s*${escapeRegExp(field)}\\s*:\\s*(.*?)\\s*$`,
+                'mi',
+              );
+              return (body.match(pattern)?.[1] ?? '').trim();
+            };
+            const upper = (value) => value.trim().toUpperCase();
+            const placeholder = (value) =>
+              !value || value.includes('<!--') || value.includes('|') || /^TBD$/i.test(value);
+
+            const parse = (pr) => {
+              const body = pr.body ?? '';
+              return {
+                number: pr.number,
+                htmlUrl: pr.html_url,
+                origin: upper(readField(body, 'WORK_ORIGIN')),
+                lane: upper(readField(body, 'AGENT_LANE')),
+                state: upper(readField(body, 'LANE_STATE')),
+                activeCandidate: upper(readField(body, 'ACTIVE_CANDIDATE')),
+                closeability: readField(body, 'CLOSEABILITY_SCORE'),
+                selectionReason: upper(readField(body, 'SELECTION_REASON')),
+                remainingSteps: readField(body, 'REMAINING_AUTONOMOUS_STEPS'),
+                blocker: readField(body, 'OWNER_OR_EXTERNAL_BLOCKER'),
+                closureTarget: readField(body, 'CLOSURE_SWEEP_TARGET'),
+                testLaneRequired: upper(readField(body, 'TEST_LANE_REQUIRED')),
+                whyNotCloser: readField(body, 'WHY_NOT_CLOSER_CANDIDATE'),
+                requestedModel: readField(body, 'REQUESTED_MODEL / ACTUAL_MODEL'),
+              };
+            };
+
+            const metadata = parse(current);
+            const isAgent = metadata.origin === 'AGENT';
+            const metadataErrors = [];
+            const wipErrors = [];
+
+            const allowed = {
+              lane: new Set(['TERRA_BUILD', 'LUNA_CLOSURE', 'TEST_VALIDATION', 'GOVERNANCE']),
+              state: new Set(['ACTIVE', 'PARKED', 'COMPLETE', 'OWNER_BLOCKED', 'HISTORICAL']),
+              boolean: new Set(['TRUE', 'FALSE']),
+              reason: new Set(['CLOSE_READY', 'DEPENDENCY_UNLOCKER', 'P0_RUNTIME', 'OWNER_DIRECTED', 'GOVERNANCE']),
+            };
+
+            if (isAgent) {
+              if (!allowed.lane.has(metadata.lane)) metadataErrors.push('AGENT_LANE is missing or invalid');
+              if (!allowed.state.has(metadata.state)) metadataErrors.push('LANE_STATE is missing or invalid');
+              if (!allowed.boolean.has(metadata.activeCandidate)) metadataErrors.push('ACTIVE_CANDIDATE must be true or false');
+              if (!/^[0-5]$/.test(metadata.closeability)) metadataErrors.push('CLOSEABILITY_SCORE must be 0..5');
+              if (!allowed.reason.has(metadata.selectionReason)) metadataErrors.push('SELECTION_REASON is missing or invalid');
+              if (placeholder(metadata.remainingSteps)) metadataErrors.push('REMAINING_AUTONOMOUS_STEPS is required');
+              if (placeholder(metadata.blocker)) metadataErrors.push('OWNER_OR_EXTERNAL_BLOCKER is required; use none when absent');
+              if (!allowed.boolean.has(metadata.testLaneRequired)) metadataErrors.push('TEST_LANE_REQUIRED must be true or false');
+              if (placeholder(metadata.requestedModel)) metadataErrors.push('REQUESTED_MODEL / ACTUAL_MODEL is required');
+
+              if (metadata.state === 'ACTIVE' && metadata.lane === 'TERRA_BUILD') {
+                if (metadata.activeCandidate !== 'TRUE') {
+                  metadataErrors.push('An active TERRA_BUILD must set ACTIVE_CANDIDATE=true');
+                }
+                if (placeholder(metadata.closureTarget)) {
+                  metadataErrors.push('An active TERRA_BUILD must name a CLOSURE_SWEEP_TARGET or EMPTY_WITH_SCAN');
+                }
+                if (metadata.selectionReason === 'CLOSE_READY' && Number(metadata.closeability) < 3) {
+                  metadataErrors.push('CLOSE_READY requires CLOSEABILITY_SCORE 3 or higher');
+                }
+                if (metadata.selectionReason !== 'CLOSE_READY' &&
+                    (placeholder(metadata.whyNotCloser) || /^none$/i.test(metadata.whyNotCloser))) {
+                  metadataErrors.push('Non-CLOSE_READY Terra selection requires WHY_NOT_CLOSER_CANDIDATE');
+                }
+              }
+
+              if (metadata.state === 'PARKED' && metadata.activeCandidate === 'TRUE') {
+                metadataErrors.push('A PARKED PR cannot be an active candidate');
+              }
+            }
+
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const agentPulls = openPulls
+              .map(parse)
+              .filter((pr) => pr.origin === 'AGENT' && pr.state === 'ACTIVE');
+
+            const activeTerra = agentPulls.filter((pr) => pr.lane === 'TERRA_BUILD');
+            const activeClosure = agentPulls.filter((pr) => pr.lane === 'LUNA_CLOSURE');
+            const activeCandidates = agentPulls.filter((pr) => pr.activeCandidate === 'TRUE');
+
+            if (isAgent && metadata.state === 'ACTIVE') {
+              if (activeTerra.length > 1) {
+                wipErrors.push(`active TERRA_BUILD count is ${activeTerra.length}; max is 1 (${activeTerra.map((pr) => `#${pr.number}`).join(', ')})`);
+              }
+              if (activeClosure.length > 1) {
+                wipErrors.push(`active LUNA_CLOSURE count is ${activeClosure.length}; max is 1 (${activeClosure.map((pr) => `#${pr.number}`).join(', ')})`);
+              }
+              if (activeCandidates.length > 2) {
+                wipErrors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is 2 (${activeCandidates.map((pr) => `#${pr.number}`).join(', ')})`);
+              }
+            }
+
+            const labels = {
+              'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as agent-origin.'],
+              'origin:owner-or-unknown': ['BFDADC', 'No explicit agent-origin marker.'],
+              'lane:terra-build': ['5319E7', 'Active or parked Terra implementation lane.'],
+              'lane:luna-closure': ['C2E0C6', 'Luna closure sweep lane.'],
+              'lane:test-validation': ['FBCA04', 'Shared TEST validation lane.'],
+              'lane:governance': ['D4C5F9', 'Repository governance work.'],
+              'state:active': ['0E8A16', 'Current active lane.'],
+              'state:parked': ['BFD4F2', 'Parked; no agent, push, rerun or polling.'],
+              'state:complete': ['006B75', 'Lane work complete.'],
+              'state:owner-blocked': ['D93F0B', 'Only Owner or external action remains.'],
+              'state:historical': ['EDEDED', 'Historical or superseded evidence only.'],
+              'candidate:active': ['B60205', 'Counts toward the maximum of two active candidates.'],
+              'governance:lane-metadata-incomplete': ['D93F0B', 'Agent PR lane metadata is missing or invalid.'],
+              'governance:wip-violation': ['B60205', 'Global active lane or candidate limit is exceeded.'],
+            };
+
+            for (const [name, [color, description]] of Object.entries(labels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({ owner, repo, name, color, description });
+              }
+            }
+
+            const managed = new Set(Object.keys(labels));
+            const existingLabels = (current.labels ?? [])
+              .map((label) => typeof label === 'string' ? label : label.name)
+              .filter(Boolean)
+              .filter((name) => !managed.has(name));
+
+            const nextLabels = [
+              ...existingLabels,
+              isAgent ? 'origin:agent' : 'origin:owner-or-unknown',
+            ];
+            const laneLabels = {
+              TERRA_BUILD: 'lane:terra-build',
+              LUNA_CLOSURE: 'lane:luna-closure',
+              TEST_VALIDATION: 'lane:test-validation',
+              GOVERNANCE: 'lane:governance',
+            };
+            const stateLabels = {
+              ACTIVE: 'state:active',
+              PARKED: 'state:parked',
+              COMPLETE: 'state:complete',
+              OWNER_BLOCKED: 'state:owner-blocked',
+              HISTORICAL: 'state:historical',
+            };
+
+            if (isAgent && laneLabels[metadata.lane]) nextLabels.push(laneLabels[metadata.lane]);
+            if (isAgent && stateLabels[metadata.state]) nextLabels.push(stateLabels[metadata.state]);
+            if (isAgent && metadata.activeCandidate === 'TRUE') nextLabels.push('candidate:active');
+            if (metadataErrors.length) nextLabels.push('governance:lane-metadata-incomplete');
+            if (wipErrors.length) nextLabels.push('governance:wip-violation');
+
+            await github.rest.issues.setLabels({
+              owner,
+              repo,
+              issue_number: current.number,
+              labels: [...new Set(nextLabels)],
+            });
+
+            await core.summary
+              .addHeading('Agent WIP Guard')
+              .addTable([
+                [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
+                ['Current PR', `#${current.number}`],
+                ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
+                ['Active Terra', String(activeTerra.length)],
+                ['Active Luna Closure', String(activeClosure.length)],
+                ['Active candidates', String(activeCandidates.length)],
+                ['Metadata errors', metadataErrors.length ? metadataErrors.join('; ') : 'none'],
+                ['WIP errors', wipErrors.length ? wipErrors.join('; ') : 'none'],
+              ])
+              .write();
+
+            if (isAgent) {
+              const allErrors = [...metadataErrors, ...wipErrors];
+              const commentBody = allErrors.length
+                ? `${marker}\n## Agent WIP Guard: blocked\n\n${allErrors.map((error) => `- ${error}`).join('\n')}\n\nPark the newer lane before continuing. Do not add more commits or rerun CI to work around this guard.`
+                : `${marker}\n## Agent WIP Guard: passed\n\n- active Terra: ${activeTerra.length}/1\n- active Luna Closure PR: ${activeClosure.length}/1\n- active candidates: ${activeCandidates.length}/2\n\nThe Hook validates observable PR metadata only; it does not prove the actual delegated model.`;
+
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: current.number,
+                per_page: 100,
+              });
+              const previous = comments.find((comment) => comment.body?.includes(marker));
+              if (previous) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body: commentBody });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body: commentBody });
+              }
+
+              if (allErrors.length) core.setFailed(allErrors.join('; '));
+            }
