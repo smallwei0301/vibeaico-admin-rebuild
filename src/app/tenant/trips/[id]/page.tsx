@@ -27,7 +27,9 @@ import {
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
-import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { APP_URL } from '@/config/env';
+import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type {
@@ -71,6 +73,8 @@ export default function TripDetailPage() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const businessType = useBusinessType();
+  const currentTenant = useCurrentTenant();
+  const publicShopUrl = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const tripId = String(params?.id ?? '');
 
   const [tab, setTab] = React.useState(searchParams?.get('tab') ?? 'basic');
