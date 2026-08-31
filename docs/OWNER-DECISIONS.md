@@ -8,18 +8,20 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
+| repo governance | 全域 Agent WIP 與 Close-first | **全 repo 同時最多 1 條 active `TERRA_BUILD`、固定 1 條 `LUNA_CLOSURE`、最多 1 條 shared `TEST_VALIDATION`，且 `ACTIVE_CANDIDATE=true` 最多 2 張；TRIAGE 優先挑已有實作／大多數測試、只差 1～2 個自主步驟的 Issue** | 較新的 Owner 裁示覆蓋任何「不同 Issue 可同時多 Terra BUILD」舊提案。其餘 PR 必須 `PARKED`／`HISTORICAL`／`OWNER_BLOCKED`；Sol 只做選題、模糊／高風險判案與最後 Audit。canonical：`docs/decisions/2026-08-31-owner-global-wip-cap.md`、`docs/AGENT-EXECUTION.md`。 |
+| repo governance | Owner 控制訊號與 Issue 來源 | **Owner 重送 `/goal`、`/steer` 或「繼續」可能是模型速度／深度／角色切換，不能單憑此記為 Agent 提早停止；只有明確帶 `AGENT_DISCOVERED` 的 Issue 才算 Agent 新增** | 模型切換保留 branch／PR／exact head／TEST lane，不重做完成工作；缺少前一位 assistant 終止性證據時寫 `UNKNOWN_CONTROL_EVENT`；歷史無來源 Issue 一律 `owner-or-unknown`。 |
+| repo governance | PR lifecycle Janitor | **保留 fail-closed stale PR 清理、每 Issue 單一 ACTIVE candidate 與短命 VALIDATION；但 Janitor 必須服從全域一條 Terra／固定 Closure／單一 TEST／兩候選上限** | Janitor 只有在明確 metadata、同 Issue、同 repo、祖先關係及 target 未變時自動關閉 superseded PR，否則 `JANITOR_REVIEW`；不得再用已被取代的多 Terra 提案關閉符合最新 Owner WIP 的候選。canonical：`docs/PR-LIFECYCLE.md`。 |
 | #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
 | #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |
 | #41 / #12 | 尾款逾期 | **到期未付不自動取消、不自動釋放名額、不自動沒收訂金；先通知導遊與旅客，由導遊決定延長或取消** | 預設快速選項為「到期未付 → 通知我處理」；現場收尾款／全額的方案在出發前不走一般尾款逾期。canonical decision：`docs/decisions/2026-08-31-guide-balance-payment-deadline.md`。 |
 | #41 / #12 / #42 / #46 | 旅客取消／退款規則 | **每個導遊、每個 Trip Plan 可自行設定取消／退款規則；Midao 提供預設範本，不全平台硬綁同一套，也不要求每次人工臨時決定** | Plan 進階設定提供「使用 Midao 建議規則／自行設定」；成交時 snapshot，之後改 Plan 不影響舊訂單；旅客下單前與訂單頁需看到白話政策。預設範本的實際天數／退款比例另逐題裁示。canonical decision：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
-| repo governance | PR lifecycle Janitor | **不同 Issue 可平行 BUILD；同一 Issue 僅一個 ACTIVE candidate 與最多一個短命 VALIDATION；共享 TEST 仍單一 holder** | 以 `docs/PR-LIFECYCLE.md` 為機械規則；Janitor 只能在明確 metadata、同 Issue、同 repo、祖先關係及 target 未變時關閉 superseded PR，否則 `JANITOR_REVIEW`。 |
 
 ## 2026-08-28 已裁示
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
 | repo governance | Agent 常駐自主執行 | **長程任務預設持續推進到所有可施工項目完成；階段性回報後不得停工，也不得重問已記錄的授權／裁示** | 依 `docs/AGENT-EXECUTION.md` 盤點 A/B/C、派工、序列化 TEST、保存證據；驗收與最終分支成立後可自主關閉 Issue，只剩真正 Owner／Production 阻塞才結束。 |
-| repo governance | 角色式模型派工 | **固定採 `SCOUT(Luna) → TRIAGE(Sol) → BUILD(Terra) → DIAGNOSE(Terra/Sol) → AUDIT(Sol) → CLOSEOUT(Luna)`；工作角色優先於目前對話模型** | Sol 決定下一題、模糊 CI、高風險設計與 close verdict；一個中大型 Issue 只交一位 Terra；Luna 做盤點、log、文件與機械收尾。只有 Sol 回覆 `CLOSE_APPROVED` 才可關 Issue。`.agents/skills/vibeaico-agent-orchestration/SKILL.md` 只作執行轉接器，正式規則仍以 `docs/AGENT-EXECUTION.md` 為準。 |
+| repo governance | 角色式模型派工 | **固定採 `SCOUT(Luna) → TRIAGE(Sol) → BUILD(Terra) → DIAGNOSE(Terra/Sol) → AUDIT(Sol) → CLOSEOUT(Luna)`；工作角色優先於目前對話模型** | Sol 決定下一題、模糊 CI、高風險設計與 close verdict；一個中大型 Issue 只交一位 Terra。另受 2026-08-31 較新裁示限制：全 repo 同時只准一條 active Terra BUILD，Luna 固定維持 Closure Sweep。只有 Sol 回覆 `CLOSE_APPROVED` 才可關 Issue。 |
 | repo governance | 憑證取得 | **可從已連結 Google Drive `midao.md`／`midao.env` 取得本專案必要憑證，Owner 不負責 seed、登入、cookie 或 API 排錯** | 秘密不可輸出、提交或轉交 agent；真的缺權限才列 Owner 待辦，並繼續其他工作。 |
 | repo governance | 發布界線 | **文件可依治理規則直進 main；程式可自主做到 PR／CI／Ready 與非 Production 整合分支合併；Production 仍需明確發布授權** | 目前 main 會自動發布，所以會改正式行為的 main merge 不可假裝只是一般 git 動作。 |
 | #40 | 通知可靠性／免費基礎通道 | **免費用戶至少具備基本 Email + Telegram；重要通知走 transactional outbox + delivery ledger；平台 Owner 每日收到送達健康報告** | Email accepted 不冒充 delivered；Telegram 200 不冒充已讀；每日 digest 即使 0 failure 也建立並 Email+Telegram 雙送。canonical：`17-NOTIFICATION-DELIVERY.md`。 |
