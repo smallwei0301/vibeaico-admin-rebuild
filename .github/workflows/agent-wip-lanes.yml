@@ -1,0 +1,215 @@
+name: agent-wip-lanes
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize, labeled, unlabeled, ready_for_review, converted_to_draft, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: agent-wip-lanes-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync lane metadata and enforce global WIP limits
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+
+            const labels = {
+              'lane:terra-build': {
+                color: '0E8A16',
+                description: 'The single active medium/large Terra BUILD lane.',
+              },
+              'lane:luna-closeout': {
+                color: '5319E7',
+                description: 'The single Luna closure-sweep / closeout lane.',
+              },
+              'lane:test-validation': {
+                color: 'FBCA04',
+                description: 'The single shared TEST migration/integration/E2E lane.',
+              },
+              'candidate:active': {
+                color: '1D76DB',
+                description: 'One of at most two PRs actively receiving build, TEST, or closeout work.',
+              },
+              'candidate:parked': {
+                color: 'D4C5F9',
+                description: 'Open for history or future work; must not receive new work or full CI until TRIAGE reactivates it.',
+              },
+              'governance:wip-limit-exceeded': {
+                color: 'B60205',
+                description: 'Global Agent lane or active-candidate limit is exceeded.',
+              },
+              'governance:lane-metadata-missing': {
+                color: 'D93F0B',
+                description: 'PR body is missing required AGENT_LANE / CANDIDATE_STATUS / CLOSEABILITY metadata.',
+              },
+            };
+
+            for (const [name, metadata] of Object.entries(labels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: metadata.color,
+                  description: metadata.description,
+                });
+              }
+            }
+
+            const managed = new Set(Object.keys(labels));
+            const laneMap = {
+              TERRA_BUILD: 'lane:terra-build',
+              LUNA_CLOSURE_SWEEP: 'lane:luna-closeout',
+              TEST_VALIDATION: 'lane:test-validation',
+              PARKED: null,
+            };
+
+            const current = context.payload.pull_request;
+            let currentMetadataError = null;
+
+            if (current && context.payload.action !== 'closed') {
+              const body = current.body ?? '';
+              const laneMatch = body.match(/^AGENT_LANE:\s*(TERRA_BUILD|LUNA_CLOSURE_SWEEP|TEST_VALIDATION|PARKED)\s*$/im);
+              const candidateMatch = body.match(/^CANDIDATE_STATUS:\s*(ACTIVE|PARKED)\s*$/im);
+              const closeabilityMatch = body.match(/^CLOSEABILITY:\s*(READY|NEAR|UNBLOCKER|BUILDABLE|BLOCKED|N\/A)\s*$/im);
+
+              if (!laneMatch || !candidateMatch || !closeabilityMatch) {
+                currentMetadataError = 'Required PR body markers are missing or invalid.';
+              } else {
+                const lane = laneMatch[1].toUpperCase();
+                const candidate = candidateMatch[1].toUpperCase();
+                if ((lane === 'PARKED') !== (candidate === 'PARKED')) {
+                  currentMetadataError = 'PARKED lane and PARKED candidate status must be used together.';
+                }
+              }
+
+              const existing = (current.labels ?? [])
+                .map((label) => typeof label === 'string' ? label : label.name)
+                .filter(Boolean);
+              const preserved = existing.filter((name) => !managed.has(name));
+              const next = [...preserved];
+
+              if (currentMetadataError) {
+                next.push('governance:lane-metadata-missing');
+              } else {
+                const lane = laneMatch[1].toUpperCase();
+                const candidate = candidateMatch[1].toUpperCase();
+                const laneLabel = laneMap[lane];
+                if (laneLabel) next.push(laneLabel);
+                next.push(candidate === 'ACTIVE' ? 'candidate:active' : 'candidate:parked');
+              }
+
+              const normalizedExisting = [...new Set(existing)].sort();
+              const normalizedNext = [...new Set(next)].sort();
+              if (JSON.stringify(normalizedExisting) !== JSON.stringify(normalizedNext)) {
+                await github.rest.issues.setLabels({
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  labels: normalizedNext,
+                });
+              }
+            }
+
+            const pullRequests = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+
+            const laneNames = ['lane:terra-build', 'lane:luna-closeout', 'lane:test-validation'];
+            const byLane = Object.fromEntries(laneNames.map((name) => [name, []]));
+            const active = [];
+            const offenders = new Map();
+
+            const addOffender = (number, reason) => {
+              const reasons = offenders.get(number) ?? [];
+              reasons.push(reason);
+              offenders.set(number, reasons);
+            };
+
+            for (const pr of pullRequests) {
+              const names = (pr.labels ?? [])
+                .map((label) => typeof label === 'string' ? label : label.name)
+                .filter(Boolean);
+              const prLanes = laneNames.filter((name) => names.includes(name));
+              const isActive = names.includes('candidate:active');
+              const isParked = names.includes('candidate:parked');
+
+              for (const lane of prLanes) byLane[lane].push(pr.number);
+              if (isActive) active.push(pr.number);
+
+              if (prLanes.length > 1) addOffender(pr.number, `multiple lane labels: ${prLanes.join(', ')}`);
+              if (isActive && prLanes.length !== 1) addOffender(pr.number, 'candidate:active requires exactly one lane label');
+              if (isParked && prLanes.length > 0) addOffender(pr.number, 'candidate:parked cannot hold a lane label');
+              if (isActive && isParked) addOffender(pr.number, 'candidate cannot be active and parked simultaneously');
+            }
+
+            for (const [lane, numbers] of Object.entries(byLane)) {
+              if (numbers.length > 1) {
+                for (const number of numbers) addOffender(number, `${lane} has ${numbers.length} holders; maximum is 1`);
+              }
+            }
+            if (active.length > 2) {
+              for (const number of active) addOffender(number, `active candidate count is ${active.length}; maximum is 2`);
+            }
+
+            for (const pr of pullRequests) {
+              const names = (pr.labels ?? [])
+                .map((label) => typeof label === 'string' ? label : label.name)
+                .filter(Boolean);
+              const hasViolation = offenders.has(pr.number);
+              const hasViolationLabel = names.includes('governance:wip-limit-exceeded');
+
+              if (hasViolation && !hasViolationLabel) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  labels: ['governance:wip-limit-exceeded'],
+                });
+              } else if (!hasViolation && hasViolationLabel) {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number: pr.number,
+                  name: 'governance:wip-limit-exceeded',
+                }).catch((error) => {
+                  if (error.status !== 404) throw error;
+                });
+              }
+            }
+
+            const rows = [
+              [{ data: 'Control', header: true }, { data: 'Open holders', header: true }, { data: 'Limit', header: true }],
+              ['Terra BUILD', byLane['lane:terra-build'].join(', ') || 'none', '1'],
+              ['Luna closeout', byLane['lane:luna-closeout'].join(', ') || 'none', '1'],
+              ['TEST validation', byLane['lane:test-validation'].join(', ') || 'none', '1'],
+              ['Active candidates', active.join(', ') || 'none', '2'],
+            ];
+            await core.summary.addHeading('Agent WIP lanes').addTable(rows).write();
+
+            if (currentMetadataError) {
+              core.setFailed(currentMetadataError);
+            }
+            if (offenders.size > 0) {
+              const details = [...offenders.entries()]
+                .map(([number, reasons]) => `#${number}: ${[...new Set(reasons)].join('; ')}`)
+                .join('\n');
+              core.setFailed(`Agent WIP limits violated:\n${details}`);
+            }

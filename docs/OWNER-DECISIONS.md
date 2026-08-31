@@ -2,7 +2,14 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-08-28。
+> 最後更新：2026-08-31。
+
+## 2026-08-31 已裁示
+
+| Issue | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| repo governance | Owner 控制訊號與 Issue 來源 | **Owner 為切換模型速度／等級／角色而重送 `/goal`、`/steer` 或「繼續」，不等於 Agent 自行停工；沒有 `AGENT_DISCOVERED` 來源標記的歷史 Issue 一律是 owner-or-unknown** | 只有找到 assistant 終止性回覆且當時仍有自主工作，才能記 `AGENT_PREMATURE_STOP`。Agent 新建 Issue 必須使用來源表單／等價欄位；詳見 `docs/decisions/2026-08-31-agent-control-signals-and-issue-provenance.md`。 |
+| repo governance | Close-first TRIAGE 與全域 WIP lanes | **整個 repo 同時最多一條 Terra 中大型 BUILD、一條 Luna Closure Sweep、一條共用 TEST 驗證；active candidate PR 上限為 2** | Sol 依 READY → NEAR → UNBLOCKER → BUILDABLE → BLOCKED 排序。只要有可在一輪完成的既有候選，不得先啟動明知依賴 Owner／外部人類／另一張大型 Issue 的新 BUILD。使用 PR metadata、`lane:*`／`candidate:*` labels 與 `agent-wip-lanes.yml` 防撞；詳見 `docs/decisions/2026-08-31-close-first-wip-lanes.md`。 |
 
 ## 2026-08-28 已裁示
 
