@@ -267,6 +267,8 @@ describe('Issue #41 persisted formation lifecycle', () => {
     const replay = await recordBankPayment(first, reference);
     expect(replay.error, JSON.stringify(replay.error)).toBeNull();
     expect(replay.data).toBe(first);
+    const changedAmountReplay = await recordBankPayment(first, reference, 99);
+    expect(changedAmountReplay.error?.message).toContain('PAYMENT_RECEIPT_CONFLICT');
     const receipts = await admin.from('tour_order_payment_receipts_41').select('id')
       .eq('tenant_id', SHOP_A.id).eq('channel', 'BANK_MANUAL').eq('receipt_reference', reference);
     expect(receipts.error, JSON.stringify(receipts.error)).toBeNull();
@@ -295,6 +297,20 @@ describe('Issue #41 persisted formation lifecycle', () => {
     expect(state.data).toMatchObject({ status: 'CANCELLED', payment_status: 'REFUND_PENDING', refunded_amount: 0 });
     const after = await admin.from('trip_departures').select('seats_booked').eq('id', cancellationDepartureId).single();
     expect(after.data?.seats_booked).toBe(0);
+    const secondCancel = await cancelOrder(order);
+    expect(secondCancel.error?.message).toContain('TOUR_ORDER_ALREADY_CANCELLED');
+    expect((await admin.from('trip_departures').select('seats_booked').eq('id', cancellationDepartureId).single()).data?.seats_booked).toBe(0);
+
+    const crossTenant = await admin.rpc('cancel_tour_order_41', {
+      p_tenant: SHOP_B.id, p_order: order, p_actor_user: ownerBId, p_reason: 'forbidden',
+    });
+    expect(crossTenant.error?.message).toContain('TOUR_ORDER_NOT_FOUND');
+    const staff = await admin.from('tenant_users').select('user_id').eq('tenant_id', SHOP_A.id).eq('role', 'STAFF').limit(1).single();
+    expect(staff.error, JSON.stringify(staff.error)).toBeNull();
+    const nonManager = await admin.rpc('cancel_tour_order_41', {
+      p_tenant: SHOP_A.id, p_order: order, p_actor_user: staff.data!.user_id, p_reason: 'forbidden',
+    });
+    expect(nonManager.error?.message).toContain('TOUR_ORDER_ACTOR_FORBIDDEN');
   });
 
   it('keeps lifecycle internals out of anon and authenticated RPC access', async () => {

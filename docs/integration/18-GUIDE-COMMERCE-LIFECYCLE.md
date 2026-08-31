@@ -273,6 +273,9 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
   `Departure → Plan → TourOrder` 鎖定、取消訂單並釋出名額。已收而未退的金額只會
   標記 `REFUND_PENDING`；退款比例、沒收、實際匯回都仍受 cancellation-policy／
   #9 的明確契約限制。
+- 整團取消仍只可走既有 formation decision 的 `CANCEL` 分支；#37 尚未提供
+  人員時間釋放／C+ 業績凍結的同交易 contract，故不得另寫 route 假裝完整取消。
+  在該依賴可驗證前，這條邊界是 `BLOCKED_BY_DEPENDENCY_37`。
 
 ---
 

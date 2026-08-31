@@ -11,6 +11,8 @@ const notificationOutboxMigration = '0038_notification_outbox_delivery.sql';
 const issue41BalancePolicyMigration = '0047_issue_41_balance_policy_snapshots.sql';
 const issue41RuntimeContractMigration = '0048_issue_41_atomic_runtime_contracts.sql';
 const issue41CancellationMigration = '0049_issue_41_atomic_order_cancellation.sql';
+const issue41ReceiptGuardMigration = '0050_issue_41_receipt_replay_amount_guard.sql';
+const issue41RefundBasisMigration = '0051_issue_41_midao_refund_basis.sql';
 const migration = readFileSync(`${migrationDirectory}/${issue41Migration}`, 'utf8');
 const normalizedMigration = migration.replace(/\s+/g, ' ');
 const hardeningMigration = readFileSync(`${migrationDirectory}/${issue41HardeningMigration}`, 'utf8');
@@ -44,6 +46,8 @@ describe('#41 schema migration ordering', () => {
     expect(migrationFiles).toContain(issue41BalancePolicyMigration);
     expect(migrationFiles).toContain(issue41RuntimeContractMigration);
     expect(migrationFiles).toContain(issue41CancellationMigration);
+    expect(migrationFiles).toContain(issue41ReceiptGuardMigration);
+    expect(migrationFiles).toContain(issue41RefundBasisMigration);
     expect(migrationFiles.indexOf(tripPlanFoundationMigration)).toBeLessThan(migrationFiles.indexOf(departureOrderFoundationMigration));
     expect(migrationFiles.indexOf(departureOrderFoundationMigration)).toBeLessThan(migrationFiles.indexOf(notificationOutboxMigration));
     expect(migrationFiles.indexOf(notificationOutboxMigration)).toBeLessThan(migrationFiles.indexOf(issue41Migration));
@@ -173,6 +177,9 @@ describe('#41 schema migration ordering', () => {
     expect(balancePolicy).toContain("'minimumDaysBeforeDeparture', 0");
     expect(balancePolicy).not.toMatch(/refund_percent|refundPercentage/i);
     expect(balancePolicy).toMatch(/update public\.tour_orders as o set balance_due = greatest\(o\.total_amount - o\.paid_amount, 0\)/);
+    const refundBasis = readFileSync(`${migrationDirectory}/${issue41RefundBasisMigration}`, 'utf8');
+    expect(refundBasis).toContain('ACTUAL_NONREFUNDABLE_COST');
+    expect(refundBasis).not.toMatch(/refund_percent|refundPercentage/i);
   });
 
   it('keeps bank payment atomic, idempotent, and makes unavailable runtime dependencies fail closed', () => {
@@ -209,6 +216,8 @@ describe('#41 schema migration ordering', () => {
     expect(decisionRoute).toContain("requireTenant('MANAGER')");
     expect(reviewCron).toContain("rpc('review_expired_tour_formations'");
     expect(reviewCron).toContain('CRON_SECRET');
+    const receiptGuard = readFileSync(`${migrationDirectory}/${issue41ReceiptGuardMigration}`, 'utf8');
+    expect(receiptGuard).toContain('v_existing_amount is distinct from p_amount');
   });
 
   it('wires real-mode order actions to services while keeping mock mutations explicit', () => {
@@ -221,5 +230,18 @@ describe('#41 schema migration ordering', () => {
     expect(page).toContain('await cancelTourOrder(order.id, cancelReason.trim() || undefined)');
     expect(page).toContain('if (!USE_MOCK) await load()');
     expect(page).toContain('paymentReceiptRequired');
+    expect(page).toContain('manualCreateBlocked');
+  });
+
+  it('exposes a tenant-scoped real list and an atomic manual-create API contract', () => {
+    const listRoute = readFileSync('src/app/api/tour-orders/route.ts', 'utf8');
+    const manualRoute = readFileSync('src/app/api/tour-orders/manual/route.ts', 'utf8');
+
+    expect(listRoute).toContain("requireTenant()");
+    expect(listRoute).toContain(".eq('tenant_id', t.tenantId)");
+    expect(listRoute).toContain("'PARTIAL'");
+    expect(manualRoute).toContain("requireTenant('MANAGER')");
+    expect(manualRoute).toContain("rpc('create_tour_order'");
+    expect(manualRoute).not.toContain(".insert(");
   });
 });

@@ -143,6 +143,7 @@ export const tourOrdersPage = {
     loadFailed: '載入失敗，請稍後再試',
     actionFailed: '操作失敗，請稍後再試',
     paymentReceiptRequired: '請輸入大於 0 的實收金額與收款憑證編號',
+    manualCreateBlocked: '手動建立訂單需要行程／團次真實目錄；目前該 runtime 尚未接通。',
   },
 
   empty: {

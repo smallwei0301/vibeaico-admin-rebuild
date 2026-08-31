@@ -191,6 +191,10 @@ export default function TourOrdersPage() {
   const draftDeposit = draftPlan ? depositOf(draftPlan, draftTotal, draft.partySize) : 0;
 
   const submitDraft = () => {
+    if (!USE_MOCK) {
+      toast.show(t.messages.manualCreateBlocked, 'danger');
+      return;
+    }
     const trip = MOCK_TRIPS.find((x) => x.id === draft.tripId);
     const departure = draftDepartures.find((d) => d.id === draft.departureId);
     if (!trip || !draftPlan || !departure) return;
@@ -306,7 +310,7 @@ export default function TourOrdersPage() {
           >
             <Eye size={13} />
           </Button>
-          {o.paymentStatus === 'UNPAID' && o.status !== 'CANCELLED' ? (
+          {(o.paymentStatus === 'UNPAID' || o.paymentStatus === 'PARTIAL') && o.status !== 'CANCELLED' ? (
             <Button
               variant="outline" size="sm"
               title={t.actions.confirmPayment} aria-label={t.actions.confirmPayment}
@@ -344,7 +348,10 @@ export default function TourOrdersPage() {
         eyebrow={navLabel('navBooking', businessType)}
         title={t.title}
         actions={
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button onClick={() => {
+            if (USE_MOCK) setCreateOpen(true);
+            else toast.show(t.messages.manualCreateBlocked, 'danger');
+          }}>
             <Plus size={15} />{t.actions.create}
           </Button>
         }
@@ -635,7 +642,7 @@ export default function TourOrdersPage() {
               <>
                 <FormGroup>
                   <Label required>{t.confirm.paymentAmount}</Label>
-                  <Input type="number" min="0.01" step="0.01" value={paymentAmount}
+                  <Input type="number" min="0.01" max={action.order.balanceDue ?? action.order.totalAmount} step="0.01" value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)} />
                 </FormGroup>
                 <FormGroup>
