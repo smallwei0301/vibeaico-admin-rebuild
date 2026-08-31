@@ -149,6 +149,22 @@ supabase/
 | [`13-BUSINESS-MODES.md`](13-BUSINESS-MODES.md) | 業態模式（當地商店/嚮導/醫院）：註冊三選一決定選單/名詞/預設功能包；模式換門牌不換倉庫 |
 | [`17-NOTIFICATION-DELIVERY.md`](17-NOTIFICATION-DELIVERY.md) | 可靠通知：outbox、逐通道派送帳本、免費 Email/Telegram、每日健康報告 |
 | [`18-GUIDE-COMMERCE-LIFECYCLE.md`](18-GUIDE-COMMERCE-LIFECYCLE.md) | GUIDE 散客併團、訂金／尾款、成團截止、自動與人工狀態責任、租戶自有金流驗證 |
+
+## Current-main truth table（2026-08-31）
+
+本入口文件描述的是目標 Phase 順序，不代表各 Phase 已完成。實際狀態以
+`main` 上的 child Issue checkbox、合併 commit 與驗收證據為準；Issue #1
+本身是 master tracker，不得以其開放狀態或 Phase 標題宣稱完成。
+
+| 狀態 | 判定 | 例：child Issue |
+|---|---|---|
+| `COMPLETE_PENDING_AUDIT` | checkbox／證據已齊，仍待 Sol 最終核對 | #17 |
+| `IN_PROGRESS` | 尚有程式、測試或文件 checkbox | #7、#41 |
+| `EXTERNAL_BLOCKED` | 僅剩 Preview／真實 provider／Owner 操作 | #5、#6、#27、#34、#35 |
+| `TRACKER_OPEN` | 傘狀追蹤項，不代表 Phase 完成 | #1 |
+
+Phase 0–10 的完成判定仍須逐項通過本文件第 1 節規則、08 checklist 與
+12 分冊 DoD；未列出的 child Issue 不得推定為完成。
 | [`19-GUIDE-PRODUCT-EXPERIENCE.md`](19-GUIDE-PRODUCT-EXPERIENCE.md) | GUIDE 產品體驗：LINE-first 自助、行動收件匣、旅客風險、提醒、報表、開通與優先級 |
 
 專案級文件治理：
