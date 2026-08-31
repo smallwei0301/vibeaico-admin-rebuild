@@ -2277,6 +2277,11 @@ customers 屬 #7；dashboard（`showSampleData` 分支）、services 與 recurri
 
 > 只新增，不重排既有段落。本節記的是 §1 A-1 清單裡屬於這六頁的那幾條怎麼修的，
 > 以及**修的過程中查證出來、與既有敘述不符的事實**。
+>
+> **狀態同步（2026-08-31，基準 `441d0de`）：本節是未合併工作樹的歷史紀錄，
+> 不是目前主線的完成證據。** 目前主線的 `customers`、`block-times`、`points`、
+> `staff`、`shifts`、`shop-design` 頁面仍以 §1 A-1 的 `[ ]` 為準；issue #7
+> 的接線若未出現在目前 `src/`，不得依本附錄宣稱已完成。
 
 ### X.1 六頁的鏈路（DoD 10）
 
@@ -2361,6 +2366,11 @@ customers 屬 #7；dashboard（`showSampleData` 分支）、services 與 recurri
 
 > 與上面的「附錄 X」是同一個 issue 的另一半（marketing / campaigns / portfolio /
 > rich-menu-design 背景圖），由另一位執行者同時進行。只新增，不重排既有段落。
+>
+> **狀態同步（2026-08-31，基準 `441d0de`）：本節保留作為未合併工作樹的歷史
+> 記錄，不是目前主線的完成證據。** 目前主線仍以 §1 A-1 的 `[ ]` 為準：
+> `campaigns` 頁仍使用 `CAMPAIGNS_*`／`setTimeout` 假資料，rich-menu 背景圖
+> 「上傳圖片」按鈕仍無 `onClick`；不得把本節的接線描述當成已落地功能。
 
 接線 `marketing` / `campaigns` / `portfolio` / `rich-menu-design 背景圖` 這四列時，
 有三件事與當時手上的敘述不符。三件都是**照著錯的前提做下去就不會有紅燈**的那一類，
