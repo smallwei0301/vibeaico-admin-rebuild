@@ -5,7 +5,7 @@ export type PlanEditorSection = 'quick' | 'advanced';
 export type PlanProvenanceSource = 'GUIDE' | 'PLATFORM_ASSISTED' | 'IMPORTED';
 
 const QUICK_FIELDS = [
-  'name', 'description', 'basePrice', 'active',
+  'name', 'description', 'basePrice', 'childPrice', 'active',
 ] as const satisfies readonly (keyof TripPlan)[];
 
 const ADVANCED_FIELDS = [
