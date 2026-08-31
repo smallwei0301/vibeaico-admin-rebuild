@@ -90,6 +90,21 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：新增單元測試區分 missing table、missing column、missing function；待有新 TEST CI 時驗證會在 schema mismatch 的原始錯誤停止，且不產生子表 FK 錯誤。
 - 狀態：監看中
 
+### PB-005 — 新 migration 後先查 TEST 基線與 cache
+
+- 首次／最近：2026-08-31／2026-08-31
+- 發生次數：1
+- Issue／PR／CI：Issue #41／PR #73；CI run `33372597021`
+- 分類：CI／TEST DB
+- 事件：replay 相同 receipt 但改變金額的 integration contract 收到未定義錯誤，而 source 的 `0050_issue_41_receipt_replay_amount_guard.sql` 已明確要求 `PAYMENT_RECEIPT_CONFLICT`。
+- 證據：run `33372597021` 的 #41 DB integration 失敗案例回報 `error undefined`；同一 shared TEST baseline 尚未安裝 0050，不能由該結果推論 source RPC 沒有 guard。
+- 根因：exact-head source migration 與 shared TEST 的已安裝 migration history 不一致；測試直接使用舊函式 body，沒有先以 history/schema evidence 分類。
+- 影響：該次 replay case 不能作 0050 行為的否證，也不能放寬為接受 changed-amount replay；CI run 整體不可作本候選綠燈。
+- 修正：保留 source 的 changed-amount conflict assertion；在下一個已序列化的 TEST validation 前先讀取 baseline，再一次套用缺少的 forward migrations（含 0050）並以 RPC/schema 查詢驗證。
+- 預防：新 RPC migration 的 integration failure 先查 migration history 與 schema cache；缺 migration 時停止重跑與猜測 route，將 source／TEST evidence 分開記錄。
+- 驗證：focused source schema test 鎖定 0050 guard；待 shared TEST lane 釋放後，以安裝後 RPC replay 查詢驗證 `PAYMENT_RECEIPT_CONFLICT`。
+- 狀態：監看中
+
 ### PB-008 — GitHub connector 寫入成功不代表 exact-head CI 已觸發
 
 - 首次／最近：2026-08-28／2026-08-28
@@ -209,3 +224,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：新 migration 先從乾淨 source graph 檢查所有 relation/function 依賴；TEST history 只能作環境證據，不能替代 source dependency。
 - 驗證：focused graph/schema test、full unit、typecheck 與 mock build；shared TEST lane 空閒後才可做 fresh-schema smoke。
 - 狀態：監看中
+
+### PB-016 — Janitor dry-run 必須明確指定 repository context
+
+- 首次／最近：2026-08-31／2026-08-31
+- 發生次數：1
+- Issue／PR／CI：PR #73 closure／Janitor dry-run
+- 分類：Agent
+- 事件：在本地直接執行 `npm run agent:pr-janitor -- --dry-run` 時，Janitor 尚未開始讀取 PR 就停止。
+- 證據：命令回傳 `GITHUB_REPOSITORY must be set to owner/repo`；沒有任何 GitHub mutation、TEST 操作或 CI rerun。
+- 根因：腳本刻意要求明確 `GITHUB_REPOSITORY`，避免在沒有目標的 shell 環境中掃描或寫入錯誤 repo；本次呼叫漏帶該 context。
+- 影響：第一次稽核沒有產生 inventory；沒有改變遠端狀態。補上 context 後同一 dry-run 完成，回報 0 superseded、0 review、0 budget violation。
+- 修正：改以 `GITHUB_REPOSITORY=smallwei0301/vibeaico-admin-rebuild` 重跑 dry-run；保持無寫入模式。
+- 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
+- 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
+- 狀態：已防止

@@ -13,6 +13,7 @@ const issue41RuntimeContractMigration = '0048_issue_41_atomic_runtime_contracts.
 const issue41CancellationMigration = '0049_issue_41_atomic_order_cancellation.sql';
 const issue41ReceiptGuardMigration = '0050_issue_41_receipt_replay_amount_guard.sql';
 const issue41RefundBasisMigration = '0051_issue_41_midao_refund_basis.sql';
+const issue41NoneQualificationMigration = '0052_issue_41_none_payment_qualification.sql';
 const migration = readFileSync(`${migrationDirectory}/${issue41Migration}`, 'utf8');
 const normalizedMigration = migration.replace(/\s+/g, ' ');
 const hardeningMigration = readFileSync(`${migrationDirectory}/${issue41HardeningMigration}`, 'utf8');
@@ -48,6 +49,7 @@ describe('#41 schema migration ordering', () => {
     expect(migrationFiles).toContain(issue41CancellationMigration);
     expect(migrationFiles).toContain(issue41ReceiptGuardMigration);
     expect(migrationFiles).toContain(issue41RefundBasisMigration);
+    expect(migrationFiles).toContain(issue41NoneQualificationMigration);
     expect(migrationFiles.indexOf(tripPlanFoundationMigration)).toBeLessThan(migrationFiles.indexOf(departureOrderFoundationMigration));
     expect(migrationFiles.indexOf(departureOrderFoundationMigration)).toBeLessThan(migrationFiles.indexOf(notificationOutboxMigration));
     expect(migrationFiles.indexOf(notificationOutboxMigration)).toBeLessThan(migrationFiles.indexOf(issue41Migration));
@@ -212,12 +214,17 @@ describe('#41 schema migration ordering', () => {
     expect(cancelRoute).toContain("rpc('cancel_tour_order_41'");
     expect(providerRoute).toContain('PAYMENT_PROVIDER_BLOCKED_BY_DEPENDENCY_9');
     expect(completionRoute).toContain('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37');
+    expect(completionRoute).toContain('TOUR_COMPLETION_CONTRACT_NOT_WIRED');
     expect(decisionRoute).toContain("rpc('decide_tour_formation'");
     expect(decisionRoute).toContain("requireTenant('MANAGER')");
     expect(reviewCron).toContain("rpc('review_expired_tour_formations'");
     expect(reviewCron).toContain('CRON_SECRET');
     const receiptGuard = readFileSync(`${migrationDirectory}/${issue41ReceiptGuardMigration}`, 'utf8');
     expect(receiptGuard).toContain('v_existing_amount is distinct from p_amount');
+    const noneQualification = readFileSync(`${migrationDirectory}/${issue41NoneQualificationMigration}`, 'utf8');
+    expect(noneQualification).toContain("new.deposit_mode_snapshot = 'NONE'");
+    expect(noneQualification).toContain("new.status := 'CONFIRMED'");
+    expect(noneQualification).toContain("new.hold_expires_at := null");
   });
 
   it('wires real-mode order actions to services while keeping mock mutations explicit', () => {

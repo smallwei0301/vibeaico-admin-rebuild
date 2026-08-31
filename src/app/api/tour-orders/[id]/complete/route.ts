@@ -17,7 +17,11 @@ export const POST = handle(async (_req, ctx: Ctx) => {
   const { error } = await createAdminSupabase().rpc('complete_tour_departure_41', {
     p_tenant: t.tenantId, p_departure: order.departure_id, p_actor_user: t.user.id,
   });
-  if (error?.message?.includes('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37'))
+  // The source function emits the stable dependency code, while an older TEST
+  // function body emits the pre-contract name.  Neither permits a status
+  // update, and both must surface the public #37 fail-closed boundary.
+  if (error?.message?.includes('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37')
+    || error?.message?.includes('TOUR_COMPLETION_CONTRACT_NOT_WIRED'))
     return fail(503, 'TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37', 'TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37');
   if (error) throw error;
   return fail(503, 'TOUR_COMPLETION_CONTRACT_NOT_WIRED', 'TOUR_COMPLETION_CONTRACT_NOT_WIRED');

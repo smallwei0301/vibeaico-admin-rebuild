@@ -313,6 +313,45 @@ describe('Issue #41 persisted formation lifecycle', () => {
     expect(nonManager.error?.message).toContain('TOUR_ORDER_ACTOR_FORBIDDEN');
   });
 
+  it('applies NONE, DEPOSIT_FIXED, and DEPOSIT_PERCENT qualification through order/payment RPCs', async () => {
+    const policies = await admin.from('trip_plans').insert([
+      { tenant_id: SHOP_A.id, trip_id: tripId, slug: `none-${randomUUID()}`, name: 'none', base_price: 100,
+        price_type: 'PER_PERSON', deposit_mode: 'NONE', deposit_value: 0, min_to_depart: 1, max_participants: 10, formation_deadline_days_before: 10 },
+      { tenant_id: SHOP_A.id, trip_id: tripId, slug: `fixed-${randomUUID()}`, name: 'fixed', base_price: 100,
+        price_type: 'PER_PERSON', deposit_mode: 'DEPOSIT_FIXED', deposit_value: 50, min_to_depart: 1, max_participants: 10, formation_deadline_days_before: 10 },
+      { tenant_id: SHOP_A.id, trip_id: tripId, slug: `percent-${randomUUID()}`, name: 'percent', base_price: 100,
+        price_type: 'PER_PERSON', deposit_mode: 'DEPOSIT_PERCENT', deposit_value: 50, min_to_depart: 1, max_participants: 10, formation_deadline_days_before: 10 },
+    ]).select('id, deposit_mode');
+    expect(policies.error, JSON.stringify(policies.error)).toBeNull();
+    const departures = await admin.from('trip_departures').insert((policies.data ?? []).map((plan, index) => ({
+      tenant_id: SHOP_A.id, trip_id: tripId, plan_id: plan.id, departs_on: futureDate(60 + index), capacity: 10, status: 'OPEN',
+    }))).select('id, plan_id');
+    expect(departures.error, JSON.stringify(departures.error)).toBeNull();
+    departureIds.push(...(departures.data ?? []).map((row) => row.id));
+    const departureFor = (mode: string) => departures.data!.find((row) =>
+      row.plan_id === policies.data!.find((plan) => plan.deposit_mode === mode)!.id)!.id;
+
+    const none = await createOrder(departureFor('NONE'), 'none');
+    const noneState = await admin.from('tour_orders').select('status, payment_status, hold_expires_at').eq('id', none).single();
+    expect(noneState.data).toMatchObject({ status: 'CONFIRMED', payment_status: 'UNPAID', hold_expires_at: null });
+    expect((await admin.from('trip_departures').select('formation_status, formed_participants').eq('id', departureFor('NONE')).single()).data)
+      .toMatchObject({ formation_status: 'FORMED', formed_participants: 1 });
+
+    for (const mode of ['DEPOSIT_FIXED', 'DEPOSIT_PERCENT']) {
+      const order = await createOrder(departureFor(mode), mode);
+      const insufficient = await recordBankPayment(order, `${mode}-49-${randomUUID()}`, 49);
+      expect(insufficient.error, JSON.stringify(insufficient.error)).toBeNull();
+      expect((await admin.from('tour_orders').select('status, payment_status').eq('id', order).single()).data)
+        .toMatchObject({ status: 'PENDING', payment_status: 'UNPAID' });
+      const qualified = await recordBankPayment(order, `${mode}-1-${randomUUID()}`, 1);
+      expect(qualified.error, JSON.stringify(qualified.error)).toBeNull();
+      expect((await admin.from('tour_orders').select('status, payment_status').eq('id', order).single()).data)
+        .toMatchObject({ status: 'CONFIRMED', payment_status: 'PARTIAL' });
+      expect((await admin.from('trip_departures').select('formation_status, formed_participants').eq('id', departureFor(mode)).single()).data)
+        .toMatchObject({ formation_status: 'FORMED', formed_participants: 1 });
+    }
+  });
+
   it('keeps lifecycle internals out of anon and authenticated RPC access', async () => {
     const anon = createClient(url(), anonKey(), { auth: { persistSession: false, autoRefreshToken: false } });
     const args = {
