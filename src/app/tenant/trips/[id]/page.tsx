@@ -841,223 +841,287 @@ export default function TripDetailPage() {
       >
         {planDraft ? (
           <div className="flex flex-col gap-3">
+            <div className="border-b border-neutral-200 pb-3">
+              <div role="tablist" aria-label={t.plans.editor.quick} className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={planEditorSection === 'quick' ? 'primary' : 'outline'}
+                  aria-selected={planEditorSection === 'quick'}
+                  onClick={() => setPlanEditorSection('quick')}
+                >
+                  {t.plans.editor.quick}
+                </Button>
+                <Button
+                  type="button"
+                  variant={planEditorSection === 'advanced' ? 'primary' : 'outline'}
+                  aria-selected={planEditorSection === 'advanced'}
+                  onClick={() => setPlanEditorSection('advanced')}
+                >
+                  {t.plans.editor.advanced}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-secondary">
+                {planEditorSection === 'quick'
+                  ? t.plans.editor.quickHint
+                  : t.plans.editor.advancedHint}
+              </p>
+              <Link
+                href={publicShopUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex text-sm font-semibold text-primary underline"
+              >
+                {t.plans.editor.preview}
+              </Link>
+            </div>
+
             {planDraft.reviewState === 'CHANGES_REQUESTED' && planDraft.reviewNote ? (
               <Alert tone="warning" icon={<AlertTriangle size={18} className="mt-0.5" />}>
                 <span className="font-semibold">{t.plans.review.noteLabel}：</span>{planDraft.reviewNote}
               </Alert>
             ) : null}
 
-            <FormGroup>
-              <Label required>{t.plans.fields.nameLabel}</Label>
-              <Input
-                value={planDraft.name}
-                placeholder={t.plans.fields.namePlaceholder}
-                onChange={(e) => patchPlan({ name: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup>
-              <Label>{t.plans.fields.descriptionLabel}</Label>
-              <Textarea
-                rows={2}
-                value={planDraft.description}
-                onChange={(e) => patchPlan({ description: e.target.value })}
-              />
-            </FormGroup>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormGroup>
-                <Label required>{t.plans.fields.priceTypeLabel}</Label>
-                <Select
-                  value={planDraft.priceType}
-                  onChange={(e) => patchPlan({ priceType: e.target.value as PriceType })}
-                >
-                  {(Object.keys(t.plans.priceType) as PriceType[]).map((k) => (
-                    <option key={k} value={k}>{t.plans.priceType[k]}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.basePriceLabel}</Label>
-                <Input
-                  type="number" min={0} value={planDraft.basePrice}
-                  onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>{t.plans.fields.childPriceLabel}</Label>
-                <Input
-                  type="number" min={0}
-                  value={planDraft.childPrice ?? ''}
-                  onChange={(e) => patchPlan({
-                    childPrice: e.target.value === '' ? null : Number(e.target.value),
-                  })}
-                />
-                <FormText>{t.plans.fields.childPriceHelp}</FormText>
-              </FormGroup>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormGroup>
-                <Label required>{t.plans.fields.durationLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.durationMinutes}
-                  onChange={(e) => patchPlan({ durationMinutes: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.minLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.minParticipants}
-                  onChange={(e) => patchPlan({ minParticipants: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.maxLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.maxParticipants}
-                  onChange={(e) => patchPlan({ maxParticipants: Number(e.target.value) })}
-                />
-                <FormText>{t.plans.fields.partyHelp}</FormText>
-              </FormGroup>
-            </div>
-
-            <FormGroup>
-              <Label required>{t.plans.fields.bookingTypeLabel}</Label>
-              <Select
-                value={planDraft.bookingType}
-                onChange={(e) => patchPlan({ bookingType: e.target.value as TripBookingType })}
-              >
-                {(Object.keys(t.plans.bookingType) as TripBookingType[]).map((k) => (
-                  <option key={k} value={k}>{t.plans.bookingType[k]}</option>
-                ))}
-              </Select>
-              <FormText>{t.plans.bookingTypeHint[planDraft.bookingType]}</FormText>
-            </FormGroup>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormGroup>
-                <Label required>{t.plans.fields.depositLabel}</Label>
-                <Select
-                  value={planDraft.depositMode}
-                  onChange={(e) => patchPlan({
-                    depositMode: e.target.value as TripPlan['depositMode'],
-                    depositValue: 0,
-                  })}
-                >
-                  {(Object.keys(t.plans.depositMode) as TripPlan['depositMode'][]).map((k) => (
-                    <option key={k} value={k}>{t.plans.depositMode[k]}</option>
-                  ))}
-                </Select>
-                <FormText>{t.plans.fields.depositHelp[planDraft.depositMode]}</FormText>
-              </FormGroup>
-              {planDraft.depositMode === 'DEPOSIT_FIXED'
-                || planDraft.depositMode === 'DEPOSIT_PERCENT' ? (
+            {planEditorSection === 'quick' ? (
+              <>
+                <FormGroup>
+                  <Label required>{t.plans.fields.nameLabel}</Label>
+                  <Input
+                    value={planDraft.name}
+                    placeholder={t.plans.fields.namePlaceholder}
+                    onChange={(e) => patchPlan({ name: e.target.value })}
+                  />
+                </FormGroup>
+                <FormGroup>
+                  <Label>{t.plans.fields.descriptionLabel}</Label>
+                  <Textarea
+                    rows={3}
+                    value={planDraft.description}
+                    onChange={(e) => patchPlan({ description: e.target.value })}
+                  />
+                </FormGroup>
+                <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>
-                    <Label required>
-                      {planDraft.depositMode === 'DEPOSIT_FIXED'
-                        ? t.plans.fields.depositValueLabel
-                        : t.plans.fields.depositPercentLabel}
-                    </Label>
+                    <Label required>{t.plans.fields.basePriceLabel}</Label>
                     <Input
-                      type="number" min={0}
-                      max={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 100 : undefined}
-                      value={planDraft.depositValue}
-                      onChange={(e) => patchPlan({ depositValue: Number(e.target.value) })}
+                      type="number"
+                      min={0}
+                      value={planDraft.basePrice}
+                      onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
                     />
-                    {planDraft.depositMode === 'DEPOSIT_FIXED'
-                      && planDraft.priceType === 'PER_PERSON' ? (
-                        <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
-                      ) : null}
                   </FormGroup>
-                ) : null}
-            </div>
-
-            <SwitchField
-              label={t.plans.fields.activeLabel}
-              checked={planDraft.active}
-              onCheckedChange={(v) => patchPlan({ active: v })}
-            />
-
-            <div className="rounded-lg border border-neutral-200 p-3">
-              <SwitchField
-                label={t.plans.fields.yearRoundLabel}
-                description={t.plans.fields.yearRoundHelp}
-                checked={planDraft.yearRound}
-                onCheckedChange={(v) => patchPlan({ yearRound: v })}
-              />
-
-              {!planDraft.yearRound ? (
-                <div className="mt-3 border-t border-neutral-200 pt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-dark">{t.seasons.sectionTitle}</span>
-                    <Button size="sm" variant="outline" onClick={addSeason}>
-                      <ListPlus size={13} />{t.seasons.add}
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-2xs text-muted">{t.seasons.sectionHint}</p>
-
-                  {planDraft.seasons.length === 0 ? (
-                    <p className="mt-2 text-xs text-danger">{t.seasons.empty}</p>
-                  ) : (
-                    <div className="mt-2 flex flex-col gap-2">
-                      {planDraft.seasons.map((s) => (
-                        <div key={s.id} className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
-                          <div className="flex items-start gap-2">
-                            <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                              <Input
-                                value={s.name}
-                                placeholder={t.seasons.fields.namePlaceholder}
-                                onChange={(e) => patchSeason(s.id, { name: e.target.value })}
-                              />
-                              <Input
-                                type="number" min={0}
-                                value={s.priceOverride ?? ''}
-                                placeholder={t.seasons.fields.pricePlaceholder}
-                                onChange={(e) => patchSeason(s.id, {
-                                  priceOverride: e.target.value === '' ? null : Number(e.target.value),
-                                })}
-                              />
-                            </div>
-                            <Button
-                              variant="ghost" size="sm"
-                              aria-label={t.actions.delete} title={t.actions.delete}
-                              onClick={() => removeSeason(s.id)}
-                            >
-                              <Trash2 size={13} className="text-danger" />
-                            </Button>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-secondary">
-                            <span>{t.seasons.fields.rangeLabel}</span>
-                            {([
-                              ['startMonth', s.startMonth, 12], ['startDay', s.startDay, 31],
-                            ] as const).map(([key, val, max]) => (
-                              <Input
-                                key={key} type="number" min={1} max={max} value={val}
-                                className="w-16"
-                                onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
-                              />
-                            ))}
-                            <span>～</span>
-                            {([
-                              ['endMonth', s.endMonth, 12], ['endDay', s.endDay, 31],
-                            ] as const).map(([key, val, max]) => (
-                              <Input
-                                key={key} type="number" min={1} max={max} value={val}
-                                className="w-16"
-                                onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                      <p className="text-2xs text-muted">{t.seasons.crossYearNote}</p>
-                    </div>
-                  )}
+                  <FormGroup>
+                    <Label>{t.plans.fields.childPriceLabel}</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={planDraft.childPrice ?? ''}
+                      onChange={(e) => patchPlan({
+                        childPrice: e.target.value === '' ? null : Number(e.target.value),
+                      })}
+                    />
+                    <FormText>{t.plans.fields.childPriceHelp}</FormText>
+                  </FormGroup>
                 </div>
-              ) : null}
-            </div>
+                <SwitchField
+                  label={t.plans.fields.activeLabel}
+                  checked={planDraft.active}
+                  onCheckedChange={(v) => patchPlan({ active: v })}
+                />
+              </>
+            ) : (
+              <>
+                <Alert tone="info">{t.plans.editor.advancedHint}</Alert>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label required>{t.plans.fields.priceTypeLabel}</Label>
+                    <Select
+                      value={planDraft.priceType}
+                      onChange={(e) => patchPlan({ priceType: e.target.value as PriceType })}
+                    >
+                      {(Object.keys(t.plans.priceType) as PriceType[]).map((k) => (
+                        <option key={k} value={k}>{t.plans.priceType[k]}</option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label required>{t.plans.fields.durationLabel}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={planDraft.durationMinutes}
+                      onChange={(e) => patchPlan({ durationMinutes: Number(e.target.value) })}
+                    />
+                  </FormGroup>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label required>{t.plans.fields.minLabel}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={planDraft.minParticipants}
+                      onChange={(e) => patchPlan({ minParticipants: Number(e.target.value) })}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label required>{t.plans.fields.maxLabel}</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={planDraft.maxParticipants}
+                      onChange={(e) => patchPlan({ maxParticipants: Number(e.target.value) })}
+                    />
+                    <FormText>{t.plans.fields.partyHelp}</FormText>
+                  </FormGroup>
+                </div>
+
+                <FormGroup>
+                  <Label required>{t.plans.fields.bookingTypeLabel}</Label>
+                  <Select
+                    value={planDraft.bookingType}
+                    onChange={(e) => patchPlan({ bookingType: e.target.value as TripBookingType })}
+                  >
+                    {(Object.keys(t.plans.bookingType) as TripBookingType[]).map((k) => (
+                      <option key={k} value={k}>{t.plans.bookingType[k]}</option>
+                    ))}
+                  </Select>
+                  <FormText>{t.plans.bookingTypeHint[planDraft.bookingType]}</FormText>
+                </FormGroup>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label required>{t.plans.fields.depositLabel}</Label>
+                    <Select
+                      value={planDraft.depositMode}
+                      onChange={(e) => patchPlan({
+                        depositMode: e.target.value as TripPlan['depositMode'],
+                        depositValue: 0,
+                      })}
+                    >
+                      {(Object.keys(t.plans.depositMode) as TripPlan['depositMode'][]).map((k) => (
+                        <option key={k} value={k}>{t.plans.depositMode[k]}</option>
+                      ))}
+                    </Select>
+                    <FormText>{t.plans.fields.depositHelp[planDraft.depositMode]}</FormText>
+                  </FormGroup>
+                  {planDraft.depositMode === 'DEPOSIT_FIXED'
+                    || planDraft.depositMode === 'DEPOSIT_PERCENT' ? (
+                      <FormGroup>
+                        <Label required>
+                          {planDraft.depositMode === 'DEPOSIT_FIXED'
+                            ? t.plans.fields.depositValueLabel
+                            : t.plans.fields.depositPercentLabel}
+                        </Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 100 : undefined}
+                          value={planDraft.depositValue}
+                          onChange={(e) => patchPlan({ depositValue: Number(e.target.value) })}
+                        />
+                        {planDraft.depositMode === 'DEPOSIT_FIXED'
+                          && planDraft.priceType === 'PER_PERSON' ? (
+                            <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
+                          ) : null}
+                      </FormGroup>
+                    ) : null}
+                </div>
+
+                <div className="rounded-lg border border-neutral-200 p-3">
+                  <SwitchField
+                    label={t.plans.fields.yearRoundLabel}
+                    description={t.plans.fields.yearRoundHelp}
+                    checked={planDraft.yearRound}
+                    onCheckedChange={(v) => patchPlan({ yearRound: v })}
+                  />
+
+                  {!planDraft.yearRound ? (
+                    <div className="mt-3 border-t border-neutral-200 pt-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold text-dark">{t.seasons.sectionTitle}</span>
+                        <Button size="sm" variant="outline" onClick={addSeason}>
+                          <ListPlus size={13} />{t.seasons.add}
+                        </Button>
+                      </div>
+                      <p className="mt-1 text-2xs text-muted">{t.seasons.sectionHint}</p>
+
+                      {planDraft.seasons.length === 0 ? (
+                        <p className="mt-2 text-xs text-danger">{t.seasons.empty}</p>
+                      ) : (
+                        <div className="mt-2 flex flex-col gap-2">
+                          {planDraft.seasons.map((s) => (
+                            <div key={s.id} className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
+                              <div className="flex items-start gap-2">
+                                <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                                  <Input
+                                    value={s.name}
+                                    placeholder={t.seasons.fields.namePlaceholder}
+                                    onChange={(e) => patchSeason(s.id, { name: e.target.value })}
+                                  />
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    value={s.priceOverride ?? ''}
+                                    placeholder={t.seasons.fields.pricePlaceholder}
+                                    onChange={(e) => patchSeason(s.id, {
+                                      priceOverride: e.target.value === '' ? null : Number(e.target.value),
+                                    })}
+                                  />
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={t.actions.delete}
+                                  title={t.actions.delete}
+                                  onClick={() => removeSeason(s.id)}
+                                >
+                                  <Trash2 size={13} className="text-danger" />
+                                </Button>
+                              </div>
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-secondary">
+                                <span>{t.seasons.fields.rangeLabel}</span>
+                                {([
+                                  ['startMonth', s.startMonth, 12], ['startDay', s.startDay, 31],
+                                ] as const).map(([key, val, max]) => (
+                                  <Input
+                                    key={key}
+                                    type="number"
+                                    min={1}
+                                    max={max}
+                                    value={val}
+                                    className="w-16"
+                                    onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
+                                  />
+                                ))}
+                                <span>～</span>
+                                {([
+                                  ['endMonth', s.endMonth, 12], ['endDay', s.endDay, 31],
+                                ] as const).map(([key, val, max]) => (
+                                  <Input
+                                    key={key}
+                                    type="number"
+                                    min={1}
+                                    max={max}
+                                    value={val}
+                                    className="w-16"
+                                    onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                          <p className="text-2xs text-muted">{t.seasons.crossYearNote}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted">{t.plans.editor.pendingFields}</p>
+              </>
+            )}
           </div>
-        ) : null}
+        ) : null}}
       </Modal>
 
       {/* ================================================== 團次編輯 Modal */}
