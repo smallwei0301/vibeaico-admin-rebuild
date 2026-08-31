@@ -51,7 +51,7 @@ jobs:
               },
               'governance:lane-metadata-missing': {
                 color: 'D93F0B',
-                description: 'PR body is missing required AGENT_LANE / CANDIDATE_STATUS / CLOSEABILITY metadata.',
+                description: 'PR body is missing or violates required Agent lane metadata.',
               },
             };
 
@@ -92,8 +92,13 @@ jobs:
               } else {
                 const lane = laneMatch[1].toUpperCase();
                 const candidate = candidateMatch[1].toUpperCase();
+                const closeability = closeabilityMatch[1].toUpperCase();
                 if ((lane === 'PARKED') !== (candidate === 'PARKED')) {
                   currentMetadataError = 'PARKED lane and PARKED candidate status must be used together.';
+                } else if (candidate === 'ACTIVE' && closeability === 'BLOCKED') {
+                  currentMetadataError = 'A BLOCKED candidate must be PARKED; it cannot occupy an active WIP lane.';
+                } else if (candidate === 'ACTIVE' && closeability === 'N/A') {
+                  currentMetadataError = 'An active candidate must have a real closeability classification.';
                 }
               }
 
