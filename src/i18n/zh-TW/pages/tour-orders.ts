@@ -53,7 +53,9 @@ export const tourOrdersPage = {
   },
   paymentStatus: {
     UNPAID: '未付款',
+    PARTIAL: '已收訂金',
     PAID: '已付款',
+    REFUND_PENDING: '退款處理中',
     REFUNDED: '已退款',
   },
   /** 定金模式的訂單：已收定金但尾款未收 */
