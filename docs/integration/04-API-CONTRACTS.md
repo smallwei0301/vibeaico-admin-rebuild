@@ -225,7 +225,8 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/marketing/pushes/:id/send` | 立即發送：解析 audience → line_users → multicast（06 分冊 §5）→ 寫 sent_count、扣 push_quota_usage |
 | POST `/api/marketing/pushes/:id/cancel` | SCHEDULED→CANCELLED |
 | GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | 狀態機同票券 |
-| GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | keyword_replies CRUD |
+| GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | `keyword_replies` CRUD。`IMAGE` 寫入須帶 `content.imageStorageRef={bucket,path,url,previewPath,previewUrl}`；伺服器固定只收 `keyword-reply-images`、驗證 `{tenantId}/{uuid}.{ext}` 路徑、可信 Supabase HTTPS public URL，以及原圖／preview 兩個物件確實存在，不能只信前端送來的 URL。GET 對新版 ref 重驗物件；既有只有 `imageUrl` 的 legacy row 保留唯讀／停用相容，下次換圖才升級，不做猜測式 backfill |
+| DELETE `/api/settings/line/keyword-replies/image` | 取消尚未儲存的選圖。只接受本租戶且 URL/path/bucket 一致的完整 storage ref；若仍被任一 keyword reply 引用則不刪。替換／移除／刪除 reply 亦採「DB 先解除引用，再刪原圖＋preview」；Storage 暫時失敗寫入 `keyword_reply_image_cleanup`，由受 `CRON_SECRET` 保護的每日工作重試，重試前再次確認沒有活引用 |
 | GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
 | GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |
 | GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新。支援 `?after=<messageId>` → 只回該筆之後的新訊息（輪詢用） |
