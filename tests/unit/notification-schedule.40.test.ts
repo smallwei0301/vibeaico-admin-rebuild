@@ -5,6 +5,7 @@ const vercel = readFileSync('vercel.json', 'utf8');
 const cronDoc = readFileSync('docs/integration/07-DEPLOYMENT-CRON.md', 'utf8');
 const notificationDoc = readFileSync('docs/integration/17-NOTIFICATION-DELIVERY.md', 'utf8');
 const healthRoute = readFileSync('src/app/api/cron/notification-health/route.ts', 'utf8');
+const cronIntegration = readFileSync('tests/integration/api/cron-jobs.07.test.ts', 'utf8');
 
 describe('notification health schedule (#40, 07 §2, 17 §6)', () => {
   it('uses the same 01:00 UTC / 09:00 Asia-Taipei schedule in config, route, and canonical docs', () => {
@@ -20,5 +21,10 @@ describe('notification health schedule (#40, 07 §2, 17 §6)', () => {
     expect(cronDoc).toContain('±59 分鐘 jitter');
     expect(notificationDoc).toContain('以 route 實際執行的時間為 cutoff');
     expect(notificationDoc).toContain('±59 分鐘 jitter');
+  });
+
+  it('keeps the cron push polling timeout at the repository ten-second maximum', () => {
+    expect(cronIntegration).toContain('async function waitForPush(to: string, timeoutMs = 10_000)');
+    expect(cronIntegration).not.toContain('timeoutMs = 15_000');
   });
 });
