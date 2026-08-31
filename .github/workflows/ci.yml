@@ -1,16 +1,5 @@
 name: ci
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened]
-  workflow_dispatch: {}
-
-permissions:
-  contents: read
-  pull-requests: read
-
+on: { push: { branches: [main] }, pull_request: {}, workflow_dispatch: {} }
 jobs:
   classify-changes:
     runs-on: ubuntu-latest
@@ -22,9 +11,6 @@ jobs:
       runtime_path: ${{ steps.classify.outputs.runtime_path }}
       base_revision: ${{ steps.classify.outputs.base_revision }}
       head_revision: ${{ steps.classify.outputs.head_revision }}
-      run_test_validation: ${{ steps.test_policy.outputs.run_test_validation }}
-      test_policy_reason: ${{ steps.test_policy.outputs.test_policy_reason }}
-      test_lane_holders: ${{ steps.test_policy.outputs.test_lane_holders }}
     steps:
       # PRs compare base → head and main pushes before → after. Full history ensures a
       # missing revision fails closed in the classifier instead of making runtime work light.
@@ -34,88 +20,14 @@ jobs:
         with: { node-version: 22 }
       - id: classify
         run: node scripts/ci/classify-changes.mjs
-      - id: test_policy
-        name: Decide whether this run owns the shared TEST lane
-        uses: actions/github-script@v9
-        env:
-          DOCS_ONLY: ${{ steps.classify.outputs.docs_only }}
-        with:
-          script: |
-            const docsOnly = process.env.DOCS_ONLY === 'true';
-            const eventName = context.eventName;
-            let runTestValidation = false;
-            let reason = 'source_only';
-            let holders = [];
 
-            const hasExactMarker = (body, name, value) => {
-              const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-              return new RegExp(`^${name}:\\s*${escaped}\\s*$`, 'im').test(body ?? '');
-            };
-
-            if (docsOnly) {
-              reason = 'docs_only';
-            } else if (eventName === 'push' && context.ref === 'refs/heads/main') {
-              runTestValidation = true;
-              reason = 'main_push';
-            } else if (eventName === 'workflow_dispatch') {
-              runTestValidation = true;
-              reason = 'manual_full_ci';
-            } else if (eventName === 'pull_request') {
-              const current = context.payload.pull_request;
-              const body = current?.body ?? '';
-              const requestsTestLane =
-                hasExactMarker(body, 'AGENT_LANE', 'TEST_VALIDATION') &&
-                hasExactMarker(body, 'CANDIDATE_STATUS', 'ACTIVE');
-
-              if (!requestsTestLane) {
-                reason = 'source_only_pr_without_test_lane';
-              } else {
-                const openPrs = await github.paginate(github.rest.pulls.list, {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  state: 'open',
-                  per_page: 100,
-                });
-                holders = openPrs
-                  .filter((pr) => {
-                    const candidateBody = pr.body ?? '';
-                    return hasExactMarker(candidateBody, 'AGENT_LANE', 'TEST_VALIDATION') &&
-                      hasExactMarker(candidateBody, 'CANDIDATE_STATUS', 'ACTIVE');
-                  })
-                  .map((pr) => pr.number)
-                  .sort((a, b) => a - b);
-
-                if (holders.length === 1 && holders[0] === current.number) {
-                  runTestValidation = true;
-                  reason = 'sole_active_test_validation_lane';
-                } else {
-                  reason = `test_lane_conflict_${holders.length}`;
-                }
-              }
-            } else {
-              reason = 'unsupported_event_fail_closed';
-            }
-
-            core.setOutput('run_test_validation', String(runTestValidation));
-            core.setOutput('test_policy_reason', reason);
-            core.setOutput('test_lane_holders', holders.join(','));
-
-            await core.summary
-              .addHeading('Shared TEST policy')
-              .addTable([
-                [{ data: 'Field', header: true }, { data: 'Result', header: true }],
-                ['Run heavy TEST', String(runTestValidation)],
-                ['Reason', reason],
-                ['Open TEST lane holders', holders.join(', ') || 'none'],
-              ])
-              .write();
-
-  check:                       # Preserve this required job name on all CI paths.
+  check:                       # Preserve this required job name on both CI paths.
     needs: classify-changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      # Both the classifier source syntax check and runtime CI use the repository Node contract.
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Validate .claude skill symlinks
@@ -124,6 +36,7 @@ jobs:
             echo 'A .claude/skills symlink target is missing.' >&2
             exit 1
           fi
+      # Docs-only commits never install dependencies or run runtime tests/builds.
       - name: Lightweight documentation check
         if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
         run: |
@@ -147,52 +60,39 @@ jobs:
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
       - run: npm test
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
-      - run: npm run build      # env empty + mock mode
+      - run: npm run build      # env 全空 + mock mode (鐵則 10 的 CI 版)
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
 
   integration:
-    # Preserve one required `integration` context. Non-owner PRs emit explicit skip evidence.
+    # One required check context for both policies; the steps are policy-gated below.
     name: integration
     needs: [classify-changes, check]
     if: ${{ needs.check.result == 'success' }}
     runs-on: ubuntu-latest
+    # Docs runs get an isolated short-lived group; runtime runs serialize the shared TEST lane.
     concurrency:
-      group: ${{ needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || format('source-only-integration-{0}', github.run_id) }}
+      group: ${{ needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || 'shared-test-supabase-integration' }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+        with: { node-version: 22, cache: npm }
       - name: Documentation policy skip evidence
         if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
         run: |
-          echo 'POLICY_SKIP: TEST integration and Playwright E2E are intentionally skipped for an allowlist-only documentation change.'
+          echo 'POLICY_SKIP: npm run test:integration and Playwright E2E are intentionally skipped for an allowlist-only documentation change.'
           {
             echo '### Integration policy'
             echo ''
             echo '- docs-only route: TEST integration and Playwright E2E intentionally skipped'
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Source-only PR policy skip evidence
-        if: ${{ needs.classify-changes.outputs.docs_only != 'true' && needs.classify-changes.outputs.run_test_validation != 'true' }}
-        env:
-          TEST_POLICY_REASON: ${{ needs.classify-changes.outputs.test_policy_reason }}
-          TEST_LANE_HOLDERS: ${{ needs.classify-changes.outputs.test_lane_holders }}
-        run: |
-          echo "POLICY_SKIP: this PR does not own the sole active TEST_VALIDATION lane (${TEST_POLICY_REASON})."
-          {
-            echo '### Integration policy'
-            echo ''
-            echo '- source-only route: TEST integration and Playwright E2E intentionally skipped'
-            echo "- reason: ${TEST_POLICY_REASON}"
-            echo "- open TEST lane holders: ${TEST_LANE_HOLDERS:-none}"
-          } >> "$GITHUB_STEP_SUMMARY"
       - name: Install dependencies
-        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
         run: npm ci
       - name: Run integration tests
-        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
         run: npm run test:integration
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
@@ -205,8 +105,9 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+      # E2E follows integration in the same shared TEST lane. Actions step env does not inherit.
       - name: Run E2E tests
-        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
         run: npx playwright install --with-deps chromium && npm run test:e2e
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
