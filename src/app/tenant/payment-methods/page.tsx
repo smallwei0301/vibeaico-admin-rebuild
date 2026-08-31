@@ -15,8 +15,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
-import { nav, resolveNavTerms } from '@/i18n/zh-TW/nav';
-import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { nav } from '@/i18n/zh-TW/nav';
 import { paymentMethodsPage as t } from '@/i18n/zh-TW/pages/payment-methods';
 import { formatNumber } from '@/lib/utils';
 import { USE_MOCK } from '@/config/env';
@@ -436,8 +435,6 @@ function MethodFormModal({
   onClose: () => void;
   onSaved: (draft: PaymentMethod, isEdit: boolean) => void | Promise<void>;
 }) {
-  /** 跨頁文案的「目錄／訂單」名稱依當下模式展開（14 分冊 §8.13） */
-  const businessType = useBusinessType();
   const toast = useToast();
   const isEdit = !!method;
 
@@ -638,7 +635,7 @@ function MethodFormModal({
           <p className="form-text">
             {t.form.onlineStepLead}
             <strong>{t.form.onlineStepStrong}</strong>
-            {resolveNavTerms(t.form.onlineStepMiddle, businessType)}
+            {t.form.onlineStepMiddle}
             <strong>{t.form.onlineStepStrong2}</strong>
             {t.form.onlineStepTail}
           </p>

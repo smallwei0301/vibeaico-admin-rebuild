@@ -86,7 +86,7 @@ export const paymentMethodsPage = {
     onlineStepLead: '設定並用',
     onlineStepStrong: '小額實刷測試開通',
     /** `{catalog}` 由頁面在 render 期展開（14 分冊 §8.13） */
-    onlineStepMiddle: '（藍新 NT$1／綠界 NT$5）後，到「{catalog}」把服務設為',
+    onlineStepMiddle: '（藍新 NT$1／綠界 NT$5）後，到「服務項目」把服務設為',
     onlineStepStrong2: '收訂金 / 全額',
     onlineStepTail: '，顧客預約時就會被導向付款。',
     onlineApplyNote:
