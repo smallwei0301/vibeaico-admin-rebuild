@@ -6,7 +6,7 @@
 -- without changing the meaning of an existing event key.
 
 alter table public.trip_departures
-  add column if not exists formation_transition_revision pg_catalog.bigint not null default 0;
+  add column if not exists formation_transition_revision pg_catalog.int8 not null default 0;
 
 alter table public.trip_departures
   drop constraint if exists trip_departures_formation_transition_revision_check,
@@ -53,7 +53,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_revision pg_catalog.bigint;
+  v_revision pg_catalog.int8;
   v_key pg_catalog.text := p_idempotency_key;
   v_payload pg_catalog.jsonb := coalesce(p_payload, '{}'::pg_catalog.jsonb);
 begin
@@ -86,3 +86,21 @@ revoke execute on function public.enqueue_formation_notification_41(
   pg_catalog.uuid, pg_catalog.text, pg_catalog.text, pg_catalog.text,
   pg_catalog.text, pg_catalog.jsonb
 ) from public, anon, authenticated, service_role;
+revoke execute on function public.qualifying_tour_participants(pg_catalog.uuid)
+  from public, anon, authenticated, service_role;
+revoke execute on function public.refresh_departure_formation(pg_catalog.uuid)
+  from public, anon, authenticated, service_role;
+revoke execute on function public.refresh_tour_order_formation_trigger()
+  from public, anon, authenticated, service_role;
+revoke execute on function public.review_expired_tour_formations(pg_catalog.timestamptz)
+  from public, anon, authenticated;
+revoke execute on function public.decide_tour_formation(
+  pg_catalog.uuid, pg_catalog.uuid, pg_catalog.text, pg_catalog.uuid,
+  pg_catalog.timestamptz, pg_catalog.text
+) from public, anon, authenticated;
+grant execute on function public.review_expired_tour_formations(pg_catalog.timestamptz)
+  to service_role;
+grant execute on function public.decide_tour_formation(
+  pg_catalog.uuid, pg_catalog.uuid, pg_catalog.text, pg_catalog.uuid,
+  pg_catalog.timestamptz, pg_catalog.text
+) to service_role;

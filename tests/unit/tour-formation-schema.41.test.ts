@@ -101,7 +101,7 @@ describe('#41 schema migration ordering', () => {
 
   it('repairs lifecycle idempotency with a persisted transition epoch without rewriting 0040/0041', () => {
     expect(normalizedEpochRepairMigration).toMatch(
-      /add column if not exists formation_transition_revision pg_catalog\.bigint not null default 0/,
+      /add column if not exists formation_transition_revision pg_catalog\.int8 not null default 0/,
     );
     expect(normalizedEpochRepairMigration).toMatch(
       /before update of formation_status on public\.trip_departures/,
@@ -121,5 +121,7 @@ describe('#41 schema migration ordering', () => {
     expect(normalizedEpochRepairMigration).toMatch(
       /revoke execute on function public\.bump_formation_transition_revision_41\(\) from public, anon, authenticated, service_role/,
     );
+    expect(normalizedEpochRepairMigration).toContain('v_revision pg_catalog.int8');
+    expect(normalizedEpochRepairMigration).not.toContain('pg_catalog.bigint');
   });
 });
