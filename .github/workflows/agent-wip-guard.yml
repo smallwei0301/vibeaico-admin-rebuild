@@ -21,7 +21,7 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Validate agent lane metadata and global WIP limits
+      - name: Validate agent lane metadata and WIP limits
         uses: actions/github-script@v9
         with:
           script: |
@@ -56,18 +56,18 @@ jobs:
             const labels = {
               'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as agent-origin.'],
               'origin:owner-or-unknown': ['BFDADC', 'No explicit agent-origin marker.'],
-              'lane:terra-build': ['5319E7', 'Active or parked Terra implementation lane.'],
-              'lane:luna-closure': ['C2E0C6', 'Luna closure sweep lane.'],
-              'lane:test-validation': ['FBCA04', 'Shared TEST validation lane.'],
+              'lane:terra-build': ['5319E7', 'Active or parked Terra implementation lane; different Issues may run in parallel.'],
+              'lane:luna-closure': ['C2E0C6', 'Repo-wide Luna closure sweep lane.'],
+              'lane:test-validation': ['FBCA04', 'Single shared TEST validation lane.'],
               'lane:governance': ['D4C5F9', 'Repository governance work.'],
               'state:active': ['0E8A16', 'Current active lane.'],
               'state:parked': ['BFD4F2', 'Parked; no agent, push, rerun or polling.'],
               'state:complete': ['006B75', 'Lane work complete.'],
               'state:owner-blocked': ['D93F0B', 'Only Owner or external action remains.'],
               'state:historical': ['EDEDED', 'Historical or superseded evidence only.'],
-              'candidate:active': ['B60205', 'Counts toward the maximum of two active candidates.'],
+              'candidate:active': ['B60205', 'Active candidate; budget is enforced per Issue, not repo-wide.'],
               'governance:lane-metadata-incomplete': ['D93F0B', 'Agent PR lane metadata is missing or invalid.'],
-              'governance:wip-violation': ['B60205', 'Global active lane or candidate limit is exceeded.'],
+              'governance:wip-violation': ['B60205', 'Same-Issue Terra, shared TEST, Closure, or per-Issue candidate budget is exceeded.'],
             };
 
             for (const [name, [color, description]] of Object.entries(labels)) {
@@ -116,16 +116,19 @@ jobs:
               labels: [...new Set(nextLabels)],
             });
 
+            const terraIssues = [...new Set(laneSummary.activeTerra.map((row) => row.issueNumber).filter(Boolean))];
+
             await core.summary
-              .addHeading('Agent WIP Guard')
+              .addHeading('Agent WIP Guard — Mode C')
               .addTable([
                 [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
                 ['Current PR', `#${current.number}`],
                 ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
                 ['Active Terra', String(laneSummary.activeTerra.length)],
+                ['Active Terra Issues', terraIssues.length ? terraIssues.map((issue) => `#${issue}`).join(', ') : 'none'],
                 ['Active Luna Closure', String(laneSummary.activeClosure.length)],
                 ['Active TEST validation', String(laneSummary.activeTest.length)],
-                ['Active candidates', String(laneSummary.activeCandidates.length)],
+                ['Active candidates', `${laneSummary.activeCandidates.length} total; budget checked per Issue`],
                 ['Metadata errors', metadataErrors.length ? metadataErrors.join('; ') : 'none'],
                 ['WIP errors', wipErrors.length ? wipErrors.join('; ') : 'none'],
               ])
@@ -134,8 +137,8 @@ jobs:
             if (isAgent) {
               const allErrors = [...metadataErrors, ...wipErrors];
               const commentBody = allErrors.length
-                ? `${marker}\n## Agent WIP Guard: blocked\n\n${allErrors.map((error) => `- ${error}`).join('\n')}\n\nPark the newer lane before continuing. Do not add commits or rerun CI to work around this guard.`
-                : `${marker}\n## Agent WIP Guard: passed\n\n- active Terra: ${laneSummary.activeTerra.length}/1\n- active Luna Closure: ${laneSummary.activeClosure.length}/1\n- active TEST validation: ${laneSummary.activeTest.length}/1\n- active candidates: ${laneSummary.activeCandidates.length}/2\n\nThe Hook validates observable PR metadata only; it does not prove the actual delegated model.`;
+                ? `${marker}\n## Agent WIP Guard: blocked\n\n${allErrors.map((error) => `- ${error}`).join('\n')}\n\nResolve the same-Issue/shared-TEST/Closure conflict before continuing. Do not add commits or rerun CI to work around this guard.`
+                : `${marker}\n## Agent WIP Guard: passed — Mode C\n\n- active Terra: ${laneSummary.activeTerra.length} total; different Issues may run in parallel\n- active Luna Closure: ${laneSummary.activeClosure.length}/1\n- active TEST validation: ${laneSummary.activeTest.length}/1\n- active candidates: ${laneSummary.activeCandidates.length} total; budget is per Issue\n\nThe Hook validates observable PR metadata only; it does not prove the actual delegated model.`;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner,
