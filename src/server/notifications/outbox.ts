@@ -419,7 +419,8 @@ export async function dispatchPendingNotifications(
   admin: Admin = createAdminSupabase(), limit = 20, dispatchAlerts = true,
   sender: DeliverySender = (delivery) => sendClaimedDelivery(admin, delivery),
 ): Promise<number> {
-  await fanOutPendingNotifications(admin);
+  // Keep the bounded worker request bounded before claiming rows as well.
+  await fanOutPendingNotifications(admin, limit);
   const { data, error } = await admin.rpc('claim_notification_deliveries', { p_limit: limit });
   if (error) throw error;
   let processed = 0;
