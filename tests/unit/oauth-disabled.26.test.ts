@@ -15,7 +15,10 @@ describe('OAuth buttons (#26 first slice)', () => {
   it('keeps both provider buttons disabled until platform OAuth is configured', () => {
     expect(page).toContain('data-testid="oauth-line-disabled"');
     expect(page).toContain('data-testid="oauth-google-disabled"');
-    expect(page.match(/data-testid="oauth-(?:line|google)-disabled"[\s\S]*?disabled/g)?.length).toBe(2);
+    const lineButton = page.match(/<Button[\s\S]*?data-testid="oauth-line-disabled"[\s\S]*?<\/Button>/)?.[0];
+    const googleButton = page.match(/<Button[\s\S]*?data-testid="oauth-google-disabled"[\s\S]*?<\/Button>/)?.[0];
+    expect(lineButton).toContain('disabled');
+    expect(googleButton).toContain('disabled');
     expect(page).not.toContain('href={OAUTH.line}');
     expect(page).not.toContain('href={OAUTH.google}');
     expect(page).not.toContain('/api/auth/oauth/line/authorize');
