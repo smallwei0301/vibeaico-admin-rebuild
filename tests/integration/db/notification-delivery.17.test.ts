@@ -156,6 +156,9 @@ describe('notification delivery ledger (17 §7)', () => {
     const claims = await admin.rpc('claim_notification_deliveries', { p_limit: 100 });
     expect(claims.error).toBeNull();
     expect((claims.data ?? []).map((claim: { id: string }) => claim.id)).not.toContain(row.id);
+    const targetedClaims = await admin.rpc('claim_notification_delivery_for_outbox', { p_outbox_id: row.outbox_id });
+    expect(targetedClaims.error).toBeNull();
+    expect((targetedClaims.data ?? []).map((claim: { id: string }) => claim.id)).not.toContain(row.id);
     const persisted = await admin.from('notification_deliveries').select('status, reclaimable').eq('id', row.id).single();
     expect(persisted.error).toBeNull();
     expect(persisted.data).toEqual({ status: 'PROCESSING', reclaimable: false });

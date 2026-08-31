@@ -2929,3 +2929,8 @@ bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 pub
 跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
 reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
 #50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
+
+
+## #40 notification delivery audit reconciliation (2026-08-31)
+
+Sol AUDIT of Run197 attempt 2 found one source-level lease boundary that required a forward fix: targeted claim migration `0044_notification_targeted_claim` now requires `reclaimable = true` before reclaiming stale `PROCESSING` rows. The non-reclaimable `AUTH_VERIFICATION_EMAIL` audit row created by `0043_notification_delivery_security_alignment` therefore remains owned by its inline sender and cannot be reclaimed by either generic or targeted workers. The TEST integration regression in `tests/integration/db/notification-delivery.17.test.ts` exercises both claim RPCs and asserts the row remains `PROCESSING, reclaimable=false`. This addresses only the lease-safety defect; synthetic transport probes, HTTP integration matrices, authenticated Preview, and real provider smokes remain separate open evidence gates. No Production migration or provider call was performed.

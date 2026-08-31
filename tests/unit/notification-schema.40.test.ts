@@ -5,6 +5,7 @@ const appliedMigration = readFileSync('supabase/migrations/0038_notification_out
 const appliedRestrictionMigration = readFileSync('supabase/migrations/0038a_restrict_internal_notification_functions.sql', 'utf8');
 const bookingModificationMigration = readFileSync('supabase/migrations/0042_notification_booking_modification_revision.sql', 'utf8');
 const securityAlignmentMigration = readFileSync('supabase/migrations/0043_notification_delivery_security_alignment.sql', 'utf8');
+const targetedClaimMigration = readFileSync('supabase/migrations/0044_notification_targeted_claim.sql', 'utf8');
 const migration = `${appliedMigration}\n${appliedRestrictionMigration}\n${bookingModificationMigration}\n${securityAlignmentMigration}`;
 const bookingRoute = readFileSync('src/app/api/bookings/route.ts', 'utf8');
 const bookingCancelRoute = readFileSync('src/app/api/bookings/[id]/cancel/route.ts', 'utf8');
@@ -62,6 +63,12 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
   it('treats provider ACCEPTED as terminal while retaining its precise delivery status', () => {
     expect(appliedMigration).toContain("status in ('PENDING', 'PROCESSING', 'RETRY')) then 'OPEN'");
     expect(appliedMigration).not.toContain("status in ('PENDING', 'PROCESSING', 'RETRY', 'ACCEPTED')) then 'OPEN'");
+  });
+
+  it('targeted outbox claims never reclaim non-reclaimable auth audit rows', () => {
+    expect(targetedClaimMigration).toMatch(/d\\.status = 'PROCESSING'\\s+and d\\.reclaimable\\s+and d\\.processing_started_at < pg_catalog\\.now\\(\\) - interval '10 minutes'/i);
+    expect(targetedClaimMigration).toMatch(/set search_path = ''/i);
+    expect(targetedClaimMigration).toMatch(/revoke execute on function public\\.claim_notification_delivery_for_outbox\\(uuid\\) from public, anon, authenticated/i);
   });
 
   it('looks up a delivery booking within the outbox tenant boundary', () => {
