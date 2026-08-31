@@ -142,6 +142,7 @@ function githubContext() {
   return {
     owner,
     repo,
+    fullName: `${owner}/${repo}`,
     token: process.env.GITHUB_TOKEN ?? "",
     apiUrl: process.env.GITHUB_API_URL ?? "https://api.github.com",
   };
@@ -272,6 +273,13 @@ export async function runJanitor({ apply = false } = {}) {
   for (const source of openPrs) {
     const sourceMeta = parseLifecycleMetadata(source.body ?? "");
     if (sourceMeta?.state !== "ACTIVE" || sourceMeta.supersedes.length === 0) continue;
+
+    if (source.head?.repo?.full_name !== context.fullName) {
+      for (const targetNumber of sourceMeta.supersedes) {
+        reviews.push({ source: source.number, target: targetNumber, reason: "SOURCE_NOT_SAME_REPOSITORY" });
+      }
+      continue;
+    }
 
     for (const targetNumber of sourceMeta.supersedes) {
       const target = byNumber.get(targetNumber);
