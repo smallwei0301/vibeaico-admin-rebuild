@@ -71,7 +71,6 @@ jobs:
               }
             }
 
-            // Body metadata owns lane/candidate labels. The computed WIP violation label must survive sync.
             const bodyManaged = new Set([
               'lane:terra-build', 'lane:luna-closeout', 'lane:test-validation',
               'candidate:active', 'candidate:parked', 'governance:lane-metadata-missing',
@@ -82,6 +81,10 @@ jobs:
               TEST_VALIDATION: 'lane:test-validation',
               PARKED: null,
             };
+            const emptyTriageValue = /^(?:N\/A|NONE|TBD|UNKNOWN|-)$/i;
+            const hasMeaningfulValue = (match) => Boolean(
+              match && match[1] && !emptyTriageValue.test(match[1].trim()),
+            );
 
             const current = context.payload.pull_request;
             let currentMetadataError = null;
@@ -93,9 +96,13 @@ jobs:
               const laneMatch = body.match(/^AGENT_LANE:\s*(TERRA_BUILD|LUNA_CLOSURE_SWEEP|TEST_VALIDATION|PARKED)\s*$/im);
               const candidateMatch = body.match(/^CANDIDATE_STATUS:\s*(ACTIVE|PARKED)\s*$/im);
               const closeabilityMatch = body.match(/^CLOSEABILITY:\s*(READY|NEAR|UNBLOCKER|BUILDABLE|BLOCKED|N\/A)\s*$/im);
+              const nextMatch = body.match(/^NEXT:\s*(.+?)\s*$/im);
+              const gapsMatch = body.match(/^AUTONOMOUS_GAPS:\s*(.+?)\s*$/im);
+              const whyMatch = body.match(/^WHY_NOT_OTHER_ACTIVE_PRS:\s*(.+?)\s*$/im);
+              const fullCiMatch = body.match(/^EXPECTED_FULL_CI_COUNT:\s*(0|1|2)\s*$/im);
 
               if (!laneMatch || !candidateMatch || !closeabilityMatch) {
-                currentMetadataError = 'Required PR body markers are missing or invalid.';
+                currentMetadataError = 'Required PR lane markers are missing or invalid.';
               } else {
                 const lane = laneMatch[1].toUpperCase();
                 const candidate = candidateMatch[1].toUpperCase();
@@ -106,6 +113,14 @@ jobs:
                   currentMetadataError = 'A BLOCKED candidate must be PARKED; it cannot occupy an active WIP lane.';
                 } else if (candidate === 'ACTIVE' && closeability === 'N/A') {
                   currentMetadataError = 'An active candidate must have a real closeability classification.';
+                } else if (
+                  candidate === 'ACTIVE' &&
+                  (!hasMeaningfulValue(nextMatch) ||
+                    !hasMeaningfulValue(gapsMatch) ||
+                    !hasMeaningfulValue(whyMatch) ||
+                    !fullCiMatch)
+                ) {
+                  currentMetadataError = 'An active candidate requires concrete NEXT, AUTONOMOUS_GAPS, WHY_NOT_OTHER_ACTIVE_PRS and EXPECTED_FULL_CI_COUNT (0-2).';
                 } else if (
                   lane === 'TEST_VALIDATION' &&
                   candidate === 'ACTIVE' &&
@@ -209,6 +224,11 @@ jobs:
                 repo,
                 workflow_id: 'ci.yml',
                 ref: current.head.ref,
+                inputs: {
+                  dispatch_reason: 'lane_transition',
+                  test_lane_pr: String(current.number),
+                  expected_head: current.head.sha,
+                },
               });
               dispatchedTestValidation = true;
             }

@@ -5,7 +5,23 @@ on:
     branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      dispatch_reason:
+        description: Why a full TEST run is being requested
+        required: true
+        type: choice
+        options:
+          - lane_transition
+          - main_manual
+      test_lane_pr:
+        description: Open PR number that owns TEST_VALIDATION; leave empty only for main_manual
+        required: false
+        type: string
+      expected_head:
+        description: Exact commit SHA that must equal the dispatched ref head
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -26,8 +42,6 @@ jobs:
       test_policy_reason: ${{ steps.test_policy.outputs.test_policy_reason }}
       test_lane_holders: ${{ steps.test_policy.outputs.test_lane_holders }}
     steps:
-      # PRs compare base → head and main pushes before → after. Full history ensures a
-      # missing revision fails closed in the classifier instead of making runtime work light.
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
@@ -46,10 +60,28 @@ jobs:
             let runTestValidation = false;
             let reason = 'source_only';
             let holders = [];
+            let policyError = null;
 
             const hasExactMarker = (body, name, value) => {
               const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
               return new RegExp(`^${name}:\\s*${escaped}\\s*$`, 'im').test(body ?? '');
+            };
+
+            const listTestLaneHolders = async () => {
+              const openPrs = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                per_page: 100,
+              });
+              return openPrs
+                .filter((pr) => {
+                  const body = pr.body ?? '';
+                  return hasExactMarker(body, 'AGENT_LANE', 'TEST_VALIDATION') &&
+                    hasExactMarker(body, 'CANDIDATE_STATUS', 'ACTIVE');
+                })
+                .map((pr) => pr.number)
+                .sort((a, b) => a - b);
             };
 
             if (docsOnly) {
@@ -57,9 +89,6 @@ jobs:
             } else if (eventName === 'push' && context.ref === 'refs/heads/main') {
               runTestValidation = true;
               reason = 'main_push';
-            } else if (eventName === 'workflow_dispatch') {
-              runTestValidation = true;
-              reason = 'manual_full_ci';
             } else if (eventName === 'pull_request') {
               const current = context.payload.pull_request;
               const body = current?.body ?? '';
@@ -70,21 +99,7 @@ jobs:
               if (!requestsTestLane) {
                 reason = 'source_only_pr_without_test_lane';
               } else {
-                const openPrs = await github.paginate(github.rest.pulls.list, {
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  state: 'open',
-                  per_page: 100,
-                });
-                holders = openPrs
-                  .filter((pr) => {
-                    const candidateBody = pr.body ?? '';
-                    return hasExactMarker(candidateBody, 'AGENT_LANE', 'TEST_VALIDATION') &&
-                      hasExactMarker(candidateBody, 'CANDIDATE_STATUS', 'ACTIVE');
-                  })
-                  .map((pr) => pr.number)
-                  .sort((a, b) => a - b);
-
+                holders = await listTestLaneHolders();
                 if (holders.length === 1 && holders[0] === current.number) {
                   runTestValidation = true;
                   reason = 'sole_active_test_validation_lane';
@@ -92,8 +107,66 @@ jobs:
                   reason = `test_lane_conflict_${holders.length}`;
                 }
               }
+            } else if (eventName === 'workflow_dispatch') {
+              const inputs = context.payload.inputs ?? {};
+              const dispatchReason = String(inputs.dispatch_reason ?? '').trim();
+              const expectedHead = String(inputs.expected_head ?? '').trim();
+              const requestedPr = String(inputs.test_lane_pr ?? '').trim();
+
+              if (!expectedHead || expectedHead !== context.sha) {
+                reason = 'invalid_dispatch_expected_head';
+                policyError = `workflow_dispatch expected_head must equal context.sha (${context.sha}).`;
+              } else if (context.ref === 'refs/heads/main') {
+                if (dispatchReason !== 'main_manual') {
+                  reason = 'invalid_main_dispatch_reason';
+                  policyError = 'A main workflow_dispatch must use dispatch_reason=main_manual.';
+                } else {
+                  runTestValidation = true;
+                  reason = 'manual_main_exact_head';
+                }
+              } else if (dispatchReason !== 'lane_transition') {
+                reason = 'invalid_branch_dispatch_reason';
+                policyError = 'A branch workflow_dispatch is allowed only for a validated lane_transition.';
+              } else if (!/^\d+$/.test(requestedPr) || Number(requestedPr) < 1) {
+                reason = 'invalid_dispatch_pr_number';
+                policyError = 'A branch workflow_dispatch requires a valid open TEST lane PR number.';
+              } else {
+                try {
+                  const prNumber = Number(requestedPr);
+                  const { data: pr } = await github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: prNumber,
+                  });
+                  const refName = context.ref.replace(/^refs\/heads\//, '');
+                  const body = pr.body ?? '';
+                  const validPr =
+                    pr.state === 'open' &&
+                    pr.head.repo?.full_name === `${context.repo.owner}/${context.repo.repo}` &&
+                    pr.head.ref === refName &&
+                    pr.head.sha === expectedHead &&
+                    hasExactMarker(body, 'AGENT_LANE', 'TEST_VALIDATION') &&
+                    hasExactMarker(body, 'CANDIDATE_STATUS', 'ACTIVE');
+
+                  holders = await listTestLaneHolders();
+                  if (!validPr) {
+                    reason = 'invalid_dispatch_pr_contract';
+                    policyError = 'The dispatched PR/ref/head does not match an open active TEST_VALIDATION candidate.';
+                  } else if (holders.length !== 1 || holders[0] !== prNumber) {
+                    reason = `invalid_dispatch_test_lane_${holders.length}`;
+                    policyError = `The dispatched PR is not the sole TEST_VALIDATION holder (holders: ${holders.join(',') || 'none'}).`;
+                  } else {
+                    runTestValidation = true;
+                    reason = 'validated_lane_transition_exact_head';
+                  }
+                } catch (error) {
+                  reason = 'invalid_dispatch_pr_lookup';
+                  policyError = `Unable to validate the requested TEST lane PR: ${error.message}`;
+                }
+              }
             } else {
               reason = 'unsupported_event_fail_closed';
+              policyError = `Unsupported CI event: ${eventName}`;
             }
 
             core.setOutput('run_test_validation', String(runTestValidation));
@@ -107,10 +180,13 @@ jobs:
                 ['Run heavy TEST', String(runTestValidation)],
                 ['Reason', reason],
                 ['Open TEST lane holders', holders.join(', ') || 'none'],
+                ['Dispatch validation error', policyError || 'none'],
               ])
               .write();
 
-  check:                       # Preserve this required job name on all CI paths.
+            if (policyError) core.setFailed(policyError);
+
+  check:
     needs: classify-changes
     runs-on: ubuntu-latest
     steps:
@@ -147,12 +223,11 @@ jobs:
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
       - run: npm test
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
-      - run: npm run build      # env empty + mock mode
+      - run: npm run build
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
 
   integration:
-    # Preserve one required `integration` context. Non-owner PRs emit explicit skip evidence.
     name: integration
     needs: [classify-changes, check]
     if: ${{ needs.check.result == 'success' }}
