@@ -2941,3 +2941,7 @@ bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 pub
 跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
 reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
 #50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
+
+## #40 notification delivery audit reconciliation (2026-08-31)
+
+The targeted-claim forward repair in `0045_notification_targeted_claim_reclaimable_guard` requires `reclaimable = true` before a stale `PROCESSING` delivery can be reclaimed. The non-reclaimable `AUTH_VERIFICATION_EMAIL` audit row from `0043_notification_delivery_security_alignment` therefore remains owned by its inline sender. The source regression covers both claim RPC paths. This candidate does not provide TEST integration, authenticated Preview/HTTP, synthetic first-window evidence, or real provider smoke; no Production migration or provider call was made.

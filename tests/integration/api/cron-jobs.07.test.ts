@@ -138,6 +138,17 @@ function pushRequests(to?: string) {
   return to === undefined ? all : all.filter((r) => r.body?.to === to);
 }
 
+/** Deferred outbox dispatch is post-commit; wait for the target mock request before asserting/resetting. */
+async function waitForPush(to: string, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const pushes = pushRequests(to);
+    if (pushes.length > 0) return pushes;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return pushRequests(to);
+}
+
 async function outChatMessages(lineUserId: string) {
   const { data, error } = await admin
     .from('chat_messages')
@@ -308,7 +319,7 @@ describe('GET /api/cron/booking-reminders（07 §2 + 0013 reminder_sent_at）', 
     expect(b!.reminder_sent_at).not.toBeNull();
 
     // mock 收到對該顧客的 push（帶解密後 token；文案是 REMINDER 樣板）
-    const pushes = pushRequests(LINE_REMINDER);
+    const pushes = await waitForPush(LINE_REMINDER);
     expect(pushes).toHaveLength(1);
     expect(pushes[0].headers.authorization).toBe(`Bearer ${CHANNEL_TOKEN}`);
     expect(pushes[0].body.messages[0].type).toBe('text');
