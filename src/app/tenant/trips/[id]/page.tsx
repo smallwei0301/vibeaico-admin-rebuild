@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTrip, listTripAddons, listTripDepartures, listTripPlans,
+  deleteTripPlan, getTrip, listTripAddons, listTripDepartures, listTripPlans,
+  saveTripPlan,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -82,6 +83,7 @@ export default function TripDetailPage() {
   /* 編輯中的表單狀態（骨架：只存在記憶體） */
   const [form, setForm] = React.useState<Trip | null>(null);
   const [planDraft, setPlanDraft] = React.useState<TripPlan | null>(null);
+  const [planEditorSection, setPlanEditorSection] = React.useState<'quick' | 'advanced'>('quick');
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   const [batchOpen, setBatchOpen] = React.useState(false);
@@ -125,8 +127,20 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 方案 */
-  const savePlan = () => {
+  const openPlanEditor = (draft: TripPlan) => {
+    setPlanEditorSection('quick');
+    setPlanDraft(draft);
+  };
+
+  const savePlan = async () => {
     if (!planDraft) return;
+    try {
+      // Quick and Advanced edits both submit the complete plan through one API.
+      await saveTripPlan(tripId, planDraft);
+    } catch {
+      toast.show(t.messages.loadFailed, 'danger');
+      return;
+    }
     const isNew = !planDraft.id;
     const saved: TripPlan = isNew
       ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
@@ -137,7 +151,6 @@ export default function TripDetailPage() {
     const needsReview = trip?.midaoListing === 'LISTED';
     toast.show(needsReview ? t.messages.planSubmitted : t.messages.planSaved);
   };
-
   const patchPlan = (p: Partial<TripPlan>) => setPlanDraft((d) => (d ? { ...d, ...p } : d));
 
   const addSeason = () => {
@@ -233,10 +246,19 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 刪除 */
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!deleteTarget) return;
     const { kind, id } = deleteTarget;
-    if (kind === 'plan') { setPlans((p) => p.filter((x) => x.id !== id)); toast.show(t.messages.planDeleted); }
+    if (kind === 'plan') {
+      try {
+        await deleteTripPlan(id);
+      } catch {
+        toast.show(t.messages.loadFailed, 'danger');
+        return;
+      }
+      setPlans((p) => p.filter((x) => x.id !== id));
+      toast.show(t.messages.planDeleted);
+    }
     if (kind === 'addon') { setAddons((a) => a.filter((x) => x.id !== id)); toast.show(t.messages.addonDeleted); }
     if (kind === 'departure') { setDepartures((d) => d.filter((x) => x.id !== id)); toast.show(t.messages.departureDeleted); }
     setDeleteTarget(null);
@@ -327,7 +349,7 @@ export default function TripDetailPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
-            onClick={() => setPlanDraft(p)}
+            onClick={() => openPlanEditor(p)}
           >
             <Pencil size={13} />
           </Button>
@@ -701,7 +723,7 @@ export default function TripDetailPage() {
           <DataTableHeader
             title={t.plans.sectionTitle}
             actions={
-              <Button size="sm" onClick={() => setPlanDraft(emptyPlan(tripId))}>
+              <Button size="sm" onClick={() => openPlanEditor(emptyPlan(tripId))}>
                 <Plus size={14} />{t.plans.create}
               </Button>
             }
