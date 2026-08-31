@@ -52,7 +52,19 @@ describe("issue inference", () => {
     expect(inferIssueNumber(pr({ title: "group formation", head: { ref: "agent/issue-41-epoch", sha: "x" } }))).toBe(41);
   });
 
-  it("returns null when references are ambiguous", () => {
+  it("uses title or branch as the primary legacy signal even when the body mentions dependencies", () => {
+    expect(
+      inferIssueNumber(
+        pr({
+          title: "Draft: reconstruct #40 notification safety",
+          head: { ref: "agent/issue-40-current-main", sha: "x" },
+          body: "Depends on Issue #41 and validates PR #57 before final Issue #40 audit.",
+        }),
+      ),
+    ).toBe(40);
+  });
+
+  it("returns null when primary references are ambiguous", () => {
     expect(inferIssueNumber(pr({ title: "bridge #40 with #41", head: { ref: "feature/mixed", sha: "x" } }))).toBeNull();
   });
 });
@@ -91,6 +103,18 @@ describe("supersession safety", () => {
     expect(evaluateDeclaredSupersession({ source, target: otherIssue, compareStatus: "ahead" })).toMatchObject({
       safe: false,
       reason: "ISSUE_MISMATCH_OR_UNKNOWN",
+    });
+  });
+
+  it("never lets an ACTIVE PR supersede itself", () => {
+    const self = pr({
+      number: 75,
+      body: `<!-- pr-lifecycle\nissue: 40\nstate: ACTIVE\nsupersedes: 75\n-->`,
+      head: { ref: "agent/issue-40-new", sha: "newsha" },
+    });
+    expect(evaluateDeclaredSupersession({ source: self, target: self, compareStatus: "identical" })).toEqual({
+      safe: false,
+      reason: "SELF_SUPERSESSION",
     });
   });
 });
