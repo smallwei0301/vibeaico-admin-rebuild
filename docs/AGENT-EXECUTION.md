@@ -248,6 +248,21 @@ REQUESTED_MODEL / ACTUAL_MODEL:
 - 先檢查再分段寫入可能留下半套資料；撞班、名額、收款與狀態轉移須用 transaction／
   atomic RPC（同一次資料庫操作）保護，並測並發。
 
+### 7.2 CI 文件分流
+
+- CI 只可把**完全**落在 `docs/**`、`README.md`、`AGENTS.md`、`CLAUDE.md`、
+  `.agents/**` 或 `.claude/**` 的非空 diff 視為 docs-only；PR 必須比較 base→head，
+  `main` push 必須比較 before→after，rename 的舊／新路徑都要檢查。
+- `workflow_dispatch`、缺 revision、空 diff、git／payload 解析失敗、未知 status 或任何
+  白名單外路徑一律 fail closed，走完整 runtime CI。workflow、依賴、測試或應用程式
+  變更不得靠路徑略過。
+- 分類 job 必須輸出 `docs_only`、`reason`、`detail`、`changed_count` 與 `runtime_path`，並把
+  同一判定寫入 GitHub Step Summary；任何無法可靠分類的 machine reason 固定為
+  `classifier_failed`，詳細原因只寫在 `detail`。
+- docs-only 路徑只做不需 npm、TEST secret 或 Chromium 的輕量 check／integration，且不得
+  等待或佔用 TEST lane；完整路徑仍依序跑 check，再在固定
+  `shared-test-supabase-integration` lane 內跑 integration→E2E，`cancel-in-progress: false`。
+
 ## 8. 錯誤停止線與恢復
 
 - 同一驗證路徑連續兩次遇到**環境錯誤**，停止重試；只有權限、設定、服務狀態或

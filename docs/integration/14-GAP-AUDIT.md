@@ -2797,13 +2797,15 @@ issue #3／#6 那幾輪為「尚未建置」寫的守門測試，在功能補齊
 而 `0016_tour_domain_core.sql:71` 定義的是 **`base_price`**（兩個 Supabase 專案都查過，
 從來沒有 `price_per_person` 這個欄位）。
 
-它之所以沒被發現，是因為 `safeUpsert()` 的 `isMissingSchemaError()` 把 PostgREST 的
-「找不到欄位」誤判成「資料表尚未建立（Phase 1 未執行）」而**整個跳過** `trip_plans`，
-接著 `trip_departures` 才炸在外鍵上——錯誤訊息指向 departures，真正的原因在 plans。
-本輪改成 `base_price` 才跑得動整合測試。
+舊版的 `safeUpsert()` 曾把 PostgREST 的「找不到欄位」誤判成「資料表尚未建立
+（Phase 1 未執行）」並靜默跳過 `trip_plans`，接著 `trip_departures` 才炸在外鍵上——
+錯誤訊息指向 departures，真正的原因在 plans。這是本次 PB-003 incident 的歷史根因；
+目前 `scripts/test/seed.mjs` 已改為必要的 `trip_plans` seed 遇到 schema／資料錯誤就
+**fail-closed（直接拋錯）**，不會跳過 plans，也不會繼續嘗試 `trip_departures`。
+欄位修正為 `base_price` 後，整合測試才能在正確的資料契約上執行。
 
 ⚠️ 值得記的是那個**誤判**：把 A 錯誤當成 B 錯誤靜默吞掉，會讓失敗出現在無關的地方。
-`isMissingSchemaError()` 目前分不出「表不存在」與「欄位不存在」，這一點尚未處理。
+這個歷史缺陷已在本候選的 `seed.mjs`／`reset-db.mjs` 中修正：只有可證明的 relation／table 不存在才可略過；缺欄位、缺 function、schema cache 契約不符與其他資料錯誤一律 fail-closed，且必要的父資料失敗時不再寫入依賴它的子資料。
 
 ---
 

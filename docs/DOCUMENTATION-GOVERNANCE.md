@@ -53,6 +53,11 @@ README.md
 
 `main` 會觸發 Vercel，因此 docs-only 直推前必須先確認 changed files 全部是文件。文件直推的授權，**不等於**正式部署、Production migration 或資料寫入授權。
 
+CI 的 docs-only 輕量路徑與直推授權是兩件事：它只接受 `docs/**`、`README.md`、
+`AGENTS.md`、`CLAUDE.md`、`.agents/**`、`.claude/**` 的非空變更；rename 的兩端都必須
+在白名單內。任何 workflow、程式、依賴或未知／無法比較的 diff 都必須 fail closed，
+改跑完整 runtime CI，不能使用 `paths-ignore` 靜默略過。
+
 ### 2.2 程式與資料庫變更
 
 下列工作仍一律走 feature branch → PR → CI → 審核 → merge：

@@ -85,10 +85,10 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 證據：integration job `98777353298` step 5；`trip_plans` 回傳 `Could not find the 'price_per_person' column ... in the schema cache`，後續 `trip_departures` 回傳 PostgreSQL `23503` 與 `trip_departures_tenant_trip_plan_fkey`。
 - 根因：`scripts/test/seed.mjs` 的 `isMissingSchemaError` 無條件接受 `PGRST202`、`42883` 與任何包含 `schema cache` 的訊息，讓缺欄位／缺 function 也走 optional-table 略過路徑；子表 seed 又未依父表寫入結果停下。
 - 影響：reset 已清空共用 TEST 並重建部分 seed，但 integration 測試尚未開始、E2E 被跳過，整體 CI 為 failure；文件變更與 `check` job 不受影響。
-- 修正：本次先保留精確 job／錯誤／程式位置並停止相同重試；seed classifier 與 TEST migration 基線需由後續施工 Issue 一起修復。
+- 修正：`seed.mjs` 與 `reset-db.mjs` 的可略過分類只保留「relation／table 不存在」；`PGRST202`／`PGRST204` 缺欄位與 `42883` 缺 function 一律立即失敗。標準 seed 的旅遊方案價格欄位同步為現行 `base_price`。`trip_plans` 未成功寫入時，seed 明確略過依賴它的 `trip_departures`，不再造成第二個外鍵雜訊。
 - 預防：optional-table 只接受可證明「relation／table 不存在」的 code 或訊息；父資料略過時不得繼續寫入依賴它的子資料，並為錯誤分類器補 table-missing／column-missing／function-missing 測試。
-- 驗證：本次尚未修復；`check` job 的 typecheck、107 個 unit tests 與 build 通過，integration／E2E 未通過。
-- 狀態：仍待處理
+- 驗證：新增單元測試區分 missing table、missing column、missing function；待有新 TEST CI 時驗證會在 schema mismatch 的原始錯誤停止，且不產生子表 FK 錯誤。
+- 狀態：監看中
 
 ### PB-008 — GitHub connector 寫入成功不代表 exact-head CI 已觸發
 
