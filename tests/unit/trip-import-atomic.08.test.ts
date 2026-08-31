@@ -97,11 +97,17 @@ describe('atomic import security source locks', () => {
     const departureWrite = seed.indexOf("'trip_departures'", planWrite);
     const parentResult = /const tripPlansSeeded = await safeUpsert\(\s*admin,\s*'trip_plans',/m.exec(seed);
     const parentGuard = seed.indexOf('trip_plans seed is required before trip_departures', planWrite);
+    const parentFailClosed = seed.indexOf('if (!tripPlansSeeded)', planWrite);
+    const departureResult = seed.indexOf('const tripDeparturesSeeded = await safeUpsert(', planWrite);
     expect(planWrite).toBeGreaterThan(-1);
     expect(parentResult).not.toBeNull();
     expect(parentResult?.index ?? -1).toBeLessThan(departureWrite);
     expect(parentGuard).toBeGreaterThan(planWrite);
     expect(parentGuard).toBeLessThan(departureWrite);
+    expect(parentFailClosed).toBeGreaterThan(planWrite);
+    expect(seed.slice(parentFailClosed, departureWrite)).toMatch(/throw new Error\(/);
+    expect(departureResult).toBeGreaterThan(parentGuard);
+    expect(seed.slice(departureResult)).toMatch(/if \(!tripDeparturesSeeded\)\s*\{\s*throw new Error\(/);
   });
 
   it('ships a forward migration that redefines the SECURITY INVOKER RPC and globally guards every plan writer', () => {

@@ -996,6 +996,27 @@ response 一併回**引導卡的 Flex bubble payload**（`buildBookingStepGuideC
 `line-events.ts` 整包送。留著單數欄位不改，就會出現「開關開了、第二則沒送出去」
 ——換一種寫法的同一顆假開關。守門測試 `grep` 全專案不得再出現 `[outcome.message]`。
 
+### 6.1 關鍵字回覆圖片的 Storage 決策（issue #50）
+
+LINE image message 需要可由 LINE 直接抓取的 HTTPS 原圖與 preview。以下是開工時對既有
+LINE image bucket 的用途／公開性／格式／租戶路徑／生命週期查證；結論是不能混用：
+
+| bucket | public／格式與上限 | tenant path | 既有生命週期 | #50 決定 |
+|---|---|---|---|---|
+| `richmenu-assets` | public；JPEG/PNG；1 MB | `{tenantId}/…` | Rich Menu 底圖，發布時整張送給 LINE，沒有 image-message preview | 不重用：格式上限、引用模型與刪除時機不同 |
+| `chat-images` | public；JPEG/PNG；原圖 5 MB，另產 ≤1 MB preview | `{tenantId}/…` | 聊天歷史訊息的附件需隨對話保留 | 不重用：刪 keyword reply 不可連帶破壞聊天歷史 |
+| `keyword-reply-images` | **public**；JPEG/PNG；原圖 5 MB，先產 ≤1 MB preview 再上傳兩個物件 | `{tenantId}/{uuid}.jpg` 或 `.png` | reply 替換／移除／刪除或取消未儲存選圖時清理；失敗進可重試 queue | 採專用 bucket；public 是 LINE 拉圖必要條件，URL 即讀取權限 |
+
+public bucket 無法承諾「知道 URL 的其他 tenant 也讀不到」；隔離邊界是 authenticated upload
+policy 的 tenant 首段，以及 keyword reply API 對 bucket、tenant path、可信 origin、原圖／preview
+位置與物件存在的重驗。A tenant 不得寫入、引用或透過 cleanup 刪除 B tenant 的物件；public URL
+不可放私密內容。Production bucket／policy 套用仍需 Owner 明確授權。
+
+命中 `reply_type=IMAGE` 時沿用既有「圖片取代文字」契約：只送一則 LINE image message，
+`originalContentUrl=content.imageUrl`、`previewImageUrl=content.previewImageUrl`，不另外追加文字。
+inactive row 不參與 webhook 查詢；移除圖片後寫回 TEXT，故不再送舊圖。legacy 裸 `imageUrl`
+可繼續讀取／停用，但任何新建或圖片變更都必須使用完整 storage ref。
+
 ---
 
 ## 7. `/api/settings/line/verify` 的五項檢查（補 04 分冊 A-1）
@@ -1242,6 +1263,7 @@ bucket 的 `getPublicUrl()` 是目前唯一**已驗證可用**的形式（`tests
       欄位是密文、`line` jsonb 內無 secret
 - [ ] 加 Bot 好友 → 收到歡迎訊息；`line_users` 出現該用戶
 - [ ] 傳關鍵字 → 收到 keyword_replies 設定的回覆；亂打字 → 收到 defaultReply
+- [ ] 上傳 JPEG/PNG 關鍵字圖後重新 GET 仍為同一 storage ref；mock LINE 收到一則 IMAGE，原圖／preview URL 與 DB 一致；停用或移除後不再送圖
 - [ ] 後台 chat 頁看得到收到的訊息；回覆後手機收到（額度 -1）
 - [ ] 確認預約 → 已綁定顧客的 LINE 收到通知；關掉 notifyBookingConfirmed 後不再收到
 - [ ] 錯誤簽章打 webhook 回 401；正確簽章但處理中丟錯仍回 200

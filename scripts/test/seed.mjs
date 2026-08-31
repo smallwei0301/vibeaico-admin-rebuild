@@ -150,6 +150,13 @@ async function ensureAuthUser(admin, email, password) {
 export async function runSeed(admin) {
   console.log('[seed] 開始建立標準測試種子（12 分冊 §1.3）…');
 
+  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次與成團期限
+  // 落在互相矛盾的日期。formation_deadline_at 也必須在觸發器計算的期限內。
+  const seedNow = new Date();
+  const seedNowMs = seedNow.getTime();
+  const hourMs = 60 * 60 * 1000;
+  const oneDayMs = 24 * hourMs;
+
   // ---- 1. Auth users（通常不受 Phase 1 影響，auth.users 是 Supabase 內建表）----
   const ownerAId = await ensureAuthUser(admin, SHOP_A.owner.email, SHOP_A.owner.password);
   const ownerBId = await ensureAuthUser(admin, SHOP_B.owner.email, SHOP_B.owner.password);
@@ -264,8 +271,6 @@ export async function runSeed(admin) {
     'customers',
   );
 
-  const nowIso = new Date().toISOString();
-  const hourMs = 60 * 60 * 1000;
   const bookingBase = {
     tenant_id: SHOP_A.id,
     customer_id: SHOP_A.customerA1,
@@ -286,8 +291,8 @@ export async function runSeed(admin) {
         booking_no: 'BSEED0001',
         status: 'PENDING',
         payment_status: 'UNPAID',
-        start_at: new Date(Date.now() + hourMs).toISOString(),
-        end_at: new Date(Date.now() + 2 * hourMs).toISOString(),
+        start_at: new Date(seedNowMs + hourMs).toISOString(),
+        end_at: new Date(seedNowMs + 2 * hourMs).toISOString(),
       },
       {
         ...bookingBase,
@@ -295,8 +300,8 @@ export async function runSeed(admin) {
         booking_no: 'BSEED0002',
         status: 'CONFIRMED',
         payment_status: 'UNPAID',
-        start_at: new Date(Date.now() + 3 * hourMs).toISOString(),
-        end_at: new Date(Date.now() + 4 * hourMs).toISOString(),
+        start_at: new Date(seedNowMs + 3 * hourMs).toISOString(),
+        end_at: new Date(seedNowMs + 4 * hourMs).toISOString(),
       },
       {
         ...bookingBase,
@@ -304,8 +309,8 @@ export async function runSeed(admin) {
         booking_no: 'BSEED0003',
         status: 'COMPLETED',
         payment_status: 'PAID_OFFLINE',
-        start_at: new Date(Date.now() - 2 * hourMs).toISOString(),
-        end_at: new Date(Date.now() - hourMs).toISOString(),
+        start_at: new Date(seedNowMs - 2 * hourMs).toISOString(),
+        end_at: new Date(seedNowMs - hourMs).toISOString(),
       },
       {
         ...bookingBase,
@@ -313,8 +318,8 @@ export async function runSeed(admin) {
         booking_no: 'BSEED0004',
         status: 'CANCELLED',
         payment_status: 'UNPAID',
-        start_at: new Date(Date.now() + 5 * hourMs).toISOString(),
-        end_at: new Date(Date.now() + 6 * hourMs).toISOString(),
+        start_at: new Date(seedNowMs + 5 * hourMs).toISOString(),
+        end_at: new Date(seedNowMs + 6 * hourMs).toISOString(),
         cancel_reason: '測試種子：預先取消',
       },
     ],
@@ -373,6 +378,9 @@ export async function runSeed(admin) {
         // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
         // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
         base_price: 3000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
+        min_to_depart: 1,
       },
       {
         id: TRIP_A.planA2,
@@ -381,15 +389,20 @@ export async function runSeed(admin) {
         slug: 'private-test-plan',
         name: '包團（測試）',
         base_price: 5000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
+        min_to_depart: 1,
       },
     ],
     'trip_plans',
   );
 
-  const oneDayMs = 24 * hourMs;
+  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
   if (!tripPlansSeeded) {
-    console.warn('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
-  } else await safeUpsert(
+    throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
+  }
+
+  const tripDeparturesSeeded = await safeUpsert(
     admin,
     'trip_departures',
     [
@@ -398,18 +411,22 @@ export async function runSeed(admin) {
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         plan_id: TRIP_A.planA1,
-        departs_on: new Date(Date.now() + 7 * oneDayMs).toISOString().slice(0, 10),
+        departs_on: new Date(seedNowMs + 7 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
       {
         id: TRIP_A.departure2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         plan_id: TRIP_A.planA1,
-        departs_on: new Date(Date.now() + 14 * oneDayMs).toISOString().slice(0, 10),
+        departs_on: new Date(seedNowMs + 14 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
       {
         // capacity=2：專供 12 分冊 §5 並發不超賣測試
@@ -417,13 +434,18 @@ export async function runSeed(admin) {
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         plan_id: TRIP_A.planA2,
-        departs_on: new Date(Date.now() + 21 * oneDayMs).toISOString().slice(0, 10),
+        departs_on: new Date(seedNowMs + 21 * oneDayMs).toISOString().slice(0, 10),
         capacity: 2,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
     ],
     'trip_departures',
   );
+  if (!tripDeparturesSeeded) {
+    throw new Error('[seed] trip_departures is required for the standard TEST seed.');
+  }
 
   console.log('[seed] 種子執行完畢（各步驟成功/跳過狀況見上方日誌）。');
 }

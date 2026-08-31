@@ -99,7 +99,10 @@
 - [ ] 設定頁「變更密碼」從未呼叫 `/api/auth/change-password`（settings/page.tsx 289–307）
 - [ ] LINE 設定頁「解除連接」送空字串＝依契約「不變更」，token 實際沒清（line-settings/page.tsx 383–397；`/api/settings/line/disconnect` 已存在未用）
 - [ ] LINE 設定頁「建立圖文選單」只存主題設定，沒打 create 端點（line-settings/page.tsx 322–345）
-- [ ] 關鍵字回覆整頁 CRUD 全假：載入吃 mock、儲存/刪除/啟停只 setState（keyword-replies/page.tsx；`/api/settings/line/keyword-replies` 已存在且已被 gating 測試打過）——**顧客端後果：店家在 UI 設的關鍵字永遠進不了 DB，Bot 不會照設定回**
+- [x] 關鍵字回覆整頁 CRUD 已接真實 service/API（issue #5，commit `faa7c22`）：
+      `keyword-replies-wiring.05.test.ts` 驗證載入、建立、編輯、啟停與刪除接線；
+      `keyword-replies.05.test.ts` 驗證 DB 設定會被 webhook 使用。Preview 的 UI→簽章
+      webhook→LINE mock→清理仍列在 issue #5 的站點驗收，不把 source/CI 冒充 Preview。
 - [ ] 行銷推播整頁假：發送/取消/刪除/建立（marketing/page.tsx；`/api/marketing/pushes*` 已存在）
 - [ ] 活動管理整頁假：發布/暫停/恢復/結束/刪除/建立（campaigns/page.tsx；`/api/campaigns*` 已存在）
 - [ ] 顧客管理：新增/編輯假（load 後蒸發）、LINE 綁定假（customers/page.tsx；service 已存在，bookings 頁同功能是真的——照抄）
@@ -132,12 +135,15 @@
 
 ## 2. 根因 B 清單：計劃漏掉（規格要補寫、工作要補做）
 
-- [ ] **webhook 關鍵字覆蓋不足**：實作只比對 4 個字面值（預約/服務/我的預約/行程佔位）。
+- [x] **webhook 關鍵字覆蓋已補齊（issue #5，commit `faa7c22`）**：原實作只比對
+      4 個字面值（預約/服務/我的預約/行程佔位）；現由
       keyword-replies i18n 定義的 15 組系統關鍵字（含同義詞）與 `MODE_PRESETS.richMenuCells`
       的格子文字（服務項目/會員卡/優惠/聯絡我們/團次/我的訂單/常見問題/看診進度/營業時間…）
-      大多無 handler，按了落到 defaultReply。**新增規格**：已回寫 06 §3——「Rich Menu 每個
+      全部受 `line-keyword-coverage.test.ts` 與 `keyword-replies.05.test.ts` 的
+      程式化矩陣保護。**新增規格**：已回寫 06 §3——「Rich Menu 每個
       格子送出的文字、與系統關鍵字組全部同義詞，webhook 必須有對應分支；系統組的
-      啟停開關（systemGroupDisabled）webhook 必須讀」
+      啟停開關（systemGroupDisabled）webhook 必須讀」。PR #49 `cadab19`
+      run #163 已通過完整 unit／integration／E2E。
 - [ ] **flex-menu 三層只做一層**：儲存端點有；webhook「選單」關鍵字回 Flex（06 §6 原文要求）完全沒做、頁面發布也沒接。已在 06 §6 標註現況
 - [ ] 主題底圖無人負責上傳（bucket 空）→ 已用「現生成純色 PNG」修掉硬依賴（commit 3a7429b），06 §6 已註記
 - [ ] `/api/trips/:id/addons`、`/api/trips/import`、`/api/trips/:id/export`、`GET/POST/DELETE /api/demo-data`、`DELETE /api/settings/line/rich-menu`：程式已存在、計劃全無記載 → 已補記（10 分冊 / 06 §6）
@@ -398,8 +404,8 @@ customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不�
 
 | 本輪新開 | 筆數 | 新 issue | 狀態 |
 |---|---|---|---|
-| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | 施工中 |
-| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | ①⑧⑨ 已完成（`3aee55e`），其餘待前置 |
+| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | Source、unit、integration、E2E 已完成（`38e714f`；PR #49 exact HEAD `5cc70ba` CI run #159 attempt 2 全綠）；Preview 三路徑仍待租戶登入實證 |
+| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | ①②⑦⑧⑨ source 已完成；③–⑥ 亦有 deployed `0db681f` Preview 輸出（exports 18/18、welcome upload 8/8），但 current-head 截圖／full CI 待補，故 issue 維持 open |
 
 `#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、
 歡迎卡片圖片上傳按鈕。
@@ -561,21 +567,21 @@ API 文件**。先前「自動回應訊息無法檢查」就是這樣被證明�
 → `cat_cols=4`、`bug_cols=2` 皆相符；並額外查 `pg_trigger` / `pg_proc`
 → `leftover_triggers=0`、`leftover_fns=0`（見下方技術債第 3 條）。
 
-#### 由本輪衍生、尚未處理的三件
+#### 由本輪衍生項目的後續狀態
 
-1. **分類的「編輯」（鉛筆）按鈕仍是假成功，而且本輪讓它更誤導。**
-   `services/page.tsx:1164` 與 `products/page.tsx` 同型：只切本地 `active` 並
-   toast「分類已更新」，從未打 `PUT /api/{service,product}-categories/:id`
-   ——而那支路由的 `bodySchema` 目前也只有 `{ name }`。
+1. ~~**分類的「編輯」（鉛筆）按鈕仍是假成功。**~~ → **已完成**
+   （`9829f12`／`a36cb71`）。服務／商品分類 modal 已把名稱、說明、啟用狀態
+   經 service 寫入 `PUT /api/{service,product}-categories/:id`；
+   `category-edit-modal.28.test.ts` 逐欄驗證同時修改、單欄修改、說明清空與
+   `sortOrder` 不被 modal 路徑誤動。
 
    ⚠️ **更正（2026-08-25，主導者）**：本節下文一度把「同型」擴大解釋成
    **新增與刪除**兩頁也都有缺陷，並據此發了派工單。實測不成立——商品頁的
    新增與刪除在 `c9e04f9` 就已經是 await-first，只有服務頁是舊寫法。
    執行者拒絕為了對齊派工單而重寫已經正確的程式碼，是對的。
    **教訓：「A 頁有這個問題，B 頁應該同型」是假設不是事實，寫進派工單前要先 grep。**
-   本輪把 `active` 變成真欄位之後，這顆按鈕的誤導性反而提高了（使用者現在
-   有理由相信它存得進去）。**這是「補了一半反而更糟」的典型**，修正順序上
-   應緊接本輪，不宜久放。
+   當時把 `active` 變成真欄位卻尚未接編輯曾短暫提高誤導性；上述後續 commit
+   已收斂這個「補了一半」缺口。本段保留作為稽核教訓，不再列為 open blocker。
 2. ~~**回報問題的截圖上傳**~~ → **已完成**（issue #30，commit `c6d99b0`，見 §6.7）。
 3. **⑧ 第三分支（`restoreSideEffectFailed`）在 CI 會 skip，不是假綠。**
    該分支純資料無法誘發（`coupons` / `products` 上無任何 check/trigger 可違反），
@@ -1613,7 +1619,7 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 並明說「不要花力氣去測 `qrcode` 套件本身」，這一項因此**可能已經作廢**，
 但那是擁有者的裁決，不是執行者可以自行認定的——**留著不打勾，等裁決**。
 
-### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成
+### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成（commit `b317d35`）
 
 補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`
 `/api/bookings/${b.id}/addons`、`/api/bookings/${bookingId}/addons/${itemId}`；
@@ -2897,3 +2903,29 @@ progress-bar / progress-fill / complete / close / next-actions）與 `onboarding
 RPC、deterministic staff advisory locks、completion CAS 與 `performance_frozen_at` 補上資料庫邊界。
 0034 也修正 composite FK 的 `ON DELETE SET NULL`，避免意外將 `tenant_id` 設為 null。仍待 Owner
 授權後的 migration／整合測試，不能據此宣稱環境已驗證。
+
+## #50 關鍵字回覆圖片：source-only 候選與未完成驗證（2026-08-28）
+
+issue #5 為避免假功能，曾把沒有 `onChange` 的「附加圖片」停用；#50 的候選
+`a2736ffd96e2bdaf473c9ee18d316304092a561f` 已補齊 source 端鏈路：頁面只收 JPEG/PNG，
+呼叫共用 `/api/upload`，顯示上傳中／失敗／完成與真實預覽；保存成功必須等 upload 與
+keyword reply 寫入都完成。選圖被較新的 upload 或 modal session 取代時，失去 ownership
+的結果會自行清理；save in-flight 時 Cancel／backdrop／Escape／X 不能刪掉即將持久化的圖。
+
+資料契約不再把 `imageUrl` 字串當證據。新 IMAGE row 同時保存原圖與 preview 的
+`imageStorageRef`；POST／PUT／新版 GET 會驗專用 bucket、本租戶 path、可信 HTTPS origin、
+URL/path 一致與兩個 Storage object 存在。webhook 沿用既有 IMAGE 分支，圖片取代文字，
+原圖與 preview 分別取 DB 保存值。舊 IMAGE row 若只有裸 `imageUrl`，保留唯讀／停用相容，
+不從任意外部 URL 猜 tenant object；再次選圖時才升級。
+
+bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 public 才能讓 LINE 抓圖，
+所以「A tenant 無法讀 B tenant public URL」不是可成立的保證；真正可驗收的隔離是 A 不得
+寫入、在自己的 reply 引用或 cleanup 刪除 B 的物件；規格也因此禁止上傳私密內容。替換、
+移除、刪除與取消未儲存選圖都先確認 DB 無活引用再刪原圖＋preview；暫時刪除失敗進
+`keyword_reply_image_cleanup`，每日 cron 重試前再查引用，避免已重新被使用的物件遭誤刪。
+
+目前證據邊界必須保持誠實：候選只完成 typecheck、targeted unit 與 mock build 的 source
+驗證；migration `0039`、bucket/policy/cleanup table 尚未套 TEST，service-role object existence、
+跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
+reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
+#50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。

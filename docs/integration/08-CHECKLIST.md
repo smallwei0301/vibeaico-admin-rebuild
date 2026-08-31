@@ -111,10 +111,13 @@
       `:「csv：五個區塊表頭齊全、統計區間正確、每日趨勢逐日補 0（區間天數）」`。
       變異驗證：把 summary 的營收口徑改成「不分狀態全算」、把 export/bookings 的
       UTF-8 BOM 拿掉 → 對應三條轉紅。
-      **不打勾的理由**：本項的範圍不只端點——bookings 頁與 customers 頁的「匯出」
-      按鈕目前仍是死按鈕（`/api/export/bookings`、`/api/export/customers/excel`
-      零呼叫端，已列入 issue #28 第 ③④ 筆）。端點有測試 ≠ 使用者匯得出來
-      （12 分冊 §6 DoD 10、鐵則 12）。頁面接線關閉後才可打勾。
+      **2026-08-28 更正**：bookings／customers／inventory 三個匯出入口已接上
+      真實下載。issue #28 comment `#5420941482` 留有 deployed `0db681f` 的
+      Preview 腳本輸出（18/18 PASS），涵蓋 download event、後端
+      `Content-Disposition` 檔名與 UTF-8 BOM；對應 source 守門為
+      `export-download-wiring.28.test.ts`／`export-inventory.28.test.ts`。
+      本項仍不打勾：目前候選 HEAD 尚缺相同 Preview 腳本重跑截圖與 full CI 證據；
+      舊的「死按鈕／零呼叫端」敘述已被後續實作推翻，不再作為 blocker。
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
       **（重開 2026-08-24：無完成紀錄；依打勾規則 1，每頁的實測要留下日期＋步驟＋結果）**
 - [ ] 【新增】頁面接線驗收：本 Phase 涉及的每個頁面，其所有寫入按鈕都經過
@@ -128,14 +131,22 @@
 - [ ] `src/server/features.ts` 閘門 + 對應表逐條套用（3 位員工上限、20 組關鍵字、EXTRA_PUSH 額度 700）
 - [ ] cron feature-expiry 副作用與 restore 自動還原
 - [ ] 點數儲值 MVP（501 + 客服文案）；金流供應商決策留待平台擁有者
-- [ ] AI 客服（選配）：ai-settings 儲存 + webhook AI 回覆 + UNSURE 轉人工
+- [x] AI 客服（選配）：ai-settings 儲存 + webhook AI 回覆 + UNSURE 轉人工
+      （issue #27：`ai-settings-wiring.27.test.ts`、`ai-settings.27.test.ts`；把頁面
+      接線變異回 `saveLineSettings` 時 3/30 紅，還原後 30/30 綠；PR #49
+      exact HEAD `5cc70ba` 的 CI run #159 attempt 2 已通過 unit、63 files / 703
+      integration cases 與 Playwright E2E。租戶 Preview 三頁截圖另列為 issue #27
+      尚未完成的站點驗收，不把 CI E2E 冒充 Preview 證據。）
 
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
 - [ ] follow/message 事件處理 + keyword replies + 預設回覆
-      **（重開 2026-08-24：webhook 側 OK，但 keyword-replies 管理頁整頁假——載入吃
-      mock、儲存/刪除/啟停只 setState，店家設的關鍵字進不了 DB。重勾條件：頁面接線
-      ＋端到端案例「UI 存一組關鍵字 → webhook 收該字 → mock LINE 收到設定的回覆」）**
+      **（issue #5 的頁面接線與 webhook 覆蓋已完成：commit `faa7c22`；
+      `keyword-replies.05.test.ts` 驗證 API 建立後 webhook 會回設定內容，
+      `keyword-replies-wiring.05.test.ts` 驗證頁面 CRUD 接線。PR #49 exact
+      `cadab19` 的 run #163 已通過完整 unit／integration／E2E。此合併項仍留白，
+      因為 Preview 的「UI 建立 → 簽章 webhook → LINE mock 捕捉 → 清理」尚未執行，
+      且本項還包含不屬 #5 的 follow／預設回覆整體驗收。）**
 - [ ] chat 頁雙向訊息
 - [x] 預約狀態推播 + 額度控管
       **（重開 2026-08-24：line-notify 實作在但 tests/ 全域零引用，推播路徑的額度
@@ -171,9 +182,12 @@
       以及 TOKEN／WEBHOOK／RICH_MENU／QUOTA 各自的 pass 與 FAIL/WARN 分支。
       變異驗證：把 AUTO_REPLY 改回「永遠 `pass:false`」→ 「五項全部通過」那條轉紅
       （＝那條斷言真的在防「報告永遠不可能全綠」）。
-- [ ] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
+- [x] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）
+      **（issue #5：`line-keyword-coverage.test.ts` 逐項守住三業態 18 格與 15 組
+      系統關鍵字；`keyword-replies.05.test.ts` 驗證自訂優先、停用與完整矩陣。
+      PR #49 `cadab19` run #163 的完整 gates 全綠。）**
 - [x] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
       收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
       **（2026-08-25 打勾。打勾的依據是本項自己的定義——「存主選單 → webhook 收
