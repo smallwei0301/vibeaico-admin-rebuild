@@ -25,8 +25,6 @@ function escapeRegExp(value) {
 }
 
 export function readField(body = "", field) {
-  // Spaces and tabs are allowed around one metadata line. Do not use \s here because it also
-  // consumes newlines and can accidentally treat the next metadata row as the current value.
   const pattern = new RegExp(
     `^[ \\t]*[-*]?[ \\t]*${escapeRegExp(field)}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`,
     "mi",
@@ -43,11 +41,21 @@ export function isPlaceholder(value) {
   return !text || text.includes("<!--") || text.includes("|") || /^TBD$/i.test(text);
 }
 
+export function readLifecycleIssue(body = "") {
+  const match = String(body).match(/<!--\s*pr-lifecycle([\s\S]*?)-->/i);
+  if (!match) return null;
+  const issueMatch = match[1].match(/^\s*issue\s*:\s*(\d+)\s*$/mi);
+  if (!issueMatch) return null;
+  const value = Number(issueMatch[1]);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
 export function parseLaneMetadata(pr = {}) {
   const body = pr.body ?? "";
   return {
     number: Number(pr.number ?? 0),
     htmlUrl: pr.html_url ?? "",
+    issueNumber: readLifecycleIssue(body),
     origin: upper(readField(body, "WORK_ORIGIN")),
     lane: upper(readField(body, "AGENT_LANE")),
     state: upper(readField(body, "LANE_STATE")),
@@ -78,6 +86,9 @@ export function validateLaneMetadata(metadata, { action = "" } = {}) {
   if (isPlaceholder(metadata.requestedModel)) errors.push("REQUESTED_MODEL / ACTUAL_MODEL is required");
 
   if (metadata.state === "ACTIVE" && metadata.lane === "TERRA_BUILD") {
+    if (!metadata.issueNumber) {
+      errors.push("An active TERRA_BUILD must declare pr-lifecycle issue: <number>");
+    }
     if (metadata.activeCandidate !== "TRUE") {
       errors.push("An active TERRA_BUILD must set ACTIVE_CANDIDATE=true");
     }
@@ -137,31 +148,50 @@ export function summarizeActiveLanes(pullRequests = []) {
   };
 }
 
+function groupByIssue(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    if (!row.issueNumber) continue;
+    const group = groups.get(row.issueNumber) ?? [];
+    group.push(row);
+    groups.set(row.issueNumber, group);
+  }
+  return groups;
+}
+
 export function validateGlobalWip(summary) {
   const errors = [];
   const { activeTerra, activeClosure, activeTest, activeCandidates } = summary;
 
-  if (activeTerra.length > 1) {
-    errors.push(`active TERRA_BUILD count is ${activeTerra.length}; max is 1 (${activeTerra.map((pr) => `#${pr.number}`).join(", ")})`);
+  // Mode C: Terra is parallel per Issue, not globally capped. The invariant is one active Terra
+  // implementation owner per Issue. Shared TEST remains globally serialized.
+  for (const [issueNumber, rows] of groupByIssue(activeTerra)) {
+    if (rows.length > 1) {
+      errors.push(`Issue #${issueNumber} active TERRA_BUILD count is ${rows.length}; max is 1 (${rows.map((pr) => `#${pr.number}`).join(", ")})`);
+    }
   }
+
   if (activeClosure.length > 1) {
     errors.push(`active LUNA_CLOSURE count is ${activeClosure.length}; max is 1 (${activeClosure.map((pr) => `#${pr.number}`).join(", ")})`);
   }
   if (activeTest.length > 1) {
     errors.push(`active TEST_VALIDATION count is ${activeTest.length}; max is 1 (${activeTest.map((pr) => `#${pr.number}`).join(", ")})`);
   }
-  if (activeCandidates.length > 2) {
-    errors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is 2 (${activeCandidates.map((pr) => `#${pr.number}`).join(", ")})`);
+
+  // Candidate budget is per Issue. Do not reintroduce a repo-wide cap.
+  for (const [issueNumber, rows] of groupByIssue(activeCandidates)) {
+    if (rows.length > 2) {
+      errors.push(`Issue #${issueNumber} ACTIVE_CANDIDATE count is ${rows.length}; max is 2 (${rows.map((pr) => `#${pr.number}`).join(", ")})`);
+    }
   }
 
-  if (activeTerra.length === 1) {
-    const target = activeTerra[0].closureTarget.trim();
-    const emptyScan = /^EMPTY_WITH_SCAN$/i.test(target);
-    if (!emptyScan && activeClosure.length !== 1) {
-      errors.push(`an active TERRA_BUILD requires exactly one active LUNA_CLOSURE; found ${activeClosure.length}`);
+  if (activeTerra.length > 0) {
+    const allEmpty = activeTerra.every((row) => /^EMPTY_WITH_SCAN$/i.test(row.closureTarget.trim()));
+    if (activeClosure.length === 0 && !allEmpty) {
+      errors.push("active TERRA_BUILD lanes require one repo-wide LUNA_CLOSURE, unless every Terra reports EMPTY_WITH_SCAN");
     }
-    if (emptyScan && activeClosure.length > 0) {
-      errors.push("CLOSURE_SWEEP_TARGET is EMPTY_WITH_SCAN but an active LUNA_CLOSURE PR also exists");
+    if (activeClosure.length > 0 && activeTerra.some((row) => /^EMPTY_WITH_SCAN$/i.test(row.closureTarget.trim()))) {
+      errors.push("CLOSURE_SWEEP_TARGET is EMPTY_WITH_SCAN on an active Terra while a repo-wide LUNA_CLOSURE PR exists");
     }
   }
 
