@@ -5,7 +5,7 @@ export type PlanEditorSection = 'quick' | 'advanced';
 export type PlanProvenanceSource = 'GUIDE' | 'PLATFORM_ASSISTED' | 'IMPORTED';
 
 const QUICK_FIELDS = [
-  'name', 'description', 'basePrice', 'childPrice', 'active',
+  'name', 'description', 'basePrice', 'active',
 ] as const satisfies readonly (keyof TripPlan)[];
 
 const ADVANCED_FIELDS = [
@@ -46,7 +46,7 @@ export function checkPlanEditFieldOwnership(
   section: PlanEditorSection,
   patch: Partial<TripPlan>,
 ): { ok: true; invalidFields: [] } | { ok: false; invalidFields: string[] } {
-  const allowed = new Set<keyof TripPlan>(section === 'quick' ? QUICK_FIELDS : ADVANCED_FIELDS);
+  const allowed = new Set<keyof TripPlan>(section === 'quick' ? [...QUICK_FIELDS, 'childPrice'] : ADVANCED_FIELDS);
   const invalidFields = Object.keys(patch).filter((field) => !allowed.has(field as keyof TripPlan));
   return invalidFields.length === 0
     ? { ok: true, invalidFields: [] }
