@@ -41,9 +41,11 @@
    入庫前用 `SETTINGS_ENCRYPTION_KEY` AES-256-GCM 加密（見 01 分冊 §4），
    回傳前端一律 `maskSecret()`（`src/config/tenant-settings.ts` 已有）。
    前端送空字串 = 「不變更」，**收到空字串時保留 DB 舊值**。
-7. **`SUPABASE_SERVICE_ROLE_KEY` 只能在這三種地方使用**：
-   LINE webhook、Vercel Cron、auth 註冊流程。一般 API 一律走帶使用者 session 的
+7. **`SUPABASE_SERVICE_ROLE_KEY` 只能在下列內部邊界使用**：
+   LINE webhook、Vercel Cron、auth 註冊流程，以及 **17 分冊的 notification dispatcher／delivery ledger**。
+   一般 API（包含普通 booking 建立與狀態更新）一律走帶使用者 session 的
    client（RLS 生效）。service role key 絕不能出現在任何 `NEXT_PUBLIC_*` 變數或前端 bundle。
+   notification dispatcher 只能在 DB transaction 已寫入 outbox event 後執行；不得讓一般 route 直接以 service role 寫業務資料或直送 provider。
 8. **每完成一個 Phase 都要過驗收**：`npm run typecheck` 零錯誤、`npm run build` 成功、
    該 Phase 的驗收清單（08 分冊或該領域 checklist）全數打勾，才能進下一個 Phase。
 9. **不新增依賴，除非分冊點名。** 各分冊明確列出允許安裝的套件與版本，其餘不裝。

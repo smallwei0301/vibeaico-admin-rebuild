@@ -50,6 +50,7 @@
 | PB-011 | 驗收帳號必須能看見受測入口 | GUIDE 隱藏一般預約導覽，不能驗 bookings badge；先由產品閘門選可見入口的 fixture。 | `docs/AGENT-EXECUTION.md` §7 |
 | PB-012 | 靜態檢查不能驗證 SQL 語意 | SELECT alias 不能在同層 WHERE 使用，且 DB enum 與 UI enum 不同；對 DB 實跑或鎖 schema mapping。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-013 | build workspace artifact 可在編譯後失敗 | page collection 清理殘留 artifact 時可報 `ENOTEMPTY`；保留首個完整證據、清 workspace 後單次重驗。 | `docs/AGENT-EXECUTION.md` §7 |
+| PB-014 | 已套 migration 的 source 以實際基線為準 | 分支上的後續 runtime 修正不可倒灌已記錄 migration；以 TEST history/schema 對齊 exact source，所有差異用新編號 forward migration。 | `AGENTS.md`；`docs/AGENT-EXECUTION.md` §3.1、§6 |
 
 ## 事件紀錄
 
@@ -179,3 +180,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：每個 build 使用獨立、乾淨的 output/worktree；清理前確認沒有其他 process 使用 artifact，第二次相同環境錯誤即改變診斷方式。
 - 驗證：#43 focused tests、full unit 與 typecheck 通過；乾淨候選的完整 build 尚待驗證。
 - 狀態：仍待處理
+
+### PB-014 — 分支 source 與已套 notification migration baseline 漂移
+
+- 首次／最近：2026-08-28／2026-08-28
+- 發生次數：1
+- Issue／PR／CI：#40
+- 分類：Migration／TEST DB
+- 事件：保留 runtime 修正的分支仍帶有與已套 TEST baseline 不同的 `0038` 定義。
+- 證據：TEST history 順序為 `0038`、`0038a`、`0040`；其 `0038` schema 符合 v2 基線，而 f7 source 含後續 runtime 語意。
+- 根因：將「保留 branch runtime」誤延伸為可保留已套 migration 的 source 差異。
+- 影響：fresh install 與 TEST 的 notification ACL、Telegram uniqueness、auth audit schema 會漂移。
+- 修正：將 `0038`／`0038a` 對齊 v2 exact；將 reclaimable、auth audit、trigger hardening、bind RPC 都放入唯一 forward `0041`。
+- 預防：整合前先以 migration history 與 schema contract 固定 immutable 檔案；後續 DDL/RPC 只加未保留編號的 forward migration。
+- 驗證：source test、exact diff/byte comparison、unit/typecheck/mock build；TEST 套用與 integration 另行授權。
+- 狀態：已防止

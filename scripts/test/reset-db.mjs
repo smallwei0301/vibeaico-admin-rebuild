@@ -52,6 +52,9 @@ const admin = createTestAdminClient();
  *   - traveler_profiles：11 分冊，主鍵直接是 `user_id uuid primary key
  *     references auth.users(id) on delete cascade`——它掛在 auth.users 底下，
  *     不是 tenants。
+ *   - #40 notification health / platform Telegram tables：platform digest 與
+ *     PLATFORM_OWNER bindings intentionally have nullable tenant_id, so tenant
+ *     cascade cannot clear their audit rows between isolated TEST runs.
  *
  * 用哪一欄當「必然成立」的刪除條件：auth_verification_codes / partner_clients
  * 用主鍵 id；traveler_profiles 沒有 id 欄位，主鍵是 user_id，所以用 user_id。
@@ -63,6 +66,13 @@ const INDEPENDENT_TABLES = [
   // 0012：tenant_id 是 on delete SET NULL（平台級表），tenants 的 cascade
   // 刪不到它，必須獨立清。
   { table: 'bug_reports', keyColumn: 'id' },
+  { table: 'notification_health_reports', keyColumn: 'id' },
+  { table: 'notification_provider_webhook_events', keyColumn: 'event_id' },
+  { table: 'email_recipient_health', keyColumn: 'recipient_hash' },
+  { table: 'notification_outbox', keyColumn: 'id' },
+  { table: 'telegram_bindings', keyColumn: 'id' },
+  { table: 'telegram_bind_codes', keyColumn: 'id' },
+  { table: 'telegram_webhook_updates', keyColumn: 'bot_id' },
 ];
 
 /**

@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { dispatchAfterCommit } from '@/server/notifications/outbox';
 
 const bodySchema = z.object({
   startAt: z.string().optional(),
@@ -52,5 +53,8 @@ export const PUT = handle(async (req, { params }) => {
       throw new ApiHttpError(409, '該時段已有預約', ERR.CONFLICT);
     throw error;
   }
+  // The booking trigger records BOOKING_LINE_MODIFIED in this same update
+  // transaction; dispatch is strictly post-commit best effort.
+  dispatchAfterCommit();
   return ok();
 });
