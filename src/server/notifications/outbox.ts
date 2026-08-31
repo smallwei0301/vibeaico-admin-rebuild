@@ -142,11 +142,18 @@ async function fanOutBookingEvent(admin: Admin, event: OutboxRow): Promise<void>
 }
 
 /** Materialize all open booking events before workers race to claim deliveries. */
-export async function fanOutPendingNotifications(admin: Admin = createAdminSupabase(), limit = 100): Promise<void> {
-  const { data, error } = await admin.from('notification_outbox')
+export async function fanOutPendingNotifications(
+  admin: Admin = createAdminSupabase(),
+  limit = 100,
+  targetOutboxId?: string,
+): Promise<void> {
+  const query = admin.from('notification_outbox')
     .select('id, tenant_id, event_name, aggregate_id, payload')
-    .eq('status', 'OPEN').in('event_name', ['BOOKING_CREATED', 'BOOKING_CANCELLED', ...Object.keys(LINE_EVENT_KIND)])
-    .order('created_at', { ascending: true }).limit(limit);
+    .eq('status', 'OPEN')
+    .in('event_name', ['BOOKING_CREATED', 'BOOKING_CANCELLED', ...Object.keys(LINE_EVENT_KIND)]);
+  const { data, error } = targetOutboxId
+    ? await query.eq('id', targetOutboxId).limit(1)
+    : await query.order('created_at', { ascending: true }).limit(limit);
   if (error) throw error;
   for (const row of data ?? []) await fanOutBookingEvent(admin, row as unknown as OutboxRow);
 }
@@ -418,10 +425,16 @@ async function persistOutcome(admin: Admin, delivery: ClaimedDelivery, outcome: 
 export async function dispatchPendingNotifications(
   admin: Admin = createAdminSupabase(), limit = 20, dispatchAlerts = true,
   sender: DeliverySender = (delivery) => sendClaimedDelivery(admin, delivery),
+  targetOutboxId?: string,
 ): Promise<number> {
-  // Keep the bounded worker request bounded before claiming rows as well.
-  await fanOutPendingNotifications(admin, limit);
-  const { data, error } = await admin.rpc('claim_notification_deliveries', { p_limit: limit });
+  // Generic workers materialize only their bounded batch. A post-commit reminder
+  // supplies its outbox id so it can be materialized and claimed ahead of older
+  // backlog without widening the worker's bounded retry contract.
+  await fanOutPendingNotifications(admin, targetOutboxId ? 1 : limit, targetOutboxId);
+  const claimResult = targetOutboxId
+    ? await admin.rpc('claim_notification_delivery_for_outbox', { p_outbox_id: targetOutboxId })
+    : await admin.rpc('claim_notification_deliveries', { p_limit: limit });
+  const { data, error } = claimResult;
   if (error) throw error;
   let processed = 0;
   for (const row of data ?? []) {
@@ -442,8 +455,14 @@ export async function dispatchPendingNotifications(
 }
 
 /** Call this only after the business write has committed. It intentionally swallows failures. */
-export function dispatchAfterCommit(): void {
-  void dispatchPendingNotifications().catch((error: unknown) => {
+export function dispatchAfterCommit(targetOutboxId?: string): void {
+  void dispatchPendingNotifications(
+    createAdminSupabase(),
+    targetOutboxId ? 1 : 20,
+    true,
+    undefined,
+    targetOutboxId,
+  ).catch((error: unknown) => {
     console.error('[notifications] post-commit dispatch failed', error instanceof Error ? error.message : 'unknown');
   });
 }

@@ -28,10 +28,11 @@ export async function notifyBookingStatus(
 ): Promise<void> {
   if (kind !== 'REMINDER') throw new Error('notifyBookingStatus only supports cron REMINDER events');
   const admin = createAdminSupabase();
-  const { error } = await admin.rpc('enqueue_booking_line_reminder', {
+  const { data: outboxId, error } = await admin.rpc('enqueue_booking_line_reminder', {
     p_tenant_id: tenantId,
     p_booking_id: bookingId,
   });
   if (error) throw error;
-  dispatchAfterCommit();
+  if (typeof outboxId !== 'string') throw new Error('reminder outbox id was not returned');
+  dispatchAfterCommit(outboxId);
 }
