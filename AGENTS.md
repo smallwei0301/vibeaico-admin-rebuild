@@ -10,9 +10,12 @@
 6. 該 Issue 指定的 `docs/integration/**` canonical 文件
 7. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
    報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-8. `docs/integration/12-TESTING-TDD.md`
-9. 長程 `/goal`、多 agent 派工、CI 判案或 Issue closeout，若平台支援 repository
-   skills，載入 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
+8. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
+   響應式、次層頁資訊重排或 GUIDE 共用 UI 元件，另讀
+   `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與 `docs/assets/guide-mobile-ui/README.md`
+9. `docs/integration/12-TESTING-TDD.md`
+10. 長程 `/goal`、多 agent 派工、CI 判案或 Issue closeout，若平台支援 repository
+    skills，載入 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
 
 ## 強制規則
 
@@ -28,6 +31,8 @@
   兩者不得變成另一套互相覆蓋的完整規格。
 - GUIDE 產品體驗任務以 `19-GUIDE-PRODUCT-EXPERIENCE.md` 的 P0／P1／P2 為優先級
   覆蓋，但不得跳過 10／17／18 分冊的資料、安全、付款與通知依賴。
+- GUIDE 呈現層任務以 `20-GUIDE-RESPONSIVE-UI.md` 的五大父層級、字級、資訊密度與
+  響應式規則為準；桌機變寬不代表可以恢復舊的多功能平鋪導航。
 - 工作分支必須以最新 `main`，或已包含最新 `main` 文件 commit 的整合分支為 base。
 - 若 branch 文件與 `main` 衝突，以 `main` 中較新的 Owner Decision 與 canonical
   文件為準。
