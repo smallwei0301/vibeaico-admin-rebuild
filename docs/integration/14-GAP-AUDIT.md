@@ -2929,3 +2929,10 @@ bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 pub
 跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
 reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
 #50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
+
+
+## #9 tenant payment methods — source candidate (2026-08-31)
+
+Commit `315f21d4f95d988659c725778a7c3786fc9553c1` adds the tenant-owned payment-method migration, RLS policies, encrypted/masked CRUD, credential-change verification invalidation, connection/test-charge honesty contracts, ECPay CheckMacValue helper, UI service wiring, and focused unit coverage.
+
+This is not a completion claim. The migration has not been applied to TEST or Production; exact-head typecheck/unit/build/integration/E2E, authenticated Preview reload evidence, #12 two-tenant checkout/callback cross-test, and Owner-authorized production DDL/deployment or real merchant test remain open. Until `e2e_verified_at` is proven for a tenant method, online customer checkout must exclude it. No real charge or provider credential was used by this candidate.

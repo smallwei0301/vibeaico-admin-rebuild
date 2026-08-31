@@ -13,7 +13,9 @@ export const paymentMethodsPage = {
     delete: '刪除',
     enable: '啟用',
     disable: '停用',
-    testCharge: '實刷測試並開通（藍新 NT$1／綠界 NT$5）',
+    /* ⚠️ 舊標籤「實刷測試並開通（藍新 NT$1／綠界 NT$5）」承諾了一個做不到的結果。
+       金流後端建置前，標籤只描述用途、不承諾開通。 */
+    testCharge: '金流實刷驗證',
     testConnection: '檢查金流設定',
   },
 
@@ -42,6 +44,8 @@ export const paymentMethodsPage = {
     active: '啟用',
     inactive: '停用',
     verified: '已驗證開通',
+    e2eVerified: '完整收款流程已驗證',
+    connectionVerified: '連線已驗證（尚未完成收款閉環）',
     notVerified: '尚未驗證',
     notVerifiedLong: '尚未驗證（需實刷小額測試）',
     sandbox: '測試環境',
@@ -81,7 +85,8 @@ export const paymentMethodsPage = {
     onlineIntroTail: '——錢直接進「你自己的金流帳戶」，平台不經手。',
     onlineStepLead: '設定並用',
     onlineStepStrong: '小額實刷測試開通',
-    onlineStepMiddle: '（藍新 NT$1／綠界 NT$5）後，到「服務項目」把服務設為',
+    /** `{catalog}` 由頁面在 render 期展開（14 分冊 §8.13） */
+    onlineStepMiddle: '（藍新 NT$1／綠界 NT$5）後，到「{catalog}」把服務設為',
     onlineStepStrong2: '收訂金 / 全額',
     onlineStepTail: '，顧客預約時就會被導向付款。',
     onlineApplyNote:
@@ -127,16 +132,21 @@ export const paymentMethodsPage = {
     requiredFields: '請填寫必填欄位',
   },
 
+  status: {
+    title: '收款設定已接上租戶資料庫',
+    body: '新增、編輯、刪除與啟用狀態會透過租戶隔離 API 持久化；API 永不回傳 merchant secret 原文。',
+    verificationBody: '「連線已驗證」只代表後端完成可驗證的憑證檢查；「完整收款流程已驗證」必須等同一租戶的 checkout／callback 測試完成，兩者不會互相冒充。',
+  },
+
   /* -------------------------------------------------------- 實刷測試 */
   testCharge: {
-    confirm:
-      '將建立一筆小額實刷測試付款（藍新 NT$1／綠界 NT$5——綠界信用卡最低就是 5 元），並在本視窗前往金流付款頁。沙箱/示範環境用測試卡不扣真錢；正式環境會實刷（可事後在金流商後台退刷）。付款完成後會自動回到此頁顯示驗證結果。要繼續嗎？',
+    pendingHint: '完整收款閉環由 #12 checkout／callback 驗證；尚未執行扣款',
+    pendingMessage: '目前只會回報是否可驗證，不會執行真實扣款；完整收款流程測試由 Issue #12 的 checkout／callback 閉環提供。',
     saveFirst: '請先儲存後再測試',
     dirtyBeforeTest: '你剛修改了金流設定，請先按「儲存」再測試',
     dirtyBeforeCheck: '你剛修改了金流設定，請先按「儲存」再檢查',
     createFailedPrefix: '建立測試付款失敗：',
     noForm: '未取得付款表單，請稍後再試',
-    success: '測試付款成功！若藍新已回報，金流即顯示「已驗證開通」',
     failed: '測試付款未成功，請確認金流設定（商店代號 / HashKey / HashIV）或稍後再試',
     checkPassed: '檢查通過',
     checkFailed: '檢查未通過',
@@ -151,12 +161,6 @@ export const paymentMethodsPage = {
   },
 
   messages: {
-    created: '收款方式已新增',
-    updated: '收款方式已更新',
-    deleted: '已刪除',
-    statusUpdated: '狀態已更新',
-    createdHint: '已新增！請點該卡片「編輯」→「實刷測試並開通（藍新 NT$1／綠界 NT$5）」完成金流開通',
-    updatedHint: '已更新！可再按「實刷測試並開通（藍新 NT$1／綠界 NT$5）」重新驗證',
     saveFailed: '儲存失敗:',
     saveFailedFull: '儲存失敗：',
     deleteFailed: '刪除失敗:',
@@ -166,6 +170,9 @@ export const paymentMethodsPage = {
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',
     unknownError: '未知錯誤',
+    saved: '收款方式已儲存',
+    deleted: '收款方式已刪除',
+    statusUpdated: '收款方式狀態已更新',
   },
 
   empty: {
