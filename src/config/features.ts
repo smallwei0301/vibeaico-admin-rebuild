@@ -123,3 +123,5 @@ export const FEATURE_EXPIRY_WARNING_DAYS = 10;
 
 /** LINE 官方帳號免費方案每月推播上限（原站文案寫死 200 則） */
 export const LINE_FREE_PUSH_QUOTA = 200;
+
+// Post-merge CI canary: this harmless source comment intentionally exercises the full runtime lane.
