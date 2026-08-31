@@ -13,4 +13,5 @@ export * from './points';
 export * from './products';
 export * from './reports';
 export * from './settings';
+export * from './shell';
 export * from './tours';

@@ -244,6 +244,15 @@ export function listConversations(q: { since?: string } = {}): Promise<ChatConve
   );
 }
 
+/** Shell badge 用的未讀合計。只讀既有 conversations 端點，不另造 count API。 */
+export const unreadChatCount = () =>
+  adapt<number>(
+    () => byMode({ LOCAL_SHOP: CONV_LOCAL_SHOP, GUIDE: CONV_GUIDE, CLINIC: CONV_CLINIC })
+      .reduce((total, conversation) => total + conversation.unread, 0),
+    async () => (await request<RawConversation[]>('/api/chat/conversations'))
+      .reduce((total, conversation) => total + conversation.unread, 0),
+  );
+
 /**
  * 訊息串（舊→新）。
  * - `after`：5 秒輪詢用，只回該筆 id 之後的新訊息（mock 恆回 []）。
