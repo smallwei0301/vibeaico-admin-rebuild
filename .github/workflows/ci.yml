@@ -4,8 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    # `edited` is required so moving a PR into/out of TEST_VALIDATION creates one policy run.
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   workflow_dispatch: {}
 
 permissions:
@@ -125,7 +124,6 @@ jobs:
             echo 'A .claude/skills symlink target is missing.' >&2
             exit 1
           fi
-      # Docs-only commits never install dependencies or run runtime tests/builds.
       - name: Lightweight documentation check
         if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
         run: |
@@ -186,7 +184,7 @@ jobs:
           {
             echo '### Integration policy'
             echo ''
-            echo "- source-only route: TEST integration and Playwright E2E intentionally skipped"
+            echo '- source-only route: TEST integration and Playwright E2E intentionally skipped'
             echo "- reason: ${TEST_POLICY_REASON}"
             echo "- open TEST lane holders: ${TEST_LANE_HOLDERS:-none}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -207,7 +205,6 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
-      # E2E follows integration in the same shared TEST lane. Step env does not inherit.
       - name: Run E2E tests
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
         run: npx playwright install --with-deps chromium && npm run test:e2e

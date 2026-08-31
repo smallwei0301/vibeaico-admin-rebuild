@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
   issues: write
   pull-requests: write
@@ -70,7 +71,7 @@ jobs:
               }
             }
 
-            // Lane metadata is body-managed. The WIP violation label is computed below and must survive this sync.
+            // Body metadata owns lane/candidate labels. The computed WIP violation label must survive sync.
             const bodyManaged = new Set([
               'lane:terra-build', 'lane:luna-closeout', 'lane:test-validation',
               'candidate:active', 'candidate:parked', 'governance:lane-metadata-missing',
@@ -84,6 +85,8 @@ jobs:
 
             const current = context.payload.pull_request;
             let currentMetadataError = null;
+            let pendingTestDispatch = false;
+            let dispatchedTestValidation = false;
 
             if (current && context.payload.action !== 'closed') {
               const body = current.body ?? '';
@@ -103,6 +106,12 @@ jobs:
                   currentMetadataError = 'A BLOCKED candidate must be PARKED; it cannot occupy an active WIP lane.';
                 } else if (candidate === 'ACTIVE' && closeability === 'N/A') {
                   currentMetadataError = 'An active candidate must have a real closeability classification.';
+                } else if (
+                  lane === 'TEST_VALIDATION' &&
+                  candidate === 'ACTIVE' &&
+                  current.head.repo.full_name !== `${owner}/${repo}`
+                ) {
+                  currentMetadataError = 'Agent TEST lane dispatch requires a same-repository branch.';
                 }
               }
 
@@ -111,12 +120,14 @@ jobs:
                 .filter(Boolean);
               const preserved = existing.filter((name) => !bodyManaged.has(name));
               const next = [...preserved];
+              let lane = null;
+              let candidate = null;
 
               if (currentMetadataError) {
                 next.push('governance:lane-metadata-missing');
               } else {
-                const lane = laneMatch[1].toUpperCase();
-                const candidate = candidateMatch[1].toUpperCase();
+                lane = laneMatch[1].toUpperCase();
+                candidate = candidateMatch[1].toUpperCase();
                 const laneLabel = laneMap[lane];
                 if (laneLabel) next.push(laneLabel);
                 next.push(candidate === 'ACTIVE' ? 'candidate:active' : 'candidate:parked');
@@ -132,6 +143,13 @@ jobs:
                   labels: normalizedNext,
                 });
               }
+
+              pendingTestDispatch =
+                !currentMetadataError &&
+                context.payload.action === 'edited' &&
+                lane === 'TEST_VALIDATION' &&
+                candidate === 'ACTIVE' &&
+                !existing.includes('lane:test-validation');
             }
 
             const pullRequests = await github.paginate(github.rest.pulls.list, {
@@ -160,7 +178,7 @@ jobs:
               const isActive = names.includes('candidate:active');
               const isParked = names.includes('candidate:parked');
 
-              for (const lane of prLanes) byLane[lane].push(pr.number);
+              for (const laneName of prLanes) byLane[laneName].push(pr.number);
               if (isActive) active.push(pr.number);
 
               if (prLanes.length > 1) addOffender(pr.number, `multiple lane labels: ${prLanes.join(', ')}`);
@@ -169,13 +187,30 @@ jobs:
               if (isActive && isParked) addOffender(pr.number, 'candidate cannot be active and parked simultaneously');
             }
 
-            for (const [lane, numbers] of Object.entries(byLane)) {
+            for (const [laneName, numbers] of Object.entries(byLane)) {
               if (numbers.length > 1) {
-                for (const number of numbers) addOffender(number, `${lane} has ${numbers.length} holders; maximum is 1`);
+                for (const number of numbers) addOffender(number, `${laneName} has ${numbers.length} holders; maximum is 1`);
               }
             }
             if (active.length > 2) {
               for (const number of active) addOffender(number, `active candidate count is ${active.length}; maximum is 2`);
+            }
+
+            if (
+              pendingTestDispatch &&
+              current &&
+              !currentMetadataError &&
+              !offenders.has(current.number) &&
+              byLane['lane:test-validation'].length === 1 &&
+              byLane['lane:test-validation'][0] === current.number
+            ) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: 'ci.yml',
+                ref: current.head.ref,
+              });
+              dispatchedTestValidation = true;
             }
 
             for (const pr of pullRequests) {
@@ -210,6 +245,7 @@ jobs:
               ['Luna closeout', byLane['lane:luna-closeout'].join(', ') || 'none', '1'],
               ['TEST validation', byLane['lane:test-validation'].join(', ') || 'none', '1'],
               ['Active candidates', active.join(', ') || 'none', '2'],
+              ['TEST workflow dispatched', String(dispatchedTestValidation), 'transition only'],
             ];
             await core.summary.addHeading('Agent WIP lanes').addTable(rows).write();
 

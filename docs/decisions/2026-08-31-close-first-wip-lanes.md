@@ -94,7 +94,7 @@ Sol 只在以下情況介入：
 一般 Issue 仍以 TRIAGE + AUDIT 兩次為目標。Luna 必須先壓縮事實；Sol 不重讀完整
 repo、完整 CI log 或整段舊對話，也不輪詢等待中的 CI。
 
-## 6. GitHub 狀態標記
+## 6. GitHub 狀態標記與硬性閘門
 
 使用以下 labels：
 
@@ -109,7 +109,8 @@ governance:lane-metadata-missing
 ```
 
 每張 PR 同一時間最多一個 `lane:*` label；`candidate:active` 必須搭配一個 lane，
-`candidate:parked` 不得搭配 lane。Lane 轉換時先移除舊 label，再加入新 label。
+`candidate:parked` 不得搭配 lane。Active candidate 不可標為 `BLOCKED` 或 `N/A`。
+Lane 轉換時，由 PR body metadata 觸發 Hook 移除舊 label，再加入新 label。
 
 PR body 以固定欄位表達：
 
@@ -119,8 +120,30 @@ CANDIDATE_STATUS: ACTIVE | PARKED
 CLOSEABILITY: READY | NEAR | UNBLOCKER | BUILDABLE | BLOCKED | N/A
 ```
 
-`.github/workflows/agent-wip-lanes.yml` 只負責同步與檢查 labels、active candidate 數量及
-lane 上限。它不決定哪張 Issue 重要、不替代 Sol TRIAGE，也不自行 close PR／Issue。
+`.github/workflows/agent-wip-lanes.yml` 負責：
+
+- 同步 metadata 與 labels；
+- 檢查每種 lane 最多一個持有者；
+- 檢查 active candidates 最多兩個；
+- 標記 metadata 或 WIP 違規；
+- 當 PR body **第一次**從其他 lane 轉入 active `TEST_VALIDATION` 時，對該 branch
+  dispatch 一次 `ci.yml`。
+
+一般 PR body 證據更新不會觸發主 CI，也不需要 dummy commit。WIP Hook 不決定哪張
+Issue 重要、不替代 Sol TRIAGE，也不自行 close PR／Issue。
+
+### 6.1 CI TEST lane 閘門
+
+`.github/workflows/ci.yml` 保留所有 PR 的 `check` 與 `integration` check context，但：
+
+- docs-only 仍走既有輕量路線；
+- runtime PR 沒有成為**唯一** active `TEST_VALIDATION` holder 時，只跑 source check，
+  `integration` 明確輸出 policy skip，不安裝依賴、不讀 TEST secrets、不 reset／seed、
+  不跑 integration／E2E；
+- 只有唯一 active `TEST_VALIDATION` PR 才進 `shared-test-supabase-integration`；
+- 若兩張 PR body 同時宣稱 TEST lane，兩張都不執行重 TEST，WIP Hook 同時標記違規；
+- runtime `main` push 與明確 `workflow_dispatch` 仍跑完整驗證，並共用同一固定 TEST
+  concurrency group。
 
 本裁示生效前的未標記 open PR，預設視為 parked；只有 TRIAGE 明確升級後才算 active。
 
@@ -135,6 +158,7 @@ lane 上限。它不決定哪張 Issue 重要、不替代 Sol TRIAGE，也不自
 - `full_ci_runs`
 - `invalid_reruns`
 - `sol_contacts`
+- `close_verdicts`
 - `closed_issues`
 
 目標：

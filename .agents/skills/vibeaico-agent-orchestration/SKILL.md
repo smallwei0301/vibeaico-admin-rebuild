@@ -3,7 +3,7 @@ name: vibeaico-agent-orchestration
 description: "Use for any long-running /goal, continue-from-current-state request, open-Issue reduction, multi-agent delegation, CI failure classification, high-risk design review, Issue closeout, or Agent WIP control in smallwei0301/vibeaico-admin-rebuild. Routes SCOUT/TRIAGE/BUILD/DIAGNOSE/AUDIT/CLOSEOUT to Luna/Sol/Terra and enforces close-first global lanes according to docs/AGENT-EXECUTION.md and the latest Owner Decisions."
 metadata:
   author: smallwei0301
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # VibeAI.co Agent Orchestration
@@ -116,12 +116,19 @@ candidate:active
 candidate:parked
 ```
 
-When a PR changes stage, remove the old lane label before adding the new one. A parked candidate gets
-no lane. `.github/workflows/agent-wip-lanes.yml` verifies these limits but does not replace Sol TRIAGE.
+Change the three PR body markers when a PR changes stage. The WIP hook synchronizes labels. When an
+`edited` event moves a same-repository PR into active `TEST_VALIDATION`, the hook dispatches `ci.yml`
+exactly once after confirming it is the sole TEST holder. Do not create a dummy commit or manually
+dispatch CI just to enter the TEST lane. Ordinary evidence-only body edits do not trigger main CI.
+
+A parked candidate gets no lane. `.github/workflows/agent-wip-lanes.yml` verifies these limits but
+does not replace Sol TRIAGE.
 
 ## Close-first TRIAGE
 
-Use the closeability order and required TRIAGE output defined in `docs/AGENT-EXECUTION.md`; this adapter does not duplicate that policy. Read the current close-first Owner Decision for rationale and examples.
+Use the closeability order and required TRIAGE output defined in `docs/AGENT-EXECUTION.md`; this
+adapter does not duplicate that policy. Read the current close-first Owner Decision for rationale and
+examples.
 
 ## Compact handoff
 
@@ -165,8 +172,10 @@ failed step, suite, case, error code and only enough surrounding lines to classi
 - Allowed classifications: `CODE`, `TEST`, `ENVIRONMENT`, `UNKNOWN`.
 - Never rewrite `UNKNOWN` as `ENVIRONMENT`.
 - Never rerun the same exact head, environment and command without a verified changed condition.
-- Only the PR holding `lane:test-validation` may run shared TEST migration/reset/seed/integration/E2E.
-  Other PRs remain source-only and do not manually dispatch full CI.
+- Only the sole active `TEST_VALIDATION` PR may run shared TEST migration/reset/seed/integration/E2E.
+  Other runtime PRs receive source check plus an explicit successful integration policy-skip; they
+  must not manually dispatch heavy TEST. Runtime `main` pushes and deliberate `workflow_dispatch`
+  runs remain full validation and use the same serialized group.
 
 ## Scope firewall and Issue provenance
 
