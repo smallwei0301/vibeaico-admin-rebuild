@@ -57,7 +57,8 @@ function collectIssueCandidates(haystacks, patterns) {
 
 export function inferIssueNumber(pr) {
   const metadata = parseLifecycleMetadata(pr.body ?? "");
-  if (metadata?.issue) return metadata.issue;
+  // A lifecycle block is authoritative: a blank or malformed issue must never fall back to incidental references.
+  if (metadata) return metadata.issue;
 
   const primaryCandidates = collectIssueCandidates(
     [pr.title ?? "", pr.head?.ref ?? ""],
@@ -82,7 +83,7 @@ export function classifyPr(pr) {
   return {
     number: pr.number,
     issue: inferIssueNumber(pr),
-    state: metadata?.state ?? "UNCLASSIFIED",
+    state: metadata?.state ?? "JANITOR_REVIEW",
     supersedes: metadata?.supersedes ?? [],
     explicit: Boolean(metadata),
   };
@@ -302,7 +303,10 @@ export async function runJanitor({ apply = false } = {}) {
       }
 
       const target = byNumber.get(targetNumber);
-      if (!target) continue;
+      if (!target) {
+        reviews.push({ source: source.number, target: targetNumber, reason: "TARGET_NOT_OPEN_OR_MISSING" });
+        continue;
+      }
 
       let compareStatus = "unknown";
       try {
@@ -315,6 +319,19 @@ export async function runJanitor({ apply = false } = {}) {
       const decision = evaluateDeclaredSupersession({ source, target, compareStatus });
       if (!decision.safe) {
         reviews.push({ source: source.number, target: targetNumber, reason: decision.reason });
+        continue;
+      }
+
+      // Re-fetch immediately before mutating: a synchronized or closed target is Janitor review, never a stale close.
+      let currentTarget;
+      try {
+        currentTarget = await api(context, `/pulls/${targetNumber}`);
+      } catch (error) {
+        reviews.push({ source: source.number, target: targetNumber, reason: `TARGET_REFETCH_FAILED: ${error.message}` });
+        continue;
+      }
+      if (currentTarget.state !== "open" || currentTarget.head?.sha !== target.head?.sha) {
+        reviews.push({ source: source.number, target: targetNumber, reason: "JANITOR_REVIEW_TARGET_CHANGED" });
         continue;
       }
 

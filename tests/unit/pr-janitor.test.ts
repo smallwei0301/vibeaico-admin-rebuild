@@ -67,6 +67,14 @@ describe("issue inference", () => {
   it("returns null when primary references are ambiguous", () => {
     expect(inferIssueNumber(pr({ title: "bridge #40 with #41", head: { ref: "feature/mixed", sha: "x" } }))).toBeNull();
   });
+
+  it("does not fall back to title, body, or branch when lifecycle issue is blank", () => {
+    expect(inferIssueNumber(pr({
+      title: "fix #64",
+      head: { ref: "agent/issue-64", sha: "x" },
+      body: "<!-- pr-lifecycle\nissue:\nstate: ACTIVE\nsupersedes:\n--> references #78",
+    }))).toBeNull();
+  });
 });
 
 describe("supersession safety", () => {
@@ -155,5 +163,6 @@ describe("PR budget", () => {
     ];
     expect(findBudgetViolations(rows)).toEqual([]);
     expect(classifyPr(rows[0])).toMatchObject({ issue: 40, state: "ACTIVE" });
+    expect(classifyPr(pr({ body: "" }))).toMatchObject({ state: "JANITOR_REVIEW" });
   });
 });
