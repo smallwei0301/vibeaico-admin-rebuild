@@ -25,7 +25,29 @@ import type {
   PointTransaction,
   StaffPerformance,
   TenantSummary,
+  TourOrder,
 } from '@/lib/types';
+
+/** tour_orders route rows -> TourOrder, preserving unknown joined labels. */
+export function mapTourOrder(r: any): TourOrder {
+  const startTime = r.trip_departures?.start_time ?? r.start_time ?? null;
+  return {
+    id: r.id, orderNo: r.order_no, tripId: r.trip_id,
+    tripTitle: r.trips?.title ?? r.trip_title ?? '',
+    planName: r.trip_plans?.name ?? r.plan_name ?? '',
+    departsOn: r.trip_departures?.departs_on ?? r.departs_on ?? '',
+    startTime: typeof startTime === 'string' ? startTime.slice(0, 5) : '',
+    customerName: r.customer_name ?? '', customerPhone: r.customer_phone ?? '',
+    partySize: Number(r.party_size ?? 0), unitPrice: Number(r.unit_price ?? 0),
+    totalAmount: Number(r.total_amount ?? 0), depositAmount: Number(r.deposit_amount ?? 0),
+    upfrontRequiredAmount: Number(r.upfront_required_amount ?? 0),
+    paidAmount: Number(r.paid_amount ?? 0), refundedAmount: Number(r.refunded_amount ?? 0),
+    balanceDue: Number(r.balance_due ?? 0), balanceDueAt: r.balance_due_at ?? null,
+    status: r.status, paymentStatus: r.payment_status, paymentMethodLabel: '',
+    paymentRef: r.payment_ref ?? '', source: r.source,
+    holdExpiresAt: r.hold_expires_at ?? null, note: r.note ?? '', createdAt: r.created_at,
+  };
+}
 
 /* ------------------------------------------------------------------ 預約 */
 // 01 分冊 §5.5 範例，照抄。來源：bookings_view（join customers/services/staff）。

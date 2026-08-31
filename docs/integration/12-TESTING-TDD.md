@@ -369,3 +369,10 @@ jobs:
 - [ ] `npm run test:integration` 可從零跑起（globalSetup 起 server、跑完清掉）
 - [ ] CI 兩個 job 上線且 main 綠燈
 - [ ] 故意寫一個必敗測試 → CI 紅 → 修好 → 綠（驗證關卡真的會擋）
+
+### Issue #41 測試契約對照
+
+Issue #41 的成團、付款、截止日、狀態轉移、通知去重、並發與租戶隔離，
+均須依本冊的紅燈→最小實作→綠燈流程留下可重跑測試與 CI 證據；領域語意以
+`10-TOUR-DOMAIN.md` 與 `18-GUIDE-COMMERCE-LIFECYCLE.md` 為準，缺口索引與
+Preview／外部驗收邊界見 `14-GAP-AUDIT.md`。

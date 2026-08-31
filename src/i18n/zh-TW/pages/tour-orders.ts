@@ -53,7 +53,9 @@ export const tourOrdersPage = {
   },
   paymentStatus: {
     UNPAID: '未付款',
+    PARTIAL: '已收訂金',
     PAID: '已付款',
+    REFUND_PENDING: '退款處理中',
     REFUNDED: '已退款',
   },
   /** 定金模式的訂單：已收定金但尾款未收 */
@@ -121,21 +123,27 @@ export const tourOrdersPage = {
   confirm: {
     confirmPaymentTitle: '確認收款',
     confirmPayment: (orderNo: string) =>
-      `確認已收到訂單 ${orderNo} 的款項嗎？確認後訂單成立，旅客會收到 LINE 通知。`,
+      `請核對訂單 ${orderNo} 的實收金額與憑證；系統只會依收款規則更新訂單，不會在這裡假設已通知旅客。`,
     completeTitle: '標記完成',
     complete: (orderNo: string) => `確定要把訂單 ${orderNo} 標記為已完成嗎？`,
     cancelTitle: '取消訂單',
     cancel: (orderNo: string) =>
       `確定要取消訂單 ${orderNo} 嗎？名額會立即釋放；已收款項需由你自行退款。`,
+    paymentAmount: '本次實收金額',
+    receiptReference: '收款憑證編號／匯款後五碼',
+    cancelReason: '取消原因（選填）',
   },
 
   messages: {
     created: '訂單已建立',
-    paymentConfirmed: '已確認收款，訂單成立',
+    paymentConfirmed: '收款已登錄，訂單狀態已依收款規則更新',
     completed: '訂單已標記完成',
     cancelled: '訂單已取消，名額已釋放',
     seatsUnavailable: '名額不足，請重新選擇團次',
     loadFailed: '載入失敗，請稍後再試',
+    actionFailed: '操作失敗，請稍後再試',
+    paymentReceiptRequired: '請輸入大於 0 的實收金額與收款憑證編號',
+    manualCreateBlocked: '手動建立訂單需要行程／團次真實目錄；目前該 runtime 尚未接通。',
   },
 
   empty: {

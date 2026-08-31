@@ -251,6 +251,32 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
 
 不要讓導遊逐張訂單人工搬 `PENDING → CONFIRMED → PAID → COMPLETED`。
 
+### 6.1 Runtime contract and dependency boundaries (#41)
+
+- 銀行／現場人工確認必須提交實收 `amount` 與可稽核的 `receiptReference`；`0048` 的
+  `record_tour_order_payment_41` 在同一 transaction 以 receipt ledger 去重、鎖定
+  `Departure → Plan → TourOrder`，才更新 `paid_amount`／付款狀態／成團計數。
+  單純按鈕不得把訂單直接標為 `PAID`。
+- 線上 provider 成功仍必須先由 #9 用該 tenant 的 credentials 驗簽，之後才可用
+  `channel='PROVIDER_SUCCESS'` 呼叫同一 RPC。#9 未完成時 callback endpoint 回
+  `PAYMENT_PROVIDER_BLOCKED_BY_DEPENDENCY_9`，不得接收瀏覽器送來的付款資料。
+- `POST /api/trip-departures/:id/formation-decision` 只接受 `STILL_FORM`／`EXTEND`／
+  `CONTINUE`／`CANCEL`，並呼叫既有 atomic `decide_tour_formation`；Manager/Owner
+  身分同時由 route 與 SQL 驗證。
+- `/api/cron/tour-formation-review` 是唯一 deadline scheduler；它只呼叫
+  `review_expired_tour_formations`，把不足門檻的團次帶到 `REVIEW_REQUIRED`，不會
+  取消、釋放名額或推論退款。
+- 完成出團需要 #37 的人員／業績凍結同一交易。其 contract 尚不存在時
+  `POST /api/tour-orders/:id/complete` 回
+  `TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37`，不得改寫單張訂單為 `COMPLETED`。
+- 單張訂單取消使用 `cancel_tour_order_41`，同一 transaction 依
+  `Departure → Plan → TourOrder` 鎖定、取消訂單並釋出名額。已收而未退的金額只會
+  標記 `REFUND_PENDING`；退款比例、沒收、實際匯回都仍受 cancellation-policy／
+  #9 的明確契約限制。
+- 整團取消仍只可走既有 formation decision 的 `CANCEL` 分支；#37 尚未提供
+  人員時間釋放／C+ 業績凍結的同交易 contract，故不得另寫 route 假裝完整取消。
+  在該依賴可驗證前，這條邊界是 `BLOCKED_BY_DEPENDENCY_37`。
+
 ---
 
 ## 7. 成團與通知

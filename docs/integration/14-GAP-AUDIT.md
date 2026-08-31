@@ -2941,3 +2941,10 @@ bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 pub
 跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
 reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
 #50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
+
+## Issue #41 canonical／驗收索引
+
+Issue #41 的領域模型與狀態語意回併 `10-TOUR-DOMAIN.md` 及
+`18-GUIDE-COMMERCE-LIFECYCLE.md`；測試執行與證據規則回併
+`12-TESTING-TDD.md`。本索引只記錄落差、驗收證據與 Preview／外部服務邊界，
+不得以 source、mock 或 CI 結果取代 Issue #41 要求的真實驗收。

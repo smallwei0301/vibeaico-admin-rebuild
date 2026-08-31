@@ -510,3 +510,11 @@ v2：postback 流程：選方案 → 選團次 → 輸入人數 → 確認 → R
 - [ ] calendar／ICS 含團次與人員，CANCELLED 正確
 - [ ] LINE 行程目錄與即時名額正確
 - [ ] mock、typecheck、build、unit、integration、e2e 全綠
+
+### Issue #41 驗收對照
+
+Issue #41 的散客併團、成團門檻／截止日、Departure snapshot、付款狀態與
+`REVIEW_REQUIRED`／`AT_RISK` 生命週期，採
+`18-GUIDE-COMMERCE-LIFECYCLE.md` 的 canonical 定義；本冊提供其
+Trip／Plan／Departure／TourOrder 基礎模型。測試契約與證據規則見
+`12-TESTING-TDD.md`，落差與驗收索引見 `14-GAP-AUDIT.md`。
