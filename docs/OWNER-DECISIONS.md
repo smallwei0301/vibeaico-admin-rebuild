@@ -11,6 +11,9 @@
 | #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
 | #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |
 | #41 / #12 | 尾款逾期 | **到期未付不自動取消、不自動釋放名額、不自動沒收訂金；先通知導遊與旅客，由導遊決定延長或取消** | 預設快速選項為「到期未付 → 通知我處理」；現場收尾款／全額的方案在出發前不走一般尾款逾期。canonical decision：`docs/decisions/2026-08-31-guide-balance-payment-deadline.md`。 |
+| #41 / #12 / #42 / #46 | 旅客取消／退款規則 | **每個導遊、每個 Trip Plan 可自行設定取消／退款規則；Midao 提供預設範本，不全平台硬綁同一套，也不要求每次人工臨時決定** | Plan 進階設定提供「使用 Midao 建議規則／自行設定」；成交時 snapshot，之後改 Plan 不影響舊訂單；旅客下單前與訂單頁需看到白話政策。預設範本的實際天數／退款比例另逐題裁示。canonical decision：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
+| repo governance | Owner 控制訊號與 Issue 來源 | **Owner 重送 `/goal`、`/steer` 或「繼續」可能是切換模型速度、深度或角色，不能單獨算成 Agent 提前停工；只有明確 `AGENT_DISCOVERED` 來源的 Issue 才算 Agent 新建** | 接手時保留 branch／PR／checkpoint，不 reset 或重做；Stop Guard 必須有前一位 assistant 終止行為與仍可施工工作的證據。Issue 來源由表單與 `issue-provenance.yml` 分類；歷史無標記項目視為 owner-or-unknown。canonical decision：`docs/decisions/2026-08-31-agent-control-signals-and-issue-provenance.md`。 |
+| repo governance | Close-first 與全域 WIP lanes | **全 repo 同時最多 1 條 Terra 中大型 BUILD、1 條 Luna Closure Sweep、1 條共用 TEST 驗證，active candidates 最多 2；Sol TRIAGE 固定採 READY → NEAR → UNBLOCKER → BUILDABLE → BLOCKED** | Open／Draft PR 預設 parked，不代表持續施工資格。只要有 READY／NEAR，不得先啟動明知會卡 Owner、外部人類或另一張大型 Issue 的新 Draft。PR body metadata、labels、`agent-wip-lanes.yml` 與 lane-aware CI 共同執行。canonical：`docs/AGENT-EXECUTION.md` §5.9；decision：`docs/decisions/2026-08-31-close-first-wip-lanes.md`。 |
 
 ## 2026-08-28 已裁示
 
