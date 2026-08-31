@@ -4,18 +4,19 @@
 
 1. `CLAUDE.md`
 2. `docs/AGENT-EXECUTION.md`
-3. 以任務關鍵字搜尋 `docs/AGENT-PLAYBOOK.md` 的相關教訓
-4. `docs/DOCUMENTATION-GOVERNANCE.md`
-5. `docs/OWNER-DECISIONS.md`
-6. 該 Issue 指定的 `docs/integration/**` canonical 文件
-7. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
+3. `docs/PR-LIFECYCLE.md`
+4. 以任務關鍵字搜尋 `docs/AGENT-PLAYBOOK.md` 的相關教訓
+5. `docs/DOCUMENTATION-GOVERNANCE.md`
+6. `docs/OWNER-DECISIONS.md`
+7. 該 Issue 指定的 `docs/integration/**` canonical 文件
+8. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
    報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-8. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
+9. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
    響應式、次層頁資訊重排或 GUIDE 共用 UI 元件，另讀
    `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與 `docs/assets/guide-mobile-ui/README.md`
-9. `docs/integration/12-TESTING-TDD.md`
-10. 長程 `/goal`、多 agent 派工、CI 判案或 Issue closeout，若平台支援 repository
-    skills，載入 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
+10. `docs/integration/12-TESTING-TDD.md`
+11. 長程 `/goal`、多 agent 派工、CI 判案、PR lifecycle 或 Issue closeout，若平台支援
+    repository skills，載入 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
 
 ## 強制規則
 
@@ -27,6 +28,10 @@
   agent skill 與部署設定仍走 feature branch → PR → CI → 審核。
 - `docs/AGENT-EXECUTION.md` 是常駐自主執行、角色式模型派工、TEST 授權、停損與停止
   條件的唯一正式版本；skill 只是執行轉接器，不得另造互相衝突的流程。
+- `docs/PR-LIFECYCLE.md` 是 `AGENT-EXECUTION.md` §6 的機械化補充。不同 Issue 可由不同
+  Terra 平行施工，但同一 Issue 原則上只保留 1 個 ACTIVE implementation PR 與最多
+  1 個短命 VALIDATION PR；建立新 candidate、main 前進或 `/goal` checkpoint 時必須
+  跑 Janitor sweep。
 - 一個主題只留一份 canonical 規格。Owner Decision 記錄理由，Issue 記錄施工，
   兩者不得變成另一套互相覆蓋的完整規格。
 - GUIDE 產品體驗任務以 `19-GUIDE-PRODUCT-EXPERIENCE.md` 的 P0／P1／P2 為優先級
@@ -53,6 +58,8 @@
 
 - 固定管線：`SCOUT(Luna) → TRIAGE(Sol) → BUILD(Terra) →
   DIAGNOSE(Terra/Sol) → AUDIT(Sol) → CLOSEOUT(Luna)`。
+- `PR JANITOR` 是 Luna 的跨階段常駐職責，不是額外產品階段：負責 open PR inventory、
+  Issue grouping、ancestry／changed-file 核對、stale comment 與已證明安全的機械 closeout。
 - Sol 決定下一個 Issue、模糊 CI、高風險設計與能否關閉；一般 Issue 目標只接觸
   2 次。Terra 負責單一中大型 Issue 的完整施工；Luna 負責事實盤點、log、文件與
   已有標準答案的機械工作。
