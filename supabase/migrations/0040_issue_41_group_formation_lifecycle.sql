@@ -1,9 +1,9 @@
 -- 0040 — #41 GUIDE 散客併團、成團截止與付款／狀態生命週期
 --
--- Prerequisites: 0016/0026（Trip/Departure/TourOrder）、0034–0037（#37）與
--- 0039 (#50 keyword image bucket）。#40 notification outbox 是可選的後續整合，不是安裝前提。這是 source-only migration；不得套用到
--- Production。新 API／callback 必須在同一交易內更新 TourOrder，下面的 trigger
--- 會安全地重算 formation。#40 尚未安裝時，通知 bridge 會安全地略過 event；#40 安裝後才派送。
+-- Prerequisites: 0016/0026（Trip/Departure/TourOrder）與 0038/0038a
+-- （notification outbox contract + internal RPC ACL）。這是 source-only migration；
+-- 不得套用到 Production。新 API／callback 必須在同一交易內更新 TourOrder，下面的
+-- trigger 會安全地重算 formation；outbox contract 缺失時必須 fail closed，不能遺失 logical event。
 
 -- ---------------------------------------------------------------- Plan rules
 alter table trip_plans
@@ -286,11 +286,12 @@ as $$
 begin
   if pg_catalog.to_regprocedure(
     'public.enqueue_notification_event(uuid,text,text,text,text,jsonb)'
-  ) is not null then
-    execute 'select public.enqueue_notification_event($1, $2, $3, $4, $5, $6)'
-      using p_tenant, p_event_name, p_aggregate_type, p_aggregate_id,
-        p_idempotency_key, p_payload;
+  ) is null then
+    raise exception 'NOTIFICATION_OUTBOX_UNAVAILABLE' using errcode = 'P0001';
   end if;
+  execute 'select public.enqueue_notification_event($1, $2, $3, $4, $5, $6)'
+    using p_tenant, p_event_name, p_aggregate_type, p_aggregate_id,
+      p_idempotency_key, p_payload;
 end;
 $$;
 

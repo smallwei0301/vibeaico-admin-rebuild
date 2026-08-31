@@ -112,11 +112,12 @@ as $$
 begin
   if pg_catalog.to_regprocedure(
     'public.enqueue_notification_event(uuid,text,text,text,text,jsonb)'
-  ) is not null then
-    execute 'select public.enqueue_notification_event($1, $2, $3, $4, $5, $6)'
-      using p_tenant, p_event_name, p_aggregate_type, p_aggregate_id,
-        p_idempotency_key, p_payload;
+  ) is null then
+    raise exception 'NOTIFICATION_OUTBOX_UNAVAILABLE' using errcode = 'P0001';
   end if;
+  execute 'select public.enqueue_notification_event($1, $2, $3, $4, $5, $6)'
+    using p_tenant, p_event_name, p_aggregate_type, p_aggregate_id,
+      p_idempotency_key, p_payload;
 end;
 $$;
 

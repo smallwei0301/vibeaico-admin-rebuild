@@ -194,3 +194,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：schema-qualify 型別時使用 catalog 名稱（例如 `int4`／`int8`），並以 source test 禁止 `pg_catalog.bigint`；套用前檢查所有新增的 `pg_catalog.*` aliases。migration history 與 function body 不一致時，先唯讀稽核並記錄 repair→forward-migration 順序。
 - 驗證：focused schema/unit gates 後，在唯一 TEST lane 對正確 project ref 先 repair 0041 再套用一次 0046，查 migration history、column/function signature 與 RPC privilege。
 - 狀態：監看中
+
+### PB-015 — source migration graph cannot rely on TEST history
+
+- 首次／最近：2026-08-31／2026-08-31
+- 發生次數：1
+- Issue／PR／CI：Issue #41／PR #73；Sol AUDIT source reproducibility review
+- 分類：Migration／TEST DB
+- 事件：current main 的 source 僅含 0001–0014 後直接出現 #41 的 0040；0040 實際需要 trips、plans、departures、orders 與 outbox RPC，但 TEST 曾由歷史 branch 套入，掩蓋乾淨 tree 無法建立的問題。
+- 證據：source migration inventory 缺 0016／0026／0038；0040 的第一個 `alter table trip_plans` 及 bridge 的 `enqueue_notification_event` 無法由 main source graph 提供。
+- 根因：已安裝 TEST schema 被當成 source migration 的隱含前提，且 optional bridge 將缺 outbox 視為 no-op。
+- 影響：fresh TEST/CI 無法證明 #41 可重現；重要 lifecycle event 可能在 source drift 時靜默遺失。
+- 修正：恢復可追溯的最小 source prerequisites 0016／0026／0038／0038a，為排序與契約加 source test，並讓 #41 bridge 在缺 outbox 時 fail closed。
+- 預防：新 migration 先從乾淨 source graph 檢查所有 relation/function 依賴；TEST history 只能作環境證據，不能替代 source dependency。
+- 驗證：focused graph/schema test、full unit、typecheck 與 mock build；shared TEST lane 空閒後才可做 fresh-schema smoke。
+- 狀態：監看中

@@ -128,9 +128,13 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
   );
 }
 
-export const confirmTourOrderPayment = (id: string) =>
+export const confirmTourOrderPayment = (id: string, payment: {
+  amount: number; receiptReference: string;
+}) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/tour-orders/${id}/confirm-payment`, { method: 'POST' }));
+    request<void>(`/api/tour-orders/${id}/confirm-payment`, {
+      method: 'POST', body: JSON.stringify(payment),
+    }));
 
 export const completeTourOrder = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/tour-orders/${id}/complete`, { method: 'POST' }));

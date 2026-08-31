@@ -5,6 +5,11 @@ const migrationDirectory = 'supabase/migrations';
 const issue41Migration = '0040_issue_41_group_formation_lifecycle.sql';
 const issue41HardeningMigration = '0041_issue_41_group_formation_lifecycle_hardening.sql';
 const issue41EpochRepairMigration = '0046_issue_41_formation_transition_revision.sql';
+const tripPlanFoundationMigration = '0016_tour_domain_core.sql';
+const departureOrderFoundationMigration = '0026_tour_departures_addons_orders.sql';
+const notificationOutboxMigration = '0038_notification_outbox_delivery.sql';
+const issue41BalancePolicyMigration = '0047_issue_41_balance_policy_snapshots.sql';
+const issue41RuntimeContractMigration = '0048_issue_41_atomic_runtime_contracts.sql';
 const migration = readFileSync(`${migrationDirectory}/${issue41Migration}`, 'utf8');
 const normalizedMigration = migration.replace(/\s+/g, ' ');
 const hardeningMigration = readFileSync(`${migrationDirectory}/${issue41HardeningMigration}`, 'utf8');
@@ -32,6 +37,27 @@ describe('#41 schema migration ordering', () => {
     expect(issue41Files).toEqual([issue41Migration]);
     expect(migrationFiles).toContain(issue41HardeningMigration);
     expect(migrationFiles).toContain(issue41EpochRepairMigration);
+    expect(migrationFiles).toContain(tripPlanFoundationMigration);
+    expect(migrationFiles).toContain(departureOrderFoundationMigration);
+    expect(migrationFiles).toContain(notificationOutboxMigration);
+    expect(migrationFiles).toContain(issue41BalancePolicyMigration);
+    expect(migrationFiles).toContain(issue41RuntimeContractMigration);
+    expect(migrationFiles.indexOf(tripPlanFoundationMigration)).toBeLessThan(migrationFiles.indexOf(departureOrderFoundationMigration));
+    expect(migrationFiles.indexOf(departureOrderFoundationMigration)).toBeLessThan(migrationFiles.indexOf(notificationOutboxMigration));
+    expect(migrationFiles.indexOf(notificationOutboxMigration)).toBeLessThan(migrationFiles.indexOf(issue41Migration));
+  });
+
+  it('has a clean source graph for the #41 tables and notification event contract', () => {
+    const planFoundation = readFileSync(`${migrationDirectory}/${tripPlanFoundationMigration}`, 'utf8');
+    const departureFoundation = readFileSync(`${migrationDirectory}/${departureOrderFoundationMigration}`, 'utf8');
+    const outboxFoundation = readFileSync(`${migrationDirectory}/${notificationOutboxMigration}`, 'utf8');
+
+    expect(planFoundation).toContain('create table trips');
+    expect(planFoundation).toContain('create table trip_plans');
+    expect(departureFoundation).toContain('create table trip_departures');
+    expect(departureFoundation).toContain('create table tour_orders');
+    expect(outboxFoundation).toContain('create table notification_outbox');
+    expect(outboxFoundation).toMatch(/create or replace function public\.enqueue_notification_event\(/);
   });
 
   it('backfills non-scheduled legacy plans as PRIVATE and prevents underpaid statuses', () => {
@@ -74,6 +100,7 @@ describe('#41 schema migration ordering', () => {
       expect(source.match(/security definer set search_path = ''/g)).toHaveLength(9);
       expect(source).toMatch(/create or replace function public\.enqueue_formation_notification_41\(/);
       expect(source).toMatch(/pg_catalog\.to_regprocedure\( 'public\.enqueue_notification_event\(uuid,text,text,text,text,jsonb\)' \)/);
+      expect(source).toContain("raise exception 'NOTIFICATION_OUTBOX_UNAVAILABLE'");
       expect(source).not.toMatch(/perform public\.enqueue_notification_event\(/);
       expect(source).toMatch(/revoke execute on function public\.enqueue_formation_notification_41\(pg_catalog\.uuid, pg_catalog\.text, pg_catalog\.text, pg_catalog\.text, pg_catalog\.text, pg_catalog\.jsonb\) from public, anon, authenticated, service_role/);
       expect(source).toMatch(/revoke execute on function public\.qualifying_tour_participants\(pg_catalog\.uuid\) from public, anon, authenticated, service_role/);
@@ -118,10 +145,56 @@ describe('#41 schema migration ordering', () => {
     expect(normalizedEpochRepairMigration).toMatch(
       /pg_catalog\.to_regprocedure\( 'public\.enqueue_notification_event\(uuid,text,text,text,text,jsonb\)' \)/,
     );
+    expect(normalizedEpochRepairMigration).toContain("raise exception 'NOTIFICATION_OUTBOX_UNAVAILABLE'");
     expect(normalizedEpochRepairMigration).toMatch(
       /revoke execute on function public\.bump_formation_transition_revision_41\(\) from public, anon, authenticated, service_role/,
     );
     expect(normalizedEpochRepairMigration).toContain('v_revision pg_catalog.int8');
     expect(normalizedEpochRepairMigration).not.toContain('pg_catalog.bigint');
+  });
+
+  it('snapshots configurable balance and cancellation policy without inventing refund amounts', () => {
+    const balancePolicy = readFileSync(`${migrationDirectory}/${issue41BalancePolicyMigration}`, 'utf8')
+      .replace(/\s+/g, ' ');
+
+    expect(balancePolicy).toMatch(/balance_due_hours integer default 48/);
+    expect(balancePolicy).toMatch(/balance_due_hours_snapshot integer default 48/);
+    expect(balancePolicy).toContain("balance_collection_mode in ('DEADLINE', 'ON_SITE')");
+    expect(balancePolicy).toContain('balance_due_at timestamptz');
+    expect(balancePolicy).toContain('cancellation_policy_snapshot jsonb');
+    expect(balancePolicy).toMatch(/create or replace function public\.enforce_tour_order_lineage_41\(\)/);
+    expect(balancePolicy).toMatch(/from public\.trip_departures .*for key share/);
+    expect(balancePolicy).toMatch(/from public\.trip_plans .*for key share/);
+    expect(balancePolicy).toContain('TOUR_ORDER_LINEAGE_INVALID');
+    expect(balancePolicy).toContain("'minimumDaysBeforeDeparture', 8");
+    expect(balancePolicy).toContain("'minimumDaysBeforeDeparture', 4");
+    expect(balancePolicy).toContain("'minimumDaysBeforeDeparture', 0");
+    expect(balancePolicy).not.toMatch(/refund_percent|refundPercentage/i);
+    expect(balancePolicy).toMatch(/update public\.tour_orders as o set balance_due = greatest\(o\.total_amount - o\.paid_amount, 0\)/);
+  });
+
+  it('keeps bank payment atomic, idempotent, and makes unavailable runtime dependencies fail closed', () => {
+    const runtime = readFileSync(`${migrationDirectory}/${issue41RuntimeContractMigration}`, 'utf8')
+      .replace(/\s+/g, ' ');
+    const bankRoute = readFileSync('src/app/api/tour-orders/[id]/confirm-payment/route.ts', 'utf8');
+    const providerRoute = readFileSync('src/app/api/tour-orders/[id]/provider-success/route.ts', 'utf8');
+    const completionRoute = readFileSync('src/app/api/tour-orders/[id]/complete/route.ts', 'utf8');
+    const decisionRoute = readFileSync('src/app/api/trip-departures/[id]/formation-decision/route.ts', 'utf8');
+    const reviewCron = readFileSync('src/app/api/cron/tour-formation-review/route.ts', 'utf8');
+
+    expect(runtime).toMatch(/unique \(tenant_id, channel, receipt_reference\)/);
+    expect(runtime).toMatch(/for update;.*for key share;.*for update;/);
+    expect(runtime).toContain('TOUR_ORDER_LINEAGE_INVALID');
+    expect(runtime).toContain('PAYMENT_AMOUNT_EXCEEDS_TOTAL');
+    expect(runtime).toContain('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37');
+    expect(runtime).toMatch(/grant execute on function public\.record_tour_order_payment_41\([\s\S]*?\) to service_role/);
+    expect(bankRoute).toContain("p_channel: 'BANK_MANUAL'");
+    expect(bankRoute).toContain('receiptReference');
+    expect(providerRoute).toContain('PAYMENT_PROVIDER_BLOCKED_BY_DEPENDENCY_9');
+    expect(completionRoute).toContain('TOUR_COMPLETION_BLOCKED_BY_DEPENDENCY_37');
+    expect(decisionRoute).toContain("rpc('decide_tour_formation'");
+    expect(decisionRoute).toContain("requireTenant('MANAGER')");
+    expect(reviewCron).toContain("rpc('review_expired_tour_formations'");
+    expect(reviewCron).toContain('CRON_SECRET');
   });
 });

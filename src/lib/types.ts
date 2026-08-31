@@ -399,6 +399,8 @@ export type TourOrder = {
   upfrontRequiredAmount?: number;
   paidAmount?: number;
   refundedAmount?: number;
+  balanceDue?: number;
+  balanceDueAt?: string | null;
   status: TourOrderStatus;
   paymentStatus: TourPaymentStatus;
   /** 收款方式顯示名稱（來自 tenant_payment_methods） */

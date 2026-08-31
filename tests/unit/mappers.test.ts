@@ -11,6 +11,7 @@ import {
   mapPointTransaction,
   mapStaffPerformance,
   mapTenantSummary,
+  mapTourOrder,
 } from '@/server/mappers';
 
 /* ------------------------------------------------------------------ Booking */
@@ -507,5 +508,23 @@ describe('mapTenantSummary (tenant_users join tenants；current 由呼叫端傳�
   it('extra_modules null（非斜槓店家）→ extraModules 為 undefined', () => {
     const row = { ...fullRow, tenants: { ...fullRow.tenants, extra_modules: null } };
     expect(mapTenantSummary(row, 't_1').extraModules).toBeUndefined();
+  });
+});
+
+describe('mapTourOrder (#41 payment and balance snapshots)', () => {
+  it('maps receipt-derived amounts and does not fabricate a payment-method label', () => {
+    expect(mapTourOrder({
+      id: 'to_1', order_no: 'T2608310001', trip_id: 'trip_1', customer_name: '旅客',
+      customer_phone: '0912', party_size: 2, unit_price: '100', total_amount: '200',
+      deposit_amount: '50', upfront_required_amount: '50', paid_amount: '50', refunded_amount: '0',
+      balance_due: '150', balance_due_at: '2026-09-02T00:00:00Z', status: 'CONFIRMED',
+      payment_status: 'PARTIAL', payment_ref: 'BANK-123', source: 'MANUAL',
+      hold_expires_at: null, note: null, created_at: '2026-08-31T00:00:00Z',
+      trips: { title: '海岸行程' }, trip_plans: { name: '雙人方案' },
+      trip_departures: { departs_on: '2026-09-10', start_time: '08:30:00' },
+    })).toMatchObject({
+      paidAmount: 50, balanceDue: 150, balanceDueAt: '2026-09-02T00:00:00Z',
+      paymentStatus: 'PARTIAL', paymentMethodLabel: '', startTime: '08:30', note: '',
+    });
   });
 });
