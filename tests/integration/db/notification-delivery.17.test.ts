@@ -79,7 +79,7 @@ describe('notification delivery ledger (17 §7)', () => {
     expect(events.count).toBe(1);
     const delivery = await admin.from('notification_deliveries').insert({
       outbox_id: outboxId, tenant_id: SHOP_A.id, recipient_type: 'TENANT_OWNER', recipient_ref: SHOP_A.id,
-      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
+      channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date(0).toISOString(),
     }).select('id').single();
     expect(delivery.error).toBeNull();
     const workerTwo = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
@@ -96,9 +96,14 @@ describe('notification delivery ledger (17 §7)', () => {
       channel: 'EMAIL', destination_ref: 'INTEGRATION_TEST', status: 'PENDING', next_attempt_at: new Date().toISOString(),
     }).select('id').single();
     expect(inserted.error).toBeNull();
-    const fakeRetryableTransport = async () => ({ kind: 'retryable' as const, code: 'TEST_RETRY' });
+    const claimedIds: string[] = [];
+    const fakeRetryableTransport = async (delivery: { id: string }) => {
+      claimedIds.push(delivery.id);
+      return { kind: 'retryable' as const, code: 'TEST_RETRY' };
+    };
     for (let attempt = 1; attempt <= 5; attempt++) {
       expect(await dispatchPendingNotifications(admin, 1, false, fakeRetryableTransport)).toBe(1);
+      expect(claimedIds.at(-1)).toBe(inserted.data!.id);
       const delivery = await admin.from('notification_deliveries').select('status, attempt_count, next_attempt_at')
         .eq('id', inserted.data!.id).single();
       expect(delivery.error).toBeNull();
