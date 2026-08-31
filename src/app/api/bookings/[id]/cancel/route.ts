@@ -2,9 +2,7 @@
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { createAdminSupabase } from '@/server/supabase';
-import { notifyBookingEvent } from '@/server/email/notify';
-import { notifyBookingStatus } from '@/server/line-notify';
+import { dispatchAfterCommit } from '@/server/notifications/outbox';
 
 const bodySchema = z.object({ reason: z.string().optional() });
 
@@ -19,11 +17,8 @@ export const POST = handle(async (req, { params }) => {
     .select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new ApiHttpError(409, '此預約狀態已變更，請重新整理', ERR.CONFLICT);
-  // Email 通知（05 分冊 §3：notifyBookingCancel 開關）不 await ——寄信慢或失敗
-  // 都不可拖垮這支 API 的回應，函式內部已吞錯。
-  void notifyBookingEvent(createAdminSupabase(), t.tenantId, id, 'CANCELLED');
-  // LINE 顧客端推播（06 分冊 §5：notifyBookingCancelled 開關）——與上面的 email
-  // 通知並存不互斥（email 寄店家、LINE 推顧客），同為 fire-and-forget。
-  void notifyBookingStatus(t.tenantId, id, 'CANCELLED');
+  // 0037 booking trigger transactionally records BOOKING_CANCELLED. The
+  // worker is best-effort only; retry durability lives in the delivery ledger.
+  dispatchAfterCommit();
   return ok();
 });

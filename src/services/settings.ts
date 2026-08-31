@@ -58,6 +58,12 @@ export const verifyLineSetup = () =>
 export const getSetupStatus = () =>
   adapt<SetupStatus>(() => MOCK_SETUP_STATUS, () => request<SetupStatus>('/api/settings/setup-status'));
 
+export const createTelegramBindLink = () =>
+  adapt<{ deepLink: string; expiresInMinutes: number }>(
+    () => ({ deepLink: 'https://t.me/vibeai_demo_bot?start=demo-bind-code', expiresInMinutes: 15 }),
+    () => request('/api/telegram/bind', { method: 'POST' }),
+  );
+
 export const listFeatures = () =>
   adapt<FeatureSubscription[]>(() => MOCK_FEATURES, () => request<FeatureSubscription[]>('/api/feature-store'));
 

@@ -3,6 +3,9 @@
 > 多租戶 LINE Messaging API：**每家店自己的 Channel token**（存 DB、加密），
 > 一個部署服務所有店。平台不需要任何 LINE env 變數（LINE_LOGIN_* 是另一回事，
 > 只給 03 分冊 §7 的 OAuth 登入用）。
+>
+> Telegram 的平台單一 Bot、one-time `/start <code>` 綁定、`update_id` 冪等與
+> delivery ledger 屬 `17-NOTIFICATION-DELIVERY.md`；不得把它混進每租戶 LINE channel。
 
 ---
 
@@ -161,7 +164,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 
 ## 5. 事件推播 — `src/server/line-notify.ts`
 
-預約狀態變更時呼叫（04 分冊 A-2 註明的 hook 點）：
+預約狀態變更時由 17 分冊的 transactional outbox 產生 `LINE` delivery（取代舊的 route 內 direct send）：
 
 ```ts
 export async function notifyBookingStatus(
@@ -176,7 +179,7 @@ export async function notifyBookingStatus(
 */ }
 ```
 
-呼叫規約：動作端點內 `void notifyBookingStatus(...)`，不 await、不影響 API 結果。
+呼叫規約：普通動作端點只在交易 commit 後喚醒 dispatcher，不直接使用 service role 或呼叫 LINE provider；cron-owned reminder 可寫入同一 outbox event 後喚醒 dispatcher。LINE webhook 的 provider-specific raw 200 例外維持不變，因 LINE 明定成功驗簽後若不回 200 會重送。
 
 ---
 

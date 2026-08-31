@@ -1,0 +1,50 @@
+import { createAdminSupabase } from '@/server/supabase';
+import { fail, ok } from '@/server/http';
+import { hashRecipientEmail, mapResendDeliveryEvent, recipientHealthKeyRequired, verifyResendWebhook } from '@/server/notifications/resend-webhook';
+
+export const runtime = 'nodejs';
+
+type ResendEvent = {
+  type?: string;
+  data?: { email_id?: string; email?: { id?: string }; to?: string[] };
+};
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const webhookId = req.headers.get('svix-id');
+  if (!verifyResendWebhook(body, {
+    id: webhookId,
+    timestamp: req.headers.get('svix-timestamp'),
+    signature: req.headers.get('svix-signature'),
+  }, process.env.RESEND_WEBHOOK_SECRET)) return fail(401, 'unauthorized');
+
+  let event: ResendEvent;
+  try {
+    event = JSON.parse(body) as ResendEvent;
+  } catch {
+    return fail(400, 'bad request');
+  }
+  const evidence = mapResendDeliveryEvent(event.type ?? '');
+  if (!evidence) return ok({ accepted: true, applied: false });
+  const providerMessageId = event.data?.email_id ?? event.data?.email?.id;
+  if (!providerMessageId || !webhookId) return fail(400, 'bad request');
+  const recipient = event.data?.to?.[0]?.trim().toLowerCase();
+  const recipientHealthKey = process.env.RESEND_RECIPIENT_HEALTH_KEY;
+  if (recipientHealthKeyRequired(evidence, recipient, recipientHealthKey))
+    return fail(503, 'recipient health key not configured');
+  const recipientHash = evidence.unhealthy && recipient
+    ? hashRecipientEmail(recipient, recipientHealthKey!) : null;
+  const { data, error } = await createAdminSupabase().rpc('apply_resend_delivery_event', {
+    p_webhook_event_id: webhookId,
+    p_provider_message_id: providerMessageId,
+    p_status: evidence.status,
+    p_error_code: evidence.errorCode,
+    p_recipient_hash: recipientHash,
+  });
+  if (error) {
+    console.error('[resend-webhook] apply failed', error.message);
+    return fail(500, 'webhook apply failed');
+  }
+  if (data === 'NOT_FOUND') return fail(503, 'delivery not ready');
+  return ok({ accepted: true, applied: data === 'APPLIED' });
+}

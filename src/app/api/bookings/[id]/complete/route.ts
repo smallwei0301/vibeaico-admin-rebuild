@@ -3,7 +3,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { isFeatureActive } from '@/server/features';
 import { pointsSettingsSchema } from '@/config/tenant-settings';
-import { notifyBookingStatus } from '@/server/line-notify';
+import { dispatchAfterCommit } from '@/server/notifications/outbox';
 
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant();
@@ -66,7 +66,6 @@ export const POST = handle(async (_req, { params }) => {
     console.error('[api] booking complete: point-earn failed', id, e);
   }
 
-  // LINE 顧客端推播（06 分冊 §5）：不 await、不影響 API 結果，函式內部已吞錯。
-  void notifyBookingStatus(t.tenantId, id, 'COMPLETED');
+  dispatchAfterCommit();
   return ok();
 });

@@ -66,6 +66,8 @@ export const FEATURE_CATALOG = [
   { key: 'CUSTOMER_RECALL', category: 'MARKETING', price: 49, paid: true },
   { key: 'POINT_SYSTEM', category: 'CUSTOMER', price: 49, paid: true },
   { key: 'ADVANCED_CUSTOMER', category: 'CUSTOMER', price: 49, paid: true },
+  // #40: basic transaction/operations Email is baseline. This paid code is
+  // retained only for future advanced Email automation/templates/marketing.
   { key: 'EMAIL_NOTIFICATION', category: 'SYSTEM', price: 49, paid: true },
   { key: 'BASIC_REPORT', category: 'SYSTEM', price: 99, paid: true },
   { key: 'MEMBERSHIP_SYSTEM', category: 'CUSTOMER', price: 49, paid: true },
