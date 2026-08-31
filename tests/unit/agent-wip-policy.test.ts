@@ -19,7 +19,7 @@ function body(overrides: Record<string, string> = {}, issueNumber = 1) {
     SELECTION_REASON: "CLOSE_READY",
     REMAINING_AUTONOMOUS_STEPS: "one targeted test",
     OWNER_OR_EXTERNAL_BLOCKER: "none",
-    CLOSURE_SWEEP_TARGET: "PR #20",
+    CLOSURE_SWEEP_TARGET: "",
     TEST_LANE_REQUIRED: "false",
     WHY_NOT_CLOSER_CANDIDATE: "none",
     "REQUESTED_MODEL / ACTUAL_MODEL": "requested=Terra; actual=unknown",
@@ -62,7 +62,7 @@ describe("agent WIP metadata parser", () => {
 });
 
 describe("lane-level validation", () => {
-  it("requires an active Terra to declare one Issue, be a candidate and name a Closure Sweep", () => {
+  it("requires an active Terra to declare one Issue and be a candidate, but not a Closure target", () => {
     const missingIssueBody = body({
       ACTIVE_CANDIDATE: "false",
       CLOSURE_SWEEP_TARGET: "",
@@ -71,8 +71,10 @@ describe("lane-level validation", () => {
     expect(validateLaneMetadata(row)).toEqual(expect.arrayContaining([
       "An active TERRA_BUILD must declare pr-lifecycle issue: <number>",
       "An active TERRA_BUILD must set ACTIVE_CANDIDATE=true",
-      "An active TERRA_BUILD must name a CLOSURE_SWEEP_TARGET or EMPTY_WITH_SCAN",
     ]));
+    expect(validateLaneMetadata(row)).not.toContain(
+      "An active TERRA_BUILD must name a CLOSURE_SWEEP_TARGET or EMPTY_WITH_SCAN",
+    );
   });
 
   it("requires a non-close-ready Terra selection to justify skipping closer work", () => {
@@ -119,22 +121,16 @@ describe("lane-level validation", () => {
 });
 
 describe("Mode C WIP limits", () => {
-  it("accepts multiple Terra builds when they belong to different Issues", () => {
+  it("accepts multiple Terra builds for different Issues with no Closure lane", () => {
+    const rows = [pr(10), pr(11), pr(12)];
+    expect(validateGlobalWip(summarizeActiveLanes(rows))).toEqual([]);
+  });
+
+  it("also accepts one independent repo-wide Closure lane alongside multiple Terra builds", () => {
     const rows = [
       pr(10),
       pr(11),
-      pr(12),
-      pr(20, {
-        AGENT_LANE: "LUNA_CLOSURE",
-        CLOSEABILITY_SCORE: "4",
-        CLOSURE_SWEEP_TARGET: "PR #20",
-      }),
-      pr(30, {
-        AGENT_LANE: "TEST_VALIDATION",
-        ACTIVE_CANDIDATE: "false",
-        TEST_LANE_REQUIRED: "true",
-        CLOSURE_SWEEP_TARGET: "PR #20",
-      }),
+      pr(20, { AGENT_LANE: "LUNA_CLOSURE", CLOSEABILITY_SCORE: "4" }),
     ];
     expect(validateGlobalWip(summarizeActiveLanes(rows))).toEqual([]);
   });
@@ -143,16 +139,24 @@ describe("Mode C WIP limits", () => {
     const rows = [
       pr(10, {}, "open", 44),
       pr(11, {}, "open", 44),
-      pr(20, { AGENT_LANE: "LUNA_CLOSURE", CLOSEABILITY_SCORE: "4" }),
     ];
     const errors = validateGlobalWip(summarizeActiveLanes(rows));
     expect(errors.some((value) => value.includes("Issue #44 active TERRA_BUILD count is 2; max is 1"))).toBe(true);
   });
 
-  it("keeps shared TEST globally single-lane", () => {
+  it("rejects two repo-wide Closure lanes", () => {
     const rows = [
       pr(10),
       pr(20, { AGENT_LANE: "LUNA_CLOSURE", CLOSEABILITY_SCORE: "4" }),
+      pr(21, { AGENT_LANE: "LUNA_CLOSURE", CLOSEABILITY_SCORE: "4" }),
+    ];
+    const errors = validateGlobalWip(summarizeActiveLanes(rows));
+    expect(errors.some((value) => value.includes("active LUNA_CLOSURE count is 2; max is 1"))).toBe(true);
+  });
+
+  it("keeps shared TEST globally single-lane", () => {
+    const rows = [
+      pr(10),
       pr(30, { AGENT_LANE: "TEST_VALIDATION", TEST_LANE_REQUIRED: "true", ACTIVE_CANDIDATE: "false" }),
       pr(31, { AGENT_LANE: "TEST_VALIDATION", TEST_LANE_REQUIRED: "true", ACTIVE_CANDIDATE: "false" }),
     ];
@@ -161,13 +165,7 @@ describe("Mode C WIP limits", () => {
   });
 
   it("does not reintroduce a repo-wide active-candidate cap", () => {
-    const rows = [
-      pr(10),
-      pr(11),
-      pr(12),
-      pr(13),
-      pr(20, { AGENT_LANE: "LUNA_CLOSURE", CLOSEABILITY_SCORE: "4", ACTIVE_CANDIDATE: "false" }),
-    ];
+    const rows = [pr(10), pr(11), pr(12), pr(13)];
     expect(validateGlobalWip(summarizeActiveLanes(rows))).toEqual([]);
   });
 
@@ -181,20 +179,9 @@ describe("Mode C WIP limits", () => {
     expect(errors.some((value) => value.includes("Issue #44 ACTIVE_CANDIDATE count is 3; max is 2"))).toBe(true);
   });
 
-  it("requires one repo-wide Closure lane unless every Terra reports EMPTY_WITH_SCAN", () => {
-    expect(validateGlobalWip(summarizeActiveLanes([pr(10)]))).toContain(
-      "active TERRA_BUILD lanes require one repo-wide LUNA_CLOSURE, unless every Terra reports EMPTY_WITH_SCAN",
-    );
-
-    const emptyA = pr(10, { CLOSURE_SWEEP_TARGET: "EMPTY_WITH_SCAN" });
-    const emptyB = pr(11, { CLOSURE_SWEEP_TARGET: "EMPTY_WITH_SCAN" });
-    expect(validateGlobalWip(summarizeActiveLanes([emptyA, emptyB]))).toEqual([]);
-  });
-
   it("does not count parked or Owner PRs", () => {
     const rows = [
       pr(10),
-      pr(20, { AGENT_LANE: "LUNA_CLOSURE", CLOSEABILITY_SCORE: "4" }),
       pr(11, { LANE_STATE: "PARKED", ACTIVE_CANDIDATE: "false" }),
       pr(12, { WORK_ORIGIN: "OWNER" }),
     ];
