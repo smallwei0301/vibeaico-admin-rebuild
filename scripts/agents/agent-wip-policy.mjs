@@ -92,9 +92,6 @@ export function validateLaneMetadata(metadata, { action = "" } = {}) {
     if (metadata.activeCandidate !== "TRUE") {
       errors.push("An active TERRA_BUILD must set ACTIVE_CANDIDATE=true");
     }
-    if (isPlaceholder(metadata.closureTarget)) {
-      errors.push("An active TERRA_BUILD must name a CLOSURE_SWEEP_TARGET or EMPTY_WITH_SCAN");
-    }
     if (metadata.selectionReason === "CLOSE_READY" && Number(metadata.closeability) < 3) {
       errors.push("CLOSE_READY requires CLOSEABILITY_SCORE 3 or higher");
     }
@@ -163,17 +160,20 @@ export function validateGlobalWip(summary) {
   const errors = [];
   const { activeTerra, activeClosure, activeTest, activeCandidates } = summary;
 
-  // Mode C: Terra is parallel per Issue, not globally capped. The invariant is one active Terra
-  // implementation owner per Issue. Shared TEST remains globally serialized.
+  // Mode C: Terra is parallel per Issue. One implementation owner per Issue.
   for (const [issueNumber, rows] of groupByIssue(activeTerra)) {
     if (rows.length > 1) {
       errors.push(`Issue #${issueNumber} active TERRA_BUILD count is ${rows.length}; max is 1 (${rows.map((pr) => `#${pr.number}`).join(", ")})`);
     }
   }
 
+  // Closure is an independent repo-wide housekeeping lane. It is optional and never a prerequisite
+  // for product Terra lanes. If present, only one may be active.
   if (activeClosure.length > 1) {
     errors.push(`active LUNA_CLOSURE count is ${activeClosure.length}; max is 1 (${activeClosure.map((pr) => `#${pr.number}`).join(", ")})`);
   }
+
+  // Shared TEST is the only globally serialized execution lane.
   if (activeTest.length > 1) {
     errors.push(`active TEST_VALIDATION count is ${activeTest.length}; max is 1 (${activeTest.map((pr) => `#${pr.number}`).join(", ")})`);
   }
@@ -182,16 +182,6 @@ export function validateGlobalWip(summary) {
   for (const [issueNumber, rows] of groupByIssue(activeCandidates)) {
     if (rows.length > 2) {
       errors.push(`Issue #${issueNumber} ACTIVE_CANDIDATE count is ${rows.length}; max is 2 (${rows.map((pr) => `#${pr.number}`).join(", ")})`);
-    }
-  }
-
-  if (activeTerra.length > 0) {
-    const allEmpty = activeTerra.every((row) => /^EMPTY_WITH_SCAN$/i.test(row.closureTarget.trim()));
-    if (activeClosure.length === 0 && !allEmpty) {
-      errors.push("active TERRA_BUILD lanes require one repo-wide LUNA_CLOSURE, unless every Terra reports EMPTY_WITH_SCAN");
-    }
-    if (activeClosure.length > 0 && activeTerra.some((row) => /^EMPTY_WITH_SCAN$/i.test(row.closureTarget.trim()))) {
-      errors.push("CLOSURE_SWEEP_TARGET is EMPTY_WITH_SCAN on an active Terra while a repo-wide LUNA_CLOSURE PR exists");
     }
   }
 
