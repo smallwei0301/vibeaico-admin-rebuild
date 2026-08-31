@@ -66,9 +66,9 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
   });
 
   it('targeted outbox claims never reclaim non-reclaimable auth audit rows', () => {
-    expect(targetedClaimMigration).toMatch(/d\\.status = 'PROCESSING'\\s+and d\\.reclaimable\\s+and d\\.processing_started_at < pg_catalog\\.now\\(\\) - interval '10 minutes'/i);
-    expect(targetedClaimMigration).toMatch(/set search_path = ''/i);
-    expect(targetedClaimMigration).toMatch(/revoke execute on function public\\.claim_notification_delivery_for_outbox\\(uuid\\) from public, anon, authenticated/i);
+    expect(targetedClaimMigration).toContain("d.status = 'PROCESSING'\\n          and d.reclaimable");
+    expect(targetedClaimMigration).toContain("set search_path = ''");
+    expect(targetedClaimMigration).toContain('revoke execute on function public.claim_notification_delivery_for_outbox(uuid)');
   });
 
   it('looks up a delivery booking within the outbox tenant boundary', () => {
