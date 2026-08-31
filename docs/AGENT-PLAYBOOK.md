@@ -120,6 +120,16 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：remote ref/tree 與預期一致；exact-head workflow 查詢仍為 `[]`，故 CI 觸發問題仍待外部環境解除。
 - 狀態：仍待處理
 
+
+
+#### PB-008 追記 — #41 Git Data ref 更新後必須驗證 CI 觸發（2026-08-31）
+
+- Issue／PR／CI：Issue #41／PR #73；candidate head `849cdef4b7842872afa555419e6db780c6768838`
+- 事件：以 Git Data API 原子更新 PR branch 後，PR target 的 Janitor/WIP guard 與 Vercel check 有建立，但 exact-head `ci.yml` workflow runs 查詢為空；不能把這些 target checks 當成 check→integration→E2E 的替代證據。
+- 分類：CI／Agent
+- 修正／預防：保留 source 與 TEST 證據，先回查 exact ref、check-runs、workflow runs；若沒有 `ci`，不可重跑舊 head 或製造無實質差異的 commit，改以可驗證的外部觸發條件或標記環境阻塞。
+- 狀態：監看中
+
 ### PB-009 — 長程 goal 誤把階段回報送成 final
 
 - 首次／最近：2026-08-28／2026-08-28
