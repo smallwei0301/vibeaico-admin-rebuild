@@ -12,6 +12,7 @@ jobs:
   classify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Classify Issue origin and validate agent provenance
         uses: actions/github-script@v9
         with:
@@ -19,20 +20,8 @@ jobs:
             const { owner, repo } = context.repo;
             const issue = context.payload.issue;
             const body = issue.body ?? '';
-
-            const isAgent = /\bAGENT_DISCOVERED\b/i.test(body);
-            const requiredHeadings = [
-              '### Parent Issue / PR',
-              '### Discovered stage',
-              '### Scope Firewall reason',
-              '### Why this cannot remain in the parent Issue',
-              '### Blocks current goal',
-              '### Evidence',
-              '### Requested model / actual model',
-            ];
-            const missing = isAgent
-              ? requiredHeadings.filter((heading) => !body.includes(heading))
-              : [];
+            const { classifyIssueProvenance } = require('./scripts/ci/issue-provenance.cjs');
+            const { isAgent, missing } = classifyIssueProvenance(body);
 
             const managedLabels = {
               'origin:agent': {

@@ -2,7 +2,7 @@ name: agent-wip-lanes
 
 on:
   pull_request:
-    types: [opened, reopened, edited, synchronize, labeled, unlabeled, ready_for_review, converted_to_draft, closed]
+    types: [opened, reopened, edited, synchronize, ready_for_review, converted_to_draft, closed]
   workflow_dispatch:
 
 permissions:
@@ -70,7 +70,11 @@ jobs:
               }
             }
 
-            const managed = new Set(Object.keys(labels));
+            // Lane metadata is body-managed. The WIP violation label is computed below and must survive this sync.
+            const bodyManaged = new Set([
+              'lane:terra-build', 'lane:luna-closeout', 'lane:test-validation',
+              'candidate:active', 'candidate:parked', 'governance:lane-metadata-missing',
+            ]);
             const laneMap = {
               TERRA_BUILD: 'lane:terra-build',
               LUNA_CLOSURE_SWEEP: 'lane:luna-closeout',
@@ -105,7 +109,7 @@ jobs:
               const existing = (current.labels ?? [])
                 .map((label) => typeof label === 'string' ? label : label.name)
                 .filter(Boolean);
-              const preserved = existing.filter((name) => !managed.has(name));
+              const preserved = existing.filter((name) => !bodyManaged.has(name));
               const next = [...preserved];
 
               if (currentMetadataError) {

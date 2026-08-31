@@ -121,27 +121,7 @@ no lane. `.github/workflows/agent-wip-lanes.yml` verifies these limits but does 
 
 ## Close-first TRIAGE
 
-Sol must rank candidates in this order:
-
-1. `READY`: existing work, at most two autonomous gaps, no Owner/external/unfinished-large dependency.
-2. `NEAR`: major implementation and most tests exist; finishable in one cycle.
-3. `UNBLOCKER`: autonomously removes a shared dependency or addresses a real P0/security/data risk.
-4. `BUILDABLE`: fully specified and autonomous but needs a new medium/large build.
-5. `BLOCKED`: depends on Owner, external human, Production authorization, or unfinished large work.
-
-Do not choose BLOCKED while READY or NEAR exists. Importance alone is not permission to create another
-Draft parking lot. Sol must return:
-
-```text
-NEXT:
-CLOSEABILITY:
-AUTONOMOUS_GAPS:
-DEPENDENCIES:
-ACTIVE_CANDIDATE_COUNT:
-LANE_ASSIGNMENT:
-WHY_NOT_OTHER_ACTIVE_PRS:
-EXPECTED_FULL_CI_COUNT:
-```
+Use the closeability order and required TRIAGE output defined in `docs/AGENT-EXECUTION.md`; this adapter does not duplicate that policy. Read the current close-first Owner Decision for rationale and examples.
 
 ## Compact handoff
 
