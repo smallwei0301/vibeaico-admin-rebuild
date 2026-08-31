@@ -179,3 +179,19 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：每個 build 使用獨立、乾淨的 output/worktree；清理前確認沒有其他 process 使用 artifact，第二次相同環境錯誤即改變診斷方式。
 - 驗證：#43 focused tests、full unit 與 typecheck 通過；乾淨候選的完整 build 尚待驗證。
 - 狀態：仍待處理
+
+
+### PB-014 — Janitor dry-run 必須明確指定 repository context
+
+- 首次／最近：2026-08-31／2026-08-31
+- 發生次數：1
+- Issue／PR／CI：PR #73 closure／Janitor dry-run
+- 分類：Agent
+- 事件：在本地直接執行 `npm run agent:pr-janitor -- --dry-run` 時，Janitor 尚未開始讀取 PR 就停止。
+- 證據：命令回傳 `GITHUB_REPOSITORY must be set to owner/repo`；沒有任何 GitHub mutation、TEST 操作或 CI rerun。
+- 根因：腳本刻意要求明確 `GITHUB_REPOSITORY`，避免在沒有目標的 shell 環境中掃描或寫入錯誤 repo；本次呼叫漏帶該 context。
+- 影響：第一次稽核沒有產生 inventory；沒有改變遠端狀態。補上 context 後同一 dry-run 完成，回報 0 superseded、0 review、0 budget violation。
+- 修正：改以 `GITHUB_REPOSITORY=smallwei0301/vibeaico-admin-rebuild` 重跑 dry-run；保持無寫入模式。
+- 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
+- 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
+- 狀態：已防止
