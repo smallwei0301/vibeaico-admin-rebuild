@@ -228,6 +228,14 @@ describe('notification outbox schema contract (#40, 17 §1–4)', () => {
     expect((outbox.match(/const recipientGate = await emailRecipientGate\(admin, destination\);\s*if \(recipientGate\) return recipientGate;\s*return sendEmailWithResend/g) ?? []).length).toBe(2);
   });
 
+  it('uses only the stable delivery id as the Resend idempotency key for queued Email retries', () => {
+    const outbox = readFileSync('src/server/notifications/outbox.ts', 'utf8');
+    const transports = readFileSync('src/server/notifications/transports.ts', 'utf8');
+    expect((outbox.match(/idempotencyKey: delivery\.id/g) ?? [])).toHaveLength(2);
+    expect(outbox).not.toContain('idempotencyKey: delivery.attempt_count');
+    expect(transports).toContain('idempotencyKey ? { idempotencyKey } : undefined');
+  });
+
   it('uses a service-only, booking-scoped reminder writer instead of the generic internal enqueue RPC', () => {
     const lineNotify = readFileSync('src/server/line-notify.ts', 'utf8');
     expect(lineNotify).not.toContain("admin.rpc('enqueue_notification_event'");

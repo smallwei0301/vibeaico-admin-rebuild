@@ -295,7 +295,10 @@ async function sendClaimedDelivery(admin: Admin, delivery: ClaimedDelivery): Pro
       if (!destination) return { kind: 'skipped', code: 'NOT_CONFIGURED' };
       const recipientGate = await emailRecipientGate(admin, destination);
       if (recipientGate) return recipientGate;
-      return sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html });
+      return sendEmailWithResend({
+        apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination,
+        subject: message.subject, html: message.html, idempotencyKey: delivery.id,
+      });
     }
     if (delivery.channel === 'TELEGRAM') {
       const destination = await resolveTelegramDestination(admin, delivery);
@@ -314,7 +317,10 @@ async function sendClaimedDelivery(admin: Admin, delivery: ClaimedDelivery): Pro
       if (!destination) return { kind: 'skipped', code: 'NO_RECIPIENT' };
       const recipientGate = await emailRecipientGate(admin, destination);
       if (recipientGate) return recipientGate;
-      return sendEmailWithResend({ apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination, subject: message.subject, html: message.html });
+      return sendEmailWithResend({
+        apiKey: process.env.RESEND_API_KEY, from: mailFrom(), to: destination,
+        subject: message.subject, html: message.html, idempotencyKey: delivery.id,
+      });
     }
     if (delivery.channel === 'TELEGRAM') {
       const destination = await resolveTelegramDestination(admin, delivery);

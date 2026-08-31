@@ -7,6 +7,8 @@ export interface EmailTransportInput {
   to: string;
   subject: string;
   html: string;
+  /** Stable per-delivery key; retries must reuse it, never include attempt count. */
+  idempotencyKey?: string;
 }
 
 export type EmailSender = (input: Omit<EmailTransportInput, 'apiKey'>) => Promise<{
@@ -21,7 +23,10 @@ export type EmailSender = (input: Omit<EmailTransportInput, 'apiKey'>) => Promis
 export async function sendEmailTransport(input: EmailTransportInput, sender: EmailSender): Promise<TransportOutcome> {
   if (!input.apiKey) return { kind: 'skipped', code: 'NOT_CONFIGURED' };
   try {
-    const { data, error } = await sender({ from: input.from, to: input.to, subject: input.subject, html: input.html });
+    const { data, error } = await sender({
+      from: input.from, to: input.to, subject: input.subject, html: input.html,
+      idempotencyKey: input.idempotencyKey,
+    });
     if (data?.id) return { kind: 'accepted', providerMessageId: data.id };
     return classifyTransportFailure('EMAIL', error?.statusCode ?? undefined, error?.message ?? error?.name ?? 'Resend rejected request');
   } catch {
@@ -31,8 +36,11 @@ export async function sendEmailTransport(input: EmailTransportInput, sender: Ema
 
 export async function sendEmailWithResend(input: EmailTransportInput): Promise<TransportOutcome> {
   const apiKey = input.apiKey;
-  return sendEmailTransport(input, async ({ from, to, subject, html }) => {
-    const result = await new Resend(apiKey!).emails.send({ from, to, subject, html });
+  return sendEmailTransport(input, async ({ from, to, subject, html, idempotencyKey }) => {
+    const result = await new Resend(apiKey!).emails.send(
+      { from, to, subject, html },
+      idempotencyKey ? { idempotencyKey } : undefined,
+    );
     return { data: result.data ? { id: result.data.id } : null, error: result.error };
   });
 }

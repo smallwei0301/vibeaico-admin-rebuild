@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { sendEmailTransport, sendTelegramTransport } from '@/server/notifications/transports';
+
+const { resendSend } = vi.hoisted(() => ({ resendSend: vi.fn() }));
+
+vi.mock('resend', () => ({
+  Resend: class { emails = { send: resendSend }; },
+}));
+
+import { sendEmailTransport, sendEmailWithResend, sendTelegramTransport } from '@/server/notifications/transports';
 
 describe('notification transports (#40, 17 §3–4)', () => {
   it('records Resend API success as ACCEPTED, never DELIVERED', async () => {
@@ -16,6 +23,21 @@ describe('notification transports (#40, 17 §3–4)', () => {
       { apiKey: '', from: 'VibeAI <noreply@example.com>', to: 'owner@example.com', subject: '通知', html: '<p>ok</p>' }, sender,
     )).resolves.toEqual({ kind: 'skipped', code: 'NOT_CONFIGURED' });
     expect(sender).not.toHaveBeenCalled();
+  });
+
+  it('passes a stable delivery key to Resend for provider-side retry deduplication', async () => {
+    resendSend.mockReset();
+    resendSend.mockResolvedValue({ data: { id: 're_delivery_1' }, error: null });
+
+    await expect(sendEmailWithResend({
+      apiKey: 'test-key', from: 'VibeAI <noreply@example.com>', to: 'owner@example.com',
+      subject: '通知', html: '<p>ok</p>', idempotencyKey: 'delivery-1',
+    })).resolves.toEqual({ kind: 'accepted', providerMessageId: 're_delivery_1' });
+
+    expect(resendSend).toHaveBeenCalledWith(
+      { from: 'VibeAI <noreply@example.com>', to: 'owner@example.com', subject: '通知', html: '<p>ok</p>' },
+      { idempotencyKey: 'delivery-1' },
+    );
   });
 
   it('keeps Telegram 403 blocked as a permanent invalid-binding result', async () => {
