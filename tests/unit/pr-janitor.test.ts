@@ -166,3 +166,11 @@ describe("PR budget", () => {
     expect(classifyPr(pr({ body: "" }))).toMatchObject({ state: "JANITOR_REVIEW" });
   });
 });
+
+
+describe("governance lifecycle exception", () => {
+  it("classifies an explicit blank lifecycle issue as ungrouped", () => {
+    expect(inferIssueNumber(pr({ body: "<!-- pr-lifecycle\\nissue:\\nstate: ACTIVE\\nsupersedes:\\n-->", title: "mentions #64" }))).toBeNull();
+    expect(classifyPr(pr({ body: "<!-- pr-lifecycle\\nissue:\\nstate: ACTIVE\\nsupersedes:\\n-->" }))).toMatchObject({ state: "ACTIVE", issue: null });
+  });
+});

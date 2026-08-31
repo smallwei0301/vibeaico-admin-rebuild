@@ -44,7 +44,7 @@ supersedes: 59,72
 - `state`: `ACTIVE`、`VALIDATION`、`REBUILD_REQUIRED` 或 `OWNER_GATED`。
 - `supersedes`: 被此 PR 明確取代的 PR number，以逗號分隔；沒有則留空。
 
-此區塊是 agent、Janitor script 與 GitHub Actions 的共同契約。人類可在其外自由撰寫一般 PR 說明。
+此區塊是 agent、Janitor script 與 GitHub Actions 的共同契約。人類可在其外自由撰寫一般 PR 說明。\n\nrepo-governance／cross-cutting PR 可明確保留空白 \`issue:\`；此為未分組治理例外，Janitor 必須分類為 \`JANITOR_REVIEW\`，不得從標題、body 或 branch 的 incidental Issue／PR 引用推定 ownership 或自動 close。
 
 舊 PR 若尚未加入 metadata，Janitor 可先用 PR title 與 branch 的 Issue 訊號做 primary Issue inventory；PR body 只作次要訊號，避免依賴段落裡的其他 Issue／PR 編號讓分類失真。無法唯一判斷時維持 `JANITOR_REVIEW`。
 

@@ -338,6 +338,20 @@ export async function runJanitor({ apply = false } = {}) {
       actions.push({ source: source.number, target: targetNumber, reason: decision.reason });
       closedNumbers.add(targetNumber);
       if (apply) {
+        // The target can synchronize after the first refetch. Take one final snapshot immediately before every write.
+        const [finalTarget, finalSource] = await Promise.all([
+          api(context, `/pulls/${targetNumber}`),
+          api(context, `/pulls/${source.number}`),
+        ]);
+        if (
+          finalTarget.state !== "open" ||
+          finalTarget.head?.sha !== target.head?.sha ||
+          finalSource.state !== "open" ||
+          finalSource.head?.sha !== source.head?.sha
+        ) {
+          reviews.push({ source: source.number, target: targetNumber, reason: "JANITOR_REVIEW_TARGET_OR_SOURCE_CHANGED" });
+          continue;
+        }
         await addSupersededComment(context, targetNumber, source.number);
         await closePr(context, targetNumber);
       }
