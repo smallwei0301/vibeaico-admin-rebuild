@@ -1121,7 +1121,7 @@ export default function TripDetailPage() {
               </>
             )}
           </div>
-        ) : null}}
+        ) : null}
       </Modal>
 
       {/* ================================================== 團次編輯 Modal */}
