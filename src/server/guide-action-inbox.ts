@@ -334,10 +334,13 @@ export async function loadGuideActionSources(params: {
       .eq('tenant_id', tenantId),
   ]);
 
-  const errors = [ordersResult.error, departuresResult.error, assignmentsResult.error];
-  if (errors.some(Boolean)) {
-    if (errors.every(isMissingTourSource)) return [];
-    throw errors.find((error) => error !== null);
+  const queryErrors = [ordersResult.error, departuresResult.error, assignmentsResult.error]
+    .filter((error): error is NonNullable<typeof error> => error !== null);
+  if (queryErrors.length > 0) {
+    // A source table may land after another. Successful sibling queries are not errors and
+    // must not prevent the known-missing-table fallback; any real error remains visible.
+    if (queryErrors.every(isMissingTourSource)) return [];
+    throw queryErrors.find((error) => !isMissingTourSource(error)) ?? queryErrors[0];
   }
 
   return sourcesFromRows({

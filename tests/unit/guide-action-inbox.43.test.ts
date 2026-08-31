@@ -172,6 +172,43 @@ describe('GUIDE 行動收件匣（#43）', () => {
     expect(tenantFilters).toEqual([SHOP_A.id, SHOP_A.id, SHOP_A.id]);
   });
 
+  it('部分旅遊來源尚未落地、其餘查詢成功時仍誠實回傳空收件匣', async () => {
+    const missing = { data: null, error: { code: 'PGRST205', message: 'Could not find table' } };
+    const success = { data: [], error: null };
+    const results = [missing, success, success];
+    let query = 0;
+    const builder = (result: typeof results[number]) => ({
+      select: () => builder(result), eq: () => builder(result), in: () => builder(result),
+      gte: () => builder(result), lte: () => builder(result),
+      then: <T>(resolve: (value: typeof result) => T) => Promise.resolve(result).then(resolve),
+    });
+    const supabase = { from: () => builder(results[query++]) };
+
+    await expect(loadGuideActionSources({
+      supabase: supabase as never, tenantId: SHOP_A.id,
+      fromDate: '2026-08-28', departureToDate: '2026-09-04',
+    })).resolves.toEqual([]);
+  });
+
+  it('部分來源缺表時仍會回報另一來源的權限錯誤', async () => {
+    const missing = { data: null, error: { code: 'PGRST205', message: 'Could not find table' } };
+    const denied = { data: null, error: { code: '42501', message: 'permission denied' } };
+    const success = { data: [], error: null };
+    const results = [missing, denied, success];
+    let query = 0;
+    const builder = (result: typeof results[number]) => ({
+      select: () => builder(result), eq: () => builder(result), in: () => builder(result),
+      gte: () => builder(result), lte: () => builder(result),
+      then: <T>(resolve: (value: typeof result) => T) => Promise.resolve(result).then(resolve),
+    });
+    const supabase = { from: () => builder(results[query++]) };
+
+    await expect(loadGuideActionSources({
+      supabase: supabase as never, tenantId: SHOP_A.id,
+      fromDate: '2026-08-28', departureToDate: '2026-09-04',
+    })).rejects.toMatchObject({ code: '42501' });
+  });
+
   it('從 tenant-scoped 查詢的正常結果聚合既有事實', async () => {
     const rows = {
       tour_orders: {
