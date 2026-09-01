@@ -82,7 +82,8 @@ describe('plans, departures and addons CRUD', () => {
       expect(departure.status).toBe(200);
       const addon = await ownerA.post(`/api/trips/${tripId}/addons`, { name: '接送', price: 0 });
       expect(addon.status).toBe(200);
-      expect((await json(addon)).data).toMatchObject({ name: '接送', price: 0 });
+      const addonPayload = await json<{ id: string; name: string; price: number }>(addon);
+      expect(addonPayload.data).toMatchObject({ name: '接送', price: 0 });
       const plans = await ownerA.get(`/api/trips/${tripId}/plans`);
       expect((await json(plans)).data).toHaveLength(1);
       const update = await ownerA.put(`/api/trip-plans/${planId}`, { pricePerPerson: 1200 });
@@ -102,7 +103,7 @@ describe('plans, departures and addons CRUD', () => {
         planId, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
       });
       expect((await json<{ created: number; skipped: number }>(batchAgain)).data).toMatchObject({ created: 0, skipped: 1 });
-      const addonId = (await json<{ id: string }>(addon)).data!.id;
+      const addonId = addonPayload.data!.id;
       expect((await ownerA.put(`/api/trip-addons/${addonId}`, { stock: null })).status).toBe(200);
       expect((await ownerA.delete(`/api/trip-addons/${addonId}`)).status).toBe(200);
       expect((await ownerA.delete(`/api/trip-plans/${planId}`)).status).toBe(200);
