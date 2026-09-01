@@ -3,6 +3,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { pageRange, toPaged } from '@/server/paging';
+import { mapInventoryLog } from '@/server/inventory-log';
 
 /**
  * GET /api/inventory/logs — `?productId?&page&size` 分頁（Paged 信封），
@@ -19,29 +20,6 @@ import { pageRange, toPaged } from '@/server/paging';
  *                 前綴不是已知 type 時整串當 reason、type 視為 MANUAL。
  *   operator    = DB 無此欄位 → 一律 null（已回報）。
  */
-const KNOWN_TYPES = new Set([
-  'PURCHASE_IN', 'SALE_OUT', 'STOCKTAKE', 'MANUAL', 'DAMAGE', 'RETURN_IN', 'ORDER_CANCELLED',
-]);
-
-function mapInventoryLog(r: any) {
-  const raw: string = r.reason ?? '';
-  const idx = raw.indexOf(':');
-  const prefix = idx > 0 ? raw.slice(0, idx) : raw;
-  const known = KNOWN_TYPES.has(prefix);
-  return {
-    id: r.id,
-    createdAt: r.created_at,
-    productId: r.product_id,
-    productName: r.products?.name ?? '',
-    type: known ? prefix : 'MANUAL',
-    quantity: r.delta,
-    stockBefore: r.stock_after - r.delta,
-    stockAfter: r.stock_after,
-    reason: known ? (idx > 0 ? raw.slice(idx + 1) : '') : raw,
-    operator: null as string | null,
-  };
-}
-
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
   size: z.coerce.number().int().min(1).max(100).default(20),

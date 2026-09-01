@@ -1,4 +1,5 @@
 import { adapt, request } from '@/lib/api';
+import { downloadAttachment, type DownloadedFile } from '@/lib/download';
 import type { DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
@@ -212,4 +213,29 @@ export const exportBookingsCsv = (q?: ReportQuery) =>
       const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
       window.location.assign(`${API_BASE}/api/export/bookings${qs}`);
     },
+  );
+
+export type InventoryExportFormat = 'csv' | 'excel';
+export type InventoryExportQuery = { productId?: string; type?: string };
+
+const NOT_DOWNLOADED: DownloadedFile = { downloaded: false, fileName: '' };
+
+function inventoryQueryString(q?: InventoryExportQuery): string {
+  const params = new URLSearchParams();
+  if (q?.productId) params.set('productId', q.productId);
+  if (q?.type) params.set('type', q.type);
+  const value = params.toString();
+  return value ? `?${value}` : '';
+}
+
+/** GET /api/export/inventory/:format；成功是檔案，不是 { success, data }。 */
+export const exportInventoryLogs = (
+  format: InventoryExportFormat,
+  q?: InventoryExportQuery,
+) =>
+  adapt<DownloadedFile>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(
+      `${API_BASE}/api/export/inventory/${format}${inventoryQueryString(q)}`,
+    ),
   );

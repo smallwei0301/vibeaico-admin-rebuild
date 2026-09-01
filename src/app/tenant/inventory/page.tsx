@@ -17,11 +17,12 @@ import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import { listInventoryLogs, type InventoryLog, type InventoryLogType } from '@/services/products';
+import { exportInventoryLogs } from '@/services/reports';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { inventoryPage as t } from '@/i18n/zh-TW/pages/inventory';
-import { formatDate, formatDateTime, formatNumber } from '@/lib/utils';
+import { formatDateTime, formatNumber } from '@/lib/utils';
 import type { Product } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -55,6 +56,8 @@ export default function InventoryPage() {
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [exportFormat, setExportFormat] = React.useState<'csv' | 'excel'>('csv');
+  const [exporting, setExporting] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -102,11 +105,24 @@ export default function InventoryPage() {
   const visible = filtered;
   const displayTotal = typeFilter ? filtered.length : total;
 
-  const exportCsv = () => {
-    /* 事件處理器內才取當下日期；render 期不碰 Date */
-    const today = formatDate(new Date().toISOString()).replace(/\//g, '');
-    setExportOpen(false);
-    toast.show(`${t.messages.exported} ${t.exportFile.filename(today)}`);
+  const runExport = async () => {
+    setExporting(true);
+    try {
+      const { downloaded, fileName } = await exportInventoryLogs(exportFormat, {
+        productId: productFilter || undefined,
+        type: typeFilter || undefined,
+      });
+      setExportOpen(false);
+      if (!downloaded) toast.show(t.messages.exportNotDownloaded, 'warning');
+      else toast.show(fileName ? t.messages.exportedAs(fileName) : t.messages.exported);
+    } catch (e) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns: Column<InventoryLog>[] = [
@@ -234,10 +250,26 @@ export default function InventoryPage() {
       <ConfirmModal
         open={exportOpen}
         title={t.confirm.exportTitle}
-        confirmText={t.actions.export}
-        message={t.confirm.export}
+        confirmText={exporting ? t.actions.exporting : t.actions.export}
+        loading={exporting}
+        message={(
+          <>
+            {t.confirm.export}
+            <span className="mt-3 flex items-center gap-2">
+              <span>{t.confirm.formatLabel}</span>
+              <Select
+                aria-label={t.confirm.formatLabel}
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as 'csv' | 'excel')}
+              >
+                <option value="csv">{t.actions.exportCsv}</option>
+                <option value="excel">{t.actions.exportExcelCsv}</option>
+              </Select>
+            </span>
+          </>
+        )}
         onClose={() => setExportOpen(false)}
-        onConfirm={exportCsv}
+        onConfirm={() => { void runExport(); }}
       />
     </>
   );

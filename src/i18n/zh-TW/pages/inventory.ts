@@ -49,25 +49,28 @@ export const inventoryPage = {
 
   /* ------------------------------------------------------------------ 動作 */
   actions: {
-    export: '匯出 CSV',
+    export: '匯出',
+    exporting: '匯出中…',
+    exportCsv: '匯出 CSV',
+    exportExcelCsv: '匯出 Excel 可開啟的 CSV',
   },
 
   confirm: {
-    exportTitle: '匯出 CSV',
+    exportTitle: '匯出異動記錄',
     export: '確定要匯出目前篩選的異動記錄嗎？',
+    formatLabel: '格式：',
   },
 
   /* ------------------------------------------------------------------ 訊息 */
   messages: {
     exported: '異動記錄匯出成功',
+    exportedAs: (fileName: string) => `異動記錄匯出成功：${fileName}`,
+    exportNotDownloaded: '示範資料模式不會產生檔案，未匯出任何異動記錄；請切換到實際店家後再匯出',
+    exportFailedPrefix: '匯出失敗:',
     loadLogsFailed: '載入異動記錄失敗:',
     loadFailed: '載入失敗',
     connectionError: '連線錯誤，請稍後再試',
     unknownError: '未知錯誤',
-  },
-
-  exportFile: {
-    filename: (date: string) => `庫存異動_${date}.csv`,
   },
 
   empty: {
