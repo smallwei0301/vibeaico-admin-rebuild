@@ -245,7 +245,29 @@ export const POST = handle(async (req) => {
       'NOT_ATTEMPTED',
       'NOT_REQUIRED',
     );
-    await cleanupAndRecord(t.supabase, pending.id, chatImageOriginalPath, chatImagePreviewPath);
+    const imageCleaned = await cleanupAndRecord(
+      t.supabase,
+      pending.id,
+      chatImageOriginalPath,
+      chatImagePreviewPath,
+    );
+
+    // No quota was reserved and LINE was never called. Do not leave a
+    // user-visible OUT message for a rejected attempt. If image cleanup
+    // failed, retain the FAILED receipt so its cleanup state is durable.
+    if (!isImage || imageCleaned) {
+      const { error: discardError } = await t.supabase
+        .from('chat_messages')
+        .delete()
+        .eq('id', pending.id)
+        .eq('tenant_id', t.tenantId)
+        .eq('direction', 'OUT')
+        .eq('delivery_status', 'FAILED');
+      if (discardError) {
+        console.error('[chat] failed to discard quota-rejected receipt', discardError);
+        throw new ApiHttpError(503, '推播額度狀態暫時無法確認，請稍後再試', ERR.INTERNAL);
+      }
+    }
     throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
   }
 
@@ -405,13 +427,14 @@ async function cleanupAndRecord(
   id: string,
   originalPath?: string,
   previewPath?: string,
-): Promise<void> {
-  if (!originalPath) return;
+): Promise<boolean> {
+  if (!originalPath) return true;
   const cleaned = await cleanupChatImage(originalPath, previewPath);
   const { error } = await supabase.from('chat_messages').update({
     image_cleanup_status: cleaned ? 'CLEANED' : 'CLEANUP_PENDING',
   }).eq('id', id);
   if (error) console.error('[chat] failed to record image cleanup state', error);
+  return cleaned;
 }
 
 async function cleanupChatImage(originalPath?: string, previewPath?: string): Promise<boolean> {
