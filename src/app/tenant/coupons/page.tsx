@@ -472,11 +472,10 @@ export default function CouponsPage() {
       <RedeemUndoModal
         coupon={undoTarget}
         onClose={() => setUndoTarget(null)}
-        onUndone={(coupon) => {
-          patchCoupon(coupon.id, {
-            redeemedQuantity: Math.max(0, coupon.redeemedQuantity - 1),
-            lastRedeemedCode: null,
-          });
+        onUndone={async () => {
+          // GET /api/coupons is authoritative: after undoing the newest instance,
+          // an older redeemed instance may still be the next undo candidate.
+          await load();
           setUndoTarget(null);
         }}
       />
@@ -956,7 +955,7 @@ function RedeemUndoModal({
 }: {
   coupon: CouponRow | null;
   onClose: () => void;
-  onUndone: (coupon: CouponRow) => void;
+  onUndone: (coupon: CouponRow) => void | Promise<void>;
 }) {
   const toast = useToast();
   const [reason, setReason] = React.useState('');
@@ -982,7 +981,7 @@ function RedeemUndoModal({
         ?? instances.find((i) => i.redeemedAt);
       if (target) await unredeemCouponInstance(target.id);
       toast.show(t.undo.success);
-      onUndone(coupon);
+      await onUndone(coupon);
     } catch (e) {
       toast.show(
         `${t.undo.failedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,

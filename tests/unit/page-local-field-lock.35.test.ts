@@ -12,6 +12,18 @@ const membershipPage = readFileSync(
   'utf8',
 );
 const migration = resolve(process.cwd(), 'supabase/migrations/0015_page_local_display_fields.sql');
+const customersRoute = readFileSync(
+  resolve(process.cwd(), 'src/app/api/customers/route.ts'),
+  'utf8',
+);
+const membershipRoute = readFileSync(
+  resolve(process.cwd(), 'src/app/api/membership-levels/route.ts'),
+  'utf8',
+);
+const membershipIdRoute = readFileSync(
+  resolve(process.cwd(), 'src/app/api/membership-levels/[id]/route.ts'),
+  'utf8',
+);
 
 describe('Issue #35：coupons 的頁內欄位必須來自真實契約', () => {
   it('mapper 傳回 API 的五個持久欄位與最近核銷代碼', () => {
@@ -85,6 +97,19 @@ describe('Issue #35：membership-levels 的頁內欄位必須來自真實契約'
     for (const field of ['description', 'active', 'isDefault']) {
       expect(membershipPage).toContain(`${field}: draft.${field}`);
     }
+  });
+
+  it('Y.5：新顧客查詢同租戶 active default，重算兩條 route 都使用 fallback helper', () => {
+    expect(customersRoute).toMatch(/\.eq\('tenant_id', t\.tenantId\)[\s\S]*\.eq\('active', true\)[\s\S]*\.eq\('is_default', true\)/);
+    expect(membershipRoute).toContain('resolveMembershipLevelId');
+    expect(membershipIdRoute).toContain('resolveMembershipLevelId');
+  });
+});
+
+describe('Issue #35：coupon undo 必須重載 authoritative API state', () => {
+  it('反核銷成功後重拉 coupons，不把 lastRedeemedCode 硬清成 null', () => {
+    expect(couponPage).toContain('await load();');
+    expect(couponPage).not.toMatch(/onUndone=\{\(coupon\) => \{[\s\S]*?lastRedeemedCode:\s*null[\s\S]*?\}\}/);
   });
 });
 

@@ -120,31 +120,90 @@ describe('coupons：欄位持久化與核銷資料', () => {
     }
   });
 
-  it('GET /api/coupons 沒有已核銷實例回 null，核銷後回最近實例代碼', async () => {
+  it('GET /api/coupons 反核銷最新實例後仍回較舊已核銷代碼', async () => {
     const couponId = randomUUID();
-    const instanceId = randomUUID();
-    const code = `T35${Date.now().toString(36).slice(-5).toUpperCase()}`;
+    const olderInstanceId = randomUUID();
+    const newerInstanceId = randomUUID();
+    const olderCode = `T35O${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    const newerCode = `T35N${Date.now().toString(36).slice(-4).toUpperCase()}`;
     try {
       expect((await admin.from('coupons').insert({
         id: couponId, tenant_id: SHOP_A.id, name: '#35 核銷代碼測試券',
         discount_type: 'AMOUNT', discount_value: 50, total_quantity: 0, status: 'PUBLISHED',
       })).error).toBeNull();
       expect((await admin.from('coupon_instances').insert({
-        id: instanceId, tenant_id: SHOP_A.id, coupon_id: couponId,
-        customer_id: SHOP_A.customerA1, code,
+        id: olderInstanceId, tenant_id: SHOP_A.id, coupon_id: couponId,
+        customer_id: SHOP_A.customerA1, code: olderCode,
+        redeemed_at: '2026-08-31T10:00:00.000Z',
+      })).error).toBeNull();
+      expect((await admin.from('coupon_instances').insert({
+        id: newerInstanceId, tenant_id: SHOP_A.id, coupon_id: couponId,
+        customer_id: SHOP_A.customerA1, code: newerCode,
+        redeemed_at: '2026-08-31T11:00:00.000Z',
       })).error).toBeNull();
 
-      expect((await fetchCoupon(couponId)).lastRedeemedCode).toBeNull();
-      expect((await admin.from('coupon_instances').update({ redeemed_at: new Date().toISOString() }).eq('id', instanceId)).error).toBeNull();
-      expect((await fetchCoupon(couponId)).lastRedeemedCode).toBe(code);
+      expect((await fetchCoupon(couponId)).lastRedeemedCode).toBe(newerCode);
+      const undo = await ownerA.post(`/api/coupons/instances/${newerInstanceId}/unredeem`);
+      expect(undo.status).toBe(200);
+      expect((await fetchCoupon(couponId)).lastRedeemedCode).toBe(olderCode);
     } finally {
-      await admin.from('coupon_instances').delete().eq('id', instanceId);
+      await admin.from('coupon_instances').delete().in('id', [olderInstanceId, newerInstanceId]);
       await admin.from('coupons').delete().eq('id', couponId);
     }
   });
 });
 
 describe('membership-levels：欄位持久化與預設等級', () => {
+  it('新顧客未指定等級套用 active default，重算無門檻命中也 fallback default', async () => {
+    const createdIds: string[] = [];
+    let customerId: string | undefined;
+    try {
+      const level = await ownerA.post('/api/membership-levels', {
+        name: '#35 預設等級行為測試',
+        thresholdSpent: 999999,
+        active: true,
+        isDefault: true,
+      });
+      expect(level.status).toBe(200);
+      const levelBody = await readJson<{ id: string }>(level);
+      expect(levelBody.success).toBe(true);
+      const levelId = levelBody.data!.id;
+      createdIds.push(levelId);
+
+      const customer = await ownerA.post('/api/customers', {
+        name: '#35 預設等級顧客', phone: '0900000035',
+      });
+      expect(customer.status).toBe(200);
+      customerId = (await readJson<{ id: string }>(customer)).data!.id;
+
+      const { data: assigned, error: assignedError } = await admin
+        .from('customers').select('membership_level_id').eq('id', customerId).single();
+      expect(assignedError).toBeNull();
+      expect(assigned?.membership_level_id).toBe(levelId);
+
+      const fallbackCustomerId = randomUUID();
+      expect((await admin.from('customers').insert({
+        id: fallbackCustomerId, tenant_id: SHOP_A.id,
+        name: '#35 fallback 顧客', phone: '0900000036', membership_level_id: null,
+      })).error).toBeNull();
+      try {
+        const recalc = await ownerA.put(`/api/membership-levels/${levelId}`, {
+          description: '觸發無門檻 fallback 重算',
+        });
+        expect(recalc.status).toBe(200);
+        const { data: recalculated, error: recalcError } = await admin
+          .from('customers').select('membership_level_id').eq('id', fallbackCustomerId).single();
+        expect(recalcError).toBeNull();
+        expect(recalculated?.membership_level_id).toBe(levelId);
+      } finally {
+        await admin.from('customers').delete().eq('id', fallbackCustomerId);
+      }
+    } finally {
+      if (customerId) await admin.from('customers').delete().eq('id', customerId);
+      if (createdIds.length > 0) await admin.from('membership_levels').delete().in('id', createdIds);
+    }
+  });
+
   it('POST / PUT 寫入說明／啟用／預設後，GET 回傳相同值且新預設會清掉舊預設', async () => {
     const createdIds: string[] = [];
     try {
