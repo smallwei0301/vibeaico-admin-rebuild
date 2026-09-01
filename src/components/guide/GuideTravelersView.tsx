@@ -59,6 +59,7 @@ export function orderStatus(
   if (order.status === 'CANCELLED') return { label: navigation.travelers.order.cancelled, tone: 'danger' };
   if (order.status === 'COMPLETED') return { label: navigation.travelers.order.completed, tone: 'neutral' };
   if (order.status === 'PENDING') return { label: navigation.travelers.order.pending, tone: 'attention' };
+  if (order.status === 'CONFIRMED') return { label: navigation.travelers.order.confirmed, tone: 'positive' };
   return { label: navigation.travelers.order.confirmed, tone: 'positive' };
 }
 
