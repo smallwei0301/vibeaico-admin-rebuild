@@ -162,7 +162,7 @@ describe('POST /api/staff 帶 serviceIds → staff_services；PUT serviceIds=[] 
 });
 
 describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index）', () => {
-  it('reorder 後 sort_order 依 ids 順序 0、1（只動自建服務，不動 seed）', async () => {
+  it('reorder 後 sort_order 依 ids 順序 0、1（提交完整租戶集合）', async () => {
     const svcX = randomUUID();
     const svcY = randomUUID();
     try {
@@ -171,7 +171,16 @@ describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index
         { id: svcY, tenant_id: SHOP_A.id, name: `B2 排序Y-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 51 },
       ]);
 
-      const res = await ownerA.post('/api/services/reorder', { ids: [svcY, svcX] });
+      // The atomic reorder RPC intentionally rejects partial permutations. Keep
+      // the seed rows in the submitted collection while asserting the two
+      // self-owned rows still receive the requested leading positions.
+      const { data: tenantServices, error: tenantServicesError } = await admin
+        .from('services').select('id').eq('tenant_id', SHOP_A.id);
+      expect(tenantServicesError).toBeNull();
+      const ownIds = new Set<string>([svcX, svcY]);
+      const ids = [svcY, svcX, ...(tenantServices ?? [])
+        .map((row: any) => row.id).filter((id: string) => !ownIds.has(id))];
+      const res = await ownerA.post('/api/services/reorder', { ids });
       expect(res.status).toBe(200);
       expect((await readJson(res)).success).toBe(true);
 
