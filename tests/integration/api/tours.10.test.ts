@@ -51,10 +51,16 @@ describe('trips and lifecycle actions', () => {
       .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
     expect(deleteError).toBeNull();
 
+    const { count: tripsBefore, error: beforeError } = await admin
+      .from('trips').select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_A.id);
+    expect(beforeError).toBeNull();
+
     const unknownId = '7a000000-0000-4000-8000-000000000099';
     try {
       const mutationRequests = [
-        () => ownerA.post('/api/trips', {}),
+        // Validation runs before the feature gate, so this request must be
+        // valid enough to reach FEAT_001 while still not inserting a row.
+        () => ownerA.post('/api/trips', { title: `gated-${randomUUID()}` }),
         () => ownerA.put(`/api/trips/${unknownId}`, {}),
         () => ownerA.delete(`/api/trips/${unknownId}`),
         () => ownerA.post(`/api/trips/${unknownId}/plans`, {}),
@@ -78,6 +84,11 @@ describe('trips and lifecycle actions', () => {
         expect(body.success).toBe(false);
         expect(body.code).toBe('FEAT_001');
       }
+
+      const { count: tripsAfter, error: afterError } = await admin
+        .from('trips').select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_A.id);
+      expect(afterError).toBeNull();
+      expect(tripsAfter).toBe(tripsBefore);
     } finally {
       const { error } = await admin.from('feature_subscriptions').upsert({
         tenant_id: SHOP_A.id,

@@ -31,8 +31,8 @@ export const GET = handle(async () => {
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
-  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = tripCreateSchema.parse(await req.json());
+  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const { data, error } = await t.supabase
     .from('trips')
     .insert(tripRow(body, t.tenantId))
