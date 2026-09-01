@@ -25,7 +25,7 @@
     {"name":"0029_trip_tenant_parent_constraints.sql","blobSha":"7e424248b5f0dfbf0671115dcad4cae474d71284"},
     {"name":"0030_trip_plan_global_limit.sql","blobSha":"e30378153ca6de6ca4e624209d2d871747bf2a5e"},
     {"name":"0031_trip_plan_limit_lock_repair.sql","blobSha":"9a6d5aa9a2f5d6055f783ce11377ff556b7723b3","localTransform":"WRAP_IN_TRANSACTION"},
-    {"name":"0032_trip_plan_statement_guard.sql","blobSha":"ffdb93d29447160ed0d2af3d9f67ff3368ad2632"},
+    {"name":"0032_trip_plan_statement_guard.sql","blobSha":"ffdb93d29447160ed0d2af3d9f67ff3368ad2632","localTransform":"WRAP_IN_TRANSACTION"},
     {"name":"0033_trip_duplicate_atomic.sql","blobSha":"b14bf57d4e52df4cebc0b105e6626eafdd8fbccb"}
   ]
 }
