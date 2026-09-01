@@ -317,8 +317,12 @@ export async function runSeed(admin) {
         name: '基礎剪髮（測試）',
         duration_minutes: 60,
         price: 800,
-        sort_order: 0,
-        line_sort_order: 0,
+        // Keep the canonical seed rows out of 0/1. Historical TEST schemas
+        // enforce tenant-wide uniqueness for both catalog rank columns, while
+        // the reorder contract intentionally assigns 0/1 to the requested
+        // rows and legacy POST defaults line_sort_order to 0.
+        sort_order: 100,
+        line_sort_order: 100,
       },
       {
         id: SHOP_A.serviceA2,
@@ -326,8 +330,8 @@ export async function runSeed(admin) {
         name: '燙染組合（測試）',
         duration_minutes: 120,
         price: 2500,
-        sort_order: 1,
-        line_sort_order: 1,
+        sort_order: 101,
+        line_sort_order: 101,
       },
     ],
     'services',
