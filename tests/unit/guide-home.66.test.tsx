@@ -208,4 +208,11 @@ describe('GUIDE home selectors (#66 Phase C)', () => {
   });
 
 
+  it('gives every Home link a visible keyboard focus treatment', () => {
+    const source = readFileSync('src/components/guide/GuideHomeView.tsx', 'utf8');
+    expect(source).toContain("GUIDE_UI_CLASSES.interactiveCard, GUIDE_UI_CLASSES.focusRing, 'flex items-center gap-3'");
+    expect(source).toContain("GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.secondary");
+    expect(source).toContain("GUIDE_UI_CLASSES.interactiveCard, GUIDE_UI_CLASSES.focusRing, 'flex min-h-[76px] items-center gap-3'");
+  });
+
 });

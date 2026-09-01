@@ -76,7 +76,7 @@ function FocusCard({ item }: { item: GuideFocusItem }) {
   return (
     <Link
       href={item.href}
-      className={cn(GUIDE_UI_CLASSES.interactiveCard, 'flex items-center gap-3')}
+      className={cn(GUIDE_UI_CLASSES.interactiveCard, GUIDE_UI_CLASSES.focusRing, 'flex items-center gap-3')}
     >
       <span
         className={cn(
@@ -195,7 +195,7 @@ export function GuideHomeView({
         action={
           <Link
             href="/tenant/calendar"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondary, 'inline-flex items-center gap-1 rounded-xl px-2 py-1 font-semibold')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.secondary, 'inline-flex items-center gap-1 rounded-xl px-2 py-1 font-semibold')}
           >
             <CalendarDays size={16} aria-hidden />
             {t.upcoming.viewAll}
@@ -224,7 +224,7 @@ export function GuideHomeView({
                   action={
                     <Link
                       href={`/tenant/trips/${departure.tripId}?tab=departures`}
-                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondary, 'inline-flex items-center rounded-xl px-2 py-1 font-semibold')}
+                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.secondary, 'inline-flex items-center rounded-xl px-2 py-1 font-semibold')}
                     >
                       {t.upcoming.viewDeparture}
                     </Link>
@@ -267,7 +267,7 @@ export function GuideHomeView({
             <Link
               key={action.key}
               href={action.href}
-              className={cn(GUIDE_UI_CLASSES.interactiveCard, 'flex min-h-[76px] items-center gap-3')}
+              className={cn(GUIDE_UI_CLASSES.interactiveCard, GUIDE_UI_CLASSES.focusRing, 'flex min-h-[76px] items-center gap-3')}
             >
               <span className={cn(GUIDE_UI_CLASSES.avatarSurface, 'flex size-10 shrink-0 items-center justify-center rounded-xl')} aria-hidden>
                 {action.key === 'tourOrders' ? <ClipboardCheck size={19} /> : action.key === 'trips' ? <CalendarDays size={19} /> : <BellRing size={19} />}
