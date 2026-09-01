@@ -29,6 +29,10 @@ import {
   buildPublicBookingUrl,
 } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import {
+  readKeywordReplyImageRef,
+  requireKeywordReplyImage,
+} from '@/server/keyword-reply-images';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
 export type WebhookTenant = { id: string; shop_code: string; name: string };
@@ -179,6 +183,17 @@ async function onMessage(
   if (kr) {
     const m = keywordReplyMessage(kr);
     if (m) {
+      // A new storage ref is an explicit promise that both public objects are
+      // still present. Legacy bare imageUrl rows remain readable, but a
+      // malformed/new ref must fail closed instead of sending a broken image.
+      if (kr.reply_type === 'IMAGE' && kr.content?.imageStorageRef) {
+        try {
+          await requireKeywordReplyImage(kr.content, tenant.id, admin);
+        } catch (error) {
+          console.error('[line-events] keyword reply image unavailable', tenant.id, error);
+          return;
+        }
+      }
       await lineReply(token, replyToken, [m]);
       return;
     }
@@ -391,13 +406,14 @@ async function buildShopContext(
 
 /* ----------------------------------------------------------------- utils */
 /** keyword_replies 列 → LINE message 物件（TEXT / IMAGE / FLEX；組不出來回 null） */
-function keywordReplyMessage(r: { reply_type: string; content: any }): any | null {
+export function keywordReplyMessage(r: { reply_type: string; content: any }): any | null {
   const c = r.content ?? {};
-  if (r.reply_type === 'IMAGE' && c.imageUrl)
+  const ref = readKeywordReplyImageRef(c);
+  if (r.reply_type === 'IMAGE' && (ref?.url || c.imageUrl))
     return {
       type: 'image',
-      originalContentUrl: c.imageUrl,
-      previewImageUrl: c.previewImageUrl ?? c.imageUrl,
+      originalContentUrl: ref?.url ?? c.imageUrl,
+      previewImageUrl: ref?.previewUrl ?? c.previewImageUrl ?? ref?.url ?? c.imageUrl,
     };
   if (r.reply_type === 'FLEX' && c.contents)
     return { type: 'flex', altText: String(c.altText ?? '訊息'), contents: c.contents };

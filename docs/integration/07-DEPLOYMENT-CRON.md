@@ -74,19 +74,23 @@ Vercel 會自動帶 `Authorization: Bearer ${CRON_SECRET}`（專案 env 有設�
 | recurring-bookings | active 的 recurring_bookings：依 rule 檢查未來 7 天應存在的場次，缺的補建 bookings（source='RECURRING'，status=CONFIRMED） |
 | feature-expiry | 功能訂閱到期副作用（票券暫停/商品下架），邏輯見 09 分冊 §6（台北 01:00 執行） |
 | tour-order-expiry | 逾期未付款旅遊訂單釋放名額（綠界 30 分鐘/匯款 3 天），邏輯見 10 分冊 §3 |
+| keyword-reply-image-cleanup | 重新檢查租戶的 keyword reply 引用後，重試移除已解除引用的原圖／preview；只接受 `CRON_SECRET`，失敗工作保留在 cleanup queue |
 
 ---
 
 ## 3. 圖片上傳（頁面用）
 
-統一一個端點：`POST /api/upload`（multipart：`file`, `bucket`）
+一般目錄／Rich Menu 圖片統一使用 `POST /api/upload`（multipart：`file`, `bucket`）；
+關鍵字回覆因為原圖與 LINE preview 的生命週期不同，使用專用
+`POST /api/settings/line/keyword-replies/image`（multipart：`file`）。
 
 - 白名單 bucket：02 分冊 §0008 的五個。
 - 驗證：≤5MB，`image/jpeg|png|webp`。
 - 路徑：`{tenantId}/{crypto.randomUUID()}.{ext}`（RLS 依第一段資料夾檢查）。
 - 回 `{url}`（`supabase.storage.from(bucket).getPublicUrl()`）。
-- 前端 services 有用到圖片欄位的（services/products/portfolio/staff/rich-menu），
-  上傳一律先打這支拿 url，再把 url 塞進資源 payload。
+- 前端 services 有用到一般圖片欄位的（services/products/portfolio/staff/rich-menu），
+  上傳一律先打這支拿 url，再把 url 塞進資源 payload；keyword reply 不可把裸 URL
+  當成 Storage ownership evidence，必須使用專用端點回傳的原圖＋preview `storageRef`。
 
 ---
 

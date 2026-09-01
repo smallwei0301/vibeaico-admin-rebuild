@@ -1,0 +1,638 @@
+import { createHash, randomUUID } from 'node:crypto';
+import sharp from 'sharp';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { ApiHttpError, ERR } from '@/server/http';
+import { createAdminSupabase } from '@/server/supabase';
+import {
+  KEYWORD_REPLY_IMAGES_BUCKET,
+  type KeywordReplyImageStorageRef,
+} from '@/lib/keyword-reply-image';
+
+export { KEYWORD_REPLY_IMAGES_BUCKET } from '@/lib/keyword-reply-image';
+export type { KeywordReplyImageStorageRef } from '@/lib/keyword-reply-image';
+
+export const KEYWORD_REPLY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+export const LINE_PREVIEW_MAX_BYTES = 1_000_000;
+/** Fresh unpersisted uploads get a bounded grace period before cron removal. */
+export const KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS = 60 * 60 * 1000;
+/**
+ * Stored mutex rows share the existing cleanup table but are deliberately in a
+ * non-object namespace. This creates a DB-backed boundary without a schema
+ * change; cleanup queries explicitly exclude the namespace below.
+ */
+export const KEYWORD_REPLY_IMAGE_LOCK_PREFIX = '__keyword-reply-image-lock__/';
+const KEYWORD_REPLY_IMAGE_LOCK_TTL_MS = 30_000;
+const KEYWORD_REPLY_IMAGE_LOCK_RETRIES = 40;
+const KEYWORD_REPLY_IMAGE_LOCK_RETRY_MS = 25;
+const KEYWORD_REPLY_IMAGE_PROVISIONAL_ERROR = 'awaiting keyword reply persistence';
+
+const IMAGE_TYPES = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+} as const;
+
+type ImageContentType = keyof typeof IMAGE_TYPES;
+type KeywordReplyImageRefCandidate = {
+  bucket: string;
+  path: string;
+  url: string;
+  previewPath?: string;
+  previewUrl?: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function keywordReplyImageLockPath(tenantId: string, path: string): string {
+  const digest = createHash('sha256').update(`${tenantId}\u0000${path}`).digest('hex');
+  return `${KEYWORD_REPLY_IMAGE_LOCK_PREFIX}${tenantId}/${digest}`;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === '23505';
+}
+
+/** A short-lived DB mutex; a crashed holder is atomically reclaimable after TTL. */
+async function acquireKeywordReplyImageLock(
+  admin: SupabaseClient,
+  tenantId: string,
+  path: string,
+): Promise<{ path: string; token: string }> {
+  const lockPath = keywordReplyImageLockPath(tenantId, path);
+  const token = `lock:${randomUUID()}`;
+
+  for (let attempt = 0; attempt < KEYWORD_REPLY_IMAGE_LOCK_RETRIES; attempt += 1) {
+    const { data, error } = await admin
+      .from('keyword_reply_image_cleanup')
+      .insert({
+        tenant_id: tenantId,
+        bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+        path: lockPath,
+        last_error: token,
+      })
+      .select('path');
+    if (!error && data?.length) return { path: lockPath, token };
+    if (error && !isUniqueViolation(error)) throw error;
+
+    const { error: reclaimError } = await admin
+      .from('keyword_reply_image_cleanup')
+      .delete()
+      .eq('bucket', KEYWORD_REPLY_IMAGES_BUCKET)
+      .eq('path', lockPath)
+      .lt('created_at', new Date(Date.now() - KEYWORD_REPLY_IMAGE_LOCK_TTL_MS).toISOString());
+    if (reclaimError) throw reclaimError;
+    await delay(KEYWORD_REPLY_IMAGE_LOCK_RETRY_MS);
+  }
+
+  throw new ApiHttpError(409, '關鍵字圖片正在由其他請求處理，請重試', ERR.CONFLICT);
+}
+
+async function releaseKeywordReplyImageLock(
+  admin: SupabaseClient,
+  lock: { path: string; token: string },
+): Promise<void> {
+  const { error } = await admin
+    .from('keyword_reply_image_cleanup')
+    .delete()
+    .eq('bucket', KEYWORD_REPLY_IMAGES_BUCKET)
+    .eq('path', lock.path)
+    .eq('last_error', lock.token);
+  if (error) console.error('[keyword-reply-images] advisory lock release failed', error);
+}
+
+/**
+ * Serializes reference changes and Storage removal per tenant/path. Sorting
+ * produces one lock order for original/preview pairs and avoids deadlock.
+ */
+export async function withKeywordReplyImagePathsLock<T>(args: {
+  admin: SupabaseClient;
+  tenantId: string;
+  paths: readonly string[];
+  work: () => Promise<T>;
+}): Promise<T> {
+  const locks: { path: string; token: string }[] = [];
+  try {
+    for (const path of [...new Set(args.paths)].sort())
+      locks.push(await acquireKeywordReplyImageLock(args.admin, args.tenantId, path));
+    return await args.work();
+  } finally {
+    await Promise.all(locks.reverse().map((lock) => releaseKeywordReplyImageLock(args.admin, lock)));
+  }
+}
+
+export function keywordReplyImagePaths(ref: Pick<KeywordReplyImageStorageRef, 'path' | 'previewPath'>): string[] {
+  return [ref.path, ref.previewPath];
+}
+
+/** `{tenantId}/{uuid}.jpg` -> `{tenantId}/{uuid}.preview.jpg`. */
+export function previewPathFor(path: string): string {
+  const dot = path.lastIndexOf('.');
+  const slash = path.lastIndexOf('/');
+  if (dot <= slash) return `${path}.preview`;
+  return `${path.slice(0, dot)}.preview${path.slice(dot)}`;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isKeywordReplyImagePath(path: string, tenantId: string): boolean {
+  if (!path.startsWith(`${tenantId}/`)) return false;
+  const filename = path.slice(tenantId.length + 1);
+  const match = /^([0-9a-f-]{36})\.(jpg|png)$/i.exec(filename);
+  return !!match && isUuid(match[1]);
+}
+
+function publicObjectPath(bucket: string, path: string): string {
+  return `/storage/v1/object/public/${bucket}/${path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
+}
+
+function publicUrl(admin: SupabaseClient, bucket: string, path: string): string {
+  return admin.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+
+/** Only the explicit, complete storage ref is eligible for ownership actions. */
+export function readKeywordReplyImageRef(content: unknown): KeywordReplyImageStorageRef | null {
+  if (!isRecord(content) || !isRecord(content.imageStorageRef)) return null;
+  const ref = content.imageStorageRef;
+  if (
+    typeof ref.bucket !== 'string'
+    || typeof ref.path !== 'string'
+    || typeof ref.url !== 'string'
+    || typeof ref.previewPath !== 'string'
+    || typeof ref.previewUrl !== 'string'
+  ) return null;
+
+  return {
+    bucket: ref.bucket as typeof KEYWORD_REPLY_IMAGES_BUCKET,
+    path: ref.path,
+    url: ref.url,
+    previewPath: ref.previewPath,
+    previewUrl: ref.previewUrl,
+  };
+}
+
+/** A ref or non-empty image URL cannot be silently stranded on a non-IMAGE row. */
+export function assertKeywordReplyImagePayload(replyType: string, content: unknown): void {
+  if (replyType === 'IMAGE') return;
+  if (!isRecord(content)) return;
+  if (
+    readKeywordReplyImageRef(content)
+    || (typeof content.imageUrl === 'string' && content.imageUrl.length > 0)
+    || (typeof content.previewImageUrl === 'string' && content.previewImageUrl.length > 0)
+  ) throw new ApiHttpError(400, '圖片內容只能搭配 IMAGE 回覆類型', ERR.VALIDATION);
+}
+
+/** Validate bucket, tenant path, derived preview path and trusted public URLs. */
+export function validateKeywordReplyImageRef(
+  ref: KeywordReplyImageRefCandidate,
+  tenantId: string,
+  trustedOrigin: string,
+): KeywordReplyImageStorageRef {
+  if (ref.bucket !== KEYWORD_REPLY_IMAGES_BUCKET)
+    throw new ApiHttpError(400, '不允許的關鍵字圖片 bucket', ERR.VALIDATION);
+  if (!isKeywordReplyImagePath(ref.path, tenantId))
+    throw new ApiHttpError(400, '圖片不屬於目前租戶或路徑格式不正確', ERR.VALIDATION);
+
+  let origin: string;
+  try {
+    origin = new URL(trustedOrigin).origin;
+  } catch {
+    throw new ApiHttpError(500, 'Storage 尚未設定', ERR.INTERNAL);
+  }
+
+  const validatePublicUrl = (value: string, expectedPath: string, message: string) => {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new ApiHttpError(400, message, ERR.VALIDATION);
+    }
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent(url.pathname);
+    } catch {
+      throw new ApiHttpError(400, message, ERR.VALIDATION);
+    }
+    if (
+      url.protocol !== 'https:'
+      || url.origin !== origin
+      || url.search
+      || url.hash
+      || decodedPath !== expectedPath
+    ) throw new ApiHttpError(400, message, ERR.VALIDATION);
+  };
+
+  validatePublicUrl(
+    ref.url,
+    publicObjectPath(ref.bucket, ref.path),
+    '圖片 URL 與 Storage 位置不一致',
+  );
+
+  const expectedPreviewPath = previewPathFor(ref.path);
+  if (ref.previewPath !== expectedPreviewPath || typeof ref.previewUrl !== 'string')
+    throw new ApiHttpError(400, '圖片縮圖與 Storage 位置不一致', ERR.VALIDATION);
+  validatePublicUrl(
+    ref.previewUrl,
+    publicObjectPath(ref.bucket, expectedPreviewPath),
+    '圖片縮圖與 Storage 位置不一致',
+  );
+
+  return ref as KeywordReplyImageStorageRef;
+}
+
+export function storageOrigin(): string {
+  try {
+    const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '');
+    if (url.protocol !== 'https:') throw new Error('Storage origin must be HTTPS');
+    return url.origin;
+  } catch {
+    throw new ApiHttpError(500, 'Storage 尚未設定 HTTPS 網址', ERR.INTERNAL);
+  }
+}
+
+export function isKeywordReplyImageReferenced(
+  rows: readonly { content: unknown }[],
+  path: string,
+): boolean {
+  return rows.some((row) => {
+    const ref = readKeywordReplyImageRef(row.content);
+    return ref?.path === path || ref?.previewPath === path;
+  });
+}
+
+/** Reject MIME spoofing before sharp or Storage sees the bytes. */
+export function validateKeywordReplyImageBytes(
+  bytes: Uint8Array,
+  contentType: string,
+): asserts contentType is ImageContentType {
+  const extension = IMAGE_TYPES[contentType as ImageContentType];
+  const startsWith = (signature: number[]) => signature.every((byte, index) => bytes[index] === byte);
+  const valid = extension === 'jpg'
+    ? startsWith([0xff, 0xd8, 0xff])
+    : extension === 'png'
+      ? startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      : false;
+  if (!extension || !valid)
+    throw new ApiHttpError(400, '圖片內容與宣告格式不一致，僅支援 JPEG / PNG', ERR.VALIDATION);
+}
+
+const PREVIEW_STEPS = [
+  { width: 1024, jpegQuality: 82, png: { palette: false } },
+  { width: 1024, jpegQuality: 65, png: { palette: true, colours: 256 } },
+  { width: 640, jpegQuality: 65, png: { palette: true, colours: 128 } },
+  { width: 320, jpegQuality: 60, png: { palette: true, colours: 128 } },
+] as const;
+
+/** Produce a same-format LINE preview, never silently falling back to the original. */
+export async function makeKeywordReplyPreview(
+  input: Buffer,
+  contentType: ImageContentType,
+): Promise<Buffer> {
+  const wantPng = contentType === 'image/png';
+  const source = sharp(input, { failOn: 'none' }).rotate();
+  let metadata;
+  try {
+    metadata = await source.metadata();
+  } catch {
+    throw new ApiHttpError(400, '這個檔案無法解碼成圖片，請換一張再試', ERR.VALIDATION);
+  }
+  if (metadata.format !== (wantPng ? 'png' : 'jpeg'))
+    throw new ApiHttpError(400, '圖片實際格式與宣告不一致，請重新轉檔後再上傳', ERR.VALIDATION);
+
+  for (const step of PREVIEW_STEPS) {
+    try {
+      const output = wantPng
+        ? await source.clone()
+          .resize({ width: step.width, height: step.width, fit: 'inside', withoutEnlargement: true })
+          .png({ compressionLevel: 9, effort: 1, ...step.png })
+          .toBuffer()
+        : await source.clone()
+          .resize({ width: step.width, height: step.width, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: step.jpegQuality })
+          .toBuffer();
+      if (output.byteLength <= LINE_PREVIEW_MAX_BYTES) return output;
+    } catch {
+      throw new ApiHttpError(400, '這張圖片無法產生 LINE 預覽縮圖，請換一張再試', ERR.VALIDATION);
+    }
+  }
+
+  throw new ApiHttpError(400, '這張圖片無法壓到 LINE 預覽圖的 1 MB 上限，請換一張再試', ERR.VALIDATION);
+}
+
+export type KeywordReplyImageUploadResult = {
+  url: string;
+  path: string;
+  bucket: typeof KEYWORD_REPLY_IMAGES_BUCKET;
+  previewPath: string;
+  previewUrl: string;
+  storageRef: KeywordReplyImageStorageRef;
+};
+
+/**
+ * Register cleanup ownership before any Storage side effect. The existing
+ * cleanup table is the durable ledger for provisional objects as well as
+ * failed deletion jobs. If this write fails, callers must not upload: there
+ * would be no durable retry path for a partially completed upload.
+ */
+async function registerKeywordReplyImageCleanup(
+  admin: SupabaseClient,
+  tenantId: string,
+  paths: readonly string[],
+  lastError: string,
+): Promise<void> {
+  const { error } = await admin.from('keyword_reply_image_cleanup').upsert(
+    paths.map((path) => ({
+      tenant_id: tenantId,
+      bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+      path,
+      last_error: lastError,
+    })),
+    { onConflict: 'bucket,path' },
+  );
+  if (error) throw error;
+}
+
+async function clearKeywordReplyImageCleanup(
+  admin: SupabaseClient,
+  tenantId: string,
+  bucket: string,
+  paths: readonly string[],
+): Promise<void> {
+  const { error } = await admin
+    .from('keyword_reply_image_cleanup')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('bucket', bucket)
+    .in('path', [...paths]);
+  if (error) throw error;
+}
+
+/** Upload original + preview to the dedicated keyword-reply bucket. */
+export async function uploadKeywordReplyImage(args: {
+  tenantId: string;
+  file: File;
+  admin?: SupabaseClient;
+}): Promise<KeywordReplyImageUploadResult> {
+  const { tenantId, file, admin = createAdminSupabase() } = args;
+  const extension = IMAGE_TYPES[file.type as ImageContentType];
+  if (!extension)
+    throw new ApiHttpError(400, '僅支援 JPEG / PNG 圖片', ERR.VALIDATION);
+  if (file.size > KEYWORD_REPLY_IMAGE_MAX_BYTES)
+    throw new ApiHttpError(400, '圖片超過 5MB 上限，請壓縮後再上傳', ERR.VALIDATION);
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  if (bytes.byteLength > KEYWORD_REPLY_IMAGE_MAX_BYTES)
+    throw new ApiHttpError(400, '圖片超過 5MB 上限，請壓縮後再上傳', ERR.VALIDATION);
+  validateKeywordReplyImageBytes(bytes, file.type);
+  const previewBytes = await makeKeywordReplyPreview(bytes, file.type);
+
+  const path = `${tenantId}/${randomUUID()}.${extension}`;
+  const previewPath = previewPathFor(path);
+  const provisionalPaths = [path, previewPath];
+
+  // This is deliberately before Storage. A queue insert after a partial
+  // upload is not sufficient: Storage rollback and that insert can fail in
+  // the same request. Failing closed here leaves no untracked object behind.
+  await registerKeywordReplyImageCleanup(
+    admin,
+    tenantId,
+    provisionalPaths,
+    KEYWORD_REPLY_IMAGE_PROVISIONAL_ERROR,
+  );
+
+  try {
+    const original = await admin.storage.from(KEYWORD_REPLY_IMAGES_BUCKET).upload(path, bytes, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (original.error) throw original.error;
+
+    const preview = await admin.storage.from(KEYWORD_REPLY_IMAGES_BUCKET).upload(previewPath, previewBytes, {
+      contentType: file.type,
+      upsert: false,
+    });
+    if (preview.error) throw preview.error;
+  } catch (error) {
+    // The pre-registered rows remain the durable fallback if either this
+    // best-effort rollback or its cleanup-row deletion fails. Do not turn a
+    // console message into a durability claim.
+    try {
+      const cleanup = await admin.storage
+        .from(KEYWORD_REPLY_IMAGES_BUCKET)
+        .remove(provisionalPaths);
+      if (cleanup.error) {
+        console.error('[keyword-reply-images] provisional cleanup failed', cleanup.error);
+      } else {
+        try {
+          await clearKeywordReplyImageCleanup(
+            admin,
+            tenantId,
+            KEYWORD_REPLY_IMAGES_BUCKET,
+            provisionalPaths,
+          );
+        } catch (clearError) {
+          console.error('[keyword-reply-images] provisional cleanup ledger clear failed', clearError);
+        }
+      }
+    } catch (cleanupError) {
+      console.error('[keyword-reply-images] provisional cleanup failed', cleanupError);
+    }
+    throw error;
+  }
+
+  const url = publicUrl(admin, KEYWORD_REPLY_IMAGES_BUCKET, path);
+  const previewUrl = publicUrl(admin, KEYWORD_REPLY_IMAGES_BUCKET, previewPath);
+  const storageRef = {
+    bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+    path,
+    url,
+    previewPath,
+    previewUrl,
+  } satisfies KeywordReplyImageStorageRef;
+  return { url, path, bucket: KEYWORD_REPLY_IMAGES_BUCKET, previewPath, previewUrl, storageRef };
+}
+
+/** Remove provisional deletion jobs after the ref has been persisted in keyword_replies. */
+export async function markKeywordReplyImagePersisted(
+  admin: SupabaseClient,
+  tenantId: string,
+  ref: KeywordReplyImageStorageRef,
+): Promise<void> {
+  await clearKeywordReplyImageCleanup(
+    admin,
+    tenantId,
+    ref.bucket,
+    [ref.path, ref.previewPath],
+  );
+}
+
+type StorageInfoAdmin = {
+  storage: {
+    from: (bucket: string) => {
+      info: (path: string) => Promise<{ error: unknown }>;
+    };
+  };
+};
+
+/** Re-check both objects before accepting a ref for DB persistence or GET. */
+export async function requireKeywordReplyImage(
+  content: unknown,
+  tenantId: string,
+  admin: StorageInfoAdmin,
+): Promise<KeywordReplyImageStorageRef> {
+  const ref = readKeywordReplyImageRef(content);
+  if (!ref) throw new ApiHttpError(400, '請先完成關鍵字圖片上傳', ERR.VALIDATION);
+  validateKeywordReplyImageRef(ref, tenantId, storageOrigin());
+  if (
+    !isRecord(content)
+    || content.imageUrl !== ref.url
+    || content.previewImageUrl !== ref.previewUrl
+  ) throw new ApiHttpError(400, '圖片 URL 與 Storage 位置不一致', ERR.VALIDATION);
+
+  const [{ error }, { error: previewError }] = await Promise.all([
+    admin.storage.from(ref.bucket).info(ref.path),
+    admin.storage.from(ref.bucket).info(ref.previewPath),
+  ]);
+  if (error || previewError)
+    throw new ApiHttpError(400, '找不到已上傳的關鍵字圖片或縮圖，請重新上傳', ERR.VALIDATION);
+  return ref;
+}
+
+export async function cleanupReplacedKeywordReplyImage(args: {
+  admin?: SupabaseClient;
+  tenantId: string;
+  oldContent: unknown;
+  nextContent: unknown;
+}): Promise<void> {
+  const oldRef = readKeywordReplyImageRef(args.oldContent);
+  const nextRef = readKeywordReplyImageRef(args.nextContent);
+  if (!oldRef || (nextRef && oldRef.path === nextRef.path)) return;
+  await removeUnreferencedKeywordReplyImage(
+    args.admin ?? createAdminSupabase(),
+    args.tenantId,
+    oldRef,
+  );
+}
+
+/** Delete only after the DB no longer references either object. */
+export async function removeUnreferencedKeywordReplyImage(
+  admin: SupabaseClient,
+  tenantId: string,
+  ref: KeywordReplyImageStorageRef,
+): Promise<void> {
+  validateKeywordReplyImageRef(ref, tenantId, storageOrigin());
+  const paths = keywordReplyImagePaths(ref);
+  await withKeywordReplyImagePathsLock({
+    admin,
+    tenantId,
+    paths,
+    work: async () => {
+      const { data: rows, error: queryError } = await admin
+        .from('keyword_replies')
+        .select('content')
+        .eq('tenant_id', tenantId);
+      if (queryError) throw queryError;
+      if (isKeywordReplyImageReferenced(rows ?? [], ref.path)) return;
+
+      const { error: removeError } = await admin.storage.from(ref.bucket).remove(paths);
+      if (!removeError) {
+        const { error: clearError } = await admin
+          .from('keyword_reply_image_cleanup')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('bucket', ref.bucket)
+          .in('path', paths);
+        if (clearError) throw clearError;
+        return;
+      }
+
+      const { error: queueError } = await admin.from('keyword_reply_image_cleanup').upsert(
+        paths.map((path) => ({
+          tenant_id: tenantId,
+          bucket: ref.bucket,
+          path,
+          last_error: String((removeError as Error).message ?? removeError),
+        })),
+        { onConflict: 'bucket,path' },
+      );
+      if (queueError) throw queueError;
+    },
+  });
+}
+
+/** Cron worker: re-check references before each retry so a reused object survives. */
+export async function drainKeywordReplyImageCleanup(
+  admin: SupabaseClient,
+  limit = 100,
+): Promise<{ removed: number; failed: number }> {
+  const { data: jobs, error } = await admin
+    .from('keyword_reply_image_cleanup')
+    .select('tenant_id, bucket, path, attempts')
+    .not('path', 'like', `${KEYWORD_REPLY_IMAGE_LOCK_PREFIX}%`)
+    .order('created_at', { ascending: true })
+    .lt(
+      'created_at',
+      new Date(Date.now() - KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS).toISOString(),
+    )
+    .limit(limit);
+  if (error) throw error;
+
+  let removed = 0;
+  let failed = 0;
+  for (const job of jobs ?? []) {
+    await withKeywordReplyImagePathsLock({
+      admin,
+      tenantId: job.tenant_id,
+      paths: [job.path],
+      work: async () => {
+        const { data: refs, error: refsError } = await admin
+          .from('keyword_replies')
+          .select('content')
+          .eq('tenant_id', job.tenant_id);
+        if (refsError) throw refsError;
+        if (isKeywordReplyImageReferenced(refs ?? [], job.path)) {
+          const { error: deleteError } = await admin
+            .from('keyword_reply_image_cleanup')
+            .delete()
+            .eq('bucket', job.bucket)
+            .eq('path', job.path);
+          if (deleteError) throw deleteError;
+          return;
+        }
+
+        const { error: removeError } = await admin.storage.from(job.bucket).remove([job.path]);
+        if (!removeError) {
+          const { error: deleteError } = await admin
+            .from('keyword_reply_image_cleanup')
+            .delete()
+            .eq('bucket', job.bucket)
+            .eq('path', job.path);
+          if (deleteError) throw deleteError;
+          removed += 1;
+          return;
+        }
+        const { error: updateError } = await admin
+          .from('keyword_reply_image_cleanup')
+          .update({
+            attempts: (job.attempts ?? 0) + 1,
+            last_error: String((removeError as Error).message ?? removeError),
+            last_attempt_at: new Date().toISOString(),
+          })
+          .eq('bucket', job.bucket)
+          .eq('path', job.path);
+        if (updateError) throw updateError;
+        failed += 1;
+      },
+    });
+  }
+  return { removed, failed };
+}

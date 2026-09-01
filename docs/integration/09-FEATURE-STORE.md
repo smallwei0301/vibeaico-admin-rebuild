@@ -183,7 +183,7 @@ export async function requireFeature(tenantId: string, code: string) {
 | COUPON_SYSTEM | `/api/coupons*` 寫入端點 |
 | PRODUCT_SALES | `/api/products*`、`/api/product-orders*` 寫入端點 |
 | INVENTORY | `/api/products/:id/adjust-stock`、`/api/inventory/logs` |
-| KEYWORD_REPLY | `/api/settings/line/keyword-replies` 寫入端點；另 POST 時檢查該店筆數 ≥ **20** → 409「每店最多 20 組」 |
+| KEYWORD_REPLY | `/api/settings/line/keyword-replies` 的 POST、圖片上傳，以及 PUT 的內容／排序變更與重新啟用；單獨 `PUT {active:false}` 與 DELETE 保留作為退訂後的停用／清理動作。另 POST 時檢查該店筆數 ≥ **20** → 409「每店最多 20 組」 |
 | AI_ASSISTANT | webhook 內 AI 回覆分支（§7） |
 | PORTFOLIO_SHOWCASE | `/api/portfolios*` 寫入端點 |
 | CUSTOM_RICH_MENU | 06 §6 的進階選單端點（create-advanced/create-custom 等）；基本 5 主題不擋 |

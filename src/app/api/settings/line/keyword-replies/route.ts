@@ -2,6 +2,15 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { createAdminSupabase } from '@/server/supabase';
+import {
+  assertKeywordReplyImagePayload,
+  keywordReplyImagePaths,
+  markKeywordReplyImagePersisted,
+  readKeywordReplyImageRef,
+  requireKeywordReplyImage,
+  withKeywordReplyImagePathsLock,
+} from '@/server/keyword-reply-images';
 
 /**
  * /api/settings/line/keyword-replies（04 分冊 §B-5）— keyword_replies CRUD。
@@ -10,7 +19,8 @@ import { requireFeature } from '@/server/features';
  * matchType/replyText/imageUrl/linkUrl/linkLabel/overridesSystem 等展示欄位由
  * service 層打包進這個 jsonb，後端不拆欄）、active、sort_order。
  *
- * 閘門（09 分冊 §5）：寫入端點 requireFeature('KEYWORD_REPLY')；讀取不擋。
+ * 閘門（09 分冊 §5、14 §8.16-b）：POST 與圖片內容變更 requireFeature
+ * ('KEYWORD_REPLY')；讀取不擋，單獨停用／DELETE 由 :id route 保留給清理。
  * 上限：POST 前查該店筆數 ≥ 20 → 409「每店最多 20 組」。
  */
 
@@ -39,6 +49,17 @@ export const GET = handle(async () => {
     .order('created_at', { ascending: true });
   if (error) throw error;
 
+  // New IMAGE rows prove both objects on every read. Legacy bare imageUrl rows
+  // remain readable/stoppable without guessing which public object they meant.
+  const imageRows = (data ?? []).filter(
+    (row) => row.reply_type === 'IMAGE' && row.content?.imageStorageRef,
+  );
+  if (imageRows.length) {
+    const admin = createAdminSupabase();
+    for (const row of imageRows)
+      await requireKeywordReplyImage(row.content, t.tenantId, admin);
+  }
+
   return ok((data ?? []).map(mapKeywordReply));
 });
 
@@ -53,38 +74,60 @@ export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'KEYWORD_REPLY');
   const b = createSchema.parse(await req.json());
+  assertKeywordReplyImagePayload(b.replyType ?? 'TEXT', b.content ?? {});
+  const admin = createAdminSupabase();
+  const persistedRef = readKeywordReplyImageRef(b.content);
+  let createdId: string;
+  await withKeywordReplyImagePathsLock({
+    admin,
+    tenantId: t.tenantId,
+    paths: persistedRef ? keywordReplyImagePaths(persistedRef) : [],
+    work: async () => {
+      if ((b.replyType ?? 'TEXT') === 'IMAGE')
+        await requireKeywordReplyImage(b.content ?? {}, t.tenantId, admin);
 
-  // 每店上限 20 組（09 分冊 §5）
-  const { count, error: e0 } = await t.supabase
-    .from('keyword_replies')
-    .select('id', { count: 'exact', head: true })
-    .eq('tenant_id', t.tenantId);
-  if (e0) throw e0;
-  if ((count ?? 0) >= KEYWORD_LIMIT)
-    throw new ApiHttpError(409, '每店最多 20 組', ERR.CONFLICT);
+      // 每店上限 20 組（09 分冊 §5）
+      const { count, error: e0 } = await t.supabase
+        .from('keyword_replies')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', t.tenantId);
+      if (e0) throw e0;
+      if ((count ?? 0) >= KEYWORD_LIMIT)
+        throw new ApiHttpError(409, '每店最多 20 組', ERR.CONFLICT);
 
-  const { data: last, error: e1 } = await t.supabase
-    .from('keyword_replies')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e1) throw e1;
+      const { data: last, error: e1 } = await t.supabase
+        .from('keyword_replies')
+        .select('sort_order')
+        .eq('tenant_id', t.tenantId)
+        .order('sort_order', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (e1) throw e1;
 
-  const { data, error } = await t.supabase
-    .from('keyword_replies')
-    .insert({
-      tenant_id: t.tenantId,
-      keywords: b.keywords,
-      reply_type: b.replyType ?? 'TEXT',
-      content: b.content ?? {},
-      active: b.active ?? true,
-      sort_order: (last?.sort_order ?? -1) + 1,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+      const { data, error } = await t.supabase
+        .from('keyword_replies')
+        .insert({
+          tenant_id: t.tenantId,
+          keywords: b.keywords,
+          reply_type: b.replyType ?? 'TEXT',
+          content: b.content ?? {},
+          active: b.active ?? true,
+          sort_order: (last?.sort_order ?? -1) + 1,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      createdId = data.id;
 
-  return ok({ id: data.id });
+      if (persistedRef) {
+        try {
+          await markKeywordReplyImagePersisted(admin, t.tenantId, persistedRef);
+        } catch (queueError) {
+          console.error('[keyword-reply-images] provisional queue clear failed', queueError);
+        }
+      }
+    },
+  });
+
+  return ok({ id: createdId! });
 });

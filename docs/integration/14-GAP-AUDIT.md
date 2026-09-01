@@ -2933,11 +2933,22 @@ URL/path 一致與兩個 Storage object 存在。webhook 沿用既有 IMAGE 分�
 bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 public 才能讓 LINE 抓圖，
 所以「A tenant 無法讀 B tenant public URL」不是可成立的保證；真正可驗收的隔離是 A 不得
 寫入、在自己的 reply 引用或 cleanup 刪除 B 的物件；規格也因此禁止上傳私密內容。替換、
-移除、刪除與取消未儲存選圖都先確認 DB 無活引用再刪原圖＋preview；暫時刪除失敗進
-`keyword_reply_image_cleanup`，每日 cron 重試前再查引用，避免已重新被使用的物件遭誤刪。
+移除、刪除與取消未儲存選圖都先確認 DB 無活引用再刪原圖＋preview；兩物件上傳前先把
+path 登記進 `keyword_reply_image_cleanup` 作為 durable ledger，登記失敗就 fail closed
+不碰 Storage，暫時刪除／同步 rollback 失敗則保留 row，讓每日 cron 重試前再查引用，
+避免已重新被使用的物件遭誤刪。console log 僅供診斷，不是耐久清理證據。
 
 目前證據邊界必須保持誠實：候選只完成 typecheck、targeted unit 與 mock build 的 source
 驗證；migration `0039`、bucket/policy/cleanup table 尚未套 TEST，service-role object existence、
 跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
 reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
 #50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
+
+### #50 current-main rebuild note (2026-09-01)
+
+本分支以 current main `ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5` 重建同一條
+keyword image chain。因共用 `/api/upload`、`src/server/image.ts` 與 upload dependency
+目前由 active #15 lane 持有，本候選只新增 keyword 專用 upload/confirm seam，不改共用
+chat/catalog uploader，也不碰 AppShell/GUIDE。專用端點仍遵守 06 §6.1 的 bucket、tenant
+path、HTTPS URL、original＋preview 與 cleanup queue 契約；TEST migration、service-role
+object proof、integration/E2E、Preview 與 Production 仍是尚未執行的後續 gate。

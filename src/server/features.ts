@@ -10,7 +10,8 @@
  * cron / fire-and-forget 段落（不該回 403 的地方）改用 `isFeatureActive()` 判斷跳過。
  *
  * ⚠️ 尚未落地的閘門（落點屬 06 分冊，Phase 6 端點尚不存在，待 Phase 6 實作時套用）：
- * - KEYWORD_REPLY：`/api/settings/line/keyword-replies` 寫入端點 + POST 時檢查
+ * - KEYWORD_REPLY：`/api/settings/line/keyword-replies` POST、圖片上傳與內容變更；
+ *   單獨停用與 DELETE 是退訂後仍可用的清理動作。
  *   該店筆數 ≥ 20 → 409「每店最多 20 組」
  * - EXTRA_PUSH：06 分冊 `consumePushQuota` 的 quota 改為
  *   `isFeatureActive(t,'EXTRA_PUSH') ? 700 : 200`
