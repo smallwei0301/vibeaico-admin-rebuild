@@ -41,6 +41,20 @@ export const testLineConnection = () =>
     () => request<{ ok: boolean; message: string }>('/api/settings/line/test', { method: 'POST' }),
   );
 
+/** 建立並設為預設的基本 Rich Menu；real 分支只使用目前租戶的已存憑證。 */
+export const createLineRichMenu = () =>
+  adapt<{ richMenuId?: string }>(
+    () => ({ richMenuId: 'mock-rich-menu' }),
+    () => request<{ richMenuId?: string }>('/api/settings/line/rich-menu/create', { method: 'POST' }),
+  );
+
+/** 解除目前租戶的 LINE 連線；後端會清空 secret/token，而不是把空字串當成「不變更」。 */
+export const disconnectLineSettings = () =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/settings/line/disconnect', { method: 'POST' }),
+  );
+
 export const verifyLineSetup = () =>
   adapt<{ checks: { key: string; pass: boolean; message: string }[] }>(
     () => ({

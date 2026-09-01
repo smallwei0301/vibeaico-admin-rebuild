@@ -14,6 +14,7 @@ import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { taipeiMonthRange } from '@/server/tz';
 import { mapStaffPerformance } from '@/server/mappers';
+import { applyBookingAddonAttribution } from '@/server/booking-addon-performance';
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -39,11 +40,19 @@ export const GET = handle(async (req) => {
   const [{ data: staffRows, error: e1 }, { data: bookingRows, error: e2 }] = await Promise.all([
     t.supabase.from('staff').select('id, name')
       .eq('tenant_id', t.tenantId).eq('active', true),
-    t.supabase.from('bookings').select('staff_id, status, final_price')
+    t.supabase.from('bookings').select('id, staff_id, status, final_price')
       .eq('tenant_id', t.tenantId).gte('start_at', fromIso).lt('start_at', toIso),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
+
+  const bookingIds = (bookingRows ?? []).map((booking) => booking.id);
+  const { data: addonRows, error: e3 } = bookingIds.length
+    ? await t.supabase.from('booking_addons')
+      .select('booking_id, applied_amount, performance_mode, performance_staff_id')
+      .eq('tenant_id', t.tenantId).in('booking_id', bookingIds)
+    : { data: [], error: null };
+  if (e3) throw e3;
 
   const byStaff = new Map<string, { bookingCount: number; completed: number; revenue: number }>();
   for (const s of staffRows ?? []) byStaff.set(s.id, { bookingCount: 0, completed: 0, revenue: 0 });
@@ -53,11 +62,9 @@ export const GET = handle(async (req) => {
     const agg = byStaff.get(b.staff_id);
     if (!agg) continue;
     agg.bookingCount += 1;
-    if (b.status === 'COMPLETED') {
-      agg.completed += 1;
-      agg.revenue += Number(b.final_price);
-    }
+    if (b.status === 'COMPLETED') agg.completed += 1;
   }
+  applyBookingAddonAttribution(byStaff, bookingRows ?? [], addonRows ?? []);
 
   const rows = (staffRows ?? [])
     .map((s) => {

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   mapBooking,
+  mapBookingAddon,
   mapCustomer,
   mapService,
   mapStaff,
@@ -74,6 +75,37 @@ describe('mapBooking (01 §5.5)', () => {
     expect(r.staffId).toBeNull();
     expect(r.staffName).toBeNull();
     expect(r.note).toBe('');
+  });
+});
+
+/* ------------------------------------------------------------- Booking add-on */
+describe('mapBookingAddon (17 §CRUD)', () => {
+  it('maps a complete booking_addons row to the public camelCase contract', () => {
+    expect(mapBookingAddon({
+      id: 'addon_1', service_id: 'service_1', name: '精油升級', price: '250.50', quantity: 2,
+      duration_minutes: 15, staff_id: 'staff_1', staff: { name: '王師傅' }, performance_mode: 'SPECIFIC_STAFF',
+      performance_staff_id: 'staff_2', applied_amount: '501', applied_minutes: 15,
+      notified: 'LINE', created_at: '2026-08-22T02:00:00Z',
+    })).toEqual({
+      id: 'addon_1', serviceId: 'service_1', name: '精油升級', price: 250.5, quantity: 2,
+      durationMinutes: 15, staffId: 'staff_1', staffName: '王師傅', performanceMode: 'SPECIFIC_STAFF',
+      performanceStaffId: 'staff_2', appliedAmount: 501, appliedMinutes: 15,
+      notified: 'LINE', createdAt: '2026-08-22T02:00:00Z',
+    });
+  });
+
+  it('preserves absent optional relationships as null while retaining the add-on snapshot', () => {
+    expect(mapBookingAddon({
+      id: 'addon_2', service_id: null, name: '單次加購', price: 0, quantity: 1,
+      duration_minutes: 0, staff_id: null, staff: null, performance_mode: 'NONE',
+      performance_staff_id: null, applied_amount: 0, applied_minutes: 0,
+      notified: 'NO_LINE', created_at: '2026-08-22T03:00:00Z',
+    })).toEqual({
+      id: 'addon_2', serviceId: null, name: '單次加購', price: 0, quantity: 1,
+      durationMinutes: 0, staffId: null, staffName: null, performanceMode: 'NONE',
+      performanceStaffId: null, appliedAmount: 0, appliedMinutes: 0,
+      notified: 'NO_LINE', createdAt: '2026-08-22T03:00:00Z',
+    });
   });
 });
 

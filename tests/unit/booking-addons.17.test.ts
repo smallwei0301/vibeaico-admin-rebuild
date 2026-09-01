@@ -1,0 +1,121 @@
+import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8');
+
+describe('Issue #17 booking add-on source contracts', () => {
+  const migration = read('supabase/migrations/0053_issue_17_booking_addons.sql');
+  const hardening = read('supabase/migrations/0054_issue_17_booking_addons_hardening.sql');
+  const rollback = read('supabase/migrations/0055_issue_17_booking_addon_price_rollback.sql');
+  const page = read('src/app/tenant/bookings/page.tsx');
+  const api = read('src/app/api/bookings/[id]/addons/route.ts');
+  const line = read('src/server/line.ts');
+
+  it('uses a current-main forward migration and atomic RPCs, never route CAS compensation', () => {
+    expect(migration).toContain('add_booking_addon_17');
+    expect(migration).toContain('delete_booking_addon_17');
+    expect(migration).toContain('mark_booking_addon_notification_17');
+    expect(migration).toContain('for update');
+    expect(migration).toContain('security definer');
+    expect(migration).toContain('final_price = final_price + v_amount');
+    expect(migration).toContain('final_price = final_price - v_addon.applied_amount');
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0053_issue_17_booking_addons.sql'))).toBe(true);
+  });
+
+  it('keeps the 0055 current-price rollback and non-negative floor correction', () => {
+    expect(rollback).toContain('create or replace function public.delete_booking_addon_17');
+    expect(rollback).toContain('Preserve any later price adjustment/discount');
+    expect(rollback).toContain(
+      'final_price = greatest(public.bookings.final_price - v_addon.applied_amount, 0)',
+    );
+    expect(rollback).toContain('grant execute on function public.delete_booking_addon_17');
+  });
+
+  it('locks down direct writes and validates tenant lineage plus explicit C+ attribution', () => {
+    expect(migration).toContain('enable row level security');
+    expect(migration).toContain("create policy p_booking_addons_s on booking_addons for select");
+    expect(migration).toContain("tenant_role_at_least(p_tenant_id, 'MANAGER')");
+    expect(migration).toContain("'PRIMARY', 'SPECIFIC_STAFF', 'NONE'");
+    expect(migration).toContain('foreign key (tenant_id, performance_staff_id)');
+    expect(migration).toContain('drop constraint if exists booking_addons_performance_staff_fkey');
+    expect(migration).toContain('on delete set null (performance_staff_id)');
+    expect(migration).toContain("conrelid = 'public.staff'::regclass");
+    expect(migration).toContain('regexp_replace(pg_get_indexdef(indexrelid)');
+    expect(migration).toContain('never drop/recreate or weaken staff uniqueness');
+    expect(migration).toContain('p_price < 0');
+    expect(migration).toContain("price numeric not null check (price >= 0)");
+    expect(migration).toContain("'NONE'::addon_performance_mode");
+    expect(migration).toContain("'SPECIFIC_STAFF'::addon_performance_mode");
+    expect(migration).toContain('BOOKING_ADDON_DURATION_CONFLICT');
+    expect(migration).toContain('BOOKING_ADDON_SNAPSHOT_CONFLICT');
+    expect(migration).toContain('v_addon.applied_amount < 0');
+    expect(migration).toContain('v_addon.applied_minutes < 0');
+    expect(migration).toContain('add column if not exists updated_at timestamptz not null default now()');
+    expect(migration).toContain('booking_addons_applied_amount_nonnegative');
+    expect(migration).toContain('booking_addons_applied_minutes_nonnegative');
+    expect(migration).toContain('v_booking.duration_minutes < v_addon.applied_minutes');
+    expect(migration).not.toContain('greatest(0, final_price - v_addon.applied_amount)');
+    expect(migration).toContain("drop policy if exists p_booking_addons_u");
+    expect(migration).not.toContain('create policy p_booking_addons_u');
+  });
+
+  it('uses truthful receipt outcomes instead of delay-based false success', () => {
+    expect(api).toContain('notify: z.boolean().default(false)');
+    expect(api).toContain('notifyBookingAddonReceipt');
+    expect(api).toContain("rpc('mark_booking_addon_notification_17'");
+    expect(api).toContain('createAdminSupabase().rpc');
+    expect(api).toContain("notified === 'QUOTA_EXCEEDED'");
+    expect(api).toContain('{ persisted: true }');
+    expect(api).toContain("error?.code === '23P01'");
+    expect(api).toContain('加購後時段與既有預約重疊，資料未變更');
+    expect(api).toContain('加購已新增，但本月推播額度已用完');
+    expect(api).not.toContain(".update({ notified })");
+    expect(migration).toContain("p_notified not in ('NONE','LINE','NO_LINE','NOT_CONFIGURED','QUOTA_EXCEEDED','FAILED')");
+    expect(migration).toContain('from public, anon, authenticated');
+    expect(migration).toContain('to service_role');
+    expect(migration).toContain("if auth.role() <> 'service_role' then raise exception 'BOOKING_ADDON_FORBIDDEN'; end if;");
+    expect(read('src/lib/types.ts')).toContain("'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE'");
+    expect(read('src/lib/types.ts')).toContain("'NONE' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED'");
+    expect(api).toContain("price: z.number().finite().min(0)");
+    expect(page).not.toContain('setTimeout(r, 400)');
+    expect(page).toContain('createBookingAddon(booking.id');
+    expect(page).toContain('deleteBookingAddon(booking.id, addon.id)');
+    expect(page).toContain('onAdded={(result) =>');
+    expect(page).toContain('onPersistedQuotaExceeded');
+    expect(page).toContain("(e.data as { persisted?: boolean } | undefined)?.persisted");
+    const recoveryStart = page.indexOf('onPersistedQuotaExceeded={() =>');
+    const quotaRecovery = page.slice(recoveryStart, page.indexOf('}}', recoveryStart) + 2);
+    expect(recoveryStart).toBeGreaterThan(-1);
+    expect(quotaRecovery).toContain('setAddonTarget(null);');
+    expect(quotaRecovery).toContain('setDetailTarget(null);');
+    expect(quotaRecovery).toContain('setAddonRevision((revision) => revision + 1);');
+    expect(quotaRecovery).toContain('void load();');
+    expect(page).toContain('finalPrice: result.finalPrice');
+    expect(page).toContain('durationMinutes: result.durationMinutes');
+    expect(page).toContain('endAt: result.endAt');
+    expect(read('src/services/bookings.ts')).toContain('Object.assign(booking, { finalPrice, durationMinutes, endAt })');
+  });
+
+  it('hardens the forward RPC and quota boundary without reopening direct table DML', () => {
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0054_issue_17_booking_addons_hardening.sql'))).toBe(true);
+    expect(hardening).toContain('revoke all on table public.booking_addons from public, anon, authenticated');
+    expect(hardening).toContain('grant select on table public.booking_addons to authenticated');
+    expect(hardening).toContain('grant select, insert, update, delete on table public.booking_addons to service_role');
+    expect(hardening).toContain('for select to authenticated');
+    expect(hardening.match(/security definer set search_path = ''/g)).toHaveLength(4);
+    expect(hardening).toContain('from public, anon, service_role');
+    expect(hardening).toContain('grant execute on function public.add_booking_addon_17');
+    expect(hardening).toContain('grant execute on function public.delete_booking_addon_17');
+    expect(hardening).toContain('grant execute on function public.mark_booking_addon_notification_17');
+    expect(hardening).toContain('grant execute on function public.consume_push_quota_17');
+    expect(hardening).toContain('on conflict (tenant_id, month) do update');
+    expect(hardening).toContain('where public.push_quota_usage.used + excluded.used <= p_quota');
+    expect(line).toContain("rpc('consume_push_quota_17'");
+    expect(line).toContain("return data === true");
+    expect(line).toContain('quota reservation failed');
+    expect(line).not.toContain("from('push_quota_usage').select('used')");
+  });
+});

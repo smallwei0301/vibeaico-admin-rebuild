@@ -15,6 +15,7 @@
 
 import type {
   Booking,
+  BookingAddon,
   Customer,
   Service,
   Staff,
@@ -39,6 +40,19 @@ export function mapBooking(r: any): Booking {
     price: r.price, finalPrice: r.final_price,
     status: r.status, paymentStatus: r.payment_status, source: r.source,
     note: r.note ?? '', createdAt: r.created_at,
+  };
+}
+
+export function mapBookingAddon(r: any): BookingAddon {
+  return {
+    id: r.id, serviceId: r.service_id ?? null, name: r.name,
+    price: Number(r.price), quantity: r.quantity, durationMinutes: r.duration_minutes,
+    staffId: r.staff_id ?? null, staffName: r.staff?.name ?? null,
+    performanceMode: r.performance_mode,
+    performanceStaffId: r.performance_staff_id ?? null,
+    appliedAmount: Number(r.applied_amount), appliedMinutes: r.applied_minutes,
+    notified: r.notified,
+    createdAt: r.created_at,
   };
 }
 
