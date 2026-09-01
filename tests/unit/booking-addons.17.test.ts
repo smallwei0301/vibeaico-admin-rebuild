@@ -13,6 +13,7 @@ describe('Issue #17 booking add-on source contracts', () => {
   const idempotency = read('supabase/migrations/0056_issue_17_booking_addon_idempotency.sql');
   const retryRepair = read('supabase/migrations/0057_issue_17_notification_claim_idempotency_race.sql');
   const rowCountRepair = read('supabase/migrations/0058_issue_17_idempotency_insert_row_count.sql');
+  const returnRepair = read('supabase/migrations/0059_issue_17_idempotency_return_guards.sql');
   const page = read('src/app/tenant/bookings/page.tsx');
   const api = read('src/app/api/bookings/[id]/addons/route.ts');
   const line = read('src/server/line.ts');
@@ -165,4 +166,9 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(rowCountRepair).toContain("grant execute on function public.add_booking_addon_17");
   });
 
+  it('terminates replay branches after returning the existing row', () => {
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0059_issue_17_idempotency_return_guards.sql'))).toBe(true);
+    expect(returnRepair.match(/return next;\n    return;/g)).toHaveLength(2);
+    expect(returnRepair).toContain('grant execute on function public.add_booking_addon_17');
+  });
 });
