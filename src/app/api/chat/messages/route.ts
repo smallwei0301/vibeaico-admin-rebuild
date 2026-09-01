@@ -5,11 +5,10 @@ import { pageRange, toPaged } from '@/server/paging';
 import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
 import { createAdminSupabase } from '@/server/supabase';
 import {
-  chatImagePathFromUrl,
-  isChatImagePathForTenant,
-  previewPathFor,
-  resolveLinePreviewImageUrl,
+  PREVIEW_BUCKET,
+  resolveChatImageStorageRef,
 } from '@/server/image';
+import type { ChatImageStorageRef } from '@/server/image';
 
 /**
  * /api/chat/messages（04 分冊 §B-5 / §B-5.1）。
@@ -18,12 +17,12 @@ import {
  * GET `?lineUserId&after=<messageId>`：只回該筆之後的新訊息（5 秒輪詢用）；
  *   以該筆 created_at 為界、id 打平，全量回傳（不分頁）。
  *
- * POST `{lineUserId, text}` 或 `{lineUserId, type:'image', originalContentUrl,
- * previewImageUrl}`：店家後台主動回覆。圖片 URL 先由 `/api/upload` 取得。
+ * POST `{lineUserId, text}` 或 `{lineUserId, type:'image', storageRef}`：店家後台主動回覆。
+ * 圖片先由 `/api/upload` 取得 tenant-scoped storage ref；LINE URL 由 server 驗證物件後產生。
  * replyToken 早已失效只能用 push，會佔推播額度 → 先 `consumePushQuota(tenantId, 1)`，
  * 不足回 409 REQ_003「本月推播額度已用完」且**不呼叫 LINE**；成功 → linePush +
- * 寫 chat_messages(OUT)。圖片 URL 必須是本租戶 chat-images 的 upload 結果，
- *   且 preview 必須是同一張圖推導出的 <=1MB 物件。
+ * 寫 chat_messages(OUT)。圖片 ref 必須是本租戶 chat-images 的 upload 結果，原圖和
+ * preview 會在送出前重新驗證為 JPEG/PNG 且分別符合 5MB/1MB 上限。
  */
 
 function mapMessage(r: any) {
@@ -88,21 +87,21 @@ export const GET = handle(async (req) => {
   return ok(toPaged((data ?? []).map(mapMessage), count, page, size));
 });
 
-const httpsImageUrl = z.string().url('圖片網址格式錯誤')
-  .refine((u) => u.startsWith('https://'), 'LINE 只接受 https 圖片網址');
+const chatImageStorageRefSchema = z.object({
+  bucket: z.literal(PREVIEW_BUCKET),
+  path: z.string().min(1),
+  previewPath: z.string().min(1),
+}).strict();
 
 const postSchema = z.object({
   lineUserId: z.string().min(1, '請指定對話對象'),
   text: z.string().max(5000, '訊息長度超過上限').optional(),
   type: z.literal('image').optional(),
-  originalContentUrl: httpsImageUrl.optional(),
-  previewImageUrl: httpsImageUrl.optional(),
-}).superRefine((b, ctx) => {
-  const hasImageField = b.type !== undefined
-    || b.originalContentUrl !== undefined
-    || b.previewImageUrl !== undefined;
+  storageRef: chatImageStorageRefSchema.optional(),
+}).strict().superRefine((b, ctx) => {
+  const hasImageField = b.type !== undefined || b.storageRef !== undefined;
   if (hasImageField) {
-    if (b.type !== 'image' || !b.originalContentUrl || !b.previewImageUrl) {
+    if (b.type !== 'image' || !b.storageRef) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: '圖片訊息格式不完整' });
     }
     if (b.text?.trim()) {
@@ -120,6 +119,7 @@ export const POST = handle(async (req) => {
   const b = postSchema.parse(await req.json());
   let chatImageOriginalPath: string | undefined;
   let chatImagePreviewPath: string | undefined;
+  let resolvedImage: Awaited<ReturnType<typeof resolveChatImageStorageRef>> | undefined;
 
   // 對象必須是本店的 LINE 使用者（跨租戶 → 404）
   const { data: lu, error: e0 } = await t.supabase
@@ -135,22 +135,13 @@ export const POST = handle(async (req) => {
 
   const isImage = b.type === 'image';
   if (isImage) {
-    const originalPath = chatImagePathFromUrl(b.originalContentUrl!);
-    const previewPath = chatImagePathFromUrl(b.previewImageUrl!);
-    if (
-      !originalPath
-      || !previewPath
-      || !isChatImagePathForTenant(originalPath, t.tenantId)
-      || previewPath !== previewPathFor(originalPath)
-    ) {
-      throw new ApiHttpError(400, '圖片必須來自本店剛上傳的 chat-images 物件', ERR.VALIDATION);
+    const storageRef = b.storageRef as ChatImageStorageRef | undefined;
+    if (!storageRef) {
+      throw new ApiHttpError(400, '圖片訊息格式不完整', ERR.VALIDATION);
     }
-    chatImageOriginalPath = originalPath;
-    chatImagePreviewPath = previewPath;
-    const resolvedPreviewUrl = await resolveLinePreviewImageUrl(t.supabase, b.originalContentUrl!);
-    if (resolvedPreviewUrl !== b.previewImageUrl) {
-      throw new ApiHttpError(409, '圖片預覽已失效，請重新上傳後再送出', ERR.CONFLICT);
-    }
+    chatImageOriginalPath = storageRef.path;
+    chatImagePreviewPath = storageRef.previewPath;
+    resolvedImage = await resolveChatImageStorageRef(t.supabase, t.tenantId, storageRef);
   }
 
   // 先扣額度；不足或額度服務失敗都不打 LINE（06 分冊 §2）。
@@ -172,7 +163,11 @@ export const POST = handle(async (req) => {
       token,
       b.lineUserId,
       isImage
-        ? [{ type: 'image', originalContentUrl: b.originalContentUrl!, previewImageUrl: b.previewImageUrl! }]
+        ? [{
+            type: 'image',
+            originalContentUrl: resolvedImage!.originalUrl,
+            previewImageUrl: resolvedImage!.previewUrl,
+          }]
         : [{ type: 'text', text: b.text }],
     );
   } catch (error) {
@@ -189,7 +184,11 @@ export const POST = handle(async (req) => {
       direction: 'OUT',
       message_type: isImage ? 'image' : 'text',
       content: isImage
-        ? { imageUrl: b.originalContentUrl, previewImageUrl: b.previewImageUrl }
+        ? {
+            imageUrl: resolvedImage!.originalUrl,
+            previewImageUrl: resolvedImage!.previewUrl,
+            storageRef: resolvedImage!.storageRef,
+          }
         : { text: b.text },
     })
     .select('*')

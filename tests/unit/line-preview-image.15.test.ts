@@ -1,11 +1,14 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import sharp from 'sharp';
 import {
+  CHAT_IMAGE_MAX_BYTES,
   LINE_PREVIEW_MAX_BYTES,
   chatImagePathFromUrl,
+  isChatImageStorageRefForTenant,
   isChatImagePathForTenant,
   makeLinePreview,
   previewPathFor,
+  resolveChatImageStorageRef,
 } from '@/server/image';
 
 const SUPABASE_URL = 'https://issue15.supabase.co';
@@ -38,6 +41,39 @@ describe('LINE chat image preview', () => {
     expect(chatImagePathFromUrl(
       'https://evil.example/storage/v1/object/public/chat-images/' + TENANT + '/' + IMAGE + '.jpg',
     )).toBeNull();
+  });
+
+  it('storage ref 必須固定 bucket、tenant path 與 server-derived preview path', () => {
+    const path = `${TENANT}/${IMAGE}.jpg`;
+    const ref = { bucket: 'chat-images' as const, path, previewPath: previewPathFor(path) };
+    expect(isChatImageStorageRefForTenant(ref, TENANT)).toBe(true);
+    expect(isChatImageStorageRefForTenant({ ...ref, bucket: 'product-images' as never }, TENANT)).toBe(false);
+    expect(isChatImageStorageRefForTenant({ ...ref, previewPath: path }, TENANT)).toBe(false);
+    expect(isChatImageStorageRefForTenant({ ...ref, path: `other/${IMAGE}.jpg` }, TENANT)).toBe(false);
+  });
+
+  it('送出前重新下載並驗證原圖與 preview，而不是信任 client URL', async () => {
+    const path = `${TENANT}/${IMAGE}.png`;
+    const ref = { bucket: 'chat-images' as const, path, previewPath: previewPathFor(path) };
+    const bytes = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: 'white' },
+    }).png().toBuffer();
+    const download = vi.fn(async () => ({ data: new Blob([bytes]), error: null }));
+    const getPublicUrl = vi.fn((value: string) => ({
+      data: { publicUrl: `https://issue15.supabase.co/storage/v1/object/public/chat-images/${value}` },
+    }));
+    const from = vi.fn(() => ({ download, getPublicUrl }));
+    const supabase = { storage: { from } } as never;
+
+    await expect(resolveChatImageStorageRef(supabase, TENANT, ref)).resolves.toMatchObject({
+      originalUrl: expect.stringContaining(ref.path),
+      previewUrl: expect.stringContaining(ref.previewPath),
+    });
+    expect(from).toHaveBeenCalledWith('chat-images');
+    expect(download).toHaveBeenCalledWith(ref.path);
+    expect(download).toHaveBeenCalledWith(ref.previewPath);
+    expect(CHAT_IMAGE_MAX_BYTES).toBe(5 * 1024 * 1024);
+    expect(LINE_PREVIEW_MAX_BYTES).toBeLessThan(CHAT_IMAGE_MAX_BYTES);
   });
 
   it('實際解碼 JPEG 後產出 <=1MB 的 JPEG preview', async () => {

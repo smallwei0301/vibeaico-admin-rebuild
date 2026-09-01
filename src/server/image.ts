@@ -5,6 +5,13 @@ import { ApiHttpError, ERR } from '@/server/http';
 /** LINE image message 的 preview 上限；採 10^6 bytes，涵蓋兩種 MB 解讀。 */
 export const LINE_PREVIEW_MAX_BYTES = 1_000_000;
 export const PREVIEW_BUCKET = 'chat-images';
+export const CHAT_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+export type ChatImageStorageRef = {
+  bucket: typeof PREVIEW_BUCKET;
+  path: string;
+  previewPath: string;
+};
 const PUBLIC_URL_MARKER = '/storage/v1/object/public/' + PREVIEW_BUCKET + '/';
 
 /** 原圖路徑固定是 tenantId/UUID.ext，preview 由此規則推導，不另存 URL。 */
@@ -21,6 +28,17 @@ export function isChatImagePathForTenant(path: string, tenantId: string): boolea
   const prefix = tenantId + '/';
   if (!path.startsWith(prefix) || path.slice(prefix.length).includes('/')) return false;
   return /^[0-9a-f-]{36}\.(?:jpg|png)$/i.test(path.slice(prefix.length));
+}
+
+export function isChatImageStorageRefForTenant(
+  ref: ChatImageStorageRef,
+  tenantId: string,
+): boolean {
+  if (ref.bucket !== PREVIEW_BUCKET || !isChatImagePathForTenant(ref.path, tenantId)) {
+    return false;
+  }
+
+  return ref.previewPath === previewPathFor(ref.path);
 }
 
 /** 從 Supabase public URL 反推出 bucket 內路徑；不同 host 或 bucket 一律不是本站物件。 */
@@ -105,54 +123,51 @@ export async function makeLinePreview(
   throw new ApiHttpError(400, '這張圖片無法壓到 LINE 預覽圖的 1 MB 上限，請換一張再試', ERR.VALIDATION);
 }
 
-type StoredObject = {
-  name: string;
-  metadata?: { size?: number | string } | null;
-};
+async function downloadAndVerifyChatImage(
+  supabase: SupabaseClient,
+  path: string,
+  maxBytes: number,
+  expectedFormat: 'jpeg' | 'png',
+): Promise<void> {
+  const { data, error } = await supabase.storage.from(PREVIEW_BUCKET).download(path);
+  if (error || !data) {
+    throw new ApiHttpError(409, '圖片儲存物件不存在或尚未準備完成', ERR.CONFLICT);
+  }
+
+  const bytes = Buffer.from(await data.arrayBuffer());
+  if (bytes.byteLength > maxBytes) {
+    throw new ApiHttpError(413, '圖片超過允許大小', ERR.VALIDATION);
+  }
+
+  try {
+    const metadata = await sharp(bytes).metadata();
+    if (metadata.format !== expectedFormat) throw new Error('unexpected image format');
+  } catch {
+    throw new ApiHttpError(400, '圖片必須是有效的 JPEG 或 PNG', ERR.VALIDATION);
+  }
+}
 
 /**
- * 驗證原圖與推導出的 preview 都存在，並以 Storage 實際大小決定可送的 preview。
- * 舊的 <=1 MB 原圖可暫時自用作 preview；新的 upload flow 一律會有獨立 preview。
+ * 只接受 upload route 回傳的 tenant-scoped storage ref，並在送 LINE 前重新驗證
+ * Storage 內的兩個物件。URL 永遠由 server 依 verified ref 產生，client 不能指定。
  */
-export async function resolveLinePreviewImageUrl(
+export async function resolveChatImageStorageRef(
   supabase: SupabaseClient,
-  imageUrl: string,
-): Promise<string> {
-  const path = chatImagePathFromUrl(imageUrl);
-  if (!path) return imageUrl;
+  tenantId: string,
+  ref: ChatImageStorageRef,
+): Promise<{ originalUrl: string; previewUrl: string; storageRef: ChatImageStorageRef }> {
+  if (!isChatImageStorageRefForTenant(ref, tenantId)) {
+    throw new ApiHttpError(400, '圖片 storage ref 無效', ERR.VALIDATION);
+  }
 
-  const slash = path.lastIndexOf('/');
-  const dir = slash > 0 ? path.slice(0, slash) : '';
-  const base = path.slice(slash + 1);
-  const stem = base.includes('.') ? base.slice(0, base.indexOf('.')) : base;
-  const previewPath = previewPathFor(path);
-  const previewBase = previewPath.slice(previewPath.lastIndexOf('/') + 1);
+  const expectedFormat = ref.path.endsWith('.png') ? 'png' : 'jpeg';
+  await downloadAndVerifyChatImage(supabase, ref.path, CHAT_IMAGE_MAX_BYTES, expectedFormat);
+  await downloadAndVerifyChatImage(supabase, ref.previewPath, LINE_PREVIEW_MAX_BYTES, expectedFormat);
 
-  const { data, error } = await supabase.storage
-    .from(PREVIEW_BUCKET)
-    .list(dir, { search: stem, limit: 100 });
-  if (error) throw error;
-
-  const objects = (data ?? []) as unknown as StoredObject[];
-  const sizeOf = (name: string) => {
-    const value = objects.find((object) => object.name === name)?.metadata?.size;
-    const size = typeof value === 'number' ? value : Number(value);
-    return Number.isFinite(size) ? size : undefined;
+  const storage = supabase.storage.from(PREVIEW_BUCKET);
+  return {
+    originalUrl: storage.getPublicUrl(ref.path).data.publicUrl,
+    previewUrl: storage.getPublicUrl(ref.previewPath).data.publicUrl,
+    storageRef: ref,
   };
-  const previewSize = sizeOf(previewBase);
-  if (previewSize !== undefined) {
-    if (previewSize <= LINE_PREVIEW_MAX_BYTES) return chatImagePublicUrl(previewPath);
-    throw new ApiHttpError(409, '這張圖片的預覽縮圖超過 LINE 的 1 MB 上限，請重新上傳', ERR.CONFLICT);
-  }
-
-  const originalSize = sizeOf(base);
-  if (originalSize === undefined) {
-    throw new ApiHttpError(409, '這張圖片已不存在，請重新上傳後再送出', ERR.CONFLICT);
-  }
-  if (originalSize <= LINE_PREVIEW_MAX_BYTES) return imageUrl;
-  throw new ApiHttpError(
-    409,
-    '這張圖片缺少符合 LINE 規格的預覽縮圖，請重新上傳後再送出',
-    ERR.CONFLICT,
-  );
 }

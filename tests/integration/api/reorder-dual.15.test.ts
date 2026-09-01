@@ -1,6 +1,6 @@
 /**
  * Issue #15：公開頁排序與 LINE 精選排序各自持久化。
- * 這支測試只使用自建 UUID，並在結束時刪除，避免改到 seed 排序。
+ * API 要求完整租戶集合；測試會先保存整個 tenant 的兩條排序，結束後完整還原。
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +15,7 @@ let ownerA: AuthedApi;
 const serviceIds = [randomUUID(), randomUUID()];
 const productIds = [randomUUID(), randomUUID()];
 const portfolioIds = [randomUUID(), randomUUID()];
+const baseline = new Map<string, Map<string, { sort_order: number; line_sort_order: number }>>();
 
 async function values(table: string, ids: string[]) {
   const { data, error } = await admin.from(table)
@@ -28,10 +29,19 @@ async function values(table: string, ids: string[]) {
   });
 }
 
+async function fullTenantIds(table: string, ownIds: string[]) {
+  const { data, error } = await admin.from(table).select('id').eq('tenant_id', SHOP_A.id);
+  expect(error).toBeNull();
+  const own = new Set(ownIds);
+  return [...ownIds, ...(data ?? []).map((row) => row.id).filter((id) => !own.has(id))];
+}
+
 async function assertIndependent(table: string, path: string, ids: string[]) {
-  const first = await ownerA.post(path, { ids: [ids[1], ids[0]] });
+  const first = await ownerA.post(path, { ids: [ids[1], ids[0], ...ids.slice(2)] });
   expect(first.status, JSON.stringify(await first.clone().json())).toBe(200);
-  const line = await ownerA.post(path.replace('/reorder', '/reorder-line'), { ids: [ids[0], ids[1]] });
+  const line = await ownerA.post(path.replace('/reorder', '/reorder-line'), {
+    ids: [ids[0], ids[1], ...ids.slice(2)],
+  });
   expect(line.status, JSON.stringify(await line.clone().json())).toBe(200);
   const [x, y] = await values(table, ids);
   expect(y.sortOrder).toBe(0);
@@ -60,9 +70,27 @@ beforeAll(async () => {
     id, tenant_id: SHOP_A.id, title: `#15 排序作品 ${suffix}-${i}`, image_url: 'https://example.test/image.png',
   })));
   expect(portfolioError).toBeNull();
+
+  for (const table of ['services', 'products', 'portfolios']) {
+    const { data, error } = await admin.from(table)
+      .select('id, sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+    expect(error).toBeNull();
+    baseline.set(table, new Map((data ?? []).map((row: any) => [row.id, {
+      sort_order: row.sort_order,
+      line_sort_order: row.line_sort_order,
+    }])));
+  }
 });
 
 afterAll(async () => {
+  for (const [table, rows] of baseline) {
+    for (const [id, row] of rows) {
+      await admin.from(table).update({
+        sort_order: row.sort_order,
+        line_sort_order: row.line_sort_order,
+      }).eq('id', id).eq('tenant_id', SHOP_A.id);
+    }
+  }
   await admin.from('services').delete().in('id', serviceIds);
   await admin.from('products').delete().in('id', productIds);
   await admin.from('portfolios').delete().in('id', portfolioIds);
@@ -70,7 +98,7 @@ afterAll(async () => {
 
 describe('Issue #15 dual reorder endpoints', () => {
   it('services：公開與 LINE 順序互不覆蓋', async () => {
-    await assertIndependent('services', '/api/services/reorder', serviceIds);
+    await assertIndependent('services', '/api/services/reorder', await fullTenantIds('services', serviceIds));
     const res = await ownerA.get('/api/services');
     const body = (await res.json()) as Envelope<any[]>;
     expect(res.status).toBe(200);
@@ -79,7 +107,7 @@ describe('Issue #15 dual reorder endpoints', () => {
   });
 
   it('products：公開與 LINE 順序互不覆蓋', async () => {
-    await assertIndependent('products', '/api/products/reorder', productIds);
+    await assertIndependent('products', '/api/products/reorder', await fullTenantIds('products', productIds));
     const res = await ownerA.get('/api/products');
     const body = (await res.json()) as Envelope<any[]>;
     expect(res.status).toBe(200);
@@ -88,7 +116,7 @@ describe('Issue #15 dual reorder endpoints', () => {
   });
 
   it('portfolios：公開與 LINE 順序互不覆蓋', async () => {
-    await assertIndependent('portfolios', '/api/portfolios/reorder', portfolioIds);
+    await assertIndependent('portfolios', '/api/portfolios/reorder', await fullTenantIds('portfolios', portfolioIds));
     const res = await ownerA.get('/api/portfolios');
     const body = (await res.json()) as Envelope<any[]>;
     expect(res.status).toBe(200);

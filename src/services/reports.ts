@@ -216,6 +216,18 @@ export const exportBookingsCsv = (q?: ReportQuery) =>
 
 export type ExportReportsResult = { downloaded: boolean; fileName: string };
 
+function safeDownloadFileName(disposition: string, fallback: string): string {
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const plain = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  let candidate = fallback;
+  if (encoded) {
+    try { candidate = decodeURIComponent(encoded); } catch { /* use fallback */ }
+  } else if (plain) {
+    candidate = plain;
+  }
+  return candidate.replace(/[\u0000-\u001f\u007f/\\]/g, '_').slice(0, 120) || fallback;
+}
+
 /** 下載目前報表頁的統計；mock 模式明確回報沒有產生檔案。 */
 export const exportReports = (format: 'csv' | 'excel', q?: ReportQuery) =>
   adapt<ExportReportsResult>(
@@ -226,11 +238,17 @@ export const exportReports = (format: 'csv' | 'excel', q?: ReportQuery) =>
         credentials: 'include',
       });
       if (!res.ok) throw new Error('匯出失敗');
+      if (!(res.headers.get('content-type') ?? '').toLowerCase().startsWith('text/csv')) {
+        throw new Error('匯出回應格式錯誤');
+      }
 
       const blob = await res.blob();
+      if (blob.size === 0) throw new Error('匯出檔案為空');
       const disposition = res.headers.get('content-disposition') ?? '';
-      const match = disposition.match(/filename="?([^";]+)"?/i);
-      const fileName = match?.[1] ?? `reports-${new Date().toISOString().slice(0, 10)}.csv`;
+      const fileName = safeDownloadFileName(
+        disposition,
+        `reports-${new Date().toISOString().slice(0, 10)}.csv`,
+      );
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;

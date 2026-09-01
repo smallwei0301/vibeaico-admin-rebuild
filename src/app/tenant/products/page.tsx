@@ -31,6 +31,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { productsPage as t } from '@/i18n/zh-TW/pages/products';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { nextOrderValue, type CatalogPosition } from '@/lib/catalog-order';
 import type { Product } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -531,14 +532,17 @@ export default function ProductsPage() {
         categories={categories}
         onOpenCategory={() => setCategoryOpen(true)}
         onClose={() => setFormTarget(undefined)}
-        onSaved={(draft, isEdit) => {
+        onSaved={(draft, isEdit, positions) => {
           const categoryName = categories.find((c) => c.id === draft.categoryId)?.name ?? null;
-          const newRank = rows.length + 1;
           upsert({
             ...draft,
             categoryName,
-            sortOrder: isEdit ? draft.sortOrder : newRank,
-            lineSortOrder: isEdit ? draft.lineSortOrder : newRank,
+            sortOrder: isEdit
+              ? draft.sortOrder
+              : positions?.sortOrder ?? nextOrderValue(rows.map((row) => row.sortOrder)),
+            lineSortOrder: isEdit
+              ? draft.lineSortOrder
+              : positions?.lineSortOrder ?? nextOrderValue(rows.map((row) => row.lineSortOrder)),
           });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
@@ -599,7 +603,7 @@ export default function ProductsPage() {
             ? a.lineSortOrder - b.lineSortOrder
             : a.sortOrder - b.sortOrder));
           const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
-          const rankById = new Map(source.map((p, i) => [p.id, i + 1]));
+          const rankById = new Map(source.map((p, i) => [p.id, i]));
           try {
             await (targetMode === 'line' ? reorderProductsLine : reorderProducts)(source.map((p) => p.id));
             setRows(rows.map((p) => {
@@ -674,7 +678,7 @@ function ProductFormModal({
   categories: ProductCategory[];
   onOpenCategory: () => void;
   onClose: () => void;
-  onSaved: (draft: ProductRow, isEdit: boolean) => void;
+  onSaved: (draft: ProductRow, isEdit: boolean, positions?: Partial<CatalogPosition>) => void;
 }) {
   const toast = useToast();
   const isEdit = !!product;
@@ -706,7 +710,7 @@ function ProductFormModal({
     setSaving(true);
     try {
       /* ProductExtras（trackInventory / maxPerOrder / draft…）後端未落地，不隨 payload 送出；
-         sortOrder（公開頁排序）0017 之後是真欄位，隨 payload 一起寫回 */
+         新增時兩套排序由 server 計算，編輯時才送既有的公開頁 sortOrder。 */
       const payload = {
         name: draft.name,
         categoryId: draft.categoryId ?? '',
@@ -717,14 +721,13 @@ function ProductFormModal({
         imageUrl: draft.imageUrl,
         active: draft.active,
         lineFeatured: draft.lineFeatured,
-        sortOrder: draft.sortOrder,
       };
       if (isEdit) {
-        await updateProduct(draft.id, payload);
+        await updateProduct(draft.id, { ...payload, sortOrder: draft.sortOrder });
         onSaved(draft, true);
       } else {
-        const { id } = await createProduct(payload);
-        onSaved({ ...draft, id }, false);
+        const result = await createProduct(payload);
+        onSaved({ ...draft, id: result.id }, false, result);
       }
     } catch (e) {
       toast.show(
@@ -848,10 +851,10 @@ function ProductFormModal({
         <FormGroup>
           <Label htmlFor="productSortOrder">{t.form.sortOrder}</Label>
           <Input
-            id="productSortOrder" type="number" value={draft.sortOrder}
+            id="productSortOrder" type="number" value={draft.sortOrder} disabled={!isEdit}
             onChange={(e) => patch({ sortOrder: Number(e.target.value) })}
           />
-          <FormText>{t.form.sortOrderHelp}</FormText>
+          <FormText>{isEdit ? t.form.sortOrderHelp : '新增時由伺服器自動排在排序尾端'}</FormText>
         </FormGroup>
       </div>
 

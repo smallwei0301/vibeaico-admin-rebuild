@@ -6,6 +6,7 @@ import {
   MOCK_COUPONS, MOCK_MEMBERSHIP_LEVELS, MOCK_PRODUCTS,
   MOCK_PRODUCT_ORDERS, MOCK_SERVICES, MOCK_STAFF,
 } from '@/mock';
+import type { CatalogPosition } from '@/lib/catalog-order';
 
 export const listServices = () =>
   adapt<Service[]>(() => MOCK_SERVICES, () => request<Service[]>('/api/services'));
@@ -97,13 +98,15 @@ export type ServicePayload = {
   /** 公開頁排序；LINE 精選排序另走 reorderProductsLine。 */
   sortOrder?: number;
 };
+export type ServiceCreatePayload = Omit<ServicePayload, 'sortOrder'>;
 
 let nextMockServiceId = 1;
+export type CatalogMutationResult = { id: string } & Partial<CatalogPosition>;
 
-export const createService = (payload: ServicePayload) =>
-  adapt<{ id: string }>(
+export const createService = (payload: ServiceCreatePayload) =>
+  adapt<CatalogMutationResult>(
     () => ({ id: `sv_new_${nextMockServiceId++}` }),
-    () => request<{ id: string }>('/api/services', {
+    () => request<CatalogMutationResult>('/api/services', {
       method: 'POST', body: JSON.stringify(payload),
     }),
   );
@@ -118,9 +121,9 @@ export const deleteService = (id: string) => deleteWithFallback(`/api/services/$
 
 /** POST /api/services/:id/duplicate — 後端複製一筆（name 加「（複本）」）回 {id}。 */
 export const duplicateService = (id: string) =>
-  adapt<{ id: string }>(
+  adapt<CatalogMutationResult>(
     () => ({ id: `sv_new_${nextMockServiceId++}` }),
-    () => request<{ id: string }>(`/api/services/${id}/duplicate`, { method: 'POST' }),
+    () => request<CatalogMutationResult>(`/api/services/${id}/duplicate`, { method: 'POST' }),
   );
 
 /** POST /api/services/reorder — 依 ids 順序寫公開頁 sort_order。 */

@@ -29,6 +29,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { servicesPage as t } from '@/i18n/zh-TW/pages/services';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { nextOrderValue, type CatalogPosition } from '@/lib/catalog-order';
 import type { Service, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
@@ -257,9 +258,14 @@ export default function ServicesPage() {
 
   const duplicate = async (s: ServiceRow) => {
     try {
-      const { id } = await duplicateService(s.id);
+      const result = await duplicateService(s.id);
       const copy: ServiceRow = {
-        ...s, id, sortOrder: rows.length + 1, lineSortOrder: rows.length + 1,
+        ...s,
+        id: result.id,
+        sortOrder: result.sortOrder
+          ?? nextOrderValue(rows.map((row) => row.sortOrder)),
+        lineSortOrder: result.lineSortOrder
+          ?? nextOrderValue(rows.map((row) => row.lineSortOrder)),
       };
       setRows((list) => [...list, copy]);
       toast.show(t.messages.duplicated);
@@ -549,14 +555,17 @@ export default function ServicesPage() {
         categories={categories}
         staff={staff}
         onClose={() => setFormTarget(undefined)}
-        onSaved={(draft, isEdit) => {
+        onSaved={(draft, isEdit, positions) => {
           const categoryName = categories.find((c) => c.id === draft.categoryId)?.name ?? null;
-          const newRank = rows.length + 1;
           upsert({
             ...draft,
             categoryName,
-            sortOrder: isEdit ? draft.sortOrder : newRank,
-            lineSortOrder: isEdit ? draft.lineSortOrder : newRank,
+            sortOrder: isEdit
+              ? draft.sortOrder
+              : positions?.sortOrder ?? nextOrderValue(rows.map((row) => row.sortOrder)),
+            lineSortOrder: isEdit
+              ? draft.lineSortOrder
+              : positions?.lineSortOrder ?? nextOrderValue(rows.map((row) => row.lineSortOrder)),
           });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
@@ -584,7 +593,7 @@ export default function ServicesPage() {
             ? a.lineSortOrder - b.lineSortOrder
             : a.sortOrder - b.sortOrder));
           const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
-          const rankById = new Map(source.map((s, i) => [s.id, i + 1]));
+          const rankById = new Map(source.map((s, i) => [s.id, i]));
           try {
             await persistOrder(source.map((s) => s.id), targetMode);
             setRows(rows.map((s) => {
@@ -656,7 +665,7 @@ function ServiceFormModal({
   categories: ServiceCategory[];
   staff: Staff[];
   onClose: () => void;
-  onSaved: (draft: ServiceRow, isEdit: boolean) => void;
+  onSaved: (draft: ServiceRow, isEdit: boolean, positions?: Partial<CatalogPosition>) => void;
 }) {
   const toast = useToast();
   const isEdit = !!service;
@@ -714,8 +723,8 @@ function ServiceFormModal({
         await updateService(draft.id, payload);
         onSaved(draft, true);
       } else {
-        const { id } = await createService(payload);
-        onSaved({ ...draft, id }, false);
+        const result = await createService(payload);
+        onSaved({ ...draft, id: result.id }, false, result);
       }
     } catch (e) {
       toast.show(

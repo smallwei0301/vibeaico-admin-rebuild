@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import { byMode } from '@/mock';
 import { uploadImage } from './upload';
+import type { CatalogPosition } from '@/lib/catalog-order';
 
 /** 作品集 service；頁面所有 real 寫入都走 /api/portfolios。 */
 export type PortfolioItem = {
@@ -74,10 +75,13 @@ export type PortfolioPayload = {
   sortOrder?: number;
 };
 
-export const createPortfolio = (payload: PortfolioPayload) =>
-  adapt<{ id: string }>(
+export type PortfolioCreatePayload = Omit<PortfolioPayload, 'sortOrder'>;
+export type PortfolioMutationResult = { id: string } & Partial<CatalogPosition>;
+
+export const createPortfolio = (payload: PortfolioCreatePayload) =>
+  adapt<PortfolioMutationResult>(
     () => ({ id: `pf_new_${mockSeq++}` }),
-    () => request<{ id: string }>('/api/portfolios', { method: 'POST', body: JSON.stringify(payload) }),
+    () => request<PortfolioMutationResult>('/api/portfolios', { method: 'POST', body: JSON.stringify(payload) }),
   );
 
 export const updatePortfolio = (id: string, payload: Partial<PortfolioPayload>) =>

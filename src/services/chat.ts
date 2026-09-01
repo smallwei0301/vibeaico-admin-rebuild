@@ -328,8 +328,7 @@ export function sendImage(p: { lineUserId: string; file: File }): Promise<ChatMe
         body: JSON.stringify({
           lineUserId: p.lineUserId,
           type: 'image',
-          originalContentUrl: uploaded.url,
-          previewImageUrl: uploaded.previewUrl,
+          storageRef: uploaded.storageRef,
         }),
       });
       return toMessage(row);

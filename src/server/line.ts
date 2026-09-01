@@ -18,6 +18,7 @@ import { createAdminSupabase } from './supabase';
 import { decryptSecret } from './crypto';
 import { ApiHttpError, ERR } from './http';
 import { taipeiCurrentMonthKey } from './tz';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 /** api.line.me 基底；測試以 LINE_API_BASE 指向本地 mock（12 分冊 Phase 6） */
 export const lineApiBase = () => process.env.LINE_API_BASE ?? 'https://api.line.me';
@@ -72,36 +73,57 @@ export const lineProfile = (token: string, userId: string) =>
  * push/multicast 前先過；**reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
  * 使用 TEST/Production 同形的資料庫 RPC，在資料庫內鎖住當月列，避免並發請求超賣。
  */
-export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
+export async function consumePushQuotaWith(
+  admin: Pick<SupabaseClient, 'from' | 'rpc'>,
+  tenantId: string,
+  count: number,
+  now = new Date(),
+): Promise<boolean> {
   if (!Number.isInteger(count) || count <= 0)
     throw new ApiHttpError(500, '推播額度參數錯誤', ERR.INTERNAL);
 
-  const admin = createAdminSupabase();
   const month = taipeiCurrentMonthKey();                       // 'YYYY-MM'（見檔頭差異 3）
-  const { data: subscription, error: featureError } = await admin.from('feature_subscriptions')
-    .select('active, expires_at')
-    .eq('tenant_id', tenantId)
-    .eq('code', 'EXTRA_PUSH')
-    .maybeSingle();
-  if (featureError) {
-    console.error('[line] push quota feature lookup failed', featureError);
+  let subscription: { active?: boolean | null; expires_at?: string | null } | null = null;
+  try {
+    const result = await admin.from('feature_subscriptions')
+      .select('active, expires_at')
+      .eq('tenant_id', tenantId)
+      .eq('code', 'EXTRA_PUSH')
+      .maybeSingle();
+    if (result.error) throw result.error;
+    subscription = result.data;
+  } catch (error) {
+    console.error('[line] push quota feature lookup failed', error);
     throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
   }
   const extraPushActive = !!subscription?.active
-    && (!subscription.expires_at || new Date(subscription.expires_at) > new Date());
+    && (!subscription.expires_at || new Date(subscription.expires_at) > now);
   const quota = extraPushActive ? 700 : 200;  // 09 分冊 §5
 
-  const { data: consumed, error } = await admin.rpc('consume_push_quota', {
-    p_tenant_id: tenantId,
-    p_month: month,
-    p_count: count,
-    p_quota: quota,
-  });
-  if (error) {
+  try {
+    const { data: consumed, error } = await admin.rpc('consume_push_quota', {
+      p_tenant_id: tenantId,
+      p_month: month,
+      p_count: count,
+      p_quota: quota,
+    });
+    if (error) throw error;
+    return consumed === true;
+  } catch (error) {
     console.error('[line] push quota RPC failed', error);
     throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
   }
-  return consumed === true;
+}
+
+export function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
+  try {
+    return consumePushQuotaWith(createAdminSupabase(), tenantId, count);
+  } catch (error) {
+    console.error('[line] push quota client initialization failed', error);
+    return Promise.reject(
+      new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL),
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ 附加匯出

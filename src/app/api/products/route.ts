@@ -3,6 +3,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapProduct } from '@/server/mappers';
+import { nextCatalogPositions } from '@/server/catalog-position';
 
 /**
  * GET /api/products — products join product_categories(name) → category_name。
@@ -40,21 +41,14 @@ const createSchema = z.object({
   imageUrl: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
-});
+}).strict();
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = createSchema.parse(await req.json());
 
-  const [{ data: lastPublic, error: publicError }, { data: lastLine, error: lineError }] = await Promise.all([
-    t.supabase.from('products').select('sort_order')
-      .eq('tenant_id', t.tenantId).order('sort_order', { ascending: false }).limit(1).maybeSingle(),
-    t.supabase.from('products').select('line_sort_order')
-      .eq('tenant_id', t.tenantId).order('line_sort_order', { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  if (publicError) throw publicError;
-  if (lineError) throw lineError;
+  const positions = await nextCatalogPositions(t.supabase, t.tenantId, 'products');
 
   const { data, error } = await t.supabase
     .from('products')
@@ -69,8 +63,8 @@ export const POST = handle(async (req) => {
       image_url: b.imageUrl ?? '',
       active: b.active ?? true,
       line_featured: b.lineFeatured ?? false,
-      sort_order: (lastPublic?.sort_order ?? 0) + 1,
-      line_sort_order: (lastLine?.line_sort_order ?? 0) + 1,
+      sort_order: positions.sortOrder,
+      line_sort_order: positions.lineSortOrder,
     })
     .select('id')
     .single();
@@ -84,5 +78,5 @@ export const POST = handle(async (req) => {
     if (lErr) console.error('[api] products POST: initial inventory log failed', data.id, lErr);
   }
 
-  return ok({ id: data.id });
+  return ok({ id: data.id, ...positions });
 });

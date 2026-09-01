@@ -27,6 +27,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { portfolioPage as t } from '@/i18n/zh-TW/pages/portfolio';
 import { formatNumber } from '@/lib/utils';
+import { nextOrderValue } from '@/lib/catalog-order';
 
 type SortMode = 'line' | 'public';
 
@@ -105,7 +106,10 @@ export default function PortfolioPage() {
   const openCreate = () => {
     setEditing(false);
     setTitleError('');
-    setDraft({ ...EMPTY_DRAFT, sortOrder: items.length + 1 });
+    setDraft({
+      ...EMPTY_DRAFT,
+      sortOrder: nextOrderValue(items.map((item) => item.sortOrder)),
+    });
   };
 
   const openEdit = (item: PortfolioItem) => {
@@ -147,7 +151,6 @@ export default function PortfolioPage() {
         await createPortfolio({
           title: draft.title.trim(),
           description: draft.description,
-          sortOrder: draft.sortOrder,
           active: draft.active,
           ...(imageUrl ? { imageUrl } : {}),
         });
@@ -218,7 +221,7 @@ export default function PortfolioPage() {
     if (target < 0 || target >= list.length) return;
     const reordered = [...list];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-    const rankById = new Map(reordered.map((i, rank) => [i.id, rank + 1]));
+    const rankById = new Map(reordered.map((i, rank) => [i.id, rank]));
     const isLine = sortMode === 'line';
     try {
       await (isLine ? reorderPortfoliosLine : reorderPortfolios)(reordered.map((i) => i.id));
@@ -241,7 +244,7 @@ export default function PortfolioPage() {
       ? a.lineSortOrder - b.lineSortOrder
       : a.sortOrder - b.sortOrder));
     const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
-    const rankById = new Map(source.map((i, rank) => [i.id, rank + 1]));
+    const rankById = new Map(source.map((i, rank) => [i.id, rank]));
     try {
       await (targetMode === 'line' ? reorderPortfoliosLine : reorderPortfolios)(source.map((i) => i.id));
       setItems((all) => all.map((i) => {
@@ -534,9 +537,10 @@ export default function PortfolioPage() {
                 id="sortOrderInput"
                 type="number"
                 value={draft.sortOrder}
+                disabled={!editing}
                 onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) })}
               />
-              <FormText>{t.form.sortOrderHelp}</FormText>
+              <FormText>{editing ? t.form.sortOrderHelp : '新增時由伺服器自動排在排序尾端'}</FormText>
             </FormGroup>
 
             <SwitchField

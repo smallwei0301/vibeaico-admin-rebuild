@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { nextCatalogPositions } from '@/server/catalog-position';
 
 /**
  * /api/portfolios — 作品集 CRUD，同 services 模式（04 分冊 §B-5）。
@@ -44,22 +45,14 @@ const createSchema = z.object({
   description: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
-  sortOrder: z.coerce.number().int().optional(),
-});
+}).strict();
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE');
   const b = createSchema.parse(await req.json());
 
-  const [{ data: lastPublic, error: publicError }, { data: lastLine, error: lineError }] = await Promise.all([
-    t.supabase.from('portfolios').select('sort_order')
-      .eq('tenant_id', t.tenantId).order('sort_order', { ascending: false }).limit(1).maybeSingle(),
-    t.supabase.from('portfolios').select('line_sort_order')
-      .eq('tenant_id', t.tenantId).order('line_sort_order', { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  if (publicError) throw publicError;
-  if (lineError) throw lineError;
+  const positions = await nextCatalogPositions(t.supabase, t.tenantId, 'portfolios');
 
   const { data, error } = await t.supabase
     .from('portfolios')
@@ -70,12 +63,12 @@ export const POST = handle(async (req) => {
       description: b.description ?? '',
       active: b.active ?? true,
       line_featured: b.lineFeatured ?? false,
-      sort_order: b.sortOrder ?? (lastPublic?.sort_order ?? -1) + 1,
-      line_sort_order: (lastLine?.line_sort_order ?? -1) + 1,
+      sort_order: positions.sortOrder,
+      line_sort_order: positions.lineSortOrder,
     })
     .select('id')
     .single();
   if (error) throw error;
 
-  return ok({ id: data.id });
+  return ok({ id: data.id, ...positions });
 });

@@ -14,8 +14,10 @@ type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; cod
 type UploadedChatImage = {
   url: string;
   path: string;
+  bucket: 'chat-images';
   previewPath: string;
   previewUrl: string;
+  storageRef: { bucket: 'chat-images'; path: string; previewPath: string };
 };
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const USER_ID = 'Uissue15chatimage00000000000000001';
@@ -115,6 +117,9 @@ beforeAll(async () => {
   expect(uploadBody.data?.previewUrl).toMatch(/^https:\/\/.*\/chat-images\//);
   expect(uploadBody.data?.url).not.toBe(uploadBody.data?.previewUrl);
   expect(uploadBody.data?.previewPath).toContain('.preview.');
+  expect(uploadBody.data?.storageRef).toEqual({
+    bucket: 'chat-images', path: uploadBody.data?.path, previewPath: uploadBody.data?.previewPath,
+  });
   uploadedImage = uploadBody.data!;
   uploadedPaths.push(uploadedImage.path, uploadedImage.previewPath);
 
@@ -151,8 +156,7 @@ describe('Issue #15 chat image chain', () => {
     const sent = await ownerA.post('/api/chat/messages', {
       lineUserId: USER_ID,
       type: 'image',
-      originalContentUrl: uploadedImage.url,
-      previewImageUrl: uploadedImage.previewUrl,
+      storageRef: uploadedImage.storageRef,
     });
     const body = await sent.json() as Envelope<{ id: string; messageType: string; imageUrl: string }>;
     expect(sent.status, JSON.stringify(body)).toBe(200);
@@ -193,6 +197,30 @@ describe('Issue #15 chat image chain', () => {
     expect(external.status).toBe(400);
     expect(lineMock.requests).toHaveLength(0);
 
+    const sameObject = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID,
+      type: 'image',
+      storageRef: {
+        bucket: 'chat-images',
+        path: uploadedImage.path,
+        previewPath: uploadedImage.path,
+      },
+    });
+    expect(sameObject.status).toBe(400);
+    expect(lineMock.requests).toHaveLength(0);
+
+    const wrongTenant = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID,
+      type: 'image',
+      storageRef: {
+        bucket: 'chat-images',
+        path: `22222222-3333-4444-5555-666666666666/${uploadedImage.path.split('/').pop()}`,
+        previewPath: uploadedImage.previewPath,
+      },
+    });
+    expect(wrongTenant.status).toBe(400);
+    expect(lineMock.requests).toHaveLength(0);
+
     const mixed = await ownerA.post('/api/chat/messages', {
       lineUserId: USER_ID,
       text: '兩種一起送',
@@ -209,8 +237,7 @@ describe('Issue #15 chat image chain', () => {
       const blocked = await ownerA.post('/api/chat/messages', {
         lineUserId: USER_ID,
         type: 'image',
-        originalContentUrl: uploadedImage.url,
-        previewImageUrl: uploadedImage.previewUrl,
+        storageRef: uploadedImage.storageRef,
       });
       expect(blocked.status).toBe(409);
       expect(lineMock.requests).toHaveLength(0);

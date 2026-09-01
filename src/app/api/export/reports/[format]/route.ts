@@ -1,55 +1,18 @@
 // GET /api/export/reports/:format?from&to — 營運報表匯出（04 分冊 §B-6）。
 // csv / excel 兩個 UI 選項都產生 UTF-8 CSV；不把 CSV 假命名成 .xlsx。
-import { z } from 'zod';
 import { ApiHttpError, ERR, handle } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { taipeiMonthRange, taipeiTodayDateString } from '@/server/tz';
-
-const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-function isCalendarDate(value: string): boolean {
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day;
-}
-
-const dateSchema = z.string()
-  .regex(DATE_RE, '日期需為 YYYY-MM-DD')
-  .refine(isCalendarDate, '日期不是有效的日曆日期');
-
-const querySchema = z.object({
-  from: dateSchema.optional(),
-  to: dateSchema.optional(),
-});
-
-function taipeiDayMs(ymd: string, offsetDays = 0): number {
-  const [y, m, d] = ymd.split('-').map(Number);
-  return Date.UTC(y, m - 1, d + offsetDays) - TAIPEI_OFFSET_MS;
-}
-
-function taipeiLabel(ms: number): string {
-  const d = new Date(ms + TAIPEI_OFFSET_MS);
-  return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}`;
-}
-
-function taipeiDate(ms: number): string {
-  const d = new Date(ms + TAIPEI_OFFSET_MS);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
-}
-
-function csvCell(v: string | number | null | undefined): string {
-  const s = v == null ? '' : String(v);
-  const safe = /^[=+\-@]/.test(s) ? `'${s}` : s;
-  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
-}
-
-const row = (...cells: (string | number | null | undefined)[]) => cells.map(csvCell).join(',');
+import {
+  csvRow as row,
+  REPORT_DAY_MS as DAY_MS,
+  reportExportQuerySchema as querySchema,
+  TAIPEI_OFFSET_MS,
+  taipeiDate,
+  taipeiDayMs,
+  taipeiLabel,
+} from '@/server/report-export';
 
 export const GET = handle(async (req, { params }) => {
   const t = await requireTenant();

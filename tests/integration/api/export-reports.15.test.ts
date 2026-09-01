@@ -105,6 +105,10 @@ describe('GET /api/export/reports/:format', () => {
     expect(invalid.status).toBe(400);
     expect((await invalid.json() as Envelope).success).toBe(false);
 
+    const incompleteRange = await ownerA.get('/api/export/reports/csv?from=2026-08-01');
+    expect(incompleteRange.status).toBe(400);
+    expect((await incompleteRange.json() as Envelope).success).toBe(false);
+
     const unauthenticated = await fetch(`${BASE_URL}/api/export/reports/csv`);
     expect(unauthenticated.status).toBe(401);
   });

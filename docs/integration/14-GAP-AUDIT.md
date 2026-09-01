@@ -258,6 +258,8 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 
 > 2026-09-01 current-main revalidation：以上四項的 source slice、local unit、typecheck/build 已在 #15 的現行候選完成；exact-head integration/E2E CI 與 authenticated Preview 仍待候選提交後驗證，不能把本地或舊 SHA 證據冒充完成。
 
+> 2026-09-01 PR #92 current-head source repair：Sol 重新指出上述 slice 尚有 P1 seam，故前述勾選不代表 current head 已可 close。修復範圍包含 chat storage-ref + server-side bytes 驗證、quota atomic/fail-closed seam、三組 catalog 的完整集合 atomic reorder、create/duplicate 雙 lane server tail、report export contract/CSV safety，以及對應 security/failure tests。TEST migration、exact-head CI、authenticated Preview 仍是獨立後續證據，不得在本地修復後代填。
+
 ### 5.4 19 項未排期缺口與歸屬
 
 | # | 缺口 | 原站端點數 | 分冊狀態 | Issue |

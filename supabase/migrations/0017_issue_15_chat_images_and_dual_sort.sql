@@ -21,18 +21,30 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  accepted boolean := false;
 begin
-  if p_count <= 0 or p_quota < 0 then
+  if p_tenant_id is null
+    or p_month is null
+    or p_month !~ '^[0-9]{4}-[0-9]{2}$'
+    or p_count <= 0
+    or p_quota < 0 then
     raise exception 'invalid push quota arguments';
+  end if;
+
+  -- Do not create an over-quota row when a caller supplies a smaller quota.
+  if p_count > p_quota then
+    return false;
   end if;
 
   insert into public.push_quota_usage (tenant_id, month, used)
   values (p_tenant_id, p_month, p_count)
   on conflict (tenant_id, month) do update
     set used = public.push_quota_usage.used + excluded.used
-    where public.push_quota_usage.used + excluded.used <= p_quota;
+    where public.push_quota_usage.used + excluded.used <= p_quota
+  returning true into accepted;
 
-  return found;
+  return accepted;
 end;
 $$;
 

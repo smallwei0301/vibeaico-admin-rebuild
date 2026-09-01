@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
-import { makeLinePreview, previewPathFor } from '@/server/image';
+import { CHAT_IMAGE_MAX_BYTES, makeLinePreview, previewPathFor } from '@/server/image';
 
 /**
  * POST /api/upload —— 頁面用圖片統一上傳端點（07 分冊 §3）。
@@ -16,7 +16,8 @@ import { makeLinePreview, previewPathFor } from '@/server/image';
  *   與 0008 的 RLS 檢查規則一致。
  * - 以 service role 上傳（requireTenant() 已先驗明成員身分與租戶歸屬，
  *   路徑又由伺服器端組出，不受用戶端左右）；bucket 皆 public → 回 getPublicUrl。
- * - 一般 bucket 回 { url }；chat-images 另回 { path, previewPath, previewUrl }。
+ * - 一般 bucket 回 { url }；chat-images 另回完整 { storageRef:{bucket,path,previewPath},
+ *   previewUrl }。chat POST 只接受這個 ref，不接受 client 指定 URL。
  *   preview 是真正產出的 ≤1MB 縮圖，不把原圖網址假裝成 preview。
  */
 const ALLOWED_BUCKETS = new Set([
@@ -27,7 +28,7 @@ const ALLOWED_BUCKETS = new Set([
   'richmenu-assets',
   'chat-images',
 ]);
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_BYTES = CHAT_IMAGE_MAX_BYTES; // 5MB；chat ref 驗證與 upload 共用同一上限
 const ALLOWED_TYPES: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -89,12 +90,16 @@ export const POST = handle(async (req) => {
   }
 
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
+  const storageRef = previewPath
+    ? { bucket: 'chat-images' as const, path, previewPath }
+    : undefined;
   return ok({
     url: data.publicUrl,
     path,
     bucket,
     ...(previewPath
       ? {
+          storageRef,
           previewPath,
           previewUrl: admin.storage.from(bucket).getPublicUrl(previewPath).data.publicUrl,
         }

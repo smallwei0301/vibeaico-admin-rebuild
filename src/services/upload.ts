@@ -15,6 +15,11 @@ export type UploadedImage = {
   bucket: UploadBucket;
   previewPath?: string;
   previewUrl?: string;
+  storageRef?: {
+    bucket: 'chat-images';
+    path: string;
+    previewPath: string;
+  };
 };
 
 /** multipart 上傳；不能使用固定送 JSON 的 request()。 */
@@ -49,10 +54,18 @@ export async function uploadImage(file: File, bucket: UploadBucket): Promise<str
 /** chat-images 必須有 server 產出的獨立 preview，缺少時視為錯誤而不送出。 */
 export async function uploadChatImage(
   file: File,
-): Promise<UploadedImage & { previewUrl: string; previewPath: string }> {
+): Promise<UploadedImage & {
+  previewUrl: string;
+  previewPath: string;
+  storageRef: { bucket: 'chat-images'; path: string; previewPath: string };
+}> {
   const result = await postImage(file, 'chat-images');
-  if (!result.previewUrl || !result.previewPath) {
+  if (!result.previewUrl || !result.previewPath || !result.storageRef) {
     throw new ApiError('圖片預覽產生失敗，請換一張再試', 'REQ_001', 400);
   }
-  return result as UploadedImage & { previewUrl: string; previewPath: string };
+  return result as UploadedImage & {
+    previewUrl: string;
+    previewPath: string;
+    storageRef: { bucket: 'chat-images'; path: string; previewPath: string };
+  };
 }
