@@ -38,12 +38,13 @@ export function GuideBottomNav({ items, className, ...props }: GuideBottomNavPro
             aria-current={item.active ? 'page' : undefined}
             className={cn(
               GUIDE_UI_CLASSES.touchTarget,
-              'flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-[14px] font-semibold',
+              GUIDE_UI_CLASSES.focusRing,
+              'flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center text-[14px] font-semibold leading-tight',
               item.active ? GUIDE_UI_CLASSES.navActive : GUIDE_UI_CLASSES.navInactive,
             )}
           >
             {item.icon ? <span aria-hidden>{item.icon}</span> : null}
-            <span className="max-w-full truncate">{item.label}</span>
+            <span className="max-w-full break-words whitespace-normal">{item.label}</span>
           </a>
         ))}
       </div>
