@@ -100,17 +100,19 @@ export const POST = handle(async (_req, { params }) => {
   if (sub.expires_at !== null && new Date(sub.expires_at).getTime() <= Date.now())
     throw new ApiHttpError(409, '已過期，請重新訂閱', ERR.CONFLICT);
 
-  const { data: restored, error: e1 } = await admin
-    .from('feature_subscriptions')
-    .update({ cancelled_at: null })
-    .eq('tenant_id', t.tenantId)
-    .eq('code', code)
-    // 避免讀取 cancelled 後被其他請求先恢復時，仍回報本次 restore 成功。
-    .not('cancelled_at', 'is', null)
-    .select('code');
-  if (e1) throw e1;
-  if (!restored?.length) {
-    throw new ApiHttpError(409, '此訂閱尚未取消，無需恢復', ERR.CONFLICT);
+  if (sub.cancelled_at !== null) {
+    const { data: restored, error: e1 } = await admin
+      .from('feature_subscriptions')
+      .update({ cancelled_at: null })
+      .eq('tenant_id', t.tenantId)
+      .eq('code', code)
+      // 避免讀取 cancelled 後被其他請求先恢復時，仍回報本次 restore 成功。
+      .not('cancelled_at', 'is', null)
+      .select('code');
+    if (e1) throw e1;
+    if (!restored?.length) {
+      throw new ApiHttpError(409, '此訂閱尚未取消，無需恢復', ERR.CONFLICT);
+    }
   }
 
   if (code === 'COUPON_SYSTEM' || code === 'PRODUCT_SALES') {
@@ -125,4 +127,4 @@ export const POST = handle(async (_req, { params }) => {
 
   return ok();
 });
-5970ca10bb471066c7bac9e3b7cb4e1bf61e82be
+b85330281b2df6439979d0c289b3e8accbc83f71
