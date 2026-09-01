@@ -90,33 +90,6 @@ export function isMissingSchemaError(error) {
 }
 
 /**
- * A historical TEST schema can predate a forward migration's canonical column.
- * This classification is intentionally narrower than isMissingSchemaError so
- * real constraint/function failures still fail closed.
- */
-export function isMissingColumnError(error) {
-  const code = error?.code ?? '';
-  const message = (error?.message ?? '').toLowerCase();
-  const mentionsColumn =
-    /could not find the ['\"]?[^'\"]+['\"]? column/.test(message) ||
-    /column ['\"]?[^'\"]+['\"]? does not exist/.test(message);
-  return code === '42703' || ((code === 'PGRST202' || code === 'PGRST204') && mentionsColumn);
-}
-
-/**
- * Detect an optional compatibility column without weakening write errors.
- * Fresh 0015 schemas do not have the historical plan slug; reconciled TEST
- * schemas may still require it through a legacy unique constraint.
- */
-async function hasColumn(admin, table, column) {
-  const { error } = await admin.from(table).select(column).limit(0);
-  if (!error) return true;
-  if (isMissingSchemaError(error) || isMissingColumnError(error)) return false;
-  console.error(`[seed] 檢查 ${table}.${column} 失敗：`, error);
-  throw error;
-}
-
-/**
  * upsert 一批 row 進某張表，容忍「表還沒建立」；其他錯誤原樣往外丟。
  * conflictKey：該表的主鍵欄位（預設 'id'；tenant_settings 等以 tenant_id 為
  * 主鍵的表要指定，否則 Postgres 會報 column "id" does not exist）。
@@ -133,59 +106,6 @@ async function safeUpsert(admin, table, rows, label, conflictKey = 'id') {
   }
   console.error(`[seed] 寫入 ${label ?? table} 失敗（非「表尚未建立」原因）：`, error);
   throw error;
-}
-
-/**
- * Keep the standard seed runnable against both sides of migration 0015:
- * canonical rows are authoritative after reconciliation; an un-migrated
- * historical TEST schema receives its legacy aliases until the owner applies
- * 0015. No schema error other than a known missing-column response is hidden.
- */
-async function safeUpsertTripPlans(admin, canonicalRows) {
-  const hasLegacySlug = await hasColumn(admin, 'trip_plans', 'slug');
-  const rows = hasLegacySlug
-    ? canonicalRows.map((row, index) => ({
-        ...row,
-        // Historical TEST keeps slug NOT NULL + unique per trip. Do not add
-        // this field to clean canonical installs where it does not exist.
-        slug: index === 0 ? 'standard-test-plan' : 'private-test-plan',
-      }))
-    : canonicalRows;
-  const { error } = await admin.from('trip_plans').upsert(rows, { onConflict: 'id' });
-  if (!error) {
-    console.log(`[seed] trip_plans：已寫入 ${rows.length} 筆 canonical rows。`);
-    return true;
-  }
-  if (!isMissingColumnError(error)) {
-    if (isMissingSchemaError(error)) {
-      console.warn(`[seed] 跳過 trip_plans：資料表尚未建立（Phase 1 尚未執行）。原始錯誤：${error.message}`);
-      return false;
-    }
-    console.error('[seed] 寫入 trip_plans 失敗（非 canonical missing-column drift）：', error);
-    throw error;
-  }
-
-  const legacyRows = canonicalRows.map((row, index) => ({
-    id: row.id,
-    tenant_id: row.tenant_id,
-    trip_id: row.trip_id,
-    slug: index === 0 ? 'standard-test-plan' : 'private-test-plan',
-    name: row.name,
-    description: row.description ?? '',
-    duration_minutes: 60,
-    price_type: 'PER_PERSON',
-    base_price: row.price_per_person,
-    child_price: row.child_price ?? null,
-    min_participants: row.min_party ?? 1,
-    max_participants: row.max_party ?? 10,
-    booking_type: 'SCHEDULED',
-    deposit_mode: row.deposit_mode ?? 'FULL',
-    deposit_value: row.deposit_value ?? 0,
-    active: row.active ?? true,
-    sort_order: row.sort_order ?? index,
-  }));
-  console.warn('[seed] trip_plans canonical columns尚未進入 TEST；以 legacy aliases 寫入，待 0015 reconciliation backfill。');
-  return safeUpsert(admin, 'trip_plans', legacyRows, 'trip_plans (legacy compatibility)');
 }
 
 /**
@@ -230,7 +150,8 @@ async function ensureAuthUser(admin, email, password) {
 export async function runSeed(admin) {
   console.log('[seed] 開始建立標準測試種子（12 分冊 §1.3）…');
 
-  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次日期漂移。
+  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次與成團期限
+  // 落在互相矛盾的日期。formation_deadline_at 也必須在觸發器計算的期限內。
   const seedNow = new Date();
   const seedNowMs = seedNow.getTime();
   const hourMs = 60 * 60 * 1000;
@@ -317,6 +238,8 @@ export async function runSeed(admin) {
         name: '基礎剪髮（測試）',
         duration_minutes: 60,
         price: 800,
+        sort_order: 0,
+        line_sort_order: 0,
       },
       {
         id: SHOP_A.serviceA2,
@@ -324,6 +247,8 @@ export async function runSeed(admin) {
         name: '燙染組合（測試）',
         duration_minutes: 120,
         price: 2500,
+        sort_order: 1,
+        line_sort_order: 1,
       },
     ],
     'services',
@@ -444,30 +369,39 @@ export async function runSeed(admin) {
     'trips',
   );
 
-  const tripPlansSeeded = await safeUpsertTripPlans(
+  const tripPlansSeeded = await safeUpsert(
     admin,
+    'trip_plans',
     [
       {
         id: TRIP_A.planA1,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        slug: 'standard-test-plan',
         name: '標準團（測試）',
-        // #8-A canonical 10 §1.1 fields; legacy aliases are supplied only by
-        // safeUpsertTripPlans when TEST has not received 0015 yet.
-        price_per_person: 3000,
-        max_party: 10,
+        // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
+        // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
+        base_price: 3000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
+        min_to_depart: 1,
       },
       {
         id: TRIP_A.planA2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
+        slug: 'private-test-plan',
         name: '包團（測試）',
-        price_per_person: 5000,
-        max_party: 10,
+        base_price: 5000,
+        price_type: 'PER_PERSON',
+        max_participants: 10,
+        min_to_depart: 1,
       },
     ],
+    'trip_plans',
   );
 
+  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
   if (!tripPlansSeeded) {
     throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   }
@@ -481,18 +415,22 @@ export async function runSeed(admin) {
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         plan_id: TRIP_A.planA1,
-        departs_on: new Date(seedNowMs + 8 * oneDayMs).toISOString().slice(0, 10),
+        departs_on: new Date(seedNowMs + 7 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
       {
         id: TRIP_A.departure2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         plan_id: TRIP_A.planA1,
-        departs_on: new Date(seedNowMs + 15 * oneDayMs).toISOString().slice(0, 10),
+        departs_on: new Date(seedNowMs + 14 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
       {
         // capacity=2：專供 12 分冊 §5 並發不超賣測試
@@ -500,9 +438,11 @@ export async function runSeed(admin) {
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
         plan_id: TRIP_A.planA2,
-        departs_on: new Date(seedNowMs + 22 * oneDayMs).toISOString().slice(0, 10),
+        departs_on: new Date(seedNowMs + 21 * oneDayMs).toISOString().slice(0, 10),
         capacity: 2,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
     ],
     'trip_departures',
