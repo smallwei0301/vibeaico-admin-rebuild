@@ -62,9 +62,9 @@ function orderStatus(
 
 function Metric({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
-    <div className="rounded-2xl border border-[#DCE5E0] bg-[#FAF8F3] p-4">
+    <div className={GUIDE_UI_CLASSES.metricCard}>
       <p className={GUIDE_UI_CLASSES.secondary}>{label}</p>
-      <p className="mt-1 text-[28px] font-bold leading-none text-[#173F35] tabular-nums">{value}</p>
+      <p className={GUIDE_UI_CLASSES.metricValue}>{value}</p>
       {hint ? <p className={cn(GUIDE_UI_CLASSES.secondary, 'mt-2')}>{hint}</p> : null}
     </div>
   );
@@ -87,7 +87,7 @@ function TravelerDetail({
         <button
           type="button"
           onClick={onClose}
-          className={cn(GUIDE_UI_CLASSES.touchTarget, 'inline-flex items-center justify-center rounded-xl text-[#63726C] hover:bg-[#FAF8F3]')}
+          className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.iconButton)}
           aria-label={navigation.travelers.detail.close}
         >
           <X size={20} aria-hidden />
@@ -100,13 +100,13 @@ function TravelerDetail({
         trailing={<GuideStatusPill tone={status.tone}>{status.label}</GuideStatusPill>}
       />
 
-      <div className="mt-3 grid gap-2 rounded-2xl bg-[#FAF8F3] p-4 sm:grid-cols-2">
+      <div className={cn(GUIDE_UI_CLASSES.insetSurface, 'mt-3 grid gap-2 sm:grid-cols-2')}>
         <p className={cn(GUIDE_UI_CLASSES.body, 'flex min-w-0 items-center gap-2')}>
-          <Phone size={18} className="shrink-0 text-[#63726C]" aria-hidden />
+          <Phone size={18} className={cn('shrink-0', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />
           <span className="truncate">{row.customer.phone || navigation.travelers.detail.notProvided}</span>
         </p>
         <p className={cn(GUIDE_UI_CLASSES.body, 'flex min-w-0 items-center gap-2')}>
-          <Mail size={18} className="shrink-0 text-[#63726C]" aria-hidden />
+          <Mail size={18} className={cn('shrink-0', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />
           <span className="truncate">{row.customer.email || navigation.travelers.detail.notProvided}</span>
         </p>
       </div>
@@ -116,12 +116,12 @@ function TravelerDetail({
         {row.orders.length === 0 ? (
           <p className={cn(GUIDE_UI_CLASSES.secondary, 'mt-2')}>{navigation.travelers.detail.noOrders}</p>
         ) : (
-          <div className="mt-2 divide-y divide-[#DCE5E0]">
+          <div className={cn(GUIDE_UI_CLASSES.listDivider, 'mt-2 divide-y')}>
             {row.orders.map((order) => {
               const state = orderStatus(order, todayIso);
               return (
                 <div key={order.id} className="flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0">
-                  <CalendarDays size={18} className="mt-1 shrink-0 text-[#63726C]" aria-hidden />
+                  <CalendarDays size={18} className={cn('mt-1 shrink-0', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className={cn(GUIDE_UI_CLASSES.body, 'truncate font-semibold')}>{order.tripTitle}</p>
                     <p className={cn(GUIDE_UI_CLASSES.secondary, 'mt-1 truncate')}>
@@ -147,7 +147,7 @@ function TravelerDetail({
         {row.waitingReply ? (
           <Link
             href="/tenant/chat"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, 'inline-flex items-center gap-2 rounded-xl bg-[#173F35] px-4 text-[16px] font-semibold text-white')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton)}
           >
             <MessageCircle size={18} aria-hidden />
             {navigation.travelers.detail.viewChat}
@@ -156,7 +156,7 @@ function TravelerDetail({
         {row.orders.length > 0 ? (
           <Link
             href="/tenant/tour-orders"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, 'inline-flex items-center gap-2 rounded-xl border border-[#DCE5E0] px-4 text-[16px] font-semibold text-[#173F35]')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondaryButton)}
           >
             {navigation.travelers.detail.viewOrders}
           </Link>
@@ -205,7 +205,7 @@ export function GuideTravelersView({
               <button
                 type="button"
                 onClick={onRetry}
-                className={cn(GUIDE_UI_CLASSES.touchTarget, 'rounded-xl bg-[#173F35] px-4 text-[16px] font-semibold text-white')}
+                className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton)}
               >
                 {navigation.travelers.retry}
               </button>
@@ -225,19 +225,19 @@ export function GuideTravelersView({
             <div role="search">
               <label htmlFor="guideTravelerSearch" className="sr-only">{navigation.travelers.search.label}</label>
               <div className="relative">
-                <Search size={20} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#63726C]" aria-hidden />
+                <Search size={20} className={cn('pointer-events-none absolute left-3 top-1/2 -translate-y-1/2', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />
                 <Input
                   id="guideTravelerSearch"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={navigation.travelers.search.placeholder}
-                  className="min-h-[48px] w-full rounded-xl pl-11 pr-11 text-[16px]"
+                  className={GUIDE_UI_CLASSES.searchInput}
                 />
                 {query ? (
                   <button
                     type="button"
                     onClick={() => setQuery('')}
-                    className={cn(GUIDE_UI_CLASSES.touchTarget, 'absolute right-1 top-1/2 inline-flex -translate-y-1/2 items-center justify-center rounded-xl text-[#63726C] hover:bg-[#FAF8F3]')}
+                    className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.iconButton, 'absolute right-1 top-1/2 -translate-y-1/2')}
                     aria-label={navigation.travelers.search.clear}
                   >
                     <X size={18} aria-hidden />
@@ -257,12 +257,15 @@ export function GuideTravelersView({
                     onClick={() => setFilter(option)}
                     className={cn(
                       GUIDE_UI_CLASSES.touchTarget,
-                      'inline-flex flex-1 items-center justify-center gap-1.5 rounded-full border px-3 text-[16px] font-semibold sm:flex-none',
-                      active ? 'border-[#173F35] bg-[#173F35] text-white' : 'border-[#DCE5E0] bg-white text-[#1D2A26] hover:bg-[#FAF8F3]',
+                      GUIDE_UI_CLASSES.filterButton,
+                      active ? GUIDE_UI_CLASSES.filterActive : GUIDE_UI_CLASSES.filterInactive,
                     )}
                   >
                     {navigation.travelers.filters[option]}
-                    <span className={cn('tabular-nums', active ? 'text-white/80' : 'text-[#63726C]')}>{count}</span>
+                    <span className={cn(
+                      'tabular-nums',
+                      active ? GUIDE_UI_CLASSES.filterCountActive : GUIDE_UI_CLASSES.filterCountInactive,
+                    )}>{count}</span>
                   </button>
                 );
               })}
@@ -276,7 +279,7 @@ export function GuideTravelersView({
                 description={navigation.travelers.empty.description}
               />
             ) : (
-              <div className="divide-y divide-[#DCE5E0]">
+              <div className={cn(GUIDE_UI_CLASSES.listDivider, 'divide-y')}>
                 {filtered.map((row) => {
                   const status = travelerStatus(row, todayIso);
                   const itinerary = row.primaryOrder
@@ -288,7 +291,7 @@ export function GuideTravelersView({
                       type="button"
                       aria-expanded={selectedId === row.customer.id}
                       onClick={() => setSelectedId(row.customer.id)}
-                      className="flex min-h-[68px] w-full items-center rounded-xl text-left outline-none transition-colors hover:bg-[#FAF8F3] focus-visible:ring-2 focus-visible:ring-[#173F35] focus-visible:ring-offset-2"
+                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.travelerRow)}
                     >
                       <GuidePersonRow
                         className="min-w-0 flex-1 px-1"
@@ -302,7 +305,7 @@ export function GuideTravelersView({
                             ) : null}
                           </div>
                         )}
-                        trailing={<ChevronRight size={20} className="text-[#63726C]" aria-hidden />}
+                        trailing={<ChevronRight size={20} className={GUIDE_UI_CLASSES.mutedIcon} aria-hidden />}
                       />
                     </button>
                   );

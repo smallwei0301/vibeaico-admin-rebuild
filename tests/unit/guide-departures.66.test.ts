@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -62,5 +64,14 @@ describe('GUIDE departures calendar selectors (#66 Phase D)', () => {
     expect(grid).toHaveLength(42);
     expect(grid.find((day) => day.key === '2026-09-01')).toMatchObject({ departureCount: 2, inMonth: true });
     expect(grid.filter((day) => day.inMonth)).toHaveLength(30);
+  });
+
+  it('keeps departure visual values behind shared GUIDE UI tokens', () => {
+    const source = readFileSync('src/components/guide/GuideDeparturesView.tsx', 'utf8');
+
+    expect(source).not.toMatch(/#[0-9A-Fa-f]{6}/);
+    expect(source).not.toMatch(/text-\[[0-9]+px\]/);
+    expect(source).not.toMatch(/min-[hw]-\[[0-9]+px\]/);
+    expect(source).toMatch(/GUIDE_UI_CLASSES\.(primaryButton|secondaryButton|filterPill|calendarCell|calendarDate|calendarCount)/);
   });
 });

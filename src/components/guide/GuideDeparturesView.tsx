@@ -123,7 +123,7 @@ export function GuideDeparturesView({
             action={(
               <button
                 type="button"
-                className={cn(GUIDE_UI_CLASSES.touchTarget, 'inline-flex items-center gap-2 rounded-xl bg-[#173F35] px-4 text-[16px] font-semibold text-white')}
+                className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton)}
                 onClick={onRetry}
               >
                 <RefreshCw size={17} aria-hidden />
@@ -149,10 +149,8 @@ export function GuideDeparturesView({
               aria-pressed={view === option}
               className={cn(
                 GUIDE_UI_CLASSES.touchTarget,
-                'rounded-xl border px-3 text-[16px] font-semibold',
-                view === option
-                  ? 'border-[#173F35] bg-[#173F35] text-white'
-                  : 'border-[#DCE5E0] bg-white text-[#1D2A26]',
+                GUIDE_UI_CLASSES.viewToggle,
+                view === option ? GUIDE_UI_CLASSES.viewToggleActive : GUIDE_UI_CLASSES.viewToggleInactive,
               )}
               onClick={() => setView(option)}
             >
@@ -163,7 +161,7 @@ export function GuideDeparturesView({
         <div className="flex gap-1" role="group" aria-label={guideNavigation.departures.period.label}>
           <button
             type="button"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, 'rounded-xl border border-[#DCE5E0] bg-white p-2 text-[#173F35]')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.outlinedIconButton)}
             aria-label={guideNavigation.departures.period.previous}
             onClick={() => shift(-1)}
           >
@@ -171,14 +169,14 @@ export function GuideDeparturesView({
           </button>
           <button
             type="button"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, 'rounded-xl border border-[#DCE5E0] bg-white px-3 text-[16px] font-semibold text-[#173F35]')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondaryButton)}
             onClick={() => { setAnchorIso(safeToday); setSelectedIso(safeToday); }}
           >
             {guideNavigation.departures.period.today}
           </button>
           <button
             type="button"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, 'rounded-xl border border-[#DCE5E0] bg-white p-2 text-[#173F35]')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.outlinedIconButton)}
             aria-label={guideNavigation.departures.period.next}
             onClick={() => shift(1)}
           >
@@ -195,10 +193,8 @@ export function GuideDeparturesView({
             aria-pressed={filter === option}
             className={cn(
               GUIDE_UI_CLASSES.touchTarget,
-              'shrink-0 rounded-full border px-4 text-[16px] font-semibold',
-              filter === option
-                ? 'border-[#8DAA9D] bg-[#E8F0EC] text-[#173F35]'
-                : 'border-[#DCE5E0] bg-white text-[#63726C]',
+              GUIDE_UI_CLASSES.filterPill,
+              filter === option ? GUIDE_UI_CLASSES.filterPillActive : GUIDE_UI_CLASSES.filterPillInactive,
             )}
             onClick={() => setFilter(option)}
           >
@@ -222,7 +218,7 @@ export function GuideDeparturesView({
         <GuideSectionCard title={guideNavigation.departures.monthViewTitle}>
           <div className="grid grid-cols-7 gap-1" aria-hidden>
             {guideNavigation.departures.weekdays.map((weekday) => (
-              <span key={weekday} className="py-1 text-center text-[14px] font-semibold text-[#63726C]">{weekday}</span>
+              <span key={weekday} className={GUIDE_UI_CLASSES.calendarWeekday}>{weekday}</span>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1" role="grid" aria-label={guideNavigation.departures.monthViewTitle}>
@@ -234,18 +230,18 @@ export function GuideDeparturesView({
                 aria-pressed={selectedIso === day.key}
                 aria-label={guideNavigation.departures.dayLabel(formatGuideDateKey(day.key), day.departureCount)}
                 className={cn(
-                  'flex min-h-[60px] min-w-0 flex-col items-center justify-center rounded-xl border px-1 py-2 text-center',
+                  GUIDE_UI_CLASSES.calendarCell,
                   GUIDE_UI_CLASSES.touchTarget,
                   selectedIso === day.key
-                    ? 'border-[#173F35] bg-[#173F35] text-white'
+                    ? GUIDE_UI_CLASSES.calendarSelected
                     : day.inMonth
-                      ? 'border-[#DCE5E0] bg-white text-[#1D2A26]'
-                      : 'border-transparent bg-[#FAF8F3] text-[#A2AEA8]',
+                      ? GUIDE_UI_CLASSES.calendarInMonth
+                      : GUIDE_UI_CLASSES.calendarOutside,
                 )}
                 onClick={() => selectDate(day.key)}
               >
-                <span className="text-[16px] font-bold">{day.dateLabel}</span>
-                <span className="mt-1 text-[14px] leading-none">
+                <span className={GUIDE_UI_CLASSES.calendarDate}>{day.dateLabel}</span>
+                <span className={GUIDE_UI_CLASSES.calendarCount}>
                   {day.departureCount > 0
                     ? guideNavigation.departures.countLabel(day.departureCount)
                     : guideNavigation.departures.noCount}
@@ -293,7 +289,7 @@ export function GuideDeparturesView({
                   action={(
                     <Link
                       href={`/tenant/trips/${encodeURIComponent(departure.tripId)}?tab=departures`}
-                      className={cn(GUIDE_UI_CLASSES.touchTarget, 'inline-flex items-center rounded-xl bg-[#E8F0EC] px-4 text-[16px] font-semibold text-[#173F35]')}
+                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.accentButton)}
                     >
                       {guideNavigation.departures.viewDetails}
                     </Link>

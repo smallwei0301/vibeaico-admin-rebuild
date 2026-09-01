@@ -184,4 +184,13 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(guidePageSource).not.toMatch(/listCustomers\(\{\s*page:\s*0\s*,\s*size:\s*200\s*\}\)/);
     expect(guidePageSource).not.toMatch(/listTourOrders\(\{\s*page:\s*0\s*,\s*size:\s*200\s*\}\)/);
   });
+
+  it('keeps traveler visual values behind shared GUIDE UI tokens', () => {
+    const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
+
+    expect(source).not.toMatch(/#[0-9A-Fa-f]{6}/);
+    expect(source).not.toMatch(/text-\[[0-9]+px\]/);
+    expect(source).not.toMatch(/min-[hw]-\[[0-9]+px\]/);
+    expect(source).toMatch(/GUIDE_UI_CLASSES\.(metricCard|metricValue|primaryButton|secondaryButton|searchInput|filterButton|travelerRow)/);
+  });
 });
