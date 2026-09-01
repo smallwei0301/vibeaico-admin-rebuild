@@ -226,6 +226,19 @@ export function GuideMessagesView() {
     </button>
   );
 
+  const retryThreadAction = (
+    <button
+      type="button"
+      className={cn(GUIDE_UI_CLASSES.secondaryButton, GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing)}
+      onClick={() => {
+        if (active) openConversation(active);
+      }}
+    >
+      <RefreshCw size={17} aria-hidden />
+      {t.retry}
+    </button>
+  );
+
   return (
     <div className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
       {active ? (
@@ -260,7 +273,7 @@ export function GuideMessagesView() {
               <GuideEmptyState
                 title={t.thread.loadFailedTitle}
                 description={t.thread.loadFailedDescription}
-                action={retryAction}
+                action={retryThreadAction}
               />
             ) : messages.length === 0 ? (
               <GuideEmptyState title={t.thread.noMessages} description={t.thread.noMessagesDescription} />

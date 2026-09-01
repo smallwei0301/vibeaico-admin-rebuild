@@ -56,4 +56,12 @@ describe('GUIDE message inbox selectors (#66 Phase F)', () => {
     expect(source).toContain('isCurrentGuideConversationRequest');
   });
 
+  it('retries the open thread instead of only reloading the list', () => {
+    const source = readFileSync('src/components/guide/GuideMessagesView.tsx', 'utf8');
+    expect(source).toContain('const retryThreadAction');
+    expect(source).toContain('openConversation(active)');
+    expect(source).toContain('action={retryThreadAction}');
+  });
+
+
 });
