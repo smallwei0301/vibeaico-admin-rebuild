@@ -5,23 +5,26 @@
 1. `CLAUDE.md`
 2. `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
 3. `docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
-4. `docs/AGENT-EXECUTION.md`
-5. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-6. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-7. `docs/DOCUMENTATION-GOVERNANCE.md`
-8. `docs/OWNER-DECISIONS.md`
-9. 該 Issue 指定的 `docs/integration/**` canonical 文件
-10. `docs/integration/12-TESTING-TDD.md`
-11. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
-12. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
+4. `docs/decisions/2026-09-01-owner-isolated-test-lanes.md`
+5. `docs/AGENT-EXECUTION.md`
+6. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
+7. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
+8. `docs/DOCUMENTATION-GOVERNANCE.md`
+9. `docs/OWNER-DECISIONS.md`
+10. 該 Issue 指定的 `docs/integration/**` canonical 文件
+11. `docs/integration/12-TESTING-TDD.md`
+12. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
+13. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
     報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-13. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
+14. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
     響應式或 GUIDE 共用 UI，另讀 `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與
     `docs/assets/guide-mobile-ui/README.md`
-14. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
+15. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
     `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
-15. Owner 說「復盤」或「複盤」時，載入
+16. Owner 說「復盤」或「複盤」時，載入
     `.agents/skills/vibeaico-agent-retrospective/SKILL.md`
+17. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
+    載入 `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`。
 
 ## 自然語言入口
 
@@ -52,6 +55,23 @@ Sol              一般只做 TRIAGE 與 AUDIT
 
 Mode C 文件保留為歷史。不得再用舊文件同時開第二、第三條完整 Terra 工地。
 
+## 隔離 TEST 分階段導入
+
+Owner 已裁示依 Issue #104 分三階段導入：
+
+```text
+Phase 1  per-PR local Supabase + 最終 remote canonical TEST
+Phase 2  DB/Auth/Storage 使用最多 2 條付費 Supabase Preview Branch
+Phase 3  隔離能力驗證後，完整 Terra 才可由 1 提升到 2
+```
+
+**目前 Phase 1 只新增隔離測試能力，不改 `MAIN_TERRA max 1`。**
+
+- `LOCAL_ISOLATED`／`LOCAL_ISOLATED_CANARY` 只可報 `ISOLATED_GREEN`。
+- 最終 remote TEST、Sol Audit、merge 仍各自單線。
+- 真正建立 Supabase Preview Branch 前需重新查費率並取得 Owner 成本確認。
+- 任一隔離 slot 不健康或 cleanup 失敗，未來 Terra 上限必須自動退回 1。
+
 ## 開工與接手
 
 - 先 `git fetch origin --prune`，從 `origin/main` 讀規則。
@@ -77,12 +97,12 @@ docs/metrics/agent-runs/<RUN_ID>.md
 
 ## 強制護欄
 
-- MAIN Terra 全 repo 最多 1；Reserve 最多 1；Closure 最多 1；TEST 最多 1；active
-  candidates 最多 2。
+- MAIN Terra 全 repo 最多 1；Reserve 最多 1；Closure 最多 1；remote canonical TEST 最多 1；
+  active candidates 最多 2。只有 Issue #104 Phase 3 驗收完成後，才能用新 Owner Decision 改 MAIN 上限。
 - MAIN 必須有 Closure target，或明確 `EMPTY_WITH_SCAN`／`REPORT:<path>` 證據。
 - RESERVE 必須填 `RESERVE_BOUNDARY`、`TEST_LANE_REQUIRED=false`，且不可是 active candidate。
-- 一般 runtime PR 若不是唯一 TEST holder，只跑 source checks；integration／E2E 必須留下
-  `POLICY_SKIP`，不能碰 shared TEST。
+- 一般 runtime PR 若不是唯一 remote TEST holder，可依 `TEST_PROFILE` 跑 local isolated TEST，
+  但 remote integration／E2E 仍留下 `POLICY_SKIP`，不能碰 shared TEST。
 - `PARKED` PR 不派 Agent、不 push、不 rerun、不輪詢。
 - 同 exact head、同環境、同命令不得盲目重跑；環境錯誤兩次即停損換路。
 - Issue 只有 Sol 回覆 `CLOSE_APPROVED` 才能由 Luna／主 Agent 關閉。
@@ -140,7 +160,7 @@ Owner blocker、requested／actual model、Run ID 與 scorecard。實質失敗�
 
 - 正式產品／API／驗收以最新 `main` canonical 文件為準。
 - docs-only 可依治理規則直進 main；程式、workflow、skill、依賴與 migration 走 PR／CI／Audit。
-- TEST 長期授權只限 Supabase project `nmwhwngojosmagjuvxol`，仍需唯一 TEST holder。
+- remote TEST 長期授權只限 Supabase project `nmwhwngojosmagjuvxol`，仍需唯一 TEST holder。
 - Production DDL／DML／migration／部署、真實付款／退款／顧客通知，沒有新授權一律禁止。
 - 不輸出或提交 token、密碼、key、完整 `.env`。
 
