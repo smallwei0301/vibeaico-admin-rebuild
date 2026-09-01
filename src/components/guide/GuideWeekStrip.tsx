@@ -28,26 +28,40 @@ export function GuideWeekStrip({ days, onSelect, className, ...props }: GuideWee
         const accessibleLabel = day.ariaLabel
           ?? [day.weekdayLabel, day.dateLabel, day.countLabel].filter(Boolean).join('，');
 
-        return (
+        const content = (
+          <>
+            <span className={GUIDE_UI_CLASSES.weekdayLabel}>{day.weekdayLabel}</span>
+            <span className={cn(GUIDE_UI_CLASSES.weekDate, 'mt-1')}>{day.dateLabel}</span>
+            {day.countLabel ? <span className={GUIDE_UI_CLASSES.weekCount}>{day.countLabel}</span> : null}
+          </>
+        );
+        const className = cn(
+          GUIDE_UI_CLASSES.touchTarget,
+          GUIDE_UI_CLASSES.focusRing,
+          'flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-center',
+          day.selected ? GUIDE_UI_CLASSES.calendarDayActive : GUIDE_UI_CLASSES.calendarDayIdle,
+        );
+
+        return onSelect ? (
           <button
             key={day.key}
             type="button"
             disabled={day.disabled}
             aria-label={accessibleLabel}
             aria-pressed={day.selected}
-            onClick={() => onSelect?.(day.key)}
-            className={cn(
-              GUIDE_UI_CLASSES.touchTarget,
-              GUIDE_UI_CLASSES.focusRing,
-              'flex min-w-0 flex-col items-center justify-center rounded-xl px-1 py-2 text-center',
-              'disabled:cursor-not-allowed disabled:opacity-40',
-              day.selected ? GUIDE_UI_CLASSES.calendarDayActive : GUIDE_UI_CLASSES.calendarDayIdle,
-            )}
+            onClick={() => onSelect(day.key)}
+            className={cn(className, 'disabled:cursor-not-allowed disabled:opacity-40')}
           >
-            <span className={GUIDE_UI_CLASSES.weekdayLabel}>{day.weekdayLabel}</span>
-            <span className={cn(GUIDE_UI_CLASSES.weekDate, 'mt-1')}>{day.dateLabel}</span>
-            {day.countLabel ? <span className={GUIDE_UI_CLASSES.weekCount}>{day.countLabel}</span> : null}
+            {content}
           </button>
+        ) : (
+          <div
+            key={day.key}
+            aria-current={day.selected ? 'date' : undefined}
+            className={className}
+          >
+            {content}
+          </div>
         );
       })}
     </div>

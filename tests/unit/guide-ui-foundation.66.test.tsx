@@ -108,19 +108,22 @@ describe('GUIDE UI foundation (#66 Phase A)', () => {
   });
 
   it('renders week and month summaries without inventing missing data', () => {
+    const weekDays = Array.from({ length: 7 }, (_, index) => ({
+      key: String(index),
+      weekdayLabel: `週${index + 1}`,
+      dateLabel: String(index + 1),
+      selected: index === 0,
+    }));
     const weekHtml = renderToStaticMarkup(
-      <GuideWeekStrip
-        days={Array.from({ length: 7 }, (_, index) => ({
-          key: String(index),
-          weekdayLabel: `週${index + 1}`,
-          dateLabel: String(index + 1),
-          selected: index === 0,
-        }))}
-      />,
+      <GuideWeekStrip days={weekDays} onSelect={() => {}} />,
     );
     expect((weekHtml.match(/<button/g) ?? []).length).toBe(7);
     expect(weekHtml).not.toContain('text-[11px]');
     expect(weekHtml).not.toContain('text-[12px]');
+
+    const displayHtml = renderToStaticMarkup(<GuideWeekStrip days={weekDays} />);
+    expect((displayHtml.match(/<button/g) ?? []).length).toBe(0);
+    expect(displayHtml).toContain('aria-current="date"');
 
     const monthHtml = renderToStaticMarkup(
       <GuideMonthSummary monthLabel="九月" items={[]} />,
