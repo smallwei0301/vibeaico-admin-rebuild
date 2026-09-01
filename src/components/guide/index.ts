@@ -5,6 +5,7 @@ export { GuideDeparturesView } from './GuideDeparturesView';
 export { GuideEmptyState, type GuideEmptyStateProps } from './GuideEmptyState';
 export { GuideHeader, type GuideHeaderProps } from './GuideHeader';
 export { GuideHomeView, type GuideHomeViewProps } from './GuideHomeView';
+export { GuideMessagesView } from './GuideMessagesView';
 export { GuideMonthSummary, type GuideMonthSummaryItem, type GuideMonthSummaryProps } from './GuideMonthSummary';
 export { GuidePersonRow, type GuidePersonRowProps } from './GuidePersonRow';
 export { GuideSectionCard, type GuideSectionCardProps } from './GuideSectionCard';

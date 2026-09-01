@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/Button';
 import { CountBadge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { GuideMessagesView } from '@/components/guide';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
 import { Input, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/api';
@@ -60,7 +63,7 @@ function byLastMessageDesc(a: ConversationRow, b: ConversationRow): number {
 /** 本地（未上傳）訊息 id 前綴：圖片僅前端預覽用，不能當 after 錨點 */
 const LOCAL_ID_PREFIX = 'm_local_';
 
-export default function ChatPage() {
+function LegacyChatPage() {
   const toast = useToast();
 
   const [conversations, setConversations] = React.useState<ConversationRow[]>([]);
@@ -437,4 +440,14 @@ export default function ChatPage() {
       </Card>
     </>
   );
+}
+
+
+export default function ChatPage() {
+  const businessType = useBusinessType();
+  const profile = MODE_PRESETS[businessType].navigationProfile;
+
+  return profile === 'GUIDE_FIVE'
+    ? <GuideMessagesView />
+    : <LegacyChatPage />;
 }
