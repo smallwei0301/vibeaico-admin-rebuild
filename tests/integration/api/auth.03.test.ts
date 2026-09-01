@@ -13,7 +13,7 @@
  * 測試資料一律用獨立產生的 `@test.local` email／shopCode（不共用同一個字面值），
  * 避免多個案例互踩；全域重置只在 globalSetup 跑一次，本檔不再呼叫 reset-db。
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs } from '../../helpers/auth';
@@ -94,11 +94,34 @@ async function authUserExists(admin: SupabaseClient, email: string): Promise<boo
   }
 }
 
+/** 找到測試建立的 auth user，供檔案結束時精確清理（不掃除 seed 帳號）。 */
+async function findAuthUserId(admin: SupabaseClient, email: string): Promise<string | null> {
+  let page = 1;
+  const perPage = 200;
+  for (;;) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const user = data!.users.find((candidate) => candidate.email === email);
+    if (user) return user.id;
+    if (data!.users.length < perPage) return null;
+    page += 1;
+  }
+}
+
+const testEmails = new Set<string>();
+const testShopCodes = new Set<string>();
+
+function trackTestData(email: string, shopCode?: string): void {
+  testEmails.add(email);
+  if (shopCode) testShopCodes.add(shopCode);
+}
+
 /** 完整走一次「寄碼→註冊」，回傳 register 端點的原始 Response（呼叫端自行斷言狀態）。 */
 async function registerFullFlow(
   admin: SupabaseClient,
   params: { email: string; shopCode: string; password: string; tenantName: string },
 ): Promise<Response> {
+  trackTestData(params.email, params.shopCode);
   const sendRes = await postJson('/api/auth/send-verification-code', {
     email: params.email,
     purpose: 'REGISTER',
@@ -124,12 +147,53 @@ beforeAll(() => {
   });
 });
 
+afterAll(async () => {
+  if (!admin) return;
+
+  const cleanupErrors: string[] = [];
+
+  // tenants 的 on delete cascade 會先清掉這個測試帳號建立的所有租戶資料。
+  for (const shopCode of testShopCodes) {
+    try {
+      const { data, error } = await admin
+        .from('tenants')
+        .select('id')
+        .eq('shop_code', shopCode)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) continue;
+
+      const { error: deleteError } = await admin.from('tenants').delete().eq('id', data.id);
+      if (deleteError) throw deleteError;
+    } catch (error) {
+      cleanupErrors.push(`tenant ${shopCode}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  for (const email of testEmails) {
+    try {
+      const { error: codeError } = await admin.from('auth_verification_codes').delete().eq('email', email);
+      if (codeError) throw codeError;
+
+      const userId = await findAuthUserId(admin, email);
+      if (!userId) continue;
+      const { error: userError } = await admin.auth.admin.deleteUser(userId);
+      if (userError) throw userError;
+    } catch (error) {
+      cleanupErrors.push(`auth ${email}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  expect(cleanupErrors, `auth integration cleanup failed: ${cleanupErrors.join('; ')}`).toEqual([]);
+});
+
 describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => {
   it('新 email 走完四個端點，每一步回應欄位都正確', async () => {
     const email = uniqueEmail('flow');
     const shopCode = uniqueShopCode('flow');
     const password = 'Passw0rd!flow';
     const tenantName = '流程測試店';
+    trackTestData(email, shopCode);
 
     const sendRes = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(sendRes.status).toBe(200);
@@ -169,6 +233,7 @@ describe('寄碼 → 註冊 → 登入 → me 全流程（03 §2-§5）', () => 
 describe('POST /api/auth/send-verification-code 60 秒防重寄（03 §2）', () => {
   it('同 email 同 purpose 60 秒內重寄 → 429 REQ_003', async () => {
     const email = uniqueEmail('resend');
+    trackTestData(email);
 
     const first = await postJson('/api/auth/send-verification-code', { email, purpose: 'REGISTER' });
     expect(first.status).toBe(200);
@@ -186,6 +251,7 @@ describe('POST /api/auth/tenant/register 錯碼/過期碼（03 §2 consumeCode�
   it('隨便給 000000 當驗證碼 → 400 AUTH_004', async () => {
     const email = uniqueEmail('badcode');
     const shopCode = uniqueShopCode('badcode');
+    trackTestData(email);
 
     const res = await postJson('/api/auth/tenant/register', {
       email, code: '000000', password: 'Passw0rd!bad', tenantName: '壞碼測試店', shopCode,
@@ -235,6 +301,7 @@ describe('POST /api/auth/tenant/register shopCode 重複（03 §3 dup 檢查）'
   it('shopCode 撞既有店（seed tenant-a）→ 409 AUTH_006，且此檢查在驗碼之前（碼不會被消耗）', async () => {
     const email = uniqueEmail('dupshop');
     const code = '246810';
+    trackTestData(email);
     // 同樣是為了繞過枚舉防護、湊出一筆「有效碼」，見上一個 describe 的註解。
     await insertValidCode(admin, email, code, 'REGISTER');
 
@@ -279,6 +346,7 @@ describe('register 失敗補償：shopCode 409 路徑不留下 auth user（03 §
     // 才發現店代碼重複。
     const email = uniqueEmail('compensate');
     const code = '975310';
+    trackTestData(email);
     await insertValidCode(admin, email, code, 'REGISTER');
 
     const res = await postJson('/api/auth/tenant/register', {
