@@ -1,4 +1,4 @@
-/** Issue #17 integration TEST suite. CI runs it only after migrations 0053–0056 are applied. */
+/** Issue #17 integration TEST suite. CI runs it only after migrations 0053–0058 are applied. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';

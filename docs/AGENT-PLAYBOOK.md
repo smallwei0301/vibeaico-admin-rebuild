@@ -195,3 +195,19 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
 - 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
 - 狀態：已防止
+
+
+### PB-001 — #17 replay no-op misclassified as a new booking mutation
+
+- 首次／最近：2026-09-01／2026-09-01
+- 發生次數：1
+- Issue／PR／CI：#17／#87／[run 33483741031](https://github.com/smallwei0301/vibeaico-admin-rebuild/actions/runs/33483741031)
+- 分類：其他
+- 事件：0057 已修正通知 claim 的 42702 ambiguity，但 exact-head replay cases 仍回傳重複增加後的 booking totals（1050→1100；PENDING fixture 1007→1014）。
+- 證據：run 33483741031 的 `booking-addons.17.test.ts` 只有 2 failures，178/180 通過；failure assertion 分別是 line 231 與 line 257。
+- 根因：`INSERT ... ON CONFLICT DO NOTHING ... RETURNING` 沒有插入列時，PL/pgSQL 的共用 `FOUND` 狀態不能作為 row-count 判斷；stale true 讓函式跳過既有列 replay 分支並再次執行 booking update。
+- 影響：同一 idempotency key 的 retry 可能重複增加金額／時長，違反 Issue #17 的 retry-safe financial mutation 契約。
+- 修正：新增 TEST-only forward migration `0058_issue_17_idempotency_insert_row_count.sql`，以 `GET DIAGNOSTICS v_inserted = ROW_COUNT` 判斷 no-op，再讀取並驗證 authoritative existing row；新增 source contract test。
+- 預防：所有帶 `ON CONFLICT DO NOTHING ... RETURNING` 的 financial RPC 必須用明確 `ROW_COUNT` 分支，並保留 serialized same-key replay integration case。
+- 驗證：0058 套用與下一次 exact-head integration/E2E 尚待完成；不重跑已成功的舊 SHA。
+- 狀態：監看中

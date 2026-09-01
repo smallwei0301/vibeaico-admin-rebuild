@@ -12,6 +12,7 @@ describe('Issue #17 booking add-on source contracts', () => {
   const rollback = read('supabase/migrations/0055_issue_17_booking_addon_price_rollback.sql');
   const idempotency = read('supabase/migrations/0056_issue_17_booking_addon_idempotency.sql');
   const retryRepair = read('supabase/migrations/0057_issue_17_notification_claim_idempotency_race.sql');
+  const rowCountRepair = read('supabase/migrations/0058_issue_17_idempotency_insert_row_count.sql');
   const page = read('src/app/tenant/bookings/page.tsx');
   const api = read('src/app/api/bookings/[id]/addons/route.ts');
   const line = read('src/server/line.ts');
@@ -155,4 +156,13 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(retryRepair).toContain("grant execute on function public.claim_booking_addon_notification_17");
     expect(retryRepair).toContain("grant execute on function public.add_booking_addon_17");
   });
+  it('classifies an idempotency no-op from ROW_COUNT before changing booking totals', () => {
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0058_issue_17_idempotency_insert_row_count.sql'))).toBe(true);
+    expect(rowCountRepair).toContain('get diagnostics v_inserted = row_count');
+    expect(rowCountRepair).toContain('if v_inserted = 0 then');
+    expect(rowCountRepair).toContain('on conflict (tenant_id, booking_id, idempotency_key)');
+    expect(rowCountRepair).not.toContain('if not found then\\n    select * into v_existing');
+    expect(rowCountRepair).toContain("grant execute on function public.add_booking_addon_17");
+  });
+
 });
