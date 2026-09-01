@@ -4,6 +4,47 @@ const REMOTE_PROFILE = 'REMOTE_BRANCH_REQUIRED';
 const LOCAL_PROFILE = 'LOCAL_ISOLATED';
 const SOURCE_PROFILE = 'SOURCE_ONLY';
 
+/**
+ * @typedef {object} RemoteBranch
+ * @property {string=} id
+ * @property {string=} project_ref
+ * @property {string=} ref
+ * @property {string=} name
+ * @property {string=} branch_name
+ * @property {string=} status
+ * @property {string=} preview_project_status
+ */
+
+/**
+ * @typedef {object} RemoteClassificationOptions
+ * @property {string[]=} changedPaths
+ * @property {string=} prBody
+ */
+
+/**
+ * @typedef {object} RemoteLeasePlanOptions
+ * @property {number|string} prNumber
+ * @property {string} exactHead
+ * @property {number|string} slot
+ * @property {number|string=} leaseMinutes
+ * @property {string[]=} changedPaths
+ * @property {string=} prBody
+ * @property {RemoteBranch[]=} existingBranches
+ * @property {boolean=} executePaidBranch
+ * @property {boolean=} paidBranchesEnabled
+ * @property {boolean=} accessTokenAvailable
+ * @property {string=} costConfirmation
+ * @property {Date|string|number=} now
+ */
+
+/**
+ * @typedef {object} DestructionProofOptions
+ * @property {string=} branchId
+ * @property {string=} projectRef
+ * @property {string=} branchName
+ * @property {RemoteBranch[]=} remainingBranches
+ */
+
 export const REMOTE_BRANCH_POLICY = Object.freeze({
   hourlyCostUsd: 0.01344,
   maxBranches: 2,
@@ -23,12 +64,16 @@ function readField(body = '', field) {
   return (String(body).match(pattern)?.[1] ?? '').trim();
 }
 
+/** @template T @param {T[]} values @returns {T[]} */
 function unique(values) {
   return [...new Set(values)];
 }
 
-export function classifyRemoteBranchRequirement({ changedPaths = [], prBody = '' } = {}) {
+/** @param {RemoteClassificationOptions} [options] */
+export function classifyRemoteBranchRequirement(options = {}) {
+  const { changedPaths = [], prBody = '' } = options;
   const paths = changedPaths.map(normalizePath).filter(Boolean);
+  /** @type {string[]} */
   const reasons = [];
   const explicitProfile = readField(prBody, 'TEST_PROFILE').toUpperCase();
   const migrationTouch = readField(prBody, 'MIGRATION_TOUCH').toUpperCase() === 'TRUE';
@@ -95,6 +140,7 @@ export function estimateBranchCostUsd(leaseMinutes, branchCount = 1) {
   return Number((billedHours * REMOTE_BRANCH_POLICY.hourlyCostUsd * count).toFixed(5));
 }
 
+/** @param {RemoteBranch} [branch] */
 export function isManagedBranch(branch = {}) {
   const name = String(branch.name ?? branch.branch_name ?? '');
   const status = String(branch.status ?? branch.preview_project_status ?? '').toUpperCase();
@@ -102,20 +148,22 @@ export function isManagedBranch(branch = {}) {
     !['DELETED', 'DELETING', 'REMOVED'].includes(status);
 }
 
-export function buildRemoteBranchLeasePlan({
-  prNumber,
-  exactHead,
-  slot,
-  leaseMinutes = 60,
-  changedPaths = [],
-  prBody = '',
-  existingBranches = [],
-  executePaidBranch = false,
-  paidBranchesEnabled = false,
-  accessTokenAvailable = false,
-  costConfirmation = '',
-  now = new Date(),
-} = {}) {
+/** @param {RemoteLeasePlanOptions} options */
+export function buildRemoteBranchLeasePlan(options) {
+  const {
+    prNumber,
+    exactHead,
+    slot,
+    leaseMinutes = 60,
+    changedPaths = [],
+    prBody = '',
+    existingBranches = [],
+    executePaidBranch = false,
+    paidBranchesEnabled = false,
+    accessTokenAvailable = false,
+    costConfirmation = '',
+    now = new Date(),
+  } = options;
   const classification = classifyRemoteBranchRequirement({ changedPaths, prBody });
   if (classification.profile !== REMOTE_PROFILE) {
     throw new Error(`PR is ${classification.profile}; a paid remote branch is not justified`);
@@ -180,7 +228,9 @@ export function buildRemoteBranchLeasePlan({
   };
 }
 
-export function verifyBranchDestroyed({ branchId, projectRef, branchName, remainingBranches = [] } = {}) {
+/** @param {DestructionProofOptions} [options] */
+export function verifyBranchDestroyed(options = {}) {
+  const { branchId, projectRef, branchName, remainingBranches = [] } = options;
   const identifiers = new Set(
     [branchId, projectRef, branchName].map((value) => String(value ?? '').trim()).filter(Boolean),
   );
