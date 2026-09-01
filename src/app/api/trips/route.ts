@@ -7,7 +7,6 @@ import { taipeiTodayDateString } from '@/server/tz';
 
 export const GET = handle(async () => {
   const t = await requireTenant();
-  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const { data, error } = await t.supabase
     .from('trips')
     .select('*, trip_plans(price_per_person, active), trip_departures(departs_on, status)')

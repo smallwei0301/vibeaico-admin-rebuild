@@ -16,7 +16,6 @@ async function findTripPlan(t: Awaited<ReturnType<typeof requireTenant>>, tripId
 export const GET = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant();
-  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const { data: trip, error: tripError } = await t.supabase.from('trips').select('id')
     .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (tripError) throw tripError;

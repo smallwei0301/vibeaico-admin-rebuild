@@ -17,7 +17,6 @@ async function requireTrip(t: Awaited<ReturnType<typeof requireTenant>>, id: str
 export const GET = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant();
-  await requireFeature(t.tenantId, 'TOUR_MODULE');
   if (!await requireTrip(t, id)) return fail(404, '找不到此行程', ERR.NOT_FOUND);
   const { data, error } = await t.supabase.from('trip_plans').select('*')
     .eq('tenant_id', t.tenantId).eq('trip_id', id).order('sort_order', { ascending: true });

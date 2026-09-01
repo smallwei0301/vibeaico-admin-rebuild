@@ -48,15 +48,15 @@ function handlerSource(relativePath: string, method: string): string {
 }
 
 describe('tour-domain validation and row builders (#8-A)', () => {
-  it('requires a tenant guard and TOUR_MODULE gate on every core handler', () => {
+  it('requires tenant guards everywhere and TOUR_MODULE only for mutations', () => {
     for (const [relativePath, method, managerOnly] of TOUR_HANDLERS) {
       const source = handlerSource(relativePath, method);
       expect(source, `${relativePath} ${method}`).toContain(
         managerOnly ? "requireTenant('MANAGER')" : 'requireTenant()',
       );
-      expect(source, `${relativePath} ${method}`).toContain(
-        "await requireFeature(t.tenantId, 'TOUR_MODULE')",
-      );
+      const featureGate = "await requireFeature(t.tenantId, 'TOUR_MODULE')";
+      if (method === 'GET') expect(source, `${relativePath} ${method}`).not.toContain(featureGate);
+      else expect(source, `${relativePath} ${method}`).toContain(featureGate);
     }
   });
 

@@ -10,7 +10,6 @@ type Context = { params: Promise<{ id: string }> };
 export const GET = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant();
-  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const { data: trip, error } = await t.supabase.from('trips').select('*')
     .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (error) throw error;
