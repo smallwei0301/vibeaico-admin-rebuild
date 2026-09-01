@@ -5,8 +5,12 @@ import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } 
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const DEFAULT_MANIFEST = 'supabase/local-migrations/historical-integration-baseline/manifest.json';
+const DEFAULT_MANIFESTS = Object.freeze([
+  'supabase/local-migrations/historical-integration-baseline/manifest.json',
+  'supabase/local-migrations/issue-41-candidate-baseline/manifest.json',
+]);
 const DEFAULT_TARGET = 'supabase/migrations';
+const SOURCE_SQL_NAME = /^[0-9a-z]+_[a-z0-9_]+\.sql$/;
 const MIGRATION_NAME = /^\d{4}_[a-z0-9_]+\.sql$/;
 const LOCAL_TRANSFORMS = new Set(['WRAP_IN_TRANSACTION']);
 
@@ -24,6 +28,9 @@ export function readOverlayManifest(manifestPath) {
   if (parsed.mode !== 'LOCAL_ONLY_TRANSITIONAL') {
     throw new Error(`local migration manifest mode must be LOCAL_ONLY_TRANSITIONAL, got ${parsed.mode}`);
   }
+  if (!parsed.source?.repository || !parsed.source?.branch || !parsed.source?.head) {
+    throw new Error('local migration manifest must identify repository, branch, and exact head');
+  }
   if (!Array.isArray(parsed.files) || parsed.files.length === 0) {
     throw new Error('local migration manifest must contain at least one file');
   }
@@ -32,7 +39,8 @@ export function readOverlayManifest(manifestPath) {
 
 export function stageLocalMigrationOverlay({
   rootDir = process.cwd(),
-  manifestRelativePath = DEFAULT_MANIFEST,
+  manifestRelativePath = null,
+  manifestRelativePaths = null,
   targetRelativePath = DEFAULT_TARGET,
   allow = process.env.ALLOW_LOCAL_MIGRATION_OVERLAY === 'true',
   testProfile = process.env.TEST_PROFILE ?? '',
@@ -42,73 +50,113 @@ export function stageLocalMigrationOverlay({
     throw new Error('local migration overlay is allowed only for TEST_PROFILE=LOCAL_ISOLATED');
   }
 
-  const manifestPath = resolve(rootDir, manifestRelativePath);
-  const sourceRoot = dirname(manifestPath);
+  const selectedManifests = manifestRelativePath
+    ? [manifestRelativePath]
+    : Array.isArray(manifestRelativePaths) && manifestRelativePaths.length
+      ? manifestRelativePaths
+      : [...DEFAULT_MANIFESTS];
   const targetRoot = resolve(rootDir, targetRelativePath);
-  const manifest = readOverlayManifest(manifestPath);
-  const seen = new Set();
+  const seenTargets = new Set();
   const staged = [];
+  const sources = [];
 
-  const unexpectedSql = readdirSync(sourceRoot)
-    .filter((name) => name.endsWith('.sql'))
-    .filter((name) => !manifest.files.some((entry) => entry.name === name));
-  if (unexpectedSql.length) {
-    throw new Error(`untracked local migration files: ${unexpectedSql.join(', ')}`);
-  }
+  for (const relativeManifest of selectedManifests) {
+    const manifestPath = resolve(rootDir, relativeManifest);
+    const sourceRoot = dirname(manifestPath);
+    const manifest = readOverlayManifest(manifestPath);
+    const manifestTargets = new Set();
 
-  for (const entry of manifest.files) {
-    if (!MIGRATION_NAME.test(entry.name)) throw new Error(`invalid migration filename: ${entry.name}`);
-    if (seen.has(entry.name)) throw new Error(`duplicate migration in manifest: ${entry.name}`);
-    seen.add(entry.name);
-
-    const source = join(sourceRoot, entry.name);
-    const target = join(targetRoot, entry.name);
-    if (!existsSync(source)) throw new Error(`manifest source is missing: ${entry.name}`);
-    if (existsSync(target)) {
-      throw new Error(`refusing to overwrite canonical migration path: ${entry.name}`);
+    const sourceNames = manifest.files.map((entry) => entry.sourceName ?? entry.name);
+    const unexpectedSql = readdirSync(sourceRoot)
+      .filter((name) => name.endsWith('.sql'))
+      .filter((name) => !sourceNames.includes(name));
+    if (unexpectedSql.length) {
+      throw new Error(`untracked local migration files in ${relativeManifest}: ${unexpectedSql.join(', ')}`);
     }
 
-    const content = readFileSync(source);
-    const actualBlobSha = gitBlobSha(content);
-    if (actualBlobSha !== entry.blobSha) {
-      throw new Error(
-        `blob integrity mismatch for ${entry.name}: expected ${entry.blobSha}, got ${actualBlobSha}`,
-      );
+    for (const entry of manifest.files) {
+      const sourceName = entry.sourceName ?? entry.name;
+      const targetName = entry.targetName ?? entry.name;
+      if (!SOURCE_SQL_NAME.test(sourceName)) throw new Error(`invalid source SQL filename: ${sourceName}`);
+      if (!MIGRATION_NAME.test(targetName)) throw new Error(`invalid staged migration filename: ${targetName}`);
+      if (manifestTargets.has(targetName)) {
+        throw new Error(`duplicate staged migration in manifest ${relativeManifest}: ${targetName}`);
+      }
+      if (seenTargets.has(targetName)) {
+        throw new Error(`duplicate staged migration across manifests: ${targetName}`);
+      }
+      manifestTargets.add(targetName);
+      seenTargets.add(targetName);
+
+      const source = join(sourceRoot, sourceName);
+      const target = join(targetRoot, targetName);
+      if (!existsSync(source)) throw new Error(`manifest source is missing: ${sourceName}`);
+      if (existsSync(target)) {
+        throw new Error(`refusing to overwrite canonical migration path: ${targetName}`);
+      }
+
+      const content = readFileSync(source);
+      const actualBlobSha = gitBlobSha(content);
+      if (actualBlobSha !== entry.blobSha) {
+        throw new Error(
+          `blob integrity mismatch for ${sourceName}: expected ${entry.blobSha}, got ${actualBlobSha}`,
+        );
+      }
+
+      const transform = entry.localTransform ?? null;
+      if (transform && !LOCAL_TRANSFORMS.has(transform)) {
+        throw new Error(`unsupported local migration transform for ${sourceName}: ${transform}`);
+      }
+
+      const stagedContent = transform === 'WRAP_IN_TRANSACTION'
+        ? Buffer.concat([Buffer.from('begin;\n'), content, Buffer.from('\ncommit;\n')])
+        : content;
+      writeFileSync(target, stagedContent);
+      staged.push({
+        sourceName,
+        targetName,
+        blobSha: actualBlobSha,
+        transform,
+        source: manifest.source,
+      });
     }
 
-    const transform = entry.localTransform ?? null;
-    if (transform && !LOCAL_TRANSFORMS.has(transform)) {
-      throw new Error(`unsupported local migration transform for ${entry.name}: ${transform}`);
-    }
-
-    const stagedContent = transform === 'WRAP_IN_TRANSACTION'
-      ? Buffer.concat([Buffer.from('begin;\n'), content, Buffer.from('\ncommit;\n')])
-      : content;
-    writeFileSync(target, stagedContent);
-    staged.push({ name: entry.name, blobSha: actualBlobSha, transform });
+    sources.push({
+      manifest: relativeManifest,
+      ...manifest.source,
+      status: manifest.source.status ?? 'SOURCE_IDENTIFIED',
+      count: manifest.files.length,
+    });
   }
 
   const result = {
-    mode: manifest.mode,
-    source: manifest.source,
+    mode: 'LOCAL_ONLY_TRANSITIONAL',
+    sources,
     count: staged.length,
-    first: staged.at(0)?.name ?? null,
-    last: staged.at(-1)?.name ?? null,
-    transformed: staged.filter((entry) => entry.transform).map((entry) => `${entry.name}:${entry.transform}`),
+    first: staged.at(0)?.targetName ?? null,
+    last: staged.at(-1)?.targetName ?? null,
+    transformed: staged
+      .filter((entry) => entry.transform)
+      .map((entry) => `${entry.targetName}:${entry.transform}`),
+    renamed: staged
+      .filter((entry) => entry.sourceName !== entry.targetName)
+      .map((entry) => `${entry.sourceName}->${entry.targetName}`),
     staged,
   };
 
   const summaryPath = process.env.GITHUB_STEP_SUMMARY;
   if (summaryPath) {
+    const sourceLines = result.sources.map((source) =>
+      `- source: ${source.branch}@${source.head} (${source.status}, ${source.count} files)`,
+    );
     appendFileSync(summaryPath, [
-      '## Local migration overlay',
+      '## Local migration overlays',
       '',
-      `- mode: ${result.mode}`,
-      `- source branch: ${result.source.branch}`,
-      `- source head: ${result.source.head}`,
+      ...sourceLines,
       `- staged count: ${result.count}`,
       `- range: ${result.first} → ${result.last}`,
       `- local transforms: ${result.transformed.join(', ') || 'none'}`,
+      `- local renames: ${result.renamed.join(', ') || 'none'}`,
       '- scope: disposable local Supabase runner only; never a remote migration ledger',
       '',
     ].join('\n'), 'utf8');

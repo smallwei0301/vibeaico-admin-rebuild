@@ -6,7 +6,7 @@
 >
 > 目的：讓 disposable local Supabase（一次性本機測試資料庫）能從空庫重建到可執行標準 seed、integration 與 E2E，同時避免污染遠端 TEST 的 migration history。
 
-## 1. 查到的三本帳
+## 1. 查到的資料庫帳本
 
 ### `main` 的正式 migration 目錄
 
@@ -19,87 +19,114 @@
 ### 歷史整合分支
 
 `claude/deploy-vercel-project-nnno59` 在 head
-`7ad9ac53df1f7f4971a2ec96c4038587e0515b66` 保留：
+`7ad9ac53df1f7f4971a2ec96c4038587e0515b66` 保留 0015～0033。其中 0016 建立標準 seed 需要的
+`trips` 與 `trip_plans`；0026 建立 `trip_departures`、`trip_addons`、`tour_orders` 與基礎 RPC。
+
+### Issue #41 候選分支
+
+第一輪完整本機重建已能套到 0033，但標準 seed 在 `trip_plans.min_to_depart` 停止。該欄位與
+團次 snapshot 由 PR #73 的候選 migration 提供：
 
 ```text
-0015_tenants_business_type.sql
-0016_tour_domain_core.sql
-...
-0033_trip_duplicate_atomic.sql
+0038_notification_outbox_delivery.sql
+0038a_restrict_internal_notification_functions.sql
+0040_issue_41_group_formation_lifecycle.sql
 ```
 
-其中 `0016_tour_domain_core.sql` 建立目前標準 seed 明確需要的 `trips` 與 `trip_plans`，且使用
-`base_price`；`0026_tour_departures_addons_orders.sql` 建立 `trip_departures`、`trip_addons`、
-`tour_orders` 與基礎 RPC。
+來源固定為：
+
+```text
+branch: agent/issue-41-epoch-current-main
+head: b583a08b0542ec33d81a587d844df2605ef6f8d6
+PR: #73
+status: CANDIDATE_SOURCE_NOT_CANONICAL
+```
+
+0040 明確依賴 0038／0038a，因此三支一起作為最小候選補充包。因 `0038a` 不是本機 Supabase
+CLI 的純數字 migration 名稱，本機 staging 在通過原始 Git blob 指紋後，暫時改名為：
+
+```text
+0039_restrict_internal_notification_functions_local.sql
+```
+
+SQL 內容不變，只有 disposable runner 內的排序檔名不同。
 
 ### 遠端 TEST migration history
 
-TEST project `nmwhwngojosmagjuvxol` 的已套用名稱／版本已走出另一條歷史，包含候選 Issue
-migration；它和歷史整合分支的 `0015～0033` 編號並非同一套一對一帳本。
+TEST project `nmwhwngojosmagjuvxol` 的已套用名稱與版本另有歷史，包含多張尚未合併的 Issue
+候選。它和上述兩組檔案不是一對一的正式帳本。
 
 ## 2. 決策
 
-**不把歷史 `0015～0033` 直接加入正式 `supabase/migrations`。**
+**不把歷史 0015～0033 或 PR #73 候選直接加入正式 `supabase/migrations`。**
 
-原因：這可能讓未來遠端 migration 工具遇到同編號不同內容，像兩張發票都寫「第 16 號」，
-但商品完全不同。
-
-Phase 1B 改採：
+Phase 1B 使用兩個有順序的 local-only overlay：
 
 ```text
-supabase/local-migrations/historical-integration-baseline/
+1. supabase/local-migrations/historical-integration-baseline/
+2. supabase/local-migrations/issue-41-candidate-baseline/
 ```
 
-它只在 `TEST_PROFILE=LOCAL_ISOLATED` 且
-`ALLOW_LOCAL_MIGRATION_OVERLAY=true` 的 disposable runner 內，暫時複製到 runner 的
-`supabase/migrations` 後再 `supabase start`。repo 的正式 migration 目錄本身不被覆寫。
+它們只在 `TEST_PROFILE=LOCAL_ISOLATED` 且 `ALLOW_LOCAL_MIGRATION_OVERLAY=true` 的 disposable
+runner 內，暫時複製到 runner 的 `supabase/migrations` 後再 `supabase start`。Git 裡的正式
+migration 目錄與遠端 TEST 不會被改寫。
 
 ## 3. 完整性護欄
 
-`manifest.json` 對每支 SQL 保存原始 Git blob SHA。stage script 必須：
+每個 manifest 都保存來源 repository、branch、exact head 與每支 SQL 的原始 Git blob SHA。
+Stage script 必須：
 
-1. 僅接受 `LOCAL_ONLY_TRANSITIONAL` manifest；
-2. 僅允許 `TEST_PROFILE=LOCAL_ISOLATED`；
-3. 要求明確 `ALLOW_LOCAL_MIGRATION_OVERLAY=true`；
-4. 重新計算每支檔案的 Git blob SHA；
-5. 發現缺檔、額外 SQL、重複檔名或 hash 不符即停止；
-6. 若正式 `supabase/migrations` 已有同名檔，拒絕覆蓋；
-7. 在 Actions summary 記錄來源 branch、head、數量與範圍。
+1. 僅接受 `LOCAL_ONLY_TRANSITIONAL` manifest。
+2. 僅允許 `TEST_PROFILE=LOCAL_ISOLATED`。
+3. 要求明確 `ALLOW_LOCAL_MIGRATION_OVERLAY=true`。
+4. 重新計算每支檔案的 Git blob SHA。
+5. 發現缺檔、額外 SQL、重複 target、hash 不符或未知 transform 即停止。
+6. 若正式 `supabase/migrations` 已有同名檔，拒絕覆蓋。
+7. 跨 manifest 的 target 名稱不可重複。
+8. Candidate source 必須在 Actions summary 明示 `CANDIDATE_SOURCE_NOT_CANONICAL`。
+9. 只允許白名單 local transform；原始 SQL 與 blob 指紋保持不變。
 
-## 4. 這份補充包能證明什麼？
+## 4. 目前已證明與尚未證明
 
-若完整 local suite 成功，只能證明：
-
-```text
-歷史整合基線 + current PR source
-可在 fresh local Supabase 執行標準 seed、integration、E2E
-```
-
-它不能證明：
+已證明：
 
 ```text
-遠端 TEST migration history 已被正式整理
-Production migration 可直接套用
-local green 等於 canonical green
+0015～0033 原始檔指紋可驗證
+fresh local PostgreSQL 17 可套用到 0033
+0031／0032 的 local-only transaction 外框有效
+每次失敗後 local cleanup 仍成功
 ```
 
-因此最終 runtime PR 仍需 `SHARED_CANONICAL` 遠端 TEST、Sol Audit 與 Completion Truth Gate。
+尚未證明：
+
+```text
+0038／0038a／0040 可順利接在 0033 後
+標準 reset／seed 全綠
+full integration 全綠
+Playwright E2E 全綠
+遠端 migration ledger 已整理
+```
+
+本機綠燈只能叫 `ISOLATED_GREEN`，不能叫 `CANONICAL_GREEN`。任何 runtime PR 最終仍需
+`SHARED_CANONICAL` 遠端 TEST、Sol Audit 與 Completion Truth Gate。
 
 ## 5. Phase 1B 驗收
 
-- [ ] manifest 內 19 支 SQL 全部通過 blob integrity 檢查
-- [ ] stage script 不會改寫正式 migration 原始檔
-- [ ] fresh local PostgreSQL 17 能套用 0001～0014 + local overlay
+- [x] 歷史 0015～0033 共 19 支 SQL 通過 blob integrity 檢查
+- [x] stage script 不改寫正式 migration 原始檔
+- [x] fresh local PostgreSQL 17 可套用 0001～0014 + 歷史 overlay 到 0033
+- [x] 0031／0032 transaction 缺口以 local-only 白名單 transform 修復
+- [ ] PR #73 最小候選 overlay 通過來源指紋與跨 manifest 重複檢查
 - [ ] standard reset／seed 成功
 - [ ] full integration 成功
 - [ ] full Playwright E2E 成功
 - [ ] cleanup 顯示 `LOCAL_CLEANUP_VERIFIED`
-- [ ] Actions summary 明確標記 `ISOLATED_GREEN`，沒有冒充 canonical green
+- [ ] Actions summary 明確標記 `ISOLATED_GREEN`
 - [ ] 遠端 TEST 完全未使用或修改
-- [ ] 若後續仍缺 schema，新增缺口報告，不讓 seed 靜默略過必要父表
+- [ ] 若仍缺 schema，新增精確缺口，不讓 seed 靜默忽略必要父表
 
-## 6. 下一個治理問題
+## 6. 後續治理
 
-Phase 1B 成功後，仍要另開 migration-ledger reconciliation（帳本整理）工作，把正式
-`main`、歷史整合分支與遠端 TEST 已套用 migration 對齊。那是資料庫治理工作，不應偷偷
-藏在本機測試 PR 裡。
+Phase 1B 成功後，仍要另做 migration-ledger reconciliation（帳本整理），把正式 `main`、
+歷史整合分支、各 Issue 候選與遠端 TEST 已套用 migration 對齊。這是資料庫治理工作，不會
+偷偷藏在本機測試 PR 裡。
