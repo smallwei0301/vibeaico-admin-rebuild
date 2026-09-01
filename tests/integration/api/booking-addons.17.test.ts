@@ -1,4 +1,4 @@
-/** Issue #17 integration TEST suite. CI runs it only after migration 0053 is applied. */
+/** Issue #17 integration TEST suite. CI runs it only after migrations 0053–0056 are applied. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
@@ -32,6 +32,9 @@ async function customer(lineUserId: string | null) {
   const id = randomUUID(); customers.push(id);
   const { error } = await admin.from('customers').insert({ id, tenant_id: SHOP_A.id, name: `I17-${id}`, phone: '', line_user_id: lineUserId });
   expect(error).toBeNull(); return id;
+}
+function addonBody(body: Record<string, unknown>, idempotencyKey = randomUUID()) {
+  return { ...body, idempotencyKey };
 }
 async function booking(customerId: string, staffId: string | null = null) {
   const id = randomUUID(); bookings.push(id); slot += 1;
@@ -122,7 +125,7 @@ afterAll(async () => {
 describe('Issue #17 API/RPC CRUD and isolation', () => {
   it('manager add/get/delete atomically changes exact amount, duration and end_at', async () => {
     const id = await booking(await customer(null)); const before = await state(id);
-    const created = await ownerA.post(`/api/bookings/${id}/addons`, { name: 'I17 add', price: 200, quantity: 2, durationMinutes: 15, notify: false });
+    const created = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'I17 add', price: 200, quantity: 2, durationMinutes: 15, notify: false }));
     expect(created.status).toBe(200); const body = await json<any>(created); const addonId = body.data!.addon.id;
     expect(body.data!.notified).toBe('NONE'); expect(body.data!.finalPrice).toBe(1400);
     expect((await state(id)).duration_minutes).toBe(90);
@@ -133,14 +136,14 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
   });
   it('allows zero, rejects negative without residue, and isolates another tenant', async () => {
     const id = await booking(await customer(null));
-    expect((await ownerA.post(`/api/bookings/${id}/addons`, { name: 'gift', price: 0, quantity: 1, durationMinutes: 0, notify: false })).status).toBe(200);
-    await expectFailure(await ownerA.post(`/api/bookings/${id}/addons`, { name: 'bad', price: -1, quantity: 1, durationMinutes: 0, notify: false }), 400, 'REQ_001');
+    expect((await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'gift', price: 0, quantity: 1, durationMinutes: 0, notify: false }))).status).toBe(200);
+    await expectFailure(await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'bad', price: -1, quantity: 1, durationMinutes: 0, notify: false })), 400, 'REQ_001');
     await expectFailure(await ownerB.get(`/api/bookings/${id}/addons`), 404, 'REQ_002');
-    await expectFailure(await ownerB.post(`/api/bookings/${id}/addons`, { name: 'cross', price: 1, quantity: 1, durationMinutes: 0, notify: false }), 404, 'REQ_002');
+    await expectFailure(await ownerB.post(`/api/bookings/${id}/addons`, addonBody({ name: 'cross', price: 1, quantity: 1, durationMinutes: 0, notify: false })), 404, 'REQ_002');
   });
   it('requires authentication and a MANAGER role for add-on mutations', async () => {
     const id = await booking(await customer(null));
-    const payload = { name: 'auth', price: 1, quantity: 1, durationMinutes: 0, notify: false };
+    const payload = addonBody({ name: 'auth', price: 1, quantity: 1, durationMinutes: 0, notify: false });
     await expectFailure(await fetch(`${baseUrl()}/api/bookings/${id}/addons`), 401, 'AUTH_001');
     await expectFailure(await fetch(`${baseUrl()}/api/bookings/${id}/addons`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -160,12 +163,12 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
     expect((await admin.from('services').insert({ id: serviceId, tenant_id: SHOP_B.id, name: `I17 foreign ${serviceId}`, duration_minutes: 30, price: 1 })).error).toBeNull();
     expect((await admin.from('staff').insert({ id: staffId, tenant_id: SHOP_B.id, name: `I17 foreign ${staffId}`, active: true, bookable: true })).error).toBeNull();
     const id = await booking(await customer(null));
-    await expectFailure(await ownerA.post(`/api/bookings/${id}/addons`, { name: 'wrong service', price: 1, quantity: 1, durationMinutes: 0, serviceId, notify: false }), 404, 'REQ_002');
-    await expectFailure(await ownerA.post(`/api/bookings/${id}/addons`, { name: 'wrong staff', price: 1, quantity: 1, durationMinutes: 0, staffId, notify: false }), 404, 'REQ_002');
+    await expectFailure(await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'wrong service', price: 1, quantity: 1, durationMinutes: 0, serviceId, notify: false })), 404, 'REQ_002');
+    await expectFailure(await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'wrong staff', price: 1, quantity: 1, durationMinutes: 0, staffId, notify: false })), 404, 'REQ_002');
   });
   it('rejects authenticated direct booking_addons INSERT, UPDATE and DELETE privileges', async () => {
     const id = await booking(await customer(null));
-    const created = await ownerA.post(`/api/bookings/${id}/addons`, { name: 'route only', price: 1, quantity: 1, durationMinutes: 0, notify: false });
+    const created = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'route only', price: 1, quantity: 1, durationMinutes: 0, notify: false }));
     const addonId = (await json<any>(created)).data!.addon.id;
     const { error: insertError } = await direct.from('booking_addons').insert({
       tenant_id: SHOP_A.id, booking_id: id, name: 'forbidden', price: 0, quantity: 1, duration_minutes: 0,
@@ -184,10 +187,10 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
     const beforeUsage = await admin.from('push_quota_usage').select('used').eq('tenant_id', SHOP_A.id).eq('month', month()).maybeSingle();
     expect(beforeUsage.error).toBeNull(); const before = beforeUsage.data?.used ?? 0;
     const silent = await booking(await customer('Ui17-silent-user'));
-    const silentResult = await ownerA.post(`/api/bookings/${silent}/addons`, { name: 'no push', price: 1, quantity: 1, durationMinutes: 0, notify: false });
+    const silentResult = await ownerA.post(`/api/bookings/${silent}/addons`, addonBody({ name: 'no push', price: 1, quantity: 1, durationMinutes: 0, notify: false }));
     expect(silentResult.status).toBe(200); expect(mock.requests).toHaveLength(0);
     const bound = await booking(await customer('Ui17-bound-user'));
-    const line = await ownerA.post(`/api/bookings/${bound}/addons`, { name: 'line', price: 1, quantity: 1, durationMinutes: 0, notify: true });
+    const line = await ownerA.post(`/api/bookings/${bound}/addons`, addonBody({ name: 'line', price: 1, quantity: 1, durationMinutes: 0, notify: true }));
     const lineBody = await json<any>(line);
     expect(lineBody.data!.notified).toBe('LINE'); expect(await addonState(lineBody.data!.addon.id)).toMatchObject({ notified: 'LINE' });
     expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
@@ -195,17 +198,71 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
     expect(afterUsage.error).toBeNull(); const after = afterUsage.data?.used;
     expect(after).toBe(before + 1);
     mock.reset(); const unbound = await booking(await customer(null));
-    const noLine = await ownerA.post(`/api/bookings/${unbound}/addons`, { name: 'none', price: 1, quantity: 1, durationMinutes: 0, notify: true });
+    const noLine = await ownerA.post(`/api/bookings/${unbound}/addons`, addonBody({ name: 'none', price: 1, quantity: 1, durationMinutes: 0, notify: true }));
     const noLineBody = await json<any>(noLine);
     expect(noLineBody.data!.notified).toBe('NO_LINE'); expect(await addonState(noLineBody.data!.addon.id)).toMatchObject({ notified: 'NO_LINE' });
     expect(mock.requests).toHaveLength(0);
+  });
+
+  it('replays one idempotency key without a second price mutation, quota reservation or LINE push', async () => {
+    const id = await booking(await customer('Ui17-idempotent-user'));
+    const key = randomUUID();
+    const payload = addonBody({ name: 'replay-safe', price: 25, quantity: 2, durationMinutes: 0, notify: true }, key);
+    const beforeUsage = await admin.from('push_quota_usage').select('used').eq('tenant_id', SHOP_A.id).eq('month', month()).maybeSingle();
+    expect(beforeUsage.error).toBeNull();
+
+    const first = await ownerA.post(`/api/bookings/${id}/addons`, payload);
+    expect(first.status).toBe(200);
+    const firstBody = await json<any>(first);
+    expect(firstBody.data!.notified).toBe('LINE');
+    expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+    const firstPrice = (await state(id)).final_price;
+    const firstUsage = await admin.from('push_quota_usage').select('used').eq('tenant_id', SHOP_A.id).eq('month', month()).single();
+    expect(firstUsage.error).toBeNull();
+
+    mock.reset();
+    const replay = await ownerA.post(`/api/bookings/${id}/addons`, payload);
+    expect(replay.status).toBe(200);
+    const replayBody = await json<any>(replay);
+    expect(replayBody.data!.addon.id).toBe(firstBody.data!.addon.id);
+    expect(replayBody.data!.finalPrice).toBe(firstBody.data!.finalPrice);
+    expect(replayBody.data!.notified).toBe('LINE');
+    expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(0);
+    expect((await state(id)).final_price).toBe(firstPrice);
+    expect((await admin.from('booking_addons').select('id', { count: 'exact', head: true }).eq('booking_id', id)).count).toBe(1);
+    const replayUsage = await admin.from('push_quota_usage').select('used').eq('tenant_id', SHOP_A.id).eq('month', month()).single();
+    expect(replayUsage.error).toBeNull(); expect(replayUsage.data?.used).toBe(firstUsage.data?.used);
+  });
+
+  it('surfaces a persisted PENDING notification without sending again on an ambiguous retry', async () => {
+    const id = await booking(await customer('Ui17-pending-user'));
+    const key = randomUUID();
+    const created = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({
+      name: 'pending-fixture', price: 7, quantity: 1, durationMinutes: 0, notify: false,
+    }, key));
+    expect(created.status).toBe(200);
+    const addonId = (await json<any>(created)).data!.addon.id;
+    expect((await admin.from('booking_addons').update({ notification_requested: true, notified: 'PENDING' }).eq('id', addonId)).error).toBeNull();
+    const before = await state(id);
+    mock.reset();
+
+    const replay = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({
+      name: 'pending-fixture', price: 7, quantity: 1, durationMinutes: 0, notify: true,
+    }, key));
+    expect(replay.status).toBe(409);
+    await expect(json(replay)).resolves.toMatchObject({
+      success: false, code: 'REQ_003', data: { persisted: true, notificationPending: true },
+    });
+    expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(0);
+    expect(await state(id)).toEqual(before);
+    expect((await admin.from('booking_addons').select('id', { count: 'exact', head: true }).eq('booking_id', id)).count).toBe(1);
   });
 
   it('maps a staff overlap to 409 and leaves no add-on residue', async () => {
     const c = await customer(null); const start = new Date(Date.now() + 900 * 86_400_000).toISOString();
     const first = await bookingAt(c, SHOP_A.staffA1, start);
     await bookingAt(await customer(null), SHOP_A.staffA1, new Date(Date.parse(start) + 60 * 60_000).toISOString());
-    const res = await ownerA.post(`/api/bookings/${first}/addons`, { name: 'overlap', price: 1, quantity: 1, durationMinutes: 30, notify: false });
+    const res = await ownerA.post(`/api/bookings/${first}/addons`, addonBody({ name: 'overlap', price: 1, quantity: 1, durationMinutes: 30, notify: false }));
     expect(res.status).toBe(409); expect((await json(res)).code).toBe('REQ_003');
     const { count } = await admin.from('booking_addons').select('id', { count: 'exact', head: true }).eq('booking_id', first);
     expect(count).toBe(0); expect(Number((await state(first)).final_price)).toBe(1000);
@@ -214,11 +271,11 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
   it('serializes concurrent add and delete with one final add-on and exact rollback', async () => {
     const id = await booking(await customer(null));
     const before = await state(id);
-    const initial = await ownerA.post(`/api/bookings/${id}/addons`, { name: 'concurrent old', price: 10, quantity: 1, durationMinutes: 0, notify: false });
+    const initial = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'concurrent old', price: 10, quantity: 1, durationMinutes: 0, notify: false }));
     const initialId = (await json<any>(initial)).data!.addon.id;
     const [removed, added] = await Promise.all([
       ownerA.delete(`/api/bookings/${id}/addons/${initialId}`),
-      ownerA.post(`/api/bookings/${id}/addons`, { name: 'concurrent new', price: 7, quantity: 1, durationMinutes: 0, notify: false }),
+      ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'concurrent new', price: 7, quantity: 1, durationMinutes: 0, notify: false })),
     ]);
     expect(removed.status).toBe(200); expect(added.status).toBe(200);
     const { data, error } = await admin.from('booking_addons').select('id,name,applied_amount').eq('booking_id', id);
@@ -241,8 +298,8 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
       const firstBooking = await booking(await customer('Ui17-concurrent-a'));
       const secondBooking = await booking(await customer('Ui17-concurrent-b'));
       const [first, second] = await Promise.all([
-        ownerA.post(`/api/bookings/${firstBooking}/addons`, { name: 'quota a', price: 1, quantity: 1, durationMinutes: 0, notify: true }),
-        ownerA.post(`/api/bookings/${secondBooking}/addons`, { name: 'quota b', price: 1, quantity: 1, durationMinutes: 0, notify: true }),
+        ownerA.post(`/api/bookings/${firstBooking}/addons`, addonBody({ name: 'quota a', price: 1, quantity: 1, durationMinutes: 0, notify: true })),
+        ownerA.post(`/api/bookings/${secondBooking}/addons`, addonBody({ name: 'quota b', price: 1, quantity: 1, durationMinutes: 0, notify: true })),
       ]);
       expect([first.status, second.status].sort()).toEqual([200, 409]);
       const losing = first.status === 409 ? first : second;
@@ -279,7 +336,7 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
       { name: 'primary', price: 1, quantity: 1, durationMinutes: 0, notify: false },
       { name: 'specific', price: 1, quantity: 1, durationMinutes: 0, staffId: SHOP_A.staffA2, notify: false },
       { name: 'none', price: 1, quantity: 1, durationMinutes: 0, noPersonalCredit: true, notify: false },
-    ]) expect((await ownerA.post(`/api/bookings/${id}/addons`, body)).status).toBe(200);
+    ]) expect((await ownerA.post(`/api/bookings/${id}/addons`, addonBody(body))).status).toBe(200);
     const { data, error } = await admin.from('booking_addons').select('name,performance_mode,performance_staff_id').eq('booking_id', id).order('created_at');
     expect(error).toBeNull(); expect(data).toMatchObject([
       { name: 'primary', performance_mode: 'PRIMARY', performance_staff_id: SHOP_A.staffA1 },
@@ -290,7 +347,7 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
 
   it('staff deletion clears only performance_staff_id through the composite FK', async () => {
     const worker = await staff(); const id = await booking(await customer(null));
-    const add = await ownerA.post(`/api/bookings/${id}/addons`, { name: 'staff clear', price: 1, quantity: 1, durationMinutes: 0, staffId: worker, notify: false });
+    const add = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'staff clear', price: 1, quantity: 1, durationMinutes: 0, staffId: worker, notify: false }));
     const addonId = (await json<any>(add)).data!.addon.id;
     expect((await admin.from('staff').delete().eq('id', worker)).error).toBeNull();
     const { data, error } = await admin.from('booking_addons').select('tenant_id,performance_staff_id').eq('id', addonId).single();
@@ -300,12 +357,12 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
   it('records NOT_CONFIGURED and FAILED receipt outcomes without false LINE success', async () => {
     const bound = await booking(await customer('Ui17-config-user'));
     expect((await admin.from('tenant_settings').update({ line_channel_access_token_enc: '' }).eq('tenant_id', SHOP_A.id)).error).toBeNull();
-    const unconfigured = await ownerA.post(`/api/bookings/${bound}/addons`, { name: 'no config', price: 1, quantity: 1, durationMinutes: 0, notify: true });
+    const unconfigured = await ownerA.post(`/api/bookings/${bound}/addons`, addonBody({ name: 'no config', price: 1, quantity: 1, durationMinutes: 0, notify: true }));
     const unconfiguredBody = await json<any>(unconfigured);
     expect(unconfiguredBody.data!.notified).toBe('NOT_CONFIGURED'); expect(await addonState(unconfiguredBody.data!.addon.id)).toMatchObject({ notified: 'NOT_CONFIGURED' });
     expect(mock.requests).toHaveLength(0);
     expect((await admin.from('tenant_settings').update(configuredLineSnapshot).eq('tenant_id', SHOP_A.id)).error).toBeNull(); mock.failNext(500);
-    const failed = await ownerA.post(`/api/bookings/${bound}/addons`, { name: 'failed', price: 1, quantity: 1, durationMinutes: 0, notify: true });
+    const failed = await ownerA.post(`/api/bookings/${bound}/addons`, addonBody({ name: 'failed', price: 1, quantity: 1, durationMinutes: 0, notify: true }));
     const failedBody = await json<any>(failed);
     expect(failedBody.data!.notified).toBe('FAILED'); expect(await addonState(failedBody.data!.addon.id)).toMatchObject({ notified: 'FAILED' });
     expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
@@ -317,7 +374,7 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
     const limit = enabled ? 700 : 200;
     expect((await admin.from('push_quota_usage').upsert({ tenant_id: SHOP_A.id, month: month(), used: limit }, { onConflict: 'tenant_id,month' })).error).toBeNull();
     mock.reset(); const id = await booking(await customer('Ui17-quota-user'));
-    const res = await ownerA.post(`/api/bookings/${id}/addons`, { name: 'quota', price: 3, quantity: 1, durationMinutes: 0, notify: true });
+    const res = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({ name: 'quota', price: 3, quantity: 1, durationMinutes: 0, notify: true }));
     expect(res.status).toBe(409);
     const body = await json<{ persisted?: boolean }>(res);
     expect(body).toMatchObject({ success: false, code: 'REQ_003', data: { persisted: true } });

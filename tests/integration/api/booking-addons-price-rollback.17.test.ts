@@ -16,6 +16,10 @@ function requiredTestEnv(name: 'TEST_SUPABASE_URL' | 'TEST_SUPABASE_SERVICE_ROLE
   return value;
 }
 
+function addonBody(body: Record<string, unknown>) {
+  return { ...body, idempotencyKey: randomUUID() };
+}
+
 async function makeCustomer() {
   const id = randomUUID();
   customers.push(id);
@@ -88,13 +92,13 @@ afterAll(async () => {
 describe('Issue #17 price-adjustment rollback acceptance', () => {
   it('subtracts the persisted applied_amount from a later adjusted final_price', async () => {
     const bookingId = await makeBooking();
-    const created = await ownerA.post(`/api/bookings/${bookingId}/addons`, {
+    const created = await ownerA.post(`/api/bookings/${bookingId}/addons`, addonBody({
       name: 'rollback after adjustment',
       price: 200,
       quantity: 2,
       durationMinutes: 0,
       notify: false,
-    });
+    }));
     expect(created.status).toBe(200);
     const createdBody = await created.json() as { data: { addon: { id: string } } };
     expect(await bookingPrice(bookingId)).toBe(1400);
@@ -111,13 +115,13 @@ describe('Issue #17 price-adjustment rollback acceptance', () => {
 
   it('clamps rollback at zero when a later discount is below applied_amount', async () => {
     const bookingId = await makeBooking();
-    const created = await ownerA.post(`/api/bookings/${bookingId}/addons`, {
+    const created = await ownerA.post(`/api/bookings/${bookingId}/addons`, addonBody({
       name: 'rollback floor',
       price: 200,
       quantity: 2,
       durationMinutes: 0,
       notify: false,
-    });
+    }));
     expect(created.status).toBe(200);
     const createdBody = await created.json() as { data: { addon: { id: string } } };
 

@@ -329,6 +329,7 @@ export const bookingsPage = {
       NOT_CONFIGURED: '加購已加入；店家尚未設定 LINE，未送出明細',
       QUOTA_EXCEEDED: '加購已加入，但推播額度已用完，未送出明細',
       FAILED: '加購已加入，但通知傳送失敗，未宣稱已送出',
+      PENDING: '加購已加入，但 LINE 通知狀態不明；為避免重複推播，未重送通知',
     },
     addonAddedRefreshFailed: '加購已成功，但明細刷新失敗，請重開詳情查看',
     addonRemoved: '加購已移除',

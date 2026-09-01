@@ -71,7 +71,7 @@ export type BookingAddon = {
 };
 
 export type BookingAddonNotifyOutcome =
-  'NONE' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED';
+  'NONE' | 'PENDING' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED';
 
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';

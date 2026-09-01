@@ -14,7 +14,38 @@ const bodySchema = z.object({
   staffId: z.string().uuid().optional(),
   noPersonalCredit: z.boolean().default(false),
   notify: z.boolean().default(false),
+  /** Stable across a client retry; the RPC binds it to this booking mutation. */
+  idempotencyKey: z.string().uuid(),
 });
+
+type AddonNotifyOutcome = import('@/lib/types').BookingAddonNotifyOutcome;
+
+function throwPendingNotification(): never {
+  throw new ApiHttpError(
+    409,
+    '加購已新增，但 LINE 通知狀態不明；為避免重複推播，未重送通知，請聯絡管理者確認',
+    ERR.CONFLICT,
+    { persisted: true, notificationPending: true },
+  );
+}
+
+function throwNotificationStateFailure(
+  phase: 'claim' | 'marker', tenantId: string, bookingId: string, addonId: string, error: unknown,
+): never {
+  // Keep the provider/DB error in server logs, but do not expose it to the
+  // tenant.  The persisted flag tells the UI not to submit a new key.
+  console.error(`[api] booking-addon notification ${phase} failed`, tenantId, bookingId, addonId, error);
+  throw new ApiHttpError(
+    500,
+    '加購已建立，但 LINE 通知狀態無法安全確認；為避免重複推播，未重送通知，請聯絡管理者確認',
+    ERR.INTERNAL,
+    { persisted: true, notificationPending: true },
+  );
+}
+
+function throwMarkerFailure(tenantId: string, bookingId: string, addonId: string, error: unknown): never {
+  return throwNotificationStateFailure('marker', tenantId, bookingId, addonId, error);
+}
 
 function rpcError(error: any): never {
   const message = String(error?.message ?? '');
@@ -22,6 +53,8 @@ function rpcError(error: any): never {
     throw new ApiHttpError(409, '加購後時段與既有預約重疊，資料未變更', ERR.CONFLICT);
   if (message.includes('FORBIDDEN')) throw new ApiHttpError(403, '權限不足', ERR.FORBIDDEN);
   if (message.includes('NOT_FOUND')) throw new ApiHttpError(404, '找不到預約或加購資源', ERR.NOT_FOUND);
+  if (message.includes('IDEMPOTENCY_CONFLICT'))
+    throw new ApiHttpError(409, '相同的重試鍵已對應其他加購內容，資料未變更', ERR.CONFLICT);
   if (message.includes('STATUS_CONFLICT')) throw new ApiHttpError(409, '此預約目前不可加購', ERR.CONFLICT);
   if (message.includes('INVALID')) throw new ApiHttpError(400, '加購資料不合法', ERR.VALIDATION);
   throw error;
@@ -48,32 +81,50 @@ export const POST = handle(async (req, { params }) => {
   const { data: result, error } = await t.supabase.rpc('add_booking_addon_17', {
     p_tenant_id: t.tenantId, p_booking_id: id, p_service_id: b.serviceId ?? null,
     p_name: b.name, p_price: b.price, p_quantity: b.quantity,
-    p_duration_minutes: b.durationMinutes, p_staff_id: b.staffId ?? null,
-    p_no_personal_credit: b.noPersonalCredit,
+    p_duration_minutes: b.durationMinutes, p_idempotency_key: b.idempotencyKey,
+    p_staff_id: b.staffId ?? null, p_no_personal_credit: b.noPersonalCredit,
+    p_notify: b.notify,
   });
   if (error) rpcError(error);
-  const addonId = result?.[0]?.addon_id;
+  const rpcResult = result?.[0];
+  const addonId = rpcResult?.addon_id;
   if (!addonId) throw new ApiHttpError(500, '加購交易未回傳項目', ERR.INTERNAL);
   const { data: addon, error: addonError } = await t.supabase.from('booking_addons')
     .select('id, service_id, name, price, quantity, duration_minutes, staff_id, applied_amount, applied_minutes, notified, performance_mode, performance_staff_id, created_at, staff:staff_id(name)')
     .eq('tenant_id', t.tenantId).eq('booking_id', id).eq('id', addonId).maybeSingle();
   if (addonError) throw addonError;
   if (!addon) throw new ApiHttpError(500, '加購交易結果無法讀取', ERR.INTERNAL);
-  let notified: import('@/lib/types').BookingAddonNotifyOutcome = 'NONE';
+  let notified: AddonNotifyOutcome = (rpcResult.notified ?? 'NONE') as AddonNotifyOutcome;
   if (b.notify) {
-    const appliedAmount = b.price * b.quantity;
-    notified = await notifyBookingAddonReceipt(t.tenantId, {
-      bookingId: id, item: { name: b.name, quantity: b.quantity, price: b.price },
-      addonTotal: appliedAmount, bookingTotal: Number(result[0].final_price),
-    });
-    const { error: notificationError } = await createAdminSupabase().rpc('mark_booking_addon_notification_17', {
-      p_tenant_id: t.tenantId, p_booking_id: id, p_addon_id: addonId, p_notified: notified,
-    });
-    if (notificationError) throw notificationError;
+    if (notified === 'PENDING') throwPendingNotification();
+    if (notified === 'NONE') {
+      const admin = createAdminSupabase();
+      const { data: claimResult, error: claimError } = await admin.rpc('claim_booking_addon_notification_17', {
+        p_tenant_id: t.tenantId, p_booking_id: id, p_addon_id: addonId,
+      });
+      if (claimError) throwNotificationStateFailure('claim', t.tenantId, id, addonId, claimError);
+      const claim = claimResult?.[0];
+      if (!claim) throwPendingNotification();
+      if (!claim.claimed) {
+        notified = claim.notified as AddonNotifyOutcome;
+        if (notified === 'PENDING' || notified === 'NONE') throwPendingNotification();
+      } else {
+        const appliedAmount = b.price * b.quantity;
+        notified = await notifyBookingAddonReceipt(t.tenantId, {
+          bookingId: id, item: { name: b.name, quantity: b.quantity, price: b.price },
+          addonTotal: appliedAmount, bookingTotal: Number(rpcResult.final_price),
+        });
+        const { error: notificationError } = await admin.rpc('mark_booking_addon_notification_17', {
+          p_tenant_id: t.tenantId, p_booking_id: id, p_addon_id: addonId, p_notified: notified,
+        });
+        if (notificationError) throwMarkerFailure(t.tenantId, id, addonId, notificationError);
+      }
+    }
   }
   const responseAddon = mapBookingAddon({ ...addon, notified });
+  if (notified === 'PENDING') throwPendingNotification();
   if (notified === 'QUOTA_EXCEEDED')
     throw new ApiHttpError(409, '加購已新增，但本月推播額度已用完，未送出消費明細', ERR.CONFLICT, { persisted: true });
-  return ok({ addon: responseAddon, finalPrice: Number(result[0].final_price),
-    durationMinutes: Number(result[0].duration_minutes), endAt: result[0].end_at, notified });
+  return ok({ addon: responseAddon, finalPrice: Number(rpcResult.final_price),
+    durationMinutes: Number(rpcResult.duration_minutes), endAt: rpcResult.end_at, notified });
 });

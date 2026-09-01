@@ -121,7 +121,7 @@
 
 - [ ] 付款方式整頁（含「實刷測試」謊報刷卡成功並設 gatewayVerified=true——**金流級假成功，最優先移除**）
 - [ ] 診所叫號整頁（含「已 LINE 通知病患」謊報）
-- [ ] 預約加購 modal：歷史 `0020` 實作不在 current-main migration graph；Issue #17 current-main rebuild 以 `0053` 原子 RPC 重建，`notify=true` 已接既有憑證／quota／LINE receipt，並持久化實際 outcome；外部 provider 的 serialized TEST evidence 尚未完成（見 §6.14）。
+- [ ] 預約加購 modal：歷史 `0020` 實作不在 current-main migration graph；Issue #17 current-main rebuild 以 `0053`→`0056` forward lineage 的原子 RPC 重建，`notify=true` 已接既有憑證／quota／LINE receipt，並以 request key + `PENDING` claim 持久化重試安全的實際 outcome；外部 provider 的 serialized TEST evidence 尚未完成（見 §6.14）。
 - [ ] 行事曆同步頁（ICS token 重生＝假安全操作、外部行事曆 CRUD）＋設定頁 ICS token 重生（硬編碼輪替陣列）
 - [ ] 贊助頁假送出、推薦頁硬編碼假推薦碼、兩處「QR 已下載」沒下載
 - [ ] rich-menu-design 殘留：FlexMenuTab 發布/重設/刪卡、每格彈窗、儲存草稿、還原、預約步驟、背景圖「上傳圖片」死按鈕（無 onClick）
@@ -1626,10 +1626,12 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 > main's source graph ends at `0014`; the rebuild is based on exact main
 > `ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5` and uses forward
 > `0053_issue_17_booking_addons`, `0054_issue_17_booking_addons_hardening`,
-> and the forward-only `0055_issue_17_booking_addon_price_rollback`.  The
+> the forward-only `0055_issue_17_booking_addon_price_rollback`, and
+> `0056_issue_17_booking_addon_idempotency`.  The
 > transaction RPCs (not route-level CAS/compensation), explicit C+ attribution
-> modes, awaited quota/LINE receipt path, and six-state persisted outcome are
-> source behavior; the integration suite is enabled (not skip-gated).
+> modes, awaited quota/LINE receipt path, request-key replay contract, and
+> explicit `PENDING` notification claim state are source behavior; the
+> integration suite is enabled (not skip-gated).
 > The retained TEST fact is that `0055` is already applied exactly once on
 > `nmwhwngojosmagjuvxol`; this rebuild does not reapply it or perform TEST
 > migration/reset/seed/schema-cache/integration/E2E operations.  Historical
@@ -1640,11 +1642,12 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 > The rebuilt verifier must delete a referenced staff fixture and prove the
 > composite FK clears only `performance_staff_id`, retaining `tenant_id` and
 > the add-on row.  The serialized TEST plan runs only after the authorized
-> TEST lane confirms the existing migration baseline: post-migration negative
-> API inputs are rejected, the positive oversized-duration snapshot is removed
-> safely, concurrent add/delete and final-unit quota races are exercised, and
-> the two `0055` price-adjustment cases prove current-price subtraction and an
-> exact zero floor.  The artifacts are
+> TEST lane confirms the existing migration baseline plus `0056`: post-migration
+> negative API inputs are rejected, the positive oversized-duration snapshot is
+> removed safely, concurrent add/delete and final-unit quota races are exercised,
+> idempotent replay does not repeat mutation/quota/push, and the two `0055`
+> price-adjustment cases prove current-price subtraction and an exact zero floor.
+> The artifacts are
 > `tests/integration/api/booking-addons.17.test.ts` and
 > `scripts/verify/booking-addons.17.cjs`; they use the local LINE mock rather
 > than a real provider.  A committed quota-exhausted 409 carries an explicit
@@ -1653,7 +1656,7 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 
 > The paragraphs below preserve the historical `b317d35` evidence for provenance
 > only. They are not a claim that those `0020`/Preview results satisfy the
-> current-main acceptance. The active acceptance ledger is the `0053` candidate
+> current-main acceptance. The active acceptance ledger is the `0053`–`0056` candidate
 > and its exact-head TEST/Preview evidence.
 
 補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`

@@ -95,8 +95,10 @@
       `0054_issue_17_booking_addons_hardening.sql` 是同一 forward lineage 的
       RLS/ACL/search-path/quota hardening，`0055_issue_17_booking_addon_price_rollback.sql`
       再固定調價後刪除加購的當下金額回沖與 floor-at-zero 行為，不是歷史 `0020`。
+      `0056_issue_17_booking_addon_idempotency.sql` 固定同一 `(tenant, booking, key)` 的
+      重試只回傳既有 mutation，並以 `PENDING` claim 防止 marker／provider ambiguity 重送。
       TEST 已有 0055 且只套用一次；本輪不得重套或變更 TEST。
-      current-main exact-head TEST verification of 0053–0055、已啟用的 integration/E2E/verifier 實跑、authenticated Preview 與
+      current-main exact-head TEST verification of 0053–0056、已啟用的 integration/E2E/verifier 實跑、authenticated Preview 與
       CLOSE evidence 尚未完成；完成前不得把歷史 `0020` 的兩專案輸出當作 current-main 驗收。
       Source-level page wiring、unit 守門與 integration suite 已在 PR #87，Sol
       `CLOSE_APPROVED` 尚未核發。

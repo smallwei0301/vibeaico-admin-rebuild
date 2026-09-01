@@ -631,6 +631,16 @@ export default function BookingsPage() {
           toast.show(t.messages.addonNotificationOutcome.QUOTA_EXCEEDED, 'warning');
           void load();
         }}
+        onPersistedNotificationPending={() => {
+          // The server has already committed the add-on and claimed the LINE
+          // attempt.  Close the form so a marker/network ambiguity cannot be
+          // turned into a second provider push by a client retry.
+          setAddonTarget(null);
+          setDetailTarget(null);
+          setAddonRevision((revision) => revision + 1);
+          toast.show(t.messages.addonNotificationOutcome.PENDING, 'warning');
+          void load();
+        }}
       />
 
       {/* ------------------------------------------------------ 5. 套用票券 */}
@@ -1188,12 +1198,13 @@ function BookingFormModal({
 /* ========================================================================== */
 
 function AddonModal({
-  booking, onClose, onAdded, onPersistedQuotaExceeded,
+  booking, onClose, onAdded, onPersistedQuotaExceeded, onPersistedNotificationPending,
 }: {
   booking: Booking | null;
   onClose: () => void;
   onAdded: (result: CreateBookingAddonResult) => void;
   onPersistedQuotaExceeded: () => void;
+  onPersistedNotificationPending: () => void;
 }) {
   const toast = useToast();
   const a = t.addonModal;
@@ -1209,11 +1220,13 @@ function AddonModal({
   const [notify, setNotify] = React.useState(false);
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [idempotencyKey, setIdempotencyKey] = React.useState('');
 
   React.useEffect(() => {
     if (!booking) return;
     setServiceId(''); setName(''); setPrice(''); setDuration('0');
     setQuantity('1'); setStaffId(''); setNoPersonalCredit(false); setNotify(false); setError('');
+    setIdempotencyKey(crypto.randomUUID());
     void (async () => {
       try { setServices(await listServices()); }
       catch { toast.show(`${t.messages.loadAddonOptionsFailed}${t.messages.unknownError}`, 'danger'); }
@@ -1244,7 +1257,10 @@ function AddonModal({
     setSaving(true);
     try {
       if (!booking) return;
+      const requestKey = idempotencyKey || crypto.randomUUID();
+      if (!idempotencyKey) setIdempotencyKey(requestKey);
       const result = await createBookingAddon(booking.id, {
+        idempotencyKey: requestKey,
         serviceId: serviceId || undefined, name: name.trim(), price: Number(price),
         quantity: Number(quantity), durationMinutes: Number(duration), staffId: staffId || undefined,
         noPersonalCredit,
@@ -1252,9 +1268,10 @@ function AddonModal({
       });
       onAdded(result);
     } catch (e) {
-      if (e instanceof ApiError && e.code === 'REQ_003'
-        && (e.data as { persisted?: boolean } | undefined)?.persisted) {
-        onPersistedQuotaExceeded();
+      if (e instanceof ApiError && (e.data as { persisted?: boolean } | undefined)?.persisted) {
+        if ((e.data as { notificationPending?: boolean }).notificationPending) onPersistedNotificationPending();
+        else if (e.code === 'REQ_003') onPersistedQuotaExceeded();
+        else setError(e.message);
         return;
       }
       setError(e instanceof Error ? e.message : t.messages.actionFailed);

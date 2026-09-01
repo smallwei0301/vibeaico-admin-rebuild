@@ -131,6 +131,8 @@ export const revertBookingComplete = (id: string) =>
 /* -------------------------------------------------------------- 加購項目 */
 
 export type CreateBookingAddonPayload = {
+  /** UUID kept by the form across retries of this one user action. */
+  idempotencyKey: string;
   serviceId?: string;
   name: string;
   price: number;

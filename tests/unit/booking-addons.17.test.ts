@@ -10,6 +10,7 @@ describe('Issue #17 booking add-on source contracts', () => {
   const migration = read('supabase/migrations/0053_issue_17_booking_addons.sql');
   const hardening = read('supabase/migrations/0054_issue_17_booking_addons_hardening.sql');
   const rollback = read('supabase/migrations/0055_issue_17_booking_addon_price_rollback.sql');
+  const idempotency = read('supabase/migrations/0056_issue_17_booking_addon_idempotency.sql');
   const page = read('src/app/tenant/bookings/page.tsx');
   const api = read('src/app/api/bookings/[id]/addons/route.ts');
   const line = read('src/server/line.ts');
@@ -64,9 +65,13 @@ describe('Issue #17 booking add-on source contracts', () => {
 
   it('uses truthful receipt outcomes instead of delay-based false success', () => {
     expect(api).toContain('notify: z.boolean().default(false)');
+    expect(api).toContain('idempotencyKey: z.string().uuid()');
     expect(api).toContain('notifyBookingAddonReceipt');
+    expect(api).toContain("rpc('claim_booking_addon_notification_17'");
     expect(api).toContain("rpc('mark_booking_addon_notification_17'");
-    expect(api).toContain('createAdminSupabase().rpc');
+    expect(api).toContain('const admin = createAdminSupabase()');
+    expect(api).toContain('notificationPending: true');
+    expect(api).toContain('throwMarkerFailure');
     expect(api).toContain("notified === 'QUOTA_EXCEEDED'");
     expect(api).toContain('{ persisted: true }');
     expect(api).toContain("error?.code === '23P01'");
@@ -78,7 +83,7 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(migration).toContain('to service_role');
     expect(migration).toContain("if auth.role() <> 'service_role' then raise exception 'BOOKING_ADDON_FORBIDDEN'; end if;");
     expect(read('src/lib/types.ts')).toContain("'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE'");
-    expect(read('src/lib/types.ts')).toContain("'NONE' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED'");
+    expect(read('src/lib/types.ts')).toContain("'NONE' | 'PENDING' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED'");
     expect(api).toContain("price: z.number().finite().min(0)");
     expect(page).not.toContain('setTimeout(r, 400)');
     expect(page).toContain('createBookingAddon(booking.id');
@@ -117,5 +122,25 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(line).toContain("return data === true");
     expect(line).toContain('quota reservation failed');
     expect(line).not.toContain("from('push_quota_usage').select('used')");
+  });
+
+  it('binds retries to one booking mutation and fails closed on notification ambiguity', () => {
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0056_issue_17_booking_addon_idempotency.sql'))).toBe(true);
+    expect(idempotency).toContain('add column if not exists idempotency_key text');
+    expect(idempotency).toContain('notification_requested boolean not null default false');
+    expect(idempotency).toContain('booking_addons_idempotency_key_uq');
+    expect(idempotency).toContain('BOOKING_ADDON_IDEMPOTENCY_CONFLICT');
+    expect(idempotency).toContain('p_idempotency_key text');
+    expect(idempotency).toContain('p_notify boolean default false');
+    expect(idempotency).toContain("set notified = 'PENDING'");
+    expect(idempotency).toContain('claim_booking_addon_notification_17');
+    expect(idempotency).toContain("and notified = 'PENDING'");
+    expect(idempotency).toContain('BOOKING_ADDON_NOTIFICATION_CONFLICT');
+    expect(idempotency).toContain('to authenticated');
+    expect(idempotency).toContain('to service_role');
+    expect(read('src/lib/types.ts')).toContain("'NONE' | 'PENDING' | 'LINE'");
+    expect(read('src/services/bookings.ts')).toContain('idempotencyKey: string');
+    expect(page).toContain('setIdempotencyKey(crypto.randomUUID());');
+    expect(page).toContain('onPersistedNotificationPending');
   });
 });
