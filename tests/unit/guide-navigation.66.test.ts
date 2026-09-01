@@ -86,6 +86,13 @@ describe('GUIDE five-parent information architecture (#66 Phase B)', () => {
     expect(source).toContain('featureLoadFailed');
   });
 
+  it('keeps More links keyboard-visible and feature lookup failures announced as errors', () => {
+    const source = readFileSync('src/app/tenant/more/page.tsx', 'utf8');
+    expect(source).toContain('GUIDE_UI_CLASSES.focusRing');
+    expect(source).toContain('featureLoadFailed');
+    expect(source).toContain('role="alert"');
+  });
+
   it('More page reads the mode preset and does not scatter a GUIDE businessType conditional', () => {
     const source = readFileSync('src/app/tenant/more/page.tsx', 'utf8');
     expect(source).toContain('MODE_PRESETS[businessType].navigationProfile');

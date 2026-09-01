@@ -94,6 +94,7 @@ export default function GuideMorePage() {
                   className={cn(
                     GUIDE_UI_CLASSES.touchTarget,
                     GUIDE_UI_CLASSES.settingsLink,
+                    GUIDE_UI_CLASSES.focusRing,
                     'flex items-center gap-3 px-4 py-3 sm:px-5',
                   )}
                 >
@@ -125,7 +126,7 @@ export default function GuideMorePage() {
         );
       })}
       {featureLoadFailed ? (
-        <p className={GUIDE_UI_CLASSES.secondary} role="status">
+        <p className={GUIDE_UI_CLASSES.secondary} role="alert">
           {guideNavigation.more.gating.error}
         </p>
       ) : null}
