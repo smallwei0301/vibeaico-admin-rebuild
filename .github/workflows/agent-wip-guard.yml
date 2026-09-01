@@ -5,33 +5,37 @@ on:
     types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
 permissions:
+  actions: write
   contents: read
   issues: write
   pull-requests: write
+
+concurrency:
+  group: agent-wip-guard-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      # pull_request_target is privileged. Always load policy code from the trusted default branch,
-      # never from the PR head, and never execute contributor code.
-      - name: Checkout trusted policy code
+      # This is a privileged workflow. Load policy only from the trusted default branch and never
+      # checkout or execute PR-head code.
+      - name: Checkout trusted B+ policy
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Validate agent lane metadata and WIP limits
+      - name: Validate B+ lane metadata and WIP limits
         uses: actions/github-script@v9
         with:
           script: |
             const path = require('node:path');
             const { pathToFileURL } = require('node:url');
-            const policyPath = path.join(
+            const policy = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE,
               'scripts/agents/agent-wip-policy.mjs',
-            );
-            const policy = await import(pathToFileURL(policyPath).href);
+            )).href);
 
             const { owner, repo } = context.repo;
             const current = context.payload.pull_request;
@@ -42,32 +46,63 @@ jobs:
               action: context.payload.action ?? '',
             });
 
+            if (
+              isAgent &&
+              metadata.state === 'ACTIVE' &&
+              metadata.bplusMode === 'TRUE' &&
+              metadata.scorecardPath &&
+              metadataErrors.length === 0
+            ) {
+              let scorecardFound = false;
+              for (const ref of [current.head.sha, context.payload.repository.default_branch]) {
+                try {
+                  const response = await github.rest.repos.getContent({
+                    owner,
+                    repo,
+                    path: metadata.scorecardPath,
+                    ref,
+                  });
+                  if (!Array.isArray(response.data) && response.data.type === 'file') {
+                    scorecardFound = true;
+                    break;
+                  }
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+              if (!scorecardFound) {
+                metadataErrors.push(`SCORECARD_PATH does not exist on the PR head or main: ${metadata.scorecardPath}`);
+              }
+            }
+
             const openPulls = await github.paginate(github.rest.pulls.list, {
               owner,
               repo,
               state: 'open',
               per_page: 100,
             });
-            const laneSummary = policy.summarizeActiveLanes(openPulls);
+            const summary = policy.summarizeActiveLanes(openPulls);
             const wipErrors = isAgent && metadata.state === 'ACTIVE'
-              ? policy.validateGlobalWip(laneSummary)
+              ? policy.validateGlobalWip(summary)
               : [];
 
             const labels = {
-              'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as agent-origin.'],
-              'origin:owner-or-unknown': ['BFDADC', 'No explicit agent-origin marker.'],
-              'lane:terra-build': ['5319E7', 'Active or parked Terra implementation lane; different Issues may run in parallel.'],
-              'lane:luna-closure': ['C2E0C6', 'Repo-wide Luna closure sweep lane.'],
-              'lane:test-validation': ['FBCA04', 'Single shared TEST validation lane.'],
+              'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as Agent-origin.'],
+              'origin:owner-or-unknown': ['BFDADC', 'No explicit Agent-origin marker.'],
+              'lane:terra-build': ['0E8A16', 'The sole complete MAIN Terra delivery lane.'],
+              'lane:terra-reserve': ['A2EEEF', 'The sole source-only RESERVE Terra preparation lane.'],
+              'lane:luna-closure': ['5319E7', 'The sole Luna Closure / Janitor lane.'],
+              'lane:test-validation': ['FBCA04', 'The sole shared TEST validation lane.'],
               'lane:governance': ['D4C5F9', 'Repository governance work.'],
-              'state:active': ['0E8A16', 'Current active lane.'],
-              'state:parked': ['BFD4F2', 'Parked; no agent, push, rerun or polling.'],
+              'state:active': ['0E8A16', 'Current active B+ lane.'],
+              'state:reserve-ready': ['A2EEEF', 'Reserve source slice is ready for promotion.'],
+              'state:parked': ['BFD4F2', 'Parked; no Agent, push, rerun or polling.'],
               'state:complete': ['006B75', 'Lane work complete.'],
               'state:owner-blocked': ['D93F0B', 'Only Owner or external action remains.'],
               'state:historical': ['EDEDED', 'Historical or superseded evidence only.'],
-              'candidate:active': ['B60205', 'Active candidate; budget is enforced per Issue, not repo-wide.'],
-              'governance:lane-metadata-incomplete': ['D93F0B', 'Agent PR lane metadata is missing or invalid.'],
-              'governance:wip-violation': ['B60205', 'Same-Issue Terra, shared TEST, Closure, or per-Issue candidate budget is exceeded.'],
+              'candidate:active': ['B60205', 'Counts toward the B+ maximum of two active candidates.'],
+              'governance:lane-metadata-incomplete': ['D93F0B', 'B+ lane metadata is missing or invalid.'],
+              'governance:wip-violation': ['B60205', 'B+ MAIN, RESERVE, Closure, TEST or candidate limit is exceeded.'],
             };
 
             for (const [name, [color, description]] of Object.entries(labels)) {
@@ -79,24 +114,23 @@ jobs:
               }
             }
 
-            const managed = new Set(Object.keys(labels));
-            const existingLabels = (current.labels ?? [])
+            const rawExisting = (current.labels ?? [])
               .map((label) => typeof label === 'string' ? label : label.name)
-              .filter(Boolean)
-              .filter((name) => !managed.has(name));
+              .filter(Boolean);
+            const managed = new Set(Object.keys(labels));
+            const nextLabels = rawExisting.filter((name) => !managed.has(name));
+            nextLabels.push(isAgent ? 'origin:agent' : 'origin:owner-or-unknown');
 
-            const nextLabels = [
-              ...existingLabels,
-              isAgent ? 'origin:agent' : 'origin:owner-or-unknown',
-            ];
             const laneLabels = {
               TERRA_BUILD: 'lane:terra-build',
+              TERRA_RESERVE: 'lane:terra-reserve',
               LUNA_CLOSURE: 'lane:luna-closure',
               TEST_VALIDATION: 'lane:test-validation',
               GOVERNANCE: 'lane:governance',
             };
             const stateLabels = {
               ACTIVE: 'state:active',
+              READY_FOR_PROMOTION: 'state:reserve-ready',
               PARKED: 'state:parked',
               COMPLETE: 'state:complete',
               OWNER_BLOCKED: 'state:owner-blocked',
@@ -116,29 +150,58 @@ jobs:
               labels: [...new Set(nextLabels)],
             });
 
-            const terraIssues = [...new Set(laneSummary.activeTerra.map((row) => row.issueNumber).filter(Boolean))];
+            const shouldDispatchTest =
+              context.payload.action === 'edited' &&
+              isAgent &&
+              metadata.lane === 'TEST_VALIDATION' &&
+              metadata.state === 'ACTIVE' &&
+              metadata.testLaneRequired === 'TRUE' &&
+              !rawExisting.includes('lane:test-validation') &&
+              metadataErrors.length === 0 &&
+              wipErrors.length === 0 &&
+              summary.activeTest.length === 1 &&
+              summary.activeTest[0].number === current.number &&
+              current.head.repo.full_name === `${owner}/${repo}`;
+
+            let dispatched = false;
+            if (shouldDispatchTest) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: 'ci.yml',
+                ref: current.head.ref,
+                inputs: {
+                  dispatch_reason: 'lane_transition',
+                  test_lane_pr: String(current.number),
+                  expected_head: current.head.sha,
+                },
+              });
+              dispatched = true;
+            }
 
             await core.summary
-              .addHeading('Agent WIP Guard — Mode C')
+              .addHeading('Agent WIP Guard — B+')
               .addTable([
                 [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
                 ['Current PR', `#${current.number}`],
+                ['Run', metadata.runId || 'missing'],
                 ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
-                ['Active Terra', String(laneSummary.activeTerra.length)],
-                ['Active Terra Issues', terraIssues.length ? terraIssues.map((issue) => `#${issue}`).join(', ') : 'none'],
-                ['Active Luna Closure', String(laneSummary.activeClosure.length)],
-                ['Active TEST validation', String(laneSummary.activeTest.length)],
-                ['Active candidates', `${laneSummary.activeCandidates.length} total; budget checked per Issue`],
-                ['Metadata errors', metadataErrors.length ? metadataErrors.join('; ') : 'none'],
-                ['WIP errors', wipErrors.length ? wipErrors.join('; ') : 'none'],
+                ['MAIN Terra', `${summary.activeTerra.length}/1`],
+                ['RESERVE Terra', `${summary.activeReserve.length}/1`],
+                ['Luna Closure', `${summary.activeClosure.length}/1`],
+                ['TEST validation', `${summary.activeTest.length}/1`],
+                ['Active candidates', `${summary.activeCandidates.length}/2`],
+                ['TEST dispatched', String(dispatched)],
+                ['Metadata errors', metadataErrors.join('; ') || 'none'],
+                ['WIP errors', wipErrors.join('; ') || 'none'],
               ])
               .write();
 
             if (isAgent) {
-              const allErrors = [...metadataErrors, ...wipErrors];
-              const commentBody = allErrors.length
-                ? `${marker}\n## Agent WIP Guard: blocked\n\n${allErrors.map((error) => `- ${error}`).join('\n')}\n\nResolve the same-Issue/shared-TEST/Closure conflict before continuing. Do not add commits or rerun CI to work around this guard.`
-                : `${marker}\n## Agent WIP Guard: passed — Mode C\n\n- active Terra: ${laneSummary.activeTerra.length} total; different Issues may run in parallel\n- active Luna Closure: ${laneSummary.activeClosure.length}/1\n- active TEST validation: ${laneSummary.activeTest.length}/1\n- active candidates: ${laneSummary.activeCandidates.length} total; budget is per Issue\n\nThe Hook validates observable PR metadata only; it does not prove the actual delegated model.`;
+              const errors = [...metadataErrors, ...wipErrors];
+              const body = errors.length
+                ? `${marker}\n## Agent WIP Guard: blocked\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nPark or reclassify the extra lane before continuing. Do not add commits or rerun CI to work around this guard.`
+                : `${marker}\n## Agent WIP Guard: passed — B+\n\n- MAIN Terra: ${summary.activeTerra.length}/1\n- RESERVE Terra: ${summary.activeReserve.length}/1\n- Luna Closure: ${summary.activeClosure.length}/1\n- TEST validation: ${summary.activeTest.length}/1\n- Active candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nThis Hook validates observable GitHub metadata. It cannot prove which delegated model actually ran.`;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner,
@@ -148,20 +211,10 @@ jobs:
               });
               const previous = comments.find((comment) => comment.body?.includes(marker));
               if (previous) {
-                await github.rest.issues.updateComment({
-                  owner,
-                  repo,
-                  comment_id: previous.id,
-                  body: commentBody,
-                });
+                await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
               } else {
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: current.number,
-                  body: commentBody,
-                });
+                await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body });
               }
 
-              if (allErrors.length) core.setFailed(allErrors.join('; '));
+              if (errors.length) core.setFailed(errors.join('; '));
             }
