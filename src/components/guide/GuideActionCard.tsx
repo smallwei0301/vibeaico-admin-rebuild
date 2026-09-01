@@ -21,6 +21,7 @@ export const GuideActionCard = React.forwardRef<HTMLButtonElement, GuideActionCa
       type={type}
       className={cn(
         GUIDE_UI_CLASSES.touchTarget,
+        GUIDE_UI_CLASSES.focusRing,
         GUIDE_UI_CLASSES.interactiveCard,
         'flex w-full items-center gap-3',
         className,

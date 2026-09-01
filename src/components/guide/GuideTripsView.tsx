@@ -173,6 +173,7 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
               aria-pressed={filter === option}
               className={cn(
                 GUIDE_UI_CLASSES.touchTarget,
+                GUIDE_UI_CLASSES.focusRing,
                 GUIDE_UI_CLASSES.filterButton,
                 filter === option ? GUIDE_UI_CLASSES.filterActive : GUIDE_UI_CLASSES.filterInactive,
               )}

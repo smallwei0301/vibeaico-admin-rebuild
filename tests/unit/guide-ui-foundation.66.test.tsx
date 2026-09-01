@@ -75,6 +75,7 @@ describe('GUIDE UI foundation (#66 Phase A)', () => {
     expect(html).toContain('min-w-[44px]');
     expect(html).toContain('text-[18px]');
     expect(html).toContain('text-[14px]');
+    expect(html).toContain('focus-visible:ring-2');
   });
 
   it('centralizes status colors and keeps text as the state signal', () => {

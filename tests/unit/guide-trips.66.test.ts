@@ -81,6 +81,9 @@ describe('GUIDE trips mobile surface selectors (#66 Phase H)', () => {
     expect(source).toContain('GUIDE_UI_CLASSES.accentButton');
     expect(source).toContain('GUIDE_UI_CLASSES.searchInput');
     expect(source).toContain('GUIDE_UI_CLASSES.filterButton');
+    expect(source).toContain(`GUIDE_UI_CLASSES.touchTarget,
+                GUIDE_UI_CLASSES.focusRing,
+                GUIDE_UI_CLASSES.filterButton`);
     expect(source).toContain('type="search"');
     expect(source).not.toMatch(/#[0-9A-Fa-f]{6}/);
     expect(source).not.toMatch(/text-\[[0-9]+px\]/);

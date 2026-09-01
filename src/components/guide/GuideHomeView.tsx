@@ -283,7 +283,7 @@ export function GuideHomeView({
         action={
           <Link
             href="/tenant/settings"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondary, 'inline-flex items-center gap-1 rounded-xl px-2 py-1 font-semibold')}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.secondary, 'inline-flex items-center gap-1 rounded-xl px-2 py-1 font-semibold')}
           >
             <Settings2 size={16} aria-hidden />
             {t.health.openSettings}
