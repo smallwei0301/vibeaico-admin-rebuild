@@ -36,6 +36,19 @@ async function fullTenantIds(table: string, ownIds: string[]) {
   return [...ownIds, ...(data ?? []).map((row) => row.id).filter((id) => !own.has(id))];
 }
 
+async function availableRanks(table: string, count: number) {
+  const { data, error } = await admin.from(table)
+    .select('sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+  expect(error).toBeNull();
+  const publicMax = Math.max(-1, ...(data ?? []).map((row: any) => row.sort_order ?? -1));
+  const lineMax = Math.max(-1, ...(data ?? []).map((row: any) => row.line_sort_order ?? -1));
+  const base = Math.max(publicMax, lineMax) + 1;
+  return Array.from({ length: count }, (_, i) => ({
+    sort_order: base + i,
+    line_sort_order: base + i,
+  }));
+}
+
 async function assertIndependent(table: string, path: string, ids: string[]) {
   const first = await ownerA.post(path, { ids: [ids[1], ids[0], ...ids.slice(2)] });
   expect(first.status, JSON.stringify(await first.clone().json())).toBe(200);
@@ -58,16 +71,22 @@ beforeAll(async () => {
   });
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
   const suffix = Date.now().toString(36);
+  const serviceRanks = await availableRanks('services', serviceIds.length);
+  const productRanks = await availableRanks('products', productIds.length);
+  const portfolioRanks = await availableRanks('portfolios', portfolioIds.length);
   const { error: serviceError } = await admin.from('services').insert(serviceIds.map((id, i) => ({
     id, tenant_id: SHOP_A.id, name: `#15 排序服務 ${suffix}-${i}`, duration_minutes: 30, price: 100,
+    ...serviceRanks[i],
   })));
   expect(serviceError).toBeNull();
   const { error: productError } = await admin.from('products').insert(productIds.map((id, i) => ({
     id, tenant_id: SHOP_A.id, name: `#15 排序商品 ${suffix}-${i}`, price: 100, stock: 1,
+    ...productRanks[i],
   })));
   expect(productError).toBeNull();
   const { error: portfolioError } = await admin.from('portfolios').insert(portfolioIds.map((id, i) => ({
     id, tenant_id: SHOP_A.id, title: `#15 排序作品 ${suffix}-${i}`, image_url: 'https://example.test/image.png',
+    ...portfolioRanks[i],
   })));
   expect(portfolioError).toBeNull();
 
