@@ -19,23 +19,43 @@
       "type": "github-live-inventory",
       "ref": "2026-09-01T13:42:40+08:00",
       "note": "40 open Issues, 18 open PRs, five active Terra PRs, no active TEST holder."
+    },
+    {
+      "type": "github-main-closeout",
+      "ref": "1272b82a7bf9a992ac2784c2d006597a645a2ce8",
+      "note": "Live main at closeout; no Production/main promotion was performed."
+    },
+    {
+      "type": "github-pr-95",
+      "ref": "7e520fdf3d0d943a3ef09daa76ca6ddc743eb330",
+      "note": "PR #95 bounded #8-A exact head; Sol CLOSE_APPROVED and Luna OWNER_GATED closeout verified."
+    },
+    {
+      "type": "github-actions",
+      "ref": "33521089350",
+      "note": "Exact-head CI success: check, integration 22/169, and E2E 3/3."
+    },
+    {
+      "type": "supabase-test-readonly",
+      "ref": "nmwhwngojosmagjuvxol",
+      "note": "Migration 0022 once; four tour tables SELECT-only for anon/authenticated; deterministic seed rows after teardown."
     }
   ],
   "main": {
     "startSha": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
-    "endSha": null
+    "endSha": "1272b82a7bf9a992ac2784c2d006597a645a2ce8"
   },
   "inventory": {
     "openIssuesStart": 40,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 41,
     "openPrsStart": 18,
-    "openPrsEnd": null,
+    "openPrsEnd": 22,
     "mainTerraPeak": 5,
-    "reserveTerraPeak": 0,
+    "reserveTerraPeak": 1,
     "activeCandidatePeak": 5,
-    "sharedTestPeak": 0,
-    "closureSweeps": 1,
-    "closureAdvancedOrClosed": 0
+    "sharedTestPeak": 1,
+    "closureSweeps": 2,
+    "closureAdvancedOrClosed": 1
   },
   "modelUsage": {
     "actualTokensAvailable": false,
@@ -88,30 +108,66 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "bplus-issue-8-bounded-repair",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "role": "bounded #8-A TEST fixture compatibility repair and exact-head validation coordination",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "bplus-issue-8-independent-review",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "independent standards and specification review of the current candidate",
+        "count": 2,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "bplus-issue-8-luna-closeout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "role": "mechanical PR/Issue closeout and TEST-lane release",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 0,
+    "issuesStarted": 1,
     "issuesClosed": 0,
-    "auditReady": 0,
+    "auditReady": 1,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
     "commitOnly": 1,
-    "unfinishedCarryover": 0,
+    "unfinishedCarryover": 1,
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 2,
     "invalidReruns": 0,
-    "firstPassRatePercent": null,
-    "sharedTestCollisions": 0
+    "firstPassRatePercent": 50,
+    "sharedTestCollisions": 1
   },
   "quality": {
-    "acceptanceEvidenceCoveragePercent": 70,
-    "auditFirstPassRatePercent": null,
+    "acceptanceEvidenceCoveragePercent": 95,
+    "auditFirstPassRatePercent": 100,
     "unresolvedP0": 0,
     "unresolvedP1": 0,
     "reopenedIssues": 0,
@@ -120,9 +176,9 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 4,
-    "lunaAccepted": 4,
-    "lunaDelegationRatePercent": 75,
+    "lunaTasks": 5,
+    "lunaAccepted": 5,
+    "lunaDelegationRatePercent": 100,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": 100,
@@ -130,14 +186,18 @@
     "solIssues": 1
   },
   "auditability": {
-    "evidenceFieldsCompletePercent": 85,
-    "exactHeadTestCoveragePercent": 0,
+    "evidenceFieldsCompletePercent": 100,
+    "exactHeadTestCoveragePercent": 100,
     "stalePendingDescriptions": 0,
     "preciseBlockersPercent": 100,
-    "scoreInputsCompletePercent": 78
+    "scoreInputsCompletePercent": 95
   },
   "notes": [
-    "This report is IN_PROGRESS until exact-head CI, Sol audit, merge, B+ PR transition, and main verification finish.",
+    "The bounded #8-A delivery reached Sol CLOSE_APPROVED and PR #95 OWNER_GATED; Issue #8 remains open because #8-B is incomplete and merge/main promotion is Owner-gated.",
+    "Live closeout verified main=1272b82a, PR #95 head=7e520fdf, Issue #8=open, and PR labels/lane=origin:agent + TERRA_BUILD + OWNER_BLOCKED. No merge or Production action was claimed.",
+    "Exact-head run 33521089350 passed; the earlier 33518143152 run exposed one shared TEST seed-rank collision as two failed cases. The 7e520fdf fixture-only commit fixed it on a new head; no same-head invalid rerun occurred.",
+    "Read-only TEST verification found the deterministic harness rows (trips 1, plans 2, departures 3, addons 0), not residual test rows; services are at ranks 100/101. The agent performed no TEST DDL/DML.",
+    "The old session continued external writes after takeover, including new Issue/PR #104/#105; the resulting live count increase is recorded but not credited as this run's delivery.",
     "The platform did not expose actual model tokens or weekly usage start percentage, so no official usage percentage is inferred.",
     "actualModel remains unknown where the delegation platform did not provide verifiable model identity; requested model weights are internal comparison only.",
     "The run begins with the old Mode C live state, so peak WIP values preserve the five-Terra starting condition rather than pretending B+ already existed."
