@@ -17,17 +17,36 @@ describe('tour-domain validation and row builders (#8-A)', () => {
   it('freezes only the four canonical core tables and their security contract', () => {
     const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0015_tour_domain_core.sql'), 'utf8');
     for (const table of ['trips', 'trip_plans', 'trip_departures', 'trip_addons']) {
-      expect(sql).toContain(`create table ${table}`);
-      expect(sql).toContain(`alter table ${table} enable row level security`);
+      expect(sql).toContain(`create table if not exists public.${table}`);
     }
-    expect(sql).toContain("create type trip_status as enum ('DRAFT', 'PUBLISHED', 'ARCHIVED')");
-    expect(sql).toContain("create type departure_status as enum ('OPEN', 'CLOSED', 'CANCELLED')");
-    expect(sql).toContain('create index i_departures on trip_departures (tenant_id, trip_id, departs_on)');
+    expect(sql).toContain('alter table public.%I enable row level security');
+    expect(sql).toContain("create type public.trip_status as enum ('DRAFT', 'PUBLISHED', 'ARCHIVED')");
+    expect(sql).toContain("create type public.departure_status as enum ('OPEN', 'CLOSED', 'CANCELLED')");
+    expect(sql).toContain('create index i_departures on public.trip_departures (tenant_id, trip_id, departs_on)');
     expect(sql).toContain('check (seats_booked >= 0 and seats_booked <= capacity)');
     expect(sql).toContain('is_tenant_member(tenant_id)');
     expect(sql).not.toMatch(/create table\s+tour_orders/i);
     expect(sql).not.toMatch(/create(?:\s+or\s+replace)?\s+function\s+(?:public\.)?reserve_seats/i);
     expect(sql).not.toMatch(/create table\s+trip_departure_staff/i);
+  });
+
+  it('has guarded fresh-install and historical-drift reconciliation paths', () => {
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0015_tour_domain_core.sql'), 'utf8');
+    expect(sql).toContain('add column if not exists location text');
+    expect(sql).toContain('add column if not exists duration_hours numeric');
+    expect(sql).toContain('add column if not exists includes text');
+    expect(sql).toContain('add column if not exists notes text');
+    expect(sql).toContain('add column if not exists price_per_person numeric');
+    expect(sql).toContain('add column if not exists min_party integer');
+    expect(sql).toContain('add column if not exists max_party integer');
+    expect(sql).toContain('coalesce(price_per_person, base_price, 0)');
+    expect(sql).toContain('coalesce(min_party, min_participants, 1)');
+    expect(sql).toContain('sync_tour_plan_legacy_fields_0015');
+    expect(sql).toContain('sync_tour_trip_legacy_fields_0015');
+    expect(sql).toContain('to_regclass(\'public.i_departures\')');
+    expect(sql).toContain('pg_policy');
+    expect(sql).toContain('pg_trigger');
+    expect(sql).toContain('alter type public.trip_status add value if not exists');
   });
 
   it('accepts the canonical trip payload and scopes the row to the supplied tenant', () => {
