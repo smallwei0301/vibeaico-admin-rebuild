@@ -26,6 +26,15 @@ describe('seed schema error classification', () => {
     );
   });
 
+  it('does not rely on database defaults for either standard service row', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
+    const servicesSeed = source.slice(
+      source.indexOf("await safeUpsert(\n    admin,\n    'services'"),
+      source.indexOf("await safeUpsert(\n    admin,\n    'staff'"),
+    );
+    expect(servicesSeed.match(/sort_order:\s*\d+/g)).toEqual(['sort_order: 0', 'sort_order: 1']);
+  });
+
   it('fails closed when required trip plan or departure seed data cannot be written', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
     expect(source).toMatch(/if \(!tripPlansSeeded\)\s*\{\s*throw new Error\(/);
