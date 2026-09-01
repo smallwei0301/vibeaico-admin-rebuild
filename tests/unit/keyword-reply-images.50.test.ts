@@ -110,18 +110,20 @@ describe('Issue #50 keyword-reply image storage seam', () => {
       create: { width: 2, height: 2, channels: 4, background: '#22c55e' },
     }).png().toBuffer();
     const uploads: { path: string; bytes: Buffer; contentType: string }[] = [];
+    const queue = vi.fn().mockResolvedValue({ error: null });
     const storage = {
       from: vi.fn(() => ({
         upload: vi.fn(async (path: string, bytes: Buffer, options: { contentType: string }) => {
           uploads.push({ path, bytes, contentType: options.contentType });
           return { error: null };
         }),
+        remove: vi.fn().mockResolvedValue({ error: null }),
         getPublicUrl: (path: string) => ({
           data: { publicUrl: `${ORIGIN}/storage/v1/object/public/${KEYWORD_REPLY_IMAGES_BUCKET}/${path}` },
         }),
       })),
     };
-    const admin = { storage } as never;
+    const admin = { storage, from: vi.fn(() => ({ upsert: queue })) } as never;
     const result = await uploadKeywordReplyImage({
       tenantId: TENANT_A,
       file: new File([png], 'green.png', { type: 'image/png' }),
@@ -136,6 +138,12 @@ describe('Issue #50 keyword-reply image storage seam', () => {
     expect(uploads[1].path).toBe(result.previewPath);
     expect(uploads[1].bytes.byteLength).toBeLessThanOrEqual(LINE_PREVIEW_MAX_BYTES);
     expect((await sharp(uploads[1].bytes).metadata()).format).toBe('png');
+    expect(queue).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ tenant_id: TENANT_A, bucket: KEYWORD_REPLY_IMAGES_BUCKET }),
+      ]),
+      { onConflict: 'bucket,path' },
+    );
   });
 
   it('attempts to remove both provisional objects when preview upload fails', async () => {

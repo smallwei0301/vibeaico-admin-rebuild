@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { createAdminSupabase } from '@/server/supabase';
 import {
   removeUnreferencedKeywordReplyImage,
@@ -26,6 +27,7 @@ const bodySchema = z.object({
  */
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'KEYWORD_REPLY');
   const form = await req.formData().catch(() => {
     throw new ApiHttpError(400, '請以 multipart/form-data 上傳圖片', ERR.VALIDATION);
   });

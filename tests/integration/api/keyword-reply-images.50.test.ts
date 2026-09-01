@@ -196,6 +196,71 @@ describe('Issue #50 keyword reply image lifecycle', () => {
     pathsToRemove.delete(ref.previewPath);
   });
 
+
+  it('keeps a fresh abandoned upload queued during its grace period', async () => {
+    const ref = await upload();
+    const { count, error } = await admin.from('keyword_reply_image_cleanup')
+      .select('path', { count: 'exact', head: true })
+      .eq('tenant_id', SHOP_A.id)
+      .in('path', [ref.path, ref.previewPath]);
+    expect(error).toBeNull();
+    expect(count).toBe(2);
+
+    const cron = await fetch(`${BASE_URL}/api/cron/keyword-reply-image-cleanup`, {
+      headers: { authorization: `Bearer ${process.env.TEST_CRON_SECRET}` },
+    });
+    expect(cron.status).toBe(200);
+    await expectObjectExists(ref.path);
+    await expectObjectExists(ref.previewPath);
+  });
+
+  it('does not orphan an intermediate IMAGE replacement under concurrency', async () => {
+    const first = await upload();
+    const second = await upload();
+    const third = await upload();
+    const id = await createImageReply(first, 'concurrent-replace');
+
+    const [left, right] = await Promise.all([
+      ownerA.put(`/api/settings/line/keyword-replies/${id}`, imagePayload(`${PREFIX}-replace-b`, second)),
+      ownerA.put(`/api/settings/line/keyword-replies/${id}`, imagePayload(`${PREFIX}-replace-c`, third)),
+    ]);
+    const statuses = [left.status, right.status].sort((a, b) => a - b);
+    expect(statuses.every((status) => status === 200 || status === 409)).toBe(true);
+    expect(statuses.some((status) => status === 200)).toBe(true);
+
+    const listed = await ownerA.get('/api/settings/line/keyword-replies');
+    const listedBody = (await listed.json()) as Envelope<any[]>;
+    const saved = listedBody.data!.find((row) => row.id === id);
+    const finalRef = saved?.content?.imageStorageRef as ImageRef | undefined;
+    expect(finalRef).toBeTruthy();
+    expect([second.path, third.path]).toContain(finalRef!.path);
+    await expectObjectMissing(first.path);
+    await expectObjectMissing(first.previewPath);
+
+    const loser = [second, third].find((ref) => ref.path !== finalRef!.path)!;
+    if (statuses.every((status) => status === 200)) {
+      await expectObjectMissing(loser.path);
+      await expectObjectMissing(loser.previewPath);
+      pathsToRemove.delete(loser.path);
+      pathsToRemove.delete(loser.previewPath);
+    } else {
+      const discard = await ownerA.fetch('/api/settings/line/keyword-replies/image', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ storageRef: loser }),
+      });
+      expect(discard.status).toBe(200);
+      await expectObjectMissing(loser.path);
+      await expectObjectMissing(loser.previewPath);
+      pathsToRemove.delete(loser.path);
+      pathsToRemove.delete(loser.previewPath);
+    }
+    await expectObjectExists(finalRef!.path);
+    await expectObjectExists(finalRef!.previewPath);
+    pathsToRemove.delete(first.path);
+    pathsToRemove.delete(first.previewPath);
+  });
+
   it('rejects another tenant from referencing or discarding A tenant objects', async () => {
     const ref = await upload();
     const create = await ownerB.post('/api/settings/line/keyword-replies', imagePayload(`${PREFIX}-cross-tenant`, ref));
@@ -212,12 +277,13 @@ describe('Issue #50 keyword reply image lifecycle', () => {
 
   it('cleanup retry rechecks a newly live ref before deletion', async () => {
     const ref = await upload();
+    await createImageReply(ref, 'retry-reference');
+    const expiredAt = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const { error } = await admin.from('keyword_reply_image_cleanup').insert([
-      { tenant_id: SHOP_A.id, bucket: BUCKET, path: ref.path, last_error: 'forced retry fixture' },
-      { tenant_id: SHOP_A.id, bucket: BUCKET, path: ref.previewPath, last_error: 'forced retry fixture' },
+      { tenant_id: SHOP_A.id, bucket: BUCKET, path: ref.path, last_error: 'forced retry fixture', created_at: expiredAt },
+      { tenant_id: SHOP_A.id, bucket: BUCKET, path: ref.previewPath, last_error: 'forced retry fixture', created_at: expiredAt },
     ]);
     expect(error).toBeNull();
-    await createImageReply(ref, 'retry-reference');
     const cron = await fetch(`${BASE_URL}/api/cron/keyword-reply-image-cleanup`, {
       headers: { authorization: `Bearer ${process.env.TEST_CRON_SECRET}` },
     });

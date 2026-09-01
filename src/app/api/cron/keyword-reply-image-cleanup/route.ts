@@ -6,7 +6,8 @@ export const runtime = 'nodejs';
 
 /** Retry Storage removal after DB unlink; each job rechecks live references. */
 export async function GET(req: Request) {
-  if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`)
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || req.headers.get('authorization') !== `Bearer ${cronSecret}`)
     return fail(401, '未授權的 cron 請求', ERR.UNAUTHORIZED);
 
   return ok(await drainKeywordReplyImageCleanup(createAdminSupabase()));

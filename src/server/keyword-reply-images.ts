@@ -13,6 +13,8 @@ export type { KeywordReplyImageStorageRef } from '@/lib/keyword-reply-image';
 
 export const KEYWORD_REPLY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const LINE_PREVIEW_MAX_BYTES = 1_000_000;
+/** Fresh unpersisted uploads get a bounded grace period before cron removal. */
+export const KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS = 60 * 60 * 1000;
 
 const IMAGE_TYPES = {
   'image/jpeg': 'jpg',
@@ -284,6 +286,26 @@ export async function uploadKeywordReplyImage(args: {
     throw error;
   }
 
+  const provisionalPaths = [path, previewPath];
+  const { error: queueError } = await admin
+    .from('keyword_reply_image_cleanup')
+    .upsert(
+      provisionalPaths.map((provisionalPath) => ({
+        tenant_id: tenantId,
+        bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+        path: provisionalPath,
+        last_error: 'awaiting keyword reply persistence',
+      })),
+      { onConflict: 'bucket,path' },
+    );
+  if (queueError) {
+    const cleanup = await admin.storage
+      .from(KEYWORD_REPLY_IMAGES_BUCKET)
+      .remove(provisionalPaths);
+    if (cleanup.error) console.error('[keyword-reply-images] provisional queue cleanup failed', cleanup.error);
+    throw queueError;
+  }
+
   const url = publicUrl(admin, KEYWORD_REPLY_IMAGES_BUCKET, path);
   const previewUrl = publicUrl(admin, KEYWORD_REPLY_IMAGES_BUCKET, previewPath);
   const storageRef = {
@@ -294,6 +316,21 @@ export async function uploadKeywordReplyImage(args: {
     previewUrl,
   } satisfies KeywordReplyImageStorageRef;
   return { url, path, bucket: KEYWORD_REPLY_IMAGES_BUCKET, previewPath, previewUrl, storageRef };
+}
+
+/** Remove provisional deletion jobs after the ref has been persisted in keyword_replies. */
+export async function markKeywordReplyImagePersisted(
+  admin: SupabaseClient,
+  tenantId: string,
+  ref: KeywordReplyImageStorageRef,
+): Promise<void> {
+  const { error } = await admin
+    .from('keyword_reply_image_cleanup')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('bucket', ref.bucket)
+    .in('path', [ref.path, ref.previewPath]);
+  if (error) throw error;
 }
 
 type StorageInfoAdmin = {
@@ -360,7 +397,16 @@ export async function removeUnreferencedKeywordReplyImage(
 
   const paths = [ref.path, ref.previewPath];
   const { error: removeError } = await admin.storage.from(ref.bucket).remove(paths);
-  if (!removeError) return;
+  if (!removeError) {
+    const { error: clearError } = await admin
+      .from('keyword_reply_image_cleanup')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('bucket', ref.bucket)
+      .in('path', paths);
+    if (clearError) throw clearError;
+    return;
+  }
 
   const { error: queueError } = await admin.from('keyword_reply_image_cleanup').upsert(
     paths.map((path) => ({
@@ -383,6 +429,10 @@ export async function drainKeywordReplyImageCleanup(
     .from('keyword_reply_image_cleanup')
     .select('tenant_id, bucket, path, attempts')
     .order('created_at', { ascending: true })
+    .lt(
+      'created_at',
+      new Date(Date.now() - KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS).toISOString(),
+    )
     .limit(limit);
   if (error) throw error;
 

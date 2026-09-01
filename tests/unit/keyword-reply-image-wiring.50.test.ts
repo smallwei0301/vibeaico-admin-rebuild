@@ -9,6 +9,7 @@ describe('Issue #50 source wiring', () => {
     const route = read('../../src/app/api/settings/line/keyword-replies/image/route.ts');
     const service = read('../../src/services/keyword-replies.ts');
     expect(route).toContain("requireTenant('MANAGER')");
+    expect(route).toContain("requireFeature(t.tenantId, 'KEYWORD_REPLY')");
     expect(route).toContain('uploadKeywordReplyImage');
     expect(service).toContain("/api/settings/line/keyword-replies/image");
     expect(service).not.toContain('URL.createObjectURL');
@@ -31,5 +32,15 @@ describe('Issue #50 source wiring', () => {
     expect(lineEvents).toContain('ref?.previewUrl');
     expect(crud).toContain('requireKeywordReplyImage');
     expect(crud).toContain('imageStorageRef');
+  });
+
+  it('guards concurrent image replacement and provisional cleanup', () => {
+    const update = read('../../src/app/api/settings/line/keyword-replies/[id]/route.ts');
+    const images = read('../../src/server/keyword-reply-images.ts');
+    expect(update).toContain(".filter('content', 'eq', JSON.stringify(existing.content ?? {}))");
+    expect(update).toContain('markKeywordReplyImagePersisted');
+    expect(images).toContain('KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS');
+    expect(images).toContain("from('keyword_reply_image_cleanup')");
+    expect(images).toContain(".lt(");
   });
 });

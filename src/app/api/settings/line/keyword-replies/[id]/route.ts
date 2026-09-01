@@ -6,6 +6,8 @@ import { createAdminSupabase } from '@/server/supabase';
 import {
   assertKeywordReplyImagePayload,
   cleanupReplacedKeywordReplyImage,
+  markKeywordReplyImagePersisted,
+  readKeywordReplyImageRef,
   requireKeywordReplyImage,
 } from '@/server/keyword-reply-images';
 
@@ -76,9 +78,22 @@ export const PUT = handle(async (req, { params }) => {
   const { data, error } = await t.supabase
     .from('keyword_replies').update(update)
     .eq('id', id).eq('tenant_id', t.tenantId)
+    .eq('reply_type', existing.reply_type)
+    .filter('content', 'eq', JSON.stringify(existing.content ?? {}))
     .select('id').maybeSingle();
   if (error) throw error;
-  if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+  if (!data) {
+    throw new ApiHttpError(409, '此關鍵字回覆已被其他請求更新，請重新載入後再試', ERR.CONFLICT);
+  }
+
+  const persistedRef = readKeywordReplyImageRef(nextContent);
+  if (persistedRef) {
+    try {
+      await markKeywordReplyImagePersisted(createAdminSupabase(), t.tenantId, persistedRef);
+    } catch (queueError) {
+      console.error('[keyword-reply-images] provisional queue clear failed', queueError);
+    }
+  }
 
   await cleanupReplacedKeywordReplyImage({
     tenantId: t.tenantId,

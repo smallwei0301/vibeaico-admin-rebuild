@@ -5,6 +5,8 @@ import { requireFeature } from '@/server/features';
 import { createAdminSupabase } from '@/server/supabase';
 import {
   assertKeywordReplyImagePayload,
+  markKeywordReplyImagePersisted,
+  readKeywordReplyImageRef,
   requireKeywordReplyImage,
 } from '@/server/keyword-reply-images';
 
@@ -104,6 +106,15 @@ export const POST = handle(async (req) => {
     .select('id')
     .single();
   if (error) throw error;
+
+  const persistedRef = readKeywordReplyImageRef(b.content);
+  if (persistedRef) {
+    try {
+      await markKeywordReplyImagePersisted(createAdminSupabase(), t.tenantId, persistedRef);
+    } catch (queueError) {
+      console.error('[keyword-reply-images] provisional queue clear failed', queueError);
+    }
+  }
 
   return ok({ id: data.id });
 });
