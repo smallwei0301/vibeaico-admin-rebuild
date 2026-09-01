@@ -353,6 +353,12 @@ describe('mapCoupon (02 §0004 coupons / coupon_instances)', () => {
     start_at: '2026-08-01T00:00:00Z',
     end_at: '2026-09-01T00:00:00Z',
     status: 'PUBLISHED',
+    min_order_amount: 1200,
+    max_discount_amount: null,
+    gift_item: '',
+    limit_per_customer: 1,
+    private_mode: true,
+    last_redeemed_code: 'ABC12345',
   };
 
   it('全欄位比對', () => {
@@ -368,6 +374,12 @@ describe('mapCoupon (02 §0004 coupons / coupon_instances)', () => {
       startAt: '2026-08-01T00:00:00Z',
       endAt: '2026-09-01T00:00:00Z',
       status: 'PUBLISHED',
+      minOrderAmount: 1200,
+      maxDiscountAmount: null,
+      giftItem: '',
+      limitPerCustomer: 1,
+      privateMode: true,
+      lastRedeemedCode: 'ABC12345',
     });
   });
 
@@ -399,6 +411,9 @@ describe('mapMembershipLevel (02 §0004 membership_levels)', () => {
     point_rate_multiplier: 1.5,
     customer_count: 87,
     sort_order: 1,
+    description: '金卡說明',
+    active: true,
+    is_default: true,
   };
 
   it('全欄位比對', () => {
@@ -411,6 +426,9 @@ describe('mapMembershipLevel (02 §0004 membership_levels)', () => {
       pointRateMultiplier: 1.5,
       customerCount: 87,
       sortOrder: 1,
+      description: '金卡說明',
+      active: true,
+      isDefault: true,
     });
   });
 

@@ -163,6 +163,13 @@ export function mapCoupon(r: any): Coupon {
     startAt: r.start_at ?? '',
     endAt: r.end_at ?? '',
     status: r.status,
+    minOrderAmount: r.min_order_amount == null ? null : Number(r.min_order_amount),
+    maxDiscountAmount: r.max_discount_amount == null ? null : Number(r.max_discount_amount),
+    giftItem: r.gift_item ?? '',
+    limitPerCustomer: r.limit_per_customer == null ? null : Number(r.limit_per_customer),
+    privateMode: r.private_mode ?? false,
+    // 由 GET /api/coupons 依 coupon_instances 即時附掛，不是 coupons 的欄位。
+    lastRedeemedCode: r.last_redeemed_code ?? null,
   };
 }
 
@@ -179,6 +186,9 @@ export function mapMembershipLevel(r: any): MembershipLevel {
     pointRateMultiplier: r.point_rate_multiplier,
     customerCount: r.customer_count ?? 0,
     sortOrder: r.sort_order,
+    description: r.description ?? '',
+    active: r.active ?? true,
+    isDefault: r.is_default ?? false,
   };
 }
 

@@ -52,7 +52,7 @@ async function recalcMemberships(t: Awaited<ReturnType<typeof requireTenant>>) {
   const [{ data: levels, error: e1 }, { data: customers, error: e2 }] = await Promise.all([
     t.supabase
       .from('membership_levels')
-      .select('id, threshold_spent')
+      .select('id, threshold_spent, active')
       .eq('tenant_id', t.tenantId),
     t.supabase
       .from('customers_view')
@@ -63,6 +63,7 @@ async function recalcMemberships(t: Awaited<ReturnType<typeof requireTenant>>) {
   if (e2) throw e2;
 
   const sorted = (levels ?? [])
+    .filter((l: any) => l.active !== false)
     .map((l: any) => ({ id: l.id as string, threshold: Number(l.threshold_spent) }))
     .sort((a, b) => b.threshold - a.threshold); // 門檻高 → 低
 
@@ -99,6 +100,9 @@ const bodySchema = z.object({
   discountPercent: z.number().min(0).default(0),
   pointRateMultiplier: z.number().min(0).default(1),
   sortOrder: z.number().int().default(0),
+  description: z.string().optional(),
+  active: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -113,6 +117,9 @@ export const POST = handle(async (req) => {
     discount_percent: b.discountPercent,
     point_rate_multiplier: b.pointRateMultiplier,
     sort_order: b.sortOrder,
+    description: b.description ?? '',
+    active: b.active ?? true,
+    is_default: b.isDefault ?? false,
   };
   if (b.color) insert.color = b.color; // 未帶 → 用 DB default '#C9A961'
 
