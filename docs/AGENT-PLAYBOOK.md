@@ -195,3 +195,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
 - 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
 - 狀態：已防止
+
+### PB-015 — 本地依賴 cache 不足時 runner 未啟動
+
+- 首次／最近：2026-09-01／2026-09-01
+- 發生次數：2
+- Issue／PR／CI：Issue #8／PR #95；本地 targeted unit runner
+- 分類：CI／其他
+- 事件：新 worktree 沒有 `node_modules`；首次 targeted Vitest 啟動與 offline `npm ci` 都在測試案例開始前終止。
+- 證據：Vitest 回傳 `Could not resolve 'vitest/config'`；`npm ci --offline` 回傳 `ENOTCACHED`，缺少 `zod-3.25.76.tgz`。
+- 根因：工作區依賴未配置，npm offline cache 只有部分套件，不能把 runner 啟動失敗誤判為 source 或測試失敗。
+- 影響：第一次 targeted 命令沒有執行任何案例，該次不能算紅燈或綠燈；沒有 TEST、Preview、Production 或遠端 mutation。
+- 修正：改用同 repo 鄰近且未修改的依賴樹啟動目前 worktree runner；實際 targeted/full unit、typecheck 與 mock build 隨後完成。
+- 預防：每個新 worktree 開工先確認依賴與 config 可載入；offline 安裝失敗後停止同路徑重試，改用已存在的匹配依賴或把 runner 標成未驗證。
+- 驗證：targeted 2 files／17 tests、full unit 15 files／162 tests、typecheck、mock build 均有明確成功終態。
+- 狀態：監看中

@@ -63,7 +63,13 @@ export const planCreateSchema = z.object({
   }
 });
 
-export const planUpdateSchema = z.object(planFields).superRefine(validatePlanRange);
+export const planUpdateSchema = z.object(planFields).superRefine((value, ctx) => {
+  validatePlanRange(value, ctx);
+  const paymentError = planDepositError(value);
+  if (paymentError) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['depositValue'], message: paymentError });
+  }
+});
 
 function validatePlanRange(value: {
   minParty?: number;
@@ -85,13 +91,26 @@ export function planPaymentError(value: {
   depositMode: typeof depositModes[number];
   depositValue: number;
 }): string | null {
-  if (!Number.isFinite(value.pricePerPerson) || value.pricePerPerson < 0) return '方案價格無效';
-  if (!Number.isFinite(value.depositValue) || value.depositValue < 0) return '訂金金額無效';
-  if (!depositModes.includes(value.depositMode)) return '訂金模式無效';
+  return planDepositError(value);
+}
+
+function planDepositError(value: {
+  pricePerPerson?: number;
+  depositMode?: typeof depositModes[number];
+  depositValue?: number;
+}): string | null {
+  if (value.pricePerPerson !== undefined
+    && (!Number.isFinite(value.pricePerPerson) || value.pricePerPerson < 0)) return '方案價格無效';
+  if (value.depositValue !== undefined
+    && (!Number.isFinite(value.depositValue) || value.depositValue < 0)) return '訂金金額無效';
+  if (value.depositMode !== undefined && !depositModes.includes(value.depositMode)) return '訂金模式無效';
+  if (value.depositMode === undefined || value.depositValue === undefined) return null;
 
   if (value.depositMode === 'DEPOSIT_FIXED') {
     if (value.depositValue <= 0) return '固定訂金必須大於 0';
-    if (value.depositValue > value.pricePerPerson) return '固定訂金不得超過方案每人價格';
+    if (value.pricePerPerson !== undefined && value.depositValue > value.pricePerPerson) {
+      return '固定訂金不得超過方案每人價格';
+    }
   } else if (value.depositMode === 'DEPOSIT_PERCENT') {
     if (value.depositValue <= 0 || value.depositValue > 100) return '訂金比例必須介於 1 到 100%';
   } else if (value.depositValue !== 0) {

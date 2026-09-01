@@ -9,32 +9,54 @@ import {
   departureCreateSchema,
   planPaymentError,
   planCreateSchema,
+  planUpdateSchema,
   slugFromTitle,
   tripCreateSchema,
   tripRow,
 } from '@/server/tour-domain';
 import { mapTrip, mapTripAddon, mapTripDeparture, mapTripPlan } from '@/server/mappers';
 
-const TOUR_MUTATION_ROUTES = [
-  'src/app/api/trips/route.ts',
-  'src/app/api/trips/[id]/route.ts',
-  'src/app/api/trips/[id]/plans/route.ts',
-  'src/app/api/trips/[id]/departures/route.ts',
-  'src/app/api/trips/[id]/departures/batch/route.ts',
-  'src/app/api/trips/[id]/addons/route.ts',
-  'src/app/api/trip-plans/[id]/route.ts',
-  'src/app/api/trip-departures/[id]/route.ts',
-  'src/app/api/trip-addons/[id]/route.ts',
-  'src/app/api/trips/[id]/publish/route.ts',
-  'src/app/api/trips/[id]/unpublish/route.ts',
-  'src/app/api/trips/[id]/request-midao-listing/route.ts',
-];
+const TOUR_HANDLERS = [
+  ['src/app/api/trips/route.ts', 'GET', false],
+  ['src/app/api/trips/route.ts', 'POST', true],
+  ['src/app/api/trips/[id]/route.ts', 'GET', false],
+  ['src/app/api/trips/[id]/route.ts', 'PUT', true],
+  ['src/app/api/trips/[id]/route.ts', 'DELETE', true],
+  ['src/app/api/trips/[id]/plans/route.ts', 'GET', false],
+  ['src/app/api/trips/[id]/plans/route.ts', 'POST', true],
+  ['src/app/api/trips/[id]/departures/route.ts', 'GET', false],
+  ['src/app/api/trips/[id]/departures/route.ts', 'POST', true],
+  ['src/app/api/trips/[id]/departures/batch/route.ts', 'POST', true],
+  ['src/app/api/trips/[id]/addons/route.ts', 'GET', false],
+  ['src/app/api/trips/[id]/addons/route.ts', 'POST', true],
+  ['src/app/api/trip-plans/[id]/route.ts', 'PUT', true],
+  ['src/app/api/trip-plans/[id]/route.ts', 'DELETE', true],
+  ['src/app/api/trip-departures/[id]/route.ts', 'PUT', true],
+  ['src/app/api/trip-addons/[id]/route.ts', 'PUT', true],
+  ['src/app/api/trip-addons/[id]/route.ts', 'DELETE', true],
+  ['src/app/api/trips/[id]/publish/route.ts', 'POST', true],
+  ['src/app/api/trips/[id]/unpublish/route.ts', 'POST', true],
+  ['src/app/api/trips/[id]/request-midao-listing/route.ts', 'POST', true],
+] as const;
+
+function handlerSource(relativePath: string, method: string): string {
+  const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8');
+  const marker = `export const ${method} =`;
+  const start = source.indexOf(marker);
+  const next = source.indexOf('\nexport const ', start + marker.length);
+  return source.slice(start, next === -1 ? source.length : next);
+}
 
 describe('tour-domain validation and row builders (#8-A)', () => {
-  it('requires the TOUR_MODULE gate on every mutating core route', () => {
-    for (const relativePath of TOUR_MUTATION_ROUTES) {
-      const source = readFileSync(resolve(process.cwd(), relativePath), 'utf8');
-      expect(source, relativePath).toContain("await requireFeature(t.tenantId, 'TOUR_MODULE')");
+  it('requires a tenant guard and TOUR_MODULE gate on every core handler', () => {
+    for (const [relativePath, method, managerOnly] of TOUR_HANDLERS) {
+      const source = handlerSource(relativePath, method);
+      expect(source, `${relativePath} ${method}`).toContain(
+        managerOnly ? "requireTenant('MANAGER')" : 'requireTenant()',
+      );
+      expect(source, `${relativePath} ${method}`).toContain(
+        "await requireFeature(t.tenantId, 'TOUR_MODULE')",
+      );
     }
   });
 
@@ -88,9 +110,12 @@ describe('tour-domain validation and row builders (#8-A)', () => {
   });
 
   it('accepts the canonical trip payload and scopes the row to the supplied tenant', () => {
-    const value = tripCreateSchema.parse({ title: '龜山島', slug: 'turtle-island', durationHours: 3 });
+    const value = tripCreateSchema.parse({
+      title: '龜山島', slug: 'turtle-island', durationHours: 3, notes: '請攜帶雨具',
+    });
     expect(tripRow(value, 'tenant-a')).toMatchObject({
       tenant_id: 'tenant-a', slug: 'turtle-island', title: '龜山島', duration_hours: 3,
+      notes: '請攜帶雨具',
     });
   });
 
@@ -102,7 +127,10 @@ describe('tour-domain validation and row builders (#8-A)', () => {
 
   it('enforces the shared service payment bounds for trip plans', () => {
     expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 500 })).toBeNull();
+    expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1000 })).toBeNull();
     expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_PERCENT', depositValue: 50 })).toBeNull();
+    expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_PERCENT', depositValue: 1 })).toBeNull();
+    expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_PERCENT', depositValue: 100 })).toBeNull();
     expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 0 })).toBeTruthy();
     expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1001 })).toBeTruthy();
     expect(planPaymentError({ pricePerPerson: 1000, depositMode: 'DEPOSIT_PERCENT', depositValue: 101 })).toBeTruthy();
@@ -113,6 +141,27 @@ describe('tour-domain validation and row builders (#8-A)', () => {
     expect(() => planCreateSchema.parse({
       name: '方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1001,
     })).toThrow();
+  });
+
+  it('enforces deposit bounds on partial plan updates before persistence', () => {
+    expect(() => planUpdateSchema.parse({
+      depositMode: 'DEPOSIT_FIXED', depositValue: 0,
+    })).toThrow();
+    expect(() => planUpdateSchema.parse({
+      pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1001,
+    })).toThrow();
+    expect(() => planUpdateSchema.parse({
+      depositMode: 'DEPOSIT_PERCENT', depositValue: 0,
+    })).toThrow();
+    expect(() => planUpdateSchema.parse({
+      depositMode: 'DEPOSIT_PERCENT', depositValue: 101,
+    })).toThrow();
+    expect(planUpdateSchema.parse({
+      pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1000,
+    })).toMatchObject({ depositMode: 'DEPOSIT_FIXED', depositValue: 1000 });
+    expect(planUpdateSchema.parse({
+      depositMode: 'DEPOSIT_PERCENT', depositValue: 100,
+    })).toMatchObject({ depositMode: 'DEPOSIT_PERCENT', depositValue: 100 });
   });
 
   it('rejects invalid dates, duplicate weekdays, negative addon price and stock', () => {
@@ -156,6 +205,13 @@ describe('canonical tour row mappers (#8-A)', () => {
       id: 'trip-1', region: '宜蘭', galleryUrls: ['a.jpg'], inclusions: ['船票', '飲水'], safetyNotice: '注意',
       planCount: 0, upcomingDepartureCount: 0, minPrice: 0,
     });
+  });
+
+  it('reads the legacy safety_notice fallback when canonical notes is unavailable', () => {
+    expect(mapTrip({
+      id: 'trip-legacy', slug: 'trip-legacy', title: '舊行程',
+      notes: null, safety_notice: '舊資料注意事項', status: 'DRAFT', midao_listing: 'NONE',
+    }).safetyNotice).toBe('舊資料注意事項');
   });
 
   it('maps canonical plan, departure and addon values including nulls', () => {

@@ -271,7 +271,7 @@ export function mapTrip(r: any, derived: {
       : [],
     exclusions: [],
     notices: [],
-    safetyNotice: r.notes ?? '',
+    safetyNotice: r.notes ?? r.safety_notice ?? '',
     refundPolicyType: 'STANDARD',
     status: r.status,
     midaoListing: r.midao_listing,
