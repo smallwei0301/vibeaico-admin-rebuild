@@ -166,19 +166,31 @@ jobs:
           }
           console.log(`[local-test] ${process.env.TEST_ENV_ID} uses ${url.hostname}:${url.port}`);
           NODE
+      - name: Prove two canary slots do not share one database
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED_CANARY' }}
+        run: node scripts/test/local-isolation-canary.mjs
       - name: Run integration tests on the isolated database
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
         run: npm run test:integration
       - name: Install Chromium for isolated E2E
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
         run: npx playwright install --with-deps chromium
       - name: Run E2E on the isolated database
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
         run: npm run test:e2e
       - name: Record isolated result
         if: ${{ success() }}
         env:
           MATRIX_SLOT: ${{ matrix.slot }}
+          PROFILE: ${{ needs.classify.outputs.profile }}
         run: |
+          if [ "$PROFILE" = 'LOCAL_ISOLATED_CANARY' ]; then
+            RESULT='ISOLATION_CANARY_GREEN'
+          else
+            RESULT='ISOLATED_GREEN'
+          fi
           {
-            echo "## ISOLATED_GREEN — slot ${MATRIX_SLOT}"
+            echo "## ${RESULT} — slot ${MATRIX_SLOT}"
             echo ''
             echo "- TEST_ENV_ID: ${TEST_ENV_ID}"
             echo "- exact head: ${EXACT_HEAD}"

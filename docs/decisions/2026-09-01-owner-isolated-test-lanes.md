@@ -12,54 +12,84 @@ B+ 不直接從一條完整 Terra 放寬成多條完整 Terra。先把 TEST 從�
 「候選各有自己的測試環境，最後再進同一座海關」。導入順序固定為：
 
 ```text
-Phase 1  每張 PR 使用本機 Supabase 隔離測試
-         + 現有遠端 TEST 保留為最終 canonical 驗收
-
-Phase 2  DB／Auth／Storage 重型 PR 使用 Supabase Preview Branch
-         + 同時最多 2 條付費分支
-
-Phase 3  完整 Terra 上限由 1 提升到 2
-         + remote canonical TEST／Sol Audit／merge 仍各自單線
+Phase 1A  兩個本機 Supabase canary 證明 runner／資料庫／清理彼此隔離
+Phase 1B  補齊 main 的 canonical migration 可重建性，讓每張 PR 跑完整 local integration／E2E
+Phase 2   DB／Auth／Storage 重型 PR 使用 Supabase Preview Branch，最多 2 條付費分支
+Phase 3   完整 Terra 上限由 1 提升到 2，remote canonical TEST／Sol Audit／merge 仍各自單線
 ```
 
 不得跳過前一階段的驗收，直接提高 Terra 上限。
 
-## Phase 1 立即生效範圍
+## Phase 1A：隔離基礎 canary
 
 新增 `TEST_PROFILE`：
 
 ```text
 SOURCE_ONLY             不需要資料庫整合測試
-LOCAL_ISOLATED          一個 PR 對一個臨時本機 Supabase
-LOCAL_ISOLATED_CANARY   僅供測試基礎設施，平行啟動兩個獨立 runner
+LOCAL_ISOLATED          一個 PR 對一個臨時本機 Supabase，Phase 1B 才可完整啟用
+LOCAL_ISOLATED_CANARY   只驗證兩個本機環境確實互不共用
 REMOTE_BRANCH_REQUIRED  Phase 2 候選，尚未代表分支已建立
 SHARED_CANONICAL        最終遠端 TEST，仍使用唯一 TEST holder
 ```
 
-`LOCAL_ISOLATED` 綠燈只代表：
+`LOCAL_ISOLATED_CANARY` 在兩個 runner 使用相同 tenant primary key（主鍵）並保持資料同時存在。
+若兩條 job 其實共用一個資料庫，第二次 insert 必定撞號；只有真正隔離，兩邊才會同時成功。
+每條 job 都必須以 `supabase stop --no-backup` 清理。
+
+Canary 綠燈只能記：
 
 ```text
-ISOLATED_GREEN
+ISOLATION_CANARY_GREEN
 ```
 
-不能寫成：
+它不能證明完整產品測試已可本機執行，也不能取代 remote canonical TEST。
+
+## Phase 1B：migration 可重建性
+
+第一次 canary run 已證明兩個 local stack 能同時啟動、套用 repo migration、匯出 local key、
+驗證 localhost 並清理；但完整 integration 在 seed 前置作業 fail closed（不確定就停止）：
 
 ```text
-CANONICAL_GREEN
+main 的 supabase/migrations 只到 0014
+remote TEST migration history 已包含多個未合併候選，直到 0064 等版本
+main seed 需要 trips／trip_plans／trip_departures 等後續表
+fresh local database 無法只靠 current main 完整重建
 ```
 
-任何要 merge／close 的 runtime 候選，仍需現有遠端 `TEST_VALIDATION`、Sol Audit 與完成事實
-閘門。Phase 1 不改 `MAIN_TERRA max 1`。
+這是 source migration drift（程式碼與資料庫更新檔不同步），不是 local slot 互相污染。
+
+Phase 1B 必須建立「只由已合併／正式採用變更組成」的 canonical migration ledger。禁止：
+
+- 把 remote TEST 的所有候選 schema 直接 dump 後冒充 main；
+- 把 open PR 的全部 migration 無審查複製進 main；
+- 把 seed 改成忽略必要表缺失；
+- 讓 local workflow 讀 remote TEST secret 偷跑。
+
+只有 current main 從空白 Postgres 可完整套 migration、跑標準 seed、integration、E2E 並清理，
+才可記 `ISOLATED_GREEN`。
+
+## Local 與 remote 證據邊界
+
+任何要 merge／close 的 runtime 候選仍需：
+
+```text
+LOCAL_ISOLATED（前置快速證據）
+→ SHARED_CANONICAL（最終遠端 TEST）
+→ Sol Audit
+→ merge／close Completion Truth Gate
+```
+
+Phase 1A／1B 都不改 `MAIN_TERRA max 1`。
 
 ## Phase 2 成本與安全閘門
 
-Supabase Preview Branch 是計費資源。2026-09-01 由 Supabase live tool 查得目前費率為：
+Supabase Preview Branch 是計費資源。2026-09-01 由 Supabase live tool 查得當時費率為：
 
 ```text
 US$0.01344 / 小時 / 每條 branch
 ```
 
-目前 TEST project `nmwhwngojosmagjuvxol` 的 development branch 數量為 0。
+當時 TEST project `nmwhwngojosmagjuvxol` 的 development branch 數量為 0。
 
 真正建立 branch 前必須：
 
@@ -78,7 +108,8 @@ US$0.01344 / 小時 / 每條 branch
 
 ```text
 AVAILABLE_ISOLATED_TEST_SLOTS >= 2
-LOCAL_ISOLATED canary 兩條都綠且清理成功
+Phase 1A 兩條 canary 都綠且清理成功
+Phase 1B 完整 local integration／E2E 可重現
 REMOTE_BRANCH slot／刪除護欄已驗證（重型工作需要時）
 兩條候選 TEST_ENV_ID 不同
 hot files／primary Issue 不重疊
@@ -98,8 +129,6 @@ merge max 1
 - carryover、Sol 重讀與 post-merge regression 是否沒有增加。
 
 ## 不變的單線
-
-以下永遠先保持單線，除非 Owner 另有新裁示：
 
 ```text
 REMOTE_CANONICAL_TEST max 1

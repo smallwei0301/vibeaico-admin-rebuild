@@ -1,9 +1,9 @@
 ---
 name: vibeaico-isolated-test-orchestration
-description: "Use for Issue #104, local Supabase per-PR tests, TEST_PROFILE routing, Supabase Preview Branches, isolated TEST slots, canonical TEST handoff, or raising B+ full Terra capacity in smallwei0301/vibeaico-admin-rebuild. Enforces staged rollout, exact-head isolation, cleanup, cost confirmation, and serial final TEST/Audit/merge."
+description: "Use for Issue #104, local Supabase per-PR tests, TEST_PROFILE routing, Supabase Preview Branches, isolated TEST slots, canonical TEST handoff, migration rebuild drift, or raising B+ full Terra capacity in smallwei0301/vibeaico-admin-rebuild. Enforces Phase 1A canary, Phase 1B full local tests, cost-confirmed Preview Branches, exact-head cleanup, and serial final TEST/Audit/merge."
 metadata:
   author: smallwei0301
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Isolated TEST orchestration
@@ -19,22 +19,38 @@ Read from `origin/main`:
 ## Stage gate
 
 ```text
-Phase 1 local isolation verified
-→ Phase 2 remote branch lifecycle verified
+Phase 1A two-slot isolation canary
+→ Phase 1B canonical migration rebuild + full local integration/E2E
+→ Phase 2 cost-confirmed remote branch lifecycle
 → Phase 3 FULL_TERRA_MAX may become 2
 ```
 
 Never change Terra capacity first.
 
-## Phase 1
+## Phase 1A
 
-- Choose `LOCAL_ISOLATED` for one per-PR local stack.
 - Use `LOCAL_ISOLATED_CANARY` only for infrastructure proof with two runners.
+- Both runners intentionally insert the same fixed tenant ID and hold it concurrently.
+- Shared database, cross-slot mutation, non-local URL, or cleanup failure makes canary fail.
 - Require `FINAL_CANONICAL_REQUIRED=true`.
-- Local URL must be `localhost` or `127.0.0.1`.
 - Do not read remote TEST secrets.
 - Always stop with `supabase stop --no-backup`.
-- Report `ISOLATED_GREEN`, never `CANONICAL_GREEN`.
+- Report `ISOLATION_CANARY_GREEN`, never `ISOLATED_GREEN` or `CANONICAL_GREEN`.
+
+## Phase 1B
+
+Use `LOCAL_ISOLATED` only after current main can rebuild a fresh database from canonical migrations.
+It runs standard reset/seed, integration, E2E and cleanup.
+
+If seed fails because a required table is absent:
+
+```text
+MIGRATION_LEDGER_INCOMPLETE
+```
+
+Do not weaken seed, import every open-PR migration, copy an unaudited remote schema dump, or connect
+local jobs to remote secrets. Trace each missing schema object to merged/canonical source, reconcile it
+through a separate reviewed PR, and keep `MAIN_TERRA max 1` until the full local suite is reproducible.
 
 ## Phase 2
 
@@ -54,8 +70,9 @@ Never call `merge_branch`. Delete and re-fetch the branch after use. A delete re
 
 ## Phase 3
 
-Allow two complete Terra lanes only when two isolated slots are healthy and use different Issue,
-file ownership and TEST_ENV_ID. Any unhealthy slot immediately returns the limit to one.
+Allow two complete Terra lanes only when Phase 1A and 1B are green and the required remote branch
+slots are healthy. Both Terra lanes require different Issue, file ownership and TEST_ENV_ID. Any
+unhealthy slot immediately returns the limit to one.
 
 Always keep these serial:
 
@@ -76,6 +93,7 @@ EXACT_HEAD
 TEST_PROFILE
 TEST_ENV_ID
 MIGRATION_BASELINE
+CANARY_RESULT
 ISOLATED_RESULT
 CANONICAL_RESULT
 CLEANUP_STATUS

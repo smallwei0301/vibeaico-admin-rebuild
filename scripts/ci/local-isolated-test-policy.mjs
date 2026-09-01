@@ -51,7 +51,7 @@ export function classifyRiskPaths(paths = []) {
 }
 
 export function decideLocalIsolatedTest({
-  eventName,
+  eventName = '',
   body = '',
   inputProfile = '',
   inputExpectedHead = '',

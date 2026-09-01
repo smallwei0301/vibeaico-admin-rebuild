@@ -31,7 +31,7 @@ supersedes:
 
 ## TEST topology metadata
 
-<!-- Local green never replaces the final remote canonical TEST. -->
+<!-- Local evidence never replaces the final remote canonical TEST. -->
 
 - TEST_PROFILE: SOURCE_ONLY | LOCAL_ISOLATED | LOCAL_ISOLATED_CANARY | REMOTE_BRANCH_REQUIRED | SHARED_CANONICAL
 - TEST_ENV_ID: AUTO | <!-- exact local/branch environment id -->
@@ -40,6 +40,8 @@ supersedes:
 - AUTH_TOUCH: true | false
 - STORAGE_TOUCH: true | false
 - REMOTE_BRANCH_SLOT: none | 1 | 2
+- MIGRATION_LEDGER_STATUS: NOT_CHECKED | INCOMPLETE | REBUILDABLE
+- ISOLATION_CANARY_STATUS: NOT_RUN | PENDING | FAILED | ISOLATION_CANARY_GREEN
 - ISOLATED_TEST_STATUS: NOT_RUN | PENDING | FAILED | ISOLATED_GREEN
 - CANONICAL_TEST_STATUS: NOT_RUN | PENDING | FAILED | VERIFIED_GREEN
 - TEST_CLEANUP_STATUS: NOT_RUN | PENDING | FAILED | LOCAL_CLEANUP_VERIFIED | VERIFIED_DESTROYED
@@ -54,6 +56,7 @@ supersedes:
 - [ ] MAIN and RESERVE hot files do not overlap.
 - [ ] If RESERVE, work stops after one source-only atomic commit and no shared TEST/Audit.
 - [ ] If PARKED/HISTORICAL/OWNER_BLOCKED, no Agent/push/rerun/polling continues.
+- [ ] If LOCAL_ISOLATED_CANARY, the claim is only runner/database/cleanup isolation.
 - [ ] If LOCAL_ISOLATED, `FINAL_CANONICAL_REQUIRED=true` and local evidence is not reported as final.
 - [ ] If REMOTE_BRANCH_REQUIRED, cost/lease/delete evidence exists before branch creation.
 
@@ -62,6 +65,7 @@ supersedes:
 - Base / exact head:
 - Targeted tests:
 - Typecheck / build:
+- Isolation canary:
 - Local isolated integration / E2E:
 - Remote canonical integration / E2E, or POLICY_SKIP reason:
 - Preview / external evidence:
@@ -90,7 +94,8 @@ commit is reachable from main, and a key file has been re-read with `ref=main`.
 - Full CI count:
 - Invalid reruns:
 - Luna tasks / accepted:
-- Local isolated jobs / cleanup:
+- Local canary / isolated jobs / cleanup:
+- Migration rebuild gaps:
 - Remote branch hours / estimated cost / destroyed:
 - Delivery exit:
 
