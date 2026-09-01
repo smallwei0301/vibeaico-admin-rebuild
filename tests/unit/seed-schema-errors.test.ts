@@ -11,12 +11,13 @@ describe('seed schema error classification', () => {
     expect(isMissingSchemaError({ code: '42883', message: 'function public.seed_trip() does not exist' })).toBe(false);
   });
 
-  it('uses the current trip plan price contract in the standard seed', () => {
+  it('uses the canonical trip plan price contract in the standard seed', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
-    expect(source).toContain('base_price: 3000');
-    expect(source).not.toContain('price_per_person:');
-    expect(source).toContain("slug: 'standard-test-plan'");
-    expect(source).toContain("slug: 'private-test-plan'");
+    expect(source).toContain('price_per_person: 3000');
+    expect(source).not.toContain('base_price:');
+    expect(source).not.toContain('price_type:');
+    expect(source).not.toContain("slug: 'standard-test-plan'");
+    expect(source).not.toContain("slug: 'private-test-plan'");
   });
 
   it('fails closed when required trip plan or departure seed data cannot be written', () => {

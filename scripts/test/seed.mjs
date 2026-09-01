@@ -150,8 +150,7 @@ async function ensureAuthUser(admin, email, password) {
 export async function runSeed(admin) {
   console.log('[seed] 開始建立標準測試種子（12 分冊 §1.3）…');
 
-  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次與成團期限
-  // 落在互相矛盾的日期。formation_deadline_at 也必須在觸發器計算的期限內。
+  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次日期漂移。
   const seedNow = new Date();
   const seedNowMs = seedNow.getTime();
   const hourMs = 60 * 60 * 1000;
@@ -373,31 +372,23 @@ export async function runSeed(admin) {
         id: TRIP_A.planA1,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
-        slug: 'standard-test-plan',
         name: '標準團（測試）',
-        // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
-        // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
-        base_price: 3000,
-        price_type: 'PER_PERSON',
-        max_participants: 10,
-        min_to_depart: 1,
+        // #8-A canonical 10 §1.1 has no plan slug or legacy pricing columns.
+        price_per_person: 3000,
+        max_party: 10,
       },
       {
         id: TRIP_A.planA2,
         tenant_id: TRIP_A.tenantId,
         trip_id: TRIP_A.id,
-        slug: 'private-test-plan',
         name: '包團（測試）',
-        base_price: 5000,
-        price_type: 'PER_PERSON',
-        max_participants: 10,
-        min_to_depart: 1,
+        price_per_person: 5000,
+        max_party: 10,
       },
     ],
     'trip_plans',
   );
 
-  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
   if (!tripPlansSeeded) {
     throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   }
@@ -414,8 +405,6 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 7 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
       },
       {
         id: TRIP_A.departure2,
@@ -425,8 +414,6 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 14 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
       },
       {
         // capacity=2：專供 12 分冊 §5 並發不超賣測試
@@ -437,8 +424,6 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 21 * oneDayMs).toISOString().slice(0, 10),
         capacity: 2,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
       },
     ],
     'trip_departures',
