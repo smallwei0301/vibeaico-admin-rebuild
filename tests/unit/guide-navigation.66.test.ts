@@ -10,6 +10,7 @@ import {
 import { MODE_PRESETS } from '@/config/modes';
 import { getNav, isGroup } from '@/config/nav';
 import { guideNavigation } from '@/i18n/zh-TW/pages/guide-navigation';
+import { resolveGuideMoreHref } from '@/lib/guide-more';
 
 function guideVisibleHrefs() {
   return getNav('GUIDE')
@@ -89,4 +90,21 @@ describe('GUIDE five-parent information architecture (#66 Phase B)', () => {
     expect(source).not.toMatch(/businessType\s*===\s*['"]GUIDE['"]/);
     expect(source).not.toMatch(/businessType\s*!==\s*['"]GUIDE['"]/);
   });
+  it('keeps More feature links fail-closed while loading and after a failed lookup', () => {
+    expect(resolveGuideMoreHref('/tenant/reports', 'BASIC_REPORT', null)).toBeNull();
+    expect(resolveGuideMoreHref('/tenant/reports', 'BASIC_REPORT', new Set(['BASIC_REPORT']))).toBe('/tenant/reports');
+    expect(resolveGuideMoreHref('/tenant/reports', 'BASIC_REPORT', new Set())).toBe(
+      '/tenant/feature-store?feature=BASIC_REPORT',
+    );
+    expect(resolveGuideMoreHref('/tenant/settings', undefined, null)).toBe('/tenant/settings');
+
+    const source = readFileSync('src/app/tenant/more/page.tsx', 'utf8');
+    expect(source).toContain('href={href ?? \'#\'}');
+    expect(source).toContain('aria-disabled={!featureReady}');
+    expect(source).toContain('event.preventDefault()');
+    expect(source).toContain('setActiveFeatures(new Set())');
+    expect(source).toContain('GUIDE_STATUS_CLASSES[featureTone]');
+    expect(source).not.toContain('border-[#CDE8DA]');
+  });
+
 });

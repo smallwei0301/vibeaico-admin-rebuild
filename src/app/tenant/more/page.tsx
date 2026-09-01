@@ -7,11 +7,12 @@ import { ArrowUpRight } from 'lucide-react';
 import { GuideEmptyState, GuideHeader, GuideSettingsGroup } from '@/components/guide';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { GUIDE_MORE_GROUPS } from '@/config/guide-navigation';
-import { GUIDE_UI_CLASSES } from '@/config/guide-ui';
+import { GUIDE_STATUS_CLASSES, GUIDE_UI_CLASSES } from '@/config/guide-ui';
 import { MODE_PRESETS } from '@/config/modes';
 import { guideNavigation } from '@/i18n/zh-TW/pages/guide-navigation';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { listFeatures } from '@/services/settings';
+import { resolveGuideMoreHref } from '@/lib/guide-more';
 import { cn } from '@/lib/utils';
 
 export default function GuideMorePage() {
@@ -21,10 +22,34 @@ export default function GuideMorePage() {
   const [featureLoadFailed, setFeatureLoadFailed] = React.useState(false);
 
   React.useEffect(() => {
-    if (profile !== 'GUIDE_FIVE') return;
+    let cancelled = false;
+    setActiveFeatures(null);
+    setFeatureLoadFailed(false);
+
+    if (profile !== 'GUIDE_FIVE') {
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void listFeatures()
-      .then((features) => setActiveFeatures(new Set(features.filter((f) => f.active).map((f) => f.code))))
-      .catch(() => setFeatureLoadFailed(true));
+      .then((features) => {
+        if (!cancelled) {
+          setActiveFeatures(new Set(features.filter((f) => f.active).map((f) => f.code)));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          // An unavailable feature list must fail closed: gated links go to the
+          // feature store instead of pretending the destination is active.
+          setActiveFeatures(new Set());
+          setFeatureLoadFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [profile]);
 
   if (profile !== 'GUIDE_FIVE') {
@@ -51,13 +76,21 @@ export default function GuideMorePage() {
               const requiresFeature = !!link.feature;
               const featureReady = !requiresFeature || activeFeatures !== null;
               const featureActive = !requiresFeature || !!activeFeatures?.has(link.feature!);
-              const href = featureActive
-                ? link.href
-                : `/tenant/feature-store?feature=${encodeURIComponent(link.feature!)}`;
+              const href = resolveGuideMoreHref(link.href, link.feature, activeFeatures);
+              const featureTone = !featureReady
+                ? 'neutral'
+                : featureActive
+                  ? 'positive'
+                  : 'attention';
               return (
                 <Link
                   key={link.href}
-                  href={href}
+                  href={href ?? '#'}
+                  aria-disabled={!featureReady}
+                  tabIndex={featureReady ? undefined : -1}
+                  onClick={(event) => {
+                    if (!featureReady) event.preventDefault();
+                  }}
                   className={cn(
                     GUIDE_UI_CLASSES.touchTarget,
                     GUIDE_UI_CLASSES.settingsLink,
@@ -73,10 +106,8 @@ export default function GuideMorePage() {
                   {requiresFeature ? (
                     <span
                       className={cn(
-                        'shrink-0 rounded-full border px-2 py-1 text-[12px] font-semibold',
-                        featureActive
-                          ? 'border-[#CDE8DA] bg-[#E5F5ED] text-[#237A57]'
-                          : 'border-[#F7D8BF] bg-[#FFF0E4] text-[#9B4F1F]',
+                        'shrink-0 rounded-full border px-2 py-1 text-[14px] font-semibold',
+                        GUIDE_STATUS_CLASSES[featureTone],
                       )}
                     >
                       {!featureReady
