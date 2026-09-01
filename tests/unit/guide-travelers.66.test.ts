@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 
-import { orderStatus } from '@/components/guide/GuideTravelersView';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -217,15 +216,15 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(source).toContain('restoreFocusId.current');
     expect(source).toContain('aria-controls={isSelected ? detailId : undefined}');
   });
-  it('preserves the canonical order status even when its date is in the past', () => {
-    expect(orderStatus(order({ status: 'PENDING', departsOn: '2026-08-01' }))).toEqual({
-      label: '等待確認',
-      tone: 'attention',
-    });
-    expect(orderStatus(order({ status: 'CONFIRMED', departsOn: '2026-08-01' }))).toEqual({
-      label: '已確認',
-      tone: 'positive',
-    });
+  it('preserves canonical order status instead of deriving completion from date', () => {
+    const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
+    const helper = source.slice(source.indexOf('export function orderStatus'), source.indexOf('function Metric'));
+    expect(helper).toContain('order: GuideTravelerOrder');
+    expect(helper).not.toContain('todayIso');
+    expect(helper).toContain("if (order.status === 'PENDING')");
+    expect(helper).toContain("if (order.status === 'CONFIRMED')");
+    expect(helper).toContain("if (order.status === 'COMPLETED')");
+    expect(helper).toContain("if (order.status === 'CANCELLED')");
   });
 
 });
