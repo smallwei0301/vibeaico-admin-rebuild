@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  classifyEvidenceSinkError,
   evaluateMergedPullRequest,
   formatCompletionTruth,
 } from "../../scripts/agents/completion-truth.mjs";
@@ -70,5 +71,28 @@ describe("Completion Truth Gate", () => {
     expect(result.errors).toContain(
       "merge commit is not verified as reachable from the default branch head",
     );
+  });
+
+  it("keeps a verified merge valid when the evidence comment sink returns 403", () => {
+    const sinkError = classifyEvidenceSinkError({
+      status: 403,
+      message: "Resource not accessible by integration",
+    });
+
+    expect(sinkError).toEqual({
+      status: 403,
+      message: "Resource not accessible by integration",
+      code: "HTTP_403",
+      verificationInvalidated: false,
+    });
+  });
+
+  it("records an unknown evidence sink failure without turning it into a merge fact failure", () => {
+    const sinkError = classifyEvidenceSinkError(new Error("network unavailable"));
+    expect(sinkError).toMatchObject({
+      status: null,
+      code: "UNKNOWN",
+      verificationInvalidated: false,
+    });
   });
 });
