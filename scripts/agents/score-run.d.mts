@@ -1,6 +1,19 @@
 import type { AgentRunLedger } from "./run-ledger.mjs";
 
-export type RunScore = Record<string, any>;
+export interface RunScore {
+  runId: string;
+  status: string;
+  total: number;
+  grade: string;
+  qualified: boolean;
+  scores: any;
+  actualTokens: number | null;
+  weightedUsageUnits: number;
+  unverifiedModelTasks: number;
+  deliveryUnits: number;
+  weightedUsagePerDeliveryUnit: number | null;
+  recommendations: string[];
+}
 
 export function computeWeightedUsage(run: AgentRunLedger): {
   weightedUsageUnits: number;
