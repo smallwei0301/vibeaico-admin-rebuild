@@ -25,7 +25,7 @@ export function GuideSettingsGroup({
   return (
     <details
       className={cn(GUIDE_UI_CLASSES.card, 'overflow-hidden', className)}
-      defaultOpen={defaultOpen}
+      open={defaultOpen}
       {...props}
     >
       <summary
