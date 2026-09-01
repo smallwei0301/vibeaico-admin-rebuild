@@ -11,7 +11,7 @@ export const guideMessages = {
   waiting: {
     title: '今天待回覆',
     description: '未讀旅客訊息依最近活動排序，最多顯示三筆。',
-    count: (count: number) => \`目前有 \${count} 位旅客等待回覆\`,
+    count: (count: number) => '目前有 ' + count + ' 位旅客等待回覆',
     emptyTitle: '目前沒有待回覆訊息',
     emptyDescription: '新的旅客訊息會在收到後出現在這裡。',
   },
@@ -28,7 +28,7 @@ export const guideMessages = {
   },
   list: {
     title: '旅客訊息',
-    count: (count: number) => \`\${count} 個對話\`,
+    count: (count: number) => String(count) + ' 個對話',
     noPreview: '尚無訊息內容',
     emptyTitle: '目前沒有旅客訊息',
     emptyDescription: '旅客從 LINE 官方帳號傳訊息後，對話會出現在這裡。',
@@ -37,7 +37,7 @@ export const guideMessages = {
     openConversation: '開啟對話',
   },
   status: {
-    waiting: (count: number) => \`待回覆 \${count} 則\`,
+    waiting: (count: number) => '待回覆 ' + count + ' 則',
     read: '已讀',
   },
   thread: {

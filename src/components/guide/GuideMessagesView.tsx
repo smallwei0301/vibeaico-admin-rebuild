@@ -23,6 +23,7 @@ import {
 } from '@/services/chat';
 import { guideMessages as t } from '@/i18n/zh-TW/pages/guide-messages';
 import {
+  compareGuideConversations,
   filterGuideConversations,
   selectGuideWaitingConversations,
   type GuideMessageFilter,
@@ -60,7 +61,7 @@ export function GuideMessagesView() {
     setListError(false);
     try {
       const rows = await listConversations();
-      setConversations(rows.slice().sort((a, b) => filterGuideConversations([a, b])[0] === a ? -1 : 1));
+      setConversations(rows.slice().sort(compareGuideConversations));
       lastFetchAt.current = new Date().toISOString();
     } catch {
       setListError(true);
@@ -86,7 +87,7 @@ export function GuideMessagesView() {
               unread: conversation.id === activeIdRef.current ? 0 : conversation.unread,
             });
           }
-          return [...merged.values()].sort((a, b) => filterGuideConversations([a, b])[0] === a ? -1 : 1);
+          return [...merged.values()].sort(compareGuideConversations);
         });
       } catch {
         // Keep the last known inbox on a transient poll failure.
