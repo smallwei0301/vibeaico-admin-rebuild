@@ -13,7 +13,11 @@
     "test:integration": "vitest run tests/integration --config vitest.integration.config.mts --no-file-parallelism",
     "test:e2e": "playwright test",
     "test:all": "npm run typecheck && npm test && npm run test:integration && npm run test:e2e",
-    "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs"
+    "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs",
+    "agent:run:init": "node scripts/agents/run-ledger.mjs init",
+    "agent:run:validate": "node scripts/agents/run-ledger.mjs validate",
+    "agent:run:score": "node scripts/agents/score-run.mjs",
+    "agent:run:review": "node scripts/agents/review-runs.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

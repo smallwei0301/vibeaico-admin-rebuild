@@ -1,0 +1,53 @@
+name: agent-run-scorecard
+
+on:
+  pull_request:
+    paths:
+      - 'docs/metrics/agent-runs/**'
+      - 'docs/AGENT-BPLUS-DELIVERY-LOOP.md'
+      - '.agents/schemas/agent-run.schema.json'
+      - '.agents/skills/vibeaico-agent-retrospective/**'
+      - 'scripts/agents/run-ledger.mjs'
+      - 'scripts/agents/score-run.mjs'
+      - 'scripts/agents/review-runs.mjs'
+      - 'tests/unit/agent-run-score.test.ts'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/metrics/agent-runs/**'
+      - 'scripts/agents/run-ledger.mjs'
+      - 'scripts/agents/score-run.mjs'
+      - 'scripts/agents/review-runs.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-scorecards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Syntax check
+        run: |
+          node --check scripts/agents/run-ledger.mjs
+          node --check scripts/agents/score-run.mjs
+          node --check scripts/agents/review-runs.mjs
+      - name: Validate and reproduce every committed report
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          ledgers=(docs/metrics/agent-runs/*.json)
+          if [ ${#ledgers[@]} -eq 0 ]; then
+            echo 'No agent run ledger exists.' >&2
+            exit 1
+          fi
+          for ledger in "${ledgers[@]}"; do
+            report="${ledger%.json}.md"
+            test -f "$report" || { echo "Missing report: $report" >&2; exit 1; }
+            node scripts/agents/run-ledger.mjs validate "$ledger"
+            node scripts/agents/score-run.mjs "$ledger" --check "$report"
+          done
