@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,7 +10,7 @@ import {
 } from '../../scripts/ci/stage-local-migration-ledger.mjs';
 
 function fixture() {
-  const root = join(tmpdir(), `vibeaico-local-ledger-${crypto.randomUUID()}`);
+  const root = join(tmpdir(), `vibeaico-local-ledger-${randomUUID()}`);
   const source = join(root, 'supabase/local-migrations/historical-integration-baseline');
   const target = join(root, 'supabase/migrations');
   mkdirSync(source, { recursive: true });
@@ -79,6 +80,44 @@ describe('local migration overlay', () => {
         allow: true,
         testProfile: 'LOCAL_ISOLATED',
       })).toThrow('blob integrity mismatch');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('wraps a verified lock migration in one local-only transaction', () => {
+    const { root, source, target } = fixture();
+    try {
+      const manifestPath = join(source, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.files[0].localTransform = 'WRAP_IN_TRANSACTION';
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      const result = stageLocalMigrationOverlay({
+        rootDir: root,
+        allow: true,
+        testProfile: 'LOCAL_ISOLATED',
+      });
+      expect(result.transformed).toEqual(['0015_example.sql:WRAP_IN_TRANSACTION']);
+      expect(readFileSync(join(target, '0015_example.sql'), 'utf8')).toBe(
+        'begin;\nselect 1;\n\ncommit;\n',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed on an unknown local transform', () => {
+    const { root, source } = fixture();
+    try {
+      const manifestPath = join(source, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.files[0].localTransform = 'IGNORE_ERRORS';
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      expect(() => stageLocalMigrationOverlay({
+        rootDir: root,
+        allow: true,
+        testProfile: 'LOCAL_ISOLATED',
+      })).toThrow('unsupported local migration transform');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

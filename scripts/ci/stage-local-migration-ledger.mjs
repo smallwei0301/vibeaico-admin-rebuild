@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { appendFileSync, copyFileSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const DEFAULT_MANIFEST = 'supabase/local-migrations/historical-integration-baseline/manifest.json';
 const DEFAULT_TARGET = 'supabase/migrations';
 const MIGRATION_NAME = /^\d{4}_[a-z0-9_]+\.sql$/;
+const LOCAL_TRANSFORMS = new Set(['WRAP_IN_TRANSACTION']);
 
 export function gitBlobSha(content) {
   const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content);
@@ -75,8 +76,16 @@ export function stageLocalMigrationOverlay({
       );
     }
 
-    copyFileSync(source, target);
-    staged.push({ name: entry.name, blobSha: actualBlobSha });
+    const transform = entry.localTransform ?? null;
+    if (transform && !LOCAL_TRANSFORMS.has(transform)) {
+      throw new Error(`unsupported local migration transform for ${entry.name}: ${transform}`);
+    }
+
+    const stagedContent = transform === 'WRAP_IN_TRANSACTION'
+      ? Buffer.concat([Buffer.from('begin;\n'), content, Buffer.from('\ncommit;\n')])
+      : content;
+    writeFileSync(target, stagedContent);
+    staged.push({ name: entry.name, blobSha: actualBlobSha, transform });
   }
 
   const result = {
@@ -85,6 +94,7 @@ export function stageLocalMigrationOverlay({
     count: staged.length,
     first: staged.at(0)?.name ?? null,
     last: staged.at(-1)?.name ?? null,
+    transformed: staged.filter((entry) => entry.transform).map((entry) => `${entry.name}:${entry.transform}`),
     staged,
   };
 
@@ -98,6 +108,7 @@ export function stageLocalMigrationOverlay({
       `- source head: ${result.source.head}`,
       `- staged count: ${result.count}`,
       `- range: ${result.first} → ${result.last}`,
+      `- local transforms: ${result.transformed.join(', ') || 'none'}`,
       '- scope: disposable local Supabase runner only; never a remote migration ledger',
       '',
     ].join('\n'), 'utf8');
