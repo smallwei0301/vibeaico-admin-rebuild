@@ -158,8 +158,8 @@ describe('Issue #15 dual reorder endpoints', () => {
         .eq('tenant_id', SHOP_A.id)
         .neq('id', createdId);
       expect(existingError).toBeNull();
-      expect(existing?.some((row: any) => row.sort_order === data.sort_order)).toBe(false);
-      expect(existing?.some((row: any) => row.line_sort_order === data.line_sort_order)).toBe(false);
+      expect(existing?.some((row: any) => row.sort_order === data!.sort_order)).toBe(false);
+      expect(existing?.some((row: any) => row.line_sort_order === data!.line_sort_order)).toBe(false);
 
       expect(data).toMatchObject({
         id: createdId,
