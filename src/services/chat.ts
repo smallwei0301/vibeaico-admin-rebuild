@@ -2,6 +2,7 @@ import { USE_MOCK } from '@/config/env';
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import { uploadChatImage } from './upload';
 
 /**
  * 顧客訊息（/tenant/chat）service — 04 分冊 §B-5 / §B-5.1。
@@ -302,6 +303,34 @@ export function sendMessage(p: { lineUserId: string; text: string }): Promise<Ch
       const row = await request<RawMessage>('/api/chat/messages', {
         method: 'POST',
         body: JSON.stringify(p),
+      });
+      return toMessage(row);
+    },
+  );
+}
+
+/** 先上傳到 chat-images，再用同一條 POST 做 LINE push 與訊息落庫。 */
+export function sendImage(p: { lineUserId: string; file: File }): Promise<ChatMessage> {
+  return adapt(
+    () => ({
+      id: `m_local_${mockSeq++}`,
+      from: 'SHOP' as const,
+      type: 'IMAGE' as const,
+      text: '',
+      imageUrl: URL.createObjectURL(p.file),
+      at: new Date().toISOString(),
+      readAt: null,
+    }),
+    async () => {
+      const uploaded = await uploadChatImage(p.file);
+      const row = await request<RawMessage>('/api/chat/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          lineUserId: p.lineUserId,
+          type: 'image',
+          originalContentUrl: uploaded.url,
+          previewImageUrl: uploaded.previewUrl,
+        }),
       });
       return toMessage(row);
     },

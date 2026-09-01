@@ -20,12 +20,12 @@ export const reportsPage = {
   /* -------------------------------------------------------------- 匯出 */
   export: {
     label: '匯出',
-    excel: '匯出 Excel',
+    excel: '匯出 Excel 可開啟的 CSV',
     csv: '匯出 CSV',
-    fileName: (date: string, ext: string) => `營運報表_${date}.${ext}`,
     success: '報表匯出成功',
     failed: '匯出失敗，請稍後再試',
     failedPrefix: '匯出失敗:',
+    mockNotDownloaded: '示範資料模式不會產生檔案，未匯出任何報表；請切換到實際店家後再匯出',
   },
 
   /* ------------------------------------------------------------ 營運總覽 */

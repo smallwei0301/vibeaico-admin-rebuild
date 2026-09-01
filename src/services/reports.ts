@@ -194,8 +194,8 @@ export const getTopStaff = (q: ReportQuery) =>
 /* ------------------------------------------------------------------ 匯出 */
 
 /**
- * 匯出端點不走 { success, data } 信封，是檔案下載：real 分支直接導向端點 URL
- * （同源 cookie 會帶上，瀏覽器觸發下載）；mock 分支 no-op，頁面照舊 toast。
+ * 匯出端點不走 { success, data } 信封，是檔案下載：real 分支以 fetch 讀取
+ * Content-Disposition，再建立瀏覽器下載；mock 分支明確回報沒有檔案。
  */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
@@ -211,5 +211,32 @@ export const exportBookingsCsv = (q?: ReportQuery) =>
     async () => {
       const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
       window.location.assign(`${API_BASE}/api/export/bookings${qs}`);
+    },
+  );
+
+export type ExportReportsResult = { downloaded: boolean; fileName: string };
+
+/** 下載目前報表頁的統計；mock 模式明確回報沒有產生檔案。 */
+export const exportReports = (format: 'csv' | 'excel', q?: ReportQuery) =>
+  adapt<ExportReportsResult>(
+    () => ({ downloaded: false, fileName: '' }),
+    async () => {
+      const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
+      const res = await fetch(`${API_BASE}/api/export/reports/${format}${qs}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('匯出失敗');
+
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') ?? '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const fileName = match?.[1] ?? `reports-${new Date().toISOString().slice(0, 10)}.csv`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+      return { downloaded: true, fileName };
     },
   );

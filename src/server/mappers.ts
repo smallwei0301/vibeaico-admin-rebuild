@@ -86,6 +86,7 @@ export function mapService(r: any): Service {
     active: r.active,
     lineFeatured: r.line_featured,
     sortOrder: r.sort_order,
+    lineSortOrder: r.line_sort_order,
   };
 }
 
@@ -122,6 +123,7 @@ export function mapProduct(r: any): Product {
     active: r.active,
     lineFeatured: r.line_featured,
     sortOrder: r.sort_order,
+    lineSortOrder: r.line_sort_order,
   };
 }
 

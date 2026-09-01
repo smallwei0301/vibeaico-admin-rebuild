@@ -230,7 +230,7 @@ export const POST = handle(async (_req, { params }) => {
 | GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
 | GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |
 | GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新。支援 `?after=<messageId>` → 只回該筆之後的新訊息（輪詢用） |
-| POST `/api/chat/messages` | `{lineUserId, text}` → LINE **push**（06 分冊）＋寫 OUT 訊息。⚠️ 店家在後台主動回覆時 replyToken 早已失效，只能用 push，**會佔用推播額度** → 送出前先 `consumePushQuota(tenantId, 1)`，額度不足回 409 `REQ_003` 並附文案「本月推播額度已用完」 |
+| POST `/api/chat/messages` | 文字：`{lineUserId, text}`；圖片：`{lineUserId, type:'image', originalContentUrl, previewImageUrl}`（兩個 URL 先由 `/api/upload` 取得）。兩者都走 LINE **push**（06 分冊）並寫 OUT 訊息；圖片同樣消耗 1 則推播額度。⚠️ 店家在後台主動回覆時 replyToken 早已失效，只能用 push，送出前先 `consumePushQuota(tenantId, 1)`，額度不足回 409 `REQ_003` 並附文案「本月推播額度已用完」 |
 | POST `/api/chat/messages/:id/read` | read_at=now |
 
 ### B-5.1 後台聊天的「即時性」（雙向收發完整鏈路）
@@ -268,7 +268,7 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 | GET `/api/customers/tags` | 該店所有 tags 去重 |
 | GET `/api/customers/at-risk` | customers_view at_risk=true |
 | POST `/api/feature-store/:code/apply‖cancel‖restore` | 訂閱異動：完整規格（扣點、套裝、還原副作用）在 **09 分冊 §3**，照該冊實作 ⚙O |
-| POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能，MVP：寫進一張 `bug_reports` 表＋寄信給平台管理者即可 |
+| POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能。`bug-report` MVP 寫進 `bug_reports` 表＋寄信給平台管理者；`support-chat/*` **尚未實作，後台 widget 必須顯示「尚未開通」而不可宣稱送出成功，真後端排 #25** |
 
 ---
 

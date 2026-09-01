@@ -7,8 +7,8 @@
  *  1. `API` / `DATA_API` 改為可用環境變數 `LINE_API_BASE` / `LINE_DATA_API_BASE`
  *     覆寫（12 分冊 Phase 6：整合測試以本地 mock server 取代真 LINE API）。
  *     以函式延遲讀取，確保測試在 import 後才設 env 也生效。
- *  2. `consumePushQuota` 的 quota 依 09 分冊 §5：
- *     `isFeatureActive(tenantId,'EXTRA_PUSH') ? 700 : 200`（06 分冊留的 TODO）。
+ *  2. `consumePushQuota` 的 quota 依 09 分冊 §5：有效 EXTRA_PUSH 訂閱為 700，
+ *     否則 200；用 0017 的資料庫 RPC 原子扣減，避免並發超賣。
  *  3. 月份鍵改用 `taipeiCurrentMonthKey()`（§2 原文為 UTC `toISOString().slice(0,7)`）：
  *     tz.ts 明文註記該函式「對應 push_quota_usage.month」，且 A-5 儀表板
  *     （reports/dashboard、dashboard-alerts）已用它讀同一張表——寫讀兩端必須
@@ -17,7 +17,6 @@
 import { createAdminSupabase } from './supabase';
 import { decryptSecret } from './crypto';
 import { ApiHttpError, ERR } from './http';
-import { isFeatureActive } from './features';
 import { taipeiCurrentMonthKey } from './tz';
 
 /** api.line.me 基底；測試以 LINE_API_BASE 指向本地 mock（12 分冊 Phase 6） */
@@ -71,18 +70,38 @@ export const lineProfile = (token: string, userId: string) =>
 /**
  * 額度控管（免費 200 則/月；EXTRA_PUSH 訂閱 → 700，09 分冊 §5）。
  * push/multicast 前先過；**reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
+ * 使用 TEST/Production 同形的資料庫 RPC，在資料庫內鎖住當月列，避免並發請求超賣。
  */
 export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
+  if (!Number.isInteger(count) || count <= 0)
+    throw new ApiHttpError(500, '推播額度參數錯誤', ERR.INTERNAL);
+
   const admin = createAdminSupabase();
   const month = taipeiCurrentMonthKey();                       // 'YYYY-MM'（見檔頭差異 3）
-  const { data } = await admin.from('push_quota_usage').select('used')
-    .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
-  const used = data?.used ?? 0;
-  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
-  if (used + count > quota) return false;
-  await admin.from('push_quota_usage')
-    .upsert({ tenant_id: tenantId, month, used: used + count });
-  return true;
+  const { data: subscription, error: featureError } = await admin.from('feature_subscriptions')
+    .select('active, expires_at')
+    .eq('tenant_id', tenantId)
+    .eq('code', 'EXTRA_PUSH')
+    .maybeSingle();
+  if (featureError) {
+    console.error('[line] push quota feature lookup failed', featureError);
+    throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
+  }
+  const extraPushActive = !!subscription?.active
+    && (!subscription.expires_at || new Date(subscription.expires_at) > new Date());
+  const quota = extraPushActive ? 700 : 200;  // 09 分冊 §5
+
+  const { data: consumed, error } = await admin.rpc('consume_push_quota', {
+    p_tenant_id: tenantId,
+    p_month: month,
+    p_count: count,
+    p_quota: quota,
+  });
+  if (error) {
+    console.error('[line] push quota RPC failed', error);
+    throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
+  }
+  return consumed === true;
 }
 
 /* ------------------------------------------------------------------ 附加匯出

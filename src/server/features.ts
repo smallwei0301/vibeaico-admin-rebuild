@@ -12,8 +12,7 @@
  * ⚠️ 尚未落地的閘門（落點屬 06 分冊，Phase 6 端點尚不存在，待 Phase 6 實作時套用）：
  * - KEYWORD_REPLY：`/api/settings/line/keyword-replies` 寫入端點 + POST 時檢查
  *   該店筆數 ≥ 20 → 409「每店最多 20 組」
- * - EXTRA_PUSH：06 分冊 `consumePushQuota` 的 quota 改為
- *   `isFeatureActive(t,'EXTRA_PUSH') ? 700 : 200`
+ * - EXTRA_PUSH：由 `src/server/line.ts` 讀取有效訂閱並以資料庫 RPC 原子扣減
  * - CUSTOM_RICH_MENU：06 §6 進階選單端點（create-advanced/create-custom 等；基本 5 主題不擋）
  * - AI_ASSISTANT：webhook 內 AI 回覆分支（09 分冊 §7）
  */

@@ -249,12 +249,14 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 「我掃過了」若沒有附上掃了哪些路徑，等同於 §0 根因 D 的無證據打勾——
 下一輪稽核的產出必須包含**實際使用的 glob 清單**，供人檢查它漏了什麼。
 
-### 5.3 二輪的四件活體假成功（第一輪漏網，已排 #15）
+### 5.3 二輪的四件活體假成功（第一輪漏網，#15 source slice）
 
-- [ ] `/tenant/chat` 送圖／送檔只 append 本地 state，未走 `/api/upload`、未 push 給顧客
-- [ ] `/tenant/services`、`/tenant/products`、`/tenant/portfolio` 三頁「上移／下移」只改本地陣列，重整即還原
-- [ ] `/tenant/reports` 匯出顯示成功但無檔案產生
-- [ ] `src/components/layout/SupportChatWidget.tsx` 送出顯示已送出，端點不存在（**範圍缺陷漏掉的那一件**）
+- [x] `/tenant/chat` 送圖／送檔已走 `/api/upload`、再呼叫 chat service push 並寫 OUT 訊息；API 分支與額度不足案例在 `tests/integration/api/chat-image.15.test.ts`
+- [x] `/tenant/services`、`/tenant/products`、`/tenant/portfolio` 三頁排序已呼叫各自 reorder service；API 排序回讀案例在 `tests/integration/api/reorder-dual.15.test.ts`
+- [x] `/tenant/reports` 匯出已使用瀏覽器下載真檔案；`tests/integration/api/export-reports.15.test.ts` 覆蓋 attachment/BOM 與 CSV 契約
+- [x] `src/components/layout/SupportChatWidget.tsx` 已移除不存在端點與送出成功假象，改顯示「尚未開通」；真 `support-chat` 後端仍歸 #25
+
+> 2026-09-01 current-main revalidation：以上四項的 source slice、local unit、typecheck/build 已在 #15 的現行候選完成；exact-head integration/E2E CI 與 authenticated Preview 仍待候選提交後驗證，不能把本地或舊 SHA 證據冒充完成。
 
 ### 5.4 19 項未排期缺口與歸屬
 

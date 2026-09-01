@@ -99,6 +99,8 @@ export type ProductPayload = {
   imageUrl?: string;
   active?: boolean;
   lineFeatured?: boolean;
+  /** 公開頁排序；LINE 精選排序另走 reorderProductsLine。 */
+  sortOrder?: number;
 };
 
 let nextMockProductId = 1;
@@ -130,10 +132,17 @@ export const deleteProduct = (id: string) =>
     ),
   );
 
-/** POST /api/products/reorder — 依 ids 順序寫 sort_order（LINE 精選排序） */
+/** POST /api/products/reorder — 依 ids 順序寫公開頁 sort_order。 */
 export const reorderProducts = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/products/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/** POST /api/products/reorder-line — LINE 精選排序（line_sort_order）。 */
+export const reorderProductsLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/products/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 

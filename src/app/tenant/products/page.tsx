@@ -22,7 +22,8 @@ import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import {
   adjustProductStock, createProduct, createProductCategory, deleteProduct, deleteProductCategory,
-  listProductCategories, reorderProductCategories, reorderProducts, toggleProductLineFeatured,
+  listProductCategories, reorderProductCategories, reorderProducts, reorderProductsLine,
+  toggleProductLineFeatured,
   updateProduct, type ProductCategory,
 } from '@/services/products';
 import { listFeatures } from '@/services/settings';
@@ -37,13 +38,13 @@ import type { Product } from '@/lib/types';
 /* -------------------------------------------------------------------------- */
 
 /**
- * 原站 Product 另有「是否追蹤庫存 / 單次限購 / 公開頁排序 / 草稿」等欄位，
- * 尚未收錄進 lib/types.ts 的 Product，骨架階段用本頁常數補齊。
+ * 原站 Product 另有「是否追蹤庫存 / 單次限購 / 草稿」等欄位，尚未收錄進
+ * lib/types.ts 的 Product，骨架階段用本頁常數補齊。
+ * （公開頁排序已不在此列：0017 之後它就是 API 的 sortOrder。）
  */
 type ProductExtras = {
   trackInventory: boolean;
   maxPerOrder: number | null;
-  publicSortOrder: number;
   draft: boolean;
   extraImages: string[];
 };
@@ -51,15 +52,13 @@ type ProductExtras = {
 const DEFAULT_EXTRAS: ProductExtras = {
   trackInventory: true,
   maxPerOrder: null,
-  publicSortOrder: 0,
   draft: false,
   extraImages: [],
 };
 
 const MOCK_PRODUCT_EXTRAS: Record<string, Partial<ProductExtras>> = {
-  p_1: { publicSortOrder: 1, maxPerOrder: 5 },
-  p_2: { publicSortOrder: 2 },
-  p_3: { trackInventory: false, publicSortOrder: 3, draft: true },
+  p_1: { maxPerOrder: 5 },
+  p_3: { trackInventory: false, draft: true },
 };
 
 /** LINE 精選最多顯示的件數（原站硬性上限） */
@@ -72,13 +71,36 @@ const CATEGORY_NONE = 'none';
 
 /* -------------------------------------------------------------------------- */
 
-type ProductRow = Product & ProductExtras;
+type ProductRow = Product & ProductExtras & { lineSortOrder: number };
 
 const toRow = (p: Product): ProductRow => ({
   ...p,
   ...DEFAULT_EXTRAS,
   ...(MOCK_PRODUCT_EXTRAS[p.id] ?? {}),
+  lineSortOrder: p.lineSortOrder ?? p.sortOrder,
 });
+
+/**
+ * 篩選中的相鄰項目交換後，把交換結果放回完整清單的原本槽位。
+ * reorder API 收完整租戶清單，隱藏列因此不會留下重複 rank。
+ */
+function moveWithinFullOrder<T extends { id: string }>(
+  allRows: T[],
+  visibleRows: T[],
+  index: number,
+  delta: number,
+  orderOf: (row: T) => number,
+): T[] | null {
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= visibleRows.length) return null;
+  const swapped = [...visibleRows];
+  [swapped[index], swapped[target]] = [swapped[target], swapped[index]];
+  const visibleIds = new Set(visibleRows.map((row) => row.id));
+  let visibleIndex = 0;
+  return [...allRows]
+    .sort((a, b) => orderOf(a) - orderOf(b))
+    .map((row) => (visibleIds.has(row.id) ? swapped[visibleIndex++] : row));
+}
 
 type SortMode = 'line' | 'public';
 
@@ -148,7 +170,7 @@ export default function ProductsPage() {
   }, [toast]);
 
   const orderOf = React.useCallback(
-    (p: ProductRow) => (sortMode === 'line' ? p.sortOrder : p.publicSortOrder),
+    (p: ProductRow) => (sortMode === 'line' ? p.lineSortOrder : p.sortOrder),
     [sortMode],
   );
 
@@ -167,21 +189,16 @@ export default function ProductsPage() {
   const lowStockCount = rows.filter(isLowStock).length;
 
   const move = async (index: number, delta: number) => {
-    const target = index + delta;
-    if (target < 0 || target >= visible.length) return;
-    const reordered = [...visible];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-    const orderById = new Map(reordered.map((p, i) => [p.id, i + 1]));
+    const reordered = moveWithinFullOrder(rows, visible, index, delta, orderOf);
+    if (!reordered) return;
+    const orderById = new Map(reordered.map((p, i) => [p.id, i]));
     const nextRows = rows.map((p) => {
       const order = orderById.get(p.id);
       if (order === undefined) return p;
-      return sortMode === 'line' ? { ...p, sortOrder: order } : { ...p, publicSortOrder: order };
+      return sortMode === 'line' ? { ...p, lineSortOrder: order } : { ...p, sortOrder: order };
     });
     try {
-      /* 後端只儲存 LINE 排序（sort_order）；公開頁排序尚無端點，僅前端狀態 */
-      if (sortMode === 'line') {
-        await reorderProducts([...nextRows].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id));
-      }
+      await (sortMode === 'line' ? reorderProductsLine : reorderProducts)(reordered.map((p) => p.id));
       setRows(nextRows);
       toast.show(sortMode === 'line' ? t.messages.lineOrderUpdated : t.messages.publicOrderUpdated);
     } catch (e) {
@@ -516,7 +533,13 @@ export default function ProductsPage() {
         onClose={() => setFormTarget(undefined)}
         onSaved={(draft, isEdit) => {
           const categoryName = categories.find((c) => c.id === draft.categoryId)?.name ?? null;
-          upsert({ ...draft, categoryName, sortOrder: isEdit ? draft.sortOrder : rows.length + 1 });
+          const newRank = rows.length + 1;
+          upsert({
+            ...draft,
+            categoryName,
+            sortOrder: isEdit ? draft.sortOrder : newRank,
+            lineSortOrder: isEdit ? draft.lineSortOrder : newRank,
+          });
           setFormTarget(undefined);
           toast.show(isEdit ? t.messages.updated : t.messages.created);
         }}
@@ -572,17 +595,18 @@ export default function ProductsPage() {
         message={t.confirm.syncOrder(fromLabel, toModeLabel)}
         onClose={() => setSyncOpen(false)}
         onConfirm={async () => {
-          const nextRows = rows.map((p) => (sortMode === 'line'
-            ? { ...p, publicSortOrder: p.sortOrder }
-            : { ...p, sortOrder: p.publicSortOrder }));
+          const source = [...rows].sort((a, b) => (sortMode === 'line'
+            ? a.lineSortOrder - b.lineSortOrder
+            : a.sortOrder - b.sortOrder));
+          const targetMode: SortMode = sortMode === 'line' ? 'public' : 'line';
+          const rankById = new Map(source.map((p, i) => [p.id, i + 1]));
           try {
-            /* 公開頁 → LINE 會改動後端的 sort_order；反向（LINE → 公開頁）僅前端狀態 */
-            if (sortMode === 'public') {
-              await reorderProducts(
-                [...nextRows].sort((a, b) => a.sortOrder - b.sortOrder).map((p) => p.id),
-              );
-            }
-            setRows(nextRows);
+            await (targetMode === 'line' ? reorderProductsLine : reorderProducts)(source.map((p) => p.id));
+            setRows(rows.map((p) => {
+              const rank = rankById.get(p.id);
+              if (rank === undefined) return p;
+              return targetMode === 'line' ? { ...p, lineSortOrder: rank } : { ...p, sortOrder: rank };
+            }));
             setSyncOpen(false);
             toast.show(t.messages.orderApplied(toModeLabel));
           } catch (e) {
@@ -639,7 +663,7 @@ export default function ProductsPage() {
 const EMPTY_PRODUCT: ProductRow = {
   id: '', categoryId: null, categoryName: null, name: '', description: '',
   price: 0, stock: 0, safetyStock: 0, imageUrl: '', active: true, lineFeatured: false,
-  sortOrder: 0, ...DEFAULT_EXTRAS,
+  sortOrder: 0, lineSortOrder: 0, ...DEFAULT_EXTRAS,
 };
 
 function ProductFormModal({
@@ -681,7 +705,8 @@ function ProductFormModal({
     if (list.length) { toast.show(t.messages.checkFields, 'warning'); return; }
     setSaving(true);
     try {
-      /* ProductExtras（trackInventory / maxPerOrder / publicSortOrder…）後端未落地，不隨 payload 送出 */
+      /* ProductExtras（trackInventory / maxPerOrder / draft…）後端未落地，不隨 payload 送出；
+         sortOrder（公開頁排序）0017 之後是真欄位，隨 payload 一起寫回 */
       const payload = {
         name: draft.name,
         categoryId: draft.categoryId ?? '',
@@ -692,6 +717,7 @@ function ProductFormModal({
         imageUrl: draft.imageUrl,
         active: draft.active,
         lineFeatured: draft.lineFeatured,
+        sortOrder: draft.sortOrder,
       };
       if (isEdit) {
         await updateProduct(draft.id, payload);
@@ -822,8 +848,8 @@ function ProductFormModal({
         <FormGroup>
           <Label htmlFor="productSortOrder">{t.form.sortOrder}</Label>
           <Input
-            id="productSortOrder" type="number" value={draft.publicSortOrder}
-            onChange={(e) => patch({ publicSortOrder: Number(e.target.value) })}
+            id="productSortOrder" type="number" value={draft.sortOrder}
+            onChange={(e) => patch({ sortOrder: Number(e.target.value) })}
           />
           <FormText>{t.form.sortOrderHelp}</FormText>
         </FormGroup>

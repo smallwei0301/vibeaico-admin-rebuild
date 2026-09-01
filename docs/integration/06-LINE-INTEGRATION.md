@@ -75,24 +75,12 @@ export const lineProfile = (token: string, userId: string) =>
   lineFetch(token, `/v2/bot/profile/${userId}`);
 ```
 
-### 額度控管（免費 200 則/月，`LINE_FREE_PUSH_QUOTA`）
+### 額度控管（免費 200 則/月；有效 EXTRA_PUSH 為 700）
 
-`push`/`multicast` 前先過：
-
-```ts
-export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
-  const admin = createAdminSupabase();
-  const month = new Date().toISOString().slice(0, 7);          // 'YYYY-MM'
-  const { data } = await admin.from('push_quota_usage').select('used')
-    .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
-  const used = data?.used ?? 0;
-  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
-  if (used + count > quota) return false;
-  await admin.from('push_quota_usage')
-    .upsert({ tenant_id: tenantId, month, used: used + count });
-  return true;
-}
-```
+`push`/`multicast` 前先呼叫 `consumePushQuota`。實作使用 0017 的
+`consume_push_quota(tenant_id, month, count, quota)` SECURITY DEFINER RPC，在資料庫
+內以 primary key row lock 完成「未超過上限才增加」；回傳 false 代表額度不足。
+額度查詢或 RPC 失敗時 fail closed，不呼叫 LINE，也不把錯誤當成額度尚可。
 
 **reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
 

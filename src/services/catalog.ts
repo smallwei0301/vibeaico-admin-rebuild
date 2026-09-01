@@ -94,6 +94,8 @@ export type ServicePayload = {
   imageUrl?: string;
   active?: boolean;
   lineFeatured?: boolean;
+  /** 公開頁排序；LINE 精選排序另走 reorderProductsLine。 */
+  sortOrder?: number;
 };
 
 let nextMockServiceId = 1;
@@ -121,10 +123,17 @@ export const duplicateService = (id: string) =>
     () => request<{ id: string }>(`/api/services/${id}/duplicate`, { method: 'POST' }),
   );
 
-/** POST /api/services/reorder — 依 ids 順序寫 sort_order（= LINE 精選順序）。 */
+/** POST /api/services/reorder — 依 ids 順序寫公開頁 sort_order。 */
 export const reorderServices = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/services/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/** POST /api/services/reorder-line — LINE 精選排序（line_sort_order）。 */
+export const reorderServicesLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/services/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 

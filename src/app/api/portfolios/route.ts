@@ -6,7 +6,7 @@ import { requireFeature } from '@/server/features';
 /**
  * /api/portfolios — 作品集 CRUD，同 services 模式（04 分冊 §B-5）。
  * 欄位以 0005 portfolios 表為準：title、image_url、description、active、
- * line_featured、sort_order。寫入端點 requireFeature('PORTFOLIO_SHOWCASE')
+ * line_featured、sort_order；0017 另有 line_sort_order。寫入端點 requireFeature('PORTFOLIO_SHOWCASE')
  * （09 分冊 §5）；讀取不擋。
  */
 
@@ -19,6 +19,7 @@ function mapPortfolio(r: any) {
     active: !!r.active,
     lineFeatured: !!r.line_featured,
     sortOrder: r.sort_order as number,
+    lineSortOrder: (r.line_sort_order ?? r.sort_order) as number,
     createdAt: r.created_at as string,
   };
 }
@@ -43,6 +44,7 @@ const createSchema = z.object({
   description: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
+  sortOrder: z.coerce.number().int().optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -50,14 +52,14 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('portfolios')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
+  const [{ data: lastPublic, error: publicError }, { data: lastLine, error: lineError }] = await Promise.all([
+    t.supabase.from('portfolios').select('sort_order')
+      .eq('tenant_id', t.tenantId).order('sort_order', { ascending: false }).limit(1).maybeSingle(),
+    t.supabase.from('portfolios').select('line_sort_order')
+      .eq('tenant_id', t.tenantId).order('line_sort_order', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (publicError) throw publicError;
+  if (lineError) throw lineError;
 
   const { data, error } = await t.supabase
     .from('portfolios')
@@ -68,7 +70,8 @@ export const POST = handle(async (req) => {
       description: b.description ?? '',
       active: b.active ?? true,
       line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? -1) + 1,
+      sort_order: b.sortOrder ?? (lastPublic?.sort_order ?? -1) + 1,
+      line_sort_order: (lastLine?.line_sort_order ?? -1) + 1,
     })
     .select('id')
     .single();

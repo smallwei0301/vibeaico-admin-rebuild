@@ -16,6 +16,7 @@ import {
   listConversations,
   listMessages,
   markThreadRead,
+  sendImage,
   sendMessage,
   startPolling,
   type ChatConversation,
@@ -57,7 +58,7 @@ function byLastMessageDesc(a: ConversationRow, b: ConversationRow): number {
   return 0;
 }
 
-/** 本地（未上傳）訊息 id 前綴：圖片僅前端預覽用，不能當 after 錨點 */
+/** mock 分支合成訊息的 id 前綴（真實模式不會出現）；不能當 after 錨點 */
 const LOCAL_ID_PREFIX = 'm_local_';
 
 export default function ChatPage() {
@@ -72,13 +73,13 @@ export default function ChatPage() {
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const [sendingImage, setSendingImage] = React.useState(false);
 
   /** 手機版單欄：list ⇄ thread */
   const [mobileThread, setMobileThread] = React.useState(false);
 
   const fileRef = React.useRef<HTMLInputElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
-  const nextId = React.useRef(1);
 
   /** 輪詢 callback 讀取用（effect 只掛一次，不重建計時器） */
   const activeIdRef = React.useRef<string | null>(null);
@@ -199,20 +200,18 @@ export default function ChatPage() {
     ? conversations.filter((c) => c.customerName.includes(keyword.trim()))
     : conversations;
 
-  const appendOwnMessage = (message: Omit<ChatMessage, 'id'>) => {
-    const id = `${LOCAL_ID_PREFIX}${nextId.current++}`;
-    setMessages((list) => [...list, { ...message, id }]);
-  };
-
   const sendText = async () => {
     const text = draft.trim();
-    if (!text || !activeId) return;
+    const targetId = activeId;
+    if (!text || !targetId || sending || sendingImage) return;
     setSending(true);
     try {
-      const sent = await sendMessage({ lineUserId: activeId, text });
-      setMessages((list) => [...list, sent]);
-      setDraft('');
-      setConversations((list) => list.map((c) => (c.id === activeId
+      const sent = await sendMessage({ lineUserId: targetId, text });
+      if (activeIdRef.current === targetId) {
+        setMessages((list) => [...list, sent]);
+        setDraft('');
+      }
+      setConversations((list) => list.map((c) => (c.id === targetId
         ? { ...c, lastMessageType: 'TEXT', lastMessage: text, timeLabel: t.labels.justNow }
         : c)));
     } catch (error) {
@@ -226,22 +225,29 @@ export default function ChatPage() {
     }
   };
 
-  const sendImage = (file: File | undefined) => {
-    if (!file || !activeId) return;
+  /** 成功回傳伺服器訊息後才更新畫面，避免上傳或推播失敗時假裝已送出。 */
+  const sendImageFile = async (file: File | undefined) => {
+    const targetId = activeId;
+    if (!file || !targetId || sending || sendingImage) return;
     if (file.size > t.imageMaxBytes) {
       toast.show(t.messages.imageTooLarge, 'warning');
       return;
     }
+    setSendingImage(true);
     try {
-      appendOwnMessage({
-        from: 'SHOP', type: 'IMAGE', text: '',
-        imageUrl: URL.createObjectURL(file), at: new Date().toISOString(), readAt: null,
-      });
-      setConversations((list) => list.map((c) => (c.id === activeId
+      const sent = await sendImage({ lineUserId: targetId, file });
+      if (activeIdRef.current === targetId) setMessages((list) => [...list, sent]);
+      setConversations((list) => list.map((c) => (c.id === targetId
         ? { ...c, lastMessageType: 'IMAGE', lastMessage: '', timeLabel: t.labels.justNow }
         : c)));
-    } catch {
-      toast.show(t.messages.imageSendFailed, 'danger');
+      toast.show(t.messages.imageSent);
+    } catch (error) {
+      const message = error instanceof ApiError && error.message
+        ? error.message
+        : t.messages.imageSendFailed;
+      toast.show(message, 'danger');
+    } finally {
+      setSendingImage(false);
     }
   };
 
@@ -398,10 +404,16 @@ export default function ChatPage() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => { sendImage(e.target.files?.[0]); e.target.value = ''; }}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        void sendImageFile(file);
+                      }}
                     />
                     <Button
                       variant="outline" aria-label={t.composer.sendImage}
+                      loading={sendingImage}
+                      disabled={sendingImage}
                       onClick={() => fileRef.current?.click()}
                     >
                       <ImageIcon size={15} />
@@ -411,6 +423,7 @@ export default function ChatPage() {
                       className="min-h-[2.4rem] resize-none"
                       placeholder={t.composer.placeholder}
                       value={draft}
+                      disabled={sending || sendingImage}
                       onChange={(e) => setDraft(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -422,7 +435,7 @@ export default function ChatPage() {
                     <Button
                       aria-label={t.composer.send}
                       loading={sending}
-                      disabled={!draft.trim()}
+                      disabled={!draft.trim() || sending || sendingImage}
                       onClick={() => void sendText()}
                     >
                       <Send size={15} />

@@ -6,7 +6,7 @@ import { mapProduct } from '@/server/mappers';
 
 /**
  * GET /api/products — products join product_categories(name) → category_name。
- * 全量不分頁，sort_order asc（同 services 模式）。
+ * 全量不分頁，sort_order asc（同 services 模式）；回傳 line_sort_order 供 LINE 精選排序。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -27,7 +27,7 @@ export const GET = handle(async () => {
 
 /**
  * POST /api/products — 新增商品 ⚙MANAGER（B-3：同 services 模式）。
- * sort_order = 目前最大值 +1；categoryId 空字串＝未分類（存 null）。
+ * sort_order / line_sort_order 各自取目前最大值 +1；categoryId 空字串＝未分類（存 null）。
  * 初始 stock > 0 時寫一筆 inventory_logs（PURCHASE_IN），讓庫存帳自始完整。
  */
 const createSchema = z.object({
@@ -47,14 +47,14 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('products')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
+  const [{ data: lastPublic, error: publicError }, { data: lastLine, error: lineError }] = await Promise.all([
+    t.supabase.from('products').select('sort_order')
+      .eq('tenant_id', t.tenantId).order('sort_order', { ascending: false }).limit(1).maybeSingle(),
+    t.supabase.from('products').select('line_sort_order')
+      .eq('tenant_id', t.tenantId).order('line_sort_order', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (publicError) throw publicError;
+  if (lineError) throw lineError;
 
   const { data, error } = await t.supabase
     .from('products')
@@ -69,7 +69,8 @@ export const POST = handle(async (req) => {
       image_url: b.imageUrl ?? '',
       active: b.active ?? true,
       line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? 0) + 1,
+      sort_order: (lastPublic?.sort_order ?? 0) + 1,
+      line_sort_order: (lastLine?.line_sort_order ?? 0) + 1,
     })
     .select('id')
     .single();
