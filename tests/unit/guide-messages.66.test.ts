@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import type { ChatConversation } from '@/services/chat';
 import {
   filterGuideConversations,
+  isCurrentGuideConversationRequest,
   selectGuideWaitingConversations,
 } from '@/lib/guide-messages';
 
@@ -42,4 +44,16 @@ describe('GUIDE message inbox selectors (#66 Phase F)', () => {
     expect(filterGuideConversations(rows, 'ALL', '賞鯨').map((row) => row.id)).toEqual(['a']);
     expect(filterGuideConversations(rows, 'ALL', '不存在')).toEqual([]);
   });
+  it('rejects stale conversation responses after a quick switch', () => {
+    expect(isCurrentGuideConversationRequest(3, 3, 'chat-a', 'chat-a')).toBe(true);
+    expect(isCurrentGuideConversationRequest(3, 4, 'chat-a', 'chat-a')).toBe(false);
+    expect(isCurrentGuideConversationRequest(3, 3, 'chat-a', 'chat-b')).toBe(false);
+    expect(isCurrentGuideConversationRequest(3, 3, 'chat-a', null)).toBe(false);
+
+    const source = readFileSync('src/components/guide/GuideMessagesView.tsx', 'utf8');
+    expect(source).toContain('listLoadSequence');
+    expect(source).toContain('sendSequence');
+    expect(source).toContain('isCurrentGuideConversationRequest');
+  });
+
 });

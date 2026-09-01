@@ -25,6 +25,7 @@ import { guideMessages as t } from '@/i18n/zh-TW/pages/guide-messages';
 import {
   compareGuideConversations,
   filterGuideConversations,
+  isCurrentGuideConversationRequest,
   selectGuideWaitingConversations,
   type GuideMessageFilter,
 } from '@/lib/guide-messages';
@@ -55,18 +56,22 @@ export function GuideMessagesView() {
   const lastFetchAt = React.useRef<string | null>(null);
   const lastMessageId = React.useRef<string | null>(null);
   const openSequence = React.useRef(0);
+  const listLoadSequence = React.useRef(0);
+  const sendSequence = React.useRef(0);
 
   const load = React.useCallback(async () => {
+    const requestSequence = ++listLoadSequence.current;
     setListLoading(true);
     setListError(false);
     try {
       const rows = await listConversations();
+      if (requestSequence !== listLoadSequence.current) return;
       setConversations(rows.slice().sort(compareGuideConversations));
       lastFetchAt.current = new Date().toISOString();
     } catch {
-      setListError(true);
+      if (requestSequence === listLoadSequence.current) setListError(true);
     } finally {
-      setListLoading(false);
+      if (requestSequence === listLoadSequence.current) setListLoading(false);
     }
   }, []);
 
@@ -75,8 +80,10 @@ export function GuideMessagesView() {
     const stop = startPolling(async () => {
       const since = lastFetchAt.current;
       const fetchedAt = new Date().toISOString();
+      const loadSequence = listLoadSequence.current;
       try {
         const updated = await listConversations(since ? { since } : {});
+        if (loadSequence !== listLoadSequence.current) return;
         lastFetchAt.current = fetchedAt;
         if (updated.length === 0) return;
         setConversations((current) => {
@@ -102,11 +109,14 @@ export function GuideMessagesView() {
 
   const openConversation = (conversation: ChatConversation) => {
     const sequence = ++openSequence.current;
-    activeIdRef.current = conversation.id;
+    const conversationId = conversation.id;
+    sendSequence.current += 1;
+    activeIdRef.current = conversationId;
     setActiveId(conversation.id);
     setMessages([]);
     setThreadLoading(true);
     setThreadError(false);
+    setSending(false);
     setSendError(false);
     setDraft('');
     setConversations((current) => current.map((row) => (
@@ -115,11 +125,11 @@ export function GuideMessagesView() {
     void (async () => {
       try {
         const rows = await listMessages({ lineUserId: conversation.id });
-        if (sequence !== openSequence.current) return;
+        if (!isCurrentGuideConversationRequest(sequence, openSequence.current, conversationId, activeIdRef.current)) return;
         setMessages(rows);
         void markThreadRead(rows);
       } catch {
-        if (sequence !== openSequence.current) return;
+        if (!isCurrentGuideConversationRequest(sequence, openSequence.current, conversationId, activeIdRef.current)) return;
         setThreadError(true);
       } finally {
         if (sequence === openSequence.current) setThreadLoading(false);
@@ -129,11 +139,13 @@ export function GuideMessagesView() {
 
   const backToList = () => {
     openSequence.current += 1;
+    sendSequence.current += 1;
     activeIdRef.current = null;
     setActiveId(null);
     setMessages([]);
     setDraft('');
     setThreadError(false);
+    setSending(false);
     setSendError(false);
   };
 
@@ -143,12 +155,15 @@ export function GuideMessagesView() {
 
   React.useEffect(() => {
     if (!activeId) return;
+    const conversationId = activeId;
+    const sequence = openSequence.current;
     const stop = startPolling(async () => {
       const after = lastMessageId.current;
       try {
         const fresh = await listMessages(after
-          ? { lineUserId: activeId, after }
-          : { lineUserId: activeId });
+          ? { lineUserId: conversationId, after }
+          : { lineUserId: conversationId });
+        if (!isCurrentGuideConversationRequest(sequence, openSequence.current, conversationId, activeIdRef.current)) return;
         if (fresh.length === 0) return;
         setMessages((current) => {
           const seen = new Set(current.map((message) => message.id));
@@ -165,14 +180,21 @@ export function GuideMessagesView() {
 
   const sendText = async () => {
     const text = draft.trim();
-    if (!text || !activeId) return;
+    const conversationId = activeId;
+    if (!text || !conversationId) return;
+    const sequence = openSequence.current;
+    const requestSequence = ++sendSequence.current;
     setSending(true);
     setSendError(false);
     try {
-      const sent = await sendMessage({ lineUserId: activeId, text });
+      const sent = await sendMessage({ lineUserId: conversationId, text });
+      if (requestSequence !== sendSequence.current
+        || !isCurrentGuideConversationRequest(sequence, openSequence.current, conversationId, activeIdRef.current)) {
+        return;
+      }
       setMessages((current) => [...current, sent]);
       setConversations((current) => current.map((row) => (
-        row.id === activeId
+        row.id === conversationId
           ? {
               ...row,
               lastMessageType: 'TEXT',
@@ -184,9 +206,12 @@ export function GuideMessagesView() {
       )));
       setDraft('');
     } catch {
-      setSendError(true);
+      if (requestSequence === sendSequence.current
+        && isCurrentGuideConversationRequest(sequence, openSequence.current, conversationId, activeIdRef.current)) {
+        setSendError(true);
+      }
     } finally {
-      setSending(false);
+      if (requestSequence === sendSequence.current) setSending(false);
     }
   };
 

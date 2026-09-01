@@ -2,6 +2,16 @@ import type { ChatConversation } from '@/services/chat';
 
 export type GuideMessageFilter = 'ALL' | 'WAITING';
 
+export function isCurrentGuideConversationRequest(
+  requestSequence: number,
+  currentSequence: number,
+  requestConversationId: string,
+  currentConversationId: string | null,
+): boolean {
+  return requestSequence === currentSequence
+    && requestConversationId === currentConversationId;
+}
+
 function timestamp(value: string | null): number {
   if (!value) return 0;
   const parsed = Date.parse(value);
