@@ -64,4 +64,14 @@ describe('GUIDE message inbox selectors (#66 Phase F)', () => {
   });
 
 
+  it('announces GUIDE inbox loading and error states semantically', () => {
+    const source = readFileSync('src/components/guide/GuideMessagesView.tsx', 'utf8');
+    expect(source).toContain('aria-busy={threadLoading}');
+    expect(source).toContain('aria-busy={listLoading}');
+    expect(source).toContain('role="status"');
+    expect(source).toContain('aria-live="polite"');
+    expect(source).toContain('role="alert"');
+  });
+
+
 });

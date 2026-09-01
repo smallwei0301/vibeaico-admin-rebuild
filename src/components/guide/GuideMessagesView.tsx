@@ -266,11 +266,17 @@ export function GuideMessagesView() {
             )}
           />
 
-          <GuideSectionCard title={t.thread.messageLabel} description={t.thread.description}>
+          <GuideSectionCard title={t.thread.messageLabel} description={t.thread.description} aria-busy={threadLoading}>
             {threadLoading ? (
-              <GuideEmptyState title={t.thread.loading} description={t.thread.loadingDescription} />
+              <GuideEmptyState
+                role="status"
+                aria-live="polite"
+                title={t.thread.loading}
+                description={t.thread.loadingDescription}
+              />
             ) : threadError ? (
               <GuideEmptyState
+                role="alert"
                 title={t.thread.loadFailedTitle}
                 description={t.thread.loadFailedDescription}
                 action={retryThreadAction}
@@ -355,11 +361,21 @@ export function GuideMessagesView() {
         <>
           <GuideHeader title={t.title} subtitle={t.subtitle} />
 
-          <GuideSectionCard title={t.waiting.title} description={t.waiting.description}>
+          <GuideSectionCard title={t.waiting.title} description={t.waiting.description} aria-busy={listLoading}>
             {listLoading ? (
-              <GuideEmptyState title={t.loading} description={t.loadingDescription} />
+              <GuideEmptyState
+                role="status"
+                aria-live="polite"
+                title={t.loading}
+                description={t.loadingDescription}
+              />
             ) : listError ? (
-              <GuideEmptyState title={t.error.title} description={t.error.description} action={retryAction} />
+              <GuideEmptyState
+                role="alert"
+                title={t.error.title}
+                description={t.error.description}
+                action={retryAction}
+              />
             ) : waiting.length === 0 ? (
               <GuideEmptyState title={t.waiting.emptyTitle} description={t.waiting.emptyDescription} icon={<MessageSquareText size={22} />} />
             ) : (
@@ -427,11 +443,21 @@ export function GuideMessagesView() {
             </div>
           </GuideSectionCard>
 
-          <GuideSectionCard title={t.list.title} description={t.list.count(visible.length)}>
+          <GuideSectionCard title={t.list.title} description={t.list.count(visible.length)} aria-busy={listLoading}>
             {listLoading ? (
-              <GuideEmptyState title={t.loading} description={t.loadingDescription} />
+              <GuideEmptyState
+                role="status"
+                aria-live="polite"
+                title={t.loading}
+                description={t.loadingDescription}
+              />
             ) : listError ? (
-              <GuideEmptyState title={t.error.title} description={t.error.description} action={retryAction} />
+              <GuideEmptyState
+                role="alert"
+                title={t.error.title}
+                description={t.error.description}
+                action={retryAction}
+              />
             ) : visible.length === 0 ? (
               <GuideEmptyState
                 title={keyword.trim() || filter === 'WAITING' ? t.list.filteredTitle : t.list.emptyTitle}
