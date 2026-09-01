@@ -46,6 +46,29 @@ async function runRestoreSideEffects(
   return { restoredCoupons, restoredProducts };
 }
 
+/**
+ * Expiry cron pauses catalog rows without setting `cancelled_at` on the
+ * subscription. Those rows are still a valid restore target after an operator
+ * extends the subscription; distinguish that case from an active subscription
+ * for which restore is a no-op.
+ */
+async function hasAutoPausedSideEffects(
+  admin: ReturnType<typeof createAdminSupabase>,
+  tenantId: string,
+  code: string,
+): Promise<boolean> {
+  const table = code === 'COUPON_SYSTEM' ? 'coupons' : code === 'PRODUCT_SALES' ? 'products' : null;
+  if (!table) return false;
+
+  const { count, error } = await admin
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('auto_paused_by_feature', true);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant('OWNER');
   const { code } = await params;
@@ -63,7 +86,13 @@ export const POST = handle(async (_req, { params }) => {
   if (e0) throw e0;
   if (!sub) throw new ApiHttpError(404, '找不到此訂閱', ERR.NOT_FOUND);
 
-  if (sub.cancelled_at === null) {
+  // A feature-expiry cron run pauses catalog rows but deliberately leaves the
+  // subscription's cancelled_at untouched. After the owner extends the
+  // subscription, those marked rows must remain restorable even though the
+  // subscription was not manually cancelled.
+  const expiryPausedRows =
+    sub.cancelled_at === null ? await hasAutoPausedSideEffects(admin, t.tenantId, code) : false;
+  if (sub.cancelled_at === null && !expiryPausedRows) {
     throw new ApiHttpError(409, '此訂閱尚未取消，無需恢復', ERR.CONFLICT);
   }
 
@@ -96,3 +125,4 @@ export const POST = handle(async (_req, { params }) => {
 
   return ok();
 });
+5970ca10bb471066c7bac9e3b7cb4e1bf61e82be
