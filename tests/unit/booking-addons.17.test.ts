@@ -11,6 +11,7 @@ describe('Issue #17 booking add-on source contracts', () => {
   const hardening = read('supabase/migrations/0054_issue_17_booking_addons_hardening.sql');
   const rollback = read('supabase/migrations/0055_issue_17_booking_addon_price_rollback.sql');
   const idempotency = read('supabase/migrations/0056_issue_17_booking_addon_idempotency.sql');
+  const retryRepair = read('supabase/migrations/0057_issue_17_notification_claim_idempotency_race.sql');
   const page = read('src/app/tenant/bookings/page.tsx');
   const api = read('src/app/api/bookings/[id]/addons/route.ts');
   const line = read('src/server/line.ts');
@@ -142,5 +143,16 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(read('src/services/bookings.ts')).toContain('idempotencyKey: string');
     expect(page).toContain('setIdempotencyKey(crypto.randomUUID());');
     expect(page).toContain('onPersistedNotificationPending');
+  });
+
+  it('keeps the 0056 contract immutable while repairing the claim ambiguity and unique-key race forward-only', () => {
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0057_issue_17_notification_claim_idempotency_race.sql'))).toBe(true);
+    expect(retryRepair).toContain('on conflict (tenant_id, booking_id, idempotency_key)');
+    expect(retryRepair).toContain('where (idempotency_key is not null) do nothing');
+    expect(retryRepair).toContain('returning ba.notified into v_claim_notified');
+    expect(retryRepair).toContain('notified := v_claim_notified');
+    expect(retryRepair).not.toContain('public.booking_addons.notified into claimed, notified');
+    expect(retryRepair).toContain("grant execute on function public.claim_booking_addon_notification_17");
+    expect(retryRepair).toContain("grant execute on function public.add_booking_addon_17");
   });
 });
