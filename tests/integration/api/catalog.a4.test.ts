@@ -69,6 +69,7 @@ describe('GET /api/services（04 §A-4）', () => {
       await admin.from('services').insert({
         id: serviceId, tenant_id: SHOP_A.id, category_id: categoryId,
         name: `分類服務-${uniqueSuffix()}`, duration_minutes: 30, price: 500,
+        sort_order: uniqueRank(), line_sort_order: uniqueRank(),
       });
 
       const res2 = await ownerA.get('/api/services');
