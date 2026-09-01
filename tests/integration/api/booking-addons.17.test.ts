@@ -1,4 +1,4 @@
-/** Issue #17 integration TEST suite. CI runs it only after migrations 0053–0059 are applied. */
+/** Issue #17 integration TEST suite. CI runs it only after migrations 0053–0061 are applied. */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
@@ -234,6 +234,48 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
     expect(replayUsage.error).toBeNull(); expect(replayUsage.data?.used).toBe(firstUsage.data?.used);
   });
 
+  it('returns exactly one claim row for first, replay and concurrent claim RPC calls', async () => {
+    const id = await booking(await customer(null)); const key = randomUUID();
+    const created = await ownerA.post(`/api/bookings/${id}/addons`, addonBody({
+      name: 'claim-cardinality', price: 4, quantity: 1, durationMinutes: 0, notify: false,
+    }, key));
+    expect(created.status).toBe(200);
+    const addonId = (await json<any>(created)).data!.addon.id;
+    const claim = () => admin.rpc('claim_booking_addon_notification_17', {
+      p_tenant_id: SHOP_A.id, p_booking_id: id, p_addon_id: addonId,
+    });
+
+    const first = await claim();
+    expect(first.error).toBeNull(); expect(first.data).toHaveLength(1);
+    expect(first.data?.[0]).toEqual({ claimed: true, notified: 'PENDING' });
+    const replay = await claim();
+    expect(replay.error).toBeNull(); expect(replay.data).toHaveLength(1);
+    expect(replay.data?.[0]).toEqual({ claimed: false, notified: 'PENDING' });
+    const concurrent = await Promise.all([claim(), claim()]);
+    for (const result of concurrent) {
+      expect(result.error).toBeNull(); expect(result.data).toHaveLength(1);
+      expect(result.data?.[0]).toEqual({ claimed: false, notified: 'PENDING' });
+    }
+  });
+
+  it('retains a deleted idempotency key without recreating the add-on or changing totals', async () => {
+    const id = await booking(await customer(null)); const key = randomUUID();
+    const payload = addonBody({ name: 'retired-key', price: 13, quantity: 2, durationMinutes: 5, notify: false }, key);
+    const created = await ownerA.post(`/api/bookings/${id}/addons`, payload);
+    expect(created.status).toBe(200);
+    const addonId = (await json<any>(created)).data!.addon.id;
+    expect((await ownerA.delete(`/api/bookings/${id}/addons/${addonId}`)).status).toBe(200);
+    const beforeReplay = await state(id);
+
+    const replay = await ownerA.post(`/api/bookings/${id}/addons`, payload);
+    expect(replay.status).toBe(409);
+    await expect(json(replay)).resolves.toMatchObject({
+      success: false, code: 'REQ_003', data: { idempotencyRetired: true },
+    });
+    expect(await state(id)).toEqual(beforeReplay);
+    expect((await admin.from('booking_addons').select('id', { count: 'exact', head: true }).eq('booking_id', id)).count).toBe(0);
+  });
+
   it('surfaces a persisted PENDING notification without sending again on an ambiguous retry', async () => {
     const id = await booking(await customer('Ui17-pending-user'));
     const key = randomUUID();
@@ -355,6 +397,8 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
   });
 
   it('records NOT_CONFIGURED and FAILED receipt outcomes without false LINE success', async () => {
+    const beforeFailureUsage = await admin.from('push_quota_usage').select('used').eq('tenant_id', SHOP_A.id).eq('month', month()).maybeSingle();
+    expect(beforeFailureUsage.error).toBeNull();
     const bound = await booking(await customer('Ui17-config-user'));
     expect((await admin.from('tenant_settings').update({ line_channel_access_token_enc: '' }).eq('tenant_id', SHOP_A.id)).error).toBeNull();
     const unconfigured = await ownerA.post(`/api/bookings/${bound}/addons`, addonBody({ name: 'no config', price: 1, quantity: 1, durationMinutes: 0, notify: true }));
@@ -366,6 +410,8 @@ describe('Issue #17 API/RPC CRUD and isolation', () => {
     const failedBody = await json<any>(failed);
     expect(failedBody.data!.notified).toBe('FAILED'); expect(await addonState(failedBody.data!.addon.id)).toMatchObject({ notified: 'FAILED' });
     expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+    const afterFailureUsage = await admin.from('push_quota_usage').select('used').eq('tenant_id', SHOP_A.id).eq('month', month()).maybeSingle();
+    expect(afterFailureUsage.error).toBeNull(); expect(afterFailureUsage.data?.used ?? 0).toBe(beforeFailureUsage.data?.used ?? 0);
   });
 
   it('returns persisted-add-on 409 on quota exhaustion with zero LINE requests', async () => {

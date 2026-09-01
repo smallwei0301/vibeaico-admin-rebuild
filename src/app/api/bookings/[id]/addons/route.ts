@@ -55,9 +55,45 @@ function rpcError(error: any): never {
   if (message.includes('NOT_FOUND')) throw new ApiHttpError(404, '找不到預約或加購資源', ERR.NOT_FOUND);
   if (message.includes('IDEMPOTENCY_CONFLICT'))
     throw new ApiHttpError(409, '相同的重試鍵已對應其他加購內容，資料未變更', ERR.CONFLICT);
+  if (message.includes('IDEMPOTENCY_RETIRED'))
+    throw new ApiHttpError(409, '相同的重試鍵已對應已刪除的加購，未重新建立項目', ERR.CONFLICT, { idempotencyRetired: true });
   if (message.includes('STATUS_CONFLICT')) throw new ApiHttpError(409, '此預約目前不可加購', ERR.CONFLICT);
   if (message.includes('INVALID')) throw new ApiHttpError(400, '加購資料不合法', ERR.VALIDATION);
   throw error;
+}
+
+const settledOutcomes = new Set<AddonNotifyOutcome>([
+  'LINE', 'NO_LINE', 'NOT_CONFIGURED', 'QUOTA_EXCEEDED', 'FAILED',
+]);
+
+function claimRowOrPending(value: unknown, tenantId: string, bookingId: string, addonId: string) {
+  if (!Array.isArray(value) || value.length !== 1) {
+    console.error('[api] booking-addon notification claim cardinality is ambiguous', {
+      tenantId, bookingId, addonId, rows: Array.isArray(value) ? value.length : 'non-array',
+    });
+    throwPendingNotification();
+  }
+  const row = value[0] as { claimed?: unknown; notified?: unknown };
+  if (typeof row.claimed !== 'boolean' || typeof row.notified !== 'string') {
+    console.error('[api] booking-addon notification claim shape is ambiguous', {
+      tenantId, bookingId, addonId, row,
+    });
+    throwPendingNotification();
+  }
+  const notified = row.notified as AddonNotifyOutcome;
+  if (notified !== 'PENDING' && notified !== 'NONE' && !settledOutcomes.has(notified)) {
+    console.error('[api] booking-addon notification claim outcome is ambiguous', {
+      tenantId, bookingId, addonId, row,
+    });
+    throwPendingNotification();
+  }
+  if (row.claimed && notified !== 'PENDING') {
+    console.error('[api] booking-addon notification claim transition is ambiguous', {
+      tenantId, bookingId, addonId, row,
+    });
+    throwPendingNotification();
+  }
+  return { claimed: row.claimed, notified };
 }
 
 export const GET = handle(async (_req, { params }) => {
@@ -86,7 +122,9 @@ export const POST = handle(async (req, { params }) => {
     p_notify: b.notify,
   });
   if (error) rpcError(error);
-  const rpcResult = result?.[0];
+  if (!Array.isArray(result) || result.length !== 1)
+    throw new ApiHttpError(500, '加購交易回傳狀態不明，資料未安全確認', ERR.INTERNAL, { persisted: false });
+  const rpcResult = result[0];
   const addonId = rpcResult?.addon_id;
   if (!addonId) throw new ApiHttpError(500, '加購交易未回傳項目', ERR.INTERNAL);
   const { data: addon, error: addonError } = await t.supabase.from('booking_addons')
@@ -103,17 +141,26 @@ export const POST = handle(async (req, { params }) => {
         p_tenant_id: t.tenantId, p_booking_id: id, p_addon_id: addonId,
       });
       if (claimError) throwNotificationStateFailure('claim', t.tenantId, id, addonId, claimError);
-      const claim = claimResult?.[0];
-      if (!claim) throwPendingNotification();
+      const claim = claimRowOrPending(claimResult, t.tenantId, id, addonId);
       if (!claim.claimed) {
         notified = claim.notified as AddonNotifyOutcome;
         if (notified === 'PENDING' || notified === 'NONE') throwPendingNotification();
       } else {
         const appliedAmount = b.price * b.quantity;
-        notified = await notifyBookingAddonReceipt(t.tenantId, {
+        const notification = await notifyBookingAddonReceipt(t.tenantId, {
           bookingId: id, item: { name: b.name, quantity: b.quantity, price: b.price },
           addonTotal: appliedAmount, bookingTotal: Number(rpcResult.final_price),
         });
+        if (!notification || typeof notification.outcome !== 'string') {
+          console.error('[api] booking-addon notification result is ambiguous', t.tenantId, id, addonId, notification);
+          throwPendingNotification();
+        }
+        notified = notification.outcome;
+        if (notified === 'PENDING') throwPendingNotification();
+        if (!settledOutcomes.has(notified)) {
+          console.error('[api] booking-addon notification outcome is unsupported', t.tenantId, id, addonId, notification);
+          throwPendingNotification();
+        }
         const { error: notificationError } = await admin.rpc('mark_booking_addon_notification_17', {
           p_tenant_id: t.tenantId, p_booking_id: id, p_addon_id: addonId, p_notified: notified,
         });

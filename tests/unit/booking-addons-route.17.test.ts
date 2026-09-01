@@ -76,7 +76,7 @@ describe('Issue #17 add-on route overlap regression', () => {
     const key = '22222222-2222-4222-8222-222222222222';
     configureAddonRead(addonRow());
     rpc.mockResolvedValue({ data: [addResult()], error: null });
-    notifyBookingAddonReceipt.mockResolvedValue('LINE');
+    notifyBookingAddonReceipt.mockResolvedValue({ outcome: 'LINE', classification: 'DELIVERED' });
     adminRpc
       .mockResolvedValueOnce({ data: [{ claimed: true, notified: 'PENDING' }], error: null })
       .mockResolvedValueOnce({ data: null, error: { code: 'PGRST001', message: 'marker unavailable' } });
@@ -100,7 +100,7 @@ describe('Issue #17 add-on route overlap regression', () => {
     rpc
       .mockResolvedValueOnce({ data: [addResult()], error: null })
       .mockResolvedValueOnce({ data: [addResult({ created: false, notified: 'PENDING' })], error: null });
-    notifyBookingAddonReceipt.mockResolvedValue('LINE');
+    notifyBookingAddonReceipt.mockResolvedValue({ outcome: 'LINE', classification: 'DELIVERED' });
     adminRpc
       .mockResolvedValueOnce({ data: [{ claimed: true, notified: 'PENDING' }], error: null })
       .mockResolvedValueOnce({ data: null, error: { code: 'PGRST001', message: 'marker unavailable' } });
@@ -118,5 +118,26 @@ describe('Issue #17 add-on route overlap regression', () => {
     expect(rpc).toHaveBeenNthCalledWith(2, 'add_booking_addon_17', expect.objectContaining({
       p_idempotency_key: key, p_notify: true,
     }));
+  });
+
+  it('fails closed without a provider call when claim RPC cardinality is not exactly one', async () => {
+    const key = '44444444-4444-4444-8444-444444444444';
+    configureAddonRead(addonRow());
+    rpc.mockResolvedValue({ data: [addResult()], error: null });
+    adminRpc.mockResolvedValue({
+      data: [
+        { claimed: true, notified: 'PENDING' },
+        { claimed: false, notified: 'PENDING' },
+      ], error: null,
+    });
+
+    const response = await post({ name: '加購', price: 10, quantity: 1, durationMinutes: 0, notify: true, idempotencyKey: key });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false, code: 'REQ_003', data: { persisted: true, notificationPending: true },
+    });
+    expect(notifyBookingAddonReceipt).not.toHaveBeenCalled();
+    expect(adminRpc).toHaveBeenCalledOnce();
   });
 });

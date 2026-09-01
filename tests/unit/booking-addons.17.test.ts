@@ -14,6 +14,7 @@ describe('Issue #17 booking add-on source contracts', () => {
   const retryRepair = read('supabase/migrations/0057_issue_17_notification_claim_idempotency_race.sql');
   const rowCountRepair = read('supabase/migrations/0058_issue_17_idempotency_insert_row_count.sql');
   const returnRepair = read('supabase/migrations/0059_issue_17_idempotency_return_guards.sql');
+  const safetyRepair = read('supabase/migrations/0061_issue_17_notification_safety_and_tombstones.sql');
   const page = read('src/app/tenant/bookings/page.tsx');
   const api = read('src/app/api/bookings/[id]/addons/route.ts');
   const line = read('src/server/line.ts');
@@ -122,7 +123,7 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(hardening).toContain('on conflict (tenant_id, month) do update');
     expect(hardening).toContain('where public.push_quota_usage.used + excluded.used <= p_quota');
     expect(line).toContain("rpc('consume_push_quota_17'");
-    expect(line).toContain("return data === true");
+    expect(line).toContain("if (data !== true) return { state: 'EXHAUSTED' }");
     expect(line).toContain('quota reservation failed');
     expect(line).not.toContain("from('push_quota_usage').select('used')");
   });
@@ -170,5 +171,38 @@ describe('Issue #17 booking add-on source contracts', () => {
     expect(fs.existsSync(path.join(root, 'supabase/migrations/0059_issue_17_idempotency_return_guards.sql'))).toBe(true);
     expect(returnRepair.match(/return next;\n    return;/g)).toHaveLength(2);
     expect(returnRepair).toContain('grant execute on function public.add_booking_addon_17');
+  });
+
+  it('keeps claim cardinality exact and retains idempotency after add-on deletion', () => {
+    expect(fs.existsSync(path.join(root, 'supabase/migrations/0061_issue_17_notification_safety_and_tombstones.sql'))).toBe(true);
+    expect(safetyRepair).toContain('booking_addon_idempotency_receipts_17');
+    expect(safetyRepair).toContain("receipt_state in ('ACTIVE', 'DELETED')");
+    expect(safetyRepair).toContain("raise exception 'BOOKING_ADDON_IDEMPOTENCY_RETIRED'");
+    expect(safetyRepair).toContain("receipt_state = 'DELETED'");
+    const claimStart = safetyRepair.indexOf('create or replace function public.claim_booking_addon_notification_17');
+    expect(claimStart).toBeGreaterThan(-1);
+    const claim = safetyRepair.slice(claimStart, safetyRepair.indexOf('create or replace function public.mark_booking_addon_notification_17'));
+    expect(claim.match(/return next;/g)).toHaveLength(2);
+    expect(claim.match(/^\s+return;$/gm)).toHaveLength(2);
+    expect(safetyRepair).toContain('refund_push_quota_17');
+    expect(safetyRepair).toContain('grant execute on function public.refund_push_quota_17');
+  });
+
+  it('uses typed notification outcomes and refunds quota only for confirmed provider rejection', () => {
+    const notify = read('src/server/booking-addon-notify.ts');
+    const line = read('src/server/line.ts');
+    const route = read('src/app/api/bookings/[id]/addons/route.ts');
+    expect(notify).toContain("'CONFIRMED_PROVIDER_REJECTION'");
+    expect(notify).toContain("'DB_UNAVAILABLE'");
+    expect(notify).toContain("'PROVIDER_AMBIGUOUS'");
+    expect(notify).toContain("return result('PENDING'");
+    expect(notify).toContain('refundPushQuotaForBookingAddon');
+    expect(notify).toContain('isConfirmedProviderRejection');
+    expect(notify).toContain("return result('FAILED'");
+    expect(line).toContain('reservePushQuotaForBookingAddon');
+    expect(line).toContain("rpc('refund_push_quota_17'");
+    expect(route).toContain('claimRowOrPending');
+    expect(route).toContain('value.length !== 1');
+    expect(route).toContain('notification.outcome');
   });
 });
