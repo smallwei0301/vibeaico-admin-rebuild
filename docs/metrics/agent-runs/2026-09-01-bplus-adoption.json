@@ -1,41 +1,66 @@
 {
   "schemaVersion": 1,
   "runId": "2026-09-01-bplus-adoption",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-01T13:42:40+08:00",
-  "endedAt": null,
+  "endedAt": "2026-09-01T17:16:16Z",
   "sources": [
     {
       "type": "owner-decision",
       "ref": "current-conversation",
-      "note": "Owner approved B+, increased narrow Luna delegation, a measurable loop, repository reports, and a retrospective Skill."
+      "note": "Owner instructed live GitHub takeover, canonical B+ delivery loop, close-first, and continued autonomous looping."
     },
     {
       "type": "github-main",
       "ref": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
-      "note": "Run start main SHA."
+      "note": "Run-start main SHA from the inherited ledger; the run began in the prior Mode C state."
     },
     {
       "type": "github-live-inventory",
       "ref": "2026-09-01T13:42:40+08:00",
-      "note": "40 open Issues, 18 open PRs, five active Terra PRs, no active TEST holder."
+      "note": "Inherited baseline: 40 open Issues, 18 open PRs, five active Terra-era candidates, and no TEST holder."
+    },
+    {
+      "type": "github-main",
+      "ref": "2e9d4bc664bea1c09c3f8cb079313c9072ffd842",
+      "note": "Current main at closeout; includes governance merges #107 and #108."
+    },
+    {
+      "type": "github-live-inventory",
+      "ref": "2026-09-01T17:16:16Z",
+      "note": "Closeout inventory observed: 41 actual open Issues and 23 open PRs; PR #95 sole TEST holder before release."
+    },
+    {
+      "type": "github-ci",
+      "ref": "33534325263",
+      "note": "Current exact-head classifier/check/shared TEST integration/E2E success for PR #95."
+    },
+    {
+      "type": "supabase-read-only",
+      "ref": "nmwhwngojosmagjuvxol",
+      "note": "TEST project health, migration, ACL privilege, schema, and deterministic seed-count evidence; no agent DDL/DML."
+    },
+    {
+      "type": "sol-audit",
+      "ref": "fresh-2026-09-01-#8-A",
+      "note": "Fresh Sol verdict CLOSE_APPROVED, limited to bounded #8-A."
     }
   ],
   "main": {
     "startSha": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
-    "endSha": null
+    "endSha": "2e9d4bc664bea1c09c3f8cb079313c9072ffd842"
   },
   "inventory": {
     "openIssuesStart": 40,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 41,
     "openPrsStart": 18,
-    "openPrsEnd": null,
+    "openPrsEnd": 23,
     "mainTerraPeak": 5,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 5,
-    "sharedTestPeak": 0,
-    "closureSweeps": 1,
-    "closureAdvancedOrClosed": 0
+    "sharedTestPeak": 1,
+    "closureSweeps": 2,
+    "closureAdvancedOrClosed": 1
   },
   "modelUsage": {
     "actualTokensAvailable": false,
@@ -54,11 +79,11 @@
     },
     "tasks": [
       {
-        "id": "bplus-truth-and-baseline",
+        "id": "bplus-luna-fanout-accepted",
         "requestedModel": "luna",
         "actualModel": "unknown",
-        "role": "live GitHub inventory, session evidence extraction, baseline ledger, and report preparation",
-        "count": 4,
+        "role": "live truth and bounded triage fan-out items accepted into the takeover ledger",
+        "count": 3,
         "contextClass": "compact",
         "accepted": true,
         "inputTokens": null,
@@ -66,10 +91,22 @@
         "cachedTokens": null
       },
       {
-        "id": "bplus-governance-build",
+        "id": "bplus-luna-fanout-rejected",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "role": "one wrong-repository or hung initial fan-out item closed without a write",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "bplus-tour-core-rebuild",
         "requestedModel": "terra",
         "actualModel": "unknown",
-        "role": "B+ policy, scripts, workflows, tests, and report-tool implementation",
+        "role": "current-main bounded #8-A rebuild, seed repair, local gates, and non-force remote update",
         "count": 1,
         "contextClass": "medium",
         "accepted": true,
@@ -78,11 +115,23 @@
         "cachedTokens": null
       },
       {
-        "id": "bplus-triage-and-audit",
+        "id": "bplus-triage-and-pre-move-audit",
         "requestedModel": "sol",
         "actualModel": "unknown",
-        "role": "B+ decision synthesis and final governance audit",
+        "role": "B+ decision synthesis and pre-move bounded audit retained as historical evidence",
         "count": 2,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "bplus-fresh-8a-audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "role": "fresh exact-head acceptance audit for bounded #8-A",
+        "count": 1,
         "contextClass": "compact",
         "accepted": true,
         "inputTokens": null,
@@ -94,24 +143,24 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 0,
+    "issuesStarted": 1,
     "issuesClosed": 0,
     "auditReady": 0,
-    "ownerBlockedComplete": 0,
+    "ownerBlockedComplete": 1,
     "exactHeadCiOnly": 0,
-    "commitOnly": 1,
-    "unfinishedCarryover": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 1,
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 4,
     "invalidReruns": 0,
-    "firstPassRatePercent": null,
+    "firstPassRatePercent": 75,
     "sharedTestCollisions": 0
   },
   "quality": {
-    "acceptanceEvidenceCoveragePercent": 70,
-    "auditFirstPassRatePercent": null,
+    "acceptanceEvidenceCoveragePercent": 100,
+    "auditFirstPassRatePercent": 100,
     "unresolvedP0": 0,
     "unresolvedP1": 0,
     "reopenedIssues": 0,
@@ -121,25 +170,29 @@
   },
   "flow": {
     "lunaTasks": 4,
-    "lunaAccepted": 4,
+    "lunaAccepted": 3,
     "lunaDelegationRatePercent": 75,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": 100,
-    "solTouches": 2,
-    "solIssues": 1
+    "solTouches": 3,
+    "solIssues": 2
   },
   "auditability": {
-    "evidenceFieldsCompletePercent": 85,
-    "exactHeadTestCoveragePercent": 0,
-    "stalePendingDescriptions": 0,
+    "evidenceFieldsCompletePercent": 100,
+    "exactHeadTestCoveragePercent": 100,
+    "stalePendingDescriptions": 1,
     "preciseBlockersPercent": 100,
-    "scoreInputsCompletePercent": 78
+    "scoreInputsCompletePercent": 95
   },
   "notes": [
-    "This report is IN_PROGRESS until exact-head CI, Sol audit, merge, B+ PR transition, and main verification finish.",
-    "The platform did not expose actual model tokens or weekly usage start percentage, so no official usage percentage is inferred.",
-    "actualModel remains unknown where the delegation platform did not provide verifiable model identity; requested model weights are internal comparison only.",
-    "The run begins with the old Mode C live state, so peak WIP values preserve the five-Terra starting condition rather than pretending B+ already existed."
+    "The ledger spans an inherited old Mode C state and the B+ takeover. mainTerraPeak=5 and activeCandidatePeak=5 preserve the observed pre-adoption starting peak; within the takeover the bounded MAIN rebuild was singular, RESERVE was not started, and shared TEST had one holder.",
+    "During takeover, main advanced through the governance merges from 1272b82 to 64f8376, 75c94d7, and 2e9d4bc. No reset, force push, or branch overwrite was used; #95 was rebuilt onto the latest verified main before acceptance.",
+    "PR #95 is OPEN and OWNER_BLOCKED after fresh Sol CLOSE_APPROVED for #8-A. Issue #8 remains OPEN because #8-B is unfinished; the bounded slice is carried to Owner promotion/merge.",
+    "PR #87 remained READY_FOR_PROMOTION but stale against the current main and was not started; this is the one stale pending candidate description recorded by the ledger.",
+    "Current exact-head evidence: CI 33534325263 passed check, shared TEST integration 22/169, and E2E 3/3; TEST seed trip_departures=3 succeeded.",
+    "TEST read-only evidence was limited to project nmwhwngojosmagjuvxol: migration 0022 exactly once, four core tables with no anon/authenticated INSERT/UPDATE/DELETE/TRUNCATE privilege, and deterministic post-CI counts trips=1, plans=2, departures=3, addons=0, seed services=2, non-seed services=0.",
+    "The earlier current-head failure 33528391185 was a fixture timing-boundary defect; the bounded scripts/test/seed.mjs repair passed three subsequent full runs, with only 33534325263 serving as current-main acceptance.",
+    "Production DDL/DML/migration/reset/seed/deploy/promote, real payment/refund, and customer notification were not performed. The platform did not expose actual model tokens or weekly usage percentages, so no official usage percentage is inferred."
   ]
 }
