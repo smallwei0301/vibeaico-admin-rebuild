@@ -37,6 +37,10 @@ function uniqueSuffix(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function uniqueRank(): number {
+  return 1_000_000 + Math.floor(Math.random() * 100_000_000);
+}
+
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
 
@@ -69,6 +73,7 @@ describe('GET /api/services（04 §A-4）', () => {
       await admin.from('services').insert({
         id: serviceId, tenant_id: SHOP_A.id, category_id: categoryId,
         name: `分類服務-${uniqueSuffix()}`, duration_minutes: 30, price: 500,
+        sort_order: uniqueRank(), line_sort_order: uniqueRank(),
       });
 
       const res2 = await ownerA.get('/api/services');
