@@ -148,7 +148,7 @@ export const featureStorePage = {
     couponsRestored: (rc: number) => `${rc} 張票券已自動恢復發布`,
     productsRestored: (rp: number) => `${rp} 項商品已自動重新上架`,
     restoreSideEffectFailed:
-      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復（已通知平台處理）',
+      '\n⚠️ 但票券/商品自動恢復失敗，請到票券管理／商品管理手動恢復。',
     subscribeFailed: '訂閱失敗:',
     subscribeFailedFull: '訂閱失敗：',
     cancelFailed: '取消訂閱失敗:',

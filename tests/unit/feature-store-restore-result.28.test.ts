@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildFeatureRestoreNotice,
+  restoreFeatureWithNotice,
   type FeatureRestoreCopy,
 } from '@/lib/feature-restore';
 
@@ -50,5 +51,15 @@ describe('buildFeatureRestoreNotice', () => {
       message: 'Catalog restored',
       tone: 'success',
     });
+  });
+
+  it('passes the restore API result through the page-facing wiring seam', async () => {
+    const restore = vi.fn().mockResolvedValue({ restoredCoupons: 2 });
+
+    await expect(restoreFeatureWithNotice('COUPON_SYSTEM', 'Catalog', restore, copy)).resolves.toEqual({
+      message: 'Catalog restored\n2 coupons restored',
+      tone: 'success',
+    });
+    expect(restore).toHaveBeenCalledWith('COUPON_SYSTEM');
   });
 });
