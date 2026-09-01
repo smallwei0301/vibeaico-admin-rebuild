@@ -142,7 +142,6 @@ export default function PortfolioPage() {
         await updatePortfolio(draft.id, {
           title: draft.title.trim(),
           description: draft.description,
-          sortOrder: draft.sortOrder,
           active: draft.active,
           ...(imageUrl ? { imageUrl } : {}),
         });
@@ -537,7 +536,7 @@ export default function PortfolioPage() {
                 id="sortOrderInput"
                 type="number"
                 value={draft.sortOrder}
-                disabled={!editing}
+                disabled
                 onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) })}
               />
               <FormText>{editing ? t.form.sortOrderHelp : t.form.sortOrderCreateHelp}</FormText>

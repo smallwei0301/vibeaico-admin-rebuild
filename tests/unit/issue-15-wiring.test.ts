@@ -97,4 +97,27 @@ describe('Issue #15 wiring stays on real service paths', () => {
     expect(migration).toContain('refund_push_quota');
     expect(migration).toContain('services_tenant_sort_order_uq');
   });
+
+  it('keeps ambiguous delivery retryable and catalog allocation atomic', () => {
+    const route = read('../../src/app/api/chat/messages/route.ts');
+    const line = read('../../src/server/line.ts');
+    const migration = read('../../supabase/migrations/0062_issue_15_delivery_and_catalog_safety.sql');
+    expect(route).toContain("delivery_status: 'RETRY'");
+    expect(route).toContain('LineDeliveryError');
+    expect(route).toContain('request_fingerprint');
+    expect(route).toContain('image_cleanup_status');
+    expect(line).toContain('reserve_push_quota');
+    expect(line).toContain("'AMBIGUOUS'");
+    expect(migration).toContain('push_quota_reservations');
+    expect(migration).toContain('reserve_catalog_positions');
+    expect(migration).toContain('commit_push_quota');
+  });
+
+  it('does not allow direct catalog rank edits or hardcoded create help', () => {
+    expect(read('../../src/app/api/products/[id]/route.ts')).toContain('排序請使用列表排序功能調整');
+    expect(read('../../src/app/api/portfolios/[id]/route.ts')).toContain('排序請使用列表排序功能調整');
+    const products = read('../../src/app/tenant/products/page.tsx');
+    expect(products).toContain('t.form.sortOrderManaged');
+    expect(products).not.toContain("'新增時由伺服器自動排在排序尾端'");
+  });
 });

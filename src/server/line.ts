@@ -26,12 +26,29 @@ export const lineApiBase = () => process.env.LINE_API_BASE ?? 'https://api.line.
 export const lineDataApiBase = () =>
   process.env.LINE_DATA_API_BASE ?? 'https://api-data.line.me';
 
+export type LineDeliveryOutcome = 'CONFIRMED_REJECTION' | 'AMBIGUOUS';
+
+/** A provider response is only refund-safe when LINE explicitly rejected it. */
+export class LineDeliveryError extends ApiHttpError {
+  constructor(
+    status: number,
+    message: string,
+    public readonly outcome: LineDeliveryOutcome,
+  ) {
+    super(status, message, ERR.LINE_API_ERROR);
+  }
+}
+
 /** 讀出該店解密後的 LINE 憑證；未設定 → 丟 LINE_001 */
 export async function getLineCredentials(tenantId: string) {
   const admin = createAdminSupabase();
-  const { data } = await admin.from('tenant_settings')
+  const { data, error } = await admin.from('tenant_settings')
     .select('line, line_channel_secret_enc, line_channel_access_token_enc')
-    .eq('tenant_id', tenantId).single();
+    .eq('tenant_id', tenantId).maybeSingle();
+  if (error) {
+    console.error('[line] settings lookup failed', error);
+    throw new ApiHttpError(503, 'LINE 設定暫時無法確認，請稍後再試', ERR.INTERNAL);
+  }
   const token = decryptSecret(data?.line_channel_access_token_enc ?? '');
   const secret = decryptSecret(data?.line_channel_secret_enc ?? '');
   if (!token) throw new ApiHttpError(400, '尚未設定 LINE Channel', ERR.LINE_NOT_CONFIGURED);
@@ -39,15 +56,30 @@ export async function getLineCredentials(tenantId: string) {
 }
 
 async function lineFetch(token: string, path: string, init?: RequestInit) {
-  const res = await fetch(`${lineApiBase()}${path}`, {
-    ...init,
-    headers: { Authorization: `Bearer ${token}`,
-               'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${lineApiBase()}${path}`, {
+      ...init,
+      headers: { Authorization: `Bearer ${token}`,
+                 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    });
+  } catch (error) {
+    console.error('[line] transport failure', path, error);
+    throw new LineDeliveryError(503, 'LINE 回應狀態不明，訊息保留待確認', 'AMBIGUOUS');
+  }
   if (!res.ok) {
     const body = await res.text();
     console.error('[line]', path, res.status, body);
-    throw new ApiHttpError(502, `LINE API 錯誤（${res.status}）`, ERR.LINE_API_ERROR);
+    const outcome: LineDeliveryOutcome = res.status >= 400 && res.status < 500
+      ? 'CONFIRMED_REJECTION'
+      : 'AMBIGUOUS';
+    throw new LineDeliveryError(
+      outcome === 'CONFIRMED_REJECTION' ? 502 : 503,
+      outcome === 'CONFIRMED_REJECTION'
+        ? `LINE API 拒絕訊息（${res.status}）`
+        : 'LINE 回應狀態不明，訊息保留待確認',
+      outcome,
+    );
   }
   return res.status === 200 ? res.json().catch(() => ({})) : {};
 }
@@ -126,21 +158,106 @@ export function consumePushQuota(tenantId: string, count: number): Promise<boole
   }
 }
 
+export type PushQuotaReservation = {
+  accepted: boolean;
+  month: string;
+  token: string | null;
+};
+
+/** Reserve quota while persisting the exact month and message-bound token. */
+export async function reservePushQuotaWith(
+  admin: Pick<SupabaseClient, 'from' | 'rpc'>,
+  tenantId: string,
+  count: number,
+  chatMessageId: string,
+  now = new Date(),
+): Promise<PushQuotaReservation> {
+  if (!Number.isInteger(count) || count <= 0)
+    throw new ApiHttpError(500, '推播額度參數錯誤', ERR.INTERNAL);
+
+  const month = taipeiCurrentMonthKey();
+  let subscription: { active?: boolean | null; expires_at?: string | null } | null = null;
+  try {
+    const result = await admin.from('feature_subscriptions')
+      .select('active, expires_at')
+      .eq('tenant_id', tenantId)
+      .eq('code', 'EXTRA_PUSH')
+      .maybeSingle();
+    if (result.error) throw result.error;
+    subscription = result.data;
+  } catch (error) {
+    console.error('[line] push quota feature lookup failed', error);
+    throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
+  }
+
+  const extraPushActive = !!subscription?.active
+    && (!subscription.expires_at || new Date(subscription.expires_at) > now);
+  const quota = extraPushActive ? 700 : 200;
+
+  try {
+    const { data, error } = await admin.rpc('reserve_push_quota', {
+      p_tenant_id: tenantId,
+      p_month: month,
+      p_count: count,
+      p_quota: quota,
+      p_chat_message_id: chatMessageId,
+    });
+    if (error) throw error;
+    const row = (Array.isArray(data) ? data[0] : data) as
+      | { accepted?: boolean; reservation_token?: string | null }
+      | null;
+    if (!row || typeof row.accepted !== 'boolean') {
+      throw new Error('reserve_push_quota returned an invalid result');
+    }
+    return {
+      accepted: row.accepted,
+      month,
+      token: row.reservation_token ?? null,
+    };
+  } catch (error) {
+    console.error('[line] push quota reservation RPC failed', error);
+    throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
+  }
+}
+
+export function reservePushQuota(
+  tenantId: string,
+  count: number,
+  chatMessageId: string,
+): Promise<PushQuotaReservation> {
+  try {
+    return reservePushQuotaWith(createAdminSupabase(), tenantId, count, chatMessageId);
+  } catch (error) {
+    console.error('[line] push quota client initialization failed', error);
+    return Promise.reject(
+      new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL),
+    );
+  }
+}
+
 /** 還原一筆已預扣、但尚未送達 LINE 的額度。 */
 export async function refundPushQuotaWith(
   admin: Pick<SupabaseClient, 'rpc'>,
   tenantId: string,
   count: number,
+  reservation?: { month: string; token: string },
 ): Promise<boolean> {
   if (!Number.isInteger(count) || count <= 0)
     throw new ApiHttpError(500, '推播額度參數錯誤', ERR.INTERNAL);
 
   try {
-    const { data: refunded, error } = await admin.rpc('refund_push_quota', {
-      p_tenant_id: tenantId,
-      p_month: taipeiCurrentMonthKey(),
-      p_count: count,
-    });
+    const { data: refunded, error } = reservation
+      ? await admin.rpc('refund_push_quota', {
+          p_tenant_id: tenantId,
+          p_month: reservation.month,
+          p_count: count,
+          p_reservation_token: reservation.token,
+        })
+      : await admin.rpc('refund_push_quota', {
+          p_tenant_id: tenantId,
+          p_month: taipeiCurrentMonthKey(),
+          p_count: count,
+        });
     if (error) throw error;
     return refunded === true;
   } catch (error) {
@@ -149,13 +266,46 @@ export async function refundPushQuotaWith(
   }
 }
 
-export function refundPushQuota(tenantId: string, count: number): Promise<boolean> {
+export function refundPushQuota(
+  tenantId: string,
+  count: number,
+  reservation?: { month: string; token: string },
+): Promise<boolean> {
   try {
-    return refundPushQuotaWith(createAdminSupabase(), tenantId, count);
+    return refundPushQuotaWith(createAdminSupabase(), tenantId, count, reservation);
   } catch (error) {
     console.error('[line] push quota client initialization failed', error);
     return Promise.reject(
       new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL),
+    );
+  }
+}
+
+export async function commitPushQuotaWith(
+  admin: Pick<SupabaseClient, 'rpc'>,
+  tenantId: string,
+  token: string,
+): Promise<boolean> {
+  try {
+    const { data, error } = await admin.rpc('commit_push_quota', {
+      p_tenant_id: tenantId,
+      p_reservation_token: token,
+    });
+    if (error) throw error;
+    return data === true;
+  } catch (error) {
+    console.error('[line] push quota commit RPC failed', error);
+    throw new ApiHttpError(503, '推播額度狀態暫時無法確認，請稍後再試', ERR.INTERNAL);
+  }
+}
+
+export function commitPushQuota(tenantId: string, token: string): Promise<boolean> {
+  try {
+    return commitPushQuotaWith(createAdminSupabase(), tenantId, token);
+  } catch (error) {
+    console.error('[line] push quota client initialization failed', error);
+    return Promise.reject(
+      new ApiHttpError(503, '推播額度狀態暫時無法確認，請稍後再試', ERR.INTERNAL),
     );
   }
 }

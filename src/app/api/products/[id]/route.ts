@@ -21,7 +21,17 @@ const bodySchema = z.object({
   imageUrl: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
+  // Kept only to return a bounded conflict to stale clients; rank edits must
+  // go through the complete-collection reorder endpoint.
   sortOrder: z.coerce.number().int().optional(),
+}).superRefine((body, ctx) => {
+  if (body.sortOrder !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['sortOrder'],
+      message: '排序請使用列表排序功能調整',
+    });
+  }
 });
 
 export const PUT = handle(async (req, { params }) => {
@@ -39,7 +49,6 @@ export const PUT = handle(async (req, { params }) => {
   if (b.imageUrl !== undefined) update.image_url = b.imageUrl;
   if (b.active !== undefined) update.active = b.active;
   if (b.lineFeatured !== undefined) update.line_featured = b.lineFeatured;
-  if (b.sortOrder !== undefined) update.sort_order = b.sortOrder;
 
   if (Object.keys(update).length > 0) {
     const { data, error } = await t.supabase

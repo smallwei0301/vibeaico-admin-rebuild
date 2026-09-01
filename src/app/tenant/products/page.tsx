@@ -710,7 +710,7 @@ function ProductFormModal({
     setSaving(true);
     try {
       /* ProductExtras（trackInventory / maxPerOrder / draft…）後端未落地，不隨 payload 送出；
-         新增時兩套排序由 server 計算，編輯時才送既有的公開頁 sortOrder。 */
+         新增時兩套排序由 server 計算；排序一律使用列表排序控制。 */
       const payload = {
         name: draft.name,
         categoryId: draft.categoryId ?? '',
@@ -723,7 +723,7 @@ function ProductFormModal({
         lineFeatured: draft.lineFeatured,
       };
       if (isEdit) {
-        await updateProduct(draft.id, { ...payload, sortOrder: draft.sortOrder });
+        await updateProduct(draft.id, payload);
         onSaved(draft, true);
       } else {
         const result = await createProduct(payload);
@@ -851,10 +851,10 @@ function ProductFormModal({
         <FormGroup>
           <Label htmlFor="productSortOrder">{t.form.sortOrder}</Label>
           <Input
-            id="productSortOrder" type="number" value={draft.sortOrder} disabled={!isEdit}
+            id="productSortOrder" type="number" value={draft.sortOrder} disabled
             onChange={(e) => patch({ sortOrder: Number(e.target.value) })}
           />
-          <FormText>{isEdit ? t.form.sortOrderHelp : '新增時由伺服器自動排在排序尾端'}</FormText>
+          <FormText>{t.form.sortOrderManaged}</FormText>
         </FormGroup>
       </div>
 

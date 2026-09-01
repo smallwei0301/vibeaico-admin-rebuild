@@ -5,6 +5,7 @@ import {
   catalogReorderBodySchema,
   reorderCatalogItems,
 } from '@/server/catalog-reorder';
+import { nextCatalogPositions } from '@/server/catalog-position';
 
 const A = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
@@ -32,5 +33,17 @@ describe('Issue #15 catalog order contracts', () => {
     rpc.mockResolvedValueOnce({ data: null, error: { code: '22023' } });
     await expect(reorderCatalogItems(client, 'tenant-1', 'products', 'line', [A]))
       .rejects.toMatchObject({ status: 400, code: 'REQ_001' });
+  });
+
+  it('allocates both create lanes from the database counter', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{ sort_order: 7, line_sort_order: 3 }], error: null,
+    });
+    const client = { rpc } as unknown as SupabaseClient;
+    await expect(nextCatalogPositions(client, 'tenant-1', 'products'))
+      .resolves.toEqual({ sortOrder: 7, lineSortOrder: 3 });
+    expect(rpc).toHaveBeenCalledWith('reserve_catalog_positions', {
+      p_tenant_id: 'tenant-1', p_resource: 'products',
+    });
   });
 });

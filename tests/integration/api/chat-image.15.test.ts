@@ -274,10 +274,16 @@ describe('Issue #15 chat image chain', () => {
     expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
     expect(await quotaUsed()).toBe(before + 1);
 
+    const differentPayload = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'same key, different payload', idempotencyKey: key,
+    });
+    expect(differentPayload.status).toBe(409);
+    expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+
     const failedKey = '22222222-2222-4222-8222-222222222222';
     const failureBefore = await quotaUsed();
     lineMock.reset();
-    lineMock.failNext(500);
+    lineMock.failNext(400);
     const failed = await ownerA.post('/api/chat/messages', {
       lineUserId: USER_ID, text: 'provider failure', idempotencyKey: failedKey,
     });
@@ -294,6 +300,33 @@ describe('Issue #15 chat image chain', () => {
       lineUserId: USER_ID, text: 'provider failure', idempotencyKey: failedKey,
     });
     expect(retryFailed.status).toBe(409);
+    expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+
+    const ambiguousKey = '33333333-3333-4333-8333-333333333333';
+    const ambiguousBefore = await quotaUsed();
+    lineMock.reset();
+    lineMock.failNext(500);
+    const ambiguous = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'provider timeout or 5xx', idempotencyKey: ambiguousKey,
+    });
+    expect(ambiguous.status).toBe(503);
+    expect(await quotaUsed()).toBe(ambiguousBefore + 1);
+    const ambiguousRow = await admin.from('chat_messages')
+      .select('delivery_status, provider_attempt_status, refund_status, reservation_month, reservation_token')
+      .eq('tenant_id', SHOP_A.id).eq('line_user_id', USER_ID)
+      .eq('idempotency_key', ambiguousKey).single();
+    expect(ambiguousRow.error).toBeNull();
+    expect(ambiguousRow.data).toMatchObject({
+      delivery_status: 'RETRY',
+      provider_attempt_status: 'UNKNOWN',
+      refund_status: 'RESERVED',
+    });
+    expect(ambiguousRow.data?.reservation_month).toMatch(/^\d{4}-\d{2}$/);
+    expect(ambiguousRow.data?.reservation_token).toEqual(expect.any(String));
+    const retryAmbiguous = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'provider timeout or 5xx', idempotencyKey: ambiguousKey,
+    });
+    expect(retryAmbiguous.status).toBe(409);
     expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
   });
 });

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { consumePushQuotaWith, refundPushQuotaWith } from '@/server/line';
+import { consumePushQuotaWith, refundPushQuotaWith, reservePushQuotaWith } from '@/server/line';
 
 type FakeResult = { data: unknown; error: unknown };
 
@@ -60,5 +60,39 @@ describe('Issue #15 push quota atomic seam', () => {
     expect(rpc).toHaveBeenCalledWith('refund_push_quota', expect.objectContaining({
       p_tenant_id: 'tenant-1', p_count: 1,
     }));
+  });
+
+  it('persists a message-bound reservation token and original month', async () => {
+    const { admin, rpc } = fakeAdmin(
+      { data: { active: false, expires_at: null }, error: null },
+      { data: [{ accepted: true, reservation_token: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' }], error: null },
+    );
+    const result = await reservePushQuotaWith(
+      admin,
+      'tenant-1',
+      1,
+      'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    );
+    expect(result).toMatchObject({ accepted: true, token: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' });
+    expect(result.month).toMatch(/^\d{4}-\d{2}$/);
+    expect(rpc).toHaveBeenCalledWith('reserve_push_quota', expect.objectContaining({
+      p_tenant_id: 'tenant-1',
+      p_chat_message_id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+      p_count: 1,
+    }));
+  });
+
+  it('uses the reservation month/token for an idempotent refund', async () => {
+    const { admin, rpc } = fakeAdmin(
+      { data: null, error: null },
+      { data: true, error: null },
+    );
+    await expect(refundPushQuotaWith(admin, 'tenant-1', 1, {
+      month: '2026-08', token: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    })).resolves.toBe(true);
+    expect(rpc).toHaveBeenCalledWith('refund_push_quota', {
+      p_tenant_id: 'tenant-1', p_month: '2026-08', p_count: 1,
+      p_reservation_token: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    });
   });
 });

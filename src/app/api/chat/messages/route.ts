@@ -1,9 +1,16 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged } from '@/server/paging';
-import { consumePushQuota, getLineCredentials, linePush, refundPushQuota } from '@/server/line';
+import {
+  LineDeliveryError,
+  commitPushQuota,
+  getLineCredentials,
+  linePush,
+  refundPushQuota,
+  reservePushQuota,
+} from '@/server/line';
 import { createAdminSupabase } from '@/server/supabase';
 import {
   PREVIEW_BUCKET,
@@ -26,7 +33,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
  * 寫 chat_messages(OUT)。圖片 ref 必須是本租戶 chat-images 的 upload 結果，原圖和
  * preview 會在送出前重新驗證為 JPEG/PNG 且分別符合 5MB/1MB 上限。
  * POST 先以 idempotency key claim 一筆 PENDING receipt；同 key 的 retry 不會再次
- * 呼叫 LINE。LINE 失敗會標記 FAILED 並還原已預扣的額度。
+ * 呼叫 LINE。只有 LINE 明確以 4xx 拒絕時才退款；timeout、5xx、設定／資料庫
+ * 不確定性都保留 RETRY，不刪圖片、不退款，避免 provider 已收件卻重複推播。
  */
 
 function mapMessage(r: any) {
@@ -39,7 +47,17 @@ function mapMessage(r: any) {
     imageUrl: typeof r.content?.imageUrl === 'string' ? (r.content.imageUrl as string) : '',
     readAt: (r.read_at ?? null) as string | null,
     createdAt: r.created_at as string,
+    deliveryStatus: r.delivery_status as string,
   };
+}
+
+function requestFingerprint(body: z.infer<typeof postSchema>): string {
+  return createHash('sha256').update(JSON.stringify({
+    lineUserId: body.lineUserId,
+    text: body.text ?? null,
+    type: body.type ?? 'text',
+    storageRef: body.storageRef ?? null,
+  })).digest('hex');
 }
 
 const querySchema = z.object({
@@ -125,6 +143,7 @@ export const POST = handle(async (req) => {
   const t = await requireTenant();
   const b = postSchema.parse(await req.json());
   const idempotencyKey = b.idempotencyKey ?? randomUUID();
+  const fingerprint = requestFingerprint(b);
   let chatImageOriginalPath: string | undefined;
   let chatImagePreviewPath: string | undefined;
   let resolvedImage: Awaited<ReturnType<typeof resolveChatImageStorageRef>> | undefined;
@@ -153,8 +172,17 @@ export const POST = handle(async (req) => {
     .maybeSingle();
   if (existingError) throw existingError;
   if (existing) {
+    if (existing.request_fingerprint && existing.request_fingerprint !== fingerprint) {
+      throw new ApiHttpError(409, '同一 idempotency key 不可用於不同訊息', ERR.CONFLICT);
+    }
     if (existing.delivery_status === 'SENT') return ok(mapMessage(existing));
-    throw new ApiHttpError(409, '此訊息的送出狀態仍在確認中，請勿重複送出', ERR.CONFLICT);
+    throw new ApiHttpError(
+      409,
+      existing.delivery_status === 'RETRY'
+        ? '此訊息的送出狀態不明，請稍後查詢或由系統重試'
+        : '此訊息的送出狀態仍在確認中，請勿重複送出',
+      ERR.CONFLICT,
+    );
   }
 
   const isImage = b.type === 'image';
@@ -186,7 +214,11 @@ export const POST = handle(async (req) => {
       message_type: isImage ? 'image' : 'text',
       content,
       idempotency_key: idempotencyKey,
+      request_fingerprint: fingerprint,
       delivery_status: 'PENDING',
+      provider_attempt_status: 'NOT_ATTEMPTED',
+      refund_status: 'NOT_REQUIRED',
+      image_cleanup_status: isImage ? 'RETAINED' : 'NOT_APPLICABLE',
     })
     .select('*')
     .single();
@@ -198,23 +230,47 @@ export const POST = handle(async (req) => {
   }
 
   // 先扣額度；不足或額度服務失敗都不打 LINE（06 分冊 §2）。
-  let quotaAvailable: boolean;
+  let reservation: Awaited<ReturnType<typeof reservePushQuota>>;
   try {
-    quotaAvailable = await consumePushQuota(t.tenantId, 1);
+    reservation = await reservePushQuota(t.tenantId, 1, pending.id);
   } catch (error) {
-    await markDeliveryFailed(t.supabase, pending.id);
-    await cleanupChatImage(chatImageOriginalPath, chatImagePreviewPath);
+    await markDeliveryRetry(t.supabase, pending.id, 'quota service unavailable', 'UNKNOWN');
     throw error;
   }
-  if (!quotaAvailable) {
-    const { error } = await t.supabase
-      .from('chat_messages')
-      .delete()
-      .eq('id', pending.id)
-      .eq('delivery_status', 'PENDING');
-    if (error) console.error('[chat] failed to remove quota-blocked pending receipt', error);
-    await cleanupChatImage(chatImageOriginalPath, chatImagePreviewPath);
+  if (!reservation.accepted || !reservation.token) {
+    await markDeliveryFailed(
+      t.supabase,
+      pending.id,
+      'QUOTA_EXHAUSTED',
+      'NOT_ATTEMPTED',
+      'NOT_REQUIRED',
+    );
+    await cleanupAndRecord(t.supabase, pending.id, chatImageOriginalPath, chatImagePreviewPath);
     throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
+  }
+
+  const { error: reservationError } = await t.supabase
+    .from('chat_messages')
+    .update({
+      reservation_month: reservation.month,
+      reservation_token: reservation.token,
+      refund_status: 'RESERVED',
+    })
+    .eq('id', pending.id)
+    .eq('delivery_status', 'PENDING');
+  if (reservationError) {
+    await markDeliveryRetry(t.supabase, pending.id, 'quota reservation linkage unavailable', 'UNKNOWN');
+    throw new ApiHttpError(503, '推播額度狀態暫時無法確認，請稍後再試', ERR.INTERNAL);
+  }
+
+  const { error: attemptError } = await t.supabase
+    .from('chat_messages')
+    .update({ provider_attempt_status: 'IN_FLIGHT' })
+    .eq('id', pending.id)
+    .eq('delivery_status', 'PENDING');
+  if (attemptError) {
+    await markDeliveryRetry(t.supabase, pending.id, 'provider attempt state unavailable', 'UNKNOWN');
+    throw new ApiHttpError(503, '訊息送出狀態暫時無法確認，請稍後再試', ERR.INTERNAL);
   }
 
   try {
@@ -231,27 +287,62 @@ export const POST = handle(async (req) => {
         : [{ type: 'text', text: b.text }],
     );
   } catch (error) {
-    await markDeliveryFailed(t.supabase, pending.id);
-    try {
-      await refundPushQuota(t.tenantId, 1);
-    } catch (refundError) {
-      console.error('[chat] failed to refund quota after LINE failure', refundError);
+    if (error instanceof LineDeliveryError && error.outcome === 'CONFIRMED_REJECTION') {
+      let refunded = false;
+      try {
+        refunded = await refundPushQuota(t.tenantId, 1, {
+          month: reservation.month,
+          token: reservation.token,
+        });
+      } catch (refundError) {
+        console.error('[chat] failed to refund quota after confirmed LINE rejection', refundError);
+      }
+      await markDeliveryFailed(
+        t.supabase,
+        pending.id,
+        error.message,
+        'REJECTED',
+        refunded ? 'REFUNDED' : 'REFUND_PENDING',
+      );
+      await cleanupAndRecord(t.supabase, pending.id, chatImageOriginalPath, chatImagePreviewPath);
+    } else {
+      // A timeout/5xx may have been accepted by LINE. Keep the receipt and
+      // image durable; another key must never be used to guess the outcome.
+      await markDeliveryRetry(t.supabase, pending.id, error instanceof Error ? error.message : 'unknown provider outcome', 'UNKNOWN');
     }
-    // 額度已預扣但 LINE 未送出：收掉本次上傳的兩個物件，避免 TEST/正式儲存殘渣。
-    await cleanupChatImage(chatImageOriginalPath, chatImagePreviewPath);
     throw error;
   }
 
   const { data, error } = await t.supabase
     .from('chat_messages')
-    .update({ delivery_status: 'SENT' })
+    .update({ delivery_status: 'SENT', provider_attempt_status: 'ACCEPTED' })
     .eq('id', pending.id)
     .eq('delivery_status', 'PENDING')
     .select('*')
     .maybeSingle();
-  if (error) throw error;
+  if (error) {
+    await markDeliveryRetry(t.supabase, pending.id, 'provider accepted; database status update unavailable', 'ACCEPTED', 'SETTLEMENT_PENDING');
+    throw new ApiHttpError(503, '訊息已交給 LINE，但本地狀態尚未確認', ERR.INTERNAL);
+  }
   if (!data) {
+    await markDeliveryRetry(t.supabase, pending.id, 'provider accepted; local receipt changed unexpectedly', 'ACCEPTED', 'SETTLEMENT_PENDING');
     throw new ApiHttpError(409, '訊息已送出但狀態尚未確認，請勿重複送出', ERR.CONFLICT);
+  }
+
+  try {
+    const committed = await commitPushQuota(t.tenantId, reservation.token);
+    if (!committed) throw new Error('quota reservation did not commit');
+    const { error: settledError } = await t.supabase
+      .from('chat_messages')
+      .update({ refund_status: 'COMMITTED' })
+      .eq('id', pending.id)
+      .eq('delivery_status', 'SENT');
+    if (settledError) throw settledError;
+  } catch (commitError) {
+    // Delivery is already SENT; do not refund. A settlement retry can safely
+    // commit this token because the RPC is idempotent.
+    await markSettlementPending(t.supabase, pending.id, commitError instanceof Error ? commitError.message : 'quota settlement unavailable');
+    throw commitError;
   }
 
   return ok(mapMessage(data));
@@ -260,18 +351,76 @@ export const POST = handle(async (req) => {
 async function markDeliveryFailed(
   supabase: Pick<SupabaseClient, 'from'>,
   id: string,
+  reason: string,
+  providerAttemptStatus: 'NOT_ATTEMPTED' | 'REJECTED',
+  refundStatus: 'NOT_REQUIRED' | 'REFUNDED' | 'REFUND_PENDING',
 ): Promise<void> {
   const { error } = await supabase
     .from('chat_messages')
-    .update({ delivery_status: 'FAILED' })
+    .update({
+      delivery_status: 'FAILED',
+      provider_attempt_status: providerAttemptStatus,
+      refund_status: refundStatus,
+      delivery_error: reason,
+    })
     .eq('id', id)
-    .eq('delivery_status', 'PENDING');
+    .in('delivery_status', ['PENDING', 'RETRY']);
   if (error) console.error('[chat] failed to mark delivery failure', error);
 }
 
-async function cleanupChatImage(originalPath?: string, previewPath?: string): Promise<void> {
+async function markDeliveryRetry(
+  supabase: Pick<SupabaseClient, 'from'>,
+  id: string,
+  reason: string,
+  providerAttemptStatus: 'UNKNOWN' | 'ACCEPTED',
+  refundStatus?: 'RESERVED' | 'SETTLEMENT_PENDING',
+): Promise<void> {
+  const { error } = await supabase
+    .from('chat_messages')
+    .update({
+      delivery_status: 'RETRY',
+      provider_attempt_status: providerAttemptStatus,
+      ...(refundStatus ? { refund_status: refundStatus } : {}),
+      delivery_error: reason,
+    })
+    .eq('id', id)
+    .in('delivery_status', ['PENDING', 'RETRY']);
+  if (error) console.error('[chat] failed to retain retryable delivery', error);
+}
+
+async function markSettlementPending(
+  supabase: Pick<SupabaseClient, 'from'>,
+  id: string,
+  reason: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('chat_messages')
+    .update({ refund_status: 'SETTLEMENT_PENDING', delivery_error: reason })
+    .eq('id', id);
+  if (error) console.error('[chat] failed to record quota settlement state', error);
+}
+
+async function cleanupAndRecord(
+  supabase: Pick<SupabaseClient, 'from'>,
+  id: string,
+  originalPath?: string,
+  previewPath?: string,
+): Promise<void> {
   if (!originalPath) return;
+  const cleaned = await cleanupChatImage(originalPath, previewPath);
+  const { error } = await supabase.from('chat_messages').update({
+    image_cleanup_status: cleaned ? 'CLEANED' : 'CLEANUP_PENDING',
+  }).eq('id', id);
+  if (error) console.error('[chat] failed to record image cleanup state', error);
+}
+
+async function cleanupChatImage(originalPath?: string, previewPath?: string): Promise<boolean> {
+  if (!originalPath) return true;
   const paths = [originalPath, previewPath].filter((path): path is string => !!path);
   const { error } = await createAdminSupabase().storage.from('chat-images').remove(paths);
-  if (error) console.error('[chat] failed to clean unsent image objects', error);
+  if (error) {
+    console.error('[chat] failed to clean confirmed-rejection image objects', error);
+    return false;
+  }
+  return true;
 }
