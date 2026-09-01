@@ -88,7 +88,7 @@ describe('plans, departures and addons CRUD', () => {
       const update = await ownerA.put(`/api/trip-plans/${planId}`, { pricePerPerson: 1200 });
       expect(update.status).toBe(200);
       const departureId = (await json<{ id: string }>(departure)).data!.id;
-      await admin.from('trip_departures').update({ seats_booked: 1 }).eq('id', departureId);
+      await admin.from('trip_departures').update({ seats_booked: 2 }).eq('id', departureId);
       const invalidCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 0 });
       expect(invalidCapacity.status).toBe(400);
       const lowCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 1 });
