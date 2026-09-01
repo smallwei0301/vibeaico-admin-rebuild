@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "mode": "LOCAL_ONLY_TRANSITIONAL",
+  "source": {
+    "repository": "smallwei0301/vibeaico-admin-rebuild",
+    "branch": "claude/deploy-vercel-project-nnno59",
+    "head": "7ad9ac53df1f7f4971a2ec96c4038587e0515b66"
+  },
+  "reason": "Restore the historical integration migration sequence only inside disposable local Supabase runners while the canonical remote migration ledger is reconciled.",
+  "files": [
+    {"name":"0015_tenants_business_type.sql","blobSha":"f04d3aa10c240cf93c3cd611da6779d49a40e18d"},
+    {"name":"0016_tour_domain_core.sql","blobSha":"e0080a9dd0470ad096f9f7b71912894a59da8f2b"},
+    {"name":"0017_chat_images_bucket_and_line_sort_order.sql","blobSha":"4f970b8c1ba0694676d54440a6908a7abaa8be71"},
+    {"name":"0018_category_description_active_and_bug_report_fields.sql","blobSha":"50680d190d5190f4093518e2ba1277c1adad4e93"},
+    {"name":"0019_bug_report_attachments.sql","blobSha":"e89ae6b00f6f43ecb674484b35d7e0242dda7aa3"},
+    {"name":"0020_booking_addons.sql","blobSha":"e3af9d5f0498102bf32e3155b1673127e8f3a67b"},
+    {"name":"0021_tenant_settings_branding.sql","blobSha":"305e347f0ec666f697f87e0cfea4b7771a013794"},
+    {"name":"0022_page_local_display_fields.sql","blobSha":"6286e81703bed05d6c3633bf73c39cf4ea552504"},
+    {"name":"0023_owner_notify.sql","blobSha":"79ab14a93391b180981bed28a844e7ba07e4bb90"},
+    {"name":"0024_welcome_card_images_bucket.sql","blobSha":"9961b80cafb9da8f51279ef2ae0057b788d6628a"},
+    {"name":"0025_rich_menu_designs.sql","blobSha":"020bb76985f6896d397ab8a8978ce39bb461c5a3"},
+    {"name":"0026_tour_departures_addons_orders.sql","blobSha":"e483a30199da64ae06c3c292c10ea2f062feb0e2"},
+    {"name":"0027_block_times_weekly_and_product_order_coupon.sql","blobSha":"331012fe72fbd744c62cf820230f29cc377ccaea"},
+    {"name":"0028_trip_import_atomic.sql","blobSha":"843878c027b111511c158acec5d795046b9ac95c"},
+    {"name":"0029_trip_tenant_parent_constraints.sql","blobSha":"7e424248b5f0dfbf0671115dcad4cae474d71284"},
+    {"name":"0030_trip_plan_global_limit.sql","blobSha":"e30378153ca6de6ca4e624209d2d871747bf2a5e"},
+    {"name":"0031_trip_plan_limit_lock_repair.sql","blobSha":"9a6d5aa9a2f5d6055f783ce11377ff556b7723b3"},
+    {"name":"0032_trip_plan_statement_guard.sql","blobSha":"ffdb93d29447160ed0d2af3d9f67ff3368ad2632"},
+    {"name":"0033_trip_duplicate_atomic.sql","blobSha":"b14bf57d4e52df4cebc0b105e6626eafdd8fbccb"}
+  ]
+}
