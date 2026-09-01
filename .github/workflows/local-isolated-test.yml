@@ -100,6 +100,7 @@ jobs:
       CANARY_BARRIER_EPOCH: ${{ needs.classify.outputs.canary_barrier_epoch }}
       TEST_ENV_ID: local-pr-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.slot }}
       LOCAL_PROJECT_ID: vibeaico-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.slot }}
+      ALLOW_LOCAL_MIGRATION_OVERLAY: 'true'
       SETTINGS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       AUTH_SECRET: local-isolated-auth-secret-0123456789abcdef
       TEST_CRON_SECRET: local-isolated-cron-secret
@@ -137,6 +138,9 @@ jobs:
           )
           path.write_text(source, encoding='utf-8')
           PY
+      - name: Stage the local-only historical migration baseline
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
+        run: node scripts/ci/stage-local-migration-ledger.mjs
       - name: Start a fresh local Supabase stack and apply migrations
         run: supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
       - name: Export local-only TEST credentials
