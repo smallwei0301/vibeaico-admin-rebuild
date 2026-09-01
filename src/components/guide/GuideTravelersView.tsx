@@ -218,12 +218,15 @@ export function GuideTravelersView({
       />
 
       {loading ? (
-        <GuideSectionCard title={navigation.travelers.loading}>
-          <p className={GUIDE_UI_CLASSES.secondary}>{navigation.travelers.loadingDescription}</p>
+        <GuideSectionCard title={navigation.travelers.loading} aria-busy={loading}>
+          <p className={GUIDE_UI_CLASSES.secondary} role="status" aria-live="polite">
+            {navigation.travelers.loadingDescription}
+          </p>
         </GuideSectionCard>
       ) : error ? (
         <GuideSectionCard title={navigation.travelers.error.title}>
           <GuideEmptyState
+            role="alert"
             title={navigation.travelers.error.description}
             icon={<AlertTriangle size={20} />}
             action={(
@@ -260,7 +263,7 @@ export function GuideTravelersView({
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={navigation.travelers.search.placeholder}
-                  className={GUIDE_UI_CLASSES.searchInput}
+                  className={cn(GUIDE_UI_CLASSES.searchInput, GUIDE_UI_CLASSES.focusRing)}
                 />
                 {query ? (
                   <button

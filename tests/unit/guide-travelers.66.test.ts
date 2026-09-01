@@ -185,6 +185,15 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(guidePageSource).not.toMatch(/listTourOrders\(\{\s*page:\s*0\s*,\s*size:\s*200\s*\}\)/);
   });
 
+  it('announces traveler loading and error states and keeps search keyboard-visible', () => {
+    const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
+    expect(source).toContain('aria-busy={loading}');
+    expect(source).toContain('role="status"');
+    expect(source).toContain('aria-live="polite"');
+    expect(source).toContain('role="alert"');
+    expect(source).toContain('GUIDE_UI_CLASSES.searchInput, GUIDE_UI_CLASSES.focusRing');
+  });
+
   it('keeps traveler visual values behind shared GUIDE UI tokens', () => {
     const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
 
