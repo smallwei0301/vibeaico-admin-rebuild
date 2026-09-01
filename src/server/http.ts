@@ -21,13 +21,13 @@ export function ok<T>(data?: T, init?: ResponseInit) {
   return NextResponse.json({ success: true, data }, init);
 }
 
-export function fail(status: number, message: string, code?: string) {
-  return NextResponse.json({ success: false, message, code }, { status });
+export function fail<T>(status: number, message: string, code?: string, data?: T) {
+  return NextResponse.json({ success: false, message, code, data }, { status });
 }
 
 /** route handler 最外層包這個：zod 錯誤→400、ApiHttpError→對應狀態、其他→500 */
-export class ApiHttpError extends Error {
-  constructor(public status: number, message: string, public code?: string) {
+export class ApiHttpError<T = unknown> extends Error {
+  constructor(public status: number, message: string, public code?: string, public data?: T) {
     super(message);
   }
 }
@@ -37,7 +37,7 @@ export function handle(fn: (req: Request, ctx: any) => Promise<Response>) {
     try {
       return await fn(req, ctx);
     } catch (e: any) {
-      if (e instanceof ApiHttpError) return fail(e.status, e.message, e.code);
+      if (e instanceof ApiHttpError) return fail(e.status, e.message, e.code, e.data);
       if (e?.name === 'ZodError')
         return fail(400, e.issues?.[0]?.message ?? '輸入格式錯誤', ERR.VALIDATION);
       console.error('[api]', req.method, new URL(req.url).pathname, e);

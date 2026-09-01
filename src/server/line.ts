@@ -73,16 +73,25 @@ export const lineProfile = (token: string, userId: string) =>
  * push/multicast 前先過；**reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
  */
 export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
-  const admin = createAdminSupabase();
-  const month = taipeiCurrentMonthKey();                       // 'YYYY-MM'（見檔頭差異 3）
-  const { data } = await admin.from('push_quota_usage').select('used')
-    .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
-  const used = data?.used ?? 0;
-  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
-  if (used + count > quota) return false;
-  await admin.from('push_quota_usage')
-    .upsert({ tenant_id: tenantId, month, used: used + count });
-  return true;
+  if (!Number.isInteger(count) || count < 1) return false;
+  try {
+    const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
+    const { data, error } = await createAdminSupabase().rpc('consume_push_quota_17', {
+      p_tenant_id: tenantId,
+      p_month: taipeiCurrentMonthKey(),
+      p_count: count,
+      p_quota: quota,
+    });
+    if (error) {
+      console.error('[line] quota reservation failed', tenantId, error);
+      return false;
+    }
+    return data === true;
+  } catch (error) {
+    // Quota state is unknown: do not send a billable LINE push optimistically.
+    console.error('[line] quota reservation failed', tenantId, error);
+    return false;
+  }
 }
 
 /* ------------------------------------------------------------------ 附加匯出

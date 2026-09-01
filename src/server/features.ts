@@ -22,8 +22,9 @@ import { ApiHttpError, ERR } from './http';
 
 export async function isFeatureActive(tenantId: string, code: string): Promise<boolean> {
   const admin = createAdminSupabase();
-  const { data } = await admin.from('feature_subscriptions')
+  const { data, error } = await admin.from('feature_subscriptions')
     .select('active, expires_at').eq('tenant_id', tenantId).eq('code', code).maybeSingle();
+  if (error) throw error;
   if (!data?.active) return false;
   return !data.expires_at || new Date(data.expires_at) > new Date();
 }

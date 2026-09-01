@@ -15,6 +15,8 @@ export class ApiError extends Error {
     message: string,
     public code?: string,
     public status?: number,
+    /** Error envelopes may carry authoritative state for committed conflicts. */
+    public data?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -54,7 +56,7 @@ export async function request<T>(
   }
 
   if (!res.ok || body.success === false) {
-    throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status);
+    throw new ApiError(body.message ?? '操作失敗，請稍後再試', body.code, res.status, body.data);
   }
   return body.data as T;
 }
