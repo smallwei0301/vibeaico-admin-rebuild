@@ -38,6 +38,37 @@ describe('trips and lifecycle actions', () => {
     expect((await json(anonymous)).code).toBe('AUTH_001');
   });
 
+  it('rejects authenticated direct REST DML on core tour tables', async () => {
+    const rest = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: login, error: loginError } = await rest.auth.signInWithPassword({
+      email: SHOP_A.owner.email,
+      password: SHOP_A.owner.password,
+    });
+    expect(loginError).toBeNull();
+    expect(login.session).toBeTruthy();
+
+    const deniedInsert = await rest.from('trips').insert({
+      id: randomUUID(),
+      tenant_id: SHOP_A.id,
+      title: null,
+    });
+    expect(deniedInsert.data).toBeNull();
+    expect(deniedInsert.error?.code).toBe('42501');
+
+    const impossibleId = '7a000000-0000-4000-8000-000000000099';
+    const deniedUpdate = await rest.from('trips').update({ title: 'blocked' }).eq('id', impossibleId);
+    expect(deniedUpdate.data).toBeNull();
+    expect(deniedUpdate.error?.code).toBe('42501');
+
+    for (const table of ['trips', 'trip_plans', 'trip_departures', 'trip_addons']) {
+      const deniedDelete = await rest.from(table).delete().eq('id', impossibleId);
+      expect(deniedDelete.data).toBeNull();
+      expect(deniedDelete.error?.code).toBe('42501');
+    }
+  });
+
   it('invalid create is 400 REQ_001 and other tenant cannot read the trip', async () => {
     const invalid = await ownerA.post('/api/trips', { title: '' });
     expect(invalid.status).toBe(400);
