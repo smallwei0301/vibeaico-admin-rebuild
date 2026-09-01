@@ -34,6 +34,20 @@ export function evaluateMergedPullRequest({
   };
 }
 
+export function classifyEvidenceSinkError(error) {
+  const statusValue = error?.status ?? error?.response?.status ?? null;
+  const parsedStatus = Number(statusValue);
+  const status = Number.isFinite(parsedStatus) && parsedStatus > 0 ? parsedStatus : null;
+  const message = String(error?.message ?? "unknown evidence sink error");
+
+  return {
+    status,
+    message,
+    code: status ? `HTTP_${status}` : "UNKNOWN",
+    verificationInvalidated: false,
+  };
+}
+
 export function formatCompletionTruth(result, verifiedAt = new Date().toISOString()) {
   const status = result.verified ? "VERIFIED_MERGED" : "MERGE_UNVERIFIED";
   const errors = result.errors.length ? result.errors.map((error) => `- ${error}`).join("\n") : "- none";
@@ -54,7 +68,7 @@ export function formatCompletionTruth(result, verifiedAt = new Date().toISOStrin
     errors,
     "",
     result.verified
-      ? "This comment is generated from live GitHub state after the merge event."
+      ? "This evidence was generated from live GitHub state after the merge event."
       : "Do not report this PR as merged until live GitHub evidence satisfies every check.",
   ].join("\n");
 }
