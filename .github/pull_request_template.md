@@ -1,7 +1,3 @@
-<!--
-PR lifecycle metadata is machine-readable. Keep this block and fill the primary Issue.
-See docs/PR-LIFECYCLE.md.
--->
 <!-- pr-lifecycle
 issue:
 state: ACTIVE
@@ -10,47 +6,77 @@ supersedes:
 
 ## Summary
 
-<!-- Explain the smallest product or governance outcome of this PR. -->
+<!-- Explain the smallest Product or governance outcome. -->
 
-## Agent lane metadata
+## B+ Agent lane metadata
 
-<!-- Keep the exact FIELD: value shape. The WIP guard parses these lines. -->
+<!-- Keep exact FIELD: value lines. The WIP Guard parses them. -->
 
 - WORK_ORIGIN: OWNER | AGENT | UNKNOWN
-- AGENT_LANE: TERRA_BUILD | LUNA_CLOSURE | TEST_VALIDATION | GOVERNANCE | OWNER
-- LANE_STATE: ACTIVE | PARKED | COMPLETE | OWNER_BLOCKED | HISTORICAL
+- BPLUS_MODE: true | false
+- RUN_ID: <!-- YYYY-MM-DD-name -->
+- SCORECARD_PATH: <!-- docs/metrics/agent-runs/<RUN_ID>.json -->
+- AGENT_LANE: TERRA_BUILD | TERRA_RESERVE | LUNA_CLOSURE | TEST_VALIDATION | GOVERNANCE | OWNER
+- LANE_STATE: ACTIVE | READY_FOR_PROMOTION | PARKED | COMPLETE | OWNER_BLOCKED | HISTORICAL
 - ACTIVE_CANDIDATE: true | false
 - CLOSEABILITY_SCORE: 0 | 1 | 2 | 3 | 4 | 5
-- SELECTION_REASON: CLOSE_READY | DEPENDENCY_UNLOCKER | P0_RUNTIME | OWNER_DIRECTED | GOVERNANCE
-- REMAINING_AUTONOMOUS_STEPS: <!-- integer or concise list -->
+- SELECTION_REASON: CLOSE_READY | DEPENDENCY_UNLOCKER | P0_RUNTIME | P1_SOURCE_HARDENING | OWNER_DIRECTED | GOVERNANCE
+- REMAINING_AUTONOMOUS_STEPS: <!-- concise list -->
 - OWNER_OR_EXTERNAL_BLOCKER: none | <!-- exact blocker -->
-- CLOSURE_SWEEP_TARGET: <!-- #Issue / PR #number / EMPTY_WITH_SCAN -->
+- CLOSURE_SWEEP_TARGET: <!-- #Issue / PR #number / EMPTY_WITH_SCAN / REPORT:<path> -->
 - TEST_LANE_REQUIRED: true | false
-- WHY_NOT_CLOSER_CANDIDATE: none | <!-- required when an active Terra selection is not CLOSE_READY -->
+- RESERVE_BOUNDARY: none | <!-- mandatory for TERRA_RESERVE -->
+- WHY_NOT_CLOSER_CANDIDATE: none | <!-- mandatory for non-CLOSE_READY MAIN -->
 - REQUESTED_MODEL / ACTUAL_MODEL: <!-- requested=Terra; actual=unknown -->
 
 ## Scope
 
 - Primary Issue: #
-- What changed:
-- What is intentionally out of scope:
-- [ ] This PR has one clear Issue or tightly coupled scope.
-- [ ] It does not duplicate another active PR.
-- [ ] If `LANE_STATE=PARKED` or lifecycle state is `REBUILD_REQUIRED`, no agent, push, rerun, TEST dispatch or polling continues until Sol reactivates it.
+- Changed files / boundaries:
+- Intentionally out of scope:
+- [ ] One clear Issue or tightly coupled governance scope.
+- [ ] Does not duplicate another active implementation PR.
+- [ ] MAIN and RESERVE hot files do not overlap.
+- [ ] If RESERVE, work stops after one source-only atomic commit and no shared TEST/Audit.
+- [ ] If PARKED/HISTORICAL/OWNER_BLOCKED, no Agent/push/rerun/polling continues.
 
 ## Evidence
 
 - Base / exact head:
-- Changed files:
 - Targeted tests:
 - Typecheck / build:
-- Integration / E2E when required:
-- Preview / external evidence when required:
+- Integration / E2E, or POLICY_SKIP reason:
+- Preview / external evidence:
 - Unproven acceptance:
 
-## Safety / remaining gates
+## Completion Truth Gate
+
+<!-- A requested action is not a completed result. Fill these from live state only. -->
+
+- COMPLETION_CLAIM: IN_PROGRESS | AUDIT_READY | OWNER_BLOCKED | MERGE_REQUESTED_UNVERIFIED | VERIFIED_MERGED | VERIFIED_CLOSED
+- EXACT_HEAD_CI_STATUS: NOT_RUN | PENDING | FAILED | VERIFIED_GREEN
+- EXACT_HEAD_CI_RUN: none | <!-- workflow run URL / ID -->
+- MERGE_STATUS: NOT_REQUESTED | REQUESTED_UNVERIFIED | VERIFIED_NOT_MERGED | VERIFIED_MERGED
+- MERGE_COMMIT_SHA: none | <!-- live PR merge_commit_sha -->
+- MAIN_HEAD_VERIFIED: false | true
+- MAIN_HEAD_SHA: none | <!-- live default-branch head -->
+- MAIN_FILE_RE_READ: none | <!-- key path fetched with ref=main -->
+- VERIFIED_AT: none | <!-- ISO timestamp -->
+
+Do not change `MERGE_STATUS` to `VERIFIED_MERGED` until the PR is re-fetched after merge, the merge
+commit is reachable from main, and a key file has been re-read with `ref=main`.
+
+## Run metrics
+
+- Requested / actual model tasks:
+- Full CI count:
+- Invalid reruns:
+- Luna tasks / accepted:
+- Delivery exit:
+
+## Safety
 
 - [ ] No secret is included.
 - Production DDL / DML / deploy: NOT_RUN unless explicitly authorized
-- Real payment / customer notification: NOT_RUN unless explicitly authorized
-- Remaining acceptance / Owner gates:
+- Real payment / refund / customer notification: NOT_RUN unless explicitly authorized
+- Sol verdict:
