@@ -104,6 +104,19 @@ export function isMissingColumnError(error) {
 }
 
 /**
+ * Detect an optional compatibility column without weakening write errors.
+ * Fresh 0015 schemas do not have the historical plan slug; reconciled TEST
+ * schemas may still require it through a legacy unique constraint.
+ */
+async function hasColumn(admin, table, column) {
+  const { error } = await admin.from(table).select(column).limit(0);
+  if (!error) return true;
+  if (isMissingSchemaError(error) || isMissingColumnError(error)) return false;
+  console.error(`[seed] 檢查 ${table}.${column} 失敗：`, error);
+  throw error;
+}
+
+/**
  * upsert 一批 row 進某張表，容忍「表還沒建立」；其他錯誤原樣往外丟。
  * conflictKey：該表的主鍵欄位（預設 'id'；tenant_settings 等以 tenant_id 為
  * 主鍵的表要指定，否則 Postgres 會報 column "id" does not exist）。
@@ -129,9 +142,18 @@ async function safeUpsert(admin, table, rows, label, conflictKey = 'id') {
  * 0015. No schema error other than a known missing-column response is hidden.
  */
 async function safeUpsertTripPlans(admin, canonicalRows) {
-  const { error } = await admin.from('trip_plans').upsert(canonicalRows, { onConflict: 'id' });
+  const hasLegacySlug = await hasColumn(admin, 'trip_plans', 'slug');
+  const rows = hasLegacySlug
+    ? canonicalRows.map((row, index) => ({
+        ...row,
+        // Historical TEST keeps slug NOT NULL + unique per trip. Do not add
+        // this field to clean canonical installs where it does not exist.
+        slug: index === 0 ? 'standard-test-plan' : 'private-test-plan',
+      }))
+    : canonicalRows;
+  const { error } = await admin.from('trip_plans').upsert(rows, { onConflict: 'id' });
   if (!error) {
-    console.log(`[seed] trip_plans：已寫入 ${canonicalRows.length} 筆 canonical rows。`);
+    console.log(`[seed] trip_plans：已寫入 ${rows.length} 筆 canonical rows。`);
     return true;
   }
   if (!isMissingColumnError(error)) {

@@ -23,6 +23,8 @@ describe('seed schema error classification', () => {
     expect(source).toContain('price_per_person: 3000');
     expect(source).toContain('base_price: row.price_per_person');
     expect(source).toContain("slug: index === 0 ? 'standard-test-plan' : 'private-test-plan'");
+    expect(source).toContain("const hasLegacySlug = await hasColumn(admin, 'trip_plans', 'slug');");
+    expect(source).toMatch(/hasLegacySlug\s*\?\s*canonicalRows\.map/);
     expect(source).toContain('safeUpsertTripPlans');
   });
 
