@@ -1,0 +1,138 @@
+name: agent-completion-truth
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pull_request_number:
+        description: Optional merged PR number to re-verify
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: agent-completion-truth-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  verify-main-completion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified main state
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify merge claims against live GitHub state
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const truth = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/completion-truth.mjs',
+            )).href);
+
+            const { owner, repo } = context.repo;
+            const defaultBranch = context.payload.repository?.default_branch ?? 'main';
+            const branch = await github.rest.repos.getBranch({ owner, repo, branch: defaultBranch });
+            const defaultBranchHead = branch.data.commit.sha;
+            const requested = String(context.payload.inputs?.pull_request_number ?? '').trim();
+            let pullRequests = [];
+
+            if (requested) {
+              if (!/^\d+$/.test(requested) || Number(requested) < 1) {
+                core.setFailed('pull_request_number must be a positive integer');
+                return;
+              }
+              pullRequests = [(await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: Number(requested),
+              })).data];
+            } else {
+              pullRequests = await github.paginate(
+                github.rest.repos.listPullRequestsAssociatedWithCommit,
+                { owner, repo, commit_sha: context.payload.after, per_page: 100 },
+              );
+            }
+
+            const candidates = pullRequests.filter((pr) => pr.base?.ref === defaultBranch);
+            if (candidates.length === 0) {
+              await core.summary
+                .addHeading('Completion Truth Gate')
+                .addRaw(`No pull request associated with this ${defaultBranch} update. No merge claim was created.`)
+                .write();
+              return;
+            }
+
+            const marker = '<!-- agent-completion-truth -->';
+            const failures = [];
+            const rows = [[
+              { data: 'PR', header: true },
+              { data: 'Merged', header: true },
+              { data: 'Merge SHA', header: true },
+              { data: 'Main head', header: true },
+              { data: 'Reachability', header: true },
+              { data: 'Verified', header: true },
+            ]];
+
+            for (const pr of candidates) {
+              let compareStatus = null;
+              if (pr.merge_commit_sha) {
+                if (pr.merge_commit_sha === defaultBranchHead) {
+                  compareStatus = 'identical';
+                } else {
+                  try {
+                    const comparison = await github.rest.repos.compareCommitsWithBasehead({
+                      owner,
+                      repo,
+                      basehead: `${pr.merge_commit_sha}...${defaultBranchHead}`,
+                    });
+                    compareStatus = comparison.data.status;
+                  } catch (error) {
+                    compareStatus = `api_error_${error.status ?? 'unknown'}`;
+                  }
+                }
+              }
+
+              const result = truth.evaluateMergedPullRequest({
+                pullRequest: pr,
+                defaultBranchHead,
+                compareStatus,
+              });
+              const body = truth.formatCompletionTruth(result);
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: pr.number,
+                per_page: 100,
+              });
+              const previous = comments.find((comment) => comment.body?.includes(marker));
+              if (previous) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });
+              }
+
+              rows.push([
+                `#${pr.number}`,
+                String(Boolean(pr.merged_at)),
+                result.mergeCommitSha ?? 'unknown',
+                result.defaultBranchHead ?? 'unknown',
+                result.compareStatus ?? 'unknown',
+                String(result.verified),
+              ]);
+              if (!result.verified) failures.push(`#${pr.number}: ${result.errors.join('; ')}`);
+            }
+
+            await core.summary.addHeading('Completion Truth Gate').addTable(rows).write();
+            if (failures.length) core.setFailed(failures.join('\n'));

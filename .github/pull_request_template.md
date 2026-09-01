@@ -6,7 +6,7 @@ supersedes:
 
 ## Summary
 
-<!-- Explain the smallest product or governance outcome. -->
+<!-- Explain the smallest Product or governance outcome. -->
 
 ## B+ Agent lane metadata
 
@@ -48,6 +48,23 @@ supersedes:
 - Integration / E2E, or POLICY_SKIP reason:
 - Preview / external evidence:
 - Unproven acceptance:
+
+## Completion Truth Gate
+
+<!-- A requested action is not a completed result. Fill these from live state only. -->
+
+- COMPLETION_CLAIM: IN_PROGRESS | AUDIT_READY | OWNER_BLOCKED | MERGE_REQUESTED_UNVERIFIED | VERIFIED_MERGED | VERIFIED_CLOSED
+- EXACT_HEAD_CI_STATUS: NOT_RUN | PENDING | FAILED | VERIFIED_GREEN
+- EXACT_HEAD_CI_RUN: none | <!-- workflow run URL / ID -->
+- MERGE_STATUS: NOT_REQUESTED | REQUESTED_UNVERIFIED | VERIFIED_NOT_MERGED | VERIFIED_MERGED
+- MERGE_COMMIT_SHA: none | <!-- live PR merge_commit_sha -->
+- MAIN_HEAD_VERIFIED: false | true
+- MAIN_HEAD_SHA: none | <!-- live default-branch head -->
+- MAIN_FILE_RE_READ: none | <!-- key path fetched with ref=main -->
+- VERIFIED_AT: none | <!-- ISO timestamp -->
+
+Do not change `MERGE_STATUS` to `VERIFIED_MERGED` until the PR is re-fetched after merge, the merge
+commit is reachable from main, and a key file has been re-read with `ref=main`.
 
 ## Run metrics
 
