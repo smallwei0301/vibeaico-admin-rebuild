@@ -139,6 +139,10 @@ describe('Issue #15 dual reorder endpoints', () => {
       expect(body.data?.id).toBeTruthy();
       expect(typeof body.data?.sortOrder).toBe('number');
       expect(typeof body.data?.lineSortOrder).toBe('number');
+      expect(Number.isInteger(body.data?.sortOrder)).toBe(true);
+      expect(Number.isInteger(body.data?.lineSortOrder)).toBe(true);
+      expect(body.data?.sortOrder).toBeGreaterThanOrEqual(0);
+      expect(body.data?.lineSortOrder).toBeGreaterThanOrEqual(0);
       createdId = body.data!.id;
 
       const { data, error } = await admin
