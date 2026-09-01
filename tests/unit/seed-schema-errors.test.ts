@@ -33,6 +33,7 @@ describe('seed schema error classification', () => {
       source.indexOf("await safeUpsert(\n    admin,\n    'staff'"),
     );
     expect(servicesSeed.match(/sort_order:\s*\d+/g)).toEqual(['sort_order: 0', 'sort_order: 1']);
+    expect(servicesSeed.match(/line_sort_order:\s*\d+/g)).toEqual(['line_sort_order: 0', 'line_sort_order: 1']);
   });
 
   it('keeps both standard service rows in the same tenant scope', () => {

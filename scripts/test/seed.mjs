@@ -239,6 +239,7 @@ export async function runSeed(admin) {
         duration_minutes: 60,
         price: 800,
         sort_order: 0,
+        line_sort_order: 0,
       },
       {
         id: SHOP_A.serviceA2,
@@ -247,6 +248,7 @@ export async function runSeed(admin) {
         duration_minutes: 120,
         price: 2500,
         sort_order: 1,
+        line_sort_order: 1,
       },
     ],
     'services',
