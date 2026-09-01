@@ -10,5 +10,7 @@ describe('GUIDE bottom navigation (#66 Phase I/J)', () => {
     expect(source).toContain('break-words');
     expect(source).toContain('whitespace-normal');
     expect(source).not.toContain('truncate');
+    expect(source).toContain('guideNavigation.primaryLabel');
+    expect(source).not.toContain('GUIDE primary');
   });
 });

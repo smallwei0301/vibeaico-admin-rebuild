@@ -1,6 +1,7 @@
 import type { GuideMoreGroupKey, GuideParentKey } from '@/config/guide-navigation';
 
 export const guideNavigation = {
+  primaryLabel: '主要導覽',
   parentLabels: {
     home: '首頁',
     departures: '團次',
@@ -161,6 +162,7 @@ export const guideNavigation = {
     },
     detail: {
       title: '旅客詳情',
+      lineDisplayName: (name: string) => `LINE：${name}`,
       close: '關閉旅客詳情',
       orders: '行程紀錄',
       noOrders: '目前沒有可顯示的行程紀錄。',

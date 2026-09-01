@@ -99,7 +99,7 @@ function TravelerDetail({
     >
       <GuidePersonRow
         name={row.customer.name}
-        subtitle={row.customer.lineDisplayName ? `LINE：${row.customer.lineDisplayName}` : undefined}
+        subtitle={row.customer.lineDisplayName ? navigation.travelers.detail.lineDisplayName(row.customer.lineDisplayName) : undefined}
         trailing={<GuideStatusPill tone={status.tone}>{status.label}</GuideStatusPill>}
       />
 

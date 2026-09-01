@@ -1,6 +1,7 @@
 import * as React from 'react';
 
 import { GUIDE_UI_CLASSES } from '@/config/guide-ui';
+import { guideNavigation } from '@/i18n/zh-TW/pages/guide-navigation';
 import { cn } from '@/lib/utils';
 
 export type GuideBottomNavItem = {
@@ -22,7 +23,7 @@ export type GuideBottomNavProps = React.HTMLAttributes<HTMLElement> & {
 export function GuideBottomNav({ items, className, ...props }: GuideBottomNavProps) {
   return (
     <nav
-      aria-label="GUIDE primary"
+      aria-label={guideNavigation.primaryLabel}
       className={cn(
         GUIDE_UI_CLASSES.navShell,
         'fixed inset-x-0 bottom-0 z-40 border-t backdrop-blur pb-[max(env(safe-area-inset-bottom),8px)]',

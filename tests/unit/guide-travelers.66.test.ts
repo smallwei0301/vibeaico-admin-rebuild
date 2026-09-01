@@ -215,6 +215,8 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(source).toContain('selectedDetailRef.current?.focus()');
     expect(source).toContain('restoreFocusId.current');
     expect(source).toContain('aria-controls={isSelected ? detailId : undefined}');
+    expect(source).toContain('navigation.travelers.detail.lineDisplayName');
+    expect(source).not.toContain('LINE：');
   });
   it('preserves canonical order status instead of deriving completion from date', () => {
     const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
