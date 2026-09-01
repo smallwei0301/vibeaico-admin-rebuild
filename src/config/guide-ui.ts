@@ -107,6 +107,11 @@ export const GUIDE_UI_CLASSES = Object.freeze({
   touchTarget: 'min-h-[44px] min-w-[44px]',
   sectionGap: 'space-y-5',
   rowGap: 'gap-2.5',
+  messageOutgoing: 'bg-[#173F35] text-white',
+  messageIncoming: 'bg-[#FAF8F3] text-[#1D2A26]',
+  textInput: 'min-h-[48px] rounded-xl border border-[#DCE5E0] bg-white px-3 py-2 text-[16px] leading-normal',
+  searchField: 'border border-[#DCE5E0] bg-white',
+  dangerText: 'text-[#B42318]',
 } as const);
 
 export type GuideStatusTone = 'neutral' | 'positive' | 'attention' | 'danger' | 'info';

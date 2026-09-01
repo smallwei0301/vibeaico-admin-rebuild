@@ -248,10 +248,10 @@ export function GuideMessagesView() {
                   >
                     <div
                       className={cn(
-                        'max-w-[90%] rounded-[18px] px-4 py-3 text-[16px] leading-normal',
+                        'max-w-[90%] rounded-[18px] px-4 py-3', GUIDE_UI_CLASSES.body,
                         message.from === 'SHOP'
-                          ? 'bg-[#173F35] text-white'
-                          : 'bg-[#FAF8F3] text-[#1D2A26]',
+                          ? GUIDE_UI_CLASSES.messageOutgoing
+                          : GUIDE_UI_CLASSES.messageIncoming,
                       )}
                     >
                       {message.type === 'IMAGE' ? (
@@ -286,7 +286,7 @@ export function GuideMessagesView() {
               <textarea
                 id="guide-message-draft"
                 rows={2}
-                className={cn('min-h-[48px] min-w-0 flex-1 resize-y rounded-xl border border-[#DCE5E0] bg-white px-3 py-2 text-[16px] leading-normal', GUIDE_UI_CLASSES.focusRing)}
+                className={cn(GUIDE_UI_CLASSES.textInput, 'min-w-0 flex-1 resize-y', GUIDE_UI_CLASSES.focusRing)}
                 placeholder={t.composer.placeholder}
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
@@ -309,7 +309,7 @@ export function GuideMessagesView() {
             </div>
             <div className="mt-2 flex flex-wrap items-start justify-between gap-2">
               <p className={GUIDE_UI_CLASSES.secondary}>{t.composer.hint}</p>
-              {sendError ? <p className="text-[14px] leading-normal text-[#B42318]" role="alert">{t.composer.sendFailed}</p> : null}
+              {sendError ? <p className={cn(GUIDE_UI_CLASSES.secondary, GUIDE_UI_CLASSES.dangerText)} role="alert">{t.composer.sendFailed}</p> : null}
             </div>
           </form>
         </>
@@ -344,11 +344,11 @@ export function GuideMessagesView() {
           <GuideSectionCard title={t.search.title}>
             <label htmlFor="guide-message-search" className="sr-only">{t.search.label}</label>
             <div className="relative">
-              <Search size={20} aria-hidden className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#63726C]" />
+              <Search size={20} aria-hidden className={cn('pointer-events-none absolute left-3 top-1/2 -translate-y-1/2', GUIDE_UI_CLASSES.mutedIcon)} />
               <input
                 id="guide-message-search"
                 type="search"
-                className={cn(GUIDE_UI_CLASSES.searchInput, GUIDE_UI_CLASSES.focusRing, 'border border-[#DCE5E0] bg-white')}
+                className={cn(GUIDE_UI_CLASSES.searchInput, GUIDE_UI_CLASSES.searchField, GUIDE_UI_CLASSES.focusRing)}
                 placeholder={t.search.placeholder}
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
@@ -356,7 +356,7 @@ export function GuideMessagesView() {
               {keyword ? (
                 <button
                   type="button"
-                  className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, 'absolute right-1 top-1/2 -translate-y-1/2 rounded-xl text-[22px] leading-none text-[#63726C]')}
+                  className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.iconButton, GUIDE_UI_CLASSES.focusRing, 'absolute right-1 top-1/2 -translate-y-1/2 text-2xl leading-none')}
                   aria-label={t.search.clear}
                   onClick={() => setKeyword('')}
                 >
@@ -382,7 +382,7 @@ export function GuideMessagesView() {
                     onClick={() => setFilter(value)}
                   >
                     {value === 'ALL' ? t.filters.all : t.filters.waiting}
-                    <span className="ml-1 text-[14px]">({count})</span>
+                    <span className={cn(GUIDE_UI_CLASSES.secondary, 'ml-1')}>({count})</span>
                   </button>
                 );
               })}
