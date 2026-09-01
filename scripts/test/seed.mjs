@@ -143,6 +143,7 @@ async function safeUpsert(admin, table, rows, label, conflictKey = 'id') {
  */
 async function safeUpsertTripPlans(admin, canonicalRows) {
   const hasLegacySlug = await hasColumn(admin, 'trip_plans', 'slug');
+  const hasMinToDepart = await hasColumn(admin, 'trip_plans', 'min_to_depart');
   const rows = hasLegacySlug
     ? canonicalRows.map((row, index) => ({
         ...row,
@@ -151,9 +152,12 @@ async function safeUpsertTripPlans(admin, canonicalRows) {
         slug: index === 0 ? 'standard-test-plan' : 'private-test-plan',
       }))
     : canonicalRows;
-  const { error } = await admin.from('trip_plans').upsert(rows, { onConflict: 'id' });
+  const rowsWithFormation = hasMinToDepart
+    ? rows.map((row) => ({ ...row, min_to_depart: 1 }))
+    : rows;
+  const { error } = await admin.from('trip_plans').upsert(rowsWithFormation, { onConflict: 'id' });
   if (!error) {
-    console.log(`[seed] trip_plans：已寫入 ${rows.length} 筆 canonical rows。`);
+    console.log(`[seed] trip_plans：已寫入 ${rowsWithFormation.length} 筆 canonical rows。`);
     return true;
   }
   if (!isMissingColumnError(error)) {
@@ -184,8 +188,11 @@ async function safeUpsertTripPlans(admin, canonicalRows) {
     active: row.active ?? true,
     sort_order: row.sort_order ?? index,
   }));
+  const legacyRowsWithFormation = hasMinToDepart
+    ? legacyRows.map((row) => ({ ...row, min_to_depart: 1 }))
+    : legacyRows;
   console.warn('[seed] trip_plans canonical columns尚未進入 TEST；以 legacy aliases 寫入，待 0015 reconciliation backfill。');
-  return safeUpsert(admin, 'trip_plans', legacyRows, 'trip_plans (legacy compatibility)');
+  return safeUpsert(admin, 'trip_plans', legacyRowsWithFormation, 'trip_plans (legacy compatibility)');
 }
 
 /**
@@ -235,6 +242,10 @@ export async function runSeed(admin) {
   const seedNowMs = seedNow.getTime();
   const hourMs = 60 * 60 * 1000;
   const oneDayMs = 24 * hourMs;
+  // #41's default is seven days before departure. This one-day-ahead value is
+  // valid for every standard departure below and avoids a runner-time race;
+  // it is only sent when the historical formation column exists.
+  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
 
   // ---- 1. Auth users（通常不受 Phase 1 影響，auth.users 是 Supabase 內建表）----
   const ownerAId = await ensureAuthUser(admin, SHOP_A.owner.email, SHOP_A.owner.password);
@@ -480,10 +491,12 @@ export async function runSeed(admin) {
     throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   }
 
-  const tripDeparturesSeeded = await safeUpsert(
-    admin,
-    'trip_departures',
-    [
+  // The merged TEST database may have the later #41 formation columns and
+  // trigger, while a clean #8-A install does not. Probe each optional column
+  // before sending it; never weaken or bypass the database deadline contract.
+  const hasMinToDepartSnapshot = await hasColumn(admin, 'trip_departures', 'min_to_depart_snapshot');
+  const hasFormationDeadline = await hasColumn(admin, 'trip_departures', 'formation_deadline_at');
+  const tripDepartureRows = [
       {
         id: TRIP_A.departure1,
         tenant_id: TRIP_A.tenantId,
@@ -512,7 +525,16 @@ export async function runSeed(admin) {
         capacity: 2,
         seats_booked: 0,
       },
-    ],
+    ].map((row) => ({
+      ...row,
+      ...(hasMinToDepartSnapshot ? { min_to_depart_snapshot: 1 } : {}),
+      ...(hasFormationDeadline ? { formation_deadline_at: formationDeadlineAt } : {}),
+    }));
+
+  const tripDeparturesSeeded = await safeUpsert(
+    admin,
+    'trip_departures',
+    tripDepartureRows,
     'trip_departures',
   );
   if (!tripDeparturesSeeded) {
