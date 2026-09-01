@@ -150,7 +150,8 @@ async function ensureAuthUser(admin, email, password) {
 export async function runSeed(admin) {
   console.log('[seed] 開始建立標準測試種子（12 分冊 §1.3）…');
 
-  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次日期互相矛盾。
+  // 所有相對時間都以同一個起點推導，避免種子跨過午夜時讓團次與成團期限
+  // 落在互相矛盾的日期。formation_deadline_at 也必須在觸發器計算的期限內。
   const seedNow = new Date();
   const seedNowMs = seedNow.getTime();
   const hourMs = 60 * 60 * 1000;
@@ -376,11 +377,10 @@ export async function runSeed(admin) {
         name: '標準團（測試）',
         // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
         // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
-        // 成團門檻欄位屬 #41 的後續 schema；基礎 seed 不硬寫，讓有該 schema
-        // 的環境使用資料庫 default／trigger，沒有該 schema 的 local baseline 也能重建。
         base_price: 3000,
         price_type: 'PER_PERSON',
         max_participants: 10,
+        min_to_depart: 1,
       },
       {
         id: TRIP_A.planA2,
@@ -391,11 +391,13 @@ export async function runSeed(admin) {
         base_price: 5000,
         price_type: 'PER_PERSON',
         max_participants: 10,
+        min_to_depart: 1,
       },
     ],
     'trip_plans',
   );
 
+  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
   if (!tripPlansSeeded) {
     throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   }
@@ -412,6 +414,8 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 7 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
       {
         id: TRIP_A.departure2,
@@ -421,6 +425,8 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 14 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
       {
         // capacity=2：專供 12 分冊 §5 並發不超賣測試
@@ -431,6 +437,8 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 21 * oneDayMs).toISOString().slice(0, 10),
         capacity: 2,
         seats_booked: 0,
+        min_to_depart_snapshot: 1,
+        formation_deadline_at: formationDeadlineAt,
       },
     ],
     'trip_departures',
