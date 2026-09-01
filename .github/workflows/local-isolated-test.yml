@@ -1,0 +1,235 @@
+name: local-isolated-test
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'supabase/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/local-isolated-test.yml'
+  workflow_dispatch:
+    inputs:
+      test_profile:
+        description: Local isolated TEST profile
+        required: true
+        type: choice
+        options:
+          - LOCAL_ISOLATED
+          - LOCAL_ISOLATED_CANARY
+      expected_head:
+        description: Exact branch SHA to validate
+        required: true
+        type: string
+      final_canonical_required:
+        description: Local evidence never replaces the remote canonical TEST
+        required: true
+        type: choice
+        options:
+          - 'true'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: local-isolated-test-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    outputs:
+      run_local: ${{ steps.policy.outputs.run_local }}
+      profile: ${{ steps.policy.outputs.profile }}
+      slots: ${{ steps.policy.outputs.slots }}
+      reason: ${{ steps.policy.outputs.reason }}
+      exact_head: ${{ steps.policy.outputs.exact_head }}
+      final_canonical_required: ${{ steps.policy.outputs.final_canonical_required }}
+      canary_barrier_epoch: ${{ steps.policy.outputs.canary_barrier_epoch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: policy
+        run: node scripts/ci/local-isolated-test-policy.mjs
+      - name: Local TEST routing summary
+        env:
+          PROFILE: ${{ steps.policy.outputs.profile }}
+          RUN_LOCAL: ${{ steps.policy.outputs.run_local }}
+          REASON: ${{ steps.policy.outputs.reason }}
+          EXACT_HEAD: ${{ steps.policy.outputs.exact_head }}
+          FINAL_CANONICAL_REQUIRED: ${{ steps.policy.outputs.final_canonical_required }}
+          CANARY_BARRIER_EPOCH: ${{ steps.policy.outputs.canary_barrier_epoch }}
+        run: |
+          {
+            echo '## Local isolated TEST routing'
+            echo ''
+            echo "- profile: ${PROFILE}"
+            echo "- run local: ${RUN_LOCAL}"
+            echo "- reason: ${REASON}"
+            echo "- exact head: ${EXACT_HEAD}"
+            echo "- final remote canonical required: ${FINAL_CANONICAL_REQUIRED}"
+            echo "- canary barrier epoch: ${CANARY_BARRIER_EPOCH:-not-applicable}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  local-isolated:
+    name: local-isolated-${{ matrix.slot }}
+    needs: classify
+    if: ${{ needs.classify.outputs.run_local == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        slot: ${{ fromJSON(needs.classify.outputs.slots) }}
+    env:
+      CI: 'true'
+      TEST_PROFILE: ${{ needs.classify.outputs.profile }}
+      EXACT_HEAD: ${{ needs.classify.outputs.exact_head }}
+      CANARY_BARRIER_EPOCH: ${{ needs.classify.outputs.canary_barrier_epoch }}
+      TEST_ENV_ID: local-pr-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.slot }}
+      LOCAL_PROJECT_ID: vibeaico-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.slot }}
+      SETTINGS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      AUTH_SECRET: local-isolated-auth-secret-0123456789abcdef
+      TEST_CRON_SECRET: local-isolated-cron-secret
+      LINE_API_BASE: http://localhost:4123
+      LINE_DATA_API_BASE: http://localhost:4123
+      RESEND_BASE_URL: http://localhost:4124
+      RESEND_API_KEY: re_test_local_isolated
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.classify.outputs.exact_head }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+      - name: Install application dependencies
+        run: npm ci
+      - name: Give this runner a unique local Supabase identity
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path('supabase/config.toml')
+          source = path.read_text(encoding='utf-8')
+          source = source.replace(
+              'project_id = "vibeaico-admin-rebuild-ci"',
+              f'project_id = "{os.environ["LOCAL_PROJECT_ID"]}"',
+              1,
+          )
+          path.write_text(source, encoding='utf-8')
+          PY
+      - name: Start a fresh local Supabase stack and apply migrations
+        run: supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
+      - name: Export local-only TEST credentials
+        run: |
+          supabase status -o env > "$RUNNER_TEMP/supabase-local.env"
+          python - <<'PY'
+          import os
+          import shlex
+          from pathlib import Path
+
+          source = Path(os.environ['RUNNER_TEMP']) / 'supabase-local.env'
+          values = {}
+          for raw in source.read_text(encoding='utf-8').splitlines():
+              line = raw.strip()
+              if not line or '=' not in line:
+                  continue
+              key, value = line.split('=', 1)
+              parts = shlex.split(value)
+              values[key] = parts[0] if parts else ''
+
+          mapping = {
+              'API_URL': 'TEST_SUPABASE_URL',
+              'ANON_KEY': 'TEST_SUPABASE_ANON_KEY',
+              'SERVICE_ROLE_KEY': 'TEST_SUPABASE_SERVICE_ROLE_KEY',
+          }
+          missing = [key for key in mapping if not values.get(key)]
+          if missing:
+              raise SystemExit(f'missing local Supabase values: {missing}')
+
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              for source_key, target_key in mapping.items():
+                  output.write(f'{target_key}={values[source_key]}\n')
+          PY
+      - name: Prove the TEST target is local
+        run: |
+          node - <<'NODE'
+          const url = new URL(process.env.TEST_SUPABASE_URL);
+          if (!['127.0.0.1', 'localhost'].includes(url.hostname)) {
+            throw new Error(`Local isolated TEST URL is not local: ${url.hostname}`);
+          }
+          console.log(`[local-test] ${process.env.TEST_ENV_ID} uses ${url.hostname}:${url.port}`);
+          NODE
+      - name: Prove two canary slots do not share one database
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED_CANARY' }}
+        run: node scripts/test/local-isolation-canary.mjs
+      - name: Run integration tests on the isolated database
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
+        run: npm run test:integration
+      - name: Install Chromium for isolated E2E
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
+        run: npx playwright install --with-deps chromium
+      - name: Run E2E on the isolated database
+        if: ${{ needs.classify.outputs.profile == 'LOCAL_ISOLATED' }}
+        run: npm run test:e2e
+      - name: Record isolated result
+        if: ${{ success() }}
+        env:
+          MATRIX_SLOT: ${{ matrix.slot }}
+          PROFILE: ${{ needs.classify.outputs.profile }}
+        run: |
+          if [ "$PROFILE" = 'LOCAL_ISOLATED_CANARY' ]; then
+            RESULT='ISOLATION_CANARY_GREEN'
+          else
+            RESULT='ISOLATED_GREEN'
+          fi
+          {
+            echo "## ${RESULT} — slot ${MATRIX_SLOT}"
+            echo ''
+            echo "- TEST_ENV_ID: ${TEST_ENV_ID}"
+            echo "- exact head: ${EXACT_HEAD}"
+            echo "- profile: ${TEST_PROFILE}"
+            echo '- database: fresh local Supabase; no remote TEST secret used'
+            echo '- final status: local evidence only; remote canonical TEST is still required'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Destroy the local Supabase stack
+        if: ${{ always() }}
+        run: |
+          if ! command -v supabase >/dev/null 2>&1; then
+            echo 'LOCAL_CLEANUP_FAILED: Supabase CLI is unavailable.' >&2
+            exit 1
+          fi
+          supabase stop --no-backup
+          echo "LOCAL_CLEANUP_VERIFIED: ${TEST_ENV_ID}" >> "$GITHUB_STEP_SUMMARY"
+
+  local-policy-skip:
+    needs: classify
+    if: ${{ always() && needs.classify.result == 'success' && needs.classify.outputs.run_local != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record policy skip
+        env:
+          PROFILE: ${{ needs.classify.outputs.profile }}
+          REASON: ${{ needs.classify.outputs.reason }}
+        run: |
+          echo "POLICY_SKIP: TEST_PROFILE=${PROFILE}; reason=${REASON}"
+          echo "- local isolated TEST skipped: ${REASON}" >> "$GITHUB_STEP_SUMMARY"
