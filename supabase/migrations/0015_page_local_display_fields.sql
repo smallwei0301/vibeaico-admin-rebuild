@@ -42,6 +42,7 @@ end;
 $$;
 
 revoke all on function public.set_membership_level_default() from public;
+revoke execute on function public.set_membership_level_default() from anon, authenticated;
 
 drop trigger if exists membership_levels_default_trigger on membership_levels;
 create trigger membership_levels_default_trigger

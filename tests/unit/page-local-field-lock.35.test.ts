@@ -103,6 +103,7 @@ describe('Issue #35：migration 只涵蓋本 bounded slice', () => {
     expect(source).toContain('is_default');
     expect(source).toContain('u_membership_levels_default');
     expect(source).toContain('set_membership_level_default');
+    expect(source).toMatch(/revoke\s+execute\s+on\s+function\s+public\.set_membership_level_default\(\)\s+from\s+anon,\s*authenticated/i);
     expect(source).not.toContain('bookings');
   });
 });
