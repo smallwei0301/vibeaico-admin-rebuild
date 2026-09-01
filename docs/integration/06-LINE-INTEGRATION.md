@@ -203,7 +203,7 @@ LINE image bucket 的用途／公開性／格式／租戶路徑／生命週期�
 |---|---|---|---|---|
 | `richmenu-assets` | public；JPEG/PNG；1 MB | `{tenantId}/…` | Rich Menu 底圖，發布時整張送給 LINE，沒有 image-message preview | 不重用：格式上限、引用模型與刪除時機不同 |
 | `chat-images` | public；JPEG/PNG；原圖 5 MB，另產 ≤1 MB preview | `{tenantId}/…` | 聊天歷史訊息的附件需隨對話保留 | 不重用：刪 keyword reply 不可連帶破壞聊天歷史 |
-| `keyword-reply-images` | **public**；JPEG/PNG；原圖 5 MB，先產 ≤1 MB preview 再上傳兩個物件 | `{tenantId}/{uuid}.jpg` 或 `.png` | reply 替換／移除／刪除或取消未儲存選圖時清理；失敗進可重試 queue | 採專用 bucket；public 是 LINE 拉圖必要條件，URL 即讀取權限 |
+| `keyword-reply-images` | **public**；JPEG/PNG；原圖 5 MB，先產 ≤1 MB preview 再上傳兩個物件 | `{tenantId}/{uuid}.jpg` 或 `.png` | 上傳前先把原圖／preview path 登記進 `keyword_reply_image_cleanup` durable ledger；reply 替換／移除／刪除或取消未儲存選圖時清理；失敗留在可重試 queue | 採專用 bucket；public 是 LINE 拉圖必要條件，URL 即讀取權限 |
 
 public bucket 無法承諾「知道 URL 的其他 tenant 也讀不到」；隔離邊界是 authenticated upload
 policy 的 tenant 首段，以及 keyword reply API 對 bucket、tenant path、可信 origin、原圖／preview

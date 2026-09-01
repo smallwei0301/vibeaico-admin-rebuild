@@ -58,4 +58,12 @@ describe('Issue #50 source wiring', () => {
     expect(discard).toContain('removeUnreferencedKeywordReplyImage');
     expect(images).toContain('await withKeywordReplyImagePathsLock({');
   });
+
+  it('keeps disable-only PUT and DELETE available for post-subscription cleanup', () => {
+    const update = read('../../src/app/api/settings/line/keyword-replies/[id]/route.ts');
+    expect(update).toContain('keywordReplyUpdateRequiresFeature');
+    expect(update).toContain('if (keywordReplyUpdateRequiresFeature(b))');
+    const deleteHandler = update.slice(update.indexOf('export const DELETE'));
+    expect(deleteHandler).not.toContain('requireFeature');
+  });
 });

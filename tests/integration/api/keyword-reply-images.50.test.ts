@@ -99,6 +99,24 @@ async function createImageReply(ref: ImageRef, suffix: string): Promise<string> 
   return body.data!.id;
 }
 
+async function removeKeywordReplyFeature(): Promise<void> {
+  const { error } = await admin.from('feature_subscriptions').delete()
+    .eq('tenant_id', SHOP_A.id).eq('code', 'KEYWORD_REPLY');
+  expect(error).toBeNull();
+}
+
+async function restoreKeywordReplyFeature(): Promise<void> {
+  const { error } = await admin.from('feature_subscriptions').upsert({
+    tenant_id: SHOP_A.id,
+    code: 'KEYWORD_REPLY',
+    active: true,
+    expires_at: null,
+    source: 'GRANTED',
+    cancelled_at: null,
+  }, { onConflict: 'tenant_id,code' });
+  expect(error).toBeNull();
+}
+
 async function webhookFor(keyword: string): Promise<void> {
   mock.reset();
   const raw = JSON.stringify({
@@ -196,15 +214,65 @@ describe('Issue #50 keyword reply image lifecycle', () => {
     pathsToRemove.delete(ref.previewPath);
   });
 
-
-  it('keeps a fresh abandoned upload queued during its grace period', async () => {
+  it('keeps disable/delete available after KEYWORD_REPLY ends, but gates active mutations', async () => {
     const ref = await upload();
-    const { count, error } = await admin.from('keyword_reply_image_cleanup')
-      .select('path', { count: 'exact', head: true })
+    const id = await createImageReply(ref, 'direction-gate');
+    await removeKeywordReplyFeature();
+    try {
+      const disabled = await ownerA.put(`/api/settings/line/keyword-replies/${id}`, { active: false });
+      expect(disabled.status).toBe(200);
+
+      const reenabled = await ownerA.put(`/api/settings/line/keyword-replies/${id}`, { active: true });
+      expect(reenabled.status).toBe(403);
+      expect((await reenabled.json()).code).toBe('FEAT_001');
+
+      const contentChange = await ownerA.put(`/api/settings/line/keyword-replies/${id}`, {
+        active: false,
+        content: { text: '不應在退訂後改寫', matchType: 'EXACT', actionType: 'REPLY_CONTENT' },
+      });
+      expect(contentChange.status).toBe(403);
+      expect((await contentChange.json()).code).toBe('FEAT_001');
+
+      const create = await ownerA.post('/api/settings/line/keyword-replies', {
+        keywords: [`${PREFIX}-blocked-create`],
+        replyType: 'TEXT',
+        content: { text: 'blocked' },
+        active: true,
+      });
+      expect(create.status).toBe(403);
+      expect((await create.json()).code).toBe('FEAT_001');
+
+      const form = new FormData();
+      form.append('file', await imageFile('image/png'));
+      const uploadBlocked = await ownerA.fetch('/api/settings/line/keyword-replies/image', {
+        method: 'POST',
+        body: form,
+      });
+      expect(uploadBlocked.status).toBe(403);
+      expect((await uploadBlocked.json()).code).toBe('FEAT_001');
+
+      const deleted = await ownerA.delete(`/api/settings/line/keyword-replies/${id}`);
+      expect(deleted.status).toBe(200);
+      expect((await deleted.json()).data).toMatchObject({ deleted: true });
+      await expectObjectMissing(ref.path);
+      await expectObjectMissing(ref.previewPath);
+      pathsToRemove.delete(ref.path);
+      pathsToRemove.delete(ref.previewPath);
+    } finally {
+      await restoreKeywordReplyFeature();
+    }
+  });
+
+
+  it('keeps a fresh abandoned upload in the pre-registered cleanup ledger during its grace period', async () => {
+    const ref = await upload();
+    const { data: rows, error } = await admin.from('keyword_reply_image_cleanup')
+      .select('path, last_error')
       .eq('tenant_id', SHOP_A.id)
       .in('path', [ref.path, ref.previewPath]);
     expect(error).toBeNull();
-    expect(count).toBe(2);
+    expect(rows).toHaveLength(2);
+    expect(rows?.every((row) => row.last_error === 'awaiting keyword reply persistence')).toBe(true);
 
     const cron = await fetch(`${BASE_URL}/api/cron/keyword-reply-image-cleanup`, {
       headers: { authorization: `Bearer ${process.env.TEST_CRON_SECRET}` },

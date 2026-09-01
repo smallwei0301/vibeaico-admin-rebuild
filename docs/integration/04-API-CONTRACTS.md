@@ -227,7 +227,7 @@ export const POST = handle(async (_req, { params }) => {
 | GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | API route 已存在；目前沒有 `DELETE :id` route；publish/pause/resume/end 僅更新活動狀態（目前不代表 LINE 推播），頁面接線與刪除仍屬 issue #7，見 14 分冊 §1 A-1 |
 | GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | `keyword_replies` CRUD。`IMAGE` 寫入須帶 `content.imageStorageRef={bucket,path,url,previewPath,previewUrl}`；伺服器固定只收 `keyword-reply-images`、驗證 `{tenantId}/{uuid}.{ext}` 路徑、可信 Supabase HTTPS public URL，以及原圖／preview 兩個物件確實存在，不能只信前端送來的 URL。GET 對新版 ref 重驗物件；既有只有 `imageUrl` 的 legacy row 保留唯讀／停用相容，下次換圖才升級，不做猜測式 backfill |
 | POST `/api/settings/line/keyword-replies/image` | multipart `file`；只接受 JPEG/PNG、≤5MB，伺服器產生本租戶 `{tenantId}/{uuid}.{ext}` 原圖與同格式 ≤1MB `.preview`，回完整 `storageRef`。這是 keyword bucket 的唯一 upload/confirm seam；不可由 client 自行提交 URL |
-| DELETE `/api/settings/line/keyword-replies/image` | 取消尚未儲存的選圖。只接受本租戶且 URL/path/bucket 一致的完整 storage ref；若仍被任一 keyword reply 引用則不刪。替換／移除／刪除 reply 亦採「DB 先解除引用，再刪原圖＋preview」；Storage 暫時失敗寫入 `keyword_reply_image_cleanup`，由受 `CRON_SECRET` 保護的每日工作重試，重試前再次確認沒有活引用 |
+| DELETE `/api/settings/line/keyword-replies/image` | 取消尚未儲存的選圖。只接受本租戶且 URL/path/bucket 一致的完整 storage ref；若仍被任一 keyword reply 引用則不刪。替換／移除／刪除 reply 亦採「DB 先解除引用，再刪原圖＋preview」；原圖／preview 上傳前先把兩個 path 登記進 `keyword_reply_image_cleanup` durable ledger，登記失敗即 fail closed、不碰 Storage。Storage 暫時失敗時保留 ledger row，由受 `CRON_SECRET` 保護的每日工作重試，重試前再次確認沒有活引用 |
 | GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
 | GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |
 | GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新。支援 `?after=<messageId>` → 只回該筆之後的新訊息（輪詢用） |

@@ -111,10 +111,15 @@ describe('Issue #50 keyword-reply image storage seam', () => {
       create: { width: 2, height: 2, channels: 4, background: '#22c55e' },
     }).png().toBuffer();
     const uploads: { path: string; bytes: Buffer; contentType: string }[] = [];
-    const queue = vi.fn().mockResolvedValue({ error: null });
+    const events: string[] = [];
+    const queue = vi.fn(async () => {
+      events.push('cleanup-ledger');
+      return { error: null };
+    });
     const storage = {
       from: vi.fn(() => ({
         upload: vi.fn(async (path: string, bytes: Buffer, options: { contentType: string }) => {
+          events.push(`upload:${path}`);
           uploads.push({ path, bytes, contentType: options.contentType });
           return { error: null };
         }),
@@ -132,6 +137,7 @@ describe('Issue #50 keyword-reply image storage seam', () => {
     });
 
     expect(result.storageRef).toMatchObject({ bucket: KEYWORD_REPLY_IMAGES_BUCKET, url: result.url });
+    expect(events[0]).toBe('cleanup-ledger');
     expect(result.path).toMatch(new RegExp(`^${TENANT_A}/[0-9a-f-]{36}\\.png$`));
     expect(result.previewPath).toBe(previewPathFor(result.path));
     expect(uploads).toHaveLength(2);
@@ -152,7 +158,11 @@ describe('Issue #50 keyword-reply image storage seam', () => {
       create: { width: 2, height: 2, channels: 3, background: '#f97316' },
     }).jpeg().toBuffer();
     let uploadCount = 0;
+    const queue = vi.fn().mockResolvedValue({ error: null });
     const remove = vi.fn().mockResolvedValue({ error: null });
+    const clear = { error: null, eq: vi.fn(), in: vi.fn() };
+    clear.eq.mockReturnValue(clear);
+    clear.in.mockResolvedValue({ error: null });
     const storage = {
       from: vi.fn(() => ({
         upload: vi.fn(async () => {
@@ -169,11 +179,74 @@ describe('Issue #50 keyword-reply image storage seam', () => {
     await expect(uploadKeywordReplyImage({
       tenantId: TENANT_A,
       file: new File([jpeg], 'orange.jpg', { type: 'image/jpeg' }),
-      admin: { storage } as never,
+      admin: {
+        storage,
+        from: vi.fn(() => ({ upsert: queue, delete: vi.fn(() => clear) })),
+      } as never,
     })).rejects.toThrow('preview unavailable');
     expect(remove).toHaveBeenCalledWith([
       expect.stringMatching(new RegExp(`^${TENANT_A}/[0-9a-f-]{36}\\.jpg$`)),
       expect.stringMatching(new RegExp(`^${TENANT_A}/[0-9a-f-]{36}\\.preview\\.jpg$`)),
+    ]);
+  });
+
+  it('fails closed before Storage when the durable cleanup ledger cannot be registered', async () => {
+    const jpeg = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: '#f97316' },
+    }).jpeg().toBuffer();
+    const ledgerError = new Error('cleanup ledger unavailable');
+    const storageFrom = vi.fn();
+    const upsert = vi.fn().mockResolvedValue({ error: ledgerError });
+
+    await expect(uploadKeywordReplyImage({
+      tenantId: TENANT_A,
+      file: new File([jpeg], 'orange.jpg', { type: 'image/jpeg' }),
+      admin: {
+        from: vi.fn(() => ({ upsert })),
+        storage: { from: storageFrom },
+      } as never,
+    })).rejects.toThrow('cleanup ledger unavailable');
+    expect(upsert).toHaveBeenCalledOnce();
+    expect(storageFrom).not.toHaveBeenCalled();
+  });
+
+  it('keeps the pre-registered ledger when preview upload and synchronous rollback both fail', async () => {
+    const jpeg = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: '#f97316' },
+    }).jpeg().toBuffer();
+    let uploadCount = 0;
+    const ledgerRows: { tenant_id: string; bucket: string; path: string; last_error: string }[] = [];
+    const upsert = vi.fn(async (rows: typeof ledgerRows) => {
+      ledgerRows.push(...rows);
+      return { error: null };
+    });
+    const remove = vi.fn().mockResolvedValue({ error: new Error('rollback unavailable') });
+    const storage = {
+      from: vi.fn(() => ({
+        upload: vi.fn(async () => {
+          uploadCount += 1;
+          return uploadCount === 2 ? { error: new Error('preview unavailable') } : { error: null };
+        }),
+        remove,
+      })),
+    };
+
+    await expect(uploadKeywordReplyImage({
+      tenantId: TENANT_A,
+      file: new File([jpeg], 'orange.jpg', { type: 'image/jpeg' }),
+      admin: {
+        from: vi.fn(() => ({ upsert })),
+        storage,
+      } as never,
+    })).rejects.toThrow('preview unavailable');
+
+    expect(upsert).toHaveBeenCalledOnce();
+    expect(ledgerRows).toHaveLength(2);
+    expect(ledgerRows.every((row) => row.tenant_id === TENANT_A)).toBe(true);
+    expect(ledgerRows.every((row) => row.bucket === KEYWORD_REPLY_IMAGES_BUCKET)).toBe(true);
+    expect(remove).toHaveBeenCalledWith([
+      ledgerRows[0].path,
+      ledgerRows[1].path,
     ]);
   });
 

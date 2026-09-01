@@ -24,6 +24,7 @@ export const KEYWORD_REPLY_IMAGE_LOCK_PREFIX = '__keyword-reply-image-lock__/';
 const KEYWORD_REPLY_IMAGE_LOCK_TTL_MS = 30_000;
 const KEYWORD_REPLY_IMAGE_LOCK_RETRIES = 40;
 const KEYWORD_REPLY_IMAGE_LOCK_RETRY_MS = 25;
+const KEYWORD_REPLY_IMAGE_PROVISIONAL_ERROR = 'awaiting keyword reply persistence';
 
 const IMAGE_TYPES = {
   'image/jpeg': 'jpg',
@@ -336,6 +337,45 @@ export type KeywordReplyImageUploadResult = {
   storageRef: KeywordReplyImageStorageRef;
 };
 
+/**
+ * Register cleanup ownership before any Storage side effect. The existing
+ * cleanup table is the durable ledger for provisional objects as well as
+ * failed deletion jobs. If this write fails, callers must not upload: there
+ * would be no durable retry path for a partially completed upload.
+ */
+async function registerKeywordReplyImageCleanup(
+  admin: SupabaseClient,
+  tenantId: string,
+  paths: readonly string[],
+  lastError: string,
+): Promise<void> {
+  const { error } = await admin.from('keyword_reply_image_cleanup').upsert(
+    paths.map((path) => ({
+      tenant_id: tenantId,
+      bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+      path,
+      last_error: lastError,
+    })),
+    { onConflict: 'bucket,path' },
+  );
+  if (error) throw error;
+}
+
+async function clearKeywordReplyImageCleanup(
+  admin: SupabaseClient,
+  tenantId: string,
+  bucket: string,
+  paths: readonly string[],
+): Promise<void> {
+  const { error } = await admin
+    .from('keyword_reply_image_cleanup')
+    .delete()
+    .eq('tenant_id', tenantId)
+    .eq('bucket', bucket)
+    .in('path', [...paths]);
+  if (error) throw error;
+}
+
 /** Upload original + preview to the dedicated keyword-reply bucket. */
 export async function uploadKeywordReplyImage(args: {
   tenantId: string;
@@ -357,14 +397,24 @@ export async function uploadKeywordReplyImage(args: {
 
   const path = `${tenantId}/${randomUUID()}.${extension}`;
   const previewPath = previewPathFor(path);
-  let originalUploaded = false;
+  const provisionalPaths = [path, previewPath];
+
+  // This is deliberately before Storage. A queue insert after a partial
+  // upload is not sufficient: Storage rollback and that insert can fail in
+  // the same request. Failing closed here leaves no untracked object behind.
+  await registerKeywordReplyImageCleanup(
+    admin,
+    tenantId,
+    provisionalPaths,
+    KEYWORD_REPLY_IMAGE_PROVISIONAL_ERROR,
+  );
+
   try {
     const original = await admin.storage.from(KEYWORD_REPLY_IMAGES_BUCKET).upload(path, bytes, {
       contentType: file.type,
       upsert: false,
     });
     if (original.error) throw original.error;
-    originalUploaded = true;
 
     const preview = await admin.storage.from(KEYWORD_REPLY_IMAGES_BUCKET).upload(previewPath, previewBytes, {
       contentType: file.type,
@@ -372,33 +422,31 @@ export async function uploadKeywordReplyImage(args: {
     });
     if (preview.error) throw preview.error;
   } catch (error) {
-    if (originalUploaded) {
+    // The pre-registered rows remain the durable fallback if either this
+    // best-effort rollback or its cleanup-row deletion fails. Do not turn a
+    // console message into a durability claim.
+    try {
       const cleanup = await admin.storage
         .from(KEYWORD_REPLY_IMAGES_BUCKET)
-        .remove([path, previewPath]);
-      if (cleanup.error) console.error('[keyword-reply-images] provisional cleanup failed', cleanup.error);
+        .remove(provisionalPaths);
+      if (cleanup.error) {
+        console.error('[keyword-reply-images] provisional cleanup failed', cleanup.error);
+      } else {
+        try {
+          await clearKeywordReplyImageCleanup(
+            admin,
+            tenantId,
+            KEYWORD_REPLY_IMAGES_BUCKET,
+            provisionalPaths,
+          );
+        } catch (clearError) {
+          console.error('[keyword-reply-images] provisional cleanup ledger clear failed', clearError);
+        }
+      }
+    } catch (cleanupError) {
+      console.error('[keyword-reply-images] provisional cleanup failed', cleanupError);
     }
     throw error;
-  }
-
-  const provisionalPaths = [path, previewPath];
-  const { error: queueError } = await admin
-    .from('keyword_reply_image_cleanup')
-    .upsert(
-      provisionalPaths.map((provisionalPath) => ({
-        tenant_id: tenantId,
-        bucket: KEYWORD_REPLY_IMAGES_BUCKET,
-        path: provisionalPath,
-        last_error: 'awaiting keyword reply persistence',
-      })),
-      { onConflict: 'bucket,path' },
-    );
-  if (queueError) {
-    const cleanup = await admin.storage
-      .from(KEYWORD_REPLY_IMAGES_BUCKET)
-      .remove(provisionalPaths);
-    if (cleanup.error) console.error('[keyword-reply-images] provisional queue cleanup failed', cleanup.error);
-    throw queueError;
   }
 
   const url = publicUrl(admin, KEYWORD_REPLY_IMAGES_BUCKET, path);
@@ -419,13 +467,12 @@ export async function markKeywordReplyImagePersisted(
   tenantId: string,
   ref: KeywordReplyImageStorageRef,
 ): Promise<void> {
-  const { error } = await admin
-    .from('keyword_reply_image_cleanup')
-    .delete()
-    .eq('tenant_id', tenantId)
-    .eq('bucket', ref.bucket)
-    .in('path', [ref.path, ref.previewPath]);
-  if (error) throw error;
+  await clearKeywordReplyImageCleanup(
+    admin,
+    tenantId,
+    ref.bucket,
+    [ref.path, ref.previewPath],
+  );
 }
 
 type StorageInfoAdmin = {

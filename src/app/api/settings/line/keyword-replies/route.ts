@@ -19,7 +19,8 @@ import {
  * matchType/replyText/imageUrl/linkUrl/linkLabel/overridesSystem 等展示欄位由
  * service 層打包進這個 jsonb，後端不拆欄）、active、sort_order。
  *
- * 閘門（09 分冊 §5）：寫入端點 requireFeature('KEYWORD_REPLY')；讀取不擋。
+ * 閘門（09 分冊 §5、14 §8.16-b）：POST 與圖片內容變更 requireFeature
+ * ('KEYWORD_REPLY')；讀取不擋，單獨停用／DELETE 由 :id route 保留給清理。
  * 上限：POST 前查該店筆數 ≥ 20 → 409「每店最多 20 組」。
  */
 

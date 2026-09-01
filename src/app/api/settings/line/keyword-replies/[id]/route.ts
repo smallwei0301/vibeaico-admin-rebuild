@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { keywordReplyUpdateRequiresFeature } from '@/server/keyword-reply-policy';
 import { createAdminSupabase } from '@/server/supabase';
 import {
   assertKeywordReplyImagePayload,
@@ -16,7 +17,8 @@ import {
 
 /**
  * PUT/DELETE /api/settings/line/keyword-replies/:id（04 分冊 §B-5）。
- * 寫入端點 requireFeature('KEYWORD_REPLY')（09 分冊 §5）。
+ * 新增、內容／排序變更與重新啟用 requireFeature('KEYWORD_REPLY')；單獨
+ * `active:false` 與 DELETE 保留給退訂後的停用／清理（14 分冊 §8.16-b）。
  * PUT 只更新 body 裡實際出現的欄位（services 慣例）。
  */
 
@@ -30,9 +32,10 @@ const bodySchema = z.object({
 
 export const PUT = handle(async (req, { params }) => {
   const t = await requireTenant('MANAGER');
-  await requireFeature(t.tenantId, 'KEYWORD_REPLY');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
+  if (keywordReplyUpdateRequiresFeature(b))
+    await requireFeature(t.tenantId, 'KEYWORD_REPLY');
 
   const { data: existing, error: existingError } = await t.supabase
     .from('keyword_replies')
@@ -119,7 +122,6 @@ export const PUT = handle(async (req, { params }) => {
 
 export const DELETE = handle(async (_req, { params }) => {
   const t = await requireTenant('MANAGER');
-  await requireFeature(t.tenantId, 'KEYWORD_REPLY');
   const { id } = await params;
 
   const { data: existing, error: existingError } = await t.supabase
