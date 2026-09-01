@@ -154,11 +154,12 @@ export function GuideHomeView({
         subtitle={t.subtitle}
       />
 
-      <GuideSectionCard title={t.focus.title}>
+      <GuideSectionCard title={t.focus.title} aria-busy={alertsLoading}>
         {alertsLoading ? (
-          <p className={GUIDE_UI_CLASSES.secondary}>{t.focus.loading}</p>
+          <p className={GUIDE_UI_CLASSES.secondary} role="status" aria-live="polite">{t.focus.loading}</p>
         ) : alertsError ? (
           <GuideEmptyState
+            role="alert"
             title={t.focus.errorTitle}
             description={t.focus.errorDescription}
             icon={<AlertTriangle size={20} />}
@@ -190,6 +191,7 @@ export function GuideHomeView({
 
       <GuideSectionCard
         title={t.upcoming.title}
+        aria-busy={departuresLoading}
         action={
           <Link
             href="/tenant/calendar"
@@ -201,9 +203,9 @@ export function GuideHomeView({
         }
       >
         {departuresLoading ? (
-          <p className={GUIDE_UI_CLASSES.secondary}>{t.upcoming.loading}</p>
+          <p className={GUIDE_UI_CLASSES.secondary} role="status" aria-live="polite">{t.upcoming.loading}</p>
         ) : departuresError ? (
-          <GuideEmptyState title={t.upcoming.errorTitle} description={t.upcoming.errorDescription} />
+          <GuideEmptyState role="alert" title={t.upcoming.errorTitle} description={t.upcoming.errorDescription} />
         ) : upcoming.length === 0 ? (
           <GuideEmptyState title={t.upcoming.emptyTitle} description={t.upcoming.emptyDescription} />
         ) : (

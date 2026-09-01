@@ -87,4 +87,13 @@ describe('GUIDE trips mobile surface selectors (#66 Phase H)', () => {
   });
 
 
+  it('announces Trips loading and error states semantically', () => {
+    const source = readFileSync('src/components/guide/GuideTripsView.tsx', 'utf8');
+    expect(source).toContain('aria-busy={loading}');
+    expect(source).toContain('role="status"');
+    expect(source).toContain('aria-live="polite"');
+    expect(source).toContain('role="alert"');
+  });
+
+
 });

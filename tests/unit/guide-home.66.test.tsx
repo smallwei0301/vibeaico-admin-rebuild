@@ -179,4 +179,14 @@ describe('GUIDE home selectors (#66 Phase C)', () => {
   });
 
 
+  it('announces Home loading and error states semantically', () => {
+    const source = readFileSync('src/components/guide/GuideHomeView.tsx', 'utf8');
+    expect(source).toContain('aria-busy={alertsLoading}');
+    expect(source).toContain('aria-busy={departuresLoading}');
+    expect(source).toContain('role="status"');
+    expect(source).toContain('aria-live="polite"');
+    expect(source).toContain('role="alert"');
+  });
+
+
 });

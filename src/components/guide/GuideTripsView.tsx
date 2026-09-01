@@ -115,8 +115,8 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
     return (
       <main className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
         <GuideHeader title={copy.title} subtitle={copy.subtitle} />
-        <GuideSectionCard title={copy.loading}>
-          <p className={GUIDE_UI_CLASSES.bodyMuted}>{copy.loadingDescription}</p>
+        <GuideSectionCard title={copy.loading} aria-busy={loading}>
+          <p className={GUIDE_UI_CLASSES.bodyMuted} role="status" aria-live="polite">{copy.loadingDescription}</p>
         </GuideSectionCard>
       </main>
     );
@@ -128,6 +128,7 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
         <GuideHeader title={copy.title} subtitle={copy.subtitle} />
         <GuideSectionCard title={copy.error.title}>
           <GuideEmptyState
+            role="alert"
             title={copy.error.title}
             description={copy.error.description}
             icon={<RefreshCw size={20} />}
