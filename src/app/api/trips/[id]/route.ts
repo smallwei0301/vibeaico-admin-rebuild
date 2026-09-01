@@ -1,5 +1,5 @@
 import { handle, ok, fail, ERR } from '@/server/http';
-import { requireTenant } from '@/server/tenant';
+import { requireTenant, requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTrip, mapTripPlan } from '@/server/mappers';
 import { tripUpdateSchema } from '@/server/tour-domain';
@@ -38,7 +38,7 @@ export const GET = handle(async (_req, { params }: Context) => {
 
 export const PUT = handle(async (req, { params }: Context) => {
   const { id } = await params;
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = tripUpdateSchema.parse(await req.json());
   const patch: Record<string, unknown> = {};
@@ -71,7 +71,7 @@ export const PUT = handle(async (req, { params }: Context) => {
 
 export const DELETE = handle(async (_req, { params }: Context) => {
   const { id } = await params;
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const { data, error } = await t.supabase.from('trips').delete()
     .eq('tenant_id', t.tenantId).eq('id', id).select('id').maybeSingle();

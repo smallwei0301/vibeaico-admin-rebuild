@@ -1,5 +1,5 @@
 import { handle, ok, fail, ERR } from '@/server/http';
-import { requireTenant } from '@/server/tenant';
+import { requireTenant, requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTripPlan } from '@/server/mappers';
 import { planCreateSchema, planRow } from '@/server/tour-domain';
@@ -26,7 +26,7 @@ export const GET = handle(async (_req, { params }: Context) => {
 
 export const POST = handle(async (req, { params }: Context) => {
   const { id } = await params;
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = planCreateSchema.parse(await req.json());
   if (!await requireTrip(t, id)) return fail(404, '找不到此行程', ERR.NOT_FOUND);

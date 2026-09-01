@@ -52,7 +52,7 @@ describe('tour-domain validation and row builders (#8-A)', () => {
     for (const [relativePath, method, managerOnly] of TOUR_HANDLERS) {
       const source = handlerSource(relativePath, method);
       expect(source, `${relativePath} ${method}`).toContain(
-        managerOnly ? "requireTenant('MANAGER')" : 'requireTenant()',
+        managerOnly ? 'requireTenantManager()' : 'requireTenant()',
       );
       const featureGate = "await requireFeature(t.tenantId, 'TOUR_MODULE')";
       if (method === 'GET') expect(source, `${relativePath} ${method}`).not.toContain(featureGate);
@@ -107,6 +107,19 @@ describe('tour-domain validation and row builders (#8-A)', () => {
     expect(sql).toContain('pg_policy');
     expect(sql).toContain('pg_trigger');
     expect(sql).toContain('alter type public.trip_status add value if not exists');
+  });
+
+  it('keeps core REST writes behind the manager route boundary', () => {
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0022_issue_8_tour_rest_dml_acl.sql'), 'utf8');
+    for (const table of ['trips', 'trip_plans', 'trip_departures', 'trip_addons']) {
+      expect(sql).toMatch(new RegExp(
+        'revoke\\s+insert,\\s*update,\\s*delete,\\s*truncate\\s+on table public\\.' + table + '\\s+from anon, authenticated',
+        'i',
+      ));
+    }
+    const tenantSource = readFileSync(resolve(process.cwd(), 'src/server/tenant.ts'), 'utf8');
+    expect(tenantSource).toContain('export async function requireTenantManager()');
+    expect(tenantSource).toContain('return { ...t, supabase: createAdminSupabase() }');
   });
 
   it('accepts the canonical trip payload and scopes the row to the supplied tenant', () => {

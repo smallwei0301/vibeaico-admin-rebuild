@@ -1,10 +1,10 @@
 import { handle, ok, fail, ERR } from '@/server/http';
-import { requireTenant } from '@/server/tenant';
+import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 
 export const POST = handle(async (_req, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const { data, error } = await t.supabase.from('trips').update({ status: 'PUBLISHED' })
     .eq('tenant_id', t.tenantId).eq('id', id).eq('status', 'DRAFT')

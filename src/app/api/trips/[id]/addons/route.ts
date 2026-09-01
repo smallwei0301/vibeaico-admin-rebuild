@@ -1,5 +1,5 @@
 import { handle, ok, fail, ERR } from '@/server/http';
-import { requireTenant } from '@/server/tenant';
+import { requireTenant, requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTripAddon } from '@/server/mappers';
 import { addonCreateSchema } from '@/server/tour-domain';
@@ -25,7 +25,7 @@ export const GET = handle(async (_req, { params }: Context) => {
 
 export const POST = handle(async (req, { params }: Context) => {
   const { id } = await params;
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = addonCreateSchema.parse(await req.json());
   if (!await ownsTrip(t, id)) return fail(404, '找不到此行程', ERR.NOT_FOUND);

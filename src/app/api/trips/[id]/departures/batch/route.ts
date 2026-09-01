@@ -1,5 +1,5 @@
 import { handle, ok, fail, ERR } from '@/server/http';
-import { requireTenant } from '@/server/tenant';
+import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { dateRange, dateRangeLength, departureBatchSchema, timeValue } from '@/server/tour-domain';
@@ -9,7 +9,7 @@ const MAX_DAYS = 366;
 
 export const POST = handle(async (req, { params }: Context) => {
   const { id } = await params;
-  const t = await requireTenant('MANAGER');
+  const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = departureBatchSchema.parse(await req.json());
   const rangeLength = dateRangeLength(body.from, body.to);
