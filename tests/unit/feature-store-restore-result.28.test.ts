@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  buildFeatureEffectNotice,
   buildFeatureRestoreNotice,
   restoreFeatureWithNotice,
   type FeatureRestoreCopy,
@@ -61,5 +62,25 @@ describe('buildFeatureRestoreNotice', () => {
       tone: 'success',
     });
     expect(restore).toHaveBeenCalledWith('COUPON_SYSTEM');
+  });
+});
+
+describe('buildFeatureEffectNotice', () => {
+  it('surfaces side-effect failure for the apply confirmation path', () => {
+    expect(buildFeatureEffectNotice('Catalog activated', { restoreSideEffectFailed: true }, copy)).toEqual({
+      message: 'Catalog activated\nmanual recovery required',
+      tone: 'warning',
+    });
+  });
+
+  it('keeps apply success counts visible when side effects succeed', () => {
+    expect(buildFeatureEffectNotice(
+      'Catalog renewed',
+      { restoredCoupons: 1, restoredProducts: 2 },
+      copy,
+    )).toEqual({
+      message: 'Catalog renewed\n1 coupons restored\n2 products restored',
+      tone: 'success',
+    });
   });
 });

@@ -65,6 +65,47 @@ afterAll(async () => {
   }
 });
 
+describe('restore guard：未取消的有效訂閱', () => {
+  it('active 且 cancelled_at 為 null → 409，且不改變訂閱狀態', async () => {
+    const code = 'SHIFT_MANAGEMENT';
+    const expiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    const { error: upsertError } = await admin
+      .from('feature_subscriptions')
+      .upsert({
+        tenant_id: SHOP_A.id,
+        code,
+        active: true,
+        expires_at: expiresAt,
+        source: 'GRANTED',
+        cancelled_at: null,
+      }, { onConflict: 'tenant_id,code' });
+    expect(upsertError).toBeNull();
+
+    try {
+      const res = await ownerA.post(`/api/feature-store/${code}/restore`);
+      expect(res.status).toBe(409);
+      const body = await readJson(res);
+      expect(body).toMatchObject({
+        success: false,
+        code: 'REQ_003',
+        message: '此訂閱尚未取消，無需恢復',
+      });
+
+      const { data: row, error: readError } = await admin
+        .from('feature_subscriptions')
+        .select('active, expires_at, cancelled_at')
+        .eq('tenant_id', SHOP_A.id)
+        .eq('code', code)
+        .single();
+      expect(readError).toBeNull();
+      expect(row).toMatchObject({ active: true, cancelled_at: null });
+      expect(new Date(row?.expires_at ?? '').getTime()).toBe(new Date(expiresAt).getTime());
+    } finally {
+      await clearCancelled(code);
+    }
+  });
+});
+
 describe('restore 分支 1：沒有副作用的功能', () => {
   it('SHIFT_MANAGEMENT restore → 200，且不捏造票券／商品數量', async () => {
     await markCancelled('SHIFT_MANAGEMENT');

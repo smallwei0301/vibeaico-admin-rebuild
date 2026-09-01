@@ -7,6 +7,7 @@ import { FEATURE_CATALOG } from '@/config/features';
  * POST /api/feature-store/:code/restore — 恢復已取消的訂閱（09 分冊 §3）⚙OWNER。
  * 未過期且已取消 → cancelled_at = null，**不扣點**（用到原到期日為止）；
  * 已過期 → 409「已過期，請重新訂閱」（走 apply 重新扣點訂閱）。
+ * 未取消的有效訂閱不可重複呼叫 restore；回 409 且不執行任何還原副作用。
  * COUPON_SYSTEM / PRODUCT_SALES 恢復時執行 §6 還原副作用，
  * 回 {restoredCoupons, restoredProducts}（前端 toast「N 張票券已自動恢復發布」）。
  */
@@ -55,23 +56,33 @@ export const POST = handle(async (_req, { params }) => {
   const admin = createAdminSupabase();
   const { data: sub, error: e0 } = await admin
     .from('feature_subscriptions')
-    .select('code, expires_at, cancelled_at')
+    .select('code, active, expires_at, cancelled_at')
     .eq('tenant_id', t.tenantId)
     .eq('code', code)
     .maybeSingle();
   if (e0) throw e0;
   if (!sub) throw new ApiHttpError(404, '找不到此訂閱', ERR.NOT_FOUND);
 
+  if (sub.cancelled_at === null) {
+    throw new ApiHttpError(409, '此訂閱尚未取消，無需恢復', ERR.CONFLICT);
+  }
+
   // expires_at = null 是平台永久贈送，永遠視為未過期
   if (sub.expires_at !== null && new Date(sub.expires_at).getTime() <= Date.now())
     throw new ApiHttpError(409, '已過期，請重新訂閱', ERR.CONFLICT);
 
-  const { error: e1 } = await admin
+  const { data: restored, error: e1 } = await admin
     .from('feature_subscriptions')
     .update({ cancelled_at: null })
     .eq('tenant_id', t.tenantId)
-    .eq('code', code);
+    .eq('code', code)
+    // 避免讀取 cancelled 後被其他請求先恢復時，仍回報本次 restore 成功。
+    .not('cancelled_at', 'is', null)
+    .select('code');
   if (e1) throw e1;
+  if (!restored?.length) {
+    throw new ApiHttpError(409, '此訂閱尚未取消，無需恢復', ERR.CONFLICT);
+  }
 
   if (code === 'COUPON_SYSTEM' || code === 'PRODUCT_SALES') {
     try {

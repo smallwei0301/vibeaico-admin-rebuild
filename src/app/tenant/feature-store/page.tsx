@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { applyFeature, cancelFeature, listFeatures, restoreFeature } from '@/services/settings';
 import { getPointBalance } from '@/services/points';
 import { ApiError } from '@/lib/api';
-import { restoreFeatureWithNotice } from '@/lib/feature-restore';
+import { buildFeatureEffectNotice, restoreFeatureWithNotice } from '@/lib/feature-restore';
 import {
   FEATURE_CATALOG, FEATURE_CODES, type FeatureCode, type FeatureSubscription,
 } from '@/config/features';
@@ -162,15 +162,22 @@ export default function FeatureStorePage() {
     setWorking(true);
     try {
       // POST /api/feature-store/:code/apply（09 §3）；mock 分支模擬成功。
-      await applyFeature(item.key, months);
+      const applyResult = await applyFeature(item.key, months);
       const active = isActive(item);
       setSubscribeTarget(null);
       setBalance(current - need);
-      toast.show(
+      const applyNotice = buildFeatureEffectNotice(
         active
           ? t.messages.renewed(t.features[item.key].name, months)
           : t.messages.activated(t.features[item.key].name),
+        applyResult,
+        {
+          couponsRestored: t.messages.couponsRestored,
+          productsRestored: t.messages.productsRestored,
+          restoreSideEffectFailed: t.messages.restoreSideEffectFailed,
+        },
       );
+      toast.show(applyNotice.message, applyNotice.tone);
       void load();
     } catch (e) {
       // 409 POINTS_001（點數不足）→ 開既有的儲值引導 modal（09 §3 驗收要求）。

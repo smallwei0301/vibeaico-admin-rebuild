@@ -12,6 +12,39 @@ export type FeatureRestoreNotice = {
   tone: 'success' | 'warning';
 };
 
+type FeatureSideEffectCopy = Pick<
+  FeatureRestoreCopy,
+  'couponsRestored' | 'productsRestored' | 'restoreSideEffectFailed'
+>;
+
+/**
+ * 將訂閱動作的實際 API 結果轉成單一提示。
+ * apply 與 restore 都可能先完成訂閱、再回報 catalog 副作用失敗，
+ * 因此兩條確認流程必須共用同一個 result mapping。
+ */
+export function buildFeatureEffectNotice(
+  baseMessage: string,
+  result: FeatureRestoreResult | undefined,
+  copy: FeatureSideEffectCopy,
+): FeatureRestoreNotice {
+  if (result?.restoreSideEffectFailed) {
+    return {
+      message: `${baseMessage}${copy.restoreSideEffectFailed}`,
+      tone: 'warning',
+    };
+  }
+
+  const details = [baseMessage];
+  if ((result?.restoredCoupons ?? 0) > 0) {
+    details.push(copy.couponsRestored(result?.restoredCoupons ?? 0));
+  }
+  if ((result?.restoredProducts ?? 0) > 0) {
+    details.push(copy.productsRestored(result?.restoredProducts ?? 0));
+  }
+
+  return { message: details.join('\n'), tone: 'success' };
+}
+
 export type RestoreFeature = (code: string) => Promise<FeatureRestoreResult | undefined>;
 
 /**
@@ -23,22 +56,7 @@ export function buildFeatureRestoreNotice(
   result: FeatureRestoreResult | undefined,
   copy: FeatureRestoreCopy,
 ): FeatureRestoreNotice {
-  if (result?.restoreSideEffectFailed) {
-    return {
-      message: `${copy.restored(name)}${copy.restoreSideEffectFailed}`,
-      tone: 'warning',
-    };
-  }
-
-  const details = [copy.restored(name)];
-  if ((result?.restoredCoupons ?? 0) > 0) {
-    details.push(copy.couponsRestored(result?.restoredCoupons ?? 0));
-  }
-  if ((result?.restoredProducts ?? 0) > 0) {
-    details.push(copy.productsRestored(result?.restoredProducts ?? 0));
-  }
-
-  return { message: details.join('\n'), tone: 'success' };
+  return buildFeatureEffectNotice(copy.restored(name), result, copy);
 }
 
 /** Keep the service call and its user-facing result in one testable seam. */
