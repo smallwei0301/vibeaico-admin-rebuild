@@ -193,4 +193,17 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(source).not.toMatch(/min-[hw]-\[[0-9]+px\]/);
     expect(source).toMatch(/GUIDE_UI_CLASSES\.(metricCard|metricValue|primaryButton|secondaryButton|searchInput|filterButton|travelerRow)/);
   });
+
+  it('exposes a semantic results list and a keyboard-safe detail focus path', () => {
+    const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
+    expect(source).toContain('type="search"');
+    expect(source).toContain('aria-controls="guide-traveler-results"');
+    expect(source).toContain('role="group" aria-label={navigation.travelers.filters.label}');
+    expect(source).toContain('<ul');
+    expect(source).toContain('<li');
+    expect(source).toContain('GUIDE_UI_CLASSES.focusRing');
+    expect(source).toContain('selectedDetailRef.current?.focus()');
+    expect(source).toContain('restoreFocusId.current');
+    expect(source).toContain('aria-controls={isSelected ? detailId : undefined}');
+  });
 });

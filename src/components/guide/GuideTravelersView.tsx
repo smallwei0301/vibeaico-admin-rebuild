@@ -34,6 +34,10 @@ function dateLabel(value: string): string {
   return year && month && day ? `${year}/${month}/${day}` : value;
 }
 
+function travelerDetailId(customerId: string): string {
+  return `guide-traveler-detail-${encodeURIComponent(customerId)}`;
+}
+
 function travelerStatus(
   row: GuideTraveler,
   todayIso: string,
@@ -87,7 +91,7 @@ function TravelerDetail({
         <button
           type="button"
           onClick={onClose}
-          className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.iconButton)}
+          className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.iconButton)}
           aria-label={navigation.travelers.detail.close}
         >
           <X size={20} aria-hidden />
@@ -147,7 +151,7 @@ function TravelerDetail({
         {row.waitingReply ? (
           <Link
             href="/tenant/chat"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton)}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.primaryButton)}
           >
             <MessageCircle size={18} aria-hidden />
             {navigation.travelers.detail.viewChat}
@@ -156,7 +160,7 @@ function TravelerDetail({
         {row.orders.length > 0 ? (
           <Link
             href="/tenant/tour-orders"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondaryButton)}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.secondaryButton)}
           >
             {navigation.travelers.detail.viewOrders}
           </Link>
@@ -183,6 +187,27 @@ export function GuideTravelersView({
     [filter, query, travelers],
   );
   const selected = selectedId ? travelers.find((row) => row.customer.id === selectedId) ?? null : null;
+  const selectedDetailId = selected ? travelerDetailId(selected.customer.id) : null;
+  const selectedDetailRef = React.useRef<HTMLDivElement>(null);
+  const travelerRowRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const restoreFocusId = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (selected) {
+      selectedDetailRef.current?.focus();
+      return;
+    }
+
+    if (restoreFocusId.current) {
+      travelerRowRefs.current[restoreFocusId.current]?.focus();
+      restoreFocusId.current = null;
+    }
+  }, [selectedId]);
+
+  const closeSelected = () => {
+    if (selectedId) restoreFocusId.current = selectedId;
+    setSelectedId(null);
+  };
 
   return (
     <div className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
@@ -205,7 +230,7 @@ export function GuideTravelersView({
               <button
                 type="button"
                 onClick={onRetry}
-                className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton)}
+                className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.primaryButton)}
               >
                 {navigation.travelers.retry}
               </button>
@@ -222,12 +247,16 @@ export function GuideTravelersView({
           </section>
 
           <GuideSectionCard title={navigation.travelers.search.title}>
-            <div role="search">
+            <div role="search" aria-label={navigation.travelers.search.label}>
               <label htmlFor="guideTravelerSearch" className="sr-only">{navigation.travelers.search.label}</label>
               <div className="relative">
                 <Search size={20} className={cn('pointer-events-none absolute left-3 top-1/2 -translate-y-1/2', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />
                 <Input
                   id="guideTravelerSearch"
+                  type="search"
+                  enterKeyHint="search"
+                  autoComplete="off"
+                  aria-controls="guide-traveler-results"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={navigation.travelers.search.placeholder}
@@ -237,7 +266,7 @@ export function GuideTravelersView({
                   <button
                     type="button"
                     onClick={() => setQuery('')}
-                    className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.iconButton, 'absolute right-1 top-1/2 -translate-y-1/2')}
+                    className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.iconButton, 'absolute right-1 top-1/2 -translate-y-1/2')}
                     aria-label={navigation.travelers.search.clear}
                   >
                     <X size={18} aria-hidden />
@@ -245,7 +274,7 @@ export function GuideTravelersView({
                 ) : null}
               </div>
             </div>
-            <div className="mt-3 flex flex-wrap gap-2" aria-label={navigation.travelers.filters.label}>
+            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={navigation.travelers.filters.label}>
               {FILTERS.map((option) => {
                 const count = filterGuideTravelers(travelers, option).length;
                 const active = filter === option;
@@ -257,6 +286,7 @@ export function GuideTravelersView({
                     onClick={() => setFilter(option)}
                     className={cn(
                       GUIDE_UI_CLASSES.touchTarget,
+                      GUIDE_UI_CLASSES.focusRing,
                       GUIDE_UI_CLASSES.filterButton,
                       active ? GUIDE_UI_CLASSES.filterActive : GUIDE_UI_CLASSES.filterInactive,
                     )}
@@ -273,48 +303,66 @@ export function GuideTravelersView({
           </GuideSectionCard>
 
           <GuideSectionCard title={navigation.travelers.list.title} description={navigation.travelers.list.count(filtered.length)}>
-            {filtered.length === 0 ? (
-              <GuideEmptyState
-                title={navigation.travelers.empty.title}
-                description={navigation.travelers.empty.description}
-              />
-            ) : (
-              <div className={cn(GUIDE_UI_CLASSES.listDivider, 'divide-y')}>
-                {filtered.map((row) => {
-                  const status = travelerStatus(row, todayIso);
-                  const itinerary = row.primaryOrder
-                    ? `${row.primaryOrder.tripTitle} · ${dateLabel(row.primaryOrder.departsOn)}`
-                    : navigation.travelers.list.noItinerary;
-                  return (
-                    <button
-                      key={row.customer.id}
-                      type="button"
-                      aria-expanded={selectedId === row.customer.id}
-                      onClick={() => setSelectedId(row.customer.id)}
-                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.travelerRow)}
-                    >
-                      <GuidePersonRow
-                        className="min-w-0 flex-1 px-1"
-                        name={row.customer.name || navigation.travelers.list.unnamed}
-                        subtitle={itinerary}
-                        meta={(
-                          <div className="flex flex-wrap items-center gap-2">
-                            <GuideStatusPill tone={status.tone}>{status.label}</GuideStatusPill>
-                            {row.unreadCount > 0 ? (
-                              <span className={GUIDE_UI_CLASSES.secondary}>{navigation.travelers.list.unread(row.unreadCount)}</span>
-                            ) : null}
-                          </div>
-                        )}
-                        trailing={<ChevronRight size={20} className={GUIDE_UI_CLASSES.mutedIcon} aria-hidden />}
-                      />
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+            <div id="guide-traveler-results" className="min-w-0">
+              {filtered.length === 0 ? (
+                <GuideEmptyState
+                  title={navigation.travelers.empty.title}
+                  description={navigation.travelers.empty.description}
+                />
+              ) : (
+                <ul className={cn(GUIDE_UI_CLASSES.listDivider, 'min-w-0 divide-y')} role="list" aria-label={navigation.travelers.list.title}>
+                  {filtered.map((row) => {
+                    const status = travelerStatus(row, todayIso);
+                    const itinerary = row.primaryOrder
+                      ? `${row.primaryOrder.tripTitle} · ${dateLabel(row.primaryOrder.departsOn)}`
+                      : navigation.travelers.list.noItinerary;
+                    const isSelected = selectedId === row.customer.id;
+                    const detailId = isSelected ? selectedDetailId ?? undefined : undefined;
+                    return (
+                      <li key={row.customer.id} className="min-w-0">
+                        <button
+                          ref={(node) => { travelerRowRefs.current[row.customer.id] = node; }}
+                          type="button"
+                          aria-expanded={isSelected}
+                          aria-controls={isSelected ? detailId : undefined}
+                          onClick={() => setSelectedId((currentId) => currentId === row.customer.id ? null : row.customer.id)}
+                          className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.travelerRow)}
+                        >
+                          <GuidePersonRow
+                            className="min-w-0 flex-1 px-1"
+                            name={row.customer.name || navigation.travelers.list.unnamed}
+                            subtitle={itinerary}
+                            meta={(
+                              <div className="flex flex-wrap items-center gap-2">
+                                <GuideStatusPill tone={status.tone}>{status.label}</GuideStatusPill>
+                                {row.unreadCount > 0 ? (
+                                  <span className={GUIDE_UI_CLASSES.secondary}>{navigation.travelers.list.unread(row.unreadCount)}</span>
+                                ) : null}
+                              </div>
+                            )}
+                            trailing={<ChevronRight size={20} className={GUIDE_UI_CLASSES.mutedIcon} aria-hidden />}
+                          />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </GuideSectionCard>
 
-          {selected ? <TravelerDetail row={selected} todayIso={todayIso} onClose={() => setSelectedId(null)} /> : null}
+          {selected ? (
+            <div
+              id={selectedDetailId ?? undefined}
+              ref={selectedDetailRef}
+              tabIndex={-1}
+              role="region"
+              aria-label={navigation.travelers.detail.title}
+              className={GUIDE_UI_CLASSES.detailFocusTarget}
+            >
+              <TravelerDetail row={selected} todayIso={todayIso} onClose={closeSelected} />
+            </div>
+          ) : null}
         </>
       )}
     </div>

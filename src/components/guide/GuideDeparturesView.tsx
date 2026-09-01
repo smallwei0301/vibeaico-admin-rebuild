@@ -105,7 +105,7 @@ export function GuideDeparturesView({
     return (
       <div className={GUIDE_UI_CLASSES.page}>
         <GuideHeader title={guideNavigation.departures.title} subtitle={guideNavigation.departures.subtitle} />
-        <div className="mt-5" role="status">
+        <div className="mt-5" role="status" aria-live="polite">
           <GuideEmptyState title={guideNavigation.departures.loading} />
         </div>
       </div>
@@ -116,14 +116,14 @@ export function GuideDeparturesView({
     return (
       <div className={GUIDE_UI_CLASSES.page}>
         <GuideHeader title={guideNavigation.departures.title} subtitle={guideNavigation.departures.subtitle} />
-        <div className="mt-5">
+        <div className="mt-5" role="alert">
           <GuideEmptyState
             title={guideNavigation.departures.error.title}
             description={guideNavigation.departures.error.description}
             action={(
               <button
                 type="button"
-                className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton)}
+                className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.primaryButton)}
                 onClick={onRetry}
               >
                 <RefreshCw size={17} aria-hidden />
@@ -140,7 +140,7 @@ export function GuideDeparturesView({
     <div className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
       <GuideHeader title={guideNavigation.departures.title} subtitle={guideNavigation.departures.subtitle} />
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <div className="flex gap-2" role="group" aria-label={guideNavigation.departures.view.label}>
           {(['month', 'week'] as const).map((option) => (
             <button
@@ -149,6 +149,7 @@ export function GuideDeparturesView({
               aria-pressed={view === option}
               className={cn(
                 GUIDE_UI_CLASSES.touchTarget,
+                GUIDE_UI_CLASSES.focusRing,
                 GUIDE_UI_CLASSES.viewToggle,
                 view === option ? GUIDE_UI_CLASSES.viewToggleActive : GUIDE_UI_CLASSES.viewToggleInactive,
               )}
@@ -161,7 +162,7 @@ export function GuideDeparturesView({
         <div className="flex gap-1" role="group" aria-label={guideNavigation.departures.period.label}>
           <button
             type="button"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.outlinedIconButton)}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.outlinedIconButton)}
             aria-label={guideNavigation.departures.period.previous}
             onClick={() => shift(-1)}
           >
@@ -169,14 +170,14 @@ export function GuideDeparturesView({
           </button>
           <button
             type="button"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.secondaryButton)}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.secondaryButton)}
             onClick={() => { setAnchorIso(safeToday); setSelectedIso(safeToday); }}
           >
             {guideNavigation.departures.period.today}
           </button>
           <button
             type="button"
-            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.outlinedIconButton)}
+            className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.outlinedIconButton)}
             aria-label={guideNavigation.departures.period.next}
             onClick={() => shift(1)}
           >
@@ -185,7 +186,7 @@ export function GuideDeparturesView({
         </div>
       </div>
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label={guideNavigation.departures.filters.label}>
+      <div className={cn('-mx-1 flex gap-2 px-1 pb-1', GUIDE_UI_CLASSES.mobileScroll)} role="group" aria-label={guideNavigation.departures.filters.label}>
         {(['ALL', 'UPCOMING', 'OPEN', 'COMPLETED'] as const).map((option) => (
           <button
             key={option}
@@ -193,6 +194,7 @@ export function GuideDeparturesView({
             aria-pressed={filter === option}
             className={cn(
               GUIDE_UI_CLASSES.touchTarget,
+              GUIDE_UI_CLASSES.focusRing,
               GUIDE_UI_CLASSES.filterPill,
               filter === option ? GUIDE_UI_CLASSES.filterPillActive : GUIDE_UI_CLASSES.filterPillInactive,
             )}
@@ -216,22 +218,22 @@ export function GuideDeparturesView({
 
       {view === 'month' ? (
         <GuideSectionCard title={guideNavigation.departures.monthViewTitle}>
-          <div className="grid grid-cols-7 gap-1" aria-hidden>
+          <div className={GUIDE_UI_CLASSES.calendarGrid} aria-hidden>
             {guideNavigation.departures.weekdays.map((weekday) => (
               <span key={weekday} className={GUIDE_UI_CLASSES.calendarWeekday}>{weekday}</span>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1" role="grid" aria-label={guideNavigation.departures.monthViewTitle}>
+          <div className={GUIDE_UI_CLASSES.calendarGrid} role="group" aria-label={guideNavigation.departures.monthViewTitle}>
             {monthDays.map((day) => (
               <button
                 key={day.key}
                 type="button"
-                role="gridcell"
                 aria-pressed={selectedIso === day.key}
                 aria-label={guideNavigation.departures.dayLabel(formatGuideDateKey(day.key), day.departureCount)}
                 className={cn(
                   GUIDE_UI_CLASSES.calendarCell,
                   GUIDE_UI_CLASSES.touchTarget,
+                  GUIDE_UI_CLASSES.focusRing,
                   selectedIso === day.key
                     ? GUIDE_UI_CLASSES.calendarSelected
                     : day.inMonth
@@ -257,6 +259,7 @@ export function GuideDeparturesView({
               key: day.key,
               weekdayLabel: guideNavigation.departures.weekdays[day.weekdayIndex],
               dateLabel: day.dateLabel,
+              ariaLabel: guideNavigation.departures.dayLabel(formatGuideDateKey(day.key), day.departureCount),
               countLabel: day.departureCount > 0
                 ? guideNavigation.departures.countLabel(day.departureCount)
                 : guideNavigation.departures.noCount,
@@ -270,6 +273,7 @@ export function GuideDeparturesView({
       <GuideSectionCard
         title={guideNavigation.departures.selectedTitle(formatGuideDateKey(selectedIso))}
         description={guideNavigation.departures.selectedDescription}
+        aria-live="polite"
       >
         {selectedDepartures.length > 0 ? (
           <div className="space-y-3">
@@ -289,7 +293,7 @@ export function GuideDeparturesView({
                   action={(
                     <Link
                       href={`/tenant/trips/${encodeURIComponent(departure.tripId)}?tab=departures`}
-                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.accentButton)}
+                      className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.focusRing, GUIDE_UI_CLASSES.accentButton)}
                     >
                       {guideNavigation.departures.viewDetails}
                     </Link>

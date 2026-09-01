@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { GUIDE_UI_CLASSES } from '@/config/guide-ui';
 import {
   addGuideDays,
   addGuideMonths,
@@ -73,5 +74,20 @@ describe('GUIDE departures calendar selectors (#66 Phase D)', () => {
     expect(source).not.toMatch(/text-\[[0-9]+px\]/);
     expect(source).not.toMatch(/min-[hw]-\[[0-9]+px\]/);
     expect(source).toMatch(/GUIDE_UI_CLASSES\.(primaryButton|secondaryButton|filterPill|calendarCell|calendarDate|calendarCount)/);
+  });
+
+  it('gives mobile date controls semantic labels and keyboard-visible focus', () => {
+    const weekSource = readFileSync('src/components/guide/GuideWeekStrip.tsx', 'utf8');
+    const viewSource = readFileSync('src/components/guide/GuideDeparturesView.tsx', 'utf8');
+
+    expect(weekSource).toContain('aria-label={accessibleLabel}');
+    expect(weekSource).toContain('GUIDE_UI_CLASSES.focusRing');
+    expect(weekSource).toContain('GUIDE_UI_CLASSES.touchTarget');
+    expect(weekSource).toContain('GUIDE_UI_CLASSES.weekCount');
+    expect(GUIDE_UI_CLASSES.calendarGrid).toContain('grid-cols-7 gap-0');
+    expect(GUIDE_UI_CLASSES.weekGrid).toContain('grid-cols-7 gap-0');
+    expect(viewSource).toContain('role="group" aria-label={guideNavigation.departures.filters.label}');
+    expect(viewSource).toContain('aria-live="polite"');
+    expect(viewSource).not.toContain('role="gridcell"');
   });
 });
