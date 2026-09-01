@@ -37,14 +37,26 @@ export function readOverlayManifest(manifestPath) {
   return parsed;
 }
 
-export function stageLocalMigrationOverlay({
-  rootDir = process.cwd(),
-  manifestRelativePath = null,
-  manifestRelativePaths = null,
-  targetRelativePath = DEFAULT_TARGET,
-  allow = process.env.ALLOW_LOCAL_MIGRATION_OVERLAY === 'true',
-  testProfile = process.env.TEST_PROFILE ?? '',
-} = {}) {
+/**
+ * @param {{
+ *   rootDir?: string,
+ *   manifestRelativePath?: string | null,
+ *   manifestRelativePaths?: string[] | null,
+ *   targetRelativePath?: string,
+ *   allow?: boolean,
+ *   testProfile?: string,
+ * }} [options]
+ */
+export function stageLocalMigrationOverlay(options = {}) {
+  const {
+    rootDir = process.cwd(),
+    manifestRelativePath = null,
+    manifestRelativePaths = null,
+    targetRelativePath = DEFAULT_TARGET,
+    allow = process.env.ALLOW_LOCAL_MIGRATION_OVERLAY === 'true',
+    testProfile = process.env.TEST_PROFILE ?? '',
+  } = options;
+
   if (!allow) throw new Error('ALLOW_LOCAL_MIGRATION_OVERLAY=true is required');
   if (String(testProfile).toUpperCase() !== 'LOCAL_ISOLATED') {
     throw new Error('local migration overlay is allowed only for TEST_PROFILE=LOCAL_ISOLATED');
