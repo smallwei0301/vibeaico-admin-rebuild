@@ -75,4 +75,16 @@ describe('GUIDE trips mobile surface selectors (#66 Phase H)', () => {
     expect(source).toContain('<GuideTripsPage />');
     expect(source).toContain('<LegacyTripsPage />');
   });
+  it('keeps Trips controls behind shared GUIDE visual and focus tokens', () => {
+    const source = readFileSync('src/components/guide/GuideTripsView.tsx', 'utf8');
+    expect(source).toContain('GUIDE_UI_CLASSES.secondaryButton');
+    expect(source).toContain('GUIDE_UI_CLASSES.accentButton');
+    expect(source).toContain('GUIDE_UI_CLASSES.searchInput');
+    expect(source).toContain('GUIDE_UI_CLASSES.filterButton');
+    expect(source).toContain('type="search"');
+    expect(source).not.toMatch(/#[0-9A-Fa-f]{6}/);
+    expect(source).not.toMatch(/text-\[[0-9]+px\]/);
+  });
+
+
 });

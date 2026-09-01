@@ -58,6 +58,9 @@ export const GUIDE_UI_CLASSES = Object.freeze({
   interactiveCard:
     'rounded-[18px] border border-[#DCE5E0] bg-white p-4 text-left transition-[border-color,box-shadow,transform] duration-150 hover:border-[#8DAA9D] hover:shadow-sm active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 sm:p-5',
   quietSurface: 'rounded-[18px] border border-[#DCE5E0] bg-[#FAF8F3] p-4 sm:p-5',
+  detailsSurface: 'rounded-xl border border-[#DCE5E0] bg-[#FAF8F3]',
+  detailsSummary: 'min-h-[44px] min-w-[44px] cursor-pointer px-3 py-2 text-center text-[14px] font-semibold text-[#173F35] outline-none focus-visible:ring-2 focus-visible:ring-[#173F35] focus-visible:ring-offset-2',
+  detailsContent: 'grid gap-2.5 border-t border-[#DCE5E0] p-3',
   avatarSurface: 'bg-[#E8F0EC] text-[#173F35]',
   focusAttentionSurface: 'bg-[#FFF0E4] text-[#9B4F1F]',
   focusDangerSurface: 'bg-[#FEE4E2] text-[#B42318]',

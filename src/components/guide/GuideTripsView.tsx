@@ -78,7 +78,9 @@ function TripCard({ trip }: { trip: Trip }) {
           href={`/tenant/trips/${trip.id}`}
           className={cn(
             GUIDE_UI_CLASSES.touchTarget,
-            'inline-flex items-center justify-center gap-2 rounded-xl border border-[#DCE5E0] px-3 py-2 text-center text-[16px] font-semibold text-[#173F35] hover:bg-[#FAF8F3]',
+            GUIDE_UI_CLASSES.secondaryButton,
+            GUIDE_UI_CLASSES.focusRing,
+            'text-center',
           )}
           aria-label={`${copy.actions.view}：${trip.title}`}
         >
@@ -88,7 +90,9 @@ function TripCard({ trip }: { trip: Trip }) {
           href={`/tenant/trips/${trip.id}?tab=departures`}
           className={cn(
             GUIDE_UI_CLASSES.touchTarget,
-            'inline-flex items-center justify-center gap-2 rounded-xl bg-[#E8F0EC] px-3 py-2 text-center text-[16px] font-semibold text-[#173F35] hover:bg-[#DCE9E2]',
+            GUIDE_UI_CLASSES.accentButton,
+            GUIDE_UI_CLASSES.focusRing,
+            'text-center',
           )}
           aria-label={`${copy.actions.departures}：${trip.title}`}
         >
@@ -127,7 +131,7 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
             title={copy.error.title}
             description={copy.error.description}
             icon={<RefreshCw size={20} />}
-            action={<button type="button" className={cn(GUIDE_UI_CLASSES.touchTarget, 'rounded-xl bg-[#173F35] px-4 py-2 text-[16px] font-semibold text-white')} onClick={onRetry}>{copy.retry}</button>}
+            action={<button type="button" className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton, GUIDE_UI_CLASSES.focusRing)} onClick={onRetry}>{copy.retry}</button>}
           />
         </GuideSectionCard>
       </main>
@@ -150,12 +154,14 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
       <GuideSectionCard title={copy.search.title}>
         <label className="relative block">
           <span className="sr-only">{copy.search.label}</span>
-          <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#63726C]" aria-hidden />
+          <Search size={18} className={cn('pointer-events-none absolute left-3 top-1/2 -translate-y-1/2', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />
           <input
+            type="search"
+            aria-label={copy.search.label}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={copy.search.placeholder}
-            className={cn(GUIDE_UI_CLASSES.touchTarget, 'w-full rounded-xl border border-[#DCE5E0] bg-white py-2 pl-10 pr-3 text-[16px] text-[#1D2A26] outline-none focus:border-[#173F35] focus:ring-2 focus:ring-[#E8F0EC]')}
+            className={cn(GUIDE_UI_CLASSES.searchInput, GUIDE_UI_CLASSES.searchField, GUIDE_UI_CLASSES.focusRing)}
           />
         </label>
         <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={copy.filters.label}>
@@ -166,8 +172,8 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
               aria-pressed={filter === option}
               className={cn(
                 GUIDE_UI_CLASSES.touchTarget,
-                'rounded-full border px-3 py-2 text-[16px] font-semibold',
-                filter === option ? 'border-[#173F35] bg-[#E8F0EC] text-[#173F35]' : 'border-[#DCE5E0] bg-white text-[#63726C] hover:bg-[#FAF8F3]',
+                GUIDE_UI_CLASSES.filterButton,
+                filter === option ? GUIDE_UI_CLASSES.filterActive : GUIDE_UI_CLASSES.filterInactive,
               )}
               onClick={() => setFilter(option)}
             >

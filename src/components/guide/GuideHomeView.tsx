@@ -175,11 +175,11 @@ export function GuideHomeView({
               {focusItems.map((item) => <FocusCard key={item.key} item={item} />)}
             </div>
             {extraFocusItems.length > 0 ? (
-              <details className="mt-3 rounded-xl border border-[#DCE5E0] bg-[#FAF8F3]">
-                <summary className={cn(GUIDE_UI_CLASSES.touchTarget, 'cursor-pointer px-3 py-2 text-center text-[14px] font-semibold text-[#173F35]')}>
+              <details className={cn('mt-3', GUIDE_UI_CLASSES.detailsSurface)}>
+                <summary className={GUIDE_UI_CLASSES.detailsSummary}>
                   {t.focus.viewAll}
                 </summary>
-                <div className="grid gap-2.5 border-t border-[#DCE5E0] p-3">
+                <div className={GUIDE_UI_CLASSES.detailsContent}>
                   {extraFocusItems.map((item) => <FocusCard key={item.key} item={item} />)}
                 </div>
               </details>

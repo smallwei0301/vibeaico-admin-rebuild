@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
@@ -168,4 +169,14 @@ describe('GUIDE home selectors (#66 Phase C)', () => {
     expect(html).toContain('待辦暫時無法載入');
     expect(html).not.toContain('目前沒有待處理事項');
   });
+  it('keeps Home disclosure styling behind shared GUIDE tokens', () => {
+    const source = readFileSync('src/components/guide/GuideHomeView.tsx', 'utf8');
+    expect(source).toContain('GUIDE_UI_CLASSES.detailsSurface');
+    expect(source).toContain('GUIDE_UI_CLASSES.detailsSummary');
+    expect(source).toContain('GUIDE_UI_CLASSES.detailsContent');
+    expect(source).not.toMatch(/#[0-9A-Fa-f]{6}/);
+    expect(source).not.toMatch(/text-\[[0-9]+px\]/);
+  });
+
+
 });
