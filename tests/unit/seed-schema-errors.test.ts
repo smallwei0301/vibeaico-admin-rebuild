@@ -19,6 +19,13 @@ describe('seed schema error classification', () => {
     expect(source).toContain("slug: 'private-test-plan'");
   });
 
+  it('assigns distinct service sort positions in the standard seed', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
+    expect(source).toMatch(
+      /id: SHOP_A\.serviceA1,[\s\S]*?sort_order: 0,[\s\S]*?id: SHOP_A\.serviceA2,[\s\S]*?sort_order: 1,/,
+    );
+  });
+
   it('fails closed when required trip plan or departure seed data cannot be written', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
     expect(source).toMatch(/if \(!tripPlansSeeded\)\s*\{\s*throw new Error\(/);
