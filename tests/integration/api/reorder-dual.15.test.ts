@@ -125,6 +125,41 @@ describe('Issue #15 dual reorder endpoints', () => {
     expect(x).toMatchObject({ sortOrder: 1, lineSortOrder: 0 });
   });
 
+  it('services：新增服務同時取得兩條排序位置且不碰撞既有資料', async () => {
+    let createdId: string | undefined;
+    try {
+      const res = await ownerA.post('/api/services', {
+        name: `#15 新增服務 ${Date.now().toString(36)}`,
+        durationMinutes: 30,
+        price: 100,
+      });
+      const body = (await res.json()) as Envelope<{ id?: string; sortOrder?: number; lineSortOrder?: number }>;
+      expect(res.status, JSON.stringify(body)).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.data?.id).toBeTruthy();
+      expect(typeof body.data?.sortOrder).toBe('number');
+      expect(typeof body.data?.lineSortOrder).toBe('number');
+      createdId = body.data!.id;
+
+      const { data, error } = await admin
+        .from('services')
+        .select('id, sort_order, line_sort_order')
+        .eq('id', createdId)
+        .eq('tenant_id', SHOP_A.id)
+        .single();
+      expect(error).toBeNull();
+      expect(data).toMatchObject({
+        id: createdId,
+        sort_order: body.data!.sortOrder,
+        line_sort_order: body.data!.lineSortOrder,
+      });
+    } finally {
+      if (createdId) {
+        await admin.from('services').delete().eq('id', createdId).eq('tenant_id', SHOP_A.id);
+      }
+    }
+  });
+
   it('products：公開與 LINE 順序互不覆蓋', async () => {
     await assertIndependent('products', '/api/products/reorder', await fullTenantIds('products', productIds));
     const res = await ownerA.get('/api/products');
