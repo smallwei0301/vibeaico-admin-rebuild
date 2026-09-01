@@ -23,6 +23,11 @@ import { nav } from '@/i18n/zh-TW/nav';
 import { calendarPage as t } from '@/i18n/zh-TW/pages/calendar';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
 import type { Booking, BookingStatus, Staff } from '@/lib/types';
+import { GuideDeparturesView } from '@/components/guide';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
+import { listTripDepartures, listTrips } from '@/services/tours';
+import type { GuideDepartureSummary } from '@/lib/guide-home';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -123,7 +128,7 @@ const toExternalEvent = (e: CalendarExternalItem): ExternalEvent => {
 
 /* -------------------------------------------------------------------------- */
 
-export default function CalendarPage() {
+function LegacyCalendarPage() {
   const toast = useToast();
 
   /** 只在瀏覽器端決定「今天」，避免 SSR/CSR 產生不同輸出 */
@@ -772,4 +777,52 @@ export default function CalendarPage() {
       />
     </>
   );
+}
+
+function GuideCalendarPage() {
+  const [departures, setDepartures] = React.useState<GuideDepartureSummary[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+  const [todayIso, setTodayIso] = React.useState('');
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const trips = await listTrips();
+      const grouped = await Promise.all(
+        trips.map(async (trip) => {
+          const tripDepartures = await listTripDepartures(trip.id);
+          return tripDepartures.map((departure) => ({ ...departure, tripTitle: trip.title }));
+        }),
+      );
+      setDepartures(grouped.flat());
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    setTodayIso(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`);
+    void load();
+  }, [load]);
+
+  return (
+    <GuideDeparturesView
+      departures={departures}
+      todayIso={todayIso}
+      loading={loading}
+      error={error}
+      onRetry={() => { void load(); }}
+    />
+  );
+}
+
+export default function CalendarPage() {
+  const businessType = useBusinessType();
+  const profile = MODE_PRESETS[businessType].navigationProfile;
+
+  return profile === 'GUIDE_FIVE' ? <GuideCalendarPage /> : <LegacyCalendarPage />;
 }

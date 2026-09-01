@@ -23,8 +23,10 @@ import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessT
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
+import { MODE_PRESETS } from '@/config/modes';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { MidaoListing, Trip, TripStatus } from '@/lib/types';
+import { GuideTripsView } from '@/components/guide/GuideTripsView';
 
 const STATUS_TONE: Record<TripStatus, 'success' | 'neutral' | 'warning'> = {
   PUBLISHED: 'success',
@@ -39,7 +41,7 @@ const MIDAO_TONE: Record<MidaoListing, 'primary' | 'info' | 'danger' | 'neutral'
   NONE: 'neutral',
 };
 
-export default function TripsPage() {
+function LegacyTripsPage() {
   const toast = useToast();
   const businessType = useBusinessType();
   const currentTenant = useCurrentTenant();
@@ -359,4 +361,33 @@ export default function TripsPage() {
       />
     </>
   );
+}
+
+function GuideTripsPage() {
+  const [trips, setTrips] = React.useState<Trip[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      setTrips(await listTrips());
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { void load(); }, [load]);
+
+  return <GuideTripsView trips={trips} loading={loading} error={error} onRetry={() => { void load(); }} />;
+}
+
+export default function TripsPage() {
+  const businessType = useBusinessType();
+  return MODE_PRESETS[businessType].navigationProfile === 'GUIDE_FIVE'
+    ? <GuideTripsPage />
+    : <LegacyTripsPage />;
 }
