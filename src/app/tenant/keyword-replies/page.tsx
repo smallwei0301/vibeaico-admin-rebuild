@@ -16,51 +16,25 @@ import {
   FormError, FormGroup, FormText, Input, Label, Select, Switch, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { ApiError } from '@/lib/api';
 import { listFeatures } from '@/services/settings';
+import {
+  createKeywordReply,
+  deleteKeywordReply,
+  discardKeywordReplyImage,
+  listKeywordReplies,
+  setKeywordReplyActive,
+  updateKeywordReply,
+  uploadKeywordReplyImage,
+  type KeywordReplyRow,
+} from '@/services/keyword-replies';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { keywordRepliesPage as t } from '@/i18n/zh-TW/pages/keyword-replies';
 
-/* -------------------------------------------------------------------------- */
-/* 本頁專用型別與假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
-/* -------------------------------------------------------------------------- */
-
-type MatchType = 'EXACT' | 'CONTAINS';
-type ActionType = 'REPLY_CONTENT' | 'START_PROFILE_COLLECTION';
-
-/** 原站 /api/settings/line/keyword-replies 的自訂關鍵字結構 */
-type KeywordReply = {
-  id: string;
-  keyword: string;
-  matchType: MatchType;
-  actionType: ActionType;
-  replyText: string;
-  imageUrl: string;
-  linkUrl: string;
-  linkLabel: string;
-  enabled: boolean;
-  /** 取代了哪一個系統內建關鍵字（空字串＝沒有取代） */
-  overridesSystem: string;
-};
-
-const MOCK_KEYWORD_REPLIES: KeywordReply[] = [
-  {
-    id: 'kw_1', keyword: '停車', matchType: 'CONTAINS', actionType: 'REPLY_CONTENT',
-    replyText: '店門口有 3 個機車位，汽車可停巷口的收費停車場（每小時 30 元）。',
-    imageUrl: '', linkUrl: '', linkLabel: '', enabled: true, overridesSystem: '',
-  },
-  {
-    id: 'kw_2', keyword: '價格', matchType: 'CONTAINS', actionType: 'REPLY_CONTENT',
-    replyText: t.custom.templates[0].reply,
-    imageUrl: '', linkUrl: 'https://example.com/price', linkLabel: '查看更多',
-    enabled: true, overridesSystem: '',
-  },
-  {
-    id: 'kw_3', keyword: '會員', matchType: 'EXACT', actionType: 'START_PROFILE_COLLECTION',
-    replyText: '', imageUrl: '', linkUrl: '', linkLabel: '',
-    enabled: false, overridesSystem: '會員',
-  },
-];
+type KeywordReply = KeywordReplyRow;
+type MatchType = KeywordReply['matchType'];
+type ActionType = KeywordReply['actionType'];
 
 /** 建議的最短「包含」關鍵字長度（原站 inline JS 規則） */
 const MIN_CONTAINS_LENGTH = 2;
@@ -74,6 +48,7 @@ const EMPTY_DRAFT: Omit<KeywordReply, 'id'> & { id: string } = {
   actionType: 'REPLY_CONTENT',
   replyText: '',
   imageUrl: '',
+  imageStorageRef: undefined,
   linkUrl: '',
   linkLabel: '',
   enabled: true,
@@ -107,17 +82,34 @@ export default function KeywordRepliesPage() {
   const [editing, setEditing] = React.useState(false);
   const [formError, setFormError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [imageUploading, setImageUploading] = React.useState(false);
+  const [imageUploadError, setImageUploadError] = React.useState('');
+  const [localPreviewUrl, setLocalPreviewUrl] = React.useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<KeywordReply | null>(null);
 
-  /** 新關鍵字的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
-  const nextId = React.useRef(1);
+  /** Ownership is tracked per modal session, not by whichever request finishes last. */
+  const uploadGeneration = React.useRef(0);
+  const savingRef = React.useRef(false);
+  const persistedImagePath = React.useRef<string | null>(null);
+
+  const clearLocalPreview = React.useCallback(() => {
+    setLocalPreviewUrl((url) => {
+      if (url) URL.revokeObjectURL(url);
+      return null;
+    });
+  }, []);
+
+  React.useEffect(() => () => {
+    if (localPreviewUrl) URL.revokeObjectURL(localPreviewUrl);
+  }, [localPreviewUrl]);
 
   React.useEffect(() => {
     void (async () => {
       try {
-        setRows(MOCK_KEYWORD_REPLIES);
+        setRows(await listKeywordReplies());
       } catch {
-        toast.show(t.messages.retryLater, 'danger');
+        toast.show(t.custom.loadFailed, 'danger');
       } finally {
         setLoading(false);
       }
@@ -139,12 +131,22 @@ export default function KeywordRepliesPage() {
   /* -------------------------------------------------------------- 動作 */
 
   const openCreate = (preset?: Partial<typeof EMPTY_DRAFT>) => {
+    uploadGeneration.current += 1;
+    clearLocalPreview();
+    persistedImagePath.current = null;
+    setImageUploadError('');
+    setImageUploading(false);
     setEditing(false);
     setFormError('');
     setDraft({ ...EMPTY_DRAFT, ...preset });
   };
 
   const openEdit = (row: KeywordReply) => {
+    uploadGeneration.current += 1;
+    clearLocalPreview();
+    persistedImagePath.current = row.imageStorageRef?.path ?? null;
+    setImageUploadError('');
+    setImageUploading(false);
     setEditing(true);
     setFormError('');
     setDraft({ ...row });
@@ -154,6 +156,61 @@ export default function KeywordRepliesPage() {
     const tpl = t.custom.templates[index];
     openCreate({ keyword: tpl.keyword, replyText: tpl.reply });
     toast.show(`${t.custom.templatePrefix}${tpl.keyword}`, 'info');
+  };
+
+  const discardIfUnreferenced = (ref: KeywordReply['imageStorageRef']) => {
+    if (!ref || ref.path === persistedImagePath.current) return;
+    void discardKeywordReplyImage(ref).catch(() => {
+      // Cleanup is retried by the server queue when Storage is temporarily unavailable.
+    });
+  };
+
+  const closeDraft = (force = false) => {
+    if (savingRef.current && !force) return;
+    uploadGeneration.current += 1;
+    discardIfUnreferenced(draft?.imageStorageRef);
+    clearLocalPreview();
+    setImageUploading(false);
+    setImageUploadError('');
+    setDraft(null);
+  };
+
+  const handleImageChange = async (file: File | undefined) => {
+    if (!file || !draft) return;
+    const generation = ++uploadGeneration.current;
+    discardIfUnreferenced(draft.imageStorageRef);
+    setImageUploadError('');
+    setLocalPreviewUrl((previous) => {
+      if (previous) URL.revokeObjectURL(previous);
+      return URL.createObjectURL(file);
+    });
+    setDraft((current) => current ? { ...current, imageUrl: '', imageStorageRef: undefined } : current);
+    setImageUploading(true);
+
+    try {
+      const ref = await uploadKeywordReplyImage(file);
+      if (generation !== uploadGeneration.current || !draft) {
+        discardIfUnreferenced(ref);
+        return;
+      }
+      setDraft((current) => current ? { ...current, imageUrl: ref.url, imageStorageRef: ref } : current);
+    } catch (error) {
+      if (generation === uploadGeneration.current) {
+        clearLocalPreview();
+        setImageUploadError(error instanceof ApiError ? error.message : t.messages.imageUploadFailed);
+      }
+    } finally {
+      if (generation === uploadGeneration.current) setImageUploading(false);
+    }
+  };
+
+  const removeImage = () => {
+    if (!draft) return;
+    uploadGeneration.current += 1;
+    discardIfUnreferenced(draft.imageStorageRef);
+    clearLocalPreview();
+    setImageUploadError('');
+    setDraft({ ...draft, imageUrl: '', imageStorageRef: undefined });
   };
 
   const save = async () => {
@@ -171,37 +228,62 @@ export default function KeywordRepliesPage() {
       setFormError(t.messages.replyRequired);
       return;
     }
+    if (imageUploading) {
+      setImageUploadError(t.form.imageSavePending);
+      return;
+    }
+    savingRef.current = true;
     setSaving(true);
     try {
+      const next = { ...draft, keyword };
       if (editing) {
-        setRows((list) => list.map((r) => (r.id === draft.id ? { ...draft, keyword } : r)));
+        await updateKeywordReply(draft.id, next);
       } else {
-        setRows((list) => [...list, { ...draft, keyword, id: `kw_new_${nextId.current++}` }]);
+        await createKeywordReply(next);
       }
-      setDraft(null);
+      // Mark the object as persisted before the best-effort GET refresh. If
+      // refresh fails after a successful write, Cancel must not delete it.
+      persistedImagePath.current = next.imageStorageRef?.path ?? null;
+      setRows(await listKeywordReplies());
+      closeDraft(true);
       toast.show(featureActive ? t.messages.saved : t.messages.savedNotActive);
     } catch {
+      setFormError(t.messages.saveFailed);
       toast.show(t.messages.saveFailed, 'danger');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
-  const remove = () => {
+  const remove = async () => {
     if (!deleteTarget) return;
-    setRows((list) => list.filter((r) => r.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    toast.show(t.messages.deleted);
+    setDeleting(true);
+    try {
+      await deleteKeywordReply(deleteTarget.id);
+      setRows(await listKeywordReplies());
+      setDeleteTarget(null);
+      toast.show(t.messages.deleted);
+    } catch {
+      toast.show(t.messages.saveFailed, 'danger');
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  const toggleRow = (row: KeywordReply) => {
+  const toggleRow = async (row: KeywordReply) => {
     const next = !row.enabled;
-    setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: next } : r)));
-    toast.show(
-      next
-        ? featureActive ? t.messages.enabled : t.messages.enabledNotActive
-        : t.messages.disabled,
-    );
+    try {
+      await setKeywordReplyActive(row.id, next);
+      setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: next } : r)));
+      toast.show(
+        next
+          ? featureActive ? t.messages.enabled : t.messages.enabledNotActive
+          : t.messages.disabled,
+      );
+    } catch {
+      toast.show(t.messages.saveFailed, 'danger');
+    }
   };
 
   const requestSystemToggle = (key: string, next: boolean) => {
@@ -432,15 +514,21 @@ export default function KeywordRepliesPage() {
       {/* --------------------------------------------- modal：自訂關鍵字 */}
       <Modal
         open={!!draft}
-        onClose={() => setDraft(null)}
+        onClose={closeDraft}
         size="lg"
         title={editing ? t.form.editTitle : t.form.createTitle}
         footer={
           <>
-            <Button variant="secondary" size="sm" onClick={() => setDraft(null)}>
+            <Button variant="secondary" size="sm" onClick={() => closeDraft()} disabled={saving}>
               {common.cancel}
             </Button>
-            <Button size="sm" loading={saving} loadingText={common.saving} onClick={() => void save()}>
+            <Button
+              size="sm"
+              loading={saving}
+              loadingText={common.saving}
+              disabled={imageUploading}
+              onClick={() => void save()}
+            >
               {common.save}
             </Button>
           </>
@@ -506,7 +594,16 @@ export default function KeywordRepliesPage() {
                 id="kwActionType"
                 className="form-select-sm"
                 value={draft.actionType}
-                onChange={(e) => setDraft({ ...draft, actionType: e.target.value as ActionType })}
+                onChange={(e) => {
+                  const actionType = e.target.value as ActionType;
+                  if (actionType !== 'REPLY_CONTENT') removeImage();
+                  setDraft({
+                    ...draft,
+                    actionType,
+                    imageUrl: actionType === 'REPLY_CONTENT' ? draft.imageUrl : '',
+                    imageStorageRef: actionType === 'REPLY_CONTENT' ? draft.imageStorageRef : undefined,
+                  });
+                }}
                 options={[
                   { value: 'REPLY_CONTENT', label: t.form.actionTypes.REPLY_CONTENT },
                   {
@@ -535,14 +632,37 @@ export default function KeywordRepliesPage() {
                 </FormGroup>
 
                 <FormGroup>
-                  <Label>{t.form.image}</Label>
-                  <Input type="file" accept="image/*" className="form-control-sm" />
-                  {draft.imageUrl ? (
+                  <Label htmlFor="kwImage">{t.form.image}</Label>
+                  <Input
+                    id="kwImage"
+                    type="file"
+                    accept="image/jpeg,image/png"
+                    className="form-control-sm"
+                    disabled={imageUploading || saving}
+                    onChange={(e) => {
+                      void handleImageChange(e.target.files?.[0]);
+                      e.currentTarget.value = '';
+                    }}
+                  />
+                  {localPreviewUrl || draft.imageStorageRef || draft.imageUrl ? (
+                    <img
+                      src={draft.imageStorageRef?.url ?? localPreviewUrl ?? draft.imageUrl}
+                      alt={t.form.imagePreviewAlt}
+                      className="mt-3 max-h-48 w-full rounded-md object-contain"
+                    />
+                  ) : null}
+                  {imageUploading ? <FormText role="status">{t.form.imageUploading}</FormText> : null}
+                  {!imageUploading && draft.imageStorageRef ? (
+                    <FormText role="status">{t.form.imageUploaded}</FormText>
+                  ) : null}
+                  {imageUploadError ? <FormError>{imageUploadError}</FormError> : null}
+                  {draft.imageStorageRef || draft.imageUrl ? (
                     <Button
                       variant="outlineDanger"
                       size="sm"
                       className="mt-2"
-                      onClick={() => setDraft({ ...draft, imageUrl: '' })}
+                      disabled={imageUploading || saving}
+                      onClick={removeImage}
                     >
                       {t.form.imageRemove}
                     </Button>
@@ -592,8 +712,9 @@ export default function KeywordRepliesPage() {
         message={`${t.confirm.deleteLead}${deleteTarget?.keyword ?? ''}${t.confirm.deleteTail}`}
         danger
         confirmText={common.delete}
+        loading={deleting}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={remove}
+        onConfirm={() => void remove()}
       />
 
       <ConfirmModal

@@ -2941,3 +2941,12 @@ bucket 查證與決策表在 06 §6.1。專用 `keyword-reply-images` 必須 pub
 跨租戶 RLS、cleanup retry、webhook integration、完整 integration/E2E、Preview 手機 modal 與
 reload 截圖均未驗。Production DDL／Storage policy、部署與真實 LINE 發送亦未執行。因此
 #50 仍是 source-only 候選，不得把本節或 unit 綠燈當成 issue 完成證據。
+
+### #50 current-main rebuild note (2026-09-01)
+
+本分支以 current main `ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5` 重建同一條
+keyword image chain。因共用 `/api/upload`、`src/server/image.ts` 與 upload dependency
+目前由 active #15 lane 持有，本候選只新增 keyword 專用 upload/confirm seam，不改共用
+chat/catalog uploader，也不碰 AppShell/GUIDE。專用端點仍遵守 06 §6.1 的 bucket、tenant
+path、HTTPS URL、original＋preview 與 cleanup queue 契約；TEST migration、service-role
+object proof、integration/E2E、Preview 與 Production 仍是尚未執行的後續 gate。

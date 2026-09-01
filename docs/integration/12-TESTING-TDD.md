@@ -240,7 +240,8 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
   （斜槓租戶）、含未來 14 天團次與正確剩餘名額；團次售完後重新組 context
   該筆不應再出現。AI 呼叫本身在單元層 mock（不打真 API），只驗 prompt 內容
   與逾時/失敗時回 null 落回 defaultReply。
-- **關鍵字圖片（#50）**：unit 先釘 `/api/upload` 接線、JPEG/PNG signature、5 MB
+- **關鍵字圖片（#50）**：unit 先釘 keyword 專用 upload/confirm seam（不與 #15 的共用
+  `/api/upload` 競爭）、JPEG/PNG signature、5 MB
   上限、原圖＋≤1 MB preview、modal 重疊上傳 ownership 與 storage-ref tenant/origin/path
   驗證；integration 再以 TEST service role 驗 object 真存在、create/update/GET 一致、
   跨租戶寫入／引用／刪除拒絕、disabled/移除不送舊圖、cleanup queue 重試前重查引用；

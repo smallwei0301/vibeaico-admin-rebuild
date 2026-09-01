@@ -2,6 +2,11 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { createAdminSupabase } from '@/server/supabase';
+import {
+  assertKeywordReplyImagePayload,
+  requireKeywordReplyImage,
+} from '@/server/keyword-reply-images';
 
 /**
  * /api/settings/line/keyword-replies（04 分冊 §B-5）— keyword_replies CRUD。
@@ -39,6 +44,17 @@ export const GET = handle(async () => {
     .order('created_at', { ascending: true });
   if (error) throw error;
 
+  // New IMAGE rows prove both objects on every read. Legacy bare imageUrl rows
+  // remain readable/stoppable without guessing which public object they meant.
+  const imageRows = (data ?? []).filter(
+    (row) => row.reply_type === 'IMAGE' && row.content?.imageStorageRef,
+  );
+  if (imageRows.length) {
+    const admin = createAdminSupabase();
+    for (const row of imageRows)
+      await requireKeywordReplyImage(row.content, t.tenantId, admin);
+  }
+
   return ok((data ?? []).map(mapKeywordReply));
 });
 
@@ -53,6 +69,9 @@ export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'KEYWORD_REPLY');
   const b = createSchema.parse(await req.json());
+  assertKeywordReplyImagePayload(b.replyType ?? 'TEXT', b.content ?? {});
+  if ((b.replyType ?? 'TEXT') === 'IMAGE')
+    await requireKeywordReplyImage(b.content ?? {}, t.tenantId, createAdminSupabase());
 
   // 每店上限 20 組（09 分冊 §5）
   const { count, error: e0 } = await t.supabase
