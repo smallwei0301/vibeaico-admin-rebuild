@@ -1,6 +1,8 @@
-import type { Customer, TourOrder } from '@/lib/types';
+import type { Customer, Paged, TourOrder } from '@/lib/types';
 
 export type GuideTravelerFilter = 'ALL' | 'TODAY' | 'REPLY' | 'RETURNING';
+
+export const GUIDE_AGGREGATION_PAGE_SIZE = 200;
 
 export type GuideTravelerOrder = Pick<
   TourOrder,
@@ -17,7 +19,7 @@ export type GuideTravelerConversation = {
 
 export type GuideTraveler = {
   customer: Customer;
-  /** Existing TourOrder facts joined by the service-owned customer identity fields. */
+  /** Existing TourOrder facts joined by an unambiguous service-owned identity. */
   orders: GuideTravelerOrder[];
   /** Next non-cancelled order, or the latest non-cancelled order when there is no future one. */
   primaryOrder: GuideTravelerOrder | null;
@@ -34,6 +36,29 @@ export type GuideTravelerMetrics = {
   waitingReply: number;
   returning: number;
 };
+
+/**
+ * Read a paged service resource in full. The service/API contract remains
+ * paged; the GUIDE aggregation is the caller that owns the need for a
+ * complete list.
+ */
+export async function loadAllGuidePages<T>(
+  loadPage: (page: number, size: number) => Promise<Paged<T>>,
+  pageSize = GUIDE_AGGREGATION_PAGE_SIZE,
+): Promise<T[]> {
+  const first = await loadPage(0, pageSize);
+  const totalPages = Number.isFinite(first.totalPages)
+    ? Math.max(1, Math.floor(first.totalPages))
+    : 1;
+  const rows = [...first.content];
+
+  for (let page = 1; page < totalPages; page += 1) {
+    const next = await loadPage(page, pageSize);
+    rows.push(...next.content);
+  }
+
+  return rows;
+}
 
 function normalized(value: string): string {
   return value.trim().toLocaleLowerCase();
@@ -52,11 +77,68 @@ function isDateKey(value: string): boolean {
     && date.getUTCDate() === day;
 }
 
-function matchesCustomer(customer: Customer, order: TourOrder): boolean {
-  const customerPhone = normalizedPhone(customer.phone);
+type CustomerIdentityIndex = {
+  byName: Map<string, Customer[]>;
+  byPhone: Map<string, Customer[]>;
+};
+
+function addIdentity(
+  index: Map<string, Customer[]>,
+  key: string,
+  customer: Customer,
+): void {
+  if (!key) return;
+  const matches = index.get(key);
+  if (matches) {
+    matches.push(customer);
+  } else {
+    index.set(key, [customer]);
+  }
+}
+
+function buildCustomerIdentityIndex(customers: readonly Customer[]): CustomerIdentityIndex {
+  const index: CustomerIdentityIndex = { byName: new Map(), byPhone: new Map() };
+  for (const customer of customers) {
+    addIdentity(index.byName, normalized(customer.name), customer);
+    addIdentity(index.byPhone, normalizedPhone(customer.phone), customer);
+  }
+  return index;
+}
+
+/**
+ * Resolve each order to at most one customer. Phone is the strongest
+ * available identity in the current TourOrder contract. A name-only join is
+ * retained for old rows missing phone data, but only when the name is unique
+ * and no stored phone contradicts it. Unresolved rows are left unjoined
+ * rather than attributed to the wrong tenant-local customer.
+ */
+function resolveOrderCustomer(
+  order: TourOrder,
+  index: CustomerIdentityIndex,
+): Customer | null {
   const orderPhone = normalizedPhone(order.customerPhone);
-  if (customerPhone && orderPhone) return customerPhone === orderPhone;
-  return normalized(customer.name) !== '' && normalized(customer.name) === normalized(order.customerName);
+  if (orderPhone) {
+    const phoneMatches = index.byPhone.get(orderPhone) ?? [];
+    if (phoneMatches.length === 1) return phoneMatches[0];
+    if (phoneMatches.length > 1) {
+      const orderName = normalized(order.customerName);
+      const nameMatches = phoneMatches.filter((customer) => (
+        orderName !== '' && normalized(customer.name) === orderName
+      ));
+      return nameMatches.length === 1 ? nameMatches[0] : null;
+    }
+  }
+
+  const orderName = normalized(order.customerName);
+  if (!orderName) return null;
+  const nameMatches = index.byName.get(orderName) ?? [];
+  if (nameMatches.length !== 1) return null;
+
+  const [customer] = nameMatches;
+  // A non-empty customer phone plus a different non-empty order phone is a
+  // contradiction, not permission to fall back to the display name.
+  if (orderPhone && normalizedPhone(customer.phone)) return null;
+  return customer;
 }
 
 function orderForDisplay(order: TourOrder): GuideTravelerOrder {
@@ -103,12 +185,23 @@ export function buildGuideTravelers(
   todayIso: string,
 ): GuideTraveler[] {
   const hasToday = isDateKey(todayIso);
+  const identityIndex = buildCustomerIdentityIndex(customers);
+  const ordersByCustomerId = new Map<string, GuideTravelerOrder[]>();
+
+  for (const order of orders) {
+    const customer = resolveOrderCustomer(order, identityIndex);
+    if (!customer) continue;
+    const customerOrders = ordersByCustomerId.get(customer.id);
+    const displayOrder = orderForDisplay(order);
+    if (customerOrders) {
+      customerOrders.push(displayOrder);
+    } else {
+      ordersByCustomerId.set(customer.id, [displayOrder]);
+    }
+  }
 
   return customers.map((customer) => {
-    const customerOrders = orders
-      .filter((order) => matchesCustomer(customer, order))
-      .map(orderForDisplay)
-      .sort(compareOrders);
+    const customerOrders = [...(ordersByCustomerId.get(customer.id) ?? [])].sort(compareOrders);
     const nonCancelled = customerOrders.filter((order) => order.status !== 'CANCELLED');
     const future = hasToday
       ? nonCancelled.filter((order) => order.departsOn >= todayIso)

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildGuideTravelers,
   filterGuideTravelers,
+  loadAllGuidePages,
   summarizeGuideTravelers,
 } from '@/lib/guide-travelers';
 import type { Customer, TourOrder } from '@/lib/types';
@@ -98,6 +99,54 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     });
   });
 
+  it('loads every source page instead of treating the API page size as a result cap', async () => {
+    const calls: Array<[number, number]> = [];
+    const pageRows = [
+      Array.from({ length: 200 }, (_, index) => index),
+      Array.from({ length: 200 }, (_, index) => index + 200),
+      [400],
+    ];
+
+    const result = await loadAllGuidePages(async (page, size) => {
+      calls.push([page, size]);
+      return {
+        content: pageRows[page] ?? [],
+        totalElements: 401,
+        totalPages: 3,
+        number: page,
+        size,
+      };
+    });
+
+    expect(calls).toEqual([[0, 200], [1, 200], [2, 200]]);
+    expect(result).toHaveLength(401);
+    expect(result.at(-1)).toBe(400);
+  });
+
+  it('only falls back to a unique name when phone identity is unavailable and unambiguous', () => {
+    const duplicateWithPhone = customer({ id: 'c-duplicate-phone', name: '同名旅客', phone: '0900-000-001' });
+    const duplicateWithoutPhone = customer({ id: 'c-duplicate-empty', name: '同名旅客', phone: '' });
+    const knownPhone = customer({ id: 'c-known-phone', name: '電話衝突旅客', phone: '0900-000-002' });
+    const legacyCustomer = customer({ id: 'c-legacy', name: '唯一舊資料旅客', phone: '' });
+    const joined = buildGuideTravelers(
+      [duplicateWithPhone, duplicateWithoutPhone, knownPhone, legacyCustomer],
+      [
+        order({ id: 'o-exact-phone', customerName: '同名旅客', customerPhone: '0900-000-001' }),
+        order({ id: 'o-conflicting-phone', customerName: '電話衝突旅客', customerPhone: '0900-000-099' }),
+        order({ id: 'o-unique-name', customerName: '唯一舊資料旅客', customerPhone: '0900-000-099' }),
+      ],
+      [],
+      '2026-09-01',
+    );
+
+    expect(joined.find((row) => row.customer.id === duplicateWithPhone.id)?.orders.map((item) => item.id))
+      .toEqual(['o-exact-phone']);
+    expect(joined.find((row) => row.customer.id === duplicateWithoutPhone.id)?.orders).toEqual([]);
+    expect(joined.find((row) => row.customer.id === knownPhone.id)?.orders).toEqual([]);
+    expect(joined.find((row) => row.customer.id === legacyCustomer.id)?.orders.map((item) => item.id))
+      .toEqual(['o-unique-name']);
+  });
+
   it('computes all four quick filters and searches contact and itinerary fields', () => {
     expect(filterGuideTravelers(rows, 'ALL')).toHaveLength(2);
     expect(filterGuideTravelers(rows, 'TODAY')).toHaveLength(2);
@@ -118,6 +167,11 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
 
   it('wires the GUIDE surface to readable mobile controls and truthful states', () => {
     const source = readFileSync('src/components/guide/GuideTravelersView.tsx', 'utf8');
+    const pageSource = readFileSync('src/app/tenant/customers/page.tsx', 'utf8');
+    const guidePageSource = pageSource.slice(
+      pageSource.indexOf('function GuideTravelersPage()'),
+      pageSource.indexOf('export default function CustomersPage'),
+    );
     expect(source).toContain('navigation.travelers.search.placeholder');
     expect(source).toContain('GUIDE_UI_CLASSES.touchTarget');
     expect(source).toContain('filterGuideTravelers');
@@ -125,5 +179,9 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(source).toContain('GUIDE_UI_CLASSES.page');
     expect(source).not.toContain('42%');
     expect(source).not.toContain('128 位旅客');
+    expect(guidePageSource).toContain('loadAllGuidePages((page, size) => listCustomers({ page, size }))');
+    expect(guidePageSource).toContain('loadAllGuidePages((page, size) => listTourOrders({ page, size }))');
+    expect(guidePageSource).not.toMatch(/listCustomers\(\{\s*page:\s*0\s*,\s*size:\s*200\s*\}\)/);
+    expect(guidePageSource).not.toMatch(/listTourOrders\(\{\s*page:\s*0\s*,\s*size:\s*200\s*\}\)/);
   });
 });

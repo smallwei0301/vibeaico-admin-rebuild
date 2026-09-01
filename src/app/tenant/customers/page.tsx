@@ -28,7 +28,7 @@ import { MOCK_CUSTOMERS } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { customersPage as t } from '@/i18n/zh-TW/pages/customers';
-import { buildGuideTravelers } from '@/lib/guide-travelers';
+import { buildGuideTravelers, loadAllGuidePages } from '@/lib/guide-travelers';
 import { formatCurrency, formatDate, formatNumber } from '@/lib/utils';
 import type { Customer, Gender, MembershipLevel } from '@/lib/types';
 
@@ -772,25 +772,29 @@ function GuideTravelersPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
   const [todayIso, setTodayIso] = React.useState('');
+  const loadGeneration = React.useRef(0);
 
   const load = React.useCallback(async () => {
     if (!todayIso) return;
+    const generation = ++loadGeneration.current;
     setLoading(true);
     setError(false);
     try {
       const [customers, orders, conversations] = await Promise.all([
-        listCustomers({ page: 0, size: 200 }),
-        listTourOrders({ page: 0, size: 200 }),
+        loadAllGuidePages((page, size) => listCustomers({ page, size })),
+        loadAllGuidePages((page, size) => listTourOrders({ page, size })),
         listConversations(),
       ]);
-      setTravelers(buildGuideTravelers(customers.content, orders.content, conversations, todayIso));
+      if (generation !== loadGeneration.current) return;
+      setTravelers(buildGuideTravelers(customers, orders, conversations, todayIso));
     } catch {
+      if (generation !== loadGeneration.current) return;
       setTravelers([]);
       setError(true);
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
-  }, [todayIso]);
+  }, [tenant.id, todayIso]);
 
   React.useEffect(() => {
     const today = new Date();
