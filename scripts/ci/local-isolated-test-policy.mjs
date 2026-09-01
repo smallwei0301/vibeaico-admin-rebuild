@@ -16,6 +16,8 @@ const LOCAL_PROFILES = new Set([
   TEST_PROFILES.LOCAL_ISOLATED_CANARY,
 ]);
 
+const CANARY_BARRIER_DELAY_SECONDS = 360;
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -55,11 +57,22 @@ export function decideLocalIsolatedTest({
   body = '',
   inputProfile = '',
   inputExpectedHead = '',
+  inputFinalCanonicalRequired = '',
   actualHead = '',
+  headRepoFullName = '',
+  repositoryFullName = '',
+  nowEpochSeconds = Math.floor(Date.now() / 1000),
 } = {}) {
   const profile = upper(inputProfile || readMetadataField(body, 'TEST_PROFILE') || TEST_PROFILES.SOURCE_ONLY);
-  const finalCanonicalRequired = upper(readMetadataField(body, 'FINAL_CANONICAL_REQUIRED'));
+  const finalCanonicalRequired = upper(
+    inputFinalCanonicalRequired || readMetadataField(body, 'FINAL_CANONICAL_REQUIRED'),
+  );
   const errors = [];
+  const isForkPullRequest =
+    eventName === 'pull_request' &&
+    Boolean(repositoryFullName) &&
+    Boolean(headRepoFullName) &&
+    headRepoFullName !== repositoryFullName;
 
   if (!Object.hasOwn(TEST_PROFILES, profile)) {
     errors.push(`TEST_PROFILE is invalid: ${profile || 'missing'}`);
@@ -75,21 +88,28 @@ export function decideLocalIsolatedTest({
     errors.push('LOCAL_ISOLATED profiles must set FINAL_CANONICAL_REQUIRED=true');
   }
 
-  const runLocal = LOCAL_PROFILES.has(profile) && errors.length === 0;
+  const runLocal = LOCAL_PROFILES.has(profile) && errors.length === 0 && !isForkPullRequest;
   const slots = profile === TEST_PROFILES.LOCAL_ISOLATED_CANARY ? ['a', 'b'] : ['a'];
-  const reason = runLocal
-    ? profile === TEST_PROFILES.LOCAL_ISOLATED_CANARY
-      ? 'two_slot_canary'
-      : 'per_pr_local_isolated'
-    : errors.length
-      ? 'invalid_local_test_contract'
-      : 'profile_does_not_request_local_test';
+  const canaryBarrierEpoch =
+    profile === TEST_PROFILES.LOCAL_ISOLATED_CANARY
+      ? nowEpochSeconds + CANARY_BARRIER_DELAY_SECONDS
+      : null;
+  const reason = isForkPullRequest
+    ? 'fork_pr_requires_trusted_manual_dispatch'
+    : runLocal
+      ? profile === TEST_PROFILES.LOCAL_ISOLATED_CANARY
+        ? 'two_slot_canary'
+        : 'per_pr_local_isolated'
+      : errors.length
+        ? 'invalid_local_test_contract'
+        : 'profile_does_not_request_local_test';
 
   return {
     runLocal,
     profile,
     finalCanonicalRequired: finalCanonicalRequired === 'TRUE',
     slots,
+    canaryBarrierEpoch,
     reason,
     errors,
     exactHead: actualHead || null,
@@ -116,7 +136,10 @@ function cli() {
     body,
     inputProfile: inputs.test_profile ?? '',
     inputExpectedHead: inputs.expected_head ?? '',
+    inputFinalCanonicalRequired: inputs.final_canonical_required ?? '',
     actualHead,
+    headRepoFullName: event.pull_request?.head?.repo?.full_name ?? '',
+    repositoryFullName: event.repository?.full_name ?? process.env.GITHUB_REPOSITORY ?? '',
   });
 
   writeOutput('run_local', String(decision.runLocal));
@@ -125,6 +148,7 @@ function cli() {
   writeOutput('reason', decision.reason);
   writeOutput('exact_head', decision.exactHead ?? '');
   writeOutput('final_canonical_required', String(decision.finalCanonicalRequired));
+  writeOutput('canary_barrier_epoch', decision.canaryBarrierEpoch ?? '');
 
   console.log(`[local-test-policy] profile=${decision.profile} run=${decision.runLocal} reason=${decision.reason}`);
   if (decision.errors.length) {

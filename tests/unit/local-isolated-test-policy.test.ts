@@ -27,24 +27,31 @@ describe('local isolated TEST policy', () => {
       eventName: 'pull_request',
       body: body(),
       actualHead: 'abc123',
+      headRepoFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
     })).toMatchObject({
       runLocal: true,
       profile: 'LOCAL_ISOLATED',
       slots: ['a'],
+      canaryBarrierEpoch: null,
       reason: 'per_pr_local_isolated',
       errors: [],
       exactHead: 'abc123',
     });
   });
 
-  it('runs two independent slots for the infrastructure canary', () => {
+  it('runs two independent slots behind one future barrier for the infrastructure canary', () => {
     const decision = decideLocalIsolatedTest({
       eventName: 'pull_request',
       body: body({ TEST_PROFILE: 'LOCAL_ISOLATED_CANARY' }),
       actualHead: 'canary-sha',
+      headRepoFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      nowEpochSeconds: 1_000,
     });
     expect(decision.runLocal).toBe(true);
     expect(decision.slots).toEqual(['a', 'b']);
+    expect(decision.canaryBarrierEpoch).toBe(1_360);
     expect(decision.reason).toBe('two_slot_canary');
   });
 
@@ -58,16 +65,40 @@ describe('local isolated TEST policy', () => {
     expect(decision.errors).toContain('LOCAL_ISOLATED profiles must set FINAL_CANONICAL_REQUIRED=true');
   });
 
-  it('authenticates manual dispatch against the exact branch head', () => {
-    const decision = decideLocalIsolatedTest({
+  it('authenticates manual dispatch against the exact branch head and explicit final gate', () => {
+    const valid = decideLocalIsolatedTest({
+      eventName: 'workflow_dispatch',
+      inputProfile: 'LOCAL_ISOLATED',
+      inputExpectedHead: 'new-sha',
+      inputFinalCanonicalRequired: 'true',
+      actualHead: 'new-sha',
+    });
+    expect(valid).toMatchObject({ runLocal: true, reason: 'per_pr_local_isolated' });
+
+    const wrongHead = decideLocalIsolatedTest({
       eventName: 'workflow_dispatch',
       inputProfile: 'LOCAL_ISOLATED',
       inputExpectedHead: 'old-sha',
+      inputFinalCanonicalRequired: 'true',
       actualHead: 'new-sha',
-      body: body(),
     });
-    expect(decision.runLocal).toBe(false);
-    expect(decision.errors[0]).toContain('expected_head must equal');
+    expect(wrongHead.runLocal).toBe(false);
+    expect(wrongHead.errors[0]).toContain('expected_head must equal');
+  });
+
+  it('does not automatically spend two Docker runners for a fork PR', () => {
+    const decision = decideLocalIsolatedTest({
+      eventName: 'pull_request',
+      body: body({ TEST_PROFILE: 'LOCAL_ISOLATED_CANARY' }),
+      actualHead: 'fork-sha',
+      headRepoFullName: 'external-user/vibeaico-admin-rebuild',
+      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
+    });
+    expect(decision).toMatchObject({
+      runLocal: false,
+      reason: 'fork_pr_requires_trusted_manual_dispatch',
+      errors: [],
+    });
   });
 
   it('keeps source-only work out of Docker and the local database lane', () => {

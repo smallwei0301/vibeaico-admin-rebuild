@@ -24,6 +24,12 @@ on:
         description: Exact branch SHA to validate
         required: true
         type: string
+      final_canonical_required:
+        description: Local evidence never replaces the remote canonical TEST
+        required: true
+        type: choice
+        options:
+          - 'true'
 
 permissions:
   contents: read
@@ -35,6 +41,7 @@ concurrency:
 
 jobs:
   classify:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     outputs:
       run_local: ${{ steps.policy.outputs.run_local }}
@@ -43,6 +50,7 @@ jobs:
       reason: ${{ steps.policy.outputs.reason }}
       exact_head: ${{ steps.policy.outputs.exact_head }}
       final_canonical_required: ${{ steps.policy.outputs.final_canonical_required }}
+      canary_barrier_epoch: ${{ steps.policy.outputs.canary_barrier_epoch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +69,7 @@ jobs:
           REASON: ${{ steps.policy.outputs.reason }}
           EXACT_HEAD: ${{ steps.policy.outputs.exact_head }}
           FINAL_CANONICAL_REQUIRED: ${{ steps.policy.outputs.final_canonical_required }}
+          CANARY_BARRIER_EPOCH: ${{ steps.policy.outputs.canary_barrier_epoch }}
         run: |
           {
             echo '## Local isolated TEST routing'
@@ -70,6 +79,7 @@ jobs:
             echo "- reason: ${REASON}"
             echo "- exact head: ${EXACT_HEAD}"
             echo "- final remote canonical required: ${FINAL_CANONICAL_REQUIRED}"
+            echo "- canary barrier epoch: ${CANARY_BARRIER_EPOCH:-not-applicable}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   local-isolated:
@@ -87,6 +97,7 @@ jobs:
       CI: 'true'
       TEST_PROFILE: ${{ needs.classify.outputs.profile }}
       EXACT_HEAD: ${{ needs.classify.outputs.exact_head }}
+      CANARY_BARRIER_EPOCH: ${{ needs.classify.outputs.canary_barrier_epoch }}
       TEST_ENV_ID: local-pr-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.slot }}
       LOCAL_PROJECT_ID: vibeaico-${{ github.event.pull_request.number || github.run_id }}-${{ matrix.slot }}
       SETTINGS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
@@ -127,9 +138,7 @@ jobs:
           path.write_text(source, encoding='utf-8')
           PY
       - name: Start a fresh local Supabase stack and apply migrations
-        run: |
-          supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
-          touch "$RUNNER_TEMP/local-supabase-started"
+        run: supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
       - name: Export local-only TEST credentials
         run: |
           supabase status -o env > "$RUNNER_TEMP/supabase-local.env"
@@ -205,16 +214,16 @@ jobs:
       - name: Destroy the local Supabase stack
         if: ${{ always() }}
         run: |
-          if [ -f "$RUNNER_TEMP/local-supabase-started" ]; then
-            supabase stop --no-backup
-            echo "LOCAL_CLEANUP_VERIFIED: ${TEST_ENV_ID}" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "LOCAL_CLEANUP_NOT_NEEDED: stack never reached started state" >> "$GITHUB_STEP_SUMMARY"
+          if ! command -v supabase >/dev/null 2>&1; then
+            echo 'LOCAL_CLEANUP_FAILED: Supabase CLI is unavailable.' >&2
+            exit 1
           fi
+          supabase stop --no-backup
+          echo "LOCAL_CLEANUP_VERIFIED: ${TEST_ENV_ID}" >> "$GITHUB_STEP_SUMMARY"
 
   local-policy-skip:
     needs: classify
-    if: ${{ needs.classify.outputs.run_local != 'true' }}
+    if: ${{ always() && needs.classify.result == 'success' && needs.classify.outputs.run_local != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - name: Record policy skip

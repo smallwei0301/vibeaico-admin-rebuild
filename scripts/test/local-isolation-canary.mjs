@@ -5,6 +5,8 @@ import { pathToFileURL } from 'node:url';
 
 const CANARY_TENANT_ID = 'c1040000-0000-4000-8000-000000000001';
 const CANARY_SHOP_CODE = 'issue-104-local-isolation-canary';
+const MAX_BARRIER_LATENESS_MS = 5_000;
+const DEFAULT_HOLD_MS = 30_000;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -18,15 +20,34 @@ export function assertLocalSupabaseUrl(rawUrl) {
   return url;
 }
 
+export function calculateBarrierWaitMs(barrierEpochSeconds, nowMs = Date.now()) {
+  const barrier = Number(barrierEpochSeconds);
+  if (!Number.isFinite(barrier) || barrier <= 0) {
+    throw new Error('CANARY_BARRIER_EPOCH must be a positive Unix timestamp');
+  }
+  const waitMs = barrier * 1000 - nowMs;
+  if (waitMs < -MAX_BARRIER_LATENESS_MS) {
+    throw new Error(`Local isolation slot missed the shared barrier by ${Math.abs(waitMs)} ms`);
+  }
+  return Math.max(0, waitMs);
+}
+
 export async function runLocalIsolationCanary({
   supabaseUrl,
   serviceRoleKey,
   testEnvId,
-  holdMs = 15_000,
+  barrierEpochSeconds,
+  holdMs = DEFAULT_HOLD_MS,
 } = {}) {
   const url = assertLocalSupabaseUrl(supabaseUrl);
   if (!serviceRoleKey) throw new Error('TEST_SUPABASE_SERVICE_ROLE_KEY is required');
   if (!testEnvId) throw new Error('TEST_ENV_ID is required');
+
+  const waitMs = calculateBarrierWaitMs(barrierEpochSeconds);
+  if (waitMs > 0) {
+    console.log(`[local-isolation-canary] waiting ${waitMs} ms for shared barrier`);
+    await delay(waitMs);
+  }
 
   const admin = createClient(url.toString(), serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -55,8 +76,8 @@ export async function runLocalIsolationCanary({
       throw new Error('canary row does not belong to this TEST_ENV_ID');
     }
 
-    // Both matrix jobs intentionally use the same primary key and keep it alive for a while.
-    // If the two jobs were secretly connected to one database, one insert would conflict.
+    // Both matrix jobs intentionally use the same primary key after one shared barrier.
+    // If they were connected to one database, one insert would conflict immediately.
     await delay(holdMs);
 
     const { data: secondRead, error: secondReadError } = await admin
@@ -73,6 +94,7 @@ export async function runLocalIsolationCanary({
       testEnvId,
       host: url.hostname,
       fixedTenantId: CANARY_TENANT_ID,
+      barrierEpochSeconds: Number(barrierEpochSeconds),
       verified: true,
     };
   } finally {
@@ -92,6 +114,7 @@ async function cli() {
     supabaseUrl: process.env.TEST_SUPABASE_URL,
     serviceRoleKey: process.env.TEST_SUPABASE_SERVICE_ROLE_KEY,
     testEnvId: process.env.TEST_ENV_ID,
+    barrierEpochSeconds: process.env.CANARY_BARRIER_EPOCH,
   });
   console.log(`[local-isolation-canary] ${JSON.stringify(result)}`);
 }
