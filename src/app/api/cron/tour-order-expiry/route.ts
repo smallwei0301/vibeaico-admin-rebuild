@@ -8,11 +8,12 @@
  * vercel.json 的 cron 排程位（30 * * * *，每小時），驗證 Bearer 後直接回報跳過。
  */
 import { NextResponse } from 'next/server';
+import { isValidCronBearer } from '@/server/cron-auth';
 
 export const runtime = 'nodejs';
 
 export async function GET(req: Request) {
-  if (req.headers.get('authorization') !== `Bearer ${process.env.CRON_SECRET}`)
+  if (!isValidCronBearer(req.headers.get('authorization'), process.env.CRON_SECRET))
     return new Response('unauthorized', { status: 401 });
 
   return NextResponse.json({ skipped: true, reason: 'tour tables not built (Phase 10)' });
