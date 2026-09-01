@@ -5,8 +5,8 @@
  * 要點（06 §3）：
  * - runtime='nodejs'（需要 crypto）。
  * - 不走 requireTenant（LINE 打進來沒有 session）→ 用 shopCode 查店、service role 存取。
- * - 簽章驗證失敗回 401 就結束；驗證通過後永遠回 200（處理錯誤只 log，
- *   否則 LINE 會不斷重送）。
+ * - 簽章驗證失敗回 401；合法 HMAC 但 malformed JSON 回 400；合法 JSON 驗證通過後
+ *   事件處理錯誤只 log 並維持 200，否則 LINE 會不斷重送。
  * - 驗簽通過後先回 200，事件處理交給 Next `after()`；需要的資料在 response
  *   前取出，背景 callback 不依賴已結束的 Request。
  *
@@ -25,35 +25,68 @@ import { getLineCredentials } from '@/server/line';
 export const runtime = 'nodejs';
 
 /** 尚未完成的 after() 工作；僅供非 production 的 deterministic drain 使用。 */
-const pendingEventWork = new Set<Promise<void>>();
+type DrainState = {
+  pending: Set<Promise<void>>;
+  scheduled: number;
+  errors: string[];
+};
 
-/** 從此 route 啟動後累計排入的背景工作數；不以 pending size 代替。 */
-let scheduledEventWork = 0;
+/**
+ * 只在明確開啟的 local/CI test server 寫入 drain state；production 不記錄這些
+ * process-global state。每個 shop 的 state 也有固定上限，避免測試 seam 變成
+ * 無界的 runtime observability buffer。
+ */
+const drainStateByShop = new Map<string, DrainState>();
+const MAX_DRAIN_SHOPS = 32;
+const MAX_PENDING_WORK_PER_SHOP = 100;
+const MAX_RECENT_ERRORS = 20;
+const TEST_DRAIN_HEADER = 'x-line-webhook-test-drain';
 
-/** 非正式環境提供測試可驗證的錯誤摘要；正式環境只寫 Runtime Log。 */
-const recentEventErrors: string[] = [];
+function testDrainEnabled(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.LINE_WEBHOOK_DRAIN_ENABLED === 'true';
+}
+
+function drainStateFor(shopCode: string): DrainState | undefined {
+  if (!testDrainEnabled()) return undefined;
+  const existing = drainStateByShop.get(shopCode);
+  if (existing) return existing;
+  if (drainStateByShop.size >= MAX_DRAIN_SHOPS) {
+    console.error('[line-webhook]', shopCode, 'test drain state capacity exceeded');
+    return undefined;
+  }
+  const state: DrainState = { pending: new Set(), scheduled: 0, errors: [] };
+  drainStateByShop.set(shopCode, state);
+  return state;
+}
 
 function noteEventError(shopCode: string, eventType: unknown, error: unknown): void {
   console.error('[line-webhook]', shopCode, eventType, error);
-  if (process.env.NODE_ENV === 'production') return;
-  recentEventErrors.push(`${shopCode}|${String(eventType)}|${String(error)}`);
-  if (recentEventErrors.length > 20) recentEventErrors.shift();
+  const state = drainStateFor(shopCode);
+  if (!state) return;
+  state.errors.push(`${shopCode}|${String(eventType)}|${String(error)}`);
+  if (state.errors.length > MAX_RECENT_ERRORS) state.errors.shift();
 }
 
 /**
- * 僅開發／測試環境的排空觀測端點。正式環境維持沒有 GET handler 時的 405。
- * `scheduled` 是累計排入數，`drained` 是本次 GET 等待時看到的工作數。
+ * 僅供 local/CI test server 的 deterministic drain seam。正式環境、未設定明確
+ * flag、或沒有測試 header 時都維持 405；這不是 production observability API。
+ * `scheduled` 是該 shop 在此 process 累計排入數，`drained` 是本次 GET 等待的工作數。
  */
-export async function GET() {
-  if (process.env.NODE_ENV === 'production') {
+export async function GET(
+  req: Request,
+  { params }: { params: Promise<{ shopCode: string }> },
+) {
+  if (!testDrainEnabled() || req.headers.get(TEST_DRAIN_HEADER) !== '1') {
     return new Response('method not allowed', { status: 405, headers: { Allow: 'POST' } });
   }
-  const inflight = [...pendingEventWork];
+  const { shopCode } = await params;
+  const state = drainStateByShop.get(shopCode);
+  const inflight = state ? [...state.pending] : [];
   await Promise.all(inflight);
   return Response.json({
     drained: inflight.length,
-    scheduled: scheduledEventWork,
-    errors: [...recentEventErrors],
+    scheduled: state?.scheduled ?? 0,
+    errors: [...(state?.errors ?? [])],
   });
 }
 
@@ -82,11 +115,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
   if (!got || expectBuf.length !== gotBuf.length || !timingSafeEqual(expectBuf, gotBuf))
     return new Response('bad signature', { status: 401 });
 
-  const { events } = JSON.parse(raw);
-  let finishWork!: () => void;
-  const work = new Promise<void>((resolve) => { finishWork = resolve; });
-  pendingEventWork.add(work);
-  scheduledEventWork += 1;
+  let events: any[];
+  try {
+    const payload = JSON.parse(raw) as { events?: unknown } | null;
+    events = Array.isArray(payload?.events) ? payload.events : [];
+  } catch (e) {
+    noteEventError(shopCode, 'parse', e);
+    return new Response('invalid JSON', { status: 400 });
+  }
+
+  const drainState = drainStateFor(shopCode);
+  let finishWork: (() => void) | undefined;
+  let work: Promise<void> | undefined;
+  if (drainState && drainState.pending.size < MAX_PENDING_WORK_PER_SHOP) {
+    work = new Promise<void>((resolve) => { finishWork = resolve; });
+    drainState.pending.add(work);
+    drainState.scheduled += 1;
+  }
 
   try {
     after(async () => {
@@ -101,14 +146,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
       } catch (e) {
         noteEventError(shopCode, 'after()', e);
       } finally {
-        pendingEventWork.delete(work);
-        finishWork();
+        if (drainState && work && finishWork) {
+          drainState.pending.delete(work);
+          finishWork();
+        }
       }
     });
   } catch (e) {
     // A registration failure must not turn a valid LINE webhook into a silent loss.
-    pendingEventWork.delete(work);
-    finishWork();
+    if (drainState && work && finishWork) {
+      drainState.pending.delete(work);
+      finishWork();
+    }
     noteEventError(shopCode, 'after()', e);
   }
 

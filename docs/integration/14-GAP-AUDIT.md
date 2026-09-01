@@ -1753,43 +1753,152 @@ issue #17 驗收寫「金額計算邊界（0 元／負數應拒絕）」，中�
 
 ---
 
-### 6.15 issue #31（webhook cold path）— current-main source candidate
+### 6.15 issue #31（webhook 同步處理完才回 200）— 2026-08-25
 
-本節只記錄 current-main candidate 的 source／test facts，不把真實 LINE、AI provider
-或 Preview 的結果當成已驗收證據。
+本節前半保留 current-main 的詳細量測歷史；表內的「改前／改後」是當時候選的
+2026-08-25 實測，不是本次 P2 repair 的新 external evidence。後半補上 current-main
+source/test facts；任何一段都不把真實 LINE、AI provider 或 Preview 結果寫成已驗收。
 
-**Source：**
+**缺陷**：`src/app/api/line/webhook/[shopCode]/route.ts` 把 LINE 的連線一路握到
+所有事件處理完才回 200。LINE 逾時就丟掉那則訊息（redelivery 預設關閉），而**後端
+每一步都成功**——錯誤只發生在 LINE 那一端，後台不會有任何異常可看。
 
-- `src/app/api/line/webhook/[shopCode]/route.ts` 在驗簽成功前仍只讀 raw body、驗證
-  `x-line-signature`，壞簽章直接回 `401`；沒有排入任何背景工作。
-- 驗簽成功後，route 將已解析的 `events`、tenant、credentials 與 Supabase client
-  捕捉在 Next `after()` callback 外，先回 `200`；callback 不讀取已結束的 `Request`。
-- `handleEvent` 改在 `after()` 內 dynamic import 後執行，因此既有 AI 客服分派仍在
-  同一個 `handleEvent` 路徑，沒有以停用 AI 取代修復。每事件與 callback 外層例外都
-  會寫 `[line-webhook]` log。
-- 非 production 的同一路徑 `GET` 只作 deterministic drain／observability；它等待
-  pending work 並回 `{ drained, scheduled, errors }`，production 回 `405`。本候選沒有
-  改 tenant／credential lookup、沒有增加 credential cache，也沒有改資料庫契約。
+**歷史修法記錄**：驗簽仍在回應之前，事件處理搬進 `after()`；當時候選另曾提議把
+驗簽前的兩趟 DB 併成一趟（`tenants` 內嵌 `tenant_settings`）。current-main
+候選保留既有 tenant／credential lookup contract，沒有把那個 lookup 變更當成目前
+source fact；規格與實測數據寫在 06 分冊 §3.1。
 
-**Test：**
+#### 這一節真正要留下來的，是量測方法（可複用）
 
-- `tests/helpers/line-mock.ts` 的 `holdNext()` 將指定 LINE API 回應扣住；
-  `tests/helpers/line-webhook.ts` 只呼叫 test-only drain。
-- `tests/integration/api/line-webhook.06.test.ts` 鎖定三個核心行為：壞簽章為 `401`
-  且 `scheduled` 不變；held handler 完成前 webhook 已回 `200`，release 後 drain
-  確認副作用完成；handler 失敗時 HTTP 仍為 `200` 且 observability 結果含錯誤。
-- 既有需要讀取 webhook 副作用的 `chat-link.06.test.ts` 先使用相同 drain 訊號，避免
-  將「回 200」誤當成「背景處理已完成」。
-- local source checks：`npm run typecheck`、`npx vitest run tests/unit/line-signature.test.ts`
-  與 `npm run build` 通過；shared TEST integration／E2E 本候選尚未執行。
+**① mock 量不到真實延遲——這是一個結構性盲點，不是這次的個案。**
+
+整合測試的假 LINE（`tests/helpers/line-mock.ts`）是瞬間回應的本地 server，
+`next dev` 打它是 loopback。所以**「所有測試都綠」與「顧客收不到回覆」在這裡
+完全可以並存**：測試量的是「有沒有呼叫」，不是「多久回得完」。
+
+同型的盲點 CLAUDE.md「Never fabricate a 'known'」末段已經記過一次（單元測試不涵蓋
+頁面、整合測試刻意不測 UI、e2e 只跑矩陣點名的地方 → 頁面接線不屬於任何一層；
+本冊 §6.8-b 的 marketing 那一列也引用過同一句）。這次是**時間維度**的同一件事：
+**沒有任何一層在量延遲**，所以延遲缺陷可以在全綠的情況下活很久。
+
+> ⚠️ 順帶更正一個引用：issue #31 把這個盲點寫成「14 分冊 §7 記的」，但 §7 是
+> 「三輪盤點：26 筆呼叫錯端點」，講的不是測試分層。出處是 CLAUDE.md，不是 §7。
+> （這正是 15 分冊警告過的「附了一個不支持該主張的引用」——有引用比沒引用更可信，
+> 所以引用錯的代價更高。）
+
+> 規則：凡是「外部系統會等我們」的路徑（webhook、callback、OAuth redirect），
+> 驗收證據必須包含**對真實外部系統的一次實測**，mock 不能代替。
+
+**② 冷啟動要用「新部署的第一發」製造，不要靠等。**
+
+「等到閒置再打」不可重現（要等多久沒有定論，而且別的 agent 隨時會打醒它）。
+可重現的做法是：
+
+```
+# 用 Vercel CLI 從一份原始碼快照建立一個獨立的 preview 部署（不動分支別名）
+npx vercel deploy <目錄> --yes --archive=tgz     # 目錄內放 .vercel/project.json 指向既有專案
+# READY 後立刻打 LINE 官方測試端點，第一發就是冷啟動
+POST https://api.line.me/v2/bot/channel/webhook/test  {"endpoint":"<新部署網址>/api/line/webhook/<shopCode>"}
+```
+
+兩個關鍵：
+- `POST /v2/bot/channel/webhook/test` **收 `endpoint` 參數**（`line/line-openapi`
+  的 `TestWebhookEndpointRequest`），可以指定任意網址，**不必動頻道設定**——
+  改頻道 webhook 再改回來是會忘記還原的操作，能避就避。
+- 「改前」也要用同一套流程量一次（同一份原始碼、同一種部署方式），否則你比的是
+  兩種不同的冷啟動，不是同一個變因。
+
+**③ 實測結果（原始 JSON 見 issue #31 回報）**
+
+| | 改前（未修改的原始碼，新部署第一發） | 改後（同流程） |
+|---|---|---|
+| 冷啟動第一發 | `{"success":false,"statusCode":0,"reason":"REQUEST_TIMEOUT"}` | `{"success":true,"statusCode":200,"reason":"OK"}` |
+| 接著連打 8 次 | 8/8 成功 | 8/8 成功 |
+| 閒置 5–7 分鐘後第一發 | `REQUEST_TIMEOUT` | `success:true` |
+| 閒置約 4 分鐘後第一發 | **`success:true`（沒重現）** | `success:true` |
+| **閒置約 17 分鐘後第一發** | `REQUEST_TIMEOUT` | **`REQUEST_TIMEOUT`** |
+| 零事件請求（我方直接打，暖機） | 1.15〜2.76s | 0.36〜1.39s |
+
+⚠️ **第三列「改前也成功」如實留著**：這個缺陷是機率性的，閒置不夠久就不重現。
+「跑一次沒事」不是沒問題的證據——所以冷啟動一定要用可重現的方式（新部署第一發）
+製造，否則改前改後比的根本不是同一件事。
+
+🔴 **第四列是本輪最該記住的一列：閒置夠久之後，改後的版本一樣逾時。**
+所以 issue #31 那一格驗收（「改後必須看得到冷啟動那一發也回 success:true」）
+**沒有達成，不能打勾**。`after()` 解決的是「事件處理佔用回應時間」，
+解決不了「Lambda 冷啟本身佔用回應時間」——這兩件事被 issue 的標題綁在一起，
+但它們是不同的原因。**量到什麼就寫什麼；四個回合裡有一個推翻了想要的結論，
+那一個就是最有價值的資料。**（同一發在 Vercel Runtime Logs 是 `200`，
+LINE 卻回報逾時——我們有回，是 LINE 先放棄。）
+
+⚠️ **issue #31 原文說「暖機狀態下 8/8 成功」，重測發現不是永遠成立**：
+2026-08-25 16:01 UTC 對當時的 Preview 連打 8 次，**第 1、第 4 發都逾時**。
+所以精確的描述是「**我們的回應時間本來就壓在 LINE 的容忍線上**，冷啟動只是把它
+推過去」——不是「只有冷啟動會出事」。
+
+#### 順手更正兩處事實（issue #31 原文）
+
+1. **webhook redelivery 的開關在 LINE Developers Console → 該 channel →
+   Messaging API 分頁**，不是 LINE Official Account Manager。（官方文件原文；
+   `line/line-openapi` 全文亦無寫入該開關的端點。）
+2. **「AI 客服必逾時」目前在 Preview 上不成立**——`vercel env ls preview` 顯示
+   Preview 環境**沒有 `ANTHROPIC_API_KEY`**，而 `src/server/ai-reply.ts:35` 在
+   缺 key 時直接回 `null`，**LLM 從來沒被呼叫過**。也就是說 Preview 上的 AI 客服
+   現在是完全靜默的（不是慢，是沒有跑）。程式路徑本身仍然真實，一旦補上 key
+   就會照 issue 描述的方式吃掉回應時間——而那正是本次 `after()` 要擋的。
+   **補 key 是擁有者的動作**（平台層 env，見 CLAUDE.md 的兩層設定表）。
+
+#### 測試怎麼等 `after()`（不要用 sleep）
+
+`await sleep(500)` 之後斷言有兩種壞法：正向斷言偶發紅燈，**反向斷言（「不該有
+回覆」）偶發綠燈**——後者等於什麼都沒驗到，比沒有測試更糟。本輪用的是兩個
+**確定性訊號**：
+
+- **排空端點**：webhook route 在回 200 之前就把該次處理登記進模組內的 set，
+  同路徑的 GET drain 只在 local/CI test server 的明確 flag + test header 下啟用，
+  並按 shop 隔離等待的 work；production 與未授權的非 production request 都維持
+  `405`。它回報 per-shop `scheduled`（累計排入過幾筆）與最多 20 筆錯誤摘要；
+  state 最多保留 32 個 shop、每 shop 100 筆 pending work，作為 bounded test seam，
+  不是 production observability。
+  「驗簽失敗不得排入任何工作」就是拿 `scheduled` 前後相減來斷言的——不是「等了一下沒看到」。
+- **把 mock LINE 的回應扣住**（`LineMockServer.holdNext()`）：事件處理卡在半路時，
+  webhook 若還沒回應，測試就會一路等到逾時。**舊版跑這個案例必然紅、新版必然綠**，
+  這條斷言真的有分辨力。
+
+證據：`tests/integration/api/line-webhook.06.test.ts` 的「壞簽章 → 401；事件完全不進
+處理（after() 沒有排入任何工作）」、「好簽章但 JSON malformed → 400、有 parse log
+且沒有排入背景工作」、「事件處理卡在 LINE 呼叫時，webhook 早已回 200；放行後處理照常
+完成」，以及「LINE API 回 500 令 handler 丟錯 → webhook 仍 200、錯誤有留下紀錄，且
+同批後續事件照常處理」。`chat-link.06.test.ts` 也先 drain 再讀 webhook 副作用。
+
+#### Current-main P2 repair source/test facts（PR #55）
+
+- route 的實際保證是 **HMAC 驗簽先於 background scheduling**；目前既有 contract
+  仍先依 `shopCode` 查 tenant、取 credentials、讀 raw body，沒有宣稱「驗簽前不讀
+  tenant／credentials」，也沒有把 lookup 變更混入本修復。
+- 合法 HMAC 但 malformed JSON 會寫 `[line-webhook]` parse error、回 `400 invalid JSON`，
+  且在 parse 失敗前不建立 pending work、不增加 `scheduled`；合法 JSON 才註冊
+  `after()`。`after()` callback 只使用已捕捉的資料，不讀取 `Request`；`handleEvent`
+  仍由 dynamic import 執行，AI 客服路徑未刪除。
+- GET drain 只在非 production、`LINE_WEBHOOK_DRAIN_ENABLED=true` 且帶
+  `x-line-webhook-test-drain: 1` 的 local/CI server 啟用；資料是 process-local、per-shop、
+  bounded test state，不是 production／Preview observability。`tests/integration/global-setup.ts`
+  只對 spawned test server 設 flag，helper 才帶 header。
+- `line-webhook.06.test.ts` 與 `chat-link.06.test.ts` 的 teardown 會檢查每個 SQL cleanup
+  error，並在刪除／restore 後再次查詢 residue；這是測試本地的 post-run evidence，未在
+  本 checkpoint 執行 TEST。
+- Local source verification 在本次 repair publish 前執行；既有 exact-head Run
+  `33472284357` 只適用於 repair 前的 `52cb7dc838c6bdabbb86950ef0fc66a529c6a459`，
+  不作為新 source head 證據；不重跑舊 SHA，也不在本 repair 執行 TEST reset、migration、
+  integration／E2E、Preview 或 Production 操作。
 
 **未驗證範圍：**
 
 - 沒有真實 LINE webhook cold-start／latency JSON、真實 AI provider reply latency 或
   authenticated Preview evidence；local mock 不能替代這些 external／Owner gates。
-- 本候選沒有執行 TEST migration、reset、seed、integration／E2E，也沒有任何 Production
-  DDL、deploy、provider credential 或真實顧客通知操作。上述 gates 完成前，#31 不得
-  close，也不得把 source/test 綠燈寫成真實外部行為已證明。
+- 真實 provider credential、Production DDL/deploy、真實付款／通知與 Issue #31 closeout
+  仍不是本 autonomous source repair 的證據。上述 gates 完成前，#31 不得 close，也不得
+  把 source/test 綠燈寫成真實外部行為已證明。
 
 ### 6.16 issue #7（甲）Phase 6 零測試三組 ＋ B-6 報表測試 — 2026-08-26
 

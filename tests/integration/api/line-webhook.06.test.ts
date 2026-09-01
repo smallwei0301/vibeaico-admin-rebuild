@@ -57,18 +57,26 @@ function sign(secret: string, rawBody: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('base64');
 }
 
-/** 以指定簽章（未給則用正確 secret 算）POST webhook；不等待背景處理 */
-async function postWebhookRaw(
+/** POST 一段指定 raw body；未給簽章則用正確 secret 算，不等待背景處理。 */
+async function postWebhookRawBody(
   shopCode: string,
-  payload: unknown,
+  raw: string,
   opts: { signature?: string | null; secret?: string } = {},
 ): Promise<Response> {
-  const raw = JSON.stringify(payload);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const signature =
     opts.signature === undefined ? sign(opts.secret ?? CHANNEL_SECRET, raw) : opts.signature;
   if (signature !== null) headers['x-line-signature'] = signature;
   return fetch(`${BASE_URL}/api/line/webhook/${shopCode}`, { method: 'POST', headers, body: raw });
+}
+
+/** 以指定簽章 POST JSON webhook；不等待背景處理。 */
+async function postWebhookRaw(
+  shopCode: string,
+  payload: unknown,
+  opts: { signature?: string | null; secret?: string } = {},
+): Promise<Response> {
+  return postWebhookRawBody(shopCode, JSON.stringify(payload), opts);
 }
 
 /** POST webhook 並以測試專用 drain 等待 after() 工作完成。 */
@@ -201,21 +209,27 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // 本檔造出的資料全清（含畸形事件寫入的 line_user_id='' 列）
-  await admin
+  const cleanupErrors: Array<[string, unknown]> = [];
+  const messagesCleanup = await admin
     .from('chat_messages')
     .delete()
     .eq('tenant_id', SHOP_A.id)
     .in('line_user_id', [USER_WEBHOOK, '']);
-  await admin
+  cleanupErrors.push(['chat_messages', messagesCleanup.error]);
+
+  const usersCleanup = await admin
     .from('line_users')
     .delete()
     .eq('tenant_id', SHOP_A.id)
     .eq('line_user_id', USER_WEBHOOK);
+  cleanupErrors.push(['line_users', usersCleanup.error]);
+
   if (insertedKeywordIds.length) {
-    await admin.from('keyword_replies').delete().in('id', insertedKeywordIds);
+    const keywordsCleanup = await admin.from('keyword_replies').delete().in('id', insertedKeywordIds);
+    cleanupErrors.push(['keyword_replies', keywordsCleanup.error]);
   }
   if (settingsSnapshot) {
-    await admin
+    const settingsCleanup = await admin
       .from('tenant_settings')
       .update({
         line: settingsSnapshot.line ?? {},
@@ -223,8 +237,61 @@ afterAll(async () => {
         line_channel_access_token_enc: settingsSnapshot.line_channel_access_token_enc,
       })
       .eq('tenant_id', SHOP_A.id);
+    cleanupErrors.push(['tenant_settings restore', settingsCleanup.error]);
   }
+
+  // Query after DELETE/restore so a green test suite cannot hide residual rows or
+  // a cleanup error that was never asserted.
+  const { data: remainingMessages, error: messagesResidueError } = await admin
+    .from('chat_messages')
+    .select('id')
+    .eq('tenant_id', SHOP_A.id)
+    .in('line_user_id', [USER_WEBHOOK, '']);
+  cleanupErrors.push(['chat_messages residue query', messagesResidueError]);
+
+  const { data: remainingUsers, error: usersResidueError } = await admin
+    .from('line_users')
+    .select('line_user_id')
+    .eq('tenant_id', SHOP_A.id)
+    .eq('line_user_id', USER_WEBHOOK);
+  cleanupErrors.push(['line_users residue query', usersResidueError]);
+
+  let remainingKeywords: unknown[] = [];
+  if (insertedKeywordIds.length) {
+    const { data, error } = await admin
+      .from('keyword_replies')
+      .select('id')
+      .in('id', insertedKeywordIds);
+    cleanupErrors.push(['keyword_replies residue query', error]);
+    remainingKeywords = data ?? [];
+  }
+
+  let restoredSettings: unknown = null;
+  if (settingsSnapshot) {
+    const { data, error } = await admin
+      .from('tenant_settings')
+      .select('line, line_channel_secret_enc, line_channel_access_token_enc')
+      .eq('tenant_id', SHOP_A.id)
+      .single();
+    cleanupErrors.push(['tenant_settings residue query', error]);
+    restoredSettings = data;
+  }
+
   await mock.stop();
+
+  for (const [operation, error] of cleanupErrors) {
+    expect(error, `${operation} must not fail`).toBeNull();
+  }
+  expect(remainingMessages, 'chat_messages residue').toEqual([]);
+  expect(remainingUsers, 'line_users residue').toEqual([]);
+  expect(remainingKeywords, 'keyword_replies residue').toEqual([]);
+  if (settingsSnapshot) {
+    expect(restoredSettings).toEqual({
+      line: settingsSnapshot.line ?? {},
+      line_channel_secret_enc: settingsSnapshot.line_channel_secret_enc,
+      line_channel_access_token_enc: settingsSnapshot.line_channel_access_token_enc,
+    });
+  }
 });
 
 describe('簽章與店家識別（06 §3）', () => {
@@ -239,6 +306,19 @@ describe('簽章與店家識別（06 §3）', () => {
     expect(after.scheduled).toBe(before.scheduled);
     expect(mock.requests).toHaveLength(0);
     expect(await chatMessagesIn(USER_WEBHOOK)).toHaveLength(0);
+  });
+
+  it('好簽章但 JSON malformed → 400、有 parse log 且沒有排入背景工作', async () => {
+    mock.reset();
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const res = await postWebhookRawBody(SHOP_A.shopCode, '{"events":');
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe('invalid JSON');
+
+    const after = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(after.scheduled).toBe(before.scheduled);
+    expect(after.errors.some((e) => e.includes(`${SHOP_A.shopCode}|parse|`))).toBe(true);
+    expect(mock.requests).toHaveLength(0);
   });
 
   it('缺 x-line-signature header → 401', async () => {
