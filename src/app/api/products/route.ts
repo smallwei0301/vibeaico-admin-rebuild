@@ -3,7 +3,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapProduct } from '@/server/mappers';
-import { nextCatalogPositions } from '@/server/catalog-position';
+import { insertCatalogWithPositions } from '@/server/catalog-position';
 
 /**
  * GET /api/products — products join product_categories(name) → category_name。
@@ -48,27 +48,29 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = createSchema.parse(await req.json());
 
-  const positions = await nextCatalogPositions(t.supabase, t.tenantId, 'products');
-
-  const { data, error } = await t.supabase
-    .from('products')
-    .insert({
-      tenant_id: t.tenantId,
-      category_id: b.categoryId ? b.categoryId : null,
-      name: b.name,
-      description: b.description ?? '',
-      price: b.price,
-      stock: b.stock,
-      safety_stock: b.safetyStock,
-      image_url: b.imageUrl ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: positions.sortOrder,
-      line_sort_order: positions.lineSortOrder,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  const { data, positions } = await insertCatalogWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    'products',
+    (position) => t.supabase
+      .from('products')
+      .insert({
+        tenant_id: t.tenantId,
+        category_id: b.categoryId ? b.categoryId : null,
+        name: b.name,
+        description: b.description ?? '',
+        price: b.price,
+        stock: b.stock,
+        safety_stock: b.safetyStock,
+        image_url: b.imageUrl ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
   if (b.stock > 0) {
     const { error: lErr } = await t.supabase.from('inventory_logs').insert({

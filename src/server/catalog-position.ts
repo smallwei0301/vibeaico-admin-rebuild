@@ -27,3 +27,29 @@ export async function nextCatalogPositions(
     lineSortOrder: nextOrderValue(rows.map((row) => row.line_sort_order)),
   };
 }
+
+type CatalogInsertResult<T> = {
+  data: T | null;
+  error: { code?: string; message?: string } | null;
+};
+
+/** Database unique indexes guard MAX+1; retry only that expected collision. */
+export async function insertCatalogWithPositions<T>(
+  supabase: SupabaseClient,
+  tenantId: string,
+  table: CatalogTable,
+  insert: (positions: CatalogPosition) => PromiseLike<CatalogInsertResult<T>> | CatalogInsertResult<T>,
+): Promise<{ data: T; positions: CatalogPosition }> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const positions = await nextCatalogPositions(supabase, tenantId, table);
+    const result = await insert(positions);
+    if (!result.error && result.data) return { data: result.data, positions };
+    const isPositionCollision = result.error?.code === '23505'
+      && /(?:sort_order|line_sort_order|catalog.*position)/i.test(result.error.message ?? '');
+    if (!isPositionCollision || attempt === 1) {
+      if (result.error) throw result.error;
+      throw new Error('catalog insert returned no row');
+    }
+  }
+  throw new Error('catalog position retry exhausted');
+}

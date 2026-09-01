@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapService } from '@/server/mappers';
-import { nextCatalogPositions } from '@/server/catalog-position';
+import { insertCatalogWithPositions } from '@/server/catalog-position';
 
 /**
  * GET /api/services — services join service_categories(name) → category_name。
@@ -45,26 +45,28 @@ export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const b = createSchema.parse(await req.json());
 
-  const positions = await nextCatalogPositions(t.supabase, t.tenantId, 'services');
-
-  const { data, error } = await t.supabase
-    .from('services')
-    .insert({
-      tenant_id: t.tenantId,
-      category_id: b.categoryId ? b.categoryId : null,
-      name: b.name,
-      description: b.description ?? '',
-      duration_minutes: b.durationMinutes ?? 60,
-      price: b.price ?? 0,
-      image_url: b.imageUrl ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: positions.sortOrder,
-      line_sort_order: positions.lineSortOrder,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  const { data, positions } = await insertCatalogWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    'services',
+    (position) => t.supabase
+      .from('services')
+      .insert({
+        tenant_id: t.tenantId,
+        category_id: b.categoryId ? b.categoryId : null,
+        name: b.name,
+        description: b.description ?? '',
+        duration_minutes: b.durationMinutes ?? 60,
+        price: b.price ?? 0,
+        image_url: b.imageUrl ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
   return ok({ id: data.id, ...positions });
 });

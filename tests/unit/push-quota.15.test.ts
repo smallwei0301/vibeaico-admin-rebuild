@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { consumePushQuotaWith } from '@/server/line';
+import { consumePushQuotaWith, refundPushQuotaWith } from '@/server/line';
 
 type FakeResult = { data: unknown; error: unknown };
 
@@ -49,5 +49,16 @@ describe('Issue #15 push quota atomic seam', () => {
     );
     await expect(consumePushQuotaWith(rpcFailure.admin, 'tenant-1', 1))
       .rejects.toMatchObject({ status: 503, code: 'SYS_001' });
+  });
+
+  it('delegates failed-push reservations to the guarded refund RPC', async () => {
+    const { admin, rpc } = fakeAdmin(
+      { data: null, error: null },
+      { data: true, error: null },
+    );
+    await expect(refundPushQuotaWith(admin, 'tenant-1', 1)).resolves.toBe(true);
+    expect(rpc).toHaveBeenCalledWith('refund_push_quota', expect.objectContaining({
+      p_tenant_id: 'tenant-1', p_count: 1,
+    }));
   });
 });

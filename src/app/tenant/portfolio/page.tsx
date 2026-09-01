@@ -540,7 +540,7 @@ export default function PortfolioPage() {
                 disabled={!editing}
                 onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) })}
               />
-              <FormText>{editing ? t.form.sortOrderHelp : '新增時由伺服器自動排在排序尾端'}</FormText>
+              <FormText>{editing ? t.form.sortOrderHelp : t.form.sortOrderCreateHelp}</FormText>
             </FormGroup>
 
             <SwitchField

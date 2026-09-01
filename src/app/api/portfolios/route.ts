@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
-import { nextCatalogPositions } from '@/server/catalog-position';
+import { insertCatalogWithPositions } from '@/server/catalog-position';
 
 /**
  * /api/portfolios — 作品集 CRUD，同 services 模式（04 分冊 §B-5）。
@@ -52,23 +52,25 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE');
   const b = createSchema.parse(await req.json());
 
-  const positions = await nextCatalogPositions(t.supabase, t.tenantId, 'portfolios');
-
-  const { data, error } = await t.supabase
-    .from('portfolios')
-    .insert({
-      tenant_id: t.tenantId,
-      title: b.title,
-      image_url: b.imageUrl,
-      description: b.description ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: positions.sortOrder,
-      line_sort_order: positions.lineSortOrder,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  const { data, positions } = await insertCatalogWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    'portfolios',
+    (position) => t.supabase
+      .from('portfolios')
+      .insert({
+        tenant_id: t.tenantId,
+        title: b.title,
+        image_url: b.imageUrl,
+        description: b.description ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
   return ok({ id: data.id, ...positions });
 });

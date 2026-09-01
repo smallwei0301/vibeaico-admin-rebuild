@@ -126,6 +126,40 @@ export function consumePushQuota(tenantId: string, count: number): Promise<boole
   }
 }
 
+/** 還原一筆已預扣、但尚未送達 LINE 的額度。 */
+export async function refundPushQuotaWith(
+  admin: Pick<SupabaseClient, 'rpc'>,
+  tenantId: string,
+  count: number,
+): Promise<boolean> {
+  if (!Number.isInteger(count) || count <= 0)
+    throw new ApiHttpError(500, '推播額度參數錯誤', ERR.INTERNAL);
+
+  try {
+    const { data: refunded, error } = await admin.rpc('refund_push_quota', {
+      p_tenant_id: tenantId,
+      p_month: taipeiCurrentMonthKey(),
+      p_count: count,
+    });
+    if (error) throw error;
+    return refunded === true;
+  } catch (error) {
+    console.error('[line] push quota refund RPC failed', error);
+    throw new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL);
+  }
+}
+
+export function refundPushQuota(tenantId: string, count: number): Promise<boolean> {
+  try {
+    return refundPushQuotaWith(createAdminSupabase(), tenantId, count);
+  } catch (error) {
+    console.error('[line] push quota client initialization failed', error);
+    return Promise.reject(
+      new ApiHttpError(503, '推播額度服務暫時無法使用，請稍後再試', ERR.INTERNAL),
+    );
+  }
+}
+
 /* ------------------------------------------------------------------ 附加匯出
  * 以下為 §2 原文之外「只加不改」的輔助（06 §6/§7 端點需要）。 */
 

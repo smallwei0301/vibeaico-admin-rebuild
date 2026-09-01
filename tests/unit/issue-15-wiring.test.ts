@@ -8,7 +8,7 @@ describe('Issue #15 wiring stays on real service paths', () => {
   it('chat image UI waits for service response instead of creating a local success bubble', () => {
     const page = read('../../src/app/tenant/chat/page.tsx');
     const service = read('../../src/services/chat.ts');
-    expect(page).toContain('sendImage({ lineUserId: targetId, file })');
+    expect(page).toContain('sendImage({ lineUserId: targetId, file, idempotencyKey })');
     expect(page).not.toContain('URL.createObjectURL(file)');
     expect(page).toContain('setSendingImage(true)');
     expect(service).toContain('storageRef:');
@@ -60,7 +60,7 @@ describe('Issue #15 wiring stays on real service paths', () => {
       '../../src/app/api/portfolios/route.ts',
       '../../src/app/api/services/[id]/duplicate/route.ts',
     ]) {
-      expect(read(routePath)).toContain('nextCatalogPositions');
+      expect(read(routePath)).toContain('insertCatalogWithPositions');
     }
     const reports = read('../../src/services/reports.ts');
     expect(reports).toContain("startsWith('text/csv')");
@@ -83,5 +83,18 @@ describe('Issue #15 wiring stays on real service paths', () => {
       expect(quotaMigration).toContain('p_count > p_quota');
       expect(quotaMigration).not.toContain('return found');
     }
+  });
+
+  it('chat pushes claim one receipt and can refund a failed reservation', () => {
+    const route = read('../../src/app/api/chat/messages/route.ts');
+    const line = read('../../src/server/line.ts');
+    const migration = read('../../supabase/migrations/0060_issue_15_retry_safe_chat_and_catalog.sql');
+    expect(route).toContain('idempotency_key');
+    expect(route).toContain("delivery_status: 'PENDING'");
+    expect(route).toContain('refundPushQuota');
+    expect(line).toContain("rpc('refund_push_quota'");
+    expect(migration).toContain('chat_messages_out_idempotency_uq');
+    expect(migration).toContain('refund_push_quota');
+    expect(migration).toContain('services_tenant_sort_order_uq');
   });
 });

@@ -87,6 +87,9 @@ export default function ChatPage() {
   const lastMessageIdRef = React.useRef<string | null>(null);
   /** 快速切換對話時丟棄過期的載入結果 */
   const openSeq = React.useRef(0);
+  /** Retry the same user action with the same server idempotency key. */
+  const pendingTextRef = React.useRef<{ targetId: string; text: string; key: string } | null>(null);
+  const pendingImageRef = React.useRef<{ targetId: string; file: File; key: string } | null>(null);
 
   /* ------------------------------------------ 對話清單：載入 + 15 秒輪詢 */
   React.useEffect(() => {
@@ -204,13 +207,19 @@ export default function ChatPage() {
     const text = draft.trim();
     const targetId = activeId;
     if (!text || !targetId || sending || sendingImage) return;
+    const pending = pendingTextRef.current;
+    const idempotencyKey = pending?.targetId === targetId && pending.text === text
+      ? pending.key
+      : globalThis.crypto.randomUUID();
+    pendingTextRef.current = { targetId, text, key: idempotencyKey };
     setSending(true);
     try {
-      const sent = await sendMessage({ lineUserId: targetId, text });
+      const sent = await sendMessage({ lineUserId: targetId, text, idempotencyKey });
       if (activeIdRef.current === targetId) {
         setMessages((list) => [...list, sent]);
         setDraft('');
       }
+      if (pendingTextRef.current?.key === idempotencyKey) pendingTextRef.current = null;
       setConversations((list) => list.map((c) => (c.id === targetId
         ? { ...c, lastMessageType: 'TEXT', lastMessage: text, timeLabel: t.labels.justNow }
         : c)));
@@ -233,10 +242,16 @@ export default function ChatPage() {
       toast.show(t.messages.imageTooLarge, 'warning');
       return;
     }
+    const pending = pendingImageRef.current;
+    const idempotencyKey = pending?.targetId === targetId && pending.file === file
+      ? pending.key
+      : globalThis.crypto.randomUUID();
+    pendingImageRef.current = { targetId, file, key: idempotencyKey };
     setSendingImage(true);
     try {
-      const sent = await sendImage({ lineUserId: targetId, file });
+      const sent = await sendImage({ lineUserId: targetId, file, idempotencyKey });
       if (activeIdRef.current === targetId) setMessages((list) => [...list, sent]);
+      if (pendingImageRef.current?.key === idempotencyKey) pendingImageRef.current = null;
       setConversations((list) => list.map((c) => (c.id === targetId
         ? { ...c, lastMessageType: 'IMAGE', lastMessage: '', timeLabel: t.labels.justNow }
         : c)));

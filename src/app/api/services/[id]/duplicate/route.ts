@@ -1,6 +1,6 @@
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
-import { nextCatalogPositions } from '@/server/catalog-position';
+import { insertCatalogWithPositions } from '@/server/catalog-position';
 
 /**
  * POST /api/services/:id/duplicate — 複製一筆服務（04 分冊 §B-2）。
@@ -15,26 +15,28 @@ export const POST = handle(async (_req, { params }) => {
   if (e0) throw e0;
   if (!src) throw new ApiHttpError(404, '找不到此服務', ERR.NOT_FOUND);
 
-  const positions = await nextCatalogPositions(t.supabase, t.tenantId, 'services');
-
-  const { data, error } = await t.supabase
-    .from('services')
-    .insert({
-      tenant_id: t.tenantId,
-      category_id: src.category_id,
-      name: `${src.name}（複本）`,
-      description: src.description,
-      duration_minutes: src.duration_minutes,
-      price: src.price,
-      image_url: src.image_url,
-      active: src.active,
-      line_featured: src.line_featured,
-      sort_order: positions.sortOrder,
-      line_sort_order: positions.lineSortOrder,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  const { data, positions } = await insertCatalogWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    'services',
+    (position) => t.supabase
+      .from('services')
+      .insert({
+        tenant_id: t.tenantId,
+        category_id: src.category_id,
+        name: `${src.name}（複本）`,
+        description: src.description,
+        duration_minutes: src.duration_minutes,
+        price: src.price,
+        image_url: src.image_url,
+        active: src.active,
+        line_featured: src.line_featured,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
   return ok({ id: data.id, ...positions });
 });

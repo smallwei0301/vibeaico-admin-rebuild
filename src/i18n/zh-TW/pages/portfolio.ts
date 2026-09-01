@@ -86,6 +86,7 @@ export const portfolioPage = {
     extraImagesMax: 8,
     sortOrder: '排序',
     sortOrderHelp: '數字越小排越前面',
+    sortOrderCreateHelp: '新增時由伺服器自動排在排序尾端',
     enabled: '啟用',
   },
 

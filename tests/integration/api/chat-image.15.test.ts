@@ -258,4 +258,42 @@ describe('Issue #15 chat image chain', () => {
     });
     expect(objects ?? []).toHaveLength(0);
   });
+
+  it('同一 idempotency key 重試只送一次並在 LINE 失敗時還原額度', async () => {
+    lineMock.reset();
+    const key = '11111111-1111-4111-8111-111111111111';
+    const before = await quotaUsed();
+    const first = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'retry-safe text', idempotencyKey: key,
+    });
+    expect(first.status).toBe(200);
+    const replay = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'retry-safe text', idempotencyKey: key,
+    });
+    expect(replay.status).toBe(200);
+    expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+    expect(await quotaUsed()).toBe(before + 1);
+
+    const failedKey = '22222222-2222-4222-8222-222222222222';
+    const failureBefore = await quotaUsed();
+    lineMock.reset();
+    lineMock.failNext(500);
+    const failed = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'provider failure', idempotencyKey: failedKey,
+    });
+    expect(failed.status).toBe(502);
+    expect(await quotaUsed()).toBe(failureBefore);
+    expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+
+    const failedRow = await admin.from('chat_messages').select('delivery_status')
+      .eq('tenant_id', SHOP_A.id).eq('line_user_id', USER_ID)
+      .eq('idempotency_key', failedKey).single();
+    expect(failedRow.error).toBeNull();
+    expect(failedRow.data?.delivery_status).toBe('FAILED');
+    const retryFailed = await ownerA.post('/api/chat/messages', {
+      lineUserId: USER_ID, text: 'provider failure', idempotencyKey: failedKey,
+    });
+    expect(retryFailed.status).toBe(409);
+    expect(lineMock.requestsFor('/v2/bot/message/push')).toHaveLength(1);
+  });
 });
