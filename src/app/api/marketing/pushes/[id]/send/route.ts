@@ -95,8 +95,16 @@ export const POST = handle(async (_req, { params }) => {
       throw new ApiHttpError(409, '沒有符合條件的發送對象', ERR.CONFLICT);
     }
 
-    // 額度不足 → 還原原狀態、不呼叫 LINE（06 分冊 §2）
-    if (!(await consumePushQuota(t.tenantId, recipients.length))) {
+    // 額度不足或 quota 服務失敗 → 還原原狀態、不呼叫 LINE（06 分冊 §2）。
+    // RPC 失敗是 503 ApiHttpError；也必須回復 SENDING，避免留下不可重試的假狀態。
+    let quotaAvailable: boolean;
+    try {
+      quotaAvailable = await consumePushQuota(t.tenantId, recipients.length);
+    } catch (err) {
+      await revert(prevStatus);
+      throw err;
+    }
+    if (!quotaAvailable) {
       await revert(prevStatus);
       throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
     }
