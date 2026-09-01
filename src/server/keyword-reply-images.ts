@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { ApiHttpError, ERR } from '@/server/http';
@@ -15,6 +15,15 @@ export const KEYWORD_REPLY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const LINE_PREVIEW_MAX_BYTES = 1_000_000;
 /** Fresh unpersisted uploads get a bounded grace period before cron removal. */
 export const KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS = 60 * 60 * 1000;
+/**
+ * Stored mutex rows share the existing cleanup table but are deliberately in a
+ * non-object namespace. This creates a DB-backed boundary without a schema
+ * change; cleanup queries explicitly exclude the namespace below.
+ */
+export const KEYWORD_REPLY_IMAGE_LOCK_PREFIX = '__keyword-reply-image-lock__/';
+const KEYWORD_REPLY_IMAGE_LOCK_TTL_MS = 30_000;
+const KEYWORD_REPLY_IMAGE_LOCK_RETRIES = 40;
+const KEYWORD_REPLY_IMAGE_LOCK_RETRY_MS = 25;
 
 const IMAGE_TYPES = {
   'image/jpeg': 'jpg',
@@ -32,6 +41,92 @@ type KeywordReplyImageRefCandidate = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+function keywordReplyImageLockPath(tenantId: string, path: string): string {
+  const digest = createHash('sha256').update(`${tenantId}\u0000${path}`).digest('hex');
+  return `${KEYWORD_REPLY_IMAGE_LOCK_PREFIX}${tenantId}/${digest}`;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === '23505';
+}
+
+/** A short-lived DB mutex; a crashed holder is atomically reclaimable after TTL. */
+async function acquireKeywordReplyImageLock(
+  admin: SupabaseClient,
+  tenantId: string,
+  path: string,
+): Promise<{ path: string; token: string }> {
+  const lockPath = keywordReplyImageLockPath(tenantId, path);
+  const token = `lock:${randomUUID()}`;
+
+  for (let attempt = 0; attempt < KEYWORD_REPLY_IMAGE_LOCK_RETRIES; attempt += 1) {
+    const { data, error } = await admin
+      .from('keyword_reply_image_cleanup')
+      .insert({
+        tenant_id: tenantId,
+        bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+        path: lockPath,
+        last_error: token,
+      })
+      .select('path');
+    if (!error && data?.length) return { path: lockPath, token };
+    if (error && !isUniqueViolation(error)) throw error;
+
+    const { error: reclaimError } = await admin
+      .from('keyword_reply_image_cleanup')
+      .delete()
+      .eq('bucket', KEYWORD_REPLY_IMAGES_BUCKET)
+      .eq('path', lockPath)
+      .lt('created_at', new Date(Date.now() - KEYWORD_REPLY_IMAGE_LOCK_TTL_MS).toISOString());
+    if (reclaimError) throw reclaimError;
+    await delay(KEYWORD_REPLY_IMAGE_LOCK_RETRY_MS);
+  }
+
+  throw new ApiHttpError(409, '關鍵字圖片正在由其他請求處理，請重試', ERR.CONFLICT);
+}
+
+async function releaseKeywordReplyImageLock(
+  admin: SupabaseClient,
+  lock: { path: string; token: string },
+): Promise<void> {
+  const { error } = await admin
+    .from('keyword_reply_image_cleanup')
+    .delete()
+    .eq('bucket', KEYWORD_REPLY_IMAGES_BUCKET)
+    .eq('path', lock.path)
+    .eq('last_error', lock.token);
+  if (error) console.error('[keyword-reply-images] advisory lock release failed', error);
+}
+
+/**
+ * Serializes reference changes and Storage removal per tenant/path. Sorting
+ * produces one lock order for original/preview pairs and avoids deadlock.
+ */
+export async function withKeywordReplyImagePathsLock<T>(args: {
+  admin: SupabaseClient;
+  tenantId: string;
+  paths: readonly string[];
+  work: () => Promise<T>;
+}): Promise<T> {
+  const locks: { path: string; token: string }[] = [];
+  try {
+    for (const path of [...new Set(args.paths)].sort())
+      locks.push(await acquireKeywordReplyImageLock(args.admin, args.tenantId, path));
+    return await args.work();
+  } finally {
+    await Promise.all(locks.reverse().map((lock) => releaseKeywordReplyImageLock(args.admin, lock)));
+  }
+}
+
+export function keywordReplyImagePaths(ref: Pick<KeywordReplyImageStorageRef, 'path' | 'previewPath'>): string[] {
+  return [ref.path, ref.previewPath];
+}
 
 /** `{tenantId}/{uuid}.jpg` -> `{tenantId}/{uuid}.preview.jpg`. */
 export function previewPathFor(path: string): string {
@@ -388,36 +483,43 @@ export async function removeUnreferencedKeywordReplyImage(
   ref: KeywordReplyImageStorageRef,
 ): Promise<void> {
   validateKeywordReplyImageRef(ref, tenantId, storageOrigin());
-  const { data: rows, error: queryError } = await admin
-    .from('keyword_replies')
-    .select('content')
-    .eq('tenant_id', tenantId);
-  if (queryError) throw queryError;
-  if (isKeywordReplyImageReferenced(rows ?? [], ref.path)) return;
+  const paths = keywordReplyImagePaths(ref);
+  await withKeywordReplyImagePathsLock({
+    admin,
+    tenantId,
+    paths,
+    work: async () => {
+      const { data: rows, error: queryError } = await admin
+        .from('keyword_replies')
+        .select('content')
+        .eq('tenant_id', tenantId);
+      if (queryError) throw queryError;
+      if (isKeywordReplyImageReferenced(rows ?? [], ref.path)) return;
 
-  const paths = [ref.path, ref.previewPath];
-  const { error: removeError } = await admin.storage.from(ref.bucket).remove(paths);
-  if (!removeError) {
-    const { error: clearError } = await admin
-      .from('keyword_reply_image_cleanup')
-      .delete()
-      .eq('tenant_id', tenantId)
-      .eq('bucket', ref.bucket)
-      .in('path', paths);
-    if (clearError) throw clearError;
-    return;
-  }
+      const { error: removeError } = await admin.storage.from(ref.bucket).remove(paths);
+      if (!removeError) {
+        const { error: clearError } = await admin
+          .from('keyword_reply_image_cleanup')
+          .delete()
+          .eq('tenant_id', tenantId)
+          .eq('bucket', ref.bucket)
+          .in('path', paths);
+        if (clearError) throw clearError;
+        return;
+      }
 
-  const { error: queueError } = await admin.from('keyword_reply_image_cleanup').upsert(
-    paths.map((path) => ({
-      tenant_id: tenantId,
-      bucket: ref.bucket,
-      path,
-      last_error: String((removeError as Error).message ?? removeError),
-    })),
-    { onConflict: 'bucket,path' },
-  );
-  if (queueError) throw queueError;
+      const { error: queueError } = await admin.from('keyword_reply_image_cleanup').upsert(
+        paths.map((path) => ({
+          tenant_id: tenantId,
+          bucket: ref.bucket,
+          path,
+          last_error: String((removeError as Error).message ?? removeError),
+        })),
+        { onConflict: 'bucket,path' },
+      );
+      if (queueError) throw queueError;
+    },
+  });
 }
 
 /** Cron worker: re-check references before each retry so a reused object survives. */
@@ -428,6 +530,7 @@ export async function drainKeywordReplyImageCleanup(
   const { data: jobs, error } = await admin
     .from('keyword_reply_image_cleanup')
     .select('tenant_id, bucket, path, attempts')
+    .not('path', 'like', `${KEYWORD_REPLY_IMAGE_LOCK_PREFIX}%`)
     .order('created_at', { ascending: true })
     .lt(
       'created_at',
@@ -439,43 +542,50 @@ export async function drainKeywordReplyImageCleanup(
   let removed = 0;
   let failed = 0;
   for (const job of jobs ?? []) {
-    const { data: refs, error: refsError } = await admin
-      .from('keyword_replies')
-      .select('content')
-      .eq('tenant_id', job.tenant_id);
-    if (refsError) throw refsError;
-    if (isKeywordReplyImageReferenced(refs ?? [], job.path)) {
-      const { error: deleteError } = await admin
-        .from('keyword_reply_image_cleanup')
-        .delete()
-        .eq('bucket', job.bucket)
-        .eq('path', job.path);
-      if (deleteError) throw deleteError;
-      continue;
-    }
+    await withKeywordReplyImagePathsLock({
+      admin,
+      tenantId: job.tenant_id,
+      paths: [job.path],
+      work: async () => {
+        const { data: refs, error: refsError } = await admin
+          .from('keyword_replies')
+          .select('content')
+          .eq('tenant_id', job.tenant_id);
+        if (refsError) throw refsError;
+        if (isKeywordReplyImageReferenced(refs ?? [], job.path)) {
+          const { error: deleteError } = await admin
+            .from('keyword_reply_image_cleanup')
+            .delete()
+            .eq('bucket', job.bucket)
+            .eq('path', job.path);
+          if (deleteError) throw deleteError;
+          return;
+        }
 
-    const { error: removeError } = await admin.storage.from(job.bucket).remove([job.path]);
-    if (!removeError) {
-      const { error: deleteError } = await admin
-        .from('keyword_reply_image_cleanup')
-        .delete()
-        .eq('bucket', job.bucket)
-        .eq('path', job.path);
-      if (deleteError) throw deleteError;
-      removed += 1;
-      continue;
-    }
-    const { error: updateError } = await admin
-      .from('keyword_reply_image_cleanup')
-      .update({
-        attempts: (job.attempts ?? 0) + 1,
-        last_error: String((removeError as Error).message ?? removeError),
-        last_attempt_at: new Date().toISOString(),
-      })
-      .eq('bucket', job.bucket)
-      .eq('path', job.path);
-    if (updateError) throw updateError;
-    failed += 1;
+        const { error: removeError } = await admin.storage.from(job.bucket).remove([job.path]);
+        if (!removeError) {
+          const { error: deleteError } = await admin
+            .from('keyword_reply_image_cleanup')
+            .delete()
+            .eq('bucket', job.bucket)
+            .eq('path', job.path);
+          if (deleteError) throw deleteError;
+          removed += 1;
+          return;
+        }
+        const { error: updateError } = await admin
+          .from('keyword_reply_image_cleanup')
+          .update({
+            attempts: (job.attempts ?? 0) + 1,
+            last_error: String((removeError as Error).message ?? removeError),
+            last_attempt_at: new Date().toISOString(),
+          })
+          .eq('bucket', job.bucket)
+          .eq('path', job.path);
+        if (updateError) throw updateError;
+        failed += 1;
+      },
+    });
   }
   return { removed, failed };
 }

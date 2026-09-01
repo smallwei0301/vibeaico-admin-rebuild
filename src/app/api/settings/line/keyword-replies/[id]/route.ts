@@ -6,9 +6,12 @@ import { createAdminSupabase } from '@/server/supabase';
 import {
   assertKeywordReplyImagePayload,
   cleanupReplacedKeywordReplyImage,
+  keywordReplyImagePaths,
   markKeywordReplyImagePersisted,
   readKeywordReplyImageRef,
   requireKeywordReplyImage,
+  type KeywordReplyImageStorageRef,
+  withKeywordReplyImagePathsLock,
 } from '@/server/keyword-reply-images';
 
 /**
@@ -40,11 +43,10 @@ export const PUT = handle(async (req, { params }) => {
   if (existingError) throw existingError;
   if (!existing) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
 
+  const admin = createAdminSupabase();
   const nextReplyType = b.replyType ?? existing.reply_type;
   let nextContent = b.content ?? existing.content ?? {};
   const changingImagePayload = b.replyType !== undefined || b.content !== undefined;
-  if (nextReplyType === 'IMAGE' && changingImagePayload)
-    await requireKeywordReplyImage(nextContent, t.tenantId, createAdminSupabase());
 
   // Switching away from IMAGE also removes the persisted ref from the next
   // row, so cleanup can safely happen after the DB update.
@@ -75,25 +77,36 @@ export const PUT = handle(async (req, { params }) => {
     return ok();
   }
 
-  const { data, error } = await t.supabase
-    .from('keyword_replies').update(update)
-    .eq('id', id).eq('tenant_id', t.tenantId)
-    .eq('reply_type', existing.reply_type)
-    .filter('content', 'eq', JSON.stringify(existing.content ?? {}))
-    .select('id').maybeSingle();
-  if (error) throw error;
-  if (!data) {
-    throw new ApiHttpError(409, '此關鍵字回覆已被其他請求更新，請重新載入後再試', ERR.CONFLICT);
-  }
+  const lockRefs = [readKeywordReplyImageRef(existing.content), readKeywordReplyImageRef(nextContent)]
+    .filter((ref): ref is KeywordReplyImageStorageRef => ref !== null);
+  await withKeywordReplyImagePathsLock({
+    admin,
+    tenantId: t.tenantId,
+    paths: lockRefs.flatMap(keywordReplyImagePaths),
+    work: async () => {
+      if (nextReplyType === 'IMAGE' && changingImagePayload)
+        await requireKeywordReplyImage(nextContent, t.tenantId, admin);
 
-  const persistedRef = readKeywordReplyImageRef(nextContent);
-  if (persistedRef) {
-    try {
-      await markKeywordReplyImagePersisted(createAdminSupabase(), t.tenantId, persistedRef);
-    } catch (queueError) {
-      console.error('[keyword-reply-images] provisional queue clear failed', queueError);
-    }
-  }
+      const { data, error } = await t.supabase
+        .from('keyword_replies').update(update)
+        .eq('id', id).eq('tenant_id', t.tenantId)
+        .eq('reply_type', existing.reply_type)
+        .filter('content', 'eq', JSON.stringify(existing.content ?? {}))
+        .select('id').maybeSingle();
+      if (error) throw error;
+      if (!data)
+        throw new ApiHttpError(409, '此關鍵字回覆已被其他請求更新，請重新載入後再試', ERR.CONFLICT);
+
+      const persistedRef = readKeywordReplyImageRef(nextContent);
+      if (persistedRef) {
+        try {
+          await markKeywordReplyImagePersisted(admin, t.tenantId, persistedRef);
+        } catch (queueError) {
+          console.error('[keyword-reply-images] provisional queue clear failed', queueError);
+        }
+      }
+    },
+  });
 
   await cleanupReplacedKeywordReplyImage({
     tenantId: t.tenantId,
@@ -118,16 +131,30 @@ export const DELETE = handle(async (_req, { params }) => {
   if (existingError) throw existingError;
   if (!existing) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
 
-  const { data, error } = await t.supabase
-    .from('keyword_replies').delete()
-    .eq('id', id).eq('tenant_id', t.tenantId)
-    .select('id').maybeSingle();
-  if (error) throw error;
-  if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+  const admin = createAdminSupabase();
+  const oldRef = readKeywordReplyImageRef(existing.content);
+  let deletedContent: unknown;
+  await withKeywordReplyImagePathsLock({
+    admin,
+    tenantId: t.tenantId,
+    paths: oldRef ? keywordReplyImagePaths(oldRef) : [],
+    work: async () => {
+      const { data, error } = await t.supabase
+        .from('keyword_replies').delete()
+        .eq('id', id).eq('tenant_id', t.tenantId)
+        .filter('content', 'eq', JSON.stringify(existing.content ?? {}))
+        .select('content').maybeSingle();
+      if (error) throw error;
+      if (!data)
+        throw new ApiHttpError(409, '此關鍵字回覆已被其他請求更新，請重新載入後再試', ERR.CONFLICT);
+      deletedContent = data.content;
+    },
+  });
 
   await cleanupReplacedKeywordReplyImage({
+    admin,
     tenantId: t.tenantId,
-    oldContent: existing.content,
+    oldContent: deletedContent,
     nextContent: {},
   });
 

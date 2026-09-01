@@ -13,6 +13,7 @@ import {
   uploadKeywordReplyImage,
   validateKeywordReplyImageBytes,
   validateKeywordReplyImageRef,
+  withKeywordReplyImagePathsLock,
 } from '@/server/keyword-reply-images';
 
 const TENANT_A = '11111111-1111-4111-8111-111111111111';
@@ -187,5 +188,31 @@ describe('Issue #50 keyword-reply image storage seam', () => {
     info.mockResolvedValue({ error: new Error('missing') });
     await expect(requireKeywordReplyImage(content, TENANT_A, admin))
       .rejects.toThrow('找不到已上傳的關鍵字圖片');
+  });
+
+  it('acquires and releases the DB path boundary around image work', async () => {
+    const inserted: Record<string, unknown>[] = [];
+    const insert = vi.fn((value: Record<string, unknown>) => {
+      inserted.push(value);
+      return { select: vi.fn().mockResolvedValue({ data: [{ path: value.path }], error: null }) };
+    });
+    const release = { error: null, eq: vi.fn() };
+    release.eq.mockReturnValue(release);
+    const admin = {
+      from: vi.fn(() => ({ insert, delete: vi.fn(() => release) })),
+    } as never;
+    const work = vi.fn().mockResolvedValue('finished');
+
+    await expect(withKeywordReplyImagePathsLock({
+      admin,
+      tenantId: TENANT_A,
+      paths: ['a-path', 'b-path'],
+      work,
+    })).resolves.toBe('finished');
+
+    expect(work).toHaveBeenCalledOnce();
+    expect(inserted).toHaveLength(2);
+    expect(inserted.every((row) => String(row.path).startsWith('__keyword-reply-image-lock__/'))).toBe(true);
+    expect(release.eq).toHaveBeenCalledWith('last_error', expect.stringMatching(/^lock:/));
   });
 });

@@ -38,9 +38,24 @@ describe('Issue #50 source wiring', () => {
     const update = read('../../src/app/api/settings/line/keyword-replies/[id]/route.ts');
     const images = read('../../src/server/keyword-reply-images.ts');
     expect(update).toContain(".filter('content', 'eq', JSON.stringify(existing.content ?? {}))");
+    expect(update).toContain(".select('content').maybeSingle()");
+    expect(update).toContain('oldContent: deletedContent');
+    expect(update).toContain('withKeywordReplyImagePathsLock');
     expect(update).toContain('markKeywordReplyImagePersisted');
+    expect(images).toContain('KEYWORD_REPLY_IMAGE_LOCK_PREFIX');
+    expect(images).toContain('withKeywordReplyImagePathsLock');
+    expect(images).toContain(".not('path', 'like'");
     expect(images).toContain('KEYWORD_REPLY_IMAGE_PROVISIONAL_TTL_MS');
     expect(images).toContain("from('keyword_reply_image_cleanup')");
     expect(images).toContain(".lt(");
+  });
+
+  it('uses the same DB-backed path boundary for create, discard, and cleanup', () => {
+    const create = read('../../src/app/api/settings/line/keyword-replies/route.ts');
+    const discard = read('../../src/app/api/settings/line/keyword-replies/image/route.ts');
+    const images = read('../../src/server/keyword-reply-images.ts');
+    expect(create).toContain('withKeywordReplyImagePathsLock');
+    expect(discard).toContain('removeUnreferencedKeywordReplyImage');
+    expect(images).toContain('await withKeywordReplyImagePathsLock({');
   });
 });
