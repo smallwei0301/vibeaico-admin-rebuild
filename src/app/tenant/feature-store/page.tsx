@@ -14,6 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 import { applyFeature, cancelFeature, listFeatures, restoreFeature } from '@/services/settings';
 import { getPointBalance } from '@/services/points';
 import { ApiError } from '@/lib/api';
+import { buildFeatureRestoreNotice } from '@/lib/feature-restore';
 import {
   FEATURE_CATALOG, FEATURE_CODES, type FeatureCode, type FeatureSubscription,
 } from '@/config/features';
@@ -195,13 +196,19 @@ export default function FeatureStorePage() {
     setWorking(true);
     try {
       // POST /api/feature-store/:code/{cancel,restore}（09 §3）；mock 模擬成功。
+      const restoreResult = kind === 'cancel' ? undefined : await restoreFeature(item.key);
       if (kind === 'cancel') await cancelFeature(item.key);
-      else await restoreFeature(item.key);
       setPending(null);
       if (kind === 'cancel') {
         toast.show(sub?.expiresAt ? t.messages.cancelledUsable(name) : t.messages.cancelled(name));
       } else {
-        toast.show(t.messages.restored(name));
+        const notice = buildFeatureRestoreNotice(name, restoreResult, {
+          restored: t.messages.restored,
+          couponsRestored: t.messages.couponsRestored,
+          productsRestored: t.messages.productsRestored,
+          restoreSideEffectFailed: t.messages.restoreSideEffectFailed,
+        });
+        toast.show(notice.message, notice.tone);
       }
       void load();
     } catch (e) {
