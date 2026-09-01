@@ -19,6 +19,13 @@ describe('seed schema error classification', () => {
     expect(source).toContain("slug: 'private-test-plan'");
   });
 
+  it('keeps the base seed compatible with the merged trip schema', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
+    expect(source).not.toContain('min_to_depart: 1');
+    expect(source).not.toContain('min_to_depart_snapshot: 1');
+    expect(source).not.toContain('formation_deadline_at: formationDeadlineAt');
+  });
+
   it('fails closed when required trip plan or departure seed data cannot be written', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
     expect(source).toMatch(/if \(!tripPlansSeeded\)\s*\{\s*throw new Error\(/);
