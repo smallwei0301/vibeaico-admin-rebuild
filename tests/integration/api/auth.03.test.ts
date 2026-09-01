@@ -428,3 +428,25 @@ describe('POST /api/auth/change-password 需先驗證舊密碼（03 §4）', () 
     });
     expect(reg.status).toBe(200);
 
+    const api = await loginAs(email, oldPassword);
+
+    const wrongRes = await api.post('/api/auth/change-password', {
+      currentPassword: 'NotTheCurrentPassword!', newPassword,
+    });
+    expect(wrongRes.status).toBe(400);
+    const wrongBody = await readJson(wrongRes);
+    expect(wrongBody.success).toBe(false);
+    expect(wrongBody.code).toBe('AUTH_002');
+
+    const okRes = await api.post('/api/auth/change-password', { currentPassword: oldPassword, newPassword });
+    expect(okRes.status).toBe(200);
+    const okBody = await readJson<{ changed: boolean }>(okRes);
+    expect(okBody.success).toBe(true);
+    expect(okBody.data!.changed).toBe(true);
+
+    const newApi = await loginAs(email, newPassword);
+    const meRes = await newApi.get('/api/auth/me');
+    expect(meRes.status).toBe(200);
+    expect((await readJson<{ email: string }>(meRes)).data!.email).toBe(email);
+  });
+});
