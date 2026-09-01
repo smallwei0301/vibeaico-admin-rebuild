@@ -65,6 +65,7 @@ describe('GUIDE trips mobile surface selectors (#66 Phase H)', () => {
     expect(source).toContain('grid-cols-2');
     expect(source).toContain('/tenant/trips/${trip.id}');
     expect(source).toContain('?tab=departures');
+    expect(source).not.toContain('<main');
     expect(source).not.toContain('<DataTable');
     expect(source).not.toContain('setTimeout');
   });

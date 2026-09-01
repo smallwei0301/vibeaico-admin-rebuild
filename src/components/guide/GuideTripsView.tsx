@@ -113,18 +113,18 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
 
   if (loading) {
     return (
-      <main className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
+      <div className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
         <GuideHeader title={copy.title} subtitle={copy.subtitle} />
         <GuideSectionCard title={copy.loading} aria-busy={loading}>
           <p className={GUIDE_UI_CLASSES.bodyMuted} role="status" aria-live="polite">{copy.loadingDescription}</p>
         </GuideSectionCard>
-      </main>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
+      <div className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
         <GuideHeader title={copy.title} subtitle={copy.subtitle} />
         <GuideSectionCard title={copy.error.title}>
           <GuideEmptyState
@@ -135,12 +135,12 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
             action={<button type="button" className={cn(GUIDE_UI_CLASSES.touchTarget, GUIDE_UI_CLASSES.primaryButton, GUIDE_UI_CLASSES.focusRing)} onClick={onRetry}>{copy.retry}</button>}
           />
         </GuideSectionCard>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
+    <div className={cn(GUIDE_UI_CLASSES.page, GUIDE_UI_CLASSES.sectionGap)}>
       <GuideHeader title={copy.title} subtitle={copy.subtitle} />
 
       <GuideSectionCard title={copy.summary.title} description={copy.summary.description}>
@@ -198,6 +198,6 @@ export function GuideTripsView({ trips, loading, error, onRetry }: GuideTripsVie
           </div>
         )}
       </GuideSectionCard>
-    </main>
+    </div>
   );
 }

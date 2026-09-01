@@ -83,6 +83,7 @@ describe('GUIDE five-parent information architecture (#66 Phase B)', () => {
     expect(helper).toContain('feature-store?feature=');
     expect(source).toContain('guideNavigation.more.gating.locked');
     expect(source).toContain('guideNavigation.more.gating.loading');
+    expect(source).toContain(`defaultOpen={group.key === 'operations'}`);
     expect(source).toContain('featureLoadFailed');
   });
 

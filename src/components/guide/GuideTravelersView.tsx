@@ -52,14 +52,12 @@ function travelerStatus(
   return { label: row.customer.active ? navigation.travelers.status.active : navigation.travelers.status.inactive, tone: 'neutral' };
 }
 
-function orderStatus(
+export function orderStatus(
   order: GuideTravelerOrder,
-  todayIso: string,
 ): { label: string; tone: 'neutral' | 'positive' | 'attention' | 'danger' | 'info' } {
+  // The order status is authoritative; a date alone must not rewrite pending/confirmed data.
   if (order.status === 'CANCELLED') return { label: navigation.travelers.order.cancelled, tone: 'danger' };
-  if (order.status === 'COMPLETED' || order.departsOn < todayIso) {
-    return { label: navigation.travelers.order.completed, tone: 'neutral' };
-  }
+  if (order.status === 'COMPLETED') return { label: navigation.travelers.order.completed, tone: 'neutral' };
   if (order.status === 'PENDING') return { label: navigation.travelers.order.pending, tone: 'attention' };
   return { label: navigation.travelers.order.confirmed, tone: 'positive' };
 }
@@ -122,7 +120,7 @@ function TravelerDetail({
         ) : (
           <div className={cn(GUIDE_UI_CLASSES.listDivider, 'mt-2 divide-y')}>
             {row.orders.map((order) => {
-              const state = orderStatus(order, todayIso);
+              const state = orderStatus(order);
               return (
                 <div key={order.id} className="flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0">
                   <CalendarDays size={18} className={cn('mt-1 shrink-0', GUIDE_UI_CLASSES.mutedIcon)} aria-hidden />

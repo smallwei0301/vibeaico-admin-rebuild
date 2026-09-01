@@ -169,5 +169,9 @@ describe('GUIDE UI foundation (#66 Phase A)', () => {
     );
     expect(settingsHtml).toContain('LINE 與自動化');
     expect(settingsHtml).toContain(GUIDE_UI_CLASSES.divider.split(' ')[0]);
+    expect(settingsHtml).toContain('<details');
+    expect(settingsHtml).toContain('<summary');
+    expect(settingsHtml).toContain('aria-level="2"');
+    expect(settingsHtml).toContain('focus-visible:ring-2');
   });
 });

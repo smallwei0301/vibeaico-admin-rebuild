@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+
+import { orderStatus } from '@/components/guide/GuideTravelersView';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -215,4 +217,15 @@ describe('GUIDE traveler selectors (#66 Phase E)', () => {
     expect(source).toContain('restoreFocusId.current');
     expect(source).toContain('aria-controls={isSelected ? detailId : undefined}');
   });
+  it('preserves the canonical order status even when its date is in the past', () => {
+    expect(orderStatus(order({ status: 'PENDING', departsOn: '2026-08-01' }))).toEqual({
+      label: '等待確認',
+      tone: 'attention',
+    });
+    expect(orderStatus(order({ status: 'CONFIRMED', departsOn: '2026-08-01' }))).toEqual({
+      label: '已確認',
+      tone: 'positive',
+    });
+  });
+
 });

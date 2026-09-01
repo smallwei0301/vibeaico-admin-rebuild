@@ -70,7 +70,12 @@ export default function GuideMorePage() {
       {GUIDE_MORE_GROUPS.map((group) => {
         const copy = guideNavigation.more.groups[group.key];
         return (
-          <GuideSettingsGroup key={group.key} title={copy.title} description={copy.description}>
+          <GuideSettingsGroup
+            key={group.key}
+            title={copy.title}
+            description={copy.description}
+            defaultOpen={group.key === 'operations'}
+          >
             {group.links.map((link) => {
               const Icon = link.icon;
               const requiresFeature = !!link.feature;
