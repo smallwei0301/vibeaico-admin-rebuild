@@ -78,7 +78,9 @@ describe('GUIDE five-parent information architecture (#66 Phase B)', () => {
   it('keeps gated More links truthful when a feature is inactive or still loading', () => {
     const source = readFileSync('src/app/tenant/more/page.tsx', 'utf8');
     expect(source).toContain('listFeatures()');
-    expect(source).toContain('feature-store?feature=');
+    expect(source).toContain('resolveGuideMoreHref');
+    const helper = readFileSync('src/lib/guide-more.ts', 'utf8');
+    expect(helper).toContain('feature-store?feature=');
     expect(source).toContain('guideNavigation.more.gating.locked');
     expect(source).toContain('guideNavigation.more.gating.loading');
     expect(source).toContain('featureLoadFailed');
