@@ -148,6 +148,15 @@ describe('Issue #15 dual reorder endpoints', () => {
         .eq('tenant_id', SHOP_A.id)
         .single();
       expect(error).toBeNull();
+      const { data: existing, error: existingError } = await admin
+        .from('services')
+        .select('id, sort_order, line_sort_order')
+        .eq('tenant_id', SHOP_A.id)
+        .neq('id', createdId);
+      expect(existingError).toBeNull();
+      expect(existing?.some((row: any) => row.sort_order === data.sort_order)).toBe(false);
+      expect(existing?.some((row: any) => row.line_sort_order === data.line_sort_order)).toBe(false);
+
       expect(data).toMatchObject({
         id: createdId,
         sort_order: body.data!.sortOrder,
