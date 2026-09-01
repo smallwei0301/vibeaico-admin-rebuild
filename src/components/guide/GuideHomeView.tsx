@@ -236,11 +236,14 @@ export function GuideHomeView({
         )}
       </GuideSectionCard>
 
-      <GuideSectionCard
-        title={t.week.title}
-        description={week.length === 0 ? t.upcoming.loading : undefined}
-      >
-        {week.length > 0 ? (
+      <GuideSectionCard title={t.week.title} aria-busy={departuresLoading}>
+        {departuresLoading ? (
+          <p className={GUIDE_UI_CLASSES.secondary} role="status" aria-live="polite">{t.upcoming.loading}</p>
+        ) : departuresError ? (
+          <GuideEmptyState role="alert" title={t.upcoming.errorTitle} description={t.upcoming.errorDescription} />
+        ) : week.length === 0 ? (
+          <GuideEmptyState title={t.week.emptyTitle} description={t.week.emptyDescription} />
+        ) : (
           <>
             <GuideWeekStrip
               days={week.map((day) => ({
@@ -255,7 +258,7 @@ export function GuideHomeView({
               <p className={cn(GUIDE_UI_CLASSES.secondary, 'mt-4')}>{t.week.emptyDescription}</p>
             ) : null}
           </>
-        ) : null}
+        )}
       </GuideSectionCard>
 
       <GuideSectionCard title={t.quickActions.title}>

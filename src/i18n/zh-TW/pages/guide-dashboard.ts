@@ -65,6 +65,7 @@ export const guideDashboardPage = {
   },
   week: {
     title: '本週行程概覽',
+    emptyTitle: '本週尚無團次',
     emptyDescription: '本週尚無可顯示的團次。',
     count: (count: number) => `${count} 團`,
     weekdays: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'],

@@ -151,6 +151,25 @@ describe('GUIDE home selectors (#66 Phase C)', () => {
     expect(html).toContain('/tenant/customers?atRisk=true');
   });
 
+  it('keeps a loaded empty week separate from the loading state', () => {
+    const html = renderToStaticMarkup(
+      <GuideHomeView
+        tenantName="測試嚮導工作室"
+        todayIso="2026-09-01"
+        alerts={null}
+        alertsLoading={false}
+        alertsError={false}
+        stats={null}
+        setup={null}
+        departures={[]}
+        departuresLoading={false}
+        departuresError={false}
+      />,
+    );
+    expect(html).toContain('本週尚無團次');
+    expect(html).not.toContain('正在載入團次…');
+  });
+
   it('does not turn an alert fetch failure into a no-items message', () => {
     const html = renderToStaticMarkup(
       <GuideHomeView
