@@ -21,18 +21,20 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import {
   adjustBookingPrice, applyBookingCoupon, applyBookingPoints, cancelBooking,
-  completeBooking, confirmBooking, createBooking, listBookings,
+  completeBooking, confirmBooking, createBooking, createBookingAddon, deleteBookingAddon, listBookingAddons, listBookings,
   markBookingPaidOffline, markNoShow, revertBookingComplete, updateBooking,
+  type CreateBookingAddonResult,
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
+import { ApiError } from '@/lib/api';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
-import type { Booking, BookingStatus, Customer, Service, Staff } from '@/lib/types';
+import type { Booking, BookingAddon, BookingStatus, Customer, Service, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -76,6 +78,7 @@ type AddonItem = {
   quantity: number;
   durationMinutes: number;
   staffName: string | null;
+  performanceMode?: BookingAddon['performanceMode'];
 };
 
 const ADDON_ITEMS_LOCAL_SHOP: Record<string, AddonItem[]> = {
@@ -175,6 +178,7 @@ export default function BookingsPage() {
   const [revertTarget, setRevertTarget] = React.useState<Booking | null>(null);
   const [batchConfirmOpen, setBatchConfirmOpen] = React.useState(false);
   const [removeAddonTarget, setRemoveAddonTarget] = React.useState<AddonItem | null>(null);
+  const [addonRevision, setAddonRevision] = React.useState(0);
 
   const [cancelReason, setCancelReason] = React.useState('');
 
@@ -604,13 +608,27 @@ export default function BookingsPage() {
       <AddonModal
         booking={addonTarget}
         onClose={() => setAddonTarget(null)}
-        onAdded={(notify, hasLine) => {
+        onAdded={(result) => {
+          const targetId = addonTarget?.id;
+          const patch = (booking: Booking) => booking.id === targetId
+            ? { ...booking, finalPrice: result.finalPrice, durationMinutes: result.durationMinutes, endAt: result.endAt }
+            : booking;
+          // Consume the RPC result before the background reload so the table and
+          // the still-open detail panel never show the pre-add-on total/time.
+          setRows((current) => current.map(patch));
+          setDetailTarget((current) => current ? patch(current) : current);
           setAddonTarget(null);
-          toast.show(
-            !notify ? t.messages.addonAddedSilent
-              : hasLine ? t.messages.addonAdded
-                : t.messages.addonAddedNoLine,
-          );
+          setAddonRevision((revision) => revision + 1);
+          toast.show(t.messages.addonNotificationOutcome[result.notified]);
+          void load();
+        }}
+        onPersistedQuotaExceeded={() => {
+          // The RPC committed the add-on but receipt quota was exhausted. Close
+          // the form before reload so it cannot submit a duplicate add-on.
+          setAddonTarget(null);
+          setDetailTarget(null);
+          setAddonRevision((revision) => revision + 1);
+          toast.show(t.messages.addonNotificationOutcome.QUOTA_EXCEEDED, 'warning');
           void load();
         }}
       />
@@ -688,6 +706,7 @@ export default function BookingsPage() {
         onCancel={() => { setCancelReason(''); setCancelTarget(detailTarget); }}
         onRevert={() => setRevertTarget(detailTarget)}
         onRemoveAddon={(item) => setRemoveAddonTarget(item)}
+        addonRevision={addonRevision}
       />
 
       {/* ---------------------------------------------------------- 確認類 */}
@@ -770,9 +789,30 @@ export default function BookingsPage() {
         message={t.confirmMessages.removeAddon}
         onClose={() => setRemoveAddonTarget(null)}
         onConfirm={() => {
+          const addon = removeAddonTarget;
+          const booking = detailTarget;
           setRemoveAddonTarget(null);
-          toast.show(t.messages.addonRemoved);
-          void load();
+          if (addon && booking) {
+            void (async () => {
+              try {
+                const result = await deleteBookingAddon(booking.id, addon.id);
+                if (result) {
+                  const patch = (row: Booking) => row.id === booking.id
+                    ? { ...row, finalPrice: result.finalPrice, durationMinutes: result.durationMinutes, endAt: result.endAt }
+                    : row;
+                  setRows((current) => current.map(patch));
+                  setDetailTarget((current) => current ? patch(current) : current);
+                }
+                // The mock adapter returns null explicitly; it has no durable
+                // add-on fixture to invent a rollback total for.
+                setAddonRevision((revision) => revision + 1);
+                toast.show(t.messages.addonRemoved);
+                void load();
+              } catch (e) {
+                toast.show(`${t.messages.actionFailed}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
+              }
+            })();
+          }
         }}
       />
 
@@ -1148,11 +1188,12 @@ function BookingFormModal({
 /* ========================================================================== */
 
 function AddonModal({
-  booking, onClose, onAdded,
+  booking, onClose, onAdded, onPersistedQuotaExceeded,
 }: {
   booking: Booking | null;
   onClose: () => void;
-  onAdded: (notify: boolean, hasLine: boolean) => void;
+  onAdded: (result: CreateBookingAddonResult) => void;
+  onPersistedQuotaExceeded: () => void;
 }) {
   const toast = useToast();
   const a = t.addonModal;
@@ -1164,14 +1205,15 @@ function AddonModal({
   const [duration, setDuration] = React.useState('0');
   const [quantity, setQuantity] = React.useState('1');
   const [staffId, setStaffId] = React.useState('');
-  const [notify, setNotify] = React.useState(true);
+  const [noPersonalCredit, setNoPersonalCredit] = React.useState(false);
+  const [notify, setNotify] = React.useState(false);
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!booking) return;
     setServiceId(''); setName(''); setPrice(''); setDuration('0');
-    setQuantity('1'); setStaffId(''); setNotify(true); setError('');
+    setQuantity('1'); setStaffId(''); setNoPersonalCredit(false); setNotify(false); setError('');
     void (async () => {
       try { setServices(await listServices()); }
       catch { toast.show(`${t.messages.loadAddonOptionsFailed}${t.messages.unknownError}`, 'danger'); }
@@ -1201,8 +1243,21 @@ function AddonModal({
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
-      onAdded(notify, !!booking && booking.source === 'LINE');
+      if (!booking) return;
+      const result = await createBookingAddon(booking.id, {
+        serviceId: serviceId || undefined, name: name.trim(), price: Number(price),
+        quantity: Number(quantity), durationMinutes: Number(duration), staffId: staffId || undefined,
+        noPersonalCredit,
+        notify,
+      });
+      onAdded(result);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'REQ_003'
+        && (e.data as { persisted?: boolean } | undefined)?.persisted) {
+        onPersistedQuotaExceeded();
+        return;
+      }
+      setError(e instanceof Error ? e.message : t.messages.actionFailed);
     } finally {
       setSaving(false);
     }
@@ -1235,6 +1290,16 @@ function AddonModal({
             </option>
           ))}
         </Select>
+      </FormGroup>
+
+      <FormGroup>
+        <label className="flex items-start gap-1.5 text-base">
+          <input
+            type="checkbox" checked={noPersonalCredit} className="mt-1"
+            onChange={(ev) => setNoPersonalCredit(ev.target.checked)}
+          />
+          {a.noPersonalCredit}
+        </label>
       </FormGroup>
 
       <FormGroup>
@@ -1543,6 +1608,7 @@ function ApplyPointsModal({
 function BookingDetailModal({
   booking, onClose, onAddon, onCoupon, onPoints, onAdjust, onMarkPaid,
   onCopyPayLink, onComplete, onCancel, onRevert, onRemoveAddon,
+  addonRevision,
 }: {
   booking: Booking | null;
   onClose: () => void;
@@ -1556,9 +1622,27 @@ function BookingDetailModal({
   onCancel: () => void;
   onRevert: () => void;
   onRemoveAddon: (item: AddonItem) => void;
+  addonRevision: number;
 }) {
   const d = t.detailModal;
-  const addons = booking ? addonsOf(booking) : [];
+  const [loadedAddons, setLoadedAddons] = React.useState<AddonItem[] | null>(null);
+  const [addonsLoading, setAddonsLoading] = React.useState(false);
+  const [addonsError, setAddonsError] = React.useState('');
+  React.useEffect(() => {
+    if (!booking) { setLoadedAddons(null); return; }
+    let active = true;
+    setAddonsLoading(true); setAddonsError('');
+    void listBookingAddons(booking.id).then((rows) => {
+      if (!active) return;
+      setLoadedAddons(rows === null ? null : rows.map((row) => ({
+        id: row.id, name: row.name, price: row.price, quantity: row.quantity,
+        durationMinutes: row.durationMinutes, staffName: row.staffName, performanceMode: row.performanceMode,
+      })));
+    }).catch((e) => { if (active) setAddonsError(e instanceof Error ? e.message : t.messages.actionFailed); })
+      .finally(() => { if (active) setAddonsLoading(false); });
+    return () => { active = false; };
+  }, [booking?.id, addonRevision]);
+  const addons = loadedAddons ?? (booking ? addonsOf(booking) : []);
   const extras = booking ? extrasOf(booking) : DEFAULT_EXTRAS;
   const net = (booking?.finalPrice ?? 0) - extras.couponDiscount - extras.pointsRedeemed;
 
@@ -1637,7 +1721,7 @@ function BookingDetailModal({
           {/* 加購明細 */}
           <div>
             <h6 className="mb-2 text-base font-bold">{d.addonSection}</h6>
-            {addons.length === 0 ? (
+            {addonsLoading ? <p className="form-text">{d.loading}</p> : addonsError ? <FormError>{addonsError}</FormError> : addons.length === 0 ? (
               <p className="form-text">{t.labels.noData}</p>
             ) : (
               <ul className="flex flex-col gap-1">

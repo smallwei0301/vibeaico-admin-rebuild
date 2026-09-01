@@ -15,6 +15,8 @@ export const lineSettingsPage = {
 
   /* ---------------------------------------------------------------- 頁首 */
   viewTutorial: '查看教學',
+  openWizard: '使用開通精靈',
+  openWizardHref: '/tenant/line-settings/onboarding',
 
   /* --------------------------------------------- 🔴 設定完成後必做（警示） */
   mustDo: {

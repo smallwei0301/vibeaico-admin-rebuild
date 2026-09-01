@@ -89,14 +89,17 @@
 建議實作順序（前面的頁面使用率最高）：
 - [ ] B-1 預約進階（available-slots、手動建立、calendar、block-times）
       **（重開 2026-08-24：block-times 頁完全未接線、available-slots 無任何頁面使用）**
-- [x] B-1.1 預約加購 `booking_addons`（issue #17，2026-08-25）
-      證據：契約 `04-API-CONTRACTS.md §B-1.1`；migration `0020_booking_addons`（兩個
-      Supabase 專案皆已套用並以 `information_schema.columns` / `pg_policy` 驗證，
-      輸出貼在 issue #17 留言）；端點測試
-      `tests/integration/api/booking-addons.17.test.ts`（17 例全綠：CRUD／回沖／0 元與
-      負數邊界／加購後調價再刪除／跨租戶 404／notify 三態／額度 409 零請求）；
-      頁面接線鏈路對照表與單元守門
-      `tests/unit/honest-not-built-interactions.test.ts:「bookings 加購 modal（已接上真實後端，且不得宣稱超出實際發生的事）」`
+- [ ] B-1.1 預約加購 `booking_addons`（issue #17 current-main rebuild，2026-09-01）
+      契約與 source candidate 已在 `04-API-CONTRACTS.md §B-1.1`、PR #87 提供；
+      `0053_issue_17_booking_addons.sql` 是 current-main forward migration；後續
+      `0054_issue_17_booking_addons_hardening.sql` 是同一 forward lineage 的
+      RLS/ACL/search-path/quota hardening，`0055_issue_17_booking_addon_price_rollback.sql`
+      再固定調價後刪除加購的當下金額回沖與 floor-at-zero 行為，不是歷史 `0020`。
+      TEST 已有 0055 且只套用一次；本輪不得重套或變更 TEST。
+      current-main exact-head TEST verification of 0053–0055、已啟用的 integration/E2E/verifier 實跑、authenticated Preview 與
+      CLOSE evidence 尚未完成；完成前不得把歷史 `0020` 的兩專案輸出當作 current-main 驗收。
+      Source-level page wiring、unit 守門與 integration suite 已在 PR #87，Sol
+      `CLOSE_APPROVED` 尚未核發。
 - [ ] B-2 服務/員工/班表 CRUD
 - [ ] B-3 商品/訂單/庫存
 - [ ] B-4 票券/會員/點數

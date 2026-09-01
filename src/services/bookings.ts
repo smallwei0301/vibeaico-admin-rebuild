@@ -1,5 +1,5 @@
 import { adapt, request } from '@/lib/api';
-import type { Booking, BookingStatus, CalendarEvent, Paged } from '@/lib/types';
+import type { Booking, BookingAddon, BookingStatus, CalendarEvent, Paged } from '@/lib/types';
 import { MOCK_BOOKINGS } from '@/mock';
 
 export type BookingQuery = {
@@ -127,6 +127,70 @@ export const markBookingPaidOffline = (id: string) =>
 export const revertBookingComplete = (id: string) =>
   adapt(() => undefined, () =>
     request<void>(`/api/bookings/${id}/revert-complete`, { method: 'POST' }));
+
+/* -------------------------------------------------------------- 加購項目 */
+
+export type CreateBookingAddonPayload = {
+  serviceId?: string;
+  name: string;
+  price: number;
+  quantity: number;
+  durationMinutes: number;
+  /** 空白 = 繼承預約人員；noPersonalCredit = 明確不歸個人業績。 */
+  staffId?: string;
+  noPersonalCredit?: boolean;
+  /** 勾選後走既有 LINE 憑證／額度／receipt；回傳實際 outcome。 */
+  notify?: boolean;
+};
+export type CreateBookingAddonResult = {
+  addon: BookingAddon; finalPrice: number; durationMinutes: number; endAt: string; notified: BookingAddon['notified'];
+};
+export type DeleteBookingAddonResult = Pick<CreateBookingAddonResult, 'finalPrice' | 'durationMinutes' | 'endAt'>;
+
+/** GET /api/bookings/:id/addons；null 表示明確 mock 分支，頁面沿用展示假資料。 */
+export const listBookingAddons = (id: string) =>
+  adapt<BookingAddon[] | null>(
+    () => null,
+    () => request<BookingAddon[]>(`/api/bookings/${id}/addons`),
+  );
+
+/** POST 僅接受 RPC 的原子寫入；mock 不觸網且回合成項目。 */
+export const createBookingAddon = (id: string, payload: CreateBookingAddonPayload) =>
+  adapt<CreateBookingAddonResult>(
+    () => {
+      const booking = MOCK_BOOKINGS.find((row) => row.id === id);
+      const appliedAmount = payload.price * payload.quantity;
+      const appliedMinutes = payload.durationMinutes * payload.quantity;
+      const finalPrice = (booking?.finalPrice ?? 0) + appliedAmount;
+      const durationMinutes = (booking?.durationMinutes ?? 0) + appliedMinutes;
+      const endAt = booking
+        ? new Date(new Date(booking.endAt).getTime() + appliedMinutes * 60_000).toISOString()
+        : '';
+      // Mock mode remains explicitly synthetic, but its local row follows the
+      // same response contract so a background list reload cannot undo the UI.
+      if (booking) Object.assign(booking, { finalPrice, durationMinutes, endAt });
+      const addon: BookingAddon = {
+      id: `ba_mock_${Date.now()}`, serviceId: payload.serviceId ?? null, name: payload.name,
+      price: payload.price, quantity: payload.quantity, durationMinutes: payload.durationMinutes,
+      staffId: payload.staffId ?? null, staffName: null,
+      performanceMode: payload.noPersonalCredit ? 'NONE' : payload.staffId ? 'SPECIFIC_STAFF' : 'PRIMARY',
+      performanceStaffId: payload.noPersonalCredit ? null : payload.staffId ?? booking?.staffId ?? null,
+      appliedAmount,
+      appliedMinutes,
+      notified: 'NONE',
+      createdAt: new Date().toISOString(),
+      };
+      return { addon, finalPrice, durationMinutes, endAt, notified: 'NONE' };
+    },
+    () => request<CreateBookingAddonResult>(`/api/bookings/${id}/addons`, {
+      method: 'POST', body: JSON.stringify(payload),
+    }),
+  );
+
+/** DELETE 一律走 RPC，回沖當初 snapshot，不以目前服務價／時長重算。 */
+export const deleteBookingAddon = (bookingId: string, addonId: string) =>
+  adapt<DeleteBookingAddonResult | null>(() => null, () =>
+    request<DeleteBookingAddonResult>(`/api/bookings/${bookingId}/addons/${addonId}`, { method: 'DELETE' }));
 
 /* ------------------------------------------------------------------ 行事曆 */
 

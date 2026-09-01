@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
+  disconnectLineSettings, getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
@@ -379,9 +379,7 @@ export default function LineSettingsPage() {
   const disconnect = async () => {
     setDisconnecting(true);
     try {
-      await saveLineSettings({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '',
-      });
+      await disconnectLineSettings();
       setChannelId('');
       setLineBasicId('');
       setRichMenuPublished(false);
@@ -421,10 +419,16 @@ export default function LineSettingsPage() {
         eyebrow={nav.navSystem}
         title={t.title}
         actions={
-          <Button variant="outline" size="sm" onClick={() => setTutorialOpen(true)}>
-            <Images size={14} />
-            {t.viewTutorial}
-          </Button>
+          <>
+            <Link className="btn btn-line btn-sm" href={t.openWizardHref}>
+              <ClipboardCheck size={13} />
+              {t.openWizard}
+            </Link>
+            <Button variant="outline" size="sm" onClick={() => setTutorialOpen(true)}>
+              <Images size={14} />
+              {t.viewTutorial}
+            </Button>
+          </>
         }
       />
 
