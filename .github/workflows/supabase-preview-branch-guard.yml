@@ -1,0 +1,63 @@
+name: supabase-preview-branch-guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.agents/test-branches/**'
+      - '.agents/schemas/supabase-preview-branch-lease.schema.json'
+      - 'scripts/ci/supabase-branch-lease-policy.mjs'
+      - 'tests/unit/supabase-branch-lease-policy.test.ts'
+      - '.github/workflows/supabase-preview-branch-guard.yml'
+      - 'docs/metrics/test-lanes/2026-09-01-phase2-branch-guard.md'
+      - '.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md'
+  workflow_dispatch:
+    inputs:
+      expected_head:
+        description: Exact branch SHA whose lease evidence is being audited
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: supabase-preview-branch-guard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-leases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Authenticate manual exact head
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        env: { EXPECTED_HEAD: '${{ inputs.expected_head }}' }
+        run: |
+          ACTUAL_HEAD="$(git rev-parse HEAD)"
+          test "$EXPECTED_HEAD" = "$ACTUAL_HEAD" || { echo "expected=$EXPECTED_HEAD actual=$ACTUAL_HEAD" >&2; exit 1; }
+      - name: Validate branch lease policy and evidence
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || inputs.expected_head || github.sha }}
+        run: |
+          node --check scripts/ci/supabase-branch-lease-policy.mjs
+          node scripts/ci/supabase-branch-lease-policy.mjs --check-dir .agents/test-branches --expected-head "$EXPECTED_HEAD"
+      - name: Record non-creation boundary
+        run: |
+          {
+            echo '## Paid branch boundary'
+            echo ''
+            echo '- metadata validation only'
+            echo '- branch create/reset/delete: NOT_PERFORMED'
+            echo '- access token / API key / service-role key: NOT_READ'
+            echo '- maximum active leases: 2'
+            echo '- maximum lease: 120 minutes'
+            echo '- canonical TEST, Sol Audit, and merge remain serial'
+          } >> "$GITHUB_STEP_SUMMARY"
