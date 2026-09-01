@@ -136,6 +136,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
 }
 ```
 
+### 3.1 驗簽後立即回應、事件交給 `after()`（issue #31）
+
+current-main 的 webhook 實作保留 §3 的驗簽順序，並把事件處理移到回應之後：
+
+- route 先讀取 raw body、查好的 tenant／LINE credentials 與 `events`，驗簽失敗仍直接回
+  `401`，不會排入背景工作。
+- 驗簽成功後先註冊 `after()` 工作，再回 `200`。callback 只使用已取出的
+  `admin`、`tenant`、`token`、`lineConfig` 與 `events`，不讀取已結束的 `Request`。
+- `handleEvent` 在 `after()` 內動態載入，因此 AI 客服分派仍保留，只是不再在 webhook
+  acknowledgement 前載入整個事件模組。每個事件的錯誤與 callback 外層例外都會寫入
+  `[line-webhook]` log；HTTP 回應仍維持 `200`。
+
+route 同檔的 `GET` 只用於 development/test 的 deterministic drain：它等待已註冊的
+背景工作並回傳 `{ drained, scheduled, errors }`；`NODE_ENV=production` 回 `405`，
+不提供正式／Preview 的排空入口。`scheduled` 是累計排入數，供負向驗簽案例證明沒有
+偷偷排程；`errors` 只在非 production 記憶體保留最近摘要，供測試檢查 log 行為。
+
+對應測試證據：
+
+- `tests/integration/api/line-webhook.06.test.ts`：壞簽章 `401` 且 `scheduled` 不變；
+  mock LINE 回應被 `holdNext()` 扣住時，webhook 仍先回 `200`，release 後由
+  `drainWebhook()` 確認事件完成；LINE API 失敗時 HTTP 仍為 `200` 且 drain 結果含錯誤。
+- `tests/integration/api/chat-link.06.test.ts`：需要讀取 webhook 副作用的既有案例先使用
+  同一個 drain 訊號，再檢查資料與 mock 請求。
+
+上述只證明「事件處理不阻塞 webhook acknowledgement」及其保留的副作用；本節沒有
+真實 LINE cold-start、真實 AI provider latency 或 authenticated Preview 證據。那些仍須
+外部／Owner gate，不能由 local mock 或此測試替代。
+
 ### `handleEvent` 分派（同檔或 `src/server/line-events.ts`）
 
 | event.type | 處理 |

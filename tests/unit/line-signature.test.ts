@@ -4,10 +4,9 @@
 //
 // ⚠️ 可測性說明（任務要求「若無法純函式化，退而求其次」）：
 //   簽章驗證邏輯 inline 在 src/app/api/line/webhook/[shopCode]/route.ts 裡
-//   （createHmac → 長度預檢 → timingSafeEqual），route handler 依所有權不得
-//   改動（抽成純函式屬 src/** 修改）。因此這裡：
+//   （createHmac → 長度預檢 → timingSafeEqual）。因此這裡：
 //   1. 以 node:crypto **逐字重現** route 的驗簽演算法（下面的 sign()/verify()
-//    直接對照 route.ts L42-48 的實作，兩邊若有一邊改動必須同步），對它做
+//    直接對照 route.ts 的實作，兩邊若有一邊改動必須同步），對它做
 //    正確簽章/壞簽章/缺 header/長度不等 的矩陣 —— 「正確簽章能算出來」這件事
 //    同時被 tests/integration/api/line-webhook.06.test.ts 用同一個 sign()
 //    邏輯打真 route 驗證（好簽章 200、壞簽章 401），整合層補上單元層搆不到的
