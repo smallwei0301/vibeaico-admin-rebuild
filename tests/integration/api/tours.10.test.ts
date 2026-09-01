@@ -1,7 +1,6 @@
 /**
- * #8-A focused HTTP acceptance matrix.  This file is intentionally source-only
- * in the Terra lane: running it invokes the shared TEST reset/seed lane and is
- * reserved for the owner of TEST_VALIDATION (currently #35 / run 33467611493).
+ * #8-A focused HTTP acceptance matrix. Running it invokes the shared TEST
+ * reset/seed lane; CI serializes it with the repo-wide TEST_VALIDATION holder.
  */
 import { describe, expect, it, beforeAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -47,11 +46,62 @@ describe('trips and lifecycle actions', () => {
     expect(crossTenant.status).toBe(404);
   });
 
+  it('blocks every core mutation when TOUR_MODULE is not active', async () => {
+    const { error: deleteError } = await admin.from('feature_subscriptions').delete()
+      .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+    expect(deleteError).toBeNull();
+
+    const unknownId = '7a000000-0000-4000-8000-000000000099';
+    try {
+      const mutationRequests = [
+        () => ownerA.post('/api/trips', {}),
+        () => ownerA.put(`/api/trips/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trips/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/plans`, {}),
+        () => ownerA.put(`/api/trip-plans/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trip-plans/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/departures`, {}),
+        () => ownerA.post(`/api/trips/${unknownId}/departures/batch`, {}),
+        () => ownerA.put(`/api/trip-departures/${unknownId}`, {}),
+        () => ownerA.post(`/api/trips/${unknownId}/addons`, {}),
+        () => ownerA.put(`/api/trip-addons/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trip-addons/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/publish`),
+        () => ownerA.post(`/api/trips/${unknownId}/unpublish`),
+        () => ownerA.post(`/api/trips/${unknownId}/request-midao-listing`),
+      ];
+
+      for (const request of mutationRequests) {
+        const response = await request();
+        expect(response.status).toBe(403);
+        const body = await json(response);
+        expect(body.success).toBe(false);
+        expect(body.code).toBe('FEAT_001');
+      }
+    } finally {
+      const { error } = await admin.from('feature_subscriptions').upsert({
+        tenant_id: SHOP_A.id,
+        code: 'TOUR_MODULE',
+        active: true,
+        expires_at: null,
+        source: 'GRANTED',
+        cancelled_at: null,
+      }, { onConflict: 'tenant_id,code' });
+      expect(error).toBeNull();
+    }
+  });
+
   it('supports publish/unpublish and NONE/REJECTED listing transitions', async () => {
     const response = await ownerA.post('/api/trips', { title: `lifecycle-${randomUUID()}` });
     expect(response.status).toBe(200);
     const tripId = (await json<{ id: string }>(response)).data!.id;
     try {
+      const notesUpdate = await ownerA.put(`/api/trips/${tripId}`, { notes: '請攜帶雨具' });
+      expect(notesUpdate.status).toBe(200);
+      expect((await json<{ safetyNotice: string }>(notesUpdate)).data?.safetyNotice).toBe('請攜帶雨具');
+      const reread = await ownerA.get(`/api/trips/${tripId}`);
+      expect((await json<{ trip: { safetyNotice: string } }>(reread)).data?.trip.safetyNotice).toBe('請攜帶雨具');
+
       const listing = await ownerA.post(`/api/trips/${tripId}/request-midao-listing`);
       expect(listing.status).toBe(200);
       expect((await json(listing)).data).toMatchObject({ midaoListing: 'PENDING' });
@@ -73,6 +123,21 @@ describe('plans, departures and addons CRUD', () => {
     expect(trip.status).toBe(200);
     const tripId = (await json<{ id: string }>(trip)).data!.id;
     try {
+      const invalidFixed = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '超額訂金方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1001,
+      });
+      expect(invalidFixed.status).toBe(400);
+
+      const zeroFixed = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '零元訂金方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 0,
+      });
+      expect(zeroFixed.status).toBe(400);
+
+      const invalidPercent = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '超額比例方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_PERCENT', depositValue: 101,
+      });
+      expect(invalidPercent.status).toBe(400);
+
       const plan = await ownerA.post(`/api/trips/${tripId}/plans`, { name: '測試方案', pricePerPerson: 1000 });
       expect(plan.status).toBe(200);
       const planId = (await json<{ id: string }>(plan)).data!.id;
@@ -88,12 +153,24 @@ describe('plans, departures and addons CRUD', () => {
       expect((await json(plans)).data).toHaveLength(1);
       const update = await ownerA.put(`/api/trip-plans/${planId}`, { pricePerPerson: 1200 });
       expect(update.status).toBe(200);
+      const invalidUpdate = await ownerA.put(`/api/trip-plans/${planId}`, {
+        depositMode: 'DEPOSIT_FIXED', depositValue: 1201,
+      });
+      expect(invalidUpdate.status).toBe(400);
+      const validFixedUpdate = await ownerA.put(`/api/trip-plans/${planId}`, {
+        depositMode: 'DEPOSIT_FIXED', depositValue: 500,
+      });
+      expect(validFixedUpdate.status).toBe(200);
       const departureId = (await json<{ id: string }>(departure)).data!.id;
       await admin.from('trip_departures').update({ seats_booked: 2 }).eq('id', departureId);
       const invalidCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 0 });
       expect(invalidCapacity.status).toBe(400);
       const lowCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 1 });
       expect(lowCapacity.status).toBe(409);
+      const tooWide = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
+        planId, from: '2020-01-01', to: '2022-01-01', weekdays: [1], capacity: 2,
+      });
+      expect(tooWide.status).toBe(400);
       const batch = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
         planId, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
       });

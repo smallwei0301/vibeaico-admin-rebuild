@@ -1,5 +1,6 @@
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { departureCreateSchema, timeValue } from '@/server/tour-domain';
 
@@ -29,6 +30,7 @@ export const GET = handle(async (_req, { params }: Context) => {
 export const POST = handle(async (req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = departureCreateSchema.parse(await req.json());
   if (!await findTripPlan(t, id, body.planId)) return fail(404, '找不到此方案', ERR.NOT_FOUND);
   const { data, error } = await t.supabase.from('trip_departures').insert({

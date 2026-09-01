@@ -1,7 +1,8 @@
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
-import { dateRange, departureBatchSchema, timeValue } from '@/server/tour-domain';
+import { dateRange, dateRangeLength, departureBatchSchema, timeValue } from '@/server/tour-domain';
 
 type Context = { params: Promise<{ id: string }> };
 const MAX_DAYS = 366;
@@ -9,9 +10,11 @@ const MAX_DAYS = 366;
 export const POST = handle(async (req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = departureBatchSchema.parse(await req.json());
+  const rangeLength = dateRangeLength(body.from, body.to);
+  if (rangeLength > MAX_DAYS) return fail(400, `批次開團最多一次 ${MAX_DAYS} 天`, ERR.VALIDATION);
   const dates = dateRange(body.from, body.to);
-  if (dates.length > MAX_DAYS) return fail(400, `批次開團最多一次 ${MAX_DAYS} 天`, ERR.VALIDATION);
   const { data: plan, error: planError } = await t.supabase.from('trip_plans').select('id, trip_id')
     .eq('tenant_id', t.tenantId).eq('id', body.planId).maybeSingle();
   if (planError) throw planError;

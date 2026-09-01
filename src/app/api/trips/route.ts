@@ -1,5 +1,6 @@
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { mapTrip } from '@/server/mappers';
 import { tripCreateSchema, tripRow } from '@/server/tour-domain';
 import { taipeiTodayDateString } from '@/server/tz';
@@ -30,6 +31,7 @@ export const GET = handle(async () => {
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = tripCreateSchema.parse(await req.json());
   const { data, error } = await t.supabase
     .from('trips')

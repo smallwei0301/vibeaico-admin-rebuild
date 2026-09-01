@@ -1,5 +1,6 @@
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
+import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { departureUpdateSchema, timeValue } from '@/server/tour-domain';
 
@@ -8,6 +9,7 @@ type Context = { params: Promise<{ id: string }> };
 export const PUT = handle(async (req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant('MANAGER');
+  await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = departureUpdateSchema.parse(await req.json());
   const { data: current, error: readError } = await t.supabase.from('trip_departures').select('*')
     .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();

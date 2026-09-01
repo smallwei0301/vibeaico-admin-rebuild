@@ -51,7 +51,17 @@ export const planCreateSchema = z.object({
   ...planFields,
   name: planFields.name.unwrap(),
   pricePerPerson: planFields.pricePerPerson.unwrap(),
-}).superRefine(validatePlanRange);
+}).superRefine((value, ctx) => {
+  validatePlanRange(value, ctx);
+  const paymentError = planPaymentError({
+    pricePerPerson: value.pricePerPerson,
+    depositMode: value.depositMode ?? 'FULL',
+    depositValue: value.depositValue ?? 0,
+  });
+  if (paymentError) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['depositValue'], message: paymentError });
+  }
+});
 
 export const planUpdateSchema = z.object(planFields).superRefine(validatePlanRange);
 
@@ -62,6 +72,33 @@ function validatePlanRange(value: {
   if (value.minParty !== undefined && value.maxParty !== undefined && value.minParty > value.maxParty) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['maxParty'], message: '最高人數不得小於最低人數' });
   }
+}
+
+/**
+ * Shared with the Service payment semantics (Owner Decision 2026-08-27).
+ * A TripPlan's bounded #8-A price is per person, so a fixed deposit cannot
+ * exceed that known per-person amount.  The later order slice calculates the
+ * actual party total from its immutable snapshot.
+ */
+export function planPaymentError(value: {
+  pricePerPerson: number;
+  depositMode: typeof depositModes[number];
+  depositValue: number;
+}): string | null {
+  if (!Number.isFinite(value.pricePerPerson) || value.pricePerPerson < 0) return '方案價格無效';
+  if (!Number.isFinite(value.depositValue) || value.depositValue < 0) return '訂金金額無效';
+  if (!depositModes.includes(value.depositMode)) return '訂金模式無效';
+
+  if (value.depositMode === 'DEPOSIT_FIXED') {
+    if (value.depositValue <= 0) return '固定訂金必須大於 0';
+    if (value.depositValue > value.pricePerPerson) return '固定訂金不得超過方案每人價格';
+  } else if (value.depositMode === 'DEPOSIT_PERCENT') {
+    if (value.depositValue <= 0 || value.depositValue > 100) return '訂金比例必須介於 1 到 100%';
+  } else if (value.depositValue !== 0) {
+    return '不預收或全額付清模式不得設定訂金金額';
+  }
+
+  return null;
 }
 
 const departureFields = {
@@ -129,6 +166,13 @@ export function dateRange(from: string, to: string): string[] {
     dates.push(new Date(cursor).toISOString().slice(0, 10));
   }
   return dates;
+}
+
+/** Number of inclusive UTC calendar days, computed without allocating dates. */
+export function dateRangeLength(from: string, to: string): number {
+  const start = Date.UTC(Number(from.slice(0, 4)), Number(from.slice(5, 7)) - 1, Number(from.slice(8, 10)));
+  const end = Date.UTC(Number(to.slice(0, 4)), Number(to.slice(5, 7)) - 1, Number(to.slice(8, 10)));
+  return Math.floor((end - start) / 86_400_000) + 1;
 }
 
 export function tripRow(input: z.infer<typeof tripCreateSchema>, tenantId: string) {
