@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/smallwei0301/vibeaico-admin-rebuild/blob/main/.agents/schemas/remote-preview-branch-lease.schema.json",
+  "title": "VibeAI remote Supabase preview branch lease",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "status",
+    "operation",
+    "parentProjectRef",
+    "prNumber",
+    "exactHead",
+    "slot",
+    "branchName",
+    "testProfile",
+    "withData",
+    "persistent",
+    "leaseMinutes",
+    "plannedAt",
+    "leaseExpiresAt",
+    "hourlyCostUsd",
+    "estimatedCostUsd",
+    "cleanupStatus"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "status": {
+      "enum": ["PLAN_ONLY", "AUTHORIZED_TO_CREATE", "CREATING", "ACTIVE_HEALTHY", "TESTING", "DELETE_REQUESTED", "VERIFIED_DESTROYED", "DESTROY_FAILED"]
+    },
+    "operation": { "const": "CREATE_AND_DESTROY_ONLY" },
+    "forbiddenOperations": {
+      "type": "array",
+      "contains": { "const": "MERGE_BRANCH" }
+    },
+    "parentProjectRef": { "const": "nmwhwngojosmagjuvxol" },
+    "prNumber": { "type": "integer", "minimum": 1 },
+    "exactHead": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "slot": { "enum": [1, 2] },
+    "branchName": { "type": "string", "pattern": "^vibeaico-pr[1-9][0-9]*-s[12]-[0-9a-f]{8}$" },
+    "testProfile": { "const": "REMOTE_BRANCH_REQUIRED" },
+    "reasons": { "type": "array", "minItems": 1, "items": { "type": "string" }, "uniqueItems": true },
+    "withData": { "const": false },
+    "persistent": { "const": false },
+    "leaseMinutes": { "type": "integer", "minimum": 1, "maximum": 60 },
+    "plannedAt": { "type": "string", "format": "date-time" },
+    "leaseExpiresAt": { "type": "string", "format": "date-time" },
+    "hourlyCostUsd": { "const": 0.01344 },
+    "estimatedCostUsd": { "type": "number", "minimum": 0.01344 },
+    "activeManagedBranchCountBeforeCreate": { "type": "integer", "minimum": 0, "maximum": 1 },
+    "branchId": { "type": ["string", "null"] },
+    "projectRef": { "type": ["string", "null"] },
+    "createdAt": { "type": ["string", "null"], "format": "date-time" },
+    "destroyedAt": { "type": ["string", "null"], "format": "date-time" },
+    "cleanupStatus": {
+      "enum": ["NOT_CREATED", "PENDING", "DELETE_REQUESTED", "VERIFIED_DESTROYED", "DESTROY_FAILED"]
+    }
+  }
+}
