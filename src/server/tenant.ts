@@ -1,3 +1,4 @@
+import type { BusinessType } from '@/config/modes';
 import { createServerSupabase } from './supabase';
 import { ApiHttpError, ERR } from './http';
 import { cookies } from 'next/headers';
@@ -16,12 +17,13 @@ export async function requireUser() {
  * 1. cookie vibeai_active_tenant 指定且使用者是成員 → 用它
  * 2. 否則取使用者第一個成員資格
  * 回傳的 supabase client 已帶 session，之後查業務表都用它（RLS 把關）。
+ * businessType 來自同一筆 server-side tenant membership，供權益判定使用；不得從 request body 覆蓋。
  */
 export async function requireTenant(minRole: 'STAFF' | 'MANAGER' | 'OWNER' = 'STAFF') {
   const { supabase, user } = await requireUser();
   const { data: memberships, error } = await supabase
     .from('tenant_users')
-    .select('tenant_id, role, tenants(shop_code, name)')
+    .select('tenant_id, role, tenants(shop_code, name, business_type)')
     .eq('user_id', user.id);
   if (error || !memberships?.length)
     throw new ApiHttpError(403, '此帳號未加入任何店家', ERR.FORBIDDEN);
@@ -33,7 +35,13 @@ export async function requireTenant(minRole: 'STAFF' | 'MANAGER' | 'OWNER' = 'ST
   if (rank[m.role as keyof typeof rank] < rank[minRole])
     throw new ApiHttpError(403, '權限不足', ERR.FORBIDDEN);
 
-  return { supabase, user, tenantId: m.tenant_id as string, role: m.role as string,
-           shopCode: (m as any).tenants.shop_code as string,
-           tenantName: (m as any).tenants.name as string };
+  return {
+    supabase,
+    user,
+    tenantId: m.tenant_id as string,
+    role: m.role as string,
+    shopCode: (m as any).tenants.shop_code as string,
+    tenantName: (m as any).tenants.name as string,
+    businessType: ((m as any).tenants.business_type ?? 'LOCAL_SHOP') as BusinessType,
+  };
 }
