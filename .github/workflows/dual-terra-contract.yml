@@ -6,6 +6,7 @@ on:
       - 'scripts/agents/dual-terra-wip-policy.mjs'
       - 'scripts/ci/local-isolated-test-policy.mjs'
       - 'tests/unit/dual-terra-pilot-policy.test.ts'
+      - 'tests/unit/dual-terra-peer-metadata.test.ts'
       - 'tests/unit/local-isolated-test-policy.test.ts'
       - '.github/workflows/dual-terra-contract.yml'
       - '.github/workflows/agent-wip-guard.yml'
@@ -15,6 +16,7 @@ on:
       - 'scripts/agents/dual-terra-wip-policy.mjs'
       - 'scripts/ci/local-isolated-test-policy.mjs'
       - 'tests/unit/dual-terra-pilot-policy.test.ts'
+      - 'tests/unit/dual-terra-peer-metadata.test.ts'
       - 'tests/unit/local-isolated-test-policy.test.ts'
       - '.github/workflows/dual-terra-contract.yml'
       - '.github/workflows/agent-wip-guard.yml'
@@ -43,4 +45,5 @@ jobs:
         run: >-
           npx vitest run -c vitest.config.mts
           tests/unit/dual-terra-pilot-policy.test.ts
+          tests/unit/dual-terra-peer-metadata.test.ts
           tests/unit/local-isolated-test-policy.test.ts
