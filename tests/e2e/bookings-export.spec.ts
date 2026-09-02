@@ -16,7 +16,7 @@ test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
   await expect(page).toHaveURL(/\/tenant\/dashboard/, { timeout: 15_000 });
   await page.goto('/tenant/bookings', { waitUntil: 'commit' });
   const exportButton = page.getByRole('button', { name: '匯出 CSV', exact: true });
-  await expect(exportButton).toBeVisible({ timeout: 15_000 });
+  await expect(exportButton).toBeEnabled({ timeout: 15_000 });
 
   const downloadPromise = page.waitForEvent('download');
   await exportButton.click();

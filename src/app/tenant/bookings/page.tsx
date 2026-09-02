@@ -422,7 +422,12 @@ export default function BookingsPage() {
         title={t.title}
         actions={
           <>
-            <Button variant="outline" onClick={() => void exportCsv()}>
+            <Button
+              type="button"
+              variant="outline"
+              loading={loading}
+              onClick={() => void exportCsv()}
+            >
               <Download size={15} />{common.exportCsv}
             </Button>
             <Button onClick={() => setCreateOpen(true)}>
