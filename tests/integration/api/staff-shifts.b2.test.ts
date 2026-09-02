@@ -91,7 +91,7 @@ describe('DELETE /api/services/:id 有未來預約 → 軟刪 active=false（04 
     try {
       await admin.from('services').insert({
         id: serviceId, tenant_id: SHOP_A.id, name: `B2 待刪服務-${uniqueSuffix()}`,
-        duration_minutes: 60, price: 500,
+        duration_minutes: 60, price: 500, sort_order: 100_001, line_sort_order: 100_001,
       });
       await admin.from('customers').insert({
         id: customerId, tenant_id: SHOP_A.id, name: 'B2 刪服務測試顧客', phone: '',
@@ -167,8 +167,8 @@ describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index
     const svcY = randomUUID();
     try {
       await admin.from('services').insert([
-        { id: svcX, tenant_id: SHOP_A.id, name: `B2 排序X-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 50 },
-        { id: svcY, tenant_id: SHOP_A.id, name: `B2 排序Y-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 51 },
+        { id: svcX, tenant_id: SHOP_A.id, name: `B2 排序X-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 100_010, line_sort_order: 100_010 },
+        { id: svcY, tenant_id: SHOP_A.id, name: `B2 排序Y-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 100_011, line_sort_order: 100_011 },
       ]);
 
       const res = await ownerA.post('/api/services/reorder', { ids: [svcY, svcX] });
@@ -194,6 +194,7 @@ describe('跨租戶：SHOP_B 的 service id 用 SHOP_A 身分打 → 404 REQ_002
     try {
       await admin.from('services').insert({
         id: serviceBId, tenant_id: SHOP_B.id, name: originalName, duration_minutes: 30, price: 300,
+        sort_order: 100_001, line_sort_order: 100_001,
       });
 
       const put = await ownerA.put(`/api/services/${serviceBId}`, { name: '越權改名' });

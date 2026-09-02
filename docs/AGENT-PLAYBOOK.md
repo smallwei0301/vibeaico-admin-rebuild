@@ -91,6 +91,21 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：新增單元測試區分 missing table、missing column、missing function；待有新 TEST CI 時驗證會在 schema mismatch 的原始錯誤停止，且不產生子表 FK 錯誤。
 - 狀態：監看中
 
+### PB-016 — current main merge 暴露 service seed rank collision
+
+- 首次／最近：2026-09-01／2026-09-01
+- 發生次數：1
+- Issue／PR／CI：Issue #8／PR #95／main CI 33525021901
+- 分類：CI／TEST DB
+- 事件：PR #105 合併後，current main `64f83768` 的標準 seed 對 SHOP_A services 寫入時，未帶明確 rank，觸發 shared TEST 的 tenant-wide unique constraint；沒有任何 integration case 開始。
+- 證據：`integration` job `99913951460` 的 `Run integration tests`；PostgreSQL `23505`，`services_tenant_sort_order_uq`，`(tenant_id, sort_order)=(..., 0)`；Vitest 隨後以 global setup 非零狀態結束。
+- 根因：main 尚未包含 PR #95 的 fixture compatibility delta；現有 TEST schema 的 `sort_order`／`line_sort_order` 唯一約束與 seed 預設值 0 互撞。這不是 route ACL 測試案例失敗。
+- 影響：main post-merge CI 為 failure；PR #95 之前的綠燈 `33521089350` 因 main 已移動而只能作歷史證據；沒有 Production mutation 或手動 TEST mutation。
+- 修正：以 current main 重建 PR #95，保留既有 bounded #8-A ACL slice 並將 canonical SHOP_A service ranks 設為 `100/101`；clean worktree 的 diff check、typecheck、unit 19 files／191 tests、mock build 均通過。fresh shared TEST 尚待完成。
+- 預防：main 移動後重新建立 candidate 時，先以 current exact main 形成 ancestry，再把需要 shared TEST 的 PR 切到唯一 `TEST_VALIDATION` holder 後觸發 synchronize／dispatch；不要用 pre-move CI 冒充驗收。
+- 驗證：rebuild exact head `b3e8de0d` 的 run `33527775477` check 成功，但該次在 TEST lane transition 前以 source-only policy skip integration／E2E；因此本條仍不可標為已防止。
+- 狀態：監看中
+
 ### PB-008 — GitHub connector 寫入成功不代表 exact-head CI 已觸發
 
 - 首次／最近：2026-08-28／2026-08-28
@@ -196,3 +211,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
 - 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
 - 狀態：已防止
+
+### PB-015 — 本地依賴 cache 不足時 runner 未啟動
+
+- 首次／最近：2026-09-01／2026-09-01
+- 發生次數：2
+- Issue／PR／CI：Issue #8／PR #95；本地 targeted unit runner
+- 分類：CI／其他
+- 事件：新 worktree 沒有 `node_modules`；首次 targeted Vitest 啟動與 offline `npm ci` 都在測試案例開始前終止。
+- 證據：Vitest 回傳 `Could not resolve 'vitest/config'`；`npm ci --offline` 回傳 `ENOTCACHED`，缺少 `zod-3.25.76.tgz`。
+- 根因：工作區依賴未配置，npm offline cache 只有部分套件，不能把 runner 啟動失敗誤判為 source 或測試失敗。
+- 影響：第一次 targeted 命令沒有執行任何案例，該次不能算紅燈或綠燈；沒有 TEST、Preview、Production 或遠端 mutation。
+- 修正：改用同 repo 鄰近且未修改的依賴樹啟動目前 worktree runner；實際 targeted/full unit、typecheck 與 mock build 隨後完成。
+- 預防：每個新 worktree 開工先確認依賴與 config 可載入；offline 安裝失敗後停止同路徑重試，改用已存在的匹配依賴或把 runner 標成未驗證。
+- 驗證：targeted 2 files／17 tests、full unit 15 files／162 tests、typecheck、mock build 均有明確成功終態。
+- 狀態：監看中
