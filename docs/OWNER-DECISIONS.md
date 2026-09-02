@@ -8,9 +8,10 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
-| #41 / #12 / #42 / #46 | GUIDE 旅客取消／退款補充 | **Midao 預設取消退款：不可退成本必須逐筆填項目＋金額，證據附件選填；旅客一定看到逐筆扣款明細；附件預設不公開但導遊可逐筆分享；訂金視為已付款的一部分，不因名稱自動沒收；只有金流商實際收取且確實不退的退款手續費由旅客負擔。** | 預設公式為「已付款總額（含訂金）－實際不可退成本－實際且不可退的金流退款手續費＝應退款金額」，最低為 0。不得新增虛構行政費／處理費。附件分享僅限該 TourOrder 授權旅客，不得永久公開。canonical：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
+| #41 / #12 / #42 / #46 | GUIDE 旅客取消／退款建議模板 | **每個導遊、每個 Trip Plan 可自行設定取消／退款政策；Midao 提供非強制建議模板。建議模板採三段式、實際不可退成本基準、訂金視為已付款、實際且不退的金流費可納入試算，並預設提供透明明細與可選證據附件。** | 2026-09-02 SaaS 上位裁示覆蓋較早「必須」措辭中的商業政策部分；導遊可自訂。平台強制底線只保留成交 policy/price snapshot、真實 payment/refund state、不重複／負數金額、provider 費用不可捏造與 tenant/order 權限隔離。canonical：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
 | #41 / #12 / #42 / #46 | 已成團後價格保護 | **已成團後若個別旅客取消、團次跌破最低成團門檻而進 `AT_RISK`，導遊若選擇照常出團，剩餘旅客維持各自成交價格，不補差額、不因剩餘人數重新計價。** | `AT_RISK → CONTINUE` 不得增加既有 TourOrder 的 `total_amount`／`balance_due`，也不得建立人數不足補差額應收；若成本無法承擔，導遊應選擇取消整團。canonical：`docs/decisions/2026-09-02-guide-formed-price-protection.md`。 |
-| #41 / #12 / #42 / #46 / #48 | GUIDE SaaS 平台角色與爭議預設 | **Midao 的 GUIDE 主要營收方向是 SaaS 後台費用＋Midao 前台曝光／上架；平台提供取消退款工具、透明紀錄與非強制建議預設，但一般導遊／旅客爭議由雙方自行處理，Midao 不作主要仲裁者。導遊／業者主動取消整團的建議預設為旅客全額退款，金流商實際且不退的費用由導遊／業者吸收。** | 各 Trip Plan 可自訂商業政策，但下單前要揭露、成交時 snapshot；不可事後改舊單、虛構費用或破壞 tenant/order 隔離。未達最低成團而取消建議全額退；天候等建議先免費改期、無法改期再全額退。不要建立平台逐案仲裁引擎。canonical：`docs/decisions/2026-09-02-guide-saas-platform-role-and-dispute-defaults.md`。 |
+| #41 / #12 / #42 / #43 / #46 / #48 | GUIDE SaaS 平台角色與爭議預設 | **Midao GUIDE 主要營收方向是 SaaS 後台費用＋Midao 前台曝光／上架；平台提供取消退款工具、紀錄與非強制建議預設，但一般導遊／旅客爭議由雙方自行處理，Midao 不作主要仲裁者。導遊／業者主動取消整團的建議預設為旅客全額退款。** | 一般退款比例、未成團、不可抗力、no-show、部分取消、善意退款等不再逐題當 Owner blocker；採合理 default + guide override。退款失敗進導遊 Action Inbox，不建立 Midao 管理員中央審批。canonical：`docs/decisions/2026-09-02-guide-saas-platform-role-and-dispute-defaults.md`、`18-GUIDE-COMMERCE-LIFECYCLE.md` §9。 |
+| #118 / #48 | GUIDE SaaS＋前台曝光營收模型 | **主要營收拆成 GUIDE SaaS 訂閱與 Midao 前台曝光／推廣；`midao_listing` 只代表自然上架資格，付費曝光使用獨立 promotion/campaign 模型。自然結果與贊助版位分離，贊助需清楚標示；目前不預設每筆 TourOrder 抽成。** | MVP 先驗證固定期間／固定版位，不先做 CPC／CPM／競價平台。SaaS、自然上架、付費曝光、平台代建分開呈現；正式月費、曝光價格與 Production 扣款仍需 Owner 拍板。canonical decision：`docs/decisions/2026-09-02-guide-saas-exposure-revenue-model.md`。施工 Issue #118。 |
 
 ## 2026-09-01 已裁示
 
@@ -31,7 +32,7 @@
 | #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多。** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
 | #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項。** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |
 | #41 / #12 | 尾款逾期 | **到期未付不自動取消、不自動釋放名額、不自動沒收訂金；先通知導遊與旅客，由導遊決定延長或取消。** | 預設快速選項為「到期未付 → 通知我處理」；現場收尾款／全額的方案在出發前不走一般尾款逾期。canonical decision：`docs/decisions/2026-08-31-guide-balance-payment-deadline.md`。 |
-| #41 / #12 / #42 / #46 | 旅客取消／退款規則 | **每個導遊、每個 Trip Plan 可自行設定；Midao 預設採三段時間骨架（8 天以上／4～7 天／0～3 天），退款基準為扣除已實際發生且確實不可退的必要成本後，其餘退款，不用固定百分比硬綁。** | Plan 進階設定提供「使用 Midao 建議規則／自行設定」；成交時 snapshot，之後改 Plan 不影響舊訂單；旅客下單前與訂單頁需看到白話政策。不可退成本、附件、訂金與退款手續費的最新細節以 2026-09-02 補充裁示為準。canonical：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
+| #41 / #12 / #42 / #46 | 旅客取消／退款規則 | **每個導遊、每個 Trip Plan 可自行設定；Midao 提供建議範本。** | 較新的 2026-09-02 SaaS 平台角色裁示取代任何把細節誤讀為不可修改平台退款條款的舊說法；見最新 2026-09-02 區段。canonical：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。 |
 
 ## 2026-08-28 已裁示
 
