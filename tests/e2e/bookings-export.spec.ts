@@ -13,6 +13,7 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
 
 test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
   await login(page);
+  await expect(page).toHaveURL(/\/tenant\/dashboard/, { timeout: 15_000 });
   await page.goto('/tenant/bookings', { waitUntil: 'commit' });
   await expect(page.getByRole('button', { name: '匯出', exact: true })).toBeVisible({
     timeout: 15_000,
