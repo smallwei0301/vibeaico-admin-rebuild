@@ -66,10 +66,12 @@ describe('GET /api/services（04 §A-4）', () => {
     const categoryName = `分類-服務測試-${uniqueSuffix()}`;
     try {
       await admin.from('service_categories').insert({ id: categoryId, tenant_id: SHOP_A.id, name: categoryName, sort_order: 0 });
-      await admin.from('services').insert({
+      const { error: serviceError } = await admin.from('services').insert({
         id: serviceId, tenant_id: SHOP_A.id, category_id: categoryId,
         name: `分類服務-${uniqueSuffix()}`, duration_minutes: 30, price: 500,
+        sort_order: 70, line_sort_order: 70,
       });
+      expect(serviceError).toBeNull();
 
       const res2 = await ownerA.get('/api/services');
       const body2 = await readJson<Service[]>(res2);
