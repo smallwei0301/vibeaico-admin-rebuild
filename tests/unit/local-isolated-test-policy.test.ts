@@ -37,6 +37,7 @@ describe('local isolated TEST policy', () => {
       reason: 'per_pr_local_isolated',
       errors: [],
       exactHead: 'abc123',
+      paidPreviewBranchStatus: 'DEFERRED_NOT_IN_CONSIDERATION',
     });
   });
 
@@ -87,14 +88,13 @@ describe('local isolated TEST policy', () => {
   });
 
   it('does not automatically spend two Docker runners for a fork PR', () => {
-    const decision = decideLocalIsolatedTest({
+    expect(decideLocalIsolatedTest({
       eventName: 'pull_request',
       body: body({ TEST_PROFILE: 'LOCAL_ISOLATED_CANARY' }),
       actualHead: 'fork-sha',
       headRepoFullName: 'external-user/vibeaico-admin-rebuild',
       repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
-    });
-    expect(decision).toMatchObject({
+    })).toMatchObject({
       runLocal: false,
       reason: 'fork_pr_requires_trusted_manual_dispatch',
       errors: [],
@@ -112,14 +112,32 @@ describe('local isolated TEST policy', () => {
     });
   });
 
-  it('flags migration, auth and storage paths for a future Supabase Branch', () => {
+  it('routes migration, auth and storage paths to free local isolation plus the final shared TEST', () => {
     expect(classifyRiskPaths([
       'supabase/migrations/0063_example.sql',
       'src/app/api/auth/callback/route.ts',
       'src/app/api/upload/route.ts',
     ])).toEqual({
-      remoteBranchRecommended: true,
+      localIsolatedRequired: true,
+      finalCanonicalRequired: true,
+      recommendedProfile: 'LOCAL_ISOLATED',
+      paidPreviewBranchStatus: 'DEFERRED_NOT_IN_CONSIDERATION',
+      remoteBranchRecommended: false,
       reasons: ['DATABASE_MIGRATION', 'AUTH', 'STORAGE'],
     });
+  });
+
+  it('rejects the retired paid Preview Branch profile with an explicit replacement route', () => {
+    const decision = decideLocalIsolatedTest({
+      eventName: 'pull_request',
+      body: body({ TEST_PROFILE: 'REMOTE_BRANCH_REQUIRED' }),
+      actualHead: 'abc123',
+    });
+
+    expect(decision.runLocal).toBe(false);
+    expect(decision.reason).toBe('invalid_local_test_contract');
+    expect(decision.errors).toContain(
+      'TEST_PROFILE REMOTE_BRANCH_REQUIRED is retired; use LOCAL_ISOLATED with FINAL_CANONICAL_REQUIRED=true, then SHARED_CANONICAL',
+    );
   });
 });

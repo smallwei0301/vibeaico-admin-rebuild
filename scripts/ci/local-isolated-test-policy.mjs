@@ -7,15 +7,18 @@ export const TEST_PROFILES = Object.freeze({
   SOURCE_ONLY: 'SOURCE_ONLY',
   LOCAL_ISOLATED: 'LOCAL_ISOLATED',
   LOCAL_ISOLATED_CANARY: 'LOCAL_ISOLATED_CANARY',
-  REMOTE_BRANCH_REQUIRED: 'REMOTE_BRANCH_REQUIRED',
   SHARED_CANONICAL: 'SHARED_CANONICAL',
 });
+
+export const RETIRED_TEST_PROFILES = Object.freeze([
+  'REMOTE_BRANCH_REQUIRED',
+]);
 
 const LOCAL_PROFILES = new Set([
   TEST_PROFILES.LOCAL_ISOLATED,
   TEST_PROFILES.LOCAL_ISOLATED_CANARY,
 ]);
-
+const RETIRED_PROFILE_SET = new Set(RETIRED_TEST_PROFILES);
 const CANARY_BARRIER_DELAY_SECONDS = 360;
 
 function escapeRegExp(value) {
@@ -46,8 +49,15 @@ export function classifyRiskPaths(paths = []) {
   if (normalized.some((path) => /(^|\/)(auth|middleware)(\/|\.|$)/i.test(path))) reasons.push('AUTH');
   if (normalized.some((path) => /(^|\/)(storage|upload)(\/|\.|$)/i.test(path))) reasons.push('STORAGE');
 
+  const localIsolatedRequired = reasons.length > 0;
   return {
-    remoteBranchRecommended: reasons.length > 0,
+    localIsolatedRequired,
+    finalCanonicalRequired: localIsolatedRequired,
+    recommendedProfile: localIsolatedRequired
+      ? TEST_PROFILES.LOCAL_ISOLATED
+      : TEST_PROFILES.SOURCE_ONLY,
+    paidPreviewBranchStatus: 'DEFERRED_NOT_IN_CONSIDERATION',
+    remoteBranchRecommended: false,
     reasons: [...new Set(reasons)],
   };
 }
@@ -74,7 +84,11 @@ export function decideLocalIsolatedTest({
     Boolean(headRepoFullName) &&
     headRepoFullName !== repositoryFullName;
 
-  if (!Object.hasOwn(TEST_PROFILES, profile)) {
+  if (RETIRED_PROFILE_SET.has(profile)) {
+    errors.push(
+      'TEST_PROFILE REMOTE_BRANCH_REQUIRED is retired; use LOCAL_ISOLATED with FINAL_CANONICAL_REQUIRED=true, then SHARED_CANONICAL',
+    );
+  } else if (!Object.values(TEST_PROFILES).includes(profile)) {
     errors.push(`TEST_PROFILE is invalid: ${profile || 'missing'}`);
   }
 
@@ -108,6 +122,7 @@ export function decideLocalIsolatedTest({
     runLocal,
     profile,
     finalCanonicalRequired: finalCanonicalRequired === 'TRUE',
+    paidPreviewBranchStatus: 'DEFERRED_NOT_IN_CONSIDERATION',
     slots,
     canaryBarrierEpoch,
     reason,
@@ -148,9 +163,12 @@ function cli() {
   writeOutput('reason', decision.reason);
   writeOutput('exact_head', decision.exactHead ?? '');
   writeOutput('final_canonical_required', String(decision.finalCanonicalRequired));
+  writeOutput('paid_preview_branch_status', decision.paidPreviewBranchStatus);
   writeOutput('canary_barrier_epoch', decision.canaryBarrierEpoch ?? '');
 
-  console.log(`[local-test-policy] profile=${decision.profile} run=${decision.runLocal} reason=${decision.reason}`);
+  console.log(
+    `[local-test-policy] profile=${decision.profile} run=${decision.runLocal} reason=${decision.reason} paid-preview=${decision.paidPreviewBranchStatus}`,
+  );
   if (decision.errors.length) {
     for (const error of decision.errors) console.error(`[local-test-policy] ${error}`);
     process.exitCode = 1;
