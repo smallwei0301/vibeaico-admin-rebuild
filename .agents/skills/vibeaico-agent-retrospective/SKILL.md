@@ -3,7 +3,7 @@ name: vibeaico-agent-retrospective
 description: "Trigger when the Owner says 復盤 or 複盤, asks to review Agent efficiency, token/usage, delivery throughput, quality, CI waste, Luna/Terra/Sol routing, completion truth, or improve the B+ loop in smallwei0301/vibeaico-admin-rebuild. Finds recent reports, verifies completion claims against live systems, recomputes scores, compares trends, and proposes at most two auditable governance changes."
 metadata:
   author: smallwei0301
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # VibeAI.co Agent Loop 復盤
@@ -28,20 +28,23 @@ notifications or databases. Governance changes are allowed only when the Owner s
    - `docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
    - `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
    - `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
+   - `docs/DELIVERY-OUTCOME-V2.md`
 3. Find `docs/metrics/agent-runs/*.json`, sorted by `startedAt` and filename.
-4. Read the latest three completed/baseline runs; if fewer exist, read all.
-5. Validate every selected JSON and reproduce its Markdown:
+4. Compare the latest three completed, truth-verified schema v2 runs. Keep schema v1 reports as
+   `LEGACY_V1` history and do not mix their Delivery Unit with v2 outcomes.
+5. Validate and reproduce selected v2 reports:
 
 ```text
-node scripts/agents/run-ledger.mjs validate <run.json>
-node scripts/agents/score-run.mjs <run.json> --check <run.md>
+node scripts/agents/run-ledger-v2.mjs validate <run.json>
+node scripts/agents/score-run-v2.mjs <run.json>
 ```
 
-If a report cannot be reproduced, mark it `AUDIT_DATA_INVALID` and do not trust its score.
-6. Generate the comparison with:
+Use `agent:run:legacy:*` only to reproduce schema v1 history. If a report cannot be reproduced, mark it
+`AUDIT_DATA_INVALID` and do not trust its score.
+6. Generate the v2 comparison with:
 
 ```text
-node scripts/agents/review-runs.mjs docs/metrics/agent-runs --limit 3
+node scripts/agents/review-runs-v2.mjs docs/metrics/agent-runs
 ```
 
 ## Completion truth audit comes first
@@ -69,7 +72,7 @@ Fetch the Issue and require `state=closed`. When Sol gate is required, verify `C
 ### CI green
 
 Require the exact candidate SHA and terminal success for every required job. Pending, partial check
-success or old SHA evidence cannot be counted as green.
+success, skipped jobs or old SHA evidence cannot be counted as green.
 
 ### migration／deployment／external action
 
@@ -89,14 +92,27 @@ run grade = F-HARD
 Do not silently repair history. Preserve the original report, add a correction record, and make the
 next Run start from live truth.
 
+## Delivery Outcome v2
+
+```text
+shipped_units = live-verified CLOSED Issue × 1.0
+autonomous_outcome_units = CLOSED × 1.0 + verified complete OWNER_BLOCKED × 0.75
+wip_inventory = Audit Ready + CI-only + commit-only + unfinished carryover
+```
+
+WIP is reported, never converted into products. `IN_PROGRESS`／`CLOSURE_RECOVERY`, missing final data,
+or unverified completion truth are `NOT_GRADED`. Missing percentages are not replaced with 50.
+Per-shipped usage is calculated only when `shipped_units >= 1`.
+
 ## What to compare
 
 ```text
-weighted_usage_per_delivery_unit
+weighted_usage_per_shipped_unit
+weighted_usage_per_autonomous_outcome
 actual token / weekly usage delta when available
 unverified model-task count
-issues_closed + complete_owner_blocked
-audit_ready and unfinished_carryover
+shipped_units + autonomous_outcome_units
+wip_inventory and unfinished_carryover
 cycle_time_minutes
 quality and safety score
 first-pass CI and invalid reruns
@@ -112,7 +128,7 @@ comparison ruler; never describe them as OpenAI's official usage ratio.
 
 ## Root-cause rules
 
-- High usage + low Delivery Units: inspect context replay, too many Sol touches, duplicate Luna scans,
+- High usage + low shipped outcomes: inspect context replay, too many Sol touches, duplicate Luna scans,
   too many active candidates and repeated full CI.
 - Good output + poor quality: inspect first-pass Audit, unresolved P1/P0, weak acceptance evidence and
   post-merge regression.
@@ -142,14 +158,15 @@ Do not invent token percentages, actual models, Issue closures, merge results or
 
 When authorized to optimize:
 
-1. Create one governance branch／PR from current main.
-2. Change only the smallest canonical docs, skills, scripts, tests and workflows needed.
-3. Preserve historical reports. Never rewrite a weak old score to make the trend look better.
-4. Add or update tests for every scoring/routing/truth rule.
-5. Run exact-head CI once; do not create no-op commits.
-6. Sol audits the governance diff.
-7. After merge is requested, re-fetch PR, main, compare and main files before saying it merged.
-8. Start the next `RUN_ID` with the new rule and compare against the old baseline.
+1. Create one focused governance branch／PR from current main for each governance concern.
+2. Default budget is at most 8 changed files and 800 changed lines; split work instead of exceeding it.
+3. Change only the smallest canonical docs, skills, scripts, tests and workflows needed.
+4. Preserve historical reports. Never rewrite a weak old score to make the trend look better.
+5. Add or update tests for every scoring/routing/truth rule.
+6. Run exact-head CI once; do not create no-op commits.
+7. Sol audits the governance diff.
+8. After merge is requested, re-fetch PR, main, compare and main files before saying it merged.
+9. Start the next `RUN_ID` with the new rule and compare against the old baseline.
 
 ## Guardrail
 
