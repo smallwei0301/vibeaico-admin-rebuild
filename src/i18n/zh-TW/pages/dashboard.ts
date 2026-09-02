@@ -44,6 +44,23 @@ export const dashboardPage = {
     todo: '尚未完成',
   },
 
+  /* ---------------------------------------------------------- GUIDE 待處理事項 */
+  actionInbox: {
+    title: '待處理事項',
+    bookingRequest: '待確認預約',
+    bookingAt: '預約時間',
+    priority: {
+      IMMEDIATE: '需要立即處理',
+      TODAY: '今天處理',
+      UPCOMING: '即將到來',
+    },
+    open: '查看並處理',
+    viewAll: '查看全部',
+    count: (n: number) => `${n} 筆`,
+    loading: '載入待處理事項中…',
+    empty: '目前沒有待確認預約',
+  },
+
   /* ------------------------------------------------------------ 頁面警示區 */
   cutoffExpired: {
     title: (date: string) => `預約截止日期已過（${date}）`,
@@ -233,6 +250,7 @@ export const dashboardPage = {
     alerts: '載入提醒失敗:',
     setupStatus: '載入設定狀態失敗:',
     todayBookings: '載入今日預約失敗:',
+    actionInbox: '載入待處理事項失敗:',
     recentActivity: '載入最近活動失敗:',
     staffPerformance: '載入員工業績失敗:',
     weekly: '載入週統計失敗:',

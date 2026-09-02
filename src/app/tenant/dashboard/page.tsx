@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   AlertTriangle, ArrowRightCircle, BarChart3, Bell, CalendarCheck, CalendarDays,
   CalendarPlus, ClipboardCopy, Clock, Copy, DollarSign, ExternalLink, Eye,
-  Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
+  ClipboardList, Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
   Settings, Ticket, TrendingDown, Trophy, Users, X, Zap,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -20,11 +20,13 @@ import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { getGuideActionInbox } from '@/services/guide-action-inbox';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
+import { MODE_PRESETS } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
 import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
 import {
@@ -33,6 +35,7 @@ import {
 import type {
   Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance,
 } from '@/lib/types';
+import type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/guide-action-inbox';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用的骨架假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
@@ -137,6 +140,12 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
   NO_SHOW: 'danger',
 };
 
+const ACTION_INBOX_TONE: Record<GuideActionInboxPriority, 'danger' | 'warning' | 'info'> = {
+  IMMEDIATE: 'danger',
+  TODAY: 'warning',
+  UPCOMING: 'info',
+};
+
 const QUICK_ACTIONS = [
   { key: 'newBooking', href: '/tenant/bookings', icon: CalendarCheck },
   { key: 'calendar', href: '/tenant/calendar', icon: CalendarDays },
@@ -157,6 +166,8 @@ const daysUntil = (isoDate: string) =>
 /* -------------------------------------------------------------------------- */
 
 export default function DashboardPage() {
+  const businessType = useBusinessType();
+  const modePreset = MODE_PRESETS[businessType];
   const currentTenant = useCurrentTenant();
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
@@ -166,8 +177,10 @@ export default function DashboardPage() {
   const [setup, setSetup] = React.useState<SetupStatus | null>(null);
   const [performance, setPerformance] = React.useState<StaffPerformance[]>([]);
   const [todayRows, setTodayRows] = React.useState<Booking[]>([]);
+  const [actionInbox, setActionInbox] = React.useState<GuideActionInboxItem[]>([]);
 
   const [loadingToday, setLoadingToday] = React.useState(true);
+  const [loadingActionInbox, setLoadingActionInbox] = React.useState(false);
   const [loadingPerformance, setLoadingPerformance] = React.useState(true);
   const [loadingActivity, setLoadingActivity] = React.useState(true);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
@@ -211,6 +224,23 @@ export default function DashboardPage() {
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
   }, [fail]);
+
+  React.useEffect(() => {
+    let mounted = true;
+    setActionInbox([]);
+    setLoadingActionInbox(true);
+    void (async () => {
+      try {
+        const items = await getGuideActionInbox();
+        if (mounted) setActionInbox(items);
+      } catch (e) {
+        if (mounted) fail(t.errors.actionInbox, e);
+      } finally {
+        if (mounted) setLoadingActionInbox(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [businessType, fail]);
 
   const weeklyTrend = byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC });
   const monthSources = byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC });
@@ -284,6 +314,60 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader title={t.title} />
+
+      {/* ------------------------------------------------ GUIDE 首頁待處理事項 */}
+      {modePreset.showActionInbox ? (
+        <Card className="mb-4 border-primary">
+          <CardHeader>
+            <CardTitle>
+              <ClipboardList size={16} className="text-primary" />
+              {t.actionInbox.title}
+              <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span>
+            </CardTitle>
+            <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
+              {t.actionInbox.viewAll}
+            </Link>
+          </CardHeader>
+          <CardBody>
+            {loadingActionInbox ? (
+              <div className="py-4 text-center text-muted">{t.actionInbox.loading}</div>
+            ) : actionInbox.length === 0 ? (
+              <EmptyState icon={ClipboardList} title={t.actionInbox.empty} />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {actionInbox.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <Badge tone={ACTION_INBOX_TONE[item.priority]}>
+                          {t.actionInbox.priority[item.priority]}
+                        </Badge>
+                        <span className="text-sm font-semibold text-dark">
+                          {t.actionInbox.bookingRequest}
+                        </span>
+                      </div>
+                      <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+                      <div className="text-sm text-secondary">{item.serviceName}</div>
+                      <div className="mt-1 text-xs text-secondary">
+                        {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
+                      </div>
+                    </div>
+                    <Link
+                      href={item.href}
+                      className="btn btn-primary btn-sm w-full flex-shrink-0 sm:w-auto"
+                    >
+                      {t.actionInbox.open}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
 
       {/* ------------------------------------------------ 3 分鐘開始收單 引導卡 */}
       {focusOpen ? (

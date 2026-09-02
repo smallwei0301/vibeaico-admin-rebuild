@@ -50,6 +50,23 @@ export const lineSettingsSchema = z.object({
 });
 
 /* ------------------------------------------------------------- 基本 / 營業 */
+export const DEFAULT_TENANT_TIME_ZONE = 'Asia/Taipei';
+
+export function isValidTenantTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date(0));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const tenantTimeZoneSchema = z.string()
+  .trim()
+  .min(1, '請輸入有效的 IANA 時區')
+  .refine(isValidTenantTimeZone, '請輸入有效的 IANA 時區')
+  .default(DEFAULT_TENANT_TIME_ZONE);
+
 export const basicSettingsSchema = z.object({
   tenantName: z.string().min(1, '請輸入店家名稱'),
   /** 僅限小寫英文、數字、連字號；用於登入與 LINE Webhook URL */
@@ -58,6 +75,8 @@ export const basicSettingsSchema = z.object({
   tenantEmail: z.string().email().or(z.literal('')).default(''),
   tenantAddress: z.string().default(''),
   tenantDescription: z.string().default(''),
+  /** 日期邊界、行程與提醒的租戶時區；舊資料預設台北。 */
+  timezone: tenantTimeZoneSchema,
   /** 服務人員的稱呼（原站可自訂：員工 / 設計師 / 醫師 / 老師…） */
   staffTerm: z.string().default('服務人員'),
 });
