@@ -12,12 +12,18 @@ import type { BusinessType } from '@/config/modes';
 import { createAdminSupabase } from './supabase';
 import { ApiHttpError, ERR } from './http';
 
+/**
+ * GUIDE baseline 使用新的產品能力名稱，不把舊 Feature Store code 整包升格。
+ * 例如 EMAIL_NOTIFICATION 仍代表進階 Email 自動化；基本交易通知走
+ * GUIDE_TRANSACTION_NOTIFICATION，避免誤解鎖行銷能力。
+ */
 export const GUIDE_BASELINE_CAPABILITIES = [
-  'EMAIL_NOTIFICATION',
-  'BASIC_REPORT',
-  'SHIFT_MANAGEMENT',
+  'GUIDE_TRANSACTION_NOTIFICATION',
+  'GUIDE_BASIC_REPORT',
+  'GUIDE_AVAILABILITY',
 ] as const;
 
+export type GuideBaselineCapability = (typeof GUIDE_BASELINE_CAPABILITIES)[number];
 export type EntitlementSource = 'GUIDE_BASELINE' | 'LEGACY_FEATURE' | 'NONE';
 
 export type TenantEntitlementContext = {

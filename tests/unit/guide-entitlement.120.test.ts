@@ -18,11 +18,11 @@ const tenantSource = readFileSync(
 );
 
 describe('GUIDE SaaS entitlement evaluator (#120-A)', () => {
-  it('includes GUIDE basic notification, report, and availability capabilities without a second feature purchase', () => {
+  it('uses distinct GUIDE baseline capability names for basic notifications, reports, and availability', () => {
     expect(GUIDE_BASELINE_CAPABILITIES).toEqual([
-      'EMAIL_NOTIFICATION',
-      'BASIC_REPORT',
-      'SHIFT_MANAGEMENT',
+      'GUIDE_TRANSACTION_NOTIFICATION',
+      'GUIDE_BASIC_REPORT',
+      'GUIDE_AVAILABILITY',
     ]);
     for (const capability of GUIDE_BASELINE_CAPABILITIES) {
       expect(isGuideBaselineCapability('GUIDE', capability)).toBe(true);
@@ -30,9 +30,16 @@ describe('GUIDE SaaS entitlement evaluator (#120-A)', () => {
     }
   });
 
+  it('does not silently promote old feature codes into the GUIDE baseline', () => {
+    for (const oldFeatureCode of ['EMAIL_NOTIFICATION', 'BASIC_REPORT', 'SHIFT_MANAGEMENT']) {
+      expect(resolveEntitlementSource('GUIDE', oldFeatureCode, false)).toBe('NONE');
+      expect(resolveEntitlementSource('GUIDE', oldFeatureCode, true)).toBe('LEGACY_FEATURE');
+    }
+  });
+
   it('does not silently change LOCAL_SHOP or CLINIC Feature Store behavior', () => {
     for (const businessType of ['LOCAL_SHOP', 'CLINIC'] as const) {
-      expect(resolveEntitlementSource(businessType, 'BASIC_REPORT', false)).toBe('NONE');
+      expect(resolveEntitlementSource(businessType, 'GUIDE_BASIC_REPORT', false)).toBe('NONE');
       expect(resolveEntitlementSource(businessType, 'BASIC_REPORT', true)).toBe('LEGACY_FEATURE');
     }
   });
@@ -46,7 +53,7 @@ describe('GUIDE SaaS entitlement evaluator (#120-A)', () => {
     expect(tenantSource).toContain("tenants(shop_code, name, business_type)");
     expect(tenantSource).toContain('businessType: ((m as any).tenants.business_type');
     expect(featureSource).toContain('businessType: BusinessType');
-    expect(featureSource).toContain("source: EntitlementSource");
+    expect(featureSource).toContain('source: EntitlementSource');
     expect(featureSource).not.toContain(".from('guide_features')");
     expect(featureSource).not.toMatch(/49|99|249/);
   });
