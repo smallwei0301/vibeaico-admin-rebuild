@@ -1,0 +1,216 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+import { computeWeightedUsage } from "./score-run.mjs";
+import { validateRunLedgerV2 } from "./run-ledger-v2.mjs";
+
+const FINAL = new Set(["BASELINE", "COMPLETE", "OWNER_BLOCKED"]);
+const EXPECTED = {
+  ISSUE_CLOSED: "closed",
+  OWNER_BLOCKED_COMPLETE: "owner_blocked_complete",
+  PR_MERGED: "merged",
+  CI_GREEN: "success",
+  LOCAL_TEST_GREEN: "success",
+  RUN_COMPLETE: "complete",
+};
+
+const num = (value, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
+const round = (value, digits = 2) => {
+  const factor = 10 ** digits;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+};
+const inverse = (value, best, worst, max) => value <= best ? max : value >= worst ? 0 : max * (1 - ((value - best) / (worst - best)));
+const linear = (value, low, high, max) => value <= low ? 0 : value >= high ? max : max * ((value - low) / (high - low));
+
+export function computeDeliveryOutcome(run) {
+  const shippedUnits = num(run.delivery.issuesClosed);
+  const autonomousOutcomeUnits = shippedUnits + (num(run.delivery.ownerBlockedComplete) * 0.75);
+  return {
+    shippedUnits: round(shippedUnits),
+    autonomousOutcomeUnits: round(autonomousOutcomeUnits),
+    wipInventory: {
+      auditReady: num(run.delivery.auditReady),
+      exactHeadCiOnly: num(run.delivery.exactHeadCiOnly),
+      commitOnly: num(run.delivery.commitOnly),
+      unfinishedCarryover: num(run.delivery.unfinishedCarryover),
+    },
+  };
+}
+
+export function evaluateCompletionTruth(run) {
+  const hardFailures = [];
+  const gradingGaps = [];
+  const truth = run.completionTruth;
+  const claims = truth?.claims ?? [];
+
+  if (truth?.status === "FAILED") hardFailures.push("completionTruth.status=FAILED");
+  for (const claim of claims) {
+    const observed = String(claim.observedState ?? "").toLowerCase();
+    const claimed = String(claim.claimedState ?? "").toLowerCase();
+    const expected = EXPECTED[claim.type];
+    if (claim.verification === "CONTRADICTED" || claimed !== observed) {
+      hardFailures.push(`${claim.type} ${claim.subject} contradicts live evidence`);
+    } else if (claim.verification === "VERIFIED" && expected && observed !== expected) {
+      hardFailures.push(`${claim.type} ${claim.subject} observed=${observed}; expected=${expected}`);
+    }
+  }
+
+  const verified = (type) => claims.filter((claim) => claim.type === type && claim.verification === "VERIFIED");
+  if (FINAL.has(run.status)) {
+    if (truth?.status !== "VERIFIED") gradingGaps.push("completionTruth.status must be VERIFIED");
+    if (!verified("RUN_COMPLETE").length) gradingGaps.push("verified RUN_COMPLETE claim is required");
+    if (verified("ISSUE_CLOSED").length < num(run.delivery.issuesClosed)) gradingGaps.push("verified ISSUE_CLOSED claims do not cover delivery.issuesClosed");
+    if (verified("OWNER_BLOCKED_COMPLETE").length < num(run.delivery.ownerBlockedComplete)) gradingGaps.push("verified OWNER_BLOCKED_COMPLETE claims do not cover delivery.ownerBlockedComplete");
+  }
+  return { hardFailures, gradingGaps };
+}
+
+export function gradingReadiness(run) {
+  if (!FINAL.has(run.status)) return ["run is still in progress"];
+  const gaps = [];
+  if (!run.endedAt) gaps.push("endedAt is missing");
+  if (!run.main.endSha) gaps.push("main.endSha is missing");
+  for (const field of ["openIssuesEnd", "openPrsEnd"]) if (run.inventory[field] === null) gaps.push(`inventory.${field} is missing`);
+  for (const [group, fields] of Object.entries({
+    modelUsage: ["weightedUsageImprovementPercent"],
+    ci: ["firstPassRatePercent"],
+    quality: ["acceptanceEvidenceCoveragePercent", "auditFirstPassRatePercent"],
+    flow: ["lunaDelegationRatePercent", "waitTimeConvertedPercent"],
+    auditability: ["evidenceFieldsCompletePercent", "exactHeadTestCoveragePercent", "preciseBlockersPercent", "scoreInputsCompletePercent"],
+  })) {
+    for (const field of fields) if (run[group][field] === null) gaps.push(`${group}.${field} is missing`);
+  }
+  return gaps;
+}
+
+function scores(run, outcome) {
+  const improvement = Math.max(-100, Math.min(100, run.modelUsage.weightedUsageImprovementPercent));
+  const solPerIssue = num(run.flow.solIssues) > 0 ? num(run.flow.solTouches) / num(run.flow.solIssues) : 0;
+  const usageScore = Math.max(0, Math.min(10, 5 + improvement / 4))
+    + linear(run.flow.lunaDelegationRatePercent, 0, 70, 5)
+    + inverse(solPerIssue, 2, 5, 4)
+    + inverse(num(run.modelUsage.fullContextReplays), 0, 3, 3)
+    + inverse(num(run.ci.invalidReruns) + num(run.modelUsage.duplicateScans), 0, 3, 3);
+
+  const started = num(run.delivery.issuesStarted);
+  const completed = outcome.shippedUnits + num(run.delivery.ownerBlockedComplete);
+  const completionScore = (started > 0 ? Math.min(1, completed / started) * 12 : 0)
+    + inverse(outcome.wipInventory.unfinishedCarryover, 0, 5, 5)
+    + (num(run.inventory.closureSweeps) > 0 ? Math.min(3, 1 + num(run.inventory.closureAdvancedOrClosed) * 2) : 0)
+    + (num(run.inventory.sharedTestPeak) <= 1 && num(run.ci.sharedTestCollisions) === 0 ? 2 : 0)
+    + (num(run.inventory.activeCandidatePeak) <= 2 ? 3 : 0);
+
+  const qualityScore = 8 * run.quality.acceptanceEvidenceCoveragePercent / 100
+    + 6 * run.ci.firstPassRatePercent / 100
+    + 5 * run.quality.auditFirstPassRatePercent / 100
+    + Math.max(0, 5 - num(run.quality.unresolvedP0) * 2.5 - num(run.quality.unresolvedP1) * 0.5)
+    + inverse(num(run.quality.reopenedIssues) + num(run.quality.postMergeRegressions), 0, 3, 3)
+    + (num(run.quality.safetyViolations) === 0 && !run.quality.hardFailReasons.length ? 3 : 0);
+
+  const lunaRate = num(run.flow.lunaTasks) > 0 ? num(run.flow.lunaAccepted) / num(run.flow.lunaTasks) * 100 : 0;
+  const flowScore = 4 * Math.min(100, lunaRate) / 100
+    + inverse(num(run.flow.duplicateAgentTasks), 0, 2, 2)
+    + inverse(num(run.flow.ownershipCollisions), 0, 2, 2)
+    + 2 * run.flow.waitTimeConvertedPercent / 100;
+  const auditScore = 3 * run.auditability.evidenceFieldsCompletePercent / 100
+    + 2 * run.auditability.exactHeadTestCoveragePercent / 100
+    + inverse(num(run.auditability.stalePendingDescriptions), 0, 3, 2)
+    + 2 * run.auditability.preciseBlockersPercent / 100
+    + run.auditability.scoreInputsCompletePercent / 100;
+  return {
+    usage: round(usageScore, 1), completion: round(completionScore, 1), quality: round(qualityScore, 1),
+    flow: round(flowScore, 1), auditability: round(auditScore, 1), solTouchesPerIssue: round(solPerIssue, 2),
+  };
+}
+
+function grade(total) {
+  if (total >= 90) return "A";
+  if (total >= 80) return "B";
+  if (total >= 70) return "C";
+  if (total >= 60) return "D";
+  return "F";
+}
+
+export function scoreRunV2(run) {
+  const validation = validateRunLedgerV2(run);
+  if (validation.length) throw new Error(`Invalid v2 ledger:\n${validation.map((item) => `- ${item}`).join("\n")}`);
+  const usage = computeWeightedUsage(run);
+  const outcome = computeDeliveryOutcome(run);
+  const truth = evaluateCompletionTruth(run);
+  const hardFailures = [...truth.hardFailures, ...run.quality.hardFailReasons];
+  if (num(run.quality.safetyViolations) > 0) hardFailures.push("quality.safetyViolations > 0");
+
+  if (hardFailures.length) return {
+    runId: run.runId, scoreStatus: "HARD_FAIL", grade: "F-HARD", total: 0, comparisonEligible: false,
+    ...outcome, weightedUsageUnits: usage.weightedUsageUnits, weightedUsagePerShippedUnit: null,
+    weightedUsagePerAutonomousOutcome: null, gradingGaps: [], hardFailures: [...new Set(hardFailures)], scores: null,
+  };
+
+  const gradingGaps = [...gradingReadiness(run), ...truth.gradingGaps];
+  if (gradingGaps.length) return {
+    runId: run.runId, scoreStatus: "NOT_GRADED", grade: "NOT_GRADED", total: null, comparisonEligible: false,
+    ...outcome, weightedUsageUnits: usage.weightedUsageUnits, weightedUsagePerShippedUnit: null,
+    weightedUsagePerAutonomousOutcome: null, gradingGaps: [...new Set(gradingGaps)], hardFailures: [], scores: null,
+  };
+
+  const dimensions = scores(run, outcome);
+  const total = round(dimensions.usage + dimensions.completion + dimensions.quality + dimensions.flow + dimensions.auditability, 1);
+  return {
+    runId: run.runId, scoreStatus: "GRADED_V2", grade: grade(total), total, comparisonEligible: true,
+    ...outcome, weightedUsageUnits: usage.weightedUsageUnits,
+    weightedUsagePerShippedUnit: outcome.shippedUnits >= 1 ? round(usage.weightedUsageUnits / outcome.shippedUnits) : null,
+    weightedUsagePerAutonomousOutcome: outcome.autonomousOutcomeUnits >= 1 ? round(usage.weightedUsageUnits / outcome.autonomousOutcomeUnits) : null,
+    gradingGaps: [], hardFailures: [], scores: dimensions,
+  };
+}
+
+const show = (value) => value === null || value === undefined ? "資料不足" : String(value);
+export function renderMarkdownV2(run, result) {
+  const lines = [
+    `# Delivery Outcome v2：${run.runId}`, "",
+    `> 評分狀態：**${result.scoreStatus}**`,
+    `> 分數：${result.total === null ? "尚不評分" : `**${result.total} / 100（${result.grade}）**`}`, "",
+    "## 兩本帳", "",
+    `- 真正出貨 shipped_units：${result.shippedUnits}（只算 live-verified CLOSED Issue）`,
+    `- 自主完成 autonomous_outcome_units：${result.autonomousOutcomeUnits}（CLOSED + 完整 OWNER_BLOCKED × 0.75）`,
+    `- 在製品 WIP：Audit Ready ${result.wipInventory.auditReady}、CI-only ${result.wipInventory.exactHeadCiOnly}、commit-only ${result.wipInventory.commitOnly}、carryover ${result.wipInventory.unfinishedCarryover}`,
+    `- 內部加權 usage：${result.weightedUsageUnits}（不是官方 token）`,
+    `- 每件真正出貨 usage：${show(result.weightedUsagePerShippedUnit)}`,
+    `- 每單位自主完成 usage：${show(result.weightedUsagePerAutonomousOutcome)}`, "",
+  ];
+  if (result.gradingGaps.length) lines.push("## 為什麼尚不評分", "", ...result.gradingGaps.map((item) => `- ${item}`), "");
+  if (result.hardFailures.length) lines.push("## 硬性失敗", "", ...result.hardFailures.map((item) => `- ${item}`), "");
+  if (result.scores) lines.push(
+    "## 五面向", "", "| 面向 | 分數 |", "|---|---:|",
+    `| usage 效率 | ${result.scores.usage} / 25 |`,
+    `| 完成效率 | ${result.scores.completion} / 25 |`,
+    `| 品質安全 | ${result.scores.quality} / 30 |`,
+    `| Agent 流動 | ${result.scores.flow} / 10 |`,
+    `| 證據完整 | ${result.scores.auditability} / 10 |`, "",
+  );
+  lines.push("---", "", "Audit Ready、CI 綠與 commit 是進度，不再折算成成品。IN_PROGRESS 不評分。", "");
+  return lines.join("\n");
+}
+
+function cli() {
+  const input = process.argv[2];
+  if (!input) throw new Error("Usage: score-run-v2.mjs <ledger.json> [--output report.md]");
+  const run = JSON.parse(fs.readFileSync(input, "utf8"));
+  const result = scoreRunV2(run);
+  const markdown = renderMarkdownV2(run, result);
+  const outputIndex = process.argv.indexOf("--output");
+  if (outputIndex >= 0 && process.argv[outputIndex + 1]) {
+    const output = process.argv[outputIndex + 1];
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.writeFileSync(output, markdown, "utf8");
+    console.log(output);
+  } else process.stdout.write(markdown);
+}
+
+const entry = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (entry) {
+  try { cli(); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
+}
