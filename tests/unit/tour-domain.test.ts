@@ -61,7 +61,7 @@ describe('tour-domain validation and row builders (#8-A)', () => {
   });
 
   it('freezes the forward integrity migration without expanding the #8-A table scope', () => {
-    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0021_issue_8_tour_integrity.sql'), 'utf8');
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0067_issue_8_tour_integrity.sql'), 'utf8');
     expect(sql).toContain('trip_plans_tenant_trip_fkey');
     expect(sql).toContain('trip_addons_tenant_trip_fkey');
     expect(sql).toContain('trip_departures_tenant_trip_fkey');
@@ -75,7 +75,7 @@ describe('tour-domain validation and row builders (#8-A)', () => {
   });
 
   it('freezes only the four canonical core tables and their security contract', () => {
-    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0015_tour_domain_core.sql'), 'utf8');
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0066_issue_8_tour_domain_core.sql'), 'utf8');
     for (const table of ['trips', 'trip_plans', 'trip_departures', 'trip_addons']) {
       expect(sql).toContain(`create table if not exists public.${table}`);
     }
@@ -91,7 +91,7 @@ describe('tour-domain validation and row builders (#8-A)', () => {
   });
 
   it('has guarded fresh-install and historical-drift reconciliation paths', () => {
-    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0015_tour_domain_core.sql'), 'utf8');
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0066_issue_8_tour_domain_core.sql'), 'utf8');
     expect(sql).toContain('add column if not exists location text');
     expect(sql).toContain('add column if not exists duration_hours numeric');
     expect(sql).toContain('add column if not exists includes text');
@@ -110,7 +110,7 @@ describe('tour-domain validation and row builders (#8-A)', () => {
   });
 
   it('keeps core REST writes behind the manager route boundary', () => {
-    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0022_issue_8_tour_rest_dml_acl.sql'), 'utf8');
+    const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/0068_issue_8_tour_rest_dml_acl.sql'), 'utf8');
     for (const table of ['trips', 'trip_plans', 'trip_departures', 'trip_addons']) {
       expect(sql).toMatch(new RegExp(
         'revoke\\s+insert,\\s*update,\\s*delete,\\s*truncate\\s+on table public\\.' + table + '\\s+from anon, authenticated',
