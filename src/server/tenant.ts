@@ -1,4 +1,4 @@
-import { createServerSupabase } from './supabase';
+import { createAdminSupabase, createServerSupabase } from './supabase';
 import { ApiHttpError, ERR } from './http';
 import { cookies } from 'next/headers';
 
@@ -36,4 +36,18 @@ export async function requireTenant(minRole: 'STAFF' | 'MANAGER' | 'OWNER' = 'ST
   return { supabase, user, tenantId: m.tenant_id as string, role: m.role as string,
            shopCode: (m as any).tenants.shop_code as string,
            tenantName: (m as any).tenants.name as string };
+}
+
+/**
+ * Manager-only API data client.
+ *
+ * Authentication, tenant selection, and role checks still run through the
+ * cookie-backed client above. Once those checks pass, manager mutations use a
+ * server-only service-role client because the core tour tables are read-only
+ * to the public REST roles. Callers must keep every business query explicitly
+ * scoped to the selected tenant and validated parent ids.
+ */
+export async function requireTenantManager() {
+  const t = await requireTenant('MANAGER');
+  return { ...t, supabase: createAdminSupabase() };
 }
