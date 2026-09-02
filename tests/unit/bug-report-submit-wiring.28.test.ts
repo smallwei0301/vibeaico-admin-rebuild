@@ -46,12 +46,12 @@ describe('BugReportModal #28①: the report is collected and submitted', () => {
     expect(service).toContain("method: 'POST'");
   });
 
-  it('preserves subject and contact email in the current schema content column', () => {
-    expect(route).toContain('content: formatBugReportContent(b)');
-    expect(route).toContain('問題標題：${subject}');
-    expect(route).toContain('聯絡信箱：${contactEmail}');
-    expect(route).not.toContain('subject: b.subject');
-    expect(route).not.toContain('contact_email:');
+  it('writes the four form values into their first-class database columns', () => {
+    expect(route).toContain('category: b.category || \'OTHER\'');
+    expect(route).toContain('subject: b.subject');
+    expect(route).toContain('content: b.content');
+    expect(route).toContain("contact_email: b.contactEmail ?? ''");
+    expect(route).not.toContain('formatBugReportContent');
   });
 
   it('does not claim screenshot persistence that is not implemented', () => {

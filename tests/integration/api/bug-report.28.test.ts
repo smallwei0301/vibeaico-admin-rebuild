@@ -1,10 +1,8 @@
 /**
- * POST /api/bug-report — bounded canonical persistence proof for Issue #28①.
+ * POST /api/bug-report — Issue #28① 的四欄逐一保存證明。
  *
- * The canonical source schema currently stores the user-entered title and
- * contact email inside bug_reports.content. This test therefore verifies the
- * exact persisted representation instead of merely checking that a row exists.
- * Every created row is deleted in finally so shared TEST remains clean.
+ * 測試會真的登入、呼叫 API、再由 service role 讀回資料庫。每一筆測試資料都在
+ * finally 刪除，避免 shared TEST 留下殘渣。
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -28,18 +26,6 @@ function suffix(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function expectedStoredContent(input: {
-  subject: string;
-  content: string;
-  contactEmail?: string;
-}): string {
-  const lines = [
-    `問題標題：${input.subject}`,
-    input.contactEmail ? `聯絡信箱：${input.contactEmail}` : '',
-  ].filter(Boolean);
-  return `${lines.join('\n')}\n\n詳細說明：\n${input.content}`;
-}
-
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
 
@@ -54,11 +40,11 @@ beforeAll(async () => {
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
 });
 
-describe('POST /api/bug-report（Issue #28① bounded canonical slice）', () => {
-  it('persists category, title, description, contact email and page URL with tenant identity', async () => {
+describe('POST /api/bug-report（Issue #28①）', () => {
+  it('persists category / subject / content / contact_email in separate columns', async () => {
     const s = suffix();
     const payload = {
-      category: 'BUG',
+      category: 'DISPLAY',
       subject: `頁面無法儲存-${s}`,
       content: `操作步驟-${s}\n按下儲存後仍停留在原畫面`,
       contactEmail: `reply-${s}@example.test`,
@@ -75,22 +61,25 @@ describe('POST /api/bug-report（Issue #28① bounded canonical slice）', () =>
     try {
       const { data: row, error } = await admin
         .from('bug_reports')
-        .select('tenant_id, reporter, category, content, page_url')
+        .select('tenant_id, reporter, category, subject, content, contact_email, page_url')
         .eq('id', reportId)
         .single();
       expect(error).toBeNull();
       expect(row).toBeTruthy();
       expect(row!.tenant_id).toBe(SHOP_A.id);
       expect(row!.reporter).toBe(SHOP_A.owner.email);
+      expect(row!.reporter).not.toBe(row!.contact_email);
       expect(row!.category).toBe(payload.category);
-      expect(row!.content).toBe(expectedStoredContent(payload));
+      expect(row!.subject).toBe(payload.subject);
+      expect(row!.content).toBe(payload.content);
+      expect(row!.contact_email).toBe(payload.contactEmail);
       expect(row!.page_url).toBe(payload.pageUrl);
     } finally {
       await admin.from('bug_reports').delete().eq('id', reportId);
     }
   });
 
-  it('keeps optional contact email empty instead of replacing it with the login email', async () => {
+  it('keeps optional contact email empty and defaults an omitted category to OTHER', async () => {
     const s = suffix();
     const payload = {
       subject: `無聯絡信箱-${s}`,
@@ -105,14 +94,15 @@ describe('POST /api/bug-report（Issue #28① bounded canonical slice）', () =>
     try {
       const { data: row, error } = await admin
         .from('bug_reports')
-        .select('reporter, category, content, page_url')
+        .select('reporter, category, subject, content, contact_email, page_url')
         .eq('id', reportId)
         .single();
       expect(error).toBeNull();
       expect(row!.reporter).toBe(SHOP_A.owner.email);
       expect(row!.category).toBe('OTHER');
-      expect(row!.content).toBe(expectedStoredContent(payload));
-      expect(row!.content).not.toContain('聯絡信箱：');
+      expect(row!.subject).toBe(payload.subject);
+      expect(row!.content).toBe(payload.content);
+      expect(row!.contact_email).toBe('');
       expect(row!.page_url).toBe('');
     } finally {
       await admin.from('bug_reports').delete().eq('id', reportId);
