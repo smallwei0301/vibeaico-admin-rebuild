@@ -30,10 +30,22 @@ jobs:
           script: |
             const path = require('node:path');
             const { pathToFileURL } = require('node:url');
-            const policy = await import(pathToFileURL(path.join(
+            const basePolicy = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE,
-              'scripts/agents/dual-terra-wip-policy.mjs',
+              'scripts/agents/agent-wip-policy.mjs',
             )).href);
+            let policy = basePolicy;
+            try {
+              policy = await import(pathToFileURL(path.join(
+                process.env.GITHUB_WORKSPACE,
+                'scripts/agents/dual-terra-wip-policy.mjs',
+              )).href);
+            } catch (error) {
+              if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+              // The trusted default branch cannot execute a PR-only module before merge. The
+              // base policy deliberately keeps the pre-merge gate at one Terra; the dual-pilot
+              // policy becomes active automatically once its module is on the default branch.
+            }
 
             const { owner, repo } = context.repo;
             const current = context.payload.pull_request;
@@ -80,7 +92,9 @@ jobs:
               per_page: 100,
             });
             const summary = policy.summarizeActiveLanes(openPulls);
-            const capacity = policy.pilotCapacity(summary);
+            const capacity = typeof policy.pilotCapacity === 'function'
+              ? policy.pilotCapacity(summary)
+              : { terraMax: 1, reserveMax: 1, qualified: false };
             const wipErrors = isAgent && metadata.state === 'ACTIVE'
               ? policy.validateGlobalWip(summary)
               : [];

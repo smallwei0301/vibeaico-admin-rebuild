@@ -22,5 +22,6 @@ export function computeWeightedUsage(run: AgentRunLedger): {
 };
 export function computeDeliveryUnits(run: AgentRunLedger): number;
 export function scoreRun(run: AgentRunLedger): RunScore;
+export function computeReport(run: AgentRunLedger): Record<string, unknown>;
 export function renderMarkdown(run: AgentRunLedger, result: RunScore): string;
 export function runCli(argv?: string[]): void;

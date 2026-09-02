@@ -154,6 +154,212 @@ export function validateRunLedger(run) {
   return errors;
 }
 
+const DUAL_STATUS = new Set(["IN_PROGRESS", "COMPLETE", "OWNER_BLOCKED"]);
+const DUAL_SOURCE_FIELDS = ["openIssueStart", "openIssueEnd", "openPrStart", "openPrEnd"];
+const DUAL_DELIVERY_FIELDS = [
+  "issuesStarted", "issuesClosed", "closeApproved", "completeOwnerBlocked",
+  "auditReady", "exactHeadGreenOnly", "commitOnly", "unfinishedCarryover",
+];
+const DUAL_INVENTORY_NUMBER_FIELDS = [
+  "terraTarget", "mainTerraPeak", "reserveTerraPeak", "activeCandidatePeak",
+  "closurePeak", "testValidationPeak", "closureOutcomes", "slot1ActiveMinutes",
+  "slot2ActiveMinutes", "localIsolatedJobs", "localIsolatedSuccess",
+  "localIsolatedFailure", "localCleanupSuccess", "remoteCanonicalWaitMinutes",
+  "crossLaneContamination",
+];
+
+function checkDualNumber(value, name, errors, { nullable = true } = {}) {
+  if (value === null && nullable) return;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    errors.push(`${name} must be a non-negative number${nullable ? " or null" : ""}`);
+  }
+}
+
+function checkDualBoolean(value, name, errors) {
+  if (typeof value !== "boolean") errors.push(`${name} must be boolean`);
+}
+
+function checkDualString(value, name, errors, { nullable = false } = {}) {
+  if (nullable && value === null) return;
+  if (typeof value !== "string" || !value.trim()) errors.push(`${name} must be a non-empty string${nullable ? " or null" : ""}`);
+}
+
+export function buildInitialRun(runId, startedAt = new Date().toISOString()) {
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$/.test(runId)) {
+    throw new Error("runId must look like YYYY-MM-DD-name");
+  }
+  return {
+    schemaVersion: 1,
+    runId,
+    status: "IN_PROGRESS",
+    startedAt,
+    endedAt: null,
+    sources: { openIssueStart: null, openIssueEnd: null, openPrStart: null, openPrEnd: null },
+    main: { startSha: null, endSha: null },
+    baselines: { weightedUsagePerDeliveryUnit: null, deliveryUnits: null },
+    usage: {
+      actualTokensAvailable: false,
+      inputTokens: null,
+      outputTokens: null,
+      cachedTokens: null,
+      weeklyUsagePercentStart: null,
+      weeklyUsagePercentEnd: null,
+      source: "INTERNAL_WEIGHTED_PROXY",
+    },
+    modelTasks: [],
+    delivery: {
+      issuesStarted: 0,
+      issuesClosed: 0,
+      closeApproved: 0,
+      completeOwnerBlocked: 0,
+      auditReady: 0,
+      exactHeadGreenOnly: 0,
+      commitOnly: 0,
+      unfinishedCarryover: 0,
+    },
+    inventory: {
+      dualTerraPilot: false,
+      terraTarget: 0,
+      mainTerraPeak: 0,
+      reserveTerraPeak: 0,
+      activeCandidatePeak: 0,
+      closurePeak: 0,
+      testValidationPeak: 0,
+      closureSweepExecuted: false,
+      closureOutcomes: 0,
+      slot1ActiveMinutes: null,
+      slot2ActiveMinutes: null,
+      localIsolatedJobs: null,
+      localIsolatedSuccess: null,
+      localIsolatedFailure: null,
+      localCleanupSuccess: null,
+      remoteCanonicalWaitMinutes: null,
+      crossLaneContamination: null,
+      fallbackToSingleTerra: false,
+    },
+    ci: { fullRuns: 0, firstPassSuccesses: 0, invalidReruns: 0 },
+    quality: {
+      acceptanceRequirementCount: 0,
+      acceptanceEvidenceCount: 0,
+      auditAttempts: 0,
+      firstPassAuditApprovals: 0,
+      unresolvedP0: 0,
+      unresolvedP1: 0,
+      reopenedIssues: 0,
+      postMergeRegressions: 0,
+      safetyViolations: 0,
+      hardFailReasons: [],
+    },
+    flow: {
+      lunaTasks: 0,
+      lunaAccepted: 0,
+      duplicateTasks: 0,
+      ownershipCollisions: 0,
+      waitingOpportunities: 0,
+      waitingConvertedToUsefulWork: 0,
+    },
+    evidence: {
+      issueCount: 0,
+      issueWithEvidenceCount: 0,
+      prCount: 0,
+      prWithEvidenceCount: 0,
+      exactHeadCount: 0,
+      exactHeadWithEvidenceCount: 0,
+      testRunIdsComplete: false,
+      prBodiesCurrent: false,
+      ownerBlockersPrecise: false,
+      reportReproducible: false,
+      usageSourceDeclared: true,
+    },
+    notes: [],
+  };
+}
+
+export function validateRun(run) {
+  const errors = [];
+  if (!requireObject(run, "run", errors)) return { valid: false, errors };
+  for (const key of [
+    "schemaVersion", "runId", "status", "startedAt", "endedAt", "sources", "main",
+    "baselines", "usage", "modelTasks", "delivery", "inventory", "ci", "quality",
+    "flow", "evidence", "notes",
+  ]) {
+    if (!(key in run)) errors.push(`missing top-level field: ${key}`);
+  }
+  if (run.schemaVersion !== 1) errors.push("schemaVersion must be 1");
+  if (typeof run.runId !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$/.test(run.runId)) errors.push("runId must look like YYYY-MM-DD-name");
+  if (!DUAL_STATUS.has(run.status)) errors.push("status is invalid");
+  checkDualString(run.startedAt, "startedAt", errors);
+  checkDualString(run.endedAt, "endedAt", errors, { nullable: true });
+
+  if (requireObject(run.sources, "sources", errors)) {
+    for (const field of DUAL_SOURCE_FIELDS) checkDualNumber(run.sources[field], `sources.${field}`, errors);
+  }
+  if (requireObject(run.main, "main", errors)) {
+    checkDualString(run.main.startSha, "main.startSha", errors, { nullable: true });
+    checkDualString(run.main.endSha, "main.endSha", errors, { nullable: true });
+  }
+  if (requireObject(run.baselines, "baselines", errors)) {
+    checkDualNumber(run.baselines.weightedUsagePerDeliveryUnit, "baselines.weightedUsagePerDeliveryUnit", errors);
+    checkDualNumber(run.baselines.deliveryUnits, "baselines.deliveryUnits", errors);
+  }
+  if (requireObject(run.usage, "usage", errors)) {
+    checkDualBoolean(run.usage.actualTokensAvailable, "usage.actualTokensAvailable", errors);
+    for (const field of ["inputTokens", "outputTokens", "cachedTokens", "weeklyUsagePercentStart", "weeklyUsagePercentEnd"]) {
+      checkDualNumber(run.usage[field], `usage.${field}`, errors);
+    }
+    checkDualString(run.usage.source, "usage.source", errors);
+  }
+  if (!Array.isArray(run.modelTasks)) errors.push("modelTasks must be an array");
+  else run.modelTasks.forEach((task, index) => {
+    if (!requireObject(task, `modelTasks[${index}]`, errors)) return;
+    checkDualString(task.taskId, `modelTasks[${index}].taskId`, errors);
+    checkDualString(task.role, `modelTasks[${index}].role`, errors);
+    checkDualString(task.requestedModel, `modelTasks[${index}].requestedModel`, errors);
+    checkDualString(task.actualModel, `modelTasks[${index}].actualModel`, errors);
+    checkDualString(task.contextSize, `modelTasks[${index}].contextSize`, errors);
+    checkDualBoolean(task.lunaEligible, `modelTasks[${index}].lunaEligible`, errors);
+    checkDualBoolean(task.accepted, `modelTasks[${index}].accepted`, errors);
+    checkDualNumber(task.issue, `modelTasks[${index}].issue`, errors);
+    checkDualNumber(task.pr, `modelTasks[${index}].pr`, errors);
+    checkDualString(task.exactHead, `modelTasks[${index}].exactHead`, errors);
+    checkDualString(task.result, `modelTasks[${index}].result`, errors);
+  });
+  if (requireObject(run.delivery, "delivery", errors)) {
+    for (const field of DUAL_DELIVERY_FIELDS) checkDualNumber(run.delivery[field], `delivery.${field}`, errors, { nullable: false });
+  }
+  if (requireObject(run.inventory, "inventory", errors)) {
+    checkDualBoolean(run.inventory.dualTerraPilot, "inventory.dualTerraPilot", errors);
+    for (const field of DUAL_INVENTORY_NUMBER_FIELDS) checkDualNumber(run.inventory[field], `inventory.${field}`, errors);
+    checkDualBoolean(run.inventory.closureSweepExecuted, "inventory.closureSweepExecuted", errors);
+    checkDualBoolean(run.inventory.fallbackToSingleTerra, "inventory.fallbackToSingleTerra", errors);
+  }
+  if (requireObject(run.ci, "ci", errors)) {
+    for (const field of ["fullRuns", "firstPassSuccesses", "invalidReruns"]) checkDualNumber(run.ci[field], `ci.${field}`, errors, { nullable: false });
+  }
+  if (requireObject(run.quality, "quality", errors)) {
+    for (const field of [
+      "acceptanceRequirementCount", "acceptanceEvidenceCount", "auditAttempts", "firstPassAuditApprovals",
+      "unresolvedP0", "unresolvedP1", "reopenedIssues", "postMergeRegressions", "safetyViolations",
+    ]) checkDualNumber(run.quality[field], `quality.${field}`, errors, { nullable: false });
+    if (!Array.isArray(run.quality.hardFailReasons)) errors.push("quality.hardFailReasons must be an array");
+  }
+  if (requireObject(run.flow, "flow", errors)) {
+    for (const field of ["lunaTasks", "lunaAccepted", "duplicateTasks", "ownershipCollisions", "waitingOpportunities", "waitingConvertedToUsefulWork"]) {
+      checkDualNumber(run.flow[field], `flow.${field}`, errors, { nullable: false });
+    }
+  }
+  if (requireObject(run.evidence, "evidence", errors)) {
+    for (const field of ["issueCount", "issueWithEvidenceCount", "prCount", "prWithEvidenceCount", "exactHeadCount", "exactHeadWithEvidenceCount"]) {
+      checkDualNumber(run.evidence[field], `evidence.${field}`, errors, { nullable: false });
+    }
+    for (const field of ["testRunIdsComplete", "prBodiesCurrent", "ownerBlockersPrecise", "reportReproducible", "usageSourceDeclared"]) {
+      checkDualBoolean(run.evidence[field], `evidence.${field}`, errors);
+    }
+  }
+  if (!Array.isArray(run.notes)) errors.push("notes must be an array");
+  return { valid: errors.length === 0, errors };
+}
+
 function parseArgs(argv) {
   const [command, ...rest] = argv;
   const args = { command, positional: [] };

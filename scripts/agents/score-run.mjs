@@ -184,6 +184,182 @@ export function scoreRun(run) {
   };
 }
 
+function dualNumber(value, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function dualFraction(numerator, denominator, fallback = 0) {
+  if (denominator <= 0) return fallback;
+  return Math.max(0, Math.min(1, numerator / denominator));
+}
+
+function dualTasks(run) {
+  return Array.isArray(run?.modelTasks) ? run.modelTasks : [];
+}
+
+function computeDualUsage(run, tasks) {
+  const usage = run.usage ?? {};
+  const weights = { luna: 1, terra: 3, sol: 6 };
+  const contexts = { compact: 1, medium: 1.5, full: 3 };
+  let units = 0;
+  let unverifiedModelTasks = 0;
+  for (const task of tasks) {
+    const requestedModel = typeof task.requestedModel === "string" ? task.requestedModel : "terra";
+    const actualModel = typeof task.actualModel === "string" && task.actualModel !== "unknown"
+      ? task.actualModel
+      : requestedModel;
+    const contextSize = typeof task.contextSize === "string" ? task.contextSize : "full";
+    const count = task.count === undefined ? 1 : dualNumber(task.count);
+    units += count * (weights[actualModel] ?? weights.terra) * (contexts[contextSize] ?? contexts.full);
+    if (!task.actualModel || task.actualModel === "unknown") unverifiedModelTasks += count;
+  }
+
+  const tokenFields = [usage.inputTokens, usage.outputTokens, usage.cachedTokens];
+  const actualTokens = usage.actualTokensAvailable === true && tokenFields.every((value) => typeof value === "number" && Number.isFinite(value))
+    ? tokenFields.reduce((sum, value) => sum + value, 0)
+    : null;
+  const source = actualTokens === null ? (usage.source ?? "INTERNAL_WEIGHTED_PROXY") : "actual_tokens";
+  return { units: round(units, 2), actualTokens, unverifiedModelTasks, source };
+}
+
+function computeDualQuality(run) {
+  const quality = run.quality ?? {};
+  const ci = run.ci ?? {};
+  const acceptance = dualFraction(
+    dualNumber(quality.acceptanceEvidenceCount),
+    dualNumber(quality.acceptanceRequirementCount),
+  );
+  const firstPassCi = dualFraction(dualNumber(ci.firstPassSuccesses), dualNumber(ci.fullRuns));
+  const firstPassAudit = dualFraction(
+    dualNumber(quality.firstPassAuditApprovals),
+    dualNumber(quality.auditAttempts),
+  );
+  const unresolvedP0 = dualNumber(quality.unresolvedP0);
+  const unresolvedP1 = dualNumber(quality.unresolvedP1);
+  const reopened = dualNumber(quality.reopenedIssues);
+  const postMergeRegressions = dualNumber(quality.postMergeRegressions);
+  const safetyViolations = dualNumber(quality.safetyViolations);
+  const hardFailReasons = Array.isArray(quality.hardFailReasons) ? quality.hardFailReasons : [];
+  const findingScore = Math.max(0, 5 - (unresolvedP0 * 2.5) - (unresolvedP1 * 0.5));
+  const regressionScore = inverse(reopened + postMergeRegressions, 0, 3, 3);
+  const safetyScore = safetyViolations === 0 && hardFailReasons.length === 0 ? 3 : 0;
+  return {
+    score: round((acceptance * 8) + (firstPassCi * 6) + (firstPassAudit * 5) + findingScore + regressionScore + safetyScore),
+    acceptance,
+    firstPassCi,
+    firstPassAudit,
+    unresolvedP0,
+    unresolvedP1,
+    reopened,
+    postMergeRegressions,
+    safetyViolations,
+    hardFailReasons,
+  };
+}
+
+function computeDualEvidence(run) {
+  const evidence = run.evidence ?? {};
+  const coverage = (complete, total) => dualFraction(dualNumber(complete), dualNumber(total));
+  const booleanEvidence = [
+    evidence.testRunIdsComplete,
+    evidence.prBodiesCurrent,
+    evidence.ownerBlockersPrecise,
+    evidence.reportReproducible,
+    evidence.usageSourceDeclared,
+  ];
+  const parts = [
+    coverage(evidence.issueWithEvidenceCount, evidence.issueCount),
+    coverage(evidence.prWithEvidenceCount, evidence.prCount),
+    coverage(evidence.exactHeadWithEvidenceCount, evidence.exactHeadCount),
+    ...booleanEvidence.map((value) => value === true ? 1 : 0),
+  ];
+  return { score: round((parts.reduce((sum, value) => sum + value, 0) / parts.length) * 10), parts };
+}
+
+function computeDualFlow(run, tasks) {
+  const flow = run.flow ?? {};
+  const lunaTasks = dualNumber(flow.lunaTasks);
+  const lunaAccepted = dualNumber(flow.lunaAccepted);
+  const waitingOpportunities = dualNumber(flow.waitingOpportunities);
+  const waitingConverted = dualNumber(flow.waitingConvertedToUsefulWork);
+  const lunaAdoption = dualFraction(lunaAccepted, lunaTasks);
+  const waitingConversion = dualFraction(waitingConverted, waitingOpportunities);
+  const duplicateTasks = dualNumber(flow.duplicateTasks);
+  const ownershipCollisions = dualNumber(flow.ownershipCollisions);
+  const lunaEligibleTasks = tasks.filter((task) => task.lunaEligible === true).length;
+  const lunaRouted = tasks.filter((task) => task.lunaEligible === true && task.role === "luna" && task.accepted === true).length;
+  return {
+    score: round((lunaAdoption * 4) + inverse(duplicateTasks, 0, 2, 2) + inverse(ownershipCollisions, 0, 2, 2) + (waitingConversion * 2)),
+    lunaAdoption,
+    ownershipCollisions,
+    lunaRoutingRate: lunaEligibleTasks > 0 ? dualFraction(lunaRouted, lunaEligibleTasks) : lunaAdoption,
+  };
+}
+
+function computeDualUsageSection(run, usage, tasks) {
+  const baselines = run.baselines ?? {};
+  const delivery = run.delivery ?? {};
+  const completionMetric = round(
+    dualNumber(delivery.issuesClosed) + dualNumber(delivery.auditReady) * 0.8 +
+    dualNumber(delivery.completeOwnerBlocked) * 0.5 + dualNumber(delivery.exactHeadGreenOnly) * 0.25 +
+    dualNumber(delivery.commitOnly) * 0.1,
+    2,
+  );
+  const baselineCost = dualNumber(baselines.weightedUsagePerDeliveryUnit, 0);
+  const currentCost = completionMetric > 0 ? usage.units / completionMetric : null;
+  const improvementPercent = baselineCost > 0 && currentCost !== null
+    ? ((baselineCost - currentCost) / baselineCost) * 100
+    : null;
+  const improvement = improvementPercent === null ? 5 : Math.max(0, Math.min(10, 5 + (improvementPercent / 4)));
+  const eligibleTasks = tasks.filter((task) => task.lunaEligible === true).length;
+  const lunaRouted = tasks.filter((task) => task.lunaEligible === true && task.role === "luna" && task.accepted === true).length;
+  const lunaRoutingRate = eligibleTasks > 0 ? dualFraction(lunaRouted, eligibleTasks) : 0;
+  const solTouches = tasks.filter((task) => task.role === "sol").length;
+  const candidates = dualNumber(run.inventory?.activeCandidatePeak);
+  const solTouchesPerCandidate = candidates > 0 ? solTouches / candidates : 0;
+  const solPoints = inverse(solTouchesPerCandidate, 0, 5, 4);
+  const contextReplays = tasks.filter((task) => task.contextSize === "full").length;
+  const replayPoints = inverse(contextReplays, 0, 3, 3);
+  const waste = dualNumber(run.flow?.duplicateTasks) + dualNumber(run.ci?.invalidReruns);
+  const wastePoints = inverse(waste, 0, 3, 3);
+  const score = round(improvement + (lunaRoutingRate * 5) + solPoints + replayPoints + wastePoints + (usage.source ? 5 : 0));
+  return {
+    score: Math.min(25, score),
+    lunaRoutingRate,
+    solTouchesPerCandidate: round(solTouchesPerCandidate, 2),
+    completionMetric,
+  };
+}
+
+export function computeReport(run = {}) {
+  const tasks = dualTasks(run);
+  const usage = computeDualUsage(run, tasks);
+  const usageSection = computeDualUsageSection(run, usage, tasks);
+  const quality = computeDualQuality(run);
+  const flow = computeDualFlow(run, tasks);
+  const evidence = computeDualEvidence(run);
+  const deliveryUnits = usageSection.completionMetric;
+  const weightedUsagePerDeliveryUnit = deliveryUnits > 0 ? round(usage.units / deliveryUnits, 2) : null;
+  const hardFailReasons = [...quality.hardFailReasons];
+  const hardFailed = quality.safetyViolations > 0 || hardFailReasons.length > 0;
+  return {
+    runId: run.runId ?? "unknown",
+    status: run.status ?? "IN_PROGRESS",
+    startedAt: run.startedAt ?? null,
+    endedAt: run.endedAt ?? null,
+    main: run.main ?? { startSha: null, endSha: null },
+    usage: { source: usage.source, units: usage.units, actualTokens: usage.actualTokens },
+    usageSection,
+    completionMetric: deliveryUnits,
+    weightedUsagePerDeliveryUnit,
+    quality: { ...quality },
+    flow: { ...flow },
+    evidence,
+    hardFailReasons,
+    hardFailed,
+  };
+}
+
 function display(value, suffix = "") {
   return value === null || value === undefined ? "資料不足" : `${value}${suffix}`;
 }
