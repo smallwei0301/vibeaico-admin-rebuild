@@ -1,219 +1,187 @@
 # 隔離 TEST 路線操作手冊
 
-> Canonical decision：`docs/decisions/2026-09-01-owner-isolated-test-lanes.md`
+> 最新決策：`docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`
+>
+> 歷史基線：`docs/decisions/2026-09-01-owner-isolated-test-lanes.md`
 >
 > 追蹤：Issue #104
 
-## 1. 為什麼需要隔離
+## 1. 現行架構
 
-目前 remote TEST 在每輪 integration 前會 reset／seed，並使用固定 tenant、user、UUID 與
-測試帳號。兩個 job 若連到同一個 Supabase，其中一個 reset 會刪掉另一個正在使用的資料。
-因此「把 GitHub parallel 設成 2」不等於真的有兩條安全 TEST 線。
-
-隔離 TEST 分兩步落地：
+remote TEST 每輪會 reset／seed，共用同一個 Supabase 時，兩個 job 可能互相刪資料。因此前段改用
+每張 PR 自己的免費本機 Supabase，最後仍只有一個遠端正式考場：
 
 ```text
-Phase 1A  先證明兩個 local runner／database／cleanup 彼此獨立
-Phase 1B  再補齊 fresh-local schema source，跑完整 local integration／E2E
+Terra slot 1 → local runner / database 1 ┐
+                                         ├→ remote canonical TEST max 1
+Terra slot 2 → local runner / database 2 ┘
+                                                    ↓
+                                               Sol Audit max 1
+                                                    ↓
+                                                merge max 1
 ```
+
+付費 Supabase Preview Branch 目前：
+
+```text
+DEFERRED_NOT_IN_CONSIDERATION
+```
+
+不建立、不要求費率確認，也不是雙 Terra、Audit 或 merge 的前置條件。
 
 ## 2. TEST_PROFILE
 
 | Profile | 用途 | 可以證明 | 不能證明 |
 |---|---|---|---|
-| `SOURCE_ONLY` | 文件、純 UI、純函式或 source checks | typecheck／unit／build | DB／Auth／Storage／E2E |
-| `LOCAL_ISOLATED_CANARY` | 測試基礎設施 | 兩個 fresh local DB 可平行且各自清理 | 完整產品測試、遠端 canonical green |
-| `LOCAL_ISOLATED` | 一般 PR 的 disposable local DB | local schema、seed、integration、E2E | 遠端 schema cache、雲端供應商差異、最終 merge |
-| `REMOTE_BRANCH_REQUIRED` | DB／Auth／Storage 重型候選 | Phase 2 需要遠端分支 | branch 已建立或已付費 |
-| `SHARED_CANONICAL` | 最終遠端 TEST 驗收 | canonical TEST evidence | Production evidence |
+| `SOURCE_ONLY` | 文件、純 UI、純函式 | typecheck／unit／build | DB／Auth／Storage／E2E |
+| `LOCAL_ISOLATED_CANARY` | 基礎設施 canary | 兩個 fresh local DB 可並行且各自清理 | 產品候選可 merge |
+| `LOCAL_ISOLATED` | 一般 API、DB、Auth、Storage 候選 | local schema、seed、integration、E2E | 雲端差異與最終 canonical green |
+| `SHARED_CANONICAL` | 現有遠端 TEST 最終驗收 | canonical TEST evidence | Production evidence |
 
-Local profiles 必須同時填：
+`REMOTE_BRANCH_REQUIRED` 已退休。新的 active PR 使用它時，policy 必須 fail closed，並要求改成：
 
 ```text
+TEST_PROFILE: LOCAL_ISOLATED
 FINAL_CANONICAL_REQUIRED: true
-TEST_ENV_ID: AUTO
 ```
 
-## 3. Phase 1A workflow
+## 3. 本機工作流程
 
 檔案：`.github/workflows/local-isolated-test.yml`
 
-兩個 canary slot 各自：
-
 ```text
 checkout exact head
-→ 安裝固定 Supabase CLI 2.116.0
+→ 固定 Supabase CLI
 → npm ci
 → 唯一 local project id
-→ supabase start，套 current repo migrations
+→ stage local-only migration overlay（需要時）
+→ supabase start
 → 匯出 local URL／anon／service-role
 → 驗證 URL 只能是 localhost／127.0.0.1
-→ 兩邊同時插入相同固定 tenant id，保持 15 秒
-→ 重新讀回自己的 marker
-→ 刪除 canary row
+→ reset／seed
+→ integration
+→ Playwright E2E
 → always 執行 supabase stop --no-backup
 ```
 
-如果兩條 job 共用同一個資料庫，第二個固定 ID insert 會撞 unique constraint，canary 必須紅。
-如果其中一條改掉另一條 marker，也必須紅。
+不同 PR 的 concurrency group 不同，所以可平行；同一 PR 的新 SHA 取消舊 local run，避免 Docker
+CI 風暴。fork PR 不自動花兩個 runner，必須用可信 manual dispatch（人工明確啟動）。
 
-成功結果名稱是：
-
-```text
-ISOLATION_CANARY_GREEN
-```
-
-## 4. Phase 1B 完整 local TEST
-
-`LOCAL_ISOLATED` 才執行：
+成功結果只能叫：
 
 ```text
-stage local-only migration overlay
-→ supabase start
-→ standard reset／seed
-→ integration
-→ Playwright E2E
-→ LOCAL_CLEANUP_VERIFIED
+ISOLATED_GREEN
+LOCAL_CLEANUP_VERIFIED
 ```
 
-第一輪 canary 發現 current main 的正式 migration source 只能重建到 0001～0014，但標準
-seed 已明確依賴後續 `trips`／`trip_plans`／`trip_departures` 等結構。這不是 local
-Supabase 壞掉，而是 repo migration 帳本缺了中段。
+不能叫 `CANONICAL_GREEN`。
 
-### 4.1 過渡性 local-only migration overlay
+## 4. Migration overlay 邊界
 
-Phase 1B 使用：
+Local runner 可使用經 manifest 與 Git blob SHA 追溯的 local-only overlay。它只在 disposable runner
+內暫時 stage，不修改正式 migration 帳本，也不推到 remote TEST。
+
+- 必要表缺失必須 fail closed，不可改 seed 假裝 optional。
+- 缺檔、額外 SQL、重複名稱、hash 不符、正式 migration 同名或未知 transform 都停止。
+- local overlay 只證明現有測試可從空庫重建，不代表 remote migration history 已整理完成。
+- local 與 remote schema 差異必須保存並交付。
+
+## 5. DB／Auth／Storage 路由
+
+以下路徑直接走免費路線：
 
 ```text
-supabase/local-migrations/historical-integration-baseline/
+supabase/migrations/**  → LOCAL_ISOLATED → SHARED_CANONICAL
+Auth／middleware        → LOCAL_ISOLATED → SHARED_CANONICAL
+Storage／upload         → LOCAL_ISOLATED → SHARED_CANONICAL
 ```
 
-這裡保存歷史整合分支 `claude/deploy-vercel-project-nnno59` 的 0015～0033 SQL 與
-`manifest.json`。每支 SQL 都記錄原始 Git blob SHA。
+本機與遠端不同時，以 remote canonical 作最終證據。先由 Luna 壓縮差異，只有模糊或高風險問題才
+交 Sol；不得自動改用付費分支。
 
-執行時：
+## 6. 免費雙 Terra
 
 ```text
-TEST_PROFILE=LOCAL_ISOLATED
-ALLOW_LOCAL_MIGRATION_OVERLAY=true
-node scripts/ci/stage-local-migration-ledger.mjs
+FULL_TERRA_MAX             = 2 only when qualified
+LOCAL_ISOLATED_SLOTS       = 2
+REMOTE_CANONICAL_TEST_MAX  = 1
+SOL_AUDIT_MAX              = 1
+MERGE_MAX                  = 1
+ACTIVE_PRODUCT_CANDIDATE   = 2
+RESERVE_TERRA              = 0 during dual pilot
 ```
 
-script 只在 disposable runner 內把檔案暫時複製到 `supabase/migrations`。它不修改 git
-工作樹裡的正式 migration 帳本，也不會推到 remote TEST。
-
-### 4.2 為什麼不直接補進正式 migration 目錄？
-
-遠端 TEST 已存在另一套 migration version／name 歷史。若把歷史整合分支的 0015～0033
-直接塞進正式目錄，可能出現「同一版本號、不同內容」的帳本衝突。
-
-所以 Phase 1B 先回答：
-
-> 本機隔離環境能不能完整跑現有測試？
-
-它不偷偷回答：
-
-> 正式遠端 migration 歷史已經整理完了。
-
-後者要另做 migration-ledger reconciliation。
-
-### 4.3 可重建性護欄
-
-- 必要表缺失必須 fail closed，不可改 seed 忽略。
-- overlay 只接受 `LOCAL_ONLY_TRANSITIONAL` manifest。
-- 缺檔、額外 SQL、重複名稱、Git blob SHA 不符都必須停止。
-- 正式 migration 目錄若已有同名檔，overlay 不得覆蓋。
-- remote TEST 內的未合併候選 migration 不自動等於 main canonical source。
-- 不提交未經審查的完整 remote schema dump。
-- fresh local DB 與 remote canonical TEST 的 schema 差異必須有報告。
-- local 綠燈只能叫 `ISOLATED_GREEN`，不能叫 `CANONICAL_GREEN`。
-
-Migration mapping 報告：
-
-```text
-docs/metrics/test-lanes/2026-09-01-phase1b-ledger-map.md
-```
-
-## 5. Phase 2：Supabase Preview Branch
-
-重型路徑分類：
-
-```text
-supabase/migrations/**  → DATABASE_MIGRATION
-Auth／middleware        → AUTH
-Storage／upload         → STORAGE
-```
-
-真正建立 branch 前需成本確認。每個 branch 必須記：
-
-```text
-BRANCH_ID
-PROJECT_REF
-PR
-EXACT_HEAD
-MIGRATION_BASELINE
-CREATED_AT
-LEASE_EXPIRES_AT
-HOURLY_COST
-ESTIMATED_COST
-CLEANUP_STATUS
-```
-
-最多兩條。建立／重設／刪除任一步驟失敗就停止，不能留下無人認領的計費盆栽。
-禁止 `merge_branch`，最終 migration 仍走正常 repo migration／canonical TEST／Production 授權。
-
-## 6. Phase 3：雙 Terra
-
-Phase 3 不是 Mode C 回歸，而是受健康隔離 slot 控制的 B++：
-
-```text
-FULL_TERRA_MAX = min(2, AVAILABLE_ISOLATED_TEST_SLOTS)
-```
-
-每條完整 Terra 必須有不同：
+兩張 Terra PR 必須使用同一 `RUN_ID`，但有不同的：
 
 ```text
 PRIMARY_ISSUE
+TERRA_SLOT 1 / 2
 TEST_ENV_ID
 FILE_OWNERSHIP
 EXACT_HEAD
 ```
 
-最後仍排隊：
+WIP Guard 會重新檢查兩位 peer（同伴），並拒絕空、絕對路徑、`..`、模糊萬用字元，以及父子
+ownership 路徑。第二條 Terra 是可選能力，不是必填名額。
+
+## 7. 遠端最終考場
+
+只有一張 PR 可持有 active `TEST_VALIDATION`：
 
 ```text
-REMOTE_CANONICAL_TEST
-→ SOL_AUDIT
-→ MERGE
+TEST_HOLDER_ISSUE
+TEST_HOLDER_PR
+EXACT_HEAD
+MIGRATION_BASELINE
+LOCAL_ISOLATED_RUN
+EXPECTED_FULL_CI_COUNT
 ```
 
-## 7. 量化證據
-
-Run ledger 加入：
+離開時記錄：
 
 ```text
-local_canary_jobs
-local_canary_success
-local_isolated_jobs
-local_isolated_success
-local_isolated_failure
-local_cleanup_success
-migration_rebuild_gap_count
-remote_branch_created
-remote_branch_hours
-remote_branch_estimated_cost
-remote_branch_destroyed
-isolated_test_wait_minutes
-canonical_test_wait_minutes
+WORKFLOW_RUN_ID
+RESULT
+FAILED_STEP / SUITE / CASE
+ENVIRONMENT_CHANGED
+RETRY_ALLOWED
+RESIDUE_CHECK
+```
+
+同 exact head、同環境、同命令不盲目重跑。另一張候選等待時可修 source 或整理證據，但不得搶
+remote TEST、Audit 或 merge。
+
+## 8. Delivery Outcome v2 證據
+
+每輪記錄：
+
+```text
+shipped_units
+autonomous_outcome_units
+wip_inventory
+local_isolated_jobs / success / failure / cleanup
+remote_canonical_wait_minutes
+file_ownership_collision
 cross_lane_contamination
-full_terra_peak
+weighted_usage_per_shipped_unit
+weighted_usage_per_autonomous_outcome
+Sol_touches
+post_merge_regression
 ```
 
-## 8. 失敗處理
+Audit Ready、CI-only、commit-only 與 carryover 只算在製品，不再湊成成品。`IN_PROGRESS` 不評分。
+實際 token／週 usage 不可取得時填 `null`，不得猜。
 
-- local stack 起不來：保存容器／migration 錯誤，改變根因後再試，不改用 remote secret 偷跑。
-- canary 綠、full suite 因缺表紅：判定 migration ledger 不完整，不判定隔離失敗。
-- overlay 本身不完整：修 manifest／來源追溯，不把錯誤變成 seed optional skip。
-- local 與 remote 結果不同：remote canonical 為最終證據，交 Luna 壓縮，必要時 Sol 判案。
-- cleanup 失敗：該 slot 不健康，Phase 3 Terra 上限維持或退回 1。
-- Preview Branch 超時：停止新建、刪除孤兒 branch、留下成本與失敗證據。
+## 9. 失敗處理
+
+- local stack 起不來：保存錯誤，修根因後再試，不讀 remote secret 偷跑。
+- overlay 不完整：修來源追溯，不把必要表改成 optional skip。
+- local 與 remote 不同：remote canonical 為最終證據。
+- cleanup 失敗：下一輪退回 `FULL_TERRA_MAX=1`。
+- ownership 撞車：保留較接近 close 的 Terra，另一條 PARKED 或重新劃界。
+- usage／真正出貨惡化超過 20% 且產出未增加：下一輪退回單 Terra並復盤。
+
+## 10. 未來真的需要付費分支時
+
+必須另開新的 Owner Decision、Issue、即時費率確認與完整 create／destroy 設計。舊 branch workflow、
+舊 lease schema、舊 PR 或本文件的歷史段落都不構成付款或建立資源授權。
