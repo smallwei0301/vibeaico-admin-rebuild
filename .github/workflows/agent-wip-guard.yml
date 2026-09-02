@@ -91,7 +91,11 @@ jobs:
                   pull_number: terra.number,
                   per_page: 100,
                 });
-                actualFilesByPullRequest[String(terra.number)] = files.map((file) => file.filename);
+                actualFilesByPullRequest[String(terra.number)] = [
+                  ...new Set(
+                    files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)),
+                  ),
+                ];
               } catch (error) {
                 actualFileLoadErrors.push(
                   `Dual Terra PR #${terra.number} actual changed-file list could not be loaded: ${error.status ?? 'unknown'}`,
@@ -231,7 +235,7 @@ jobs:
               const errors = [...metadataErrors, ...wipErrors];
               const body = errors.length
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nPark or reclassify the extra lane before continuing. Do not add commits or rerun CI to work around this guard.`
-                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner,

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -168,6 +170,35 @@ describe('dual Terra peer validation', () => {
     const errors = validateGlobalWip(summary);
     expect(errors.some((error) => error.includes('Dual Terra FILE_OWNERSHIP overlaps'))).toBe(true);
     expect(errors).toContain(`Dual Terra actual changed files overlap: ${sharedFile}`);
+    expect(pilotCapacity(summary).qualified).toBe(false);
+  });
+
+  it('includes both new and previous GitHub filenames when a file is renamed', () => {
+    const workflow = readFileSync(
+      resolve(process.cwd(), '.github/workflows/agent-wip-guard.yml'),
+      'utf8',
+    );
+
+    expect(workflow).toContain(
+      "files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean))",
+    );
+  });
+
+  it('fails closed when two renames share the same previous filename', () => {
+    const previousFile = 'src/services/shared.ts';
+    const summary = attachActualChangedFiles(
+      summarizeActiveLanes([
+        pilotPr(20, 120, 1, true, 'src/services/booking.ts'),
+        pilotPr(21, 121, 2, true, 'src/services/bug-report.ts'),
+      ]),
+      {
+        20: ['src/services/booking.ts', previousFile],
+        21: ['src/services/bug-report.ts', previousFile],
+      },
+    );
+
+    const errors = validateGlobalWip(summary);
+    expect(errors).toContain(`Dual Terra actual changed files overlap: ${previousFile}`);
     expect(pilotCapacity(summary).qualified).toBe(false);
   });
 });
