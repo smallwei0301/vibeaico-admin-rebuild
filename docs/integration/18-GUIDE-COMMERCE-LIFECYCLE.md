@@ -1,6 +1,6 @@
 # 18 — GUIDE Commerce Lifecycle（方案販售／成團／付款／簡易與進階編輯）
 
-> Owner Decision：2026-08-28；2026-09-02 補充已成團後價格保護。
+> Owner Decision：2026-08-28；2026-09-02 補充已成團後價格保護與 SaaS 退款責任邊界。
 > 本冊是 GUIDE 商業流程的 canonical extension。10 分冊仍是 Trip/Plan/Departure/TourOrder 的基礎模型；本冊專門定義「怎麼賣、怎麼併團、什麼時候算成團、怎麼收訂金/尾款、哪些步驟自動、哪些步驟需要導遊判斷，以及方案管理 UI 分層」。
 
 ---
@@ -17,6 +17,7 @@
 8. GUIDE 方案管理採**快速編輯 → 進階設定**分層 UI。未來平台管理者可代建方案，但導遊仍是資料 owner，可自行快速調整價格與內容。
 9. 線上金流必須使用**該 GUIDE tenant 自己保存的 merchant credentials**完成 checkout → provider → callback 全鏈路；不得默默 fallback 到平台共用 merchant key。
 10. 已成團後若個別旅客取消而進 `AT_RISK`，導遊若選擇**繼續出團**，剩餘旅客維持各自 TourOrder 成交價格；不得補差額或依剩餘人數重新計價。
+11. Midao 的 GUIDE 商業角色是 **SaaS（訂閱式後台）＋前台曝光／上架**。取消／退款商業政策由導遊／tenant 自行設定，Midao 提供非強制建議預設與工具，不建立逐案退款仲裁引擎。
 
 ---
 
@@ -121,9 +122,9 @@ formation_status
 因此合法狀態包括：
 
 ```text
-OPEN + COLLECTING     # 還在募集
-OPEN + FORMED         # 已成團，還有剩餘名額可繼續賣
-CLOSED + FORMED       # 已成團且客滿／停止販售
+OPEN + COLLECTING
+OPEN + FORMED
+CLOSED + FORMED
 OPEN + REVIEW_REQUIRED
 CANCELLED + FAILED
 ```
@@ -152,8 +153,6 @@ formation_decided_by
 
 ### 訂單狀態
 
-沿用／擴充現有語意：
-
 ```text
 PENDING
 CONFIRMED
@@ -162,8 +161,6 @@ CANCELLED
 ```
 
 ### 付款狀態
-
-目前 10 分冊 `UNPAID / PAID / REFUNDED` 不足以表達訂金＋尾款，至少需要等價語意：
 
 ```text
 UNPAID
@@ -201,8 +198,6 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
 
 ### 可計入成團
 
-依 Plan 收款政策：
-
 | deposit_mode | 何時變成有效報名、計入成團 |
 |---|---|
 | NONE | 訂單依規則成立時立即計入；這代表導遊自己選擇承擔零預收的 no-show 風險 |
@@ -237,8 +232,6 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
 
 ### 導遊需要操作
 
-只把「系統無法知道」或「真正需要商業判斷」的事交給導遊：
-
 1. 匯款：確認實際收到訂金／尾款。
 2. `REVIEW_REQUIRED`：
    - **仍然成團** → `FORMED`，`formed_by=GUIDE_OVERRIDE`。
@@ -262,7 +255,7 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
 
 ```text
 TOUR_ORDER_UPFRONT_PAID
-TOUR_GROUP_PROGRESS_CHANGED（可選，不要每加 1 人狂發）
+TOUR_GROUP_PROGRESS_CHANGED
 TOUR_GROUP_FORMED
 TOUR_GROUP_REVIEW_REQUIRED
 TOUR_GROUP_AT_RISK
@@ -287,8 +280,6 @@ TOUR_REFUNDED
 
 目前多導遊團隊模型的收款 owner 是 GUIDE tenant／工作室；PRIMARY/ASSISTANT 是履約人員，不因指派不同就把錢切到不同 merchant account。
 
-因此：
-
 ```text
 Tenant A 的 ECPay key → Tenant A 的 TourOrder
 Tenant B 的 ECPay key → Tenant B 的 TourOrder
@@ -298,8 +289,6 @@ Tenant B 的 ECPay key → Tenant B 的 TourOrder
 若未來真的需要「同一 tenant 內不同 staff 各自收款」，那是另一個金流／會計模型，必須另行裁示。
 
 ### 8.2 啟用線上金流的驗證階梯
-
-只做 `test-connection` 不足以證明整個自動化鏈真的可用。線上金流方法需要兩層證據：
 
 1. `connection_verified_at`
    - 使用該 tenant 解密後的 merchant id/key/iv 呼叫 provider 可驗證端點。
@@ -329,13 +318,57 @@ Production 線上付款 method 在 e2e verification 完成前不得向旅客標�
 
 ---
 
-## 9. 方案管理 UI 分層
+## 9. 取消、退款與 SaaS 平台責任邊界
+
+最新 Owner Decision：`docs/decisions/2026-09-02-guide-saas-platform-role-and-dispute-defaults.md`。
+取消／退款建議範本細節：`docs/decisions/2026-08-31-guide-cancellation-policy-config.md`。
+
+### 9.1 原則
+
+Midao GUIDE 以 **SaaS 後台＋Midao 前台曝光／上架**為主要商業方向，不以交易抽成、爭議款處理或人工退款仲裁作為核心營收模型。
+
+因此：
+
+- 每個 Trip Plan 可保存自己的取消／退款政策。
+- Midao 提供「使用 Midao 建議規則／自行設定／恢復建議」三種操作。
+- 建議預設不是平台不可修改的商業法則；導遊可依法規與自身營運條件調整。
+- 旅客下單前顯示該方案實際政策，成交時保存 policy snapshot；Plan 後改不污染舊單。
+- Midao 提供退款試算、明細、附件、通知與操作紀錄，但一般商業爭議由導遊與旅客自行協商。
+- 不建立「平台客服逐案核准退款金額」或自動判誰有責任的仲裁狀態機。
+
+### 9.2 Midao 建議預設
+
+- 旅客主動取消：建議採「已付款含訂金－實際不可退成本－金流商實際且確實不退的退款手續費」。
+- 導遊／業者主動取消整團：建議全額退款，金流實際且不退費用由業者吸收。
+- 未達最低成團而取消：建議全額退款。
+- 天候／災害／交通中斷：優先免費改期；無法改期再建議全額退款。
+- no-show、特殊票券、客製包團：由方案自訂；Midao 提供模板。
+- 已成團後個別旅客取消但繼續出團：其餘旅客維持成交價格，不補差額。
+
+### 9.3 平台固定底線
+
+以下不是商業偏好，導遊不可關閉：
+
+- payment/refund state 必須誠實，`REFUND_PENDING` 不可顯示成 `REFUNDED`。
+- 退款／扣款不得形成負數、重複計算或超過實際已付款。
+- provider 未提供可靠費用資料時，系統不得猜測或捏造費用。
+- tenant/order/attachment 權限隔離不可破壞，不得建立永久公開附件 URL。
+- 已成交價格、付款承諾與取消政策使用 snapshot，不得事後偷偷回寫舊單。
+- 自訂政策不得繞過適用法律、強制規範或金流商規則。
+
+### 9.4 不把退款問題變成 Owner 阻塞
+
+一般退款比例、不可抗力、no-show、特殊票券、善意退款與例外協商，不再逐題要求 Owner 決策。產品／施工者應依上述方向提供合理建議預設並保留導遊自訂。
+
+只有涉及新的平台責任模型，例如 Midao 代收代付、履約保證、平台代墊／賠付、交易 marketplace 或法律強制衝突時，才重新升級 Owner Decision。
+
+---
+
+## 10. 方案管理 UI 分層
 
 目前 `trips/[id]` 的方案 Modal 把名稱、描述、價格、兒童價、時長、人數、販售方式、訂金、全年／季節價等全部塞在同一層。對不熟悉系統的導遊太重。
 
-### 9.1 第一層：快速編輯（預設）
-
-方案列表的主要按鈕直接開 Quick Edit，只放導遊最常調整、容易理解的欄位：
+### 10.1 第一層：快速編輯（預設）
 
 ```text
 方案名稱
@@ -348,9 +381,9 @@ Production 線上付款 method 在 e2e verification 完成前不得向旅客標�
 
 不要在第一層出現 enum 技術名、成團演算法、季節日期矩陣等。
 
-### 9.2 第二層：販售與進階設定
+### 10.2 第二層：販售與進階設定
 
-Quick Edit 底部提供清楚但不搶眼的「進階設定」入口，進入獨立 page / drawer，而不是在同一個長 Modal 一路往下堆：
+Quick Edit 底部提供清楚但不搶眼的「進階設定」入口：
 
 ```text
 價格單位（每人／每團）
@@ -361,26 +394,23 @@ Quick Edit 底部提供清楚但不搶眼的「進階設定」入口，進入獨
 最低成團人數
 成團截止日前 N 天（預設 7）
 訂金／全額收款政策
+取消／退款政策（Midao 建議／自行設定）
 季節與價格 override
 其他未來的進階販售規則
 ```
 
-進階欄位修改若會影響已存在 Departure，只影響**未來新建團次**；既有團次依 snapshot 保持不變，UI 要明講。
+進階欄位修改若會影響已存在 Departure／TourOrder，只影響未來新建團次／新成交訂單；既有 snapshot 保持不變，UI 要明講。
 
-### 9.3 Midao 管理者代建方案
-
-未來平台提供「Midao 協助建立方案」服務時：
+### 10.3 Midao 管理者代建方案
 
 - 平台管理者使用 #25 的正式 impersonation / platform-admin 能力進租戶建立，不共用密碼。
 - 全程 audit：誰、何時、代哪個 tenant 建立／修改哪些欄位。
-- 建議 Plan 保存 provenance：`source = GUIDE | PLATFORM_ASSISTED | IMPORTED`（或等價欄位），只做來源標記，不建立第二套 Plan schema。
-- UI 可顯示「Midao 協助建立」badge，讓導遊知道來源。
-- **導遊仍可編輯自己的方案**。Platform-assisted 不是鎖定狀態。
-- 若行程已在 Midao LISTED，導遊修改會依既有 review 機制送審；不因是平台代建就跳過審核。
+- 建議 Plan 保存 provenance：`source = GUIDE | PLATFORM_ASSISTED | IMPORTED`，只做來源標記，不建立第二套 Plan schema。
+- UI 可顯示「Midao 協助建立」badge。
+- **導遊仍可編輯自己的方案**。
+- 若行程已在 Midao LISTED，修改依既有 review 機制送審。
 
-### 9.4 不做兩套表單／兩套 schema
-
-快速與進階只是同一個 `TripPlan` 的兩個 UI surface：
+### 10.4 不做兩套表單／兩套 schema
 
 ```text
 Quick Edit ─┐
@@ -392,9 +422,9 @@ Advanced  ──┘
 
 ---
 
-## 10. 驗收核心
+## 11. 驗收核心
 
-- `min_party_size=1, min_to_depart=4` 時 1 人可以完成有效報名，不被「最低 4 人」擋下。
+- `min_party_size=1, min_to_depart=4` 時 1 人可以完成有效報名。
 - unpaid hold 可占名額但不算成團；required upfront payment 成功後才依政策計入。
 - 4 人門檻由最後一筆付款 callback 達成時，只形成一次 `FORMED` + 一次 `GROUP_FORMED` event。
 - deadline 預設 7 天；Plan 可改、Departure 可 override，既有 Departure snapshot 不被 Plan 日後修改污染。
@@ -404,6 +434,9 @@ Advanced  ──┘
 - AT_RISK 後選擇繼續出團時，剩餘 TourOrder 的 `total_amount`／`balance_due` 不增加，不建立補差額付款或通知。
 - 線上收款 callback 自動推進；匯款才需要人工確認。
 - Tenant A/B 用不同 merchant credentials 的 checkout/callback 交叉測試必須證明隔離。
+- 每個 Plan 可切換 Midao 建議取消政策與自訂政策；成交 policy snapshot 不被 Plan 後改污染。
+- `REFUND_PENDING` 到 provider／人工真的完成前不得冒充 `REFUNDED`。
+- 不存在平台人工逐案核准退款才能繼續的硬依賴。
 - Quick Edit 不顯示 advanced fields；進階頁仍可完整編輯，同一 API 往返一致。
 - PLATFORM_ASSISTED 建立可追 audit／來源，但導遊仍可修改。
 
