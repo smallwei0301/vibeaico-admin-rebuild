@@ -1,5 +1,5 @@
 // POST /api/bug-report — 問題回報（04 分冊 §B-6 MVP：寫 bug_reports 表＋寄信
-// 給平台管理者）。body：{ category?, content, pageUrl? }。
+// 給平台管理者）。body：{ category?, subject?, content, contactEmail?, pageUrl? }。
 //
 // - 先 requireTenant()：本端點掛在店家後台（有租戶脈絡），reporter 存登入者 email。
 // - bug_reports 是平台級表（0012）：RLS enable 且**無 policy** = service role 專用，
@@ -17,9 +17,30 @@ import { createAdminSupabase } from '@/server/supabase';
 
 const bodySchema = z.object({
   category: z.string().max(50).optional(),
+  subject: z.string().trim().min(1, '請輸入問題標題').max(200).optional(),
   content: z.string().min(1, '請輸入問題描述').max(5000),
+  contactEmail: z.string().trim().email('聯絡信箱格式錯誤').max(200).optional(),
   pageUrl: z.string().max(500).optional(),
 });
+
+/**
+ * The current main schema only has one free-form content column for reports.
+ * Preserve the new form fields there until a separately authorized schema
+ * migration can add first-class subject/contact columns.
+ */
+function formatBugReportContent({
+  subject,
+  content,
+  contactEmail,
+}: Pick<z.infer<typeof bodySchema>, 'subject' | 'content' | 'contactEmail'>) {
+  const metadata = [
+    subject ? `問題標題：${subject}` : '',
+    contactEmail ? `聯絡信箱：${contactEmail}` : '',
+  ].filter(Boolean);
+  return metadata.length > 0
+    ? `${metadata.join('\n')}\n\n詳細說明：\n${content}`
+    : content;
+}
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
@@ -31,7 +52,7 @@ export const POST = handle(async (req) => {
       tenant_id: t.tenantId,
       reporter: t.user.email ?? '',
       category: b.category || 'OTHER',   // 空字串/未帶 → 表預設語意 'OTHER'
-      content: b.content,
+      content: formatBugReportContent(b),
       page_url: b.pageUrl ?? '',
     })
     .select('id')
