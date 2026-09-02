@@ -1,6 +1,6 @@
 # 18 — GUIDE Commerce Lifecycle（方案販售／成團／付款／簡易與進階編輯）
 
-> Owner Decision：2026-08-28。
+> Owner Decision：2026-08-28；2026-09-02 補充已成團後價格保護。
 > 本冊是 GUIDE 商業流程的 canonical extension。10 分冊仍是 Trip/Plan/Departure/TourOrder 的基礎模型；本冊專門定義「怎麼賣、怎麼併團、什麼時候算成團、怎麼收訂金/尾款、哪些步驟自動、哪些步驟需要導遊判斷，以及方案管理 UI 分層」。
 
 ---
@@ -16,6 +16,7 @@
 7. 成團截止預設為**出發前 7 天**，導遊可在 Plan 修改，且建立單一 Departure 時可 override；Departure 必須保存具體 deadline snapshot。
 8. GUIDE 方案管理採**快速編輯 → 進階設定**分層 UI。未來平台管理者可代建方案，但導遊仍是資料 owner，可自行快速調整價格與內容。
 9. 線上金流必須使用**該 GUIDE tenant 自己保存的 merchant credentials**完成 checkout → provider → callback 全鏈路；不得默默 fallback 到平台共用 merchant key。
+10. 已成團後若個別旅客取消而進 `AT_RISK`，導遊若選擇**繼續出團**，剩餘旅客維持各自 TourOrder 成交價格；不得補差額或依剩餘人數重新計價。
 
 ---
 
@@ -230,7 +231,7 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
 - 線上尾款成功自動 `PARTIAL → PAID`。
 - 未付款 hold 過期釋放名額。
 - 到 formation deadline 仍不足時 `COLLECTING → REVIEW_REQUIRED`，並通知導遊，不自動取消。
-- 已 FORMED 後取消造成有效人數跌破門檻時 `FORMED → AT_RISK`，並通知導遊，不自動撤銷已成團承諾。
+- 已 FORMED 後取消造成有效人數跌破門檻時 `FORMED → AT_RISK`，並通知導遊，不自動撤銷已成團承諾，也**不得自動重算剩餘旅客價格或新增補差額應收**。
 - 整團取消後停止販售、取消有效 orders、釋放導遊時間、建立退款待辦、發取消通知。
 - 導遊按「完成出團」後，系統批次把有效 TourOrders 完成、凍結業績、開啟評論資格。
 
@@ -244,10 +245,12 @@ Plan 日後改價、改訂金比例，不回頭重算舊訂單。
    - **延長募集** → 修改 `formation_deadline_at`，回 `COLLECTING`。
    - **取消本團** → `FAILED/CANCELLED`，進退款流程。
 3. `AT_RISK`：
-   - 繼續出團。
-   - 取消整團。
+   - **繼續出團** → 剩餘旅客維持各自 TourOrder 成交時的 `total_amount`／付款承諾；不得補差額、不得依剩餘人數重新計價。
+   - **取消整團** → 進整團取消與退款流程。
 4. 實際銀行退款完成（在未接自動 Refund API 前）→ 標記已退款。
 5. 行程真的執行完 → 一次按「完成出團」。
+
+如果導遊認為剩餘人數已不足以承擔出團成本，應選擇取消整團，而不是把取消者造成的差額轉嫁給仍要參加的旅客。
 
 不要讓導遊逐張訂單人工搬 `PENDING → CONFIRMED → PAID → COMPLETED`。
 
@@ -398,6 +401,7 @@ Advanced  ──┘
 - deadline 到 3/4 → REVIEW_REQUIRED，不自動取消／退款。
 - GUIDE override 3/4 仍成團有 audit，走同一 FORM event 路徑。
 - 已 FORM 4/4 後取消變 3/4 → AT_RISK，不自動反成團。
+- AT_RISK 後選擇繼續出團時，剩餘 TourOrder 的 `total_amount`／`balance_due` 不增加，不建立補差額付款或通知。
 - 線上收款 callback 自動推進；匯款才需要人工確認。
 - Tenant A/B 用不同 merchant credentials 的 checkout/callback 交叉測試必須證明隔離。
 - Quick Edit 不顯示 advanced fields；進階頁仍可完整編輯，同一 API 往返一致。
