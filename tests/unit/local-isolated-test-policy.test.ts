@@ -6,6 +6,8 @@ import {
   readMetadataField,
 } from '../../scripts/ci/local-isolated-test-policy.mjs';
 
+const repo = 'smallwei0301/vibeaico-admin-rebuild';
+
 function body(overrides: Record<string, string> = {}) {
   const fields = {
     TEST_PROFILE: 'LOCAL_ISOLATED',
@@ -22,13 +24,13 @@ describe('local isolated TEST policy', () => {
     expect(readMetadataField(body(), 'TEST_ENV_ID')).toBe('AUTO');
   });
 
-  it('runs one isolated slot for a normal local profile', () => {
+  it('runs one disposable local slot for a normal same-repo PR', () => {
     expect(decideLocalIsolatedTest({
       eventName: 'pull_request',
       body: body(),
       actualHead: 'abc123',
-      headRepoFullName: 'smallwei0301/vibeaico-admin-rebuild',
-      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      headRepoFullName: repo,
+      repositoryFullName: repo,
     })).toMatchObject({
       runLocal: true,
       profile: 'LOCAL_ISOLATED',
@@ -45,35 +47,38 @@ describe('local isolated TEST policy', () => {
       eventName: 'pull_request',
       body: body({ TEST_PROFILE: 'LOCAL_ISOLATED_CANARY' }),
       actualHead: 'canary-sha',
-      headRepoFullName: 'smallwei0301/vibeaico-admin-rebuild',
-      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      headRepoFullName: repo,
+      repositoryFullName: repo,
       nowEpochSeconds: 1_000,
     });
-    expect(decision.runLocal).toBe(true);
-    expect(decision.slots).toEqual(['a', 'b']);
-    expect(decision.canaryBarrierEpoch).toBe(1_360);
-    expect(decision.reason).toBe('two_slot_canary');
+    expect(decision).toMatchObject({
+      runLocal: true,
+      slots: ['a', 'b'],
+      canaryBarrierEpoch: 1_360,
+      reason: 'two_slot_canary',
+    });
   });
 
-  it('refuses to let a local green result masquerade as final canonical validation', () => {
+  it('requires the final remote canonical gate for every local profile', () => {
     const decision = decideLocalIsolatedTest({
       eventName: 'pull_request',
       body: body({ FINAL_CANONICAL_REQUIRED: 'false' }),
       actualHead: 'abc123',
     });
     expect(decision.runLocal).toBe(false);
-    expect(decision.errors).toContain('LOCAL_ISOLATED profiles must set FINAL_CANONICAL_REQUIRED=true');
+    expect(decision.errors).toContain(
+      'LOCAL_ISOLATED profiles must set FINAL_CANONICAL_REQUIRED=true',
+    );
   });
 
-  it('authenticates manual dispatch against the exact branch head and explicit final gate', () => {
-    const valid = decideLocalIsolatedTest({
+  it('authenticates manual dispatch against the exact branch head and final gate', () => {
+    expect(decideLocalIsolatedTest({
       eventName: 'workflow_dispatch',
       inputProfile: 'LOCAL_ISOLATED',
       inputExpectedHead: 'new-sha',
       inputFinalCanonicalRequired: 'true',
       actualHead: 'new-sha',
-    });
-    expect(valid).toMatchObject({ runLocal: true, reason: 'per_pr_local_isolated' });
+    })).toMatchObject({ runLocal: true, reason: 'per_pr_local_isolated' });
 
     const wrongHead = decideLocalIsolatedTest({
       eventName: 'workflow_dispatch',
@@ -87,21 +92,20 @@ describe('local isolated TEST policy', () => {
   });
 
   it('does not automatically spend two Docker runners for a fork PR', () => {
-    const decision = decideLocalIsolatedTest({
+    expect(decideLocalIsolatedTest({
       eventName: 'pull_request',
       body: body({ TEST_PROFILE: 'LOCAL_ISOLATED_CANARY' }),
       actualHead: 'fork-sha',
       headRepoFullName: 'external-user/vibeaico-admin-rebuild',
-      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
-    });
-    expect(decision).toMatchObject({
+      repositoryFullName: repo,
+    })).toMatchObject({
       runLocal: false,
       reason: 'fork_pr_requires_trusted_manual_dispatch',
       errors: [],
     });
   });
 
-  it('keeps source-only work out of Docker and the local database lane', () => {
+  it('keeps source-only work out of Docker and local database lanes', () => {
     expect(decideLocalIsolatedTest({
       eventName: 'pull_request',
       body: body({ TEST_PROFILE: 'SOURCE_ONLY', FINAL_CANONICAL_REQUIRED: 'false' }),
@@ -112,14 +116,28 @@ describe('local isolated TEST policy', () => {
     });
   });
 
-  it('flags migration, auth and storage paths for a future Supabase Branch', () => {
+  it('routes migration, Auth and Storage through free local isolation plus final remote TEST', () => {
     expect(classifyRiskPaths([
       'supabase/migrations/0063_example.sql',
       'src/app/api/auth/callback/route.ts',
       'src/app/api/upload/route.ts',
     ])).toEqual({
-      remoteBranchRecommended: true,
+      localIsolatedRequired: true,
+      remoteCanonicalRequired: true,
+      paidPreviewBranchConsidered: false,
       reasons: ['DATABASE_MIGRATION', 'AUTH', 'STORAGE'],
     });
+  });
+
+  it('rejects the retired paid Preview Branch profile', () => {
+    const decision = decideLocalIsolatedTest({
+      eventName: 'pull_request',
+      body: body({ TEST_PROFILE: 'REMOTE_BRANCH_REQUIRED' }),
+      actualHead: 'abc123',
+    });
+    expect(decision.runLocal).toBe(false);
+    expect(decision.errors).toContain(
+      'TEST_PROFILE is invalid: REMOTE_BRANCH_REQUIRED',
+    );
   });
 });
