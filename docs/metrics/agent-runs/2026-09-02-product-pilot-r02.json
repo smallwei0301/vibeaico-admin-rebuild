@@ -62,13 +62,13 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "outcomes": [],
-    "wip": {
-      "auditReady": 0,
-      "exactHeadCiOnly": 0,
-      "commitOnly": 1,
-      "unfinishedCarryover": 0
-    },
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 1,
+    "unfinishedCarryover": 0,
     "cycleTimeMinutes": null
   },
   "ci": {
