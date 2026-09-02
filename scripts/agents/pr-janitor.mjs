@@ -210,11 +210,14 @@ async function upsertJanitorComment(context, prNumber, body) {
   }
 }
 
-async function addSupersededComment(context, oldPrNumber, newPrNumber) {
+async function hasSupersededComment(context, oldPrNumber, newPrNumber) {
   const marker = `<!-- pr-janitor-superseded-by:${newPrNumber} -->`;
   const comments = await paginate(context, `/issues/${oldPrNumber}/comments?`);
-  if (comments.some((comment) => (comment.body ?? "").includes(marker))) return;
+  return comments.some((comment) => (comment.body ?? "").includes(marker));
+}
 
+async function addSupersededComment(context, oldPrNumber, newPrNumber) {
+  const marker = `<!-- pr-janitor-superseded-by:${newPrNumber} -->`;
   await api(context, `/issues/${oldPrNumber}/comments`, {
     method: "POST",
     body: {
@@ -225,6 +228,58 @@ async function addSupersededComment(context, oldPrNumber, newPrNumber) {
 
 async function closePr(context, number) {
   await api(context, `/pulls/${number}`, { method: "PATCH", body: { state: "closed" } });
+}
+
+async function revalidateMutationPair(context, { source, target, compareStatus }) {
+  // The list response and compare result are snapshots. Fetch both PRs together immediately
+  // before every write so a synchronize, close, or fork change fails closed instead of acting
+  // on an outdated candidate.
+  const [sourceResult, targetResult] = await Promise.allSettled([
+    api(context, `/pulls/${source.number}`),
+    api(context, `/pulls/${target.number}`),
+  ]);
+
+  if (sourceResult.status === "rejected") {
+    return {
+      safe: false,
+      reason: `JANITOR_REVIEW_SOURCE_REFETCH_FAILED: ${sourceResult.reason.message}`,
+    };
+  }
+  if (targetResult.status === "rejected") {
+    return {
+      safe: false,
+      reason: `JANITOR_REVIEW_TARGET_REFETCH_FAILED: ${targetResult.reason.message}`,
+    };
+  }
+
+  const currentSource = sourceResult.value;
+  const currentTarget = targetResult.value;
+  if (
+    currentSource.state !== "open"
+    || currentSource.head?.sha !== source.head?.sha
+  ) {
+    return { safe: false, reason: "JANITOR_REVIEW_SOURCE_CHANGED" };
+  }
+  if (currentSource.head?.repo?.full_name !== context.fullName) {
+    return { safe: false, reason: "JANITOR_REVIEW_SOURCE_NOT_SAME_REPOSITORY" };
+  }
+  if (
+    currentTarget.state !== "open"
+    || currentTarget.head?.sha !== target.head?.sha
+  ) {
+    return { safe: false, reason: "JANITOR_REVIEW_TARGET_CHANGED" };
+  }
+
+  const decision = evaluateDeclaredSupersession({
+    source: currentSource,
+    target: currentTarget,
+    compareStatus,
+  });
+  if (!decision.safe) {
+    return { safe: false, reason: `JANITOR_REVIEW_PAIR_REVALIDATION_FAILED: ${decision.reason}` };
+  }
+
+  return { safe: true, reason: decision.reason };
 }
 
 function readTriggerPrNumber() {
@@ -322,25 +377,32 @@ export async function runJanitor({ apply = false } = {}) {
         continue;
       }
 
-      // Re-fetch immediately before mutating: a synchronized or closed target is Janitor review, never a stale close.
-      let currentTarget;
-      try {
-        currentTarget = await api(context, `/pulls/${targetNumber}`);
-      } catch (error) {
-        reviews.push({ source: source.number, target: targetNumber, reason: `TARGET_REFETCH_FAILED: ${error.message}` });
-        continue;
-      }
-      if (currentTarget.state !== "open" || currentTarget.head?.sha !== target.head?.sha) {
-        reviews.push({ source: source.number, target: targetNumber, reason: "JANITOR_REVIEW_TARGET_CHANGED" });
-        continue;
-      }
+      if (apply) {
+        const commentExists = await hasSupersededComment(context, targetNumber, source.number);
+        if (!commentExists) {
+          const beforeComment = await revalidateMutationPair(context, { source, target, compareStatus });
+          if (!beforeComment.safe) {
+            reviews.push({ source: source.number, target: targetNumber, reason: beforeComment.reason });
+            continue;
+          }
+          await addSupersededComment(context, targetNumber, source.number);
+        }
 
+        const beforeClose = await revalidateMutationPair(context, { source, target, compareStatus });
+        if (!beforeClose.safe) {
+          reviews.push({ source: source.number, target: targetNumber, reason: beforeClose.reason });
+          continue;
+        }
+        await closePr(context, targetNumber);
+      } else {
+        const beforeDryRunAction = await revalidateMutationPair(context, { source, target, compareStatus });
+        if (!beforeDryRunAction.safe) {
+          reviews.push({ source: source.number, target: targetNumber, reason: beforeDryRunAction.reason });
+          continue;
+        }
+      }
       actions.push({ source: source.number, target: targetNumber, reason: decision.reason });
       closedNumbers.add(targetNumber);
-      if (apply) {
-        await addSupersededComment(context, targetNumber, source.number);
-        await closePr(context, targetNumber);
-      }
     }
   }
 
