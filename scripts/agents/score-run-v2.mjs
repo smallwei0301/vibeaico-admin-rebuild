@@ -16,6 +16,10 @@ const EXPECTED = {
   LOCAL_TEST_GREEN: "success",
   RUN_COMPLETE: "complete",
 };
+const DELIVERY_CLAIM_TYPES = new Set(["ISSUE_CLOSED", "OWNER_BLOCKED_COMPLETE"]);
+const CURRENT_REPOSITORY = String(
+  process.env.GITHUB_REPOSITORY ?? "smallwei0301/vibeaico-admin-rebuild",
+).trim().toLowerCase();
 
 const num = (value, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const round = (value, digits = 2) => {
@@ -24,10 +28,83 @@ const round = (value, digits = 2) => {
 };
 const inverse = (value, best, worst, max) => value <= best ? max : value >= worst ? 0 : max * (1 - ((value - best) / (worst - best)));
 const linear = (value, low, high, max) => value <= low ? 0 : value >= high ? max : max * ((value - low) / (high - low));
+const lower = (value) => String(value ?? "").trim().toLowerCase();
+
+function isUsableReference(value) {
+  const text = String(value ?? "").trim();
+  return Boolean(
+    text &&
+    !text.includes("<!--") &&
+    !text.includes("|") &&
+    !/^(?:TBD|N\/A|UNKNOWN|NONE|-)$/i.test(text)
+  );
+}
+
+export function canonicalIssueSubject(value) {
+  const text = String(value ?? "").trim();
+  if (!isUsableReference(text)) return null;
+
+  const repositoryUrl = text.match(
+    /^https:\/\/(?:github\.com\/|api\.github\.com\/repos\/)([^/\s]+)\/([^/\s]+)\/issues\//i,
+  );
+  if (repositoryUrl && `${repositoryUrl[1]}/${repositoryUrl[2]}`.toLowerCase() !== CURRENT_REPOSITORY) {
+    return null;
+  }
+
+  const local = text.match(/^(?:issue\s*(?:#|:)\s*|issue\s+|#\s*)([1-9]\d*)$/i);
+  const web = text.match(/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/([1-9]\d*)(?:[/?#].*)?$/i);
+  const api = text.match(/^https:\/\/api\.github\.com\/repos\/[^/\s]+\/[^/\s]+\/issues\/([1-9]\d*)(?:[/?#].*)?$/i);
+  const issueNumber = Number(local?.[1] ?? web?.[1] ?? api?.[1]);
+
+  return Number.isSafeInteger(issueNumber) && issueNumber > 0 ? `issue#${issueNumber}` : null;
+}
+
+export function canonicalIssueEvidenceRef(value) {
+  const text = String(value ?? "").trim();
+  if (!isUsableReference(text)) return null;
+  return canonicalIssueSubject(text.replace(/^github:/i, ""));
+}
+
+function collectDeliveryEvidence(run) {
+  const closedSubjects = new Set();
+  const ownerBlockedSubjects = new Set();
+
+  if (run?.completionTruth?.status !== "VERIFIED") {
+    return {
+      closedSubjects,
+      ownerBlockedSubjects,
+      ownerBlockedOnlySubjects: new Set(),
+      overlappingSubjects: new Set(),
+    };
+  }
+
+  const claims = run.completionTruth.claims ?? [];
+  for (const claim of claims) {
+    if (!DELIVERY_CLAIM_TYPES.has(claim.type) || claim.verification !== "VERIFIED") continue;
+    const expected = EXPECTED[claim.type];
+    if (lower(claim.claimedState) !== expected || lower(claim.observedState) !== expected) continue;
+
+    const subject = canonicalIssueSubject(claim.subject);
+    const evidenceSubject = canonicalIssueEvidenceRef(claim.evidenceRef);
+    if (!subject || evidenceSubject !== subject) continue;
+    if (claim.type === "ISSUE_CLOSED") closedSubjects.add(subject);
+    else ownerBlockedSubjects.add(subject);
+  }
+
+  const overlappingSubjects = new Set(
+    [...closedSubjects].filter((subject) => ownerBlockedSubjects.has(subject)),
+  );
+  const ownerBlockedOnlySubjects = new Set(
+    [...ownerBlockedSubjects].filter((subject) => !closedSubjects.has(subject)),
+  );
+
+  return { closedSubjects, ownerBlockedSubjects, ownerBlockedOnlySubjects, overlappingSubjects };
+}
 
 export function computeDeliveryOutcome(run) {
-  const shippedUnits = num(run.delivery.issuesClosed);
-  const autonomousOutcomeUnits = shippedUnits + (num(run.delivery.ownerBlockedComplete) * 0.75);
+  const evidence = collectDeliveryEvidence(run);
+  const shippedUnits = evidence.closedSubjects.size;
+  const autonomousOutcomeUnits = shippedUnits + (evidence.ownerBlockedOnlySubjects.size * 0.75);
   return {
     shippedUnits: round(shippedUnits),
     autonomousOutcomeUnits: round(autonomousOutcomeUnits),
@@ -45,23 +122,48 @@ export function evaluateCompletionTruth(run) {
   const gradingGaps = [];
   const truth = run.completionTruth;
   const claims = truth?.claims ?? [];
+  const evidence = collectDeliveryEvidence(run);
 
   if (truth?.status === "FAILED") hardFailures.push("completionTruth.status=FAILED");
   for (const claim of claims) {
-    const observed = String(claim.observedState ?? "").toLowerCase();
-    const claimed = String(claim.claimedState ?? "").toLowerCase();
+    const observed = lower(claim.observedState);
+    const claimed = lower(claim.claimedState);
     const expected = EXPECTED[claim.type];
     if (claim.verification === "CONTRADICTED" || (claim.verification === "VERIFIED" && claimed !== observed)) hardFailures.push(`${claim.type} ${claim.subject} contradicts live evidence`);
     else if (claim.verification === "VERIFIED" && expected && observed !== expected) hardFailures.push(`${claim.type} ${claim.subject} observed=${observed}; expected=${expected}`);
     else if (claim.verification === "UNVERIFIED" && FINAL.has(run.status) && claim.type !== "OTHER") gradingGaps.push(`${claim.type} ${claim.subject} is unverified`);
+
+    if (FINAL.has(run.status) && DELIVERY_CLAIM_TYPES.has(claim.type)) {
+      const subject = canonicalIssueSubject(claim.subject);
+      const evidenceRef = String(claim.evidenceRef ?? "").trim();
+      const evidenceSubject = canonicalIssueEvidenceRef(evidenceRef);
+      if (!subject) gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} does not identify one canonical Issue`);
+      if (claim.verification === "VERIFIED") {
+        if (!isUsableReference(evidenceRef)) {
+          gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} has no usable evidenceRef`);
+        } else if (!evidenceSubject) {
+          gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} evidenceRef does not identify one canonical Issue`);
+        } else if (subject && evidenceSubject !== subject) {
+          hardFailures.push(`${claim.type} ${subject} evidenceRef points to ${evidenceSubject}`);
+        }
+      }
+    }
+  }
+
+  for (const subject of evidence.overlappingSubjects) {
+    hardFailures.push(`${subject} is verified as both ISSUE_CLOSED and OWNER_BLOCKED_COMPLETE`);
   }
 
   const verified = (type) => claims.filter((claim) => claim.type === type && claim.verification === "VERIFIED");
   if (FINAL.has(run.status)) {
     if (truth?.status !== "VERIFIED") gradingGaps.push("completionTruth.status must be VERIFIED");
     if (!verified("RUN_COMPLETE").length) gradingGaps.push("verified RUN_COMPLETE claim is required");
-    if (verified("ISSUE_CLOSED").length < num(run.delivery.issuesClosed)) gradingGaps.push("verified ISSUE_CLOSED claims do not cover delivery.issuesClosed");
-    if (verified("OWNER_BLOCKED_COMPLETE").length < num(run.delivery.ownerBlockedComplete)) gradingGaps.push("verified OWNER_BLOCKED_COMPLETE claims do not cover delivery.ownerBlockedComplete");
+    if (evidence.closedSubjects.size !== num(run.delivery.issuesClosed)) {
+      gradingGaps.push(`delivery.issuesClosed=${num(run.delivery.issuesClosed)} does not match ${evidence.closedSubjects.size} unique verified ISSUE_CLOSED subject(s)`);
+    }
+    if (evidence.ownerBlockedSubjects.size !== num(run.delivery.ownerBlockedComplete)) {
+      gradingGaps.push(`delivery.ownerBlockedComplete=${num(run.delivery.ownerBlockedComplete)} does not match ${evidence.ownerBlockedSubjects.size} unique verified OWNER_BLOCKED_COMPLETE subject(s)`);
+    }
   }
   return { hardFailures, gradingGaps };
 }
@@ -94,7 +196,8 @@ function scores(run, outcome) {
     + inverse(num(run.ci.invalidReruns) + num(run.modelUsage.duplicateScans), 0, 3, 3);
 
   const started = num(run.delivery.issuesStarted);
-  const completed = outcome.shippedUnits + num(run.delivery.ownerBlockedComplete);
+  const evidence = collectDeliveryEvidence(run);
+  const completed = outcome.shippedUnits + evidence.ownerBlockedOnlySubjects.size;
   const completionScore = (started > 0 ? Math.min(1, completed / started) * 12 : 0)
     + inverse(outcome.wipInventory.unfinishedCarryover, 0, 5, 5)
     + (num(run.inventory.closureSweeps) > 0 ? Math.min(3, 1 + num(run.inventory.closureAdvancedOrClosed) * 2) : 0)
@@ -172,8 +275,8 @@ export function renderMarkdownV2(run, result) {
     `> 評分狀態：**${result.scoreStatus}**`,
     `> 分數：${result.total === null ? "尚不評分" : `**${result.total} / 100（${result.grade}）**`}`, "",
     "## 兩本帳", "",
-    `- 真正出貨 shipped_units：${result.shippedUnits}（只算 live-verified CLOSED Issue）`,
-    `- 自主完成 autonomous_outcome_units：${result.autonomousOutcomeUnits}（CLOSED + 完整 OWNER_BLOCKED × 0.75）`,
+    `- 真正出貨 shipped_units：${result.shippedUnits}（只算不重複、live-verified 的 CLOSED Issue）`,
+    `- 自主完成 autonomous_outcome_units：${result.autonomousOutcomeUnits}（唯一 CLOSED + 唯一完整 OWNER_BLOCKED × 0.75）`,
     `- 在製品 WIP：Audit Ready ${result.wipInventory.auditReady}、CI-only ${result.wipInventory.exactHeadCiOnly}、commit-only ${result.wipInventory.commitOnly}、carryover ${result.wipInventory.unfinishedCarryover}`,
     `- 內部加權 usage：${result.weightedUsageUnits}（不是官方 token）`,
     `- 每件真正出貨 usage：${show(result.weightedUsagePerShippedUnit)}`,
@@ -189,7 +292,7 @@ export function renderMarkdownV2(run, result) {
     `| Agent 流動 | ${result.scores.flow} / 10 |`,
     `| 證據完整 | ${result.scores.auditability} / 10 |`, "",
   );
-  lines.push("---", "", "Audit Ready、CI 綠與 commit 是進度，不再折算成成品。IN_PROGRESS 不評分。", "");
+  lines.push("---", "", "同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；跨 repo 或其他無效 Issue 證據不計分，證據指向本 repo 的另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。", "");
   return lines.join("\n");
 }
 
