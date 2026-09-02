@@ -1,337 +1,191 @@
 # B+ Agent 出貨迴圈
 
-> Canonical Owner Decision：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
+> 最新決策：`docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`
 >
-> 本文件是執行手冊。若與較新的 Owner Decision 衝突，以較新的 Owner Decision 為準。
+> 原始 B+：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
 
-## 1. 為什麼從 Mode C 改成 B+
+## 現行架構
 
-Mode C 讓不同 Issue 的 Terra 同時施工，能減少等待，但共用 TEST、Sol Audit 與 closeout
-仍是窄出口。若同時開四張大型 PR，前端施工速度變快，最後會在 TEST 與審查門口塞車。
-
-B+ 保留平行能力，但改成：
+B+ 仍是 close-first（先收尾再開新工地），但現在可在嚴格契約下試行兩條完整 Terra：
 
 ```text
-一條完整出貨線
-一條預備備料線
-多位 Luna 窄任務線
-一條收尾線
-一條 TEST 線
+Terra slot 1 → 自己的免費 local Supabase ┐
+                                          ├→ 依 closeability 排隊
+Terra slot 2 → 自己的免費 local Supabase ┘
+                                                   ↓
+                                      remote canonical TEST max 1
+                                                   ↓
+                                           Sol Audit max 1
+                                                   ↓
+                                              merge max 1
 ```
 
-## 2. 每輪狀態機
+Repo-wide 上限：
+
+```text
+TERRA_BUILD          max 2，僅限 qualified dual pilot
+TERRA_RESERVE        pilot 期間 max 0
+LUNA_CLOSURE         max 1
+LUNA_TASKS           預設 4、最多 6，另有 1 位 Aggregator
+LOCAL_ISOLATED       每張 Terra PR 各 1 套
+TEST_VALIDATION      remote max 1
+SOL_AUDIT            max 1
+MERGE                max 1
+ACTIVE_CANDIDATE     max 2
+```
+
+沒有完整雙 Terra 契約時，自動維持 `TERRA_BUILD max 1`。
+
+付費 Supabase Preview Branch 目前是：
+
+```text
+DEFERRED_NOT_IN_CONSIDERATION
+```
+
+不得建立、不得要求費率確認，也不得當成雙 Terra、Audit 或 merge 的前置條件。
+
+## 每輪 Loop
 
 ```text
 START
-  ↓
-LUNA_FAN_OUT       真實盤點、Closure、CI、Janitor、QA、Metrics
-  ↓
-LUNA_FAN_IN        一位 Luna 彙整成不超過 30 行的 TRIAGE 包
-  ↓
-SOL_TRIAGE         選 MAIN_TERRA、可選 RESERVE_TERRA、Closure target
-  ↓
-TERRA_BUILD        主線施工；預備線只做 source-only 一個原子切片
-  ↓
-TEST_VALIDATION    唯一 shared TEST holder
-  ↓
-SOL_AUDIT          CLOSE_APPROVED／FIX_REQUIRED／OWNER_BLOCKED
-  ↓
-LUNA_CLOSEOUT      證據、PR／Issue、Janitor、lane 釋放
-  ↓
-LUNA_METRICS       JSON ledger → Markdown scorecard
-  ↓
-ADJUST             下一輪最多調整兩條規則
-  ↓
-NEXT LOOP
+→ Luna fan-out：live truth、Closure、CI、Janitor、QA、Metrics
+→ Luna Aggregator：去重，壓縮成 <=30 行
+→ Sol TRIAGE：選 slot 1、可選 slot 2、Closure target、remote TEST 順序
+→ Terra BUILD 1/2：各自施工並跑 local isolated TEST
+→ remote canonical TEST：一次只驗一張
+→ Sol AUDIT：一次只審一張
+→ merge：一次只合一張
+→ Luna CLOSEOUT：Issue、PR、證據、lane、報告
+→ SCORE / ADJUST
+→ NEXT LOOP
 ```
 
-## 3. START：建立 Run ID 與基準
+## 雙 Terra 必要契約
 
-格式：
+兩張 active `TERRA_BUILD` PR 都必須填：
 
 ```text
-YYYY-MM-DD-RNN-簡短主題
+DUAL_TERRA_PILOT: true
+TERRA_SLOT: 1 或 2
+RUN_ID: 同一個值
+Primary Issue: 不同
+TEST_PROFILE: LOCAL_ISOLATED
+TEST_ENV_ID: 不同
+FINAL_CANONICAL_REQUIRED: true
+FILE_OWNERSHIP: 明確且不重疊
+TEST_LANE_REQUIRED: false
 ```
 
-開始時記錄：
+`FILE_OWNERSHIP` 使用逗號分隔路徑根目錄。以下視為撞車：
 
 ```text
-RUN_ID
-START_MAIN_SHA
-START_OPEN_ISSUES
-START_OPEN_PRS
-START_ACTIVE_CANDIDATES
-START_MAIN_TERRA
-START_RESERVE_TERRA
-START_TEST_HOLDER
-START_WEEKLY_USAGE_PERCENT（若平台可見）
+src/app/api/chat
+src/app/api/chat/messages
 ```
 
-沒有可見的 token／週額度資料就填 `null`，不得推測。
+因為第二條位於第一條裡面。AppShell、相同 migration 編號、共用 fixture、共用 schema 所有權等熱門區域無法清楚切開時，不啟動 slot 2。
 
-## 4. LUNA_FAN_OUT
+## Terra 工作邊界
 
-預設 4 位，最多 6 位。任務包固定如下：
+每條 Terra 可以完成：
 
 ```text
-TASK_ID:
-ROLE:
-ISSUE / PR:
-EXACT_HEAD:
-QUESTION:
-READ_ONLY_PATHS:
-DO_NOT_READ:
-OUTPUT_MAX_LINES: 15
-ALLOWED_RESULT: PASS | GAP | ESCALATE_TERRA | ESCALATE_SOL | OWNER_BLOCKED
+讀規格
+→ targeted tests
+→ source 修改
+→ unit / typecheck / build
+→ local migration / reset / seed
+→ local integration / E2E
+→ ISOLATED_GREEN 或明確失敗
 ```
 
-### 避免低階模型也燒出文字暴風雪
-
-- 不把完整舊對話傳給 Luna。
-- 不讓兩位 Luna 全量掃同一批 Issue。
-- 每位只回答一個問題。
-- 一位 `LUNA_AGGREGATOR` 合併重複項，再交 Sol。
-- Luna 發現超出範圍問題時只分類，不直接擴大主 PR。
-
-## 5. SOL_TRIAGE
-
-Sol 只讀 Luna 彙整包、Issue acceptance、必要 canonical 文件與候選差異摘要。
-
-固定輸出：
+Local 成功只能叫：
 
 ```text
-RUN_ID:
-MAIN_TERRA:
-RESERVE_TERRA:
-CLOSURE_TARGET:
-CLOSEABILITY_SCORE:
-SELECTION_REASON:
-DEPENDENCIES:
-OWNER_OR_EXTERNAL_BLOCKER:
-TEST_REQUIRED:
-RESERVE_BOUNDARY:
-RISK:
-ACCEPTANCE_GATES:
-WHY_NOT_CLOSER_CANDIDATE:
+ISOLATED_GREEN
+LOCAL_CLEANUP_VERIFIED
 ```
 
-Closeability：
+不能叫 `CANONICAL_GREEN`。最後仍須排進現有 remote TEST。
+
+Pilot 期間不另開 Reserve Terra。若其中一條失敗並退回單 Terra，才可按舊 B+ 邊界恢復最多一條 source-only Reserve。
+
+## remote TEST、Sol 與 merge
+
+兩張 local green 後，Sol 依 closeability、風險與依賴排序。只允許一張成為 remote `TEST_VALIDATION` holder。
+
+禁止：
+
+- 兩張同時使用 remote TEST secrets；
+- no-op commit 只為重跑；
+- 重跑舊 SHA；
+- local green 跳過 remote TEST；
+- 兩張同時進 Sol Audit；
+- 兩張同時 merge。
+
+## DB／Auth／Storage
+
+資料庫 migration、Auth（登入與權限）、Storage（檔案儲存）也走免費路徑：
 
 ```text
-5  最終分支已有成果，只差證據／close
-4  差一個小步驟
-3  已有 PR 與大多數測試，最多兩步可 Audit
-2  仍需明顯施工或多輪驗證
-1  主要卡 Owner／外部／Production／大型依賴
-0  stale／duplicate／superseded
+LOCAL_ISOLATED
+→ SHARED_CANONICAL
 ```
 
-## 6. MAIN_TERRA 與 RESERVE_TERRA
+若 local 與 remote 結果不一致，保存差異，由 Luna 壓縮；只有模糊或高風險問題才交 Sol。不得自行建立付費分支。
 
-### MAIN_TERRA
+## Luna 與 Sol
 
-可以完整施工、申請 TEST、修明確 CI、交 Sol Audit。必須一路推到：
+Luna 任務維持窄範圍：一個 Issue／PR、一個 exact head、一個問題、最多 15 行。Aggregator 去重後才交 Sol。
+
+一般 Issue 的 Sol 預算：
 
 ```text
-CLOSED | AUDIT_READY | OWNER_BLOCKED
+TRIAGE 1
+AUDIT 1
 ```
 
-### RESERVE_TERRA
+只有 DB／Auth／付款／安全、local-vs-remote 不一致、shared TEST 模糊或 ownership collision，才增加一次 DIAGNOSE。
 
-只能：
+## 失敗時自動退回一條 Terra
 
-```text
-讀必要規格
-寫紅燈測試
-source-only 小切片
-unit / typecheck / build
-最多一個原子 commit
-```
+下一輪將 `FULL_TERRA_MAX` 退回 1，若發生：
 
-必須明寫 `RESERVE_BOUNDARY`，例如：
+- local stack 或 cleanup 失敗；
+- 兩條 ownership／migration／fixture／schema 撞車；
+- local 結果互相污染；
+- active candidates 超過 2；
+- 品質低於 24／30；
+- carryover 或 post-merge regression 明顯增加；
+- weighted usage／Delivery Unit 惡化超過 20%，且成品沒有增加。
 
-```text
-只改 GUIDE traveler aggregation；不碰 AppShell、Auth、migration、shared TEST；
-完成 unit/typecheck/build 後停在 READY_FOR_PROMOTION。
-```
+退回後先復盤，再決定是否重新試行。
 
-若預備線開始需要 TEST、Sol Audit、第二個 commit 或擴大 scope，立刻停止並回 TRIAGE。
+## Run 證據
 
-## 7. TEST_VALIDATION
-
-進入 shared TEST 前留下：
-
-```text
-TEST_HOLDER_ISSUE
-TEST_HOLDER_PR
-EXACT_HEAD
-MIGRATION_BASELINE
-EXPECTED_FULL_CI_COUNT
-```
-
-離開時留下：
-
-```text
-WORKFLOW_RUN_ID
-RESULT
-FAILED_STEP / SUITE / CASE
-ENVIRONMENT_CHANGED
-RETRY_ALLOWED
-RESIDUE_CHECK
-```
-
-同一 exact head、同一環境、同一命令不重跑。環境錯誤兩次後停止該路徑，保存證據並
-切到其他安全工作。
-
-## 8. SOL_AUDIT
-
-Sol 只讀：
-
-```text
-Issue acceptance
-相關 diff
-targeted tests
-exact-head CI
-TEST／Preview 證據
-安全邊界
-未完成項
-```
-
-輸出只能是：
-
-```text
-CLOSE_APPROVED
-FIX_REQUIRED
-OWNER_BLOCKED
-```
-
-一般 Issue 的 Sol 接觸預算為 2 次；高風險或模糊 CI 最多 3 次。
-
-## 9. LUNA_CLOSEOUT
-
-- 更新 PR body 的 exact-head 與真實 CI 狀態。
-- 刪除過時 `queued`／`in progress` 說明。
-- 回填 Issue acceptance。
-- 取得 `CLOSE_APPROVED` 後關閉 Issue。
-- 將 stale PR 依 Janitor 規則安全收斂。
-- 釋放 MAIN／RESERVE／TEST lane。
-- 寫入本輪 ledger 與報告。
-
-## 10. 量化資料
-
-### 實際 usage
-
-平台提供時記錄：
-
-```text
-requested_model / actual_model
-input_tokens
-output_tokens
-cached_tokens
-weekly_usage_percent_start / end
-```
-
-### 內部加權 usage
-
-平台未提供時使用專案內部比較值：
-
-```text
-Luna  = 1
-Terra = 3
-Sol   = 6
-```
-
-再乘上下文倍率：
-
-```text
-精簡交接包 = 1.0
-中等文件包 = 1.5
-完整對話／全 repo 重讀 = 3.0
-```
-
-這不是官方 token 換算。報告必須同時標出 `actual_tokens_available`，避免把估算偽裝成真實額度。
-
-### Delivery Unit
-
-```text
-Issue CLOSED                    = 1.00
-CLOSE_APPROVED 待允許 merge     = 0.80
-自主工作完成後 OWNER_BLOCKED    = 0.50
-只有 exact-head CI 綠           = 0.25
-只有 commit                     = 0.10
-```
-
-主要效率指標：
-
-```text
-weighted_usage_per_delivery_unit = weighted_usage_units / delivery_units
-```
-
-## 11. 100 分 Scorecard
-
-| 面向 | 分數 |
-|---|---:|
-| 模型與 usage 效率 | 25 |
-| 專案完成效率 | 25 |
-| 品質與安全 | 30 |
-| 多 Agent 流動效率 | 10 |
-| 可稽核證據 | 10 |
-
-### 等級
-
-```text
-90～100  A  明顯優化
-80～89   B  健康
-70～79   C  有產出但仍浪費
-60～69   D  下一輪縮小 WIP
-<60      F  進入 CLOSURE_RECOVERY
-```
-
-### 硬性失敗
-
-下列任一發生，本輪 `qualified=false`：
-
-- 未授權 Production DDL／DML／部署；
-- 真實付款、退款或顧客通知；
-- 洩漏秘密；
-- 未經 `CLOSE_APPROVED` 關 Issue；
-- 把未執行測試或舊 SHA 冒充驗收。
-
-## 12. 自動調整
-
-- Luna 採用率 ≥85%、重複率 ≤10%、品質分 ≥25／30：下一輪 Luna 上限可 +1，最多 6。
-- Luna 採用率 <70% 或重複率 >15%：Luna 數量 -1，縮小任務並保留 Aggregator。
-- usage 增加 >20% 但 Delivery Units 未增加：關閉預備 Terra，Reviewer 限一位，先做 Closure。
-- 品質 <24／30：Luna 暫停改 code，預備 Terra 暫停，主 Terra 補 targeted tests。
-- 連續兩輪沒有 CLOSED 或完整 OWNER_BLOCKED：進入 `CLOSURE_RECOVERY`，禁止開新大型 Issue。
-
-## 13. 報告產物
-
-每輪必須提交：
+每輪維護：
 
 ```text
 docs/metrics/agent-runs/<RUN_ID>.json
 docs/metrics/agent-runs/<RUN_ID>.md
 ```
 
-命令：
+至少記錄：slot 1/2、local run、cleanup、remote wait、ownership collision、Issue close、Delivery Unit、carryover、Sol touches、模型使用與 post-merge regression。
 
-```bash
-npm run agent:run:init -- --run-id <RUN_ID>
-npm run agent:run:validate -- docs/metrics/agent-runs/<RUN_ID>.json
-npm run agent:run:score -- docs/metrics/agent-runs/<RUN_ID>.json
-npm run agent:run:review -- docs/metrics/agent-runs --limit 3
+實際 token 不可取得時保留 `null`，不得猜。內部 Luna=1、Terra=3、Sol=6 只作相對比較，不是官方額度換算。
+
+## Completion Truth Gate
+
+送出工具動作只算 `REQUESTED`。宣稱 local green、remote green、Audit、merge 或 Issue close 前，必須重新讀取 live workflow、PR、main、Issue 或外部環境。
+
+PR merge 至少需：
+
+```text
+merged=true 或 merged_at
+merge_commit_sha
+current main head
+merge commit 對 main 可追溯
+ref=main 關鍵檔案重讀
 ```
 
-Markdown 報告由 JSON 產生；人工修改報告後若無法由 JSON 重建，CI 應失敗。
-
-## 14. 復盤
-
-Owner 說「復盤」或「複盤」時：
-
-1. 讀最新 main 與 `vibeaico-agent-retrospective` Skill。
-2. 找 `docs/metrics/agent-runs/*.json` 最新 3 輪，資料不足則讀全部。
-3. 重算分數，不相信舊報告中的手填總分。
-4. 比較 usage／Delivery Unit、close rate、品質、Sol 接觸、Luna 採用率與 carryover。
-5. 指出最多 3 個根因，只挑 1～2 個規則改良。
-6. 安全的治理改良走 governance PR；不得在復盤時順便改產品功能或 Production。
+未完成查證只能寫 `*_REQUESTED_UNVERIFIED`。
