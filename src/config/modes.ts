@@ -38,6 +38,8 @@ export type ModePreset = {
   keywordGroups: readonly string[];
   /** 公開商店頁的預設區塊順序（11 分冊 catalog 端點） */
   shopSections: readonly string[];
+  /** GUIDE 首頁是否顯示第一版待處理事項 action inbox */
+  showActionInbox: boolean;
 };
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
@@ -50,6 +52,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     staffTerm: '服務人員',
     keywordGroups: [],
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
+    showActionInbox: false,
   },
   GUIDE: {
     icon: Compass,
@@ -64,6 +67,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     staffTerm: '導遊',
     keywordGroups: ['TRIP', 'DEPARTURE'],
     shopSections: ['TRIPS', 'PORTFOLIO'],
+    showActionInbox: true,
   },
   CLINIC: {
     icon: Hospital,
@@ -74,6 +78,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     staffTerm: '醫師',
     keywordGroups: [],
     shopSections: ['SERVICES'],
+    showActionInbox: false,
   },
 };
 
