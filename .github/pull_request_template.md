@@ -62,6 +62,10 @@ supersedes:
 
 ## Evidence
 
+- [ ] `npm run guard:repo-integrity` passes (core tree, deletion count, and source SHA scan).
+- [ ] Dependency changes pass a clean `npm ci`; `package.json` and `package-lock.json` are committed together.
+- [ ] `npm run typecheck`, `npm test`, and `npm run build` pass before any `preview/**` branch is created or moved.
+
 - Base / exact head:
 - Targeted tests:
 - Typecheck / build:

@@ -123,6 +123,11 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Reject incomplete or corrupted repository trees
+        env:
+          BASE_REVISION: ${{ needs.classify-changes.outputs.base_revision }}
+          HEAD_REVISION: ${{ needs.classify-changes.outputs.head_revision }}
+        run: npm run guard:repo-integrity
       - name: Validate .claude skill symlinks
         run: |
           if [ -d .claude/skills ] && find .claude/skills -type l ! -exec test -e {} \; -print -quit | grep -q .; then
@@ -142,7 +147,8 @@ jobs:
         run: |
           node scripts/ci/verify-docs-only.mjs
           echo '- docs-only: npm, typecheck, unit, build and shared TEST intentionally skipped' >> "$GITHUB_STEP_SUMMARY"
-      - run: npm ci
+      - name: Install the exact locked dependency tree
+        run: npm ci
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
       - run: npm run typecheck
         if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}

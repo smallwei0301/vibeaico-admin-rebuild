@@ -214,6 +214,14 @@ Closeability：5 幾乎可關；4 差一步；3 最多兩步可 Audit；2 需明
 - Branch 手動 full CI 必須證明 exact PR、exact branch、exact SHA 與唯一 holder。
 - 同一 exact head、同一環境、同一命令不盲目重跑。
 - 環境錯誤連續兩次後停止該路徑，保存證據並切其他安全工作。
+- 任何 Git Data API／遠端 tree 重建完成後，必須先驗證 exact head：
+  `npm run guard:repo-integrity` → `npm ci` → `npm run typecheck` → `npm test` →
+  `npm run build`。前一步未通過，
+  不得更新 `preview/**`、不得把 Vercel build 當第一道語法檢查，也不得用另一個 no-op commit 重試。
+- 完整性閘門至少驗證 `package.json`、`package-lock.json`、`src/app/`、`src/server/` 仍存在，
+  刪檔量未超過安全上限，且受控程式檔沒有單獨一行的 40 碼 Git SHA。
+- 相依套件只接受 lockfile 可重現的版本；`package.json` 與 `package-lock.json` 一起改，乾淨
+  `npm ci` 是必要證據。不存在的版本、peer 衝突或 lockfile 不一致都在 Preview 前停止。
 
 CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼、重現性、TEST holder、
 環境變化。明確 code bug 交 MAIN Terra；模糊或高風險才交 Sol。
