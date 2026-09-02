@@ -51,11 +51,9 @@ export function evaluateCompletionTruth(run) {
     const observed = String(claim.observedState ?? "").toLowerCase();
     const claimed = String(claim.claimedState ?? "").toLowerCase();
     const expected = EXPECTED[claim.type];
-    if (claim.verification === "CONTRADICTED" || claimed !== observed) {
-      hardFailures.push(`${claim.type} ${claim.subject} contradicts live evidence`);
-    } else if (claim.verification === "VERIFIED" && expected && observed !== expected) {
-      hardFailures.push(`${claim.type} ${claim.subject} observed=${observed}; expected=${expected}`);
-    }
+    if (claim.verification === "CONTRADICTED" || (claim.verification === "VERIFIED" && claimed !== observed)) hardFailures.push(`${claim.type} ${claim.subject} contradicts live evidence`);
+    else if (claim.verification === "VERIFIED" && expected && observed !== expected) hardFailures.push(`${claim.type} ${claim.subject} observed=${observed}; expected=${expected}`);
+    else if (claim.verification === "UNVERIFIED" && FINAL.has(run.status) && claim.type !== "OTHER") gradingGaps.push(`${claim.type} ${claim.subject} is unverified`);
   }
 
   const verified = (type) => claims.filter((claim) => claim.type === type && claim.verification === "VERIFIED");
