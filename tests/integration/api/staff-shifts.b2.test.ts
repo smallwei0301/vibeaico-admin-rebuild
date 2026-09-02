@@ -84,6 +84,44 @@ describe('POST /api/services → GET /api/services（04 §B-2 CRUD）', () => {
   });
 });
 
+describe('POST /api/services/:id/duplicate（04 §B-2）', () => {
+  it('複製服務會同時配置 public 與 LINE 排序且排在最後', async () => {
+    const before = await admin
+      .from('services')
+      .select('sort_order, line_sort_order')
+      .eq('tenant_id', SHOP_A.id);
+    expect(before.error).toBeNull();
+    const maxSort = Math.max(...(before.data ?? []).map((row: any) => row.sort_order), -1);
+    const maxLineSort = Math.max(...(before.data ?? []).map((row: any) => row.line_sort_order), -1);
+
+    const source = await admin
+      .from('services')
+      .select('name')
+      .eq('id', SHOP_A.serviceA1)
+      .single();
+    expect(source.error).toBeNull();
+
+    const res = await ownerA.post(`/api/services/${SHOP_A.serviceA1}/duplicate`);
+    expect(res.status).toBe(200);
+    const body = await readJson<{ id: string }>(res);
+    expect(body.success).toBe(true);
+    const duplicateId = body.data!.id;
+    try {
+      const duplicate = await admin
+        .from('services')
+        .select('name, sort_order, line_sort_order')
+        .eq('id', duplicateId)
+        .single();
+      expect(duplicate.error).toBeNull();
+      expect(duplicate.data!.name).toBe(`${source.data!.name}（複本）`);
+      expect(duplicate.data!.sort_order).toBeGreaterThan(maxSort);
+      expect(duplicate.data!.line_sort_order).toBeGreaterThan(maxLineSort);
+    } finally {
+      await admin.from('services').delete().eq('id', duplicateId);
+    }
+  });
+});
+
 describe('DELETE /api/services/:id 有未來預約 → 軟刪 active=false（04 §B-2）', () => {
   it('服務仍存在但 active=false，且回應 200', async () => {
     const serviceId = randomUUID();
@@ -165,7 +203,7 @@ describe('POST /api/staff 帶 serviceIds → staff_services；PUT serviceIds=[] 
 });
 
 describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index）', () => {
-  it('reorder 後指定服務 sort_order 依 ids 順序 0、1（unique index 下仍可交換）', async () => {
+  it('reorder 後指定服務 sort_order 依完整 ids 順序 2、3（unique index 下仍可交換）', async () => {
     const svcX = randomUUID();
     const svcY = randomUUID();
     try {
@@ -175,7 +213,9 @@ describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index
       ]);
       expect(serviceError).toBeNull();
 
-      const res = await ownerA.post('/api/services/reorder', { ids: [svcY, svcX] });
+      const res = await ownerA.post('/api/services/reorder', {
+        ids: [SHOP_A.serviceA1, SHOP_A.serviceA2, svcY, svcX],
+      });
       expect(res.status).toBe(200);
       expect((await readJson(res)).success).toBe(true);
 
@@ -183,8 +223,8 @@ describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index
         .from('services').select('id, sort_order').in('id', [svcX, svcY]);
       expect(error).toBeNull();
       const byId = new Map((data as any[]).map((r) => [r.id, r.sort_order]));
-      expect(byId.get(svcY)).toBe(0);
-      expect(byId.get(svcX)).toBe(1);
+      expect(byId.get(svcY)).toBe(2);
+      expect(byId.get(svcX)).toBe(3);
     } finally {
       await admin.from('services').delete().in('id', [svcX, svcY]);
     }
@@ -197,6 +237,12 @@ describe('POST /api/services position allocation（#128）', () => {
     const createdIds = new Set<string>();
 
     try {
+      const beforeA = await admin
+        .from('services').select('sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+      expect(beforeA.error).toBeNull();
+      const maxA = Math.max(...(beforeA.data ?? []).map((row: any) => row.sort_order), -1);
+      const maxLineA = Math.max(...(beforeA.data ?? []).map((row: any) => row.line_sort_order), -1);
+
       const responses = await Promise.all(names.map((name) => ownerA.post('/api/services', {
         name,
         durationMinutes: 30,
@@ -217,10 +263,20 @@ describe('POST /api/services position allocation（#128）', () => {
       expect(rows).toHaveLength(2);
       expect(new Set((rows ?? []).map((row: any) => row.sort_order)).size).toBe(2);
       expect(new Set((rows ?? []).map((row: any) => row.line_sort_order)).size).toBe(2);
+      for (const row of rows ?? []) {
+        expect(row.sort_order).toBeGreaterThan(maxA);
+        expect(row.line_sort_order).toBeGreaterThan(maxLineA);
+      }
+
+      const beforeAAfterCreates = await admin
+        .from('services').select('id, sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+      expect(beforeAAfterCreates.error).toBeNull();
 
       const beforeB = await admin
-        .from('services').select('id, sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+        .from('services').select('sort_order, line_sort_order').eq('tenant_id', SHOP_B.id);
       expect(beforeB.error).toBeNull();
+      const maxB = Math.max(...(beforeB.data ?? []).map((row: any) => row.sort_order), -1);
+      const maxLineB = Math.max(...(beforeB.data ?? []).map((row: any) => row.line_sort_order), -1);
 
       const bResponse = await ownerB.post('/api/services', {
         name: `B2 另一租戶服務-${uniqueSuffix()}`,
@@ -232,10 +288,16 @@ describe('POST /api/services position allocation（#128）', () => {
       expect(bBody.success).toBe(true);
       createdIds.add(bBody.data!.id);
 
+      const bRow = await admin
+        .from('services').select('sort_order, line_sort_order').eq('id', bBody.data!.id).single();
+      expect(bRow.error).toBeNull();
+      expect(bRow.data!.sort_order).toBeGreaterThan(maxB);
+      expect(bRow.data!.line_sort_order).toBeGreaterThan(maxLineB);
+
       const afterB = await admin
         .from('services').select('id, sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
       expect(afterB.error).toBeNull();
-      expect(afterB.data).toEqual(beforeB.data);
+      expect(afterB.data).toEqual(beforeAAfterCreates.data);
     } finally {
       if (createdIds.size > 0) await admin.from('services').delete().in('id', [...createdIds]);
     }

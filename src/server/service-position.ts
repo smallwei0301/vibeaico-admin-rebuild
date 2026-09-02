@@ -16,23 +16,6 @@ type InsertResult<T> = {
 };
 
 const MAX_INSERT_ATTEMPTS = 3;
-const TEMP_SORT_ORDER_BASE = -1_000_000_000;
-
-function isMissingRpc(error: DbError | null | undefined, functionName: string): boolean {
-  if (!error) return false;
-  return error.code === 'PGRST202'
-    || new RegExp(`(?:function|rpc)[^\\n]*${functionName}|${functionName}[^\\n]*(?:function|rpc)`, 'i')
-      .test(error.message ?? '');
-}
-
-function nextOrderValue(values: readonly (number | null | undefined)[]): number {
-  const maximum = values.reduce<number>((current, value) => {
-    const numeric = typeof value === 'number' && Number.isFinite(value) ? value : -1;
-    return Math.max(current, numeric);
-  }, -1);
-  return Math.floor(maximum) + 1;
-}
-
 function parsePositions(data: unknown): ServicePositions {
   const row = (Array.isArray(data) ? data[0] : data) as {
     sort_order?: unknown;
@@ -47,30 +30,10 @@ function parsePositions(data: unknown): ServicePositions {
   };
 }
 
-async function readNextServicePositions(
-  supabase: SupabaseClient,
-  tenantId: string,
-): Promise<ServicePositions> {
-  const { data, error } = await supabase
-    .from('services')
-    .select('sort_order, line_sort_order')
-    .eq('tenant_id', tenantId);
-  if (error) throw error;
-
-  const rows = (data ?? []) as Array<{
-    sort_order?: number | null;
-    line_sort_order?: number | null;
-  }>;
-  return {
-    sortOrder: nextOrderValue(rows.map((row) => row.sort_order)),
-    lineSortOrder: nextOrderValue(rows.map((row) => row.line_sort_order)),
-  };
-}
-
 /**
- * Use the already-deployed atomic catalog allocator when available.  The
- * fallback keeps fresh local runners usable while the historical TEST schema
- * is being reconciled into the canonical migration ledger.
+ * Use the migration-provided atomic catalog allocator.  Both lanes are
+ * reserved while the counter row is locked, so concurrent creates cannot
+ * receive the same public or LINE position.
  */
 export async function reserveServicePositions(
   supabase: SupabaseClient,
@@ -80,9 +43,8 @@ export async function reserveServicePositions(
     p_tenant_id: tenantId,
     p_resource: 'services',
   });
-  if (!error) return parsePositions(data);
-  if (!isMissingRpc(error, 'reserve_catalog_positions')) throw error;
-  return readNextServicePositions(supabase, tenantId);
+  if (error) throw error;
+  return parsePositions(data);
 }
 
 function isServicePositionCollision(error: DbError | null | undefined): boolean {
@@ -90,11 +52,7 @@ function isServicePositionCollision(error: DbError | null | undefined): boolean 
     && /services_tenant_(?:sort_order|line_sort_order)_uq/i.test(error.message ?? '');
 }
 
-/**
- * A local runner may not yet have the historical allocator RPC.  Its unique
- * indexes still make a concurrent MAX+1 race observable; retry only that
- * expected collision and never turn another database error into a retry.
- */
+/** Retry only an expected unique-position collision; never hide another DB error. */
 export async function insertServiceWithPositions<T>(
   supabase: SupabaseClient,
   tenantId: string,
@@ -113,10 +71,9 @@ export async function insertServiceWithPositions<T>(
 }
 
 /**
- * Use the existing atomic reorder RPC.  The public API historically accepts a
- * partial list, so append untouched tenant services in their current order
- * before calling the RPC.  The local fallback stages each row at a distinct
- * temporary rank before applying the complete ordering.
+ * Use the atomic reorder RPC.  The public API accepts a partial list, so
+ * append untouched tenant services in their current order before calling the
+ * complete-collection RPC.  Their relative order is preserved.
  */
 export async function reorderServices(
   supabase: SupabaseClient,
@@ -149,24 +106,5 @@ export async function reorderServices(
     p_lane: 'public',
     p_ids: orderedIds,
   });
-  if (!error) return;
-  if (!isMissingRpc(error, 'reorder_catalog_items')) throw error;
-
-  for (const [index, id] of orderedIds.entries()) {
-    const { error: stageError } = await supabase
-      .from('services')
-      .update({ sort_order: TEMP_SORT_ORDER_BASE - index })
-      .eq('id', id)
-      .eq('tenant_id', tenantId);
-    if (stageError) throw stageError;
-  }
-
-  for (const [index, id] of orderedIds.entries()) {
-    const { error: finalError } = await supabase
-      .from('services')
-      .update({ sort_order: index })
-      .eq('id', id)
-      .eq('tenant_id', tenantId);
-    if (finalError) throw finalError;
-  }
+  if (error) throw error;
 }

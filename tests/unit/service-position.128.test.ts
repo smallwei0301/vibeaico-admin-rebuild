@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   insertServiceWithPositions,
   reserveServicePositions,
+  reorderServices,
 } from '@/server/service-position';
 
 function queryResult(result: unknown) {
@@ -44,20 +45,28 @@ describe('service position allocator (#128)', () => {
     expect((supabase.from as any).mock.calls).toHaveLength(0);
   });
 
-  it('retries only a unique-position race when the local RPC is unavailable', async () => {
-    const supabase = fakeSupabase(
-      {
-        data: null,
-        error: {
-          code: 'PGRST202',
-          message: 'Could not find the function public.reserve_catalog_positions',
-        },
+  it('fails closed when the atomic allocator is absent', async () => {
+    const supabase = fakeSupabase({
+      data: null,
+      error: {
+        code: 'PGRST202',
+        message: 'Could not find the function public.reserve_catalog_positions',
       },
-      [
-        { data: [{ sort_order: 2, line_sort_order: 7 }], error: null },
-        { data: [{ sort_order: 2, line_sort_order: 7 }, { sort_order: 3, line_sort_order: 8 }], error: null },
-      ],
-    );
+    });
+
+    await expect(reserveServicePositions(supabase, 'tenant-a')).rejects.toMatchObject({
+      code: 'PGRST202',
+    });
+  });
+
+  it('retries only a unique-position race after atomic allocation', async () => {
+    const supabase = fakeSupabase({
+      data: [{ sort_order: 3, line_sort_order: 8 }],
+      error: null,
+    });
+    (supabase.rpc as any)
+      .mockResolvedValueOnce({ data: [{ sort_order: 2, line_sort_order: 7 }], error: null })
+      .mockResolvedValueOnce({ data: [{ sort_order: 3, line_sort_order: 8 }], error: null });
     const insert = vi.fn()
       .mockResolvedValueOnce({
         data: null,
@@ -70,11 +79,36 @@ describe('service position allocator (#128)', () => {
 
     await expect(insertServiceWithPositions(supabase, 'tenant-a', insert)).resolves.toEqual({
       data: { id: 'service-2' },
-      positions: { sortOrder: 4, lineSortOrder: 9 },
+      positions: { sortOrder: 3, lineSortOrder: 8 },
     });
     expect(insert.mock.calls.map(([positions]) => positions)).toEqual([
+      { sortOrder: 2, lineSortOrder: 7 },
       { sortOrder: 3, lineSortOrder: 8 },
-      { sortOrder: 4, lineSortOrder: 9 },
+    ]);
+  });
+
+  it('expands a partial reorder while retaining untouched relative order', async () => {
+    const supabase = fakeSupabase(
+      { data: null, error: null },
+      [{
+        data: [
+          { id: 'service-a', sort_order: 0 },
+          { id: 'service-c', sort_order: 2 },
+          { id: 'service-b', sort_order: 1 },
+        ],
+        error: null,
+      }],
+    );
+
+    await expect(reorderServices(supabase, 'tenant-a', ['service-b'])).resolves.toBeUndefined();
+    expect((supabase.rpc as any).mock.calls[0]).toEqual([
+      'reorder_catalog_items',
+      {
+        p_tenant_id: 'tenant-a',
+        p_resource: 'services',
+        p_lane: 'public',
+        p_ids: ['service-b', 'service-a', 'service-c'],
+      },
     ]);
   });
 });
