@@ -6,6 +6,8 @@ import {
   readMetadataField,
 } from '../../scripts/ci/local-isolated-test-policy.mjs';
 
+const repo = 'smallwei0301/vibeaico-admin-rebuild';
+
 function body(overrides: Record<string, string> = {}) {
   const fields = {
     TEST_PROFILE: 'LOCAL_ISOLATED',
@@ -27,8 +29,8 @@ describe('local isolated TEST policy', () => {
       eventName: 'pull_request',
       body: body(),
       actualHead: 'abc123',
-      headRepoFullName: 'smallwei0301/vibeaico-admin-rebuild',
-      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      headRepoFullName: repo,
+      repositoryFullName: repo,
     })).toMatchObject({
       runLocal: true,
       profile: 'LOCAL_ISOLATED',
@@ -45,8 +47,8 @@ describe('local isolated TEST policy', () => {
       eventName: 'pull_request',
       body: body({ TEST_PROFILE: 'LOCAL_ISOLATED_CANARY' }),
       actualHead: 'canary-sha',
-      headRepoFullName: 'smallwei0301/vibeaico-admin-rebuild',
-      repositoryFullName: 'smallwei0301/vibeaico-admin-rebuild',
+      headRepoFullName: repo,
+      repositoryFullName: repo,
       nowEpochSeconds: 1_000,
     });
     expect(decision.runLocal).toBe(true);
@@ -112,14 +114,28 @@ describe('local isolated TEST policy', () => {
     });
   });
 
-  it('flags migration, auth and storage paths for a future Supabase Branch', () => {
+  it('routes migration, Auth and Storage through free local isolation plus final remote TEST', () => {
     expect(classifyRiskPaths([
       'supabase/migrations/0063_example.sql',
       'src/app/api/auth/callback/route.ts',
       'src/app/api/upload/route.ts',
     ])).toEqual({
-      remoteBranchRecommended: true,
+      localIsolatedRequired: true,
+      remoteCanonicalRequired: true,
+      paidPreviewBranchConsidered: false,
       reasons: ['DATABASE_MIGRATION', 'AUTH', 'STORAGE'],
     });
+  });
+
+  it('rejects the retired paid Preview Branch profile', () => {
+    const decision = decideLocalIsolatedTest({
+      eventName: 'pull_request',
+      body: body({ TEST_PROFILE: 'REMOTE_BRANCH_REQUIRED' }),
+      actualHead: 'abc123',
+    });
+    expect(decision.runLocal).toBe(false);
+    expect(decision.errors).toContain(
+      'TEST_PROFILE is invalid: REMOTE_BRANCH_REQUIRED',
+    );
   });
 });
