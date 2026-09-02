@@ -17,6 +17,8 @@ test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
   const bookingsResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
     return url.pathname === '/api/bookings'
+      && url.searchParams.get('size') === '200'
+      && url.searchParams.get('page') === '0'
       && response.request().method() === 'GET'
       && response.status() === 200;
   });
