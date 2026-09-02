@@ -1,8 +1,12 @@
+import {
+  DEFAULT_TENANT_TIME_ZONE,
+  isValidTenantTimeZone,
+} from '@/config/tenant-settings';
 import type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/types';
 
 export type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/types';
 
-export const DEFAULT_GUIDE_TIME_ZONE = 'Asia/Taipei';
+export const DEFAULT_GUIDE_TIME_ZONE = DEFAULT_TENANT_TIME_ZONE;
 
 const PRIORITY_ORDER: Record<GuideActionInboxPriority, number> = {
   IMMEDIATE: 0,
@@ -25,20 +29,12 @@ export function sortGuideActionInboxItems(items: GuideActionInboxItem[]): GuideA
   );
 }
 
-/**
- * tenant_settings.basic.timezone 是可選的歷史 JSON 欄位。
- * 缺值或無效 IANA 時區時使用 GUIDE 預設 Asia/Taipei，避免 Intl 在請求中拋錯。
- */
+/** 缺值或舊資料含無效 IANA 時區時，安全回退租戶預設時區。 */
 export function normalizeGuideTimeZone(value: unknown): string {
   const candidate = typeof value === 'string' && value.trim()
     ? value.trim()
     : DEFAULT_GUIDE_TIME_ZONE;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format(new Date(0));
-    return candidate;
-  } catch {
-    return DEFAULT_GUIDE_TIME_ZONE;
-  }
+  return isValidTenantTimeZone(candidate) ? candidate : DEFAULT_GUIDE_TIME_ZONE;
 }
 
 function dateKey(date: Date, timeZone: string): string {
@@ -54,7 +50,7 @@ function dateKey(date: Date, timeZone: string): string {
 
 /**
  * PENDING 預約的處理優先級：已過預約時間最急，其次是租戶今天，最後是未來。
- * GUIDE 沒有自訂時區時才回退 Asia/Taipei；前端不再自行猜測日期邊界。
+ * 舊租戶沒有自訂時區時回退 Asia/Taipei；前端不自行猜測日期邊界。
  */
 export function getGuideActionInboxPriority(
   startAt: string,

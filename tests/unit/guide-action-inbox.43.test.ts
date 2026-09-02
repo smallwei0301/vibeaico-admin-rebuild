@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  DEFAULT_TENANT_TIME_ZONE,
+  basicSettingsSchema,
+} from '@/config/tenant-settings';
+import {
   getGuideActionInboxPriority,
   normalizeGuideTimeZone,
   sortGuideActionInboxItems,
@@ -45,6 +49,20 @@ describe('GUIDE action inbox (#43-A)', () => {
       item('today-early', 'TODAY', '2026-09-02T06:00:00.000Z', '2026-09-02T02:00:00.000Z'),
       item('past', 'IMMEDIATE', '2026-09-02T03:59:59.000Z', '2026-09-02T03:00:00.000Z'),
     ]).map((entry) => entry.id)).toEqual(['past', 'today-early', 'today-late', 'future']);
+  });
+
+  it('makes tenant timezone a real persisted basic setting instead of an untyped JSON ghost field', () => {
+    const required = { tenantName: '測試店家', shopCode: 'test-shop' };
+
+    expect(basicSettingsSchema.parse(required).timezone).toBe(DEFAULT_TENANT_TIME_ZONE);
+    expect(basicSettingsSchema.parse({
+      ...required,
+      timezone: 'America/Los_Angeles',
+    }).timezone).toBe('America/Los_Angeles');
+    expect(() => basicSettingsSchema.parse({
+      ...required,
+      timezone: 'Not/A_Real_Zone',
+    })).toThrow();
   });
 
   it('reads only tenant-scoped pending bookings and the tenant timezone', () => {
