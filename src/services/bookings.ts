@@ -73,10 +73,16 @@ export type UpdateBookingPayload = {
   note?: string;
 };
 
-/** PUT /api/bookings/:id — 改期／改員工／改備註。 */
+export type UpdateBookingResult = { notifyTriggered: boolean };
+
+/** PUT /api/bookings/:id — 改期／改員工／改備註，回報是否觸發顧客通知。 */
 export const updateBooking = (id: string, payload: UpdateBookingPayload) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/bookings/${id}`, { method: 'PUT', body: JSON.stringify(payload) }));
+  adapt<UpdateBookingResult>(
+    () => ({ notifyTriggered: false }),
+    () => request<UpdateBookingResult>(`/api/bookings/${id}`, {
+      method: 'PUT', body: JSON.stringify(payload),
+    }),
+  );
 
 /** POST /api/bookings/:id/adjust-price — 手動調價（需 MANAGER）。 */
 export const adjustBookingPrice = (id: string, finalPrice: number) =>

@@ -549,7 +549,11 @@ export default function BookingsPage() {
         open={!!editing}
         booking={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => { setEditing(null); toast.show(t.messages.updated); void load(); }}
+        onSaved={(result) => {
+          setEditing(null);
+          toast.show(result?.notifyTriggered ? t.messages.updated : t.messages.updatedWithoutNotification);
+          void load();
+        }}
       />
 
       {/* ------------------------------------------------------ 3. 取消預約 */}
@@ -849,7 +853,7 @@ function BookingFormModal({
   open: boolean;
   booking: Booking | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
   const isEdit = !!booking;
@@ -963,7 +967,8 @@ function BookingFormModal({
       const startAt = new Date(`${date}T${time}:00`).toISOString();
       if (isEdit && booking) {
         // duration 下拉僅供畫面試算：PUT /api/bookings/:id 以既有 duration_minutes 重算 end_at
-        await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        const result = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        onSaved(result);
       } else {
         await createBooking({
           customerId: await resolveCustomerId(),
@@ -972,8 +977,8 @@ function BookingFormModal({
           startAt,
           note: note || undefined,
         });
+        onSaved();
       }
-      onSaved();
     } catch (err2) {
       toast.show(
         `${isEdit ? t.messages.updateFailed : t.messages.createFailed}${err2 instanceof Error ? err2.message : t.messages.unknownError}`,
