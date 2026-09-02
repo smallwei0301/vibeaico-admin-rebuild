@@ -1,265 +1,339 @@
-# Agent 常駐自主執行規則
+# Agent 自主執行規格
 
-> Owner 首次裁示：2026-08-28
+> 本文件是 `/goal`、開始／繼續 Loop、多 Agent 派工、CI／TEST 協調與 Issue closeout 的正式執行規格。
 >
-> 最近更新：2026-09-01
->
-> 最新 WIP 拓撲：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`（B+）。
->
-> 本文件是本 repo 的 Agent 執行方式唯一正式版本。產品規格仍以各
-> `docs/integration/**` 分冊為準。
+> 最新 Owner Decision：`docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`
 
-## 1. 預設工作模式
+## 1. 執行目標
 
-- 主 Agent 是專案主導者，不只是回報者。收到 Issue、`/goal` 或「繼續」後，持續完成
-  所有安全且可自主施工的工作，直到符合 §11 停止條件。
-- CI、TEST、Preview、Agent 或外部讀取正在等待，不代表整個 goal 暫停；但也不得因此
-  再開第二條完整大型 Terra 工地。
-- 每次接手先讀 live GitHub：current `main`、open Issue、open PR、exact head、CI、
-  shared TEST holder 與最新 scorecard。舊對話只當線索。
-- 優先接續既有可用 branch／PR，不 reset、force-push 或重做已完成的 migration／測試。
-
-### 1.1 Owner 控制訊號
+長程任務必須持續推進，直到：
 
 ```text
-OWNER_MODEL_SWITCH    Owner 為切換模型速度、深度或角色而重送 /goal
-OWNER_STEER           Owner 改變限制、授權或方向
-OWNER_CONTINUE        Owner 要求同一工作繼續
-AGENT_PREMATURE_STOP  Agent 明確終止，但當時仍有可施工工作
-UNKNOWN_CONTROL_EVENT 證據不足
+所有可自主完成的 open Issue 已完成並關閉
+或
+剩餘項目全部只差 Owner／Production／外部供應商動作
 ```
 
-Owner 重送 `/goal`、`/steer` 或「繼續」本身不等於前一位 Agent 提早停止。模型切換後保留
-branch、PR、exact head、TEST lane、Run ID 與目前 stage。
+以下都不是全域停止理由：
 
-## 2. 強制開工順序
+- 完成一個 Issue／PR／commit；
+- CI 或 Agent 還在執行；
+- local／remote TEST 排隊；
+- 某一題 Owner-blocked；
+- Preview 額度或單一路線環境錯誤。
 
-1. `git fetch origin --prune`。
-2. 從 `origin/main` 讀 `AGENTS.md`、`CLAUDE.md`、本文件、
-   `docs/AGENT-BPLUS-DELIVERY-LOOP.md`、`docs/DOCUMENTATION-GOVERNANCE.md`、
-   `docs/OWNER-DECISIONS.md` 與最新 Owner Decision。
-3. 讀 Issue 指定的 canonical 文件與 `docs/integration/12-TESTING-TDD.md`；Playbook 只搜尋
-   直接相關錯誤或領域，不全量重讀。
-4. 讀最新 1～3 份 `docs/metrics/agent-runs/*.json`／`.md`，確認上一輪建議與尚未修正問題。
-5. 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 usage 基準。
-6. 由多位 Luna 做窄範圍盤點，再由一位 Luna Aggregator 去重。
-7. Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
+某一路線等待時，轉做不撞檔案、不碰同一 remote TEST 的 Luna、Closure 或另一條 qualified Terra 工作。
 
-## 3. 長期授權與禁止事項
+## 2. Current truth（即時真相）
 
-| 動作 | 預設權限 | 必要條件 |
-|---|---|---|
-| 讀 repo、Issue、PR、CI、Preview、報告 | 允許 | 使用 live 狀態，不洩漏秘密 |
-| 修改程式、測試、文件；建立 branch、commit、PR | 允許 | 遵守 B+、Issue 範圍與文件治理 |
-| 更新 PR／Issue 證據與標籤 | 允許 | 必須是 exact-head 真實證據 |
-| 關閉 Issue | 允許 | 最終分支含實作、驗收成立、Sol 回覆 `CLOSE_APPROVED` |
-| TEST Supabase 操作 | 允許 | 僅限 §3.1 TEST project，且持有唯一 TEST lane |
-| Vercel Preview 驗證 | 允許 | 不提升 Production |
-| docs-only 直進 main | 允許 | 只在文件治理白名單內 |
-| 程式／workflow／skill 合併 main | 需明確任務授權 | CI、Audit、安全邊界成立；不得偷渡產品發布 |
-| Production DDL／DML／migration／reset／seed | **禁止** | 需針對精確專案與範圍的新授權 |
-| Production deployment／promote／流量切換 | **禁止** | 需新授權 |
-| 真實付款、退款、訂單或顧客通知 | **禁止** | 測試只用 sandbox、mock 或明確安全接收者 |
-| 輸出或提交 token、密碼、key、完整 `.env` | **禁止** | 秘密只在執行環境短暫使用 |
+每次新 Session、模型切換或接手，先：
 
-### 3.1 TEST Supabase 長期授權
+1. `git fetch origin --prune`；
+2. 從 `origin/main` 讀 `AGENTS.md`、最新 Owner Decision、本文件、B+ Loop、PR lifecycle 與 Skill；
+3. 重新查 current main、open Issues、open PRs、exact-head CI、local runs 與 remote TEST holder；
+4. 接續最新有效 `IN_PROGRESS` Run，不另建重複 Run；
+5. 保留 branch、PR、migration 與測試 checkpoint，不 reset、不重做。
 
-僅限 project ref：`nmwhwngojosmagjuvxol`。
+舊 Session、舊 PR body、舊 CI 與 branch-only 文件只當線索。外部系統重新讀回的狀態才是完成證據。
 
-每次必須：
-
-1. 重新確認 project ref。
-2. 記錄 migration／schema 基線與 exact head。
-3. API schema 變更後刷新 PostgREST cache 並跑真實目標查詢。
-4. reset／seed 只清 TEST 測試資料。
-5. 不呼叫真實付款或通知。
-6. 全 repo 同時只有一位 `TEST_VALIDATION` holder。
-
-## 4. B+ 角色路由
+## 3. 現行 B+ 拓撲
 
 ```text
-LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
-                         ↓
-                  MAIN_TERRA BUILD
-                  RESERVE_TERRA source-only
-                         ↓
-                  TEST_VALIDATION
-                         ↓
-                    SOL_AUDIT
-                         ↓
-              LUNA_CLOSEOUT + METRICS
-                         ↓
-                     NEXT LOOP
+SCOUT / CLOSURE / CI / QA / METRICS  → Luna
+TRIAGE                               → Sol
+BUILD slot 1                         → Terra
+BUILD slot 2（可選）                 → Terra
+LOCAL_ISOLATED per PR                → 免費本機 Supabase
+REMOTE_CANONICAL_TEST                → 現有 remote TEST，max 1
+AUDIT                                → Sol，max 1
+MERGE                                → max 1
+CLOSEOUT                             → Luna
 ```
 
-| 角色 | 主要工作 | 禁止事項 |
-|---|---|---|
-| Luna | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | 不做產品／安全決策，不展開大型 code |
-| Sol | TRIAGE、模糊 CI、高風險設計、最終 Audit | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
-| MAIN Terra | 唯一完整中大型出貨線 | 不擴大驗收、不自行關 Issue |
-| RESERVE Terra | 一個 source-only 預備切片 | 不碰 TEST、不進 Audit、不超過一個原子 commit |
-
-## 5. 全域 B+ WIP 上限
+上限：
 
 ```text
-MAIN_TERRA      max 1  → AGENT_LANE=TERRA_BUILD
-RESERVE_TERRA   max 1  → AGENT_LANE=TERRA_RESERVE
-LUNA_CLOSURE    max 1  → AGENT_LANE=LUNA_CLOSURE
-TEST_VALIDATION max 1  → AGENT_LANE=TEST_VALIDATION
-ACTIVE_CANDIDATE max 2 → 通常 MAIN + Closure
-LUNA_TASKS      default 4，max 6，另有 1 位 Aggregator
+qualified TERRA_BUILD   max 2
+TERRA_RESERVE           pilot 期間 max 0
+LUNA_CLOSURE            max 1
+LUNA_TASKS              預設 4、最多 6，另有 Aggregator
+LOCAL_ISOLATED          每張 Terra PR 各一套
+REMOTE TEST holder      max 1
+SOL_AUDIT               max 1
+MERGE                   max 1
+ACTIVE_CANDIDATE        max 2
 ```
 
-### 5.1 MAIN_TERRA
+第二條 Terra 是可選能力，不是必填配額。沒有安全題目時維持一條。
 
-- 唯一可完整施工、進 shared TEST、修明確 CI、交 Sol Audit 的中大型 Issue。
-- 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。
-- `PR 已開`、`CI 綠`、`正在等 Preview` 不是完成。
-- MAIN 未抵達出口前，不啟動第二條完整 BUILD。
+## 4. 雙 Terra 啟用契約
 
-### 5.2 RESERVE_TERRA
-
-- 只有 MAIN 正在等 CI、TEST、Preview 或外部唯讀結果，且 MAIN 沒有可繼續的 source 工作時
-  才可啟動。
-- 必須明寫 `RESERVE_BOUNDARY`。
-- 只做必要規格、紅燈測試、獨立 source slice、unit／typecheck／build、最多一個原子 commit。
-- 不得持有 TEST lane、進 Sol Audit、開第二輪 full CI、碰 MAIN hot files 或吸入鄰近問題。
-- 完成後停在 `READY_FOR_PROMOTION`；MAIN 進入出口後由 Sol 決定升格或 Park。
-
-### 5.3 LUNA_CLOSURE
-
-- 每輪固定執行；優先掃 open PR、近期 CI、上一輪 closeability ≥3 候選，先限 5 個。
-- 可整理 exact-head 證據、checkbox、Preview、Janitor、機械 closeout。
-- 沒有候選必須輸出 `EMPTY_WITH_SCAN` 和已檢查清單。
-
-### 5.4 ACTIVE_CANDIDATE
-
-- 全 repo 最多 2 張，通常是 MAIN 和 Closure candidate。
-- RESERVE、TEST、Parked、Historical、Owner-blocked 不得標 active candidate。
-- 舊 Mode C PR 不是因為 open 就自動 active；必須經 B+ TRIAGE 重新分配。
-
-## 6. Luna 小隊與 Token 節流
-
-預設可並行：
+只有兩張 active `TERRA_BUILD` PR 都符合以下條件，WIP Guard 才允許第二條：
 
 ```text
-LUNA_TRUTH
-LUNA_CLOSURE
-LUNA_CI
-LUNA_JANITOR
-LUNA_DOCS
-LUNA_QA
-LUNA_METRICS
+DUAL_TERRA_PILOT: true
+TERRA_SLOT: 1 / 2
+RUN_ID: 相同
+Primary Issue: 不同
+TEST_PROFILE: LOCAL_ISOLATED
+TEST_ENV_ID: 不同
+FINAL_CANONICAL_REQUIRED: true
+FILE_OWNERSHIP: 明確且不重疊
+TEST_LANE_REQUIRED: false（BUILD 階段）
 ```
 
-每個 Luna 任務必須包含：
+`FILE_OWNERSHIP` 以逗號分隔路徑根目錄。相同或父子路徑都算撞車，例如：
 
 ```text
-TASK_ID
-ISSUE / PR
+src/app/api/chat
+src/app/api/chat/messages
+```
+
+若 AppShell、migration 編號、共用 fixture、共用 schema 或熱門檔案無法分開，不啟動 slot 2。
+
+不完整契約會 fail closed（不確定就擋下），全 repo 自動維持一條完整 Terra。
+
+## 5. 角色與模型路由
+
+### Luna
+
+優先負責：
+
+- live truth 與 Issue／PR 盤點；
+- CI 狀態變化與錯誤壓縮；
+- Closure Sweep／Janitor；
+- acceptance matrix、文件、checkbox、metadata；
+- Run ledger 與 scorecard；
+- 已有標準答案的機械修改。
+
+每個 Luna 任務只含一個 Issue／PR、一個 exact head、一個問題、限定路徑與最多 15 行輸出。一位 Aggregator 去重後再交 Sol。
+
+### Sol
+
+只負責：
+
+- TRIAGE：選 slot 1、可選 slot 2、Closure target 與 remote TEST 順序；
+- DIAGNOSE：模糊 CI、DB／Auth／付款／安全、local-vs-remote 不一致、ownership collision；
+- AUDIT：一次只審一張候選，輸出 `CLOSE_APPROVED | FIX_REQUIRED | OWNER_BLOCKED`。
+
+一般 Issue 目標預算是 TRIAGE 一次、AUDIT 一次。Sol 不做 CI 輪詢、搬文件與一般 CRUD 施工。
+
+### Terra
+
+每位 Terra 對一個中大型 Issue 端到端負責：
+
+```text
+讀規格
+→ targeted tests
+→ source 修改
+→ unit / typecheck / build
+→ local migration / reset / seed
+→ local integration / E2E
+→ ISOLATED_GREEN／AUDIT_READY／OWNER_BLOCKED
+```
+
+同一 Issue、同一檔案群不得同時交給兩位 Terra。
+
+## 6. Local isolated TEST（免費本機測試）
+
+每張 Terra PR 使用自己的 disposable local Supabase：
+
+```text
+checkout exact head
+→ 固定 Supabase CLI
+→ fresh local Supabase
+→ local-only migration overlay（需要時）
+→ reset / seed
+→ integration
+→ Playwright E2E
+→ always: supabase stop --no-backup
+```
+
+安全規則：
+
+- URL 必須是 `localhost`／`127.0.0.1`；
+- 不讀 remote TEST 或 Production secrets；
+- 不連正式資料；
+- 同一 PR 的新 SHA 取消舊 local run；不同 PR 可平行；
+- local 成功只叫 `ISOLATED_GREEN`；
+- cleanup 成功才叫 `LOCAL_CLEANUP_VERIFIED`；
+- local green 永遠不能冒充 remote canonical green。
+
+## 7. Remote canonical TEST（唯一最終考場）
+
+現有 remote TEST Supabase 仍維持單線：
+
+```text
+REMOTE_CANONICAL_TEST max 1
+```
+
+只有 active `TEST_VALIDATION` holder 能使用 remote TEST secrets、migration、reset、seed、schema cache、integration 與 E2E。
+
+進入前記錄：
+
+```text
+TEST_HOLDER_ISSUE
+TEST_HOLDER_PR
 EXACT_HEAD
-單一 QUESTION
-READ_ONLY_PATHS
-DO_NOT_READ
-OUTPUT_MAX_LINES（預設 15）
-ALLOWED_RESULT
+MIGRATION_BASELINE
+LOCAL_ISOLATED_RUN
+EXPECTED_FULL_CI_COUNT
 ```
 
-- 不把完整舊 Session 或全 repo 複製給每位 Luna。
-- 不讓兩位 Luna 重做同一盤點。
-- 一位 Luna Aggregator 把結果壓成最多 30 行再交 Sol。
-- Luna 發現新問題只分類為 blocking／backlog／duplicate／Owner-blocked／needs-triage；不得
-  自行把所有問題塞進 MAIN PR。
-
-## 7. Sol 使用上限
-
-一般 Issue：
+離開時記錄：
 
 ```text
-TRIAGE 1 次
-AUDIT  1 次
+WORKFLOW_RUN_ID
+RESULT
+FAILED_STEP / SUITE / CASE
+ENVIRONMENT_CHANGED
+RETRY_ALLOWED
+RESIDUE_CHECK
 ```
 
-只有 Auth、DB、付款、權限、跨租戶、安全、模糊 CI 或重大 collision 才允許一次額外
-DIAGNOSE。平台不能證明實際 delegated model 時記 `actual=unknown`，不得冒充。
+兩張 local green 候選依 closeability、風險與依賴排隊。不能用 no-op commit、舊 SHA 或同環境不變的盲目 rerun 搶 TEST。
 
-TRIAGE 固定輸出：
+## 8. DB／Auth／Storage
+
+資料庫 migration、Auth（登入／權限）與 Storage（檔案儲存）也走免費路徑：
 
 ```text
-RUN_ID
-MAIN_TERRA
-RESERVE_TERRA
-CLOSURE_TARGET
-CLOSEABILITY_SCORE
-SELECTION_REASON
-DEPENDENCIES
-OWNER_OR_EXTERNAL_BLOCKER
-TEST_REQUIRED
-RESERVE_BOUNDARY
-RISK
-ACCEPTANCE_GATES
-WHY_NOT_CLOSER_CANDIDATE
+LOCAL_ISOLATED
+→ SHARED_CANONICAL
 ```
 
-Closeability：5 幾乎可關；4 差一步；3 最多兩步可 Audit；2 需明顯施工；1 主要外部或
-大型依賴；0 stale／duplicate／superseded。
+付費 Supabase Preview Branch 目前為：
 
-## 8. CI 與 shared TEST
+```text
+DEFERRED_NOT_IN_CONSIDERATION
+```
 
-- docs-only 不安裝 npm、不讀 TEST secret、不跑 Chromium。
-- 一般 runtime PR 跑 typecheck／unit／build，但若不是唯一 Active `TEST_VALIDATION` holder，
-  integration／E2E 留下成功的 `POLICY_SKIP`，不得碰 shared TEST。
-- 只有唯一 TEST holder 與 `main` push 可以使用 TEST secrets 並進
-  `shared-test-supabase-integration`。
-- Branch 手動 full CI 必須證明 exact PR、exact branch、exact SHA 與唯一 holder。
-- 同一 exact head、同一環境、同一命令不盲目重跑。
-- 環境錯誤連續兩次後停止該路徑，保存證據並切其他安全工作。
+不得建立、不得要求 Owner 確認費率、不得使用退休的 `REMOTE_BRANCH_REQUIRED` profile，也不得把付費分支當成雙 Terra 或 merge 的必要條件。
 
-CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼、重現性、TEST holder、
-環境變化。明確 code bug 交 MAIN Terra；模糊或高風險才交 Sol。
+local 與 remote 結果不同時，保留精確差異，由 Luna 壓縮；只有模糊或高風險問題才交 Sol。
 
-## 9. PR、Janitor 與交接
+## 9. TEST 長期授權與 Production 邊界
 
-- 一個 Issue 只保留一張 ACTIVE implementation；必要時一張短命 VALIDATION。
-- `PARKED` PR 不派 Agent、不 push、不 rerun、不輪詢；重新啟動前先 Sol TRIAGE。
-- Janitor 只有 explicit supersedes、同 Issue、同 repo、ancestry／patch coverage 與 mutation
-  前重新驗證都成立才自動關；否則 `JANITOR_REVIEW`。
-- 交接只傳 Issue、stage、lane、base/head、PR、scope、changed、evidence、latest error、
-  TEST、risk、unproven、next、requested／actual model、RUN_ID 與 scorecard path。
-- 不貼整份 CI log，不複製完整舊對話。
+已授權的 remote TEST project：
 
-## 10. Ledger、Scorecard 與復盤
+```text
+nmwhwngojosmagjuvxol
+```
 
-每輪提交：
+可在唯一 holder 下執行 open Issue 所需的 TEST migration、DDL／DML、reset、seed、schema cache、integration／E2E 與殘留清理。
+
+此授權不包含：
+
+- 其他 Supabase project；
+- Production DDL／DML／migration；
+- Production deploy／promote；
+- 真實付款／退款；
+- 真實顧客通知；
+- 把 TEST 證據當成 Production 證據。
+
+## 10. PR lifecycle 與 Closure
+
+每個 primary Issue 最多一張 ACTIVE implementation PR；必要時另有短命 VALIDATION PR。雙 Terra 代表兩個不同 Issue 各一張 active PR，不代表同一 Issue 開兩張工地。
+
+`PARKED` PR：
+
+- 不派 Agent；
+- 不 push；
+- 不 rerun；
+- 不輪詢；
+- 不占 Terra、local TEST、remote TEST 或 active-candidate 容量。
+
+MAIN／slot Terra 必須有 Closure target，或明確的 `EMPTY_WITH_SCAN`／`REPORT:<path>` 證據。只有 Sol 回覆 `CLOSE_APPROVED` 才能由 Luna／主 Agent 關閉 Issue，關閉後再 fetch Issue 驗證 `state=closed`。
+
+## 11. Scope Firewall
+
+新發現只有符合以下任一條件，才能阻塞本輪：
+
+1. UI／原站宣稱可用，但沒有真實副作用或資料不保存；
+2. 有安全、跨租戶、資料損失、付款、退款、權限或真實通知風險；
+3. 原 Issue 或 canonical 文件已要求的驗收缺失。
+
+純美化、未來想法、可選重構與非必要效能優化進 backlog，不吸入目前 PR。
+
+## 12. CI 診斷與節流
+
+- 先確認 exact head、測試是否真的開始與失敗層級；
+- 401 先看測試是否刻意驗未登入，再查 seed → login → `/api/auth/me` → 同 cookie 請求；
+- `PGRST202` 優先查 migration／schema cache；`PGRST201` 優先查多外鍵關聯歧義；
+- seed 只可略過明確「表不存在」；欄位、外鍵、權限、cache 或未知錯誤必須 fail closed；
+- 同 exact head、同環境、同命令不得盲目重跑；
+- 同一環境錯誤連續兩次就換診斷方式；
+- 成功 toast 不等於真實副作用成功；
+- 關鍵寫入、名額、收款與狀態轉移要用 transaction／atomic RPC，並測並發。
+
+## 13. Pilot 自動退回一條 Terra
+
+下一個 Run 將 `FULL_TERRA_MAX` 退回 1，若發生：
+
+- local stack 或 cleanup 失敗；
+- ownership／migration／fixture／schema 撞車；
+- cross-lane contamination；
+- active candidates 超過 2；
+- 品質低於 24／30；
+- carryover 或 post-merge regression 增加；
+- weighted usage／Delivery Unit 惡化超過 20%，且產出沒有增加。
+
+退回後先復盤。根因修好後才能重新啟動 slot 2；單 Terra 模式可恢復最多一條 source-only Reserve。
+
+## 14. Run ledger 與量化
+
+每輪建立或接續：
 
 ```text
 docs/metrics/agent-runs/<RUN_ID>.json
 docs/metrics/agent-runs/<RUN_ID>.md
 ```
 
-JSON 是原始帳本，Markdown 必須可由 `scripts/agents/score-run.mjs` 重算。至少記錄：
+至少記錄：
 
-- main、open Issue／PR 起訖；
-- MAIN／RESERVE／candidate／TEST 峰值；
-- requested／actual Luna、Terra、Sol 任務與上下文大小；
-- 實際 token／週 usage，或明確 `unavailable`；
-- internal weighted usage（Luna=1、Terra=3、Sol=6，非官方換算）；
-- CLOSED、AUDIT_READY、完整 OWNER_BLOCKED、carryover；
-- full CI、invalid rerun、品質、安全、Luna 採用率、Sol touches；
-- 100 分 scorecard 與最多 2 項下一輪調整。
+```text
+full_terra_peak
+slot_1/2_active_minutes
+local_isolated_jobs / success / failure / cleanup
+remote_canonical_wait_minutes
+file_ownership_collision
+cross_lane_contamination
+issues_closed / delivery_units / carryover
+weighted_usage_per_delivery_unit
+Sol_touches_per_issue
+post_merge_regression
+fallback_to_single_terra
+```
 
-Owner 說「復盤」或「複盤」時，載入
-`.agents/skills/vibeaico-agent-retrospective/SKILL.md`，驗證並比較最近 3 輪；資料不足則讀
-全部。只提出一到兩項最有影響的治理改良，不在復盤時順便改產品。
+實際 token／週 usage 可見就照實記；不可見就填 `null`。Luna=1、Terra=3、Sol=6 只是內部相對尺，不是官方額度換算。
 
-## 11. 停止條件
+## 15. Completion Truth Gate
 
-只有以下情況可送終止性 final：
+送出 merge／close／migration／deploy 等工具動作，只代表 `REQUESTED`，不代表 `COMPLETED`。
 
-1. 所有 open Issue 都完成、合併到要求分支並關閉；或
-2. 剩餘項目只缺 Owner／外部人類／Production／`SOL_GATE_PENDING`，且 MAIN、RESERVE、
-   Closure、TEST 與可施工 backlog 都已處理；或
-3. 平台無法繼續，且已留下可直接接手的 exact checkpoint 與本輪 IN_PROGRESS report。
+宣稱 PR 已合併前至少必須：
 
-結束前重新查 open Issue、open PR、CI、MAIN、RESERVE、Closure、TEST holder、Owner blockers
-與本輪 scorecard。最終報告不得只寫「目前進度」。
+1. 重新 fetch PR，確認 `merged=true` 或 `merged_at`；
+2. 取得 `merge_commit_sha`；
+3. 重新 fetch current main；
+4. compare 證明 merge commit 可由 main 追溯；
+5. 用 `ref=main` 重讀至少一個關鍵檔；
+6. 記錄 exact-head CI 與驗證時間。
+
+尚未完成時使用 `MERGE_REQUESTED_UNVERIFIED`。Issue close、CI green、local cleanup、remote TEST 與 migration 也使用相同的「動作後再讀回」原則。
+
+未驗證卻宣稱完成，復盤記為 `AUDIT_DATA_INVALID`、安全性失敗與 `F-HARD`，不得靠其他分數補回。
+
+## 16. 三輪試行
+
+免費雙 Terra 可在治理 PR 合併後啟動。最近三個完整 Run 必須比較：
+
+- Delivery Unit 與 Issue close；
+- usage／Delivery Unit；
+- local 成功率與 cleanup；
+- remote TEST 等待；
+- ownership collision／cross-lane contamination；
+- carryover／post-merge regression；
+- Sol touches。
+
+三輪是「是否保留雙 Terra 為預設」的觀察期，不是啟用前等待期。任何硬性安全失敗都立即退回單 Terra。
