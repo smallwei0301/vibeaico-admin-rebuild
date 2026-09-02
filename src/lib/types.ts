@@ -51,6 +51,21 @@ export type Booking = {
   createdAt: string;
 };
 
+/* ------------------------------------------------------- GUIDE 首頁待處理事項 */
+export type GuideActionInboxPriority = 'IMMEDIATE' | 'TODAY' | 'UPCOMING';
+
+export type GuideActionInboxItem = {
+  id: string;
+  kind: 'BOOKING_REQUEST';
+  bookingNo: string;
+  customerName: string;
+  serviceName: string;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';
 
