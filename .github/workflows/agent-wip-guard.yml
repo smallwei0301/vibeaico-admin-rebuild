@@ -32,10 +32,21 @@ jobs:
           script: |
             const path = require('node:path');
             const { pathToFileURL } = require('node:url');
-            const policy = await import(pathToFileURL(path.join(
+            const basePolicy = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE,
               'scripts/agents/agent-wip-policy.mjs',
             )).href);
+            let policy = basePolicy;
+            try {
+              policy = await import(pathToFileURL(path.join(
+                process.env.GITHUB_WORKSPACE,
+                'scripts/agents/dual-terra-wip-policy.mjs',
+              )).href);
+            } catch (error) {
+              if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+              // Before the focused policy is merged, the trusted base policy remains fail-closed
+              // at one Terra. Once merged, the dual-pilot module becomes the source of truth.
+            }
 
             const { owner, repo } = context.repo;
             const current = context.payload.pull_request;
@@ -82,17 +93,22 @@ jobs:
               per_page: 100,
             });
             const summary = policy.summarizeActiveLanes(openPulls);
+            const capacity = typeof policy.pilotCapacity === 'function'
+              ? policy.pilotCapacity(summary)
+              : { terraMax: 1, reserveMax: 1, qualified: false };
             const wipErrors = isAgent && metadata.state === 'ACTIVE'
               ? policy.validateGlobalWip(summary)
               : [];
+            const terraLimit = capacity.terraMax;
+            const reserveLimit = capacity.reserveMax;
 
             const labels = {
               'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as Agent-origin.'],
               'origin:owner-or-unknown': ['BFDADC', 'No explicit Agent-origin marker.'],
-              'lane:terra-build': ['0E8A16', 'The sole complete MAIN Terra delivery lane.'],
-              'lane:terra-reserve': ['A2EEEF', 'The sole source-only RESERVE Terra preparation lane.'],
+              'lane:terra-build': ['0E8A16', 'One of up to two qualified free local-isolated Terra delivery lanes.'],
+              'lane:terra-reserve': ['A2EEEF', 'Single-Terra fallback source-only Reserve; disabled during dual pilot.'],
               'lane:luna-closure': ['5319E7', 'The sole Luna Closure / Janitor lane.'],
-              'lane:test-validation': ['FBCA04', 'The sole shared TEST validation lane.'],
+              'lane:test-validation': ['FBCA04', 'The sole remote canonical TEST validation lane.'],
               'lane:governance': ['D4C5F9', 'Repository governance work.'],
               'state:active': ['0E8A16', 'Current active B+ lane.'],
               'state:reserve-ready': ['A2EEEF', 'Reserve source slice is ready for promotion.'],
@@ -100,9 +116,9 @@ jobs:
               'state:complete': ['006B75', 'Lane work complete.'],
               'state:owner-blocked': ['D93F0B', 'Only Owner or external action remains.'],
               'state:historical': ['EDEDED', 'Historical or superseded evidence only.'],
-              'candidate:active': ['B60205', 'Counts toward the B+ maximum of two active candidates.'],
+              'candidate:active': ['B60205', 'Counts toward the maximum of two active Product delivery candidates.'],
               'governance:lane-metadata-incomplete': ['D93F0B', 'B+ lane metadata is missing or invalid.'],
-              'governance:wip-violation': ['B60205', 'B+ MAIN, RESERVE, Closure, TEST or candidate limit is exceeded.'],
+              'governance:wip-violation': ['B60205', 'B+ Terra, Reserve, Closure, TEST or candidate limit is exceeded.'],
             };
 
             for (const [name, [color, description]] of Object.entries(labels)) {
@@ -139,7 +155,7 @@ jobs:
 
             if (isAgent && laneLabels[metadata.lane]) nextLabels.push(laneLabels[metadata.lane]);
             if (isAgent && stateLabels[metadata.state]) nextLabels.push(stateLabels[metadata.state]);
-            if (isAgent && metadata.activeCandidate === 'TRUE') nextLabels.push('candidate:active');
+            if (isAgent && metadata.activeCandidate === 'TRUE' && metadata.lane !== 'LUNA_CLOSURE') nextLabels.push('candidate:active');
             if (metadataErrors.length) nextLabels.push('governance:lane-metadata-incomplete');
             if (wipErrors.length) nextLabels.push('governance:wip-violation');
 
@@ -179,21 +195,26 @@ jobs:
               dispatched = true;
             }
 
+            const metrics = [
+              ['Current PR', `#${current.number}`],
+              ['Run', metadata.runId || 'missing'],
+              ['Free dual-Terra pilot qualified', String(capacity.qualified)],
+              ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
+              ['Terra', `${summary.activeTerra.length}/${terraLimit}`],
+              ['Reserve Terra', `${summary.activeReserve.length}/${reserveLimit}`],
+              ['Luna Closure', `${summary.activeClosure.length}/1`],
+              ['Remote TEST validation', `${summary.activeTest.length}/1`],
+              ['Product candidates', `${summary.activeCandidates.length}/2`],
+              ['TEST dispatched', String(dispatched)],
+              ['Metadata errors', metadataErrors.join('; ') || 'none'],
+              ['WIP errors', wipErrors.join('; ') || 'none'],
+            ];
+
             await core.summary
-              .addHeading('Agent WIP Guard — B+')
+              .addHeading('Agent WIP Guard — B+ free dual-Terra pilot')
               .addTable([
                 [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
-                ['Current PR', `#${current.number}`],
-                ['Run', metadata.runId || 'missing'],
-                ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
-                ['MAIN Terra', `${summary.activeTerra.length}/1`],
-                ['RESERVE Terra', `${summary.activeReserve.length}/1`],
-                ['Luna Closure', `${summary.activeClosure.length}/1`],
-                ['TEST validation', `${summary.activeTest.length}/1`],
-                ['Active candidates', `${summary.activeCandidates.length}/2`],
-                ['TEST dispatched', String(dispatched)],
-                ['Metadata errors', metadataErrors.join('; ') || 'none'],
-                ['WIP errors', wipErrors.join('; ') || 'none'],
+                ...metrics,
               ])
               .write();
 
@@ -201,7 +222,7 @@ jobs:
               const errors = [...metadataErrors, ...wipErrors];
               const body = errors.length
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nPark or reclassify the extra lane before continuing. Do not add commits or rerun CI to work around this guard.`
-                : `${marker}\n## Agent WIP Guard: passed — B+\n\n- MAIN Terra: ${summary.activeTerra.length}/1\n- RESERVE Terra: ${summary.activeReserve.length}/1\n- Luna Closure: ${summary.activeClosure.length}/1\n- TEST validation: ${summary.activeTest.length}/1\n- Active candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nThis Hook validates observable GitHub metadata. It cannot prove which delegated model actually ran.`;
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- Terra: ${summary.activeTerra.length}/${terraLimit}\n- Reserve Terra: ${summary.activeReserve.length}/${reserveLimit}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nThis Hook validates observable GitHub metadata. It cannot prove which delegated model actually ran.`;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner,
