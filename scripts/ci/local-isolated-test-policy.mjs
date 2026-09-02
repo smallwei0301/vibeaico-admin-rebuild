@@ -7,6 +7,7 @@ export const TEST_PROFILES = Object.freeze({
   SOURCE_ONLY: 'SOURCE_ONLY',
   LOCAL_ISOLATED: 'LOCAL_ISOLATED',
   LOCAL_ISOLATED_CANARY: 'LOCAL_ISOLATED_CANARY',
+  REMOTE_BRANCH_REQUIRED: 'REMOTE_BRANCH_REQUIRED',
   SHARED_CANONICAL: 'SHARED_CANONICAL',
 });
 
@@ -46,9 +47,7 @@ export function classifyRiskPaths(paths = []) {
   if (normalized.some((path) => /(^|\/)(storage|upload)(\/|\.|$)/i.test(path))) reasons.push('STORAGE');
 
   return {
-    localIsolatedRequired: reasons.length > 0,
-    remoteCanonicalRequired: reasons.length > 0,
-    paidPreviewBranchConsidered: false,
+    remoteBranchRecommended: reasons.length > 0,
     reasons: [...new Set(reasons)],
   };
 }
