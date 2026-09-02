@@ -17,10 +17,13 @@ import { Compass, Hospital, Store, type LucideIcon } from 'lucide-react';
 
 export const BUSINESS_TYPES = ['LOCAL_SHOP', 'GUIDE', 'CLINIC'] as const;
 export type BusinessType = (typeof BUSINESS_TYPES)[number];
+export type TenantNavigationProfile = 'LEGACY_FULL' | 'GUIDE_FIVE';
 
 export type ModePreset = {
   /** 註冊頁卡片用 */
   icon: LucideIcon;
+  /** 第一層資訊架構。GUIDE_FIVE 對應 20-GUIDE-RESPONSIVE-UI 的五大父層級。 */
+  navigationProfile: TenantNavigationProfile;
   /** 「賣的東西」槽位：側邊欄該用哪個頁面當服務項目 */
   catalogHref: string;
   /** 「收的單」槽位 */
@@ -43,6 +46,7 @@ export type ModePreset = {
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
   LOCAL_SHOP: {
     icon: Store,
+    navigationProfile: 'LEGACY_FULL',
     catalogHref: '/tenant/services',
     ordersHref: '/tenant/bookings',
     hiddenNavKeys: ['trips', 'tour_orders', 'clinic_queue'],
@@ -53,6 +57,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
   },
   GUIDE: {
     icon: Compass,
+    navigationProfile: 'GUIDE_FIVE',
     catalogHref: '/tenant/trips',
     ordersHref: '/tenant/tour-orders',
     // 嚮導不需要「時段×員工」那一套
@@ -67,6 +72,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
   },
   CLINIC: {
     icon: Hospital,
+    navigationProfile: 'LEGACY_FULL',
     catalogHref: '/tenant/services',
     ordersHref: '/tenant/bookings',
     hiddenNavKeys: ['trips', 'tour_orders', 'portfolio'],

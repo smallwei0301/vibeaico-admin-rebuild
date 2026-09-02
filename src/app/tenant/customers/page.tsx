@@ -16,13 +16,19 @@ import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import {
   CharCounter, FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
+import { GuideTravelersView } from '@/components/guide';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { MODE_PRESETS } from '@/config/modes';
 import { useToast } from '@/components/ui/Toast';
 import { deleteCustomer, listCustomers } from '@/services/customers';
+import { listConversations } from '@/services/chat';
 import { listMembershipLevels } from '@/services/catalog';
+import { listTourOrders } from '@/services/tours';
 import { MOCK_CUSTOMERS } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { customersPage as t } from '@/i18n/zh-TW/pages/customers';
+import { buildGuideTravelers, loadAllGuidePages } from '@/lib/guide-travelers';
 import { formatCurrency, formatDate, formatNumber } from '@/lib/utils';
 import type { Customer, Gender, MembershipLevel } from '@/lib/types';
 
@@ -77,7 +83,7 @@ const toNumber = (v: string): number | undefined => (v.trim() === '' ? undefined
 
 /* -------------------------------------------------------------------------- */
 
-export default function CustomersPage() {
+function LegacyCustomersPage() {
   const toast = useToast();
 
   const [rows, setRows] = React.useState<Customer[]>([]);
@@ -754,4 +760,64 @@ function BindLineModal({
       )}
     </Modal>
   );
+}
+
+/* ========================================================================== */
+/* GUIDE 旅客入口：只組合既有 customers / tour-orders / chat service 資料       */
+/* ========================================================================== */
+
+function GuideTravelersPage() {
+  const tenant = useCurrentTenant();
+  const [travelers, setTravelers] = React.useState<ReturnType<typeof buildGuideTravelers>>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(false);
+  const [todayIso, setTodayIso] = React.useState('');
+  const loadGeneration = React.useRef(0);
+
+  const load = React.useCallback(async () => {
+    if (!todayIso) return;
+    const generation = ++loadGeneration.current;
+    setLoading(true);
+    setError(false);
+    try {
+      const [customers, orders, conversations] = await Promise.all([
+        loadAllGuidePages((page, size) => listCustomers({ page, size })),
+        loadAllGuidePages((page, size) => listTourOrders({ page, size })),
+        listConversations(),
+      ]);
+      if (generation !== loadGeneration.current) return;
+      setTravelers(buildGuideTravelers(customers, orders, conversations, todayIso));
+    } catch {
+      if (generation !== loadGeneration.current) return;
+      setTravelers([]);
+      setError(true);
+    } finally {
+      if (generation === loadGeneration.current) setLoading(false);
+    }
+  }, [tenant.id, todayIso]);
+
+  React.useEffect(() => {
+    const today = new Date();
+    setTodayIso(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`);
+  }, []);
+
+  React.useEffect(() => { if (todayIso) void load(); }, [load, todayIso]);
+
+  return (
+    <GuideTravelersView
+      tenantName={tenant.name}
+      todayIso={todayIso}
+      travelers={travelers}
+      loading={loading}
+      error={error}
+      onRetry={() => { void load(); }}
+    />
+  );
+}
+
+export default function CustomersPage() {
+  const businessType = useBusinessType();
+  const profile = MODE_PRESETS[businessType].navigationProfile;
+
+  return profile === 'GUIDE_FIVE' ? <GuideTravelersPage /> : <LegacyCustomersPage />;
 }

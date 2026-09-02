@@ -7,6 +7,7 @@ import {
   Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
   Settings, Ticket, TrendingDown, Trophy, Users, X, Zap,
 } from 'lucide-react';
+import { GuideHomeView } from '@/components/guide';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -20,16 +21,19 @@ import { useToast } from '@/components/ui/Toast';
 import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { listTripDepartures, listTrips } from '@/services/tours';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
+import { MODE_PRESETS } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
 import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
 import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatTime,
 } from '@/lib/utils';
+import { dateKeyFromDate, type GuideDepartureSummary } from '@/lib/guide-home';
 import type {
   Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance,
 } from '@/lib/types';
@@ -156,7 +160,7 @@ const daysUntil = (isoDate: string) =>
 
 /* -------------------------------------------------------------------------- */
 
-export default function DashboardPage() {
+function LegacyDashboardPage() {
   const currentTenant = useCurrentTenant();
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
@@ -834,4 +838,79 @@ export default function DashboardPage() {
       />
     </>
   );
+}
+
+/**
+ * GUIDE 首頁只讀既有 service 資料，將團次與後端提醒整理成 action-first
+ * （先處理重要行動）的顯示層。資料模型與既有 legacy 儀表板保持分離。
+ */
+async function loadGuideDepartures(): Promise<GuideDepartureSummary[]> {
+  const trips = await listTrips();
+  const grouped = await Promise.all(
+    trips.map(async (trip) => {
+      const departures = await listTripDepartures(trip.id);
+      return departures.map((departure) => ({ ...departure, tripTitle: trip.title }));
+    }),
+  );
+  return grouped.flat();
+}
+
+function GuideDashboardPage() {
+  const currentTenant = useCurrentTenant();
+  const [todayIso, setTodayIso] = React.useState('');
+  const [alerts, setAlerts] = React.useState<DashboardAlerts | null>(null);
+  const [alertsLoading, setAlertsLoading] = React.useState(true);
+  const [alertsError, setAlertsError] = React.useState(false);
+  const [stats, setStats] = React.useState<DashboardStats | null>(null);
+  const [setup, setSetup] = React.useState<SetupStatus | null>(null);
+  const [departures, setDepartures] = React.useState<GuideDepartureSummary[]>([]);
+  const [departuresLoading, setDeparturesLoading] = React.useState(true);
+  const [departuresError, setDeparturesError] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setTodayIso(dateKeyFromDate(new Date()));
+
+    void getDashboardAlerts()
+      .then((value) => { if (!cancelled) setAlerts(value); })
+      .catch(() => { if (!cancelled) setAlertsError(true); })
+      .finally(() => { if (!cancelled) setAlertsLoading(false); });
+
+    void getDashboardStats()
+      .then((value) => { if (!cancelled) setStats(value); })
+      .catch(() => undefined);
+
+    void getSetupStatus()
+      .then((value) => { if (!cancelled) setSetup(value); })
+      .catch(() => undefined);
+
+    void loadGuideDepartures()
+      .then((value) => { if (!cancelled) setDepartures(value); })
+      .catch(() => { if (!cancelled) setDeparturesError(true); })
+      .finally(() => { if (!cancelled) setDeparturesLoading(false); });
+
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <GuideHomeView
+      tenantName={currentTenant.name}
+      todayIso={todayIso}
+      alerts={alerts}
+      alertsLoading={alertsLoading}
+      alertsError={alertsError}
+      stats={stats}
+      setup={setup}
+      departures={departures}
+      departuresLoading={departuresLoading}
+      departuresError={departuresError}
+    />
+  );
+}
+
+export default function DashboardPage() {
+  const businessType = useBusinessType();
+  const profile = MODE_PRESETS[businessType].navigationProfile;
+
+  return profile === 'GUIDE_FIVE' ? <GuideDashboardPage /> : <LegacyDashboardPage />;
 }
