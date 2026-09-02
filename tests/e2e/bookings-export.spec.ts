@@ -12,6 +12,13 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
 }
 
 test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
+  page.on('pageerror', (error) => {
+    console.error('[bookings-export] pageerror:', error.stack ?? error.message);
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error') console.error('[bookings-export] console:', message.text());
+  });
+
   await login(page);
   await expect(page).toHaveURL(/\/tenant\/dashboard/, { timeout: 15_000 });
   const bookingsResponse = page.waitForResponse((response) => {
@@ -22,7 +29,7 @@ test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
       && response.request().method() === 'GET'
       && response.status() === 200;
   });
-  await page.goto('/tenant/bookings', { waitUntil: 'domcontentloaded' });
+  await page.goto('/tenant/bookings');
   await expect(page).toHaveURL(/\/tenant\/bookings/, { timeout: 15_000 });
   await bookingsResponse;
   const exportButton = page.getByRole('button', { name: '匯出 CSV', exact: true });
