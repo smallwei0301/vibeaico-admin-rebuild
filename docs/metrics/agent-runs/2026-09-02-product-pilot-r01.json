@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-02-product-pilot-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-02T05:50:28Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "owner-decision",
+      "ref": "docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md",
+      "note": "Free local dual-Terra pilot contract; Production and paid Preview remain out of scope."
+    },
+    {
+      "type": "github-main",
+      "ref": "39dd5884979b1079137c6bb567f4c01fc6733701",
+      "note": "Live main observed when the second Product lane was published."
+    },
+    {
+      "type": "product-pr",
+      "ref": "pull/124",
+      "note": "Product slot 1; exact head and predecessor evidence are recorded on the PR."
+    },
+    {
+      "type": "product-pr",
+      "ref": "pull/126",
+      "note": "Product slot 2; exact head and local evidence are recorded on the PR."
+    }
+  ],
+  "main": {
+    "startSha": "39dd5884979b1079137c6bb567f4c01fc6733701",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "Initialized only because the trusted WIP Guard requires an existing scorecard for active B+ Product lanes.",
+    "Product session intentionally records no inferred metrics, completion claim, merge claim, TEST claim, or usage claim.",
+    "Governance session owns subsequent metric updates and completion-truth closure."
+  ],
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

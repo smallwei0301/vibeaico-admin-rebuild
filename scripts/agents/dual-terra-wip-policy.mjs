@@ -13,11 +13,48 @@ function isMissing(value) {
   return !text || text.includes('<!--') || text.includes('|') || /^(TBD|N\/A|UNKNOWN|-)$/i.test(text);
 }
 
-function parseOwnedPaths(value = '') {
+function normalizeOwnedPath(value = '') {
+  const normalized = String(value)
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+/g, '/')
+    .replace(/\*+$/, '')
+    .replace(/\/+$/, '');
+
+  return normalized
+    .split('/')
+    .filter((segment) => segment !== '.')
+    .join('/');
+}
+
+function rawOwnedPaths(value = '') {
   return String(value)
     .split(',')
-    .map((path) => path.trim().replace(/\*+$/, '').replace(/\/+$/, ''))
+    .map((path) => path.trim())
     .filter(Boolean);
+}
+
+function parseOwnedPaths(value = '') {
+  return rawOwnedPaths(value)
+    .map(normalizeOwnedPath)
+    .filter(Boolean);
+}
+
+function hasUnsafeOwnedPath(value = '') {
+  const rawPaths = rawOwnedPaths(value);
+  if (rawPaths.length === 0) return true;
+
+  return rawPaths.some((rawPath) => {
+    const path = normalizeOwnedPath(rawPath);
+    return (
+      !path ||
+      path.startsWith('/') ||
+      /^[A-Za-z]:\//.test(path) ||
+      path.includes('*') ||
+      path.split('/').includes('..')
+    );
+  });
 }
 
 function ownershipOverlap(left, right) {
@@ -78,6 +115,8 @@ export function validateLaneMetadata(metadata, options = {}) {
     }
     if (isMissing(metadata.fileOwnership)) {
       errors.push('Dual Terra TERRA_BUILD must declare FILE_OWNERSHIP');
+    } else if (hasUnsafeOwnedPath(metadata.fileOwnership)) {
+      errors.push('Dual Terra FILE_OWNERSHIP must use normalized repository-relative paths');
     }
   }
 
@@ -106,24 +145,9 @@ export function validateGlobalWip(summary) {
   const pilotTerra = activeTerra.filter((pr) => pr.dualTerraPilot === 'TRUE');
   const dualPilotRequested = pilotTerra.length > 0;
 
-  for (const terra of pilotTerra) {
-    if (!/^[12]$/.test(terra.terraSlot)) {
-      errors.push(`Dual Terra PR #${terra.number} must set TERRA_SLOT to 1 or 2`);
-    }
-    if (terra.testProfile !== 'LOCAL_ISOLATED') {
-      errors.push(`Dual Terra PR #${terra.number} must set TEST_PROFILE=LOCAL_ISOLATED`);
-    }
-    if (terra.finalCanonicalRequired !== 'TRUE') {
-      errors.push(`Dual Terra PR #${terra.number} must set FINAL_CANONICAL_REQUIRED=true`);
-    }
-    if (terra.testLaneRequired !== 'FALSE') {
-      errors.push(`Dual Terra PR #${terra.number} cannot own the remote TEST lane while building`);
-    }
-    if (isMissing(terra.testEnvId)) {
-      errors.push(`Dual Terra PR #${terra.number} must declare TEST_ENV_ID`);
-    }
-    if (isMissing(terra.fileOwnership)) {
-      errors.push(`Dual Terra PR #${terra.number} must declare FILE_OWNERSHIP`);
+  for (const terra of activeTerra) {
+    for (const error of validateLaneMetadata(terra)) {
+      errors.push(`Active Terra PR #${terra.number}: ${error}`);
     }
   }
 
