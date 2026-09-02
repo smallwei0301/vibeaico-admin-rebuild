@@ -18,4 +18,4 @@
 
 ---
 
-同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；跨 repo、證據指向另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。
+同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；跨 repo 或其他無效 Issue 證據不計分，證據指向本 repo 的另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。
