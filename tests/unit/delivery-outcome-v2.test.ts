@@ -3,7 +3,7 @@ import { createRunLedgerV2, validateRunLedgerV2 } from "../../scripts/agents/run
 import { computeDeliveryOutcome, scoreRunV2 } from "../../scripts/agents/score-run-v2.mjs";
 import { reviewRunsV2 } from "../../scripts/agents/review-runs-v2.mjs";
 
-function claim(type: string, subject: string, observedState: string) {
+function claim(type: string, subject: string, observedState: string): any {
   return {
     type,
     subject,
@@ -14,7 +14,7 @@ function claim(type: string, subject: string, observedState: string) {
   };
 }
 
-function completedRun(id = "2026-09-02-delivery-v2") {
+function completedRun(id = "2026-09-02-delivery-v2"): any {
   const run = createRunLedgerV2(id, "2026-09-02T00:00:00Z");
   run.status = "COMPLETE";
   run.endedAt = "2026-09-02T02:00:00Z";
@@ -59,7 +59,7 @@ function completedRun(id = "2026-09-02-delivery-v2") {
 
 describe("Delivery Outcome v2", () => {
   it("creates a valid v2 ledger with a truth section", () => {
-    const run = createRunLedgerV2("2026-09-02-empty");
+    const run: any = createRunLedgerV2("2026-09-02-empty");
     expect(run.schemaVersion).toBe(2);
     expect(validateRunLedgerV2(run)).toEqual([]);
   });
@@ -75,7 +75,7 @@ describe("Delivery Outcome v2", () => {
   });
 
   it("does not grade an IN_PROGRESS run or calculate a tiny-denominator ratio", () => {
-    const run = createRunLedgerV2("2026-09-02-progress");
+    const run: any = createRunLedgerV2("2026-09-02-progress");
     run.delivery.commitOnly = 1;
     run.modelUsage.tasks = [{ id: "t", requestedModel: "terra", actualModel: "unknown", role: "build", count: 1, contextClass: "medium", accepted: true, inputTokens: null, outputTokens: null, cachedTokens: null }];
     const result = scoreRunV2(run);
@@ -129,9 +129,9 @@ describe("Delivery Outcome v2", () => {
 
   it("retrospective compares only completed truth-verified v2 runs", () => {
     const complete = completedRun("2026-09-02-complete");
-    const progress = createRunLedgerV2("2026-09-02-progress");
+    const progress: any = createRunLedgerV2("2026-09-02-progress");
     const result = reviewRunsV2([{ file: "complete.json", run: complete }, { file: "progress.json", run: progress }]);
-    expect(result.eligible.map((item) => item.run.runId)).toEqual(["2026-09-02-complete"]);
-    expect(result.excluded.map((item) => item.run.runId)).toEqual(["2026-09-02-progress"]);
+    expect(result.eligible.map((item: any) => item.run.runId)).toEqual(["2026-09-02-complete"]);
+    expect(result.excluded.map((item: any) => item.run.runId)).toEqual(["2026-09-02-progress"]);
   });
 });
