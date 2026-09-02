@@ -14,13 +14,18 @@ function isMissing(value) {
 }
 
 function normalizeOwnedPath(value = '') {
-  return String(value)
+  const normalized = String(value)
     .trim()
     .replaceAll('\\', '/')
     .replace(/^\.\/+/, '')
     .replace(/\/+/g, '/')
     .replace(/\*+$/, '')
     .replace(/\/+$/, '');
+
+  return normalized
+    .split('/')
+    .filter((segment) => segment !== '.')
+    .join('/');
 }
 
 function rawOwnedPaths(value = '') {
@@ -42,7 +47,13 @@ function hasUnsafeOwnedPath(value = '') {
 
   return rawPaths.some((rawPath) => {
     const path = normalizeOwnedPath(rawPath);
-    return !path || path === '.' || path.includes('*') || path.split('/').includes('..');
+    return (
+      !path ||
+      path.startsWith('/') ||
+      /^[A-Za-z]:\//.test(path) ||
+      path.includes('*') ||
+      path.split('/').includes('..')
+    );
   });
 }
 
