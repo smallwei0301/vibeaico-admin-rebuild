@@ -1,0 +1,46 @@
+name: dual-terra-contract
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/agents/dual-terra-wip-policy.mjs'
+      - 'scripts/ci/local-isolated-test-policy.mjs'
+      - 'tests/unit/dual-terra-pilot-policy.test.ts'
+      - 'tests/unit/local-isolated-test-policy.test.ts'
+      - '.github/workflows/dual-terra-contract.yml'
+      - '.github/workflows/agent-wip-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/agents/dual-terra-wip-policy.mjs'
+      - 'scripts/ci/local-isolated-test-policy.mjs'
+      - 'tests/unit/dual-terra-pilot-policy.test.ts'
+      - 'tests/unit/local-isolated-test-policy.test.ts'
+      - '.github/workflows/dual-terra-contract.yml'
+      - '.github/workflows/agent-wip-guard.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dual-terra-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Verify free local dual-Terra routing contract
+        run: >-
+          npx vitest run -c vitest.config.mts
+          tests/unit/dual-terra-pilot-policy.test.ts
+          tests/unit/local-isolated-test-policy.test.ts
