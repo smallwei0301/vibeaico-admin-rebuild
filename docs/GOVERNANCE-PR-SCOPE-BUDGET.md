@@ -63,19 +63,22 @@ PR C：雙 Terra WIP 規則
 
 ## Owner 例外
 
-真的無法拆分時，必須留下精確 Owner 授權：
-
-```text
-GOVERNANCE_SCOPE_EXCEPTION: OWNER:#113
-```
-
-或：
+真的無法拆分時，PR 只能引用已存在於可信任 `main` 的 Owner Decision：
 
 ```text
 GOVERNANCE_SCOPE_EXCEPTION: OWNER:docs/decisions/2026-09-02-example.md
 ```
 
-「Owner 說可以」、「應該沒問題」等模糊文字無效。例外只解除範圍預算，不解除 CI、Completion Truth、Production 或安全邊界。
+該決策檔必須明確包含：
+
+```text
+GOVERNANCE_SCOPE_EXCEPTION: APPROVED
+GOVERNANCE_SCOPE_BRANCH: governance/exact-branch-name
+```
+
+守門程式會同時確認檔案存在、核准標記與分支名稱一致。只寫 `OWNER:#113`、「Owner 說可以」或引用 PR 分支自己新增的決策檔都無效。
+
+例外只解除範圍預算，不解除 CI、Completion Truth、Production 或安全邊界。
 
 ## 不可用的繞法
 
