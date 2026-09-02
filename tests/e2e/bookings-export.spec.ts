@@ -22,7 +22,8 @@ test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
       && response.request().method() === 'GET'
       && response.status() === 200;
   });
-  await page.goto('/tenant/bookings', { waitUntil: 'commit' });
+  await page.goto('/tenant/bookings', { waitUntil: 'domcontentloaded' });
+  await expect(page).toHaveURL(/\/tenant\/bookings/, { timeout: 15_000 });
   await bookingsResponse;
   const exportButton = page.getByRole('button', { name: '匯出 CSV', exact: true });
   await expect(exportButton).toBeEnabled({ timeout: 15_000 });
