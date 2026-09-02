@@ -3,10 +3,11 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapProduct } from '@/server/mappers';
+import { insertCatalogWithPositions } from '@/server/catalog-position';
 
 /**
  * GET /api/products — products join product_categories(name) → category_name。
- * 全量不分頁，sort_order asc（同 services 模式）。
+ * 全量不分頁，sort_order asc（同 services 模式）；回傳 line_sort_order 供 LINE 精選排序。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -27,7 +28,7 @@ export const GET = handle(async () => {
 
 /**
  * POST /api/products — 新增商品 ⚙MANAGER（B-3：同 services 模式）。
- * sort_order = 目前最大值 +1；categoryId 空字串＝未分類（存 null）。
+ * sort_order / line_sort_order 各自取目前最大值 +1；categoryId 空字串＝未分類（存 null）。
  * 初始 stock > 0 時寫一筆 inventory_logs（PURCHASE_IN），讓庫存帳自始完整。
  */
 const createSchema = z.object({
@@ -40,40 +41,36 @@ const createSchema = z.object({
   imageUrl: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
-});
+}).strict();
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('products')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
-
-  const { data, error } = await t.supabase
-    .from('products')
-    .insert({
-      tenant_id: t.tenantId,
-      category_id: b.categoryId ? b.categoryId : null,
-      name: b.name,
-      description: b.description ?? '',
-      price: b.price,
-      stock: b.stock,
-      safety_stock: b.safetyStock,
-      image_url: b.imageUrl ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? 0) + 1,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  const { data, positions } = await insertCatalogWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    'products',
+    (position) => t.supabase
+      .from('products')
+      .insert({
+        tenant_id: t.tenantId,
+        category_id: b.categoryId ? b.categoryId : null,
+        name: b.name,
+        description: b.description ?? '',
+        price: b.price,
+        stock: b.stock,
+        safety_stock: b.safetyStock,
+        image_url: b.imageUrl ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
   if (b.stock > 0) {
     const { error: lErr } = await t.supabase.from('inventory_logs').insert({
@@ -83,5 +80,5 @@ export const POST = handle(async (req) => {
     if (lErr) console.error('[api] products POST: initial inventory log failed', data.id, lErr);
   }
 
-  return ok({ id: data.id });
+  return ok({ id: data.id, ...positions });
 });

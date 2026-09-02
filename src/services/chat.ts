@@ -2,6 +2,7 @@ import { USE_MOCK } from '@/config/env';
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import { uploadChatImage } from './upload';
 
 /**
  * 顧客訊息（/tenant/chat）service — 04 分冊 §B-5 / §B-5.1。
@@ -201,6 +202,16 @@ const MSG_CLINIC: Record<string, ChatMessage[]> = {
 /** mock 送出訊息的流水號（沿用頁面原本的 m_local_N 命名） */
 let mockSeq = 1;
 
+type PendingChatImage = {
+  lineUserId: string;
+  file: File;
+  upload: ReturnType<typeof uploadChatImage>;
+};
+
+/** Keep a client retry tied to the same uploaded objects until the server settles it. */
+const pendingChatImages = new Map<string, PendingChatImage>();
+const newIdempotencyKey = () => globalThis.crypto.randomUUID();
+
 /* ----------------------------------------------------------------- 端點 */
 
 const PAGE_SIZE = 100;
@@ -287,7 +298,12 @@ export function listMessages(q: { lineUserId: string; page?: number; after?: str
  * 「本月推播額度已用完」→ 以 ApiError 拋出，頁面把 message 原樣 toast。
  * mock：合成一筆 SHOP 訊息回傳（不寫入固定資料，行為同先前純本地 append）。
  */
-export function sendMessage(p: { lineUserId: string; text: string }): Promise<ChatMessage> {
+export function sendMessage(p: {
+  lineUserId: string;
+  text: string;
+  idempotencyKey?: string;
+}): Promise<ChatMessage> {
+  const idempotencyKey = p.idempotencyKey ?? newIdempotencyKey();
   return adapt(
     () => ({
       id: `m_local_${mockSeq++}`,
@@ -301,9 +317,63 @@ export function sendMessage(p: { lineUserId: string; text: string }): Promise<Ch
     async () => {
       const row = await request<RawMessage>('/api/chat/messages', {
         method: 'POST',
-        body: JSON.stringify(p),
+        body: JSON.stringify({ ...p, idempotencyKey }),
       });
       return toMessage(row);
+    },
+  );
+}
+
+/** 先上傳到 chat-images，再用同一條 POST 做 LINE push 與訊息落庫。 */
+export function sendImage(p: {
+  lineUserId: string;
+  file: File;
+  idempotencyKey?: string;
+}): Promise<ChatMessage> {
+  const idempotencyKey = p.idempotencyKey ?? newIdempotencyKey();
+  return adapt(
+    () => ({
+      id: `m_local_${mockSeq++}`,
+      from: 'SHOP' as const,
+      type: 'IMAGE' as const,
+      text: '',
+      imageUrl: URL.createObjectURL(p.file),
+      at: new Date().toISOString(),
+      readAt: null,
+    }),
+    async () => {
+      const previous = pendingChatImages.get(idempotencyKey);
+      if (previous && (previous.lineUserId !== p.lineUserId || previous.file !== p.file)) {
+        throw new Error('同一 idempotency key 不可用於不同圖片');
+      }
+      const upload = previous?.upload ?? uploadChatImage(p.file);
+      pendingChatImages.set(idempotencyKey, { lineUserId: p.lineUserId, file: p.file, upload });
+      let uploaded: Awaited<typeof upload>;
+      try {
+        uploaded = await upload;
+      } catch (error) {
+        // A failed upload has no usable storage ref; let a later retry upload
+        // afresh, while a server failure below intentionally keeps the ref.
+        pendingChatImages.delete(idempotencyKey);
+        throw error;
+      }
+      try {
+        const row = await request<RawMessage>('/api/chat/messages', {
+          method: 'POST',
+          body: JSON.stringify({
+            lineUserId: p.lineUserId,
+            type: 'image',
+            idempotencyKey,
+            storageRef: uploaded.storageRef,
+          }),
+        });
+        pendingChatImages.delete(idempotencyKey);
+        return toMessage(row);
+      } catch (error) {
+        // Preserve the upload for a retry with the same key; the server's
+        // PENDING/FAILED receipt decides whether another provider call is safe.
+        throw error;
+      }
     },
   );
 }

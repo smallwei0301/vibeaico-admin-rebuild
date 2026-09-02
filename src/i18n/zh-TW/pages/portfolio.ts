@@ -86,6 +86,7 @@ export const portfolioPage = {
     extraImagesMax: 8,
     sortOrder: '排序',
     sortOrderHelp: '數字越小排越前面',
+    sortOrderCreateHelp: '新增時由伺服器自動排在排序尾端',
     enabled: '啟用',
   },
 
@@ -127,6 +128,7 @@ export const portfolioPage = {
     operationFailed: '操作失敗',
     notFound: '找不到該作品',
     titleRequired: '請輸入標題',
+    coverImageRequired: '新增作品前請先上傳作品主圖',
     imageTooLarge: '圖片大小不能超過 2MB',
     imageTooLargePrefix: '超過 2MB：',
     imageUnreadablePrefix: '無法讀取（可能是 HEIC 格式，請改存成 JPG/PNG），已略過：',

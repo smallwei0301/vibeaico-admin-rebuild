@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import {
-  exportBookingsCsv, exportCustomersExcel, getReportData, getTopStaff,
+  exportReports, getReportData, getTopStaff,
   type ReportData, type ReportQuery, type ReportRange,
   type ServiceTrend, type TopProduct, type TopService,
 } from '@/services/reports';
@@ -37,20 +37,20 @@ const MOCK_ADVANCED_REPORT_SUBSCRIBED = true;
 
 /** 區間 → 各報表端點的 ?from&to（YYYY-MM-DD，含今天；quarter = 13 週） */
 const RANGE_DAYS: Record<RangeKey, number> = { week: 7, month: 30, quarter: 91 };
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 function rangeDates(range: RangeKey): ReportQuery {
+  const taipeiNow = new Date(Date.now() + TAIPEI_OFFSET_MS);
+  const today = new Date(Date.UTC(
+    taipeiNow.getUTCFullYear(),
+    taipeiNow.getUTCMonth(),
+    taipeiNow.getUTCDate(),
+  ));
+  const from = new Date(today.getTime() - (RANGE_DAYS[range] - 1) * 24 * 60 * 60 * 1000);
   const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - (RANGE_DAYS[range] - 1));
-  return { from: fmt(from), to: fmt(to) };
+    `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  return { from: fmt(from), to: fmt(today) };
 }
-
-const todayFileDate = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
 
 const RANK_TONE = ['warning', 'neutral', 'info'] as const;
 
@@ -114,15 +114,13 @@ export default function ReportsPage() {
     })();
   }, [fail]);
 
-  const runExport = async (ext: string) => {
+  const runExport = async (format: 'csv' | 'excel') => {
     setExportOpen(false);
     setExporting(true);
     try {
-      /* real：直接導向匯出端點（檔案下載，不走 API 信封）；mock：no-op，僅照舊 toast。
-         Excel 選項對應顧客名單匯出、CSV 選項對應預約列表匯出（帶目前區間）。 */
-      if (ext === 'xlsx') await exportCustomersExcel();
-      else await exportBookingsCsv(rangeDates(range));
-      toast.show(`${t.export.success}：${t.export.fileName(todayFileDate(), ext)}`);
+      const result = await exportReports(format, rangeDates(range));
+      if (result.downloaded) toast.show(`${t.export.success}：${result.fileName}`);
+      else toast.show(t.export.mockNotDownloaded, 'warning');
     } catch {
       toast.show(t.export.failed, 'danger');
     } finally {
@@ -244,7 +242,7 @@ export default function ReportsPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm btn-block justify-start"
-                    onClick={() => void runExport('xlsx')}
+                    onClick={() => void runExport('excel')}
                   >
                     {t.export.excel}
                   </button>

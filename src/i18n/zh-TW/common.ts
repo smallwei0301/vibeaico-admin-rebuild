@@ -151,9 +151,9 @@ export const common = {
   /* ---- AI 客服助理（全站右下角）---- */
   supportChat: {
     title: 'AI 客服助理',
-    greeting:
-      '您好！我是 VibeAI 平台的 AI 客服助理，可以幫您查 LINE 狀態、推播額度、最近異常日誌，或回答後台使用問題。請問需要什麼協助？',
-    placeholder: '輸入您的問題...',
+    notBuiltTitle: '線上客服尚未開通',
+    notBuiltBody: '客服後端尚未建置，訊息不會送出，也不會有回覆。',
+    disabledPlaceholder: '客服功能尚未開通',
     send: '送出',
   },
 

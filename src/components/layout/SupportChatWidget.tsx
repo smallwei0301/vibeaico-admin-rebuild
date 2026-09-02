@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import { Bot, Send, X } from 'lucide-react';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Form';
 import { common } from '@/i18n/zh-TW/common';
@@ -8,17 +9,6 @@ import { common } from '@/i18n/zh-TW/common';
 /** 右下角 AI 客服助理 — 原站每頁常駐 */
 export function SupportChatWidget() {
   const [open, setOpen] = React.useState(false);
-  type ChatMsg = { role: 'assistant' | 'user'; text: string };
-  const [messages, setMessages] = React.useState<ChatMsg[]>([
-    { role: 'assistant', text: common.supportChat.greeting },
-  ]);
-  const [draft, setDraft] = React.useState('');
-
-  const send = () => {
-    if (!draft.trim()) return;
-    setMessages((m) => [...m, { role: 'user', text: draft }]);
-    setDraft('');
-  };
 
   return (
     <>
@@ -44,28 +34,19 @@ export function SupportChatWidget() {
               <X size={16} />
             </button>
           </div>
-          <div className="flex-1 space-y-3 overflow-y-auto p-4">
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                className={
-                  m.role === 'assistant'
-                    ? 'max-w-[85%] rounded-lg bg-neutral-100 px-3 py-2 text-sm'
-                    : 'ml-auto max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-white'
-                }
-              >
-                {m.text}
-              </div>
-            ))}
+          <div className="flex-1 overflow-y-auto p-4">
+            <Alert tone="warning" title={common.supportChat.notBuiltTitle}>
+              {common.supportChat.notBuiltBody}
+            </Alert>
           </div>
           <div className="flex items-center gap-2 border-t border-neutral-200 p-3">
             <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && send()}
-              placeholder={common.supportChat.placeholder}
+              value=""
+              readOnly
+              disabled
+              placeholder={common.supportChat.disabledPlaceholder}
             />
-            <Button size="icon" onClick={send} aria-label={common.supportChat.send}>
+            <Button size="icon" disabled aria-label={common.supportChat.send}>
               <Send size={16} />
             </Button>
           </div>

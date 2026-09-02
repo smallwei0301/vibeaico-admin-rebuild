@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { insertCatalogWithPositions } from '@/server/catalog-position';
 
 /**
  * /api/portfolios — 作品集 CRUD，同 services 模式（04 分冊 §B-5）。
  * 欄位以 0005 portfolios 表為準：title、image_url、description、active、
- * line_featured、sort_order。寫入端點 requireFeature('PORTFOLIO_SHOWCASE')
+ * line_featured、sort_order；0017 另有 line_sort_order。寫入端點 requireFeature('PORTFOLIO_SHOWCASE')
  * （09 分冊 §5）；讀取不擋。
  */
 
@@ -19,6 +20,7 @@ function mapPortfolio(r: any) {
     active: !!r.active,
     lineFeatured: !!r.line_featured,
     sortOrder: r.sort_order as number,
+    lineSortOrder: (r.line_sort_order ?? r.sort_order) as number,
     createdAt: r.created_at as string,
   };
 }
@@ -43,36 +45,32 @@ const createSchema = z.object({
   description: z.string().optional(),
   active: z.boolean().optional(),
   lineFeatured: z.boolean().optional(),
-});
+}).strict();
 
 export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   await requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('portfolios')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
+  const { data, positions } = await insertCatalogWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    'portfolios',
+    (position) => t.supabase
+      .from('portfolios')
+      .insert({
+        tenant_id: t.tenantId,
+        title: b.title,
+        image_url: b.imageUrl,
+        description: b.description ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
-  const { data, error } = await t.supabase
-    .from('portfolios')
-    .insert({
-      tenant_id: t.tenantId,
-      title: b.title,
-      image_url: b.imageUrl,
-      description: b.description ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? -1) + 1,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
-
-  return ok({ id: data.id });
+  return ok({ id: data.id, ...positions });
 });

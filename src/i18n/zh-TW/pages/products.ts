@@ -137,6 +137,7 @@ export const productsPage = {
     maxPerOrderHelp: '每個顧客單筆訂單的上限（例：限購 5 件）',
     sortOrder: '排序（公開頁面顯示順序）',
     sortOrderHelp: '數字越小越前面（例：0 最前面），相同時依名稱排序',
+    sortOrderManaged: '排序請使用列表上的上移／下移按鈕調整',
     mainImage: '主圖（第一張，必填）',
     mainImageRemove: '移除主圖',
     mainImageHelp: '支援 JPG / PNG，建議尺寸 800x800，最大 2MB',

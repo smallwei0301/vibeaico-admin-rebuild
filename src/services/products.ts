@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import type { CatalogPosition } from '@/lib/catalog-order';
 
 /**
  * 商品 / 庫存 / 商品訂單 — 寫入操作與頁內讀取的 service 層（04 分冊 §B-3）。
@@ -99,14 +100,18 @@ export type ProductPayload = {
   imageUrl?: string;
   active?: boolean;
   lineFeatured?: boolean;
+  /** 公開頁排序；LINE 精選排序另走 reorderProductsLine。 */
+  sortOrder?: number;
 };
+export type ProductCreatePayload = Omit<ProductPayload, 'sortOrder'>;
 
 let nextMockProductId = 1;
+export type ProductMutationResult = { id: string } & Partial<CatalogPosition>;
 
-export const createProduct = (payload: ProductPayload) =>
-  adapt<{ id: string }>(
+export const createProduct = (payload: ProductCreatePayload) =>
+  adapt<ProductMutationResult>(
     () => ({ id: `p_new_${nextMockProductId++}` }),
-    () => request<{ id: string }>('/api/products', {
+    () => request<ProductMutationResult>('/api/products', {
       method: 'POST', body: JSON.stringify(payload),
     }),
   );
@@ -130,10 +135,17 @@ export const deleteProduct = (id: string) =>
     ),
   );
 
-/** POST /api/products/reorder — 依 ids 順序寫 sort_order（LINE 精選排序） */
+/** POST /api/products/reorder — 依 ids 順序寫公開頁 sort_order。 */
 export const reorderProducts = (ids: string[]) =>
   adapt(() => undefined, () =>
     request<void>('/api/products/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
+/** POST /api/products/reorder-line — LINE 精選排序（line_sort_order）。 */
+export const reorderProductsLine = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/products/reorder-line', {
       method: 'POST', body: JSON.stringify({ ids }),
     }));
 

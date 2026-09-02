@@ -75,26 +75,28 @@ export const lineProfile = (token: string, userId: string) =>
   lineFetch(token, `/v2/bot/profile/${userId}`);
 ```
 
-### 額度控管（免費 200 則/月，`LINE_FREE_PUSH_QUOTA`）
+### 額度控管（免費 200 則/月；有效 EXTRA_PUSH 為 700）
 
-`push`/`multicast` 前先過：
+`push`/`multicast` 前先呼叫 `consumePushQuota`。實作使用 0017 的
+`consume_push_quota(tenant_id, month, count, quota)` SECURITY DEFINER RPC，在資料庫
+內以 atomic guarded increment 完成「未超過上限才增加」；回傳 false 代表額度不足。
+額度查詢或 RPC 失敗時 fail closed，不呼叫 LINE，也不把錯誤當成額度尚可。
 
-```ts
-export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
-  const admin = createAdminSupabase();
-  const month = new Date().toISOString().slice(0, 7);          // 'YYYY-MM'
-  const { data } = await admin.from('push_quota_usage').select('used')
-    .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
-  const used = data?.used ?? 0;
-  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
-  if (used + count > quota) return false;
-  await admin.from('push_quota_usage')
-    .upsert({ tenant_id: tenantId, month, used: used + count });
-  return true;
-}
-```
+`consumePushQuota` 不得退回 route 層的 select → read-modify-write → upsert；feature
+查詢與 RPC 錯誤都轉成 503 `SYS_001`。RPC 參數會拒絕無效月份／負額度，首次寫入也
+不得建立超過 quota 的列。這條資料庫 seam 定義在 `0017`，既有已套用環境由 forward
+`0020` 重建，ACL 由 `0018`/`0020` 維持 `service_role` only。
 
 **reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
+
+### 2.1 後台聊天圖片 ref
+
+`POST /api/upload` 的 `chat-images` 上傳只接受實際解碼為 JPEG/PNG 的檔案，原圖上限
+5 MB，並產生同格式、≤1 MB 的 `{tenantId}/{uuid}.preview.{ext}`。後台送圖只傳
+`{bucket:'chat-images', path, previewPath}`；`POST /api/chat/messages` 會再次驗證
+tenant path、兩個 Storage 物件、實際 bytes 與格式，並用 verified path 產生 LINE 所需
+的兩個 public HTTPS URL。任何任意外部 URL、不同 tenant、不同 bucket、同一 URL/ref
+或錯誤 preview 都必須 fail closed。
 
 ---
 

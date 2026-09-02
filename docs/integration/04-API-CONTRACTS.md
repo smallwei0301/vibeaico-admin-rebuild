@@ -181,7 +181,7 @@ export const POST = handle(async (_req, { params }) => {
 |---|---|
 | POST `/api/services`、PUT/DELETE `:id` | CRUD ⚙M；DELETE 有未來預約→改 `active=false` |
 | POST `/api/services/:id/duplicate` | 複製一筆，name 加「（複本）」 |
-| POST `/api/services/reorder` | `{ids:[]}` 依序寫 sort_order=index |
+| POST `/api/services/reorder`、`/api/services/reorder-line` | `{ids:[]}` 必須是本租戶完整且不重複的 id permutation；以 atomic RPC 分別寫 `sort_order` / `line_sort_order`，缺列或跨租戶 id 回 400，整批失敗不留下部分排序 |
 | POST `/api/services/:id/toggle-line-featured` | 切換 line_featured |
 | GET/POST `/api/service-categories`、PUT/DELETE `:id`、reorder | 同模式 |
 | POST `/api/staff`、PUT/DELETE `:id` | CRUD ⚙M；body 含 `serviceIds[]` → 先寫 staff 再全刪重插 staff_services |
@@ -194,7 +194,8 @@ export const POST = handle(async (_req, { params }) => {
 
 | 端點 | 要點 |
 |---|---|
-| POST `/api/products`、PUT/DELETE `:id`、reorder、toggle-line-featured | 同 services 模式 ⚙M |
+| POST `/api/products`、PUT/DELETE `:id`、reorder、toggle-line-featured | 同 services 模式 ⚙M；新增時 `sort_order` 與 `line_sort_order` 都由伺服器各自取 tail，client 不得指定新增排序 |
+| POST `/api/products/reorder`、`/api/products/reorder-line` | `{ids:[]}` 必須是本租戶完整且不重複的 id permutation；atomic 寫入對應排序 lane，驗證失敗整批回滾 |
 | POST `/api/products/:id/adjust-stock` | `{delta, reason}`：update stock（不可 <0，409）＋寫 inventory_logs |
 | GET `/api/inventory/logs` | `?productId?&page&size` 分頁 |
 | GET/POST `/api/product-categories`… | 同 service-categories |
@@ -227,10 +228,11 @@ export const POST = handle(async (_req, { params }) => {
 | GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | API route 已存在；目前沒有 `DELETE :id` route；publish/pause/resume/end 僅更新活動狀態（目前不代表 LINE 推播），頁面接線與刪除仍屬 issue #7，見 14 分冊 §1 A-1 |
 | GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | `keyword_replies` CRUD。`IMAGE` 寫入須帶 `content.imageStorageRef={bucket,path,url,previewPath,previewUrl}`；伺服器固定只收 `keyword-reply-images`、驗證 `{tenantId}/{uuid}.{ext}` 路徑、可信 Supabase HTTPS public URL，以及原圖／preview 兩個物件確實存在，不能只信前端送來的 URL。GET 對新版 ref 重驗物件；既有只有 `imageUrl` 的 legacy row 保留唯讀／停用相容，下次換圖才升級，不做猜測式 backfill |
 | DELETE `/api/settings/line/keyword-replies/image` | 取消尚未儲存的選圖。只接受本租戶且 URL/path/bucket 一致的完整 storage ref；若仍被任一 keyword reply 引用則不刪。替換／移除／刪除 reply 亦採「DB 先解除引用，再刪原圖＋preview」；Storage 暫時失敗寫入 `keyword_reply_image_cleanup`，由受 `CRON_SECRET` 保護的每日工作重試，重試前再次確認沒有活引用 |
-| GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
+| GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式；新增排序由伺服器分別計算兩條 lane |
+| POST `/api/portfolios/reorder`、`/api/portfolios/reorder-line` | `{ids:[]}` 必須是本租戶完整且不重複的 id permutation；atomic 寫入對應排序 lane，驗證失敗整批回滾 |
 | GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |
 | GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新。支援 `?after=<messageId>` → 只回該筆之後的新訊息（輪詢用） |
-| POST `/api/chat/messages` | `{lineUserId, text}` → LINE **push**（06 分冊）＋寫 OUT 訊息。⚠️ 店家在後台主動回覆時 replyToken 早已失效，只能用 push，**會佔用推播額度** → 送出前先 `consumePushQuota(tenantId, 1)`，額度不足回 409 `REQ_003` 並附文案「本月推播額度已用完」 |
+| POST `/api/chat/messages` | 文字：`{lineUserId, text}`；圖片：`{lineUserId, type:'image', storageRef:{bucket:'chat-images',path,previewPath}}`。`storageRef` 必須是本租戶 `/api/upload` 產生的 `{tenantId}/{uuid}.jpg|png` ref，preview path 必須由 server 推導；server 重新下載驗證兩個物件為 JPEG/PNG，原圖 ≤5 MB、preview ≤1 MB，再自行產生 LINE HTTPS URL，client 不得提交 URL。兩者都走 LINE **push**（06 分冊）並寫 OUT 訊息；圖片同樣消耗 1 則推播額度。⚠️ 店家在後台主動回覆時 replyToken 早已失效，只能用 push，送出前先 `consumePushQuota(tenantId, 1)`，額度不足回 409 `REQ_003` 並附文案「本月推播額度已用完」 |
 | POST `/api/chat/messages/:id/read` | read_at=now |
 
 ### B-5.1 後台聊天的「即時性」（雙向收發完整鏈路）
@@ -264,11 +266,12 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 | 端點 | 要點 |
 |---|---|
 | GET `/api/reports/summary‖daily‖hourly‖top-services‖top-products‖top-staff‖advanced` | `?from&to`；各回聚合陣列，欄位命名照前端 reports 頁的 mock 形狀（實作前先讀該頁 mock） |
+| GET `/api/export/reports/:format` | `:format` 為 `csv` 或 `excel`（兩者目前都回 UTF-8 BOM CSV，不假命名 `.xlsx`）；`?from&to` 必須同時提供且為有效 `YYYY-MM-DD`，未提供時用台北當月。回 `text/csv; charset=utf-8`、`Content-Disposition: attachment`、`Cache-Control: no-store`；CSV 字串欄位做公式注入與 delimiter escaping，數字維持數字 |
 | GET `/api/export/customers/excel`、`/api/export/bookings` | 產 CSV（UTF-8 BOM），`Content-Disposition: attachment`。**不走信封**，直接回檔案 |
 | GET `/api/customers/tags` | 該店所有 tags 去重 |
 | GET `/api/customers/at-risk` | customers_view at_risk=true |
 | POST `/api/feature-store/:code/apply‖cancel‖restore` | 訂閱異動：完整規格（扣點、套裝、還原副作用）在 **09 分冊 §3**，照該冊實作 ⚙O |
-| POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能，MVP：寫進一張 `bug_reports` 表＋寄信給平台管理者即可 |
+| POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能。`bug-report` MVP 寫進 `bug_reports` 表＋寄信給平台管理者；`support-chat/*` **尚未實作，後台 widget 必須顯示「尚未開通」而不可宣稱送出成功，真後端排 #25** |
 
 ---
 
