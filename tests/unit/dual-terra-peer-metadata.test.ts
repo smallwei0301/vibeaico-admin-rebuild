@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  parseLaneMetadata,
   pilotCapacity,
   summarizeActiveLanes,
   validateGlobalWip,
+  validateLaneMetadata,
 } from '../../scripts/agents/dual-terra-wip-policy.mjs';
 
 const runId = '2026-09-02-dual-pilot-r01';
@@ -55,5 +57,13 @@ describe('dual Terra peer validation', () => {
     );
     expect(errors.some((error) => error.includes('Dual Terra FILE_OWNERSHIP overlaps'))).toBe(true);
     expect(pilotCapacity(summary).qualified).toBe(false);
+  });
+
+  it.each(['*', './', '/**', ',,'])('rejects ownership that normalizes to no repository path: %s', (ownership) => {
+    const metadata = parseLaneMetadata(pilotPr(20, 120, 1, true, ownership));
+
+    expect(validateLaneMetadata(metadata)).toContain(
+      'Dual Terra FILE_OWNERSHIP must use normalized repository-relative paths',
+    );
   });
 });
