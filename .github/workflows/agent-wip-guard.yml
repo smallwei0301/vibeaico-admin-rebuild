@@ -18,8 +18,6 @@ jobs:
   guard:
     runs-on: ubuntu-latest
     steps:
-      # This is a privileged workflow. Load policy only from the trusted default branch and never
-      # checkout or execute PR-head code.
       - name: Checkout trusted B+ policy
         uses: actions/checkout@v4
         with:
@@ -32,21 +30,10 @@ jobs:
           script: |
             const path = require('node:path');
             const { pathToFileURL } = require('node:url');
-            const basePolicy = await import(pathToFileURL(path.join(
+            const policy = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE,
-              'scripts/agents/agent-wip-policy.mjs',
+              'scripts/agents/dual-terra-wip-policy.mjs',
             )).href);
-            let policy = basePolicy;
-            try {
-              policy = await import(pathToFileURL(path.join(
-                process.env.GITHUB_WORKSPACE,
-                'scripts/agents/dual-terra-wip-policy.mjs',
-              )).href);
-            } catch (error) {
-              if (error?.code !== 'ERR_MODULE_NOT_FOUND') throw error;
-              // Before the focused policy is merged, the trusted base policy remains fail-closed
-              // at one Terra. Once merged, the dual-pilot module becomes the source of truth.
-            }
 
             const { owner, repo } = context.repo;
             const current = context.payload.pull_request;
@@ -93,14 +80,30 @@ jobs:
               per_page: 100,
             });
             const summary = policy.summarizeActiveLanes(openPulls);
-            const capacity = typeof policy.pilotCapacity === 'function'
-              ? policy.pilotCapacity(summary)
-              : { terraMax: 1, reserveMax: 1, qualified: false };
+            const actualFilesByPullRequest = {};
+            const actualFileLoadErrors = [];
+
+            for (const terra of summary.activeTerra) {
+              try {
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner,
+                  repo,
+                  pull_number: terra.number,
+                  per_page: 100,
+                });
+                actualFilesByPullRequest[String(terra.number)] = files.map((file) => file.filename);
+              } catch (error) {
+                actualFileLoadErrors.push(
+                  `Dual Terra PR #${terra.number} actual changed-file list could not be loaded: ${error.status ?? 'unknown'}`,
+                );
+              }
+            }
+
+            policy.attachActualChangedFiles(summary, actualFilesByPullRequest);
+            const capacity = policy.pilotCapacity(summary);
             const wipErrors = isAgent && metadata.state === 'ACTIVE'
-              ? policy.validateGlobalWip(summary)
+              ? [...policy.validateGlobalWip(summary), ...actualFileLoadErrors]
               : [];
-            const terraLimit = capacity.terraMax;
-            const reserveLimit = capacity.reserveMax;
 
             const labels = {
               'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as Agent-origin.'],
@@ -195,13 +198,19 @@ jobs:
               dispatched = true;
             }
 
+            const actualFileCoverage = summary.activeTerra.length
+              ? summary.activeTerra
+                  .map((terra) => `#${terra.number}:${terra.actualChangedFiles?.length ?? 'not-loaded'}`)
+                  .join(', ')
+              : 'none';
             const metrics = [
               ['Current PR', `#${current.number}`],
               ['Run', metadata.runId || 'missing'],
               ['Free dual-Terra pilot qualified', String(capacity.qualified)],
               ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
-              ['Terra', `${summary.activeTerra.length}/${terraLimit}`],
-              ['Reserve Terra', `${summary.activeReserve.length}/${reserveLimit}`],
+              ['Terra', `${summary.activeTerra.length}/${capacity.terraMax}`],
+              ['Terra actual files loaded', actualFileCoverage],
+              ['Reserve Terra', `${summary.activeReserve.length}/${capacity.reserveMax}`],
               ['Luna Closure', `${summary.activeClosure.length}/1`],
               ['Remote TEST validation', `${summary.activeTest.length}/1`],
               ['Product candidates', `${summary.activeCandidates.length}/2`],
@@ -222,7 +231,7 @@ jobs:
               const errors = [...metadataErrors, ...wipErrors];
               const body = errors.length
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nPark or reclassify the extra lane before continuing. Do not add commits or rerun CI to work around this guard.`
-                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- Terra: ${summary.activeTerra.length}/${terraLimit}\n- Reserve Terra: ${summary.activeReserve.length}/${reserveLimit}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nThis Hook validates observable GitHub metadata. It cannot prove which delegated model actually ran.`;
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner,
