@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createRunLedgerV2, validateRunLedgerV2 } from "../../scripts/agents/run-ledger-v2.mjs";
-import { canonicalIssueSubject, computeDeliveryOutcome, scoreRunV2 } from "../../scripts/agents/score-run-v2.mjs";
+import {
+  canonicalIssueEvidenceRef,
+  canonicalIssueSubject,
+  computeDeliveryOutcome,
+  scoreRunV2,
+} from "../../scripts/agents/score-run-v2.mjs";
 import { reviewRunsV2 } from "../../scripts/agents/review-runs-v2.mjs";
 
 function claim(type: string, subject: string, observedState: string, evidenceRef = `github:${subject}`): any {
@@ -75,6 +80,13 @@ describe("Delivery Outcome v2", () => {
     expect(canonicalIssueSubject("pull#10")).toBeNull();
   });
 
+  it("resolves only Issue-shaped evidence references", () => {
+    expect(canonicalIssueEvidenceRef("github:issue#10")).toBe("issue#10");
+    expect(canonicalIssueEvidenceRef("https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/10#issuecomment-1")).toBe("issue#10");
+    expect(canonicalIssueEvidenceRef("github:TBD")).toBeNull();
+    expect(canonicalIssueEvidenceRef("github:pull#10")).toBeNull();
+  });
+
   it("counts only unique verified CLOSED and complete OWNER_BLOCKED evidence as outcomes", () => {
     const run = completedRun();
     run.delivery = { ...run.delivery, issuesClosed: 1, ownerBlockedComplete: 1, auditReady: 5, exactHeadCiOnly: 4, commitOnly: 9, unfinishedCarryover: 3 };
@@ -115,6 +127,29 @@ describe("Delivery Outcome v2", () => {
     expect(result.shippedUnits).toBe(2);
   });
 
+  it("hard-fails when evidence points to a different Issue than the claim", () => {
+    const run = completedRun("2026-09-02-mismatched-evidence");
+    run.completionTruth.claims[0].evidenceRef = "github:issue#11";
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("HARD_FAIL");
+    expect(result.shippedUnits).toBe(0);
+    expect(result.hardFailures).toContain(
+      "ISSUE_CLOSED issue#10 evidenceRef points to issue#11",
+    );
+  });
+
+  it("does not show shipped output before the Completion Truth envelope is VERIFIED", () => {
+    const run = completedRun("2026-09-02-truth-not-checked");
+    run.completionTruth.status = "NOT_CHECKED";
+    run.completionTruth.checkedAt = null;
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("NOT_GRADED");
+    expect(result.shippedUnits).toBe(0);
+    expect(result.gradingGaps).toContain("completionTruth.status must be VERIFIED");
+  });
+
   it("hard-fails one Issue verified as both CLOSED and OWNER_BLOCKED_COMPLETE", () => {
     const run = completedRun("2026-09-02-contradictory-delivery-state");
     run.delivery.ownerBlockedComplete = 1;
@@ -136,7 +171,7 @@ describe("Delivery Outcome v2", () => {
     run.delivery.ownerBlockedComplete = 1;
     run.completionTruth.claims = [
       claim("OWNER_BLOCKED_COMPLETE", "issue#10", "owner_blocked_complete"),
-      claim("OWNER_BLOCKED_COMPLETE", "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/10", "owner_blocked_complete"),
+      claim("OWNER_BLOCKED_COMPLETE", "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/10", "owner_blocked_complete", "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/10"),
       claim("RUN_COMPLETE", run.runId, "complete"),
     ];
 
@@ -148,13 +183,13 @@ describe("Delivery Outcome v2", () => {
 
   it("does not count malformed Issue subjects or placeholder evidence", () => {
     const run = completedRun("2026-09-02-malformed-delivery-evidence");
-    run.completionTruth.claims[0] = claim("ISSUE_CLOSED", "TBD", "closed", "TBD");
+    run.completionTruth.claims[0] = claim("ISSUE_CLOSED", "TBD", "closed", "github:TBD");
 
     const result = scoreRunV2(run);
     expect(result.scoreStatus).toBe("NOT_GRADED");
     expect(result.shippedUnits).toBe(0);
     expect(result.gradingGaps).toContain("ISSUE_CLOSED TBD does not identify one canonical Issue");
-    expect(result.gradingGaps).toContain("ISSUE_CLOSED TBD has no usable evidenceRef");
+    expect(result.gradingGaps).toContain("ISSUE_CLOSED TBD evidenceRef does not identify one canonical Issue");
   });
 
   it("rejects an empty evidenceRef at ledger validation", () => {

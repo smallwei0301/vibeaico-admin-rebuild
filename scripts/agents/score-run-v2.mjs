@@ -49,18 +49,34 @@ export function canonicalIssueSubject(value) {
   return Number.isSafeInteger(issueNumber) && issueNumber > 0 ? `issue#${issueNumber}` : null;
 }
 
+export function canonicalIssueEvidenceRef(value) {
+  const text = String(value ?? "").trim();
+  if (!isUsableReference(text)) return null;
+  return canonicalIssueSubject(text.replace(/^github:/i, ""));
+}
+
 function collectDeliveryEvidence(run) {
-  const claims = run?.completionTruth?.claims ?? [];
   const closedSubjects = new Set();
   const ownerBlockedSubjects = new Set();
 
+  if (run?.completionTruth?.status !== "VERIFIED") {
+    return {
+      closedSubjects,
+      ownerBlockedSubjects,
+      ownerBlockedOnlySubjects: new Set(),
+      overlappingSubjects: new Set(),
+    };
+  }
+
+  const claims = run.completionTruth.claims ?? [];
   for (const claim of claims) {
     if (!DELIVERY_CLAIM_TYPES.has(claim.type) || claim.verification !== "VERIFIED") continue;
     const expected = EXPECTED[claim.type];
     if (lower(claim.claimedState) !== expected || lower(claim.observedState) !== expected) continue;
 
     const subject = canonicalIssueSubject(claim.subject);
-    if (!subject || !isUsableReference(claim.evidenceRef)) continue;
+    const evidenceSubject = canonicalIssueEvidenceRef(claim.evidenceRef);
+    if (!subject || evidenceSubject !== subject) continue;
     if (claim.type === "ISSUE_CLOSED") closedSubjects.add(subject);
     else ownerBlockedSubjects.add(subject);
   }
@@ -108,8 +124,19 @@ export function evaluateCompletionTruth(run) {
     else if (claim.verification === "UNVERIFIED" && FINAL.has(run.status) && claim.type !== "OTHER") gradingGaps.push(`${claim.type} ${claim.subject} is unverified`);
 
     if (FINAL.has(run.status) && DELIVERY_CLAIM_TYPES.has(claim.type)) {
-      if (!canonicalIssueSubject(claim.subject)) gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} does not identify one canonical Issue`);
-      if (claim.verification === "VERIFIED" && !isUsableReference(claim.evidenceRef)) gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} has no usable evidenceRef`);
+      const subject = canonicalIssueSubject(claim.subject);
+      const evidenceRef = String(claim.evidenceRef ?? "").trim();
+      const evidenceSubject = canonicalIssueEvidenceRef(evidenceRef);
+      if (!subject) gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} does not identify one canonical Issue`);
+      if (claim.verification === "VERIFIED") {
+        if (!isUsableReference(evidenceRef)) {
+          gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} has no usable evidenceRef`);
+        } else if (!evidenceSubject) {
+          gradingGaps.push(`${claim.type} ${claim.subject || "<empty>"} evidenceRef does not identify one canonical Issue`);
+        } else if (subject && evidenceSubject !== subject) {
+          hardFailures.push(`${claim.type} ${subject} evidenceRef points to ${evidenceSubject}`);
+        }
+      }
     }
   }
 
@@ -255,7 +282,7 @@ export function renderMarkdownV2(run, result) {
     `| Agent 流動 | ${result.scores.flow} / 10 |`,
     `| 證據完整 | ${result.scores.auditability} / 10 |`, "",
   );
-  lines.push("---", "", "同一張 Issue 重複 claim 只算一次；同時宣稱 CLOSED 與 OWNER_BLOCKED 會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成成品。IN_PROGRESS 不評分。", "");
+  lines.push("---", "", "同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；證據若指向另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。", "");
   return lines.join("\n");
 }
 

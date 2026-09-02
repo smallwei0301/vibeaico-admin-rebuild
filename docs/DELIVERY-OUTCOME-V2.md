@@ -29,7 +29,8 @@ v2 第一階段已把成品與半成品分帳；v2.1 再補一個漏洞：同一
 ```text
 唯一主體    = 一張 canonical primary Issue
 唯一狀態    = CLOSED 或 OWNER_BLOCKED_COMPLETE，不能同時
-即時證據    = verification=VERIFIED，且 evidenceRef 不是空白或 placeholder
+總體核准    = completionTruth.status=VERIFIED
+即時證據    = verification=VERIFIED，且 evidenceRef 指回同一張 Issue
 計數上限    = 同一 Issue 在同一 Run 最多 1 次
 ```
 
@@ -45,6 +46,17 @@ https://api.github.com/repos/<owner>/<repo>/issues/10
 
 `pull#10`、空白、`TBD`、Issue 0 或無法辨認的文字不算 Delivery Unit。
 
+`evidenceRef` 也必須能整理成同一個 Issue 身分，例如：
+
+```text
+subject: issue#10
+證據可用: github:issue#10
+證據可用: https://github.com/<owner>/<repo>/issues/10
+證據不可用: github:issue#11
+```
+
+最後一例不是少一張附件而已，而是拿 11 號案件的收據來證明 10 號案件；這種已標成 VERIFIED 的錯配會 `F-HARD`。
+
 ## v2.1 的兩本成果帳與一本在製品帳
 
 ### 真正出貨 `shipped_units`
@@ -53,7 +65,7 @@ https://api.github.com/repos/<owner>/<repo>/issues/10
 不重複、live-verified 的 CLOSED Issue × 1.0
 ```
 
-只有它能當「每件真正成品 usage」的分母。
+只有它能當「每件真正成品 usage」的分母。即使個別 claim 寫著 VERIFIED，只要整體 `completionTruth.status` 還是 `NOT_CHECKED` 或 `FAILED`，`shipped_units` 就先保持 0，不提前顯示成品。
 
 ### 自主完成 `autonomous_outcome_units`
 
@@ -86,7 +98,7 @@ delivery.issuesClosed
 delivery.ownerBlockedComplete
 ```
 
-Final Run 中，它們必須精確等於 Completion Truth 裡「不重複、已驗證、格式正確」的 Issue 數：
+Final Run 中，它們必須精確等於 Completion Truth 裡「不重複、已驗證、格式正確，而且證據指回同一 Issue」的數量：
 
 ```text
 issuesClosed: 2 + issue#10 + #10
@@ -110,8 +122,11 @@ issuesClosed: 2 + issue#10 + issue#11
 IN_PROGRESS / CLOSURE_RECOVERY → NOT_GRADED
 缺 end SHA 或結束盤點        → NOT_GRADED
 缺必要百分比                 → NOT_GRADED，不補 50 分
+Completion Truth 未 VERIFIED  → NOT_GRADED，且成果數先為 0
 唯一 Issue 數與手填總數不符  → NOT_GRADED
+證據不是 Issue 或只是占位文字 → NOT_GRADED
 完成宣稱與 live state 衝突    → F-HARD
+證據指向另一張 Issue          → F-HARD
 同一 Issue 宣稱兩種完成狀態   → F-HARD
 ```
 
@@ -133,7 +148,7 @@ IN_PROGRESS / CLOSURE_RECOVERY → NOT_GRADED
 
 可驗證宣稱包含 Issue closed、完整 Owner-blocked、PR merged、CI green、local TEST green 與 Run complete。每筆 `VERIFIED` 必須有 live evidence reference。
 
-特別規則：GitHub job 顯示 `skipped` 時，不能宣稱 local TEST green；PR 只有 open／closed 也不能宣稱 merged；`evidenceRef` 為空、`TBD`、`UNKNOWN` 或其他 placeholder 時，不能覆蓋交付數字。
+特別規則：GitHub job 顯示 `skipped` 時，不能宣稱 local TEST green；PR 只有 open／closed 也不能宣稱 merged；`evidenceRef` 為空、`TBD`、`UNKNOWN`、不是 Issue，或指向另一張 Issue 時，不能覆蓋交付數字。
 
 ## 指令
 
