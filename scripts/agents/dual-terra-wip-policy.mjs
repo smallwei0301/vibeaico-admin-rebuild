@@ -57,6 +57,10 @@ function hasUnsafeOwnedPath(value = '') {
   });
 }
 
+function pathCovers(ownedPath, changedPath) {
+  return ownedPath === changedPath || changedPath.startsWith(`${ownedPath}/`);
+}
+
 function ownershipOverlap(left, right) {
   for (const leftPath of parseOwnedPaths(left)) {
     for (const rightPath of parseOwnedPaths(right)) {
@@ -72,6 +76,40 @@ function ownershipOverlap(left, right) {
   return null;
 }
 
+export function validateActualFileOwnership(metadata, changedFiles) {
+  if (
+    metadata.origin !== 'AGENT' ||
+    metadata.state !== 'ACTIVE' ||
+    metadata.lane !== 'TERRA_BUILD' ||
+    metadata.dualTerraPilot !== 'TRUE'
+  ) {
+    return [];
+  }
+
+  if (!Array.isArray(changedFiles)) {
+    return [`Dual Terra PR #${metadata.number} actual changed-file list was not loaded`];
+  }
+
+  const actualFiles = changedFiles
+    .map(normalizeOwnedPath)
+    .filter(Boolean);
+  if (actualFiles.length === 0) {
+    return [`Dual Terra PR #${metadata.number} has no actual changed files to verify`];
+  }
+
+  const ownedPaths = parseOwnedPaths(metadata.fileOwnership);
+  const uncovered = actualFiles.filter(
+    (changedPath) => !ownedPaths.some((ownedPath) => pathCovers(ownedPath, changedPath)),
+  );
+  if (uncovered.length === 0) return [];
+
+  const sample = uncovered.slice(0, 10).join(', ');
+  const suffix = uncovered.length > 10 ? ` (+${uncovered.length - 10} more)` : '';
+  return [
+    `Dual Terra PR #${metadata.number} changed files outside FILE_OWNERSHIP: ${sample}${suffix}`,
+  ];
+}
+
 export function parseLaneMetadata(pr = {}) {
   const body = pr.body ?? '';
   return {
@@ -82,6 +120,7 @@ export function parseLaneMetadata(pr = {}) {
     testEnvId: readField(body, 'TEST_ENV_ID'),
     finalCanonicalRequired: upper(readField(body, 'FINAL_CANONICAL_REQUIRED')),
     fileOwnership: readField(body, 'FILE_OWNERSHIP'),
+    actualChangedFiles: null,
   };
 }
 
@@ -136,7 +175,17 @@ export function summarizeActiveLanes(pullRequests = []) {
     activeClosure: activeAgentPulls.filter((pr) => pr.lane === 'LUNA_CLOSURE'),
     activeTest: activeAgentPulls.filter((pr) => pr.lane === 'TEST_VALIDATION'),
     activeCandidates: activeAgentPulls.filter((pr) => pr.activeCandidate === 'TRUE' && pr.lane !== 'LUNA_CLOSURE'),
+    requireActualFileCoverage: false,
   };
+}
+
+export function attachActualChangedFiles(summary, filesByPullRequest = {}) {
+  summary.requireActualFileCoverage = true;
+  for (const terra of summary.activeTerra) {
+    const files = filesByPullRequest[String(terra.number)];
+    terra.actualChangedFiles = Array.isArray(files) ? [...files] : null;
+  }
+  return summary;
 }
 
 export function validateGlobalWip(summary) {
@@ -148,6 +197,9 @@ export function validateGlobalWip(summary) {
   for (const terra of activeTerra) {
     for (const error of validateLaneMetadata(terra)) {
       errors.push(`Active Terra PR #${terra.number}: ${error}`);
+    }
+    if (summary.requireActualFileCoverage) {
+      errors.push(...validateActualFileOwnership(terra, terra.actualChangedFiles));
     }
   }
 
@@ -179,6 +231,16 @@ export function validateGlobalWip(summary) {
 
     const overlap = ownershipOverlap(activeTerra[0].fileOwnership, activeTerra[1].fileOwnership);
     if (overlap) errors.push(`Dual Terra FILE_OWNERSHIP overlaps: ${overlap}`);
+
+    if (summary.requireActualFileCoverage) {
+      const firstActual = new Set((activeTerra[0].actualChangedFiles ?? []).map(normalizeOwnedPath));
+      const actualOverlap = (activeTerra[1].actualChangedFiles ?? [])
+        .map(normalizeOwnedPath)
+        .filter((path) => firstActual.has(path));
+      if (actualOverlap.length) {
+        errors.push(`Dual Terra actual changed files overlap: ${actualOverlap.slice(0, 10).join(', ')}`);
+      }
+    }
   }
 
   if (activeReserve.length > 1) {
