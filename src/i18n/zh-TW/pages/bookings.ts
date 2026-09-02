@@ -147,7 +147,7 @@ export const bookingsPage = {
   /* -------------------------------------------------------- 編輯預約 modal */
   editModal: {
     title: '編輯預約',
-    intro: '修改預約資訊後，系統將自動發送 LINE 通知給顧客。',
+    intro: '修改時間或服務人員會觸發 LINE 通知；店內備註僅供內部記錄。',
     customer: '顧客',
     customerHelp: '顧客資訊無法修改',
     service: '服務項目 *',
@@ -163,8 +163,8 @@ export const bookingsPage = {
     duration: '服務時長 *',
     durationUnit: '分鐘',
     durationHelp: '可調整服務時長（30-480 分鐘，每 30 分鐘一檔）',
-    noteToCustomer: '給顧客的備註',
-    noteToCustomerPlaceholder: '此備註會透過 LINE 通知顧客...',
+    noteToCustomer: '店內備註',
+    noteToCustomerPlaceholder: '記錄旅客需求或處理內容，不會觸發 LINE 通知...',
     noteMax: 500,
     submit: '儲存變更',
     submitting: '儲存中...',
@@ -304,7 +304,8 @@ export const bookingsPage = {
   /* ------------------------------------------------------------------ 訊息 */
   messages: {
     created: '預約建立成功',
-    updated: '預約已更新，已發送通知給顧客',
+    updated: '預約已更新，已觸發 LINE 通知流程',
+    updatedWithoutNotification: '預約已更新；本次未觸發 LINE 通知',
     confirmed: '預約已確認',
     completed: '預約已完成',
     cancelled: '預約已取消',
