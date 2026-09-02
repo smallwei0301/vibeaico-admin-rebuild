@@ -15,13 +15,11 @@ test('預約頁匯出會下載含真實資料的 CSV', async ({ page }) => {
   await login(page);
   await expect(page).toHaveURL(/\/tenant\/dashboard/, { timeout: 15_000 });
   await page.goto('/tenant/bookings', { waitUntil: 'commit' });
-  await expect(page.getByRole('button', { name: '匯出', exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
+  const exportButton = page.getByRole('button', { name: '匯出 CSV', exact: true });
+  await expect(exportButton).toBeVisible({ timeout: 15_000 });
 
-  await page.getByRole('button', { name: '匯出', exact: true }).click();
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('button', { name: '匯出 CSV', exact: true }).click();
+  await exportButton.click();
 
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^bookings-\d{4}-\d{2}-\d{2}\.csv$/);
