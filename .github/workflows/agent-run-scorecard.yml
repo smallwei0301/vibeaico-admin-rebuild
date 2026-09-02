@@ -5,19 +5,19 @@ on:
     paths:
       - 'docs/metrics/agent-runs/**'
       - 'docs/AGENT-BPLUS-DELIVERY-LOOP.md'
-      - '.agents/schemas/agent-run.schema.json'
+      - '.agents/schemas/agent-run*.schema.json'
       - '.agents/skills/vibeaico-agent-retrospective/**'
-      - 'scripts/agents/run-ledger.mjs'
-      - 'scripts/agents/score-run.mjs'
-      - 'scripts/agents/review-runs.mjs'
+      - 'scripts/agents/run-ledger*.mjs'
+      - 'scripts/agents/score-run*.mjs'
+      - 'scripts/agents/review-runs*.mjs'
       - 'tests/unit/agent-run-score.test.ts'
   push:
     branches: [main]
     paths:
       - 'docs/metrics/agent-runs/**'
-      - 'scripts/agents/run-ledger.mjs'
-      - 'scripts/agents/score-run.mjs'
-      - 'scripts/agents/review-runs.mjs'
+      - 'scripts/agents/run-ledger*.mjs'
+      - 'scripts/agents/score-run*.mjs'
+      - 'scripts/agents/review-runs*.mjs'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +35,9 @@ jobs:
           node --check scripts/agents/run-ledger.mjs
           node --check scripts/agents/score-run.mjs
           node --check scripts/agents/review-runs.mjs
+          node --check scripts/agents/run-ledger-v2.mjs
+          node --check scripts/agents/score-run-v2.mjs
+          node --check scripts/agents/review-runs-v2.mjs
       - name: Validate and reproduce every committed report
         shell: bash
         run: |
@@ -48,6 +51,17 @@ jobs:
           for ledger in "${ledgers[@]}"; do
             report="${ledger%.json}.md"
             test -f "$report" || { echo "Missing report: $report" >&2; exit 1; }
-            node scripts/agents/run-ledger.mjs validate "$ledger"
-            node scripts/agents/score-run.mjs "$ledger" --check "$report"
+            schema_version="$(node -e 'const fs=require("fs"); console.log(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).schemaVersion)' "$ledger")"
+            if [ "$schema_version" = "2" ]; then
+              node scripts/agents/run-ledger-v2.mjs validate "$ledger"
+              generated="$(mktemp)"
+              node scripts/agents/score-run-v2.mjs "$ledger" > "$generated"
+              diff -u "$report" "$generated"
+            elif [ "$schema_version" = "1" ]; then
+              node scripts/agents/run-ledger.mjs validate "$ledger"
+              node scripts/agents/score-run.mjs "$ledger" --check "$report"
+            else
+              echo "Unsupported schemaVersion in $ledger: $schema_version" >&2
+              exit 1
+            fi
           done
