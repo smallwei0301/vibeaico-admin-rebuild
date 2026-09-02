@@ -19,6 +19,8 @@
 //   - GET  /v2/bot/profile/{userId} → 200 { displayName, userId, pictureUrl }
 //   - GET  /v2/bot/info → 200 { basicId, displayName, … }
 //   - 其他路徑 → 200 {}（rich menu 等端點本波測試不驗內容）
+//   - holdNext(path)：把下一個指定路徑的回應暫停到 release()，用來證明
+//     webhook 先回 200 再完成事件處理（issue #31）。
 //   - failNext(status) 佇列：下一個進來的請求改回該狀態 —— 用來模擬
 //     「LINE 平台回錯 → lineFetch 丟 ApiHttpError → webhook 事件處理失敗」，
 //     驗證 route 的 try/catch 仍回 200。
@@ -60,6 +62,12 @@ export class LineMockServer {
 
   private server: Server | undefined;
   private failQueue: number[] = [];
+  private hold: {
+    path: string;
+    hit: boolean;
+    onHit: () => void;
+    release: (() => void) | null;
+  } | null = null;
 
   constructor(readonly port: number = lineMockPort()) {}
 
@@ -87,6 +95,17 @@ export class LineMockServer {
           body,
           rawBody,
         });
+
+        if (this.hold && !this.hold.hit && this.hold.path === path) {
+          const hold = this.hold;
+          hold.hit = true;
+          hold.release = () => {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end('{}');
+          };
+          hold.onHit();
+          return;
+        }
 
         // failNext 佇列：模擬 LINE 平台錯誤（lineFetch 會轉成 502 ApiHttpError）
         const failStatus = this.failQueue.shift();
@@ -153,10 +172,27 @@ export class LineMockServer {
     });
   }
 
-  /** 清空請求紀錄與 failNext 佇列（案例之間隔離用） */
+  /** 清空請求紀錄與 failNext／holdNext 佇列（案例之間隔離用） */
   reset(): void {
     this.requests.length = 0;
     this.failQueue = [];
+    this.hold?.release?.();
+    this.hold = null;
+  }
+
+  /** 暫停下一個指定路徑的回應，直到 release()。 */
+  holdNext(path: string): { hit: Promise<void>; release: () => void } {
+    let onHit!: () => void;
+    const hit = new Promise<void>((resolve) => { onHit = resolve; });
+    const hold = { path, hit: false, onHit, release: null as (() => void) | null };
+    this.hold = hold;
+    return {
+      hit,
+      release: () => {
+        hold.release?.();
+        hold.release = null;
+      },
+    };
   }
 
   /** 讓「下一個」進來的請求回指定狀態碼（預設 500）；可疊加多次排隊 */

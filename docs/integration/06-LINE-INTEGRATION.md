@@ -103,8 +103,10 @@ export async function consumePushQuota(tenantId: string, count: number): Promise
 要點：
 - `export const runtime = 'nodejs'`（需要 crypto）。
 - **不走 requireTenant**（LINE 打進來沒有 session）→ 用 shopCode 查店、service role 存取。
-- **簽章驗證失敗回 401 就結束**；驗證通過後**永遠回 200**（處理錯誤只 log，
-  否則 LINE 會不斷重送）。
+- **簽章驗證失敗回 401 就結束**；合法 HMAC 但 malformed JSON 回 `400 invalid JSON`；
+  合法 JSON 驗證通過後事件處理錯誤只 log 並回 `200`，否則 LINE 會不斷重送。
+
+以下是原始 webhook 契約的簡化示意；事件後處理與 malformed JSON branch 見 §3.1。
 
 ```ts
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -127,7 +129,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
   if (!got || !timingSafeEqual(Buffer.from(expect), Buffer.from(got)))
     return new Response('bad signature', { status: 401 });
 
-  const { events } = JSON.parse(raw);
+  let events;
+  try {
+    events = JSON.parse(raw).events;
+  } catch (e) {
+    console.error('[line-webhook]', shopCode, 'parse', e);
+    return new Response('invalid JSON', { status: 400 });
+  }
   for (const ev of events ?? []) {
     try { await handleEvent(admin, tenant.id, token, lineConfig, ev); }
     catch (e) { console.error('[line-webhook]', shopCode, ev.type, e); }
@@ -135,6 +143,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ shopCod
   return new Response('ok');
 }
 ```
+
+### 3.1 驗簽後立即回應、事件交給 `after()`（issue #31）
+
+current-main 的 webhook 實作保留 §3 的驗簽順序，並把事件處理移到回應之後。這裡的
+保證是**驗簽在排程之前**，不是宣稱驗簽前完全不會讀 tenant 或 credentials：目前
+route 仍依既有 contract 先用 `shopCode` 查 tenant、取 LINE credentials 並讀 raw body，
+這些 lookup 仍在 HMAC 驗證之前。
+
+- route 先讀取 raw body、查好的 tenant／LINE credentials；HMAC 驗證失敗仍直接回 `401`，
+  在驗簽前或驗簽失敗時不會排入背景工作。
+- HMAC 驗證成功後若 raw body 不是合法 JSON，會寫 `[line-webhook]` parse error、回
+  `400 invalid JSON`，也不會排入背景工作。這個錯誤不適用「處理錯誤仍 200」的 webhook
+  事件處理契約，因為事件尚未成功解析。
+- 驗簽成功後先註冊 `after()` 工作，再回 `200`。callback 只使用已取出的
+  `admin`、`tenant`、`token`、`lineConfig` 與 `events`，不讀取已結束的 `Request`。
+- `handleEvent` 在 `after()` 內動態載入，因此 AI 客服分派仍保留，只是不再在 webhook
+  acknowledgement 前載入整個事件模組。每個事件的錯誤與 callback 外層例外都會寫入
+  `[line-webhook]` log；HTTP 回應仍維持 `200`。
+
+route 同檔的 `GET` 不是 production observability API，而是明確受限的 local/CI
+test/dev drain seam：只有 `NODE_ENV !== production`、`LINE_WEBHOOK_DRAIN_ENABLED=true`
+且 request 帶 `x-line-webhook-test-drain: 1` 時才啟用，否則（含 production）回 `405`。
+它只在該 test server process 記憶體保存 per-shop 狀態，pending work 最多 100 筆／shop、
+最多 32 個 shop state，錯誤摘要每 shop 最多 20 筆；pending 完成後會移除。回傳
+`{ drained, scheduled, errors }` 的 `scheduled` 是該 shop 在此 process 的累計排入數，
+`errors` 只是非 production 測試摘要，且不會跨 tenant 回傳。沒有 Preview 或 production
+排空／觀測入口的證據或承諾。
+
+對應測試證據：
+
+- `tests/integration/api/line-webhook.06.test.ts`：壞簽章 `401` 且 `scheduled` 不變；
+  合法 HMAC 但 malformed JSON 回 `400`、有 parse log 且 `scheduled` 不變；
+  mock LINE 回應被 `holdNext()` 扣住時，webhook 仍先回 `200`，release 後由
+  `drainWebhook()` 確認事件完成；LINE API 失敗時 HTTP 仍為 `200` 且 drain 結果含錯誤。
+- `tests/helpers/line-webhook.ts` 只帶 test drain header；`tests/integration/global-setup.ts`
+  只在 spawned integration `next dev` 明確設定 `LINE_WEBHOOK_DRAIN_ENABLED=true`。
+- `tests/integration/api/chat-link.06.test.ts`：需要讀取 webhook 副作用的既有案例先使用
+  同一個 drain 訊號，再檢查資料與 mock 請求。
+
+上述只證明「事件處理不阻塞 webhook acknowledgement」及其保留的副作用；本節沒有
+真實 LINE cold-start、真實 AI provider latency 或 authenticated Preview 證據。那些仍須
+外部／Owner gate，不能由 local mock 或此測試替代。
 
 ### `handleEvent` 分派（同檔或 `src/server/line-events.ts`）
 
