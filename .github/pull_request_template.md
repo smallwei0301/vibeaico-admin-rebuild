@@ -27,7 +27,7 @@ supersedes:
 - TEST_LANE_REQUIRED: true | false
 - RESERVE_BOUNDARY: none | <!-- mandatory for TERRA_RESERVE -->
 - WHY_NOT_CLOSER_CANDIDATE: none | <!-- mandatory for non-CLOSE_READY MAIN -->
-- GOVERNANCE_SCOPE_EXCEPTION: none | OWNER:#issue | OWNER:docs/decisions/<file>.md
+- GOVERNANCE_SCOPE_EXCEPTION: none | OWNER:docs/decisions/<file>.md
 - REQUESTED_MODEL / ACTUAL_MODEL: <!-- requested=Terra; actual=unknown -->
 
 ## TEST topology metadata
@@ -53,7 +53,7 @@ supersedes:
 - Changed files / boundaries:
 - Intentionally out of scope:
 - [ ] One clear Issue or tightly coupled governance scope.
-- [ ] Active Agent governance PR stays at or below 8 files and 800 changed lines, unless a precise Owner exception is recorded.
+- [ ] Active Agent governance PR stays at or below 8 files and 800 changed lines, unless a trusted Owner Decision for this exact branch is recorded.
 - [ ] Does not duplicate another active implementation PR.
 - [ ] MAIN and RESERVE hot files do not overlap.
 - [ ] If RESERVE, work stops after one source-only atomic commit and no shared TEST/Audit.
