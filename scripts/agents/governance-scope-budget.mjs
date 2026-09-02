@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -16,7 +17,14 @@ function upper(value) {
   return String(value ?? "").trim().toUpperCase();
 }
 
-export function evaluateGovernanceScope(pr = {}) {
+function loadTrustedDecision(decisionPath) {
+  const fullPath = path.resolve(process.cwd(), decisionPath);
+  const decisionsRoot = `${path.resolve(process.cwd(), "docs/decisions")}${path.sep}`;
+  if (!fullPath.startsWith(decisionsRoot) || !fs.existsSync(fullPath)) return null;
+  return fs.readFileSync(fullPath, "utf8");
+}
+
+export function evaluateGovernanceScope(pr = {}, { loadDecision = loadTrustedDecision } = {}) {
   const body = pr.body ?? "";
   const origin = upper(readField(body, "WORK_ORIGIN"));
   const lane = upper(readField(body, "AGENT_LANE"));
@@ -36,17 +44,26 @@ export function evaluateGovernanceScope(pr = {}) {
   }
   const overFiles = Number.isFinite(files) && files > GOVERNANCE_SCOPE_BUDGET.maxFiles;
   const overLines = Number.isFinite(changedLines) && changedLines > GOVERNANCE_SCOPE_BUDGET.maxChangedLines;
-  const validException = /^OWNER:(?:#\d+|docs\/decisions\/[A-Za-z0-9._/-]+\.md)$/.test(exception);
+  const decisionMatch = exception.match(/^OWNER:(docs\/decisions\/[A-Za-z0-9._/-]+\.md)$/);
+  const decisionPath = decisionMatch?.[1] ?? null;
+  const decision = decisionPath ? loadDecision(decisionPath) : null;
+  const validException = Boolean(
+    decision &&
+    upper(readField(decision, "GOVERNANCE_SCOPE_EXCEPTION")) === "APPROVED" &&
+    readField(decision, "GOVERNANCE_SCOPE_BRANCH") === String(pr.head?.ref ?? ""),
+  );
 
+  if (exception && !/^none$/i.test(exception) && !decisionPath) {
+    errors.push("GOVERNANCE_SCOPE_EXCEPTION must be none or OWNER:docs/decisions/<file>.md");
+  } else if (decisionPath && !validException) {
+    errors.push("Scope exception decision must exist on trusted main and approve this exact branch");
+  }
   if ((overFiles || overLines) && !validException) {
     errors.push(
       `Active Agent governance PR exceeds scope budget: ${files} files / ${changedLines} changed lines; ` +
       `max ${GOVERNANCE_SCOPE_BUDGET.maxFiles} / ${GOVERNANCE_SCOPE_BUDGET.maxChangedLines}. ` +
-      "Split it or provide GOVERNANCE_SCOPE_EXCEPTION=OWNER:#issue or OWNER:docs/decisions/<file>.md",
+      "Split it or cite a trusted Owner Decision for this exact branch",
     );
-  }
-  if (exception && !/^none$/i.test(exception) && !validException) {
-    errors.push("GOVERNANCE_SCOPE_EXCEPTION must be none, OWNER:#issue, or OWNER:docs/decisions/<file>.md");
   }
 
   return { applies: true, allowed: errors.length === 0, files, changedLines, exception: validException ? exception : null, errors };
@@ -64,7 +81,7 @@ export function runCli(eventPath = process.env.GITHUB_EVENT_PATH) {
   return result;
 }
 
-const entry = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+const entry = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (entry) {
   try { runCli(); } catch (error) { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; }
 }
