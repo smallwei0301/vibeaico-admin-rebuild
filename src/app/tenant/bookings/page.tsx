@@ -192,7 +192,7 @@ export default function BookingsPage() {
       const isRealStatus = (REAL_STATUSES as string[]).includes(status);
       const res = await listBookings({
         page: 0,
-        size: 200,
+        size: 100,
         status: isRealStatus ? (status as BookingStatus) : '',
         keyword,
         from: startDate || undefined,
