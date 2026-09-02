@@ -26,6 +26,7 @@ import {
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { exportBookingsCsv } from '@/services/reports';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
@@ -262,6 +263,20 @@ export default function BookingsPage() {
     }
   };
 
+  const exportCsv = async () => {
+    setExportOpen(false);
+    try {
+      await exportBookingsCsv({
+        from: startDate || undefined,
+        to: endDate || undefined,
+      });
+      toast.show(t.messages.exported);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : t.messages.exportFailed;
+      toast.show(`${t.messages.exportFailedPrefix}${message}`, 'danger');
+    }
+  };
+
   /* --------------------------------------------------------------- 批次操作 */
 
   const selectedRows = rows.filter((r) => selected.includes(r.id));
@@ -415,16 +430,13 @@ export default function BookingsPage() {
               </Button>
               {exportOpen ? (
                 <div className="absolute right-0 z-flyout mt-1 flex min-w-[10rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
-                  {[common.exportExcel, common.exportCsv].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
-                      onClick={() => { setExportOpen(false); toast.show(t.messages.exported); }}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  <button
+                    type="button"
+                    className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
+                    onClick={() => void exportCsv()}
+                  >
+                    {common.exportCsv}
+                  </button>
                 </div>
               ) : null}
             </div>
