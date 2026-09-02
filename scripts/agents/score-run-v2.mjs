@@ -17,6 +17,9 @@ const EXPECTED = {
   RUN_COMPLETE: "complete",
 };
 const DELIVERY_CLAIM_TYPES = new Set(["ISSUE_CLOSED", "OWNER_BLOCKED_COMPLETE"]);
+const CURRENT_REPOSITORY = String(
+  process.env.GITHUB_REPOSITORY ?? "smallwei0301/vibeaico-admin-rebuild",
+).trim().toLowerCase();
 
 const num = (value, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const round = (value, digits = 2) => {
@@ -40,6 +43,13 @@ function isUsableReference(value) {
 export function canonicalIssueSubject(value) {
   const text = String(value ?? "").trim();
   if (!isUsableReference(text)) return null;
+
+  const repositoryUrl = text.match(
+    /^https:\/\/(?:github\.com\/|api\.github\.com\/repos\/)([^/\s]+)\/([^/\s]+)\/issues\//i,
+  );
+  if (repositoryUrl && `${repositoryUrl[1]}/${repositoryUrl[2]}`.toLowerCase() !== CURRENT_REPOSITORY) {
+    return null;
+  }
 
   const local = text.match(/^(?:issue\s*(?:#|:)\s*|issue\s+|#\s*)([1-9]\d*)$/i);
   const web = text.match(/^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/([1-9]\d*)(?:[/?#].*)?$/i);
@@ -282,7 +292,7 @@ export function renderMarkdownV2(run, result) {
     `| Agent 流動 | ${result.scores.flow} / 10 |`,
     `| 證據完整 | ${result.scores.auditability} / 10 |`, "",
   );
-  lines.push("---", "", "同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；證據若指向另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。", "");
+  lines.push("---", "", "同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；跨 repo、證據指向另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。", "");
   return lines.join("\n");
 }
 
