@@ -13,23 +13,37 @@ function isMissing(value) {
   return !text || text.includes('<!--') || text.includes('|') || /^(TBD|N\/A|UNKNOWN|-)$/i.test(text);
 }
 
-function parseOwnedPaths(value = '') {
+function normalizeOwnedPath(value = '') {
+  return String(value)
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+/g, '/')
+    .replace(/\*+$/, '')
+    .replace(/\/+$/, '');
+}
+
+function rawOwnedPaths(value = '') {
   return String(value)
     .split(',')
-    .map((path) => path
-      .trim()
-      .replaceAll('\\', '/')
-      .replace(/^\.\/+/, '')
-      .replace(/\/+/g, '/')
-      .replace(/\*+$/, '')
-      .replace(/\/+$/, ''))
+    .map((path) => path.trim())
+    .filter(Boolean);
+}
+
+function parseOwnedPaths(value = '') {
+  return rawOwnedPaths(value)
+    .map(normalizeOwnedPath)
     .filter(Boolean);
 }
 
 function hasUnsafeOwnedPath(value = '') {
-  return parseOwnedPaths(value).some(
-    (path) => path === '.' || path.includes('*') || path.split('/').includes('..'),
-  );
+  const rawPaths = rawOwnedPaths(value);
+  if (rawPaths.length === 0) return true;
+
+  return rawPaths.some((rawPath) => {
+    const path = normalizeOwnedPath(rawPath);
+    return !path || path === '.' || path.includes('*') || path.split('/').includes('..');
+  });
 }
 
 function ownershipOverlap(left, right) {
