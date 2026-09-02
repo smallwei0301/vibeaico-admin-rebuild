@@ -105,6 +105,11 @@ docs/metrics/agent-runs/<RUN_ID>.md
   但 remote integration／E2E 仍留下 `POLICY_SKIP`，不能碰 shared TEST。
 - `PARKED` PR 不派 Agent、不 push、不 rerun、不輪詢。
 - 同 exact head、同環境、同命令不得盲目重跑；環境錯誤兩次即停損換路。
+- Git Data API 建立 commit／tree 後，先對 exact head 跑 `npm run guard:repo-integrity`；核心路徑缺失、
+  大量刪檔或程式檔出現單獨一行 40 碼 SHA 時 fail closed，不得建立／移動 `preview/**`。
+- `package.json` 與 `package-lock.json` 必須一起更新並以乾淨環境 `npm ci` 驗證；不得手改 lockfile
+  猜測不存在的套件版本。
+- `preview/**` 只可指向已通過 exact-head CI 的 commit；typecheck／build 未綠不得用 Vercel 代替檢查。
 - Issue 只有 Sol 回覆 `CLOSE_APPROVED` 才能由 Luna／主 Agent 關閉。
 - Agent 新開 Issue 必須使用 `.github/ISSUE_TEMPLATE/agent-discovered.yml` 並提供完整來源；
   沒有完整 `AGENT_DISCOVERED` 證據一律是 owner-or-unknown。

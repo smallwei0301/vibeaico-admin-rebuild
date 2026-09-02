@@ -18,6 +18,7 @@
 |---|---|---|---|
 | repo governance | 全域 WIP 與 Close-first 基礎 | **全 repo 單一完整 Terra、固定 Closure、單一 shared TEST、最多兩張 active candidate 與 close-first TRIAGE 是 B+ 的基礎；2026-09-01 起另允許一條嚴格 source-only RESERVE Terra。** | 以 2026-09-01 B+ 為最新裁示。其餘 PR 必須 `PARKED`／`HISTORICAL`／`OWNER_BLOCKED`；不得引用 Mode C 恢復多條完整 Terra。 |
 | repo governance | Owner 控制訊號與 Issue 來源 | **Owner 重送 `/goal`、`/steer` 或「繼續」可能是模型速度／深度／角色切換，不能單憑此記為 Agent 提早停止；只有具完整 `AGENT_DISCOVERED` 來源的 Issue 才算 Agent 新增。** | 模型切換保留 branch／PR／exact head／TEST lane／Run ID，不重做完成工作；缺少前一位 assistant 終止性證據時寫 `UNKNOWN_CONTROL_EVENT`；歷史無來源 Issue 一律 `owner-or-unknown`。 |
+| repo governance | 遠端 tree、套件與語法完整性 | Git Data API 建出的 exact head 必須依序通過完整性閘門、`npm ci`、typecheck、unit 與 build，才可建立或移動 `preview/**`。 | 核心路徑缺失、異常大量刪檔、程式檔裸 SHA、lockfile 無法重建或編譯失敗一律 fail closed；見 `docs/decisions/2026-09-02-owner-repository-integrity-gates.md`。 |
 | repo governance | PR lifecycle Janitor | **保留 fail-closed stale PR 清理、每 Issue 單一 ACTIVE candidate 與短命 VALIDATION；Janitor 必須服從 B+ 的 MAIN／RESERVE／Closure／TEST 與兩候選上限。** | 只有明確 metadata、同 Issue、同 repo、祖先或 patch coverage、mutation 前狀態未變時才自動關閉 superseded PR，否則 `JANITOR_REVIEW`。canonical：`docs/PR-LIFECYCLE.md`。 |
 | #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多。** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
 | #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項。** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |

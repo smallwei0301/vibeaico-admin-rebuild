@@ -50,6 +50,7 @@
 | PB-011 | 驗收帳號必須能看見受測入口 | GUIDE 隱藏一般預約導覽，不能驗 bookings badge；先由產品閘門選可見入口的 fixture。 | `docs/AGENT-EXECUTION.md` §7 |
 | PB-012 | 靜態檢查不能驗證 SQL 語意 | SELECT alias 不能在同層 WHERE 使用，且 DB enum 與 UI enum 不同；對 DB 實跑或鎖 schema mapping。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-013 | build workspace artifact 可在編譯後失敗 | page collection 清理殘留 artifact 時可報 `ENOTEMPTY`；保留首個完整證據、清 workspace 後單次重驗。 | `docs/AGENT-EXECUTION.md` §7 |
+| PB-014 | 遠端 Git tree 必須先過完整性閘門 | 原子 commit 只能減少 push 次數，不能證明 tree 完整；核心路徑、異常大量刪檔、裸 SHA、`npm ci`、typecheck 與 build 必須在 Preview 前驗證。 | `docs/AGENT-EXECUTION.md` §8；`scripts/ci/repo-integrity-guard.mjs` |
 
 ## 事件紀錄
 
