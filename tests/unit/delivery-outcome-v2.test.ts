@@ -15,7 +15,7 @@ function claim(type: string, subject: string, observedState: string): any {
 }
 
 function completedRun(id = "2026-09-02-delivery-v2"): any {
-  const run = createRunLedgerV2(id, "2026-09-02T00:00:00Z");
+  const run: any = createRunLedgerV2(id, "2026-09-02T00:00:00Z");
   run.status = "COMPLETE";
   run.endedAt = "2026-09-02T02:00:00Z";
   run.main = { startSha: "a", endSha: "b" };
