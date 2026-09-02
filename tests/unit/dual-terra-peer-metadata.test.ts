@@ -59,11 +59,23 @@ describe('dual Terra peer validation', () => {
     expect(pilotCapacity(summary).qualified).toBe(false);
   });
 
-  it.each(['*', './', '/**', ',,'])('rejects ownership that normalizes to no repository path: %s', (ownership) => {
-    const metadata = parseLaneMetadata(pilotPr(20, 120, 1, true, ownership));
+  it.each(['*', './', '/**', ',,', '/src/app', 'C:\\src\\app', '../src/app', 'src/*/app'])(
+    'rejects ownership that is empty, absolute, traversing, or ambiguous: %s',
+    (ownership) => {
+      const metadata = parseLaneMetadata(pilotPr(20, 120, 1, true, ownership));
 
-    expect(validateLaneMetadata(metadata)).toContain(
-      'Dual Terra FILE_OWNERSHIP must use normalized repository-relative paths',
-    );
+      expect(validateLaneMetadata(metadata)).toContain(
+        'Dual Terra FILE_OWNERSHIP must use normalized repository-relative paths',
+      );
+    },
+  );
+
+  it('normalizes an internal dot segment before checking overlap', () => {
+    const summary = summarizeActiveLanes([
+      pilotPr(20, 120, 1, true, 'src/./app/api'),
+      pilotPr(21, 121, 2, true, 'src/app/api/chat'),
+    ]);
+
+    expect(validateGlobalWip(summary).some((error) => error.includes('Dual Terra FILE_OWNERSHIP overlaps'))).toBe(true);
   });
 });
