@@ -1,0 +1,68 @@
+name: dual-terra-scorecard
+
+on:
+  pull_request:
+    paths:
+      - 'docs/metrics/dual-terra-runs/**'
+      - 'scripts/agents/dual-terra-wip-policy.mjs'
+      - 'scripts/agents/score-dual-terra-run.mjs'
+      - 'scripts/ci/local-isolated-test-policy.mjs'
+      - '.agents/schemas/agent-run.schema.json'
+      - 'tests/unit/dual-terra-*.test.ts'
+      - 'tests/unit/local-isolated-test-policy.test.ts'
+      - '.github/workflows/dual-terra-scorecard.yml'
+      - '.github/workflows/agent-wip-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/metrics/dual-terra-runs/**'
+      - 'scripts/agents/dual-terra-wip-policy.mjs'
+      - 'scripts/agents/score-dual-terra-run.mjs'
+      - 'scripts/ci/local-isolated-test-policy.mjs'
+      - '.agents/schemas/agent-run.schema.json'
+      - 'tests/unit/dual-terra-*.test.ts'
+      - 'tests/unit/local-isolated-test-policy.test.ts'
+      - '.github/workflows/dual-terra-scorecard.yml'
+      - '.github/workflows/agent-wip-guard.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dual-terra-scorecard-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-pilot-scorecards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test dual-Terra routing and scoring
+        run: >-
+          npx vitest run -c vitest.config.mts
+          tests/unit/dual-terra-pilot-policy.test.ts
+          tests/unit/dual-terra-score.test.ts
+          tests/unit/local-isolated-test-policy.test.ts
+      - name: Verify every committed pilot scorecard
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(docs/metrics/dual-terra-runs/*.json)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo 'No committed dual-Terra Run yet; governance tests only.'
+            exit 0
+          fi
+          for json in "${files[@]}"; do
+            md="${json%.json}.md"
+            test -f "$md"
+            node scripts/agents/run-ledger.mjs validate "$json"
+            node scripts/agents/score-dual-terra-run.mjs "$json" --check "$md"
+          done
