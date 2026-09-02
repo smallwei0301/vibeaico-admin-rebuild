@@ -121,7 +121,7 @@
 
 - [ ] 付款方式整頁（含「實刷測試」謊報刷卡成功並設 gatewayVerified=true——**金流級假成功，最優先移除**）
 - [ ] 診所叫號整頁（含「已 LINE 通知病患」謊報）
-- [x] 預約加購 modal（謊報「顧客將收到 LINE 消費明細」）—— #3 已誠實化；**後端已於 issue #17 補齊並真實接線**（migration 0020 + 04 §B-1.1，見 §6.14），誠實化文案整組移除
+- [ ] 預約加購 modal：歷史 `0020` 實作不在 current-main migration graph；Issue #17 current-main rebuild 以 `0053`→`0056` forward lineage 的原子 RPC 重建，`notify=true` 已接既有憑證／quota／LINE receipt，並以 request key + `PENDING` claim 持久化重試安全的實際 outcome；外部 provider 的 serialized TEST evidence 尚未完成（見 §6.14）。
 - [ ] 行事曆同步頁（ICS token 重生＝假安全操作、外部行事曆 CRUD）＋設定頁 ICS token 重生（硬編碼輪替陣列）
 - [ ] 贊助頁假送出、推薦頁硬編碼假推薦碼、兩處「QR 已下載」沒下載
 - [ ] rich-menu-design 殘留：FlexMenuTab 發布/重設/刪卡、每格彈窗、儲存草稿、還原、預約步驟、背景圖「上傳圖片」死按鈕（無 onClick）
@@ -265,7 +265,7 @@ Modal 元件全都不在 `page.tsx` 裡。假設沒有被寫下來，也就沒�
 | 3 | 報表匯出接線 | 2 | 04 §B-6 已有契約 | #15 |
 | 4 | support-chat widget 誠實化 | — | — | #15 |
 | 5 | QR Code 產生與下載 | 0（前端產圖） | REBUILD-SPEC §9.2 已更正 | #16 |
-| 6 | 預約加購 `booking_addons` | 3 | ~~04 §B-1 零記載~~ → **已補寫 04 §B-1.1**，端點與頁面接線完成（§6.14） | #17 ✅ |
+| 6 | 預約加購 `booking_addons` | 3 | current-main rebuild：04 §B-1.1 + 0053 原子 RPC；需 source/serialized TEST evidence 後才能標完成（§6.14） | #17 進行中 |
 | 7 | LINE 老闆通知 owner-notify | 4 | ~~06 分冊零記載~~ → **已補寫 06 §5.5**，四支端點＋儀表板名單 UI＋`owner-reminders` cron 完成（§6.17） | #18 ✅ |
 | 8 | Rich Menu 進階設計器 | 11 | 06 §6 僅一句 | #19 |
 | 9 | 診所叫號 clinic-queue | 5 | **完全無分冊** | #20 |
@@ -1619,7 +1619,45 @@ push，Preview 上跑的是舊程式碼。但 issue #16 驗收清單寫的是「
 並明說「不要花力氣去測 `qrcode` 套件本身」，這一項因此**可能已經作廢**，
 但那是擁有者的裁決，不是執行者可以自行認定的——**留著不打勾，等裁決**。
 
-### 6.14 issue #17（預約加購 `booking_addons` 後端全套）— 2026-08-25 完成（commit `b317d35`）
+### 6.14 issue #17（預約加購 `booking_addons`）— historical 2026-08-25 (`b317d35`); current-main rebuild PR #87
+
+> **Current-main correction (2026-09-01).** The heading and the historical
+> `b317d35` / `0020` claims below are provenance, not current-main evidence:
+> main's source graph ends at `0014`; the rebuild is based on exact main
+> `ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5` and uses forward
+> `0053_issue_17_booking_addons`, `0054_issue_17_booking_addons_hardening`,
+> the forward-only `0055_issue_17_booking_addon_price_rollback`, and
+> `0056_issue_17_booking_addon_idempotency`.  The
+> transaction RPCs (not route-level CAS/compensation), explicit C+ attribution
+> modes, awaited quota/LINE receipt path, request-key replay contract, and
+> explicit `PENDING` notification claim state are source behavior; the
+> integration suite is enabled (not skip-gated).
+> The retained TEST fact is that `0055` is already applied exactly once on
+> `nmwhwngojosmagjuvxol`; this rebuild does not reapply it or perform TEST
+> migration/reset/seed/schema-cache/integration/E2E operations.  Historical
+> exact-head run `33396140773` and its residue checks are not evidence for the
+> rebuilt head; no new exact-head CI, TEST, Sol audit, or authenticated
+> non-Production Preview evidence exists yet.  Do not use the older narrative
+> to claim a historical `0020` deployment or current-main completion.
+> The rebuilt verifier must delete a referenced staff fixture and prove the
+> composite FK clears only `performance_staff_id`, retaining `tenant_id` and
+> the add-on row.  The serialized TEST plan runs only after the authorized
+> TEST lane confirms the existing migration baseline plus `0056`: post-migration
+> negative API inputs are rejected, the positive oversized-duration snapshot is
+> removed safely, concurrent add/delete and final-unit quota races are exercised,
+> idempotent replay does not repeat mutation/quota/push, and the two `0055`
+> price-adjustment cases prove current-price subtraction and an exact zero floor.
+> The artifacts are
+> `tests/integration/api/booking-addons.17.test.ts` and
+> `scripts/verify/booking-addons.17.cjs`; they use the local LINE mock rather
+> than a real provider.  A committed quota-exhausted 409 carries an explicit
+> `persisted` marker; the page closes both add-on/detail targets, increments
+> its add-on revision, and reloads before another submit can occur.
+
+> The paragraphs below preserve the historical `b317d35` evidence for provenance
+> only. They are not a claim that those `0020`/Preview results satisfy the
+> current-main acceptance. The active acceptance ledger is the `0053`–`0056` candidate
+> and its exact-head TEST/Preview evidence.
 
 補齊 §5 點名的缺口：原站有預約加購（`docs/specs/bookings.json` 的 `jsApiCalls`
 `/api/bookings/${b.id}/addons`、`/api/bookings/${bookingId}/addons/${itemId}`；

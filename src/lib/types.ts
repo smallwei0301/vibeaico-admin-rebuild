@@ -51,6 +51,28 @@ export type Booking = {
   createdAt: string;
 };
 
+/** 已套用的預約加購快照；金額／分鐘是交易時快照，刪除時必須以此值回沖。 */
+export type BookingAddon = {
+  id: string;
+  serviceId: string | null;
+  name: string;
+  price: number;
+  quantity: number;
+  durationMinutes: number;
+  staffId: string | null;
+  staffName: string | null;
+  /** PRIMARY = 預約主服務人員，SPECIFIC_STAFF = 明確選的人員，NONE = 不計個人業績。 */
+  performanceMode: 'PRIMARY' | 'SPECIFIC_STAFF' | 'NONE';
+  performanceStaffId: string | null;
+  appliedAmount: number;
+  appliedMinutes: number;
+  notified: BookingAddonNotifyOutcome;
+  createdAt: string;
+};
+
+export type BookingAddonNotifyOutcome =
+  'NONE' | 'PENDING' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED';
+
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';
 

@@ -29,13 +29,15 @@ export const lineDataApiBase = () =>
 /** 讀出該店解密後的 LINE 憑證；未設定 → 丟 LINE_001 */
 export async function getLineCredentials(tenantId: string) {
   const admin = createAdminSupabase();
-  const { data } = await admin.from('tenant_settings')
+  const { data, error } = await admin.from('tenant_settings')
     .select('line, line_channel_secret_enc, line_channel_access_token_enc')
     .eq('tenant_id', tenantId).single();
+  if (error) throw error;
+  if (!data) throw new Error('LINE_SETTINGS_UNAVAILABLE');
   const token = decryptSecret(data?.line_channel_access_token_enc ?? '');
   const secret = decryptSecret(data?.line_channel_secret_enc ?? '');
   if (!token) throw new ApiHttpError(400, '尚未設定 LINE Channel', ERR.LINE_NOT_CONFIGURED);
-  return { token, secret, lineConfig: (data!.line ?? {}) as Record<string, any> };
+  return { token, secret, lineConfig: (data.line ?? {}) as Record<string, any> };
 }
 
 async function lineFetch(token: string, path: string, init?: RequestInit) {
@@ -72,17 +74,74 @@ export const lineProfile = (token: string, userId: string) =>
  * 額度控管（免費 200 則/月；EXTRA_PUSH 訂閱 → 700，09 分冊 §5）。
  * push/multicast 前先過；**reply 不佔額度**（LINE 規則），webhook 內能用 reply 就用 reply。
  */
+export type BookingAddonQuotaReservation =
+  | { state: 'RESERVED'; month: string; count: number }
+  | { state: 'EXHAUSTED' }
+  | { state: 'UNKNOWN'; error: unknown };
+
+/**
+ * Booking add-on delivery needs to tell quota exhaustion from an unavailable
+ * feature/quota read.  The older boolean helper remains for fire-and-forget
+ * callers whose contract is simply "do not send when false".
+ */
+export async function reservePushQuotaForBookingAddon(
+  tenantId: string, count: number,
+): Promise<BookingAddonQuotaReservation> {
+  if (!Number.isInteger(count) || count < 1) return { state: 'EXHAUSTED' };
+  const month = taipeiCurrentMonthKey();
+  try {
+    const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
+    const { data, error } = await createAdminSupabase().rpc('consume_push_quota_17', {
+      p_tenant_id: tenantId,
+      p_month: month,
+      p_count: count,
+      p_quota: quota,
+    });
+    if (error) {
+      console.error('[line] quota reservation failed', tenantId, error);
+      return { state: 'UNKNOWN', error };
+    }
+    if (data !== true) return { state: 'EXHAUSTED' };
+    return { state: 'RESERVED', month, count };
+  } catch (error) {
+    // Quota state is unknown: do not send a billable LINE push optimistically.
+    console.error('[line] quota reservation failed', tenantId, error);
+    return { state: 'UNKNOWN', error };
+  }
+}
+
 export async function consumePushQuota(tenantId: string, count: number): Promise<boolean> {
-  const admin = createAdminSupabase();
-  const month = taipeiCurrentMonthKey();                       // 'YYYY-MM'（見檔頭差異 3）
-  const { data } = await admin.from('push_quota_usage').select('used')
-    .eq('tenant_id', tenantId).eq('month', month).maybeSingle();
-  const used = data?.used ?? 0;
-  const quota = (await isFeatureActive(tenantId, 'EXTRA_PUSH')) ? 700 : 200;  // 09 分冊 §5
-  if (used + count > quota) return false;
-  await admin.from('push_quota_usage')
-    .upsert({ tenant_id: tenantId, month, used: used + count });
-  return true;
+  const reservation = await reservePushQuotaForBookingAddon(tenantId, count);
+  return reservation.state === 'RESERVED';
+}
+
+/**
+ * Refund only a reservation whose provider outcome is confirmed as no-send.
+ * `false` is deliberately ambiguous to the caller: a missing row and an RPC
+ * failure both require the notification to remain PENDING.
+ */
+export async function refundPushQuotaForBookingAddon(
+  tenantId: string, month: string, count: number,
+): Promise<boolean> {
+  try {
+    const { data, error } = await createAdminSupabase().rpc('refund_push_quota_17', {
+      p_tenant_id: tenantId,
+      p_month: month,
+      p_count: count,
+    });
+    if (error) {
+      console.error('[line] quota refund failed', tenantId, error);
+      return false;
+    }
+    if (data !== true) {
+      console.error('[line] quota refund did not confirm a row update', tenantId);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('[line] quota refund failed', tenantId, error);
+    return false;
+  }
 }
 
 /* ------------------------------------------------------------------ 附加匯出

@@ -174,6 +174,55 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/calendar` | `?from&to`：**行事曆頁唯一資料源**，合併四種事件成一個陣列（展示層合一，資料層仍分開）：`{events: CalendarEvent[]}`，`CalendarEvent` 以 `type` 區辨 —— `BOOKING`（服務預約）／`DEPARTURE`（行程團次，含 `seatsBooked/capacity`）／`BLOCK`（封鎖時段）／`EXTERNAL`（匯入的外部 ICS，唯讀）。`DEPARTURE` 只在租戶有 `TOUR_MODULE` 時出現。共用型別加在 `src/lib/types.ts`（只新增） |
 | GET/POST `/api/block-times`、DELETE `/api/block-times/:id` | CRUD，欄位同表 |
 | GET/POST `/api/recurring-bookings`、PUT/DELETE `:id`、POST `:id/renew` | rule jsonb `{weekday(0-6), time'HH:mm', intervalWeeks, until}`；renew=依 rule 產生未來實體 bookings（source='RECURRING'） |
+| GET/POST `/api/bookings/:id/addons`、DELETE `/api/bookings/:id/addons/:addonId` | 預約加購明細；寫入只能經 Issue #17 forward lineage 的原子 RPC，見 B-1.1。 |
+
+### B-1.1 預約加購（`booking_addons`，Issue #17 current-main rebuild）
+
+`0053_issue_17_booking_addons.sql` 是 current-main source graph (`0001–0014`) 之後的
+forward migration；`0054_issue_17_booking_addons_hardening.sql` 只會在其後收斂 RLS、ACL
+與 security-definer search path。current-main source 的 `0001–0014` 可直接套用此自含檔，歷史
+`0020_booking_addons` 不是安裝前提。GET 需同租戶；
+`0055_issue_17_booking_addon_price_rollback.sql` 是其後的 forward-only 修正：刪除加購時
+從當下 `final_price` 減去持久化的 `applied_amount`，並將結果壓在 `0` 以上；若 TEST 已有
+此 migration，不得重放。`0056_issue_17_booking_addon_idempotency.sql` 再補上
+POST 的明確 `idempotencyKey`（UUID v4）契約、租戶／預約範圍的唯一索引，以及通知的
+`PENDING` claim 狀態；若 TEST 已有這些 migrations，不得重放。
+POST/DELETE 需 MANAGER。`0054` 明確撤銷 public/anon/authenticated 的 table DML ACL，
+所以直接 INSERT/UPDATE/DELETE 先得到 permission denial；RLS 另只允許 authenticated
+讀取同租戶列。兩個 security-definer RPC 先鎖
+booking、再驗服務/人員租戶，並在同一交易內新增/刪除明細與更新
+`bookings.final_price`、`duration_minutes`、`end_at`。失敗會整筆回滾。
+
+金額允許 `0`、負數拒絕。`applied_amount` / `applied_minutes` 是交易快照，刪除以快照
+回沖，不用目前服務價格重算。加購只允許 PENDING/CONFIRMED。`performance_mode` 明確為
+`PRIMARY`（booking 主服務人員）、`SPECIFIC_STAFF`（明確選定 staff）、`NONE`（明確不記個人），
+避免 null 同時表示繼承與不歸戶；C+ 實際結算仍屬既有業績契約，不在本 API 假造。
+
+既有 `0020` drift 以 `0053` 補上 `updated_at`、snapshot 預設與新/更新列的非負
+檢查；不臆測或重寫舊 snapshot。delete RPC 對負值/空值 snapshot、時長下溢或
+`end_at <= start_at` 都回 409 且不改列；延長撞到排除約束 (`23P01`) 亦回 409，
+整個 RPC 交易沒有 add-on residue。
+
+`POST` 必須攜帶 client 在同一次使用者操作的重試期間保持不變的 `idempotencyKey`；RPC
+會把 key 綁在 `(tenant_id, booking_id)`，同 key 且 body（含 `notify`）一致時只回傳既有
+加購／目前預約總額，不再新增列、改價或扣額度；同 key 對應不同 body 回 `409 REQ_003`。
+`notify=true` 先由 service-role claim RPC 把 `NONE` 改成 `PENDING`，再走既有 LINE 憑證
+→ quota → push receipt；quota reservation 是 `0054` 的單一 conditional upsert，資料庫／
+feature 查詢失敗時 fail closed、不送 LINE。receipt 完成後才由 marker RPC 將狀態寫成
+`LINE|NO_LINE|NOT_CONFIGURED|QUOTA_EXCEEDED|FAILED`；`PENDING` 代表 provider 或 marker
+結果尚未能安全結算，重試只回報狀態、不再次呼叫 LINE 或扣額度。marker 失敗會回 `500 SYS_001`
+並帶 `{ persisted:true, notificationPending:true }`，不假裝交易回滾，也不把未知狀態當成功。
+結果標記／claim RPC 僅供 route 的 service-role client 呼叫，且由 route 先完成 MANAGER
+租戶授權。`performance_staff_id`
+的 composite FK 刪除時只清空該欄，不可清空 non-null `tenant_id`。`QUOTA_EXCEEDED` 不送 LINE、
+回 `409 REQ_003`／`{ success:false, data:{ persisted:true } }` 並明說「加購已新增」；
+此 committed conflict 與 `PENDING` ambiguity 都讓 UI 關閉 add-on/detail target、遞增 revision
+後重新載入，不能用新 key 重送同一筆。`0056` 的 at-most-once 邊界不等於保證 LINE 最終
+送達；`PENDING` 需要受控的 server-side marker reconciliation，不能由店家瀏覽器盲目重試。
+其他非 LINE 結果也照實回傳。前端 mock 分支明確是合成資料。
+`0054`→`0056` 的 add/delete RPC execute 僅給 `authenticated`，保留其中的 MANAGER/tenant
+檢查；service role 只執行 server-internal notification claim/marker 與 quota reservation，並保有
+fixture/cleanup 所需的 table access。
 
 ### B-2 服務 / 員工 / 班表
 
