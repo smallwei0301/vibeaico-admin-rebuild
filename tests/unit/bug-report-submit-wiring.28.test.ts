@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
 
+const withoutComments = (code: string) =>
+  code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
 const modal = read('src/components/layout/BugReportModal.tsx');
 const service = read('src/services/bug-report.ts');
 const route = read('src/app/api/bug-report/route.ts');
@@ -52,6 +55,15 @@ describe('BugReportModal #28①: the report is collected and submitted', () => {
     expect(route).toContain('content: b.content');
     expect(route).toContain("contact_email: b.contactEmail ?? ''");
     expect(route).not.toContain('formatBugReportContent');
+  });
+
+  it('keeps user-facing Chinese in the i18n dictionary instead of the component', () => {
+    const executableModal = withoutComments(modal);
+    const cjk = executableModal.match(/[一-鿿　-〿＀-￯]/g);
+    expect(cjk ?? [], `仍有硬編碼中文字面量：${(cjk ?? []).join('')}`).toEqual([]);
+    expect(common).toContain("submitted: '已收到您的回報，感謝協助！'");
+    expect(executableModal).toContain('toast.show(t.submitted)');
+    expect(executableModal).toContain('t.submitFailed');
   });
 
   it('does not claim screenshot persistence that is not implemented', () => {
