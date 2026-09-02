@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { createRunLedgerV2, validateRunLedgerV2 } from "../../scripts/agents/run-ledger-v2.mjs";
-import { computeDeliveryOutcome, scoreRunV2 } from "../../scripts/agents/score-run-v2.mjs";
+import { canonicalIssueSubject, computeDeliveryOutcome, scoreRunV2 } from "../../scripts/agents/score-run-v2.mjs";
 import { reviewRunsV2 } from "../../scripts/agents/review-runs-v2.mjs";
 
-function claim(type: string, subject: string, observedState: string): any {
+function claim(type: string, subject: string, observedState: string, evidenceRef = `github:${subject}`): any {
   return {
     type,
     subject,
     claimedState: observedState,
     observedState,
     verification: "VERIFIED",
-    evidenceRef: `github:${subject}`,
+    evidenceRef,
   };
 }
 
@@ -64,14 +64,105 @@ describe("Delivery Outcome v2", () => {
     expect(validateRunLedgerV2(run)).toEqual([]);
   });
 
-  it("counts only CLOSED and complete OWNER_BLOCKED as outcomes", () => {
+  it("canonicalizes supported Issue references to one delivery identity", () => {
+    expect([
+      canonicalIssueSubject("issue#10"),
+      canonicalIssueSubject("Issue: 10"),
+      canonicalIssueSubject("#10"),
+      canonicalIssueSubject("https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/10"),
+      canonicalIssueSubject("https://api.github.com/repos/smallwei0301/vibeaico-admin-rebuild/issues/10"),
+    ]).toEqual(["issue#10", "issue#10", "issue#10", "issue#10", "issue#10"]);
+    expect(canonicalIssueSubject("pull#10")).toBeNull();
+  });
+
+  it("counts only unique verified CLOSED and complete OWNER_BLOCKED evidence as outcomes", () => {
     const run = completedRun();
     run.delivery = { ...run.delivery, issuesClosed: 1, ownerBlockedComplete: 1, auditReady: 5, exactHeadCiOnly: 4, commitOnly: 9, unfinishedCarryover: 3 };
+    run.completionTruth.claims.splice(1, 0, claim("OWNER_BLOCKED_COMPLETE", "issue#11", "owner_blocked_complete"));
     expect(computeDeliveryOutcome(run)).toEqual({
       shippedUnits: 1,
       autonomousOutcomeUnits: 1.75,
       wipInventory: { auditReady: 5, exactHeadCiOnly: 4, commitOnly: 9, unfinishedCarryover: 3 },
     });
+  });
+
+  it("does not let duplicate CLOSED claims cover two shipped units", () => {
+    const run = completedRun("2026-09-02-duplicate-closed");
+    run.delivery.issuesStarted = 2;
+    run.delivery.issuesClosed = 2;
+    run.completionTruth.claims = [
+      claim("ISSUE_CLOSED", "issue#10", "closed"),
+      claim("ISSUE_CLOSED", "#10", "closed"),
+      claim("RUN_COMPLETE", run.runId, "complete"),
+    ];
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("NOT_GRADED");
+    expect(result.shippedUnits).toBe(1);
+    expect(result.gradingGaps).toContain(
+      "delivery.issuesClosed=2 does not match 1 unique verified ISSUE_CLOSED subject(s)",
+    );
+  });
+
+  it("accepts two distinct verified CLOSED Issues as two shipped units", () => {
+    const run = completedRun("2026-09-02-distinct-closed");
+    run.delivery.issuesStarted = 2;
+    run.delivery.issuesClosed = 2;
+    run.completionTruth.claims.splice(1, 0, claim("ISSUE_CLOSED", "issue#11", "closed"));
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("GRADED_V2");
+    expect(result.shippedUnits).toBe(2);
+  });
+
+  it("hard-fails one Issue verified as both CLOSED and OWNER_BLOCKED_COMPLETE", () => {
+    const run = completedRun("2026-09-02-contradictory-delivery-state");
+    run.delivery.ownerBlockedComplete = 1;
+    run.completionTruth.claims.splice(1, 0, claim("OWNER_BLOCKED_COMPLETE", "#10", "owner_blocked_complete"));
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("HARD_FAIL");
+    expect(result.grade).toBe("F-HARD");
+    expect(result.autonomousOutcomeUnits).toBe(1);
+    expect(result.hardFailures).toContain(
+      "issue#10 is verified as both ISSUE_CLOSED and OWNER_BLOCKED_COMPLETE",
+    );
+  });
+
+  it("deduplicates repeated OWNER_BLOCKED evidence instead of adding another 0.75", () => {
+    const run = completedRun("2026-09-02-duplicate-owner-blocked");
+    run.status = "OWNER_BLOCKED";
+    run.delivery.issuesClosed = 0;
+    run.delivery.ownerBlockedComplete = 1;
+    run.completionTruth.claims = [
+      claim("OWNER_BLOCKED_COMPLETE", "issue#10", "owner_blocked_complete"),
+      claim("OWNER_BLOCKED_COMPLETE", "https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/10", "owner_blocked_complete"),
+      claim("RUN_COMPLETE", run.runId, "complete"),
+    ];
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("GRADED_V2");
+    expect(result.shippedUnits).toBe(0);
+    expect(result.autonomousOutcomeUnits).toBe(0.75);
+  });
+
+  it("does not count malformed Issue subjects or placeholder evidence", () => {
+    const run = completedRun("2026-09-02-malformed-delivery-evidence");
+    run.completionTruth.claims[0] = claim("ISSUE_CLOSED", "TBD", "closed", "TBD");
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("NOT_GRADED");
+    expect(result.shippedUnits).toBe(0);
+    expect(result.gradingGaps).toContain("ISSUE_CLOSED TBD does not identify one canonical Issue");
+    expect(result.gradingGaps).toContain("ISSUE_CLOSED TBD has no usable evidenceRef");
+  });
+
+  it("rejects an empty evidenceRef at ledger validation", () => {
+    const run = completedRun("2026-09-02-empty-evidence-ref");
+    run.completionTruth.claims[0].evidenceRef = "";
+    expect(validateRunLedgerV2(run)).toContain(
+      "completionTruth.claims[0].evidenceRef is required for VERIFIED claims",
+    );
   });
 
   it("does not grade an IN_PROGRESS run or calculate a tiny-denominator ratio", () => {
