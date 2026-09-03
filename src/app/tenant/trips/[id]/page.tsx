@@ -3,8 +3,8 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertTriangle, CalendarDays, CalendarPlus, Clock, Image as ImageIcon, Layers,
-  ListPlus, Package, Pencil, Plus, Send, Trash2, Upload, Users,
+  AlertTriangle, CalendarDays, CalendarPlus, Clock, ExternalLink, Image as ImageIcon, Layers,
+  Package, Pencil, Plus, Send, Trash2, Upload, Users,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -22,16 +22,19 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTrip, listTripAddons, listTripDepartures, listTripPlans,
+  getTrip, listTripAddons, listTripDepartures, listTripPlans, saveTripPlan,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
-import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { APP_URL, USE_MOCK } from '@/config/env';
+import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import { toQuickPlanPayload, validateQuickPlan } from '@/lib/trip-plan-quick-edit';
 import type {
   DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
-  TripBookingType, TripDeparture, TripPlan, TripPlanSeason,
+  TripDeparture, TripPlan,
 } from '@/lib/types';
 
 const GALLERY_MAX = 8;
@@ -70,6 +73,8 @@ export default function TripDetailPage() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const businessType = useBusinessType();
+  const currentTenant = useCurrentTenant();
+  const publicShopUrl = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const tripId = String(params?.id ?? '');
 
   const [tab, setTab] = React.useState(searchParams?.get('tab') ?? 'basic');
@@ -79,9 +84,11 @@ export default function TripDetailPage() {
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
   const [addons, setAddons] = React.useState<TripAddon[]>([]);
 
-  /* 編輯中的表單狀態（骨架：只存在記憶體） */
+  /* 編輯中的表單狀態；方案 Quick Edit 會走同一個 canonical API。 */
   const [form, setForm] = React.useState<Trip | null>(null);
   const [planDraft, setPlanDraft] = React.useState<TripPlan | null>(null);
+  const [showChildPrice, setShowChildPrice] = React.useState(false);
+  const [savingPlan, setSavingPlan] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   const [batchOpen, setBatchOpen] = React.useState(false);
@@ -125,40 +132,61 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 方案 */
-  const savePlan = () => {
+  const openPlanEditor = (draft: TripPlan) => {
+    setShowChildPrice(draft.childPrice !== null);
+    setPlanDraft(draft);
+  };
+
+  const savePlan = async () => {
     if (!planDraft) return;
-    const isNew = !planDraft.id;
-    const saved: TripPlan = isNew
-      ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
-      : planDraft;
-    setPlans((prev) => (isNew ? [...prev, saved] : prev.map((p) => (p.id === saved.id ? saved : p))));
-    setPlanDraft(null);
-    // 已上架 Midao 的行程，方案異動需送審（10/11 分冊）
-    const needsReview = trip?.midaoListing === 'LISTED';
-    toast.show(needsReview ? t.messages.planSubmitted : t.messages.planSaved);
+    const validationError = validateQuickPlan(planDraft, showChildPrice);
+    if (validationError === 'name') {
+      toast.show(t.messages.planNameRequired, 'danger');
+      return;
+    }
+    if (validationError === 'basePrice') {
+      toast.show(t.messages.planPriceInvalid, 'danger');
+      return;
+    }
+    if (validationError === 'childPrice') {
+      toast.show(t.messages.planChildPriceInvalid, 'danger');
+      return;
+    }
+
+    setSavingPlan(true);
+    try {
+      const quickPlanPayload = toQuickPlanPayload(planDraft);
+      await saveTripPlan(tripId, quickPlanPayload);
+
+      if (USE_MOCK) {
+        const isNew = !planDraft.id;
+        const saved: TripPlan = isNew
+          ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
+          : planDraft;
+        setPlans((prev) => (isNew
+          ? [...prev, saved]
+          : prev.map((p) => (p.id === saved.id ? saved : p))));
+      } else {
+        // The success toast is only shown after a fresh server read. This is
+        // the persistence check for the real tenant-scoped API path.
+        setPlans(await listTripPlans(tripId));
+      }
+
+      setPlanDraft(null);
+      setShowChildPrice(false);
+      const needsReview = trip?.midaoListing === 'LISTED';
+      toast.show(needsReview ? t.messages.planSubmitted : t.messages.planSaved);
+    } catch (error) {
+      toast.show(
+        error instanceof Error && error.message ? error.message : t.messages.planSaveFailed,
+        'danger',
+      );
+    } finally {
+      setSavingPlan(false);
+    }
   };
 
   const patchPlan = (p: Partial<TripPlan>) => setPlanDraft((d) => (d ? { ...d, ...p } : d));
-
-  const addSeason = () => {
-    if (!planDraft) return;
-    const season: TripPlanSeason = {
-      id: `ss_new_${planDraft.seasons.length + 1}`, name: '',
-      startMonth: 1, startDay: 1, endMonth: 12, endDay: 31,
-      priceOverride: null, active: true,
-    };
-    patchPlan({ seasons: [...planDraft.seasons, season] });
-  };
-
-  const patchSeason = (id: string, p: Partial<TripPlanSeason>) => {
-    if (!planDraft) return;
-    patchPlan({ seasons: planDraft.seasons.map((s) => (s.id === id ? { ...s, ...p } : s)) });
-  };
-
-  const removeSeason = (id: string) => {
-    if (!planDraft) return;
-    patchPlan({ seasons: planDraft.seasons.filter((s) => s.id !== id) });
-  };
 
   /* ------------------------------------------------------------- 團次 */
   const saveDeparture = () => {
@@ -327,7 +355,7 @@ export default function TripDetailPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
-            onClick={() => setPlanDraft(p)}
+            onClick={() => openPlanEditor(p)}
           >
             <Pencil size={13} />
           </Button>
@@ -701,7 +729,7 @@ export default function TripDetailPage() {
           <DataTableHeader
             title={t.plans.sectionTitle}
             actions={
-              <Button size="sm" onClick={() => setPlanDraft(emptyPlan(tripId))}>
+              <Button size="sm" onClick={() => openPlanEditor(emptyPlan(tripId))}>
                 <Plus size={14} />{t.plans.create}
               </Button>
             }
@@ -716,7 +744,7 @@ export default function TripDetailPage() {
                 title={t.plans.empty.title}
                 description={t.plans.empty.description}
                 action={
-                  <Button onClick={() => setPlanDraft(emptyPlan(tripId))}>
+                  <Button onClick={() => openPlanEditor(emptyPlan(tripId))}>
                     <Plus size={15} />{t.plans.create}
                   </Button>
                 }
@@ -800,16 +828,34 @@ export default function TripDetailPage() {
         <p className="mt-2 text-2xs text-muted">{t.addons.sectionHint}</p>
       </TabPanel>
 
-      {/* ================================================== 方案編輯 Modal */}
+      {/* ================================================== 方案 Quick Edit Modal */}
       <Modal
         open={!!planDraft}
-        onClose={() => setPlanDraft(null)}
-        size="lg"
-        title={planDraft?.id ? t.plans.editTitle(planDraft.name) : t.plans.createTitle}
+        onClose={() => {
+          if (savingPlan) return;
+          setPlanDraft(null);
+          setShowChildPrice(false);
+        }}
+        title={planDraft?.id ? t.plans.editTitle(planDraft.name) : t.plans.quick.createTitle}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setPlanDraft(null)}>{common.cancel}</Button>
-            <Button onClick={savePlan}>{common.save}</Button>
+            <Button
+              variant="secondary"
+              disabled={savingPlan}
+              onClick={() => {
+                setPlanDraft(null);
+                setShowChildPrice(false);
+              }}
+            >
+              {common.cancel}
+            </Button>
+            <Button
+              loading={savingPlan}
+              loadingText={t.plans.quick.saving}
+              onClick={() => void savePlan()}
+            >
+              {t.plans.quick.save}
+            </Button>
           </>
         }
       >
@@ -821,46 +867,72 @@ export default function TripDetailPage() {
               </Alert>
             ) : null}
 
+            <Alert tone="info">{t.plans.quick.intro}</Alert>
+
             <FormGroup>
-              <Label required>{t.plans.fields.nameLabel}</Label>
+              <Label htmlFor="plan-quick-name" required>{t.plans.fields.nameLabel}</Label>
               <Input
+                id="plan-quick-name"
                 value={planDraft.name}
                 placeholder={t.plans.fields.namePlaceholder}
                 onChange={(e) => patchPlan({ name: e.target.value })}
               />
             </FormGroup>
+
             <FormGroup>
-              <Label>{t.plans.fields.descriptionLabel}</Label>
+              <Label htmlFor="plan-quick-description">{t.plans.quick.contentLabel}</Label>
               <Textarea
-                rows={2}
+                id="plan-quick-description"
+                rows={3}
                 value={planDraft.description}
+                placeholder={t.plans.quick.contentPlaceholder}
                 onChange={(e) => patchPlan({ description: e.target.value })}
               />
             </FormGroup>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <FormGroup>
+              <Label htmlFor="plan-quick-base-price" required>{t.plans.fields.basePriceLabel}</Label>
+              <Input
+                id="plan-quick-base-price"
+                type="number"
+                min={0}
+                value={planDraft.basePrice}
+                onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
+              />
+              <FormText>{t.plans.quick.priceHelp}</FormText>
+            </FormGroup>
+
+            {!showChildPrice ? (
+              <Button
+                type="button"
+                variant="outline"
+                block
+                onClick={() => {
+                  setShowChildPrice(true);
+                }}
+              >
+                {t.plans.quick.childPriceToggle}
+              </Button>
+            ) : (
               <FormGroup>
-                <Label required>{t.plans.fields.priceTypeLabel}</Label>
-                <Select
-                  value={planDraft.priceType}
-                  onChange={(e) => patchPlan({ priceType: e.target.value as PriceType })}
-                >
-                  {(Object.keys(t.plans.priceType) as PriceType[]).map((k) => (
-                    <option key={k} value={k}>{t.plans.priceType[k]}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.basePriceLabel}</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="plan-quick-child-price">{t.plans.fields.childPriceLabel}</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowChildPrice(false);
+                      patchPlan({ childPrice: null });
+                    }}
+                  >
+                    {t.plans.quick.childPriceRemove}
+                  </Button>
+                </div>
                 <Input
-                  type="number" min={0} value={planDraft.basePrice}
-                  onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>{t.plans.fields.childPriceLabel}</Label>
-                <Input
-                  type="number" min={0}
+                  id="plan-quick-child-price"
+                  type="number"
+                  min={0}
                   value={planDraft.childPrice ?? ''}
                   onChange={(e) => patchPlan({
                     childPrice: e.target.value === '' ? null : Number(e.target.value),
@@ -868,168 +940,42 @@ export default function TripDetailPage() {
                 />
                 <FormText>{t.plans.fields.childPriceHelp}</FormText>
               </FormGroup>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormGroup>
-                <Label required>{t.plans.fields.durationLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.durationMinutes}
-                  onChange={(e) => patchPlan({ durationMinutes: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.minLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.minParticipants}
-                  onChange={(e) => patchPlan({ minParticipants: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.maxLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.maxParticipants}
-                  onChange={(e) => patchPlan({ maxParticipants: Number(e.target.value) })}
-                />
-                <FormText>{t.plans.fields.partyHelp}</FormText>
-              </FormGroup>
-            </div>
-
-            <FormGroup>
-              <Label required>{t.plans.fields.bookingTypeLabel}</Label>
-              <Select
-                value={planDraft.bookingType}
-                onChange={(e) => patchPlan({ bookingType: e.target.value as TripBookingType })}
-              >
-                {(Object.keys(t.plans.bookingType) as TripBookingType[]).map((k) => (
-                  <option key={k} value={k}>{t.plans.bookingType[k]}</option>
-                ))}
-              </Select>
-              <FormText>{t.plans.bookingTypeHint[planDraft.bookingType]}</FormText>
-            </FormGroup>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormGroup>
-                <Label required>{t.plans.fields.depositLabel}</Label>
-                <Select
-                  value={planDraft.depositMode}
-                  onChange={(e) => patchPlan({
-                    depositMode: e.target.value as TripPlan['depositMode'],
-                    depositValue: 0,
-                  })}
-                >
-                  {(Object.keys(t.plans.depositMode) as TripPlan['depositMode'][]).map((k) => (
-                    <option key={k} value={k}>{t.plans.depositMode[k]}</option>
-                  ))}
-                </Select>
-                <FormText>{t.plans.fields.depositHelp[planDraft.depositMode]}</FormText>
-              </FormGroup>
-              {planDraft.depositMode === 'DEPOSIT_FIXED'
-                || planDraft.depositMode === 'DEPOSIT_PERCENT' ? (
-                  <FormGroup>
-                    <Label required>
-                      {planDraft.depositMode === 'DEPOSIT_FIXED'
-                        ? t.plans.fields.depositValueLabel
-                        : t.plans.fields.depositPercentLabel}
-                    </Label>
-                    <Input
-                      type="number" min={0}
-                      max={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 100 : undefined}
-                      value={planDraft.depositValue}
-                      onChange={(e) => patchPlan({ depositValue: Number(e.target.value) })}
-                    />
-                    {planDraft.depositMode === 'DEPOSIT_FIXED'
-                      && planDraft.priceType === 'PER_PERSON' ? (
-                        <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
-                      ) : null}
-                  </FormGroup>
-                ) : null}
-            </div>
+            )}
 
             <SwitchField
               label={t.plans.fields.activeLabel}
+              description={t.plans.quick.activeHelp}
               checked={planDraft.active}
               onCheckedChange={(v) => patchPlan({ active: v })}
+              disabled={savingPlan}
             />
 
-            <div className="rounded-lg border border-neutral-200 p-3">
-              <SwitchField
-                label={t.plans.fields.yearRoundLabel}
-                description={t.plans.fields.yearRoundHelp}
-                checked={planDraft.yearRound}
-                onCheckedChange={(v) => patchPlan({ yearRound: v })}
-              />
-
-              {!planDraft.yearRound ? (
-                <div className="mt-3 border-t border-neutral-200 pt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-dark">{t.seasons.sectionTitle}</span>
-                    <Button size="sm" variant="outline" onClick={addSeason}>
-                      <ListPlus size={13} />{t.seasons.add}
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-2xs text-muted">{t.seasons.sectionHint}</p>
-
-                  {planDraft.seasons.length === 0 ? (
-                    <p className="mt-2 text-xs text-danger">{t.seasons.empty}</p>
-                  ) : (
-                    <div className="mt-2 flex flex-col gap-2">
-                      {planDraft.seasons.map((s) => (
-                        <div key={s.id} className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
-                          <div className="flex items-start gap-2">
-                            <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                              <Input
-                                value={s.name}
-                                placeholder={t.seasons.fields.namePlaceholder}
-                                onChange={(e) => patchSeason(s.id, { name: e.target.value })}
-                              />
-                              <Input
-                                type="number" min={0}
-                                value={s.priceOverride ?? ''}
-                                placeholder={t.seasons.fields.pricePlaceholder}
-                                onChange={(e) => patchSeason(s.id, {
-                                  priceOverride: e.target.value === '' ? null : Number(e.target.value),
-                                })}
-                              />
-                            </div>
-                            <Button
-                              variant="ghost" size="sm"
-                              aria-label={t.actions.delete} title={t.actions.delete}
-                              onClick={() => removeSeason(s.id)}
-                            >
-                              <Trash2 size={13} className="text-danger" />
-                            </Button>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-secondary">
-                            <span>{t.seasons.fields.rangeLabel}</span>
-                            {([
-                              ['startMonth', s.startMonth, 12], ['startDay', s.startDay, 31],
-                            ] as const).map(([key, val, max]) => (
-                              <Input
-                                key={key} type="number" min={1} max={max} value={val}
-                                className="w-16"
-                                onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
-                              />
-                            ))}
-                            <span>～</span>
-                            {([
-                              ['endMonth', s.endMonth, 12], ['endDay', s.endDay, 31],
-                            ] as const).map(([key, val, max]) => (
-                              <Input
-                                key={key} type="number" min={1} max={max} value={val}
-                                className="w-16"
-                                onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                      <p className="text-2xs text-muted">{t.seasons.crossYearNote}</p>
-                    </div>
-                  )}
+            <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-dark">{t.plans.quick.previewTitle}</span>
+                <Link
+                  href={publicShopUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                >
+                  <ExternalLink size={14} />{t.plans.quick.previewLink}
+                </Link>
+              </div>
+              <div className="mt-2 rounded-md border border-neutral-200 bg-white p-3">
+                <div className="font-semibold text-dark">
+                  {planDraft.name.trim() || t.plans.quick.previewEmpty}
                 </div>
-              ) : null}
+                {planDraft.description.trim() ? (
+                  <p className="mt-1 text-sm text-secondary">{planDraft.description.trim()}</p>
+                ) : null}
+                <p className="mt-2 text-sm font-semibold text-primary">
+                  {formatCurrency(planDraft.basePrice)}{t.plans.priceTypeSuffix.PER_PERSON}
+                </p>
+              </div>
             </div>
+
+            <Alert tone="info">{t.plans.quick.advancedHint}</Alert>
           </div>
         ) : null}
       </Modal>
