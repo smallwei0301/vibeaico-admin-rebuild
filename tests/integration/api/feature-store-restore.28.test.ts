@@ -1,11 +1,10 @@
 /**
- * POST /api/feature-store/:code/restore 的三種回傳形狀（GitHub issue #28 第 ⑧ 筆）
+ * POST /api/feature-store/:code/restore 的真實回傳形狀（GitHub issue #28 第 ⑧ 筆）
  * -----------------------------------------------------------------------------
  * 09 分冊 §3/§6。頁面先前把這支端點的回傳值**整個丟棄**，一律顯示「訂閱已恢復！」，
  * 於是「N 張票券已自動恢復發布」「N 項商品已自動重新上架」「票券/商品自動恢復失敗
- * （已通知平台處理）」三句早就備好的文案全站零引用。本檔證明端點在三種情況下
- * 各自回什麼；頁面有沒有依這個回傳值分岔由
- * tests/unit/feature-store-restore-result.28.test.ts 鎖住。
+ * （已通知平台處理）」三句早就備好的文案全站零引用。本檔證明端點在真實資料
+ * 分支下各自回什麼；副作用例外的 fallback 由不碰資料庫 schema 的單元測試鎖住。
  *
  * 與 feature-store.09.test.ts 的分工：那一檔測的是點數與到期日（restore 不扣點），
  * 沒有碰 §6 的還原副作用回傳值。本檔只碰副作用，且不動任何點數交易。
@@ -18,8 +17,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 
@@ -184,107 +181,4 @@ describe('restore 分支 2：還原副作用成功，回實際筆數（09 §6）
       await clearCancelled('COUPON_SYSTEM');
     }
   });
-});
-
-/* -----------------------------------------------------------------------------
- * 分支 3：restoreSideEffectFailed
- *
- * 這條分支是 route.ts 的 catch：還原副作用丟例外時，恢復本身仍算成功，只回
- * { restoreSideEffectFailed: true }。用純資料的方式**無法**讓那個 update 失敗
- * （coupons/products 上沒有任何 check constraint 或 trigger 可以違反），所以這裡
- * 用 Management API 在 TEST 專案上臨時裝一個「只對哨兵名稱 raise」的 trigger，
- * 跑完在 finally 內拆掉。
- *
- * - 這是**測試治具**不是 migration，所以刻意只裝在 TEST、不裝正式（裝了才是
- *   讓兩個專案 schema 分岔）。存活時間是單一案例內的數百毫秒。
- * - raise 條件綁死哨兵名稱 __RESTORE_SIDE_EFFECT_FAIL_PROBE__，萬一行程被砍
- *   導致 trigger 殘留，也只會影響叫這個名字的票券列；beforeEach 的 drop 是
- *   `if exists`，下次跑會先清乾淨。
- * - 需要 SUPABASE_ACCESS_TOKEN（Management API 才做得到 DDL；service role 的
- *   PostgREST 不能跑 DDL）。CI 的 .env.test 沒有這個 token，所以那裡會 skip 而
- *   不是假綠——skip 的理由會印出來。沙箱內跑要加 NODE_USE_ENV_PROXY=1。
- * ---------------------------------------------------------------------------*/
-
-const PROBE_NAME = '__RESTORE_SIDE_EFFECT_FAIL_PROBE__';
-
-function managementToken(): string | undefined {
-  if (process.env.SUPABASE_ACCESS_TOKEN) return process.env.SUPABASE_ACCESS_TOKEN;
-  const envLocal = resolve(__dirname, '..', '..', '..', '.env.local');
-  if (!existsSync(envLocal)) return undefined;
-  const line = readFileSync(envLocal, 'utf-8')
-    .split('\n')
-    .find((l) => l.startsWith('SUPABASE_ACCESS_TOKEN='));
-  return line?.slice('SUPABASE_ACCESS_TOKEN='.length).trim().replace(/^['"]|['"]$/g, '') || undefined;
-}
-
-/** 從 TEST_SUPABASE_URL（https://<ref>.supabase.co）取專案 ref */
-function testProjectRef(): string {
-  return new URL(process.env.TEST_SUPABASE_URL!).hostname.split('.')[0];
-}
-
-async function runSql(token: string, query: string): Promise<void> {
-  const res = await fetch(`https://api.supabase.com/v1/projects/${testProjectRef()}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
-  });
-  if (!res.ok) throw new Error(`Management API ${res.status}: ${await res.text()}`);
-}
-
-const token = managementToken();
-
-describe('restore 分支 3：還原副作用失敗（09 §6 / route.ts 的 catch）', () => {
-  it.skipIf(!token)(
-    '票券還原丟例外 → 200 且 data.restoreSideEffectFailed=true，但 cancelled_at 仍歸零（恢復本身成功）',
-    async () => {
-      const probeId = randomUUID();
-      await markCancelled('COUPON_SYSTEM');
-      try {
-        await admin.from('coupons').insert({
-          id: probeId, tenant_id: SHOP_A.id, name: PROBE_NAME,
-          discount_type: 'AMOUNT', discount_value: 50,
-          status: 'PAUSED', auto_paused_by_feature: true,
-        });
-
-        await runSql(token!, `
-          drop trigger if exists t_restore_probe on coupons;
-          create or replace function __restore_probe() returns trigger language plpgsql as $$
-          begin
-            if new.name = '${PROBE_NAME}' then raise exception 'RESTORE_PROBE'; end if;
-            return new;
-          end $$;
-          create trigger t_restore_probe before update on coupons
-            for each row execute function __restore_probe();
-        `);
-
-        const res = await ownerA.post('/api/feature-store/COUPON_SYSTEM/restore');
-        expect(res.status).toBe(200);
-        const body = await readJson<RestoreResult>(res);
-        expect(body.success).toBe(true);
-        expect(body.data?.restoreSideEffectFailed).toBe(true);
-        expect(body.data?.restoredCoupons).toBeUndefined();
-
-        // 訂閱本身確實恢復了 —— 所以頁面該顯示 warning（不是 danger）
-        const { data: sub } = await admin
-          .from('feature_subscriptions')
-          .select('cancelled_at')
-          .eq('tenant_id', SHOP_A.id)
-          .eq('code', 'COUPON_SYSTEM')
-          .single();
-        expect(sub!.cancelled_at).toBeNull();
-
-        // 票券沒有被恢復 —— 這正是店家必須被告知的事
-        const { data: coupon } = await admin
-          .from('coupons').select('status').eq('id', probeId).single();
-        expect(coupon!.status).toBe('PAUSED');
-      } finally {
-        await runSql(token!, `
-          drop trigger if exists t_restore_probe on coupons;
-          drop function if exists __restore_probe();
-        `).catch(() => undefined);
-        await admin.from('coupons').delete().eq('id', probeId);
-        await clearCancelled('COUPON_SYSTEM');
-      }
-    },
-  );
 });

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { withRestoreSideEffectFallback } from '@/lib/feature-store-restore';
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
@@ -40,5 +41,17 @@ describe('feature-store restore result (#28⑧)', () => {
   it('does not claim an unperformed platform notification', () => {
     expect(copy).not.toContain('已通知平台處理');
     expect(copy).toContain('請到票券管理／商品管理手動恢復');
+  });
+
+  it('turns a side-effect exception into a warning result without schema setup', async () => {
+    const error = new Error('RESTORE_PROBE');
+    const onFailure = vi.fn();
+    const operation = vi.fn().mockRejectedValue(error);
+
+    await expect(withRestoreSideEffectFallback(operation, onFailure)).resolves.toEqual({
+      restoreSideEffectFailed: true,
+    });
+    expect(operation).toHaveBeenCalledOnce();
+    expect(onFailure).toHaveBeenCalledWith(error);
   });
 });

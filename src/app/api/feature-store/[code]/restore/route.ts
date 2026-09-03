@@ -2,6 +2,7 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { FEATURE_CATALOG } from '@/config/features';
+import { withRestoreSideEffectFallback } from '@/lib/feature-store-restore';
 
 /**
  * POST /api/feature-store/:code/restore — 恢復已取消的訂閱（09 分冊 §3）⚙OWNER。
@@ -74,13 +75,10 @@ export const POST = handle(async (_req, { params }) => {
   if (e1) throw e1;
 
   if (code === 'COUPON_SYSTEM' || code === 'PRODUCT_SALES') {
-    try {
-      return ok(await runRestoreSideEffects(admin, t.tenantId, code));
-    } catch (e) {
-      // 還原失敗不可讓恢復失敗（09 分冊 §6）；前端已有對應警示文案
-      console.error('[feature-store] restore side effect failed', code, e);
-      return ok({ restoreSideEffectFailed: true });
-    }
+    return ok(await withRestoreSideEffectFallback(
+      () => runRestoreSideEffects(admin, t.tenantId, code),
+      (e) => console.error('[feature-store] restore side effect failed', code, e),
+    ));
   }
 
   return ok();
