@@ -79,14 +79,28 @@ const deleteBodySchema = z.object({
 
 /**
  * DELETE /api/upload —— clean up one tenant-owned welcome-card object.
- * Invalid, external, or cross-tenant URLs are harmless no-ops; callers can
- * still persist the settings change without gaining arbitrary storage access.
+ * Invalid, external, cross-tenant, or currently referenced URLs are harmless
+ * no-ops; callers cannot gain arbitrary storage access or delete the image
+ * another manager has just restored.
  */
 export const DELETE = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const body = deleteBodySchema.parse(await req.json());
   const path = tenantOwnedPublicStoragePath(body.url, body.bucket, t.tenantId);
   if (!path) return ok({ removed: false });
+
+  const { data: currentRow, error: currentError } = await t.supabase
+    .from('tenant_settings')
+    .select('notify')
+    .eq('tenant_id', t.tenantId)
+    .maybeSingle();
+  if (currentError) throw currentError;
+  const currentNotify = currentRow?.notify as Record<string, unknown> | null | undefined;
+  const currentUrl =
+    typeof currentNotify?.welcomeCardImageUrl === 'string'
+      ? currentNotify.welcomeCardImageUrl
+      : '';
+  if (currentUrl === body.url) return ok({ removed: false });
 
   await removeWelcomeCardImage(body.url, t.tenantId);
   return ok({ removed: true });

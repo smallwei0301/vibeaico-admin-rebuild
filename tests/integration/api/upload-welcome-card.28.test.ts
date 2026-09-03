@@ -49,7 +49,7 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     expect(body.code).toBe('AUTH_005');
   });
 
-  it('requires auth and stores a tenant-prefixed image', async () => {
+  it('protects a referenced image, then removes it after the reference is released', async () => {
     const unauthenticated = await fetch(`${BASE_URL}/api/upload`, {
       method: 'POST',
       body: (() => {
@@ -79,6 +79,52 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     expect(error).toBeNull();
     expect(blob).not.toBeNull();
     expect(Buffer.from(await blob!.arrayBuffer())).toEqual(PNG_1X1);
+
+    const { data: previousSettings, error: previousSettingsError } = await admin
+      .from('tenant_settings')
+      .select('notify')
+      .eq('tenant_id', SHOP_A.id)
+      .maybeSingle();
+    expect(previousSettingsError).toBeNull();
+    const previousNotify = (previousSettings?.notify ?? {}) as Record<string, unknown>;
+
+    const { error: referenceError } = await admin
+      .from('tenant_settings')
+      .upsert({
+        tenant_id: SHOP_A.id,
+        notify: { ...previousNotify, welcomeCardImageUrl: url },
+      }, { onConflict: 'tenant_id' });
+    expect(referenceError).toBeNull();
+
+    try {
+      const referencedRemove = await ownerA.fetch('/api/upload', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bucket: BUCKET, url }),
+      });
+      expect(referencedRemove.status).toBe(200);
+      expect((await referencedRemove.json()).data).toEqual({ removed: false });
+
+      const fileName = uploadedPath.split('/').at(-1)!;
+      const { data: stillPresent, error: listError } = await admin.storage
+        .from(BUCKET)
+        .list(SHOP_A.id, { search: fileName });
+      expect(listError).toBeNull();
+      expect(stillPresent?.some((entry) => entry.name === fileName)).toBe(true);
+    } finally {
+      if (previousSettings) {
+        const { error: restoreError } = await admin
+          .from('tenant_settings')
+          .upsert({ tenant_id: SHOP_A.id, notify: previousSettings.notify }, { onConflict: 'tenant_id' });
+        expect(restoreError).toBeNull();
+      } else {
+        const { error: restoreError } = await admin
+          .from('tenant_settings')
+          .delete()
+          .eq('tenant_id', SHOP_A.id);
+        expect(restoreError).toBeNull();
+      }
+    }
 
     const remove = await ownerA.fetch('/api/upload', {
       method: 'DELETE',
