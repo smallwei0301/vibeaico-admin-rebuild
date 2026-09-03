@@ -2,7 +2,13 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-02。
+> 最後更新：2026-09-03。
+
+## 2026-09-03 已裁示
+
+| Issue | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| #120 / #48 | GUIDE SaaS 正式價格骨架 | **永久體驗版 NT$0，1 位導遊、累積 30 張有效訂單；個人版 NT$399／月，1 位導遊；團隊版 NT$799／月，含 5 位 active+bookable 導遊。** | 第 30 張免費有效訂單可成立，第 31 張起要求升級；既有訂單／退款／通知／資料仍可處理。團隊 5 席包含 owner；停用與歷史人員不占新席次。超過 5 位、年繳折扣、AI／LINE 加購及 Production subscription billing 仍待後續裁示。canonical：`docs/decisions/2026-09-03-guide-saas-pricing.md`。 |
 
 ## 2026-09-02 已裁示
 
