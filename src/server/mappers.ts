@@ -25,6 +25,10 @@ import type {
   PointTransaction,
   StaffPerformance,
   TenantSummary,
+  Trip,
+  TripAddon,
+  TripDeparture,
+  TripPlan,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ 預約 */
@@ -234,5 +238,101 @@ export function mapTenantSummary(r: any, activeTenantId?: string): TenantSummary
     current: r.tenant_id === activeTenantId,
     businessType: r.tenants.business_type ?? undefined,
     extraModules: r.tenants.extra_modules ?? undefined,
+  };
+}
+
+/* ------------------------------------------------------------ 行程核心 */
+/**
+ * Canonical #8-A rows deliberately stay smaller than the legacy mock/UI shape.
+ * These mappers provide the existing frontend contract with explicit, honest
+ * defaults; they never invent persisted fields that are not in the four-table
+ * schema from 10-TOUR-DOMAIN.md §1.
+ */
+export function mapTrip(r: any, derived: {
+  planCount?: number;
+  minPrice?: number;
+  upcomingDepartureCount?: number;
+} = {}): Trip {
+  return {
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    tagline: '',
+    summary: r.summary ?? '',
+    description: r.description ?? '',
+    region: r.location ?? '',
+    category: '',
+    coverImageUrl: r.cover_image_url ?? '',
+    galleryUrls: Array.isArray(r.gallery) ? r.gallery.map(String) : [],
+    meetingPoint: r.meeting_point ?? '',
+    meetingPointMapUrl: '',
+    inclusions: typeof r.includes === 'string'
+      ? r.includes.split('\n').map((v: string) => v.trim()).filter(Boolean)
+      : [],
+    exclusions: [],
+    notices: [],
+    safetyNotice: r.notes ?? r.safety_notice ?? '',
+    refundPolicyType: 'STANDARD',
+    status: r.status,
+    midaoListing: r.midao_listing,
+    midaoListingNote: r.midao_listing_note ?? '',
+    planCount: derived.planCount ?? 0,
+    upcomingDepartureCount: derived.upcomingDepartureCount ?? 0,
+    minPrice: derived.minPrice ?? 0,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapTripPlan(r: any): TripPlan {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    description: r.description ?? '',
+    durationMinutes: 60,
+    priceType: 'PER_PERSON',
+    basePrice: Number(r.price_per_person ?? 0),
+    childPrice: r.child_price == null ? null : Number(r.child_price),
+    minParticipants: r.min_party ?? 1,
+    maxParticipants: r.max_party ?? 10,
+    bookingType: 'SCHEDULED',
+    depositMode: r.deposit_mode,
+    depositValue: Number(r.deposit_value ?? 0),
+    active: r.active ?? true,
+    yearRound: true,
+    seasons: [],
+    reviewState: 'NONE',
+    reviewNote: '',
+    sortOrder: r.sort_order ?? 0,
+  };
+}
+
+export function mapTripDeparture(r: any): TripDeparture {
+  const plan = Array.isArray(r.trip_plans) ? r.trip_plans[0] : r.trip_plans;
+  const rawTime = r.start_time == null ? '' : String(r.start_time).slice(0, 5);
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    planId: r.plan_id,
+    planName: plan?.name ?? '',
+    departsOn: r.departs_on,
+    startTime: rawTime,
+    capacity: r.capacity,
+    seatsBooked: r.seats_booked ?? 0,
+    status: r.status,
+    note: r.note ?? '',
+  };
+}
+
+export function mapTripAddon(r: any): TripAddon {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    price: Number(r.price ?? 0),
+    unit: r.unit,
+    stock: r.stock == null ? null : Number(r.stock),
+    active: r.active ?? true,
+    sortOrder: r.sort_order ?? 0,
   };
 }

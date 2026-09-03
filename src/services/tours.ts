@@ -7,6 +7,49 @@ import {
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
 } from '@/mock/tours';
 
+/** Existing UI types are intentionally richer than the canonical #8-A schema.
+ * Keep that compatibility at the service boundary instead of widening DB tables. */
+function tripApiPayload(payload: Partial<Trip>) {
+  return {
+    title: payload.title,
+    slug: payload.slug,
+    summary: payload.summary,
+    description: payload.description,
+    coverImageUrl: payload.coverImageUrl,
+    gallery: payload.galleryUrls,
+    location: payload.region,
+    meetingPoint: payload.meetingPoint,
+    includes: payload.inclusions?.join('\n'),
+    notes: payload.safetyNotice,
+  };
+}
+
+function planApiPayload(payload: Partial<TripPlan>) {
+  return {
+    name: payload.name,
+    description: payload.description,
+    pricePerPerson: payload.basePrice,
+    childPrice: payload.childPrice,
+    minParty: payload.minParticipants,
+    maxParty: payload.maxParticipants,
+    depositMode: payload.depositMode,
+    depositValue: payload.depositValue,
+    sortOrder: payload.sortOrder,
+    active: payload.active,
+  };
+}
+
+function departureApiPayload(payload: Partial<TripDeparture>) {
+  return {
+    planId: payload.planId,
+    departsOn: payload.departsOn,
+    startTime: payload.startTime,
+    capacity: payload.capacity,
+    status: payload.status,
+    note: payload.note,
+  };
+}
+
 /**
  * 導遊模組（TOUR_MODULE）資料入口。
  * 真實端點契約見 docs/integration/10-TOUR-DOMAIN.md §5；
@@ -20,16 +63,25 @@ export const listTrips = () =>
 export const getTrip = (id: string) =>
   adapt<Trip | undefined>(
     () => MOCK_TRIPS.find((t) => t.id === id),
-    () => request<Trip>(`/api/trips/${id}`),
+    async () => {
+      const data = await request<Trip | { trip: Trip }>(`/api/trips/${id}`);
+      return 'trip' in data ? data.trip : data;
+    },
   );
 
 export const createTrip = (payload: Partial<Trip>) =>
   adapt(() => undefined, () =>
-    request<void>('/api/trips', { method: 'POST', body: JSON.stringify(payload) }));
+    request<void>('/api/trips', {
+      method: 'POST',
+      body: JSON.stringify(tripApiPayload(payload)),
+    }));
 
 export const updateTrip = (id: string, payload: Partial<Trip>) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/trips/${id}`, { method: 'PUT', body: JSON.stringify(payload) }));
+    request<void>(`/api/trips/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(tripApiPayload(payload)),
+    }));
 
 export const deleteTrip = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/trips/${id}`, { method: 'DELETE' }));
@@ -53,8 +105,12 @@ export const listTripPlans = (tripId: string) =>
 
 export const saveTripPlan = (tripId: string, payload: Partial<TripPlan>) =>
   adapt(() => undefined, () => (payload.id
-    ? request<void>(`/api/trip-plans/${payload.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-    : request<void>(`/api/trips/${tripId}/plans`, { method: 'POST', body: JSON.stringify(payload) })));
+    ? request<void>(`/api/trip-plans/${payload.id}`, {
+      method: 'PUT', body: JSON.stringify(planApiPayload(payload)),
+    })
+    : request<void>(`/api/trips/${tripId}/plans`, {
+      method: 'POST', body: JSON.stringify(planApiPayload(payload)),
+    })));
 
 export const deleteTripPlan = (planId: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-plans/${planId}`, { method: 'DELETE' }));
@@ -68,8 +124,12 @@ export const listTripDepartures = (tripId: string) =>
 
 export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture>) =>
   adapt(() => undefined, () => (payload.id
-    ? request<void>(`/api/trip-departures/${payload.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-    : request<void>(`/api/trips/${tripId}/departures`, { method: 'POST', body: JSON.stringify(payload) })));
+    ? request<void>(`/api/trip-departures/${payload.id}`, {
+      method: 'PUT', body: JSON.stringify(departureApiPayload(payload)),
+    })
+    : request<void>(`/api/trips/${tripId}/departures`, {
+      method: 'POST', body: JSON.stringify(departureApiPayload(payload)),
+    })));
 
 /** 批次開團：後端依 weekdays 展開日期區間 */
 export const batchCreateDepartures = (
