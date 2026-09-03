@@ -12,6 +12,7 @@ const PNG_1X1 = Buffer.from(
 );
 
 let admin: SupabaseClient;
+let ownerStorage: SupabaseClient;
 let ownerA: AuthedApi;
 let staffA: AuthedApi;
 let uploadedPath: string | null = null;
@@ -23,10 +24,19 @@ function pngFile(): File {
 
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
+  expect(process.env.TEST_SUPABASE_ANON_KEY).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
   admin = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  ownerStorage = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: ownerStorageLoginError } = await ownerStorage.auth.signInWithPassword({
+    email: SHOP_A.owner.email,
+    password: SHOP_A.owner.password,
+  });
+  expect(ownerStorageLoginError).toBeNull();
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
   staffA = await loginAs(STAFF_A2.email, STAFF_A2.password);
 });
@@ -56,6 +66,25 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     const body = (await res.json()) as { success: boolean; code?: string };
     expect(body.success).toBe(false);
     expect(body.code).toBe('AUTH_005');
+  });
+
+  it('rejects direct authenticated Storage uploads that bypass the validated API', async () => {
+    const fileName = `direct-${Date.now().toString(36)}.png`;
+    const path = `${SHOP_A.id}/${fileName}`;
+    const { error } = await ownerStorage.storage
+      .from(BUCKET)
+      .upload(path, PNG_1X1, { contentType: 'image/png', upsert: false });
+
+    if (!error) {
+      await admin.storage.from(BUCKET).remove([path]);
+    }
+    expect(error).not.toBeNull();
+
+    const { data: remaining, error: listError } = await admin.storage
+      .from(BUCKET)
+      .list(SHOP_A.id, { search: fileName });
+    expect(listError).toBeNull();
+    expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
   });
 
   it('protects a referenced image, then removes it after the reference is released', async () => {
