@@ -12,6 +12,10 @@ const storage = read('src/server/storage.ts');
 const migration = read('supabase/migrations/0069_welcome_card_images.sql');
 const retirementMigration = read('supabase/migrations/0070_welcome_card_image_retirement.sql');
 const retirementAclMigration = read('supabase/migrations/0071_welcome_card_image_retirement_acl.sql');
+const uploadAclMigration = read('supabase/migrations/0072_welcome_card_upload_acl.sql');
+const keywordReplyRepairMigration = read(
+  'supabase/migrations/0073_restore_keyword_reply_storage_write.sql',
+);
 const settingsRoute = read('src/app/api/settings/route.ts');
 
 describe('welcome card image upload #28⑥', () => {
@@ -55,11 +59,11 @@ describe('welcome card image upload #28⑥', () => {
     expect(remove).toContain('welcomeCardImageCleanupPending');
   });
 
-  it('keeps the bucket allowlist and storage policy aligned', () => {
+  it('keeps the historical bucket and retirement migrations auditable', () => {
     expect(service).toContain("'welcome-card-images'");
     expect(route).toContain("'welcome-card-images'");
     expect(migration).toContain("'welcome-card-images', 'welcome-card-images', true");
-    expect(migration).toContain("bucket_id in (");
+    expect(migration).toContain('bucket_id in (');
     expect(migration).toContain("'welcome-card-images'");
     expect(route).toContain("await requireTenant('MANAGER')");
     expect(route).toContain('tenantOwnedPublicStoragePath');
@@ -92,6 +96,36 @@ describe('welcome card image upload #28⑥', () => {
     );
     expect(retirementAclMigration).toContain(
       'grant execute on function public.retire_welcome_card_image(uuid, text)',
+    );
+  });
+
+  it('closes only the welcome-card direct upload bypass on fresh databases', () => {
+    expect(uploadAclMigration).toContain('file_size_limit = 5242880');
+    expect(uploadAclMigration).toContain(
+      "allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']::text[]",
+    );
+    expect(uploadAclMigration).toContain('drop policy if exists p_storage_write on storage.objects;');
+    const writePolicy = uploadAclMigration.slice(
+      uploadAclMigration.indexOf('create policy p_storage_write'),
+    );
+    expect(writePolicy).toContain("'service-images', 'product-images', 'portfolio-images', 'staff-avatars'");
+    expect(writePolicy).toContain("'richmenu-assets', 'chat-images', 'keyword-reply-images'");
+    expect(writePolicy).not.toContain("'welcome-card-images'");
+  });
+
+  it('repairs environments that already applied the first 0072 draft', () => {
+    expect(keywordReplyRepairMigration).toContain(
+      'drop policy if exists p_storage_write on storage.objects;',
+    );
+    expect(keywordReplyRepairMigration).toContain(
+      'create policy p_storage_write on storage.objects for insert to authenticated',
+    );
+    expect(keywordReplyRepairMigration).toContain(
+      "'richmenu-assets', 'chat-images', 'keyword-reply-images'",
+    );
+    expect(keywordReplyRepairMigration).not.toContain("'welcome-card-images'");
+    expect(keywordReplyRepairMigration).toContain(
+      'and is_tenant_member((storage.foldername(name))[1]::uuid)',
     );
   });
 });

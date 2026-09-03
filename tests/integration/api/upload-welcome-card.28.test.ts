@@ -6,27 +6,70 @@ import { loginAs, type AuthedApi } from '../../helpers/auth';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const BUCKET = 'welcome-card-images';
+const KEYWORD_REPLY_BUCKET = 'keyword-reply-images';
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
 );
 
 let admin: SupabaseClient;
+let ownerStorage: SupabaseClient;
 let ownerA: AuthedApi;
 let staffA: AuthedApi;
 let uploadedPath: string | null = null;
+let keywordReplyPath: string | null = null;
 let retiredUrl: string | null = null;
+let createdLocalKeywordReplyBucket = false;
 
 function pngFile(): File {
   return new File([PNG_1X1], 'welcome.png', { type: 'image/png' });
 }
 
+function isLocalSupabase(url: string): boolean {
+  const hostname = new URL(url).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
+  expect(process.env.TEST_SUPABASE_ANON_KEY).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
-  admin = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
+  const testSupabaseUrl = process.env.TEST_SUPABASE_URL!;
+  admin = createClient(testSupabaseUrl, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  ownerStorage = createClient(testSupabaseUrl, process.env.TEST_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  // The disposable local baseline intentionally does not replay the old remote
+  // 0039 migration that created keyword-reply-images. Create only that bucket
+  // as a local test fixture so this regression test reaches p_storage_write.
+  // The remote canonical environment must already contain the real bucket;
+  // missing remote infrastructure remains a hard failure rather than a fixture.
+  const { data: keywordReplyBucket, error: keywordReplyBucketError } =
+    await admin.storage.getBucket(KEYWORD_REPLY_BUCKET);
+  if (!keywordReplyBucket) {
+    if (!isLocalSupabase(testSupabaseUrl)) {
+      throw new Error(
+        `Remote canonical Storage bucket ${KEYWORD_REPLY_BUCKET} is missing: ${keywordReplyBucketError?.message ?? 'unknown error'}`,
+      );
+    }
+    const { error: createBucketError } = await admin.storage.createBucket(
+      KEYWORD_REPLY_BUCKET,
+      { public: true },
+    );
+    expect(createBucketError).toBeNull();
+    createdLocalKeywordReplyBucket = true;
+  } else {
+    expect(keywordReplyBucketError).toBeNull();
+  }
+
+  const { error: ownerStorageLoginError } = await ownerStorage.auth.signInWithPassword({
+    email: SHOP_A.owner.email,
+    password: SHOP_A.owner.password,
+  });
+  expect(ownerStorageLoginError).toBeNull();
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
   staffA = await loginAs(STAFF_A2.email, STAFF_A2.password);
 });
@@ -35,6 +78,14 @@ afterAll(async () => {
   if (uploadedPath) {
     const { error } = await admin.storage.from(BUCKET).remove([uploadedPath]);
     if (error) console.error('[upload-welcome-card.28] 清理 storage 物件失敗：', error);
+  }
+  if (keywordReplyPath) {
+    const { error } = await admin.storage.from(KEYWORD_REPLY_BUCKET).remove([keywordReplyPath]);
+    if (error) console.error('[upload-welcome-card.28] 清理 keyword reply 物件失敗：', error);
+  }
+  if (createdLocalKeywordReplyBucket) {
+    const { error } = await admin.storage.deleteBucket(KEYWORD_REPLY_BUCKET);
+    if (error) console.error('[upload-welcome-card.28] 清理 local keyword reply bucket 失敗：', error);
   }
   if (retiredUrl) {
     const { error } = await admin
@@ -56,6 +107,41 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     const body = (await res.json()) as { success: boolean; code?: string };
     expect(body.success).toBe(false);
     expect(body.code).toBe('AUTH_005');
+  });
+
+  it('rejects direct authenticated Storage uploads that bypass the validated API', async () => {
+    const fileName = `direct-${Date.now().toString(36)}.png`;
+    const path = `${SHOP_A.id}/${fileName}`;
+    const { error } = await ownerStorage.storage
+      .from(BUCKET)
+      .upload(path, PNG_1X1, { contentType: 'image/png', upsert: false });
+
+    if (!error) {
+      await admin.storage.from(BUCKET).remove([path]);
+    }
+    expect(error).not.toBeNull();
+
+    const { data: remaining, error: listError } = await admin.storage
+      .from(BUCKET)
+      .list(SHOP_A.id, { search: fileName });
+    expect(listError).toBeNull();
+    expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
+  });
+
+  it('preserves direct authenticated keyword-reply uploads outside this repair', async () => {
+    const fileName = `keyword-${Date.now().toString(36)}.png`;
+    keywordReplyPath = `${SHOP_A.id}/${fileName}`;
+    const { error } = await ownerStorage.storage
+      .from(KEYWORD_REPLY_BUCKET)
+      .upload(keywordReplyPath, PNG_1X1, { contentType: 'image/png', upsert: false });
+    expect(error).toBeNull();
+
+    const { data: blob, error: downloadError } = await admin.storage
+      .from(KEYWORD_REPLY_BUCKET)
+      .download(keywordReplyPath);
+    expect(downloadError).toBeNull();
+    expect(blob).not.toBeNull();
+    expect(Buffer.from(await blob!.arrayBuffer())).toEqual(PNG_1X1);
   });
 
   it('protects a referenced image, then removes it after the reference is released', async () => {
