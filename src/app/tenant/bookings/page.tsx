@@ -38,9 +38,8 @@ import type { Booking, BookingStatus, Customer, PaymentStatus, Service, Staff } 
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 Booking 另有付款/折抵欄位，骨架階段以 module 常數補齊 */
+/** 頁面既有折抵/點數展示欄位；付款金額不在本頁自行推導。 */
 type BookingExtras = {
-  paidAmount: number;
   couponDiscount: number;
   pointsRedeemed: number;
   /** 顧客可用點數 */
@@ -48,25 +47,25 @@ type BookingExtras = {
 };
 
 const DEFAULT_EXTRAS: BookingExtras = {
-  paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
+  couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
 };
 
 const BOOKING_EXTRAS_LOCAL_SHOP: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
-  b_2: { paidAmount: 1000, couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
-  b_3: { paidAmount: 1080, couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
+  b_1: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
+  b_2: { couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
+  b_3: { couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
+  b_4: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
 };
 
 const BOOKING_EXTRAS_GUIDE: Record<string, BookingExtras> = {
-  b_g1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
+  b_g1: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
 };
 
 const BOOKING_EXTRAS_CLINIC: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 300, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
-  b_2: { paidAmount: 6800, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
-  b_3: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
+  b_1: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
+  b_2: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
+  b_3: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
+  b_4: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
 };
 
 type AddonItem = {
@@ -126,13 +125,13 @@ const addonsOf = (b: Booking): AddonItem[] => byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
 })[b.id] ?? [];
 
-/** 付款狀態顯示：已付清 / 已付訂金 / 待付款 */
-const paymentLabel = (b: Booking) => {
-  const { paidAmount } = extrasOf(b);
-  if (b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE') return t.payment.paid;
-  if (paidAmount > 0) return t.payment.deposit;
-  return t.payment.pending;
-};
+/** 付款狀態顯示：只使用 bookings 的真實 paymentStatus。 */
+const isPaid = (b: Booking) =>
+  b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE';
+
+const paymentLabel = (b: Booking) => (
+  isPaid(b) ? t.payment.paid : t.payment.pending
+);
 
 /* -------------------------------------------------------------------------- */
 
@@ -310,9 +309,8 @@ export default function BookingsPage() {
   const selectedRows = rows.filter((r) => selected.includes(r.id));
   const batchPending = selectedRows.filter((r) => r.status === 'PENDING');
   const batchCancellable = selectedRows.filter((r) => r.status === 'PENDING' || r.status === 'CONFIRMED');
-  const batchPaid = batchCancellable.filter((r) => extrasOf(r).paidAmount > 0);
-  const batchPaidTotal = batchPaid.reduce((sum, r) => sum + extrasOf(r).paidAmount, 0);
-  const batchUnpaid = batchPending.filter((r) => extrasOf(r).paidAmount === 0);
+  const batchPaid = batchCancellable.filter(isPaid);
+  const batchUnpaid = batchPending.filter((r) => r.paymentStatus === 'UNPAID');
 
   const openBatchConfirm = () => {
     if (selected.length === 0) { toast.show(t.messages.selectConfirmFirst, 'warning'); return; }
@@ -374,22 +372,14 @@ export default function BookingsPage() {
     },
     {
       key: 'amount', header: t.columns.amount, numeric: true, width: '140px',
-      render: (b) => {
-        const { paidAmount } = extrasOf(b);
-        return (
-          <div className="min-w-0">
-            <div>{formatCurrency(b.finalPrice)}</div>
-            {b.finalPrice !== b.price ? (
-              <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
-            ) : null}
-            {paidAmount > 0 ? (
-              <div className="text-2xs text-secondary">
-                {t.labels.received(formatCurrency(paidAmount))}
-              </div>
-            ) : null}
-          </div>
-        );
-      },
+      render: (b) => (
+        <div className="min-w-0">
+          <div>{formatCurrency(b.finalPrice)}</div>
+          {b.finalPrice !== b.price ? (
+            <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'status', header: t.columns.status, width: '110px',
@@ -616,11 +606,9 @@ export default function BookingsPage() {
         }
       >
         <p className="mb-3 text-base">{t.cancelModal.intro}</p>
-        {cancelTarget && extrasOf(cancelTarget).paidAmount > 0 ? (
+        {cancelTarget && isPaid(cancelTarget) ? (
           <Alert tone="warning" className="mb-3">
-            <span className="whitespace-pre-line">
-              {t.confirmMessages.cancelPaidWarning(formatCurrency(extrasOf(cancelTarget).paidAmount))}
-            </span>
+            <span className="whitespace-pre-line">{t.confirmMessages.cancelPaidWarning}</span>
           </Alert>
         ) : null}
         <FormGroup>
@@ -687,17 +675,8 @@ export default function BookingsPage() {
       {/* ------------------------------------------------------ 8. 標記付款 */}
       <ConfirmModal
         open={!!markPaidTarget}
-        title={markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-          ? t.markPaidModal.titleBalance
-          : t.markPaidModal.titleOffline}
-        message={
-          <span className="whitespace-pre-line">
-            {t.markPaidModal.confirmOffline}
-            {markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-              ? `\n${t.markPaidModal.depositHint}`
-              : ''}
-          </span>
-        }
+        title={t.markPaidModal.titleOffline}
+        message={t.markPaidModal.confirmOffline}
         onClose={() => setMarkPaidTarget(null)}
         onConfirm={() => {
           const target = markPaidTarget;
@@ -731,7 +710,7 @@ export default function BookingsPage() {
         title={t.rowActions.confirm}
         message={
           <span className="whitespace-pre-line">
-            {confirmTarget && extrasOf(confirmTarget).paidAmount === 0 && confirmTarget.paymentStatus === 'UNPAID'
+            {confirmTarget?.paymentStatus === 'UNPAID'
               ? `${t.confirmMessages.confirmBooking}\n\n${t.confirmMessages.manualConfirm}`
               : t.confirmMessages.confirmBooking}
           </span>
@@ -751,8 +730,8 @@ export default function BookingsPage() {
         title={t.rowActions.complete}
         message={
           <span className="whitespace-pre-line">
-            {completeTarget && extrasOf(completeTarget).paidAmount === 0
-              ? t.markPaidModal.balanceHint
+            {completeTarget?.paymentStatus === 'UNPAID'
+              ? t.markPaidModal.unpaidHint
               : t.markPaidModal.paidHint}
           </span>
         }
@@ -851,7 +830,7 @@ export default function BookingsPage() {
             {t.confirmMessages.batchCancel(
               batchCancellable.length,
               batchPaid.length > 0
-                ? t.confirmMessages.batchRefundWarning(batchPaid.length, formatCurrency(batchPaidTotal))
+                ? t.confirmMessages.batchRefundWarning(batchPaid.length)
                 : '',
             )}
           </span>
@@ -1446,9 +1425,6 @@ function AdjustPriceModal({
     }
   };
 
-  const paid = booking ? extrasOf(booking).paidAmount : 0;
-  const overpaid = paid - Number(amount || 0);
-
   return (
     <Modal
       open={!!booking}
@@ -1480,11 +1456,6 @@ function AdjustPriceModal({
         />
       </FormGroup>
 
-      {paid > 0 && overpaid > 0 ? (
-        <Alert tone="warning">
-          {t.messages.paidOverNet(formatCurrency(paid), formatCurrency(Number(amount || 0)))}
-        </Alert>
-      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );
@@ -1707,12 +1678,6 @@ function BookingDetailModal({
             {extras.pointsRedeemed > 0 ? (
               <div className="form-text">{d.pointsDiscount(extras.pointsRedeemed)}</div>
             ) : null}
-            {extras.paidAmount > 0 ? (
-              <div className="form-text">
-                {d.paidLabel}
-                {formatCurrency(extras.paidAmount)}
-              </div>
-            ) : null}
           </div>
 
           {booking.status === 'PENDING' ? (
@@ -1725,7 +1690,7 @@ function BookingDetailModal({
             </Button>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
-              {extras.paidAmount > 0 ? t.rowActions.markBalancePaid : t.rowActions.markPaidOffline}
+t.rowActions.markPaidOffline
             </Button>
             {booking.source === 'LINE' ? (
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>
