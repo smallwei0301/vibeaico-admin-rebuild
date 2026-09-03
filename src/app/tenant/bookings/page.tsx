@@ -2,7 +2,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Ban, Check, CheckCheck, ClipboardCopy, Coins, Download, Eye, Pencil, Plus,
+  Ban, Check, CheckCheck, Coins, Download, Eye, Pencil, Plus,
   RotateCcw, Ticket, Trash2, Wallet, X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -28,7 +28,6 @@ import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { exportBookingsCsv } from '@/services/reports';
 import { byMode } from '@/mock';
-import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
@@ -126,8 +125,6 @@ const extrasOf = (b: Booking): BookingExtras => byMode({
 const addonsOf = (b: Booking): AddonItem[] => byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
 })[b.id] ?? [];
-
-const payLinkOf = (b: Booking) => `${APP_URL.replace(/\/$/, '')}/pay/${b.bookingNo}`;
 
 /** 付款狀態顯示：已付清 / 已付訂金 / 待付款 */
 const paymentLabel = (b: Booking) => {
@@ -250,15 +247,6 @@ export default function BookingsPage() {
       void load();
     } catch (e) {
       toast.show(`${failPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
-    }
-  };
-
-  const copyPayLink = async (b: Booking) => {
-    try {
-      await navigator.clipboard.writeText(payLinkOf(b));
-      toast.show(t.messages.payLinkCopied);
-    } catch {
-      toast.show(`${t.markPaidModal.payLinkIntro}${payLinkOf(b)}`, 'warning');
     }
   };
 
@@ -689,7 +677,6 @@ export default function BookingsPage() {
         onPoints={() => setPointsTarget(detailTarget)}
         onAdjust={() => setAdjustTarget(detailTarget)}
         onMarkPaid={() => setMarkPaidTarget(detailTarget)}
-        onCopyPayLink={() => { if (detailTarget) void copyPayLink(detailTarget); }}
         onComplete={() => setCompleteTarget(detailTarget)}
         onCancel={() => { setCancelReason(''); setCancelTarget(detailTarget); }}
         onRevert={() => setRevertTarget(detailTarget)}
@@ -1549,7 +1536,7 @@ function ApplyPointsModal({
 
 function BookingDetailModal({
   booking, onClose, onAddon, onCoupon, onPoints, onAdjust, onMarkPaid,
-  onCopyPayLink, onComplete, onCancel, onRevert, onRemoveAddon,
+  onComplete, onCancel, onRevert, onRemoveAddon,
 }: {
   booking: Booking | null;
   onClose: () => void;
@@ -1558,7 +1545,6 @@ function BookingDetailModal({
   onPoints: () => void;
   onAdjust: () => void;
   onMarkPaid: () => void;
-  onCopyPayLink: () => void;
   onComplete: () => void;
   onCancel: () => void;
   onRevert: () => void;
@@ -1692,8 +1678,8 @@ function BookingDetailModal({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onCopyPayLink}>
-              <ClipboardCopy size={13} />{t.rowActions.copyPayLink}
+            <Button variant="outline" size="sm" disabled title={t.detailModal.payLinkUnavailable}>
+              {t.rowActions.payLinkUnavailable}
             </Button>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
@@ -1703,6 +1689,7 @@ function BookingDetailModal({
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>
             ) : null}
           </div>
+          <FormText>{t.detailModal.payLinkUnavailable}</FormText>
         </div>
       )}
     </Modal>

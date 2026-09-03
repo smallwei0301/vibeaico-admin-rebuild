@@ -59,7 +59,7 @@ export const bookingsPage = {
     applyPoints: '使用點數',
     adjustPrice: '調整金額',
     revert: '還原為已確認',
-    copyPayLink: '複製付款連結',
+    payLinkUnavailable: '付款頁尚未建置',
     markPaidOffline: '標記已線下收款',
     markBalancePaid: '標記尾款已結清',
     stayNotEditable: '住宿訂單不可編輯',
@@ -259,8 +259,7 @@ export const bookingsPage = {
     paidHint: '已付清，本次無需再向顧客收款。',
     depositHint: '下方「應收金額」已自動扣除，現場只需收尾款。',
     balanceHint:
-      '如需向顧客收取差額，可在詳情用「複製付款連結」傳給他，或收現後按「標記尾款已結清」。',
-    payLinkIntro: '複製此付款連結傳給顧客：',
+      '如需向顧客收取差額，請收現後按「標記尾款已結清」，或至您的金流後台處理。',
   },
 
   /* -------------------------------------------------------- 預約詳情 modal */
@@ -276,6 +275,7 @@ export const bookingsPage = {
     pointsDiscount: (points: number) => `點數折抵 ${points} 點 = $${points}`,
     afterCoupon: '（再扣票券，以系統計算為準）',
     notConfirmed: '此預約尚未確認',
+    payLinkUnavailable: '付款頁尚未建置（#32）；目前請使用線下收款或您的金流後台。',
   },
 
   /* -------------------------------------------------------------- 確認訊息 */
@@ -326,9 +326,7 @@ export const bookingsPage = {
     addonAddedRefreshFailed: '加購已成功，但明細刷新失敗，請重開詳情查看',
     addonRemoved: '加購已移除',
     addonDowngradePaid:
-      '加購後金額提高，此預約已從「已付清」變回「已付訂金」——如需向顧客收取差額，可在詳情用「複製付款連結」傳給他，或收現後按「標記尾款已結清」。',
-    payLinkCopied: '付款連結已複製，可貼給顧客',
-
+      '加購後金額提高，此預約已從「已付清」變回「已付訂金」——如需向顧客收取差額，請收現後按「標記尾款已結清」，或至您的金流後台處理。',
     exported: '預約匯出成功',
     exportFailed: '匯出失敗，請稍後再試',
     exportFailedPrefix: '匯出失敗:',
