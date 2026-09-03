@@ -74,6 +74,19 @@ export const POST = handle(async (req) => {
   const t = await requireTenant();
   const b = bodySchema.parse(await req.json());
 
+  let membershipLevelId = b.membershipLevelId ? b.membershipLevelId : null;
+  if (!membershipLevelId) {
+    const { data: defaultLevel, error: defaultError } = await t.supabase
+      .from('membership_levels')
+      .select('id')
+      .eq('tenant_id', t.tenantId)
+      .eq('active', true)
+      .eq('is_default', true)
+      .maybeSingle();
+    if (defaultError) throw defaultError;
+    membershipLevelId = defaultLevel?.id ?? null;
+  }
+
   const { data, error } = await t.supabase
     .from('customers')
     .insert({
@@ -85,7 +98,7 @@ export const POST = handle(async (req) => {
       birthday: b.birthday ? b.birthday : null,
       note: b.note ?? '',
       tags: b.tags ?? [],
-      membership_level_id: b.membershipLevelId ? b.membershipLevelId : null,
+      membership_level_id: membershipLevelId,
     })
     .select('id')
     .single();

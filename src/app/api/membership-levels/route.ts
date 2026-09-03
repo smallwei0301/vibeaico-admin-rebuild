@@ -3,6 +3,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapMembershipLevel } from '@/server/mappers';
+import { raiseMembershipLevelWriteError, resolveMembershipLevelId } from '@/server/membership-levels';
 
 /**
  * GET /api/membership-levels — membership_levels + customer_count（依
@@ -42,7 +43,7 @@ export const GET = handle(async () => {
  * 重算所有顧客等級（04 分冊 §B-4：等級 CRUD 儲存後執行）。
  * 規則：依 threshold_spent 由高至低比對 customers_view.total_spent（bookings
  * 聚合，customers 本表沒有這欄），取第一個 threshold <= spent 的等級；都不符
- * → null。效能：全量載入後在記憶體分組，按「目標等級」批次 update（每個等級
+ * → active default。效能：全量載入後在記憶體分組，按「目標等級」批次 update（每個等級
  * 一條 .in() update，而非逐顧客一條）——顧客數在單店規模（數千）內可接受。
  *
  * ⚠️ 同函式在 [id]/route.ts 重複一份：Next route 檔只允許匯出 HTTP handler，
@@ -52,7 +53,7 @@ async function recalcMemberships(t: Awaited<ReturnType<typeof requireTenant>>) {
   const [{ data: levels, error: e1 }, { data: customers, error: e2 }] = await Promise.all([
     t.supabase
       .from('membership_levels')
-      .select('id, threshold_spent')
+      .select('id, threshold_spent, active, is_default')
       .eq('tenant_id', t.tenantId),
     t.supabase
       .from('customers_view')
@@ -62,15 +63,18 @@ async function recalcMemberships(t: Awaited<ReturnType<typeof requireTenant>>) {
   if (e1) throw e1;
   if (e2) throw e2;
 
-  const sorted = (levels ?? [])
-    .map((l: any) => ({ id: l.id as string, threshold: Number(l.threshold_spent) }))
-    .sort((a, b) => b.threshold - a.threshold); // 門檻高 → 低
+  const rules = (levels ?? []).map((l: any) => ({
+    id: l.id as string,
+    threshold: Number(l.threshold_spent),
+    active: l.active,
+    isDefault: l.is_default,
+  }));
 
-  // target level id（null = 無符合等級）→ 需改成該等級的顧客 id 清單
+  // target level id（null = 沒有 active level/default）→ 需改成該等級的顧客 id 清單
   const moves = new Map<string | null, string[]>();
   for (const c of customers ?? []) {
     const spent = Number(c.total_spent ?? 0);
-    const target = sorted.find((l) => l.threshold <= spent)?.id ?? null;
+    const target = resolveMembershipLevelId(rules, spent);
     if (target !== (c.membership_level_id ?? null)) {
       const list = moves.get(target) ?? [];
       list.push(c.id);
@@ -99,6 +103,9 @@ const bodySchema = z.object({
   discountPercent: z.number().min(0).default(0),
   pointRateMultiplier: z.number().min(0).default(1),
   sortOrder: z.number().int().default(0),
+  description: z.string().optional(),
+  active: z.boolean().optional(),
+  isDefault: z.boolean().optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -113,12 +120,15 @@ export const POST = handle(async (req) => {
     discount_percent: b.discountPercent,
     point_rate_multiplier: b.pointRateMultiplier,
     sort_order: b.sortOrder,
+    description: b.description ?? '',
+    active: b.active ?? true,
+    is_default: b.isDefault ?? false,
   };
   if (b.color) insert.color = b.color; // 未帶 → 用 DB default '#C9A961'
 
   const { data, error } = await t.supabase
     .from('membership_levels').insert(insert).select('id').single();
-  if (error) throw error;
+  if (error) raiseMembershipLevelWriteError(error);
 
   await recalcMemberships(t);
   return ok({ id: data.id });

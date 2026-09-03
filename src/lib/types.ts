@@ -181,6 +181,18 @@ export type Coupon = {
   startAt: string;
   endAt: string;
   status: CouponStatus;
+  /** 最低消費門檻；null 表示未設定。 */
+  minOrderAmount?: number | null;
+  /** 百分比折扣的最高折抵金額；null 表示未設定。 */
+  maxDiscountAmount?: number | null;
+  /** 兌換券的兌換項目；空字串表示未設定。 */
+  giftItem?: string;
+  /** 每人限領張數；null 表示未設定。 */
+  limitPerCustomer?: number | null;
+  /** 私密票券旗標。 */
+  privateMode?: boolean;
+  /** 最近一張已核銷實例的代碼；null 表示沒有已核銷實例。 */
+  lastRedeemedCode?: string | null;
 };
 
 /* -------------------------------------------------------------- 會員等級 */
@@ -193,6 +205,12 @@ export type MembershipLevel = {
   pointRateMultiplier: number;
   customerCount: number;
   sortOrder: number;
+  /** 等級說明；空字串表示未設定。 */
+  description?: string;
+  /** 停用的等級不參與自動升級。 */
+  active?: boolean;
+  /** 每租戶至多一個預設等級。 */
+  isDefault?: boolean;
 };
 
 /* ------------------------------------------------------------------ 報表 */
