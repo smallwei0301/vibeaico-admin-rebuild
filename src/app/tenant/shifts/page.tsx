@@ -956,6 +956,8 @@ function TemplateModal({
   const [draft, setDraft] = React.useState<ShiftTemplate>(EMPTY);
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ShiftTemplate | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const nextId = React.useRef(1);
 
   React.useEffect(() => {
@@ -986,7 +988,7 @@ function TemplateModal({
     return '';
   };
 
-  const submit = () => {
+  const submit = async () => {
     const err = validate();
     setError(err);
     if (err) return;
@@ -994,28 +996,44 @@ function TemplateModal({
     const payload = {
       name: draft.name, startTime: draft.startTime, endTime: draft.endTime, color: draft.color,
     };
-    if (draft.id) {
-      const id = draft.id;
-      onChange(templates.map((x) => (x.id === id ? draft : x)));
-      toast.show(t.templateModal.updated);
-      void updateShiftTemplate(id, payload).catch((e) => {
-        toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
-      });
-    } else {
-      if (templates.length >= TEMPLATE_MAX) return;
-      const localId = `tpl_new_${nextId.current++}`;
-      onChange([...templates, { ...draft, id: localId }]);
-      toast.show(t.templateModal.created);
-      /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-      void createShiftTemplate(payload)
-        .then((res) => {
-          if (res) onChange((list) => list.map((x) => (x.id === localId ? { ...x, id: res.id } : x)));
-        })
-        .catch((e) => {
-          toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
-        });
+    if (!draft.id && templates.length >= TEMPLATE_MAX) return;
+
+    setSaving(true);
+    try {
+      if (draft.id) {
+        const id = draft.id;
+        await updateShiftTemplate(id, payload);
+        onChange((list) => list.map((x) => (x.id === id ? draft : x)));
+        toast.show(t.templateModal.updated);
+      } else {
+        /* mock 分支回 null；真實 API 回傳後端 id，兩者都等成功後才加入列表。 */
+        const localId = `tpl_new_${nextId.current++}`;
+        const res = await createShiftTemplate(payload);
+        onChange((list) => [...list, { ...draft, id: res?.id ?? localId }]);
+        toast.show(t.templateModal.created);
+      }
+      setDraft(EMPTY);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger');
+    } finally {
+      setSaving(false);
     }
-    setDraft(EMPTY);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || deletingId) return;
+    const id = deleteTarget.id;
+    setDeletingId(id);
+    try {
+      await deleteShiftTemplate(id);
+      onChange((list) => list.filter((x) => x.id !== id));
+      setDeleteTarget(null);
+      toast.show(t.templateModal.deleted);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -1078,7 +1096,7 @@ function TemplateModal({
         </div>
 
         <div className="btn-group mb-3">
-          <Button size="sm" onClick={submit}>
+          <Button size="sm" loading={saving} onClick={submit}>
             <Plus size={13} />
             {draft.id ? t.templateModal.update : t.templateModal.add}
           </Button>
@@ -1157,18 +1175,9 @@ function TemplateModal({
         title={t.templateModal.delete}
         confirmText={common.delete}
         message={t.templateModal.deleteConfirm}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(templates.filter((x) => x.id !== id));
-            void deleteShiftTemplate(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
-          }
-          setDeleteTarget(null);
-          toast.show(t.templateModal.deleted);
-        }}
+        onClose={() => { if (!deletingId) setDeleteTarget(null); }}
+        onConfirm={confirmDelete}
+        loading={!!deleteTarget && deletingId === deleteTarget.id}
       />
     </>
   );
