@@ -88,9 +88,12 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     expect(remove.status).toBe(200);
     expect((await remove.json()).data).toEqual({ removed: true });
 
-    const deleted = await admin.storage.from(BUCKET).download(uploadedPath);
-    expect(deleted.data).toBeNull();
-    expect(deleted.error).not.toBeNull();
+    const fileName = uploadedPath.split('/').at(-1)!;
+    const { data: remaining, error: listError } = await admin.storage
+      .from(BUCKET)
+      .list(SHOP_A.id, { search: fileName });
+    expect(listError).toBeNull();
+    expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
     uploadedPath = null;
   });
 });

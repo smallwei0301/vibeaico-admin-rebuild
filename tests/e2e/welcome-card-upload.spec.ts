@@ -89,9 +89,12 @@ test('歡迎卡片圖片上傳後會保存，重整仍存在，移除也會保�
     expect((await removeResponse).status()).toBe(200);
     await expect(urlInput).toHaveValue('', { timeout: 15_000 });
 
-    const removed = await admin.storage.from(BUCKET).download(uploadedPath);
-    expect(removed.data).toBeNull();
-    expect(removed.error).not.toBeNull();
+    const fileName = uploadedPath.split('/').at(-1)!;
+    const { data: remaining, error: listError } = await admin.storage
+      .from(BUCKET)
+      .list(SHOP_A.id, { search: fileName });
+    expect(listError).toBeNull();
+    expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
 
     await page.reload();
     await expect(page.locator('#welcomeCardImageUrl')).toHaveValue('', { timeout: 15_000 });
