@@ -122,6 +122,16 @@ export const PUT = handle(async (req) => {
     const { error } = await t.supabase
       .from('tenant_settings')
       .upsert({ tenant_id: t.tenantId, ...update }, { onConflict: 'tenant_id' });
+    const dbError = error as { code?: string; constraint?: string; message?: string } | null;
+    if (
+      dbError?.code === '23514' &&
+      (
+        dbError.constraint === 'welcome_card_image_not_retired' ||
+        dbError.message === 'welcome card image has been retired'
+      )
+    ) {
+      return fail(409, '此歡迎卡片圖片已失效，請重新上傳圖片', ERR.CONFLICT);
+    }
     if (error) throw error;
   }
 

@@ -9,6 +9,8 @@ const page = read('src/app/tenant/settings/page.tsx');
 const service = read('src/services/upload.ts');
 const route = read('src/app/api/upload/route.ts');
 const migration = read('supabase/migrations/0069_welcome_card_images.sql');
+const retirementMigration = read('supabase/migrations/0070_welcome_card_image_retirement.sql');
+const settingsRoute = read('src/app/api/settings/route.ts');
 
 describe('welcome card image upload #28⑥', () => {
   it('opens a real file input instead of showing success on button click', () => {
@@ -58,6 +60,11 @@ describe('welcome card image upload #28⑥', () => {
     expect(route).toContain("await requireTenant('MANAGER')");
     expect(route).toContain('tenantOwnedPublicStoragePath');
     expect(route).toContain('export const DELETE');
+    expect(route).toContain('currentNotify?.welcomeCardImageUrl === body.url');
     expect(migration).toContain("tenant_role_at_least((storage.foldername(name))[1]::uuid, 'MANAGER')");
+    expect(retirementMigration).toContain('create table if not exists public.welcome_card_image_retirements');
+    expect(retirementMigration).toContain('create or replace function public.retire_welcome_card_image');
+    expect(retirementMigration).toContain('trg_prevent_retired_welcome_card_image');
+    expect(settingsRoute).toContain('welcome_card_image_not_retired');
   });
 });

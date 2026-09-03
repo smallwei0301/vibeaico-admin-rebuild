@@ -45,12 +45,24 @@ export function tenantOwnedPublicStoragePath(
   return path;
 }
 
-/** Best-effort cleanup for a tenant-owned welcome-card object. */
+/**
+ * Retire then remove a tenant-owned welcome-card object. The database RPC
+ * serializes this with settings writes and returns false when the URL is
+ * still referenced or has already been safely retired.
+ */
 export async function removeWelcomeCardImage(url: string, tenantId: string): Promise<boolean> {
   const path = tenantOwnedPublicStoragePath(url, WELCOME_CARD_BUCKET, tenantId);
   if (!path) return false;
 
-  const { error } = await createAdminSupabase()
+  const admin = createAdminSupabase();
+  const { data: retired, error: retirementError } = await admin.rpc('retire_welcome_card_image', {
+    p_tenant_id: tenantId,
+    p_image_url: url,
+  });
+  if (retirementError) throw retirementError;
+  if (retired !== true) return false;
+
+  const { error } = await admin
     .storage
     .from(WELCOME_CARD_BUCKET)
     .remove([path]);

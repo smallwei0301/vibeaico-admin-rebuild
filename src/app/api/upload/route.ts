@@ -79,9 +79,8 @@ const deleteBodySchema = z.object({
 
 /**
  * DELETE /api/upload —— clean up one tenant-owned welcome-card object.
- * Invalid, external, cross-tenant, or currently referenced URLs are harmless
- * no-ops; callers cannot gain arbitrary storage access or delete the image
- * another manager has just restored.
+ * Invalid, external, or cross-tenant URLs are harmless no-ops; callers can
+ * still persist the settings change without gaining arbitrary storage access.
  */
 export const DELETE = handle(async (req) => {
   const t = await requireTenant('MANAGER');
@@ -89,19 +88,18 @@ export const DELETE = handle(async (req) => {
   const path = tenantOwnedPublicStoragePath(body.url, body.bucket, t.tenantId);
   if (!path) return ok({ removed: false });
 
-  const { data: currentRow, error: currentError } = await t.supabase
+  // A cleanup retry must not delete an object that a concurrent manager has
+  // already made current again. The settings PUT performs the same check
+  // before its best-effort cleanup; this endpoint protects the client retry.
+  const { data: settingsRow, error: settingsError } = await t.supabase
     .from('tenant_settings')
     .select('notify')
     .eq('tenant_id', t.tenantId)
     .maybeSingle();
-  if (currentError) throw currentError;
-  const currentNotify = currentRow?.notify as Record<string, unknown> | null | undefined;
-  const currentUrl =
-    typeof currentNotify?.welcomeCardImageUrl === 'string'
-      ? currentNotify.welcomeCardImageUrl
-      : '';
-  if (currentUrl === body.url) return ok({ removed: false });
+  if (settingsError) throw settingsError;
+  const currentNotify = settingsRow?.notify as Record<string, unknown> | null | undefined;
+  if (currentNotify?.welcomeCardImageUrl === body.url) return ok({ removed: false });
 
-  await removeWelcomeCardImage(body.url, t.tenantId);
-  return ok({ removed: true });
+  const removed = await removeWelcomeCardImage(body.url, t.tenantId);
+  return ok({ removed });
 });
