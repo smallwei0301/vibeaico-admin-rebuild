@@ -23,6 +23,7 @@ import {
   createService, createServiceCategory, deleteService, deleteServiceCategory,
   duplicateService, listServiceCategories, listServices, listStaff,
   reorderServiceCategories, reorderServices, toggleServiceLineFeatured, updateService,
+  updateServiceCategory,
 } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -164,7 +165,7 @@ export default function ServicesPage() {
     void (async () => {
       try {
         const list = await listServiceCategories();
-        if (list) setCategories(list.map((c) => ({ ...c, description: '', active: true })));
+        if (list) setCategories(list);
       } catch {
         toast.show(t.messages.retryLater, 'danger');
       }
@@ -1052,47 +1053,52 @@ function CategoryModal({
     setError('');
   }, [open]);
 
-  const create = () => {
+  const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       setError(t.category.nameRequired);
       return;
     }
+
+    const categoryDescription = description.trim();
+    const localId = 'sc_new_' + nextId.current++;
     setError('');
-    const localId = `sc_new_${nextId.current++}`;
-    onChange([
-      ...categories,
-      {
-        id: localId,
+    try {
+      const saved = await createServiceCategory({
         name: trimmed,
-        description: description.trim(),
+        description: categoryDescription,
         active: true,
-        sortOrder: categories.length + 1,
-      },
-    ]);
-    setName('');
-    setDescription('');
-    toast.show(t.category.created);
-    /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-    void createServiceCategory(trimmed)
-      .then((res) => {
-        if (res) onChange((list) => list.map((c) => (c.id === localId ? { ...c, id: res.id } : c)));
-      })
-      .catch((e) => {
-        toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
       });
+      onChange((list) => [
+        ...list,
+        {
+          id: saved?.id ?? localId,
+          name: trimmed,
+          description: categoryDescription,
+          active: true,
+          sortOrder: saved?.sortOrder ?? list.length + 1,
+        },
+      ]);
+      setName('');
+      setDescription('');
+      toast.show(t.category.created);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    }
   };
 
-  const move = (index: number, delta: number) => {
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= categories.length) return;
     const next = [...categories];
     [next[index], next[target]] = [next[target], next[index]];
-    onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
-    toast.show(t.category.reordered);
-    void reorderServiceCategories(next.map((c) => c.id)).catch((e) => {
+    try {
+      await reorderServiceCategories(next.map((c) => c.id));
+      onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+      toast.show(t.category.reordered);
+    } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
-    });
+    }
   };
 
   const columns: Column<ServiceCategory>[] = [
@@ -1126,8 +1132,18 @@ function CategoryModal({
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
             onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
+              void (async () => {
+                const nextActive = !c.active;
+                try {
+                  await updateServiceCategory(c.id, { active: nextActive });
+                  onChange((list) => list.map((x) => (
+                    x.id === c.id ? { ...x, active: nextActive } : x
+                  )));
+                  toast.show(t.category.updated);
+                } catch (e) {
+                  toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+                }
+              })();
             }}
           >
             <Pencil size={13} />
@@ -1172,7 +1188,7 @@ function CategoryModal({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <Button size="sm" onClick={create}>
+          <Button size="sm" onClick={() => void create()}>
             <Plus size={13} />{common.create}
           </Button>
         </div>
@@ -1197,16 +1213,17 @@ function CategoryModal({
         confirmText={common.delete}
         message={t.category.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(categories.filter((c) => c.id !== id));
-            void deleteServiceCategory(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const id = deleteTarget.id;
+          try {
+            await deleteServiceCategory(id);
+            onChange((list) => list.filter((c) => c.id !== id));
+            setDeleteTarget(null);
+            toast.show(t.category.deleted);
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
           }
-          setDeleteTarget(null);
-          toast.show(t.category.deleted);
         }}
       />
     </>
