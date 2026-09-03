@@ -2,11 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "*": false,
+      "**": false,
       "main": true,
       "preview/**": true
     }
   },
+  "ignoreCommand": "node scripts/ci/vercel-ignore-build.mjs",
   "crons": [
     { "path": "/api/cron/recurring-bookings", "schedule": "30 16 * * *" },
     { "path": "/api/cron/feature-expiry", "schedule": "0 17 * * *" },
