@@ -71,14 +71,25 @@ export function validateDeliveryUnitBoundary(body = '', metadata = {}) {
   return [...new Set(errors)];
 }
 
-export function validateWipPreflight({
-  body,
-  changedFiles = null,
-  prNumber = 1,
-  action = 'opened',
-  repositoryRoot = process.cwd(),
-  fileExists = existsSync,
-} = {}) {
+/**
+ * @param {{
+ *   body?: string,
+ *   changedFiles?: string[] | null,
+ *   prNumber?: number | string,
+ *   action?: string,
+ *   repositoryRoot?: string,
+ *   fileExists?: (path: import('node:fs').PathLike) => boolean,
+ * }} [input]
+ */
+export function validateWipPreflight(input = {}) {
+  const {
+    body = '',
+    changedFiles = null,
+    prNumber = 1,
+    action = 'opened',
+    repositoryRoot = process.cwd(),
+    fileExists = existsSync,
+  } = input;
   const text = String(body ?? '');
   const pr = { number: Number(prNumber) || 1, state: 'open', body: text };
   const metadata = parseLaneMetadata(pr);
