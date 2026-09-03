@@ -92,6 +92,17 @@ export const updateProductCategory = (id: string, input: Partial<ProductCategory
     request<void>('/api/product-categories/' + id, {
       method: 'PUT', body: JSON.stringify(input),
     }));
+/** DELETE — FK on delete set null，底下商品自動變未分類 */
+export const deleteProductCategory = (id: string) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/product-categories/' + id, { method: 'DELETE' }));
+
+export const reorderProductCategories = (ids: string[]) =>
+  adapt(() => undefined, () =>
+    request<void>('/api/product-categories/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }));
+
 /* ---------------------------------------------------------------- 商品 */
 
 /** POST/PUT /api/products 收的欄位（categoryId 空字串＝未分類） */
