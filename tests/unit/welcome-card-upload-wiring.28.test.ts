@@ -11,6 +11,7 @@ const route = read('src/app/api/upload/route.ts');
 const storage = read('src/server/storage.ts');
 const migration = read('supabase/migrations/0069_welcome_card_images.sql');
 const retirementMigration = read('supabase/migrations/0070_welcome_card_image_retirement.sql');
+const retirementAclMigration = read('supabase/migrations/0071_welcome_card_image_retirement_acl.sql');
 const settingsRoute = read('src/app/api/settings/route.ts');
 
 describe('welcome card image upload #28⑥', () => {
@@ -73,5 +74,24 @@ describe('welcome card image upload #28⑥', () => {
     expect(retirementMigration).toContain('trg_prevent_retired_welcome_card_image');
     expect(settingsRoute).toContain('welcome_card_image_not_retired');
     expect(settingsRoute).toContain('welcomeCardImageCleanupPending');
+  });
+
+  it('hardens retirement state with a forward-only ACL migration', () => {
+    expect(retirementAclMigration).toContain(
+      "alter function public.prevent_retired_welcome_card_image()\n  set search_path = '';",
+    );
+    expect(retirementAclMigration).toContain(
+      "alter function public.retire_welcome_card_image(uuid, text)\n  set search_path = '';",
+    );
+    expect(retirementAclMigration).toContain(
+      'revoke all on table public.welcome_card_image_retirements',
+    );
+    expect(retirementAclMigration).toContain('from public, anon, authenticated;');
+    expect(retirementAclMigration).toContain(
+      'grant select, insert, delete on table public.welcome_card_image_retirements',
+    );
+    expect(retirementAclMigration).toContain(
+      'grant execute on function public.retire_welcome_card_image(uuid, text)',
+    );
   });
 });
