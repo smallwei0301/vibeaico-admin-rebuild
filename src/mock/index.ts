@@ -187,6 +187,7 @@ const GUIDE: ModeDataset = {
   // 嚮導的「預約」是旅遊訂單（見 src/mock/tours.ts）；此處保留少量包團諮詢
   bookings: [
     { id: 'b_g1', bookingNo: 'BK20260821005', customerId: 'c_5', customerName: '張家豪', customerPhone: '0933-702-889', serviceId: 'sv_g1', serviceName: '客製包團諮詢', staffId: 's_2', staffName: '小雨', startAt: iso(1, 15), endAt: iso(1, 15, 30), durationMinutes: 30, price: 0, finalPrice: 0, status: 'PENDING', paymentStatus: 'UNPAID', source: 'LINE', note: '想規劃三天兩夜花東行程', createdAt: iso(0, 10) },
+    { id: 'b_g2', bookingNo: 'BK20260822001', customerId: 'c_2', customerName: '林巧薇', customerPhone: '0922-118-903', serviceId: 'sv_g1', serviceName: '花東三日包團訂金', staffId: 's_2', staffName: '小雨', startAt: iso(2, 10), endAt: iso(2, 10, 30), durationMinutes: 30, price: 800, finalPrice: 800, status: 'CONFIRMED', paymentStatus: 'UNPAID', source: 'LINE', note: '已確認行程，等待收款', createdAt: iso(0, 11) },
   ],
   membershipLevels: [
     { id: 'ml_1', name: '一般旅人', color: '#86868b', thresholdSpent: 0, discountPercent: 0, pointRateMultiplier: 1, customerCount: 320, sortOrder: 1 },

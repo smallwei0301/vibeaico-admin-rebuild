@@ -17,7 +17,7 @@ function relatedValue(value: RelatedName): { name?: string | null; title?: strin
 }
 
 /**
- * GUIDE 首頁目前可出貨的 action inbox 類別：待確認預約與今日／明日出發團次。
+ * GUIDE 首頁目前可出貨的 action inbox 類別：待確認預約、待收款預約與今日／明日出發團次。
  * 只讀既有 bookings_view 與 tenant timezone，不建立新狀態，也不觸發通知、付款或其他外部副作用。
  */
 export const GET = handle(async () => {
@@ -37,12 +37,22 @@ export const GET = handle(async () => {
   const now = new Date();
   const { today, tomorrow } = getGuideActionInboxDateWindow(now, timeZone);
 
-  const [bookingResult, departureResult] = await Promise.all([
+  const [bookingResult, paymentBookingResult, departureResult] = await Promise.all([
     t.supabase
       .from('bookings_view')
       .select('id, booking_no, customer_name, service_name, start_at, created_at')
       .eq('tenant_id', t.tenantId)
       .eq('status', 'PENDING')
+      .order('start_at', { ascending: true })
+      .order('created_at', { ascending: true })
+      .limit(20),
+    t.supabase
+      .from('bookings_view')
+      .select('id, booking_no, customer_name, service_name, start_at, final_price, created_at')
+      .eq('tenant_id', t.tenantId)
+      .eq('status', 'CONFIRMED')
+      .eq('payment_status', 'UNPAID')
+      .gt('final_price', 0)
       .order('start_at', { ascending: true })
       .order('created_at', { ascending: true })
       .limit(20),
@@ -60,6 +70,7 @@ export const GET = handle(async () => {
   ]);
 
   if (bookingResult.error) throw bookingResult.error;
+  if (paymentBookingResult.error) throw paymentBookingResult.error;
   if (departureResult.error) throw departureResult.error;
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
@@ -72,6 +83,19 @@ export const GET = handle(async () => {
     dueAt: row.start_at,
     createdAt: row.created_at,
     href: '/tenant/bookings?status=PENDING',
+  }));
+
+  const bookingPaymentItems: GuideActionInboxItem[] = (paymentBookingResult.data ?? []).map((row) => ({
+    id: row.id,
+    kind: 'BOOKING_PAYMENT',
+    bookingNo: row.booking_no,
+    customerName: row.customer_name ?? '',
+    serviceName: row.service_name ?? '',
+    amount: Number(row.final_price ?? 0),
+    priority: getGuideActionInboxPriority(row.start_at, now, timeZone),
+    dueAt: row.start_at,
+    createdAt: row.created_at,
+    href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
   }));
 
   const departureItems: GuideActionInboxItem[] = (departureResult.data ?? [])
@@ -101,5 +125,5 @@ export const GET = handle(async () => {
     })
     .filter((item): item is GuideActionInboxItem => item !== null);
 
-  return ok(sortGuideActionInboxItems([...bookingItems, ...departureItems]));
+  return ok(sortGuideActionInboxItems([...bookingItems, ...bookingPaymentItems, ...departureItems]));
 });

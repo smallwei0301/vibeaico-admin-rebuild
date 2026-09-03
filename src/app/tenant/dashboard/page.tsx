@@ -324,11 +324,18 @@ export default function DashboardPage() {
               {t.actionInbox.title}
               <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span>
             </CardTitle>
-            {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
-              <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
-                {t.actionInbox.viewBookings}
-              </Link>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
+                <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
+                  {t.actionInbox.viewBookings}
+                </Link>
+              ) : null}
+              {actionInbox.some((item) => item.kind === 'BOOKING_PAYMENT') ? (
+                <Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline btn-sm">
+                  {t.actionInbox.viewPayments}
+                </Link>
+              ) : null}
+            </div>
           </CardHeader>
           <CardBody>
             {loadingActionInbox ? (
@@ -350,7 +357,9 @@ export default function DashboardPage() {
                         <span className="text-sm font-semibold text-dark">
                           {item.kind === 'BOOKING_REQUEST'
                             ? t.actionInbox.bookingRequest
-                            : t.actionInbox.departure}
+                            : item.kind === 'BOOKING_PAYMENT'
+                              ? t.actionInbox.bookingPayment
+                              : t.actionInbox.departure}
                         </span>
                       </div>
                       {item.kind === 'BOOKING_REQUEST' ? (
@@ -359,6 +368,15 @@ export default function DashboardPage() {
                           <div className="text-sm text-secondary">{item.serviceName}</div>
                           <div className="mt-1 text-xs text-secondary">
                             {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
+                          </div>
+                        </>
+                      ) : item.kind === 'BOOKING_PAYMENT' ? (
+                        <>
+                          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+                          <div className="text-sm text-secondary">{item.serviceName}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+                            <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
+                            <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
                           </div>
                         </>
                       ) : (
@@ -377,7 +395,11 @@ export default function DashboardPage() {
                       href={item.href}
                       className="btn btn-primary btn-sm w-full flex-shrink-0 sm:w-auto"
                     >
-                      {item.kind === 'BOOKING_REQUEST' ? t.actionInbox.open : t.actionInbox.openDeparture}
+                      {item.kind === 'BOOKING_REQUEST'
+                        ? t.actionInbox.open
+                        : item.kind === 'BOOKING_PAYMENT'
+                          ? t.actionInbox.openPayment
+                          : t.actionInbox.openDeparture}
                     </Link>
                   </li>
                 ))}

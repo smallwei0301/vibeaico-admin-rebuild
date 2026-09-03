@@ -11,9 +11,10 @@ import { MOCK_BOOKINGS } from '@/mock';
 import { MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } from '@/mock/tours';
 
 const BOOKING_INBOX_HREF = '/tenant/bookings?status=PENDING';
+const BOOKING_PAYMENT_INBOX_HREF = '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID';
 
 /**
- * GUIDE 首頁目前可自主完成的 action inbox slice：既有 PENDING 預約。
+ * GUIDE 首頁目前可自主完成的 action inbox slice：既有待確認與待收款預約。
  * mock 只模擬相對於現在的預約時間，避免舊 fixture 日期讓首頁顯示過期假資料。
  */
 export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
@@ -37,6 +38,27 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             dueAt,
             createdAt: booking.createdAt,
             href: BOOKING_INBOX_HREF,
+          };
+        });
+      const paymentItems: GuideActionInboxItem[] = MOCK_BOOKINGS
+        .filter((booking) =>
+          booking.status === 'CONFIRMED'
+          && booking.paymentStatus === 'UNPAID'
+          && booking.finalPrice > 0)
+        .slice(0, 20)
+        .map((booking, index) => {
+          const dueAt = new Date(now + (index + 3) * 60 * 60 * 1000).toISOString();
+          return {
+            id: booking.id,
+            kind: 'BOOKING_PAYMENT' as const,
+            bookingNo: booking.bookingNo,
+            customerName: booking.customerName,
+            serviceName: booking.serviceName,
+            amount: booking.finalPrice,
+            priority: getGuideActionInboxPriority(dueAt, new Date(now)),
+            dueAt,
+            createdAt: booking.createdAt,
+            href: BOOKING_PAYMENT_INBOX_HREF,
           };
         });
       const departureItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES
@@ -67,7 +89,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           };
         })
         .filter((item): item is GuideActionInboxItem => item !== null);
-      return sortGuideActionInboxItems([...items, ...departureItems]);
+      return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
   );
