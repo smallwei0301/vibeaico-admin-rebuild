@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { toQuickPlanPayload, validateQuickPlan } from '@/lib/trip-plan-quick-edit';
+import {
+  toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
+} from '@/lib/trip-plan-quick-edit';
 import type { TripPlan } from '@/lib/types';
 
 const plan: TripPlan = {
@@ -59,5 +61,38 @@ describe('#42 Quick Edit contract', () => {
     expect(source).toContain('quickPlanPayload');
     expect(source).toContain("trip?.midaoListing === 'LISTED'");
     expect(source).not.toContain('patchPlan({ childPrice: planDraft.childPrice ?? 0 })');
+  });
+});
+
+describe('#42 Advanced Settings contract', () => {
+  it('projects only persisted party and deposit fields into the same plan service', () => {
+    expect(toAdvancedPlanPayload(plan)).toEqual({
+      id: 'plan-1',
+      minParticipants: 1,
+      maxParticipants: 10,
+      depositMode: 'FULL',
+      depositValue: 0,
+    });
+  });
+
+  it('validates party limits and the existing deposit semantics before saving', () => {
+    expect(validateAdvancedPlan({ ...plan, minParticipants: 0 })).toBe('minParticipants');
+    expect(validateAdvancedPlan({ ...plan, maxParticipants: 0 })).toBe('maxParticipants');
+    expect(validateAdvancedPlan({ ...plan, minParticipants: 11 })).toBe('partyRange');
+    expect(validateAdvancedPlan({ ...plan, depositMode: 'DEPOSIT_FIXED', depositValue: 0 })).toBe('deposit');
+    expect(validateAdvancedPlan({ ...plan, depositMode: 'DEPOSIT_FIXED', depositValue: 3001 })).toBe('deposit');
+    expect(validateAdvancedPlan({ ...plan, depositMode: 'DEPOSIT_PERCENT', depositValue: 101 })).toBe('deposit');
+    expect(validateAdvancedPlan({ ...plan, depositMode: 'DEPOSIT_PERCENT', depositValue: 30 })).toBeNull();
+  });
+
+  it('keeps Advanced Settings bounded to the existing canonical UI and service path', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/app/tenant/trips/[id]/page.tsx'), 'utf8');
+    expect(source).toContain('planEditorMode');
+    expect(source).toContain('toAdvancedPlanPayload');
+    expect(source).toContain('await saveTripPlan(tripId, advancedPlanPayload)');
+    expect(source).toContain('t.plans.advanced');
+    expect(source).toContain('await listTripPlans(tripId)');
+    expect(source).not.toContain('createAdvancedPlan');
+    expect(source).not.toContain('advancedPlanSchema');
   });
 });
