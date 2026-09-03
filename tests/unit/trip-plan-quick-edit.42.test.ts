@@ -57,5 +57,7 @@ describe('#42 Quick Edit contract', () => {
     expect(source).toContain('await saveTripPlan(tripId, quickPlanPayload)');
     expect(source).toContain('await listTripPlans(tripId)');
     expect(source).toContain('quickPlanPayload');
+    expect(source).toContain("trip?.midaoListing === 'LISTED'");
+    expect(source).not.toContain('patchPlan({ childPrice: planDraft.childPrice ?? 0 })');
   });
 });

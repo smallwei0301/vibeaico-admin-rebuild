@@ -174,7 +174,8 @@ export default function TripDetailPage() {
 
       setPlanDraft(null);
       setShowChildPrice(false);
-      toast.show(t.messages.planSaved);
+      const needsReview = trip?.midaoListing === 'LISTED';
+      toast.show(needsReview ? t.messages.planSubmitted : t.messages.planSaved);
     } catch (error) {
       toast.show(
         error instanceof Error && error.message ? error.message : t.messages.planSaveFailed,
@@ -908,7 +909,6 @@ export default function TripDetailPage() {
                 block
                 onClick={() => {
                   setShowChildPrice(true);
-                  patchPlan({ childPrice: planDraft.childPrice ?? 0 });
                 }}
               >
                 {t.plans.quick.childPriceToggle}
