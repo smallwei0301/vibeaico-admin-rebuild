@@ -1,1 +1,61 @@
-aW1wb3J0IHsgZGVzY3JpYmUsIGV4cGVjdCwgaXQgfSBmcm9tICd2aXRlc3QnOwppbXBvcnQgeyByZWFkRmlsZVN5bmMgfSBmcm9tICdub2RlOmZzJzsKaW1wb3J0IHsgcmVzb2x2ZSB9IGZyb20gJ25vZGU6cGF0aCc7CmltcG9ydCB7IHRvUXVpY2tQbGFuUGF5bG9hZCwgdmFsaWRhdGVRdWlja1BsYW4gfSBmcm9tICdAL2xpYi90cmlwLXBsYW4tcXVpY2stZWRpdCc7CmltcG9ydCB0eXBlIHsgVHJpcFBsYW4gfSBmcm9tICdAL2xpYi90eXBlcyc7Cgpjb25zdCBwbGFuOiBUcmlwUGxhbiA9IHsKICBpZDogJ3BsYW4tMScsCiAgdHJpcElkOiAndHJpcC0xJywKICBuYW1lOiAnICDmqJnmupbmlrnmoYggICcsCiAgZGVzY3JpcHRpb246ICcgIOWFp+WuueiqquaYjiAgJywKICBkdXJhdGlvbk1pbnV0ZXM6IDE4MCwKICBwcmljZVR5cGU6ICdQRVJfUEVSU09OJywKICBiYXNlUHJpY2U6IDMwMDAsCiAgY2hpbGRQcmljZTogbnVsbCwKICBtaW5QYXJ0aWNpcGFudHM6IDEsCiAgbWF4UGFydGljaXBhbnRzOiAxMCwKICBib29raW5nVHlwZTogJ1NDSEVEVUxFRCcsCiAgZGVwb3NpdE1vZGU6ICdGVUxMJywKICBkZXBvc2l0VmFsdWU6IDAsCiAgYWN0aXZlOiB0cnVlLAogIHllYXJSb3VuZDogdHJ1ZSwKICBzZWFzb25zOiBbXSwKICByZXZpZXdTdGF0ZTogJ05PTkUnLAogIHJldmlld05vdGU6ICcnLAogIHNvcnRPcmRlcjogMCwKfTsKCmRlc2NyaWJlKCcjNDIgUXVpY2sgRWRpdCBjb250cmFjdCcsICgpID0+IHsKICBpdCgncHJvamVjdHMgb25seSBoaWdoLWZyZXF1ZW5jeSBmaWVsZHMgaW50byB0aGUgY2Fub25pY2FsIHBsYW4gc2VydmljZSBwYXlsb2FkJywgKCkgPT4gewogICAgZXhwZWN0KHRvUXVpY2tQbGFuUGF5bG9hZChwbGFuKSkudG9FcXVhbCh7CiAgICAgIGlkOiAncGxhbi0xJywKICAgICAgbmFtZTogJ+aomea6luaWueahiCcsCiAgICAgIGRlc2NyaXB0aW9uOiAn5YWn5a656Kqq5piOJywKICAgICAgYmFzZVByaWNlOiAzMDAwLAogICAgICBjaGlsZFByaWNlOiBudWxsLAogICAgICBhY3RpdmU6IHRydWUsCiAgICB9KTsKICB9KTsKCiAgaXQoJ3BlcnNpc3RzIGFuIG9wdGlvbmFsIGNoaWxkIHByaWNlIGFuZCBjYW4gY2xlYXIgaXQgd2l0aCBudWxsJywgKCkgPT4gewogICAgZXhwZWN0KHRvUXVpY2tQbGFuUGF5bG9hZCh7IC4uLnBsYW4sIGNoaWxkUHJpY2U6IDE1MDAgfSkpLnRvTWF0Y2hPYmplY3QoeyBjaGlsZFByaWNlOiAxNTAwIH0pOwogICAgZXhwZWN0KHRvUXVpY2tQbGFuUGF5bG9hZCh7IC4uLnBsYW4sIGNoaWxkUHJpY2U6IG51bGwgfSkpLnRvTWF0Y2hPYmplY3QoeyBjaGlsZFByaWNlOiBudWxsIH0pOwogIH0pOwoKICBpdCgncmVqZWN0cyBlbXB0eSBuYW1lcyBhbmQgaW52YWxpZCBwcmljZXMgYmVmb3JlIG1ha2luZyB0aGUgQVBJIGNhbGwnLCAoKSA9PiB7CiAgICBleHBlY3QodmFsaWRhdGVRdWlja1BsYW4oeyAuLi5wbGFuLCBuYW1lOiAnICAnIH0sIGZhbHNlKSkudG9CZSgnbmFtZScpOwogICAgZXhwZWN0KHZhbGlkYXRlUXVpY2tQbGFuKHsgLi4ucGxhbiwgYmFzZVByaWNlOiAtMSB9LCBmYWxzZSkpLnRvQmUoJ2Jhc2VQcmljZScpOwogICAgZXhwZWN0KHZhbGlkYXRlUXVpY2tQbGFuKHsgLi4ucGxhbiwgY2hpbGRQcmljZTogLTEgfSwgdHJ1ZSkpLnRvQmUoJ2NoaWxkUHJpY2UnKTsKICAgIGV4cGVjdCh2YWxpZGF0ZVF1aWNrUGxhbihwbGFuLCBmYWxzZSkpLnRvQmVOdWxsKCk7CiAgfSk7CgogIGl0KCd1c2VzIHRoZSBvbmUgZXhpc3RpbmcgcGxhbiBzZXJ2aWNlIGFuZCByZS1yZWFkcyByZWFsIGRhdGEgYWZ0ZXIgc2F2aW5nJywgKCkgPT4gewogICAgY29uc3Qgc291cmNlID0gcmVhZEZpbGVTeW5jKHJlc29sdmUocHJvY2Vzcy5jd2QoKSwgJ3NyYy9hcHAvdGVuYW50L3RyaXBzL1tpZF0vcGFnZS50c3gnKSwgJ3V0ZjgnKTsKICAgIGV4cGVjdChzb3VyY2UpLnRvQ29udGFpbignVVNFX01PQ0snKTsKICAgIGV4cGVjdChzb3VyY2UpLnRvQ29udGFpbigndG9RdWlja1BsYW5QYXlsb2FkJyk7CiAgICBleHBlY3Qoc291cmNlKS50b0NvbnRhaW4oJ2F3YWl0IHNhdmVUcmlwUGxhbih0cmlwSWQsIHF1aWNrUGxhblBheWxvYWQpJyk7CiAgICBleHBlY3Qoc291cmNlKS50b0NvbnRhaW4oJ2F3YWl0IGxpc3RUcmlwUGxhbnModHJpcElkKScpOwogICAgZXhwZWN0KHNvdXJjZSkudG9Db250YWluKCdxdWlja1BsYW5QYXlsb2FkJyk7CiAgfSk7Cn0pOwo=
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { toQuickPlanPayload, validateQuickPlan } from '@/lib/trip-plan-quick-edit';
+import type { TripPlan } from '@/lib/types';
+
+const plan: TripPlan = {
+  id: 'plan-1',
+  tripId: 'trip-1',
+  name: '  標準方案  ',
+  description: '  內容說明  ',
+  durationMinutes: 180,
+  priceType: 'PER_PERSON',
+  basePrice: 3000,
+  childPrice: null,
+  minParticipants: 1,
+  maxParticipants: 10,
+  bookingType: 'SCHEDULED',
+  depositMode: 'FULL',
+  depositValue: 0,
+  active: true,
+  yearRound: true,
+  seasons: [],
+  reviewState: 'NONE',
+  reviewNote: '',
+  sortOrder: 0,
+};
+
+describe('#42 Quick Edit contract', () => {
+  it('projects only high-frequency fields into the canonical plan service payload', () => {
+    expect(toQuickPlanPayload(plan)).toEqual({
+      id: 'plan-1',
+      name: '標準方案',
+      description: '內容說明',
+      basePrice: 3000,
+      childPrice: null,
+      active: true,
+    });
+  });
+
+  it('persists an optional child price and can clear it with null', () => {
+    expect(toQuickPlanPayload({ ...plan, childPrice: 1500 })).toMatchObject({ childPrice: 1500 });
+    expect(toQuickPlanPayload({ ...plan, childPrice: null })).toMatchObject({ childPrice: null });
+  });
+
+  it('rejects empty names and invalid prices before making the API call', () => {
+    expect(validateQuickPlan({ ...plan, name: '  ' }, false)).toBe('name');
+    expect(validateQuickPlan({ ...plan, basePrice: -1 }, false)).toBe('basePrice');
+    expect(validateQuickPlan({ ...plan, childPrice: -1 }, true)).toBe('childPrice');
+    expect(validateQuickPlan(plan, false)).toBeNull();
+  });
+
+  it('uses the one existing plan service and re-reads real data after saving', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/app/tenant/trips/[id]/page.tsx'), 'utf8');
+    expect(source).toContain('USE_MOCK');
+    expect(source).toContain('toQuickPlanPayload');
+    expect(source).toContain('await saveTripPlan(tripId, quickPlanPayload)');
+    expect(source).toContain('await listTripPlans(tripId)');
+    expect(source).toContain('quickPlanPayload');
+  });
+});
