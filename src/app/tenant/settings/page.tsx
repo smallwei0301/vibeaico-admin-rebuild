@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { removeWelcomeCardImage as removeWelcomeCardImageAsset, uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -86,6 +87,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [draft, setDraft] = React.useState<TenantSettings | null>(null);
   const [savingSection, setSavingSection] = React.useState<TabKey | null>(null);
+  const welcomeImageFileRef = React.useRef<HTMLInputElement>(null);
+  const [welcomeImageBusy, setWelcomeImageBusy] = React.useState(false);
 
   /* 點數試算（原站 #testAmount，預設 100） */
   const [testAmount, setTestAmount] = React.useState('100');
@@ -151,8 +154,12 @@ export default function SettingsPage() {
   ) => {
     setSavingSection(section);
     try {
-      await saveTenantSettings(patch);
-      toast.show(successMessage);
+      const result = await saveTenantSettings(patch);
+      if (result?.welcomeCardImageCleanupPending) {
+        toast.show(t.notification.welcomeCardImageCleanupPending, 'warning');
+      } else {
+        toast.show(successMessage);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -244,6 +251,86 @@ export default function SettingsPage() {
       },
       t.notification.saved,
     );
+  };
+
+  const uploadWelcomeCardImage = async (file: File) => {
+    if (!draft || welcomeImageBusy) return;
+    const previousUrl = draft.notify.welcomeCardImageUrl;
+    setWelcomeImageBusy(true);
+    let uploadedUrl = '';
+    let cleanupPending = false;
+    try {
+      const { url } = await uploadImage(file, 'welcome-card-images');
+      uploadedUrl = url;
+      const notify = { ...draft.notify, welcomeCardImageUrl: url };
+      try {
+        const result = await saveTenantSettings({ notify });
+        cleanupPending = result?.welcomeCardImageCleanupPending === true;
+      } catch (error) {
+        // The upload and settings write are separate resources. If the DB
+        // write fails, remove the new object before showing failure.
+        await removeWelcomeCardImageAsset(uploadedUrl).catch(() => undefined);
+        throw error;
+      }
+      if (previousUrl && previousUrl !== url) {
+        try {
+          await removeWelcomeCardImageAsset(previousUrl);
+        } catch {
+          cleanupPending = true;
+        }
+      }
+      setDraft((current) =>
+        current
+          ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: url } }
+          : current,
+      );
+      toast.show(
+        cleanupPending ? t.notification.welcomeCardImageCleanupPending : t.notification.welcomeCardImageUpdated,
+        cleanupPending ? 'warning' : undefined,
+      );
+    } catch (e) {
+      toast.show(
+        `${t.notification.validation.uploadFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
+  };
+
+  const removeWelcomeCardImage = async () => {
+    if (!draft || welcomeImageBusy) return;
+    const previousUrl = draft.notify.welcomeCardImageUrl;
+    setWelcomeImageBusy(true);
+    let cleanupPending = false;
+    try {
+      const notify = { ...draft.notify, welcomeCardImageUrl: '' };
+      const result = await saveTenantSettings({ notify });
+      cleanupPending = result?.welcomeCardImageCleanupPending === true;
+      if (previousUrl) {
+        try {
+          await removeWelcomeCardImageAsset(previousUrl);
+        } catch {
+          cleanupPending = true;
+        }
+      }
+      setDraft((current) =>
+        current
+          ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: '' } }
+          : current,
+      );
+      toast.show(
+        cleanupPending ? t.notification.welcomeCardImageCleanupPending : t.notification.welcomeCardImageRemoved,
+        cleanupPending ? 'warning' : undefined,
+      );
+    } catch (e) {
+      toast.show(
+        `${t.notification.validation.removeFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
   };
 
   const savePoints = async () => {
@@ -1092,18 +1179,33 @@ export default function SettingsPage() {
                 </FormGroup>
 
                 <FormGroup>
-                  <Label>{t.notification.welcomeCardImage}</Label>
+                  <Label htmlFor="welcomeCardImageUrl">{t.notification.welcomeCardImage}</Label>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
+                      id="welcomeCardImageUrl"
                       className="w-full max-w-md"
                       value={draft.notify.welcomeCardImageUrl}
                       placeholder={t.notification.welcomeCardImage}
                       onChange={(e) => patchNotify({ welcomeCardImageUrl: e.target.value })}
                     />
+                    <Input
+                      ref={welcomeImageFileRef}
+                      id="welcomeCardImageFile"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) void uploadWelcomeCardImage(file);
+                      }}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => toast.show(t.notification.welcomeCardImageUpdated)}
+                      loading={welcomeImageBusy}
+                      loadingText={t.notification.welcomeCardImageUploading}
+                      onClick={() => welcomeImageFileRef.current?.click()}
                     >
                       <Upload size={13} />
                       {t.notification.welcomeCardImageUpload}
@@ -1112,10 +1214,9 @@ export default function SettingsPage() {
                       <Button
                         variant="outlineDanger"
                         size="sm"
-                        onClick={() => {
-                          patchNotify({ welcomeCardImageUrl: '' });
-                          toast.show(t.notification.welcomeCardImageRemoved);
-                        }}
+                        loading={welcomeImageBusy}
+                        loadingText={t.notification.welcomeCardImageUploading}
+                        onClick={() => void removeWelcomeCardImage()}
                       >
                         <Trash2 size={13} />
                         {t.notification.welcomeCardImageRemove}
