@@ -92,6 +92,14 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(body.data?.totalElements).toBe(1);
     expect(body.data?.content).toHaveLength(1);
     expect(body.data?.content[0]).toMatchObject({ id: SHOP_A.bookingPending, status: 'PENDING' });
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const crossTenant = await ownerB.get(`/api/bookings?bookingId=${SHOP_A.bookingPending}`);
+    expect(crossTenant.status).toBe(200);
+    const crossTenantBody = await readJson<{ totalElements: number; content: unknown[] }>(crossTenant);
+    expect(crossTenantBody.success).toBe(true);
+    expect(crossTenantBody.data?.totalElements).toBe(0);
+    expect(crossTenantBody.data?.content).toEqual([]);
   });
 
   it('SHOP_B 不會看到 SHOP_A 的待確認預約', async () => {
