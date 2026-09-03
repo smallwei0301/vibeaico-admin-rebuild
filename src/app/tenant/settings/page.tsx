@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -86,6 +87,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [draft, setDraft] = React.useState<TenantSettings | null>(null);
   const [savingSection, setSavingSection] = React.useState<TabKey | null>(null);
+  const welcomeImageFileRef = React.useRef<HTMLInputElement>(null);
+  const [welcomeImageBusy, setWelcomeImageBusy] = React.useState(false);
 
   /* 點數試算（原站 #testAmount，預設 100） */
   const [testAmount, setTestAmount] = React.useState('100');
@@ -244,6 +247,51 @@ export default function SettingsPage() {
       },
       t.notification.saved,
     );
+  };
+
+  const uploadWelcomeCardImage = async (file: File) => {
+    if (!draft || welcomeImageBusy) return;
+    setWelcomeImageBusy(true);
+    try {
+      const { url } = await uploadImage(file, 'welcome-card-images');
+      const notify = { ...draft.notify, welcomeCardImageUrl: url };
+      await saveTenantSettings({ notify });
+      setDraft((current) =>
+        current
+          ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: url } }
+          : current,
+      );
+      toast.show(t.notification.welcomeCardImageUpdated);
+    } catch (e) {
+      toast.show(
+        `${t.notification.validation.uploadFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
+  };
+
+  const removeWelcomeCardImage = async () => {
+    if (!draft || welcomeImageBusy) return;
+    setWelcomeImageBusy(true);
+    try {
+      const notify = { ...draft.notify, welcomeCardImageUrl: '' };
+      await saveTenantSettings({ notify });
+      setDraft((current) =>
+        current
+          ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: '' } }
+          : current,
+      );
+      toast.show(t.notification.welcomeCardImageRemoved);
+    } catch (e) {
+      toast.show(
+        `${t.notification.validation.removeFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
   };
 
   const savePoints = async () => {
@@ -1092,18 +1140,33 @@ export default function SettingsPage() {
                 </FormGroup>
 
                 <FormGroup>
-                  <Label>{t.notification.welcomeCardImage}</Label>
+                  <Label htmlFor="welcomeCardImageUrl">{t.notification.welcomeCardImage}</Label>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
+                      id="welcomeCardImageUrl"
                       className="w-full max-w-md"
                       value={draft.notify.welcomeCardImageUrl}
                       placeholder={t.notification.welcomeCardImage}
                       onChange={(e) => patchNotify({ welcomeCardImageUrl: e.target.value })}
                     />
+                    <Input
+                      ref={welcomeImageFileRef}
+                      id="welcomeCardImageFile"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) void uploadWelcomeCardImage(file);
+                      }}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => toast.show(t.notification.welcomeCardImageUpdated)}
+                      loading={welcomeImageBusy}
+                      loadingText={t.notification.welcomeCardImageUploading}
+                      onClick={() => welcomeImageFileRef.current?.click()}
                     >
                       <Upload size={13} />
                       {t.notification.welcomeCardImageUpload}
@@ -1112,10 +1175,9 @@ export default function SettingsPage() {
                       <Button
                         variant="outlineDanger"
                         size="sm"
-                        onClick={() => {
-                          patchNotify({ welcomeCardImageUrl: '' });
-                          toast.show(t.notification.welcomeCardImageRemoved);
-                        }}
+                        loading={welcomeImageBusy}
+                        loadingText={t.notification.welcomeCardImageUploading}
+                        onClick={() => void removeWelcomeCardImage()}
                       >
                         <Trash2 size={13} />
                         {t.notification.welcomeCardImageRemove}

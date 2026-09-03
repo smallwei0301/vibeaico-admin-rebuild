@@ -7,8 +7,7 @@ import { createAdminSupabase } from '@/server/supabase';
  * POST /api/upload —— 頁面用圖片統一上傳端點（07 分冊 §3）。
  * multipart/form-data：`file`（圖片）+ `bucket`（目的地 bucket 名）。
  *
- * - bucket 白名單 = 0008 migration 的五個（service-images / product-images /
- *   portfolio-images / staff-avatars / richmenu-assets）。
+ * - bucket 白名單 = 0008 migration 的五個，再加上 0069 的歡迎卡片圖片 bucket。
  * - 驗證：≤5MB、image/jpeg | png | webp。
  * - 路徑 {tenantId}/{randomUUID()}.{ext}——第一段資料夾 = 租戶 id，
  *   與 0008 的 RLS 檢查規則一致。
@@ -23,6 +22,7 @@ const ALLOWED_BUCKETS = new Set([
   'portfolio-images',
   'staff-avatars',
   'richmenu-assets',
+  'welcome-card-images',
 ]);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {
