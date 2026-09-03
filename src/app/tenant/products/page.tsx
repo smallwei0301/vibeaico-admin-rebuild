@@ -23,7 +23,7 @@ import { listProducts } from '@/services/catalog';
 import {
   adjustProductStock, createProduct, createProductCategory, deleteProduct, deleteProductCategory,
   listProductCategories, reorderProductCategories, reorderProducts, toggleProductLineFeatured,
-  updateProduct, type ProductCategory,
+  updateProduct, updateProductCategory, type ProductCategory,
 } from '@/services/products';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
@@ -1023,7 +1023,8 @@ function CategoryModal({
   const toast = useToast();
 
   const [name, setName] = React.useState('');
-  const [sortOrder, setSortOrder] = React.useState('0');
+  const [description, setDescription] = React.useState('');
+  const [sortOrder, setSortOrder] = React.useState('');
   const [active, setActive] = React.useState(true);
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ProductCategory | null>(null);
@@ -1031,34 +1032,47 @@ function CategoryModal({
   React.useEffect(() => {
     if (!open) return;
     setName('');
-    setSortOrder('0');
+    setDescription('');
+    setSortOrder('');
     setActive(true);
     setError('');
   }, [open]);
 
   const reset = () => {
     setName('');
-    setSortOrder('0');
+    setDescription('');
+    setSortOrder('');
     setActive(true);
     setError('');
   };
 
   const create = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       setError(t.category.nameRequired);
       return;
     }
+
     setError('');
+    const categoryDescription = description.trim();
+    const parsedSortOrder = Number(sortOrder);
     try {
-      /* 後端只收 name（sort_order 自動取最大值+1、無 active 欄位）；排序值與啟用僅前端狀態 */
-      const { id } = await createProductCategory(name.trim());
+      const saved = await createProductCategory({
+        name: trimmedName,
+        description: categoryDescription,
+        active,
+        sortOrder: Number.isFinite(parsedSortOrder) && sortOrder.trim() !== ''
+          ? parsedSortOrder
+          : undefined,
+      });
       onChange([
         ...categories,
         {
-          id,
-          name: name.trim(),
+          id: saved.id,
+          name: trimmedName,
+          description: categoryDescription,
           active,
-          sortOrder: Number(sortOrder) || categories.length + 1,
+          sortOrder: saved.sortOrder,
         },
       ]);
       reset();
@@ -1085,6 +1099,10 @@ function CategoryModal({
   const columns: Column<ProductCategory>[] = [
     { key: 'name', header: t.category.columns.name, render: (c) => c.name },
     {
+      key: 'description', header: t.category.columns.description,
+      render: (c) => c.description || <span className="text-muted">{common.none}</span>,
+    },
+    {
       key: 'status', header: t.category.columns.status, width: '90px',
       render: (c) => (c.active
         ? <Badge tone="success">{t.labels.enabled}</Badge>
@@ -1109,8 +1127,18 @@ function CategoryModal({
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
             onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
+              void (async () => {
+                const nextActive = !c.active;
+                try {
+                  await updateProductCategory(c.id, { active: nextActive });
+                  onChange(categories.map((x) => (
+                    x.id === c.id ? { ...x, active: nextActive } : x
+                  )));
+                  toast.show(t.category.updated);
+                } catch (e) {
+                  toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+                }
+              })();
             }}
           >
             <Pencil size={13} />
@@ -1144,6 +1172,14 @@ function CategoryModal({
               id="catName" className="form-control-sm" value={name}
               placeholder={t.category.namePlaceholder}
               onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[12rem] flex-1">
+            <Label htmlFor="catDescription">{t.category.description}</Label>
+            <Input
+              id="catDescription" className="form-control-sm" value={description}
+              placeholder={t.category.descriptionPlaceholder}
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div className="w-24">

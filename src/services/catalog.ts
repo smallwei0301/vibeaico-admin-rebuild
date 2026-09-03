@@ -142,8 +142,25 @@ export const toggleServiceLineFeatured = (id: string, next: boolean) =>
 
 /* -------------------------------------------------------------- 服務分類 */
 
-/** API 回應形狀（無 description/active 欄位；頁面自行補顯示預設值）。 */
-export type ServiceCategorySummary = { id: string; name: string; sortOrder: number };
+/**
+ * API 回應形狀。description / active 由 migration 0018 落地（issue #28 第 ⑨ 筆）：
+ * 先前這裡沒有這兩個欄位，頁面只能在載入時硬補 `description: ''`、`active: true`，
+ * 於是使用者填的說明重新整理就不見了。
+ */
+export type ServiceCategorySummary = {
+  id: string;
+  name: string;
+  description: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+/** POST /api/service-categories 收的欄位。 */
+export type ServiceCategoryInput = {
+  name: string;
+  description?: string;
+  active?: boolean;
+};
 
 /** GET /api/service-categories — mock 回 null（頁面維持 byMode 頁內假資料）。 */
 export const listServiceCategories = () =>
@@ -153,19 +170,19 @@ export const listServiceCategories = () =>
   );
 
 /** POST /api/service-categories — mock 回 null（頁面沿用本地 id，行為不變）。 */
-export const createServiceCategory = (name: string) =>
-  adapt<{ id: string } | null>(
+export const createServiceCategory = (input: ServiceCategoryInput) =>
+  adapt<{ id: string; sortOrder: number } | null>(
     () => null,
-    () => request<{ id: string }>('/api/service-categories', {
-      method: 'POST', body: JSON.stringify({ name }),
+    () => request<{ id: string; sortOrder: number }>('/api/service-categories', {
+      method: 'POST', body: JSON.stringify(input),
     }),
   );
 
 /** PUT /api/service-categories/:id — 僅支援改名（active 切換無對應端點）。 */
-export const updateServiceCategory = (id: string, name: string) =>
+export const updateServiceCategory = (id: string, input: Partial<ServiceCategoryInput>) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/service-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+    request<void>('/api/service-categories/' + id, {
+      method: 'PUT', body: JSON.stringify(input),
     }));
 
 export const deleteServiceCategory = (id: string) =>

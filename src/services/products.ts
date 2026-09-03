@@ -13,10 +13,15 @@ import { byMode } from '@/mock';
 
 /* ------------------------------------------------------------ 商品分類 */
 
-/** 原站 /api/product-categories（active 欄位 DB 未落地，後端一律回 true） */
+/**
+ * 原站 /api/product-categories。
+ * `active` 曾經是「DB 沒這欄、後端一律回 true」的假值，migration 0018 補上
+ * description / active 兩欄後改為照實回傳（issue #28 第 ⑨ 筆）。
+ */
 export type ProductCategory = {
   id: string;
   name: string;
+  description?: string;
   active: boolean;
   sortOrder: number;
 };
@@ -59,33 +64,34 @@ export const listProductCategories = () =>
 
 let nextMockCategoryId = 1;
 
-/** POST /api/product-categories — 後端只收 name（sort_order 取最大值+1） */
-export const createProductCategory = (name: string) =>
-  adapt<{ id: string }>(
-    () => ({ id: `pc_new_${nextMockCategoryId++}` }),
-    () => request<{ id: string }>('/api/product-categories', {
-      method: 'POST', body: JSON.stringify({ name }),
+/** POST /api/product-categories 收的欄位（sortOrder 未帶時後端取最大值+1）。 */
+export type ProductCategoryInput = {
+  name: string;
+  description?: string;
+  active?: boolean;
+  sortOrder?: number;
+};
+
+/**
+ * POST /api/product-categories。
+ * 修改前只送 name，modal 上的「排序」與「啟用」兩個輸入純粹留在瀏覽器裡
+ * （issue #28 第 ⑨ 筆）；0018 補欄位後三者都真的送出去。
+ * 回傳 sortOrder＝後端實際寫入的排序值，頁面不再自己猜一個顯示。
+ */
+export const createProductCategory = (input: ProductCategoryInput) =>
+  adapt<{ id: string; sortOrder: number }>(
+    () => ({ id: `pc_new_${nextMockCategoryId++}`, sortOrder: input.sortOrder ?? 0 }),
+    () => request<{ id: string; sortOrder: number }>('/api/product-categories', {
+      method: 'POST', body: JSON.stringify(input),
     }),
   );
 
 /** PUT /api/product-categories/:id — 只支援改名 */
-export const updateProductCategory = (id: string, name: string) =>
+export const updateProductCategory = (id: string, input: Partial<ProductCategoryInput>) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/product-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+    request<void>('/api/product-categories/' + id, {
+      method: 'PUT', body: JSON.stringify(input),
     }));
-
-/** DELETE — FK on delete set null，底下商品自動變未分類 */
-export const deleteProductCategory = (id: string) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/product-categories/${id}`, { method: 'DELETE' }));
-
-export const reorderProductCategories = (ids: string[]) =>
-  adapt(() => undefined, () =>
-    request<void>('/api/product-categories/reorder', {
-      method: 'POST', body: JSON.stringify({ ids }),
-    }));
-
 /* ---------------------------------------------------------------- 商品 */
 
 /** POST/PUT /api/products 收的欄位（categoryId 空字串＝未分類） */
