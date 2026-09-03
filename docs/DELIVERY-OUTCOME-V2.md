@@ -1,10 +1,12 @@
-# Delivery Outcome v2.1：把成品、半成品與重複收據分開
+# Delivery Outcome v2.2：把成品、半成品、Epic 與重複收據分開
 
 > 第一階段追蹤：Issue #113
 >
 > 唯一身分 hardening：Issue #122
 >
-> `schemaVersion` 仍是 `2`。v2.1 是計數與驗證規則變嚴，不重寫 v1 歷史分數，也不和 v1 直接比較。
+> Delivery Slice 邊界：Issue #143
+>
+> `schemaVersion` 仍是 `2`。v2.2 是計數、Issue 大小與驗證規則變嚴，不重寫 v1／v2.1 歷史分數，也不和 v1 直接比較。
 
 ## 為什麼要改
 
@@ -22,13 +24,16 @@ Audit Ready             0.80
 
 v2 第一階段已把成品與半成品分帳；v2.1 再補一個漏洞：同一張 Issue 若重複貼兩筆 claim（完成證據列），不能被算成兩件出貨。就像同一張發票影印兩次，仍只買了一台冰箱。
 
-## v2.1 的 Delivery Unit
+v2.2 再處理另一個反方向問題：#28、#42、#43、#8、#120 這類大型 Issue 包含多個可獨立使用的功能。如果只有整張大 Issue 關閉才算成品，已上線的小功能會長期卡在 WIP；如果父 Issue 與每個小功能都算，又會重複灌水。因此改用 Epic（大主題）＋Delivery Slice（可獨立交付的小功能）。
+
+## v2.2 的 Delivery Unit
 
 一個 Delivery Unit 必須同時具備：
 
 ```text
 唯一主體    = 一張 canonical primary Issue
 唯一狀態    = CLOSED 或 OWNER_BLOCKED_COMPLETE，不能同時
+可獨立使用  = 一個使用者看得見、可操作或可持久化的完整小結果
 總體核准    = completionTruth.status=VERIFIED
 即時證據    = verification=VERIFIED，且 evidenceRef 指回同一張 Issue
 計數上限    = 同一 Issue 在同一 Run 最多 1 次
@@ -57,20 +62,87 @@ subject: issue#10
 
 最後一例不是少一張附件而已，而是拿 11 號案件的收據來證明 10 號案件；這種已標成 VERIFIED 的錯配會 `F-HARD`。
 
-## v2.1 的兩本成果帳與一本在製品帳
+## Epic、Delivery Slice 與 standalone Issue
+
+### Epic（大主題）
+
+符合任一條件就應視為 Epic：
+
+- 同時包含兩個以上可各自上線、各自驗收的使用者結果；
+- 驗收跨越多個獨立狀態機，例如方案 UI、付款、通知與管理者代建；
+- 一張 Issue 需要多張互不相依的 Product PR 才能完成。
+
+Epic 用來導航範圍、依賴與最終完整性，通常保持 open。它本身不是每個子成果的交付收據。當已計數的 Delivery Slice 全部完成後，最後關閉 Epic只是專案整理，**不得再增加 shipped unit**。
+
+Epic 的 Completion Truth 關閉紀錄使用 `OTHER` 或等價非交付 claim，不寫進 `delivery.issuesClosed`。
+
+### Delivery Slice（小交付單位）
+
+一張 Delivery Slice 必須：
+
+1. 只對應一個主要使用者結果；
+2. 不依賴同一 Epic 的其他 Slice 才能被使用；
+3. 有明確的真實資料／API／持久化結果，不能只有畫面或假成功；
+4. 有自己的驗收、exact-head 證據與安全邊界；
+5. 合併並從 `main` 重讀後，能在同一 Run 內關閉；
+6. 在 body 標記：
+
+```text
+DELIVERY_UNIT_TYPE: SLICE
+PARENT_EPIC: #number | none
+COUNT_IN_DELIVERY_OUTCOME: true
+```
+
+父 Epic 保持 open 不妨礙一張已驗證 Slice 關閉並計入 shipped unit。
+
+### Standalone Issue（本來就夠小）
+
+若 Issue 從一開始就只有一個完整結果，可使用：
+
+```text
+DELIVERY_UNIT_TYPE: STANDALONE
+PARENT_EPIC: none
+COUNT_IN_DELIVERY_OUTCOME: true
+```
+
+它與 Delivery Slice 的計數方式相同。
+
+### 禁止事後灌水
+
+已合併很久才補建的追蹤 Issue 必須標示：
+
+```text
+RETROACTIVE_TRACKING_MIGRATION: true
+COUNT_IN_DELIVERY_OUTCOME: false
+```
+
+它可以整理歷史，但不得回寫舊 Run，也不得冒充本輪新出貨。父 Epic 與已計數子 Slice、同一成果的 replacement／superseded Issue，也都不能重複計分。
+
+## 開工與收尾規則
+
+- TRIAGE 發現一張 Issue 有兩個以上獨立成果時，先建立 Delivery Slice，再開始 Product BUILD。
+- Product PR 的 lifecycle `issue:` 指向 Slice／standalone Issue；父題另填 `PARENT_EPIC`。
+- 同一 Slice 同時只能有一張 active implementation PR。
+- 合併後同一輪完成 Issue live close、main reachability、`ref=main` 重讀與 Completion Truth。
+- 沒有關閉目前 Slice 前，不因「還有容量」無限制開第三件半成品。
+- 歷史大型 Issue 不必一次拆完；只在下一個要施工的成果開工前建立對應 Slice。
+
+## v2.2 的兩本成果帳與一本在製品帳
 
 ### 真正出貨 `shipped_units`
 
 ```text
-不重複、live-verified 的 CLOSED Issue × 1.0
+不重複、live-verified、COUNT_IN_DELIVERY_OUTCOME=true 的 CLOSED Delivery Slice／standalone Issue × 1.0
 ```
 
 只有它能當「每件真正成品 usage」的分母。即使個別 claim 寫著 VERIFIED，只要整體 `completionTruth.status` 還是 `NOT_CHECKED` 或 `FAILED`，`shipped_units` 就先保持 0，不提前顯示成品。
 
+Epic、retrospective migration、純治理整理與同一成果的重複 Issue 不進 shipped account。Completion Truth 產生者必須先讀 Issue body 的 `DELIVERY_UNIT_TYPE` 與 `COUNT_IN_DELIVERY_OUTCOME`，只有合格 Slice／standalone 才建立 `ISSUE_CLOSED` delivery claim。
+
 ### 自主完成 `autonomous_outcome_units`
 
 ```text
-不重複、live-verified 的 CLOSED Issue × 1.0
+不重複、live-verified 的合格 CLOSED Issue × 1.0
 + 不重複、live-verified 的 complete OWNER_BLOCKED Issue × 0.75
 ```
 
@@ -98,7 +170,7 @@ delivery.issuesClosed
 delivery.ownerBlockedComplete
 ```
 
-Final Run 中，它們必須精確等於 Completion Truth 裡「不重複、已驗證、格式正確，而且證據指回同一 Issue」的數量：
+Final Run 中，它們必須精確等於 Completion Truth 裡「不重複、已驗證、格式正確、證據指回同一 Issue，而且符合 Delivery Slice／standalone 計數資格」的數量：
 
 ```text
 issuesClosed: 2 + issue#10 + #10
@@ -107,7 +179,7 @@ issuesClosed: 2 + issue#10 + #10
 → NOT_GRADED（手填 2 與真實證據 1 不一致）
 
 issuesClosed: 2 + issue#10 + issue#11
-→ 2 個唯一 Issue
+→ 2 個唯一合格 Issue
 → shipped_units = 2
 → 可繼續進入評分
 ```
@@ -128,6 +200,7 @@ Completion Truth 未 VERIFIED  → NOT_GRADED，且成果數先為 0
 完成宣稱與 live state 衝突    → F-HARD
 證據指向另一張 Issue          → F-HARD
 同一 Issue 宣稱兩種完成狀態   → F-HARD
+Epic／retroactive 被列為出貨  → NOT_GRADED，移出 delivery claim 後重算
 ```
 
 `weighted_usage_per_shipped_unit` 只在 `shipped_units >= 1` 時計算。沒有真正出貨就顯示「資料不足」，不拿 0.1 顆螺絲反推整台車成本。
@@ -149,6 +222,13 @@ Completion Truth 未 VERIFIED  → NOT_GRADED，且成果數先為 0
 可驗證宣稱包含 Issue closed、完整 Owner-blocked、PR merged、CI green、local TEST green 與 Run complete。每筆 `VERIFIED` 必須有 live evidence reference。
 
 特別規則：GitHub job 顯示 `skipped` 時，不能宣稱 local TEST green；PR 只有 open／closed 也不能宣稱 merged；`evidenceRef` 為空、`TBD`、`UNKNOWN`、不是 Issue，或指向另一張 Issue 時，不能覆蓋交付數字。
+
+對 delivery claim 還要先讀 live Issue body：
+
+- `DELIVERY_UNIT_TYPE` 必須為 `SLICE` 或 `STANDALONE`；
+- `COUNT_IN_DELIVERY_OUTCOME` 必須為 `true`；
+- `RETROACTIVE_TRACKING_MIGRATION` 不得為 `true`；
+- Epic 關閉只作專案整理，不產生 `ISSUE_CLOSED` delivery claim。
 
 ## 指令
 
