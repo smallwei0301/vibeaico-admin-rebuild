@@ -40,6 +40,8 @@ export type ModePreset = {
   shopSections: readonly string[];
   /** GUIDE 首頁是否顯示第一版待處理事項 action inbox */
   showActionInbox: boolean;
+  /** 報表頁使用的資料口徑；GUIDE 專屬報表完成前不顯示通用報表。 */
+  reportingMode: 'GENERAL' | 'GUIDE_PENDING';
 };
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
@@ -53,6 +55,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     keywordGroups: [],
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
     showActionInbox: false,
+    reportingMode: 'GENERAL',
   },
   GUIDE: {
     icon: Compass,
@@ -68,6 +71,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     keywordGroups: ['TRIP', 'DEPARTURE'],
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
+    reportingMode: 'GUIDE_PENDING',
   },
   CLINIC: {
     icon: Hospital,
@@ -79,6 +83,7 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     keywordGroups: [],
     shopSections: ['SERVICES'],
     showActionInbox: false,
+    reportingMode: 'GENERAL',
   },
 };
 

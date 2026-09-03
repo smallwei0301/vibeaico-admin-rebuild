@@ -13,6 +13,7 @@ import { StatCard } from '@/components/ui/StatCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
+import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import {
   exportBookingsCsv, exportCustomersExcel, getReportData, getTopStaff,
   type ReportData, type ReportQuery, type ReportRange,
@@ -23,6 +24,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { reportsPage as t } from '@/i18n/zh-TW/pages/reports';
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/utils';
 import type { StaffPerformance } from '@/lib/types';
+import { MODE_PRESETS } from '@/config/modes';
 
 /* -------------------------------------------------------------------------- */
 
@@ -58,6 +60,9 @@ const RANK_TONE = ['warning', 'neutral', 'info'] as const;
 
 export default function ReportsPage() {
   const toast = useToast();
+  const businessType = useBusinessType();
+  const modePreset = MODE_PRESETS[businessType];
+  const showGeneralReports = modePreset.reportingMode === 'GENERAL';
 
   const [range, setRange] = React.useState<RangeKey>('month');
   const [data, setData] = React.useState<ReportData | null>(null);
@@ -76,6 +81,12 @@ export default function ReportsPage() {
   );
 
   React.useEffect(() => {
+    if (!showGeneralReports) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
     let alive = true;
     setLoading(true);
     void (async () => {
@@ -89,9 +100,15 @@ export default function ReportsPage() {
       }
     })();
     return () => { alive = false; };
-  }, [range, fail]);
+  }, [range, fail, showGeneralReports]);
 
   React.useEffect(() => {
+    if (!showGeneralReports) {
+      setStaff([]);
+      setLoadingStaff(false);
+      return;
+    }
+
     let alive = true;
     void (async () => {
       try {
@@ -100,9 +117,14 @@ export default function ReportsPage() {
       } catch (e) { fail(t.errors.topStaff, e); } finally { if (alive) setLoadingStaff(false); }
     })();
     return () => { alive = false; };
-  }, [range, fail]);
+  }, [range, fail, showGeneralReports]);
 
   React.useEffect(() => {
+    if (!showGeneralReports) {
+      setAdvancedUnlocked(false);
+      return;
+    }
+
     void (async () => {
       try {
         const features = await listFeatures();
@@ -112,7 +134,30 @@ export default function ReportsPage() {
         fail(t.errors.advancedSubscription, e);
       }
     })();
-  }, [fail]);
+  }, [fail, showGeneralReports]);
+
+  if (!showGeneralReports) {
+    return (
+      <>
+        <PageHeader eyebrow={t.guideUnavailable.eyebrow} title={t.title} />
+        <Card>
+          <CardBody className="py-12">
+            <EmptyState
+              icon={BarChart3}
+              title={t.guideUnavailable.title}
+              description={t.guideUnavailable.description}
+              action={
+                <Link href="/tenant/trips" className="btn btn-primary">
+                  <CalendarCheck size={15} />
+                  {t.guideUnavailable.action}
+                </Link>
+              }
+            />
+          </CardBody>
+        </Card>
+      </>
+    );
+  }
 
   const runExport = async (ext: string) => {
     setExportOpen(false);
