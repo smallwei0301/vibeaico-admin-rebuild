@@ -241,10 +241,9 @@ export const bookingsPage = {
   pointsModal: {
     title: '使用點數',
     intro: '以顧客的點數折抵此筆預約金額。',
-    balanceLabel: '顧客可用點數',
     label: '折抵點數',
     placeholder: '請輸入折抵點數',
-    help: '1 點折抵 $1，最多折抵至應付金額為止。',
+    help: '1 點折抵 $1；送出後由伺服器依顧客實際餘額與應付金額驗證。',
     submit: '確認折抵',
   },
 
@@ -265,9 +264,7 @@ export const bookingsPage = {
     addonSection: '加購明細',
     addonLoadFailed: '加購明細載入失敗（可能仍有加購項目，請重新開啟詳情確認）',
     amountLabel: '應收金額',
-    couponDiscount: (amount: string) => `票券折抵 ${amount}`,
-    pointsDiscount: (points: number) => `點數折抵 ${points} 點 = $${points}`,
-    afterCoupon: '（再扣票券，以系統計算為準）',
+    discountBreakdownUnavailable: '目前沒有可追溯的票券／點數折抵明細欄位；這裡只顯示 API 回傳的目前應收金額。',
     notConfirmed: '此預約尚未確認',
     payLinkUnavailable: '付款頁尚未建置（#32）；目前請使用線下收款或您的金流後台。',
   },
@@ -307,10 +304,8 @@ export const bookingsPage = {
     markedPaid: '已標記為已收款',
     reverted: '預約已還原為已確認',
     priceAdjusted: (amount: string) => `金額已調整為 ${amount}`,
-    couponApplied: (discount: string, net: string) => `票券已套用！折抵 ${discount}，實收 ${net}`,
+    couponApplied: (discount: string, net: string) => `票券已套用！折抵 ${discount}，套用後金額 ${net}`,
     pointsApplied: (points: number) => `點數折抵 ${points} 點 = $${points}`,
-    overpaidWarning: (amount: string) =>
-      `⚠️ 折抵後顧客已多付 ${amount}，請至您的金流後台手動退差額給顧客`,
 
     addonAdded: '加購已加入，顧客將收到 LINE 消費明細',
     addonAddedSilent: '加購已加入（未通知顧客）',
