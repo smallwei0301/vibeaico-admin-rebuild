@@ -19,6 +19,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { deleteCustomer, listCustomers } from '@/services/customers';
 import { listMembershipLevels } from '@/services/catalog';
+import { exportCustomersExcel } from '@/services/reports';
 import { MOCK_CUSTOMERS } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -161,9 +162,9 @@ export default function CustomersPage() {
   const clearAdvanced = () => { setDraft(EMPTY_ADVANCED); setApplied(EMPTY_ADVANCED); setPage(0); };
 
   const exportExcel = () => {
-    /* 事件處理器內才取當下日期；render 期不碰 Date */
-    const today = formatDate(new Date().toISOString()).replace(/\//g, '');
-    toast.show(`${t.messages.exported} ${t.exportFile.filename(today)}`);
+    void exportCustomersExcel().catch(() => {
+      toast.show(t.messages.exportFailed, 'danger');
+    });
   };
 
   /* ------------------------------------------------------------------ 欄位 */

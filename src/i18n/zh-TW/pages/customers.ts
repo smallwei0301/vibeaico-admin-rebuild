@@ -144,9 +144,7 @@ export const customersPage = {
     updated: '顧客資料已更新',
     deleted: '顧客已刪除',
     deleteFailed: '刪除失敗',
-    exported: '顧客匯出成功',
     exportFailed: '匯出失敗，請稍後再試',
-    exportFailedPrefix: '匯出失敗:',
     saveFailedPrefix: '儲存失敗: ',
     saveCustomerFailed: '儲存顧客失敗:',
     phoneExists: '手機號碼已存在',
@@ -168,11 +166,6 @@ export const customersPage = {
     connectionError: '連線錯誤，請稍後再試',
     retryLater: '請稍後再試',
     unknownError: '未知錯誤',
-  },
-
-  /* --------------------------------------------------------------- 匯出 */
-  exportFile: {
-    filename: (date: string) => `顧客清單_${date}.xlsx`,
   },
 
   empty: {
