@@ -25,6 +25,8 @@ describe('shift template #28⑦: truthful persistence feedback', () => {
     );
     expect(page).toContain('loading={saving}');
     expect(page).toContain('loading={!!deleteTarget && deletingId === deleteTarget.id}');
+    expect(submit).toContain("toast.show(e instanceof Error ? e.message : t.messages.saveFailed, 'danger')");
+    expect(remove).toContain("toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger')");
   });
 
   it('explains that scheduled shifts keep their own persisted times', () => {
