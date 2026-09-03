@@ -48,7 +48,9 @@ export const dashboardPage = {
   actionInbox: {
     title: '待處理事項',
     bookingRequest: '待確認預約',
+    bookingPayment: '待收款預約',
     bookingAt: '預約時間',
+    paymentAmount: (amount: string) => '應收 ' + amount,
     departure: '出發團次',
     departureAt: '出發時間',
     departureDay: {
@@ -62,8 +64,10 @@ export const dashboardPage = {
       UPCOMING: '即將到來',
     },
     open: '查看並處理',
+    openPayment: '查看收款',
     openDeparture: '查看團次',
     viewBookings: '查看待確認預約',
+    viewPayments: '查看待收款預約',
     count: (n: number) => `${n} 筆`,
     loading: '載入待處理事項中…',
     empty: '目前沒有待處理事項',

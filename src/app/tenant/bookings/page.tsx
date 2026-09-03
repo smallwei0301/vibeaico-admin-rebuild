@@ -32,7 +32,7 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
-import type { Booking, BookingStatus, Customer, Service, Staff } from '@/lib/types';
+import type { Booking, BookingStatus, Customer, PaymentStatus, Service, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -146,6 +146,7 @@ export default function BookingsPage() {
 
   const [keyword, setKeyword] = React.useState('');
   const [status, setStatus] = React.useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = React.useState<PaymentStatus | ''>('');
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
   const [showCancelled, setShowCancelled] = React.useState(false);
@@ -180,6 +181,7 @@ export default function BookingsPage() {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('status');
     if (s) setStatus(s);
+    if (params.get('paymentStatus') === 'UNPAID') setPaymentStatusFilter('UNPAID');
     if (params.get('action') === 'create') setCreateOpen(true);
   }, []);
 
@@ -191,6 +193,7 @@ export default function BookingsPage() {
         page: 0,
         size: 100,
         status: isRealStatus ? (status as BookingStatus) : '',
+        paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
         to: endDate || undefined,
@@ -198,6 +201,9 @@ export default function BookingsPage() {
 
       let list = res.content;
 
+      if (paymentStatusFilter) {
+        list = list.filter((b) => b.paymentStatus === paymentStatusFilter);
+      }
       /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
       if (status === 'UNPROCESSED') {
         const now = Date.now();
@@ -226,7 +232,7 @@ export default function BookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, status, startDate, endDate, showCancelled, toast]);
+  }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 

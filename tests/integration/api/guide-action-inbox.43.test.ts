@@ -1,5 +1,5 @@
 /**
- * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次。
+ * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次 + #43-C 待收款預約。
  * #43-B 透過 TEST service role 建立短命測試資料，測畢清理並驗證
  * 不跨租戶；不新增 schema、狀態機或其他外部副作用。使用 service role 是因為
  * local TEST 的 #41 overlay 會要求新團次明確帶合法 formation_deadline_at，而
@@ -41,7 +41,7 @@ afterAll(async () => {
   }
 });
 
-describe('GET /api/guide/action-inbox（#43-A / #43-B）', () => {
+describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
   it('登入租戶回傳待確認預約的可操作欄位與優先級', async () => {
     const res = await ownerA.get('/api/guide/action-inbox');
     expect(res.status).toBe(200);
@@ -61,6 +61,19 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B）', () => {
     expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(pending?.priority);
     expect(pending?.customerName).toBe('顧客 A1（測試）');
     expect(pending?.serviceName).toBe('基礎剪髮（測試）');
+
+    const payment = body.data?.find((item) => item.id === SHOP_A.bookingConfirmed);
+    if (!payment || payment.kind !== 'BOOKING_PAYMENT') {
+      throw new Error('已確認未付款預約 action inbox item 缺少或種類錯誤');
+    }
+    expect(payment).toMatchObject({
+      id: SHOP_A.bookingConfirmed,
+      kind: 'BOOKING_PAYMENT',
+      bookingNo: 'BSEED0002',
+      amount: 800,
+      href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
+    });
+    expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(payment.priority);
   });
 
   it('未登入回 401 AUTH_001', async () => {

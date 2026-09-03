@@ -28,8 +28,12 @@ const pageSource = readFileSync(
   resolve(process.cwd(), 'src/app/tenant/dashboard/page.tsx'),
   'utf8',
 );
+const bookingsPageSource = readFileSync(
+  resolve(process.cwd(), 'src/app/tenant/bookings/page.tsx'),
+  'utf8',
+);
 
-describe('GUIDE action inbox (#43-A / #43-B)', () => {
+describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
   it('prioritizes overdue, tenant-today, and future pending work', () => {
     const now = new Date('2026-09-02T04:00:00.000Z'); // 12:00 Asia/Taipei
 
@@ -117,16 +121,28 @@ describe('GUIDE action inbox (#43-A / #43-B)', () => {
   it('keeps mock GUIDE mode useful by exposing two actionable departures', async () => {
     const items = await getGuideActionInbox();
     const departures = items.filter((item) => item.kind === 'DEPARTURE');
+    const payments = items.filter((item) => item.kind === 'BOOKING_PAYMENT');
 
     expect(departures).toHaveLength(2);
     expect(departures.map((item) => item.departureDay)).toEqual(['TODAY', 'TOMORROW']);
     expect(departures.every((item) => item.href.startsWith('/tenant/trips/'))).toBe(true);
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject({
+      bookingNo: 'BK20260822001',
+      amount: 800,
+      href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
+    });
   });
 
-  it('reads only tenant-scoped pending bookings and the tenant timezone', () => {
+  it('reads only tenant-scoped pending and unpaid confirmed bookings plus the tenant timezone', () => {
     expect(apiSource).toContain(".from('bookings_view')");
     expect(apiSource).toContain(".eq('tenant_id', t.tenantId)");
     expect(apiSource).toContain(".eq('status', 'PENDING')");
+    expect(apiSource).toContain(".eq('status', 'CONFIRMED')");
+    expect(apiSource).toContain(".eq('payment_status', 'UNPAID')");
+    expect(apiSource).toContain(".gt('final_price', 0)");
+    expect(apiSource).toContain("kind: 'BOOKING_PAYMENT'");
+    expect(apiSource).toContain('final_price');
     expect(apiSource).toContain(".from('trip_departures')");
     expect(apiSource).toContain(".eq('tenant_id', t.tenantId)");
     expect(apiSource).toContain(".in('status', ['OPEN', 'CLOSED'])");
@@ -137,6 +153,7 @@ describe('GUIDE action inbox (#43-A / #43-B)', () => {
     expect(apiSource).toContain('normalizeGuideTimeZone');
     expect(apiSource).toContain("href: '/tenant/bookings?status=PENDING'");
     expect(serviceSource).toContain("request<GuideActionInboxItem[]>('/api/guide/action-inbox')");
+    expect(serviceSource).toContain("kind: 'BOOKING_PAYMENT'");
     expect(serviceSource).toContain("kind: 'DEPARTURE'");
   });
 
@@ -147,7 +164,13 @@ describe('GUIDE action inbox (#43-A / #43-B)', () => {
     expect(pageSource).toContain('setActionInbox([])');
     expect(pageSource).toContain('getGuideActionInbox');
     expect(pageSource).toContain("item.kind === 'BOOKING_REQUEST'");
+    expect(pageSource).toContain("item.kind === 'BOOKING_PAYMENT'");
+    expect(pageSource).toContain('paymentAmount');
+    expect(pageSource).toContain('openPayment');
     expect(pageSource).toContain('departureDay');
     expect(pageSource).toContain('w-full flex-shrink-0 sm:w-auto');
+    expect(bookingsPageSource).toContain("params.get('paymentStatus') === 'UNPAID'");
+    expect(bookingsPageSource).toContain('paymentStatusFilter');
+    expect(bookingsPageSource).toContain('paymentStatus: paymentStatusFilter || undefined');
   });
 });

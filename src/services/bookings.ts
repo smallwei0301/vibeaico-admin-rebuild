@@ -1,9 +1,10 @@
 import { adapt, request } from '@/lib/api';
-import type { Booking, BookingStatus, CalendarEvent, Paged } from '@/lib/types';
+import type { Booking, BookingStatus, CalendarEvent, Paged, PaymentStatus } from '@/lib/types';
 import { MOCK_BOOKINGS } from '@/mock';
 
 export type BookingQuery = {
   page?: number; size?: number; status?: BookingStatus | '';
+  paymentStatus?: PaymentStatus | '';
   keyword?: string; from?: string; to?: string; staffId?: string;
 };
 
@@ -13,6 +14,7 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
       const page = q.page ?? 0, size = q.size ?? 20;
       let rows = MOCK_BOOKINGS;
       if (q.status) rows = rows.filter((b) => b.status === q.status);
+      if (q.paymentStatus) rows = rows.filter((b) => b.paymentStatus === q.paymentStatus);
       if (q.staffId) rows = rows.filter((b) => b.staffId === q.staffId);
       if (q.keyword) {
         const k = q.keyword.toLowerCase();

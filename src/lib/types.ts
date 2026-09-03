@@ -72,6 +72,13 @@ export type GuideActionInboxItem =
     serviceName: string;
   })
   | (GuideActionInboxItemBase & {
+    kind: 'BOOKING_PAYMENT';
+    bookingNo: string;
+    customerName: string;
+    serviceName: string;
+    amount: number;
+  })
+  | (GuideActionInboxItemBase & {
     kind: 'DEPARTURE';
     tripId: string;
     tripName: string;
