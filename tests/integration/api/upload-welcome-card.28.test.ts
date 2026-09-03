@@ -6,6 +6,7 @@ import { loginAs, type AuthedApi } from '../../helpers/auth';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 const BUCKET = 'welcome-card-images';
+const KEYWORD_REPLY_BUCKET = 'keyword-reply-images';
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64',
@@ -16,6 +17,7 @@ let ownerStorage: SupabaseClient;
 let ownerA: AuthedApi;
 let staffA: AuthedApi;
 let uploadedPath: string | null = null;
+let keywordReplyPath: string | null = null;
 let retiredUrl: string | null = null;
 
 function pngFile(): File {
@@ -45,6 +47,10 @@ afterAll(async () => {
   if (uploadedPath) {
     const { error } = await admin.storage.from(BUCKET).remove([uploadedPath]);
     if (error) console.error('[upload-welcome-card.28] 清理 storage 物件失敗：', error);
+  }
+  if (keywordReplyPath) {
+    const { error } = await admin.storage.from(KEYWORD_REPLY_BUCKET).remove([keywordReplyPath]);
+    if (error) console.error('[upload-welcome-card.28] 清理 keyword reply 物件失敗：', error);
   }
   if (retiredUrl) {
     const { error } = await admin
@@ -85,6 +91,22 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
       .list(SHOP_A.id, { search: fileName });
     expect(listError).toBeNull();
     expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
+  });
+
+  it('preserves direct authenticated keyword-reply uploads outside this repair', async () => {
+    const fileName = `keyword-${Date.now().toString(36)}.png`;
+    keywordReplyPath = `${SHOP_A.id}/${fileName}`;
+    const { error } = await ownerStorage.storage
+      .from(KEYWORD_REPLY_BUCKET)
+      .upload(keywordReplyPath, PNG_1X1, { contentType: 'image/png', upsert: false });
+    expect(error).toBeNull();
+
+    const { data: blob, error: downloadError } = await admin.storage
+      .from(KEYWORD_REPLY_BUCKET)
+      .download(keywordReplyPath);
+    expect(downloadError).toBeNull();
+    expect(blob).not.toBeNull();
+    expect(Buffer.from(await blob!.arrayBuffer())).toEqual(PNG_1X1);
   });
 
   it('protects a referenced image, then removes it after the reference is released', async () => {

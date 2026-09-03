@@ -96,7 +96,7 @@ describe('welcome card image upload #28⑥', () => {
     );
   });
 
-  it('closes direct Storage upload bypass with a forward-only migration', () => {
+  it('closes only the welcome-card direct upload bypass', () => {
     expect(uploadAclMigration).toContain('file_size_limit = 5242880');
     expect(uploadAclMigration).toContain(
       "allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']::text[]",
@@ -106,6 +106,7 @@ describe('welcome card image upload #28⑥', () => {
       uploadAclMigration.indexOf('create policy p_storage_write'),
     );
     expect(writePolicy).toContain("'service-images', 'product-images', 'portfolio-images', 'staff-avatars'");
+    expect(writePolicy).toContain("'richmenu-assets', 'chat-images', 'keyword-reply-images'");
     expect(writePolicy).not.toContain("'welcome-card-images'");
   });
 });

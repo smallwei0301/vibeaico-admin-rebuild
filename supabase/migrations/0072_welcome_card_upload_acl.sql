@@ -10,12 +10,16 @@ update storage.buckets
 -- The application POST /api/upload performs role, MIME, size, random-path and
 -- tenant checks before using service_role. Authenticated clients therefore do
 -- not need a direct INSERT policy for this public bucket.
+--
+-- Preserve every unrelated bucket already present in the canonical policy.
+-- In particular, keyword-reply-images has its own validated lifecycle from
+-- migrations 0039/0039a and must not be removed while closing this one side door.
 drop policy if exists p_storage_write on storage.objects;
 create policy p_storage_write on storage.objects for insert to authenticated
   with check (
     bucket_id in (
       'service-images', 'product-images', 'portfolio-images', 'staff-avatars',
-      'richmenu-assets', 'chat-images'
+      'richmenu-assets', 'chat-images', 'keyword-reply-images'
     )
     and is_tenant_member((storage.foldername(name))[1]::uuid)
   );
