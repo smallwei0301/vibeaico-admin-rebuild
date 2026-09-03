@@ -9,10 +9,11 @@ permissions:
   contents: read
   issues: write
   pull-requests: write
+  statuses: write
 
 concurrency:
-  group: agent-wip-guard-${{ github.repository }}
-  cancel-in-progress: false
+  group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   guard:
@@ -33,6 +34,10 @@ jobs:
             const policy = await import(pathToFileURL(path.join(
               process.env.GITHUB_WORKSPACE,
               'scripts/agents/dual-terra-wip-policy.mjs',
+            )).href);
+            const alert = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/wip-alert-fingerprint.mjs',
             )).href);
 
             const { owner, repo } = context.repo;
@@ -207,6 +212,49 @@ jobs:
               dispatched = true;
             }
 
+            const errors = current.state === 'open'
+              ? [...new Set([...metadataErrors, ...wipErrors])]
+              : [];
+            const fingerprint = errors.length
+              ? alert.buildWipErrorFingerprint({
+                  prNumber: current.number,
+                  headSha: current.head.sha,
+                  errors,
+                })
+              : null;
+            const comments = isAgent
+              ? await github.paginate(github.rest.issues.listComments, {
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  per_page: 100,
+                })
+              : [];
+            const previous = comments.find((comment) => comment.body?.includes(marker));
+            const duplicateFailure = Boolean(
+              errors.length &&
+              previous &&
+              alert.isDuplicateWipFailure({
+                previousBody: previous.body,
+                fingerprint,
+                headSha: current.head.sha,
+              })
+            );
+
+            if (current.state === 'open') {
+              await github.rest.repos.createCommitStatus({
+                owner,
+                repo,
+                sha: current.head.sha,
+                state: errors.length ? 'failure' : 'success',
+                context: 'Agent WIP Policy',
+                description: errors.length
+                  ? `${errors.length} WIP policy error(s); see PR comment`
+                  : 'B+ lane metadata and WIP policy passed',
+                target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              });
+            }
+
             const actualFileCoverage = summary.activeTerra.length
               ? summary.activeTerra
                   .map((terra) => `#${terra.number}:${terra.actualChangedFiles?.length ?? 'not-loaded'}`)
@@ -226,6 +274,8 @@ jobs:
               ['TEST dispatched', String(dispatched)],
               ['Metadata errors', metadataErrors.join('; ') || 'none'],
               ['WIP errors', wipErrors.join('; ') || 'none'],
+              ['Error fingerprint', fingerprint ?? 'none'],
+              ['Duplicate failure notification suppressed', String(duplicateFailure)],
             ];
 
             await core.summary
@@ -237,23 +287,21 @@ jobs:
               .write();
 
             if (isAgent) {
-              const errors = [...metadataErrors, ...wipErrors];
               const body = errors.length
-                ? `${marker}\n## Agent WIP Guard: blocked\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nPark or reclassify the extra lane before continuing. Do not add commits or rerun CI to work around this guard.`
-                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
+                ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- ERROR_FINGERPRINT: ${fingerprint}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- ERROR_FINGERPRINT: none\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
-              const comments = await github.paginate(github.rest.issues.listComments, {
-                owner,
-                repo,
-                issue_number: current.number,
-                per_page: 100,
-              });
-              const previous = comments.find((comment) => comment.body?.includes(marker));
               if (previous) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
               } else {
                 await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body });
               }
 
-              if (errors.length) core.setFailed(errors.join('; '));
+              if (errors.length) {
+                if (duplicateFailure) {
+                  core.warning(`Duplicate WIP failure suppressed for #${current.number} ${current.head.sha}: ${fingerprint}`);
+                } else {
+                  core.setFailed(errors.join('; '));
+                }
+              }
             }
