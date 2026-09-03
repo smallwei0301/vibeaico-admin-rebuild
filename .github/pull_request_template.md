@@ -133,10 +133,28 @@ For a Product delivery claim, re-read the live Issue body and require
 `DELIVERY_UNIT_TYPE=SLICE|STANDALONE`、`COUNT_IN_DELIVERY_OUTCOME=true` and
 `RETROACTIVE_TRACKING_MIGRATION=false`. Epic closeout uses a non-delivery claim and adds no shipped unit.
 
+## Product Delivery Truth Ladder
+
+<!-- Product output is shipped only after every applicable stage is live-verified. Governance PRs use NOT_REQUIRED / NOT_RUN. -->
+
+- MANUAL_PRODUCTION_PROMOTE: NOT_RUN | VERIFIED
+- AUTO_VERCEL_PRODUCTION_DEPLOY: AUTO_VERIFY
+- PRODUCTION_SCHEMA_STATUS: NOT_REQUIRED | NOT_APPLIED | OWNER_BLOCKED | VERIFIED_APPLIED
+- PRODUCTION_SCHEMA_EVIDENCE: none | <!-- migration history / environment evidence -->
+- AUTHENTICATED_PRODUCTION_ACCEPTANCE: NOT_RUN | OWNER_BLOCKED | FAILED | VERIFIED
+- AUTHENTICATED_PRODUCTION_EVIDENCE: none | <!-- authenticated URL / E2E / screenshot evidence -->
+
+`agent-completion-truth` re-reads the exact source CI、main reachability、actual migration paths and the
+Vercel status attached to the merge SHA. `CANCELED_IGNORED` is not a Product deployment. A Product Slice
+with migration files cannot declare `PRODUCTION_SCHEMA_STATUS=NOT_REQUIRED`. `VERIFIED_APPLIED` and
+authenticated `VERIFIED` require usable evidence. Until all five stages pass, report `PRODUCTION_PENDING`
+or `OWNER_BLOCKED`, not shipped.
+
 ## Delivery Outcome v2
 
-- Shipped units: <!-- live-verified closed, eligible Delivery Slice／standalone Issues only -->
-- Autonomous outcome units: <!-- eligible closed + verified complete Owner-blocked -->
+- Shipped units: <!-- live-verified closed, Production-accepted Delivery Slice／standalone Issues only -->
+- Production pending units: <!-- closed Product units missing one or more Production stages -->
+- Autonomous outcome units: <!-- Production-accepted closed + verified complete Owner-blocked -->
 - WIP inventory: <!-- Audit Ready + CI-only + commit-only + carryover -->
 - Weighted usage / shipped unit: null | <!-- only when shipped_units >= 1 -->
 - Weighted usage / autonomous outcome: null | <!-- only when denominator >= 1 -->
@@ -145,7 +163,9 @@ For a Product delivery claim, re-read the live Issue body and require
 ## Safety
 
 - [ ] No secret is included.
-- Production DDL / DML / deploy: NOT_RUN unless explicitly authorized
+- Production DDL / DML / migration: NOT_RUN unless explicitly authorized
+- Automatic Vercel Production deploy: AUTO_VERIFY_FROM_MERGE_SHA
+- Manual Production promote / rollback: NOT_RUN unless explicitly authorized
 - Paid Supabase Preview Branch: NOT_CREATED
 - Real payment / refund / customer notification: NOT_RUN unless explicitly authorized
 - Sol verdict:

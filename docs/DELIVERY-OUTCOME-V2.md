@@ -240,3 +240,62 @@ npm run agent:run:review -- docs/metrics/agent-runs
 ```
 
 舊 v1 工具保留為 `agent:run:legacy:*`，只用於重現歷史報告。
+
+## v2.3：Product Delivery Truth Ladder
+
+Issue #163 起，新建立的 schema v2 ledger 會加上：
+
+```json
+{ "deliveryTruthVersion": 3 }
+```
+
+舊的 v2.2 完成輪次沒有此欄位時維持原計分語意，不回寫歷史。v3 的一張 Delivery Slice 只有依序取得以下五種 live evidence，才可建立一件 `shipped_unit`：
+
+```text
+SOURCE_VERIFIED                    exact PR head 的 ci 成功
+MERGED_TO_MAIN                     merge SHA 可由 current main 到達
+AUTO_VERCEL_DEPLOYED               同一 merge SHA 的 Vercel 狀態為 READY
+PRODUCTION_SCHEMA_READY            已驗證套用，或實際沒有 migration 而 NOT_REQUIRED
+AUTHENTICATED_PRODUCTION_ACCEPTED  登入正式站後完成真實操作與持久化驗收
+```
+
+`CANCELED_IGNORED` 只表示純文件／治理變更被 Vercel 提早停止，不能當 Product deployment。App 已部署也不能證明 Production schema 已準備；TEST migration、匿名 HTTP 200 或成功 toast，也不能取代登入正式站後的驗收。
+
+### v3 claim
+
+五階段 claim 都以同一個 `issue#<number>` 為 subject，且需要可追溯的 evidenceRef：
+
+```text
+SOURCE_VERIFIED
+MERGED_TO_MAIN
+AUTO_VERCEL_DEPLOYED
+PRODUCTION_SCHEMA_READY
+AUTHENTICATED_PRODUCTION_ACCEPTED
+```
+
+成功狀態分別是：
+
+```text
+success
+merged
+ready
+ready | not_required
+accepted
+```
+
+一張 Issue 已關閉但缺少任何階段時，列入 `productionPendingUnits`，結果 `NOT_GRADED`，不拿來當 usage 分母。若只剩 Owner 的 Production migration、憑證或真實帳號驗收，Issue 應保持 open 並使用 `OWNER_BLOCKED_COMPLETE`，而不是先關閉再冒充 shipped。
+
+### PR 完成欄位
+
+Product PR 必須分開填寫：
+
+```text
+MANUAL_PRODUCTION_PROMOTE
+AUTO_VERCEL_PRODUCTION_DEPLOY
+PRODUCTION_SCHEMA_STATUS
+PRODUCTION_SCHEMA_EVIDENCE
+AUTHENTICATED_PRODUCTION_ACCEPTANCE
+AUTHENTICATED_PRODUCTION_EVIDENCE
+```
+
+禁止再用單一句 `Production deploy: NOT_RUN` 同時代表「沒有手動 promote」與「沒有 Vercel 自動部署」。Completion Truth 會從 GitHub 的 Vercel commit status 讀取自動部署狀態，並從 GitHub 實際 changed-file list 判斷是否碰到 `supabase/migrations/`；migration 變更卻宣稱 `NOT_REQUIRED`，或宣稱 `VERIFIED` 卻沒有 evidence，會 fail closed。
