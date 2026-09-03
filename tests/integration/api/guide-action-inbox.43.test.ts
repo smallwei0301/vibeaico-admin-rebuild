@@ -82,6 +82,18 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect((await readJson(res)).code).toBe('AUTH_001');
   });
 
+  it('bookingId deep link 可從分頁列表精確取回同租戶預約', async () => {
+    const res = await ownerA.get(
+      `/api/bookings?bookingId=${SHOP_A.bookingPending}&status=PENDING&size=1&page=0`,
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson<{ totalElements: number; content: Array<{ id: string; status: string }> }>(res);
+    expect(body.success).toBe(true);
+    expect(body.data?.totalElements).toBe(1);
+    expect(body.data?.content).toHaveLength(1);
+    expect(body.data?.content[0]).toMatchObject({ id: SHOP_A.bookingPending, status: 'PENDING' });
+  });
+
   it('SHOP_B 不會看到 SHOP_A 的待確認預約', async () => {
     const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
     const res = await ownerB.get('/api/guide/action-inbox');

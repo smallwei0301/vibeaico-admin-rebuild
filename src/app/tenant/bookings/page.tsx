@@ -204,26 +204,49 @@ export default function BookingsPage() {
         to: endDate || undefined,
       });
 
-      let list = res.content;
+      const applyClientFilters = (items: Booking[]) => {
+        let filtered = items;
+        if (paymentStatusFilter) {
+          filtered = filtered.filter((b) => b.paymentStatus === paymentStatusFilter);
+        }
+        /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
+        if (status === 'UNPROCESSED') {
+          const now = Date.now();
+          filtered = filtered.filter(
+            (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
+          );
+        }
+        if (startDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) >= startDate);
+        if (endDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) <= endDate);
+        if (!showCancelled && status !== 'CANCELLED') {
+          filtered = filtered.filter((b) => b.status !== 'CANCELLED');
+        }
+        return filtered;
+      };
 
-      if (paymentStatusFilter) {
-        list = list.filter((b) => b.paymentStatus === paymentStatusFilter);
-      }
-      /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
-      if (status === 'UNPROCESSED') {
-        const now = Date.now();
-        list = list.filter(
-          (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
-        );
-      }
-      if (startDate) list = list.filter((b) => b.startAt.slice(0, 10) >= startDate);
-      if (endDate) list = list.filter((b) => b.startAt.slice(0, 10) <= endDate);
-      if (!showCancelled && status !== 'CANCELLED') {
-        list = list.filter((b) => b.status !== 'CANCELLED');
-      }
+      let list = applyClientFilters(res.content);
 
       if (requestedBookingId && openedDeepLinkId.current !== requestedBookingId) {
-        const requested = list.find((b) => b.id === requestedBookingId);
+        let requested = list.find((b) => b.id === requestedBookingId);
+        if (!requested) {
+          /*
+           * The table intentionally loads at most 100 rows before doing its
+           * client-side pagination. A GUIDE action may point at a later row,
+           * so resolve that one booking through the existing tenant-scoped
+           * list API instead of silently failing to open the detail modal.
+           */
+          const exact = await listBookings({
+            page: 0,
+            size: 1,
+            bookingId: requestedBookingId,
+            status: isRealStatus ? (status as BookingStatus) : '',
+            paymentStatus: paymentStatusFilter || undefined,
+            keyword,
+            from: startDate || undefined,
+            to: endDate || undefined,
+          });
+          requested = applyClientFilters(exact.content).find((b) => b.id === requestedBookingId);
+        }
         if (requested) {
           setDetailTarget(requested);
           openedDeepLinkId.current = requestedBookingId;

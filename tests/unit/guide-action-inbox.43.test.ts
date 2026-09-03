@@ -32,6 +32,10 @@ const bookingsPageSource = readFileSync(
   resolve(process.cwd(), 'src/app/tenant/bookings/page.tsx'),
   'utf8',
 );
+const bookingsApiSource = readFileSync(
+  resolve(process.cwd(), 'src/app/api/bookings/route.ts'),
+  'utf8',
+);
 
 describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
   it('prioritizes overdue, tenant-today, and future pending work', () => {
@@ -173,7 +177,11 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     expect(bookingsPageSource).toContain("params.get('paymentStatus') === 'UNPAID'");
     expect(bookingsPageSource).toContain("params.get('bookingId')");
     expect(bookingsPageSource).toContain('requestedBookingId');
+    expect(bookingsPageSource).toContain('bookingId: requestedBookingId');
+    expect(bookingsPageSource).toContain('applyClientFilters(exact.content)');
     expect(bookingsPageSource).toContain('setDetailTarget(requested)');
+    expect(bookingsApiSource).toContain('bookingId: z.string().uuid().optional()');
+    expect(bookingsApiSource).toContain("query.eq('id', q.bookingId)");
     expect(bookingsPageSource).toContain('paymentStatusFilter');
     expect(bookingsPageSource).toContain('paymentStatus: paymentStatusFilter || undefined');
   });

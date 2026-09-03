@@ -17,6 +17,7 @@ const querySchema = z.object({
   from: z.string().optional(), // ISO 日期
   to: z.string().optional(),
   staffId: z.string().uuid().optional(),
+  bookingId: z.string().uuid().optional(),
 });
 
 export const GET = handle(async (req) => {
@@ -29,6 +30,7 @@ export const GET = handle(async (req) => {
     .eq('tenant_id', t.tenantId)
     .order('start_at', { ascending: false })
     .range(from, to);
+  if (q.bookingId) query = query.eq('id', q.bookingId);
   if (q.status) query = query.eq('status', q.status);
   if (q.paymentStatus) query = query.eq('payment_status', q.paymentStatus);
   if (q.staffId) query = query.eq('staff_id', q.staffId);
