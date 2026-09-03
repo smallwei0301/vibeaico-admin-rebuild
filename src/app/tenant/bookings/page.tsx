@@ -26,6 +26,7 @@ import {
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { exportBookingsCsv } from '@/services/reports';
 import { byMode } from '@/mock';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
@@ -154,7 +155,6 @@ export default function BookingsPage() {
   const [selected, setSelected] = React.useState<string[]>([]);
   /** 「未處理」= 時間已過但仍停在待確認/已確認；在載入時算好，render 期不碰 Date.now() */
   const [unprocessedIds, setUnprocessedIds] = React.useState<string[]>([]);
-  const [exportOpen, setExportOpen] = React.useState(false);
 
   /* modal 狀態（8 個 modal） */
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -192,7 +192,7 @@ export default function BookingsPage() {
       const isRealStatus = (REAL_STATUSES as string[]).includes(status);
       const res = await listBookings({
         page: 0,
-        size: 200,
+        size: 100,
         status: isRealStatus ? (status as BookingStatus) : '',
         keyword,
         from: startDate || undefined,
@@ -259,6 +259,19 @@ export default function BookingsPage() {
       toast.show(t.messages.payLinkCopied);
     } catch {
       toast.show(`${t.markPaidModal.payLinkIntro}${payLinkOf(b)}`, 'warning');
+    }
+  };
+
+  const exportCsv = async () => {
+    try {
+      await exportBookingsCsv({
+        from: startDate || undefined,
+        to: endDate || undefined,
+      });
+      toast.show(t.messages.exported);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : t.messages.exportFailed;
+      toast.show(`${t.messages.exportFailedPrefix}${message}`, 'danger');
     }
   };
 
@@ -409,25 +422,14 @@ export default function BookingsPage() {
         title={t.title}
         actions={
           <>
-            <div className="relative">
-              <Button variant="outline" onClick={() => setExportOpen((v) => !v)}>
-                <Download size={15} />{t.actions.export}
-              </Button>
-              {exportOpen ? (
-                <div className="absolute right-0 z-flyout mt-1 flex min-w-[10rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
-                  {[common.exportExcel, common.exportCsv].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
-                      onClick={() => { setExportOpen(false); toast.show(t.messages.exported); }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              loading={loading}
+              onClick={() => void exportCsv()}
+            >
+              <Download size={15} />{common.exportCsv}
+            </Button>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus size={15} />{t.actions.create}
             </Button>
