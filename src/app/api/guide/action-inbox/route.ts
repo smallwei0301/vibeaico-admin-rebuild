@@ -19,6 +19,7 @@ function relatedValue(value: RelatedName): { name?: string | null; title?: strin
 /**
  * GUIDE 首頁目前可出貨的 action inbox 類別：待確認預約、待收款預約與今日／明日出發團次。
  * 只讀既有 bookings_view 與 tenant timezone，不建立新狀態，也不觸發通知、付款或其他外部副作用。
+ * 預約卡片帶 bookingId deep link，讓操作人直接開啟該筆詳情而不是重新搜尋列表。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -82,7 +83,7 @@ export const GET = handle(async () => {
     priority: getGuideActionInboxPriority(row.start_at, now, timeZone),
     dueAt: row.start_at,
     createdAt: row.created_at,
-    href: '/tenant/bookings?status=PENDING',
+    href: `/tenant/bookings?status=PENDING&bookingId=${encodeURIComponent(row.id)}`,
   }));
 
   const bookingPaymentItems: GuideActionInboxItem[] = (paymentBookingResult.data ?? []).map((row) => ({
@@ -95,7 +96,7 @@ export const GET = handle(async () => {
     priority: getGuideActionInboxPriority(row.start_at, now, timeZone),
     dueAt: row.start_at,
     createdAt: row.created_at,
-    href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
+    href: `/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=${encodeURIComponent(row.id)}`,
   }));
 
   const departureItems: GuideActionInboxItem[] = (departureResult.data ?? [])

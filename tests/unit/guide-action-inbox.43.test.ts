@@ -49,7 +49,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
 
     const item = (id: string, priority: GuideActionInboxItem['priority'], dueAt: string, createdAt: string): GuideActionInboxItem => ({
       id, kind: 'BOOKING_REQUEST', bookingNo: id, customerName: id, serviceName: id,
-      priority, dueAt, createdAt, href: '/tenant/bookings?status=PENDING',
+      priority, dueAt, createdAt, href: '/tenant/bookings?status=PENDING&bookingId=id',
     });
     expect(sortGuideActionInboxItems([
       item('future', 'UPCOMING', '2026-09-03T02:00:00.000Z', '2026-09-01T00:00:00.000Z'),
@@ -95,7 +95,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
       priority: 'TODAY',
       dueAt: '2026-09-02T08:30:00.000Z',
       createdAt: '2026-09-02T00:00:00.000Z',
-      href: '/tenant/bookings?status=PENDING',
+      href: '/tenant/bookings?status=PENDING&bookingId=booking',
     };
     const departure: GuideActionInboxItem = {
       id: 'departure',
@@ -130,7 +130,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     expect(payments[0]).toMatchObject({
       bookingNo: 'BK20260822001',
       amount: 800,
-      href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
+      href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=b_g2',
     });
   });
 
@@ -151,7 +151,8 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     expect(apiSource).toContain(".from('tenant_settings')");
     expect(apiSource).toContain(".select('basic')");
     expect(apiSource).toContain('normalizeGuideTimeZone');
-    expect(apiSource).toContain("href: '/tenant/bookings?status=PENDING'");
+    expect(apiSource).toContain('bookingId=${encodeURIComponent(row.id)}');
+    expect(serviceSource).toContain('bookingId=${encodeURIComponent(id)}');
     expect(serviceSource).toContain("request<GuideActionInboxItem[]>('/api/guide/action-inbox')");
     expect(serviceSource).toContain("kind: 'BOOKING_PAYMENT'");
     expect(serviceSource).toContain("kind: 'DEPARTURE'");
@@ -170,6 +171,9 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     expect(pageSource).toContain('departureDay');
     expect(pageSource).toContain('w-full flex-shrink-0 sm:w-auto');
     expect(bookingsPageSource).toContain("params.get('paymentStatus') === 'UNPAID'");
+    expect(bookingsPageSource).toContain("params.get('bookingId')");
+    expect(bookingsPageSource).toContain('requestedBookingId');
+    expect(bookingsPageSource).toContain('setDetailTarget(requested)');
     expect(bookingsPageSource).toContain('paymentStatusFilter');
     expect(bookingsPageSource).toContain('paymentStatus: paymentStatusFilter || undefined');
   });

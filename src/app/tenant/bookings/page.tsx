@@ -165,6 +165,8 @@ export default function BookingsPage() {
   const [pointsTarget, setPointsTarget] = React.useState<Booking | null>(null);
   const [markPaidTarget, setMarkPaidTarget] = React.useState<Booking | null>(null);
   const [detailTarget, setDetailTarget] = React.useState<Booking | null>(null);
+  const [requestedBookingId, setRequestedBookingId] = React.useState('');
+  const openedDeepLinkId = React.useRef('');
 
   /* 確認類彈窗 */
   const [confirmTarget, setConfirmTarget] = React.useState<Booking | null>(null);
@@ -176,12 +178,15 @@ export default function BookingsPage() {
 
   const [cancelReason, setCancelReason] = React.useState('');
 
-  /** 原站以 ?status=PENDING / ?status=UNPROCESSED / ?action=create 進入本頁 */
+  /** 原站以 ?status=PENDING / ?status=UNPROCESSED / ?action=create 進入本頁；
+   * action inbox 另帶 bookingId，載入後直接打開該筆詳情。 */
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('status');
     if (s) setStatus(s);
     if (params.get('paymentStatus') === 'UNPAID') setPaymentStatusFilter('UNPAID');
+    const bookingId = params.get('bookingId');
+    if (bookingId) setRequestedBookingId(bookingId);
     if (params.get('action') === 'create') setCreateOpen(true);
   }, []);
 
@@ -217,6 +222,14 @@ export default function BookingsPage() {
         list = list.filter((b) => b.status !== 'CANCELLED');
       }
 
+      if (requestedBookingId && openedDeepLinkId.current !== requestedBookingId) {
+        const requested = list.find((b) => b.id === requestedBookingId);
+        if (requested) {
+          setDetailTarget(requested);
+          openedDeepLinkId.current = requestedBookingId;
+        }
+      }
+
       const now = Date.now();
       setUnprocessedIds(list
         .filter((b) => (b.status === 'PENDING' || b.status === 'CONFIRMED')
@@ -232,7 +245,7 @@ export default function BookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, toast]);
+  }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, requestedBookingId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 

@@ -56,7 +56,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       id: SHOP_A.bookingPending,
       kind: 'BOOKING_REQUEST',
       bookingNo: 'BSEED0001',
-      href: '/tenant/bookings?status=PENDING',
+      href: `/tenant/bookings?status=PENDING&bookingId=${SHOP_A.bookingPending}`,
     });
     expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(pending?.priority);
     expect(pending?.customerName).toBe('顧客 A1（測試）');
@@ -71,7 +71,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       kind: 'BOOKING_PAYMENT',
       bookingNo: 'BSEED0002',
       amount: 800,
-      href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
+      href: `/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=${SHOP_A.bookingConfirmed}`,
     });
     expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(payment.priority);
   });
