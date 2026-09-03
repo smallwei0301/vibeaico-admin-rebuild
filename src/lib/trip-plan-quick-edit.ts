@@ -1,1 +1,34 @@
-aW1wb3J0IHR5cGUgeyBUcmlwUGxhbiB9IGZyb20gJ0AvbGliL3R5cGVzJzsKCi8qKgogKiBRdWljayBFZGl0IGlzIGEgdmlldyBvdmVyIHRoZSBjYW5vbmljYWwgVHJpcFBsYW4sIG5vdCBhIHNlY29uZCBkYXRhIG1vZGVsLgogKiBLZWVwIHRoaXMgcHJvamVjdGlvbiBkZWxpYmVyYXRlbHkgc21hbGwgdW50aWwgdGhlIEFkdmFuY2VkIFNldHRpbmdzIHNsaWNlCiAqIGhhcyBhIHBlcnNpc3RlZCBjb250cmFjdCBmb3IgaXRzIGFkZGl0aW9uYWwgZmllbGRzLgogKi8KZXhwb3J0IHR5cGUgUXVpY2tQbGFuVmFsaWRhdGlvbkVycm9yID0gJ25hbWUnIHwgJ2Jhc2VQcmljZScgfCAnY2hpbGRQcmljZSc7CgpleHBvcnQgZnVuY3Rpb24gdG9RdWlja1BsYW5QYXlsb2FkKHBsYW46IFRyaXBQbGFuKTogUGFydGlhbDxUcmlwUGxhbj4gewogIGNvbnN0IHBheWxvYWQ6IFBhcnRpYWw8VHJpcFBsYW4+ID0gewogICAgaWQ6IHBsYW4uaWQgfHwgdW5kZWZpbmVkLAogICAgbmFtZTogcGxhbi5uYW1lLnRyaW0oKSwKICAgIGRlc2NyaXB0aW9uOiBwbGFuLmRlc2NyaXB0aW9uLnRyaW0oKSwKICAgIGJhc2VQcmljZTogcGxhbi5iYXNlUHJpY2UsCiAgICAvLyBTZW5kIG51bGwgZXhwbGljaXRseSBzbyBjYW5jZWxsaW5nIGFuIGV4aXN0aW5nIGNoaWxkIHByaWNlIHBlcnNpc3RzLgogICAgY2hpbGRQcmljZTogcGxhbi5jaGlsZFByaWNlLAogICAgYWN0aXZlOiBwbGFuLmFjdGl2ZSwKICB9OwogIHJldHVybiBwYXlsb2FkOwp9CgpleHBvcnQgZnVuY3Rpb24gdmFsaWRhdGVRdWlja1BsYW4oCiAgcGxhbjogVHJpcFBsYW4sCiAgY2hpbGRQcmljZVZpc2libGU6IGJvb2xlYW4sCik6IFF1aWNrUGxhblZhbGlkYXRpb25FcnJvciB8IG51bGwgewogIGlmICghcGxhbi5uYW1lLnRyaW0oKSkgcmV0dXJuICduYW1lJzsKICBpZiAoIU51bWJlci5pc0Zpbml0ZShwbGFuLmJhc2VQcmljZSkgfHwgcGxhbi5iYXNlUHJpY2UgPCAwKSByZXR1cm4gJ2Jhc2VQcmljZSc7CiAgaWYgKGNoaWxkUHJpY2VWaXNpYmxlICYmIHBsYW4uY2hpbGRQcmljZSAhPT0gbnVsbAogICAgJiYgKCFOdW1iZXIuaXNGaW5pdGUocGxhbi5jaGlsZFByaWNlKSB8fCBwbGFuLmNoaWxkUHJpY2UgPCAwKSkgewogICAgcmV0dXJuICdjaGlsZFByaWNlJzsKICB9CiAgcmV0dXJuIG51bGw7Cn0K
+import type { TripPlan } from '@/lib/types';
+
+/**
+ * Quick Edit is a view over the canonical TripPlan, not a second data model.
+ * Keep this projection deliberately small until the Advanced Settings slice
+ * has a persisted contract for its additional fields.
+ */
+export type QuickPlanValidationError = 'name' | 'basePrice' | 'childPrice';
+
+export function toQuickPlanPayload(plan: TripPlan): Partial<TripPlan> {
+  const payload: Partial<TripPlan> = {
+    id: plan.id || undefined,
+    name: plan.name.trim(),
+    description: plan.description.trim(),
+    basePrice: plan.basePrice,
+    // Send null explicitly so cancelling an existing child price persists.
+    childPrice: plan.childPrice,
+    active: plan.active,
+  };
+  return payload;
+}
+
+export function validateQuickPlan(
+  plan: TripPlan,
+  childPriceVisible: boolean,
+): QuickPlanValidationError | null {
+  if (!plan.name.trim()) return 'name';
+  if (!Number.isFinite(plan.basePrice) || plan.basePrice < 0) return 'basePrice';
+  if (childPriceVisible && plan.childPrice !== null
+    && (!Number.isFinite(plan.childPrice) || plan.childPrice < 0)) {
+    return 'childPrice';
+  }
+  return null;
+}
