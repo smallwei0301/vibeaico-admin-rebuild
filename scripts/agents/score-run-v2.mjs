@@ -353,21 +353,8 @@ export function scoreRunV2(run) {
 }
 
 const show = (value) => value === null || value === undefined ? "資料不足" : String(value);
-export function renderMarkdownV2(run, result) {
-  const lines = [
-    `# Delivery Outcome v2：${run.runId}`, "",
-    `> Delivery Truth 版本：**${run.deliveryTruthVersion ?? 2}**`,
-    `> 評分狀態：**${result.scoreStatus}**`,
-    `> 分數：${result.total === null ? "尚不評分" : `**${result.total} / 100（${result.grade}）**`}`, "",
-    "## 兩本帳", "",
-    `- 真正出貨 shipped_units：${result.shippedUnits}（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）`,
-    `- 正式環境待驗 production_pending：${result.productionPendingUnits}`,
-    `- 自主完成 autonomous_outcome_units：${result.autonomousOutcomeUnits}（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）`,
-    `- 在製品 WIP：Audit Ready ${result.wipInventory.auditReady}、CI-only ${result.wipInventory.exactHeadCiOnly}、commit-only ${result.wipInventory.commitOnly}、carryover ${result.wipInventory.unfinishedCarryover}`,
-    `- 內部加權 usage：${result.weightedUsageUnits}（不是官方 token）`,
-    `- 每件真正出貨 usage：${show(result.weightedUsagePerShippedUnit)}`,
-    `- 每單位自主完成 usage：${show(result.weightedUsagePerAutonomousOutcome)}`, "",
-  ];
+
+function renderResultDetails(lines, result) {
   if (result.gradingGaps.length) lines.push("## 為什麼尚不評分", "", ...result.gradingGaps.map((item) => `- ${item}`), "");
   if (result.hardFailures.length) lines.push("## 硬性失敗", "", ...result.hardFailures.map((item) => `- ${item}`), "");
   if (result.scores) lines.push(
@@ -378,7 +365,49 @@ export function renderMarkdownV2(run, result) {
     `| Agent 流動 | ${result.scores.flow} / 10 |`,
     `| 證據完整 | ${result.scores.auditability} / 10 |`, "",
   );
-  lines.push("---", "", "同一張 Issue 重複 claim 只算一次。Delivery Truth v3 必須依序驗證 source、main、Vercel、Production schema 與登入正式站後的真實操作；只合併、只部署 App、只套 TEST migration 或只看到成功提示，都不能冒充正式出貨。舊 v2.2 完成輪次維持原計分語意，不回寫歷史。", "");
+}
+
+export function renderMarkdownV2(run, result) {
+  const legacy = !usesProductionTruth(run);
+  const lines = [
+    `# Delivery Outcome v2：${run.runId}`, "",
+  ];
+
+  if (!legacy) lines.push(`> Delivery Truth 版本：**${run.deliveryTruthVersion}**`);
+  lines.push(
+    `> 評分狀態：**${result.scoreStatus}**`,
+    `> 分數：${result.total === null ? "尚不評分" : `**${result.total} / 100（${result.grade}）**`}`, "",
+    "## 兩本帳", "",
+  );
+
+  if (legacy) {
+    lines.push(
+      `- 真正出貨 shipped_units：${result.shippedUnits}（只算不重複、live-verified 的 CLOSED Issue）`,
+      `- 自主完成 autonomous_outcome_units：${result.autonomousOutcomeUnits}（唯一 CLOSED + 唯一完整 OWNER_BLOCKED × 0.75）`,
+    );
+  } else {
+    lines.push(
+      `- 真正出貨 shipped_units：${result.shippedUnits}（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）`,
+      `- 正式環境待驗 production_pending：${result.productionPendingUnits}`,
+      `- 自主完成 autonomous_outcome_units：${result.autonomousOutcomeUnits}（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）`,
+    );
+  }
+
+  lines.push(
+    `- 在製品 WIP：Audit Ready ${result.wipInventory.auditReady}、CI-only ${result.wipInventory.exactHeadCiOnly}、commit-only ${result.wipInventory.commitOnly}、carryover ${result.wipInventory.unfinishedCarryover}`,
+    `- 內部加權 usage：${result.weightedUsageUnits}（不是官方 token）`,
+    `- 每件真正出貨 usage：${show(result.weightedUsagePerShippedUnit)}`,
+    `- 每單位自主完成 usage：${show(result.weightedUsagePerAutonomousOutcome)}`, "",
+  );
+
+  renderResultDetails(lines, result);
+  lines.push(
+    "---", "",
+    legacy
+      ? "同一張 Issue 重複 claim 只算一次；總體 Completion Truth 未 VERIFIED 時不顯示成品；跨 repo 或其他無效 Issue 證據不計分，證據指向本 repo 的另一張 Issue，或同時宣稱 CLOSED 與 OWNER_BLOCKED，會硬性失敗。Audit Ready、CI 綠與 commit 是進度，不再折算成品。IN_PROGRESS 不評分。"
+      : "同一張 Issue 重複 claim 只算一次。Delivery Truth v3 必須依序驗證 source、main、Vercel、Production schema 與登入正式站後的真實操作；只合併、只部署 App、只套 TEST migration 或只看到成功提示，都不能冒充正式出貨。舊 v2.2 完成輪次維持原計分語意，不回寫歷史。",
+    "",
+  );
   return lines.join("\n");
 }
 
