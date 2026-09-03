@@ -205,11 +205,37 @@ export const exportCustomersExcel = () =>
     async () => { window.location.assign(`${API_BASE}/api/export/customers/excel`); },
   );
 
-export const exportBookingsCsv = (q?: ReportQuery) =>
+export type ExportBookingsQuery = {
+  from?: string;
+  to?: string;
+};
+
+export const exportBookingsCsv = (q?: ExportBookingsQuery) =>
   adapt<void>(
     () => undefined,
     async () => {
-      const qs = q ? `?${new URLSearchParams(q).toString()}` : '';
-      window.location.assign(`${API_BASE}/api/export/bookings${qs}`);
+      const params = new URLSearchParams();
+      if (q?.from) params.set('from', q.from);
+      if (q?.to) params.set('to', q.to);
+
+      const queryString = params.toString();
+      const response = await fetch(
+        `${API_BASE}/api/export/bookings${queryString ? `?${queryString}` : ''}`,
+        { credentials: 'include' },
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const blob = await response.blob();
+      const filename = response.headers
+        .get('content-disposition')
+        ?.match(/filename="?([^";]+)"?/i)?.[1] ?? 'bookings.csv';
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
     },
   );
