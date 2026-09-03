@@ -19,21 +19,52 @@ let staffA: AuthedApi;
 let uploadedPath: string | null = null;
 let keywordReplyPath: string | null = null;
 let retiredUrl: string | null = null;
+let createdLocalKeywordReplyBucket = false;
 
 function pngFile(): File {
   return new File([PNG_1X1], 'welcome.png', { type: 'image/png' });
+}
+
+function isLocalSupabase(url: string): boolean {
+  const hostname = new URL(url).hostname;
+  return hostname === 'localhost' || hostname === '127.0.0.1';
 }
 
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
   expect(process.env.TEST_SUPABASE_ANON_KEY).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
-  admin = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
+  const testSupabaseUrl = process.env.TEST_SUPABASE_URL!;
+  admin = createClient(testSupabaseUrl, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  ownerStorage = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
+  ownerStorage = createClient(testSupabaseUrl, process.env.TEST_SUPABASE_ANON_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // The disposable local baseline intentionally does not replay the old remote
+  // 0039 migration that created keyword-reply-images. Create only that bucket
+  // as a local test fixture so this regression test reaches p_storage_write.
+  // The remote canonical environment must already contain the real bucket;
+  // missing remote infrastructure remains a hard failure rather than a fixture.
+  const { data: keywordReplyBucket, error: keywordReplyBucketError } =
+    await admin.storage.getBucket(KEYWORD_REPLY_BUCKET);
+  if (!keywordReplyBucket) {
+    if (!isLocalSupabase(testSupabaseUrl)) {
+      throw new Error(
+        `Remote canonical Storage bucket ${KEYWORD_REPLY_BUCKET} is missing: ${keywordReplyBucketError?.message ?? 'unknown error'}`,
+      );
+    }
+    const { error: createBucketError } = await admin.storage.createBucket(
+      KEYWORD_REPLY_BUCKET,
+      { public: true },
+    );
+    expect(createBucketError).toBeNull();
+    createdLocalKeywordReplyBucket = true;
+  } else {
+    expect(keywordReplyBucketError).toBeNull();
+  }
+
   const { error: ownerStorageLoginError } = await ownerStorage.auth.signInWithPassword({
     email: SHOP_A.owner.email,
     password: SHOP_A.owner.password,
@@ -51,6 +82,10 @@ afterAll(async () => {
   if (keywordReplyPath) {
     const { error } = await admin.storage.from(KEYWORD_REPLY_BUCKET).remove([keywordReplyPath]);
     if (error) console.error('[upload-welcome-card.28] 清理 keyword reply 物件失敗：', error);
+  }
+  if (createdLocalKeywordReplyBucket) {
+    const { error } = await admin.storage.deleteBucket(KEYWORD_REPLY_BUCKET);
+    if (error) console.error('[upload-welcome-card.28] 清理 local keyword reply bucket 失敗：', error);
   }
   if (retiredUrl) {
     const { error } = await admin
