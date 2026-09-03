@@ -54,17 +54,34 @@ export type Booking = {
 /* ------------------------------------------------------- GUIDE 首頁待處理事項 */
 export type GuideActionInboxPriority = 'IMMEDIATE' | 'TODAY' | 'UPCOMING';
 
-export type GuideActionInboxItem = {
+export type GuideActionInboxDepartureDay = 'TODAY' | 'TOMORROW';
+
+type GuideActionInboxItemBase = {
   id: string;
-  kind: 'BOOKING_REQUEST';
-  bookingNo: string;
-  customerName: string;
-  serviceName: string;
   priority: GuideActionInboxPriority;
   dueAt: string;
   createdAt: string;
   href: string;
 };
+
+export type GuideActionInboxItem =
+  | (GuideActionInboxItemBase & {
+    kind: 'BOOKING_REQUEST';
+    bookingNo: string;
+    customerName: string;
+    serviceName: string;
+  })
+  | (GuideActionInboxItemBase & {
+    kind: 'DEPARTURE';
+    tripId: string;
+    tripName: string;
+    planName: string;
+    departureDate: string;
+    startTime: string;
+    capacity: number;
+    seatsBooked: number;
+    departureDay: GuideActionInboxDepartureDay;
+  });
 
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';

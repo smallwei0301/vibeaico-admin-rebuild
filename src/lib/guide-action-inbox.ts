@@ -2,9 +2,17 @@ import {
   DEFAULT_TENANT_TIME_ZONE,
   isValidTenantTimeZone,
 } from '@/config/tenant-settings';
-import type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/types';
+import type {
+  GuideActionInboxDepartureDay,
+  GuideActionInboxItem,
+  GuideActionInboxPriority,
+} from '@/lib/types';
 
-export type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/types';
+export type {
+  GuideActionInboxDepartureDay,
+  GuideActionInboxItem,
+  GuideActionInboxPriority,
+} from '@/lib/types';
 
 export const DEFAULT_GUIDE_TIME_ZONE = DEFAULT_TENANT_TIME_ZONE;
 
@@ -46,6 +54,33 @@ function dateKey(date: Date, timeZone: string): string {
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function addCalendarDays(value: string, days: number): string {
+  const date = new Date(`${value}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function getGuideActionInboxDateWindow(
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): { today: string; tomorrow: string } {
+  const today = dateKey(now, timeZone);
+  return { today, tomorrow: addCalendarDays(today, 1) };
+}
+
+/** 僅把今天與明天的非取消團次放進 GUIDE 首頁，日期邊界由租戶時區決定。 */
+export function getGuideDepartureDay(
+  departsOn: string,
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): GuideActionInboxDepartureDay | null {
+  const target = String(departsOn).slice(0, 10);
+  const { today, tomorrow } = getGuideActionInboxDateWindow(now, timeZone);
+  if (target === today) return 'TODAY';
+  if (target === tomorrow) return 'TOMORROW';
+  return null;
 }
 
 /**

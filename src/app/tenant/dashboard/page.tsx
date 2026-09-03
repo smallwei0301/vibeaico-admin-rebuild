@@ -324,9 +324,11 @@ export default function DashboardPage() {
               {t.actionInbox.title}
               <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span>
             </CardTitle>
-            <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
-              {t.actionInbox.viewAll}
-            </Link>
+            {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
+              <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
+                {t.actionInbox.viewBookings}
+              </Link>
+            ) : null}
           </CardHeader>
           <CardBody>
             {loadingActionInbox ? (
@@ -346,20 +348,36 @@ export default function DashboardPage() {
                           {t.actionInbox.priority[item.priority]}
                         </Badge>
                         <span className="text-sm font-semibold text-dark">
-                          {t.actionInbox.bookingRequest}
+                          {item.kind === 'BOOKING_REQUEST'
+                            ? t.actionInbox.bookingRequest
+                            : t.actionInbox.departure}
                         </span>
                       </div>
-                      <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
-                      <div className="text-sm text-secondary">{item.serviceName}</div>
-                      <div className="mt-1 text-xs text-secondary">
-                        {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
-                      </div>
+                      {item.kind === 'BOOKING_REQUEST' ? (
+                        <>
+                          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+                          <div className="text-sm text-secondary">{item.serviceName}</div>
+                          <div className="mt-1 text-xs text-secondary">
+                            {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+                          <div className="text-sm text-secondary">{item.planName}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+                            <span>{t.actionInbox.departureDay[item.departureDay]}</span>
+                            <span>{t.actionInbox.departureAt}：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
+                            <span>{t.actionInbox.departureSeats(item.seatsBooked, item.capacity)}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                     <Link
                       href={item.href}
                       className="btn btn-primary btn-sm w-full flex-shrink-0 sm:w-auto"
                     >
-                      {t.actionInbox.open}
+                      {item.kind === 'BOOKING_REQUEST' ? t.actionInbox.open : t.actionInbox.openDeparture}
                     </Link>
                   </li>
                 ))}
