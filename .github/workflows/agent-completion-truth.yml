@@ -3,6 +3,7 @@ name: agent-completion-truth
 on:
   push:
     branches: [main]
+  status:
   workflow_dispatch:
     inputs:
       pull_request_number:
@@ -11,13 +12,15 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
   issues: write
   pull-requests: write
+  statuses: read
 
 concurrency:
-  group: agent-completion-truth-${{ github.repository }}
-  cancel-in-progress: false
+  group: agent-completion-truth-${{ github.repository }}-${{ github.event.sha || github.event.after || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   verify-main-completion:
@@ -30,7 +33,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify merge claims against live GitHub state
+      - name: Verify Product delivery truth against live GitHub state
         uses: actions/github-script@v9
         with:
           script: |
@@ -47,29 +50,40 @@ jobs:
             const defaultBranchHead = branch.data.commit.sha;
             const requested = String(context.payload.inputs?.pull_request_number ?? '').trim();
             let pullRequests = [];
+            let targetSha = null;
 
             if (requested) {
               if (!/^\d+$/.test(requested) || Number(requested) < 1) {
                 core.setFailed('pull_request_number must be a positive integer');
                 return;
               }
-              pullRequests = [(await github.rest.pulls.get({
+              const requestedPr = (await github.rest.pulls.get({
                 owner,
                 repo,
                 pull_number: Number(requested),
-              })).data];
+              })).data;
+              pullRequests = [requestedPr];
+              targetSha = requestedPr.merge_commit_sha ?? null;
             } else {
-              pullRequests = await github.paginate(
-                github.rest.repos.listPullRequestsAssociatedWithCommit,
-                { owner, repo, commit_sha: context.payload.after, per_page: 100 },
-              );
+              targetSha = context.eventName === 'status'
+                ? context.payload.sha
+                : context.payload.after;
+              if (targetSha) {
+                pullRequests = await github.paginate(
+                  github.rest.repos.listPullRequestsAssociatedWithCommit,
+                  { owner, repo, commit_sha: targetSha, per_page: 100 },
+                );
+              }
             }
 
-            const candidates = pullRequests.filter((pr) => pr.base?.ref === defaultBranch);
+            const candidates = pullRequests.filter((pr) => (
+              pr.base?.ref === defaultBranch &&
+              (context.eventName !== 'status' || Boolean(pr.merged_at))
+            ));
             if (candidates.length === 0) {
               await core.summary
-                .addHeading('Completion Truth Gate')
-                .addRaw(`No pull request associated with this ${defaultBranch} update. No merge claim was created.`)
+                .addHeading('Product Delivery Truth Ladder')
+                .addRaw(`No pull request associated with ${targetSha ?? 'this event'}. No completion claim was created.`)
                 .write();
               return;
             }
@@ -79,12 +93,12 @@ jobs:
             const evidenceSinkWarnings = [];
             const rows = [[
               { data: 'PR', header: true },
-              { data: 'Merged', header: true },
-              { data: 'Merge SHA', header: true },
-              { data: 'Main head', header: true },
-              { data: 'Reachability', header: true },
-              { data: 'Verified', header: true },
-              { data: 'Evidence sink', header: true },
+              { data: 'Source', header: true },
+              { data: 'Main', header: true },
+              { data: 'Vercel', header: true },
+              { data: 'Schema', header: true },
+              { data: 'Authenticated Production', header: true },
+              { data: 'Status', header: true },
             ]];
 
             for (const pr of candidates) {
@@ -106,12 +120,36 @@ jobs:
                 }
               }
 
-              const result = truth.evaluateMergedPullRequest({
+              const changedFiles = await github.paginate(github.rest.pulls.listFiles, {
+                owner,
+                repo,
+                pull_number: pr.number,
+                per_page: 100,
+              });
+              const workflowResponse = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                head_sha: pr.head.sha,
+                per_page: 100,
+              });
+              const statusResponse = pr.merge_commit_sha
+                ? await github.rest.repos.getCombinedStatusForRef({
+                    owner,
+                    repo,
+                    ref: pr.merge_commit_sha,
+                    per_page: 100,
+                  })
+                : { data: { statuses: [] } };
+
+              const result = truth.evaluateProductDeliveryTruth({
                 pullRequest: pr,
                 defaultBranchHead,
                 compareStatus,
+                changedFiles,
+                sourceWorkflowRuns: workflowResponse.data.workflow_runs,
+                commitStatuses: statusResponse.data.statuses,
               });
-              const body = truth.formatCompletionTruth(result);
+              const body = truth.formatProductDeliveryTruth(result);
               let evidenceSink = 'commented';
 
               try {
@@ -131,24 +169,28 @@ jobs:
                 const sinkError = truth.classifyEvidenceSinkError(error);
                 evidenceSink = `warning:${sinkError.code}`;
                 evidenceSinkWarnings.push(
-                  `#${pr.number}: completion truth is ${result.verified ? 'verified' : 'unverified'}, but PR comment storage failed (${sinkError.code}: ${sinkError.message})`,
+                  `#${pr.number}: truth was evaluated, but PR comment storage failed (${sinkError.code}: ${sinkError.message})`,
                 );
                 core.warning(evidenceSinkWarnings.at(-1));
               }
 
               rows.push([
                 `#${pr.number}`,
-                String(Boolean(pr.merged_at)),
-                result.mergeCommitSha ?? 'unknown',
-                result.defaultBranchHead ?? 'unknown',
-                result.compareStatus ?? 'unknown',
-                String(result.verified),
-                evidenceSink,
+                result.source.state,
+                result.merge.verified ? 'VERIFIED' : 'UNVERIFIED',
+                result.vercel.state,
+                result.schema.state,
+                result.acceptance.state,
+                result.productionAccepted
+                  ? 'PRODUCTION_ACCEPTED'
+                  : result.deliveryEligible
+                    ? 'PRODUCTION_PENDING'
+                    : `NON_PRODUCT (${evidenceSink})`,
               ]);
-              if (!result.verified) failures.push(`#${pr.number}: ${result.errors.join('; ')}`);
+              if (result.errors.length) failures.push(`#${pr.number}: ${result.errors.join('; ')}`);
             }
 
-            await core.summary.addHeading('Completion Truth Gate').addTable(rows).write();
+            await core.summary.addHeading('Product Delivery Truth Ladder').addTable(rows).write();
             if (evidenceSinkWarnings.length) {
               await core.summary
                 .addHeading('Evidence sink warnings')

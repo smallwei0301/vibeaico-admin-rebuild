@@ -9,7 +9,9 @@ import { createRunLedger as createLegacyLedger, validateRunLedger as validateLeg
 const TRUTH_STATUS = new Set(["NOT_CHECKED", "VERIFIED", "FAILED"]);
 const CLAIM_TYPE = new Set([
   "ISSUE_CLOSED", "OWNER_BLOCKED_COMPLETE", "PR_MERGED", "CI_GREEN",
-  "LOCAL_TEST_GREEN", "RUN_COMPLETE", "OTHER",
+  "LOCAL_TEST_GREEN", "RUN_COMPLETE", "SOURCE_VERIFIED", "MERGED_TO_MAIN",
+  "AUTO_VERCEL_DEPLOYED", "PRODUCTION_SCHEMA_READY",
+  "AUTHENTICATED_PRODUCTION_ACCEPTED", "OTHER",
 ]);
 const VERIFICATION = new Set(["VERIFIED", "UNVERIFIED", "CONTRADICTED"]);
 
@@ -18,6 +20,7 @@ export function createRunLedgerV2(runId, startedAt = new Date().toISOString()) {
   return {
     ...run,
     schemaVersion: 2,
+    deliveryTruthVersion: 3,
     completionTruth: { status: "NOT_CHECKED", checkedAt: null, claims: [] },
   };
 }
@@ -26,8 +29,12 @@ export function validateRunLedgerV2(run) {
   if (!run || typeof run !== "object" || Array.isArray(run)) return ["run must be an object"];
   const errors = [];
   if (run.schemaVersion !== 2) errors.push("schemaVersion must be 2");
+  if (run.deliveryTruthVersion !== undefined && ![2, 3].includes(run.deliveryTruthVersion)) {
+    errors.push("deliveryTruthVersion must be 2 or 3 when provided");
+  }
 
   const legacy = { ...run, schemaVersion: 1 };
+  delete legacy.deliveryTruthVersion;
   delete legacy.completionTruth;
   errors.push(...validateLegacyLedger(legacy));
 

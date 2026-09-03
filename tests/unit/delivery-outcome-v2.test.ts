@@ -19,6 +19,16 @@ function claim(type: string, subject: string, observedState: string, evidenceRef
   };
 }
 
+function productionClaims(subject: string): any[] {
+  return [
+    claim("SOURCE_VERIFIED", subject, "success", `github:ci:${subject}`),
+    claim("MERGED_TO_MAIN", subject, "merged", `github:merge:${subject}`),
+    claim("AUTO_VERCEL_DEPLOYED", subject, "ready", `vercel:deployment:${subject}`),
+    claim("PRODUCTION_SCHEMA_READY", subject, "not_required", `github:diff:${subject}`),
+    claim("AUTHENTICATED_PRODUCTION_ACCEPTED", subject, "accepted", `production:e2e:${subject}`),
+  ];
+}
+
 function completedRun(id = "2026-09-02-delivery-v2"): any {
   const run: any = createRunLedgerV2(id, "2026-09-02T00:00:00Z");
   run.status = "COMPLETE";
@@ -57,15 +67,20 @@ function completedRun(id = "2026-09-02-delivery-v2"): any {
   run.completionTruth = {
     status: "VERIFIED",
     checkedAt: "2026-09-02T02:01:00Z",
-    claims: [claim("ISSUE_CLOSED", "issue#10", "closed"), claim("RUN_COMPLETE", id, "complete")],
+    claims: [
+      claim("ISSUE_CLOSED", "issue#10", "closed"),
+      ...productionClaims("issue#10"),
+      claim("RUN_COMPLETE", id, "complete"),
+    ],
   };
   return run;
 }
 
 describe("Delivery Outcome v2", () => {
-  it("creates a valid v2 ledger with a truth section", () => {
+  it("creates a valid v2 ledger with Production truth version 3", () => {
     const run: any = createRunLedgerV2("2026-09-02-empty");
     expect(run.schemaVersion).toBe(2);
+    expect(run.deliveryTruthVersion).toBe(3);
     expect(validateRunLedgerV2(run)).toEqual([]);
   });
 
@@ -87,12 +102,13 @@ describe("Delivery Outcome v2", () => {
     expect(canonicalIssueEvidenceRef("github:pull#10")).toBeNull();
   });
 
-  it("counts only unique verified CLOSED and complete OWNER_BLOCKED evidence as outcomes", () => {
+  it("counts only Production-accepted CLOSED and complete OWNER_BLOCKED evidence", () => {
     const run = completedRun();
     run.delivery = { ...run.delivery, issuesClosed: 1, ownerBlockedComplete: 1, auditReady: 5, exactHeadCiOnly: 4, commitOnly: 9, unfinishedCarryover: 3 };
     run.completionTruth.claims.splice(1, 0, claim("OWNER_BLOCKED_COMPLETE", "issue#11", "owner_blocked_complete"));
     expect(computeDeliveryOutcome(run)).toEqual({
       shippedUnits: 1,
+      productionPendingUnits: 0,
       autonomousOutcomeUnits: 1.75,
       wipInventory: { auditReady: 5, exactHeadCiOnly: 4, commitOnly: 9, unfinishedCarryover: 3 },
     });
@@ -105,6 +121,7 @@ describe("Delivery Outcome v2", () => {
     run.completionTruth.claims = [
       claim("ISSUE_CLOSED", "issue#10", "closed"),
       claim("ISSUE_CLOSED", "#10", "closed"),
+      ...productionClaims("issue#10"),
       claim("RUN_COMPLETE", run.runId, "complete"),
     ];
 
@@ -112,22 +129,25 @@ describe("Delivery Outcome v2", () => {
     expect(result.scoreStatus).toBe("NOT_GRADED");
     expect(result.shippedUnits).toBe(1);
     expect(result.gradingGaps).toContain(
-      "delivery.issuesClosed=2 does not match 1 unique verified ISSUE_CLOSED subject(s)",
+      "delivery.issuesClosed=2 does not match 1 production-accepted shipped subject(s)",
     );
   });
 
-  it("accepts two distinct verified CLOSED Issues as two shipped units", () => {
+  it("accepts two distinct Production-accepted CLOSED Issues as two shipped units", () => {
     const run = completedRun("2026-09-02-distinct-closed");
     run.delivery.issuesStarted = 2;
     run.delivery.issuesClosed = 2;
-    run.completionTruth.claims.splice(1, 0, claim("ISSUE_CLOSED", "issue#11", "closed"));
+    run.completionTruth.claims.splice(1, 0,
+      claim("ISSUE_CLOSED", "issue#11", "closed"),
+      ...productionClaims("issue#11"),
+    );
 
     const result = scoreRunV2(run);
     expect(result.scoreStatus).toBe("GRADED_V2");
     expect(result.shippedUnits).toBe(2);
   });
 
-  it("hard-fails when evidence points to a different Issue than the claim", () => {
+  it("hard-fails when Issue-close evidence points to a different Issue", () => {
     const run = completedRun("2026-09-02-mismatched-evidence");
     run.completionTruth.claims[0].evidenceRef = "github:issue#11";
 
@@ -230,11 +250,46 @@ describe("Delivery Outcome v2", () => {
     expect(result.grade).toBe("F-HARD");
   });
 
-  it("calculates per-shipped usage only after at least one verified shipment", () => {
+  it("calculates per-shipped usage only after every Production stage is verified", () => {
     const result = scoreRunV2(completedRun());
     expect(result.scoreStatus).toBe("GRADED_V2");
     expect(result.shippedUnits).toBe(1);
     expect(result.weightedUsagePerShippedUnit).not.toBeNull();
+  });
+
+  it("keeps a closed but not Production-accepted Slice out of shipped units", () => {
+    const run = completedRun("2026-09-02-production-pending");
+    run.completionTruth.claims = run.completionTruth.claims.filter(
+      (item: any) => item.type !== "AUTHENTICATED_PRODUCTION_ACCEPTED",
+    );
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("NOT_GRADED");
+    expect(result.shippedUnits).toBe(0);
+    expect(result.productionPendingUnits).toBe(1);
+    expect(result.gradingGaps).toContain(
+      "issue#10 is closed but AUTHENTICATED_PRODUCTION_ACCEPTED is not verified at its successful state",
+    );
+  });
+
+  it("accepts a verified not-required schema stage when no Production migration is needed", () => {
+    const result = scoreRunV2(completedRun("2026-09-02-schema-not-required"));
+    expect(result.shippedUnits).toBe(1);
+    expect(result.productionPendingUnits).toBe(0);
+  });
+
+  it("preserves legacy v2.2 completed-run scoring without rewriting history", () => {
+    const run = completedRun("2026-09-02-legacy-v22");
+    run.deliveryTruthVersion = 2;
+    run.completionTruth.claims = [
+      claim("ISSUE_CLOSED", "issue#10", "closed"),
+      claim("RUN_COMPLETE", run.runId, "complete"),
+    ];
+
+    const result = scoreRunV2(run);
+    expect(result.scoreStatus).toBe("GRADED_V2");
+    expect(result.shippedUnits).toBe(1);
+    expect(result.productionPendingUnits).toBe(0);
   });
 
   it("keeps one complete OWNER_BLOCKED visible without calling it shipped", () => {
