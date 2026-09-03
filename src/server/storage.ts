@@ -2,16 +2,21 @@ import { createAdminSupabase } from './supabase';
 
 export const WELCOME_CARD_BUCKET = 'welcome-card-images';
 
+type TenantOwnedPublicStorage = {
+  path: string;
+  canonicalUrl: string;
+};
+
 /**
  * Extract a path only when the URL is one of this deployment's public
  * Supabase storage URLs and the first path segment is this tenant.
  * Invalid or external URLs are deliberately treated as a no-op for cleanup.
  */
-export function tenantOwnedPublicStoragePath(
+function parseTenantOwnedPublicStorageUrl(
   url: string,
   bucket: string,
   tenantId: string,
-): string | null {
+): TenantOwnedPublicStorage | null {
   let parsed: URL;
   let supabaseOrigin: string;
   try {
@@ -42,7 +47,31 @@ export function tenantOwnedPublicStoragePath(
   ) {
     return null;
   }
-  return path;
+
+  const encodedPath = segments.map((segment) => encodeURIComponent(segment)).join('/');
+  return {
+    path,
+    // Query strings, fragments, and alternate percent-encoding are not part
+    // of a Storage object identity. Persist one URL form for the DB lock and
+    // tombstone so cleanup cannot delete an object through an alias.
+    canonicalUrl: `${supabaseOrigin}${marker}${encodedPath}`,
+  };
+}
+
+export function tenantOwnedPublicStoragePath(
+  url: string,
+  bucket: string,
+  tenantId: string,
+): string | null {
+  return parseTenantOwnedPublicStorageUrl(url, bucket, tenantId)?.path ?? null;
+}
+
+export function tenantOwnedPublicStorageUrl(
+  url: string,
+  bucket: string,
+  tenantId: string,
+): string | null {
+  return parseTenantOwnedPublicStorageUrl(url, bucket, tenantId)?.canonicalUrl ?? null;
 }
 
 /**
@@ -51,13 +80,13 @@ export function tenantOwnedPublicStoragePath(
  * still referenced or has already been safely retired.
  */
 export async function removeWelcomeCardImage(url: string, tenantId: string): Promise<boolean> {
-  const path = tenantOwnedPublicStoragePath(url, WELCOME_CARD_BUCKET, tenantId);
-  if (!path) return false;
+  const object = parseTenantOwnedPublicStorageUrl(url, WELCOME_CARD_BUCKET, tenantId);
+  if (!object) return false;
 
   const admin = createAdminSupabase();
   const { data: retired, error: retirementError } = await admin.rpc('retire_welcome_card_image', {
     p_tenant_id: tenantId,
-    p_image_url: url,
+    p_image_url: object.canonicalUrl,
   });
   if (retirementError) throw retirementError;
   if (retired !== true) return false;
@@ -65,7 +94,7 @@ export async function removeWelcomeCardImage(url: string, tenantId: string): Pro
   const { error } = await admin
     .storage
     .from(WELCOME_CARD_BUCKET)
-    .remove([path]);
+    .remove([object.path]);
   if (error) throw error;
   return true;
 }

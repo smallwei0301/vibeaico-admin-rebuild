@@ -12,6 +12,10 @@ export interface UploadResult {
   url: string;
 }
 
+export interface RemoveWelcomeCardImageResult {
+  removed: boolean;
+}
+
 /** Upload an image through the tenant-scoped server endpoint. */
 export const uploadImage = (file: File, bucket: UploadBucket) =>
   adapt<UploadResult>(
@@ -29,9 +33,9 @@ export const uploadImage = (file: File, bucket: UploadBucket) =>
 
 /** Remove a previously uploaded welcome-card image after its DB reference changes. */
 export const removeWelcomeCardImage = (url: string) =>
-  adapt<void>(
+  adapt<RemoveWelcomeCardImageResult | undefined>(
     () => undefined,
-    () => request<void>('/api/upload', {
+    () => request<RemoveWelcomeCardImageResult>('/api/upload', {
       method: 'DELETE',
       body: JSON.stringify({ bucket: 'welcome-card-images', url }),
     }),

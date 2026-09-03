@@ -2,7 +2,11 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
-import { removeWelcomeCardImage } from '@/server/storage';
+import {
+  removeWelcomeCardImage,
+  tenantOwnedPublicStorageUrl,
+  WELCOME_CARD_BUCKET,
+} from '@/server/storage';
 import { decryptSecret } from '@/server/crypto';
 import {
   basicSettingsSchema, businessSettingsSchema, notifySettingsSchema,
@@ -68,6 +72,17 @@ const bodySchema = z.object({
 export const PUT = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const b = bodySchema.parse(await req.json());
+  const notify = b.notify?.welcomeCardImageUrl
+    ? {
+        ...b.notify,
+        welcomeCardImageUrl:
+          tenantOwnedPublicStorageUrl(
+            b.notify.welcomeCardImageUrl,
+            WELCOME_CARD_BUCKET,
+            t.tenantId,
+          ) ?? b.notify.welcomeCardImageUrl,
+      }
+    : b.notify;
 
   let previousWelcomeCardImageUrl = '';
   if (b.notify) {
@@ -114,7 +129,7 @@ export const PUT = handle(async (req) => {
   const update: Record<string, unknown> = {};
   if (b.basic) update.basic = b.basic;
   if (b.business) update.business = b.business;
-  if (b.notify) update.notify = b.notify;
+  if (notify) update.notify = notify;
   if (b.privacy) update.privacy = b.privacy;
   if (b.points) update.points = b.points;
 
@@ -135,8 +150,9 @@ export const PUT = handle(async (req) => {
     if (error) throw error;
   }
 
-  if (b.notify) {
-    const nextWelcomeCardImageUrl = b.notify.welcomeCardImageUrl;
+  let welcomeCardImageCleanupPending = false;
+  if (notify) {
+    const nextWelcomeCardImageUrl = notify.welcomeCardImageUrl;
     if (previousWelcomeCardImageUrl && previousWelcomeCardImageUrl !== nextWelcomeCardImageUrl) {
       // The DB reference is already truthful. Cleanup is best-effort because
       // Storage and Postgres cannot share one transaction; a failure must not
@@ -159,9 +175,10 @@ export const PUT = handle(async (req) => {
         }
       } catch (error) {
         console.error('[settings] welcome-card image cleanup failed', t.tenantId, error);
+        welcomeCardImageCleanupPending = true;
       }
     }
   }
 
-  return ok();
+  return welcomeCardImageCleanupPending ? ok({ welcomeCardImageCleanupPending: true }) : ok();
 });

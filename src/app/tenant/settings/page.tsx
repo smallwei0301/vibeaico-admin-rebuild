@@ -154,8 +154,12 @@ export default function SettingsPage() {
   ) => {
     setSavingSection(section);
     try {
-      await saveTenantSettings(patch);
-      toast.show(successMessage);
+      const result = await saveTenantSettings(patch);
+      if (result?.welcomeCardImageCleanupPending) {
+        toast.show(t.notification.welcomeCardImageCleanupPending, 'warning');
+      } else {
+        toast.show(successMessage);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -254,12 +258,14 @@ export default function SettingsPage() {
     const previousUrl = draft.notify.welcomeCardImageUrl;
     setWelcomeImageBusy(true);
     let uploadedUrl = '';
+    let cleanupPending = false;
     try {
       const { url } = await uploadImage(file, 'welcome-card-images');
       uploadedUrl = url;
       const notify = { ...draft.notify, welcomeCardImageUrl: url };
       try {
-        await saveTenantSettings({ notify });
+        const result = await saveTenantSettings({ notify });
+        cleanupPending = result?.welcomeCardImageCleanupPending === true;
       } catch (error) {
         // The upload and settings write are separate resources. If the DB
         // write fails, remove the new object before showing failure.
@@ -267,14 +273,21 @@ export default function SettingsPage() {
         throw error;
       }
       if (previousUrl && previousUrl !== url) {
-        await removeWelcomeCardImageAsset(previousUrl).catch(() => undefined);
+        try {
+          await removeWelcomeCardImageAsset(previousUrl);
+        } catch {
+          cleanupPending = true;
+        }
       }
       setDraft((current) =>
         current
           ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: url } }
           : current,
       );
-      toast.show(t.notification.welcomeCardImageUpdated);
+      toast.show(
+        cleanupPending ? t.notification.welcomeCardImageCleanupPending : t.notification.welcomeCardImageUpdated,
+        cleanupPending ? 'warning' : undefined,
+      );
     } catch (e) {
       toast.show(
         `${t.notification.validation.uploadFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -289,16 +302,27 @@ export default function SettingsPage() {
     if (!draft || welcomeImageBusy) return;
     const previousUrl = draft.notify.welcomeCardImageUrl;
     setWelcomeImageBusy(true);
+    let cleanupPending = false;
     try {
       const notify = { ...draft.notify, welcomeCardImageUrl: '' };
-      await saveTenantSettings({ notify });
-      if (previousUrl) await removeWelcomeCardImageAsset(previousUrl).catch(() => undefined);
+      const result = await saveTenantSettings({ notify });
+      cleanupPending = result?.welcomeCardImageCleanupPending === true;
+      if (previousUrl) {
+        try {
+          await removeWelcomeCardImageAsset(previousUrl);
+        } catch {
+          cleanupPending = true;
+        }
+      }
       setDraft((current) =>
         current
           ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: '' } }
           : current,
       );
-      toast.show(t.notification.welcomeCardImageRemoved);
+      toast.show(
+        cleanupPending ? t.notification.welcomeCardImageCleanupPending : t.notification.welcomeCardImageRemoved,
+        cleanupPending ? 'warning' : undefined,
+      );
     } catch (e) {
       toast.show(
         `${t.notification.validation.removeFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,

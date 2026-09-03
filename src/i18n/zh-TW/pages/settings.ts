@@ -290,6 +290,7 @@ export const settingsPage = {
     welcomeCardImageRemove: '移除圖片',
     welcomeCardImageUpdated: '歡迎卡片圖片已更新',
     welcomeCardImageRemoved: '已移除歡迎卡片圖片',
+    welcomeCardImageCleanupPending: '設定已儲存，但舊圖片清理尚未完成，請稍後再試',
     welcomeFeatureListText: '歡迎卡片功能介紹清單（自訂）',
     welcomeFeatureListTextPlaceholder: '一行一項，例：預約到店試穿',
     welcomeFeatureListTextHelp:

@@ -79,6 +79,7 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     const body = (await res.json()) as { success: boolean; data?: { url: string } };
     expect(body.success).toBe(true);
     const url = body.data?.url ?? '';
+    const aliasedUrl = `${url}?cache=alias`;
     const marker = `/object/public/${BUCKET}/`;
     expect(url).toContain(`/${BUCKET}/${SHOP_A.id}/`);
     expect(url).toContain(marker);
@@ -101,7 +102,7 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
       .from('tenant_settings')
       .upsert({
         tenant_id: SHOP_A.id,
-        notify: { ...previousNotify, welcomeCardImageUrl: url },
+        notify: { ...previousNotify, welcomeCardImageUrl: aliasedUrl },
       }, { onConflict: 'tenant_id' });
     expect(referenceError).toBeNull();
 
@@ -109,7 +110,7 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
       const referencedRemove = await ownerA.fetch('/api/upload', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bucket: BUCKET, url }),
+        body: JSON.stringify({ bucket: BUCKET, url: aliasedUrl }),
       });
       expect(referencedRemove.status).toBe(200);
       expect((await referencedRemove.json()).data).toEqual({ removed: false });
@@ -139,7 +140,7 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     const remove = await ownerA.fetch('/api/upload', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bucket: BUCKET, url }),
+      body: JSON.stringify({ bucket: BUCKET, url: aliasedUrl }),
     });
     expect(remove.status).toBe(200);
     expect((await remove.json()).data).toEqual({ removed: true });

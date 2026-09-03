@@ -6,6 +6,7 @@ import { createAdminSupabase } from '@/server/supabase';
 import {
   removeWelcomeCardImage,
   tenantOwnedPublicStoragePath,
+  tenantOwnedPublicStorageUrl,
   WELCOME_CARD_BUCKET,
 } from '@/server/storage';
 
@@ -86,7 +87,8 @@ export const DELETE = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const body = deleteBodySchema.parse(await req.json());
   const path = tenantOwnedPublicStoragePath(body.url, body.bucket, t.tenantId);
-  if (!path) return ok({ removed: false });
+  const canonicalUrl = tenantOwnedPublicStorageUrl(body.url, body.bucket, t.tenantId);
+  if (!path || !canonicalUrl) return ok({ removed: false });
 
   // A cleanup retry must not delete an object that a concurrent manager has
   // already made current again. The settings PUT performs the same check
@@ -98,8 +100,13 @@ export const DELETE = handle(async (req) => {
     .maybeSingle();
   if (settingsError) throw settingsError;
   const currentNotify = settingsRow?.notify as Record<string, unknown> | null | undefined;
-  if (currentNotify?.welcomeCardImageUrl === body.url) return ok({ removed: false });
+  const currentUrl =
+    typeof currentNotify?.welcomeCardImageUrl === 'string'
+      ? tenantOwnedPublicStorageUrl(currentNotify.welcomeCardImageUrl, body.bucket, t.tenantId) ??
+        currentNotify.welcomeCardImageUrl
+      : '';
+  if (currentUrl === canonicalUrl) return ok({ removed: false });
 
-  const removed = await removeWelcomeCardImage(body.url, t.tenantId);
+  const removed = await removeWelcomeCardImage(canonicalUrl, t.tenantId);
   return ok({ removed });
 });
