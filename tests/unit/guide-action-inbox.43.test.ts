@@ -6,11 +6,15 @@ import {
   basicSettingsSchema,
 } from '@/config/tenant-settings';
 import {
+  getGuideActionInboxDateWindow,
+  getGuideDepartureDueAt,
+  getGuideDepartureDay,
   getGuideActionInboxPriority,
   normalizeGuideTimeZone,
   sortGuideActionInboxItems,
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
+import { getGuideActionInbox } from '@/services/guide-action-inbox';
 
 const apiSource = readFileSync(
   resolve(process.cwd(), 'src/app/api/guide/action-inbox/route.ts'),
@@ -25,7 +29,7 @@ const pageSource = readFileSync(
   'utf8',
 );
 
-describe('GUIDE action inbox (#43-A)', () => {
+describe('GUIDE action inbox (#43-A / #43-B)', () => {
   it('prioritizes overdue, tenant-today, and future pending work', () => {
     const now = new Date('2026-09-02T04:00:00.000Z'); // 12:00 Asia/Taipei
 
@@ -65,15 +69,75 @@ describe('GUIDE action inbox (#43-A)', () => {
     })).toThrow();
   });
 
+  it('limits departure items to today/tomorrow in the tenant timezone', () => {
+    const now = new Date('2026-09-02T04:00:00.000Z'); // 12:00 Asia/Taipei
+    const window = getGuideActionInboxDateWindow(now, 'Asia/Taipei');
+
+    expect(getGuideDepartureDay(window.today, now, 'Asia/Taipei')).toBe('TODAY');
+    expect(getGuideDepartureDay(window.tomorrow, now, 'Asia/Taipei')).toBe('TOMORROW');
+    expect(getGuideDepartureDay('2026-09-04', now, 'Asia/Taipei')).toBeNull();
+  });
+
+  it('sorts mixed booking and departure work by the tenant-local instant', () => {
+    const departureDueAt = getGuideDepartureDueAt('2026-09-02', '17:00', 'Asia/Taipei');
+    expect(departureDueAt).toBe('2026-09-02T09:00:00.000Z');
+
+    const booking: GuideActionInboxItem = {
+      id: 'booking',
+      kind: 'BOOKING_REQUEST',
+      bookingNo: 'booking',
+      customerName: '顧客',
+      serviceName: '服務',
+      priority: 'TODAY',
+      dueAt: '2026-09-02T08:30:00.000Z',
+      createdAt: '2026-09-02T00:00:00.000Z',
+      href: '/tenant/bookings?status=PENDING',
+    };
+    const departure: GuideActionInboxItem = {
+      id: 'departure',
+      kind: 'DEPARTURE',
+      tripId: 'trip',
+      tripName: '行程',
+      planName: '方案',
+      departureDate: '2026-09-02',
+      startTime: '17:00',
+      capacity: 10,
+      seatsBooked: 2,
+      departureDay: 'TODAY',
+      priority: 'TODAY',
+      dueAt: departureDueAt,
+      createdAt: '2026-09-02T00:00:00.000Z',
+      href: '/tenant/trips/trip',
+    };
+
+    expect(sortGuideActionInboxItems([departure, booking]).map((item) => item.id))
+      .toEqual(['booking', 'departure']);
+  });
+
+  it('keeps mock GUIDE mode useful by exposing two actionable departures', async () => {
+    const items = await getGuideActionInbox();
+    const departures = items.filter((item) => item.kind === 'DEPARTURE');
+
+    expect(departures).toHaveLength(2);
+    expect(departures.map((item) => item.departureDay)).toEqual(['TODAY', 'TOMORROW']);
+    expect(departures.every((item) => item.href.startsWith('/tenant/trips/'))).toBe(true);
+  });
+
   it('reads only tenant-scoped pending bookings and the tenant timezone', () => {
     expect(apiSource).toContain(".from('bookings_view')");
     expect(apiSource).toContain(".eq('tenant_id', t.tenantId)");
     expect(apiSource).toContain(".eq('status', 'PENDING')");
+    expect(apiSource).toContain(".from('trip_departures')");
+    expect(apiSource).toContain(".eq('tenant_id', t.tenantId)");
+    expect(apiSource).toContain(".in('status', ['OPEN', 'CLOSED'])");
+    expect(apiSource).toContain('getGuideDepartureDay');
+    expect(apiSource).toContain('getGuideDepartureDueAt');
     expect(apiSource).toContain(".from('tenant_settings')");
     expect(apiSource).toContain(".select('basic')");
     expect(apiSource).toContain('normalizeGuideTimeZone');
     expect(apiSource).toContain("href: '/tenant/bookings?status=PENDING'");
     expect(serviceSource).toContain("request<GuideActionInboxItem[]>('/api/guide/action-inbox')");
+    expect(serviceSource).toContain("kind: 'DEPARTURE'");
   });
 
   it('shows the slice only in GUIDE mode and renders a mobile-safe action', () => {
@@ -82,6 +146,8 @@ describe('GUIDE action inbox (#43-A)', () => {
     expect(pageSource).not.toContain("if (businessType !== 'GUIDE') return;");
     expect(pageSource).toContain('setActionInbox([])');
     expect(pageSource).toContain('getGuideActionInbox');
+    expect(pageSource).toContain("item.kind === 'BOOKING_REQUEST'");
+    expect(pageSource).toContain('departureDay');
     expect(pageSource).toContain('w-full flex-shrink-0 sm:w-auto');
   });
 });

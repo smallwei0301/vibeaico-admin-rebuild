@@ -49,16 +49,24 @@ export const dashboardPage = {
     title: '待處理事項',
     bookingRequest: '待確認預約',
     bookingAt: '預約時間',
+    departure: '出發團次',
+    departureAt: '出發時間',
+    departureDay: {
+      TODAY: '今日出發',
+      TOMORROW: '明日出發',
+    },
+    departureSeats: (booked: number, capacity: number) => `${booked}/${capacity} 人已報名`,
     priority: {
       IMMEDIATE: '需要立即處理',
       TODAY: '今天處理',
       UPCOMING: '即將到來',
     },
     open: '查看並處理',
-    viewAll: '查看全部',
+    openDeparture: '查看團次',
+    viewBookings: '查看待確認預約',
     count: (n: number) => `${n} 筆`,
     loading: '載入待處理事項中…',
-    empty: '目前沒有待確認預約',
+    empty: '目前沒有待處理事項',
   },
 
   /* ------------------------------------------------------------ 頁面警示區 */
