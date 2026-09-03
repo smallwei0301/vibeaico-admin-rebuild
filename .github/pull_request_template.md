@@ -8,6 +8,20 @@ supersedes:
 
 <!-- Explain the smallest Product or governance outcome. -->
 
+## Delivery Unit boundary
+
+<!-- Product PRs point lifecycle issue: at one closable SLICE／STANDALONE Issue, not a multi-outcome Epic. Governance PRs use GOVERNANCE and do not claim shipped Product output. -->
+
+- DELIVERY_UNIT_TYPE: SLICE | STANDALONE | EPIC | GOVERNANCE
+- PARENT_EPIC: none | #number
+- COUNT_IN_DELIVERY_OUTCOME: true | false
+- RETROACTIVE_TRACKING_MIGRATION: true | false
+- USER_VISIBLE_OUTCOME: none | <!-- one concise, independently usable result -->
+
+`EPIC`、`GOVERNANCE` and `RETROACTIVE_TRACKING_MIGRATION=true` must use
+`COUNT_IN_DELIVERY_OUTCOME=false`. A parent Epic may remain open after one child Slice closes, but the
+parent and already-counted child Slices must never be counted as duplicate Product output.
+
 ## B+ Agent lane metadata
 
 <!-- Keep exact FIELD: value lines. The WIP Guard parses them. -->
@@ -65,7 +79,9 @@ single `SHARED_CANONICAL` gate. A paid branch requires a future explicit Owner D
 - Primary Issue: #
 - Changed files / boundaries:
 - Intentionally out of scope:
-- [ ] One clear Issue or tightly coupled governance scope.
+- [ ] One clear Delivery Slice／standalone Issue or tightly coupled governance scope.
+- [ ] A Product PR lifecycle `issue:` points to its closable Slice／standalone Issue; a parent Epic is recorded separately.
+- [ ] EPIC／GOVERNANCE／retroactive tracking work does not claim a shipped unit.
 - [ ] Active Agent governance PR stays at or below 8 files and 800 changed lines, unless a trusted Owner Decision for this exact branch is recorded.
 - [ ] Does not duplicate another active implementation PR.
 - [ ] If dual Terra, both PRs use the same Run ID but different slot、Issue、TEST_ENV_ID and FILE_OWNERSHIP.
@@ -113,10 +129,14 @@ A workflow conclusion of success does not prove a skipped local／integration／
 `VERIFIED_MERGED` until the PR is re-fetched, the merge commit is reachable from main, and a key file is
 re-read with `ref=main`.
 
+For a Product delivery claim, re-read the live Issue body and require
+`DELIVERY_UNIT_TYPE=SLICE|STANDALONE`、`COUNT_IN_DELIVERY_OUTCOME=true` and
+`RETROACTIVE_TRACKING_MIGRATION=false`. Epic closeout uses a non-delivery claim and adds no shipped unit.
+
 ## Delivery Outcome v2
 
-- Shipped units: <!-- live-verified closed Issues only -->
-- Autonomous outcome units: <!-- closed + verified complete Owner-blocked -->
+- Shipped units: <!-- live-verified closed, eligible Delivery Slice／standalone Issues only -->
+- Autonomous outcome units: <!-- eligible closed + verified complete Owner-blocked -->
 - WIP inventory: <!-- Audit Ready + CI-only + commit-only + carryover -->
 - Weighted usage / shipped unit: null | <!-- only when shipped_units >= 1 -->
 - Weighted usage / autonomous outcome: null | <!-- only when denominator >= 1 -->
