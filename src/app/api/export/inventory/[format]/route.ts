@@ -25,7 +25,13 @@ function taipeiDateTime(iso: string): string {
 }
 
 function csvCell(value: string | number | null | undefined): string {
-  const text = value == null ? '' : String(value);
+  const raw = value == null ? '' : String(value);
+  // Product names and free-form reasons are spreadsheet-controlled cells.
+  // Prefix risky strings so Excel/Sheets display them as text instead of
+  // evaluating attacker-controlled formulas. Numeric quantities stay numeric.
+  const text = typeof value === 'string' && /^[\t\r\n ]*[=+\-@]/.test(raw)
+    ? `'${raw}`
+    : raw;
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 

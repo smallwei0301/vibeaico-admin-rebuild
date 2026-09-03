@@ -104,7 +104,7 @@ beforeAll(async () => {
       product_id: productA,
       delta: -1,
       stock_after: 7,
-      reason: '沒有前綴的隨手備註',
+      reason: '=SUM(1,1)',
     },
     {
       tenant_id: SHOP_B.id,
@@ -157,7 +157,7 @@ describe('GET /api/export/inventory/csv (#150)', () => {
     expect(damage![7]).toBe('系統');
   });
 
-  it('applies the current product and type filters', async () => {
+  it('applies current filters and neutralizes spreadsheet formulas', async () => {
     const response = await ownerA.get(
       `/api/export/inventory/csv?productId=${productA}&type=MANUAL`,
     );
@@ -165,7 +165,7 @@ describe('GET /api/export/inventory/csv (#150)', () => {
     const rows = rowsFor(await response.text(), productNameA);
     expect(rows).toHaveLength(1);
     expect(rows[0][2]).toBe('手動調整');
-    expect(rows[0][6]).toBe('沒有前綴的隨手備註');
+    expect(rows[0][6]).toBe("'=SUM(1,1)");
   });
 
   it('rejects unsupported formats and unknown types', async () => {
