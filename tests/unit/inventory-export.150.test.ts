@@ -43,4 +43,12 @@ describe('inventory export slice #150', () => {
     expect(route).toContain("'Cache-Control': 'no-store'");
     expect(route).not.toContain('.xlsx');
   });
+
+  it('pages through large result sets instead of silently trusting one response', () => {
+    expect(route).toContain('const EXPORT_PAGE_SIZE = 1000;');
+    expect(route).toContain('for (let from = 0; ; from += EXPORT_PAGE_SIZE)');
+    expect(route).toContain('.order(\'id\', { ascending: false })');
+    expect(route).toContain('.range(from, from + EXPORT_PAGE_SIZE - 1)');
+    expect(route).toContain('if (pageRows.length < EXPORT_PAGE_SIZE) break;');
+  });
 });

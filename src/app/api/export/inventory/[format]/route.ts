@@ -11,6 +11,7 @@ import {
 import { inventoryPage } from '@/i18n/zh-TW/pages/inventory';
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const EXPORT_PAGE_SIZE = 1000;
 
 const querySchema = z.object({
   productId: z.string().uuid().optional(),
@@ -56,18 +57,28 @@ export const GET = handle(async (req, { params }) => {
   }
 
   const queryParams = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
+  const data: any[] = [];
 
-  let query = tenant.supabase
-    .from('inventory_logs')
-    .select('*, products(name)')
-    .eq('tenant_id', tenant.tenantId)
-    .order('created_at', { ascending: false });
-  if (queryParams.productId) query = query.eq('product_id', queryParams.productId);
+  // PostgREST deployments may cap one response. Page deterministically so a
+  // large export is not silently truncated at the server's per-request cap.
+  for (let from = 0; ; from += EXPORT_PAGE_SIZE) {
+    let query = tenant.supabase
+      .from('inventory_logs')
+      .select('*, products(name)')
+      .eq('tenant_id', tenant.tenantId)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(from, from + EXPORT_PAGE_SIZE - 1);
+    if (queryParams.productId) query = query.eq('product_id', queryParams.productId);
 
-  const { data, error } = await query;
-  if (error) throw error;
+    const { data: page, error } = await query;
+    if (error) throw error;
+    const pageRows = page ?? [];
+    data.push(...pageRows);
+    if (pageRows.length < EXPORT_PAGE_SIZE) break;
+  }
 
-  const rows = (data ?? [])
+  const rows = data
     .map(mapInventoryLog)
     .filter((log) => !queryParams.type || log.type === queryParams.type);
 
