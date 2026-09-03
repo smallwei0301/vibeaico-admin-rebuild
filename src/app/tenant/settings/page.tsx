@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
-import { uploadImage } from '@/services/upload';
+import { removeWelcomeCardImage as removeWelcomeCardImageAsset, uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -251,11 +251,24 @@ export default function SettingsPage() {
 
   const uploadWelcomeCardImage = async (file: File) => {
     if (!draft || welcomeImageBusy) return;
+    const previousUrl = draft.notify.welcomeCardImageUrl;
     setWelcomeImageBusy(true);
+    let uploadedUrl = '';
     try {
       const { url } = await uploadImage(file, 'welcome-card-images');
+      uploadedUrl = url;
       const notify = { ...draft.notify, welcomeCardImageUrl: url };
-      await saveTenantSettings({ notify });
+      try {
+        await saveTenantSettings({ notify });
+      } catch (error) {
+        // The upload and settings write are separate resources. If the DB
+        // write fails, remove the new object before showing failure.
+        await removeWelcomeCardImageAsset(uploadedUrl).catch(() => undefined);
+        throw error;
+      }
+      if (previousUrl && previousUrl !== url) {
+        await removeWelcomeCardImageAsset(previousUrl).catch(() => undefined);
+      }
       setDraft((current) =>
         current
           ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: url } }
@@ -274,10 +287,12 @@ export default function SettingsPage() {
 
   const removeWelcomeCardImage = async () => {
     if (!draft || welcomeImageBusy) return;
+    const previousUrl = draft.notify.welcomeCardImageUrl;
     setWelcomeImageBusy(true);
     try {
       const notify = { ...draft.notify, welcomeCardImageUrl: '' };
       await saveTenantSettings({ notify });
+      if (previousUrl) await removeWelcomeCardImageAsset(previousUrl).catch(() => undefined);
       setDraft((current) =>
         current
           ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: '' } }

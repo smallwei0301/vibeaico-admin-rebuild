@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+import { removeWelcomeCardImage } from '@/server/storage';
 import { decryptSecret } from '@/server/crypto';
 import {
   basicSettingsSchema, businessSettingsSchema, notifySettingsSchema,
@@ -68,6 +69,21 @@ export const PUT = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const b = bodySchema.parse(await req.json());
 
+  let previousWelcomeCardImageUrl = '';
+  if (b.notify) {
+    const { data: currentRow, error: currentError } = await t.supabase
+      .from('tenant_settings')
+      .select('notify')
+      .eq('tenant_id', t.tenantId)
+      .maybeSingle();
+    if (currentError) throw currentError;
+    const currentNotify = currentRow?.notify as Record<string, unknown> | null | undefined;
+    previousWelcomeCardImageUrl =
+      typeof currentNotify?.welcomeCardImageUrl === 'string'
+        ? currentNotify.welcomeCardImageUrl
+        : '';
+  }
+
   if (b.basic && b.basic.shopCode !== t.shopCode) {
     // ⚠️ 查重必須用 service role：RLS 下使用者只看得到自己所屬店家的
     // tenants 列，用 t.supabase 查別店的 shop_code 永遠查不到（整合測試
@@ -107,6 +123,34 @@ export const PUT = handle(async (req) => {
       .from('tenant_settings')
       .upsert({ tenant_id: t.tenantId, ...update }, { onConflict: 'tenant_id' });
     if (error) throw error;
+  }
+
+  if (b.notify) {
+    const nextWelcomeCardImageUrl = b.notify.welcomeCardImageUrl;
+    if (previousWelcomeCardImageUrl && previousWelcomeCardImageUrl !== nextWelcomeCardImageUrl) {
+      // The DB reference is already truthful. Cleanup is best-effort because
+      // Storage and Postgres cannot share one transaction; a failure must not
+      // report a false settings failure after the new URL has been persisted.
+      try {
+        const { data: currentRow, error: currentError } = await createAdminSupabase()
+          .from('tenant_settings')
+          .select('notify')
+          .eq('tenant_id', t.tenantId)
+          .maybeSingle();
+        if (currentError) throw currentError;
+        const currentNotify = currentRow?.notify as Record<string, unknown> | null | undefined;
+        const currentUrl =
+          typeof currentNotify?.welcomeCardImageUrl === 'string'
+            ? currentNotify.welcomeCardImageUrl
+            : '';
+        // Do not delete an object that a concurrent manager update restored.
+        if (currentUrl !== previousWelcomeCardImageUrl) {
+          await removeWelcomeCardImage(previousWelcomeCardImageUrl, t.tenantId);
+        }
+      } catch (error) {
+        console.error('[settings] welcome-card image cleanup failed', t.tenantId, error);
+      }
+    }
   }
 
   return ok();

@@ -26,3 +26,13 @@ export const uploadImage = (file: File, bucket: UploadBucket) =>
       });
     },
   );
+
+/** Remove a previously uploaded welcome-card image after its DB reference changes. */
+export const removeWelcomeCardImage = (url: string) =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/upload', {
+      method: 'DELETE',
+      body: JSON.stringify({ bucket: 'welcome-card-images', url }),
+    }),
+  );

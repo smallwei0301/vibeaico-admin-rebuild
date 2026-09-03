@@ -1,7 +1,7 @@
 /** #28⑥：歡迎卡片圖片上傳必須真的落到 tenant-scoped storage。 */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SHOP_A } from '../../fixtures';
+import { SHOP_A, STAFF_A2 } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -13,6 +13,7 @@ const PNG_1X1 = Buffer.from(
 
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
+let staffA: AuthedApi;
 let uploadedPath: string | null = null;
 
 function pngFile(): File {
@@ -26,6 +27,7 @@ beforeAll(async () => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
+  staffA = await loginAs(STAFF_A2.email, STAFF_A2.password);
 });
 
 afterAll(async () => {
@@ -36,6 +38,17 @@ afterAll(async () => {
 });
 
 describe('POST /api/upload welcome-card-images (#28⑥)', () => {
+  it('rejects STAFF before creating a welcome-card object', async () => {
+    const form = new FormData();
+    form.append('file', pngFile());
+    form.append('bucket', BUCKET);
+    const res = await staffA.fetch('/api/upload', { method: 'POST', body: form });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { success: boolean; code?: string };
+    expect(body.success).toBe(false);
+    expect(body.code).toBe('AUTH_005');
+  });
+
   it('requires auth and stores a tenant-prefixed image', async () => {
     const unauthenticated = await fetch(`${BASE_URL}/api/upload`, {
       method: 'POST',
@@ -66,5 +79,18 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     expect(error).toBeNull();
     expect(blob).not.toBeNull();
     expect(Buffer.from(await blob!.arrayBuffer())).toEqual(PNG_1X1);
+
+    const remove = await ownerA.fetch('/api/upload', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bucket: BUCKET, url }),
+    });
+    expect(remove.status).toBe(200);
+    expect((await remove.json()).data).toEqual({ removed: true });
+
+    const deleted = await admin.storage.from(BUCKET).download(uploadedPath);
+    expect(deleted.data).toBeNull();
+    expect(deleted.error).not.toBeNull();
+    uploadedPath = null;
   });
 });

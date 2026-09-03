@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+import {
+  removeWelcomeCardImage,
+  tenantOwnedPublicStoragePath,
+  WELCOME_CARD_BUCKET,
+} from '@/server/storage';
 
 /**
  * POST /api/upload —— 頁面用圖片統一上傳端點（07 分冊 §3）。
@@ -32,7 +38,7 @@ const ALLOWED_TYPES: Record<string, string> = {
 };
 
 export const POST = handle(async (req) => {
-  const t = await requireTenant();
+  const member = await requireTenant();
 
   const form = await req.formData().catch(() => {
     throw new ApiHttpError(400, '請以 multipart/form-data 上傳圖片', ERR.VALIDATION);
@@ -44,6 +50,10 @@ export const POST = handle(async (req) => {
     throw new ApiHttpError(400, '缺少圖片檔案（欄位名 file）', ERR.VALIDATION);
   if (typeof bucket !== 'string' || !ALLOWED_BUCKETS.has(bucket))
     throw new ApiHttpError(400, '不允許的 bucket', ERR.VALIDATION);
+
+  // Welcome-card settings and its public assets are manager-owned. Keep the
+  // historical upload permissions for the other buckets unchanged.
+  const t = bucket === WELCOME_CARD_BUCKET ? await requireTenant('MANAGER') : member;
 
   const ext = ALLOWED_TYPES[file.type];
   if (!ext)
@@ -60,4 +70,24 @@ export const POST = handle(async (req) => {
 
   const { data } = admin.storage.from(bucket).getPublicUrl(path);
   return ok({ url: data.publicUrl });
+});
+
+const deleteBodySchema = z.object({
+  bucket: z.literal(WELCOME_CARD_BUCKET),
+  url: z.string(),
+});
+
+/**
+ * DELETE /api/upload —— clean up one tenant-owned welcome-card object.
+ * Invalid, external, or cross-tenant URLs are harmless no-ops; callers can
+ * still persist the settings change without gaining arbitrary storage access.
+ */
+export const DELETE = handle(async (req) => {
+  const t = await requireTenant('MANAGER');
+  const body = deleteBodySchema.parse(await req.json());
+  const path = tenantOwnedPublicStoragePath(body.url, body.bucket, t.tenantId);
+  if (!path) return ok({ removed: false });
+
+  await removeWelcomeCardImage(body.url, t.tenantId);
+  return ok({ removed: true });
 });

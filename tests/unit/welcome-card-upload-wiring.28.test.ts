@@ -24,7 +24,7 @@ describe('welcome card image upload #28⑥', () => {
       page.indexOf('const uploadWelcomeCardImage'),
       page.indexOf('const removeWelcomeCardImage'),
     );
-    expect(page).toContain("import { uploadImage } from '@/services/upload';");
+    expect(page).toContain("uploadImage } from '@/services/upload';");
     expect(upload).toContain("await uploadImage(file, 'welcome-card-images')");
     expect(upload).toContain('const notify = { ...draft.notify, welcomeCardImageUrl: url };');
     expect(upload).toContain('await saveTenantSettings({ notify });');
@@ -32,6 +32,7 @@ describe('welcome card image upload #28⑥', () => {
       upload.indexOf('toast.show(t.notification.welcomeCardImageUpdated)'),
     );
     expect(upload).toContain("t.notification.validation.uploadFailedPrefix");
+    expect(upload).toContain('await removeWelcomeCardImageAsset(uploadedUrl)');
   });
 
   it('persists removal before showing the removal confirmation', () => {
@@ -45,6 +46,7 @@ describe('welcome card image upload #28⑥', () => {
       remove.indexOf('toast.show(t.notification.welcomeCardImageRemoved)'),
     );
     expect(remove).toContain("t.notification.validation.removeFailedPrefix");
+    expect(remove).toContain('await removeWelcomeCardImageAsset(previousUrl)');
   });
 
   it('keeps the bucket allowlist and storage policy aligned', () => {
@@ -53,5 +55,9 @@ describe('welcome card image upload #28⑥', () => {
     expect(migration).toContain("'welcome-card-images', 'welcome-card-images', true");
     expect(migration).toContain("bucket_id in (");
     expect(migration).toContain("'welcome-card-images'");
+    expect(route).toContain("await requireTenant('MANAGER')");
+    expect(route).toContain('tenantOwnedPublicStoragePath');
+    expect(route).toContain('export const DELETE');
+    expect(migration).toContain("tenant_role_at_least((storage.foldername(name))[1]::uuid, 'MANAGER')");
   });
 });
