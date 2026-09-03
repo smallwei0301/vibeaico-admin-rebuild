@@ -1,7 +1,9 @@
 /**
  * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次。
- * #43-B 透過既有團次 API 建立短命測試資料，測畢以 service role 清理並驗證
- * 不跨租戶；不新增 schema、狀態機或其他外部副作用。
+ * #43-B 透過 TEST service role 建立短命測試資料，測畢清理並驗證
+ * 不跨租戶；不新增 schema、狀態機或其他外部副作用。使用 service role 是因為
+ * local TEST 的 #41 overlay 會要求新團次明確帶合法 formation_deadline_at，而
+ * 既有公開建立端點沒有暴露這個 bounded 欄位；本測試只驗證 action inbox 讀取路徑。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -80,17 +82,20 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B）', () => {
   it('回傳今天與明日團次的白話資料與正確 deep link', async () => {
     const { today, tomorrow } = getGuideActionInboxDateWindow(new Date(), 'Asia/Taipei');
     const createDeparture = async (departsOn: string, startTime: string) => {
-      const res = await ownerA.post(`/api/trips/${TRIP_A.id}/departures`, {
-        planId: TRIP_A.planA1,
-        departsOn,
-        startTime,
+      const { data, error } = await admin.from('trip_departures').insert({
+        tenant_id: SHOP_A.id,
+        trip_id: TRIP_A.id,
+        plan_id: TRIP_A.planA1,
+        departs_on: departsOn,
+        start_time: startTime,
         capacity: 10,
-      });
-      expect(res.status).toBe(200);
-      const body = await readJson<{ id: string }>(res);
-      expect(body.success).toBe(true);
-      temporaryDepartureIds.push(body.data!.id);
-      return body.data!.id;
+        status: 'OPEN',
+        formation_deadline_at: new Date(Date.now() + 60_000).toISOString(),
+      }).select('id').single();
+      expect(error).toBeNull();
+      expect(data?.id).toBeTruthy();
+      temporaryDepartureIds.push(data!.id);
+      return data!.id;
     };
 
     const todayId = await createDeparture(today, '23:58');
