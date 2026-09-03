@@ -5,7 +5,7 @@ import { MOCK_BOOKINGS } from '@/mock';
 export type BookingQuery = {
   page?: number; size?: number; status?: BookingStatus | '';
   paymentStatus?: PaymentStatus | '';
-  keyword?: string; from?: string; to?: string; staffId?: string;
+  keyword?: string; from?: string; to?: string; staffId?: string; bookingId?: string;
 };
 
 export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
@@ -13,6 +13,7 @@ export function listBookings(q: BookingQuery = {}): Promise<Paged<Booking>> {
     () => {
       const page = q.page ?? 0, size = q.size ?? 20;
       let rows = MOCK_BOOKINGS;
+      if (q.bookingId) rows = rows.filter((b) => b.id === q.bookingId);
       if (q.status) rows = rows.filter((b) => b.status === q.status);
       if (q.paymentStatus) rows = rows.filter((b) => b.paymentStatus === q.paymentStatus);
       if (q.staffId) rows = rows.filter((b) => b.staffId === q.staffId);

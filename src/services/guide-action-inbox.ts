@@ -10,8 +10,10 @@ import {
 import { MOCK_BOOKINGS } from '@/mock';
 import { MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } from '@/mock/tours';
 
-const BOOKING_INBOX_HREF = '/tenant/bookings?status=PENDING';
-const BOOKING_PAYMENT_INBOX_HREF = '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID';
+const bookingRequestHref = (id: string) =>
+  `/tenant/bookings?status=PENDING&bookingId=${encodeURIComponent(id)}`;
+const bookingPaymentHref = (id: string) =>
+  `/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=${encodeURIComponent(id)}`;
 
 /**
  * GUIDE 首頁目前可自主完成的 action inbox slice：既有待確認與待收款預約。
@@ -37,7 +39,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             priority: getGuideActionInboxPriority(dueAt, new Date(now)),
             dueAt,
             createdAt: booking.createdAt,
-            href: BOOKING_INBOX_HREF,
+            href: bookingRequestHref(booking.id),
           };
         });
       const paymentItems: GuideActionInboxItem[] = MOCK_BOOKINGS
@@ -58,7 +60,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             priority: getGuideActionInboxPriority(dueAt, new Date(now)),
             dueAt,
             createdAt: booking.createdAt,
-            href: BOOKING_PAYMENT_INBOX_HREF,
+            href: bookingPaymentHref(booking.id),
           };
         });
       const departureItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES

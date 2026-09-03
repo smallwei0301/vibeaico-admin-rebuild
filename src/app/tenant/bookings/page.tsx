@@ -165,6 +165,8 @@ export default function BookingsPage() {
   const [pointsTarget, setPointsTarget] = React.useState<Booking | null>(null);
   const [markPaidTarget, setMarkPaidTarget] = React.useState<Booking | null>(null);
   const [detailTarget, setDetailTarget] = React.useState<Booking | null>(null);
+  const [requestedBookingId, setRequestedBookingId] = React.useState('');
+  const openedDeepLinkId = React.useRef('');
 
   /* 確認類彈窗 */
   const [confirmTarget, setConfirmTarget] = React.useState<Booking | null>(null);
@@ -176,12 +178,15 @@ export default function BookingsPage() {
 
   const [cancelReason, setCancelReason] = React.useState('');
 
-  /** 原站以 ?status=PENDING / ?status=UNPROCESSED / ?action=create 進入本頁 */
+  /** 原站以 ?status=PENDING / ?status=UNPROCESSED / ?action=create 進入本頁；
+   * action inbox 另帶 bookingId，載入後直接打開該筆詳情。 */
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('status');
     if (s) setStatus(s);
     if (params.get('paymentStatus') === 'UNPAID') setPaymentStatusFilter('UNPAID');
+    const bookingId = params.get('bookingId');
+    if (bookingId) setRequestedBookingId(bookingId);
     if (params.get('action') === 'create') setCreateOpen(true);
   }, []);
 
@@ -199,22 +204,53 @@ export default function BookingsPage() {
         to: endDate || undefined,
       });
 
-      let list = res.content;
+      const applyClientFilters = (items: Booking[]) => {
+        let filtered = items;
+        if (paymentStatusFilter) {
+          filtered = filtered.filter((b) => b.paymentStatus === paymentStatusFilter);
+        }
+        /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
+        if (status === 'UNPROCESSED') {
+          const now = Date.now();
+          filtered = filtered.filter(
+            (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
+          );
+        }
+        if (startDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) >= startDate);
+        if (endDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) <= endDate);
+        if (!showCancelled && status !== 'CANCELLED') {
+          filtered = filtered.filter((b) => b.status !== 'CANCELLED');
+        }
+        return filtered;
+      };
 
-      if (paymentStatusFilter) {
-        list = list.filter((b) => b.paymentStatus === paymentStatusFilter);
-      }
-      /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
-      if (status === 'UNPROCESSED') {
-        const now = Date.now();
-        list = list.filter(
-          (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
-        );
-      }
-      if (startDate) list = list.filter((b) => b.startAt.slice(0, 10) >= startDate);
-      if (endDate) list = list.filter((b) => b.startAt.slice(0, 10) <= endDate);
-      if (!showCancelled && status !== 'CANCELLED') {
-        list = list.filter((b) => b.status !== 'CANCELLED');
+      let list = applyClientFilters(res.content);
+
+      if (requestedBookingId && openedDeepLinkId.current !== requestedBookingId) {
+        let requested = list.find((b) => b.id === requestedBookingId);
+        if (!requested) {
+          /*
+           * The table intentionally loads at most 100 rows before doing its
+           * client-side pagination. A GUIDE action may point at a later row,
+           * so resolve that one booking through the existing tenant-scoped
+           * list API instead of silently failing to open the detail modal.
+           */
+          const exact = await listBookings({
+            page: 0,
+            size: 1,
+            bookingId: requestedBookingId,
+            status: isRealStatus ? (status as BookingStatus) : '',
+            paymentStatus: paymentStatusFilter || undefined,
+            keyword,
+            from: startDate || undefined,
+            to: endDate || undefined,
+          });
+          requested = applyClientFilters(exact.content).find((b) => b.id === requestedBookingId);
+        }
+        if (requested) {
+          setDetailTarget(requested);
+          openedDeepLinkId.current = requestedBookingId;
+        }
       }
 
       const now = Date.now();
@@ -232,7 +268,7 @@ export default function BookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, toast]);
+  }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, requestedBookingId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 

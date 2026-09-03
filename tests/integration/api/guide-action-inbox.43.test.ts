@@ -56,7 +56,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       id: SHOP_A.bookingPending,
       kind: 'BOOKING_REQUEST',
       bookingNo: 'BSEED0001',
-      href: '/tenant/bookings?status=PENDING',
+      href: `/tenant/bookings?status=PENDING&bookingId=${SHOP_A.bookingPending}`,
     });
     expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(pending?.priority);
     expect(pending?.customerName).toBe('顧客 A1（測試）');
@@ -71,7 +71,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       kind: 'BOOKING_PAYMENT',
       bookingNo: 'BSEED0002',
       amount: 800,
-      href: '/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID',
+      href: `/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=${SHOP_A.bookingConfirmed}`,
     });
     expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(payment.priority);
   });
@@ -80,6 +80,26 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     const res = await fetch(`${BASE}/api/guide/action-inbox`);
     expect(res.status).toBe(401);
     expect((await readJson(res)).code).toBe('AUTH_001');
+  });
+
+  it('bookingId deep link 可從分頁列表精確取回同租戶預約', async () => {
+    const res = await ownerA.get(
+      `/api/bookings?bookingId=${SHOP_A.bookingPending}&status=PENDING&size=1&page=0`,
+    );
+    expect(res.status).toBe(200);
+    const body = await readJson<{ totalElements: number; content: Array<{ id: string; status: string }> }>(res);
+    expect(body.success).toBe(true);
+    expect(body.data?.totalElements).toBe(1);
+    expect(body.data?.content).toHaveLength(1);
+    expect(body.data?.content[0]).toMatchObject({ id: SHOP_A.bookingPending, status: 'PENDING' });
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const crossTenant = await ownerB.get(`/api/bookings?bookingId=${SHOP_A.bookingPending}`);
+    expect(crossTenant.status).toBe(200);
+    const crossTenantBody = await readJson<{ totalElements: number; content: unknown[] }>(crossTenant);
+    expect(crossTenantBody.success).toBe(true);
+    expect(crossTenantBody.data?.totalElements).toBe(0);
+    expect(crossTenantBody.data?.content).toEqual([]);
   });
 
   it('SHOP_B 不會看到 SHOP_A 的待確認預約', async () => {
