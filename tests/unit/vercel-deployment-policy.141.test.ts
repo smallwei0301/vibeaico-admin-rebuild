@@ -1,5 +1,5 @@
-import { execFileSync, readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { execFileSync as runFile, spawnSync } from 'node:child_process';
+import { readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -22,7 +22,7 @@ function runIgnore(
 }
 
 function git(cwd: string, ...args: string[]): string {
-  return runFile('git', args, { cwd, encoding: 'utf8' }).trim();
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 }
 
 function commit(cwd: string, message: string): string {
