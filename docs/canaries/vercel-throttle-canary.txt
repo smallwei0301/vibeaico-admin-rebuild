@@ -1,3 +1,0 @@
-Vercel slash-branch throttle canary
-
-This file exists only on product/vercel-throttle-canary to verify that an ordinary slash-bearing branch does not create an automatic Vercel Preview deployment after Issue #141.
