@@ -1,13 +1,9 @@
-/**
- * 庫存異動（/tenant/inventory）文案
- * 表格欄位、異動類型徽章、功能鎖提示與所有 toast 均逐字取自原站 DOM 與 inline JS。
- */
+/** 庫存異動（/tenant/inventory）文案 */
 export const inventoryPage = {
   title: '庫存異動歷史',
   metaTitle: '庫存異動 - 店家後台',
   tableTitle: '異動記錄',
 
-  /* ------------------------------------------------------------------ 表格 */
   columns: {
     time: '時間',
     product: '商品',
@@ -19,7 +15,6 @@ export const inventoryPage = {
     operator: '操作者',
   },
 
-  /* -------------------------------------------------------------- 異動類型 */
   types: {
     PURCHASE_IN: '進貨入庫',
     SALE_OUT: '銷售出庫',
@@ -30,7 +25,6 @@ export const inventoryPage = {
     ORDER_CANCELLED: '訂單取消',
   },
 
-  /* ---------------------------------------------------- 功能訂閱提示（鎖） */
   feature: {
     title: '庫存管理',
     lead: '未訂閱時',
@@ -39,7 +33,6 @@ export const inventoryPage = {
     learnMore: '了解',
   },
 
-  /* ------------------------------------------------------------------ 篩選 */
   filter: {
     typeLabel: '異動類型：',
     typeAll: '全部',
@@ -47,7 +40,6 @@ export const inventoryPage = {
     productAll: '全部',
   },
 
-  /* ------------------------------------------------------------------ 動作 */
   actions: {
     export: '匯出 CSV',
   },
@@ -57,17 +49,15 @@ export const inventoryPage = {
     export: '確定要匯出目前篩選的異動記錄嗎？',
   },
 
-  /* ------------------------------------------------------------------ 訊息 */
   messages: {
     exported: '異動記錄匯出成功',
+    exportedAs: (fileName: string) => `異動記錄匯出成功：${fileName}`,
+    exportNotDownloaded: '示範資料模式不會產生檔案，未匯出任何異動記錄',
+    exportFailedPrefix: '匯出失敗：',
     loadLogsFailed: '載入異動記錄失敗:',
     loadFailed: '載入失敗',
     connectionError: '連線錯誤，請稍後再試',
     unknownError: '未知錯誤',
-  },
-
-  exportFile: {
-    filename: (date: string) => `庫存異動_${date}.csv`,
   },
 
   empty: {
