@@ -1,7 +1,8 @@
 # GUIDE SaaS 方案權益與加購模型
 
-> Owner Direction：2026-09-02
+> Owner Direction：2026-09-02；2026-09-03 補充正式價格骨架
 > 關聯：#48、#118、#120、09-FEATURE-STORE、13-BUSINESS-MODES、19-GUIDE-PRODUCT-EXPERIENCE
+> 定價 canonical：`docs/decisions/2026-09-03-guide-saas-pricing.md`
 
 ## 1. 問題
 
@@ -20,13 +21,15 @@ Owner 最新方向是 **GUIDE SaaS 後台費用＋Midao 前台曝光／推廣** 
 - GUIDE 的「方案／加購」頁應優先呈現目前 SaaS 方案、導遊席次、用量與少量真正加購項。
 - 底層可暫時重用 `feature_subscriptions`／feature code 作相容層，但產品真相必須是「方案權益＋少量 add-on（加購）」，而不是 UI 到處判斷某張 49 點功能卡買了沒有。
 
-## 3. 三層產品架構，不先定正式價格
+## 3. 三層產品架構
 
 ### 3.1 永久體驗方案
 
 Owner 選擇：**A，永久體驗方案＋累積有效訂單上限。**
 
 Owner 2026-09-02 補充選擇：**C，累積有效訂單上限為 30 張。**
+
+價格：**NT$0。**
 
 目的：讓導遊真的把一條接案流程跑起來，再決定是否付費；**不採註冊後 14／30 天倒數失效**。
 
@@ -57,11 +60,13 @@ Owner 2026-09-02 補充選擇：**C，累積有效訂單上限為 30 張。**
 
 ### 3.2 個人 SaaS
 
+Owner 2026-09-03 選擇：**NT$399／月。**
+
 適合一位導遊自己接案與帶團。
 
 產品原則：**一個人正常營運所需的日常能力應完整，而不是再拆成十幾張小額加購卡。**
 
-建議包含：
+包含：
 
 - 1 位 active+bookable 導遊。
 - 完整 GUIDE Trip／Plan／Departure／TourOrder 日常流程。
@@ -78,11 +83,13 @@ Owner 2026-09-02 補充選擇：**C，累積有效訂單上限為 30 張。**
 
 ### 3.3 團隊 SaaS
 
-核心差異優先放在 **active+bookable guide seats（可接案導遊席次）**，而不是另一套 TEAM 模式或把同一功能重做一次。
+Owner 2026-09-03 補充裁示：**NT$799／月，含 5 位 active+bookable 導遊。**
 
-建議：
+核心差異放在 **active+bookable guide seats（可接案導遊席次）**，而不是另一套 TEAM 模式或把同一功能重做一次。
 
-- 2+ 位導遊席次，依正式方案採階梯。
+包含：
+
+- 最多 5 位 active+bookable 導遊席次，包含 owner 本人；停用／歷史人員不占新席次。
 - PRIMARY／ASSISTANT 指派。
 - 團隊可用時間與衝突管理。
 - 團隊篩選、業績／C+ 歸屬。
@@ -90,6 +97,8 @@ Owner 2026-09-02 補充選擇：**C，累積有效訂單上限為 30 張。**
 - 其他真正需要多人協作才有意義的能力。
 
 若團隊降級，歷史人員／訂單／業績不可消失；只限制超額 active+bookable 席次與新的多人操作。
+
+超過 5 位之後的額外席次價格／更高階團隊方案仍待 Owner 決策，不得自行假設每位 NT$399 或其他價格。
 
 ## 4. 哪些能力不可再做 GUIDE 單項付費閘門
 
@@ -135,22 +144,32 @@ GUIDE 額外加購應有清楚理由，優先保留這些類型：
 
 ## 6. GUIDE UI：從「功能商店」改成「方案與加購」
 
-GUIDE 模式建議不要以 22 張功能卡作首頁。
+GUIDE 模式不要以 22 張功能卡作首頁。
 
 在五大入口下：
 
 `更多 → 方案與加購`
 
-第一屏回答：
+第一屏依方案顯示：
 
 ```text
-目前方案
 永久體驗版
+NT$0
 1 / 1 位可接案導遊
 累積有效訂單：X / 30
-[查看方案]
 
-可加購
+個人版
+NT$399 / 月
+1 位可接案導遊
+
+團隊版
+NT$799 / 月
+最多 5 位可接案導遊
+```
+
+另列真正可加購項：
+
+```text
 LINE 額外推播
 AI 使用量
 Midao 曝光／推廣
@@ -205,11 +224,11 @@ SaaS entitlement 不等於 listing／promotion：
 
 以下數字／發布動作仍不自行決定：
 
-- 個人／團隊正式月費／年費。
-- 團隊席次階梯／超額席次價格。
+- 年繳折扣。
+- 超過 5 位後的額外導遊席次價格／更高階團隊方案。
 - AI／LINE 額外額度價格。
 - 是否仍保留點數錢包作某些 add-on 的支付方式。
 - 舊 Feature Store 訂閱如何轉換／折抵新 SaaS。
 - Production subscription billing（正式訂閱扣款）啟用。
 
-在價格未拍板前，可以完成 capability matrix（能力矩陣）、entitlement evaluator、GUIDE UI 原型與相容測試；不得啟動 Production 真實訂閱扣款。
+目前已拍板的基礎月費與席次以 `docs/decisions/2026-09-03-guide-saas-pricing.md` 為準。可先完成 capability matrix（能力矩陣）、entitlement evaluator、GUIDE UI 原型與相容測試；未經 Owner 另行授權，不得啟動 Production 真實訂閱扣款或正式價格頁發布。

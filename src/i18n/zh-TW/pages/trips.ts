@@ -215,6 +215,23 @@ export const tripsPage = {
       count: (n: number) => `${n} 個季節`,
       none: '未設定',
     },
+    quick: {
+      title: '快速編輯方案',
+      createTitle: '新增方案',
+      intro: '只調整最常用的內容；進階販售規則會在後續設定頁處理。',
+      contentLabel: '方案內容',
+      contentPlaceholder: '讓旅客知道這個方案包含什麼。',
+      priceHelp: '目前以每人價格保存。',
+      childPriceToggle: '設定兒童價格',
+      childPriceRemove: '取消兒童價格',
+      activeHelp: '暫停後，這個方案不會提供新的旅客訂單選擇。',
+      previewTitle: '公開頁預覽',
+      previewEmpty: '儲存方案名稱與內容後，這裡會顯示公開頁預覽摘要。',
+      previewLink: '開啟商店頁預覽',
+      advancedHint: '時長、人數、收款與季節等進階設定會在後續切片獨立提供。',
+      save: '儲存快速編輯',
+      saving: '儲存並確認中…',
+    },
   },
 
   /* --------------------------------------------------------------- 季節 */
@@ -349,5 +366,9 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    planNameRequired: '請輸入方案名稱',
+    planPriceInvalid: '請輸入有效的基本價格',
+    planChildPriceInvalid: '請輸入有效的兒童價格',
+    planSaveFailed: '方案儲存失敗，請稍後再試',
   },
 } as const;
