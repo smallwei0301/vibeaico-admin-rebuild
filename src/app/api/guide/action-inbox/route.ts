@@ -2,6 +2,7 @@ import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import {
   getGuideActionInboxDateWindow,
+  getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
   normalizeGuideTimeZone,
@@ -78,6 +79,7 @@ export const GET = handle(async () => {
       const departureDay = getGuideDepartureDay(row.departs_on, now, timeZone);
       if (!departureDay) return null;
       const startTime = row.start_time ? String(row.start_time).slice(0, 5) : '';
+      const departureDate = String(row.departs_on).slice(0, 10);
       const trip = relatedValue(row.trips as RelatedName);
       const plan = relatedValue(row.trip_plans as RelatedName);
       return {
@@ -86,13 +88,13 @@ export const GET = handle(async () => {
         tripId: row.trip_id,
         tripName: trip?.title ?? '',
         planName: plan?.name ?? '',
-        departureDate: String(row.departs_on).slice(0, 10),
+        departureDate,
         startTime,
         capacity: row.capacity,
         seatsBooked: row.seats_booked,
         departureDay,
         priority: departureDay === 'TODAY' ? 'TODAY' : 'UPCOMING',
-        dueAt: `${String(row.departs_on).slice(0, 10)}T${startTime || '00:00'}:00.000Z`,
+        dueAt: getGuideDepartureDueAt(departureDate, startTime || '00:00', timeZone),
         createdAt: row.created_at,
         href: `/tenant/trips/${row.trip_id}`,
       } satisfies GuideActionInboxItem;

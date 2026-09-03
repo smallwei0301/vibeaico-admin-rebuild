@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import {
   getGuideActionInboxDateWindow,
+  getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
   sortGuideActionInboxItems,
@@ -60,7 +61,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             seatsBooked: departure.seatsBooked,
             departureDay,
             priority: departureDay === 'TODAY' ? 'TODAY' : 'UPCOMING',
-            dueAt: `${departureDate}T${startTime}:00.000Z`,
+            dueAt: getGuideDepartureDueAt(departureDate, startTime),
             createdAt: new Date(now).toISOString(),
             href: `/tenant/trips/${departure.tripId}`,
           };

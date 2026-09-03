@@ -7,6 +7,7 @@ import {
 } from '@/config/tenant-settings';
 import {
   getGuideActionInboxDateWindow,
+  getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
   normalizeGuideTimeZone,
@@ -77,6 +78,42 @@ describe('GUIDE action inbox (#43-A / #43-B)', () => {
     expect(getGuideDepartureDay('2026-09-04', now, 'Asia/Taipei')).toBeNull();
   });
 
+  it('sorts mixed booking and departure work by the tenant-local instant', () => {
+    const departureDueAt = getGuideDepartureDueAt('2026-09-02', '17:00', 'Asia/Taipei');
+    expect(departureDueAt).toBe('2026-09-02T09:00:00.000Z');
+
+    const booking: GuideActionInboxItem = {
+      id: 'booking',
+      kind: 'BOOKING_REQUEST',
+      bookingNo: 'booking',
+      customerName: '顧客',
+      serviceName: '服務',
+      priority: 'TODAY',
+      dueAt: '2026-09-02T08:30:00.000Z',
+      createdAt: '2026-09-02T00:00:00.000Z',
+      href: '/tenant/bookings?status=PENDING',
+    };
+    const departure: GuideActionInboxItem = {
+      id: 'departure',
+      kind: 'DEPARTURE',
+      tripId: 'trip',
+      tripName: '行程',
+      planName: '方案',
+      departureDate: '2026-09-02',
+      startTime: '17:00',
+      capacity: 10,
+      seatsBooked: 2,
+      departureDay: 'TODAY',
+      priority: 'TODAY',
+      dueAt: departureDueAt,
+      createdAt: '2026-09-02T00:00:00.000Z',
+      href: '/tenant/trips/trip',
+    };
+
+    expect(sortGuideActionInboxItems([departure, booking]).map((item) => item.id))
+      .toEqual(['booking', 'departure']);
+  });
+
   it('keeps mock GUIDE mode useful by exposing two actionable departures', async () => {
     const items = await getGuideActionInbox();
     const departures = items.filter((item) => item.kind === 'DEPARTURE');
@@ -94,6 +131,7 @@ describe('GUIDE action inbox (#43-A / #43-B)', () => {
     expect(apiSource).toContain(".eq('tenant_id', t.tenantId)");
     expect(apiSource).toContain(".in('status', ['OPEN', 'CLOSED'])");
     expect(apiSource).toContain('getGuideDepartureDay');
+    expect(apiSource).toContain('getGuideDepartureDueAt');
     expect(apiSource).toContain(".from('tenant_settings')");
     expect(apiSource).toContain(".select('basic')");
     expect(apiSource).toContain('normalizeGuideTimeZone');
