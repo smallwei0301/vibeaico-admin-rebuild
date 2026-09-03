@@ -36,7 +36,12 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
-            const current = context.payload.pull_request;
+            const payloadCurrent = context.payload.pull_request;
+            const { data: current } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: payloadCurrent.number,
+            });
             const marker = '<!-- agent-wip-guard -->';
             const metadata = policy.parseLaneMetadata(current);
             const isAgent = metadata.origin === 'AGENT';
@@ -137,11 +142,11 @@ jobs:
               }
             }
 
-            const rawExisting = (current.labels ?? [])
+            const liveExisting = (current.labels ?? [])
               .map((label) => typeof label === 'string' ? label : label.name)
               .filter(Boolean);
             const managed = new Set(Object.keys(labels));
-            const nextLabels = rawExisting.filter((name) => !managed.has(name));
+            const nextLabels = liveExisting.filter((name) => !managed.has(name));
             nextLabels.push(isAgent ? 'origin:agent' : 'origin:owner-or-unknown');
 
             const laneLabels = {
@@ -179,7 +184,7 @@ jobs:
               metadata.lane === 'TEST_VALIDATION' &&
               metadata.state === 'ACTIVE' &&
               metadata.testLaneRequired === 'TRUE' &&
-              !rawExisting.includes('lane:test-validation') &&
+              !liveExisting.includes('lane:test-validation') &&
               metadataErrors.length === 0 &&
               wipErrors.length === 0 &&
               summary.activeTest.length === 1 &&
