@@ -171,5 +171,6 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     expect(pageSource).toContain('w-full flex-shrink-0 sm:w-auto');
     expect(bookingsPageSource).toContain("params.get('paymentStatus') === 'UNPAID'");
     expect(bookingsPageSource).toContain('paymentStatusFilter');
+    expect(bookingsPageSource).toContain('paymentStatus: paymentStatusFilter || undefined');
   });
 });

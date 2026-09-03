@@ -12,6 +12,7 @@ const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
   size: z.coerce.number().int().min(1).max(100).default(20),
   status: z.enum(['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW']).optional(),
+  paymentStatus: z.enum(['UNPAID', 'PAID_ONLINE', 'PAID_OFFLINE', 'REFUNDED']).optional(),
   keyword: z.string().optional(),
   from: z.string().optional(), // ISO 日期
   to: z.string().optional(),
@@ -29,6 +30,7 @@ export const GET = handle(async (req) => {
     .order('start_at', { ascending: false })
     .range(from, to);
   if (q.status) query = query.eq('status', q.status);
+  if (q.paymentStatus) query = query.eq('payment_status', q.paymentStatus);
   if (q.staffId) query = query.eq('staff_id', q.staffId);
   if (q.from) query = query.gte('start_at', q.from);
   if (q.to) query = query.lte('start_at', q.to);

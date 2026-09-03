@@ -193,6 +193,7 @@ export default function BookingsPage() {
         page: 0,
         size: 100,
         status: isRealStatus ? (status as BookingStatus) : '',
+        paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
         to: endDate || undefined,
