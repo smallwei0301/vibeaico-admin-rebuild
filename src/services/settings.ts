@@ -10,6 +10,10 @@ import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
 
 const current = MOCK_TENANTS[0];
 
+export interface TenantSettingsSaveResult {
+  welcomeCardImageCleanupPending?: boolean;
+}
+
 /**
  * 讀租戶設定。
  * 🔐 line.channelSecret / line.channelAccessToken 一律以遮罩形式回傳，
@@ -30,7 +34,13 @@ export const getTenantSettings = () =>
   );
 
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
-  adapt(() => undefined, () => request<void>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) }));
+  adapt<TenantSettingsSaveResult | undefined>(
+    () => undefined,
+    () => request<TenantSettingsSaveResult>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    }),
+  );
 
 export const saveLineSettings = (patch: Partial<LineSettings>) =>
   adapt(() => undefined, () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }));
