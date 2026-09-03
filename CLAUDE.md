@@ -26,6 +26,21 @@ is not a stopping point, blocked work is parked while unrelated work continues, 
 recorded Owner decisions are not asked again. The same document defines model delegation,
 standing TEST authorization, credentials, CI/DB serialization, evidence, and stop conditions.
 
+### Role → model routing
+
+`docs/AGENT-EXECUTION.md` and `AGENTS.md` define the Sol/Terra/Luna role split (TRIAGE+AUDIT,
+full-build, narrow-fan-out). The concrete model bound to each role, per Owner instruction:
+
+| Role | Model |
+|---|---|
+| Sol (TRIAGE, high-risk design, final AUDIT) | Opus 5 (`claude-opus-5`) |
+| Terra (MAIN/RESERVE full-build lane) | Sonnet 5 (`claude-sonnet-5`) |
+| Luna (fan-out inventory, Closure, CI summary, docs, QA, Metrics) | Haiku 4.5 (`claude-haiku-4-5-20251001`) |
+
+A scorecard's `requested`/`actual` model fields must reflect what actually served the role, not
+this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run
+claims a specific model.
+
 ## Commands
 
 ```bash
