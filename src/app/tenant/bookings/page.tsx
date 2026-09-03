@@ -38,35 +38,7 @@ import type { Booking, BookingStatus, Customer, PaymentStatus, Service, Staff } 
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 頁面既有折抵/點數展示欄位；付款金額不在本頁自行推導。 */
-type BookingExtras = {
-  couponDiscount: number;
-  pointsRedeemed: number;
-  /** 顧客可用點數 */
-  customerPoints: number;
-};
-
-const DEFAULT_EXTRAS: BookingExtras = {
-  couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
-};
-
-const BOOKING_EXTRAS_LOCAL_SHOP: Record<string, BookingExtras> = {
-  b_1: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
-  b_2: { couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
-  b_3: { couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
-  b_4: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
-};
-
-const BOOKING_EXTRAS_GUIDE: Record<string, BookingExtras> = {
-  b_g1: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
-};
-
-const BOOKING_EXTRAS_CLINIC: Record<string, BookingExtras> = {
-  b_1: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
-  b_2: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
-  b_3: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
-  b_4: { couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
-};
+/** 預約金額只顯示 API 回傳的 Booking.finalPrice；票券／點數折抵明細待真實欄位接線。 */
 
 type AddonItem = {
   id: string;
@@ -116,10 +88,6 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
 };
 
 const REAL_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
-
-const extrasOf = (b: Booking): BookingExtras => byMode({
-  LOCAL_SHOP: BOOKING_EXTRAS_LOCAL_SHOP, GUIDE: BOOKING_EXTRAS_GUIDE, CLINIC: BOOKING_EXTRAS_CLINIC,
-})[b.id] ?? DEFAULT_EXTRAS;
 
 const addonsOf = (b: Booking): AddonItem[] => byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
@@ -1477,8 +1445,6 @@ function ApplyPointsModal({
   const [points, setPoints] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const balance = booking ? extrasOf(booking).customerPoints : 0;
-
   React.useEffect(() => { setPoints(''); setError(''); }, [booking]);
 
   const submit = async () => {
@@ -1491,10 +1457,9 @@ function ApplyPointsModal({
     setError('');
     setSaving(true);
     try {
-      // 實際折抵數 = 折抵前 − API 回的折抵後金額；balance 只餵 mock 分支
-      // （合成「夾在餘額／金額內」的現行假結果），真模式由後端驗證並回 409 訊息。
+      // API 會驗證顧客實際可用點數與應付金額；折抵數以 API 回傳的最終金額計算。
       const price = booking.finalPrice;
-      const res = await applyBookingPoints(booking.id, value, balance);
+      const res = await applyBookingPoints(booking.id, value);
       onApplied(price - res.finalPrice);
     } catch (e) {
       // 409 顧客點數不足（POINTS_001）等 → 把 server message 顯示出來
@@ -1503,8 +1468,6 @@ function ApplyPointsModal({
       setSaving(false);
     }
   };
-
-  const net = (booking?.finalPrice ?? 0) - Number(points || 0);
 
   return (
     <Modal
@@ -1522,10 +1485,6 @@ function ApplyPointsModal({
     >
       <p className="mb-3 text-base">{pm.intro}</p>
       <FormGroup>
-        <Label>{pm.balanceLabel}</Label>
-        <div className="text-lg font-bold text-dark">{balance}</div>
-      </FormGroup>
-      <FormGroup>
         <Label required htmlFor="applyPoints">{pm.label}</Label>
         <Input
           id="applyPoints" type="number" min={0} value={points}
@@ -1534,10 +1493,6 @@ function ApplyPointsModal({
         />
         <FormText>{pm.help}</FormText>
       </FormGroup>
-      {net < 0 ? (
-        <Alert tone="warning">{t.messages.overpaidWarning(formatCurrency(-net))}</Alert>
-      ) : null}
-      <FormText>{t.detailModal.afterCoupon}</FormText>
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );
@@ -1565,8 +1520,7 @@ function BookingDetailModal({
 }) {
   const d = t.detailModal;
   const addons = booking ? addonsOf(booking) : [];
-  const extras = booking ? extrasOf(booking) : DEFAULT_EXTRAS;
-  const net = (booking?.finalPrice ?? 0) - extras.couponDiscount - extras.pointsRedeemed;
+  const amount = booking?.finalPrice ?? 0;
 
   return (
     <Modal
@@ -1670,14 +1624,9 @@ function BookingDetailModal({
           <div className="rounded-lg bg-neutral-50 p-3">
             <div className="flex items-center justify-between">
               <span>{d.amountLabel}</span>
-              <strong className="tabular-nums">{formatCurrency(net)}</strong>
+              <strong className="tabular-nums">{formatCurrency(amount)}</strong>
             </div>
-            {extras.couponDiscount > 0 ? (
-              <div className="form-text">{d.couponDiscount(formatCurrency(extras.couponDiscount))}</div>
-            ) : null}
-            {extras.pointsRedeemed > 0 ? (
-              <div className="form-text">{d.pointsDiscount(extras.pointsRedeemed)}</div>
-            ) : null}
+            <FormText>{d.discountBreakdownUnavailable}</FormText>
           </div>
 
           {booking.status === 'PENDING' ? (
