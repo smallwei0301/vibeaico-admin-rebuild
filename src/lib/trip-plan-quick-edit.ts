@@ -53,6 +53,50 @@ export function toAdvancedPlanPayload(plan: TripPlan): Partial<TripPlan> {
   };
 }
 
+export type PlanOrderUpdate = { id: string; sortOrder: number };
+
+/**
+ * Move a plan up/down by one position (Issue #42 — persisted display order),
+ * then normalize every plan's sortOrder to its array position (0-based).
+ *
+ * Normalizing to the index — instead of swapping the two moved plans'
+ * existing sortOrder values — is required because trip_plans.sort_order
+ * defaults to 0 and several data paths (bulk seed inserts in particular)
+ * never set it, so two or more plans can share the same value. Swapping two
+ * equal values is a no-op that would still show a success toast without
+ * changing anything on screen or in the DB — exactly the "fake success"
+ * this project forbids. Normalizing to position always produces distinct,
+ * order-correct values, and is idempotent: calling it again on an
+ * already-normalized list yields no further updates.
+ *
+ * Returns the reordered array plus the minimal set of {id, sortOrder}
+ * updates to persist — only plans whose sortOrder actually changed are
+ * included, so already-correct rows never get a redundant PUT. When the
+ * move is out of bounds (first plan up / last plan down), the same `plans`
+ * reference is returned with an empty `updates` list — callers must treat
+ * that as a no-op (no PUT, no success toast).
+ */
+export function reorderPlans(
+  plans: TripPlan[],
+  index: number,
+  delta: number,
+): { plans: TripPlan[]; updates: PlanOrderUpdate[] } {
+  const target = index + delta;
+  if (target < 0 || target >= plans.length || index < 0 || index >= plans.length) {
+    return { plans, updates: [] };
+  }
+  const swapped = [...plans];
+  [swapped[index], swapped[target]] = [swapped[target], swapped[index]];
+
+  const updates: PlanOrderUpdate[] = [];
+  const next = swapped.map((p, i) => {
+    if (p.sortOrder === i) return p;
+    updates.push({ id: p.id, sortOrder: i });
+    return { ...p, sortOrder: i };
+  });
+  return { plans: next, updates };
+}
+
 export function validateAdvancedPlan(plan: TripPlan): AdvancedPlanValidationError | null {
   if (!Number.isInteger(plan.minParticipants) || plan.minParticipants < 1) {
     return 'minParticipants';
