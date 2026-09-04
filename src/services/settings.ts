@@ -5,6 +5,8 @@ import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
   type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
+
+type BasicSettings = TenantSettings['basic'];
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
 import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
@@ -21,6 +23,16 @@ const mockLineSettingsStore = new Map<BusinessType, Partial<LineSettings>>();
 const getMockLineSettingsOverrides = () => {
   if (!mockLineSettingsStore.has(MOCK_MODE)) mockLineSettingsStore.set(MOCK_MODE, {});
   return mockLineSettingsStore.get(MOCK_MODE)!;
+};
+
+/**
+ * mock 模式下的 basic 設定覆寫（目前只有 staffTerm 需要真的「記住」）。
+ * 與 getMockLineSettingsOverrides 同一套模式：延遲初始化，只在呼叫當下讀 MOCK_MODE。
+ */
+const mockBasicSettingsStore = new Map<BusinessType, Partial<BasicSettings>>();
+const getMockBasicSettingsOverrides = () => {
+  if (!mockBasicSettingsStore.has(MOCK_MODE)) mockBasicSettingsStore.set(MOCK_MODE, {});
+  return mockBasicSettingsStore.get(MOCK_MODE)!;
 };
 
 export interface TenantSettingsSaveResult {
@@ -77,6 +89,7 @@ export const getTenantSettings = () =>
       s.line.webhookUrl = buildWebhookUrl(APP_URL, current.shopCode);
       s.line.lineBasicId = '@demo1234';
       Object.assign(s.line, getMockLineSettingsOverrides());
+      Object.assign(s.basic, getMockBasicSettingsOverrides());
       return s;
     },
     () => request<TenantSettings>('/api/settings'),
@@ -84,7 +97,10 @@ export const getTenantSettings = () =>
 
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
   adapt<TenantSettingsSaveResult | undefined>(
-    () => undefined,
+    () => {
+      if (patch.basic) Object.assign(getMockBasicSettingsOverrides(), patch.basic);
+      return undefined;
+    },
     () => request<TenantSettingsSaveResult>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(patch),

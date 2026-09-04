@@ -21,6 +21,7 @@ import {
   createStaff, createStaffLeave, deleteStaff, deleteStaffLeave,
   listServices, listStaff, listStaffLeaves, updateStaff, type StaffLeave,
 } from '@/services/catalog';
+import { getTenantSettings, saveTenantSettings } from '@/services/settings';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -119,6 +120,7 @@ export default function StaffPage() {
   const [services, setServices] = React.useState<Service[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [staffTerm, setStaffTerm] = React.useState('');
+  const [staffTermLoading, setStaffTermLoading] = React.useState(true);
   const [termOpen, setTermOpen] = React.useState(false);
 
   const [formTarget, setFormTarget] = React.useState<StaffRow | null | undefined>(undefined);
@@ -150,6 +152,23 @@ export default function StaffPage() {
         setServices(await listServices());
       } catch {
         toast.show(t.messages.loadFailedRetry, 'danger');
+      }
+    })();
+  }, [toast]);
+
+  React.useEffect(() => {
+    void (async () => {
+      setStaffTermLoading(true);
+      try {
+        const settings = await getTenantSettings();
+        setStaffTerm(settings.basic.staffTerm);
+      } catch (e) {
+        toast.show(
+          `${t.messages.loadStaffTermFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+          'danger',
+        );
+      } finally {
+        setStaffTermLoading(false);
       }
     })();
   }, [toast]);
@@ -283,7 +302,7 @@ export default function StaffPage() {
         title={t.title}
         actions={
           <>
-            <Button variant="ghost" onClick={() => setTermOpen(true)}>
+            <Button variant="ghost" disabled={staffTermLoading} onClick={() => setTermOpen(true)}>
               <Tag size={15} />{t.actions.staffTerm}
             </Button>
             <Button onClick={() => setFormTarget(null)}>
@@ -360,7 +379,7 @@ export default function StaffPage() {
         onSaved={(val) => {
           setStaffTerm(val);
           setTermOpen(false);
-          toast.show(val ? t.staffTerm.changed(val) : t.staffTerm.restored);
+          toast.show(val === t.staffTerm.defaultTerm ? t.staffTerm.restored : t.staffTerm.changed(val));
         }}
       />
 
@@ -432,8 +451,14 @@ function StaffTermModal({
 }) {
   const [draft, setDraft] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState('');
 
-  React.useEffect(() => { if (open) setDraft(value); }, [open, value]);
+  React.useEffect(() => {
+    if (open) {
+      setDraft(value);
+      setError('');
+    }
+  }, [open, value]);
 
   return (
     <Modal
@@ -447,9 +472,14 @@ function StaffTermModal({
             loading={saving} loadingText={common.saving}
             onClick={async () => {
               setSaving(true);
+              setError('');
               try {
-                await new Promise((r) => setTimeout(r, 320));
-                onSaved(draft.trim());
+                const nextTerm = draft.trim() || t.staffTerm.defaultTerm;
+                const current = await getTenantSettings();
+                await saveTenantSettings({ basic: { ...current.basic, staffTerm: nextTerm } });
+                onSaved(nextTerm);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : t.messages.unknownError);
               } finally {
                 setSaving(false);
               }
@@ -467,6 +497,7 @@ function StaffTermModal({
           onChange={(e) => setDraft(e.target.value)}
         />
         <FormText>{t.staffTerm.help}</FormText>
+        {error ? <FormError>{error}</FormError> : null}
       </FormGroup>
     </Modal>
   );
