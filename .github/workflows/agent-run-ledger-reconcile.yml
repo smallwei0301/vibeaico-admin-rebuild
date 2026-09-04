@@ -1,0 +1,158 @@
+name: agent-run-ledger-reconcile
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Existing Delivery Truth v3 RUN_ID
+        required: true
+        type: string
+      observed_main_sha:
+        description: Exact main SHA used to collect the evidence
+        required: true
+        type: string
+      expected_ledger_sha:
+        description: Current Git blob SHA of the RUN_ID JSON file
+        required: true
+        type: string
+      evidence_base64:
+        description: Base64 JSON evidence artifact; no secrets
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# This workflow cannot commit, push or mutate an Issue/PR.
+
+concurrency:
+  group: agent-run-ledger-reconcile-${{ inputs.run_id }}-${{ inputs.observed_main_sha }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify dispatch against live main and ledger
+        id: preflight
+        uses: actions/github-script@v9
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          OBSERVED_MAIN_SHA: ${{ inputs.observed_main_sha }}
+          EXPECTED_LEDGER_SHA: ${{ inputs.expected_ledger_sha }}
+        with:
+          script: |
+            const runId = process.env.RUN_ID.trim();
+            const observed = process.env.OBSERVED_MAIN_SHA.trim().toLowerCase();
+            const expectedLedger = process.env.EXPECTED_LEDGER_SHA.trim().toLowerCase();
+            if (!/^\d{4}-\d{2}-\d{2}-[a-zA-Z0-9._-]+$/.test(runId)) throw new Error('invalid RUN_ID');
+            if (!/^[0-9a-f]{40}$/.test(observed)) throw new Error('invalid observed main SHA');
+            if (!/^[0-9a-f]{40}$/.test(expectedLedger)) throw new Error('invalid expected ledger SHA');
+            const { owner, repo } = context.repo;
+            const repository = (await github.rest.repos.get({ owner, repo })).data;
+            const branch = (await github.rest.repos.getBranch({
+              owner, repo, branch: repository.default_branch,
+            })).data;
+            if (branch.commit.sha !== observed) {
+              throw new Error(`STALE_MAIN_SHA: live=${branch.commit.sha} expected=${observed}`);
+            }
+            const ledgerPath = `docs/metrics/agent-runs/${runId}.json`;
+            const ledger = (await github.rest.repos.getContent({
+              owner, repo, path: ledgerPath, ref: repository.default_branch,
+            })).data;
+            if (Array.isArray(ledger) || ledger.type !== 'file') throw new Error(`ledger not found: ${ledgerPath}`);
+            if (ledger.sha !== expectedLedger) {
+              throw new Error(`STALE_LEDGER_SHA: live=${ledger.sha} expected=${expectedLedger}`);
+            }
+            core.setOutput('main_sha', observed);
+            core.setOutput('ledger_sha', expectedLedger);
+            core.setOutput('ledger_path', ledgerPath);
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.preflight.outputs.main_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      - name: Decode evidence without shell interpolation
+        env:
+          EVIDENCE_BASE64: ${{ inputs.evidence_base64 }}
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = `${process.env.RUNNER_TEMP}/run-ledger-evidence.json`;
+          const decoded = Buffer.from(process.env.EVIDENCE_BASE64, 'base64').toString('utf8');
+          JSON.parse(decoded);
+          fs.writeFileSync(path, decoded, 'utf8');
+          NODE
+
+      - name: Build deterministic candidate
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/run-ledger-reconcile"
+          node scripts/agents/run-ledger-reconcile.mjs apply \
+            --ledger '${{ steps.preflight.outputs.ledger_path }}' \
+            --evidence "$RUNNER_TEMP/run-ledger-evidence.json" \
+            --current-main-sha '${{ steps.preflight.outputs.main_sha }}' \
+            --expected-ledger-sha '${{ steps.preflight.outputs.ledger_sha }}' \
+            --result "$RUNNER_TEMP/run-ledger-reconcile/result.json"
+
+      - name: Regenerate Markdown, validate, score and drift-check
+        run: |
+          set -euo pipefail
+          ledger='${{ steps.preflight.outputs.ledger_path }}'
+          report="${ledger%.json}.md"
+          node scripts/agents/run-ledger-v2.mjs validate "$ledger"
+          node scripts/agents/score-run-v2.mjs "$ledger" > "$report"
+          regenerated="$(mktemp)"
+          node scripts/agents/score-run-v2.mjs "$ledger" > "$regenerated"
+          diff -u "$report" "$regenerated"
+          node scripts/agents/run-ledger-v2.mjs validate "$ledger"
+
+      - name: Enforce two-file output boundary
+        run: |
+          set -euo pipefail
+          ledger='${{ steps.preflight.outputs.ledger_path }}'
+          report="${ledger%.json}.md"
+          mapfile -t changed < <(git diff --name-only)
+          for file in "${changed[@]}"; do
+            if [[ "$file" != "$ledger" && "$file" != "$report" ]]; then
+              echo "Unexpected changed file: $file" >&2
+              exit 1
+            fi
+          done
+          git diff --check
+          git diff --binary > "$RUNNER_TEMP/run-ledger-reconcile/candidate.patch"
+          cp "$ledger" "$report" "$RUNNER_TEMP/run-ledger-reconcile/"
+
+      - name: Re-read live main before publishing candidate
+        uses: actions/github-script@v9
+        env:
+          OBSERVED_MAIN_SHA: ${{ steps.preflight.outputs.main_sha }}
+          EXPECTED_LEDGER_SHA: ${{ steps.preflight.outputs.ledger_sha }}
+          LEDGER_PATH: ${{ steps.preflight.outputs.ledger_path }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const repository = (await github.rest.repos.get({ owner, repo })).data;
+            const branch = (await github.rest.repos.getBranch({ owner, repo, branch: repository.default_branch })).data;
+            if (branch.commit.sha !== process.env.OBSERVED_MAIN_SHA) {
+              throw new Error(`STALE_MAIN_SHA_AFTER_BUILD: live=${branch.commit.sha}`);
+            }
+            const ledger = (await github.rest.repos.getContent({
+              owner, repo, path: process.env.LEDGER_PATH, ref: repository.default_branch,
+            })).data;
+            if (Array.isArray(ledger) || ledger.sha !== process.env.EXPECTED_LEDGER_SHA) {
+              throw new Error(`STALE_LEDGER_SHA_AFTER_BUILD: live=${Array.isArray(ledger) ? 'directory' : ledger.sha}`);
+            }
+
+      - name: Upload candidate artifact only
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-ledger-reconcile-${{ inputs.run_id }}-${{ inputs.observed_main_sha }}
+          path: ${{ runner.temp }}/run-ledger-reconcile
+          if-no-files-found: error
+          retention-days: 14

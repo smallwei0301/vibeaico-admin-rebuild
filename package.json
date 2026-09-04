@@ -17,6 +17,7 @@
     "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs",
     "agent:run:init": "node scripts/agents/run-ledger-v2.mjs init",
     "agent:run:validate": "node scripts/agents/run-ledger-v2.mjs validate",
+    "agent:run:reconcile": "node scripts/agents/run-ledger-reconcile.mjs apply",
     "agent:run:score": "node scripts/agents/score-run-v2.mjs",
     "agent:run:review": "node scripts/agents/review-runs-v2.mjs",
     "agent:run:legacy:init": "node scripts/agents/run-ledger.mjs init",

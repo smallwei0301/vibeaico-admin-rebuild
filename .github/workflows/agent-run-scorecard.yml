@@ -11,6 +11,7 @@ on:
       - 'scripts/agents/score-run*.mjs'
       - 'scripts/agents/review-runs*.mjs'
       - 'tests/unit/agent-run-score.test.ts'
+      - 'tests/unit/run-ledger-reconcile.test.ts'
   push:
     branches: [main]
     paths:
@@ -33,10 +34,11 @@ jobs:
       - name: Syntax check
         run: |
           node --check scripts/agents/run-ledger.mjs
-          node --check scripts/agents/score-run.mjs
-          node --check scripts/agents/review-runs.mjs
           node --check scripts/agents/run-ledger-v2.mjs
+          node --check scripts/agents/run-ledger-reconcile.mjs
+          node --check scripts/agents/score-run.mjs
           node --check scripts/agents/score-run-v2.mjs
+          node --check scripts/agents/review-runs.mjs
           node --check scripts/agents/review-runs-v2.mjs
       - name: Validate and reproduce every committed report
         shell: bash
