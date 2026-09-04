@@ -570,3 +570,29 @@ export type CalendarEvent = {
     calendarName?: string;
   };
 };
+
+
+/* ---------------------------------------------------------- 收款方式（Issue #9） */
+export type PaymentMethod = {
+  id: string;
+  methodType: 'LINE_PAY' | 'JKOPAY' | 'BANK_TRANSFER' | 'CASH' | 'ONLINE_PAYMENT' | 'OTHER';
+  displayName: string;
+  qrImageUrl: string;
+  bankName: string;
+  bankCode: string;
+  accountNumber: string;
+  accountHolderName: string;
+  gatewaySource: 'own' | 'demo';
+  gatewayProvider: 'NEWEBPAY' | 'ECPAY';
+  gatewayMerchantId: string;
+  gatewayHashKeySet: boolean;
+  gatewayHashIvSet: boolean;
+  gatewaySandbox: boolean;
+  gatewayVerified: boolean;
+  connectionVerified: boolean;
+  e2eVerified: boolean;
+  verificationError: string | null;
+  sortOrder: number;
+  active: boolean;
+  instructions: string;
+};
