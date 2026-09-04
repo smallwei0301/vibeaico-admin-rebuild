@@ -18,6 +18,11 @@ function upper(value) {
   return String(value ?? '').trim().toUpperCase();
 }
 
+function shouldValidateScorecardPath(value) {
+  const text = String(value ?? '').trim();
+  return Boolean(text) && !isPlaceholder(text) && !/^none$/i.test(text);
+}
+
 function parseArgs(argv) {
   const result = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -107,8 +112,7 @@ export function validateWipPreflight(input = {}) {
     metadata.origin === 'AGENT' &&
     metadata.state === 'ACTIVE' &&
     metadata.bplusMode === 'TRUE' &&
-    metadata.scorecardPath &&
-    !isPlaceholder(metadata.scorecardPath)
+    shouldValidateScorecardPath(metadata.scorecardPath)
   ) {
     const scorecard = resolve(repositoryRoot, metadata.scorecardPath);
     if (!fileExists(scorecard)) {
