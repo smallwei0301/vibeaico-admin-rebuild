@@ -34,9 +34,6 @@ import type { Customer, Gender, MembershipLevel } from '@/lib/types';
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站以「自動建檔」旗標區分：LINE 加好友後系統先開的空白顧客檔 */
-const AUTO_CREATED_CUSTOMER_IDS = new Set<string>(['c_2']);
-
 /**
  * 原站 /api/customers/tags；骨架階段由假資料推導，避免與 mock 脫節。
  * 必須在 render 時求值 —— 假資料會隨業態模式切換（見 src/mock/index.ts）。
@@ -208,7 +205,7 @@ export default function CustomersPage() {
             <Badge tone="success">{t.status.active}</Badge>
           )}
           {!c.lineUserId ? <Badge tone="neutral">{t.status.unbound}</Badge> : null}
-          {AUTO_CREATED_CUSTOMER_IDS.has(c.id) ? (
+          {c.source === 'LINE' || c.source === 'PUBLIC_BOOKING' ? (
             <Badge tone="info">{t.status.autoCreated}</Badge>
           ) : null}
         </div>
