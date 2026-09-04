@@ -63,7 +63,6 @@ export const customersPage = {
   },
 
   labels: {
-    and: ' 與 ',
     noNickname: '(未設定暱稱)',
     noName: '（尚未取得姓名）',
     lastVisit: (date: string) => `上次到訪 ${date}`,
@@ -88,7 +87,6 @@ export const customersPage = {
     atRisk: '流失風險',
     inactive: '已停用',
     unbound: '未綁定',
-    orphan: '殘留綁定',
     autoCreated: '自動建立檔案',
   },
 
@@ -120,11 +118,9 @@ export const customersPage = {
   /* ------------------------------------------------- modal 2：綁定 LINE */
   bindLine: {
     title: (name: string) => `綁定 LINE 用戶 — ${name}`,
-    intro:
-      '以下是綁定異常的 LINE 用戶（未綁定 / 顧客已被刪但 LINE 殘留）。點選對應暱稱／頭像綁回此顧客：',
+    intro: '以下是尚未綁定任何顧客的 LINE 好友，點選對應暱稱／頭像即可綁定此顧客：',
     loading: '載入中...',
     binding: '綁定中...',
-    mergeHint: '已有自動建立的空白檔案，綁定時會自動合併',
     emptyTitle: '目前沒有待綁定的 LINE 用戶',
     emptyDescription: '顧客加入官方帳號並傳送訊息後，會出現在這份清單中。',
     loadFailed: '載入失敗，請稍後再試',
