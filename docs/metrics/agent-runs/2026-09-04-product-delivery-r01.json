@@ -62,7 +62,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 4,
+    "issuesStarted": 5,
     "issuesClosed": 0,
     "auditReady": 1,
     "ownerBlockedComplete": 0,
@@ -115,7 +115,11 @@
     "GOVERNANCE_FOLLOWUP: block_times schema drift. supabase/migrations/0004 creates 7 columns; TEST and PROD both carry 5 additional columns and 2 named check constraints that no repo migration creates. Repo migrations no longer reproduce live schema, which undermines the free per-PR local Supabase strategy. A full-table drift audit belongs to the governance lane.",
     "One real ownership collision occurred and was contained: two Terra lanes initially shared a single working tree; slot 1 was moved to a dedicated git worktree and file ownership was verified with comm before opening each PR.",
     "Second schema drift found: portfolios.line_sort_order exists on both TEST and PROD but no repo migration creates it. A building agent read the repo migrations, concluded the column was missing, and was about to disable a working feature. Read-only verification against the live database prevented that. Drift is therefore not only a tidiness problem; it causes agents to misjudge features as infeasible.",
-    "One shared TEST collision was detected and contained: the WIP guard now auto-dispatches the canonical TEST on lane transition (behaviour introduced by governance PR #166 during this run), which duplicated the session's manual dispatch on PR #169. The pending duplicate run was cancelled before it started and no manual dispatch was issued for later lane transitions."
+    "One shared TEST collision was detected and contained: the WIP guard now auto-dispatches the canonical TEST on lane transition (behaviour introduced by governance PR #166 during this run), which duplicated the session's manual dispatch on PR #169. The pending duplicate run was cancelled before it started and no manual dispatch was issued for later lane transitions.",
+    "Owner steer 2026-09-04: restore broken functionality rather than cancel it. Codified on main as docs/DELIVERY-CHAIN.md (commit cb29f973) together with the six-gate delivery chain, plus two OWNER-DECISIONS entries and cross-references from AGENTS.md, CLAUDE.md and docs/AGENT-EXECUTION.md.",
+    "Correction issued publicly on Issue #7: campaigns was earlier escalated as an Owner decision on missing backend columns. That was inference, not observation. src/app/api/campaigns/route.ts already documents that display fields go into the content jsonb, and both POST and PUT accept it. Only participantCount is a genuine gap (no campaign_participants table and no migration carrying campaign_id anywhere in the repo); it is a derived aggregate and cannot live in content jsonb without becoming a permanently stale fake number.",
+    "Sol audit on pull/175 caught a button that would always fail: the delete action had been wired to DELETE /api/campaigns/:id, but that handler did not exist, so real mode would always return 405. Before the change it was a fake success, after it would have been a guaranteed failure; neither is a working feature. A DELETE handler was added (mirroring PUT: MANAGER role, id + tenant_id double-condition isolation, 404 without leaking existence, ENDED deletable since removal is not editing). Two tests that had locked in the absence of DELETE were removed and replaced with tests for the handler.",
+    "Five product PRs merged and Completion-Truth-verified this run: #168 3552e9d6, #169 0aca4b63, #171 42335a02, #172 be118811, #173 0173ba47. shipped_units remains 0 because AUTHENTICATED_PRODUCTION_ACCEPTED has not been performed for any of them."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
@@ -217,6 +221,38 @@
         "observedState": "not_run",
         "evidenceRef": "no authenticated production acceptance performed; PRODUCTION_PENDING, not shipped",
         "verification": "UNVERIFIED"
+      },
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "issue#7 customers wiring (pull/173)",
+        "claimedState": "verified",
+        "observedState": "verified",
+        "evidenceRef": "exact head e94083fc1c11556a767132998d1ea2721ce488c5; check job 100895036202 success; local isolated job 100895027428 fresh-stack + prove-local + integration 03:04:03-03:06:34 + E2E 03:06:55-03:07:44 + destroy stack; remote canonical run 33832456471 job 100898668654 integration 03:24:13-03:31:09 and E2E 03:31:09-03:32:41 with both policy-skip steps skipped; the 6-second integration job 100895327242 on the same head was POLICY_SKIP and was NOT counted green",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#7 customers wiring (pull/173)",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "pull/173 merged_at 2026-09-04T03:46:09Z; merge sha 0173ba478f06463a3452991728c806d83b8d2dd0 equals current main head and is reachable via git merge-base --is-ancestor; ref=main re-read of src/services/customers.ts shows the lazily initialized getMockLineUserRows store, and src/app/tenant/customers/page.tsx contains zero occurrences of setTimeout(r, 420)",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "AUTHENTICATED_PRODUCTION_ACCEPTED",
+        "subject": "issue#7 customers wiring (pull/173)",
+        "claimedState": "not_run",
+        "observedState": "not_run",
+        "evidenceRef": "no authenticated production acceptance performed; PRODUCTION_PENDING, not counted as a shipped unit",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "docs/DELIVERY-CHAIN.md governance codification",
+        "claimedState": "pushed_to_main",
+        "observedState": "pushed_to_main",
+        "evidenceRef": "docs-only commit cb29f973 on main; changed files limited to docs/**, CLAUDE.md, AGENTS.md (allowlist verified before commit); ref=main re-read confirms docs/DELIVERY-CHAIN.md present; no src/**, supabase/**, workflow or dependency change; not a Production deploy or DDL authorization",
+        "verification": "VERIFIED"
       }
     ]
   }
