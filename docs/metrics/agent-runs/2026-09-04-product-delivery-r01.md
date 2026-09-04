@@ -9,7 +9,7 @@
 - 真正出貨 shipped_units：0（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）
 - 正式環境待驗 production_pending：0
 - 自主完成 autonomous_outcome_units：0（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）
-- 在製品 WIP：Audit Ready 0、CI-only 0、commit-only 0、carryover 0
+- 在製品 WIP：Audit Ready 1、CI-only 1、commit-only 0、carryover 0
 - 內部加權 usage：0（不是官方 token）
 - 每件真正出貨 usage：資料不足
 - 每單位自主完成 usage：資料不足

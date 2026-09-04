@@ -38,7 +38,7 @@
     "mainTerraPeak": 2,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
-    "sharedTestPeak": 0,
+    "sharedTestPeak": 1,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
   },
@@ -62,17 +62,17 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 0,
+    "issuesStarted": 3,
     "issuesClosed": 0,
-    "auditReady": 0,
+    "auditReady": 1,
     "ownerBlockedComplete": 0,
-    "exactHeadCiOnly": 0,
+    "exactHeadCiOnly": 1,
     "commitOnly": 0,
     "unfinishedCarryover": 0,
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 6,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -88,14 +88,14 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 0,
-    "lunaAccepted": 0,
-    "lunaDelegationRatePercent": null,
+    "lunaTasks": 11,
+    "lunaAccepted": 11,
+    "lunaDelegationRatePercent": 100,
     "duplicateAgentTasks": 0,
-    "ownershipCollisions": 0,
+    "ownershipCollisions": 1,
     "waitTimeConvertedPercent": null,
-    "solTouches": 0,
-    "solIssues": 0
+    "solTouches": 6,
+    "solIssues": 3
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -109,12 +109,65 @@
     "Free dual-Terra pilot: slot 1 Issue #7 block-times wiring, slot 2 Issue #42 plan display ordering; no file overlap and no migration in either lane.",
     "Governance work (#163/#164) is handled by a separate session and is not claimed here.",
     "No completion, remote canonical TEST, merge or Issue-close claim is made at initialization.",
-    "Main advanced to 549402f471ffd4786a44319ca5bc169f897ce67e (governance #164) during triage; #164 touched only workflows, agent scripts, docs and governance tests, so no product source rebuild was required and both Terra branches are based on 549402f."
+    "Main advanced to 549402f471ffd4786a44319ca5bc169f897ce67e (governance #164) during triage; #164 touched only workflows, agent scripts, docs and governance tests, so no product source rebuild was required and both Terra branches are based on 549402f.",
+    "Owner steer 2026-09-04: restore broken features rather than removing them. PR #169 was re-scoped from a field-removal to a full restore (title/recurrence/full_day/auto + PUT endpoint + WEEKLY expansion in availability and calendar).",
+    "Sol audit caught two fake-success defects that exact-head CI had passed: PR #168 sortOrder tie values (seed rows share the default 0, so a reorder wrote 0 back and changed nothing while showing a success toast) and PR #169 mock-mode create that never persisted.",
+    "GOVERNANCE_FOLLOWUP: block_times schema drift. supabase/migrations/0004 creates 7 columns; TEST and PROD both carry 5 additional columns and 2 named check constraints that no repo migration creates. Repo migrations no longer reproduce live schema, which undermines the free per-PR local Supabase strategy. A full-table drift audit belongs to the governance lane.",
+    "One real ownership collision occurred and was contained: two Terra lanes initially shared a single working tree; slot 1 was moved to a dedicated git worktree and file ownership was verified with comm before opening each PR."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-04T01:25:00Z",
+    "claims": [
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "issue#42",
+        "claimedState": "success",
+        "observedState": "success",
+        "evidenceRef": "actions/runs/33822541826 check job 100868152209; canonical integration job 100868669053 ran 7m and E2E 78s, policy-skip steps skipped",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#42",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "pull/168 merged_at 2026-09-04T00:50:26Z; merge sha 3552e9d649390307633f7d6c2cd044868970b5aa is current main head and reachable; ref=main re-read src/lib/trip-plan-quick-edit.ts line 79 reorderPlans",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "AUTO_VERCEL_DEPLOYED",
+        "subject": "issue#42",
+        "claimedState": "unknown",
+        "observedState": "not_checked",
+        "evidenceRef": "Vercel status for merge sha 3552e9d6 has not been read; not claimed as deployed",
+        "verification": "UNVERIFIED"
+      },
+      {
+        "type": "PRODUCTION_SCHEMA_READY",
+        "subject": "issue#42",
+        "claimedState": "not_required",
+        "observedState": "not_required",
+        "evidenceRef": "PR #168 changed no supabase/migrations path; trip_plans.sort_order predates it in migration 0066",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "AUTHENTICATED_PRODUCTION_ACCEPTED",
+        "subject": "issue#42",
+        "claimedState": "not_run",
+        "observedState": "not_run",
+        "evidenceRef": "no authenticated production acceptance was performed; slice is PRODUCTION_PENDING, not shipped",
+        "verification": "UNVERIFIED"
+      },
+      {
+        "type": "PRODUCTION_SCHEMA_READY",
+        "subject": "issue#7",
+        "claimedState": "ready",
+        "observedState": "ready",
+        "evidenceRef": "Supabase Management API read-only query of egehnijjpgijmccagxac information_schema.columns and pg_constraint: title/recurrence/day_of_week/full_day/auto and both named check constraints already present; migration 0074 is an idempotent reconciliation with no new production DDL",
+        "verification": "VERIFIED"
+      }
+    ]
   }
 }
