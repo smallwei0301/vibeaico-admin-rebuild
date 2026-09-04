@@ -192,6 +192,7 @@ export const productsPage = {
   /* -------------------------------------------------- modal 3：商品分類管理 */
   category: {
     title: '商品分類管理',
+    editTitle: '編輯分類',
     intro: '依行業自由建立分類（如咖啡豆/器具/書籍/寵物用品等），最多 50 個。',
     name: '分類名稱',
     namePlaceholder: '例：熱門商品',
