@@ -8,24 +8,25 @@
 4. `docs/decisions/2026-09-01-owner-isolated-test-lanes.md`（歷史基線）
 5. `docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`（最新 Issue #104 裁示，衝突時優先）
 6. `docs/AGENT-EXECUTION.md`
-7. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-8. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-9. `docs/DELIVERY-OUTCOME-V2.md`
-10. `docs/DOCUMENTATION-GOVERNANCE.md`
-11. `docs/OWNER-DECISIONS.md`
-12. 該 Issue 指定的 `docs/integration/**` canonical 文件
-13. `docs/integration/12-TESTING-TDD.md`
-14. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
-15. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
+7. `docs/DELIVERY-CHAIN.md`（產品交付鏈路：每一關要抓什麼、通過的證據長什麼樣）
+8. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
+9. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
+10. `docs/DELIVERY-OUTCOME-V2.md`
+11. `docs/DOCUMENTATION-GOVERNANCE.md`
+12. `docs/OWNER-DECISIONS.md`
+13. 該 Issue 指定的 `docs/integration/**` canonical 文件
+14. `docs/integration/12-TESTING-TDD.md`
+15. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
+16. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
     報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-16. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
+17. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
     響應式或 GUIDE 共用 UI，另讀 `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與
     `docs/assets/guide-mobile-ui/README.md`
-17. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
+18. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
     `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
-18. Owner 說「復盤」或「複盤」時，載入
+19. Owner 說「復盤」或「複盤」時，載入
     `.agents/skills/vibeaico-agent-retrospective/SKILL.md`
-19. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
+20. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
     載入 `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`；若該 Skill 與 2026-09-02
     最新 Owner Decision 衝突，以最新 Decision 為準，付費 Branch 不得執行。
 

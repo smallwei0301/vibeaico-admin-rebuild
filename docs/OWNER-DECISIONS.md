@@ -2,7 +2,14 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-03。
+> 最後更新：2026-09-04。
+
+## 2026-09-04 已裁示
+
+| Issue | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| repo governance | 復原而非取消 | **取向為將目前無效的功能復原為真的可用，而不是直接取消功能。** | 發現假成功時預設把它接成真的，不是移除按鈕或欄位。確實無法實作時（後端缺欄位、缺商業決策）採「誠實復原」：保留 UI 流程、改呼叫真實端點、把後端真實訊息原樣顯示，並把缺口升級為 Owner 待決；**不得捏造前端資料，也不得默默移除 UI**。canonical：`docs/DELIVERY-CHAIN.md` §5。 |
+| repo governance | 產品交付鏈路固化 | **Luna 查證歸屬 → Terra 獨立 worktree 施工 → Sol 實際讀 diff audit → 本機隔離 Supabase → 序列化 canonical TEST → Completion Truth 五項驗證，是本 repo 的正式產品交付鏈路。** | 每一關有明確要抓的東西：重複／owner-blocked、lane 互相污染、CI 抓不到的假成功、migration 對空白資料庫的正確性、搶用共用資源與 `POLICY_SKIP` 假綠、把 REQUESTED 當成 COMPLETED。任一關可判定「不適用」並寫明理由，**不得判定「略過」**。canonical：`docs/DELIVERY-CHAIN.md`。 |
 
 ## 2026-09-03 已裁示
 
