@@ -2,6 +2,8 @@
 
 > Canonical Owner Decision：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
 >
+> WIP preflight／alert decision：`docs/decisions/2026-09-04-owner-wip-preflight-and-alert-fingerprint.md`
+>
 > 本文件是執行手冊。若與較新的 Owner Decision 衝突，以較新的 Owner Decision 為準。
 
 ## 1. 為什麼從 Mode C 改成 B+
@@ -267,6 +269,10 @@ CLOSE_APPROVED 待允許 merge     = 0.80
 weighted_usage_per_delivery_unit = weighted_usage_units / delivery_units
 ```
 
+> 上述是歷史 v1 比較尺。新 Run 的成品、Production pending 與 OWNER_BLOCKED 分帳，以
+> `docs/DELIVERY-OUTCOME-V2.md` 的 Delivery Truth v3 為準，不再把 Audit Ready、CI-only 或
+> commit-only 折算成 shipped product。
+
 ## 11. 100 分 Scorecard
 
 | 面向 | 分數 |
@@ -335,3 +341,39 @@ Owner 說「復盤」或「複盤」時：
 4. 比較 usage／Delivery Unit、close rate、品質、Sol 接觸、Luna 採用率與 carryover。
 5. 指出最多 3 個根因，只挑 1～2 個規則改良。
 6. 安全的治理改良走 governance PR；不得在復盤時順便改產品功能或 Production。
+
+## 15. PR 建立前的 WIP preflight 與降噪門禁
+
+在建立或重新啟用 Agent Product PR 前，先把預計的 PR body 與 changed-file 清單存成檔案並執行：
+
+```bash
+node scripts/agents/agent-wip-preflight.mjs \
+  --body /tmp/pr-body.md \
+  --changed-files /tmp/changed-files.txt \
+  --number <PR_NUMBER_OR_PLACEHOLDER>
+```
+
+單 Terra 與 governance PR 可省略 `--changed-files`；active Dual Terra 不可省略。preflight 失敗時先修 body、Issue 身分、scorecard 或檔案責任範圍，禁止先開 PR 再讓 GitHub Actions 當表單檢查器。
+
+GitHub 上的 WIP Guard 仍是最終 live-state 門禁，但相同的：
+
+```text
+PR number + exact head SHA + sorted error set
+```
+
+只寄一次失敗通知。重複事件會更新同一留言並以 warning 結束；custom commit status：
+
+```text
+Agent WIP Policy
+```
+
+在錯誤修正前持續保持 failure，因此降噪不等於放行。新 SHA、錯誤內容改變或修復都會產生新狀態。
+
+`main` branch protection 啟用後至少要求：
+
+```text
+Agent WIP Policy
+check
+```
+
+目前 GitHub Administration 權限不足時，必須明記 `OWNER_BLOCKED_COMPLETE`，不得把 Repo 內規則就緒冒充成 branch protection 已生效。

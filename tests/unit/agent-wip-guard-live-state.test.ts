@@ -50,4 +50,37 @@ describe('agent WIP Guard live-state dispatch', () => {
       "!rawExisting.includes('lane:test-validation')",
     );
   });
+
+  it('serializes only the same PR and cancels stale in-flight guard runs', () => {
+    expect(workflow).toContain(
+      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number }}',
+    );
+    expect(workflow).toContain('cancel-in-progress: true');
+    expect(workflow).not.toContain('group: agent-wip-guard-${{ github.repository }}\n');
+  });
+
+  it('writes a dedicated policy status that remains failed even when duplicate email noise is suppressed', () => {
+    expect(workflow).toContain('statuses: write');
+    expect(workflow).toContain("context: 'Agent WIP Policy'");
+    expect(workflow).toContain("state: errors.length ? 'failure' : 'success'");
+    expect(workflow).toContain('const duplicateFailure = Boolean(');
+    expect(workflow).toContain('alert.isDuplicateWipFailure({');
+    expect(workflow).toContain('DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}');
+
+    const statusIndex = workflow.indexOf('await github.rest.repos.createCommitStatus({');
+    const duplicateWarningIndex = workflow.indexOf('core.warning(`Duplicate WIP failure suppressed');
+    const firstFailureIndex = workflow.indexOf('core.setFailed(errors.join');
+    expect(statusIndex).toBeGreaterThan(-1);
+    expect(duplicateWarningIndex).toBeGreaterThan(statusIndex);
+    expect(firstFailureIndex).toBeGreaterThan(duplicateWarningIndex);
+  });
+
+  it('binds the fingerprint to the PR number, exact head and complete error set', () => {
+    expect(workflow).toContain('alert.buildWipErrorFingerprint({');
+    expect(workflow).toContain('prNumber: current.number');
+    expect(workflow).toContain('headSha: current.head.sha');
+    expect(workflow).toContain('errors,');
+    expect(workflow).toContain('- EXACT_HEAD: ${current.head.sha}');
+    expect(workflow).toContain('- ERROR_FINGERPRINT: ${fingerprint}');
+  });
 });
