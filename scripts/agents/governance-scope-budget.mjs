@@ -6,6 +6,8 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 export const GOVERNANCE_SCOPE_BUDGET = Object.freeze({ maxFiles: 8, maxChangedLines: 800 });
+export const GOVERNANCE_SCOPE_EXCEPTION_FORMAT_ERROR =
+  "GOVERNANCE_SCOPE_EXCEPTION must be none or OWNER:docs/decisions/<file>.md";
 
 function readField(body = "", field) {
   const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -15,6 +17,33 @@ function readField(body = "", field) {
 
 function upper(value) {
   return String(value ?? "").trim().toUpperCase();
+}
+
+export function parseGovernanceScopeException(value = "") {
+  const exception = String(value ?? "").trim();
+  if (!exception || /^none$/i.test(exception)) {
+    return { valid: true, kind: "NONE", exception, decisionPath: null, error: null };
+  }
+
+  const match = exception.match(/^OWNER:(docs\/decisions\/[A-Za-z0-9._/-]+\.md)$/);
+  const decisionPath = match?.[1] ?? null;
+  const segments = decisionPath?.split("/") ?? [];
+  const safePath = Boolean(
+    decisionPath &&
+    segments.length >= 3 &&
+    segments.every((segment) => segment && segment !== "." && segment !== ".."),
+  );
+  if (!safePath) {
+    return {
+      valid: false,
+      kind: "INVALID",
+      exception,
+      decisionPath: null,
+      error: GOVERNANCE_SCOPE_EXCEPTION_FORMAT_ERROR,
+    };
+  }
+
+  return { valid: true, kind: "OWNER_DECISION", exception, decisionPath, error: null };
 }
 
 function loadTrustedDecision(decisionPath) {
@@ -29,7 +58,8 @@ export function evaluateGovernanceScope(pr = {}, { loadDecision = loadTrustedDec
   const origin = upper(readField(body, "WORK_ORIGIN"));
   const lane = upper(readField(body, "AGENT_LANE"));
   const state = upper(readField(body, "LANE_STATE"));
-  const exception = readField(body, "GOVERNANCE_SCOPE_EXCEPTION");
+  const parsedException = parseGovernanceScopeException(readField(body, "GOVERNANCE_SCOPE_EXCEPTION"));
+  const exception = parsedException.exception;
   const files = Number(pr.changed_files);
   const additions = Number(pr.additions);
   const deletions = Number(pr.deletions);
@@ -44,8 +74,7 @@ export function evaluateGovernanceScope(pr = {}, { loadDecision = loadTrustedDec
   }
   const overFiles = Number.isFinite(files) && files > GOVERNANCE_SCOPE_BUDGET.maxFiles;
   const overLines = Number.isFinite(changedLines) && changedLines > GOVERNANCE_SCOPE_BUDGET.maxChangedLines;
-  const decisionMatch = exception.match(/^OWNER:(docs\/decisions\/[A-Za-z0-9._/-]+\.md)$/);
-  const decisionPath = decisionMatch?.[1] ?? null;
+  const decisionPath = parsedException.decisionPath;
   const decision = decisionPath ? loadDecision(decisionPath) : null;
   const validException = Boolean(
     decision &&
@@ -53,8 +82,8 @@ export function evaluateGovernanceScope(pr = {}, { loadDecision = loadTrustedDec
     readField(decision, "GOVERNANCE_SCOPE_BRANCH") === String(pr.head?.ref ?? ""),
   );
 
-  if (exception && !/^none$/i.test(exception) && !decisionPath) {
-    errors.push("GOVERNANCE_SCOPE_EXCEPTION must be none or OWNER:docs/decisions/<file>.md");
+  if (!parsedException.valid) {
+    errors.push(parsedException.error);
   } else if (decisionPath && !validException) {
     errors.push("Scope exception decision must exist on trusted main and approve this exact branch");
   }
