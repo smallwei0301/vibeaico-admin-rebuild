@@ -1,9 +1,14 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
   buildMigrationManifestFromEntries,
   buildSchemaTruthReport,
   normalizeSnapshot,
+  readMigrationManifest,
   renderMarkdown,
 } from '../../scripts/agents/schema-truth-report.mjs';
 
@@ -109,6 +114,22 @@ describe('schema truth report', () => {
     expect(edited.manifestDigest).not.toBe(base.manifestDigest);
   });
 
+  it('rejects a migration-root symlink before reading files outside the repository', () => {
+    if (process.platform === 'win32') return;
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'schema-truth-'));
+    const repository = path.join(temporary, 'repo');
+    const external = path.join(temporary, 'external-migrations');
+    try {
+      fs.mkdirSync(path.join(repository, 'supabase'), { recursive: true });
+      fs.mkdirSync(external, { recursive: true });
+      fs.writeFileSync(path.join(external, '0001_outside.sql'), 'select 1;\n', 'utf8');
+      fs.symlinkSync(external, path.join(repository, 'supabase', 'migrations'), 'dir');
+      expect(() => readMigrationManifest(repository)).toThrow(/MIGRATION_SYMLINK_REJECTED/);
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
+  });
+
   it('reports unavailable evidence without pretending the ledger is absent', () => {
     const production = snapshot('PRODUCTION', {
       migrationLedger: {
@@ -136,6 +157,7 @@ describe('schema truth report', () => {
       return value;
     }, /INVALID_DIGEST/],
     ['wrong environment', () => snapshot('PRODUCTION'), /ENVIRONMENT_MISMATCH/],
+    ['wrong project ref', () => snapshot('TEST', { projectRef: 'egehnijjpgijmccagxac' }), /PROJECT_REF_MISMATCH/],
     ['stale main', () => snapshot('TEST', { observedMainSha: 'b'.repeat(40) }), /STALE_MAIN_SHA/],
     ['unknown raw data field', () => snapshot('TEST', { rawRows: [] }), /UNKNOWN_OR_MISSING_FIELD/],
   ])('fails closed on %s', (_name, makeValue, error) => {
