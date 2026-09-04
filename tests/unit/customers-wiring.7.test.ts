@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import {
-  bindLineUser, createCustomer, listCustomers, unbindLineUser, updateCustomer,
+  bindLineUser, createCustomer, listCustomers, listUnboundLineUsers, unbindLineUser, updateCustomer,
 } from '@/services/customers';
 
 const read = (relative: string) =>
@@ -19,20 +19,26 @@ describe('customers page — real wiring for create/edit + LINE bind/unbind (#7)
   });
 
   it('create/edit form actually calls createCustomer / updateCustomer', () => {
-    expect(page).toContain(
-      "bindLineUser, createCustomer, deleteCustomer, listCustomers, unbindLineUser, updateCustomer,",
-    );
+    expect(page).toContain('listUnboundLineUsers');
     expect(page).toContain('await updateCustomer(customer.id, payload);');
     expect(page).toContain('await createCustomer(payload);');
   });
 
   it('bind modal actually calls bindLineUser and surfaces the real error message', () => {
-    expect(page).toContain('await bindLineUser(customer.id, u.id, u.displayName);');
+    expect(page).toContain('await bindLineUser(customer.id, u.lineUserId, u.displayName);');
     expect(page).toContain('t.messages.bindFailedPrefix}${e.message}');
   });
 
   it('unbind confirm actually calls unbindLineUser (not just a toast)', () => {
     expect(page).toContain('await unbindLineUser(unbindTarget.id);');
+  });
+
+  it('candidate list no longer references the hardcoded MOCK_UNBOUND_LINE_USERS / fake kind field', () => {
+    expect(page).not.toContain('MOCK_UNBOUND_LINE_USERS');
+    expect(page).not.toContain("'ORPHAN'");
+    expect(page).not.toContain("'AUTO_CREATED'");
+    expect(page).not.toContain('autoProfileName');
+    expect(page).toContain('const list = await listUnboundLineUsers();');
   });
 });
 
@@ -87,5 +93,31 @@ describe('src/services/customers.ts — mock-mode round trip (NEXT_PUBLIC_USE_MO
 
     // 冪等：未綁定時再呼叫一次不應丟例外
     await expect(unbindLineUser(id)).resolves.toBeUndefined();
+  });
+
+  it('listUnboundLineUsers only carries the four real backend fields (no fabricated kind/autoProfileName)', async () => {
+    const list = await listUnboundLineUsers();
+    expect(list.length).toBeGreaterThan(0);
+    for (const u of list) {
+      expect(Object.keys(u).sort()).toEqual(
+        ['createdAt', 'displayName', 'lineUserId', 'pictureUrl'].sort(),
+      );
+    }
+  });
+
+  it('a LINE user disappears from the unbound list once bound, and reappears once unbound', async () => {
+    const before = await listUnboundLineUsers();
+    const target = before[0];
+    expect(target).toBeDefined();
+
+    const { id } = await createCustomer({ name: '清單往返顧客', phone: '0955555555' });
+    await bindLineUser(id, target.lineUserId, target.displayName);
+
+    const afterBind = await listUnboundLineUsers();
+    expect(afterBind.some((u) => u.lineUserId === target.lineUserId)).toBe(false);
+
+    await unbindLineUser(id);
+    const afterUnbind = await listUnboundLineUsers();
+    expect(afterUnbind.some((u) => u.lineUserId === target.lineUserId)).toBe(true);
   });
 });

@@ -18,7 +18,8 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  bindLineUser, createCustomer, deleteCustomer, listCustomers, unbindLineUser, updateCustomer,
+  bindLineUser, createCustomer, deleteCustomer, listCustomers, listUnboundLineUsers,
+  unbindLineUser, updateCustomer, type UnboundLineUser,
 } from '@/services/customers';
 import { listMembershipLevels } from '@/services/catalog';
 import { exportCustomersExcel } from '@/services/reports';
@@ -32,23 +33,6 @@ import type { Customer, Gender, MembershipLevel } from '@/lib/types';
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
-
-/** 原站 /api/line-users/unbound：綁定異常的 LINE 用戶 */
-type UnboundLineUser = {
-  id: string;
-  displayName: string | null;
-  /** UNBOUND：從未綁定；ORPHAN：顧客已刪但 LINE 殘留；AUTO_CREATED：系統自動建了空白檔案 */
-  kind: 'UNBOUND' | 'ORPHAN' | 'AUTO_CREATED';
-  /** kind = AUTO_CREATED 時，那份空白檔案的顯示名稱 */
-  autoProfileName: string | null;
-};
-
-const MOCK_UNBOUND_LINE_USERS: UnboundLineUser[] = [
-  { id: 'lu_1', displayName: 'Kevin', kind: 'UNBOUND', autoProfileName: null },
-  { id: 'lu_2', displayName: null, kind: 'UNBOUND', autoProfileName: null },
-  { id: 'lu_3', displayName: 'sunny_1988', kind: 'ORPHAN', autoProfileName: null },
-  { id: 'lu_4', displayName: 'Joyce', kind: 'AUTO_CREATED', autoProfileName: 'LINE Joyce' },
-];
 
 /** 原站以「自動建檔」旗標區分：LINE 加好友後系統先開的空白顧客檔 */
 const AUTO_CREATED_CUSTOMER_IDS = new Set<string>(['c_2']);
@@ -704,21 +688,26 @@ function BindLineModal({
 
   React.useEffect(() => {
     if (!customer) return;
-    setLoading(true);
     let cancelled = false;
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setUsers(MOCK_UNBOUND_LINE_USERS);
-      setLoading(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [customer]);
+    setLoading(true);
+    void (async () => {
+      try {
+        const list = await listUnboundLineUsers();
+        if (!cancelled) setUsers(list);
+      } catch {
+        if (!cancelled) toast.show(t.bindLine.loadFailed, 'danger');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [customer, toast]);
 
   const bind = async (u: UnboundLineUser) => {
     if (!customer) return;
-    setBindingId(u.id);
+    setBindingId(u.lineUserId);
     try {
-      await bindLineUser(customer.id, u.id, u.displayName);
+      await bindLineUser(customer.id, u.lineUserId, u.displayName);
       onBound();
     } catch (e) {
       toast.show(
@@ -728,12 +717,6 @@ function BindLineModal({
     } finally {
       setBindingId(null);
     }
-  };
-
-  const kindBadge = (kind: UnboundLineUser['kind']) => {
-    if (kind === 'ORPHAN') return <Badge tone="warning">{t.status.orphan}</Badge>;
-    if (kind === 'AUTO_CREATED') return <Badge tone="info">{t.status.autoCreated}</Badge>;
-    return <Badge tone="neutral">{t.status.unbound}</Badge>;
   };
 
   return (
@@ -754,32 +737,24 @@ function BindLineModal({
         <div className="flex flex-col gap-2">
           {users.map((u) => (
             <button
-              key={u.id}
+              key={u.lineUserId}
               type="button"
               disabled={bindingId !== null}
               onClick={() => void bind(u)}
               className="flex items-center gap-3 rounded-md border border-neutral-250 px-3 py-2.5 text-left transition-colors hover:bg-neutral-100 disabled:opacity-60"
             >
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-pill bg-neutral-200 text-xs font-semibold text-neutral-600">
-                {(u.displayName ?? '?').slice(0, 1).toUpperCase()}
+                {(u.displayName || '?').slice(0, 1).toUpperCase()}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-base font-semibold text-dark">
-                  {u.displayName ?? t.labels.noNickname}
+                  {u.displayName || t.labels.noNickname}
                 </span>
-                {u.kind === 'AUTO_CREATED' && u.autoProfileName ? (
-                  <>
-                    <span className="block truncate text-2xs text-secondary">
-                      {u.autoProfileName}{t.labels.and}{customer?.name}
-                    </span>
-                    <span className="form-text block">{t.bindLine.mergeHint}</span>
-                  </>
-                ) : null}
               </span>
-              {bindingId === u.id ? (
+              {bindingId === u.lineUserId ? (
                 <span className="text-xs text-secondary">{t.bindLine.binding}</span>
               ) : (
-                kindBadge(u.kind)
+                <Badge tone="neutral">{t.status.unbound}</Badge>
               )}
             </button>
           ))}
