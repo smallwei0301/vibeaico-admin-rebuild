@@ -16,6 +16,16 @@ Each snapshot is JSON schema version 1 and contains only:
 - count plus digest for public columns, constraints, views, indexes, policies, routines, and triggers;
 - optional explicit `OUT_OF_LEDGER` observations with compact evidence references.
 
+The reporter pins the two project references used by this repository:
+
+```text
+TEST        nmwhwngojosmagjuvxol
+PRODUCTION  egehnijjpgijmccagxac
+```
+
+A correctly shaped snapshot from the wrong project fails closed. When either project changes, update the
+pinned reference through a reviewed governance PR before collecting new evidence.
+
 Unknown fields are rejected. This intentionally blocks raw table rows, customer information, connection
 strings, keys, and ad-hoc notes from entering the report. Evidence references are identifiers such as
 `supabase:test/schema-fingerprint`, not URLs or credentials.
@@ -30,8 +40,10 @@ Migration ledger states have different meanings:
 ## Deterministic comparison
 
 The reporter verifies that both snapshots use the exact requested main SHA and that the checked-out Git
-HEAD has the same SHA. It inventories every regular `.sql` file below `supabase/migrations/`, rejects
-symlinks, normalizes path separators, sorts paths, and hashes exact file bytes.
+HEAD has the same SHA. It inventories every regular `.sql` file below `supabase/migrations/`, rejects the
+`supabase` or migration root when either is a symbolic link, rejects nested symbolic links, verifies the
+resolved migration directory remains inside the repository, normalizes path separators, sorts paths,
+and hashes exact file bytes.
 
 The same snapshots and migration bytes produce byte-identical JSON and Markdown. A filename or byte
 change alters the repo manifest digest.
