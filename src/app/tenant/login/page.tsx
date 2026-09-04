@@ -15,14 +15,8 @@ import { ApiError } from '@/lib/api';
 import { login } from '@/services';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁常數（不寫進 src/mock：登入沒有領域資料，只有平台 OAuth 端點）            */
+/* 第三方登入目前只展示未開通狀態；未配置平台 provider 前不得導向不存在的端點。     */
 /* -------------------------------------------------------------------------- */
-
-/** 平台級 OAuth 端點；channel 憑證在 src/config/env.ts，與店家自己的 LINE 帳號無關 */
-const OAUTH = {
-  line: t.oauth.lineHref,
-  google: t.oauth.googleHref,
-} as const;
 
 export default function LoginPage() {
   const toast = useToast();
@@ -139,14 +133,33 @@ export default function LoginPage() {
           <span className="h-px flex-1 bg-neutral-250" />
         </div>
 
-        <div className="flex flex-col gap-2">
-          <a className="btn btn-line btn-lg btn-block" href={OAUTH.line}>
+        <div className="flex flex-col gap-2" aria-describedby="oauth-not-configured">
+          <p id="oauth-not-configured" className="text-center text-xs text-secondary">
+            {t.oauth.notConfigured}
+          </p>
+          <Button
+            type="button"
+            variant="line"
+            size="lg"
+            block
+            disabled
+            data-testid="oauth-line-disabled"
+            title={t.oauth.comingSoon}
+          >
             <MessageCircle size={16} />
-            {t.oauth.line}
-          </a>
-          <a className="btn btn-outline btn-lg btn-block" href={OAUTH.google}>
-            {t.oauth.google}
-          </a>
+            {t.oauth.line}（{t.oauth.comingSoon}）
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            block
+            disabled
+            data-testid="oauth-google-disabled"
+            title={t.oauth.comingSoon}
+          >
+            {t.oauth.google}（{t.oauth.comingSoon}）
+          </Button>
         </div>
 
         <p className="mt-5 text-center text-base text-secondary">
