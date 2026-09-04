@@ -2,7 +2,6 @@
 import * as React from 'react';
 import type { BusinessType } from '@/config/modes';
 import type { TenantSummary } from '@/lib/types';
-import { MOCK_TENANTS } from '@/mock';
 
 /**
  * 目前店家的業態模式（見 docs/integration/13-BUSINESS-MODES.md）。
@@ -16,7 +15,9 @@ export const BusinessTypeProvider = BusinessTypeContext.Provider;
 export const useBusinessType = () => React.useContext(BusinessTypeContext);
 
 /** 目前操作的店家（真實後端對應 GET /api/auth/me） */
-const CurrentTenantContext = React.createContext<TenantSummary>(MOCK_TENANTS[0]);
+const CurrentTenantContext = React.createContext<TenantSummary>({
+  id: '', shopCode: '', name: '', role: 'STAFF', current: true, businessType: 'LOCAL_SHOP',
+});
 
 export const CurrentTenantProvider = CurrentTenantContext.Provider;
 

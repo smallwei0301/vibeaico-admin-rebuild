@@ -56,6 +56,7 @@ export const common = {
 
   /* ---- 狀態 ---- */
   loading: '載入中...',
+  badgeLoading: '查詢中',
   noData: '目前沒有資料',
   noResult: '找不到符合條件的資料',
   required: '必填',
@@ -126,6 +127,9 @@ export const common = {
     logout: '登出',
     userFallback: '使用者',
     setupProgress: '設定進度',
+    unknownValue: '--',
+    setupProgressUnknown: '尚未取得',
+    setupProgressUnknownHint: '目前讀不到設定進度，數字不是 0，是還不知道。點進店家設定可以看每一步的狀態。',
     toggleSidebar: '切換選單',
   },
 
