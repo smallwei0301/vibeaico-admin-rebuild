@@ -63,6 +63,41 @@ supersedes:
 - REQUESTED_MODEL / ACTUAL_MODEL: requested=GPT-5.6 Pro; actual=GPT-5.6 Pro
 `;
 
+const agentGovernanceBody = `<!-- pr-lifecycle
+issue: 182
+state: ACTIVE
+supersedes: none
+-->
+
+- DELIVERY_UNIT_TYPE: GOVERNANCE
+- PARENT_EPIC: none
+- COUNT_IN_DELIVERY_OUTCOME: false
+- RETROACTIVE_TRACKING_MIGRATION: false
+- USER_VISIBLE_OUTCOME: none
+- WORK_ORIGIN: AGENT
+- BPLUS_MODE: true
+- RUN_ID: 2026-09-04-governance-scorecard-none-r01
+- SCORECARD_PATH: none
+- AGENT_LANE: GOVERNANCE
+- LANE_STATE: ACTIVE
+- ACTIVE_CANDIDATE: true
+- CLOSEABILITY_SCORE: 5
+- SELECTION_REASON: GOVERNANCE
+- REMAINING_AUTONOMOUS_STEPS: exact-head CI and closeout
+- OWNER_OR_EXTERNAL_BLOCKER: none
+- CLOSURE_SWEEP_TARGET: #182
+- TEST_LANE_REQUIRED: false
+- RESERVE_BOUNDARY: none
+- WHY_NOT_CLOSER_CANDIDATE: none
+- REQUESTED_MODEL / ACTUAL_MODEL: requested=Terra; actual=unknown
+- DUAL_TERRA_PILOT: false
+- TERRA_SLOT: none
+- TEST_PROFILE: SOURCE_ONLY
+- TEST_ENV_ID: none
+- FINAL_CANONICAL_REQUIRED: false
+- FILE_OWNERSHIP: scripts/agents/agent-wip-preflight.mjs, tests/unit/agent-wip-preflight.164.test.ts
+`;
+
 describe('Issue #164 Agent WIP preflight', () => {
   it('passes a complete Product Slice before PR creation', () => {
     const result = validateWipPreflight({
@@ -78,6 +113,39 @@ describe('Issue #164 Agent WIP preflight', () => {
     const result = validateWipPreflight({ body: governanceBody });
     expect(result.valid).toBe(true);
   });
+
+  it.each(['none', 'NONE'])(
+    'treats exact SCORECARD_PATH=%s as not applicable for active governance',
+    (value) => {
+      let fileChecks = 0;
+      const result = validateWipPreflight({
+        body: agentGovernanceBody.replace('SCORECARD_PATH: none', `SCORECARD_PATH: ${value}`),
+        fileExists: () => {
+          fileChecks += 1;
+          return false;
+        },
+      });
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual([]);
+      expect(fileChecks).toBe(0);
+    },
+  );
+
+  it.each(['none/child.json', 'not-none'])(
+    'does not let SCORECARD_PATH=%s bypass the existence check',
+    (value) => {
+      let fileChecks = 0;
+      const result = validateWipPreflight({
+        body: agentGovernanceBody.replace('SCORECARD_PATH: none', `SCORECARD_PATH: ${value}`),
+        fileExists: () => {
+          fileChecks += 1;
+          return false;
+        },
+      });
+      expect(result.errors).toContain(`SCORECARD_PATH does not exist locally: ${value}`);
+      expect(fileChecks).toBe(1);
+    },
+  );
 
   it('catches the missing requested/actual model field seen in the retrospective', () => {
     const result = validateWipPreflight({
