@@ -12,6 +12,10 @@ const PROJECT_REF = /^[a-z0-9]{6,32}$/;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const OBJECT_KINDS = ['columns', 'constraints', 'views', 'indexes', 'policies', 'routines', 'triggers'];
 const LEDGER_STATES = new Set(['PRESENT', 'ABSENT', 'UNAVAILABLE']);
+const EXPECTED_PROJECT_REFS = Object.freeze({
+  TEST: 'nmwhwngojosmagjuvxol',
+  PRODUCTION: 'egehnijjpgijmccagxac',
+});
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -107,6 +111,10 @@ export function normalizeSnapshot(value, expectedEnvironment, expectedMainSha) {
   if (!ISO_UTC.test(observedAt) || Number.isNaN(Date.parse(observedAt))) fail('INVALID_OBSERVED_AT', 'observedAt must be an ISO UTC timestamp');
   const projectRef = String(value.projectRef ?? '').trim().toLowerCase();
   if (!PROJECT_REF.test(projectRef)) fail('INVALID_PROJECT_REF', 'projectRef is invalid');
+  const expectedProjectRef = EXPECTED_PROJECT_REFS[expectedEnvironment];
+  if (!expectedProjectRef || projectRef !== expectedProjectRef) {
+    fail('PROJECT_REF_MISMATCH', `expected ${expectedEnvironment} project ${expectedProjectRef ?? '<unsupported>'}, got ${projectRef}`);
+  }
   const observedMainSha = String(value.observedMainSha ?? '').trim().toLowerCase();
   if (!SHA.test(observedMainSha) || observedMainSha !== expectedMainSha) fail('STALE_MAIN_SHA', `${environment} snapshot does not match ${expectedMainSha}`);
 
@@ -165,10 +173,24 @@ function readEntries(root, current = root) {
   return entries;
 }
 
+function isOutsideRoot(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
+
 export function readMigrationManifest(repoRoot) {
-  const root = path.resolve(repoRoot, 'supabase', 'migrations');
-  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) fail('MIGRATION_DIRECTORY_MISSING', root);
-  return buildMigrationManifestFromEntries(readEntries(root));
+  const repository = fs.realpathSync(path.resolve(repoRoot));
+  const supabase = path.resolve(repoRoot, 'supabase');
+  const root = path.resolve(supabase, 'migrations');
+  for (const candidate of [supabase, root]) {
+    if (!fs.existsSync(candidate)) fail('MIGRATION_DIRECTORY_MISSING', candidate);
+    const info = fs.lstatSync(candidate);
+    if (info.isSymbolicLink()) fail('MIGRATION_SYMLINK_REJECTED', `symlink is not allowed: ${candidate}`);
+    if (!info.isDirectory()) fail('MIGRATION_DIRECTORY_MISSING', candidate);
+  }
+  const realRoot = fs.realpathSync(root);
+  if (isOutsideRoot(repository, realRoot)) fail('MIGRATION_DIRECTORY_OUTSIDE_REPO', realRoot);
+  return buildMigrationManifestFromEntries(readEntries(realRoot));
 }
 
 function compareLedger(test, production) {
