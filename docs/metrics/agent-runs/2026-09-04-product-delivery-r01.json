@@ -119,7 +119,11 @@
     "Owner steer 2026-09-04: restore broken functionality rather than cancel it. Codified on main as docs/DELIVERY-CHAIN.md (commit cb29f973) together with the six-gate delivery chain, plus two OWNER-DECISIONS entries and cross-references from AGENTS.md, CLAUDE.md and docs/AGENT-EXECUTION.md.",
     "Correction issued publicly on Issue #7: campaigns was earlier escalated as an Owner decision on missing backend columns. That was inference, not observation. src/app/api/campaigns/route.ts already documents that display fields go into the content jsonb, and both POST and PUT accept it. Only participantCount is a genuine gap (no campaign_participants table and no migration carrying campaign_id anywhere in the repo); it is a derived aggregate and cannot live in content jsonb without becoming a permanently stale fake number.",
     "Sol audit on pull/175 caught a button that would always fail: the delete action had been wired to DELETE /api/campaigns/:id, but that handler did not exist, so real mode would always return 405. Before the change it was a fake success, after it would have been a guaranteed failure; neither is a working feature. A DELETE handler was added (mirroring PUT: MANAGER role, id + tenant_id double-condition isolation, 404 without leaking existence, ENDED deletable since removal is not editing). Two tests that had locked in the absence of DELETE were removed and replaced with tests for the handler.",
-    "Five product PRs merged and Completion-Truth-verified this run: #168 3552e9d6, #169 0aca4b63, #171 42335a02, #172 be118811, #173 0173ba47. shipped_units remains 0 because AUTHENTICATED_PRODUCTION_ACCEPTED has not been performed for any of them."
+    "Five product PRs merged and Completion-Truth-verified this run: #168 3552e9d6, #169 0aca4b63, #171 42335a02, #172 be118811, #173 0173ba47. shipped_units remains 0 because AUTHENTICATED_PRODUCTION_ACCEPTED has not been performed for any of them.",
+    "The #177 canonical TEST failure demonstrated why both TEST profiles are needed and neither substitutes for the other: local isolated proves the migration itself is written correctly (fresh database, 0001 through 0076 applied in order), while canonical TEST proves the shared database's schema has actually been brought up to date. Local green plus canonical red is a coherent, informative pair, not a contradiction.",
+    "Correction issued to the Owner and to Issue #176: the initial claim that campaign settings trigger nothing at all was wrong. Birthday greetings and customer recall ARE fully implemented as real daily Vercel cron jobs (birthday-greetings at Taipei 09:00, customer-recall at 14:00) that send real LINE pushes, consume push quota, gate on features, and dedupe via last_recall_at. They are driven by tenant_settings.notify (the notification settings page), not by the campaigns page. The real problem is therefore two competing UIs for the same capability, not a missing capability, which substantially reduces the scope of #176.",
+    "pull/177 discloses that the customer source badge will show for nobody after merge, and that this is correct: the repo contains exactly one code path that inserts into customers (the manual admin POST). No LINE or public-booking auto-creation exists, so the customers page copy promising it is currently untrue. Escalated to the Owner rather than silently changing the copy or removing the badge.",
+    "pull/179 found a genuine defect beyond the wiring: the marketing page listed a COMPLETED status that the backend never writes (the real value is SENT), making that filter and label dead code. Also widened the send button to the backend's actual SENDABLE set so a failed push can be retried instead of being a dead end. The real LINE send endpoint was never invoked during construction or verification, and no integration or E2E test touches it."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
@@ -253,6 +257,38 @@
         "observedState": "pushed_to_main",
         "evidenceRef": "docs-only commit cb29f973 on main; changed files limited to docs/**, CLAUDE.md, AGENTS.md (allowlist verified before commit); ref=main re-read confirms docs/DELIVERY-CHAIN.md present; no src/**, supabase/**, workflow or dependency change; not a Production deploy or DDL authorization",
         "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#23 campaigns wiring (pull/175)",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "merge sha 527b5ff172634635bd7ecdd1e70d5d12bffbe735 equals main head and is reachable; ref=main re-read shows the DELETE handler present in src/app/api/campaigns/[id]/route.ts and zero occurrences of setTimeout(r, 320|380|420) in the campaigns page; canonical TEST run 33836769318 job 100911663572 ran integration 04:45:33-04:52:10 and E2E 04:52:10-04:53:24 with both policy-skip steps skipped",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#7 points topup (pull/174)",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "merge sha d90c3740acc27bfb50ae6fa0403ba05a4fda3551 equals main head and is reachable; ref=main re-read shows requestPointTopup in src/services/points.ts and zero occurrences of setTimeout(r, 420) in the points page; canonical TEST job 100904915594 ran integration 04:05:56-04:12:36 and E2E 04:12:36-04:14:06",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "TEST Supabase schema apply for migration 0076 (pull/177)",
+        "claimedState": "applied_to_test_only",
+        "observedState": "applied_to_test_only",
+        "evidenceRef": "project ref nmwhwngojosmagjuvxol (TEST) re-confirmed before acting, NOT egehnijjpgijmccagxac (PROD). Baseline recorded first: no source column, customers_view md5 c2bc651607621bd28d6fc62c2df38712. Applied 0076, then NOTIFY pgrst 'reload schema' per AGENT-EXECUTION 3.1. Post-apply verification: customers.source exists, customers_view also exposes source (proving the view rebuild worked), customers_source_check present, every existing row defaults to MANUAL, view row count equals table row count with no data loss. Production untouched; PRODUCTION_SCHEMA_STATUS remains NOT_APPLIED pending named Owner authorization.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "CI_GREEN",
+        "subject": "issue#7 customer source (pull/177) canonical TEST first attempt",
+        "claimedState": "green",
+        "observedState": "failed",
+        "evidenceRef": "run 33840036311 job 100921012922 failed: tests/integration/api/customers.a3.test.ts 3 failed / 202 passed, POST /api/customers returned 500 because the shared canonical TEST database lacked customers.source. Root cause is this PR's and is environmental, not a code defect: the local isolated run on the same head was green because it builds the database from 0001 through 0076. Re-run dispatched on the identical exact head 4a4ac10 after applying the schema to TEST; no commit pushed, no test skipped, disabled or modified, no empty commit.",
+        "verification": "CONTRADICTED"
       }
     ]
   }
