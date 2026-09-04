@@ -11,6 +11,7 @@ import { decryptSecret } from '@/server/crypto';
 import {
   basicSettingsSchema, businessSettingsSchema, notifySettingsSchema,
   privacySettingsSchema, pointsSettingsSchema, lineSettingsSchema,
+  brandingSettingsSchema,
   maskSecret, buildWebhookUrl, DEFAULT_TENANT_SETTINGS,
   type TenantSettings,
 } from '@/config/tenant-settings';
@@ -43,6 +44,7 @@ export const GET = handle(async () => {
         privacy: privacySettingsSchema.parse(row.privacy ?? {}),
         points: pointsSettingsSchema.parse(row.points ?? {}),
         line: lineSettingsSchema.parse(row.line ?? {}),
+        branding: brandingSettingsSchema.parse(row.branding ?? {}),
       }
     : DEFAULT_TENANT_SETTINGS(t.shopCode, t.tenantName);
 
@@ -67,6 +69,7 @@ const bodySchema = z.object({
   privacy: privacySettingsSchema.optional(),
   points: pointsSettingsSchema.optional(),
   line: z.unknown().optional(), // 忽略——line 群組走專用端點
+  branding: brandingSettingsSchema.optional(),
 });
 
 export const PUT = handle(async (req) => {
@@ -132,6 +135,7 @@ export const PUT = handle(async (req) => {
   if (notify) update.notify = notify;
   if (b.privacy) update.privacy = b.privacy;
   if (b.points) update.points = b.points;
+  if (b.branding) update.branding = b.branding;
 
   if (Object.keys(update).length) {
     const { error } = await t.supabase
