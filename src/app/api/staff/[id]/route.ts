@@ -17,6 +17,7 @@ const bodySchema = z.object({
   bookable: z.boolean().optional(),
   active: z.boolean().optional(),
   serviceIds: z.array(z.string().uuid()).optional(),
+  scheduleMode: z.enum(['FIXED_REST', 'ROTATING']).optional(),
 });
 
 export const PUT = handle(async (req, { params }) => {
@@ -37,6 +38,7 @@ export const PUT = handle(async (req, { params }) => {
   if (b.avatarUrl !== undefined) update.avatar_url = b.avatarUrl;
   if (b.bookable !== undefined) update.bookable = b.bookable;
   if (b.active !== undefined) update.active = b.active;
+  if (b.scheduleMode !== undefined) update.schedule_mode = b.scheduleMode;
 
   if (Object.keys(update).length > 0) {
     const { error } = await t.supabase

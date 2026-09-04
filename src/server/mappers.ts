@@ -107,6 +107,7 @@ export function mapStaff(r: any): Staff {
     bookable: r.bookable,
     active: r.active,
     sortOrder: r.sort_order,
+    scheduleMode: r.schedule_mode ?? 'ROTATING',
   };
 }
 
