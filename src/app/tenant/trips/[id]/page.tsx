@@ -32,7 +32,7 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import {
-  swapPlanOrder, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
+  reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
 import type {
   DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
@@ -234,19 +234,21 @@ export default function TripDetailPage() {
 
   const patchPlan = (p: Partial<TripPlan>) => setPlanDraft((d) => (d ? { ...d, ...p } : d));
 
-  /** 對調相鄰兩個方案的 sortOrder，並持久化到後端；清單一律依 sortOrder 顯示。 */
+  /**
+   * 移動方案並把 sortOrder 正規化成陣列位置索引，持久化到後端；清單一律依
+   * sortOrder 顯示。邊界（第一筆上移、最後一筆下移）或正規化後無需變動時
+   * 不發任何 PUT，也不顯示成功 toast。
+   */
   const movePlan = async (index: number, delta: number) => {
-    const target = index + delta;
-    const reordered = swapPlanOrder(plans, index, delta);
-    if (reordered === plans) return;
+    const { plans: reordered, updates } = reorderPlans(plans, index, delta);
+    if (updates.length === 0) return;
     try {
       if (USE_MOCK) {
         setPlans(reordered);
       } else {
-        await Promise.all([
-          saveTripPlan(tripId, { id: reordered[index].id, sortOrder: reordered[index].sortOrder }),
-          saveTripPlan(tripId, { id: reordered[target].id, sortOrder: reordered[target].sortOrder }),
-        ]);
+        await Promise.all(
+          updates.map((u) => saveTripPlan(tripId, { id: u.id, sortOrder: u.sortOrder })),
+        );
         setPlans(await listTripPlans(tripId));
       }
       toast.show(t.messages.planOrderUpdated);
