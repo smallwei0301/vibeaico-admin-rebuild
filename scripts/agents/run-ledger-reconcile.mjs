@@ -224,10 +224,12 @@ export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha,
   }
 
   const reconciliation = normalizeReconciliation(ledger.reconciliation);
-  const previous = reconciliation.identities.find((item) => item.identity === evidence.identity);
+  const previous = reconciliation.identities.find((item) => (
+    item.identity === evidence.identity || item.evidenceDigest === evidence.evidenceDigest
+  ));
   if (previous) {
     if (!verifyApplied(ledger.completionTruth.claims, evidence, ledger.completionTruth)) {
-      fail("APPLIED_IDENTITY_DRIFT", `identity ${evidence.identity} is recorded but its result is no longer present`);
+      fail("APPLIED_IDENTITY_DRIFT", `evidence ${evidence.evidenceDigest} is recorded but its result is no longer present`);
     }
     return { ledger, changed: false, evidence };
   }

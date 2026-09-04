@@ -87,6 +87,23 @@ describe("run ledger reconciliation", () => {
     expect(stableStringify(second.ledger)).toBe(stableStringify(first.ledger));
   });
 
+  it("does not create another candidate when the same evidence digest is replayed after main advances", () => {
+    const input = evidence([{ action: "ADD", claim: claim() }]);
+    const first = apply(ledger(), input);
+    const advancedMain = "c".repeat(40);
+    const replay = reconcileLedger({
+      ledger: first.ledger,
+      evidence: { ...input, observedMainSha: advancedMain },
+      currentMainSha: advancedMain,
+      currentLedgerSha: LEDGER_SHA,
+      expectedLedgerSha: LEDGER_SHA,
+    });
+    expect(replay.changed).toBe(false);
+    expect(replay.evidence.identity).not.toBe(first.evidence.identity);
+    expect(replay.evidence.evidenceDigest).toBe(first.evidence.evidenceDigest);
+    expect(replay.ledger.reconciliation.identities).toHaveLength(1);
+  });
+
   it("replaces an exact contradicted claim without deleting unrelated evidence", () => {
     const bad = {
       type: "CI_GREEN",

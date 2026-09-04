@@ -26,7 +26,9 @@ sha256(RUN_ID + observed main SHA + canonical evidence digest)
 ```
 
 Object key order and operation order do not change the digest. Applying the same identity twice to the
-same ledger returns `NO_CHANGES`; it does not manufacture another commit candidate.
+same ledger returns `NO_CHANGES`; it does not manufacture another commit candidate. If unrelated work
+moves `main`, replaying an already-recorded evidence digest also returns `NO_CHANGES` after the tool
+verifies that the earlier result is still present.
 
 ## Required live-state locks
 
