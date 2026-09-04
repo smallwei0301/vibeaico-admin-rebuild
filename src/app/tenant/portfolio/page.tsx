@@ -18,94 +18,15 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listFeatures } from '@/services/settings';
-import { byMode } from '@/mock';
+import {
+  createPortfolio, deletePortfolio, listPortfolios, reorderPortfolios,
+  togglePortfolioActive, togglePortfolioLineFeatured, updatePortfolio,
+} from '@/services/portfolios';
+import type { Portfolio } from '@/lib/types';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { portfolioPage as t } from '@/i18n/zh-TW/pages/portfolio';
 import { formatNumber } from '@/lib/utils';
-
-/* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
-/* -------------------------------------------------------------------------- */
-
-/** 原站 /api/portfolios 的作品結構（LINE 與公開頁各有一組排序） */
-type PortfolioItem = {
-  id: string;
-  title: string;
-  description: string;
-  coverImageUrl: string;
-  extraImageCount: number;
-  /** 公開頁排序（數字越小排越前面） */
-  sortOrder: number;
-  /** LINE 作品瀏覽的排序，與公開頁互不影響 */
-  lineSortOrder: number;
-  lineFeatured: boolean;
-  active: boolean;
-};
-
-const PORTFOLIO_LOCAL_SHOP: PortfolioItem[] = [
-  {
-    id: 'pf_1', title: '韓系空氣感層次燙', description: '微捲弧度搭配低彩度霧棕，適合細軟髮質',
-    coverImageUrl: '', extraImageCount: 4, sortOrder: 1, lineSortOrder: 1,
-    lineFeatured: true, active: true,
-  },
-  {
-    id: 'pf_2', title: '冷霧灰藍挑染', description: '雙色挑染，退色後仍有層次',
-    coverImageUrl: '', extraImageCount: 6, sortOrder: 2, lineSortOrder: 2,
-    lineFeatured: true, active: true,
-  },
-  {
-    id: 'pf_3', title: '新娘白紗造型', description: '',
-    coverImageUrl: '', extraImageCount: 8, sortOrder: 3, lineSortOrder: 4,
-    lineFeatured: false, active: true,
-  },
-  {
-    id: 'pf_4', title: '男士短髮修剪', description: '兩側推高、上方保留厚度',
-    coverImageUrl: '', extraImageCount: 2, sortOrder: 4, lineSortOrder: 3,
-    lineFeatured: true, active: false,
-  },
-];
-
-const PORTFOLIO_GUIDE: PortfolioItem[] = [
-  {
-    id: 'pf_1', title: '龜山島牛奶海空拍', description: '硫磺噴氣孔染出的乳白海域，只有繞島時看得到',
-    coverImageUrl: '', extraImageCount: 6, sortOrder: 1, lineSortOrder: 1,
-    lineFeatured: true, active: true,
-  },
-  {
-    id: 'pf_2', title: '飛旋海豚追蹤紀錄', description: '2026 年 6 月，一次遇上三群共約 200 隻',
-    coverImageUrl: '', extraImageCount: 12, sortOrder: 2, lineSortOrder: 2,
-    lineFeatured: true, active: true,
-  },
-  {
-    id: 'pf_3', title: '砂婆礑溪谷天然滑水道', description: '',
-    coverImageUrl: '', extraImageCount: 8, sortOrder: 3, lineSortOrder: 3,
-    lineFeatured: true, active: true,
-  },
-  {
-    id: 'pf_4', title: '九份夜色與礦坑遺址', description: '避開人潮的觀景平台，華燈初上那 20 分鐘',
-    coverImageUrl: '', extraImageCount: 5, sortOrder: 4, lineSortOrder: 4,
-    lineFeatured: false, active: true,
-  },
-  {
-    id: 'pf_5', title: '企業包團紀錄：員工旅遊', description: '12 人包船，客製航線',
-    coverImageUrl: '', extraImageCount: 3, sortOrder: 5, lineSortOrder: 5,
-    lineFeatured: false, active: false,
-  },
-];
-
-const PORTFOLIO_CLINIC: PortfolioItem[] = [
-  {
-    id: 'pf_1', title: '健檢中心環境', description: '獨立診間與更衣空間',
-    coverImageUrl: '', extraImageCount: 4, sortOrder: 1, lineSortOrder: 1,
-    lineFeatured: true, active: true,
-  },
-  {
-    id: 'pf_2', title: '醫療團隊介紹', description: '',
-    coverImageUrl: '', extraImageCount: 3, sortOrder: 2, lineSortOrder: 2,
-    lineFeatured: false, active: true,
-  },
-];
 
 type SortMode = 'line' | 'public';
 
@@ -113,6 +34,7 @@ const EMPTY_DRAFT = {
   id: '',
   title: '',
   description: '',
+  imageUrl: '',
   sortOrder: 0,
   active: true,
 };
@@ -122,9 +44,16 @@ const EMPTY_DRAFT = {
 export default function PortfolioPage() {
   const toast = useToast();
 
-  const [items, setItems] = React.useState<PortfolioItem[]>([]);
+  const [items, setItems] = React.useState<Portfolio[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [featureActive, setFeatureActive] = React.useState(true);
+  /**
+   * 排序模式切換仍保留（原站設計，見 docs/specs/portfolio.json）：後端
+   * portfolios 表目前只有單一 sortOrder，沒有獨立的 LINE 排序欄位（services/
+   * products 有靠 Issue #128 補上，portfolios 沒有）。因此兩個模式目前顯示
+   * 同一份順序，「LINE 顯示順序」模式下的個別調整與「套用排序」一律停用並
+   * 顯示真實原因，而不是假裝成功——已列入 ESCALATE_SOL 待補後端。
+   */
   const [sortMode, setSortMode] = React.useState<SortMode>('line');
 
   const [draft, setDraft] = React.useState<typeof EMPTY_DRAFT | null>(null);
@@ -132,25 +61,21 @@ export default function PortfolioPage() {
   const [titleError, setTitleError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
 
-  const [deleteTarget, setDeleteTarget] = React.useState<PortfolioItem | null>(null);
-  const [toggleTarget, setToggleTarget] = React.useState<PortfolioItem | null>(null);
-  const [syncConfirm, setSyncConfirm] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<Portfolio | null>(null);
+  const [toggleTarget, setToggleTarget] = React.useState<Portfolio | null>(null);
+  const [reordering, setReordering] = React.useState(false);
 
-  /** 新作品的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
-  const nextId = React.useRef(1);
-
-  React.useEffect(() => {
-    void (async () => {
-      try {
-        /* 骨架階段作品資料在頁面內，真實後端為 /api/portfolios */
-        setItems(byMode({ LOCAL_SHOP: PORTFOLIO_LOCAL_SHOP, GUIDE: PORTFOLIO_GUIDE, CLINIC: PORTFOLIO_CLINIC }));
-      } catch {
-        toast.show(t.messages.loadPortfolioFailed, 'danger');
-      } finally {
-        setLoading(false);
-      }
-    })();
+  const load = React.useCallback(async () => {
+    try {
+      setItems(await listPortfolios());
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.loadPortfolioFailed, 'danger');
+    } finally {
+      setLoading(false);
+    }
   }, [toast]);
+
+  React.useEffect(() => { void load(); }, [load]);
 
   React.useEffect(() => {
     void (async () => {
@@ -170,12 +95,10 @@ export default function PortfolioPage() {
   const lineFeaturedCount = items.filter((i) => i.lineFeatured).length;
   const overLineLimit = lineFeaturedCount > t.sort.lineMaxFeatured;
 
+  /** 後端只有單一 sortOrder，兩個模式目前顯示同一份順序（見上方註解）。 */
   const ordered = React.useMemo(
-    () =>
-      [...items].sort((a, b) =>
-        sortMode === 'line' ? a.lineSortOrder - b.lineSortOrder : a.sortOrder - b.sortOrder,
-      ),
-    [items, sortMode],
+    () => [...items].sort((a, b) => a.sortOrder - b.sortOrder),
+    [items],
   );
 
   const fromLabel = sortMode === 'line' ? t.sort.lineMode : t.sort.publicMode;
@@ -186,16 +109,17 @@ export default function PortfolioPage() {
   const openCreate = () => {
     setEditing(false);
     setTitleError('');
-    setDraft({ ...EMPTY_DRAFT, sortOrder: items.length + 1 });
+    setDraft({ ...EMPTY_DRAFT, sortOrder: items.length });
   };
 
-  const openEdit = (item: PortfolioItem) => {
+  const openEdit = (item: Portfolio) => {
     setEditing(true);
     setTitleError('');
     setDraft({
       id: item.id,
       title: item.title,
       description: item.description,
+      imageUrl: item.imageUrl,
       sortOrder: item.sortOrder,
       active: item.active,
     });
@@ -210,33 +134,24 @@ export default function PortfolioPage() {
     setSaving(true);
     try {
       if (editing) {
-        setItems((list) =>
-          list.map((i) =>
-            i.id === draft.id
-              ? { ...i, title: draft.title.trim(), description: draft.description, sortOrder: draft.sortOrder, active: draft.active }
-              : i,
-          ),
-        );
+        await updatePortfolio(draft.id, {
+          title: draft.title.trim(),
+          description: draft.description,
+          imageUrl: draft.imageUrl,
+          active: draft.active,
+        });
         toast.show(t.messages.updated);
       } else {
-        const id = `pf_new_${nextId.current++}`;
-        setItems((list) => [
-          ...list,
-          {
-            id,
-            title: draft.title.trim(),
-            description: draft.description,
-            coverImageUrl: '',
-            extraImageCount: 0,
-            sortOrder: draft.sortOrder,
-            lineSortOrder: list.length + 1,
-            lineFeatured: false,
-            active: draft.active,
-          },
-        ]);
+        await createPortfolio({
+          title: draft.title.trim(),
+          description: draft.description,
+          imageUrl: draft.imageUrl || draft.title.trim(),
+          active: draft.active,
+        });
         toast.show(t.messages.created);
       }
       setDraft(null);
+      await load();
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -247,64 +162,66 @@ export default function PortfolioPage() {
     }
   };
 
-  const remove = () => {
+  const remove = async () => {
     if (!deleteTarget) return;
-    setItems((list) => list.filter((i) => i.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    toast.show(t.messages.deleted);
+    try {
+      await deletePortfolio(deleteTarget.id);
+      setDeleteTarget(null);
+      toast.show(t.messages.deleted);
+      await load();
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.deleteWorkFailed, 'danger');
+    }
   };
 
-  const toggleActive = () => {
+  const toggleActive = async () => {
     if (!toggleTarget) return;
-    const nextActive = !toggleTarget.active;
-    setItems((list) =>
-      list.map((i) => (i.id === toggleTarget.id ? { ...i, active: nextActive } : i)),
-    );
-    setToggleTarget(null);
-    toast.show(t.messages.toggled(nextActive ? t.actions.enable : t.actions.disable));
+    const target = toggleTarget;
+    try {
+      const { active } = await togglePortfolioActive(target.id);
+      setToggleTarget(null);
+      toast.show(t.messages.toggled(active ? t.actions.enable : t.actions.disable));
+      await load();
+    } catch (e) {
+      toast.show(`${t.messages.toggleFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
+    }
   };
 
-  const toggleLineFeatured = (item: PortfolioItem) => {
-    const next = !item.lineFeatured;
-    setItems((list) =>
-      list.map((i) => (i.id === item.id ? { ...i, lineFeatured: next } : i)),
-    );
-    toast.show(next ? t.messages.lineShown : t.messages.lineHidden);
+  const toggleLineFeatured = async (item: Portfolio) => {
+    try {
+      const { lineFeatured } = await togglePortfolioLineFeatured(item.id);
+      setItems((list) => list.map((i) => (i.id === item.id ? { ...i, lineFeatured } : i)));
+      toast.show(lineFeatured ? t.messages.lineShown : t.messages.lineHidden);
+    } catch (e) {
+      toast.show(`${t.messages.toggleFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
+    }
   };
 
-  /** 上／下移：改的是目前排序模式對應的欄位，兩組排序互不影響 */
-  const move = (item: PortfolioItem, delta: -1 | 1) => {
-    const list = ordered;
-    const index = list.findIndex((i) => i.id === item.id);
+  /**
+   * 上／下移：後端只有單一 sortOrder，僅「公開頁順序」模式真的會寫回
+   * /api/portfolios/reorder。「LINE 顯示順序」模式下的箭頭本身就停用
+   * （見 render），這裡多一層防呆，絕不假裝成功。
+   */
+  const move = async (item: Portfolio, delta: -1 | 1) => {
+    if (sortMode === 'line') {
+      toast.show(t.sort.lineOrderUnavailable, 'danger');
+      return;
+    }
+    const index = ordered.findIndex((i) => i.id === item.id);
     const target = index + delta;
-    if (target < 0 || target >= list.length) return;
-    const a = list[index];
-    const b = list[target];
-    setItems((all) =>
-      all.map((i) => {
-        if (sortMode === 'line') {
-          if (i.id === a.id) return { ...i, lineSortOrder: b.lineSortOrder };
-          if (i.id === b.id) return { ...i, lineSortOrder: a.lineSortOrder };
-          return i;
-        }
-        if (i.id === a.id) return { ...i, sortOrder: b.sortOrder };
-        if (i.id === b.id) return { ...i, sortOrder: a.sortOrder };
-        return i;
-      }),
-    );
-    toast.show(sortMode === 'line' ? t.sort.lineOrderUpdated : t.sort.publicOrderUpdated);
-  };
-
-  const syncOrder = () => {
-    setItems((all) =>
-      all.map((i) =>
-        sortMode === 'line'
-          ? { ...i, sortOrder: i.lineSortOrder }
-          : { ...i, lineSortOrder: i.sortOrder },
-      ),
-    );
-    setSyncConfirm(false);
-    toast.show(t.sort.syncDone(toModeLabel));
+    if (target < 0 || target >= ordered.length) return;
+    const next = [...ordered];
+    [next[index], next[target]] = [next[target], next[index]];
+    setReordering(true);
+    try {
+      await reorderPortfolios(next.map((i) => i.id));
+      toast.show(t.sort.publicOrderUpdated);
+      await load();
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+    } finally {
+      setReordering(false);
+    }
   };
 
   /* -------------------------------------------------------------- render */
@@ -364,7 +281,13 @@ export default function PortfolioPage() {
                 {t.sort.publicMode}
               </Button>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setSyncConfirm(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              title={t.sort.syncUnavailable}
+              aria-label={t.sort.syncUnavailable}
+            >
               <ArrowLeftRight size={13} />
               {sortMode === 'line' ? t.sort.syncToPublic : t.sort.syncToLine}
             </Button>
@@ -394,6 +317,7 @@ export default function PortfolioPage() {
                 {overLineLimit ? (
                   <span className="text-xs text-danger">{t.sort.lineOverLimit}</span>
                 ) : null}
+                <span className="text-xs text-secondary">{t.sort.lineOrderUnavailable}</span>
               </div>
             </>
           ) : (
@@ -447,9 +371,10 @@ export default function PortfolioPage() {
                   <Button
                     variant="ghost"
                     size="icon"
+                    disabled={!featureActive}
                     title={item.lineFeatured ? t.actions.lineShown : t.actions.lineHidden}
                     aria-label={item.lineFeatured ? t.actions.lineShown : t.actions.lineHidden}
-                    onClick={() => toggleLineFeatured(item)}
+                    onClick={() => void toggleLineFeatured(item)}
                   >
                     <Sparkles
                       size={15}
@@ -465,26 +390,22 @@ export default function PortfolioPage() {
                   <Badge tone={item.lineFeatured ? 'primary' : 'neutral'}>
                     {item.lineFeatured ? t.labels.lineShown : t.labels.lineHiddenBadge}
                   </Badge>
-                  <span className="text-xs text-secondary tabular-nums">
-                    {formatNumber(item.extraImageCount)}
-                    {t.labels.imageCountSuffix}
-                  </span>
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-1">
                   <Button
                     variant="outline" size="sm"
-                    aria-label={common.prev} title={common.prev}
-                    disabled={index === 0}
-                    onClick={() => move(item, -1)}
+                    aria-label={common.prev} title={sortMode === 'line' ? t.sort.lineOrderUnavailable : common.prev}
+                    disabled={sortMode === 'line' || reordering || index === 0}
+                    onClick={() => void move(item, -1)}
                   >
                     <ChevronUp size={13} />
                   </Button>
                   <Button
                     variant="outline" size="sm"
-                    aria-label={common.next} title={common.next}
-                    disabled={index === ordered.length - 1}
-                    onClick={() => move(item, 1)}
+                    aria-label={common.next} title={sortMode === 'line' ? t.sort.lineOrderUnavailable : common.next}
+                    disabled={sortMode === 'line' || reordering || index === ordered.length - 1}
+                    onClick={() => void move(item, 1)}
                   >
                     <ChevronDown size={13} />
                   </Button>
@@ -561,7 +482,14 @@ export default function PortfolioPage() {
 
             <FormGroup>
               <Label>{t.form.coverImage}</Label>
-              <Input type="file" accept="image/*" />
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  setDraft({ ...draft, imageUrl: file ? file.name : draft.imageUrl });
+                }}
+              />
               <FormText>{t.form.coverImageHelp}</FormText>
             </FormGroup>
 
@@ -573,12 +501,7 @@ export default function PortfolioPage() {
 
             <FormGroup>
               <Label htmlFor="sortOrderInput">{t.form.sortOrder}</Label>
-              <Input
-                id="sortOrderInput"
-                type="number"
-                value={draft.sortOrder}
-                onChange={(e) => setDraft({ ...draft, sortOrder: Number(e.target.value) })}
-              />
+              <Input id="sortOrderInput" type="number" value={draft.sortOrder} readOnly disabled />
               <FormText>{t.form.sortOrderHelp}</FormText>
             </FormGroup>
 
@@ -599,7 +522,7 @@ export default function PortfolioPage() {
         danger
         confirmText={common.delete}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={remove}
+        onConfirm={() => void remove()}
       />
 
       <ConfirmModal
@@ -609,19 +532,7 @@ export default function PortfolioPage() {
           toggleTarget?.active ? t.actions.disable : t.actions.enable,
         )}
         onClose={() => setToggleTarget(null)}
-        onConfirm={toggleActive}
-      />
-
-      <ConfirmModal
-        open={syncConfirm}
-        title={t.confirm.syncTitle}
-        message={
-          <span className="whitespace-pre-line">
-            {t.sort.syncConfirm(fromLabel, toModeLabel)}
-          </span>
-        }
-        onClose={() => setSyncConfirm(false)}
-        onConfirm={syncOrder}
+        onConfirm={() => void toggleActive()}
       />
     </>
   );

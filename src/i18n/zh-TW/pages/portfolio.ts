@@ -49,6 +49,9 @@ export const portfolioPage = {
     lineOrderUpdated: 'LINE 順序已更新',
     publicOrderUpdated: '公開頁順序已更新',
     publicLabel: '公開頁',
+    /** 後端目前只有單一排序欄位，尚未提供獨立的 LINE 排序與雙向套用 API */
+    lineOrderUnavailable: 'LINE 顯示順序目前尚未有獨立的後端欄位，暫時無法調整，已回報工程處理',
+    syncUnavailable: '「套用排序」需要後端支援獨立的 LINE 排序欄位，目前尚未提供，已回報工程處理',
   },
 
   /* --------------------------------------------------------------- 動作 */
@@ -84,8 +87,8 @@ export const portfolioPage = {
     extraImages: '其他圖片（選填，最多 8 張）',
     extraImagesHelp: '可一次選多張，讓作品展示更豐富',
     extraImagesMax: 8,
-    sortOrder: '排序',
-    sortOrderHelp: '數字越小排越前面',
+    sortOrder: '目前顯示順序',
+    sortOrderHelp: '後端只能透過卡片上的「上移／下移」調整順序，此欄位僅顯示目前位置',
     enabled: '啟用',
   },
 
