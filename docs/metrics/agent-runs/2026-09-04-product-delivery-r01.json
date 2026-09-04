@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-04-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-04T00:02:00.522Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "github-main",
+      "ref": "dfb20de2d9642c2b1db098b090080fdc4d9497f9",
+      "note": "Live main at product session takeover; newer than the 2026-09-03 handoff snapshot 10567c22."
+    },
+    {
+      "type": "handoff",
+      "ref": "docs/handoffs/2026-09-03-product-delivery-closeout.md",
+      "note": "Previous product session closeout; re-verified against live GitHub, not trusted verbatim."
+    },
+    {
+      "type": "github-issue",
+      "ref": "issues/7",
+      "note": "Terra slot 1: block-times page wired to the existing /api/block-times endpoints."
+    },
+    {
+      "type": "github-issue",
+      "ref": "issues/42",
+      "note": "Terra slot 2: trip plan display ordering exposed in the guide UI; trip_plans.sort_order already exists."
+    }
+  ],
+  "main": {
+    "startSha": "dfb20de2d9642c2b1db098b090080fdc4d9497f9",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 45,
+    "openIssuesEnd": null,
+    "openPrsStart": 17,
+    "openPrsEnd": null,
+    "mainTerraPeak": 2,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 2,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "Product delivery session resumed after the previous session left ACTIVE product PRs at zero following the #162 merge.",
+    "Free dual-Terra pilot: slot 1 Issue #7 block-times wiring, slot 2 Issue #42 plan display ordering; no file overlap and no migration in either lane.",
+    "Governance work (#163/#164) is handled by a separate session and is not claimed here.",
+    "No completion, remote canonical TEST, merge or Issue-close claim is made at initialization.",
+    "Main advanced to 549402f471ffd4786a44319ca5bc169f897ce67e (governance #164) during triage; #164 touched only workflows, agent scripts, docs and governance tests, so no product source rebuild was required and both Terra branches are based on 549402f."
+  ],
+  "deliveryTruthVersion": 3,
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
