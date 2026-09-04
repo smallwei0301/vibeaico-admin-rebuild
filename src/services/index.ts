@@ -5,6 +5,7 @@
  */
 export * from './auth';
 export * from './bookings';
+export * from './campaigns';
 export * from './customers';
 export * from './catalog';
 export * from './chat';

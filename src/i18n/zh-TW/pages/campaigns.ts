@@ -87,6 +87,9 @@ export const campaignsPage = {
     pushMessage: '推播訊息',
     campaignName: '活動名稱',
     thresholdAmount: '滿額門檻金額',
+    /** 後端沒有任何來源表可以算「參加人數」（沒有 campaign_participants，也沒有
+     * 帶 campaign_id 的表），這是誠實佔位，不是假資料 —— 見 Issue #23。 */
+    participantsUnavailable: '尚未提供',
   },
 
   /* --------------------------------------------------------------- 動作 */
