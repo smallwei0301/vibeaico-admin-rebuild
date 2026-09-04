@@ -1,17 +1,42 @@
-import { adapt, request } from '@/lib/api';
+import { adapt, ApiError, request } from '@/lib/api';
 import type { Paged, PointTransaction } from '@/lib/types';
-import { MOCK_POINT_BALANCE, MOCK_POINT_TRANSACTIONS } from '@/mock';
+import type { BusinessType } from '@/config/modes';
+import { MOCK_MODE, MOCK_POINT_BALANCE, MOCK_POINT_TRANSACTIONS, MOCK_TENANTS } from '@/mock';
 
 /**
  * 店家平台點數錢包（04 分冊 §B-4：balance / transactions / transfer）。
- * 目前 /tenant/points 頁仍是頁內自組 mock，尚未接線（該頁不在本次接線範圍）；
- * 這裡先備齊 adapt 雙模函式，接線時頁面只需改呼叫這幾支。
+ * /tenant/points 頁已接線，balance / transactions / transfer 皆走這裡的
+ * adapt 雙模函式；儲值（requestPointTopup）目前 real 分支後端固定回 501
+ * （MVP 不接金流，見 /api/points/topup/pay route 註解），頁面把
+ * ApiError.message 原樣顯示給使用者，不得假裝成功。
  */
+
+/**
+ * mock 分支的可變狀態：per-mode（延遲初始化，呼叫當下才讀 MOCK_MODE /
+ * MOCK_POINT_BALANCE / MOCK_POINT_TRANSACTIONS，絕不可在 module scope 讀取
+ * 這幾個 live binding——AppShell 切換租戶時才會 reassign 它們）。
+ * 讓 mock 模式下轉點能真的扣款、真的多一筆交易，而不是靜態常數。
+ */
+type MockPointsState = { balance: number; transactions: PointTransaction[] };
+const mockPointsStore = new Map<BusinessType, MockPointsState>();
+
+function getMockPointsState(): MockPointsState {
+  const mode = MOCK_MODE;
+  let state = mockPointsStore.get(mode);
+  if (!state) {
+    state = {
+      balance: MOCK_POINT_BALANCE,
+      transactions: [...MOCK_POINT_TRANSACTIONS, ...MOCK_EXTRA_TRANSACTIONS],
+    };
+    mockPointsStore.set(mode, state);
+  }
+  return state;
+}
 
 /** GET /api/points/balance — 目前點數餘額 */
 export const getPointBalance = () =>
   adapt<{ balance: number }>(
-    () => ({ balance: MOCK_POINT_BALANCE }),
+    () => ({ balance: getMockPointsState().balance }),
     () => request<{ balance: number }>('/api/points/balance'),
   );
 
@@ -61,8 +86,9 @@ export const listPointTransactions = (q: PointTransactionQuery = {}) =>
     () => {
       const page = q.page ?? 0;
       const size = q.size ?? 20;
-      // 串接順序 = 原頁面 ALL_TRANSACTIONS 的順序（共用 mock 在前、展示列在後）
-      const rows = [...MOCK_POINT_TRANSACTIONS, ...MOCK_EXTRA_TRANSACTIONS];
+      // per-mode store：共用 mock 在前、展示列在後（初始順序），
+      // 轉點成功後新交易會 unshift 到最前面。
+      const rows = getMockPointsState().transactions;
       return {
         content: rows.slice(page * size, (page + 1) * size),
         totalElements: rows.length,
@@ -77,12 +103,64 @@ export const listPointTransactions = (q: PointTransactionQuery = {}) =>
 /**
  * POST /api/points/transfer — 跨店點數轉移（⚙OWNER）。
  * 失敗時 ApiError.message 由後端映射（409「點數餘額不足」、404「找不到目標店家」等），
- * 頁面 toast 原樣顯示即可。
+ * 頁面 toast 原樣顯示即可。mock 分支複製同一組錯誤情境（不足、找不到、轉給自己、
+ * 非正整數），並真的扣款、真的多一筆交易，行為與 real 一致。
  */
 export const transferPoints = (payload: { toShopCode: string; amount: number }) =>
   adapt<{ transferred: boolean }>(
-    () => ({ transferred: true }),
+    () => {
+      const { toShopCode, amount } = payload;
+      if (!Number.isInteger(amount) || amount <= 0)
+        throw new ApiError('轉移點數必須大於 0', 'REQ_001', 400);
+
+      const me = MOCK_TENANTS.find((x) => x.current);
+      if (me && me.shopCode === toShopCode)
+        throw new ApiError('不能轉移點數給自己的店家', 'REQ_001', 400);
+
+      const target = MOCK_TENANTS.find((x) => x.shopCode === toShopCode);
+      if (!target) throw new ApiError('找不到目標店家', 'REQ_002', 404);
+
+      const state = getMockPointsState();
+      if (amount > state.balance) throw new ApiError('點數餘額不足', 'POINTS_001', 409);
+
+      state.balance -= amount;
+      const txn: PointTransaction = {
+        id: `pt_transfer_${Date.now()}`,
+        type: 'TRANSFER_OUT',
+        amount: -amount,
+        balanceAfter: state.balance,
+        description: `轉出至「${target.name}」`,
+        createdAt: new Date().toISOString(),
+      };
+      state.transactions = [txn, ...state.transactions];
+
+      return { transferred: true };
+    },
     () => request<{ transferred: boolean }>('/api/points/transfer', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  );
+
+/**
+ * POST /api/points/topup/pay — 申請儲值。
+ * MVP 階段後端固定回 501「請聯絡平台客服儲值」（不接金流，見該 route 註解）。
+ * mock 分支回傳語意相同的「不可用」錯誤，兩種模式都不得假裝儲值成功——
+ * 頁面把這裡拋出的 ApiError.message 原樣顯示。
+ */
+export type PointTopupPayload = {
+  amount: number;
+  invoiceUbn?: string;
+  invoiceTitle?: string;
+  remark?: string;
+};
+
+export const requestPointTopup = (payload: PointTopupPayload) =>
+  adapt<{ topupRequested: boolean }>(
+    () => {
+      throw new ApiError('請聯絡平台客服儲值', undefined, 501);
+    },
+    () => request<{ topupRequested: boolean }>('/api/points/topup/pay', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
