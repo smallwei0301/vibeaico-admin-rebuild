@@ -62,20 +62,20 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 3,
+    "issuesStarted": 4,
     "issuesClosed": 0,
     "auditReady": 1,
     "ownerBlockedComplete": 0,
-    "exactHeadCiOnly": 1,
+    "exactHeadCiOnly": 0,
     "commitOnly": 0,
     "unfinishedCarryover": 0,
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 6,
+    "fullCiRuns": 12,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
-    "sharedTestCollisions": 0
+    "sharedTestCollisions": 1
   },
   "quality": {
     "acceptanceEvidenceCoveragePercent": null,
@@ -88,14 +88,14 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 11,
-    "lunaAccepted": 11,
+    "lunaTasks": 14,
+    "lunaAccepted": 14,
     "lunaDelegationRatePercent": 100,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 1,
     "waitTimeConvertedPercent": null,
-    "solTouches": 6,
-    "solIssues": 3
+    "solTouches": 12,
+    "solIssues": 4
   },
   "auditability": {
     "evidenceFieldsCompletePercent": null,
@@ -113,12 +113,14 @@
     "Owner steer 2026-09-04: restore broken features rather than removing them. PR #169 was re-scoped from a field-removal to a full restore (title/recurrence/full_day/auto + PUT endpoint + WEEKLY expansion in availability and calendar).",
     "Sol audit caught two fake-success defects that exact-head CI had passed: PR #168 sortOrder tie values (seed rows share the default 0, so a reorder wrote 0 back and changed nothing while showing a success toast) and PR #169 mock-mode create that never persisted.",
     "GOVERNANCE_FOLLOWUP: block_times schema drift. supabase/migrations/0004 creates 7 columns; TEST and PROD both carry 5 additional columns and 2 named check constraints that no repo migration creates. Repo migrations no longer reproduce live schema, which undermines the free per-PR local Supabase strategy. A full-table drift audit belongs to the governance lane.",
-    "One real ownership collision occurred and was contained: two Terra lanes initially shared a single working tree; slot 1 was moved to a dedicated git worktree and file ownership was verified with comm before opening each PR."
+    "One real ownership collision occurred and was contained: two Terra lanes initially shared a single working tree; slot 1 was moved to a dedicated git worktree and file ownership was verified with comm before opening each PR.",
+    "Second schema drift found: portfolios.line_sort_order exists on both TEST and PROD but no repo migration creates it. A building agent read the repo migrations, concluded the column was missing, and was about to disable a working feature. Read-only verification against the live database prevented that. Drift is therefore not only a tidiness problem; it causes agents to misjudge features as infeasible.",
+    "One shared TEST collision was detected and contained: the WIP guard now auto-dispatches the canonical TEST on lane transition (behaviour introduced by governance PR #166 during this run), which duplicated the session's manual dispatch on PR #169. The pending duplicate run was cancelled before it started and no manual dispatch was issued for later lane transitions."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-09-04T01:25:00Z",
+    "checkedAt": "2026-09-04T02:22:00Z",
     "claims": [
       {
         "type": "SOURCE_VERIFIED",
@@ -167,6 +169,54 @@
         "observedState": "ready",
         "evidenceRef": "Supabase Management API read-only query of egehnijjpgijmccagxac information_schema.columns and pg_constraint: title/recurrence/day_of_week/full_day/auto and both named check constraints already present; migration 0074 is an idempotent reconciliation with no new production DDL",
         "verification": "VERIFIED"
+      },
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "issue#7",
+        "claimedState": "success",
+        "observedState": "success",
+        "evidenceRef": "actions/runs/33825697366 check job 100877794921; canonical integration job 100878261372 ran 11.5m (01:29:55-01:41:24) and E2E 79s, both policy-skip steps skipped",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#7",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "pull/169 merged_at 2026-09-04T01:45:24Z; merge sha 0aca4b63fddacae587e237e6e061f84705b1db56 reachable from main; ref=main re-read src/server/block-times.ts queryEffectiveBlockTimes and migration 0074 present",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "issue#28",
+        "claimedState": "success",
+        "observedState": "success",
+        "evidenceRef": "actions/runs/33827073787 check job 100881940071; canonical integration job 100883488142 ran 6.8m (02:08:41-02:15:30) and E2E 73s, both policy-skip steps skipped",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#28",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "pull/171 merged_at 2026-09-04T02:17:23Z; merge sha 42335a02948b7645769a8cc5e9984c95d2ab97b5 is current main head and reachable; ref=main re-read src/app/tenant/services/page.tsx openEdit present and fake toggle absent",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "AUTHENTICATED_PRODUCTION_ACCEPTED",
+        "subject": "issue#7",
+        "claimedState": "not_run",
+        "observedState": "not_run",
+        "evidenceRef": "no authenticated production acceptance performed; PRODUCTION_PENDING, not shipped",
+        "verification": "UNVERIFIED"
+      },
+      {
+        "type": "AUTHENTICATED_PRODUCTION_ACCEPTED",
+        "subject": "issue#28",
+        "claimedState": "not_run",
+        "observedState": "not_run",
+        "evidenceRef": "no authenticated production acceptance performed; PRODUCTION_PENDING, not shipped",
+        "verification": "UNVERIFIED"
       }
     ]
   }
