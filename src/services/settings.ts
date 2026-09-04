@@ -1,4 +1,4 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import { APP_URL } from '@/config/env';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
@@ -13,6 +13,41 @@ const current = MOCK_TENANTS[0];
 export interface TenantSettingsSaveResult {
   welcomeCardImageCleanupPending?: boolean;
 }
+
+export interface UploadRichMenuBgImageResult {
+  url: string;
+}
+
+/**
+ * Rich Menu 背景圖上傳 —— 走**專用**端點 `/api/settings/line/rich-menu/upload-bg-image`，
+ * 不能借用通用的 `uploadImage()`（`/api/upload`）：通用端點放行到 5MB，
+ * 但 create 端點會把這張圖原樣上傳給 LINE，`/v2/bot/richmenu/{id}/content` 的平台上限是
+ * 1MB —— 用通用端點上傳會讓超過 1MB 的圖片「上傳成功」，直到之後發布才失敗。
+ * 這裡在上傳當下就用與後端相同的規則擋下，並把後端的真實錯誤訊息原樣往上拋。
+ */
+const RICH_MENU_BG_MAX_BYTES = 1024 * 1024; // 1MB，對齊 upload-bg-image route 的 LINE 平台限制
+const RICH_MENU_BG_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png']);
+
+export const uploadRichMenuBgImage = (file: File) =>
+  adapt<UploadRichMenuBgImageResult>(
+    () => {
+      if (!RICH_MENU_BG_ALLOWED_TYPES.has(file.type)) {
+        throw new ApiError('僅支援 JPEG / PNG 圖片', 'VALIDATION');
+      }
+      if (file.size > RICH_MENU_BG_MAX_BYTES) {
+        throw new ApiError('圖片超過 1MB 上限（LINE Rich Menu 限制），請壓縮後再上傳', 'VALIDATION');
+      }
+      return { url: file.name };
+    },
+    () => {
+      const form = new FormData();
+      form.append('file', file);
+      return request<UploadRichMenuBgImageResult>('/api/settings/line/rich-menu/upload-bg-image', {
+        method: 'POST',
+        body: form,
+      });
+    },
+  );
 
 /**
  * 讀租戶設定。

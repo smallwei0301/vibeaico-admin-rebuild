@@ -17,12 +17,13 @@ import {
   FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listFeatures } from '@/services/settings';
+import { listFeatures, uploadRichMenuBgImage } from '@/services/settings';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { richMenuDesignPage as t } from '@/i18n/zh-TW/pages/rich-menu-design';
 import { cn } from '@/lib/utils';
+import { ApiError } from '@/lib/api';
 
 /* ============================================================================
  * 選單設計 /tenant/rich-menu-design
@@ -181,6 +182,8 @@ function RichMenuTab({
   const [theme, setTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [layout, setLayout] = React.useState('3+4');
   const [bgUrl, setBgUrl] = React.useState('');
+  const [bgUploading, setBgUploading] = React.useState(false);
+  const bgFileInputRef = React.useRef<HTMLInputElement>(null);
   const [cells, setCells] = React.useState<Cell[]>(DEFAULT_CELLS);
   const [activeCell, setActiveCell] = React.useState(0);
   const [sceneOpen, setSceneOpen] = React.useState(true);
@@ -201,6 +204,25 @@ function RichMenuTab({
 
   const updateCell = (i: number, patch: Partial<Cell>) =>
     setCells((c) => c.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+
+  const handleBgFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 允許重選同一個檔案時仍觸發 change
+    if (!file) return;
+    setBgUploading(true);
+    try {
+      const { url } = await uploadRichMenuBgImage(file);
+      setBgUrl(url);
+      toast.show(t.background.uploaded, 'success');
+    } catch (err) {
+      toast.show(
+        `${t.background.uploadFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setBgUploading(false);
+    }
+  };
 
   /** 發布前的驗證 —— 完整照原站規則 */
   const validate = (): string | null => {
@@ -415,7 +437,22 @@ function RichMenuTab({
                   onChange={(e) => setBgUrl(e.target.value)}
                   placeholder={t.background.urlPlaceholder}
                 />
-                <Button variant="outline"><Upload size={14} />{t.background.uploadImage}</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={bgUploading}
+                  loadingText={t.background.uploadImage}
+                  onClick={() => bgFileInputRef.current?.click()}
+                >
+                  <Upload size={14} />{t.background.uploadImage}
+                </Button>
+                <input
+                  ref={bgFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  hidden
+                  onChange={handleBgFileChange}
+                />
               </div>
               <FormText>{t.background.urlHint}</FormText>
             </FormGroup>
