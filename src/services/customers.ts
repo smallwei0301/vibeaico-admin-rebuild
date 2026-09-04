@@ -1,9 +1,29 @@
 import { ApiError, adapt, request } from '@/lib/api';
-import type { Customer, Paged } from '@/lib/types';
+import type { Customer, CustomerSource, Paged } from '@/lib/types';
 import { MOCK_CUSTOMERS, MOCK_MODE } from '@/mock';
 import type { BusinessType } from '@/config/modes';
 
 let nextMockCustomerId = 1;
+
+/**
+ * customers.source（Issue #7）的 mock 分支：src/mock/index.ts 的 MOCK_CUSTOMERS
+ * 資料本身沒有 source 欄位（該檔不在本 Issue 可改範圍內），這裡用一份
+ * per-mode、按顧客 id 記的 store 補上，延遲初始化 —— MOCK_MODE 是 ES module
+ * live binding，AppShell 切租戶時才 reassign，module scope 讀它會凍結錯的
+ * 業態（見 CLAUDE.md）。查無記錄一律回 'MANUAL'，對齊 DB column default；
+ * 目前 repo 內唯一真的會建立顧客列的路徑（POST /api/customers）就是
+ * 'MANUAL'，所以 mock demo 也不會捏造 LINE / PUBLIC_BOOKING 資料。
+ */
+const mockCustomerSourceStore = new Map<BusinessType, Map<string, CustomerSource>>();
+
+function getMockSourceMap(): Map<string, CustomerSource> {
+  if (!mockCustomerSourceStore.has(MOCK_MODE)) mockCustomerSourceStore.set(MOCK_MODE, new Map());
+  return mockCustomerSourceStore.get(MOCK_MODE)!;
+}
+
+function getMockCustomerSource(id: string): CustomerSource {
+  return getMockSourceMap().get(id) ?? 'MANUAL';
+}
 
 /** GET /api/line-users/unbound 回傳的候選項目：真後端只有這四個欄位，沒有分類概念。 */
 export type UnboundLineUser = {
@@ -66,8 +86,11 @@ export function listCustomers(q: CustomerQuery = {}): Promise<Paged<Customer>> {
       if (q.minSpent != null) rows = rows.filter((c) => c.totalSpent >= q.minSpent!);
       if (q.maxSpent != null) rows = rows.filter((c) => c.totalSpent <= q.maxSpent!);
       if (q.minVisits != null) rows = rows.filter((c) => c.bookingCount >= q.minVisits!);
+      const content = rows
+        .slice(page * size, (page + 1) * size)
+        .map((c) => ({ ...c, source: c.source ?? getMockCustomerSource(c.id) }));
       return {
-        content: rows.slice(page * size, (page + 1) * size),
+        content,
         totalElements: rows.length,
         totalPages: Math.ceil(rows.length / size),
         number: page, size,
@@ -105,7 +128,11 @@ export const createCustomer = (payload: Partial<Customer>) =>
         atRisk: false,
         active: true,
         createdAt: new Date().toISOString(),
+        source: 'MANUAL',
       });
+      // 顯式記一筆，和 API 端一致（表單新增＝店家手動）；query 目前一定會
+      // 命中 default，這裡是保險，避免之後 store 邏輯改動時悄悄漏掉。
+      getMockSourceMap().set(id, 'MANUAL');
       return { id };
     },
     () => request<{ id: string }>('/api/customers', { method: 'POST', body: JSON.stringify(payload) }),

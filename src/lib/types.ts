@@ -93,6 +93,14 @@ export type GuideActionInboxItem =
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';
 
+/**
+ * 顧客檔案來源（Issue #7，對應 DB customers.source，預設 'MANUAL'）：
+ * MANUAL = 店家後台手動新增；LINE / PUBLIC_BOOKING = 顧客透過 LINE 或公開
+ * 預約頁完成第一筆預約後系統自動建檔（見 customers 頁說明文字）。
+ * 選填：既有呼叫端與 mock 資料未必都已補上這個欄位。
+ */
+export type CustomerSource = 'MANUAL' | 'LINE' | 'PUBLIC_BOOKING';
+
 export type Customer = {
   id: string;
   name: string;
@@ -113,6 +121,7 @@ export type Customer = {
   atRisk: boolean;
   active: boolean;
   createdAt: string;
+  source?: CustomerSource;
 };
 
 /* ------------------------------------------------------------ 服務 / 員工 */

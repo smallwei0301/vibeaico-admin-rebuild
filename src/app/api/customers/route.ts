@@ -50,7 +50,10 @@ export const GET = handle(async (req) => {
 
   const { data, count, error } = await query;
   if (error) throw error;
-  return ok(toPaged(data.map(mapCustomer), count, page, size));
+  // mapCustomer（src/server/mappers.ts）尚未收 source 欄位（Issue #7 邊界
+  // 不含該檔），這裡就地補上；沒有值一律視為 'MANUAL'（DB column default）。
+  const rows = data.map((r) => ({ ...mapCustomer(r), source: r.source ?? 'MANUAL' }));
+  return ok(toPaged(rows, count, page, size));
 });
 
 /**
@@ -86,6 +89,9 @@ export const POST = handle(async (req) => {
       note: b.note ?? '',
       tags: b.tags ?? [],
       membership_level_id: b.membershipLevelId ? b.membershipLevelId : null,
+      // 這是店家在後台手動新增的顧客（本端點唯一用途），明寫優於依賴
+      // DB column default，讀者不用跳去看 migration 才知道這裡的語意。
+      source: 'MANUAL',
     })
     .select('id')
     .single();
