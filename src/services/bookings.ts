@@ -1,6 +1,7 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import type { Booking, BookingStatus, CalendarEvent, Paged, PaymentStatus } from '@/lib/types';
-import { MOCK_BOOKINGS } from '@/mock';
+import { MOCK_BOOKINGS, MOCK_MODE } from '@/mock';
+import type { BusinessType } from '@/config/modes';
 
 export type BookingQuery = {
   page?: number; size?: number; status?: BookingStatus | '';
@@ -144,9 +145,28 @@ export type BlockTimeItem = {
   /** null = 全店封鎖 */
   staffId: string | null;
   staffName: string | null;
+  title: string;
+  reason: string;
+  recurrence: 'SINGLE' | 'WEEKLY';
+  /** WEEKLY 用，0 = 週日；SINGLE 為 null */
+  dayOfWeek: number | null;
+  fullDay: boolean;
+  /** 由「每天不同營業時間」自動產生；true 時後端拒絕編輯／刪除（409） */
+  auto: boolean;
   startAt: string;
   endAt: string;
-  reason: string;
+};
+
+/** POST/PUT 共用的寫入欄位；startAt/endAt 對 WEEKLY 是「首次發生」的日期＋時分秒 */
+export type BlockTimeWritePayload = {
+  staffId?: string | null;
+  title?: string;
+  reason?: string;
+  recurrence?: 'SINGLE' | 'WEEKLY';
+  dayOfWeek?: number | null;
+  fullDay?: boolean;
+  startAt: string;
+  endAt: string;
 };
 
 export type CalendarExternalItem = { id: string; title: string; start: string; end: string };
@@ -203,13 +223,25 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
       });
       return {
         bookings: events.filter((e) => e.type === 'BOOKING').map(calendarEventToBooking),
-        blocks: events.filter((e) => e.type === 'BLOCK').map((e) => ({
-          id: e.id.replace(/^block:/, ''), // /api/block-times 端點吃來源列 uuid，去掉合併陣列的前綴
+        blocks: events.filter((e) => e.type === 'BLOCK').map((e): BlockTimeItem => ({
+          // WEEKLY 規則展開後同一列會出現多次，e.id 各自唯一但不是來源列 uuid；
+          // /api/block-times 端點要吃來源列 uuid，一律用 meta.blockTimeId
+          // （SINGLE 沒有這個 meta 時退回舊的前綴去除法，向後相容）。
+          id: e.meta?.blockTimeId ?? e.id.replace(/^block:/, ''),
           staffId: e.meta?.staffId ?? null,
           staffName: e.meta?.staffName ?? null,
           startAt: e.start,
           endAt: e.end,
           reason: e.meta?.reason ?? e.title,
+          // /api/calendar 的事件已經是「這個區間內實際發生的那一次」（WEEKLY
+          // 在 queryEffectiveBlockTimes 展開過），此處不再需要規則本身的
+          // title/recurrence/dayOfWeek/auto——calendar 頁的行事曆卡片只用得到
+          // 上面幾個欄位，這裡補上型別要求的預設值，不影響顯示。
+          title: '',
+          recurrence: 'SINGLE',
+          dayOfWeek: null,
+          fullDay: false,
+          auto: false,
         })),
         externals: events.filter((e) => e.type === 'EXTERNAL').map((e) => ({
           id: e.id, title: e.title, start: e.start, end: e.end,
@@ -219,18 +251,107 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
   );
 }
 
-/** POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖。 */
-export const createBlockTime = (payload: {
-  staffId?: string | null; startAt: string; endAt: string; reason?: string;
-}) =>
+/**
+ * 封鎖時段的 mock 分支「假倉庫」：三種業態各自的示範資料 + 之後透過
+ * createBlockTime/deleteBlockTime 的異動，讓 mock 模式下新增/刪除也像真實
+ * 後端一樣可讀回、可持久（同一頁面 session 內）。
+ *
+ * 延遲初始化：整個 Record<BusinessType, …> 在「第一次被任何一個函式呼叫」
+ * 時才建立一次，建立當下不看目前是哪個業態（三套都建好），因此不會踩
+ * 「module 頂層讀 MOCK_MODE / 呼叫 byMode() 會凍結錯誤業態」這個坑——
+ * AppShell 呼叫 applyMockMode() 切換業態後，之後每次讀寫都用當下的
+ * MOCK_MODE 當 key，自然對到正確的一份。
+ */
+let mockBlockTimeStore: Record<BusinessType, BlockTimeItem[]> | null = null;
+
+/** 自動產生的休息時段（auto=true）在 mock 分支也拒絕編輯／刪除，訊息對齊真實 API 的 409。 */
+const AUTO_BLOCK_TIME_LOCKED_MESSAGE =
+  '自動產生的休息時段無法編輯或刪除，請至「營運時間」調整每天不同的營業時間設定';
+
+function getMockBlockTimeStore(): Record<BusinessType, BlockTimeItem[]> {
+  if (!mockBlockTimeStore) {
+    mockBlockTimeStore = {
+      LOCAL_SHOP: [
+        { id: 'bt_mock_1', staffId: null, staffName: null, title: '店休', reason: '中秋連假', recurrence: 'SINGLE', dayOfWeek: null, fullDay: true, auto: false, startAt: '2026-09-05T00:00:00+08:00', endAt: '2026-09-06T00:00:00+08:00' },
+        { id: 'bt_mock_2', staffId: null, staffName: null, title: '團隊會議', reason: '每週例會', recurrence: 'WEEKLY', dayOfWeek: 2, fullDay: false, auto: false, startAt: '2026-09-08T09:00:00+08:00', endAt: '2026-09-08T10:30:00+08:00' },
+        { id: 'bt_mock_3', staffId: null, staffName: null, title: '午休', reason: '', recurrence: 'WEEKLY', dayOfWeek: 3, fullDay: false, auto: true, startAt: '2026-09-09T14:00:00+08:00', endAt: '2026-09-09T15:00:00+08:00' },
+      ],
+      GUIDE: [
+        { id: 'bt_mock_1', staffId: null, staffName: null, title: '私人行程', reason: '暫停接團', recurrence: 'SINGLE', dayOfWeek: null, fullDay: true, auto: false, startAt: '2026-09-10T00:00:00+08:00', endAt: '2026-09-12T00:00:00+08:00' },
+        { id: 'bt_mock_2', staffId: null, staffName: null, title: '午休', reason: '', recurrence: 'WEEKLY', dayOfWeek: 3, fullDay: false, auto: true, startAt: '2026-09-09T12:00:00+08:00', endAt: '2026-09-09T13:00:00+08:00' },
+      ],
+      CLINIC: [
+        { id: 'bt_mock_1', staffId: null, staffName: null, title: '院所公休', reason: '醫學會', recurrence: 'SINGLE', dayOfWeek: null, fullDay: true, auto: false, startAt: '2026-09-07T00:00:00+08:00', endAt: '2026-09-08T00:00:00+08:00' },
+        { id: 'bt_mock_2', staffId: null, staffName: null, title: '設備消毒維護', reason: '', recurrence: 'SINGLE', dayOfWeek: null, fullDay: false, auto: false, startAt: '2026-09-09T12:00:00+08:00', endAt: '2026-09-09T14:00:00+08:00' },
+        { id: 'bt_mock_3', staffId: null, staffName: null, title: '午休', reason: '', recurrence: 'WEEKLY', dayOfWeek: 3, fullDay: false, auto: true, startAt: '2026-09-09T12:30:00+08:00', endAt: '2026-09-09T13:30:00+08:00' },
+      ],
+    };
+  }
+  return mockBlockTimeStore;
+}
+
+function toMockBlockTime(id: string, payload: BlockTimeWritePayload): BlockTimeItem {
+  const recurrence = payload.recurrence ?? 'SINGLE';
+  return {
+    id,
+    staffId: payload.staffId ?? null,
+    staffName: null,
+    title: payload.title ?? '',
+    reason: payload.reason ?? '',
+    recurrence,
+    dayOfWeek: recurrence === 'WEEKLY' ? payload.dayOfWeek ?? null : null,
+    fullDay: payload.fullDay ?? false,
+    auto: false,
+    startAt: payload.startAt,
+    endAt: payload.endAt,
+  };
+}
+
+/** GET /api/block-times?from&to — 封鎖時段頁（/tenant/block-times）唯一資料源；不傳區間 = 全部。 */
+export function listBlockTimes(from?: string, to?: string): Promise<BlockTimeItem[]> {
+  return adapt(
+    () => [...getMockBlockTimeStore()[MOCK_MODE]],
+    () => request<BlockTimeItem[]>('/api/block-times', { query: { from, to } }),
+  );
+}
+
+/** POST /api/block-times — 新增封鎖時段，回 { id }。省略 staffId = 全店封鎖；auto 只能由系統寫入。 */
+export const createBlockTime = (payload: BlockTimeWritePayload) =>
   adapt(
-    () => ({ id: `bt_mock_${Date.now()}` }),
+    () => {
+      const id = `bt_mock_${Date.now()}`;
+      getMockBlockTimeStore()[MOCK_MODE].push(toMockBlockTime(id, payload));
+      return { id };
+    },
     () => request<{ id: string }>('/api/block-times', { method: 'POST', body: JSON.stringify(payload) }),
   );
 
-/** DELETE /api/block-times/:id */
+/** PUT /api/block-times/:id — 編輯封鎖時段；auto=true 的列一律拒絕（409）。 */
+export const updateBlockTime = (id: string, payload: BlockTimeWritePayload) =>
+  adapt(
+    () => {
+      const list = getMockBlockTimeStore()[MOCK_MODE];
+      const idx = list.findIndex((b) => b.id === id);
+      if (idx === -1) throw new ApiError('找不到此封鎖時段', 'REQ_002', 404);
+      if (list[idx].auto) throw new ApiError(AUTO_BLOCK_TIME_LOCKED_MESSAGE, 'REQ_003', 409);
+      list[idx] = toMockBlockTime(id, payload);
+      return undefined;
+    },
+    () => request<void>(`/api/block-times/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  );
+
+/** DELETE /api/block-times/:id — auto=true 的列一律拒絕（409）。 */
 export const deleteBlockTime = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/block-times/${id}`, { method: 'DELETE' }));
+  adapt(
+    () => {
+      const store = getMockBlockTimeStore();
+      const target = store[MOCK_MODE].find((b) => b.id === id);
+      if (target?.auto) throw new ApiError(AUTO_BLOCK_TIME_LOCKED_MESSAGE, 'REQ_003', 409);
+      store[MOCK_MODE] = store[MOCK_MODE].filter((b) => b.id !== id);
+      return undefined;
+    },
+    () => request<void>(`/api/block-times/${id}`, { method: 'DELETE' }),
+  );
 
 /* -------------------------------------------------------------- 週期性預約 */
 
