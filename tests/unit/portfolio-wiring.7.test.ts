@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
-  createPortfolio, deletePortfolio, listPortfolios, reorderPortfolios,
+  createPortfolio, deletePortfolio, listPortfolios, reorderPortfolios, reorderPortfoliosLine,
   togglePortfolioActive, togglePortfolioLineFeatured, updatePortfolio,
 } from '@/services/portfolios';
 
@@ -26,12 +26,13 @@ describe('portfolio #7: real API wiring, not page-local mock constants', () => {
     for (const fn of [
       'listPortfolios', 'createPortfolio', 'updatePortfolio', 'deletePortfolio',
       'togglePortfolioActive', 'togglePortfolioLineFeatured', 'reorderPortfolios',
+      'reorderPortfoliosLine',
     ]) {
       expect(page).toContain(fn);
     }
   });
 
-  it('every service function routes through adapt(mock, real) against the documented endpoints', () => {
+  it('every service function routes through adapt(mock, real) against the documented endpoints, including reorder-line', () => {
     expect(service).toContain("request<Portfolio[]>('/api/portfolios')");
     expect(service).toContain("request<{ id: string }>('/api/portfolios', { method: 'POST'");
     expect(service).toContain("request<void>(`/api/portfolios/${id}`, { method: 'PUT'");
@@ -39,7 +40,8 @@ describe('portfolio #7: real API wiring, not page-local mock constants', () => {
     expect(service).toContain('/toggle-active');
     expect(service).toContain('/toggle-line-featured');
     expect(service).toContain("request<void>('/api/portfolios/reorder'");
-    expect(service.match(/adapt</g)?.length).toBeGreaterThanOrEqual(7);
+    expect(service).toContain("request<void>('/api/portfolios/reorder-line'");
+    expect(service.match(/adapt</g)?.length).toBeGreaterThanOrEqual(8);
   });
 });
 
@@ -56,19 +58,23 @@ describe('portfolio #7: failures show the real error, never a fake success toast
     expect(save).toContain('e instanceof Error ? e.message : t.messages.unknownError');
   });
 
-  it('move() refuses to fake success in LINE mode (no independent backend field yet)', () => {
-    const move = page.slice(page.indexOf('const move = async'), page.indexOf('/* -------------------------------------------------------------- render */'));
+  it('move() calls the endpoint matching the active sort mode, and only reports success after it resolves', () => {
+    const move = page.slice(page.indexOf('const move = async'), page.indexOf('const syncOrder ='));
     expect(move).toContain("if (sortMode === 'line')");
-    expect(move).toContain('t.sort.lineOrderUnavailable');
-    expect(move).not.toContain('t.sort.lineOrderUpdated');
+    expect(move).toContain('await reorderPortfoliosLine(ids)');
+    expect(move).toContain('await reorderPortfolios(ids)');
+    expect(move.indexOf('await reorderPortfoliosLine(ids)')).toBeLessThan(move.indexOf('t.sort.lineOrderUpdated'));
+    expect(move).toContain('catch (e)');
+    expect(move).toContain('t.messages.reorderFailed');
   });
 
-  it('the sync-order button is disabled, not wired to a fake success path', () => {
-    expect(page).not.toContain('syncOrder');
-    expect(page).not.toContain('setSyncConfirm');
-    const syncBtn = page.slice(page.indexOf('<ArrowLeftRight') - 200, page.indexOf('<ArrowLeftRight'));
-    expect(syncBtn).toContain('disabled');
-    expect(syncBtn).toContain('t.sort.syncUnavailable');
+  it('syncOrder() only shows success after the matching reorder endpoint resolves', () => {
+    const sync = page.slice(page.indexOf('const syncOrder = async'), page.indexOf('/* -------------------------------------------------------------- render */'));
+    expect(sync).toContain('await reorderPortfolios(ids)');
+    expect(sync).toContain('await reorderPortfoliosLine(ids)');
+    expect(sync.indexOf('setSyncConfirm(false)')).toBeGreaterThan(sync.indexOf('await reorderPortfolios'));
+    expect(sync).toContain('catch (e)');
+    expect(sync).toContain('t.messages.syncFailedPrefix');
   });
 });
 
@@ -113,8 +119,25 @@ describe('portfolio #7: reorder actually persists sortOrder, boundaries are no-o
     await reorderPortfolios(before.map((p) => p.id));
   });
 
+  it('reorderPortfoliosLine (0075 line_sort_order) persists independently of sortOrder', async () => {
+    const before = await listPortfolios();
+    // 反轉 LINE 排序，但完全不動公開頁 sortOrder，證明兩個欄位互不影響
+    const reversedByLine = [...before].reverse().map((p) => p.id);
+    await reorderPortfoliosLine(reversedByLine);
+
+    const after = await listPortfolios();
+    // sortOrder（公開頁順序）維持不變
+    expect(after.map((p) => p.sortOrder)).toEqual(before.map((p) => p.sortOrder));
+    // lineSortOrder 依新順序的索引寫回，可重讀驗證
+    const byLine = [...after].sort((a, b) => a.lineSortOrder - b.lineSortOrder);
+    expect(byLine.map((p) => p.id)).toEqual(reversedByLine);
+
+    // 還原，避免污染其他測試
+    await reorderPortfoliosLine(before.map((p) => p.id));
+  });
+
   it('boundary moves (first item up, last item down) are no-ops in the page and show no success toast', () => {
-    const move = page.slice(page.indexOf('const move = async'), page.indexOf('/* -------------------------------------------------------------- render */'));
+    const move = page.slice(page.indexOf('const move = async'), page.indexOf('const syncOrder ='));
     expect(move).toContain('if (target < 0 || target >= ordered.length) return;');
     const upBtn = page.slice(page.indexOf('<ChevronUp') - 250, page.indexOf('<ChevronUp'));
     expect(upBtn).toContain('index === 0');
@@ -130,5 +153,29 @@ describe('portfolio #7: mock-mode round trip stays isolated per business mode', 
     expect(service).toContain('CLINIC:');
     // lazy-init guard: never reads MOCK_MODE at module scope
     expect(service).toMatch(/function getMockPortfolioStore\(\)[\s\S]*if \(!mockPortfolioStore\)/);
+  });
+});
+
+describe('portfolio #7 follow-up: LINE 排序真的落地（0075 line_sort_order，Sol 復核後解除 escalate）', () => {
+  const migration = read('supabase/migrations/0075_portfolios_line_sort_order.sql');
+  const collectionRoute = read('src/app/api/portfolios/route.ts');
+  const reorderLineRoute = read('src/app/api/portfolios/reorder-line/route.ts');
+
+  it('the reconciliation migration is additive and idempotent (add column if not exists only)', () => {
+    expect(migration).toContain('add column if not exists line_sort_order integer not null default 0');
+    expect(migration).not.toMatch(/drop |create function|create trigger|create or replace function/i);
+  });
+
+  it('GET /api/portfolios exposes lineSortOrder and can order by it without a new RPC', () => {
+    expect(collectionRoute).toContain('lineSortOrder:');
+    expect(collectionRoute).toContain("orderBy === 'line' ? 'line_sort_order' : 'sort_order'");
+  });
+
+  it('POST /api/portfolios/reorder-line mirrors /reorder exactly, writing line_sort_order, no RPC/function', () => {
+    expect(reorderLineRoute).toContain("requireTenant('MANAGER')");
+    expect(reorderLineRoute).toContain("requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE')");
+    expect(reorderLineRoute).toContain(".update({ line_sort_order: i })");
+    expect(reorderLineRoute).toContain(".eq('id', b.ids[i]).eq('tenant_id', t.tenantId)");
+    expect(reorderLineRoute).not.toMatch(/rpc\(|create function|create trigger/i);
   });
 });

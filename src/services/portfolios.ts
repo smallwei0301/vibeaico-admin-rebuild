@@ -32,21 +32,21 @@ function getMockPortfolioStore(): Record<BusinessType, Portfolio[]> {
     const now = '2026-08-01T00:00:00+08:00';
     mockPortfolioStore = {
       LOCAL_SHOP: [
-        { id: 'pf_1', title: '韓系空氣感層次燙', description: '微捲弧度搭配低彩度霧棕，適合細軟髮質', imageUrl: '', active: true, lineFeatured: true, sortOrder: 0, createdAt: now },
-        { id: 'pf_2', title: '冷霧灰藍挑染', description: '雙色挑染，退色後仍有層次', imageUrl: '', active: true, lineFeatured: true, sortOrder: 1, createdAt: now },
-        { id: 'pf_3', title: '新娘白紗造型', description: '', imageUrl: '', active: true, lineFeatured: false, sortOrder: 2, createdAt: now },
-        { id: 'pf_4', title: '男士短髮修剪', description: '兩側推高、上方保留厚度', imageUrl: '', active: false, lineFeatured: true, sortOrder: 3, createdAt: now },
+        { id: 'pf_1', title: '韓系空氣感層次燙', description: '微捲弧度搭配低彩度霧棕，適合細軟髮質', imageUrl: '', active: true, lineFeatured: true, sortOrder: 0, lineSortOrder: 0, createdAt: now },
+        { id: 'pf_2', title: '冷霧灰藍挑染', description: '雙色挑染，退色後仍有層次', imageUrl: '', active: true, lineFeatured: true, sortOrder: 1, lineSortOrder: 1, createdAt: now },
+        { id: 'pf_3', title: '新娘白紗造型', description: '', imageUrl: '', active: true, lineFeatured: false, sortOrder: 2, lineSortOrder: 3, createdAt: now },
+        { id: 'pf_4', title: '男士短髮修剪', description: '兩側推高、上方保留厚度', imageUrl: '', active: false, lineFeatured: true, sortOrder: 3, lineSortOrder: 2, createdAt: now },
       ],
       GUIDE: [
-        { id: 'pf_1', title: '龜山島牛奶海空拍', description: '硫磺噴氣孔染出的乳白海域，只有繞島時看得到', imageUrl: '', active: true, lineFeatured: true, sortOrder: 0, createdAt: now },
-        { id: 'pf_2', title: '飛旋海豚追蹤紀錄', description: '2026 年 6 月，一次遇上三群共約 200 隻', imageUrl: '', active: true, lineFeatured: true, sortOrder: 1, createdAt: now },
-        { id: 'pf_3', title: '砂婆礑溪谷天然滑水道', description: '', imageUrl: '', active: true, lineFeatured: true, sortOrder: 2, createdAt: now },
-        { id: 'pf_4', title: '九份夜色與礦坑遺址', description: '避開人潮的觀景平台，華燈初上那 20 分鐘', imageUrl: '', active: true, lineFeatured: false, sortOrder: 3, createdAt: now },
-        { id: 'pf_5', title: '企業包團紀錄：員工旅遊', description: '12 人包船，客製航線', imageUrl: '', active: false, lineFeatured: false, sortOrder: 4, createdAt: now },
+        { id: 'pf_1', title: '龜山島牛奶海空拍', description: '硫磺噴氣孔染出的乳白海域，只有繞島時看得到', imageUrl: '', active: true, lineFeatured: true, sortOrder: 0, lineSortOrder: 0, createdAt: now },
+        { id: 'pf_2', title: '飛旋海豚追蹤紀錄', description: '2026 年 6 月，一次遇上三群共約 200 隻', imageUrl: '', active: true, lineFeatured: true, sortOrder: 1, lineSortOrder: 1, createdAt: now },
+        { id: 'pf_3', title: '砂婆礑溪谷天然滑水道', description: '', imageUrl: '', active: true, lineFeatured: true, sortOrder: 2, lineSortOrder: 2, createdAt: now },
+        { id: 'pf_4', title: '九份夜色與礦坑遺址', description: '避開人潮的觀景平台，華燈初上那 20 分鐘', imageUrl: '', active: true, lineFeatured: false, sortOrder: 3, lineSortOrder: 4, createdAt: now },
+        { id: 'pf_5', title: '企業包團紀錄：員工旅遊', description: '12 人包船，客製航線', imageUrl: '', active: false, lineFeatured: false, sortOrder: 4, lineSortOrder: 3, createdAt: now },
       ],
       CLINIC: [
-        { id: 'pf_1', title: '健檢中心環境', description: '獨立診間與更衣空間', imageUrl: '', active: true, lineFeatured: true, sortOrder: 0, createdAt: now },
-        { id: 'pf_2', title: '醫療團隊介紹', description: '', imageUrl: '', active: true, lineFeatured: false, sortOrder: 1, createdAt: now },
+        { id: 'pf_1', title: '健檢中心環境', description: '獨立診間與更衣空間', imageUrl: '', active: true, lineFeatured: true, sortOrder: 0, lineSortOrder: 0, createdAt: now },
+        { id: 'pf_2', title: '醫療團隊介紹', description: '', imageUrl: '', active: true, lineFeatured: false, sortOrder: 1, lineSortOrder: 1, createdAt: now },
       ],
     };
   }
@@ -67,6 +67,7 @@ export const createPortfolio = (payload: PortfolioPayload) =>
       const store = getMockPortfolioStore()[MOCK_MODE];
       const id = `pf_new_${nextMockPortfolioId++}`;
       const maxOrder = store.reduce((m, p) => Math.max(m, p.sortOrder), -1);
+      const maxLineOrder = store.reduce((m, p) => Math.max(m, p.lineSortOrder), -1);
       store.push({
         id,
         title: payload.title,
@@ -75,6 +76,7 @@ export const createPortfolio = (payload: PortfolioPayload) =>
         active: payload.active ?? true,
         lineFeatured: payload.lineFeatured ?? false,
         sortOrder: maxOrder + 1,
+        lineSortOrder: maxLineOrder + 1,
         createdAt: new Date().toISOString(),
       });
       return { id };
@@ -150,4 +152,20 @@ export const reorderPortfolios = (ids: string[]) =>
       });
     },
     () => request<void>('/api/portfolios/reorder', { method: 'POST', body: JSON.stringify({ ids }) }),
+  );
+
+/**
+ * POST /api/portfolios/reorder-line — `{ids:[]}` 依序寫 lineSortOrder=index
+ * （0075 補上的 line_sort_order 欄位，LINE 作品瀏覽選單的獨立排序）。
+ */
+export const reorderPortfoliosLine = (ids: string[]) =>
+  adapt<void>(
+    () => {
+      const store = getMockPortfolioStore()[MOCK_MODE];
+      ids.forEach((id, index) => {
+        const item = store.find((p) => p.id === id);
+        if (item) item.lineSortOrder = index;
+      });
+    },
+    () => request<void>('/api/portfolios/reorder-line', { method: 'POST', body: JSON.stringify({ ids }) }),
   );

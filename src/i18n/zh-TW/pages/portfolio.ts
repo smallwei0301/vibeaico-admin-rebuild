@@ -49,9 +49,6 @@ export const portfolioPage = {
     lineOrderUpdated: 'LINE 順序已更新',
     publicOrderUpdated: '公開頁順序已更新',
     publicLabel: '公開頁',
-    /** 後端目前只有單一排序欄位，尚未提供獨立的 LINE 排序與雙向套用 API */
-    lineOrderUnavailable: 'LINE 顯示順序目前尚未有獨立的後端欄位，暫時無法調整，已回報工程處理',
-    syncUnavailable: '「套用排序」需要後端支援獨立的 LINE 排序欄位，目前尚未提供，已回報工程處理',
   },
 
   /* --------------------------------------------------------------- 動作 */

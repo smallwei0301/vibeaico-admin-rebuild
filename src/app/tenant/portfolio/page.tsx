@@ -20,7 +20,7 @@ import { useToast } from '@/components/ui/Toast';
 import { listFeatures } from '@/services/settings';
 import {
   createPortfolio, deletePortfolio, listPortfolios, reorderPortfolios,
-  togglePortfolioActive, togglePortfolioLineFeatured, updatePortfolio,
+  reorderPortfoliosLine, togglePortfolioActive, togglePortfolioLineFeatured, updatePortfolio,
 } from '@/services/portfolios';
 import type { Portfolio } from '@/lib/types';
 import { common } from '@/i18n/zh-TW/common';
@@ -47,13 +47,8 @@ export default function PortfolioPage() {
   const [items, setItems] = React.useState<Portfolio[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [featureActive, setFeatureActive] = React.useState(true);
-  /**
-   * 排序模式切換仍保留（原站設計，見 docs/specs/portfolio.json）：後端
-   * portfolios 表目前只有單一 sortOrder，沒有獨立的 LINE 排序欄位（services/
-   * products 有靠 Issue #128 補上，portfolios 沒有）。因此兩個模式目前顯示
-   * 同一份順序，「LINE 顯示順序」模式下的個別調整與「套用排序」一律停用並
-   * 顯示真實原因，而不是假裝成功——已列入 ESCALATE_SOL 待補後端。
-   */
+  /** 排序模式切換（原站設計，見 docs/specs/portfolio.json）：sort_order（公開頁）
+   * 與 line_sort_order（0075 補上）各自獨立，互不影響。 */
   const [sortMode, setSortMode] = React.useState<SortMode>('line');
 
   const [draft, setDraft] = React.useState<typeof EMPTY_DRAFT | null>(null);
@@ -63,6 +58,7 @@ export default function PortfolioPage() {
 
   const [deleteTarget, setDeleteTarget] = React.useState<Portfolio | null>(null);
   const [toggleTarget, setToggleTarget] = React.useState<Portfolio | null>(null);
+  const [syncConfirm, setSyncConfirm] = React.useState(false);
   const [reordering, setReordering] = React.useState(false);
 
   const load = React.useCallback(async () => {
@@ -95,10 +91,12 @@ export default function PortfolioPage() {
   const lineFeaturedCount = items.filter((i) => i.lineFeatured).length;
   const overLineLimit = lineFeaturedCount > t.sort.lineMaxFeatured;
 
-  /** 後端只有單一 sortOrder，兩個模式目前顯示同一份順序（見上方註解）。 */
   const ordered = React.useMemo(
-    () => [...items].sort((a, b) => a.sortOrder - b.sortOrder),
-    [items],
+    () =>
+      [...items].sort((a, b) =>
+        sortMode === 'line' ? a.lineSortOrder - b.lineSortOrder : a.sortOrder - b.sortOrder,
+      ),
+    [items, sortMode],
   );
 
   const fromLabel = sortMode === 'line' ? t.sort.lineMode : t.sort.publicMode;
@@ -198,27 +196,53 @@ export default function PortfolioPage() {
   };
 
   /**
-   * 上／下移：後端只有單一 sortOrder，僅「公開頁順序」模式真的會寫回
-   * /api/portfolios/reorder。「LINE 顯示順序」模式下的箭頭本身就停用
-   * （見 render），這裡多一層防呆，絕不假裝成功。
+   * 上／下移：依目前排序模式寫回對應欄位——「公開頁順序」呼叫
+   * reorderPortfolios（sort_order），「LINE 顯示順序」呼叫
+   * reorderPortfoliosLine（line_sort_order，0075 補上），兩者互不影響。
+   * 邊界（第一筆上移／最後一筆下移）直接 return，不呼叫 API、不跳成功訊息。
    */
   const move = async (item: Portfolio, delta: -1 | 1) => {
-    if (sortMode === 'line') {
-      toast.show(t.sort.lineOrderUnavailable, 'danger');
-      return;
-    }
     const index = ordered.findIndex((i) => i.id === item.id);
     const target = index + delta;
     if (target < 0 || target >= ordered.length) return;
     const next = [...ordered];
     [next[index], next[target]] = [next[target], next[index]];
+    const ids = next.map((i) => i.id);
     setReordering(true);
     try {
-      await reorderPortfolios(next.map((i) => i.id));
-      toast.show(t.sort.publicOrderUpdated);
+      if (sortMode === 'line') {
+        await reorderPortfoliosLine(ids);
+        toast.show(t.sort.lineOrderUpdated);
+      } else {
+        await reorderPortfolios(ids);
+        toast.show(t.sort.publicOrderUpdated);
+      }
       await load();
     } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
+    } finally {
+      setReordering(false);
+    }
+  };
+
+  /**
+   * 套用排序：把目前模式的順序複製到另一個模式的欄位。兩個方向各自呼叫
+   * 對應的 reorder 端點，成功後重讀驗證；失敗顯示真實錯誤。
+   */
+  const syncOrder = async () => {
+    const ids = ordered.map((i) => i.id);
+    setReordering(true);
+    try {
+      if (sortMode === 'line') {
+        await reorderPortfolios(ids);
+      } else {
+        await reorderPortfoliosLine(ids);
+      }
+      setSyncConfirm(false);
+      toast.show(t.sort.syncDone(toModeLabel));
+      await load();
+    } catch (e) {
+      toast.show(`${t.messages.syncFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
     } finally {
       setReordering(false);
     }
@@ -284,9 +308,8 @@ export default function PortfolioPage() {
             <Button
               variant="outline"
               size="sm"
-              disabled
-              title={t.sort.syncUnavailable}
-              aria-label={t.sort.syncUnavailable}
+              disabled={reordering}
+              onClick={() => setSyncConfirm(true)}
             >
               <ArrowLeftRight size={13} />
               {sortMode === 'line' ? t.sort.syncToPublic : t.sort.syncToLine}
@@ -317,7 +340,6 @@ export default function PortfolioPage() {
                 {overLineLimit ? (
                   <span className="text-xs text-danger">{t.sort.lineOverLimit}</span>
                 ) : null}
-                <span className="text-xs text-secondary">{t.sort.lineOrderUnavailable}</span>
               </div>
             </>
           ) : (
@@ -395,16 +417,16 @@ export default function PortfolioPage() {
                 <div className="mt-3 flex flex-wrap items-center gap-1">
                   <Button
                     variant="outline" size="sm"
-                    aria-label={common.prev} title={sortMode === 'line' ? t.sort.lineOrderUnavailable : common.prev}
-                    disabled={sortMode === 'line' || reordering || index === 0}
+                    aria-label={common.prev} title={common.prev}
+                    disabled={reordering || index === 0}
                     onClick={() => void move(item, -1)}
                   >
                     <ChevronUp size={13} />
                   </Button>
                   <Button
                     variant="outline" size="sm"
-                    aria-label={common.next} title={sortMode === 'line' ? t.sort.lineOrderUnavailable : common.next}
-                    disabled={sortMode === 'line' || reordering || index === ordered.length - 1}
+                    aria-label={common.next} title={common.next}
+                    disabled={reordering || index === ordered.length - 1}
                     onClick={() => void move(item, 1)}
                   >
                     <ChevronDown size={13} />
@@ -533,6 +555,18 @@ export default function PortfolioPage() {
         )}
         onClose={() => setToggleTarget(null)}
         onConfirm={() => void toggleActive()}
+      />
+
+      <ConfirmModal
+        open={syncConfirm}
+        title={t.confirm.syncTitle}
+        message={
+          <span className="whitespace-pre-line">
+            {t.sort.syncConfirm(fromLabel, toModeLabel)}
+          </span>
+        }
+        onClose={() => setSyncConfirm(false)}
+        onConfirm={() => void syncOrder()}
       />
     </>
   );

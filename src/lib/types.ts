@@ -438,9 +438,10 @@ export type TourOrder = {
 export type CalendarEventType = 'BOOKING' | 'DEPARTURE' | 'BLOCK' | 'EXTERNAL';
 
 /**
- * 作品集（/tenant/portfolio ↔ 0005 portfolios 表）。
- * 後端目前只有單一 sortOrder（供 /api/portfolios/reorder 依 ids 索引寫入）；
- * 沒有獨立的 LINE 排序欄位（見 Issue #7 portfolio 接線報告）。
+ * 作品集（/tenant/portfolio ↔ 0005 portfolios 表 + 0075 line_sort_order）。
+ * sortOrder = 公開頁順序（/api/portfolios/reorder 依 ids 索引寫入）；
+ * lineSortOrder = LINE 作品瀏覽選單順序（/api/portfolios/reorder-line）。
+ * 兩者互不影響。
  */
 export type Portfolio = {
   id: string;
@@ -450,6 +451,7 @@ export type Portfolio = {
   active: boolean;
   lineFeatured: boolean;
   sortOrder: number;
+  lineSortOrder: number;
   createdAt: string;
 };
 
