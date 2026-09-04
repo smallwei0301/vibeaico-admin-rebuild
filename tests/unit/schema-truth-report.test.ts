@@ -8,11 +8,21 @@ import {
 } from '../../scripts/agents/schema-truth-report.mjs';
 
 const MAIN = 'a'.repeat(40);
-const KINDS = ['columns', 'constraints', 'views', 'indexes', 'policies', 'routines', 'triggers'];
+const KINDS = ['columns', 'constraints', 'views', 'indexes', 'policies', 'routines', 'triggers'] as const;
+type PublicObjectKind = (typeof KINDS)[number];
+type PublicObjectStatus = 'MATCH' | 'ENVIRONMENT_DIFF';
+
 const digest = (seed = '1') => ({ algorithm: 'MD5', value: seed.repeat(32).slice(0, 32) });
 const objects = () => Object.fromEntries(
   KINDS.map((kind, index) => [kind, { count: index + 1, digest: digest(String(index + 1)) }]),
 );
+
+function publicObjectStatus(
+  report: ReturnType<typeof buildSchemaTruthReport>,
+  kind: PublicObjectKind,
+): PublicObjectStatus {
+  return (report.comparison.publicObjects as Record<PublicObjectKind, PublicObjectStatus>)[kind];
+}
 
 function snapshot(environment: 'TEST' | 'PRODUCTION', overrides: Record<string, unknown> = {}): any {
   return {
@@ -61,8 +71,8 @@ describe('schema truth report', () => {
 
     expect(report.comparison.overall).toBe('DRIFT_OBSERVED');
     expect(report.comparison.migrationLedger).toBe('LEDGER_ABSENT');
-    expect(report.comparison.publicObjects.columns).toBe('ENVIRONMENT_DIFF');
-    expect(report.comparison.publicObjects.views).toBe('MATCH');
+    expect(publicObjectStatus(report, 'columns')).toBe('ENVIRONMENT_DIFF');
+    expect(publicObjectStatus(report, 'views')).toBe('MATCH');
     expect(report.comparison.explicitOutOfLedger).toEqual([
       expect.objectContaining({ environment: 'TEST', type: 'OUT_OF_LEDGER' }),
     ]);
@@ -139,7 +149,7 @@ describe('schema truth report', () => {
       testSnapshot: snapshot('TEST'), productionSnapshot: production,
       migrationManifest: manifest(), currentMainSha: MAIN,
     });
-    expect(report.comparison.publicObjects.routines).toBe('ENVIRONMENT_DIFF');
+    expect(publicObjectStatus(report, 'routines')).toBe('ENVIRONMENT_DIFF');
     expect(report.comparison.explicitOutOfLedger).toEqual([]);
   });
 });
