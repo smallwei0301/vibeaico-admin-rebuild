@@ -15,6 +15,7 @@
     "test:all": "npm run typecheck && npm test && npm run test:integration && npm run test:e2e",
     "guard:repo-integrity": "node scripts/ci/repo-integrity-guard.mjs",
     "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs",
+    "agent:schema-truth:report": "node scripts/agents/schema-truth-report.mjs",
     "agent:run:init": "node scripts/agents/run-ledger-v2.mjs init",
     "agent:run:validate": "node scripts/agents/run-ledger-v2.mjs validate",
     "agent:run:reconcile": "node scripts/agents/run-ledger-reconcile.mjs apply",

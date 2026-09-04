@@ -59,6 +59,7 @@ jobs:
               metadata.state === 'ACTIVE' &&
               metadata.bplusMode === 'TRUE' &&
               metadata.scorecardPath &&
+              !/^none$/i.test(metadata.scorecardPath) &&
               metadataErrors.length === 0
             ) {
               let scorecardFound = false;
