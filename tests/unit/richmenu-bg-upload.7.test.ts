@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '@/lib/api';
-import { uploadRichMenuBgImage } from '@/services/settings';
+import { getTenantSettings, saveLineSettings, uploadRichMenuBgImage } from '@/services/settings';
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
@@ -24,7 +24,7 @@ describe('rich-menu 背景圖上傳按鈕 — 真的接線而非死按鈕 (#7)',
     expect(page).toContain("uploadRichMenuBgImage } from '@/services/settings'");
     const handler = page.slice(
       page.indexOf('const handleBgFileChange'),
-      page.indexOf('return (', page.indexOf('const handleBgFileChange')),
+      page.indexOf('const handleBgUrlBlur'),
     );
     expect(handler).toContain('await uploadRichMenuBgImage(file)');
     expect(handler).toContain('setBgUrl(url)');
@@ -37,12 +37,61 @@ describe('rich-menu 背景圖上傳按鈕 — 真的接線而非死按鈕 (#7)',
     expect(page).toContain('setBgUploading(false)');
   });
 
-  it('失敗時 toast 顯示後端回傳的真實訊息，而非自己編的字串', () => {
+  it('上傳失敗時 toast 顯示後端回傳的真實訊息，而非自己編的字串', () => {
     const handler = page.slice(
       page.indexOf('const handleBgFileChange'),
-      page.indexOf('return (', page.indexOf('const handleBgFileChange')),
+      page.indexOf('const handleBgUrlBlur'),
     );
     expect(handler).toContain('err instanceof ApiError ? err.message : t.messages.unknownError');
+  });
+});
+
+describe('背景圖 URL 的持久化 —— 上傳成功後真的存進 line.richMenuBgImageUrl，而不只是元件 state (#7)', () => {
+  it('persistBgUrl 呼叫 saveLineSettings 並帶 richMenuBgImageUrl；失敗顯示後端真實訊息、回傳 false 而非假裝成功', () => {
+    expect(page).toContain("getTenantSettings, listFeatures, saveLineSettings, uploadRichMenuBgImage } from '@/services/settings'");
+    const fn = page.slice(page.indexOf('const persistBgUrl'), page.indexOf('const handleBgFileChange'));
+    expect(fn).toContain('await saveLineSettings({ richMenuBgImageUrl: url });');
+    expect(fn).toContain(
+      "err instanceof ApiError ? err.message : t.messages.unknownError",
+    );
+    expect(fn).toContain('return false;');
+    expect(fn).toContain('return true;');
+  });
+
+  it('上傳流程：先存成功（persistBgUrl）才更新畫面 bgUrl 與顯示成功 toast，順序不能顛倒', () => {
+    const handler = page.slice(
+      page.indexOf('const handleBgFileChange'),
+      page.indexOf('const handleBgUrlBlur'),
+    );
+    expect(handler).toContain('if (await persistBgUrl(url)) {');
+    const idxPersist = handler.indexOf('await persistBgUrl(url)');
+    const idxSetBgUrl = handler.indexOf('setBgUrl(url)');
+    const idxToastSuccess = handler.indexOf('toast.show(t.background.uploaded');
+    expect(idxPersist).toBeGreaterThan(-1);
+    expect(idxPersist).toBeLessThan(idxSetBgUrl);
+    expect(idxSetBgUrl).toBeLessThan(idxToastSuccess);
+  });
+
+  it('頁面載入時會讀取 getTenantSettings，把 line.richMenuBgImageUrl 當作 bgUrl 的初始值傳給 RichMenuTab', () => {
+    expect(page).toContain(
+      'const [features, settings] = await Promise.all([listFeatures(), getTenantSettings()]);',
+    );
+    expect(page).toContain('setInitialBgUrl(settings.line.richMenuBgImageUrl);');
+    expect(page).toContain('<RichMenuTab subscribed={subscribed} toast={toast} initialBgUrl={initialBgUrl} />');
+    expect(page).toContain('const [bgUrl, setBgUrl] = React.useState(initialBgUrl);');
+  });
+
+  it('手貼 URL 失焦、以及點擊移除背景，都會呼叫 persistBgUrl 存進同一個欄位（不是另開新流程）', () => {
+    expect(page).toContain('onBlur={handleBgUrlBlur}');
+    expect(page).toContain('const handleBgUrlBlur = () => { void persistBgUrl(bgUrl); };');
+    expect(page).toContain('onClick={() => void handleRemoveBg()}');
+    expect(page).toContain("if (await persistBgUrl('')) setBgUrl('');");
+  });
+
+  it('不涉及發布圖文選單的 create 端點', () => {
+    expect(page.slice(page.indexOf('const persistBgUrl'), page.indexOf('const validate'))).not.toContain(
+      '/api/settings/line/rich-menu/create',
+    );
   });
 });
 
@@ -81,5 +130,27 @@ describe('src/services/settings.ts — uploadRichMenuBgImage 走專用端點，�
     // rich-menu 專用上傳若沿用同一套寬鬆 mock，會讓示範模式看到成功、真實模式卻失敗。
     const oversized = new File([new Uint8Array(1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
     await expect(uploadRichMenuBgImage(oversized)).rejects.toThrow(ApiError);
+  });
+});
+
+describe('src/services/settings.ts — mock 模式下背景圖 URL 的持久化往返 (#7)', () => {
+  it('上傳 → saveLineSettings → getTenantSettings 讀回同一個 URL（模擬「重整頁面」）', async () => {
+    const file = new File([new Uint8Array(10)], 'richmenu-roundtrip.png', { type: 'image/png' });
+    const { url } = await uploadRichMenuBgImage(file);
+
+    await saveLineSettings({ richMenuBgImageUrl: url });
+
+    const settings = await getTenantSettings();
+    expect(settings.line.richMenuBgImageUrl).toBe(url);
+  });
+
+  it('saveLineSettings 存入空字串（移除背景）後，getTenantSettings 讀回空字串', async () => {
+    const file = new File([new Uint8Array(10)], 'to-be-removed.png', { type: 'image/png' });
+    const { url } = await uploadRichMenuBgImage(file);
+    await saveLineSettings({ richMenuBgImageUrl: url });
+    expect((await getTenantSettings()).line.richMenuBgImageUrl).toBe(url);
+
+    await saveLineSettings({ richMenuBgImageUrl: '' });
+    expect((await getTenantSettings()).line.richMenuBgImageUrl).toBe('');
   });
 });

@@ -1,14 +1,27 @@
 import { ApiError, adapt, request } from '@/lib/api';
 import { APP_URL } from '@/config/env';
+import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
   type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
-import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
+import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
 
 const current = MOCK_TENANTS[0];
+
+/**
+ * mock 模式下的 line 設定覆寫（目前只有 richMenuBgImageUrl 需要真的「記住」）。
+ * `getTenantSettings()` 的 mock 分支每次呼叫都用 DEFAULT_TENANT_SETTINGS() 重新算，
+ * 本身沒有持久化，所以上傳背景圖後若不補一個 mock store，「重整後仍看得到」就無從驗證。
+ * 依 CLAUDE.md 的規則延遲初始化：只在呼叫當下讀 MOCK_MODE，不在 module scope 求值。
+ */
+const mockLineSettingsStore = new Map<BusinessType, Partial<LineSettings>>();
+const getMockLineSettingsOverrides = () => {
+  if (!mockLineSettingsStore.has(MOCK_MODE)) mockLineSettingsStore.set(MOCK_MODE, {});
+  return mockLineSettingsStore.get(MOCK_MODE)!;
+};
 
 export interface TenantSettingsSaveResult {
   welcomeCardImageCleanupPending?: boolean;
@@ -63,6 +76,7 @@ export const getTenantSettings = () =>
       s.line.channelAccessToken = maskSecret('G6e//SU+Bv9k00q2cidcTOKENSAMPLEabcdef1234567890');
       s.line.webhookUrl = buildWebhookUrl(APP_URL, current.shopCode);
       s.line.lineBasicId = '@demo1234';
+      Object.assign(s.line, getMockLineSettingsOverrides());
       return s;
     },
     () => request<TenantSettings>('/api/settings'),
@@ -78,7 +92,10 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
   );
 
 export const saveLineSettings = (patch: Partial<LineSettings>) =>
-  adapt(() => undefined, () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }));
+  adapt(
+    () => { Object.assign(getMockLineSettingsOverrides(), patch); return undefined; },
+    () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }),
+  );
 
 export const testLineConnection = () =>
   adapt<{ ok: boolean; message: string }>(
