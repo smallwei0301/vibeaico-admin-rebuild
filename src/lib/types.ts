@@ -462,6 +462,12 @@ export type CalendarEvent = {
     capacity?: number;
     /* BLOCK */
     reason?: string;
+    /**
+     * WEEKLY 封鎖規則查詢時展開成多次發生時，`id` 會帶上發生時間讓合併陣列內
+     * 保持唯一（型別頂端註解的規則）；這裡另外帶「來源規則列」的真實 uuid，
+     * 供編輯／刪除呼叫 /api/block-times/:id 用（同一規則的每次發生都指回它）。
+     */
+    blockTimeId?: string;
     /* EXTERNAL */
     calendarName?: string;
   };

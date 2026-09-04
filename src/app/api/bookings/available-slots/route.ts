@@ -28,6 +28,7 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { businessSettingsSchema } from '@/config/tenant-settings';
+import { queryEffectiveBlockTimes } from '@/server/block-times';
 
 const querySchema = z.object({
   serviceId: z.string().uuid(),
@@ -113,19 +114,19 @@ export const GET = handle(async (req) => {
   if (pool.length === 0) return ok({ slots: [] });
 
   // 該日既有負載（重疊判定用 start < dayEnd && end > dayStart 撈整天）
-  const [{ data: bookings, error: bErr }, { data: blocks, error: blErr },
+  // block_times 走共用的 queryEffectiveBlockTimes：WEEKLY 規則在這裡展開成
+  // 「今天」實際發生的那一次，不能只用 start_at 的日期範圍過濾（那是首次發生
+  // 的日期，可能遠早於今天）。
+  const [{ data: bookings, error: bErr }, blocks,
          { data: shifts, error: shErr }] = await Promise.all([
     t.supabase.from('bookings').select('staff_id, start_at, end_at')
       .eq('tenant_id', t.tenantId).in('status', ['PENDING', 'CONFIRMED'])
       .lt('start_at', dayEndIso).gt('end_at', dayStartIso),
-    t.supabase.from('block_times').select('staff_id, start_at, end_at')
-      .eq('tenant_id', t.tenantId)
-      .lt('start_at', dayEndIso).gt('end_at', dayStartIso),
+    queryEffectiveBlockTimes(t.supabase, t.tenantId, dayStartIso, dayEndIso),
     t.supabase.from('shifts').select('staff_id, start_time, end_time')
       .eq('tenant_id', t.tenantId).eq('work_date', q.date),
   ]);
   if (bErr) throw bErr;
-  if (blErr) throw blErr;
   if (shErr) throw shErr;
 
   const tenantHasShiftsToday = (shifts ?? []).length > 0;

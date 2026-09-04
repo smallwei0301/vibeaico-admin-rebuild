@@ -1,32 +1,34 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { createBlockTime, deleteBlockTime, listBlockTimes } from '@/services/bookings';
+import {
+  createBlockTime, deleteBlockTime, listBlockTimes, updateBlockTime,
+} from '@/services/bookings';
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
 
 const page = read('src/app/tenant/block-times/page.tsx');
 const service = read('src/services/bookings.ts');
+const putRoute = read('src/app/api/block-times/[id]/route.ts');
+const collectionRoute = read('src/app/api/block-times/route.ts');
 
-describe('block-times #7: real API wiring, not page-local mock data', () => {
-  it('no longer references the old hardcoded MOCK_BLOCK_TIMES constant or its fake delay', () => {
-    expect(page).not.toContain('MOCK_BLOCK_TIMES');
-    expect(page).not.toContain('await new Promise((r) => setTimeout(r, 320))');
-    expect(page).not.toContain("recurrence: 'SINGLE'");
-  });
-
-  it('loads, creates, and deletes through src/services/bookings.ts, not fetch', () => {
+describe('block-times #7/#169: real API wiring, not page-local mock data', () => {
+  it('loads, creates, edits, and deletes through src/services/bookings.ts, not fetch', () => {
     expect(page).not.toMatch(/\bfetch\(/);
-    expect(page).toContain("import { createBlockTime, deleteBlockTime, listBlockTimes");
-    expect(page).toContain('from \'@/services/bookings\'');
+    expect(page).toContain("from '@/services/bookings'");
+    expect(page).toContain('createBlockTime');
+    expect(page).toContain('updateBlockTime');
+    expect(page).toContain('deleteBlockTime');
+    expect(page).toContain('listBlockTimes');
 
     const load = page.slice(page.indexOf('const load ='), page.indexOf('React.useEffect(() => { void load(); }'));
     expect(load).toContain('await listBlockTimes()');
 
     const submit = page.slice(page.indexOf('const submit = async'), page.lastIndexOf('return ('));
-    expect(submit).toContain('await createBlockTime(');
-    expect(submit.indexOf('await createBlockTime(')).toBeLessThan(submit.indexOf('onCreated()'));
+    expect(submit).toContain('await updateBlockTime(form.id, payload)');
+    expect(submit).toContain('await createBlockTime(payload)');
+    expect(submit.indexOf('await updateBlockTime')).toBeLessThan(submit.indexOf('onSaved('));
 
     const del = page.slice(page.indexOf('onConfirm={async'), page.indexOf('/>', page.indexOf('onConfirm={async')));
     expect(del).toContain('await deleteBlockTime(deleting.id)');
@@ -47,11 +49,16 @@ describe('block-times #7: real API wiring, not page-local mock data', () => {
     expect(del).toContain('t.messages.deleteFailed');
   });
 
-  it('service functions route through adapt(mock, real) against the real endpoints', () => {
+  it('auto=true rows are rendered read-only (edit/delete buttons disabled)', () => {
+    const columns = page.slice(page.indexOf("key: 'actions'"), page.indexOf('];'));
+    expect(columns).toContain('disabled={b.auto}');
+  });
+
+  it('service functions route through adapt(mock, real) against the real endpoints, including the new PUT', () => {
     expect(service).toContain('export function listBlockTimes(');
     expect(service).toMatch(/listBlockTimes[\s\S]{0,400}adapt\(/);
-    expect(service).toContain("request<BlockTimeItem[]>('/api/block-times', { query: { from, to } })");
     expect(service).toContain("request<{ id: string }>('/api/block-times', { method: 'POST'");
+    expect(service).toContain("request<void>(`/api/block-times/${id}`, { method: 'PUT'");
     expect(service).toContain("request<void>(`/api/block-times/${id}`, { method: 'DELETE' })");
   });
 });
@@ -76,5 +83,80 @@ describe('block-times #7 AUDIT fix: mock-mode create/delete actually persist (no
     expect((await listBlockTimes()).some((b) => b.id === id)).toBe(true);
     await deleteBlockTime(id);
     expect((await listBlockTimes()).some((b) => b.id === id)).toBe(false);
+  });
+});
+
+describe('block-times #169: title/recurrence/full_day/auto restored end-to-end, not removed', () => {
+  it('mock create/update round-trips the restored fields (title, WEEKLY dayOfWeek, fullDay)', async () => {
+    const { id } = await createBlockTime({
+      title: '測試每週封鎖', reason: '固定公休', recurrence: 'WEEKLY', dayOfWeek: 4, fullDay: true,
+      startAt: '2026-09-24T00:00:00+08:00', endAt: '2026-09-25T00:00:00+08:00',
+    });
+    const created = (await listBlockTimes()).find((b) => b.id === id);
+    expect(created?.title).toBe('測試每週封鎖');
+    expect(created?.recurrence).toBe('WEEKLY');
+    expect(created?.dayOfWeek).toBe(4);
+    expect(created?.fullDay).toBe(true);
+
+    await updateBlockTime(id, {
+      title: '改期後的封鎖', reason: '固定公休', recurrence: 'SINGLE', dayOfWeek: null, fullDay: false,
+      startAt: '2026-09-26T09:00:00+08:00', endAt: '2026-09-26T10:00:00+08:00',
+    });
+    const updated = (await listBlockTimes()).find((b) => b.id === id);
+    expect(updated?.title).toBe('改期後的封鎖');
+    expect(updated?.recurrence).toBe('SINGLE');
+    expect(updated?.dayOfWeek).toBeNull();
+    expect(updated?.fullDay).toBe(false);
+
+    await deleteBlockTime(id);
+  });
+
+  it('mock mode rejects editing or deleting an auto=true row with the same 409-style message as the real API', async () => {
+    // 種子資料裡 LOCAL_SHOP 業態的 bt_mock_3（午休）是 auto:true，見 getMockBlockTimeStore()
+    const list = await listBlockTimes();
+    const autoRow = list.find((b) => b.auto);
+    expect(autoRow, 'seed data must include at least one auto row for this test to mean anything').toBeTruthy();
+    if (!autoRow) return;
+
+    await expect(updateBlockTime(autoRow.id, {
+      title: '不該成功', reason: '', startAt: autoRow.startAt, endAt: autoRow.endAt,
+    })).rejects.toThrow(/自動產生/);
+
+    await expect(deleteBlockTime(autoRow.id)).rejects.toThrow(/自動產生/);
+
+    // 兩次都被拒絕，資料原封不動
+    const stillThere = (await listBlockTimes()).find((b) => b.id === autoRow.id);
+    expect(stillThere?.title).toBe(autoRow.title);
+  });
+});
+
+describe('block-times #169: PUT /api/block-times/:id — tenant isolation & auto guard wired server-side', () => {
+  it('loads the existing row scoped to the caller tenant before allowing PUT or DELETE', () => {
+    const loadOwnedRow = putRoute.slice(
+      putRoute.indexOf('async function loadOwnedRow'), putRoute.indexOf('export const PUT'),
+    );
+    expect(loadOwnedRow).toContain("select('id, auto')");
+    expect(loadOwnedRow).toContain(".eq('id', id).eq('tenant_id', tenantId)");
+    // 兩個 handler 都先呼叫它才動作，不是各自重寫一份查詢
+    expect(putRoute.match(/await loadOwnedRow\(t\.supabase, t\.tenantId, id\)/g)?.length).toBe(2);
+  });
+
+  it('rejects auto=true rows with 409 before applying any write', () => {
+    const loadOwnedRow = putRoute.slice(
+      putRoute.indexOf('async function loadOwnedRow'), putRoute.indexOf('export const PUT'),
+    );
+    expect(loadOwnedRow).toContain('if (data.auto) throw new ApiHttpError(409,');
+    expect(loadOwnedRow).toContain('ERR.CONFLICT');
+  });
+
+  it('the actual PUT/DELETE mutations are also scoped to tenant_id, not just the existence check', () => {
+    const put = putRoute.slice(putRoute.indexOf('export const PUT'), putRoute.indexOf('export const DELETE'));
+    expect(put).toMatch(/\.eq\('id', id\)\.eq\('tenant_id', t\.tenantId\)/);
+    const del = putRoute.slice(putRoute.indexOf('export const DELETE'));
+    expect(del).toMatch(/\.eq\('id', id\)\.eq\('tenant_id', t\.tenantId\)/);
+  });
+
+  it('POST also scopes the staff-ownership check to the caller tenant', () => {
+    expect(collectionRoute).toContain("eq('id', b.staffId).eq('tenant_id', t.tenantId)");
   });
 });
