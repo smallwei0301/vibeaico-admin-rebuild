@@ -1,0 +1,28 @@
+name: temporary-owner-branch-protection
+
+on:
+  push:
+    branches:
+      - ops/issue-164-branch-protection-ephemeral
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: temporary-owner-branch-protection
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: github.repository == 'smallwei0301/vibeaico-admin-rebuild'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run encrypted Owner operation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python .github/ops/issue-164-branch-protection.py
