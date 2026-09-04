@@ -17,7 +17,9 @@ import {
   CharCounter, FormError, FormGroup, FormText, Input, Label, Select, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { deleteCustomer, listCustomers } from '@/services/customers';
+import {
+  bindLineUser, createCustomer, deleteCustomer, listCustomers, unbindLineUser, updateCustomer,
+} from '@/services/customers';
 import { listMembershipLevels } from '@/services/catalog';
 import { exportCustomersExcel } from '@/services/reports';
 import { MOCK_CUSTOMERS } from '@/mock';
@@ -103,6 +105,7 @@ export default function CustomersPage() {
   const [unbindTarget, setUnbindTarget] = React.useState<Customer | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<Customer | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [unbinding, setUnbinding] = React.useState(false);
 
   /** 原站以 /tenant/customers?atRisk=true 從儀表板的流失預警進入本頁 */
   React.useEffect(() => {
@@ -473,14 +476,27 @@ export default function CustomersPage() {
       <ConfirmModal
         open={!!unbindTarget}
         danger
+        loading={unbinding}
         title={t.confirm.unbindTitle}
         confirmText={t.actions.unbindLine}
         message={unbindTarget ? t.confirm.unbindLine(unbindTarget.name) : common.confirm.message}
         onClose={() => setUnbindTarget(null)}
-        onConfirm={() => {
-          setUnbindTarget(null);
-          toast.show(t.messages.lineUnbound);
-          void load();
+        onConfirm={async () => {
+          if (!unbindTarget) return;
+          setUnbinding(true);
+          try {
+            await unbindLineUser(unbindTarget.id);
+            setUnbindTarget(null);
+            toast.show(t.messages.lineUnbound);
+            void load();
+          } catch (e) {
+            toast.show(
+              `${t.messages.unbindFailed}${e instanceof Error ? `: ${e.message}` : ''}`,
+              'danger',
+            );
+          } finally {
+            setUnbinding(false);
+          }
         }}
       />
 
@@ -561,7 +577,19 @@ function CustomerFormModal({
     if (err) { toast.show(t.messages.checkFields, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      const payload = {
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        gender,
+        birthday,
+        note,
+      };
+      if (isEdit && customer) {
+        await updateCustomer(customer.id, payload);
+      } else {
+        await createCustomer(payload);
+      }
       onSaved(isEdit);
     } catch (e) {
       toast.show(
@@ -687,12 +715,16 @@ function BindLineModal({
   }, [customer]);
 
   const bind = async (u: UnboundLineUser) => {
+    if (!customer) return;
     setBindingId(u.id);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      await bindLineUser(customer.id, u.id, u.displayName);
       onBound();
-    } catch {
-      toast.show(t.messages.bindFailedRetry, 'danger');
+    } catch (e) {
+      toast.show(
+        e instanceof Error ? `${t.messages.bindFailedPrefix}${e.message}` : t.messages.bindFailedRetry,
+        'danger',
+      );
     } finally {
       setBindingId(null);
     }
