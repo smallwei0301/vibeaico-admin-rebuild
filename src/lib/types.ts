@@ -437,6 +437,24 @@ export type TourOrder = {
  */
 export type CalendarEventType = 'BOOKING' | 'DEPARTURE' | 'BLOCK' | 'EXTERNAL';
 
+/**
+ * 作品集（/tenant/portfolio ↔ 0005 portfolios 表 + 0075 line_sort_order）。
+ * sortOrder = 公開頁順序（/api/portfolios/reorder 依 ids 索引寫入）；
+ * lineSortOrder = LINE 作品瀏覽選單順序（/api/portfolios/reorder-line）。
+ * 兩者互不影響。
+ */
+export type Portfolio = {
+  id: string;
+  title: string;
+  imageUrl: string;
+  description: string;
+  active: boolean;
+  lineFeatured: boolean;
+  sortOrder: number;
+  lineSortOrder: number;
+  createdAt: string;
+};
+
 export type CalendarEvent = {
   /** 合併陣列內唯一：`<type 小寫>:<來源列 uuid>`（不同表的 uuid 理論上不撞，前綴保險） */
   id: string;
