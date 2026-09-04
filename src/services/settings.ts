@@ -6,6 +6,8 @@ import {
   brandingSettingsSchema,
   type BrandingSettings, type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
+
+type BasicSettings = TenantSettings['basic'];
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
 import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
@@ -22,6 +24,16 @@ const mockLineSettingsStore = new Map<BusinessType, Partial<LineSettings>>();
 const getMockLineSettingsOverrides = () => {
   if (!mockLineSettingsStore.has(MOCK_MODE)) mockLineSettingsStore.set(MOCK_MODE, {});
   return mockLineSettingsStore.get(MOCK_MODE)!;
+};
+
+/**
+ * mock 模式下的 basic 設定覆寫（目前只有 staffTerm 需要真的「記住」）。
+ * 與 getMockLineSettingsOverrides 同一套模式：延遲初始化，只在呼叫當下讀 MOCK_MODE。
+ */
+const mockBasicSettingsStore = new Map<BusinessType, Partial<BasicSettings>>();
+const getMockBasicSettingsOverrides = () => {
+  if (!mockBasicSettingsStore.has(MOCK_MODE)) mockBasicSettingsStore.set(MOCK_MODE, {});
+  return mockBasicSettingsStore.get(MOCK_MODE)!;
 };
 
 export interface TenantSettingsSaveResult {
@@ -152,6 +164,8 @@ export const getTenantSettings = () =>
       // #181 的 line 覆寫（richMenuBgImageUrl 等）與本 slice 的 branding
       // 是兩個互不相干的群組，兩邊都要保留。
       Object.assign(s.line, getMockLineSettingsOverrides());
+      // basic（staffTerm 等）與 branding 是互不相干的設定群組，兩邊都要保留。
+      Object.assign(s.basic, getMockBasicSettingsOverrides());
       s.branding = getMockBrandingStore()[MOCK_MODE];
       return s;
     },
@@ -161,6 +175,7 @@ export const getTenantSettings = () =>
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
   adapt<TenantSettingsSaveResult | undefined>(
     () => {
+      if (patch.basic) Object.assign(getMockBasicSettingsOverrides(), patch.basic);
       if (patch.branding) {
         getMockBrandingStore()[MOCK_MODE] = brandingSettingsSchema.parse(patch.branding);
       }
