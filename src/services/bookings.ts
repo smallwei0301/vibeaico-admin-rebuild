@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import type { Booking, BookingStatus, CalendarEvent, Paged, PaymentStatus } from '@/lib/types';
-import { byMode, MOCK_BOOKINGS } from '@/mock';
+import { MOCK_BOOKINGS, MOCK_MODE } from '@/mock';
+import type { BusinessType } from '@/config/modes';
 
 export type BookingQuery = {
   page?: number; size?: number; status?: BookingStatus | '';
@@ -220,13 +221,21 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
 }
 
 /**
- * GET /api/block-times?from&to — 封鎖時段頁（/tenant/block-times）唯一資料源；
- * 不傳區間 = 全部。mock 依 byMode() 給三種業態各自的示範封鎖時段（呼叫時才取值，
- * 遵守「不可在 module 頂層讀 MOCK_MODE」規則）。
+ * 封鎖時段的 mock 分支「假倉庫」：三種業態各自的示範資料 + 之後透過
+ * createBlockTime/deleteBlockTime 的異動，讓 mock 模式下新增/刪除也像真實
+ * 後端一樣可讀回、可持久（同一頁面 session 內）。
+ *
+ * 延遲初始化：整個 Record<BusinessType, …> 在「第一次被任何一個函式呼叫」
+ * 時才建立一次，建立當下不看目前是哪個業態（三套都建好），因此不會踩
+ * 「module 頂層讀 MOCK_MODE / 呼叫 byMode() 會凍結錯誤業態」這個坑——
+ * AppShell 呼叫 applyMockMode() 切換業態後，之後每次讀寫都用當下的
+ * MOCK_MODE 當 key，自然對到正確的一份。
  */
-export function listBlockTimes(from?: string, to?: string): Promise<BlockTimeItem[]> {
-  return adapt(
-    () => byMode<BlockTimeItem[]>({
+let mockBlockTimeStore: Record<BusinessType, BlockTimeItem[]> | null = null;
+
+function getMockBlockTimeStore(): Record<BusinessType, BlockTimeItem[]> {
+  if (!mockBlockTimeStore) {
+    mockBlockTimeStore = {
       LOCAL_SHOP: [
         { id: 'bt_mock_1', staffId: null, staffName: null, reason: '店休（中秋連假）', startAt: '2026-09-05T00:00:00+08:00', endAt: '2026-09-06T00:00:00+08:00' },
         { id: 'bt_mock_2', staffId: null, staffName: null, reason: '團隊會議', startAt: '2026-09-08T09:00:00+08:00', endAt: '2026-09-08T10:30:00+08:00' },
@@ -238,7 +247,15 @@ export function listBlockTimes(from?: string, to?: string): Promise<BlockTimeIte
         { id: 'bt_mock_1', staffId: null, staffName: null, reason: '院所公休（醫學會）', startAt: '2026-09-07T00:00:00+08:00', endAt: '2026-09-08T00:00:00+08:00' },
         { id: 'bt_mock_2', staffId: null, staffName: null, reason: '設備消毒維護', startAt: '2026-09-09T12:00:00+08:00', endAt: '2026-09-09T14:00:00+08:00' },
       ],
-    }),
+    };
+  }
+  return mockBlockTimeStore;
+}
+
+/** GET /api/block-times?from&to — 封鎖時段頁（/tenant/block-times）唯一資料源；不傳區間 = 全部。 */
+export function listBlockTimes(from?: string, to?: string): Promise<BlockTimeItem[]> {
+  return adapt(
+    () => [...getMockBlockTimeStore()[MOCK_MODE]],
     () => request<BlockTimeItem[]>('/api/block-times', { query: { from, to } }),
   );
 }
@@ -248,13 +265,31 @@ export const createBlockTime = (payload: {
   staffId?: string | null; startAt: string; endAt: string; reason?: string;
 }) =>
   adapt(
-    () => ({ id: `bt_mock_${Date.now()}` }),
+    () => {
+      const id = `bt_mock_${Date.now()}`;
+      getMockBlockTimeStore()[MOCK_MODE].push({
+        id,
+        staffId: payload.staffId ?? null,
+        staffName: null,
+        startAt: payload.startAt,
+        endAt: payload.endAt,
+        reason: payload.reason ?? '',
+      });
+      return { id };
+    },
     () => request<{ id: string }>('/api/block-times', { method: 'POST', body: JSON.stringify(payload) }),
   );
 
 /** DELETE /api/block-times/:id */
 export const deleteBlockTime = (id: string) =>
-  adapt(() => undefined, () => request<void>(`/api/block-times/${id}`, { method: 'DELETE' }));
+  adapt(
+    () => {
+      const store = getMockBlockTimeStore();
+      store[MOCK_MODE] = store[MOCK_MODE].filter((b) => b.id !== id);
+      return undefined;
+    },
+    () => request<void>(`/api/block-times/${id}`, { method: 'DELETE' }),
+  );
 
 /* -------------------------------------------------------------- 週期性預約 */
 

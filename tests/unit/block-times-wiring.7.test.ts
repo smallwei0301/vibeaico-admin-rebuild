@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { createBlockTime, deleteBlockTime, listBlockTimes } from '@/services/bookings';
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
@@ -52,5 +53,28 @@ describe('block-times #7: real API wiring, not page-local mock data', () => {
     expect(service).toContain("request<BlockTimeItem[]>('/api/block-times', { query: { from, to } })");
     expect(service).toContain("request<{ id: string }>('/api/block-times', { method: 'POST'");
     expect(service).toContain("request<void>(`/api/block-times/${id}`, { method: 'DELETE' })");
+  });
+});
+
+describe('block-times #7 AUDIT fix: mock-mode create/delete actually persist (no fake success)', () => {
+  it('a block time created in mock mode shows up in the next listBlockTimes() read', async () => {
+    const before = await listBlockTimes();
+    const { id } = await createBlockTime({
+      startAt: '2026-09-20T10:00:00+08:00', endAt: '2026-09-20T11:00:00+08:00', reason: '測試新增可讀回',
+    });
+    const after = await listBlockTimes();
+    expect(after.length).toBe(before.length + 1);
+    const created = after.find((b) => b.id === id);
+    expect(created).toBeTruthy();
+    expect(created?.reason).toBe('測試新增可讀回');
+  });
+
+  it('a block time deleted in mock mode no longer appears in the next listBlockTimes() read', async () => {
+    const { id } = await createBlockTime({
+      startAt: '2026-09-21T10:00:00+08:00', endAt: '2026-09-21T11:00:00+08:00', reason: '測試刪除即消失',
+    });
+    expect((await listBlockTimes()).some((b) => b.id === id)).toBe(true);
+    await deleteBlockTime(id);
+    expect((await listBlockTimes()).some((b) => b.id === id)).toBe(false);
   });
 });
