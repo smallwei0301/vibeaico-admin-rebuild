@@ -17,12 +17,13 @@ import {
   FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listFeatures } from '@/services/settings';
+import { getTenantSettings, listFeatures, saveLineSettings, uploadRichMenuBgImage } from '@/services/settings';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { richMenuDesignPage as t } from '@/i18n/zh-TW/pages/rich-menu-design';
 import { cn } from '@/lib/utils';
+import { ApiError } from '@/lib/api';
 
 /* ============================================================================
  * 選單設計 /tenant/rich-menu-design
@@ -106,11 +107,15 @@ export default function RichMenuDesignPage() {
   const [tab, setTab] = React.useState<'richMenu' | 'flexMenu'>('richMenu');
   const [loading, setLoading] = React.useState(true);
   const [subscribed, setSubscribed] = React.useState(false);
+  // 已存的背景圖 URL（line.richMenuBgImageUrl）—— 重整頁面時要讀回來，
+  // 不然使用者上傳完看到成功、重整卻消失，等於沒有真的存過。
+  const [initialBgUrl, setInitialBgUrl] = React.useState('');
 
   React.useEffect(() => {
     void (async () => {
-      const features = await listFeatures();
+      const [features, settings] = await Promise.all([listFeatures(), getTenantSettings()]);
       setSubscribed(features.find((f) => f.code === FEATURE_CODE)?.active ?? false);
+      setInitialBgUrl(settings.line.richMenuBgImageUrl);
       setLoading(false);
     })();
   }, []);
@@ -132,7 +137,9 @@ export default function RichMenuDesignPage() {
       />
 
       <TabPanel active={tab === 'richMenu'}>
-        {loading ? <LoadingCard /> : <RichMenuTab subscribed={subscribed} toast={toast} />}
+        {loading ? <LoadingCard /> : (
+          <RichMenuTab subscribed={subscribed} toast={toast} initialBgUrl={initialBgUrl} />
+        )}
       </TabPanel>
       <TabPanel active={tab === 'flexMenu'}>
         {loading ? <LoadingCard /> : <FlexMenuTab subscribed={subscribed} toast={toast} />}
@@ -175,12 +182,18 @@ function FeatureLockBar() {
  * Rich Menu（底部選單）
  * ======================================================================== */
 function RichMenuTab({
-  subscribed, toast,
-}: { subscribed: boolean; toast: ReturnType<typeof useToast> }) {
+  subscribed, toast, initialBgUrl,
+}: { subscribed: boolean; toast: ReturnType<typeof useToast>; initialBgUrl: string }) {
   const SHOP_NAME = useCurrentTenant().name;
   const [theme, setTheme] = React.useState<ThemeKey>('LINE_GREEN');
   const [layout, setLayout] = React.useState('3+4');
-  const [bgUrl, setBgUrl] = React.useState('');
+  const [bgUrl, setBgUrl] = React.useState(initialBgUrl);
+  const [bgUploading, setBgUploading] = React.useState(false);
+  const [bgSaving, setBgSaving] = React.useState(false);
+  // 最後一次成功存進 line.richMenuBgImageUrl 的值 —— 手貼 URL 失焦時只在值真的
+  // 改變且尚未存過的情況下才呼叫 saveLineSettings，避免每次 blur 都打一次 API。
+  const bgSavedRef = React.useRef(initialBgUrl);
+  const bgFileInputRef = React.useRef<HTMLInputElement>(null);
   const [cells, setCells] = React.useState<Cell[]>(DEFAULT_CELLS);
   const [activeCell, setActiveCell] = React.useState(0);
   const [sceneOpen, setSceneOpen] = React.useState(true);
@@ -201,6 +214,59 @@ function RichMenuTab({
 
   const updateCell = (i: number, patch: Partial<Cell>) =>
     setCells((c) => c.map((x, idx) => (idx === i ? { ...x, ...patch } : x)));
+
+  /**
+   * 把 url 存進 line.richMenuBgImageUrl（PUT /api/settings/line，不是對外 LINE API，
+   * 純粹是租戶設定的持久化）。值沒變就不重複打 API；成功才更新 bgSavedRef，
+   * 失敗一律顯示後端真實錯誤、回傳 false 讓呼叫端不要假裝成功。
+   */
+  const persistBgUrl = async (url: string): Promise<boolean> => {
+    if (url === bgSavedRef.current) return true;
+    setBgSaving(true);
+    try {
+      await saveLineSettings({ richMenuBgImageUrl: url });
+      bgSavedRef.current = url;
+      return true;
+    } catch (err) {
+      toast.show(
+        `${t.messages.saveFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
+        'danger',
+      );
+      return false;
+    } finally {
+      setBgSaving(false);
+    }
+  };
+
+  const handleBgFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // 允許重選同一個檔案時仍觸發 change
+    if (!file) return;
+    setBgUploading(true);
+    try {
+      const { url } = await uploadRichMenuBgImage(file);
+      // 先存成功才更新畫面、顯示成功 —— 存失敗時 persistBgUrl 已經顯示真實錯誤，
+      // 這裡不能再讓使用者以為背景圖已經生效。
+      if (await persistBgUrl(url)) {
+        setBgUrl(url);
+        toast.show(t.background.uploaded, 'success');
+      }
+    } catch (err) {
+      toast.show(
+        `${t.background.uploadFailedPrefix}${err instanceof ApiError ? err.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setBgUploading(false);
+    }
+  };
+
+  /** 手貼 URL 到輸入框：失焦時才存，避免每個按鍵都打 API */
+  const handleBgUrlBlur = () => { void persistBgUrl(bgUrl); };
+
+  const handleRemoveBg = async () => {
+    if (await persistBgUrl('')) setBgUrl('');
+  };
 
   /** 發布前的驗證 —— 完整照原站規則 */
   const validate = (): string | null => {
@@ -413,15 +479,37 @@ function RichMenuTab({
                 <Input
                   value={bgUrl}
                   onChange={(e) => setBgUrl(e.target.value)}
+                  onBlur={handleBgUrlBlur}
                   placeholder={t.background.urlPlaceholder}
                 />
-                <Button variant="outline"><Upload size={14} />{t.background.uploadImage}</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  loading={bgUploading}
+                  loadingText={t.background.uploadImage}
+                  onClick={() => bgFileInputRef.current?.click()}
+                >
+                  <Upload size={14} />{t.background.uploadImage}
+                </Button>
+                <input
+                  ref={bgFileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  hidden
+                  onChange={handleBgFileChange}
+                />
               </div>
               <FormText>{t.background.urlHint}</FormText>
             </FormGroup>
             <FormText>{t.background.help}</FormText>
             {bgUrl ? (
-              <Button variant="outlineDanger" size="sm" className="mt-2" onClick={() => setBgUrl('')}>
+              <Button
+                variant="outlineDanger"
+                size="sm"
+                className="mt-2"
+                disabled={bgSaving}
+                onClick={() => void handleRemoveBg()}
+              >
                 <X size={13} />{t.background.remove}
               </Button>
             ) : (

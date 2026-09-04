@@ -1,18 +1,66 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import { APP_URL } from '@/config/env';
+import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
   type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
-import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
+import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
 
 const current = MOCK_TENANTS[0];
+
+/**
+ * mock 模式下的 line 設定覆寫（目前只有 richMenuBgImageUrl 需要真的「記住」）。
+ * `getTenantSettings()` 的 mock 分支每次呼叫都用 DEFAULT_TENANT_SETTINGS() 重新算，
+ * 本身沒有持久化，所以上傳背景圖後若不補一個 mock store，「重整後仍看得到」就無從驗證。
+ * 依 CLAUDE.md 的規則延遲初始化：只在呼叫當下讀 MOCK_MODE，不在 module scope 求值。
+ */
+const mockLineSettingsStore = new Map<BusinessType, Partial<LineSettings>>();
+const getMockLineSettingsOverrides = () => {
+  if (!mockLineSettingsStore.has(MOCK_MODE)) mockLineSettingsStore.set(MOCK_MODE, {});
+  return mockLineSettingsStore.get(MOCK_MODE)!;
+};
 
 export interface TenantSettingsSaveResult {
   welcomeCardImageCleanupPending?: boolean;
 }
+
+export interface UploadRichMenuBgImageResult {
+  url: string;
+}
+
+/**
+ * Rich Menu 背景圖上傳 —— 走**專用**端點 `/api/settings/line/rich-menu/upload-bg-image`，
+ * 不能借用通用的 `uploadImage()`（`/api/upload`）：通用端點放行到 5MB，
+ * 但 create 端點會把這張圖原樣上傳給 LINE，`/v2/bot/richmenu/{id}/content` 的平台上限是
+ * 1MB —— 用通用端點上傳會讓超過 1MB 的圖片「上傳成功」，直到之後發布才失敗。
+ * 這裡在上傳當下就用與後端相同的規則擋下，並把後端的真實錯誤訊息原樣往上拋。
+ */
+const RICH_MENU_BG_MAX_BYTES = 1024 * 1024; // 1MB，對齊 upload-bg-image route 的 LINE 平台限制
+const RICH_MENU_BG_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png']);
+
+export const uploadRichMenuBgImage = (file: File) =>
+  adapt<UploadRichMenuBgImageResult>(
+    () => {
+      if (!RICH_MENU_BG_ALLOWED_TYPES.has(file.type)) {
+        throw new ApiError('僅支援 JPEG / PNG 圖片', 'VALIDATION');
+      }
+      if (file.size > RICH_MENU_BG_MAX_BYTES) {
+        throw new ApiError('圖片超過 1MB 上限（LINE Rich Menu 限制），請壓縮後再上傳', 'VALIDATION');
+      }
+      return { url: file.name };
+    },
+    () => {
+      const form = new FormData();
+      form.append('file', file);
+      return request<UploadRichMenuBgImageResult>('/api/settings/line/rich-menu/upload-bg-image', {
+        method: 'POST',
+        body: form,
+      });
+    },
+  );
 
 /**
  * 讀租戶設定。
@@ -28,6 +76,7 @@ export const getTenantSettings = () =>
       s.line.channelAccessToken = maskSecret('G6e//SU+Bv9k00q2cidcTOKENSAMPLEabcdef1234567890');
       s.line.webhookUrl = buildWebhookUrl(APP_URL, current.shopCode);
       s.line.lineBasicId = '@demo1234';
+      Object.assign(s.line, getMockLineSettingsOverrides());
       return s;
     },
     () => request<TenantSettings>('/api/settings'),
@@ -43,7 +92,10 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
   );
 
 export const saveLineSettings = (patch: Partial<LineSettings>) =>
-  adapt(() => undefined, () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }));
+  adapt(
+    () => { Object.assign(getMockLineSettingsOverrides(), patch); return undefined; },
+    () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }),
+  );
 
 export const testLineConnection = () =>
   adapt<{ ok: boolean; message: string }>(
