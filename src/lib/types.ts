@@ -455,6 +455,45 @@ export type Portfolio = {
   createdAt: string;
 };
 
+/**
+ * 行銷活動（/tenant/campaigns）— 對應 campaigns 表（0005 migration）：
+ * id/name/keyword/content jsonb/start_at/end_at/status/created_at，DB 不拆欄。
+ * status 只有 DRAFT/PUBLISHED/PAUSED/ENDED 四種（沒有獨立持久化的 SCHEDULED，
+ * 那是前端用 status===PUBLISHED && startAt 在未來算出來的顯示狀態）。
+ *
+ * description/type/pushMessage/couponId/bonusPoints/thresholdAmount/recallDays/
+ * isAutoTrigger/imageUrl 全部收在 content jsonb（見
+ * src/app/api/campaigns/route.ts 檔頭註解），這裡把它們攤平方便頁面使用；
+ * src/services/campaigns.ts 負責在讀寫時跟 content 互轉。
+ *
+ * participantCount 沒有列在這個型別裡：repo 內沒有任何來源表可以算「參加人數」
+ * （沒有 campaign_participants，也沒有任何表帶 campaign_id 外鍵），這是純衍生
+ * 統計值，一律沒有資料可讀。頁面必須顯示誠實佔位，不可捏造 —— Issue #23
+ * Owner 待決事項：若要顯示這個數字，需要先決定它的資料來源。
+ */
+export type CampaignStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ENDED';
+export type CampaignType =
+  | 'BIRTHDAY' | 'NEW_CUSTOMER' | 'SPENDING_THRESHOLD' | 'LIMITED_TIME' | 'RECALL' | 'REFERRAL';
+
+export type Campaign = {
+  id: string;
+  name: string;
+  keyword: string;
+  description: string;
+  type: CampaignType | '';
+  status: CampaignStatus;
+  startAt: string | null;
+  endAt: string | null;
+  pushMessage: string;
+  couponId: string | null;
+  bonusPoints: number;
+  thresholdAmount: number | null;
+  recallDays: number | null;
+  isAutoTrigger: boolean;
+  imageUrl: string;
+  createdAt: string;
+};
+
 export type CalendarEvent = {
   /** 合併陣列內唯一：`<type 小寫>:<來源列 uuid>`（不同表的 uuid 理論上不撞，前綴保險） */
   id: string;
