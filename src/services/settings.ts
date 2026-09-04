@@ -6,7 +6,6 @@ import {
   brandingSettingsSchema,
   type BrandingSettings, type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
-import type { BusinessType } from '@/config/modes';
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
 import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
