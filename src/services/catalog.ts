@@ -1,6 +1,6 @@
 import { adapt, ApiError, request } from '@/lib/api';
 import type {
-  ApiResponse, Coupon, MembershipLevel, Product, ProductOrder, Service, Staff,
+  ApiResponse, Coupon, MembershipLevel, Product, ProductOrder, Service, Staff, StaffScheduleMode,
 } from '@/lib/types';
 import {
   MOCK_COUPONS, MOCK_MEMBERSHIP_LEVELS, MOCK_PRODUCTS,
@@ -207,6 +207,8 @@ export type StaffPayload = {
   bookable?: boolean;
   active?: boolean;
   serviceIds?: string[];
+  /** #7：排班模式（staff.schedule_mode）。 */
+  scheduleMode?: StaffScheduleMode;
 };
 
 let nextMockStaffId = 1;
@@ -220,10 +222,20 @@ export const createStaff = (payload: StaffPayload) =>
   );
 
 export const updateStaff = (id: string, payload: Partial<StaffPayload>) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/staff/${id}`, {
+  adapt(
+    () => {
+      /* mock 分支要真的存得住：scheduleMode 直接寫回目前業態的 MOCK_STAFF（原地
+         mutate 陣列元素，不重新指派 live binding），下一次 listStaff() 才會看到。 */
+      if (payload.scheduleMode !== undefined) {
+        const idx = MOCK_STAFF.findIndex((s) => s.id === id);
+        if (idx >= 0) MOCK_STAFF[idx] = { ...MOCK_STAFF[idx], scheduleMode: payload.scheduleMode };
+      }
+      return undefined;
+    },
+    () => request<void>(`/api/staff/${id}`, {
       method: 'PUT', body: JSON.stringify(payload),
-    }));
+    }),
+  );
 
 export const deleteStaff = (id: string) => deleteWithFallback(`/api/staff/${id}`);
 
