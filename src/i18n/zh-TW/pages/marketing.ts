@@ -26,7 +26,7 @@ export const marketingPage = {
     { key: 'DRAFT', name: '草稿', desc: '尚未發送' },
     { key: 'SCHEDULED', name: '排程中', desc: '等待發送' },
     { key: 'SENDING', name: '發送中', desc: '正在發送' },
-    { key: 'COMPLETED', name: '已完成', desc: '發送完畢' },
+    { key: 'SENT', name: '已完成', desc: '發送完畢' },
     { key: 'FAILED', name: '失敗', desc: '發送失敗' },
   ],
 
@@ -53,7 +53,7 @@ export const marketingPage = {
     DRAFT: '草稿',
     SCHEDULED: '排程中',
     SENDING: '發送中',
-    COMPLETED: '已完成',
+    SENT: '已完成',
     FAILED: '失敗',
     CANCELLED: '已取消',
   },
@@ -71,10 +71,12 @@ export const marketingPage = {
     scheduledAt: (time: string) => `排程於 ${time}`,
     sentAt: (time: string) => `發送於 ${time}`,
     resultSuccess: (n: number) => `成功 ${n}`,
-    resultFailed: (n: number) => `失敗 ${n}`,
     people: (n: number) => `${n} 人`,
     notSent: '—',
     noImage: '未附圖片',
+    /** 後端 marketing_pushes 沒有任何欄位或關聯表能在發送前算出受眾人數，這是
+     * 誠實佔位，不是假資料 —— 見 Issue #24。 */
+    estimatedUnavailable: '尚未提供',
   },
 
   /* --------------------------------------------------------------- 動作 */
@@ -137,6 +139,7 @@ export const marketingPage = {
   /* --------------------------------------------------------------- 訊息 */
   messages: {
     created: '推播已建立',
+    updated: '推播已更新',
     deleted: '推播已刪除',
     cancelled: '推播已取消',
     sending: '推播已開始發送',

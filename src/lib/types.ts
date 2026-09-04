@@ -503,6 +503,38 @@ export type Campaign = {
   createdAt: string;
 };
 
+/**
+ * 行銷推播（/tenant/marketing，marketing_pushes 表）— Issue #24。
+ *
+ * 語意見 src/app/api/marketing/pushes/route.ts 檔頭註解：
+ * - status：DRAFT/SCHEDULED/SENDING/SENT/CANCELLED/FAILED（0005 migration + LINE 發送失敗）。
+ *   SENDING 是條件式 update 佔位用的暫態，發送請求完成前後就會落到 SENT 或 FAILED。
+ * - targetType：ALL 全部已加好友顧客；MEMBERSHIP_LEVEL／TAG／CUSTOM 的 targetValue 語意
+ *   各自不同，見同一份檔頭註解，前端不得自行發明語意。
+ * - 沒有 estimatedCount（預估受眾人數）或 failedCount（個別失敗人數）欄位：
+ *   marketing_pushes 沒有任何欄位或關聯表能在發送前算出受眾人數，也不記錄逐筆失敗數，
+ *   這是誠實缺口，不可捏造 —— 見 Issue #24 Owner 待決事項。
+ */
+export type MarketingPushStatus = 'DRAFT' | 'SCHEDULED' | 'SENDING' | 'SENT' | 'CANCELLED' | 'FAILED';
+export type MarketingPushTargetType = 'ALL' | 'MEMBERSHIP_LEVEL' | 'TAG' | 'CUSTOM';
+
+export type MarketingPush = {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl: string;
+  note: string;
+  targetType: MarketingPushTargetType;
+  /** MEMBERSHIP_LEVEL=等級 id；TAG=標籤名稱；CUSTOM=LINE User ID 換行清單 */
+  targetValue: string;
+  targetLabel: string;
+  status: MarketingPushStatus;
+  sentCount: number;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  createdAt: string;
+};
+
 export type CalendarEvent = {
   /** 合併陣列內唯一：`<type 小寫>:<來源列 uuid>`（不同表的 uuid 理論上不撞，前綴保險） */
   id: string;
