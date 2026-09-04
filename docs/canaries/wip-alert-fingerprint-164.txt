@@ -1,3 +1,0 @@
-Issue #164 WIP alert fingerprint canary.
-
-This file exists only on the non-merge canary branch. It verifies first-error failure, same-head duplicate notification suppression, persistent failed Agent WIP Policy status, and success after metadata repair.
