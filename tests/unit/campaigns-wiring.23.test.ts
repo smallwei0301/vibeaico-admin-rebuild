@@ -209,14 +209,25 @@ describe('campaigns #23: display status derives SCHEDULED from real fields, neve
   });
 });
 
-describe('campaigns #23 backend gap (reported, not fabricated): DELETE /api/campaigns/:id does not exist', () => {
-  it('src/app/api/campaigns/[id]/route.ts exports PUT but no DELETE handler', () => {
-    const route = read('src/app/api/campaigns/[id]/route.ts');
-    expect(route).toContain('export const PUT');
-    expect(route).not.toContain('export const DELETE');
+describe('DELETE /api/campaigns/:id（本 slice 補上的 handler）', () => {
+  const route = read('src/app/api/campaigns/[id]/route.ts');
+
+  it('匯出 DELETE handler —— 沒有它，真實模式的刪除鈕必定收到 405', () => {
+    expect(route).toContain('export const DELETE');
   });
 
-  it('deleteCampaign() still calls the real DELETE endpoint (honest recovery, not a silently-removed button)', () => {
-    expect(service).toContain("request<void>(`/api/campaigns/${id}`, { method: 'DELETE' })");
+  it('以 id + tenant_id 雙條件隔離，且查不到時回 404 而非洩漏存在性', () => {
+    const del = route.slice(route.indexOf('export const DELETE'));
+    expect(del).toContain("requireTenant('MANAGER')");
+    expect(del).toContain("找不到此活動");
+    // 讀取與刪除各一次，兩次都必須帶 tenant_id
+    expect(del.match(/\.eq\('tenant_id', t\.tenantId\)/g)?.length).toBe(2);
+    expect(del.match(/\.eq\('id', id\)/g)?.length).toBe(2);
+  });
+
+  it('service 的真實分支確實打 DELETE 方法', () => {
+    const svc = read('src/services/campaigns.ts');
+    const fn = svc.slice(svc.indexOf('export const deleteCampaign'));
+    expect(fn).toContain("method: 'DELETE'");
   });
 });

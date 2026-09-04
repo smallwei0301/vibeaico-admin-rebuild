@@ -49,3 +49,30 @@ export const PUT = handle(async (req, { params }) => {
 
   return ok();
 });
+
+/**
+ * DELETE /api/campaigns/:id（04 分冊 §B-5）。
+ * 與 PUT 同樣的租戶隔離：先以 id + tenant_id 取回該列，取不到一律 404
+ * （不洩漏其他租戶的活動是否存在），再以同一組雙條件刪除。
+ * 與 PUT 不同的是 ENDED 也允許刪除——結束的活動不能再「編輯」，但店家
+ * 仍應該能把它從清單移除。
+ */
+export const DELETE = handle(async (_req, { params }) => {
+  const t = await requireTenant('MANAGER');
+  const { id } = await params;
+
+  const { data: row, error: e0 } = await t.supabase
+    .from('campaigns')
+    .select('id')
+    .eq('id', id).eq('tenant_id', t.tenantId)
+    .maybeSingle();
+  if (e0) throw e0;
+  if (!row) throw new ApiHttpError(404, '找不到此活動', ERR.NOT_FOUND);
+
+  const { error } = await t.supabase
+    .from('campaigns').delete()
+    .eq('id', id).eq('tenant_id', t.tenantId);
+  if (error) throw error;
+
+  return ok();
+});

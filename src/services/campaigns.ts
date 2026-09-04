@@ -24,9 +24,9 @@ import type { BusinessType } from '@/config/modes';
  * 讓兩個模式的行為一致 —— 頁面必須顯示誠實佔位文案，不可捏造數字。
  *
  * ⛔ 後端缺口（Owner 待決事項，未自行修改 src/app/api/**）：
- * `src/app/api/campaigns/[id]/route.ts` 只有 PUT，沒有 DELETE。deleteCampaign()
- * 的真實分支仍然呼叫 `DELETE /api/campaigns/:id`，會照實收到後端的 405（Next.js
- * 對未實作方法的預設回應），toast 會顯示這個真實錯誤，而不是假裝刪除成功。
+ * deleteCampaign() 呼叫 `DELETE /api/campaigns/:id`。該 handler 原本不存在
+ * （真實模式下刪除鈕必定收到 405），本 slice 依「復原而非取消」補上，與 PUT
+ * 使用同一組 id + tenant_id 雙條件隔離。
  */
 
 /** 判斷活動應該顯示的狀態（含前端衍生的 SCHEDULED，不是持久化欄位）。 */
