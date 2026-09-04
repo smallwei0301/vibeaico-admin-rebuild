@@ -10,6 +10,7 @@ import {
   validateActualFileOwnership,
   validateLaneMetadata,
 } from './dual-terra-wip-policy.mjs';
+import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const ORIGINS = new Set(['OWNER', 'AGENT', 'UNKNOWN']);
@@ -107,6 +108,17 @@ export function validateWipPreflight(input = {}) {
   }
   errors.push(...validateLaneMetadata(metadata, { action }));
   errors.push(...validateDeliveryUnitBoundary(text, metadata));
+
+  if (
+    metadata.origin === 'AGENT' &&
+    metadata.state === 'ACTIVE' &&
+    metadata.lane === 'GOVERNANCE'
+  ) {
+    const scopeException = parseGovernanceScopeException(
+      readField(text, 'GOVERNANCE_SCOPE_EXCEPTION'),
+    );
+    if (!scopeException.valid) errors.push(scopeException.error);
+  }
 
   if (
     metadata.origin === 'AGENT' &&
