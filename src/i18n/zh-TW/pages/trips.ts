@@ -150,6 +150,10 @@ export const tripsPage = {
       status: '狀態',
       actions: '操作',
     },
+    labels: {
+      moveUp: '上移',
+      moveDown: '下移',
+    },
     fields: {
       nameLabel: '方案名稱',
       namePlaceholder: '例：兩人成行、包船專案',
@@ -385,5 +389,7 @@ export const tripsPage = {
     planDepositInvalid: '請檢查訂金模式與金額',
     planAdvancedSaved: '方案進階設定已儲存',
     planSaveFailed: '方案儲存失敗，請稍後再試',
+    planOrderUpdated: '方案顯示順序已更新',
+    planOrderFailed: '方案排序失敗，請稍後再試',
   },
 } as const;

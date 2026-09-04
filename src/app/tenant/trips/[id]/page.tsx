@@ -3,8 +3,8 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertTriangle, CalendarDays, CalendarPlus, Clock, ExternalLink, Image as ImageIcon, Layers,
-  Package, Pencil, Plus, Send, Trash2, Upload, Users,
+  AlertTriangle, CalendarDays, CalendarPlus, ChevronDown, ChevronUp, Clock, ExternalLink,
+  Image as ImageIcon, Layers, Package, Pencil, Plus, Send, Trash2, Upload, Users,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -32,7 +32,7 @@ import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import {
-  toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
+  swapPlanOrder, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
 import type {
   DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
@@ -234,6 +234,30 @@ export default function TripDetailPage() {
 
   const patchPlan = (p: Partial<TripPlan>) => setPlanDraft((d) => (d ? { ...d, ...p } : d));
 
+  /** 對調相鄰兩個方案的 sortOrder，並持久化到後端；清單一律依 sortOrder 顯示。 */
+  const movePlan = async (index: number, delta: number) => {
+    const target = index + delta;
+    const reordered = swapPlanOrder(plans, index, delta);
+    if (reordered === plans) return;
+    try {
+      if (USE_MOCK) {
+        setPlans(reordered);
+      } else {
+        await Promise.all([
+          saveTripPlan(tripId, { id: reordered[index].id, sortOrder: reordered[index].sortOrder }),
+          saveTripPlan(tripId, { id: reordered[target].id, sortOrder: reordered[target].sortOrder }),
+        ]);
+        setPlans(await listTripPlans(tripId));
+      }
+      toast.show(t.messages.planOrderUpdated);
+    } catch (error) {
+      toast.show(
+        error instanceof Error && error.message ? error.message : t.messages.planOrderFailed,
+        'danger',
+      );
+    }
+  };
+
   /* ------------------------------------------------------------- 團次 */
   const saveDeparture = () => {
     if (!departureDraft) return;
@@ -329,14 +353,30 @@ export default function TripDetailPage() {
   const planColumns: Column<TripPlan>[] = [
     {
       key: 'name', header: t.plans.columns.name,
-      render: (p) => (
-        <div className="min-w-0">
-          <div className="font-semibold text-dark">{p.name}</div>
-          {p.description ? (
-            <div className="truncate text-2xs text-secondary">{p.description}</div>
-          ) : null}
-          <div className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted">
-            <Clock size={11} />{formatNumber(p.durationMinutes)}{' 分鐘'}
+      render: (p, i) => (
+        <div className="flex items-start gap-2">
+          <span className="btn-group">
+            <Button
+              variant="ghost" size="sm" title={t.plans.labels.moveUp} aria-label={t.plans.labels.moveUp}
+              disabled={i === 0} onClick={() => void movePlan(i, -1)}
+            >
+              <ChevronUp size={13} />
+            </Button>
+            <Button
+              variant="ghost" size="sm" title={t.plans.labels.moveDown} aria-label={t.plans.labels.moveDown}
+              disabled={i === plans.length - 1} onClick={() => void movePlan(i, 1)}
+            >
+              <ChevronDown size={13} />
+            </Button>
+          </span>
+          <div className="min-w-0">
+            <div className="font-semibold text-dark">{p.name}</div>
+            {p.description ? (
+              <div className="truncate text-2xs text-secondary">{p.description}</div>
+            ) : null}
+            <div className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted">
+              <Clock size={11} />{formatNumber(p.durationMinutes)}{' 分鐘'}
+            </div>
           </div>
         </div>
       ),

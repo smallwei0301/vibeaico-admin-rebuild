@@ -53,6 +53,23 @@ export function toAdvancedPlanPayload(plan: TripPlan): Partial<TripPlan> {
   };
 }
 
+/**
+ * Swap the sortOrder of two adjacent plans (Issue #42 — persisted display
+ * order). Returns a new array; index/target values themselves are untouched,
+ * only the two plans' sortOrder fields are exchanged so the rest of the list
+ * keeps its existing relative order once re-sorted by sortOrder.
+ */
+export function swapPlanOrder(plans: TripPlan[], index: number, delta: number): TripPlan[] {
+  const target = index + delta;
+  if (target < 0 || target >= plans.length || index < 0 || index >= plans.length) return plans;
+  const a = plans[index];
+  const b = plans[target];
+  const next = [...plans];
+  next[index] = { ...b, sortOrder: a.sortOrder };
+  next[target] = { ...a, sortOrder: b.sortOrder };
+  return next;
+}
+
 export function validateAdvancedPlan(plan: TripPlan): AdvancedPlanValidationError | null {
   if (!Number.isInteger(plan.minParticipants) || plan.minParticipants < 1) {
     return 'minParticipants';
