@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { evaluateGovernanceScope, GOVERNANCE_SCOPE_BUDGET } from "../../scripts/agents/governance-scope-budget.mjs";
+import {
+  evaluateGovernanceScope,
+  GOVERNANCE_SCOPE_BUDGET,
+  GOVERNANCE_SCOPE_EXCEPTION_FORMAT_ERROR,
+  parseGovernanceScopeException,
+} from "../../scripts/agents/governance-scope-budget.mjs";
 
 const branch = "governance/large-owner-approved";
 
@@ -22,6 +27,45 @@ const approvedDecision = [
   "- GOVERNANCE_SCOPE_EXCEPTION: APPROVED",
   `- GOVERNANCE_SCOPE_BRANCH: ${branch}`,
 ].join("\n");
+
+describe("governance scope exception format", () => {
+  it.each(["", "none", "NONE"])("treats %j as no exception", (value) => {
+    expect(parseGovernanceScopeException(value)).toMatchObject({
+      valid: true,
+      kind: "NONE",
+      decisionPath: null,
+    });
+  });
+
+  it("accepts one canonical Owner Decision path without trusting its contents locally", () => {
+    expect(parseGovernanceScopeException("OWNER:docs/decisions/2026-09-04-scope.md")).toEqual({
+      valid: true,
+      kind: "OWNER_DECISION",
+      exception: "OWNER:docs/decisions/2026-09-04-scope.md",
+      decisionPath: "docs/decisions/2026-09-04-scope.md",
+      error: null,
+    });
+  });
+
+  it.each([
+    "owner:docs/decisions/scope.md",
+    "OWNER:../scope.md",
+    "OWNER:docs/decisions/../scope.md",
+    "OWNER:docs/decisions/./scope.md",
+    "OWNER:docs/decisions/a//scope.md",
+    "OWNER:docs/decisions/scope.txt",
+    "OWNER:docs/decisions/scope.md approved",
+    "none/child",
+    "Owner said okay",
+  ])("rejects unsafe or vague form %s", (value) => {
+    expect(parseGovernanceScopeException(value)).toMatchObject({
+      valid: false,
+      kind: "INVALID",
+      decisionPath: null,
+      error: GOVERNANCE_SCOPE_EXCEPTION_FORMAT_ERROR,
+    });
+  });
+});
 
 describe("governance scope budget", () => {
   it("keeps the default budget at 8 files and 800 changed lines", () => {
@@ -66,11 +110,11 @@ describe("governance scope budget", () => {
     expect(evaluateGovernanceScope(pr, { loadDecision: () => approvedDecision.replace(branch, "other-branch") }).allowed).toBe(false);
   });
 
-  it("rejects an Issue number or vague exception prose", () => {
-    for (const exception of ["OWNER:#113", "Owner said okay"]) {
+  it("uses the shared format error for an Issue number or vague prose", () => {
+    for (const exception of ["OWNER:#113", "Owner said okay", "none/child"]) {
       const result = evaluateGovernanceScope(governancePr({ files: 12, exception }));
       expect(result.allowed).toBe(false);
-      expect(result.errors).toContain("GOVERNANCE_SCOPE_EXCEPTION must be none or OWNER:docs/decisions/<file>.md");
+      expect(result.errors).toContain(GOVERNANCE_SCOPE_EXCEPTION_FORMAT_ERROR);
     }
   });
 
