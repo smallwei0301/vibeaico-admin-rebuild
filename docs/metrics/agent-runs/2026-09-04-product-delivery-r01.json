@@ -123,7 +123,10 @@
     "The #177 canonical TEST failure demonstrated why both TEST profiles are needed and neither substitutes for the other: local isolated proves the migration itself is written correctly (fresh database, 0001 through 0076 applied in order), while canonical TEST proves the shared database's schema has actually been brought up to date. Local green plus canonical red is a coherent, informative pair, not a contradiction.",
     "Correction issued to the Owner and to Issue #176: the initial claim that campaign settings trigger nothing at all was wrong. Birthday greetings and customer recall ARE fully implemented as real daily Vercel cron jobs (birthday-greetings at Taipei 09:00, customer-recall at 14:00) that send real LINE pushes, consume push quota, gate on features, and dedupe via last_recall_at. They are driven by tenant_settings.notify (the notification settings page), not by the campaigns page. The real problem is therefore two competing UIs for the same capability, not a missing capability, which substantially reduces the scope of #176.",
     "pull/177 discloses that the customer source badge will show for nobody after merge, and that this is correct: the repo contains exactly one code path that inserts into customers (the manual admin POST). No LINE or public-booking auto-creation exists, so the customers page copy promising it is currently untrue. Escalated to the Owner rather than silently changing the copy or removing the badge.",
-    "pull/179 found a genuine defect beyond the wiring: the marketing page listed a COMPLETED status that the backend never writes (the real value is SENT), making that filter and label dead code. Also widened the send button to the backend's actual SENDABLE set so a failed push can be retried instead of being a dead end. The real LINE send endpoint was never invoked during construction or verification, and no integration or E2E test touches it."
+    "pull/179 found a genuine defect beyond the wiring: the marketing page listed a COMPLETED status that the backend never writes (the real value is SENT), making that filter and label dead code. Also widened the send button to the backend's actual SENDABLE set so a failed push can be retried instead of being a dead end. The real LINE send endpoint was never invoked during construction or verification, and no integration or E2E test touches it.",
+    "Owner decisions 2026-09-04 (second round): shifts schedule_mode is a per-staff attribute and belongs on the staff table; shop-design gets a new dedicated branding settings group rather than being folded into business; migration 0076 authorised for Production.",
+    "Correction issued to the Owner: the claim that Issue #7's 乙表 had no zero-migration, zero-decision item left was wrong. Reading the code rather than trusting the inventory showed that StaffTermModal edits a single store-wide staff term, not the per-staff StaffExtras fields, and basic.staffTerm already exists in basicSettingsSchema with a default. That slice needs no migration and no decision and was mis-reported as blocked.",
+    "The #181 canonical TEST cancellation is a reminder that a cancelled job is not a failed job and not a flake: the job never obtained a runner and executed zero steps, which is the one case the rules allow a single re-run for. The re-run budget for that PR was then recorded as spent."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
@@ -289,6 +292,30 @@
         "observedState": "failed",
         "evidenceRef": "run 33840036311 job 100921012922 failed: tests/integration/api/customers.a3.test.ts 3 failed / 202 passed, POST /api/customers returned 500 because the shared canonical TEST database lacked customers.source. Root cause is this PR's and is environmental, not a code defect: the local isolated run on the same head was green because it builds the database from 0001 through 0076. Re-run dispatched on the identical exact head 4a4ac10 after applying the schema to TEST; no commit pushed, no test skipped, disabled or modified, no empty commit.",
         "verification": "CONTRADICTED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "issue#7 richmenu bg upload (pull/181)",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "merge sha f40f5ab9b8043831af211dfba17e6e5874aabf32 equals main head and is reachable; ref=main re-read shows uploadRichMenuBgImage in src/services/settings.ts and persistBgUrl wired on the rich-menu page. First canonical TEST dispatch was CANCELLED, not failed: job 100941391572 had runner_id 0, empty runner_name and zero steps, i.e. it never obtained a runner and no test body ran. That is the sanctioned single re-run case; re-dispatched on the identical exact head 077e22c with no commit pushed and no test skipped or modified. Re-run: integration 09:42:13-09:52:34, E2E 09:52:34-09:53:55, both policy-skip steps skipped.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "PRODUCTION_SCHEMA_READY",
+        "subject": "migration 0076 customers.source applied to Production",
+        "claimedState": "applied",
+        "observedState": "applied",
+        "evidenceRef": "Owner granted named authorization on 2026-09-04. Project ref egehnijjpgijmccagxac (PROD) re-confirmed before acting. Baseline captured first: no source column, customers_view md5 c2bc651607621bd28d6fc62c2df38712, 1 customer row, 1 view row, no constraint. Applied 0076 then NOTIFY pgrst 'reload schema'. Post-apply verification: customers.source exists with default 'MANUAL'::text, customers_view also exposes source (view rebuild succeeded), customers_source_check present, row count 1 before and after in both table and view (no data loss), the single existing row is MANUAL (no row wrongly marked auto-created). Additive DDL and a view rebuild only; no DML, no deletion, no change to existing data.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "file-ownership overlap between pull/181 and shop-design branding branch",
+        "claimedState": "sequenced_not_parallel",
+        "observedState": "sequenced_not_parallel",
+        "evidenceRef": "comm -12 over the two branches' changed-file lists showed both claimed src/services/settings.ts, violating the dual-Terra non-overlap rule. Rather than run both as ACTIVE candidates and defer the conflict, #181 was merged first and main was then merged into the branding branch. The conflict did materialise (both sides added a line to the getTenantSettings mock branch; both kept, being unrelated settings groups) and typecheck then caught a merge-only TS2300 duplicate BusinessType import that existed on neither side alone and that the green test suite did not surface. All three checks were re-run after the merge rather than reusing pre-merge evidence.",
+        "verification": "VERIFIED"
       }
     ]
   }
