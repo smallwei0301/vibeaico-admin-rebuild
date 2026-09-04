@@ -1,6 +1,6 @@
 import { adapt, request } from '@/lib/api';
 import type { Booking, BookingStatus, CalendarEvent, Paged, PaymentStatus } from '@/lib/types';
-import { MOCK_BOOKINGS } from '@/mock';
+import { byMode, MOCK_BOOKINGS } from '@/mock';
 
 export type BookingQuery = {
   page?: number; size?: number; status?: BookingStatus | '';
@@ -216,6 +216,30 @@ export function listCalendarData(from: string, to: string): Promise<CalendarData
         })),
       };
     },
+  );
+}
+
+/**
+ * GET /api/block-times?from&to — 封鎖時段頁（/tenant/block-times）唯一資料源；
+ * 不傳區間 = 全部。mock 依 byMode() 給三種業態各自的示範封鎖時段（呼叫時才取值，
+ * 遵守「不可在 module 頂層讀 MOCK_MODE」規則）。
+ */
+export function listBlockTimes(from?: string, to?: string): Promise<BlockTimeItem[]> {
+  return adapt(
+    () => byMode<BlockTimeItem[]>({
+      LOCAL_SHOP: [
+        { id: 'bt_mock_1', staffId: null, staffName: null, reason: '店休（中秋連假）', startAt: '2026-09-05T00:00:00+08:00', endAt: '2026-09-06T00:00:00+08:00' },
+        { id: 'bt_mock_2', staffId: null, staffName: null, reason: '團隊會議', startAt: '2026-09-08T09:00:00+08:00', endAt: '2026-09-08T10:30:00+08:00' },
+      ],
+      GUIDE: [
+        { id: 'bt_mock_1', staffId: null, staffName: null, reason: '私人行程，暫停接團', startAt: '2026-09-10T00:00:00+08:00', endAt: '2026-09-12T00:00:00+08:00' },
+      ],
+      CLINIC: [
+        { id: 'bt_mock_1', staffId: null, staffName: null, reason: '院所公休（醫學會）', startAt: '2026-09-07T00:00:00+08:00', endAt: '2026-09-08T00:00:00+08:00' },
+        { id: 'bt_mock_2', staffId: null, staffName: null, reason: '設備消毒維護', startAt: '2026-09-09T12:00:00+08:00', endAt: '2026-09-09T14:00:00+08:00' },
+      ],
+    }),
+    () => request<BlockTimeItem[]>('/api/block-times', { query: { from, to } }),
   );
 }
 
