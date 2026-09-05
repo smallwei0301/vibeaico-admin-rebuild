@@ -18,6 +18,8 @@ const FINAL_RUN_STATUS = new Set(["BASELINE", "COMPLETE", "OWNER_BLOCKED"]);
 const CLOSEOUT_OWNER_ROLE = new Set(["PRODUCT_MAIN_SESSION", "GOVERNANCE_MAIN_SESSION", "OWNER"]);
 const CLOSEOUT_STATE = new Set(["OPEN", "CLOSED"]);
 const SHA40 = /^[0-9a-f]{40}$/;
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const DURABLE_EVIDENCE_REF = /^[a-z][a-z0-9+.-]*:[A-Za-z0-9._/#:-]{1,299}$/i;
 
 export const RUN_CLOSEOUT_TERMINAL_POLICY =
   "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED";
@@ -37,9 +39,14 @@ function hasExactKeys(value, keys) {
   return actual.join("\n") === expected.join("\n");
 }
 
+function isValidUtcTimestamp(value) {
+  const text = String(value ?? "").trim();
+  return ISO_UTC.test(text) && !Number.isNaN(Date.parse(text));
+}
+
 function isUsableEvidenceRef(value) {
   const text = String(value ?? "").trim();
-  return Boolean(text && !/^(?:TBD|UNKNOWN|NONE|N\/A|-)$/i.test(text) && !text.includes("<!--"));
+  return DURABLE_EVIDENCE_REF.test(text) && !text.includes("://");
 }
 
 function normalizeCloseoutOwner(value) {
@@ -130,7 +137,9 @@ function validateCloseoutContract(run) {
   }
 
   if (closeout.state !== "CLOSED") errors.push("final Run requires closeout.state=CLOSED");
-  if (typeof run.endedAt !== "string" || !run.endedAt.trim()) errors.push("final v4 Run requires endedAt");
+  if (!isValidUtcTimestamp(run.endedAt)) {
+    errors.push("final v4 Run requires endedAt as an ISO UTC timestamp");
+  }
   if (closeout.closedAt !== run.endedAt) errors.push("closeout.closedAt must equal endedAt");
   if (!SHA40.test(String(run.main?.endSha ?? "").trim().toLowerCase())) {
     errors.push("final v4 Run requires a 40-character main.endSha");
@@ -142,7 +151,7 @@ function validateCloseoutContract(run) {
     }
   }
   if (!isUsableEvidenceRef(closeout.evidenceRef)) {
-    errors.push("final v4 Run requires a usable closeout.evidenceRef");
+    errors.push("final v4 Run requires a durable closeout.evidenceRef such as github:issue#193");
   }
   return errors;
 }
