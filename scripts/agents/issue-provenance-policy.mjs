@@ -5,6 +5,11 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+export const ISSUE_ORIGIN_HEADINGS = Object.freeze([
+  '## Issue origin',
+  '### Issue origin',
+]);
+
 export const REQUIRED_AGENT_PROVENANCE_HEADINGS = Object.freeze([
   '### Parent Issue / PR',
   '### Discovered stage',
@@ -16,6 +21,7 @@ export const REQUIRED_AGENT_PROVENANCE_HEADINGS = Object.freeze([
 ]);
 
 const PLACEHOLDER = /^(?:none|n\/?a|tbd|todo|pending|unknown|-)$/i;
+const VALID_BLOCKER_VALUES = new Set(['YES', 'NO', 'NO, BACKLOG ONLY']);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -53,9 +59,13 @@ export function readHeadingSection(body = '', heading = '') {
 }
 
 function issueOrigin(body) {
-  const section = readHeadingSection(body, '## Issue origin');
-  const value = substantiveLines(section)[0] ?? '';
-  return value.toUpperCase() === 'AGENT_DISCOVERED' ? 'agent' : 'owner-or-unknown';
+  for (const heading of ISSUE_ORIGIN_HEADINGS) {
+    const section = readHeadingSection(body, heading);
+    if (section === null) continue;
+    const value = substantiveLines(section)[0] ?? '';
+    return value.toUpperCase() === 'AGENT_DISCOVERED' ? 'agent' : 'owner-or-unknown';
+  }
+  return 'owner-or-unknown';
 }
 
 function validateModelLine(section) {
@@ -105,8 +115,8 @@ export function validateIssueProvenance(body = '') {
   const blockerSection = sections.get('### Blocks current goal');
   if (blockerSection !== null) {
     const value = substantiveLines(blockerSection).join(' ').trim().toUpperCase();
-    if (!['YES', 'NO'].includes(value)) {
-      errors.push('### Blocks current goal must be exactly YES or NO');
+    if (!VALID_BLOCKER_VALUES.has(value)) {
+      errors.push('### Blocks current goal must be YES, NO, or NO, backlog only');
     }
   }
 
