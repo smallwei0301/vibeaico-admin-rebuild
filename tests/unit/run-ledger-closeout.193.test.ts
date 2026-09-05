@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createHistoricalRunLedgerV3,
   createRunLedgerV2,
   RUN_CLOSEOUT_TERMINAL_POLICY,
   runCli,
@@ -35,11 +36,20 @@ function closeRun(run: any): any {
 }
 
 describe('Issue #193 Run closeout contract', () => {
-  it('preserves historical v3 construction for old tests and ledgers', () => {
-    const historical: any = createRunLedgerV2('2026-09-02-historical-v3', STARTED_AT);
+  it('preserves historical v3 only through the explicitly named helper', () => {
+    const historical: any = createHistoricalRunLedgerV3(
+      '2026-09-02-historical-v3',
+      STARTED_AT,
+    );
     expect(historical.deliveryTruthVersion).toBe(3);
     expect(historical.closeout).toBeUndefined();
     expect(validateRunLedgerV2(historical)).toEqual([]);
+  });
+
+  it('rejects normal Run construction without a closeout owner', () => {
+    expect(() => createRunLedgerV2('2026-09-05-ownerless-run', STARTED_AT)).toThrow(
+      /closeout-owner must be PRODUCT_MAIN_SESSION, GOVERNANCE_MAIN_SESSION, or OWNER/,
+    );
   });
 
   it('creates a valid v4 Run only when an explicit closeout owner is supplied', () => {
