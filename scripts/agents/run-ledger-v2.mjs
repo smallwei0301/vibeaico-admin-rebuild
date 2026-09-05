@@ -65,7 +65,7 @@ export function createRunLedgerV2(
   { closeoutOwner = null } = {},
 ) {
   const run = createLegacyLedger(runId, startedAt);
-  if (closeoutOwner === null || closeoutOwner === undefined || String(closeoutOwner).trim() === "") {
+  if (closeoutOwner === null || closeoutOwner === undefined) {
     return {
       ...run,
       schemaVersion: 2,
