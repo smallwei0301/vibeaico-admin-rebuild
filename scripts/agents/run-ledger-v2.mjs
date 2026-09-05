@@ -58,6 +58,10 @@ function normalizeCloseoutOwner(value) {
  * Calls without closeoutOwner intentionally preserve the historical v3 construction
  * used by existing tests and old tooling. The operational CLI requires an explicit
  * owner and creates v4, so newly opened real Runs cannot omit closeout ownership.
+ *
+ * @param {string} runId
+ * @param {string} [startedAt]
+ * @param {{ closeoutOwner?: string | null }} [options]
  */
 export function createRunLedgerV2(
   runId,
