@@ -85,8 +85,9 @@ the score remains `NOT_GRADED` until the remaining metrics and verified claims a
 
 - `deliveryTruthVersion: 2` and `3` continue to validate with their original shape.
 - The three historical/current Runs created before this contract are not modified automatically.
-- Direct no-owner construction remains available only for legacy tests and historical reproduction.
-- The operational CLI always requires `--closeout-owner` and creates v4.
+- Historical v3 construction is available only through the explicitly named
+  `createHistoricalRunLedgerV3()` helper for tests and byte-compatible reproduction.
+- `createRunLedgerV2()` and the operational CLI require an explicit closeout owner and create v4.
 
 ## Safety
 
