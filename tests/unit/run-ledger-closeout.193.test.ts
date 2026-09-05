@@ -123,11 +123,11 @@ describe('Issue #193 Run closeout contract', () => {
 
     expect(validateRunLedgerV2(run)).toEqual(expect.arrayContaining([
       'final Run requires closeout.state=CLOSED',
-      'final v4 Run requires endedAt',
+      'final v4 Run requires endedAt as an ISO UTC timestamp',
       'final v4 Run requires a 40-character main.endSha',
       'final v4 Run requires inventory.openIssuesEnd as a non-negative integer',
       'final v4 Run requires inventory.openPrsEnd as a non-negative integer',
-      'final v4 Run requires a usable closeout.evidenceRef',
+      'final v4 Run requires a durable closeout.evidenceRef such as github:issue#193',
     ]));
   });
 
@@ -137,6 +137,28 @@ describe('Issue #193 Run closeout contract', () => {
 
     run.closeout.closedAt = '2026-09-05T02:00:01Z';
     expect(validateRunLedgerV2(run)).toContain('closeout.closedAt must equal endedAt');
+  });
+
+  it.each([
+    'I checked it',
+    'none',
+    'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/193',
+    'github:',
+  ])('rejects non-durable closeout evidence %j', (evidenceRef) => {
+    const run = closeRun(createV4Run());
+    run.closeout.evidenceRef = evidenceRef;
+    expect(validateRunLedgerV2(run)).toContain(
+      'final v4 Run requires a durable closeout.evidenceRef such as github:issue#193',
+    );
+  });
+
+  it('rejects a matching but invalid closeout timestamp', () => {
+    const run = closeRun(createV4Run());
+    run.endedAt = 'tomorrow morning';
+    run.closeout.closedAt = 'tomorrow morning';
+    expect(validateRunLedgerV2(run)).toContain(
+      'final v4 Run requires endedAt as an ISO UTC timestamp',
+    );
   });
 
   it('rejects extra closeout fields instead of silently accepting a new dialect', () => {
