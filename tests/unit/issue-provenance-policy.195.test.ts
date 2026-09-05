@@ -116,7 +116,7 @@ describe('Issue #195 shared provenance policy', () => {
     expect(readHeadingSection(body, '### Evidence')).toBe('- github:issue#195');
   });
 
-  it('uses the shared module from the trusted workflow instead of another inline heading list', () => {
+  it('uses one sparse trusted policy checkout instead of another inline heading list', () => {
     const workflow = fs.readFileSync(
       path.resolve(process.cwd(), '.github/workflows/issue-provenance.yml'),
       'utf8',
@@ -124,6 +124,8 @@ describe('Issue #195 shared provenance policy', () => {
     expect(workflow).toContain('scripts/agents/issue-provenance-policy.mjs');
     expect(workflow).toContain('policy.validateIssueProvenance');
     expect(workflow).not.toContain('const requiredHeadings =');
+    expect(workflow).toContain('sparse-checkout: |');
+    expect(workflow).toContain('sparse-checkout-cone-mode: false');
     expect(workflow).toContain('persist-credentials: false');
   });
 
