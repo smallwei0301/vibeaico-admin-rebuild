@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createRunLedgerV2 } from "../../scripts/agents/run-ledger-v2.mjs";
+import { createHistoricalRunLedgerV3 } from "../../scripts/agents/run-ledger-v2.mjs";
 import { renderMarkdownV2, scoreRunV2 } from "../../scripts/agents/score-run-v2.mjs";
 
 function contradictedCiClaim() {
@@ -15,7 +15,10 @@ function contradictedCiClaim() {
 }
 
 function runWithContradiction(status = "IN_PROGRESS"): any {
-  const run: any = createRunLedgerV2("2026-09-05-finality-order-test", "2026-09-05T00:00:00Z");
+  const run: any = createHistoricalRunLedgerV3(
+    "2026-09-05-finality-order-test",
+    "2026-09-05T00:00:00Z",
+  );
   run.status = status;
   run.completionTruth = {
     status: "VERIFIED",
@@ -47,7 +50,10 @@ describe("Issue #190 score finality ordering", () => {
   });
 
   it("keeps CLOSURE_RECOVERY safety problems diagnostic while remaining ungraded", () => {
-    const run: any = createRunLedgerV2("2026-09-05-closure-recovery-test", "2026-09-05T00:00:00Z");
+    const run: any = createHistoricalRunLedgerV3(
+      "2026-09-05-closure-recovery-test",
+      "2026-09-05T00:00:00Z",
+    );
     run.status = "CLOSURE_RECOVERY";
     run.quality.safetyViolations = 1;
     run.quality.hardFailReasons = ["completion claim was not verified"];
