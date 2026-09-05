@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  ISSUE_ORIGIN_HEADINGS,
   REQUIRED_AGENT_PROVENANCE_HEADINGS,
   readHeadingSection,
   runCli,
@@ -27,7 +28,8 @@ function agentIssueBody(overrides: Partial<Record<string, string>> = {}): string
 }
 
 describe('Issue #195 shared provenance policy', () => {
-  it('keeps one canonical list of seven required Agent headings', () => {
+  it('keeps one canonical list of origin and Agent provenance headings', () => {
+    expect(ISSUE_ORIGIN_HEADINGS).toEqual(['## Issue origin', '### Issue origin']);
     expect(REQUIRED_AGENT_PROVENANCE_HEADINGS).toEqual([
       '### Parent Issue / PR',
       '### Discovered stage',
@@ -39,7 +41,7 @@ describe('Issue #195 shared provenance policy', () => {
     ]);
   });
 
-  it('accepts a complete Agent-discovered Issue and actual=unknown', () => {
+  it('accepts a complete manually-authored Agent Issue and actual=unknown', () => {
     const result = validateIssueProvenance(agentIssueBody());
     expect(result).toMatchObject({
       origin: 'agent',
@@ -49,6 +51,27 @@ describe('Issue #195 shared provenance policy', () => {
       emptyHeadings: [],
       errors: [],
     });
+  });
+
+  it('accepts the existing GitHub Issue Form origin heading and backlog-only option', () => {
+    const body = agentIssueBody({
+      '## Issue origin': 'AGENT_DISCOVERED',
+      '### Blocks current goal': 'NO, backlog only',
+    }).replace('## Issue origin', '### Issue origin');
+    expect(validateIssueProvenance(body)).toMatchObject({
+      origin: 'agent',
+      isAgent: true,
+      valid: true,
+      errors: [],
+    });
+
+    const template = fs.readFileSync(
+      path.resolve(process.cwd(), '.github/ISSUE_TEMPLATE/agent-discovered.yml'),
+      'utf8',
+    );
+    expect(template).toContain('label: Issue origin');
+    expect(template).toContain('value: AGENT_DISCOVERED');
+    expect(template).toContain('- "NO, backlog only"');
   });
 
   it('does not let Live evidence impersonate the exact Evidence heading', () => {
@@ -66,10 +89,18 @@ describe('Issue #195 shared provenance policy', () => {
     expect(result.errors).toContain('### Evidence must contain substantive non-placeholder content');
   });
 
-  it.each(['MAYBE', 'UNKNOWN', 'YES because it matters', ''])('requires exact YES or NO for Blocks current goal: %j', (value) => {
+  it.each(['MAYBE', 'UNKNOWN', 'YES because it matters', ''])('rejects an invalid Blocks current goal value: %j', (value) => {
     const result = validateIssueProvenance(agentIssueBody({ '### Blocks current goal': value }));
     expect(result.valid).toBe(false);
-    expect(result.errors).toContain('### Blocks current goal must be exactly YES or NO');
+    expect(result.errors).toContain(
+      '### Blocks current goal must be YES, NO, or NO, backlog only',
+    );
+  });
+
+  it.each(['YES', 'NO', 'NO, backlog only'])('accepts canonical blocker value %j', (value) => {
+    expect(validateIssueProvenance(agentIssueBody({
+      '### Blocks current goal': value,
+    })).valid).toBe(true);
   });
 
   it('requires both requested and actual model fields', () => {
@@ -102,7 +133,7 @@ describe('Issue #195 shared provenance policy', () => {
     });
   });
 
-  it('classifies by the Issue origin section, not a stray marker elsewhere', () => {
+  it('classifies by an origin section, not a stray marker elsewhere', () => {
     const body = '# Notes\n\nThe string AGENT_DISCOVERED appears in an example, not in Issue origin.';
     expect(validateIssueProvenance(body)).toMatchObject({
       origin: 'owner-or-unknown',
