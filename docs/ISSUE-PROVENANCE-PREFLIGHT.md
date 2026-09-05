@@ -29,6 +29,8 @@ blocker answer, or incomplete requested／actual model line fails closed.
 
 ## Canonical Agent-discovered shape
 
+A manually authored body may use:
+
 ```markdown
 ## Issue origin
 
@@ -64,12 +66,24 @@ YES
 requested=Terra implementation + Sol audit；actual=unknown
 ```
 
-The seven `###` headings are exact. For example, `### Live evidence` does not replace `### Evidence`.
-This intentional strictness keeps the local CLI and GitHub labeler from developing two dialects.
+GitHub's existing `.github/ISSUE_TEMPLATE/agent-discovered.yml` renders the origin label as
+`### Issue origin`. Both `## Issue origin` and `### Issue origin` are therefore accepted, but the section's
+first substantive value must be `AGENT_DISCOVERED`.
+
+The seven remaining `###` headings are exact. For example, `### Live evidence` does not replace
+`### Evidence`. This intentional strictness keeps the local CLI, Issue Form, and GitHub labeler from
+developing separate dialects.
 
 Heading presence alone is insufficient. Sections containing only values such as `none`, `TBD`, `pending`,
-`unknown`, `-`, or an HTML comment are treated as empty. `### Blocks current goal` must be exactly `YES`
-or `NO`.
+`unknown`, `-`, or an HTML comment are treated as empty.
+
+`### Blocks current goal` accepts the three values already represented by manual bodies and the Issue Form:
+
+```text
+YES
+NO
+NO, backlog only
+```
 
 The model section must contain both:
 
@@ -83,15 +97,15 @@ is not evidence that Terra was actually served.
 
 ## Owner-created Issues
 
-An Issue whose `## Issue origin` section is not exactly `AGENT_DISCOVERED` is classified as
-`owner-or-unknown`. The Agent provenance fields are not imposed on Owner-directed Issues.
+An Issue whose recognized origin section is not `AGENT_DISCOVERED` is classified as `owner-or-unknown`.
+The Agent provenance fields are not imposed on Owner-directed Issues.
 
 A stray mention of the word `AGENT_DISCOVERED` elsewhere in prose does not change the Issue origin.
 
 ## Trusted workflow behavior
 
-On Issue `opened` or `edited`, the workflow checks out the current default branch without retaining write
-credentials, imports the same policy module, and manages only these provenance labels:
+On Issue `opened` or `edited`, the workflow sparse-checks out only the shared policy file from the current
+default branch without retaining write credentials. It then manages only these provenance labels:
 
 ```text
 origin:agent
