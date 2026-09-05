@@ -60,11 +60,26 @@ function normalizeCloseoutOwner(value) {
 }
 
 /**
- * Create a schema v2 ledger.
+ * Build the historical Delivery Truth v3 shape for tests and byte-compatible
+ * reproduction only. New operational Runs must use createRunLedgerV2.
  *
- * Calls without closeoutOwner intentionally preserve the historical v3 construction
- * used by existing tests and old tooling. The operational CLI requires an explicit
- * owner and creates v4, so newly opened real Runs cannot omit closeout ownership.
+ * @param {string} runId
+ * @param {string} [startedAt]
+ */
+export function createHistoricalRunLedgerV3(
+  runId,
+  startedAt = new Date().toISOString(),
+) {
+  return {
+    ...createLegacyLedger(runId, startedAt),
+    schemaVersion: 2,
+    deliveryTruthVersion: 3,
+    completionTruth: { status: "NOT_CHECKED", checkedAt: null, claims: [] },
+  };
+}
+
+/**
+ * Create a new operational Delivery Truth v4 ledger.
  *
  * @param {string} runId
  * @param {string} [startedAt]
@@ -76,15 +91,6 @@ export function createRunLedgerV2(
   { closeoutOwner = null } = {},
 ) {
   const run = createLegacyLedger(runId, startedAt);
-  if (closeoutOwner === null || closeoutOwner === undefined) {
-    return {
-      ...run,
-      schemaVersion: 2,
-      deliveryTruthVersion: 3,
-      completionTruth: { status: "NOT_CHECKED", checkedAt: null, claims: [] },
-    };
-  }
-
   return {
     ...run,
     schemaVersion: 2,
