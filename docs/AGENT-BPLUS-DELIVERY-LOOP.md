@@ -362,8 +362,8 @@ npm run agent:run:score -- docs/metrics/agent-runs/<RUN_ID>.json
 npm run agent:run:review -- docs/metrics/agent-runs --limit 3
 ```
 
-Operational init 不接受省略 `--closeout-owner`。Direct no-owner construction 只保留給舊測試與
-歷史 v3 重現，不是新 Run 的合法開帳方式。
+Operational init 與 `createRunLedgerV2()` 都不接受省略 `--closeout-owner`。只有名稱明確的
+`createHistoricalRunLedgerV3()` 可供舊測試與歷史 v3 重現；它不是新 Run 的合法開帳方式。
 
 Markdown 報告由 JSON 產生；人工修改報告後若無法由 JSON 重建，CI 應失敗。
 
