@@ -12,27 +12,27 @@ jobs:
   classify:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout trusted Issue provenance policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
       - name: Classify Issue origin and validate agent provenance
         uses: actions/github-script@v9
         with:
           script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const policy = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/issue-provenance-policy.mjs',
+            )).href);
+
             const { owner, repo } = context.repo;
             const issue = context.payload.issue;
-            const body = issue.body ?? '';
-
-            const isAgent = /\bAGENT_DISCOVERED\b/i.test(body);
-            const requiredHeadings = [
-              '### Parent Issue / PR',
-              '### Discovered stage',
-              '### Scope Firewall reason',
-              '### Why this cannot remain in the parent Issue',
-              '### Blocks current goal',
-              '### Evidence',
-              '### Requested model / actual model',
-            ];
-            const missing = isAgent
-              ? requiredHeadings.filter((heading) => !body.includes(heading))
-              : [];
+            const result = policy.validateIssueProvenance(issue.body ?? '');
+            const isAgent = result.isAgent;
 
             const managedLabels = {
               'origin:agent': {
@@ -74,9 +74,7 @@ jobs:
               ...existing,
               isAgent ? 'origin:agent' : 'origin:owner-or-unknown',
             ];
-            if (missing.length > 0) {
-              nextLabels.push('governance:provenance-incomplete');
-            }
+            if (!result.valid) nextLabels.push('governance:provenance-incomplete');
 
             await github.rest.issues.setLabels({
               owner,
@@ -90,7 +88,9 @@ jobs:
               .addTable([
                 [{ data: 'Field', header: true }, { data: 'Result', header: true }],
                 ['Issue', `#${issue.number}`],
-                ['Origin', isAgent ? 'agent' : 'owner-or-unknown'],
-                ['Missing agent fields', missing.length ? missing.join(', ') : 'none'],
+                ['Origin', result.origin],
+                ['Missing headings', result.missingHeadings.length ? result.missingHeadings.join(', ') : 'none'],
+                ['Empty or placeholder headings', result.emptyHeadings.length ? result.emptyHeadings.join(', ') : 'none'],
+                ['Validation errors', result.errors.length ? result.errors.join('; ') : 'none'],
               ])
               .write();
