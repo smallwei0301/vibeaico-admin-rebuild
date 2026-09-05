@@ -55,12 +55,25 @@ the following:
 
 ```text
 closeout.state = CLOSED
-closeout.closedAt = endedAt
+closeout.closedAt = endedAt as an ISO UTC timestamp
 main.endSha = one 40-character commit SHA
 inventory.openIssuesEnd = non-negative integer
 inventory.openPrsEnd = non-negative integer
-closeout.evidenceRef = durable, non-placeholder evidence
+closeout.evidenceRef = durable compact evidence
 ```
+
+Evidence uses a compact `scheme:value` reference, not prose or a credential-bearing URL. Examples:
+
+```text
+github:issue#193
+github:pull/194
+github:actions/runs/33935386017
+repo:docs/handoffs/2026-09-05-closeout.md
+```
+
+Values such as `I checked it`, `none`, `TBD`, a bare label, or `https://...` are rejected. The compact
+reference keeps the ledger deterministic and points reviewers to a durable truth surface without copying
+signed email links, tokens, or long URLs into the Run.
 
 A non-final Run (`IN_PROGRESS` or `CLOSURE_RECOVERY`) must keep the closeout state OPEN and both closeout
 fields null. This prevents a running ledger from wearing a cardboard “closed” badge.
