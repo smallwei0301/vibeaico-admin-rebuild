@@ -327,18 +327,25 @@ export function scoreRunV2(run) {
   const truth = evaluateCompletionTruth(run);
   const hardFailures = [...truth.hardFailures, ...run.quality.hardFailReasons];
   if (num(run.quality.safetyViolations) > 0) hardFailures.push("quality.safetyViolations > 0");
+  const uniqueHardFailures = [...new Set(hardFailures)];
+  const gradingGaps = [...new Set([...gradingReadiness(run), ...truth.gradingGaps])];
 
-  if (hardFailures.length) return {
-    runId: run.runId, scoreStatus: "HARD_FAIL", grade: "F-HARD", total: 0, comparisonEligible: false,
+  if (!FINAL.has(run.status)) return {
+    runId: run.runId, scoreStatus: "NOT_GRADED", grade: "NOT_GRADED", total: null, comparisonEligible: false,
     ...outcome, weightedUsageUnits: usage.weightedUsageUnits, weightedUsagePerShippedUnit: null,
-    weightedUsagePerAutonomousOutcome: null, gradingGaps: [], hardFailures: [...new Set(hardFailures)], scores: null,
+    weightedUsagePerAutonomousOutcome: null, gradingGaps, hardFailures: uniqueHardFailures, scores: null,
   };
 
-  const gradingGaps = [...gradingReadiness(run), ...truth.gradingGaps];
+  if (uniqueHardFailures.length) return {
+    runId: run.runId, scoreStatus: "HARD_FAIL", grade: "F-HARD", total: 0, comparisonEligible: false,
+    ...outcome, weightedUsageUnits: usage.weightedUsageUnits, weightedUsagePerShippedUnit: null,
+    weightedUsagePerAutonomousOutcome: null, gradingGaps: [], hardFailures: uniqueHardFailures, scores: null,
+  };
+
   if (gradingGaps.length) return {
     runId: run.runId, scoreStatus: "NOT_GRADED", grade: "NOT_GRADED", total: null, comparisonEligible: false,
     ...outcome, weightedUsageUnits: usage.weightedUsageUnits, weightedUsagePerShippedUnit: null,
-    weightedUsagePerAutonomousOutcome: null, gradingGaps: [...new Set(gradingGaps)], hardFailures: [], scores: null,
+    weightedUsagePerAutonomousOutcome: null, gradingGaps, hardFailures: [], scores: null,
   };
 
   const dimensions = scores(run, outcome);
@@ -356,7 +363,12 @@ const show = (value) => value === null || value === undefined ? "資料不足" :
 
 function renderResultDetails(lines, result) {
   if (result.gradingGaps.length) lines.push("## 為什麼尚不評分", "", ...result.gradingGaps.map((item) => `- ${item}`), "");
-  if (result.hardFailures.length) lines.push("## 硬性失敗", "", ...result.hardFailures.map((item) => `- ${item}`), "");
+  if (result.hardFailures.length) {
+    const heading = result.scoreStatus === "HARD_FAIL"
+      ? "## 硬性失敗"
+      : "## 結案前必須修正的硬性問題";
+    lines.push(heading, "", ...result.hardFailures.map((item) => `- ${item}`), "");
+  }
   if (result.scores) lines.push(
     "## 五面向", "", "| 面向 | 分數 |", "|---|---:|",
     `| usage 效率 | ${result.scores.usage} / 25 |`,

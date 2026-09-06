@@ -1,8 +1,8 @@
 # Delivery Outcome v2：2026-09-04-product-delivery-r01
 
 > Delivery Truth 版本：**3**
-> 評分狀態：**HARD_FAIL**
-> 分數：**0 / 100（F-HARD）**
+> 評分狀態：**NOT_GRADED**
+> 分數：尚不評分
 
 ## 兩本帳
 
@@ -14,7 +14,11 @@
 - 每件真正出貨 usage：資料不足
 - 每單位自主完成 usage：資料不足
 
-## 硬性失敗
+## 為什麼尚不評分
+
+- run is still in progress
+
+## 結案前必須修正的硬性問題
 
 - CI_GREEN issue#7 customer source (pull/177) canonical TEST first attempt contradicts live evidence
 

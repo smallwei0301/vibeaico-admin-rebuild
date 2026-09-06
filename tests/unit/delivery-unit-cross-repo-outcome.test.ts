@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createRunLedgerV2 } from "../../scripts/agents/run-ledger-v2.mjs";
+import { createHistoricalRunLedgerV3 } from "../../scripts/agents/run-ledger-v2.mjs";
 import { scoreRunV2 } from "../../scripts/agents/score-run-v2.mjs";
 
 describe("Delivery Unit foreign-repository evidence", () => {
   it("does not count or hard-fail an otherwise usable Issue URL from another repository", () => {
-    const run: any = createRunLedgerV2("2026-09-02-foreign-repo-evidence");
+    const run: any = createHistoricalRunLedgerV3("2026-09-02-foreign-repo-evidence");
     run.status = "COMPLETE";
     run.delivery.issuesClosed = 1;
     run.completionTruth = {

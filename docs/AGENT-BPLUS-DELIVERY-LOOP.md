@@ -4,6 +4,8 @@
 >
 > WIP preflight／alert decision：`docs/decisions/2026-09-04-owner-wip-preflight-and-alert-fingerprint.md`
 >
+> Run closeout contract：`docs/RUN-CLOSEOUT-CONTRACT.md`
+>
 > 本文件是執行手冊。若與較新的 Owner Decision 衝突，以較新的 Owner Decision 為準。
 
 ## 1. 為什麼從 Mode C 改成 B+
@@ -47,7 +49,7 @@ ADJUST             下一輪最多調整兩條規則
 NEXT LOOP
 ```
 
-## 3. START：建立 Run ID 與基準
+## 3. START：建立 Run ID、基準與關帳責任
 
 格式：
 
@@ -59,6 +61,7 @@ YYYY-MM-DD-RNN-簡短主題
 
 ```text
 RUN_ID
+RUN_CLOSEOUT_OWNER
 START_MAIN_SHA
 START_OPEN_ISSUES
 START_OPEN_PRS
@@ -69,7 +72,29 @@ START_TEST_HOLDER
 START_WEEKLY_USAGE_PERCENT（若平台可見）
 ```
 
-沒有可見的 token／週額度資料就填 `null`，不得推測。
+新 Run 必須透過 operational CLI 明確指定唯一關帳 owner：
+
+```bash
+npm run agent:run:init -- \
+  --run-id <RUN_ID> \
+  --closeout-owner PRODUCT_MAIN_SESSION
+```
+
+可用角色只有：
+
+```text
+PRODUCT_MAIN_SESSION
+GOVERNANCE_MAIN_SESSION
+OWNER
+```
+
+新 ledger 使用 `deliveryTruthVersion: 4`。固定 terminal policy 是：Session 結束、Owner stop、
+safe scope exhausted 或 owner-blocked 前，當前 owner 必須完成 closeout，或在 durable ledger／
+checkpoint 中正式改派下一個 owner。不能只在聊天中說「之後有人會關」。完整契約見
+`docs/RUN-CLOSEOUT-CONTRACT.md`。
+
+歷史 v2.2／v3 ledger 保持原樣，不自動改寫。沒有可見的 token／週額度資料就填 `null`，
+不得推測。
 
 ## 4. LUNA_FAN_OUT
 
@@ -218,6 +243,12 @@ OWNER_BLOCKED
 - 將 stale PR 依 Janitor 規則安全收斂。
 - 釋放 MAIN／RESERVE／TEST lane。
 - 寫入本輪 ledger 與報告。
+- 對 v4 ledger 將 `closeout.state` 改為 `CLOSED`，並填入與 `endedAt` 相同的時間、40 字元
+  `main.endSha`、結束 Issue／PR inventory 與 durable `evidenceRef`。
+
+若 Session 即將停止但 Run 仍需繼續，必須先更新 durable checkpoint 並明確改派
+`closeout.ownerRole`。非 final Run 不得先填 `CLOSED`；final v4 Run 缺任一 terminal envelope
+欄位時，validator 必須 fail closed。
 
 ## 10. 量化資料
 
@@ -323,11 +354,16 @@ docs/metrics/agent-runs/<RUN_ID>.md
 命令：
 
 ```bash
-npm run agent:run:init -- --run-id <RUN_ID>
+npm run agent:run:init -- \
+  --run-id <RUN_ID> \
+  --closeout-owner PRODUCT_MAIN_SESSION
 npm run agent:run:validate -- docs/metrics/agent-runs/<RUN_ID>.json
 npm run agent:run:score -- docs/metrics/agent-runs/<RUN_ID>.json
 npm run agent:run:review -- docs/metrics/agent-runs --limit 3
 ```
+
+Operational init 與 `createRunLedgerV2()` 都不接受省略 `--closeout-owner`。只有名稱明確的
+`createHistoricalRunLedgerV3()` 可供舊測試與歷史 v3 重現；它不是新 Run 的合法開帳方式。
 
 Markdown 報告由 JSON 產生；人工修改報告後若無法由 JSON 重建，CI 應失敗。
 
