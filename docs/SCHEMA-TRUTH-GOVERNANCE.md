@@ -57,6 +57,29 @@ Comparison labels are deliberately narrow:
 - `OUT_OF_LEDGER`: emitted only from an explicit snapshot observation. Fingerprint differences alone
   never create this claim.
 
+## Migration identity admission
+
+Issue #197 exposed a separate failure mode: a migration can exist only on a feature branch, be applied to
+a live environment, and later never reach `main`. The provider ledger then contains an identity that the
+repository cannot reproduce. Reusing an old four-digit prefix makes the ambiguity worse.
+
+The existing required `repo-integrity-guard` therefore owns the source-side admission rules. It compares
+the candidate head with its CI base revision and fails closed when:
+
+- a file below `supabase/migrations/` does not use `NNNN_name.sql`;
+- two files on the candidate head use the same four-digit prefix;
+- a migration already present on the base revision is modified, deleted, or renamed;
+- a newly added migration prefix is not greater than the largest migration prefix on the base revision.
+
+These rules do **not** prove that TEST or Production already matches the repository. They only prevent new
+source identities from making the historical drift harder to reconcile. Applying a migration to TEST or
+Production remains a separate external action with its own authorization, exact project reference, live
+ledger verification, and Completion Truth evidence.
+
+A branch-only migration must never be described as durable schema truth merely because it exists in a PR
+or because a provider ledger contains a similarly numbered row. `main` source truth, live schema truth,
+and provider-ledger truth remain three separate surfaces until explicitly reconciled.
+
 ## Command
 
 ```bash
