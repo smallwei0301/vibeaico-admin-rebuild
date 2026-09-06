@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { loginPage as t } from '@/i18n/zh-TW/pages/login';
+import { registerPage as rt } from '@/i18n/zh-TW/pages/register';
 
 /**
  * `src/app/tenant/login/page.tsx` is a Client Component (`'use client'` +
@@ -20,6 +21,13 @@ import { loginPage as t } from '@/i18n/zh-TW/pages/login';
 function oauthNoteFor(loading: boolean, configured: boolean): string {
   if (loading) return t.oauth.checking;
   return configured ? t.oauth.buildingFlow : t.oauth.notConfigured;
+}
+
+/** Same mirrored re-implementation, against the register page's copy of the
+ *  same function (register.ts's own oauth.checking/notConfigured/buildingFlow). */
+function registerOauthNoteFor(loading: boolean, configured: boolean): string {
+  if (loading) return rt.oauth.checking;
+  return configured ? rt.oauth.buildingFlow : rt.oauth.notConfigured;
 }
 
 const read = (relative: string) =>
@@ -42,6 +50,9 @@ function buttonTag(source: string, testId: string): string {
 }
 const copy = read('src/i18n/zh-TW/pages/login.ts');
 const service = read('src/services/auth.ts');
+
+const registerSrc = read('src/app/tenant/register/page.tsx');
+const registerCopy = read('src/i18n/zh-TW/pages/register.ts');
 
 /**
  * Issue #26 slice 1 —— 「先消滅現有 404」，且 Owner 明確要求
@@ -185,5 +196,83 @@ describe('#26 API route: GET /api/auth/oauth/status never leaks credential value
     });
     vi.doUnmock('@/config/env');
     vi.resetModules();
+  });
+});
+
+/**
+ * Sol 追加項：/tenant/register 有同一類的 404 —— OAUTH.line/google 直連
+ * /api/auth/oauth/{line,google}/authorize 的 <a href>。套用與登入頁完全相同的
+ * 處理，斷言方式也對齊（見上面 buttonTag 的說明：不可用單一個 regex 從檔案最早
+ * 的 <Button 開始比對）。
+ */
+describe('#26 register page: no link to non-existent OAuth authorize routes', () => {
+  it('never renders an <a href> or literal href to the authorize endpoints', () => {
+    expect(registerSrc).not.toMatch(/\/api\/auth\/oauth\/line\/authorize/);
+    expect(registerSrc).not.toMatch(/\/api\/auth\/oauth\/google\/authorize/);
+    expect(registerSrc).not.toMatch(/href=\{OAUTH/);
+    expect(registerSrc).not.toMatch(/<a\s+className="btn btn-line/);
+    expect(registerSrc).not.toMatch(/href=[^\n]*\/api\//);
+    expect(registerSrc).not.toContain('const OAUTH');
+  });
+
+  it('removed the now-unused lineHref/googleHref i18n keys', () => {
+    expect(registerCopy).not.toContain('lineHref');
+    expect(registerCopy).not.toContain('googleHref');
+  });
+});
+
+describe('#26 register page: both OAuth buttons stay disabled regardless of status', () => {
+  it.each([['oauth-line-disabled'], ['oauth-google-disabled']])(
+    'keeps %s statically disabled (not conditioned on the fetched status)',
+    (testId) => {
+      const tag = buttonTag(registerSrc, testId);
+      expect(tag).toMatch(/\n\s+disabled\n/);
+      expect(tag).not.toMatch(/disabled=/);
+      expect(tag).not.toMatch(/href/);
+      expect(tag).not.toMatch(/onClick/);
+    },
+  );
+
+  it('loads status from getOAuthStatus() on mount instead of hardcoding it', () => {
+    expect(registerSrc).toContain('getOAuthStatus');
+    expect(registerSrc).toContain("from '@/services'");
+    expect(registerSrc).toContain('getOAuthStatus()');
+    expect(registerSrc).toContain('React.useEffect');
+  });
+});
+
+describe('#26 register page: honest note switches between the two real states', () => {
+  it('the page defines oauthNoteFor with exactly the loading/configured branch mirrored above', () => {
+    const fn = registerSrc.match(/function oauthNoteFor\([\s\S]*?\n\}/)?.[0];
+    expect(fn).toBeTruthy();
+    expect(fn).toContain('if (loading) return t.oauth.checking;');
+    expect(fn).toContain('configured ? t.oauth.buildingFlow : t.oauth.notConfigured');
+  });
+
+  it('the rendered note for each provider is derived from oauthNoteFor(oauthLoading, ...configured), not hardcoded', () => {
+    expect(registerSrc).toMatch(/lineNote = oauthNoteFor\(oauthLoading, oauthStatus\?\.line\.configured/);
+    expect(registerSrc).toMatch(/googleNote = oauthNoteFor\(oauthLoading, oauthStatus\?\.google\.configured/);
+  });
+
+  it('registerOauthNoteFor(loading=true, ...) always shows the checking copy, regardless of configured', () => {
+    expect(registerOauthNoteFor(true, false)).toBe(rt.oauth.checking);
+    expect(registerOauthNoteFor(true, true)).toBe(rt.oauth.checking);
+  });
+
+  it('registerOauthNoteFor(loading=false, configured=false) shows "not configured yet"', () => {
+    expect(registerOauthNoteFor(false, false)).toBe(rt.oauth.notConfigured);
+  });
+
+  it('registerOauthNoteFor(loading=false, configured=true) shows "flow still being built", never a fake success', () => {
+    expect(registerOauthNoteFor(false, true)).toBe(rt.oauth.buildingFlow);
+    expect(registerOauthNoteFor(false, true)).not.toBe(rt.oauth.notConfigured);
+  });
+
+  it('the three note copies are distinct and none claims a working registration', () => {
+    const notes = [rt.oauth.checking, rt.oauth.notConfigured, rt.oauth.buildingFlow];
+    expect(new Set(notes).size).toBe(3);
+    for (const note of notes) {
+      expect(note).not.toMatch(/成功|已登入|已註冊/);
+    }
   });
 });
