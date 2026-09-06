@@ -13,13 +13,25 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { registerPage as t } from '@/i18n/zh-TW/pages/register';
 import { ApiError } from '@/lib/api';
-import { registerTenant, sendVerificationCode } from '@/services';
+import { getOAuthStatus, registerTenant, sendVerificationCode } from '@/services';
+import type { OAuthStatus } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁常數                                                                    */
+/* 第三方快速註冊（#26 slice 1，與 /tenant/login 同一套處理）                     */
 /* -------------------------------------------------------------------------- */
+/* 誠實復原（docs/DELIVERY-CHAIN.md §5）：authorize/callback 端點還不存在，這兩顆
+ * 按鈕在任何狀態下都不得是 <a href> 也不得可點擊 —— 只用來如實顯示平台是否已經
+ * 設定 OAuth 憑證，不假裝可以真的註冊。 */
 
-const OAUTH = { line: t.oauth.lineHref, google: t.oauth.googleHref } as const;
+/**
+ * 根據載入中／是否已設定憑證，回傳要顯示的說明文字。與
+ * src/app/tenant/login/page.tsx 的同名函式邏輯逐字相同——那邊的單元測試
+ * （tests/unit/oauth-honest.26.test.ts）已經鎖住這個判斷分支。
+ */
+function oauthNoteFor(loading: boolean, configured: boolean): string {
+  if (loading) return t.oauth.checking;
+  return configured ? t.oauth.buildingFlow : t.oauth.notConfigured;
+}
 
 /** 原站規則：店家代碼僅限小寫英文、數字、連字號（同 tenant-settings 的 shopCode） */
 const SHOP_CODE_PATTERN = /^[a-z0-9-]+$/;
@@ -52,6 +64,27 @@ export default function RegisterPage() {
   const [countdown, setCountdown] = React.useState(0);
   const [codeSent, setCodeSent] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  /** null = 載入中；載入完成後為 GET /api/auth/oauth/status 的真實回應 */
+  const [oauthStatus, setOauthStatus] = React.useState<OAuthStatus | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getOAuthStatus()
+      .then((status) => {
+        if (!cancelled) setOauthStatus(status);
+      })
+      .catch(() => {
+        // 查詢失敗時維持「尚未設定」的保守顯示，不得默默當作已設定
+        if (!cancelled) setOauthStatus({ google: { configured: false }, line: { configured: false } });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const oauthLoading = oauthStatus === null;
+  const lineNote = oauthNoteFor(oauthLoading, oauthStatus?.line.configured ?? false);
+  const googleNote = oauthNoteFor(oauthLoading, oauthStatus?.google.configured ?? false);
 
   const set = (key: Field | 'referralCode') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const { value } = e.target;
@@ -161,13 +194,31 @@ export default function RegisterPage() {
 
         {/* -------------------------------------------------- 第三方快速註冊 */}
         <div className="flex flex-col gap-2">
-          <a className="btn btn-line btn-lg btn-block" href={OAUTH.line}>
+          <Button
+            type="button"
+            variant="line"
+            size="lg"
+            block
+            disabled
+            data-testid="oauth-line-disabled"
+            title={lineNote}
+          >
             <MessageCircle size={16} />
             {t.oauth.line}
-          </a>
-          <a className="btn btn-outline btn-lg btn-block" href={OAUTH.google}>
+          </Button>
+          <p className="text-center text-xs text-secondary">{lineNote}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            block
+            disabled
+            data-testid="oauth-google-disabled"
+            title={googleNote}
+          >
             {t.oauth.google}
-          </a>
+          </Button>
+          <p className="text-center text-xs text-secondary">{googleNote}</p>
         </div>
 
         <div className="my-5 flex items-center gap-3">
