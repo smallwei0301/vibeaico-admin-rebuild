@@ -128,7 +128,9 @@
     "Correction issued to the Owner: the claim that Issue #7's 乙表 had no zero-migration, zero-decision item left was wrong. Reading the code rather than trusting the inventory showed that StaffTermModal edits a single store-wide staff term, not the per-staff StaffExtras fields, and basic.staffTerm already exists in basicSettingsSchema with a default. That slice needs no migration and no decision and was mis-reported as blocked.",
     "The #181 canonical TEST cancellation is a reminder that a cancelled job is not a failed job and not a flake: the job never obtained a runner and executed zero steps, which is the one case the rules allow a single re-run for. The re-run budget for that PR was then recorded as spent.",
     "Schema drift root cause (Issue #197): the repo's migrations cannot reproduce TEST/PROD because DDL from parked, never-merged branches was applied to both environments — to TEST through the migration API under colliding numbers, to PROD as raw SQL outside the ledger. The two live environments also differ from each other (TEST-only staff.availability_policy). This run's 0076 and 0078 applies are the first PROD ledger entries; both were preceded by a read-only baseline and followed by notify pgrst and a verification query.",
-    "Branch protection requires the head to be up to date with main ('2 of 2 required status checks are expected' on merge of a behind branch). Merging main into the branch invalidates exact-head evidence, so the honest disclosure was recorded on #192: product diff between the two heads is empty; canonical TEST re-ran on the new head via the pull_request event; blank-DB migration proof remains on the prior head."
+    "Branch protection requires the head to be up to date with main ('2 of 2 required status checks are expected' on merge of a behind branch). Merging main into the branch invalidates exact-head evidence, so the honest disclosure was recorded on #192: product diff between the two heads is empty; canonical TEST re-ran on the new head via the pull_request event; blank-DB migration proof remains on the prior head.",
+    "Two independent false-completion findings this run (#34, #27) established that issue checkboxes and even cited commit SHAs are not evidence of main's state, because they were written against feature branches that were parked and never merged. Verification now always goes through git merge-base against origin/main plus a re-read of the named file at ref=main.",
+    "Issue #34's original verification script was never committed, so its recorded 8/8 PASS could not be reproduced or audited. The replacement script is committed, takes its expected values from an independent service-role query, and exits non-zero on any FAIL, so the same claim can be re-checked by anyone."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
@@ -366,6 +368,70 @@
         "observedState": "opened_terra_audited_isolated_green",
         "evidenceRef": "Dashboard three fake blocks (weekly trend / month sources / recent activity) wired to real backend with zero migration. Luna scoped; Terra commit 898fa72; Sol PASS_WITH_FIXES commit f12053f (calendar Mon-Sun Taipei week instead of rolling window; Taipei wall-clock range; loading states). Exact head f12053f: check job 101408680784 green; local-isolated-a job 101408677080 green 01:36-01:41 (two new integration tests executed against a real DB for the first time). Guard dispatched canonical TEST at 01:45:48Z after #192 released the lane. File ownership disjoint from #192 (comm -12 empty).",
         "verification": "UNVERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "pull/198",
+        "claimedState": "merged_and_verified",
+        "observedState": "merged_and_verified",
+        "evidenceRef": "Dashboard three fake blocks wired to real backend, zero migration. merge sha 35f134160967ea11d60ac0746e5b5a39ccb75df7; ancestry OK; ref=main re-read of src/app/tenant/dashboard/page.tsx shows setTimeout(r,320)/ACTIVITY_LOCAL_SHOP/TREND_LOCAL_SHOP/SOURCES_LOCAL_SHOP all gone and both new report routes present. Canonical integration job 101413134643 (02:15:01-02:24:10). Merge first rejected 405 while behind main; merging main left the product diff empty.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "pull/200",
+        "claimedState": "merged_and_verified",
+        "observedState": "merged_and_verified",
+        "evidenceRef": "Login+register OAuth buttons no longer 404; new public GET /api/auth/oauth/status returns booleans only. merge sha 4ab880fb8addd31a6bc5eb07c6346771f0fd2de7; ancestry OK; git grep for oauth/line/authorize|oauth/google/authorize on origin/main returns 0. Canonical integration job 101506962047 (14:57:10-15:05:52). Supersedes draft PR #63, closed.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "pull/201",
+        "claimedState": "merged_and_verified",
+        "observedState": "merged_and_verified",
+        "evidenceRef": "Settings password change actually calls POST /api/auth/change-password; previously a setTimeout(480) fake success meant the old password kept working. merge sha b2f3b70b7348539893151043730bc4005b216e81; ancestry OK; ref=main re-read shows setTimeout(r, 480) count 0 and line 380 'await changePassword({ currentPassword, newPassword })'. Canonical integration job 101512279515 (15:41:04-15:50:53) plus E2E to 15:52:31.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "pull/203",
+        "claimedState": "opened_playwright_evidence",
+        "observedState": "opened_playwright_evidence",
+        "evidenceRef": "tests/e2e/oauth-buttons.spec.ts, 11 cases across login and register, real Chromium run: 'Running 11 tests using 2 workers' ... '11 passed (1.5m)'. Uses click({force:true}) because Playwright will not click a disabled element, and a page.on('request') collector asserting no /api/auth/oauth/*/authorize request. Separately asserts those authorize routes really return 404. This is the evidence Issue #26 acceptance box 3 requires; PR #200's source-level unit assertions did NOT satisfy it, which I corrected publicly.",
+        "verification": "UNVERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "issue/34 false completion",
+        "claimedState": "eight_boxes_ticked_for_unmerged_branches",
+        "observedState": "not_fixed_on_main",
+        "evidenceRef": "Issue #34 showed 8 of 9 acceptance boxes ticked with commit SHAs. git merge-base --is-ancestor proves NONE of f3b93de/2f337ef/1d0896d/d057481/63d5a9c/59a7185/a157572 is an ancestor of origin/main; git log origin/main -- src/components/layout/AppShell.tsx shows no change since 77cbac1; src/services/shell.ts does not exist on main. Committed a reproducible script scripts/verify/appshell-shell-values.34.cjs (the original was never committed) and ran it against a production build wired to TEST with SHOP_A (LOCAL_SHOP, 1 pending booking): PASS=5 FAIL=4, exit 1. Also found applyMockMode is only called when USE_MOCK, so in real mode the mock module stays on DATASETS.GUIDE and a LOCAL_SHOP tenant is served GUIDE's mock values. All 9 boxes un-ticked; fix rebuilt on current main.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "issue/27 false completion",
+        "claimedState": "eighteen_of_nineteen_boxes_ticked",
+        "observedState": "bug_still_present_on_main",
+        "evidenceRef": "Luna verification: issue #27 shows 18/19 boxes ticked with commit SHAs, but origin/main still contains the described defect (src/app/tenant/product-orders/page.tsx:839 toasts a notify with no notify call in POST /api/product-orders/manual; src/app/tenant/ai-settings/page.tsx:79 still calls saveLineSettings rather than PUT /api/ai-settings). Those ticks describe draft PR #56, which is OWNER_BLOCKED and never merged. Consequence adopted as a run rule: issue checkboxes in this repo are not evidence; every box is re-verified against origin/main before ticking or closing.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "canonical TEST serialization violation",
+        "claimedState": "local_verification_overlapped_canonical_run",
+        "observedState": "local_verification_overlapped_canonical_run",
+        "evidenceRef": "While PR #201 held the canonical TEST lane, I started a local production server (15:41) and a Playwright verification script (15:45) against the SAME canonical TEST project nmwhwngojosmagjuvxol, which the CI integration job resets and seeds. Killed at 15:46 and the #34 agent was told to go source-only. Note on my own reporting error: I first told the Owner the CI job had hung for ~40 minutes as a result; that was a clock misreading. The job completed success in 9m49s (15:41:04-15:50:53) versus a 7-9 minute norm. The overlap was a real rule violation; the hang was not real. New rule: any local server, script or Playwright run pointed at the canonical TEST counts as holding that lane and must be mutually exclusive with a CI canonical run.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "feature-store honest restore",
+        "claimedState": "assumed_outstanding",
+        "observedState": "already_fixed_on_main",
+        "evidenceRef": "A prior audit note claimed four feature-store endpoints return bare ok() without a FeatureRestoreResult. Luna verified on origin/main that commit 037d15a already implements truthful restore results: apply/restore return withRestoreSideEffectFallback payloads for COUPON_SYSTEM/PRODUCT_SALES, the page only shows counts when present and warns on restoreSideEffectFailed, and tests/unit/feature-store-restore-result.28.test.ts plus two integration suites lock it. No PR opened. Only residual asymmetry is bundle apply not running the restore side effect, which matches the documented spec in docs/integration/09-FEATURE-STORE.md:125 and is therefore an Owner product decision, not a defect.",
+        "verification": "VERIFIED"
       }
     ]
   }

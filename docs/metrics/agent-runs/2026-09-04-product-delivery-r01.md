@@ -21,6 +21,9 @@
 ## 結案前必須修正的硬性問題
 
 - CI_GREEN issue#7 customer source (pull/177) canonical TEST first attempt contradicts live evidence
+- OTHER issue/34 false completion contradicts live evidence
+- OTHER issue/27 false completion contradicts live evidence
+- OTHER feature-store honest restore contradicts live evidence
 
 ---
 
