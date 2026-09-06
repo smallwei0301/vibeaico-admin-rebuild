@@ -266,6 +266,7 @@ export const dashboardPage = {
     recentActivity: '載入最近活動失敗:',
     staffPerformance: '載入員工業績失敗:',
     weekly: '載入週統計失敗:',
+    sources: '載入預約來源失敗:',
     loadFailed: '載入失敗',
   },
 } as const;
