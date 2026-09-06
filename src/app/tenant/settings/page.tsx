@@ -17,6 +17,7 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { changePassword } from '@/services';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
 import { removeWelcomeCardImage as removeWelcomeCardImageAsset, uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
@@ -376,7 +377,7 @@ export default function SettingsPage() {
   const submitPasswordChange = async () => {
     setPasswordBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 480));
+      await changePassword({ currentPassword, newPassword });
       setConfirmPasswordChange(false);
       setCurrentPassword('');
       setNewPassword('');
