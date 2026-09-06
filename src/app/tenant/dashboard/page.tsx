@@ -97,7 +97,9 @@ export default function DashboardPage() {
   const [loadingActivity, setLoadingActivity] = React.useState(true);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
   const [weeklyTrend, setWeeklyTrend] = React.useState<WeeklyTrendPoint[]>([]);
+  const [loadingTrend, setLoadingTrend] = React.useState(true);
   const [monthSources, setMonthSources] = React.useState<MonthSourcePoint[]>([]);
+  const [loadingSources, setLoadingSources] = React.useState(true);
 
   const [focusOpen, setFocusOpen] = React.useState(true);
   const [confirmSkipFocus, setConfirmSkipFocus] = React.useState(false);
@@ -137,10 +139,10 @@ export default function DashboardPage() {
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
     })();
     void (async () => {
-      try { setWeeklyTrend(await getWeeklyTrend()); } catch (e) { fail(t.errors.weekly, e); }
+      try { setWeeklyTrend(await getWeeklyTrend()); } catch (e) { fail(t.errors.weekly, e); } finally { setLoadingTrend(false); }
     })();
     void (async () => {
-      try { setMonthSources(await getMonthSources()); } catch (e) { fail(t.errors.sources, e); }
+      try { setMonthSources(await getMonthSources()); } catch (e) { fail(t.errors.sources, e); } finally { setLoadingSources(false); }
     })();
   }, [fail]);
 
@@ -811,25 +813,29 @@ export default function DashboardPage() {
                 {t.weeklyTrend.revenue}
               </span>
             </div>
-            <div className="flex h-40 items-end gap-2">
-              {weeklyTrend.map((d) => (
-                <div key={d.weekday} className="flex h-full flex-1 flex-col justify-end gap-1">
-                  <div className="flex h-full items-end gap-1">
-                    <div
-                      className="flex-1 rounded-sm bg-primary"
-                      style={{ height: `${Math.max((d.bookings / maxWeeklyBookings) * 100, 4)}%` }}
-                      title={`${t.weeklyTrend.tooltipBookings}${formatNumber(d.bookings)}`}
-                    />
-                    <div
-                      className="flex-1 rounded-sm bg-success"
-                      style={{ height: `${Math.max((d.revenue / maxWeeklyRevenue) * 100, 4)}%` }}
-                      title={`${t.weeklyTrend.tooltipRevenue}${formatNumber(d.revenue)}`}
-                    />
+            {loadingTrend ? (
+              <div className="flex h-40 items-center justify-center text-muted">{common.loading}</div>
+            ) : (
+              <div className="flex h-40 items-end gap-2">
+                {weeklyTrend.map((d) => (
+                  <div key={d.weekday} className="flex h-full flex-1 flex-col justify-end gap-1">
+                    <div className="flex h-full items-end gap-1">
+                      <div
+                        className="flex-1 rounded-sm bg-primary"
+                        style={{ height: `${Math.max((d.bookings / maxWeeklyBookings) * 100, 4)}%` }}
+                        title={`${t.weeklyTrend.tooltipBookings}${formatNumber(d.bookings)}`}
+                      />
+                      <div
+                        className="flex-1 rounded-sm bg-success"
+                        style={{ height: `${Math.max((d.revenue / maxWeeklyRevenue) * 100, 4)}%` }}
+                        title={`${t.weeklyTrend.tooltipRevenue}${formatNumber(d.revenue)}`}
+                      />
+                    </div>
+                    <div className="text-center text-2xs text-secondary">{common.weekdays[d.weekday]}</div>
                   </div>
-                  <div className="text-center text-2xs text-secondary">{common.weekdays[d.weekday]}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardBody>
         </Card>
 
@@ -841,7 +847,9 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardBody>
-            {sourceTotal === 0 ? (
+            {loadingSources ? (
+              <div className="py-8 text-center text-muted">{common.loading}</div>
+            ) : sourceTotal === 0 ? (
               <EmptyState icon={PieChart} title={t.monthSource.empty} />
             ) : (
               <ul className="flex flex-col gap-3">

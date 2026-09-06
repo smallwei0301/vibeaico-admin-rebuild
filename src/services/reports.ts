@@ -109,20 +109,34 @@ const ACTIVITY_CLINIC: RecentActivity[] = [
   { id: 'a_5', type: 'BOOKING_CANCELLED', name: '蔡淑芬', target: '成人健康檢查', at: '2026-08-17T10:20:00+08:00' },
 ];
 
-/** ?from&to = YYYY-MM-DD，本地日曆日往前推 6 天（含今天，共 7 天），同
- *  src/app/tenant/reports/page.tsx 的 `rangeDates('week')` 做法。 */
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * ?from&to = YYYY-MM-DD，「本週」＝台北時區的週一～週日日曆週（不是滾動 7 天）。
+ *
+ * 兩個理由必須用日曆週：dashboard 這張圖的標題是「本週預約趨勢」，且 X 軸畫的是
+ * 週一～週日的星期名稱（common.weekdays）；滾動區間會讓軸從星期中間開始繞一圈，
+ * 也會把上週的日子算進「本週」。mock 分支的 TREND_* 同樣是週一～週日排列，
+ * real 分支必須給出一樣的順序。
+ *
+ * 日期一律以台北牆上時鐘（固定 +08:00）計算，不用瀏覽器本地時區 —— 後端
+ * /api/reports/daily 是以台北日界線分桶的（見 src/server/tz.ts），瀏覽器在別的
+ * 時區時，用本地日期會在跨日前後送出偏一天的區間。
+ */
 function weekQuery(): { from: string; to: string } {
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 6);
-  return { from: fmt(from), to: fmt(to) };
+  const now = new Date(Date.now() + TAIPEI_OFFSET_MS);
+  const [y, m, d] = [now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()];
+  const sinceMonday = (now.getUTCDay() + 6) % 7; // getUTCDay: 0=週日 → 週一為 0
+  const fmt = (offsetDays: number) => {
+    const t = new Date(Date.UTC(y, m, d + offsetDays));
+    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+  };
+  return { from: fmt(-sinceMonday), to: fmt(-sinceMonday + 6) };
 }
 
 /**
- * 本週預約趨勢（週一～週日排列於畫面上，實際資料為「今天往前推 7 天」的滾動區間，
- * 同 reports 頁 week 區間的做法）。
+ * 本週預約趨勢（台北時區的週一～週日日曆週，與畫面星期軸一致；本週尚未到來的
+ * 日子由 /api/reports/daily 補 0）。
  * real：打既有 /api/reports/daily?from&to，逐日換算成 weekday（0=週日）。
  */
 export const getWeeklyTrend = () =>
