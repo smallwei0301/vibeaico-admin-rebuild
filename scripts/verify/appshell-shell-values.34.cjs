@@ -152,6 +152,46 @@ async function main() {
   const browser = await chromium.launch(launchOptions);
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 
+  // ---- 追蹤 AppShell 外框值依賴的 5 個真實端點是否已經回應 -----------------
+  // 見 docs/AGENT-PLAYBOOK.md（#34 教訓）：畫面上的 3 個外框值（badge/setup/
+  // userName）各自來自 src/services/shell.ts 的 sidebarCounts()/currentUserName()
+  // 與既有的 getSetupStatus()，三者互相獨立地打真實 TEST Supabase，對一個異地
+  // 資料庫的認證＋查詢來回可能要 2~4 秒。用固定 sleep 猜這個時間必然不穩：
+  // 太短會誤判「畫面還沒吃到真資料」為「畫面錯」，太長又拖慢每次跑分。
+  // 正確作法：用 page.on('response') 記錄這幾個端點「第一次」200 回應的時間，
+  // 下面用 waitForApiSettled() 對這份紀錄做輪詢等待（deterministic），而不是
+  // 對著時鐘瞎猜。
+  const apiFirstSeenAt = new Map();
+  const API_MARKERS = {
+    bookingBadge: (u) => u.includes('/api/bookings?') && u.includes('status=PENDING'),
+    productOrderBadge: (u) => u.includes('/api/product-orders/pending/count'),
+    chatBadge: (u) => u.includes('/api/chat/conversations') && !u.includes('since='),
+    setupStatus: (u) => u.includes('/api/settings/setup-status'),
+    authMe: (u) => u.includes('/api/auth/me'),
+  };
+  page.on('response', (res) => {
+    if (res.status() !== 200) return;
+    const u = res.url();
+    for (const [key, match] of Object.entries(API_MARKERS)) {
+      if (match(u) && !apiFirstSeenAt.has(key)) apiFirstSeenAt.set(key, Date.now());
+    }
+  });
+
+  /**
+   * 等到指定的 marker 都至少收到過一次 200 回應（或逾時）。回傳仍缺的 marker
+   * 清單（空陣列＝全部到齊）——呼叫端可以據此判斷是「畫面還在等真資料」
+   * （腳本該多等）還是「端點真的沒回應」（產品或後端有問題，不該再等）。
+   */
+  async function waitForApiSettled(keys, timeoutMs = 15_000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const missing = keys.filter((k) => !apiFirstSeenAt.has(k));
+      if (missing.length === 0) return [];
+      await page.waitForTimeout(100);
+    }
+    return keys.filter((k) => !apiFirstSeenAt.has(k));
+  }
+
   try {
     await page.goto(`${BASE_URL}/tenant/login`, { waitUntil: 'networkidle' });
     await page.fill('#username', SHOP_A.owner.email);
@@ -169,9 +209,23 @@ async function main() {
     return finish();
   }
 
-  // AppShell 掛載、Sidebar/Topbar 資料進場後再讀值。
+  // AppShell 掛載、Sidebar/Topbar 資料進場後再讀值 —— 用「5 個端點都至少回過
+  // 一次 200」這個 deterministic 條件，取代原本瞎猜的固定 500ms sleep
+  // （2026-09-06 實測：對 TEST Supabase 的認證＋查詢來回常態要 2~4 秒，見
+  // docs/AGENT-PLAYBOOK.md #34 教訓；固定 500ms 在畫面完全正確、只是「還在
+  // 誠實顯示 loading 佔位」時就把它判成 FAIL，是腳本本身太天真，不是產品錯）。
   await page.waitForSelector('#sidebar', { timeout: 15_000 });
-  await page.waitForTimeout(500);
+  const stillMissing = await waitForApiSettled(Object.keys(API_MARKERS), 15_000);
+  if (stillMissing.length > 0) {
+    record(
+      'FAIL',
+      '外框值依賴的真實端點在 15 秒內全部回應',
+      `逾時仍缺：${stillMissing.join(', ')} —— 這是後端/網路真的沒回應，不是等待策略的問題`,
+    );
+  }
+  // API 回應之後，React state 更新＋重新渲染還需要一個 tick；給一個很小的緩衝
+  // （不是用來「賭」真資料何時到，到齊與否已經由上面的 deterministic 等待決定）。
+  await page.waitForTimeout(200);
 
   const loginScreenshot = path.join(OUT_DIR, '34-dashboard-localshop.png');
   await page.screenshot({ path: loginScreenshot, fullPage: true });
