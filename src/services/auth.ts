@@ -1,5 +1,5 @@
 import { adapt, request } from '@/lib/api';
-import type { TenantSummary } from '@/lib/types';
+import type { OAuthStatus, TenantSummary } from '@/lib/types';
 import { MOCK_TENANTS } from '@/mock';
 
 /**
@@ -7,6 +7,16 @@ import { MOCK_TENANTS } from '@/mock';
  * Topbar 店家切換的唯一資料入口。骨架階段（mock）全部回 undefined／假資料，
  * 端點與 payload 形狀對照 03 分冊 §6.2 與 04 分冊 §A-0。
  */
+
+/**
+ * 平台 OAuth（LINE／Google）是否已設定憑證（#26）。骨架階段一律回 false——
+ * mock 模式不該假裝平台已經設定了真的第三方登入。
+ */
+export const getOAuthStatus = () =>
+  adapt<OAuthStatus>(
+    () => ({ google: { configured: false }, line: { configured: false } }),
+    () => request<OAuthStatus>('/api/auth/oauth/status'),
+  );
 
 export const login = (email: string, password: string) =>
   adapt(

@@ -17,10 +17,16 @@ export const registerPage = {
   /* ---------------------------------------------------------- 第三方註冊 */
   oauth: {
     line: '用 LINE 快速註冊',
-    lineHref: '/api/auth/oauth/line/authorize',
     google: '用 Google 快速註冊',
-    googleHref: '/api/auth/oauth/google/authorize',
     divider: '或使用以下方式註冊',
+    /** 讀取設定狀態中（GET /api/auth/oauth/status 尚未回應） */
+    checking: '設定狀態確認中…',
+    /** 平台尚未設定該 provider 的憑證（configured: false）。與登入頁同一份
+     *  道理（見 src/i18n/zh-TW/pages/login.ts 的 notConfigured 註解）：
+     *  文案要點出是「平台」層級，不是店家自己在後台設定的 LINE Channel。 */
+    notConfigured: '平台尚未設定第三方登入',
+    /** 平台已設定憑證，但 authorize/callback 端點尚未建置，仍不得連過去 */
+    buildingFlow: '已設定憑證，登入流程建置中',
   },
 
   /* -------------------------------------------------------------- 表單 */
