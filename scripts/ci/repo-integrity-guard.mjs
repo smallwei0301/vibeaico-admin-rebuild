@@ -11,6 +11,8 @@ const REQUIRED_PATHS = [
 
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]sx?)$/i;
 const STANDALONE_SHA = /^\s*[0-9a-f]{40}\s*$/i;
+const MIGRATION_DIR = 'supabase/migrations/';
+const MIGRATION_FILE = /^supabase\/migrations\/(\d{4})_[^/]+\.sql$/;
 
 export function findStandaloneGitShas(path, content) {
   if (!SOURCE_EXTENSION.test(path)) return [];
@@ -22,11 +24,88 @@ export function findStandaloneGitShas(path, content) {
   ));
 }
 
+function migrationIdentity(path) {
+  const match = MIGRATION_FILE.exec(path);
+  if (!match) return null;
+  return { path, prefix: Number(match[1]), prefixText: match[1] };
+}
+
+export function findMigrationIntegrityIssues({
+  trackedPaths,
+  baselineTrackedPaths,
+  modifiedPaths,
+}) {
+  const headPaths = (Array.isArray(trackedPaths) ? trackedPaths : [])
+    .filter((path) => path.startsWith(MIGRATION_DIR));
+  const basePaths = Array.isArray(baselineTrackedPaths)
+    ? baselineTrackedPaths.filter((path) => path.startsWith(MIGRATION_DIR))
+    : null;
+  const modified = new Set(Array.isArray(modifiedPaths) ? modifiedPaths : []);
+  const errors = [];
+
+  const headIdentities = [];
+  for (const path of headPaths) {
+    const identity = migrationIdentity(path);
+    if (!identity) {
+      errors.push(`invalid migration filename: ${path} (expected NNNN_name.sql)`);
+      continue;
+    }
+    headIdentities.push(identity);
+  }
+
+  const byPrefix = new Map();
+  for (const identity of headIdentities) {
+    const paths = byPrefix.get(identity.prefixText) || [];
+    paths.push(identity.path);
+    byPrefix.set(identity.prefixText, paths);
+  }
+  for (const [prefix, paths] of byPrefix) {
+    if (paths.length > 1) {
+      errors.push(`duplicate migration prefix on head: ${prefix} -> ${paths.sort().join(', ')}`);
+    }
+  }
+
+  if (basePaths === null) return errors;
+
+  const headSet = new Set(headPaths);
+  const baseSet = new Set(basePaths);
+  const baseIdentities = basePaths.map(migrationIdentity).filter(Boolean);
+  const maxBasePrefix = baseIdentities.length > 0
+    ? Math.max(...baseIdentities.map((identity) => identity.prefix))
+    : -1;
+
+  for (const path of basePaths) {
+    if (!headSet.has(path)) {
+      errors.push(`existing migration removed or renamed: ${path}`);
+    }
+  }
+
+  for (const path of modified) {
+    if (baseSet.has(path)) {
+      errors.push(`existing migration modified in place: ${path}`);
+    }
+  }
+
+  for (const identity of headIdentities) {
+    if (baseSet.has(identity.path)) continue;
+    if (identity.prefix <= maxBasePrefix) {
+      errors.push(
+        `new migration prefix must be greater than base max ${String(maxBasePrefix).padStart(4, '0')}: ` +
+        `${identity.path}`,
+      );
+    }
+  }
+
+  return errors;
+}
+
 export function evaluateRepositoryIntegrity({
   trackedPaths,
   baselineTrackedCount,
   deletedPaths,
   shaFindings,
+  baselineTrackedPaths,
+  modifiedPaths,
 }) {
   const paths = Array.isArray(trackedPaths) ? trackedPaths : [];
   const deletions = Array.isArray(deletedPaths) ? deletedPaths : [];
@@ -49,6 +128,11 @@ export function evaluateRepositoryIntegrity({
     );
   }
 
+  errors.push(...findMigrationIntegrityIssues({
+    trackedPaths: paths,
+    baselineTrackedPaths,
+    modifiedPaths,
+  }));
   errors.push(...findings);
   return { ok: errors.length === 0, errors };
 }
@@ -62,8 +146,13 @@ function main() {
   const baseRevision = process.env.BASE_REVISION || 'HEAD^';
   const headRevision = process.env.HEAD_REVISION || 'HEAD';
   const trackedPaths = gitLines('ls-tree', '-r', '--name-only', headRevision);
-  const baselineTrackedCount = gitLines('ls-tree', '-r', '--name-only', baseRevision).length;
+  const baselineTrackedPaths = gitLines('ls-tree', '-r', '--name-only', baseRevision);
+  const baselineTrackedCount = baselineTrackedPaths.length;
   const deletedPaths = gitLines('diff', '--diff-filter=D', '--name-only', baseRevision, headRevision);
+  const modifiedPaths = gitLines(
+    'diff', '--diff-filter=M', '--name-only', baseRevision, headRevision,
+    '--', MIGRATION_DIR,
+  );
   const shaFindings = trackedPaths.flatMap((path) => {
     if (!SOURCE_EXTENSION.test(path)) return [];
     try {
@@ -81,6 +170,8 @@ function main() {
     baselineTrackedCount,
     deletedPaths,
     shaFindings,
+    baselineTrackedPaths,
+    modifiedPaths,
   });
 
   console.log(JSON.stringify({
