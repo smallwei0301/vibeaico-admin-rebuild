@@ -17,13 +17,13 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import {
   clearShiftDay, createShiftTemplate, deleteShiftTemplate, listShifts,
-  listShiftTemplates, listStaff, repeatShiftCycles, saveShifts, updateShiftTemplate,
+  listShiftTemplates, listStaff, repeatShiftCycles, saveShifts, updateShiftTemplate, updateStaff,
 } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { shiftsPage as t } from '@/i18n/zh-TW/pages/shifts';
 import { formatDate } from '@/lib/utils';
-import type { Staff } from '@/lib/types';
+import type { Staff, StaffScheduleMode } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -69,14 +69,8 @@ const MOCK_SHIFTS: Record<string, ShiftRecord> = {
   's_2|2026-08-22': { type: 'WORKING', startTime: '11:00', endTime: '19:00', breakStart: '14:00', breakEnd: '15:00', note: '加班', templateId: '' },
 };
 
-/** 排班模式：FIXED_REST 走週排班、ROTATING 逐日排班 */
-type ScheduleMode = 'FIXED_REST' | 'ROTATING';
-
-const MOCK_STAFF_MODES: Record<string, ScheduleMode> = {
-  s_1: 'ROTATING',
-  s_2: 'ROTATING',
-  s_3: 'FIXED_REST',
-};
+/** 排班模式：FIXED_REST 走週排班、ROTATING 逐日排班（型別定義見 src/lib/types.ts） */
+type ScheduleMode = StaffScheduleMode;
 
 /** 原站週排班：index 0–6 對應週日–週六 */
 type WeeklyRow = {
@@ -143,10 +137,10 @@ export default function ShiftsPage() {
 
   const [staff, setStaff] = React.useState<Staff[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [modes, setModes] = React.useState<Record<string, ScheduleMode>>(MOCK_STAFF_MODES);
   const [templates, setTemplates] = React.useState<ShiftTemplate[]>(MOCK_TEMPLATES);
   const [shifts, setShifts] = React.useState<Record<string, ShiftRecord>>(MOCK_SHIFTS);
   const [weekly, setWeekly] = React.useState<Record<string, WeeklyRow[]>>({});
+  const [modeSwitching, setModeSwitching] = React.useState(false);
 
   /** 週起始日；render 期不可用 Date.now()，因此在 effect 內初始化 */
   const [anchor, setAnchor] = React.useState<string>('');
@@ -377,7 +371,9 @@ export default function ShiftsPage() {
                 </tr>
               ) : (
                 staff.map((s) => {
-                  const mode = modes[s.id] ?? 'ROTATING';
+                  /* modes 來自 listStaff() 回傳的 scheduleMode，不是本地初值；
+                     舊資料／尚未回填的環境沒有這個欄位時，前端以 'ROTATING' 為預設。 */
+                  const mode = s.scheduleMode ?? 'ROTATING';
                   return (
                     <tr key={s.id}>
                       <td>
@@ -473,15 +469,24 @@ export default function ShiftsPage() {
       {/* ------------------------------------------------ modal 5：切換模式 */}
       <ConfirmModal
         open={!!modeTarget}
+        loading={modeSwitching}
         title={t.columns.mode}
         message={modeTarget ? t.modeSwitchConfirm(t.modes[modeTarget.next]) : common.confirm.message}
         onClose={() => setModeTarget(null)}
-        onConfirm={() => {
-          if (modeTarget) {
-            setModes((map) => ({ ...map, [modeTarget.staff.id]: modeTarget.next }));
-            toast.show(t.modeSwitched(t.modes[modeTarget.next]));
+        onConfirm={async () => {
+          if (!modeTarget) return;
+          const { staff: targetStaff, next } = modeTarget;
+          setModeSwitching(true);
+          try {
+            await updateStaff(targetStaff.id, { scheduleMode: next });
+            setStaff((list) => list.map((s) => (s.id === targetStaff.id ? { ...s, scheduleMode: next } : s)));
+            toast.show(t.modeSwitched(t.modes[next]));
+            setModeTarget(null);
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.toggleFailed, 'danger');
+          } finally {
+            setModeSwitching(false);
           }
-          setModeTarget(null);
         }}
       />
     </>

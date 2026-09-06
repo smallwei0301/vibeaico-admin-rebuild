@@ -126,7 +126,9 @@
     "pull/179 found a genuine defect beyond the wiring: the marketing page listed a COMPLETED status that the backend never writes (the real value is SENT), making that filter and label dead code. Also widened the send button to the backend's actual SENDABLE set so a failed push can be retried instead of being a dead end. The real LINE send endpoint was never invoked during construction or verification, and no integration or E2E test touches it.",
     "Owner decisions 2026-09-04 (second round): shifts schedule_mode is a per-staff attribute and belongs on the staff table; shop-design gets a new dedicated branding settings group rather than being folded into business; migration 0076 authorised for Production.",
     "Correction issued to the Owner: the claim that Issue #7's 乙表 had no zero-migration, zero-decision item left was wrong. Reading the code rather than trusting the inventory showed that StaffTermModal edits a single store-wide staff term, not the per-staff StaffExtras fields, and basic.staffTerm already exists in basicSettingsSchema with a default. That slice needs no migration and no decision and was mis-reported as blocked.",
-    "The #181 canonical TEST cancellation is a reminder that a cancelled job is not a failed job and not a flake: the job never obtained a runner and executed zero steps, which is the one case the rules allow a single re-run for. The re-run budget for that PR was then recorded as spent."
+    "The #181 canonical TEST cancellation is a reminder that a cancelled job is not a failed job and not a flake: the job never obtained a runner and executed zero steps, which is the one case the rules allow a single re-run for. The re-run budget for that PR was then recorded as spent.",
+    "Schema drift root cause (Issue #197): the repo's migrations cannot reproduce TEST/PROD because DDL from parked, never-merged branches was applied to both environments — to TEST through the migration API under colliding numbers, to PROD as raw SQL outside the ledger. The two live environments also differ from each other (TEST-only staff.availability_policy). This run's 0076 and 0078 applies are the first PROD ledger entries; both were preceded by a read-only baseline and followed by notify pgrst and a verification query.",
+    "Branch protection requires the head to be up to date with main ('2 of 2 required status checks are expected' on merge of a behind branch). Merging main into the branch invalidates exact-head evidence, so the honest disclosure was recorded on #192: product diff between the two heads is empty; canonical TEST re-ran on the new head via the pull_request event; blank-DB migration proof remains on the prior head."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
@@ -316,6 +318,54 @@
         "observedState": "sequenced_not_parallel",
         "evidenceRef": "comm -12 over the two branches' changed-file lists showed both claimed src/services/settings.ts, violating the dual-Terra non-overlap rule. Rather than run both as ACTIVE candidates and defer the conflict, #181 was merged first and main was then merged into the branding branch. The conflict did materialise (both sides added a line to the getTenantSettings mock branch; both kept, being unrelated settings groups) and typecheck then caught a merge-only TS2300 duplicate BusinessType import that existed on neither side alone and that the green test suite did not surface. All three checks were re-run after the merge rather than reusing pre-merge evidence.",
         "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "pull/192",
+        "claimedState": "merged_and_verified",
+        "observedState": "merged_and_verified",
+        "evidenceRef": "merged_at 2026-09-06T01:44:18Z; squash sha 44bc38476a45ebe7183a6c2dfa1ccb77a5f3f857 == origin/main head after fetch; git merge-base --is-ancestor OK; ref=main re-read src/server/mappers.ts:110 carries scheduleMode and supabase/migrations/0078_staff_schedule_mode.sql is on main. Exact head 9de8050: check job 101407790489 green; canonical integration job 101408037619 green (integration 01:31:13-01:41:03, E2E 01:41:03-01:42:24, source-only skip step skipped). local-isolated on 9de8050 was POLICY_SKIP (profile SHARED_CANONICAL at push time); blank-DB proof of 0078 is from product-identical prior head 7c79b3d (job 101205380882). First merge attempt on 7c79b3d was rejected 405 '2 of 2 required status checks are expected' because the branch was behind main; resolved by merging main (governance-only commits) into the branch.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "PRODUCTION_SCHEMA_READY",
+        "subject": "TEST nmwhwngojosmagjuvxol staff.schedule_mode",
+        "claimedState": "applied_via_ledger",
+        "observedState": "applied_via_ledger",
+        "evidenceRef": "Baseline read-only query showed no schedule_mode; PR #192 was the sole TEST holder; apply_migration name 0078_staff_schedule_mode (== repo filename), ledger version 20260906010954; notify pgrst sent; column verified default 'ROTATING'. Baseline also revealed TEST-only column staff.availability_policy (from unmerged #37 branch) absent on PROD and main — appended to Issue #197.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "PRODUCTION_SCHEMA_READY",
+        "subject": "PROD egehnijjpgijmccagxac staff.schedule_mode",
+        "claimedState": "applied_via_ledger_owner_authorized",
+        "observedState": "applied_via_ledger_owner_authorized",
+        "evidenceRef": "Owner authorization recorded in chat ('授權並繼續', 2026-09-04) before merge; applied only after #192 was 5-point verified on main. Baseline read-only query: 12 columns, no schedule_mode. apply_migration name 0078_staff_schedule_mode, ledger version 20260906014548; notify pgrst sent; verified column default 'ROTATING' and constraint staff_schedule_mode_chk CHECK (schedule_mode = ANY (ARRAY['FIXED_REST','ROTATING'])). Second PROD ledger entry ever (after customer_source).",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "Issue #197 schema drift root cause",
+        "claimedState": "root_cause_published",
+        "observedState": "root_cause_published",
+        "evidenceRef": "Five root causes with git evidence posted on Issue #197: (1) migrations 0018/0019/0022 and fix(#15)/fix(#35) DDL exist only on never-merged branch commits 3aee55e/c6d99b0/43fbb98/345401b/9f6aee6 (all NOT_ON_MAIN by merge-base) yet were applied to TEST (ledger shows colliding 0015_*/0018_* names) and PROD (outside any ledger — PROD ledger held only customer_source); (2) PROD DDL bypassed the ledger; (3) no migration-number uniqueness; (4) main code comments in three API routes cite 'migration 0018' authored in branch context (commits 631e29f/d06805f on main); (5) no CI gate diffs repo-built schema against canonical TEST. Six prevention measures proposed for the governance session; one (0079 reconcile migration) needs Owner DDL authorization.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "Guard lane-transition dispatch mechanics",
+        "claimedState": "lesson_recorded",
+        "observedState": "lesson_recorded",
+        "evidenceRef": "agent-wip-guard.yml shouldDispatchTest requires action=='edited' AND live labels NOT containing lane:test-validation; labels are derived from body by the Guard itself. Setting the lane label by hand together with the body edit produced 'TEST dispatched: false' (01:09Z); reverting the label and editing body only produced a dispatch (01:12Z). Later, after pushing a merge commit while body was already SHARED_CANONICAL, the pull_request-event ci run itself executed canonical integration (PR was sole holder), so the label was deliberately set first before restoring TEST_VALIDATION in the body to prevent a second concurrent canonical run on shared TEST. Rule: never touch lane labels manually on a transition; do not change lane before pushing; after merging main, wait for the pull_request-event CI.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "SOURCE_VERIFIED",
+        "subject": "pull/198",
+        "claimedState": "opened_terra_audited_isolated_green",
+        "observedState": "opened_terra_audited_isolated_green",
+        "evidenceRef": "Dashboard three fake blocks (weekly trend / month sources / recent activity) wired to real backend with zero migration. Luna scoped; Terra commit 898fa72; Sol PASS_WITH_FIXES commit f12053f (calendar Mon-Sun Taipei week instead of rolling window; Taipei wall-clock range; loading states). Exact head f12053f: check job 101408680784 green; local-isolated-a job 101408677080 green 01:36-01:41 (two new integration tests executed against a real DB for the first time). Guard dispatched canonical TEST at 01:45:48Z after #192 released the lane. File ownership disjoint from #192 (comm -12 empty).",
+        "verification": "UNVERIFIED"
       }
     ]
   }

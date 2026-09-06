@@ -139,6 +139,9 @@ export type Service = {
   sortOrder: number;
 };
 
+/** #7：排班模式，per-員工屬性（staff.schedule_mode）。FIXED_REST 走週排班，ROTATING 逐日排班。 */
+export type StaffScheduleMode = 'FIXED_REST' | 'ROTATING';
+
 export type Staff = {
   id: string;
   name: string;
@@ -150,6 +153,8 @@ export type Staff = {
   bookable: boolean;
   active: boolean;
   sortOrder: number;
+  /** 選填：舊資料／尚未回填的環境沒有這個欄位，前端一律以 'ROTATING' 當預設。 */
+  scheduleMode?: StaffScheduleMode;
 };
 
 /* ------------------------------------------------------------ 商品 / 訂單 */
