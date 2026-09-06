@@ -36,3 +36,17 @@ export function CountBadge({ count, className }: { count: number; className?: st
     <span className={cn('badge badge-count', className)}>{count > 99 ? '99+' : count}</span>
   );
 }
+
+/** A count is loading, not zero; callers replace this once the source settles. */
+export function CountBadgeLoading({ label, className }: { label: string; className?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className={cn('badge badge-count bg-neutral-400 opacity-70', className)}
+    >
+      …
+    </span>
+  );
+}

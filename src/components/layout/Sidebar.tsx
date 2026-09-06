@@ -8,7 +8,7 @@ import { getNav, isGroup, findActiveGroup, type NavLeaf } from '@/config/nav';
 import { navLabel, type NavKey } from '@/i18n/zh-TW/nav';
 import type { BusinessType } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
-import { CountBadge } from '@/components/ui/Badge';
+import { CountBadge, CountBadgeLoading } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 
 type Counts = Record<string, number>;
@@ -25,14 +25,15 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   onCloseMobile,
-  counts = {},
+  counts = null,
   businessType = 'LOCAL_SHOP',
   extraModules,
 }: {
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  counts?: Counts;
+  /** null = still loading; missing key = the count could not be established. */
+  counts?: Counts | null;
   /** 業態模式決定選單佈局與名詞（見 src/config/modes.ts） */
   businessType?: BusinessType;
   extraModules?: readonly BusinessType[];
@@ -49,10 +50,11 @@ export function Sidebar({
   }, [pathname]);
 
   const isActive = (href: string) => href !== '#' && pathname.startsWith(href);
+  const countsLoading = counts === null;
 
   const renderLeaf = (leaf: NavLeaf, sub = false) => {
     const Icon = leaf.icon;
-    const count = leaf.badge ? counts[leaf.badge] ?? 0 : 0;
+    const count = leaf.badge ? counts?.[leaf.badge] ?? 0 : 0;
     return (
       <li key={leaf.key}>
         <Link
@@ -66,7 +68,9 @@ export function Sidebar({
           <span className="sidebar-link-label truncate">
             {navLabel(leaf.key as NavKey, businessType)}
           </span>
-          {count > 0 && <CountBadge count={count} className="ml-auto" />}
+          {leaf.badge && countsLoading
+            ? <CountBadgeLoading label={common.badgeLoading} className="ml-auto" />
+            : count > 0 && <CountBadge count={count} className="ml-auto" />}
         </Link>
       </li>
     );
@@ -101,8 +105,9 @@ export function Sidebar({
             const Icon = entry.icon;
             const open = openGroup === entry.key;
             const hasActive = entry.children.some((c) => isActive(c.href));
+            const groupHasBadge = entry.children.some((c) => Boolean(c.badge));
             const groupCount = entry.children.reduce(
-              (sum, c) => sum + (c.badge ? counts[c.badge] ?? 0 : 0),
+              (sum, c) => sum + (c.badge ? counts?.[c.badge] ?? 0 : 0),
               0,
             );
 
@@ -119,7 +124,9 @@ export function Sidebar({
                   <span className="sidebar-link-label truncate">
                     {navLabel(entry.key as NavKey, businessType)}
                   </span>
-                  {groupCount > 0 && <CountBadge count={groupCount} className="ml-auto" />}
+                  {groupHasBadge && countsLoading
+                    ? <CountBadgeLoading label={common.badgeLoading} className="ml-auto" />
+                    : groupCount > 0 && <CountBadge count={groupCount} className="ml-auto" />}
                   <ChevronDown size={14} data-open={open} className="sidebar-group-arrow" />
                 </button>
                 {open && !collapsed && (

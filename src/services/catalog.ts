@@ -19,6 +19,13 @@ export const listProducts = () =>
 export const listProductOrders = () =>
   adapt<ProductOrder[]>(() => MOCK_PRODUCT_ORDERS, () => request<ProductOrder[]>('/api/product-orders'));
 
+/** Topbar／sidebar 的待處理商品訂單數（04 分冊 §B-3）。 */
+export const pendingProductOrderCount = () =>
+  adapt<number>(
+    () => MOCK_PRODUCT_ORDERS.filter((order) => order.status === 'PENDING').length,
+    async () => (await request<{ count: number }>('/api/product-orders/pending/count')).count,
+  );
+
 export const listCoupons = () =>
   adapt<Coupon[]>(() => MOCK_COUPONS, () => request<Coupon[]>('/api/coupons'));
 

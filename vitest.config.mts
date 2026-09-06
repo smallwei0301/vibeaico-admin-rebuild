@@ -16,6 +16,9 @@ export default defineConfig({
   resolve: {
     alias: { '@': resolve(import.meta.dirname, 'src') },
   },
+  // Next preserves JSX, while the component render contracts in this suite are
+  // evaluated by Vite directly.  Use the automatic runtime only for Vitest.
+  oxc: { jsx: { runtime: 'automatic' } },
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],

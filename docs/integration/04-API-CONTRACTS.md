@@ -272,6 +272,27 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 
 ---
 
+## §S AppShell shell values（Issue #34）
+
+AppShell 是所有後台頁共用的外框；`NEXT_PUBLIC_USE_MOCK=false` 時不得 render
+`MOCK_*` 常數或以 0／預設百分比取代查詢失敗。所有資料仍從 service 層取得：
+
+| Shell value | real contract | mock contract |
+|---|---|---|
+| `pendingBookingBadge` | `GET /api/bookings?status=PENDING&size=1` 的 `totalElements` | `MOCK_SIDEBAR_COUNTS` |
+| `pendingOrderBadge` | `GET /api/product-orders/pending/count` 的 `count` | `MOCK_SIDEBAR_COUNTS` |
+| `unreadChatBadge` | `GET /api/chat/conversations` 各列 `unread` 的合計 | `MOCK_SIDEBAR_COUNTS` |
+| setup progress | `GET /api/settings/setup-status` 的 `percent` | `MOCK_SETUP_STATUS` |
+| current user | `GET /api/auth/me` 的 `email`（尚無 profile name） | `MOCK_USER.name` |
+
+三態規則：載入中的徽章顯示非數字占位；成功的 0 不顯示徽章；單一來源失敗時該
+badge key 缺席，不得視為 0。setup progress 與 user 在載入或失敗時顯示 `--`；前者
+不得顯示任何百分比。real mode 必須先完成 `GET /api/auth/my-tenants` 並確定 current
+tenant，再開始查 shell values，避免瞬間顯示另一 tenant 的 cookie 資料。沒有
+tour-order count contract 時，不得補寫 `pendingTourOrderBadge: 0`。
+
+---
+
 ## 錯誤碼總表（前端顯示 message、依 code 分支）
 
 | code | 意義 | HTTP |

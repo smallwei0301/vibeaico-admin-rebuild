@@ -7,9 +7,12 @@ import { BugReportButton } from './BugReportModal';
 import { SupportChatWidget } from './SupportChatWidget';
 import { ToastProvider } from '@/components/ui/Toast';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
-import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
+import { MOCK_TENANTS, applyMockMode } from '@/mock';
 import { USE_MOCK } from '@/config/env';
-import { myTenants, switchTenant as switchTenantApi } from '@/services';
+import {
+  currentUser, getSetupStatus, myTenants, sidebarCounts, switchTenant as switchTenantApi,
+  type SidebarCounts,
+} from '@/services';
 import type { TenantSummary } from '@/lib/types';
 
 /** real 模式下清單尚未從 /api/auth/my-tenants 載入完成時的暫用值，避免 current 為 undefined */
@@ -48,11 +51,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [tenantId, setTenantId] = React.useState(
     (MOCK_TENANTS.find((t) => t.current) ?? MOCK_TENANTS[0]).id,
   );
+  const [tenantsResolved, setTenantsResolved] = React.useState(false);
 
   React.useEffect(() => {
     if (!USE_MOCK) return;
     const saved = localStorage.getItem('vibeai.tenant.id');
     if (saved && MOCK_TENANTS.some((t) => t.id === saved)) setTenantId(saved);
+    setTenantsResolved(true);
   }, []);
 
   /** real 模式：店家清單改打 GET /api/auth/my-tenants（mock 模式沿用 MOCK_TENANTS，行為不變） */
@@ -63,7 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setRemoteTenants(list);
       const cur = list.find((tt) => tt.current) ?? list[0];
       if (cur) setTenantId(cur.id);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setTenantsResolved(true));
   }, []);
 
   const tenants = USE_MOCK ? MOCK_TENANTS : remoteTenants;
@@ -73,6 +78,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     // 骨架模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
     applyMockMode(businessType);
   }
+
+  // null is deliberately distinct from 0/empty: before a real response (or
+  // after an error) the shell must not keep showing a previous tenant's value.
+  const [counts, setCounts] = React.useState<SidebarCounts | null>(null);
+  const [setupPercent, setSetupPercent] = React.useState<number | null>(null);
+  const [userName, setUserName] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    // A real shell must wait for my-tenants: before that, EMPTY_TENANT cannot
+    // identify a tenant safely and querying it risks displaying cookie data for
+    // the wrong store during the first render.
+    if (!tenantsResolved || (!USE_MOCK && !current.id)) return;
+    let active = true;
+    setCounts(null);
+    setSetupPercent(null);
+    setUserName(null);
+
+    void sidebarCounts()
+      .then((value) => { if (active) setCounts(value); })
+      .catch(() => { if (active) setCounts({}); });
+    void getSetupStatus()
+      .then((value) => { if (active) setSetupPercent(value.percent); })
+      .catch(() => { /* unknown is displayed as --, not as a fabricated percent */ });
+    void currentUser()
+      .then((value) => { if (active) setUserName(value.displayName); })
+      .catch(() => { /* unknown is displayed as --, not as a fabricated name */ });
+
+    return () => { active = false; };
+  }, [current.id, tenantsResolved]);
 
   const handleSwitchTenant = (id: string) => {
     if (USE_MOCK) {
@@ -92,7 +126,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}
-          counts={MOCK_SIDEBAR_COUNTS}
+          counts={counts}
           businessType={businessType}
           extraModules={current.extraModules}
         />
@@ -102,8 +136,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             tenants={tenants}
             currentTenant={current}
             onSwitchTenant={handleSwitchTenant}
-            userName={MOCK_USER.name}
-            setupPercent={MOCK_SETUP_STATUS.percent}
+            userName={userName}
+            setupPercent={setupPercent}
           />
           <main className="content-area" key={businessType}>{children}</main>
           <Footer />

@@ -24,8 +24,10 @@ export function Topbar({
   currentTenant: TenantSummary;
   /** 切換目前操作的店家（真實後端對應 POST /api/auth/switch-tenant） */
   onSwitchTenant?: (tenantId: string) => void;
-  userName: string;
-  setupPercent: number;
+  /** null means the identity is not yet known; never infer a person name. */
+  userName: string | null;
+  /** null means loading/error/unknown, distinct from a known 0%. */
+  setupPercent: number | null;
 }) {
   const [shopMenu, setShopMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
@@ -42,7 +44,17 @@ export function Topbar({
           <Menu size={20} />
         </button>
 
-        {setupPercent < 100 && (
+        {setupPercent === null ? (
+          <Link
+            href="/tenant/settings"
+            title={common.topbar.setupProgressUnknownHint}
+            className="hidden items-center gap-2 rounded-pill bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-200 sm:flex"
+          >
+            <span className="tabular-nums">{common.topbar.unknownValue}</span>
+            <span>{common.topbar.setupProgress}</span>
+            <span className="font-normal text-secondary">{common.topbar.setupProgressUnknown}</span>
+          </Link>
+        ) : setupPercent < 100 ? (
           <Link
             href="/tenant/settings"
             className="hidden items-center gap-2 rounded-pill bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-200 sm:flex"
@@ -50,7 +62,7 @@ export function Topbar({
             <span className="tabular-nums">{setupPercent}%</span>
             <span>{common.topbar.setupProgress}</span>
           </Link>
-        )}
+        ) : null}
       </div>
 
       <div className="topbar-right">
@@ -100,9 +112,9 @@ export function Topbar({
             onClick={() => { setUserMenu((v) => !v); setShopMenu(false); }}
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-              {userName.charAt(0).toUpperCase()}
+              {userName ? userName.charAt(0).toUpperCase() : '?'}
             </span>
-            <span className="hidden sm:inline">{userName}</span>
+            <span className="hidden sm:inline">{userName ?? common.topbar.unknownValue}</span>
             <ChevronDown size={14} />
           </button>
           {userMenu && (

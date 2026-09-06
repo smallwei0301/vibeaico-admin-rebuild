@@ -2192,7 +2192,11 @@ migration **0023_owner_notify**（兩個 Supabase 專案皆已套用並以
 
 ---
 
-### 10.5 issue #34（全站外框吃寫死常數）— 2026-08-26 完成
+### 10.5 issue #34 歷史候選（2026-08-26，非 current-main 證據）
+
+> 下列記錄描述歷史 commit `f3b93de` 的候選內容；它不在 current-main ancestry，
+> 因此不得把「完成」或其 TEST／Preview 結果用作目前 #34 的驗收證據。現況與
+> current-main rebuild 見新增的 §10.6。
 
 §10.2 的那三個值已改為依 `USE_MOCK` 分支，real 分支一律走 `src/services/*`。
 端點對照與三態表示法寫在 04 分冊 §S（本輪新增的一節），這裡只記**盤點結果**與
@@ -2270,6 +2274,25 @@ block-times）」直接 `import { MOCK_* }`。逐檔查證：
 customers 屬 #7；dashboard（`showSampleData` 分支）、services 與 recurring-bookings
 （service 的 mock 分支回 null 時才用頁內資料）屬正常用法。
 靜態鎖對這一層只做**盤點快照**（再長出新的一處就紅），**不是核可**。
+
+### 10.6 issue #34 current-main rebuild（進行中）
+
+基準 `c108c08` 的 `AppShell` 仍無條件 render `MOCK_SIDEBAR_COUNTS`、
+`MOCK_SETUP_STATUS.percent` 與 `MOCK_USER.name`，故 §10.2 的問題在 current main
+仍存在。重建只使用已存在的資料契約：待確認預約取
+`GET /api/bookings?status=PENDING&size=1` 的 `totalElements`、待處理商品訂單取
+`GET /api/product-orders/pending/count`、未讀訊息取 `GET /api/chat/conversations` 的
+`unread` 合計、設定進度取 `GET /api/settings/setup-status`、登入者取
+`GET /api/auth/me` 的 email。
+
+三態不可混用：載入中的徽章以非數字占位表示；成功的 0 不顯示徽章；單一來源失敗則
+缺少該 key，不得改成 0。設定進度與登入者在載入／錯誤時顯示 `--`，不猜測百分比或
+人名。real mode 必須先等 `myTenants()` 確定目前 tenant，避免首次 render 以空 context
+讀取並短暫顯示另一家店的 cookie 資料。
+
+目前只可宣稱 source/unit gates；shared TEST 驗證須使用 `owner-a@test.local` 的
+`LOCAL_SHOP` fixture，逐一比對 endpoint total、service-role DB count 與可見 sidebar
+badge，並清除自建資料。TEST／Preview／exact-head CI 未取得前，#34 不得標為完成。
 
 ---
 

@@ -1,6 +1,6 @@
 import { adapt, request } from '@/lib/api';
 import type { TenantSummary } from '@/lib/types';
-import { MOCK_TENANTS } from '@/mock';
+import { MOCK_TENANTS, MOCK_USER } from '@/mock';
 
 /**
  * 認證 service —— 頁面（login/register/forgot-password/reset-password）與
@@ -78,6 +78,18 @@ export const myTenants = () =>
   adapt<TenantSummary[]>(
     () => MOCK_TENANTS,
     () => request<TenantSummary[]>('/api/auth/my-tenants'),
+  );
+
+/** AppShell 顯示目前登入者；real API 尚無 profile name，誠實顯示 email。 */
+export type CurrentUser = { displayName: string; email: string };
+
+export const currentUser = () =>
+  adapt<CurrentUser>(
+    () => ({ displayName: MOCK_USER.name, email: MOCK_USER.email }),
+    async () => {
+      const me = await request<{ email: string }>('/api/auth/me');
+      return { displayName: me.email, email: me.email };
+    },
   );
 
 export const switchTenant = (tenantId: string) =>
