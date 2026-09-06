@@ -22,7 +22,7 @@ import { nav } from '@/i18n/zh-TW/nav';
 import { pointsPage as t } from '@/i18n/zh-TW/pages/points';
 import { formatDateTime, formatNumber } from '@/lib/utils';
 import type { PointTransaction, TenantSummary } from '@/lib/types';
-import { getPointBalance, listPointTransactions, transferPoints } from '@/services/points';
+import { getPointBalance, listPointTransactions, requestPointTopup, transferPoints } from '@/services/points';
 import { myTenants } from '@/services/auth';
 
 /* -------------------------------------------------------------------------- */
@@ -302,13 +302,20 @@ function TopupModal({ open, onClose }: { open: boolean; onClose: () => void }) {
     if (err) { toast.show(err, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      // POST /api/points/topup/pay。MVP 階段後端固定回 501（不接金流，見該
+      // route 註解）——這裡不假裝成功，成功路徑留給未來接上真的金流時用。
+      await requestPointTopup({
+        amount: Number(amount),
+        invoiceUbn: ubn.trim() || undefined,
+        invoiceTitle: invoiceTitle.trim() || undefined,
+        remark: remark.trim() || undefined,
+      });
+      toast.show(t.messages.topupRequested);
       onClose();
     } catch (e) {
-      toast.show(
-        `${t.messages.payCreateFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
-        'danger',
-      );
+      const msg = e instanceof Error ? e.message : t.messages.unknownError;
+      setError(msg);
+      toast.show(`${t.messages.payCreateFailedFull}${msg}`, 'warning');
     } finally {
       setSaving(false);
     }

@@ -17,14 +17,13 @@ import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import { listInventoryLogs, type InventoryLog, type InventoryLogType } from '@/services/products';
+import { exportInventoryCsv } from '@/services/inventory-export';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { inventoryPage as t } from '@/i18n/zh-TW/pages/inventory';
-import { formatDate, formatDateTime, formatNumber } from '@/lib/utils';
+import { formatDateTime, formatNumber } from '@/lib/utils';
 import type { Product } from '@/lib/types';
-
-/* -------------------------------------------------------------------------- */
 
 const TYPE_TONE: Record<InventoryLogType, 'success' | 'danger' | 'info' | 'warning' | 'neutral' | 'purple'> = {
   PURCHASE_IN: 'success',
@@ -37,10 +36,7 @@ const TYPE_TONE: Record<InventoryLogType, 'success' | 'danger' | 'info' | 'warni
 };
 
 const TYPE_KEYS = Object.keys(t.types) as InventoryLogType[];
-
 const PAGE_SIZE = 20;
-
-/* -------------------------------------------------------------------------- */
 
 export default function InventoryPage() {
   const toast = useToast();
@@ -49,28 +45,26 @@ export default function InventoryPage() {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [featureActive, setFeatureActive] = React.useState(true);
-
   const [typeFilter, setTypeFilter] = React.useState('');
   const [productFilter, setProductFilter] = React.useState('');
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
   const [exportOpen, setExportOpen] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      /* 商品篩選與分頁走後端（/api/inventory/logs?productId&page&size）；
-         異動類型後端尚無查詢參數，仍在前端就當頁資料過濾 */
-      const res = await listInventoryLogs({
+      const response = await listInventoryLogs({
         productId: productFilter || undefined,
         page,
         size: PAGE_SIZE,
       });
-      setRows(res.content);
-      setTotal(res.totalElements);
-    } catch (e) {
+      setRows(response.content);
+      setTotal(response.totalElements);
+    } catch (error) {
       toast.show(
-        `${t.messages.loadLogsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        `${t.messages.loadLogsFailed}${error instanceof Error ? error.message : t.messages.unknownError}`,
         'danger',
       );
       setRows([]);
@@ -86,7 +80,7 @@ export default function InventoryPage() {
     void (async () => {
       try {
         const [features, list] = await Promise.all([listFeatures(), listProducts()]);
-        setFeatureActive(features.some((f) => f.code === 'INVENTORY' && f.active));
+        setFeatureActive(features.some((feature) => feature.code === 'INVENTORY' && feature.active));
         setProducts(list);
       } catch {
         toast.show(t.messages.connectionError, 'danger');
@@ -98,15 +92,31 @@ export default function InventoryPage() {
     () => (typeFilter ? rows.filter((log) => log.type === typeFilter) : rows),
     [rows, typeFilter],
   );
-
   const visible = filtered;
   const displayTotal = typeFilter ? filtered.length : total;
 
-  const exportCsv = () => {
-    /* 事件處理器內才取當下日期；render 期不碰 Date */
-    const today = formatDate(new Date().toISOString()).replace(/\//g, '');
-    setExportOpen(false);
-    toast.show(`${t.messages.exported} ${t.exportFile.filename(today)}`);
+  const runExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const result = await exportInventoryCsv({
+        productId: productFilter || undefined,
+        type: typeFilter || undefined,
+      });
+      if (!result.downloaded) {
+        toast.show(t.messages.exportNotDownloaded, 'warning');
+        return;
+      }
+      setExportOpen(false);
+      toast.show(result.fileName ? t.messages.exportedAs(result.fileName) : t.messages.exported);
+    } catch (error) {
+      toast.show(
+        `${t.messages.exportFailedPrefix}${error instanceof Error ? error.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const columns: Column<InventoryLog>[] = [
@@ -179,7 +189,7 @@ export default function InventoryPage() {
                 className="form-select-sm w-auto"
                 aria-label={t.filter.typeLabel}
                 value={typeFilter}
-                onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}
+                onChange={(event) => { setTypeFilter(event.target.value); setPage(0); }}
               >
                 <option value="">{t.filter.typeAll}</option>
                 {TYPE_KEYS.map((key) => (
@@ -194,11 +204,11 @@ export default function InventoryPage() {
                 className="form-select-sm w-auto"
                 aria-label={t.filter.productLabel}
                 value={productFilter}
-                onChange={(e) => { setProductFilter(e.target.value); setPage(0); }}
+                onChange={(event) => { setProductFilter(event.target.value); setPage(0); }}
               >
                 <option value="">{t.filter.productAll}</option>
-                {products.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>{product.name}</option>
                 ))}
               </Select>
             </span>
@@ -210,7 +220,6 @@ export default function InventoryPage() {
 
       <DataTableContainer>
         <DataTableHeader title={t.tableTitle} />
-
         <DataTable
           columns={columns}
           rows={visible}
@@ -225,7 +234,6 @@ export default function InventoryPage() {
             />
           }
         />
-
         <DataTableFooter>
           <Pagination page={page} size={PAGE_SIZE} total={displayTotal} onChange={setPage} />
         </DataTableFooter>
@@ -235,9 +243,10 @@ export default function InventoryPage() {
         open={exportOpen}
         title={t.confirm.exportTitle}
         confirmText={t.actions.export}
+        loading={exporting}
         message={t.confirm.export}
         onClose={() => setExportOpen(false)}
-        onConfirm={exportCsv}
+        onConfirm={() => { void runExport(); }}
       />
     </>
   );

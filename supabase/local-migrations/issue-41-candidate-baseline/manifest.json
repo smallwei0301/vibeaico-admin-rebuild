@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "mode": "LOCAL_ONLY_TRANSITIONAL",
+  "source": {
+    "repository": "smallwei0301/vibeaico-admin-rebuild",
+    "branch": "agent/issue-41-epoch-current-main",
+    "head": "b583a08b0542ec33d81a587d844df2605ef6f8d6",
+    "pullRequest": 73,
+    "status": "CANDIDATE_SOURCE_NOT_CANONICAL"
+  },
+  "reason": "Supply only the Issue #41 candidate schema needed to make the disposable local baseline match the current standard seed. This does not make PR #73 canonical or modify the remote migration ledger.",
+  "files": [
+    {
+      "name": "0038_notification_outbox_delivery.sql",
+      "blobSha": "882f8fce8f62a31ca5875e6343a8490e0fda202d"
+    },
+    {
+      "name": "0038a_restrict_internal_notification_functions.sql",
+      "targetName": "0039_restrict_internal_notification_functions_local.sql",
+      "blobSha": "a592fa2f73cf79669b8504a5a2e22287e5b581fe"
+    },
+    {
+      "name": "0040_issue_41_group_formation_lifecycle.sql",
+      "blobSha": "92eecadd8426c9d3ab92e0a0c2566ff3f3b372de"
+    }
+  ]
+}

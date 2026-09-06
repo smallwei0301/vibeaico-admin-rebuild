@@ -19,6 +19,34 @@ describe('seed schema error classification', () => {
     expect(source).toContain("slug: 'private-test-plan'");
   });
 
+  it('assigns distinct service sort positions in the standard seed', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
+    expect(source).toMatch(
+      /id: SHOP_A\.serviceA1,[\s\S]*?sort_order: 0,[\s\S]*?id: SHOP_A\.serviceA2,[\s\S]*?sort_order: 1,/,
+    );
+  });
+
+  it('does not rely on database defaults for either standard service row', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
+    const servicesSeed = source.slice(
+      source.indexOf("await safeUpsert(\n    admin,\n    'services'"),
+      source.indexOf("await safeUpsert(\n    admin,\n    'staff'"),
+    );
+    expect(servicesSeed.match(/(?<!line_)sort_order:\s*\d+/g)).toEqual(['sort_order: 0', 'sort_order: 1']);
+    expect(servicesSeed.match(/line_sort_order:\s*\d+/g)).toEqual(['line_sort_order: 0', 'line_sort_order: 1']);
+  });
+
+  it('keeps both standard service rows in the same tenant scope', () => {
+    const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
+    const servicesSeed = source.slice(
+      source.indexOf("await safeUpsert(\n    admin,\n    'services'"),
+      source.indexOf("await safeUpsert(\n    admin,\n    'staff'"),
+    );
+    expect(servicesSeed.match(/tenant_id: SHOP_A\.id/g)).toHaveLength(2);
+    expect(servicesSeed).toContain('id: SHOP_A.serviceA1');
+    expect(servicesSeed).toContain('id: SHOP_A.serviceA2');
+  });
+
   it('fails closed when required trip plan or departure seed data cannot be written', () => {
     const source = readFileSync(resolve(process.cwd(), 'scripts/test/seed.mjs'), 'utf8');
     expect(source).toMatch(/if \(!tripPlansSeeded\)\s*\{\s*throw new Error\(/);

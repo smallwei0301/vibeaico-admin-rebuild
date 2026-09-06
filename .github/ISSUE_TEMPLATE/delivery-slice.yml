@@ -1,0 +1,116 @@
+name: Delivery Slice（可獨立關閉的小交付）
+description: Use for one user-visible, independently usable and closeable Product outcome under an optional parent Epic.
+title: "[Delivery Slice] "
+body:
+  - type: dropdown
+    id: delivery-unit-type
+    attributes:
+      label: DELIVERY_UNIT_TYPE
+      description: SLICE belongs to a parent Epic; STANDALONE is already a single bounded outcome.
+      options:
+        - SLICE
+        - STANDALONE
+    validations:
+      required: true
+
+  - type: input
+    id: parent-epic
+    attributes:
+      label: PARENT_EPIC
+      description: Use the parent planning Issue, or write none for STANDALONE.
+      placeholder: "#42 / none"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: count-in-delivery-outcome
+    attributes:
+      label: COUNT_IN_DELIVERY_OUTCOME
+      description: New independently shipped work uses true. Historical tracking migrations must use false.
+      options:
+        - "true"
+        - "false"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: retrospective-migration
+    attributes:
+      label: RETROACTIVE_TRACKING_MIGRATION
+      description: Mark true only when this Issue is created after the work was already delivered; it then cannot count as new output.
+      options:
+        - "false"
+        - "true"
+    validations:
+      required: true
+
+  - type: textarea
+    id: user-outcome
+    attributes:
+      label: One user-visible outcome
+      description: Describe exactly what a real user can see, operate or persist after this Slice closes. Keep only one outcome.
+      placeholder: "GUIDE can change a plan price, save it, reload the page and see the same value."
+    validations:
+      required: true
+
+  - type: textarea
+    id: real-side-effect
+    attributes:
+      label: Real side effect / persistence
+      description: Name the API, database state, download, provider action or other real result. A toast or local-only state is not enough.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Bounded acceptance
+      description: List the exact observable checks, including reload/persistence, tenant isolation and browser evidence when applicable.
+      placeholder: |
+        - [ ] Save succeeds through the real tenant-scoped API.
+        - [ ] Reload preserves the value.
+        - [ ] Another tenant cannot read or modify it.
+        - [ ] Exact-head CI and required TEST gates are green.
+    validations:
+      required: true
+
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Explicitly out of scope
+      description: Name sibling Epic work that is not required before this Slice can close.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence-plan
+    attributes:
+      label: Evidence plan
+      description: State which unit, integration, E2E, screenshot, provider or live main evidence will close this Slice.
+    validations:
+      required: true
+
+  - type: input
+    id: ownership
+    attributes:
+      label: FILE_OWNERSHIP
+      description: Repository-relative files or roots owned by the implementation. No wildcard, absolute path or parent traversal.
+      placeholder: "src/app/tenant/trips/[id]/page.tsx, tests/e2e/trip-plan.spec.ts"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Slice boundary checks
+      options:
+        - label: This Issue has one independently usable Product outcome, not several sibling features bundled together.
+          required: true
+        - label: The parent Epic may remain open after this Slice closes.
+          required: true
+        - label: I searched open Issues and PRs and found no equivalent active implementation.
+          required: true
+        - label: This Slice can be closed in the same Run after merge, live Issue verification and ref=main re-read.
+          required: true
+        - label: A retroactive tracking migration is marked COUNT_IN_DELIVERY_OUTCOME=false and will not rewrite a past Run.
+          required: true

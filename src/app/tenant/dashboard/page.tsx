@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   AlertTriangle, ArrowRightCircle, BarChart3, Bell, CalendarCheck, CalendarDays,
   CalendarPlus, ClipboardCopy, Clock, Copy, DollarSign, ExternalLink, Eye,
-  Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
+  ClipboardList, Hourglass, Layers, Megaphone, Package, PieChart, Radio, Rocket, Palette,
   Settings, Ticket, TrendingDown, Trophy, Users, X, Zap,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -17,14 +17,18 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
-import { getDashboardAlerts, getDashboardStats, getStaffPerformance } from '@/services/reports';
+import {
+  getDashboardAlerts, getDashboardStats, getMonthSources, getRecentActivity, getStaffPerformance,
+  getWeeklyTrend, type MonthSourcePoint, type RecentActivity, type WeeklyTrendPoint,
+} from '@/services/reports';
 import { getSetupStatus } from '@/services/settings';
 import { listBookings } from '@/services/bookings';
-import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
-import { byMode } from '@/mock';
+import { getGuideActionInbox } from '@/services/guide-action-inbox';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { APP_URL } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { FEATURE_EXPIRY_WARNING_DAYS } from '@/config/features';
+import { MODE_PRESETS } from '@/config/modes';
 import { common } from '@/i18n/zh-TW/common';
 import { dashboardPage as t } from '@/i18n/zh-TW/pages/dashboard';
 import {
@@ -33,101 +37,12 @@ import {
 import type {
   Booking, BookingStatus, DashboardAlerts, DashboardStats, SetupStatus, StaffPerformance,
 } from '@/lib/types';
+import type { GuideActionInboxItem, GuideActionInboxPriority } from '@/lib/guide-action-inbox';
 
-/* -------------------------------------------------------------------------- */
-/* 本頁專用的骨架假資料（不寫進 src/mock，避免與其他頁面衝突）                    */
 /* -------------------------------------------------------------------------- */
 
 /** LINE 官方帳號方案：原站由 /api/settings/line 取得，骨架階段先固定 */
 const MOCK_LINE_PLAN: 'LITE' | 'PRO' = 'LITE';
-
-type ActivityType =
-  | 'BOOKING_CREATED' | 'BOOKING_CANCELLED' | 'BOOKING_COMPLETED'
-  | 'CUSTOMER_CREATED' | 'ORDER_CREATED';
-
-type RecentActivity = { id: string; type: ActivityType; name: string; target: string; at: string };
-
-const ACTIVITY_LOCAL_SHOP: RecentActivity[] = [
-  { id: 'a_1', type: 'BOOKING_CREATED', name: '王小明', target: '精緻剪髮', at: '2026-08-20T09:12:00+08:00' },
-  { id: 'a_2', type: 'ORDER_CREATED', name: '陳雅婷', target: '護髮油 100ml', at: '2026-08-20T08:40:00+08:00' },
-  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '陳雅婷', target: '深層護髮', at: '2026-08-19T15:45:00+08:00' },
-  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '林佳蓉', target: '', at: '2026-08-19T11:02:00+08:00' },
-  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '陳雅婷', target: '全頭染髮', at: '2026-08-17T10:20:00+08:00' },
-];
-
-const ACTIVITY_GUIDE: RecentActivity[] = [
-  { id: 'a_1', type: 'BOOKING_CREATED', name: '黃思穎', target: '花蓮砂婆礑溯溪體驗', at: '2026-08-20T09:12:00+08:00' },
-  { id: 'a_2', type: 'ORDER_CREATED', name: '林巧薇', target: '防水袋 20L', at: '2026-08-20T08:40:00+08:00' },
-  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '陳彥廷', target: '龜山島賞鯨半日遊', at: '2026-08-19T15:45:00+08:00' },
-  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '吳孟儒', target: '', at: '2026-08-19T11:02:00+08:00' },
-  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '張家豪', target: '九份山城夜訪散策', at: '2026-08-17T10:20:00+08:00' },
-];
-
-const ACTIVITY_CLINIC: RecentActivity[] = [
-  { id: 'a_1', type: 'BOOKING_CREATED', name: '許文彥', target: '流感疫苗接種', at: '2026-08-20T09:12:00+08:00' },
-  { id: 'a_2', type: 'ORDER_CREATED', name: '蔡淑芬', target: '綜合維他命（90 錠）', at: '2026-08-20T08:40:00+08:00' },
-  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '劉建國', target: '複診', at: '2026-08-19T15:45:00+08:00' },
-  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '周佩琪', target: '', at: '2026-08-19T11:02:00+08:00' },
-  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '蔡淑芬', target: '成人健康檢查', at: '2026-08-17T10:20:00+08:00' },
-];
-
-type WeeklyTrendPoint = { weekday: number; bookings: number; revenue: number };
-type MonthSourcePoint = { source: Booking['source']; count: number };
-
-/** 本週預約趨勢：weekday 對應 common.weekdays 的索引（0 = 週日） */
-const TREND_LOCAL_SHOP: WeeklyTrendPoint[] = [
-  { weekday: 1, bookings: 6, revenue: 8400 },
-  { weekday: 2, bookings: 9, revenue: 15600 },
-  { weekday: 3, bookings: 4, revenue: 5200 },
-  { weekday: 4, bookings: 11, revenue: 21800 },
-  { weekday: 5, bookings: 14, revenue: 28600 },
-  { weekday: 6, bookings: 17, revenue: 34200 },
-  { weekday: 0, bookings: 8, revenue: 14600 },
-];
-
-/** 嚮導出團集中在週末與連假，平日以諮詢、整裝為主 */
-const TREND_GUIDE: WeeklyTrendPoint[] = [
-  { weekday: 1, bookings: 1, revenue: 3200 },
-  { weekday: 2, bookings: 2, revenue: 6400 },
-  { weekday: 3, bookings: 1, revenue: 2800 },
-  { weekday: 4, bookings: 3, revenue: 18600 },
-  { weekday: 5, bookings: 5, revenue: 42800 },
-  { weekday: 6, bookings: 9, revenue: 96400 },
-  { weekday: 0, bookings: 7, revenue: 78200 },
-];
-
-/** 診所平日門診量高，週末僅半日看診 */
-const TREND_CLINIC: WeeklyTrendPoint[] = [
-  { weekday: 1, bookings: 46, revenue: 32400 },
-  { weekday: 2, bookings: 52, revenue: 38600 },
-  { weekday: 3, bookings: 44, revenue: 30800 },
-  { weekday: 4, bookings: 50, revenue: 36200 },
-  { weekday: 5, bookings: 58, revenue: 41400 },
-  { weekday: 6, bookings: 22, revenue: 15600 },
-  { weekday: 0, bookings: 0, revenue: 0 },
-];
-
-/** 本月預約來源分布 */
-const SOURCES_LOCAL_SHOP: MonthSourcePoint[] = [
-  { source: 'LINE', count: 84 },
-  { source: 'PUBLIC_PAGE', count: 41 },
-  { source: 'MANUAL', count: 18 },
-  { source: 'RECURRING', count: 7 },
-];
-
-const SOURCES_GUIDE: MonthSourcePoint[] = [
-  { source: 'PUBLIC_PAGE', count: 38 },
-  { source: 'LINE', count: 26 },
-  { source: 'MANUAL', count: 14 },
-  { source: 'RECURRING', count: 0 },
-];
-
-const SOURCES_CLINIC: MonthSourcePoint[] = [
-  { source: 'LINE', count: 612 },
-  { source: 'PUBLIC_PAGE', count: 204 },
-  { source: 'RECURRING', count: 96 },
-  { source: 'MANUAL', count: 48 },
-];
 
 const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'danger' | 'neutral'> = {
   PENDING: 'warning',
@@ -135,6 +50,12 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
   COMPLETED: 'success',
   CANCELLED: 'neutral',
   NO_SHOW: 'danger',
+};
+
+const ACTION_INBOX_TONE: Record<GuideActionInboxPriority, 'danger' | 'warning' | 'info'> = {
+  IMMEDIATE: 'danger',
+  TODAY: 'warning',
+  UPCOMING: 'info',
 };
 
 const QUICK_ACTIONS = [
@@ -157,6 +78,8 @@ const daysUntil = (isoDate: string) =>
 /* -------------------------------------------------------------------------- */
 
 export default function DashboardPage() {
+  const businessType = useBusinessType();
+  const modePreset = MODE_PRESETS[businessType];
   const currentTenant = useCurrentTenant();
   const PUBLIC_BOOKING_URL = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const toast = useToast();
@@ -166,11 +89,17 @@ export default function DashboardPage() {
   const [setup, setSetup] = React.useState<SetupStatus | null>(null);
   const [performance, setPerformance] = React.useState<StaffPerformance[]>([]);
   const [todayRows, setTodayRows] = React.useState<Booking[]>([]);
+  const [actionInbox, setActionInbox] = React.useState<GuideActionInboxItem[]>([]);
 
   const [loadingToday, setLoadingToday] = React.useState(true);
+  const [loadingActionInbox, setLoadingActionInbox] = React.useState(false);
   const [loadingPerformance, setLoadingPerformance] = React.useState(true);
   const [loadingActivity, setLoadingActivity] = React.useState(true);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
+  const [weeklyTrend, setWeeklyTrend] = React.useState<WeeklyTrendPoint[]>([]);
+  const [loadingTrend, setLoadingTrend] = React.useState(true);
+  const [monthSources, setMonthSources] = React.useState<MonthSourcePoint[]>([]);
+  const [loadingSources, setLoadingSources] = React.useState(true);
 
   const [focusOpen, setFocusOpen] = React.useState(true);
   const [confirmSkipFocus, setConfirmSkipFocus] = React.useState(false);
@@ -206,14 +135,33 @@ export default function DashboardPage() {
     })();
     void (async () => {
       try {
-        await new Promise((r) => setTimeout(r, 320));
-        setActivity(byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC }));
+        setActivity(await getRecentActivity());
       } catch (e) { fail(t.errors.recentActivity, e); } finally { setLoadingActivity(false); }
+    })();
+    void (async () => {
+      try { setWeeklyTrend(await getWeeklyTrend()); } catch (e) { fail(t.errors.weekly, e); } finally { setLoadingTrend(false); }
+    })();
+    void (async () => {
+      try { setMonthSources(await getMonthSources()); } catch (e) { fail(t.errors.sources, e); } finally { setLoadingSources(false); }
     })();
   }, [fail]);
 
-  const weeklyTrend = byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC });
-  const monthSources = byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC });
+  React.useEffect(() => {
+    let mounted = true;
+    setActionInbox([]);
+    setLoadingActionInbox(true);
+    void (async () => {
+      try {
+        const items = await getGuideActionInbox();
+        if (mounted) setActionInbox(items);
+      } catch (e) {
+        if (mounted) fail(t.errors.actionInbox, e);
+      } finally {
+        if (mounted) setLoadingActionInbox(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [businessType, fail]);
 
   const copyPublicUrl = async () => {
     try {
@@ -284,6 +232,100 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader title={t.title} />
+
+      {/* ------------------------------------------------ GUIDE 首頁待處理事項 */}
+      {modePreset.showActionInbox ? (
+        <Card className="mb-4 border-primary">
+          <CardHeader>
+            <CardTitle>
+              <ClipboardList size={16} className="text-primary" />
+              {t.actionInbox.title}
+              <span className="form-text">{t.actionInbox.count(actionInbox.length)}</span>
+            </CardTitle>
+            <div className="flex flex-wrap gap-2">
+              {actionInbox.some((item) => item.kind === 'BOOKING_REQUEST') ? (
+                <Link href="/tenant/bookings?status=PENDING" className="btn btn-outline btn-sm">
+                  {t.actionInbox.viewBookings}
+                </Link>
+              ) : null}
+              {actionInbox.some((item) => item.kind === 'BOOKING_PAYMENT') ? (
+                <Link href="/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID" className="btn btn-outline btn-sm">
+                  {t.actionInbox.viewPayments}
+                </Link>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardBody>
+            {loadingActionInbox ? (
+              <div className="py-4 text-center text-muted">{t.actionInbox.loading}</div>
+            ) : actionInbox.length === 0 ? (
+              <EmptyState icon={ClipboardList} title={t.actionInbox.empty} />
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {actionInbox.map((item) => (
+                  <li
+                    key={item.id}
+                    className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <Badge tone={ACTION_INBOX_TONE[item.priority]}>
+                          {t.actionInbox.priority[item.priority]}
+                        </Badge>
+                        <span className="text-sm font-semibold text-dark">
+                          {item.kind === 'BOOKING_REQUEST'
+                            ? t.actionInbox.bookingRequest
+                            : item.kind === 'BOOKING_PAYMENT'
+                              ? t.actionInbox.bookingPayment
+                              : t.actionInbox.departure}
+                        </span>
+                      </div>
+                      {item.kind === 'BOOKING_REQUEST' ? (
+                        <>
+                          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+                          <div className="text-sm text-secondary">{item.serviceName}</div>
+                          <div className="mt-1 text-xs text-secondary">
+                            {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
+                          </div>
+                        </>
+                      ) : item.kind === 'BOOKING_PAYMENT' ? (
+                        <>
+                          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+                          <div className="text-sm text-secondary">{item.serviceName}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+                            <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
+                            <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+                          <div className="text-sm text-secondary">{item.planName}</div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+                            <span>{t.actionInbox.departureDay[item.departureDay]}</span>
+                            <span>{t.actionInbox.departureAt}：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
+                            <span>{t.actionInbox.departureSeats(item.seatsBooked, item.capacity)}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    <Link
+                      href={item.href}
+                      className="btn btn-primary btn-sm w-full flex-shrink-0 sm:w-auto"
+                    >
+                      {item.kind === 'BOOKING_REQUEST'
+                        ? t.actionInbox.open
+                        : item.kind === 'BOOKING_PAYMENT'
+                          ? t.actionInbox.openPayment
+                          : t.actionInbox.openDeparture}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+      ) : null}
 
       {/* ------------------------------------------------ 3 分鐘開始收單 引導卡 */}
       {focusOpen ? (
@@ -771,25 +813,29 @@ export default function DashboardPage() {
                 {t.weeklyTrend.revenue}
               </span>
             </div>
-            <div className="flex h-40 items-end gap-2">
-              {weeklyTrend.map((d) => (
-                <div key={d.weekday} className="flex h-full flex-1 flex-col justify-end gap-1">
-                  <div className="flex h-full items-end gap-1">
-                    <div
-                      className="flex-1 rounded-sm bg-primary"
-                      style={{ height: `${Math.max((d.bookings / maxWeeklyBookings) * 100, 4)}%` }}
-                      title={`${t.weeklyTrend.tooltipBookings}${formatNumber(d.bookings)}`}
-                    />
-                    <div
-                      className="flex-1 rounded-sm bg-success"
-                      style={{ height: `${Math.max((d.revenue / maxWeeklyRevenue) * 100, 4)}%` }}
-                      title={`${t.weeklyTrend.tooltipRevenue}${formatNumber(d.revenue)}`}
-                    />
+            {loadingTrend ? (
+              <div className="flex h-40 items-center justify-center text-muted">{common.loading}</div>
+            ) : (
+              <div className="flex h-40 items-end gap-2">
+                {weeklyTrend.map((d) => (
+                  <div key={d.weekday} className="flex h-full flex-1 flex-col justify-end gap-1">
+                    <div className="flex h-full items-end gap-1">
+                      <div
+                        className="flex-1 rounded-sm bg-primary"
+                        style={{ height: `${Math.max((d.bookings / maxWeeklyBookings) * 100, 4)}%` }}
+                        title={`${t.weeklyTrend.tooltipBookings}${formatNumber(d.bookings)}`}
+                      />
+                      <div
+                        className="flex-1 rounded-sm bg-success"
+                        style={{ height: `${Math.max((d.revenue / maxWeeklyRevenue) * 100, 4)}%` }}
+                        title={`${t.weeklyTrend.tooltipRevenue}${formatNumber(d.revenue)}`}
+                      />
+                    </div>
+                    <div className="text-center text-2xs text-secondary">{common.weekdays[d.weekday]}</div>
                   </div>
-                  <div className="text-center text-2xs text-secondary">{common.weekdays[d.weekday]}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardBody>
         </Card>
 
@@ -801,7 +847,9 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardBody>
-            {sourceTotal === 0 ? (
+            {loadingSources ? (
+              <div className="py-8 text-center text-muted">{common.loading}</div>
+            ) : sourceTotal === 0 ? (
               <EmptyState icon={PieChart} title={t.monthSource.empty} />
             ) : (
               <ul className="flex flex-col gap-3">

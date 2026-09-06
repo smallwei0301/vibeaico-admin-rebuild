@@ -2,10 +2,16 @@ import { z } from 'zod';
 import { handle, ok, fail, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
+import {
+  removeWelcomeCardImage,
+  tenantOwnedPublicStorageUrl,
+  WELCOME_CARD_BUCKET,
+} from '@/server/storage';
 import { decryptSecret } from '@/server/crypto';
 import {
   basicSettingsSchema, businessSettingsSchema, notifySettingsSchema,
   privacySettingsSchema, pointsSettingsSchema, lineSettingsSchema,
+  brandingSettingsSchema,
   maskSecret, buildWebhookUrl, DEFAULT_TENANT_SETTINGS,
   type TenantSettings,
 } from '@/config/tenant-settings';
@@ -38,6 +44,7 @@ export const GET = handle(async () => {
         privacy: privacySettingsSchema.parse(row.privacy ?? {}),
         points: pointsSettingsSchema.parse(row.points ?? {}),
         line: lineSettingsSchema.parse(row.line ?? {}),
+        branding: brandingSettingsSchema.parse(row.branding ?? {}),
       }
     : DEFAULT_TENANT_SETTINGS(t.shopCode, t.tenantName);
 
@@ -62,11 +69,38 @@ const bodySchema = z.object({
   privacy: privacySettingsSchema.optional(),
   points: pointsSettingsSchema.optional(),
   line: z.unknown().optional(), // 忽略——line 群組走專用端點
+  branding: brandingSettingsSchema.optional(),
 });
 
 export const PUT = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const b = bodySchema.parse(await req.json());
+  const notify = b.notify?.welcomeCardImageUrl
+    ? {
+        ...b.notify,
+        welcomeCardImageUrl:
+          tenantOwnedPublicStorageUrl(
+            b.notify.welcomeCardImageUrl,
+            WELCOME_CARD_BUCKET,
+            t.tenantId,
+          ) ?? b.notify.welcomeCardImageUrl,
+      }
+    : b.notify;
+
+  let previousWelcomeCardImageUrl = '';
+  if (b.notify) {
+    const { data: currentRow, error: currentError } = await t.supabase
+      .from('tenant_settings')
+      .select('notify')
+      .eq('tenant_id', t.tenantId)
+      .maybeSingle();
+    if (currentError) throw currentError;
+    const currentNotify = currentRow?.notify as Record<string, unknown> | null | undefined;
+    previousWelcomeCardImageUrl =
+      typeof currentNotify?.welcomeCardImageUrl === 'string'
+        ? currentNotify.welcomeCardImageUrl
+        : '';
+  }
 
   if (b.basic && b.basic.shopCode !== t.shopCode) {
     // ⚠️ 查重必須用 service role：RLS 下使用者只看得到自己所屬店家的
@@ -98,16 +132,57 @@ export const PUT = handle(async (req) => {
   const update: Record<string, unknown> = {};
   if (b.basic) update.basic = b.basic;
   if (b.business) update.business = b.business;
-  if (b.notify) update.notify = b.notify;
+  if (notify) update.notify = notify;
   if (b.privacy) update.privacy = b.privacy;
   if (b.points) update.points = b.points;
+  if (b.branding) update.branding = b.branding;
 
   if (Object.keys(update).length) {
     const { error } = await t.supabase
       .from('tenant_settings')
       .upsert({ tenant_id: t.tenantId, ...update }, { onConflict: 'tenant_id' });
+    const dbError = error as { code?: string; constraint?: string; message?: string } | null;
+    if (
+      dbError?.code === '23514' &&
+      (
+        dbError.constraint === 'welcome_card_image_not_retired' ||
+        dbError.message === 'welcome card image has been retired'
+      )
+    ) {
+      return fail(409, '此歡迎卡片圖片已失效，請重新上傳圖片', ERR.CONFLICT);
+    }
     if (error) throw error;
   }
 
-  return ok();
+  let welcomeCardImageCleanupPending = false;
+  if (notify) {
+    const nextWelcomeCardImageUrl = notify.welcomeCardImageUrl;
+    if (previousWelcomeCardImageUrl && previousWelcomeCardImageUrl !== nextWelcomeCardImageUrl) {
+      // The DB reference is already truthful. Cleanup is best-effort because
+      // Storage and Postgres cannot share one transaction; a failure must not
+      // report a false settings failure after the new URL has been persisted.
+      try {
+        const { data: currentRow, error: currentError } = await createAdminSupabase()
+          .from('tenant_settings')
+          .select('notify')
+          .eq('tenant_id', t.tenantId)
+          .maybeSingle();
+        if (currentError) throw currentError;
+        const currentNotify = currentRow?.notify as Record<string, unknown> | null | undefined;
+        const currentUrl =
+          typeof currentNotify?.welcomeCardImageUrl === 'string'
+            ? currentNotify.welcomeCardImageUrl
+            : '';
+        // Do not delete an object that a concurrent manager update restored.
+        if (currentUrl !== previousWelcomeCardImageUrl) {
+          await removeWelcomeCardImage(previousWelcomeCardImageUrl, t.tenantId);
+        }
+      } catch (error) {
+        console.error('[settings] welcome-card image cleanup failed', t.tenantId, error);
+        welcomeCardImageCleanupPending = true;
+      }
+    }
+  }
+
+  return welcomeCardImageCleanupPending ? ok({ welcomeCardImageCleanupPending: true }) : ok();
 });

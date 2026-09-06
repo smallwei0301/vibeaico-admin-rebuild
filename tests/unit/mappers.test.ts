@@ -223,6 +223,7 @@ describe('mapStaff (02 §0004 staff / staff_services)', () => {
     bookable: true,
     active: true,
     sort_order: 2,
+    schedule_mode: 'FIXED_REST',
   };
 
   it('全欄位比對', () => {
@@ -237,7 +238,13 @@ describe('mapStaff (02 §0004 staff / staff_services)', () => {
       bookable: true,
       active: true,
       sortOrder: 2,
+      scheduleMode: 'FIXED_REST',
     });
+  });
+
+  it('#7 schedule_mode 缺欄位（尚未回填的舊環境）→ 預設 ROTATING', () => {
+    const { schedule_mode, ...rowWithoutScheduleMode } = fullRow;
+    expect(mapStaff(rowWithoutScheduleMode).scheduleMode).toBe('ROTATING');
   });
 
   it('phone / email / title / avatar_url null → 空字串', () => {

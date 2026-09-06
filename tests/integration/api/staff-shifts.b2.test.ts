@@ -34,6 +34,7 @@ function uniqueSuffix(): string {
 
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
+let ownerB: AuthedApi;
 
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
@@ -42,6 +43,7 @@ beforeAll(async () => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
+  ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
 });
 
 async function staffServiceIds(staffId: string): Promise<string[]> {
@@ -82,6 +84,44 @@ describe('POST /api/services → GET /api/services（04 §B-2 CRUD）', () => {
   });
 });
 
+describe('POST /api/services/:id/duplicate（04 §B-2）', () => {
+  it('複製服務會同時配置 public 與 LINE 排序且排在最後', async () => {
+    const before = await admin
+      .from('services')
+      .select('sort_order, line_sort_order')
+      .eq('tenant_id', SHOP_A.id);
+    expect(before.error).toBeNull();
+    const maxSort = Math.max(...(before.data ?? []).map((row: any) => row.sort_order), -1);
+    const maxLineSort = Math.max(...(before.data ?? []).map((row: any) => row.line_sort_order), -1);
+
+    const source = await admin
+      .from('services')
+      .select('name')
+      .eq('id', SHOP_A.serviceA1)
+      .single();
+    expect(source.error).toBeNull();
+
+    const res = await ownerA.post(`/api/services/${SHOP_A.serviceA1}/duplicate`);
+    expect(res.status).toBe(200);
+    const body = await readJson<{ id: string }>(res);
+    expect(body.success).toBe(true);
+    const duplicateId = body.data!.id;
+    try {
+      const duplicate = await admin
+        .from('services')
+        .select('name, sort_order, line_sort_order')
+        .eq('id', duplicateId)
+        .single();
+      expect(duplicate.error).toBeNull();
+      expect(duplicate.data!.name).toBe(`${source.data!.name}（複本）`);
+      expect(duplicate.data!.sort_order).toBeGreaterThan(maxSort);
+      expect(duplicate.data!.line_sort_order).toBeGreaterThan(maxLineSort);
+    } finally {
+      await admin.from('services').delete().eq('id', duplicateId);
+    }
+  });
+});
+
 describe('DELETE /api/services/:id 有未來預約 → 軟刪 active=false（04 §B-2）', () => {
   it('服務仍存在但 active=false，且回應 200', async () => {
     const serviceId = randomUUID();
@@ -89,10 +129,11 @@ describe('DELETE /api/services/:id 有未來預約 → 軟刪 active=false（04 
     const bookingId = randomUUID();
     const start = new Date(Date.now() + 330 * DAY_MS);
     try {
-      await admin.from('services').insert({
+      const { error: serviceError } = await admin.from('services').insert({
         id: serviceId, tenant_id: SHOP_A.id, name: `B2 待刪服務-${uniqueSuffix()}`,
-        duration_minutes: 60, price: 500,
+        duration_minutes: 60, price: 500, sort_order: 60, line_sort_order: 60,
       });
+      expect(serviceError).toBeNull();
       await admin.from('customers').insert({
         id: customerId, tenant_id: SHOP_A.id, name: 'B2 刪服務測試顧客', phone: '',
       });
@@ -162,16 +203,19 @@ describe('POST /api/staff 帶 serviceIds → staff_services；PUT serviceIds=[] 
 });
 
 describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index）', () => {
-  it('reorder 後 sort_order 依 ids 順序 0、1（只動自建服務，不動 seed）', async () => {
+  it('reorder 後指定服務 sort_order 依完整 ids 順序 2、3（unique index 下仍可交換）', async () => {
     const svcX = randomUUID();
     const svcY = randomUUID();
     try {
-      await admin.from('services').insert([
-        { id: svcX, tenant_id: SHOP_A.id, name: `B2 排序X-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 50 },
-        { id: svcY, tenant_id: SHOP_A.id, name: `B2 排序Y-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 51 },
+      const { error: serviceError } = await admin.from('services').insert([
+        { id: svcX, tenant_id: SHOP_A.id, name: `B2 排序X-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 50, line_sort_order: 50 },
+        { id: svcY, tenant_id: SHOP_A.id, name: `B2 排序Y-${uniqueSuffix()}`, duration_minutes: 30, price: 100, sort_order: 51, line_sort_order: 51 },
       ]);
+      expect(serviceError).toBeNull();
 
-      const res = await ownerA.post('/api/services/reorder', { ids: [svcY, svcX] });
+      const res = await ownerA.post('/api/services/reorder', {
+        ids: [SHOP_A.serviceA1, SHOP_A.serviceA2, svcY, svcX],
+      });
       expect(res.status).toBe(200);
       expect((await readJson(res)).success).toBe(true);
 
@@ -179,10 +223,83 @@ describe('POST /api/services/reorder（04 §B-2：ids 依序寫 sort_order=index
         .from('services').select('id, sort_order').in('id', [svcX, svcY]);
       expect(error).toBeNull();
       const byId = new Map((data as any[]).map((r) => [r.id, r.sort_order]));
-      expect(byId.get(svcY)).toBe(0);
-      expect(byId.get(svcX)).toBe(1);
+      expect(byId.get(svcY)).toBe(2);
+      expect(byId.get(svcX)).toBe(3);
     } finally {
       await admin.from('services').delete().in('id', [svcX, svcY]);
+    }
+  });
+});
+
+describe('POST /api/services position allocation（#128）', () => {
+  it('同租戶並行新增的兩套排序均唯一，另一租戶不受影響', async () => {
+    const names = [`B2 並行服務 A-${uniqueSuffix()}`, `B2 並行服務 B-${uniqueSuffix()}`];
+    const createdIds = new Set<string>();
+
+    try {
+      const beforeA = await admin
+        .from('services').select('sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+      expect(beforeA.error).toBeNull();
+      const maxA = Math.max(...(beforeA.data ?? []).map((row: any) => row.sort_order), -1);
+      const maxLineA = Math.max(...(beforeA.data ?? []).map((row: any) => row.line_sort_order), -1);
+
+      const responses = await Promise.all(names.map((name) => ownerA.post('/api/services', {
+        name,
+        durationMinutes: 30,
+        price: 300,
+      })));
+      const bodies = await Promise.all(responses.map((response) => readJson<{ id: string }>(response)));
+      for (const [index, response] of responses.entries()) {
+        expect(response.status).toBe(200);
+        expect(bodies[index].success).toBe(true);
+        createdIds.add(bodies[index].data!.id);
+      }
+
+      const { data: rows, error } = await admin
+        .from('services')
+        .select('id, tenant_id, sort_order, line_sort_order')
+        .in('id', [...createdIds]);
+      expect(error).toBeNull();
+      expect(rows).toHaveLength(2);
+      expect(new Set((rows ?? []).map((row: any) => row.sort_order)).size).toBe(2);
+      expect(new Set((rows ?? []).map((row: any) => row.line_sort_order)).size).toBe(2);
+      for (const row of rows ?? []) {
+        expect(row.sort_order).toBeGreaterThan(maxA);
+        expect(row.line_sort_order).toBeGreaterThan(maxLineA);
+      }
+
+      const beforeAAfterCreates = await admin
+        .from('services').select('id, sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+      expect(beforeAAfterCreates.error).toBeNull();
+
+      const beforeB = await admin
+        .from('services').select('sort_order, line_sort_order').eq('tenant_id', SHOP_B.id);
+      expect(beforeB.error).toBeNull();
+      const maxB = Math.max(...(beforeB.data ?? []).map((row: any) => row.sort_order), -1);
+      const maxLineB = Math.max(...(beforeB.data ?? []).map((row: any) => row.line_sort_order), -1);
+
+      const bResponse = await ownerB.post('/api/services', {
+        name: `B2 另一租戶服務-${uniqueSuffix()}`,
+        durationMinutes: 30,
+        price: 300,
+      });
+      expect(bResponse.status).toBe(200);
+      const bBody = await readJson<{ id: string }>(bResponse);
+      expect(bBody.success).toBe(true);
+      createdIds.add(bBody.data!.id);
+
+      const bRow = await admin
+        .from('services').select('sort_order, line_sort_order').eq('id', bBody.data!.id).single();
+      expect(bRow.error).toBeNull();
+      expect(bRow.data!.sort_order).toBeGreaterThan(maxB);
+      expect(bRow.data!.line_sort_order).toBeGreaterThan(maxLineB);
+
+      const afterB = await admin
+        .from('services').select('id, sort_order, line_sort_order').eq('tenant_id', SHOP_A.id);
+      expect(afterB.error).toBeNull();
+      expect(afterB.data).toEqual(beforeAAfterCreates.data);
+    } finally {
+      if (createdIds.size > 0) await admin.from('services').delete().in('id', [...createdIds]);
     }
   });
 });
@@ -192,9 +309,11 @@ describe('跨租戶：SHOP_B 的 service id 用 SHOP_A 身分打 → 404 REQ_002
     const serviceBId = randomUUID();
     const originalName = `B 店服務-${uniqueSuffix()}`;
     try {
-      await admin.from('services').insert({
+      const { error: serviceError } = await admin.from('services').insert({
         id: serviceBId, tenant_id: SHOP_B.id, name: originalName, duration_minutes: 30, price: 300,
+        sort_order: 60, line_sort_order: 60,
       });
+      expect(serviceError).toBeNull();
 
       const put = await ownerA.put(`/api/services/${serviceBId}`, { name: '越權改名' });
       expect(put.status).toBe(404);

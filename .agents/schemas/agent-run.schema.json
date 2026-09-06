@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/smallwei0301/vibeaico-admin-rebuild/.agents/schemas/agent-run.schema.json",
+  "title": "VibeAI B+ Agent Run Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "status",
+    "startedAt",
+    "sources",
+    "main",
+    "inventory",
+    "modelUsage",
+    "delivery",
+    "ci",
+    "quality",
+    "flow",
+    "auditability",
+    "notes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$" },
+    "status": { "enum": ["BASELINE", "IN_PROGRESS", "COMPLETE", "OWNER_BLOCKED", "CLOSURE_RECOVERY"] },
+    "startedAt": { "type": "string" },
+    "endedAt": { "type": ["string", "null"] },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "ref"],
+        "properties": {
+          "type": { "type": "string" },
+          "ref": { "type": "string" },
+          "note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "main": {
+      "type": "object",
+      "required": ["startSha", "endSha"],
+      "properties": {
+        "startSha": { "type": ["string", "null"] },
+        "endSha": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "inventory": {
+      "type": "object",
+      "required": [
+        "openIssuesStart",
+        "openIssuesEnd",
+        "openPrsStart",
+        "openPrsEnd",
+        "mainTerraPeak",
+        "reserveTerraPeak",
+        "activeCandidatePeak",
+        "sharedTestPeak",
+        "closureSweeps",
+        "closureAdvancedOrClosed"
+      ],
+      "properties": {
+        "openIssuesStart": { "type": ["number", "null"], "minimum": 0 },
+        "openIssuesEnd": { "type": ["number", "null"], "minimum": 0 },
+        "openPrsStart": { "type": ["number", "null"], "minimum": 0 },
+        "openPrsEnd": { "type": ["number", "null"], "minimum": 0 },
+        "mainTerraPeak": { "type": ["number", "null"], "minimum": 0 },
+        "reserveTerraPeak": { "type": ["number", "null"], "minimum": 0 },
+        "activeCandidatePeak": { "type": ["number", "null"], "minimum": 0 },
+        "sharedTestPeak": { "type": ["number", "null"], "minimum": 0 },
+        "closureSweeps": { "type": ["number", "null"], "minimum": 0 },
+        "closureAdvancedOrClosed": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "modelUsage": {
+      "type": "object",
+      "required": [
+        "actualTokensAvailable",
+        "weeklyUsageStartPercent",
+        "weeklyUsageEndPercent",
+        "weightedUsageImprovementPercent",
+        "weights",
+        "contextMultipliers",
+        "tasks",
+        "fullContextReplays",
+        "duplicateScans"
+      ],
+      "properties": {
+        "actualTokensAvailable": { "type": "boolean" },
+        "weeklyUsageStartPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "weeklyUsageEndPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "weightedUsageImprovementPercent": { "type": ["number", "null"] },
+        "weights": {
+          "type": "object",
+          "required": ["luna", "terra", "sol"],
+          "properties": {
+            "luna": { "type": "number", "exclusiveMinimum": 0 },
+            "terra": { "type": "number", "exclusiveMinimum": 0 },
+            "sol": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "contextMultipliers": {
+          "type": "object",
+          "required": ["compact", "medium", "full"],
+          "properties": {
+            "compact": { "type": "number", "exclusiveMinimum": 0 },
+            "medium": { "type": "number", "exclusiveMinimum": 0 },
+            "full": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "requestedModel", "actualModel", "role", "count", "contextClass", "accepted", "inputTokens", "outputTokens", "cachedTokens"],
+            "properties": {
+              "id": { "type": "string" },
+              "requestedModel": { "enum": ["luna", "terra", "sol", "unknown"] },
+              "actualModel": { "enum": ["luna", "terra", "sol", "unknown"] },
+              "role": { "type": "string" },
+              "count": { "type": "number", "minimum": 0 },
+              "contextClass": { "enum": ["compact", "medium", "full", "unknown"] },
+              "accepted": { "type": "boolean" },
+              "inputTokens": { "type": ["number", "null"], "minimum": 0 },
+              "outputTokens": { "type": ["number", "null"], "minimum": 0 },
+              "cachedTokens": { "type": ["number", "null"], "minimum": 0 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "fullContextReplays": { "type": ["number", "null"], "minimum": 0 },
+        "duplicateScans": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "delivery": {
+      "type": "object",
+      "required": [
+        "issuesStarted",
+        "issuesClosed",
+        "auditReady",
+        "ownerBlockedComplete",
+        "exactHeadCiOnly",
+        "commitOnly",
+        "unfinishedCarryover",
+        "cycleTimeMinutes"
+      ],
+      "properties": {
+        "issuesStarted": { "type": ["number", "null"], "minimum": 0 },
+        "issuesClosed": { "type": ["number", "null"], "minimum": 0 },
+        "auditReady": { "type": ["number", "null"], "minimum": 0 },
+        "ownerBlockedComplete": { "type": ["number", "null"], "minimum": 0 },
+        "exactHeadCiOnly": { "type": ["number", "null"], "minimum": 0 },
+        "commitOnly": { "type": ["number", "null"], "minimum": 0 },
+        "unfinishedCarryover": { "type": ["number", "null"], "minimum": 0 },
+        "cycleTimeMinutes": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "ci": {
+      "type": "object",
+      "required": ["fullCiRuns", "invalidReruns", "firstPassRatePercent", "sharedTestCollisions"],
+      "properties": {
+        "fullCiRuns": { "type": ["number", "null"], "minimum": 0 },
+        "invalidReruns": { "type": ["number", "null"], "minimum": 0 },
+        "firstPassRatePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "sharedTestCollisions": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "quality": {
+      "type": "object",
+      "required": [
+        "acceptanceEvidenceCoveragePercent",
+        "auditFirstPassRatePercent",
+        "unresolvedP0",
+        "unresolvedP1",
+        "reopenedIssues",
+        "postMergeRegressions",
+        "safetyViolations",
+        "hardFailReasons"
+      ],
+      "properties": {
+        "acceptanceEvidenceCoveragePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "auditFirstPassRatePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "unresolvedP0": { "type": ["number", "null"], "minimum": 0 },
+        "unresolvedP1": { "type": ["number", "null"], "minimum": 0 },
+        "reopenedIssues": { "type": ["number", "null"], "minimum": 0 },
+        "postMergeRegressions": { "type": ["number", "null"], "minimum": 0 },
+        "safetyViolations": { "type": ["number", "null"], "minimum": 0 },
+        "hardFailReasons": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "flow": {
+      "type": "object",
+      "required": [
+        "lunaTasks",
+        "lunaAccepted",
+        "lunaDelegationRatePercent",
+        "duplicateAgentTasks",
+        "ownershipCollisions",
+        "waitTimeConvertedPercent",
+        "solTouches",
+        "solIssues"
+      ],
+      "properties": {
+        "lunaTasks": { "type": ["number", "null"], "minimum": 0 },
+        "lunaAccepted": { "type": ["number", "null"], "minimum": 0 },
+        "lunaDelegationRatePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "duplicateAgentTasks": { "type": ["number", "null"], "minimum": 0 },
+        "ownershipCollisions": { "type": ["number", "null"], "minimum": 0 },
+        "waitTimeConvertedPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "solTouches": { "type": ["number", "null"], "minimum": 0 },
+        "solIssues": { "type": ["number", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "auditability": {
+      "type": "object",
+      "required": [
+        "evidenceFieldsCompletePercent",
+        "exactHeadTestCoveragePercent",
+        "stalePendingDescriptions",
+        "preciseBlockersPercent",
+        "scoreInputsCompletePercent"
+      ],
+      "properties": {
+        "evidenceFieldsCompletePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "exactHeadTestCoveragePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "stalePendingDescriptions": { "type": ["number", "null"], "minimum": 0 },
+        "preciseBlockersPercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "scoreInputsCompletePercent": { "type": ["number", "null"], "minimum": 0, "maximum": 100 }
+      },
+      "additionalProperties": false
+    },
+    "notes": { "type": "array", "items": { "type": "string" } }
+  }
+}

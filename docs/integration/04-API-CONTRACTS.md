@@ -181,7 +181,7 @@ export const POST = handle(async (_req, { params }) => {
 |---|---|
 | POST `/api/services`、PUT/DELETE `:id` | CRUD ⚙M；DELETE 有未來預約→改 `active=false` |
 | POST `/api/services/:id/duplicate` | 複製一筆，name 加「（複本）」 |
-| POST `/api/services/reorder` | `{ids:[]}` 依序寫 sort_order=index |
+| POST `/api/services/reorder` | `{ids:[]}` 依序寫 sort_order=index；若只提交部分 id，伺服器會依目前租戶排序把未提交項目接在後面，保留其相對順序後以完整集合原子重排 |
 | POST `/api/services/:id/toggle-line-featured` | 切換 line_featured |
 | GET/POST `/api/service-categories`、PUT/DELETE `:id`、reorder | 同模式 |
 | POST `/api/staff`、PUT/DELETE `:id` | CRUD ⚙M；body 含 `serviceIds[]` → 先寫 staff 再全刪重插 staff_services |

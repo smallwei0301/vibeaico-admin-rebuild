@@ -50,6 +50,23 @@ export const lineSettingsSchema = z.object({
 });
 
 /* ------------------------------------------------------------- 基本 / 營業 */
+export const DEFAULT_TENANT_TIME_ZONE = 'Asia/Taipei';
+
+export function isValidTenantTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format(new Date(0));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const tenantTimeZoneSchema = z.string()
+  .trim()
+  .min(1, '請輸入有效的 IANA 時區')
+  .refine(isValidTenantTimeZone, '請輸入有效的 IANA 時區')
+  .default(DEFAULT_TENANT_TIME_ZONE);
+
 export const basicSettingsSchema = z.object({
   tenantName: z.string().min(1, '請輸入店家名稱'),
   /** 僅限小寫英文、數字、連字號；用於登入與 LINE Webhook URL */
@@ -58,6 +75,8 @@ export const basicSettingsSchema = z.object({
   tenantEmail: z.string().email().or(z.literal('')).default(''),
   tenantAddress: z.string().default(''),
   tenantDescription: z.string().default(''),
+  /** 日期邊界、行程與提醒的租戶時區；舊資料預設台北。 */
+  timezone: tenantTimeZoneSchema,
   /** 服務人員的稱呼（原站可自訂：員工 / 設計師 / 醫師 / 老師…） */
   staffTerm: z.string().default('服務人員'),
 });
@@ -164,6 +183,54 @@ export const aiSettingsSchema = z.object({
 
 export type AiSettings = z.infer<typeof aiSettingsSchema>;
 
+/* -------------------------------------------------------------- 商店設計頁 */
+/**
+ * 公開頁品牌設定（Issue #7）— 存 tenant_settings.branding jsonb（migration 0077）。
+ * `/tenant/shop-design` 頁面讀寫，欄位逐字對照該頁的 ShopPageConfig 型別。
+ *
+ * Owner 裁示（2026-09-04）：獨立開一組 `branding`，不併入既有的 `business`
+ * （`business` 是營業時段／預約規則，`branding` 是公開頁的視覺與品牌內容，
+ * 語意不同）。
+ *
+ * ⚠️ 下面的 `line` 欄位是「社群連結」（公開頁要顯示的 LINE 加好友網址），
+ *    與本檔案上方的 `lineSettingsSchema`（LINE Bot Channel 設定群組，存在
+ *    tenant_settings.line、對應 /tenant/line-settings）**同名但完全不同語意**，
+ *    不要混用；這裡的 line 只是 branding 物件裡的一個字串欄位。
+ *
+ * logoUrl / bannerUrl / aboutImageUrl / gallery[].url 目前只儲存/回填 URL
+ * 字串本身 —— 圖片上傳流程（含 storage bucket）是獨立 slice，尚未接線。
+ */
+export const galleryImageSchema = z.object({
+  id: z.string(),
+  url: z.string().default(''),
+  caption: z.string().default(''),
+});
+
+export const brandingSettingsSchema = z.object({
+  shopName: z.string().default(''),
+  logoUrl: z.string().default(''),
+  logoHidden: z.boolean().default(false),
+  bannerUrl: z.string().default(''),
+  bannerVideoUrl: z.string().default(''),
+  bannerVideoSound: z.boolean().default(true),
+  announcement: z.string().default(''),
+  aboutTitle: z.string().default(''),
+  aboutContent: z.string().default(''),
+  aboutImageUrl: z.string().default(''),
+  gallery: z.array(galleryImageSchema).default([]),
+  themeColor: z.string().default('#6366f1'),
+  facebook: z.string().default(''),
+  instagram: z.string().default(''),
+  /** ⚠️ 社群連結用的 LINE 網址，非 LINE Bot 設定，見上方檔頭註解 */
+  line: z.string().default(''),
+  threads: z.string().default(''),
+  googleMaps: z.string().default(''),
+  contactEmail: z.string().default(''),
+});
+
+export type GalleryImage = z.infer<typeof galleryImageSchema>;
+export type BrandingSettings = z.infer<typeof brandingSettingsSchema>;
+
 /* ------------------------------------------------------------------- 全部 */
 export const tenantSettingsSchema = z.object({
   basic: basicSettingsSchema,
@@ -172,6 +239,7 @@ export const tenantSettingsSchema = z.object({
   privacy: privacySettingsSchema,
   points: pointsSettingsSchema,
   line: lineSettingsSchema,
+  branding: brandingSettingsSchema,
 });
 
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
@@ -205,4 +273,5 @@ export const DEFAULT_TENANT_SETTINGS = (shopCode: string, tenantName: string): T
     privacy: {},
     points: {},
     line: {},
+    branding: {},
   });

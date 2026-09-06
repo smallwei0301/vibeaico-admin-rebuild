@@ -26,6 +26,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import { LineMockServer, MOCK_PROFILE_NAME_PREFIX } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
@@ -49,11 +50,13 @@ function sign(secret: string, rawBody: string): string {
 /** 以正確簽章 POST webhook（顧客端「傳入」半邊的入口） */
 async function postWebhook(payload: unknown): Promise<Response> {
   const raw = JSON.stringify(payload);
-  return fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
+  const res = await fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-line-signature': sign(CHANNEL_SECRET, raw) },
     body: raw,
   });
+  await drainWebhook(SHOP_A.shopCode, BASE_URL);
+  return res;
 }
 
 function textMessageEvent(text: string, replyToken: string) {
@@ -184,22 +187,40 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await admin.from('chat_messages').delete().eq('tenant_id', SHOP_A.id).eq('line_user_id', USER_CHAT);
-  await admin.from('line_users').delete().eq('tenant_id', SHOP_A.id).eq('line_user_id', USER_CHAT);
+  const cleanupErrors: Array<[string, unknown]> = [];
+  const messagesCleanup = await admin
+    .from('chat_messages')
+    .delete()
+    .eq('tenant_id', SHOP_A.id)
+    .eq('line_user_id', USER_CHAT);
+  cleanupErrors.push(['chat_messages', messagesCleanup.error]);
+
+  const usersCleanup = await admin
+    .from('line_users')
+    .delete()
+    .eq('tenant_id', SHOP_A.id)
+    .eq('line_user_id', USER_CHAT);
+  cleanupErrors.push(['line_users', usersCleanup.error]);
 
   // push_quota_usage 還原：原本沒有列就整列刪掉；有列就寫回原 used
   if (quotaRowExistedAtStart) {
-    await setQuotaUsed(quotaUsedAtStart);
+    const quotaRestore = await admin
+      .from('push_quota_usage')
+      .upsert({ tenant_id: SHOP_A.id, month: taipeiMonthKey(), used: quotaUsedAtStart }, {
+        onConflict: 'tenant_id,month',
+      });
+    cleanupErrors.push(['push_quota_usage restore', quotaRestore.error]);
   } else {
-    await admin
+    const quotaCleanup = await admin
       .from('push_quota_usage')
       .delete()
       .eq('tenant_id', SHOP_A.id)
       .eq('month', taipeiMonthKey());
+    cleanupErrors.push(['push_quota_usage', quotaCleanup.error]);
   }
 
   if (settingsSnapshot) {
-    await admin
+    const settingsCleanup = await admin
       .from('tenant_settings')
       .update({
         line: settingsSnapshot.line ?? {},
@@ -207,8 +228,63 @@ afterAll(async () => {
         line_channel_access_token_enc: settingsSnapshot.line_channel_access_token_enc,
       })
       .eq('tenant_id', SHOP_A.id);
+    cleanupErrors.push(['tenant_settings restore', settingsCleanup.error]);
   }
+
+  // Verify independently after cleanup that this file left no rows or changed
+  // process state behind. A green assertion must include both SQL errors and residue.
+  const { data: remainingMessages, error: messagesResidueError } = await admin
+    .from('chat_messages')
+    .select('id')
+    .eq('tenant_id', SHOP_A.id)
+    .eq('line_user_id', USER_CHAT);
+  cleanupErrors.push(['chat_messages residue query', messagesResidueError]);
+
+  const { data: remainingUsers, error: usersResidueError } = await admin
+    .from('line_users')
+    .select('line_user_id')
+    .eq('tenant_id', SHOP_A.id)
+    .eq('line_user_id', USER_CHAT);
+  cleanupErrors.push(['line_users residue query', usersResidueError]);
+
+  const { data: quotaAfter, error: quotaResidueError } = await admin
+    .from('push_quota_usage')
+    .select('used')
+    .eq('tenant_id', SHOP_A.id)
+    .eq('month', taipeiMonthKey())
+    .maybeSingle();
+  cleanupErrors.push(['push_quota_usage residue query', quotaResidueError]);
+
+  let restoredSettings: unknown = null;
+  if (settingsSnapshot) {
+    const { data, error } = await admin
+      .from('tenant_settings')
+      .select('line, line_channel_secret_enc, line_channel_access_token_enc')
+      .eq('tenant_id', SHOP_A.id)
+      .single();
+    cleanupErrors.push(['tenant_settings residue query', error]);
+    restoredSettings = data;
+  }
+
   await mock.stop();
+
+  for (const [operation, error] of cleanupErrors) {
+    expect(error, `${operation} must not fail`).toBeNull();
+  }
+  expect(remainingMessages, 'chat_messages residue').toEqual([]);
+  expect(remainingUsers, 'line_users residue').toEqual([]);
+  if (quotaRowExistedAtStart) {
+    expect((quotaAfter as { used: number } | null)?.used).toBe(quotaUsedAtStart);
+  } else {
+    expect(quotaAfter).toBeNull();
+  }
+  if (settingsSnapshot) {
+    expect(restoredSettings).toEqual({
+      line: settingsSnapshot.line ?? {},
+      line_channel_secret_enc: settingsSnapshot.line_channel_secret_enc,
+      line_channel_access_token_enc: settingsSnapshot.line_channel_access_token_enc,
+    });
+  }
 });
 
 describe('傳入半邊：webhook IN → GET /api/chat/messages?after（04 §B-5.1）', () => {

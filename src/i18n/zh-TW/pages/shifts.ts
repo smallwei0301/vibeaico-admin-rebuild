@@ -133,10 +133,10 @@ export const shiftsPage = {
     edit: '編輯',
     delete: '刪除',
     nameRequired: '請填寫班別名稱',
-    deleteConfirm: '確定刪除此班別範本？\n已套用此範本的班表會一併清除（日期變為「未排班」）',
+    deleteConfirm: '確定刪除此班別範本？\n已排定的班表會保留原本時間，不受影響',
     created: '班別範本已新增',
-    updated: '班別範本已更新（班表時間已同步）',
-    deleted: '班別範本已刪除（相關班表已清除）',
+    updated: '班別範本已更新（不影響已排定的班表）',
+    deleted: '班別範本已刪除（已排定的班表不受影響）',
     loadFailed: '載入班別範本失敗',
   },
 

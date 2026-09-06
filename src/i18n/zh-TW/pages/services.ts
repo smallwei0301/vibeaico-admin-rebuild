@@ -236,6 +236,7 @@ export const servicesPage = {
   /* ---------------------------------------------------- modal：管理分類 */
   category: {
     title: '管理服務分類',
+    editTitle: '編輯分類',
     intro: '建立分類可讓顧客更容易找到服務',
     createSectionTitle: '新增分類',
     name: '分類名稱 *',

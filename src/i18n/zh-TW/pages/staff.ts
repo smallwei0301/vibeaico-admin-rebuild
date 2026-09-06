@@ -202,6 +202,7 @@ export const staffPage = {
     deleteLeaveFailed: '刪除請假失敗:',
     createLeaveFailed: '新增請假失敗:',
     loadStaffFailed: '載入員工失敗:',
+    loadStaffTermFailed: '載入員工稱呼設定失敗: ',
     loadDetailFailed: '載入員工詳情失敗',
     loadDetailFailedPrefix: '載入員工詳情失敗:',
     loadLeavesFailed: '載入請假列表失敗:',

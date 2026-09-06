@@ -44,6 +44,35 @@ export const dashboardPage = {
     todo: '尚未完成',
   },
 
+  /* ---------------------------------------------------------- GUIDE 待處理事項 */
+  actionInbox: {
+    title: '待處理事項',
+    bookingRequest: '待確認預約',
+    bookingPayment: '待收款預約',
+    bookingAt: '預約時間',
+    paymentAmount: (amount: string) => '應收 ' + amount,
+    departure: '出發團次',
+    departureAt: '出發時間',
+    departureDay: {
+      TODAY: '今日出發',
+      TOMORROW: '明日出發',
+    },
+    departureSeats: (booked: number, capacity: number) => `${booked}/${capacity} 人已報名`,
+    priority: {
+      IMMEDIATE: '需要立即處理',
+      TODAY: '今天處理',
+      UPCOMING: '即將到來',
+    },
+    open: '查看並處理',
+    openPayment: '查看收款',
+    openDeparture: '查看團次',
+    viewBookings: '查看待確認預約',
+    viewPayments: '查看待收款預約',
+    count: (n: number) => `${n} 筆`,
+    loading: '載入待處理事項中…',
+    empty: '目前沒有待處理事項',
+  },
+
   /* ------------------------------------------------------------ 頁面警示區 */
   cutoffExpired: {
     title: (date: string) => `預約截止日期已過（${date}）`,
@@ -233,9 +262,11 @@ export const dashboardPage = {
     alerts: '載入提醒失敗:',
     setupStatus: '載入設定狀態失敗:',
     todayBookings: '載入今日預約失敗:',
+    actionInbox: '載入待處理事項失敗:',
     recentActivity: '載入最近活動失敗:',
     staffPerformance: '載入員工業績失敗:',
     weekly: '載入週統計失敗:',
+    sources: '載入預約來源失敗:',
     loadFailed: '載入失敗',
   },
 } as const;

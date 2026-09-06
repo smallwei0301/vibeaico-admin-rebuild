@@ -492,6 +492,16 @@ v2：postback 流程：選方案 → 選團次 → 輸入人數 → 確認 → R
 - 新增能力，不把 `services` 與 `trips` 合併。
 - 不把方案綁人。
 - 既有團次可暫時未指派，但 UI 必須誠實顯示。
+- #8-A 的 `0021_issue_8_tour_integrity.sql` 以 tenant-aware composite FK
+  鎖住 `TripPlan／TripAddon → Trip` 與 `TripDeparture → Trip／TripPlan`，並在
+  migration 前 fail-closed 檢查既有資料；它不建立 `tour_orders`、名額 RPC、
+  人員指派或 availability。
+- core mutation API 必須同時通過 `MANAGER` 與 `TOUR_MODULE`；資料庫 RLS
+  仍沿用 `is_tenant_member(tenant_id)`。把直接 Supabase REST 寫入再收緊成
+  role-aware ACL 是獨立的 system／Owner decision，本冊不自行推論。
+- Plan 的 `DEPOSIT_PERCENT` 為 1–100；`DEPOSIT_FIXED` 為正數且不得超過
+  方案每人價格；`NONE／FULL` 的 `deposit_value` 必須為 0。訂單總額與
+  rounding 快照留在後續 checkout／order slice。
 - 新 migration 先 source review、TEST、整合測試；**Production DDL 需 Owner 明確授權**。
 - mock 模式必須維持；型別擴充只新增 optional 相容欄位。
 - 正式環境部署與會改變 runtime 的 main merge 仍需 Owner 明確授權。

@@ -2,7 +2,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import {
-  Ban, Check, CheckCheck, ClipboardCopy, Coins, Download, Eye, Pencil, Plus,
+  Ban, Check, CheckCheck, Coins, Download, Eye, Pencil, Plus,
   RotateCcw, Ticket, Trash2, Wallet, X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -26,48 +26,19 @@ import {
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
+import { exportBookingsCsv } from '@/services/reports';
 import { byMode } from '@/mock';
-import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
-import type { Booking, BookingStatus, Customer, Service, Staff } from '@/lib/types';
+import type { Booking, BookingStatus, Customer, PaymentStatus, Service, Staff } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 Booking 另有付款/折抵欄位，骨架階段以 module 常數補齊 */
-type BookingExtras = {
-  paidAmount: number;
-  couponDiscount: number;
-  pointsRedeemed: number;
-  /** 顧客可用點數 */
-  customerPoints: number;
-};
-
-const DEFAULT_EXTRAS: BookingExtras = {
-  paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 0,
-};
-
-const BOOKING_EXTRAS_LOCAL_SHOP: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 386 },
-  b_2: { paidAmount: 1000, couponDiscount: 280, pointsRedeemed: 0, customerPoints: 92 },
-  b_3: { paidAmount: 1080, couponDiscount: 120, pointsRedeemed: 0, customerPoints: 964 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 18 },
-};
-
-const BOOKING_EXTRAS_GUIDE: Record<string, BookingExtras> = {
-  b_g1: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 1320 },
-};
-
-const BOOKING_EXTRAS_CLINIC: Record<string, BookingExtras> = {
-  b_1: { paidAmount: 300, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 412 },
-  b_2: { paidAmount: 6800, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 984 },
-  b_3: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 126 },
-  b_4: { paidAmount: 0, couponDiscount: 0, pointsRedeemed: 0, customerPoints: 13 },
-};
+/** 預約金額只顯示 API 回傳的 Booking.finalPrice；票券／點數折抵明細待真實欄位接線。 */
 
 type AddonItem = {
   id: string;
@@ -118,23 +89,17 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
 
 const REAL_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
-const extrasOf = (b: Booking): BookingExtras => byMode({
-  LOCAL_SHOP: BOOKING_EXTRAS_LOCAL_SHOP, GUIDE: BOOKING_EXTRAS_GUIDE, CLINIC: BOOKING_EXTRAS_CLINIC,
-})[b.id] ?? DEFAULT_EXTRAS;
-
 const addonsOf = (b: Booking): AddonItem[] => byMode({
   LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
 })[b.id] ?? [];
 
-const payLinkOf = (b: Booking) => `${APP_URL.replace(/\/$/, '')}/pay/${b.bookingNo}`;
+/** 付款狀態顯示：只使用 bookings 的真實 paymentStatus。 */
+const isPaid = (b: Booking) =>
+  b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE';
 
-/** 付款狀態顯示：已付清 / 已付訂金 / 待付款 */
-const paymentLabel = (b: Booking) => {
-  const { paidAmount } = extrasOf(b);
-  if (b.paymentStatus === 'PAID_ONLINE' || b.paymentStatus === 'PAID_OFFLINE') return t.payment.paid;
-  if (paidAmount > 0) return t.payment.deposit;
-  return t.payment.pending;
-};
+const paymentLabel = (b: Booking) => (
+  isPaid(b) ? t.payment.paid : t.payment.pending
+);
 
 /* -------------------------------------------------------------------------- */
 
@@ -148,13 +113,13 @@ export default function BookingsPage() {
 
   const [keyword, setKeyword] = React.useState('');
   const [status, setStatus] = React.useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = React.useState<PaymentStatus | ''>('');
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
   const [showCancelled, setShowCancelled] = React.useState(false);
   const [selected, setSelected] = React.useState<string[]>([]);
   /** 「未處理」= 時間已過但仍停在待確認/已確認；在載入時算好，render 期不碰 Date.now() */
   const [unprocessedIds, setUnprocessedIds] = React.useState<string[]>([]);
-  const [exportOpen, setExportOpen] = React.useState(false);
 
   /* modal 狀態（8 個 modal） */
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -167,6 +132,8 @@ export default function BookingsPage() {
   const [pointsTarget, setPointsTarget] = React.useState<Booking | null>(null);
   const [markPaidTarget, setMarkPaidTarget] = React.useState<Booking | null>(null);
   const [detailTarget, setDetailTarget] = React.useState<Booking | null>(null);
+  const [requestedBookingId, setRequestedBookingId] = React.useState('');
+  const openedDeepLinkId = React.useRef('');
 
   /* 確認類彈窗 */
   const [confirmTarget, setConfirmTarget] = React.useState<Booking | null>(null);
@@ -178,11 +145,15 @@ export default function BookingsPage() {
 
   const [cancelReason, setCancelReason] = React.useState('');
 
-  /** 原站以 ?status=PENDING / ?status=UNPROCESSED / ?action=create 進入本頁 */
+  /** 原站以 ?status=PENDING / ?status=UNPROCESSED / ?action=create 進入本頁；
+   * action inbox 另帶 bookingId，載入後直接打開該筆詳情。 */
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get('status');
     if (s) setStatus(s);
+    if (params.get('paymentStatus') === 'UNPAID') setPaymentStatusFilter('UNPAID');
+    const bookingId = params.get('bookingId');
+    if (bookingId) setRequestedBookingId(bookingId);
     if (params.get('action') === 'create') setCreateOpen(true);
   }, []);
 
@@ -192,26 +163,61 @@ export default function BookingsPage() {
       const isRealStatus = (REAL_STATUSES as string[]).includes(status);
       const res = await listBookings({
         page: 0,
-        size: 200,
+        size: 100,
         status: isRealStatus ? (status as BookingStatus) : '',
+        paymentStatus: paymentStatusFilter || undefined,
         keyword,
         from: startDate || undefined,
         to: endDate || undefined,
       });
 
-      let list = res.content;
+      const applyClientFilters = (items: Booking[]) => {
+        let filtered = items;
+        if (paymentStatusFilter) {
+          filtered = filtered.filter((b) => b.paymentStatus === paymentStatusFilter);
+        }
+        /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
+        if (status === 'UNPROCESSED') {
+          const now = Date.now();
+          filtered = filtered.filter(
+            (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
+          );
+        }
+        if (startDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) >= startDate);
+        if (endDate) filtered = filtered.filter((b) => b.startAt.slice(0, 10) <= endDate);
+        if (!showCancelled && status !== 'CANCELLED') {
+          filtered = filtered.filter((b) => b.status !== 'CANCELLED');
+        }
+        return filtered;
+      };
 
-      /** 未處理＝時間已過、但仍停在「待確認 / 已確認」的預約 */
-      if (status === 'UNPROCESSED') {
-        const now = Date.now();
-        list = list.filter(
-          (b) => (b.status === 'PENDING' || b.status === 'CONFIRMED') && new Date(b.startAt).getTime() < now,
-        );
-      }
-      if (startDate) list = list.filter((b) => b.startAt.slice(0, 10) >= startDate);
-      if (endDate) list = list.filter((b) => b.startAt.slice(0, 10) <= endDate);
-      if (!showCancelled && status !== 'CANCELLED') {
-        list = list.filter((b) => b.status !== 'CANCELLED');
+      let list = applyClientFilters(res.content);
+
+      if (requestedBookingId && openedDeepLinkId.current !== requestedBookingId) {
+        let requested = list.find((b) => b.id === requestedBookingId);
+        if (!requested) {
+          /*
+           * The table intentionally loads at most 100 rows before doing its
+           * client-side pagination. A GUIDE action may point at a later row,
+           * so resolve that one booking through the existing tenant-scoped
+           * list API instead of silently failing to open the detail modal.
+           */
+          const exact = await listBookings({
+            page: 0,
+            size: 1,
+            bookingId: requestedBookingId,
+            status: isRealStatus ? (status as BookingStatus) : '',
+            paymentStatus: paymentStatusFilter || undefined,
+            keyword,
+            from: startDate || undefined,
+            to: endDate || undefined,
+          });
+          requested = applyClientFilters(exact.content).find((b) => b.id === requestedBookingId);
+        }
+        if (requested) {
+          setDetailTarget(requested);
+          openedDeepLinkId.current = requestedBookingId;
+        }
       }
 
       const now = Date.now();
@@ -229,7 +235,7 @@ export default function BookingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, status, startDate, endDate, showCancelled, toast]);
+  }, [page, keyword, status, paymentStatusFilter, startDate, endDate, showCancelled, requestedBookingId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 
@@ -253,12 +259,16 @@ export default function BookingsPage() {
     }
   };
 
-  const copyPayLink = async (b: Booking) => {
+  const exportCsv = async () => {
     try {
-      await navigator.clipboard.writeText(payLinkOf(b));
-      toast.show(t.messages.payLinkCopied);
-    } catch {
-      toast.show(`${t.markPaidModal.payLinkIntro}${payLinkOf(b)}`, 'warning');
+      await exportBookingsCsv({
+        from: startDate || undefined,
+        to: endDate || undefined,
+      });
+      toast.show(t.messages.exported);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : t.messages.exportFailed;
+      toast.show(`${t.messages.exportFailedPrefix}${message}`, 'danger');
     }
   };
 
@@ -267,9 +277,8 @@ export default function BookingsPage() {
   const selectedRows = rows.filter((r) => selected.includes(r.id));
   const batchPending = selectedRows.filter((r) => r.status === 'PENDING');
   const batchCancellable = selectedRows.filter((r) => r.status === 'PENDING' || r.status === 'CONFIRMED');
-  const batchPaid = batchCancellable.filter((r) => extrasOf(r).paidAmount > 0);
-  const batchPaidTotal = batchPaid.reduce((sum, r) => sum + extrasOf(r).paidAmount, 0);
-  const batchUnpaid = batchPending.filter((r) => extrasOf(r).paidAmount === 0);
+  const batchPaid = batchCancellable.filter(isPaid);
+  const batchUnpaid = batchPending.filter((r) => r.paymentStatus === 'UNPAID');
 
   const openBatchConfirm = () => {
     if (selected.length === 0) { toast.show(t.messages.selectConfirmFirst, 'warning'); return; }
@@ -331,22 +340,14 @@ export default function BookingsPage() {
     },
     {
       key: 'amount', header: t.columns.amount, numeric: true, width: '140px',
-      render: (b) => {
-        const { paidAmount } = extrasOf(b);
-        return (
-          <div className="min-w-0">
-            <div>{formatCurrency(b.finalPrice)}</div>
-            {b.finalPrice !== b.price ? (
-              <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
-            ) : null}
-            {paidAmount > 0 ? (
-              <div className="text-2xs text-secondary">
-                {t.labels.received(formatCurrency(paidAmount))}
-              </div>
-            ) : null}
-          </div>
-        );
-      },
+      render: (b) => (
+        <div className="min-w-0">
+          <div>{formatCurrency(b.finalPrice)}</div>
+          {b.finalPrice !== b.price ? (
+            <div className="text-2xs text-secondary">{t.labels.memberPrice}</div>
+          ) : null}
+        </div>
+      ),
     },
     {
       key: 'status', header: t.columns.status, width: '110px',
@@ -409,25 +410,14 @@ export default function BookingsPage() {
         title={t.title}
         actions={
           <>
-            <div className="relative">
-              <Button variant="outline" onClick={() => setExportOpen((v) => !v)}>
-                <Download size={15} />{t.actions.export}
-              </Button>
-              {exportOpen ? (
-                <div className="absolute right-0 z-flyout mt-1 flex min-w-[10rem] flex-col rounded-lg bg-neutral-0 p-1 shadow-lg">
-                  {[common.exportExcel, common.exportCsv].map((label) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className="rounded-sm px-3 py-2 text-left text-base hover:bg-neutral-100"
-                      onClick={() => { setExportOpen(false); toast.show(t.messages.exported); }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              loading={loading}
+              onClick={() => void exportCsv()}
+            >
+              <Download size={15} />{common.exportCsv}
+            </Button>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus size={15} />{t.actions.create}
             </Button>
@@ -549,7 +539,11 @@ export default function BookingsPage() {
         open={!!editing}
         booking={editing}
         onClose={() => setEditing(null)}
-        onSaved={() => { setEditing(null); toast.show(t.messages.updated); void load(); }}
+        onSaved={(result) => {
+          setEditing(null);
+          toast.show(result?.notifyTriggered ? t.messages.updated : t.messages.updatedWithoutNotification);
+          void load();
+        }}
       />
 
       {/* ------------------------------------------------------ 3. 取消預約 */}
@@ -580,11 +574,9 @@ export default function BookingsPage() {
         }
       >
         <p className="mb-3 text-base">{t.cancelModal.intro}</p>
-        {cancelTarget && extrasOf(cancelTarget).paidAmount > 0 ? (
+        {cancelTarget && isPaid(cancelTarget) ? (
           <Alert tone="warning" className="mb-3">
-            <span className="whitespace-pre-line">
-              {t.confirmMessages.cancelPaidWarning(formatCurrency(extrasOf(cancelTarget).paidAmount))}
-            </span>
+            <span className="whitespace-pre-line">{t.confirmMessages.cancelPaidWarning}</span>
           </Alert>
         ) : null}
         <FormGroup>
@@ -651,17 +643,8 @@ export default function BookingsPage() {
       {/* ------------------------------------------------------ 8. 標記付款 */}
       <ConfirmModal
         open={!!markPaidTarget}
-        title={markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-          ? t.markPaidModal.titleBalance
-          : t.markPaidModal.titleOffline}
-        message={
-          <span className="whitespace-pre-line">
-            {t.markPaidModal.confirmOffline}
-            {markPaidTarget && extrasOf(markPaidTarget).paidAmount > 0
-              ? `\n${t.markPaidModal.depositHint}`
-              : ''}
-          </span>
-        }
+        title={t.markPaidModal.titleOffline}
+        message={t.markPaidModal.confirmOffline}
         onClose={() => setMarkPaidTarget(null)}
         onConfirm={() => {
           const target = markPaidTarget;
@@ -683,7 +666,6 @@ export default function BookingsPage() {
         onPoints={() => setPointsTarget(detailTarget)}
         onAdjust={() => setAdjustTarget(detailTarget)}
         onMarkPaid={() => setMarkPaidTarget(detailTarget)}
-        onCopyPayLink={() => { if (detailTarget) void copyPayLink(detailTarget); }}
         onComplete={() => setCompleteTarget(detailTarget)}
         onCancel={() => { setCancelReason(''); setCancelTarget(detailTarget); }}
         onRevert={() => setRevertTarget(detailTarget)}
@@ -696,7 +678,7 @@ export default function BookingsPage() {
         title={t.rowActions.confirm}
         message={
           <span className="whitespace-pre-line">
-            {confirmTarget && extrasOf(confirmTarget).paidAmount === 0 && confirmTarget.paymentStatus === 'UNPAID'
+            {confirmTarget?.paymentStatus === 'UNPAID'
               ? `${t.confirmMessages.confirmBooking}\n\n${t.confirmMessages.manualConfirm}`
               : t.confirmMessages.confirmBooking}
           </span>
@@ -716,8 +698,8 @@ export default function BookingsPage() {
         title={t.rowActions.complete}
         message={
           <span className="whitespace-pre-line">
-            {completeTarget && extrasOf(completeTarget).paidAmount === 0
-              ? t.markPaidModal.balanceHint
+            {completeTarget?.paymentStatus === 'UNPAID'
+              ? t.markPaidModal.unpaidHint
               : t.markPaidModal.paidHint}
           </span>
         }
@@ -816,7 +798,7 @@ export default function BookingsPage() {
             {t.confirmMessages.batchCancel(
               batchCancellable.length,
               batchPaid.length > 0
-                ? t.confirmMessages.batchRefundWarning(batchPaid.length, formatCurrency(batchPaidTotal))
+                ? t.confirmMessages.batchRefundWarning(batchPaid.length)
                 : '',
             )}
           </span>
@@ -849,7 +831,7 @@ function BookingFormModal({
   open: boolean;
   booking: Booking | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (result?: { notifyTriggered: boolean }) => void;
 }) {
   const toast = useToast();
   const isEdit = !!booking;
@@ -963,7 +945,8 @@ function BookingFormModal({
       const startAt = new Date(`${date}T${time}:00`).toISOString();
       if (isEdit && booking) {
         // duration 下拉僅供畫面試算：PUT /api/bookings/:id 以既有 duration_minutes 重算 end_at
-        await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        const result = await updateBooking(booking.id, { startAt, staffId: staffId || null, note });
+        onSaved(result);
       } else {
         await createBooking({
           customerId: await resolveCustomerId(),
@@ -972,8 +955,8 @@ function BookingFormModal({
           startAt,
           note: note || undefined,
         });
+        onSaved();
       }
-      onSaved();
     } catch (err2) {
       toast.show(
         `${isEdit ? t.messages.updateFailed : t.messages.createFailed}${err2 instanceof Error ? err2.message : t.messages.unknownError}`,
@@ -1410,9 +1393,6 @@ function AdjustPriceModal({
     }
   };
 
-  const paid = booking ? extrasOf(booking).paidAmount : 0;
-  const overpaid = paid - Number(amount || 0);
-
   return (
     <Modal
       open={!!booking}
@@ -1444,11 +1424,6 @@ function AdjustPriceModal({
         />
       </FormGroup>
 
-      {paid > 0 && overpaid > 0 ? (
-        <Alert tone="warning">
-          {t.messages.paidOverNet(formatCurrency(paid), formatCurrency(Number(amount || 0)))}
-        </Alert>
-      ) : null}
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );
@@ -1470,8 +1445,6 @@ function ApplyPointsModal({
   const [points, setPoints] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const balance = booking ? extrasOf(booking).customerPoints : 0;
-
   React.useEffect(() => { setPoints(''); setError(''); }, [booking]);
 
   const submit = async () => {
@@ -1484,10 +1457,9 @@ function ApplyPointsModal({
     setError('');
     setSaving(true);
     try {
-      // 實際折抵數 = 折抵前 − API 回的折抵後金額；balance 只餵 mock 分支
-      // （合成「夾在餘額／金額內」的現行假結果），真模式由後端驗證並回 409 訊息。
+      // API 會驗證顧客實際可用點數與應付金額；折抵數以 API 回傳的最終金額計算。
       const price = booking.finalPrice;
-      const res = await applyBookingPoints(booking.id, value, balance);
+      const res = await applyBookingPoints(booking.id, value);
       onApplied(price - res.finalPrice);
     } catch (e) {
       // 409 顧客點數不足（POINTS_001）等 → 把 server message 顯示出來
@@ -1496,8 +1468,6 @@ function ApplyPointsModal({
       setSaving(false);
     }
   };
-
-  const net = (booking?.finalPrice ?? 0) - Number(points || 0);
 
   return (
     <Modal
@@ -1515,10 +1485,6 @@ function ApplyPointsModal({
     >
       <p className="mb-3 text-base">{pm.intro}</p>
       <FormGroup>
-        <Label>{pm.balanceLabel}</Label>
-        <div className="text-lg font-bold text-dark">{balance}</div>
-      </FormGroup>
-      <FormGroup>
         <Label required htmlFor="applyPoints">{pm.label}</Label>
         <Input
           id="applyPoints" type="number" min={0} value={points}
@@ -1527,10 +1493,6 @@ function ApplyPointsModal({
         />
         <FormText>{pm.help}</FormText>
       </FormGroup>
-      {net < 0 ? (
-        <Alert tone="warning">{t.messages.overpaidWarning(formatCurrency(-net))}</Alert>
-      ) : null}
-      <FormText>{t.detailModal.afterCoupon}</FormText>
       {error ? <FormError>{error}</FormError> : null}
     </Modal>
   );
@@ -1542,7 +1504,7 @@ function ApplyPointsModal({
 
 function BookingDetailModal({
   booking, onClose, onAddon, onCoupon, onPoints, onAdjust, onMarkPaid,
-  onCopyPayLink, onComplete, onCancel, onRevert, onRemoveAddon,
+  onComplete, onCancel, onRevert, onRemoveAddon,
 }: {
   booking: Booking | null;
   onClose: () => void;
@@ -1551,7 +1513,6 @@ function BookingDetailModal({
   onPoints: () => void;
   onAdjust: () => void;
   onMarkPaid: () => void;
-  onCopyPayLink: () => void;
   onComplete: () => void;
   onCancel: () => void;
   onRevert: () => void;
@@ -1559,8 +1520,7 @@ function BookingDetailModal({
 }) {
   const d = t.detailModal;
   const addons = booking ? addonsOf(booking) : [];
-  const extras = booking ? extrasOf(booking) : DEFAULT_EXTRAS;
-  const net = (booking?.finalPrice ?? 0) - extras.couponDiscount - extras.pointsRedeemed;
+  const amount = booking?.finalPrice ?? 0;
 
   return (
     <Modal
@@ -1664,20 +1624,9 @@ function BookingDetailModal({
           <div className="rounded-lg bg-neutral-50 p-3">
             <div className="flex items-center justify-between">
               <span>{d.amountLabel}</span>
-              <strong className="tabular-nums">{formatCurrency(net)}</strong>
+              <strong className="tabular-nums">{formatCurrency(amount)}</strong>
             </div>
-            {extras.couponDiscount > 0 ? (
-              <div className="form-text">{d.couponDiscount(formatCurrency(extras.couponDiscount))}</div>
-            ) : null}
-            {extras.pointsRedeemed > 0 ? (
-              <div className="form-text">{d.pointsDiscount(extras.pointsRedeemed)}</div>
-            ) : null}
-            {extras.paidAmount > 0 ? (
-              <div className="form-text">
-                {d.paidLabel}
-                {formatCurrency(extras.paidAmount)}
-              </div>
-            ) : null}
+            <FormText>{d.discountBreakdownUnavailable}</FormText>
           </div>
 
           {booking.status === 'PENDING' ? (
@@ -1685,17 +1634,18 @@ function BookingDetailModal({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={onCopyPayLink}>
-              <ClipboardCopy size={13} />{t.rowActions.copyPayLink}
+            <Button variant="outline" size="sm" disabled title={t.detailModal.payLinkUnavailable}>
+              {t.rowActions.payLinkUnavailable}
             </Button>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
-              {extras.paidAmount > 0 ? t.rowActions.markBalancePaid : t.rowActions.markPaidOffline}
+t.rowActions.markPaidOffline
             </Button>
             {booking.source === 'LINE' ? (
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>
             ) : null}
           </div>
+          <FormText>{t.detailModal.payLinkUnavailable}</FormText>
         </div>
       )}
     </Modal>

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { mapService } from '@/server/mappers';
+import { insertServiceWithPositions } from '@/server/service-position';
 
 /**
  * GET /api/services — services join service_categories(name) → category_name。
@@ -27,7 +28,7 @@ export const GET = handle(async () => {
 /**
  * POST /api/services — 新增服務 ⚙M（04 分冊 §B-2）。
  * categoryId 空字串或未帶 → 存 null（外鍵欄位不接受 ''，同 customers 慣例）。
- * sort_order = 該租戶目前最大值 + 1（排最後）。
+ * sort_order / line_sort_order 由 server-side allocator 各自排最後。
  */
 const createSchema = z.object({
   name: z.string().min(1, '請輸入服務名稱'),
@@ -44,32 +45,27 @@ export const POST = handle(async (req) => {
   const t = await requireTenant('MANAGER');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('services')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
+  const { data, positions } = await insertServiceWithPositions<{ id: string }>(
+    t.supabase,
+    t.tenantId,
+    (position) => t.supabase
+      .from('services')
+      .insert({
+        tenant_id: t.tenantId,
+        category_id: b.categoryId ? b.categoryId : null,
+        name: b.name,
+        description: b.description ?? '',
+        duration_minutes: b.durationMinutes ?? 60,
+        price: b.price ?? 0,
+        image_url: b.imageUrl ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: position.sortOrder,
+        line_sort_order: position.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
-  const { data, error } = await t.supabase
-    .from('services')
-    .insert({
-      tenant_id: t.tenantId,
-      category_id: b.categoryId ? b.categoryId : null,
-      name: b.name,
-      description: b.description ?? '',
-      duration_minutes: b.durationMinutes ?? 60,
-      price: b.price ?? 0,
-      image_url: b.imageUrl ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? -1) + 1,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
-
-  return ok({ id: data.id });
+  return ok({ id: data.id, ...positions });
 });

@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, Label, Select, Switch } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { applyFeature, cancelFeature, listFeatures, restoreFeature } from '@/services/settings';
+import { applyFeature, cancelFeature, listFeatures, restoreFeature, type FeatureRestoreResult } from '@/services/settings';
 import { getPointBalance } from '@/services/points';
 import { ApiError } from '@/lib/api';
 import {
@@ -195,13 +195,24 @@ export default function FeatureStorePage() {
     setWorking(true);
     try {
       // POST /api/feature-store/:code/{cancel,restore}（09 §3）；mock 模擬成功。
+      let restoreResult: FeatureRestoreResult | undefined;
       if (kind === 'cancel') await cancelFeature(item.key);
-      else await restoreFeature(item.key);
+      else restoreResult = await restoreFeature(item.key);
       setPending(null);
       if (kind === 'cancel') {
         toast.show(sub?.expiresAt ? t.messages.cancelledUsable(name) : t.messages.cancelled(name));
       } else {
         toast.show(t.messages.restored(name));
+        if (restoreResult?.restoreSideEffectFailed) {
+          toast.show(t.messages.restoreSideEffectFailed, 'warning');
+        } else {
+          if (restoreResult?.restoredCoupons) {
+            toast.show(t.messages.couponsRestored(restoreResult.restoredCoupons));
+          }
+          if (restoreResult?.restoredProducts) {
+            toast.show(t.messages.productsRestored(restoreResult.restoredProducts));
+          }
+        }
       }
       void load();
     } catch (e) {

@@ -153,6 +153,7 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 
 - `AGENTS.md` — mandatory agent entry point
 - `docs/AGENT-EXECUTION.md` — canonical autonomous execution, delegation, permissions, safety and stop rules
+- `docs/DELIVERY-CHAIN.md` — canonical product delivery chain: what each gate is there to catch and what its passing evidence looks like (Luna ownership check → Terra worktree build → Sol diff audit → local isolated Supabase → serialized canonical TEST → Completion Truth five-point verification)
 - `docs/AGENT-PLAYBOOK.md` — required failure/lesson log; search only entries relevant to the task
 - `docs/DOCUMENTATION-GOVERNANCE.md` — canonical docs, direct-main docs-only rule, branch policy
 - `docs/CONVENTIONS.md` — read before adding a page

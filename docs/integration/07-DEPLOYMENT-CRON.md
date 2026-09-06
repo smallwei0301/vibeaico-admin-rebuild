@@ -81,7 +81,7 @@ Vercel 會自動帶 `Authorization: Bearer ${CRON_SECRET}`（專案 env 有設�
 
 統一一個端點：`POST /api/upload`（multipart：`file`, `bucket`）
 
-- 白名單 bucket：02 分冊 §0008 的五個。
+- 白名單 bucket：02 分冊 §0008 的五個，以及 #28⑥ 歡迎卡片圖片用的 `welcome-card-images`。
 - 驗證：≤5MB，`image/jpeg|png|webp`。
 - 路徑：`{tenantId}/{crypto.randomUUID()}.{ext}`（RLS 依第一段資料夾檢查）。
 - 回 `{url}`（`supabase.storage.from(bucket).getPublicUrl()`）。

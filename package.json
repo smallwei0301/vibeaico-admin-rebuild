@@ -13,7 +13,19 @@
     "test:integration": "vitest run tests/integration --config vitest.integration.config.mts --no-file-parallelism",
     "test:e2e": "playwright test",
     "test:all": "npm run typecheck && npm test && npm run test:integration && npm run test:e2e",
-    "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs"
+    "guard:repo-integrity": "node scripts/ci/repo-integrity-guard.mjs",
+    "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs",
+    "agent:issue:preflight": "node scripts/agents/issue-provenance-policy.mjs",
+    "agent:schema-truth:report": "node scripts/agents/schema-truth-report.mjs",
+    "agent:run:init": "node scripts/agents/run-ledger-v2.mjs init",
+    "agent:run:validate": "node scripts/agents/run-ledger-v2.mjs validate",
+    "agent:run:reconcile": "node scripts/agents/run-ledger-reconcile.mjs apply",
+    "agent:run:score": "node scripts/agents/score-run-v2.mjs",
+    "agent:run:review": "node scripts/agents/review-runs-v2.mjs",
+    "agent:run:legacy:init": "node scripts/agents/run-ledger.mjs init",
+    "agent:run:legacy:validate": "node scripts/agents/run-ledger.mjs validate",
+    "agent:run:legacy:score": "node scripts/agents/score-run.mjs",
+    "agent:run:legacy:review": "node scripts/agents/review-runs.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

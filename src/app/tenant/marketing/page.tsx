@@ -18,168 +18,25 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { listMembershipLevels } from '@/services/catalog';
 import { getDashboardStats } from '@/services/reports';
-import { byMode } from '@/mock';
+import {
+  cancelMarketingPush, createMarketingPush, deleteMarketingPush, listMarketingPushes,
+  sendMarketingPush, updateMarketingPush,
+} from '@/services/marketing';
+import type { MarketingPushFormPayload } from '@/services/marketing';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { marketingPage as t } from '@/i18n/zh-TW/pages/marketing';
 import { formatDateTime } from '@/lib/utils';
-import type { MembershipLevel } from '@/lib/types';
+import type { MarketingPush, MembershipLevel } from '@/lib/types';
 
-/* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
-/* -------------------------------------------------------------------------- */
-
-type PushStatus = keyof typeof t.status;
-type PushTargetType = keyof typeof t.targetType;
-
-/** 原站 /api/marketing/pushes */
-type MarketingPush = {
-  id: string;
-  title: string;
-  content: string;
-  targetType: PushTargetType;
-  /** MEMBERSHIP_LEVEL 時為會員等級 id；TAG 時為標籤名稱；CUSTOM 時為 LINE User ID 清單 */
-  targetValue: string;
-  targetLabel: string;
-  estimatedCount: number;
-  sentCount: number;
-  failedCount: number;
-  status: PushStatus;
-  imageUrl: string;
-  scheduledAt: string | null;
-  sentAt: string | null;
-  note: string;
-  createdAt: string;
-};
-
-const PUSHES_LOCAL_SHOP: MarketingPush[] = [
-  {
-    id: 'mp_1', title: '本週特惠活動通知',
-    content: '本週來店指定設計師洗剪只要 499，名額有限，快來 LINE 預約！',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 246, sentCount: 0, failedCount: 0,
-    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '待確認文案', createdAt: '2026-08-20T09:30:00+08:00',
-  },
-  {
-    id: 'mp_2', title: '中秋公休公告',
-    content: '9/25～9/27 中秋連假公休，造成不便敬請見諒。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 246, sentCount: 0, failedCount: 0,
-    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-09-18T10:00:00+08:00',
-    sentAt: null, note: '', createdAt: '2026-08-18T14:12:00+08:00',
-  },
-  {
-    id: 'mp_3', title: '鑽石卡限定：秋季護髮 8 折',
-    content: '親愛的鑽石卡會員，本季護髮課程享 8 折，回覆「護髮」即可預約。',
-    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: '鑽石卡',
-    estimatedCount: 18, sentCount: 0, failedCount: 0,
-    status: 'SENDING', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '', createdAt: '2026-08-19T08:05:00+08:00',
-  },
-  {
-    id: 'mp_4', title: '新品上架：修護洗髮精',
-    content: '沙龍級修護洗髮精開賣，前 30 名下單享 9 折。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 240, sentCount: 238, failedCount: 2,
-    status: 'COMPLETED', imageUrl: 'https://example.com/image.jpg',
-    scheduledAt: null, sentAt: '2026-08-12T11:00:00+08:00',
-    note: '', createdAt: '2026-08-12T10:40:00+08:00',
-  },
-  {
-    id: 'mp_5', title: '限時優惠：指定名單回饋',
-    content: '感謝您長期支持，出示此訊息即可折抵 200 元。',
-    targetType: 'CUSTOM', targetValue: 'U1234567890abcdef\nU0987654321fedcba',
-    targetLabel: '', estimatedCount: 2, sentCount: 0, failedCount: 2,
-    status: 'FAILED', imageUrl: '', scheduledAt: null,
-    sentAt: '2026-08-08T19:20:00+08:00', note: '額度不足', createdAt: '2026-08-08T19:00:00+08:00',
-  },
-  {
-    id: 'mp_6', title: '父親節問候',
-    content: '祝所有爸爸節日快樂！本週來店贈送造型服務一次。',
-    targetType: 'TAG', targetValue: '熟客', targetLabel: '熟客',
-    estimatedCount: 42, sentCount: 0, failedCount: 0,
-    status: 'CANCELLED', imageUrl: '', scheduledAt: '2026-08-08T09:00:00+08:00',
-    sentAt: null, note: '改用行銷活動發送', createdAt: '2026-08-05T16:30:00+08:00',
-  },
-];
-
-const PUSHES_GUIDE: MarketingPush[] = [
-  {
-    id: 'mp_g1', title: '9 月賞鯨團次開賣',
-    content: '9 月團次開放報名囉！出團前 30 天報名享 9 折，週末場次每次都秒殺 🐬',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 412, sentCount: 0, failedCount: 0,
-    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '等封面照確認', createdAt: '2026-08-20T09:30:00+08:00',
-  },
-  {
-    id: 'mp_g2', title: '颱風備案通知',
-    content: '本週有颱風接近，8/23 前的團次將於出團前一日 18:00 前發送最終確認，如取消全額退費。',
-    targetType: 'CUSTOM', targetValue: 'U901\nU902\nU905', targetLabel: '',
-    estimatedCount: 34, sentCount: 0, failedCount: 0,
-    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-08-22T18:00:00+08:00',
-    sentAt: null, note: '只發近期出團的旅客', createdAt: '2026-08-20T11:05:00+08:00',
-  },
-  {
-    id: 'mp_g3', title: '祕島之友限定：新路線先行報名',
-    content: '新開的太魯閣秘境路線，先開放祕島之友報名，回覆「新路線」了解詳情。',
-    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: '祕島之友',
-    estimatedCount: 20, sentCount: 0, failedCount: 0,
-    status: 'SENDING', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '', createdAt: '2026-08-19T08:05:00+08:00',
-  },
-  {
-    id: 'mp_g4', title: '溯溪季倒數',
-    content: '溯溪季只到 10/15，還沒體驗過的旅人把握最後檔期！',
-    targetType: 'TAG', targetValue: '溯溪', targetLabel: '溯溪',
-    estimatedCount: 96, sentCount: 94, failedCount: 2,
-    status: 'COMPLETED', imageUrl: 'https://example.com/river.jpg',
-    scheduledAt: null, sentAt: '2026-08-12T11:00:00+08:00',
-    note: '', createdAt: '2026-08-12T10:40:00+08:00',
-  },
-  {
-    id: 'mp_g5', title: '推播額度提醒測試',
-    content: '本月推播額度即將用完，測試發送。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 412, sentCount: 0, failedCount: 412,
-    status: 'FAILED', imageUrl: '', scheduledAt: null,
-    sentAt: '2026-08-10T19:20:00+08:00', note: '推播額度不足（168/200）', createdAt: '2026-08-10T19:00:00+08:00',
-  },
-];
-
-const PUSHES_CLINIC: MarketingPush[] = [
-  {
-    id: 'mp_c1', title: '流感疫苗開打通知',
-    content: '本院流感疫苗已到貨，公費對象請攜帶健保卡，線上可預約看診號碼。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 1864, sentCount: 0, failedCount: 0,
-    status: 'SCHEDULED', imageUrl: '', scheduledAt: '2026-08-25T10:00:00+08:00',
-    sentAt: null, note: '分批發送避免當日湧入', createdAt: '2026-08-18T14:12:00+08:00',
-  },
-  {
-    id: 'mp_c2', title: '中秋連假休診公告',
-    content: '9/25～9/27 中秋連假休診，急診請至鄰近醫院，造成不便敬請見諒。',
-    targetType: 'ALL', targetValue: '', targetLabel: '',
-    estimatedCount: 1864, sentCount: 0, failedCount: 0,
-    status: 'DRAFT', imageUrl: '', scheduledAt: null, sentAt: null,
-    note: '', createdAt: '2026-08-20T09:00:00+08:00',
-  },
-  {
-    id: 'mp_c3', title: '年度健檢提醒',
-    content: '距離您上次健檢已滿一年，現在預約享早鳥折 800，名額有限。',
-    targetType: 'MEMBERSHIP_LEVEL', targetValue: 'ml_3', targetLabel: 'VIP 健檢',
-    estimatedCount: 46, sentCount: 46, failedCount: 0,
-    status: 'COMPLETED', imageUrl: '', scheduledAt: null,
-    sentAt: '2026-08-14T09:00:00+08:00', note: '', createdAt: '2026-08-14T08:30:00+08:00',
-  },
-];
+type PushStatus = MarketingPush['status'];
+type PushTargetType = MarketingPush['targetType'];
 
 const STATUS_TONE: Record<PushStatus, 'neutral' | 'info' | 'primary' | 'success' | 'danger'> = {
   DRAFT: 'neutral',
   SCHEDULED: 'info',
   SENDING: 'primary',
-  COMPLETED: 'success',
+  SENT: 'success',
   FAILED: 'danger',
   CANCELLED: 'neutral',
 };
@@ -207,8 +64,7 @@ export default function MarketingPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 320));
-      setRows(byMode({ LOCAL_SHOP: PUSHES_LOCAL_SHOP, GUIDE: PUSHES_GUIDE, CLINIC: PUSHES_CLINIC }));
+      setRows(await listMarketingPushes());
     } catch (e) {
       toast.show(
         `${t.messages.loadPushesFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -252,10 +108,12 @@ export default function MarketingPage() {
 
   const runPending = async () => {
     if (!pending) return;
-    const { kind } = pending;
+    const { kind, push } = pending;
     setWorking(true);
     try {
-      await new Promise((r) => setTimeout(r, 380));
+      if (kind === 'delete') await deleteMarketingPush(push.id);
+      else if (kind === 'cancel') await cancelMarketingPush(push.id);
+      else await sendMarketingPush(push.id);
       setPending(null);
       toast.show(
         kind === 'delete' ? t.messages.deleted
@@ -263,11 +121,12 @@ export default function MarketingPage() {
             : t.messages.sending,
       );
       void load();
-    } catch {
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : t.messages.unknownError;
       toast.show(
-        kind === 'delete' ? t.messages.deleteFailed
-          : kind === 'cancel' ? t.messages.cancelFailed
-            : `${t.messages.sendFailedPrefix}${t.messages.retryLater}`,
+        kind === 'delete' ? `${t.messages.deleteFailed}: ${detail}`
+          : kind === 'cancel' ? `${t.messages.cancelFailed}: ${detail}`
+            : `${t.messages.sendFailedPrefix}${detail}`,
         'danger',
       );
     } finally {
@@ -296,18 +155,16 @@ export default function MarketingPage() {
       render: (p) => <Badge tone="info">{targetText(p)}</Badge>,
     },
     {
-      key: 'estimated', header: t.columns.estimated, numeric: true, width: '110px',
-      render: (p) => t.labels.people(p.estimatedCount),
+      key: 'estimated', header: t.columns.estimated, width: '110px',
+      /* 後端沒有任何欄位或關聯表能在發送前算出受眾人數，這是誠實佔位，不是假資料 —— 見 Issue #24。 */
+      render: () => <span className="text-muted">{t.labels.estimatedUnavailable}</span>,
     },
     {
       key: 'result', header: t.columns.result, width: '140px',
-      render: (p) => (p.sentCount || p.failedCount ? (
-        <div className="flex flex-col items-start gap-0.5">
-          <span className="text-success">{t.labels.resultSuccess(p.sentCount)}</span>
-          {p.failedCount ? (
-            <span className="text-danger">{t.labels.resultFailed(p.failedCount)}</span>
-          ) : null}
-        </div>
+      render: (p) => (p.sentCount ? (
+        <span className="text-success">{t.labels.resultSuccess(p.sentCount)}</span>
+      ) : p.status === 'FAILED' ? (
+        <span className="text-danger">{t.status.FAILED}</span>
       ) : <span className="text-muted">{t.labels.notSent}</span>),
     },
     {
@@ -332,7 +189,7 @@ export default function MarketingPage() {
               <Pencil size={13} />
             </Button>
           ) : null}
-          {p.status === 'DRAFT' ? (
+          {p.status === 'DRAFT' || p.status === 'SCHEDULED' || p.status === 'FAILED' ? (
             <Button
               variant="outline" size="sm" title={t.actions.send} aria-label={t.actions.send}
               onClick={() => setPending({ kind: 'send', push: p })}
@@ -442,8 +299,9 @@ export default function MarketingPage() {
         levels={levels}
         onClose={() => setFormTarget(undefined)}
         onSaved={() => {
+          const wasEdit = !!formTarget;
           setFormTarget(undefined);
-          toast.show(t.messages.created);
+          toast.show(wasEdit ? t.messages.updated : t.messages.created);
           void load();
         }}
       />
@@ -471,9 +329,7 @@ export default function MarketingPage() {
             </div>
             <div>
               <dt className="form-label">{t.columns.estimated}</dt>
-              <dd className="text-base tabular-nums text-dark">
-                {t.labels.people(viewTarget.estimatedCount)}
-              </dd>
+              <dd className="text-base text-muted">{t.labels.estimatedUnavailable}</dd>
             </div>
             <div className="md:col-span-2">
               <dt className="form-label">{t.form.content}</dt>
@@ -494,9 +350,9 @@ export default function MarketingPage() {
             <div className="md:col-span-2">
               <dt className="form-label">{t.columns.result}</dt>
               <dd className="text-base tabular-nums text-dark">
-                {viewTarget.sentCount || viewTarget.failedCount
-                  ? `${t.labels.resultSuccess(viewTarget.sentCount)} / ${t.labels.resultFailed(viewTarget.failedCount)}`
-                  : t.labels.notSent}
+                {viewTarget.sentCount
+                  ? t.labels.resultSuccess(viewTarget.sentCount)
+                  : viewTarget.status === 'FAILED' ? t.status.FAILED : t.labels.notSent}
               </dd>
             </div>
           </dl>
@@ -597,7 +453,23 @@ function PushFormModal({
     if (err) { toast.show(err, 'warning'); return; }
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
+      const targetLabel = targetType === 'MEMBERSHIP_LEVEL'
+        ? (levels.find((l) => l.id === targetValue)?.name ?? '')
+        : targetType === 'TAG' || targetType === 'CUSTOM'
+          ? (push?.targetType === targetType ? push.targetLabel : '')
+          : '';
+      const payload: MarketingPushFormPayload = {
+        title: title.trim(),
+        content: content.trim(),
+        imageUrl: imageUrl.trim(),
+        note: note.trim(),
+        targetType,
+        targetValue: targetType === 'CUSTOM' ? customTargets.trim() : targetValue,
+        targetLabel,
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      };
+      if (isEdit && push) await updateMarketingPush(push.id, payload);
+      else await createMarketingPush(payload);
       onSaved();
     } catch (e) {
       toast.show(

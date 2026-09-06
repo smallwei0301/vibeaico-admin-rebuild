@@ -21,7 +21,7 @@ export async function createServerSupabase() {
   });
 }
 
-/** service role client —— 僅限 LINE webhook / cron / 註冊流程（鐵則 7） */
+/** service role client —— 僅限受明確 server-side auth guard 保護的內部流程 */
 export function createAdminSupabase() {
   return createClient(URL_(), process.env.SUPABASE_SERVICE_ROLE_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },

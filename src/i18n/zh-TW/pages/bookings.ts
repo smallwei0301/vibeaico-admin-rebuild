@@ -59,7 +59,7 @@ export const bookingsPage = {
     applyPoints: '使用點數',
     adjustPrice: '調整金額',
     revert: '還原為已確認',
-    copyPayLink: '複製付款連結',
+    payLinkUnavailable: '付款頁尚未建置',
     markPaidOffline: '標記已線下收款',
     markBalancePaid: '標記尾款已結清',
     stayNotEditable: '住宿訂單不可編輯',
@@ -72,7 +72,6 @@ export const bookingsPage = {
     unprocessed: '未處理',
     memberPrice: '(會員價)',
     deletedService: '（此服務已刪除）',
-    received: (amount: string) => `（已收 ${amount}）`,
     discounted: (amount: string) => `（已折抵 ${amount}）`,
     unassigned: '未指定',
     noStaffNeeded: '無需指定',
@@ -86,7 +85,6 @@ export const bookingsPage = {
 
   payment: {
     paid: '已付清',
-    deposit: '已付訂金',
     pending: '待付款',
     unpaid: '尚未付款',
   },
@@ -147,7 +145,7 @@ export const bookingsPage = {
   /* -------------------------------------------------------- 編輯預約 modal */
   editModal: {
     title: '編輯預約',
-    intro: '修改預約資訊後，系統將自動發送 LINE 通知給顧客。',
+    intro: '修改時間或服務人員會觸發 LINE 通知；店內備註僅供內部記錄。',
     customer: '顧客',
     customerHelp: '顧客資訊無法修改',
     service: '服務項目 *',
@@ -163,8 +161,8 @@ export const bookingsPage = {
     duration: '服務時長 *',
     durationUnit: '分鐘',
     durationHelp: '可調整服務時長（30-480 分鐘，每 30 分鐘一檔）',
-    noteToCustomer: '給顧客的備註',
-    noteToCustomerPlaceholder: '此備註會透過 LINE 通知顧客...',
+    noteToCustomer: '店內備註',
+    noteToCustomerPlaceholder: '記錄旅客需求或處理內容，不會觸發 LINE 通知...',
     noteMax: 500,
     submit: '儲存變更',
     submitting: '儲存中...',
@@ -243,24 +241,19 @@ export const bookingsPage = {
   pointsModal: {
     title: '使用點數',
     intro: '以顧客的點數折抵此筆預約金額。',
-    balanceLabel: '顧客可用點數',
     label: '折抵點數',
     placeholder: '請輸入折抵點數',
-    help: '1 點折抵 $1，最多折抵至應付金額為止。',
+    help: '1 點折抵 $1；送出後由伺服器依顧客實際餘額與應付金額驗證。',
     submit: '確認折抵',
   },
 
   /* -------------------------------------------------------- 標記付款 modal */
   markPaidModal: {
     titleOffline: '標記已線下收款',
-    titleBalance: '標記尾款已結清',
     confirmOffline:
       '確定標記此預約為「已線下收款」嗎？（現金/轉帳等線下收足，標記為已付清；不會建立線上金流交易）',
     paidHint: '已付清，本次無需再向顧客收款。',
-    depositHint: '下方「應收金額」已自動扣除，現場只需收尾款。',
-    balanceHint:
-      '如需向顧客收取差額，可在詳情用「複製付款連結」傳給他，或收現後按「標記尾款已結清」。',
-    payLinkIntro: '複製此付款連結傳給顧客：',
+    unpaidHint: '此預約目前顯示為待付款；如顧客已用現金／轉帳付款，請先按「標記已線下收款」。',
   },
 
   /* -------------------------------------------------------- 預約詳情 modal */
@@ -271,11 +264,9 @@ export const bookingsPage = {
     addonSection: '加購明細',
     addonLoadFailed: '加購明細載入失敗（可能仍有加購項目，請重新開啟詳情確認）',
     amountLabel: '應收金額',
-    paidLabel: '已收金額',
-    couponDiscount: (amount: string) => `票券折抵 ${amount}`,
-    pointsDiscount: (points: number) => `點數折抵 ${points} 點 = $${points}`,
-    afterCoupon: '（再扣票券，以系統計算為準）',
+    discountBreakdownUnavailable: '目前沒有可追溯的票券／點數折抵明細欄位；這裡只顯示 API 回傳的目前應收金額。',
     notConfirmed: '此預約尚未確認',
+    payLinkUnavailable: '付款頁尚未建置（#32）；目前請使用線下收款或您的金流後台。',
   },
 
   /* -------------------------------------------------------------- 確認訊息 */
@@ -285,16 +276,16 @@ export const bookingsPage = {
       '手動確認後時段就會被佔用（付款完成本來會自動確認）。\n若顧客改用現金／轉帳到店付款，可先確認，收款後再按「標記已線下收款」。\n\n確定要手動確認嗎？',
     onlinePayWarning: (warn: string) => `⚠️ 此預約需線上付款，但顧客${warn}。\n\n`,
     noShow: '確定要將此預約標記為爽約嗎？',
-    cancelPaidWarning: (amount: string) =>
-      `⚠️ 此預約已線上收款${amount}。取消後系統不會自動退款，請記得至您的金流後台手動退款給顧客。確定要取消嗎？`,
+    cancelPaidWarning:
+      '⚠️ 此預約已有確認收款。取消後系統不會自動退款，請記得至您的金流後台手動退款給顧客。確定要取消嗎？',
     batchConfirm: (n: number) =>
       `確定要批次確認 ${n} 筆預約嗎？\n\n確認後這些時段都會被佔用。確定要全部確認嗎？`,
     batchUnpaidWarning: (selected: number, unpaid: number) =>
       `⚠️ 選取的 ${selected} 筆中，有 ${unpaid} 筆需線上付款但尚未收足：\n\n`,
     batchUnpaidMore: (n: number) => `・…等共 ${n} 筆`,
     batchCancel: (n: number, refundWarn: string) => `確定批次取消 ${n} 筆預約嗎？${refundWarn}`,
-    batchRefundWarning: (n: number, total: string) =>
-      `\n\n⚠️ 其中 ${n} 筆已線上收款（共 ${total}），系統不會自動退款，請記得至您的金流後台手動退款給顧客。`,
+    batchRefundWarning: (n: number) =>
+      `\n\n⚠️ 其中 ${n} 筆已有確認收款，實際金額請以金流後台為準；系統不會自動退款，請記得至您的金流後台手動退款給顧客。`,
     revert:
       '確定要還原為「已確認」嗎？\n\n此操作會：\n• 預約回到「已確認」狀態\n• 扣回顧客累計消費與到訪次數（報表營收同步更新）\n保留不動（保護顧客既得權益）：\n• 已升等的會員等級\n• 已套用的票券\n• 已發給顧客的點數\n• 加購項目（不受還原影響，要移除請至詳情逐項刪）',
     removeAddon:
@@ -304,7 +295,8 @@ export const bookingsPage = {
   /* ------------------------------------------------------------------ 訊息 */
   messages: {
     created: '預約建立成功',
-    updated: '預約已更新，已發送通知給顧客',
+    updated: '預約已更新，已觸發 LINE 通知流程',
+    updatedWithoutNotification: '預約已更新；本次未觸發 LINE 通知',
     confirmed: '預約已確認',
     completed: '預約已完成',
     cancelled: '預約已取消',
@@ -312,12 +304,8 @@ export const bookingsPage = {
     markedPaid: '已標記為已收款',
     reverted: '預約已還原為已確認',
     priceAdjusted: (amount: string) => `金額已調整為 ${amount}`,
-    couponApplied: (discount: string, net: string) => `票券已套用！折抵 ${discount}，實收 ${net}`,
+    couponApplied: (discount: string, net: string) => `票券已套用！折抵 ${discount}，套用後金額 ${net}`,
     pointsApplied: (points: number) => `點數折抵 ${points} 點 = $${points}`,
-    overpaidWarning: (amount: string) =>
-      `⚠️ 折抵後顧客已多付 ${amount}，請至您的金流後台手動退差額給顧客`,
-    paidOverNet: (paid: string, net: string) =>
-      `已收金額 ${paid} 高於新應付 ${net}，請確認是否退還差額`,
 
     addonAdded: '加購已加入，顧客將收到 LINE 消費明細',
     addonAddedSilent: '加購已加入（未通知顧客）',
@@ -325,9 +313,7 @@ export const bookingsPage = {
     addonAddedRefreshFailed: '加購已成功，但明細刷新失敗，請重開詳情查看',
     addonRemoved: '加購已移除',
     addonDowngradePaid:
-      '加購後金額提高，此預約已從「已付清」變回「已付訂金」——如需向顧客收取差額，可在詳情用「複製付款連結」傳給他，或收現後按「標記尾款已結清」。',
-    payLinkCopied: '付款連結已複製，可貼給顧客',
-
+      '加購後金額提高，此預約已從「已付清」變回「已付訂金」——如需向顧客收取差額，請收現後按「標記尾款已結清」，或至您的金流後台處理。',
     exported: '預約匯出成功',
     exportFailed: '匯出失敗，請稍後再試',
     exportFailedPrefix: '匯出失敗:',
