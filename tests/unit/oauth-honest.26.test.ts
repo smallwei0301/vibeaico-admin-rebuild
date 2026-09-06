@@ -26,6 +26,20 @@ const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
 
 const page = read('src/app/tenant/login/page.tsx');
+
+/**
+ * 取出帶指定 `data-testid` 的那一顆 `<Button …>` 開標籤。
+ *
+ * ⚠️ 不可以用 `/<Button[\s\S]*?data-testid="…"[\s\S]*?<\/Button>/`：`String.match`
+ * 從**檔案中最早**的 `<Button` 開始比對，那顆是密碼顯示切換鈕，於是抓到的區段會把
+ * 中間所有按鈕整段吞進來，一顆按鈕的屬性就能讓另一顆的斷言通過。改成以 `<Button`
+ * 切段、取「含該 testid 的那一段」的開標籤，斷言範圍才真的只有這顆按鈕。
+ */
+function buttonTag(source: string, testId: string): string {
+  const segment = source.split('<Button').find((s) => s.includes(`data-testid="${testId}"`));
+  expect(segment, `no <Button> carries data-testid="${testId}"`).toBeTruthy();
+  return segment!.slice(0, segment!.indexOf('>'));
+}
 const copy = read('src/i18n/zh-TW/pages/login.ts');
 const service = read('src/services/auth.ts');
 
@@ -43,6 +57,9 @@ describe('#26 login page: no link to non-existent OAuth authorize routes', () =>
     expect(page).not.toMatch(/\/api\/auth\/oauth\/google\/authorize/);
     expect(page).not.toMatch(/href=\{OAUTH/);
     expect(page).not.toMatch(/<a\s+className="btn btn-line/);
+    // 泛用防線：上面三條只擋「一模一樣寫回來」的寫法。任何指向 /api/** 的 href
+    // （含以樣板字串拼出來的 authorize 路徑）都不該出現在這頁。
+    expect(page).not.toMatch(/href=[^\n]*\/api\//);
   });
 
   it('removed the now-unused lineHref/googleHref i18n keys', () => {
@@ -52,16 +69,19 @@ describe('#26 login page: no link to non-existent OAuth authorize routes', () =>
 });
 
 describe('#26 login page: both OAuth buttons stay disabled regardless of status', () => {
-  it('keeps both provider buttons statically disabled (not conditioned on status)', () => {
-    const lineButton = page.match(/<Button[\s\S]*?data-testid="oauth-line-disabled"[\s\S]*?<\/Button>/)?.[0];
-    const googleButton = page.match(/<Button[\s\S]*?data-testid="oauth-google-disabled"[\s\S]*?<\/Button>/)?.[0];
-    expect(lineButton).toBeTruthy();
-    expect(googleButton).toBeTruthy();
-    // `disabled` is a bare static prop here, never `disabled={...}` gated on
-    // the fetched status — configured:true must never make it clickable.
-    expect(lineButton).toMatch(/\bdisabled\b(?!=)/);
-    expect(googleButton).toMatch(/\bdisabled\b(?!=)/);
-  });
+  it.each([['oauth-line-disabled'], ['oauth-google-disabled']])(
+    'keeps %s statically disabled (not conditioned on the fetched status)',
+    (testId) => {
+      const tag = buttonTag(page, testId);
+      // 必須是裸屬性 `disabled` 單獨佔一行，而不是 `disabled={…}`：
+      // configured:true 也不得讓按鈕變成可點（authorize 端點根本不存在）。
+      expect(tag).toMatch(/\n\s+disabled\n/);
+      expect(tag).not.toMatch(/disabled=/);
+      // 順帶擋掉「改回 <a href>」與「補上 onClick 假裝能登入」兩種回歸。
+      expect(tag).not.toMatch(/href/);
+      expect(tag).not.toMatch(/onClick/);
+    },
+  );
 
   it('loads status from getOAuthStatus() on mount instead of hardcoding it', () => {
     expect(page).toContain("import { getOAuthStatus, login } from '@/services'");
