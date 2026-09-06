@@ -1,5 +1,5 @@
 import { adapt, request } from '@/lib/api';
-import type { DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
+import type { Booking, DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
 } from '@/mock';
@@ -12,6 +12,162 @@ export const getDashboardAlerts = () =>
 
 export const getStaffPerformance = () =>
   adapt<StaffPerformance[]>(() => MOCK_STAFF_PERFORMANCE, () => request<StaffPerformance[]>('/api/reports/staff-performance'));
+
+/* ========================================================================== */
+/* Dashboard 首頁三塊真實資料區塊（Issue #7）— 本週趨勢／本月來源／最近活動        */
+/* ========================================================================== */
+
+export type WeeklyTrendPoint = { weekday: number; bookings: number; revenue: number };
+export type MonthSourcePoint = { source: Booking['source']; count: number };
+
+export type DashboardActivityType =
+  | 'BOOKING_CREATED' | 'BOOKING_CANCELLED' | 'BOOKING_COMPLETED'
+  | 'CUSTOMER_CREATED' | 'ORDER_CREATED';
+
+export type RecentActivity = { id: string; type: DashboardActivityType; name: string; target: string; at: string };
+
+/* ------------------------------------------------------------------------ */
+/* mock 分支：搬自原 dashboard 頁的骨架假資料，行為不變（byMode 於 callback 內呼叫） */
+/* ------------------------------------------------------------------------ */
+
+/** 本週預約趨勢：weekday 對應 common.weekdays 的索引（0 = 週日） */
+const TREND_LOCAL_SHOP: WeeklyTrendPoint[] = [
+  { weekday: 1, bookings: 6, revenue: 8400 },
+  { weekday: 2, bookings: 9, revenue: 15600 },
+  { weekday: 3, bookings: 4, revenue: 5200 },
+  { weekday: 4, bookings: 11, revenue: 21800 },
+  { weekday: 5, bookings: 14, revenue: 28600 },
+  { weekday: 6, bookings: 17, revenue: 34200 },
+  { weekday: 0, bookings: 8, revenue: 14600 },
+];
+
+/** 嚮導出團集中在週末與連假，平日以諮詢、整裝為主 */
+const TREND_GUIDE: WeeklyTrendPoint[] = [
+  { weekday: 1, bookings: 1, revenue: 3200 },
+  { weekday: 2, bookings: 2, revenue: 6400 },
+  { weekday: 3, bookings: 1, revenue: 2800 },
+  { weekday: 4, bookings: 3, revenue: 18600 },
+  { weekday: 5, bookings: 5, revenue: 42800 },
+  { weekday: 6, bookings: 9, revenue: 96400 },
+  { weekday: 0, bookings: 7, revenue: 78200 },
+];
+
+/** 診所平日門診量高，週末僅半日看診 */
+const TREND_CLINIC: WeeklyTrendPoint[] = [
+  { weekday: 1, bookings: 46, revenue: 32400 },
+  { weekday: 2, bookings: 52, revenue: 38600 },
+  { weekday: 3, bookings: 44, revenue: 30800 },
+  { weekday: 4, bookings: 50, revenue: 36200 },
+  { weekday: 5, bookings: 58, revenue: 41400 },
+  { weekday: 6, bookings: 22, revenue: 15600 },
+  { weekday: 0, bookings: 0, revenue: 0 },
+];
+
+/** 本月預約來源分布 */
+const SOURCES_LOCAL_SHOP: MonthSourcePoint[] = [
+  { source: 'LINE', count: 84 },
+  { source: 'PUBLIC_PAGE', count: 41 },
+  { source: 'MANUAL', count: 18 },
+  { source: 'RECURRING', count: 7 },
+];
+
+const SOURCES_GUIDE: MonthSourcePoint[] = [
+  { source: 'PUBLIC_PAGE', count: 38 },
+  { source: 'LINE', count: 26 },
+  { source: 'MANUAL', count: 14 },
+  { source: 'RECURRING', count: 0 },
+];
+
+const SOURCES_CLINIC: MonthSourcePoint[] = [
+  { source: 'LINE', count: 612 },
+  { source: 'PUBLIC_PAGE', count: 204 },
+  { source: 'RECURRING', count: 96 },
+  { source: 'MANUAL', count: 48 },
+];
+
+const ACTIVITY_LOCAL_SHOP: RecentActivity[] = [
+  { id: 'a_1', type: 'BOOKING_CREATED', name: '王小明', target: '精緻剪髮', at: '2026-08-20T09:12:00+08:00' },
+  { id: 'a_2', type: 'ORDER_CREATED', name: '陳雅婷', target: '護髮油 100ml', at: '2026-08-20T08:40:00+08:00' },
+  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '陳雅婷', target: '深層護髮', at: '2026-08-19T15:45:00+08:00' },
+  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '林佳蓉', target: '', at: '2026-08-19T11:02:00+08:00' },
+  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '陳雅婷', target: '全頭染髮', at: '2026-08-17T10:20:00+08:00' },
+];
+
+const ACTIVITY_GUIDE: RecentActivity[] = [
+  { id: 'a_1', type: 'BOOKING_CREATED', name: '黃思穎', target: '花蓮砂婆礑溯溪體驗', at: '2026-08-20T09:12:00+08:00' },
+  { id: 'a_2', type: 'ORDER_CREATED', name: '林巧薇', target: '防水袋 20L', at: '2026-08-20T08:40:00+08:00' },
+  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '陳彥廷', target: '龜山島賞鯨半日遊', at: '2026-08-19T15:45:00+08:00' },
+  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '吳孟儒', target: '', at: '2026-08-19T11:02:00+08:00' },
+  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '張家豪', target: '九份山城夜訪散策', at: '2026-08-17T10:20:00+08:00' },
+];
+
+const ACTIVITY_CLINIC: RecentActivity[] = [
+  { id: 'a_1', type: 'BOOKING_CREATED', name: '許文彥', target: '流感疫苗接種', at: '2026-08-20T09:12:00+08:00' },
+  { id: 'a_2', type: 'ORDER_CREATED', name: '蔡淑芬', target: '綜合維他命（90 錠）', at: '2026-08-20T08:40:00+08:00' },
+  { id: 'a_3', type: 'BOOKING_COMPLETED', name: '劉建國', target: '複診', at: '2026-08-19T15:45:00+08:00' },
+  { id: 'a_4', type: 'CUSTOMER_CREATED', name: '周佩琪', target: '', at: '2026-08-19T11:02:00+08:00' },
+  { id: 'a_5', type: 'BOOKING_CANCELLED', name: '蔡淑芬', target: '成人健康檢查', at: '2026-08-17T10:20:00+08:00' },
+];
+
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * ?from&to = YYYY-MM-DD，「本週」＝台北時區的週一～週日日曆週（不是滾動 7 天）。
+ *
+ * 兩個理由必須用日曆週：dashboard 這張圖的標題是「本週預約趨勢」，且 X 軸畫的是
+ * 週一～週日的星期名稱（common.weekdays）；滾動區間會讓軸從星期中間開始繞一圈，
+ * 也會把上週的日子算進「本週」。mock 分支的 TREND_* 同樣是週一～週日排列，
+ * real 分支必須給出一樣的順序。
+ *
+ * 日期一律以台北牆上時鐘（固定 +08:00）計算，不用瀏覽器本地時區 —— 後端
+ * /api/reports/daily 是以台北日界線分桶的（見 src/server/tz.ts），瀏覽器在別的
+ * 時區時，用本地日期會在跨日前後送出偏一天的區間。
+ */
+function weekQuery(): { from: string; to: string } {
+  const now = new Date(Date.now() + TAIPEI_OFFSET_MS);
+  const [y, m, d] = [now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()];
+  const sinceMonday = (now.getUTCDay() + 6) % 7; // getUTCDay: 0=週日 → 週一為 0
+  const fmt = (offsetDays: number) => {
+    const t = new Date(Date.UTC(y, m, d + offsetDays));
+    return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, '0')}-${String(t.getUTCDate()).padStart(2, '0')}`;
+  };
+  return { from: fmt(-sinceMonday), to: fmt(-sinceMonday + 6) };
+}
+
+/**
+ * 本週預約趨勢（台北時區的週一～週日日曆週，與畫面星期軸一致；本週尚未到來的
+ * 日子由 /api/reports/daily 補 0）。
+ * real：打既有 /api/reports/daily?from&to，逐日換算成 weekday（0=週日）。
+ */
+export const getWeeklyTrend = () =>
+  adapt<WeeklyTrendPoint[]>(
+    () => byMode({ LOCAL_SHOP: TREND_LOCAL_SHOP, GUIDE: TREND_GUIDE, CLINIC: TREND_CLINIC }),
+    async () => {
+      const q = weekQuery();
+      const daily = await request<{ label: string; bookings: number; revenue: number }[]>(
+        '/api/reports/daily', { query: q },
+      );
+      const [y, m, d] = q.from.split('-').map(Number);
+      return daily.map((point, i) => {
+        const weekday = new Date(Date.UTC(y, m - 1, d + i)).getUTCDay();
+        return { weekday, bookings: point.bookings, revenue: point.revenue };
+      });
+    },
+  );
+
+/** 本月預約來源分布。real：新端點 /api/reports/booking-sources（本月，無 from/to）。 */
+export const getMonthSources = () =>
+  adapt<MonthSourcePoint[]>(
+    () => byMode({ LOCAL_SHOP: SOURCES_LOCAL_SHOP, GUIDE: SOURCES_GUIDE, CLINIC: SOURCES_CLINIC }),
+    () => request<MonthSourcePoint[]>('/api/reports/booking-sources'),
+  );
+
+/** 最近活動（最新 10 筆，跨預約/顧客/訂單四種事件合併）。real：新端點 /api/reports/dashboard-activity。 */
+export const getRecentActivity = () =>
+  adapt<RecentActivity[]>(
+    () => byMode({ LOCAL_SHOP: ACTIVITY_LOCAL_SHOP, GUIDE: ACTIVITY_GUIDE, CLINIC: ACTIVITY_CLINIC }),
+    () => request<RecentActivity[]>('/api/reports/dashboard-activity'),
+  );
 
 /* ========================================================================== */
 /* 營運報表（/tenant/reports）— 04 分冊 §B-6                                    */
