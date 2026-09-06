@@ -269,6 +269,12 @@ export type TenantSummary = {
   extraModules?: ('LOCAL_SHOP' | 'GUIDE' | 'CLINIC')[];
 };
 
+/** GET /api/auth/oauth/status —— 平台 OAuth 憑證是否已設定（見 #26） */
+export type OAuthStatus = {
+  google: { configured: boolean };
+  line: { configured: boolean };
+};
+
 export type SetupStatus = {
   /** 0–100 */
   percent: number;
