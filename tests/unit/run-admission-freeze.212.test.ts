@@ -72,7 +72,10 @@ ${includeDeliveryType ? `- DELIVERY_UNIT_TYPE: ${deliveryType}` : ''}
 `;
 }
 
-function activeAgentProductBody({ deliveryType, includeDeliveryType = true } = {}) {
+function activeAgentProductBody({ deliveryType, includeDeliveryType = true }: {
+  deliveryType?: string;
+  includeDeliveryType?: boolean;
+} = {}) {
   return `${productBody({
     deliveryType,
     includeDeliveryType,
