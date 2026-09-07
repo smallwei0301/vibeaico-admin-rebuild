@@ -586,53 +586,76 @@ async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {
  *
  * Flex JSON 的組裝在 `src/server/trip-flex.ts`，這裡只負責查資料。
  * 那是**第二個 Flex 成品**（不是主選單的第二份實作）——資料來源是 `trips` 表
- * 而不是店家編的卡片，觸發字、卡片欄位、按鈕動作全都不同。理由與
- * `tests/unit/flex-menu.06.test.ts` 的 `FLEX_BUILDER_FILES` 說明一致。
+ * 而不是店家編的卡片，觸發字、卡片欄位、按鈕動作全都不同。
  *
- * ⚠️ **PostgREST 的 embed 一定要指定 FK 名稱。** `trip_plans` 對 `trips` 有
- * **兩條** FK：`trip_plans_trip_id_fkey`（0066 的單欄）與
- * `trip_plans_tenant_trip_fkey`（0067 的 tenant-aware 複合鍵）。不指定就是
- * `PGRST201 Could not embed because more than one relationship was found`
- * ——那是 500，顧客打「行程」完全沒反應，而任何只跑單元測試的驗證都不會紅。
+ * ⚠️ **兩件事是 2026-09-07 被 local-isolated 打回來才改對的，寫在這裡免得被改回去：**
+ *
+ * ① **查詢失敗不可以當成「沒有行程」。** 原本這裡是 `const { data } = await …`
+ *    ——把 `error` 丟掉。PostgREST 一出錯 `data` 就是 null，於是走進「沒有行程」
+ *    那條路，對顧客說「目前還沒有上架行程，敬請期待！」。**那是一個捏造的已知**：
+ *    我們其實沒查成功，卻告訴顧客店家沒上架。而且它是靜默的——沒有例外、沒有紅燈，
+ *    店家只會收到客訴說「我明明上架了」。現在錯誤會記到 log，並回 false 讓它落到
+ *    ⑤ AI／⑥ defaultReply，**不冒充「查過了，沒有」**。
+ *
+ * ② **不用 PostgREST 的 embed。** 原本用 `trip_plans!trip_plans_trip_id_fkey(...)`
+ *    的 FK hint 來繞開 0067 加的複合 FK 造成的 ambiguous embed。問題是**FK 的名字
+ *    在不同安裝路徑上不一樣**：canonical（0066 建表）與整合測試的
+ *    historical overlay（0016 建表、0066 的 `create table if not exists` 因此跳過）
+ *    產生的 constraint 名稱不同一組。把回覆能不能送出綁在 constraint 名字上，
+ *    等於讓一個純命名的差異變成「顧客打行程完全沒反應」。改成兩次一般查詢，
+ *    多一次 round-trip 換掉整類問題。
  */
 async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
-  const { data } = await ctx.admin
+  const { data: trips, error } = await ctx.admin
     .from('trips')
-    .select(
-      'slug, title, summary, cover_image_url,'
-      + ' trip_plans!trip_plans_trip_id_fkey(price_per_person, active)',
-    )
+    .select('id, slug, title, summary, cover_image_url')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'PUBLISHED')
     .order('created_at', { ascending: false })
     .limit(TRIP_CAROUSEL_MAX);
 
-  if (!data?.length) {
+  if (error) {
+    // 查不動 ≠ 沒有行程。見本函式檔頭 ①。
+    console.error('[line] replyTrips 查詢 trips 失敗', error);
+    return false;
+  }
+  if (!trips?.length) {
     // 沒有行程的一般店家（美髮沙龍收到「行程」）交給 AI／預設回覆比較自然；
     // 嚮導的 Rich Menu 有這一格，按下去必須有反應。
     return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.tripEmptyGuide) : false;
   }
 
+  /*
+   * 各行程的最低價：只算 active 方案的 `price_per_person`（**不是 `base_price`**
+   * ——0066 把舊的 base_price 併進 price_per_person）。
+   * 查不到方案（或這一步出錯）就是「價格未知」→ trip-flex 顯示「價格洽詢」，
+   * **不是 NT$ 0**（那會讓顧客以為免費）。價格查不到不該讓整份輪播消失，
+   * 所以這一步的錯誤不 return，只當作沒有方案。
+   */
+  const { data: plans, error: planError } = await ctx.admin
+    .from('trip_plans')
+    .select('trip_id, price_per_person, active')
+    .eq('tenant_id', ctx.tenant.id)
+    .in('trip_id', trips.map((t: any) => t.id));
+  if (planError) console.error('[line] replyTrips 查詢 trip_plans 失敗', planError);
+
+  const minPriceByTrip = new Map<string, number>();
+  for (const p of (plans ?? []) as any[]) {
+    if (!p.active) continue;
+    const price = Number(p.price_per_person);
+    if (!Number.isFinite(price)) continue;
+    const current = minPriceByTrip.get(p.trip_id);
+    if (current === undefined || price < current) minPriceByTrip.set(p.trip_id, price);
+  }
+
   const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
-  const cards: TripCardSource[] = data.map((t: any) => {
-    const plans: any[] = Array.isArray(t.trip_plans) ? t.trip_plans : [];
-    /*
-     * 只算 active 方案的 `price_per_person`（**不是 `base_price`**——0066 把舊的
-     * base_price 併進 price_per_person，`trips` / `trip_plans` 上已經沒有那個欄位）。
-     * 沒有任何啟用方案 → null，由 trip-flex 顯示「價格洽詢」而不是 NT$ 0。
-     */
-    const prices = plans
-      .filter((p) => p.active)
-      .map((p) => Number(p.price_per_person))
-      .filter((n) => Number.isFinite(n));
-    return {
-      slug: t.slug,
-      title: t.title,
-      summary: t.summary ?? '',
-      coverImageUrl: t.cover_image_url ?? '',
-      minPrice: prices.length ? Math.min(...prices) : null,
-    };
-  });
+  const cards: TripCardSource[] = trips.map((t: any) => ({
+    slug: t.slug,
+    title: t.title,
+    summary: t.summary ?? '',
+    coverImageUrl: t.cover_image_url ?? '',
+    minPrice: minPriceByTrip.has(t.id) ? minPriceByTrip.get(t.id)! : null,
+  }));
 
   const flex = buildTripCarousel(cards, shopUrl, {
     altText: MSG.tripCarouselAlt,
@@ -649,48 +672,71 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
 /**
  * 「團次」「名額」「出團日期」…→ 未來 14 天可報名的團次（10 分冊 §6.1）。
  *
- * 純文字而不是 Flex：顧客問的是「哪幾天還有位子」，一份可以一眼掃完的日期清單
- * 比一組要左右滑的卡片有用；而且團次可能有 10 筆，carousel 上限是 12 個 bubble。
+ * 純文字而不是 Flex：顧客問的是「哪幾天還有位子」，一份可以一眼掃完的清單
+ * 比一組要左右滑的卡片有用。
  *
- * ⚠️ 兩個 embed 都要指定 FK 名稱，理由同 `replyTrips()`：
- * `trip_departures` 對 `trips` 有 `trip_departures_trip_id_fkey` 與
- * `trip_departures_tenant_trip_fkey` 兩條；對 `trip_plans` 有
- * `trip_departures_plan_id_fkey` 與 `trip_departures_tenant_trip_plan_fkey` 兩條。
- *
- * ⚠️ `trips` 用 `!inner`：只列**已發布**行程的團次。草稿行程的團次外流出去，
- * 等於顧客報名一個店家還沒打算開賣的團。
+ * ⚠️ 一樣不用 embed、一樣不把查詢失敗當成「沒有團次」，理由見 `replyTrips()` 檔頭。
+ * ⚠️ 先取**已發布**行程的 id 再查團次：草稿行程的團次外流出去，等於讓顧客報名
+ *    一個店家還沒打算開賣的團。先過濾再 limit，才不會被草稿團次吃掉名額。
  */
 async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+
+  const { data: trips, error: tripError } = await ctx.admin
+    .from('trips')
+    .select('id, title')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED');
+  if (tripError) {
+    console.error('[line] replyDepartures 查詢 trips 失敗', tripError);
+    return false;
+  }
+  if (!trips?.length) return replyText(ctx, MSG.departureEmpty);
+
+  const titleById = new Map<string, string>(trips.map((t: any) => [t.id, t.title]));
 
   const today = new Date();
   const from = today.toISOString().slice(0, 10);
   const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  const { data } = await ctx.admin
+  const { data: departures, error } = await ctx.admin
     .from('trip_departures')
-    .select(
-      'departs_on, start_time, capacity, seats_booked,'
-      + ' trips!trip_departures_trip_id_fkey!inner(title, status),'
-      + ' trip_plans!trip_departures_plan_id_fkey(name)',
-    )
+    .select('trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'OPEN')
-    .eq('trips.status', 'PUBLISHED')
+    .in('trip_id', [...titleById.keys()])
     .gte('departs_on', from)
     .lte('departs_on', to)
     .order('departs_on', { ascending: true })
     .limit(SERVICE_LIST_LIMIT);
+  if (error) {
+    console.error('[line] replyDepartures 查詢 trip_departures 失敗', error);
+    return false;
+  }
+  if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
 
-  if (!data?.length) return replyText(ctx, MSG.departureEmpty);
+  // 方案名稱是錦上添花（顯示成「（標準團）」）。查不到就不顯示那一段，
+  // 不讓它擋掉整份團次清單。
+  const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
+  const planNameById = new Map<string, string>();
+  if (planIds.length) {
+    const { data: plans, error: planError } = await ctx.admin
+      .from('trip_plans')
+      .select('id, name')
+      .eq('tenant_id', ctx.tenant.id)
+      .in('id', planIds);
+    if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
+    for (const p of (plans ?? []) as any[]) planNameById.set(p.id, p.name);
+  }
 
-  const lines = data.map((d: any) => {
+  const lines = departures.map((d: any) => {
     // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
     const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
     const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
-    const plan = d.trip_plans?.name ? `（${d.trip_plans.name}）` : '';
+    const planName = planNameById.get(d.plan_id);
+    const plan = planName ? `（${planName}）` : '';
     const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
-    return `・${d.departs_on}${time} ${d.trips?.title ?? ''}${plan}　${seats}`;
+    return `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
   });
   const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
   return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${shopUrl}`);

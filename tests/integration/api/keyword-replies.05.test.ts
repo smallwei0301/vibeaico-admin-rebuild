@@ -417,6 +417,25 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
   it('嚮導的選單格按下去都有真實回應：行程／團次回真資料，訂單誠實說沒建好', async () => {
     await setBusinessType('GUIDE');
 
+    /*
+     * 前置條件先自己驗一次，而不是等下面的斷言紅了再猜。
+     *
+     * ⚠️ 這幾行是 2026-09-07 被 local-isolated 打回來之後補的。當時 webhook 回
+     * 「目前還沒有上架行程」，而那句話有**兩個**完全不同的成因：
+     *   (a) 種子沒有已發布行程 → 測試前提不成立
+     *   (b) handler 查詢失敗被吞掉 → 產品缺陷
+     * 兩者在回覆字串上長得一模一樣，除錯時只能猜。先直查一次就分得開了。
+     */
+    const { data: published, error: publishedError } = await admin
+      .from('trips').select('id, title, status')
+      .eq('tenant_id', SHOP_A.id).eq('status', 'PUBLISHED');
+    expect(publishedError, 'service role 直查 trips 失敗').toBeNull();
+    expect(
+      published?.length ?? 0,
+      '前置條件不成立：SHOP_A 沒有任何 PUBLISHED 行程，下面的斷言驗不到 handler',
+    ).toBeGreaterThan(0);
+    expect(published!.map((t: any) => t.title)).toContain('A 店測試行程');
+
     // ① 行程 → Flex 輪播（10 分冊 §6.1）。種子有一筆 PUBLISHED 的「A 店測試行程」。
     const trips = await customerSays('行程');
     expect(trips, '「行程」按下去沒有任何回應').not.toBeNull();
