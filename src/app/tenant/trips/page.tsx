@@ -17,11 +17,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listTrips } from '@/services/tours';
+import { deleteTrip, listTrips, publishTrip, requestMidaoListing } from '@/services/tours';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
-import { APP_URL } from '@/config/env';
+import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { MidaoListing, Trip, TripStatus } from '@/lib/types';
@@ -57,18 +57,41 @@ export default function TripsPage() {
   const [unpublishTarget, setUnpublishTarget] = React.useState<Trip | null>(null);
   const [midaoTarget, setMidaoTarget] = React.useState<Trip | null>(null);
 
-  const load = React.useCallback(async () => {
+  const load = React.useCallback(async (): Promise<boolean> => {
     setLoading(true);
     try {
       setRows(await listTrips());
+      return true;
     } catch {
       toast.show(t.messages.loadFailed, 'danger');
+      return false;
     } finally {
       setLoading(false);
     }
   }, [toast]);
 
   React.useEffect(() => { void load(); }, [load]);
+
+  const runMutation = React.useCallback(async (
+    action: () => Promise<unknown>,
+    afterMock: () => void,
+    successMessage: string,
+  ) => {
+    try {
+      await action();
+      if (USE_MOCK) {
+        afterMock();
+      } else if (!(await load())) {
+        return;
+      }
+      toast.show(successMessage);
+    } catch (error) {
+      toast.show(
+        error instanceof Error && error.message ? error.message : t.messages.mutationFailed,
+        'danger',
+      );
+    }
+  }, [load, toast]);
 
   const visible = React.useMemo(() => rows.filter((r) => {
     if (statusFilter && r.status !== statusFilter) return false;
@@ -83,31 +106,50 @@ export default function TripsPage() {
   /** 只切換商店頁可見性；Midao 前台不受影響 */
   const togglePublish = (trip: Trip) => {
     if (trip.status === 'PUBLISHED') { setUnpublishTarget(trip); return; }
-    setRows((prev) => prev.map((r) => (r.id === trip.id ? { ...r, status: 'PUBLISHED' } : r)));
-    toast.show(t.messages.published);
+    void runMutation(
+      () => publishTrip(trip.id, true),
+      () => setRows((prev) => prev.map((r) => (
+        r.id === trip.id ? { ...r, status: 'PUBLISHED' } : r
+      ))),
+      t.messages.published,
+    );
   };
 
   const doUnpublish = () => {
     if (!unpublishTarget) return;
-    setRows((prev) => prev.map((r) => (r.id === unpublishTarget.id ? { ...r, status: 'DRAFT' } : r)));
+    const target = unpublishTarget;
     setUnpublishTarget(null);
-    toast.show(t.messages.unpublished);
+    void runMutation(
+      () => publishTrip(target.id, false),
+      () => setRows((prev) => prev.map((r) => (
+        r.id === target.id ? { ...r, status: 'DRAFT' } : r
+      ))),
+      t.messages.unpublished,
+    );
   };
 
   const doRequestMidao = () => {
     if (!midaoTarget) return;
-    setRows((prev) => prev.map((r) => (
-      r.id === midaoTarget.id ? { ...r, midaoListing: 'PENDING', midaoListingNote: '' } : r
-    )));
+    const target = midaoTarget;
     setMidaoTarget(null);
-    toast.show(t.messages.midaoRequested);
+    void runMutation(
+      () => requestMidaoListing(target.id),
+      () => setRows((prev) => prev.map((r) => (
+        r.id === target.id ? { ...r, midaoListing: 'PENDING', midaoListingNote: '' } : r
+      ))),
+      t.messages.midaoRequested,
+    );
   };
 
   const doDelete = () => {
     if (!deleteTarget) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+    const target = deleteTarget;
     setDeleteTarget(null);
-    toast.show(t.messages.deleted);
+    void runMutation(
+      () => deleteTrip(target.id),
+      () => setRows((prev) => prev.filter((r) => r.id !== target.id)),
+      t.messages.deleted,
+    );
   };
 
   const duplicate = (trip: Trip) => {
