@@ -2,7 +2,13 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-04。
+> 最後更新：2026-09-07。
+
+## 2026-09-07 已裁示
+
+| Issue | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| #207 / repo governance | 交付完成、v4 結案、Sol 與雙 Terra 對齊 | **`CLOSED` 只表示 Issue 結案；只有五階交付真相都成立且完成登入正式站實測才是 shipped unit。新 Run 使用既有 v4 closeout；Sol 可早期讀 diff，但只有必要測試完成後對 final exact head 的 audit 可放行。雙 Terra 是 Guard 先判定 qualified 的條件入口。** | 新帳本用既有 `run-ledger-v2.mjs`，不改寫歷史；final v4 closeout 必須由 validator 通過。canonical：`docs/decisions/2026-09-07-owner-governance-alignment.md`。 |
 
 ## 2026-09-04 已裁示
 

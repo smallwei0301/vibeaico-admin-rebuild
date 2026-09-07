@@ -3,7 +3,7 @@ name: vibeaico-agent-retrospective
 description: "Trigger when the Owner says 復盤 or 複盤, asks to review Agent efficiency, token/usage, delivery throughput, quality, CI waste, Luna/Terra/Sol routing, completion truth, or improve the B+ loop in smallwei0301/vibeaico-admin-rebuild. Finds recent reports, reads Gmail incident notifications, verifies completion claims against live systems, recomputes scores, compares trends, and proposes at most two auditable governance changes."
 metadata:
   author: smallwei0301
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # VibeAI.co Agent Loop 復盤
@@ -24,6 +24,7 @@ notifications or databases. Governance changes are allowed only when the Owner s
 
 1. Fetch latest `origin/main`.
 2. Read:
+   - `docs/decisions/2026-09-07-owner-governance-alignment.md`
    - `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
    - `docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
    - `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
@@ -37,7 +38,7 @@ notifications or databases. Governance changes are allowed only when the Owner s
    branch, exact SHA, deployment ID, workflow ID, provider error code or quota signal present in the body.
    Never copy access tokens, passwords, keys or full secret-bearing messages into the repository.
 5. Find `docs/metrics/agent-runs/*.json`, sorted by `startedAt` and filename.
-6. Compare the latest three completed, truth-verified schema v2 runs. Keep schema v1 reports as
+6. Compare the latest three completed, truth-verified schema v2 runs. New operational Runs must also have `deliveryTruthVersion: 4` and a validated closeout envelope; schema v1 and historical DeliveryTruth v2/v3 are read-only history. Keep schema v1 reports as
    `LEGACY_V1` history and do not mix their Delivery Unit with v2 outcomes.
 7. Validate and reproduce selected v2 reports:
 
@@ -46,7 +47,7 @@ node scripts/agents/run-ledger-v2.mjs validate <run.json>
 node scripts/agents/score-run-v2.mjs <run.json>
 ```
 
-Use `agent:run:legacy:*` only to reproduce schema v1 history. If a report cannot be reproduced, mark it
+Use `agent:run:legacy:*` only to reproduce schema v1 history; reproduce historical DeliveryTruth v2/v3 with the existing v2 tools, without creating or rewriting a ledger. If a report cannot be reproduced, mark it
 `AUDIT_DATA_INVALID` and do not trust its score.
 8. Generate the v2 comparison with:
 
@@ -132,12 +133,12 @@ next Run start from live truth.
 ## Delivery Outcome v2
 
 ```text
-shipped_units = live-verified CLOSED Delivery Slice／standalone Issue × 1.0
-autonomous_outcome_units = CLOSED × 1.0 + verified complete OWNER_BLOCKED × 0.75
-wip_inventory = Audit Ready + CI-only + commit-only + unfinished carryover
+shipped_units = 五階全成且登入正式站實測接受的 Issue × 1.0
+autonomous_outcome_units = shipped_unit × 1.0 + verified complete OWNER_BLOCKED × 0.75
+wip_inventory = CLOSED 但仍 PRODUCTION_PENDING + Audit Ready + CI-only + commit-only + unfinished carryover
 ```
 
-WIP is reported, never converted into products. `IN_PROGRESS`／`CLOSURE_RECOVERY`, missing final data,
+`CLOSED` is Issue close, not shipment: a shipped unit requires all five production stages, including authenticated production acceptance. WIP is reported, never converted into products. `IN_PROGRESS`／`CLOSURE_RECOVERY`, missing final data,
 or unverified completion truth are `NOT_GRADED`. Missing percentages are not replaced with 50.
 Per-shipped usage is calculated only when `shipped_units >= 1`.
 
@@ -213,7 +214,7 @@ When authorized to optimize:
 2. Default budget is at most 8 changed files and 800 changed lines; split work instead of exceeding it.
 3. Change only the smallest canonical docs, skills, scripts, tests and workflows needed.
 4. Preserve historical reports. Never rewrite a weak old score to make the trend look better.
-5. Add or update tests for every scoring/routing/truth rule.
+5. Reuse `run-ledger-v2.mjs`, `score-run-v2.mjs` and `review-runs-v2.mjs`; do not rebuild or rewrite historical ledgers. Add or update tests for every scoring/routing/truth rule.
 6. Run exact-head CI once; do not create no-op commits.
 7. Sol audits the governance diff.
 8. After merge is requested, re-fetch PR, main, compare and main files before saying it merged.
