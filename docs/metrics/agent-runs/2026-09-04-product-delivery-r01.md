@@ -16,14 +16,36 @@
 
 ## 為什麼尚不評分
 
-- run is still in progress
-
-## 結案前必須修正的硬性問題
-
-- CI_GREEN issue#7 customer source (pull/177) canonical TEST first attempt contradicts live evidence
-- OTHER issue/34 false completion contradicts live evidence
-- OTHER issue/27 false completion contradicts live evidence
-- OTHER feature-store honest restore contradicts live evidence
+- modelUsage.weightedUsageImprovementPercent is missing
+- ci.firstPassRatePercent is missing
+- quality.acceptanceEvidenceCoveragePercent is missing
+- quality.auditFirstPassRatePercent is missing
+- flow.waitTimeConvertedPercent is missing
+- auditability.evidenceFieldsCompletePercent is missing
+- auditability.exactHeadTestCoveragePercent is missing
+- auditability.preciseBlockersPercent is missing
+- auditability.scoreInputsCompletePercent is missing
+- AUTO_VERCEL_DEPLOYED issue#42 is unverified
+- AUTHENTICATED_PRODUCTION_ACCEPTED issue#42 is unverified
+- AUTHENTICATED_PRODUCTION_ACCEPTED issue#7 is unverified
+- AUTHENTICATED_PRODUCTION_ACCEPTED issue#28 is unverified
+- SOURCE_VERIFIED issue#7 customers wiring (pull/173) does not identify one canonical Issue
+- MERGED_TO_MAIN issue#7 customers wiring (pull/173) does not identify one canonical Issue
+- AUTHENTICATED_PRODUCTION_ACCEPTED issue#7 customers wiring (pull/173) does not identify one canonical Issue
+- MERGED_TO_MAIN issue#23 campaigns wiring (pull/175) does not identify one canonical Issue
+- MERGED_TO_MAIN issue#7 points topup (pull/174) does not identify one canonical Issue
+- MERGED_TO_MAIN issue#7 richmenu bg upload (pull/181) does not identify one canonical Issue
+- PRODUCTION_SCHEMA_READY migration 0076 customers.source applied to Production does not identify one canonical Issue
+- MERGED_TO_MAIN pull/192 does not identify one canonical Issue
+- PRODUCTION_SCHEMA_READY TEST nmwhwngojosmagjuvxol staff.schedule_mode does not identify one canonical Issue
+- PRODUCTION_SCHEMA_READY PROD egehnijjpgijmccagxac staff.schedule_mode does not identify one canonical Issue
+- SOURCE_VERIFIED pull/198 is unverified
+- SOURCE_VERIFIED pull/198 does not identify one canonical Issue
+- MERGED_TO_MAIN pull/198 does not identify one canonical Issue
+- MERGED_TO_MAIN pull/200 does not identify one canonical Issue
+- MERGED_TO_MAIN pull/201 does not identify one canonical Issue
+- SOURCE_VERIFIED pull/203 is unverified
+- SOURCE_VERIFIED pull/203 does not identify one canonical Issue
 
 ---
 
