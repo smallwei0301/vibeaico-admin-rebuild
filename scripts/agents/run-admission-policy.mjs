@@ -23,14 +23,17 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   if (!frozen) return [];
 
   const deliveryType = upper(metadata.deliveryUnitType);
+  if (!PRODUCT_TYPES.has(deliveryType)) return [];
+
   const counted = upper(metadata.countInDeliveryOutcome) === 'TRUE';
   const retroactive = upper(metadata.retroactiveTrackingMigration) === 'TRUE';
 
-  // Historical bookkeeping may reference a frozen Run only when it is explicitly
-  // non-delivery. New Product membership is never admitted after the freeze.
-  if (!PRODUCT_TYPES.has(deliveryType) || !counted || retroactive) return [];
+  // A frozen legacy Run accepts no new Product membership. The only Product-shaped
+  // reference allowed is explicitly historical bookkeeping: retroactive=true and
+  // count=false. Merely setting count=false cannot be used to bypass the freeze.
+  if (retroactive && !counted) return [];
 
   return [
-    `RUN_ID ${runId} is frozen for new Product membership; start a new Delivery Truth v4 Run with an explicit closeout owner. Evidence: ${frozen.evidenceRef}`,
+    `RUN_ID ${runId} is frozen for new Product membership; start a new Delivery Truth v4 Run with an explicit closeout owner. Only RETROACTIVE_TRACKING_MIGRATION=true with COUNT_IN_DELIVERY_OUTCOME=false may reference it as historical bookkeeping. Evidence: ${frozen.evidenceRef}`,
   ];
 }
