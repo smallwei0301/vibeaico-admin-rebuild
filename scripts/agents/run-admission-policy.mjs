@@ -30,6 +30,17 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   const historicalReference = lane === 'GOVERNANCE' || state === 'HISTORICAL';
   const countValue = upper(metadata.countInDeliveryOutcome);
   const retroactiveValue = upper(metadata.retroactiveTrackingMigration);
+  const explicitHistorical = historicalReference &&
+    Boolean(deliveryType) &&
+    retroactiveValue === 'TRUE' &&
+    countValue === 'FALSE';
+  const genuineGovernance = lane === 'GOVERNANCE' &&
+    state === 'ACTIVE' &&
+    deliveryType === 'GOVERNANCE' &&
+    countValue === 'FALSE' &&
+    retroactiveValue === 'FALSE';
+
+  const frozenError = `RUN_ID ${runId} is frozen for new Product membership; start a new Delivery Truth v4 Run with an explicit closeout owner. Only RETROACTIVE_TRACKING_MIGRATION=true with COUNT_IN_DELIVERY_OUTCOME=false may reference it as historical bookkeeping. Evidence: ${frozen.evidenceRef}`;
 
   // Trusted WIP validation calls this admission policy directly, without the
   // local delivery-unit preflight. A Product lane must therefore fail
@@ -37,7 +48,9 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   // Product PR could hide a frozen Run behind GOVERNANCE/EPIC (or no value).
   // Non-Product lanes may retain governance and historical references.
   if (!PRODUCT_TYPES.has(deliveryType)) {
-    if (!productLane || historicalReference) return [];
+    if (genuineGovernance || explicitHistorical) return [];
+    if (!productLane && !historicalReference) return [];
+    if (!productLane) return [frozenError];
     return [
       `RUN_ID ${runId} is frozen for new Product membership; Product lanes must declare DELIVERY_UNIT_TYPE=SLICE or STANDALONE or move to an explicit GOVERNANCE/HISTORICAL reference. Evidence: ${frozen.evidenceRef}`,
     ];
@@ -49,11 +62,7 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   // That exception is available only to a positively identified governance or
   // historical reference; a Product lane must stay frozen across state toggles
   // because the trusted WIP path does not run the full delivery-unit boundary.
-  if (retroactiveValue === 'TRUE' && countValue === 'FALSE') {
-    if (historicalReference) return [];
-  }
+  if (explicitHistorical) return [];
 
-  return [
-    `RUN_ID ${runId} is frozen for new Product membership; start a new Delivery Truth v4 Run with an explicit closeout owner. Only RETROACTIVE_TRACKING_MIGRATION=true with COUNT_IN_DELIVERY_OUTCOME=false may reference it as historical bookkeeping. Evidence: ${frozen.evidenceRef}`,
-  ];
+  return [frozenError];
 }

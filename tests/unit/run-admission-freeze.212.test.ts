@@ -79,12 +79,14 @@ function activeAgentProductBody({
   retroactive,
   deliveryType,
   includeDeliveryType = true,
+  lane = 'TERRA_BUILD',
   laneState = 'ACTIVE',
 }: {
   count?: string;
   retroactive?: string;
   deliveryType?: string;
   includeDeliveryType?: boolean;
+  lane?: string;
   laneState?: string;
 } = {}) {
   return `${productBody({
@@ -92,6 +94,7 @@ function activeAgentProductBody({
     retroactive,
     deliveryType,
     includeDeliveryType,
+    lane,
     laneState,
     origin: 'AGENT',
     bplusMode: 'true',
@@ -208,6 +211,50 @@ describe('Issue #212 legacy Run admission freeze', () => {
     );
   });
 
+  it('preserves a fully declared active governance reference', () => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: activeAgentProductBody({
+        lane: 'GOVERNANCE',
+        deliveryType: 'GOVERNANCE',
+        count: 'false',
+        retroactive: 'false',
+      }),
+    });
+    expect(validateLaneMetadata(metadata)).not.toContainEqual(
+      expect.stringContaining('is frozen for new Product membership'),
+    );
+  });
+
+  it.each([
+    ['historical governance type with missing flags', {
+      laneState: 'HISTORICAL',
+      deliveryType: 'GOVERNANCE',
+      count: '',
+      retroactive: '',
+    }],
+    ['governance lane with omitted type and flags', {
+      lane: 'GOVERNANCE',
+      includeDeliveryType: false,
+      count: '',
+      retroactive: '',
+    }],
+    ['governance lane with EPIC and invalid flags', {
+      lane: 'GOVERNANCE',
+      deliveryType: 'EPIC',
+      count: 'UNKNOWN',
+      retroactive: 'UNKNOWN',
+    }],
+  ])('requires explicit historical flags for %s', (_label, options) => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: activeAgentProductBody(options),
+    });
+    expect(validateLaneMetadata(metadata)).toContainEqual(
+      expect.stringContaining('is frozen for new Product membership'),
+    );
+  });
+
   it('keeps the legacy ledger bytes semantically read-only and stores terminal context outside it', () => {
     const root = process.cwd();
     const ledger = JSON.parse(readFileSync(
@@ -232,7 +279,6 @@ describe('Issue #212 legacy Run admission freeze', () => {
     expect(workflow).toContain('policy.validateLaneMetadata(metadata');
     expect(lanePolicy).toContain("import { validateRunAdmission } from './run-admission-policy.mjs';");
     expect(lanePolicy).toContain('...validateRunAdmission({ metadata })');
-    });
   });
 
   it.each([
@@ -253,3 +299,4 @@ describe('Issue #212 legacy Run admission freeze', () => {
       expect.stringContaining('is frozen for new Product membership'),
     );
   });
+});
