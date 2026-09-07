@@ -1,4 +1,9 @@
 import { adapt, request } from '@/lib/api';
+import {
+  NOT_DOWNLOADED,
+  downloadAttachment,
+  type AttachmentDownloadResult,
+} from '@/services/download';
 import type { Booking, DashboardAlerts, DashboardStats, StaffPerformance } from '@/lib/types';
 import {
   MOCK_DASHBOARD_ALERTS, MOCK_DASHBOARD_STATS, MOCK_STAFF_PERFORMANCE, byMode,
@@ -355,10 +360,15 @@ export const getTopStaff = (q: ReportQuery) =>
  */
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '';
 
+// issue #246：改走 fetch + Content-Disposition，理由有二。
+// ① 端點已改產真正的 xlsx，呼叫端必須把後端給的檔名交給瀏覽器，不能自己組。
+// ② 原本的 window.location.assign 拿不到任何回應標頭，於是報表頁只能自行拼一個
+//    「營運報表_YYYYMMDD.xlsx」——那個檔名與實際下載到的檔案無關，是捏造的。
+// 下載機制沿用 inventory-export.ts 的 downloadAttachment，不另造一套。
 export const exportCustomersExcel = () =>
-  adapt<void>(
-    () => undefined,
-    async () => { window.location.assign(`${API_BASE}/api/export/customers/excel`); },
+  adapt<AttachmentDownloadResult>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(`${API_BASE}/api/export/customers/excel`),
   );
 
 export type ExportBookingsQuery = {

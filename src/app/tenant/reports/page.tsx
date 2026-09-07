@@ -49,11 +49,6 @@ function rangeDates(range: RangeKey): ReportQuery {
   return { from: fmt(from), to: fmt(to) };
 }
 
-const todayFileDate = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
 const RANK_TONE = ['warning', 'neutral', 'info'] as const;
 
 /* -------------------------------------------------------------------------- */
@@ -163,11 +158,19 @@ export default function ReportsPage() {
     setExportOpen(false);
     setExporting(true);
     try {
-      /* real：直接導向匯出端點（檔案下載，不走 API 信封）；mock：no-op，僅照舊 toast。
-         Excel 選項對應顧客名單匯出、CSV 選項對應預約列表匯出（帶目前區間）。 */
-      if (ext === 'xlsx') await exportCustomersExcel();
-      else await exportBookingsCsv(rangeDates(range));
-      toast.show(`${t.export.success}：${t.export.fileName(todayFileDate(), ext)}`);
+      /* real：直接打匯出端點（檔案下載，不走 API 信封）；mock：no-op，僅照舊 toast。
+         Excel 選項對應顧客名單匯出、CSV 選項對應預約列表匯出（帶目前區間）。
+
+         issue #246：檔名一律取自後端 Content-Disposition。先前這裡是前端自己
+         用本機日期拼一個「營運報表_YYYYMMDD.xlsx」，而當時端點回的其實是
+         customers-….csv，連副檔名都不符。沒有檔名時只報成功，不編一個出來。
+         （拼檔名用的 todayFileDate() 也隨之移除，不留死碼。） */
+      const result = ext === 'xlsx'
+        ? await exportCustomersExcel()
+        : await exportBookingsCsv(rangeDates(range));
+      toast.show(
+        result?.fileName ? t.export.successAs(result.fileName) : t.export.success,
+      );
     } catch {
       toast.show(t.export.failed, 'danger');
     } finally {
