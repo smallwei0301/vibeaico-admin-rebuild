@@ -49,20 +49,20 @@ let originalBusiness: unknown = null;
 const createdBlockIds: string[] = [];
 const createdBookingIds: string[] = [];
 
+// ⚠️ perDayHours 是「長度剛好 7 的陣列」（businessSettingsSchema:94
+// `z.array(z.array(...)).length(7)`），index 0 = 週日。不是以星期為鍵的物件——
+// 寫成物件會讓 PUT /api/settings 回 400，而且 400 的訊息不會告訴你是形狀錯。
 /** 週一 09:00-18:00，其餘六天不營業。逐日模式。 */
 const PER_DAY_MON_ONLY = {
   perDayMode: true,
-  perDayHours: {
-    0: [], 1: [{ start: '09:00', end: '18:00' }], 2: [], 3: [], 4: [], 5: [], 6: [],
-  },
+  perDayHours: [[], [{ start: '09:00', end: '18:00' }], [], [], [], [], []],
 };
 /** 週一、週二各開一段。用來驗「再次修改不累積」。 */
 const PER_DAY_MON_TUE = {
   perDayMode: true,
-  perDayHours: {
-    0: [], 1: [{ start: '10:00', end: '16:00' }], 2: [{ start: '10:00', end: '16:00' }],
-    3: [], 4: [], 5: [], 6: [],
-  },
+  perDayHours: [
+    [], [{ start: '10:00', end: '16:00' }], [{ start: '10:00', end: '16:00' }], [], [], [], [],
+  ],
 };
 
 async function countAutoBlocks(tenantId: string): Promise<number> {
@@ -234,14 +234,14 @@ describe('#33② 存檔後真的建立自動封鎖', () => {
 describe('#33② 衝突預約計數', () => {
   it('②-6 零衝突時回 0（不是回一個估計值，也不是漏算）', async () => {
     // 全天候營業 → 任何預約都不可能落在非營業時段
+    const allDay = [{ start: '00:00', end: '24:00' }];
     const allOpen = {
       perDayMode: true,
-      perDayHours: {
-        0: [{ start: '00:00', end: '24:00' }], 1: [{ start: '00:00', end: '24:00' }],
-        2: [{ start: '00:00', end: '24:00' }], 3: [{ start: '00:00', end: '24:00' }],
-        4: [{ start: '00:00', end: '24:00' }], 5: [{ start: '00:00', end: '24:00' }],
-        6: [{ start: '00:00', end: '24:00' }],
-      },
+      perDayHours: [allDay, allDay, allDay, allDay, allDay, allDay, allDay],
+      // closedDays 預設是 [0]（週日）。逐日模式下公休以「空陣列」表達，
+      // 但 planAutoBlocks 仍會讀 closedDays，所以這裡要一併清空，
+      // 否則週日會被整天封鎖，autoBlockCount 不會是 0。
+      closedDays: [],
     };
     const res = await ownerA.fetch('/api/settings/weekly-business-hours/draft', {
       method: 'POST', headers: { 'content-type': 'application/json' },
