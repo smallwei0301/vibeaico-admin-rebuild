@@ -18,6 +18,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import { ApiError } from '@/lib/api';
 import { getTenantSettings, listFeatures, saveLineSettings } from '@/services/settings';
+import { uploadImage } from '@/services/upload';
 import {
   createKeywordReply, deleteKeywordReply, listKeywordReplies, setKeywordReplyActive,
   updateKeywordReply,
@@ -109,6 +110,7 @@ export default function KeywordRepliesPage() {
   const [editing, setEditing] = React.useState(false);
   const [formError, setFormError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  const [imageUploading, setImageUploading] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<KeywordReply | null>(null);
 
   /** 未訂閱時才真的鎖住自訂關鍵字的 CRUD（端點也 requireFeature，鎖與後端一致） */
@@ -173,6 +175,32 @@ export default function KeywordRepliesPage() {
   }, []);
 
   /* -------------------------------------------------------------- 動作 */
+
+  /**
+   * 選檔 → 真的上傳到 Storage → 把回來的 public URL 放進 draft（issue #50）。
+   *
+   * ⚠️ **只在上傳成功後才改 draft.imageUrl。** 失敗時 draft 維持原狀，畫面顯示
+   * 後端的真實錯誤訊息——不可以先樂觀寫進去再說，那樣店家會看到預覽、按了儲存，
+   * 而 DB 裡是一個抓不到的網址，顧客那邊收到破圖（LINE 抓不到就整則不送）。
+   *
+   * 存進 `content.imageUrl` 之後，`toApiPayload()` 會據此把 replyType 設成
+   * 'IMAGE'，webhook 的 `keywordReplyMessage()` 就會組 LINE image message
+   * ——那兩段**本來就在** main 上，本輪沒有動它們。
+   */
+  const onPickImage = async (file: File) => {
+    setImageUploading(true);
+    try {
+      const { url } = await uploadImage(file, 'keyword-reply-images');
+      setDraft((d) => (d ? { ...d, imageUrl: url } : d));
+      setFormError('');
+      toast.show(t.form.imageUploaded);
+    } catch (e) {
+      const detail = e instanceof ApiError ? e.message : t.messages.retryLater;
+      setFormError(`${t.messages.imageUploadFailedPrefix}${detail}`);
+    } finally {
+      setImageUploading(false);
+    }
+  };
 
   const openCreate = (preset?: Partial<typeof EMPTY_DRAFT>) => {
     setEditing(false);
@@ -630,18 +658,45 @@ export default function KeywordRepliesPage() {
 
                 <FormGroup>
                   <Label>{t.form.image}</Label>
-                  {/* 上傳尚未建置：停用欄位並在畫面上說明（理由見 i18n 的 imageNotBuilt） */}
-                  <Input type="file" accept="image/*" className="form-control-sm" disabled />
-                  <FormText>{t.form.imageNotBuilt}</FormText>
+                  {/*
+                    issue #50：接上既有的 uploadImage()。bucket `keyword-reply-images`
+                    本來就在 0073 的 storage 寫入允許清單裡，缺的只是 /api/upload 沒收它。
+                    只收 JPEG/PNG/WebP（與端點的 ALLOWED_TYPES 一致）——`image/*` 會讓
+                    使用者選得到 HEIC 之類端點會退的格式，選了才被拒是多一次白工。
+                  */}
+                  <Input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="form-control-sm"
+                    disabled={imageUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (file) void onPickImage(file);
+                    }}
+                  />
+                  <FormText>{t.form.imageHint}</FormText>
+                  {imageUploading ? <FormText>{t.form.imageUploading}</FormText> : null}
                   {draft.imageUrl ? (
-                    <Button
-                      variant="outlineDanger"
-                      size="sm"
-                      className="mt-2"
-                      onClick={() => setDraft({ ...draft, imageUrl: '' })}
-                    >
-                      {t.form.imageRemove}
-                    </Button>
+                    <>
+                      {/*
+                        預覽用的是**已經上傳完成的真實 URL**（不是 ObjectURL）：
+                        看得到圖，就代表 LINE 也抓得到同一個網址。
+                      */}
+                      <img
+                        src={draft.imageUrl}
+                        alt={t.form.imagePreviewAlt}
+                        className="mt-2 max-h-32 rounded-lg border border-neutral-200"
+                      />
+                      <Button
+                        variant="outlineDanger"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => setDraft({ ...draft, imageUrl: '' })}
+                      >
+                        {t.form.imageRemove}
+                      </Button>
+                    </>
                   ) : null}
                 </FormGroup>
 
