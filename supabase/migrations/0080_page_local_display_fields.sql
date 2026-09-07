@@ -1,4 +1,4 @@
--- 0015 — persist fields previously fabricated by coupons/membership-levels pages
+-- 0080 — persist fields previously fabricated by coupons/membership-levels pages
 --
 -- The pages used mode-local EXTRAS values for fields that are part of the
 -- product contract. These columns are nullable/false-safe so existing rows

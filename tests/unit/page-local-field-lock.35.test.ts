@@ -11,7 +11,7 @@ const membershipPage = readFileSync(
   resolve(process.cwd(), 'src/app/tenant/membership-levels/page.tsx'),
   'utf8',
 );
-const migration = resolve(process.cwd(), 'supabase/migrations/0079_page_local_display_fields.sql');
+const migration = resolve(process.cwd(), 'supabase/migrations/0080_page_local_display_fields.sql');
 const customersRoute = readFileSync(
   resolve(process.cwd(), 'src/app/api/customers/route.ts'),
   'utf8',
