@@ -11,6 +11,7 @@ const REQUIRED_PATHS = [
 
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]sx?)$/i;
 const STANDALONE_SHA = /^\s*[0-9a-f]{40}\s*$/i;
+const FULL_SHA = /^(?!0{40}$)[0-9a-f]{40}$/i;
 const MIGRATION_DIR = 'supabase/migrations/';
 const MIGRATION_FILE = /^supabase\/migrations\/(\d{4})_[^/]+\.sql$/;
 
@@ -149,6 +150,9 @@ export function resolveRevision(env, name, fallback) {
   const revision = String(env[name] ?? '').trim();
   if (!revision) {
     throw new Error(`${name} must be non-empty; refusing implicit ${fallback} fallback`);
+  }
+  if (!FULL_SHA.test(revision)) {
+    throw new Error(`${name} must be a complete non-zero commit SHA; refusing symbolic or malformed revision`);
   }
   return revision;
 }

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import {
   classifyChangeRecords,
   classifyEvent,
@@ -8,6 +12,11 @@ import {
 const output = (...parts: string[]) => Buffer.from(parts.join('\0'));
 const baseSha = 'a'.repeat(40);
 const headSha = 'b'.repeat(40);
+const classifierScript = resolve(process.cwd(), 'scripts/ci/classify-changes.mjs');
+
+function git(cwd: string, ...args: string[]) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
 
 describe('CI change classifier', () => {
   it('accepts only the explicit documentation allowlist, including spaces', () => {
@@ -155,6 +164,83 @@ describe('CI change classifier', () => {
         detail: 'missing-revision',
       });
       expect(gitCalls).toEqual([]);
+    }
+  });
+
+  it('never forwards rejected dispatch revisions through the GitHub output protocol', () => {
+    for (const badRevision of ['', 'HEAD', `${baseSha}\ndocs_only=true`, `${baseSha}\r\nhead_revision=${headSha}`]) {
+      const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-output-'));
+      try {
+        const eventPath = join(directory, 'event.json');
+        const outputPath = join(directory, 'github-output.txt');
+        writeFileSync(eventPath, JSON.stringify({
+          inputs: { base_revision: badRevision, expected_head: headSha },
+        }));
+
+        execFileSync(process.execPath, [classifierScript], {
+          cwd: directory,
+          env: {
+            ...process.env,
+            GITHUB_EVENT_NAME: 'workflow_dispatch',
+            GITHUB_EVENT_PATH: eventPath,
+            GITHUB_OUTPUT: outputPath,
+          },
+        });
+
+        expect(readFileSync(outputPath, 'utf8')).toBe(
+          'docs_only=false\nreason=classifier_failed\ndetail=workflow-dispatch-missing-revision\n' +
+          'changed_count=0\nruntime_path=\nbase_revision=\nhead_revision=\n',
+        );
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('classifies a real two-parent merge using the PR base and merge candidate', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-merge-'));
+    try {
+      git(directory, 'init', '--initial-branch=main');
+      git(directory, 'config', 'user.email', 'ci@example.test');
+      git(directory, 'config', 'user.name', 'CI test');
+      mkdirSync(join(directory, 'docs'));
+      writeFileSync(join(directory, 'docs', 'base.md'), 'base\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'base');
+
+      git(directory, 'checkout', '-b', 'candidate');
+      writeFileSync(join(directory, 'docs', 'candidate.md'), 'candidate\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'candidate docs');
+
+      git(directory, 'checkout', 'main');
+      writeFileSync(join(directory, 'docs', 'main.md'), 'main\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'main docs');
+      const prBase = git(directory, 'rev-parse', 'HEAD');
+      git(directory, 'merge', '--no-ff', 'candidate', '-m', 'merge candidate');
+      const mergeHead = git(directory, 'rev-parse', 'HEAD');
+      expect(git(directory, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ')).toHaveLength(3);
+
+      const eventPath = join(directory, 'event.json');
+      const outputPath = join(directory, 'github-output.txt');
+      writeFileSync(eventPath, JSON.stringify({
+        inputs: { base_revision: prBase, expected_head: mergeHead },
+      }));
+      execFileSync(process.execPath, [classifierScript], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          GITHUB_EVENT_NAME: 'workflow_dispatch',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_OUTPUT: outputPath,
+        },
+      });
+
+      expect(readFileSync(outputPath, 'utf8')).toContain(`docs_only=true\n`);
+      expect(readFileSync(outputPath, 'utf8')).toContain(`base_revision=${prBase}\nhead_revision=${mergeHead}\n`);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

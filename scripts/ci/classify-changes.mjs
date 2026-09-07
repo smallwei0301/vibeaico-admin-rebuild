@@ -109,7 +109,7 @@ function classifierFailure(detail, changedCount = 0, runtimePath = '', changedPa
  * the revision, but an empty, malformed, or all-zero SHA (for example, the first push
  * to a branch) must fail closed before invoking git.
  */
-function isUsableRevision(revision) {
+export function isUsableRevision(revision) {
   return typeof revision === 'string'
     && /^(?!0{40}$)[0-9a-f]{40}$/i.test(revision);
 }
@@ -129,11 +129,7 @@ export function classifyEvent(eventName, event, runGit = defaultRunGit) {
     // exact PR base to the exact dispatched head. Never leave either revision
     // empty: the downstream integrity guard must not silently choose HEAD^.
     if (!isUsableRevision(baseRevision) || !isUsableRevision(headRevision)) {
-      return withRevisions(
-        classifierFailure('workflow-dispatch-missing-revision'),
-        baseRevision,
-        headRevision,
-      );
+      return withRevisions(classifierFailure('workflow-dispatch-missing-revision'));
     }
 
     try {
@@ -171,7 +167,16 @@ export function classifyEvent(eventName, event, runGit = defaultRunGit) {
 }
 
 function withRevisions(result, baseRevision = '', headRevision = '') {
-  return { ...result, baseRevision, headRevision };
+  // Revisions cross a line-based GitHub output boundary. Never preserve rejected
+  // dispatch input here: an embedded CR/LF could create a forged output key.
+  // A classifier failure also has no verified candidate pair, so leave both
+  // values empty and make every downstream consumer fail its explicit contract.
+  const accepted = result.reason !== 'classifier_failed';
+  return {
+    ...result,
+    baseRevision: accepted && isUsableRevision(baseRevision) ? baseRevision : '',
+    headRevision: accepted && isUsableRevision(headRevision) ? headRevision : '',
+  };
 }
 
 function defaultRunGit(...args) {
@@ -186,7 +191,8 @@ function writeGithubOutput(result) {
     process.env.GITHUB_OUTPUT,
     `docs_only=${result.docsOnly}\nreason=${result.reason}\ndetail=${result.detail}\n` +
       `changed_count=${result.changedCount}\nruntime_path=${runtimePath}\n` +
-      `base_revision=${result.baseRevision}\nhead_revision=${result.headRevision}\n`,
+      `base_revision=${isUsableRevision(result.baseRevision) ? result.baseRevision : ''}\n` +
+      `head_revision=${isUsableRevision(result.headRevision) ? result.headRevision : ''}\n`,
   );
 }
 
