@@ -161,6 +161,22 @@
       **此合併項仍留白**，理由不變且與歸屬無關：Preview 的「UI 建立 → 簽章 webhook →
       LINE mock 捕捉 → 清理」尚未執行（且該站點驗收受 #251 的 webhook 指向問題阻擋），
       且本項還包含不屬 #5 的 follow／預設回覆整體驗收。）**
+
+      **2026-09-07 追加（issue #50 附加圖片）**：關鍵字回覆的「選檔 → 上傳 →
+      儲存 → webhook 送圖」整條鏈路已在 `main` 上（PR #264 / squash `83ab9f0`）。
+      `/api/upload` 白名單與 `UploadBucket` 各加一項、頁面接既有 `uploadImage()`、
+      `0086_keyword_reply_images_bucket.sql` 建立專用 public bucket
+      （LINE 必須能直接抓圖）。整合測試
+      `keyword-reply-image.50.test.ts:「**service role 直查 Storage**：被引用的物件
+      真的在（不是只驗 URL 字串）」` 與 `:「命中 → type=image，originalContentUrl
+      等於存進去的那個 URL」`。
+
+      ⚠️ **正式庫尚未套用 `0086`**（唯讀查證：正式庫 `storage.buckets` 共 8 個，
+      沒有 `keyword-reply-images`），需要擁有者逐次具名的授權。在那之前，
+      **正式站上店家選圖會 `500 SYS_001`**——這一項因此不打勾。
+      ⚠️ 04／06 分冊描述的 `imageStorageRef` ＋ preview ＋ 清理 queue 設計在 `main`
+      上零命中，見 06 分冊 §6.1 的實況對照表。
+
 - [ ] chat 頁雙向訊息
 - [x] 預約狀態推播 + 額度控管
       **（重開 2026-08-24：line-notify 實作在但 tests/ 全域零引用，推播路徑的額度
