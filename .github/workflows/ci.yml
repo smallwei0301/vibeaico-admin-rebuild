@@ -20,6 +20,10 @@ on:
         description: Exact commit SHA that must equal the dispatched ref head
         required: true
         type: string
+      base_revision:
+        description: Exact base SHA used for the dispatched diff and repository-integrity comparison
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -65,7 +69,10 @@ jobs:
             let openPullRequests = [];
             let currentPullRequest = context.payload.pull_request ?? null;
 
-            if (!docsOnly && (context.eventName === 'pull_request' || context.eventName === 'workflow_dispatch')) {
+            if (
+              (context.eventName === 'pull_request' && !docsOnly) ||
+              context.eventName === 'workflow_dispatch'
+            ) {
               openPullRequests = await github.paginate(github.rest.pulls.list, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -90,6 +97,19 @@ jobs:
               }
             }
 
+            let currentCommit = null;
+            if (context.eventName === 'workflow_dispatch' && context.ref === 'refs/heads/main') {
+              try {
+                currentCommit = (await github.rest.repos.getCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: context.sha,
+                })).data;
+              } catch {
+                currentCommit = null;
+              }
+            }
+
             const decision = policy.decideTestValidation({
               eventName: context.eventName,
               ref: context.ref,
@@ -98,11 +118,16 @@ jobs:
               currentPullRequest,
               openPullRequests,
               inputs,
+              currentCommit,
+              repoFullName: context.payload.repository?.full_name ?? '',
             });
 
             core.setOutput('run_test_validation', String(decision.runTestValidation));
             core.setOutput('test_policy_reason', decision.reason);
             core.setOutput('test_lane_holders', decision.holders.join(','));
+            const rejectedDispatch = context.eventName === 'workflow_dispatch' &&
+              !decision.runTestValidation &&
+              decision.reason !== 'docs_only';
             await core.summary
               .addHeading('Shared TEST policy — B+')
               .addTable([
@@ -113,7 +138,9 @@ jobs:
                 ['Policy error', decision.error || 'none'],
               ])
               .write();
-            if (decision.error) core.setFailed(decision.error);
+            if (decision.error || rejectedDispatch) {
+              core.setFailed(decision.error || `Rejected workflow dispatch: ${decision.reason}`);
+            }
 
   check:
     needs: classify-changes
