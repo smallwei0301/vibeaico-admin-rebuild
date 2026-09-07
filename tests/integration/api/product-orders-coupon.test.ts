@@ -92,11 +92,13 @@ async function insertOrder(
 
 async function insertCoupon(
   tenantId: string, discountType: 'AMOUNT' | 'PERCENT' | 'GIFT', discountValue: number,
+  period?: { start_at?: string; end_at?: string },
 ): Promise<string> {
   const id = randomUUID();
   const { error } = await admin.from('coupons').insert({
     id, tenant_id: tenantId, name: `票券測試票券-${uniqueSuffix()}`,
     discount_type: discountType, discount_value: discountValue, total_quantity: 0, status: 'PUBLISHED',
+    ...(period ?? {}),
   });
   expect(error).toBeNull();
   return id;
@@ -183,6 +185,77 @@ describe('POST /api/product-orders/:id/apply-coupon（issue #33①：真核銷�
       expect(await orderTotalAmount(orderId)).toBe(300);
     } finally {
       await cleanupOrder(orderId);
+      await admin.from('customers').delete().eq('id', customerId);
+      await admin.from('products').delete().eq('id', productId);
+    }
+  });
+
+  /**
+   * issue #33 第 ① 筆的驗收格明文要求「不存在／已核銷／**已過期** 三種」。
+   * 這一種原本沒有測試——回去看實作才發現 coupons.start_at / end_at 從
+   * 0004 migration 就存在，但整條核銷路徑從來沒有檢查過：過期票券照樣核銷
+   * 得掉、金額照樣折。這兩個案例是那個缺陷的守門。
+   */
+  it('票券已過期 → 409 REQ_003，訂單金額不變且票券未被核銷', async () => {
+    const customerId = await insertCustomer(SHOP_A.id, '票券顧客E');
+    const productId = await insertProduct(SHOP_A.id, 300);
+    const orderId = await insertOrder(SHOP_A.id, customerId, productId, 300);
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const couponId = await insertCoupon(SHOP_A.id, 'AMOUNT', 50, { end_at: yesterday });
+    const { instanceId, code } = await issueCouponInstance(SHOP_A.id, couponId, customerId);
+    try {
+      const res = await ownerA.post(`/api/product-orders/${orderId}/apply-coupon`, { code });
+      expect(res.status).toBe(409);
+      expect((await readJson(res)).code).toBe('REQ_003');
+      // 三重斷言：錯誤碼、訂單金額不變、票券**沒有**被標成已核銷
+      expect(await orderTotalAmount(orderId)).toBe(300);
+      expect(await instanceRedeemedAt(instanceId)).toBeNull();
+    } finally {
+      await cleanupOrder(orderId);
+      await cleanupCoupon(couponId);
+      await admin.from('customers').delete().eq('id', customerId);
+      await admin.from('products').delete().eq('id', productId);
+    }
+  });
+
+  it('票券尚未開始 → 409 REQ_003，訂單金額不變且票券未被核銷', async () => {
+    const customerId = await insertCustomer(SHOP_A.id, '票券顧客F');
+    const productId = await insertProduct(SHOP_A.id, 300);
+    const orderId = await insertOrder(SHOP_A.id, customerId, productId, 300);
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const couponId = await insertCoupon(SHOP_A.id, 'AMOUNT', 50, { start_at: tomorrow });
+    const { instanceId, code } = await issueCouponInstance(SHOP_A.id, couponId, customerId);
+    try {
+      const res = await ownerA.post(`/api/product-orders/${orderId}/apply-coupon`, { code });
+      expect(res.status).toBe(409);
+      expect((await readJson(res)).code).toBe('REQ_003');
+      expect(await orderTotalAmount(orderId)).toBe(300);
+      expect(await instanceRedeemedAt(instanceId)).toBeNull();
+    } finally {
+      await cleanupOrder(orderId);
+      await cleanupCoupon(couponId);
+      await admin.from('customers').delete().eq('id', customerId);
+      await admin.from('products').delete().eq('id', productId);
+    }
+  });
+
+  it('活動期間內的票券 → 正常核銷（證明有效期檢查沒有把好的擋掉）', async () => {
+    const customerId = await insertCustomer(SHOP_A.id, '票券顧客G');
+    const productId = await insertProduct(SHOP_A.id, 300);
+    const orderId = await insertOrder(SHOP_A.id, customerId, productId, 300);
+    const couponId = await insertCoupon(SHOP_A.id, 'AMOUNT', 50, {
+      start_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+      end_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+    const { instanceId, code } = await issueCouponInstance(SHOP_A.id, couponId, customerId);
+    try {
+      const res = await ownerA.post(`/api/product-orders/${orderId}/apply-coupon`, { code });
+      expect(res.status).toBe(200);
+      expect(await orderTotalAmount(orderId)).toBe(250);
+      expect(await instanceRedeemedAt(instanceId)).not.toBeNull();
+    } finally {
+      await cleanupOrder(orderId);
+      await cleanupCoupon(couponId);
       await admin.from('customers').delete().eq('id', customerId);
       await admin.from('products').delete().eq('id', productId);
     }
