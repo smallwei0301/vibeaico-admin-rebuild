@@ -11,7 +11,7 @@
     {"name":"0015_tenants_business_type.sql","blobSha":"f04d3aa10c240cf93c3cd611da6779d49a40e18d"},
     {"name":"0016_tour_domain_core.sql","blobSha":"e0080a9dd0470ad096f9f7b71912894a59da8f2b"},
     {"name":"0017_chat_images_bucket_and_line_sort_order.sql","blobSha":"4f970b8c1ba0694676d54440a6908a7abaa8be71"},
-    {"name":"0018_category_description_active_and_bug_report_fields.sql","blobSha":"50680d190d5190f4093518e2ba1277c1adad4e93"},
+    {"name":"0018_category_description_active_and_bug_report_fields.sql","blobSha":"50680d190d5190f4093518e2ba1277c1adad4e93","retiredBy":"0079_reconcile_category_bug_report_fields.sql"},
     {"name":"0019_bug_report_attachments.sql","blobSha":"e89ae6b00f6f43ecb674484b35d7e0242dda7aa3"},
     {"name":"0020_booking_addons.sql","blobSha":"e3af9d5f0498102bf32e3155b1673127e8f3a67b"},
     {"name":"0021_tenant_settings_branding.sql","blobSha":"305e347f0ec666f697f87e0cfea4b7771a013794"},

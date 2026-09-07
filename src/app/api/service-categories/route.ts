@@ -7,9 +7,9 @@ import { requireTenant } from '@/server/tenant';
  * types.ts 沒有分類型別（鐵則 3 不得改），回應形狀依 mappers 慣例 camelCase：
  * { id, name, description, active, sortOrder }。
  *
- * description / active 是 migration 0018 補的欄位（issue #28 第 ⑨ 筆）：分類管理
- * modal 一直有「說明」輸入框，但 0004 的表沒有該欄、POST 也沒送，於是使用者填的
- * 說明重新整理就消失，而畫面顯示「分類已新增」並把說明列在表格裡。
+ * description / active 由 canonical migration 0079 補齊（issue #197 第一個
+ * reconciliation slice）。原始 0018 曾被套到 TEST／Production，卻沒有進 main；
+ * 0079 把目前 API 已實際讀寫的欄位正式收回 canonical migration。
  */
 function mapServiceCategory(r: any) {
   return {
