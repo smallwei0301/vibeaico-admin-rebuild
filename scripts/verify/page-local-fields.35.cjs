@@ -672,9 +672,20 @@ async function main() {
         const row = page.locator('table.data-table tbody tr', { hasText: undoCouponName });
         await row.first().waitFor({ state: 'visible', timeout: 5000 });
 
-        async function readUndoLeadCode() {
+        // ⚠️ 教訓（第一次實跑抓到）：反核銷後 GET /api/coupons 的網路回應算
+        // 「到齊」了，不代表 React 已經把新的 rows state 渲染進 DOM——兩者中間
+        // 還有一個 React commit tick。固定 200ms 在多數情況下夠、但不保證，
+        // 兩次相同程式碼的實跑就曾經一次 present=true 一次 present=false。
+        // 改成對按鈕的「有/無」本身做有界限的輪詢（Playwright locator 的
+        // waitFor 是真的輪詢 DOM，不是猜一個固定數字），逾時才判定為「真的
+        // 沒有」，不是猜完一個時間就直接讀一次定生死。
+        async function readUndoLeadCode(buttonTimeoutMs = 2000) {
           const btn = row.first().locator('button[aria-label="還原票券（反核銷）"]');
-          if (!(await btn.count())) return { present: false, code: null };
+          try {
+            await btn.first().waitFor({ state: 'visible', timeout: buttonTimeoutMs });
+          } catch {
+            return { present: false, code: null };
+          }
           await btn.click();
           await page.locator('[role="dialog"] .modal-title', { hasText: '還原票券（反核銷）' })
             .waitFor({ timeout: 5000 });
@@ -732,7 +743,11 @@ async function main() {
             `older.redeemed_at=${olderRow?.redeemed_at}`,
           );
 
-          const after = await readUndoLeadCode();
+          await page.screenshot({ path: path.join(OUT_DIR, '35-coupons-after-undo.png'), fullPage: true }).catch(() => {});
+
+          // 用有界輪詢等按鈕出現（見 readUndoLeadCode 內的說明），不是固定
+          // sleep 完就讀一次定生死。
+          const after = await readUndoLeadCode(8000);
           record(
             after.present && after.code === olderCode ? 'PASS' : 'FAIL',
             '反核銷彈窗（還原後）顯示的代碼變成較舊的已核銷實例代碼（PR #93 修的 bug）',
