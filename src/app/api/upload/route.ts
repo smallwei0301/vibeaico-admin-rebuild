@@ -30,6 +30,15 @@ const ALLOWED_BUCKETS = new Set([
   'staff-avatars',
   'richmenu-assets',
   'welcome-card-images',
+  /*
+   * issue #50：關鍵字回覆的附加圖片。
+   *
+   * ⚠️ 這個 bucket **本來就存在**（`0073_restore_keyword_reply_storage_write.sql`
+   * 的 `p_storage_write` 允許清單裡有它），缺的一直只是「`/api/upload` 不收它」
+   * ——於是後台那個 `<input type="file">` 只能停用，畫面上寫「尚未建置」。
+   * 與其他 LINE 可讀 bucket 同性質：public、tenant 前綴路徑、只收 JPEG/PNG/WebP。
+   */
+  'keyword-reply-images',
 ]);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {
