@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -46,6 +46,57 @@ describe('local migration overlay', () => {
       const result = stageFixture(root);
       expect(result).toMatchObject({ count: 1, first: '0015_example.sql', last: '0015_example.sql' });
       expect(readFileSync(join(target, '0015_example.sql'), 'utf8')).toBe('select 1;\n');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps retired historical bytes auditable but stops staging them after a canonical replacement exists', () => {
+    const { root, source, target } = fixture();
+    try {
+      const manifestPath = join(source, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.files[0].retiredBy = '0079_reconcile_example.sql';
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      writeFileSync(join(target, '0079_reconcile_example.sql'), 'select 79;\n');
+
+      const result = stageFixture(root);
+      expect(result.count).toBe(0);
+      expect(result.first).toBeNull();
+      expect(result.last).toBeNull();
+      expect(result.retired).toEqual(['0015_example.sql->0079_reconcile_example.sql']);
+      expect(existsSync(join(source, '0015_example.sql'))).toBe(true);
+      expect(existsSync(join(target, '0015_example.sql'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed when a retired overlay names a canonical replacement that is missing', () => {
+    const { root, source } = fixture();
+    try {
+      const manifestPath = join(source, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.files[0].retiredBy = '0079_missing.sql';
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      expect(() => stageFixture(root)).toThrow(
+        'retired local migration replacement is missing: 0079_missing.sql',
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('still verifies the historical blob before accepting retirement', () => {
+    const { root, source, target } = fixture();
+    try {
+      const manifestPath = join(source, 'manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+      manifest.files[0].retiredBy = '0079_reconcile_example.sql';
+      manifest.files[0].blobSha = '0'.repeat(40);
+      writeFileSync(manifestPath, JSON.stringify(manifest));
+      writeFileSync(join(target, '0079_reconcile_example.sql'), 'select 79;\n');
+      expect(() => stageFixture(root)).toThrow('blob integrity mismatch');
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
