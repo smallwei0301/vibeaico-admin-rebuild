@@ -14,20 +14,39 @@
 import { Resend } from 'resend';
 import { APP_URL } from '@/config/env';
 import {
-  verificationHtml, bookingHtml, orderHtml,
+  verificationHtml, bookingHtml, orderHtml, productOrderReceiptHtml,
   type BookingNotifyDetails, type ProductOrderNotifyDetails,
+  type ProductOrderReceiptDetails,
 } from './templates';
 
 const resend = () => new Resend(process.env.RESEND_API_KEY!);
 const FROM = () => process.env.MAIL_FROM ?? 'onboarding@resend.dev';
 
-async function send(to: string, subject: string, html: string) {
+/**
+ * 寄送結果 —— issue #27 ③ 新增。
+ *
+ * 原本 `send()` 回 void：沒設 key 就略過、Resend 回錯就 console.error，對呼叫端
+ * 一律「看起來成功」。這對背景寄信（notifyBookingEvent）無所謂，但手動建單的
+ * 「未綁 LINE 自動改寄 Email」要把結果**顯示給店家看**，分不出「寄出了」與
+ * 「根本沒寄」就會變成假的已知（00 鐵則 12）。故改回傳狀態；既有呼叫端忽略
+ * 回傳值，行為完全不變。
+ */
+export type EmailSendResult =
+  | 'SENT'           // Resend 已受理
+  | 'SKIPPED_NO_KEY' // RESEND_API_KEY 未設定 → 完全沒送出
+  | 'FAILED';        // Resend 回錯（網路/憑證/收件人格式…）
+
+async function send(to: string, subject: string, html: string): Promise<EmailSendResult> {
   if (!process.env.RESEND_API_KEY) {           // 未設定時不擋主流程，只留 log
     console.warn('[email] RESEND_API_KEY 未設定，略過寄信：', subject, '→', to);
-    return;
+    return 'SKIPPED_NO_KEY';
   }
   const { error } = await resend().emails.send({ from: FROM(), to, subject, html });
-  if (error) console.error('[email] 寄送失敗', subject, to, error);  // 寄信失敗不讓 API 失敗
+  if (error) {
+    console.error('[email] 寄送失敗', subject, to, error);  // 寄信失敗不讓 API 失敗
+    return 'FAILED';
+  }
+  return 'SENT';
 }
 
 export async function sendVerificationCodeEmail(
@@ -59,4 +78,16 @@ export async function sendProductOrderNotifyEmail(
   to: string, p: ProductOrderNotifyDetails,
 ) {
   await send(to, `【${p.shopName}】新商品訂單 ${p.orderNo}`, orderHtml(p));
+}
+
+/**
+ * 顧客端「消費明細」信（issue #27 ③）——手動建單勾選「LINE 通知顧客消費明細」
+ * 但該顧客沒綁 LINE 時的 Email 備援。收件人是**顧客**，與寄給店家的
+ * `sendProductOrderNotifyEmail` 是兩封不同的信（見 templates.ts 同段說明）。
+ * 回傳寄送結果，呼叫端據以顯示「已改寄 Email」或「未送出」，不得一律報成功。
+ */
+export async function sendProductOrderReceiptEmail(
+  to: string, p: ProductOrderReceiptDetails,
+): Promise<EmailSendResult> {
+  return send(to, `【${p.shopName}】消費明細 ${p.orderNo}`, productOrderReceiptHtml(p));
 }
