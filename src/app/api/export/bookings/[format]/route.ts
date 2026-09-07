@@ -2,14 +2,19 @@
 // `/api/export/bookings/${format}`（docs/specs/bookings.json），我方原本只有
 // 不帶 format 段的版本。本檔補上該段。
 //
-// 格式白名單與 src/app/api/export/inventory/[format]/route.ts 一致：**只有
-// csv**，其餘一律 400。
+// 格式白名單：**只有 csv**，其餘一律 400。
 //
-// ⚠️ 為什麼不做 excel 分支：本專案沒有安裝任何 xlsx 產生器，把一份 CSV 命名成
-// .xlsx 只是**謊報檔案格式**——使用者會拿到一個副檔名說是 Excel、內容卻是 CSV
-// 的檔案，Excel 開啟時會跳出「格式與副檔名不符」的警告。這與 inventory 匯出
-// 當初的處置相同，也符合 CLAUDE.md「成功訊息是一項事實主張」。
-// 要真的支援 excel，需要先引入 xlsx 相依套件，那是獨立的一筆工作。
+// issue #246 更新：本註解原本寫「白名單與 inventory/[format] 一致」與「本專案
+// 沒有安裝任何 xlsx 產生器」。兩句話現在都不成立了——`exceljs` 已依
+// 14-GAP-AUDIT §8.3 安裝，inventory 也依 §8.5 補上了 xlsx 分支。留著會誤導。
+//
+// 那為什麼這裡仍然只有 csv？因為沒有任何裁示要求預約匯出出 Excel：#33 第 ③ 筆
+// 只要求補上 format 路徑段與白名單，§8.5 的「CSV 與 Excel 兩者都做」明確只針對
+// 庫存匯出。要加就是一筆有明確依據的獨立工作，而不是因為工具現在有了就順手擴張。
+//
+// 原本那句判斷仍然有效並已在 #246 落實：把一份 CSV 命名成 .xlsx 只是謊報檔案格式，
+// 使用者會拿到副檔名說是 Excel、內容卻是 CSV 的檔案。真要支援就產真的 xlsx
+// （見 src/server/xlsx.ts），不是改副檔名。
 import { ApiHttpError, ERR, handle } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { bookingExportQuerySchema, buildBookingsCsvResponse } from '@/server/export-bookings';
