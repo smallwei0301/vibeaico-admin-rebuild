@@ -19,7 +19,7 @@ import { FormError, FormGroup, FormText, Input, Label, Select } from '@/componen
 import { useToast } from '@/components/ui/Toast';
 import { listProductOrders, listProducts, listStaff } from '@/services/catalog';
 import {
-  cancelProductOrder, completeProductOrder, confirmProductOrder,
+  applyProductOrderCoupon, cancelProductOrder, completeProductOrder, confirmProductOrder,
   createManualProductOrder, markProductOrderPaidOffline,
 } from '@/services/products';
 import { listCustomers } from '@/services/customers';
@@ -103,11 +103,14 @@ const PAGE_SIZE = 20;
 
 type OrderRow = ProductOrder & OrderExtras;
 
-const toRow = (o: ProductOrder): OrderRow => ({
-  ...o,
-  ...DEFAULT_EXTRAS,
-  ...(MOCK_ORDER_EXTRAS[o.id] ?? {}),
-});
+const toRow = (o: ProductOrder): OrderRow => {
+  const base = { ...o, ...DEFAULT_EXTRAS, ...(MOCK_ORDER_EXTRAS[o.id] ?? {}) };
+  // couponDiscount 已經是後端真欄位（product_orders.coupon_discount，見 0081），
+  // 不再是頁內假欄位。上面兩個 spread 都排在 `...o` 後面，會用 0 或示範資料把
+  // 真值洗掉，所以真值存在時一律蓋回去。
+  // 骨架模式的 ProductOrder 沒有這個欄位（undefined），維持吃 MOCK_ORDER_EXTRAS。
+  return o.couponDiscount === undefined ? base : { ...base, couponDiscount: o.couponDiscount };
+};
 
 const STATUS_TONE: Record<ProductOrderStatus, 'warning' | 'info' | 'success' | 'neutral'> = {
   PENDING: 'warning',
@@ -428,13 +431,19 @@ export default function ProductOrdersPage() {
       <CompleteOrderModal
         order={completeTarget}
         onClose={() => setCompleteTarget(null)}
-        onCompleted={(order, discount) => {
+        onCompleted={(order, discount, totalAmount) => {
           patchOrder(order.id, {
             status: 'COMPLETED',
             couponDiscount: order.couponDiscount + discount,
+            totalAmount,
             completedAt: new Date().toISOString(),
           });
           setCompleteTarget(null);
+        }}
+        onCouponAppliedOnly={(order, discount, totalAmount) => {
+          /* 票券已核銷成功，但「完成取貨」失敗——訂單狀態不變，只把真的已經
+           * 折抵掉的金額寫回，讓使用者重試「完成取貨」時看到正確金額。*/
+          patchOrder(order.id, { couponDiscount: order.couponDiscount + discount, totalAmount });
         }}
       />
 
@@ -613,11 +622,12 @@ function OrderDetailModal({ order, onClose }: { order: OrderRow | null; onClose:
 /* ========================================================================== */
 
 function CompleteOrderModal({
-  order, onClose, onCompleted,
+  order, onClose, onCompleted, onCouponAppliedOnly,
 }: {
   order: OrderRow | null;
   onClose: () => void;
-  onCompleted: (order: OrderRow, discount: number) => void;
+  onCompleted: (order: OrderRow, discount: number, totalAmount: number) => void;
+  onCouponAppliedOnly: (order: OrderRow, discount: number, totalAmount: number) => void;
 }) {
   const toast = useToast();
   const [code, setCode] = React.useState('');
@@ -639,19 +649,37 @@ function CompleteOrderModal({
     setError('');
     setBusy(true);
     try {
-      /* 票券折抵後端尚無端點，折抵金額維持前端狀態；完成取貨走真 API */
-      await completeProductOrder(order.id);
-      const discount = withCoupon ? 100 : 0;
-      if (withCoupon) toast.show(t.complete.couponApplied(formatCurrency(discount)));
+      /*
+       * 套用票券與完成取貨是兩支獨立 API，各自可能失敗（原站行為：一旦票券
+       * 先核銷成功、「完成訂單」卻失敗，要清楚告知使用者「票券已套用，但
+       * 完成訂單失敗」，不能讓使用者以為整件事都沒發生——票券其實已經核銷
+       * 掉了）。折抵金額一律用後端回傳的真實數字，不再由前端假造。
+       */
+      let discount = 0;
+      let totalAmount = order.totalAmount;
+      if (withCoupon) {
+        const applied = await applyProductOrderCoupon(order.id, code.trim(), order.totalAmount);
+        discount = applied.couponDiscount;
+        totalAmount = applied.totalAmount;
+        toast.show(t.complete.couponApplied(formatCurrency(discount)));
+      }
+      try {
+        await completeProductOrder(order.id);
+      } catch (e) {
+        if (withCoupon) {
+          toast.show(
+            `${t.complete.couponAppliedButFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+            'danger',
+          );
+          onCouponAppliedOnly(order, discount, totalAmount);
+          return;
+        }
+        throw e;
+      }
       toast.show(t.messages.completed);
-      onCompleted(order, discount);
+      onCompleted(order, discount, totalAmount);
     } catch (e) {
-      toast.show(
-        withCoupon
-          ? `${t.complete.couponAppliedButFailed}${e instanceof Error ? e.message : t.messages.unknownError}`
-          : (e instanceof Error ? e.message : t.messages.actionFailed),
-        'danger',
-      );
+      toast.show(e instanceof Error ? e.message : t.messages.actionFailed, 'danger');
     } finally {
       setBusy(false);
     }

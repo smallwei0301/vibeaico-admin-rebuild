@@ -185,6 +185,12 @@ export type ProductOrder = {
   status: ProductOrderStatus;
   paymentStatus: PaymentStatus;
   createdAt: string;
+  /**
+   * 這筆訂單被票券折抵了多少。totalAmount 已經是扣完的金額，這欄是明細，
+   * 讓訂單詳情重新整理後還看得到「折抵過多少」而不是只剩一個變小的總額。
+   * 0 = 沒套用票券（後端 coupon_discount 為 NULL 時對應過來的值）。
+   */
+  couponDiscount?: number;
 };
 
 /* ------------------------------------------------------------------ 票券 */

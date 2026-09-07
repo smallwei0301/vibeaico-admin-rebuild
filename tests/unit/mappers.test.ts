@@ -322,6 +322,7 @@ describe('mapProductOrder (02 §0004 product_orders / product_order_items)', () 
     status: 'CONFIRMED',
     payment_status: 'PAID_OFFLINE',
     created_at: '2026-08-10T00:00:00Z',
+    coupon_discount: 200,
   };
 
   it('全欄位比對，含 items 陣列逐項轉換', () => {
@@ -338,11 +339,22 @@ describe('mapProductOrder (02 §0004 product_orders / product_order_items)', () 
       status: 'CONFIRMED',
       paymentStatus: 'PAID_OFFLINE',
       createdAt: '2026-08-10T00:00:00Z',
+      couponDiscount: 200,
     });
   });
 
   it('items null（查無明細）→ 空陣列', () => {
     expect(mapProductOrder({ ...fullRow, items: null }).items).toEqual([]);
+  });
+
+  // coupon_discount 可為 NULL（這張單沒套票券）。收斂成 0 而不是 undefined：
+  // 折抵「真的是零」，不是「不知道」——畫面才能直接顯示「無」而不是空白。
+  it('coupon_discount null → 0（沒套票券，不是未知）', () => {
+    expect(mapProductOrder({ ...fullRow, coupon_discount: null }).couponDiscount).toBe(0);
+  });
+
+  it('coupon_discount 為字串數值（Postgres numeric）→ 轉成 number', () => {
+    expect(mapProductOrder({ ...fullRow, coupon_discount: '150' }).couponDiscount).toBe(150);
   });
 });
 
