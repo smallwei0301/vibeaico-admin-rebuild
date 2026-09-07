@@ -79,17 +79,20 @@ function activeAgentProductBody({
   retroactive,
   deliveryType,
   includeDeliveryType = true,
+  laneState = 'ACTIVE',
 }: {
   count?: string;
   retroactive?: string;
   deliveryType?: string;
   includeDeliveryType?: boolean;
+  laneState?: string;
 } = {}) {
   return `${productBody({
     count,
     retroactive,
     deliveryType,
     includeDeliveryType,
+    laneState,
     origin: 'AGENT',
     bplusMode: 'true',
     scorecardPath: `docs/metrics/agent-runs/${FROZEN}.json`,
@@ -143,7 +146,7 @@ describe('Issue #212 legacy Run admission freeze', () => {
       body: activeAgentProductBody(options),
     });
     expect(validateLaneMetadata(metadata)).toContainEqual(
-      expect.stringContaining('active Product lanes must declare DELIVERY_UNIT_TYPE=SLICE or STANDALONE'),
+      expect.stringContaining('Product lanes must declare DELIVERY_UNIT_TYPE=SLICE or STANDALONE'),
     );
   });
 
@@ -214,5 +217,24 @@ describe('Issue #212 legacy Run admission freeze', () => {
     expect(workflow).toContain('policy.validateLaneMetadata(metadata');
     expect(lanePolicy).toContain("import { validateRunAdmission } from './run-admission-policy.mjs';");
     expect(lanePolicy).toContain('...validateRunAdmission({ metadata })');
+    });
   });
-});
+
+  it.each([
+    ['PARKED', { laneState: 'PARKED', includeDeliveryType: false }],
+    ['COMPLETE', { laneState: 'COMPLETE', deliveryType: 'GOVERNANCE' }],
+    ['READY_FOR_PROMOTION', {
+      laneState: 'READY_FOR_PROMOTION',
+      deliveryType: 'SLICE',
+      count: 'false',
+      retroactive: 'true',
+    }],
+  ])('keeps frozen Product references blocked after a %s state toggle', (_label, options) => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: activeAgentProductBody(options),
+    });
+    expect(validateLaneMetadata(metadata)).toContainEqual(
+      expect.stringContaining('is frozen for new Product membership'),
+    );
+  });
