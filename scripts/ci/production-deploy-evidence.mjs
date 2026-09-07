@@ -3,6 +3,9 @@ import { decideProductionDeployCandidate } from './production-deploy-decision.mj
 
 const FULL_SHA = /^(?!0{40}$)[0-9a-f]{40}$/i;
 
+/** @typedef {{ status: number | null, stdout: string, stderr: string, error: Error | null }} GitRunResult */
+/** @typedef {(args: string[]) => GitRunResult} RunGit */
+
 function normalizeSha(value = '') {
   return String(value ?? '').trim().toLowerCase();
 }
@@ -31,14 +34,18 @@ function unwrapDeployment(payload) {
  * During the pre-cutover phase this adapter accepts only Vercel Git Integration
  * deployments. The future controlled deployment path must add its own durable,
  * repository-verifiable attestation before this source requirement is relaxed.
+ *
+ * @param {any} payload
+ * @param {{ owner?: string, repo?: string, ref?: string, hostname?: string, projectId?: string }} [options]
  */
-export function normalizeProductionAliasDeployment(payload, {
-  owner,
-  repo,
-  ref = 'main',
-  hostname,
-  projectId,
-} = {}) {
+export function normalizeProductionAliasDeployment(payload, options = {}) {
+  const {
+    owner,
+    repo,
+    ref = 'main',
+    hostname,
+    projectId,
+  } = options;
   const raw = unwrapDeployment(payload);
   const errors = [];
   if (!raw) {
@@ -137,6 +144,10 @@ export function parseGitNameStatusZ(output = '') {
   return [...new Set(paths)];
 }
 
+/**
+ * @param {string[]} args
+ * @returns {GitRunResult}
+ */
 function defaultRunGit(args) {
   const result = spawnSync('git', args, {
     encoding: 'utf8',
@@ -155,8 +166,11 @@ function defaultRunGit(args) {
  * Build complete local Git comparison evidence without GitHub Compare's
  * changed-file cap. The runner must fetch both commits first; missing shallow
  * history is treated as untrusted evidence, never silently as docs-only.
+ *
+ * @param {{ baseSha?: string, headSha?: string, runGit?: RunGit }} [input]
  */
-export function collectGitRangeEvidence({ baseSha, headSha, runGit = defaultRunGit } = {}) {
+export function collectGitRangeEvidence(input = {}) {
+  const { baseSha, headSha, runGit = defaultRunGit } = input;
   const base = normalizeSha(baseSha);
   const head = normalizeSha(headSha);
   const empty = {
@@ -216,19 +230,33 @@ export function collectGitRangeEvidence({ baseSha, headSha, runGit = defaultRunG
  * Provider-contact-free orchestration. A future workflow supplies the already
  * fetched Vercel alias response and GitHub check state; this module validates the
  * baseline, gathers local Git evidence, and calls the pure decision policy.
+ *
+ * @param {{
+ *   productionAliasPayload?: any,
+ *   owner?: string,
+ *   repo?: string,
+ *   ref?: string,
+ *   hostname?: string,
+ *   projectId?: string,
+ *   currentSha?: string,
+ *   latestMainSha?: string,
+ *   checksState?: string,
+ *   runGit?: RunGit,
+ * }} [input]
  */
-export function buildProductionDeployEvidence({
-  productionAliasPayload,
-  owner,
-  repo,
-  ref = 'main',
-  hostname,
-  projectId,
-  currentSha,
-  latestMainSha = currentSha,
-  checksState,
-  runGit = defaultRunGit,
-} = {}) {
+export function buildProductionDeployEvidence(input = {}) {
+  const {
+    productionAliasPayload,
+    owner,
+    repo,
+    ref = 'main',
+    hostname,
+    projectId,
+    currentSha,
+    latestMainSha = currentSha,
+    checksState,
+    runGit = defaultRunGit,
+  } = input;
   const baselineResult = normalizeProductionAliasDeployment(productionAliasPayload, {
     owner,
     repo,
