@@ -18,6 +18,12 @@
 -- Two live constraints are also canonicalized:
 --   booking_addons_notified_check
 --   tenants_owner_notify_max_recipients_check
+--
+-- bookings_view is rebuilt after the bookings columns are added. The live view
+-- exposes b.* plus customer/service/staff display data and customer_points. A
+-- plain CREATE OR REPLACE is unsafe when b.* gains columns because PostgreSQL
+-- can reject changed view-column positions; drop + create matches the historical
+-- repair pattern and keeps security_invoker=true.
 
 alter table public.bug_reports
   add column if not exists attachment_path text not null default '';
@@ -51,6 +57,40 @@ $$;
 alter table public.bookings
   add column if not exists coupon_discount numeric,
   add column if not exists points_redeemed integer;
+
+drop view if exists public.bookings_view;
+create view public.bookings_view with (security_invoker = true) as
+select b.id,
+       b.tenant_id,
+       b.booking_no,
+       b.customer_id,
+       b.service_id,
+       b.staff_id,
+       b.start_at,
+       b.end_at,
+       b.duration_minutes,
+       b.price,
+       b.final_price,
+       b.status,
+       b.payment_status,
+       b.source,
+       b.note,
+       b.cancel_reason,
+       b.custom_fields,
+       b.created_at,
+       b.updated_at,
+       b.reminder_sent_at,
+       b.coupon_discount,
+       b.points_redeemed,
+       c.name as customer_name,
+       c.phone as customer_phone,
+       s.name as service_name,
+       st.name as staff_name,
+       c.points as customer_points
+from public.bookings b
+join public.customers c on c.id = b.customer_id
+join public.services s on s.id = b.service_id
+left join public.staff st on st.id = b.staff_id;
 
 alter table public.tenants
   add column if not exists owner_notify_max_recipients integer not null default 3;
