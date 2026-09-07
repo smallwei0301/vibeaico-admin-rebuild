@@ -66,6 +66,19 @@ let settingsSnapshot: {
 } | null = null;
 let businessTypeSnapshot = 'LOCAL_SHOP';
 
+/**
+ * 測前 SHOP_A 的 TOUR_MODULE 訂閱列（沒有就是 null）。
+ *
+ * ⚠️ 為什麼本檔要自己開通：行程／出團日期兩組系統關鍵字受 `TOUR_MODULE` 閘門管制
+ * （10 分冊 §6.1「只在租戶有 TOUR_MODULE 時顯示」），而**標準種子沒有給 SHOP_A
+ * 這個訂閱**。不開通的話，這兩組會正確地落到 ⑥ defaultReply——測試紅的是
+ * 「前提沒準備好」，不是 handler 壞了。這一點是 2026-09-07 補上閘門後由
+ * local-isolated 打回來才發現的。
+ *
+ * afterAll 逐字還原（原本沒有就刪掉），不留下本檔造出來的訂閱給別的測試檔。
+ */
+let tourModuleSnapshot: Record<string, unknown> | null = null;
+
 /** LINE 官方簽章規則（與 route.ts 驗簽演算法互為鏡像） */
 function sign(rawBody: string): string {
   return createHmac('sha256', CHANNEL_SECRET).update(rawBody).digest('base64');
@@ -198,6 +211,28 @@ async function patchLineJsonb(patch: Record<string, unknown>): Promise<void> {
   expect(error).toBeNull();
 }
 
+/**
+ * 開通／停用 SHOP_A 的 TOUR_MODULE（10 分冊 §6.1 的閘門）。
+ * 停用用刪除那一列，與 `gating.09.test.ts` 同一套做法。
+ */
+async function setTourModule(active: boolean): Promise<void> {
+  if (active) {
+    const { error } = await admin.from('feature_subscriptions').upsert({
+      tenant_id: SHOP_A.id,
+      code: 'TOUR_MODULE',
+      active: true,
+      expires_at: null,
+      source: 'GRANTED',
+      cancelled_at: null,
+    }, { onConflict: 'tenant_id,code' });
+    expect(error).toBeNull();
+  } else {
+    const { error } = await admin.from('feature_subscriptions')
+      .delete().eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+    expect(error).toBeNull();
+  }
+}
+
 async function setBusinessType(bt: BusinessType): Promise<void> {
   const { error } = await admin.from('tenants').update({ business_type: bt }).eq('id', SHOP_A.id);
   expect(error).toBeNull();
@@ -246,6 +281,12 @@ beforeAll(async () => {
     .eq('tenant_id', SHOP_A.id);
   expect(e1).toBeNull();
 
+  const { data: fsnap } = await admin
+    .from('feature_subscriptions').select('*')
+    .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE').maybeSingle();
+  tourModuleSnapshot = (fsnap as Record<string, unknown> | null) ?? null;
+  await setTourModule(true);
+
   await deleteAllKeywords();
   api = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
 });
@@ -255,6 +296,13 @@ afterAll(async () => {
   await admin.from('chat_messages').delete().eq('tenant_id', SHOP_A.id).eq('line_user_id', USER);
   await admin.from('line_users').delete().eq('tenant_id', SHOP_A.id).eq('line_user_id', USER);
   await admin.from('tenants').update({ business_type: businessTypeSnapshot }).eq('id', SHOP_A.id);
+  if (tourModuleSnapshot) {
+    await admin.from('feature_subscriptions')
+      .upsert(tourModuleSnapshot, { onConflict: 'tenant_id,code' });
+  } else {
+    await admin.from('feature_subscriptions')
+      .delete().eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+  }
   if (settingsSnapshot) {
     await admin
       .from('tenant_settings')
@@ -478,9 +526,7 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
   it('TOUR_MODULE 未啟用時，「行程」「團次」不得洩漏任何行程域資料', async () => {
     await setBusinessType('GUIDE');
 
-    const { error: disableError } = await admin.from('feature_subscriptions')
-      .delete().eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
-    expect(disableError).toBeNull();
+    await setTourModule(false);
 
     try {
       for (const word of ['行程', '團次'] as const) {
@@ -495,15 +541,7 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
         expect(reply).not.toContain('訂閱');
       }
     } finally {
-      const { error } = await admin.from('feature_subscriptions').upsert({
-        tenant_id: SHOP_A.id,
-        code: 'TOUR_MODULE',
-        active: true,
-        expires_at: null,
-        source: 'GRANTED',
-        cancelled_at: null,
-      }, { onConflict: 'tenant_id,code' });
-      expect(error).toBeNull();
+      await setTourModule(true);
     }
 
     // 還原後正例仍成立（證明上面的「看不到」是閘門造成的，不是資料不見了）
