@@ -16,15 +16,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, FormText, Input, Label, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listTourOrders } from '@/services/tours';
-import { MOCK_TRIPS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS } from '@/mock/tours';
+import {
+  cancelTourOrder, completeTourOrder, confirmTourOrderPayment, createManualTourOrder,
+  listTourOrders, listTripDepartures, listTripPlans, listTrips,
+} from '@/services/tours';
+import { ApiError } from '@/lib/api';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import { tourOrdersPage as t } from '@/i18n/zh-TW/pages/tour-orders';
 import { formatCurrency, formatDateTime, formatNumber } from '@/lib/utils';
 import type {
-  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus, TripPlan,
+  TourOrder, TourOrderSource, TourOrderStatus, TourPaymentStatus,
+  Trip, TripDeparture, TripPlan,
 } from '@/lib/types';
 
 const PAGE_SIZE = 20;
@@ -85,6 +89,17 @@ export default function TourOrdersPage() {
     customerPhone: '', partySize: 2, paymentMethodId: MOCK_PAYMENT_METHODS[0].id, note: '',
   });
 
+  /**
+   * 手動建單視窗的行程／方案／團次三個下拉，以前讀的是頁內的 MOCK_TRIPS /
+   * MOCK_TRIP_PLANS / MOCK_TRIP_DEPARTURES —— 也就是說，即使後端端點都在，
+   * 店家選到的仍然是示範資料的 id，送出去必然 404。這比「端點不存在」更難察覺：
+   * 下拉裡看得到選項、選得下去，只有送出那一刻才會失敗。
+   */
+  const [trips, setTrips] = React.useState<Trip[]>([]);
+  const [plans, setPlans] = React.useState<TripPlan[]>([]);
+  const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
+  const [busy, setBusy] = React.useState(false);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -122,26 +137,78 @@ export default function TourOrdersPage() {
   }, [rows]);
 
   /* ----------------------------------------------------------- 狀態動作 */
-  const runAction = () => {
+  /**
+   * issue #8-B：這三個動作原本只改頁面記憶體——
+   *
+   *     setRows((prev) => prev.map((o) => ... { ...o, status: 'CONFIRMED' }));
+   *     toast.show(t.messages.paymentConfirmed);   // ← 就宣告成功
+   *
+   * 導遊按下「確認收款」、看到「已確認收款」，**重新整理訂單又變回未付款**。
+   * 「完成」與「取消」是同一個形狀，而取消更糟：畫面顯示取消了，團次的名額
+   * 卻從來沒被釋放，那個席次就這樣永遠卡著。
+   *
+   * 三條規則與列表頁（PR #266）、詳情頁（PR #267）一致：先呼叫端點、成功之後
+   * 才 `await load()` 重讀、失敗顯示後端的真實訊息且不關閉對話框。
+   */
+  const runOrderAction = async (fn: () => Promise<unknown>, successMessage: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      toast.show(successMessage);
+      return true;
+    } catch (e) {
+      toast.show(
+        `${t.messages.actionFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runAction = async () => {
     if (!action) return;
     const { kind, order } = action;
-    setRows((prev) => prev.map((o) => {
-      if (o.id !== order.id) return o;
-      if (kind === 'confirmPayment') return { ...o, paymentStatus: 'PAID', status: 'CONFIRMED', holdExpiresAt: null };
-      if (kind === 'complete') return { ...o, status: 'COMPLETED' };
-      return { ...o, status: 'CANCELLED' };
-    }));
-    toast.show(
-      kind === 'confirmPayment' ? t.messages.paymentConfirmed
-        : kind === 'complete' ? t.messages.completed
-          : t.messages.cancelled,
-    );
-    setAction(null);
+    const [call, message] = kind === 'confirmPayment'
+      ? [() => confirmTourOrderPayment(order.id), t.messages.paymentConfirmed] as const
+      : kind === 'complete'
+        ? [() => completeTourOrder(order.id), t.messages.completed] as const
+        : [() => cancelTourOrder(order.id), t.messages.cancelled] as const;
+    const ok = await runOrderAction(call, message);
+    if (ok) setAction(null);
   };
 
   /* ------------------------------------------------------- 手動建立訂單 */
-  const draftPlans = MOCK_TRIP_PLANS.filter((p) => p.tripId === draft.tripId);
-  const draftDepartures = MOCK_TRIP_DEPARTURES.filter(
+  /** 開啟建單視窗時才載入行程清單（列表頁本身不需要它） */
+  React.useEffect(() => {
+    if (!createOpen || trips.length) return;
+    void (async () => {
+      try { setTrips(await listTrips()); }
+      catch { toast.show(t.messages.loadFailed, 'danger'); }
+    })();
+  }, [createOpen, trips.length, toast]);
+
+  /** 選了行程才載方案；選了方案才載團次——與下拉的 disabled 條件一致 */
+  React.useEffect(() => {
+    if (!draft.tripId) { setPlans([]); setDepartures([]); return; }
+    void (async () => {
+      try { setPlans(await listTripPlans(draft.tripId)); }
+      catch { toast.show(t.messages.loadFailed, 'danger'); }
+    })();
+  }, [draft.tripId, toast]);
+
+  React.useEffect(() => {
+    if (!draft.tripId) return;
+    void (async () => {
+      try { setDepartures(await listTripDepartures(draft.tripId)); }
+      catch { toast.show(t.messages.loadFailed, 'danger'); }
+    })();
+  }, [draft.tripId, toast]);
+
+  const draftPlans = plans;
+  const draftDepartures = departures.filter(
     (d) => d.planId === draft.planId && d.status === 'OPEN' && d.capacity > d.seatsBooked,
   );
   const draftPlan = draftPlans.find((p) => p.id === draft.planId);
@@ -150,32 +217,35 @@ export default function TourOrdersPage() {
     : 0;
   const draftDeposit = draftPlan ? depositOf(draftPlan, draftTotal, draft.partySize) : 0;
 
-  const submitDraft = () => {
-    const trip = MOCK_TRIPS.find((x) => x.id === draft.tripId);
-    const departure = draftDepartures.find((d) => d.id === draft.departureId);
-    if (!trip || !draftPlan || !departure) return;
-    const order: TourOrder = {
-      id: `to_new_${rows.length + 1}`,
-      orderNo: `T${new Date().toISOString().slice(2, 10).replace(/-/g, '')}${String(rows.length + 1).padStart(4, '0')}`,
-      tripId: trip.id, tripTitle: trip.title, planName: draftPlan.name,
-      departsOn: departure.departsOn, startTime: departure.startTime,
-      customerName: draft.customerName, customerPhone: draft.customerPhone,
-      partySize: draft.partySize,
-      unitPrice: draftPlan.basePrice, totalAmount: draftTotal,
-      depositAmount: draftDeposit,
-      status: 'PENDING', paymentStatus: 'UNPAID',
-      paymentMethodLabel: MOCK_PAYMENT_METHODS.find((m) => m.id === draft.paymentMethodId)?.label ?? '',
-      paymentRef: '', source: 'MANUAL', holdExpiresAt: null,
-      note: draft.note, createdAt: new Date().toISOString(),
-    };
-    setRows((prev) => [order, ...prev]);
-    setTotal((n) => n + 1);
+  /**
+   * 建單原本完全不打端點：自己組一個 TourOrder 物件 `setRows` 進去、
+   * 編一個 `to_new_1` 的 id 與 `T2609070001` 的訂單編號，然後報「訂單已建立」。
+   * 重新整理就消失，團次的名額也從來沒被扣過。
+   *
+   * 現在走 `createManualTourOrder` → `POST /api/tour-orders/manual`，名額由
+   * `create_tour_order` rpc 與建單在**同一交易**裡原子扣減（10 分冊 §2）。
+   * 名額不足時後端回 409 TOUR_001，訊息原樣顯示給店家。
+   */
+  const submitDraft = async () => {
+    if (!draft.tripId || !draft.planId || !draft.departureId) return;
+    if (!draft.customerName.trim() || !draft.customerPhone.trim()) return;
+    const ok = await runOrderAction(
+      () => createManualTourOrder({
+        departureId: draft.departureId,
+        customerName: draft.customerName.trim(),
+        customerPhone: draft.customerPhone.trim(),
+        partySize: draft.partySize,
+        paymentMethodId: draft.paymentMethodId,
+        note: draft.note,
+      }),
+      t.messages.created,
+    );
+    if (!ok) return;
     setCreateOpen(false);
     setDraft({
       tripId: '', planId: '', departureId: '', customerName: '',
       customerPhone: '', partySize: 2, paymentMethodId: MOCK_PAYMENT_METHODS[0].id, note: '',
     });
-    toast.show(t.messages.created);
   };
 
   const columns: Column<TourOrder>[] = [
@@ -450,6 +520,7 @@ export default function TourOrdersPage() {
             <Button variant="secondary" onClick={() => setCreateOpen(false)}>{common.cancel}</Button>
             <Button
               onClick={submitDraft}
+              loading={busy}
               disabled={!draft.departureId || !draft.customerName || !draft.customerPhone}
             >
               {t.create.submit}
@@ -467,7 +538,7 @@ export default function TourOrdersPage() {
               onChange={(e) => setDraft({ ...draft, tripId: e.target.value, planId: '', departureId: '' })}
             >
               <option value="">{t.create.tripLabel}</option>
-              {MOCK_TRIPS.map((tr) => <option key={tr.id} value={tr.id}>{tr.title}</option>)}
+              {trips.map((tr) => <option key={tr.id} value={tr.id}>{tr.title}</option>)}
             </Select>
           </FormGroup>
 

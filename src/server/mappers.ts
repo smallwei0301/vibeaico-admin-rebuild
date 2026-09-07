@@ -25,6 +25,7 @@ import type {
   PointTransaction,
   StaffPerformance,
   TenantSummary,
+  TourOrder,
   Trip,
   TripAddon,
   TripDeparture,
@@ -342,6 +343,50 @@ export function mapTripDeparture(r: any): TripDeparture {
     seatsBooked: r.seats_booked ?? 0,
     status: r.status,
     note: r.note ?? '',
+  };
+}
+
+/**
+ * tour_orders 列 → `TourOrder`（#8-B）。
+ *
+ * 刻意**不**做 PostgREST embed：0067 為 tenant-aware 完整性加了複合 FK，
+ * 於是 `tour_orders → trips` / `→ trip_plans` / `→ trip_departures` 的關聯在
+ * canonical 與 historical overlay 兩種安裝路徑下解出來的 constraint 名稱不同，
+ * embed hint 會在其中一邊解不開（PB-024）。呼叫端自己查再組，慢一點但兩邊都對。
+ *
+ * `derived` 的四個欄位都由呼叫端明確傳入而非 `?? ''` 猜——查不到就傳空字串，
+ * 但那是呼叫端知道自己查不到，不是這裡假裝有值。
+ */
+export function mapTourOrder(r: any, derived: {
+  tripTitle: string;
+  planName: string;
+  departsOn: string;
+  startTime: string;
+  paymentMethodLabel: string;
+}): TourOrder {
+  const contact = (r.contact ?? {}) as Record<string, unknown>;
+  return {
+    id: r.id,
+    orderNo: r.order_no,
+    tripId: r.trip_id,
+    tripTitle: derived.tripTitle,
+    planName: derived.planName,
+    departsOn: derived.departsOn,
+    startTime: derived.startTime,
+    customerName: String(contact.name ?? ''),
+    customerPhone: String(contact.phone ?? ''),
+    partySize: Number(r.party_size ?? 0),
+    unitPrice: Number(r.unit_price ?? 0),
+    totalAmount: Number(r.total_amount ?? 0),
+    depositAmount: Number(r.deposit_amount ?? 0),
+    status: r.status,
+    paymentStatus: r.payment_status,
+    paymentMethodLabel: derived.paymentMethodLabel,
+    paymentRef: r.payment_ref ?? '',
+    source: r.source,
+    holdExpiresAt: r.hold_expires_at ?? null,
+    note: r.note ?? '',
+    createdAt: r.created_at,
   };
 }
 
