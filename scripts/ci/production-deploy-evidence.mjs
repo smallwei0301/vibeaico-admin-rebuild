@@ -11,6 +11,10 @@ function isValidSha(value) {
   return FULL_SHA.test(normalizeSha(value));
 }
 
+function lower(value = '') {
+  return String(value ?? '').trim().toLowerCase();
+}
+
 function unwrapDeployment(payload) {
   if (payload && typeof payload === 'object' && payload.deployment && typeof payload.deployment === 'object') {
     return payload.deployment;
@@ -23,8 +27,13 @@ function unwrapDeployment(payload) {
  * hostname. Do not replace this with "newest READY deployment" selection: a
  * rollback can point Production at an older deployment while newer READY builds
  * remain in deployment history.
+ *
+ * During the pre-cutover phase this adapter accepts only Vercel Git Integration
+ * deployments. The future controlled deployment path must add its own durable,
+ * repository-verifiable attestation before this source requirement is relaxed.
  */
 export function normalizeProductionAliasDeployment(payload, {
+  owner,
   repo,
   ref = 'main',
   hostname,
@@ -36,28 +45,44 @@ export function normalizeProductionAliasDeployment(payload, {
     return { valid: false, errors: ['PRODUCTION_ALIAS_RESPONSE_MISSING'], deployment: null };
   }
 
+  const expectedOwner = lower(owner);
+  const expectedRepo = lower(repo);
+  const expectedRef = String(ref ?? '').trim();
+  const expectedHostname = lower(hostname);
+  const expectedProjectId = String(projectId ?? '').trim();
+
+  if (!expectedOwner) errors.push('EXPECTED_GIT_OWNER_MISSING');
+  if (!expectedRepo) errors.push('EXPECTED_GIT_REPO_MISSING');
+  if (!expectedRef) errors.push('EXPECTED_GIT_REF_MISSING');
+  if (!expectedHostname) errors.push('EXPECTED_PRODUCTION_HOSTNAME_MISSING');
+  if (!expectedProjectId) errors.push('EXPECTED_VERCEL_PROJECT_MISSING');
+
   const deploymentId = String(raw.id ?? raw.uid ?? '').trim();
-  const target = String(raw.target ?? '').trim().toLowerCase();
+  const target = lower(raw.target);
   const state = String(raw.readyState ?? raw.state ?? raw.status ?? '').trim().toUpperCase();
   const aliases = Array.isArray(raw.alias)
-    ? raw.alias.map((value) => String(value).trim()).filter(Boolean)
+    ? raw.alias.map((value) => lower(value)).filter(Boolean)
     : [];
   const resolvedProjectId = String(raw.project?.id ?? raw.projectId ?? '').trim();
+  const source = lower(raw.source);
   const meta = raw.meta ?? {};
-  const gitRepo = String(meta.githubCommitRepo ?? meta.githubRepo ?? '').trim();
+  const gitOwner = lower(meta.githubCommitOrg ?? meta.githubOrg);
+  const gitRepo = lower(meta.githubCommitRepo ?? meta.githubRepo);
   const gitRef = String(meta.githubCommitRef ?? '').trim();
   const sha = normalizeSha(meta.githubCommitSha);
 
   if (!deploymentId) errors.push('PRODUCTION_DEPLOYMENT_ID_MISSING');
   if (target !== 'production') errors.push('PRODUCTION_ALIAS_TARGET_INVALID');
   if (state !== 'READY') errors.push('PRODUCTION_ALIAS_NOT_READY');
-  if (hostname && !aliases.includes(hostname)) errors.push('PRODUCTION_HOSTNAME_NOT_ASSIGNED');
-  if (projectId && resolvedProjectId !== projectId) errors.push('PRODUCTION_PROJECT_MISMATCH');
-  if (repo && gitRepo !== repo) errors.push('PRODUCTION_GIT_REPO_MISMATCH');
-  if (ref && gitRef !== ref) errors.push('PRODUCTION_GIT_REF_MISMATCH');
+  if (source !== 'git') errors.push('PRODUCTION_SOURCE_UNTRUSTED');
+  if (expectedHostname && !aliases.includes(expectedHostname)) errors.push('PRODUCTION_HOSTNAME_NOT_ASSIGNED');
+  if (expectedProjectId && resolvedProjectId !== expectedProjectId) errors.push('PRODUCTION_PROJECT_MISMATCH');
+  if (expectedOwner && gitOwner !== expectedOwner) errors.push('PRODUCTION_GIT_OWNER_MISMATCH');
+  if (expectedRepo && gitRepo !== expectedRepo) errors.push('PRODUCTION_GIT_REPO_MISMATCH');
+  if (expectedRef && gitRef !== expectedRef) errors.push('PRODUCTION_GIT_REF_MISMATCH');
   if (!isValidSha(sha)) errors.push('PRODUCTION_GIT_SHA_INVALID');
 
-  if (errors.length) return { valid: false, errors, deployment: null };
+  if (errors.length) return { valid: false, errors: [...new Set(errors)], deployment: null };
 
   return {
     valid: true,
@@ -69,9 +94,10 @@ export function normalizeProductionAliasDeployment(payload, {
       state,
       aliases,
       projectId: resolvedProjectId,
+      gitOwner,
       gitRepo,
       gitRef,
-      source: String(raw.source ?? '').trim(),
+      source,
       createdAt: Number(raw.createdAt ?? raw.created ?? 0) || null,
       url: String(raw.url ?? '').trim(),
     },
@@ -193,6 +219,7 @@ export function collectGitRangeEvidence({ baseSha, headSha, runGit = defaultRunG
  */
 export function buildProductionDeployEvidence({
   productionAliasPayload,
+  owner,
   repo,
   ref = 'main',
   hostname,
@@ -203,6 +230,7 @@ export function buildProductionDeployEvidence({
   runGit = defaultRunGit,
 } = {}) {
   const baselineResult = normalizeProductionAliasDeployment(productionAliasPayload, {
+    owner,
     repo,
     ref,
     hostname,

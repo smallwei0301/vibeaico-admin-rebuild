@@ -11,6 +11,7 @@ const SHA_B = '2222222222222222222222222222222222222222';
 const SHA_C = '3333333333333333333333333333333333333333';
 const HOSTNAME = 'admin.example.vercel.app';
 const PROJECT = 'prj_example';
+const OWNER = 'smallwei0301';
 const REPO = 'vibeaico-admin-rebuild';
 
 function aliasPayload(overrides: Record<string, unknown> = {}) {
@@ -25,12 +26,23 @@ function aliasPayload(overrides: Record<string, unknown> = {}) {
       createdAt: 123,
       url: 'generated.example.vercel.app',
       meta: {
+        githubCommitOrg: OWNER,
         githubCommitRepo: REPO,
         githubCommitRef: 'main',
         githubCommitSha: SHA_A,
       },
       ...overrides,
     },
+  };
+}
+
+function expectedIdentity() {
+  return {
+    owner: OWNER,
+    repo: REPO,
+    ref: 'main',
+    hostname: HOSTNAME,
+    projectId: PROJECT,
   };
 }
 
@@ -62,10 +74,7 @@ function build(overrides: Record<string, unknown> = {}) {
   const git = gitRunner();
   const result = buildProductionDeployEvidence({
     productionAliasPayload: aliasPayload(),
-    repo: REPO,
-    ref: 'main',
-    hostname: HOSTNAME,
-    projectId: PROJECT,
+    ...expectedIdentity(),
     currentSha: SHA_B,
     latestMainSha: SHA_B,
     checksState: 'SUCCESS',
@@ -76,13 +85,8 @@ function build(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Issue #228 Production evidence adapter', () => {
-  it('trusts the deployment resolved by the Production hostname only when alias/project/Git metadata all match', () => {
-    expect(normalizeProductionAliasDeployment(aliasPayload(), {
-      repo: REPO,
-      ref: 'main',
-      hostname: HOSTNAME,
-      projectId: PROJECT,
-    })).toEqual({
+  it('trusts the deployment resolved by the Production hostname only when source/alias/project/Git identity all match', () => {
+    expect(normalizeProductionAliasDeployment(aliasPayload(), expectedIdentity())).toEqual({
       valid: true,
       errors: [],
       deployment: {
@@ -92,6 +96,7 @@ describe('Issue #228 Production evidence adapter', () => {
         state: 'READY',
         aliases: [HOSTNAME, 'git-main.example.vercel.app'],
         projectId: PROJECT,
+        gitOwner: OWNER,
         gitRepo: REPO,
         gitRef: 'main',
         source: 'git',
@@ -102,21 +107,46 @@ describe('Issue #228 Production evidence adapter', () => {
   });
 
   it('blocks an alias response that is not the expected current Production truth', () => {
-    const wrongAlias = normalizeProductionAliasDeployment(aliasPayload({ alias: ['other.example.vercel.app'] }), {
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-    });
-    expect(wrongAlias.valid).toBe(false);
+    const wrongAlias = normalizeProductionAliasDeployment(
+      aliasPayload({ alias: ['other.example.vercel.app'] }),
+      expectedIdentity(),
+    );
     expect(wrongAlias.errors).toContain('PRODUCTION_HOSTNAME_NOT_ASSIGNED');
 
-    const cancelled = normalizeProductionAliasDeployment(aliasPayload({ readyState: 'CANCELED' }), {
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-    });
+    const cancelled = normalizeProductionAliasDeployment(
+      aliasPayload({ readyState: 'CANCELED' }),
+      expectedIdentity(),
+    );
     expect(cancelled.errors).toContain('PRODUCTION_ALIAS_NOT_READY');
 
-    const wrongProject = normalizeProductionAliasDeployment(aliasPayload({ project: { id: 'prj_wrong' } }), {
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-    });
+    const wrongProject = normalizeProductionAliasDeployment(
+      aliasPayload({ project: { id: 'prj_wrong' } }),
+      expectedIdentity(),
+    );
     expect(wrongProject.errors).toContain('PRODUCTION_PROJECT_MISMATCH');
+  });
+
+  it('requires the Git owner as well as repo name, so a same-named repository cannot impersonate the baseline', () => {
+    const wrongOwner = normalizeProductionAliasDeployment(aliasPayload({
+      meta: {
+        githubCommitOrg: 'someone-else',
+        githubCommitRepo: REPO,
+        githubCommitRef: 'main',
+        githubCommitSha: SHA_A,
+      },
+    }), expectedIdentity());
+    expect(wrongOwner.errors).toContain('PRODUCTION_GIT_OWNER_MISMATCH');
+
+    const missingExpectation = normalizeProductionAliasDeployment(aliasPayload(), {
+      ...expectedIdentity(),
+      owner: '',
+    });
+    expect(missingExpectation.errors).toContain('EXPECTED_GIT_OWNER_MISSING');
+  });
+
+  it('accepts only Git Integration deployments before controlled cutover attestation exists', () => {
+    const manual = normalizeProductionAliasDeployment(aliasPayload({ source: 'cli' }), expectedIdentity());
+    expect(manual.errors).toContain('PRODUCTION_SOURCE_UNTRUSTED');
   });
 
   it('does not infer the baseline from deployment creation order', () => {
@@ -124,13 +154,12 @@ describe('Issue #228 Production evidence adapter', () => {
       id: 'dpl_rolled_back_old',
       createdAt: 10,
       meta: {
+        githubCommitOrg: OWNER,
         githubCommitRepo: REPO,
         githubCommitRef: 'main',
         githubCommitSha: SHA_A,
       },
-    }), {
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-    });
+    }), expectedIdentity());
     expect(result.deployment).toMatchObject({ deploymentId: 'dpl_rolled_back_old', sha: SHA_A });
   });
 
@@ -178,7 +207,7 @@ describe('Issue #228 Production evidence adapter', () => {
 
   it('turns a complete docs-only alias-to-main range into POLICY_SKIP evidence', () => {
     const { result } = build();
-    expect(result.baseline).toMatchObject({ deploymentId: 'dpl_current', sha: SHA_A });
+    expect(result.baseline).toMatchObject({ deploymentId: 'dpl_current', sha: SHA_A, gitOwner: OWNER });
     expect(result.comparison).toMatchObject({
       comparisonBaseIsAncestor: true,
       changedPathsComplete: true,
@@ -191,8 +220,11 @@ describe('Issue #228 Production evidence adapter', () => {
     const git = gitRunner({ diff: 'R100\0src/old.ts\0docs/new.ts\0' });
     const result = buildProductionDeployEvidence({
       productionAliasPayload: aliasPayload(),
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-      currentSha: SHA_B, latestMainSha: SHA_B, checksState: 'SUCCESS', runGit: git.runGit,
+      ...expectedIdentity(),
+      currentSha: SHA_B,
+      latestMainSha: SHA_B,
+      checksState: 'SUCCESS',
+      runGit: git.runGit,
     });
     expect(result.decision).toMatchObject({
       action: 'WOULD_DEPLOY',
@@ -205,8 +237,11 @@ describe('Issue #228 Production evidence adapter', () => {
     const git = gitRunner();
     const result = buildProductionDeployEvidence({
       productionAliasPayload: aliasPayload({ alias: ['wrong.example.vercel.app'] }),
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-      currentSha: SHA_B, latestMainSha: SHA_B, checksState: 'SUCCESS', runGit: git.runGit,
+      ...expectedIdentity(),
+      currentSha: SHA_B,
+      latestMainSha: SHA_B,
+      checksState: 'SUCCESS',
+      runGit: git.runGit,
     });
     expect(result.decision).toEqual({ action: 'BLOCK', reason: 'PRODUCTION_BASELINE_UNTRUSTED' });
     expect(result.baselineErrors).toContain('PRODUCTION_HOSTNAME_NOT_ASSIGNED');
@@ -218,12 +253,25 @@ describe('Issue #228 Production evidence adapter', () => {
       { currentSha: SHA_B, latestMainSha: SHA_C, checksState: 'SUCCESS', reason: 'STALE_SHA' },
       { currentSha: SHA_B, latestMainSha: SHA_B, checksState: 'PENDING', reason: 'CHECKS_PENDING' },
       { currentSha: SHA_B, latestMainSha: SHA_B, checksState: 'FAILURE', reason: 'CHECKS_NOT_GREEN' },
-      { productionAliasPayload: aliasPayload({ meta: { githubCommitRepo: REPO, githubCommitRef: 'main', githubCommitSha: SHA_B } }), currentSha: SHA_B, latestMainSha: SHA_B, checksState: 'SUCCESS', reason: 'ALREADY_DEPLOYED' },
+      {
+        productionAliasPayload: aliasPayload({
+          meta: {
+            githubCommitOrg: OWNER,
+            githubCommitRepo: REPO,
+            githubCommitRef: 'main',
+            githubCommitSha: SHA_B,
+          },
+        }),
+        currentSha: SHA_B,
+        latestMainSha: SHA_B,
+        checksState: 'SUCCESS',
+        reason: 'ALREADY_DEPLOYED',
+      },
     ]) {
       const git = gitRunner();
       const result = buildProductionDeployEvidence({
         productionAliasPayload: scenario.productionAliasPayload ?? aliasPayload(),
-        repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
+        ...expectedIdentity(),
         currentSha: scenario.currentSha,
         latestMainSha: scenario.latestMainSha,
         checksState: scenario.checksState,
@@ -238,8 +286,11 @@ describe('Issue #228 Production evidence adapter', () => {
     const git = gitRunner({ diffStatus: 2 });
     const result = buildProductionDeployEvidence({
       productionAliasPayload: aliasPayload(),
-      repo: REPO, ref: 'main', hostname: HOSTNAME, projectId: PROJECT,
-      currentSha: SHA_B, latestMainSha: SHA_B, checksState: 'SUCCESS', runGit: git.runGit,
+      ...expectedIdentity(),
+      currentSha: SHA_B,
+      latestMainSha: SHA_B,
+      checksState: 'SUCCESS',
+      runGit: git.runGit,
     });
     expect(result.comparison).toMatchObject({
       comparisonBaseIsAncestor: true,

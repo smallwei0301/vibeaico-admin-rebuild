@@ -22,9 +22,10 @@ Vercel documents `idOrUrl` as accepting a deployment ID or hostname. Before trus
 
 - deployment target is `production`;
 - deployment is `READY`;
+- deployment `source` is `git` during this pre-cutover phase;
 - expected Production hostname is in the deployment aliases;
 - expected Vercel project ID matches;
-- Git repository and ref match this repo and `main`;
+- Git owner, repository and ref match this repo and `main`;
 - Git commit SHA is a valid full SHA.
 
 If any of those checks fail, the result is:
@@ -34,6 +35,18 @@ BLOCK / PRODUCTION_BASELINE_UNTRUSTED
 ```
 
 It is not treated as a brand-new project with no baseline.
+
+### Why `source=git` is required for now
+
+Before the replacement deployment path exists, the only baseline source this adapter can independently identify is Vercel Git Integration. Accepting a manually-created/CLI deployment merely because it carries Git-looking metadata would weaken the baseline identity check.
+
+When Issue #228 later introduces the controlled deployment adapter, that path must create a durable repository-verifiable attestation tying:
+
+```text
+deployment id <-> exact main SHA <-> successful Production result
+```
+
+Only then may the baseline resolver accept that new source. The correct transition is to add stronger attestation, not to silently remove the `source=git` check.
 
 ## Complete changed-path evidence: use local Git
 
@@ -64,7 +77,7 @@ Missing shallow-history commits or non-ancestor baselines block the comparison. 
 resolved Production hostname response
         |
         v
-validate alias/project/repo/ref/SHA
+validate source/alias/project/Git owner/repo/ref/SHA
         |
         v
 required GitHub check state + newest main SHA
@@ -97,7 +110,8 @@ A later, separately reviewed workflow adapter still needs to:
 4. call this evidence adapter;
 5. publish a durable decision status/artifact;
 6. only for `WOULD_DEPLOY`, call the real deployment adapter;
-7. prove a canary before disabling existing Vercel Git Integration.
+7. make that deployment adapter emit a durable deployment-id-to-main-SHA attestation;
+8. prove a canary before disabling existing Vercel Git Integration.
 
 Workflow changes and real Vercel calls are outside this source-only slice and may require stronger Astra review.
 
