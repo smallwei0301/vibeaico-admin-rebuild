@@ -559,6 +559,15 @@ function CampaignFormModal({
   };
 
   const prereq = AUTO_TRIGGER_PREREQ[type];
+  /**
+   * issue #176：生日祝福與顧客喚回**真的每天在跑**（cron birthday-greetings /
+   * customer-recall），但它們讀的是 tenant_settings.notify，不是 campaigns。
+   * 所以這張表單裡的推播訊息不會被送出去——這一句必須永遠顯示，不能只在缺前提時
+   * 才出現，否則店家補齊前提後反而更確信「現在會照我寫的內容發了」。
+   */
+  const drivenElsewhere = type === 'BIRTHDAY' || type === 'RECALL';
+  /** 後端完全沒有觸發點的類型；唯一會執行的是 LINE 關鍵字回覆（line-events.ts） */
+  const notImplemented = !drivenElsewhere;
   const featureMissing = !!prereq && !activeFeatures.includes(prereq.featureCode);
   /** 骨架階段：通知開關狀態尚未接上 tenant_settings，一律視為已開啟 */
   const switchOff = false;
@@ -739,6 +748,10 @@ function CampaignFormModal({
           onChange={(e) => setBonusPoints(e.target.value)}
         />
         <FormText>{t.form.bonusPointsHelp}</FormText>
+        {/* issue #176：coupons 與 point_transactions 兩張表都在，但沒有任何活動
+            流程會寫入它們。欄位保留（未來要實作的產品意圖），但不讓店家以為
+            按下發布就會自動發券／送點。 */}
+        <FormText>{t.truthNotice.rewardsInert}</FormText>
       </FormGroup>
 
       {type === 'SPENDING_THRESHOLD' ? (
@@ -787,6 +800,23 @@ function CampaignFormModal({
         </div>
         <FormText>{t.form.isAutoTriggerHelp}</FormText>
       </FormGroup>
+
+      {drivenElsewhere && prereq ? (
+        <Alert tone="info" className="mb-4" title={t.truthNotice.drivenElsewhereTitle}>
+          <div>{t.truthNotice.drivenElsewhere(prereq.switchName)}</div>
+          <div className="mt-1">
+            <Link className="underline" href="/tenant/settings">
+              {t.truthNotice.goSettingsCta}
+            </Link>
+          </div>
+        </Alert>
+      ) : null}
+
+      {notImplemented ? (
+        <Alert tone="info" className="mb-4" title={t.truthNotice.notImplementedTitle}>
+          <div>{t.truthNotice.notImplemented}</div>
+        </Alert>
+      ) : null}
 
       {showPrereq && prereq ? (
         <Alert tone="warning" className="mb-4" title={t.prereq.title}>

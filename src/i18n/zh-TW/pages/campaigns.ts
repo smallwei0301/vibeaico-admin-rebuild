@@ -177,7 +177,7 @@ export const campaignsPage = {
     checkLabel: '請檢查：',
     featureMissing: (featureName: string) => `尚未訂閱「${featureName}」功能（49 點/月）`,
     switchOff: (switchName: string) => `店家設定 → 通知設定的「${switchName}」開關尚未開啟`,
-    tail: '活動仍可以建立並保存，補齊上面的條件後就會開始自動發送。',
+    tail: '活動仍可以建立並保存。',
     /** 自動觸發活動對應的通知設定開關名稱 */
     switchNames: {
       BIRTHDAY: '自動推播生日祝福',
@@ -186,6 +186,31 @@ export const campaignsPage = {
     goSubscribe: '前往訂閱',
     goSettings: '前往設定',
     loadFailed: '自動活動前提檢查失敗:',
+  },
+
+  /**
+   * issue #176 誠實標示：活動頁與「通知設定」頁對生日祝福／顧客喚回**有兩套 UI，
+   * 但只有一套會執行**。真正在跑的是每日排程（birthday-greetings 09:00、
+   * customer-recall 14:00），它們讀的是 tenant_settings.notify，不是 campaigns。
+   *
+   * 這裡不移除任何欄位（DELIVERY-CHAIN §5「復原而非取消」——它們是未來要實作的
+   * 產品意圖），只把「這一份設定現在不會被送出去」講清楚，並指路到真正生效的頁面。
+   */
+  truthNotice: {
+    /** BIRTHDAY / RECALL：功能真的在跑，但吃的是另一頁的設定 */
+    drivenElsewhereTitle: '這裡的訊息內容不會被發送出去',
+    drivenElsewhere: (switchName: string) =>
+      `這項功能確實每天都在自動執行，但它發送的訊息與天數是讀「店家設定 → 通知設定」裡的「${switchName}」，`
+      + '不是這張表單。在這裡修改推播訊息，實際發出去的內容不會改變。',
+    goSettingsCta: '前往通知設定修改實際發送的內容',
+    /** 後端尚無觸發點的類型 */
+    notImplementedTitle: '這個活動類型目前不會自動執行',
+    notImplemented:
+      '目前後端還沒有這個類型的觸發點，活動可以建立並保存，但不會自動發送訊息、發券或送點數。'
+      + '唯一會真的發生的事情是：顧客在 LINE 打出與「活動關鍵字」完全相符的文字時，會收到你設定的回覆內容。',
+    /** 發券／送點數在所有類型都尚未接線 */
+    rewardsInert:
+      '「贈送票券」與「贈送點數」目前不會自動發放（issue #176），設定會保存下來，等該功能實作後生效。',
   },
 
   /* --------------------------------------------------------------- 確認 */
