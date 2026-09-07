@@ -423,3 +423,25 @@ export const cancelProductOrder = (id: string, reason?: string) =>
 export const markProductOrderPaidOffline = (id: string) =>
   adapt(() => undefined, () =>
     request<void>(`/api/product-orders/${id}/mark-paid-offline`, { method: 'POST' }));
+
+/**
+ * POST /api/product-orders/:id/apply-coupon — 核銷票券，回
+ * `{ totalAmount, couponDiscount }`（折抵後金額、本次折抵金額，兩者都是後端
+ * 算好的真實數字，頁面不可再自己假造 100 元 —— issue #33 第 ① 筆）。
+ * 找不到票券 404、已核銷或票券不屬於該顧客 409，訊息交頁面 toast 原樣顯示。
+ *
+ * product_orders 沒有欄位能長期存「這筆訂單折抵過多少」（見對應 route 註解），
+ * 因此 mock 分支固定折 100（沿用修復前頁面本來就假造的數字，只是現在真的
+ * 由這支 service 回傳，且 real 分支會回傳後端核銷後的真實金額）。
+ */
+export const applyProductOrderCoupon = (id: string, code: string, mockCurrentAmount: number) =>
+  adapt<{ totalAmount: number; couponDiscount: number }>(
+    () => {
+      const discount = Math.min(100, mockCurrentAmount);
+      return { totalAmount: mockCurrentAmount - discount, couponDiscount: discount };
+    },
+    () => request<{ totalAmount: number; couponDiscount: number }>(
+      `/api/product-orders/${id}/apply-coupon`,
+      { method: 'POST', body: JSON.stringify({ code }) },
+    ),
+  );
