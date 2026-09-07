@@ -51,9 +51,10 @@
 | PB-012 | 靜態檢查不能驗證 SQL 語意 | SELECT alias 不能在同層 WHERE 使用，且 DB enum 與 UI enum 不同；對 DB 實跑或鎖 schema mapping。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-013 | build workspace artifact 可在編譯後失敗 | page collection 清理殘留 artifact 時可報 `ENOTEMPTY`；保留首個完整證據、清 workspace 後單次重驗。 | `docs/AGENT-EXECUTION.md` §7 |
 | PB-014 | 遠端 Git tree 必須先過完整性閘門 | 原子 commit 只能減少 push 次數，不能證明 tree 完整；核心路徑、異常大量刪檔、裸 SHA、`npm ci`、typecheck 與 build 必須在 Preview 前驗證。 | `docs/AGENT-EXECUTION.md` §8；`scripts/ci/repo-integrity-guard.mjs` |
-| PB-015 | 本機與 CI 的 base 不同就不能互相佐證 | `workflow_dispatch` 使 `base_revision` 為空，守門腳本退回 `HEAD^`；head 為 merge commit 時會把 main 既有 migration 誤判為新增。錯誤指向不屬於本次變更的檔案時，先懷疑 base。 | `docs/AGENT-EXECUTION.md` §7；Issue #227 |
+| PB-015 | 本機與 CI 的 base 不同就不能互相佐證 | `workflow_dispatch` 使 `base_revision` 為空，守門腳本退回 `HEAD^`。凡是 `HEAD^ != main` 的分支形狀都會誤判：head 為 merge commit、或分支有第二顆 commit 動到自己新增的 migration。錯誤指向不屬於本次變更的檔案時，先懷疑 base。**規則：帶 migration 的分支一律壓成置於 main 之上的單一 commit。** | `docs/AGENT-EXECUTION.md` §7；Issue #227 |
 | PB-016 | 退出碼被蓋掉的檢查等於沒有檢查 | 管線退出碼取最後一個命令，`&&` 後的 echo 只反映前一個；`grep` 無 match 也回非零。驗證命令不得放管線中段，測試不得依賴 `grep` 退出碼。 | `docs/AGENT-EXECUTION.md` §7.1；`12-TESTING-TDD.md` §6 |
 | PB-017 | 先套用再改檔名會留下 ledger 偏差 | migration 編號是跨分支共享序列，未進 main 前都可能被別人佔走；套用時機必須晚於「檔名在 main 定案」。改檔名時一律全 repo grep 舊檔名。 | `docs/AGENT-EXECUTION.md` §3.1；`docs/DELIVERY-CHAIN.md` |
+| PB-018 | 「只是查一下」的寫入同樣佔用 TEST lane | PB-002 的序列化不只約束 reset/seed。任何對 canonical TEST 的 `DELETE`／`INSERT`／`UPDATE`——包含為了排查而下的一次性清理——都會讓同時段的 CI 測試看見不屬於它的狀態。動手前先查 canonical lane 是否被佔用。 | `docs/AGENT-EXECUTION.md` §3.1、§7；`12-TESTING-TDD.md` §1.5 |
 
 ## 事件紀錄
 
@@ -204,17 +205,23 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 ### PB-015 — 本機與 CI 的 base revision 不同時，同一支守門腳本會給出相反結論
 
 - 首次／最近：2026-09-07／2026-09-07
-- 發生次數：1
-- Issue／PR／CI：Issue #227；PR #225；job 101605728719、101606491364
+- 發生次數：3
+- Issue／PR／CI：Issue #227；PR #225、PR #239、PR #243；job 101605728719、101606491364
 - 分類：CI
-- 事件：PR #225 的 `check` 失敗，訊息是 `new migration prefix must be greater than base max 0082: supabase/migrations/0081_reconcile_product_order_coupon_fields.sql`。**它抱怨的 `0081` 是 `main` 上早就存在的檔案，不是該 PR 新增的。** 同一顆 commit 在本機跑同一支腳本卻回 `ok: true`。
-- 證據：失敗輸出含 `"baseRevision": "HEAD^"`。本機以 `BASE_REVISION=origin/main` 執行 `scripts/ci/repo-integrity-guard.mjs` → `{ ok: true, errors: [] }`；不帶該環境變數且 head 為 merge commit 時 → 同樣誤報。
-- 根因：Guard 於 lane transition 以 `workflow_dispatch` 派工；`scripts/ci/classify-changes.mjs` 的 `classifyEvent()` 對 `workflow_dispatch` 回 `classifierFailure('workflow-dispatch')`，而 `withRevisions()` 的預設值是空字串，於是 `base_revision` 為空。`.github/workflows/ci.yml` 把空值傳給 `BASE_REVISION`，`repo-integrity-guard.mjs` 的 `process.env.BASE_REVISION || 'HEAD^'` 因空字串 falsy 而退回 `HEAD^`。當 PR 的 head 是 merge commit，`HEAD^` 是**合併前的分支父節點**（已含本分支新增的 migration），基線最大號被算成本分支的號碼，於是 main 上號碼較小的既有 migration 全被判定為「新增且編號較小」。
-- 影響：打到任何「把 `main` 併進分支、且 head 為 merge commit」的 PR，與 PR 內容無關。會偽裝成「你的 migration 編號有問題」，誘導實作者去改一個沒有問題的編號。本輪先誤判為「上一顆 head 的殘影」，浪費一個排查循環。
-- 修正：把分支壓成**置於 `main` 之上的單一 commit**，使 `HEAD^` 恰等於 `main`（`HEAD^` == `origin/main` == `6f9318d`），CI 以自身預設即通過。**這是繞過症狀，不是修好根因。**
-- 預防：① 比對守門腳本結論前，先確認**本機與 CI 用的是同一個 base**；本機刻意加了 `BASE_REVISION` 才變綠，就代表 CI 那邊不會綠。② 錯誤訊息若指向**不屬於本次變更的檔案**，先懷疑 base 取錯，不要先改自己的檔案。③ 根因修法見 Issue #227：`workflow_dispatch` 時仍應解出可用 base，或在 `BASE_REVISION` 為空時**明確失敗並說明原因**，而不是靜默退回 `HEAD^`。
-- 驗證：壓成單一 commit 後，不帶 `BASE_REVISION` 執行 → `{ ok: true, errors: [], baseRevision: "HEAD^" }`；CI `check` job 101606950146 success（typecheck／test／build 皆 success）。
-- 狀態：監看中（症狀已繞過，根因待 Issue #227 修）
+- 事件：同一個根因在一輪內打中三次，但**分支形狀各不相同**，所以前兩次的修法沒有讓我認出第三次。
+  - ① PR #225 的 `check` 失敗，訊息是 `new migration prefix must be greater than base max 0082: supabase/migrations/0081_reconcile_product_order_coupon_fields.sql`。**它抱怨的 `0081` 是 `main` 上早就存在的檔案，不是該 PR 新增的。** 當時 head 是 merge commit。
+  - ② PR #239：把 `main` 併進分支後再次踩到，同樣是 merge commit head。
+  - ③ PR #239 的後續：分支已無 merge commit，但**有第二顆 commit 動到自己新增的 `0084`**，於是 `HEAD^` 是「已含 0084 的自家父節點」，守門腳本再次把基線最大號算成本分支的號碼。
+- 證據：失敗輸出含 `"baseRevision": "HEAD^"`。本機以 `BASE_REVISION=origin/main` 執行 `scripts/ci/repo-integrity-guard.mjs` → `{ ok: true, errors: [] }`；不帶該環境變數且分支為上述任一形狀時 → 同樣誤報。
+- 根因：Guard 於 lane transition 以 `workflow_dispatch` 派工；`scripts/ci/classify-changes.mjs` 的 `classifyEvent()` 對 `workflow_dispatch` 回 `classifierFailure('workflow-dispatch')`，而 `withRevisions()` 的預設值是空字串，於是 `base_revision` 為空。`.github/workflows/ci.yml` 把空值傳給 `BASE_REVISION`，`repo-integrity-guard.mjs:146` 的 `process.env.BASE_REVISION || 'HEAD^'` 因空字串 falsy 而退回 `HEAD^`。
+
+  關鍵是：**`HEAD^` 只有在「分支恰為 main 之上的單一 commit」時才等於 main。** merge commit head 只是其中一種違反形狀；任何多於一顆 commit、且新增的 migration 不只存在於最後一顆 commit 的分支，都會誤判。我前兩次把教訓記成「merge commit 會誤判」，範圍記太窄，第三次才因此沒認出來。
+- 影響：與 PR 內容無關，會偽裝成「你的 migration 編號有問題」，誘導實作者去改一個沒有問題的編號。第一次先誤判為「上一顆 head 的殘影」，浪費一個排查循環；第三次又浪費一個。
+- 修正：三次都把分支壓成**置於 `main` 之上的單一 commit**，使 `HEAD^` 恰等於 `main`，CI 以自身預設即通過。**這是繞過症狀，不是修好根因。**
+- 預防：① **帶 migration 的分支，推送前一律確認 `git rev-parse HEAD^` 等於 `git rev-parse origin/main`**；不等於就先壓成單一 commit。這是可機械檢查的條件，比記憶「哪些分支形狀會出事」可靠。② 比對守門腳本結論前，先確認本機與 CI 用的是同一個 base；本機刻意加了 `BASE_REVISION` 才變綠，就代表 CI 那邊不會綠。③ 錯誤訊息若指向**不屬於本次變更的檔案**，先懷疑 base 取錯，不要先改自己的檔案。④ 根因修法見 Issue #227（PR #240）：`workflow_dispatch` 時仍應解出可用 base，或在 `BASE_REVISION` 為空時**明確失敗並說明原因**，而不是靜默退回 `HEAD^`。
+- 反面教訓：把教訓寫成「某個具體形狀會出事」而非「某個不變量被破壞」，就會在下一個形狀出現時失效。PB 條目的預防欄應盡量寫成**可驗證的不變量**（`HEAD^ == main`），而不是症狀清單。
+- 驗證：壓成單一 commit 後，不帶 `BASE_REVISION` 執行 → `{ ok: true, errors: [], baseRevision: "HEAD^" }`；CI `check` job 101606950146 success。第三次的替代交付 PR #244 於 exact head `36022c1f` 以 `BASE_REVISION=13fafcd3` 驗得 `{ ok: true, errors: [] }`，遠端 `guard` 亦 success。
+- 狀態：監看中（症狀已繞過，根因待 Issue #227 / PR #240 修）
 
 
 ### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
@@ -247,3 +254,19 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：**先讓檔名在 `main` 上定案，再套用到資料庫。** 具體順序：① PR 合併進 main（編號至此才真正確定）→ ② 取得 Owner 逐次授權 → ③ 套用，且 `apply_migration` 的 name 一律使用 **main 上的最終檔名**。若因故必須在合併前套用（例如合併後立刻要用），就要預期並接受這筆偏差，且**在 PR 內先寫明**，不要等偏差發生才補說明。另：改 migration 檔名時，一律 `grep -rn "<舊檔名>"` 全 repo 檢查引用（測試常會讀那個檔），這一點與 PB-015 同源。
 - 驗證：兩次的 schema 皆以 `information_schema.columns` / `pg_constraint` / `pg_proc` / `pg_trigger` 唯讀確認正確；#225 的檔名引用漏改在推送前即被 `tests/unit/staff-display-fields.test.ts` 以 `ENOENT` 擋下。
 - 狀態：監看中（偏差已揭露，順序規則待下一輪實際遵循後才算已防止）
+
+
+### PB-018 — 為了排查而下的一次性寫入，同樣會佔用 canonical TEST lane 並污染別人的測試
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #7；PR #239；canonical TEST `nmwhwngojosmagjuvxol`
+- 分類：測試環境
+- 事件：CI 於 06:03:56 取得 canonical TEST lane、06:04:09 開始跑測試。我在**同一個時間窗內**為了排查 #7 的殘留資料，對 canonical TEST 下了 `DELETE`。我當時的心智模型是「這只是查一下、順手清掉，不是 reset/seed，不算佔用 lane」。
+- 證據：`tests/integration/api/reports.a5.test.ts:97` 出現 `expected +0 to be 4`；我自己新增的測試同時回 400。事後以**唯讀**複查，`shop_a_bookings = 4` 仍然正確——也就是說資料沒有被永久破壞，紅燈純粹來自**執行當下**的狀態被我抽走。
+- 根因：PB-002 的規則我記成「reset／seed／migration 要序列化」，但真正的不變量是「**任何會改變 canonical TEST 狀態的動作**都必須與測試執行互斥」。`DELETE` 一列和 reset 整個庫，對正在跑的測試而言沒有區別。「排查」在心理上感覺是唯讀活動，於是繞過了我自己的檢查。
+- 影響：讓一個**與該 PR 無關**的既有測試轉紅。這種紅燈最貴的地方不是修，而是它會讓人去找一個不存在的程式缺陷；本輪確實先往「是不是 reports 查詢壞了」的方向查了一段。同時它也污染了該次 CI 的證據價值——那一輪的綠／紅都不能作為 exact-head 證據使用。
+- 修正：未擅自重跑掩蓋，改為在 #239 上具名揭露這次違規、附上唯讀複查證明資料未受永久損害，並說明該次 CI 結果不得採信。
+- 預防：① **對 canonical TEST 下任何非 `SELECT` 語句之前，先確認沒有 CI 正持有該 lane。** ② 排查一律從唯讀開始；需要改狀態才能繼續時，那就是一次**需要先取得 lane** 的正式動作，不是順手。③ 本輪自訂並沿用的延伸規則一併寫進正式規則：**任何指向 canonical TEST 的本機 server／script／Playwright 都算持有該 lane**，必須與 CI 的 canonical 執行互斥。
+- 驗證：唯讀複查 `shop_a_bookings = 4`，確認為執行期干擾而非持久性損壞；後續所有對 canonical TEST 的動作改為唯讀 schema／function／privilege 等價性查詢（見 PR #244 的 `CANONICAL_TEST_STATUS: READ_ONLY_EQUIVALENCE_REQUIRED`）。
+- 狀態：監看中（規則已寫明，待下一輪實際遵循後才算已防止）
