@@ -198,7 +198,7 @@ node scripts/agents/score-run-v2.mjs <json> --output <md>
 node scripts/agents/review-runs-v2.mjs docs/metrics/agent-runs
 ```
 
-New operational Runs must be schema v2 with `deliveryTruthVersion: 4`, created through `run-ledger-v2.mjs init --closeout-owner ...`. A final v4 Run is closed only when the script validates its closeout envelope; v1／v3 ledgers remain historical and are never rewritten. `CLOSED` means Issue close only: count a shipped unit only after all five production stages, including authenticated production acceptance.
+New operational Runs must be schema v2 with `deliveryTruthVersion: 4`, created through `run-ledger-v2.mjs init --closeout-owner ...`. A final v4 Run is closed only when the script validates its closeout envelope; schema v1 and historical DeliveryTruth v2/v3 ledgers remain read-only and are never rewritten. `CLOSED` means Issue close only: count a shipped unit only after all five production stages, including authenticated production acceptance.
 
 Record actual token data when available. Otherwise keep it `null` and use internal weights Luna=1,
 Terra=3, Sol=6 with compact=1, medium=1.5, full=3. The weights are not OpenAI's official usage

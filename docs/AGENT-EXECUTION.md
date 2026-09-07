@@ -249,7 +249,7 @@ docs/metrics/agent-runs/<RUN_ID>.json
 docs/metrics/agent-runs/<RUN_ID>.md
 ```
 
-JSON 是原始帳本，Markdown 必須由既有 `scripts/agents/score-run-v2.mjs` 重算。新 Run 用既有 `scripts/agents/run-ledger-v2.mjs init --closeout-owner ...` 建立 schema v2／`deliveryTruthVersion: 4`；歷史 v1／v3 僅可重算，不得改寫。final v4 Run 必須依腳本通過 `closeout.state=CLOSED`、`closedAt=endedAt`、main end SHA、結束 inventory 與 durable evidence 的驗證。至少記錄：
+JSON 是原始帳本，Markdown 必須由既有 `scripts/agents/score-run-v2.mjs` 重算。新 Run 用既有 `scripts/agents/run-ledger-v2.mjs init --closeout-owner ...` 建立 schema v2／`deliveryTruthVersion: 4`；schema v1 與歷史 DeliveryTruth v2／v3 僅可唯讀重算，不得改寫。final v4 Run 必須依腳本通過 `closeout.state=CLOSED`、`closedAt=endedAt`、main end SHA、結束 inventory 與 durable evidence 的驗證。至少記錄：
 
 - main、open Issue／PR 起訖；
 - MAIN／RESERVE／candidate／TEST 峰值；

@@ -26,7 +26,7 @@ SOURCE_VERIFIED
 新 operational Run 使用既有 `scripts/agents/run-ledger-v2.mjs` 建立 schema v2、
 `deliveryTruthVersion: 4` 帳本，並指定唯一 `--closeout-owner`。final Run 只有在既有 validator
 驗證 `closeout.state=CLOSED`、`closedAt=endedAt`、40 字元 `main.endSha`、結束 inventory 及 durable
-`evidenceRef` 後才可結案。既有 v1／v3 與歷史 v2 帳本保留原樣，只能用既有 score／review 工具重算。
+`evidenceRef` 後才可結案。schema v1 與歷史 DeliveryTruth v2／v3 帳本保留原樣，只能用既有 score／review 工具重算。
 
 ### 3. Sol 分早期 diff audit 與最終放行
 
@@ -37,12 +37,14 @@ Terra 產生可審完整 diff 後，Sol 可做一次早期 diff audit，以便�
 
 ```text
 Terra → early Sol diff audit → 必要修正 → local isolated
-→ canonical TEST（需要時）→ final Sol audit（final exact head）
-→ merge／Issue close → Completion Truth → 正式登入實測
+→ canonical TEST（需要時）→ final Sol audit（final exact head）→ merge
+→ 合併事實五項驗證 → 自動部署證據 → Production schema ready 證據
+→ 正式登入實測接受 → 確認出貨五階全成
 ```
 
 最終 Sol 必須讀必要測試完成後的 final exact-head diff；head 有變動時不得沿用早期 audit。缺少必要測試或
-最終 audit 時不得放行。
+最終 audit 時不得放行。合併事實五項只驗證 `MERGED_TO_MAIN`，其後三階各自即時收證；Issue close 依最終 Sol
+結論另行記錄，不能取代任何出貨階段。
 
 ### 4. 雙 Terra 是條件入口
 

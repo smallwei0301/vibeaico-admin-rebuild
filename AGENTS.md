@@ -103,7 +103,7 @@ docs/metrics/agent-runs/<RUN_ID>.json
 docs/metrics/agent-runs/<RUN_ID>.md
 ```
 
-新 Run 使用 schema v2；舊 schema v1 只保留歷史重算，不和 v2 直接比較。
+新 Run 使用 schema v2 的 `deliveryTruthVersion: 4`；schema v1 與歷史 DeliveryTruth v2／v3 只可唯讀重算，不直接比較。
 
 ## 角色分工
 
@@ -213,7 +213,7 @@ Owner 說「復盤」或「複盤」時：
 
 1. 找最新 schema v2 `docs/metrics/agent-runs/*.json`，比較最近最多 3 個已完成且 truth-verified 的 Run。
 2. 先用 live GitHub 驗證完成主張，再用 `run-ledger-v2.mjs`、`score-run-v2.mjs` 與
-   `review-runs-v2.mjs` 重算；新 Run 必須是 schema v2 的 `deliveryTruthVersion: 4`，舊 v1／v3 只作歷史。
+   `review-runs-v2.mjs` 重算；新 Run 必須是 schema v2 的 `deliveryTruthVersion: 4`，schema v1 與歷史 DeliveryTruth v2／v3 只作唯讀重算。
 3. 比較 shipped units、autonomous outcomes、WIP、usage、close 率、品質、Sol touches、
    Luna 採用率、carryover 與 Completion Truth 失敗。
 4. 每次只提出一到兩個最大改良；治理改良走 focused governance PR，不順便改產品。

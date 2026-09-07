@@ -38,7 +38,7 @@ notifications or databases. Governance changes are allowed only when the Owner s
    branch, exact SHA, deployment ID, workflow ID, provider error code or quota signal present in the body.
    Never copy access tokens, passwords, keys or full secret-bearing messages into the repository.
 5. Find `docs/metrics/agent-runs/*.json`, sorted by `startedAt` and filename.
-6. Compare the latest three completed, truth-verified schema v2 runs. New operational Runs must also have `deliveryTruthVersion: 4` and a validated closeout envelope; v1／v3 are historical only. Keep schema v1 reports as
+6. Compare the latest three completed, truth-verified schema v2 runs. New operational Runs must also have `deliveryTruthVersion: 4` and a validated closeout envelope; schema v1 and historical DeliveryTruth v2/v3 are read-only history. Keep schema v1 reports as
    `LEGACY_V1` history and do not mix their Delivery Unit with v2 outcomes.
 7. Validate and reproduce selected v2 reports:
 
@@ -47,7 +47,7 @@ node scripts/agents/run-ledger-v2.mjs validate <run.json>
 node scripts/agents/score-run-v2.mjs <run.json>
 ```
 
-Use `agent:run:legacy:*` only to reproduce schema v1 history. If a report cannot be reproduced, mark it
+Use `agent:run:legacy:*` only to reproduce schema v1 history; reproduce historical DeliveryTruth v2/v3 with the existing v2 tools, without creating or rewriting a ledger. If a report cannot be reproduced, mark it
 `AUDIT_DATA_INVALID` and do not trust its score.
 8. Generate the v2 comparison with:
 

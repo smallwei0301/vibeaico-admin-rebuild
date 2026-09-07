@@ -95,7 +95,7 @@ safe scope exhausted 或 owner-blocked 前，當前 owner 必須完成 closeout�
 checkpoint 中正式改派下一個 owner。不能只在聊天中說「之後有人會關」。完整契約見
 `docs/RUN-CLOSEOUT-CONTRACT.md`。
 
-歷史 v2.2／v3 ledger 保持原樣，不自動改寫。沒有可見的 token／週額度資料就填 `null`，
+schema v1 與歷史 DeliveryTruth v2／v3 ledger 保持原樣，只能唯讀重算。沒有可見的 token／週額度資料就填 `null`，
 不得推測。
 
 ## 4. LUNA_FAN_OUT
@@ -302,7 +302,7 @@ wip_inventory                  = Audit Ready + CI-only + commit-only + unfinishe
 ```
 
 `CLOSED` 只表示 Issue 結案，不得單獨計為 shipped unit。每件出貨 usage 只在
-`shipped_units >= 1` 時計算；歷史 v1 比較尺只保留歷史重算。
+`shipped_units >= 1` 時計算；schema v1 與歷史 DeliveryTruth v2／v3 比較尺只保留唯讀重算。
 
 ## 11. 100 分 Scorecard
 
