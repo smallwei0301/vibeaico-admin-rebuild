@@ -255,7 +255,7 @@ describe('Issue #212 legacy Run admission freeze', () => {
     );
   });
 
-  it.each(['UNKNOWN', 'TBD', 'banana'])('rejects an invalid delivery type in a historical exception (%s)', (deliveryType) => {
+  it.each(['EPIC', 'UNKNOWN', 'TBD', 'banana'])('rejects an invalid delivery type in a historical exception (%s)', (deliveryType) => {
     const metadata = parseLaneMetadata({
       number: 999,
       body: activeAgentProductBody({
