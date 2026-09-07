@@ -108,6 +108,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/settings/line/test` | 解密 token → `GET https://api.line.me/v2/bot/info`。200 → `{ok:true,message:'連線正常'}`；否則 `{ok:false,message:<LINE 錯誤>}`（HTTP 仍 200，錯誤放 data） |
 | POST `/api/settings/line/verify` | 回 `{checks:[{key,pass,message}]}`，key 依序 `TOKEN`/`WEBHOOK`/`AUTO_REPLY`/`RICH_MENU`/`QUOTA`，實作見 06 分冊 §7 |
 | GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE=services 至少 1；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=token 已設定。percent = done 數/5*100 |
+| POST `/api/settings/weekly-business-hours/draft` | **乾跑（dry-run）：只回報影響筆數，不寫入任何資料。** 實際寫入仍走 `PUT /api/settings`。 body = `{perDayHours}`；回 `{autoBlockCount, conflictBookingCount, manualBlockKeptCount}`，供頁面引用 `settings.ts` 既有的 `autoBlockCreated(n)`／`conflictWarning(n)`／`conflictWarningHours(n)`／`manualBlockKept(n)` 四句文案。 **計數為 0 時頁面不顯示該句**（不得顯示「0 筆」的警告）。 ⚠️ **「乾跑」是我方選定的語意，不是原站考據結果。** 依據只有兩點：路徑最後一段是 `draft`，以及 `docs/specs/settings.json` 的三句文案（「已建立 N 筆」「偵測到 N 筆」）是回報語氣。 **反面證據一併記錄**：另有文案是過去式／已存檔語氣，故此判定並非唯一解；原站未提供 request/response 形狀。若日後取得原站實際形狀而與此不符，以原站為準並更新本列。 自動封鎖的產生與回收規則見 `02-SUPABASE-SCHEMA.md` 的 `block_times`（migration 0074 已補 `recurrence`／`day_of_week` 等欄位）：**手動建立的封鎖一律不動**（原站文案明講「已保留（不會自動刪除）」）。 |
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 
 ### A-2 預約（`src/services/bookings.ts`）
@@ -201,6 +202,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/product-orders/manual` | `{customerId, items:[{productId,quantity}]}`：驗庫存→扣庫存＋logs＋建單（單價取當下 price 快照） |
 | POST `/api/product-orders/:id/confirm‖complete‖cancel‖mark-paid-offline` | 狀態機同預約；cancel 回補庫存 |
 | GET `/api/product-orders/pending/count` | `{count}`（Topbar 徽章） |
+| POST `/api/product-orders/:id/apply-coupon` | `{code}`：**與 `/api/bookings/:id/apply-coupon` 共用同一支 `src/server/coupons.ts` 的 `redeemCoupon()`，不得另寫一份核銷邏輯。** 流程：查 `coupon_instances` 未核銷且屬同租戶 → 檢查有效期（`start_at`／`end_at`）→ `redeemed_at=now` → 依 `discount_type`／`discount_value` 重算並寫回 `product_orders.total_amount`、`coupon_discount`、`coupon_instance_id`（見 migration 0081）。 回傳 `{couponDiscount}`——**折抵金額由伺服器算並回傳，前端不得自行計算**（對齊原站 `couponRes.data?.couponDiscount`）。 錯誤：票券代碼不存在 → 404 `REQ_002`；已核銷／已過期／尚未開始／發給別的顧客 → 409 `REQ_003`；跨租戶一律 404（不洩漏他店資料）。**任何錯誤路徑都不得改動訂單金額，也不得消耗票券。** |
 
 ### B-4 票券 / 會員 / 點數
 
