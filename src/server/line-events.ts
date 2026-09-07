@@ -20,6 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
+import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { isFeatureActive } from './features';
 import { aiReply, type ShopContext } from './ai-reply';
 import {
@@ -175,6 +176,19 @@ const MSG = {
   faqEmpty: '目前還沒有整理常見問題，您想問什麼都可以直接留言，我們會盡快回覆 😊',
   mapTitle: '導航到我們這裡：',
   mapEmpty: '店家地址還沒設定完成，您可以直接留言詢問，我們會回覆詳細位置。',
+  /* --- 行程 Flex 輪播（10 分冊 §6.1 的 TRIP 組）--- */
+  tripEmptyGuide: '目前還沒有上架行程，敬請期待！',
+  tripCarouselAlt: '目前開放報名的行程',
+  tripPriceFrom: '最低',
+  /** 沒有任何啟用方案 → 價格「不知道」，不可顯示 NT$ 0（那是捏造的已知） */
+  tripPriceUnknown: '價格洽詢',
+  tripBookCta: '我要預約',
+  /* --- 團次／名額（10 分冊 §6.1 的 DEPARTURE 組）--- */
+  departureTitle: '未來 14 天可報名的團次：',
+  departureEmpty:
+    '未來 14 天目前沒有開放報名的團次。\n請輸入「行程」看看有哪些行程，或直接留言告訴我們您想出發的日期，我們會幫您安排。',
+  departureFull: '已額滿',
+  departureSeatsLeft: (n: number) => `剩 ${n} 位`,
   /**
    * 尚未開放的功能一律用這組文案。
    * CLAUDE.md：沒建好就誠實說沒建好——沉默（顧客按了沒反應）與假裝做得到
@@ -182,16 +196,12 @@ const MSG = {
    *
    * ⚠️ 這幾句的壽命由對應 Issue 決定，功能落地後**必須連同文案一起刪掉**，
    * 不要留著當備用：留著的話，下一個人讀到這組常數會以為那些功能仍未建置。
-     *   notReadyTrip / notReadyDeparture / notReadyOrder → issue #8（行程域）
+     *   notReadyOrder → issue #8 的旅遊訂單段（`tour_orders` 表尚未建立）
    */
   notReadyClinicQueue:
     '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
   notReadyNotifyToggle:
     '店家通知的開關目前還不能在這裡自行設定。\n如果您不想再收到通知，直接留言告訴我們就可以，我們會為您處理。',
-  notReadyTrip:
-    '行程列表還在準備中，目前無法自動查詢。\n請直接留言告訴我們您想去的地方與日期，我們會盡快回覆您。',
-  notReadyDeparture:
-    '團次與名額查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您想出發的日期，我們會幫您確認。',
   notReadyOrder:
     '訂單查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您的大名，我們幫您查詢。',
 } as const;
@@ -503,14 +513,17 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
       // 「已為您開啟」——照 CLAUDE.md 誠實原則，先明說還不能自助設定。
       return replyText(ctx, MSG.notReadyNotifyToggle);
 
-    // ---- 以下三個是 issue #8（行程域）的範圍，尚未實作 ----
-    // GUIDE 的 Rich Menu 有「行程」「團次」「我的訂單」三格，按下去必須有反應；
-    // 其他業態沒有這些概念，回 false 讓它落到 AI／預設回覆比較自然。
     case 'TRIP':
-      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyTrip) : false;
+      // 已發布行程的 Flex 輪播（10 分冊 §6.1）。migration 0066 起查得到，
+      // 不再回「準備中」。其他業態沒有行程，replyTrips 內部回 false 不攔截。
+      return replyTrips(ctx);
     case 'DEPARTURE':
-      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyDeparture) : false;
+      // 未來 14 天可報名的團次／名額（10 分冊 §6.1）。同上，0066 起查得到。
+      return replyDepartures(ctx);
     case 'ORDER':
+      // ⚠️ 這一格**還是準備中，而且是真的**：`tour_orders` 表尚未建立
+      // （0066–0068 只建了 trips / trip_plans / trip_departures / trip_addons），
+      // 沒有任何地方查得到旅遊訂單。有表之前回一句編出來的進度就是說謊。
       return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyOrder) : false;
 
     default:
@@ -565,6 +578,183 @@ async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {
   const cells = MODE_PRESETS[businessTypeOf(ctx.tenant)].richMenuCells;
   const lines = [...new Set(cells.map((c) => c.text))].map((t) => `・${t}`);
   return replyText(ctx, `${MSG.menuTitle}\n${lines.join('\n')}\n\n${MSG.menuFooter}`);
+}
+
+/* ------------------------------------------------ 內建指令：行程 / 團次 */
+/**
+ * 「行程」「所有行程」「揪團」…→ 已發布行程的 **Flex 輪播**（10 分冊 §6.1）。
+ *
+ * Flex JSON 的組裝在 `src/server/trip-flex.ts`，這裡只負責查資料。
+ * 那是**第二個 Flex 成品**（不是主選單的第二份實作）——資料來源是 `trips` 表
+ * 而不是店家編的卡片，觸發字、卡片欄位、按鈕動作全都不同。
+ *
+ * ⚠️ **兩件事是 2026-09-07 被 local-isolated 打回來才改對的，寫在這裡免得被改回去：**
+ *
+ * ① **查詢失敗不可以當成「沒有行程」。** 原本這裡是 `const { data } = await …`
+ *    ——把 `error` 丟掉。PostgREST 一出錯 `data` 就是 null，於是走進「沒有行程」
+ *    那條路，對顧客說「目前還沒有上架行程，敬請期待！」。**那是一個捏造的已知**：
+ *    我們其實沒查成功，卻告訴顧客店家沒上架。而且它是靜默的——沒有例外、沒有紅燈，
+ *    店家只會收到客訴說「我明明上架了」。現在錯誤會記到 log，並回 false 讓它落到
+ *    ⑤ AI／⑥ defaultReply，**不冒充「查過了，沒有」**。
+ *
+ * ② **不用 PostgREST 的 embed。** 原本用 `trip_plans!trip_plans_trip_id_fkey(...)`
+ *    的 FK hint 來繞開 0067 加的複合 FK 造成的 ambiguous embed。問題是**FK 的名字
+ *    在不同安裝路徑上不一樣**：canonical（0066 建表）與整合測試的
+ *    historical overlay（0016 建表、0066 的 `create table if not exists` 因此跳過）
+ *    產生的 constraint 名稱不同一組。把回覆能不能送出綁在 constraint 名字上，
+ *    等於讓一個純命名的差異變成「顧客打行程完全沒反應」。改成兩次一般查詢，
+ *    多一次 round-trip 換掉整類問題。
+ *
+ * ⚠️ **TOUR_MODULE 閘門必須在任何 tour-domain 查詢之前。**
+ * 10 分冊 §6.1 的原文是「導遊模組新增內建關鍵字組，**只在租戶有 `TOUR_MODULE` 時
+ * 顯示**」。少了這道閘門，訂閱已到期或從未訂閱的租戶只要資料庫還留著歷史的
+ * PUBLISHED 行程，顧客就照樣從 LINE 讀得到行程與名額——**用「有沒有資料」代替
+ * 「有沒有權利」**。core mutation API 早就同時擋 MANAGER 與 TOUR_MODULE（§6.1 下方），
+ * 讀取路徑漏掉就等於留了一扇後門。
+ *
+ * 未啟用時回 `false`（不是回一句「未訂閱」）：那是店家的訂閱狀態，不是顧客的事，
+ * 對顧客講「本店未訂閱行程模組」既沒用又洩漏店家的帳務狀態。回 false 讓它落到
+ * ⑤ AI／⑥ defaultReply，顧客仍然有回應。
+ */
+async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
+  if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
+
+  const { data: trips, error } = await ctx.admin
+    .from('trips')
+    .select('id, slug, title, summary, cover_image_url')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(TRIP_CAROUSEL_MAX);
+
+  if (error) {
+    // 查不動 ≠ 沒有行程。見本函式檔頭 ①。
+    console.error('[line] replyTrips 查詢 trips 失敗', error);
+    return false;
+  }
+  if (!trips?.length) {
+    // 沒有行程的一般店家（美髮沙龍收到「行程」）交給 AI／預設回覆比較自然；
+    // 嚮導的 Rich Menu 有這一格，按下去必須有反應。
+    return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.tripEmptyGuide) : false;
+  }
+
+  /*
+   * 各行程的最低價：只算 active 方案的 `price_per_person`（**不是 `base_price`**
+   * ——0066 把舊的 base_price 併進 price_per_person）。
+   * 查不到方案（或這一步出錯）就是「價格未知」→ trip-flex 顯示「價格洽詢」，
+   * **不是 NT$ 0**（那會讓顧客以為免費）。價格查不到不該讓整份輪播消失，
+   * 所以這一步的錯誤不 return，只當作沒有方案。
+   */
+  const { data: plans, error: planError } = await ctx.admin
+    .from('trip_plans')
+    .select('trip_id, price_per_person, active')
+    .eq('tenant_id', ctx.tenant.id)
+    .in('trip_id', trips.map((t: any) => t.id));
+  if (planError) console.error('[line] replyTrips 查詢 trip_plans 失敗', planError);
+
+  const minPriceByTrip = new Map<string, number>();
+  for (const p of (plans ?? []) as any[]) {
+    if (!p.active) continue;
+    const price = Number(p.price_per_person);
+    if (!Number.isFinite(price)) continue;
+    const current = minPriceByTrip.get(p.trip_id);
+    if (current === undefined || price < current) minPriceByTrip.set(p.trip_id, price);
+  }
+
+  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  const cards: TripCardSource[] = trips.map((t: any) => ({
+    slug: t.slug,
+    title: t.title,
+    summary: t.summary ?? '',
+    coverImageUrl: t.cover_image_url ?? '',
+    minPrice: minPriceByTrip.has(t.id) ? minPriceByTrip.get(t.id)! : null,
+  }));
+
+  const flex = buildTripCarousel(cards, shopUrl, {
+    altText: MSG.tripCarouselAlt,
+    priceFrom: MSG.tripPriceFrom,
+    priceUnknown: MSG.tripPriceUnknown,
+    bookCta: MSG.tripBookCta,
+  });
+  if (!flex) return replyText(ctx, MSG.tripEmptyGuide);
+
+  await lineReply(ctx.token, ctx.replyToken, [flex as any]);
+  return true;
+}
+
+/**
+ * 「團次」「名額」「出團日期」…→ 未來 14 天可報名的團次（10 分冊 §6.1）。
+ *
+ * 純文字而不是 Flex：顧客問的是「哪幾天還有位子」，一份可以一眼掃完的清單
+ * 比一組要左右滑的卡片有用。
+ *
+ * ⚠️ 一樣不用 embed、一樣不把查詢失敗當成「沒有團次」，理由見 `replyTrips()` 檔頭。
+ * ⚠️ 先取**已發布**行程的 id 再查團次：草稿行程的團次外流出去，等於讓顧客報名
+ *    一個店家還沒打算開賣的團。先過濾再 limit，才不會被草稿團次吃掉名額。
+ * ⚠️ TOUR_MODULE 閘門同樣在**任何 tour-domain 查詢之前**，理由見 `replyTrips()`。
+ */
+async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
+  if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+  if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
+
+  const { data: trips, error: tripError } = await ctx.admin
+    .from('trips')
+    .select('id, title')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED');
+  if (tripError) {
+    console.error('[line] replyDepartures 查詢 trips 失敗', tripError);
+    return false;
+  }
+  if (!trips?.length) return replyText(ctx, MSG.departureEmpty);
+
+  const titleById = new Map<string, string>(trips.map((t: any) => [t.id, t.title]));
+
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10);
+  const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const { data: departures, error } = await ctx.admin
+    .from('trip_departures')
+    .select('trip_id, plan_id, departs_on, start_time, capacity, seats_booked')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'OPEN')
+    .in('trip_id', [...titleById.keys()])
+    .gte('departs_on', from)
+    .lte('departs_on', to)
+    .order('departs_on', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+  if (error) {
+    console.error('[line] replyDepartures 查詢 trip_departures 失敗', error);
+    return false;
+  }
+  if (!departures?.length) return replyText(ctx, MSG.departureEmpty);
+
+  // 方案名稱是錦上添花（顯示成「（標準團）」）。查不到就不顯示那一段，
+  // 不讓它擋掉整份團次清單。
+  const planIds = [...new Set(departures.map((d: any) => d.plan_id).filter(Boolean))];
+  const planNameById = new Map<string, string>();
+  if (planIds.length) {
+    const { data: plans, error: planError } = await ctx.admin
+      .from('trip_plans')
+      .select('id, name')
+      .eq('tenant_id', ctx.tenant.id)
+      .in('id', planIds);
+    if (planError) console.error('[line] replyDepartures 查詢 trip_plans 失敗', planError);
+    for (const p of (plans ?? []) as any[]) planNameById.set(p.id, p.name);
+  }
+
+  const lines = departures.map((d: any) => {
+    // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
+    const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
+    const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
+    const planName = planNameById.get(d.plan_id);
+    const plan = planName ? `（${planName}）` : '';
+    const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
+    return `・${d.departs_on}${time} ${titleById.get(d.trip_id) ?? ''}${plan}　${seats}`;
+  });
+  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${shopUrl}`);
 }
 
 /* -------------------------------------------------------- 內建指令：活動 */
