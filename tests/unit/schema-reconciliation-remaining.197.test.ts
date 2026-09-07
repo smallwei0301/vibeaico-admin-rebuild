@@ -32,7 +32,16 @@ describe('Issue #197 remaining verified live-schema reconciliation', () => {
     expect(migration).toContain('owner_notify_max_recipients <= 20');
   });
 
-  it('does not invent data repair, destructive DDL, or Production execution', () => {
+  it('rebuilds bookings_view with the verified live output contract', () => {
+    expect(migration).toContain('drop view if exists public.bookings_view');
+    expect(migration).toContain('create view public.bookings_view with (security_invoker = true)');
+    expect(migration).toContain('b.coupon_discount');
+    expect(migration).toContain('b.points_redeemed');
+    expect(migration).toContain('c.points as customer_points');
+    expect(migration).toContain('left join public.staff st on st.id = b.staff_id');
+  });
+
+  it('does not invent data repair, destructive table/column DDL, or Production execution', () => {
     expect(migration).not.toMatch(/\bdelete\s+from\b/i);
     expect(migration).not.toMatch(/\bupdate\s+public\./i);
     expect(migration).not.toMatch(/\bdrop\s+(?:table|column)\b/i);
