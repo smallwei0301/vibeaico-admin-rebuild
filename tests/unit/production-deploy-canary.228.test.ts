@@ -222,11 +222,14 @@ describe('Issue #228 production cutover preview canary', () => {
     expect(methods).toEqual(['GET']);
   });
 
-  it('the workflow is manual-only, secret-backed, and contains no Production mutation verbs', () => {
+  it('the workflow is manual-only, secret-backed, read-only at GitHub, and has no Production mutation verbs', () => {
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/production-deploy-canary.yml'), 'utf8');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).not.toMatch(/\n\s*push:/);
     expect(workflow).not.toMatch(/\n\s*pull_request:/);
+    expect(workflow).toContain('permissions:\n  contents: read\n  checks: read');
+    expect(workflow).not.toMatch(/^\s+[\w-]+:\s*write\s*$/m);
+    expect(workflow).not.toContain('actions: read');
     expect(workflow).toContain('secrets.VERCEL_TOKEN');
     expect(workflow).toContain('preview_canary');
     expect(workflow).not.toContain('target: production');
