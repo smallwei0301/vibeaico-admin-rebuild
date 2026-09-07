@@ -18,3 +18,8 @@ export interface RepositoryIntegrityResult {
 export function findStandaloneGitShas(path: string, content: string): string[];
 export function findMigrationIntegrityIssues(input: MigrationIntegrityInput): string[];
 export function evaluateRepositoryIntegrity(input: RepositoryIntegrityInput): RepositoryIntegrityResult;
+export function resolveRevision(
+  env: Record<string, string | undefined>,
+  name: string,
+  fallback: string,
+): string;

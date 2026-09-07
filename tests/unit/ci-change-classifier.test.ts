@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import {
   classifyChangeRecords,
   classifyEvent,
@@ -8,6 +12,11 @@ import {
 const output = (...parts: string[]) => Buffer.from(parts.join('\0'));
 const baseSha = 'a'.repeat(40);
 const headSha = 'b'.repeat(40);
+const classifierScript = resolve(process.cwd(), 'scripts/ci/classify-changes.mjs');
+
+function git(cwd: string, ...args: string[]) {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+}
 
 describe('CI change classifier', () => {
   it('accepts only the explicit documentation allowlist, including spaces', () => {
@@ -82,16 +91,68 @@ describe('CI change classifier', () => {
     expect(calls).toEqual([['diff', '--name-status', '-z', '--find-renames', baseSha, headSha]]);
   });
 
-  it('fails closed for dispatch, missing revisions, non-main pushes, and git errors', () => {
+  it('uses the explicit base for a workflow_dispatch merge commit', () => {
+    const calls: string[][] = [];
+    const mergeCommitSha = 'c'.repeat(40);
+    const runGit = (...args: string[]) => {
+      calls.push(args);
+      return output('A', 'supabase/migrations/0084_dispatch.sql');
+    };
+
+    expect(classifyEvent('workflow_dispatch', {
+      inputs: {
+        dispatch_reason: 'lane_transition',
+        base_revision: baseSha,
+        expected_head: mergeCommitSha,
+      },
+    }, runGit)).toMatchObject({
+      docsOnly: false,
+      reason: 'non-docs-change',
+      baseRevision: baseSha,
+      headRevision: mergeCommitSha,
+    });
+    expect(calls).toEqual([[
+      'diff', '--name-status', '-z', '--find-renames', baseSha, mergeCommitSha,
+    ]]);
+  });
+
+  it('fails closed for dispatch without explicit revisions, non-main pushes, and git errors', () => {
     const noGit = () => { throw new Error('git failed'); };
 
-    expect(classifyEvent('workflow_dispatch', {}, noGit)).toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'workflow-dispatch' });
+    expect(classifyEvent('workflow_dispatch', {
+      inputs: { dispatch_reason: 'lane_transition', base_revision: baseSha },
+    }, noGit)).toMatchObject({
+      docsOnly: false,
+      reason: 'classifier_failed',
+      detail: 'workflow-dispatch-missing-revision',
+    });
     expect(classifyEvent('pull_request', { pull_request: { base: {} } }, noGit))
       .toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'missing-revision' });
     expect(classifyEvent('push', { ref: 'refs/heads/feature', before: baseSha, after: headSha }, noGit))
       .toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'unsupported-event' });
     expect(classifyEvent('push', { ref: 'refs/heads/main', before: baseSha, after: headSha }, noGit))
       .toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'git-or-parse-failure' });
+  });
+
+  it('preserves valid PR and main-push revisions after a classifier parse failure', () => {
+    const noGit = () => { throw new Error('git failed'); };
+
+    expect(classifyEvent('pull_request', {
+      pull_request: { base: { sha: baseSha }, head: { sha: headSha } },
+    }, noGit)).toMatchObject({
+      reason: 'classifier_failed',
+      detail: 'git-or-parse-failure',
+      baseRevision: baseSha,
+      headRevision: headSha,
+    });
+    expect(classifyEvent('push', {
+      ref: 'refs/heads/main', before: baseSha, after: headSha,
+    }, noGit)).toMatchObject({
+      reason: 'classifier_failed',
+      detail: 'git-or-parse-failure',
+      baseRevision: baseSha,
+      headRevision: headSha,
+    });
   });
 
 
@@ -124,6 +185,186 @@ describe('CI change classifier', () => {
         detail: 'missing-revision',
       });
       expect(gitCalls).toEqual([]);
+    }
+  });
+
+  it('never forwards rejected dispatch revisions through the GitHub output protocol', () => {
+    for (const badRevision of ['', 'HEAD', `${baseSha}\ndocs_only=true`, `${baseSha}\r\nhead_revision=${headSha}`]) {
+      const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-output-'));
+      try {
+        const eventPath = join(directory, 'event.json');
+        const outputPath = join(directory, 'github-output.txt');
+        writeFileSync(eventPath, JSON.stringify({
+          inputs: { base_revision: badRevision, expected_head: headSha },
+        }));
+
+        execFileSync(process.execPath, [classifierScript], {
+          cwd: directory,
+          env: {
+            ...process.env,
+            GITHUB_EVENT_NAME: 'workflow_dispatch',
+            GITHUB_EVENT_PATH: eventPath,
+            GITHUB_OUTPUT: outputPath,
+          },
+        });
+
+        expect(readFileSync(outputPath, 'utf8')).toBe(
+          'docs_only=false\nreason=classifier_failed\ndetail=workflow-dispatch-missing-revision\n' +
+          'changed_count=0\nruntime_path=\nbase_revision=\nhead_revision=\n',
+        );
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('classifies a real two-parent merge using the PR base and merge candidate', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-merge-'));
+    try {
+      git(directory, 'init', '--initial-branch=main');
+      git(directory, 'config', 'user.email', 'ci@example.test');
+      git(directory, 'config', 'user.name', 'CI test');
+      mkdirSync(join(directory, 'docs'));
+      writeFileSync(join(directory, 'docs', 'base.md'), 'base\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'base');
+
+      git(directory, 'checkout', '-b', 'candidate');
+      writeFileSync(join(directory, 'docs', 'candidate.md'), 'candidate\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'candidate docs');
+
+      git(directory, 'checkout', 'main');
+      writeFileSync(join(directory, 'docs', 'main.md'), 'main\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'main docs');
+      const prBase = git(directory, 'rev-parse', 'HEAD');
+      git(directory, 'merge', '--no-ff', 'candidate', '-m', 'merge candidate');
+      const mergeHead = git(directory, 'rev-parse', 'HEAD');
+      expect(git(directory, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ')).toHaveLength(3);
+
+      const eventPath = join(directory, 'event.json');
+      const outputPath = join(directory, 'github-output.txt');
+      writeFileSync(eventPath, JSON.stringify({
+        inputs: { base_revision: prBase, expected_head: mergeHead },
+      }));
+      execFileSync(process.execPath, [classifierScript], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          GITHUB_EVENT_NAME: 'workflow_dispatch',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_OUTPUT: outputPath,
+        },
+      });
+
+      expect(readFileSync(outputPath, 'utf8')).toContain(`docs_only=true\n`);
+      expect(readFileSync(outputPath, 'utf8')).toContain(`base_revision=${prBase}\nhead_revision=${mergeHead}\n`);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('uses a merge first-parent base so a candidate migration cannot take the docs-only route', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-migration-merge-'));
+    try {
+      git(directory, 'init', '--initial-branch=main');
+      git(directory, 'config', 'user.email', 'ci@example.test');
+      git(directory, 'config', 'user.name', 'CI test');
+      mkdirSync(join(directory, 'supabase', 'migrations'), { recursive: true });
+      writeFileSync(join(directory, 'docs.md'), 'base\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'base');
+
+      git(directory, 'checkout', '-b', 'candidate');
+      writeFileSync(join(directory, 'supabase', 'migrations', '0084_candidate.sql'), 'select 84;\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'candidate migration');
+
+      git(directory, 'checkout', 'main');
+      mkdirSync(join(directory, 'supabase', 'migrations'), { recursive: true });
+      writeFileSync(join(directory, 'supabase', 'migrations', '0085_main.sql'), 'select 85;\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'main migration');
+      const firstParent = git(directory, 'rev-parse', 'HEAD');
+      git(directory, 'merge', '--no-ff', 'candidate', '-m', 'merge candidate migration');
+      const mergeHead = git(directory, 'rev-parse', 'HEAD');
+      const [merge, actualFirstParent, secondParent] = git(directory, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ');
+      expect(merge).toBe(mergeHead);
+      expect(actualFirstParent).toBe(firstParent);
+      expect(secondParent).toHaveLength(40);
+
+      const eventPath = join(directory, 'event.json');
+      const outputPath = join(directory, 'github-output.txt');
+      writeFileSync(eventPath, JSON.stringify({
+        inputs: { base_revision: firstParent, expected_head: mergeHead },
+      }));
+      execFileSync(process.execPath, [classifierScript], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          GITHUB_EVENT_NAME: 'workflow_dispatch',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_OUTPUT: outputPath,
+        },
+      });
+
+      const githubOutput = readFileSync(outputPath, 'utf8');
+      expect(githubOutput).toContain('docs_only=false\n');
+      expect(githubOutput).toContain('runtime_path=supabase/migrations/0084_candidate.sql\n');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('demonstrates why a merge second-parent base must be rejected before docs-only routing', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-second-parent-'));
+    try {
+      git(directory, 'init', '--initial-branch=main');
+      git(directory, 'config', 'user.email', 'ci@example.test');
+      git(directory, 'config', 'user.name', 'CI test');
+      mkdirSync(join(directory, 'docs'));
+      mkdirSync(join(directory, 'supabase', 'migrations'), { recursive: true });
+      writeFileSync(join(directory, 'docs', 'base.md'), 'base\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'base');
+
+      git(directory, 'checkout', '-b', 'candidate');
+      writeFileSync(join(directory, 'supabase', 'migrations', '0084_candidate.sql'), 'select 84;\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'candidate migration');
+      const secondParent = git(directory, 'rev-parse', 'HEAD');
+
+      git(directory, 'checkout', 'main');
+      writeFileSync(join(directory, 'docs', 'main.md'), 'main docs\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'main docs');
+      const firstParent = git(directory, 'rev-parse', 'HEAD');
+      git(directory, 'merge', '--no-ff', 'candidate', '-m', 'merge candidate migration');
+      const mergeHead = git(directory, 'rev-parse', 'HEAD');
+
+      const classify = (baseRevision: string, outputName: string) => {
+        const eventPath = join(directory, `${outputName}.json`);
+        const outputPath = join(directory, `${outputName}.txt`);
+        writeFileSync(eventPath, JSON.stringify({
+          inputs: { base_revision: baseRevision, expected_head: mergeHead },
+        }));
+        execFileSync(process.execPath, [classifierScript], {
+          cwd: directory,
+          env: {
+            ...process.env,
+            GITHUB_EVENT_NAME: 'workflow_dispatch',
+            GITHUB_EVENT_PATH: eventPath,
+            GITHUB_OUTPUT: outputPath,
+          },
+        });
+        return readFileSync(outputPath, 'utf8');
+      };
+
+      expect(classify(firstParent, 'first-parent')).toContain('docs_only=false\n');
+      expect(classify(secondParent, 'second-parent')).toContain('docs_only=true\n');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });
