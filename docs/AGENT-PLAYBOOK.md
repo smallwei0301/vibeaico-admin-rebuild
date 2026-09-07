@@ -53,6 +53,7 @@
 | PB-014 | 遠端 Git tree 必須先過完整性閘門 | 原子 commit 只能減少 push 次數，不能證明 tree 完整；核心路徑、異常大量刪檔、裸 SHA、`npm ci`、typecheck 與 build 必須在 Preview 前驗證。 | `docs/AGENT-EXECUTION.md` §8；`scripts/ci/repo-integrity-guard.mjs` |
 | PB-015 | 本機與 CI 的 base 不同就不能互相佐證 | `workflow_dispatch` 使 `base_revision` 為空，守門腳本退回 `HEAD^`；head 為 merge commit 時會把 main 既有 migration 誤判為新增。錯誤指向不屬於本次變更的檔案時，先懷疑 base。 | `docs/AGENT-EXECUTION.md` §7；Issue #227 |
 | PB-016 | 退出碼被蓋掉的檢查等於沒有檢查 | 管線退出碼取最後一個命令，`&&` 後的 echo 只反映前一個；`grep` 無 match 也回非零。驗證命令不得放管線中段，測試不得依賴 `grep` 退出碼。 | `docs/AGENT-EXECUTION.md` §7.1；`12-TESTING-TDD.md` §6 |
+| PB-017 | 先套用再改檔名會留下 ledger 偏差 | migration 編號是跨分支共享序列，未進 main 前都可能被別人佔走；套用時機必須晚於「檔名在 main 定案」。改檔名時一律全 repo grep 舊檔名。 | `docs/AGENT-EXECUTION.md` §3.1；`docs/DELIVERY-CHAIN.md` |
 
 ## 事件紀錄
 
@@ -230,3 +231,19 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：**驗證命令不得放在管線中段，也不得用另一個命令的成功來宣告它成功。** 需要截斷輸出時，先取退出碼再截斷。凡是「找不到＝正常」的工具（`grep`、`find`），在測試中一律改用語言內建的檔案 API，不要靠退出碼。收到綠燈時反問一次：**如果這件事現在壞掉，這個檢查會不會變紅？** 不會就不是檢查。
 - 驗證：① 修正後 `TYPECHECK_EXIT=0` 與 82 檔 817 tests 全過同時成立。② 變異測試：刪掉整段標註 → 3 條轉紅；假裝有頁面呼叫它 → 該條轉紅；還原 → 5/5 綠。
 - 狀態：已防止
+
+
+### PB-017 — 先套用到資料庫、後來才改檔名，會在 ledger 留下永久的名稱偏差
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #35／PR #93（`0015 → 0079 → 0080`）；Issue #7／PR #225（`0082 → 0083`）
+- 分類：Migration
+- 事件：同一輪內發生兩次。migration 已經套用到 Supabase（ledger 以當時的檔名記錄），之後檔案在 repo 裡因編號競爭被改名，於是 **ledger 名稱與 repo 檔名永久不一致**。
+- 證據：① 正式庫 ledger 記 `0015_page_local_display_fields`，repo 檔名最終是 `0080_page_local_display_fields.sql`（先被 `scripts/ci/repo-integrity-guard.mjs` 的編號守門擋下改為 0079，再因 main 新增 `0079_reconcile_category_bug_report_fields.sql` 順延為 0080）。② 正式庫與 canonical TEST ledger 記 `0082_staff_display_fields`，repo 檔名最終是 `0083_staff_display_fields.sql`（治理側 #226 先把 `0082_reconcile_booking_addon_notify_fields.sql` 併進 main）。
+- 根因：**順序錯了。** 套用到資料庫的時間點早於「檔名在 `main` 上定案」的時間點。migration 編號是**跨分支共享的單一序列**，只要還沒進 main，任何人都可能先佔走同一個號碼——所以分支上的編號本質上是未定的。
+- 影響：schema 本身正確（兩次的 SQL 都完全冪等，套用前後皆有唯讀驗證），受影響的只有 ledger 上的名字。但它會讓日後「用 ledger 名稱比對 repo migration」的稽核對不起來，且**不能靠重跑修正**——重跑只會在 ledger 多一筆，不會改掉舊的那筆。
+- 修正：兩次都**沒有**擅自重跑或改寫 ledger，改為在 PR 與 Issue 上具名揭露為「已知偏差」，並附「內容相同、schema 已驗證」的證據。
+- 預防：**先讓檔名在 `main` 上定案，再套用到資料庫。** 具體順序：① PR 合併進 main（編號至此才真正確定）→ ② 取得 Owner 逐次授權 → ③ 套用，且 `apply_migration` 的 name 一律使用 **main 上的最終檔名**。若因故必須在合併前套用（例如合併後立刻要用），就要預期並接受這筆偏差，且**在 PR 內先寫明**，不要等偏差發生才補說明。另：改 migration 檔名時，一律 `grep -rn "<舊檔名>"` 全 repo 檢查引用（測試常會讀那個檔），這一點與 PB-015 同源。
+- 驗證：兩次的 schema 皆以 `information_schema.columns` / `pg_constraint` / `pg_proc` / `pg_trigger` 唯讀確認正確；#225 的檔名引用漏改在推送前即被 `tests/unit/staff-display-fields.test.ts` 以 `ENOENT` 擋下。
+- 狀態：監看中（偏差已揭露，順序規則待下一輪實際遵循後才算已防止）
