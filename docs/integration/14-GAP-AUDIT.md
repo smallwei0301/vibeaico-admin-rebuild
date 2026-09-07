@@ -483,6 +483,35 @@ PR #267 補上該端點，並沿用同檔 PUT 早就在用的同一個不變量�
 於是頁面只能拿自己算日曆得到的筆數報成功 —— 開了 7 團、實際只開 1 團，畫面照樣說
 「已建立 7 個團次」。**端點已經在講真話，是型別把它丟掉了。**
 
+### 7.4.4 #50 的 canonical 文件與 `main` 的落差（2026-09-07）
+
+04 分冊 §B 的兩列 keyword-reply 端點契約與 06 分冊 §6.1 描述的是 PR #98 的設計。
+**該 PR 至今未合併**。對 `main` 實查：
+
+```
+src/ 內 imageStorageRef                                 0 命中
+keyword_reply_image_cleanup 表（supabase/migrations）    0 命中
+DELETE /api/settings/line/keyword-replies/image 路由     不存在
+preview 物件的產生                                       未實作
+```
+
+`main` 上實際成立的是 PR #264（squash `83ab9f0`）：專用 public bucket
+`keyword-reply-images`（`0086`）、伺服器端組出的 `{tenantId}/{uuid}.{ext}` 路徑、
+存進 `content.imageUrl` 的裸 URL。
+
+兩份文件已加註實況對照，**設計原文不刪**（那是既定方向），但讀者不得據以推論功能可用。
+這與 §7.4.3 是同一條通則的第三種形態：
+
+| 形態 | 例子 |
+|---|---|
+| 規格存在 ≠ 功能可用 | 04／06 描述 `imageStorageRef`，`main` 只有裸 `imageUrl`（本節） |
+| 路由存在 ≠ 功能可用 | `/api/ai-settings` 齊全，但全 repo 沒人呼叫它（§7.4.3） |
+| 政策提到 ≠ 物件存在 | `p_storage_write` 列了 bucket 名稱，bucket 卻不存在（PB-024） |
+| 符號出現 ≠ 符號被使用 | 四支 service 在 repo 裡各出現兩次（＝定義本身），被誤讀成「頁面已接線」（§7.4.2 的更正） |
+
+四者的共通點：**都用「某個名字在某處出現」代替了「那件事真的會發生」**。
+可機械檢查的判準是「呼叫端在哪裡」，不是「這個名字出現幾次」。
+
 ### 7.4.3 #27 的歸屬更正（2026-09-07）
 
 上表對 #27 原記「Source、unit、integration、E2E 已完成（`38e714f`）」。

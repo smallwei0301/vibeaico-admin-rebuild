@@ -246,6 +246,41 @@ export async function notifyBookingStatus(
 
 ### 6.1 關鍵字回覆圖片的 Storage 決策（issue #50）
 
+> ### ⚠️ 2026-09-07 實況對照：本節描述的是**設計**，`main` 只實作了其中一部分
+>
+> 本節（與 04 分冊 §B 的兩列端點契約）成文時，參照的是 PR #98 的分支實作。
+> **該 PR 至今未合併**。對 `main` 實查：
+>
+> ```
+> src/ 內 imageStorageRef                       0 命中
+> keyword_reply_image_cleanup 表（migrations）   0 命中
+> DELETE /api/settings/line/keyword-replies/image 路由   不存在
+> preview 物件（previewPath / previewImageUrl 的產生）   沒有實作
+> ```
+>
+> `main` 上實際成立的是（PR #264 / squash `83ab9f0`）：
+>
+> | 項目 | 本節描述 | `main` 實況 |
+> |---|---|---|
+> | bucket | 專用 `keyword-reply-images`、public | ✅ 相同（`0086` 建立） |
+> | 上傳路徑 | `{tenantId}/{uuid}.{ext}`，伺服器端組出 | ✅ 相同（既有 `/api/upload`） |
+> | 格式與上限 | JPEG/PNG、5 MB | ✅ 相同（另允許 webp） |
+> | 存進 keyword reply 的形狀 | `content.imageStorageRef={bucket,path,url,previewPath,previewUrl}` | ⛔ 只有裸 `content.imageUrl` |
+> | preview 物件 | 先產 ≤1 MB preview，上傳兩個物件 | ⛔ 未實作，只上傳原圖 |
+> | 取消未儲存選圖的 DELETE 端點 | 有 | ⛔ 不存在 |
+> | 替換／移除後的清理 ＋ 可重試 queue | 有 | ⛔ 不存在（見下） |
+>
+> **孤兒素材清理在 `main` 上完全沒有，而且六個既有圖片 bucket 都沒有**
+> （service-images／product-images／portfolio-images／staff-avatars／
+> richmenu-assets／welcome-card-images）。為關鍵字圖片單獨做第七套會違反 #50
+> 自己的原則 3（不新增第二套上傳邏輯）；正確形狀是六個 bucket 共用一套清理設計，
+> 屬另一張 issue 的範圍。#50 的「替換圖片的舊檔清理規則」那一格因此**維持未打勾**。
+>
+> 本節不刪除上述設計——它是既定方向，落地時照它做。但在落地之前，
+> **本節描述的不是 `main` 的行為**，讀者不得據以推論功能可用
+> （同 14 分冊 §7.4.3：從規格或路由檔存在，推論不出功能可用）。
+
+
 LINE image message 需要可由 LINE 直接抓取的 HTTPS 原圖與 preview。以下是開工時對既有
 LINE image bucket 的用途／公開性／格式／租戶路徑／生命週期查證；結論是不能混用：
 
