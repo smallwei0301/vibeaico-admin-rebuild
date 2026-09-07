@@ -231,3 +231,66 @@ export function planRow(input: z.infer<typeof planCreateSchema>, tenantId: strin
 export function timeValue(value: string | null | undefined): string | null {
   return value ? value : null;
 }
+
+/* ------------------------------------------------------------- 旅遊訂單（#8-B）
+ * 10 分冊 §1.1（schema）／§3（生命週期）。狀態機與名額釋放的判準只有這一份。 */
+
+export const tourOrderStatuses = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED'] as const;
+export const tourPaymentStatuses = ['UNPAID', 'PAID', 'REFUNDED'] as const;
+export const tourOrderSources = ['MIDAO', 'VIBEAI_SHOP', 'LINE', 'MANUAL'] as const;
+
+export type TourOrderStatusValue = (typeof tourOrderStatuses)[number];
+
+export const manualTourOrderSchema = z.object({
+  departureId: z.string().uuid(),
+  customerName: z.string().trim().min(1, '請輸入顧客姓名'),
+  customerPhone: z.string().trim().min(1, '請輸入聯絡電話'),
+  partySize: z.coerce.number().int().min(1, '人數至少為 1'),
+  /**
+   * 收款方式 id。**目前一律存不進去，而且這是誠實的**：
+   * `tenant_payment_methods` 表在 supabase/migrations 裡零命中，
+   * `/tenant/payment-methods` 頁讀的是頁內的 MOCK_METHODS 常數，
+   * 也沒有任何 `/api/payment-methods` 路由——收款方式整條鏈路還沒有後端。
+   *
+   * 前端送過來的會是 mock id（`pm_1` 之類），不是 uuid。**不用 `.uuid()`**，
+   * 否則整張手動建單表單會因為一個還沒有後端的欄位而 400，把可用的功能一起擋掉。
+   * 只有真的是 uuid 的值才落庫（見 route），其餘視為 null。
+   */
+  paymentMethodId: z.string().trim().nullable().optional(),
+  note: optionalText,
+});
+
+export const cancelTourOrderSchema = z.object({
+  reason: optionalText,
+});
+
+/**
+ * 狀態機（10 分冊 §3）：
+ *
+ *   PENDING（已佔名額）──付款確認──► CONFIRMED ──出團後──► COMPLETED
+ *      │                                 │
+ *      └── 過期／取消 ─► CANCELLED ◄──── 取消（已付款須人工退款）
+ *
+ * COMPLETED 與 CANCELLED 是終態。**回 false 的轉換一律 409**，不得靜默成功——
+ * 「已經是這個狀態了」與「這個轉換不合法」對店家是同一件事：他按下去沒有發生
+ * 他以為會發生的事，就必須被告知。
+ */
+export function canTransitionTourOrder(
+  from: TourOrderStatusValue, to: TourOrderStatusValue,
+): boolean {
+  if (from === to) return false;
+  if (from === 'PENDING') return to === 'CONFIRMED' || to === 'CANCELLED';
+  if (from === 'CONFIRMED') return to === 'COMPLETED' || to === 'CANCELLED';
+  return false; // COMPLETED / CANCELLED 是終態
+}
+
+/**
+ * 取消時要不要釋放名額。
+ *
+ * 只有還佔著名額的單（PENDING／CONFIRMED）才釋放。已 CANCELLED 的單再取消一次
+ * 不得再釋放一次——那會讓名額憑空多出來（同樣的守門也寫在 `cancel_tour_order`
+ * rpc 裡，這裡是給呼叫端與測試看的同一條規則）。
+ */
+export function shouldReleaseSeats(from: TourOrderStatusValue): boolean {
+  return from === 'PENDING' || from === 'CONFIRMED';
+}
