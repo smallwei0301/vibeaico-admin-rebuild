@@ -100,7 +100,7 @@
 - [ ] B-2 服務/員工/班表 CRUD
 - [ ] B-3 商品/訂單/庫存
 - [ ] B-4 票券/會員/點數
-- [ ] B-6 報表進階/匯出 **（重開 2026-08-24：零測試檔）**
+- [x] B-6 報表進階/匯出 **（重開 2026-08-24：零測試檔；2026-09-07 打勾）**
       **2026-08-26（issue #7 甲）：重開理由「零測試檔」已消除，但本項仍不打勾。**
       測試檔已建立並全綠：`tests/integration/api/reports-advanced.b6.test.ts` 20/20，
       含 `:「顯式區間：totalBookings／totalRevenue／completedBookings／newCustomers 與直查資料庫現算相符」`、
@@ -116,8 +116,19 @@
       Preview 腳本輸出（18/18 PASS），涵蓋 download event、後端
       `Content-Disposition` 檔名與 UTF-8 BOM；對應 source 守門為
       `export-download-wiring.28.test.ts`／`export-inventory.28.test.ts`。
-      本項仍不打勾：目前候選 HEAD 尚缺相同 Preview 腳本重跑截圖與 full CI 證據；
-      舊的「死按鈕／零呼叫端」敘述已被後續實作推翻，不再作為 blocker。
+      **2026-09-07 打勾。** 先前不打勾的唯一理由是「尚缺相同 Preview 腳本重跑
+      截圖與 full CI 證據」。該理由已消除，而且不是靠補截圖消除的——三個匯出
+      入口的實測已改寫進 `tests/e2e/{bookings,customers,inventory}-export.spec.ts`，
+      **每一輪 CI 都在跑**，不再依賴任何人手動重跑一次性腳本。
+      exact-head 證據：`local-isolated-a` run 34097639862 / job 101664757616
+      （從 `0001` 全新建起的隔離 Supabase）integration 37 檔 246 tests 全過、
+      E2E 18 passed 無 flaky，收尾 `ISOLATED_GREEN` + `LOCAL_CLEANUP_VERIFIED`。
+      同一批 CI 亦涵蓋 `reports-advanced.b6.test.ts`。
+      2026-09-07 另修正一項本欄舊敘述所反映的真實缺陷：顧客匯出的按鈕寫
+      「匯出 Excel」卻回 CSV（上方 2026-08-26 條目裡「檔名為 .csv 而非謊報 .xlsx」
+      的處置在當時是誠實的，但它讓一個 Excel 按鈕長期輸出 CSV）。issue #246 依
+      §8.3／§8.5 引入 `exceljs`，該端點現在產真正的 xlsx，E2E 斷言 ZIP 魔數與
+      `exceljs` 讀回的表頭。
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
       **（重開 2026-08-24：無完成紀錄；依打勾規則 1，每頁的實測要留下日期＋步驟＋結果）**
 - [ ] 【新增】頁面接線驗收：本 Phase 涉及的每個頁面，其所有寫入按鈕都經過
@@ -542,7 +553,14 @@
       證據：`src/services/reports.ts` `exportBookingsCsv` 走 `downloadAttachment()`
       （檔名唯一來源是 Content-Disposition，見 `src/lib/download.ts`）；
       頁面兩個選單項各送自己的 format，不自組檔名
-- [ ] Playwright download 事件輸出 —— **留白**，同 ① 的理由（本輪不 push）
+- [x] Playwright download 事件輸出
+
+      **2026-09-07 打勾。** 留白的理由是「本輪不 push」，該限制早已不適用。
+      `tests/e2e/bookings-export.spec.ts` 以 `page.waitForEvent('download')` 真的
+      等到下載事件，並斷言檔名 `bookings-YYYY-MM-DD.csv`、讀回檔案驗 UTF-8 BOM
+      （`charCodeAt(0) === 0xfeff`）、表頭 `預約編號,預約時間,顧客姓名` 與種子資料
+      `BSEED0001`。CI 常駐執行，證據見 `local-isolated-a` run 34097639862
+      （E2E 18 passed）。
 
 **④⑤ 兩支用途未明**
 
