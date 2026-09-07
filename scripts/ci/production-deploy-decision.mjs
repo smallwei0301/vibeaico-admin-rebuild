@@ -11,12 +11,32 @@ function isValidSha(value) {
   return FULL_SHA.test(value);
 }
 
+function normalizeChangedPath(value) {
+  if (typeof value !== 'string' || /[\0\r\n]/.test(value)) return null;
+  const normalized = value
+    .trim()
+    .replaceAll('\\', '/')
+    .replace(/^\.\/+/, '');
+  if (
+    !normalized ||
+    normalized.startsWith('/') ||
+    /^[A-Za-z]:\//.test(normalized) ||
+    normalized.split('/').includes('..')
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
 function uniquePaths(paths) {
   if (!Array.isArray(paths)) return null;
-  return [...new Set(paths
-    .filter((path) => typeof path === 'string')
-    .map((path) => path.trim().replaceAll('\\', '/').replace(/^\.\/+/, ''))
-    .filter(Boolean))];
+  const normalized = [];
+  for (const value of paths) {
+    const path = normalizeChangedPath(value);
+    if (!path) return null;
+    normalized.push(path);
+  }
+  return [...new Set(normalized)];
 }
 
 /**
@@ -25,8 +45,8 @@ function uniquePaths(paths) {
  * their descendants; build/config files match exactly.
  */
 export function isProductionRuntimePath(path) {
-  const normalized = String(path ?? '').trim().replaceAll('\\', '/').replace(/^\.\/+/, '');
-  if (!normalized || /[\r\n]/.test(normalized)) return false;
+  const normalized = normalizeChangedPath(path);
+  if (!normalized) return false;
   return RUNTIME_PATHS.some((entry) => normalized === entry || normalized.startsWith(`${entry}/`));
 }
 
@@ -131,8 +151,8 @@ export function decideProductionDeployCandidate(input = {}) {
     return result('WOULD_DEPLOY', 'INCOMPLETE_DIFF_FAIL_SAFE');
   }
 
-  // Unknown/empty classification fails toward deployment, never toward a silent
-  // skip. The future real adapter may still be blocked by other safety gates.
+  // Unknown/empty/malformed classification fails toward deployment, never toward
+  // a silent skip. The future real adapter may still be blocked by other gates.
   if (!pathResult.comparable) {
     return result('WOULD_DEPLOY', 'CLASSIFIER_FAILED_FAIL_SAFE');
   }
