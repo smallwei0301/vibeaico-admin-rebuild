@@ -63,11 +63,28 @@ async function insertCustomer(tenantId: string, name: string): Promise<string> {
   return id;
 }
 
+/**
+ * canonical TEST 的 products 有唯一索引 `products_tenant_sort_order_uq`
+ * (tenant_id, sort_order)，而 sort_order 的 column default 是 0——所以同一個
+ * 租戶插入第二筆不帶 sort_order 的商品就會撞 23505。
+ *
+ * ⚠️ 這個索引**不在 repo 的 migration 帳本裡**（`grep products_tenant_sort_order_uq
+ * supabase/migrations/` 無輸出），也**不在正式庫**——三方分歧，已另立 issue 追。
+ * 這裡先取「該租戶目前最大值 +1」，讓本檔在有無該索引的資料庫上都成立，
+ * 而不是把數字寫死或賭隨機不撞。
+ */
+async function nextSortOrder(tenantId: string): Promise<number> {
+  const { data } = await admin.from('products')
+    .select('sort_order').eq('tenant_id', tenantId)
+    .order('sort_order', { ascending: false }).limit(1).maybeSingle();
+  return Number(data?.sort_order ?? 0) + 1;
+}
+
 async function insertProduct(tenantId: string, price: number): Promise<string> {
   const id = randomUUID();
   const { error } = await admin.from('products').insert({
     id, tenant_id: tenantId, name: `票券測試商品-${uniqueSuffix()}`,
-    price, stock: 100, safety_stock: 0,
+    price, stock: 100, safety_stock: 0, sort_order: await nextSortOrder(tenantId),
   });
   expect(error).toBeNull();
   return id;
@@ -348,6 +365,110 @@ describe('POST /api/product-orders/:id/apply-coupon（issue #33①：真核銷�
       await cleanupCoupon(couponId);
       await admin.from('customers').delete().eq('id', customerId);
       await admin.from('products').delete().eq('id', productId);
+    }
+  });
+});
+
+/**
+ * issue #33 ①-6：「套用票券成功但『完成訂單』失敗」的交易語意。
+ *
+ * apply-coupon 與 complete 是**兩個獨立的請求**，不是一個交易。原站
+ * docs/specs/product-orders.json 的 jsStrings 同時有：
+ *   「票券已套用！折抵 ${formatMoney(couponRes.data?.couponDiscount || 0)}」
+ *   「票券已套用，但「完成訂單」失敗：」
+ * 後者的存在本身就證明原站允許「票券已套用」與「訂單未完成」並存，且分別告知。
+ * 契約寫在 docs/integration/04-API-CONTRACTS.md B-3。
+ *
+ * 這一組驗的是**不回滾**：核銷是對顧客手上那張券的狀態變更，店員當下已經看到
+ * 「票券已套用」的提示；自動退回會讓畫面說過的話與資料庫不一致，而店員無從得知。
+ */
+describe('issue #33 ①-6：套用票券成功但完成訂單失敗（兩個請求，不是一個交易）', () => {
+  it('套用後訂單被取消 → complete 回 409，但票券維持已核銷、金額維持已折抵，兩者都不回滾', async () => {
+    const customerId = await insertCustomer(SHOP_A.id, `#33①-6顧客-${uniqueSuffix()}`);
+    const productId = await insertProduct(SHOP_A.id, 1000);
+    const orderId = await insertOrder(SHOP_A.id, customerId, productId, 1000);
+    const couponId = await insertCoupon(SHOP_A.id, 'AMOUNT', 300);
+    const { instanceId, code } = await issueCouponInstance(SHOP_A.id, couponId, customerId);
+
+    try {
+      // 1) 套用票券 —— 成功
+      const applyRes = await ownerA.post(`/api/product-orders/${orderId}/apply-coupon`, { code });
+      expect(applyRes.status).toBe(200);
+      const applied = await readJson<{ totalAmount: number; couponDiscount: number }>(applyRes);
+      expect(applied.success).toBe(true);
+      expect(applied.data?.couponDiscount).toBe(300);
+      expect(applied.data?.totalAmount).toBe(700);
+
+      // 2) 模擬真實併發：在店員按「完成」之前，這筆訂單已被取消
+      //    （complete 端點只接受 PENDING/CONFIRMED，見 route 的 .in(...)）
+      const { error: cancelErr } = await admin.from('product_orders')
+        .update({ status: 'CANCELLED' }).eq('id', orderId);
+      expect(cancelErr).toBeNull();
+
+      // 3) 完成訂單 —— 失敗
+      const completeRes = await ownerA.post(`/api/product-orders/${orderId}/complete`, {});
+      expect(completeRes.status).toBe(409);
+      const completed = await readJson(completeRes);
+      expect(completed.success).toBe(false);
+      expect(completed.code).toBe('REQ_003');
+
+      // 4) 以 service role 獨立查一次，不信任任何 API 回應：
+      //    票券仍是已核銷（不回滾）
+      const { data: inst } = await admin.from('coupon_instances')
+        .select('redeemed_at').eq('id', instanceId).maybeSingle();
+      expect(inst?.redeemed_at).not.toBeNull();
+
+      //    訂單金額仍是折抵後的 700、折抵明細仍在、仍指向那張票券（不回滾）
+      const { data: order } = await admin.from('product_orders')
+        .select('total_amount, coupon_discount, coupon_instance_id, status')
+        .eq('id', orderId).maybeSingle();
+      expect(Number(order?.total_amount)).toBe(700);
+      expect(Number(order?.coupon_discount)).toBe(300);
+      expect(order?.coupon_instance_id).toBe(instanceId);
+
+      //    而訂單確實沒有被完成
+      expect(order?.status).toBe('CANCELLED');
+    } finally {
+      await admin.from('product_order_items').delete().eq('order_id', orderId);
+      await admin.from('product_orders').delete().eq('id', orderId);
+      await admin.from('products').delete().eq('id', productId);
+      await admin.from('coupon_instances').delete().eq('id', instanceId);
+      await admin.from('coupons').delete().eq('id', couponId);
+      await admin.from('customers').delete().eq('id', customerId);
+    }
+  });
+
+  it('那張票券已被消耗：同一組代碼不能再套用到另一筆訂單（證明不回滾不是「看起來沒退」）', async () => {
+    const customerId = await insertCustomer(SHOP_A.id, `#33①-6顧客B-${uniqueSuffix()}`);
+    const productId = await insertProduct(SHOP_A.id, 1000);
+    const orderId = await insertOrder(SHOP_A.id, customerId, productId, 1000);
+    const secondOrderId = await insertOrder(SHOP_A.id, customerId, productId, 1000);
+    const couponId = await insertCoupon(SHOP_A.id, 'AMOUNT', 300);
+    const { instanceId, code } = await issueCouponInstance(SHOP_A.id, couponId, customerId);
+
+    try {
+      expect((await ownerA.post(`/api/product-orders/${orderId}/apply-coupon`, { code })).status).toBe(200);
+      await admin.from('product_orders').update({ status: 'CANCELLED' }).eq('id', orderId);
+      expect((await ownerA.post(`/api/product-orders/${orderId}/complete`, {})).status).toBe(409);
+
+      // 若失敗路徑偷偷把核銷退回去，這裡就會變成 200 —— 那才是真正危險的假成功
+      // （店員以為券沒用掉，實際上第一筆訂單的金額已經折抵過了）。
+      const reuse = await ownerA.post(`/api/product-orders/${secondOrderId}/apply-coupon`, { code });
+      expect(reuse.status).toBe(409);
+      expect((await readJson(reuse)).code).toBe('REQ_003');
+
+      // 第二筆訂單金額完全沒被動到
+      const { data: second } = await admin.from('product_orders')
+        .select('total_amount, coupon_discount').eq('id', secondOrderId).maybeSingle();
+      expect(Number(second?.total_amount)).toBe(1000);
+      expect(Number(second?.coupon_discount ?? 0)).toBe(0);
+    } finally {
+      await admin.from('product_order_items').delete().in('order_id', [orderId, secondOrderId]);
+      await admin.from('product_orders').delete().in('id', [orderId, secondOrderId]);
+      await admin.from('products').delete().eq('id', productId);
+      await admin.from('coupon_instances').delete().eq('id', instanceId);
+      await admin.from('coupons').delete().eq('id', couponId);
+      await admin.from('customers').delete().eq('id', customerId);
     }
   });
 });
