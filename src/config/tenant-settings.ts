@@ -18,6 +18,132 @@ import { z } from 'zod';
  *    回傳到前端時一律遮罩（見 maskSecret / SECRET_FIELDS）。
  */
 
+
+
+/* ------------------------------------------------------- Flex 主選單卡片 */
+/**
+ * LINE Flex carousel 一次最多能放幾個 bubble。
+ *
+ * ⚠️ **這是外部規格（LINE Messaging API），不是我們可以自己決定的數字**，
+ * 所以它必須只有一個出處。理由與 `src/server/paging.ts` 的 `MAX_PAGE_SIZE`
+ * 完全同型：那次是頁面送 `size: 200`、端點各自寫死 `.max(100)`，兩個數字分別
+ * 寫在兩個檔案、沒有人保證一致，於是清單頁在部署環境整頁載不出來。
+ *
+ * 這裡若把 12 抄成兩份（zod 一份、頁面一份），失敗模式是店家在頁面上編到第 13 張
+ * 才被伺服器擋掉、前面的工白做；抄成三份（再加一句「最多 12 張卡片」的文案）
+ * 就會出現文案說 10、程式擋 12 的情況——本檔改動前 `rich-menu-design.ts` 裡
+ * 同時存在 `maxCards12` 與 `maxCards10` 兩句，正是這個下場。
+ *
+ * 出處：LINE Messaging API reference — Flex Message「carousel」
+ * 的 `contents`：Max: 12 bubbles。
+ */
+export const MAX_FLEX_CARDS = 12;
+
+/**
+ * 一張輪播卡片。欄位是 06 分冊 §6 的契約
+ * `{title, subtitle, imageUrl, ad, linkUrl?}`（04 分冊的契約以此為準，不得自行擴充）。
+ *
+ * ⚠️ `linkUrl` 是 14 分冊 §8.20 的**擁有者裁決**加上去的第五個欄位：原本的四欄
+ * 沒有地方放網址，但這一頁的文案從一開始就寫著「插入廣告卡片（打開網址）」——
+ * 廣告卡不能點本身沒有意義，補齊比改掉文案更符合擁有者方針。
+ *
+ * 各上限的來源都是 LINE 端的硬限制，不是憑感覺訂的：
+ * - `title` 20 字：卡片底部按鈕的 action，LINE 規定 `label` 最多 20 字
+ *   （message 與 uri 兩種 action 同一個上限）。沒有 `linkUrl` 時刻意讓 `label`
+ *   與送出的 `text` 都等於 title——按鈕上寫什麼、按下去就送出什麼，中間不做截斷
+ *   （截斷會讓兩者不一致，顧客按到的關鍵字與看到的字不同）。
+ * - `imageUrl` 必須是 https：LINE 的 image 元件只收 HTTPS 網址，http 會被拒。
+ *   空字串＝這張卡沒有主圖（合法，組裝時整個 hero 區塊省略）。
+ * - `linkUrl` 的可用 scheme：見下方 `FLEX_LINK_URL_SCHEMES` / `isAllowedFlexLinkUrl()`。
+ *   空字串＝這張卡不開網址（合法，組裝時按鈕退回 message action）。
+ */
+
+/**
+ * 卡片 `linkUrl` 的**白名單** scheme（14 分冊 §8.20-b，擁有者裁決「廣告卡全開」）。
+ *
+ * 「全開」的工程定義：**LINE 的 `uri` action 實測收什麼，我們就收什麼**，一個都沒再扣。
+ * 這份清單的每一項都有 `scripts/verify/flex-menu-validate.cjs` 對 LINE 官方
+ * `POST /v2/bot/message/validate/reply` 的實測回應碼撐著（2026-08-25 實跑）：
+ *
+ *   收下（HTTP 200）→ 進白名單：
+ *     https://a.example/          200
+ *     http://a.example/           200
+ *     line://ti/p/@abc            200
+ *     tel:0212345678              200
+ *     mailto:shop@example.com     200
+ *   退回（HTTP 400 `invalid uri scheme`）→ 不進白名單：
+ *     sms:0212345678 / javascript:alert(1) / data:text/html,x /
+ *     ftp://a.example/ / file:///etc/passwd / `/foo`（相對路徑）/ `a.example/foo`
+ *
+ * ⚠️ **沒有被那支腳本量到的 scheme 不准加進這個陣列**，也不准在註解裡寫
+ * 「LINE 應該也收 X」。這一節的每一個數字都是量出來的，不是推出來的
+ * （§8.20 就是「把 hero 圖的限制推想成 uri action 的限制、還附了引用」而錯的）。
+ *
+ * ⚠️ 為什麼是**白名單**而不是黑名單：黑名單只擋得住今天想得到的字串，
+ * 明天多一個沒人想過的 scheme 就會直接送到顧客手上，而**沒有任何測試會紅**。
+ * 白名單漏掉一個合法 scheme 只是少一個功能、店家會反映；黑名單漏掉一個危險
+ * scheme 是顧客被導去 `javascript:`。兩種錯的代價不對等。
+ */
+export const FLEX_LINK_URL_SCHEMES = [
+  'https://',
+  'http://',
+  'line://',
+  'tel:',
+  'mailto:',
+] as const;
+
+/**
+ * `linkUrl` 是否可用（**寫入驗證、讀取搶救、頁面即時提示三處共用這一支**）。
+ *
+ * 三處共用是刻意的：本專案已經反覆抓到「同一件事寫兩份，短期一樣、長期一定分岔，
+ * 而分岔的那一天沒有任何測試會紅」。這裡若各寫一份 `startsWith()`，
+ * 失敗模式是頁面說可以、端點回 400，或更糟：端點收下了、顧客那一包被 LINE 整份退回。
+ *
+ * 判斷規則（三條缺一不可）：
+ * 1. **先 `trim()`**——前後空白／換行／Tab 由 zod 一併去掉，存進 DB 的也是去空白後的值。
+ *    LINE 對前置空白的 `" https://a.example/"` 回 400，所以「去掉再比對、也去掉再存」
+ *    才是一致的：畫面說可以，送出去的那一份 LINE 就真的收。
+ * 2. **case-insensitive**——LINE 對 `HTTPS://A.EXAMPLE/` 回 200，我們沒有理由更嚴。
+ * 3. **必須以白名單的某個 scheme 開頭**——所以「藏在 scheme 前後或中間」的變形
+ *    （`\tjavascript:`、`" javascript:"`、`java\tscript:`、`JavaScript:`）
+ *    全部落在白名單外，不需要另外列黑名單去追。相對路徑（沒有 scheme）也不在內。
+ *
+ * ⚠️ 判斷**不看 LINE 對某個變形回什麼**。就算 LINE 對某個變形回 200，這裡照樣擋——
+ * 白名單是「正規化後必須以已實測 scheme 開頭」，不是「LINE 沒退就放行」。
+ *
+ * 空字串回 `false`：呼叫端各自決定空字串代表什麼
+ * （schema：合法的「不開網址」；`cardAction()`：退回 message action）。
+ */
+export function isAllowedFlexLinkUrl(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return FLEX_LINK_URL_SCHEMES.some((scheme) => normalized.startsWith(scheme));
+}
+
+/** 一張輪播卡片（欄位契約與各上限的來源見本檔上方那段說明）。 */
+export const flexCardSchema = z.object({
+  title: z.string().trim().min(1, '卡片標題不可空白').max(20, '卡片標題最多 20 字'),
+  subtitle: z.string().trim().max(60, '卡片說明最多 60 字').default(''),
+  imageUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine((v) => v === '' || v.startsWith('https://'), '圖片網址必須是 https://')
+    .default(''),
+  ad: z.boolean().default(false),
+  linkUrl: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine(
+      (v) => v === '' || isAllowedFlexLinkUrl(v),
+      '連結網址只接受 https://、http://、line://、tel:、mailto: 開頭',
+    )
+    .default(''),
+});
+
+export type FlexCard = z.infer<typeof flexCardSchema>;
+
 /* ---------------------------------------------------------------- LINE 設定 */
 export const lineSettingsSchema = z.object({
   /** 純數字，例如：2005459361 */
@@ -40,6 +166,17 @@ export const lineSettingsSchema = z.object({
   flexHeaderTitle: z.string().default('✨ {shopName}'),
   flexHeaderSubtitle: z.string().default(''),
   flexShowTip: z.boolean().default(true),
+  /**
+   * Flex 主選單的輪播卡片（06 分冊 §6「2026-08-24 補規格」：卡片陣列一併存進
+   * line jsonb 的 `flexCards` 鍵，上限 12 張＝ LINE carousel 的 bubble 上限）。
+   *
+   * 放 jsonb 而不是開一張表：卡片是「這家店的一份設定」而不是可查詢的業務實體，
+   * 沒有任何查詢會問「所有店家裡標題含 X 的卡片」，開表只會多一次 join。
+   *
+   * 生效點只有一個：`src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()`，
+   * 由 `src/server/line-events.ts` 的 MENU 內建指令呼叫。
+   */
+  flexCards: z.array(flexCardSchema).max(MAX_FLEX_CARDS).default([]),
   campaignKeywordEnabled: z.boolean().default(true),
   /**
    * 店家關掉了哪幾組系統內建關鍵字（存 group key）。

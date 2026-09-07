@@ -19,6 +19,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
+import { buildFlexMenuOutcome } from './flex-menu';
 import { isFeatureActive } from './features';
 import { aiReply, type ShopContext } from './ai-reply';
 import {
@@ -181,8 +182,7 @@ const MSG = {
    *
    * ⚠️ 這幾句的壽命由對應 Issue 決定，功能落地後**必須連同文案一起刪掉**，
    * 不要留著當備用：留著的話，下一個人讀到這組常數會以為那些功能仍未建置。
-   *   notReadyFlexMenu   → issue #6（Flex 主選單）
-   *   notReadyTrip / notReadyDeparture / notReadyOrder → issue #8（行程域）
+     *   notReadyTrip / notReadyDeparture / notReadyOrder → issue #8（行程域）
    */
   notReadyClinicQueue:
     '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
@@ -465,9 +465,12 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
     case 'MY_BOOKING':
       return replyMyBookingsBuiltin(ctx);
     case 'MENU':
+      // 「選單」組（主選單／選單／功能）→ 店家發布的 Flex 輪播（06 §6）。
+      // 尚未編卡片時 replyFlexMenu 自己落回下面那份文字清單。
+      return replyFlexMenu(ctx);
     case 'HELP':
-      // Flex 主選單是 issue #6 的範圍；在它落地前，這裡回一份純文字關鍵字清單。
-      // 清單內容取自 richMenuCells，所以列出來的每個字都保證有 handler。
+      // 「說明／幫助」不是 06 §6 點名的 Flex 觸發字，維持純文字關鍵字清單：
+      // 顧客問「怎麼用」時，一份可以直接照打的字串清單比一組卡片有用。
       return replyMenu(ctx);
     case 'CANCEL':
       return replyText(ctx, MSG.cancelNoFlow);
@@ -515,8 +518,47 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
   }
 }
 
+/* --------------------------------------------------- 內建指令：選單 / 說明 */
 /**
- * 「說明」「幫助」「選單」→ 這家店（依業態）可用的關鍵字清單（純文字）。
+ * 「選單」「主選單」「功能」→ 店家在 rich-menu-design 頁編好的 Flex 輪播（06 §6）。
+ *
+ * 四種結果都來自 `src/server/flex-menu.ts` 的 `buildFlexMenuOutcome()`——
+ * **全專案唯一**組 Flex JSON 的地方（issue #6 的單一事實來源要求）。
+ *
+ * ⚠️ SILENT 與 HINT 是**兩種不同的行為，不可以合併**：
+ * - HINT   → 回一句提示文字（畫面上那顆單選鈕逐字承諾了會回哪一句）
+ * - SILENT → **一則 LINE 請求都不發**。所以這裡回 true（＝已處理），
+ *   絕不能回 false 讓它落到 ⑤ AI／⑥ defaultReply——那樣顧客照樣會收到訊息，
+ *   店家選的「完全靜默」就變成一顆假的開關。
+ *   釘住這件事的斷言是「整個 mock.requests 為空」，不是「/reply 沒有被打」。
+ */
+async function replyFlexMenu(ctx: BuiltinCtx): Promise<boolean> {
+  const outcome = buildFlexMenuOutcome(ctx.lineConfig, ctx.tenant.name);
+  switch (outcome.kind) {
+    case 'FLEX':
+    case 'HINT':
+      /*
+       * ⚠️ **整包送 `outcome.messages`，不要只取第一則。**
+       * `flexShowTip` 開啟時 carousel 之後還有第二則使用提示，只送第一則的話
+       * 那顆開關切了什麼都不會發生——換一種寫法的同一顆假開關
+       * （06 分冊 §6.2.10、14 分冊 §8.22-c）。
+       * `tests/unit/flex-menu.06.test.ts` 有一條守門測試 grep 全專案不得出現
+       * `[outcome.message]` 這種只送第一則的寫法。
+       */
+      await lineReply(ctx.token, ctx.replyToken, outcome.messages);
+      return true;
+    case 'SILENT':
+      return true;
+    case 'NO_CARDS':
+      // 已啟用但店家還沒編任何卡片：不憑空生一張卡（那是編造內容），
+      // 回既有的文字關鍵字清單——列出來的每個字都保證有 handler。
+      return replyMenu(ctx);
+  }
+}
+
+/**
+ * 「說明」「幫助」→ 這家店（依業態）可用的關鍵字清單（純文字）。
+ * 也是 Flex 主選單「已啟用但一張卡片都沒有」時的落點。
  * 內容取自 MODE_PRESETS.richMenuCells，所以列出來的每一個字都保證有 handler。
  */
 async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {

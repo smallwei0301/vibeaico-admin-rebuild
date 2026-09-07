@@ -320,9 +320,29 @@ export const richMenuDesignPage = {
     cardCount: (n: number) => `共 ${n} 張卡片`,
     cardCountOfMax: (n: number, max: number) => `${n} / ${max} 張`,
     pageOf: (n: number, total: number) => `${n} / ${total}`,
-    maxCards12: '最多 12 張卡片',
-    maxCards10: '最多 10 張卡片',
+    /**
+     * ⚠️ 取代原本的 `maxCards12` / `maxCards10` 兩句：後者全站零引用，而且**與 12
+     * 互相矛盾**——同一頁的文案說 10、程式擋 12，店家編到第 11 張才發現文案是錯的。
+     * 上限的唯一出處是 `MAX_FLEX_CARDS`（src/config/tenant-settings.ts），
+     * 這句改成收參數，數字由那個常數帶進來，不再有第二份 12。
+     */
+    maxCards: (max: number) => `最多 ${max} 張卡片`,
     minCards: '至少需要 1 張卡片',
+    titleRequired: '每張卡片都要填標題（標題同時是卡片按鈕上的字），請補齊後再發布',
+    uploadImage: '上傳圖片',
+    imageUploaded: '圖片已上傳，記得按「發布」才會送到顧客那邊',
+    uploadFailedPrefix: '圖片上傳失敗:',
+    imageTypeHint: 'LINE 只接受 JPEG／PNG 圖片',
+    /**
+     * 卡片連結網址（14 分冊 §8.20）。
+     * ⚠️ 欄位對所有卡片都出現，不只廣告卡：契約把 `linkUrl` 定在卡片層級而不是
+     * 廣告卡層級，只讓廣告卡填會造出一個「存得下但畫面設不了」的隱形欄位。
+     */
+    linkUrl: '連結網址',
+    linkUrlPlaceholder: 'https://、line://、tel:、mailto:（選填）',
+    linkUrlHint: '選填。填了之後這張卡的按鈕會改成開啟這個連結。可以填這五種開頭：網頁 https://example.com 或 http://example.com、LINE 連結 line://ti/p/@abc、撥打電話 tel:0212345678、寄信 mailto:shop@example.com。其餘開頭一律不接受——其中 sms:、javascript:、data:、ftp:、file:// 是 LINE 會退回整份選單的（我們先擋下來，免得顧客一張卡都收不到）。網址前後不要留空白。',
+    linkUrlScheme: '這個開頭不能用，顧客可能整份選單都收不到。請改成 https://、http://、line://、tel: 或 mailto: 開頭（前後不要有空白）',
+    linkUrlSet: '按下按鈕會開啟此連結',
     deleteCardLead: '確定刪除卡片「',
     deleteCardTail: '」？（要按「發布」才會存檔生效）',
     resetConfirm:
