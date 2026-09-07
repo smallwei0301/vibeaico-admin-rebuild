@@ -11,7 +11,6 @@ import {
   validateLaneMetadata,
 } from './dual-terra-wip-policy.mjs';
 import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
-import { validateRunAdmission } from './run-admission-policy.mjs';
 import { classifyAstra } from './astra-review-policy.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
@@ -114,7 +113,6 @@ export function validateWipPreflight(input = {}) {
   }
   errors.push(...validateLaneMetadata(metadata, { action }));
   errors.push(...validateDeliveryUnitBoundary(text, metadata));
-  errors.push(...validateRunAdmission({ body: text, metadata }));
 
   if (
     metadata.origin === 'AGENT' &&
