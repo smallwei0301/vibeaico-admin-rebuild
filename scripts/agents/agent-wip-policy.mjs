@@ -297,13 +297,16 @@ export function decideTestValidation({
     if (dispatchReason !== "lane_transition") {
       return result(false, "invalid_branch_dispatch_reason", "A branch dispatch is allowed only for lane_transition");
     }
+    if (!String(ref ?? "").startsWith("refs/heads/")) {
+      return result(false, "invalid_branch_dispatch_ref", "A lane_transition dispatch must target a branch ref");
+    }
     if (!/^\d+$/.test(requestedPr) || Number(requestedPr) < 1) {
       return result(false, "invalid_dispatch_pr_number", "A branch dispatch requires an open PR number");
     }
 
     const prNumber = Number(requestedPr);
     const pr = currentPullRequest ?? {};
-    const branch = String(ref ?? "").replace(/^refs\/heads\//, "");
+    const branch = String(ref).slice("refs/heads/".length);
     const metadata = parseLaneMetadata(pr);
     const validPr = pr.number === prNumber &&
       pr.state === "open" &&

@@ -11,6 +11,7 @@ describe('CI workflow dispatch revision wiring', () => {
     expect(workflow).toContain("(context.eventName === 'pull_request' && !docsOnly) ||");
     expect(workflow).toContain("context.eventName === 'workflow_dispatch'");
     expect(workflow).toContain("repoFullName: context.payload.repository?.full_name ?? '',");
+    expect(workflow).toContain('ref: context.ref,');
     expect(workflow).toContain("github.rest.repos.getCommit({");
     expect(workflow).toContain('currentCommit,');
     expect(workflow).toContain("const rejectedDispatch = context.eventName === 'workflow_dispatch'");

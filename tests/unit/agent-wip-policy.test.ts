@@ -329,6 +329,21 @@ describe("shared TEST owner policy", () => {
         base_revision: baseRevision,
       },
     })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_pr_contract" });
+
+    expect(decideTestValidation({
+      eventName: "workflow_dispatch",
+      ref: "refs/tags/branch-30",
+      sha: expectedHead,
+      currentPullRequest: current,
+      openPullRequests: [current],
+      repoFullName: "owner/repo",
+      inputs: {
+        dispatch_reason: "lane_transition",
+        test_lane_pr: "30",
+        expected_head: expectedHead,
+        base_revision: baseRevision,
+      },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_branch_dispatch_ref" });
   });
 
   it("validates dispatch identity before a docs-only shortcut", () => {
