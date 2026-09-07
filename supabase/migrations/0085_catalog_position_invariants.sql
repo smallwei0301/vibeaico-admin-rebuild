@@ -18,7 +18,21 @@
 -- 必須 DESC 才會保留原順序；若 ASC 會把順序反轉，而且每次重跑都再翻一次。
 -- LINE lane 在 public lane 已暫存成負數後才 staging，所以同 line_sort_order 的
 -- tie-break 也必須用 sort_order DESC 才等價於原本的 public 排序。
--- 這三個方向由 tests/unit/catalog-position-migration.238.test.ts 鎖住。
+--
+-- 本檔在 App 已上線後才執行，因此正式站此時仍可能收到新增／拖曳排序。若不先鎖住
+-- 三張 catalog 表，某筆並行 INSERT/UPDATE 可能只落在 staging/restore 的其中一半，
+-- 造成「索引成功建立但資料順序被悄悄改掉」。SHARE ROW EXCLUSIVE 會阻擋
+-- INSERT/UPDATE/DELETE 的 RowExclusiveLock，但不阻擋一般 SELECT，適合這段短 migration。
+--
+-- Supabase CLI 2.115/2.116 對 migration 改用 pipeline 後，裸 LOCK TABLE 不再位於真正
+-- transaction block，會 25P01；因此這裡明確 BEGIN/COMMIT，讓 local 2.116 與正式
+-- migration 都確實把鎖持有到重排與索引建立完成。方向與 transaction/lock 契約由
+-- tests/unit/catalog-position-migration.238.test.ts 鎖住。
+
+begin;
+
+lock table public.services, public.products, public.portfolios
+  in share row exclusive mode;
 
 -- ---- services ----
 with ranked as (
@@ -112,3 +126,5 @@ create unique index if not exists portfolios_tenant_sort_order_uq
 
 create unique index if not exists portfolios_tenant_line_sort_order_uq
   on public.portfolios (tenant_id, line_sort_order);
+
+commit;

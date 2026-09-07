@@ -37,6 +37,24 @@ function apply0085Ranking(input: Row[]): Row[] {
 }
 
 describe('#238 0085 migration preserves catalog order through negative staging', () => {
+  it('wraps the postdeploy rewrite and index creation in one explicit transaction with a write-blocking table lock', () => {
+    const beginIndex = migration.indexOf('begin;');
+    const lockIndex = migration.indexOf(
+      'lock table public.services, public.products, public.portfolios\n  in share row exclusive mode;',
+    );
+    const firstRewriteIndex = migration.indexOf('with ranked as (');
+    const finalCommitIndex = migration.lastIndexOf('commit;');
+    const finalIndexIndex = migration.lastIndexOf(
+      'create unique index if not exists portfolios_tenant_line_sort_order_uq',
+    );
+
+    expect(beginIndex).toBeGreaterThan(-1);
+    expect(lockIndex).toBeGreaterThan(beginIndex);
+    expect(firstRewriteIndex).toBeGreaterThan(lockIndex);
+    expect(finalCommitIndex).toBeGreaterThan(finalIndexIndex);
+    expect(migration.trim().endsWith('commit;')).toBe(true);
+  });
+
   it('all three public staging passes rank the original order ASC before moving it negative', () => {
     expect(count(/-1000000000 - row_number\(\) over \(partition by tenant_id order by sort_order, id\)/g)).toBe(3);
   });
