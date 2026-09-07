@@ -97,7 +97,7 @@ jobs:
           node --check scripts/ci/production-deploy-decision.mjs
           node --check scripts/ci/production-deploy-evidence.mjs
           node --check scripts/ci/production-deploy-canary.mjs
-          git diff --check HEAD^ HEAD || true
+          git diff --check HEAD^ HEAD
 
       - name: Run controlled Vercel canary controller
         id: canary
