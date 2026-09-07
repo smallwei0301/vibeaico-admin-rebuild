@@ -13,9 +13,10 @@
  *      而是「一張都沒有」**。
  *   2. **捏造的已知** —— 沒有任何啟用方案時 `minPrice` 是 `null`，顯示 `NT$ 0`
  *      會讓顧客以為免費。
- *   3. **`tagline` 不存在** —— `public.trips` 沒有這個欄位（0066），
- *      副標只能取自 `summary`。原分支的版本讀 `t.tagline`，搬過來會讓每張卡
- *      永遠少一行，而且沒有任何東西會紅。
+ *   3. **副標的來源** —— `public.trips` 一度沒有 `tagline` 欄位（0066），副標
+ *      只能取自 `summary`；讀一個不存在的欄位會讓每張卡永遠少一行，而且沒有
+ *      任何東西會紅。`0089`（issue #259）補上欄位之後改回「標語優先，其次簡介」，
+ *      下面那一組斷言連同 fallback 一起釘住。
  */
 import { describe, expect, it } from 'vitest';
 import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from '@/server/trip-flex';
@@ -32,6 +33,7 @@ const LABELS = {
 const trip = (over: Partial<TripCardSource> = {}): TripCardSource => ({
   slug: 'guishan-island',
   title: '龜山島賞鯨一日遊',
+  tagline: '',
   summary: '搭船出海尋找飛旋海豚，登島走完 401 高地。',
   coverImageUrl: '',
   minPrice: 2800,
@@ -131,7 +133,35 @@ describe('buildTripCarousel — 價格：不知道就不要編一個', () => {
   });
 });
 
-describe('buildTripCarousel — 副標取自 summary（trips 沒有 tagline 欄位）', () => {
+describe('buildTripCarousel — 副標：標語優先，其次簡介（#259／0089）', () => {
+  it('標語有值 → 用標語，不用簡介', () => {
+    const texts = textsOf(bubblesOf(build([
+      trip({ tagline: '一天走完龜山島與 401 高地', summary: '搭船出海尋找飛旋海豚。' }),
+    ])));
+    expect(texts).toContain('一天走完龜山島與 401 高地');
+    expect(texts).not.toContain('搭船出海尋找飛旋海豚。');
+  });
+
+  it('標語為空或只有空白 → 退回簡介（0089 之前的既有列都是空字串）', () => {
+    for (const tagline of ['', '   ']) {
+      const texts = textsOf(bubblesOf(build([trip({ tagline, summary: '簡介第一行' })])));
+      expect(texts, `tagline=${JSON.stringify(tagline)} 沒有退回簡介`).toContain('簡介第一行');
+    }
+  });
+
+  it('標語與簡介都空 → 不產生空字串 text 元件', () => {
+    const texts = textsOf(bubblesOf(build([trip({ tagline: '', summary: '' })])));
+    expect(texts.every((t) => t.trim().length > 0)).toBe(true);
+  });
+
+  it('標語超過 60 字 → 一樣截斷（截斷是對副標做的，不是對 summary 做的）', () => {
+    const long = 'ゐ'.repeat(80);
+    const texts = textsOf(bubblesOf(build([trip({ tagline: long, summary: '簡介' })])));
+    const sub = texts.find((t) => t.startsWith('ゐ'))!;
+    expect(sub.length).toBe(60);
+    expect(sub.endsWith('…')).toBe(true);
+  });
+
   it('summary 有值 → 取第一行當副標', () => {
     const texts = textsOf(bubblesOf(build([trip({ summary: '第一行\n第二行' })])));
     expect(texts).toContain('第一行');

@@ -627,7 +627,7 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
 
   const { data: trips, error } = await ctx.admin
     .from('trips')
-    .select('id, slug, title, summary, cover_image_url')
+    .select('id, slug, title, tagline, summary, cover_image_url')
     .eq('tenant_id', ctx.tenant.id)
     .eq('status', 'PUBLISHED')
     .order('created_at', { ascending: false })
@@ -671,6 +671,7 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
   const cards: TripCardSource[] = trips.map((t: any) => ({
     slug: t.slug,
     title: t.title,
+    tagline: t.tagline ?? '',
     summary: t.summary ?? '',
     coverImageUrl: t.cover_image_url ?? '',
     minPrice: minPriceByTrip.has(t.id) ? minPriceByTrip.get(t.id)! : null,

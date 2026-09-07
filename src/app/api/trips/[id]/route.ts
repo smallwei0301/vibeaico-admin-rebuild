@@ -53,6 +53,12 @@ export const PUT = handle(async (req, { params }: Context) => {
   if (body.meetingPoint !== undefined) patch.meeting_point = body.meetingPoint;
   if (body.includes !== undefined) patch.includes = body.includes;
   if (body.notes !== undefined) patch.notes = body.notes;
+  /* ---- issue #259（0089 新欄位）---- */
+  if (body.tagline !== undefined) patch.tagline = body.tagline;
+  if (body.meetingPointMapUrl !== undefined) patch.meeting_point_map_url = body.meetingPointMapUrl;
+  if (body.exclusions !== undefined) patch.exclusions = body.exclusions;
+  if (body.notices !== undefined) patch.notices = body.notices;
+  if (body.refundPolicyType !== undefined) patch.refund_policy_type = body.refundPolicyType;
   if (Object.keys(patch).length === 0) {
     const { data, error } = await t.supabase.from('trips').select('*')
       .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();

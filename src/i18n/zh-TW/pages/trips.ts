@@ -104,7 +104,6 @@ export const tripsPage = {
      * ——與其讓店家以為存好了，不如把這件事寫在欄位旁邊。
      * 補上 migration 需要擁有者逐次具名的正式庫 DDL 授權，見 #259。
      */
-    notPersistedYet: '此欄位尚未建立資料庫欄位，儲存後不會保留（其餘欄位正常儲存）',
     taglineLabel: '一句話標語',
     taglinePlaceholder: '例：跟著在地船長，找到那群飛旋海豚',
     summaryLabel: '簡介',

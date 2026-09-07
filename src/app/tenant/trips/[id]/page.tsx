@@ -726,7 +726,6 @@ export default function TripDetailPage() {
                     placeholder={t.form.taglinePlaceholder}
                     onChange={(e) => patch({ tagline: e.target.value })}
                   />
-                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.summaryLabel}</Label>
@@ -770,7 +769,6 @@ export default function TripDetailPage() {
                       onChange={(e) => patch({ exclusions: toLines(e.target.value) })}
                     />
                     <FormText>{t.form.listHelp}</FormText>
-                    <FormText>{t.form.notPersistedYet}</FormText>
                   </FormGroup>
                 </div>
                 <FormGroup>
@@ -781,7 +779,6 @@ export default function TripDetailPage() {
                     onChange={(e) => patch({ notices: toLines(e.target.value) })}
                   />
                   <FormText>{t.form.listHelp}</FormText>
-                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.safetyLabel}</Label>
@@ -838,7 +835,6 @@ export default function TripDetailPage() {
                     value={form.meetingPointMapUrl}
                     onChange={(e) => patch({ meetingPointMapUrl: e.target.value })}
                   />
-                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.refundLabel}</Label>
@@ -850,7 +846,6 @@ export default function TripDetailPage() {
                       <option key={k} value={k}>{t.form.refundOptions[k]}</option>
                     ))}
                   </Select>
-                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
               </CardBody>
             </Card>
