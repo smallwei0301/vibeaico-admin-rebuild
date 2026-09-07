@@ -82,10 +82,41 @@ describe('CI change classifier', () => {
     expect(calls).toEqual([['diff', '--name-status', '-z', '--find-renames', baseSha, headSha]]);
   });
 
-  it('fails closed for dispatch, missing revisions, non-main pushes, and git errors', () => {
+  it('uses the explicit base for a workflow_dispatch merge commit', () => {
+    const calls: string[][] = [];
+    const mergeCommitSha = 'c'.repeat(40);
+    const runGit = (...args: string[]) => {
+      calls.push(args);
+      return output('A', 'supabase/migrations/0084_dispatch.sql');
+    };
+
+    expect(classifyEvent('workflow_dispatch', {
+      inputs: {
+        dispatch_reason: 'lane_transition',
+        base_revision: baseSha,
+        expected_head: mergeCommitSha,
+      },
+    }, runGit)).toMatchObject({
+      docsOnly: false,
+      reason: 'non-docs-change',
+      baseRevision: baseSha,
+      headRevision: mergeCommitSha,
+    });
+    expect(calls).toEqual([[
+      'diff', '--name-status', '-z', '--find-renames', baseSha, mergeCommitSha,
+    ]]);
+  });
+
+  it('fails closed for dispatch without explicit revisions, non-main pushes, and git errors', () => {
     const noGit = () => { throw new Error('git failed'); };
 
-    expect(classifyEvent('workflow_dispatch', {}, noGit)).toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'workflow-dispatch' });
+    expect(classifyEvent('workflow_dispatch', {
+      inputs: { dispatch_reason: 'lane_transition', base_revision: baseSha },
+    }, noGit)).toMatchObject({
+      docsOnly: false,
+      reason: 'classifier_failed',
+      detail: 'workflow-dispatch-missing-revision',
+    });
     expect(classifyEvent('pull_request', { pull_request: { base: {} } }, noGit))
       .toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'missing-revision' });
     expect(classifyEvent('push', { ref: 'refs/heads/feature', before: baseSha, after: headSha }, noGit))

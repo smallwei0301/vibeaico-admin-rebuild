@@ -20,6 +20,10 @@ on:
         description: Exact commit SHA that must equal the dispatched ref head
         required: true
         type: string
+      base_revision:
+        description: Exact base SHA used for the dispatched diff and repository-integrity comparison
+        required: true
+        type: string
 
 permissions:
   contents: read

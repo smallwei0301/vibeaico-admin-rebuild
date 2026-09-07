@@ -120,7 +120,29 @@ function isUsableRevision(revision) {
  */
 export function classifyEvent(eventName, event, runGit = defaultRunGit) {
   if (eventName === 'workflow_dispatch') {
-    return withRevisions(classifierFailure('workflow-dispatch'));
+    const base = event?.inputs?.base_revision;
+    const head = event?.inputs?.expected_head;
+    const baseRevision = typeof base === 'string' ? base : '';
+    const headRevision = typeof head === 'string' ? head : '';
+
+    // A dispatched run is used for TEST lane transitions, so it must compare the
+    // exact PR base to the exact dispatched head. Never leave either revision
+    // empty: the downstream integrity guard must not silently choose HEAD^.
+    if (!isUsableRevision(baseRevision) || !isUsableRevision(headRevision)) {
+      return withRevisions(
+        classifierFailure('workflow-dispatch-missing-revision'),
+        baseRevision,
+        headRevision,
+      );
+    }
+
+    try {
+      return withRevisions(classifyChangeRecords(parseNameStatus(
+        runGit('diff', '--name-status', '-z', '--find-renames', baseRevision, headRevision),
+      )), baseRevision, headRevision);
+    } catch {
+      return withRevisions(classifierFailure('git-or-parse-failure'), baseRevision, headRevision);
+    }
   }
 
   let base;
