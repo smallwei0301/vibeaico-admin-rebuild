@@ -56,9 +56,9 @@ The historical v3 report remains `NOT_GRADED`. Retrospectives may re-score/revie
 
 ## Admission freeze
 
-`scripts/agents/run-admission-policy.mjs` marks this Run frozen for new counted `SLICE` or `STANDALONE` membership. Local PR preflight consumes the shared lane validator, and the trusted-main GitHub WIP Guard consumes that same validator before writing `Agent WIP Policy`.
+`scripts/agents/run-admission-policy.mjs` marks this Run frozen for all new Product references. Only these two references are allowed: (1) a genuine active governance reference with `AGENT_LANE=GOVERNANCE`, `LANE_STATE=ACTIVE`, `DELIVERY_UNIT_TYPE=GOVERNANCE`, `COUNT_IN_DELIVERY_OUTCOME=false`, and `RETROACTIVE_TRACKING_MIGRATION=false`; or (2) explicit historical bookkeeping from an `AGENT_LANE=GOVERNANCE` lane or `LANE_STATE=HISTORICAL` state with `DELIVERY_UNIT_TYPE=SLICE`, `STANDALONE`, or `GOVERNANCE`, `RETROACTIVE_TRACKING_MIGRATION=true`, and `COUNT_IN_DELIVERY_OUTCOME=false`. Missing, invalid, or other Product-shaped metadata is rejected. Local PR preflight consumes the shared lane validator, and the trusted-main GitHub WIP Guard consumes that same validator before writing `Agent WIP Policy`.
 
-Historical, governance, or explicitly non-counted retrospective references remain allowed. The freeze is forward-looking and does not retroactively fail merged PRs.
+The freeze is forward-looking and does not retroactively fail merged PRs.
 
 ## Safety
 
