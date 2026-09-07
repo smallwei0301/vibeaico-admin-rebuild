@@ -433,3 +433,34 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
 - 預防：① 判準一律改成**「呼叫端在哪裡」**：`grep -n "<symbol>(" <呼叫端檔案>`，而不是 `grep -c "<symbol>" .`。② `grep -c` 的結果**必須連同檔名一起看**（用 `-rn` 或 `-l`，不要用 `-c` 加總）。③ 對「文件說有」「路由檔在」「政策提到」三種線索，一律再走一步查到實際執行路徑；查不到就當作沒有。
 - 狀態：已防止
+
+
+### PB-028 — `revoke execute … from anon, authenticated` 不會關掉 PUBLIC 的預設授權
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2（`0087` 的四支 tour-order RPC；`0090` 的 `redeem_booking_points`）
+- Issue／PR／CI：Issue #8-B、#218；PR #271（Sol audit P1，由 `0088` 補）、PR #280（開工時就用正確寫法）
+- 分類：權限
+- 事件：SECURITY DEFINER 的 RPC 繞過 RLS，所以執行權**就是**那道安全邊界。兩支 migration 都只寫了 `revoke execute on function … from anon, authenticated`，看起來已經把前端持有的兩個角色都撤掉了。
+- 證據：PostgreSQL 對新建函式**預設 grant EXECUTE 給 `PUBLIC`**，而 `anon` / `authenticated` 都是 PUBLIC 的成員。本機 Postgres 16 實測 —— 只撤那兩個角色之後 `has_function_privilege('anon', …, 'EXECUTE')` 仍然是 `true`；補上 `revoke all … from public` 之後才變 `false`。`pg_proc.proacl` 在只撤兩個角色時是 `NULL`（＝維持預設，PUBLIC 有權），這個「什麼都沒有」的樣子很容易被讀成「乾淨」。
+- 根因：把角色清單當成權限的全集。撤銷只能撤掉「直接授給該角色」的權限，撤不掉它**經由 PUBLIC 繼承**的那一份；而預設授權不是任何一支 migration 寫的，所以 grep 整個 `supabase/` 都看不到它。
+- 影響：任何登入者（甚至未登入者）可直接呼叫該 RPC，route 上的所有閘門——租戶檢查、角色檢查、金額與點數檢查——全部被繞過。#218 那支的具體後果是「扣別家店顧客的點數」。且完全沒有症狀。
+- 修正：三段式，缺一不可 —— `revoke all … from public;` → `revoke all … from anon, authenticated;` → `grant execute … to service_role;`。
+- 預防：① 每新增一支 SECURITY DEFINER 函式，執行權一律寫這三段，不要只寫角色那一段。② 驗收不能只 grep migration 文字，要**實際查權限**：`select has_function_privilege('anon', '<sig>', 'EXECUTE')` 必須是 `false`，`proacl` 必須有明確條目而不是 `NULL`。③ 整合測試的邊界案例要包含**真的登入過的** authenticated 角色，並斷言錯誤碼是 `42501`（沒有權利），而不是只斷言「有錯誤」——後者在函式根本沒被 expose 時也會通過。
+- 狀態：已防止
+
+
+### PB-029 — 測試名稱宣稱的，比它實際證明的多
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #218、#259；PR #280、#278（`local-isolated-a` 紅，head `4d60b2a`）
+- 分類：測試方法
+- 事件：兩個形態——
+  1. 一條測試叫「**已登入使用者**不得直接呼叫 `redeem_booking_points` rpc」，用的卻是**沒有登入**的 anon client，而且只斷言 `error` 非 null。它證明的是「未登入者叫不動」，名字宣稱的卻是 authenticated 角色；而 authenticated 才是危險的那個身分（見 PB-028）。
+  2. 一組整合測試宣稱「PUT 寫進去、重新 GET 還在」，但把 `GET /api/trips/:id` 的 `{ trip, plans }` 信封當成 trip 本身在讀。每個欄位都是 `undefined`。
+- 根因：第 1 種是寫測試時先想好名字、實作時走了最省事的 client，名字沒有跟著回頭校對。第 2 種是沒有先確認端點的**回應形狀**就寫斷言。共同點是：**測試名稱不是斷言**，沒有任何東西會檢查它們是否一致。
+- 影響：第 1 種是最壞的一類——它是綠的、名字看起來剛好覆蓋了那個風險，於是那個風險再也不會被人檢查。第 2 種相對無害（會紅），但如果斷言寫成 `toBeFalsy()` 或 `not.toBeNull()` 之類的寬鬆形式，一樣會假綠。
+- 修正：第 1 種改成未登入與真的 `signInWithPassword` 登入兩段都測，並收緊到錯誤碼 `42501`；第 2 種抽一支 `getTrip()` helper，內含 `expect(body.data?.trip).toBeTruthy()`，讓信封讀錯時**在那一行**就失敗而不是在下游變成 undefined。
+- 預防：① 寫完一條測試，把名字當成一句斷言念一遍，逐字問「這一段程式證明了這句話嗎」——特別是名字裡有身分（已登入／跨租戶／管理員）或條件（併發／逾期）的時候。② 斷言「東西存在」時要收斂到**具體值或具體錯誤碼**，不要停在 `not.toBeNull()` / `toBeTruthy()`；後者對「功能根本不存在」與「功能存在且正確擋下」給出同一個綠燈。③ 讀 API 回應前先確認信封形狀，並在 helper 的第一行就斷言它。
+- 狀態：已防止
