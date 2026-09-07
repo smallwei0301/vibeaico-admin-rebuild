@@ -28,6 +28,9 @@ playwright-report/
 test-results/
 .playwright/
 
+# 驗收腳本輸出（截圖等，見 scripts/verify/appshell-shell-values.34.cjs）
+scripts/verify/out/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
