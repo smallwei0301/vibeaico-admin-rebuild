@@ -8,6 +8,15 @@ const migrationPath = resolve(
 );
 const sql = readFileSync(migrationPath, 'utf8');
 
+function functionBlock(name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = sql.match(
+    new RegExp(`create or replace function public\\.${escaped}\\([\\s\\S]*?\\$function\\$;`, 'i'),
+  );
+  if (!match) throw new Error(`missing function block: ${name}`);
+  return match[0];
+}
+
 describe('issue #242 predeploy catalog bridge boundary', () => {
   it('creates the shared counter and both catalog RPCs', () => {
     expect(sql).toMatch(/create table if not exists public\.catalog_position_counters/i);
@@ -20,6 +29,16 @@ describe('issue #242 predeploy catalog bridge boundary', () => {
     expect(sql).toContain("resource in ('services', 'products', 'portfolios')");
     expect(sql).toContain("p_lane not in ('public', 'line')");
     expect(sql.match(/tenant_role_at_least\(p_tenant_id, 'MANAGER'\)/g)).toHaveLength(2);
+  });
+
+  it('pins the allocator SECURITY DEFINER boundary and keeps reorder as invoker security', () => {
+    const reserve = functionBlock('reserve_catalog_positions');
+    const reorder = functionBlock('reorder_catalog_items');
+
+    expect(reserve).toMatch(/security\s+definer/i);
+    expect(reserve).toMatch(/set\s+search_path\s+to\s+''/i);
+    expect(reorder).not.toMatch(/security\s+definer/i);
+    expect(reorder).toMatch(/set\s+search_path\s+to\s+''/i);
   });
 
   it('is PREDEPLOY-only: it must not create any ordering unique index', () => {
