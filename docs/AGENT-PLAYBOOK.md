@@ -62,6 +62,8 @@
 | PB-023 | 丟掉 Supabase 的 `error`，會讓「查失敗」冒充「查無資料」 | `const { data } = await …` 捨棄 error；PostgREST 一出錯 `data` 就是 null，於是走進「沒有資料」分支，對使用者宣告一個我們根本沒驗證過的事實。查詢失敗必須與空結果分開處理。 | `CLAUDE.md`（誠實原則）；`14-GAP-AUDIT.md` §1 根因 A |
 | PB-024 | FK constraint 名稱在不同安裝路徑上不同，不可綁進 runtime | canonical（`create table`）與整合測試的 historical overlay 產生的 constraint 名稱不是同一組；PostgREST 的 `!fk_name` embed hint 因此在其中一邊解不開。多條 FK 造成 ambiguous embed 時，改用多次一般查詢。 | `12-TESTING-TDD.md` §1.5；`supabase/local-migrations/**` |
 | PB-025 | mutation 有 entitlement 閘門、read path 沒有，等於留後門 | 讀取路徑若只看「資料庫有沒有資料」，訂閱到期的租戶只要歷史資料還在就照樣讀得到——**用「有沒有資料」代替「有沒有權利」**，且完全沒有症狀。閘門必須在任何 domain SELECT 之前。 | `docs/integration/10-TOUR-DOMAIN.md` §6.1；`docs/integration/09-*` §5 |
+| PB-026 | `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過 | 既有表可能來自另一條安裝路徑（historical overlay），欄位與 check constraint 都不同。migration 顯示成功、什麼都沒建，程式接著對著一個**不是自己定義的契約**寫入，直到某個約束把它擋下來才發現。帶新表的 migration 必須像 `0066` 那樣「加法且會協調」，不能只 `if not exists` 就當作冪等。 | `supabase/migrations/0066_*.sql`（協調範例）；`supabase/local-migrations/**` |
+| PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 
 ## 事件紀錄
 
@@ -396,4 +398,38 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：兩支 handler 在**任何 domain SELECT 之前**先 `isFeatureActive(tenantId, 'TOUR_MODULE')`，未啟用回 `false`（落到既有的 AI／預設回覆，顧客仍有回應）。不對顧客宣告「本店未訂閱」——那是店家的帳務狀態，講了既沒用又洩漏營運資訊。
 - 預防：① **新增任何 domain 讀取路徑時，先問「這個 domain 的 mutation 擋了什麼？讀取有沒有擋一樣的東西？」** 兩側必須用同一個判準（本例讀寫都走 `isFeatureActive`，與 route 的 `requireFeature` 同源）。② 閘門的驗收必須有**負向案例**：主動停用訂閱，逐項斷言看不到任何 domain 內容，`finally` 還原後再驗一次正例——只有負向斷言的話，一個「查詢壞掉」的實作也會全綠。
 - 驗證：`0dc0ca1` 的 `local-isolated-a` 綠，含負向案例（停用 TOUR_MODULE → 行程／團次皆不洩漏行程名、團次清單與輪播按鈕，且不對顧客宣告訂閱狀態）。另一個獨立佐證：補上閘門的那一顆 head 上，三條既有斷言在三個不同位置各自落到 defaultReply，證明閘門真的攔得住。
+- 狀態：已防止
+
+
+### PB-026 — `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8-B；PR #271（`local-isolated-a` 紅，head `ad161ab`）
+- 分類：schema／migration
+- 事件：`0087` 用 `create table if not exists public.tour_orders (...)` 建表。CI 的 `local-isolated` 會套用 historical overlay，而 overlay 的 `0026` **早就建過同名的 `tour_orders`**，欄位不同、還帶著 `#41` 的 `0040` 加上的 check constraint。於是我的 `create table` 是一個 no-op，程式對著 overlay 的契約寫入，`confirm-payment` 回 `500 / 23514`。
+- 證據：`new row for relation "tour_orders" violates check constraint "tour_orders_payment_amounts_nonnegative"`；失敗列的尾巴是 `..., 6000, 0, 0, FULL)` —— 四個**我的 migration 根本沒定義**的欄位（`upfront_required_amount` / `paid_amount` / `refunded_amount` / `deposit_mode_snapshot`）。
+- 根因：把 `if not exists` 當成「冪等」。它只保證**不會報錯**，不保證**結果符合我的定義**。同名表存在時它既不比對也不協調，就只是跳過；而 migration 執行成功這件事，看起來與「表已按我寫的建好」完全一樣。
+- 影響：兩條安裝路徑得到兩個不同契約的同名表，而程式只對其中一個是正確的。在只跑 canonical 的環境會全綠，在有 overlay 的環境才炸——反過來也可能：canonical 少了 overlay 的約束，於是**真正的缺陷（見下）在 canonical 上不會被抓到**。
+- 修正：像 `0066` 那樣改成「加法且會協調」：`alter table ... add column if not exists`，約束用 `pg_constraint` 檢查後才建（避免同一條規則有兩份定義）。
+- 順帶抓到的真缺陷：那條 check 寫著 `(payment_status <> 'PAID' or paid_amount = total_amount)` ——**它是對的**。初版的 `confirm-payment` 只翻 `payment_status = 'PAID'` 旗標、沒寫實收金額，會在資料庫留下一筆「已付款」而實收 0 元的訂單，正是本專案一直在修的那種假宣稱。所以修的是路由與 canonical schema（補 `paid_amount` 與同一個不變量），**不是把測試或約束改成接受它**。
+- 預防：① 新增表的 migration 前，先 `grep -rn "create table .* <name>" supabase/` 查**所有**安裝路徑（含 `local-migrations/**`），確認沒有同名前身。② 若有前身，改寫成協調式：加欄位、補約束、不假設自己是第一個建表的人。③ 別的分支加在同一張表上的 check constraint，要當成**別人已經想過的不變量**先讀一遍——本例它比我的實作更嚴謹。
+- 狀態：已防止
+
+
+### PB-027 — 用「名字出現幾次」代替「那件事真的會發生」
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：4（同一輪內四種形態）
+- Issue／PR／CI：Issue #27、#50、#8；PR #264、#268、#271、#273
+- 分類：稽核方法
+- 事件：同一輪出現四種同型的誤判——
+  1. **規格存在 ≠ 功能可用**：04／06 分冊描述 `imageStorageRef` ＋ preview ＋ 清理 queue，`main` 上零命中（那是未合併的 PR #98 的設計）。
+  2. **路由存在 ≠ 功能可用**：`src/app/api/ai-settings/route.ts` 在 `main` 上齊全、閘門完整，但**全 repo 沒有任何一處呼叫它**；店家按下儲存打的是別的端點。
+  3. **政策提到 ≠ 物件存在**：`p_storage_write` 的允許清單列了 `keyword-reply-images`，我據此推論 bucket 已存在——`bucket_id in (...)` 只是字串比對，Postgres 不會因為政策引用了不存在的 bucket 而抱怨（PB-024 的同族）。
+  4. **符號出現 ≠ 符號被使用**：我用 `grep -c` 數到四支 tour-order service「8 處引用」，據此在 #8 寫下「tour-orders 頁本來就已接 service」。那 8 處全在 `src/services/tours.ts` 裡（一支 service 的 export ＋ 型別就是兩次），頁面實際上四個寫入動作**一個都沒接**。
+- 根因：判準錯了。四者都在問「這個名字在某處出現了嗎」，而該問的是「那件事真的會發生嗎」。名稱出現是**必要非充分**條件，而它剛好很容易 grep 到，於是變成預設判準。
+- 影響：第 4 項是我自己寫進 issue 的錯誤結論，若沒有在實作 #271 時撞到，會直接變成一個假打勾。第 2 項讓一個「已經在對真實顧客做錯事」的缺陷在 issue 上顯示為已完成。
+- 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
+- 預防：① 判準一律改成**「呼叫端在哪裡」**：`grep -n "<symbol>(" <呼叫端檔案>`，而不是 `grep -c "<symbol>" .`。② `grep -c` 的結果**必須連同檔名一起看**（用 `-rn` 或 `-l`，不要用 `-c` 加總）。③ 對「文件說有」「路由檔在」「政策提到」三種線索，一律再走一步查到實際執行路徑；查不到就當作沒有。
 - 狀態：已防止
