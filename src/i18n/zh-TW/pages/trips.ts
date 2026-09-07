@@ -380,6 +380,7 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    mutationFailed: '操作失敗，請稍後再試',
     planNameRequired: '請輸入方案名稱',
     planPriceInvalid: '請輸入有效的基本價格',
     planChildPriceInvalid: '請輸入有效的兒童價格',
