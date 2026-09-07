@@ -58,6 +58,10 @@
 | PB-019 | 「repo 裡沒有」不等於「沒有做過」 | 實作可能躺在一條未併回 `main` 的分支上——而那條分支可能正是線上服務實際在跑的版本。判定「這個功能不存在」之前，先查線上跑的是哪一顆 commit，再查它是不是 `main` 的祖先。 | `docs/AGENT-EXECUTION.md` §7；`docs/DELIVERY-CHAIN.md` |
 | PB-020 | 量測外部打進來的路徑前，先確認它打到哪裡 | 「對正式站量測」與「對 configured endpoint 量測」是兩件事。先唯讀查出目標位址並確認它屬於哪個部署，再開始量；否則數字會被歸因到錯的程式碼上。 | `docs/AGENT-EXECUTION.md` §7 |
 | PB-021 | 改 PR body 修 metadata，對只監聽 `synchronize` 的 workflow 是無效操作 | `pull_request` 的 `types` 不含 `edited` 時，改 body 不會重觸發；而 `rerun_failed_jobs` 重播的是**原始 event payload**（含舊 body），所以重跑同樣讀到舊值。需用該 workflow 自帶的 `workflow_dispatch`。 | `docs/AGENT-EXECUTION.md` §7；`.github/workflows/local-isolated-test.yml` |
+| PB-022 | `.gitignore` 的目錄規則不涵蓋同名 symlink | `node_modules/` 只比對目錄；同名的 symlink 是另一種型別，會被 `git add` 收下，且能通過 typecheck、全量測試、repo-integrity-guard 與全部 CI。rebase 或建 worktree 後必須重讀 `git diff --name-status`。 | `docs/AGENT-EXECUTION.md` §8；`.gitignore` |
+| PB-023 | 丟掉 Supabase 的 `error`，會讓「查失敗」冒充「查無資料」 | `const { data } = await …` 捨棄 error；PostgREST 一出錯 `data` 就是 null，於是走進「沒有資料」分支，對使用者宣告一個我們根本沒驗證過的事實。查詢失敗必須與空結果分開處理。 | `CLAUDE.md`（誠實原則）；`14-GAP-AUDIT.md` §1 根因 A |
+| PB-024 | FK constraint 名稱在不同安裝路徑上不同，不可綁進 runtime | canonical（`create table`）與整合測試的 historical overlay 產生的 constraint 名稱不是同一組；PostgREST 的 `!fk_name` embed hint 因此在其中一邊解不開。多條 FK 造成 ambiguous embed 時，改用多次一般查詢。 | `12-TESTING-TDD.md` §1.5；`supabase/local-migrations/**` |
+| PB-025 | mutation 有 entitlement 閘門、read path 沒有，等於留後門 | 讀取路徑若只看「資料庫有沒有資料」，訂閱到期的租戶只要歷史資料還在就照樣讀得到——**用「有沒有資料」代替「有沒有權利」**，且完全沒有症狀。閘門必須在任何 domain SELECT 之前。 | `docs/integration/10-TOUR-DOMAIN.md` §6.1；`docs/integration/09-*` §5 |
 
 ## 事件紀錄
 
@@ -330,3 +334,66 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：① 修 PR body 上的 CI metadata 後，**先確認目標 workflow 的 `types` 是否含 `edited`**；不含就別等，直接找 `workflow_dispatch` 或推一顆真實 commit。② `rerun_failed_jobs` 只適用於「輸入不變、環境瞬時故障」；**凡是失敗原因來自 PR metadata 的，重跑一定無效**。③ 用 `workflow_dispatch` 前先確認 PB-015 的 `HEAD^ == main` 條件成立，否則會換一個紅燈。
 - 驗證：dispatch 的 run 34097639862 全綠——`classify` success、`local-isolated-a` success（integration 37 檔 246 tests、E2E 18 passed）。
 - 狀態：已防止（規則已落地並在同一輪實際套用）
+
+### PB-022 — `.gitignore` 的目錄規則不涵蓋同名 symlink，於是 `node_modules` 通過了每一道閘門
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #5；PR #254
+- 分類：CI
+- 事件：在 worktree 裡用 `ln -s .../node_modules node_modules` 借用相依套件。rebase 之後 `git add` 把**那條 symlink 本身**收進了索引。它通過了 `npx tsc --noEmit`、1013 條單元測試、`scripts/ci/repo-integrity-guard.mjs`（`ok: true`）與全部 9 道 CI 檢查。只有在我依習慣重讀一次 `git diff --name-status` 時才看見。
+- 證據：`.gitignore` 的 `node_modules/` 尾端有斜線，只比對**目錄**；同名的 symlink 在 git 眼中是 mode `120000` 的 blob，不是目錄，因此不被該規則涵蓋。`git status --short` 會顯示 `?? node_modules`，容易被當成「就是那個被忽略的目錄」而略過。
+- 根因：忽略規則的比對單位是「路徑型別 ＋ 樣式」，不是「名字」。而所有既有閘門檢查的都是**內容**（型別、測試、完整性），沒有一道檢查「這次提交是否包含不該入版控的路徑型別」。
+- 影響：差一步就把一條指向 `/home/user/...` 的絕對路徑 symlink 推進 `main`。它在別人的環境會是一條斷掉的連結，且 `npm ci` 的行為會變得不可預期。
+- 修正：`git rm --cached node_modules`，重新提交。
+- 預防：① **在 worktree 裡借 `node_modules` 之後，push 前一律重讀 `git diff --cached --name-status` 逐檔確認**——不是看 `git status`，因為 `?? node_modules` 在兩種情況下長得一模一樣。② 改用明確列舉的 `git add <path> …`，不要 `git add -A` / `git add .`。③ 綠燈不是「沒問題」的證據，只是「這幾件事沒問題」的證據；閘門沒有涵蓋的類別，綠燈完全不表態。
+- 驗證：修正後 `git diff --cached --name-status` 只剩預期的檔案；`repo-integrity-guard` `trackedCount` 回到預期值。
+- 狀態：已防止（規則已落地並在其後每一個 PR 實際套用）
+
+
+### PB-023 — 丟掉 Supabase 回傳的 `error`，會讓「查失敗」冒充成「查無資料」，並對使用者宣告一個假的已知
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8；PR #258（head `d6d3f4a` → `fe97aed`）
+- 分類：其他（產品誠實性）
+- 事件：LINE webhook 的「行程」handler 寫成 `const { data } = await ctx.admin.from('trips').select(...)`，接著 `if (!data?.length) return replyText(ctx, MSG.tripEmptyGuide)`。PostgREST 查詢失敗時 `data` 是 null，於是它走進「沒有行程」那條路，對顧客說**「目前還沒有上架行程，敬請期待！」**——而店家後台明明上架了。
+- 證據：`local-isolated-a` 紅在 `expected '目前還沒有上架行程，敬請期待！' to contain 'A 店測試行程'`。整條路徑沒有丟出例外、沒有 5xx、webhook 照常回 200。
+- 根因：解構時省略 `error`，把「兩種語意完全不同的結果」（查成功且為空 / 根本沒查成功）合併成同一個 falsy 判斷。這類寫法在 happy path 完全正常，只有在錯誤發生時才顯現，而錯誤發生時它**正好**選了最糟的解釋。
+- 影響：對顧客宣告一個我們根本沒有驗證過的事實（14 分冊 §1 根因 A 的形狀）。它是靜默的：不會紅、不會錯、店家不會發現，只會收到客訴說「我明明上架了」。
+- 修正：接住 `error`，記進 log，回 `false` 讓它落到既有的 AI／預設回覆，**不冒充「查過了，沒有」**。次要資料（方案名稱、最低價）的失敗則只降級不擋主結果。
+- 預防：① **凡是「查不到就對使用者說某件事不存在」的分支，都必須先處理 `error`**；空結果與查詢失敗要走不同的路。② code review 時看到 `const { data } =` 後面接 `if (!data)` 就要問一次「error 呢」。③ 這條同樣適用於「查不到就當作 0／未啟用／沒有權限」的寫法。
+- 驗證：`fe97aed` 之後 `local-isolated-a` 綠；行程輪播、團次清單皆回真實資料。
+- 狀態：已防止
+
+
+### PB-024 — FK constraint 的名稱在 canonical 與 historical overlay 兩條安裝路徑上不同，不可把 runtime 行為綁在名稱上
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8；PR #258（head `d6d3f4a` → `fe97aed`）
+- 分類：TEST DB
+- 事件：`trip_departures` 對 `trips`、對 `trip_plans` 各有**兩條** FK（`0066` 的單欄 FK ＋ `0067` 為 tenant-aware 完整性加的複合 FK），PostgREST 因此拒絕 embed（`PGRST201`）。我改用 `trip_plans!trip_plans_trip_id_fkey(...)` 這種**指定 constraint 名稱**的 hint 來消歧義。
+- 證據：整合測試環境跑的是 `supabase/local-migrations/historical-integration-baseline/0016_tour_domain_core.sql` 先建表，於是 canonical `0066` 的 `create table if not exists` 整段跳過——兩條路徑產生的 constraint 名稱不是同一組，hint 在其中一邊解不開。
+- 根因：constraint 名稱是**安裝過程的產物**，不是 schema 契約的一部分。同一份 schema 由不同 migration 路徑建成時，名稱可以完全不同，而且沒有任何地方保證它們一致。
+- 影響：把「回覆送不送得出去」綁在一個純命名的差異上。更糟的是它與 PB-023 疊加：embed 失敗 → `data` 為 null → 靜默地變成「沒有行程」。
+- 修正：完全不用 embed，改成兩次一般查詢（先查父表取 id，再以 `.in()` 查子表），在 JS 端組合。多一次 round-trip，換掉整類問題。
+- 預防：① **不要把 constraint／index 名稱寫進 runtime 程式碼。** 需要消歧義時，優先改成多次查詢或明確的 join 欄位。② 若真的必須用 FK hint，該名稱要有 migration 明確 `add constraint <name>` 保證，且兩條安裝路徑都要有。③ 「讀 migration 推論名稱」不算驗證——只有對真實 schema 跑過才算。
+- 驗證：`fe97aed` 之後 `local-isolated-a` 綠（fresh local Supabase 從 0001 建庫）。
+- 狀態：已防止
+
+
+### PB-025 — mutation 有 entitlement 閘門、read path 沒有，等於用「有沒有資料」代替「有沒有權利」
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8；PR #258（Sol audit P1，head `08e1983`）
+- 分類：權限
+- 事件：`replyTrips()` / `replyDepartures()` 進函式後第一個動作就是查 `trips`，沒有任何 entitlement 檢查。而 `docs/integration/10-TOUR-DOMAIN.md` §6.1 的原文是「導遊模組新增內建關鍵字組，**只在租戶有 `TOUR_MODULE` 時顯示**」。
+- 證據：core mutation API 早就同時擋 `MANAGER` 與 `TOUR_MODULE`（同節下方），但讀取路徑沒有。訂閱已到期或從未訂閱的租戶，只要資料庫還留著歷史的 PUBLISHED 行程，顧客就照樣從 LINE 讀得到行程與名額。
+- 根因：閘門是在「寫入」那一側設計的，讀取路徑被當成「反正沒有資料就不會回」。但**資料的存在與權利的存在是兩件事**：訂閱到期不會刪資料，於是「沒有資料」這個代理條件在最需要它的時候剛好失效。
+- 影響：entitlement 可被繞過，且**完全沒有症狀**——不會紅、不會錯、店家也不會發現。是最難靠測試自然抓到的一類缺陷（要抓到它，測試必須主動把訂閱關掉）。
+- 修正：兩支 handler 在**任何 domain SELECT 之前**先 `isFeatureActive(tenantId, 'TOUR_MODULE')`，未啟用回 `false`（落到既有的 AI／預設回覆，顧客仍有回應）。不對顧客宣告「本店未訂閱」——那是店家的帳務狀態，講了既沒用又洩漏營運資訊。
+- 預防：① **新增任何 domain 讀取路徑時，先問「這個 domain 的 mutation 擋了什麼？讀取有沒有擋一樣的東西？」** 兩側必須用同一個判準（本例讀寫都走 `isFeatureActive`，與 route 的 `requireFeature` 同源）。② 閘門的驗收必須有**負向案例**：主動停用訂閱，逐項斷言看不到任何 domain 內容，`finally` 還原後再驗一次正例——只有負向斷言的話，一個「查詢壞掉」的實作也會全綠。
+- 驗證：`0dc0ca1` 的 `local-isolated-a` 綠，含負向案例（停用 TOUR_MODULE → 行程／團次皆不洩漏行程名、團次清單與輪播按鈕，且不對顧客宣告訂閱狀態）。另一個獨立佐證：補上閘門的那一顆 head 上，三條既有斷言在三個不同位置各自落到 defaultReply，證明閘門真的攔得住。
+- 狀態：已防止
