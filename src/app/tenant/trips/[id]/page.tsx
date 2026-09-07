@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTrip, listTripAddons, listTripDepartures, listTripPlans, saveTripPlan,
+  batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan,
+  getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
+  saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
 } from '@/services/tours';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
@@ -30,6 +32,7 @@ import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessT
 import { APP_URL, USE_MOCK } from '@/config/env';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
+import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
@@ -93,6 +96,7 @@ export default function TripDetailPage() {
   const [planEditorMode, setPlanEditorMode] = React.useState<PlanEditorMode>('quick');
   const [showChildPrice, setShowChildPrice] = React.useState(false);
   const [savingPlan, setSavingPlan] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   const [batchOpen, setBatchOpen] = React.useState(false);
@@ -129,10 +133,41 @@ export default function TripDetailPage() {
   const lines = (arr: string[]) => arr.join('\n');
   const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-  const saveBasic = () => {
+  /**
+   * issue #8：詳情頁的寫入面原本全是假的——`saveBasic` 只 `setTrip(form)` 再報成功，
+   * 店家改完標題按儲存、重新整理就恢復舊值。端點（`PUT /api/trips/:id`）與 service
+   * （`updateTrip`）早就都在 main 上，缺的只有這一層接線。
+   *
+   * 三條規則與列表頁（PR #266）一致：
+   *   ① 先呼叫端點，**成功之後才** `await load()` 重讀，不做樂觀更新。
+   *   ② 失敗顯示後端的真實訊息（`ApiError.message`），店家才分得出是未訂閱
+   *      TOUR_MODULE、代稱重複（409）還是網路問題。
+   *   ③ 失敗時不關閉對話框、不清掉 draft，讓店家可以重試。
+   */
+  const runAction = async (
+    fn: () => Promise<unknown>,
+    successMessage: string | (() => string),
+  ) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      toast.show(typeof successMessage === 'function' ? successMessage() : successMessage);
+      return true;
+    } catch (e) {
+      toast.show(
+        `${t.messages.actionFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveBasic = async () => {
     if (!form) return;
-    setTrip(form);
-    toast.show(t.messages.updated);
+    await runAction(() => updateTrip(tripId, form), t.messages.updated);
   };
 
   /* ------------------------------------------------------------- 方案 */
@@ -261,24 +296,18 @@ export default function TripDetailPage() {
   };
 
   /* ------------------------------------------------------------- 團次 */
-  const saveDeparture = () => {
+  const saveDeparture = async () => {
     if (!departureDraft) return;
-    const plan = plans.find((p) => p.id === departureDraft.planId);
     if (departureDraft.capacity < departureDraft.seatsBooked) {
       toast.show(t.departures.capacityTooLow(departureDraft.seatsBooked), 'danger');
       return;
     }
     const isNew = !departureDraft.id;
-    const saved: TripDeparture = {
-      ...departureDraft,
-      id: departureDraft.id || `dp_new_${departures.length + 1}`,
-      planName: plan?.name ?? '',
-    };
-    setDepartures((prev) => (isNew
-      ? [...prev, saved].sort((a, b) => a.departsOn.localeCompare(b.departsOn))
-      : prev.map((d) => (d.id === saved.id ? saved : d))));
-    setDepartureDraft(null);
-    toast.show(isNew ? t.messages.departureCreated : t.messages.departureUpdated);
+    const ok = await runAction(
+      () => saveTripDeparture(tripId, departureDraft),
+      isNew ? t.messages.departureCreated : t.messages.departureUpdated,
+    );
+    if (ok) setDepartureDraft(null);
   };
 
   const batchCount = React.useMemo(() => {
@@ -293,53 +322,60 @@ export default function TripDetailPage() {
     return n;
   }, [batch]);
 
-  const runBatch = () => {
+  /**
+   * 批次開團的日期展開由**後端**負責（`POST /api/trips/:id/departures/batch`）。
+   * `batchCount` 僅供對話框預覽筆數；成功訊息一律用後端回傳的 `created`／`skipped`
+   * ——撞到已存在的同方案同日同時團次時後端會略過，前端自己數出來的筆數會多算，
+   * 照那個數字報成功就是另一則編出來的訊息（開了 7 團，實際只開了 1 團）。
+   */
+  const runBatch = async () => {
     const plan = plans.find((p) => p.id === batch.planId);
     if (!plan || batchCount === 0) return;
-    const created: TripDeparture[] = [];
-    const from = new Date(batch.from);
-    const to = new Date(batch.to);
-    let i = 0;
-    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      if (!batch.weekdays.includes(d.getDay())) continue;
-      i += 1;
-      created.push({
-        id: `dp_batch_${i}`, tripId, planId: plan.id, planName: plan.name,
-        departsOn: d.toISOString().slice(0, 10), startTime: batch.startTime,
-        capacity: batch.capacity, seatsBooked: 0, status: 'OPEN', note: '',
-      });
-    }
-    setDepartures((prev) => [...prev, ...created]
-      .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
-    setBatchOpen(false);
-    toast.show(t.messages.departureBatchCreated(created.length));
+    let result = { created: 0, skipped: 0 };
+    const ok = await runAction(
+      async () => {
+        result = await batchCreateDepartures(tripId, {
+          planId: plan.id,
+          from: batch.from,
+          to: batch.to,
+          weekdays: batch.weekdays,
+          startTime: batch.startTime,
+          capacity: batch.capacity,
+        });
+      },
+      () => t.messages.departureBatchCreated(result.created)
+        + (result.skipped > 0 ? t.messages.departureBatchSkipped(result.skipped) : ''),
+    );
+    if (ok) setBatchOpen(false);
   };
 
-  const setDepartureStatus = (id: string, status: DepartureStatus) => {
-    setDepartures((prev) => prev.map((d) => (d.id === id ? { ...d, status } : d)));
-    toast.show(t.messages.departureUpdated);
+  const setDepartureStatus = async (id: string, status: DepartureStatus) => {
+    await runAction(
+      () => saveTripDeparture(tripId, { id, status }),
+      t.messages.departureUpdated,
+    );
   };
 
   /* ------------------------------------------------------------- 加購 */
-  const saveAddon = () => {
+  const saveAddon = async () => {
     if (!addonDraft) return;
-    const isNew = !addonDraft.id;
-    const saved: TripAddon = isNew
-      ? { ...addonDraft, id: `ad_new_${addons.length + 1}`, sortOrder: addons.length + 1 }
-      : addonDraft;
-    setAddons((prev) => (isNew ? [...prev, saved] : prev.map((a) => (a.id === saved.id ? saved : a))));
-    setAddonDraft(null);
-    toast.show(t.messages.addonSaved);
+    const ok = await runAction(
+      () => saveTripAddon(tripId, addonDraft), t.messages.addonSaved,
+    );
+    if (ok) setAddonDraft(null);
   };
 
   /* ------------------------------------------------------------- 刪除 */
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!deleteTarget) return;
     const { kind, id } = deleteTarget;
-    if (kind === 'plan') { setPlans((p) => p.filter((x) => x.id !== id)); toast.show(t.messages.planDeleted); }
-    if (kind === 'addon') { setAddons((a) => a.filter((x) => x.id !== id)); toast.show(t.messages.addonDeleted); }
-    if (kind === 'departure') { setDepartures((d) => d.filter((x) => x.id !== id)); toast.show(t.messages.departureDeleted); }
-    setDeleteTarget(null);
+    const [remove, message] = kind === 'plan'
+      ? [() => deleteTripPlan(id), t.messages.planDeleted] as const
+      : kind === 'addon'
+        ? [() => deleteTripAddon(id), t.messages.addonDeleted] as const
+        : [() => deleteTripDeparture(id), t.messages.departureDeleted] as const;
+    const ok = await runAction(remove, message);
+    if (ok) setDeleteTarget(null);
   };
 
   if (loading || !form || !trip) {
@@ -590,7 +626,7 @@ export default function TripDetailPage() {
             <Button variant="outline" onClick={() => router.push('/tenant/trips')}>
               {t.actions.back}
             </Button>
-            <Button onClick={saveBasic}>{t.actions.save}</Button>
+            <Button onClick={saveBasic} loading={busy}>{t.actions.save}</Button>
           </>
         }
       />
@@ -601,7 +637,14 @@ export default function TripDetailPage() {
           : trip.midaoListing === 'LISTED' ? 'success' : 'info'}
         className="mb-3"
         action={trip.midaoListing === 'NONE' || trip.midaoListing === 'REJECTED' ? (
-          <Button size="sm" variant="outline">
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy}
+            onClick={() => runAction(
+              () => requestMidaoListing(tripId), t.messages.midaoRequested,
+            )}
+          >
             <Send size={13} />{t.actions.requestMidao}
           </Button>
         ) : undefined}
@@ -683,6 +726,7 @@ export default function TripDetailPage() {
                     placeholder={t.form.taglinePlaceholder}
                     onChange={(e) => patch({ tagline: e.target.value })}
                   />
+                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.summaryLabel}</Label>
@@ -726,6 +770,7 @@ export default function TripDetailPage() {
                       onChange={(e) => patch({ exclusions: toLines(e.target.value) })}
                     />
                     <FormText>{t.form.listHelp}</FormText>
+                    <FormText>{t.form.notPersistedYet}</FormText>
                   </FormGroup>
                 </div>
                 <FormGroup>
@@ -736,6 +781,7 @@ export default function TripDetailPage() {
                     onChange={(e) => patch({ notices: toLines(e.target.value) })}
                   />
                   <FormText>{t.form.listHelp}</FormText>
+                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.safetyLabel}</Label>
@@ -792,6 +838,7 @@ export default function TripDetailPage() {
                     value={form.meetingPointMapUrl}
                     onChange={(e) => patch({ meetingPointMapUrl: e.target.value })}
                   />
+                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
                 <FormGroup>
                   <Label>{t.form.refundLabel}</Label>
@@ -803,6 +850,7 @@ export default function TripDetailPage() {
                       <option key={k} value={k}>{t.form.refundOptions[k]}</option>
                     ))}
                   </Select>
+                  <FormText>{t.form.notPersistedYet}</FormText>
                 </FormGroup>
               </CardBody>
             </Card>
@@ -1168,7 +1216,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDepartureDraft(null)}>{common.cancel}</Button>
-            <Button onClick={saveDeparture}>{common.save}</Button>
+            <Button onClick={saveDeparture} loading={busy}>{common.save}</Button>
           </>
         }
       >
@@ -1227,7 +1275,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setBatchOpen(false)}>{common.cancel}</Button>
-            <Button onClick={runBatch} disabled={batchCount === 0}>
+            <Button onClick={runBatch} disabled={batchCount === 0} loading={busy}>
               {t.departures.batch.confirm}
             </Button>
           </>
@@ -1298,7 +1346,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setAddonDraft(null)}>{common.cancel}</Button>
-            <Button onClick={saveAddon}>{common.save}</Button>
+            <Button onClick={saveAddon} loading={busy}>{common.save}</Button>
           </>
         }
       >
