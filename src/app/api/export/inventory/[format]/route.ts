@@ -9,6 +9,11 @@ import {
   type InventoryLogType,
 } from '@/server/inventory-log';
 import { inventoryPage } from '@/i18n/zh-TW/pages/inventory';
+import { buildXlsx, xlsxResponse, type XlsxCell } from '@/server/xlsx';
+
+// issue #246 / 14-GAP-AUDIT §8.5：「庫存匯出 CSV 與 Excel 兩者都做」。
+// 在此之前只有 csv，其餘格式一律 400，裁示的另一半從未落地。
+const SUPPORTED_FORMATS = ['csv', 'xlsx'] as const;
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
 const EXPORT_PAGE_SIZE = 1000;
@@ -52,8 +57,8 @@ export const GET = handle(async (req, { params }) => {
   await requireFeature(tenant.tenantId, 'INVENTORY');
 
   const { format } = await params;
-  if (format !== 'csv') {
-    throw new ApiHttpError(400, '目前僅支援 CSV 匯出', ERR.VALIDATION);
+  if (!(SUPPORTED_FORMATS as readonly string[]).includes(format)) {
+    throw new ApiHttpError(400, '目前僅支援 CSV 與 Excel 匯出', ERR.VALIDATION);
   }
 
   const queryParams = querySchema.parse(Object.fromEntries(new URL(req.url).searchParams));
@@ -82,19 +87,26 @@ export const GET = handle(async (req, { params }) => {
     .map(mapInventoryLog)
     .filter((log) => !queryParams.type || log.type === queryParams.type);
 
-  const lines = [HEADERS.map(csvCell).join(',')];
-  for (const log of rows) {
-    lines.push([
-      csvCell(taipeiDateTime(log.createdAt)),
-      csvCell(log.productName),
-      csvCell(inventoryPage.types[log.type as InventoryLogType] ?? log.type),
-      csvCell(log.quantity),
-      csvCell(log.stockBefore),
-      csvCell(log.stockAfter),
-      csvCell(log.reason),
-      csvCell(log.operator ?? inventoryPage.labels.system),
-    ].join(','));
+  // 兩種格式共用同一份攤平結果，避免欄位在兩條路徑上各自漂移。
+  const cells: XlsxCell[][] = rows.map((log) => [
+    taipeiDateTime(log.createdAt),
+    log.productName,
+    inventoryPage.types[log.type as InventoryLogType] ?? log.type,
+    log.quantity,
+    log.stockBefore,
+    log.stockAfter,
+    log.reason,
+    log.operator ?? inventoryPage.labels.system,
+  ]);
+
+  if (format === 'xlsx') {
+    const fileName = `inventory-${taipeiTodayDateString()}.xlsx`;
+    return xlsxResponse(fileName, await buildXlsx('庫存異動', HEADERS, cells));
   }
+
+  // csv 分支的行為刻意一字未改：BOM、CRLF、欄位順序與檔名慣例都與 #246 之前相同。
+  const lines = [HEADERS.map(csvCell).join(',')];
+  for (const cell of cells) lines.push(cell.map(csvCell).join(','));
 
   const csv = '\uFEFF' + lines.join('\r\n') + '\r\n';
   return new Response(csv, {
