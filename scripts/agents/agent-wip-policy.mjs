@@ -283,9 +283,10 @@ export function decideTestValidation({
         return result(false, "invalid_main_dispatch_pr", "A main_manual dispatch must not name a TEST lane PR");
       }
       const parents = Array.isArray(currentCommit?.parents) ? currentCommit.parents : [];
-      const parentShas = parents.map((parent) => typeof parent === "string" ? parent : parent?.sha);
-      if (currentCommit?.sha !== expectedHead || !parentShas.includes(baseRevision)) {
-        return result(false, "invalid_main_dispatch_base", "base_revision must be an authenticated parent of the dispatched main head");
+      const firstParent = parents[0];
+      const firstParentSha = typeof firstParent === "string" ? firstParent : firstParent?.sha;
+      if (currentCommit?.sha !== expectedHead || firstParentSha !== baseRevision) {
+        return result(false, "invalid_main_dispatch_base", "base_revision must be the authenticated first parent of the dispatched main head");
       }
       return docsOnly
         ? result(false, "docs_only")

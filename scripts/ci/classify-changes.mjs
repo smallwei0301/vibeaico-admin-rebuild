@@ -169,13 +169,10 @@ export function classifyEvent(eventName, event, runGit = defaultRunGit) {
 function withRevisions(result, baseRevision = '', headRevision = '') {
   // Revisions cross a line-based GitHub output boundary. Never preserve rejected
   // dispatch input here: an embedded CR/LF could create a forged output key.
-  // A classifier failure also has no verified candidate pair, so leave both
-  // values empty and make every downstream consumer fail its explicit contract.
-  const accepted = result.reason !== 'classifier_failed';
   return {
     ...result,
-    baseRevision: accepted && isUsableRevision(baseRevision) ? baseRevision : '',
-    headRevision: accepted && isUsableRevision(headRevision) ? headRevision : '',
+    baseRevision: isUsableRevision(baseRevision) ? baseRevision : '',
+    headRevision: isUsableRevision(headRevision) ? headRevision : '',
   };
 }
 

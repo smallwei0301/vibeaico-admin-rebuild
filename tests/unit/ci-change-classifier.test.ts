@@ -134,6 +134,27 @@ describe('CI change classifier', () => {
       .toMatchObject({ docsOnly: false, reason: 'classifier_failed', detail: 'git-or-parse-failure' });
   });
 
+  it('preserves valid PR and main-push revisions after a classifier parse failure', () => {
+    const noGit = () => { throw new Error('git failed'); };
+
+    expect(classifyEvent('pull_request', {
+      pull_request: { base: { sha: baseSha }, head: { sha: headSha } },
+    }, noGit)).toMatchObject({
+      reason: 'classifier_failed',
+      detail: 'git-or-parse-failure',
+      baseRevision: baseSha,
+      headRevision: headSha,
+    });
+    expect(classifyEvent('push', {
+      ref: 'refs/heads/main', before: baseSha, after: headSha,
+    }, noGit)).toMatchObject({
+      reason: 'classifier_failed',
+      detail: 'git-or-parse-failure',
+      baseRevision: baseSha,
+      headRevision: headSha,
+    });
+  });
+
 
   it('fails closed before git for invalid extracted PR and main-push revisions', () => {
     const gitCalls: string[][] = [];
@@ -239,6 +260,109 @@ describe('CI change classifier', () => {
 
       expect(readFileSync(outputPath, 'utf8')).toContain(`docs_only=true\n`);
       expect(readFileSync(outputPath, 'utf8')).toContain(`base_revision=${prBase}\nhead_revision=${mergeHead}\n`);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('uses a merge first-parent base so a candidate migration cannot take the docs-only route', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-migration-merge-'));
+    try {
+      git(directory, 'init', '--initial-branch=main');
+      git(directory, 'config', 'user.email', 'ci@example.test');
+      git(directory, 'config', 'user.name', 'CI test');
+      mkdirSync(join(directory, 'supabase', 'migrations'), { recursive: true });
+      writeFileSync(join(directory, 'docs.md'), 'base\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'base');
+
+      git(directory, 'checkout', '-b', 'candidate');
+      writeFileSync(join(directory, 'supabase', 'migrations', '0084_candidate.sql'), 'select 84;\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'candidate migration');
+
+      git(directory, 'checkout', 'main');
+      mkdirSync(join(directory, 'supabase', 'migrations'), { recursive: true });
+      writeFileSync(join(directory, 'supabase', 'migrations', '0085_main.sql'), 'select 85;\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'main migration');
+      const firstParent = git(directory, 'rev-parse', 'HEAD');
+      git(directory, 'merge', '--no-ff', 'candidate', '-m', 'merge candidate migration');
+      const mergeHead = git(directory, 'rev-parse', 'HEAD');
+      const [merge, actualFirstParent, secondParent] = git(directory, 'rev-list', '--parents', '-n', '1', 'HEAD').split(' ');
+      expect(merge).toBe(mergeHead);
+      expect(actualFirstParent).toBe(firstParent);
+      expect(secondParent).toHaveLength(40);
+
+      const eventPath = join(directory, 'event.json');
+      const outputPath = join(directory, 'github-output.txt');
+      writeFileSync(eventPath, JSON.stringify({
+        inputs: { base_revision: firstParent, expected_head: mergeHead },
+      }));
+      execFileSync(process.execPath, [classifierScript], {
+        cwd: directory,
+        env: {
+          ...process.env,
+          GITHUB_EVENT_NAME: 'workflow_dispatch',
+          GITHUB_EVENT_PATH: eventPath,
+          GITHUB_OUTPUT: outputPath,
+        },
+      });
+
+      const githubOutput = readFileSync(outputPath, 'utf8');
+      expect(githubOutput).toContain('docs_only=false\n');
+      expect(githubOutput).toContain('runtime_path=supabase/migrations/0084_candidate.sql\n');
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('demonstrates why a merge second-parent base must be rejected before docs-only routing', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ci-classifier-second-parent-'));
+    try {
+      git(directory, 'init', '--initial-branch=main');
+      git(directory, 'config', 'user.email', 'ci@example.test');
+      git(directory, 'config', 'user.name', 'CI test');
+      mkdirSync(join(directory, 'docs'));
+      mkdirSync(join(directory, 'supabase', 'migrations'), { recursive: true });
+      writeFileSync(join(directory, 'docs', 'base.md'), 'base\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'base');
+
+      git(directory, 'checkout', '-b', 'candidate');
+      writeFileSync(join(directory, 'supabase', 'migrations', '0084_candidate.sql'), 'select 84;\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'candidate migration');
+      const secondParent = git(directory, 'rev-parse', 'HEAD');
+
+      git(directory, 'checkout', 'main');
+      writeFileSync(join(directory, 'docs', 'main.md'), 'main docs\n');
+      git(directory, 'add', '.');
+      git(directory, 'commit', '-m', 'main docs');
+      const firstParent = git(directory, 'rev-parse', 'HEAD');
+      git(directory, 'merge', '--no-ff', 'candidate', '-m', 'merge candidate migration');
+      const mergeHead = git(directory, 'rev-parse', 'HEAD');
+
+      const classify = (baseRevision: string, outputName: string) => {
+        const eventPath = join(directory, `${outputName}.json`);
+        const outputPath = join(directory, `${outputName}.txt`);
+        writeFileSync(eventPath, JSON.stringify({
+          inputs: { base_revision: baseRevision, expected_head: mergeHead },
+        }));
+        execFileSync(process.execPath, [classifierScript], {
+          cwd: directory,
+          env: {
+            ...process.env,
+            GITHUB_EVENT_NAME: 'workflow_dispatch',
+            GITHUB_EVENT_PATH: eventPath,
+            GITHUB_OUTPUT: outputPath,
+          },
+        });
+        return readFileSync(outputPath, 'utf8');
+      };
+
+      expect(classify(firstParent, 'first-parent')).toContain('docs_only=false\n');
+      expect(classify(secondParent, 'second-parent')).toContain('docs_only=true\n');
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

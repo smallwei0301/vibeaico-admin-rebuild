@@ -343,20 +343,25 @@ describe("shared TEST owner policy", () => {
     })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_test_lane_1" });
   });
 
-  it("requires main_manual to bind the selected head to an authenticated parent", () => {
+  it("requires main_manual to bind the selected head to its authenticated first parent", () => {
     const head = shaFor(70);
-    const base = shaFor(71);
+    const firstParent = shaFor(71);
+    const secondParent = shaFor(72);
     const dispatch = {
       eventName: "workflow_dispatch",
       ref: "refs/heads/main",
       sha: head,
-      inputs: { dispatch_reason: "main_manual", expected_head: head, base_revision: base },
-      currentCommit: { sha: head, parents: [{ sha: base }] },
+      inputs: { dispatch_reason: "main_manual", expected_head: head, base_revision: firstParent },
+      currentCommit: { sha: head, parents: [{ sha: firstParent }, { sha: secondParent }] },
     };
 
     expect(decideTestValidation(dispatch)).toMatchObject({ runTestValidation: true, reason: "manual_main_exact_head" });
     expect(decideTestValidation({ ...dispatch, currentCommit: { sha: head, parents: [] } }))
       .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, base_revision: secondParent },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
     expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, test_lane_pr: "30" } }))
       .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_pr" });
   });
