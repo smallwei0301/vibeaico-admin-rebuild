@@ -324,13 +324,57 @@
 > Midao 申請、詳情頁的全部儲存都只 setState + toast，「新增行程」是空 onClick）；
 > `src/services/tours.ts` real 分支呼叫的 publish/departures/tour-orders 等多支
 > route **不存在**（接上即 404）；12 §4 指定的 tours.10 測試零檔。詳見 14 分冊。
+>
+> ✅ **2026-09-07 更新**：上段描述的寫入面假成功，`trips` 兩頁已修好
+> （PR #266 列表頁 squash `b5a820c`、PR #267 詳情頁 squash `86648dc`），
+> route 也不再是「接上即 404」（`0066`–`0068` 建了 trips/plans/departures/addons
+> 與對應路由，本輪另補齊 `DELETE /api/trip-departures/:id`）。
+> **`tour_orders` 表與 `reserve_seats` rpc 仍不在 `main` 上**，這一件事直接決定了
+> 下面哪幾格還打不了勾。逐頁實況見 14 分冊 §7.4.2。
 
 - [ ] migration 0012（trips/plans/departures/tour_orders/tenant_payment_methods + reserve_seats rpc）
+
+      **四項中兩項成立、兩項不存在。** `trip_departures` 與 `trip_addons` 由
+      `0066_issue_8_tour_domain_core.sql` 建立（`0067` 補 tenant-aware 複合 FK 與索引、
+      `0068` 收緊 REST DML ACL），已在 `main`。**`tour_orders` 與 `reserve_seats` rpc
+      在 `main` 上完全不存在**（`git grep` 零命中），屬 #8-B，需要新 migration ＋
+      擁有者對正式庫 DDL 的逐次具名授權。
+
 - [ ] 並發下單搶最後一席恰好一成一敗（TOUR_001）
+
+      整個前提（seats 的原子扣減 rpc）尚未存在。屬 #8-B。
+
 - [ ] 綠界 sandbox 全流程 + callback 冪等；匯款後五碼回報 + 確認收款
 - [ ] cron tour-order-expiry 釋放逾期單名額
 - [ ] 後台三個新頁（行程/團次/旅遊訂單）+ TOUR_MODULE 功能旗標
-- [ ] LINE「行程」指令回 Flex 輪播
+
+      **三頁中兩頁完成、一頁被 schema 擋住。** `/tenant/trips` 列表（PR #266）與
+      `/tenant/trips/[id]` 詳情（PR #267）的寫入面已全部接上真實端點：共用 `runAction`
+      —— 先呼叫端點、成功之後才 `await load()` 重讀（不做樂觀更新）、失敗顯示後端的
+      `ApiError.message`、失敗不關閉對話框。`/tenant/tour-orders` 頁**本來就已接
+      service**，但那些端點依賴不存在的 `tour_orders` 表，接線在、鏈路不通。
+      TOUR_MODULE 閘門在四張表的每一支 mutation 上都有（`tours.10` 的 403 FEAT_001
+      矩陣逐支驗證），本輪把新增的 DELETE 也加進該矩陣。
+
+      ⚠️ 本輪記下的一條通則（14 §7.4.2 ①）：**刻意留白的端點，必須連同 UI 一起留白。**
+      `DELETE /api/trip-departures/:id` 原本以註解宣告「留給 #8-B」，但詳情頁的刪除鍵
+      沒有跟著停用，於是留下的不是缺口而是一顆假成功。
+
+- [x] LINE「行程」指令回 Flex 輪播
+
+      **PR #258 已合併（squash `fd87b9b`）。** `src/server/trip-flex.ts` 的
+      `buildTripCarousel()` 是全專案唯一組行程輪播的地方；`line-events.ts` 的
+      `case 'TRIP'` / `case 'DEPARTURE'` 改走 `replyTrips()` / `replyDepartures()`，
+      兩支各自先過 `isFeatureActive(tenantId, 'TOUR_MODULE')` 才做任何查詢。
+      單元 `tests/unit/trip-flex.08.test.ts` 23 案（hero 只收 https、text 不得為空字串、
+      `minPrice=null` 的「價格洽詢」與 `minPrice=0` 的真免費分得開、12 張上限截斷、
+      uri 含跳脫）；整合由 exact head 的 `local-isolated-a`（fresh local Supabase
+      從 `0001` 建庫）實跑，含 TOUR_MODULE 停用後不洩漏行程名的負向案例。
+
+      ⚠️ `case 'ORDER'`（我的訂單）**維持「準備中」，而且那是真的**：`tour_orders`
+      不存在，沒有任何地方查得到旅遊訂單。
+      ⚠️ 「Flex 過 LINE 官方 validate/reply 驗證」未執行——需要真實 channel token，
+      不屬 CI 可重跑資產（同 #6 的同名子項）。
 
 ## Phase 9 — 旅客與公開 API（11 分冊）
 - [ ] migration 0013（traveler_profiles/trip_reviews/partner_clients + customers.traveler_user_id）
