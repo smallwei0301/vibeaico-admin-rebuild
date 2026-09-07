@@ -11,7 +11,8 @@ import { common } from '@/i18n/zh-TW/common';
 import { CountBadge } from '@/components/ui/Badge';
 import { cn } from '@/lib/utils';
 
-type Counts = Record<string, number>;
+/** 可能缺 key（沒有資料來源的徽章，如 pendingTourOrderBadge，見 #34）——缺 key 視同 0，不畫徽章。 */
+type Counts = Partial<Record<string, number>>;
 
 /**
  * 側邊欄 — 1:1 對應原站 #sidebar。

@@ -24,8 +24,10 @@ export function Topbar({
   currentTenant: TenantSummary;
   /** 切換目前操作的店家（真實後端對應 POST /api/auth/switch-tenant） */
   onSwitchTenant?: (tenantId: string) => void;
-  userName: string;
-  setupPercent: number;
+  /** null = 尚未知道（loading 或該次讀取失敗）— 不可用假名字頂替，顯示 common.topbar.userFallback */
+  userName: string | null;
+  /** null = 尚未知道（loading 或該次讀取失敗）— 顯示「--」，不可用假百分比頂替 */
+  setupPercent: number | null;
 }) {
   const [shopMenu, setShopMenu] = React.useState(false);
   const [userMenu, setUserMenu] = React.useState(false);
@@ -42,12 +44,12 @@ export function Topbar({
           <Menu size={20} />
         </button>
 
-        {setupPercent < 100 && (
+        {(setupPercent === null || setupPercent < 100) && (
           <Link
             href="/tenant/settings"
             className="hidden items-center gap-2 rounded-pill bg-neutral-100 px-3 py-1.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-200 sm:flex"
           >
-            <span className="tabular-nums">{setupPercent}%</span>
+            <span className="tabular-nums">{setupPercent === null ? '--' : `${setupPercent}%`}</span>
             <span>{common.topbar.setupProgress}</span>
           </Link>
         )}
@@ -100,9 +102,9 @@ export function Topbar({
             onClick={() => { setUserMenu((v) => !v); setShopMenu(false); }}
           >
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-              {userName.charAt(0).toUpperCase()}
+              {(userName ?? common.topbar.userFallback).charAt(0).toUpperCase()}
             </span>
-            <span className="hidden sm:inline">{userName}</span>
+            <span className="hidden sm:inline">{userName ?? common.topbar.userFallback}</span>
             <ChevronDown size={14} />
           </button>
           {userMenu && (

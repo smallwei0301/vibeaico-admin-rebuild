@@ -9,7 +9,8 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
 import { USE_MOCK } from '@/config/env';
-import { myTenants, switchTenant as switchTenantApi } from '@/services';
+import { myTenants, switchTenant as switchTenantApi, sidebarCounts, currentUserName, getSetupStatus } from '@/services';
+import type { SidebarCounts } from '@/services/shell';
 import type { TenantSummary } from '@/lib/types';
 
 /** real 模式下清單尚未從 /api/auth/my-tenants 載入完成時的暫用值，避免 current 為 undefined */
@@ -69,10 +70,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const tenants = USE_MOCK ? MOCK_TENANTS : remoteTenants;
   const current = tenants.find((tt) => tt.id === tenantId) ?? tenants[0] ?? EMPTY_TENANT;
   const businessType = current.businessType ?? 'LOCAL_SHOP';
-  if (USE_MOCK) {
+
+  /**
+   * Sidebar 徽章 / 開店進度 / 使用者名稱 —— 三個「外框值」，mock 與 real
+   * 完全分開兩條路，real 分支永遠不讀 MOCK_*（#34）：
+   *   - mock：切業態時同步讀 MOCK_SIDEBAR_COUNTS 等 live binding（維持原本骨架
+   *     demo 秒切效果，不额外跑 adapt() 的假網路延遲）。
+   *   - real：掛載時各自打真實端點，三者獨立 loading/unknown/real，
+   *     一個失敗不拖垮其他兩個（見 src/services/shell.ts）。
+   * counts/setupPercent/userName 為 null／{} 代表「尚未知道」，不是 0 或假名字。
+   */
+  const [counts, setCounts] = React.useState<SidebarCounts>(() => (USE_MOCK ? MOCK_SIDEBAR_COUNTS : {}));
+  const [setupPercent, setSetupPercent] = React.useState<number | null>(
+    () => (USE_MOCK ? MOCK_SETUP_STATUS.percent : null),
+  );
+  const [userName, setUserName] = React.useState<string | null>(() => (USE_MOCK ? MOCK_USER.name : null));
+
+  React.useEffect(() => {
+    if (!USE_MOCK) return;
     // 骨架模式：切換店家時整份假資料換成該業態的版本（見 src/mock/index.ts）
     applyMockMode(businessType);
-  }
+    setCounts(MOCK_SIDEBAR_COUNTS);
+    setSetupPercent(MOCK_SETUP_STATUS.percent);
+    setUserName(MOCK_USER.name);
+  }, [businessType]);
+
+  React.useEffect(() => {
+    if (USE_MOCK) return;
+    sidebarCounts().then(setCounts).catch(() => setCounts({}));
+    getSetupStatus().then((s) => setSetupPercent(s.percent)).catch(() => setSetupPercent(null));
+    currentUserName().then(setUserName).catch(() => setUserName(null));
+  }, []);
 
   const handleSwitchTenant = (id: string) => {
     if (USE_MOCK) {
@@ -92,7 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           collapsed={collapsed}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}
-          counts={MOCK_SIDEBAR_COUNTS}
+          counts={counts}
           businessType={businessType}
           extraModules={current.extraModules}
         />
@@ -102,8 +130,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             tenants={tenants}
             currentTenant={current}
             onSwitchTenant={handleSwitchTenant}
-            userName={MOCK_USER.name}
-            setupPercent={MOCK_SETUP_STATUS.percent}
+            userName={userName}
+            setupPercent={setupPercent}
           />
           <main className="content-area" key={businessType}>{children}</main>
           <Footer />
