@@ -193,6 +193,21 @@ describe('Issue #212 legacy Run admission freeze', () => {
     expect(validateRunAdmission({ metadata })).toEqual([]);
   });
 
+  it.each(['', 'UNKNOWN'])('requires an explicit false count for a historical exception (%s)', (count) => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: activeAgentProductBody({
+        count,
+        retroactive: 'true',
+        deliveryType: 'SLICE',
+        laneState: 'HISTORICAL',
+      }),
+    });
+    expect(validateLaneMetadata(metadata)).toContainEqual(
+      expect.stringContaining('is frozen for new Product membership'),
+    );
+  });
+
   it('keeps the legacy ledger bytes semantically read-only and stores terminal context outside it', () => {
     const root = process.cwd();
     const ledger = JSON.parse(readFileSync(

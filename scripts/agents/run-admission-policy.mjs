@@ -28,8 +28,8 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   const state = upper(metadata.state);
   const productLane = ACTIVE_PRODUCT_LANES.has(lane);
   const historicalReference = lane === 'GOVERNANCE' || state === 'HISTORICAL';
-  const counted = upper(metadata.countInDeliveryOutcome) === 'TRUE';
-  const retroactive = upper(metadata.retroactiveTrackingMigration) === 'TRUE';
+  const countValue = upper(metadata.countInDeliveryOutcome);
+  const retroactiveValue = upper(metadata.retroactiveTrackingMigration);
 
   // Trusted WIP validation calls this admission policy directly, without the
   // local delivery-unit preflight. A Product lane must therefore fail
@@ -49,7 +49,7 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   // That exception is available only to a positively identified governance or
   // historical reference; a Product lane must stay frozen across state toggles
   // because the trusted WIP path does not run the full delivery-unit boundary.
-  if (retroactive && !counted) {
+  if (retroactiveValue === 'TRUE' && countValue === 'FALSE') {
     if (historicalReference) return [];
   }
 
