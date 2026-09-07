@@ -37,6 +37,10 @@ function apply0085Ranking(input: Row[]): Row[] {
 }
 
 describe('#238 0085 migration preserves catalog order through negative staging', () => {
+  it('all three public staging passes rank the original order ASC before moving it negative', () => {
+    expect(count(/-1000000000 - row_number\(\) over \(partition by tenant_id order by sort_order, id\)/g)).toBe(3);
+  });
+
   it('all three tables restore public staging with DESC, not the reversing ASC form', () => {
     expect(count(/row_number\(\) over \(partition by tenant_id order by sort_order desc, id\) - 1/g)).toBe(3);
     expect(migration).not.toMatch(
