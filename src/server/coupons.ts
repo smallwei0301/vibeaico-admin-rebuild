@@ -38,7 +38,7 @@ export async function redeemCoupon(
   currentAmount: number,
 ): Promise<{ newAmount: number; discount: number; instanceId: string; discountType: string; discountValue: number }> {
   const { data: inst, error: iErr } = await supabase.from('coupon_instances')
-    .select('id, customer_id, redeemed_at, coupons(discount_type, discount_value)')
+    .select('id, customer_id, redeemed_at, coupons(discount_type, discount_value, start_at, end_at)')
     .eq('tenant_id', tenantId).eq('code', code).maybeSingle();
   if (iErr) throw iErr;
   if (!inst) throw new ApiHttpError(404, '找不到此票券', ERR.NOT_FOUND);
@@ -52,9 +52,26 @@ export async function redeemCoupon(
   // 巢狀 join 靜態型別在無 Database 型別時被推成陣列，實際為多對一物件
   // （同 src/server/email/notify.ts 的說明），先轉 unknown 再取用。
   const coupon = (inst as unknown as {
-    coupons: { discount_type: string; discount_value: number } | null;
+    coupons: {
+      discount_type: string;
+      discount_value: number;
+      start_at: string | null;
+      end_at: string | null;
+    } | null;
   }).coupons;
   if (!coupon) throw new ApiHttpError(404, '找不到此票券', ERR.NOT_FOUND);
+
+  // 有效期：coupons.start_at / end_at（0004 migration）。這兩欄一直都在，但整條
+  // 核銷路徑從來沒有檢查過——過期票券照樣可以核銷、照樣折抵，店家等於在兌現
+  // 自己已經結束的活動，而且畫面顯示核銷成功。null = 不限（沒有設定起訖）。
+  //
+  // 邊界採半開區間 [start_at, end_at)，與專案其他日期範圍判定一致：剛好等於
+  // start_at 可用；剛好等於 end_at 已過期。
+  const now = Date.now();
+  if (coupon.start_at !== null && now < Date.parse(coupon.start_at))
+    throw new ApiHttpError(409, '此票券尚未開始', ERR.CONFLICT);
+  if (coupon.end_at !== null && now >= Date.parse(coupon.end_at))
+    throw new ApiHttpError(409, '此票券已過期', ERR.CONFLICT);
 
   const { data: redeemed, error: rErr } = await supabase.from('coupon_instances')
     .update({ redeemed_at: new Date().toISOString() })

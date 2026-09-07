@@ -1,5 +1,10 @@
 // POST /api/coupons/redeem-by-code — 核銷（04 分冊 §B-4）。
-// {code} → 本租戶 instance：不存在 404；已核銷 409；否則 redeemed_at=now。
+// {code} → 本租戶 instance：不存在 404；已核銷 409；尚未開始／已過期 409；
+// 否則 redeemed_at=now。
+//
+// ⚠️ 有效期檢查與 src/server/coupons.ts 的 redeemCoupon() 用同一組規則
+// （coupons.start_at / end_at，半開區間 [start_at, end_at)）。這條路徑原本
+// 完全沒有檢查有效期——櫃檯掃到過期票券照樣核銷成功。
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
@@ -17,12 +22,21 @@ export const POST = handle(async (req) => {
 
   const { data: inst, error: e0 } = await t.supabase
     .from('coupon_instances')
-    .select('id, redeemed_at, coupon_id, customer_id, coupons(name, discount_type, discount_value), customers(name)')
+    .select('id, redeemed_at, coupon_id, customer_id, coupons(name, discount_type, discount_value, start_at, end_at), customers(name)')
     .eq('tenant_id', t.tenantId).eq('code', code)
     .maybeSingle();
   if (e0) throw e0;
   if (!inst) throw new ApiHttpError(404, '找不到此核銷代碼', ERR.NOT_FOUND);
   if (inst.redeemed_at) throw new ApiHttpError(409, '此票券已核銷過', ERR.CONFLICT);
+
+  const period = (inst as unknown as {
+    coupons: { start_at: string | null; end_at: string | null } | null;
+  }).coupons;
+  const nowMs = Date.now();
+  if (period?.start_at && nowMs < Date.parse(period.start_at))
+    throw new ApiHttpError(409, '此票券尚未開始', ERR.CONFLICT);
+  if (period?.end_at && nowMs >= Date.parse(period.end_at))
+    throw new ApiHttpError(409, '此票券已過期', ERR.CONFLICT);
 
   // 條件式 update（.is redeemed_at null）防止並發重複核銷
   const { data: updated, error: e1 } = await t.supabase
