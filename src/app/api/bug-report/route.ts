@@ -1,10 +1,12 @@
 // POST /api/bug-report — 問題回報（04 分冊 §B-6 MVP：寫 bug_reports 表＋寄信
 // 給平台管理者）。body：{ category?, subject, content, contactEmail?, pageUrl? }。
 //
-// subject / contact_email 是 migration 0018 補的欄位（issue #28 第 ① 筆）：modal
-// 收四個欄位，0012 建表時只有 category/content 有落點，另兩個沒有地方放。不併進
-// content 是刻意的，否則無法逐欄驗證使用者輸入是否真的被收集。
-// TEST 與 Production 的欄位已在 2026-09-02 以唯讀 information_schema 查詢確認一致；
+// subject / contact_email 由 canonical migration 0079 補齊（issue #197 第一個
+// reconciliation slice）：原始 0018 曾被套到 TEST／Production，卻只留在 local-only
+// overlay、沒有進 main。0079 把目前 main 已實際讀寫的欄位正式收回主線 migration。
+// 收四個欄位時，0012 建表只有 category/content 有落點；subject/contact_email 分欄
+// 保存，才能逐欄驗證使用者輸入是否真的被收集。
+// TEST 與 Production 的欄位已在 2026-09-07 以唯讀 information_schema 查詢確認一致；
 // 本端點只使用既有欄位，不執行任何 schema 變更。
 //
 // - 先 requireTenant()：本端點掛在店家後台（有租戶脈絡），reporter 存登入者 email。

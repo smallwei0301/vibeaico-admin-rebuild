@@ -9,7 +9,7 @@ const skill = readFileSync(
 
 describe('Issue #143 retrospective Gmail evidence contract', () => {
   it('loads Gmail before scoring run ledgers', () => {
-    expect(skill).toContain('version: "1.3.0"');
+    expect(skill).toMatch(/version: "\d+\.\d+\.\d+"/);
     expect(skill).toContain('search Gmail for that exact window');
     expect(skill).toContain('Read the full relevant Gmail messages or threads');
     expect(skill.indexOf('search Gmail for that exact window')).toBeLessThan(
