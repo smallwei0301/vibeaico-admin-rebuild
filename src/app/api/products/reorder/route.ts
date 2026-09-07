@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { reorderProducts } from '@/server/product-position';
 
 /**
  * POST /api/products/reorder — `{ids:[]}` 依序寫 sort_order = index ⚙MANAGER
@@ -17,12 +18,11 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = bodySchema.parse(await req.json());
 
-  for (let i = 0; i < b.ids.length; i++) {
-    const { error } = await t.supabase
-      .from('products').update({ sort_order: i })
-      .eq('id', b.ids[i]).eq('tenant_id', t.tenantId);
-    if (error) throw error;
-  }
+  // issue #238：原本逐筆 update({sort_order: i})，在有
+  // products_tenant_sort_order_uq 的資料庫上，第一次迭代把某筆設成 0 時，
+  // 原本就是 0 的那筆還在 → 23505 → 500。改走 migration 提供的 atomic RPC，
+  // 它先把整批搬到不衝突的高位區間再寫回（同 services，見 #128 / 0065）。
+  await reorderProducts(t.supabase, t.tenantId, b.ids);
 
   return ok();
 });
