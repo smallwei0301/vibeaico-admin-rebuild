@@ -604,8 +604,21 @@ async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {
  *    產生的 constraint 名稱不同一組。把回覆能不能送出綁在 constraint 名字上，
  *    等於讓一個純命名的差異變成「顧客打行程完全沒反應」。改成兩次一般查詢，
  *    多一次 round-trip 換掉整類問題。
+ *
+ * ⚠️ **TOUR_MODULE 閘門必須在任何 tour-domain 查詢之前。**
+ * 10 分冊 §6.1 的原文是「導遊模組新增內建關鍵字組，**只在租戶有 `TOUR_MODULE` 時
+ * 顯示**」。少了這道閘門，訂閱已到期或從未訂閱的租戶只要資料庫還留著歷史的
+ * PUBLISHED 行程，顧客就照樣從 LINE 讀得到行程與名額——**用「有沒有資料」代替
+ * 「有沒有權利」**。core mutation API 早就同時擋 MANAGER 與 TOUR_MODULE（§6.1 下方），
+ * 讀取路徑漏掉就等於留了一扇後門。
+ *
+ * 未啟用時回 `false`（不是回一句「未訂閱」）：那是店家的訂閱狀態，不是顧客的事，
+ * 對顧客講「本店未訂閱行程模組」既沒用又洩漏店家的帳務狀態。回 false 讓它落到
+ * ⑤ AI／⑥ defaultReply，顧客仍然有回應。
  */
 async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
+  if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
+
   const { data: trips, error } = await ctx.admin
     .from('trips')
     .select('id, slug, title, summary, cover_image_url')
@@ -678,9 +691,11 @@ async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
  * ⚠️ 一樣不用 embed、一樣不把查詢失敗當成「沒有團次」，理由見 `replyTrips()` 檔頭。
  * ⚠️ 先取**已發布**行程的 id 再查團次：草稿行程的團次外流出去，等於讓顧客報名
  *    一個店家還沒打算開賣的團。先過濾再 limit，才不會被草稿團次吃掉名額。
+ * ⚠️ TOUR_MODULE 閘門同樣在**任何 tour-domain 查詢之前**，理由見 `replyTrips()`。
  */
 async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
   if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+  if (!(await isFeatureActive(ctx.tenant.id, 'TOUR_MODULE'))) return false;
 
   const { data: trips, error: tripError } = await ctx.admin
     .from('trips')

@@ -462,6 +462,54 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
     await setBusinessType('CLINIC');
     expect(await customerSays('看診進度')).toContain('準備中');
   });
+
+  /**
+   * TOUR_MODULE 未訂閱／已到期 → 行程域關鍵字**不得洩漏任何資料**（10 分冊 §6.1：
+   * 「導遊模組新增內建關鍵字組，只在租戶有 TOUR_MODULE 時顯示」）。
+   *
+   * ⚠️ 這條擋的是一個很容易漏、而且漏了不會有任何症狀的洞：core mutation API
+   * 早就同時擋 MANAGER 與 TOUR_MODULE，但**讀取路徑**如果只看「資料庫有沒有資料」，
+   * 訂閱到期的租戶只要歷史 PUBLISHED 行程還在，顧客就照樣從 LINE 讀得到行程與名額
+   * ——用「有沒有資料」代替「有沒有權利」。
+   *
+   * 停用方式沿用 `gating.09.test.ts` 的既有模式（刪 feature_subscriptions 那一列），
+   * 還原寫在 finally，不依賴斷言有沒有過。
+   */
+  it('TOUR_MODULE 未啟用時，「行程」「團次」不得洩漏任何行程域資料', async () => {
+    await setBusinessType('GUIDE');
+
+    const { error: disableError } = await admin.from('feature_subscriptions')
+      .delete().eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+    expect(disableError).toBeNull();
+
+    try {
+      for (const word of ['行程', '團次'] as const) {
+        const reply = await customerSays(word);
+        // 未訂閱是店家的帳務狀態，不是顧客的事：回 false → 落到 ⑥ defaultReply，
+        // 顧客仍然有回應，但**看不到任何行程域內容**。
+        expect(reply, `「${word}」在未訂閱時仍有回應（不是沉默）`).not.toBeNull();
+        expect(reply, `「${word}」洩漏了行程名稱`).not.toContain('A 店測試行程');
+        expect(reply, `「${word}」洩漏了團次清單`).not.toContain('未來 14 天可報名的團次');
+        expect(reply, `「${word}」洩漏了輪播按鈕`).not.toContain('我要預約');
+        // 也不可以反過來對顧客宣告店家的訂閱狀態
+        expect(reply).not.toContain('訂閱');
+      }
+    } finally {
+      const { error } = await admin.from('feature_subscriptions').upsert({
+        tenant_id: SHOP_A.id,
+        code: 'TOUR_MODULE',
+        active: true,
+        expires_at: null,
+        source: 'GRANTED',
+        cancelled_at: null,
+      }, { onConflict: 'tenant_id,code' });
+      expect(error).toBeNull();
+    }
+
+    // 還原後正例仍成立（證明上面的「看不到」是閘門造成的，不是資料不見了）
+    const restored = await customerSays('行程');
+    expect(restored).toContain('A 店測試行程');
+  }, 60_000);
 });
 
 /* ========================================================================== */
