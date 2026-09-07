@@ -692,7 +692,15 @@ API 文件**。先前「自動回應訊息無法檢查」就是這樣被證明�
 `register.ts` / `forgot-password.ts`（「驗證碼已發送」＝已送出，合規）、
 `settings.ts` 的開關說明（描述功能，非事實主張）。
 
-### 6.6 issue #5（關鍵字回覆頁接線＋Rich Menu 覆蓋）— 2026-08-25 完成（commit `faa7c22`）
+### 6.6 issue #5（關鍵字回覆頁接線＋Rich Menu 覆蓋）— 2026-09-07 對 `main` 完成（PR #254，main `e7595ae`）
+
+> ⚠️ **2026-09-07 更正歸屬。** 本節原記「2026-08-25 完成（commit `faa7c22`）」。
+> 那次的實作與輸出是真的，但 `faa7c22` 在 `claude/deploy-vercel-project-nnno59` 分支上，
+> **從未併回 `main`**（NOT_ANCESTOR，見 #251）。在 2026-09-07 之前，`main` 的
+> `src/services/keyword-replies.ts` 不存在、`line-events.ts` 只有 416 行、
+> 頁面仍讀頁內 `MOCK_KEYWORD_REPLIES` 常數——本節在那段期間描述的是**另一棵樹**。
+> 下面的分析（18 格裡 14 格沒反應等）仍然成立且已對 `main` 重新驗證，
+> 落地的 commit 是 PR #254 的 `e7595ae`。同型更正見本檔 §1 的兩處。
 
 #### 最重要的數字：**18 格 Rich Menu，修改前有 14 格按下去完全沒反應**
 
@@ -1062,7 +1070,17 @@ migration 0019 ＋ 新 bucket `bug-report-attachments` ＋ `/api/upload` 白名�
 
 `marketing` 頁的接線屬 issue #7 乙段（已在該 issue 清單內）。
 
-### 6.9 issue #6（Flex 主選單三層補齊）— 2026-08-25 完成（commit `38e2320`）
+### 6.9 issue #6（Flex 主選單三層補齊）— 2026-09-07 對 `main` 完成（PR #256，main `dfaf30b`）
+
+> ⚠️ **2026-09-07 更正歸屬。** 本節原記「2026-08-25 完成（commit `38e2320`）」，
+> §6.9-a〜d 的每一段輸出也都是真的——但全部跑在
+> `claude/deploy-vercel-project-nnno59`（最終 `7ad9ac53`），**從未併回 `main`**。
+> 在 2026-09-07 之前，`main` 上 `src/server/flex-menu.ts`、
+> `tests/unit/flex-menu.06.test.ts`、`tests/integration/api/flex-menu.06.test.ts`、
+> `flexCards` 欄位**全部不存在**，`case 'MENU'` 與 `case 'HELP'` 合在一起回純文字清單，
+> 頁面的「發布」只是 `toast.show(t.flex.saved)`。
+> 也就是說 §6.9〜6.9-d 在那段期間描述的是**另一棵樹**。三層由 PR #256 補回 `main` 後才成立；
+> 與 §6.6（#5）同型、同根因。移植時的取捨與新增的 §6.9-e 見下。
 
 儲存層（`flexCards` 進 `tenant_settings.line` jsonb，無 migration）、webhook 層
 （「選單」→ Flex carousel）、頁面層三層都接真了。
@@ -1203,6 +1221,46 @@ Preview 連的是**正式**專案（`egehnijjpgijmccagxac`），所以：測前�
 測後 API 還原＋逐字比對，發現多了一個 `flexCards: []` 鍵就用 service role 寫回原文，
 再查一次證明相同。探測事件用可辨識的假 userId（`U0000verify06probe…`），
 測後刪除並貼出殘留 0 的查詢輸出；`message` 事件不寫 `line_users`，實查亦為 0。
+
+
+### 6.9-e 移植回 `main` 時刻意縮小的範圍（2026-09-07，PR #256）
+
+`7ad9ac53` 上的 `src/server/flex-menu.ts` 有 392 行，移植進 `main` 的是 299 行。
+差的不是精簡，是**三段刻意沒帶過來的東西**，每一段都有前提不成立的理由：
+
+| 沒移植 | 為什麼 |
+|---|---|
+| `richMenuCellAction()` ＋ `FLEX_POPUP_TRIGGER_TEXT` | issue #6 的「Rich Menu 格子設 FLEX_POPUP 也走同一支組裝函式」在 `main` 上**前提不成立**：`POST /api/settings/line/rich-menu/create` 的六格 action 寫死在 `CELL_TEXTS`，沒有任何「每格自訂」的儲存後端（屬 #7 / #19）。搬一支沒有呼叫端的函式過去，只會讓讀到的人以為每格設定已經生效——正是本 issue 要修的那種假象（比照 §8.8 對 `/api/bookings/available-slots` 的處理）。**該項驗收因此不打勾。** |
+| `buildStepGuideBubble()` | `src/server/booking-step-guide.ts` 不在 `main`，帶過來一樣是沒有呼叫端的死碼。 |
+| `POST …/rich-menu/preview-scene-flex` | 不在 #6 的驗收清單內，屬額外功能面。 |
+
+兩支測試都留了「那一段落地時要補回哪一條斷言」的註解，不是靜靜略過。
+單元測試的 `FLEX_BUILDER_FILES` 維持**精確比對**（`toEqual`），目前只有
+`src/server/flex-menu.ts` 一項；#8 的 `trip-flex.ts` 落地時必須回來把它加進清單並說明
+「它是第二個獨立成品」，否則那條鎖會紅。
+
+另外兩件與原分支不同、且是**刻意**的：
+
+1. **移除頁面的 `subscribed ? t.flex.saved : t.feature.flexFreeFallback`。**
+   `POST /api/settings/line/flex-menu` 沒有任何 `requireFeature`，所以未訂閱時按下發布，
+   卡片**其實真的存進去了**，畫面卻說「免費版只能用預設樣式」——那是反方向的假訊息，
+   比沒擋更難查。要擋就要擋在端點（09 分冊 §5 的閘門決定），不在本 issue 範圍。
+2. **`maxCards12` / `maxCards10` 合併成 `maxCards(max)`。** 後者全站零引用且與 12 互相矛盾
+   （文案說 10、程式擋 12）。上限的唯一出處是 `MAX_FLEX_CARDS`，同型缺陷見
+   `src/server/paging.ts` 檔頭（頁面送 `size:200`、端點各自寫死 `.max(100)`）。
+
+### 6.9-f 本輪打勾裡唯一不夠硬的一處（誠實標註）
+
+第 6 條驗收「Flex JSON 通過 LINE 官方 `validate/reply`」引用的是 **2026-08-25 的歷史實測**，
+不是本輪重跑的：`scripts/verify/flex-menu-validate.cjs` 需要真實 channel token 才能跑，
+不屬於 CI 可重跑的資產，因此沒有隨 PR #256 移植進 `main`。
+
+打勾的依據是：**該實測驗的是「LINE 收不收這個形狀的 JSON」——那是 LINE 端的事實，
+不隨我們的 commit 改變**；而本輪移植的 `buildFlexMenuOutcome` / `buildBubble` / `cardAction`
+與白名單 `FLEX_LINK_URL_SCHEMES` 五項**與當時逐字相同**（差異只在刪掉 `richMenuCellAction`
+與 `buildStepGuideBubble` 兩支不影響 carousel 的函式）。
+
+把它變成可重跑資產屬 #251 解決後的後續工作。這一段寫在這裡而不是藏起來。
 
 ### 8.17 CLINIC 的三個名詞（擁有者裁決，解開 §8.13 規則 4 的「尚未設計」）
 
