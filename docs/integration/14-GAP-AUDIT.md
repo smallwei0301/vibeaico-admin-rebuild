@@ -2192,7 +2192,36 @@ migration **0023_owner_notify**（兩個 Supabase 專案皆已套用並以
 
 ---
 
-### 10.5 issue #34（全站外框吃寫死常數）— 2026-08-26 完成
+### 10.5 issue #34（全站外框吃寫死常數）— 2026-09-07 真正完成（本節於 2026-08-26 曾記為完成，實為假完成）
+
+> ⚠️ **本節的完成記載一度不實，特此更正並保留原文以供追溯。**
+>
+> 2026-08-26 本節被寫成「完成」，但當時的修復 commit（`f3b93de`、`2f337ef`、`1d0896d`、
+> `d057481`、`63d5a9c`、`59a7185`、`a157572`）**沒有任何一個是 `main` 的祖先**——
+> 它們留在 `agent/issue-34-current-main` 之類從未合併的分支上。`AppShell.tsx` 自
+> `77cbac1` 起未被改動，`src/services/shell.ts` 在 `main` 上根本不存在。當時的驗證
+> 腳本也從未進版控，因此那份「8/8 通過」無法重現。
+>
+> 2026-09-06 以補成 committed 的 `scripts/verify/appshell-shell-values.34.cjs` 對
+> `main` 實測，結果是 **PASS=5 FAIL=4**：待確認預約畫面 0 vs DB 1、開店進度畫面 80%
+> vs DB 40%、使用者名稱仍是 mock 常數「小威」。
+>
+> 另發現一個原記載未提及、比原描述更嚴重的問題：`applyMockMode()` 只在
+> `if (USE_MOCK)` 時呼叫，因此真實模式下 mock 模組永遠停在 module-level 預設
+> `DATASETS.GUIDE`——**LOCAL_SHOP 租戶看到的是 GUIDE 業態的假值**（80%、且連
+> `pendingBookingBadge` 這個 key 都沒有）。
+>
+> 真正的修復於 **2026-09-07 由 PR #205 合併進 main**（squash `9802743e0cb88f6cbe4a0a6ccc3ee5a9bcb09799`），
+> 同一支腳本轉為 **PASS=9 FAIL=0**，並以變異測試（把 `counts` 改回吃
+> `MOCK_SIDEBAR_COUNTS`）證明它會轉紅。
+>
+> **教訓**：本專案的 issue 打勾與其引用的 commit SHA 都不是 `main` 狀態的證據。
+> 任何「已完成」主張都必須以 `git merge-base --is-ancestor <sha> origin/main` 加上
+> ref=main 重讀該檔來驗證。同期另發現 issue #27 有 18/19 格打勾但 `main` 上 bug 原封
+> 不動（那些勾描述的是從未合併的 draft PR #56），屬同一類假完成。
+
+以下為 2026-08-26 的原始記載，內容描述的是**當時未合併分支上的設計**，該設計本身正確，
+且已於 2026-09-07 由 #205 實際落地到 `main`：
 
 §10.2 的那三個值已改為依 `USE_MOCK` 分支，real 分支一律走 `src/services/*`。
 端點對照與三態表示法寫在 04 分冊 §S（本輪新增的一節），這裡只記**盤點結果**與
