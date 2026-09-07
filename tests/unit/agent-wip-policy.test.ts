@@ -11,6 +11,8 @@ import {
   validateLaneMetadata,
 } from "../../scripts/agents/agent-wip-policy.mjs";
 
+const shaFor = (number: number) => number.toString(16).padStart(40, "a");
+
 function body(overrides: Record<string, string> = {}, issueNumber = 1) {
   const values = {
     WORK_ORIGIN: "AGENT",
@@ -46,7 +48,8 @@ function pr(
     state,
     body: body(overrides, issueNumber),
     html_url: `https://example.test/${number}`,
-    head: { ref: `branch-${number}`, sha: `sha-${number}` },
+    head: { ref: `branch-${number}`, sha: shaFor(number), repo: { full_name: "owner/repo" } },
+    base: { sha: shaFor(number + 100) },
   };
 }
 
@@ -277,31 +280,126 @@ describe("shared TEST owner policy", () => {
 
   it("authenticates branch dispatch with exact PR, ref and SHA", () => {
     const current = testPr(30);
+    const expectedHead = current.head.sha;
+    const baseRevision = current.base.sha;
     expect(decideTestValidation({
       eventName: "workflow_dispatch",
       ref: "refs/heads/branch-30",
-      sha: "sha-30",
+      sha: expectedHead,
       currentPullRequest: current,
       openPullRequests: [current],
+      repoFullName: "owner/repo",
       inputs: {
         dispatch_reason: "lane_transition",
         test_lane_pr: "30",
-        expected_head: "sha-30",
+        expected_head: expectedHead,
+        base_revision: baseRevision,
       },
     })).toMatchObject({ runTestValidation: true, reason: "validated_lane_transition_exact_head" });
 
     expect(decideTestValidation({
       eventName: "workflow_dispatch",
       ref: "refs/heads/branch-30",
-      sha: "sha-30",
+      sha: expectedHead,
       currentPullRequest: current,
       openPullRequests: [current],
+      repoFullName: "owner/repo",
       inputs: {
         dispatch_reason: "lane_transition",
         test_lane_pr: "30",
-        expected_head: "old-sha",
+        expected_head: shaFor(99),
+        base_revision: baseRevision,
       },
     })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_expected_head" });
+
+    expect(decideTestValidation({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/branch-30",
+      sha: expectedHead,
+      currentPullRequest: {
+        ...current,
+        head: { ...current.head, repo: { full_name: "fork-owner/repo" } },
+      },
+      openPullRequests: [current],
+      repoFullName: "owner/repo",
+      inputs: {
+        dispatch_reason: "lane_transition",
+        test_lane_pr: "30",
+        expected_head: expectedHead,
+        base_revision: baseRevision,
+      },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_pr_contract" });
+
+    expect(decideTestValidation({
+      eventName: "workflow_dispatch",
+      ref: "refs/tags/branch-30",
+      sha: expectedHead,
+      currentPullRequest: current,
+      openPullRequests: [current],
+      repoFullName: "owner/repo",
+      inputs: {
+        dispatch_reason: "lane_transition",
+        test_lane_pr: "30",
+        expected_head: expectedHead,
+        base_revision: baseRevision,
+      },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_branch_dispatch_ref" });
+  });
+
+  it("validates dispatch identity before a docs-only shortcut", () => {
+    const current = testPr(30);
+    const dispatch = {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/branch-30",
+      sha: current.head.sha,
+      docsOnly: true,
+      currentPullRequest: current,
+      openPullRequests: [current],
+      repoFullName: "owner/repo",
+      inputs: {
+        dispatch_reason: "lane_transition",
+        test_lane_pr: "30",
+        expected_head: current.head.sha,
+        base_revision: current.base.sha,
+      },
+    };
+
+    expect(decideTestValidation(dispatch)).toMatchObject({ runTestValidation: false, reason: "docs_only", error: null });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, expected_head: shaFor(88) },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_expected_head" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, base_revision: current.head.sha },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_pr_contract" });
+    expect(decideTestValidation({
+      ...dispatch,
+      openPullRequests: [testPr(31)],
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_test_lane_1" });
+  });
+
+  it("requires main_manual to bind the selected head to its authenticated first parent", () => {
+    const head = shaFor(70);
+    const firstParent = shaFor(71);
+    const secondParent = shaFor(72);
+    const dispatch = {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/main",
+      sha: head,
+      inputs: { dispatch_reason: "main_manual", expected_head: head, base_revision: firstParent },
+      currentCommit: { sha: head, parents: [{ sha: firstParent }, { sha: secondParent }] },
+    };
+
+    expect(decideTestValidation(dispatch)).toMatchObject({ runTestValidation: true, reason: "manual_main_exact_head" });
+    expect(decideTestValidation({ ...dispatch, currentCommit: { sha: head, parents: [] } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, base_revision: secondParent },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
+    expect(decideTestValidation({ ...dispatch, inputs: { ...dispatch.inputs, test_lane_pr: "30" } }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_pr" });
   });
 
   it("never runs heavy TEST for docs-only changes", () => {
