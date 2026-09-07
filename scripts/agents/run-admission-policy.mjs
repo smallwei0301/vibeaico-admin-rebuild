@@ -1,6 +1,6 @@
 export const FROZEN_LEGACY_PRODUCT_RUNS = Object.freeze({
   '2026-09-04-product-delivery-r01': Object.freeze({
-    frozenAt: '2026-09-07T02:31:00Z',
+    declaredAt: '2026-09-07T02:38:45Z',
     deliveryTruthVersion: 3,
     evidenceRef: 'docs/metrics/agent-runs/2026-09-04-product-delivery-r01.closeout-observation.md',
     reason: 'Legacy v3 Run reached a natural closeout window and must remain read-only under the 2026-09-07 Owner Decision.',
