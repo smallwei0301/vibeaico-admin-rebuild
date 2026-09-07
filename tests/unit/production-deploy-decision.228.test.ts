@@ -46,6 +46,15 @@ describe('Issue #228 Production deployment dry-run decision', () => {
     });
   });
 
+  it('fails safe instead of filtering malformed or partial path evidence', () => {
+    expect(decide({ changedPaths: ['docs/a.md', 42] }))
+      .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'CLASSIFIER_FAILED_FAIL_SAFE' });
+    expect(decide({ changedPaths: ['docs/a.md', 'src/evil\nname.ts'] }))
+      .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'CLASSIFIER_FAILED_FAIL_SAFE' });
+    expect(decide({ changedPaths: ['docs/a.md', '../src/hidden.ts'] }))
+      .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'CLASSIFIER_FAILED_FAIL_SAFE' });
+  });
+
   it('skips a stale SHA even if its CI eventually turns green', () => {
     expect(decide({ currentSha: SHA_B, latestMainSha: SHA_C, changedPaths: ['src/app/page.tsx'] }))
       .toMatchObject({ action: 'SKIP', reason: 'STALE_SHA' });
@@ -89,18 +98,13 @@ describe('Issue #228 Production deployment dry-run decision', () => {
   });
 
   it('preserves an earlier runtime change when rapid main commits are coalesced', () => {
-    // Imagine SHA_B changed runtime and newest SHA_C only changed docs. The adapter
-    // must diff SHA_A..SHA_C, so the aggregate path list still contains the runtime file.
     expect(decide({
       currentSha: SHA_C,
       latestMainSha: SHA_C,
       lastProductionSha: SHA_A,
       comparisonBaseSha: SHA_A,
       changedPaths: ['src/app/api/orders/route.ts', 'docs/closeout.md'],
-    })).toMatchObject({
-      action: 'WOULD_DEPLOY',
-      reason: 'RUNTIME_DELTA',
-    });
+    })).toMatchObject({ action: 'WOULD_DEPLOY', reason: 'RUNTIME_DELTA' });
   });
 
   it('blocks a parent-only or otherwise wrong comparison base', () => {
