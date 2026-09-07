@@ -412,13 +412,13 @@ customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不�
 | 已排在既有 issue | 筆數 | issue |
 |---|---|---|
 | keyword-replies 全頁 | 1 | #5 |
-| trips／trip 詳情／tour-orders 三頁 | 3 | #8 |
+| trips／trip 詳情／tour-orders 三頁 | 3 | #8 | ← 見 §7.4.2（2026-09-07：三頁中兩頁已修好，第三頁被 `tour_orders` 表擋住） |
 | customers 新增編輯／LINE 綁定解綁、block-times、points 儲值、marketing、campaigns、shifts 週班表與模式、shop-design 空 patch、rich-menu 底圖上傳 | 10 | #7 |
 | shop-page 端點群 | （併入 #7 的 shop-design 列） | #22 |
 
 | 本輪新開 | 筆數 | 新 issue | 狀態 |
 |---|---|---|---|
-| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | Source、unit、integration、E2E 已完成（`38e714f`；PR #49 exact HEAD `5cc70ba` CI run #159 attempt 2 全綠）；Preview 三路徑仍待租戶登入實證 |
+| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | ⚠️ **這一格的敘述在 2026-09-07 之前是假的**，見 §7.4.3。`38e714f` 所在的分支從未併回 `main`：三件裡只有②在 main 上，①③ 的病灶原封不動。①由 PR #268、③由 PR #269 移植回 main；Preview 三路徑仍待租戶登入實證 |
 | 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | **九筆全數完成（2026-09-07）**。①②⑦⑧⑨ source 已完成；③–⑥ 的實測不再依賴一次性 Preview 腳本，已進入 `tests/e2e/` 並每輪 CI 執行，證據見下方 §7.4.1 |
 
 `#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、
@@ -454,6 +454,68 @@ CI 證據（`local-isolated-a`，從 `0001` 全新建起的隔離 Supabase）：
 **教訓**：這批項目卡了一段時間，原因不是功能沒做，而是**證據的形式**——一次性
 腳本的輸出沒有歸檔，於是稽核只能記為「待補」。同一件事寫成常駐測試之後，證據
 每輪自動產生，不需要任何人記得去補。歸檔不了的證據，等於沒有證據。
+
+### 7.4.2 #8 三頁的 2026-09-07 實況
+
+上表把「trips／trip 詳情／tour-orders 三頁」記成一列 3 筆。本輪逐頁對 `main` 複驗後
+的實況如下（稽核時 `main` = `86648dc`）：
+
+| 頁面 | 狀態 | 證據 |
+|---|---|---|
+| `/tenant/trips` 列表 | ✅ 已修好 | PR #266（squash `b5a820c`）。發布／下架／申請 Midao／刪除四個操作原本只 `setRows` 再報成功，「新增行程」是空的 onClick。四支 service 與端點早就在 `main`，缺的只有頁面這一層。`tests/unit/trip-list-wiring.08.test.ts` 16 案 |
+| `/tenant/trips/[id]` 詳情 | ✅ 已修好 | PR #267（squash `86648dc`）。`saveBasic` 只 `setTrip(form)` 再報「行程已更新」；團次新增／編輯／批次開團／開關團、加購儲存、三種刪除同形狀；提示區塊的「申請 Midao 上架」連 `onClick` 都沒有。`tests/unit/trip-detail-writes.08.test.ts` 29 案 |
+| `/tenant/tour-orders` | ⛔ 被 schema 擋住 | 頁面**本來就已接 service**（8 處引用四支寫入 service），但那些 service 打的端點依賴 `tour_orders` 表，而該表與 `reserve_seats` rpc 在 `main` 上完全不存在。屬 #8-B，需要新 migration ＋ 擁有者的正式庫 DDL 授權 |
+
+兩件這一輪才看清楚、值得記下來的事：
+
+**① 「刻意留白的端點」配上「沒有跟著停用的按鈕」＝ 假成功。**
+`src/app/api/trip-departures/[id]/route.ts` 檔尾原本寫著
+「DELETE is intentionally absent: order-aware departure deletion belongs to #8-B」——
+判斷本身合理，但詳情頁的刪除鍵並沒有跟著停用，它只是 `setDepartures(filter)` 再報
+「團次已刪除」。**留白的決定沒有傳達到 UI，於是留下的不是缺口而是謊言。**
+PR #267 補上該端點，並沿用同檔 PUT 早就在用的同一個不變量守門
+（`seats_booked > 0` → 409），因此**不需要 `tour_orders`**：`seats_booked` 是
+`reserve_seats` 維護的權威計數器。#8-B 可以在此之上再加規則，那是擴充不是推翻。
+
+**② 前端自己算的數字不能當成功訊息。**
+`POST /api/trips/:id/departures/batch` 本來就回 `{ created, skipped }`
+（撞到同方案同日同時的既有團次會被略過），但 service 的型別寫的是 `request<void>`，
+於是頁面只能拿自己算日曆得到的筆數報成功 —— 開了 7 團、實際只開 1 團，畫面照樣說
+「已建立 7 個團次」。**端點已經在講真話，是型別把它丟掉了。**
+
+### 7.4.3 #27 的歸屬更正（2026-09-07）
+
+上表對 #27 原記「Source、unit、integration、E2E 已完成（`38e714f`）」。
+2026-09-07 逐格對 `main` 複驗，該敘述**在寫下時描述的是另一棵樹**：
+`38e714f` / `f0e857a` 所在的分支 `fix/issue-27-customer-notification-current-main`
+落後 `main` 273 個 commit、非 `main` 祖先，**從未併回**。與 #5／#6／#8 完全同型（PB-019）。
+
+複驗結果：
+
+```
+① ai-settings 頁呼叫 saveLineSettings        ← 仍在（＝病灶原封不動）
+   services/settings.ts 有 saveAiSettings      0 處
+   tenant_settings.ai schema 有 strictMode     沒有
+   line-events.ts 有 isLikelyChitchat          0 處
+② bookings PUT 的 MODIFIED 通知              ✅ 在 main（三件中唯一落地的）
+   （命名與文案與該分支不同但行為等價）
+③ product-orders/manual 有任何通知程式碼      0 處
+   server/email 有顧客端消費明細信            沒有
+```
+
+`src/app/api/ai-settings/route.ts` **確實在 `main` 上**（GET/PUT 齊全、閘門齊全），
+但**全 repo 沒有任何一處呼叫它**。這正是本輪最該記住的一點：
+**從路由檔存在推論不出功能可用**——路由是否被呼叫，與路由是否存在，是兩件事。
+與 PB-024（政策提到一個 bucket 不代表那個 bucket 存在）同一個形狀。
+
+實際後果不是「AI 沒開起來」，而是主動做錯事：店家寫的 AI 提示詞被存進
+`line.defaultReply`（webhook 分支 ⑥ 的靜態罐頭回覆），於是**被逐字推播給每一位
+傳訊息來的顧客**，畫面卻顯示「AI 客服設定已儲存（已啟用）」。
+
+移植回 main：① PR #268、③ PR #269。② 維持 main 現況，只把移植過來的測試放寬成
+斷言性質（不比對那條分支的識別字與用字）——為了讓測試通過而去改一段能動的程式碼，
+只是把另一條分支的用字強加上去，不是修好任何東西。
+
 
 ### 7.5 本輪未判定（不准猜，列出來等決策）
 
