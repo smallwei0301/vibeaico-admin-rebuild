@@ -8,8 +8,9 @@ describe('CI workflow dispatch revision wiring', () => {
 
     expect(workflow).toContain('BASE_REVISION: ${{ needs.classify-changes.outputs.base_revision }}');
     expect(workflow).toContain('HEAD_REVISION: ${{ needs.classify-changes.outputs.head_revision }}');
-    expect(workflow).toContain("if (context.eventName === 'pull_request' || context.eventName === 'workflow_dispatch') {");
-    expect(workflow).not.toContain('if (!docsOnly && (context.eventName');
+    expect(workflow).toContain("(context.eventName === 'pull_request' && !docsOnly) ||");
+    expect(workflow).toContain("context.eventName === 'workflow_dispatch'");
+    expect(workflow).toContain("repoFullName: context.payload.repository?.full_name ?? '',");
     expect(workflow).toContain("github.rest.repos.getCommit({");
     expect(workflow).toContain('currentCommit,');
     expect(workflow).toContain("const rejectedDispatch = context.eventName === 'workflow_dispatch'");

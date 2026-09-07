@@ -69,7 +69,10 @@ jobs:
             let openPullRequests = [];
             let currentPullRequest = context.payload.pull_request ?? null;
 
-            if (context.eventName === 'pull_request' || context.eventName === 'workflow_dispatch') {
+            if (
+              (context.eventName === 'pull_request' && !docsOnly) ||
+              context.eventName === 'workflow_dispatch'
+            ) {
               openPullRequests = await github.paginate(github.rest.pulls.list, {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -116,6 +119,7 @@ jobs:
               openPullRequests,
               inputs,
               currentCommit,
+              repoFullName: context.payload.repository?.full_name ?? '',
             });
 
             core.setOutput('run_test_validation', String(decision.runTestValidation));

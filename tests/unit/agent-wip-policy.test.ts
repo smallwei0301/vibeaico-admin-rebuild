@@ -48,7 +48,7 @@ function pr(
     state,
     body: body(overrides, issueNumber),
     html_url: `https://example.test/${number}`,
-    head: { ref: `branch-${number}`, sha: shaFor(number) },
+    head: { ref: `branch-${number}`, sha: shaFor(number), repo: { full_name: "owner/repo" } },
     base: { sha: shaFor(number + 100) },
   };
 }
@@ -288,6 +288,7 @@ describe("shared TEST owner policy", () => {
       sha: expectedHead,
       currentPullRequest: current,
       openPullRequests: [current],
+      repoFullName: "owner/repo",
       inputs: {
         dispatch_reason: "lane_transition",
         test_lane_pr: "30",
@@ -302,6 +303,7 @@ describe("shared TEST owner policy", () => {
       sha: expectedHead,
       currentPullRequest: current,
       openPullRequests: [current],
+      repoFullName: "owner/repo",
       inputs: {
         dispatch_reason: "lane_transition",
         test_lane_pr: "30",
@@ -309,6 +311,24 @@ describe("shared TEST owner policy", () => {
         base_revision: baseRevision,
       },
     })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_expected_head" });
+
+    expect(decideTestValidation({
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/branch-30",
+      sha: expectedHead,
+      currentPullRequest: {
+        ...current,
+        head: { ...current.head, repo: { full_name: "fork-owner/repo" } },
+      },
+      openPullRequests: [current],
+      repoFullName: "owner/repo",
+      inputs: {
+        dispatch_reason: "lane_transition",
+        test_lane_pr: "30",
+        expected_head: expectedHead,
+        base_revision: baseRevision,
+      },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_pr_contract" });
   });
 
   it("validates dispatch identity before a docs-only shortcut", () => {
@@ -320,6 +340,7 @@ describe("shared TEST owner policy", () => {
       docsOnly: true,
       currentPullRequest: current,
       openPullRequests: [current],
+      repoFullName: "owner/repo",
       inputs: {
         dispatch_reason: "lane_transition",
         test_lane_pr: "30",

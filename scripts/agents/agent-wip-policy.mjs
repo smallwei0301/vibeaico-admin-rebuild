@@ -249,6 +249,7 @@ export function decideTestValidation({
   openPullRequests = [],
   inputs = {},
   currentCommit = null,
+  repoFullName = "",
 } = {}) {
   const holders = findActiveTestLaneHolders(openPullRequests);
   const holderNumbers = holders.map((holder) => holder.number);
@@ -308,10 +309,11 @@ export function decideTestValidation({
       pr.state === "open" &&
       pr.head?.ref === branch &&
       pr.head?.sha === expectedHead &&
+      pr.head?.repo?.full_name === repoFullName &&
       pr.base?.sha === baseRevision &&
       isActiveTestValidation(metadata);
     if (!validPr) {
-      return result(false, "invalid_dispatch_pr_contract", "The PR/ref/base/head does not match an open active TEST_VALIDATION candidate");
+      return result(false, "invalid_dispatch_pr_contract", "The PR/repository/ref/base/head does not match an open active TEST_VALIDATION candidate");
     }
     if (holders.length !== 1 || holders[0].number !== prNumber) {
       return result(false, `invalid_dispatch_test_lane_${holders.length}`,
