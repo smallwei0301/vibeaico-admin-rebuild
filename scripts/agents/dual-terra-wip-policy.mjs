@@ -3,6 +3,7 @@ import {
   readField,
   validateLaneMetadata as validateBaseLaneMetadata,
 } from './agent-wip-policy.mjs';
+import { validateRunAdmission } from './run-admission-policy.mjs';
 
 function upper(value) {
   return String(value ?? '').trim().toUpperCase();
@@ -120,12 +121,18 @@ export function parseLaneMetadata(pr = {}) {
     testEnvId: readField(body, 'TEST_ENV_ID'),
     finalCanonicalRequired: upper(readField(body, 'FINAL_CANONICAL_REQUIRED')),
     fileOwnership: readField(body, 'FILE_OWNERSHIP'),
+    deliveryUnitType: upper(readField(body, 'DELIVERY_UNIT_TYPE')),
+    countInDeliveryOutcome: upper(readField(body, 'COUNT_IN_DELIVERY_OUTCOME')),
+    retroactiveTrackingMigration: upper(readField(body, 'RETROACTIVE_TRACKING_MIGRATION')),
     actualChangedFiles: null,
   };
 }
 
 export function validateLaneMetadata(metadata, options = {}) {
-  const errors = [...validateBaseLaneMetadata(metadata, options)];
+  const errors = [
+    ...validateBaseLaneMetadata(metadata, options),
+    ...validateRunAdmission({ metadata }),
+  ];
 
   if (metadata.dualTerraPilot && !['TRUE', 'FALSE'].includes(metadata.dualTerraPilot)) {
     errors.push('DUAL_TERRA_PILOT must be true or false when provided');
