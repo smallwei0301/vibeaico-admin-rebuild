@@ -12,6 +12,8 @@ import {
 } from './dual-terra-wip-policy.mjs';
 import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
 
+import { classifyAstra } from './astra-review-policy.mjs';
+
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const ORIGINS = new Set(['OWNER', 'AGENT', 'UNKNOWN']);
 
@@ -80,6 +82,7 @@ export function validateDeliveryUnitBoundary(body = '', metadata = {}) {
 /**
  * @param {{
  *   body?: string,
+ *   requireAstraClassification?: boolean,
  *   changedFiles?: string[] | null,
  *   prNumber?: number | string,
  *   action?: string,
@@ -101,6 +104,9 @@ export function validateWipPreflight(input = {}) {
   const metadata = parseLaneMetadata(pr);
   const errors = [];
   const origin = upper(readField(text, 'WORK_ORIGIN'));
+  if (input.requireAstraClassification) {
+    errors.push(...classifyAstra({ body: text, changedFiles }).errors);
+  }
 
   if (!ORIGINS.has(origin)) errors.push('WORK_ORIGIN must be OWNER, AGENT, or UNKNOWN');
   if (isPlaceholder(readField(text, 'REQUESTED_MODEL / ACTUAL_MODEL'))) {
@@ -164,6 +170,7 @@ function runCli(argv = process.argv.slice(2)) {
   const result = validateWipPreflight({
     body,
     changedFiles,
+    requireAstraClassification: true,
     prNumber: args.number ?? 1,
     action: args.action ?? 'opened',
     repositoryRoot: args.root ? resolve(args.root) : process.cwd(),

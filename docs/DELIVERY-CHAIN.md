@@ -28,11 +28,13 @@ Luna 查證歸屬（避免重複 Issue、確認沒被 owner-blocked）
   ↓
 Terra 施工（獨立 worktree，不互相污染）
   ↓
-Sol audit（實際讀 diff，抓 CI 抓不到的假成功）
+Sol 早期 diff audit（可及早抓假成功；不放行）
   ↓
 本機隔離 Supabase（唯一能驗證 migration 對空白資料庫正確的地方）
   ↓
 序列化 canonical TEST（一次一張，不搶共用資源）
+  ↓
+Sol 最終 audit（必要測試完成後，讀 final exact-head diff 放行）
   ↓
 Completion Truth 五項驗證（不信 API 回應，實查 main）
 ```
@@ -74,11 +76,11 @@ Luna 的輸出必須是**實際 grep 到的行號、實際存在的 route 路徑
 > 本規則的由來：曾發生兩條 lane 共用同一個工作目錄，`src/services/bookings.ts` 與
 > `src/lib/trip-plan-quick-edit.ts` 同時被改動，一次 commit 就會把兩個 slice 混在一起。
 
-### 2.3 Sol — audit（實際讀 diff）
+### 2.3 Sol — 早期與最終 audit（實際讀 diff）
 
 **要抓的東西：CI 綠但功能是假的。**
 
-Sol **必須實際讀 diff**，不得只看 CI 結論。至少檢查：
+Sol **必須實際讀 diff**，不得只看 CI 結論。Terra 出現可審的第一個完整 diff 時可做一次早期 audit，讓明確問題在昂貴測試前修正；早期結果只能是建議或 `FIX_REQUIRED`，**不得**作為 `CLOSE_APPROVED`。所有必要 local isolated／canonical TEST 完成且修正已收斂後，Sol 必須再讀最終 exact-head diff，才可作最終放行。至少檢查：
 
 - **假成功**：`await new Promise(r => setTimeout(...))`、只有 `toast.show()` 沒有 `await service()`、
   頁面內寫死的 `MOCK_*` 常數被當成真實資料來源。
@@ -94,7 +96,7 @@ Sol **必須實際讀 diff**，不得只看 CI 結論。至少檢查：
 > 本關的由來：PR #168 的 exact-head CI **結論是 success**，但 `sort_order` 全為預設值 0 時，
 > 交換 0↔0 寫回相同值、順序沒有任何改變，toast 仍顯示已更新。CI 抓不到，是 Sol 讀 diff 抓到的。
 
-Sol 一次只審一張 PR。
+Sol 一次只審一張 PR。早期 audit 與最終 audit 的 head 不同時，最終 audit 必須讀新的完整 diff；不得沿用早期結論。
 
 ### 2.4 本機隔離 Supabase
 
@@ -130,7 +132,11 @@ canonical TEST 是**唯一一套**遠端共用環境，**全 repo 同時最多�
 > 本規則的由來：一次手動 dispatch 與 Guard 的自動派工疊加，同時產生兩個 run 佔用共用 TEST，
 > 事後必須取消其中一個。
 
-### 2.6 Completion Truth 五項驗證
+### 2.6 Sol 最終放行與 Completion Truth 五項驗證
+
+最終順序固定為：`Terra → early Sol diff audit → 必要修正 → local isolated → canonical TEST（若需要）→ final Sol audit → merge／Issue close → Completion Truth`。缺少必要測試或最終 audit 時，不得 `CLOSE_APPROVED`。
+
+### 2.7 Completion Truth 五項驗證
 
 **要抓的東西：把「請求成功」當成「事情完成」。**
 
@@ -157,7 +163,7 @@ SOURCE_VERIFIED
         → AUTHENTICATED_PRODUCTION_ACCEPTED
 ```
 
-**五階全數成立才是 `shipped_unit`；否則一律記為 `PRODUCTION_PENDING`。**
+**五階全數成立才是 `shipped_unit`；`CLOSED` 只代表 Issue 結案，不能單獨代表完成交付；其餘一律記為 `PRODUCTION_PENDING`。**
 
 特別注意最後一階：`AUTHENTICATED_PRODUCTION_ACCEPTED` 指**以登入帳號在正式站實機操作驗收**。
 沒做就是沒做，`shipped_units` 就要如實記 0 —— 即使該 PR 已經合併、CI 全綠、Vercel 也部署了。

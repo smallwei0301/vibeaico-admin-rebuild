@@ -4,6 +4,9 @@ on:
   pull_request_target:
     types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
+  issue_comment:
+    types: [created]
+
 permissions:
   actions: write
   contents: read
@@ -11,12 +14,12 @@ permissions:
   pull-requests: write
   statuses: write
 
-concurrency:
-  group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
 jobs:
   guard:
+    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && github.event.comment.body == '/astra-review-check')
+    concurrency:
+      group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted B+ policy
@@ -40,14 +43,32 @@ jobs:
               'scripts/agents/wip-alert-fingerprint.mjs',
             )).href);
 
+            const astra = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs',
+            )).href);
+
             const { owner, repo } = context.repo;
-            const payloadCurrent = context.payload.pull_request;
+            const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };
             const { data: current } = await github.rest.pulls.get({
               owner,
               repo,
               pull_number: payloadCurrent.number,
             });
+            if (context.eventName === 'issue_comment') {
+              const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
+              if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission');
+            }
             const marker = '<!-- agent-wip-guard -->';
+            if (current.state === 'open') {
+              await github.rest.repos.createCommitStatus({ owner, repo, sha: current.head.sha,
+                state: 'pending', context: 'Agent WIP Policy', description: 'Revalidating current policy and review evidence',
+              });
+            }
+            const astraResult = current.state === 'open'
+              ? await astra.evaluateGithubAstra({ github, owner, repo, current })
+              : { status: 'NOT_REQUIRED', errors: [] };
+            // Pending final review must not prevent collecting TEST evidence.
+            // It does prevent the stable required policy status from passing.
             const metadata = policy.parseLaneMetadata(current);
             const isAgent = metadata.origin === 'AGENT';
             const metadataErrors = policy.validateLaneMetadata(metadata, {
@@ -214,7 +235,7 @@ jobs:
             }
 
             const errors = current.state === 'open'
-              ? [...new Set([...metadataErrors, ...wipErrors])]
+              ? [...new Set([...metadataErrors, ...wipErrors, ...astraResult.errors])]
               : [];
             const fingerprint = errors.length
               ? alert.buildWipErrorFingerprint({
@@ -243,6 +264,10 @@ jobs:
             );
 
             if (current.state === 'open') {
+              const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });
+              if (fresh.head.sha !== current.head.sha || fresh.base.sha !== current.base.sha || fresh.body !== current.body) {
+                throw new Error('PR changed during policy evaluation; wait for its current event');
+              }
               await github.rest.repos.createCommitStatus({
                 owner,
                 repo,
@@ -262,6 +287,7 @@ jobs:
                   .join(', ')
               : 'none';
             const metrics = [
+              ['Astra final risk review', astraResult.status],
               ['Current PR', `#${current.number}`],
               ['Run', metadata.runId || 'missing'],
               ['Free dual-Terra pilot qualified', String(capacity.qualified)],
@@ -306,3 +332,4 @@ jobs:
                 }
               }
             }
+            if (!isAgent && errors.length) core.setFailed(errors.join('; '));
