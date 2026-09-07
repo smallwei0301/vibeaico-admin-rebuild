@@ -45,10 +45,10 @@ export function classifyProductionPaths(changedPaths) {
 /**
  * Pure dry-run policy for Issue #228.
  *
- * IMPORTANT: `changedPaths` must describe the whole range from the last
+ * IMPORTANT: `changedPaths` must describe the complete range from the last
  * successfully deployed Production SHA to `currentSha`, not merely HEAD^..HEAD.
- * This is what lets rapid main commits collapse into one newest verified
- * candidate without losing an earlier runtime change.
+ * The adapter must independently prove that comparison base is an ancestor of
+ * current main and that the changed-file list was not truncated.
  *
  * This function never deploys. `WOULD_DEPLOY` is only a decision artifact for a
  * future adapter that has an authorized Vercel secret and canary-proven cutover.
@@ -59,6 +59,8 @@ export function decideProductionDeployCandidate(input = {}) {
   const lastProductionSha = normalizeSha(input.lastProductionSha);
   const comparisonBaseSha = normalizeSha(input.comparisonBaseSha);
   const checksState = String(input.checksState ?? '').trim().toUpperCase();
+  const comparisonBaseIsAncestor = input.comparisonBaseIsAncestor;
+  const changedPathsComplete = input.changedPathsComplete;
   const pathResult = classifyProductionPaths(input.changedPaths);
 
   const result = (action, reason, extra = {}) => ({
@@ -69,6 +71,8 @@ export function decideProductionDeployCandidate(input = {}) {
     lastProductionSha,
     comparisonBaseSha,
     checksState,
+    comparisonBaseIsAncestor,
+    changedPathsComplete,
     changedPaths: pathResult.changedPaths,
     runtimePaths: pathResult.runtimePaths,
     ...extra,
@@ -111,6 +115,20 @@ export function decideProductionDeployCandidate(input = {}) {
   // coalesced and the newest commit itself is docs-only.
   if (comparisonBaseSha !== lastProductionSha) {
     return result('BLOCK', 'UNTRUSTED_COMPARISON_BASE');
+  }
+
+  // A syntactically matching SHA is not enough. A rollback/manual deployment can
+  // leave Production pointing at a commit that is not an ancestor of current
+  // main; such a range cannot safely justify a non-runtime skip.
+  if (comparisonBaseIsAncestor !== true) {
+    return result('BLOCK', 'UNTRUSTED_COMPARISON_ANCESTRY');
+  }
+
+  // GitHub compare/file APIs can be paginated or capped. A partial non-empty list
+  // is more dangerous than an empty list because it can look confidently
+  // docs-only while the omitted page contains runtime files. Fail toward deploy.
+  if (changedPathsComplete !== true) {
+    return result('WOULD_DEPLOY', 'INCOMPLETE_DIFF_FAIL_SAFE');
   }
 
   // Unknown/empty classification fails toward deployment, never toward a silent

@@ -15,7 +15,9 @@ function decide(overrides: Record<string, unknown> = {}) {
     latestMainSha: SHA_C,
     lastProductionSha: SHA_A,
     comparisonBaseSha: SHA_A,
+    comparisonBaseIsAncestor: true,
     checksState: 'SUCCESS',
+    changedPathsComplete: true,
     changedPaths: ['docs/note.md'],
     ...overrides,
   });
@@ -106,9 +108,28 @@ describe('Issue #228 Production deployment dry-run decision', () => {
       .toMatchObject({ action: 'BLOCK', reason: 'UNTRUSTED_COMPARISON_BASE' });
   });
 
+  it('blocks a comparison base that is not independently proven to be an ancestor of main', () => {
+    expect(decide({ comparisonBaseIsAncestor: false, changedPaths: ['docs/closeout.md'] }))
+      .toMatchObject({ action: 'BLOCK', reason: 'UNTRUSTED_COMPARISON_ANCESTRY' });
+    expect(decide({ comparisonBaseIsAncestor: undefined, changedPaths: ['docs/closeout.md'] }))
+      .toMatchObject({ action: 'BLOCK', reason: 'UNTRUSTED_COMPARISON_ANCESTRY' });
+  });
+
+  it('fails safe when a non-empty changed-file list may be truncated', () => {
+    expect(decide({ changedPathsComplete: false, changedPaths: ['docs/only-visible-page.md'] }))
+      .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'INCOMPLETE_DIFF_FAIL_SAFE' });
+    expect(decide({ changedPathsComplete: undefined, changedPaths: ['docs/only-visible-page.md'] }))
+      .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'INCOMPLETE_DIFF_FAIL_SAFE' });
+  });
+
   it('fails safe toward WOULD_DEPLOY when no deployed baseline or usable diff exists', () => {
-    expect(decide({ lastProductionSha: '', comparisonBaseSha: '', changedPaths: ['docs/a.md'] }))
-      .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'NO_DEPLOYED_BASELINE' });
+    expect(decide({
+      lastProductionSha: '',
+      comparisonBaseSha: '',
+      comparisonBaseIsAncestor: undefined,
+      changedPathsComplete: undefined,
+      changedPaths: ['docs/a.md'],
+    })).toMatchObject({ action: 'WOULD_DEPLOY', reason: 'NO_DEPLOYED_BASELINE' });
     expect(decide({ changedPaths: [] }))
       .toMatchObject({ action: 'WOULD_DEPLOY', reason: 'CLASSIFIER_FAILED_FAIL_SAFE' });
     expect(decide({ changedPaths: null }))

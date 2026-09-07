@@ -34,7 +34,15 @@ The future adapter must therefore compare:
 last successfully deployed Production SHA .. newest verified main SHA
 ```
 
-The pure policy requires `comparisonBaseSha === lastProductionSha` for exactly this reason.
+The pure policy requires all of these before a non-runtime skip is possible:
+
+```text
+comparisonBaseSha == lastProductionSha
+comparisonBaseIsAncestor == true
+changedPathsComplete == true
+```
+
+The ancestry bit must come from an independent Git/GitHub ancestry check. The completeness bit must only be true after the adapter has consumed every changed-file page/result for the comparison range. A syntactically valid SHA or a non-empty first page is not sufficient evidence.
 
 ## Decision order
 
@@ -46,11 +54,22 @@ The pure policy requires `comparisonBaseSha === lastProductionSha` for exactly t
 4. skip an exact SHA already in Production;
 5. if there is no known Production baseline, fail safe toward `WOULD_DEPLOY`;
 6. require the runtime comparison to begin at the last successful Production SHA;
-7. unknown/empty diff fails safe toward `WOULD_DEPLOY`;
-8. a verified non-runtime range becomes `POLICY_SKIP` (`SKIP / NON_RUNTIME_DELTA`);
-9. a verified runtime range becomes `WOULD_DEPLOY / RUNTIME_DELTA`.
+7. require independent proof that the comparison base is an ancestor of current main;
+8. an incomplete/truncated changed-file list fails safe toward `WOULD_DEPLOY`;
+9. unknown/empty classification fails safe toward `WOULD_DEPLOY`;
+10. a verified non-runtime range becomes `POLICY_SKIP` (`SKIP / NON_RUNTIME_DELTA`);
+11. a verified runtime range becomes `WOULD_DEPLOY / RUNTIME_DELTA`.
 
 There is intentionally no `DEPLOY` action in this module.
+
+## Why ancestry and changed-file completeness are explicit inputs
+
+Two shapes can otherwise produce a dangerous false `SKIP`:
+
+1. **Non-ancestor baseline** — Production can be rolled back or pointed at a commit that is not on the current main ancestry. A diff constructed from that point cannot be treated as the trusted linear release delta merely because the SHA string matches the recorded Production value.
+2. **Truncated compare response** — provider APIs can paginate/cap changed-file results. A partial list can be non-empty and look docs-only while an omitted page contains `src/**`. Empty input already failed safe; partial input must fail safe too.
+
+The policy therefore refuses to manufacture either proof from the path list itself.
 
 ## Runtime boundary
 
@@ -65,7 +84,8 @@ A later PR may connect this pure policy to a GitHub Actions workflow only after 
 - authoritative newest `main` SHA;
 - required CI/completion state;
 - last successful Production deployment SHA;
-- full changed-file range from that Production SHA to current main;
+- independent ancestry proof for the Production baseline;
+- **complete** changed-file range from that Production SHA to current main, including pagination/truncation handling;
 - concurrency keyed so stale candidates stop before contacting Vercel;
 - durable result consumed by Completion Truth.
 
