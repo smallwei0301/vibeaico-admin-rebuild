@@ -405,10 +405,41 @@ customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不�
 | 本輪新開 | 筆數 | 新 issue | 狀態 |
 |---|---|---|---|
 | LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | Source、unit、integration、E2E 已完成（`38e714f`；PR #49 exact HEAD `5cc70ba` CI run #159 attempt 2 全綠）；Preview 三路徑仍待租戶登入實證 |
-| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | ①②⑦⑧⑨ source 已完成；③–⑥ 亦有 deployed `0db681f` Preview 輸出（exports 18/18、welcome upload 8/8），但 current-head 截圖／full CI 待補，故 issue 維持 open |
+| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | **九筆全數完成（2026-09-07）**。①②⑦⑧⑨ source 已完成；③–⑥ 的實測不再依賴一次性 Preview 腳本，已進入 `tests/e2e/` 並每輪 CI 執行，證據見下方 §7.4.1 |
 
 `#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、
-歡迎卡片圖片上傳按鈕。
+歡迎卡片圖片上傳按鈕。**這三筆與 #28 ③④⑥ 是同一批入口**，已於 2026-09-07 一併
+以 CI 常駐 E2E 完成驗證，見下。
+
+### 7.4.1 #28 ③–⑥ 的實測歸屬更正（2026-09-07）
+
+上表原本記為「current-head 截圖／full CI 待補」。該敘述在寫下時是正確的——當時
+的證據來自 `scripts/verify/*.cjs` 這類一次性腳本，而 `scripts/verify/out/` 底下
+沒有留下對應輸出。
+
+**但那四項的實測後來已經改寫進 `tests/e2e/`，因此每一輪 CI 都在跑**，不再需要
+任何人手動重跑腳本或補截圖：
+
+| #28 筆 | 測試 | 斷言重點 |
+|---|---|---|
+| ③ 預約匯出 | `tests/e2e/bookings-export.spec.ts` | `waitForEvent('download')`、檔名 `bookings-YYYY-MM-DD.csv`、BOM、表頭、種子資料 `BSEED0001` |
+| ④ 顧客匯出 | `tests/e2e/customers-export.spec.ts` | 同型；2026-09-07 起改斷言 `.xlsx` 與 ZIP 魔數 `50 4B 03 04`，並以 `exceljs` 讀回表頭與種子顧客（見 #246） |
+| ⑤ 庫存匯出 | `tests/e2e/inventory-export.spec.ts` | 以 service role 種一筆商品與異動 → 篩選後匯出 → 驗 BOM／表頭／種進去的商品名與原因字串／畫面顯示檔名等於 `download.suggestedFilename()` |
+| ⑥ 歡迎卡片上傳 | `tests/e2e/welcome-card-upload.spec.ts` | 選檔 → `/api/upload` 與 `/api/settings` 皆 200 → service role 由 bucket **下載回來逐位元組比對** → 重整仍在 → 移除後 bucket `list` 不含該檔名 |
+
+⑥ 的逐位元組比對比原本的「bucket 出現檔案」更強：它排除了「有檔案但內容是別的
+東西」。
+
+CI 證據（`local-isolated-a`，從 `0001` 全新建起的隔離 Supabase）：
+
+- run 34091687270 / job 101646474054：integration 36 檔 238 tests、E2E 17 passed
+  + 1 flaky（`bookings-export` 首次 `waitForEvent('download')` 逾時，retry #1 通過）
+- run 34097639862 / job 101664757616：integration 37 檔 246 tests、E2E 18 passed
+  無 flaky（`customers-export` 已改為 Excel 斷言）
+
+**教訓**：這批項目卡了一段時間，原因不是功能沒做，而是**證據的形式**——一次性
+腳本的輸出沒有歸檔，於是稽核只能記為「待補」。同一件事寫成常駐測試之後，證據
+每輪自動產生，不需要任何人記得去補。歸檔不了的證據，等於沒有證據。
 
 ### 7.5 本輪未判定（不准猜，列出來等決策）
 
