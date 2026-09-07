@@ -255,6 +255,21 @@ describe('Issue #212 legacy Run admission freeze', () => {
     );
   });
 
+  it.each(['UNKNOWN', 'TBD', 'banana'])('rejects an invalid delivery type in a historical exception (%s)', (deliveryType) => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: activeAgentProductBody({
+        laneState: 'HISTORICAL',
+        deliveryType,
+        count: 'false',
+        retroactive: 'true',
+      }),
+    });
+    expect(validateLaneMetadata(metadata)).toContainEqual(
+      expect.stringContaining('is frozen for new Product membership'),
+    );
+  });
+
   it('keeps the legacy ledger bytes semantically read-only and stores terminal context outside it', () => {
     const root = process.cwd();
     const ledger = JSON.parse(readFileSync(

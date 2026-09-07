@@ -8,6 +8,7 @@ export const FROZEN_LEGACY_PRODUCT_RUNS = Object.freeze({
 });
 
 const PRODUCT_TYPES = new Set(['SLICE', 'STANDALONE']);
+const DECLARED_DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const ACTIVE_PRODUCT_LANES = new Set(['TERRA_BUILD', 'TERRA_RESERVE', 'TEST_VALIDATION']);
 
 function upper(value) {
@@ -31,7 +32,7 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   const countValue = upper(metadata.countInDeliveryOutcome);
   const retroactiveValue = upper(metadata.retroactiveTrackingMigration);
   const explicitHistorical = historicalReference &&
-    Boolean(deliveryType) &&
+    DECLARED_DELIVERY_TYPES.has(deliveryType) &&
     retroactiveValue === 'TRUE' &&
     countValue === 'FALSE';
   const genuineGovernance = lane === 'GOVERNANCE' &&
