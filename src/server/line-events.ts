@@ -29,9 +29,107 @@ import {
   buildPublicBookingUrl,
 } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import { MODE_PRESETS, type BusinessType } from '@/config/modes';
+import { keywordRepliesPage } from '@/i18n/zh-TW/pages/keyword-replies';
 
 /** webhook 端已查好的店家列（route.ts select id, shop_code, name） */
-export type WebhookTenant = { id: string; shop_code: string; name: string };
+export type WebhookTenant = {
+  id: string;
+  shop_code: string;
+  name: string;
+  /** 0015 migration；舊資料或查不到時以 LOCAL_SHOP 保底（modes.ts 的預設業態） */
+  business_type?: string | null;
+};
+
+/** 店家業態（決定 richMenuCells 那一組文字與部分內建指令的回覆方式） */
+function businessTypeOf(tenant: WebhookTenant): BusinessType {
+  const bt = String(tenant.business_type ?? '');
+  return bt in MODE_PRESETS ? (bt as BusinessType) : 'LOCAL_SHOP';
+}
+
+
+/* -------------------------------------------------- 內建指令的關鍵字對照表 */
+/**
+ * 內建意圖。前 15 個與 keyword-replies 頁「系統內建關鍵字」的 15 組 key 一一對應
+ * （可被店家停用）；其後五個是 Rich Menu 才用得到、頁面上沒有開關的常駐意圖。
+ */
+export type BuiltinIntent =
+  | 'BOOKING' | 'MY_BOOKING' | 'ORDER' | 'MENU' | 'HELP' | 'CANCEL' | 'CAMPAIGN'
+  | 'COUPON' | 'PRODUCT' | 'TRIP' | 'DEPARTURE' | 'MEMBER' | 'PORTFOLIO'
+  | 'NOTIFY' | 'MAP'
+  | 'SERVICE' | 'CONTACT' | 'HOURS' | 'FAQ' | 'CLINIC_QUEUE';
+
+/**
+ * 系統內建關鍵字 15 組（含全部同義詞）。
+ * **單一事實來源是 src/i18n/zh-TW/pages/keyword-replies.ts 的 system.groups**——
+ * 那份就是後台頁面上列給店家看、可逐組停用的清單。在這裡複寫一份的話，
+ * 頁面顯示「已停用」而 webhook 照回，或頁面列了同義詞而 webhook 不認得。
+ */
+export const SYSTEM_KEYWORD_GROUPS: Record<string, readonly string[]> = Object.fromEntries(
+  keywordRepliesPage.system.groups.map((g) => [g.key, g.keywords]),
+);
+
+/**
+ * Rich Menu 六格送出的文字 → 內建意圖。
+ * MODE_PRESETS.richMenuCells 三業態共 18 格的每一段文字都必須在這裡（或在系統
+ * 關鍵字 15 組裡）查得到，否則顧客按下去就是沒反應。
+ * 有幾段刻意不在系統 15 組內（「服務項目」「會員卡」「優惠」「團次」「營業時間」
+ * 「常見問題」「看診進度」「聯絡我們」），所以需要這張表補上。
+ */
+export const RICH_MENU_TEXT_INTENT: Record<string, BuiltinIntent> = {
+  預約: 'BOOKING',
+  我的預約: 'MY_BOOKING',
+  服務項目: 'SERVICE',
+  服務: 'SERVICE',
+  會員卡: 'MEMBER',
+  優惠: 'COUPON',
+  聯絡我們: 'CONTACT',
+  行程: 'TRIP',
+  團次: 'DEPARTURE',
+  我的訂單: 'ORDER',
+  常見問題: 'FAQ',
+  看診進度: 'CLINIC_QUEUE',
+  營業時間: 'HOURS',
+};
+
+/**
+ * 文字 → 內建意圖（完全比對）。
+ * group 非 null 代表該意圖屬於店家可停用的 15 組之一（停用時完全不回應）。
+ * 先查 Rich Menu 表：同一段文字若兩邊都有（例：「預約」），以 Rich Menu 表為準，
+ * 兩者指向同一個意圖，group 仍由 15 組決定，停用開關照樣有效。
+ */
+export function resolveBuiltinIntent(
+  text: string,
+): { intent: BuiltinIntent; group: string | null } | null {
+  const direct = RICH_MENU_TEXT_INTENT[text];
+  if (direct) return { intent: direct, group: direct in SYSTEM_KEYWORD_GROUPS ? direct : null };
+  for (const [key, words] of Object.entries(SYSTEM_KEYWORD_GROUPS)) {
+    if (words.includes(text)) return { intent: key as BuiltinIntent, group: key };
+  }
+  return null;
+}
+
+/**
+ * 店家是否關掉了這一組系統內建關鍵字。
+ *
+ * ⚠️ 這裡**刻意零 isFeatureActive／零 requireFeature**：「關掉內建回覆」是少做
+ * 一件事，不該需要付費（14 分冊 §8.16 擁有者裁決）。付費閘門只擋「覆蓋」——
+ * 店家自己編一組新的關鍵字回覆（keyword_replies 寫入端點的 requireFeature）。
+ */
+function isSystemGroupDisabled(lineConfig: Record<string, any>, group: string): boolean {
+  const disabled = lineConfig.systemKeywordGroupsDisabled;
+  return Array.isArray(disabled) && disabled.includes(group);
+}
+
+/** 內建指令 handler 的共用上下文 */
+type BuiltinCtx = {
+  admin: SupabaseClient;
+  tenant: WebhookTenant;
+  token: string;
+  replyToken: string;
+  userId: string;
+  lineConfig: Record<string, any>;
+};
 
 /* ------------------------------------------------------------------ 文案 */
 /**
@@ -48,6 +146,54 @@ const MSG = {
     '還沒有找到您的顧客資料，請提供您的大名與電話，我們幫您查詢與建檔！',
   myBookingsEmpty: '您目前沒有即將到來的預約，歡迎輸入「預約」查看服務項目！',
   statusPending: '（待確認）',
+
+  /* ---- 06 §3 關鍵字覆蓋補齊（richMenuCells 18 格 + 系統關鍵字 15 組）---- */
+  serviceListEmpty: (url: string) =>
+    `目前還沒有上架的服務項目，您可以直接留言告訴我們您的需求 😊\n${url}`,
+  menuTitle: '您可以直接輸入下面這些關鍵字：',
+  menuFooter: '也可以直接留言，我們看到會盡快回覆您 😊',
+  cancelNoFlow:
+    '目前沒有進行中的流程可以取消。\n若要更改或取消已成立的預約，請輸入「我的預約」查詢，或直接留言告訴我們。',
+  campaignTitle: '目前進行中的活動：',
+  campaignEmpty: '目前沒有進行中的活動，敬請期待！',
+  couponTitle: '目前開放領取的優惠：',
+  couponEmpty: '目前沒有開放領取的優惠票券。',
+  couponHowTo: '想索取請直接留言告訴我們，我們會幫您登記 🎫',
+  productTitle: '目前販售的商品：',
+  productEmpty: '目前還沒有上架商品。',
+  portfolioTitle: '我們的作品：',
+  portfolioEmpty: '目前還沒有上傳作品。',
+  memberTitle: '您的會員資訊：',
+  memberPoints: (n: number) => `・目前點數：${n} 點`,
+  memberLevel: (name: string) => `・會員等級：${name}`,
+  memberNoLevel: '・會員等級：一般會員',
+  contactTitle: '聯絡我們：',
+  contactEmpty: '店家的聯絡資訊還沒設定完成，您可以直接在這裡留言，我們會盡快回覆您。',
+  hoursTitle: '我們的營業時間：',
+  faqTitle: '常見問題：',
+  faqEmpty: '目前還沒有整理常見問題，您想問什麼都可以直接留言，我們會盡快回覆 😊',
+  mapTitle: '導航到我們這裡：',
+  mapEmpty: '店家地址還沒設定完成，您可以直接留言詢問，我們會回覆詳細位置。',
+  /**
+   * 尚未開放的功能一律用這組文案。
+   * CLAUDE.md：沒建好就誠實說沒建好——沉默（顧客按了沒反應）與假裝做得到
+   * （回一個編出來的進度）都不行。
+   *
+   * ⚠️ 這幾句的壽命由對應 Issue 決定，功能落地後**必須連同文案一起刪掉**，
+   * 不要留著當備用：留著的話，下一個人讀到這組常數會以為那些功能仍未建置。
+   *   notReadyFlexMenu   → issue #6（Flex 主選單）
+   *   notReadyTrip / notReadyDeparture / notReadyOrder → issue #8（行程域）
+   */
+  notReadyClinicQueue:
+    '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
+  notReadyNotifyToggle:
+    '店家通知的開關目前還不能在這裡自行設定。\n如果您不想再收到通知，直接留言告訴我們就可以，我們會為您處理。',
+  notReadyTrip:
+    '行程列表還在準備中，目前無法自動查詢。\n請直接留言告訴我們您想去的地方與日期，我們會盡快回覆您。',
+  notReadyDeparture:
+    '團次與名額查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您想出發的日期，我們會幫您確認。',
+  notReadyOrder:
+    '訂單查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您的大名，我們幫您查詢。',
 } as const;
 
 /** 服務清單最多列出筆數（06 §3 內建指令 MVP） */
@@ -175,7 +321,9 @@ async function onMessage(
     .eq('tenant_id', tenant.id)
     .eq('active', true)
     .order('sort_order', { ascending: true });
-  const kr = (krs ?? []).find((r: any) => (r.keywords ?? []).includes(text));
+  // 完全比對優先，其次才是設成 CONTAINS 的那幾組（頁面上「訊息裡有這個字就回」
+  // 是預設選項——只做 includes 比對的話，店家選了 CONTAINS 卻只有一字不差才會回）。
+  const kr = pickKeywordReply(krs ?? [], text);
   if (kr) {
     const m = keywordReplyMessage(kr);
     if (m) {
@@ -202,19 +350,23 @@ async function onMessage(
     }
   }
 
-  // ④ 內建指令（MVP）
-  if (text === '預約' || text === '服務') {
-    const handled = await replyServiceList(admin, tenant, token, replyToken);
-    if (handled) return; // 該店沒有 active 服務時不攔截，落到 ⑤/⑥
-  }
-  if (text === '行程') {
-    // trips / trip_plans / trip_departures 表尚不存在（10 分冊，Phase 10 補行程 Flex 輪播，
-    // 資料來源 = 11 分冊 catalog 統一查詢）。佔位：不在此攔截，讓訊息落到
-    // ⑤ AI / ⑥ defaultReply（自動回覆開啟時顧客會收到 defaultReply）。
-  }
-  if (text === '我的預約') {
-    await replyMyBookings(admin, tenant, token, replyToken, userId);
-    return;
+  // ④ 內建指令（06 §3 關鍵字覆蓋）
+  //
+  // 舊版只比對「預約」「服務」「我的預約」三個字面值，於是 MODE_PRESETS.richMenuCells
+  // 發布出去的按鈕大多按下去沒反應（issue #5）。改為：先解析成內建意圖（Rich Menu
+  // 表優先，其次系統關鍵字 15 組的同義詞），再交給 replyBuiltin 分派。
+  //
+  // 順序在 ② keyword_replies 之後：06 §3 明訂**自訂關鍵字優先於內建指令**，
+  // 店家自己設的那一句必須蓋過系統回覆。
+  const hit = resolveBuiltinIntent(text);
+  if (hit) {
+    // 店家關掉的那一組：完全不回應（連 ⑤ AI／⑥ defaultReply 都不落）。
+    // 「關掉」就是關掉——落到 defaultReply 會讓顧客照樣收到訊息，那顆開關就成了假的。
+    if (hit.group && isSystemGroupDisabled(lineConfig, hit.group)) return;
+
+    const ctx: BuiltinCtx = { admin, tenant, token, replyToken, userId, lineConfig };
+    const handled = await replyBuiltin(hit.intent, ctx);
+    if (handled) return; // 回 false＝這家店沒有這類東西，刻意不攔截，落到 ⑤/⑥
   }
 
   // ⑤ AI 客服（09 分冊 §7：AI_ASSISTANT 訂閱有效 且 ai.enabled）
@@ -259,6 +411,270 @@ async function onMessage(
   }
 
   // ⑦ 都沒有 → 不回
+}
+
+/* ------------------------------------------------------ 內建指令：共用 */
+/** 回一段純文字並回報「已處理」 */
+async function replyText(ctx: BuiltinCtx, text: string): Promise<boolean> {
+  await lineReply(ctx.token, ctx.replyToken, [{ type: 'text', text }]);
+  return true;
+}
+
+/** 這位 LINE 使用者綁定到的 customers.id（未綁定回空字串） */
+async function boundCustomerId(ctx: BuiltinCtx): Promise<string> {
+  const { data } = await ctx.admin
+    .from('line_users')
+    .select('customer_id')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('line_user_id', ctx.userId)
+    .maybeSingle();
+  return (data?.customer_id as string | null) ?? '';
+}
+
+/** tenant_settings 的 basic / business / ai 三個 jsonb（一次查完，handler 共用） */
+async function loadSettingsRow(ctx: BuiltinCtx): Promise<Record<string, any>> {
+  const { data } = await ctx.admin
+    .from('tenant_settings')
+    .select('basic, business, ai')
+    .eq('tenant_id', ctx.tenant.id)
+    .maybeSingle();
+  return (data ?? {}) as Record<string, any>;
+}
+
+/** 營業時間摘要 */
+function formatBusinessHours(biz: ReturnType<typeof businessSettingsSchema.parse>): string {
+  const dayNames = ['日', '一', '二', '三', '四', '五', '六'];
+  let out = `${biz.businessStart}–${biz.businessEnd}`;
+  if (biz.breakStart && biz.breakEnd) out += `（休息 ${biz.breakStart}–${biz.breakEnd}）`;
+  if (biz.closedDays.length)
+    out += `，公休：${biz.closedDays.map((d) => `週${dayNames[d]}`).join('、')}`;
+  return out;
+}
+
+/**
+ * 內建意圖分派。
+ * 回 false＝這家店沒有這一類東西、刻意不攔截（落到 ⑤ AI / ⑥ defaultReply）。
+ * 其餘一律回一則訊息——**Rich Menu 的格子按下去必須有反應**，沒建好的功能就
+ * 誠實說「還在準備中」，不能沉默（06 §3 / CLAUDE.md）。
+ */
+async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boolean> {
+  switch (intent) {
+    case 'BOOKING':
+    case 'SERVICE':
+      return replyServiceListBuiltin(ctx);
+    case 'MY_BOOKING':
+      return replyMyBookingsBuiltin(ctx);
+    case 'MENU':
+    case 'HELP':
+      // Flex 主選單是 issue #6 的範圍；在它落地前，這裡回一份純文字關鍵字清單。
+      // 清單內容取自 richMenuCells，所以列出來的每個字都保證有 handler。
+      return replyMenu(ctx);
+    case 'CANCEL':
+      return replyText(ctx, MSG.cancelNoFlow);
+    case 'CAMPAIGN':
+      return replyCampaigns(ctx);
+    case 'COUPON':
+      return replyCoupons(ctx);
+    case 'PRODUCT':
+      return replyProducts(ctx);
+    case 'PORTFOLIO':
+      return replyPortfolios(ctx);
+    case 'MEMBER':
+      return replyMember(ctx);
+    case 'CONTACT':
+      return replyContact(ctx);
+    case 'HOURS':
+      return replyBusinessHours(ctx);
+    case 'FAQ':
+      return replyFaq(ctx);
+    case 'MAP':
+      return replyMap(ctx);
+    case 'CLINIC_QUEUE':
+      // 看診進度（叫號）尚未實作；只有診所的選單有這一格。
+      return businessTypeOf(ctx.tenant) === 'CLINIC'
+        ? replyText(ctx, MSG.notReadyClinicQueue)
+        : false;
+    case 'NOTIFY':
+      // 「開啟/關閉店家通知」目前沒有儲存位置（line_users 無對應欄位），推播也
+      // 還沒有讀任何開關。做一個寫得進去卻沒人讀的欄位，等於回一句做不到的
+      // 「已為您開啟」——照 CLAUDE.md 誠實原則，先明說還不能自助設定。
+      return replyText(ctx, MSG.notReadyNotifyToggle);
+
+    // ---- 以下三個是 issue #8（行程域）的範圍，尚未實作 ----
+    // GUIDE 的 Rich Menu 有「行程」「團次」「我的訂單」三格，按下去必須有反應；
+    // 其他業態沒有這些概念，回 false 讓它落到 AI／預設回覆比較自然。
+    case 'TRIP':
+      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyTrip) : false;
+    case 'DEPARTURE':
+      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyDeparture) : false;
+    case 'ORDER':
+      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyOrder) : false;
+
+    default:
+      return false;
+  }
+}
+
+/**
+ * 「說明」「幫助」「選單」→ 這家店（依業態）可用的關鍵字清單（純文字）。
+ * 內容取自 MODE_PRESETS.richMenuCells，所以列出來的每一個字都保證有 handler。
+ */
+async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {
+  const cells = MODE_PRESETS[businessTypeOf(ctx.tenant)].richMenuCells;
+  const lines = [...new Set(cells.map((c) => c.text))].map((t) => `・${t}`);
+  return replyText(ctx, `${MSG.menuTitle}\n${lines.join('\n')}\n\n${MSG.menuFooter}`);
+}
+
+/* -------------------------------------------------------- 內建指令：活動 */
+async function replyCampaigns(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('campaigns')
+    .select('name, content')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.campaignEmpty);
+  const lines = data.map((c: any) => {
+    const text = String((c.content as any)?.text ?? '').split('\n')[0];
+    return text ? `・${c.name}：${text}` : `・${c.name}`;
+  });
+  return replyText(ctx, `${MSG.campaignTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------------- 內建指令：票券 */
+async function replyCoupons(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('coupons')
+    .select('name, description, discount_type, discount_value')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.couponEmpty);
+  const lines = data.map((c: any) => {
+    const value = Number(c.discount_value);
+    const amount =
+      c.discount_type === 'PERCENT' ? `${value} 折` : `折抵 NT$${value.toLocaleString('zh-TW')}`;
+    return `・${c.name}｜${amount}`;
+  });
+  return replyText(ctx, `${MSG.couponTitle}\n${lines.join('\n')}\n\n${MSG.couponHowTo}`);
+}
+
+/* -------------------------------------------------------- 內建指令：商品 */
+async function replyProducts(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('products')
+    .select('name, price')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.productEmpty);
+  const lines = data.map(
+    (p: any) => `・${p.name}｜NT$${Number(p.price).toLocaleString('zh-TW')}`,
+  );
+  return replyText(ctx, `${MSG.productTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------------- 內建指令：作品 */
+async function replyPortfolios(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('portfolios')
+    .select('title, description')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+  if (!data?.length) return replyText(ctx, MSG.portfolioEmpty);
+  const lines = data.map((p: any) => `・${p.title}`);
+  const url = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  return replyText(ctx, `${MSG.portfolioTitle}\n${lines.join('\n')}\n\n${url}`);
+}
+
+/* -------------------------------------------------------- 內建指令：會員 */
+async function replyMember(ctx: BuiltinCtx): Promise<boolean> {
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data } = await ctx.admin
+    .from('customers')
+    .select('points, membership_levels(name)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('id', customerId)
+    .maybeSingle();
+  const level = Array.isArray((data as any)?.membership_levels)
+    ? (data as any).membership_levels[0]
+    : (data as any)?.membership_levels;
+  const lines = [
+    MSG.memberPoints(Number(data?.points ?? 0)),
+    level?.name ? MSG.memberLevel(level.name) : MSG.memberNoLevel,
+  ];
+  return replyText(ctx, `${MSG.memberTitle}\n${lines.join('\n')}`);
+}
+
+/* ---------------------------------------------------- 內建指令：聯絡資訊 */
+async function replyContact(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const basic = (row.basic ?? {}) as Record<string, any>;
+  const lines: string[] = [];
+  const name = String(basic.tenantName || ctx.tenant.name || '');
+  if (name) lines.push(`・${name}`);
+  if (basic.tenantPhone) lines.push(`・電話：${basic.tenantPhone}`);
+  if (basic.tenantAddress) lines.push(`・地址：${basic.tenantAddress}`);
+  if (basic.tenantEmail) lines.push(`・Email：${basic.tenantEmail}`);
+  if (lines.length <= 1 && !basic.tenantPhone && !basic.tenantAddress && !basic.tenantEmail)
+    return replyText(ctx, MSG.contactEmpty);
+  lines.push(buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code));
+  return replyText(ctx, `${MSG.contactTitle}\n${lines.join('\n')}`);
+}
+
+/* ---------------------------------------------------- 內建指令：營業時間 */
+async function replyBusinessHours(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const parsed = businessSettingsSchema.safeParse(row.business ?? {});
+  const biz = parsed.success ? parsed.data : businessSettingsSchema.parse({});
+  return replyText(ctx, `${MSG.hoursTitle}\n${formatBusinessHours(biz)}`);
+}
+
+/* -------------------------------------------------- 內建指令：常見問題 */
+/** 常見問題取自 tenant_settings.ai.faq（AI 客服設定頁店家自己填的那份，同一份資料） */
+async function replyFaq(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const ai = aiSettingsSchema.parse(row.ai ?? {});
+  const faq = (ai.faq ?? []).filter((f) => f?.q && f?.a).slice(0, 5);
+  if (!faq.length) return replyText(ctx, MSG.faqEmpty);
+  const blocks = faq.map((f) => `Q：${f.q}\nA：${f.a}`);
+  return replyText(ctx, `${MSG.faqTitle}\n\n${blocks.join('\n\n')}`);
+}
+
+/* ------------------------------------------------------ 內建指令：地圖 */
+async function replyMap(ctx: BuiltinCtx): Promise<boolean> {
+  const row = await loadSettingsRow(ctx);
+  const address = String((row.basic ?? {}).tenantAddress ?? '');
+  if (!address) return replyText(ctx, MSG.mapEmpty);
+  const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+  return replyText(ctx, `${MSG.mapTitle}\n${address}\n${url}`);
+}
+
+/**
+ * 「預約」「服務」「服務項目」→ active 服務清單。
+ *
+ * 與舊版的差別：沒有 active 服務時原本回 false（落到 ⑤/⑥）——但 Rich Menu 的
+ * 第一格就是這個字，一家還沒上架服務的新店，顧客按下去會完全沒反應。改為誠實回
+ * 「還沒有上架服務」並附公開頁連結：說的是實情，也保證按鈕一定有回應（06 §3）。
+ */
+async function replyServiceListBuiltin(ctx: BuiltinCtx): Promise<boolean> {
+  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  const handled = await replyServiceList(ctx.admin, ctx.tenant, ctx.token, ctx.replyToken);
+  if (handled) return true;
+  return replyText(ctx, MSG.serviceListEmpty(shopUrl));
+}
+
+/** 「我的預約」→ 沿用既有實作 */
+async function replyMyBookingsBuiltin(ctx: BuiltinCtx): Promise<boolean> {
+  await replyMyBookings(ctx.admin, ctx.tenant, ctx.token, ctx.replyToken, ctx.userId);
+  return true;
 }
 
 /* ------------------------------------------------------- 內建指令：服務 */
@@ -390,6 +806,24 @@ async function buildShopContext(
 }
 
 /* ----------------------------------------------------------------- utils */
+/**
+ * 從該店的 keyword_replies 挑出要回的那一列。
+ *
+ * 完全比對優先於 CONTAINS：店家若同時設了「價格」（EXACT）與「價」（CONTAINS），
+ * 顧客剛好打「價格」時應該拿到前者。CONTAINS 只在沒有任何完全比對命中時才參與。
+ */
+function pickKeywordReply(rows: any[], text: string): any | null {
+  const exact = rows.find((r: any) => (r.keywords ?? []).some((k: string) => k === text));
+  if (exact) return exact;
+  return (
+    rows.find(
+      (r: any) =>
+        (r.content ?? {}).matchType === 'CONTAINS'
+        && (r.keywords ?? []).some((k: string) => k && text.includes(k)),
+    ) ?? null
+  );
+}
+
 /** keyword_replies 列 → LINE message 物件（TEXT / IMAGE / FLEX；組不出來回 null） */
 function keywordReplyMessage(r: { reply_type: string; content: any }): any | null {
   const c = r.content ?? {};
@@ -402,8 +836,14 @@ function keywordReplyMessage(r: { reply_type: string; content: any }): any | nul
   if (r.reply_type === 'FLEX' && c.contents)
     return { type: 'flex', altText: String(c.altText ?? '訊息'), contents: c.contents };
   // TEXT（content 形狀以 keyword-replies 寫入端點為準；相容 text / replyText 兩種鍵）
-  const text = c.text ?? c.replyText ?? '';
-  return text ? { type: 'text', text: String(text) } : null;
+  const text = String(c.text ?? c.replyText ?? '');
+  if (!text) return null;
+  // 「附加連結按鈕」是頁面上存得進去的欄位；不附在訊息裡的話，店家設了連結、
+  // 顧客永遠看不到。LINE 的文字訊息會自動把 URL 變成可點的連結。
+  const linkUrl = String(c.linkUrl ?? '').trim();
+  if (!linkUrl) return { type: 'text', text };
+  const linkLabel = String(c.linkLabel ?? '').trim();
+  return { type: 'text', text: `${text}\n\n${linkLabel ? `${linkLabel}\n` : ''}${linkUrl}` };
 }
 
 /** timestamptz ISO → 台北時間「M/D（週）HH:mm」（比照 src/server/tz.ts 的固定 +08:00 做法） */
