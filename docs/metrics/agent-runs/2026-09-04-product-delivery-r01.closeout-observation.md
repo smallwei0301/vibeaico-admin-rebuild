@@ -2,7 +2,7 @@
 
 > Run: `2026-09-04-product-delivery-r01`
 >
-> Observed at: `2026-09-07T02:31:00Z`
+> Evidence assembled for PR #224 at: `2026-09-07T02:38:45Z`
 >
 > Disposition: `FROZEN_LEGACY_V3 / HISTORICAL_NON_COMPARABLE / NOT_GRADED`
 
@@ -10,7 +10,7 @@
 
 `docs/decisions/2026-09-07-owner-governance-alignment.md` requires historical Delivery Truth v2/v3 ledgers to remain read-only. Therefore the legacy JSON and generated Markdown are intentionally **not** rewritten into a fake terminal score.
 
-The preserved ledger at the freeze point is:
+The preserved ledger is:
 
 ```text
 path: docs/metrics/agent-runs/2026-09-04-product-delivery-r01.json
@@ -24,18 +24,23 @@ main.endSha: null
 
 Those old fields describe the historical record as it was written. They are not proof that the Run is still allowed to accept new Product work.
 
-## Live closeout window
+## Reproducible closeout-window evidence
 
-Read from GitHub live state before freezing admission:
+The freeze candidate was built from this verified `main` base:
 
 ```text
-main:        6f9318d46d863934ecd8874b3be21b6c9feaf0c0
-open Issues: 47
-open PRs:    14
-open PRs referencing this RUN_ID: 0
+6f9318d46d863934ecd8874b3be21b6c9feaf0c0
 ```
 
-No active Product candidate remained attached to this Run. New Product work must use a new Delivery Truth v4 Run with an explicit closeout owner.
+A live GitHub PR search immediately before the freeze work found **zero open PRs** referencing:
+
+```text
+RUN_ID: 2026-09-04-product-delivery-r01
+```
+
+Transient repository-wide open-Issue/open-PR totals are intentionally not frozen into this artifact because parallel sessions continue to create and close work while the evidence is assembled. The zero-member check is the admission fact that matters.
+
+The executable freeze becomes effective only when the policy reaches `main`; until then this file is candidate evidence, not a claim that GitHub is already enforcing it.
 
 ## Truth that remains intentionally unresolved
 
@@ -51,7 +56,7 @@ The historical v3 report remains `NOT_GRADED`. Retrospectives may re-score/revie
 
 ## Admission freeze
 
-`scripts/agents/run-admission-policy.mjs` marks this Run frozen for new counted `SLICE` or `STANDALONE` membership. Both local PR preflight and the trusted-main GitHub WIP Guard consume that policy.
+`scripts/agents/run-admission-policy.mjs` marks this Run frozen for new counted `SLICE` or `STANDALONE` membership. Local PR preflight consumes the shared lane validator, and the trusted-main GitHub WIP Guard consumes that same validator before writing `Agent WIP Policy`.
 
 Historical, governance, or explicitly non-counted retrospective references remain allowed. The freeze is forward-looking and does not retroactively fail merged PRs.
 
