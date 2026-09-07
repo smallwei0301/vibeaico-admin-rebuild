@@ -38,18 +38,23 @@ const ROOT = process.cwd();
  * 允許組 Flex JSON 的檔案清單（下面兩條靜態鎖共用）。
  *
  * ⚠️ 這兩條鎖要防的是「**同一個成品**在第二個地方被重組一次，短期一樣、
- * 長期分岔」。目前全專案只有一個 Flex 成品（「選單」的主選單輪播），所以
- * 「唯一的成品」與「唯一的檔案」剛好是同一件事，用檔名當代理沒問題。
+ * 長期分岔」。issue #6 寫下它們的時候，全專案只有一個 Flex 成品（主選單），
+ * 所以「唯一的成品」與「唯一的檔案」剛好是同一件事，用檔名當代理沒問題。
  *
- * issue #8 的「行程 Flex 輪播」（10 分冊 §6.1）會是**第二個成品**：資料來源是
- * `trips` 表而不是店家編的卡片，觸發字、卡片欄位、按鈕動作全都不同，把它塞進
- * flex-menu.ts 不會消除分岔風險，只會讓一支檔案同時是兩件事的事實來源。
- * 它落地時應把 `src/server/trip-flex.ts` 加進本清單並在此說明理由——
- * 清單維持**精確比對**（`toEqual`，不是 `toContain`），多一個檔案就會紅，
- * 逼下一個人回來說明它是不是又一個獨立成品。
+ * **issue #8 讓這條前提改變了，所以清單從一項變成兩項——這是前提改變，
+ * 不是把斷言放寬。** 10 分冊 §6.1 的「行程 Flex 輪播」是**第二個成品**：
+ * 資料來源是 `trips` 表而不是店家編的卡片，觸發字（行程／報名／揪團）、
+ * 卡片欄位（封面／簡介／最低價）、按鈕動作（uri → 商店頁該行程）全都不同。
+ * 把它塞進 `flex-menu.ts` 不會消除分岔風險，只會讓一支檔案同時是兩件事的
+ * 事實來源——那才是這條鎖真正想避免的情況。
+ *
+ * 清單**維持精確比對**（`toEqual`，不是 `toContain`）：多出第三個檔案一樣會紅，
+ * 逼下一個人回來說明它是不是又一個獨立成品。底下另有一條鎖，證明這兩支
+ * 真的互不相干（互不 import、互不碰對方的資料來源）。
  */
 const FLEX_BUILDER_FILES = [
   'src/server/flex-menu.ts',   // 「選單」的主選單輪播（issue #6）
+  'src/server/trip-flex.ts',   // 「行程」關鍵字的行程輪播（issue #8、10 分冊 §6.1）
 ];
 
 /** src/ 底下所有 .ts / .tsx（兩條靜態鎖共用的走訪） */
@@ -563,6 +568,20 @@ describe('Flex JSON 的單一事實來源', () => {
 
   it('src/ 底下只有 FLEX_BUILDER_FILES 會組 bubble / carousel（第三份組裝邏輯 = 遲早分岔）', () => {
     expect(srcFilesMatching(/type:\s*'(bubble|carousel)'/)).toEqual([...FLEX_BUILDER_FILES].sort());
+  });
+
+  it('行程輪播與主選單是兩個獨立成品：flex-menu.ts 不碰 trips，trip-flex.ts 不碰 flexCards', () => {
+    const strip = (f: string) => readFileSync(resolve(ROOT, f), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const menu = strip('src/server/flex-menu.ts');
+    const trip = strip('src/server/trip-flex.ts');
+    // 兩支互不 import、也互不碰對方的資料來源——這才是「清單有兩項但沒有分岔風險」
+    // 的實質條件。比對去掉註解後的程式碼：檔頭互相說明「為什麼分成兩支」是應該的，
+    // 那不是耦合。
+    expect(menu).not.toMatch(/from\s+'\.\/trip-flex'/);
+    expect(trip).not.toMatch(/from\s+'\.\/flex-menu'/);
+    expect(trip).not.toContain('flexCards');
+    expect(menu).not.toContain('trips');
   });
 
 });

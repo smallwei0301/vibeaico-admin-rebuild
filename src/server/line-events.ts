@@ -20,6 +20,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
+import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { isFeatureActive } from './features';
 import { aiReply, type ShopContext } from './ai-reply';
 import {
@@ -175,6 +176,19 @@ const MSG = {
   faqEmpty: '目前還沒有整理常見問題，您想問什麼都可以直接留言，我們會盡快回覆 😊',
   mapTitle: '導航到我們這裡：',
   mapEmpty: '店家地址還沒設定完成，您可以直接留言詢問，我們會回覆詳細位置。',
+  /* --- 行程 Flex 輪播（10 分冊 §6.1 的 TRIP 組）--- */
+  tripEmptyGuide: '目前還沒有上架行程，敬請期待！',
+  tripCarouselAlt: '目前開放報名的行程',
+  tripPriceFrom: '最低',
+  /** 沒有任何啟用方案 → 價格「不知道」，不可顯示 NT$ 0（那是捏造的已知） */
+  tripPriceUnknown: '價格洽詢',
+  tripBookCta: '我要預約',
+  /* --- 團次／名額（10 分冊 §6.1 的 DEPARTURE 組）--- */
+  departureTitle: '未來 14 天可報名的團次：',
+  departureEmpty:
+    '未來 14 天目前沒有開放報名的團次。\n請輸入「行程」看看有哪些行程，或直接留言告訴我們您想出發的日期，我們會幫您安排。',
+  departureFull: '已額滿',
+  departureSeatsLeft: (n: number) => `剩 ${n} 位`,
   /**
    * 尚未開放的功能一律用這組文案。
    * CLAUDE.md：沒建好就誠實說沒建好——沉默（顧客按了沒反應）與假裝做得到
@@ -182,16 +196,12 @@ const MSG = {
    *
    * ⚠️ 這幾句的壽命由對應 Issue 決定，功能落地後**必須連同文案一起刪掉**，
    * 不要留著當備用：留著的話，下一個人讀到這組常數會以為那些功能仍未建置。
-     *   notReadyTrip / notReadyDeparture / notReadyOrder → issue #8（行程域）
+     *   notReadyOrder → issue #8 的旅遊訂單段（`tour_orders` 表尚未建立）
    */
   notReadyClinicQueue:
     '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
   notReadyNotifyToggle:
     '店家通知的開關目前還不能在這裡自行設定。\n如果您不想再收到通知，直接留言告訴我們就可以，我們會為您處理。',
-  notReadyTrip:
-    '行程列表還在準備中，目前無法自動查詢。\n請直接留言告訴我們您想去的地方與日期，我們會盡快回覆您。',
-  notReadyDeparture:
-    '團次與名額查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您想出發的日期，我們會幫您確認。',
   notReadyOrder:
     '訂單查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您的大名，我們幫您查詢。',
 } as const;
@@ -503,14 +513,17 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
       // 「已為您開啟」——照 CLAUDE.md 誠實原則，先明說還不能自助設定。
       return replyText(ctx, MSG.notReadyNotifyToggle);
 
-    // ---- 以下三個是 issue #8（行程域）的範圍，尚未實作 ----
-    // GUIDE 的 Rich Menu 有「行程」「團次」「我的訂單」三格，按下去必須有反應；
-    // 其他業態沒有這些概念，回 false 讓它落到 AI／預設回覆比較自然。
     case 'TRIP':
-      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyTrip) : false;
+      // 已發布行程的 Flex 輪播（10 分冊 §6.1）。migration 0066 起查得到，
+      // 不再回「準備中」。其他業態沒有行程，replyTrips 內部回 false 不攔截。
+      return replyTrips(ctx);
     case 'DEPARTURE':
-      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyDeparture) : false;
+      // 未來 14 天可報名的團次／名額（10 分冊 §6.1）。同上，0066 起查得到。
+      return replyDepartures(ctx);
     case 'ORDER':
+      // ⚠️ 這一格**還是準備中，而且是真的**：`tour_orders` 表尚未建立
+      // （0066–0068 只建了 trips / trip_plans / trip_departures / trip_addons），
+      // 沒有任何地方查得到旅遊訂單。有表之前回一句編出來的進度就是說謊。
       return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyOrder) : false;
 
     default:
@@ -565,6 +578,122 @@ async function replyMenu(ctx: BuiltinCtx): Promise<boolean> {
   const cells = MODE_PRESETS[businessTypeOf(ctx.tenant)].richMenuCells;
   const lines = [...new Set(cells.map((c) => c.text))].map((t) => `・${t}`);
   return replyText(ctx, `${MSG.menuTitle}\n${lines.join('\n')}\n\n${MSG.menuFooter}`);
+}
+
+/* ------------------------------------------------ 內建指令：行程 / 團次 */
+/**
+ * 「行程」「所有行程」「揪團」…→ 已發布行程的 **Flex 輪播**（10 分冊 §6.1）。
+ *
+ * Flex JSON 的組裝在 `src/server/trip-flex.ts`，這裡只負責查資料。
+ * 那是**第二個 Flex 成品**（不是主選單的第二份實作）——資料來源是 `trips` 表
+ * 而不是店家編的卡片，觸發字、卡片欄位、按鈕動作全都不同。理由與
+ * `tests/unit/flex-menu.06.test.ts` 的 `FLEX_BUILDER_FILES` 說明一致。
+ *
+ * ⚠️ **PostgREST 的 embed 一定要指定 FK 名稱。** `trip_plans` 對 `trips` 有
+ * **兩條** FK：`trip_plans_trip_id_fkey`（0066 的單欄）與
+ * `trip_plans_tenant_trip_fkey`（0067 的 tenant-aware 複合鍵）。不指定就是
+ * `PGRST201 Could not embed because more than one relationship was found`
+ * ——那是 500，顧客打「行程」完全沒反應，而任何只跑單元測試的驗證都不會紅。
+ */
+async function replyTrips(ctx: BuiltinCtx): Promise<boolean> {
+  const { data } = await ctx.admin
+    .from('trips')
+    .select(
+      'slug, title, summary, cover_image_url,'
+      + ' trip_plans!trip_plans_trip_id_fkey(price_per_person, active)',
+    )
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'PUBLISHED')
+    .order('created_at', { ascending: false })
+    .limit(TRIP_CAROUSEL_MAX);
+
+  if (!data?.length) {
+    // 沒有行程的一般店家（美髮沙龍收到「行程」）交給 AI／預設回覆比較自然；
+    // 嚮導的 Rich Menu 有這一格，按下去必須有反應。
+    return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.tripEmptyGuide) : false;
+  }
+
+  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  const cards: TripCardSource[] = data.map((t: any) => {
+    const plans: any[] = Array.isArray(t.trip_plans) ? t.trip_plans : [];
+    /*
+     * 只算 active 方案的 `price_per_person`（**不是 `base_price`**——0066 把舊的
+     * base_price 併進 price_per_person，`trips` / `trip_plans` 上已經沒有那個欄位）。
+     * 沒有任何啟用方案 → null，由 trip-flex 顯示「價格洽詢」而不是 NT$ 0。
+     */
+    const prices = plans
+      .filter((p) => p.active)
+      .map((p) => Number(p.price_per_person))
+      .filter((n) => Number.isFinite(n));
+    return {
+      slug: t.slug,
+      title: t.title,
+      summary: t.summary ?? '',
+      coverImageUrl: t.cover_image_url ?? '',
+      minPrice: prices.length ? Math.min(...prices) : null,
+    };
+  });
+
+  const flex = buildTripCarousel(cards, shopUrl, {
+    altText: MSG.tripCarouselAlt,
+    priceFrom: MSG.tripPriceFrom,
+    priceUnknown: MSG.tripPriceUnknown,
+    bookCta: MSG.tripBookCta,
+  });
+  if (!flex) return replyText(ctx, MSG.tripEmptyGuide);
+
+  await lineReply(ctx.token, ctx.replyToken, [flex as any]);
+  return true;
+}
+
+/**
+ * 「團次」「名額」「出團日期」…→ 未來 14 天可報名的團次（10 分冊 §6.1）。
+ *
+ * 純文字而不是 Flex：顧客問的是「哪幾天還有位子」，一份可以一眼掃完的日期清單
+ * 比一組要左右滑的卡片有用；而且團次可能有 10 筆，carousel 上限是 12 個 bubble。
+ *
+ * ⚠️ 兩個 embed 都要指定 FK 名稱，理由同 `replyTrips()`：
+ * `trip_departures` 對 `trips` 有 `trip_departures_trip_id_fkey` 與
+ * `trip_departures_tenant_trip_fkey` 兩條；對 `trip_plans` 有
+ * `trip_departures_plan_id_fkey` 與 `trip_departures_tenant_trip_plan_fkey` 兩條。
+ *
+ * ⚠️ `trips` 用 `!inner`：只列**已發布**行程的團次。草稿行程的團次外流出去，
+ * 等於顧客報名一個店家還沒打算開賣的團。
+ */
+async function replyDepartures(ctx: BuiltinCtx): Promise<boolean> {
+  if (businessTypeOf(ctx.tenant) !== 'GUIDE') return false;
+
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10);
+  const to = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const { data } = await ctx.admin
+    .from('trip_departures')
+    .select(
+      'departs_on, start_time, capacity, seats_booked,'
+      + ' trips!trip_departures_trip_id_fkey!inner(title, status),'
+      + ' trip_plans!trip_departures_plan_id_fkey(name)',
+    )
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('status', 'OPEN')
+    .eq('trips.status', 'PUBLISHED')
+    .gte('departs_on', from)
+    .lte('departs_on', to)
+    .order('departs_on', { ascending: true })
+    .limit(SERVICE_LIST_LIMIT);
+
+  if (!data?.length) return replyText(ctx, MSG.departureEmpty);
+
+  const lines = data.map((d: any) => {
+    // capacity - seats_booked 可能因為並發而暫時為負；夾到 0，不顯示「剩 -1 位」
+    const left = Math.max(0, Number(d.capacity) - Number(d.seats_booked));
+    const time = typeof d.start_time === 'string' ? ` ${d.start_time.slice(0, 5)}` : '';
+    const plan = d.trip_plans?.name ? `（${d.trip_plans.name}）` : '';
+    const seats = left > 0 ? MSG.departureSeatsLeft(left) : MSG.departureFull;
+    return `・${d.departs_on}${time} ${d.trips?.title ?? ''}${plan}　${seats}`;
+  });
+  const shopUrl = buildPublicBookingUrl(APP_URL, ctx.tenant.shop_code);
+  return replyText(ctx, `${MSG.departureTitle}\n${lines.join('\n')}\n\n${shopUrl}`);
 }
 
 /* -------------------------------------------------------- 內建指令：活動 */

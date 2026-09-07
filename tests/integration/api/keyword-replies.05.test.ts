@@ -27,7 +27,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SHOP_A } from '../../fixtures';
+import { SHOP_A, TRIP_A } from '../../fixtures';
 import { LineMockServer, type RecordedLineRequest } from '../../helpers/line-mock';
 import { drainWebhook } from '../../helpers/line-webhook';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
@@ -401,34 +401,43 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
   }
 
   /**
-   * ⚠️ issue #8 讓這一條的前提改變了一半，斷言因此**分成兩半重寫**。
+   * ⚠️ **issue #8 的 LINE 段落地後，這一條的前提改變了三分之二，斷言也跟著分開。**
    *
-   * 原本三個功能都回「還在準備中」：`團次`、`我的訂單`（嚮導）、`看診進度`。
-   * migration 0026 建了 `trip_departures` / `tour_orders` 之後，前兩個**查得到
-   * 真的資料**了——那句「還在準備中」從誠實變成假話，所以連同文案一起換掉
-   * （`MSG.notReadyDeparture` / `MSG.notReadyTourOrder` 已刪除）。
+   * 原本三個功能都回「還在準備中」：`行程`、`團次`、`我的訂單`。
+   * `trips` / `trip_departures`（migration 0066）落地後，前兩個**查得到真的資料**了
+   * ——那句「還在準備中」從誠實變成假話，所以連同 `MSG.notReadyTrip` /
+   * `MSG.notReadyDeparture` 一起刪掉。
    *
-   * 這裡要保住的東西沒有變：**沉默不可接受，編造進度也不可接受**。
-   * 所以已建好的兩個改成驗「回的是真資料」，還沒建的那個維持驗「誠實說沒建好」。
+   * `我的訂單`**維持**「準備中」，而且那是真的：`tour_orders` 表尚未建立
+   * （0066–0068 只建了 trips / trip_plans / trip_departures / trip_addons），
+   * 沒有任何地方查得到旅遊訂單。有表之前回一句編出來的進度就是說謊。
+   *
+   * 這裡要保住的東西從頭到尾沒有變：**沉默不可接受，編造進度也不可接受。**
    */
-  it('#6／#8 尚未落地的意圖：嚮導的選單格按下去仍有誠實回應，不是沉默', async () => {
+  it('嚮導的選單格按下去都有真實回應：行程／團次回真資料，訂單誠實說沒建好', async () => {
     await setBusinessType('GUIDE');
 
-    // ⚠️ 本輪（issue #5）刻意只補「關鍵字覆蓋」，行程域（trips / trip_departures /
-    //    tour_orders）屬 issue #8。GUIDE 的 Rich Menu 有「行程」「團次」「我的訂單」
-    //    三格，按下去**必須有反應**——沒建好就誠實說沒建好（06 §3 / CLAUDE.md）。
-    //    issue #8 落地後，這三條斷言要連同 MSG.notReadyTrip/Departure/Order 一起改掉，
-    //    屆時「準備中」就變成假話。
-    for (const [text, keyword] of [
-      ['行程', '準備中'],
-      ['團次', '準備中'],
-      ['我的訂單', '準備中'],
-    ] as const) {
-      const reply = await customerSays(text);
-      expect(reply, `「${text}」按下去沒有任何回應`).not.toBeNull();
-      expect(reply).not.toBe(DEFAULT_REPLY);
-      expect(reply).toContain(keyword);
-    }
+    // ① 行程 → Flex 輪播（10 分冊 §6.1）。種子有一筆 PUBLISHED 的「A 店測試行程」。
+    const trips = await customerSays('行程');
+    expect(trips, '「行程」按下去沒有任何回應').not.toBeNull();
+    expect(trips).not.toBe(DEFAULT_REPLY);
+    expect(trips, '「行程」還在回「準備中」＝ #8 的 LINE 段沒生效').not.toContain('準備中');
+    expect(trips, '顧客看不到行程名稱').toContain('A 店測試行程');
+    expect(trips, '卡片沒有「我要預約」按鈕').toContain('我要預約');
+
+    // ② 團次 → 未來 14 天的清單。種子的兩團在 +7 / +14 天，落在窗內。
+    const departures = await customerSays('團次');
+    expect(departures).not.toBeNull();
+    expect(departures).not.toBe(DEFAULT_REPLY);
+    expect(departures, '「團次」還在回「準備中」').not.toContain('準備中');
+    expect(departures).toContain('未來 14 天可報名的團次：');
+    expect(departures).toContain('A 店測試行程');
+
+    // ③ 我的訂單 → tour_orders 表還沒有，這句「準備中」是**真的**，不是遺留。
+    const orders = await customerSays('我的訂單');
+    expect(orders, '「我的訂單」按下去沒有任何回應').not.toBeNull();
+    expect(orders).not.toBe(DEFAULT_REPLY);
+    expect(orders).toContain('準備中');
 
     // 看診進度（叫號）同樣還沒建 → 這一句也是誠實的
     await setBusinessType('CLINIC');
@@ -467,19 +476,46 @@ describe('系統內建關鍵字 15 組（issue #5 ④；06 §3 補列規格）',
    * **不是**「業態不是 GUIDE」，而是「這家店一筆已上架行程都沒有 **且** 業態不是
    * GUIDE」——`replyTrips` 先查 trips，查得到就照回，不看業態（斜槓店家把行程賣給
    * 一般顧客是合理的）。第一版測試把條件寫成前者而紅，修正的是測試不是實作。
+   *
+   * ⚠️ issue #8 落地後這一條要**真的把兩個分支都走過**，所以會暫時把種子那筆行程
+   * 下架再還原。種子固定給 SHOP_A 一筆 PUBLISHED 行程，不下架就只觀測得到
+   * 「有行程」那一半，另一半（回 false → 落到 ⑥）永遠不會被執行到——
+   * 那正是這條案例唯一想釘住的東西。還原寫在 finally，不依賴斷言有沒有過。
    */
-  it('「行程」在非嚮導業態不攔截（落到 ⑥），嚮導則誠實回應', async () => {
-    // issue #5 的範圍不含行程域。一般店家收到「行程」交給 ⑤ AI／⑥ defaultReply
-    // 比較自然；嚮導的選單第一格就是這個字，一定要有回應——沉默不可接受。
-    // issue #8 落地後本案要改為斷言 Flex 輪播與「我要預約」按鈕。
+  it('「行程」：有上架行程就回輪播（不看業態）；一筆都沒有時非嚮導不攔截、嚮導誠實回應', async () => {
+    // --- 有上架行程：兩種業態都拿得到 Flex 輪播 ---
     await setBusinessType('LOCAL_SHOP');
-    expect(await customerSays('行程')).toBe(DEFAULT_REPLY);
+    const shopWithTrips = await customerSays('行程');
+    expect(shopWithTrips, '有上架行程時，一般店家也應該拿得到輪播').not.toBe(DEFAULT_REPLY);
+    expect(shopWithTrips).toContain('A 店測試行程');
 
     await setBusinessType('GUIDE');
-    const guide = await customerSays('行程');
-    expect(guide).not.toBe(DEFAULT_REPLY);
-    expect(guide).toContain('準備中');
-  }, 30_000);
+    const guideWithTrips = await customerSays('行程');
+    expect(guideWithTrips).not.toBe(DEFAULT_REPLY);
+    expect(guideWithTrips).toContain('我要預約');
+
+    // --- 一筆上架行程都沒有：這才是 replyTrips 回 false 的條件 ---
+    const { error: hideError } = await admin.from('trips')
+      .update({ status: 'DRAFT' }).eq('tenant_id', SHOP_A.id).eq('status', 'PUBLISHED');
+    expect(hideError).toBeNull();
+    try {
+      await setBusinessType('LOCAL_SHOP');
+      expect(
+        await customerSays('行程'),
+        '沒有行程的一般店家收到「行程」應該落到 ⑥ defaultReply',
+      ).toBe(DEFAULT_REPLY);
+
+      await setBusinessType('GUIDE');
+      const guideEmpty = await customerSays('行程');
+      expect(guideEmpty, '嚮導的選單第一格按下去不可以沉默').not.toBeNull();
+      expect(guideEmpty).not.toBe(DEFAULT_REPLY);
+      expect(guideEmpty).toContain('目前還沒有上架行程');
+    } finally {
+      const { error } = await admin.from('trips')
+        .update({ status: 'PUBLISHED' }).eq('tenant_id', SHOP_A.id).eq('id', TRIP_A.id);
+      expect(error).toBeNull();
+    }
+  }, 60_000);
 });
 
 describe('系統關鍵字停用開關真的存得進去、也真的生效（issue #5 ④）', () => {
