@@ -10,7 +10,7 @@ const workflow = readFileSync(
 describe('agent WIP Guard live-state dispatch', () => {
   it('re-reads the current PR before parsing metadata or deciding a TEST transition', () => {
     const payloadIndex = workflow.indexOf(
-      'const payloadCurrent = context.payload.pull_request;',
+      'const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };',
     );
     const liveReadIndex = workflow.indexOf(
       'const { data: current } = await github.rest.pulls.get({',
@@ -53,9 +53,13 @@ describe('agent WIP Guard live-state dispatch', () => {
 
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
     expect(workflow).toContain(
-      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number }}',
+      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}',
     );
     expect(workflow).toContain('cancel-in-progress: true');
+    expect(workflow).not.toMatch(/^concurrency:/m);
+    expect(workflow).toMatch(/^    concurrency:/m);
+    expect(workflow).not.toContain('  pull_request_review:');
+    expect(workflow).toContain("github.event.comment.body == '/astra-review-check'");
     expect(workflow).not.toContain('group: agent-wip-guard-${{ github.repository }}\n');
   });
 
