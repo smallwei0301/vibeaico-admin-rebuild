@@ -100,6 +100,7 @@ describe('trips and lifecycle actions', () => {
         () => ownerA.post(`/api/trips/${unknownId}/departures`, {}),
         () => ownerA.post(`/api/trips/${unknownId}/departures/batch`, {}),
         () => ownerA.put(`/api/trip-departures/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trip-departures/${unknownId}`),
         () => ownerA.post(`/api/trips/${unknownId}/addons`, {}),
         () => ownerA.put(`/api/trip-addons/${unknownId}`, {}),
         () => ownerA.delete(`/api/trip-addons/${unknownId}`),
@@ -237,5 +238,92 @@ describe('plans, departures and addons CRUD', () => {
     });
     expect(result.status).toBe(404);
     expect((await json(result)).code).toBe('REQ_002');
+  });
+
+  /**
+   * `DELETE /api/trip-departures/:id` 原本不存在，但詳情頁的刪除鍵並沒有跟著停用——
+   * 它只是 `setDepartures(filter)` 再報「團次已刪除」，重新整理團次就回來了。
+   *
+   * 這一組不只驗 HTTP 狀態碼：**每一條都用 service role 直查 `trip_departures`**，
+   * 因為「回 200 但沒刪掉」與「回 409 卻已經刪掉」都會讓只看狀態碼的測試全綠，
+   * 而那正是本 issue 要修的那種假成功。
+   */
+  it('deletes an empty departure and refuses one that already has seats', async () => {
+    const trip = await ownerA.post('/api/trips', {
+      title: `departure-delete ${randomUUID()}`, slug: `dd-${randomUUID()}`,
+    });
+    expect(trip.status).toBe(200);
+    const tripId = (await json<{ id: string }>(trip)).data!.id;
+    try {
+      const plan = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '刪除測試方案', pricePerPerson: 1000,
+      });
+      expect(plan.status).toBe(200);
+      const planId = (await json<{ id: string }>(plan)).data!.id;
+
+      const mk = async (departsOn: string) => {
+        const r = await ownerA.post(`/api/trips/${tripId}/departures`, {
+          planId, departsOn, capacity: 4, startTime: '09:00',
+        });
+        expect(r.status).toBe(200);
+        return (await json<{ id: string }>(r)).data!.id;
+      };
+      const emptyId = await mk('2027-03-01');
+      const bookedId = await mk('2027-03-02');
+
+      // ① 沒有人報名 → 200，而且真的從資料庫消失
+      const removed = await ownerA.delete(`/api/trip-departures/${emptyId}`);
+      expect(removed.status).toBe(200);
+      const { data: gone, error: goneError } = await admin.from('trip_departures')
+        .select('id').eq('id', emptyId).maybeSingle();
+      expect(goneError).toBeNull();
+      expect(gone, '回了 200 但資料列還在').toBeNull();
+
+      // ② 已有人報名 → 409，而且資料列必須原封不動
+      const { error: seatError } = await admin.from('trip_departures')
+        .update({ seats_booked: 2 }).eq('id', bookedId);
+      expect(seatError).toBeNull();
+      const refused = await ownerA.delete(`/api/trip-departures/${bookedId}`);
+      expect(refused.status).toBe(409);
+      expect((await json(refused)).code).toBe('REQ_003');
+      const { data: kept, error: keptError } = await admin.from('trip_departures')
+        .select('id, seats_booked').eq('id', bookedId).maybeSingle();
+      expect(keptError).toBeNull();
+      expect(kept, '回了 409 卻把團次刪掉了').not.toBeNull();
+      expect(kept!.seats_booked).toBe(2);
+
+      // ③ 別家店不得刪掉這個團次。
+      //
+      // ⚠️ 這裡刻意分成兩段。SHOP_B 的種子沒有 TOUR_MODULE 訂閱，所以直接打會被
+      // 功能閘門擋在 403 —— 那證明的是「沒訂閱」，不是「沒有權利」（PB-025：
+      // 用有沒有資料／有沒有訂閱代替有沒有權利）。訂閱一旦補上，租戶隔離就沒有
+      // 任何斷言在守它了。所以先驗閘門，再**臨時給 SHOP_B 訂閱**，證明即使閘門
+      // 放行，租戶隔離仍然把它擋成 404。
+      const gated = await ownerB.delete(`/api/trip-departures/${bookedId}`);
+      expect(gated.status).toBe(403);
+      expect((await json(gated)).code).toBe('FEAT_001');
+
+      const { error: grantError } = await admin.from('feature_subscriptions').upsert({
+        tenant_id: SHOP_B.id, code: 'TOUR_MODULE', active: true,
+        expires_at: null, source: 'GRANTED', cancelled_at: null,
+      }, { onConflict: 'tenant_id,code' });
+      expect(grantError).toBeNull();
+      try {
+        const crossTenant = await ownerB.delete(`/api/trip-departures/${bookedId}`);
+        expect(crossTenant.status, '閘門放行後仍必須被租戶隔離擋下').toBe(404);
+        expect((await json(crossTenant)).code).toBe('REQ_002');
+      } finally {
+        await admin.from('feature_subscriptions').delete()
+          .eq('tenant_id', SHOP_B.id).eq('code', 'TOUR_MODULE');
+      }
+      const { data: stillThere } = await admin.from('trip_departures')
+        .select('id').eq('id', bookedId).maybeSingle();
+      expect(stillThere, '別家店把團次刪掉了').not.toBeNull();
+
+      // ④ 已刪掉的再刪一次 → 404，不是回成功
+      expect((await ownerA.delete(`/api/trip-departures/${emptyId}`)).status).toBe(404);
+    } finally {
+      await admin.from('trips').delete().eq('id', tripId).eq('tenant_id', SHOP_A.id);
+    }
   });
 });

@@ -131,13 +131,25 @@ export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture
       method: 'POST', body: JSON.stringify(departureApiPayload(payload)),
     })));
 
-/** 批次開團：後端依 weekdays 展開日期區間 */
+/**
+ * 批次開團：後端依 weekdays 展開日期區間。
+ *
+ * 回傳後端實際的 `{ created, skipped }`——`skipped` 是撞到「同方案同日同時」既有團次
+ * 而略過的筆數。前端自己算日曆得到的筆數與這個數字**不一定相同**，拿前者報成功就是
+ * 一則編出來的訊息（店家會以為開了 7 團，實際只開了 1 團）。
+ */
+export type BatchDepartureResult = { created: number; skipped: number };
+
 export const batchCreateDepartures = (
   tripId: string,
   payload: { planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number },
 ) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/trips/${tripId}/departures/batch`, { method: 'POST', body: JSON.stringify(payload) }));
+  adapt<BatchDepartureResult>(
+    () => ({ created: 0, skipped: 0 }),
+    () => request<BatchDepartureResult>(
+      `/api/trips/${tripId}/departures/batch`, { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  );
 
 export const deleteTripDeparture = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-departures/${id}`, { method: 'DELETE' }));
