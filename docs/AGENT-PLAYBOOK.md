@@ -51,6 +51,8 @@
 | PB-012 | 靜態檢查不能驗證 SQL 語意 | SELECT alias 不能在同層 WHERE 使用，且 DB enum 與 UI enum 不同；對 DB 實跑或鎖 schema mapping。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-013 | build workspace artifact 可在編譯後失敗 | page collection 清理殘留 artifact 時可報 `ENOTEMPTY`；保留首個完整證據、清 workspace 後單次重驗。 | `docs/AGENT-EXECUTION.md` §7 |
 | PB-014 | 遠端 Git tree 必須先過完整性閘門 | 原子 commit 只能減少 push 次數，不能證明 tree 完整；核心路徑、異常大量刪檔、裸 SHA、`npm ci`、typecheck 與 build 必須在 Preview 前驗證。 | `docs/AGENT-EXECUTION.md` §8；`scripts/ci/repo-integrity-guard.mjs` |
+| PB-015 | 本機與 CI 的 base 不同就不能互相佐證 | `workflow_dispatch` 使 `base_revision` 為空，守門腳本退回 `HEAD^`；head 為 merge commit 時會把 main 既有 migration 誤判為新增。錯誤指向不屬於本次變更的檔案時，先懷疑 base。 | `docs/AGENT-EXECUTION.md` §7；Issue #227 |
+| PB-016 | 退出碼被蓋掉的檢查等於沒有檢查 | 管線退出碼取最後一個命令，`&&` 後的 echo 只反映前一個；`grep` 無 match 也回非零。驗證命令不得放管線中段，測試不得依賴 `grep` 退出碼。 | `docs/AGENT-EXECUTION.md` §7.1；`12-TESTING-TDD.md` §6 |
 
 ## 事件紀錄
 
@@ -195,4 +197,36 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：改以 `GITHUB_REPOSITORY=smallwei0301/vibeaico-admin-rebuild` 重跑 dry-run；保持無寫入模式。
 - 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
 - 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
+- 狀態：已防止
+
+
+### PB-015 — 本機與 CI 的 base revision 不同時，同一支守門腳本會給出相反結論
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #227；PR #225；job 101605728719、101606491364
+- 分類：CI
+- 事件：PR #225 的 `check` 失敗，訊息是 `new migration prefix must be greater than base max 0082: supabase/migrations/0081_reconcile_product_order_coupon_fields.sql`。**它抱怨的 `0081` 是 `main` 上早就存在的檔案，不是該 PR 新增的。** 同一顆 commit 在本機跑同一支腳本卻回 `ok: true`。
+- 證據：失敗輸出含 `"baseRevision": "HEAD^"`。本機以 `BASE_REVISION=origin/main` 執行 `scripts/ci/repo-integrity-guard.mjs` → `{ ok: true, errors: [] }`；不帶該環境變數且 head 為 merge commit 時 → 同樣誤報。
+- 根因：Guard 於 lane transition 以 `workflow_dispatch` 派工；`scripts/ci/classify-changes.mjs` 的 `classifyEvent()` 對 `workflow_dispatch` 回 `classifierFailure('workflow-dispatch')`，而 `withRevisions()` 的預設值是空字串，於是 `base_revision` 為空。`.github/workflows/ci.yml` 把空值傳給 `BASE_REVISION`，`repo-integrity-guard.mjs` 的 `process.env.BASE_REVISION || 'HEAD^'` 因空字串 falsy 而退回 `HEAD^`。當 PR 的 head 是 merge commit，`HEAD^` 是**合併前的分支父節點**（已含本分支新增的 migration），基線最大號被算成本分支的號碼，於是 main 上號碼較小的既有 migration 全被判定為「新增且編號較小」。
+- 影響：打到任何「把 `main` 併進分支、且 head 為 merge commit」的 PR，與 PR 內容無關。會偽裝成「你的 migration 編號有問題」，誘導實作者去改一個沒有問題的編號。本輪先誤判為「上一顆 head 的殘影」，浪費一個排查循環。
+- 修正：把分支壓成**置於 `main` 之上的單一 commit**，使 `HEAD^` 恰等於 `main`（`HEAD^` == `origin/main` == `6f9318d`），CI 以自身預設即通過。**這是繞過症狀，不是修好根因。**
+- 預防：① 比對守門腳本結論前，先確認**本機與 CI 用的是同一個 base**；本機刻意加了 `BASE_REVISION` 才變綠，就代表 CI 那邊不會綠。② 錯誤訊息若指向**不屬於本次變更的檔案**，先懷疑 base 取錯，不要先改自己的檔案。③ 根因修法見 Issue #227：`workflow_dispatch` 時仍應解出可用 base，或在 `BASE_REVISION` 為空時**明確失敗並說明原因**，而不是靜默退回 `HEAD^`。
+- 驗證：壓成單一 commit 後，不帶 `BASE_REVISION` 執行 → `{ ok: true, errors: [], baseRevision: "HEAD^" }`；CI `check` job 101606950146 success（typecheck／test／build 皆 success）。
+- 狀態：監看中（症狀已繞過，根因待 Issue #227 修）
+
+
+### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #33①（PR #223 準備期）；本輪 available-slots 標註測試
+- 分類：Agent
+- 事件：兩次都寫出「看起來在驗證、實際上沒有驗證」的檢查。① `npx tsc --noEmit 2>&1 | head -5 && echo TYPECHECK_OK`——`head` 成功退出，把 `tsc` 的 TS1005 失敗蓋掉，畫面照樣印出 `TYPECHECK_OK`。② 測試中以 `execFileSync('grep', ...)` 判斷「有無呼叫端」，但 `grep` 無 match 時退出碼為 1，`execFileSync` 直接拋錯——該斷言是以「測試錯誤」而非「通過」的形式存在。
+- 證據：① 之後單獨執行 `npx tsc --noEmit; echo $?` 才看見非零。② `Tests 1 failed | 4 passed`，堆疊指向 `execFileSync` 那一行，而非任何 `expect`。
+- 根因：管線的退出碼是**最後一個命令**的；`&&` 之後的 `echo` 只反映前一個命令。而 `grep` 把「找不到」設計成非零退出碼，與「執行失敗」共用同一個訊號。兩者都讓「沒有量到東西」與「量到了好結果」在畫面上長得一樣。
+- 影響：① 帶著型別錯誤往下走一段。② 一條原本要防「標註過期」的斷言，若沒發現就會長期以錯誤形式存在，等於沒有這條斷言。
+- 修正：① 改成 `npx tsc --noEmit; echo "TYPECHECK_EXIT=$?"`，直接看 `$?`。② 改用 Node `readdirSync` 遞迴掃描，不依賴 `grep` 的退出碼語意。
+- 預防：**驗證命令不得放在管線中段，也不得用另一個命令的成功來宣告它成功。** 需要截斷輸出時，先取退出碼再截斷。凡是「找不到＝正常」的工具（`grep`、`find`），在測試中一律改用語言內建的檔案 API，不要靠退出碼。收到綠燈時反問一次：**如果這件事現在壞掉，這個檢查會不會變紅？** 不會就不是檢查。
+- 驗證：① 修正後 `TYPECHECK_EXIT=0` 與 82 檔 817 tests 全過同時成立。② 變異測試：刪掉整段標註 → 3 條轉紅；假裝有頁面呼叫它 → 該條轉紅；還原 → 5/5 綠。
 - 狀態：已防止
