@@ -78,9 +78,9 @@ const LOCAL_SHOP: ModeDataset = {
     expiredFeatures: [], expiringFeatures: [{ code: 'COUPON_SYSTEM', expiresAt: '2026-08-28' }],
   },
   staff: [
-    { id: 's_1', name: 'Amy', phone: '0912-345-678', email: 'amy@example.com', title: '資深設計師', avatarUrl: '', serviceIds: ['sv_1', 'sv_2'], bookable: true, active: true, sortOrder: 1 },
-    { id: 's_2', name: 'Ben', phone: '0922-111-222', email: 'ben@example.com', title: '設計師', avatarUrl: '', serviceIds: ['sv_1', 'sv_3'], bookable: true, active: true, sortOrder: 2 },
-    { id: 's_3', name: 'Cindy', phone: '0933-444-555', email: '', title: '助理', avatarUrl: '', serviceIds: ['sv_3'], bookable: false, active: true, sortOrder: 3 },
+    { id: 's_1', name: 'Amy', phone: '0912-345-678', email: 'amy@example.com', title: '資深設計師', avatarUrl: '', serviceIds: ['sv_1', 'sv_2'], bookable: true, active: true, sortOrder: 1, displayName: 'Amy 老師', bio: '10 年剪燙染資歷，擅長韓系空氣感瀏海。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_2', name: 'Ben', phone: '0922-111-222', email: 'ben@example.com', title: '設計師', avatarUrl: '', serviceIds: ['sv_1', 'sv_3'], bookable: true, active: true, sortOrder: 2, displayName: '', bio: '擅長男士俐落短髮與頭皮養護。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_3', name: 'Cindy', phone: '0933-444-555', email: '', title: '助理', avatarUrl: '', serviceIds: ['sv_3'], bookable: false, active: true, sortOrder: 3, displayName: '', bio: '', maxConcurrentBookings: 2, visible: false },
   ],
   services: [
     { id: 'sv_1', categoryId: 'sc_1', categoryName: '剪髮', name: '精緻剪髮', description: '洗＋剪＋吹整', durationMinutes: 60, price: 600, imageUrl: '', active: true, lineFeatured: true, sortOrder: 1 },
@@ -168,10 +168,10 @@ const GUIDE: ModeDataset = {
     expiredFeatures: [], expiringFeatures: [],
   },
   staff: [
-    { id: 's_1', name: '阿海', phone: '0911-208-664', email: 'hai@example.com', title: '海域嚮導 · PADI 潛水長', avatarUrl: '', serviceIds: [], bookable: true, active: true, sortOrder: 1 },
-    { id: 's_2', name: '小雨', phone: '0922-118-903', email: 'rain@example.com', title: '山域嚮導 · 高山嚮導證', avatarUrl: '', serviceIds: [], bookable: true, active: true, sortOrder: 2 },
-    { id: 's_3', name: '老陳', phone: '0933-702-889', email: '', title: '船長', avatarUrl: '', serviceIds: [], bookable: false, active: true, sortOrder: 3 },
-    { id: 's_4', name: 'Kai', phone: '0955-620-114', email: 'kai@example.com', title: '攝影嚮導', avatarUrl: '', serviceIds: [], bookable: true, active: true, sortOrder: 4 },
+    { id: 's_1', name: '阿海', phone: '0911-208-664', email: 'hai@example.com', title: '海域嚮導 · PADI 潛水長', avatarUrl: '', serviceIds: [], bookable: true, active: true, sortOrder: 1, displayName: '阿海', bio: 'PADI 潛水長，10 年海域嚮導資歷，擅長賞鯨與浮潛行程。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_2', name: '小雨', phone: '0922-118-903', email: 'rain@example.com', title: '山域嚮導 · 高山嚮導證', avatarUrl: '', serviceIds: [], bookable: true, active: true, sortOrder: 2, displayName: '小雨', bio: '持有高山嚮導證，熟悉花東山域路線與溯溪安全評估。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_3', name: '老陳', phone: '0933-702-889', email: '', title: '船長', avatarUrl: '', serviceIds: [], bookable: false, active: true, sortOrder: 3, displayName: '老陳船長', bio: '', maxConcurrentBookings: 1, visible: true },
+    { id: 's_4', name: 'Kai', phone: '0955-620-114', email: 'kai@example.com', title: '攝影嚮導', avatarUrl: '', serviceIds: [], bookable: true, active: true, sortOrder: 4, displayName: 'Kai', bio: '攝影嚮導，擅長行程紀錄與空拍。', maxConcurrentBookings: 2, visible: false },
   ],
   // 嚮導模式看不到服務項目（modes.ts 隱藏），保留最小資料以防直接開網址
   services: [
@@ -258,10 +258,10 @@ const CLINIC: ModeDataset = {
     expiredFeatures: [], expiringFeatures: [],
   },
   staff: [
-    { id: 's_1', name: '林醫師', phone: '0912-100-200', email: 'lin@example.com', title: '家庭醫學科 主治醫師', avatarUrl: '', serviceIds: ['sv_1', 'sv_2', 'sv_4'], bookable: true, active: true, sortOrder: 1 },
-    { id: 's_2', name: '陳醫師', phone: '0922-300-400', email: 'chen@example.com', title: '健檢中心 主任', avatarUrl: '', serviceIds: ['sv_3', 'sv_5'], bookable: true, active: true, sortOrder: 2 },
-    { id: 's_3', name: '王醫師', phone: '0933-500-600', email: '', title: '內科 醫師', avatarUrl: '', serviceIds: ['sv_1', 'sv_2', 'sv_4'], bookable: true, active: true, sortOrder: 3 },
-    { id: 's_4', name: '護理師 小美', phone: '0955-700-800', email: '', title: '護理師', avatarUrl: '', serviceIds: ['sv_4'], bookable: false, active: true, sortOrder: 4 },
+    { id: 's_1', name: '林醫師', phone: '0912-100-200', email: 'lin@example.com', title: '家庭醫學科 主治醫師', avatarUrl: '', serviceIds: ['sv_1', 'sv_2', 'sv_4'], bookable: true, active: true, sortOrder: 1, displayName: '林醫師', bio: '家庭醫學科主治醫師，專長慢性病長期追蹤與健康評估。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_2', name: '陳醫師', phone: '0922-300-400', email: 'chen@example.com', title: '健檢中心 主任', avatarUrl: '', serviceIds: ['sv_3', 'sv_5'], bookable: true, active: true, sortOrder: 2, displayName: '陳醫師', bio: '健檢中心主任，專長成人健檢與異常報告判讀。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_3', name: '王醫師', phone: '0933-500-600', email: '', title: '內科 醫師', avatarUrl: '', serviceIds: ['sv_1', 'sv_2', 'sv_4'], bookable: true, active: true, sortOrder: 3, displayName: '王醫師', bio: '內科醫師，擅長一般內科疾病診治。', maxConcurrentBookings: 1, visible: true },
+    { id: 's_4', name: '護理師 小美', phone: '0955-700-800', email: '', title: '護理師', avatarUrl: '', serviceIds: ['sv_4'], bookable: false, active: true, sortOrder: 4, displayName: '護理師 小美', bio: '', maxConcurrentBookings: 2, visible: false },
   ],
   services: [
     { id: 'sv_1', categoryId: 'sc_1', categoryName: '一般門診', name: '初診（含健康評估）', description: '第一次到診，含基本檢查與病史紀錄', durationMinutes: 30, price: 500, imageUrl: '', active: true, lineFeatured: true, sortOrder: 1 },
