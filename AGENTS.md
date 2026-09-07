@@ -6,29 +6,33 @@
 2. `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
 3. `docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
 4. `docs/decisions/2026-09-01-owner-isolated-test-lanes.md`（歷史基線）
-5. `docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`（最新 Issue #104 裁示，衝突時優先）
-6. `docs/AGENT-EXECUTION.md`
-7. `docs/DELIVERY-CHAIN.md`（產品交付鏈路：每一關要抓什麼、通過的證據長什麼樣）
-8. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-9. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-10. `docs/DELIVERY-OUTCOME-V2.md`
-11. `docs/DOCUMENTATION-GOVERNANCE.md`
-12. `docs/OWNER-DECISIONS.md`
-13. 該 Issue 指定的 `docs/integration/**` canonical 文件
-14. `docs/integration/12-TESTING-TDD.md`
-15. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
-16. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
+5. `docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`（雙 Terra 基線）
+6. `docs/decisions/2026-09-07-owner-governance-alignment.md`（最新交付完成、v4 結案、Sol audit 與條件雙 Terra 裁示；衝突時優先）
+7. `docs/AGENT-EXECUTION.md`
+8. `docs/DELIVERY-CHAIN.md`（產品交付鏈路：每一關要抓什麼、通過的證據長什麼樣）
+9. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
+10. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
+11. `docs/DELIVERY-OUTCOME-V2.md`
+12. `docs/DOCUMENTATION-GOVERNANCE.md`
+13. `docs/OWNER-DECISIONS.md`
+14. 該 Issue 指定的 `docs/integration/**` canonical 文件
+15. `docs/integration/12-TESTING-TDD.md`
+16. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
+17. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
     報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-17. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
+18. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
     響應式或 GUIDE 共用 UI，另讀 `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與
     `docs/assets/guide-mobile-ui/README.md`
-18. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
+19. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
     `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
-19. Owner 說「復盤」或「複盤」時，載入
+20. Owner 說「復盤」或「複盤」時，載入
     `.agents/skills/vibeaico-agent-retrospective/SKILL.md`
-20. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
+21. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
     載入 `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`；若該 Skill 與 2026-09-02
     最新 Owner Decision 衝突，以最新 Decision 為準，付費 Branch 不得執行。
+22. Sol TRIAGE 時，若 `origin/main` 已有 `docs/MODEL-ROUTING.md`，載入它分類任務；分類為高風險且
+    `origin/main` 已有 `.agents/skills/vibeaico-astra-review/SKILL.md` 時，才載入 Astra skill。任一檔案
+    尚未合併時沿用既有 Sol／Terra 規則，不得阻塞 TRIAGE 或交付。
 
 ## 自然語言入口
 
@@ -56,12 +60,14 @@ LUNA_TASKS       預設 4，最多 6，另有 1 位 Aggregator
 LOCAL_ISOLATED   每張 Terra PR 各自一套免費本機 Supabase，最多 2
 TEST_VALIDATION  最多 1，現有遠端 TEST 唯一最終考場
 ACTIVE_CANDIDATE 最多 2，不把 Luna Closure 算成第三個產品候選
-Sol Audit        最多 1
-Merge            最多 1
+EARLY_SOL_DIFF_AUDIT  每張完整 Terra 最多 1 次，非放行
+FINAL_SOL_AUDIT       最多 1，僅對必要測試完成的 exact head 放行
+Merge                 最多 1
 ```
 
-雙 Terra 必須使用不同 `TERRA_SLOT` 1／2、primary Issue、`TEST_ENV_ID` 與不重疊的
-`FILE_OWNERSHIP`，並使用同一 `RUN_ID`。任一契約不完整，自動回到完整 Terra 最多 1。
+雙 Terra 是**條件入口**，不是配額：Guard 必須先對兩張候選 PR 的同一 `RUN_ID`、不同 `TERRA_SLOT` 1／2、
+primary Issue、`TEST_ENV_ID`、不重疊 `FILE_OWNERSHIP`、各自 local isolated 健康與無 shared TEST holder 衝突
+判定 qualified，才可同時啟動。任一契約不完整、slot 不健康、cleanup 失敗或檔案撞車，立刻回到完整 Terra 最多 1。
 
 ## 隔離 TEST 現行路線
 
@@ -78,7 +84,7 @@ Terra slot 2 → 免費 per-PR local Supabase ┘
 ```
 
 - `LOCAL_ISOLATED`／`LOCAL_ISOLATED_CANARY` 只可報 `ISOLATED_GREEN` 或 canary 證據。
-- 最終 remote TEST、Sol Audit、merge 仍各自單線。
+- 最終 remote TEST、最終 Sol Audit、merge 仍各自單線；Sol 可在施工期做一次早期 diff audit，但它不是最終放行。
 - DB／Auth／Storage 先跑免費 local isolated，再排現有 remote canonical TEST。
 - 付費 Supabase Preview Branch 為 `DEFERRED_NOT_IN_CONSIDERATION`：不建立、不要求費率確認、
   不得當成雙 Terra、Audit 或 merge 的前置條件。
@@ -104,7 +110,7 @@ docs/metrics/agent-runs/<RUN_ID>.md
 - **Luna**：盤點、CI 摘要、Closure、Janitor、文件、QA、Metrics。每個任務只回答一個
   問題，預設最多 15 行；一位 Luna Aggregator 去重後再交 Sol。
 - **Sol**：Terra slot 1／2 選題、重大 scope／file collision、remote TEST 順序、模糊 CI、
-  高風險設計、最終 `CLOSE_APPROVED | FIX_REQUIRED | OWNER_BLOCKED`。不做 CI 輪詢與一般施工。
+  高風險設計、早期 diff audit 與必要測試完成後的最終 `CLOSE_APPROVED | FIX_REQUIRED | OWNER_BLOCKED`。早期 audit 不可放行；不做 CI 輪詢與一般施工。
 - **Terra slot 1／2**：各自完整施工一張邊界清楚的候選，做到
   `CLOSED | AUDIT_READY | OWNER_BLOCKED`；第二條不是配額，沒有安全題目就不啟動。
 - **RESERVE Terra**：只在單 Terra 模式且主線真正等待時做一個 source-only 小切片；不碰 TEST、
@@ -113,7 +119,7 @@ docs/metrics/agent-runs/<RUN_ID>.md
 ## 強制護欄
 
 - 完整 Terra 預設最多 1；只有 executable dual-Terra Guard 判定 qualified 時最多 2；
-  Reserve 最多 1，但雙 Terra 時為 0；Closure、remote TEST、Sol Audit、merge 各最多 1。
+  Reserve 最多 1，但雙 Terra 時為 0；Closure、remote TEST、最終 Sol Audit、merge 各最多 1；早期 Sol diff audit 不占最終放行。
 - 兩張完整 Terra 必須同一 `RUN_ID`，但 Issue、slot、local 環境與檔案 ownership 不同。
 - MAIN／Terra 必須有 Closure target，或明確 `EMPTY_WITH_SCAN`／`REPORT:<path>` 證據。
 - RESERVE 必須填 `RESERVE_BOUNDARY`、`TEST_LANE_REQUIRED=false`，且不可是 active candidate。
@@ -158,12 +164,12 @@ after-merge ref=main 關鍵檔案重讀
 成品與半成品分開：
 
 ```text
-shipped_units              = live-verified CLOSED Issue × 1.0
-autonomous_outcome_units   = CLOSED × 1.0 + verified complete OWNER_BLOCKED × 0.75
-wip_inventory              = Audit Ready + CI-only + commit-only + unfinished carryover
+shipped_units              = 五階全成且正式登入實測接受的 Issue × 1.0
+autonomous_outcome_units   = shipped_unit × 1.0 + verified complete OWNER_BLOCKED × 0.75
+wip_inventory              = CLOSED 但未完成五階 + Audit Ready + CI-only + commit-only + unfinished carryover
 ```
 
-Audit Ready、CI 綠與 commit 只列在製品，不再折算成品。`IN_PROGRESS`／`CLOSURE_RECOVERY`、
+`CLOSED` 只表示 Issue 結案，不是出貨；Audit Ready、CI 綠與 commit 也只列在製品，不再折算成品。`IN_PROGRESS`／`CLOSURE_RECOVERY`、
 缺結束資料、缺必要百分比或 Completion Truth 未驗證時一律 `NOT_GRADED`，不補中性 50 分。
 每件真正出貨 usage 只在 `shipped_units >= 1` 時計算。
 
@@ -207,7 +213,7 @@ Owner 說「復盤」或「複盤」時：
 
 1. 找最新 schema v2 `docs/metrics/agent-runs/*.json`，比較最近最多 3 個已完成且 truth-verified 的 Run。
 2. 先用 live GitHub 驗證完成主張，再用 `run-ledger-v2.mjs`、`score-run-v2.mjs` 與
-   `review-runs-v2.mjs` 重算；schema v1 只作 `LEGACY_V1` 歷史。
+   `review-runs-v2.mjs` 重算；新 Run 必須是 schema v2 的 `deliveryTruthVersion: 4`，舊 v1／v3 只作歷史。
 3. 比較 shipped units、autonomous outcomes、WIP、usage、close 率、品質、Sol touches、
    Luna 採用率、carryover 與 Completion Truth 失敗。
 4. 每次只提出一到兩個最大改良；治理改良走 focused governance PR，不順便改產品。

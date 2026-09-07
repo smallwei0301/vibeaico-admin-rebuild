@@ -2,9 +2,9 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-01
+> 最近更新：2026-09-07
 >
-> 最新 WIP 拓撲：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`（B+）。
+> 最新 WIP 與交付裁示：`docs/decisions/2026-09-07-owner-governance-alignment.md`；B+ 基線見 `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`。
 >
 > 本文件是本 repo 的 Agent 執行方式唯一正式版本。產品規格仍以各
 > `docs/integration/**` 分冊為準。
@@ -46,7 +46,7 @@ branch、PR、exact head、TEST lane、Run ID 與目前 stage。
 4. 讀最新 1～3 份 `docs/metrics/agent-runs/*.json`／`.md`，確認上一輪建議與尚未修正問題。
 5. 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 usage 基準。
 6. 由多位 Luna 做窄範圍盤點，再由一位 Luna Aggregator 去重。
-7. Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
+7. Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target；雙 Terra 只能在 Guard 對兩條候選都判定 qualified 後啟動。
 
 ## 3. 長期授權與禁止事項
 
@@ -83,12 +83,13 @@ branch、PR、exact head、TEST lane、Run ID 與目前 stage。
 ```text
 LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
                          ↓
-                  MAIN_TERRA BUILD
-                  RESERVE_TERRA source-only
+               MAIN_TERRA BUILD（條件雙 Terra）
+                         ↓
+                 EARLY_SOL_DIFF_AUDIT
                          ↓
                   TEST_VALIDATION
                          ↓
-                    SOL_AUDIT
+                 FINAL_SOL_AUDIT
                          ↓
               LUNA_CLOSEOUT + METRICS
                          ↓
@@ -98,14 +99,14 @@ LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
 | 角色 | 主要工作 | 禁止事項 |
 |---|---|---|
 | Luna | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | 不做產品／安全決策，不展開大型 code |
-| Sol | TRIAGE、模糊 CI、高風險設計、最終 Audit | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
+| Sol | TRIAGE、早期 diff audit、模糊 CI、高風險設計、必要測試完成後的最終 Audit | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
 | MAIN Terra | 唯一完整中大型出貨線 | 不擴大驗收、不自行關 Issue |
 | RESERVE Terra | 一個 source-only 預備切片 | 不碰 TEST、不進 Audit、不超過一個原子 commit |
 
 ## 5. 全域 B+ WIP 上限
 
 ```text
-MAIN_TERRA      max 1  → AGENT_LANE=TERRA_BUILD
+MAIN_TERRA      預設 max 1；Guard 對兩條完整候選皆 qualified 時 max 2 → AGENT_LANE=TERRA_BUILD
 RESERVE_TERRA   max 1  → AGENT_LANE=TERRA_RESERVE
 LUNA_CLOSURE    max 1  → AGENT_LANE=LUNA_CLOSURE
 TEST_VALIDATION max 1  → AGENT_LANE=TEST_VALIDATION
@@ -115,10 +116,10 @@ LUNA_TASKS      default 4，max 6，另有 1 位 Aggregator
 
 ### 5.1 MAIN_TERRA
 
-- 唯一可完整施工、進 shared TEST、修明確 CI、交 Sol Audit 的中大型 Issue。
+- 預設唯一可完整施工、進 shared TEST、修明確 CI、交 Sol audit 的中大型 Issue。雙 Terra 是條件例外：同一 `RUN_ID` 的兩張候選必須有不同 primary Issue、`TERRA_SLOT` 1／2、`TEST_ENV_ID`、零重疊 `FILE_OWNERSHIP`、各自健康的 local isolated 證據，且 Guard 在啟動前判定 qualified；任一項失敗立即回到一條。
 - 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。
 - `PR 已開`、`CI 綠`、`正在等 Preview` 不是完成。
-- MAIN 未抵達出口前，不啟動第二條完整 BUILD。
+- MAIN 未抵達出口前，不啟動第二條完整 BUILD，除非上述 Guard 已同時放行雙 Terra。
 
 ### 5.2 RESERVE_TERRA
 
@@ -248,14 +249,14 @@ docs/metrics/agent-runs/<RUN_ID>.json
 docs/metrics/agent-runs/<RUN_ID>.md
 ```
 
-JSON 是原始帳本，Markdown 必須可由 `scripts/agents/score-run.mjs` 重算。至少記錄：
+JSON 是原始帳本，Markdown 必須由既有 `scripts/agents/score-run-v2.mjs` 重算。新 Run 用既有 `scripts/agents/run-ledger-v2.mjs init --closeout-owner ...` 建立 schema v2／`deliveryTruthVersion: 4`；歷史 v1／v3 僅可重算，不得改寫。final v4 Run 必須依腳本通過 `closeout.state=CLOSED`、`closedAt=endedAt`、main end SHA、結束 inventory 與 durable evidence 的驗證。至少記錄：
 
 - main、open Issue／PR 起訖；
 - MAIN／RESERVE／candidate／TEST 峰值；
 - requested／actual Luna、Terra、Sol 任務與上下文大小；
 - 實際 token／週 usage，或明確 `unavailable`；
 - internal weighted usage（Luna=1、Terra=3、Sol=6，非官方換算）；
-- CLOSED、AUDIT_READY、完整 OWNER_BLOCKED、carryover；
+- `CLOSED`、AUDIT_READY、完整 OWNER_BLOCKED、carryover，以及 `CLOSED` 但仍 `PRODUCTION_PENDING` 的數量；`CLOSED` 不得單獨計入 shipped units。
 - full CI、invalid rerun、品質、安全、Luna 採用率、Sol touches；
 - 100 分 scorecard 與最多 2 項下一輪調整。
 

@@ -3,21 +3,22 @@ name: vibeaico-agent-orchestration
 description: "Use for /goal, 開始 Loop, 繼續 Loop, continued autonomous delivery, model switches, open-Issue reduction, multi-Agent delegation, B+ WIP control, shared TEST scheduling, CI classification, PR cleanup, scorecard generation, or Issue closeout in smallwei0301/vibeaico-admin-rebuild. Enforces one MAIN Terra, one source-only RESERVE Terra, one Luna Closure lane, 3-6 narrow Luna tasks, one shared TEST holder, at most two active candidates, and verified completion claims."
 metadata:
   author: smallwei0301
-  version: "0.6.0"
+  version: "0.7.1"
 ---
 
 # VibeAI.co B+ Agent Orchestration
 
 Canonical policy order:
 
-1. `origin/main:docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
-2. `origin/main:docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
-3. `origin/main:docs/AGENT-EXECUTION.md`
-4. `origin/main:docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-5. `origin/main:docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-6. `origin/main:docs/PR-LIFECYCLE.md`
+1. `origin/main:docs/decisions/2026-09-07-owner-governance-alignment.md`
+2. `origin/main:docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
+3. `origin/main:docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
+4. `origin/main:docs/AGENT-EXECUTION.md`
+5. `origin/main:docs/AGENT-BPLUS-DELIVERY-LOOP.md`
+6. `origin/main:docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
+7. `origin/main:docs/PR-LIFECYCLE.md`
 
-Older Mode C decisions are historical wherever they allow multiple complete Terra BUILD lanes.
+The 2026-09-07 decision wins on completion, v4 closeout, Sol ordering and conditional dual Terra. Older Mode C decisions are historical wherever they allow multiple complete Terra BUILD lanes.
 
 ## Natural-language triggers
 
@@ -43,7 +44,7 @@ Older Mode C decisions are historical wherever they allow multiple complete Terr
 ## B+ topology
 
 ```text
-MAIN_TERRA       max 1 complete medium/large delivery lane
+MAIN_TERRA       default max 1; max 2 only when the dual-Terra Guard qualifies both complete candidates
 RESERVE_TERRA    max 1 source-only preparation lane
 LUNA_CLOSURE     max 1 closeout / Janitor lane
 LUNA_TASKS       default 4, max 6, plus one Aggregator
@@ -69,7 +70,8 @@ SOL_TRIAGE       choose MAIN, optional RESERVE and Closure target
 MAIN_TERRA       build the sole complete delivery candidate
 RESERVE_TERRA    prepare one bounded source-only slice
 SOL_DIAGNOSE     only ambiguous/high-risk CI, DB/Auth/payment/security/collision
-SOL_AUDIT        final CLOSE verdict
+EARLY_SOL_DIFF_AUDIT  one non-final diff check per complete Terra
+FINAL_SOL_AUDIT       final CLOSE verdict after all required tests
 LUNA_CLOSEOUT    evidence, status, Issue close, lane release, report
 ```
 
@@ -90,6 +92,14 @@ ALLOWED_RESULT: PASS | GAP | ESCALATE_TERRA | ESCALATE_SOL | OWNER_BLOCKED
 
 Do not copy full chat history or make multiple Luna agents scan the same inventory. One Aggregator
 removes duplicates before Sol reads the result.
+
+## Conditional model routing
+
+At `SOL_TRIAGE`, first check whether `origin/main:docs/MODEL-ROUTING.md` exists. If it does, read it and
+classify the candidate. When that classification is high risk, load
+`origin/main:.agents/skills/vibeaico-astra-review/SKILL.md` only if that file also exists. These are
+conditional integrations: their absence before the model-routing governance PR merges is expected and must
+not block TRIAGE, TEST scheduling, Sol audit, or delivery. Existing Owner decisions and B+ limits still win.
 
 ## TRIAGE output
 
@@ -113,7 +123,7 @@ Prefer score 5→3 candidates. A lower-score dependency unlocker needs a concret
 
 ## MAIN and RESERVE
 
-MAIN may use TEST and Sol Audit. It stays active until:
+MAIN may use TEST, one early Sol diff audit, and final Sol Audit. A second complete Terra requires Guard proof before start: same `RUN_ID`; distinct primary Issues, slots 1/2 and `TEST_ENV_ID`; zero-overlap `FILE_OWNERSHIP`; healthy local isolated evidence; and no shared-TEST-holder conflict. It stays active until:
 
 ```text
 CLOSED | AUDIT_READY | OWNER_BLOCKED
@@ -129,6 +139,10 @@ RESERVE_BOUNDARY: concrete file/scope/stop boundary
 ```
 
 If RESERVE needs TEST, Audit, a second commit or broader scope, stop and return to TRIAGE.
+
+## Sol audit order
+
+After Terra has a reviewable complete diff, Sol may perform one early diff audit to catch fake success before costly tests. It can return advice or `FIX_REQUIRED`, never `CLOSE_APPROVED`. Final order is `Terra → early audit → fixes → required local isolated → canonical TEST when required → final Sol audit on the final exact head → merge／Issue close → Completion Truth`. A changed head requires a new final diff read.
 
 ## Shared TEST
 
@@ -179,10 +193,12 @@ docs/metrics/agent-runs/<RUN_ID>.md
 Run:
 
 ```text
-node scripts/agents/run-ledger.mjs validate <json>
-node scripts/agents/score-run.mjs <json> --output <md>
-node scripts/agents/score-run.mjs <json> --check <md>
+node scripts/agents/run-ledger-v2.mjs validate <json>
+node scripts/agents/score-run-v2.mjs <json> --output <md>
+node scripts/agents/review-runs-v2.mjs docs/metrics/agent-runs
 ```
+
+New operational Runs must be schema v2 with `deliveryTruthVersion: 4`, created through `run-ledger-v2.mjs init --closeout-owner ...`. A final v4 Run is closed only when the script validates its closeout envelope; v1／v3 ledgers remain historical and are never rewritten. `CLOSED` means Issue close only: count a shipped unit only after all five production stages, including authenticated production acceptance.
 
 Record actual token data when available. Otherwise keep it `null` and use internal weights Luna=1,
 Terra=3, Sol=6 with compact=1, medium=1.5, full=3. The weights are not OpenAI's official usage

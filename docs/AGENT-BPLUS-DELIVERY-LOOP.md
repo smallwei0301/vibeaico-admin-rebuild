@@ -10,7 +10,7 @@
 
 ## 1. 為什麼從 Mode C 改成 B+
 
-Mode C 讓不同 Issue 的 Terra 同時施工，能減少等待，但共用 TEST、Sol Audit 與 closeout
+Mode C 讓不同 Issue 的 Terra 同時施工，能減少等待，但共用 TEST、Sol 最終 Audit 與 closeout
 仍是窄出口。若同時開四張大型 PR，前端施工速度變快，最後會在 TEST 與審查門口塞車。
 
 B+ 保留平行能力，但改成：
@@ -34,11 +34,13 @@ LUNA_FAN_IN        一位 Luna 彙整成不超過 30 行的 TRIAGE 包
   ↓
 SOL_TRIAGE         選 MAIN_TERRA、可選 RESERVE_TERRA、Closure target
   ↓
-TERRA_BUILD        主線施工；預備線只做 source-only 一個原子切片
+TERRA_BUILD        主線施工；Guard qualified 時才可雙 Terra
+  ↓
+EARLY_SOL_DIFF_AUDIT  可審 diff 的早期檢查；不可放行
   ↓
 TEST_VALIDATION    唯一 shared TEST holder
   ↓
-SOL_AUDIT          CLOSE_APPROVED／FIX_REQUIRED／OWNER_BLOCKED
+FINAL_SOL_AUDIT    必要測試後審 final exact head，才可 CLOSE_APPROVED
   ↓
 LUNA_CLOSEOUT      證據、PR／Issue、Janitor、lane 釋放
   ↓
@@ -155,9 +157,13 @@ Closeability：
 
 ## 6. MAIN_TERRA 與 RESERVE_TERRA
 
+### 條件雙 Terra 入口
+
+完整 Terra 預設一條。只有 Guard 在**啟動前**對兩張候選確認同一 `RUN_ID`、不同 primary Issue、`TERRA_SLOT` 1／2、`TEST_ENV_ID`、零重疊 `FILE_OWNERSHIP`、各自健康的 local isolated 證據，且沒有第二個 shared TEST holder 時，才可升至兩條；Reserve 同時固定為 0。任一條 cleanup 失敗、跨線污染、檔案撞車或契約缺欄，立即降回一條完整 Terra。
+
 ### MAIN_TERRA
 
-可以完整施工、申請 TEST、修明確 CI、交 Sol Audit。必須一路推到：
+可以完整施工、申請 TEST、修明確 CI、做一次 early Sol diff audit，並在必要測試完成後交最終 Sol Audit。必須一路推到：
 
 ```text
 CLOSED | AUDIT_READY | OWNER_BLOCKED
@@ -182,7 +188,7 @@ unit / typecheck / build
 完成 unit/typecheck/build 後停在 READY_FOR_PROMOTION。
 ```
 
-若預備線開始需要 TEST、Sol Audit、第二個 commit 或擴大 scope，立刻停止並回 TRIAGE。
+若預備線開始需要 TEST、Sol 最終 Audit、第二個 commit 或擴大 scope，立刻停止並回 TRIAGE。
 
 ## 7. TEST_VALIDATION
 
@@ -210,9 +216,11 @@ RESIDUE_CHECK
 同一 exact head、同一環境、同一命令不重跑。環境錯誤兩次後停止該路徑，保存證據並
 切到其他安全工作。
 
-## 8. SOL_AUDIT
+## 8. Sol 早期 diff audit 與最終 Audit
 
-Sol 只讀：
+Terra 有可審完整 diff 時，Sol 可先讀一次 early diff，及早回傳建議或 `FIX_REQUIRED`；它不是放行，不能回傳 `CLOSE_APPROVED`。必要修正與 local isolated／canonical TEST 完成後，Sol 對 final exact head 再審一次。head 已變就必須重讀完整 diff。
+
+最終 Sol 只讀：
 
 ```text
 Issue acceptance
@@ -284,25 +292,17 @@ Sol   = 6
 
 這不是官方 token 換算。報告必須同時標出 `actual_tokens_available`，避免把估算偽裝成真實額度。
 
-### Delivery Unit
+### Delivery Outcome
 
 ```text
-Issue CLOSED                    = 1.00
-CLOSE_APPROVED 待允許 merge     = 0.80
-自主工作完成後 OWNER_BLOCKED    = 0.50
-只有 exact-head CI 綠           = 0.25
-只有 commit                     = 0.10
+shipped_unit                   = 五階全成，且已登入正式站實測接受
+PRODUCTION_PENDING             = CLOSED 但五階未全成
+autonomous_outcome_unit        = shipped_unit 1.00 + verified complete OWNER_BLOCKED 0.75
+wip_inventory                  = Audit Ready + CI-only + commit-only + unfinished carryover
 ```
 
-主要效率指標：
-
-```text
-weighted_usage_per_delivery_unit = weighted_usage_units / delivery_units
-```
-
-> 上述是歷史 v1 比較尺。新 Run 的成品、Production pending 與 OWNER_BLOCKED 分帳，以
-> `docs/DELIVERY-OUTCOME-V2.md` 的 Delivery Truth v3 為準，不再把 Audit Ready、CI-only 或
-> commit-only 折算成 shipped product。
+`CLOSED` 只表示 Issue 結案，不得單獨計為 shipped unit。每件出貨 usage 只在
+`shipped_units >= 1` 時計算；歷史 v1 比較尺只保留歷史重算。
 
 ## 11. 100 分 Scorecard
 
