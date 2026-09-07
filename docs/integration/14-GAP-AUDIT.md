@@ -99,10 +99,15 @@
 - [ ] 設定頁「變更密碼」從未呼叫 `/api/auth/change-password`（settings/page.tsx 289–307）
 - [ ] LINE 設定頁「解除連接」送空字串＝依契約「不變更」，token 實際沒清（line-settings/page.tsx 383–397；`/api/settings/line/disconnect` 已存在未用）
 - [ ] LINE 設定頁「建立圖文選單」只存主題設定，沒打 create 端點（line-settings/page.tsx 322–345）
-- [x] 關鍵字回覆整頁 CRUD 已接真實 service/API（issue #5，commit `faa7c22`）：
+- [x] 關鍵字回覆整頁 CRUD 已接真實 service/API（issue #5，**main `e7595ae` / PR #254**）：
       `keyword-replies-wiring.05.test.ts` 驗證載入、建立、編輯、啟停與刪除接線；
       `keyword-replies.05.test.ts` 驗證 DB 設定會被 webhook 使用。Preview 的 UI→簽章
       webhook→LINE mock→清理仍列在 issue #5 的站點驗收，不把 source/CI 冒充 Preview。
+      ⚠️ **2026-09-07 更正歸屬**：本項原記 commit `faa7c22`，那顆 commit 在
+      `claude/deploy-vercel-project-nnno59` 分支上，**從未併回 `main`**（見 #251）。
+      在 2026-09-07 之前，`main` 的 `src/services/keyword-replies.ts` 並不存在、
+      頁面仍讀頁內 `MOCK_KEYWORD_REPLIES` 常數——也就是說本項在那段期間對 `main`
+      是**假的勾**。實作由 PR #254 補回後才成立。
 - [ ] 行銷推播整頁假：發送/取消/刪除/建立（marketing/page.tsx；`/api/marketing/pushes*` 已存在）
 - [ ] 活動管理整頁假：發布/暫停/恢復/結束/刪除/建立（campaigns/page.tsx；`/api/campaigns*` 已存在）
 - [ ] 顧客管理：新增/編輯假（load 後蒸發）、LINE 綁定假（customers/page.tsx；service 已存在，bookings 頁同功能是真的——照抄）
@@ -135,15 +140,24 @@
 
 ## 2. 根因 B 清單：計劃漏掉（規格要補寫、工作要補做）
 
-- [x] **webhook 關鍵字覆蓋已補齊（issue #5，commit `faa7c22`）**：原實作只比對
+- [x] **webhook 關鍵字覆蓋已補齊（issue #5，main `e7595ae` / PR #254）**：原實作只比對
       4 個字面值（預約/服務/我的預約/行程佔位）；現由
       keyword-replies i18n 定義的 15 組系統關鍵字（含同義詞）與 `MODE_PRESETS.richMenuCells`
       的格子文字（服務項目/會員卡/優惠/聯絡我們/團次/我的訂單/常見問題/看診進度/營業時間…）
-      全部受 `line-keyword-coverage.test.ts` 與 `keyword-replies.05.test.ts` 的
-      程式化矩陣保護。**新增規格**：已回寫 06 §3——「Rich Menu 每個
+      全部受 `tests/unit/line-keyword-coverage.05.test.ts`（81 案）與
+      `tests/integration/api/keyword-replies.05.test.ts` 的程式化矩陣保護。
+      **新增規格**：已回寫 06 §3——「Rich Menu 每個
       格子送出的文字、與系統關鍵字組全部同義詞，webhook 必須有對應分支；系統組的
-      啟停開關（systemGroupDisabled）webhook 必須讀」。PR #49 `cadab19`
-      run #163 已通過完整 unit／integration／E2E。
+      啟停開關（systemGroupDisabled）webhook 必須讀」。
+      ⚠️ **2026-09-07 更正歸屬**：原記 commit `faa7c22` 與 PR #49 `cadab19`，
+      皆屬未併回 `main` 的分支（見 #251）；`git log -S "resolveBuiltinIntent" origin/main`
+      在補回前回**空**。exact head `43f9882` 的 `local-isolated-a` 從 0001 全新建庫，
+      integration 與 E2E 皆 success。
+
+      補回過程另抓到兩個**單元測試抓不到、只有真實 DB 測試會紅**的缺口，一併修正：
+      ① `CONTAINS` 未生效——`main` 原本只做 `keywords.includes(text)`，而頁面上
+      「訊息裡有這個字就回」是**預設選項**，店家選了它實際上卻只有一字不差才會回；
+      ② 「附加連結」是頁面存得進去的欄位，但組訊息時被丟掉，顧客永遠看不到。
 - [ ] **flex-menu 三層只做一層**：儲存端點有；webhook「選單」關鍵字回 Flex（06 §6 原文要求）完全沒做、頁面發布也沒接。已在 06 §6 標註現況
 - [ ] 主題底圖無人負責上傳（bucket 空）→ 已用「現生成純色 PNG」修掉硬依賴（commit 3a7429b），06 §6 已註記
 - [ ] `/api/trips/:id/addons`、`/api/trips/import`、`/api/trips/:id/export`、`GET/POST/DELETE /api/demo-data`、`DELETE /api/settings/line/rich-menu`：程式已存在、計劃全無記載 → 已補記（10 分冊 / 06 §6）

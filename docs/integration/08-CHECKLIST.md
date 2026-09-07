@@ -152,11 +152,14 @@
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
 - [ ] follow/message 事件處理 + keyword replies + 預設回覆
-      **（issue #5 的頁面接線與 webhook 覆蓋已完成：commit `faa7c22`；
+      **（issue #5 的頁面接線與 webhook 覆蓋已完成。⚠️ 2026-09-07 更正歸屬：
+      原引用 commit `faa7c22` 與 PR #49 `cadab19`，那些證據成立的地方是
+      `claude/deploy-vercel-project-nnno59` 分支，該分支從未併回 `main`（見 #251）。
+      實作由 PR #254 於 2026-09-07 補回 main（`e7595ae`）：
       `keyword-replies.05.test.ts` 驗證 API 建立後 webhook 會回設定內容，
-      `keyword-replies-wiring.05.test.ts` 驗證頁面 CRUD 接線。PR #49 exact
-      `cadab19` 的 run #163 已通過完整 unit／integration／E2E。此合併項仍留白，
-      因為 Preview 的「UI 建立 → 簽章 webhook → LINE mock 捕捉 → 清理」尚未執行，
+      `keyword-replies-wiring.05.test.ts` 驗證頁面 CRUD 接線。
+      **此合併項仍留白**，理由不變且與歸屬無關：Preview 的「UI 建立 → 簽章 webhook →
+      LINE mock 捕捉 → 清理」尚未執行（且該站點驗收受 #251 的 webhook 指向問題阻擋），
       且本項還包含不屬 #5 的 follow／預設回覆整體驗收。）**
 - [ ] chat 頁雙向訊息
 - [x] 預約狀態推播 + 額度控管
@@ -196,9 +199,14 @@
 - [x] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）
-      **（issue #5：`line-keyword-coverage.test.ts` 逐項守住三業態 18 格與 15 組
-      系統關鍵字；`keyword-replies.05.test.ts` 驗證自訂優先、停用與完整矩陣。
-      PR #49 `cadab19` run #163 的完整 gates 全綠。）**
+      **（issue #5。⚠️ 2026-09-07 更正歸屬：本項原引用 PR #49 `cadab19` 與
+      `line-keyword-coverage.test.ts`，那些證據成立的地方是
+      `claude/deploy-vercel-project-nnno59` 分支，而該分支**從未併回 `main`**（見 #251）。
+      實作於 2026-09-07 由 PR #254 補回 main（`e7595ae`），檔名為
+      `tests/unit/line-keyword-coverage.05.test.ts`（81 案，程式化列舉三業態 18 格
+      與 15 組系統關鍵字）與 `tests/integration/api/keyword-replies.05.test.ts`
+      （自訂優先、停用、完整矩陣）。exact head `43f9882` 的 `local-isolated-a`
+      從 0001 全新建庫，integration 與 E2E 皆 success。本項自 2026-09-07 起對 main 成立。）**
 - [x] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
       收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
       **（2026-08-25 打勾。打勾的依據是本項自己的定義——「存主選單 → webhook 收
