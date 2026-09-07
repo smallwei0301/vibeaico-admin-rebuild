@@ -55,6 +55,9 @@
 | PB-016 | 退出碼被蓋掉的檢查等於沒有檢查 | 管線退出碼取最後一個命令，`&&` 後的 echo 只反映前一個；`grep` 無 match 也回非零。驗證命令不得放管線中段，測試不得依賴 `grep` 退出碼。 | `docs/AGENT-EXECUTION.md` §7.1；`12-TESTING-TDD.md` §6 |
 | PB-017 | 先套用再改檔名會留下 ledger 偏差 | migration 編號是跨分支共享序列，未進 main 前都可能被別人佔走；套用時機必須晚於「檔名在 main 定案」。改檔名時一律全 repo grep 舊檔名。 | `docs/AGENT-EXECUTION.md` §3.1；`docs/DELIVERY-CHAIN.md` |
 | PB-018 | 「只是查一下」的寫入同樣佔用 TEST lane | PB-002 的序列化不只約束 reset/seed。任何對 canonical TEST 的 `DELETE`／`INSERT`／`UPDATE`——包含為了排查而下的一次性清理——都會讓同時段的 CI 測試看見不屬於它的狀態。動手前先查 canonical lane 是否被佔用。 | `docs/AGENT-EXECUTION.md` §3.1、§7；`12-TESTING-TDD.md` §1.5 |
+| PB-019 | 「repo 裡沒有」不等於「沒有做過」 | 實作可能躺在一條未併回 `main` 的分支上——而那條分支可能正是線上服務實際在跑的版本。判定「這個功能不存在」之前，先查線上跑的是哪一顆 commit，再查它是不是 `main` 的祖先。 | `docs/AGENT-EXECUTION.md` §7；`docs/DELIVERY-CHAIN.md` |
+| PB-020 | 量測外部打進來的路徑前，先確認它打到哪裡 | 「對正式站量測」與「對 configured endpoint 量測」是兩件事。先唯讀查出目標位址並確認它屬於哪個部署，再開始量；否則數字會被歸因到錯的程式碼上。 | `docs/AGENT-EXECUTION.md` §7 |
+| PB-021 | 改 PR body 修 metadata，對只監聽 `synchronize` 的 workflow 是無效操作 | `pull_request` 的 `types` 不含 `edited` 時，改 body 不會重觸發；而 `rerun_failed_jobs` 重播的是**原始 event payload**（含舊 body），所以重跑同樣讀到舊值。需用該 workflow 自帶的 `workflow_dispatch`。 | `docs/AGENT-EXECUTION.md` §7；`.github/workflows/local-isolated-test.yml` |
 
 ## 事件紀錄
 
@@ -270,3 +273,60 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 預防：① **對 canonical TEST 下任何非 `SELECT` 語句之前，先確認沒有 CI 正持有該 lane。** ② 排查一律從唯讀開始；需要改狀態才能繼續時，那就是一次**需要先取得 lane** 的正式動作，不是順手。③ 本輪自訂並沿用的延伸規則一併寫進正式規則：**任何指向 canonical TEST 的本機 server／script／Playwright 都算持有該 lane**，必須與 CI 的 canonical 執行互斥。
 - 驗證：唯讀複查 `shop_a_bookings = 4`，確認為執行期干擾而非持久性損壞；後續所有對 canonical TEST 的動作改為唯讀 schema／function／privilege 等價性查詢（見 PR #244 的 `CANONICAL_TEST_STATUS: READ_ONLY_EQUIVALENCE_REQUIRED`）。
 - 狀態：監看中（規則已寫明，待下一輪實際遵循後才算已防止）
+
+
+### PB-019 — 「repo 裡沒有」不等於「沒有做過」：線上跑的可能是一條沒併回 main 的分支
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #251；連帶影響 #5、#6、#8、#31
+- 分類：交付真相
+- 事件：查 `祕島 MIDAO` LINE channel 的 webhook 指向時發現，它指的不是正式站，而是一個 branch preview 部署（`claude/deploy-vercel-project-nnno59`，commit `7ad9ac53`，2026-08-28）。進一步比對：
+
+  ```
+  git merge-base --is-ancestor 7ad9ac53 origin/main   → NOT_ANCESTOR
+  git rev-list --count 7ad9ac53..origin/main          → 261
+  7ad9ac53:src/server/line-events.ts   1101 行
+  origin/main:src/server/line-events.ts  416 行
+  ```
+
+  那條分支**不是 `main` 的祖先**，而且功能遠多於 `main`：`replyFlexMenu` / `replyMenu` / `replyBuiltin` / `resolveBuiltinIntent` / `SYSTEM_KEYWORD_GROUPS` / `RICH_MENU_TEXT_INTENT` / `replyCoupons` / `replyTrips` / `replyDepartures` / `replyTourOrders` / `replyMember` / `replyFaq` / `pickKeywordReply` 等約 20 個處理器，`main` 一個都沒有。
+- 證據：Vercel API `get_deployment` 回 `target: null`（preview）、`githubCommitRef: claude/deploy-vercel-project-nnno59`；LINE `GET /v2/bot/channel/webhook/endpoint` 回該 preview 網址且 `active: true`；上述 git 指令輸出。
+- 根因：一次臨時的 webhook 指向設定沒有被收回，而該分支後來沒有併回 `main` 就被擱置。之後所有人都在 `main` 上做 CI、exact-head 驗證與五點完成驗證——**證明的是 `main` 的行為，但真實顧客走的是另一份程式碼**。
+- 影響：① 2026-08-28 之後合併進 `main` 的每一項修正對該店家都未生效。② preview 部署隨時可能被回收，回收即 bot 死亡且後台無任何錯誤。③ **三張標為 `owner-blocked` 的 Issue（#5 Rich Menu 關鍵字、#6 Flex 主選單、#8 行程域）其實作就在那條分支上**——它們卡住的原因有一部分是誤判為「尚未實作」。④ 差點造成二次傷害：我原本建議「把 webhook 切回正式站」，若照做會讓該店家瞬間失去約 20 種關鍵字／選單回應，是用刪除代替補齊。
+- 修正：先做唯讀 diff 判定「是 `main` 缺功能還是實驗殘留」，得到「`main` 缺功能」後**推翻自己前一則建議的處理順序**，改為「先把功能補回 `main` → 驗證 → 部署 → 才切換 webhook」。未 cherry-pick、未改 webhook 設定。
+- 預防：① 判定「這個功能不存在」之前，先查**線上實際跑的是哪一顆 commit**，再查它是不是 `main` 的祖先。② 對外服務的指向設定（webhook endpoint、DNS、alias）應納入定期核對；「設完就忘」在這裡的代價是整條交付鏈的證據失效。③ 提出「把指向修回正確目標」這類建議時，先確認目標**功能不比現況少**——否則修好指向等於功能倒退。
+- 驗證：唯讀 `git` 與 Vercel／LINE API 查詢；未修改任何檔案、未推送、未更動 webhook 設定。
+- 狀態：監看中（已揭露並開 Issue #251，補回 `main` 的工作待裁決）
+
+
+### PB-020 — 量測外部系統打進來的路徑之前，先確認它到底打到哪裡
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #31；Issue #251
+- 分類：測試環境
+- 事件：#31 要求對「正式站」做 LINE webhook 真實延遲量測。`POST /v2/bot/channel/webhook/test` 預設打的是 channel **configured endpoint**，而該 endpoint 當時指向一個 preview 部署。若直接開始量，拿到的數字會是 preview 的，卻被寫進 issue 當作「正式站改後證據」。
+- 證據：`GET /v2/bot/channel/webhook/endpoint` 回 preview 網址；同一輪對兩個目標量測的結果差異明顯——正式站**閒置 25 分鐘後的第一發** `REQUEST_TIMEOUT`（較短閒置時 run1–3 連續逾時），而當時已暖的 preview 端點 6/6 成功。**同一支 API、同一個 channel，答案完全相反。**
+- 根因：把「量測工具」與「量測對象」混為一談。`webhook/test` 是對 channel 設定的測試，不是對某個部署的測試；要指定對象必須顯式帶 `endpoint` 參數。
+- 影響：差一步就把 preview 的數字當成正式站證據寫進 #31。這種錯誤特別難發現，因為數字本身是真的、API 也是官方的，只是歸因錯了。
+- 修正：先唯讀查明 configured endpoint，再以 `endpoint` 參數分別量測正式站與 configured 端點，兩組數字並列呈現並各自標明對象。指定 `endpoint` 同時避免了更動店家設定。
+- 預防：**量測外部系統打進來的路徑時，第一個動作是唯讀查出「它打到哪裡」，第二個動作才是量。** 數字旁邊一律標註對象與取得方式；「對正式站量測」與「對 configured endpoint 量測」在報告裡必須是兩行，不能合併成一行。
+- 驗證：兩組量測皆完成並各自標註；正式庫唯讀比對確認量測零寫入（`chat_messages` 維持 6 列且全部來自 2026-08-24，`line_users` 維持 0 列）。
+- 狀態：已防止（規則已落地並在同一輪實際套用）
+
+
+### PB-021 — 改 PR body 修 metadata，對只監聽 `synchronize` 的 workflow 是無效操作
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #246；PR #248
+- 分類：CI
+- 事件：PR #248 的 `classify` 因我填錯 metadata 失敗（`FINAL_CANONICAL_REQUIRED: false`，但 `LOCAL_ISOLATED` 一律要求 `true`）。我改好 PR body 後等待重跑——**等到的是同一個紅燈**。接著用 `rerun_failed_jobs`，**又是同一個紅燈**。白等兩輪。
+- 證據：`.github/workflows/local-isolated-test.yml` 的 `on.pull_request.types` 是 `[opened, synchronize, reopened]`，**不含 `edited`**；`rerun_failed_jobs` 的 attempt 2 仍在同一步驟以同一原因失敗。
+- 根因：兩件事同時成立才造成這個死結——① 該 workflow 不監聽 `edited`，所以改 body 不會重觸發；② GitHub 的 re-run **重播原始 event payload**，其中的 PR body 是修正前的，所以重跑永遠讀不到新值。單看任一條都不明顯，合在一起就是「改了也沒用、重跑也沒用」。
+- 影響：兩輪等待（各數分鐘）加上一次誤判——我一度以為是 metadata 還有第三個錯誤。
+- 修正：改用該 workflow 自帶的 `workflow_dispatch`（輸入為 `test_profile` / `expected_head` / `final_canonical_required`），以 exact head 派工，一次通過。
+- 預防：① 修 PR body 上的 CI metadata 後，**先確認目標 workflow 的 `types` 是否含 `edited`**；不含就別等，直接找 `workflow_dispatch` 或推一顆真實 commit。② `rerun_failed_jobs` 只適用於「輸入不變、環境瞬時故障」；**凡是失敗原因來自 PR metadata 的，重跑一定無效**。③ 用 `workflow_dispatch` 前先確認 PB-015 的 `HEAD^ == main` 條件成立，否則會換一個紅燈。
+- 驗證：dispatch 的 run 34097639862 全綠——`classify` success、`local-isolated-a` success（integration 37 檔 246 tests、E2E 18 passed）。
+- 狀態：已防止（規則已落地並在同一輪實際套用）
