@@ -236,6 +236,10 @@ export function findActiveTestLaneHolders(pullRequests = []) {
     .sort((a, b) => a.number - b.number);
 }
 
+function isFullCommitSha(value) {
+  return typeof value === "string" && /^(?!0{40}$)[0-9a-f]{40}$/i.test(value);
+}
+
 export function decideTestValidation({
   eventName,
   ref,
@@ -244,6 +248,8 @@ export function decideTestValidation({
   currentPullRequest = null,
   openPullRequests = [],
   inputs = {},
+  currentCommit = null,
+  repoFullName = "",
 } = {}) {
   const holders = findActiveTestLaneHolders(openPullRequests);
   const holderNumbers = holders.map((holder) => holder.number);
@@ -253,6 +259,73 @@ export function decideTestValidation({
     error,
     holders: holderNumbers,
   });
+
+  if (eventName === "workflow_dispatch") {
+    const dispatchReason = String(inputs.dispatch_reason ?? "").trim();
+    const expectedHead = String(inputs.expected_head ?? "").trim();
+    const baseRevision = String(inputs.base_revision ?? "").trim();
+    const requestedPr = String(inputs.test_lane_pr ?? "").trim();
+
+    // A dispatch can take the docs-only route, but it is still an authenticated
+    // request to compare a particular candidate. Validate that contract before
+    // deciding whether heavy TEST is necessary.
+    if (!isFullCommitSha(expectedHead) || !isFullCommitSha(baseRevision) || !isFullCommitSha(String(sha ?? ""))) {
+      return result(false, "invalid_dispatch_revision", "Dispatch base_revision, expected_head and context SHA must be complete non-zero commit SHAs");
+    }
+    if (expectedHead !== sha) {
+      return result(false, "invalid_dispatch_expected_head", `expected_head must equal dispatched SHA ${sha}`);
+    }
+
+    if (ref === "refs/heads/main") {
+      if (dispatchReason !== "main_manual") {
+        return result(false, "invalid_main_dispatch_reason", "A main dispatch must use main_manual");
+      }
+      if (requestedPr) {
+        return result(false, "invalid_main_dispatch_pr", "A main_manual dispatch must not name a TEST lane PR");
+      }
+      const parents = Array.isArray(currentCommit?.parents) ? currentCommit.parents : [];
+      const firstParent = parents[0];
+      const firstParentSha = typeof firstParent === "string" ? firstParent : firstParent?.sha;
+      if (currentCommit?.sha !== expectedHead || firstParentSha !== baseRevision) {
+        return result(false, "invalid_main_dispatch_base", "base_revision must be the authenticated first parent of the dispatched main head");
+      }
+      return docsOnly
+        ? result(false, "docs_only")
+        : result(true, "manual_main_exact_head");
+    }
+
+    if (dispatchReason !== "lane_transition") {
+      return result(false, "invalid_branch_dispatch_reason", "A branch dispatch is allowed only for lane_transition");
+    }
+    if (!String(ref ?? "").startsWith("refs/heads/")) {
+      return result(false, "invalid_branch_dispatch_ref", "A lane_transition dispatch must target a branch ref");
+    }
+    if (!/^\d+$/.test(requestedPr) || Number(requestedPr) < 1) {
+      return result(false, "invalid_dispatch_pr_number", "A branch dispatch requires an open PR number");
+    }
+
+    const prNumber = Number(requestedPr);
+    const pr = currentPullRequest ?? {};
+    const branch = String(ref).slice("refs/heads/".length);
+    const metadata = parseLaneMetadata(pr);
+    const validPr = pr.number === prNumber &&
+      pr.state === "open" &&
+      pr.head?.ref === branch &&
+      pr.head?.sha === expectedHead &&
+      pr.head?.repo?.full_name === repoFullName &&
+      pr.base?.sha === baseRevision &&
+      isActiveTestValidation(metadata);
+    if (!validPr) {
+      return result(false, "invalid_dispatch_pr_contract", "The PR/repository/ref/base/head does not match an open active TEST_VALIDATION candidate");
+    }
+    if (holders.length !== 1 || holders[0].number !== prNumber) {
+      return result(false, `invalid_dispatch_test_lane_${holders.length}`,
+        `PR #${prNumber} is not the sole TEST_VALIDATION holder (holders: ${holderNumbers.join(",") || "none"})`);
+    }
+    return docsOnly
+      ? result(false, "docs_only")
+      : result(true, "validated_lane_transition_exact_head");
+  }
 
   if (docsOnly) return result(false, "docs_only");
   if (eventName === "push" && ref === "refs/heads/main") return result(true, "main_push");
@@ -272,43 +345,6 @@ export function decideTestValidation({
     }
     return result(false, `test_lane_conflict_${holders.length}`,
       `PR #${metadata.number} is not the sole TEST_VALIDATION holder (holders: ${holderNumbers.join(",") || "none"})`);
-  }
-
-  if (eventName === "workflow_dispatch") {
-    const dispatchReason = String(inputs.dispatch_reason ?? "").trim();
-    const expectedHead = String(inputs.expected_head ?? "").trim();
-    const requestedPr = String(inputs.test_lane_pr ?? "").trim();
-    if (!expectedHead || expectedHead !== sha) {
-      return result(false, "invalid_dispatch_expected_head", `expected_head must equal dispatched SHA ${sha}`);
-    }
-    if (ref === "refs/heads/main") {
-      return dispatchReason === "main_manual"
-        ? result(true, "manual_main_exact_head")
-        : result(false, "invalid_main_dispatch_reason", "A main dispatch must use main_manual");
-    }
-    if (dispatchReason !== "lane_transition") {
-      return result(false, "invalid_branch_dispatch_reason", "A branch dispatch is allowed only for lane_transition");
-    }
-    if (!/^\d+$/.test(requestedPr) || Number(requestedPr) < 1) {
-      return result(false, "invalid_dispatch_pr_number", "A branch dispatch requires an open PR number");
-    }
-
-    const prNumber = Number(requestedPr);
-    const pr = currentPullRequest ?? {};
-    const branch = String(ref ?? "").replace(/^refs\/heads\//, "");
-    const metadata = parseLaneMetadata(pr);
-    const validPr = pr.state === "open" &&
-      pr.head?.ref === branch &&
-      pr.head?.sha === expectedHead &&
-      isActiveTestValidation(metadata);
-    if (!validPr) {
-      return result(false, "invalid_dispatch_pr_contract", "The PR/ref/head does not match an open active TEST_VALIDATION candidate");
-    }
-    if (holders.length !== 1 || holders[0].number !== prNumber) {
-      return result(false, `invalid_dispatch_test_lane_${holders.length}`,
-        `PR #${prNumber} is not the sole TEST_VALIDATION holder (holders: ${holderNumbers.join(",") || "none"})`);
-    }
-    return result(true, "validated_lane_transition_exact_head");
   }
 
   return result(false, "unsupported_event_fail_closed", `Unsupported CI event: ${eventName || "unknown"}`);

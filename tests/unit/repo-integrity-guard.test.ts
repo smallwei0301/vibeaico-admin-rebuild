@@ -4,6 +4,7 @@ import {
   evaluateRepositoryIntegrity,
   findMigrationIntegrityIssues,
   findStandaloneGitShas,
+  resolveRevision,
 } from '../../scripts/ci/repo-integrity-guard.mjs';
 
 const completeTree = [
@@ -14,6 +15,26 @@ const completeTree = [
 ];
 
 describe('repository integrity guard', () => {
+  it('keeps the local HEAD^ default only when BASE_REVISION is absent', () => {
+    expect(resolveRevision({}, 'BASE_REVISION', 'HEAD^')).toBe('HEAD^');
+    expect(resolveRevision({}, 'HEAD_REVISION', 'HEAD')).toBe('HEAD');
+    const explicitSha = 'a'.repeat(40);
+    expect(resolveRevision({ BASE_REVISION: explicitSha }, 'BASE_REVISION', 'HEAD^'))
+      .toBe(explicitSha);
+  });
+
+  it('fails closed when CI supplies an empty base instead of falling back to HEAD^', () => {
+    expect(() => resolveRevision({ BASE_REVISION: '' }, 'BASE_REVISION', 'HEAD^'))
+      .toThrow('BASE_REVISION must be non-empty; refusing implicit HEAD^ fallback');
+  });
+
+  it('rejects symbolic or malformed supplied revisions while preserving local fallbacks', () => {
+    for (const revision of ['HEAD', 'HEAD^', 'origin/main', 'abc', '0'.repeat(40)]) {
+      expect(() => resolveRevision({ BASE_REVISION: revision }, 'BASE_REVISION', 'HEAD^'))
+        .toThrow('complete non-zero commit SHA');
+    }
+  });
+
   it('accepts a complete tree with a small intentional deletion', () => {
     expect(evaluateRepositoryIntegrity({
       trackedPaths: completeTree,
