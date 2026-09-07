@@ -155,6 +155,20 @@ export type Staff = {
   sortOrder: number;
   /** 選填：舊資料／尚未回填的環境沒有這個欄位，前端一律以 'ROTATING' 當預設。 */
   scheduleMode?: StaffScheduleMode;
+  /**
+   * 對顧客顯示的名稱。空字串＝沒有另取顯示名，前台沿用 `name`。
+   * 這四個欄位原本是 staff 頁的頁內常數（STAFF_EXTRAS_*，以 mock id 為鍵），
+   * 真實租戶的 id 是 uuid，於是每一位員工都靜默落到 DEFAULT_EXTRAS——空白顯示
+   * 名、空白簡介、maxConcurrentBookings=1、visible=true，顯示在他們真實的姓名
+   * 與職稱旁邊。0082 把它們落地成真欄位。
+   */
+  displayName?: string;
+  /** 前台顯示的簡介。空字串＝還沒寫。 */
+  bio?: string;
+  /** 同一時段可同時承接的預約數，恆 >= 1。 */
+  maxConcurrentBookings?: number;
+  /** 是否顯示在顧客端前台。 */
+  visible?: boolean;
 };
 
 /* ------------------------------------------------------------ 商品 / 訂單 */
