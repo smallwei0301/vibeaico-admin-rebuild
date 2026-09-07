@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { reorderPortfolios } from '@/server/product-position';
 
 /**
  * POST /api/portfolios/reorder — `{ids:[]}` 依序寫 sort_order=index
@@ -15,12 +16,9 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE');
   const b = bodySchema.parse(await req.json());
 
-  for (let i = 0; i < b.ids.length; i++) {
-    const { error } = await t.supabase
-      .from('portfolios').update({ sort_order: i })
-      .eq('id', b.ids[i]).eq('tenant_id', t.tenantId);
-    if (error) throw error;
-  }
+  // issue #238：逐筆 update 在有 portfolios_tenant_sort_order_uq 的資料庫上，
+  // 第一次迭代就撞 23505。改走 atomic RPC（先搬到高位區間再寫回）。
+  await reorderPortfolios(t.supabase, t.tenantId, b.ids, 'public');
 
   return ok();
 });
