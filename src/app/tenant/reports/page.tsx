@@ -15,10 +15,11 @@ import { DataTable, type Column } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/Toast';
 import { useBusinessType } from '@/components/layout/BusinessTypeContext';
 import {
-  exportBookingsCsv, exportCustomersExcel, getReportData, getTopStaff,
+  getReportData, getTopStaff,
   type ReportData, type ReportQuery, type ReportRange,
   type ServiceTrend, type TopProduct, type TopService,
 } from '@/services/reports';
+import { exportReports } from '@/services/report-export';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
 import { reportsPage as t } from '@/i18n/zh-TW/pages/reports';
@@ -158,16 +159,13 @@ export default function ReportsPage() {
     setExportOpen(false);
     setExporting(true);
     try {
-      /* real：直接打匯出端點（檔案下載，不走 API 信封）；mock：no-op，僅照舊 toast。
-         Excel 選項對應顧客名單匯出、CSV 選項對應預約列表匯出（帶目前區間）。
-
-         issue #246：檔名一律取自後端 Content-Disposition。先前這裡是前端自己
-         用本機日期拼一個「營運報表_YYYYMMDD.xlsx」，而當時端點回的其實是
-         customers-….csv，連副檔名都不符。沒有檔名時只報成功，不編一個出來。
-         （拼檔名用的 todayFileDate() 也隨之移除，不留死碼。） */
-      const result = ext === 'xlsx'
-        ? await exportCustomersExcel()
-        : await exportBookingsCsv(rangeDates(range));
+      /* issue #246：報表頁必須下載「營運報表」本身，不能再拿顧客名單／預約列表
+         冒充。CSV / Excel 共用 canonical /api/export/reports/:format，且檔名只接受
+         後端 Content-Disposition；沒有檔名時只報成功，不在前端自行編一個。 */
+      const result = await exportReports(
+        ext === 'xlsx' ? 'excel' : 'csv',
+        rangeDates(range),
+      );
       toast.show(
         result?.fileName ? t.export.successAs(result.fileName) : t.export.success,
       );
