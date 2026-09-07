@@ -380,6 +380,14 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    /**
+     * issue #8：列表頁那四個操作與「新增行程」原本只改頁面記憶體，重整就恢復舊狀態。
+     * 接上真實端點之後，失敗必須顯示**後端的真實訊息**，而不是一句自己編的「失敗」
+     * ——後者會讓店家不知道是權限、名稱重複還是網路問題。這個前綴後面接 ApiError.message。
+     */
+    actionFailedPrefix: '操作失敗：',
+    /** 「新增行程」建立的草稿標題（店家接著在詳情頁改成真正的名稱） */
+    untitled: '未命名行程',
     planNameRequired: '請輸入方案名稱',
     planPriceInvalid: '請輸入有效的基本價格',
     planChildPriceInvalid: '請輸入有效的兒童價格',
