@@ -77,6 +77,19 @@ export const POST = handle(async (req) => {
   const t = await requireTenant();
   const b = bodySchema.parse(await req.json());
 
+  let membershipLevelId = b.membershipLevelId ? b.membershipLevelId : null;
+  if (!membershipLevelId) {
+    const { data: defaultLevel, error: defaultError } = await t.supabase
+      .from('membership_levels')
+      .select('id')
+      .eq('tenant_id', t.tenantId)
+      .eq('active', true)
+      .eq('is_default', true)
+      .maybeSingle();
+    if (defaultError) throw defaultError;
+    membershipLevelId = defaultLevel?.id ?? null;
+  }
+
   const { data, error } = await t.supabase
     .from('customers')
     .insert({
@@ -88,8 +101,10 @@ export const POST = handle(async (req) => {
       birthday: b.birthday ? b.birthday : null,
       note: b.note ?? '',
       tags: b.tags ?? [],
-      membership_level_id: b.membershipLevelId ? b.membershipLevelId : null,
-      // 這是店家在後台手動新增的顧客（本端點唯一用途），明寫優於依賴
+      // #35：未指定會員等級時，解析為同租戶「啟用中的預設等級」（membershipLevelId
+      // 在上面已算好），而不是直接存 null。
+      membership_level_id: membershipLevelId,
+      // #177：這是店家在後台手動新增的顧客（本端點唯一用途），明寫優於依賴
       // DB column default，讀者不用跳去看 migration 才知道這裡的語意。
       source: 'MANUAL',
     })
