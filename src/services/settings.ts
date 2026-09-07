@@ -225,6 +225,34 @@ export const saveLineSettings = (patch: Partial<LineSettings>) =>
     () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }),
   );
 
+/**
+ * 儲存 Flex 主選單（POST /api/settings/line/flex-menu，06 分冊 §6 / issue #6）。
+ *
+ * ⚠️ 這支函式在此之前**不存在**——rich-menu-design 頁 Flex 分頁的「發布」只是
+ * `toast.show(t.flex.saved)`，卡片、開關、fallback 全都只活在瀏覽器記憶體裡，
+ * 而店家看到的是「主選單已儲存！顧客下次開啟聊天時會看到新樣式」（14 分冊
+ * §1 根因 A 的典型：成功訊息宣稱了一件沒發生的事）。
+ *
+ * 端點的合併語意是 partial patch（只寫這次帶了的鍵），所以呼叫端可以只送
+ * `{ flexCards: [] }`（清除已發布）或整包（發布）。`flexCards` 超過
+ * `MAX_FLEX_CARDS` 會被端點的 zod 擋成 400，錯誤原文由 ApiError 帶回頁面。
+ *
+ * mock 分支把 patch 併進 `getMockLineSettingsOverrides()`——與 richMenuBgImageUrl
+ * 同一個假倉庫，於是骨架模式下「發布後重整卡片還在」也是真的，不是假成功。
+ */
+export const saveFlexMenu = (
+  patch: Partial<Pick<LineSettings,
+    'flexMenuEnabled' | 'flexMenuFallback' | 'flexCards' |
+    'flexHeaderColor' | 'flexHeaderTitle' | 'flexHeaderSubtitle' | 'flexShowTip'>>,
+) =>
+  adapt<void>(
+    () => { Object.assign(getMockLineSettingsOverrides(), patch); return undefined; },
+    () => request<void>('/api/settings/line/flex-menu', {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    }),
+  );
+
 export const testLineConnection = () =>
   adapt<{ ok: boolean; message: string }>(
     () => ({ ok: true, message: '連線正常' }),

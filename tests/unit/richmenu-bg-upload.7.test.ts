@@ -11,6 +11,23 @@ const read = (relative: string) =>
 const page = read('src/app/tenant/rich-menu-design/page.tsx');
 const service = read('src/services/settings.ts');
 
+/**
+ * 「頁面確實從 `@/services/settings` 匯入這個名字」。
+ *
+ * ⚠️ 原本這兩條是把**整串 import 清單**逐字比對（`"uploadRichMenuBgImage } from
+ * '@/services/settings'"`、`"getTenantSettings, listFeatures, saveLineSettings,
+ * uploadRichMenuBgImage } from …"`）。那等於順便釘死了「這個 module 只能匯入
+ * 這幾個名字、而且只能寫成一行」——issue #6 的 `saveFlexMenu` 一加進來，兩條
+ * 都紅了，但沒有任何一件它們要防的事真的發生（頁面照樣是走 service，不是自己
+ * fetch）。這種會被無關改動誤傷的鎖，紅燈本身沒有資訊量，久了只會被習慣性放寬。
+ *
+ * 改成只驗真正要驗的那件事：這個名字有從那支 module 被 import 進來。
+ */
+function importsFromSettings(name: string): boolean {
+  const m = page.match(/import\s*\{([^}]*)\}\s*from\s*'@\/services\/settings'/);
+  return !!m && m[1].split(',').map((x) => x.trim()).includes(name);
+}
+
 describe('rich-menu 背景圖上傳按鈕 — 真的接線而非死按鈕 (#7)', () => {
   it('上傳圖片按鈕不再是沒有 onClick 的死按鈕，會觸發隱藏的檔案選取', () => {
     // 反向鎖住舊的死按鈕寫法：<Button variant="outline"><Upload .../>{t.background.uploadImage}</Button>
@@ -21,7 +38,7 @@ describe('rich-menu 背景圖上傳按鈕 — 真的接線而非死按鈕 (#7)',
   });
 
   it('選檔後呼叫 uploadRichMenuBgImage service，成功後把 url 填進 bgUrl', () => {
-    expect(page).toContain("uploadRichMenuBgImage } from '@/services/settings'");
+    expect(importsFromSettings('uploadRichMenuBgImage')).toBe(true);
     const handler = page.slice(
       page.indexOf('const handleBgFileChange'),
       page.indexOf('const handleBgUrlBlur'),
@@ -48,7 +65,9 @@ describe('rich-menu 背景圖上傳按鈕 — 真的接線而非死按鈕 (#7)',
 
 describe('背景圖 URL 的持久化 —— 上傳成功後真的存進 line.richMenuBgImageUrl，而不只是元件 state (#7)', () => {
   it('persistBgUrl 呼叫 saveLineSettings 並帶 richMenuBgImageUrl；失敗顯示後端真實訊息、回傳 false 而非假裝成功', () => {
-    expect(page).toContain("getTenantSettings, listFeatures, saveLineSettings, uploadRichMenuBgImage } from '@/services/settings'");
+    for (const name of ['getTenantSettings', 'listFeatures', 'saveLineSettings', 'uploadRichMenuBgImage']) {
+      expect(importsFromSettings(name), `${name} 沒有從 @/services/settings 匯入`).toBe(true);
+    }
     const fn = page.slice(page.indexOf('const persistBgUrl'), page.indexOf('const handleBgFileChange'));
     expect(fn).toContain('await saveLineSettings({ richMenuBgImageUrl: url });');
     expect(fn).toContain(
