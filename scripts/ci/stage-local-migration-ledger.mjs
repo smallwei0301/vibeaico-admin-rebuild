@@ -70,6 +70,7 @@ export function stageLocalMigrationOverlay(options = {}) {
   const targetRoot = resolve(rootDir, targetRelativePath);
   const seenTargets = new Set();
   const staged = [];
+  const retired = [];
   const sources = [];
 
   for (const relativeManifest of selectedManifests) {
@@ -89,8 +90,12 @@ export function stageLocalMigrationOverlay(options = {}) {
     for (const entry of manifest.files) {
       const sourceName = entry.sourceName ?? entry.name;
       const targetName = entry.targetName ?? entry.name;
+      const retiredBy = entry.retiredBy ?? null;
       if (!SOURCE_SQL_NAME.test(sourceName)) throw new Error(`invalid source SQL filename: ${sourceName}`);
       if (!MIGRATION_NAME.test(targetName)) throw new Error(`invalid staged migration filename: ${targetName}`);
+      if (retiredBy && !MIGRATION_NAME.test(retiredBy)) {
+        throw new Error(`invalid retiredBy canonical migration filename: ${retiredBy}`);
+      }
       if (manifestTargets.has(targetName)) {
         throw new Error(`duplicate staged migration in manifest ${relativeManifest}: ${targetName}`);
       }
@@ -103,9 +108,6 @@ export function stageLocalMigrationOverlay(options = {}) {
       const source = join(sourceRoot, sourceName);
       const target = join(targetRoot, targetName);
       if (!existsSync(source)) throw new Error(`manifest source is missing: ${sourceName}`);
-      if (existsSync(target)) {
-        throw new Error(`refusing to overwrite canonical migration path: ${targetName}`);
-      }
 
       const content = readFileSync(source);
       const actualBlobSha = gitBlobSha(content);
@@ -113,6 +115,28 @@ export function stageLocalMigrationOverlay(options = {}) {
         throw new Error(
           `blob integrity mismatch for ${sourceName}: expected ${entry.blobSha}, got ${actualBlobSha}`,
         );
+      }
+
+      if (retiredBy) {
+        if (entry.localTransform) {
+          throw new Error(`retired local migration cannot declare localTransform: ${sourceName}`);
+        }
+        const replacement = join(targetRoot, retiredBy);
+        if (!existsSync(replacement)) {
+          throw new Error(`retired local migration replacement is missing: ${retiredBy}`);
+        }
+        retired.push({
+          sourceName,
+          targetName,
+          blobSha: actualBlobSha,
+          retiredBy,
+          source: manifest.source,
+        });
+        continue;
+      }
+
+      if (existsSync(target)) {
+        throw new Error(`refusing to overwrite canonical migration path: ${targetName}`);
       }
 
       const transform = entry.localTransform ?? null;
@@ -153,6 +177,7 @@ export function stageLocalMigrationOverlay(options = {}) {
     renamed: staged
       .filter((entry) => entry.sourceName !== entry.targetName)
       .map((entry) => `${entry.sourceName}->${entry.targetName}`),
+    retired: retired.map((entry) => `${entry.sourceName}->${entry.retiredBy}`),
     staged,
   };
 
@@ -169,6 +194,7 @@ export function stageLocalMigrationOverlay(options = {}) {
       `- range: ${result.first} → ${result.last}`,
       `- local transforms: ${result.transformed.join(', ') || 'none'}`,
       `- local renames: ${result.renamed.join(', ') || 'none'}`,
+      `- retired overlays: ${result.retired.join(', ') || 'none'}`,
       '- scope: disposable local Supabase runner only; never a remote migration ledger',
       '',
     ].join('\n'), 'utf8');
@@ -180,7 +206,7 @@ export function stageLocalMigrationOverlay(options = {}) {
 function cli() {
   const result = stageLocalMigrationOverlay();
   console.log(
-    `[local-migration-overlay] staged ${result.count} files (${result.first}..${result.last})`,
+    `[local-migration-overlay] staged ${result.count} files (${result.first}..${result.last}); retired ${result.retired.length}`,
   );
 }
 

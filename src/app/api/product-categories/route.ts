@@ -6,9 +6,10 @@ import { requireTenant } from '@/server/tenant';
  * GET /api/product-categories — 全量不分頁，sort_order asc。
  *
  * 修改前：`active` 硬回 `true`（DB 沒這欄），所以店家在分類管理裡把分類停用、
- * 畫面顯示「分類已更新」，重新整理又全部變回啟用——本檔原本的註解自己寫了
- * 「已回報」。migration 0018 補了 description / active 兩欄（issue #28 第 ⑨ 筆），
- * 這裡改成照實回傳 DB 的值。
+ * 畫面顯示「分類已更新」，重新整理又全部變回啟用。description / active 現由
+ * canonical migration 0079 補齊（issue #197 第一個 reconciliation slice）：原始
+ * 0018 曾被套到 TEST／Production，卻沒有進 main；0079 把目前 API 已實際讀寫的
+ * 欄位正式收回 canonical migration。
  */
 function mapProductCategory(r: any) {
   return {
