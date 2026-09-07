@@ -26,6 +26,8 @@ export function validateRunAdmission({ metadata = {} } = {}) {
   const deliveryType = upper(metadata.deliveryUnitType);
   const activeProductLane = upper(metadata.state) === 'ACTIVE' &&
     ACTIVE_PRODUCT_LANES.has(upper(metadata.lane));
+  const counted = upper(metadata.countInDeliveryOutcome) === 'TRUE';
+  const retroactive = upper(metadata.retroactiveTrackingMigration) === 'TRUE';
 
   // Trusted WIP validation calls this admission policy directly, without the
   // local delivery-unit preflight. An active Product lane must therefore fail
@@ -39,13 +41,14 @@ export function validateRunAdmission({ metadata = {} } = {}) {
     ];
   }
 
-  const counted = upper(metadata.countInDeliveryOutcome) === 'TRUE';
-  const retroactive = upper(metadata.retroactiveTrackingMigration) === 'TRUE';
-
   // A frozen legacy Run accepts no new Product membership. The only Product-shaped
   // reference allowed is explicitly historical bookkeeping: retroactive=true and
   // count=false. Merely setting count=false cannot be used to bypass the freeze.
-  if (retroactive && !counted) return [];
+  // That exception is unavailable to an active Product lane because the trusted
+  // WIP path does not run the full delivery-unit boundary preflight.
+  if (retroactive && !counted) {
+    if (!activeProductLane) return [];
+  }
 
   return [
     `RUN_ID ${runId} is frozen for new Product membership; start a new Delivery Truth v4 Run with an explicit closeout owner. Only RETROACTIVE_TRACKING_MIGRATION=true with COUNT_IN_DELIVERY_OUTCOME=false may reference it as historical bookkeeping. Evidence: ${frozen.evidenceRef}`,

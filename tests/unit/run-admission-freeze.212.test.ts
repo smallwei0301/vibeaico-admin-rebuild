@@ -20,6 +20,8 @@ function productBody({
   origin = 'OWNER',
   deliveryType = 'SLICE',
   includeDeliveryType = true,
+  lane = 'TERRA_BUILD',
+  laneState = 'ACTIVE',
   bplusMode = 'false',
   scorecardPath = 'none',
   activeCandidate = 'false',
@@ -52,8 +54,8 @@ ${includeDeliveryType ? `- DELIVERY_UNIT_TYPE: ${deliveryType}` : ''}
 - BPLUS_MODE: ${bplusMode}
 - RUN_ID: ${runId}
 - SCORECARD_PATH: ${scorecardPath}
-- AGENT_LANE: TERRA_BUILD
-- LANE_STATE: ACTIVE
+- AGENT_LANE: ${lane}
+- LANE_STATE: ${laneState}
 - ACTIVE_CANDIDATE: ${activeCandidate}
 - CLOSEABILITY_SCORE: ${closeability}
 - SELECTION_REASON: ${selectionReason}
@@ -72,11 +74,20 @@ ${includeDeliveryType ? `- DELIVERY_UNIT_TYPE: ${deliveryType}` : ''}
 `;
 }
 
-function activeAgentProductBody({ deliveryType, includeDeliveryType = true }: {
+function activeAgentProductBody({
+  count,
+  retroactive,
+  deliveryType,
+  includeDeliveryType = true,
+}: {
+  count?: string;
+  retroactive?: string;
   deliveryType?: string;
   includeDeliveryType?: boolean;
 } = {}) {
   return `${productBody({
+    count,
+    retroactive,
     deliveryType,
     includeDeliveryType,
     origin: 'AGENT',
@@ -136,6 +147,20 @@ describe('Issue #212 legacy Run admission freeze', () => {
     );
   });
 
+  it('does not allow retroactive flags to bypass an active Product lane', () => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: activeAgentProductBody({
+        count: 'false',
+        retroactive: 'true',
+        deliveryType: 'SLICE',
+      }),
+    });
+    expect(validateLaneMetadata(metadata)).toContainEqual(
+      expect.stringContaining('is frozen for new Product membership'),
+    );
+  });
+
   it('blocks the same mistake in local PR preflight before GitHub Actions', () => {
     const result = validateWipPreflight({ body: productBody(), prNumber: 999 });
     expect(result.valid).toBe(false);
@@ -155,7 +180,12 @@ describe('Issue #212 legacy Run admission freeze', () => {
   it('allows explicitly non-counted historical bookkeeping to reference the old Run', () => {
     const metadata = parseLaneMetadata({
       number: 999,
-      body: productBody({ count: 'false', retroactive: 'true' }),
+      body: productBody({
+        count: 'false',
+        retroactive: 'true',
+        lane: 'GOVERNANCE',
+        laneState: 'HISTORICAL',
+      }),
     });
     expect(validateRunAdmission({ metadata })).toEqual([]);
   });
