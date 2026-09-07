@@ -57,6 +57,16 @@ describe('Issue #212 legacy Run admission freeze', () => {
     );
   });
 
+  it('does not allow COUNT_IN_DELIVERY_OUTCOME=false to become a bypass for new Product work', () => {
+    const metadata = parseLaneMetadata({
+      number: 999,
+      body: productBody({ count: 'false', retroactive: 'false' }),
+    });
+    expect(validateRunAdmission({ metadata })).toContainEqual(
+      expect.stringContaining('Only RETROACTIVE_TRACKING_MIGRATION=true'),
+    );
+  });
+
   it('blocks the same mistake in local PR preflight before GitHub Actions', () => {
     const result = validateWipPreflight({ body: productBody(), prNumber: 999 });
     expect(result.valid).toBe(false);
