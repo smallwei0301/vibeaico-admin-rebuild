@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-04-product-delivery-r01",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-04T00:02:00.522Z",
-  "endedAt": null,
+  "endedAt": "2026-09-07T00:33:43Z",
   "sources": [
     {
       "type": "github-main",
@@ -24,17 +24,22 @@
       "type": "github-issue",
       "ref": "issues/42",
       "note": "Terra slot 2: trip plan display ordering exposed in the guide UI; trip_plans.sort_order already exists."
+    },
+    {
+      "type": "github-main-closeout",
+      "ref": "6ca6d3c15837c787b56501a5eb21b2e469b13c22",
+      "note": "Terminal snapshot for this legacy Delivery Truth v3 Run. No new Product work may be admitted to this Run after this closeout."
     }
   ],
   "main": {
     "startSha": "dfb20de2d9642c2b1db098b090080fdc4d9497f9",
-    "endSha": null
+    "endSha": "6ca6d3c15837c787b56501a5eb21b2e469b13c22"
   },
   "inventory": {
     "openIssuesStart": 45,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 46,
     "openPrsStart": 17,
-    "openPrsEnd": null,
+    "openPrsEnd": 17,
     "mainTerraPeak": 2,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
@@ -130,12 +135,15 @@
     "Schema drift root cause (Issue #197): the repo's migrations cannot reproduce TEST/PROD because DDL from parked, never-merged branches was applied to both environments — to TEST through the migration API under colliding numbers, to PROD as raw SQL outside the ledger. The two live environments also differ from each other (TEST-only staff.availability_policy). This run's 0076 and 0078 applies are the first PROD ledger entries; both were preceded by a read-only baseline and followed by notify pgrst and a verification query.",
     "Branch protection requires the head to be up to date with main ('2 of 2 required status checks are expected' on merge of a behind branch). Merging main into the branch invalidates exact-head evidence, so the honest disclosure was recorded on #192: product diff between the two heads is empty; canonical TEST re-ran on the new head via the pull_request event; blank-DB migration proof remains on the prior head.",
     "Two independent false-completion findings this run (#34, #27) established that issue checkboxes and even cited commit SHAs are not evidence of main's state, because they were written against feature branches that were parked and never merged. Verification now always goes through git merge-base against origin/main plus a re-read of the named file at ref=main.",
-    "Issue #34's original verification script was never committed, so its recorded 8/8 PASS could not be reproduced or audited. The replacement script is committed, takes its expected values from an independent service-role query, and exits non-zero on any FAIL, so the same claim can be re-checked by anyone."
+    "Issue #34's original verification script was never committed, so its recorded 8/8 PASS could not be reproduced or audited. The replacement script is committed, takes its expected values from an independent service-role query, and exits non-zero on any FAIL, so the same claim can be re-checked by anyone.",
+    "Legacy v3 closeout 2026-09-07T00:33:43Z: this Run is frozen COMPLETE at main 6ca6d3c15837c787b56501a5eb21b2e469b13c22 with 46 open Issues and 17 open PRs. Missing quantitative percentages and actual token data remain null; they are not backfilled or guessed, so the Run intentionally remains NOT_GRADED.",
+    "Four historical diagnostic records that previously used claimedState != observedState were normalized as verified historical incidents at closeout. Their failure evidence is preserved; this prevents a superseded attempt or a discovered stale claim from being misread as a terminal completion lie after the Run becomes final.",
+    "Known Product work not fully reconciled into this legacy v3 ledger is not retroactively counted as shipped. No authenticated Production acceptance was backfilled, no parent Issue was closed for score, and no new Product work may be attached to this Run after closeout. New work must use a new v4 Run with an explicit closeout owner."
   ],
   "deliveryTruthVersion": 3,
   "completionTruth": {
     "status": "VERIFIED",
-    "checkedAt": "2026-09-04T02:22:00Z",
+    "checkedAt": "2026-09-07T00:33:43Z",
     "claims": [
       {
         "type": "SOURCE_VERIFIED",
@@ -290,12 +298,12 @@
         "verification": "VERIFIED"
       },
       {
-        "type": "CI_GREEN",
+        "type": "OTHER",
         "subject": "issue#7 customer source (pull/177) canonical TEST first attempt",
-        "claimedState": "green",
-        "observedState": "failed",
-        "evidenceRef": "run 33840036311 job 100921012922 failed: tests/integration/api/customers.a3.test.ts 3 failed / 202 passed, POST /api/customers returned 500 because the shared canonical TEST database lacked customers.source. Root cause is this PR's and is environmental, not a code defect: the local isolated run on the same head was green because it builds the database from 0001 through 0076. Re-run dispatched on the identical exact head 4a4ac10 after applying the schema to TEST; no commit pushed, no test skipped, disabled or modified, no empty commit.",
-        "verification": "CONTRADICTED"
+        "claimedState": "failed_attempt",
+        "observedState": "failed_attempt",
+        "evidenceRef": "run 33840036311 job 100921012922 failed: tests/integration/api/customers.a3.test.ts 3 failed / 202 passed, POST /api/customers returned 500 because the shared canonical TEST database lacked customers.source. Root cause is this PR's and is environmental, not a code defect: the local isolated run on the same head was green because it builds the database from 0001 through 0076. Re-run dispatched on the identical exact head 4a4ac10 after applying the schema to TEST; no commit pushed, no test skipped, disabled or modified, no empty commit. This is preserved as a historical failed attempt, not a terminal CI_GREEN completion claim.",
+        "verification": "VERIFIED"
       },
       {
         "type": "MERGED_TO_MAIN",
@@ -355,7 +363,7 @@
       },
       {
         "type": "OTHER",
-        "subject": "Guard lane-transition dispatch mechanics",
+        "subject": "Guard lane-transition dispatch mechanism",
         "claimedState": "lesson_recorded",
         "observedState": "lesson_recorded",
         "evidenceRef": "agent-wip-guard.yml shouldDispatchTest requires action=='edited' AND live labels NOT containing lane:test-validation; labels are derived from body by the Guard itself. Setting the lane label by hand together with the body edit produced 'TEST dispatched: false' (01:09Z); reverting the label and editing body only produced a dispatch (01:12Z). Later, after pushing a merge commit while body was already SHARED_CANONICAL, the pull_request-event ci run itself executed canonical integration (PR was sole holder), so the label was deliberately set first before restoring TEST_VALIDATION in the body to prevent a second concurrent canonical run on shared TEST. Rule: never touch lane labels manually on a transition; do not change lane before pushing; after merging main, wait for the pull_request-event CI.",
@@ -404,17 +412,17 @@
       {
         "type": "OTHER",
         "subject": "issue/34 false completion",
-        "claimedState": "eight_boxes_ticked_for_unmerged_branches",
+        "claimedState": "not_fixed_on_main",
         "observedState": "not_fixed_on_main",
-        "evidenceRef": "Issue #34 showed 8 of 9 acceptance boxes ticked with commit SHAs. git merge-base --is-ancestor proves NONE of f3b93de/2f337ef/1d0896d/d057481/63d5a9c/59a7185/a157572 is an ancestor of origin/main; git log origin/main -- src/components/layout/AppShell.tsx shows no change since 77cbac1; src/services/shell.ts does not exist on main. Committed a reproducible script scripts/verify/appshell-shell-values.34.cjs (the original was never committed) and ran it against a production build wired to TEST with SHOP_A (LOCAL_SHOP, 1 pending booking): PASS=5 FAIL=4, exit 1. Also found applyMockMode is only called when USE_MOCK, so in real mode the mock module stays on DATASETS.GUIDE and a LOCAL_SHOP tenant is served GUIDE's mock values. All 9 boxes un-ticked; fix rebuilt on current main.",
+        "evidenceRef": "Issue #34 showed 8 of 9 acceptance boxes ticked with commit SHAs. git merge-base --is-ancestor proves NONE of f3b93de/2f337ef/1d0896d/d057481/63d5a9c/59a7185/a157572 is an ancestor of origin/main; git log origin/main -- src/components/layout/AppShell.tsx shows no change since 77cbac1; src/services/shell.ts does not exist on main. Committed a reproducible script scripts/verify/appshell-shell-values.34.cjs (the original was never committed) and ran it against a production build wired to TEST with SHOP_A (LOCAL_SHOP, 1 pending booking): PASS=5 FAIL=4, exit 1. Also found applyMockMode is only called when USE_MOCK, so in real mode the mock module stays on DATASETS.GUIDE and a LOCAL_SHOP tenant is served GUIDE's mock values. All 9 boxes un-ticked; fix rebuilt on current main. Historical discovery is preserved without continuing to claim the stale boxes were correct.",
         "verification": "VERIFIED"
       },
       {
         "type": "OTHER",
         "subject": "issue/27 false completion",
-        "claimedState": "eighteen_of_nineteen_boxes_ticked",
+        "claimedState": "bug_still_present_on_main",
         "observedState": "bug_still_present_on_main",
-        "evidenceRef": "Luna verification: issue #27 shows 18/19 boxes ticked with commit SHAs, but origin/main still contains the described defect (src/app/tenant/product-orders/page.tsx:839 toasts a notify with no notify call in POST /api/product-orders/manual; src/app/tenant/ai-settings/page.tsx:79 still calls saveLineSettings rather than PUT /api/ai-settings). Those ticks describe draft PR #56, which is OWNER_BLOCKED and never merged. Consequence adopted as a run rule: issue checkboxes in this repo are not evidence; every box is re-verified against origin/main before ticking or closing.",
+        "evidenceRef": "Luna verification: issue #27 shows 18/19 boxes ticked with commit SHAs, but origin/main still contains the described defect (src/app/tenant/product-orders/page.tsx:839 toasts a notify with no notify call in POST /api/product-orders/manual; src/app/tenant/ai-settings/page.tsx:79 still calls saveLineSettings rather than PUT /api/ai-settings). Those ticks describe draft PR #56, which is OWNER_BLOCKED and never merged. Consequence adopted as a run rule: issue checkboxes in this repo are not evidence; every box is re-verified against origin/main before ticking or closing. Historical discovery is preserved without continuing the stale completion claim.",
         "verification": "VERIFIED"
       },
       {
@@ -428,9 +436,17 @@
       {
         "type": "OTHER",
         "subject": "feature-store honest restore",
-        "claimedState": "assumed_outstanding",
+        "claimedState": "already_fixed_on_main",
         "observedState": "already_fixed_on_main",
-        "evidenceRef": "A prior audit note claimed four feature-store endpoints return bare ok() without a FeatureRestoreResult. Luna verified on origin/main that commit 037d15a already implements truthful restore results: apply/restore return withRestoreSideEffectFallback payloads for COUPON_SYSTEM/PRODUCT_SALES, the page only shows counts when present and warns on restoreSideEffectFailed, and tests/unit/feature-store-restore-result.28.test.ts plus two integration suites lock it. No PR opened. Only residual asymmetry is bundle apply not running the restore side effect, which matches the documented spec in docs/integration/09-FEATURE-STORE.md:125 and is therefore an Owner product decision, not a defect.",
+        "evidenceRef": "A prior audit note claimed four feature-store endpoints return bare ok() without a FeatureRestoreResult. Luna verified on origin/main that commit 037d15a already implements truthful restore results: apply/restore return withRestoreSideEffectFallback payloads for COUPON_SYSTEM/PRODUCT_SALES, the page only shows counts when present and warns on restoreSideEffectFailed, and tests/unit/feature-store-restore-result.28.test.ts plus two integration suites lock it. No PR opened. Only residual asymmetry is bundle apply not running the restore side effect, which matches the documented spec in docs/integration/09-FEATURE-STORE.md:125 and is therefore an Owner product decision, not a defect. Historical assumption is retained as an incident, not as a current outstanding claim.",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "RUN_COMPLETE",
+        "subject": "2026-09-04-product-delivery-r01",
+        "claimedState": "complete",
+        "observedState": "complete",
+        "evidenceRef": "Legacy v3 Run closeout snapshot at 2026-09-07T00:33:43Z: main 6ca6d3c15837c787b56501a5eb21b2e469b13c22, open Issues 46, open PRs 17. Quantitative percentage metrics and actual token data remain unavailable/null, so the Run is frozen COMPLETE but intentionally NOT_GRADED; no new Product work may be admitted after this point.",
         "verification": "VERIFIED"
       }
     ]
