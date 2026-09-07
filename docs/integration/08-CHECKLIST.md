@@ -209,31 +209,45 @@
       從 0001 全新建庫，integration 與 E2E 皆 success。本項自 2026-09-07 起對 main 成立。）**
 - [x] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
       收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
-      **（2026-08-25 打勾。打勾的依據是本項自己的定義——「存主選單 → webhook 收
-      『選單』→ mock LINE 收到 Flex；關閉時依 fallback 回應」——這幾件事逐條有證據；
-      §6.9-c 當初卡住這一項的「Preview ＋ 真實 LINE 實測」也補做了。
-      ⚠️ 但 issue #6 的第 5 條驗收**仍留白**，見底下最後一行；14 分冊 §6.9-d 記完整證據。）**
-      - 單元 100 綠：`tests/unit/flex-menu.06.test.ts`（空卡片／1 張／12 張／
-        含廣告卡／`{shopName}` 替換／HINT・SILENT 分支）
-      - 整合 38 綠：`tests/integration/api/flex-menu.06.test.ts`
-        （`存 N 張卡片 → 顧客打「選單」→ 收到 flex，carousel 有 N 個 bubble`、
-        `SILENT → **整個 mock.requests 為空**（bot 真的閉嘴，一則請求都沒發）`）
-      - 真實 LINE：`scripts/verify/flex-menu-validate.cjs`
-        （官方 `POST /v2/bot/message/validate/reply`，正向 11／負向對照 4／
-        scheme 探測 21，不符預期 0；不耗推播額度）
-      - Preview 站自主實測：`scripts/verify/flex-menu-preview-live.cjs`
-        （編卡→發布→重整仍在→簽章 webhook「選單」→ 正式 DB 留下該事件的
-        chat_messages 列 → 逐字還原並清理）
-      - 出站 reply 側錄：`scripts/verify/flex-menu-reply-capture.cjs`
-        （同一 commit、同一份正式資料，`LINE_API_BASE` 指向側錄轉發器，
-        逐字證明我們真的對 `api.line.me/v2/bot/message/reply` 送出了那份 Flex）
+      **（2026-09-07 依 `main` 的實況重寫。**
+      ⚠️ **這一項在 2026-08-25〜2026-09-07 之間對 `main` 是假的勾**：當時的六條證據
+      全部指向 `claude/deploy-vercel-project-nnno59`（`7ad9ac53`）上的檔案，
+      而 `main` 上 `src/server/flex-menu.ts`、`tests/unit/flex-menu.06.test.ts`、
+      `tests/integration/api/flex-menu.06.test.ts` 與三支 `scripts/verify/*.cjs`
+      **全部不存在**，`case 'MENU'` 還跟 `case 'HELP'` 合在一起回純文字清單。
+      與 #5 在本檔留下的問題同型（已由 PR #255 更正）；根因見 #251、14 分冊 §6.9。
+      實作由 **PR #256** 補回 `main`（squash `dfaf30b`）後才成立。**）**
+      - **對合併後 `main` 的內容回查**（squash 會產生新 sha，所以不看祖先關係，看內容）：
+        `src/server/flex-menu.ts` EXISTS、`tenant-settings` 有 `flexCards: z.array(...)`、
+        端點 `bodySchema` 有 `flexCards: true`、`line-events` 有 `return replyFlexMenu(ctx);`、
+        `services` 有 `export const saveFlexMenu`、頁面有 `await saveFlexMenu(` ×2；
+        舊的假成功 `toast.show(subscribed ? t.flex.saved` 與 `notReadyFlexMenu` 佔位皆為 0。
+      - 單元 **106 綠**：`tests/unit/flex-menu.06.test.ts`（空卡片／1 張／12 張／
+        含廣告卡／`{shopName}` 替換／HINT・SILENT 分支／`uri` action 白名單與負向案例／
+        兩條靜態鎖：src 底下只有 `flex-menu.ts` 會組 bubble・carousel 與 `uri` action）
+      - 整合：`tests/integration/api/flex-menu.06.test.ts` 由 exact head `7430ba8` 的
+        `local-isolated-a` 跑，`TEST_ENV_ID: local-pr-256-a`，**fresh local Supabase 從 0001 建庫**
+        （`Prove the TEST target is local` 通過，未用任何 remote TEST secret），
+        `Run integration tests on the isolated database` success、E2E 18 passed、
+        收尾 `ISOLATED_GREEN — slot a` ＋ `LOCAL_CLEANUP_VERIFIED: local-pr-256-a`。
+        關鍵案例：`存 N 張卡片 → 顧客打「選單」→ carousel 有 N 個 bubble`、
+        `SILENT → **整個 mock.requests 為空**`、`SILENT 不得落到分支 ⑤ AI／⑥ defaultReply`、
+        `秘密欄位仍然不在 jsonb 裡`、`只送 flexCards 不會洗掉同一個 jsonb 裡的其他設定`。
+      - typecheck 0 error、`npm test` **1119 passed（96 檔）**（合併前 main 為 1012）、
+        build exit 0、`repo-integrity-guard` `ok: true`。
+      - ⚠️ **本項刻意不涵蓋 issue #6 的兩段**，兩段都在 14 分冊 §6.9-e／§6.9-f 說明：
+        ① 「Rich Menu 格子設 FLEX_POPUP 走同一支組裝函式」——前提不成立
+        （`rich-menu/create` 六格 action 寫死在 `CELL_TEXTS`，無每格自訂儲存後端，屬 #7 / #19），
+        沒有移植 `richMenuCellAction()`，該驗收**不打勾**；
+        ② 「Flex JSON 通過 LINE 官方 `validate/reply`」引用的是 2026-08-25 的歷史實測
+        （驗的是 LINE 端的事實，且組裝邏輯逐字相同），`flex-menu-validate.cjs` 需真實 token，
+        不是 CI 可重跑資產，沒有隨 PR #256 進 `main`。
       - ⚠️ **仍未驗到、也不打算假裝驗到的一段**：「訊息真的出現在顧客手機上」。
         `replyToken` 是 LINE 在真實事件裡發的一次性 token，偽造不出來
         （文件上那兩個「測試用」token 實測一樣回 400 Invalid reply token），
-        而 Midao 頻道目前零追蹤者（`line_users` 空、
-        `GET /v2/bot/followers/ids` 回 403 未開放），也沒有可推播的真實 userId。
-        這一段的完成條件是**有真人對 Midao 帳號打一次「選單」**，屬人工介入點。
-
+        而 Midao 頻道目前零追蹤者（`line_users` 空、`GET /v2/bot/followers/ids` 回 403），
+        也沒有可推播的真實 userId。完成條件是**有真人對 Midao 帳號打一次「選單」**，屬人工介入點；
+        另需先處理 #251（該 channel 的 webhook 仍指向舊分支 preview，對 `main` 的驗證不會反映到它身上）。
 - [x] 【新增】老闆通知 owner-notify（issue #18 / 補齊-3；契約 06 分冊 §5.5，2026-08-26）
       **（打勾依據＝下列逐條證據；未達成的兩項寫在最後，沒有打勾。）**
       - migration `0023_owner_notify` 已套用**兩個** Supabase 專案，各自以
