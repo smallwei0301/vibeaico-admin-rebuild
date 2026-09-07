@@ -1,0 +1,13 @@
+{
+  "version": "2026-09-07.1",
+  "models": {
+    "scout": "gpt-5.6-luna",
+    "build": "gpt-5.6-terra",
+    "audit": "gpt-5.6-sol",
+    "finalRisk": "gpt-6-astra"
+  },
+  "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
+  "sensitivePaths": [
+    "scripts/agents/", ".github/workflows/", "src/server/auth", "src/server/payment", "src/server/refund", "src/app/api/payments/", "src/app/api/payment-methods/"
+  ]
+}
