@@ -224,6 +224,10 @@ describe('mapStaff (02 §0004 staff / staff_services)', () => {
     active: true,
     sort_order: 2,
     schedule_mode: 'FIXED_REST',
+    display_name: '陳老師',
+    bio: '10 年美容資歷。',
+    max_concurrent_bookings: 2,
+    visible: true,
   };
 
   it('全欄位比對', () => {
@@ -239,7 +243,33 @@ describe('mapStaff (02 §0004 staff / staff_services)', () => {
       active: true,
       sortOrder: 2,
       scheduleMode: 'FIXED_REST',
+      displayName: '陳老師',
+      bio: '10 年美容資歷。',
+      maxConcurrentBookings: 2,
+      visible: true,
     });
+  });
+
+  /**
+   * 0082 的四個欄位都有 NOT NULL DEFAULT，正常情況不會是 null。
+   * 這幾例守的是「migration 尚未套用」的環境：必須退回與 DB 預設值相同的
+   * 解讀，而不是 undefined 到畫面上變成空白或 NaN。
+   */
+  it('#7 0082 四個欄位缺欄位（尚未套用 migration 的環境）→ 退回 DB 預設值的解讀', () => {
+    const { display_name, bio, max_concurrent_bookings, visible, ...bare } = fullRow;
+    const r = mapStaff(bare);
+    expect(r.displayName).toBe('');
+    expect(r.bio).toBe('');
+    expect(r.maxConcurrentBookings).toBe(1);
+    expect(r.visible).toBe(true);
+  });
+
+  it('max_concurrent_bookings 為字串數值（Postgres integer）→ 轉成 number', () => {
+    expect(mapStaff({ ...fullRow, max_concurrent_bookings: '3' }).maxConcurrentBookings).toBe(3);
+  });
+
+  it('visible=false 不會被 ?? 誤判成「沒設定」而翻成 true', () => {
+    expect(mapStaff({ ...fullRow, visible: false }).visible).toBe(false);
   });
 
   it('#7 schedule_mode 缺欄位（尚未回填的舊環境）→ 預設 ROTATING', () => {

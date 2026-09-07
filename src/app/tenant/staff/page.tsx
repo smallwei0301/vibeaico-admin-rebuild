@@ -22,7 +22,6 @@ import {
   listServices, listStaff, listStaffLeaves, updateStaff, type StaffLeave,
 } from '@/services/catalog';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
-import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { staffPage as t } from '@/i18n/zh-TW/pages/staff';
@@ -33,37 +32,6 @@ import type { Service, Staff } from '@/lib/types';
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 Staff 另有顯示名稱／簡介／同時段最大預約數／前台顯示旗標 */
-type StaffExtras = {
-  displayName: string;
-  bio: string;
-  maxConcurrentBookings: number;
-  visible: boolean;
-};
-
-const DEFAULT_EXTRAS: StaffExtras = {
-  displayName: '', bio: '', maxConcurrentBookings: 1, visible: true,
-};
-
-const STAFF_EXTRAS_LOCAL_SHOP: Record<string, StaffExtras> = {
-  s_1: { displayName: 'Amy 老師', bio: '10 年剪燙染資歷，擅長韓系空氣感瀏海。', maxConcurrentBookings: 1, visible: true },
-  s_2: { displayName: '', bio: '擅長男士俐落短髮與頭皮養護。', maxConcurrentBookings: 1, visible: true },
-  s_3: { displayName: '', bio: '', maxConcurrentBookings: 2, visible: false },
-};
-
-const STAFF_EXTRAS_GUIDE: Record<string, StaffExtras> = {
-  s_1: { displayName: '阿海', bio: 'PADI 潛水長，10 年海域嚮導資歷，擅長賞鯨與浮潛行程。', maxConcurrentBookings: 1, visible: true },
-  s_2: { displayName: '小雨', bio: '持有高山嚮導證，熟悉花東山域路線與溯溪安全評估。', maxConcurrentBookings: 1, visible: true },
-  s_3: { displayName: '老陳船長', bio: '', maxConcurrentBookings: 1, visible: true },
-  s_4: { displayName: 'Kai', bio: '攝影嚮導，擅長行程紀錄與空拍。', maxConcurrentBookings: 2, visible: false },
-};
-
-const STAFF_EXTRAS_CLINIC: Record<string, StaffExtras> = {
-  s_1: { displayName: '林醫師', bio: '家庭醫學科主治醫師，專長慢性病長期追蹤與健康評估。', maxConcurrentBookings: 1, visible: true },
-  s_2: { displayName: '陳醫師', bio: '健檢中心主任，專長成人健檢與異常報告判讀。', maxConcurrentBookings: 1, visible: true },
-  s_3: { displayName: '王醫師', bio: '內科醫師，擅長一般內科疾病診治。', maxConcurrentBookings: 1, visible: true },
-  s_4: { displayName: '護理師 小美', bio: '', maxConcurrentBookings: 2, visible: false },
-};
 
 /** 原站 /api/staff/${id}/leaves */
 type LeaveRecord = {
@@ -104,14 +72,31 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /* -------------------------------------------------------------------------- */
 
-type StaffRow = Staff & StaffExtras;
-
-const toRow = (s: Staff): StaffRow => {
-  const extras = byMode({
-    LOCAL_SHOP: STAFF_EXTRAS_LOCAL_SHOP, GUIDE: STAFF_EXTRAS_GUIDE, CLINIC: STAFF_EXTRAS_CLINIC,
-  });
-  return { ...s, ...(extras[s.id] ?? DEFAULT_EXTRAS) };
+/**
+ * 顯示名稱／簡介／同時段最大預約數／前台顯示旗標原本是本頁的頁內常數
+ * （STAFF_EXTRAS_LOCAL_SHOP / _GUIDE / _CLINIC），以 mock id（s_1、s_2…）為鍵。
+ * 真實租戶的員工 id 是 uuid，所以那些常數**永遠對不上**，每一位員工都靜默落到
+ * DEFAULT_EXTRAS——空白顯示名、空白簡介、maxConcurrentBookings=1、visible=true
+ * ——顯示在他們真實的姓名與職稱旁邊。那不是「未知」，讀起來是「已設定成這樣」。
+ *
+ * 0082 把四個欄位落地成 staff 的真欄位，示範資料改由 src/mock 依業態提供，
+ * 因此這裡不再需要任何頁內常數。四個欄位在 Staff 上是選填（尚未套用 migration
+ * 的環境可能沒有），畫面各處以與 DB 預設值相同的解讀收斂。
+ */
+type StaffRow = Staff & {
+  displayName: string;
+  bio: string;
+  maxConcurrentBookings: number;
+  visible: boolean;
 };
+
+const toRow = (s: Staff): StaffRow => ({
+  ...s,
+  displayName: s.displayName ?? '',
+  bio: s.bio ?? '',
+  maxConcurrentBookings: s.maxConcurrentBookings ?? 1,
+  visible: s.visible ?? true,
+});
 
 export default function StaffPage() {
   const toast = useToast();

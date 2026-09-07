@@ -6,7 +6,9 @@ export type UploadBucket =
   | 'portfolio-images'
   | 'staff-avatars'
   | 'richmenu-assets'
-  | 'welcome-card-images';
+  | 'welcome-card-images'
+  /** 關鍵字回覆的附加圖片（issue #50）。LINE 會直接抓這個 public URL。 */
+  | 'keyword-reply-images';
 
 export interface UploadResult {
   url: string;

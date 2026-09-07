@@ -18,6 +18,10 @@ const bodySchema = z.object({
   active: z.boolean().optional(),
   serviceIds: z.array(z.string().uuid()).optional(),
   scheduleMode: z.enum(['FIXED_REST', 'ROTATING']).optional(),
+  displayName: z.string().optional(),
+  bio: z.string().optional(),
+  maxConcurrentBookings: z.number().int().min(1).optional(),
+  visible: z.boolean().optional(),
 });
 
 export const PUT = handle(async (req, { params }) => {
@@ -39,6 +43,10 @@ export const PUT = handle(async (req, { params }) => {
   if (b.bookable !== undefined) update.bookable = b.bookable;
   if (b.active !== undefined) update.active = b.active;
   if (b.scheduleMode !== undefined) update.schedule_mode = b.scheduleMode;
+  if (b.displayName !== undefined) update.display_name = b.displayName;
+  if (b.bio !== undefined) update.bio = b.bio;
+  if (b.maxConcurrentBookings !== undefined) update.max_concurrent_bookings = b.maxConcurrentBookings;
+  if (b.visible !== undefined) update.visible = b.visible;
 
   if (Object.keys(update).length > 0) {
     const { error } = await t.supabase

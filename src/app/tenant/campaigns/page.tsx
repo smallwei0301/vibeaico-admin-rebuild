@@ -33,6 +33,27 @@ import type { Campaign, CampaignType, Coupon } from '@/lib/types';
 /** 前端顯示狀態（含衍生的 SCHEDULED，見 src/services/campaigns.ts campaignDisplayStatus()） */
 type DisplayStatus = keyof typeof t.status;
 
+/**
+ * #176 (b)：這兩型的設定入口導向通知設定頁。
+ *
+ * 生日祝福與顧客喚回**真的每天在跑**（vercel.json 的 cron：birthday-greetings
+ * 台北 09:00、customer-recall 台北 14:00），但它們讀的是
+ * `tenant_settings.notify` 的 enableBirthdayGreeting / birthdayGreetingMessage /
+ * enableCustomerRecall / customerRecallDays / customerRecallMessage，
+ * 也就是「通知設定」頁那一份，不是這一頁存進 `campaigns.content` 的欄位。
+ *
+ * 所以在這一頁新建一個生日活動、填好推播訊息、按發布，畫面會顯示成功、資料也
+ * 真的寫進資料庫，但顧客生日當天收到的是通知設定頁那一則完全不同的訊息；
+ * 改這裡的文案，發出去的內容永遠不會變。
+ *
+ * 這比單純的假成功更難察覺——因為有時真的有推播發出去（來自另一套設定），
+ * 看起來就像活動生效了。
+ *
+ * 依 Owner 2026-09-07 裁決採 (b)：**新增**不再提供這兩型，導向真正會生效的那一頁。
+ * 一個欄位都沒有移除，既有活動也照常顯示與編輯（DELIVERY-CHAIN §5「復原而非取消」）。
+ */
+const REDIRECTED_TYPES: CampaignType[] = ['BIRTHDAY', 'RECALL'];
+
 /** 原站以 coupon.isPrivate 標記私密券；骨架階段用固定清單模擬 */
 const PRIVATE_COUPON_IDS = new Set<string>(['cp_3']);
 
@@ -516,7 +537,10 @@ function CampaignFormModal({
   const locked = !!campaign && campaign.status !== 'DRAFT';
 
   const [name, setName] = React.useState('');
-  const [type, setType] = React.useState<CampaignType>('BIRTHDAY');
+  // #176 (b)：新增時的預設**不能**是 REDIRECTED_TYPES 裡的值。上面的 filter 用
+  // `o.value === type` 保留「編輯既有活動時它自己的類型」，若新增預設就是 BIRTHDAY，
+  // 那條例外會讓 BIRTHDAY 又出現在新增選單裡，整個過濾等於沒做。
+  const [type, setType] = React.useState<CampaignType>('NEW_CUSTOMER');
   const [startAt, setStartAt] = React.useState('');
   const [endAt, setEndAt] = React.useState('');
   const [description, setDescription] = React.useState('');
@@ -534,7 +558,7 @@ function CampaignFormModal({
     if (!open) return;
     setError('');
     setName(campaign?.name ?? '');
-    setType((campaign?.type || 'BIRTHDAY') as CampaignType);
+    setType((campaign?.type || 'NEW_CUSTOMER') as CampaignType);
     setStartAt(campaign?.startAt ? campaign.startAt.slice(0, 16) : '');
     setEndAt(campaign?.endAt ? campaign.endAt.slice(0, 16) : '');
     setDescription(campaign?.description ?? '');
@@ -658,9 +682,21 @@ function CampaignFormModal({
             id="campaignType" value={type} disabled={locked}
             onChange={(e) => setType(e.target.value as CampaignType)}
           >
-            {t.form.typeOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
+            {t.form.typeOptions
+              // #176 (b)：生日／喚回**真的會發送**，但發送內容讀的是通知設定頁的
+              // tenant_settings.notify，不是這裡填的欄位（見 src/app/api/cron/
+              // birthday-greetings 與 customer-recall）。在這裡新建一個這種類型的
+              // 活動，店家填的推播訊息永遠不會被任何程式讀到——那是假成功。
+              //
+              // 所以「新增」不再提供這兩型，改由下方說明導向通知設定頁（真正會生效
+              // 的地方）。這不是把功能拿掉：生日祝福照樣設定得到，只是在對的那一頁。
+              //
+              // 「編輯」仍保留既有活動自己的類型，否則打開一筆既有的生日活動，
+              // 下拉會找不到對應值而靜默顯示成別的類型，等於偷改了它。
+              .filter((o) => !REDIRECTED_TYPES.includes(o.value as CampaignType) || o.value === type)
+              .map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
           </Select>
           <FormText>{t.typeHelp[type]}</FormText>
         </FormGroup>

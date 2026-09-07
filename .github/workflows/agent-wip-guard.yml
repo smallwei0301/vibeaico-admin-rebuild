@@ -229,6 +229,7 @@ jobs:
                   dispatch_reason: 'lane_transition',
                   test_lane_pr: String(current.number),
                   expected_head: current.head.sha,
+                  base_revision: current.base.sha,
                 },
               });
               dispatched = true;

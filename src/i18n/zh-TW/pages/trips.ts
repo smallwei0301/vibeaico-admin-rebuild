@@ -97,6 +97,14 @@ export const tripsPage = {
     slugLabel: '網址代稱',
     slugPlaceholder: '僅限小寫英文、數字、連字號',
     slugHelp: '公開商店頁網址會用到，建立後盡量不要更動。',
+    /**
+     * issue #259：以下五個欄位（標語、費用不含、注意事項、集合地圖連結、退費規則）
+     * 在 `trips` 表**沒有對應欄位**（0066 建表時未涵蓋），`tripApiPayload()` 也不會
+     * 帶上它們。詳情頁的儲存接上真實端點之後，其餘欄位都會持久化，只有這五個不會
+     * ——與其讓店家以為存好了，不如把這件事寫在欄位旁邊。
+     * 補上 migration 需要擁有者逐次具名的正式庫 DDL 授權，見 #259。
+     */
+    notPersistedYet: '此欄位尚未建立資料庫欄位，儲存後不會保留（其餘欄位正常儲存）',
     taglineLabel: '一句話標語',
     taglinePlaceholder: '例：跟著在地船長，找到那群飛旋海豚',
     summaryLabel: '簡介',
@@ -372,7 +380,12 @@ export const tripsPage = {
     seasonSaved: '季節已儲存',
     seasonDeleted: '季節已刪除',
     departureCreated: '團次已建立',
+    /**
+     * 數字必須來自後端回傳的 `created`，不能用前端自己算日曆得到的筆數：
+     * 撞到「同方案同日同時」的既有團次時後端會略過，兩個數字會不一樣。
+     */
     departureBatchCreated: (n: number) => `已建立 ${n} 個團次`,
+    departureBatchSkipped: (n: number) => `，另有 ${n} 個團次因日期時間重複而略過`,
     departureUpdated: '團次已更新',
     departureDeleted: '團次已刪除',
     addonSaved: '加購項目已儲存',
@@ -380,6 +393,14 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    /**
+     * issue #8：列表頁那四個操作與「新增行程」原本只改頁面記憶體，重整就恢復舊狀態。
+     * 接上真實端點之後，失敗必須顯示**後端的真實訊息**，而不是一句自己編的「失敗」
+     * ——後者會讓店家不知道是權限、名稱重複還是網路問題。這個前綴後面接 ApiError.message。
+     */
+    actionFailedPrefix: '操作失敗：',
+    /** 「新增行程」建立的草稿標題（店家接著在詳情頁改成真正的名稱） */
+    untitled: '未命名行程',
     planNameRequired: '請輸入方案名稱',
     planPriceInvalid: '請輸入有效的基本價格',
     planChildPriceInvalid: '請輸入有效的兒童價格',

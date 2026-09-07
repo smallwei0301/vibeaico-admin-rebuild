@@ -110,6 +110,34 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE=services 至少 1；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=token 已設定。percent = done 數/5*100 |
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 
+
+#### A-1.2 `POST /api/settings/weekly-business-hours/draft`（逐日營業時間乾跑）
+
+> `src/app/api/settings/weekly-business-hours/draft/route.ts` 與
+> `src/server/business-hours-blocks.ts` 的檔頭都指向本節；完整推理寫在後者檔頭，
+> 這裡是契約面的摘要。**兩處若有出入，以 `business-hours-blocks.ts` 檔頭為準並回頭修本節。**
+
+**乾跑（dry-run）：一列都不寫。** 真正的寫入走 `PUT /api/settings`（帶 `business` 群組時重建自動封鎖）。
+
+- request：`business` 群組設定（`businessSettingsSchema`），即**尚未存檔**的輸入
+- response：`{ perDayMode, autoBlockCount, conflictBookingCount, manualWeeklyBlockCount }`
+- 權限：`MANAGER`
+
+⚠️ **「乾跑」是我方選定的語意，不是原站考據結果。** `docs/specs/settings.json` 只給了字串，**沒有給 request/response 形狀**。依據只有兩點：
+
+1. 路徑最後一段是 `draft`
+2. jsStrings 有一句「**解析**逐日營業時間失敗:」——「解析」代表它拿還沒存檔的輸入去算東西
+
+**反面證據一併列出**：另外三句文案是過去式／已存檔語氣（「已依你的營業時段自動建立 N 筆」「設定已儲存，但…」「偵測到 N 筆…已保留」），單看那三句會讀成「這一支自己就會寫入」。我方的解讀是那三句在**存檔完成後**才顯示——**這個解讀沒有原站證據**。若日後取得原站實際形狀而與此不符，以原站為準並更新本節。
+
+**自動封鎖的產生／回收規則**（同樣是我方選定，issue #33 要求二選一寫死）：
+
+- 採 **全刪重建**：每次帶 `business` 群組存檔時，先刪掉本租戶所有 `auto=true` 的列，再依當前設定重建。理由是差異更新需要穩定識別鍵，而營業時段本身就是識別鍵的一部分（改時段＝改鍵），差異更新會退化成全刪重建又多一層出錯機會。
+- **手動建立的封鎖（`auto=false`）一律不動**——原站文案明講「已保留（不會自動刪除）」。刪除條件永遠帶 `.eq('auto', true)`，這是該模組最重要的一條不變式。
+- 產生的列一律 `recurrence='WEEKLY'`、`auto=true`、`staff_id=null`（全店適用）；WEEKLY 採「存規則、查詢時展開」，`start_at`/`end_at` 只存首次發生那天的日期時分。
+
+**頁面顯示規則**：四句既有文案（`src/i18n/zh-TW/pages/settings.ts` 的 `autoBlockCreated`／`conflictWarning`／`conflictWarningHours`／`manualBlockKept`）依上述計數顯示；**計數為 0 時不顯示該句**（不得顯示「0 筆」的警告）。
+
 ### A-2 預約（`src/services/bookings.ts`）
 
 | 端點 | 規格 |
@@ -201,6 +229,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/product-orders/manual` | `{customerId, items:[{productId,quantity}]}`：驗庫存→扣庫存＋logs＋建單（單價取當下 price 快照） |
 | POST `/api/product-orders/:id/confirm‖complete‖cancel‖mark-paid-offline` | 狀態機同預約；cancel 回補庫存 |
 | GET `/api/product-orders/pending/count` | `{count}`（Topbar 徽章） |
+| POST `/api/product-orders/:id/apply-coupon` | `{code}`：**與 `/api/bookings/:id/apply-coupon` 共用同一支 `src/server/coupons.ts` 的 `redeemCoupon()`，不得另寫一份核銷邏輯。** 流程：查 `coupon_instances` 未核銷且屬同租戶 → 檢查有效期（`start_at`／`end_at`）→ `redeemed_at=now` → 依 `discount_type`／`discount_value` 重算並寫回 `product_orders.total_amount`、`coupon_discount`、`coupon_instance_id`（見 migration 0081）。 回傳 `{totalAmount, couponDiscount}`——**折抵後金額與折抵金額都由伺服器算並回傳，前端不得自行計算**（對齊原站 `couponRes.data?.couponDiscount`）。 錯誤：票券代碼不存在 → 404 `REQ_002`；已核銷／已過期／尚未開始／發給別的顧客 → 409 `REQ_003`；跨租戶一律 404（不洩漏他店資料）。**任何錯誤路徑都不得改動訂單金額，也不得消耗票券。** <br><br>**「套用票券成功但『完成訂單』失敗」的交易語意（#33 ①-6）**：本端點與 `POST /api/product-orders/:id/complete` 是**兩個獨立的請求**，不是一個交易。套用成功之後若完成訂單失敗，**票券維持已核銷、訂單金額維持已折抵，兩者都不回滾**；頁面必須如實告知「票券已套用，但完成訂單失敗」，不得顯示成整批失敗，也不得顯示成整批成功。<br>依據是原站證據而非我方選擇：`docs/specs/product-orders.json` 的 jsStrings 同時含有 `票券已套用！折抵 ${formatMoney(couponRes.data?.couponDiscount || 0)}` 與 `票券已套用，但「完成訂單」失敗：` 兩句——後者的存在本身就證明原站允許「票券已套用」與「訂單未完成」並存，且會分別告知。<br>**為什麼不補償性回滾**：核銷是對顧客手上那張券的狀態變更，店員當下已經看到「票券已套用」的提示；自動退回會讓畫面說過的話與資料庫不一致，而店員無從得知。留在已核銷、由店員重試完成訂單（或用 `POST /api/coupons/instances/:id/unredeem` 明確取消核銷），比靜默回滾誠實。 |
 
 ### B-4 票券 / 會員 / 點數
 
@@ -225,8 +254,8 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/marketing/pushes/:id/send` | 立即發送：解析 audience → line_users → multicast（06 分冊 §5）→ 寫 sent_count、扣 push_quota_usage |
 | POST `/api/marketing/pushes/:id/cancel` | SCHEDULED→CANCELLED |
 | GET/POST `/api/campaigns`、PUT `:id`、publish/pause/resume/end | API route 已存在；目前沒有 `DELETE :id` route；publish/pause/resume/end 僅更新活動狀態（目前不代表 LINE 推播），頁面接線與刪除仍屬 issue #7，見 14 分冊 §1 A-1 |
-| GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | `keyword_replies` CRUD。`IMAGE` 寫入須帶 `content.imageStorageRef={bucket,path,url,previewPath,previewUrl}`；伺服器固定只收 `keyword-reply-images`、驗證 `{tenantId}/{uuid}.{ext}` 路徑、可信 Supabase HTTPS public URL，以及原圖／preview 兩個物件確實存在，不能只信前端送來的 URL。GET 對新版 ref 重驗物件；既有只有 `imageUrl` 的 legacy row 保留唯讀／停用相容，下次換圖才升級，不做猜測式 backfill |
-| DELETE `/api/settings/line/keyword-replies/image` | 取消尚未儲存的選圖。只接受本租戶且 URL/path/bucket 一致的完整 storage ref；若仍被任一 keyword reply 引用則不刪。替換／移除／刪除 reply 亦採「DB 先解除引用，再刪原圖＋preview」；Storage 暫時失敗寫入 `keyword_reply_image_cleanup`，由受 `CRON_SECRET` 保護的每日工作重試，重試前再次確認沒有活引用 |
+| GET/POST `/api/settings/line/keyword-replies`、PUT/DELETE `:id` | `keyword_replies` CRUD。⚠️ **以下 `imageStorageRef` 段落在 `main` 上尚未實作**（2026-09-07 實查：`src/` 內 `imageStorageRef` 零命中；`main` 只收裸 `content.imageUrl`），見 06 分冊 §6.1 的實況對照表。設計原文保留：`IMAGE` 寫入須帶 `content.imageStorageRef={bucket,path,url,previewPath,previewUrl}`；伺服器固定只收 `keyword-reply-images`、驗證 `{tenantId}/{uuid}.{ext}` 路徑、可信 Supabase HTTPS public URL，以及原圖／preview 兩個物件確實存在，不能只信前端送來的 URL。GET 對新版 ref 重驗物件；既有只有 `imageUrl` 的 legacy row 保留唯讀／停用相容，下次換圖才升級，不做猜測式 backfill |
+| DELETE `/api/settings/line/keyword-replies/image` | ⚠️ **這支路由在 `main` 上不存在**（2026-09-07 實查），`keyword_reply_image_cleanup` 表亦零命中。設計原文保留，見 06 分冊 §6.1。原文：取消尚未儲存的選圖。只接受本租戶且 URL/path/bucket 一致的完整 storage ref；若仍被任一 keyword reply 引用則不刪。替換／移除／刪除 reply 亦採「DB 先解除引用，再刪原圖＋preview」；Storage 暫時失敗寫入 `keyword_reply_image_cleanup`，由受 `CRON_SECRET` 保護的每日工作重試，重試前再次確認沒有活引用 |
 | GET/POST `/api/portfolios`、PUT/DELETE `:id`、reorder、toggle-* | 同 services 模式 |
 | GET `/api/chat/conversations` | line_users 加最後訊息、未讀數。支援 `?since=<ISO>` → 只回該時間後有新訊息的對話（輪詢用，見下方 §B-5.1） |
 | GET `/api/chat/messages?lineUserId&page` | 分頁，舊→新。支援 `?after=<messageId>` → 只回該筆之後的新訊息（輪詢用） |

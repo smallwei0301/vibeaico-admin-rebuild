@@ -26,6 +26,57 @@ export const lineApiBase = () => process.env.LINE_API_BASE ?? 'https://api.line.
 export const lineDataApiBase = () =>
   process.env.LINE_DATA_API_BASE ?? 'https://api-data.line.me';
 
+/**
+ * webhook 專用：一趟查詢同時取回店家與該店解密後的 LINE 憑證。
+ *
+ * 為什麼要合併（issue #31）：webhook 在**驗簽之前**必須先拿到 channel secret，
+ * 而驗簽必須在回 200 之前完成——所以這段查詢直接坐在冷啟動的關鍵路徑上。
+ * 原本是兩趟 round-trip（先 `tenants`、再 `tenant_settings`），實測顯示正式站
+ * 閒置後的第一發會 `REQUEST_TIMEOUT`，LINE 預設不重送即等於訊息被丟掉。
+ * 合併成一趟 PostgREST embedding（走 `tenant_settings_tenant_id_fkey`）可以省掉
+ * 一次完整的往返。
+ *
+ * 回傳 `null` 代表查無該 shopCode；`credentials` 為 `null` 代表店家存在但尚未
+ * 設定 channel——兩者由呼叫端分別對應到不同的 404，語意與拆開時完全相同。
+ *
+ * 刻意不快取：channel token 可被店家在後台輪替，快取會讓「已換 token 但系統還在
+ * 用舊的」變成另一種假的已知（#31 實作方向第 2 點對快取的提醒）。
+ */
+export async function getWebhookTenantWithCredentials(shopCode: string) {
+  const admin = createAdminSupabase();
+  const { data } = await admin
+    .from('tenants')
+    .select(
+      'id, shop_code, name, business_type, tenant_settings(line, line_channel_secret_enc, line_channel_access_token_enc)',
+    )
+    .eq('shop_code', shopCode)
+    .maybeSingle();
+  if (!data) return null;
+
+  // PostgREST 對 1-1 embedding 可能回物件或單元素陣列，兩種形狀都接受。
+  const raw = (data as Record<string, any>).tenant_settings;
+  const settings = (Array.isArray(raw) ? raw[0] : raw) ?? null;
+
+  // business_type 決定 richMenuCells 那一組文字與部分內建指令的回覆方式（issue #5）；
+  // 少取這一欄會讓 GUIDE／CLINIC 的店家一律退回 LOCAL_SHOP 的選單，按鈕就對不上。
+  const tenant = {
+    id: data.id as string,
+    shop_code: data.shop_code as string,
+    name: data.name as string,
+    business_type: (data as Record<string, any>).business_type as string | null,
+  };
+  if (!settings) return { tenant, credentials: null };
+
+  const token = decryptSecret(settings.line_channel_access_token_enc ?? '');
+  const secret = decryptSecret(settings.line_channel_secret_enc ?? '');
+  if (!token) return { tenant, credentials: null };
+
+  return {
+    tenant,
+    credentials: { token, secret, lineConfig: (settings.line ?? {}) as Record<string, any> },
+  };
+}
+
 /** 讀出該店解密後的 LINE 憑證；未設定 → 丟 LINE_001 */
 export async function getLineCredentials(tenantId: string) {
   const admin = createAdminSupabase();

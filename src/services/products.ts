@@ -1,6 +1,11 @@
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+// 型別匯入（`import type` 編譯期即被抹除，不會把 server 端程式碼帶進前端 bundle）；
+// 通知結果的定義只留一份在 server 端，避免兩邊字串聯集各寫各的而漂移。
+import type { ProductOrderNotifyOutcome } from '@/server/line-notify';
+
+export type { ProductOrderNotifyOutcome };
 
 /**
  * 商品 / 庫存 / 商品訂單 — 寫入操作與頁內讀取的 service 層（04 分冊 §B-3）。
@@ -396,12 +401,13 @@ let nextMockOrderId = 1;
 export const createManualProductOrder = (payload: {
   customerId: string;
   items: { productId: string; quantity: number }[];
+  notifyCustomer?: boolean;
 }) =>
-  adapt<{ id: string; orderNo: string }>(
-    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}` }),
-    () => request<{ id: string; orderNo: string }>('/api/product-orders/manual', {
-      method: 'POST', body: JSON.stringify(payload),
-    }),
+  adapt<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}`, notify: 'NONE' }),
+    () => request<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+      '/api/product-orders/manual', { method: 'POST', body: JSON.stringify(payload) },
+    ),
   );
 
 /** 狀態機（同 bookings 模式）：條件不符時後端回 409「此訂單狀態已變更」 */

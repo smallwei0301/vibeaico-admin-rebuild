@@ -8,6 +8,7 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
+| #241 / #242 / #238 | 授權套用 main 上的 0084 catalog bridge 到正式庫 | **授權將 `main` 上的 `supabase/migrations/0084_catalog_position_bridge.sql` 套用到正式庫 `egehnijjpgijmccagxac`。逐次具名，只涵蓋這一支 migration、這一個專案；不構成後續 Production DDL／DML／部署的概括授權。** | 修好正式站「新增服務／服務重新排序」500（`0065` 從未套用到正式庫，而 `service-position.ts` 早已呼叫那兩支函式）。source 必須來自已合併的 `main`（避免 #197 的 branch-only 身分漂移），migration name 用 main 最終檔名（PB-017）。`0085` 的 re-rank ＋ 六個唯一索引是另一次獨立授權，由 #238 追蹤。canonical：`docs/decisions/2026-09-07-owner-production-0084-catalog-bridge.md`。 |
 | #207 / repo governance | 交付完成、v4 結案、Sol 與雙 Terra 對齊 | **`CLOSED` 只表示 Issue 結案；只有五階交付真相都成立且完成登入正式站實測才是 shipped unit。新 Run 使用既有 v4 closeout；Sol 可早期讀 diff，但只有必要測試完成後對 final exact head 的 audit 可放行。雙 Terra 是 Guard 先判定 qualified 的條件入口。** | 新帳本用既有 `run-ledger-v2.mjs`，不改寫歷史；final v4 closeout 必須由 validator 通過。canonical：`docs/decisions/2026-09-07-owner-governance-alignment.md`。 |
 
 ## 2026-09-04 已裁示

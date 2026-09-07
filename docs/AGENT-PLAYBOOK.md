@@ -51,6 +51,19 @@
 | PB-012 | 靜態檢查不能驗證 SQL 語意 | SELECT alias 不能在同層 WHERE 使用，且 DB enum 與 UI enum 不同；對 DB 實跑或鎖 schema mapping。 | `docs/AGENT-EXECUTION.md` §7.1 |
 | PB-013 | build workspace artifact 可在編譯後失敗 | page collection 清理殘留 artifact 時可報 `ENOTEMPTY`；保留首個完整證據、清 workspace 後單次重驗。 | `docs/AGENT-EXECUTION.md` §7 |
 | PB-014 | 遠端 Git tree 必須先過完整性閘門 | 原子 commit 只能減少 push 次數，不能證明 tree 完整；核心路徑、異常大量刪檔、裸 SHA、`npm ci`、typecheck 與 build 必須在 Preview 前驗證。 | `docs/AGENT-EXECUTION.md` §8；`scripts/ci/repo-integrity-guard.mjs` |
+| PB-015 | 本機與 CI 的 base 不同就不能互相佐證 | `workflow_dispatch` 使 `base_revision` 為空，守門腳本退回 `HEAD^`。凡是 `HEAD^ != main` 的分支形狀都會誤判：head 為 merge commit、或分支有第二顆 commit 動到自己新增的 migration。錯誤指向不屬於本次變更的檔案時，先懷疑 base。**規則：帶 migration 的分支一律壓成置於 main 之上的單一 commit。** | `docs/AGENT-EXECUTION.md` §7；Issue #227 |
+| PB-016 | 退出碼被蓋掉的檢查等於沒有檢查 | 管線退出碼取最後一個命令，`&&` 後的 echo 只反映前一個；`grep` 無 match 也回非零。驗證命令不得放管線中段，測試不得依賴 `grep` 退出碼。 | `docs/AGENT-EXECUTION.md` §7.1；`12-TESTING-TDD.md` §6 |
+| PB-017 | 先套用再改檔名會留下 ledger 偏差 | migration 編號是跨分支共享序列，未進 main 前都可能被別人佔走；套用時機必須晚於「檔名在 main 定案」。改檔名時一律全 repo grep 舊檔名。 | `docs/AGENT-EXECUTION.md` §3.1；`docs/DELIVERY-CHAIN.md` |
+| PB-018 | 「只是查一下」的寫入同樣佔用 TEST lane | PB-002 的序列化不只約束 reset/seed。任何對 canonical TEST 的 `DELETE`／`INSERT`／`UPDATE`——包含為了排查而下的一次性清理——都會讓同時段的 CI 測試看見不屬於它的狀態。動手前先查 canonical lane 是否被佔用。 | `docs/AGENT-EXECUTION.md` §3.1、§7；`12-TESTING-TDD.md` §1.5 |
+| PB-019 | 「repo 裡沒有」不等於「沒有做過」 | 實作可能躺在一條未併回 `main` 的分支上——而那條分支可能正是線上服務實際在跑的版本。判定「這個功能不存在」之前，先查線上跑的是哪一顆 commit，再查它是不是 `main` 的祖先。 | `docs/AGENT-EXECUTION.md` §7；`docs/DELIVERY-CHAIN.md` |
+| PB-020 | 量測外部打進來的路徑前，先確認它打到哪裡 | 「對正式站量測」與「對 configured endpoint 量測」是兩件事。先唯讀查出目標位址並確認它屬於哪個部署，再開始量；否則數字會被歸因到錯的程式碼上。 | `docs/AGENT-EXECUTION.md` §7 |
+| PB-021 | 改 PR body 修 metadata，對只監聽 `synchronize` 的 workflow 是無效操作 | `pull_request` 的 `types` 不含 `edited` 時，改 body 不會重觸發；而 `rerun_failed_jobs` 重播的是**原始 event payload**（含舊 body），所以重跑同樣讀到舊值。需用該 workflow 自帶的 `workflow_dispatch`。 | `docs/AGENT-EXECUTION.md` §7；`.github/workflows/local-isolated-test.yml` |
+| PB-022 | `.gitignore` 的目錄規則不涵蓋同名 symlink | `node_modules/` 只比對目錄；同名的 symlink 是另一種型別，會被 `git add` 收下，且能通過 typecheck、全量測試、repo-integrity-guard 與全部 CI。rebase 或建 worktree 後必須重讀 `git diff --name-status`。 | `docs/AGENT-EXECUTION.md` §8；`.gitignore` |
+| PB-023 | 丟掉 Supabase 的 `error`，會讓「查失敗」冒充「查無資料」 | `const { data } = await …` 捨棄 error；PostgREST 一出錯 `data` 就是 null，於是走進「沒有資料」分支，對使用者宣告一個我們根本沒驗證過的事實。查詢失敗必須與空結果分開處理。 | `CLAUDE.md`（誠實原則）；`14-GAP-AUDIT.md` §1 根因 A |
+| PB-024 | FK constraint 名稱在不同安裝路徑上不同，不可綁進 runtime | canonical（`create table`）與整合測試的 historical overlay 產生的 constraint 名稱不是同一組；PostgREST 的 `!fk_name` embed hint 因此在其中一邊解不開。多條 FK 造成 ambiguous embed 時，改用多次一般查詢。 | `12-TESTING-TDD.md` §1.5；`supabase/local-migrations/**` |
+| PB-025 | mutation 有 entitlement 閘門、read path 沒有，等於留後門 | 讀取路徑若只看「資料庫有沒有資料」，訂閱到期的租戶只要歷史資料還在就照樣讀得到——**用「有沒有資料」代替「有沒有權利」**，且完全沒有症狀。閘門必須在任何 domain SELECT 之前。 | `docs/integration/10-TOUR-DOMAIN.md` §6.1；`docs/integration/09-*` §5 |
+| PB-026 | `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過 | 既有表可能來自另一條安裝路徑（historical overlay），欄位與 check constraint 都不同。migration 顯示成功、什麼都沒建，程式接著對著一個**不是自己定義的契約**寫入，直到某個約束把它擋下來才發現。帶新表的 migration 必須像 `0066` 那樣「加法且會協調」，不能只 `if not exists` 就當作冪等。 | `supabase/migrations/0066_*.sql`（協調範例）；`supabase/local-migrations/**` |
+| PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 
 ## 事件紀錄
 
@@ -195,4 +208,228 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 修正：改以 `GITHUB_REPOSITORY=smallwei0301/vibeaico-admin-rebuild` 重跑 dry-run；保持無寫入模式。
 - 預防：本地執行 Janitor 前先設定並檢查精確 `owner/repo`；`--apply` 仍需額外 token 與二次確認，禁止以空值或廣泛路徑代替。
 - 驗證：補 context 的 dry-run 成功；PR／Issue／TEST／CI 狀態未被 mutation。
+- 狀態：已防止
+
+
+### PB-015 — 本機與 CI 的 base revision 不同時，同一支守門腳本會給出相反結論
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：3
+- Issue／PR／CI：Issue #227；PR #225、PR #239、PR #243；job 101605728719、101606491364
+- 分類：CI
+- 事件：同一個根因在一輪內打中三次，但**分支形狀各不相同**，所以前兩次的修法沒有讓我認出第三次。
+  - ① PR #225 的 `check` 失敗，訊息是 `new migration prefix must be greater than base max 0082: supabase/migrations/0081_reconcile_product_order_coupon_fields.sql`。**它抱怨的 `0081` 是 `main` 上早就存在的檔案，不是該 PR 新增的。** 當時 head 是 merge commit。
+  - ② PR #239：把 `main` 併進分支後再次踩到，同樣是 merge commit head。
+  - ③ PR #239 的後續：分支已無 merge commit，但**有第二顆 commit 動到自己新增的 `0084`**，於是 `HEAD^` 是「已含 0084 的自家父節點」，守門腳本再次把基線最大號算成本分支的號碼。
+- 證據：失敗輸出含 `"baseRevision": "HEAD^"`。本機以 `BASE_REVISION=origin/main` 執行 `scripts/ci/repo-integrity-guard.mjs` → `{ ok: true, errors: [] }`；不帶該環境變數且分支為上述任一形狀時 → 同樣誤報。
+- 根因：Guard 於 lane transition 以 `workflow_dispatch` 派工；`scripts/ci/classify-changes.mjs` 的 `classifyEvent()` 對 `workflow_dispatch` 回 `classifierFailure('workflow-dispatch')`，而 `withRevisions()` 的預設值是空字串，於是 `base_revision` 為空。`.github/workflows/ci.yml` 把空值傳給 `BASE_REVISION`，`repo-integrity-guard.mjs:146` 的 `process.env.BASE_REVISION || 'HEAD^'` 因空字串 falsy 而退回 `HEAD^`。
+
+  關鍵是：**`HEAD^` 只有在「分支恰為 main 之上的單一 commit」時才等於 main。** merge commit head 只是其中一種違反形狀；任何多於一顆 commit、且新增的 migration 不只存在於最後一顆 commit 的分支，都會誤判。我前兩次把教訓記成「merge commit 會誤判」，範圍記太窄，第三次才因此沒認出來。
+- 影響：與 PR 內容無關，會偽裝成「你的 migration 編號有問題」，誘導實作者去改一個沒有問題的編號。第一次先誤判為「上一顆 head 的殘影」，浪費一個排查循環；第三次又浪費一個。
+- 修正：三次都把分支壓成**置於 `main` 之上的單一 commit**，使 `HEAD^` 恰等於 `main`，CI 以自身預設即通過。**這是繞過症狀，不是修好根因。**
+- 預防：① **帶 migration 的分支，推送前一律確認 `git rev-parse HEAD^` 等於 `git rev-parse origin/main`**；不等於就先壓成單一 commit。這是可機械檢查的條件，比記憶「哪些分支形狀會出事」可靠。② 比對守門腳本結論前，先確認本機與 CI 用的是同一個 base；本機刻意加了 `BASE_REVISION` 才變綠，就代表 CI 那邊不會綠。③ 錯誤訊息若指向**不屬於本次變更的檔案**，先懷疑 base 取錯，不要先改自己的檔案。④ 根因修法見 Issue #227（PR #240）：`workflow_dispatch` 時仍應解出可用 base，或在 `BASE_REVISION` 為空時**明確失敗並說明原因**，而不是靜默退回 `HEAD^`。
+- 反面教訓：把教訓寫成「某個具體形狀會出事」而非「某個不變量被破壞」，就會在下一個形狀出現時失效。PB 條目的預防欄應盡量寫成**可驗證的不變量**（`HEAD^ == main`），而不是症狀清單。
+- 驗證：壓成單一 commit 後，不帶 `BASE_REVISION` 執行 → `{ ok: true, errors: [], baseRevision: "HEAD^" }`；CI `check` job 101606950146 success。第三次的替代交付 PR #244 於 exact head `36022c1f` 以 `BASE_REVISION=13fafcd3` 驗得 `{ ok: true, errors: [] }`，遠端 `guard` 亦 success。
+- 狀態：監看中（症狀已繞過，根因待 Issue #227 / PR #240 修）
+
+
+### PB-016 — 管線或後續命令的退出碼會蓋掉失敗，讓紅燈顯示成綠燈
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #33①（PR #223 準備期）；本輪 available-slots 標註測試
+- 分類：Agent
+- 事件：兩次都寫出「看起來在驗證、實際上沒有驗證」的檢查。① `npx tsc --noEmit 2>&1 | head -5 && echo TYPECHECK_OK`——`head` 成功退出，把 `tsc` 的 TS1005 失敗蓋掉，畫面照樣印出 `TYPECHECK_OK`。② 測試中以 `execFileSync('grep', ...)` 判斷「有無呼叫端」，但 `grep` 無 match 時退出碼為 1，`execFileSync` 直接拋錯——該斷言是以「測試錯誤」而非「通過」的形式存在。
+- 證據：① 之後單獨執行 `npx tsc --noEmit; echo $?` 才看見非零。② `Tests 1 failed | 4 passed`，堆疊指向 `execFileSync` 那一行，而非任何 `expect`。
+- 根因：管線的退出碼是**最後一個命令**的；`&&` 之後的 `echo` 只反映前一個命令。而 `grep` 把「找不到」設計成非零退出碼，與「執行失敗」共用同一個訊號。兩者都讓「沒有量到東西」與「量到了好結果」在畫面上長得一樣。
+- 影響：① 帶著型別錯誤往下走一段。② 一條原本要防「標註過期」的斷言，若沒發現就會長期以錯誤形式存在，等於沒有這條斷言。
+- 修正：① 改成 `npx tsc --noEmit; echo "TYPECHECK_EXIT=$?"`，直接看 `$?`。② 改用 Node `readdirSync` 遞迴掃描，不依賴 `grep` 的退出碼語意。
+- 預防：**驗證命令不得放在管線中段，也不得用另一個命令的成功來宣告它成功。** 需要截斷輸出時，先取退出碼再截斷。凡是「找不到＝正常」的工具（`grep`、`find`），在測試中一律改用語言內建的檔案 API，不要靠退出碼。收到綠燈時反問一次：**如果這件事現在壞掉，這個檢查會不會變紅？** 不會就不是檢查。
+- 驗證：① 修正後 `TYPECHECK_EXIT=0` 與 82 檔 817 tests 全過同時成立。② 變異測試：刪掉整段標註 → 3 條轉紅；假裝有頁面呼叫它 → 該條轉紅；還原 → 5/5 綠。
+- 狀態：已防止
+
+
+### PB-017 — 先套用到資料庫、後來才改檔名，會在 ledger 留下永久的名稱偏差
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #35／PR #93（`0015 → 0079 → 0080`）；Issue #7／PR #225（`0082 → 0083`）
+- 分類：Migration
+- 事件：同一輪內發生兩次。migration 已經套用到 Supabase（ledger 以當時的檔名記錄），之後檔案在 repo 裡因編號競爭被改名，於是 **ledger 名稱與 repo 檔名永久不一致**。
+- 證據：① 正式庫 ledger 記 `0015_page_local_display_fields`，repo 檔名最終是 `0080_page_local_display_fields.sql`（先被 `scripts/ci/repo-integrity-guard.mjs` 的編號守門擋下改為 0079，再因 main 新增 `0079_reconcile_category_bug_report_fields.sql` 順延為 0080）。② 正式庫與 canonical TEST ledger 記 `0082_staff_display_fields`，repo 檔名最終是 `0083_staff_display_fields.sql`（治理側 #226 先把 `0082_reconcile_booking_addon_notify_fields.sql` 併進 main）。
+- 根因：**順序錯了。** 套用到資料庫的時間點早於「檔名在 `main` 上定案」的時間點。migration 編號是**跨分支共享的單一序列**，只要還沒進 main，任何人都可能先佔走同一個號碼——所以分支上的編號本質上是未定的。
+- 影響：schema 本身正確（兩次的 SQL 都完全冪等，套用前後皆有唯讀驗證），受影響的只有 ledger 上的名字。但它會讓日後「用 ledger 名稱比對 repo migration」的稽核對不起來，且**不能靠重跑修正**——重跑只會在 ledger 多一筆，不會改掉舊的那筆。
+- 修正：兩次都**沒有**擅自重跑或改寫 ledger，改為在 PR 與 Issue 上具名揭露為「已知偏差」，並附「內容相同、schema 已驗證」的證據。
+- 預防：**先讓檔名在 `main` 上定案，再套用到資料庫。** 具體順序：① PR 合併進 main（編號至此才真正確定）→ ② 取得 Owner 逐次授權 → ③ 套用，且 `apply_migration` 的 name 一律使用 **main 上的最終檔名**。若因故必須在合併前套用（例如合併後立刻要用），就要預期並接受這筆偏差，且**在 PR 內先寫明**，不要等偏差發生才補說明。另：改 migration 檔名時，一律 `grep -rn "<舊檔名>"` 全 repo 檢查引用（測試常會讀那個檔），這一點與 PB-015 同源。
+- 驗證：兩次的 schema 皆以 `information_schema.columns` / `pg_constraint` / `pg_proc` / `pg_trigger` 唯讀確認正確；#225 的檔名引用漏改在推送前即被 `tests/unit/staff-display-fields.test.ts` 以 `ENOENT` 擋下。
+- 狀態：監看中（偏差已揭露，順序規則待下一輪實際遵循後才算已防止）
+
+
+### PB-018 — 為了排查而下的一次性寫入，同樣會佔用 canonical TEST lane 並污染別人的測試
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：2
+- Issue／PR／CI：Issue #7；PR #239；canonical TEST `nmwhwngojosmagjuvxol`
+- 分類：測試環境
+- 事件：CI 於 06:03:56 取得 canonical TEST lane、06:04:09 開始跑測試。我在**同一個時間窗內**為了排查 #7 的殘留資料，對 canonical TEST 下了 `DELETE`。我當時的心智模型是「這只是查一下、順手清掉，不是 reset/seed，不算佔用 lane」。
+- 證據：`tests/integration/api/reports.a5.test.ts:97` 出現 `expected +0 to be 4`；我自己新增的測試同時回 400。事後以**唯讀**複查，`shop_a_bookings = 4` 仍然正確——也就是說資料沒有被永久破壞，紅燈純粹來自**執行當下**的狀態被我抽走。
+- 根因：PB-002 的規則我記成「reset／seed／migration 要序列化」，但真正的不變量是「**任何會改變 canonical TEST 狀態的動作**都必須與測試執行互斥」。`DELETE` 一列和 reset 整個庫，對正在跑的測試而言沒有區別。「排查」在心理上感覺是唯讀活動，於是繞過了我自己的檢查。
+- 影響：讓一個**與該 PR 無關**的既有測試轉紅。這種紅燈最貴的地方不是修，而是它會讓人去找一個不存在的程式缺陷；本輪確實先往「是不是 reports 查詢壞了」的方向查了一段。同時它也污染了該次 CI 的證據價值——那一輪的綠／紅都不能作為 exact-head 證據使用。
+- 修正：未擅自重跑掩蓋，改為在 #239 上具名揭露這次違規、附上唯讀複查證明資料未受永久損害，並說明該次 CI 結果不得採信。
+- 預防：① **對 canonical TEST 下任何非 `SELECT` 語句之前，先確認沒有 CI 正持有該 lane。** ② 排查一律從唯讀開始；需要改狀態才能繼續時，那就是一次**需要先取得 lane** 的正式動作，不是順手。③ 本輪自訂並沿用的延伸規則一併寫進正式規則：**任何指向 canonical TEST 的本機 server／script／Playwright 都算持有該 lane**，必須與 CI 的 canonical 執行互斥。
+- 驗證：唯讀複查 `shop_a_bookings = 4`，確認為執行期干擾而非持久性損壞；後續所有對 canonical TEST 的動作改為唯讀 schema／function／privilege 等價性查詢（見 PR #244 的 `CANONICAL_TEST_STATUS: READ_ONLY_EQUIVALENCE_REQUIRED`）。
+- 狀態：監看中（規則已寫明，待下一輪實際遵循後才算已防止）
+
+
+### PB-019 — 「repo 裡沒有」不等於「沒有做過」：線上跑的可能是一條沒併回 main 的分支
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #251；連帶影響 #5、#6、#8、#31
+- 分類：交付真相
+- 事件：查 `祕島 MIDAO` LINE channel 的 webhook 指向時發現，它指的不是正式站，而是一個 branch preview 部署（`claude/deploy-vercel-project-nnno59`，commit `7ad9ac53`，2026-08-28）。進一步比對：
+
+  ```
+  git merge-base --is-ancestor 7ad9ac53 origin/main   → NOT_ANCESTOR
+  git rev-list --count 7ad9ac53..origin/main          → 261
+  7ad9ac53:src/server/line-events.ts   1101 行
+  origin/main:src/server/line-events.ts  416 行
+  ```
+
+  那條分支**不是 `main` 的祖先**，而且功能遠多於 `main`：`replyFlexMenu` / `replyMenu` / `replyBuiltin` / `resolveBuiltinIntent` / `SYSTEM_KEYWORD_GROUPS` / `RICH_MENU_TEXT_INTENT` / `replyCoupons` / `replyTrips` / `replyDepartures` / `replyTourOrders` / `replyMember` / `replyFaq` / `pickKeywordReply` 等約 20 個處理器，`main` 一個都沒有。
+- 證據：Vercel API `get_deployment` 回 `target: null`（preview）、`githubCommitRef: claude/deploy-vercel-project-nnno59`；LINE `GET /v2/bot/channel/webhook/endpoint` 回該 preview 網址且 `active: true`；上述 git 指令輸出。
+- 根因：一次臨時的 webhook 指向設定沒有被收回，而該分支後來沒有併回 `main` 就被擱置。之後所有人都在 `main` 上做 CI、exact-head 驗證與五點完成驗證——**證明的是 `main` 的行為，但真實顧客走的是另一份程式碼**。
+- 影響：① 2026-08-28 之後合併進 `main` 的每一項修正對該店家都未生效。② preview 部署隨時可能被回收，回收即 bot 死亡且後台無任何錯誤。③ **三張標為 `owner-blocked` 的 Issue（#5 Rich Menu 關鍵字、#6 Flex 主選單、#8 行程域）其實作就在那條分支上**——它們卡住的原因有一部分是誤判為「尚未實作」。④ 差點造成二次傷害：我原本建議「把 webhook 切回正式站」，若照做會讓該店家瞬間失去約 20 種關鍵字／選單回應，是用刪除代替補齊。
+- 修正：先做唯讀 diff 判定「是 `main` 缺功能還是實驗殘留」，得到「`main` 缺功能」後**推翻自己前一則建議的處理順序**，改為「先把功能補回 `main` → 驗證 → 部署 → 才切換 webhook」。未 cherry-pick、未改 webhook 設定。
+- 預防：① 判定「這個功能不存在」之前，先查**線上實際跑的是哪一顆 commit**，再查它是不是 `main` 的祖先。② 對外服務的指向設定（webhook endpoint、DNS、alias）應納入定期核對；「設完就忘」在這裡的代價是整條交付鏈的證據失效。③ 提出「把指向修回正確目標」這類建議時，先確認目標**功能不比現況少**——否則修好指向等於功能倒退。
+- 驗證：唯讀 `git` 與 Vercel／LINE API 查詢；未修改任何檔案、未推送、未更動 webhook 設定。
+- 狀態：監看中（已揭露並開 Issue #251，補回 `main` 的工作待裁決）
+
+
+### PB-020 — 量測外部系統打進來的路徑之前，先確認它到底打到哪裡
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #31；Issue #251
+- 分類：測試環境
+- 事件：#31 要求對「正式站」做 LINE webhook 真實延遲量測。`POST /v2/bot/channel/webhook/test` 預設打的是 channel **configured endpoint**，而該 endpoint 當時指向一個 preview 部署。若直接開始量，拿到的數字會是 preview 的，卻被寫進 issue 當作「正式站改後證據」。
+- 證據：`GET /v2/bot/channel/webhook/endpoint` 回 preview 網址；同一輪對兩個目標量測的結果差異明顯——正式站**閒置 25 分鐘後的第一發** `REQUEST_TIMEOUT`（較短閒置時 run1–3 連續逾時），而當時已暖的 preview 端點 6/6 成功。**同一支 API、同一個 channel，答案完全相反。**
+- 根因：把「量測工具」與「量測對象」混為一談。`webhook/test` 是對 channel 設定的測試，不是對某個部署的測試；要指定對象必須顯式帶 `endpoint` 參數。
+- 影響：差一步就把 preview 的數字當成正式站證據寫進 #31。這種錯誤特別難發現，因為數字本身是真的、API 也是官方的，只是歸因錯了。
+- 修正：先唯讀查明 configured endpoint，再以 `endpoint` 參數分別量測正式站與 configured 端點，兩組數字並列呈現並各自標明對象。指定 `endpoint` 同時避免了更動店家設定。
+- 預防：**量測外部系統打進來的路徑時，第一個動作是唯讀查出「它打到哪裡」，第二個動作才是量。** 數字旁邊一律標註對象與取得方式；「對正式站量測」與「對 configured endpoint 量測」在報告裡必須是兩行，不能合併成一行。
+- 驗證：兩組量測皆完成並各自標註；正式庫唯讀比對確認量測零寫入（`chat_messages` 維持 6 列且全部來自 2026-08-24，`line_users` 維持 0 列）。
+- 狀態：已防止（規則已落地並在同一輪實際套用）
+
+
+### PB-021 — 改 PR body 修 metadata，對只監聽 `synchronize` 的 workflow 是無效操作
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #246；PR #248
+- 分類：CI
+- 事件：PR #248 的 `classify` 因我填錯 metadata 失敗（`FINAL_CANONICAL_REQUIRED: false`，但 `LOCAL_ISOLATED` 一律要求 `true`）。我改好 PR body 後等待重跑——**等到的是同一個紅燈**。接著用 `rerun_failed_jobs`，**又是同一個紅燈**。白等兩輪。
+- 證據：`.github/workflows/local-isolated-test.yml` 的 `on.pull_request.types` 是 `[opened, synchronize, reopened]`，**不含 `edited`**；`rerun_failed_jobs` 的 attempt 2 仍在同一步驟以同一原因失敗。
+- 根因：兩件事同時成立才造成這個死結——① 該 workflow 不監聽 `edited`，所以改 body 不會重觸發；② GitHub 的 re-run **重播原始 event payload**，其中的 PR body 是修正前的，所以重跑永遠讀不到新值。單看任一條都不明顯，合在一起就是「改了也沒用、重跑也沒用」。
+- 影響：兩輪等待（各數分鐘）加上一次誤判——我一度以為是 metadata 還有第三個錯誤。
+- 修正：改用該 workflow 自帶的 `workflow_dispatch`（輸入為 `test_profile` / `expected_head` / `final_canonical_required`），以 exact head 派工，一次通過。
+- 預防：① 修 PR body 上的 CI metadata 後，**先確認目標 workflow 的 `types` 是否含 `edited`**；不含就別等，直接找 `workflow_dispatch` 或推一顆真實 commit。② `rerun_failed_jobs` 只適用於「輸入不變、環境瞬時故障」；**凡是失敗原因來自 PR metadata 的，重跑一定無效**。③ 用 `workflow_dispatch` 前先確認 PB-015 的 `HEAD^ == main` 條件成立，否則會換一個紅燈。
+- 驗證：dispatch 的 run 34097639862 全綠——`classify` success、`local-isolated-a` success（integration 37 檔 246 tests、E2E 18 passed）。
+- 狀態：已防止（規則已落地並在同一輪實際套用）
+
+### PB-022 — `.gitignore` 的目錄規則不涵蓋同名 symlink，於是 `node_modules` 通過了每一道閘門
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #5；PR #254
+- 分類：CI
+- 事件：在 worktree 裡用 `ln -s .../node_modules node_modules` 借用相依套件。rebase 之後 `git add` 把**那條 symlink 本身**收進了索引。它通過了 `npx tsc --noEmit`、1013 條單元測試、`scripts/ci/repo-integrity-guard.mjs`（`ok: true`）與全部 9 道 CI 檢查。只有在我依習慣重讀一次 `git diff --name-status` 時才看見。
+- 證據：`.gitignore` 的 `node_modules/` 尾端有斜線，只比對**目錄**；同名的 symlink 在 git 眼中是 mode `120000` 的 blob，不是目錄，因此不被該規則涵蓋。`git status --short` 會顯示 `?? node_modules`，容易被當成「就是那個被忽略的目錄」而略過。
+- 根因：忽略規則的比對單位是「路徑型別 ＋ 樣式」，不是「名字」。而所有既有閘門檢查的都是**內容**（型別、測試、完整性），沒有一道檢查「這次提交是否包含不該入版控的路徑型別」。
+- 影響：差一步就把一條指向 `/home/user/...` 的絕對路徑 symlink 推進 `main`。它在別人的環境會是一條斷掉的連結，且 `npm ci` 的行為會變得不可預期。
+- 修正：`git rm --cached node_modules`，重新提交。
+- 預防：① **在 worktree 裡借 `node_modules` 之後，push 前一律重讀 `git diff --cached --name-status` 逐檔確認**——不是看 `git status`，因為 `?? node_modules` 在兩種情況下長得一模一樣。② 改用明確列舉的 `git add <path> …`，不要 `git add -A` / `git add .`。③ 綠燈不是「沒問題」的證據，只是「這幾件事沒問題」的證據；閘門沒有涵蓋的類別，綠燈完全不表態。
+- 驗證：修正後 `git diff --cached --name-status` 只剩預期的檔案；`repo-integrity-guard` `trackedCount` 回到預期值。
+- 狀態：已防止（規則已落地並在其後每一個 PR 實際套用）
+
+
+### PB-023 — 丟掉 Supabase 回傳的 `error`，會讓「查失敗」冒充成「查無資料」，並對使用者宣告一個假的已知
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8；PR #258（head `d6d3f4a` → `fe97aed`）
+- 分類：其他（產品誠實性）
+- 事件：LINE webhook 的「行程」handler 寫成 `const { data } = await ctx.admin.from('trips').select(...)`，接著 `if (!data?.length) return replyText(ctx, MSG.tripEmptyGuide)`。PostgREST 查詢失敗時 `data` 是 null，於是它走進「沒有行程」那條路，對顧客說**「目前還沒有上架行程，敬請期待！」**——而店家後台明明上架了。
+- 證據：`local-isolated-a` 紅在 `expected '目前還沒有上架行程，敬請期待！' to contain 'A 店測試行程'`。整條路徑沒有丟出例外、沒有 5xx、webhook 照常回 200。
+- 根因：解構時省略 `error`，把「兩種語意完全不同的結果」（查成功且為空 / 根本沒查成功）合併成同一個 falsy 判斷。這類寫法在 happy path 完全正常，只有在錯誤發生時才顯現，而錯誤發生時它**正好**選了最糟的解釋。
+- 影響：對顧客宣告一個我們根本沒有驗證過的事實（14 分冊 §1 根因 A 的形狀）。它是靜默的：不會紅、不會錯、店家不會發現，只會收到客訴說「我明明上架了」。
+- 修正：接住 `error`，記進 log，回 `false` 讓它落到既有的 AI／預設回覆，**不冒充「查過了，沒有」**。次要資料（方案名稱、最低價）的失敗則只降級不擋主結果。
+- 預防：① **凡是「查不到就對使用者說某件事不存在」的分支，都必須先處理 `error`**；空結果與查詢失敗要走不同的路。② code review 時看到 `const { data } =` 後面接 `if (!data)` 就要問一次「error 呢」。③ 這條同樣適用於「查不到就當作 0／未啟用／沒有權限」的寫法。
+- 驗證：`fe97aed` 之後 `local-isolated-a` 綠；行程輪播、團次清單皆回真實資料。
+- 狀態：已防止
+
+
+### PB-024 — FK constraint 的名稱在 canonical 與 historical overlay 兩條安裝路徑上不同，不可把 runtime 行為綁在名稱上
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8；PR #258（head `d6d3f4a` → `fe97aed`）
+- 分類：TEST DB
+- 事件：`trip_departures` 對 `trips`、對 `trip_plans` 各有**兩條** FK（`0066` 的單欄 FK ＋ `0067` 為 tenant-aware 完整性加的複合 FK），PostgREST 因此拒絕 embed（`PGRST201`）。我改用 `trip_plans!trip_plans_trip_id_fkey(...)` 這種**指定 constraint 名稱**的 hint 來消歧義。
+- 證據：整合測試環境跑的是 `supabase/local-migrations/historical-integration-baseline/0016_tour_domain_core.sql` 先建表，於是 canonical `0066` 的 `create table if not exists` 整段跳過——兩條路徑產生的 constraint 名稱不是同一組，hint 在其中一邊解不開。
+- 根因：constraint 名稱是**安裝過程的產物**，不是 schema 契約的一部分。同一份 schema 由不同 migration 路徑建成時，名稱可以完全不同，而且沒有任何地方保證它們一致。
+- 影響：把「回覆送不送得出去」綁在一個純命名的差異上。更糟的是它與 PB-023 疊加：embed 失敗 → `data` 為 null → 靜默地變成「沒有行程」。
+- 修正：完全不用 embed，改成兩次一般查詢（先查父表取 id，再以 `.in()` 查子表），在 JS 端組合。多一次 round-trip，換掉整類問題。
+- 預防：① **不要把 constraint／index 名稱寫進 runtime 程式碼。** 需要消歧義時，優先改成多次查詢或明確的 join 欄位。② 若真的必須用 FK hint，該名稱要有 migration 明確 `add constraint <name>` 保證，且兩條安裝路徑都要有。③ 「讀 migration 推論名稱」不算驗證——只有對真實 schema 跑過才算。
+- 驗證：`fe97aed` 之後 `local-isolated-a` 綠（fresh local Supabase 從 0001 建庫）。
+- 狀態：已防止
+
+
+### PB-025 — mutation 有 entitlement 閘門、read path 沒有，等於用「有沒有資料」代替「有沒有權利」
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8；PR #258（Sol audit P1，head `08e1983`）
+- 分類：權限
+- 事件：`replyTrips()` / `replyDepartures()` 進函式後第一個動作就是查 `trips`，沒有任何 entitlement 檢查。而 `docs/integration/10-TOUR-DOMAIN.md` §6.1 的原文是「導遊模組新增內建關鍵字組，**只在租戶有 `TOUR_MODULE` 時顯示**」。
+- 證據：core mutation API 早就同時擋 `MANAGER` 與 `TOUR_MODULE`（同節下方），但讀取路徑沒有。訂閱已到期或從未訂閱的租戶，只要資料庫還留著歷史的 PUBLISHED 行程，顧客就照樣從 LINE 讀得到行程與名額。
+- 根因：閘門是在「寫入」那一側設計的，讀取路徑被當成「反正沒有資料就不會回」。但**資料的存在與權利的存在是兩件事**：訂閱到期不會刪資料，於是「沒有資料」這個代理條件在最需要它的時候剛好失效。
+- 影響：entitlement 可被繞過，且**完全沒有症狀**——不會紅、不會錯、店家也不會發現。是最難靠測試自然抓到的一類缺陷（要抓到它，測試必須主動把訂閱關掉）。
+- 修正：兩支 handler 在**任何 domain SELECT 之前**先 `isFeatureActive(tenantId, 'TOUR_MODULE')`，未啟用回 `false`（落到既有的 AI／預設回覆，顧客仍有回應）。不對顧客宣告「本店未訂閱」——那是店家的帳務狀態，講了既沒用又洩漏營運資訊。
+- 預防：① **新增任何 domain 讀取路徑時，先問「這個 domain 的 mutation 擋了什麼？讀取有沒有擋一樣的東西？」** 兩側必須用同一個判準（本例讀寫都走 `isFeatureActive`，與 route 的 `requireFeature` 同源）。② 閘門的驗收必須有**負向案例**：主動停用訂閱，逐項斷言看不到任何 domain 內容，`finally` 還原後再驗一次正例——只有負向斷言的話，一個「查詢壞掉」的實作也會全綠。
+- 驗證：`0dc0ca1` 的 `local-isolated-a` 綠，含負向案例（停用 TOUR_MODULE → 行程／團次皆不洩漏行程名、團次清單與輪播按鈕，且不對顧客宣告訂閱狀態）。另一個獨立佐證：補上閘門的那一顆 head 上，三條既有斷言在三個不同位置各自落到 defaultReply，證明閘門真的攔得住。
+- 狀態：已防止
+
+
+### PB-026 — `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：1
+- Issue／PR／CI：Issue #8-B；PR #271（`local-isolated-a` 紅，head `ad161ab`）
+- 分類：schema／migration
+- 事件：`0087` 用 `create table if not exists public.tour_orders (...)` 建表。CI 的 `local-isolated` 會套用 historical overlay，而 overlay 的 `0026` **早就建過同名的 `tour_orders`**，欄位不同、還帶著 `#41` 的 `0040` 加上的 check constraint。於是我的 `create table` 是一個 no-op，程式對著 overlay 的契約寫入，`confirm-payment` 回 `500 / 23514`。
+- 證據：`new row for relation "tour_orders" violates check constraint "tour_orders_payment_amounts_nonnegative"`；失敗列的尾巴是 `..., 6000, 0, 0, FULL)` —— 四個**我的 migration 根本沒定義**的欄位（`upfront_required_amount` / `paid_amount` / `refunded_amount` / `deposit_mode_snapshot`）。
+- 根因：把 `if not exists` 當成「冪等」。它只保證**不會報錯**，不保證**結果符合我的定義**。同名表存在時它既不比對也不協調，就只是跳過；而 migration 執行成功這件事，看起來與「表已按我寫的建好」完全一樣。
+- 影響：兩條安裝路徑得到兩個不同契約的同名表，而程式只對其中一個是正確的。在只跑 canonical 的環境會全綠，在有 overlay 的環境才炸——反過來也可能：canonical 少了 overlay 的約束，於是**真正的缺陷（見下）在 canonical 上不會被抓到**。
+- 修正：像 `0066` 那樣改成「加法且會協調」：`alter table ... add column if not exists`，約束用 `pg_constraint` 檢查後才建（避免同一條規則有兩份定義）。
+- 順帶抓到的真缺陷：那條 check 寫著 `(payment_status <> 'PAID' or paid_amount = total_amount)` ——**它是對的**。初版的 `confirm-payment` 只翻 `payment_status = 'PAID'` 旗標、沒寫實收金額，會在資料庫留下一筆「已付款」而實收 0 元的訂單，正是本專案一直在修的那種假宣稱。所以修的是路由與 canonical schema（補 `paid_amount` 與同一個不變量），**不是把測試或約束改成接受它**。
+- 預防：① 新增表的 migration 前，先 `grep -rn "create table .* <name>" supabase/` 查**所有**安裝路徑（含 `local-migrations/**`），確認沒有同名前身。② 若有前身，改寫成協調式：加欄位、補約束、不假設自己是第一個建表的人。③ 別的分支加在同一張表上的 check constraint，要當成**別人已經想過的不變量**先讀一遍——本例它比我的實作更嚴謹。
+- 狀態：已防止
+
+
+### PB-027 — 用「名字出現幾次」代替「那件事真的會發生」
+
+- 首次／最近：2026-09-07／2026-09-07
+- 發生次數：4（同一輪內四種形態）
+- Issue／PR／CI：Issue #27、#50、#8；PR #264、#268、#271、#273
+- 分類：稽核方法
+- 事件：同一輪出現四種同型的誤判——
+  1. **規格存在 ≠ 功能可用**：04／06 分冊描述 `imageStorageRef` ＋ preview ＋ 清理 queue，`main` 上零命中（那是未合併的 PR #98 的設計）。
+  2. **路由存在 ≠ 功能可用**：`src/app/api/ai-settings/route.ts` 在 `main` 上齊全、閘門完整，但**全 repo 沒有任何一處呼叫它**；店家按下儲存打的是別的端點。
+  3. **政策提到 ≠ 物件存在**：`p_storage_write` 的允許清單列了 `keyword-reply-images`，我據此推論 bucket 已存在——`bucket_id in (...)` 只是字串比對，Postgres 不會因為政策引用了不存在的 bucket 而抱怨（PB-024 的同族）。
+  4. **符號出現 ≠ 符號被使用**：我用 `grep -c` 數到四支 tour-order service「8 處引用」，據此在 #8 寫下「tour-orders 頁本來就已接 service」。那 8 處全在 `src/services/tours.ts` 裡（一支 service 的 export ＋ 型別就是兩次），頁面實際上四個寫入動作**一個都沒接**。
+- 根因：判準錯了。四者都在問「這個名字在某處出現了嗎」，而該問的是「那件事真的會發生嗎」。名稱出現是**必要非充分**條件，而它剛好很容易 grep 到，於是變成預設判準。
+- 影響：第 4 項是我自己寫進 issue 的錯誤結論，若沒有在實作 #271 時撞到，會直接變成一個假打勾。第 2 項讓一個「已經在對真實顧客做錯事」的缺陷在 issue 上顯示為已完成。
+- 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
+- 預防：① 判準一律改成**「呼叫端在哪裡」**：`grep -n "<symbol>(" <呼叫端檔案>`，而不是 `grep -c "<symbol>" .`。② `grep -c` 的結果**必須連同檔名一起看**（用 `-rn` 或 `-l`，不要用 `-c` 加總）。③ 對「文件說有」「路由檔在」「政策提到」三種線索，一律再走一步查到實際執行路徑；查不到就當作沒有。
 - 狀態：已防止

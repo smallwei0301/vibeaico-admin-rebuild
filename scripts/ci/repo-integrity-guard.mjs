@@ -11,6 +11,7 @@ const REQUIRED_PATHS = [
 
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]sx?)$/i;
 const STANDALONE_SHA = /^\s*[0-9a-f]{40}\s*$/i;
+const FULL_SHA = /^(?!0{40}$)[0-9a-f]{40}$/i;
 const MIGRATION_DIR = 'supabase/migrations/';
 const MIGRATION_FILE = /^supabase\/migrations\/(\d{4})_[^/]+\.sql$/;
 
@@ -137,14 +138,48 @@ export function evaluateRepositoryIntegrity({
   return { ok: errors.length === 0, errors };
 }
 
+/**
+ * Preserve the historical local default only when the variable is absent.
+ * CI always supplies BASE_REVISION/HEAD_REVISION from the classifier; an
+ * explicitly empty value is an invalid contract and must fail closed instead
+ * of silently changing the comparison to HEAD^ or HEAD.
+ */
+export function resolveRevision(env, name, fallback) {
+  if (!Object.prototype.hasOwnProperty.call(env, name)) return fallback;
+
+  const revision = String(env[name] ?? '').trim();
+  if (!revision) {
+    throw new Error(`${name} must be non-empty; refusing implicit ${fallback} fallback`);
+  }
+  if (!FULL_SHA.test(revision)) {
+    throw new Error(`${name} must be a complete non-zero commit SHA; refusing symbolic or malformed revision`);
+  }
+  return revision;
+}
+
 function gitLines(...args) {
   const output = execFileSync('git', args, { encoding: 'utf8' }).trim();
   return output ? output.split('\n') : [];
 }
 
 function main() {
-  const baseRevision = process.env.BASE_REVISION || 'HEAD^';
-  const headRevision = process.env.HEAD_REVISION || 'HEAD';
+  let baseRevision;
+  let headRevision;
+  try {
+    baseRevision = resolveRevision(process.env, 'BASE_REVISION', 'HEAD^');
+    headRevision = resolveRevision(process.env, 'HEAD_REVISION', 'HEAD');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(JSON.stringify({
+      ok: false,
+      errors: [message],
+      baseRevision: process.env.BASE_REVISION ?? '',
+      headRevision: process.env.HEAD_REVISION ?? '',
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
+
   const trackedPaths = gitLines('ls-tree', '-r', '--name-only', headRevision);
   const baselineTrackedPaths = gitLines('ls-tree', '-r', '--name-only', baseRevision);
   const baselineTrackedCount = baselineTrackedPaths.length;

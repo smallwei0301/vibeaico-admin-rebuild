@@ -99,10 +99,15 @@
 - [ ] 設定頁「變更密碼」從未呼叫 `/api/auth/change-password`（settings/page.tsx 289–307）
 - [ ] LINE 設定頁「解除連接」送空字串＝依契約「不變更」，token 實際沒清（line-settings/page.tsx 383–397；`/api/settings/line/disconnect` 已存在未用）
 - [ ] LINE 設定頁「建立圖文選單」只存主題設定，沒打 create 端點（line-settings/page.tsx 322–345）
-- [x] 關鍵字回覆整頁 CRUD 已接真實 service/API（issue #5，commit `faa7c22`）：
+- [x] 關鍵字回覆整頁 CRUD 已接真實 service/API（issue #5，**main `e7595ae` / PR #254**）：
       `keyword-replies-wiring.05.test.ts` 驗證載入、建立、編輯、啟停與刪除接線；
       `keyword-replies.05.test.ts` 驗證 DB 設定會被 webhook 使用。Preview 的 UI→簽章
       webhook→LINE mock→清理仍列在 issue #5 的站點驗收，不把 source/CI 冒充 Preview。
+      ⚠️ **2026-09-07 更正歸屬**：本項原記 commit `faa7c22`，那顆 commit 在
+      `claude/deploy-vercel-project-nnno59` 分支上，**從未併回 `main`**（見 #251）。
+      在 2026-09-07 之前，`main` 的 `src/services/keyword-replies.ts` 並不存在、
+      頁面仍讀頁內 `MOCK_KEYWORD_REPLIES` 常數——也就是說本項在那段期間對 `main`
+      是**假的勾**。實作由 PR #254 補回後才成立。
 - [ ] 行銷推播整頁假：發送/取消/刪除/建立（marketing/page.tsx；`/api/marketing/pushes*` 已存在）
 - [ ] 活動管理整頁假：發布/暫停/恢復/結束/刪除/建立（campaigns/page.tsx；`/api/campaigns*` 已存在）
 - [ ] 顧客管理：新增/編輯假（load 後蒸發）、LINE 綁定假（customers/page.tsx；service 已存在，bookings 頁同功能是真的——照抄）
@@ -135,15 +140,24 @@
 
 ## 2. 根因 B 清單：計劃漏掉（規格要補寫、工作要補做）
 
-- [x] **webhook 關鍵字覆蓋已補齊（issue #5，commit `faa7c22`）**：原實作只比對
+- [x] **webhook 關鍵字覆蓋已補齊（issue #5，main `e7595ae` / PR #254）**：原實作只比對
       4 個字面值（預約/服務/我的預約/行程佔位）；現由
       keyword-replies i18n 定義的 15 組系統關鍵字（含同義詞）與 `MODE_PRESETS.richMenuCells`
       的格子文字（服務項目/會員卡/優惠/聯絡我們/團次/我的訂單/常見問題/看診進度/營業時間…）
-      全部受 `line-keyword-coverage.test.ts` 與 `keyword-replies.05.test.ts` 的
-      程式化矩陣保護。**新增規格**：已回寫 06 §3——「Rich Menu 每個
+      全部受 `tests/unit/line-keyword-coverage.05.test.ts`（81 案）與
+      `tests/integration/api/keyword-replies.05.test.ts` 的程式化矩陣保護。
+      **新增規格**：已回寫 06 §3——「Rich Menu 每個
       格子送出的文字、與系統關鍵字組全部同義詞，webhook 必須有對應分支；系統組的
-      啟停開關（systemGroupDisabled）webhook 必須讀」。PR #49 `cadab19`
-      run #163 已通過完整 unit／integration／E2E。
+      啟停開關（systemGroupDisabled）webhook 必須讀」。
+      ⚠️ **2026-09-07 更正歸屬**：原記 commit `faa7c22` 與 PR #49 `cadab19`，
+      皆屬未併回 `main` 的分支（見 #251）；`git log -S "resolveBuiltinIntent" origin/main`
+      在補回前回**空**。exact head `43f9882` 的 `local-isolated-a` 從 0001 全新建庫，
+      integration 與 E2E 皆 success。
+
+      補回過程另抓到兩個**單元測試抓不到、只有真實 DB 測試會紅**的缺口，一併修正：
+      ① `CONTAINS` 未生效——`main` 原本只做 `keywords.includes(text)`，而頁面上
+      「訊息裡有這個字就回」是**預設選項**，店家選了它實際上卻只有一字不差才會回；
+      ② 「附加連結」是頁面存得進去的欄位，但組訊息時被丟掉，顧客永遠看不到。
 - [ ] **flex-menu 三層只做一層**：儲存端點有；webhook「選單」關鍵字回 Flex（06 §6 原文要求）完全沒做、頁面發布也沒接。已在 06 §6 標註現況
 - [ ] 主題底圖無人負責上傳（bucket 空）→ 已用「現生成純色 PNG」修掉硬依賴（commit 3a7429b），06 §6 已註記
 - [ ] `/api/trips/:id/addons`、`/api/trips/import`、`/api/trips/:id/export`、`GET/POST/DELETE /api/demo-data`、`DELETE /api/settings/line/rich-menu`：程式已存在、計劃全無記載 → 已補記（10 分冊 / 06 §6）
@@ -398,17 +412,139 @@ customers 新增編輯／BugReportModal）純靠這條規則就抓得到，不�
 | 已排在既有 issue | 筆數 | issue |
 |---|---|---|
 | keyword-replies 全頁 | 1 | #5 |
-| trips／trip 詳情／tour-orders 三頁 | 3 | #8 |
+| trips／trip 詳情／tour-orders 三頁 | 3 | #8 | ← 見 §7.4.2（2026-09-07：三頁中兩頁已修好，第三頁被 `tour_orders` 表擋住） |
 | customers 新增編輯／LINE 綁定解綁、block-times、points 儲值、marketing、campaigns、shifts 週班表與模式、shop-design 空 patch、rich-menu 底圖上傳 | 10 | #7 |
 | shop-page 端點群 | （併入 #7 的 shop-design 列） | #22 |
 
 | 本輪新開 | 筆數 | 新 issue | 狀態 |
 |---|---|---|---|
-| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | Source、unit、integration、E2E 已完成（`38e714f`；PR #49 exact HEAD `5cc70ba` CI run #159 attempt 2 全綠）；Preview 三路徑仍待租戶登入實證 |
-| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | ①②⑦⑧⑨ source 已完成；③–⑥ 亦有 deployed `0db681f` Preview 輸出（exports 18/18、welcome upload 8/8），但 current-head 截圖／full CI 待補，故 issue 維持 open |
+| LINE 對外行為三件（ai-settings 走錯端點／預約 MODIFIED 通知／商品訂單通知勾選框） | 3 | #27 | ⚠️ **這一格的敘述在 2026-09-07 之前是假的**，見 §7.4.3。`38e714f` 所在的分支從未併回 `main`：三件裡只有②在 main 上，①③ 的病灶原封不動。①由 PR #268、③由 PR #269 移植回 main；Preview 三路徑仍待租戶登入實證 |
+| 單點與匯出批次（BugReportModal、`/pay` 死連結、班別範本文案、三處匯出、feature-store 丟棄回傳值、分類說明欄位） | 9 | #28 | **九筆全數完成（2026-09-07）**。①②⑦⑧⑨ source 已完成；③–⑥ 的實測不再依賴一次性 Preview 腳本，已進入 `tests/e2e/` 並每輪 CI 執行，證據見下方 §7.4.1 |
 
 `#7` 的清單須補三筆本輪才發現、屬於它範圍但原本沒列到的：顧客匯出、預約匯出、
-歡迎卡片圖片上傳按鈕。
+歡迎卡片圖片上傳按鈕。**這三筆與 #28 ③④⑥ 是同一批入口**，已於 2026-09-07 一併
+以 CI 常駐 E2E 完成驗證，見下。
+
+### 7.4.1 #28 ③–⑥ 的實測歸屬更正（2026-09-07）
+
+上表原本記為「current-head 截圖／full CI 待補」。該敘述在寫下時是正確的——當時
+的證據來自 `scripts/verify/*.cjs` 這類一次性腳本，而 `scripts/verify/out/` 底下
+沒有留下對應輸出。
+
+**但那四項的實測後來已經改寫進 `tests/e2e/`，因此每一輪 CI 都在跑**，不再需要
+任何人手動重跑腳本或補截圖：
+
+| #28 筆 | 測試 | 斷言重點 |
+|---|---|---|
+| ③ 預約匯出 | `tests/e2e/bookings-export.spec.ts` | `waitForEvent('download')`、檔名 `bookings-YYYY-MM-DD.csv`、BOM、表頭、種子資料 `BSEED0001` |
+| ④ 顧客匯出 | `tests/e2e/customers-export.spec.ts` | 同型；2026-09-07 起改斷言 `.xlsx` 與 ZIP 魔數 `50 4B 03 04`，並以 `exceljs` 讀回表頭與種子顧客（見 #246） |
+| ⑤ 庫存匯出 | `tests/e2e/inventory-export.spec.ts` | 以 service role 種一筆商品與異動 → 篩選後匯出 → 驗 BOM／表頭／種進去的商品名與原因字串／畫面顯示檔名等於 `download.suggestedFilename()` |
+| ⑥ 歡迎卡片上傳 | `tests/e2e/welcome-card-upload.spec.ts` | 選檔 → `/api/upload` 與 `/api/settings` 皆 200 → service role 由 bucket **下載回來逐位元組比對** → 重整仍在 → 移除後 bucket `list` 不含該檔名 |
+
+⑥ 的逐位元組比對比原本的「bucket 出現檔案」更強：它排除了「有檔案但內容是別的
+東西」。
+
+CI 證據（`local-isolated-a`，從 `0001` 全新建起的隔離 Supabase）：
+
+- run 34091687270 / job 101646474054：integration 36 檔 238 tests、E2E 17 passed
+  + 1 flaky（`bookings-export` 首次 `waitForEvent('download')` 逾時，retry #1 通過）
+- run 34097639862 / job 101664757616：integration 37 檔 246 tests、E2E 18 passed
+  無 flaky（`customers-export` 已改為 Excel 斷言）
+
+**教訓**：這批項目卡了一段時間，原因不是功能沒做，而是**證據的形式**——一次性
+腳本的輸出沒有歸檔，於是稽核只能記為「待補」。同一件事寫成常駐測試之後，證據
+每輪自動產生，不需要任何人記得去補。歸檔不了的證據，等於沒有證據。
+
+### 7.4.2 #8 三頁的 2026-09-07 實況
+
+上表把「trips／trip 詳情／tour-orders 三頁」記成一列 3 筆。本輪逐頁對 `main` 複驗後
+的實況如下（稽核時 `main` = `86648dc`）：
+
+| 頁面 | 狀態 | 證據 |
+|---|---|---|
+| `/tenant/trips` 列表 | ✅ 已修好 | PR #266（squash `b5a820c`）。發布／下架／申請 Midao／刪除四個操作原本只 `setRows` 再報成功，「新增行程」是空的 onClick。四支 service 與端點早就在 `main`，缺的只有頁面這一層。`tests/unit/trip-list-wiring.08.test.ts` 16 案 |
+| `/tenant/trips/[id]` 詳情 | ✅ 已修好 | PR #267（squash `86648dc`）。`saveBasic` 只 `setTrip(form)` 再報「行程已更新」；團次新增／編輯／批次開團／開關團、加購儲存、三種刪除同形狀；提示區塊的「申請 Midao 上架」連 `onClick` 都沒有。`tests/unit/trip-detail-writes.08.test.ts` 29 案 |
+| `/tenant/tour-orders` | ⛔ 被 schema 擋住 | 頁面**本來就已接 service**（8 處引用四支寫入 service），但那些 service 打的端點依賴 `tour_orders` 表，而該表與 `reserve_seats` rpc 在 `main` 上完全不存在。屬 #8-B，需要新 migration ＋ 擁有者的正式庫 DDL 授權 |
+
+兩件這一輪才看清楚、值得記下來的事：
+
+**① 「刻意留白的端點」配上「沒有跟著停用的按鈕」＝ 假成功。**
+`src/app/api/trip-departures/[id]/route.ts` 檔尾原本寫著
+「DELETE is intentionally absent: order-aware departure deletion belongs to #8-B」——
+判斷本身合理，但詳情頁的刪除鍵並沒有跟著停用，它只是 `setDepartures(filter)` 再報
+「團次已刪除」。**留白的決定沒有傳達到 UI，於是留下的不是缺口而是謊言。**
+PR #267 補上該端點，並沿用同檔 PUT 早就在用的同一個不變量守門
+（`seats_booked > 0` → 409），因此**不需要 `tour_orders`**：`seats_booked` 是
+`reserve_seats` 維護的權威計數器。#8-B 可以在此之上再加規則，那是擴充不是推翻。
+
+**② 前端自己算的數字不能當成功訊息。**
+`POST /api/trips/:id/departures/batch` 本來就回 `{ created, skipped }`
+（撞到同方案同日同時的既有團次會被略過），但 service 的型別寫的是 `request<void>`，
+於是頁面只能拿自己算日曆得到的筆數報成功 —— 開了 7 團、實際只開 1 團，畫面照樣說
+「已建立 7 個團次」。**端點已經在講真話，是型別把它丟掉了。**
+
+### 7.4.4 #50 的 canonical 文件與 `main` 的落差（2026-09-07）
+
+04 分冊 §B 的兩列 keyword-reply 端點契約與 06 分冊 §6.1 描述的是 PR #98 的設計。
+**該 PR 至今未合併**。對 `main` 實查：
+
+```
+src/ 內 imageStorageRef                                 0 命中
+keyword_reply_image_cleanup 表（supabase/migrations）    0 命中
+DELETE /api/settings/line/keyword-replies/image 路由     不存在
+preview 物件的產生                                       未實作
+```
+
+`main` 上實際成立的是 PR #264（squash `83ab9f0`）：專用 public bucket
+`keyword-reply-images`（`0086`）、伺服器端組出的 `{tenantId}/{uuid}.{ext}` 路徑、
+存進 `content.imageUrl` 的裸 URL。
+
+兩份文件已加註實況對照，**設計原文不刪**（那是既定方向），但讀者不得據以推論功能可用。
+這與 §7.4.3 是同一條通則的第三種形態：
+
+| 形態 | 例子 |
+|---|---|
+| 規格存在 ≠ 功能可用 | 04／06 描述 `imageStorageRef`，`main` 只有裸 `imageUrl`（本節） |
+| 路由存在 ≠ 功能可用 | `/api/ai-settings` 齊全，但全 repo 沒人呼叫它（§7.4.3） |
+| 政策提到 ≠ 物件存在 | `p_storage_write` 列了 bucket 名稱，bucket 卻不存在（PB-024） |
+| 符號出現 ≠ 符號被使用 | 四支 service 在 repo 裡各出現兩次（＝定義本身），被誤讀成「頁面已接線」（§7.4.2 的更正） |
+
+四者的共通點：**都用「某個名字在某處出現」代替了「那件事真的會發生」**。
+可機械檢查的判準是「呼叫端在哪裡」，不是「這個名字出現幾次」。
+
+### 7.4.3 #27 的歸屬更正（2026-09-07）
+
+上表對 #27 原記「Source、unit、integration、E2E 已完成（`38e714f`）」。
+2026-09-07 逐格對 `main` 複驗，該敘述**在寫下時描述的是另一棵樹**：
+`38e714f` / `f0e857a` 所在的分支 `fix/issue-27-customer-notification-current-main`
+落後 `main` 273 個 commit、非 `main` 祖先，**從未併回**。與 #5／#6／#8 完全同型（PB-019）。
+
+複驗結果：
+
+```
+① ai-settings 頁呼叫 saveLineSettings        ← 仍在（＝病灶原封不動）
+   services/settings.ts 有 saveAiSettings      0 處
+   tenant_settings.ai schema 有 strictMode     沒有
+   line-events.ts 有 isLikelyChitchat          0 處
+② bookings PUT 的 MODIFIED 通知              ✅ 在 main（三件中唯一落地的）
+   （命名與文案與該分支不同但行為等價）
+③ product-orders/manual 有任何通知程式碼      0 處
+   server/email 有顧客端消費明細信            沒有
+```
+
+`src/app/api/ai-settings/route.ts` **確實在 `main` 上**（GET/PUT 齊全、閘門齊全），
+但**全 repo 沒有任何一處呼叫它**。這正是本輪最該記住的一點：
+**從路由檔存在推論不出功能可用**——路由是否被呼叫，與路由是否存在，是兩件事。
+與 PB-024（政策提到一個 bucket 不代表那個 bucket 存在）同一個形狀。
+
+實際後果不是「AI 沒開起來」，而是主動做錯事：店家寫的 AI 提示詞被存進
+`line.defaultReply`（webhook 分支 ⑥ 的靜態罐頭回覆），於是**被逐字推播給每一位
+傳訊息來的顧客**，畫面卻顯示「AI 客服設定已儲存（已啟用）」。
+
+移植回 main：① PR #268、③ PR #269。② 維持 main 現況，只把移植過來的測試放寬成
+斷言性質（不比對那條分支的識別字與用字）——為了讓測試通過而去改一段能動的程式碼，
+只是把另一條分支的用字強加上去，不是修好任何東西。
+
 
 ### 7.5 本輪未判定（不准猜，列出來等決策）
 
@@ -647,7 +783,15 @@ API 文件**。先前「自動回應訊息無法檢查」就是這樣被證明�
 `register.ts` / `forgot-password.ts`（「驗證碼已發送」＝已送出，合規）、
 `settings.ts` 的開關說明（描述功能，非事實主張）。
 
-### 6.6 issue #5（關鍵字回覆頁接線＋Rich Menu 覆蓋）— 2026-08-25 完成（commit `faa7c22`）
+### 6.6 issue #5（關鍵字回覆頁接線＋Rich Menu 覆蓋）— 2026-09-07 對 `main` 完成（PR #254，main `e7595ae`）
+
+> ⚠️ **2026-09-07 更正歸屬。** 本節原記「2026-08-25 完成（commit `faa7c22`）」。
+> 那次的實作與輸出是真的，但 `faa7c22` 在 `claude/deploy-vercel-project-nnno59` 分支上，
+> **從未併回 `main`**（NOT_ANCESTOR，見 #251）。在 2026-09-07 之前，`main` 的
+> `src/services/keyword-replies.ts` 不存在、`line-events.ts` 只有 416 行、
+> 頁面仍讀頁內 `MOCK_KEYWORD_REPLIES` 常數——本節在那段期間描述的是**另一棵樹**。
+> 下面的分析（18 格裡 14 格沒反應等）仍然成立且已對 `main` 重新驗證，
+> 落地的 commit 是 PR #254 的 `e7595ae`。同型更正見本檔 §1 的兩處。
 
 #### 最重要的數字：**18 格 Rich Menu，修改前有 14 格按下去完全沒反應**
 
@@ -1017,7 +1161,17 @@ migration 0019 ＋ 新 bucket `bug-report-attachments` ＋ `/api/upload` 白名�
 
 `marketing` 頁的接線屬 issue #7 乙段（已在該 issue 清單內）。
 
-### 6.9 issue #6（Flex 主選單三層補齊）— 2026-08-25 完成（commit `38e2320`）
+### 6.9 issue #6（Flex 主選單三層補齊）— 2026-09-07 對 `main` 完成（PR #256，main `dfaf30b`）
+
+> ⚠️ **2026-09-07 更正歸屬。** 本節原記「2026-08-25 完成（commit `38e2320`）」，
+> §6.9-a〜d 的每一段輸出也都是真的——但全部跑在
+> `claude/deploy-vercel-project-nnno59`（最終 `7ad9ac53`），**從未併回 `main`**。
+> 在 2026-09-07 之前，`main` 上 `src/server/flex-menu.ts`、
+> `tests/unit/flex-menu.06.test.ts`、`tests/integration/api/flex-menu.06.test.ts`、
+> `flexCards` 欄位**全部不存在**，`case 'MENU'` 與 `case 'HELP'` 合在一起回純文字清單，
+> 頁面的「發布」只是 `toast.show(t.flex.saved)`。
+> 也就是說 §6.9〜6.9-d 在那段期間描述的是**另一棵樹**。三層由 PR #256 補回 `main` 後才成立；
+> 與 §6.6（#5）同型、同根因。移植時的取捨與新增的 §6.9-e 見下。
 
 儲存層（`flexCards` 進 `tenant_settings.line` jsonb，無 migration）、webhook 層
 （「選單」→ Flex carousel）、頁面層三層都接真了。
@@ -1158,6 +1312,46 @@ Preview 連的是**正式**專案（`egehnijjpgijmccagxac`），所以：測前�
 測後 API 還原＋逐字比對，發現多了一個 `flexCards: []` 鍵就用 service role 寫回原文，
 再查一次證明相同。探測事件用可辨識的假 userId（`U0000verify06probe…`），
 測後刪除並貼出殘留 0 的查詢輸出；`message` 事件不寫 `line_users`，實查亦為 0。
+
+
+### 6.9-e 移植回 `main` 時刻意縮小的範圍（2026-09-07，PR #256）
+
+`7ad9ac53` 上的 `src/server/flex-menu.ts` 有 392 行，移植進 `main` 的是 299 行。
+差的不是精簡，是**三段刻意沒帶過來的東西**，每一段都有前提不成立的理由：
+
+| 沒移植 | 為什麼 |
+|---|---|
+| `richMenuCellAction()` ＋ `FLEX_POPUP_TRIGGER_TEXT` | issue #6 的「Rich Menu 格子設 FLEX_POPUP 也走同一支組裝函式」在 `main` 上**前提不成立**：`POST /api/settings/line/rich-menu/create` 的六格 action 寫死在 `CELL_TEXTS`，沒有任何「每格自訂」的儲存後端（屬 #7 / #19）。搬一支沒有呼叫端的函式過去，只會讓讀到的人以為每格設定已經生效——正是本 issue 要修的那種假象（比照 §8.8 對 `/api/bookings/available-slots` 的處理）。**該項驗收因此不打勾。** |
+| `buildStepGuideBubble()` | `src/server/booking-step-guide.ts` 不在 `main`，帶過來一樣是沒有呼叫端的死碼。 |
+| `POST …/rich-menu/preview-scene-flex` | 不在 #6 的驗收清單內，屬額外功能面。 |
+
+兩支測試都留了「那一段落地時要補回哪一條斷言」的註解，不是靜靜略過。
+單元測試的 `FLEX_BUILDER_FILES` 維持**精確比對**（`toEqual`），目前只有
+`src/server/flex-menu.ts` 一項；#8 的 `trip-flex.ts` 落地時必須回來把它加進清單並說明
+「它是第二個獨立成品」，否則那條鎖會紅。
+
+另外兩件與原分支不同、且是**刻意**的：
+
+1. **移除頁面的 `subscribed ? t.flex.saved : t.feature.flexFreeFallback`。**
+   `POST /api/settings/line/flex-menu` 沒有任何 `requireFeature`，所以未訂閱時按下發布，
+   卡片**其實真的存進去了**，畫面卻說「免費版只能用預設樣式」——那是反方向的假訊息，
+   比沒擋更難查。要擋就要擋在端點（09 分冊 §5 的閘門決定），不在本 issue 範圍。
+2. **`maxCards12` / `maxCards10` 合併成 `maxCards(max)`。** 後者全站零引用且與 12 互相矛盾
+   （文案說 10、程式擋 12）。上限的唯一出處是 `MAX_FLEX_CARDS`，同型缺陷見
+   `src/server/paging.ts` 檔頭（頁面送 `size:200`、端點各自寫死 `.max(100)`）。
+
+### 6.9-f 本輪打勾裡唯一不夠硬的一處（誠實標註）
+
+第 6 條驗收「Flex JSON 通過 LINE 官方 `validate/reply`」引用的是 **2026-08-25 的歷史實測**，
+不是本輪重跑的：`scripts/verify/flex-menu-validate.cjs` 需要真實 channel token 才能跑，
+不屬於 CI 可重跑的資產，因此沒有隨 PR #256 移植進 `main`。
+
+打勾的依據是：**該實測驗的是「LINE 收不收這個形狀的 JSON」——那是 LINE 端的事實，
+不隨我們的 commit 改變**；而本輪移植的 `buildFlexMenuOutcome` / `buildBubble` / `cardAction`
+與白名單 `FLEX_LINK_URL_SCHEMES` 五項**與當時逐字相同**（差異只在刪掉 `richMenuCellAction`
+與 `buildStepGuideBubble` 兩支不影響 carousel 的函式）。
+
+把它變成可重跑資產屬 #251 解決後的後續工作。這一段寫在這裡而不是藏起來。
 
 ### 8.17 CLINIC 的三個名詞（擁有者裁決，解開 §8.13 規則 4 的「尚未設計」）
 

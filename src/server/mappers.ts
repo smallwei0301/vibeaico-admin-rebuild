@@ -108,6 +108,13 @@ export function mapStaff(r: any): Staff {
     active: r.active,
     sortOrder: r.sort_order,
     scheduleMode: r.schedule_mode ?? 'ROTATING',
+    // 0082 的四個欄位都有 NOT NULL DEFAULT，所以正常情況下不會是 null；
+    // 這裡的 ?? 只是保護「migration 尚未套用」的環境，讓它退回與 DB 預設值
+    // 相同的解讀，而不是 undefined 到畫面上變成空白。
+    displayName: r.display_name ?? '',
+    bio: r.bio ?? '',
+    maxConcurrentBookings: Number(r.max_concurrent_bookings ?? 1),
+    visible: r.visible ?? true,
   };
 }
 

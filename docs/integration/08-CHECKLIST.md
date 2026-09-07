@@ -100,7 +100,7 @@
 - [ ] B-2 服務/員工/班表 CRUD
 - [ ] B-3 商品/訂單/庫存
 - [ ] B-4 票券/會員/點數
-- [ ] B-6 報表進階/匯出 **（重開 2026-08-24：零測試檔）**
+- [x] B-6 報表進階/匯出 **（重開 2026-08-24：零測試檔；2026-09-07 打勾）**
       **2026-08-26（issue #7 甲）：重開理由「零測試檔」已消除，但本項仍不打勾。**
       測試檔已建立並全綠：`tests/integration/api/reports-advanced.b6.test.ts` 20/20，
       含 `:「顯式區間：totalBookings／totalRevenue／completedBookings／newCustomers 與直查資料庫現算相符」`、
@@ -116,8 +116,19 @@
       Preview 腳本輸出（18/18 PASS），涵蓋 download event、後端
       `Content-Disposition` 檔名與 UTF-8 BOM；對應 source 守門為
       `export-download-wiring.28.test.ts`／`export-inventory.28.test.ts`。
-      本項仍不打勾：目前候選 HEAD 尚缺相同 Preview 腳本重跑截圖與 full CI 證據；
-      舊的「死按鈕／零呼叫端」敘述已被後續實作推翻，不再作為 blocker。
+      **2026-09-07 打勾。** 先前不打勾的唯一理由是「尚缺相同 Preview 腳本重跑
+      截圖與 full CI 證據」。該理由已消除，而且不是靠補截圖消除的——三個匯出
+      入口的實測已改寫進 `tests/e2e/{bookings,customers,inventory}-export.spec.ts`，
+      **每一輪 CI 都在跑**，不再依賴任何人手動重跑一次性腳本。
+      exact-head 證據：`local-isolated-a` run 34097639862 / job 101664757616
+      （從 `0001` 全新建起的隔離 Supabase）integration 37 檔 246 tests 全過、
+      E2E 18 passed 無 flaky，收尾 `ISOLATED_GREEN` + `LOCAL_CLEANUP_VERIFIED`。
+      同一批 CI 亦涵蓋 `reports-advanced.b6.test.ts`。
+      2026-09-07 另修正一項本欄舊敘述所反映的真實缺陷：顧客匯出的按鈕寫
+      「匯出 Excel」卻回 CSV（上方 2026-08-26 條目裡「檔名為 .csv 而非謊報 .xlsx」
+      的處置在當時是誠實的，但它讓一個 Excel 按鈕長期輸出 CSV）。issue #246 依
+      §8.3／§8.5 引入 `exceljs`，該端點現在產真正的 xlsx，E2E 斷言 ZIP 魔數與
+      `exceljs` 讀回的表頭。
 - [ ] 每做完一組，對應頁面實測 CRUD 一輪
       **（重開 2026-08-24：無完成紀錄；依打勾規則 1，每頁的實測要留下日期＋步驟＋結果）**
 - [ ] 【新增】頁面接線驗收：本 Phase 涉及的每個頁面，其所有寫入按鈕都經過
@@ -141,12 +152,31 @@
 ## Phase 6 — LINE（06 分冊）
 - [ ] `src/server/line.ts`、webhook route、簽章驗證
 - [ ] follow/message 事件處理 + keyword replies + 預設回覆
-      **（issue #5 的頁面接線與 webhook 覆蓋已完成：commit `faa7c22`；
+      **（issue #5 的頁面接線與 webhook 覆蓋已完成。⚠️ 2026-09-07 更正歸屬：
+      原引用 commit `faa7c22` 與 PR #49 `cadab19`，那些證據成立的地方是
+      `claude/deploy-vercel-project-nnno59` 分支，該分支從未併回 `main`（見 #251）。
+      實作由 PR #254 於 2026-09-07 補回 main（`e7595ae`）：
       `keyword-replies.05.test.ts` 驗證 API 建立後 webhook 會回設定內容，
-      `keyword-replies-wiring.05.test.ts` 驗證頁面 CRUD 接線。PR #49 exact
-      `cadab19` 的 run #163 已通過完整 unit／integration／E2E。此合併項仍留白，
-      因為 Preview 的「UI 建立 → 簽章 webhook → LINE mock 捕捉 → 清理」尚未執行，
+      `keyword-replies-wiring.05.test.ts` 驗證頁面 CRUD 接線。
+      **此合併項仍留白**，理由不變且與歸屬無關：Preview 的「UI 建立 → 簽章 webhook →
+      LINE mock 捕捉 → 清理」尚未執行（且該站點驗收受 #251 的 webhook 指向問題阻擋），
       且本項還包含不屬 #5 的 follow／預設回覆整體驗收。）**
+
+      **2026-09-07 追加（issue #50 附加圖片）**：關鍵字回覆的「選檔 → 上傳 →
+      儲存 → webhook 送圖」整條鏈路已在 `main` 上（PR #264 / squash `83ab9f0`）。
+      `/api/upload` 白名單與 `UploadBucket` 各加一項、頁面接既有 `uploadImage()`、
+      `0086_keyword_reply_images_bucket.sql` 建立專用 public bucket
+      （LINE 必須能直接抓圖）。整合測試
+      `keyword-reply-image.50.test.ts:「**service role 直查 Storage**：被引用的物件
+      真的在（不是只驗 URL 字串）」` 與 `:「命中 → type=image，originalContentUrl
+      等於存進去的那個 URL」`。
+
+      ⚠️ **正式庫尚未套用 `0086`**（唯讀查證：正式庫 `storage.buckets` 共 8 個，
+      沒有 `keyword-reply-images`），需要擁有者逐次具名的授權。在那之前，
+      **正式站上店家選圖會 `500 SYS_001`**——這一項因此不打勾。
+      ⚠️ 04／06 分冊描述的 `imageStorageRef` ＋ preview ＋ 清理 queue 設計在 `main`
+      上零命中，見 06 分冊 §6.1 的實況對照表。
+
 - [ ] chat 頁雙向訊息
 - [x] 預約狀態推播 + 額度控管
       **（重開 2026-08-24：line-notify 實作在但 tests/ 全域零引用，推播路徑的額度
@@ -185,36 +215,55 @@
 - [x] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）
-      **（issue #5：`line-keyword-coverage.test.ts` 逐項守住三業態 18 格與 15 組
-      系統關鍵字；`keyword-replies.05.test.ts` 驗證自訂優先、停用與完整矩陣。
-      PR #49 `cadab19` run #163 的完整 gates 全綠。）**
+      **（issue #5。⚠️ 2026-09-07 更正歸屬：本項原引用 PR #49 `cadab19` 與
+      `line-keyword-coverage.test.ts`，那些證據成立的地方是
+      `claude/deploy-vercel-project-nnno59` 分支，而該分支**從未併回 `main`**（見 #251）。
+      實作於 2026-09-07 由 PR #254 補回 main（`e7595ae`），檔名為
+      `tests/unit/line-keyword-coverage.05.test.ts`（81 案，程式化列舉三業態 18 格
+      與 15 組系統關鍵字）與 `tests/integration/api/keyword-replies.05.test.ts`
+      （自訂優先、停用、完整矩陣）。exact head `43f9882` 的 `local-isolated-a`
+      從 0001 全新建庫，integration 與 E2E 皆 success。本項自 2026-09-07 起對 main 成立。）**
 - [x] 【新增】flex-menu 端到端：設定頁存主選單 → webhook 收「選單」→ mock LINE
       收到依設定組出的 Flex Message；flexMenuEnabled=false 時依 fallback 設定回應
-      **（2026-08-25 打勾。打勾的依據是本項自己的定義——「存主選單 → webhook 收
-      『選單』→ mock LINE 收到 Flex；關閉時依 fallback 回應」——這幾件事逐條有證據；
-      §6.9-c 當初卡住這一項的「Preview ＋ 真實 LINE 實測」也補做了。
-      ⚠️ 但 issue #6 的第 5 條驗收**仍留白**，見底下最後一行；14 分冊 §6.9-d 記完整證據。）**
-      - 單元 100 綠：`tests/unit/flex-menu.06.test.ts`（空卡片／1 張／12 張／
-        含廣告卡／`{shopName}` 替換／HINT・SILENT 分支）
-      - 整合 38 綠：`tests/integration/api/flex-menu.06.test.ts`
-        （`存 N 張卡片 → 顧客打「選單」→ 收到 flex，carousel 有 N 個 bubble`、
-        `SILENT → **整個 mock.requests 為空**（bot 真的閉嘴，一則請求都沒發）`）
-      - 真實 LINE：`scripts/verify/flex-menu-validate.cjs`
-        （官方 `POST /v2/bot/message/validate/reply`，正向 11／負向對照 4／
-        scheme 探測 21，不符預期 0；不耗推播額度）
-      - Preview 站自主實測：`scripts/verify/flex-menu-preview-live.cjs`
-        （編卡→發布→重整仍在→簽章 webhook「選單」→ 正式 DB 留下該事件的
-        chat_messages 列 → 逐字還原並清理）
-      - 出站 reply 側錄：`scripts/verify/flex-menu-reply-capture.cjs`
-        （同一 commit、同一份正式資料，`LINE_API_BASE` 指向側錄轉發器，
-        逐字證明我們真的對 `api.line.me/v2/bot/message/reply` 送出了那份 Flex）
+      **（2026-09-07 依 `main` 的實況重寫。**
+      ⚠️ **這一項在 2026-08-25〜2026-09-07 之間對 `main` 是假的勾**：當時的六條證據
+      全部指向 `claude/deploy-vercel-project-nnno59`（`7ad9ac53`）上的檔案，
+      而 `main` 上 `src/server/flex-menu.ts`、`tests/unit/flex-menu.06.test.ts`、
+      `tests/integration/api/flex-menu.06.test.ts` 與三支 `scripts/verify/*.cjs`
+      **全部不存在**，`case 'MENU'` 還跟 `case 'HELP'` 合在一起回純文字清單。
+      與 #5 在本檔留下的問題同型（已由 PR #255 更正）；根因見 #251、14 分冊 §6.9。
+      實作由 **PR #256** 補回 `main`（squash `dfaf30b`）後才成立。**）**
+      - **對合併後 `main` 的內容回查**（squash 會產生新 sha，所以不看祖先關係，看內容）：
+        `src/server/flex-menu.ts` EXISTS、`tenant-settings` 有 `flexCards: z.array(...)`、
+        端點 `bodySchema` 有 `flexCards: true`、`line-events` 有 `return replyFlexMenu(ctx);`、
+        `services` 有 `export const saveFlexMenu`、頁面有 `await saveFlexMenu(` ×2；
+        舊的假成功 `toast.show(subscribed ? t.flex.saved` 與 `notReadyFlexMenu` 佔位皆為 0。
+      - 單元 **106 綠**：`tests/unit/flex-menu.06.test.ts`（空卡片／1 張／12 張／
+        含廣告卡／`{shopName}` 替換／HINT・SILENT 分支／`uri` action 白名單與負向案例／
+        兩條靜態鎖：src 底下只有 `flex-menu.ts` 會組 bubble・carousel 與 `uri` action）
+      - 整合：`tests/integration/api/flex-menu.06.test.ts` 由 exact head `7430ba8` 的
+        `local-isolated-a` 跑，`TEST_ENV_ID: local-pr-256-a`，**fresh local Supabase 從 0001 建庫**
+        （`Prove the TEST target is local` 通過，未用任何 remote TEST secret），
+        `Run integration tests on the isolated database` success、E2E 18 passed、
+        收尾 `ISOLATED_GREEN — slot a` ＋ `LOCAL_CLEANUP_VERIFIED: local-pr-256-a`。
+        關鍵案例：`存 N 張卡片 → 顧客打「選單」→ carousel 有 N 個 bubble`、
+        `SILENT → **整個 mock.requests 為空**`、`SILENT 不得落到分支 ⑤ AI／⑥ defaultReply`、
+        `秘密欄位仍然不在 jsonb 裡`、`只送 flexCards 不會洗掉同一個 jsonb 裡的其他設定`。
+      - typecheck 0 error、`npm test` **1119 passed（96 檔）**（合併前 main 為 1012）、
+        build exit 0、`repo-integrity-guard` `ok: true`。
+      - ⚠️ **本項刻意不涵蓋 issue #6 的兩段**，兩段都在 14 分冊 §6.9-e／§6.9-f 說明：
+        ① 「Rich Menu 格子設 FLEX_POPUP 走同一支組裝函式」——前提不成立
+        （`rich-menu/create` 六格 action 寫死在 `CELL_TEXTS`，無每格自訂儲存後端，屬 #7 / #19），
+        沒有移植 `richMenuCellAction()`，該驗收**不打勾**；
+        ② 「Flex JSON 通過 LINE 官方 `validate/reply`」引用的是 2026-08-25 的歷史實測
+        （驗的是 LINE 端的事實，且組裝邏輯逐字相同），`flex-menu-validate.cjs` 需真實 token，
+        不是 CI 可重跑資產，沒有隨 PR #256 進 `main`。
       - ⚠️ **仍未驗到、也不打算假裝驗到的一段**：「訊息真的出現在顧客手機上」。
         `replyToken` 是 LINE 在真實事件裡發的一次性 token，偽造不出來
         （文件上那兩個「測試用」token 實測一樣回 400 Invalid reply token），
-        而 Midao 頻道目前零追蹤者（`line_users` 空、
-        `GET /v2/bot/followers/ids` 回 403 未開放），也沒有可推播的真實 userId。
-        這一段的完成條件是**有真人對 Midao 帳號打一次「選單」**，屬人工介入點。
-
+        而 Midao 頻道目前零追蹤者（`line_users` 空、`GET /v2/bot/followers/ids` 回 403），
+        也沒有可推播的真實 userId。完成條件是**有真人對 Midao 帳號打一次「選單」**，屬人工介入點；
+        另需先處理 #251（該 channel 的 webhook 仍指向舊分支 preview，對 `main` 的驗證不會反映到它身上）。
 - [x] 【新增】老闆通知 owner-notify（issue #18 / 補齊-3；契約 06 分冊 §5.5，2026-08-26）
       **（打勾依據＝下列逐條證據；未達成的兩項寫在最後，沒有打勾。）**
       - migration `0023_owner_notify` 已套用**兩個** Supabase 專案，各自以
@@ -291,13 +340,57 @@
 > Midao 申請、詳情頁的全部儲存都只 setState + toast，「新增行程」是空 onClick）；
 > `src/services/tours.ts` real 分支呼叫的 publish/departures/tour-orders 等多支
 > route **不存在**（接上即 404）；12 §4 指定的 tours.10 測試零檔。詳見 14 分冊。
+>
+> ✅ **2026-09-07 更新**：上段描述的寫入面假成功，`trips` 兩頁已修好
+> （PR #266 列表頁 squash `b5a820c`、PR #267 詳情頁 squash `86648dc`），
+> route 也不再是「接上即 404」（`0066`–`0068` 建了 trips/plans/departures/addons
+> 與對應路由，本輪另補齊 `DELETE /api/trip-departures/:id`）。
+> **`tour_orders` 表與 `reserve_seats` rpc 仍不在 `main` 上**，這一件事直接決定了
+> 下面哪幾格還打不了勾。逐頁實況見 14 分冊 §7.4.2。
 
 - [ ] migration 0012（trips/plans/departures/tour_orders/tenant_payment_methods + reserve_seats rpc）
+
+      **四項中兩項成立、兩項不存在。** `trip_departures` 與 `trip_addons` 由
+      `0066_issue_8_tour_domain_core.sql` 建立（`0067` 補 tenant-aware 複合 FK 與索引、
+      `0068` 收緊 REST DML ACL），已在 `main`。**`tour_orders` 與 `reserve_seats` rpc
+      在 `main` 上完全不存在**（`git grep` 零命中），屬 #8-B，需要新 migration ＋
+      擁有者對正式庫 DDL 的逐次具名授權。
+
 - [ ] 並發下單搶最後一席恰好一成一敗（TOUR_001）
+
+      整個前提（seats 的原子扣減 rpc）尚未存在。屬 #8-B。
+
 - [ ] 綠界 sandbox 全流程 + callback 冪等；匯款後五碼回報 + 確認收款
 - [ ] cron tour-order-expiry 釋放逾期單名額
 - [ ] 後台三個新頁（行程/團次/旅遊訂單）+ TOUR_MODULE 功能旗標
-- [ ] LINE「行程」指令回 Flex 輪播
+
+      **三頁中兩頁完成、一頁被 schema 擋住。** `/tenant/trips` 列表（PR #266）與
+      `/tenant/trips/[id]` 詳情（PR #267）的寫入面已全部接上真實端點：共用 `runAction`
+      —— 先呼叫端點、成功之後才 `await load()` 重讀（不做樂觀更新）、失敗顯示後端的
+      `ApiError.message`、失敗不關閉對話框。`/tenant/tour-orders` 頁**本來就已接
+      service**，但那些端點依賴不存在的 `tour_orders` 表，接線在、鏈路不通。
+      TOUR_MODULE 閘門在四張表的每一支 mutation 上都有（`tours.10` 的 403 FEAT_001
+      矩陣逐支驗證），本輪把新增的 DELETE 也加進該矩陣。
+
+      ⚠️ 本輪記下的一條通則（14 §7.4.2 ①）：**刻意留白的端點，必須連同 UI 一起留白。**
+      `DELETE /api/trip-departures/:id` 原本以註解宣告「留給 #8-B」，但詳情頁的刪除鍵
+      沒有跟著停用，於是留下的不是缺口而是一顆假成功。
+
+- [x] LINE「行程」指令回 Flex 輪播
+
+      **PR #258 已合併（squash `fd87b9b`）。** `src/server/trip-flex.ts` 的
+      `buildTripCarousel()` 是全專案唯一組行程輪播的地方；`line-events.ts` 的
+      `case 'TRIP'` / `case 'DEPARTURE'` 改走 `replyTrips()` / `replyDepartures()`，
+      兩支各自先過 `isFeatureActive(tenantId, 'TOUR_MODULE')` 才做任何查詢。
+      單元 `tests/unit/trip-flex.08.test.ts` 23 案（hero 只收 https、text 不得為空字串、
+      `minPrice=null` 的「價格洽詢」與 `minPrice=0` 的真免費分得開、12 張上限截斷、
+      uri 含跳脫）；整合由 exact head 的 `local-isolated-a`（fresh local Supabase
+      從 `0001` 建庫）實跑，含 TOUR_MODULE 停用後不洩漏行程名的負向案例。
+
+      ⚠️ `case 'ORDER'`（我的訂單）**維持「準備中」，而且那是真的**：`tour_orders`
+      不存在，沒有任何地方查得到旅遊訂單。
+      ⚠️ 「Flex 過 LINE 官方 validate/reply 驗證」未執行——需要真實 channel token，
+      不屬 CI 可重跑資產（同 #6 的同名子項）。
 
 ## Phase 9 — 旅客與公開 API（11 分冊）
 - [ ] migration 0013（traveler_profiles/trip_reviews/partner_clients + customers.traveler_user_id）
@@ -542,7 +635,14 @@
       證據：`src/services/reports.ts` `exportBookingsCsv` 走 `downloadAttachment()`
       （檔名唯一來源是 Content-Disposition，見 `src/lib/download.ts`）；
       頁面兩個選單項各送自己的 format，不自組檔名
-- [ ] Playwright download 事件輸出 —— **留白**，同 ① 的理由（本輪不 push）
+- [x] Playwright download 事件輸出
+
+      **2026-09-07 打勾。** 留白的理由是「本輪不 push」，該限制早已不適用。
+      `tests/e2e/bookings-export.spec.ts` 以 `page.waitForEvent('download')` 真的
+      等到下載事件，並斷言檔名 `bookings-YYYY-MM-DD.csv`、讀回檔案驗 UTF-8 BOM
+      （`charCodeAt(0) === 0xfeff`）、表頭 `預約編號,預約時間,顧客姓名` 與種子資料
+      `BSEED0001`。CI 常駐執行，證據見 `local-isolated-a` run 34097639862
+      （E2E 18 passed）。
 
 **④⑤ 兩支用途未明**
 

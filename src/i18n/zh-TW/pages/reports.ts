@@ -31,8 +31,11 @@ export const reportsPage = {
     label: '匯出',
     excel: '匯出 Excel',
     csv: '匯出 CSV',
-    fileName: (date: string, ext: string) => `營運報表_${date}.${ext}`,
+    /* issue #246：移除 fileName(date, ext)。它讓頁面自己拼一個與實際下載檔案
+       無關的名字，是 14-GAP-AUDIT §7 判準要抓的「捏造檔名」。檔名一律由後端
+       Content-Disposition 提供，前端只負責顯示。 */
     success: '報表匯出成功',
+    successAs: (fileName: string) => `報表匯出成功：${fileName}`,
     failed: '匯出失敗，請稍後再試',
     failedPrefix: '匯出失敗:',
   },
