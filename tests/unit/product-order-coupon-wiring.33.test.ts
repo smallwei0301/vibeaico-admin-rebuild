@@ -69,3 +69,45 @@ describe('product-orders #33①: redemption logic exists in exactly one place', 
     expect(productOrdersRoute).toContain(".eq('id', id).eq('tenant_id', t.tenantId)");
   });
 });
+
+/**
+ * 折抵金額要能在重新整理之後還看得到，靠的是 product_orders 的兩個真欄位。
+ * 這兩欄在 TEST 與正式庫本來就存在，卻不在 repo 的 migration 帳本裡（#33 的
+ * 0027 只送到資料庫、程式碼從未合併），所以從 0001 全新建起來的資料庫沒有
+ * 它們。0081 把它們補進帳本；下面這組斷言把「帳本、寫入、讀出、畫面」四段
+ * 綁在一起，任何一段被拿掉都會轉紅。
+ */
+describe('product-orders #33①: the discount survives a reload', () => {
+  const migration = read('supabase/migrations/0081_reconcile_product_order_coupon_fields.sql');
+  const mappers = read('src/server/mappers.ts');
+  const types = read('src/lib/types.ts');
+
+  it('0081 adds both columns idempotently, so it is a no-op on TEST/Production', () => {
+    expect(migration).toContain('add column if not exists coupon_discount numeric');
+    expect(migration).toContain('add column if not exists coupon_instance_id uuid');
+    // 既有資料庫上必須是真 no-op：不得出現會改動既有欄位的語句
+    expect(migration).not.toMatch(/alter\s+column/i);
+    expect(migration).not.toMatch(/drop\s+column/i);
+  });
+
+  it('the FK is guarded so re-running cannot fail on an existing constraint', () => {
+    expect(migration).toContain('product_orders_coupon_instance_id_fkey');
+    expect(migration).toContain('if not exists (');
+    expect(migration).toContain('from pg_constraint');
+  });
+
+  it('the endpoint writes the breakdown, not only the reduced total', () => {
+    expect(productOrdersRoute).toContain('coupon_discount: redemption.discount');
+    expect(productOrdersRoute).toContain('coupon_instance_id: redemption.instanceId');
+  });
+
+  it('the mapper reads it back and treats NULL as a real zero, not unknown', () => {
+    expect(mappers).toContain('couponDiscount: Number(r.coupon_discount ?? 0)');
+    expect(types).toContain('couponDiscount?: number');
+  });
+
+  it('DEFAULT_EXTRAS cannot clobber the persisted value back to 0', () => {
+    // 這是本輪真正的缺陷：toRow 的兩個 spread 都排在 `...o` 後面。
+    expect(page).toContain('o.couponDiscount === undefined ? base : { ...base, couponDiscount: o.couponDiscount }');
+  });
+});

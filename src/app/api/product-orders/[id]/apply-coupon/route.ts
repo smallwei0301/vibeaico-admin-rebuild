@@ -5,15 +5,16 @@
 // 核銷邏輯（找票券、核對顧客、核銷、算折扣）與 bookings 的 apply-coupon
 // 端點共用同一支 src/server/coupons.ts redeemCoupon()，不重複實作。
 //
-// product_orders 表沒有可以存「本單套用了哪張票券／折抵多少」的欄位
-// （0004 migration：僅 total_amount，沒有 custom_fields 這類 jsonb 欄位可借
-// 用——bookings 表才有 custom_fields）。這裡把折抵直接套用到 total_amount
-// （這是真正的錢，訂單金額确实變少了），並把這次折抵的金額 couponDiscount
-// 原樣回給前端當下顯示；但沒有欄位可以讓「這筆訂單被折抵過多少」在之後重新
-// 查詢訂單時還能看到——重新整理後這個折抵數字會從畫面上消失（只剩
-// total_amount 已經是折抵後的金額）。若要讓折抵金額能在訂單詳情長期顯示，
-// 需要在 product_orders 上新增一個像 coupon_discount numeric not null
-// default 0 的欄位（本任務不擅自加 migration，留給 Issue owner 決定）。
+// 折抵金額與「用了哪張票券」都會寫回 product_orders：
+//   total_amount       扣掉折抵之後的實付金額（這是真正的錢）
+//   coupon_discount    這次折抵了多少（total_amount 已經是扣完的，這欄是明細）
+//   coupon_instance_id 是哪一張 coupon_instances 做的，讓折抵可回溯到具體票券
+//
+// 這兩個欄位在 TEST 與正式庫本來就存在，但**不在 repo 的 migration 帳本裡**
+// （issue #33 的 0027 只送到資料庫、程式碼從未合併）。0081 把它們補進帳本，
+// 否則從 0001 全新建起來的資料庫沒有這兩欄，local-isolated CI 會與
+// canonical TEST 得到相反的結果。詳見
+// supabase/migrations/0081_reconcile_product_order_coupon_fields.sql。
 import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
@@ -38,7 +39,11 @@ export const POST = handle(async (req, { params }) => {
     t.supabase, t.tenantId, b.code, order.customer_id, Number(order.total_amount));
 
   const { error: uErr } = await t.supabase.from('product_orders')
-    .update({ total_amount: redemption.newAmount })
+    .update({
+      total_amount: redemption.newAmount,
+      coupon_discount: redemption.discount,
+      coupon_instance_id: redemption.instanceId,
+    })
     .eq('id', id).eq('tenant_id', t.tenantId);
   if (uErr) throw uErr;
 

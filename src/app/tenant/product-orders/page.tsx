@@ -103,11 +103,14 @@ const PAGE_SIZE = 20;
 
 type OrderRow = ProductOrder & OrderExtras;
 
-const toRow = (o: ProductOrder): OrderRow => ({
-  ...o,
-  ...DEFAULT_EXTRAS,
-  ...(MOCK_ORDER_EXTRAS[o.id] ?? {}),
-});
+const toRow = (o: ProductOrder): OrderRow => {
+  const base = { ...o, ...DEFAULT_EXTRAS, ...(MOCK_ORDER_EXTRAS[o.id] ?? {}) };
+  // couponDiscount 已經是後端真欄位（product_orders.coupon_discount，見 0081），
+  // 不再是頁內假欄位。上面兩個 spread 都排在 `...o` 後面，會用 0 或示範資料把
+  // 真值洗掉，所以真值存在時一律蓋回去。
+  // 骨架模式的 ProductOrder 沒有這個欄位（undefined），維持吃 MOCK_ORDER_EXTRAS。
+  return o.couponDiscount === undefined ? base : { ...base, couponDiscount: o.couponDiscount };
+};
 
 const STATUS_TONE: Record<ProductOrderStatus, 'warning' | 'info' | 'success' | 'neutral'> = {
   PENDING: 'warning',

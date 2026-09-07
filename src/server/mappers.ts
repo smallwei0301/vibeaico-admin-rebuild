@@ -148,6 +148,9 @@ export function mapProductOrder(r: any): ProductOrder {
     status: r.status,
     paymentStatus: r.payment_status,
     createdAt: r.created_at,
+    // coupon_discount 可為 NULL（沒套用票券）。這裡收斂成 0：折抵「真的是零」，
+    // 不是「不知道」——0081 migration 檔頭有同一段說明。
+    couponDiscount: Number(r.coupon_discount ?? 0),
   };
 }
 
