@@ -109,7 +109,7 @@ function classifierFailure(detail, changedCount = 0, runtimePath = '', changedPa
  * the revision, but an empty, malformed, or all-zero SHA (for example, the first push
  * to a branch) must fail closed before invoking git.
  */
-function isUsableRevision(revision) {
+export function isUsableRevision(revision) {
   return typeof revision === 'string'
     && /^(?!0{40}$)[0-9a-f]{40}$/i.test(revision);
 }
@@ -120,7 +120,25 @@ function isUsableRevision(revision) {
  */
 export function classifyEvent(eventName, event, runGit = defaultRunGit) {
   if (eventName === 'workflow_dispatch') {
-    return withRevisions(classifierFailure('workflow-dispatch'));
+    const base = event?.inputs?.base_revision;
+    const head = event?.inputs?.expected_head;
+    const baseRevision = typeof base === 'string' ? base : '';
+    const headRevision = typeof head === 'string' ? head : '';
+
+    // A dispatched run is used for TEST lane transitions, so it must compare the
+    // exact PR base to the exact dispatched head. Never leave either revision
+    // empty: the downstream integrity guard must not silently choose HEAD^.
+    if (!isUsableRevision(baseRevision) || !isUsableRevision(headRevision)) {
+      return withRevisions(classifierFailure('workflow-dispatch-missing-revision'));
+    }
+
+    try {
+      return withRevisions(classifyChangeRecords(parseNameStatus(
+        runGit('diff', '--name-status', '-z', '--find-renames', baseRevision, headRevision),
+      )), baseRevision, headRevision);
+    } catch {
+      return withRevisions(classifierFailure('git-or-parse-failure'), baseRevision, headRevision);
+    }
   }
 
   let base;
@@ -149,7 +167,13 @@ export function classifyEvent(eventName, event, runGit = defaultRunGit) {
 }
 
 function withRevisions(result, baseRevision = '', headRevision = '') {
-  return { ...result, baseRevision, headRevision };
+  // Revisions cross a line-based GitHub output boundary. Never preserve rejected
+  // dispatch input here: an embedded CR/LF could create a forged output key.
+  return {
+    ...result,
+    baseRevision: isUsableRevision(baseRevision) ? baseRevision : '',
+    headRevision: isUsableRevision(headRevision) ? headRevision : '',
+  };
 }
 
 function defaultRunGit(...args) {
@@ -164,7 +188,8 @@ function writeGithubOutput(result) {
     process.env.GITHUB_OUTPUT,
     `docs_only=${result.docsOnly}\nreason=${result.reason}\ndetail=${result.detail}\n` +
       `changed_count=${result.changedCount}\nruntime_path=${runtimePath}\n` +
-      `base_revision=${result.baseRevision}\nhead_revision=${result.headRevision}\n`,
+      `base_revision=${isUsableRevision(result.baseRevision) ? result.baseRevision : ''}\n` +
+      `head_revision=${isUsableRevision(result.headRevision) ? result.headRevision : ''}\n`,
   );
 }
 
