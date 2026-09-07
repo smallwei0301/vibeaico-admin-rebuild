@@ -8,6 +8,7 @@ import {
 } from '@/config/tenant-settings';
 
 type BasicSettings = TenantSettings['basic'];
+type BusinessSettings = TenantSettings['business'];
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
 import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
@@ -36,8 +37,21 @@ const getMockBasicSettingsOverrides = () => {
   return mockBasicSettingsStore.get(MOCK_MODE)!;
 };
 
+/**
+ * #33②：帶 business 群組存檔後，後端回報這次「自動封鎖時段」重建的影響。
+ * 乾跑端點（previewBusinessHours）回同一個形狀，差別只在有沒有真的寫入。
+ */
+export interface BusinessHoursImpact {
+  perDayMode: boolean;
+  autoBlockCount: number;
+  conflictBookingCount: number;
+  manualWeeklyBlockCount: number;
+}
+
 export interface TenantSettingsSaveResult {
   welcomeCardImageCleanupPending?: boolean;
+  /** 只有 patch 帶 business 群組時才會出現（#33②） */
+  businessHours?: BusinessHoursImpact;
 }
 
 export interface UploadRichMenuBgImageResult {
@@ -184,6 +198,24 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
     () => request<TenantSettingsSaveResult>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(patch),
+    }),
+  );
+
+/**
+ * POST /api/settings/weekly-business-hours/draft —— **乾跑**，一列都不寫。
+ *
+ * ⚠️ 「乾跑」是我方選定的語意，不是原站考據結果；依據與反面證據見
+ * src/server/business-hours-blocks.ts 檔頭。真正的寫入走 saveTenantSettings。
+ *
+ * 骨架模式沒有這條鏈路（沒有 block_times 假資料可算），回 null 代表「算不出來」，
+ * 呼叫端據此**不顯示**那幾句文案——而不是顯示一個編造的數字。
+ */
+export const previewBusinessHours = (business: BusinessSettings) =>
+  adapt<BusinessHoursImpact | null>(
+    () => null,
+    () => request<BusinessHoursImpact>('/api/settings/weekly-business-hours/draft', {
+      method: 'POST',
+      body: JSON.stringify(business),
     }),
   );
 

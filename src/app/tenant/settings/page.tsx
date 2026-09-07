@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { changePassword } from '@/services';
-import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/services/settings';
 import { removeWelcomeCardImage as removeWelcomeCardImageAsset, uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
@@ -216,6 +216,14 @@ export default function SettingsPage() {
     return '';
   };
 
+  /**
+   * #33②：存檔前先乾跑拿「偵測到的」數字（衝突預約、手動每週封鎖），存檔後拿
+   * 「已建立」的數字（自動封鎖）。四句既有文案各自吃**對應來源**的數字。
+   *
+   * 規則：**端點回不出來的數字就不顯示那一句**，零筆時也不顯示——
+   * 顯示「0 筆既有預約落在非營業時段」是一句沒有意義的警告。
+   * 乾跑失敗不擋存檔（它只是預覽），但那幾句就不會出現。
+   */
   const saveBusiness = async () => {
     if (!draft) return;
     const err = validateBusiness(draft.business);
@@ -223,7 +231,47 @@ export default function SettingsPage() {
       toast.show(`${t.business.validation.checkPrefix}${err}`, 'warning');
       return;
     }
-    await persist('business', { business: draft.business }, t.business.saved);
+
+    let preview: Awaited<ReturnType<typeof previewBusinessHours>> = null;
+    try {
+      preview = await previewBusinessHours(draft.business);
+    } catch {
+      preview = null;
+    }
+
+    setSavingSection('business');
+    try {
+      const result = await saveTenantSettings({ business: draft.business });
+      toast.show(t.business.saved);
+
+      const created = result?.businessHours?.autoBlockCount;
+      if (typeof created === 'number' && created > 0) {
+        toast.show(t.business.autoBlockCreated(created));
+      }
+
+      const conflicts = preview?.conflictBookingCount;
+      if (typeof conflicts === 'number' && conflicts > 0) {
+        // 有公休日設定時用「公休日或非營業時段」那一句，否則用只講時段的那一句。
+        toast.show(
+          draft.business.closedDays.length
+            ? t.business.conflictWarning(conflicts)
+            : t.business.conflictWarningHours(conflicts),
+          'warning',
+        );
+      }
+
+      const manualKept = preview?.manualWeeklyBlockCount;
+      if (typeof manualKept === 'number' && manualKept > 0) {
+        toast.show(t.business.manualBlockKept(manualKept));
+      }
+    } catch (e) {
+      toast.show(
+        `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setSavingSection(null);
+    }
   };
 
   const saveNotification = async () => {

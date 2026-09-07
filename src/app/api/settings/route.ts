@@ -16,6 +16,7 @@ import {
   type TenantSettings,
 } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
+import { rebuildAutoBlocks, type BusinessHoursImpact } from '@/server/business-hours-blocks';
 
 /**
  * GET /api/settings — 回 TenantSettings。
@@ -154,6 +155,15 @@ export const PUT = handle(async (req) => {
     if (error) throw error;
   }
 
+  // #33②：帶 business 群組存檔時，依新的營業時段全刪重建「自動產生」的封鎖
+  // 時段（auto=true），手動建立的一列都不動。回傳實際建立的筆數與影響數字，
+  // 讓頁面能引用 settings.ts 那四句既有文案——**回不出來的數字就不顯示那一句**。
+  // 規則與依據見 src/server/business-hours-blocks.ts 檔頭。
+  let businessHours: BusinessHoursImpact | null = null;
+  if (b.business) {
+    businessHours = await rebuildAutoBlocks(t.supabase, t.tenantId, b.business);
+  }
+
   let welcomeCardImageCleanupPending = false;
   if (notify) {
     const nextWelcomeCardImageUrl = notify.welcomeCardImageUrl;
@@ -184,5 +194,8 @@ export const PUT = handle(async (req) => {
     }
   }
 
-  return welcomeCardImageCleanupPending ? ok({ welcomeCardImageCleanupPending: true }) : ok();
+  const payload: Record<string, unknown> = {};
+  if (welcomeCardImageCleanupPending) payload.welcomeCardImageCleanupPending = true;
+  if (businessHours) payload.businessHours = businessHours;
+  return Object.keys(payload).length ? ok(payload) : ok();
 });
