@@ -41,6 +41,19 @@ export const lineSettingsSchema = z.object({
   flexHeaderSubtitle: z.string().default(''),
   flexShowTip: z.boolean().default(true),
   campaignKeywordEnabled: z.boolean().default(true),
+  /**
+   * 店家關掉了哪幾組系統內建關鍵字（存 group key）。
+   *
+   * 放在 line jsonb 而不是新開一張表：它與 autoReplyEnabled／defaultReply 同一類
+   * （店家層設定，CLAUDE.md「多租戶設定的兩層」下半層）、同一個儲存位置、同一支
+   * PUT /api/settings/line 端點，不需要 migration。
+   *
+   * 生效條件：**無條件生效，不看 KEYWORD_REPLY 訂閱狀態**（14 分冊 §8.16 擁有者
+   * 裁決）。「關掉內建回覆」是少做一件事，不該需要付費；付費閘門只擋「覆蓋」
+   * ——也就是店家自己編一組新的關鍵字回覆（`keyword_replies` 表的寫入端點
+   * requireFeature('KEYWORD_REPLY')，09 分冊 §5）。
+   */
+  systemKeywordGroupsDisabled: z.array(z.string()).default([]),
   /** Rich Menu */
   richMenuTheme: z.enum(['LINE_GREEN', 'OCEAN_BLUE', 'ROYAL_PURPLE', 'SUNSET_ORANGE', 'DARK'])
     .default('LINE_GREEN'),

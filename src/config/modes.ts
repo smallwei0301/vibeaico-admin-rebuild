@@ -42,6 +42,14 @@ export type ModePreset = {
   showActionInbox: boolean;
   /** 報表頁使用的資料口徑；GUIDE 專屬報表完成前不顯示通用報表。 */
   reportingMode: 'GENERAL' | 'GUIDE_PENDING';
+  /**
+   * Rich Menu 六格：`label` 是顧客看到的按鈕字，`text` 是按下去實際送出的訊息。
+   *
+   * ⚠️ 這是單一事實來源（13 分冊）。webhook 的內建意圖表必須涵蓋這裡每一個
+   * `text`，否則顧客按下去就是沒反應——`tests/unit/line-keyword-coverage.05.test.ts`
+   * 以程式化列舉守住這條，改了 cells 卻少 handler 會自動轉紅。
+   */
+  richMenuCells: readonly { label: string; text: string }[];
 };
 
 export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
@@ -56,6 +64,14 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES', 'PRODUCTS', 'PORTFOLIO'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    richMenuCells: [
+      { label: '立即預約', text: '預約' },
+      { label: '我的預約', text: '我的預約' },
+      { label: '服務項目', text: '服務項目' },
+      { label: '會員卡', text: '會員卡' },
+      { label: '優惠票券', text: '優惠' },
+      { label: '聯絡我們', text: '聯絡我們' },
+    ],
   },
   GUIDE: {
     icon: Compass,
@@ -72,6 +88,14 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['TRIPS', 'PORTFOLIO'],
     showActionInbox: true,
     reportingMode: 'GUIDE_PENDING',
+    richMenuCells: [
+      { label: '所有行程', text: '行程' },
+      { label: '近期團次', text: '團次' },
+      { label: '我的訂單', text: '我的訂單' },
+      { label: '常見問題', text: '常見問題' },
+      { label: '優惠票券', text: '優惠' },
+      { label: '聯絡嚮導', text: '聯絡我們' },
+    ],
   },
   CLINIC: {
     icon: Hospital,
@@ -84,6 +108,14 @@ export const MODE_PRESETS: Record<BusinessType, ModePreset> = {
     shopSections: ['SERVICES'],
     showActionInbox: false,
     reportingMode: 'GENERAL',
+    richMenuCells: [
+      { label: '線上掛號', text: '預約' },
+      { label: '我的掛號', text: '我的預約' },
+      { label: '診療項目', text: '服務項目' },
+      { label: '看診進度', text: '看診進度' },
+      { label: '門診時間', text: '營業時間' },
+      { label: '聯絡診所', text: '聯絡我們' },
+    ],
   },
 };
 

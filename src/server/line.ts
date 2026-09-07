@@ -47,7 +47,7 @@ export async function getWebhookTenantWithCredentials(shopCode: string) {
   const { data } = await admin
     .from('tenants')
     .select(
-      'id, shop_code, name, tenant_settings(line, line_channel_secret_enc, line_channel_access_token_enc)',
+      'id, shop_code, name, business_type, tenant_settings(line, line_channel_secret_enc, line_channel_access_token_enc)',
     )
     .eq('shop_code', shopCode)
     .maybeSingle();
@@ -57,7 +57,14 @@ export async function getWebhookTenantWithCredentials(shopCode: string) {
   const raw = (data as Record<string, any>).tenant_settings;
   const settings = (Array.isArray(raw) ? raw[0] : raw) ?? null;
 
-  const tenant = { id: data.id as string, shop_code: data.shop_code as string, name: data.name as string };
+  // business_type 決定 richMenuCells 那一組文字與部分內建指令的回覆方式（issue #5）；
+  // 少取這一欄會讓 GUIDE／CLINIC 的店家一律退回 LOCAL_SHOP 的選單，按鈕就對不上。
+  const tenant = {
+    id: data.id as string,
+    shop_code: data.shop_code as string,
+    name: data.name as string,
+    business_type: (data as Record<string, any>).business_type as string | null,
+  };
   if (!settings) return { tenant, credentials: null };
 
   const token = decryptSecret(settings.line_channel_access_token_enc ?? '');
