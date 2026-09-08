@@ -61,7 +61,16 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       description: data.shop.description || undefined,
     };
   } catch (error) {
-    console.error('[public-shop] generateMetadata 失敗', error);
+    /**
+     * ⚠️ 這裡刻意把 `cause` 明確序列化出來。`console.error(err)` 對一個帶 cause 的
+     * Error 只會印出 `[cause]: [Object]` —— 於是「真正的原因留給伺服器日誌」這句話
+     * 在實作上不成立，日誌其實什麼原因都沒拿到。（第二輪風險評估實測抓到這一點。）
+     */
+    console.error('[public-shop] generateMetadata 失敗', {
+      shopCode,
+      message: error instanceof Error ? error.message : String(error),
+      cause: error instanceof Error ? error.cause : undefined,
+    });
     return { title: t.notFound.title };
   }
 }

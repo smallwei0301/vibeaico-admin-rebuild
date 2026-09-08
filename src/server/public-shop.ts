@@ -32,6 +32,7 @@
  */
 import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
+import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 
 /** 對外公開的店家基本資料。刻意只有這幾欄。 */
 export type PublicShop = {
@@ -94,14 +95,13 @@ export type PublicShopData = {
 const MAX_DEPARTURES_PER_TRIP = 6;
 
 /**
- * `tenants.shop_code` 在 DB 上是 `check (shop_code ~ '^[a-z0-9-]+$')`，所以任何
- * 不合這個形狀的字串**必然**查無此店。先在這裡擋掉，不要送進資料庫。
+ * ⚠️ 店家代碼的形狀與長度上限由 `@/lib/shop-code` 統一提供，註冊 API 用的是同一個
+ * 常數 —— 註冊得出來的代碼，這一頁就一定打得開。那個檔的檔頭寫了為什麼要收斂成
+ * 一份（三層規則曾經不一致，會造出「後台顯示的網址永遠 404」的店家）。
  *
- * ⚠️ 這不是輸入驗證的潔癖，是這一頁的可用性防線：它是全站第一個**匿名就打得到
- * 資料庫**的路徑，而專案目前沒有任何 rate limit。少了這一道，一個 2000 字元的
- * 亂碼網址也會換到一次 service-role 查詢；擋掉之後那類請求連線都不會借。
- */
-const SHOP_CODE_PATTERN = /^[a-z0-9-]{1,64}$/;
+ * 在這裡先擋掉不合形狀的字串，不是輸入驗證的潔癖：這是全站第一個**匿名就打得到
+ * 資料庫**的路徑，而專案目前沒有任何 rate limit。少了這一道，一個 2000 字元的亂碼
+ * 網址也會換到一次 service-role 查詢。
 
 /**
  * 把 PostgREST 的錯誤物件包成真正的 `Error`。

@@ -141,24 +141,46 @@ describe('公開頁的錯誤與負載面（風險評估後補上的鎖）', () =
     expect(rawThrows, `還有 ${rawThrows.length} 處把原始 error 直接丟出去`).toEqual([]);
   });
 
-  it('generateMetadata 有 try/catch，metadata 失敗不會把內部訊息送進 HTML', () => {
-    expect(page).toMatch(/generateMetadata[\s\S]*?try\s*\{/);
-    expect(page).toMatch(/catch\s*\(error\)[\s\S]*?t\.notFound\.title/);
+  it('generateMetadata 自己有 try/catch，metadata 失敗不會把內部訊息送進 HTML', () => {
+    /**
+     * ⚠️ 這一條先把 `generateMetadata` 的**函式本體**切出來再檢查。
+     *
+     * 原本寫成 `page.match(/generateMetadata[\s\S]*?try/)`，那只要求「檔案後面某處
+     * 有 try」——第二輪風險評估用一個變異證明了它的無效：把 generateMetadata 的
+     * try/catch 拿掉、改在**頁面元件**裡放一個 try/catch，那條仍然是綠的，而洩漏
+     * 照樣發生（洩漏的是 metadata 那一路，不是頁面那一路）。
+     */
+    const start = page.indexOf('export async function generateMetadata');
+    expect(start, '找不到 generateMetadata').toBeGreaterThan(-1);
+    const body = page.slice(start, page.indexOf('\n}', start));
+    expect(body).toMatch(/try\s*\{/);
+    expect(body).toMatch(/catch\s*\(error\)/);
+    expect(body).toContain('t.notFound.title');
   });
 
-  it('同一次請求只查一次 DB，且不合格式的店家代碼不進資料庫', () => {
+  it('同一次請求只查一次 DB，且不合格式的店家代碼在任何查詢之前就被擋掉', () => {
     /**
      * `generateMetadata` 與頁面各呼叫一次 loader，而 Next 的 request memoization
      * 只對 `fetch()` 生效，supabase-js 不在內——所以沒有 `cache()` 的話一個 200
      * 請求是最多 **10 次** service-role 查詢。這一頁是全站第一個匿名就打得到
      * 資料庫的路徑，而專案目前沒有任何 rate limit，這個倍數是實質的。
-     *
-     * `shop_code` 在 DB 上是 `check (shop_code ~ '^[a-z0-9-]+$')`，不合這個形狀的
-     * 字串必然查無此店——先擋掉，別讓一個 2000 字元的亂碼網址換到一次查詢。
      */
     expect(loader).toMatch(/from 'react'/);
     expect(loader).toMatch(/export const loadPublicShop = cache\(/);
-    expect(loader).toMatch(/SHOP_CODE_PATTERN\s*=\s*\/\^\[a-z0-9-\]/);
-    expect(loader).toMatch(/if \(!SHOP_CODE_PATTERN\.test\(shopCode\)\) return null;/);
+
+    /**
+     * 形狀閘門與註冊 API 共用 `@/lib/shop-code`（見那個檔的檔頭：三層規則曾經
+     * 不一致，會造出「後台顯示的網址永遠 404」的店家）。
+     *
+     * ⚠️ 位置也要鎖。第二輪風險評估的變異證明「只驗那行存在」不夠：把閘門移到
+     * tenants 查詢**之後**，原本那條仍然是綠的，但它要防的事（不合格式的網址不該
+     * 換到一次查詢）已經失效了。
+     */
+    expect(loader).toMatch(/from '@\/lib\/shop-code'/);
+    const guard = loader.indexOf('if (!SHOP_CODE_PATTERN.test(shopCode)) return null;');
+    const firstDbCall = loader.indexOf('createAdminSupabase()');
+    expect(guard, '找不到店家代碼格式閘門').toBeGreaterThan(-1);
+    expect(firstDbCall).toBeGreaterThan(-1);
+    expect(guard, '格式閘門排在建立 DB client 之後，等於沒擋').toBeLessThan(firstDbCall);
   });
 });
