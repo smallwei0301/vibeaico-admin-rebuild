@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -226,6 +227,60 @@ describe('Astra risk review contract', () => {
     expect(changeDigestOf([FILES[1], FILES[0]])).toBe(changeDigestOf(FILES));
     const differentRenameSource = [FILES[0], { ...FILES[1], previous_filename: 'src/elsewhere.ts' }];
     expect(changeDigestOf(differentRenameSource)).not.toBe(changeDigestOf(FILES));
+  });
+
+  it('changeDigestOf 的排序不依賴執行環境的 locale（逐 byte 比較）', () => {
+    /**
+     * `localeCompare` 不指定 locale 時採 process 的 ICU 預設：同一組路徑在
+     * `da_DK` 與 `C.UTF-8` 下會排出不同順序，Unicode NFC／NFD 等價路徑更會回 0
+     * 而讓順序取決於輸入。那只造成誤擋、不會放行，但一個放行條件不該依賴 locale。
+     *
+     * 這條測試用「locale 會分歧、逐 byte 不會分歧」的實例來鎖：大小寫混排在
+     * locale 排序下是 a、A、a-b、a_b；逐 byte（ASCII）下 'A'(0x41) 恆在 'a'(0x61)
+     * 之前。只要拿掉逐 byte 改回 localeCompare，這一條就會在 en-US 的 runner 上轉紅。
+     */
+    const mixed = [
+      { filename: 'src/a.ts', status: 'modified', sha: '1'.repeat(40) },
+      { filename: 'src/A.ts', status: 'modified', sha: '2'.repeat(40) },
+      { filename: 'src/a-b.ts', status: 'modified', sha: '3'.repeat(40) },
+      { filename: 'src/a_b.ts', status: 'modified', sha: '4'.repeat(40) },
+    ];
+    // 逐 byte 排序的結果是可以逐字寫死的；localeCompare 的結果不是。
+    const expected = createHash('sha256').update(JSON.stringify([
+      ['src/A.ts', '', 'modified', '2'.repeat(40)],
+      ['src/a-b.ts', '', 'modified', '3'.repeat(40)],
+      ['src/a.ts', '', 'modified', '1'.repeat(40)],
+      ['src/a_b.ts', '', 'modified', '4'.repeat(40)],
+    ])).digest('hex');
+    expect(changeDigestOf(mixed)).toBe(expected);
+    // 打亂輸入順序仍是同一個值
+    expect(changeDigestOf([mixed[3], mixed[1], mixed[0], mixed[2]])).toBe(expected);
+  });
+
+  it('evaluateGithubAstra 把算出來的 changeDigest 一起回傳，操作者才填得出來', async () => {
+    /**
+     * 這道閘門要求 attestation 填一個由檢查器算出的值。如果檢查器從不把它說出口，
+     * 操作者就填不出來，下一支高風險 PR 直接卡死——一個「必填但無從得知」的欄位，
+     * 效果等同於永久 ASTRA_PENDING。guard 的 summary 與 PR 留言都印這個回傳值。
+     */
+    const github = {
+      rest: {
+        pulls: { listFiles: 'files', listReviews: 'reviews' },
+        repos: { getCollaboratorPermissionLevel: async () => ({ data: { permission: 'admin' } }) },
+      },
+      paginate: async (route: string) => (route === 'files' ? FILES : []),
+    };
+    const current = {
+      number: 1, state: 'open', changed_files: FILES.length,
+      base: { sha: 'a'.repeat(40) }, head: { sha: 'b'.repeat(40) },
+      body: 'ASTRA_RISK: GOVERNANCE_GATE\nASTRA_RATIONALE: touches the gate itself\n'
+        + 'ASTRA_TEST_BASELINE: unit-run-123:no-db\nASTRA_SCHEMA_BASELINE: NOT_APPLICABLE: no schema changes\n',
+    };
+    const result = await evaluateGithubAstra({
+      github, owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', current,
+    } as never);
+    expect(result.changeDigest).toBe(changeDigestOf(FILES));
+    expect(result.status).toBe('ASTRA_PENDING'); // 沒有 review，但指紋照樣要拿得到
   });
 
   it('較新的否決即使釘在別顆 head 上也擋得下（原寫法會跳過它）', () => {

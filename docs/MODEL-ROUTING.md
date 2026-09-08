@@ -77,7 +77,14 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 `changeDigest` 取每一個 changed file 的（最終路徑、rename 前路徑、狀態、**head 上的
 blob sha**），排序後 sha256。取法見 `changeDigestOf()`；值由**受信任的預設分支**這份
 程式從 GitHub 直接給的 `pulls.listFiles` 算出，不採信 PR 或 attestation 自填的內容。
-操作者只要把檢查器算出來的同一個值填進 attestation 即可。
+操作者只要把檢查器算出來的同一個值填進 attestation 即可——**guard 會把它印出來**：
+`Agent WIP Policy` 的 job summary 有 `Astra change digest` 一列，PR 留言（不論通過或
+擋下）有 `ASTRA_CHANGE_DIGEST:` 一行。不必自己重算。
+
+排序是**逐 byte** 比較，不是 `localeCompare`。`localeCompare` 不指定 locale 時採
+process 的 ICU 預設，同一組路徑在不同 locale（實測 `da_DK` 對 `C.UTF-8`）會排出不同
+順序，Unicode NFC／NFD 等價路徑更會回 0 而讓順序取決於輸入。那只會造成誤擋而不會
+放行，但一個放行條件不該依賴執行環境的 locale。
 
 **它解決的問題**：原本規則要求 review 釘在當下的 head commit，於是**純換底**會讓一份
 完全有效的評估失效——rebase 只換 parent、一個字都沒改，卻換了 commit sha。main 只要有
@@ -90,6 +97,15 @@ blob sha**），排序後 sha256。取法見 `changeDigestOf()`；值由**受信
 **安全性論證**：指紋只涵蓋變更過的檔案，未變更的檔案來自 base；而 PR 的 base 是受保護
 的預設分支，它自己的每一次前進都通過同一道閘門。因此「舊評估 ＋ 新 base」＝「已審查過
 的檔案內容 ＋ 已受同一道閘門把關的基底」，沒有任何一邊是未經審查的。
+
+**已知邊界（不要把上一段讀得比它實際說的更強）**：
+
+1. 「兩邊都審過」**不等於**「整合結果審過」。若 main 在評估後改了同一個檔案的另一段，
+   git 自動合併出來的組合結果沒有被這道閘門看過；語意衝突（main 改了簽章、本 PR 呼叫
+   舊簽章）同理。這兩種情況由 CI 的 typecheck／測試把關，不是本閘門的職責。
+2. blob sha **不含檔案 mode**，所以已審檔案單純加減 exec bit（100644↔100755）不會改變
+   指紋。本 repo 不以 `./script` 形式執行任何受版控檔案，實質風險極低，但這是一條真實
+   存在的縫隙，記在這裡而不是假裝沒有。
 
 `baseSha` / `headSha` **仍為必填**（格式仍逐一驗證），但不再要求與當下的 base/head 相同
 ——它們的角色從「放行條件」變成「稽核紀錄：當時審的是哪一顆」。
