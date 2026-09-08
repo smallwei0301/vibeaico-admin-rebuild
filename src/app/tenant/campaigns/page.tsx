@@ -54,6 +54,14 @@ type DisplayStatus = keyof typeof t.status;
  */
 const REDIRECTED_TYPES: CampaignType[] = ['BIRTHDAY', 'RECALL'];
 
+/**
+ * issue #176 第 2、3 項已接上真實觸發點與獎勵發放的類型。
+ * 這份清單與 `src/server/campaign-rewards.ts` 的 `REWARDABLE_TYPES` 是同一件事的
+ * 兩端；`tests/unit/campaign-rewards-wiring.176.test.ts` 鎖住兩邊不得漂移——
+ * 前端說「會發」而後端沒有觸發點，就是這個 issue 一開始要修的那種假象。
+ */
+const REWARD_ACTIVE_TYPES: CampaignType[] = ['NEW_CUSTOMER', 'SPENDING_THRESHOLD', 'LIMITED_TIME'];
+
 /** 原站以 coupon.isPrivate 標記私密券；骨架階段用固定清單模擬 */
 const PRIVATE_COUPON_IDS = new Set<string>(['cp_3']);
 
@@ -590,8 +598,19 @@ function CampaignFormModal({
    * 才出現，否則店家補齊前提後反而更確信「現在會照我寫的內容發了」。
    */
   const drivenElsewhere = type === 'BIRTHDAY' || type === 'RECALL';
-  /** 後端完全沒有觸發點的類型；唯一會執行的是 LINE 關鍵字回覆（line-events.ts） */
-  const notImplemented = !drivenElsewhere;
+  /**
+   * issue #176 第 2、3 項：這三型現在**真的**會發放票券與點數。
+   *   NEW_CUSTOMER / SPENDING_THRESHOLD → 預約完成時（bookings/:id/complete）
+   *   LIMITED_TIME                      → 顧客在 LINE 打出活動關鍵字時
+   * 觸發點與冪等鍵在 src/server/campaign-rewards.ts 與 migration 0091。
+   */
+  const rewardActive = REWARD_ACTIVE_TYPES.includes(type);
+  /**
+   * 後端完全沒有觸發點的類型；唯一會執行的是 LINE 關鍵字回覆（line-events.ts）。
+   * ⚠️ 現在只剩 REFERRAL——推薦碼配發與雙方獎勵是 issue #24 的整塊功能，
+   * 不在 #176 範圍，所以它的「不會自動執行」提示必須留著。
+   */
+  const notImplemented = !drivenElsewhere && !rewardActive;
   const featureMissing = !!prereq && !activeFeatures.includes(prereq.featureCode);
   /** 骨架階段：通知開關狀態尚未接上 tenant_settings，一律視為已開啟 */
   const switchOff = false;
@@ -755,6 +774,11 @@ function CampaignFormModal({
           onChange={(e) => setPushMessage(e.target.value)}
         />
         <FormText>{t.form.pushMessageHelp}</FormText>
+        {/* issue #176：本輪只做了「發券／送點數」，**沒有**做推播。三型的
+            notImplemented 提示消失之後，表單上唯一提到推播的只剩上面那句
+            pushMessageHelp——而那句話（「發布時會透過 LINE 推播通知給所有追蹤者」）
+            是錯的。這一句必須獨立顯示，不能靠別的提示順帶涵蓋。 */}
+        <FormText>{t.truthNotice.pushInert}</FormText>
       </FormGroup>
 
       <FormGroup>
@@ -787,7 +811,14 @@ function CampaignFormModal({
         {/* issue #176：coupons 與 point_transactions 兩張表都在，但沒有任何活動
             流程會寫入它們。欄位保留（未來要實作的產品意圖），但不讓店家以為
             按下發布就會自動發券／送點。 */}
-        <FormText>{t.truthNotice.rewardsInert}</FormText>
+        {rewardActive ? (
+          <>
+            <FormText>{t.truthNotice.rewardOncePerCustomer}</FormText>
+            <FormText>{t.truthNotice.rewardCouponExhausted}</FormText>
+          </>
+        ) : (
+          <FormText>{t.truthNotice.rewardsInert}</FormText>
+        )}
       </FormGroup>
 
       {type === 'SPENDING_THRESHOLD' ? (
@@ -851,6 +882,14 @@ function CampaignFormModal({
       {notImplemented ? (
         <Alert tone="info" className="mb-4" title={t.truthNotice.notImplementedTitle}>
           <div>{t.truthNotice.notImplemented}</div>
+        </Alert>
+      ) : null}
+
+      {rewardActive ? (
+        <Alert tone="info" className="mb-4" title={t.truthNotice.rewardActiveTitle}>
+          <div>{t.truthNotice.rewardActive[type]}</div>
+          <div className="mt-1">{t.truthNotice.rewardNeedsActive}</div>
+          <div className="mt-1">{t.truthNotice.rewardNeedsFeature}</div>
         </Alert>
       ) : null}
 

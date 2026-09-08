@@ -22,6 +22,7 @@ import { lineReply, lineProfile } from './line';
 import { buildFlexMenuOutcome } from './flex-menu';
 import { buildTripCarousel, TRIP_CAROUSEL_MAX, type TripCardSource } from './trip-flex';
 import { isFeatureActive } from './features';
+import { grantCampaignRewards } from './campaign-rewards';
 import { aiReply, type ShopContext } from './ai-reply';
 import {
   notifySettingsSchema,
@@ -158,6 +159,17 @@ const MSG = {
     '目前沒有進行中的流程可以取消。\n若要更改或取消已成立的預約，請輸入「我的預約」查詢，或直接留言告訴我們。',
   campaignTitle: '目前進行中的活動：',
   campaignEmpty: '目前沒有進行中的活動，敬請期待！',
+  /* --- 限時活動的領取結果（issue #176：活動的獎勵真的會發放）--- */
+  campaignRewardTitle: '🎁 已為您登記本次活動獎勵：',
+  campaignRewardPoints: (n: number) => `・贈送 ${n} 點`,
+  /**
+   * ⚠️ 不要寫「可在『優惠』查看」——`replyCoupons()` 列的是**店家開放領取的票券
+   * 清單**，不是這位顧客手上的票券（`coupon_instances` 沒有任何顧客端查詢入口）。
+   * 指過去只會讓顧客找不到自己剛拿到的那一張，然後以為沒發成。
+   */
+  campaignRewardCoupon: '・贈送優惠票券一張（使用方式請洽店家）',
+  /** 冪等命中。說出來，不要讓顧客以為又領到一次。 */
+  campaignRewardAlready: '（您先前已領取過本活動的獎勵，本次不重複發放）',
   couponTitle: '目前開放領取的優惠：',
   couponEmpty: '目前沒有開放領取的優惠票券。',
   couponHowTo: '想索取請直接留言告訴我們，我們會幫您登記 🎫',
@@ -371,7 +383,7 @@ async function onMessage(
   if (lineConfig.campaignKeywordEnabled !== false) {
     const { data: camps } = await admin
       .from('campaigns')
-      .select('name, content')
+      .select('id, name, content, start_at, end_at')
       .eq('tenant_id', tenant.id)
       .eq('status', 'PUBLISHED')
       .eq('keyword', text)
@@ -380,7 +392,50 @@ async function onMessage(
     if (camp) {
       // content 為 jsonb（text / image / flex）；MVP 取 text，無則以活動名稱代替
       const t = (camp.content as any)?.text ?? camp.name;
-      await lineReply(token, replyToken, [{ type: 'text', text: String(t) }]);
+      const lines = [String(t)];
+
+      /**
+       * 限時優惠（`LIMITED_TIME`）的領取（issue #176 第 2、3 項）。
+       *
+       * 這一型刻意沒有事件觸發點：它本來就是「一段時間內的限時優惠」，沒有
+       * 「什麼事發生了」這種自然時機，只有「顧客來領」。活動關鍵字這條路本來
+       * 就會回覆，讓它同時完成領取是唯一不需要發明新互動的作法。
+       *
+       * ⚠️ 只在**已綁定顧客**時才發：獎勵要寫進 `customers.points` 與
+       * `coupon_instances.customer_id`，沒有顧客身分就無處可發。未綁定時
+       * 照樣回覆活動內容，只是不附獎勵訊息——不宣稱發了沒發的東西。
+       *
+       * ⚠️ 領取失敗（票券售罄等）不改變回覆內容也不中斷：活動說明本來就該
+       * 送出去，錯誤記在 log。`grantCampaignRewards` 內部已吞掉逐個活動的
+       * 業務錯誤，這裡的 try/catch 只擋「連活動都查不到」那一類。
+       */
+      try {
+        const customerId = await boundCustomerId({
+          admin, tenant, token, replyToken, userId, lineConfig,
+        });
+        if (customerId) {
+          const outcomes = await grantCampaignRewards({
+            tenantId: tenant.id,
+            customerId,
+            trigger: 'KEYWORD_CLAIM',
+            onlyCampaignId: camp.id as string,
+          });
+          const won = outcomes.find((o) => o.granted);
+          if (won) {
+            const parts: string[] = [];
+            if (won.bonusPoints > 0) parts.push(MSG.campaignRewardPoints(won.bonusPoints));
+            if (won.couponInstanceId) parts.push(MSG.campaignRewardCoupon);
+            if (parts.length) lines.push('', MSG.campaignRewardTitle, ...parts);
+          } else if (outcomes.some((o) => !o.granted && !o.error)) {
+            // 冪等命中＝這位顧客先前領過。說出來，不要讓他以為又領到一次。
+            lines.push('', MSG.campaignRewardAlready);
+          }
+        }
+      } catch (e) {
+        console.error('[line] 限時活動領取失敗', tenant.id, camp.id, e);
+      }
+
+      await lineReply(token, replyToken, [{ type: 'text', text: lines.join('\n') }]);
       return;
     }
   }
