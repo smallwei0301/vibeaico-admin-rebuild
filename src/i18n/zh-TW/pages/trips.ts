@@ -315,6 +315,8 @@ export const tripsPage = {
       soloHint: (name: string) => `目前只有一位可接案人員（${name}），系統會自動指派為主導遊。`,
       /** 0 位可接案人員：開團會被擋下，先說清楚為什麼，而不是讓他按了才失敗。 */
       noneHint: '目前沒有可接案的人員，無法開放報名。請先到「員工」新增一位可接案人員。',
+      /** 恢復銷售時舊團次還沒有主導遊：不能讓店家撞上一個沒地方修的 400。 */
+      reopenNeedsGuide: '這個團次還沒有指定主導遊，恢復銷售前請先選擇一位',
       conflictTitle: '有日期因撞班被跳過',
       conflictRow: (date: string, name: string, text: string) => `${date}　${name}：${text}`,
       reason: {

@@ -432,6 +432,21 @@ export default function TripDetailPage() {
   };
 
   const setDepartureStatus = async (id: string, status: DepartureStatus) => {
+    /**
+     * issue #37：「恢復銷售」把團次改回 OPEN，而 OPEN 團次必須有一位主導遊。
+     *
+     * 舊團次可能是未指派的（§1.3 的相容策略允許），這種情況直接送出去會拿到一個
+     * 400 而畫面上**沒有任何地方可以指定主導遊**——那是一條死路。所以先把編輯視窗
+     * 打開並預設成 OPEN，讓店家在同一個地方把導遊選好再存。
+     *
+     * 只在 2 位以上時才需要：0 位本來就開不了團，1 位由後端自動指派。
+     */
+    const target = departures.find((d) => d.id === id);
+    if (status === 'OPEN' && guides.length >= 2 && target && !target.primaryStaffId) {
+      setDepartureDraft({ ...target, status: 'OPEN' });
+      toast.show(t.departures.guide.reopenNeedsGuide, 'info');
+      return;
+    }
     await runAction(
       () => saveTripDeparture(tripId, { id, status }),
       t.messages.departureUpdated,

@@ -214,17 +214,30 @@ describe('plans, departures and addons CRUD', () => {
       expect(invalidCapacity.status).toBe(400);
       const lowCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 1 });
       expect(lowCapacity.status).toBe(409);
+      // issue #37：批次開團建立的一律是 OPEN 團次，同樣必須指定主導遊。
       const tooWide = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
         planId, from: '2020-01-01', to: '2022-01-01', weekdays: [1], capacity: 2,
+        primaryStaffId: SHOP_A.staffA1,
       });
       expect(tooWide.status).toBe(400);
       const batch = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
         planId, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
+        primaryStaffId: SHOP_A.staffA1,
       });
       expect(batch.status).toBe(200);
       expect((await json<{ created: number; skipped: number }>(batch)).data).toMatchObject({ created: 1, skipped: 0 });
+      /**
+       * 第二次跑同一段區間仍然是 created 0 / skipped 1。
+       *
+       * ⚠️ issue #37 之後，這一筆略過的**原因**變了：本行程是用 `POST /api/trips`
+       * 建的（沒有 durationHours → `duration_hours` 為 null → 團次整日佔用），所以
+       * 第一次建立的那一團已經把 staffA1 在 2027-02-02 佔滿，第二次會先在撞班檢查
+       * 就被擋下並記進 `conflicts[]`，走不到「同方案同日同時已存在」那一段。
+       * 兩條路徑都得到 skipped 1，原斷言仍成立，但別誤讀成它還在驗重複偵測。
+       */
       const batchAgain = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
         planId, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
+        primaryStaffId: SHOP_A.staffA1,
       });
       expect((await json<{ created: number; skipped: number }>(batchAgain)).data).toMatchObject({ created: 0, skipped: 1 });
       const addonId = addonPayload.data!.id;
