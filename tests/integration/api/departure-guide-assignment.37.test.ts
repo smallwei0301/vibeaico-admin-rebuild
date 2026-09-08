@@ -82,12 +82,19 @@ type DepartureBody = {
   assistantStaffIds: string[];
 };
 
-/** 直查 DB：這一團在 `trip_departure_staff` 上實際存了什麼。 */
+/**
+ * 直查 DB：這一團在 `trip_departure_staff` 上實際存了什麼。
+ *
+ * ⚠️ `role` 是 **enum**，所以 `.order('role')` 排的是**列舉宣告順序**
+ * （PRIMARY、ASSISTANT），不是字母順序。斷言不該綁在那個順序上——改成在 JS 這邊
+ * 用字串排序，資料庫端換了列舉宣告順序也不會讓測試莫名其妙轉紅。
+ */
 async function assignmentRows(departureId: string) {
   const { data, error } = await admin.from('trip_departure_staff')
-    .select('staff_id, role').eq('departure_id', departureId).order('role');
+    .select('staff_id, role').eq('departure_id', departureId);
   expect(error).toBeNull();
-  return data ?? [];
+  return [...(data ?? [])].sort((a, b) =>
+    String(a.role).localeCompare(String(b.role)) || String(a.staff_id).localeCompare(String(b.staff_id)));
 }
 
 async function createDeparture(body: Record<string, unknown>) {
@@ -352,8 +359,35 @@ describe('跨租戶與 0/1/2+', () => {
       primaryStaffId: SHOP_A.staffA1,
     });
     expect(mine.response.status).toBe(200);
-    const crossTenant = await apiB.put(`/api/trip-departures/${mine.payload.data!.id}`, { capacity: 5 });
-    expect(crossTenant.status).toBe(404);
+    const target = mine.payload.data!.id;
+
+    /**
+     * ⚠️ 分兩段驗，因為兩段擋下來的是**不同的東西**。
+     *
+     * 種子沒有給 SHOP_B `TOUR_MODULE`，所以第一段其實是**功能閘門**先回 403
+     * ——那還沒證明租戶隔離有效。只斷言 403 就收工，等於把「B 店沒買這個模組」
+     * 誤讀成「跨租戶被擋下」。
+     */
+    const gated = await apiB.put(`/api/trip-departures/${target}`, { capacity: 5 });
+    expect(gated.status).toBe(403);
+
+    // 第二段才是真的租戶隔離：暫時給 SHOP_B 開通模組，讓它越過閘門，這時仍必須 404。
+    const { error: grantError } = await admin.from('feature_subscriptions').upsert({
+      tenant_id: SHOP_B.id, code: 'TOUR_MODULE', active: true,
+      expires_at: null, source: 'GRANTED', cancelled_at: null,
+    }, { onConflict: 'tenant_id,code' });
+    expect(grantError).toBeNull();
+    try {
+      const crossTenant = await apiB.put(`/api/trip-departures/${target}`, { capacity: 5 });
+      expect(crossTenant.status).toBe(404);
+      // A 店那一團完全沒被動到
+      const { data: after } = await admin.from('trip_departures')
+        .select('capacity').eq('id', target).maybeSingle();
+      expect(after?.capacity).toBe(8);
+    } finally {
+      await admin.from('feature_subscriptions').delete()
+        .eq('tenant_id', SHOP_B.id).eq('code', 'TOUR_MODULE');
+    }
   });
 
   it('批次開團：撞班的日期被跳過並回報原因，可用的日期照常建立', async () => {

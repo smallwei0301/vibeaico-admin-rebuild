@@ -71,8 +71,22 @@ export const PUT = handle(async (req, { params }: Context) => {
     return fail(409, `無法指派：${describeConflicts(conflicts)}`, ERR.CONFLICT);
   }
 
-  const { data, error } = await t.supabase.from('trip_departures').update(patch)
-    .eq('tenant_id', t.tenantId).eq('id', id).select('*, trip_plans(name)').maybeSingle();
+  /**
+   * ⚠️ `patch` 可能是**空的**——一個只改導遊指派的請求（`{ primaryStaffId }`）不會
+   * 產生任何 `trip_departures` 的欄位變更，因為指派存在另一張表。
+   *
+   * PostgREST 對「沒有任何欄位」的 update 不會更新任何列，於是 `maybeSingle()` 回
+   * null，下面那行就把它當成「找不到此團次」回 404——**改派導遊這個本 PR 最主要的
+   * 新操作，會 100% 失敗**。單元測試看不到這件事（它不碰 HTTP 與 PostgREST），
+   * 是整合測試抓到的。
+   *
+   * 所以沒有欄位要改時就不要送那一次 update，直接把現況讀回來。
+   */
+  const { data, error } = Object.keys(patch).length === 0
+    ? await t.supabase.from('trip_departures').select('*, trip_plans(name)')
+      .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle()
+    : await t.supabase.from('trip_departures').update(patch)
+      .eq('tenant_id', t.tenantId).eq('id', id).select('*, trip_plans(name)').maybeSingle();
   if (error?.code === '23505') return fail(409, '相同方案、日期與時間的團次已存在', ERR.CONFLICT);
   if (error) throw error;
   if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
