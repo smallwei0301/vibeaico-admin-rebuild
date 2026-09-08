@@ -19,8 +19,13 @@ describe('inventory export slice #150', () => {
   });
 
   it('waits for a real download result before showing success', () => {
-    expect(page).toContain("import { exportInventoryCsv } from '@/services/inventory-export';");
-    expect(page).toContain('const result = await exportInventoryCsv({');
+    // issue #33 之後這一頁同時接了 csv 與 xlsx 兩支 service，import 改為具名兩個，
+    // 實際呼叫哪一支由 `exportFormat` 決定，所以下面改斷言那個分派點。
+    expect(page).toContain("from '@/services/inventory-export';");
+    expect(page).toContain('exportInventoryCsv');
+    expect(page).toContain('exportInventoryXlsx');
+    expect(page).toContain("const download = exportFormat === 'xlsx' ? exportInventoryXlsx : exportInventoryCsv;");
+    expect(page).toContain('const result = await download({');
     expect(page).toContain('if (!result.downloaded)');
     expect(page).toContain('t.messages.exportedAs(result.fileName)');
     expect(page).not.toContain('t.exportFile.filename');

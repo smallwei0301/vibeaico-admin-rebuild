@@ -315,9 +315,9 @@ export const bookingsPage = {
     addonDowngradePaid:
       '加購後金額提高，此預約已從「已付清」變回「已付訂金」——如需向顧客收取差額，請收現後按「標記尾款已結清」，或至您的金流後台處理。',
     exported: '預約匯出成功',
+    exportedAs: (fileName: string) => `預約匯出成功：${fileName}`,
     exportFailed: '匯出失敗，請稍後再試',
     exportFailedPrefix: '匯出失敗:',
-    exportFileName: (start: string, end: string, ext: string) => `預約清單_${start}_${end}.${ext}`,
 
     batchConfirmed: (n: number) => `成功確認 ${n} 筆預約`,
     batchCancelled: (n: number) => `成功取消 ${n} 筆預約`,

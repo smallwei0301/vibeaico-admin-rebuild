@@ -26,7 +26,7 @@ import {
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
-import { exportBookingsCsv } from '@/services/reports';
+import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -259,13 +259,22 @@ export default function BookingsPage() {
     }
   };
 
-  const exportCsv = async () => {
+  /**
+   * issue #33：原本只有 CSV 一種。後端的 `/api/export/bookings/:format` 早就存在，
+   * 但這裡打的是不帶格式段的舊路徑，所以那支路由**全站沒有呼叫端**；xlsx 分支則
+   * 是這一輪才補上的。原站的「匯出」本來就是一個 dropdown（見 bookings.json 的
+   * buttons），兩種格式都給才是把功能復原，而不是只留一半。
+   */
+  const runExport = async (format: 'csv' | 'xlsx') => {
     try {
-      await exportBookingsCsv({
+      const download = format === 'xlsx' ? exportBookingsXlsx : exportBookingsCsv;
+      const result = await download({
         from: startDate || undefined,
         to: endDate || undefined,
       });
-      toast.show(t.messages.exported);
+      // 檔名一律取自後端的 Content-Disposition（見 services/download.ts），
+      // 前端不自組——自組檔名正是 #246 修掉的缺陷之一。
+      toast.show(result.fileName ? t.messages.exportedAs(result.fileName) : t.messages.exported);
     } catch (e) {
       const message = e instanceof Error ? e.message : t.messages.exportFailed;
       toast.show(`${t.messages.exportFailedPrefix}${message}`, 'danger');
@@ -414,9 +423,17 @@ export default function BookingsPage() {
               type="button"
               variant="outline"
               loading={loading}
-              onClick={() => void exportCsv()}
+              onClick={() => void runExport('csv')}
             >
               <Download size={15} />{common.exportCsv}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              loading={loading}
+              onClick={() => void runExport('xlsx')}
+            >
+              <Download size={15} />{common.exportExcel}
             </Button>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus size={15} />{t.actions.create}

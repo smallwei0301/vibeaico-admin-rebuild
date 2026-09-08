@@ -17,7 +17,7 @@ import { Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { listProducts } from '@/services/catalog';
 import { listInventoryLogs, type InventoryLog, type InventoryLogType } from '@/services/products';
-import { exportInventoryCsv } from '@/services/inventory-export';
+import { exportInventoryCsv, exportInventoryXlsx } from '@/services/inventory-export';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
@@ -50,6 +50,8 @@ export default function InventoryPage() {
   const [page, setPage] = React.useState(0);
   const [total, setTotal] = React.useState(0);
   const [exportOpen, setExportOpen] = React.useState(false);
+  // issue #33：`inventory/[format]` 的 xlsx 分支在 #246 就做好了，只是沒有呼叫端。
+  const [exportFormat, setExportFormat] = React.useState<'csv' | 'xlsx'>('csv');
   const [exporting, setExporting] = React.useState(false);
 
   const load = React.useCallback(async () => {
@@ -99,7 +101,8 @@ export default function InventoryPage() {
     if (exporting) return;
     setExporting(true);
     try {
-      const result = await exportInventoryCsv({
+      const download = exportFormat === 'xlsx' ? exportInventoryXlsx : exportInventoryCsv;
+      const result = await download({
         productId: productFilter || undefined,
         type: typeFilter || undefined,
       });
@@ -164,9 +167,20 @@ export default function InventoryPage() {
         eyebrow={nav.navOperation}
         title={t.title}
         actions={
-          <Button variant="ghost" onClick={() => setExportOpen(true)}>
-            <Download size={15} />{t.actions.export}
-          </Button>
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => { setExportFormat('csv'); setExportOpen(true); }}
+            >
+              <Download size={15} />{t.actions.export}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => { setExportFormat('xlsx'); setExportOpen(true); }}
+            >
+              <Download size={15} />{t.actions.exportXlsx}
+            </Button>
+          </>
         }
       />
 
@@ -241,8 +255,8 @@ export default function InventoryPage() {
 
       <ConfirmModal
         open={exportOpen}
-        title={t.confirm.exportTitle}
-        confirmText={t.actions.export}
+        title={t.confirm.exportTitle(exportFormat === 'xlsx' ? t.actions.exportXlsx : t.actions.export)}
+        confirmText={exportFormat === 'xlsx' ? t.actions.exportXlsx : t.actions.export}
         loading={exporting}
         message={t.confirm.export}
         onClose={() => setExportOpen(false)}

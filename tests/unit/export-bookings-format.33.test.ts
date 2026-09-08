@@ -22,23 +22,58 @@ describe('issue #33③: /api/export/bookings/:format', () => {
     }
   });
 
-  it('the format whitelist matches inventory/[format]: csv only, everything else 400', () => {
-    expect(formatRoute).toContain("const SUPPORTED_FORMATS = ['csv'] as const");
+  it('the format whitelist matches inventory/[format]: csv + xlsx, everything else 400', () => {
+    expect(formatRoute).toContain("const SUPPORTED_FORMATS = ['csv', 'xlsx'] as const");
     expect(formatRoute).toContain('ApiHttpError(400');
     expect(formatRoute).toContain('ERR.VALIDATION');
-    // 與既有前例同一個判斷形狀
+    // 與既有前例同一個判斷形狀，且白名單內容也對齊
     expect(inventoryRoute).toContain('ApiHttpError(400');
+    expect(inventoryRoute).toContain("const SUPPORTED_FORMATS = ['csv', 'xlsx'] as const");
   });
 
-  it('does not fake an excel branch by renaming a CSV', () => {
-    // 只看程式碼，不看註解——「為什麼不做 excel」正是寫在註解裡的，
-    // 直接掃全檔會把那段說明本身誤判成違規（本測試第一次就是這樣紅的）。
-    const code = formatRoute.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
-    expect(code).not.toMatch(/\.xlsx/);
-    expect(code).not.toContain("'excel'");
-    expect(code).not.toMatch(/spreadsheetml/);
-    // 必須把「為什麼不做」寫在檔案裡，而不是靜默省略
-    expect(formatRoute).toContain('謊報檔案格式');
+  /**
+   * 這一組原本斷言的是相反的事：白名單只有 csv、且**不准**出現任何 xlsx 痕跡。
+   * 當時的理由是「本專案沒有安裝任何 xlsx 產生器，把 CSV 命名成 .xlsx 是謊報
+   * 檔案格式」。前半句在 #246 之後不成立了（`exceljs` 已安裝、`src/server/xlsx.ts`
+   * 已有共用產生器），**後半句仍然成立**——所以現在鎖的是「產的是真的活頁簿」，
+   * 而不是「不准有 xlsx」。
+   */
+  it('the excel branch produces a real workbook, not a renamed CSV', () => {
+    // 走共用產生器，不在這裡自己拼一份
+    expect(shared).toContain("from '@/server/xlsx'");
+    expect(shared).toContain('buildXlsx(');
+    expect(shared).toContain('xlsxResponse(');
+    // xlsx 回應不得帶 CSV 的痕跡：沒有 BOM、沒有 text/csv
+    const xlsxFn = shared.slice(shared.indexOf('export async function buildBookingsXlsxResponse'));
+    expect(xlsxFn).not.toContain('text/csv');
+    expect(xlsxFn).not.toContain('\\uFEFF');
+    expect(xlsxFn).not.toContain('csvCell');
+  });
+
+  it('csv 與 xlsx 共用同一次查詢與同一份欄位，不各查一遍', () => {
+    // 兩個 response builder 都必須走 fetchBookingCells，否則欄位會在兩條路徑上漂移
+    const csvFn = shared.slice(
+      shared.indexOf('export async function buildBookingsCsvResponse'),
+      shared.indexOf('export async function buildBookingsXlsxResponse'),
+    );
+    const xlsxFn = shared.slice(shared.indexOf('export async function buildBookingsXlsxResponse'));
+    for (const [name, fn] of [['csv', csvFn], ['xlsx', xlsxFn]] as const) {
+      expect(fn, `${name} 沒有走共用的 fetchBookingCells`).toContain('fetchBookingCells(');
+      expect(fn, `${name} 自己又查了一次 bookings_view`).not.toContain('bookings_view');
+    }
+    // 表頭只有一份
+    expect((shared.match(/BOOKING_EXPORT_HEADERS = \[/g) ?? []).length).toBe(1);
+  });
+
+  it('公式防護只套在 CSV，不套在 xlsx（套了會把資料改壞）', () => {
+    // exceljs 寫進去的字串就是字串，不會被當公式求值；在 xlsx 前置單引號只會讓
+    // 店家在 Excel 裡看到多出來的符號。這個分工與 inventory/[format] 的前例一致。
+    const cells = shared.slice(
+      shared.indexOf('async function fetchBookingCells'),
+      shared.indexOf('export async function buildBookingsCsvResponse'),
+    );
+    expect(cells, 'fetchBookingCells 不該做 CSV 跳脫').not.toContain('csvCell(');
+    expect(shared).toContain('只對 CSV 正確');
   });
 
   it('the CSV is a real file response, not a { success, data } envelope', () => {
