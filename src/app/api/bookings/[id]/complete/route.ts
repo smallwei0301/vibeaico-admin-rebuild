@@ -4,6 +4,7 @@ import { requireTenant } from '@/server/tenant';
 import { isFeatureActive } from '@/server/features';
 import { pointsSettingsSchema } from '@/config/tenant-settings';
 import { notifyBookingStatus } from '@/server/line-notify';
+import { grantCampaignRewards } from '@/server/campaign-rewards';
 
 export const POST = handle(async (_req, { params }) => {
   const t = await requireTenant();
@@ -64,6 +65,48 @@ export const POST = handle(async (_req, { params }) => {
     }
   } catch (e) {
     console.error('[api] booking complete: point-earn failed', id, e);
+  }
+
+  /**
+   * 行銷活動獎勵（issue #176 第 2、3 項）——新客首購與滿額回饋的觸發點。
+   *
+   * 在此之前，活動頁的「贈送票券／贈送點數」存得進 `campaigns.content` 卻沒有
+   * 任何程式會讀，店家設好、按發布、看到成功訊息，實際什麼都不會發生。
+   *
+   * ⚠️ 與上面的累點同樣包 try/catch 且錯誤只 log：完成動作本身早就成立（`update`
+   * 已 commit），活動獎勵是附加效果。讓它把整個 complete 請求打成 500，店員會看到
+   * 「完成失敗」但 DB 其實已完成——那是更糟的狀態混淆。
+   *
+   * 這裡吞掉錯誤是安全的，因為**發放本身是原子的**：`grant_campaign_reward()`
+   * 把搶冪等鍵、加點數、寫帳本、發票券放在同一筆交易（`0091`），不會留下半套。
+   * 吞掉的是「這次沒發成」，不是「發了一半」。
+   */
+  try {
+    const { count } = await t.supabase
+      .from('bookings')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', t.tenantId)
+      .eq('customer_id', data.customer_id)
+      .eq('status', 'COMPLETED');
+
+    // 上面那筆 update 已經把本筆改成 COMPLETED，所以「第一筆」＝總數恰好 1。
+    // ⚠️ `count` 為 null 代表**查詢沒有回傳計數**，不是 0；當成 0 會讓
+    // `=== 1` 恆為 false，新客活動就永遠不發，而且完全靜默。分開判斷。
+    const isFirstCompletedBooking = count === 1;
+
+    const outcomes = await grantCampaignRewards({
+      tenantId: t.tenantId,
+      customerId: data.customer_id as string,
+      trigger: 'BOOKING_COMPLETED',
+      sourceId: id,
+      amount: Number(data.final_price),
+      isFirstCompletedBooking,
+    });
+    for (const o of outcomes) {
+      if (o.error) console.error('[api] booking complete: campaign reward failed', id, o.campaignId, o.error);
+    }
+  } catch (e) {
+    console.error('[api] booking complete: campaign rewards failed', id, e);
   }
 
   // LINE 顧客端推播（06 分冊 §5）：不 await、不影響 API 結果，函式內部已吞錯。
