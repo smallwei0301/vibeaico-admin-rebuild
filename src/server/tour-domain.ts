@@ -30,6 +30,12 @@ export const tripCreateSchema = z.object({
   meetingPoint: optionalText,
   includes: optionalText,
   notes: optionalText,
+  /* ---- issue #259：`0089` 補上欄位後才收得下的五個顯示欄位 ---- */
+  tagline: optionalText,
+  meetingPointMapUrl: optionalText,
+  exclusions: z.array(z.string()).optional(),
+  notices: z.array(z.string()).optional(),
+  refundPolicyType: z.enum(['STANDARD', 'FLEXIBLE', 'STRICT']).optional(),
 });
 
 export const tripUpdateSchema = tripCreateSchema.partial();
@@ -208,6 +214,12 @@ export function tripRow(input: z.infer<typeof tripCreateSchema>, tenantId: strin
     meeting_point: input.meetingPoint ?? '',
     includes: input.includes ?? '',
     notes: input.notes ?? '',
+    // 0089 補上的展示欄位：建立時就要一起寫入，否則新行程永遠只有空值。
+    tagline: input.tagline ?? '',
+    meeting_point_map_url: input.meetingPointMapUrl ?? '',
+    exclusions: input.exclusions ?? [],
+    notices: input.notices ?? [],
+    refund_policy_type: input.refundPolicyType ?? 'STANDARD',
   };
 }
 

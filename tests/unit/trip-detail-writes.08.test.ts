@@ -28,7 +28,6 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { tripsPage } from '@/i18n/zh-TW/pages/trips';
 
 const ROOT = process.cwd();
 const PAGE = 'src/app/tenant/trips/[id]/page.tsx';
@@ -202,36 +201,82 @@ describe('DELETE /api/trip-departures/:id 補齊，且有名額守門', () => {
   });
 });
 
-describe('沒有欄位是「存了但不會保留」卻不告訴店家（#259）', () => {
+describe('五個展示欄位真的存得進資料庫（#259）', () => {
   /**
-   * `trips` 表（0066）沒有 tagline / exclusions / notices / meeting_point_map_url /
-   * refund_policy_type 這五個欄位，`tripApiPayload()` 也不會帶上它們。接上真實端點
-   * 之後其餘欄位都會持久化，只有這五個不會——不標註就是另一種假成功。
+   * 這一段原本斷言的是相反的事：`trips`（0066）沒有這五個欄位，所以畫面上必須掛
+   * notPersistedYet 註記、`tripApiPayload()` 也不准帶上它們。0089 把欄位補上之後
+   * 這個約束整組反過來——欄位建了、值卻還是送不出去，會是比原本更難察覺的假成功。
    */
-  const UNSAVED = ['tagline', 'exclusions', 'notices', 'meetingPointMapUrl', 'refundPolicyType'];
+  const FIELDS = ['tagline', 'exclusions', 'notices', 'meetingPointMapUrl', 'refundPolicyType'];
+  const COLUMNS = ['tagline', 'exclusions', 'notices', 'meeting_point_map_url', 'refund_policy_type'];
 
-  it('字典裡有這句註記，且不是空字串', () => {
-    expect(tripsPage.form.notPersistedYet.length).toBeGreaterThan(8);
+  it('0089 為五個欄位各加了一個 trips 欄位', () => {
+    const sql = readFileSync(resolve(ROOT, 'supabase/migrations/0089_trip_display_fields.sql'), 'utf8');
+    expect(sql).toContain('alter table public.trips');
+    for (const col of COLUMNS) {
+      expect(sql, `${col} 沒有出現在 0089`).toMatch(
+        new RegExp(`add column if not exists\\s+${col}\\b`),
+      );
+    }
   });
 
-  it('五個欄位旁邊都有 notPersistedYet 註記', () => {
-    const notes = page.match(/notPersistedYet/g) ?? [];
-    expect(notes.length, '註記數量與未持久化欄位數不符').toBe(UNSAVED.length);
+  it('陣列欄位用 jsonb，並且對「同名不同型」大聲失敗（PB-026）', () => {
+    const sql = readFileSync(resolve(ROOT, 'supabase/migrations/0089_trip_display_fields.sql'), 'utf8');
+    // overlay 0016 早就用 jsonb 建過同名欄位。寫 text[] 會在 local-isolated lane
+    // 上靜默跳過——CI 綠燈跑 jsonb、真實庫是 text[]，測試永遠測不到那個差異。
+    for (const col of ['exclusions', 'notices']) {
+      expect(sql, `${col} 不是 jsonb，會與 overlay 的既有形狀分歧`).toMatch(
+        new RegExp(`add column if not exists\\s+${col}\\s+jsonb`),
+      );
+    }
+    expect(sql, '沒有把靜默跳過轉成失敗').toContain('information_schema.columns');
+    expect(sql, '型別不符時沒有中止').toMatch(/raise exception/);
   });
 
-  it('service 的 tripApiPayload 確實沒有帶這五個欄位（註記不是多餘的）', () => {
+  it('畫面上不再有「儲存後不會保留」的註記', () => {
+    expect(page, '欄位已經會存了，註記留著就是說謊').not.toContain('notPersistedYet');
+    const dict = readFileSync(resolve(ROOT, 'src/i18n/zh-TW/pages/trips.ts'), 'utf8');
+    expect(dict, '字典裡的舊句子沒有清掉').not.toContain('notPersistedYet');
+  });
+
+  it('service 的 tripApiPayload 會把五個欄位送出去', () => {
     const svc = readFileSync(resolve(ROOT, 'src/services/tours.ts'), 'utf8');
     const payload = svc.slice(
       svc.indexOf('function tripApiPayload'),
       svc.indexOf('function planApiPayload'),
     );
-    for (const field of UNSAVED) {
-      expect(payload, `${field} 已經送得出去了，這條註記應該移除`).not.toContain(`payload.${field}`);
+    for (const field of FIELDS) {
+      expect(payload, `${field} 沒有被送出去，欄位建了也存不進值`).toContain(field);
     }
   });
 
-  it('五個欄位仍然可以編輯（誠實標註，不是把功能拿掉）', () => {
-    for (const field of UNSAVED) {
+  it('mapTrip 讀真欄位，不再回硬寫死的空值', () => {
+    const mappers = readFileSync(resolve(ROOT, 'src/server/mappers.ts'), 'utf8');
+    const fn = mappers.slice(mappers.indexOf('export function mapTrip'));
+    const body = fn.slice(0, fn.indexOf('\nexport '));
+    for (const col of COLUMNS) {
+      expect(body, `mapTrip 沒有讀 ${col}`).toContain(col);
+    }
+    expect(body, 'refundPolicyType 仍然被寫死成 STANDARD').not.toMatch(
+      /refundPolicyType:\s*'STANDARD'/,
+    );
+  });
+
+  it('新建與更新兩條路徑都會寫入這五個欄位', () => {
+    const domain = readFileSync(resolve(ROOT, 'src/server/tour-domain.ts'), 'utf8');
+    const row = domain.slice(domain.indexOf('export function tripRow'));
+    const rowBody = row.slice(0, row.indexOf('\nexport '));
+    for (const col of COLUMNS) {
+      expect(rowBody, `tripRow 沒有寫入 ${col}，新建的行程會是空值`).toContain(col);
+    }
+    const put = readFileSync(resolve(ROOT, 'src/app/api/trips/[id]/route.ts'), 'utf8');
+    for (const col of COLUMNS) {
+      expect(put, `PUT 沒有更新 ${col}`).toContain(col);
+    }
+  });
+
+  it('五個欄位仍然可以編輯（復原功能，不是把功能拿掉）', () => {
+    for (const field of FIELDS) {
       expect(page, `${field} 的輸入被移除了`).toContain(`patch({ ${field}:`);
     }
   });
