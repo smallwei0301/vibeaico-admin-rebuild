@@ -7,8 +7,16 @@ import {
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
 } from '@/mock/tours';
 
-/** Existing UI types are intentionally richer than the canonical #8-A schema.
- * Keep that compatibility at the service boundary instead of widening DB tables. */
+/**
+ * UI 型別仍比 canonical schema 寬（`category`、`durationDays` 等尚無欄位），
+ * 那部分的相容性繼續留在 service 邊界，不為此加寬資料表。
+ *
+ * ⚠️ issue #259：`tagline` / `meetingPointMapUrl` / `exclusions` / `notices` /
+ * `refundPolicyType` **原本刻意不在這裡**——`trips` 表沒有對應欄位，送過去也是白送。
+ * 詳情頁因此在那五個欄位下方標了「儲存後不會保留」。`0089` 補上欄位之後，
+ * 這裡必須跟著帶上它們，否則欄位建了、註記移除了，值還是存不進去——
+ * 那會變成一個比原本更難察覺的假成功。
+ */
 function tripApiPayload(payload: Partial<Trip>) {
   return {
     title: payload.title,
@@ -21,6 +29,11 @@ function tripApiPayload(payload: Partial<Trip>) {
     meetingPoint: payload.meetingPoint,
     includes: payload.inclusions?.join('\n'),
     notes: payload.safetyNotice,
+    tagline: payload.tagline,
+    meetingPointMapUrl: payload.meetingPointMapUrl,
+    exclusions: payload.exclusions,
+    notices: payload.notices,
+    refundPolicyType: payload.refundPolicyType,
   };
 }
 

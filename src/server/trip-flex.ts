@@ -27,6 +27,8 @@ export const TRIP_CAROUSEL_MAX = 12;
 export type TripCardSource = {
   slug: string;
   title: string;
+  /** 一句話標語。`0089` 之後才真的存得住，見 `subtitleOf()`。 */
+  tagline: string;
   summary: string;
   coverImageUrl: string;
   /**
@@ -39,17 +41,18 @@ export type TripCardSource = {
 const isHttps = (u: string) => /^https:\/\//i.test(u.trim());
 
 /**
- * 一行副標：取簡介的第一行；沒有就不放這一列（LINE 的 text 元件不收空字串）。
+ * 一行副標：**標語優先，其次簡介**；兩者皆空就不放這一列（LINE 的 text 元件
+ * 不收空字串）。
  *
- * ⚠️ **原本這裡是「標語（tagline）優先，其次簡介」。** 拿掉標語不是簡化，是
- * `public.trips` **沒有 tagline 這個欄位**（見 `0066_issue_8_tour_domain_core.sql`），
- * `tripCreateSchema` / `tripUpdateSchema` 也不收它。前端 `Trip.tagline` 與
- * trips 詳情頁那個輸入框是**存不進去的**（已另案追蹤）。
- * 在這裡讀一個不存在的欄位，只會讓每張卡的副標永遠是 undefined——
- * 一個沒有任何測試會紅、但顧客那邊少一行字的缺陷。
+ * 這裡曾經只取簡介。原因是 `public.trips` 當時**沒有 tagline 欄位**
+ * （`0066_issue_8_tour_domain_core.sql`），`tripCreateSchema` 也不收它——
+ * 讀一個不存在的欄位只會讓每張卡的副標永遠是 undefined，而且沒有任何測試會紅。
+ * `0089_trip_display_fields.sql`（issue #259）補上欄位、寫入與讀取四條路徑都接好
+ * 之後，才改回標語優先：那是店家真的填得進去、也真的想讓顧客先看到的一句話。
  */
 function subtitleOf(t: TripCardSource): string {
-  const raw = (t.summary || '').split('\n')[0].trim();
+  const source = (t.tagline || '').trim() || (t.summary || '');
+  const raw = source.split('\n')[0].trim();
   return raw.length > 60 ? `${raw.slice(0, 59)}…` : raw;
 }
 
