@@ -4,7 +4,10 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 模型 ID、風險代碼及保守路徑底線只維護在 `scripts/agents/model-routing.json`。
 本規則不改變既有 TEST 排隊、Sol 結案權限或 Production 授權。
 
-> **2026-09-08 Owner 裁示：最後風險評估的模型改為 Fable（`claude-fable-5-1`）。**
+> **2026-09-08 Owner 裁示：最後風險評估的預設模型改為 Fable（`claude-fable-5-1`）；
+> 現行 allowlist 另允許 Astra（`gpt-6-astra`）。**
+> 下列「沒有 GPT-6 Astra 存取管道」是設定 Fable 為預設值的歷史背景；後續裁示只新增
+> 有真實模型證據時可使用 Astra 的明確 allowlist，不降低任何證據要求。
 > 原文：「在目前 anthropic 環境，請把 astra 改為 Fable」。理由是目前的執行環境
 > 沒有 GPT-6 Astra 的存取管道，而規則明訂缺實際模型證據不得代填 —— 於是每一支
 > 高風險 PR 都會永久停在 ASTRA_PENDING，等於這道閘門從「擋住未經審查的高風險
@@ -52,7 +55,7 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
   "repository": "smallwei0301/vibeaico-admin-rebuild",
   "baseSha": "完整40碼基底版本",
   "headSha": "完整40碼候選版本",
-  "policyVersion": "2026-09-08.1",
+  "policyVersion": "2026-09-08.2",
   "testBaseline": "與PR ASTRA_TEST_BASELINE完全一致的測試證據及環境版本",
   "schemaBaseline": "與PR ASTRA_SCHEMA_BASELINE完全一致的資料庫版本或不適用理由",
   "requestedModel": "claude-fable-5-1",
