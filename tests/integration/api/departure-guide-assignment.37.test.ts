@@ -48,6 +48,15 @@ const DAY_OTHER = '2027-05-12';
  * 的成敗不該取決於別條先跑了什麼。
  */
 const DAY_SLOTS = '2027-05-13';
+/**
+ * 「只改名額」那一條的專屬日期。
+ *
+ * ⚠️ 它原本與前面幾條共用 DAY_OTHER，而「改派」那一條會把 staffA2 移到
+ * 18:00–21:00——本行程 `duration_hours = 3`，所以 20:00 那一團會撞上它而 409。
+ * 這個衝突是**改派真的生效之後才出現的**（改派還壞著的時候，staffA2 從來沒被
+ * 移過去，所以看不出來）。與其在同一天上排時間拼圖，不如給它一天。
+ */
+const DAY_EDIT = '2027-05-14';
 /** B 店的員工，專供跨租戶拒絕測試；beforeAll 造、afterAll 刪。 */
 const STAFF_B = '73700000-0000-4000-8000-0000000000b1';
 
@@ -210,10 +219,11 @@ describe('指派真的被寫進 trip_departure_staff', () => {
   });
 
   it('主導遊 ＋ 協同導遊 → DB 有 PRIMARY 與 ASSISTANT 各一列', async () => {
-    const { payload } = await createDeparture({
+    const { response, payload } = await createDeparture({
       planId: PLAN, departsOn: DAY_OTHER, startTime: '14:00', capacity: 8,
       primaryStaffId: SHOP_A.staffA1, assistantStaffIds: [SHOP_A.staffA2],
     });
+    expect(response.status, payload.message ?? '').toBe(200);
     const rows = await assignmentRows(payload.data!.id);
     expect(rows).toEqual([
       { staff_id: SHOP_A.staffA2, role: 'ASSISTANT' },
@@ -222,10 +232,11 @@ describe('指派真的被寫進 trip_departure_staff', () => {
   });
 
   it('改派後原人員立即釋放、新人員立即占用（§5.4）', async () => {
-    const { payload } = await createDeparture({
+    const { response, payload } = await createDeparture({
       planId: PLAN, departsOn: DAY_OTHER, startTime: '18:00', capacity: 8,
       primaryStaffId: SHOP_A.staffA1,
     });
+    expect(response.status, payload.message ?? '').toBe(200);
     const id = payload.data!.id;
 
     const updated = await api.put(`/api/trip-departures/${id}`, { primaryStaffId: SHOP_A.staffA2 });
@@ -237,10 +248,13 @@ describe('指派真的被寫進 trip_departure_staff', () => {
   });
 
   it('只改名額（不帶指派欄位）不會清掉既有的主導遊與協同導遊', async () => {
-    const { payload } = await createDeparture({
-      planId: PLAN, departsOn: DAY_OTHER, startTime: '20:00', capacity: 8,
+    const { response, payload } = await createDeparture({
+      planId: PLAN, departsOn: DAY_EDIT, startTime: '20:00', capacity: 8,
       primaryStaffId: SHOP_A.staffA1, assistantStaffIds: [SHOP_A.staffA2],
     });
+    // 前置沒建起來時要明確失敗並印出原因，而不是在下一行丟一個看不懂的
+    // 「Cannot read properties of undefined」。
+    expect(response.status, payload.message ?? '').toBe(200);
     const id = payload.data!.id;
     const updated = await api.put(`/api/trip-departures/${id}`, { capacity: 9 });
     expect(updated.status).toBe(200);
