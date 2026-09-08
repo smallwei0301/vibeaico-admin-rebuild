@@ -243,6 +243,10 @@ jobs:
             const errors = current.state === 'open'
               ? [...new Set([...metadataErrors, ...wipErrors, ...astraResult.errors])]
               : [];
+            const policyStatus = astra.finalRiskGateStatus({
+              hasErrors: errors.length > 0,
+              finalRiskRequired,
+            });
             const fingerprint = errors.length
               ? alert.buildWipErrorFingerprint({
                   prNumber: current.number,
@@ -271,20 +275,26 @@ jobs:
 
             if (current.state === 'open') {
               const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });
-              if (fresh.head.sha !== current.head.sha || fresh.base.sha !== current.base.sha || fresh.body !== current.body) {
+              if (
+                fresh.head.sha !== current.head.sha ||
+                fresh.base.sha !== current.base.sha ||
+                fresh.body !== current.body ||
+                fresh.draft !== current.draft ||
+                fresh.state !== current.state
+              ) {
                 throw new Error('PR changed during policy evaluation; wait for its current event');
               }
               await github.rest.repos.createCommitStatus({
                 owner,
                 repo,
                 sha: current.head.sha,
-                state: errors.length ? 'failure' : 'success',
+                state: policyStatus,
                 context: 'Agent WIP Policy',
-                description: errors.length
+                description: policyStatus === 'failure'
                   ? `${errors.length} WIP policy error(s); see PR comment`
-                  : finalRiskRequired
+                  : policyStatus === 'success'
                     ? 'B+ lane metadata and WIP policy passed'
-                    : 'B+ lane metadata passed; Final Risk deferred until active non-draft state',
+                    : 'Final Risk deferred; Agent WIP Policy intentionally remains pending and is not an approval',
                 target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
               });
             }
@@ -326,6 +336,8 @@ jobs:
             if (isAgent) {
               const body = errors.length
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: ${fingerprint}\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
+                : !finalRiskRequired
+                ? `${marker}\n## Agent WIP Guard: deferred — not an approval\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: DEFERRED_NON_ACTIVE\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- POLICY_STATUS: pending\n\nThis Draft or non-active PR is not eligible for Final Risk yet. The required \`Agent WIP Policy\` status intentionally remains pending; reactivation as an active non-draft PR restores the normal Final Risk gate.`
                 : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
               if (previous) {

@@ -25,6 +25,11 @@ export function shouldEnforceFinalRisk({ pullRequestState = 'open', draft = fals
   return !FINAL_RISK_DEFERRED_LANE_STATES.has(String(laneState).trim().toUpperCase());
 }
 
+export function finalRiskGateStatus({ hasErrors = false, finalRiskRequired = false } = {}) {
+  if (hasErrors) return 'failure';
+  return finalRiskRequired ? 'success' : 'pending';
+}
+
 /**
  * 逐字比對的欄位。
  *

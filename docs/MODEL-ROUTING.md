@@ -6,7 +6,7 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 
 ### 最後風險 gate 的生命週期
 
-Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模型的活性檢查。Draft、`PARKED`、`COMPLETE`、`OWNER_BLOCKED`、`HISTORICAL` 與 `READY_FOR_PROMOTION` 只會延後 Final Risk；它們不代表已通過，也不會清除既有的 metadata、CI 或 WIP 錯誤。當 PR 回到 active 且非 Draft 的可合併流程時，原本的高風險分類、`changeDigest`、基線與真實模型證據要求全部恢復。未知的 lane state 仍 fail closed。
+Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模型的活性檢查。Draft、`PARKED`、`COMPLETE`、`OWNER_BLOCKED`、`HISTORICAL` 與 `READY_FOR_PROMOTION` 只會延後 Final Risk；它們不代表已通過，也不會清除既有的 metadata、CI 或 WIP 錯誤。此時 `Agent WIP Policy` 保持 `pending`，絕不寫成 success 或 approval。當 PR 回到 active 且非 Draft 的可合併流程時，原本的高風險分類、`changeDigest`、基線與真實模型證據要求全部恢復。未知的 lane state 仍 fail closed。
 
 > **2026-09-08 Owner 裁示：最後風險評估的預設模型改為 Fable（`claude-fable-5-1`）；
 > 現行 allowlist 另允許 Astra（`gpt-6-astra`）。**

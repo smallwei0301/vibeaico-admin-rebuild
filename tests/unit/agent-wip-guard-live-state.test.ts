@@ -68,7 +68,26 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(evaluationIndex).toBeGreaterThan(gateIndex);
     expect(workflow).toContain('draft: current.draft === true');
     expect(workflow).toContain("status: current.state === 'open' ? 'DEFERRED_NON_ACTIVE' : 'NOT_REQUIRED'");
+    expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
+    expect(workflow).toContain('state: policyStatus');
+    expect(workflow).toContain('Agent WIP Policy intentionally remains pending and is not an approval');
+    expect(workflow).toContain('## Agent WIP Guard: deferred — not an approval');
     expect(workflow).toContain('- FINAL_RISK_GATE: ${finalRiskRequired ? \'ENFORCED\' : \'DEFERRED_NON_ACTIVE\'}');
+  });
+
+  it('revalidates draft and lifecycle state before writing the required status', () => {
+    const rereadIndex = workflow.indexOf(
+      'const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });',
+    );
+    const statusIndex = workflow.indexOf(
+      'await github.rest.repos.createCommitStatus({',
+      rereadIndex,
+    );
+
+    expect(rereadIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeGreaterThan(rereadIndex);
+    expect(workflow).toContain('fresh.draft !== current.draft');
+    expect(workflow).toContain('fresh.state !== current.state');
   });
 
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
@@ -86,7 +105,8 @@ describe('agent WIP Guard live-state dispatch', () => {
   it('writes a dedicated policy status that remains failed even when duplicate email noise is suppressed', () => {
     expect(workflow).toContain('statuses: write');
     expect(workflow).toContain("context: 'Agent WIP Policy'");
-    expect(workflow).toContain("state: errors.length ? 'failure' : 'success'");
+    expect(workflow).toContain('state: policyStatus');
+    expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
     expect(workflow).toContain('const duplicateFailure = Boolean(');
     expect(workflow).toContain('alert.isDuplicateWipFailure({');
     expect(workflow).toContain('DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}');
@@ -110,7 +130,7 @@ describe('agent WIP Guard live-state dispatch', () => {
 });
 
 import {
-  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, routing, shouldEnforceFinalRisk,
+  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, finalRiskGateStatus, routing, shouldEnforceFinalRisk,
 } from '../../scripts/agents/astra-review-policy.mjs';
 
 const body = 'ASTRA_RISK: NONE\nASTRA_RATIONALE: Change only an ordinary heading\n';
@@ -145,6 +165,12 @@ describe('Astra lifecycle gate', () => {
   it('fails closed for unknown lane states and does not enforce closed PRs', () => {
     expect(shouldEnforceFinalRisk({ pullRequestState: 'open', draft: false, laneState: 'STALE_UNKNOWN' })).toBe(true);
     expect(shouldEnforceFinalRisk({ pullRequestState: 'closed', draft: false, laneState: 'ACTIVE' })).toBe(false);
+  });
+
+  it('never reports deferred Final Risk as a passing policy status', () => {
+    expect(finalRiskGateStatus({ hasErrors: true, finalRiskRequired: false })).toBe('failure');
+    expect(finalRiskGateStatus({ hasErrors: false, finalRiskRequired: false })).toBe('pending');
+    expect(finalRiskGateStatus({ hasErrors: false, finalRiskRequired: true })).toBe('success');
   });
 });
 
