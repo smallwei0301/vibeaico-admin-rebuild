@@ -376,32 +376,35 @@ export type ExportBookingsQuery = {
   to?: string;
 };
 
+/**
+ * 預約清單匯出。
+ *
+ * 兩件事在 issue #33 這一輪一起修：
+ *
+ * 1. **改打帶格式段的端點。** 原本打的是 `/api/export/bookings`（無 format 段），
+ *    於是 #217 建立的 `/api/export/bookings/:format` **全站沒有任何呼叫端**——
+ *    路由存在、測試也綠，但功能按不到（PB-027 的「路由存在 ≠ 功能可用」）。
+ * 2. **改用共用的 `downloadAttachment()`。** 原本這裡自己寫了一份 fetch ＋
+ *    建 anchor ＋ 解析 Content-Disposition 的程式碼，是同一段邏輯的第三份複製。
+ *    `src/services/download.ts` 的檔頭已經寫明為什麼不該有第二份來源
+ *    （「前端自組檔名」正是 #246 要修的缺陷），這裡跟著收斂。
+ */
+const bookingsExportUrl = (format: 'csv' | 'xlsx', q?: ExportBookingsQuery) => {
+  const params = new URLSearchParams();
+  if (q?.from) params.set('from', q.from);
+  if (q?.to) params.set('to', q.to);
+  const query = params.toString();
+  return `${API_BASE}/api/export/bookings/${format}${query ? `?${query}` : ''}`;
+};
+
 export const exportBookingsCsv = (q?: ExportBookingsQuery) =>
-  adapt<void>(
-    () => undefined,
-    async () => {
-      const params = new URLSearchParams();
-      if (q?.from) params.set('from', q.from);
-      if (q?.to) params.set('to', q.to);
+  adapt<AttachmentDownloadResult>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(bookingsExportUrl('csv', q)),
+  );
 
-      const queryString = params.toString();
-      const response = await fetch(
-        `${API_BASE}/api/export/bookings${queryString ? `?${queryString}` : ''}`,
-        { credentials: 'include' },
-      );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const blob = await response.blob();
-      const filename = response.headers
-        .get('content-disposition')
-        ?.match(/filename="?([^";]+)"?/i)?.[1] ?? 'bookings.csv';
-      const url = window.URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-    },
+export const exportBookingsXlsx = (q?: ExportBookingsQuery) =>
+  adapt<AttachmentDownloadResult>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(bookingsExportUrl('xlsx', q)),
   );

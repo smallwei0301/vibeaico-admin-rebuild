@@ -42,10 +42,13 @@ export const inventoryPage = {
 
   actions: {
     export: '匯出 CSV',
+    exportXlsx: '匯出 Excel',
   },
 
   confirm: {
-    exportTitle: '匯出 CSV',
+    // issue #33：標題要跟著實際會產生的格式走。兩顆按鈕共用同一個確認框，
+    // 標題若寫死「匯出 CSV」，按了 Excel 的人會看到一個講錯格式的確認框。
+    exportTitle: (formatLabel: string) => formatLabel,
     export: '確定要匯出目前篩選的異動記錄嗎？',
   },
 

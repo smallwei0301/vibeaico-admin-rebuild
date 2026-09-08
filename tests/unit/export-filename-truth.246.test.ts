@@ -87,11 +87,22 @@ describe('#246 匯出格式與檔名的誠實性', () => {
     for (const file of walk('src')) {
       const source = stripComments(read(file));
       for (const line of source.split('\n')) {
-        if (/`[^`]*\$\{[^`]*\}\.(csv|xlsx|xls)`/.test(line)) offenders.push(`${file}: ${line.trim()}`);
+        // 兩種形狀都算：寫死副檔名（`…${date}.csv`）與變數副檔名（`…${date}.${ext}`）。
+        // 後者原本漏掉了——`bookings.ts` 的 exportFileName 就是這個形狀，它零呼叫端
+        // 地躺在字典裡，而「字典裡不得再有任何組出檔名的樣板」是本 issue 自己的規則。
+        if (/`[^`]*\$\{[^`]*\}\.(csv|xlsx|xls|\$\{\w+\})`/.test(line)) {
+          offenders.push(`${file}: ${line.trim()}`);
+        }
       }
     }
-    // route 內的 `customers-${…}.xlsx` 是後端在產檔名，是正確位置；只排除 API 路徑。
-    const frontend = offenders.filter((entry) => !entry.startsWith('src/app/api/'));
+    // 後端產檔名是正確位置——route（`src/app/api/`）與 route 共用的 server 模組
+    // （`src/server/`，例如 export-bookings.ts 的 `bookings-${date}.xlsx`）都算。
+    // 本條要鎖的是**前端自組檔名**：那才是 #246 的缺陷，因為前端組出來的名字與
+    // 後端 Content-Disposition 實際送出的名字會各走各的、遲早不一致。
+    const BACKEND_PREFIXES = ['src/app/api/', 'src/server/'];
+    const frontend = offenders.filter(
+      (entry) => !BACKEND_PREFIXES.some((prefix) => entry.startsWith(prefix)),
+    );
     expect(frontend).toEqual([]);
   });
 });

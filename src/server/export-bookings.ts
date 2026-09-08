@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { taipeiTodayDateString } from '@/server/tz';
+import { buildXlsx, xlsxResponse } from '@/server/xlsx';
 import { common } from '@/i18n/zh-TW/common';
 
 const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -55,13 +56,23 @@ export function csvCell(value: string | number | null | undefined): string {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-const HEADERS = ['預約編號', '預約時間', '顧客姓名', '顧客電話', '服務', '員工', '金額', '狀態'];
+export const BOOKING_EXPORT_HEADERS = [
+  '預約編號', '預約時間', '顧客姓名', '顧客電話', '服務', '員工', '金額', '狀態',
+] as const;
 
-export async function buildBookingsCsvResponse(
+/**
+ * 查一次、攤平一次，csv 與 xlsx 兩條路徑吃同一份結果。
+ *
+ * 刻意不在這裡做 CSV 跳脫：`csvCell()` 的公式防護（前置單引號）**只對 CSV 正確**。
+ * xlsx 是結構化格式，`exceljs` 寫進去的字串就是字串、不會被當公式求值，硬加一個
+ * 單引號反而會讓店家在 Excel 裡看到多出來的符號——那是把資料改壞，不是保護。
+ * 這個分工與 `inventory/[format]` 的既有前例一致。
+ */
+async function fetchBookingCells(
   supabase: SupabaseClient,
   tenantId: string,
   q: z.infer<typeof bookingExportQuerySchema>,
-): Promise<Response> {
+): Promise<(string | number)[][]> {
   let query = supabase.from('bookings_view')
     .select('booking_no, start_at, customer_name, customer_phone, service_name, staff_name, final_price, status')
     .eq('tenant_id', tenantId)
@@ -72,19 +83,27 @@ export async function buildBookingsCsvResponse(
   const { data: rows, error } = await query;
   if (error) throw error;
 
-  const lines = [HEADERS.map(csvCell).join(',')];
-  for (const b of rows ?? []) {
-    lines.push([
-      csvCell(b.booking_no),
-      csvCell(taipeiDateTime(b.start_at)),
-      csvCell(b.customer_name),
-      csvCell(b.customer_phone),
-      csvCell(b.service_name),
-      csvCell(b.staff_name),
-      csvCell(Number(b.final_price)),
-      csvCell(common.bookingStatus[b.status as keyof typeof common.bookingStatus] ?? b.status),
-    ].join(','));
-  }
+  return (rows ?? []).map((b) => [
+    b.booking_no,
+    taipeiDateTime(b.start_at),
+    b.customer_name,
+    b.customer_phone,
+    b.service_name,
+    b.staff_name,
+    Number(b.final_price),
+    common.bookingStatus[b.status as keyof typeof common.bookingStatus] ?? b.status,
+  ]);
+}
+
+export async function buildBookingsCsvResponse(
+  supabase: SupabaseClient,
+  tenantId: string,
+  q: z.infer<typeof bookingExportQuerySchema>,
+): Promise<Response> {
+  const cells = await fetchBookingCells(supabase, tenantId, q);
+
+  const lines = [BOOKING_EXPORT_HEADERS.map(csvCell).join(',')];
+  for (const row of cells) lines.push(row.map(csvCell).join(','));
 
   const csv = '\uFEFF' + lines.join('\r\n') + '\r\n'; // \uFEFF = UTF-8 BOM
   return new Response(csv, {
@@ -94,4 +113,27 @@ export async function buildBookingsCsvResponse(
       'Cache-Control': 'no-store',
     },
   });
+}
+
+/**
+ * xlsx 分支（issue #33 第 ③ 筆的 excel 半邊）。
+ *
+ * 這一格原本標為「永久留白」，理由是「本專案沒有安裝任何 xlsx 產生器」。那個理由
+ * 在 #246 之後就不成立了——`exceljs` 已安裝、`src/server/xlsx.ts` 已有共用產生器、
+ * 顧客名單與報表匯出都已經出真的 Excel。留著只有預約匯出出不了，等於同一顆按鈕在
+ * 不同頁面給出不一樣的能力。
+ *
+ * 但**原本那句判斷本身仍然有效**：把一份 CSV 命名成 `.xlsx` 是謊報檔案格式。
+ * 所以這裡走 `buildXlsx()` 產真的活頁簿，不是改副檔名。
+ */
+export async function buildBookingsXlsxResponse(
+  supabase: SupabaseClient,
+  tenantId: string,
+  q: z.infer<typeof bookingExportQuerySchema>,
+): Promise<Response> {
+  const cells = await fetchBookingCells(supabase, tenantId, q);
+  return xlsxResponse(
+    `bookings-${taipeiTodayDateString()}.xlsx`,
+    await buildXlsx('預約清單', [...BOOKING_EXPORT_HEADERS], cells),
+  );
 }

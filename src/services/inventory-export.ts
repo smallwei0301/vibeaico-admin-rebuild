@@ -33,3 +33,16 @@ export const exportInventoryCsv = (query?: InventoryExportQuery) =>
       `${API_BASE}/api/export/inventory/csv${queryString(query)}`,
     ),
   );
+
+/**
+ * issue #33：`inventory/[format]` 的 `xlsx` 分支在 #246 就做好了，但**沒有任何
+ * 呼叫端**——後端出得了真的 Excel，庫存頁卻只有一顆「匯出 CSV」。做了按不到，
+ * 就是 PB-027 的「路由存在 ≠ 功能可用」。這裡把它接出來。
+ */
+export const exportInventoryXlsx = (query?: InventoryExportQuery) =>
+  adapt<InventoryExportResult>(
+    () => NOT_DOWNLOADED,
+    () => downloadAttachment(
+      `${API_BASE}/api/export/inventory/xlsx${queryString(query)}`,
+    ),
+  );
