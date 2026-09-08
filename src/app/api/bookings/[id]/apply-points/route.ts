@@ -3,64 +3,77 @@ import { z } from 'zod';
 import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { createAdminSupabase } from '@/server/supabase';
 
 const bodySchema = z.object({ points: z.number().int().positive('點數需為正整數') });
 
+/**
+ * issue #218：扣點、折價、點數帳本三件事改為**一筆資料庫交易**（`redeem_booking_points`）。
+ *
+ * 修改前這三步是三次獨立的 PostgREST 呼叫，有兩個缺口：
+ *
+ * **A. `final_price` 沒有 CAS。** 扣點那一步早就有 compare-and-swap（擋得住點數的
+ *    lost update），但折價那一步用的是進函式時讀到的 `final_price`。兩個併發請求
+ *    各折 30 點：CAS 讓兩次扣點都成功（100 → 70 → 40，**點數真的少了 60**），
+ *    而兩邊都把 `final_price` 寫成「讀到的 100 − 30 = 70」。
+ *    **顧客付出 60 點，只換到 30 元折扣。**
+ *
+ * **B. 三步不在同一交易。** 帳本 insert 或折價 update 失敗時，已扣掉的點數收不回來
+ *    ——顧客的點數消失，卻沒有折扣、也沒有帳本紀錄可查。
+ *
+ * rpc 內以 `select … for update` 鎖住 booking 與 customer 兩列，折價寫成
+ * `final_price = final_price - p_points`（由資料庫自己讀自己算），因此不可能有兩個
+ * 請求各自從同一個舊值出發。任何一步 raise 都讓整筆回滾。
+ *
+ * ⚠️ 這裡改用 service role client：rpc 是 `security definer`，且已對
+ * `anon, authenticated` 撤銷執行權（見 `0090`），只能由伺服器端呼叫。
+ * 身分／租戶／`POINT_SYSTEM` 三道閘門**維持在 route 這一層、順序不變**，
+ * 而 rpc 內部再以 `tenant_id = p_tenant` 過濾每一句，兩層都不倚賴對方。
+ *
+ * 回應格式與既有 `{ finalPrice, customerPoints }` 逐字相同（#218 驗收：不自行改
+ * 商業規則、不改回應形狀）。
+ */
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant();
   await requireFeature(t.tenantId, 'POINT_SYSTEM');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
 
-  const { data: booking, error: bErr } = await t.supabase.from('bookings')
-    .select('id, customer_id, final_price')
-    .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
-  if (bErr) throw bErr;
-  if (!booking) throw new ApiHttpError(404, '找不到此預約', ERR.NOT_FOUND);
+  const admin = createAdminSupabase();
+  const { data, error } = await admin.rpc('redeem_booking_points', {
+    p_tenant: t.tenantId,
+    p_booking: id,
+    p_points: b.points,
+  });
 
-  // 折抵後不可低於 0（1 點 = 1 元）→ 400：這是輸入不合法（要求折太多），不是狀態衝突。
-  const newFinal = Number(booking.final_price) - b.points;
-  if (newFinal < 0)
-    throw new ApiHttpError(400, '折抵點數不可超過預約金額', ERR.VALIDATION);
-
-  // 扣點採 compare-and-swap（同 products adjust-stock 的寫法）：
-  // update 條件帶 .eq('points', 讀到的舊值)，兩個併發折抵只有一個能匹配成功，
-  // 另一個重讀新值重試。先前版本用 .gte('points', b.points) 只擋得住「扣成
-  // 負數」，擋不住 lost update（兩邊都讀到 100、都扣 30、最終 70 而非 40）
-  // ——審計實抓，勿改回。
-  let pointsAfter = 0;
-  for (let attempt = 0; ; attempt++) {
-    const { data: customer, error: cErr } = await t.supabase.from('customers')
-      .select('id, points')
-      .eq('id', booking.customer_id).eq('tenant_id', t.tenantId).maybeSingle();
-    if (cErr) throw cErr;
-    if (!customer) throw new ApiHttpError(404, '找不到此顧客', ERR.NOT_FOUND);
-    // POINTS_001（錯誤碼總表：點數不足 409）。http.ts 的 ERR 常數表沒收這個碼
-    // （該檔不在本次分工可動清單），依總表直接帶字面值。
-    if (customer.points < b.points)
+  if (error) {
+    const message = String((error as any)?.message ?? '');
+    // 業務結果各自對映到既有的狀態碼與錯誤碼，語意與修改前完全相同。
+    if (message.includes('BOOKING_NOT_FOUND')) {
+      throw new ApiHttpError(404, '找不到此預約', ERR.NOT_FOUND);
+    }
+    if (message.includes('CUSTOMER_NOT_FOUND')) {
+      throw new ApiHttpError(404, '找不到此顧客', ERR.NOT_FOUND);
+    }
+    // POINTS_001（錯誤碼總表：點數不足 409）。維持字面值，與修改前一致。
+    if (message.includes('POINTS_INSUFFICIENT')) {
       throw new ApiHttpError(409, '顧客點數不足', 'POINTS_001');
-
-    pointsAfter = customer.points - b.points;
-    const { data: deducted, error: dErr } = await t.supabase.from('customers')
-      .update({ points: pointsAfter })
-      .eq('id', customer.id).eq('tenant_id', t.tenantId).eq('points', customer.points) // CAS
-      .select('id').maybeSingle();
-    if (dErr) throw dErr;
-    if (deducted) break;
-    if (attempt >= 2)
-      throw new ApiHttpError(409, '顧客點數異動頻繁，請重試', ERR.CONFLICT);
+    }
+    // 折抵超過金額是「要求折太多」＝輸入不合法，不是狀態衝突（維持 400）。
+    if (message.includes('AMOUNT_EXCEEDED')) {
+      throw new ApiHttpError(400, '折抵點數不可超過預約金額', ERR.VALIDATION);
+    }
+    if (message.includes('POINTS_INVALID')) {
+      throw new ApiHttpError(400, '點數需為正整數', ERR.VALIDATION);
+    }
+    throw error;
   }
 
-  const { error: lErr } = await t.supabase.from('customer_point_logs').insert({
-    tenant_id: t.tenantId, customer_id: booking.customer_id,
-    delta: -b.points, reason: 'REDEEM_BOOKING', points_after: pointsAfter,
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new ApiHttpError(404, '找不到此預約', ERR.NOT_FOUND);
+
+  return ok({
+    finalPrice: Number((row as any).final_price),
+    customerPoints: Number((row as any).customer_points),
   });
-  if (lErr) throw lErr;
-
-  const { error: uErr } = await t.supabase.from('bookings')
-    .update({ final_price: newFinal })
-    .eq('id', id).eq('tenant_id', t.tenantId);
-  if (uErr) throw uErr;
-
-  return ok({ finalPrice: newFinal, customerPoints: pointsAfter });
 });
