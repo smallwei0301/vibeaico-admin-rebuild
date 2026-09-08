@@ -8,8 +8,9 @@
 // available-slots 的標註「只在 14 分冊 §4，route 檔本身沒有——標註應該寫在
 // 下一個人會讀到的地方」。下一個讀這個檔的人不會先去翻分冊，所以標註要在這裡。
 //
-// 接線前必讀 §8.8 與 10 分冊 §5.5：Phase 8d 要求 available-slots 排除團次時段
-// （目前尚未實作），在那之前把它接進預約頁會給出「看得到但其實已被團次佔用」的時段。
+// ✅ issue #37：「排除團次時段」這一條**已經實作**（見下方步驟 4 的第四項）。
+// 被團次指派的導遊（PRIMARY 與 ASSISTANT 都算）在該團的佔用區間內不會再被回傳。
+// 這解掉了 §8.8 當時列的接線前置之一；是否接進畫面仍是 Phase 8b 的獨立決定。
 //
 // GET /api/bookings/available-slots?serviceId&staffId?&date=YYYY-MM-DD（04 §B-1）
 //
@@ -42,6 +43,7 @@ import { handle, ok, ApiHttpError, ERR } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { businessSettingsSchema } from '@/config/tenant-settings';
 import { queryEffectiveBlockTimes } from '@/server/block-times';
+import { departureInterval, overlaps as intervalOverlaps } from '@/server/staff-availability';
 
 const querySchema = z.object({
   serviceId: z.string().uuid(),
@@ -131,16 +133,42 @@ export const GET = handle(async (req) => {
   // 「今天」實際發生的那一次，不能只用 start_at 的日期範圍過濾（那是首次發生
   // 的日期，可能遠早於今天）。
   const [{ data: bookings, error: bErr }, blocks,
-         { data: shifts, error: shErr }] = await Promise.all([
+         { data: shifts, error: shErr }, { data: assigned, error: asErr }] = await Promise.all([
     t.supabase.from('bookings').select('staff_id, start_at, end_at')
       .eq('tenant_id', t.tenantId).in('status', ['PENDING', 'CONFIRMED'])
       .lt('start_at', dayEndIso).gt('end_at', dayStartIso),
     queryEffectiveBlockTimes(t.supabase, t.tenantId, dayStartIso, dayEndIso),
     t.supabase.from('shifts').select('staff_id, start_time, end_time')
       .eq('tenant_id', t.tenantId).eq('work_date', q.date),
+    // issue #37 §5.4 的反向：小王已被團次指派 → 這裡不得回小王。
+    // 只看「當天」的團次即可：團次的佔用區間不會跨日（有時間時是 departs_on 當天
+    // 的一段，沒時間時是 departs_on 整日），而本端點只算 q.date 這一天。
+    t.supabase.from('trip_departure_staff')
+      .select('staff_id, trip_departures!inner(id, departs_on, start_time, status, trips!inner(duration_hours))')
+      .eq('tenant_id', t.tenantId)
+      .neq('trip_departures.status', 'CANCELLED')
+      .eq('trip_departures.departs_on', q.date),
   ]);
   if (bErr) throw bErr;
   if (shErr) throw shErr;
+  // PB-023：丟掉 error 會讓「查詢失敗」冒充「沒有任何團次佔用」，於是被團次指派
+  // 的導遊又整批出現在可預約時段裡——正是這一段要防的事。
+  if (asErr) throw asErr;
+
+  const departureBusy: Array<{ staffId: string; start: number; end: number }> = [];
+  for (const row of (assigned ?? []) as Array<Record<string, unknown>>) {
+    const dep = (Array.isArray(row.trip_departures) ? row.trip_departures[0] : row.trip_departures) as
+      undefined | { id: string; departs_on: string; start_time: string | null; trips?: unknown };
+    if (!dep) continue;
+    const trip = (Array.isArray(dep.trips) ? dep.trips[0] : dep.trips) as
+      undefined | { duration_hours: number | null };
+    const interval = departureInterval({
+      departsOn: dep.departs_on,
+      startTime: dep.start_time == null ? null : String(dep.start_time).slice(0, 5),
+      durationHours: trip?.duration_hours ?? null,
+    });
+    departureBusy.push({ staffId: String(row.staff_id), start: interval.start, end: interval.end });
+  }
 
   const tenantHasShiftsToday = (shifts ?? []).length > 0;
   const shiftsByStaff = new Map<string, Array<{ start: number; end: number }>>();
@@ -173,6 +201,10 @@ export const GET = handle(async (req) => {
         // 封鎖時段（該員工或全店）重疊
         if ((blocks ?? []).some((bl) => (bl.staff_id === null || bl.staff_id === staffId) &&
           overlaps(slotStartMs, slotEndMs, Date.parse(bl.start_at), Date.parse(bl.end_at))))
+          return false;
+        // 已被團次指派（PRIMARY 或 ASSISTANT 都占用時間，§5.3）
+        if (departureBusy.some((d) => d.staffId === staffId &&
+          intervalOverlaps({ start: slotStartMs, end: slotEndMs }, d)))
           return false;
         return true;
       });
