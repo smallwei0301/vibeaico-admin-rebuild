@@ -4,6 +4,10 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 模型 ID、風險代碼及保守路徑底線只維護在 `scripts/agents/model-routing.json`。
 本規則不改變既有 TEST 排隊、Sol 結案權限或 Production 授權。
 
+### 最後風險 gate 的生命週期
+
+Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模型的活性檢查。Draft、`PARKED`、`COMPLETE`、`OWNER_BLOCKED`、`HISTORICAL` 與 `READY_FOR_PROMOTION` 只會延後 Final Risk；它們不代表已通過，也不會清除既有的 metadata、CI 或 WIP 錯誤。當 PR 回到 active 且非 Draft 的可合併流程時，原本的高風險分類、`changeDigest`、基線與真實模型證據要求全部恢復。未知的 lane state 仍 fail closed。
+
 > **2026-09-08 Owner 裁示：最後風險評估的預設模型改為 Fable（`claude-fable-5-1`）；
 > 現行 allowlist 另允許 Astra（`gpt-6-astra`）。**
 > 下列「沒有 GPT-6 Astra 存取管道」是設定 Fable 為預設值的歷史背景；後續裁示只新增
