@@ -68,9 +68,13 @@ describe('Rich Menu 六格文字全部有 handler（issue #5 ③；06 §3 補列
     }
   });
 
-  it('尚未建置的功能（GUIDE 團次／我的訂單、CLINIC 看診進度）仍解析得到意圖', () => {
-    // 這三格對應 Phase 8b 尚未落地的資料表；規格要求「誠實回覆功能準備中」而非沉默，
-    // 所以它們一樣必須解析成功並有 case（回覆內容由整合測試驗）。
+  it('選單上「團次／我的訂單／看診進度」三格解析得到意圖且有 case', () => {
+    // ⚠️ 這條原本叫「尚未建置的功能（…）仍解析得到意圖」，但它從頭到尾只驗
+    // 「解析得到 ＋ 有 case」，沒有驗任何一格是否真的尚未建置——名稱宣稱得比它
+    // 證明的多（PB-029）。事實上這三格現在各自不同：`團次` 已接 trip_departures、
+    // `我的訂單` 對 LOCAL_SHOP／CLINIC 已接 product_orders（只有 GUIDE 那半邊仍
+    // 準備中）、`看診進度` 才是真的還沒建。回覆內容一律由整合測試驗：
+    // tours.10 / line-order-query.251 / keyword-replies.05。
     expect(resolveBuiltinIntent('團次')?.intent).toBe('DEPARTURE');
     expect(resolveBuiltinIntent('我的訂單')?.intent).toBe('ORDER');
     expect(resolveBuiltinIntent('看診進度')?.intent).toBe('CLINIC_QUEUE');

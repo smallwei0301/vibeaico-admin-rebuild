@@ -165,6 +165,29 @@ const MSG = {
   productEmpty: '目前還沒有上架商品。',
   portfolioTitle: '我們的作品：',
   portfolioEmpty: '目前還沒有上傳作品。',
+  /* --- 商品訂單查詢（系統關鍵字 15 組的 ORDER 組，LOCAL_SHOP／CLINIC）--- */
+  orderTitle: '您最近的訂單：',
+  orderEmpty: '您目前沒有訂單紀錄，歡迎輸入「商品」看看我們販售的品項！',
+  /**
+   * 訂單狀態與付款狀態的顧客用詞。
+   *
+   * ⚠️ 刻意與 `src/i18n/zh-TW/common.ts` 的 `bookingStatus` / `paymentStatus`
+   * **各自維護**，不是漏抽共用：那份是後台 UI 的字典（鐵則 1 的管轄範圍），
+   * 這份是 bot 對顧客說的話，與 `MSG` 其餘文案同源。兩邊剛好同字不代表同一
+   * 個真相來源——後台改稱呼不該連帶改寫顧客收到的訊息。
+   */
+  orderStatus: {
+    PENDING: '待確認',
+    CONFIRMED: '已確認',
+    COMPLETED: '已完成',
+    CANCELLED: '已取消',
+  } as Record<string, string>,
+  orderPaymentStatus: {
+    UNPAID: '未付款',
+    PAID_ONLINE: '線上已付',
+    PAID_OFFLINE: '現場已付',
+    REFUNDED: '已退款',
+  } as Record<string, string>,
   memberTitle: '您的會員資訊：',
   memberPoints: (n: number) => `・目前點數：${n} 點`,
   memberLevel: (name: string) => `・會員等級：${name}`,
@@ -196,7 +219,9 @@ const MSG = {
    *
    * ⚠️ 這幾句的壽命由對應 Issue 決定，功能落地後**必須連同文案一起刪掉**，
    * 不要留著當備用：留著的話，下一個人讀到這組常數會以為那些功能仍未建置。
-     *   notReadyOrder → issue #8 的旅遊訂單段（`tour_orders` 表尚未建立）
+     *   notReadyOrder → issue #8 的旅遊訂單段（`tour_orders` 表尚未建立）。
+     *     ⚠️ 只剩 GUIDE 用得到：LOCAL_SHOP／CLINIC 的「訂單查詢」已改查
+     *     `product_orders`（見 `replyOrders()`），那半邊不再是準備中。
    */
   notReadyClinicQueue:
     '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
@@ -527,10 +552,7 @@ async function replyBuiltin(intent: BuiltinIntent, ctx: BuiltinCtx): Promise<boo
       // 未來 14 天可報名的團次／名額（10 分冊 §6.1）。同上，0066 起查得到。
       return replyDepartures(ctx);
     case 'ORDER':
-      // ⚠️ 這一格**還是準備中，而且是真的**：`tour_orders` 表尚未建立
-      // （0066–0068 只建了 trips / trip_plans / trip_departures / trip_addons），
-      // 沒有任何地方查得到旅遊訂單。有表之前回一句編出來的進度就是說謊。
-      return businessTypeOf(ctx.tenant) === 'GUIDE' ? replyText(ctx, MSG.notReadyOrder) : false;
+      return replyOrders(ctx);
 
     default:
       return false;
@@ -814,6 +836,66 @@ async function replyProducts(ctx: BuiltinCtx): Promise<boolean> {
     (p: any) => `・${p.name}｜NT$${Number(p.price).toLocaleString('zh-TW')}`,
   );
   return replyText(ctx, `${MSG.productTitle}\n${lines.join('\n')}`);
+}
+
+/* ------------------------------------------------------ 內建指令：訂單 */
+/**
+ * 「訂單查詢」組（`我的訂單` / `查看訂單` / `訂單查詢`）。
+ *
+ * 這一組是**系統內建 15 組之一**，三種業態的 keyword-replies 頁都列得出來、
+ * 都能停用——但在 `main` 上它先前只對 GUIDE 回一句「準備中」，LOCAL_SHOP 與
+ * CLINIC 直接 `return false` 落到預設回覆。也就是後台明明擺著一顆「訂單查詢」
+ * 的開關，顧客打了卻什麼都查不到。
+ *
+ * `product_orders` 從 `0004` 就存在，後台 `/api/product-orders` 是完整可用的
+ * 功能（列表／建單／出貨）——查得到卻不回答，是 PB-027 的第四種形狀（符號
+ * 存在 ≠ 事情會發生）。本函式把那半邊接回來。
+ *
+ * ⚠️ GUIDE 仍維持 `notReadyOrder`：嚮導的「我的訂單」指的是行程訂單
+ * （10 分冊 §6.1），而 `tour_orders` 表至今不存在（`0066`–`0068` 只建了
+ * trips / trip_plans / trip_departures / trip_addons）。拿 `product_orders`
+ * 去湊一份「旅遊訂單」是回答錯的東西，比誠實說準備中更糟。
+ *
+ * ⚠️ 只查**已綁定 LINE 的顧客**自己的訂單，且一律帶 `tenant_id`。未綁定就說
+ * 未綁定，不拿姓名或電話去模糊比對湊出一筆「可能是您的訂單」——那會把別人的
+ * 訂單金額念給不相干的人聽。
+ *
+ * ⚠️ 刻意不加 `isFeatureActive` 閘門，與同層的 `replyProducts()` /
+ * `replyCoupons()` 一致：14 分冊 §8.16 的裁決是付費閘門擋「多做一件事」，
+ * 顧客查自己已經成立的訂單不屬於那一類。（`replyTrips()` 的 TOUR_MODULE 閘門
+ * 是 10 分冊 §6.1 對行程域的明文特例，不是這一層的通則。）
+ */
+async function replyOrders(ctx: BuiltinCtx): Promise<boolean> {
+  if (businessTypeOf(ctx.tenant) === 'GUIDE') return replyText(ctx, MSG.notReadyOrder);
+
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data, error } = await ctx.admin
+    .from('product_orders')
+    .select('order_no, total_amount, status, payment_status, created_at')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+
+  // ⚠️ 查詢失敗不可以當成「您沒有訂單」——那是把故障說成事實。
+  // 回 false 讓它落到 ⑤ AI／⑥ 預設回覆（有真人看得到），並留下 log。
+  if (error) {
+    console.error('[line] replyOrders 查詢 product_orders 失敗', error);
+    return false;
+  }
+  if (!data?.length) return replyText(ctx, MSG.orderEmpty);
+
+  const lines = data.map((o: any) => {
+    const day = formatTaipeiDate(o.created_at);
+    const paid = MSG.orderPaymentStatus[o.payment_status] ?? o.payment_status;
+    // 千分位跟同一檔的 replyProducts／replyServiceList 一致用 'zh-TW'：
+    // 同一個 bot 在不同關鍵字下把金額寫成不同樣子，顧客會以為是兩套系統。
+    return `・${o.order_no}｜${day}｜NT$${Number(o.total_amount).toLocaleString('zh-TW')}`
+      + `｜${MSG.orderStatus[o.status] ?? o.status}／${paid}`;
+  });
+  return replyText(ctx, `${MSG.orderTitle}\n${lines.join('\n')}`);
 }
 
 /* -------------------------------------------------------- 內建指令：作品 */
@@ -1126,11 +1208,28 @@ function keywordReplyMessage(r: { reply_type: string; content: any }): any | nul
   return { type: 'text', text: `${text}\n\n${linkLabel ? `${linkLabel}\n` : ''}${linkUrl}` };
 }
 
-/** timestamptz ISO → 台北時間「M/D（週）HH:mm」（比照 src/server/tz.ts 的固定 +08:00 做法） */
+const WEEKDAY_ZH = ['日', '一', '二', '三', '四', '五', '六'] as const;
+
+/**
+ * timestamptz ISO → 台北牆上時鐘（比照 src/server/tz.ts 的固定 +08:00 做法）。
+ *
+ * ⚠️ 位移只寫在這裡一處。`formatTaipei` 與 `formatTaipeiDate` 都由它取值——
+ * 各自再寫一次 `+ 8 * 60 * 60 * 1000`，下次調整就只會改到其中一份。
+ */
+function taipeiWallClock(iso: string): Date {
+  return new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000);
+}
+
+/** timestamptz ISO → 台北時間「M/D（週）HH:mm」 */
 function formatTaipei(iso: string): string {
-  const t = new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000);
-  const wd = ['日', '一', '二', '三', '四', '五', '六'][t.getUTCDay()];
+  const t = taipeiWallClock(iso);
   const hh = String(t.getUTCHours()).padStart(2, '0');
   const mm = String(t.getUTCMinutes()).padStart(2, '0');
-  return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${wd}）${hh}:${mm}`;
+  return `${formatTaipeiDate(iso)}${hh}:${mm}`;
+}
+
+/** timestamptz ISO → 台北時間「M/D（週）」（訂單只需要日期，時分對顧客沒有意義） */
+function formatTaipeiDate(iso: string): string {
+  const t = taipeiWallClock(iso);
+  return `${t.getUTCMonth() + 1}/${t.getUTCDate()}（${WEEKDAY_ZH[t.getUTCDay()]}）`;
 }
