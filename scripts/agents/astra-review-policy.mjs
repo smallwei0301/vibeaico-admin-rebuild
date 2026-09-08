@@ -7,9 +7,16 @@ const meaningful = (s) => typeof s === 'string' && s.trim().length >= 8 && !/^(u
 const fields = ['repository', 'baseSha', 'headSha', 'policyVersion', 'testBaseline', 'schemaBaseline'];
 const allowedFinalRiskModels = (policy) => {
   const configured = policy.models?.finalRiskAllowedModels;
-  if (configured === undefined) return new Set([policy.models.finalRisk]);
-  if (!Array.isArray(configured)) return new Set();
-  return new Set(configured.filter(model => typeof model === 'string' && model.trim().length > 0));
+  const catalog = policy.models?.finalRiskModelCatalog;
+  const validList = (models) => Array.isArray(models) && models.length > 0 &&
+    models.every(model => typeof model === 'string' && model.trim().length > 0) &&
+    new Set(models).size === models.length;
+  if (!validList(configured) || !validList(catalog)) return new Set();
+  const catalogSet = new Set(catalog);
+  if (!catalogSet.has(policy.models?.finalRisk) || !configured.includes(policy.models.finalRisk) || configured.some(model => !catalogSet.has(model))) {
+    return new Set();
+  }
+  return new Set(configured);
 };
 
 /** @param {{body?: string, changedFiles?: string[] | null}} [input] */

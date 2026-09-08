@@ -133,14 +133,24 @@ describe('Astra risk review contract', () => {
     expect(evaluateAstra(candidate([], { body: body + '\nASTRA_STATUS: PASS' })).status).toBe('ASTRA_PENDING');
   });
   it('accepts either configured final-risk reviewer model', () => {
+    expect(routing.models.finalRiskModelCatalog).toEqual(['gpt-6-astra', 'claude-fable-5-1']);
     expect(routing.models.finalRiskAllowedModels).toEqual(['gpt-6-astra', 'claude-fable-5-1']);
     for (const model of ['gpt-6-astra', 'claude-fable-5-1']) {
       expect(evaluateAstra(candidate([makeReview({ requestedModel: model, actualModel: model })])).status).toBe('ASTRA_APPROVED');
     }
   });
-  it('fails closed when the configured final-risk allowlist is empty', () => {
-    const emptyAllowlistPolicy = { ...routing, models: { ...routing.models, finalRiskAllowedModels: [] } };
-    expect(evaluateAstra(candidate(), emptyAllowlistPolicy).status).toBe('ASTRA_PENDING');
+  it('fails closed on missing, malformed, or unknown final-risk allowlists', () => {
+    for (const override of [
+      { finalRiskAllowedModels: undefined },
+      { finalRiskAllowedModels: [] },
+      { finalRiskAllowedModels: 'claude-fable-5-1' },
+      { finalRiskAllowedModels: ['gpt-6-astra', null] },
+      { finalRiskAllowedModels: ['gpt-6-astra', 'unknown-model'] },
+      { finalRiskModelCatalog: undefined },
+    ]) {
+      const policy = { ...routing, models: { ...routing.models, ...override } };
+      expect(evaluateAstra(candidate(), policy).status).toBe('ASTRA_PENDING');
+    }
   });
   it('rejects unknown or mixed final-risk reviewer models', () => {
     expect(evaluateAstra(candidate([makeReview({ requestedModel: 'unknown-model', actualModel: 'unknown-model' })])).status).toBe('ASTRA_PENDING');

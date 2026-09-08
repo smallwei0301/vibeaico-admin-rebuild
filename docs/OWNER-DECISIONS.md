@@ -8,7 +8,7 @@
 
 | Issue／PR | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
-| #209 / #290 | 最後風險評估模型 allowlist | **保留 `claude-fable-5-1` 作為 `models.finalRisk` 預設模型，並新增 `models.finalRiskAllowedModels`，現行允許 GPT-6 Astra（`gpt-6-astra`）或 Fable（`claude-fable-5-1`）審核。`requestedModel` 與 `actualModel` 必須是同一個允許模型；trusted review、exact head、operator attestation 與報告 URL 不變。** | 空值、非陣列或空 allowlist fail closed；政策版本升為 `2026-09-08.2` 以使既有 attestation 重新驗證。canonical：`docs/decisions/2026-09-08-owner-final-risk-allowlist.md`。 |
+| #209 / #290 | 最後風險評估模型 allowlist | **保留 `claude-fable-5-1` 作為 `models.finalRisk` 預設模型，並以 `models.finalRiskModelCatalog`／`models.finalRiskAllowedModels` 明確限制目前可用的 GPT-6 Astra（`gpt-6-astra`）或 Fable（`claude-fable-5-1`）。`requestedModel` 與 `actualModel` 必須是同一個允許模型；trusted review、exact head、operator attestation 與報告 URL 不變。** | 缺失、非陣列、空值、重複或 catalog 外模型一律 fail closed；政策版本升為 `2026-09-08.3` 以使既有 attestation 重新驗證。canonical：`docs/decisions/2026-09-08-owner-final-risk-allowlist.md`。 |
 
 ## 2026-09-07 已裁示
 

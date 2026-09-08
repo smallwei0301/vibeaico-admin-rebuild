@@ -16,7 +16,8 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 >
 > 「Astra」在本文與 `ASTRA_*` 欄位名中**保留為這道關卡的名稱**（欄位名寫進了
 > PR body、workflow 與既有 review 紀錄，改名會讓歷史紀錄對不上）；`models.finalRisk` 是預設模型，
-> guard 會接受 `models.finalRiskAllowedModels` 清單中的模型。現行清單為 `gpt-6-astra` 與
+> `models.finalRiskModelCatalog` 是支援的模型身分，guard 只會接受其中的
+> `models.finalRiskAllowedModels` 子集。現行兩份清單都為 `gpt-6-astra` 與
 > `claude-fable-5-1`，且 `requestedModel` 與 `actualModel` 必須是同一個清單內模型。
 
 ## 路由
@@ -55,7 +56,7 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
   "repository": "smallwei0301/vibeaico-admin-rebuild",
   "baseSha": "完整40碼基底版本",
   "headSha": "完整40碼候選版本",
-  "policyVersion": "2026-09-08.2",
+  "policyVersion": "2026-09-08.3",
   "testBaseline": "與PR ASTRA_TEST_BASELINE完全一致的測試證據及環境版本",
   "schemaBaseline": "與PR ASTRA_SCHEMA_BASELINE完全一致的資料庫版本或不適用理由",
   "requestedModel": "claude-fable-5-1",
@@ -68,7 +69,7 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 ```
 
 `requestedModel` / `actualModel` 必須與當時 `model-routing.json` 的
-`models.finalRiskAllowedModels` 清單內的同一模型——檢查器會直接比對這兩者；未知模型或 requested/actual 不一致都會被擋下。`policyVersion` 同理。
+`models.finalRiskAllowedModels` 清單內的同一模型——檢查器會直接比對這兩者；清單缺失、格式錯誤、catalog 外模型或 requested/actual 不一致都會被擋下。`policyVersion` 同理。
 
 **什麼算「實際模型證據」。** 在目前的執行環境，可接受的作法是**在一個明確指定
 `model: fable` 或 `model: astra` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次

@@ -7,17 +7,17 @@
 ## 裁示
 
 保留 `scripts/agents/model-routing.json` 的 `models.finalRisk` 作為預設模型；目前仍是
-`claude-fable-5-1`。新增 `models.finalRiskAllowedModels` 作為最後風險評估的明確 allowlist，
-現行內容為：
+`claude-fable-5-1`。新增 `models.finalRiskModelCatalog` 作為支援的模型身分，並以
+`models.finalRiskAllowedModels` 作為最後風險評估的明確 allowlist；現行兩份清單內容為：
 
 ```json
 ["gpt-6-astra", "claude-fable-5-1"]
 ```
 
-guard 只接受 `requestedModel` 與 `actualModel` 完全相同且同時位於這份 allowlist 的 review。
-未知模型、兩者混用、空 allowlist、非陣列或無法辨認的 allowlist 一律 fail closed。
+guard 只接受 `requestedModel` 與 `actualModel` 完全相同且同時位於 allowlist 的 review。
+缺失、非陣列、空值、重複、catalog 外模型或兩者混用一律 fail closed。
 
-政策版本升為 `2026-09-08.2`；既有以 `2026-09-08.1` 產生的 attestation 不得直接沿用，
+政策版本升為 `2026-09-08.3`；既有以 `2026-09-08.1` 或 `2026-09-08.2` 產生的 attestation 不得直接沿用，
 必須依新政策重新驗證。
 
 ## 不變的安全證據

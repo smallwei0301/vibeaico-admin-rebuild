@@ -156,8 +156,9 @@ The high-risk final review gate — the one that produces the `astra-review` att
 the explicitly configured allowlist: GPT-6 Astra (`gpt-6-astra`) or Claude Fable.
 
 - The model IDs live **only** in `scripts/agents/model-routing.json`: `models.finalRisk` is the
-  default and `models.finalRiskAllowedModels` is the allowlist. `requestedModel` / `actualModel`
-  must match the same allowlisted model verbatim.
+  default, `models.finalRiskModelCatalog` records supported identities, and
+  `models.finalRiskAllowedModels` is the active subset. `requestedModel` / `actualModel` must
+  match the same allowlisted model verbatim.
 - The name **"Astra" is kept** for the gate itself and for the `ASTRA_*` PR-body fields — those
   names are written into PR bodies, the guard workflow and existing review records, and renaming
   them would orphan the history. Astra = the gate; Fable and Astra = the currently allowed models.
