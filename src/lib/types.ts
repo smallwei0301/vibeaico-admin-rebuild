@@ -438,6 +438,28 @@ export type TripDeparture = {
   seatsBooked: number;
   status: DepartureStatus;
   note: string;
+  /* ---- issue #37：團次實際執行人員（10-TOUR-DOMAIN §1.3） ---- */
+  /** 主導遊；既有團次可以誠實地是 null（＝未指派），不替舊資料假造。 */
+  primaryStaffId?: string | null;
+  primaryStaffName?: string;
+  assistantStaffIds?: string[];
+  assistantStaffNames?: string[];
+};
+
+/** 團次指派撞班的原因（10-TOUR-DOMAIN §5.2）。 */
+export type DepartureConflictReason = 'SHIFT' | 'BOOKING' | 'BLOCK' | 'DEPARTURE';
+
+export type DepartureConflict = {
+  /** 批次開團時為衝突的那一天；單筆建立／更新時為該團次的日期。 */
+  date: string;
+  staffId: string;
+  staffName: string;
+  reason: DepartureConflictReason;
+  /** 給店家看的說法，例如「已有一般服務預約」。 */
+  text: string;
+  conflictStart?: string;
+  conflictEnd?: string;
+  departureId?: string;
 };
 
 export type TripAddon = {

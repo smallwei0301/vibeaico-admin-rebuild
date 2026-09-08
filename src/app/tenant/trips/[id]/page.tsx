@@ -26,6 +26,7 @@ import {
   getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
   saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
 } from '@/services/tours';
+import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
@@ -38,7 +39,7 @@ import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
 import type {
-  DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
+  DepartureConflict, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
   TripDeparture, TripPlan,
 } from '@/lib/types';
 
@@ -71,7 +72,70 @@ const emptyAddon = (tripId: string): TripAddon => ({
 const emptyDeparture = (tripId: string, planId: string): TripDeparture => ({
   id: '', tripId, planId, planName: '', departsOn: '', startTime: '09:00',
   capacity: 10, seatsBooked: 0, status: 'OPEN', note: '',
+  primaryStaffId: null, assistantStaffIds: [],
 });
+
+/**
+ * issue #37：導遊指派欄位。0/1/2+ 自動適應（Owner 2026-08-27）。
+ *
+ * - **0 位**：不顯示選擇器，顯示一句說明為什麼開不了團。後端也會擋。
+ * - **1 位**：不顯示選擇器；說明系統會自動指派。**不預先塞進表單**——那會讓
+ *   「這是後端自動決定的」看起來像「店家自己選的」，而且第二位導遊上線那天，
+ *   舊表單裡那個被塞進去的值會變成一個沒人記得為什麼在那裡的預設值。
+ * - **2 位以上**：主導遊下拉 ＋ 協同導遊複選。
+ *
+ * 忙碌人員仍然顯示（§5.1「忙碌人員可顯示但不可選」）：這一版不在前端預先標示
+ * 忙碌，因為可用性會隨著日期／時間欄位改變而變，前端算一份就等於把後端那份規則
+ * 複製一遍——兩份只要不一致就會出現「畫面說可以、存下去說不行」。這一版一律以
+ * 儲存時後端回的衝突訊息為準，訊息本身會指名是誰、為什麼。
+ */
+function GuidePicker({ guides, primaryStaffId, assistantStaffIds, onChange }: {
+  guides: Staff[];
+  primaryStaffId: string | null | undefined;
+  assistantStaffIds: string[] | undefined;
+  onChange: (patch: { primaryStaffId?: string | null; assistantStaffIds?: string[] }) => void;
+}) {
+  if (guides.length === 0) return <FormText>{t.departures.guide.noneHint}</FormText>;
+  if (guides.length === 1) return <FormText>{t.departures.guide.soloHint(guides[0].name)}</FormText>;
+
+  const assistants = assistantStaffIds ?? [];
+  const toggleAssistant = (id: string) => onChange({
+    assistantStaffIds: assistants.includes(id)
+      ? assistants.filter((v) => v !== id)
+      : [...assistants, id],
+  });
+
+  return (
+    <>
+      <FormGroup>
+        <Label required>{t.departures.fields.primaryLabel}</Label>
+        <Select
+          value={primaryStaffId ?? ''}
+          onChange={(e) => onChange({ primaryStaffId: e.target.value || null })}
+        >
+          <option value="">{t.departures.fields.primaryPlaceholder}</option>
+          {guides.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </Select>
+      </FormGroup>
+      <FormGroup>
+        <Label>{t.departures.fields.assistantLabel}</Label>
+        <div className="flex flex-wrap gap-3">
+          {guides.filter((g) => g.id !== primaryStaffId).map((g) => (
+            <label key={g.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={assistants.includes(g.id)}
+                onChange={() => toggleAssistant(g.id)}
+              />
+              {g.name}
+            </label>
+          ))}
+        </div>
+        <FormText>{t.departures.fields.assistantHelp}</FormText>
+      </FormGroup>
+    </>
+  );
+}
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -89,6 +153,13 @@ export default function TripDetailPage() {
   const [plans, setPlans] = React.useState<TripPlan[]>([]);
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
   const [addons, setAddons] = React.useState<TripAddon[]>([]);
+  /**
+   * issue #37：可接案（active + bookable）人員。
+   *
+   * 這份清單的**長度**就是 0/1/2+ 自動適應的依據（Owner 2026-08-27：不做
+   * SOLO／TEAM 開關）。畫面只依人數決定顯示什麼，不存任何模式旗標。
+   */
+  const [guides, setGuides] = React.useState<Staff[]>([]);
 
   /* 編輯中的表單狀態；方案 Quick Edit 會走同一個 canonical API。 */
   const [form, setForm] = React.useState<Trip | null>(null);
@@ -103,7 +174,11 @@ export default function TripDetailPage() {
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
     weekdays: [6, 0] as number[],
+    primaryStaffId: null as string | null,
+    assistantStaffIds: [] as string[],
   });
+  /** 上一次批次開團因撞班被跳過的日期；成功訊息裡的 `skipped` 看不出原因。 */
+  const [batchConflicts, setBatchConflicts] = React.useState<DepartureConflict[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<
     { kind: 'plan' | 'addon' | 'departure'; id: string; name: string } | null
   >(null);
@@ -111,15 +186,16 @@ export default function TripDetailPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [tr, pl, dp, ad] = await Promise.all([
+      const [tr, pl, dp, ad, st] = await Promise.all([
         getTrip(tripId), listTripPlans(tripId),
-        listTripDepartures(tripId), listTripAddons(tripId),
+        listTripDepartures(tripId), listTripAddons(tripId), listStaff(),
       ]);
       setTrip(tr ?? null);
       setForm(tr ?? null);
       setPlans(pl);
       setDepartures(dp);
       setAddons(ad);
+      setGuides(st.filter((m) => m.active && m.bookable));
     } catch {
       toast.show(t.messages.loadFailed, 'danger');
     } finally {
@@ -331,7 +407,8 @@ export default function TripDetailPage() {
   const runBatch = async () => {
     const plan = plans.find((p) => p.id === batch.planId);
     if (!plan || batchCount === 0) return;
-    let result = { created: 0, skipped: 0 };
+    let result: { created: number; skipped: number; conflicts?: DepartureConflict[] } =
+      { created: 0, skipped: 0, conflicts: [] };
     const ok = await runAction(
       async () => {
         result = await batchCreateDepartures(tripId, {
@@ -341,7 +418,12 @@ export default function TripDetailPage() {
           weekdays: batch.weekdays,
           startTime: batch.startTime,
           capacity: batch.capacity,
+          primaryStaffId: batch.primaryStaffId,
+          assistantStaffIds: batch.assistantStaffIds,
         });
+        // 撞班而被跳過的日期單獨留在畫面上：它們混在 `skipped` 裡看不出原因，
+        // 而「哪一天、誰、為什麼」正是店家接下來要處理的事（§5.2）。
+        setBatchConflicts(result.conflicts ?? []);
       },
       () => t.messages.departureBatchCreated(result.created)
         + (result.skipped > 0 ? t.messages.departureBatchSkipped(result.skipped) : ''),
@@ -506,6 +588,23 @@ export default function TripDetailPage() {
       ),
     },
     { key: 'plan', header: t.departures.columns.plan, render: (d) => d.planName },
+    {
+      key: 'guide', header: t.departures.columns.guide, width: '160px',
+      render: (d) => {
+        const extra = d.assistantStaffIds?.length ?? 0;
+        // 未指派就顯示「未指派」——既有團次本來就可能沒有指派（10-TOUR-DOMAIN §1.3），
+        // 這裡不拿方案名或任何人名去填那個空格。
+        if (!d.primaryStaffId) return <span className="text-secondary">{t.departures.guide.unassigned}</span>;
+        return (
+          <div className="flex flex-col">
+            <div>{d.primaryStaffName || d.primaryStaffId}</div>
+            {extra > 0 ? (
+              <div className="text-2xs text-secondary">{t.departures.guide.assistantCount(extra)}</div>
+            ) : null}
+          </div>
+        );
+      },
+    },
     {
       key: 'seats', header: t.departures.columns.seats, numeric: true, width: '150px',
       render: (d) => {
@@ -1250,6 +1349,12 @@ export default function TripDetailPage() {
               />
               <FormText>{t.departures.fields.capacityHelp}</FormText>
             </FormGroup>
+            <GuidePicker
+              guides={guides}
+              primaryStaffId={departureDraft.primaryStaffId}
+              assistantStaffIds={departureDraft.assistantStaffIds}
+              onChange={(patch) => setDepartureDraft({ ...departureDraft, ...patch })}
+            />
             <FormGroup>
               <Label>{t.departures.fields.noteLabel}</Label>
               <Input
@@ -1329,7 +1434,27 @@ export default function TripDetailPage() {
               />
             </FormGroup>
           </div>
+          <GuidePicker
+            guides={guides}
+            primaryStaffId={batch.primaryStaffId}
+            assistantStaffIds={batch.assistantStaffIds}
+            onChange={(patch) => setBatch({
+              ...batch,
+              primaryStaffId: patch.primaryStaffId !== undefined ? patch.primaryStaffId : batch.primaryStaffId,
+              assistantStaffIds: patch.assistantStaffIds ?? batch.assistantStaffIds,
+            })}
+          />
           <Alert tone="info">{t.departures.batch.preview(batchCount)}</Alert>
+          {batchConflicts.length > 0 ? (
+            <Alert tone="warning">
+              <div className="font-medium">{t.departures.guide.conflictTitle}</div>
+              {batchConflicts.map((c, i) => (
+                <div key={`${c.date}-${c.staffId}-${i}`} className="text-sm">
+                  {t.departures.guide.conflictRow(c.date, c.staffName || c.staffId, t.departures.guide.reason[c.reason])}
+                </div>
+              ))}
+            </Alert>
+          ) : null}
         </div>
       </Modal>
 

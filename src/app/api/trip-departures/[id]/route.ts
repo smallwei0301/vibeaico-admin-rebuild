@@ -3,6 +3,10 @@ import { requireTenantManager } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { mapTripDeparture } from '@/server/mappers';
 import { departureUpdateSchema, timeValue } from '@/server/tour-domain';
+import {
+  assertStaffBelongsToTenant, bookableStaffIds, checkAssignmentConflicts, departureSlot,
+  describeConflicts, readAssignments, resolveAssignment, writeAssignment,
+} from '@/server/departure-staff';
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -31,12 +35,51 @@ export const PUT = handle(async (req, { params }: Context) => {
   if (body.capacity !== undefined) patch.capacity = body.capacity;
   if (body.status !== undefined) patch.status = body.status;
   if (body.note !== undefined) patch.note = body.note;
+  /* ---------------- issue #37：導遊指派與撞班驗證 ----------------
+   *
+   * ⚠️ 這裡讀的是**更新後**的日期／時間／狀態，不是資料庫裡的舊值：改團日期時，
+   * 要驗的是新日期上有沒有撞班。用舊值驗會讓「把團從沒撞的那天改到撞班那天」
+   * 整個檢查形同虛設。
+   *
+   * ⚠️ `excludeDepartureId` 不可省：不排除自己的話，任何一次「只改名額」的儲存
+   * 都會被這團自己既有的指派擋下來，店家會看到一個他完全無法理解的 409。
+   */
+  const nextStatus = (body.status ?? current.status) as 'OPEN' | 'CLOSED' | 'CANCELLED';
+  const nextDate = body.departsOn ?? current.departs_on;
+  const nextTime = body.startTime !== undefined
+    ? (body.startTime ? body.startTime : null)
+    : (current.start_time == null ? null : String(current.start_time).slice(0, 5));
+
+  const existingMap = await readAssignments(t.supabase, t.tenantId, [id]);
+  const existing = existingMap.get(id) ?? { primaryStaffId: null, assistantStaffIds: [] };
+  const bookable = await bookableStaffIds(t.supabase, t.tenantId);
+
+  const assignment = resolveAssignment({
+    requested: { primaryStaffId: body.primaryStaffId, assistantStaffIds: body.assistantStaffIds },
+    bookable,
+    status: nextStatus,
+    existing: { primaryStaffId: existing.primaryStaffId, assistantStaffIds: existing.assistantStaffIds },
+  });
+  assertStaffBelongsToTenant(assignment, bookable);
+
+  const slot = await departureSlot(t.supabase, t.tenantId, current.trip_id, nextDate, nextTime);
+  const conflicts = nextStatus === 'CANCELLED'
+    ? [] // 取消的團次釋放時間（§5.3），不必也不該再驗撞班
+    : await checkAssignmentConflicts(t.supabase, t.tenantId, assignment, slot, slot.shiftDate,
+      { excludeDepartureId: id });
+  if (conflicts.length > 0) {
+    return fail(409, `無法指派：${describeConflicts(conflicts)}`, ERR.CONFLICT);
+  }
+
   const { data, error } = await t.supabase.from('trip_departures').update(patch)
     .eq('tenant_id', t.tenantId).eq('id', id).select('*, trip_plans(name)').maybeSingle();
   if (error?.code === '23505') return fail(409, '相同方案、日期與時間的團次已存在', ERR.CONFLICT);
   if (error) throw error;
   if (!data) return fail(404, '找不到此團次', ERR.NOT_FOUND);
-  return ok(mapTripDeparture(data));
+
+  await writeAssignment(t.supabase, t.tenantId, id, assignment);
+  const assignments = await readAssignments(t.supabase, t.tenantId, [id]);
+  return ok({ ...mapTripDeparture(data), ...assignments.get(id) });
 });
 
 /**

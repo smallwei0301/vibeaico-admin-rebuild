@@ -133,6 +133,9 @@ const departureFields = {
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0').optional(),
   status: z.enum(departureStatus).optional(),
   note: optionalText,
+  /* ---- issue #37：團次實際執行人員。null = 明確清空；undefined = 這次不動它 ---- */
+  primaryStaffId: z.string().uuid('請選擇主導遊').nullable().optional(),
+  assistantStaffIds: z.array(z.string().uuid('協同導遊 id 格式錯誤')).optional(),
 };
 
 export const departureCreateSchema = z.object({
@@ -151,6 +154,8 @@ export const departureBatchSchema = z.object({
   weekdays: z.array(z.number().int().min(0).max(6)).min(1, '請至少選一個星期'),
   startTime: z.string().refine((value) => value === '' || timePattern.test(value), '出發時間格式錯誤').nullable().optional(),
   capacity: z.number().int('名額必須為整數').min(1, '名額必須大於 0'),
+  primaryStaffId: z.string().uuid('請選擇主導遊').nullable().optional(),
+  assistantStaffIds: z.array(z.string().uuid('協同導遊 id 格式錯誤')).optional(),
 }).superRefine((value, ctx) => {
   if (new Set(value.weekdays).size !== value.weekdays.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['weekdays'], message: '星期不可重複' });

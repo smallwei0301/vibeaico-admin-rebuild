@@ -1,6 +1,6 @@
 import { adapt, request } from '@/lib/api';
 import type {
-  Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged,
+  DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged,
 } from '@/lib/types';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -60,6 +60,16 @@ function departureApiPayload(payload: Partial<TripDeparture>) {
     capacity: payload.capacity,
     status: payload.status,
     note: payload.note,
+    /**
+     * issue #37：導遊指派。
+     *
+     * ⚠️ 這裡刻意讓 `undefined` 通過（`JSON.stringify` 會把它整個欄位拿掉），因為
+     * 後端把「沒帶這個欄位」與「帶了 null」當成兩件不同的事：前者是「這次不動指派」，
+     * 後者是「明確清空」。若在這裡補成 `?? null`，一次「只改名額」的儲存就會把既有的
+     * 主導遊清掉，而店家不會收到任何提示。
+     */
+    primaryStaffId: payload.primaryStaffId,
+    assistantStaffIds: payload.assistantStaffIds,
   };
 }
 
@@ -151,14 +161,22 @@ export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture
  * 而略過的筆數。前端自己算日曆得到的筆數與這個數字**不一定相同**，拿前者報成功就是
  * 一則編出來的訊息（店家會以為開了 7 團，實際只開了 1 團）。
  */
-export type BatchDepartureResult = { created: number; skipped: number };
+export type BatchDepartureResult = {
+  created: number;
+  skipped: number;
+  /** issue #37：因撞班而跳過的日期與原因。空陣列＝沒有任何日期因撞班被跳過。 */
+  conflicts?: DepartureConflict[];
+};
 
 export const batchCreateDepartures = (
   tripId: string,
-  payload: { planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number },
+  payload: {
+    planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number;
+    primaryStaffId?: string | null; assistantStaffIds?: string[];
+  },
 ) =>
   adapt<BatchDepartureResult>(
-    () => ({ created: 0, skipped: 0 }),
+    () => ({ created: 0, skipped: 0, conflicts: [] }),
     () => request<BatchDepartureResult>(
       `/api/trips/${tripId}/departures/batch`, { method: 'POST', body: JSON.stringify(payload) },
     ),

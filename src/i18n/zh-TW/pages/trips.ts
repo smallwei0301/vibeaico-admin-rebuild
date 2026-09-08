@@ -286,6 +286,7 @@ export const tripsPage = {
     columns: {
       date: '出團日期',
       plan: '方案',
+      guide: '導遊',
       seats: '名額',
       status: '狀態',
       note: '備註',
@@ -299,6 +300,29 @@ export const tripsPage = {
       capacityHelp: '調整名額時不可低於已售出的人數。',
       noteLabel: '備註',
       notePlaceholder: '只有你看得到，例：船班已確認',
+      /* ---------------- issue #37：團次實際執行人員 ---------------- */
+      primaryLabel: '主導遊',
+      primaryPlaceholder: '請選擇主導遊',
+      assistantLabel: '協同導遊',
+      assistantHelp: '可複選。協同導遊與主導遊一樣會佔用該時段，不能同時被排進另一團或一般預約。',
+    },
+    /* ---------------- issue #37：導遊指派的畫面文字 ---------------- */
+    guide: {
+      /** 既有團次可以誠實地沒有指派；不替舊資料補一個猜的主導遊。 */
+      unassigned: '未指派',
+      assistantCount: (n: number) => `＋${n} 位協同`,
+      /** 單人店：畫面不顯示選擇器，由後端自動指派唯一一位可接案人員。 */
+      soloHint: (name: string) => `目前只有一位可接案人員（${name}），系統會自動指派為主導遊。`,
+      /** 0 位可接案人員：開團會被擋下，先說清楚為什麼，而不是讓他按了才失敗。 */
+      noneHint: '目前沒有可接案的人員，無法開放報名。請先到「員工」新增一位可接案人員。',
+      conflictTitle: '有日期因撞班被跳過',
+      conflictRow: (date: string, name: string, text: string) => `${date}　${name}：${text}`,
+      reason: {
+        SHIFT: '該日未排班',
+        BOOKING: '已有一般服務預約',
+        BLOCK: '該時段已封鎖',
+        DEPARTURE: '已被其他團次指派',
+      },
     },
     batch: {
       title: '批次開團',
