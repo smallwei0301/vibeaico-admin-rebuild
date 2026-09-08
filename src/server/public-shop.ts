@@ -30,6 +30,7 @@
  * 自己把範圍收窄。**這正是上面三條規則必須嚴格的原因**：service role 繞過 RLS，
  * 這裡沒收好就沒有第二道防線。
  */
+import { cache } from 'react';
 import { createAdminSupabase } from '@/server/supabase';
 
 /** 對外公開的店家基本資料。刻意只有這幾欄。 */
@@ -93,6 +94,34 @@ export type PublicShopData = {
 const MAX_DEPARTURES_PER_TRIP = 6;
 
 /**
+ * `tenants.shop_code` 在 DB 上是 `check (shop_code ~ '^[a-z0-9-]+$')`，所以任何
+ * 不合這個形狀的字串**必然**查無此店。先在這裡擋掉，不要送進資料庫。
+ *
+ * ⚠️ 這不是輸入驗證的潔癖，是這一頁的可用性防線：它是全站第一個**匿名就打得到
+ * 資料庫**的路徑，而專案目前沒有任何 rate limit。少了這一道，一個 2000 字元的
+ * 亂碼網址也會換到一次 service-role 查詢；擋掉之後那類請求連線都不會借。
+ */
+const SHOP_CODE_PATTERN = /^[a-z0-9-]{1,64}$/;
+
+/**
+ * 把 PostgREST 的錯誤物件包成真正的 `Error`。
+ *
+ * ⚠️ 這不是美化，是資訊洩漏的修補。supabase-js 的 error 是一個 **plain object**
+ * （`{message, details, hint, code}`），不是 `Error` 實例。Next 對 page 的 render
+ * 錯誤會壓成 digest，但 `generateMetadata` 丟出的錯誤**不會**——它被逐字序列化進
+ * 公開 HTML 的 RSC payload：
+ *
+ *   `8:{"metadata":"$undefined","error":{"message":"…","hint":"…"}}`
+ *
+ * PostgREST 的 `message` / `details` 可能含表名、欄位名、SQL 片段與 `Key (…)=(…)`。
+ * 對匿名訪客而言那是內部結構的洩漏。包成 `Error` 之後訊息固定，真正的原因放在
+ * `cause` 裡留給伺服器日誌。
+ */
+function queryFailed(stage: string, cause: unknown): Error {
+  return new Error(`PUBLIC_SHOP_QUERY_FAILED:${stage}`, { cause });
+}
+
+/**
  * 台北「今天」的日期字串。
  *
  * ⚠️ 用 UTC 的 `toISOString().slice(0,10)` 會在台北時間 00:00–08:00 之間算成
@@ -110,7 +139,9 @@ function taipeiToday(): string {
  * 還沒建行程的店家，把自己的公開網址傳出去時拿到 404，而他完全不知道為什麼。
  * 空的店家頁會誠實顯示「這家店還沒有上架的行程」。
  */
-export async function loadPublicShop(shopCode: string): Promise<PublicShopData | null> {
+async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData | null> {
+  if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
+
   const admin = createAdminSupabase();
 
   // ① 店家 ＋ 公開的基本設定。白名單欄位；tenant_settings 只取 basic 與 line 兩塊，
@@ -122,7 +153,7 @@ export async function loadPublicShop(shopCode: string): Promise<PublicShopData |
     .maybeSingle();
   // PB-023：丟掉 error 會讓「查詢失敗」冒充「查無此店」，於是一次 DB 故障就會讓
   // 所有店家的公開頁一起變成 404，而錯誤訊息是「找不到這家店」——完全誤導。
-  if (tenantError) throw tenantError;
+  if (tenantError) throw queryFailed('tenants', tenantError);
   if (!tenantRow) return null;
 
   const rawSettings = (tenantRow as Record<string, unknown>).tenant_settings;
@@ -160,8 +191,8 @@ export async function loadPublicShop(shopCode: string): Promise<PublicShopData |
         .eq('tenant_id', tenantId).eq('active', true)
         .order('sort_order', { ascending: true }),
     ]);
-  if (tripError) throw tripError;
-  if (serviceError) throw serviceError;
+  if (tripError) throw queryFailed('trips', tripError);
+  if (serviceError) throw queryFailed('services', serviceError);
 
   const tripIds = (tripRows ?? []).map((t) => t.id as string);
 
@@ -183,8 +214,8 @@ export async function loadPublicShop(shopCode: string): Promise<PublicShopData |
           .order('departs_on', { ascending: true })
           .order('start_time', { ascending: true, nullsFirst: true }),
       ]);
-  if (planError) throw planError;
-  if (departureError) throw departureError;
+  if (planError) throw queryFailed('trip_plans', planError);
+  if (departureError) throw queryFailed('trip_departures', departureError);
 
   const plansByTrip = new Map<string, PublicPlan[]>();
   for (const row of planRows ?? []) {
@@ -241,3 +272,17 @@ export async function loadPublicShop(shopCode: string): Promise<PublicShopData |
 
   return { shop, trips, services };
 }
+
+/**
+ * 讀一家店的公開資料（同一次請求內只會真的查一次）。
+ *
+ * ⚠️ `cache()` 不是效能微調，是修一個實測到的重複查詢：`generateMetadata` 與頁面
+ * 本身**各呼叫一次** `loadPublicShop`，而 Next 的 request memoization 只對 `fetch()`
+ * 生效，supabase-js 不在內。所以在包上這一層之前，一個 200 請求其實是最多 **10 次**
+ * service-role 查詢，不是 5 次——對一個匿名就打得到、又沒有 rate limit 的頁面，
+ * 這個倍數是實質的。
+ *
+ * `cache()` 的作用域是**單一請求**，不會跨請求把資料留下來，所以店家一改內容就
+ * 立刻反映在下一個訪客身上。
+ */
+export const loadPublicShop = cache(loadPublicShopUncached);

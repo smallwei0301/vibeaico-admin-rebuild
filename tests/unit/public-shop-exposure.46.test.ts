@@ -121,3 +121,44 @@ describe('這一版不得出現可以下單的 UI', () => {
     expect(page).toContain('t.booking.howTo');
   });
 });
+
+/**
+ * 以下三條鎖的是 2026-09-08 最終風險評估抓到的三個實質缺陷。每一條都寫明「拿掉會
+ * 發生什麼」——否則下一個人會把它們讀成可有可無的整潔規則而順手刪掉。
+ */
+describe('公開頁的錯誤與負載面（風險評估後補上的鎖）', () => {
+  it('錯誤一律包成訊息固定的 Error，不把 PostgREST 的物件原封丟出去', () => {
+    /**
+     * supabase-js 的 error 是 **plain object**（`{message, details, hint, code}`）。
+     * Next 對 page render 的錯誤會壓成 digest，但 `generateMetadata` 拋出的錯誤
+     * **不會**——它被逐字序列化進公開 HTML 的 RSC payload（實測可見
+     * `"error":{"message":…,"hint":…}`）。PostgREST 的訊息可能含表名、欄位名、
+     * SQL 片段與 `Key (…)=(…)`，對匿名訪客就是內部結構洩漏。
+     */
+    expect(loader).toContain('function queryFailed(');
+    expect(loader).toMatch(/new Error\(`PUBLIC_SHOP_QUERY_FAILED:/);
+    const rawThrows = loader.match(/throw\s+\w*[Ee]rror;/g) ?? [];
+    expect(rawThrows, `還有 ${rawThrows.length} 處把原始 error 直接丟出去`).toEqual([]);
+  });
+
+  it('generateMetadata 有 try/catch，metadata 失敗不會把內部訊息送進 HTML', () => {
+    expect(page).toMatch(/generateMetadata[\s\S]*?try\s*\{/);
+    expect(page).toMatch(/catch\s*\(error\)[\s\S]*?t\.notFound\.title/);
+  });
+
+  it('同一次請求只查一次 DB，且不合格式的店家代碼不進資料庫', () => {
+    /**
+     * `generateMetadata` 與頁面各呼叫一次 loader，而 Next 的 request memoization
+     * 只對 `fetch()` 生效，supabase-js 不在內——所以沒有 `cache()` 的話一個 200
+     * 請求是最多 **10 次** service-role 查詢。這一頁是全站第一個匿名就打得到
+     * 資料庫的路徑，而專案目前沒有任何 rate limit，這個倍數是實質的。
+     *
+     * `shop_code` 在 DB 上是 `check (shop_code ~ '^[a-z0-9-]+$')`，不合這個形狀的
+     * 字串必然查無此店——先擋掉，別讓一個 2000 字元的亂碼網址換到一次查詢。
+     */
+    expect(loader).toMatch(/from 'react'/);
+    expect(loader).toMatch(/export const loadPublicShop = cache\(/);
+    expect(loader).toMatch(/SHOP_CODE_PATTERN\s*=\s*\/\^\[a-z0-9-\]/);
+    expect(loader).toMatch(/if \(!SHOP_CODE_PATTERN\.test\(shopCode\)\) return null;/);
+  });
+});

@@ -38,14 +38,32 @@ import { formatCurrency } from '@/lib/utils';
 
 type Params = { params: Promise<{ shopCode: string }> };
 
+/**
+ * ⚠️ 這裡的 try/catch **不是防禦性程式碼的裝飾**，是一個實測到的資訊洩漏修補。
+ *
+ * Next 對頁面 render 拋出的錯誤會壓成 `digest`，訊息不會外流。但
+ * `generateMetadata` 拋出的錯誤**不走同一條路**——它被逐字序列化進公開 HTML 的
+ * RSC payload：
+ *
+ *   `8:{"metadata":"$undefined","error":{"message":"…","hint":"…"}}`
+ *
+ * 資料層那邊已經把 PostgREST 的 plain object 包成訊息固定的 `Error`
+ * （見 `queryFailed()`），這裡再補一道：metadata 失敗就退回「找不到這家店」的
+ * 標題，把真正的原因留在伺服器日誌。標題比正文早算完，讓它決定整頁生死並不合理。
+ */
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { shopCode } = await params;
-  const data = await loadPublicShop(shopCode);
-  if (!data) return { title: t.notFound.title };
-  return {
-    title: data.shop.name,
-    description: data.shop.description || undefined,
-  };
+  try {
+    const data = await loadPublicShop(shopCode);
+    if (!data) return { title: t.notFound.title };
+    return {
+      title: data.shop.name,
+      description: data.shop.description || undefined,
+    };
+  } catch (error) {
+    console.error('[public-shop] generateMetadata 失敗', error);
+    return { title: t.notFound.title };
+  }
 }
 
 /** 台北時區的「今天」；用來把日期顯示成 M/D（週X）。 */
