@@ -12,8 +12,9 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 > 才能讓證據是真的。
 >
 > 「Astra」在本文與 `ASTRA_*` 欄位名中**保留為這道關卡的名稱**（欄位名寫進了
-> PR body、workflow 與既有 review 紀錄，改名會讓歷史紀錄對不上）；實際執行
-> 評估的模型一律以 `model-routing.json` 的 `models.finalRisk` 為準。
+> PR body、workflow 與既有 review 紀錄，改名會讓歷史紀錄對不上）；`models.finalRisk` 是預設模型，
+> guard 會接受 `models.finalRiskAllowedModels` 清單中的模型。現行清單為 `gpt-6-astra` 與
+> `claude-fable-5-1`，且 `requestedModel` 與 `actualModel` 必須是同一個清單內模型。
 
 ## 路由
 
@@ -42,7 +43,7 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 
 ## 最後評估的證據
 
-操作者確認確實呼叫 `models.finalRisk` 設定的模型並取得結果後，將報告保存於 GitHub，
+操作者確認確實呼叫 `models.finalRiskAllowedModels` 清單中的指定模型（Astra 或 Fable）並取得結果後，將報告保存於 GitHub，
 然後在候選 PR 提交一筆 COMMENT review（審核紀錄），使用下列 JSON 格式。
 不得只填 PR body 的 PASS。
 
@@ -64,11 +65,10 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 ```
 
 `requestedModel` / `actualModel` 必須與當時 `model-routing.json` 的
-`models.finalRisk` 逐字相同——檢查器直接比對這兩者，改了設定卻沒改 review 的
-JSON（或反過來）都會被擋下。`policyVersion` 同理。
+`models.finalRiskAllowedModels` 清單內的同一模型——檢查器會直接比對這兩者；未知模型或 requested/actual 不一致都會被擋下。`policyVersion` 同理。
 
 **什麼算「實際模型證據」。** 在目前的執行環境，可接受的作法是**在一個明確指定
-`model: fable` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次
+`model: fable` 或 `model: astra` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次
 執行、審了哪一顆 head。操作者背書的是「我確實把這次審核交給了那個模型」這件事，
 不是模型自己簽的名——下一段講的就是這個界線。
 
