@@ -184,8 +184,12 @@ describe('plans, departures and addons CRUD', () => {
       const plan = await ownerA.post(`/api/trips/${tripId}/plans`, { name: '測試方案', pricePerPerson: 1000 });
       expect(plan.status).toBe(200);
       const planId = (await json<{ id: string }>(plan)).data!.id;
+      // issue #37：OPEN 團次現在必須有一位主導遊（10-TOUR-DOMAIN §1.3、§3
+      // 「不產生未指派半成品」）。SHOP_A 有兩位可接案人員，server 不會自動解析，
+      // 呼叫端必須指名——這是刻意的契約變更，不是為了讓測試變綠而加的參數。
       const departure = await ownerA.post(`/api/trips/${tripId}/departures`, {
         planId, departsOn: '2027-01-10', capacity: 2, startTime: '09:00',
+        primaryStaffId: SHOP_A.staffA1,
       });
       expect(departure.status).toBe(200);
       const addon = await ownerA.post(`/api/trips/${tripId}/addons`, { name: '接送', price: 0 });
@@ -263,7 +267,9 @@ describe('plans, departures and addons CRUD', () => {
 
       const mk = async (departsOn: string) => {
         const r = await ownerA.post(`/api/trips/${tripId}/departures`, {
+          // issue #37：OPEN 團次必須指定主導遊。兩個日期不同天，同一位導遊不衝突。
           planId, departsOn, capacity: 4, startTime: '09:00',
+          primaryStaffId: SHOP_A.staffA1,
         });
         expect(r.status).toBe(200);
         return (await json<{ id: string }>(r)).data!.id;

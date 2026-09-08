@@ -40,6 +40,14 @@ const PLAN = '73700000-0000-4000-8000-000000000011';
 const DAY_FREE = '2027-05-10';
 const DAY_BUSY = '2027-05-11';
 const DAY_OTHER = '2027-05-12';
+/**
+ * 只給「反向：available-slots」那一條用的專屬日期。
+ *
+ * 同檔前面的測試會在 DAY_FREE 上建立／取消 staffA1 的團次；共用同一天的話，那一條
+ * 的前置（先確認 staffA1 本來就有可用時段）會受前面幾條的執行順序影響——一條測試
+ * 的成敗不該取決於別條先跑了什麼。
+ */
+const DAY_SLOTS = '2027-05-13';
 /** B 店的員工，專供跨租戶拒絕測試；beforeAll 造、afterAll 刪。 */
 const STAFF_B = '73700000-0000-4000-8000-0000000000b1';
 
@@ -48,9 +56,23 @@ let api: AuthedApi;
 let apiB: AuthedApi;
 const createdDepartures: string[] = [];
 let seededBookingId = '';
+/** 測前的 TOUR_MODULE 訂閱列；null 代表測前根本沒有，afterAll 要刪回去。 */
+let featureSnapshot: Record<string, unknown> | null = null;
 
 async function json<T>(response: Response): Promise<Envelope<T>> {
   return (await response.json()) as Envelope<T>;
+}
+
+/**
+ * available-slots 回的是 **UTC ISO**，而團次的 `startTime` 是**台北**時分。
+ *
+ * ⚠️ 直接 `iso.slice(11, 16)` 會拿到 UTC 的時分，把台北 09:00 的時段寫成 01:00 ——
+ * 那樣建出來的團次根本不在該時段上，後面「那個人從時段裡消失了」的斷言就會變成
+ * 一條永遠通過、卻什麼都沒驗到的測試。
+ */
+function taipeiHm(iso: string): string {
+  const t = new Date(Date.parse(iso) + 8 * 60 * 60 * 1000);
+  return `${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}`;
 }
 
 type DepartureBody = {
@@ -82,12 +104,24 @@ beforeAll(async () => {
   api = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
   apiB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
 
-  // 前提：TOUR_MODULE 必須有效，否則所有寫入都會被 requireFeature 正確擋下，
-  // 而紅的會是「前提沒備好」不是「功能壞了」。
-  const { data: feature } = await admin.from('tenant_features')
-    .select('code, expires_at').eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE').maybeSingle();
-  expect(feature, 'SHOP_A 需要有效的 TOUR_MODULE 訂閱；種子資料缺這一項時本檔無法驗證任何東西')
-    .toBeTruthy();
+  /**
+   * 前提：TOUR_MODULE 必須有效，否則所有寫入都會被 `requireFeature` 正確擋下，
+   * 而紅的會是「前提沒備好」不是「功能壞了」。
+   *
+   * ⚠️ **標準種子沒有給 SHOP_A TOUR_MODULE**（`keyword-replies.05.test.ts` 的檔頭
+   * 逐字記著這一點），而閘門讀的是 `feature_subscriptions`，不是 `tenant_features`。
+   * 所以本檔比照 `tours.10` / `keyword-replies.05` 的既有做法**自己開通**，並在
+   * afterAll 還原成測前的樣子（原本沒有就刪掉，不留下我造的訂閱給別的測試檔）。
+   */
+  const { data: featureBefore, error: featureReadError } = await admin.from('feature_subscriptions')
+    .select('*').eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE').maybeSingle();
+  expect(featureReadError).toBeNull();
+  featureSnapshot = featureBefore ?? null;
+  const { error: grantError } = await admin.from('feature_subscriptions').upsert({
+    tenant_id: SHOP_A.id, code: 'TOUR_MODULE', active: true,
+    expires_at: null, source: 'GRANTED', cancelled_at: null,
+  }, { onConflict: 'tenant_id,code' });
+  expect(grantError).toBeNull();
 
   // 本檔專用行程（duration_hours = 3 → 團次佔用 3 小時，不是整日）與方案。
   await admin.from('trips').upsert({
@@ -127,6 +161,13 @@ afterAll(async () => {
   await admin.from('trip_plans').delete().eq('id', PLAN);
   await admin.from('trips').delete().eq('id', TRIP);
   await admin.from('staff').delete().eq('id', STAFF_B);
+  // TOUR_MODULE 還原成測前的樣子：測前沒有就刪掉，有就寫回原本那一列。
+  if (featureSnapshot) {
+    await admin.from('feature_subscriptions').upsert(featureSnapshot, { onConflict: 'tenant_id,code' });
+  } else {
+    await admin.from('feature_subscriptions').delete()
+      .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+  }
 });
 
 describe('指派真的被寫進 trip_departure_staff', () => {
@@ -256,7 +297,7 @@ describe('雙向撞班', () => {
     // 這一條是本檔最重要的一項。前面所有測試都在團次那一側；只做那一側的話，
     // 顧客端仍然可以把已經在帶團的導遊預約走——撞班只擋了一半。
     const before = await api.get(
-      `/api/bookings/available-slots?serviceId=${SHOP_A.serviceA1}&staffId=${SHOP_A.staffA1}&date=${DAY_FREE}`,
+      `/api/bookings/available-slots?serviceId=${SHOP_A.serviceA1}&staffId=${SHOP_A.staffA1}&date=${DAY_SLOTS}`,
     );
     const beforeSlots = (await json<{ slots: Array<{ start: string; staffIds: string[] }> }>(before)).data!.slots;
     // 對照組：先確認這一天本來就有該員工的時段，否則下面的「消失了」等於什麼都沒證明
@@ -265,14 +306,14 @@ describe('雙向撞班', () => {
     const targetSlot = beforeSlots.find((s) => s.staffIds.includes(SHOP_A.staffA1))!;
 
     const created = await createDeparture({
-      planId: PLAN, departsOn: DAY_FREE, startTime: targetSlot.start.slice(11, 16), capacity: 8,
+      planId: PLAN, departsOn: DAY_SLOTS, startTime: taipeiHm(targetSlot.start), capacity: 8,
       primaryStaffId: SHOP_A.staffA1,
     });
     // 這一發若因撞班被擋，本測試就沒有前提可驗，明確失敗而不是靜默跳過。
     expect(created.response.status, created.payload.message ?? '').toBe(200);
 
     const after = await api.get(
-      `/api/bookings/available-slots?serviceId=${SHOP_A.serviceA1}&staffId=${SHOP_A.staffA1}&date=${DAY_FREE}`,
+      `/api/bookings/available-slots?serviceId=${SHOP_A.serviceA1}&staffId=${SHOP_A.staffA1}&date=${DAY_SLOTS}`,
     );
     const afterSlots = (await json<{ slots: Array<{ start: string; staffIds: string[] }> }>(after)).data!.slots;
     const stillThere = afterSlots.find((s) => s.start === targetSlot.start);

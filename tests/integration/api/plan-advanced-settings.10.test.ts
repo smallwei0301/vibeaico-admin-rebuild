@@ -58,6 +58,16 @@ describe('#42 Advanced Settings persistence', () => {
         departsOn: '2027-01-10',
         capacity: 5,
         startTime: '09:00',
+        /**
+         * issue #37：OPEN 團次現在必須有一位主導遊。
+         *
+         * ⚠️ 這裡刻意用 **staffA2**，不是 staffA1：`tours.10.test.ts` 也在
+         * `2027-01-10 09:00` 建一個 SHOP_A 的團次並指派 staffA1，而那些行程是用
+         * `POST /api/trips` 建的（沒有 durationHours → `trips.duration_hours` 為
+         * null → 團次視為**整日**佔用）。兩個檔跑在同一個資料庫上，用同一位導遊
+         * 就會撞班而 409。
+         */
+        primaryStaffId: SHOP_A.staffA2,
       });
       expect(departureResponse.status).toBe(200);
       const departureId = (await json<{ id: string }>(departureResponse)).data!.id;
