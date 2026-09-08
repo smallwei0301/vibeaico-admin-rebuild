@@ -1,10 +1,10 @@
 {
-  "version": "2026-09-07.1",
+  "version": "2026-09-08.1",
   "models": {
     "scout": "gpt-5.6-luna",
     "build": "gpt-5.6-terra",
     "audit": "gpt-5.6-sol",
-    "finalRisk": "gpt-6-astra"
+    "finalRisk": "claude-fable-5-1"
   },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [

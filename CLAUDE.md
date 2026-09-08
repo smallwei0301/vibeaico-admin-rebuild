@@ -149,9 +149,31 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 7. Money columns use `formatCurrency()` with `numeric: true`; status columns use `<Badge tone>`
    with text from a `common.*` map. Icons are lucide-react only.
 
+## Final risk review model (Owner decision, 2026-09-08)
+
+The high-risk final review gate — the one that produces the `astra-review` attestation the
+`Agent WIP Policy` check requires — runs on **Fable (`claude-fable-5-1`)**, not GPT-6 Astra.
+Owner's wording: 「在目前 anthropic 環境，請把 astra 改為 Fable」.
+
+Why it changed: this execution environment has no route to GPT-6 Astra, and
+`docs/MODEL-ROUTING.md` correctly forbids filling in `OPERATOR_ATTESTED` without real model
+evidence. The two together meant every high-risk PR parked at `ASTRA_PENDING` forever — the gate
+stopped distinguishing "unreviewed" from "unreviewable". Pointing it at a model this environment
+can actually call is what makes the evidence real.
+
+- The model ID lives **only** in `scripts/agents/model-routing.json` (`models.finalRisk`). Never
+  hardcode it anywhere else; `requestedModel` / `actualModel` in a review must match it verbatim.
+- The name **"Astra" is kept** for the gate itself and for the `ASTRA_*` PR-body fields — those
+  names are written into PR bodies, the guard workflow and existing review records, and renaming
+  them would orphan the history. Astra = the gate; Fable = the model that currently staffs it.
+- Running the review means actually delegating it to that model (a subagent explicitly pinned to
+  it). Producing the attestation without that delegation is still forbidden — the rule that
+  changed is *which* model, not whether the evidence has to be real.
+
 ## Key docs
 
 - `AGENTS.md` — mandatory agent entry point
+- `docs/MODEL-ROUTING.md` — model routing and the high-risk final review gate; see the decision above
 - `docs/AGENT-EXECUTION.md` — canonical autonomous execution, delegation, permissions, safety and stop rules
 - `docs/DELIVERY-CHAIN.md` — canonical product delivery chain: what each gate is there to catch and what its passing evidence looks like (Luna ownership check → Terra worktree build → Sol diff audit → local isolated Supabase → serialized canonical TEST → Completion Truth five-point verification)
 - `docs/AGENT-PLAYBOOK.md` — required failure/lesson log; search only entries relevant to the task
