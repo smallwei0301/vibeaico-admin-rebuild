@@ -34,6 +34,21 @@ function safeApiMessage(payload, fallback) {
   return typeof message === 'string' && message.trim() ? message.trim() : fallback;
 }
 
+function blockedResult({ mode, sha, reason, evidence = null }) {
+  return {
+    status: 'BLOCKED',
+    mode,
+    currentSha: sha,
+    decision: {
+      action: 'BLOCK',
+      reason,
+      ...(evidence?.decision ? { sourceDecision: evidence.decision } : {}),
+    },
+    baseline: evidence?.baseline ?? null,
+    preview: null,
+  };
+}
+
 export async function vercelJson({
   path,
   token,
@@ -67,7 +82,16 @@ export function verifyPreviewDeployment(payload, expected) {
   const errors = [];
 
   if (statusOf(deployment) !== 'READY') errors.push('PREVIEW_NOT_READY');
-  if (String(deployment.target ?? '') === 'production') errors.push('PREVIEW_TARGET_IS_PRODUCTION');
+
+  const hasTarget = Object.prototype.hasOwnProperty.call(deployment, 'target');
+  if (!hasTarget) {
+    errors.push('PREVIEW_TARGET_MISSING');
+  } else if (typeof deployment.target === 'string' && deployment.target.trim().toLowerCase() === 'production') {
+    errors.push('PREVIEW_TARGET_IS_PRODUCTION');
+  } else if (deployment.target !== null) {
+    errors.push('PREVIEW_TARGET_UNTRUSTED');
+  }
+
   if (String(projectId) !== expected.projectId) errors.push('PREVIEW_PROJECT_MISMATCH');
   if (String(deployment.source ?? '') !== 'git') errors.push('PREVIEW_SOURCE_NOT_GIT');
   if (String(meta.githubCommitOrg ?? '') !== expected.owner) errors.push('PREVIEW_GIT_OWNER_MISMATCH');
@@ -85,7 +109,7 @@ export function verifyPreviewDeployment(payload, expected) {
     url: required(deployment.url, 'preview deployment url'),
     projectId: String(projectId),
     source: String(deployment.source),
-    target: deployment.target ?? null,
+    target: deployment.target,
     sha: expected.sha,
   };
 }
@@ -170,6 +194,12 @@ export async function runProductionCutoverCanary({
   const latest = fullSha(latestMainSha, 'LATEST_MAIN_SHA');
   if (!['observe', 'preview_canary'].includes(mode)) throw new Error(`Unsupported CANARY_MODE: ${mode}`);
 
+  // Keep the deployment-side controller fail-closed even when a caller bypasses
+  // the GitHub workflow admission wrapper.
+  if (sha !== latest) {
+    return blockedResult({ mode, sha, reason: 'STALE_SHA' });
+  }
+
   const productionAliasPayload = await vercelJson({
     path: `/v13/deployments/${encodeURIComponent(required(hostname, 'PRODUCTION_HOSTNAME'))}`,
     token,
@@ -199,6 +229,17 @@ export async function runProductionCutoverCanary({
       baseline: evidence.baseline ?? null,
       preview: null,
     };
+  }
+
+  const comparison = evidence.comparison;
+  if (
+    comparison &&
+    (comparison.comparisonBaseIsAncestor !== true || comparison.changedPathsComplete !== true)
+  ) {
+    return blockedResult({ mode, sha, reason: 'COMPARISON_EVIDENCE_INCOMPLETE', evidence });
+  }
+  if (['INCOMPLETE_DIFF_FAIL_SAFE', 'CLASSIFIER_FAILED_FAIL_SAFE'].includes(evidence.decision.reason)) {
+    return blockedResult({ mode, sha, reason: 'COMPARISON_EVIDENCE_INCOMPLETE', evidence });
   }
 
   if (mode === 'observe') {

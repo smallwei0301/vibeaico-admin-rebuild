@@ -19,6 +19,7 @@ on:
 permissions:
   contents: read
   checks: read
+  actions: read
 
 concurrency:
   group: production-deploy-canary
@@ -60,23 +61,52 @@ jobs:
               ref: expected,
               per_page: 100,
             });
-            const sourceChecks = checks
-              .filter((check) => check.name === 'check')
-              .sort((a, b) => String(b.completed_at || b.started_at || '').localeCompare(String(a.completed_at || a.started_at || '')));
-            const latestCheck = sourceChecks[0];
-            if (!latestCheck || latestCheck.status !== 'completed' || latestCheck.conclusion !== 'success') {
-              core.setFailed(`CHECKS_NOT_GREEN: exact main ${expected} has no latest successful required 'check' run`);
+            const candidates = checks.filter((check) =>
+              check.name === 'check' &&
+              String(check.head_sha || '').toLowerCase() === expected &&
+              check.app?.slug === 'github-actions' &&
+              check.app?.id === 15368 &&
+              check.status === 'completed' &&
+              check.conclusion === 'success'
+            );
+
+            const verified = [];
+            for (const check of candidates) {
+              const match = String(check.details_url || '').match(/\/actions\/runs\/(\d+)(?:\/job\/\d+)?/);
+              if (!match) continue;
+              const runId = Number(match[1]);
+              if (!Number.isSafeInteger(runId)) continue;
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+              });
+              if (String(run.head_sha || '').toLowerCase() !== expected) continue;
+              if (run.path !== '.github/workflows/ci.yml') continue;
+              if (run.event !== 'push') continue;
+              if (run.status !== 'completed' || run.conclusion !== 'success') continue;
+              verified.push({ check, run });
+            }
+
+            verified.sort((a, b) =>
+              String(b.check.completed_at || '').localeCompare(String(a.check.completed_at || ''))
+            );
+            const trusted = verified[0];
+            if (!trusted) {
+              core.setFailed(`CHECKS_NOT_GREEN: exact main ${expected} has no successful trusted ci.yml push check`);
               return;
             }
 
             core.setOutput('main_sha', expected);
-            core.setOutput('check_run_id', String(latestCheck.id));
+            core.setOutput('check_run_id', String(trusted.check.id));
+            core.setOutput('workflow_run_id', String(trusted.run.id));
             await core.summary
               .addHeading('Issue #228 canary admission')
               .addTable([
                 [{ data: 'Field', header: true }, { data: 'Value', header: true }],
                 ['Exact main', expected],
-                ['Required check', `success (#${latestCheck.id})`],
+                ['Required check', `success (#${trusted.check.id})`],
+                ['Trusted workflow', `${trusted.run.path} / push / run ${trusted.run.id}`],
                 ['Mode', '${{ inputs.mode }}'],
               ])
               .write();

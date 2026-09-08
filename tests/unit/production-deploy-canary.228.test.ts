@@ -69,6 +69,15 @@ function docsOnlyGit() {
   };
 }
 
+function incompleteGit() {
+  return (args: string[]) => {
+    if (args[0] === 'cat-file') return { status: 0, stdout: '', stderr: '', error: null };
+    if (args[0] === 'merge-base') return { status: 0, stdout: '', stderr: '', error: null };
+    if (args[0] === 'diff') return { status: 2, stdout: '', stderr: 'simulated diff failure', error: null };
+    throw new Error(`unexpected git command: ${args.join(' ')}`);
+  };
+}
+
 function baseArgs() {
   return {
     token: 'secret-for-test-only',
@@ -114,7 +123,7 @@ describe('Issue #228 production cutover preview canary', () => {
     expect(body.meta).toMatchObject({ deploymentController: 'issue-228-preview-canary', expectedMainSha: MAIN_SHA });
   });
 
-  it('accepts only a READY non-Production Git deployment with exact project/repo/SHA identity', () => {
+  it('accepts only a READY explicit-null Preview target with exact project/repo/SHA identity', () => {
     expect(verifyPreviewDeployment(preview(), {
       projectId: PROJECT_ID,
       owner: OWNER,
@@ -129,13 +138,35 @@ describe('Issue #228 production cutover preview canary', () => {
     });
   });
 
-  it('rejects a preview response that accidentally points at Production traffic', () => {
-    expect(() => verifyPreviewDeployment(preview({ target: 'production' }), {
+  it('rejects Production target regardless of case', () => {
+    for (const target of ['production', 'Production', 'PRODUCTION']) {
+      expect(() => verifyPreviewDeployment(preview({ target }), {
+        projectId: PROJECT_ID,
+        owner: OWNER,
+        repo: REPO,
+        sha: MAIN_SHA,
+      })).toThrow(/PREVIEW_TARGET_IS_PRODUCTION/);
+    }
+  });
+
+  it('rejects missing, unknown, boolean and object target representations', () => {
+    const missingTarget = preview();
+    delete (missingTarget as Record<string, unknown>).target;
+    expect(() => verifyPreviewDeployment(missingTarget, {
       projectId: PROJECT_ID,
       owner: OWNER,
       repo: REPO,
       sha: MAIN_SHA,
-    })).toThrow(/PREVIEW_TARGET_IS_PRODUCTION/);
+    })).toThrow(/PREVIEW_TARGET_MISSING/);
+
+    for (const target of ['preview', '', false, true, {}]) {
+      expect(() => verifyPreviewDeployment(preview({ target }), {
+        projectId: PROJECT_ID,
+        owner: OWNER,
+        repo: REPO,
+        sha: MAIN_SHA,
+      })).toThrow(/PREVIEW_TARGET_UNTRUSTED/);
+    }
   });
 
   it('rejects wrong source or wrong exact SHA before it can count as a green canary', () => {
@@ -206,6 +237,42 @@ describe('Issue #228 production cutover preview canary', () => {
     expect(calls.some((call) => call.url.includes('/promote/'))).toBe(false);
   });
 
+  it('fails closed before provider contact when current SHA is stale', async () => {
+    const calls: string[] = [];
+    const fetchImpl = async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return response(productionAlias());
+    };
+    const result = await runProductionCutoverCanary({
+      ...baseArgs(),
+      currentSha: MAIN_SHA,
+      latestMainSha: PROD_SHA,
+      mode: 'preview_canary',
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    expect(result.status).toBe('BLOCKED');
+    expect(result.decision).toMatchObject({ action: 'BLOCK', reason: 'STALE_SHA' });
+    expect(calls).toEqual([]);
+  });
+
+  it('fails closed and never POSTs when complete Git diff evidence cannot be produced', async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const fetchImpl = async (url: string | URL | Request, init: RequestInit = {}) => {
+      const method = String(init.method ?? 'GET');
+      calls.push({ url: String(url), method });
+      return response(productionAlias());
+    };
+    const result = await runProductionCutoverCanary({
+      ...baseArgs(),
+      mode: 'preview_canary',
+      runGit: incompleteGit(),
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+    expect(result.status).toBe('BLOCKED');
+    expect(result.decision).toMatchObject({ action: 'BLOCK', reason: 'COMPARISON_EVIDENCE_INCOMPLETE' });
+    expect(calls.map((call) => call.method)).toEqual(['GET']);
+  });
+
   it('fails closed and never creates a Preview when the Production baseline is untrusted', async () => {
     const methods: string[] = [];
     const fetchImpl = async (_url: string | URL | Request, init: RequestInit = {}) => {
@@ -222,14 +289,23 @@ describe('Issue #228 production cutover preview canary', () => {
     expect(methods).toEqual(['GET']);
   });
 
+  it('the workflow binds required check to exact SHA, GitHub Actions app and ci.yml push run', () => {
+    const workflow = readFileSync(join(process.cwd(), '.github/workflows/production-deploy-canary.yml'), 'utf8');
+    expect(workflow).toContain("String(check.head_sha || '').toLowerCase() === expected");
+    expect(workflow).toContain("check.app?.slug === 'github-actions'");
+    expect(workflow).toContain('check.app?.id === 15368');
+    expect(workflow).toContain('github.rest.actions.getWorkflowRun');
+    expect(workflow).toContain("run.path !== '.github/workflows/ci.yml'");
+    expect(workflow).toContain("run.event !== 'push'");
+  });
+
   it('the workflow is manual-only, secret-backed, read-only at GitHub, and has no Production mutation verbs', () => {
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/production-deploy-canary.yml'), 'utf8');
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).not.toMatch(/\n\s*push:/);
     expect(workflow).not.toMatch(/\n\s*pull_request:/);
-    expect(workflow).toContain('permissions:\n  contents: read\n  checks: read');
+    expect(workflow).toContain('permissions:\n  contents: read\n  checks: read\n  actions: read');
     expect(workflow).not.toMatch(/^\s+[\w-]+:\s*write\s*$/m);
-    expect(workflow).not.toContain('actions: read');
     expect(workflow).toContain('secrets.VERCEL_TOKEN');
     expect(workflow).toContain('preview_canary');
     expect(workflow).not.toContain('target: production');
