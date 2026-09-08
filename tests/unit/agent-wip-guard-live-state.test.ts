@@ -229,15 +229,15 @@ describe('Astra risk review contract', () => {
     expect(changeDigestOf(differentRenameSource)).not.toBe(changeDigestOf(FILES));
   });
 
-  it('changeDigestOf 的排序不依賴執行環境的 locale（逐 byte 比較）', () => {
+  it('changeDigestOf 的排序不依賴執行環境的 locale（逐 UTF-16 code unit 比較）', () => {
     /**
      * `localeCompare` 不指定 locale 時採 process 的 ICU 預設：同一組路徑在
      * `da_DK` 與 `C.UTF-8` 下會排出不同順序，Unicode NFC／NFD 等價路徑更會回 0
      * 而讓順序取決於輸入。那只造成誤擋、不會放行，但一個放行條件不該依賴 locale。
      *
-     * 這條測試用「locale 會分歧、逐 byte 不會分歧」的實例來鎖：大小寫混排在
-     * locale 排序下是 a、A、a-b、a_b；逐 byte（ASCII）下 'A'(0x41) 恆在 'a'(0x61)
-     * 之前。只要拿掉逐 byte 改回 localeCompare，這一條就會在 en-US 的 runner 上轉紅。
+     * 這條測試用「locale 會分歧、原生字串比較不會分歧」的實例來鎖：大小寫混排在
+     * locale 排序下是 a、A、a-b、a_b；原生比較下（此處全為 ASCII）'A'(0x41) 恆在
+     * 'a'(0x61) 之前。只要改回 localeCompare，這一條就會在 en-US 的 runner 上轉紅。
      */
     const mixed = [
       { filename: 'src/a.ts', status: 'modified', sha: '1'.repeat(40) },
@@ -245,7 +245,7 @@ describe('Astra risk review contract', () => {
       { filename: 'src/a-b.ts', status: 'modified', sha: '3'.repeat(40) },
       { filename: 'src/a_b.ts', status: 'modified', sha: '4'.repeat(40) },
     ];
-    // 逐 byte 排序的結果是可以逐字寫死的；localeCompare 的結果不是。
+    // 原生字串比較的結果是可以逐字寫死的；localeCompare 的結果不是。
     const expected = createHash('sha256').update(JSON.stringify([
       ['src/A.ts', '', 'modified', '2'.repeat(40)],
       ['src/a-b.ts', '', 'modified', '3'.repeat(40)],
@@ -255,6 +255,29 @@ describe('Astra risk review contract', () => {
     expect(changeDigestOf(mixed)).toBe(expected);
     // 打亂輸入順序仍是同一個值
     expect(changeDigestOf([mixed[3], mixed[1], mixed[0], mixed[2]])).toBe(expected);
+  });
+
+  it('BMP 以外的路徑同樣得到穩定的全序（這是排序要的性質，不是 code point 序）', () => {
+    /**
+     * JS 原生字串比較是逐 UTF-16 code unit，對 surrogate pair 排出的位置與 UTF-8
+     * byte 序不同（U+10000 會排在 U+E000 之前）。文件與註解刻意不把它叫作 byte-wise。
+     * 這道閘門需要的性質只有一個：**與執行環境無關的全序**——同一組輸入，不論以
+     * 什麼順序給進來，都得到同一個指紋。這條測試鎖的就是那個性質本身。
+     */
+    const exotic = [
+      { filename: 'src/\u{10000}.ts', status: 'modified', sha: '1'.repeat(40) },
+      { filename: 'src/\uE000.ts', status: 'modified', sha: '2'.repeat(40) },
+      { filename: 'src/\uFFFD.ts', status: 'modified', sha: '3'.repeat(40) },
+    ];
+    const digest = changeDigestOf(exotic);
+    expect(digest).toMatch(/^[a-f0-9]{64}$/);
+    for (const permutation of [
+      [exotic[2], exotic[0], exotic[1]],
+      [exotic[1], exotic[2], exotic[0]],
+      [exotic[2], exotic[1], exotic[0]],
+    ]) expect(changeDigestOf(permutation)).toBe(digest);
+    // 內容變了就換一個值——穩定不等於失去敏感度
+    expect(changeDigestOf([{ ...exotic[0], sha: '9'.repeat(40) }, exotic[1], exotic[2]])).not.toBe(digest);
   });
 
   it('evaluateGithubAstra 把算出來的 changeDigest 一起回傳，操作者才填得出來', async () => {

@@ -60,14 +60,20 @@ const fields = ['repository', 'policyVersion', 'testBaseline', 'schemaBaseline',
  *    CI 的 typecheck／測試把關，不是本閘門的職責——但「兩邊都審過」不等於
  *    「整合結果審過」，措辭不要放大。
  *
- * ## 排序為什麼是 byte-wise 而不是 localeCompare
+ * ## 排序為什麼不是 localeCompare
  *
  * `localeCompare` 不指定 locale 時採 process 的 ICU 預設，實測同一組路徑在
  * `da_DK` 下與在 `C.UTF-8` 下會排出不同順序，Unicode NFC／NFD 等價路徑更會回 0
  * 而讓順序取決於輸入。那只會造成誤擋（指紋對不上）而非放行，但一個放行條件不該
- * 依賴執行環境的 locale。改為逐 byte 比較後，同一組輸入在任何機器上都是同一個值。
+ * 依賴執行環境的 locale。改用 JS 原生的 `<` / `>` 之後，同一組輸入在任何機器上
+ * 都是同一個值。
+ *
+ * ⚠️ 精確地說，那是**逐 UTF-16 code unit** 比較，不是逐 UTF-8 byte——BMP 以外的
+ * 字元（surrogate pair）排出來的位置與 UTF-8 byte 序不同。這不影響這裡要的性質：
+ * 我們需要的是「一個與執行環境無關的**全序**」，不是「與 code point 序一致」。
+ * 名字寫成 byte-wise 會讓人以為是後者，所以不那樣叫。
  */
-const byteWise = (a, b) => {
+const codeUnitWise = (a, b) => {
   const x = JSON.stringify(a);
   const y = JSON.stringify(b);
   return x < y ? -1 : x > y ? 1 : 0;
@@ -81,7 +87,7 @@ export function changeDigestOf(files = []) {
       String(f?.status ?? ''),
       String(f?.sha ?? ''),
     ])
-    .sort(byteWise);
+    .sort(codeUnitWise);
   if (!rows.length || rows.some((r) => !r[0] || !r[2] || !r[3])) return '';
   return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 }

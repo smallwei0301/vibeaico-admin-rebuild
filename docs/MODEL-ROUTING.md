@@ -81,10 +81,12 @@ blob sha**），排序後 sha256。取法見 `changeDigestOf()`；值由**受信
 `Agent WIP Policy` 的 job summary 有 `Astra change digest` 一列，PR 留言（不論通過或
 擋下）有 `ASTRA_CHANGE_DIGEST:` 一行。不必自己重算。
 
-排序是**逐 byte** 比較，不是 `localeCompare`。`localeCompare` 不指定 locale 時採
-process 的 ICU 預設，同一組路徑在不同 locale（實測 `da_DK` 對 `C.UTF-8`）會排出不同
-順序，Unicode NFC／NFD 等價路徑更會回 0 而讓順序取決於輸入。那只會造成誤擋而不會
-放行，但一個放行條件不該依賴執行環境的 locale。
+排序用 JS 原生的 `<` / `>`（**逐 UTF-16 code unit**），不是 `localeCompare`。
+`localeCompare` 不指定 locale 時採 process 的 ICU 預設，同一組路徑在不同 locale
+（實測 `da_DK` 對 `C.UTF-8`）會排出不同順序，Unicode NFC／NFD 等價路徑更會回 0 而讓
+順序取決於輸入。那只會造成誤擋而不會放行，但一個放行條件不該依賴執行環境的 locale。
+這裡要的性質是「一個與執行環境無關的**全序**」，不是「與 code point 或 UTF-8 byte 序
+一致」——BMP 以外的字元兩者確實不同，所以不要把它說成 byte-wise。
 
 **它解決的問題**：原本規則要求 review 釘在當下的 head commit，於是**純換底**會讓一份
 完全有效的評估失效——rebase 只換 parent、一個字都沒改，卻換了 commit sha。main 只要有
