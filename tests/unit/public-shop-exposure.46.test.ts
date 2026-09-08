@@ -11,6 +11,7 @@
  * ——那種改動在行為測試上往往不會紅（多回幾個欄位不會讓既有斷言失敗），但在這裡會。
  */
 import { describe, expect, it } from 'vitest';
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -182,5 +183,36 @@ describe('公開頁的錯誤與負載面（風險評估後補上的鎖）', () =
     expect(guard, '找不到店家代碼格式閘門').toBeGreaterThan(-1);
     expect(firstDbCall).toBeGreaterThan(-1);
     expect(guard, '格式閘門排在建立 DB client 之後，等於沒擋').toBeLessThan(firstDbCall);
+  });
+});
+
+describe('店家代碼的規則只有一份', () => {
+  /**
+   * ⚠️ 這一條鎖的是一個**已經發生過兩次**的漂移。
+   *
+   * 這個規則原本散在四個地方（DB check、註冊 API、設定 API、註冊頁前端），彼此
+   * 不一致。第一次收斂時我只收了註冊 API，還在檔頭寫「三個地方共用同一個來源」
+   * ——設定 API 這個第二個寫入者被漏掉，那句話當時就不成立（PB-027）。
+   *
+   * 後果很具體：店家在設定頁把代碼改成超長字串會存進去，而**同一頁**就在顯示
+   * `/s/{shopCode}` 當作「你的公開預約網址」，那個網址永遠 404 —— 正是 #299
+   * 要修掉的缺陷本身。
+   *
+   * 所以這裡不鎖「某幾個檔有沒有 import」（那還是一份我當下想得到的清單），
+   * 而是鎖「**這個 regex 的字面量只准出現在一個地方**」。日後任何人再抄一份，
+   * 不論抄到哪個檔，這一條都會紅。
+   */
+  it('`/^[a-z0-9-]+$/` 這個字面量只出現在 src/lib/shop-code.ts 以外的 0 個地方', () => {
+    const files = execSync(
+      "grep -rln --include=*.ts --include=*.tsx '\\^\\[a-z0-9-\\]' src || true",
+      { cwd: ROOT, encoding: 'utf8' },
+    ).trim().split('\n').filter(Boolean);
+
+    // 對照組：至少要抓得到那個唯一的來源，否則 grep 本身壞了而這條恆真。
+    expect(files, 'grep 連唯一的來源都沒抓到，這條測試本身失效了')
+      .toContain('src/lib/shop-code.ts');
+
+    const strays = files.filter((f) => f !== 'src/lib/shop-code.ts');
+    expect(strays, `這些檔案自己抄了一份店家代碼規則：${strays.join(', ')}`).toEqual([]);
   });
 });

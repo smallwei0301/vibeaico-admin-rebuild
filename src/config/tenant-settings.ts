@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE } from '@/lib/shop-code';
 
 /**
  * 租戶設定（Tenant Settings）— 多店家客製化的核心
@@ -219,8 +220,15 @@ const tenantTimeZoneSchema = z.string()
 
 export const basicSettingsSchema = z.object({
   tenantName: z.string().min(1, '請輸入店家名稱'),
-  /** 僅限小寫英文、數字、連字號；用於登入與 LINE Webhook URL */
-  shopCode: z.string().regex(/^[a-z0-9-]+$/, '僅限小寫英文、數字、連字號（-）'),
+  /**
+   * 僅限小寫英文、數字、連字號，且有長度上限；用於登入與 LINE Webhook URL。
+   *
+   * ⚠️ 規則來自 `@/lib/shop-code`，與註冊 API 及公開店家頁共用。這一條是
+   * `tenants.shop_code` 的**第二個寫入者**（`PUT /api/settings` 讓店家改代碼），
+   * 少了它，店家可以在設定頁把代碼改成超長字串——同一頁就在顯示
+   * `/s/{shopCode}` 當作「你的公開預約網址」，而那個網址會 404。
+   */
+  shopCode: z.string().regex(SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE),
   tenantPhone: z.string().default(''),
   tenantEmail: z.string().email().or(z.literal('')).default(''),
   tenantAddress: z.string().default(''),
