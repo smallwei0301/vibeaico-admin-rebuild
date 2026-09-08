@@ -1,0 +1,173 @@
+name: production-deploy-canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact 40-character current main SHA to observe or canary
+        required: true
+        type: string
+      mode:
+        description: Observe only or create one controlled Preview canary
+        required: true
+        default: observe
+        type: choice
+        options:
+          - observe
+          - preview_canary
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: production-deploy-canary
+  cancel-in-progress: true
+
+jobs:
+  canary:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Verify exact current main and required source check
+        id: truth
+        uses: actions/github-script@v9
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        with:
+          script: |
+            const expected = String(process.env.EXPECTED_MAIN_SHA || '').trim().toLowerCase();
+            if (!/^[0-9a-f]{40}$/.test(expected)) {
+              core.setFailed('expected_main_sha must be a full 40-character Git SHA');
+              return;
+            }
+
+            const branch = await github.rest.repos.getBranch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'main',
+            });
+            const liveMain = String(branch.data.commit.sha || '').toLowerCase();
+            if (liveMain !== expected) {
+              core.setFailed(`STALE_SHA: current main is ${liveMain}, not ${expected}`);
+              return;
+            }
+
+            const checks = await github.paginate(github.rest.checks.listForRef, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: expected,
+              per_page: 100,
+            });
+            const candidates = checks.filter((check) =>
+              check.name === 'check' &&
+              String(check.head_sha || '').toLowerCase() === expected &&
+              check.app?.slug === 'github-actions' &&
+              check.app?.id === 15368 &&
+              check.status === 'completed' &&
+              check.conclusion === 'success'
+            );
+
+            const verified = [];
+            for (const check of candidates) {
+              const match = String(check.details_url || '').match(/\/actions\/runs\/(\d+)(?:\/job\/\d+)?/);
+              if (!match) continue;
+              const runId = Number(match[1]);
+              if (!Number.isSafeInteger(runId)) continue;
+              const { data: run } = await github.rest.actions.getWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+              });
+              if (String(run.head_sha || '').toLowerCase() !== expected) continue;
+              if (run.path !== '.github/workflows/ci.yml') continue;
+              if (run.event !== 'push') continue;
+              if (run.status !== 'completed' || run.conclusion !== 'success') continue;
+              verified.push({ check, run });
+            }
+
+            verified.sort((a, b) =>
+              String(b.check.completed_at || '').localeCompare(String(a.check.completed_at || ''))
+            );
+            const trusted = verified[0];
+            if (!trusted) {
+              core.setFailed(`CHECKS_NOT_GREEN: exact main ${expected} has no successful trusted ci.yml push check`);
+              return;
+            }
+
+            core.setOutput('main_sha', expected);
+            core.setOutput('check_run_id', String(trusted.check.id));
+            core.setOutput('workflow_run_id', String(trusted.run.id));
+            await core.summary
+              .addHeading('Issue #228 canary admission')
+              .addTable([
+                [{ data: 'Field', header: true }, { data: 'Value', header: true }],
+                ['Exact main', expected],
+                ['Required check', `success (#${trusted.check.id})`],
+                ['Trusted workflow', `${trusted.run.path} / push / run ${trusted.run.id}`],
+                ['Mode', '${{ inputs.mode }}'],
+              ])
+              .write();
+
+      - name: Checkout the exact admitted main SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.truth.outputs.main_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Validate canary source files
+        run: |
+          node --check scripts/ci/production-deploy-decision.mjs
+          node --check scripts/ci/production-deploy-evidence.mjs
+          node --check scripts/ci/production-deploy-canary.mjs
+          git diff --check HEAD^ HEAD
+
+      - name: Run controlled Vercel canary controller
+        id: canary
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: team_oUp8F22bTwisQsBc2EHxrj6N
+          VERCEL_PROJECT_ID: prj_cIRaLfXUJnL53zCcOvtlddi3T8H9
+          VERCEL_PROJECT_NAME: vibeaico-admin-rebuild
+          PRODUCTION_HOSTNAME: vibeaico-admin-rebuild.vercel.app
+          GITHUB_OWNER: smallwei0301
+          GITHUB_REPO: vibeaico-admin-rebuild
+          CURRENT_SHA: ${{ steps.truth.outputs.main_sha }}
+          LATEST_MAIN_SHA: ${{ steps.truth.outputs.main_sha }}
+          CHECKS_STATE: SUCCESS
+          CANARY_MODE: ${{ inputs.mode }}
+          CANARY_RESULT_PATH: production-canary-result.json
+        run: node scripts/ci/production-deploy-canary.mjs
+
+      - name: Publish non-secret canary evidence
+        if: ${{ always() && hashFiles('production-canary-result.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deploy-canary-${{ steps.truth.outputs.main_sha }}
+          path: production-canary-result.json
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summarize canary outcome
+        if: ${{ always() }}
+        env:
+          CANARY_STATUS: ${{ steps.canary.outputs.canary_status }}
+          DECISION_ACTION: ${{ steps.canary.outputs.decision_action }}
+          DECISION_REASON: ${{ steps.canary.outputs.decision_reason }}
+          PREVIEW_DEPLOYMENT_ID: ${{ steps.canary.outputs.preview_deployment_id }}
+        run: |
+          {
+            echo '## Production cutover canary result'
+            echo
+            echo "- canary status: ${CANARY_STATUS:-not-produced}"
+            echo "- Production decision: ${DECISION_ACTION:-not-produced} / ${DECISION_REASON:-not-produced}"
+            echo "- Preview deployment: ${PREVIEW_DEPLOYMENT_ID:-none}"
+            echo '- Production deploy/promote/delete: NOT_RUN by this workflow'
+            echo '- Existing Vercel Git Integration: unchanged'
+          } >> "$GITHUB_STEP_SUMMARY"
