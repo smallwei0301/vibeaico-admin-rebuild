@@ -133,11 +133,27 @@ beforeAll(async () => {
     price_per_person: 1000, min_party: 1, max_party: 20,
   });
 
-  // DAY_BUSY 09:00–10:00 給 staffA1 排一場一般服務預約（台北時間 → UTC -8）。
+  /**
+   * DAY_BUSY 09:00–10:00 給 staffA1 排一場一般服務預約（台北時間 → UTC -8）。
+   *
+   * ⚠️ `bookings` 上 **not-null 且沒有預設值**的欄位共七個，全部都要給：
+   * `tenant_id` / `booking_no` / `customer_id` / `service_id` / `start_at` /
+   * `end_at` / `duration_minutes`。這是對**真 schema** 逐欄列出來的結果，不是憑
+   * 印象挑幾個——#285 的教訓正是「對著一個少了欄位的簡化替身驗過」不等於驗過，
+   * 而本檔第一版就漏了 `booking_no` 與 `duration_minutes`，在 CI 才炸。
+   *
+   * `booking_no` 帶 TAG 前綴且加上時間戳，避免與種子或其他測試檔的單號相撞。
+   */
   const { data: booking, error } = await admin.from('bookings').insert({
-    tenant_id: SHOP_A.id, service_id: SHOP_A.serviceA1, staff_id: SHOP_A.staffA1,
-    customer_id: SHOP_A.customerA1, status: 'CONFIRMED',
-    start_at: `${DAY_BUSY}T01:00:00Z`, end_at: `${DAY_BUSY}T02:00:00Z`,
+    tenant_id: SHOP_A.id,
+    booking_no: `${TAG}-${Date.now()}`,
+    customer_id: SHOP_A.customerA1,
+    service_id: SHOP_A.serviceA1,
+    staff_id: SHOP_A.staffA1,
+    start_at: `${DAY_BUSY}T01:00:00Z`,
+    end_at: `${DAY_BUSY}T02:00:00Z`,
+    duration_minutes: 60,
+    status: 'CONFIRMED',
     note: `${TAG} 佔用測試`,
   }).select('id').single();
   expect(error).toBeNull();
