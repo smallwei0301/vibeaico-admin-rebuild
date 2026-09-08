@@ -56,7 +56,8 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
   "repository": "smallwei0301/vibeaico-admin-rebuild",
   "baseSha": "完整40碼基底版本",
   "headSha": "完整40碼候選版本",
-  "policyVersion": "2026-09-08.3",
+  "changeDigest": "64碼變更內容指紋",
+  "policyVersion": "2026-09-08.4",
   "testBaseline": "與PR ASTRA_TEST_BASELINE完全一致的測試證據及環境版本",
   "schemaBaseline": "與PR ASTRA_SCHEMA_BASELINE完全一致的資料庫版本或不適用理由",
   "requestedModel": "claude-fable-5-1",
@@ -70,6 +71,32 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 
 `requestedModel` / `actualModel` 必須與當時 `model-routing.json` 的
 `models.finalRiskAllowedModels` 清單內的同一模型——檢查器會直接比對這兩者；清單缺失、格式錯誤、catalog 外模型或 requested/actual 不一致都會被擋下。`policyVersion` 同理。
+
+### `changeDigest`：綁變更內容，不綁 commit 身分
+
+`changeDigest` 取每一個 changed file 的（最終路徑、rename 前路徑、狀態、**head 上的
+blob sha**），排序後 sha256。取法見 `changeDigestOf()`；值由**受信任的預設分支**這份
+程式從 GitHub 直接給的 `pulls.listFiles` 算出，不採信 PR 或 attestation 自填的內容。
+操作者只要把檢查器算出來的同一個值填進 attestation 即可。
+
+**它解決的問題**：原本規則要求 review 釘在當下的 head commit，於是**純換底**會讓一份
+完全有效的評估失效——rebase 只換 parent、一個字都沒改，卻換了 commit sha。main 只要有
+別的 PR 合併，所有在途的高風險 PR 就都要重跑最後風險評估。PR #292 因此連跑四輪，其中
+兩輪的差異只是換底；#280 當時是在窗口內險勝，不是機制保證。
+
+**它在什麼情況下仍會失效（這才是重點）**：只要換底過程中任何一個檔案被靜默合併、或
+有人趁機夾帶修改，該檔案的 blob sha 就變，指紋跟著變，舊評估立刻不成立。
+
+**安全性論證**：指紋只涵蓋變更過的檔案，未變更的檔案來自 base；而 PR 的 base 是受保護
+的預設分支，它自己的每一次前進都通過同一道閘門。因此「舊評估 ＋ 新 base」＝「已審查過
+的檔案內容 ＋ 已受同一道閘門把關的基底」，沒有任何一邊是未經審查的。
+
+`baseSha` / `headSha` **仍為必填**（格式仍逐一驗證），但不再要求與當下的 base/head 相同
+——它們的角色從「放行條件」變成「稽核紀錄：當時審的是哪一顆」。
+
+⚠️ 同一次修改也**收緊**了一處：檢查器改為取**最新的一筆**可信 review 再要求它對得上本
+候選。原本的 `find(commitId === headSha)` 會跳過釘在別顆 head 上的較新否決，讓一份較舊
+的 PASS 存活；現在任何較新的否決都會成為那一筆 latest，照樣擋下。
 
 **什麼算「實際模型證據」。** 在目前的執行環境，可接受的作法是**在一個明確指定
 `model: fable` 或 `model: astra` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次

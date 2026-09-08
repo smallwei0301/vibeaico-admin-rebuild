@@ -89,12 +89,20 @@ describe('agent WIP Guard live-state dispatch', () => {
   });
 });
 
-import { classifyAstra, evaluateAstra, evaluateGithubAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
+import {
+  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, routing,
+} from '../../scripts/agents/astra-review-policy.mjs';
 
 const body = 'ASTRA_RISK: NONE\nASTRA_RATIONALE: Change only an ordinary heading\n';
+/** 一份代表性的 changed-file 清單；blob sha 是指紋的唯一內容來源 */
+const FILES = [
+  { filename: 'scripts/agents/model-routing.json', status: 'modified', sha: '1'.repeat(40) },
+  { filename: 'src/new.ts', previous_filename: 'src/old.ts', status: 'renamed', sha: '2'.repeat(40) },
+];
 const context = {
   repository: 'smallwei0301/vibeaico-admin-rebuild', baseSha: 'a'.repeat(40), headSha: 'b'.repeat(40),
   policyVersion: routing.version, testBaseline: 'unit-run-123:no-db', schemaBaseline: 'NOT_APPLICABLE: no schema changes',
+  changeDigest: changeDigestOf(FILES),
 };
 const makeReview = (patch = {}, record = {}) => ({
   trusted: true, id: 1, state: 'COMMENTED', commit_id: context.headSha, submitted_at: '2026-09-07T00:00:00Z',
@@ -168,7 +176,69 @@ describe('Astra risk review contract', () => {
     }
   });
   it('binds the actual GitHub review commit, not just the JSON claim', () => {
-    expect(evaluateAstra(candidate([makeReview({}, { commit_id: 'c'.repeat(40) })])).status).toBe('ASTRA_PENDING');
+    // review 釘在別顆 commit 上、且其 changeDigest 也對不上本候選 → 不可放行
+    expect(evaluateAstra(candidate([
+      makeReview({ changeDigest: 'f'.repeat(64) }, { commit_id: 'c'.repeat(40) }),
+    ])).status).toBe('ASTRA_PENDING');
+  });
+
+  /* ---- 純換底沿用（本輪新增的放寬），以及它的每一道 fail-closed ---- */
+
+  it('純換底沿用：commit 換了但變更內容指紋相同 → 仍然有效', () => {
+    // rebase 只換 parent，檔案內容一個字都沒改：blob sha 逐一相同 ⇒ 指紋不變。
+    // 這正是 PR #292 連跑四輪、其中兩輪只是換底的那個情形。
+    const rebased = makeReview({}, { commit_id: 'c'.repeat(40) });
+    expect(evaluateAstra(candidate([rebased])).status).toBe('ASTRA_APPROVED');
+  });
+
+  it('換底時若有任何檔案被夾帶修改 → 指紋改變 → 不得沿用', () => {
+    // 只要有一個 blob sha 不同（靜默合併、或趁換底夾帶），舊評估立刻失效。
+    const tampered = { ...context, changeDigest: changeDigestOf([
+      FILES[0], { ...FILES[1], sha: '9'.repeat(40) },
+    ]) };
+    expect(tampered.changeDigest).not.toBe(context.changeDigest);
+    expect(evaluateAstra({
+      body, changedFiles: ['scripts/agents/model-routing.json'],
+      context: tampered, reviews: [makeReview({}, { commit_id: 'c'.repeat(40) })],
+    }).status).toBe('ASTRA_PENDING');
+  });
+
+  it('沒有可用指紋時 fail closed（兩邊都 undefined 不得視為相符）', () => {
+    // 少了這道，`latest.changeDigest !== context.changeDigest` 在兩邊都 undefined
+    // 時會「通過」，整條放寬就變成無條件放行。
+    for (const bad of [undefined, '', 'not-a-digest', 'a'.repeat(63), 'A'.repeat(64)]) {
+      const ctx = { ...context, changeDigest: bad } as Record<string, unknown>;
+      const review = makeReview({ changeDigest: bad });
+      expect(evaluateAstra({
+        body, changedFiles: ['scripts/agents/model-routing.json'], context: ctx as never, reviews: [review],
+      }).status).toBe('ASTRA_PENDING');
+    }
+  });
+
+  it('changeDigestOf 對缺漏欄位回空字串，不產生一個涵蓋不到內容的指紋', () => {
+    expect(changeDigestOf([])).toBe('');
+    expect(changeDigestOf([{ filename: 'a.ts', status: 'modified' }])).toBe(''); // 缺 sha
+    expect(changeDigestOf([{ filename: '', status: 'modified', sha: '1'.repeat(40) }])).toBe('');
+    expect(changeDigestOf([{ filename: 'a.ts', sha: '1'.repeat(40) }])).toBe(''); // 缺 status
+  });
+
+  it('changeDigestOf 與檔案順序無關，但對 rename 前路徑敏感', () => {
+    expect(changeDigestOf([FILES[1], FILES[0]])).toBe(changeDigestOf(FILES));
+    const differentRenameSource = [FILES[0], { ...FILES[1], previous_filename: 'src/elsewhere.ts' }];
+    expect(changeDigestOf(differentRenameSource)).not.toBe(changeDigestOf(FILES));
+  });
+
+  it('較新的否決即使釘在別顆 head 上也擋得下（原寫法會跳過它）', () => {
+    /**
+     * 這一條鎖的是本輪順帶**收緊**的行為。原本是 `find(commitId === headSha)`：
+     * 只挑釘在當下 head 的那一筆，於是一筆較新的 CHANGES_REQUESTED 若釘在別顆
+     * commit 上會被直接跳過，讓一份較舊的 PASS 存活。
+     */
+    const newerRejection = {
+      trusted: true, id: 2, state: 'CHANGES_REQUESTED', commit_id: 'c'.repeat(40),
+      submitted_at: '2026-09-09T00:00:00Z', body: 'blocking concern',
+    };
+    expect(evaluateAstra(candidate([makeReview(), newerRejection])).status).toBe('ASTRA_PENDING');
   });
   it('checks rename source and permission from GitHub, not from review text', async () => {
     const github = {
