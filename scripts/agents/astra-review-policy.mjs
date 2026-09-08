@@ -5,6 +5,10 @@ export const routing = JSON.parse(readFileSync(new URL('./model-routing.json', i
 const SHA = /^[a-f0-9]{40}$/;
 const meaningful = (s) => typeof s === 'string' && s.trim().length >= 8 && !/^(unknown|pending|none|n\/a|tbd)$/i.test(s.trim());
 const fields = ['repository', 'baseSha', 'headSha', 'policyVersion', 'testBaseline', 'schemaBaseline'];
+const allowedFinalRiskModels = (policy) => {
+  const configured = policy.models?.finalRiskAllowedModels;
+  return new Set(Array.isArray(configured) && configured.length ? configured : [policy.models.finalRisk]);
+};
 
 /** @param {{body?: string, changedFiles?: string[] | null}} [input] */
 export function classifyAstra({ body = '', changedFiles = null } = {}, policy = routing) {
@@ -53,7 +57,12 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     if (latest.commitId !== context.headSha) errors.push('GitHub review commit differs from candidate');
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    if (latest.requestedModel !== policy.models.finalRisk || latest.actualModel !== policy.models.finalRisk) errors.push('Astra model identity is unverified');
+    const allowedModels = allowedFinalRiskModels(policy);
+    if (
+      latest.requestedModel !== latest.actualModel ||
+      !allowedModels.has(latest.requestedModel) ||
+      !allowedModels.has(latest.actualModel)
+    ) errors.push('Astra model identity is unverified');
     if (latest.identityEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing explicit operator model attestation');
     if (!meaningful(latest.report) || !/^https:\/\/github\.com\//.test(latest.report)) errors.push('Missing durable review report URL');
     if (!meaningful(latest.findings)) errors.push('Missing Astra findings');
