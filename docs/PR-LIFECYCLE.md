@@ -41,6 +41,14 @@ supersedes: 59,72
 Lifecycle block 管「這張 PR 在它的 Issue 裡是什麼角色」；Agent lane metadata 管 B+ 全域
 MAIN／RESERVE／Closure／TEST 與 scorecard。兩者都要保留。
 
+### Agent lane origin contract
+
+`AGENT_LANE` 不是裝飾欄位；它表示這張 PR 正在宣告一條 Agent 工作 lane。因此：
+
+- 只要 `AGENT_LANE` 有值，`WORK_ORIGIN` 必須明確是 `AGENT` 或有意識標記的 `OWNER`。
+- `WORK_ORIGIN` 空白、`UNKNOWN` 或其他值，搭配非空 `AGENT_LANE` 時，trusted WIP Guard 必須 fail closed。
+- 明確的 `WORK_ORIGIN: OWNER` 仍不進入 Agent WIP 計數與 Agent metadata 驗證；但不得用它掩蓋實際上由 Agent 執行的工作。
+
 ## 3. Lane 狀態
 
 ### MAIN_TERRA

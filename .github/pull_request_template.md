@@ -44,6 +44,10 @@ parent and already-counted child Slices must never be counted as duplicate Produ
 - GOVERNANCE_SCOPE_EXCEPTION: none | OWNER:docs/decisions/<file>.md
 - REQUESTED_MODEL / ACTUAL_MODEL: <!-- requested=Terra; actual=unknown -->
 
+When `AGENT_LANE` is present, `WORK_ORIGIN` must be explicitly `AGENT` or `OWNER`.
+Blank, `UNKNOWN`, or any other origin fails the trusted WIP Guard. Use explicit `OWNER` only
+when the work is genuinely Owner-authored and should not enter Agent WIP validation.
+
 ## Free dual-Terra metadata
 
 <!-- Required on both active TERRA_BUILD PRs when two full Terra lanes are used. -->

@@ -92,7 +92,14 @@ function isBplusDeliveryLane(metadata) {
 }
 
 export function validateLaneMetadata(metadata, { action = "" } = {}) {
-  if (metadata.origin !== "AGENT") return [];
+  if (metadata.origin !== "AGENT") {
+    if (metadata.lane && !["AGENT", "OWNER"].includes(metadata.origin)) {
+      return [
+        "WORK_ORIGIN must be AGENT or explicit OWNER when AGENT_LANE is present",
+      ];
+    }
+    return [];
+  }
 
   const errors = [];
   if (!ALLOWED.lane.has(metadata.lane)) errors.push("AGENT_LANE is missing or invalid");
