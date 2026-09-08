@@ -55,6 +55,22 @@ export const POST = handle(async (req, { params }) => {
     if (message.includes('CUSTOMER_NOT_FOUND')) {
       throw new ApiHttpError(404, '找不到此顧客', ERR.NOT_FOUND);
     }
+    /**
+     * issue #291：已完成／已取消／爽約的預約不得再折抵（Owner 2026-09-08 裁示）。
+     *
+     * 409 而不是 400：這不是「輸入不合法」——同一個 `points` 值換一筆待確認的預約
+     * 就會成功。是**這筆預約目前的狀態**不接受這個操作，那是狀態衝突。
+     *
+     * 訊息要說得出「為什麼」與「怎麼辦」。只回「無法折抵」的話，店家看不出是狀態
+     * 問題，會跑去改點數或改金額——那兩個地方都不是問題所在。
+     */
+    if (message.includes('BOOKING_NOT_ADJUSTABLE')) {
+      throw new ApiHttpError(
+        409,
+        '此預約已完成、已取消或未到店，無法再折抵點數；如需補折抵請先將預約改回已確認',
+        ERR.CONFLICT,
+      );
+    }
     // POINTS_001（錯誤碼總表：點數不足 409）。維持字面值，與修改前一致。
     if (message.includes('POINTS_INSUFFICIENT')) {
       throw new ApiHttpError(409, '顧客點數不足', 'POINTS_001');
