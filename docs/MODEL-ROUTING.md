@@ -4,7 +4,10 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 模型 ID、風險代碼及保守路徑底線只維護在 `scripts/agents/model-routing.json`。
 本規則不改變既有 TEST 排隊、Sol 結案權限或 Production 授權。
 
-> **2026-09-08 Owner 裁示：最後風險評估的模型改為 Fable（`claude-fable-5-1`）。**
+> **2026-09-08 Owner 裁示：最後風險評估的預設模型改為 Fable（`claude-fable-5-1`）；
+> 現行 allowlist 另允許 Astra（`gpt-6-astra`）。**
+> 下列「沒有 GPT-6 Astra 存取管道」是設定 Fable 為預設值的歷史背景；後續裁示只新增
+> 有真實模型證據時可使用 Astra 的明確 allowlist，不降低任何證據要求。
 > 原文：「在目前 anthropic 環境，請把 astra 改為 Fable」。理由是目前的執行環境
 > 沒有 GPT-6 Astra 的存取管道，而規則明訂缺實際模型證據不得代填 —— 於是每一支
 > 高風險 PR 都會永久停在 ASTRA_PENDING，等於這道閘門從「擋住未經審查的高風險
@@ -12,8 +15,10 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 > 才能讓證據是真的。
 >
 > 「Astra」在本文與 `ASTRA_*` 欄位名中**保留為這道關卡的名稱**（欄位名寫進了
-> PR body、workflow 與既有 review 紀錄，改名會讓歷史紀錄對不上）；實際執行
-> 評估的模型一律以 `model-routing.json` 的 `models.finalRisk` 為準。
+> PR body、workflow 與既有 review 紀錄，改名會讓歷史紀錄對不上）；`models.finalRisk` 是預設模型，
+> `models.finalRiskModelCatalog` 是支援的模型身分，guard 只會接受其中的
+> `models.finalRiskAllowedModels` 子集。現行兩份清單都為 `gpt-6-astra` 與
+> `claude-fable-5-1`，且 `requestedModel` 與 `actualModel` 必須是同一個清單內模型。
 
 ## 路由
 
@@ -42,7 +47,7 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 
 ## 最後評估的證據
 
-操作者確認確實呼叫 `models.finalRisk` 設定的模型並取得結果後，將報告保存於 GitHub，
+操作者確認確實呼叫 `models.finalRiskAllowedModels` 清單中的指定模型（Astra 或 Fable）並取得結果後，將報告保存於 GitHub，
 然後在候選 PR 提交一筆 COMMENT review（審核紀錄），使用下列 JSON 格式。
 不得只填 PR body 的 PASS。
 
@@ -51,7 +56,7 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
   "repository": "smallwei0301/vibeaico-admin-rebuild",
   "baseSha": "完整40碼基底版本",
   "headSha": "完整40碼候選版本",
-  "policyVersion": "2026-09-08.1",
+  "policyVersion": "2026-09-08.3",
   "testBaseline": "與PR ASTRA_TEST_BASELINE完全一致的測試證據及環境版本",
   "schemaBaseline": "與PR ASTRA_SCHEMA_BASELINE完全一致的資料庫版本或不適用理由",
   "requestedModel": "claude-fable-5-1",
@@ -64,11 +69,10 @@ CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的最
 ```
 
 `requestedModel` / `actualModel` 必須與當時 `model-routing.json` 的
-`models.finalRisk` 逐字相同——檢查器直接比對這兩者，改了設定卻沒改 review 的
-JSON（或反過來）都會被擋下。`policyVersion` 同理。
+`models.finalRiskAllowedModels` 清單內的同一模型——檢查器會直接比對這兩者；清單缺失、格式錯誤、catalog 外模型或 requested/actual 不一致都會被擋下。`policyVersion` 同理。
 
 **什麼算「實際模型證據」。** 在目前的執行環境，可接受的作法是**在一個明確指定
-`model: fable` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次
+`model: fable` 或 `model: astra` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次
 執行、審了哪一顆 head。操作者背書的是「我確實把這次審核交給了那個模型」這件事，
 不是模型自己簽的名——下一段講的就是這個界線。
 

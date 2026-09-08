@@ -132,6 +132,30 @@ describe('Astra risk review contract', () => {
     expect(evaluateAstra(candidate([makeReview({}, { trusted: false })])).status).toBe('ASTRA_PENDING');
     expect(evaluateAstra(candidate([], { body: body + '\nASTRA_STATUS: PASS' })).status).toBe('ASTRA_PENDING');
   });
+  it('accepts either configured final-risk reviewer model', () => {
+    expect(routing.models.finalRiskModelCatalog).toEqual(['gpt-6-astra', 'claude-fable-5-1']);
+    expect(routing.models.finalRiskAllowedModels).toEqual(['gpt-6-astra', 'claude-fable-5-1']);
+    for (const model of ['gpt-6-astra', 'claude-fable-5-1']) {
+      expect(evaluateAstra(candidate([makeReview({ requestedModel: model, actualModel: model })])).status).toBe('ASTRA_APPROVED');
+    }
+  });
+  it('fails closed on missing, malformed, or unknown final-risk allowlists', () => {
+    for (const override of [
+      { finalRiskAllowedModels: undefined },
+      { finalRiskAllowedModels: [] },
+      { finalRiskAllowedModels: 'claude-fable-5-1' },
+      { finalRiskAllowedModels: ['gpt-6-astra', null] },
+      { finalRiskAllowedModels: ['gpt-6-astra', 'unknown-model'] },
+      { finalRiskModelCatalog: undefined },
+    ]) {
+      const policy = { ...routing, models: { ...routing.models, ...override } };
+      expect(evaluateAstra(candidate(), policy).status).toBe('ASTRA_PENDING');
+    }
+  });
+  it('rejects unknown or mixed final-risk reviewer models', () => {
+    expect(evaluateAstra(candidate([makeReview({ requestedModel: 'unknown-model', actualModel: 'unknown-model' })])).status).toBe('ASTRA_PENDING');
+    expect(evaluateAstra(candidate([makeReview({ requestedModel: 'gpt-6-astra', actualModel: 'claude-fable-5-1' })])).status).toBe('ASTRA_PENDING');
+  });
   it('does not reuse older pass after a newer rejection or dismissal', () => {
     for (const [patch, record] of [[{ verdict: 'FIX_REQUIRED' }, {}], [{}, { state: 'DISMISSED' }], [{ actualModel: 'unknown' }, {}]]) {
       const newer = makeReview(patch, { id: 2, submitted_at: '2026-09-07T01:00:00Z', ...record });
