@@ -4,7 +4,8 @@
     "scout": "gpt-5.6-luna",
     "build": "gpt-5.6-terra",
     "audit": "gpt-5.6-sol",
-    "finalRisk": "claude-fable-5-1"
+    "finalRisk": "claude-fable-5-1",
+    "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
   },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [
