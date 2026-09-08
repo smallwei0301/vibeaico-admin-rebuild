@@ -143,9 +143,15 @@ export const toggleServiceLineFeatured = (id: string, next: boolean) =>
 /* -------------------------------------------------------------- 服務分類 */
 
 /**
- * API 回應形狀。description / active 由 migration 0018 落地（issue #28 第 ⑨ 筆）：
- * 先前這裡沒有這兩個欄位，頁面只能在載入時硬補 `description: ''`、`active: true`，
- * 於是使用者填的說明重新整理就不見了。
+ * API 回應形狀。description / active 兩欄先前這裡沒有，頁面只能在載入時硬補
+ * `description: ''`、`active: true`，於是使用者填的說明重新整理就不見了
+ * （issue #28 第 ⑨ 筆）。
+ *
+ * ⚠️ 欄位的來源是 **`0079_reconcile_category_bug_report_fields.sql`**（canonical）。
+ * 舊註解寫「由 migration 0018 落地」——`0018` **不在 `supabase/migrations/`**，
+ * 它只存在於 `supabase/local-migrations/historical-integration-baseline/`：那是一支
+ * 曾被套到 TEST／正式庫、卻從未進 main 的歷史 migration。指向它會讓下一個人查
+ * canonical 找不到、進而推論「欄位不存在」——issue #197 記錄的誤判就是這樣發生的。
  */
 export type ServiceCategorySummary = {
   id: string;

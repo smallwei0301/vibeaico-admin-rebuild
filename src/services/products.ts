@@ -20,8 +20,12 @@ export type { ProductOrderNotifyOutcome };
 
 /**
  * 原站 /api/product-categories。
- * `active` 曾經是「DB 沒這欄、後端一律回 true」的假值，migration 0018 補上
- * description / active 兩欄後改為照實回傳（issue #28 第 ⑨ 筆）。
+ * `active` 曾經是「DB 沒這欄、後端一律回 true」的假值，補上 description / active
+ * 兩欄後改為照實回傳（issue #28 第 ⑨ 筆）。
+ *
+ * ⚠️ canonical 的來源是 `0079_reconcile_category_bug_report_fields.sql`。舊註解寫的
+ * `0018` **不在 `supabase/migrations/`**，只存在於 historical overlay——見
+ * `catalog.ts` 同一段說明與 issue #197。
  */
 export type ProductCategory = {
   id: string;
@@ -80,7 +84,9 @@ export type ProductCategoryInput = {
 /**
  * POST /api/product-categories。
  * 修改前只送 name，modal 上的「排序」與「啟用」兩個輸入純粹留在瀏覽器裡
- * （issue #28 第 ⑨ 筆）；0018 補欄位後三者都真的送出去。
+ * （issue #28 第 ⑨ 筆）；補上欄位後三者都真的送出去。canonical 的來源是 `0079`；
+ * 舊註解寫的 `0018` **不在 `supabase/migrations/`**（只存在於 historical overlay），
+ * 照著它去查會找不到欄位而誤判——見 issue #197。
  * 回傳 sortOrder＝後端實際寫入的排序值，頁面不再自己猜一個顯示。
  */
 export const createProductCategory = (input: ProductCategoryInput) =>
