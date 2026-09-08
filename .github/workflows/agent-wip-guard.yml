@@ -289,6 +289,7 @@ jobs:
               : 'none';
             const metrics = [
               ['Astra final risk review', astraResult.status],
+              ['Astra change digest', astraResult.changeDigest || 'not-computed'],
               ['Current PR', `#${current.number}`],
               ['Run', metadata.runId || 'missing'],
               ['Free dual-Terra pilot qualified', String(capacity.qualified)],
@@ -316,8 +317,8 @@ jobs:
 
             if (isAgent) {
               const body = errors.length
-                ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- ERROR_FINGERPRINT: ${fingerprint}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
-                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- ERROR_FINGERPRINT: none\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
+                ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- ERROR_FINGERPRINT: ${fingerprint}\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
               if (previous) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
