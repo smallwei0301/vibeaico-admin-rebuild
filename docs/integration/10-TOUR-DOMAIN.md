@@ -520,3 +520,8 @@ v2：postback 流程：選方案 → 選團次 → 輸入人數 → 確認 → R
 - [ ] calendar／ICS 含團次與人員，CANCELLED 正確
 - [ ] LINE 行程目錄與即時名額正確
 - [ ] mock、typecheck、build、unit、integration、e2e 全綠
+
+
+### 4.1 Issue #9 source contract — tenant-owned credentials
+
+The payment-method editor is now backed by the source-only `0038_tenant_payment_methods.sql` migration and tenant-scoped `/api/payment-methods` routes. `gateway_hash_key_enc` and `gateway_hash_iv_enc` are application-encrypted and never returned by the API; an empty secret in an update preserves the existing ciphertext. `connection_verified_at` means only that a credential check was attempted, while `e2e_verified_at`/`gateway_verified_at` may be set only by the future #12 checkout/callback test. Online checkout code must call `getPaymentMethod(..., { checkoutReady: true })`, so an unverified online method cannot be presented as payable. ECPay signing is centralized in `src/server/ecpay.ts`. Provider-neutral verification is deliberately reported as `verifiable:false` when no safe no-charge provider endpoint exists; the code never substitutes a platform credential.
