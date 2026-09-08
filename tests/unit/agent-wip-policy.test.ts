@@ -99,8 +99,15 @@ describe("B+ metadata parser", () => {
     expect(readField(body(), "REQUESTED_MODEL / ACTUAL_MODEL")).toContain("requested=Terra");
   });
 
-  it("does not impose Agent metadata on Owner work", () => {
-    const row = parseLaneMetadata(pr(11, { WORK_ORIGIN: "OWNER", AGENT_LANE: "" }));
+  it("fails closed when an Agent-shaped PR omits its work origin", () => {
+    const row = parseLaneMetadata(pr(11, { WORK_ORIGIN: "" }));
+    expect(validateLaneMetadata(row)).toContain(
+      "WORK_ORIGIN must be AGENT or explicit OWNER when AGENT_LANE is present",
+    );
+  });
+
+  it("does not impose Agent metadata on explicitly Owner work", () => {
+    const row = parseLaneMetadata(pr(12, { WORK_ORIGIN: "OWNER", AGENT_LANE: "GOVERNANCE" }));
     expect(validateLaneMetadata(row)).toEqual([]);
   });
 });
