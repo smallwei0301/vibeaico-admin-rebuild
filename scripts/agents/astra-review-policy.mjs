@@ -6,6 +6,29 @@ export const routing = JSON.parse(readFileSync(new URL('./model-routing.json', i
 const SHA = /^[a-f0-9]{40}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
 const meaningful = (s) => typeof s === 'string' && s.trim().length >= 8 && !/^(unknown|pending|none|n\/a|tbd)$/i.test(s.trim());
+const FINAL_RISK_DEFERRED_LANE_STATES = new Set([
+  'PARKED',
+  'COMPLETE',
+  'OWNER_BLOCKED',
+  'HISTORICAL',
+  'READY_FOR_PROMOTION',
+]);
+
+/**
+ * Final Risk is a merge-readiness gate, not a liveness check for parked work.
+ * Unknown lane states deliberately enforce the gate so malformed metadata cannot
+ * turn a required review into an implicit approval.
+ */
+export function shouldEnforceFinalRisk({ pullRequestState = 'open', draft = false, laneState = '' } = {}) {
+  if (String(pullRequestState).trim().toLowerCase() === 'closed') return false;
+  if (draft === true) return false;
+  return !FINAL_RISK_DEFERRED_LANE_STATES.has(String(laneState).trim().toUpperCase());
+}
+
+export function finalRiskGateStatus({ hasErrors = false, finalRiskRequired = false } = {}) {
+  if (hasErrors) return 'failure';
+  return finalRiskRequired ? 'success' : 'pending';
+}
 
 /**
  * 逐字比對的欄位。
