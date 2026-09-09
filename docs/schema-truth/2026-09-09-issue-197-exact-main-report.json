@@ -1,0 +1,397 @@
+{
+  "schemaVersion": 1,
+  "observedMainSha": "49f328216b4c19ad6cc599c4d428d95ff7fa11eb",
+  "repoMigrations": {
+    "count": 40,
+    "manifestDigest": "1061a4fd00eac45542626ed1ff1408c720d9aafa3eea05dea311f8dca5cf2e10",
+    "files": [
+      {
+        "path": "supabase/migrations/0001_extensions_and_functions.sql",
+        "bytes": 1743,
+        "sha256": "3ba9818ee175771182e0cfd4a0a200b94cd3240467447a2a73583d6816f16aef"
+      },
+      {
+        "path": "supabase/migrations/0002_enums.sql",
+        "bytes": 992,
+        "sha256": "d430f495ff61f375fc31f66f3a08c53bc49d48a7f8bb8359988880a87cdcd82d"
+      },
+      {
+        "path": "supabase/migrations/0003_tenants_and_accounts.sql",
+        "bytes": 2951,
+        "sha256": "58c41560bd0d514581ef359bc0b917e487319181e040931ffb8fb6dda0a8d042"
+      },
+      {
+        "path": "supabase/migrations/0004_core_business_tables.sql",
+        "bytes": 11132,
+        "sha256": "41f6195bb23f128719f53ac748660bd2d7793af4bf5d46b136c63e53abe6dff0"
+      },
+      {
+        "path": "supabase/migrations/0005_line_marketing_other.sql",
+        "bytes": 5217,
+        "sha256": "a00a18fdd1f53018c5828801c8cb4b41ef51e68e006e57d01ae53e9433b6ea4f"
+      },
+      {
+        "path": "supabase/migrations/0006_rls_policies.sql",
+        "bytes": 1310,
+        "sha256": "a3a4f127c20ba3e349e9da413266714420060cbcffbd48ee9aa6f615575c1270"
+      },
+      {
+        "path": "supabase/migrations/0007_views.sql",
+        "bytes": 1320,
+        "sha256": "71974e1bc6b5d504cfd78b4ab47fd44b17a39049836a39947914ea3e753f9e2a"
+      },
+      {
+        "path": "supabase/migrations/0008_storage_buckets.sql",
+        "bytes": 949,
+        "sha256": "51e13351888b56dede4a4eafb070aa428d7e9d0e90e10ceee902612e7352a28c"
+      },
+      {
+        "path": "supabase/migrations/0009_tenant_settings_insert_policy.sql",
+        "bytes": 1193,
+        "sha256": "7d53a41d43f5641cacbb04cd6e6e4357bb90818d9f3d20218e92d4d878632dff"
+      },
+      {
+        "path": "supabase/migrations/0010_auth_helpers.sql",
+        "bytes": 993,
+        "sha256": "ad2769ad3ec60074fe97335a8a97e166f2cd2154cb40c16cfb7ec2ef6fa262a8"
+      },
+      {
+        "path": "supabase/migrations/0011_feature_store.sql",
+        "bytes": 4704,
+        "sha256": "8aef1ba45c7c28b436c6cf3126300cb1effe0ad4e8d958764bbc6510d35daeba"
+      },
+      {
+        "path": "supabase/migrations/0012_points_transfer_and_bug_reports.sql",
+        "bytes": 3784,
+        "sha256": "b3219fd2088298a3b78f43f983d64858c8f6e888f678ea9ebbdb621ab426340e"
+      },
+      {
+        "path": "supabase/migrations/0013_cron_dedup_columns.sql",
+        "bytes": 684,
+        "sha256": "acf0a651ddaf95f5357c0db0042209ddfd8a22be43a24bd84ad0ffa5a8138d63"
+      },
+      {
+        "path": "supabase/migrations/0014_recreate_customers_view.sql",
+        "bytes": 1812,
+        "sha256": "3711104271360a417d49d4c777473d764a6d48634cece019b822a243ecc3c0d4"
+      },
+      {
+        "path": "supabase/migrations/0065_issue_128_services_order_invariants.sql",
+        "bytes": 8087,
+        "sha256": "5e5a58abc364dc0d0f497d846903029eeb29d3ba613494d03f1e1ab06139079f"
+      },
+      {
+        "path": "supabase/migrations/0066_issue_8_tour_domain_core.sql",
+        "bytes": 20132,
+        "sha256": "f2646d7c9aca4e649069d58a5b3b65a3116abf0d62ff2158342fd16eb5e40df4"
+      },
+      {
+        "path": "supabase/migrations/0067_issue_8_tour_integrity.sql",
+        "bytes": 18612,
+        "sha256": "f9dc8a7927cf022d4c0f05c32692a59a2ef91fe483a09a3712ad601b59660d23"
+      },
+      {
+        "path": "supabase/migrations/0068_issue_8_tour_rest_dml_acl.sql",
+        "bytes": 931,
+        "sha256": "14b3a4bec80bbddb4465b1d3185b89cb1b0a9c548ab0f4ccd99c2f928a270ed4"
+      },
+      {
+        "path": "supabase/migrations/0069_welcome_card_images.sql",
+        "bytes": 1391,
+        "sha256": "a318dbb5e0e906100d2c62b510c65a5a9e35f43c0b13ab5fa29eb5c2fde0848f"
+      },
+      {
+        "path": "supabase/migrations/0070_welcome_card_image_retirement.sql",
+        "bytes": 3484,
+        "sha256": "650cc50567c1f7db63b439eece0ce35baa1026e5b8f9ec5a7a495912d5d75f08"
+      },
+      {
+        "path": "supabase/migrations/0071_welcome_card_image_retirement_acl.sql",
+        "bytes": 961,
+        "sha256": "115f97190ab2a8bb46b49343a714f1cad1ea6ba0195ff8358606e7ce53707ac3"
+      },
+      {
+        "path": "supabase/migrations/0072_welcome_card_upload_acl.sql",
+        "bytes": 1249,
+        "sha256": "21ca1245b6d36ea53a453310800be5149b16200c0d049362dff81d5bdc8c2e84"
+      },
+      {
+        "path": "supabase/migrations/0073_restore_keyword_reply_storage_write.sql",
+        "bytes": 883,
+        "sha256": "57be46114c59c8c80ac3794b4abd44f73ea56d5d65fba5f50d6f44369d01f4f9"
+      },
+      {
+        "path": "supabase/migrations/0074_block_times_recurrence_fields.sql",
+        "bytes": 3578,
+        "sha256": "4c19027f8be025e1c1751fe3a99ce61ab70e03693290708bafd654acaaa12302"
+      },
+      {
+        "path": "supabase/migrations/0075_portfolios_line_sort_order.sql",
+        "bytes": 1817,
+        "sha256": "df6755ee4b7638e23f3cf8e3edb393e21a4c00ba1de0cc70fc5d2169adbeb766"
+      },
+      {
+        "path": "supabase/migrations/0076_customer_source.sql",
+        "bytes": 2811,
+        "sha256": "6da58b7f4fdb5c7e29d0d73bfbd47a89ea302296643c105be2f610a98d55b3bd"
+      },
+      {
+        "path": "supabase/migrations/0077_shop_design_branding.sql",
+        "bytes": 1164,
+        "sha256": "88438616ed8cf468b4c7ead1dbb2a76e6dfc50fb1b09fb9f57b9ceb5a3820cb7"
+      },
+      {
+        "path": "supabase/migrations/0078_staff_schedule_mode.sql",
+        "bytes": 1665,
+        "sha256": "dc11a6a3c05455892f5b43bf073e1cc1c102f0bae0e027b56d558796e6592bd2"
+      },
+      {
+        "path": "supabase/migrations/0079_reconcile_category_bug_report_fields.sql",
+        "bytes": 1502,
+        "sha256": "ebb58f3ac2fddf069b44743c784354b3369a2279af3009559a983b731296c3d1"
+      },
+      {
+        "path": "supabase/migrations/0080_page_local_display_fields.sql",
+        "bytes": 2026,
+        "sha256": "d1c078fb5ca3b40401a3c0e62bcb4171bc396dbb14b0ac53150171270d315e96"
+      },
+      {
+        "path": "supabase/migrations/0081_reconcile_product_order_coupon_fields.sql",
+        "bytes": 3553,
+        "sha256": "0e90a777fb9858d3009d462e8a16e8cba9afb917b5a92753d6916238ab5f9ce5"
+      },
+      {
+        "path": "supabase/migrations/0082_reconcile_booking_addon_notify_fields.sql",
+        "bytes": 3765,
+        "sha256": "82286a79c7c038f56fbb06fb31e1edf626227474cbce948c910a801d14545565"
+      },
+      {
+        "path": "supabase/migrations/0083_staff_display_fields.sql",
+        "bytes": 3139,
+        "sha256": "f39313fd9013a9673bc750348bb52db3d3b226f3a730b07d6e3df5b22867786d"
+      },
+      {
+        "path": "supabase/migrations/0084_catalog_position_bridge.sql",
+        "bytes": 8804,
+        "sha256": "aabe09825950a3b752168ceccf27bd9541b4e4232ba928af69fd3e2b29476b42"
+      },
+      {
+        "path": "supabase/migrations/0086_keyword_reply_images_bucket.sql",
+        "bytes": 2047,
+        "sha256": "835b94ceec7e30c73bca98054c73dd12f61d1417b0486bae9b344182f4b2e179"
+      },
+      {
+        "path": "supabase/migrations/0089_trip_display_fields.sql",
+        "bytes": 3744,
+        "sha256": "d3fa389f047094ff0e3618b191f8d52e4bb00d2b179803bcd4c471092197392d"
+      },
+      {
+        "path": "supabase/migrations/0090_atomic_booking_points_redemption.sql",
+        "bytes": 5033,
+        "sha256": "7518f2ee8ccc0c7cfe3786073c8342f5839e7a92c65a6a7714b92ad5e021f380"
+      },
+      {
+        "path": "supabase/migrations/0091_campaign_reward_grants.sql",
+        "bytes": 12830,
+        "sha256": "612f92331b63a418fffcf27e5aad6e8a9c3f20c188cbae05ce909c52325eeeb6"
+      },
+      {
+        "path": "supabase/migrations/0092_trip_departure_staff.sql",
+        "bytes": 6158,
+        "sha256": "24ccf9dda6edec1fc4a7c74e9fd2c848ee8a884f051840ef1c38350ade8eed5b"
+      },
+      {
+        "path": "supabase/migrations/0093_booking_points_status_guard.sql",
+        "bytes": 7360,
+        "sha256": "1f1001769fee2aadfb607404f087cf9db00b7a0cb28ea4566fa1975a02be10fa"
+      }
+    ]
+  },
+  "environments": {
+    "TEST": {
+      "schemaVersion": 1,
+      "environment": "TEST",
+      "observedAt": "2026-09-09T04:21:30Z",
+      "projectRef": "nmwhwngojosmagjuvxol",
+      "observedMainSha": "49f328216b4c19ad6cc599c4d428d95ff7fa11eb",
+      "migrationLedger": {
+        "state": "PRESENT",
+        "count": 64,
+        "latestVersion": "20260909005558",
+        "latestName": "0094_tenant_payment_methods",
+        "versionsDigest": {
+          "algorithm": "MD5",
+          "value": "1be003bbb2c2801f54ffea6feebb43b2"
+        },
+        "evidenceRef": "supabase:test/schema_migrations/2026-09-09T04:21:30Z"
+      },
+      "objects": {
+        "columns": {
+          "count": 681,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "d7f76de88b6dc538eb9e8dcd9de511db"
+          }
+        },
+        "constraints": {
+          "count": 286,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "5bc906e6977e8bc15ad4e2507ff440e3"
+          }
+        },
+        "views": {
+          "count": 2,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "b1818f51d78b69c138ba0eea8d412e97"
+          }
+        },
+        "indexes": {
+          "count": 136,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "d9d7d20ab567f91798d775a98a250b1f"
+          }
+        },
+        "policies": {
+          "count": 77,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "b29172b8d4a83e7d07fd81936f66e6d8"
+          }
+        },
+        "routines": {
+          "count": 262,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "8ebd5a0f5869e50d28cde4122c96dd3b"
+          }
+        },
+        "triggers": {
+          "count": 26,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "8ae76f01a87926652be147ce16a62bd0"
+          }
+        }
+      },
+      "observations": [
+        {
+          "type": "OUT_OF_LEDGER",
+          "subject": "provider migration ledger contains identities not represented by current main migration files",
+          "evidenceRef": "supabase:test/schema_migrations/2026-09-09T04:21:30Z"
+        }
+      ]
+    },
+    "PRODUCTION": {
+      "schemaVersion": 1,
+      "environment": "PRODUCTION",
+      "observedAt": "2026-09-09T04:21:30Z",
+      "projectRef": "egehnijjpgijmccagxac",
+      "observedMainSha": "49f328216b4c19ad6cc599c4d428d95ff7fa11eb",
+      "migrationLedger": {
+        "state": "PRESENT",
+        "count": 15,
+        "latestVersion": "20260909022752",
+        "latestName": "0094_tenant_payment_methods",
+        "versionsDigest": {
+          "algorithm": "MD5",
+          "value": "1bf6c62fc4a79d8e943bc6a254e7e3c9"
+        },
+        "evidenceRef": "supabase:production/schema_migrations/2026-09-09T04:21:30Z"
+      },
+      "objects": {
+        "columns": {
+          "count": 499,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "054a1d326b83de1e41b812f7be084b5b"
+          }
+        },
+        "constraints": {
+          "count": 187,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "f699ef6678c7364e6dab160afcac8702"
+          }
+        },
+        "views": {
+          "count": 2,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "b1818f51d78b69c138ba0eea8d412e97"
+          }
+        },
+        "indexes": {
+          "count": 91,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "3149c158b1cbdfa72e634bc7f1cdc399"
+          }
+        },
+        "policies": {
+          "count": 73,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "8cf83cbe05647557b12d760ace1c31c8"
+          }
+        },
+        "routines": {
+          "count": 207,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "5dbb8bebbbc05613dea862bdcfee2ef8"
+          }
+        },
+        "triggers": {
+          "count": 6,
+          "digest": {
+            "algorithm": "MD5",
+            "value": "b1cd613c45b1e83fce39771589d5f218"
+          }
+        }
+      },
+      "observations": [
+        {
+          "type": "OUT_OF_LEDGER",
+          "subject": "provider migration ledger contains identities not represented by current main migration files",
+          "evidenceRef": "supabase:production/schema_migrations/2026-09-09T04:21:30Z"
+        }
+      ]
+    }
+  },
+  "comparison": {
+    "overall": "DRIFT_OBSERVED",
+    "migrationLedger": "ENVIRONMENT_DIFF",
+    "publicObjects": {
+      "columns": "ENVIRONMENT_DIFF",
+      "constraints": "ENVIRONMENT_DIFF",
+      "views": "MATCH",
+      "indexes": "ENVIRONMENT_DIFF",
+      "policies": "ENVIRONMENT_DIFF",
+      "routines": "ENVIRONMENT_DIFF",
+      "triggers": "ENVIRONMENT_DIFF"
+    },
+    "explicitOutOfLedger": [
+      {
+        "environment": "PRODUCTION",
+        "type": "OUT_OF_LEDGER",
+        "subject": "provider migration ledger contains identities not represented by current main migration files",
+        "evidenceRef": "supabase:production/schema_migrations/2026-09-09T04:21:30Z"
+      },
+      {
+        "environment": "TEST",
+        "type": "OUT_OF_LEDGER",
+        "subject": "provider migration ledger contains identities not represented by current main migration files",
+        "evidenceRef": "supabase:test/schema_migrations/2026-09-09T04:21:30Z"
+      }
+    ]
+  },
+  "safety": {
+    "productionMutationAuthorized": false,
+    "databaseConnectionUsedByReporter": false,
+    "rawTableDataIncluded": false
+  },
+  "reportDigest": "2bbacb084cd146a2c9a56fbe82552bcb157a8c811c328d8c66df892421ff61df"
+}
