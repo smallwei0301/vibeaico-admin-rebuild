@@ -59,7 +59,7 @@ export const registerPage = {
   form: {
     code: '店家代碼',
     codePlaceholder: '例如：my-shop',
-    codeHelp: '僅限小寫英文、數字、連字號（-）；此代碼用於登入及 LINE Webhook URL',
+    codeHelp: '僅限小寫英文、數字、連字號（-），最多 64 字；此代碼用於登入及 LINE Webhook URL',
     name: '店家名稱',
     namePlaceholder: '請輸入店家名稱',
     email: '電子郵件',
@@ -89,7 +89,7 @@ export const registerPage = {
   /* ------------------------------------------------------- 驗證 / 訊息 */
   messages: {
     requiredFields: '請填寫所有必填欄位',
-    codeFormat: '店家代碼只能包含小寫英文、數字和連字號',
+    codeFormat: '店家代碼只能包含小寫英文、數字和連字號，且不超過 64 字',
     passwordMismatch: '兩次輸入的密碼不一致',
     phone10: '請輸入 10 位數電話號碼',
     code6: '請輸入 6 位數驗證碼',

@@ -3,13 +3,15 @@ import { handle, ok, fail, ERR } from '@/server/http';
 import { createAdminSupabase } from '@/server/supabase';
 import { consumeCode } from '@/server/verify-code';
 import { DEFAULT_TENANT_SETTINGS } from '@/config/tenant-settings';
+import { SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE } from '@/lib/shop-code';
 
 const bodySchema = z.object({
   email: z.string().email(),
   code: z.string().length(6),
   password: z.string().min(8, '密碼至少 8 碼'),
   tenantName: z.string().min(1, '請輸入店家名稱'),
-  shopCode: z.string().regex(/^[a-z0-9-]+$/, '僅限小寫英文、數字、連字號'),
+  // 與公開店家頁共用同一個規則：註冊得出來的代碼，`/s/{shopCode}` 就一定打得開。
+  shopCode: z.string().regex(SHOP_CODE_PATTERN, SHOP_CODE_MESSAGE),
 });
 
 export const POST = handle(async (req) => {

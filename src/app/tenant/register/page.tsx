@@ -10,6 +10,7 @@ import { AuthCardHeading } from '@/components/layout/AuthShell';
 import { MODE_PRESETS, type BusinessType } from '@/config/modes';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
+import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { common } from '@/i18n/zh-TW/common';
 import { registerPage as t } from '@/i18n/zh-TW/pages/register';
 import { ApiError } from '@/lib/api';
@@ -33,8 +34,13 @@ function oauthNoteFor(loading: boolean, configured: boolean): string {
   return configured ? t.oauth.buildingFlow : t.oauth.notConfigured;
 }
 
-/** 原站規則：店家代碼僅限小寫英文、數字、連字號（同 tenant-settings 的 shopCode） */
-const SHOP_CODE_PATTERN = /^[a-z0-9-]+$/;
+/**
+ * 店家代碼的規則從 `@/lib/shop-code` 取，不在這裡另寫一份。
+ *
+ * ⚠️ 這裡曾經是第三份各自為政的 pattern（而且沒有長度上限）。前端擋不住的東西
+ * 後端會擋，所以那不是安全問題——但使用者要多送一次表單才知道代碼太長，而且
+ * 三份規則會各自漂移。現在四個地方（前端、註冊 API、設定 API、公開頁）同一個來源。
+ */
 /** 驗證碼 6 位數、電話 10 位數（原站 inline JS 逐字驗證） */
 const VERIFICATION_CODE_LENGTH = 6;
 const PHONE_LENGTH = 10;
