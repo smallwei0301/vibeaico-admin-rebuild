@@ -11,6 +11,7 @@ export * from './catalog';
 export * from './chat';
 export * from './coupons';
 export * from './marketing';
+export * from './payment-methods';
 export * from './points';
 export * from './products';
 export * from './reports';
