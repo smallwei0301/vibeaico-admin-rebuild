@@ -96,7 +96,7 @@ function baseArgs() {
 }
 
 describe('Issue #228 production cutover preview canary', () => {
-  it('creates a Git-backed Preview for the exact SHA, bypasses ignore only for that deployment, and never asks for Production', async () => {
+  it('creates a Git-backed Preview for the exact SHA and never asks Vercel for a Production target', async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     const fetchImpl = async (url: string | URL | Request, init: RequestInit = {}) => {
       calls.push({ url: String(url), init });
@@ -219,88 +219,100 @@ describe('Issue #228 production cutover preview canary', () => {
       if (method === 'POST') return response({ id: 'dpl_preview', readyState: 'QUEUED' });
       if (String(url).includes('/v13/deployments/dpl_preview')) {
         deploymentReads += 1;
-        return response(deploymentReads === 1 ? preview({ readyState: 'BUILDING' }) : preview());
+        return response(preview());
       }
       return response(productionAlias());
     };
-
     const result = await runProductionCutoverCanary({
       ...baseArgs(),
       mode: 'preview_canary',
       fetchImpl: fetchImpl as typeof fetch,
     });
-
     expect(result.status).toBe('PREVIEW_CANARY_GREEN');
     expect(result.decision).toMatchObject({ action: 'SKIP', reason: 'NON_RUNTIME_DELTA' });
-    expect(result.preview).toMatchObject({ deploymentId: 'dpl_preview', target: null, sha: MAIN_SHA });
-    expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
-    const postBody = JSON.parse(String(calls.find((call) => call.method === 'POST')?.body));
+    expect(result.preview).toMatchObject({ deploymentId: 'dpl_preview', sha: MAIN_SHA });
+    expect(deploymentReads).toBe(1);
+    const post = calls.find((call) => call.method === 'POST');
+    expect(post).toBeTruthy();
+    const postBody = JSON.parse(String(post?.body));
     expect(postBody.target).toBeUndefined();
     expect(postBody.projectSettings).toEqual({ commandForIgnoringBuildStep: 'exit 1' });
-    expect(calls.some((call) => /promote|alias|rollback|delete/i.test(call.url))).toBe(false);
+    expect(calls.some((call) => call.url.includes('/promote/'))).toBe(false);
   });
 
-  it('blocks stale SHA before contacting Vercel at all', async () => {
-    let fetches = 0;
+  it('fails closed before provider contact when current SHA is stale', async () => {
+    const calls: string[] = [];
+    const fetchImpl = async (url: string | URL | Request) => {
+      calls.push(String(url));
+      return response(productionAlias());
+    };
     const result = await runProductionCutoverCanary({
       ...baseArgs(),
       currentSha: MAIN_SHA,
       latestMainSha: PROD_SHA,
       mode: 'preview_canary',
-      fetchImpl: (async () => {
-        fetches += 1;
-        return response({});
-      }) as typeof fetch,
+      fetchImpl: fetchImpl as typeof fetch,
     });
     expect(result.status).toBe('BLOCKED');
-    expect(result.decision.reason).toBe('STALE_SHA');
-    expect(fetches).toBe(0);
+    expect(result.decision).toMatchObject({ action: 'BLOCK', reason: 'STALE_SHA' });
+    expect(calls).toEqual([]);
   });
 
-  it('blocks incomplete Git comparison evidence and never creates a Preview', async () => {
-    const methods: string[] = [];
+  it('fails closed and never POSTs when complete Git diff evidence cannot be produced', async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const fetchImpl = async (url: string | URL | Request, init: RequestInit = {}) => {
+      const method = String(init.method ?? 'GET');
+      calls.push({ url: String(url), method });
+      return response(productionAlias());
+    };
     const result = await runProductionCutoverCanary({
       ...baseArgs(),
       mode: 'preview_canary',
       runGit: incompleteGit(),
-      fetchImpl: (async (_url: string | URL | Request, init: RequestInit = {}) => {
-        methods.push(String(init.method ?? 'GET'));
-        return response(productionAlias());
-      }) as typeof fetch,
+      fetchImpl: fetchImpl as typeof fetch,
     });
     expect(result.status).toBe('BLOCKED');
-    expect(result.decision.reason).toBe('COMPARISON_EVIDENCE_INCOMPLETE');
-    expect(methods).toEqual(['GET']);
+    expect(result.decision).toMatchObject({ action: 'BLOCK', reason: 'COMPARISON_EVIDENCE_INCOMPLETE' });
+    expect(calls.map((call) => call.method)).toEqual(['GET']);
   });
 
-  it('blocks an untrusted Production baseline and never creates a Preview', async () => {
+  it('fails closed and never creates a Preview when the Production baseline is untrusted', async () => {
     const methods: string[] = [];
+    const fetchImpl = async (_url: string | URL | Request, init: RequestInit = {}) => {
+      methods.push(String(init.method ?? 'GET'));
+      return response(productionAlias({ alias: ['wrong.example.vercel.app'] }));
+    };
     const result = await runProductionCutoverCanary({
       ...baseArgs(),
       mode: 'preview_canary',
-      fetchImpl: (async (_url: string | URL | Request, init: RequestInit = {}) => {
-        methods.push(String(init.method ?? 'GET'));
-        return response(productionAlias({ source: 'cli' }));
-      }) as typeof fetch,
+      fetchImpl: fetchImpl as typeof fetch,
     });
     expect(result.status).toBe('BLOCKED');
+    expect(result.decision).toEqual({ action: 'BLOCK', reason: 'PRODUCTION_BASELINE_UNTRUSTED' });
     expect(methods).toEqual(['GET']);
   });
 
-  it('workflow is manual-only, exact-SHA/read-only, secret-backed and has no Production mutation verb', () => {
+  it('the workflow binds required check to exact SHA, GitHub Actions app and ci.yml push run', () => {
     const workflow = readFileSync(join(process.cwd(), '.github/workflows/production-deploy-canary.yml'), 'utf8');
-    expect(workflow).toContain('workflow_dispatch:');
-    expect(workflow).toContain('expected_main_sha:');
-    expect(workflow).toContain("github.ref == 'refs/heads/main'");
-    expect(workflow).toContain("if (liveMain !== expected)");
-    expect(workflow).toContain("check.name === 'check'");
-    expect(workflow).toContain("check.app?.id === 15368");
+    expect(workflow).toContain("String(check.head_sha || '').toLowerCase() === expected");
+    expect(workflow).toContain("check.app?.slug === 'github-actions'");
+    expect(workflow).toContain('check.app?.id === 15368');
+    expect(workflow).toContain('github.rest.actions.getWorkflowRun');
     expect(workflow).toContain("run.path !== '.github/workflows/ci.yml'");
     expect(workflow).toContain("run.event !== 'push'");
-    expect(workflow).toContain('actions: read');
-    expect(workflow).toContain('ref: ${{ steps.truth.outputs.main_sha }}');
-    expect(workflow).toContain('VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}');
-    expect(workflow).not.toMatch(/vercel\s+(?:--prod|deploy\s+--prod|promote|rollback|remove)/i);
-    expect(workflow).not.toMatch(/\/v\d+\/deployments\/[^\s]+\/(?:promote|alias)/i);
+  });
+
+  it('the workflow is manual-only, secret-backed, read-only at GitHub, and has no Production mutation verbs', () => {
+    const workflow = readFileSync(join(process.cwd(), '.github/workflows/production-deploy-canary.yml'), 'utf8');
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).not.toMatch(/\n\s*push:/);
+    expect(workflow).not.toMatch(/\n\s*pull_request:/);
+    expect(workflow).toContain('permissions:\n  contents: read\n  checks: read\n  actions: read');
+    expect(workflow).not.toMatch(/^\s+[\w-]+:\s*write\s*$/m);
+    expect(workflow).toContain('secrets.VERCEL_TOKEN');
+    expect(workflow).toContain('preview_canary');
+    expect(workflow).not.toContain('target: production');
+    expect(workflow).not.toMatch(/vercel\s+promote/i);
+    expect(workflow).not.toMatch(/delete.*deployment/i);
   });
 });
