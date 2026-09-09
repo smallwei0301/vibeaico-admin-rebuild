@@ -83,6 +83,28 @@ Performs the same admission checks, then creates exactly one Git-backed **Previe
 
 The current Production decision may truthfully be `SKIP / NON_RUNTIME_DELTA`; a deliberate Preview canary is still allowed because it does not move Production traffic and exists only to verify the future provider path.
 
+## Ignored Build Step compatibility
+
+The first live `preview_canary` dispatch on 2026-09-09 exposed a real interaction with the existing Vercel throttle guard:
+
+```text
+GitHub Actions run: 34296120824
+exact main SHA: 6814751f5ded0526b7df0446deb291897aa3aed3
+Vercel Preview deployment: dpl_Eeck2eWf9UH5ahUU3c4RSQ4xZoLj
+target: null
+result: CANCELED
+```
+
+The Vercel build log showed that the API deployment cloned the exact SHA and exposed that SHA itself as `VERCEL_GIT_COMMIT_REF`. The existing `scripts/ci/vercel-ignore-build.mjs` allowlist accepted only `main` and `preview/**`, so the legitimate canary was mistaken for an ordinary blocked branch and canceled before build.
+
+The bounded fix does **not** allow every SHA-shaped ref. An exact-SHA canary may build only when all are true:
+
+1. `VERCEL_GIT_COMMIT_REF` is a full 40-character SHA;
+2. it exactly equals `VERCEL_GIT_COMMIT_SHA`;
+3. Vercel reports the target environment as `preview` through `VERCEL_TARGET_ENV` or `VERCEL_ENV`.
+
+A mismatched SHA, short SHA, ordinary branch, missing target environment or SHA-shaped Production deployment remains blocked by the ignored-build guard. Existing `main` runtime-diff throttling and `preview/**` acceptance behavior stay unchanged.
+
 ## Explicitly impossible in this slice
 
 The workflow contains no operation that can:
