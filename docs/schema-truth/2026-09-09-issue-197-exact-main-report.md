@@ -1,7 +1,7 @@
 # Schema Truth Report
 
 - observed main: `6d2678e1262c8cd507ea621632acefd8915059df`
-- report digest: `ac672aaecaaf60e1e9e3e6e2c4f5aab7e04b68852908ec5cc9a2673b77cb258d`
+- report digest: `181e606429f68b57a0bcb3dce4881c0d1e43efc0e6ec4fd93e73691e591d2442`
 - overall: **DRIFT_OBSERVED**
 - repo migrations: 41 files / `d0ccca4f260260c2557bfc3dd6bb0795508ddd64beeefccf3a63ffb8800b0c47`
 
