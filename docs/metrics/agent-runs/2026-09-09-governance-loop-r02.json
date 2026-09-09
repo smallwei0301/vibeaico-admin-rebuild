@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-09-governance-loop-r02",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-09T06:10:41Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "github-main",
+      "ref": "44321f3eb1513d9e915c35c0fc00db5d28d18854",
+      "note": "Live origin/main after parallel Product merges; governance evidence was re-pinned to this exact head."
+    },
+    {
+      "type": "github-issue",
+      "ref": "issues/197",
+      "note": "Schema Truth remains open; semantic drift evidence is complete but canonical-source selection is unresolved."
+    },
+    {
+      "type": "github-pull",
+      "ref": "pull/318",
+      "note": "Five-file read-only semantic evidence refresh; exact head 4f8e651c5fa17409238d85af67fb6b2e295ca12a."
+    },
+    {
+      "type": "github-workflow-run",
+      "ref": "actions/runs/34317698011",
+      "note": "Exact-head CI completed classify/check/integration successfully; integration and E2E were explicitly skipped by docs-only policy."
+    },
+    {
+      "type": "github-status",
+      "ref": "actions/runs/34317728288",
+      "note": "Exact-head Agent WIP Policy status success."
+    },
+    {
+      "type": "supabase-read-only",
+      "ref": "supabase:test/schema_migrations/2026-09-09T06:03:57Z",
+      "note": "Catalog-only metadata and migration ledger read; no application rows or mutations."
+    },
+    {
+      "type": "supabase-read-only",
+      "ref": "supabase:production/schema_migrations/2026-09-09T06:03:57Z",
+      "note": "Catalog-only metadata and migration ledger read; no DDL, DML, reset, seed or deployment."
+    }
+  ],
+  "main": {
+    "startSha": "44321f3eb1513d9e915c35c0fc00db5d28d18854",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 48,
+    "openIssuesEnd": null,
+    "openPrsStart": 19,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "sol-audit-318-r02",
+        "role": "sol",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "count": 1,
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 1,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 1,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 1,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "本輪只處理治理 evidence refresh；沒有修改 Product runtime、migration、shared TEST、Production 或部署。",
+    "G0 發現 PR #318 的 evidence 仍釘在已過時的 main 6d2678e；平行 Product 提交後 live main 為 44321f3，故先以 read-only provider catalog capture 重建 exact-main snapshot/report。",
+    "TEST 與 Production 的七個 public catalog surface 仍為 DRIFT_OBSERVED；repoBuiltProfile=NOT_RUN，canonical source、repo presence 與 reconciliation 保持 unknown。",
+    "Exact-head CI run 34317698011 與 Agent WIP Policy 34317728288 成功；docs-only integration job 明確 policy skip，沒有宣稱 database green，也沒有佔用 shared TEST。",
+    "PR #318 的 source、CI、WIP 與 Sol audit 尚待 current exact head closeout；protected-branch admission blocker 仍需 live merge attempt/verification，不重跑相同 CI。",
+    "Actual tokens、weekly usage 與 served model evidence unavailable；requested/actual model truth remains requested=gpt-5.6-sol, actual=unknown。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "GOVERNANCE_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
