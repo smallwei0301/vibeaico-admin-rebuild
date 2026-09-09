@@ -24,6 +24,7 @@ import { common } from '@/i18n/zh-TW/common';
 const widget = readFileSync('src/components/layout/SupportChatWidget.tsx', 'utf8');
 const service = readFileSync('src/services/support-chat.ts', 'utf8');
 const route = readFileSync('src/app/api/support-chat/ask/route.ts', 'utf8');
+const server = readFileSync('src/server/support-chat.ts', 'utf8');
 
 const LINE = {
   channelIdSet: true,
@@ -170,6 +171,24 @@ describe('元件真的接上去了（不是本地 state 假成功）', () => {
   it('端點經 requireTenant() 與 zod 驗證，不吃無限長的問題', () => {
     expect(route).toContain('requireTenant(');
     expect(route).toContain('.max(500');
+  });
+
+  it('⚠️ 密文欄位不得出現在任何 select() 清單裡（只能當 .not() 的過濾條件）', () => {
+    // 逐一取出 select( ... ) 的第一個字串引數，裡面一個 _enc 都不能有。
+    // 「不要把密文輸出去」若只靠自律，這支端點的工作又剛好是產生要顯示的文字，
+    // 遲早會有人為了 debug 把整包序列化出去。
+    const selects = [...server.matchAll(/\.select\(\s*'([^']*)'/g)].map((m) => m[1]);
+    expect(selects.length).toBeGreaterThan(0);
+    for (const list of selects) expect(list).not.toContain('_enc');
+    // 對照組：這個檔案真的有處理那兩欄，否則上面的斷言什麼都沒證到。
+    expect(server).toContain('line_channel_secret_enc');
+    expect(server).toContain('line_channel_access_token_enc');
+  });
+
+  it('⚠️ 這一層不得使用 service role（三張表都有 is_tenant_member 的 select 政策）', () => {
+    expect(server).not.toContain('createAdminSupabase');
+    expect(route).not.toContain('createAdminSupabase');
+    expect(route).toContain('t.supabase');
   });
 });
 

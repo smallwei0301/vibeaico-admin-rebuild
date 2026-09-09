@@ -223,20 +223,45 @@ export async function loadSupportAnswer(
   const intent = resolveSupportIntent(question);
 
   if (intent === 'LINE_STATUS') {
-    // ⚠️ select 清單裡沒有 *_enc 本身，只有「是不是 null」的判斷欄位。
-    const { data, error } = await client
-      .from('tenant_settings')
-      .select('line, line_channel_secret_enc, line_channel_access_token_enc')
-      .eq('tenant_id', ctx.tenantId)
-      .maybeSingle();
-    if (error) throw error;
-    const line = (data?.line ?? {}) as Record<string, unknown>;
+    /**
+     * ⚠️ 兩個密文欄位**從頭到尾沒有進過這支程式的記憶體**。
+     *
+     * 直覺的寫法是 `select('line, line_channel_secret_enc, …')` 然後判斷是不是
+     * 空字串——那樣密文就在手上了，「不要把它輸出去」變成一條靠自律維持的規矩。
+     * 這一支的整個工作就是產生一段要顯示給人看的文字，把密文放進同一個作用域，
+     * 遲早會有人為了 debug 把整包序列化出去。
+     *
+     * 改用兩次 `head: true` 的 count 查詢（PostgREST 只回筆數、不回任何欄位），
+     * 拿到的就只有 0 或 1。多兩次往返換掉一整類外洩路徑，值得。
+     *
+     * 誠實記錄一個邊界：判準是 `is not null`，所以一個**空字串**會被算成「已設定」。
+     * 實際上寫入端只有 `PUT /api/settings/line`，而它只在值非空時才 `encryptSecret()`
+     * 後寫入（`src/app/api/settings/line/route.ts`），欄位預設是 null——未設定的狀態
+     * 是 null 不是 ''。若日後有人讓空字串寫得進去，這裡會誤報「已設定」。
+     */
+    const [settings, hasSecret, hasToken] = await Promise.all([
+      client.from('tenant_settings').select('line').eq('tenant_id', ctx.tenantId).maybeSingle(),
+      client
+        .from('tenant_settings')
+        .select('tenant_id', { head: true, count: 'exact' })
+        .eq('tenant_id', ctx.tenantId)
+        .not('line_channel_secret_enc', 'is', null),
+      client
+        .from('tenant_settings')
+        .select('tenant_id', { head: true, count: 'exact' })
+        .eq('tenant_id', ctx.tenantId)
+        .not('line_channel_access_token_enc', 'is', null),
+    ]);
+    if (settings.error) throw settings.error;
+    if (hasSecret.error) throw hasSecret.error;
+    if (hasToken.error) throw hasToken.error;
+    const line = (settings.data?.line ?? {}) as Record<string, unknown>;
     return buildSupportAnswer({
       intent,
       line: {
         channelIdSet: Boolean(String(line.channelId ?? '').trim()),
-        secretSet: Boolean(String(data?.line_channel_secret_enc ?? '').trim()),
-        tokenSet: Boolean(String(data?.line_channel_access_token_enc ?? '').trim()),
+        secretSet: (hasSecret.count ?? 0) > 0,
+        tokenSet: (hasToken.count ?? 0) > 0,
         autoReplyEnabled: line.autoReplyEnabled !== false,
         webhookUrl: ctx.appUrl ? `${ctx.appUrl}/api/line/webhook/${ctx.shopCode}` : '',
       },
