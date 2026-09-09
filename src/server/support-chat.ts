@@ -234,10 +234,11 @@ export async function loadSupportAnswer(
      * 改用兩次 `head: true` 的 count 查詢（PostgREST 只回筆數、不回任何欄位），
      * 拿到的就只有 0 或 1。多兩次往返換掉一整類外洩路徑，值得。
      *
-     * 誠實記錄一個邊界：判準是 `is not null`，所以一個**空字串**會被算成「已設定」。
-     * 實際上寫入端只有 `PUT /api/settings/line`，而它只在值非空時才 `encryptSecret()`
-     * 後寫入（`src/app/api/settings/line/route.ts`），欄位預設是 null——未設定的狀態
-     * 是 null 不是 ''。若日後有人讓空字串寫得進去，這裡會誤報「已設定」。
+     * ⚠️ 判準是 `<> ''` 而**不是** `is not null`。`0003_tenants_and_accounts.sql:29-30`
+     * 把這兩欄定義成 `text not null default ''`——「未設定」的實際樣子是**空字串**，
+     * 不是 null。第一版寫成 `is not null`，於是一家從沒設定過 LINE 的店會被告知
+     * 「憑證三項都已設定，機器人可以收發訊息」：把一則假成功修成另一則假成功。
+     * 這個錯是 `local-isolated` 的整合測試在真資料庫上抓到的，單元層抓不到。
      */
     const [settings, hasSecret, hasToken] = await Promise.all([
       client.from('tenant_settings').select('line').eq('tenant_id', ctx.tenantId).maybeSingle(),
@@ -245,12 +246,12 @@ export async function loadSupportAnswer(
         .from('tenant_settings')
         .select('tenant_id', { head: true, count: 'exact' })
         .eq('tenant_id', ctx.tenantId)
-        .not('line_channel_secret_enc', 'is', null),
+        .neq('line_channel_secret_enc', ''),
       client
         .from('tenant_settings')
         .select('tenant_id', { head: true, count: 'exact' })
         .eq('tenant_id', ctx.tenantId)
-        .not('line_channel_access_token_enc', 'is', null),
+        .neq('line_channel_access_token_enc', ''),
     ]);
     if (settings.error) throw settings.error;
     if (hasSecret.error) throw hasSecret.error;

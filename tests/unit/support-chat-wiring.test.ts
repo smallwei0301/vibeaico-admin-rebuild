@@ -173,7 +173,7 @@ describe('元件真的接上去了（不是本地 state 假成功）', () => {
     expect(route).toContain('.max(500');
   });
 
-  it('⚠️ 密文欄位不得出現在任何 select() 清單裡（只能當 .not() 的過濾條件）', () => {
+  it('⚠️ 密文欄位不得出現在任何 select() 清單裡（只能當過濾條件）', () => {
     // 逐一取出 select( ... ) 的第一個字串引數，裡面一個 _enc 都不能有。
     // 「不要把密文輸出去」若只靠自律，這支端點的工作又剛好是產生要顯示的文字，
     // 遲早會有人為了 debug 把整包序列化出去。
@@ -183,6 +183,16 @@ describe('元件真的接上去了（不是本地 state 假成功）', () => {
     // 對照組：這個檔案真的有處理那兩欄，否則上面的斷言什麼都沒證到。
     expect(server).toContain('line_channel_secret_enc');
     expect(server).toContain('line_channel_access_token_enc');
+  });
+
+  it('⚠️ 「已設定」的判準必須是 <> \'\'，不是 is not null', () => {
+    // `0003_tenants_and_accounts.sql:29-30` 把兩欄定義成 `text not null default ''`，
+    // 未設定的實際樣子是**空字串**。第一版寫成 `.not(col,'is',null)`，於是一家從沒
+    // 設定過 LINE 的店會被告知「憑證三項都已設定，機器人可以收發訊息」——把一則
+    // 假成功修成另一則假成功。這條鎖住那個判準不要再被改回去。
+    expect(server).toContain("neq('line_channel_secret_enc', '')");
+    expect(server).toContain("neq('line_channel_access_token_enc', '')");
+    expect(server).not.toContain("'is', null");
   });
 
   it('⚠️ 這一層不得使用 service role（三張表都有 is_tenant_member 的 select 政策）', () => {
