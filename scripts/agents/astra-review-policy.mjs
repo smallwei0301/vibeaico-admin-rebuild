@@ -70,17 +70,25 @@ export function isOwnerFinalRiskWaiver({
   // GitHub returns issue comments oldest-first. Only the latest owner-authored
   // waiver event for this PR is authoritative: a later revoke/deny must not be
   // masked by an older grant, while a later complete grant may explicitly renew it.
+  // updated_at is the event time for an edited comment; otherwise creation time
+  // is used. This prevents an older comment edited after a newer grant from being
+  // treated as stale merely because its comment id is smaller.
   const events = ownerAttestations
     .map((comment, index) => ({ comment, index }))
     .filter(({ comment }) => String(comment?.user?.login ?? '').trim() === trustedOwner)
     .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}`)
     .sort((a, b) => {
+      const eventTime = (comment) => {
+        const updated = Date.parse(String(comment?.updated_at ?? ''));
+        if (Number.isFinite(updated)) return updated;
+        return Date.parse(String(comment?.created_at ?? ''));
+      };
+      const aTime = eventTime(a.comment);
+      const bTime = eventTime(b.comment);
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
       const aId = Number(a.comment?.id);
       const bId = Number(b.comment?.id);
       if (Number.isFinite(aId) && Number.isFinite(bId) && aId !== bId) return aId - bId;
-      const aTime = Date.parse(String(a.comment?.created_at ?? ''));
-      const bTime = Date.parse(String(b.comment?.created_at ?? ''));
-      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
       return a.index - b.index;
     });
   const latest = events.at(-1)?.comment;
