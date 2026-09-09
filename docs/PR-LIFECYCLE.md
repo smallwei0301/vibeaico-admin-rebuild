@@ -15,7 +15,7 @@
 1 ACTIVE RESERVE_TERRA source-only PR（不算 active candidate）
 1 ACTIVE LUNA_CLOSURE PR
 1 ACTIVE TEST_VALIDATION holder
-最多 2 張 ACTIVE_CANDIDATE PR
+最多 3 張 ACTIVE_CANDIDATE PR
 ```
 
 ### 每個 Issue

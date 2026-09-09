@@ -8,7 +8,8 @@
 > 現行規則以 `docs/decisions/2026-08-31-owner-multi-terra-test-serial.md`、
 > `docs/AGENT-EXECUTION.md` 與 `docs/PR-LIFECYCLE.md` 為準。
 >
-> 下文的「全 repo active Terra max 1」與「全 repo ACTIVE_CANDIDATE max 2」**不得再當成
+> 下文的「全 repo active Terra max 1」與「全 repo ACTIVE_CANDIDATE max 2」（⚠️ 2026-09-09
+> Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）**不得再當成
 > 現行 Guard、派工或停工依據**。Close-first、Luna Closure、Sol 節流與 shared TEST 單線
 > 等未被新裁示推翻的部分仍可作歷史背景參考。
 
@@ -27,7 +28,7 @@
 1 條 active TERRA_BUILD
 1 條固定 LUNA_CLOSURE
 1 條 shared TEST_VALIDATION
-最多 2 張 ACTIVE_CANDIDATE PR
+最多 2 張 ACTIVE_CANDIDATE PR（⚠️ 2026-09-09 Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）
 ```
 
 當時的「1 條 Terra」是全 repo 全域上限；**這一條已被 Mode C 取代**。
@@ -51,7 +52,7 @@ Close-first 仍保留，但 Mode C 允許 Sol 同時選出多個 scope 不衝突
 
 ## 當時的活躍候選與停放（部分已失效）
 
-- 當時 `ACTIVE_CANDIDATE=true` 全 repo 最多兩張；**此全域限制已失效，改為每 Issue 預算**。
+- 當時 `ACTIVE_CANDIDATE=true` 全 repo 最多兩張；**此全域限制已失效，改為每 Issue 預算**。（⚠️ 2026-09-09 Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）
 - `PARKED` PR 不得再派 Agent、推 commit、手動 rerun、占 TEST lane 或反覆輪詢，仍有效。
 - 當時第二張大型題目必須替換唯一 Terra；**此條已失效，不同 Issue 現可平行**。
 

@@ -160,7 +160,7 @@ jobs:
               'state:complete': ['006B75', 'Lane work complete.'],
               'state:owner-blocked': ['D93F0B', 'Only Owner or external action remains.'],
               'state:historical': ['EDEDED', 'Historical or superseded evidence only.'],
-              'candidate:active': ['B60205', 'Counts toward the maximum of two active Product delivery candidates.'],
+              'candidate:active': ['B60205', `Counts toward the maximum of ${policy.MAX_ACTIVE_CANDIDATES} active Product delivery candidates.`],
               'governance:lane-metadata-incomplete': ['D93F0B', 'B+ lane metadata is missing or invalid.'],
               'governance:wip-violation': ['B60205', 'B+ Terra, Reserve, Closure, TEST or candidate limit is exceeded.'],
             };
@@ -317,7 +317,7 @@ jobs:
               ['Reserve Terra', `${summary.activeReserve.length}/${capacity.reserveMax}`],
               ['Luna Closure', `${summary.activeClosure.length}/1`],
               ['Remote TEST validation', `${summary.activeTest.length}/1`],
-              ['Product candidates', `${summary.activeCandidates.length}/2`],
+              ['Product candidates', `${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}`],
               ['TEST dispatched', String(dispatched)],
               ['Metadata errors', metadataErrors.join('; ') || 'none'],
               ['WIP errors', wipErrors.join('; ') || 'none'],
@@ -338,7 +338,7 @@ jobs:
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: ${fingerprint}\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
                 : !finalRiskRequired
                 ? `${marker}\n## Agent WIP Guard: deferred — not an approval\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: DEFERRED_NON_ACTIVE\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- POLICY_STATUS: pending\n\nThis Draft or non-active PR is not eligible for Final Risk yet. The required \`Agent WIP Policy\` status intentionally remains pending; reactivation as an active non-draft PR restores the normal Final Risk gate.`
-                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/2\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
               if (previous) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });

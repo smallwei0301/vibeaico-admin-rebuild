@@ -35,6 +35,40 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * 同時可存在的 Product candidate 上限（Owner 2026-09-09 裁示：2 → 3）。
+ *
+ * ⚠️ 這是**單一事實來源**。在此之前同一個數字硬編碼在九個位置：本檔的檢查、
+ * `dual-terra-wip-policy.mjs` 的檢查、`agent-wip-guard.yml` 摘要與 PR 留言各一次的
+ * `.../2` 字串、同一支 workflow 裡 `candidate:active` label 的描述（`createLabel`
+ * 會把它寫進 GitHub），以及 `score-run.mjs` 三處（`wipHealthy` 判定、建議文字、
+ * 報告的「目標 ≤2」）與 `score-run-v2.mjs` 一處（完成度加分）。
+ *
+ * 第五處與第六～九處都是逐輪風險評估一處一處挖出來的——「我掃過了」在這件事上
+ * 被推翻過兩次，所以測試裡的每一條鎖都附對照組並經過變異驗證。
+ *
+ * ⚠️ 這九處**不是等價的**，說清楚以免下一個人誤判改哪裡有效：
+ *
+ *   - 真正在跑的只有 **`agent-wip-guard.yml` → `dual-terra-wip-policy.mjs` 的
+ *     `validateGlobalWip`**。那是全 repo 唯一非測試的**進入點**（guard 直接呼叫一次，另經 dual-terra 的 `pilotCapacity()` 間接再呼叫一次，兩條都源自同一支 workflow）。
+ *   - `ci.yml` 確實 `import` 了本檔，但**只呼叫 `decideTestValidation`**（TEST lane
+ *     判定），那條路徑從不碰 `validateGlobalWip`。所以**本檔的 candidate 上限在 CI
+ *     裡是死碼**，目前只有單元測試在執行它。
+ *   - `score-run.mjs` 與 `score-run-v2.mjs` **兩支都在 CI 真的跑**
+ *     （`agent-run-scorecard.yml`、`agent-run-ledger-reconcile.yml`），但它們**不擋 PR**，
+ *     是評分：上限沒跟著放寬時，一個峰值 3 的**合規** Run 會被扣 3 分完成度、標成
+ *     `wipHealthy=false` 並被建議「收斂候選」——把合規行為報成違規。
+ *
+ * 既然是死碼，為什麼還要一起收斂？因為 dual-terra 的 `validateGlobalWip` 是**另一份
+ * 獨立實作**（不是呼叫本檔的），兩份各自帶一個數字。今天沒人跑本檔這一份，不代表
+ * 明天沒有；留兩個會分岔的數字，就是留一顆之後才會爆的雷。
+ *
+ * 同型的漂移今天才在 `src/lib/shop-code.ts` 修過一次（店家代碼規則散在四處且
+ * 不一致）。這裡一併收斂，並由 `tests/unit/candidate-cap-single-source.test.ts`
+ * 鎖住「字面量只准出現在這一行」。
+ */
+export const MAX_ACTIVE_CANDIDATES = 3;
+
 export function readField(body = "", field) {
   // Do not use \s around one metadata row: \s consumes newlines and can swallow the next field.
   const pattern = new RegExp(
@@ -205,8 +239,8 @@ export function validateGlobalWip(summary) {
   if (activeTest.length > 1) {
     errors.push(`active TEST_VALIDATION count is ${activeTest.length}; max is 1 (${activeTest.map((pr) => `#${pr.number}`).join(", ")})`);
   }
-  if (activeCandidates.length > 2) {
-    errors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is 2 (${activeCandidates.map((pr) => `#${pr.number}`).join(", ")})`);
+  if (activeCandidates.length > MAX_ACTIVE_CANDIDATES) {
+    errors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is ${MAX_ACTIVE_CANDIDATES} (${activeCandidates.map((pr) => `#${pr.number}`).join(", ")})`);
   }
 
   if (activeReserve.length === 1) {

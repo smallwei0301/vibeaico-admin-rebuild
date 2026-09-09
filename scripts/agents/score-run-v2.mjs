@@ -5,6 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { computeWeightedUsage } from "./score-run.mjs";
+// 見 score-run.mjs 同一個 import 的註解：這是候選上限的唯一事實來源。
+import { MAX_ACTIVE_CANDIDATES } from "./agent-wip-policy.mjs";
 import { validateRunLedgerV2 } from "./run-ledger-v2.mjs";
 
 const FINAL = new Set(["BASELINE", "COMPLETE", "OWNER_BLOCKED"]);
@@ -286,7 +288,7 @@ function scores(run, outcome) {
     + inverse(outcome.wipInventory.unfinishedCarryover, 0, 5, 5)
     + (num(run.inventory.closureSweeps) > 0 ? Math.min(3, 1 + num(run.inventory.closureAdvancedOrClosed) * 2) : 0)
     + (num(run.inventory.sharedTestPeak) <= 1 && num(run.ci.sharedTestCollisions) === 0 ? 2 : 0)
-    + (num(run.inventory.activeCandidatePeak) <= 2 ? 3 : 0);
+    + (num(run.inventory.activeCandidatePeak) <= MAX_ACTIVE_CANDIDATES ? 3 : 0);
 
   const qualityScore = 8 * run.quality.acceptanceEvidenceCoveragePercent / 100
     + 6 * run.ci.firstPassRatePercent / 100

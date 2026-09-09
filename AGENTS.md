@@ -59,7 +59,7 @@ LUNA_CLOSURE     最多 1，固定收尾／Janitor 線
 LUNA_TASKS       預設 4，最多 6，另有 1 位 Aggregator
 LOCAL_ISOLATED   每張 Terra PR 各自一套免費本機 Supabase，最多 2
 TEST_VALIDATION  最多 1，現有遠端 TEST 唯一最終考場
-ACTIVE_CANDIDATE 最多 2，不把 Luna Closure 算成第三個產品候選
+ACTIVE_CANDIDATE 最多 3，不把 Luna Closure 算成第四個產品候選
 EARLY_SOL_DIFF_AUDIT  每張完整 Terra 最多 1 次，非放行
 FINAL_SOL_AUDIT       最多 1，僅對必要測試完成的 exact head 放行
 Merge                 最多 1

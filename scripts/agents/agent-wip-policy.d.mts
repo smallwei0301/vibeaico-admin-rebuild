@@ -1,4 +1,6 @@
 export const ALLOWED: any;
+/** 同時可存在的 Product candidate 上限（單一事實來源，見 .mjs 的說明）。 */
+export const MAX_ACTIVE_CANDIDATES: number;
 
 export function readField(body: string | undefined, field: string): string;
 export function isPlaceholder(value: unknown): boolean;

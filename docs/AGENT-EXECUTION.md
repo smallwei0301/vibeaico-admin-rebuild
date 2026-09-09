@@ -110,7 +110,7 @@ MAIN_TERRA      預設 max 1；Guard 對兩條完整候選皆 qualified 時 max 
 RESERVE_TERRA   max 1  → AGENT_LANE=TERRA_RESERVE
 LUNA_CLOSURE    max 1  → AGENT_LANE=LUNA_CLOSURE
 TEST_VALIDATION max 1  → AGENT_LANE=TEST_VALIDATION
-ACTIVE_CANDIDATE max 2 → 通常 MAIN + Closure
+ACTIVE_CANDIDATE max 3 → 通常 MAIN + Closure，第三張留給併行的第二條產品線
 LUNA_TASKS      default 4，max 6，另有 1 位 Aggregator
 ```
 
@@ -138,7 +138,7 @@ LUNA_TASKS      default 4，max 6，另有 1 位 Aggregator
 
 ### 5.4 ACTIVE_CANDIDATE
 
-- 全 repo 最多 2 張，通常是 MAIN 和 Closure candidate。
+- 全 repo 最多 3 張（Owner 2026-09-09 由 2 調整），通常是 MAIN、Closure，第三張留給併行的第二條產品線。
 - RESERVE、TEST、Parked、Historical、Owner-blocked 不得標 active candidate。
 - 舊 Mode C PR 不是因為 open 就自動 active；必須經 B+ TRIAGE 重新分配。
 

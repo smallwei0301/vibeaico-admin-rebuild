@@ -107,7 +107,7 @@ LOCAL_ISOLATED_SLOTS       = 2
 REMOTE_CANONICAL_TEST_MAX  = 1
 SOL_AUDIT_MAX              = 1
 MERGE_MAX                  = 1
-ACTIVE_PRODUCT_CANDIDATE   = 2
+ACTIVE_PRODUCT_CANDIDATE   = 3   # 2026-09-09 Owner 裁示由 2 調整為 3
 RESERVE_TERRA              = 0 during dual pilot
 ```
 

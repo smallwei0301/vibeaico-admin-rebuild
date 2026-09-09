@@ -23,7 +23,7 @@
 1 條 active TERRA_BUILD
 1 條固定 LUNA_CLOSURE
 1 條 shared TEST_VALIDATION
-最多 2 張 ACTIVE_CANDIDATE PR
+最多 2 張 ACTIVE_CANDIDATE PR（⚠️ 2026-09-09 Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）
 ```
 
 ## 仍有效的 Janitor 原則
