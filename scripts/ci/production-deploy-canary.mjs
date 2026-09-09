@@ -140,6 +140,14 @@ export async function createPreviewDeployment({
         repo: required(repo, 'GITHUB_REPO'),
         ref: expectedSha,
       },
+      // Vercel exposes an exact-SHA Git source as the SHA itself in
+      // VERCEL_GIT_COMMIT_REF. The project's global Ignored Build Step therefore
+      // (correctly) treats it as a non-allowlisted branch. Override only this
+      // single API-created Preview so the canary can actually build; do not
+      // weaken the repository-wide branch throttle.
+      projectSettings: {
+        commandForIgnoringBuildStep: 'exit 1',
+      },
       meta: {
         deploymentController: 'issue-228-preview-canary',
         expectedMainSha: expectedSha,
