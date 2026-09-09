@@ -166,16 +166,29 @@ client**（與既有 `requireTenantManager()` 同一個做法）。
 
 ### 3.3 記錄點必須是唯一入口，不能靠自律
 
-寫入紀錄不可交給每一支 route 自己呼叫——那等於 163 個必須記得的地方。
-改成在 `handle()` 之外包一層：
+寫入紀錄不可交給每一支 route 自己呼叫——那等於 160 幾個必須記得的地方。
+
+> ⚠️ 實作時的修正（2026-09-10）：本節原本寫的是「在 `handle()` 之外**另包一層**
+> `handleTenantWrite(fn)`」。照著做出來的第一版**沒有任何一支 route 用它**——
+> 函式在、註解在、單元測試也綠，稽核卻一次都沒發生。一個要人記得換上的包裝，
+> 和「每一支 route 自己呼叫記錄函式」是同一個問題，只是換了個位置（PB-027）。
+>
+> 定案改為：稽核直接做在 `handle()` **裡面**，對 `POST/PUT/PATCH/DELETE` 生效。
+> 沒有第二個入口，也就沒有東西需要記得。
 
 ```ts
 // src/server/http.ts
-export function handleTenantWrite(fn) { … }   // 代登入時自動寫 impersonation_actions
+export function handle(fn) { … }   // 寫入型請求在代登入下自動寫 impersonation_actions
 ```
 
-並有一條原始碼鎖：**任何寫入型 route 若使用了代登入可達的 `requireTenant()`，
-就必須經過這一層**。少一個地方沒包，那個地方就是稽核的破口。
+讀取型（`GET/HEAD/OPTIONS`）不記：沒改到資料，也不必為它多打一次 auth。
+沒有代登入 cookie 時整段跳過，一般店家的流量零額外成本。
+
+並有一條原始碼鎖 `tests/unit/impersonation-audit-coverage.test.ts`：掃過
+`src/app/api/**/route.ts`，**任何寫入型 export 沒有包在 `handle()` 裡就轉紅**。
+例外必須在該檔的 `AUDIT_EXEMPT` 具名並附理由（目前只有 LINE webhook：呼叫方是
+LINE 的伺服器，沒有登入者也沒有 cookie，代登入在那條路徑上不可能成立）。
+少一個地方沒包，那個地方就是稽核的破口。
 
 ---
 
@@ -235,7 +248,7 @@ export function handleTenantWrite(fn) { … }   // 代登入時自動寫 imperso
 
 1. 把 §2.3 的條件 ④（`platform_admins` 仍 active）拿掉 → 「權限撤銷後舊 session 失效」轉紅
 2. 把條件 ⑤（session 屬於當前登入者）拿掉 → 「cookie 換一個帳號帶」轉紅
-3. 把 `handleTenantWrite` 的記錄拿掉 → 「每次寫入都有 action 紀錄」轉紅
+3. 把 `handle()` 裡的記錄拿掉 → 「每次寫入都有 action 紀錄」轉紅
 4. 把 `expires_at` 檢查拿掉 → 「逾時後不再生效」轉紅
 
 ---
