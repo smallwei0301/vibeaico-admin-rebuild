@@ -6,6 +6,7 @@ import {
 
 const status = 'OWNER_WAIVED_FOR_PR_312_2026_09_09';
 const scope = 'PR #312 only; one-time exception; does not change the repository default Final Risk policy or authorize fake model evidence';
+const changeDigest = 'a'.repeat(64);
 const current = {
   number: 312,
   state: 'open',
@@ -18,6 +19,15 @@ const current = {
     `ASTRA_REVIEW_STATUS: ${status}`,
   ].join('\n'),
 };
+const ownerAttestation = {
+  user: { login: 'smallwei0301' },
+  body: [
+    'OWNER_FINAL_RISK_WAIVER: PR #312',
+    `WAIVER_STATUS: ${status}`,
+    'REVIEWED_HEAD: 2b9acb1e8308958f4e1df4788d1fd6e451e1cf83',
+    `CHANGE_DIGEST: ${changeDigest}`,
+  ].join('\n'),
+};
 
 describe('Owner Final Risk waiver admission', () => {
   it('accepts only the owner-authored, PR-bound, one-time waiver contract', () => {
@@ -26,6 +36,8 @@ describe('Owner Final Risk waiver admission', () => {
       owner: 'smallwei0301',
       origin: 'OWNER',
       laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation],
+      changeDigest,
     })).toBe(true);
     expect(finalRiskGateStatus({
       hasErrors: false,
@@ -40,12 +52,16 @@ describe('Owner Final Risk waiver admission', () => {
     ['wrong PR scope', { current: { ...current, number: 313 } }],
     ['draft', { current: { ...current, draft: true } }],
     ['parked', { laneState: 'PARKED' }],
+    ['missing owner attestation', { ownerAttestations: [] }],
+    ['changed content digest', { changeDigest: 'b'.repeat(64) }],
   ])('rejects %s', (_label, overrides) => {
     expect(isOwnerFinalRiskWaiver({
       current,
       owner: 'smallwei0301',
       origin: 'OWNER',
       laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation],
+      changeDigest,
       ...overrides,
     })).toBe(false);
   });

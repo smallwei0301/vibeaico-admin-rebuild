@@ -65,11 +65,32 @@ jobs:
               });
             }
             const metadata = policy.parseLaneMetadata(current);
+            let ownerWaiverComments = [];
+            let ownerWaiverChangeDigest = '';
+            if (current.state === 'open' && metadata.origin === 'OWNER' && metadata.state === 'OWNER_BLOCKED') {
+              const ownerWaiverFiles = await github.paginate(github.rest.pulls.listFiles, {
+                owner,
+                repo,
+                pull_number: current.number,
+                per_page: 100,
+              });
+              if (ownerWaiverFiles.length === current.changed_files) {
+                ownerWaiverChangeDigest = astra.changeDigestOf(ownerWaiverFiles);
+              }
+              ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: current.number,
+                per_page: 100,
+              });
+            }
             const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({
               current,
               owner,
               origin: metadata.origin,
               laneState: metadata.state,
+              ownerAttestations: ownerWaiverComments,
+              changeDigest: ownerWaiverChangeDigest,
             });
             const finalRiskRequired = astra.shouldEnforceFinalRisk({
               pullRequestState: current.state,
@@ -261,7 +282,9 @@ jobs:
                   errors,
                 })
               : null;
-            const comments = isAgent
+            const comments = ownerWaiverComments.length
+              ? ownerWaiverComments
+              : isAgent
               ? await github.paginate(github.rest.issues.listComments, {
                   owner,
                   repo,

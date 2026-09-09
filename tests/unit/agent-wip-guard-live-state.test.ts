@@ -68,6 +68,8 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(evaluationIndex).toBeGreaterThan(gateIndex);
     expect(workflow).toContain('draft: current.draft === true');
     expect(workflow).toContain('const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({');
+    expect(workflow).toContain('ownerWaiverChangeDigest = astra.changeDigestOf(ownerWaiverFiles);');
+    expect(workflow).toContain('ownerAttestations: ownerWaiverComments,');
     expect(workflow).toContain("status: current.state === 'open' ? 'DEFERRED_NON_ACTIVE' : 'NOT_REQUIRED'");
     expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
     expect(workflow).toContain('ownerFinalRiskWaived,');

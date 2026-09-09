@@ -39,6 +39,8 @@ export function isOwnerFinalRiskWaiver({
   origin = '',
   laneState = '',
   body = current.body ?? '',
+  ownerAttestations = [],
+  changeDigest = '',
 } = {}) {
   const trustedOwner = String(owner).trim();
   const number = Number(current.number ?? 0);
@@ -61,7 +63,17 @@ export function isOwnerFinalRiskWaiver({
   if (scope !== `PR #${number} only; one-time exception; does not change the repository default Final Risk policy or authorize fake model evidence`) {
     return false;
   }
-  return readField(body, 'ASTRA_REVIEW_STATUS') === status;
+  if (readField(body, 'ASTRA_REVIEW_STATUS') !== status || !/^[a-f0-9]{64}$/i.test(changeDigest)) return false;
+  return ownerAttestations.some((comment) => {
+    if (String(comment?.user?.login ?? '').trim() !== trustedOwner) return false;
+    const attestation = String(comment?.body ?? '');
+    return (
+      readField(attestation, 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}` &&
+      readField(attestation, 'WAIVER_STATUS') === status &&
+      /^[a-f0-9]{40}$/i.test(readField(attestation, 'REVIEWED_HEAD')) &&
+      readField(attestation, 'CHANGE_DIGEST').toLowerCase() === changeDigest.toLowerCase()
+    );
+  });
 }
 
 export function finalRiskGateStatus({
