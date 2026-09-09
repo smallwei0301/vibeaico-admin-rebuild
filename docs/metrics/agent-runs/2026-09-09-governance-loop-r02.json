@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-09-governance-loop-r02",
-  "status": "IN_PROGRESS",
+  "status": "OWNER_BLOCKED",
   "startedAt": "2026-09-09T06:10:41Z",
-  "endedAt": null,
+  "endedAt": "2026-09-09T06:20:19Z",
   "sources": [
     {
       "type": "github-main",
@@ -18,17 +18,27 @@
     {
       "type": "github-pull",
       "ref": "pull/318",
-      "note": "Five-file read-only semantic evidence refresh; exact head 4f8e651c5fa17409238d85af67fb6b2e295ca12a."
+      "note": "Seven-file bounded read-only semantic evidence refresh plus governance ledger; exact head 149a6e5f8380669a8053e032f85f700c0b90c558."
     },
     {
       "type": "github-workflow-run",
-      "ref": "actions/runs/34317698011",
-      "note": "Exact-head CI completed classify/check/integration successfully; integration and E2E were explicitly skipped by docs-only policy."
+      "ref": "actions/runs/34318249150",
+      "note": "Exact-head CI completed classify/check/integration successfully; integration and E2E were explicitly skipped by docs-only SOURCE_ONLY policy."
     },
     {
       "type": "github-status",
-      "ref": "actions/runs/34317728288",
+      "ref": "actions/runs/34318261892",
       "note": "Exact-head Agent WIP Policy status success."
+    },
+    {
+      "type": "github-pr-comment",
+      "ref": "pull/318#issuecomment-5596840442",
+      "note": "Exact-head Sol audit CLOSE_APPROVED; requested gpt-5.6-sol, actual unknown; Final Risk not required."
+    },
+    {
+      "type": "github-pr-comment",
+      "ref": "pull/318#issuecomment-5596852850",
+      "note": "Exact-head closeout recorded protected-branch admission HTTP 405; no status fabrication, rerun, rebase or no-op commit."
     },
     {
       "type": "supabase-read-only",
@@ -43,13 +53,13 @@
   ],
   "main": {
     "startSha": "44321f3eb1513d9e915c35c0fc00db5d28d18854",
-    "endSha": null
+    "endSha": "44321f3eb1513d9e915c35c0fc00db5d28d18854"
   },
   "inventory": {
     "openIssuesStart": 48,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 48,
     "openPrsStart": 19,
-    "openPrsEnd": null,
+    "openPrsEnd": 19,
     "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 0,
@@ -80,7 +90,7 @@
         "actualModel": "unknown",
         "contextClass": "compact",
         "count": 1,
-        "accepted": false,
+        "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
@@ -93,11 +103,11 @@
     "issuesStarted": 0,
     "issuesClosed": 0,
     "auditReady": 1,
-    "ownerBlockedComplete": 0,
-    "exactHeadCiOnly": 0,
+    "ownerBlockedComplete": 1,
+    "exactHeadCiOnly": 1,
     "commitOnly": 0,
-    "unfinishedCarryover": 1,
-    "cycleTimeMinutes": null
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": 10
   },
   "ci": {
     "fullCiRuns": 0,
@@ -136,8 +146,8 @@
     "本輪只處理治理 evidence refresh；沒有修改 Product runtime、migration、shared TEST、Production 或部署。",
     "G0 發現 PR #318 的 evidence 仍釘在已過時的 main 6d2678e；平行 Product 提交後 live main 為 44321f3，故先以 read-only provider catalog capture 重建 exact-main snapshot/report。",
     "TEST 與 Production 的七個 public catalog surface 仍為 DRIFT_OBSERVED；repoBuiltProfile=NOT_RUN，canonical source、repo presence 與 reconciliation 保持 unknown。",
-    "Exact-head CI run 34317698011 與 Agent WIP Policy 34317728288 成功；docs-only integration job 明確 policy skip，沒有宣稱 database green，也沒有佔用 shared TEST。",
-    "PR #318 的 source、CI、WIP 與 Sol audit 尚待 current exact head closeout；protected-branch admission blocker 仍需 live merge attempt/verification，不重跑相同 CI。",
+    "Exact-head CI run 34318249150 與 Agent WIP Policy 34318261892 成功；docs-only SOURCE_ONLY integration job 明確 policy skip，沒有宣稱 database green，也沒有佔用 shared TEST。",
+    "PR #318 current exact head 149a6e5 已完成 source、CI、WIP 與 Sol audit；direct squash merge live attempt 回應 HTTP 405「2 of 2 required status checks are expected」，auto-merge disabled，故 lane 釋放為 OWNER_BLOCKED，不重跑相同 CI。",
     "Actual tokens、weekly usage 與 served model evidence unavailable；requested/actual model truth remains requested=gpt-5.6-sol, actual=unknown。"
   ],
   "deliveryTruthVersion": 4,
@@ -145,13 +155,46 @@
     "contractVersion": 1,
     "ownerRole": "GOVERNANCE_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-09T06:20:19Z",
+    "evidenceRef": "github:issue#197"
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-09T06:20:19Z",
+    "claims": [
+      {
+        "type": "CI_GREEN",
+        "subject": "pr#318@149a6e5f8380669a8053e032f85f700c0b90c558",
+        "claimedState": "success",
+        "observedState": "success",
+        "evidenceRef": "github:workflow-run#34318249150",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OTHER",
+        "subject": "pr#318@149a6e5f8380669a8053e032f85f700c0b90c558",
+        "claimedState": "close_approved",
+        "observedState": "close_approved",
+        "evidenceRef": "github:pull#318",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "OWNER_BLOCKED_COMPLETE",
+        "subject": "issue#197",
+        "claimedState": "owner_blocked_complete",
+        "observedState": "owner_blocked_complete",
+        "evidenceRef": "github:issue#197",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "RUN_COMPLETE",
+        "subject": "2026-09-09-governance-loop-r02",
+        "claimedState": "complete",
+        "observedState": "complete",
+        "evidenceRef": "github:issue#197",
+        "verification": "VERIFIED"
+      }
+    ]
   }
 }
