@@ -66,6 +66,44 @@ describe('Owner Final Risk waiver admission', () => {
     })).toBe(false);
   });
 
+  it('rejects an older grant when a later owner revocation exists', () => {
+    const revoked = {
+      id: 2,
+      user: { login: 'smallwei0301' },
+      body: [
+        'OWNER_FINAL_RISK_WAIVER: PR #312',
+        'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
+      ].join('\\n'),
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [{ ...ownerAttestation, id: 1 }, revoked],
+      changeDigest,
+    })).toBe(false);
+  });
+
+  it('allows a later complete owner grant to renew a revoked waiver', () => {
+    const revoked = {
+      id: 2,
+      user: { login: 'smallwei0301' },
+      body: [
+        'OWNER_FINAL_RISK_WAIVER: PR #312',
+        'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
+      ].join('\\n'),
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [revoked, { ...ownerAttestation, id: 3 }],
+      changeDigest,
+    })).toBe(true);
+  });
+
   it('keeps an ordinary deferred lane pending', () => {
     expect(finalRiskGateStatus({ hasErrors: false, finalRiskRequired: false })).toBe('pending');
   });

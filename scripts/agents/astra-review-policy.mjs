@@ -26,6 +26,7 @@ export function shouldEnforceFinalRisk({ pullRequestState = 'open', draft = fals
 }
 
 const OWNER_WAIVER_STATUS = /^OWNER_WAIVED_FOR_PR_(\d+)_\d{4}_\d{2}_\d{2}$/;
+const OWNER_WAIVER_REVOKED_STATUS = /^OWNER_WAIVER_(?:REVOKED|DENIED)_FOR_PR_(\d+)_\d{4}_\d{2}_\d{2}$/;
 
 /**
  * @param {{current?: Record<string, any>, owner?: string, origin?: string, laneState?: string, body?: string, ownerAttestations?: Array<Record<string, any>>, changeDigest?: string}} [input]
@@ -66,16 +67,33 @@ export function isOwnerFinalRiskWaiver({
     return false;
   }
   if (readField(body, 'ASTRA_REVIEW_STATUS') !== status || !/^[a-f0-9]{64}$/i.test(changeDigest)) return false;
-  return ownerAttestations.some((comment) => {
-    if (String(comment?.user?.login ?? '').trim() !== trustedOwner) return false;
-    const attestation = String(comment?.body ?? '');
-    return (
-      readField(attestation, 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}` &&
-      readField(attestation, 'WAIVER_STATUS') === status &&
-      /^[a-f0-9]{40}$/i.test(readField(attestation, 'REVIEWED_HEAD')) &&
-      readField(attestation, 'CHANGE_DIGEST').toLowerCase() === changeDigest.toLowerCase()
-    );
-  });
+  // GitHub returns issue comments oldest-first. Only the latest owner-authored
+  // waiver event for this PR is authoritative: a later revoke/deny must not be
+  // masked by an older grant, while a later complete grant may explicitly renew it.
+  const events = ownerAttestations
+    .map((comment, index) => ({ comment, index }))
+    .filter(({ comment }) => String(comment?.user?.login ?? '').trim() === trustedOwner)
+    .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}`)
+    .sort((a, b) => {
+      const aId = Number(a.comment?.id);
+      const bId = Number(b.comment?.id);
+      if (Number.isFinite(aId) && Number.isFinite(bId) && aId !== bId) return aId - bId;
+      const aTime = Date.parse(String(a.comment?.created_at ?? ''));
+      const bTime = Date.parse(String(b.comment?.created_at ?? ''));
+      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
+      return a.index - b.index;
+    });
+  const latest = events.at(-1)?.comment;
+  if (!latest) return false;
+  const latestBody = String(latest.body ?? '');
+  const latestStatus = readField(latestBody, 'WAIVER_STATUS');
+  const revoked = latestStatus.match(OWNER_WAIVER_REVOKED_STATUS);
+  if (revoked && Number(revoked[1]) === number) return false;
+  if (latestStatus !== status) return false;
+  return (
+    /^[a-f0-9]{40}$/i.test(readField(latestBody, 'REVIEWED_HEAD')) &&
+    readField(latestBody, 'CHANGE_DIGEST').toLowerCase() === changeDigest.toLowerCase()
+  );
 }
 
 export function finalRiskGateStatus({
