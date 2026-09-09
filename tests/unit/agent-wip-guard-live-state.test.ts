@@ -102,7 +102,10 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).not.toMatch(/^concurrency:/m);
     expect(workflow).toMatch(/^    concurrency:/m);
     expect(workflow).not.toContain('  pull_request_review:');
-    expect(workflow).toContain("github.event.comment.body == '/astra-review-check'");
+    expect(workflow).toContain('types: [created, edited, deleted]');
+    expect(workflow).toContain("github.event_name == 'issue_comment' && github.event.issue.pull_request");
+    expect(workflow).toContain('const waiverCommentFingerprint =');
+    expect(workflow).toContain('Owner waiver comments changed during policy evaluation');
     expect(workflow).not.toContain('group: agent-wip-guard-${{ github.repository }}\n');
   });
 

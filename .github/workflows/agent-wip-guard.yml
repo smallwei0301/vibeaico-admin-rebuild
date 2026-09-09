@@ -5,7 +5,7 @@ on:
     types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
 
   issue_comment:
-    types: [created]
+    types: [created, edited, deleted]
 
 permissions:
   actions: write
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   guard:
-    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && github.event.comment.body == '/astra-review-check')
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     concurrency:
       group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
@@ -56,7 +56,10 @@ jobs:
             });
             if (context.eventName === 'issue_comment') {
               const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
-              if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission');
+              if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) {
+                core.info('Comment author cannot change Owner waiver evidence; skip policy refresh');
+                return;
+              }
             }
             const marker = '<!-- agent-wip-guard -->';
             if (current.state === 'open') {
@@ -67,6 +70,18 @@ jobs:
             const metadata = policy.parseLaneMetadata(current);
             let ownerWaiverComments = [];
             let ownerWaiverChangeDigest = '';
+            const waiverCommentFingerprint = (comments, number) => JSON.stringify(
+              comments
+                .filter((comment) => String(comment?.body ?? '').includes(`OWNER_FINAL_RISK_WAIVER: PR #${number}`))
+                .map((comment) => [
+                  comment?.id,
+                  comment?.user?.login,
+                  comment?.body,
+                  comment?.created_at,
+                  comment?.updated_at,
+                ]),
+            );
+            let ownerWaiverCommentFingerprint = '';
             if (current.state === 'open' && metadata.origin === 'OWNER' && metadata.state === 'OWNER_BLOCKED') {
               const ownerWaiverFiles = await github.paginate(github.rest.pulls.listFiles, {
                 owner,
@@ -83,6 +98,7 @@ jobs:
                 issue_number: current.number,
                 per_page: 100,
               });
+              ownerWaiverCommentFingerprint = waiverCommentFingerprint(ownerWaiverComments, current.number);
             }
             const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({
               current,
@@ -313,6 +329,17 @@ jobs:
                 fresh.state !== current.state
               ) {
                 throw new Error('PR changed during policy evaluation; wait for its current event');
+              }
+              if (metadata.origin === 'OWNER' && metadata.state === 'OWNER_BLOCKED') {
+                const freshOwnerWaiverComments = await github.paginate(github.rest.issues.listComments, {
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  per_page: 100,
+                });
+                if (waiverCommentFingerprint(freshOwnerWaiverComments, current.number) !== ownerWaiverCommentFingerprint) {
+                  throw new Error('Owner waiver comments changed during policy evaluation; wait for its current event');
+                }
               }
               await github.rest.repos.createCommitStatus({
                 owner,

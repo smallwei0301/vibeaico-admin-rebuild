@@ -66,13 +66,13 @@ describe('Owner Final Risk waiver admission', () => {
     })).toBe(false);
   });
 
-  it('rejects an older grant when a later owner revocation exists', () => {
+  it.each(['REVOKED', 'DENIED'])('rejects an older grant when a later owner %s exists', (decision) => {
     const revoked = {
       id: 2,
       user: { login: 'smallwei0301' },
       body: [
         'OWNER_FINAL_RISK_WAIVER: PR #312',
-        'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
+        `WAIVER_STATUS: OWNER_WAIVER_${decision}_FOR_PR_312_2026_09_09`,
       ].join('\n'),
     };
     expect(isOwnerFinalRiskWaiver({
