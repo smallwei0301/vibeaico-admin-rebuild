@@ -27,6 +27,7 @@ describe('Issue #228 Vercel ignored-build exact-SHA Preview canary', () => {
 
   it('builds the exact-SHA Preview canary without needing a previous main SHA', () => {
     expect(runVercelIgnoreCommand({
+      NODE_ENV: 'test',
       VERCEL_GIT_COMMIT_REF: SHA,
       VERCEL_GIT_COMMIT_SHA: SHA,
       VERCEL_TARGET_ENV: 'preview',
@@ -35,6 +36,7 @@ describe('Issue #228 Vercel ignored-build exact-SHA Preview canary', () => {
 
   it('does not let a SHA-shaped Production deployment bypass the branch allowlist', () => {
     expect(runVercelIgnoreCommand({
+      NODE_ENV: 'test',
       VERCEL_GIT_COMMIT_REF: SHA,
       VERCEL_GIT_COMMIT_SHA: SHA,
       VERCEL_TARGET_ENV: 'production',
@@ -43,6 +45,7 @@ describe('Issue #228 Vercel ignored-build exact-SHA Preview canary', () => {
 
   it('keeps arbitrary Preview-environment branches blocked', () => {
     expect(runVercelIgnoreCommand({
+      NODE_ENV: 'test',
       VERCEL_GIT_COMMIT_REF: 'feature/not-allowlisted',
       VERCEL_GIT_COMMIT_SHA: SHA,
       VERCEL_TARGET_ENV: 'preview',
