@@ -73,7 +73,7 @@ describe('Owner Final Risk waiver admission', () => {
       body: [
         'OWNER_FINAL_RISK_WAIVER: PR #312',
         'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
-      ].join('\\n'),
+      ].join('\n'),
     };
     expect(isOwnerFinalRiskWaiver({
       current,
@@ -92,7 +92,7 @@ describe('Owner Final Risk waiver admission', () => {
       body: [
         'OWNER_FINAL_RISK_WAIVER: PR #312',
         'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
-      ].join('\\n'),
+      ].join('\n'),
     };
     expect(isOwnerFinalRiskWaiver({
       current,
