@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "environment": "TEST",
-  "observedAt": "2026-09-09T04:39:50Z",
+  "observedAt": "2026-09-09T05:37:41Z",
   "projectRef": "nmwhwngojosmagjuvxol",
-  "observedMainSha": "4beb0827c2486f986bba4b2b509ae01f91e91b87",
+  "observedMainSha": "6d2678e1262c8cd507ea621632acefd8915059df",
   "migrationLedger": {
     "state": "PRESENT",
     "count": 64,
@@ -13,7 +13,7 @@
       "algorithm": "MD5",
       "value": "1be003bbb2c2801f54ffea6feebb43b2"
     },
-    "evidenceRef": "supabase:test/schema_migrations/2026-09-09T04:39:50Z"
+    "evidenceRef": "supabase:test/schema_migrations/2026-09-09T05:37:41Z"
   },
   "objects": {
     "columns": { "count": 731, "digest": { "algorithm": "MD5", "value": "6ef87d65e60779ced3157d33027769b4" } },
@@ -28,7 +28,7 @@
     {
       "type": "OUT_OF_LEDGER",
       "subject": "provider migration ledger contains identities not represented by current main migration files",
-      "evidenceRef": "supabase:test/schema_migrations/2026-09-09T04:39:50Z"
+      "evidenceRef": "supabase:test/schema_migrations/2026-09-09T05:37:41Z"
     }
   ]
 }

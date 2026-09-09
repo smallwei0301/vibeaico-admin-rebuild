@@ -1,7 +1,7 @@
 # Schema Truth Report
 
-- observed main: `4beb0827c2486f986bba4b2b509ae01f91e91b87`
-- report digest: `2dde08c3a8703d148cde8edd00d248f399bf4d703cad1edcf3d710ce088498f6`
+- observed main: `6d2678e1262c8cd507ea621632acefd8915059df`
+- report digest: `ac672aaecaaf60e1e9e3e6e2c4f5aab7e04b68852908ec5cc9a2673b77cb258d`
 - overall: **DRIFT_OBSERVED**
 - repo migrations: 41 files / `d0ccca4f260260c2557bfc3dd6bb0795508ddd64beeefccf3a63ffb8800b0c47`
 
@@ -28,8 +28,8 @@ Comparison: **ENVIRONMENT_DIFF**
 
 ## Explicit out-of-ledger evidence
 
-- PRODUCTION: provider migration ledger contains identities not represented by current main migration files — `supabase:production/schema_migrations/2026-09-09T04:39:50Z`
-- TEST: provider migration ledger contains identities not represented by current main migration files — `supabase:test/schema_migrations/2026-09-09T04:39:50Z`
+- PRODUCTION: provider migration ledger contains identities not represented by current main migration files — `supabase:production/schema_migrations/2026-09-09T05:37:41Z`
+- TEST: provider migration ledger contains identities not represented by current main migration files — `supabase:test/schema_migrations/2026-09-09T05:37:41Z`
 
 ## Safety
 
