@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "environment": "TEST",
-  "observedAt": "2026-09-09T05:37:41Z",
+  "observedAt": "2026-09-09T06:03:57Z",
   "projectRef": "nmwhwngojosmagjuvxol",
-  "observedMainSha": "6d2678e1262c8cd507ea621632acefd8915059df",
+  "observedMainSha": "44321f3eb1513d9e915c35c0fc00db5d28d18854",
   "migrationLedger": {
     "state": "PRESENT",
     "count": 64,
@@ -13,13 +13,13 @@
       "algorithm": "MD5",
       "value": "d1988f4135e5a36fd7bb82aa88c80761"
     },
-    "evidenceRef": "supabase:test/schema_migrations/2026-09-09T05:37:41Z"
+    "evidenceRef": "supabase:test/schema_migrations/2026-09-09T06:03:57Z"
   },
   "objects": {
     "columns": { "count": 731, "digest": { "algorithm": "MD5", "value": "fbe46d499438e2dd46de785c660ea487" } },
     "constraints": { "count": 286, "digest": { "algorithm": "MD5", "value": "d4956f4dbc485da23bd91009520d53f5" } },
     "indexes": { "count": 136, "digest": { "algorithm": "MD5", "value": "8fae95cdcbbd7a17858dc6dc21d0b24c" } },
-    "views": { "count": 2, "digest": { "algorithm": "MD5", "value": "efd483f05bcfa05030d093267bf18f81" } },
+    "views": { "count": 2, "digest": { "algorithm": "MD5", "value": "e30a25ce6f993ee28321c5d555cc3547" } },
     "policies": { "count": 77, "digest": { "algorithm": "MD5", "value": "f19fcb4f81cad5597450b6e6dc687c2f" } },
     "routines": { "count": 262, "digest": { "algorithm": "MD5", "value": "0f4f17c1c32fa641b867b96d0e4793a5" } },
     "triggers": { "count": 26, "digest": { "algorithm": "MD5", "value": "f3fbf4c1d76ccb9d182fd1bf318b921a" } }
@@ -28,7 +28,7 @@
     {
       "type": "OUT_OF_LEDGER",
       "subject": "provider migration ledger contains identities not represented by current main migration files",
-      "evidenceRef": "supabase:test/schema_migrations/2026-09-09T05:37:41Z"
+      "evidenceRef": "supabase:test/schema_migrations/2026-09-09T06:03:57Z"
     }
   ]
 }
