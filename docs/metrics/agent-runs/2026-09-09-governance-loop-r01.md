@@ -16,7 +16,15 @@
 
 ## 為什麼尚不評分
 
-- run is still in progress
+- modelUsage.weightedUsageImprovementPercent is missing
+- quality.acceptanceEvidenceCoveragePercent is missing
+- quality.auditFirstPassRatePercent is missing
+- flow.lunaDelegationRatePercent is missing
+- flow.waitTimeConvertedPercent is missing
+- auditability.evidenceFieldsCompletePercent is missing
+- auditability.exactHeadTestCoveragePercent is missing
+- auditability.preciseBlockersPercent is missing
+- auditability.scoreInputsCompletePercent is missing
 
 ---
 

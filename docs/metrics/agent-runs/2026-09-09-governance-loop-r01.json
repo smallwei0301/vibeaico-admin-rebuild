@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-09-governance-loop-r01",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-09T00:55:09.327Z",
-  "endedAt": null,
+  "endedAt": "2026-09-09T02:47:26Z",
   "sources": [
     {
       "type": "github-main",
@@ -29,17 +29,32 @@
       "type": "github-workflow-run",
       "ref": "actions/runs/34292770874",
       "note": "Post-#302 main CI completed success, including integration and E2E jobs."
+    },
+    {
+      "type": "github-pull",
+      "ref": "pull/305",
+      "note": "Bounded Final Risk lifecycle fix merged before the schema-truth rebuild; post-merge TEST failure was recorded separately as TEST_INFRA_FOLLOWUP / PRODUCT_FOLLOWUP."
+    },
+    {
+      "type": "github-pull",
+      "ref": "pull/307",
+      "note": "Fresh current-main rebuild of the two-file read-only schema-truth evidence contract; merged after exact-content Sol PASS and allowed Final Risk PASS."
+    },
+    {
+      "type": "github-workflow-run",
+      "ref": "actions/runs/34302953448",
+      "note": "Post-#307 main CI PASS at f9e7fdc: check PASS, integration 50 files / 443 tests PASS, E2E 18 PASS; no rerun."
     }
   ],
   "main": {
     "startSha": "6814751f5ded0526b7df0446deb291897aa3aed3",
-    "endSha": null
+    "endSha": "f9e7fdc57e683d32009c7fef9150e330cc26764c"
   },
   "inventory": {
     "openIssuesStart": 48,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 48,
     "openPrsStart": 20,
-    "openPrsEnd": null,
+    "openPrsEnd": 24,
     "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 0,
@@ -74,12 +89,12 @@
     "exactHeadCiOnly": 0,
     "commitOnly": 0,
     "unfinishedCarryover": 0,
-    "cycleTimeMinutes": null
+    "cycleTimeMinutes": 112.3
   },
   "ci": {
-    "fullCiRuns": 1,
+    "fullCiRuns": 3,
     "invalidReruns": 0,
-    "firstPassRatePercent": null,
+    "firstPassRatePercent": 66.7,
     "sharedTestCollisions": 0
   },
   "quality": {
@@ -113,21 +128,50 @@
     "Scope is governance-only; no Product runtime files, Product FILE_OWNERSHIP, shared canonical TEST, TEST data or Production data were touched.",
     "G2 root cause: current main evaluated Astra before lifecycle metadata, so Draft/non-active PRs could spend Final Risk work and still fail late on WIP metadata; #304 is the reproducible live case.",
     "G3 disposition: #304 KEEP_PARKED; #295/#296 selected for one bounded current-main rebuild. Old parked #296 was not rebased, pushed or rerun.",
-    "Local exact-head evidence: repo integrity passed, 114 unit files / 1442 tests passed, typecheck passed, and production build passed. Governance TEST_PROFILE is SOURCE_ONLY; integration/E2E are policy-skip for this PR.",
-    "Actual model tokens and weekly usage are unavailable; usage remains unknown rather than estimated."
+    "Local exact-head evidence for #307: focused 9/9, full unit 115 files / 1451 tests, repo integrity, typecheck and production build passed. Governance TEST_PROFILE was SOURCE_ONLY; integration/E2E were policy-skip for that PR, then the merged main push completed the real 50-file integration and 18-test E2E run.",
+    "Actual model tokens and weekly usage are unavailable; usage remains unknown rather than estimated.",
+    "G7/G8: PR #307 merged at f9e7fdc. Post-merge main CI 34302953448 completed PASS: integration 50/50 files and 443/443 tests, E2E 18/18.",
+    "The successful main run proves verification flow compatibility for the merged governance state; it does not select a repo/TEST/Production canonical schema or claim Product shipped output.",
+    "A prior post-#305 main TEST run failed with encryption/provider evidence and was not blindly rerun; it remains a separate TEST_INFRA_FOLLOWUP / PRODUCT_FOLLOWUP observation.",
+    "Closeout inventory was re-read live: 48 open non-PR Issues and 24 open PRs. No token or weekly usage figures were invented."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
     "contractVersion": 1,
     "ownerRole": "GOVERNANCE_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-09T02:47:26Z",
+    "evidenceRef": "github:issue#197"
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-09T02:47:26Z",
+    "claims": [
+      {
+        "type": "PR_MERGED",
+        "subject": "#307",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "evidenceRef": "github:issue#197",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "CI_GREEN",
+        "subject": "main:f9e7fdc57e683d32009c7fef9150e330cc26764c",
+        "claimedState": "success",
+        "observedState": "success",
+        "evidenceRef": "github:workflow-run#34302953448",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "RUN_COMPLETE",
+        "subject": "2026-09-09-governance-loop-r01",
+        "claimedState": "complete",
+        "observedState": "complete",
+        "evidenceRef": "github:issue#197",
+        "verification": "VERIFIED"
+      }
+    ]
   }
 }
