@@ -5,6 +5,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { validateRunLedger } from "./run-ledger.mjs";
+// 候選上限的唯一事實來源。這兩支 scorer 在 CI 真的跑（agent-run-scorecard.yml、
+// agent-run-ledger-reconcile.yml），所以硬編碼在這裡的上限不是文件而是活代碼：
+// 上限放寬後若不同步，合規的 Run 會被扣分並被建議「只保留 MAIN 與 Closure」。
+import { MAX_ACTIVE_CANDIDATES } from "./agent-wip-policy.mjs";
 
 function number(value, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -87,7 +91,7 @@ function scoreCompletion(run) {
   const finishedRatio = started > 0 ? Math.min(1, finished / started) : 0;
   const finishedPoints = 10 * finishedRatio;
   const carryoverPoints = inverse(number(run.delivery.unfinishedCarryover), 0, 5, 5);
-  const wipHealthy = number(run.inventory.mainTerraPeak) <= 1 && number(run.inventory.reserveTerraPeak) <= 1 && number(run.inventory.activeCandidatePeak) <= 2;
+  const wipHealthy = number(run.inventory.mainTerraPeak) <= 1 && number(run.inventory.reserveTerraPeak) <= 1 && number(run.inventory.activeCandidatePeak) <= MAX_ACTIVE_CANDIDATES;
   const wipPoints = wipHealthy ? 4 : 0;
   const closurePoints = number(run.inventory.closureSweeps) > 0 ? Math.min(3, 1 + number(run.inventory.closureAdvancedOrClosed) * 2) : 0;
   const testPoints = number(run.inventory.sharedTestPeak) <= 1 && number(run.ci.sharedTestCollisions) === 0 ? 3 : 0;
@@ -152,7 +156,7 @@ function grade(total) {
 function recommendations(run, scores) {
   const items = [];
   if (number(run.inventory.mainTerraPeak) > 1) items.push("把完整 Terra 出貨線降到 1；其餘只保留一條 source-only 預備線，其他 PR 先 PARKED。");
-  if (number(run.inventory.activeCandidatePeak) > 2) items.push("Active Candidate 峰值超過 2；下一輪只保留 MAIN 與 Closure 候選。");
+  if (number(run.inventory.activeCandidatePeak) > MAX_ACTIVE_CANDIDATES) items.push(`Active Candidate 峰值超過 ${MAX_ACTIVE_CANDIDATES}；下一輪把候選收斂回上限之內。`);
   if (scores.flow.lunaAdoptionRatePercent < 80 && number(run.flow.lunaTasks) > 0) items.push("Luna 採用率不足 80%；縮小每個任務到單一問題，並由一位 Luna Aggregator 去重後再交 Sol。");
   if (number(run.delivery.issuesClosed) + number(run.delivery.ownerBlockedComplete) === 0) items.push("本輪沒有 CLOSED 或完整 OWNER_BLOCKED；下一輪進入 Closure Recovery，不再開新的中大型 Issue。");
   if (scores.quality.total < 24) items.push("品質分低於 24/30；暫停預備 Terra 改 code，主線先補 targeted tests 與驗收證據。");
@@ -214,7 +218,7 @@ export function renderMarkdown(run, result) {
     "## B+ lane 證據", "",
     `- MAIN_TERRA 峰值：${display(run.inventory.mainTerraPeak)}（目標 1）`,
     `- RESERVE_TERRA 峰值：${display(run.inventory.reserveTerraPeak)}（目標 ≤1）`,
-    `- Active Candidate 峰值：${display(run.inventory.activeCandidatePeak)}（目標 ≤2）`,
+    `- Active Candidate 峰值：${display(run.inventory.activeCandidatePeak)}（目標 ≤${MAX_ACTIVE_CANDIDATES}）`,
     `- Shared TEST 峰值：${display(run.inventory.sharedTestPeak)}（目標 ≤1）`,
     `- Closure Sweep：${display(run.inventory.closureSweeps)} 次，推進／關閉 ${display(run.inventory.closureAdvancedOrClosed)} 次`, "",
     "## 出貨與品質", "",

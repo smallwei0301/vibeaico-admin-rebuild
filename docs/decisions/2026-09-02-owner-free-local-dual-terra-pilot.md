@@ -49,7 +49,7 @@ Merge
 - `TERRA_RESERVE` 固定 0。
 - `LUNA_CLOSURE` 最多 1。
 - remote `TEST_VALIDATION` 最多 1。
-- Product `ACTIVE_CANDIDATE` 最多 2；Luna Closure 不算第三個 Product candidate。
+- Product `ACTIVE_CANDIDATE` 最多 2；Luna Closure 不算第三個 Product candidate。（⚠️ 2026-09-09 Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）
 
 任一 contract 不合格，立即回到單 Terra（Terra 上限 1、Reserve 上限 1），不得以重跑或補註解繞過 Guard。
 

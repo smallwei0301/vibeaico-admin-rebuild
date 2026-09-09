@@ -16,7 +16,7 @@
 1 條 LUNA_CLOSURE    固定收尾線
 3～6 個窄任務 Luna  預設 4，必要時最多 6
 1 條 TEST_VALIDATION 共用 TEST 驗證線
-最多 2 張 ACTIVE_CANDIDATE PR
+最多 2 張 ACTIVE_CANDIDATE PR（⚠️ 2026-09-09 Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）
 Sol 一般只在 TRIAGE 與 AUDIT 各出現一次
 ```
 

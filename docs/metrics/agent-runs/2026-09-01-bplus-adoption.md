@@ -30,7 +30,7 @@
 
 - MAIN_TERRA 峰值：5（目標 1）
 - RESERVE_TERRA 峰值：0（目標 ≤1）
-- Active Candidate 峰值：5（目標 ≤2）
+- Active Candidate 峰值：5（目標 ≤3）
 - Shared TEST 峰值：0（目標 ≤1）
 - Closure Sweep：1 次，推進／關閉 0 次
 
@@ -49,7 +49,7 @@
 ## 下一輪只調整這些
 
 1. 把完整 Terra 出貨線降到 1；其餘只保留一條 source-only 預備線，其他 PR 先 PARKED。
-2. Active Candidate 峰值超過 2；下一輪只保留 MAIN 與 Closure 候選。
+2. Active Candidate 峰值超過 3；下一輪把候選收斂回上限之內。
 
 ## 資料限制
 

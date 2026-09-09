@@ -1,8 +1,15 @@
 import {
+  MAX_ACTIVE_CANDIDATES,
   parseLaneMetadata as parseBaseLaneMetadata,
   readField,
   validateLaneMetadata as validateBaseLaneMetadata,
 } from './agent-wip-policy.mjs';
+
+/**
+ * 轉出上限常數，讓 `agent-wip-guard.yml` 能從它匯入的這一支拿到同一個數字，
+ * 不必自己再寫一次（那正是這次收斂要消滅的第三、第四份拷貝）。
+ */
+export { MAX_ACTIVE_CANDIDATES };
 import { validateRunAdmission } from './run-admission-policy.mjs';
 
 function upper(value) {
@@ -262,8 +269,8 @@ export function validateGlobalWip(summary) {
   if (activeTest.length > 1) {
     errors.push(`active TEST_VALIDATION count is ${activeTest.length}; max is 1`);
   }
-  if (activeCandidates.length > 2) {
-    errors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is 2`);
+  if (activeCandidates.length > MAX_ACTIVE_CANDIDATES) {
+    errors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is ${MAX_ACTIVE_CANDIDATES}`);
   }
 
   if (activeReserve.length === 1 && !dualPilotRequested) {

@@ -31,7 +31,7 @@ Mode C 原本允許不同 Issue 各有一位 Terra 同時做完整 BUILD，並�
 1 LUNA_CLOSURE
 3～6 個窄任務 Luna
 1 shared TEST_VALIDATION
-最多 2 張 ACTIVE_CANDIDATE
+最多 2 張 ACTIVE_CANDIDATE（⚠️ 2026-09-09 Owner 裁示調整為 3，見 `docs/OWNER-DECISIONS.md`）
 ```
 
 ## 仍可沿用的 Mode C 教訓

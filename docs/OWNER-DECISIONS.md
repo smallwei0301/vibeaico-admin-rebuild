@@ -2,7 +2,13 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-08。
+> 最後更新：2026-09-09。
+
+## 2026-09-09 已裁示
+
+| Issue／PR | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| repo governance | 同時可存在的 Product candidate 上限 | **由 2 調整為 3。** | 上限原本硬編碼在**九處**：`agent-wip-policy.mjs` 與 `dual-terra-wip-policy.mjs` 各一個檢查、`agent-wip-guard.yml` 的摘要表格與 PR 留言各一次 `.../2`、同一支 workflow 裡 `candidate:active` label 的描述字串（`createLabel` 會把它寫進 GitHub），以及 `score-run.mjs` 三處（`wipHealthy` 判定、建議文字、報告的「目標 ≤2」）與 `score-run-v2.mjs` 一處（完成度加分）。**這九處不等價**：擋 PR 的只有 `agent-wip-guard.yml` → dual-terra 的 `validateGlobalWip`（全 repo 唯一非測試進入點）；`ci.yml` 雖 import 了 `agent-wip-policy.mjs`，卻只呼叫 `decideTestValidation`，從不碰 `validateGlobalWip`——**那一份在 CI 裡是死碼，目前只有單元測試覆蓋**，仍一併收斂，因為它是另一份獨立實作，兩份各帶一個數字留著必然分岔。而 `score-run.mjs` 與 `score-run-v2.mjs` **兩支都在 CI 真的跑**（`agent-run-scorecard.yml` 逐字比對已 commit 的報告、`agent-run-ledger-reconcile.yml` 重算 v2）：上限不同步會把一個峰值 3 的**合規** Run 扣 3 分完成度、標成 `wipHealthy=false` 並建議收斂候選——把合規行為報成違規，因此必須一起改；兩份 2026-09-01 legacy 報告依腳本重新產生（分數不變，峰值 5 在 ≤2 與 ≤3 下同樣不達標）。本次收斂成單一來源 `MAX_ACTIVE_CANDIDATES`（宣告於 `agent-wip-policy.mjs`，由 dual-terra re-export 供 workflow 取用），並由 `tests/unit/candidate-cap-single-source.test.ts` 鎖住「字面量不得再出現第二份」與「3 過、4 不過」，每條鎖都經變異驗證。TERRA_BUILD／TERRA_RESERVE／LUNA_CLOSURE／TEST_VALIDATION 各自的上限**不變**。 |
 
 ## 2026-09-08 已裁示
 
@@ -45,7 +51,7 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
-| repo governance | B+ 出貨迴圈 | **B+ 正式取代 Mode C 中「不同 Issue 可同時有多條完整 Terra BUILD」的排程。全 repo 保留 1 條 MAIN Terra 完整出貨線、最多 1 條 source-only RESERVE Terra、1 條 Luna Closure、預設 4／最多 6 個窄任務 Luna、1 條 shared TEST，以及最多 2 張 active candidate PR。** | MAIN 未到 `CLOSED`／`AUDIT_READY`／完整 `OWNER_BLOCKED` 前，不開第二條完整大型工地。RESERVE 不碰 TEST、不進 Audit、最多一個原子 commit。Sol 一般只做 TRIAGE 與 AUDIT。canonical：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`、`docs/AGENT-EXECUTION.md`、`docs/AGENT-BPLUS-DELIVERY-LOOP.md`。 |
+| repo governance | B+ 出貨迴圈 | **B+ 正式取代 Mode C 中「不同 Issue 可同時有多條完整 Terra BUILD」的排程。全 repo 保留 1 條 MAIN Terra 完整出貨線、最多 1 條 source-only RESERVE Terra、1 條 Luna Closure、預設 4／最多 6 個窄任務 Luna、1 條 shared TEST，以及最多 2 張 active candidate PR。**（⚠️ 2026-09-09 Owner 裁示調整為 3，見本檔最上方 2026-09-09 列） | MAIN 未到 `CLOSED`／`AUDIT_READY`／完整 `OWNER_BLOCKED` 前，不開第二條完整大型工地。RESERVE 不碰 TEST、不進 Audit、最多一個原子 commit。Sol 一般只做 TRIAGE 與 AUDIT。canonical：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`、`docs/AGENT-EXECUTION.md`、`docs/AGENT-BPLUS-DELIVERY-LOOP.md`。 |
 | repo governance | 自然語言 Loop 指令 | **「開始 Loop」「繼續 Loop」「復盤」「複盤」是本 repo 的正式自然語言入口。`/goal` 與開始／繼續 Loop 相容；復盤預設唯讀，復盤並優化最多實作兩項治理改良。** | 有 `IN_PROGRESS` Run 時接續，不另建重複 Run。新 Session 從 `origin/main` 的 `AGENTS.md`、orchestration Skill 與 retrospective Skill 重建指令語意。canonical：`docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`。 |
 | repo governance | Completion Truth Gate | **送出 merge／close／migration／deploy 等寫入動作不等於完成。宣稱完成前必須重新讀 live PR／Issue／CI／main／環境並留下可追溯證據。** | PR 合併至少驗證 `merged_at`、`merge_commit_sha`、current main head、可追溯 compare 與 `ref=main` 關鍵檔案。尚未查證只能寫 `*_REQUESTED_UNVERIFIED`。未查證卻宣稱完成，復盤記 `AUDIT_DATA_INVALID`、安全性失敗與 `F-HARD`。canonical decision：`docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`。 |
 
@@ -53,10 +59,10 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
-| repo governance | 全域 WIP 與 Close-first 基礎 | **全 repo 單一完整 Terra、固定 Closure、單一 shared TEST、最多兩張 active candidate 與 close-first TRIAGE 是 B+ 的基礎；2026-09-01 起另允許一條嚴格 source-only RESERVE Terra。** | 以 2026-09-01 B+ 為最新裁示。其餘 PR 必須 `PARKED`／`HISTORICAL`／`OWNER_BLOCKED`；不得引用 Mode C 恢復多條完整 Terra。 |
+| repo governance | 全域 WIP 與 Close-first 基礎 | **全 repo 單一完整 Terra、固定 Closure、單一 shared TEST、最多兩張 active candidate（⚠️ 2026-09-09 Owner 裁示調整為 3，見本檔最上方 2026-09-09 列）與 close-first TRIAGE 是 B+ 的基礎；2026-09-01 起另允許一條嚴格 source-only RESERVE Terra。** | 以 2026-09-01 B+ 為最新裁示。其餘 PR 必須 `PARKED`／`HISTORICAL`／`OWNER_BLOCKED`；不得引用 Mode C 恢復多條完整 Terra。 |
 | repo governance | Owner 控制訊號與 Issue 來源 | **Owner 重送 `/goal`、`/steer` 或「繼續」可能是模型速度／深度／角色切換，不能單憑此記為 Agent 提早停止；只有具完整 `AGENT_DISCOVERED` 來源的 Issue 才算 Agent 新增。** | 模型切換保留 branch／PR／exact head／TEST lane／Run ID，不重做完成工作；缺少前一位 assistant 終止性證據時寫 `UNKNOWN_CONTROL_EVENT`；歷史無來源 Issue 一律 `owner-or-unknown`。 |
 | repo governance | 遠端 tree、套件與語法完整性 | Git Data API 建出的 exact head 必須依序通過完整性閘門、`npm ci`、typecheck、unit 與 build，才可建立或移動 `preview/**`。 | 核心路徑缺失、異常大量刪檔、程式檔裸 SHA、lockfile 無法重建或編譯失敗一律 fail closed；見 `docs/decisions/2026-09-02-owner-repository-integrity-gates.md`。 |
-| repo governance | PR lifecycle Janitor | **保留 fail-closed stale PR 清理、每 Issue 單一 ACTIVE candidate 與短命 VALIDATION；Janitor 必須服從 B+ 的 MAIN／RESERVE／Closure／TEST 與兩候選上限。** | 只有明確 metadata、同 Issue、同 repo、祖先或 patch coverage、mutation 前狀態未變時才自動關閉 superseded PR，否則 `JANITOR_REVIEW`。canonical：`docs/PR-LIFECYCLE.md`。 |
+| repo governance | PR lifecycle Janitor | **保留 fail-closed stale PR 清理、每 Issue 單一 ACTIVE candidate 與短命 VALIDATION；Janitor 必須服從 B+ 的 MAIN／RESERVE／Closure／TEST 與候選上限。**（⚠️ 2026-09-09 Owner 裁示調整為 3，見本檔最上方 2026-09-09 列） | 只有明確 metadata、同 Issue、同 repo、祖先或 patch coverage、mutation 前狀態未變時才自動關閉 superseded PR，否則 `JANITOR_REVIEW`。canonical：`docs/PR-LIFECYCLE.md`。 |
 | #66 / GUIDE | GUIDE 新響應式 UI | **以五張手機基準稿為正式視覺與資訊架構基準；第一層固定為首頁／團次／旅客／訊息／更多。** | 手機大字、大卡片、低資訊密度；平板／桌機仍維持同五個父層級；GUIDE 行事曆以月／週／日期團次摘要為主，不做美業式小時時段牆。canonical：`20-GUIDE-RESPONSIVE-UI.md`。 |
 | #41 / #12 / #42 | GUIDE 尾款期限 | **預設成團後 48 小時，但導遊可自行修改；常見現場收費方式必須是一級快速選項。** | 快速選項至少含 24h／48h／72h／現場收尾款／自訂；NONE 可顯示現場收全額。現場收款不提前標記尾款逾期，實收後由導遊確認。 |
 | #41 / #12 | 尾款逾期 | **到期未付不自動取消、不自動釋放名額、不自動沒收訂金；先通知導遊與旅客，由導遊決定延長或取消。** | 預設快速選項為「到期未付 → 通知我處理」；現場收尾款／全額的方案在出發前不走一般尾款逾期。canonical decision：`docs/decisions/2026-08-31-guide-balance-payment-deadline.md`。 |

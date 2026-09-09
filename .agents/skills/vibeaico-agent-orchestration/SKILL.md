@@ -1,9 +1,9 @@
 ---
 name: vibeaico-agent-orchestration
-description: "Use for /goal, 開始 Loop, 繼續 Loop, continued autonomous delivery, model switches, open-Issue reduction, multi-Agent delegation, B+ WIP control, shared TEST scheduling, CI classification, PR cleanup, scorecard generation, or Issue closeout in smallwei0301/vibeaico-admin-rebuild. Enforces one MAIN Terra, one source-only RESERVE Terra, one Luna Closure lane, 3-6 narrow Luna tasks, one shared TEST holder, at most two active candidates, and verified completion claims."
+description: "Use for /goal, 開始 Loop, 繼續 Loop, continued autonomous delivery, model switches, open-Issue reduction, multi-Agent delegation, B+ WIP control, shared TEST scheduling, CI classification, PR cleanup, scorecard generation, or Issue closeout in smallwei0301/vibeaico-admin-rebuild. Enforces one MAIN Terra, one source-only RESERVE Terra, one Luna Closure lane, 3-6 narrow Luna tasks, one shared TEST holder, at most three active candidates, and verified completion claims."
 metadata:
   author: smallwei0301
-  version: "0.7.1"
+  version: "0.7.2"
 ---
 
 # VibeAI.co B+ Agent Orchestration
@@ -49,7 +49,7 @@ RESERVE_TERRA    max 1 source-only preparation lane
 LUNA_CLOSURE     max 1 closeout / Janitor lane
 LUNA_TASKS       default 4, max 6, plus one Aggregator
 TEST_VALIDATION  max 1 shared TEST holder
-ACTIVE_CANDIDATE max 2
+ACTIVE_CANDIDATE max 3
 ```
 
 RESERVE is not a second delivery line. It may produce at most one atomic source-only commit, then

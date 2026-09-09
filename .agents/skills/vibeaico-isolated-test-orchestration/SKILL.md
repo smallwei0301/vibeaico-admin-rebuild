@@ -3,7 +3,7 @@ name: vibeaico-isolated-test-orchestration
 description: "Use for Issue #104, local Supabase per-PR tests, TEST_PROFILE routing, two free isolated TEST slots, canonical TEST handoff, migration rebuild drift, or the B+ dual-Terra pilot in smallwei0301/vibeaico-admin-rebuild. Paid Supabase Preview Branches are deferred and must not be created."
 metadata:
   author: smallwei0301
-  version: "0.3.0"
+  version: "0.3.1"
 ---
 
 # Free isolated TEST orchestration
@@ -101,7 +101,7 @@ Return the next Run to one full Terra when:
 - local startup or cleanup fails;
 - lanes collide in files, migrations, fixtures or schema ownership;
 - cross-lane contamination appears;
-- active Product candidates exceed two;
+- active Product candidates exceed three;
 - quality drops or post-merge regression rises;
 - weighted usage per shipped／autonomous outcome worsens by more than 20% without more output.
 
