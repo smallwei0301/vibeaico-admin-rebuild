@@ -74,7 +74,7 @@ jobs:
               comments
                 .filter((comment) => {
                   const waiverMarker = String(comment?.body ?? '').match(
-                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_WAIVER[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_WAIVER[ \t]*:[ \t]*(.*?)[ \t]*$/im,
                   )?.[1]?.trim();
                   return waiverMarker === `PR #${number}`;
                 })
