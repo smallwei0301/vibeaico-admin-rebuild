@@ -28,6 +28,8 @@ export function shouldEnforceFinalRisk({ pullRequestState = 'open', draft = fals
 const OWNER_WAIVER_STATUS = /^OWNER_WAIVED_FOR_PR_(\d+)_\d{4}_\d{2}_\d{2}$/;
 
 /**
+ * @param {{current?: Record<string, any>, owner?: string, origin?: string, laneState?: string, body?: string, ownerAttestations?: Array<Record<string, any>>, changeDigest?: string}} [input]
+ *
  * A one-time Owner waiver is a merge-admission exception, never a model review.
  * It is intentionally narrow: only the repository owner may author it, the PR
  * must be explicitly OWNER-origin and OWNER_BLOCKED, and the scope must bind to
