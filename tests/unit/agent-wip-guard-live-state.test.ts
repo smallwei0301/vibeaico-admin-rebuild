@@ -67,8 +67,10 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(gateIndex).toBeGreaterThan(metadataIndex);
     expect(evaluationIndex).toBeGreaterThan(gateIndex);
     expect(workflow).toContain('draft: current.draft === true');
+    expect(workflow).toContain('const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({');
     expect(workflow).toContain("status: current.state === 'open' ? 'DEFERRED_NON_ACTIVE' : 'NOT_REQUIRED'");
     expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
+    expect(workflow).toContain('ownerFinalRiskWaived,');
     expect(workflow).toContain('state: policyStatus');
     expect(workflow).toContain('Agent WIP Policy intentionally remains pending and is not an approval');
     expect(workflow).toContain('## Agent WIP Guard: deferred — not an approval');
@@ -110,6 +112,7 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('const duplicateFailure = Boolean(');
     expect(workflow).toContain('alert.isDuplicateWipFailure({');
     expect(workflow).toContain('DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}');
+    expect(workflow).toContain('OWNER_WAIVED_ONCE');
 
     const statusIndex = workflow.indexOf('await github.rest.repos.createCommitStatus({');
     const duplicateWarningIndex = workflow.indexOf('core.warning(`Duplicate WIP failure suppressed');

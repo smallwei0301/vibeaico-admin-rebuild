@@ -65,6 +65,12 @@ jobs:
               });
             }
             const metadata = policy.parseLaneMetadata(current);
+            const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({
+              current,
+              owner,
+              origin: metadata.origin,
+              laneState: metadata.state,
+            });
             const finalRiskRequired = astra.shouldEnforceFinalRisk({
               pullRequestState: current.state,
               draft: current.draft === true,
@@ -246,6 +252,7 @@ jobs:
             const policyStatus = astra.finalRiskGateStatus({
               hasErrors: errors.length > 0,
               finalRiskRequired,
+              ownerFinalRiskWaived,
             });
             const fingerprint = errors.length
               ? alert.buildWipErrorFingerprint({
@@ -293,7 +300,9 @@ jobs:
                 description: policyStatus === 'failure'
                   ? `${errors.length} WIP policy error(s); see PR comment`
                   : policyStatus === 'success'
-                    ? 'B+ lane metadata and WIP policy passed'
+                    ? ownerFinalRiskWaived
+                      ? 'Owner-authorized one-time Final Risk waiver; WIP policy passed (not an Astra PASS)'
+                      : 'B+ lane metadata and WIP policy passed'
                     : 'Final Risk deferred; Agent WIP Policy intentionally remains pending and is not an approval',
                 target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
               });
@@ -305,7 +314,7 @@ jobs:
                   .join(', ')
               : 'none';
             const metrics = [
-              ['Final Risk gate', finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'],
+              ['Final Risk gate', ownerFinalRiskWaived ? 'OWNER_WAIVED_ONCE' : finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'],
               ['Astra final risk review', astraResult.status],
               ['Astra change digest', astraResult.changeDigest || 'not-computed'],
               ['Current PR', `#${current.number}`],

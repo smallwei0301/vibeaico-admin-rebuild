@@ -25,9 +25,52 @@ export function shouldEnforceFinalRisk({ pullRequestState = 'open', draft = fals
   return !FINAL_RISK_DEFERRED_LANE_STATES.has(String(laneState).trim().toUpperCase());
 }
 
-export function finalRiskGateStatus({ hasErrors = false, finalRiskRequired = false } = {}) {
+const OWNER_WAIVER_STATUS = /^OWNER_WAIVED_FOR_PR_(\d+)_\d{4}_\d{2}_\d{2}$/;
+
+/**
+ * A one-time Owner waiver is a merge-admission exception, never a model review.
+ * It is intentionally narrow: only the repository owner may author it, the PR
+ * must be explicitly OWNER-origin and OWNER_BLOCKED, and the scope must bind to
+ * this PR. Draft, parked, agent-authored and copied waiver text fail closed.
+ */
+export function isOwnerFinalRiskWaiver({
+  current = {},
+  owner = '',
+  origin = '',
+  laneState = '',
+  body = current.body ?? '',
+} = {}) {
+  const trustedOwner = String(owner).trim();
+  const number = Number(current.number ?? 0);
+  if (
+    String(current.state ?? '').trim().toLowerCase() !== 'open' ||
+    current.draft === true ||
+    !trustedOwner ||
+    String(current.user?.login ?? '').trim() !== trustedOwner ||
+    String(current.head?.repo?.owner?.login ?? '').trim() !== trustedOwner ||
+    String(origin).trim().toUpperCase() !== 'OWNER' ||
+    String(laneState).trim().toUpperCase() !== 'OWNER_BLOCKED' ||
+    !Number.isInteger(number) ||
+    number < 1
+  ) return false;
+
+  const status = readField(body, 'FINAL_RISK_STATUS');
+  const statusMatch = status.match(OWNER_WAIVER_STATUS);
+  if (!statusMatch || Number(statusMatch[1]) !== number) return false;
+  const scope = readField(body, 'FINAL_RISK_WAIVER_SCOPE');
+  if (scope !== `PR #${number} only; one-time exception; does not change the repository default Final Risk policy or authorize fake model evidence`) {
+    return false;
+  }
+  return readField(body, 'ASTRA_REVIEW_STATUS') === status;
+}
+
+export function finalRiskGateStatus({
+  hasErrors = false,
+  finalRiskRequired = false,
+  ownerFinalRiskWaived = false,
+} = {}) {
   if (hasErrors) return 'failure';
-  return finalRiskRequired ? 'success' : 'pending';
+  return finalRiskRequired || ownerFinalRiskWaived ? 'success' : 'pending';
 }
 
 /**
