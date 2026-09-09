@@ -298,6 +298,7 @@ B-5 時必須新增 `src/services/chat.ts`（`adapt(mock, real)` 包好四個端
 | GET `/api/customers/at-risk` | customers_view at_risk=true |
 | POST `/api/feature-store/:code/apply‖cancel‖restore` | 訂閱異動：完整規格（扣點、套裝、還原副作用）在 **09 分冊 §3**，照該冊實作 ⚙O |
 | POST `/api/bug-report`、`/api/support-chat/*` | 平台級功能，MVP：寫進一張 `bug_reports` 表＋寄信給平台管理者即可 |
+| POST `/api/platform/impersonation/start‖end`、GET `/api/platform/impersonation/current`、GET `/api/settings/impersonation-log` | **平台管理者代登入**（Owner 2026-08-27 裁示「要做」）。完整規格見 **`21-PLATFORM-ADMIN-IMPERSONATION.md`**，本表不重複。要點：僅 platform admin；`reason` 必填；session 30 分鐘硬上限不續期；代登入必然繞過 RLS，租戶邊界只剩解析出的 `tenantId`；每次寫入自動記 `impersonation_actions`；**租戶自己查得到**；不取得也不共用租戶密碼；代建資料 `source = PLATFORM_ASSISTED` 只作來源 badge，不改變導遊的編輯權。與 Midao tour platform 的連通見該分冊 §8（對面已有一套在跑的 impersonation，本專案對齊而非另創；跨專案入口的 A／B 方案待 Owner 擇一） |
 | POST `/api/support-chat/ask` | **後台右下角小幫手的自助查詢**（唯讀，`requireTenant('STAFF')`）。body `{ question: string }`（1–500 字），回 `{ intent, answer, facts[], links[] }`。`intent` ∈ `LINE_STATUS`／`PUSH_QUOTA`／`ENTITLEMENT`／`UNSUPPORTED`。資料來自 `tenant_settings`／`push_quota_usage`／`feature_subscriptions` 三張既有表，**無 migration、不寫入任何資料**。判定是 `src/server/support-chat.ts` 裡一張寫死的關鍵字表，**沒有語言模型**；判不出來一律 `UNSUPPORTED` 而不猜。⚠️ 路徑刻意不是 `/api/support-chat/messages`——那個名字保留給上一列的客服對話串（#25），兩者語意不同，共用路徑會讓契約靜默換義 |
 
 ---
