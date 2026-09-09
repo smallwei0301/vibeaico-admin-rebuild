@@ -10,7 +10,7 @@ Date: 2026-09-09
 - OBSERVED_AT: `2026-09-09T06:03:57Z`
 - PROJECT_REFS: TEST=`nmwhwngojosmagjuvxol`, PRODUCTION=`egehnijjpgijmccagxac`
 - QUERY_VERSION: `public-schema-metadata-v1`
-- QUERY_DIGEST: `00008ea241a42440995d639a619c11d18d4a5e01c92d9b5fb07cd9d83151234`
+- QUERY_DIGEST: `00008ea241a42440995d639a619c11d18d4a5e01c92d9b5fb07cd9d83151234d`
 - CAPTURE_DIGEST_RULE: per-surface MD5 of ordered `item_key|item_value` lines; ledger MD5 of ordered `version|name` lines
 - REQUESTED_MODEL: none (read-only provider evidence)
 - ACTUAL_MODEL: none (no model execution required)
