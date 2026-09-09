@@ -339,7 +339,7 @@ export async function runSeed(admin) {
         tenant_id: SHOP_A.id,
         method_type: 'BANK_TRANSFER',
         display_name: '銀行轉帳（測試）',
-        config: { bankName: '測試銀行', bankCode: '000', accountNumber: '0000000000000', accountHolder: 'A 店測試' },
+        config: { bankName: '測試銀行', bankCode: '000', accountNumber: '0000000000000', accountHolderName: 'A 店測試' },
       },
     ],
     'tenant_payment_methods',
