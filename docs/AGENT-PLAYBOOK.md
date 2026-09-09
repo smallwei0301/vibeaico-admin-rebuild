@@ -525,6 +525,50 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 相關教訓：PB-016、PB-027、PB-029。
 - Review 問句：**「如果我現在故意把最重要的保護拿掉，哪一條測試一定會紅？」** 如果答不出來，該保護尚未被可靠驗證。
 
+### PB-031 — 拿 Issue 內文當 Owner 決策，於是對一件早已裁示的事重新提案
+
+- 首次／最近：2026-09-09／2026-09-09
+- 發生次數：1
+- Issue／PR／CI：#25、#42；`docs/OWNER-DECISIONS.md:88`、`:108`
+- 分類：Agent
+- 事件：Owner 詢問 #25 的 impersonate 做或不做時，我以「不做（推薦）」為預設選項提案，
+  並額外建議一個**與裁示相反**的替代方案（唯讀支援檢視）。實際上 Owner 早在 **2026-08-27**
+  就裁示「**要做，作為正式平台能力**」，2026-08-28 另有 #42／#25 的代建裁示補充實作方式。
+- 證據：
+  ```
+  docs/OWNER-DECISIONS.md:108（2026-08-27 已裁示）
+  | #25 | Midao 管理者代登入租戶 | 要做，作為正式平台能力 |
+    從 Midao 管理者後台進入指定租戶協助查看／修改。僅 platform admin；全程 audit；
+    租戶可查紀錄；不可取得租戶密碼或共用密碼。 |
+
+  docs/OWNER-DECISIONS.md:88（2026-08-28 已裁示）
+  | #42 / #25 | Midao 協助代建方案 | 平台可代建，但導遊仍是可編輯的資料 owner；
+    使用 platform-admin／impersonation + audit，不共用密碼。 |
+  ```
+  另有兩處 canonical 規格已把它當成既定能力引用：
+  `docs/integration/18-GUIDE-COMMERCE-LIFECYCLE.md:406`、
+  `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md:446`。
+- 根因：三層疊加，全部是執行者的問題，不是紀錄的問題。
+  1. **沒有讀 `docs/OWNER-DECISIONS.md`。** CLAUDE.md「Mandatory start」第 2 點逐字點名這個檔案，
+     整個 session 一次都沒開過它。後面兩層都是這一層的結果。
+  2. **拿 Issue 內文當決策來源。** #25 的 body 仍寫著「⚠️ 決策（阻擋性）：impersonate 做還是
+     不做…**不做也是有效答案**」——那段文字寫於裁示之前且從未回填。CLAUDE.md 的真相優先序是
+     **main canonical docs ＞ Issue 內文**，我把它反過來用了。
+  3. **對已裁示事項重新提案。** 這比「重問」更糟：重問只是浪費一次往返，附帶一個有說服力的
+     反向建議則可能真的翻掉一個已定案的產品決策。
+- 影響：Owner 必須花一輪把已經做過的決定再講一次；#25 因此又多停一天。無程式碼或資料受影響。
+- 預防：
+  1. **開工第一件事就是 `grep -n -i "<關鍵字>" docs/OWNER-DECISIONS.md`**，在讀 Issue 內文之前。
+     Issue body 是提案時的快照，Owner 裁示後**不保證**會回填。
+  2. 任何準備向 Owner 提出的「決策題」，送出前一律先在 `docs/OWNER-DECISIONS.md`、
+     `docs/decisions/**`、`docs/integration/**` 三處各搜一次同義詞（本例：`impersonat`、
+     `代登`、`代建`、`platform.admin`）。**搜不到才問。**
+  3. 發現 Issue 內文與 `OWNER-DECISIONS.md` 不一致時，**當場回填 Issue**，不要只在留言裡講——
+     下一個 agent 讀到的還是 body。
+  4. 同族陷阱：PB-019（沒併回 main 的實作等於不存在）是「repo 落後於現實」；本條是
+     「Issue 內文落後於 repo」。兩者都來自「拿一份沒有回填義務的文字當現行事實」。
+- 相關教訓：PB-019、PB-024、PB-027。
+
 ### 六問開工／Review Checklist
 
 對任何涉及狀態一致性、共享資源或外部承諾的功能，在施工與 Sol／Final Risk review 時至少問一次：
