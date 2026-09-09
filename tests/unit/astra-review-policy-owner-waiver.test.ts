@@ -104,6 +104,33 @@ describe('Owner Final Risk waiver admission', () => {
     })).toBe(true);
   });
 
+  it('treats a later edit as newer than a higher-id grant', () => {
+    const editedRevocation = {
+      id: 1,
+      created_at: '2026-09-09T10:00:00Z',
+      updated_at: '2026-09-09T10:04:00Z',
+      user: { login: 'smallwei0301' },
+      body: [
+        'OWNER_FINAL_RISK_WAIVER: PR #312',
+        'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
+      ].join('\\n'),
+    };
+    const newerGrant = {
+      ...ownerAttestation,
+      id: 2,
+      created_at: '2026-09-09T10:03:00Z',
+      updated_at: '2026-09-09T10:03:00Z',
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [newerGrant, editedRevocation],
+      changeDigest,
+    })).toBe(false);
+  });
+
   it('keeps an ordinary deferred lane pending', () => {
     expect(finalRiskGateStatus({ hasErrors: false, finalRiskRequired: false })).toBe('pending');
   });
