@@ -12,6 +12,7 @@
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration --config vitest.integration.config.mts --no-file-parallelism",
     "test:e2e": "playwright test",
+    "verify:flex-menu": "vitest run --config vitest.verify.config.mts --reporter=verbose tests/verify/flex-menu-validate.06.check.ts",
     "test:all": "npm run typecheck && npm test && npm run test:integration && npm run test:e2e",
     "guard:repo-integrity": "node scripts/ci/repo-integrity-guard.mjs",
     "agent:pr-janitor": "node scripts/agents/pr-janitor.mjs",
