@@ -52,6 +52,44 @@ describe('agent WIP Guard live-state dispatch', () => {
     );
   });
 
+  it('defers Final Risk until the live PR is active and non-draft', () => {
+    const metadataIndex = workflow.indexOf(
+      'const metadata = policy.parseLaneMetadata(current);',
+    );
+    const gateIndex = workflow.indexOf(
+      'const finalRiskRequired = astra.shouldEnforceFinalRisk({',
+    );
+    const evaluationIndex = workflow.indexOf(
+      'await astra.evaluateGithubAstra({ github, owner, repo, current })',
+    );
+
+    expect(metadataIndex).toBeGreaterThan(-1);
+    expect(gateIndex).toBeGreaterThan(metadataIndex);
+    expect(evaluationIndex).toBeGreaterThan(gateIndex);
+    expect(workflow).toContain('draft: current.draft === true');
+    expect(workflow).toContain("status: current.state === 'open' ? 'DEFERRED_NON_ACTIVE' : 'NOT_REQUIRED'");
+    expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
+    expect(workflow).toContain('state: policyStatus');
+    expect(workflow).toContain('Agent WIP Policy intentionally remains pending and is not an approval');
+    expect(workflow).toContain('## Agent WIP Guard: deferred — not an approval');
+    expect(workflow).toContain('- FINAL_RISK_GATE: ${finalRiskRequired ? \'ENFORCED\' : \'DEFERRED_NON_ACTIVE\'}');
+  });
+
+  it('revalidates draft and lifecycle state before writing the required status', () => {
+    const rereadIndex = workflow.indexOf(
+      'const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });',
+    );
+    const statusIndex = workflow.indexOf(
+      'await github.rest.repos.createCommitStatus({',
+      rereadIndex,
+    );
+
+    expect(rereadIndex).toBeGreaterThan(-1);
+    expect(statusIndex).toBeGreaterThan(rereadIndex);
+    expect(workflow).toContain('fresh.draft !== current.draft');
+    expect(workflow).toContain('fresh.state !== current.state');
+  });
+
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
     expect(workflow).toContain(
       'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}',
@@ -67,7 +105,8 @@ describe('agent WIP Guard live-state dispatch', () => {
   it('writes a dedicated policy status that remains failed even when duplicate email noise is suppressed', () => {
     expect(workflow).toContain('statuses: write');
     expect(workflow).toContain("context: 'Agent WIP Policy'");
-    expect(workflow).toContain("state: errors.length ? 'failure' : 'success'");
+    expect(workflow).toContain('state: policyStatus');
+    expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
     expect(workflow).toContain('const duplicateFailure = Boolean(');
     expect(workflow).toContain('alert.isDuplicateWipFailure({');
     expect(workflow).toContain('DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}');
@@ -91,7 +130,7 @@ describe('agent WIP Guard live-state dispatch', () => {
 });
 
 import {
-  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, routing,
+  changeDigestOf, classifyAstra, evaluateAstra, evaluateGithubAstra, finalRiskGateStatus, routing, shouldEnforceFinalRisk,
 } from '../../scripts/agents/astra-review-policy.mjs';
 
 const body = 'ASTRA_RISK: NONE\nASTRA_RATIONALE: Change only an ordinary heading\n';
@@ -113,6 +152,27 @@ const makeReview = (patch = {}, record = {}) => ({
   ...record,
 });
 const candidate = (reviews = [makeReview()], extra = {}) => ({ body, changedFiles: ['scripts/agents/model-routing.json'], context, reviews, ...extra });
+
+describe('Astra lifecycle gate', () => {
+  it('defers Final Risk for draft and non-active lifecycle states only', () => {
+    expect(shouldEnforceFinalRisk({ pullRequestState: 'open', draft: false, laneState: 'ACTIVE' })).toBe(true);
+    expect(shouldEnforceFinalRisk({ pullRequestState: 'open', draft: true, laneState: 'ACTIVE' })).toBe(false);
+    for (const laneState of ['PARKED', 'COMPLETE', 'OWNER_BLOCKED', 'HISTORICAL', 'READY_FOR_PROMOTION']) {
+      expect(shouldEnforceFinalRisk({ pullRequestState: 'open', draft: false, laneState })).toBe(false);
+    }
+  });
+
+  it('fails closed for unknown lane states and does not enforce closed PRs', () => {
+    expect(shouldEnforceFinalRisk({ pullRequestState: 'open', draft: false, laneState: 'STALE_UNKNOWN' })).toBe(true);
+    expect(shouldEnforceFinalRisk({ pullRequestState: 'closed', draft: false, laneState: 'ACTIVE' })).toBe(false);
+  });
+
+  it('never reports deferred Final Risk as a passing policy status', () => {
+    expect(finalRiskGateStatus({ hasErrors: true, finalRiskRequired: false })).toBe('failure');
+    expect(finalRiskGateStatus({ hasErrors: false, finalRiskRequired: false })).toBe('pending');
+    expect(finalRiskGateStatus({ hasErrors: false, finalRiskRequired: true })).toBe('success');
+  });
+});
 
 describe('Astra risk review contract', () => {
   it('does not escalate ordinary UI work or routine DB wiring solely for touching DB', () => {

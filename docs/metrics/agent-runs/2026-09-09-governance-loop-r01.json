@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-09-governance-loop-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-09T00:55:09.327Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "github-main",
+      "ref": "6814751f5ded0526b7df0446deb291897aa3aed3",
+      "note": "Current protected main at governance-loop start; #302 is merged and its post-merge CI completed successfully."
+    },
+    {
+      "type": "github-issue",
+      "ref": "issues/295",
+      "note": "Existing Final Risk lifecycle noise issue; live #304 failure re-proved the bounded defect on current main."
+    },
+    {
+      "type": "github-pull",
+      "ref": "pull/304",
+      "note": "Current live evidence: Draft governance PR invoked Final Risk before metadata admission and failed without trusted origin/Astra evidence; kept parked."
+    },
+    {
+      "type": "github-workflow-run",
+      "ref": "actions/runs/34295079218",
+      "note": "Exact #304 Agent WIP Policy failure evidence; no rerun performed."
+    },
+    {
+      "type": "github-workflow-run",
+      "ref": "actions/runs/34292770874",
+      "note": "Post-#302 main CI completed success, including integration and E2E jobs."
+    }
+  ],
+  "main": {
+    "startSha": "6814751f5ded0526b7df0446deb291897aa3aed3",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 48,
+    "openIssuesEnd": null,
+    "openPrsStart": 20,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 1,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "Scope is governance-only; no Product runtime files, Product FILE_OWNERSHIP, shared canonical TEST, TEST data or Production data were touched.",
+    "G2 root cause: current main evaluated Astra before lifecycle metadata, so Draft/non-active PRs could spend Final Risk work and still fail late on WIP metadata; #304 is the reproducible live case.",
+    "G3 disposition: #304 KEEP_PARKED; #295/#296 selected for one bounded current-main rebuild. Old parked #296 was not rebased, pushed or rerun.",
+    "Local exact-head evidence: repo integrity passed, 114 unit files / 1442 tests passed, typecheck passed, and production build passed. Governance TEST_PROFILE is SOURCE_ONLY; integration/E2E are policy-skip for this PR.",
+    "Actual model tokens and weekly usage are unavailable; usage remains unknown rather than estimated."
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "GOVERNANCE_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
