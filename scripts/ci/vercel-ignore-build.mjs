@@ -87,6 +87,7 @@ export function runVercelIgnoreCommand(env = process.env) {
 
 const directRun = process.argv[1]
   && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
 if (directRun) {
   process.exitCode = runVercelIgnoreCommand();
 }
