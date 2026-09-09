@@ -72,7 +72,12 @@ jobs:
             let ownerWaiverChangeDigest = '';
             const waiverCommentFingerprint = (comments, number) => JSON.stringify(
               comments
-                .filter((comment) => String(comment?.body ?? '').includes(`OWNER_FINAL_RISK_WAIVER: PR #${number}`))
+                .filter((comment) => {
+                  const waiverMarker = String(comment?.body ?? '').match(
+                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_WAIVER[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                  )?.[1]?.trim();
+                  return waiverMarker === `PR #${number}`;
+                })
                 .map((comment) => [
                   comment?.id,
                   comment?.user?.login,
