@@ -1,6 +1,6 @@
 # GUIDE SaaS 方案權益與加購模型
 
-> Owner Direction：2026-09-02；2026-09-03 補充正式價格骨架
+> Owner Direction：2026-09-02；2026-09-03 補充正式價格骨架；2026-09-09 補充超額導遊席次
 > 關聯：#48、#118、#120、09-FEATURE-STORE、13-BUSINESS-MODES、19-GUIDE-PRODUCT-EXPERIENCE
 > 定價 canonical：`docs/decisions/2026-09-03-guide-saas-pricing.md`
 
@@ -98,7 +98,12 @@ Owner 2026-09-03 補充裁示：**NT$799／月，含 5 位 active+bookable 導�
 
 若團隊降級，歷史人員／訂單／業績不可消失；只限制超額 active+bookable 席次與新的多人操作。
 
-超過 5 位之後的額外席次價格／更高階團隊方案仍待 Owner 決策，不得自行假設每位 NT$399 或其他價格。
+Owner 2026-09-09 補充裁示：**超過 5 位後，每增加 1 位 active+bookable 導遊，加 NT$150／月。**
+
+- 第 6 位起按目前 active+bookable 人數逐席加價。
+- 停用／歷史導遊不占付費席次。
+- 不建立另一套「大團隊模式」；同一 tenant 直接增加 seat entitlement（席次權益）。
+- 額外席次的年繳價格是否同樣採付 10 個月送 2 個月，仍待 Owner 下一題裁示。
 
 ## 4. 哪些能力不可再做 GUIDE 單項付費閘門
 
@@ -164,7 +169,8 @@ NT$399 / 月
 
 團隊版
 NT$799 / 月
-最多 5 位可接案導遊
+含 5 位可接案導遊
+第 6 位起 +NT$150 / 月 / 位
 ```
 
 另列真正可加購項：
@@ -224,11 +230,10 @@ SaaS entitlement 不等於 listing／promotion：
 
 以下數字／發布動作仍不自行決定：
 
-- 年繳折扣。
-- 超過 5 位後的額外導遊席次價格／更高階團隊方案。
+- 年繳方案中的額外導遊席次價格規則。
 - AI／LINE 額外額度價格。
 - 是否仍保留點數錢包作某些 add-on 的支付方式。
 - 舊 Feature Store 訂閱如何轉換／折抵新 SaaS。
 - Production subscription billing（正式訂閱扣款）啟用。
 
-目前已拍板的基礎月費與席次以 `docs/decisions/2026-09-03-guide-saas-pricing.md` 為準。可先完成 capability matrix（能力矩陣）、entitlement evaluator、GUIDE UI 原型與相容測試；未經 Owner 另行授權，不得啟動 Production 真實訂閱扣款或正式價格頁發布。
+目前已拍板的基礎月費、年繳與席次以 `docs/decisions/2026-09-03-guide-saas-pricing.md` 為準。可先完成 capability matrix（能力矩陣）、entitlement evaluator、GUIDE UI 原型與相容測試；未經 Owner 另行授權，不得啟動 Production 真實訂閱扣款或正式價格頁發布。
