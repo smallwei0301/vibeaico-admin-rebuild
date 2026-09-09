@@ -281,6 +281,21 @@ ADMIN_ACCESS_TOKEN（共用祕密，constant-time 比較）
 ```
 
 來源是 `x-admin-token` / `x-admin-email` header，或 `admin_token` / `admin_email` cookie。
+登入端點是 `POST /api/admin/auth/session`，body 只有 `{ token, email }`，過了發 7 天 cookie。
+
+⚠️ **最關鍵的一條事實**：`isAdminAuthorized()` 先比對 token 是否等於 `ADMIN_ACCESS_TOKEN`，
+再檢查 `allowlist.includes(email)`——**兩者之間沒有任何綁定**。也就是說：
+
+> 知道那一個 token 的人，可以宣稱自己是名單上的**任何一個** email。
+
+沒有每個人自己的密碼；名單上的所有人打的是同一組 token。因此該系統的稽核紀錄
+回答的是「某個知道 token 的人宣稱自己是誰」，不是「經過驗證的那個人是誰」。
+
+公平記錄：那邊並非草率——有登入失敗 10 次/分鐘/IP 的限流（成功不消耗額度）、
+`admin_session_version` 可一鍵讓所有 session 失效、CSRF 雙提交、production 啟動時
+檢查 token ≥16 字元且非預設值。對一個**平台自己的**管理主控台，這是合理取捨。
+`middleware.ts:367` 的註解也自承「輪換 `ADMIN_ACCESS_TOKEN` 本身」與
+「使 cookie session 失效」是兩件必須分別做的事。
 
 **所以沒有「同一個 Supabase 使用者」可以沿用。** 兩個專案的 Supabase 是
 `pyoderxmpeyqjwkeliiu`（tour platform）與 `egehnijjpgijmccagxac`（本專案），
@@ -290,6 +305,11 @@ JWT 互不認得。
 ① 「誰進去的」只能靠自己宣告的 header email，不是驗過的身分；
 ② 撤銷一個人 = 幫所有人換一次祕密。而本專案的代登入看得到顧客姓名電話。
 所以 §1 的 `platform_admins`（逐人、Supabase auth user、可單獨撤銷）維持不變。
+
+**這不是對那邊的評價，是邊界問題。** 共用 token 在 tour platform 的爆炸半徑是
+平台自己的營運資料；一旦跨過邊界用在本專案，被保護的東西變成**店家的顧客名單、
+訂單與營收**，而它們的保護強度會等於那一個字串的保密強度。同一個設計在邊界兩側
+的代價不同，所以兩側的答案也不必相同——選 A 完全不需要更動 tour platform 那一側。
 
 ### 8.3 Q2 管理者後台在哪一邊：**在 tour platform，本專案不另建**
 
