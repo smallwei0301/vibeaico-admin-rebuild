@@ -1,0 +1,9 @@
+{
+  "contractVersion": 1,
+  "effectiveAt": "2026-09-09T03:38:49Z",
+  "minimumMetricDataQualityPercent": 95,
+  "modelReviewVerifiedRequires": "PROVIDER_VERIFIED",
+  "operatorAttestedClassification": "MODEL_REVIEW_ATTESTED",
+  "unknownIdentityClassification": "MODEL_REVIEW_IDENTITY_UNKNOWN",
+  "historicalRunsAreReadOnly": true
+}
