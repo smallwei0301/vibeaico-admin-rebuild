@@ -9,6 +9,7 @@
 | Issue／PR | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
 | repo governance | 同時可存在的 Product candidate 上限 | **由 2 調整為 3。** | 上限原本硬編碼在**九處**：`agent-wip-policy.mjs` 與 `dual-terra-wip-policy.mjs` 各一個檢查、`agent-wip-guard.yml` 的摘要表格與 PR 留言各一次 `.../2`、同一支 workflow 裡 `candidate:active` label 的描述字串（`createLabel` 會把它寫進 GitHub），以及 `score-run.mjs` 三處（`wipHealthy` 判定、建議文字、報告的「目標 ≤2」）與 `score-run-v2.mjs` 一處（完成度加分）。**這九處不等價**：擋 PR 的只有 `agent-wip-guard.yml` → dual-terra 的 `validateGlobalWip`（全 repo 唯一非測試進入點）；`ci.yml` 雖 import 了 `agent-wip-policy.mjs`，卻只呼叫 `decideTestValidation`，從不碰 `validateGlobalWip`——**那一份在 CI 裡是死碼，目前只有單元測試覆蓋**，仍一併收斂，因為它是另一份獨立實作，兩份各帶一個數字留著必然分岔。而 `score-run.mjs` 與 `score-run-v2.mjs` **兩支都在 CI 真的跑**（`agent-run-scorecard.yml` 逐字比對已 commit 的報告、`agent-run-ledger-reconcile.yml` 重算 v2）：上限不同步會把一個峰值 3 的**合規** Run 扣 3 分完成度、標成 `wipHealthy=false` 並建議收斂候選——把合規行為報成違規，因此必須一起改；兩份 2026-09-01 legacy 報告依腳本重新產生（分數不變，峰值 5 在 ≤2 與 ≤3 下同樣不達標）。本次收斂成單一來源 `MAX_ACTIVE_CANDIDATES`（宣告於 `agent-wip-policy.mjs`，由 dual-terra re-export 供 workflow 取用），並由 `tests/unit/candidate-cap-single-source.test.ts` 鎖住「字面量不得再出現第二份」與「3 過、4 不過」，每條鎖都經變異驗證。TERRA_BUILD／TERRA_RESERVE／LUNA_CLOSURE／TEST_VALIDATION 各自的上限**不變**。 |
+| #120 / #48 | GUIDE SaaS 年繳方案 | **年繳採付 10 個月、使用 12 個月（送 2 個月）。個人版 NT$3,990／年；團隊版 NT$7,990／年。** | 年繳與月繳權益相同，不因折扣減少功能或席次；只改付款週期，不另建一套 entitlement。年繳期間取消、退款、升降級與按比例折抵規則仍待 subscription billing 施工前另行裁示。canonical：`docs/decisions/2026-09-03-guide-saas-pricing.md`。 |
 
 ## 2026-09-08 已裁示
 
@@ -35,7 +36,7 @@
 
 | Issue | 主題 | Owner 決策 | 後續實作重點 |
 |---|---|---|---|
-| #120 / #48 | GUIDE SaaS 正式價格骨架 | **永久體驗版 NT$0，1 位導遊、累積 30 張有效訂單；個人版 NT$399／月，1 位導遊；團隊版 NT$799／月，含 5 位 active+bookable 導遊。** | 第 30 張免費有效訂單可成立，第 31 張起要求升級；既有訂單／退款／通知／資料仍可處理。團隊 5 席包含 owner；停用與歷史人員不占新席次。超過 5 位、年繳折扣、AI／LINE 加購及 Production subscription billing 仍待後續裁示。canonical：`docs/decisions/2026-09-03-guide-saas-pricing.md`。 |
+| #120 / #48 | GUIDE SaaS 正式價格骨架 | **永久體驗版 NT$0，1 位導遊、累積 30 張有效訂單；個人版 NT$399／月，1 位導遊；團隊版 NT$799／月，含 5 位 active+bookable 導遊。** | 第 30 張免費有效訂單可成立，第 31 張起要求升級；既有訂單／退款／通知／資料仍可處理。團隊 5 席包含 owner；停用與歷史人員不占新席次。超過 5 位、AI／LINE 加購及 Production subscription billing 仍待後續裁示；年繳折扣已於 2026-09-09 裁示為付 10 個月送 2 個月。canonical：`docs/decisions/2026-09-03-guide-saas-pricing.md`。 |
 
 ## 2026-09-02 已裁示
 
