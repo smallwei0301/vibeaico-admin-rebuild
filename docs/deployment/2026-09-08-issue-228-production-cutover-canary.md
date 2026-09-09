@@ -10,7 +10,7 @@ Owner authorized the Vercel Production cutover **canary stage** with these bound
 - Build and verify the replacement path before disabling the old `main` Git Integration deployment trigger.
 - Only after a successful canary may governance prepare the actual cutover.
 - Old Vercel deployments must not be deleted.
-- High-risk final review is routed to actual `gpt-6-astra`; Astra is reviewer-only, not Owner.
+- High-risk final review is routed through the repository's current Final Risk allowlist; the reviewer is not Owner.
 
 The durable Owner decision is also recorded on Issue #228.
 
@@ -95,15 +95,21 @@ target: null
 result: CANCELED
 ```
 
-The Vercel build log showed that the API deployment cloned the exact SHA and exposed that SHA itself as `VERCEL_GIT_COMMIT_REF`. The existing `scripts/ci/vercel-ignore-build.mjs` allowlist accepted only `main` and `preview/**`, so the legitimate canary was mistaken for an ordinary blocked branch and canceled before build.
+The Vercel build log showed that the API deployment cloned the exact SHA and exposed that SHA itself as `VERCEL_GIT_COMMIT_REF`. The existing `scripts/ci/vercel-ignore-build.mjs` allowlist accepts only `main` and `preview/**`, so the legitimate exact-SHA canary was correctly treated as a non-allowlisted Git ref and canceled before build.
 
-The bounded fix does **not** allow every SHA-shaped ref. An exact-SHA canary may build only when all are true:
+The repair intentionally leaves that **global throttle unchanged**. Vercel's Create Deployment REST API accepts a deployment-scoped `projectSettings.commandForIgnoringBuildStep`. The canary request therefore supplies:
 
-1. `VERCEL_GIT_COMMIT_REF` is a full 40-character SHA;
-2. it exactly equals `VERCEL_GIT_COMMIT_SHA`;
-3. Vercel reports the target environment as `preview` through `VERCEL_TARGET_ENV` or `VERCEL_ENV`.
+```json
+{
+  "projectSettings": {
+    "commandForIgnoringBuildStep": "exit 1"
+  }
+}
+```
 
-A mismatched SHA, short SHA, ordinary branch, missing target environment or SHA-shaped Production deployment remains blocked by the ignored-build guard. Existing `main` runtime-diff throttling and `preview/**` acceptance behavior stay unchanged.
+For Vercel's Ignored Build Step, exit code `1` means continue building. The override is carried only by this one API-created deployment; it does not change project settings, branch allowlists, or ordinary Git-triggered deployments. The request still omits `target`, and the canary remains green only if the returned deployment explicitly reports `target: null` plus the exact expected project/repository/SHA identity.
+
+This shape is narrower than allowing SHA-shaped refs in `vercel-ignore-build.mjs`: ordinary branches remain blocked, `main` keeps its existing runtime-diff throttle, `preview/**` keeps its existing explicit acceptance behavior, and the canary's special build permission exists only inside the single Preview deployment request.
 
 ## Explicitly impossible in this slice
 
@@ -130,16 +136,16 @@ A `preview_canary` is green only when all are true:
 4. current Production hostname resolves to the expected project and trusted Git `main` deployment;
 5. Production comparison base and current SHA both exist locally and ancestry is valid;
 6. local changed-path range is complete;
-7. Vercel accepts an API deployment from the exact Git SHA;
+7. Vercel accepts an API deployment from the exact Git SHA with the deployment-scoped ignore-step override;
 8. Preview reaches `READY`;
-9. Preview target is not Production;
+9. Preview target is explicitly `null`, never Production;
 10. Preview source/project/Git owner/repo/SHA all match exactly.
 
 `READY` alone is insufficient.
 
 ## What happens after a green canary
 
-A separate high-risk cutover slice is then eligible to be prepared. It must still receive exact-head source CI, Sol audit and actual `gpt-6-astra` review before merge. That later slice may:
+A separate high-risk cutover slice is then eligible to be prepared. It must still receive exact-head source CI, Sol audit and the repository's required Final Risk review before merge. That later slice may:
 
 1. disable automatic `main` Git deployment only after the green canary evidence is attached;
 2. add the controlled Production deployment path gated by newest-main SHA + required checks + #228 runtime classifier;
@@ -151,4 +157,4 @@ Old deployment deletion remains out of scope even after cutover.
 
 ## Current external/tooling boundary
 
-The connected GitHub API surface available to this session can create branches, commits, PRs and workflows but intentionally does not expose repository Actions Secret writes. The canary source can therefore be completed and reviewed without a secret; actually dispatching it requires `VERCEL_TOKEN` to be installed through an authorized GitHub secret-management surface. This is a tooling boundary, not a request for a new Owner decision.
+The Owner installed `VERCEL_TOKEN` in GitHub Actions Secrets before the live canary. The first `observe` run proved that the workflow can read the secret and Vercel Production baseline. The remaining live proof after this repair is one successful `preview_canary` run; no new secret or Owner decision is required for that Preview-only verification.
