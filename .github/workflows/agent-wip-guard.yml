@@ -73,10 +73,14 @@ jobs:
             const waiverCommentFingerprint = (comments, number) => JSON.stringify(
               comments
                 .filter((comment) => {
-                  const waiverMarker = String(comment?.body ?? '').match(
-                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_WAIVER[ \t]*:[ \t]*(.*?)[ \t]*$/im,
+                  const body = String(comment?.body ?? '');
+                  const waiverMarker = body.match(
+                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_WAIVER[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
                   )?.[1]?.trim();
-                  return waiverMarker === `PR #${number}`;
+                  const invalidationMarker = body.match(
+                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_INVALIDATED[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                  )?.[1]?.trim();
+                  return waiverMarker === \`PR #\${number}\` || invalidationMarker === \`PR #\${number}\`;
                 })
                 .map((comment) => [
                   comment?.id,
@@ -103,6 +107,41 @@ jobs:
                 issue_number: current.number,
                 per_page: 100,
               });
+              if (
+                context.eventName === 'issue_comment' &&
+                ['edited', 'deleted'].includes(context.payload.action)
+              ) {
+                // Editing or deleting any comment is a state change. Persist a
+                // durable invalidation so an older waiver cannot revive when a
+                // revoke/deny comment disappears from the live API response.
+                const eventComment = context.payload.comment ?? {};
+                const eventKey = [
+                  context.payload.action,
+                  eventComment.id ?? 'unknown',
+                  eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
+                ].join(':');
+                const invalidationKey = \`INVALIDATION_EVENT_KEY: \${eventKey}\`;
+                if (!ownerWaiverComments.some((comment) => String(comment?.body ?? '').includes(invalidationKey))) {
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: current.number,
+                    body: [
+                      '<!-- agent-wip-guard-waiver-invalidation -->',
+                      \`OWNER_FINAL_RISK_INVALIDATED: PR #\${current.number}\`,
+                      invalidationKey,
+                      \`INVALIDATION_EVENT: \${context.payload.action}\`,
+                      \`INVALIDATION_COMMENT_ID: \${eventComment.id ?? 'unknown'}\`,
+                    ].join('\\n'),
+                  });
+                }
+                ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  per_page: 100,
+                });
+              }
               ownerWaiverCommentFingerprint = waiverCommentFingerprint(ownerWaiverComments, current.number);
             }
             const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({
@@ -259,6 +298,7 @@ jobs:
             });
 
             const shouldDispatchTest =
+              context.eventName === 'pull_request_target' &&
               context.payload.action === 'edited' &&
               isAgent &&
               metadata.lane === 'TEST_VALIDATION' &&
