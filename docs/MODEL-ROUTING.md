@@ -36,6 +36,31 @@ Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模
 Luna 窄盤點 → Sol 選題／風險分類 → Terra 施工 → 必要測試與 Sol 審核 →
 僅高風險交 Astra/Fable 最後評估 → Sol 結案判定 → 核實外部結果。
 
+### Lane 對應的模型層級（Owner 2026-09-10 裁示）
+
+`Luna / Terra / Sol` 是**工作層級**的名字，不是廠牌。同一條鏈在兩側各自對應：
+
+| Lane | 職責 | OpenAI | Anthropic |
+|---|---|---|---|
+| `scout` / Luna | 盤點 | `gpt-5.6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工** | `gpt-5.6-terra` | **`claude-sonnet-5`** |
+| `audit` / Sol | 審核 | `gpt-5.6-sol` | `claude-opus-5` |
+
+機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
+model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
+
+**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 去施工是超規，不是謹慎——它把審核層的成本花在施工上，
+並且讓審核層去審自己的產出；拿 scout 層的 Haiku 去施工則是不足。兩個方向都不由執行者自行裁量。
+
+因此 `AGENT_LANE: TERRA_BUILD` 的 PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級的模型。
+`actual=Opus 5` 出現在 `TERRA_BUILD` 上是路由違規，應如實記為違規，不是中性註記。
+
+本節與下方 Final Risk 閘門彼此獨立：不論由哪一層施工，高風險變更的最終評估都必須委派
+`claude-fable-5-1`；施工層正確不免除 Final Risk，Final Risk 通過也不使施工層變得正確。
+
+平台無法證明實際執行模型時，`actual=unknown` 仍是誠實值（見 `docs/AGENT-EXECUTION.md`），
+但它不是規避宣告層級的方式。
+
 - 一般文案、UI、小型接線不強制 Final Risk；一般 DB 接線也不因碰 DB 就升級。
 - PAYMENT_CONSISTENCY：付款、退款、名額及重複請求的一致性，包括單一 repo。
 - TENANT_AUTH_BOUNDARY：跨店讀寫、登入、權限與秘密保護邊界。
