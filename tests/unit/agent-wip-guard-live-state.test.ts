@@ -128,7 +128,7 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('statuses: write');
     expect(workflow).toContain("context: 'Agent WIP Policy'");
     expect(workflow).toContain('state: policyStatus');
-    expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
+    expect(workflow).toContain('const policyStatus = lifecyclePolicyStatus ?? astra.finalRiskGateStatus({');
     expect(workflow).toContain('const duplicateFailure = Boolean(');
     expect(workflow).toContain('alert.isDuplicateWipFailure({');
     expect(workflow).toContain('DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}');
