@@ -26,21 +26,6 @@ is not a stopping point, blocked work is parked while unrelated work continues, 
 recorded Owner decisions are not asked again. The same document defines model delegation,
 standing TEST authorization, credentials, CI/DB serialization, evidence, and stop conditions.
 
-### Role → model routing
-
-`docs/AGENT-EXECUTION.md` and `AGENTS.md` define the Sol/Terra/Luna role split (TRIAGE+AUDIT,
-full-build, narrow-fan-out). The concrete model bound to each role, per Owner instruction:
-
-| Role | Model |
-|---|---|
-| Sol (TRIAGE, high-risk design, final AUDIT) | Opus 5 (`claude-opus-5`) |
-| Terra (MAIN/RESERVE full-build lane) | Sonnet 5 (`claude-sonnet-5`) |
-| Luna (fan-out inventory, Closure, CI summary, docs, QA, Metrics) | Haiku 4.5 (`claude-haiku-4-5-20251001`) |
-
-A scorecard's `requested`/`actual` model fields must reflect what actually served the role, not
-this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run
-claims a specific model.
-
 ## Commands
 
 ```bash
@@ -170,11 +155,14 @@ The `Luna / Terra / Sol` lane names in `scripts/agents/model-routing.json` name 
 not a vendor. On the OpenAI side they map to `gpt-5.6-*`; on the Anthropic side they map as below.
 The mapping is mandatory in both directions — the lane picks the tier, and the tier picks the model.
 
-| Lane | 職責 | OpenAI | Anthropic |
+| Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |
 |---|---|---|---|
-| `scout` / Luna | 盤點 | `gpt-5.6-luna` | `claude-haiku-4-5` |
-| `build` / Terra | **施工** | `gpt-5.6-terra` | **`claude-sonnet-5`** |
-| `audit` / Sol | 審核 | `gpt-5.6-sol` | `claude-opus-5` |
+| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
+| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
+
+Model IDs are taken verbatim from Anthropic's model table and are **complete as written** — never
+append a date suffix (`claude-haiku-4-5`, not a dated variant).
 
 **Terra 一律用 Sonnet.** Doing `TERRA_BUILD` work on Opus is over-spec, not diligence: it burns the
 audit tier's cost on construction and leaves the audit tier reviewing its own output. Doing it on
@@ -191,6 +179,10 @@ Two consequences worth stating, because both have already been violated in pract
 
 `actual=unknown` stays the honest value when the platform cannot prove which model ran
 (`docs/AGENT-EXECUTION.md`) — it is not a way to avoid declaring the tier.
+
+A scorecard's `requested` / `actual` fields must record what **actually** served the lane, never
+this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run claims
+a specific model. The table says what should have run; only the run itself says what did.
 
 ## Final risk review models (Owner decisions, 2026-09-08)
 

@@ -54,6 +54,8 @@ describe('lane → model tier（Owner 2026-09-10）', () => {
         expect(text, `${path} 應載明 ${model}`).toContain(model);
       }
       expect(text, `${path} 應載明 Terra 一律用 Sonnet`).toMatch(/Terra 一律用 Sonnet/);
+      // 一週前那份文件正是把 Haiku 寫成帶日期的變體，所以這裡連文件一起鎖。
+      expect(text, `${path} 不應出現帶日期後綴的 model ID`).not.toMatch(/claude-[a-z0-9-]*-\d{8}/);
     }
   });
 });
