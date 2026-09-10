@@ -1,184 +1,139 @@
-# 模型分工與 Astra 最後風險評估
+# 模型分工與雙 Workstream 路由
 
-Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
-模型 ID、風險代碼、Final Risk Agent trust root 與保守路徑底線只維護在
-`scripts/agents/model-routing.json`。本規則不改變既有 TEST 排隊、Sol 結案權限或
-Production 授權。
+模型與治理工作依 2026-09-10 Owner Decision 固定分成兩軌。最新決策：
+`docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md`。
 
-2026-09-10 Owner 依 Final Risk 實際 finding yield / review cost 收斂路由，詳見
-`docs/decisions/2026-09-10-owner-final-risk-roi-routing.md`。核心原則是保留高後果 Final Risk，
-但不再因「治理」兩字把純 fail-closed hardening 自動升級；同時明定 Astra/Fable 是 reviewer
-**模型選擇**，不是外部 plugin／connector／reviewer channel。
+模型 ID、Product Final Risk allowlist 與 trust root 仍由 `scripts/agents/model-routing.json` 維護；本文件負責說明什麼工作會進那條 Product Final Risk 路徑，以及什麼工作固定由 Sol-only governance 處理。
 
-2026-09-10 #335 再補一層 Agent-native trust：正常高風險 Agent PR 可以由 trusted-main
-明確 allowlist 的 Agent bot 自己提交 Final Risk evidence 並刷新 gate，**Owner action NOT_REQUIRED**。
-這不是信任所有 bot，也不是取消 branch protection；GitHub 原生 required status 仍保留
-`Agent WIP Policy` 與 `check`。
+## 先分類，再工作
 
-### 最後風險 gate 的生命週期
+所有新 Issue / PR 建立時必須有且只有一個：
 
-Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模型的活性檢查。Draft、`PARKED`、
-`COMPLETE`、`OWNER_BLOCKED`、`HISTORICAL` 與 `READY_FOR_PROMOTION` 只會延後 Final Risk；
-它們不代表已通過，也不會清除既有 metadata、CI 或 WIP 錯誤。此時 `Agent WIP Policy` 保持
-`pending`，絕不寫成 success 或 approval。當 PR 回到 active 且非 Draft 的可合併流程時，
-原本的高風險分類、`changeDigest`、基線與真實模型證據要求全部恢復。未知 lane state 仍 fail closed。
-
-> **2026-09-08 Owner 裁示：最後風險評估的預設模型改為 Fable（`claude-fable-5-1`）；
-> 現行 allowlist 另允許 Astra（`gpt-6-astra`）。**
->
-> 「Astra」在本文與 `ASTRA_*` 欄位名中保留為這道關卡的名稱；`models.finalRisk` 是預設模型，
-> `models.finalRiskModelCatalog` 是支援的模型身分，guard 只接受其中的
-> `models.finalRiskAllowedModels` 子集。現行兩份清單都為 `gpt-6-astra` 與
-> `claude-fable-5-1`，且 `requestedModel` 與 `actualModel` 必須是同一個允許模型。
-
-## 路由
-
-Luna 窄盤點 → Sol 選題／風險分類 → Terra 施工 → 必要測試與 Sol 審核 →
-僅高風險交 Astra/Fable 最後評估 → Sol 結案判定 → 核實外部結果。
-
-- 一般文案、UI、小型接線不強制 Final Risk；一般 DB 接線也不因碰 DB 就升級。
-- PAYMENT_CONSISTENCY：付款、退款、名額及重複請求的一致性，包括單一 repo。
-- TENANT_AUTH_BOUNDARY：跨店讀寫、登入、權限與秘密保護邊界。
-- IRREVERSIBLE_DATA：有資料損失風險、難以復原的資料變更。
-- CROSS_REPO_CONTRACT：前後台的重要預約／訂單／付款契約。
-- GOVERNANCE_GATE：會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，
-  或可能把原本 failure/pending 變成 success/approval 的治理變更。
-- UNRESOLVED_HIGH_RISK：Sol 已查證仍無法裁決的重大疑點。
-
-2026-09-10 起，純 fail-closed governance hardening 若**不命中 sensitive path**，而且只增加拒絕條件、
-證據完整度、reconciliation、metrics／observability，沒有增加任何可 merge／deploy／取得權限的狀態，
-可填 `ASTRA_RISK: NONE`，以 Sol final audit + adversarial／negative tests 收尾。不能只靠 PR 自稱
-hardening；Sol 必須能證明方向只會收緊。方向不明、同時含 relaxation，或可接受狀態集合被擴大時，
-仍使用 `GOVERNANCE_GATE` / `UNRESOLVED_HIGH_RISK`。
-
-Sol 在開工時填 `ASTRA_RISK` 與具體 `ASTRA_RATIONALE`。實際 changed files（含 rename 前後路徑）
-命中設定內 sensitive path 時，不能用 NONE 降級。路徑底線並非完整語意分析；其他位置的高風險仍須申報。
-
-預設每個 semantic `changeDigest` 一次 Final Risk；只有 blocking finding 導致內容實質修改才進下一輪。
-純 rebase／unrelated-main advancement 且 `changeDigest` 不變，**不重跑 semantic Final Risk**，但新 head
-仍要重跑 required exact-head CI。
-
-Final Risk 模型不可用的判定必須發生在實際嘗試 Agent／子代理 model selector 之後；只有 runtime
-確實沒有可指定 allowlist 模型的委派能力，或 allowlist 模型都被 runtime 明確拒絕，才可標
-`MODEL_EXECUTION_UNAVAILABLE` / `ASTRA_PENDING`。不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
-
-## 技能與事前檢查
-
-高風險工作載入 `.agents/skills/vibeaico-astra-review/SKILL.md`。
-所有新 PR 在建立前使用既有 `agent-wip-preflight.mjs --body <file> --changed-files <file>`；
-CLI 會檢查分類及實際檔案清單，建立 PR 不要求尚未完成的 Final Risk。
-`validateWipPreflight` 函式的舊呼叫者保持相容；需要路由檢查時明確設
-`requireAstraClassification=true`。
-
-## 最後評估的證據
-
-確認確實呼叫 `models.finalRiskAllowedModels` 中的指定模型並取得結果後，將報告保存於 GitHub，
-再在候選 PR 提交一筆 COMMENT review。不得只填 PR body 的 PASS。
-
-```astra-review
-{
-  "repository": "smallwei0301/vibeaico-admin-rebuild",
-  "baseSha": "完整40碼基底版本",
-  "headSha": "完整40碼候選版本",
-  "changeDigest": "64碼變更內容指紋",
-  "policyVersion": "2026-09-08.4",
-  "testBaseline": "Final Risk reviewer 當時實際採用的測試證據",
-  "schemaBaseline": "reviewer 當時採用的 schema 版本或不適用理由",
-  "requestedModel": "claude-fable-5-1",
-  "actualModel": "claude-fable-5-1",
-  "identityEvidence": "OPERATOR_ATTESTED",
-  "verdict": "PASS",
-  "report": "https://github.com/組織/專案/議題或審核報告連結",
-  "findings": "具體審核結論、已驗證事項及剩餘限制"
-}
+```text
+WORKSTREAM: MODEL_GOVERNANCE
 ```
 
-`requestedModel` / `actualModel` 必須與當時 `model-routing.json` 的
-`models.finalRiskAllowedModels` 清單內同一模型；清單缺失、格式錯誤、catalog 外模型或兩者不一致都擋下。
-`policyVersion` 同理。
+或：
 
-### 誰可以提交可信 Final Risk review
+```text
+WORKSTREAM: PRODUCT_MAINLINE
+```
 
-可信 submitting actor 有兩條路，任一成立即可：
+空白、拼錯或 invented third value 都是不合法分類。既有 open work 在下一次被接手施工、promote、rebuild 或 closeout 前先補分類；不為了回填分類重寫歷史 commit。
 
-1. GitHub repo permission 為 `write` / `maintain` / `admin` 的 actor；或
-2. `model-routing.json.finalRiskTrust.trustedAgentBots` 內的明確 Agent bot。
+## MODEL_GOVERNANCE：Sol-only
 
-Agent bot trust **不是名稱比對**。login、immutable GitHub user id、account `type=Bot` 必須三者全部吻合；
-設定缺欄、重複或格式錯誤時，Agent bot trust root fail closed。現行第一個 trust root 為
-`claude[bot]` / user id `209825114` / `Bot`。新增其他 Agent App 必須修改 trusted-main 設定，
-不能由 PR 自己宣告可信。
+模型路由、Agent orchestration、WIP / lane、Final Risk guard 自身治理、governance metrics / scoreboard、PR lifecycle、治理型 CI / templates 與其 regression tests，使用：
 
-`OPERATOR_ATTESTED` 從此精確表示：**trusted submitting actor 對這次 model dispatch 的事實背書**。
-它可以是上述 write-capable actor，也可以是 allowlisted Agent bot；不等於 Owner 親手貼文，也不是
-provider-signed model telemetry。Agent 名稱叫 Astra/Fable 仍不構成模型身分證據，必須真的指定並執行
-allowlist model。
+```text
+WORKSTREAM: MODEL_GOVERNANCE
+AGENT_LANE: GOVERNANCE
+REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol
+ASTRA_RISK: NONE
+FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
+```
 
-正常 Agent Final Risk 流程不要求 Owner 把同一份 bot review 再貼一次。若 bot 不在 trust root、模型不符、
-證據 stale、digest 不同或 verdict 不是 PASS，才是真的 Final Risk blocker。
+執行流程：
 
-### `changeDigest`：綁變更內容，不綁 commit 身分
+```text
+GPT-5.6 Sol conversation/session
+→ current truth
+→ bounded governance implementation
+→ source CI / regression tests
+→ Sol final exact-diff verification
+→ merge / closeout
+```
 
-`changeDigest` 取每一個 changed file 的（最終路徑、rename 前路徑、狀態、**head 上的 blob sha**），
-排序後 sha256。取法見 `changeDigestOf()`；值由**受信任的預設分支**程式從 GitHub 直接給的
-`pulls.listFiles` 算出，不採信 PR 或 attestation 自填的內容。guard 會在 summary 與 PR 留言印出
-`ASTRA_CHANGE_DIGEST`，不必自行猜值。
+這一軌：
 
-排序用 JS 原生 `<` / `>` 的逐 UTF-16 code unit 全序，不用依 process locale 的 `localeCompare`。
+- 不派 Terra / Reserve Terra；
+- 不啟動 dual-Terra；
+- 不委派 Astra / Fable；
+- 不要求 `astra-review` attestation；
+- 不要求 `/astra-review-check` 作為治理放行前提；
+- 不加入 Product Delivery Run 來製造 Product throughput；
+- 不宣稱使用者可見 shipped Product output。
 
-`baseSha` / `headSha` **仍為必填且須為合法 40 碼**，但只作「當時審的是哪顆」的稽核紀錄，
-不再要求等於 current base/head。真正綁 semantic content 的是 `changeDigest`。
+Sol-only 不是跳過驗證。source CI、必要 regression tests、final diff reread、current-main verification 與 Completion Truth 仍必須存在。
 
-### 多環境並行與純換底 reuse
+### MODEL_GOVERNANCE 不能拿來偷渡產品變更
 
-main 在其他 Session／Agent 持續前進是正常狀態，不是自動重審理由。若 rebase／merge-main 後：
+如果同一張工作碰到 Product runtime、schema / migration、tenant product data flow、payment / refund、LINE/provider、Production deploy 行為或跨 repo Product contract：
 
-- PR changed-file blob 全部相同；
-- `changeDigest` 相同；
-- `schemaBaseline` 沒有實質改變；
-- Final Risk `policyVersion` 沒變；
-- 沒有較新的 FIX_REQUIRED / CHANGES_REQUESTED / DISMISSED；
+1. 優先拆 PR；
+2. 無法安全拆分時整張改為 `PRODUCT_MAINLINE`；
+3. 不得靠 `WORKSTREAM: MODEL_GOVERNANCE` 或 `ASTRA_RISK: NONE` 逃避產品安全門。
 
-則既有 Final Risk review **繼續有效**。不要重派 Astra/Fable，也不要因 head/base SHA 改變而重審。
+## PRODUCT_MAINLINE：維持 Product B+ 與風險路由
 
-`testBaseline` 是 reviewer 當時實際看過的測試證據。純換底後的新 exact-head CI 必須重跑，但新的 CI run id
-應記在 PR completion evidence / closeout，不要只是為了更新 run id 去改寫 `ASTRA_TEST_BASELINE`，否則會把
-原本有效的 semantic review 自己變成 stale。若測試內容／環境前提真的改變，而不是單純 CI run id 換號，
-再由 Sol 判斷是否需重審。
+使用者可見功能、API/runtime、schema/migration、tenant data、payment/refund、LINE/provider、Product deployment 與跨 repo Product contract 都歸：
 
-只要任何 changed-file blob 改變，`changeDigest` 就改變，舊 review 立即失效。schema baseline 或 Final Risk
-policy 真正改變也失效。檢查器永遠以**最新可信 review**為準，較新的否決不能被較舊 PASS 蓋掉。
+```text
+WORKSTREAM: PRODUCT_MAINLINE
+```
 
-**已知邊界**：changeDigest 涵蓋 PR changed files，不代表「合併後整棵樹已被 reviewer 看過」。main 若在
-review 後改了共同依賴而造成語意衝突，仍由 exact-head CI、Sol 與必要 integration 驗證承擔，不能把 reuse
-說成跨所有 integration context 的證明。
+Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product builder / Terra lane → 必要 TEST → Sol audit → 需要時 Product Final Risk → closeout。
 
-## 可信執行與啟用
+`models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
 
-WIP Guard 一律 checkout trusted default branch，不從 PR 載入 routing/trust policy，也不把 PR 自填
-`trusted` 或 PASS 當證據。Pending Final Risk 不阻擋安全的測試蒐集，但 required policy status 不會假裝通過。
+## PRODUCT_MAINLINE 的 Final Risk
 
-提交／編輯／撤銷 Final Risk review 後，以下任一 actor 可留言 `/astra-review-check` 觸發 trusted-main refresh：
+以下規則只適用 Product mainline，不適用純 MODEL_GOVERNANCE。
 
-- write／maintain／admin actor；
-- `finalRiskTrust.trustedAgentBots` 的 allowlisted Agent bot。
+目前預設 Final Risk model 是 `claude-fable-5-1`；allowlist 另含 `gpt-6-astra`。Astra/Fable 是 reviewer **模型選擇**，不是 plugin、connector、MCP 或外部 reviewer channel。
 
-命令可以是整段 comment，也可以是**第一行** `/astra-review-check` 後接工具自動 footer；不得因 Claude Code
-自動簽名頁尾讓 refresh 永遠 skipped。未 allowlist 且無 write 權限的 actor 仍不能觸發特權 workflow。
+Product 高後果類型維持：
 
-PR 更新時重新判斷。合併前需確認 current required status；不要用 no-op commit 只為刷新狀態。
-主分支前進後先重算 changeDigest 與跑 exact-head CI；digest 沒變就 reuse，不要重派 reviewer。
+- `PAYMENT_CONSISTENCY`
+- `TENANT_AUTH_BOUNDARY`
+- `IRREVERSIBLE_DATA`
+- `CROSS_REPO_CONTRACT`
+- `GOVERNANCE_GATE`，僅當不可拆的 Product scope 同時修改 admission / bypass semantics
+- `UNRESOLVED_HIGH_RISK`
 
-## 導入與 bootstrap
+一般文案、UI、小型接線不因存在於 Product PR 就自動要求 Final Risk。Product classifier 與 `model-routing.json.sensitivePaths` 仍 fail closed。
 
-修改 trusted Final Risk gate 本身仍屬真正的 `GOVERNANCE_GATE`。因此引入或放寬 trust root 的 PR 不得使用
-尚未合併的新規則替自己免審。bootstrap 可使用合併前 main 已接受的可信 Final Risk 路徑或 Owner 明確的一次性
-transition authorization；不得偽造 Agent/model evidence。
+## Product Final Risk model dispatch
 
-一旦本 Agent-native trust 已在 main 且通過 required checks，owner-only waiver 不再是正常 Agent 作業的預設解法。
+需要 Product Final Risk 時：
 
-## 本輪驗證教訓
+1. 讀 trusted-main `model-routing.json` 的 `models.finalRisk` / `models.finalRiskAllowedModels`。
+2. 透過 Agent / sub-agent **model selector** 指定 allowlist 模型。
+3. reviewer 名稱不等於模型身分；只有實際指定並執行的模型才能填 `actualModel`。
+4. 不搜尋所謂 Astra plugin / connector，也不要求 Owner 開外部審查通道。
+5. 只有 runtime 確實無 model delegation 或所有 allowlist models 被明確拒絕，才可記 `MODEL_EXECUTION_UNAVAILABLE`。
 
-- 技能正常升版不應被無關固定版本字串擋住。
-- 純 rebase 的新 CI run id 與 semantic Final Risk 是兩種不同證據，不要互相綁死。
-- Agent App 能不能提交可信 attestation 應由 trusted-main identity allowlist 決定，不應每次把 Owner 叫回來當影印機。
+簡單說：**先改派模型，再談 unavailable。**
+
+## Product Agent-native attestation
+
+#335 / #336 的 trusted-Agent Final Risk 仍保留給 Product mainline。
+
+可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。現行第一個 trusted Agent bot 是 `claude[bot]`。
+
+正常 Product Agent 可自己提交完整 `astra-review` COMMENT review 並 refresh guard，不要求 Owner 把同一份 Fable/Astra evidence 再貼一次。
+
+`OPERATOR_ATTESTED` 代表 trusted submitting actor 對 model dispatch 事實背書，不等於 provider-signed telemetry。
+
+## Product semantic review reuse
+
+Final Risk 綁 `changeDigest`，不是單純綁 commit SHA。若 main 由其他環境前進，而 PR changed-file blobs、schema baseline、Final Risk policy 與最新 verdict 都沒有實質改變：
+
+- 不因純 rebase / unrelated main advancement 重跑 semantic Astra/Fable；
+- 新 head 仍跑 required exact-head CI；
+- `testBaseline` 保留 reviewer 當時實際採用的證據；
+- changed-file blob 或 `changeDigest` 真改變時舊 review 才失效；
+- 最新 FIX_REQUIRED / CHANGES_REQUESTED / DISMISSED 永遠不能被較舊 PASS 蓋掉。
+
+## Skill routing
+
+- `WORKSTREAM: MODEL_GOVERNANCE`：讀 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`，使用 Sol-only governance path；不要載入 Astra/Fable review skill 當成必要 gate。
+- `WORKSTREAM: PRODUCT_MAINLINE` 且 Product risk classification 需要 Final Risk：再載入 `.agents/skills/vibeaico-astra-review/SKILL.md`。
+
+## 安全與 Production 授權
+
+兩個 workstream 的分類都不構成 Production 授權。
+
+以下仍需既有逐次具名授權：Production DDL/DML/migration、manual promote/rollback、真實 payment/refund、LINE webhook 切換、顧客通知等高影響操作。
+
+MODEL_GOVERNANCE 只改治理，不得因此取得上述權限；PRODUCT_MAINLINE 的 Sol/Fable/Astra PASS 也同樣不等於 Production 操作授權。
