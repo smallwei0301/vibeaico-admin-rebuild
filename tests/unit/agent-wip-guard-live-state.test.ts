@@ -110,8 +110,8 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('OWNER_FINAL_RISK_INVALIDATED');
     expect(workflow).toContain('INVALIDATION_EVENT_KEY:');
     expect(workflow).toContain("context.eventName === 'pull_request_target' &&");
-    expect(workflow).toContain("github.run_id || 'pull-request'");
-    expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}");
+    expect(workflow).not.toContain('github.run_id');
+    expect(workflow).toContain('cancel-in-progress: false');
     expect(workflow).toContain("comment?.user?.login === 'github-actions[bot]'");
     expect(workflow).toContain('const ownerWaiverLifecycleEvent =');
     expect(workflow).toContain('const ownerWaiverEligible =');
