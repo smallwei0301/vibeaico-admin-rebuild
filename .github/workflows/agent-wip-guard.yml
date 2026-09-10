@@ -94,36 +94,33 @@ jobs:
                 ]),
             );
             let ownerWaiverCommentFingerprint = '';
-            if (current.state === 'open' && metadata.origin === 'OWNER' && metadata.state === 'OWNER_BLOCKED') {
-              const ownerWaiverFiles = await github.paginate(github.rest.pulls.listFiles, {
-                owner,
-                repo,
-                pull_number: current.number,
-                per_page: 100,
-              });
-              if (ownerWaiverFiles.length === current.changed_files) {
-                ownerWaiverChangeDigest = astra.changeDigestOf(ownerWaiverFiles);
-              }
+            const ownerWaiverLifecycleEvent =
+              context.eventName === 'issue_comment' &&
+              ['edited', 'deleted'].includes(context.payload.action) &&
+              metadata.origin === 'OWNER';
+            const ownerWaiverEligible =
+              current.state === 'open' &&
+              metadata.origin === 'OWNER' &&
+              metadata.state === 'OWNER_BLOCKED';
+
+            // Read and persist comment lifecycle evidence even while the PR is
+            // closed. Otherwise deleting a revoke/deny while closed can revive
+            // an old grant when the PR is reopened.
+            if (ownerWaiverLifecycleEvent || ownerWaiverEligible) {
               ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
                 owner,
                 repo,
                 issue_number: current.number,
                 per_page: 100,
               });
-              if (
-                context.eventName === 'issue_comment' &&
-                ['edited', 'deleted'].includes(context.payload.action)
-              ) {
-                // Editing or deleting any comment is a state change. Persist a
-                // durable invalidation so an older waiver cannot revive when a
-                // revoke/deny comment disappears from the live API response.
+              if (ownerWaiverLifecycleEvent) {
                 const eventComment = context.payload.comment ?? {};
                 const eventKey = [
                   context.payload.action,
                   eventComment.id ?? 'unknown',
                   eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
                 ].join(':');
-                const invalidationKey = `INVALIDATION_EVENT_KEY: ${eventKey}`;
+                const invalidationKey = \`INVALIDATION_EVENT_KEY: \${eventKey}\`;
                 const hasDurableInvalidation = (comment) => {
                   const body = String(comment?.body ?? '');
                   const scope = body.match(
@@ -135,7 +132,7 @@ jobs:
                   return (
                     comment?.user?.login === 'github-actions[bot]' &&
                     body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
-                    scope === `PR #${current.number}` &&
+                    scope === \`PR #\${current.number}\` &&
                     key === eventKey
                   );
                 };
@@ -146,11 +143,11 @@ jobs:
                     issue_number: current.number,
                     body: [
                       '<!-- agent-wip-guard-waiver-invalidation -->',
-                      `OWNER_FINAL_RISK_INVALIDATED: PR #${current.number}`,
+                      \`OWNER_FINAL_RISK_INVALIDATED: PR #\${current.number}\`,
                       invalidationKey,
-                      `INVALIDATION_EVENT: ${context.payload.action}`,
-                      `INVALIDATION_COMMENT_ID: ${eventComment.id ?? 'unknown'}`,
-                    ].join('\n'),
+                      \`INVALIDATION_EVENT: \${context.payload.action}\`,
+                      \`INVALIDATION_COMMENT_ID: \${eventComment.id ?? 'unknown'}\`,
+                    ].join('\\n'),
                   });
                 }
                 ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
@@ -159,6 +156,18 @@ jobs:
                   issue_number: current.number,
                   per_page: 100,
                 });
+              }
+            }
+
+            if (ownerWaiverEligible) {
+              const ownerWaiverFiles = await github.paginate(github.rest.pulls.listFiles, {
+                owner,
+                repo,
+                pull_number: current.number,
+                per_page: 100,
+              });
+              if (ownerWaiverFiles.length === current.changed_files) {
+                ownerWaiverChangeDigest = astra.changeDigestOf(ownerWaiverFiles);
               }
               ownerWaiverCommentFingerprint = waiverCommentFingerprint(ownerWaiverComments, current.number);
             }
