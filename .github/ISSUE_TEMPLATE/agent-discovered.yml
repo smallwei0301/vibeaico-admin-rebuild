@@ -1,5 +1,5 @@
 name: Agent-discovered issue
-description: Required when an agent decides a newly discovered blocking gap must become a separate Issue.
+description: Required when an agent decides a newly discovered blocking gap must become a separate Issue. Classify the workstream before creation.
 title: "[Agent-discovered] "
 body:
   - type: input
@@ -8,6 +8,17 @@ body:
       label: Issue origin
       description: Keep this fixed marker so the provenance hook can classify the Issue.
       value: AGENT_DISCOVERED
+    validations:
+      required: true
+
+  - type: dropdown
+    id: workstream
+    attributes:
+      label: WORKSTREAM
+      description: Choose MODEL_GOVERNANCE only for pure model/agent/governance work. Any Product runtime, schema/migration, payment/refund, LINE/provider, tenant data or Product deployment work uses PRODUCT_MAINLINE. Mixed inseparable scope also uses PRODUCT_MAINLINE.
+      options:
+        - MODEL_GOVERNANCE
+        - PRODUCT_MAINLINE
     validations:
       required: true
 
@@ -76,7 +87,8 @@ body:
     id: model
     attributes:
       label: Requested model / actual model
-      placeholder: "requested=Sol; actual=unknown"
+      description: MODEL_GOVERNANCE uses requested=gpt-5.6-sol; actual=gpt-5.6-sol. Product work records the actual provider/model truth.
+      placeholder: "requested=gpt-5.6-sol; actual=gpt-5.6-sol"
     validations:
       required: true
 
@@ -85,6 +97,8 @@ body:
     attributes:
       label: Duplicate and scope checks
       options:
+        - label: I classified this Issue before creation. Pure governance is MODEL_GOVERNANCE; Product or inseparable mixed scope is PRODUCT_MAINLINE.
+          required: true
         - label: I searched existing open Issues and PRs and did not find an equivalent active item.
           required: true
         - label: This is not a cosmetic idea, optional refactor, or non-blocking future enhancement.

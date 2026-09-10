@@ -44,6 +44,19 @@ model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附�
 - scorecard 的 `requested`／`actual` 必須記錄**實際** served 的模型，不得以本表推定。
 - 規則成文前已完成的施工不回頭重做：重跑不會產生新證據，只會多燒一輪 CI。
 
+## 3.1 與兩軌分流（#339）的關係
+
+本裁示與同日的 `docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md` 相容且互補：
+
+- 該決策把工作分成 `MODEL_GOVERNANCE`（Sol-only、不要求 Final Risk）與 `PRODUCT_MAINLINE`。
+- `docs/MODEL-ROUTING.md` 的 `## PRODUCT_MAINLINE` 說「其他 provider 的 Product 主 Session 可依其
+  可用模型執行等價 builder」。**本裁示定義的就是 Anthropic 側「等價 builder」是什麼**——它收窄
+  該句，不與之衝突。
+- 兩者共用同一條要求的兩面：該節說「不能從 lane 名稱推論模型真的跑過」，本節說「宣告的層級必須
+  與 lane 相符」。
+
+本節不擴大也不縮小 Final Risk 的適用範圍；那由 `## PRODUCT_MAINLINE 的 Final Risk` 決定。
+
 ## 4. 刻意不 bump `model-routing.json` 的頂層 `version`
 
 `evaluateAstra()` 以 `policyVersion !== policy.version` 綁定既有 attestation
