@@ -94,7 +94,7 @@ jobs:
                       invalidationKey,
                       'INVALIDATION_EVENT: ' + context.payload.action,
                       'INVALIDATION_COMMENT_ID: ' + (eventComment.id ?? 'unknown'),
-                    ].join('\\n'),
+                    ].join('\n'),
                   });
                 }
               } catch (uncertaintyError) {
