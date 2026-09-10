@@ -87,10 +87,15 @@ export function isOwnerFinalRiskWaiver({
     .filter(({ comment }) => {
       const body = String(comment?.body ?? '');
       const invalidated = readField(body, 'OWNER_FINAL_RISK_INVALIDATED');
-      const match = invalidated.match(OWNER_WAIVER_INVALIDATED);
+      const uncertain = readField(body, 'OWNER_FINAL_RISK_INVALIDATION_UNCERTAIN');
+      const markerValue = invalidated || uncertain;
+      const match = markerValue.match(OWNER_WAIVER_INVALIDATED);
       return (
         String(comment?.user?.login ?? '').trim() === 'github-actions[bot]' &&
-        body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
+        (
+          body.includes('<!-- agent-wip-guard-waiver-invalidation -->') ||
+          body.includes('<!-- agent-wip-guard-waiver-invalidation-uncertain -->')
+        ) &&
         Boolean(match && Number(match[1]) === number) &&
         meaningful(readField(body, 'INVALIDATION_EVENT_KEY'))
       );
