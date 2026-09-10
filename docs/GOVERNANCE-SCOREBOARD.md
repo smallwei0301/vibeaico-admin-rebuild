@@ -10,7 +10,9 @@
 |---|---|---|
 | `PROVIDER_VERIFIED` | 有 provider / platform 可驗證的 served-model execution reference，且 `actualModel` 已知 | 是 |
 | `OPERATOR_ATTESTED` | 操作者具名背書實際委派到某模型，但 provider served-model telemetry 不可獨立驗證 | 否，只標 `MODEL_REVIEW_ATTESTED` |
-| `UNKNOWN` | `actualModel=unknown`，或沒有足以支持實際模型身分的證據 | 否，標 `MODEL_REVIEW_IDENTITY_UNKNOWN` |
+| `UNKNOWN` | `actualModel=unknown`，或雖有模型名稱 claim 但沒有足以支持實際模型身分的證據 | 否，標 `MODEL_REVIEW_IDENTITY_UNKNOWN` |
+
+`actualModel` 已知不代表 identity 已驗證。若只有模型名稱 claim、沒有 operator attestation 或 provider 可驗證證據，`identityEvidence` 應維持 `UNKNOWN`。`UNKNOWN` 永遠不得計入 provider-verified coverage。
 
 現行 Final Risk guard 是否接受 `OPERATOR_ATTESTED` 由 `docs/MODEL-ROUTING.md` 與 `scripts/agents/astra-review-policy.mjs` 決定。本 Scoreboard **不放寬也不收緊 merge gate**，只確保複盤與 metrics 不把 attestation 冒充 provider verification。
 
@@ -32,20 +34,45 @@
 
 `docs/metrics/review-evidence/<runId>.json`
 
-同一筆 review 不得重複計數。純 attestation 修正若沒有重新執行 review，不應被當成新的 review touch。
+同一筆 review 不得重複計數。`id` 與 `executionRef` 都必須唯一；如果只是換一個 record id、但仍指向同一個 executionRef，視為重複 review evidence，不能增加 Sol touches。純 attestation 修正若沒有重新執行 review，也不應被當成新的 review touch。
 
-## 3. Sol flow 不再靠人工回憶
+## 3. Blocking finding 必須對 final head 做 reconciliation
+
+`FAIL` / `FIX_REQUIRED` 不會因為後面出現另一筆 PASS 就自動消失。
+
+若同一個 evidence packet 內存在 blocking review，terminal closeout 必須：
+
+1. 在 packet 上提供 `finalReviewedSha` 或 `finalChangeDigest`。
+2. 每一筆 blocking review 加上：
+
+```json
+{
+  "reconciliation": {
+    "status": "RESOLVED_ON_FINAL_HEAD",
+    "byRecordId": "github:pr#123/review#final-pass"
+  }
+}
+```
+
+3. `byRecordId` 必須真的指向同一 PR subject、同一 review role 的 `PASS` record。
+4. 該 PASS record 的 `reviewedSha` / `changeDigest` 必須與 packet 的 final anchor 相同。
+
+也就是說，舊 head 的 blocking finding 可以保留歷史，但 Closeout 若要宣稱「已修」，必須把它明確接到 final-head PASS。這是為了避免 review 晚到或 review 排程交錯時，單靠時間順序誤判。
+
+歷史 evidence 不因本規則回寫；只有 policy 生效後的新 terminal Run 在 enforcement 時必須符合。
+
+## 4. Sol flow 不再靠人工回憶
 
 `flow.solTouches` 與 `flow.solIssues` 必須能由 durable review evidence 重建：
 
-- `solTouches` = `SOL_AUDIT` review records 數量
+- `solTouches` = unique `executionRef` 的 `SOL_AUDIT` review records 數量
 - `solIssues` = 有 `SOL_AUDIT` 的 unique PR subjects 數量
 
 新 terminal Run 若 ledger 與 durable evidence 對不上，視為 Scoreboard contract failure。
 
 歷史已關閉 Run 不回寫。若發現 mismatch，只新增 reconciliation scoreboard，清楚標示 historical non-comparable。
 
-## 4. Metric data quality
+## 5. Metric data quality 與時間戳 fail closed
 
 `metricDataQualityPercent` 由 `scripts/metrics/governance-scoreboard.mjs` 對核心 19 個欄位計算，不接受人工填一個漂亮百分比取代原始資料。
 
@@ -54,20 +81,25 @@
 1. 核心 metric data quality >= 95%。
 2. `auditability.scoreInputsCompletePercent` 與程式實算值一致。
 3. Sol flow 與 durable review evidence 一致。
+4. terminal `run.startedAt` 必須存在且可解析。
+5. policy `effectiveAt` 必須存在且可解析。
+6. 若存在 blocking review，必須完成 §3 的 final-head reconciliation。
+
+`startedAt` 或 `effectiveAt` 缺失／格式錯誤時，不得把 `contractApplies=false` 當成免檢查通行證。terminal enforcement 必須 fail closed。
 
 否則 required `check` 裡的 unit gate 必須轉紅，該 Run 不得被稱為可比較 terminal scoreboard。
 
-Token / weekly usage若平台拿不到，維持 unknown，不納入這個 completeness 分母，也不得估算。
+Token / weekly usage 若平台拿不到，維持 unknown，不納入這個 completeness 分母，也不得估算。
 
-## 5. 低風險工作不被強迫升級審查
+## 6. 低風險工作不被強迫升級審查
 
 Scoreboard evidence contract 不等於「每張 PR 都要 Final Risk」。
 
 低風險、沒有 Sol / Final Risk requirement 的 Run 可以使用空的 `records: []`，只要 ledger flow 也誠實為 0/0。是否需要 Sol / Final Risk 仍由現行 risk routing 決定。
 
-## 6. 歷史 r01 reconciliation
+## 7. 歷史 r01 reconciliation
 
-`2026-09-09-governance-loop-r01` 保留原 ledger 不改寫。依 durable GitHub review evidence重建後：
+`2026-09-09-governance-loop-r01` 保留原 ledger 不改寫。依 durable GitHub review evidence 重建後：
 
 - ledger Sol flow: 0 touches / 0 subjects
 - durable evidence: 4 Sol touches / 2 subjects
@@ -79,13 +111,15 @@ Scoreboard evidence contract 不等於「每張 PR 都要 Final Risk」。
 
 因此 r01 的工作流程完成證據仍有效，但其 Scoreboard **不可拿來和未來完整 Run 做量化優劣比較**。
 
-## 7. Review / closeout 問句
+## 8. Review / closeout 問句
 
 結案前至少回答：
 
-1. Sol / Final Risk 實際做了幾次？durable records 能不能重建？
-2. `actualModel=unknown` 是否被錯算成 verified？
+1. Sol / Final Risk 實際做了幾次？unique `executionRef` 能不能重建？
+2. `actualModel=unknown` 或只有名稱 claim 的 review 是否被錯算成 verified？
 3. operator attestation 是否與 provider verification 分開？
 4. ledger 的 Sol flow 是否與 review evidence 一致？
 5. 核心 metrics 缺值率是多少？是否達到 policy 門檻？
-6. 若資料不足，是否誠實標示 non-comparable，而不是補 0、平均值或推估？
+6. `startedAt` / `effectiveAt` 是否有效，還是因壞時間戳靜默跳過 enforcement？
+7. 是否曾有 `FAIL` / `FIX_REQUIRED`？若有，每一筆是否明確 reconciliation 到 final-head PASS？
+8. 若資料不足，是否誠實標示 non-comparable，而不是補 0、平均值或推估？
