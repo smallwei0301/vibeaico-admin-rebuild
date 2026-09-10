@@ -234,10 +234,10 @@ export function classifyAstra({ body = '', changedFiles = null, createdAt = '' }
   if (!meaningful(readField(body, 'ASTRA_RATIONALE'))) errors.push('ASTRA_RATIONALE requires a concrete risk assessment');
   if (!Array.isArray(changedFiles) || !changedFiles.length) errors.push('Astra classification requires actual changed files');
   if (workstream.isModelGovernance) {
-    return { required: false, risks, errors: [...new Set(errors)], ...workstream };
+    return { ...workstream, required: false, risks, errors: [...new Set(errors)] };
   }
   const sensitive = (changedFiles ?? []).some(path => policy.sensitivePaths.some(prefix => path.startsWith(prefix)));
-  return { required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors: [...new Set(errors)], ...workstream };
+  return { ...workstream, required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors: [...new Set(errors)] };
 }
 
 // Only trusted GitHub review records supplied by the caller may become attestations.
