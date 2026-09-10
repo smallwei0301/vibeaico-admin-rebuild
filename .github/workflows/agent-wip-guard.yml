@@ -18,8 +18,11 @@ jobs:
   guard:
     if: github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     concurrency:
-      group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
-      cancel-in-progress: true
+      group: >-
+        agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name == 'issue_comment' && github.run_id || 'pull-request' }}
+      # PR lifecycle events may cancel stale PR runs; each issue_comment run
+      # gets its own group so edit/delete invalidation cannot be dropped.
+      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted B+ policy
@@ -121,7 +124,22 @@ jobs:
                   eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
                 ].join(':');
                 const invalidationKey = `INVALIDATION_EVENT_KEY: ${eventKey}`;
-                if (!ownerWaiverComments.some((comment) => String(comment?.body ?? '').includes(invalidationKey))) {
+                const hasDurableInvalidation = (comment) => {
+                  const body = String(comment?.body ?? '');
+                  const scope = body.match(
+                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_INVALIDATED[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                  )?.[1]?.trim();
+                  const key = body.match(
+                    /^[ \\t]*[-*]?[ \\t]*INVALIDATION_EVENT_KEY[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                  )?.[1]?.trim();
+                  return (
+                    comment?.user?.login === 'github-actions[bot]' &&
+                    body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
+                    scope === `PR #${current.number}` &&
+                    key === eventKey
+                  );
+                };
+                if (!ownerWaiverComments.some(hasDurableInvalidation)) {
                   await github.rest.issues.createComment({
                     owner,
                     repo,
