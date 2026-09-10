@@ -128,6 +128,15 @@ export function isOwnerFinalRiskWaiver({
   );
 }
 
+export function ownerWaiverLifecycleStatus({
+  lifecycleEvent = false,
+  invalidationPersisted = false,
+  freshState = 'closed',
+} = {}) {
+  if (!lifecycleEvent || !invalidationPersisted) return null;
+  return String(freshState).trim().toLowerCase() === 'open' ? 'failure' : null;
+}
+
 export function finalRiskGateStatus({
   hasErrors = false,
   finalRiskRequired = false,
