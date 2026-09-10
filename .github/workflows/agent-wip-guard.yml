@@ -15,8 +15,153 @@ permissions:
   statuses: write
 
 jobs:
+  persist_owner_waiver_invalidation:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && (github.event.action == 'edited' || github.event.action == 'deleted')
+    concurrency:
+      # Every edit/delete event gets an independent durable-write worker.
+      # It must not be replaced by a later pending workflow event.
+      group: agent-wip-guard-invalidation-${{ github.repository }}-${{ github.event.issue.number }}-${{ github.run_id }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted B+ policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Persist Owner waiver invalidation
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const policy = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/dual-terra-wip-policy.mjs',
+            )).href);
+            const astra = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/astra-review-policy.mjs',
+            )).href);
+            const { owner, repo } = context.repo;
+            const field = (body, name) => {
+              const prefix = name + ':';
+              const line = String(body ?? '').split(/\r?\n/).find((value) => value.trimStart().startsWith(prefix));
+              return line ? line.slice(line.indexOf(':') + 1).trim() : '';
+            };
+            const eventComment = context.payload.comment ?? {};
+            const eventKey = [
+              context.payload.action,
+              eventComment.id ?? 'unknown',
+              eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
+            ].join(':');
+            const invalidationKey = 'INVALIDATION_EVENT_KEY: ' + eventKey;
+
+            try {
+              const actor = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner,
+                repo,
+                username: context.actor,
+              });
+              if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) {
+                core.info('Comment author cannot change Owner waiver evidence; skip durable invalidation');
+                return;
+              }
+
+              const { data: current } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: context.payload.issue.number,
+              });
+              const metadata = policy.parseLaneMetadata(current);
+              if (metadata.origin !== 'OWNER') return;
+
+              let comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: current.number,
+                per_page: 100,
+              });
+              const hasDurableInvalidation = (comment) => {
+                const body = String(comment?.body ?? '');
+                return (
+                  comment?.user?.login === 'github-actions[bot]' &&
+                  body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
+                  field(body, 'OWNER_FINAL_RISK_INVALIDATED') === 'PR #' + current.number &&
+                  field(body, 'INVALIDATION_EVENT_KEY') === eventKey
+                );
+              };
+              if (!comments.some(hasDurableInvalidation)) {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  body: [
+                    '<!-- agent-wip-guard-waiver-invalidation -->',
+                    'OWNER_FINAL_RISK_INVALIDATED: PR #' + current.number,
+                    invalidationKey,
+                    'INVALIDATION_EVENT: ' + context.payload.action,
+                    'INVALIDATION_COMMENT_ID: ' + (eventComment.id ?? 'unknown'),
+                  ].join('\n'),
+                });
+              }
+
+              comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: current.number,
+                per_page: 100,
+              });
+              const { data: fresh } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: current.number,
+              });
+              const lifecycleStatus = astra.ownerWaiverLifecycleStatus({
+                lifecycleEvent: true,
+                invalidationPersisted: true,
+                invalidationJobResult: 'success',
+                freshState: fresh.state,
+              });
+              if (lifecycleStatus === 'failure' && fresh.state === 'open') {
+                await github.rest.repos.createCommitStatus({
+                  owner,
+                  repo,
+                  sha: fresh.head.sha,
+                  state: 'failure',
+                  context: 'Agent WIP Policy',
+                  description: 'Owner waiver evidence changed during comment lifecycle; revalidation required',
+                  target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId,
+                });
+              }
+            } catch (error) {
+              core.error(error.stack ?? error.message ?? String(error));
+              try {
+                const { data: fresh } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: context.payload.issue.number,
+                });
+                if (fresh.state === 'open') {
+                  await github.rest.repos.createCommitStatus({
+                    owner,
+                    repo,
+                    sha: fresh.head.sha,
+                    state: 'failure',
+                    context: 'Agent WIP Policy',
+                    description: 'Owner waiver invalidation persistence failed; revalidation required',
+                    target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId,
+                  });
+                }
+              } catch (statusError) {
+                core.error(statusError.stack ?? statusError.message ?? String(statusError));
+              }
+              core.setFailed(error.message ?? String(error));
+            }
   guard:
-    if: github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    needs: persist_owner_waiver_invalidation
+    if: ${{ always() && (github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)) }}
     concurrency:
       # All lifecycle and comment events for one PR serialize their status
       # writers. A stale reopen run must not overwrite a later invalidation.
