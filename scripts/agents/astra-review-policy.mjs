@@ -84,7 +84,11 @@ export function isOwnerFinalRiskWaiver({
     .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}`);
   const invalidationEvents = ownerAttestations
     .map((comment) => ({ comment, kind: 'invalidation' }))
-    .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_INVALIDATED') === `PR #${number}`);
+    .filter(({ comment }) => {
+      const invalidated = readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_INVALIDATED');
+      const match = invalidated.match(OWNER_WAIVER_INVALIDATED);
+      return Boolean(match && Number(match[1]) === number);
+    });
   const relevantEvents = [...ownerEvents, ...invalidationEvents];
 
   // Never use comment id or array order as a proxy for chronology. If two
