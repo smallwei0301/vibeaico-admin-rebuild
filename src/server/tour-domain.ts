@@ -228,8 +228,24 @@ export function tripRow(input: z.infer<typeof tripCreateSchema>, tenantId: strin
   };
 }
 
-export function planRow(input: z.infer<typeof planCreateSchema>, tenantId: string, tripId: string, sortOrder: number) {
+/**
+ * `source` 是**必填參數**，不是選填。
+ *
+ * 21 分冊 §6 要求「代登入下建立的資料自動標成 `PLATFORM_ASSISTED`」，而且是**伺服器端
+ * 決定、不接受客戶端傳入**。做成必填是為了讓「忘記帶」變成編譯錯誤而不是靜默的
+ * `GUIDE`——一筆被誤標成導遊自建的代建資料，事後沒有任何方法分辨得出來。
+ *
+ * 它只是來源標記，**不改變任何權限**：導遊仍是資料 owner，照樣改得動、刪得掉。
+ */
+export function planRow(
+  input: z.infer<typeof planCreateSchema>,
+  tenantId: string,
+  tripId: string,
+  sortOrder: number,
+  source: 'GUIDE' | 'PLATFORM_ASSISTED' | 'IMPORTED',
+) {
   return {
+    source,
     tenant_id: tenantId,
     trip_id: tripId,
     name: input.name,

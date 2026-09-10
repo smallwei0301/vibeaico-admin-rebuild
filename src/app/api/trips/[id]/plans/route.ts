@@ -33,8 +33,11 @@ export const POST = handle(async (req, { params }: Context) => {
   const { count, error: countError } = await t.supabase.from('trip_plans')
     .select('id', { count: 'exact', head: true }).eq('tenant_id', t.tenantId).eq('trip_id', id);
   if (countError) throw countError;
+  // 21 分冊 §6：代登入下建立的資料自動標成 PLATFORM_ASSISTED，由伺服器端決定，
+  // 不接受客戶端傳入（`planCreateSchema` 沒有 source 欄位）。只是來源標記，不改權限。
+  const source = t.impersonation ? 'PLATFORM_ASSISTED' : 'GUIDE';
   const { data, error } = await t.supabase.from('trip_plans')
-    .insert(planRow(body, t.tenantId, id, count ?? 0)).select('*').single();
+    .insert(planRow(body, t.tenantId, id, count ?? 0, source)).select('*').single();
   if (error) throw error;
   return ok(mapTripPlan(data));
 });

@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import { Sidebar } from './Sidebar';
+import { ImpersonationBanner } from './ImpersonationBanner';
 import { Topbar } from './Topbar';
 import { Footer } from './Footer';
 import { BugReportButton } from './BugReportModal';
@@ -133,6 +134,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             userName={userName}
             setupPercent={setupPercent}
           />
+          {/* 代入中必須每一頁都看得到——見 ImpersonationBanner 檔頭。 */}
+          <ImpersonationBanner />
           <main className="content-area" key={businessType}>{children}</main>
           <Footer />
         </div>
