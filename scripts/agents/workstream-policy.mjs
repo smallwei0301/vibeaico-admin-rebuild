@@ -18,6 +18,9 @@ const matchesConfiguredPath = (path, entry) => {
  * value is never silently defaulted: it becomes an error. MODEL_GOVERNANCE is
  * accepted only when every changed path is inside the trusted-main governance
  * allowlist; mixed or Product paths therefore cannot use the label as a bypass.
+ *
+ * @param {{body?: string, changedFiles?: string[] | null}} [input]
+ * @param {Record<string, any>} [policy]
  */
 export function classifyWorkstream({ body = '', changedFiles = null } = {}, policy = {}) {
   const config = policy?.workstreams;
