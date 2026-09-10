@@ -239,7 +239,6 @@ jobs:
             );
             let ownerWaiverCommentFingerprint = '';
             let lifecyclePolicyStatus = null;
-            let lifecycleInvalidationPersisted = false;
             const ownerWaiverLifecycleEvent =
               context.eventName === 'issue_comment' &&
               ['edited', 'deleted'].includes(context.payload.action) &&
@@ -248,87 +247,25 @@ jobs:
               current.state === 'open' &&
               metadata.origin === 'OWNER' &&
               metadata.state === 'OWNER_BLOCKED';
+            const invalidationJobResult = '${{ needs.persist_owner_waiver_invalidation.result }}';
 
-            // Read and persist comment lifecycle evidence even while the PR is
-            // closed. Otherwise deleting a revoke/deny while closed can revive
-            // an old grant when the PR is reopened.
-            if (ownerWaiverLifecycleEvent || ownerWaiverEligible) {
-              ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
-                owner,
-                repo,
-                issue_number: current.number,
-                per_page: 100,
-              });
-              if (ownerWaiverLifecycleEvent) {
-                const eventComment = context.payload.comment ?? {};
-                const eventKey = [
-                  context.payload.action,
-                  eventComment.id ?? 'unknown',
-                  eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
-                ].join(':');
-                const invalidationKey = 'INVALIDATION_EVENT_KEY: ' + eventKey;
-                const hasDurableInvalidation = (comment) => {
-                  const body = String(comment?.body ?? '');
-                  const scope = body.match(
-                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_INVALIDATED[ \t]*:[ \t]*(.*?)[ \t]*$/im,
-                  )?.[1]?.trim();
-                  const key = body.match(
-                    /^[ \t]*[-*]?[ \t]*INVALIDATION_EVENT_KEY[ \t]*:[ \t]*(.*?)[ \t]*$/im,
-                  )?.[1]?.trim();
-                  return (
-                    comment?.user?.login === 'github-actions[bot]' &&
-                    body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
-                    scope === 'PR #' + current.number &&
-                    key === eventKey
-                  );
-                };
-                const alreadyDurableInvalidation = ownerWaiverComments.some(hasDurableInvalidation);
-                if (!alreadyDurableInvalidation) {
-                  await github.rest.issues.createComment({
-                    owner,
-                    repo,
-                    issue_number: current.number,
-                    body: [
-                      '<!-- agent-wip-guard-waiver-invalidation -->',
-                      'OWNER_FINAL_RISK_INVALIDATED: PR #' + current.number,
-                      invalidationKey,
-                      'INVALIDATION_EVENT: ' + context.payload.action,
-                      'INVALIDATION_COMMENT_ID: ' + (eventComment.id ?? 'unknown'),
-                    ].join('\n'),
-                  });
-                }
-                // A successful createComment is the durable write. The
-                // follow-up live read protects against a stale closed snapshot
-                // racing with a reopen event that already wrote success.
-                lifecycleInvalidationPersisted = true;
-                ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
+            // The dedicated invalidation worker must finish before this job
+            // evaluates an edit/delete event. A missing worker result is a
+            // fail-closed condition, never a reason to trust old waiver text.
+            if (ownerWaiverLifecycleEvent && invalidationJobResult !== 'success') {
+              if (current.state === 'open') {
+                await github.rest.repos.createCommitStatus({
                   owner,
                   repo,
-                  issue_number: current.number,
-                  per_page: 100,
+                  sha: current.head.sha,
+                  state: 'failure',
+                  context: 'Agent WIP Policy',
+                  description: 'Owner waiver invalidation worker did not complete; revalidation required',
+                  target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId,
                 });
-                const { data: lifecycleFresh } = await github.rest.pulls.get({
-                  owner,
-                  repo,
-                  pull_number: current.number,
-                });
-                lifecyclePolicyStatus = astra.ownerWaiverLifecycleStatus({
-                  lifecycleEvent: ownerWaiverLifecycleEvent,
-                  invalidationPersisted: lifecycleInvalidationPersisted,
-                  freshState: lifecycleFresh.state,
-                });
-                if (lifecyclePolicyStatus === 'failure') {
-                  await github.rest.repos.createCommitStatus({
-                    owner,
-                    repo,
-                    sha: lifecycleFresh.head.sha,
-                    state: 'failure',
-                    context: 'Agent WIP Policy',
-                    description: 'Owner waiver evidence changed during comment lifecycle; revalidation required',
-                    target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId,
-                  });
-                }
               }
+              core.setFailed('Owner waiver invalidation worker did not complete');
+              return;
             }
 
             if (ownerWaiverEligible) {
@@ -341,7 +278,22 @@ jobs:
               if (ownerWaiverFiles.length === current.changed_files) {
                 ownerWaiverChangeDigest = astra.changeDigestOf(ownerWaiverFiles);
               }
+              ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo,
+                issue_number: current.number,
+                per_page: 100,
+              });
               ownerWaiverCommentFingerprint = waiverCommentFingerprint(ownerWaiverComments, current.number);
+            }
+
+            if (ownerWaiverLifecycleEvent) {
+              lifecyclePolicyStatus = astra.ownerWaiverLifecycleStatus({
+                lifecycleEvent: true,
+                invalidationPersisted: true,
+                invalidationJobResult,
+                freshState: current.state,
+              });
             }
             const ownerFinalRiskWaived = astra.isOwnerFinalRiskWaiver({
               current,
