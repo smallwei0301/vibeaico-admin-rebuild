@@ -8,6 +8,12 @@
     "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1"],
     "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
   },
+  "finalRiskTrust": {
+    "version": "2026-09-10.1",
+    "trustedAgentBots": [
+      { "login": "claude[bot]", "id": 209825114, "type": "Bot" }
+    ]
+  },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [
     "scripts/agents/", ".github/workflows/", "src/server/auth", "src/server/payment", "src/server/refund", "src/app/api/payments/", "src/app/api/payment-methods/"
