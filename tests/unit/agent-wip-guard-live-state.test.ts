@@ -121,6 +121,10 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('const persistUncertainty = async () => {');
     expect(workflow).toContain('INVALIDATION_EVENT_KEY:');
     expect(workflow).toContain("context.eventName === 'pull_request_target' &&");
+    expect(workflow).toContain("context.payload.action === 'reopened'");
+    expect(workflow).toContain('const ownerWaiverReopened =');
+    expect(workflow).toContain('Owner waiver must be reissued after PR reopen');
+    expect(workflow).toContain('const uncertainInvalidationMarker = body.match(');
     expect(workflow).toContain('github.run_id');
     expect(workflow).toContain('cancel-in-progress: false');
     expect(workflow).toContain("comment?.user?.login === 'github-actions[bot]'");
