@@ -7,6 +7,40 @@ The source-only reporter `scripts/agents/schema-truth-report.mjs` compares stric
 read-only snapshots from TEST and Production with the exact bytes under `supabase/migrations/`. It does
 not connect to Supabase, execute SQL, create a branch, or modify either database.
 
+## Canonical schema authority (Owner decision 2026-09-10, #197)
+
+For future schema direction, the authoritative target is **reviewed, rebuildable source on current `main`**:
+canonical files under `supabase/migrations/` plus an explicit current Product contract. TEST and
+Production are live evidence and reconciliation surfaces; neither environment is a whole-schema authority
+that may be copied back into `main` merely because an object exists there.
+
+The delivery direction is fixed as:
+
+```text
+Product intent -> reviewed main migration source -> TEST validation -> Production reconciliation
+```
+
+When TEST, Production, provider ledger, and `main` disagree, classify the difference by current Product
+semantics before writing reconciliation SQL:
+
+- `ACTIVE_RUNTIME`: current source/API/runtime proves the object is an active Product dependency. It must
+  be reproducible from canonical `main` source.
+- `FUTURE_PRODUCT`: a deliberate future contract not required by the current runtime/bootstrap. Preserve
+  its design separately; live presence alone does not make it current canonical schema.
+- `LEGACY_RETIRED`: historical schema with no current Product ownership. Do not copy it into the new-install
+  canonical baseline merely because TEST or Production still carries it.
+- `COMPATIBILITY_ONLY`: required only to replay immutable historical migrations or bridge a baseline
+  cutover. Preserve only the compatibility contract and do not describe it as an active feature.
+
+`TEST_ONLY`, `PRODUCTION_ONLY`, `OUT_OF_LEDGER`, `REPO_MISSING`, or same-key definition mismatch are
+**observations, not migration directions**. A reconciliation migration is allowed only after the affected
+object has a Product-semantic classification. Any such migration must be bounded and idempotent. Source
+merge, TEST apply, and Production apply are separate Completion Truth events.
+
+This decision does not assert that every object currently on `main` is automatically correct. It makes
+`main` the single durable place where an approved schema decision must ultimately be represented. It also
+does not authorize any Production DDL/DML/migration; those remain separately named Owner gates.
+
 ## Snapshot contract
 
 Each snapshot is JSON schema version 1 and contains only:
