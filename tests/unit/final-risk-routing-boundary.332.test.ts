@@ -18,6 +18,10 @@ const astraSkill = readFileSync(
   resolve(process.cwd(), '.agents/skills/vibeaico-astra-review/SKILL.md'),
   'utf8',
 );
+const routingDoc = readFileSync(
+  resolve(process.cwd(), 'docs/MODEL-ROUTING.md'),
+  'utf8',
+);
 const ownerDecision = readFileSync(
   resolve(process.cwd(), 'docs/decisions/2026-09-10-owner-final-risk-roi-routing.md'),
   'utf8',
@@ -77,16 +81,22 @@ describe('Final Risk ROI routing boundary (#332)', () => {
   });
 
   it('teaches agents to dispatch an allowlisted model instead of inventing an external reviewer channel', () => {
-    for (const text of [astraSkill, ownerDecision]) {
+    for (const text of [astraSkill, routingDoc, ownerDecision]) {
       expect(text).toContain('model selector');
       expect(text).toContain('plugin');
       expect(text).toContain('connector');
       expect(text).toContain('MODEL_EXECUTION_UNAVAILABLE');
+    }
+
+    for (const text of [astraSkill, ownerDecision]) {
       expect(text).toContain('先改派模型，再談 unavailable');
     }
 
     expect(astraSkill).toContain('不是另一個 plugin、connector、MCP、外部服務');
     expect(astraSkill).toContain('不得因主 Session 本身不是 Astra/Fable');
+    expect(routingDoc).toContain('擴大可接受／可放行候選集合');
+    expect(routingDoc).toContain('只增加拒絕條件');
+    expect(routingDoc).toContain('不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道');
     expect(ownerDecision).toContain('不是 plugin、connector、MCP、外部 provider channel');
     expect(ownerDecision).toContain('擴大原本可接受／可放行的候選集合');
     expect(ownerDecision).toContain('只增加拒絕條件');
