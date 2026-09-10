@@ -169,6 +169,20 @@ describe('governance scoreboard model identity truth', () => {
       solSubjects: 1,
     });
   });
+
+  it.each([123, true, {}, [], ''])('rejects a non-string or empty executionRef: %s', (executionRef) => {
+    const evidence = {
+      contractVersion: 1,
+      runId: '2026-09-10-governance-r01',
+      records: [solReview({ executionRef })],
+    };
+    expect(validateReviewEvidence(evidence).join('\n')).toContain('executionRef must be a non-empty string');
+    expect(computeModelReviewMetrics(evidence)).toMatchObject({
+      totalReviews: 0,
+      solTouches: 0,
+      solSubjects: 0,
+    });
+  });
 });
 
 describe('governance scoreboard blocking finding reconciliation', () => {
@@ -230,6 +244,16 @@ describe('governance scoreboard blocking finding reconciliation', () => {
     const result = evaluateGovernanceScoreboard(run, evidence, policy, { enforce: true });
     expect(result.errors).toEqual([]);
     expect(result.comparisonEligible).toBe(true);
+  });
+
+  it('marks an unresolved blocking review as not comparable in report mode', () => {
+    const run = completeRun();
+    run.flow.solTouches = 2;
+    run.flow.solIssues = 1;
+    const result = evaluateGovernanceScoreboard(run, blockingEvidence(), policy);
+
+    expect(result.comparisonEligible).toBe(false);
+    expect(result.comparisonErrors.join('\n')).toContain('requires reconciliation');
   });
 });
 

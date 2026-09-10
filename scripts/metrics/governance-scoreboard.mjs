@@ -76,11 +76,11 @@ function recordMatchesFinalAnchor(record, evidence) {
 
 function uniqueReviewRecords(records) {
   const seen = new Set();
-  return records.filter((record, index) => {
-    const executionRef = String(record?.executionRef ?? '').trim();
-    const key = executionRef || `invalid:${index}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
+  return records.filter((record) => {
+    if (typeof record?.executionRef !== 'string' || !record.executionRef.trim()) return false;
+    const executionRef = record.executionRef.trim();
+    if (seen.has(executionRef)) return false;
+    seen.add(executionRef);
     return true;
   });
 }
@@ -122,8 +122,8 @@ export function validateReviewEvidence(evidence) {
     if (!IDENTITY_EVIDENCE.has(record.identityEvidence)) errors.push(`${key}.identityEvidence is invalid`);
     if (!VERDICT.has(record.verdict)) errors.push(`${key}.verdict is invalid`);
 
-    const executionRef = String(record.executionRef ?? '').trim();
-    if (!executionRef) errors.push(`${key}.executionRef is required`);
+    const executionRef = typeof record.executionRef === 'string' ? record.executionRef.trim() : '';
+    if (!executionRef) errors.push(`${key}.executionRef must be a non-empty string`);
     else if (executionRefs.has(executionRef)) errors.push(`${key}.executionRef is duplicated`);
     else executionRefs.add(executionRef);
 
@@ -262,6 +262,9 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
   const startedAtValid = meaningful(startedAtRaw) && Number.isFinite(startedAt);
   const contractApplies = effectiveAtValid && startedAtValid && startedAt >= effectiveAt;
   const terminal = TERMINAL_RUN.has(run?.status);
+  const reconciliationErrors = terminal && contractApplies
+    ? validateBlockingFindingReconciliation(evidence)
+    : [];
 
   if (enforce && terminal) {
     if (!effectiveAtValid) errors.push('scoreboard policy requires a valid effectiveAt timestamp');
@@ -280,9 +283,22 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
         errors.push(`auditability.scoreInputsCompletePercent=${recordedCompleteness} must equal computed ${dataQuality.percent}`);
       }
 
-      errors.push(...validateBlockingFindingReconciliation(evidence));
+      errors.push(...reconciliationErrors);
     }
   }
+
+  // Report generation is intentionally non-failing, but it must not label a
+  // terminal Run as comparable when a post-policy blocker is unresolved.
+  // Keep these separate from enforcement errors so the CLI can render an
+  // honest report without turning historical read-only reconciliation into a
+  // required-check failure.
+  const comparisonErrors = [
+    ...errors,
+    ...reconciliationErrors,
+    ...(terminal && !effectiveAtValid ? ['terminal Run has an invalid scoreboard policy timestamp'] : []),
+    ...(terminal && !startedAtValid ? ['terminal Run has an invalid startedAt timestamp'] : []),
+  ];
+  const uniqueComparisonErrors = [...new Set(comparisonErrors)];
 
   return {
     runId: run?.runId ?? evidence?.runId ?? 'unknown',
@@ -292,7 +308,8 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
     reviews,
     ledgerFlow: { solTouches: ledgerSolTouches, solIssues: ledgerSolIssues },
     solFlowMismatch: solMismatch,
-    comparisonEligible: terminal && dataQuality.percent >= minimum && !solMismatch && !errors.length,
+    comparisonEligible: terminal && dataQuality.percent >= minimum && !solMismatch && !uniqueComparisonErrors.length,
+    comparisonErrors: uniqueComparisonErrors,
     observations,
     errors: [...new Set(errors)],
   };
@@ -325,6 +342,8 @@ export function renderGovernanceScoreboard(run, result) {
     '',
   ];
   if (result.observations.length) lines.push('## Observations', '', ...result.observations.map((item) => `- ${item}`), '');
+  const comparisonOnlyErrors = (result.comparisonErrors ?? []).filter((item) => !result.errors.includes(item));
+  if (comparisonOnlyErrors.length) lines.push('## Comparison blockers', '', ...comparisonOnlyErrors.map((item) => `- ${item}`), '');
   if (result.errors.length) lines.push('## Contract errors', '', ...result.errors.map((item) => `- ${item}`), '');
   lines.push(
     '---',
