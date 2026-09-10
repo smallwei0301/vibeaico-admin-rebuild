@@ -183,6 +183,44 @@ describe('Owner Final Risk waiver admission', () => {
     })).toBe(true);
   });
 
+  it('ignores an untrusted comment that only imitates an invalidation marker', () => {
+    const spoofedInvalidation = {
+      id: 6,
+      created_at: '2026-09-09T10:03:00Z',
+      updated_at: '2026-09-09T10:03:00Z',
+      user: { login: 'untrusted-contributor' },
+      body: [
+        '<!-- agent-wip-guard-waiver-invalidation -->',
+        'OWNER_FINAL_RISK_INVALIDATED: PR #312',
+        'INVALIDATION_EVENT_KEY: deleted:2:2026-09-09T10:02:00Z',
+      ].join('\n'),
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation, spoofedInvalidation],
+      changeDigest,
+    })).toBe(true);
+  });
+
+  it('rejects a singleton waiver event without a real timestamp', () => {
+    const missingTimestampGrant = {
+      ...ownerAttestation,
+      created_at: undefined,
+      updated_at: undefined,
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [missingTimestampGrant],
+      changeDigest,
+    })).toBe(false);
+  });
+
   it('fails closed when relevant waiver events have equal timestamps', () => {
     const grant = {
       ...ownerAttestation,
