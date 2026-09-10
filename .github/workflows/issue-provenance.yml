@@ -22,7 +22,7 @@ jobs:
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
-      - name: Classify Issue origin and validate agent provenance
+      - name: Classify Issue origin and workstream
         uses: actions/github-script@v9
         with:
           script: |
@@ -35,7 +35,7 @@ jobs:
 
             const { owner, repo } = context.repo;
             const issue = context.payload.issue;
-            const result = policy.validateIssueProvenance(issue.body ?? '');
+            const result = policy.validateIssueProvenance(issue.body ?? '', { requireWorkstream: true });
             const isAgent = result.isAgent;
 
             const managedLabels = {
@@ -46,6 +46,18 @@ jobs:
               'origin:owner-or-unknown': {
                 color: 'BFDADC',
                 description: 'Issue has no agent provenance marker; owner-created or unknown.',
+              },
+              'workstream:model-governance': {
+                color: '6F42C1',
+                description: 'Pure model/Agent/engineering governance; handled by the Sol-only governance mode.',
+              },
+              'workstream:product-mainline': {
+                color: '0366D6',
+                description: 'Product UI/API/runtime/schema/payment/LINE/provider/deployment mainline work.',
+              },
+              'governance:workstream-incomplete': {
+                color: 'D93F0B',
+                description: 'Issue is missing or has an invalid WORKSTREAM classification.',
               },
               'governance:provenance-incomplete': {
                 color: 'D93F0B',
@@ -78,7 +90,14 @@ jobs:
               ...existing,
               isAgent ? 'origin:agent' : 'origin:owner-or-unknown',
             ];
-            if (!result.valid) nextLabels.push('governance:provenance-incomplete');
+            if (result.workstream === 'MODEL_GOVERNANCE') nextLabels.push('workstream:model-governance');
+            if (result.workstream === 'PRODUCT_MAINLINE') nextLabels.push('workstream:product-mainline');
+            if (!['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE'].includes(result.workstream)) {
+              nextLabels.push('governance:workstream-incomplete');
+            }
+            if (isAgent && result.errors.some((error) => !error.startsWith('Issue WORKSTREAM'))) {
+              nextLabels.push('governance:provenance-incomplete');
+            }
 
             await github.rest.issues.setLabels({
               owner,
@@ -88,11 +107,12 @@ jobs:
             });
 
             await core.summary
-              .addHeading('Issue provenance')
+              .addHeading('Issue provenance and workstream')
               .addTable([
                 [{ data: 'Field', header: true }, { data: 'Result', header: true }],
                 ['Issue', `#${issue.number}`],
                 ['Origin', result.origin],
+                ['Workstream', result.workstream],
                 ['Missing headings', result.missingHeadings.length ? result.missingHeadings.join(', ') : 'none'],
                 ['Empty or placeholder headings', result.emptyHeadings.length ? result.emptyHeadings.join(', ') : 'none'],
                 ['Validation errors', result.errors.length ? result.errors.join('; ') : 'none'],

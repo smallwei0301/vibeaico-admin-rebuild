@@ -69,13 +69,54 @@ function escapeRegExp(value) {
  */
 export const MAX_ACTIVE_CANDIDATES = 3;
 
+/**
+ * Fenced code blocks are documentation, never metadata.
+ *
+ * ⚠️ 這一行是實測抓到的**放行漏洞**，不是理論疑慮。`readField` 取的是第一個匹配，
+ * 而 `.github/pull_request_template.md` 的示範區塊裡有 `ASTRA_RISK: NONE`、
+ * `AGENT_LANE: GOVERNANCE`、`FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY`。
+ * 作者只要沒把樣板刪乾淨，他在下方誠實填的值就永遠讀不到——實測以 main 的真實範本
+ * 重現：作者宣告 `ASTRA_RISK: TENANT_AUTH_BOUNDARY`，`classifyAstra()` 讀到 `NONE`
+ * 並回 `required=false`，高風險宣告被整個吞掉。
+ *
+ * 修在 reader 而不是只改範本：範本可能被改回去，而 fence 出現在 PR 內文的方式不只
+ * 一種（引用他人留言、貼設定片段、示範 YAML）。從讀取端拿掉，所有消費者
+ * （`parseLaneMetadata`、`classifyWorkstream`、`classifyAstra`、preflight）一次修好。
+ *
+ * 安全性：實測 60 份 PR（含已關閉）在移除 fence 前後，九個治理欄位的讀值**零處改變**，
+ * 因此沒有任何既有 PR 把真實中繼資料放在 fence 裡。
+ */
+const withoutFencedBlocks = (body) =>
+  String(body).replace(/^[ \t]*(```|~~~)[\s\S]*?^[ \t]*\1[ \t]*$/gm, "");
+
+/**
+ * 一個欄位只能宣告一次。
+ *
+ * 移除 fenced block 只擋得住「三個反引號且正確閉合」那一種容器。Final Risk 第二輪實測
+ * 指出還有四種漏網：**未閉合**的 fence（正則需要閉合標記）、四個反引號／波浪號的 fence、
+ * 四空格縮排的 code block、以及多行 HTML 註解。它們都能把一組假的宣告藏在作者的真實
+ * 宣告之前，而 `readField` 取第一個匹配。
+ *
+ * 與其逐一追殺容器語法，直接改掉「第一個匹配獲勝」這個前提：同一欄位在**原始內文**
+ * （不移除任何容器）中出現多個不同的值時，回傳一個必然被拒的哨兵值。它含 `|`，因此
+ * `isPlaceholder()` 判為佔位符；它也不是任何列舉的合法值，因此各 classifier 會報錯。
+ * 兩條既有的 fail-closed 路徑都會接住它，不需要每個消費者各自處理。
+ *
+ * 安全性實測：60 份 PR（含已關閉）在 13 個治理欄位上，只有 1 處出現多值——已關閉的
+ * #310 的 `ACTIVE_CANDIDATE`。因此這條規則不會誤傷正在進行的工作。
+ */
+export const AMBIGUOUS_FIELD = "AMBIGUOUS|DECLARED_MORE_THAN_ONCE";
+
 export function readField(body = "", field) {
   // Do not use \s around one metadata row: \s consumes newlines and can swallow the next field.
-  const pattern = new RegExp(
-    `^[ \\t]*[-*]?[ \\t]*${escapeRegExp(field)}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`,
-    "mi",
+  const source = `^[ \\t]*[-*]?[ \\t]*${escapeRegExp(field)}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`;
+  const declared = new Set(
+    [...String(body).matchAll(new RegExp(source, "gmi"))]
+      .map((match) => (match[1] ?? "").trim())
+      .filter(Boolean),
   );
-  return (String(body).match(pattern)?.[1] ?? "").trim();
+  if (declared.size > 1) return AMBIGUOUS_FIELD;
+  return (withoutFencedBlocks(body).match(new RegExp(source, "mi"))?.[1] ?? "").trim();
 }
 
 function upper(value) {

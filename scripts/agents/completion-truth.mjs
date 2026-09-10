@@ -1,3 +1,5 @@
+import { readField } from "./agent-wip-policy.mjs";
+
 const REACHABLE_STATUSES = new Set(["ahead", "identical"]);
 
 export function evaluateMergedPullRequest({
@@ -75,17 +77,10 @@ export function formatCompletionTruth(result, verifiedAt = new Date().toISOStrin
 
 const DELIVERY_UNIT_TYPES = new Set(["SLICE", "STANDALONE"]);
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
-function readField(body = "", field) {
-  const pattern = new RegExp(
-    `^[ \\t]*[-*]?[ \\t]*${escapeRegExp(field)}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`,
-    "mi",
-  );
-  return (String(body).match(pattern)?.[1] ?? "").trim();
-}
+// 共用 agent-wip-policy.mjs 的 readField（原本是私有副本）。理由同 governance-scope-budget.mjs：
+// 三份各自演化的讀取器會對同一份內文給出不同答案，補在一份上的 fence／重複宣告防護
+// 就會被另外兩份繞過。
 
 function readLifecycleIssue(body = "") {
   const block = String(body).match(/<!--\s*pr-lifecycle([\s\S]*?)-->/i)?.[1] ?? "";

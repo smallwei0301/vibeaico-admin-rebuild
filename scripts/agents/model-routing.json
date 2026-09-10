@@ -15,6 +15,40 @@
     "build": "claude-sonnet-5",
     "audit": "claude-opus-5"
   },
+  "workstreams": {
+    "version": "2026-09-10.1",
+    "effectiveAt": "2026-09-10T08:52:28Z",
+    "allowed": ["MODEL_GOVERNANCE", "PRODUCT_MAINLINE"],
+    "modelGovernance": {
+      "workstream": "MODEL_GOVERNANCE",
+      "model": "gpt-5.6-sol",
+      "lane": "GOVERNANCE",
+      "risk": "NONE",
+      "finalRiskPolicy": "NOT_REQUIRED_BY_OWNER_POLICY",
+      "finalRiskRequired": false,
+      "scopePrefixes": [
+        ".agents/skills/",
+        "scripts/agents/",
+        "scripts/metrics/",
+        ".github/ISSUE_TEMPLATE/",
+        ".github/pull_request_template.md",
+        ".github/workflows/agent-",
+        ".github/workflows/dual-terra-contract.yml",
+        ".github/workflows/governance-scope-budget.yml",
+        ".github/workflows/issue-provenance.yml",
+        ".github/workflows/pr-janitor.yml",
+        ".github/workflows/ci.yml",
+        "tests/unit/",
+        "docs/",
+        "AGENTS.md",
+        "CLAUDE.md"
+      ]
+    },
+    "productMainline": {
+      "workstream": "PRODUCT_MAINLINE",
+      "finalRiskPolicy": "BY_PRODUCT_RISK_CLASSIFICATION"
+    }
+  },
   "finalRiskTrust": {
     "version": "2026-09-10.1",
     "trustedAgentBots": [
