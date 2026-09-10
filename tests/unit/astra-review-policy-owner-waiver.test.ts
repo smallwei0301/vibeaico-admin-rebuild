@@ -184,6 +184,28 @@ describe('Owner Final Risk waiver admission', () => {
     })).toBe(true);
   });
 
+  it('treats a failed worker uncertainty marker as a durable invalidation', () => {
+    const uncertain = {
+      id: 8,
+      created_at: '2026-09-09T10:07:00Z',
+      updated_at: '2026-09-09T10:07:00Z',
+      user: { login: 'github-actions[bot]' },
+      body: [
+        '<!-- agent-wip-guard-waiver-invalidation-uncertain -->',
+        'OWNER_FINAL_RISK_INVALIDATION_UNCERTAIN: PR #312',
+        'INVALIDATION_EVENT_KEY: deleted:2:2026-09-09T10:06:00Z',
+      ].join('\n'),
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation, uncertain],
+      changeDigest,
+    })).toBe(false);
+  });
+
   it('ignores an untrusted comment that only imitates an invalidation marker', () => {
     const spoofedInvalidation = {
       id: 6,
