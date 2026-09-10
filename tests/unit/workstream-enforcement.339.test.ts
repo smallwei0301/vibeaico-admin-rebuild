@@ -37,6 +37,7 @@ describe('machine-readable workstream enforcement (#339)', () => {
         'scripts/agents/model-routing.json',
         'scripts/agents/astra-review-policy.mjs',
         'scripts/agents/workstream-policy.mjs',
+        'docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md',
         'tests/unit/workstream-enforcement.339.test.ts',
       ],
     }, routing);
@@ -60,8 +61,13 @@ describe('machine-readable workstream enforcement (#339)', () => {
     expect(result.required).toBe(false);
   });
 
-  it('fails closed when MODEL_GOVERNANCE mixes Product runtime or migration paths', () => {
-    for (const path of ['src/server/payment/charge.ts', 'supabase/migrations/9999_bad.sql']) {
+  it('fails closed when MODEL_GOVERNANCE mixes Product or non-allowlisted paths', () => {
+    for (const path of [
+      'src/server/payment/charge.ts',
+      'supabase/migrations/9999_bad.sql',
+      'docs/decisions/2026-09-10-product-pricing.md',
+      '.github/workflows/ci.yml',
+    ]) {
       const result = evaluateAstra({ body: governanceBody, changedFiles: ['scripts/agents/model-routing.json', path] });
       expect(result.status, path).toBe('ASTRA_PENDING');
       expect(result.errors.join('\n'), path).toContain('MODEL_GOVERNANCE contains non-governance paths');

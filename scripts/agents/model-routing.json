@@ -30,7 +30,7 @@
         "docs/PR-LIFECYCLE.md",
         "docs/AGENT-EXECUTION.md",
         "docs/AGENT-BPLUS-DELIVERY-LOOP.md",
-        "docs/decisions/",
+        "docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md",
         "tests/unit/"
       ]
     },
