@@ -37,6 +37,10 @@ export function finalRiskGateStatus({ hasErrors = false, finalRiskRequired = fal
  * （下方單獨驗格式，供稽核追溯「當時審的是哪一顆」），但不再要求與當下的
  * base/head 相同。取而代之的是 `changeDigest`：綁的是**變更內容**，不是 commit 身分。
  * 理由見 `changeDigestOf()` 的檔頭。
+ *
+ * `testBaseline` 仍是 reviewer 當時實際採用的測試基線。純換底時不要把它改寫成新的
+ * CI run id；新的 exact-head CI 是獨立的 merge evidence。這樣 semantic review 綁定的
+ * 證據不被一個無內容變更的 CI 編號更新自行作廢。
  */
 const fields = ['repository', 'policyVersion', 'testBaseline', 'schemaBaseline', 'changeDigest'];
 
@@ -114,6 +118,7 @@ export function changeDigestOf(files = []) {
   if (!rows.length || rows.some((r) => !r[0] || !r[2] || !r[3])) return '';
   return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 }
+
 const allowedFinalRiskModels = (policy) => {
   const configured = policy.models?.finalRiskAllowedModels;
   const catalog = policy.models?.finalRiskModelCatalog;
@@ -127,6 +132,37 @@ const allowedFinalRiskModels = (policy) => {
   }
   return new Set(configured);
 };
+
+/**
+ * Trusted Agent bots are an explicit trusted-main trust root, never "all bots".
+ * Login + immutable GitHub user id + account type must all match. A malformed
+ * catalog fails closed by trusting none of it.
+ */
+const trustedFinalRiskAgentBots = (policy) => {
+  const configured = policy.finalRiskTrust?.trustedAgentBots;
+  if (!Array.isArray(configured) || !configured.length) return [];
+  const seen = new Set();
+  const normalized = [];
+  for (const entry of configured) {
+    const login = typeof entry?.login === 'string' ? entry.login.trim() : '';
+    const id = Number(entry?.id);
+    const type = typeof entry?.type === 'string' ? entry.type.trim() : '';
+    const key = `${login}\u0000${id}\u0000${type}`;
+    if (!login || !Number.isSafeInteger(id) || id <= 0 || type !== 'Bot' || seen.has(key)) return [];
+    seen.add(key);
+    normalized.push({ login, id, type });
+  }
+  return normalized;
+};
+
+export function isTrustedFinalRiskAgentUser(user = {}, policy = routing) {
+  const login = typeof user?.login === 'string' ? user.login.trim() : '';
+  const id = Number(user?.id);
+  const type = typeof user?.type === 'string' ? user.type.trim() : '';
+  return trustedFinalRiskAgentBots(policy).some(entry =>
+    entry.login === login && entry.id === id && entry.type === type
+  );
+}
 
 /** @param {{body?: string, changedFiles?: string[] | null}} [input] */
 export function classifyAstra({ body = '', changedFiles = null } = {}, policy = routing) {
@@ -142,13 +178,24 @@ export function classifyAstra({ body = '', changedFiles = null } = {}, policy = 
 }
 
 // Only trusted GitHub review records supplied by the caller may become attestations.
-// The author attests model identity; this is not provider-signed model telemetry.
+// OPERATOR_ATTESTED means the trusted submitting actor attests the model dispatch;
+// that actor may be a write-capable human or an explicitly allowlisted Agent bot.
+// This is still not provider-signed model telemetry.
 /** @param {Array<Record<string, any>>} [reviews] */
 export function parseAstraReviews(reviews = []) {
   return reviews.filter(r => r.trusted === true).flatMap(r => {
     const body = String(r.body ?? '');
     if (!body.includes('astra-review') && !['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state)) return [];
-    const record = { reviewState: r.state, commitId: r.commit_id, submittedAt: r.submitted_at, reviewId: r.id };
+    const record = {
+      reviewState: r.state,
+      commitId: r.commit_id,
+      submittedAt: r.submitted_at,
+      reviewId: r.id,
+      trustSource: r.trustSource ?? 'UNKNOWN',
+      reviewerLogin: r.user?.login ?? '',
+      reviewerId: r.user?.id ?? null,
+      reviewerType: r.user?.type ?? '',
+    };
     const match = body.match(/```astra-review\s*\n([\s\S]*?)\n```/);
     try {
       if (!match) throw new Error('Malformed attestation');
@@ -165,51 +212,18 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
   const errors = [];
   if (!/^[\w.-]+\/[\w.-]+$/.test(context.repository ?? '')) errors.push('Missing repository identity');
   for (const key of ['baseSha', 'headSha']) if (!SHA.test(context[key] ?? '')) errors.push(`Missing exact ${key}`);
-  // ⚠️ 沒有可用的內容指紋就不能往下走。少了這一行，`latest.changeDigest !== context.changeDigest`
-  // 會在兩邊都 undefined 時「通過」，等於把整條放寬變成無條件放行。
   if (!DIGEST.test(context.changeDigest ?? '')) errors.push('Missing change digest for this candidate');
   if (context.policyVersion !== policy.version) errors.push('Trusted policy version mismatch');
   for (const key of ['testBaseline', 'schemaBaseline']) if (!meaningful(context[key])) errors.push(`Missing concrete ${key}`);
 
-  /**
-   * 取**最新的一筆**可信 review，然後要求它適用於本候選。
-   *
-   * ⚠️ 這裡刻意不是 `find(r => r.commitId === context.headSha)`。原寫法只挑「釘在
-   * 當下 head 的那一筆」，有兩個後果：
-   *
-   *   1. 純換底時完全找不到評估（rebase 換了 commit sha，內容一個字都沒動）。
-   *   2. **更嚴重**：釘在別顆 head 上的較新否決（CHANGES_REQUESTED / FIX_REQUIRED）
-   *      會被直接跳過，讓一份較舊的 PASS 存活。
-   *
-   * 改成「取最新那一筆，再要求它對得上本候選」之後，兩者一起解決：換底時靠
-   * `changeDigest` 對得上；而任何較新的否決都會成為那一筆 latest，於是照樣擋下。
-   * 這一步是**收緊**，不是放寬。
-   */
   const parsed = parseAstraReviews(reviews);
   const latest = parsed[0];
   if (!latest) errors.push('No trusted Astra attestation for this head');
   else {
     for (const key of fields) if (latest[key] !== context[key]) errors.push(`Astra evidence is stale: ${key}`);
-    /**
-     * `baseSha` / `headSha` 不再要求與當下相同（純換底時它們本來就會不同），
-     * 但**仍必須是格式正確的 40 碼**：它們是稽核紀錄——「當時審的是哪一顆」。
-     * 少了這道，一份把 headSha 填成任意字串的 attestation 也會通過，追溯線就斷了。
-     */
     for (const key of ['baseSha', 'headSha']) {
       if (!SHA.test(latest[key] ?? '')) errors.push(`Astra evidence is stale: ${key}`);
     }
-    /**
-     * 這裡**刻意沒有**「commitId 必須等於 headSha」那條檢查了。
-     *
-     * 曾經寫過一條 `commitId !== headSha && !DIGEST.test(latest.changeDigest)` 的
-     * 捷徑，但它是死碼：`changeDigest` 已經在上面的 `fields` 迴圈裡逐字比對過，
-     * 而 `context.changeDigest` 在函式開頭就要求是合法的 64 碼。所以只要 fields
-     * 迴圈放行，`latest.changeDigest` 必然合法且等於本次算出的值，那條 if 永遠
-     * 不會成立。留著只會讓讀的人以為還有一道獨立防線——PB-027 的形狀。
-     *
-     * 現在「這份評估適用於本候選」完全由 `changeDigest` 承擔；`commitId` 仍被
-     * 記錄下來（來自 GitHub，不可偽造），但只作為稽核用途。
-     */
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
     const allowedModels = allowedFinalRiskModels(policy);
@@ -239,11 +253,22 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     for (const review of records.filter(r => r.body?.includes('astra-review') || ['CHANGES_REQUESTED', 'DISMISSED'].includes(r.state))) {
       const login = review.user?.login;
       if (!login) continue;
-      if (!permissions.has(login)) {
-        const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
-        permissions.set(login, ['admin', 'maintain', 'write'].includes(response.data.permission));
+
+      if (isTrustedFinalRiskAgentUser(review.user, policy)) {
+        reviews.push({ ...review, trusted: true, trustSource: 'TRUSTED_AGENT_BOT' });
+        continue;
       }
-      reviews.push({ ...review, trusted: permissions.get(login) });
+
+      if (!permissions.has(login)) {
+        try {
+          const response = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: login });
+          permissions.set(login, ['admin', 'maintain', 'write'].includes(response.data.permission));
+        } catch (error) {
+          if (error?.status !== 404) throw error;
+          permissions.set(login, false);
+        }
+      }
+      reviews.push({ ...review, trusted: permissions.get(login), trustSource: permissions.get(login) ? 'WRITE_ACTOR' : 'UNTRUSTED' });
     }
   }
   const digest = changeDigestOf(files);
@@ -251,16 +276,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
-    // 指紋由**受信任的預設分支**這份程式算出，且原料是 GitHub 直接給的 blob sha，
-    // 不採信 PR 或 attestation 自填的任何內容（同一份檔案清單上面已驗過沒有被截斷）。
     changeDigest: digest,
   } }, policy);
-  /**
-   * 把算出來的指紋一起回傳，讓 guard 能把它印在 summary 與 PR 留言裡。
-   *
-   * 少了這一步，這道閘門會要求一個「操作者無從得知」的必填欄位：文件說「把檢查器
-   * 算出來的同一個值填進 attestation」，但檢查器從來沒有把它說出口。那會讓下一支
-   * 高風險 PR 直接卡死——正是這支 PR 想要消除的那種收斂不了的狀態。
-   */
   return { ...result, changeDigest: digest };
 }
