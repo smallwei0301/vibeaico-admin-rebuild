@@ -4,6 +4,11 @@ Owner 於 2026-09-07 授權依治理提案實作；追蹤 #209。
 模型 ID、風險代碼及保守路徑底線只維護在 `scripts/agents/model-routing.json`。
 本規則不改變既有 TEST 排隊、Sol 結案權限或 Production 授權。
 
+2026-09-10 Owner 依 Final Risk 實際 finding yield / review cost 收斂路由，詳見
+`docs/decisions/2026-09-10-owner-final-risk-roi-routing.md`。核心原則是保留高後果 Final Risk，
+但不再因「治理」兩字把純 fail-closed hardening 自動升級；同時明定 Astra/Fable 是 reviewer
+**模型選擇**，不是外部 plugin／connector／reviewer channel。
+
 ### 最後風險 gate 的生命週期
 
 Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模型的活性檢查。Draft、`PARKED`、`COMPLETE`、`OWNER_BLOCKED`、`HISTORICAL` 與 `READY_FOR_PROMOTION` 只會延後 Final Risk；它們不代表已通過，也不會清除既有的 metadata、CI 或 WIP 錯誤。此時 `Agent WIP Policy` 保持 `pending`，絕不寫成 success 或 approval。當 PR 回到 active 且非 Draft 的可合併流程時，原本的高風險分類、`changeDigest`、基線與真實模型證據要求全部恢復。未知的 lane state 仍 fail closed。
@@ -34,13 +39,15 @@ Luna 窄盤點 → Sol 選題／風險分類 → Terra 施工 → 必要測試�
 - TENANT_AUTH_BOUNDARY：跨店讀寫、登入、權限與秘密保護邊界。
 - IRREVERSIBLE_DATA：有資料損失風險、難以復原的資料變更。
 - CROSS_REPO_CONTRACT：前後台的重要預約／訂單／付款契約。
-- GOVERNANCE_GATE：放行條件、模型路由、證據判定或權限門禁變更。
+- GOVERNANCE_GATE：會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，或可能把原本 failure/pending 變成 success/approval 的治理變更。
 - UNRESOLVED_HIGH_RISK：Sol 已查證仍無法裁決的重大疑點。
+
+2026-09-10 起，純 fail-closed governance hardening 若**不命中 sensitive path**，而且只增加拒絕條件、證據完整度、reconciliation、metrics／observability，沒有增加任何可 merge／deploy／取得權限的狀態，可填 `ASTRA_RISK: NONE`，以 Sol final audit + adversarial／negative tests 收尾。不能只靠 PR 自稱 hardening；Sol 必須能證明方向只會收緊。方向不明、同時含 relaxation，或可接受狀態集合被擴大時，仍使用 `GOVERNANCE_GATE` / `UNRESOLVED_HIGH_RISK`。
 
 Sol 在開工時填 ASTRA_RISK 與具體 ASTRA_RATIONALE。實際 changed files（含 rename 前後路徑）
 命中設定內敏感路徑時，不能用 NONE 降級。路徑底線並非完整語意分析；其他位置的高風險仍須申報。
-預設每個證據版本一次最後評估，不設可讓必要風險審核被跳過的配額。
-Astra 不可用、模型無法確認或證據缺漏時保留 ASTRA_PENDING，继续可安全工作，不能代填通過。
+預設每個 semantic content digest 一次最後評估；只有 blocking finding 導致內容實質修改才進下一輪。純 rebase 且 `changeDigest` 不變不重跑 semantic Final Risk，但 exact-head CI 仍重跑。
+Final Risk 模型不可用的判定必須發生在實際嘗試 Agent／子代理 model selector 之後；不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
 
 ## 技能與事前檢查
 
@@ -120,10 +127,9 @@ blob sha**），排序後 sha256。取法見 `changeDigestOf()`；值由**受信
 候選。原本的 `find(commitId === headSha)` 會跳過釘在別顆 head 上的較新否決，讓一份較舊
 的 PASS 存活；現在任何較新的否決都會成為那一筆 latest，照樣擋下。
 
-**什麼算「實際模型證據」。** 在目前的執行環境，可接受的作法是**在一個明確指定
-`model: fable` 或 `model: astra` 的子代理中執行該次審核**，並在 `report` 連結的紀錄裡寫明是哪一次
-執行、審了哪一顆 head。操作者背書的是「我確實把這次審核交給了那個模型」這件事，
-不是模型自己簽的名——下一段講的就是這個界線。
+**什麼算「實際模型證據」。** Astra/Fable 是 Final Risk reviewer 的模型，不是 plugin、connector、MCP 或外部 reviewer 通道。需要審查時，先讀 `models.finalRisk` 與 `models.finalRiskAllowedModels`，再使用目前 runtime 的 Agent／子代理 **model selector** 明確改派該模型；預設模型不可用時自動嘗試 allowlist 另一個模型。不得因主 Session 本身不是 Astra/Fable 就搜尋外部整合或要求 Owner 開通「reviewer 通道」。只有 runtime 確實沒有 model-selecting delegation 能力，或 allowlist 模型都被明確拒絕時，才可記 `MODEL_EXECUTION_UNAVAILABLE` 並保持 ASTRA_PENDING。
+
+在目前可指定模型的執行環境，可接受的 evidence 是在一個明確指定 `model: fable` 或 `model: astra`（或 runtime 對應的 exact model ID）的子代理中執行該次審核，並在 `report` 連結的紀錄裡寫明是哪一次執行、審了哪一顆 head。操作者背書的是「我確實把這次審核交給了那個模型」這件事，不是模型自己簽名。Agent 名稱叫 Astra 不構成模型身分證據。
 
 缺實際模型證據不能使用 OPERATOR_ATTESTED。GitHub 只能核對具 write／maintain／admin
 權限操作人的背書，**不能獨立證明模型身份**；不可稱為供應商簽章證明。
