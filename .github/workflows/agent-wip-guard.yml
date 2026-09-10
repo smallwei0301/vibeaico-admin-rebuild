@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   guard:
-    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && github.event.comment.body == '/astra-review-check')
+    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check')))
     concurrency:
       group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: true
@@ -55,8 +55,14 @@ jobs:
               pull_number: payloadCurrent.number,
             });
             if (context.eventName === 'issue_comment') {
-              const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
-              if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission');
+              const firstLine = String(context.payload.comment?.body ?? '').split(/\r?\n/, 1)[0].trim();
+              if (firstLine !== '/astra-review-check') throw new Error('Invalid Final Risk refresh command');
+              const commentUser = context.payload.comment?.user ?? {};
+              const trustedAgent = astra.isTrustedFinalRiskAgentUser(commentUser);
+              if (!trustedAgent) {
+                const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
+                if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission or a trusted Final Risk Agent identity');
+              }
             }
             const marker = '<!-- agent-wip-guard -->';
             if (current.state === 'open') {
