@@ -21,7 +21,7 @@ WORKSTREAM: PRODUCT_MAINLINE
 
 空白、拼錯或 invented third value 都是不合法分類。既有 open work 在下一次被接手施工、promote、rebuild 或 closeout 前先補分類；不為了回填分類重寫歷史 commit。
 
-## MODEL_GOVERNANCE：Sol-only
+## MODEL_GOVERNANCE：audit 層 only
 
 模型路由、Agent orchestration、WIP / lane、Final Risk guard 自身治理、governance metrics / scoreboard、PR lifecycle、治理型 CI / templates 與其 regression tests，使用：
 
@@ -32,6 +32,31 @@ REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol
 ASTRA_RISK: NONE
 FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 ```
+
+### 誰可以執行 MODEL_GOVERNANCE（Owner 決定，2026-09-10）
+
+MODEL_GOVERNANCE 是 **audit 層**的工作，不是「某一個型號」的工作。audit 層在兩側各有一個模型，
+兩者同層等價，**都可以執行**：
+
+| 側 | audit 層模型 | 來源 |
+|---|---|---|
+| OpenAI | `gpt-5.6-sol` | `models.audit` |
+| Anthropic | `claude-opus-5` | `anthropicEquivalents.audit` |
+
+機器可讀的清單是 `scripts/agents/model-routing.json` 的
+`workstreams.modelGovernance.allowedModels`，守門 (`classifyWorkstream()`) 就讀它。
+
+三件必須一起成立的事：
+
+1. `requested` 與 `actual` **各自**都必須落在清單內。一邊合規不能替另一邊背書。
+2. 比對是**逐值**的，不是子字串比對：`gpt-5.6-sol-preview` 不算 `gpt-5.6-sol`。
+3. 欄位必須記錄**實際 served 的模型**，不得以本表推定。清單放寬的是「哪些模型算合規」，
+   不是「可以照抄一個合規值」。build 層（`gpt-5.6-terra` / `claude-sonnet-5`）與 scout 層
+   （`gpt-5.6-luna` / `claude-haiku-4-5`）一律不得執行治理。
+
+在此之前守門只認 `gpt-5.6-sol` 這一個字面值，於是在 Anthropic 側誠實填 `claude-opus-5` 的治理 PR
+永遠過不了；而修這條規則的 PR 自己也是治理 PR、也過不了（守門是 `pull_request_target`，讀的是
+`main` 上的程式）。#342 因此只能靠暫時移除必要檢查才合得進去。這條清單就是為了不再發生那件事。
 
 執行流程：
 
