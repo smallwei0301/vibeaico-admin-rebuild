@@ -1,7 +1,16 @@
 name: Delivery Slice（可獨立關閉的小交付）
-description: Use for one user-visible, independently usable and closeable Product outcome under an optional parent Epic.
+description: Use for one user-visible, independently usable and closeable Product outcome under an optional parent Epic. Delivery Slices are always PRODUCT_MAINLINE.
 title: "[Delivery Slice] "
 body:
+  - type: input
+    id: workstream
+    attributes:
+      label: WORKSTREAM
+      description: Delivery Slice is a Product outcome and must remain PRODUCT_MAINLINE. Pure model/governance work uses a governance Issue instead.
+      value: PRODUCT_MAINLINE
+    validations:
+      required: true
+
   - type: dropdown
     id: delivery-unit-type
     attributes:
@@ -104,6 +113,8 @@ body:
     attributes:
       label: Slice boundary checks
       options:
+        - label: WORKSTREAM remains PRODUCT_MAINLINE; this is not pure model/governance work.
+          required: true
         - label: This Issue has one independently usable Product outcome, not several sibling features bundled together.
           required: true
         - label: The parent Epic may remain open after this Slice closes.
