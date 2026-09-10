@@ -57,6 +57,50 @@ jobs:
               eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
             ].join(':');
             const invalidationKey = 'INVALIDATION_EVENT_KEY: ' + eventKey;
+            const persistUncertainty = async () => {
+              const issueNumber = context.payload.issue?.number;
+              if (!issueNumber) return;
+              try {
+                const { data: current } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: issueNumber,
+                });
+                const metadata = policy.parseLaneMetadata(current);
+                if (metadata.origin !== 'OWNER') return;
+                const comments = await github.paginate(github.rest.issues.listComments, {
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  per_page: 100,
+                });
+                const hasUncertainInvalidation = (comment) => {
+                  const body = String(comment?.body ?? '');
+                  return (
+                    comment?.user?.login === 'github-actions[bot]' &&
+                    body.includes('<!-- agent-wip-guard-waiver-invalidation-uncertain -->') &&
+                    field(body, 'OWNER_FINAL_RISK_INVALIDATION_UNCERTAIN') === 'PR #' + issueNumber &&
+                    field(body, 'INVALIDATION_EVENT_KEY') === eventKey
+                  );
+                };
+                if (!comments.some(hasUncertainInvalidation)) {
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: issueNumber,
+                    body: [
+                      '<!-- agent-wip-guard-waiver-invalidation-uncertain -->',
+                      'OWNER_FINAL_RISK_INVALIDATION_UNCERTAIN: PR #' + issueNumber,
+                      invalidationKey,
+                      'INVALIDATION_EVENT: ' + context.payload.action,
+                      'INVALIDATION_COMMENT_ID: ' + (eventComment.id ?? 'unknown'),
+                    ].join('\\n'),
+                  });
+                }
+              } catch (uncertaintyError) {
+                core.error(uncertaintyError.stack ?? uncertaintyError.message ?? String(uncertaintyError));
+              }
+            };
 
             try {
               const actor = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -137,6 +181,7 @@ jobs:
               }
             } catch (error) {
               core.error(error.stack ?? error.message ?? String(error));
+              await persistUncertainty();
               try {
                 const { data: fresh } = await github.rest.pulls.get({
                   owner,
