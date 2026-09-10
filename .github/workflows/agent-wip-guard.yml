@@ -272,7 +272,14 @@ jobs:
                   const invalidationMarker = body.match(
                     /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_INVALIDATED[ \t]*:[ \t]*(.*?)[ \t]*$/im,
                   )?.[1]?.trim();
-                  return waiverMarker === `PR #${number}` || invalidationMarker === `PR #${number}`;
+                  const uncertainInvalidationMarker = body.match(
+                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_INVALIDATION_UNCERTAIN[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                  )?.[1]?.trim();
+                  return (
+                    waiverMarker === `PR #${number}` ||
+                    invalidationMarker === `PR #${number}` ||
+                    uncertainInvalidationMarker === `PR #${number}`
+                  );
                 })
                 .map((comment) => [
                   comment?.id,
@@ -285,9 +292,17 @@ jobs:
             let ownerWaiverCommentFingerprint = '';
             let lifecyclePolicyStatus = null;
             const ownerWaiverLifecycleEvent =
-              context.eventName === 'issue_comment' &&
-              ['edited', 'deleted'].includes(context.payload.action) &&
-              metadata.origin === 'OWNER';
+              metadata.origin === 'OWNER' &&
+              (
+                (
+                  context.eventName === 'issue_comment' &&
+                  ['edited', 'deleted'].includes(context.payload.action)
+                ) ||
+                (
+                  context.eventName === 'pull_request_target' &&
+                  context.payload.action === 'reopened'
+                )
+              );
             const ownerWaiverEligible =
               current.state === 'open' &&
               metadata.origin === 'OWNER' &&
@@ -297,7 +312,16 @@ jobs:
             // The dedicated invalidation worker must finish before this job
             // evaluates an edit/delete event. A missing worker result is a
             // fail-closed condition, never a reason to trust old waiver text.
-            if (ownerWaiverLifecycleEvent && invalidationJobResult !== 'success') {
+            // Reopening an Owner-origin PR is also a lifecycle boundary: a
+            // waiver granted before close cannot silently cross that boundary.
+            const ownerWaiverReopened =
+              context.eventName === 'pull_request_target' &&
+              context.payload.action === 'reopened' &&
+              metadata.origin === 'OWNER';
+            if (
+              ownerWaiverLifecycleEvent &&
+              (ownerWaiverReopened || invalidationJobResult !== 'success')
+            ) {
               if (current.state === 'open') {
                 await github.rest.repos.createCommitStatus({
                   owner,
@@ -305,11 +329,17 @@ jobs:
                   sha: current.head.sha,
                   state: 'failure',
                   context: 'Agent WIP Policy',
-                  description: 'Owner waiver invalidation worker did not complete; revalidation required',
+                  description: ownerWaiverReopened
+                    ? 'PR reopened; Owner waiver must be reissued after PR reopen'
+                    : 'Owner waiver invalidation worker did not complete; revalidation required',
                   target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId,
                 });
               }
-              core.setFailed('Owner waiver invalidation worker did not complete');
+              core.setFailed(
+                ownerWaiverReopened
+                  ? 'PR reopened; Owner waiver must be reissued after PR reopen'
+                  : 'Owner waiver invalidation worker did not complete',
+              );
               return;
             }
 
