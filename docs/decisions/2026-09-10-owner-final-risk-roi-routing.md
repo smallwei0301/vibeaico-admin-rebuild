@@ -96,7 +96,22 @@ Final Risk 保留給「後果高，而且獨立高階 reviewer 能提供正交�
 
 目標：pure-churn Final Risk round < 10%。
 
-## 8. 本決策自己的安全邊界
+## 8. Astra/Fable 是模型改派，不是外部通道
+
+Owner 另外指出一個實際 Agent 執行失誤：當 Final Risk 缺少 Astra/Fable evidence 時，Agent 曾把它描述成「需要開啟真正可執行 Astra 或 Fable 的 reviewer 通道」，甚至把模型不可驗證誤解成另一個外部整合阻塞。
+
+此後統一如下：
+
+1. `gpt-6-astra` 與 `claude-fable-5-1` 是 Final Risk reviewer **模型**，不是 plugin、connector、MCP、外部 provider channel 或另一個 Owner 權限面。
+2. Final Risk 需要執行時，Agent 先讀 `models.finalRisk` / `finalRiskAllowedModels`，再使用目前 runtime 既有的 Agent／子代理 **model selector** 改派 reviewer 任務。
+3. 預設模型不可用時，自動嘗試 allowlist 中另一個模型；不需要 Owner 逐次決定 Astra 或 Fable。
+4. 不得因主 Session 自己不是 Astra/Fable，就搜尋 plugin、connector 或要求 Owner「開 reviewer 通道」。
+5. 一個 agent 被命名為 Astra 不代表它真的跑 Astra；`actualModel` 必須來自那次有指定模型的實際委派。
+6. 只有 runtime 確實沒有任何可指定模型的 Agent／子代理委派能力，或 allowlist 內模型都被 runtime 明確拒絕時，才可標 `MODEL_EXECUTION_UNAVAILABLE` / `ASTRA_PENDING`。必須附實際能力限制，不得把「尚未嘗試 model delegation」當外部 blocker。
+
+口訣：**先改派模型，再談 unavailable。**
+
+## 9. 本決策自己的安全邊界
 
 本決策本身是在收窄未來 Final Risk 的語意觸發範圍，因此 **本次 #332 實作不得使用這份新規則替自己免審**。
 
