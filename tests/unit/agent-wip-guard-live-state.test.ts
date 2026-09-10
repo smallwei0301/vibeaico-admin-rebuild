@@ -71,7 +71,7 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('ownerWaiverChangeDigest = astra.changeDigestOf(ownerWaiverFiles);');
     expect(workflow).toContain('ownerAttestations: ownerWaiverComments,');
     expect(workflow).toContain("status: current.state === 'open' ? 'DEFERRED_NON_ACTIVE' : 'NOT_REQUIRED'");
-    expect(workflow).toContain('const policyStatus = astra.finalRiskGateStatus({');
+    expect(workflow).toContain('const policyStatus = lifecyclePolicyStatus ?? astra.finalRiskGateStatus({');
     expect(workflow).toContain('ownerFinalRiskWaived,');
     expect(workflow).toContain('state: policyStatus');
     expect(workflow).toContain('Agent WIP Policy intentionally remains pending and is not an approval');
