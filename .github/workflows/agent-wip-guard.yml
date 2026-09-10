@@ -75,12 +75,12 @@ jobs:
                 .filter((comment) => {
                   const body = String(comment?.body ?? '');
                   const waiverMarker = body.match(
-                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_WAIVER[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_WAIVER[ \t]*:[ \t]*(.*?)[ \t]*$/im,
                   )?.[1]?.trim();
                   const invalidationMarker = body.match(
-                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_INVALIDATED[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_INVALIDATED[ \t]*:[ \t]*(.*?)[ \t]*$/im,
                   )?.[1]?.trim();
-                  return waiverMarker === \`PR #\${number}\` || invalidationMarker === \`PR #\${number}\`;
+                  return waiverMarker === `PR #${number}` || invalidationMarker === `PR #${number}`;
                 })
                 .map((comment) => [
                   comment?.id,
@@ -120,7 +120,7 @@ jobs:
                   eventComment.id ?? 'unknown',
                   eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
                 ].join(':');
-                const invalidationKey = \`INVALIDATION_EVENT_KEY: \${eventKey}\`;
+                const invalidationKey = `INVALIDATION_EVENT_KEY: ${eventKey}`;
                 if (!ownerWaiverComments.some((comment) => String(comment?.body ?? '').includes(invalidationKey))) {
                   await github.rest.issues.createComment({
                     owner,
@@ -128,11 +128,11 @@ jobs:
                     issue_number: current.number,
                     body: [
                       '<!-- agent-wip-guard-waiver-invalidation -->',
-                      \`OWNER_FINAL_RISK_INVALIDATED: PR #\${current.number}\`,
+                      `OWNER_FINAL_RISK_INVALIDATED: PR #${current.number}`,
                       invalidationKey,
-                      \`INVALIDATION_EVENT: \${context.payload.action}\`,
-                      \`INVALIDATION_COMMENT_ID: \${eventComment.id ?? 'unknown'}\`,
-                    ].join('\\n'),
+                      `INVALIDATION_EVENT: ${context.payload.action}`,
+                      `INVALIDATION_COMMENT_ID: ${eventComment.id ?? 'unknown'}`,
+                    ].join('\n'),
                   });
                 }
                 ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
