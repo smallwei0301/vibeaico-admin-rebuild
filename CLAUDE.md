@@ -149,6 +149,43 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 7. Money columns use `formatCurrency()` with `numeric: true`; status columns use `<Badge tone>`
    with text from a `common.*` map. Icons are lucide-react only.
 
+## Lane → model tier (Owner decision, 2026-09-10)
+
+The `Luna / Terra / Sol` lane names in `scripts/agents/model-routing.json` name a **tier of work**,
+not a vendor. On the OpenAI side they map to `gpt-5.6-*`; on the Anthropic side they map as below.
+The mapping is mandatory in both directions — the lane picks the tier, and the tier picks the model.
+
+| Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |
+|---|---|---|---|
+| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
+| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
+
+Model IDs are taken verbatim from Anthropic's model table and are **complete as written** — never
+append a date suffix (`claude-haiku-4-5`, not a dated variant).
+
+**Terra 一律用 Sonnet.** Doing `TERRA_BUILD` work on Opus is over-spec, not diligence: it burns the
+audit tier's cost on construction and leaves the audit tier reviewing its own output. Doing it on
+Haiku is under-spec. Neither substitutes for the other, and neither is the runner's call to make.
+
+Two consequences worth stating, because both have already been violated in practice:
+
+- A PR whose `AGENT_LANE` is `TERRA_BUILD` must declare a `build`-tier model in
+  `REQUESTED_MODEL / ACTUAL_MODEL`. `actual=Opus 5` on a `TERRA_BUILD` lane is a routing violation
+  and should be recorded as one, not left as a neutral note.
+- This is separate from the final risk gate below. Where a change **is** high-risk, the Final Risk
+  review must still be delegated to a model in `models.finalRiskAllowedModels` (default
+  `claude-fable-5-1`; `gpt-6-astra` is also allowed) regardless of which tier built it. A correct
+  build tier does not remove that requirement, and passing Final Risk does not make the build tier
+  correct. Which changes are high-risk is decided by `docs/MODEL-ROUTING.md`, not by this section.
+
+`actual=unknown` stays the honest value when the platform cannot prove which model ran
+(`docs/AGENT-EXECUTION.md`) — it is not a way to avoid declaring the tier.
+
+A scorecard's `requested` / `actual` fields must record what **actually** served the lane, never
+this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run claims
+a specific model. The table says what should have run; only the run itself says what did.
+
 ## Final risk review models (Owner decisions, 2026-09-08)
 
 The high-risk final review gate — the one that produces the `astra-review` attestation the

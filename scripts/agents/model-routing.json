@@ -8,6 +8,13 @@
     "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1"],
     "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
   },
+  "anthropicEquivalents": {
+    "version": "2026-09-10.1",
+    "note": "Owner 2026-09-10 裁示：在 Anthropic 側執行時，lane 決定層級、層級決定模型，一律對應下表，不得往上或往下取代。Terra 一律用 Sonnet：拿 audit 層的 Opus 去做 build 是超規，拿 scout 層的 Haiku 去做 build 是不足。model ID 逐字取自 Anthropic 官方型號表，本身即完整，不得附加日期後綴。",
+    "scout": "claude-haiku-4-5",
+    "build": "claude-sonnet-5",
+    "audit": "claude-opus-5"
+  },
   "workstreams": {
     "version": "2026-09-10.1",
     "effectiveAt": "2026-09-10T08:52:28Z",

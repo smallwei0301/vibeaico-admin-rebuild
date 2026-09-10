@@ -76,6 +76,42 @@ Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product bui
 
 `models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
 
+## Lane 對應的模型層級（Owner 2026-09-10 裁示）
+
+上一節說「其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder」。本節就是
+**Anthropic 側「等價 builder」的定義**——它收窄該句，不與之衝突。
+
+lane 決定層級，層級決定模型：
+
+| Lane | 職責 | OpenAI | Anthropic |
+|---|---|---|---|
+| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工**（Product builder lane） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
+| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
+
+機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
+model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
+
+**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 施工是超規，不是謹慎——它把審核層的成本花在施工上，
+並讓審核層去審自己的產出；拿 scout 層的 Haiku 施工則是不足。兩個方向都不由執行者自行裁量。
+
+因此 `AGENT_LANE: TERRA_BUILD` 的 PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級的
+模型。`actual=Opus 5` 出現在 `TERRA_BUILD` 上是路由違規，應如實記為違規，不是中性註記——這與上一節
+「不能從 lane 名稱推論模型真的跑過」是同一條要求的兩面。
+
+平台無法證明實際執行模型時，`actual=unknown` 仍是誠實值（見 `docs/AGENT-EXECUTION.md`），
+但它不是規避宣告層級的方式。scorecard 的 `requested`／`actual` 必須記錄**實際** served 的模型，
+不得以本表推定。
+
+本節與 Final Risk 彼此獨立。Final Risk 的適用範圍由下一節（`## PRODUCT_MAINLINE 的 Final Risk`）
+與 `docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md` 決定，本節不擴大也不縮小它：
+施工層正確不免除 Final Risk，Final Risk 通過也不使施工層變得正確。
+
+`scripts/agents/model-routing.json` 的頂層 `version` **刻意不因本節而 bump**。`evaluateAstra()`
+以 `policyVersion !== policy.version` 綁定既有 attestation，bump 會讓所有在途 PR 的 attestation
+立刻失效並被迫重跑 Final Risk；而 `anthropicEquivalents` 沒有任何 runtime 讀取，語意上不改變
+任何既有判定。該鍵自帶 `version` 供本身追溯。
+
 ## PRODUCT_MAINLINE 的 Final Risk
 
 以下規則只適用 Product mainline，不適用純 MODEL_GOVERNANCE。
