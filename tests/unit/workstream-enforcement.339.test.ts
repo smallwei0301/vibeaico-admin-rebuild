@@ -29,7 +29,7 @@ const productBody = [
 describe('MODEL_GOVERNANCE executable workstream boundary (#339)', () => {
   it('keeps Product Final Risk policy version stable while versioning workstream policy independently', () => {
     expect(routing.version).toBe('2026-09-08.4');
-    expect(routing.workstreams.version).toBe('2026-09-10.1');
+    expect(routing.workstreams.version).toBe('2026-09-10.2');
     expect(routing.workstreams.allowed).toEqual(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
   });
 

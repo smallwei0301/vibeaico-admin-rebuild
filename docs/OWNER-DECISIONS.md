@@ -9,6 +9,7 @@
 | 範圍 | 主題 | 裁示 | 影響 |
 |---|---|---|---|
 | repo governance | Lane 對應的模型層級 | **lane 決定層級、層級決定模型：Luna=`claude-haiku-4-5`、Terra=`claude-sonnet-5`、Sol=`claude-opus-5`。Terra 一律用 Sonnet。** | 拿 Opus 施工是超規、拿 Haiku 施工是不足，兩者都不由執行者裁量。`AGENT_LANE: TERRA_BUILD` 卻宣告 `actual=Opus 5` 是路由違規，應如實記載。與 Final Risk 閘門獨立。model ID 不得附加日期後綴。canonical：`docs/decisions/2026-09-10-owner-lane-model-tier.md`、`scripts/agents/model-routing.json` 的 `anthropicEquivalents`。 |
+| repo governance | 誰可以執行 MODEL_GOVERNANCE | **MODEL_GOVERNANCE 是 audit 層的工作，`gpt-5.6-sol` 與 `claude-opus-5` 同層等價，兩者皆可執行。** | 守門原本只認 `gpt-5.6-sol` 一個字面值，造成閉環死結：Anthropic 側誠實填 `claude-opus-5` 的治理 PR 過不了，而修這條規則的 PR 自己也過不了（守門是 `pull_request_target`，讀 `main` 的程式）。#342 因此只能靠暫時移除必要檢查合併。清單之外仍一律擋下（build 層、scout 層、Fable 皆不得執行治理）；`requested` 與 `actual` 各自都必須落在清單內，且必須記錄實際 served 的模型。canonical：`docs/decisions/2026-09-10-owner-governance-audit-tier-models.md`、`scripts/agents/model-routing.json` 的 `workstreams.modelGovernance.allowedModels`。 |
 
 ## 2026-09-09 已裁示
 
