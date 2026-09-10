@@ -21,12 +21,6 @@
       { "login": "claude[bot]", "id": 209825114, "type": "Bot" }
     ]
   },
-  "workstreamPolicy": {
-    "version": "2026-09-10.2",
-    "note": "#339／#343 把工作分成 MODEL_GOVERNANCE 與 PRODUCT_MAINLINE 並豁免前者的 Final Risk，但該豁免原本只存在於文件。本鍵是它的 machine-readable 實作（#339 驗收第一項）。fail-closed：WORKSTREAM 必須逐字等於 exemptWorkstream；命中的 sensitive path 必須全部落在 exemptSensitivePaths 內，任一落在其外即不豁免；宣告任何 highRisk 仍強制 Final Risk。清單刻意只含 scripts/agents/——.github/workflows/ 可改變部署行為，產品 runtime 路徑更不在此列。",
-    "exemptWorkstream": "MODEL_GOVERNANCE",
-    "exemptSensitivePaths": ["scripts/agents/"]
-  },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [
     "scripts/agents/", ".github/workflows/", "src/server/auth", "src/server/payment", "src/server/refund", "src/app/api/payments/", "src/app/api/payment-methods/"
