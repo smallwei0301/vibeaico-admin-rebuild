@@ -105,6 +105,10 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('types: [created, edited, deleted]');
     expect(workflow).toContain("github.event_name == 'issue_comment' && github.event.issue.pull_request");
     expect(workflow).toContain('const waiverCommentFingerprint =');
+    expect(workflow).toContain('OWNER_FINAL_RISK_INVALIDATED');
+    expect(workflow).toContain('INVALIDATION_EVENT_KEY:');
+    expect(workflow).toContain("context.eventName === 'pull_request_target' &&");
+
     expect(workflow).toContain('Owner waiver comments changed during policy evaluation');
     expect(workflow).not.toContain('group: agent-wip-guard-${{ github.repository }}\n');
   });
