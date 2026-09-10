@@ -94,6 +94,8 @@ jobs:
                 ]),
             );
             let ownerWaiverCommentFingerprint = '';
+            let lifecyclePolicyStatus = null;
+            let lifecycleInvalidationPersisted = false;
             const ownerWaiverLifecycleEvent =
               context.eventName === 'issue_comment' &&
               ['edited', 'deleted'].includes(context.payload.action) &&
@@ -120,42 +122,68 @@ jobs:
                   eventComment.id ?? 'unknown',
                   eventComment.updated_at ?? eventComment.created_at ?? 'unknown',
                 ].join(':');
-                const invalidationKey = `INVALIDATION_EVENT_KEY: ${eventKey}`;
+                const invalidationKey = 'INVALIDATION_EVENT_KEY: ' + eventKey;
                 const hasDurableInvalidation = (comment) => {
                   const body = String(comment?.body ?? '');
                   const scope = body.match(
-                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_INVALIDATED[ \t]*:[ \t]*(.*?)[ \t]*$/im,
+                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_INVALIDATED[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
                   )?.[1]?.trim();
                   const key = body.match(
-                    /^[ \t]*[-*]?[ \t]*INVALIDATION_EVENT_KEY[ \t]*:[ \t]*(.*?)[ \t]*$/im,
+                    /^[ \\t]*[-*]?[ \\t]*INVALIDATION_EVENT_KEY[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
                   )?.[1]?.trim();
                   return (
                     comment?.user?.login === 'github-actions[bot]' &&
                     body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
-                    scope === `PR #${current.number}` &&
+                    scope === 'PR #' + current.number &&
                     key === eventKey
                   );
                 };
-                if (!ownerWaiverComments.some(hasDurableInvalidation)) {
+                const alreadyDurableInvalidation = ownerWaiverComments.some(hasDurableInvalidation);
+                if (!alreadyDurableInvalidation) {
                   await github.rest.issues.createComment({
                     owner,
                     repo,
                     issue_number: current.number,
                     body: [
                       '<!-- agent-wip-guard-waiver-invalidation -->',
-                      `OWNER_FINAL_RISK_INVALIDATED: PR #${current.number}`,
+                      'OWNER_FINAL_RISK_INVALIDATED: PR #' + current.number,
                       invalidationKey,
-                      `INVALIDATION_EVENT: ${context.payload.action}`,
-                      `INVALIDATION_COMMENT_ID: ${eventComment.id ?? 'unknown'}`,
-                    ].join('\n'),
+                      'INVALIDATION_EVENT: ' + context.payload.action,
+                      'INVALIDATION_COMMENT_ID: ' + (eventComment.id ?? 'unknown'),
+                    ].join('\\n'),
                   });
                 }
+                // A successful createComment is the durable write. The
+                // follow-up live read protects against a stale closed snapshot
+                // racing with a reopen event that already wrote success.
+                lifecycleInvalidationPersisted = true;
                 ownerWaiverComments = await github.paginate(github.rest.issues.listComments, {
                   owner,
                   repo,
                   issue_number: current.number,
                   per_page: 100,
                 });
+                const { data: lifecycleFresh } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: current.number,
+                });
+                lifecyclePolicyStatus = astra.ownerWaiverLifecycleStatus({
+                  lifecycleEvent: ownerWaiverLifecycleEvent,
+                  invalidationPersisted: lifecycleInvalidationPersisted,
+                  freshState: lifecycleFresh.state,
+                });
+                if (lifecyclePolicyStatus === 'failure') {
+                  await github.rest.repos.createCommitStatus({
+                    owner,
+                    repo,
+                    sha: lifecycleFresh.head.sha,
+                    state: 'failure',
+                    context: 'Agent WIP Policy',
+                    description: 'Owner waiver evidence changed during comment lifecycle; revalidation required',
+                    target_url: context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId,
+                  });
+                }
               }
             }
 
@@ -358,7 +386,7 @@ jobs:
             const errors = current.state === 'open'
               ? [...new Set([...metadataErrors, ...wipErrors, ...astraResult.errors])]
               : [];
-            const policyStatus = astra.finalRiskGateStatus({
+            const policyStatus = lifecyclePolicyStatus ?? astra.finalRiskGateStatus({
               hasErrors: errors.length > 0,
               finalRiskRequired,
               ownerFinalRiskWaived,
