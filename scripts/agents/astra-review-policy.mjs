@@ -27,6 +27,7 @@ export function shouldEnforceFinalRisk({ pullRequestState = 'open', draft = fals
 
 const OWNER_WAIVER_STATUS = /^OWNER_WAIVED_FOR_PR_(\d+)_\d{4}_\d{2}_\d{2}$/;
 const OWNER_WAIVER_REVOKED_STATUS = /^OWNER_WAIVER_(?:REVOKED|DENIED)_FOR_PR_(\d+)_\d{4}_\d{2}_\d{2}$/;
+const OWNER_WAIVER_INVALIDATED = /^PR #(\d+)$/;
 
 /**
  * @param {{current?: Record<string, any>, owner?: string, origin?: string, laneState?: string, body?: string, ownerAttestations?: Array<Record<string, any>>, changeDigest?: string}} [input]
@@ -35,6 +36,10 @@ const OWNER_WAIVER_REVOKED_STATUS = /^OWNER_WAIVER_(?:REVOKED|DENIED)_FOR_PR_(\d
  * It is intentionally narrow: only the repository owner may author it, the PR
  * must be explicitly OWNER-origin and OWNER_BLOCKED, and the scope must bind to
  * this PR. Draft, parked, agent-authored and copied waiver text fail closed.
+ *
+ * Owner comments are event-sourced evidence. A later edit/delete event creates a
+ * durable invalidation marker, so removing a revoke/deny cannot revive an older
+ * grant. A later complete grant may explicitly renew the waiver.
  */
 export function isOwnerFinalRiskWaiver({
   current = {},
@@ -67,33 +72,40 @@ export function isOwnerFinalRiskWaiver({
     return false;
   }
   if (readField(body, 'ASTRA_REVIEW_STATUS') !== status || !/^[a-f0-9]{64}$/i.test(changeDigest)) return false;
-  // GitHub returns issue comments oldest-first. Only the latest owner-authored
-  // waiver event for this PR is authoritative: a later revoke/deny must not be
-  // masked by an older grant, while a later complete grant may explicitly renew it.
-  // updated_at is the event time for an edited comment; otherwise creation time
-  // is used. This prevents an older comment edited after a newer grant from being
-  // treated as stale merely because its comment id is smaller.
-  const events = ownerAttestations
-    .map((comment, index) => ({ comment, index }))
+
+  const eventTime = (comment) => {
+    const updated = Date.parse(String(comment?.updated_at ?? ''));
+    if (Number.isFinite(updated)) return updated;
+    return Date.parse(String(comment?.created_at ?? ''));
+  };
+  const ownerEvents = ownerAttestations
+    .map((comment) => ({ comment, kind: 'owner' }))
     .filter(({ comment }) => String(comment?.user?.login ?? '').trim() === trustedOwner)
-    .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}`)
-    .sort((a, b) => {
-      const eventTime = (comment) => {
-        const updated = Date.parse(String(comment?.updated_at ?? ''));
-        if (Number.isFinite(updated)) return updated;
-        return Date.parse(String(comment?.created_at ?? ''));
-      };
-      const aTime = eventTime(a.comment);
-      const bTime = eventTime(b.comment);
-      if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return aTime - bTime;
-      const aId = Number(a.comment?.id);
-      const bId = Number(b.comment?.id);
-      if (Number.isFinite(aId) && Number.isFinite(bId) && aId !== bId) return aId - bId;
-      return a.index - b.index;
-    });
-  const latest = events.at(-1)?.comment;
-  if (!latest) return false;
-  const latestBody = String(latest.body ?? '');
+    .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_WAIVER') === `PR #${number}`);
+  const invalidationEvents = ownerAttestations
+    .map((comment) => ({ comment, kind: 'invalidation' }))
+    .filter(({ comment }) => readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_INVALIDATED') === `PR #${number}`);
+  const relevantEvents = [...ownerEvents, ...invalidationEvents];
+
+  // Never use comment id or array order as a proxy for chronology. If two
+  // relevant events have equal or missing timestamps, fail closed rather than
+  // allowing an older grant to win by accident.
+  if (relevantEvents.length > 1) {
+    for (let left = 0; left < relevantEvents.length; left += 1) {
+      for (let right = left + 1; right < relevantEvents.length; right += 1) {
+        const leftTime = eventTime(relevantEvents[left].comment);
+        const rightTime = eventTime(relevantEvents[right].comment);
+        if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime) || leftTime === rightTime) return false;
+      }
+    }
+  }
+
+  const latestEvent = [...relevantEvents].sort(
+    (left, right) => eventTime(left.comment) - eventTime(right.comment),
+  ).at(-1);
+  if (!latestEvent || latestEvent.kind === 'invalidation') return false;
+
+  const latestBody = String(latestEvent.comment.body ?? '');
   const latestStatus = readField(latestBody, 'WAIVER_STATUS');
   const revoked = latestStatus.match(OWNER_WAIVER_REVOKED_STATUS);
   if (revoked && Number(revoked[1]) === number) return false;
