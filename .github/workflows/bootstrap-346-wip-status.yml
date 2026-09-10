@@ -1,0 +1,90 @@
+name: bootstrap-346-wip-status
+
+on:
+  push:
+    branches:
+      - bootstrap/issue-346-wip-status-r01
+
+permissions:
+  actions: read
+  checks: read
+  contents: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Admit the Owner-authorized Sol-only governance bootstrap
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = 346;
+            const expectedHead = '8e5c4191f41e0c02eafad57e951402c15d260684';
+            const expectedBase = '50e8678ba7f418932b873759029d30b50c2a2404';
+            const requiredRuns = [
+              ['ci', 34475090121],
+              ['local-isolated-test', 34475090254],
+            ];
+
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            if (pr.state !== 'open') throw new Error(`#${prNumber} is not open`);
+            if (pr.draft) throw new Error(`#${prNumber} is still draft`);
+            if (pr.head.sha !== expectedHead) {
+              throw new Error(`#${prNumber} head moved: ${pr.head.sha}`);
+            }
+            if (pr.base.sha !== expectedBase) {
+              throw new Error(`#${prNumber} base/main moved: ${pr.base.sha}`);
+            }
+            if (!String(pr.body ?? '').includes('WORKSTREAM: MODEL_GOVERNANCE')) {
+              throw new Error(`#${prNumber} is not declared MODEL_GOVERNANCE`);
+            }
+            if (!String(pr.body ?? '').includes('FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY')) {
+              throw new Error(`#${prNumber} does not carry the Owner-approved Sol-only Final Risk policy`);
+            }
+
+            for (const [name, runId] of requiredRuns) {
+              const { data: run } = await github.rest.actions.getWorkflowRun({ owner, repo, run_id: runId });
+              if (run.head_sha !== expectedHead) {
+                throw new Error(`${name} run ${runId} is for ${run.head_sha}, not ${expectedHead}`);
+              }
+              if (run.status !== 'completed' || run.conclusion !== 'success') {
+                throw new Error(`${name} run ${runId} is not successful: ${run.status}/${run.conclusion}`);
+              }
+            }
+
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: expectedHead,
+              filter: 'latest',
+              per_page: 100,
+            });
+            const sourceCheck = checks.check_runs.find((run) => run.name === 'check' && run.conclusion === 'success');
+            if (!sourceCheck) throw new Error('No successful exact-head check run found');
+
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha: expectedHead,
+              state: 'success',
+              context: 'Agent WIP Policy',
+              description: 'OWNER_BOOTSTRAP #346: Sol-only governance; exact-head CI green',
+              target_url: `https://github.com/${owner}/${repo}/pull/${prNumber}`,
+            });
+
+            await core.summary
+              .addHeading('One-time MODEL_GOVERNANCE bootstrap')
+              .addTable([
+                [{ data: 'Field', header: true }, { data: 'Value', header: true }],
+                ['PR', `#${prNumber}`],
+                ['Exact head', expectedHead],
+                ['Base/main', expectedBase],
+                ['CI', '34475090121 SUCCESS'],
+                ['Local isolated', '34475090254 SUCCESS'],
+                ['Final Risk', 'NOT_REQUIRED_BY_OWNER_POLICY'],
+                ['Status written', 'Agent WIP Policy = success (OWNER_BOOTSTRAP)'],
+              ])
+              .write();
