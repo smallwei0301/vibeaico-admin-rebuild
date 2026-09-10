@@ -88,5 +88,7 @@ describe('Final Risk ROI routing boundary (#332)', () => {
     expect(astraSkill).toContain('不是另一個 plugin、connector、MCP、外部服務');
     expect(astraSkill).toContain('不得因主 Session 本身不是 Astra/Fable');
     expect(ownerDecision).toContain('不是 plugin、connector、MCP、外部 provider channel');
+    expect(ownerDecision).toContain('擴大原本可接受／可放行的候選集合');
+    expect(ownerDecision).toContain('只增加拒絕條件');
   });
 });
