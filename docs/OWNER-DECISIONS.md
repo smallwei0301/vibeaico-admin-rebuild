@@ -2,7 +2,13 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-09。
+> 最後更新：2026-09-10。
+
+## 2026-09-10 已裁示
+
+| 範圍 | 主題 | 裁示 | 影響 |
+|---|---|---|---|
+| repo governance | Lane 對應的模型層級 | **lane 決定層級、層級決定模型：Luna=`claude-haiku-4-5`、Terra=`claude-sonnet-5`、Sol=`claude-opus-5`。Terra 一律用 Sonnet。** | 拿 Opus 施工是超規、拿 Haiku 施工是不足，兩者都不由執行者裁量。`AGENT_LANE: TERRA_BUILD` 卻宣告 `actual=Opus 5` 是路由違規，應如實記載。與 Final Risk 閘門獨立。model ID 不得附加日期後綴。canonical：`docs/decisions/2026-09-10-owner-lane-model-tier.md`、`scripts/agents/model-routing.json` 的 `anthropicEquivalents`。 |
 
 ## 2026-09-09 已裁示
 

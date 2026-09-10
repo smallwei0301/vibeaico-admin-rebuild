@@ -36,31 +36,6 @@ Final Risk 是合併前的風險 gate，不是讓停泊中的 PR 持續輪詢模
 Luna 窄盤點 → Sol 選題／風險分類 → Terra 施工 → 必要測試與 Sol 審核 →
 僅高風險交 Astra/Fable 最後評估 → Sol 結案判定 → 核實外部結果。
 
-### Lane 對應的模型層級（Owner 2026-09-10 裁示）
-
-`Luna / Terra / Sol` 是**工作層級**的名字，不是廠牌。同一條鏈在兩側各自對應：
-
-| Lane | 職責 | OpenAI | Anthropic |
-|---|---|---|---|
-| `scout` / Luna | 盤點 | `gpt-5.6-luna` | `claude-haiku-4-5` |
-| `build` / Terra | **施工** | `gpt-5.6-terra` | **`claude-sonnet-5`** |
-| `audit` / Sol | 審核 | `gpt-5.6-sol` | `claude-opus-5` |
-
-機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
-model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
-
-**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 去施工是超規，不是謹慎——它把審核層的成本花在施工上，
-並且讓審核層去審自己的產出；拿 scout 層的 Haiku 去施工則是不足。兩個方向都不由執行者自行裁量。
-
-因此 `AGENT_LANE: TERRA_BUILD` 的 PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級的模型。
-`actual=Opus 5` 出現在 `TERRA_BUILD` 上是路由違規，應如實記為違規，不是中性註記。
-
-本節與下方 Final Risk 閘門彼此獨立：不論由哪一層施工，高風險變更的最終評估都必須委派
-`claude-fable-5-1`；施工層正確不免除 Final Risk，Final Risk 通過也不使施工層變得正確。
-
-平台無法證明實際執行模型時，`actual=unknown` 仍是誠實值（見 `docs/AGENT-EXECUTION.md`），
-但它不是規避宣告層級的方式。
-
 - 一般文案、UI、小型接線不強制 Final Risk；一般 DB 接線也不因碰 DB 就升級。
 - PAYMENT_CONSISTENCY：付款、退款、名額及重複請求的一致性，包括單一 repo。
 - TENANT_AUTH_BOUNDARY：跨店讀寫、登入、權限與秘密保護邊界。
@@ -86,6 +61,38 @@ Sol 在開工時填 `ASTRA_RISK` 與具體 `ASTRA_RATIONALE`。實際 changed fi
 Final Risk 模型不可用的判定必須發生在實際嘗試 Agent／子代理 model selector 之後；只有 runtime
 確實沒有可指定 allowlist 模型的委派能力，或 allowlist 模型都被 runtime 明確拒絕，才可標
 `MODEL_EXECUTION_UNAVAILABLE` / `ASTRA_PENDING`。不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
+
+## Lane 對應的模型層級（Owner 2026-09-10 裁示）
+
+`Luna / Terra / Sol` 是**工作層級**的名字，不是廠牌。同一條鏈在兩側各自對應：
+
+| Lane | 職責 | OpenAI | Anthropic |
+|---|---|---|---|
+| `scout` / Luna | 盤點 | `gpt-5.6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工** | `gpt-5.6-terra` | **`claude-sonnet-5`** |
+| `audit` / Sol | 審核 | `gpt-5.6-sol` | `claude-opus-5` |
+
+機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
+model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
+
+**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 去施工是超規，不是謹慎——它把審核層的成本花在施工上，
+並且讓審核層去審自己的產出；拿 scout 層的 Haiku 去施工則是不足。兩個方向都不由執行者自行裁量。
+
+因此 `AGENT_LANE: TERRA_BUILD` 的 PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級的模型。
+`actual=Opus 5` 出現在 `TERRA_BUILD` 上是路由違規，應如實記為違規，不是中性註記。
+
+本節與 Final Risk 閘門彼此獨立：不論由哪一層施工，**高風險**變更的最終評估仍須委派給
+`models.finalRiskAllowedModels` 內的模型（預設 `claude-fable-5-1`，另允許 `gpt-6-astra`）。
+施工層正確不免除 Final Risk，Final Risk 通過也不使施工層變得正確。哪些變更算高風險、
+哪些不強制，仍由上方 `## 路由` 的規則決定，本節不改變它。
+
+平台無法證明實際執行模型時，`actual=unknown` 仍是誠實值（見 `docs/AGENT-EXECUTION.md`），
+但它不是規避宣告層級的方式。
+
+`scripts/agents/model-routing.json` 的頂層 `version` **刻意不因本節而 bump**。`evaluateAstra()`
+以 `policyVersion !== policy.version` 綁定既有 attestation，bump 會讓所有在途 PR 的 attestation
+立刻失效並被迫重跑 Final Risk；而 `anthropicEquivalents` 沒有任何 runtime 讀取，語意上不改變
+任何既有判定。該鍵自帶 `version` 供本身追溯。
 
 ## 技能與事前檢查
 

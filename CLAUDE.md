@@ -173,9 +173,11 @@ Two consequences worth stating, because both have already been violated in pract
 - A PR whose `AGENT_LANE` is `TERRA_BUILD` must declare a `build`-tier model in
   `REQUESTED_MODEL / ACTUAL_MODEL`. `actual=Opus 5` on a `TERRA_BUILD` lane is a routing violation
   and should be recorded as one, not left as a neutral note.
-- This is separate from the final risk gate below. Delegating the Final Risk review to
-  `claude-fable-5-1` is required regardless of which tier built the change; it does not make the
-  build tier correct, and a correct build tier does not remove the Final Risk requirement.
+- This is separate from the final risk gate below. Where a change **is** high-risk, the Final Risk
+  review must still be delegated to a model in `models.finalRiskAllowedModels` (default
+  `claude-fable-5-1`; `gpt-6-astra` is also allowed) regardless of which tier built it. A correct
+  build tier does not remove that requirement, and passing Final Risk does not make the build tier
+  correct. Which changes are high-risk is decided by `docs/MODEL-ROUTING.md`, not by this section.
 
 `actual=unknown` stays the honest value when the platform cannot prove which model ran
 (`docs/AGENT-EXECUTION.md`) — it is not a way to avoid declaring the tier.

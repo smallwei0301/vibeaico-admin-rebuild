@@ -47,8 +47,9 @@ describe('lane → model tier（Owner 2026-09-10）', () => {
     expect(routing.models.audit).toBe('gpt-5.6-sol');
   });
 
-  it('CLAUDE.md 與 MODEL-ROUTING.md 都載明三個對應，文件不得與設定脫節', () => {
-    for (const path of ['CLAUDE.md', 'docs/MODEL-ROUTING.md']) {
+  it('三份 canonical 文件都載明對應，文件不得與設定脫節', () => {
+    const DOCS = ['CLAUDE.md', 'docs/MODEL-ROUTING.md', 'docs/decisions/2026-09-10-owner-lane-model-tier.md'];
+    for (const path of DOCS) {
       const text = read(path);
       for (const model of Object.values(EXPECTED)) {
         expect(text, `${path} 應載明 ${model}`).toContain(model);
