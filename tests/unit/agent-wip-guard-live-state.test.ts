@@ -111,6 +111,10 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain("github.run_id || 'pull-request'");
     expect(workflow).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}");
     expect(workflow).toContain("comment?.user?.login === 'github-actions[bot]'");
+    expect(workflow).toContain('const ownerWaiverLifecycleEvent =');
+    expect(workflow).toContain('const ownerWaiverEligible =');
+    expect(workflow).toContain('if (ownerWaiverLifecycleEvent || ownerWaiverEligible)');
+    expect(workflow).toContain('closed. Otherwise deleting a revoke/deny while closed can revive');
 
     expect(workflow).toContain('Owner waiver comments changed during policy evaluation');
     expect(workflow).not.toContain('group: agent-wip-guard-${{ github.repository }}\n');
