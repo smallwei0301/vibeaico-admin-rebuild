@@ -19,9 +19,11 @@
         ".agents/skills/",
         ".github/ISSUE_TEMPLATE/",
         ".github/pull_request_template.md",
-        ".github/workflows/agent-wip-guard.yml",
-        ".github/workflows/agent-run-scorecard.yml",
+        ".github/workflows/agent-",
+        ".github/workflows/dual-terra-",
         ".github/workflows/governance-",
+        ".github/workflows/issue-provenance.yml",
+        ".github/workflows/pr-janitor.yml",
         "AGENTS.md",
         "CLAUDE.md",
         "docs/AGENT-",
@@ -58,6 +60,12 @@
   },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [
-    "scripts/agents/", ".github/workflows/", "src/server/auth", "src/server/payment", "src/server/refund", "src/app/api/payments/", "src/app/api/payment-methods/"
+    ".github/workflows/production-deploy-canary.yml",
+    "scripts/ci/production-deploy-canary.mjs",
+    "src/server/auth",
+    "src/server/payment",
+    "src/server/refund",
+    "src/app/api/payments/",
+    "src/app/api/payment-methods/"
   ]
 }
