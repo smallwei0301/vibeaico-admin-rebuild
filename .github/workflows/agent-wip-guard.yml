@@ -126,10 +126,10 @@ jobs:
                 const hasDurableInvalidation = (comment) => {
                   const body = String(comment?.body ?? '');
                   const scope = body.match(
-                    /^[ \\t]*[-*]?[ \\t]*OWNER_FINAL_RISK_INVALIDATED[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                    /^[ \t]*[-*]?[ \t]*OWNER_FINAL_RISK_INVALIDATED[ \t]*:[ \t]*(.*?)[ \t]*$/im,
                   )?.[1]?.trim();
                   const key = body.match(
-                    /^[ \\t]*[-*]?[ \\t]*INVALIDATION_EVENT_KEY[ \\t]*:[ \\t]*(.*?)[ \\t]*$/im,
+                    /^[ \t]*[-*]?[ \t]*INVALIDATION_EVENT_KEY[ \t]*:[ \t]*(.*?)[ \t]*$/im,
                   )?.[1]?.trim();
                   return (
                     comment?.user?.login === 'github-actions[bot]' &&
@@ -150,7 +150,7 @@ jobs:
                       invalidationKey,
                       'INVALIDATION_EVENT: ' + context.payload.action,
                       'INVALIDATION_COMMENT_ID: ' + (eventComment.id ?? 'unknown'),
-                    ].join('\\n'),
+                    ].join('\n'),
                   });
                 }
                 // A successful createComment is the durable write. The
