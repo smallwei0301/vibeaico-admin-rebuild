@@ -164,6 +164,31 @@ export function isTrustedFinalRiskAgentUser(user = {}, policy = routing) {
   );
 }
 
+/**
+ * #339／#343：`MODEL_GOVERNANCE` 不要求 Astra/Fable Final Risk。在此之前那條豁免只存在於
+ * 文件，`classifyAstra()` 仍對每一個碰到 sensitive path 的 PR 強制 Final Risk——文件已豁免、
+ * 程式未實作。本函式補上該實作，並以 fail-closed 為第一原則：
+ *
+ *   1. `WORKSTREAM` 必須**逐字**等於設定的 `exemptWorkstream`。缺漏、拼錯、`UNKNOWN`、
+ *      大小寫不符一律不豁免（#339 驗收：typo / UNKNOWN 不得形成 bypass）。
+ *   2. 命中的 sensitive path **每一個**都必須落在 `exemptSensitivePaths` 內。只要有一個
+ *      落在其外（付款、退款、auth、workflows…），整張 PR 不豁免——這實作 Owner 的
+ *      「混入兩軌時歸 PRODUCT_MAINLINE，不得靠填 MODEL_GOVERNANCE 逃避產品風險 gate」。
+ *   3. 設定殘缺或型別不符時視為沒有豁免清單，因而不豁免。
+ *
+ * 宣告任何 `highRisk` 時仍強制 Final Risk；該判斷在呼叫端，本函式不參與。
+ */
+function isGovernanceExempt(workstream, sensitiveHits, policy) {
+  const configured = policy.workstreamPolicy;
+  const exemptWorkstream = typeof configured?.exemptWorkstream === 'string' ? configured.exemptWorkstream.trim() : '';
+  const exemptPaths = Array.isArray(configured?.exemptSensitivePaths) ? configured.exemptSensitivePaths : [];
+  if (!exemptWorkstream || !exemptPaths.length) return false;
+  if (exemptPaths.some(prefix => typeof prefix !== 'string' || !prefix.trim())) return false;
+  if (String(workstream ?? '').trim() !== exemptWorkstream) return false;
+  if (!sensitiveHits.length) return false;
+  return sensitiveHits.every(path => exemptPaths.some(prefix => path.startsWith(prefix)));
+}
+
 /** @param {{body?: string, changedFiles?: string[] | null}} [input] */
 export function classifyAstra({ body = '', changedFiles = null } = {}, policy = routing) {
   const risks = readField(body, 'ASTRA_RISK').split(',').map(s => s.trim()).filter(Boolean);
@@ -173,8 +198,10 @@ export function classifyAstra({ body = '', changedFiles = null } = {}, policy = 
   }
   if (!meaningful(readField(body, 'ASTRA_RATIONALE'))) errors.push('ASTRA_RATIONALE requires a concrete risk assessment');
   if (!Array.isArray(changedFiles) || !changedFiles.length) errors.push('Astra classification requires actual changed files');
-  const sensitive = (changedFiles ?? []).some(path => policy.sensitivePaths.some(prefix => path.startsWith(prefix)));
-  return { required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors };
+  const sensitiveHits = (changedFiles ?? []).filter(path => policy.sensitivePaths.some(prefix => path.startsWith(prefix)));
+  const highRisk = risks.some(r => policy.highRisk.includes(r));
+  const governanceExempt = isGovernanceExempt(readField(body, 'WORKSTREAM'), sensitiveHits, policy);
+  return { required: (sensitiveHits.length > 0 && !governanceExempt) || highRisk, risks, errors, governanceExempt };
 }
 
 // Only trusted GitHub review records supplied by the caller may become attestations.

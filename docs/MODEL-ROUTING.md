@@ -33,6 +33,14 @@ ASTRA_RISK: NONE
 FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 ```
 
+這條豁免**已實作於守門程式**，不再只是文件：`scripts/agents/model-routing.json` 的
+`workstreamPolicy`，由 `astra-review-policy.mjs` 的 `classifyAstra()` 消費。fail-closed 條件：
+`WORKSTREAM` 必須逐字等於 `MODEL_GOVERNANCE`（缺漏／拼錯／`UNKNOWN`／大小寫不符皆不豁免）；
+命中的 sensitive path 必須**全部**落在 `workstreamPolicy.exemptSensitivePaths` 內，任一落在其外
+即整張 PR 不豁免；宣告任何 `highRisk` 仍強制 Final Risk。豁免清單目前只含 `scripts/agents/`
+——`.github/workflows/` 可改變部署行為，產品 runtime 路徑更不在其列。
+regression 見 `tests/unit/workstream-final-risk-exemption.339.test.ts`。
+
 執行流程：
 
 ```text
