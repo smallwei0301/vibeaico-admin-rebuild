@@ -20,6 +20,9 @@ const current = {
   ].join('\n'),
 };
 const ownerAttestation = {
+  id: 1,
+  created_at: '2026-09-09T09:00:00Z',
+  updated_at: '2026-09-09T09:00:00Z',
   user: { login: 'smallwei0301' },
   body: [
     'OWNER_FINAL_RISK_WAIVER: PR #312',
@@ -69,6 +72,8 @@ describe('Owner Final Risk waiver admission', () => {
   it.each(['REVOKED', 'DENIED'])('rejects an older grant when a later owner %s exists', (decision) => {
     const revoked = {
       id: 2,
+      created_at: '2026-09-09T10:01:00Z',
+      updated_at: '2026-09-09T10:01:00Z',
       user: { login: 'smallwei0301' },
       body: [
         'OWNER_FINAL_RISK_WAIVER: PR #312',
@@ -88,6 +93,8 @@ describe('Owner Final Risk waiver admission', () => {
   it('allows a later complete owner grant to renew a revoked waiver', () => {
     const revoked = {
       id: 2,
+      created_at: '2026-09-09T10:01:00Z',
+      updated_at: '2026-09-09T10:01:00Z',
       user: { login: 'smallwei0301' },
       body: [
         'OWNER_FINAL_RISK_WAIVER: PR #312',
@@ -99,7 +106,12 @@ describe('Owner Final Risk waiver admission', () => {
       owner: 'smallwei0301',
       origin: 'OWNER',
       laneState: 'OWNER_BLOCKED',
-      ownerAttestations: [revoked, { ...ownerAttestation, id: 3 }],
+      ownerAttestations: [revoked, {
+        ...ownerAttestation,
+        id: 3,
+        created_at: '2026-09-09T10:02:00Z',
+        updated_at: '2026-09-09T10:02:00Z',
+      }],
       changeDigest,
     })).toBe(true);
   });
@@ -127,6 +139,73 @@ describe('Owner Final Risk waiver admission', () => {
       origin: 'OWNER',
       laneState: 'OWNER_BLOCKED',
       ownerAttestations: [newerGrant, editedRevocation],
+      changeDigest,
+    })).toBe(false);
+  });
+
+  it('does not revive an older grant after a durable invalidation marker', () => {
+    const invalidation = {
+      id: 4,
+      created_at: '2026-09-09T10:03:00Z',
+      updated_at: '2026-09-09T10:03:00Z',
+      user: { login: 'github-actions[bot]' },
+      body: [
+        '<!-- agent-wip-guard-waiver-invalidation -->',
+        'OWNER_FINAL_RISK_INVALIDATED: PR #312',
+        'INVALIDATION_EVENT_KEY: edited:2:2026-09-09T10:02:00Z',
+      ].join('\\n'),
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation, invalidation],
+      changeDigest,
+    })).toBe(false);
+
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [
+        ownerAttestation,
+        invalidation,
+        {
+          ...ownerAttestation,
+          id: 5,
+          created_at: '2026-09-09T10:04:00Z',
+          updated_at: '2026-09-09T10:04:00Z',
+        },
+      ],
+      changeDigest,
+    })).toBe(true);
+  });
+
+  it('fails closed when relevant waiver events have equal timestamps', () => {
+    const grant = {
+      ...ownerAttestation,
+      id: 10,
+      created_at: '2026-09-09T10:05:00Z',
+      updated_at: '2026-09-09T10:05:00Z',
+    };
+    const revoke = {
+      id: 11,
+      created_at: '2026-09-09T10:05:00Z',
+      updated_at: '2026-09-09T10:05:00Z',
+      user: { login: 'smallwei0301' },
+      body: [
+        'OWNER_FINAL_RISK_WAIVER: PR #312',
+        'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
+      ].join('\\n'),
+    };
+    expect(isOwnerFinalRiskWaiver({
+      current,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [grant, revoke],
       changeDigest,
     })).toBe(false);
   });
