@@ -19,11 +19,12 @@ describe('two-workstream routing policy (#339)', () => {
       expect(text).toContain('PRODUCT_MAINLINE');
       expect(text).toContain('Sol');
     }
-    expect(orchestration).toContain('不派 Terra');
-    expect(orchestration).toContain('不執行 Astra/Fable Final Risk');
-    expect(decision).toContain('FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY');
+    expect(orchestration).toContain('Do not spawn Terra or Reserve Terra for MODEL_GOVERNANCE');
+    expect(orchestration).toContain('Do not dispatch Astra/Fable Final Risk for MODEL_GOVERNANCE');
+    expect(decision).toContain('不派 Terra');
+    expect(decision).toContain('不要求 Astra / Fable Final Risk');
     expect(finalRisk).toContain('MODEL_GOVERNANCE');
-    expect(finalRisk).toContain('不載入本 skill');
+    expect(finalRisk).toContain('立即停止本 skill');
   });
 
   it('keeps Product mainline risk and production authorization boundaries intact', () => {
@@ -34,7 +35,7 @@ describe('two-workstream routing policy (#339)', () => {
     expect(routingDoc).toContain('TENANT_AUTH_BOUNDARY');
     expect(routingDoc).toContain('IRREVERSIBLE_DATA');
     expect(routingDoc).toContain('CROSS_REPO_CONTRACT');
-    expect(decision).toContain('Production DDL/DML/migration');
+    expect(decision).toContain('Production DDL / DML / migration');
     expect(decision).toContain('LINE webhook');
   });
 
@@ -47,10 +48,13 @@ describe('two-workstream routing policy (#339)', () => {
   });
 
   it('fails mixed scope toward Product instead of letting governance become a bypass label', () => {
+    expect(orchestration).toMatch(/mixed/i);
+    expect(decision).toContain('混合範圍');
+    expect(routingDoc).toContain('混合範圍');
     for (const text of [orchestration, routingDoc, decision]) {
       expect(text).toContain('PRODUCT_MAINLINE');
-      expect(text).toMatch(/混合|mixed/i);
     }
-    expect(decision).toContain('無法拆開');
+    expect(decision).toContain('無法安全拆開');
+    expect(routingDoc).toContain('無法安全拆分時整張改為 `PRODUCT_MAINLINE`');
   });
 });
