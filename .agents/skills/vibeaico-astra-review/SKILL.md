@@ -63,7 +63,7 @@ Product Final Risk 預設是每個 semantic `changeDigest` 一次，不是每顆
 
 若 main 只是由其他環境前進，rebase／merge-main 後所有 changed-file blob 不變、`changeDigest` 相同：
 
-- 不重新委派 Fable/Astra。
+- 不要重新委派 Fable/Astra。
 - 保留 reviewer 當時實際採用的 `testBaseline` / `schemaBaseline`。
 - 新 head 重跑 required exact-head CI；新的 CI run id 放 completion evidence／closeout。
 - `baseSha` / `headSha` 是稽核紀錄；`changeDigest` 才是 semantic content 綁定。
