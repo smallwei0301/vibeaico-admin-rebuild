@@ -22,7 +22,7 @@ Final Risk 保留給「後果高，而且獨立高階 reviewer 能提供正交�
 
 `GOVERNANCE_GATE` 仍是高風險，但從本決策起收窄為：
 
-> 會擴大原本可接受／可放行的候選集合，或降低、放寬、繞過、豁免、延後 merge/admission/model/deploy/permission/evidence gate，或可能把原本的 failure/pending 轉成 success/approval 的治理變更。
+> 會擴大原本可接受／可放行的候選集合，或降低、放寬、繞過、豁免 merge/admission/model/deploy/permission/evidence gate，或可能把原本的 failure/pending 轉成 success/approval 的治理變更。
 
 典型例子：
 
