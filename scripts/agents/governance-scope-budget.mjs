@@ -9,11 +9,10 @@ export const GOVERNANCE_SCOPE_BUDGET = Object.freeze({ maxFiles: 8, maxChangedLi
 export const GOVERNANCE_SCOPE_EXCEPTION_FORMAT_ERROR =
   "GOVERNANCE_SCOPE_EXCEPTION must be none or OWNER:docs/decisions/<file>.md";
 
-function readField(body = "", field) {
-  const escaped = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = String(body).match(new RegExp(`^[ \\t]*[-*]?[ \\t]*${escaped}[ \\t]*:[ \\t]*(.*?)[ \\t]*$`, "mi"));
-  return (match?.[1] ?? "").trim();
-}
+// 這裡曾有一份私有的 readField 副本。三份各自演化的讀取器會對「同一份內文說了什麼」
+// 產生不同答案——fenced block 與重複宣告的處理只補在其中一份，另外兩份就成了繞道。
+// 改為共用 agent-wip-policy.mjs 的實作，讓所有治理消費者永遠讀到同一個值。
+import { readField } from "./agent-wip-policy.mjs";
 
 function upper(value) {
   return String(value ?? "").trim().toUpperCase();
