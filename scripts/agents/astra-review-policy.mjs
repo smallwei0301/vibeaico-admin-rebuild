@@ -131,9 +131,11 @@ export function isOwnerFinalRiskWaiver({
 export function ownerWaiverLifecycleStatus({
   lifecycleEvent = false,
   invalidationPersisted = false,
+  invalidationJobResult = 'success',
   freshState = 'closed',
 } = {}) {
-  if (!lifecycleEvent || !invalidationPersisted) return null;
+  if (!lifecycleEvent) return null;
+  if (invalidationJobResult !== 'success' || !invalidationPersisted) return 'failure';
   return String(freshState).trim().toLowerCase() === 'open' ? 'failure' : null;
 }
 
