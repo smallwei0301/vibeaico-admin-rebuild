@@ -8,6 +8,37 @@
     "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1"],
     "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
   },
+  "workstreams": {
+    "version": "2026-09-10.1",
+    "allowed": ["MODEL_GOVERNANCE", "PRODUCT_MAINLINE"],
+    "legacyMissingDefaultsTo": "PRODUCT_MAINLINE",
+    "invalidExplicitValue": "REJECT",
+    "modelGovernance": {
+      "value": "MODEL_GOVERNANCE",
+      "executorModel": "gpt-5.6-sol",
+      "finalRiskPolicy": "NOT_REQUIRED_BY_OWNER_POLICY",
+      "scopePrefixes": [
+        "scripts/agents/",
+        ".agents/skills/vibeaico-agent-orchestration/",
+        ".agents/skills/vibeaico-astra-review/",
+        ".github/ISSUE_TEMPLATE/",
+        ".github/pull_request_template.md",
+        ".github/workflows/agent-wip-guard.yml",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "docs/MODEL-ROUTING.md",
+        "docs/PR-LIFECYCLE.md",
+        "docs/AGENT-EXECUTION.md",
+        "docs/AGENT-BPLUS-DELIVERY-LOOP.md",
+        "docs/decisions/",
+        "tests/unit/"
+      ]
+    },
+    "productMainline": {
+      "value": "PRODUCT_MAINLINE",
+      "finalRiskPolicy": "BY_PRODUCT_RISK_CLASSIFICATION"
+    }
+  },
   "finalRiskTrust": {
     "version": "2026-09-10.1",
     "trustedAgentBots": [
