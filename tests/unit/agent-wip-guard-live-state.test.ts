@@ -117,6 +117,8 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('const invalidationJobResult = \'${{ needs.persist_owner_waiver_invalidation.result }}\';');
     expect(workflow).toContain('const waiverCommentFingerprint =');
     expect(workflow).toContain('OWNER_FINAL_RISK_INVALIDATED');
+    expect(workflow).toContain('OWNER_FINAL_RISK_INVALIDATION_UNCERTAIN');
+    expect(workflow).toContain('const persistUncertainty = async () => {');
     expect(workflow).toContain('INVALIDATION_EVENT_KEY:');
     expect(workflow).toContain("context.eventName === 'pull_request_target' &&");
     expect(workflow).toContain('github.run_id');
