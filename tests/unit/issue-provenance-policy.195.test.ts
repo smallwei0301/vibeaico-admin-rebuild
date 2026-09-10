@@ -7,6 +7,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ISSUE_ORIGIN_HEADINGS,
   REQUIRED_AGENT_PROVENANCE_HEADINGS,
+  VALID_WORKSTREAMS,
+  issueWorkstream,
   readHeadingSection,
   runCli,
   validateIssueProvenance,
@@ -15,13 +17,14 @@ import {
 function agentIssueBody(overrides: Partial<Record<string, string>> = {}): string {
   const sections: Record<string, string> = {
     '## Issue origin': 'AGENT_DISCOVERED',
+    '### WORKSTREAM': 'MODEL_GOVERNANCE',
     '### Parent Issue / PR': 'Issue #104 / PR #194',
     '### Discovered stage': 'RETROSPECTIVE',
     '### Scope Firewall reason': 'Governance-only parser; no Product runtime.',
     '### Why this cannot remain in the parent Issue': 'The parent is observation-only and this needs a bounded source change.',
     '### Blocks current goal': 'YES',
     '### Evidence': '- github:issue#193\n- repo:scripts/agents/issue-provenance-policy.mjs',
-    '### Requested model / actual model': 'requested=Terra implementation + Sol audit；actual=unknown',
+    '### Requested model / actual model': 'requested=gpt-5.6-sol; actual=gpt-5.6-sol',
   };
   Object.assign(sections, overrides);
   return Object.entries(sections).map(([heading, value]) => `${heading}\n\n${value}`).join('\n\n');
@@ -39,12 +42,14 @@ describe('Issue #195 shared provenance policy', () => {
       '### Evidence',
       '### Requested model / actual model',
     ]);
+    expect(VALID_WORKSTREAMS).toEqual(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
   });
 
-  it('accepts a complete manually-authored Agent Issue and actual=unknown', () => {
-    const result = validateIssueProvenance(agentIssueBody());
+  it('accepts a complete manually-authored Agent Issue and classifies its workstream', () => {
+    const result = validateIssueProvenance(agentIssueBody(), { requireWorkstream: true });
     expect(result).toMatchObject({
       origin: 'agent',
+      workstream: 'MODEL_GOVERNANCE',
       isAgent: true,
       valid: true,
       missingHeadings: [],
@@ -53,13 +58,28 @@ describe('Issue #195 shared provenance policy', () => {
     });
   });
 
+  it('accepts both Issue Form heading and exact WORKSTREAM field syntax', () => {
+    expect(issueWorkstream(agentIssueBody())).toBe('MODEL_GOVERNANCE');
+    expect(issueWorkstream('WORKSTREAM: PRODUCT_MAINLINE\n\n# Product')).toBe('PRODUCT_MAINLINE');
+  });
+
+  it('fails closed when a workstream is missing or invented once required', () => {
+    const missing = agentIssueBody({ '### WORKSTREAM': '' });
+    expect(validateIssueProvenance(missing, { requireWorkstream: true }).errors).toContain('Issue WORKSTREAM is required');
+    const invalid = agentIssueBody({ '### WORKSTREAM': 'THIRD_TRACK' });
+    expect(validateIssueProvenance(invalid, { requireWorkstream: true }).errors).toContain(
+      'Issue WORKSTREAM must be one of: MODEL_GOVERNANCE, PRODUCT_MAINLINE',
+    );
+  });
+
   it('accepts the existing GitHub Issue Form origin heading and backlog-only option', () => {
     const body = agentIssueBody({
       '## Issue origin': 'AGENT_DISCOVERED',
       '### Blocks current goal': 'NO, backlog only',
     }).replace('## Issue origin', '### Issue origin');
-    expect(validateIssueProvenance(body)).toMatchObject({
+    expect(validateIssueProvenance(body, { requireWorkstream: true })).toMatchObject({
       origin: 'agent',
+      workstream: 'MODEL_GOVERNANCE',
       isAgent: true,
       valid: true,
       errors: [],
@@ -71,6 +91,9 @@ describe('Issue #195 shared provenance policy', () => {
     );
     expect(template).toContain('label: Issue origin');
     expect(template).toContain('value: AGENT_DISCOVERED');
+    expect(template).toContain('label: WORKSTREAM');
+    expect(template).toContain('MODEL_GOVERNANCE');
+    expect(template).toContain('PRODUCT_MAINLINE');
     expect(template).toContain('- "NO, backlog only"');
   });
 
@@ -125,6 +148,7 @@ describe('Issue #195 shared provenance policy', () => {
     const result = validateIssueProvenance('## Issue origin\n\nOWNER_DIRECTED\n\nAGENT_DISCOVERED is discussed only as documentation.');
     expect(result).toEqual({
       origin: 'owner-or-unknown',
+      workstream: 'UNCLASSIFIED',
       isAgent: false,
       valid: true,
       missingHeadings: [],
@@ -154,6 +178,9 @@ describe('Issue #195 shared provenance policy', () => {
     );
     expect(workflow).toContain('scripts/agents/issue-provenance-policy.mjs');
     expect(workflow).toContain('policy.validateIssueProvenance');
+    expect(workflow).toContain('{ requireWorkstream: true }');
+    expect(workflow).toContain('workstream:model-governance');
+    expect(workflow).toContain('workstream:product-mainline');
     expect(workflow).not.toContain('const requiredHeadings =');
     expect(workflow).toContain('sparse-checkout: |');
     expect(workflow).toContain('sparse-checkout-cone-mode: false');
@@ -167,7 +194,7 @@ describe('Issue #195 shared provenance policy', () => {
     );
   });
 
-  it('runs the CLI against a real body file and reports the classified origin', () => {
+  it('runs the CLI against a real body file and reports origin plus workstream', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'issue-provenance-'));
     const file = path.join(directory, 'issue.md');
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -176,7 +203,8 @@ describe('Issue #195 shared provenance policy', () => {
       const result = runCli(['--body', file]);
       expect(result.valid).toBe(true);
       expect(result.origin).toBe('agent');
-      expect(log).toHaveBeenCalledWith('ISSUE_PROVENANCE_PASS origin=agent');
+      expect(result.workstream).toBe('MODEL_GOVERNANCE');
+      expect(log).toHaveBeenCalledWith('ISSUE_PROVENANCE_PASS origin=agent workstream=MODEL_GOVERNANCE');
     } finally {
       log.mockRestore();
       fs.rmSync(directory, { recursive: true, force: true });
