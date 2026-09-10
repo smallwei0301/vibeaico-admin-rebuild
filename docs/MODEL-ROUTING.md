@@ -58,8 +58,9 @@ Sol 在開工時填 `ASTRA_RISK` 與具體 `ASTRA_RATIONALE`。實際 changed fi
 純 rebase／unrelated-main advancement 且 `changeDigest` 不變，**不重跑 semantic Final Risk**，但新 head
 仍要重跑 required exact-head CI。
 
-Final Risk 模型不可用的判定必須發生在實際嘗試 Agent／子代理 model selector 之後；不能把
-「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
+Final Risk 模型不可用的判定必須發生在實際嘗試 Agent／子代理 model selector 之後；只有 runtime
+確實沒有可指定 allowlist 模型的委派能力，或 allowlist 模型都被 runtime 明確拒絕，才可標
+`MODEL_EXECUTION_UNAVAILABLE` / `ASTRA_PENDING`。不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
 
 ## 技能與事前檢查
 
