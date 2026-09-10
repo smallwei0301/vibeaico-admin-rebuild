@@ -85,21 +85,29 @@ export function isOwnerFinalRiskWaiver({
   const invalidationEvents = ownerAttestations
     .map((comment) => ({ comment, kind: 'invalidation' }))
     .filter(({ comment }) => {
-      const invalidated = readField(String(comment?.body ?? ''), 'OWNER_FINAL_RISK_INVALIDATED');
+      const body = String(comment?.body ?? '');
+      const invalidated = readField(body, 'OWNER_FINAL_RISK_INVALIDATED');
       const match = invalidated.match(OWNER_WAIVER_INVALIDATED);
-      return Boolean(match && Number(match[1]) === number);
+      return (
+        String(comment?.user?.login ?? '').trim() === 'github-actions[bot]' &&
+        body.includes('<!-- agent-wip-guard-waiver-invalidation -->') &&
+        Boolean(match && Number(match[1]) === number) &&
+        meaningful(readField(body, 'INVALIDATION_EVENT_KEY'))
+      );
     });
   const relevantEvents = [...ownerEvents, ...invalidationEvents];
 
-  // Never use comment id or array order as a proxy for chronology. If two
-  // relevant events have equal or missing timestamps, fail closed rather than
-  // allowing an older grant to win by accident.
+  // Never use comment id or array order as a proxy for chronology. Every
+  // relevant event must carry a real GitHub timestamp; if two events have
+  // equal timestamps, fail closed rather than allowing an older grant to win
+  // by accident.
+  if (relevantEvents.some(({ comment }) => !Number.isFinite(eventTime(comment)))) return false;
   if (relevantEvents.length > 1) {
     for (let left = 0; left < relevantEvents.length; left += 1) {
       for (let right = left + 1; right < relevantEvents.length; right += 1) {
         const leftTime = eventTime(relevantEvents[left].comment);
         const rightTime = eventTime(relevantEvents[right].comment);
-        if (!Number.isFinite(leftTime) || !Number.isFinite(rightTime) || leftTime === rightTime) return false;
+        if (leftTime === rightTime) return false;
       }
     }
   }
