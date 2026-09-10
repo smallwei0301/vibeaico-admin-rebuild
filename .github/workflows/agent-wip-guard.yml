@@ -18,11 +18,10 @@ jobs:
   guard:
     if: github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
     concurrency:
-      group: >-
-        agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name == 'issue_comment' && github.run_id || 'pull-request' }}
-      # PR lifecycle events may cancel stale PR runs; each issue_comment run
-      # gets its own group so edit/delete invalidation cannot be dropped.
-      cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+      # All lifecycle and comment events for one PR serialize their status
+      # writers. A stale reopen run must not overwrite a later invalidation.
+      group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted B+ policy
