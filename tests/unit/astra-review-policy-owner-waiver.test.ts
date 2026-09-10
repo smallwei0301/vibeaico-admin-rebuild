@@ -221,6 +221,37 @@ describe('Owner Final Risk waiver admission', () => {
     })).toBe(false);
   });
 
+  it('does not revive a waiver after close-delete-reopen lifecycle', () => {
+    const invalidation = {
+      id: 7,
+      created_at: '2026-09-09T10:06:00Z',
+      updated_at: '2026-09-09T10:06:00Z',
+      user: { login: 'github-actions[bot]' },
+      body: [
+        '<!-- agent-wip-guard-waiver-invalidation -->',
+        'OWNER_FINAL_RISK_INVALIDATED: PR #312',
+        'INVALIDATION_EVENT_KEY: deleted:2:2026-09-09T10:05:00Z',
+      ].join('\n'),
+    };
+    const closed = { ...current, state: 'closed' };
+    expect(isOwnerFinalRiskWaiver({
+      current: closed,
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation, invalidation],
+      changeDigest,
+    })).toBe(false);
+    expect(isOwnerFinalRiskWaiver({
+      current: { ...current, state: 'open' },
+      owner: 'smallwei0301',
+      origin: 'OWNER',
+      laneState: 'OWNER_BLOCKED',
+      ownerAttestations: [ownerAttestation, invalidation],
+      changeDigest,
+    })).toBe(false);
+  });
+
   it('fails closed when relevant waiver events have equal timestamps', () => {
     const grant = {
       ...ownerAttestation,
