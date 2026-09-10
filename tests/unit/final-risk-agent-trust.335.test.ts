@@ -51,9 +51,7 @@ describe('Final Risk trusted Agent identity (#335)', () => {
       [{ login: 'claude[bot]', id: 'bad', type: 'Bot' }],
       [{ login: 'claude[bot]', id: 209825114, type: 'User' }],
       [BOT, BOT],
-    ]) {
-      expect(isTrustedFinalRiskAgentUser(BOT, { ...routing, finalRiskTrust: { version: 'test', trustedAgentBots } })).toBe(false);
-    }
+    ]) expect(isTrustedFinalRiskAgentUser(BOT, { ...routing, finalRiskTrust: { version: 'test', trustedAgentBots } })).toBe(false);
   });
 
   it('accepts allowlisted Agent evidence without collaborator permission', async () => {
@@ -91,8 +89,9 @@ describe('Final Risk Agent refresh workflow (#335)', () => {
   const docs = readFileSync(resolve(process.cwd(), 'docs/MODEL-ROUTING.md'), 'utf8');
   const skill = readFileSync(resolve(process.cwd(), '.agents/skills/vibeaico-astra-review/SKILL.md'), 'utf8');
 
-  it('accepts tool footers and checks trusted Agent identity before collaborator permission', () => {
-    expect(workflow).toContain("startsWith(github.event.comment.body, '/astra-review-check\\n')");
+  it('allows a footer only after an exact first-line refresh command', () => {
+    expect(workflow).toContain("startsWith(github.event.comment.body, '/astra-review-check')");
+    expect(workflow).toContain("firstLine !== '/astra-review-check'");
     expect(workflow).toContain('astra.isTrustedFinalRiskAgentUser(commentUser)');
     const trustedIndex = workflow.indexOf('astra.isTrustedFinalRiskAgentUser(commentUser)');
     expect(workflow.indexOf('getCollaboratorPermissionLevel', trustedIndex)).toBeGreaterThan(trustedIndex);
