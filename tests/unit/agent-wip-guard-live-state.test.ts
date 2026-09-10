@@ -10,14 +10,18 @@ const workflow = readFileSync(
 
 describe('agent WIP Guard live-state dispatch', () => {
   it('re-reads the current PR before parsing metadata or deciding a TEST transition', () => {
+    const guardIndex = workflow.indexOf('  guard:');
     const payloadIndex = workflow.indexOf(
       'const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };',
+      guardIndex,
     );
     const liveReadIndex = workflow.indexOf(
       'const { data: current } = await github.rest.pulls.get({',
+      guardIndex,
     );
     const metadataIndex = workflow.indexOf(
       'const metadata = policy.parseLaneMetadata(current);',
+      guardIndex,
     );
 
     expect(payloadIndex).toBeGreaterThan(-1);
