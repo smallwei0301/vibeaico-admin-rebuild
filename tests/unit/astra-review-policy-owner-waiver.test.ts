@@ -153,7 +153,7 @@ describe('Owner Final Risk waiver admission', () => {
         '<!-- agent-wip-guard-waiver-invalidation -->',
         'OWNER_FINAL_RISK_INVALIDATED: PR #312',
         'INVALIDATION_EVENT_KEY: edited:2:2026-09-09T10:02:00Z',
-      ].join('\\n'),
+      ].join('\n'),
     };
     expect(isOwnerFinalRiskWaiver({
       current,
@@ -198,7 +198,7 @@ describe('Owner Final Risk waiver admission', () => {
       body: [
         'OWNER_FINAL_RISK_WAIVER: PR #312',
         'WAIVER_STATUS: OWNER_WAIVER_REVOKED_FOR_PR_312_2026_09_09',
-      ].join('\\n'),
+      ].join('\n'),
     };
     expect(isOwnerFinalRiskWaiver({
       current,
