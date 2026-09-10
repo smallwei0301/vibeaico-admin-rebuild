@@ -58,7 +58,7 @@ Sol-only 不是跳過驗證。source CI、必要 regression tests、final diff r
 
 ### MODEL_GOVERNANCE 不能拿來偷渡產品變更
 
-如果同一張工作碰到 Product runtime、schema / migration、tenant product data flow、payment / refund、LINE/provider、Production deploy 行為或跨 repo Product contract：
+這裡的「混合範圍」採 fail-safe 分類。如果同一張工作碰到 Product runtime、schema / migration、tenant product data flow、payment / refund、LINE/provider、Production deploy 行為或跨 repo Product contract：
 
 1. 優先拆 PR；
 2. 無法安全拆分時整張改為 `PRODUCT_MAINLINE`；
@@ -91,6 +91,8 @@ Product 高後果類型維持：
 - `GOVERNANCE_GATE`，僅當不可拆的 Product scope 同時修改 admission / bypass semantics
 - `UNRESOLVED_HIGH_RISK`
 
+對 `PRODUCT_MAINLINE` 保留 #332 的既有語意：`GOVERNANCE_GATE` 指會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，或把原本 failure/pending 變成 success/approval 的不可拆產品治理變更。純 fail-closed hardening 若只是**只增加拒絕條件**、證據完整度、reconciliation 或 observability，且不形成產品風險，仍依既有 Product 分類處理。
+
 一般文案、UI、小型接線不因存在於 Product PR 就自動要求 Final Risk。Product classifier 與 `model-routing.json.sensitivePaths` 仍 fail closed。
 
 ## Product Final Risk model dispatch
@@ -103,13 +105,13 @@ Product 高後果類型維持：
 4. 不搜尋所謂 Astra plugin / connector，也不要求 Owner 開外部審查通道。
 5. 只有 runtime 確實無 model delegation 或所有 allowlist models 被明確拒絕，才可記 `MODEL_EXECUTION_UNAVAILABLE`。
 
-簡單說：**先改派模型，再談 unavailable。**
+簡單說：**先改派模型，再談 unavailable。** 對 Product Final Risk，不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
 
 ## Product Agent-native attestation
 
-#335 / #336 的 trusted-Agent Final Risk 仍保留給 Product mainline。
+#335 / #336 的 trusted-Agent Final Risk 仍保留給 Product mainline。正常 Product Agent 路徑 **Owner action NOT_REQUIRED**。
 
-可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。現行第一個 trusted Agent bot 是 `claude[bot]`。
+可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。現行第一個 trusted Agent bot 是 `claude[bot]` / user id `209825114` / `Bot`。
 
 正常 Product Agent 可自己提交完整 `astra-review` COMMENT review 並 refresh guard，不要求 Owner 把同一份 Fable/Astra evidence 再貼一次。
 
@@ -119,7 +121,7 @@ Product 高後果類型維持：
 
 Final Risk 綁 `changeDigest`，不是單純綁 commit SHA。若 main 由其他環境前進，而 PR changed-file blobs、schema baseline、Final Risk policy 與最新 verdict 都沒有實質改變：
 
-- 不因純 rebase / unrelated main advancement 重跑 semantic Astra/Fable；
+- **不重跑 semantic Final Risk**，也不因純 rebase / unrelated main advancement 重跑 semantic Astra/Fable；
 - 新 head 仍跑 required exact-head CI；
 - `testBaseline` 保留 reviewer 當時實際採用的證據；
 - changed-file blob 或 `changeDigest` 真改變時舊 review 才失效；
