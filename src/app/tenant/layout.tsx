@@ -19,6 +19,12 @@ const AUTH_ROUTES = [
   '/tenant/register',
   '/tenant/forgot-password',
   '/tenant/reset-password',
+  /*
+   * 代入確認頁（21 分冊 §8.4）。它不是 auth 路由，但同樣不能套 AppShell——
+   * 進來的人是平台管理者，此刻**還沒有**任何租戶脈絡，AppShell 需要的側邊欄、
+   * 頂部列與店家切換器都無從渲染。與其讓它半殘，不如走同一個無殼版面。
+   */
+  '/tenant/impersonate',
 ] as const;
 
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
