@@ -120,12 +120,14 @@ MODEL_GOVERNANCE must remain source/governance-only. If it needs Product TEST, s
 - [ ] One clear Delivery Slice/standalone Issue or tightly coupled governance scope.
 - [ ] A Product PR lifecycle `issue:` points to its closable Slice/standalone Issue; a parent Epic is recorded separately.
 - [ ] EPIC/GOVERNANCE/retroactive tracking work does not claim a shipped unit.
+- [ ] Active Agent governance PR stays at or below 8 files and 800 changed lines, unless a trusted Owner Decision for this exact branch is recorded.
 - [ ] Does not duplicate another active implementation PR.
 - [ ] If Product dual Terra, both PRs use the same Run ID but different slot, Issue, TEST_ENV_ID and FILE_OWNERSHIP.
 - [ ] Declared FILE_OWNERSHIP is repository-relative and does not overlap the other Product Terra lane.
 - [ ] If Product dual Terra, no active Reserve Terra exists.
 - [ ] If Product Reserve, work stops after one source-only atomic commit and no shared TEST/Audit.
 - [ ] If PARKED/HISTORICAL/OWNER_BLOCKED, no Agent/push/rerun/polling continues.
+- [ ] If LOCAL_ISOLATED_CANARY, the claim is only runner/database/cleanup isolation.
 - [ ] If LOCAL_ISOLATED, `FINAL_CANONICAL_REQUIRED=true` and local evidence is not reported as final.
 - [ ] No paid Supabase Preview Branch is planned, required or created.
 
@@ -176,7 +178,19 @@ For a Product delivery claim, re-read the live Issue body and require `DELIVERY_
 - AUTHENTICATED_PRODUCTION_ACCEPTANCE: NOT_RUN | OWNER_BLOCKED | FAILED | VERIFIED
 - AUTHENTICATED_PRODUCTION_EVIDENCE: none | <!-- authenticated URL / E2E / screenshot evidence -->
 
-A Product Slice with migration files cannot declare `PRODUCTION_SCHEMA_STATUS=NOT_REQUIRED`. `VERIFIED_APPLIED` and authenticated `VERIFIED` require usable evidence. Until all applicable stages pass, report `PRODUCTION_PENDING` or `OWNER_BLOCKED`, not shipped.
+`agent-completion-truth` re-reads the exact source CI, main reachability, actual migration paths and the Vercel status attached to the merge SHA. `CANCELED_IGNORED` is not a Product deployment. A Product Slice with migration files cannot declare `PRODUCTION_SCHEMA_STATUS=NOT_REQUIRED`. `VERIFIED_APPLIED` and authenticated `VERIFIED` require usable evidence. Until all applicable stages pass, report `PRODUCTION_PENDING` or `OWNER_BLOCKED`, not shipped.
+
+## Delivery Outcome v2
+
+- Shipped units: <!-- live-verified closed, Production-accepted Delivery Slice/standalone Issues only -->
+- Production pending units: <!-- closed Product units missing one or more Production stages -->
+- Autonomous outcome units: <!-- Production-accepted closed + verified complete Owner-blocked -->
+- WIP inventory: <!-- Audit Ready + CI-only + commit-only + carryover -->
+- Weighted usage / shipped unit: null | <!-- only when shipped_units >= 1 -->
+- Weighted usage / autonomous outcome: null | <!-- only when denominator >= 1 -->
+- Actual token / weekly usage data: null | <!-- never guess -->
+
+MODEL_GOVERNANCE records truthful governance evidence but does not count as shipped Product output.
 
 ## Safety
 
