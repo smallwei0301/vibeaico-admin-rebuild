@@ -114,6 +114,10 @@ describe('agent WIP Guard live-state dispatch', () => {
     expect(workflow).toContain('const ownerWaiverLifecycleEvent =');
     expect(workflow).toContain('const ownerWaiverEligible =');
     expect(workflow).toContain('if (ownerWaiverLifecycleEvent || ownerWaiverEligible)');
+    expect(workflow).toContain('const { data: lifecycleFresh } = await github.rest.pulls.get({');
+    expect(workflow).toContain('lifecyclePolicyStatus = astra.ownerWaiverLifecycleStatus({');
+    expect(workflow).toContain("if (lifecyclePolicyStatus === 'failure')");
+    expect(workflow).toContain('Owner waiver evidence changed during comment lifecycle; revalidation required');
     expect(workflow).toContain('closed. Otherwise deleting a revoke/deny while closed can revive');
 
     expect(workflow).toContain('Owner waiver comments changed during policy evaluation');
