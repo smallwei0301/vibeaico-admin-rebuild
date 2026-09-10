@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   finalRiskGateStatus,
   isOwnerFinalRiskWaiver,
+  ownerWaiverLifecycleStatus,
 } from '../../scripts/agents/astra-review-policy.mjs';
 
 const status = 'OWNER_WAIVED_FOR_PR_312_2026_09_09';
@@ -219,6 +220,24 @@ describe('Owner Final Risk waiver admission', () => {
       ownerAttestations: [missingTimestampGrant],
       changeDigest,
     })).toBe(false);
+  });
+
+  it('forces failure when a closed-snapshot invalidation races with reopen', () => {
+    expect(ownerWaiverLifecycleStatus({
+      lifecycleEvent: true,
+      invalidationPersisted: true,
+      freshState: 'open',
+    })).toBe('failure');
+    expect(ownerWaiverLifecycleStatus({
+      lifecycleEvent: true,
+      invalidationPersisted: true,
+      freshState: 'closed',
+    })).toBeNull();
+    expect(ownerWaiverLifecycleStatus({
+      lifecycleEvent: true,
+      invalidationPersisted: false,
+      freshState: 'open',
+    })).toBeNull();
   });
 
   it('does not revive a waiver after close-delete-reopen lifecycle', () => {
