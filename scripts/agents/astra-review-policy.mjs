@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { readField } from './agent-wip-policy.mjs';
+import { classifyWorkstream } from './workstream-policy.mjs';
 
 export const routing = JSON.parse(readFileSync(new URL('./model-routing.json', import.meta.url), 'utf8'));
 const SHA = /^[a-f0-9]{40}$/;
@@ -166,15 +167,26 @@ export function isTrustedFinalRiskAgentUser(user = {}, policy = routing) {
 
 /** @param {{body?: string, changedFiles?: string[] | null}} [input] */
 export function classifyAstra({ body = '', changedFiles = null } = {}, policy = routing) {
+  const workstream = classifyWorkstream({ body, changedFiles }, policy);
   const risks = readField(body, 'ASTRA_RISK').split(',').map(s => s.trim()).filter(Boolean);
-  const errors = [];
+  const errors = [...workstream.errors];
   if (!risks.length || risks.some(r => r !== 'NONE' && !policy.highRisk.includes(r)) || (risks.includes('NONE') && risks.length > 1)) {
     errors.push('ASTRA_RISK must be NONE or a comma-separated list of configured risks');
+  }
+  if (workstream.workstream === 'MODEL_GOVERNANCE' && risks.some(r => r !== 'NONE')) {
+    errors.push('MODEL_GOVERNANCE must declare ASTRA_RISK: NONE');
   }
   if (!meaningful(readField(body, 'ASTRA_RATIONALE'))) errors.push('ASTRA_RATIONALE requires a concrete risk assessment');
   if (!Array.isArray(changedFiles) || !changedFiles.length) errors.push('Astra classification requires actual changed files');
   const sensitive = (changedFiles ?? []).some(path => policy.sensitivePaths.some(prefix => path.startsWith(prefix)));
-  return { required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors };
+  const productRiskRequired = sensitive || risks.some(r => policy.highRisk.includes(r));
+  const governanceExempt = workstream.workstream === 'MODEL_GOVERNANCE' && workstream.pureGovernance;
+  return {
+    required: governanceExempt ? false : productRiskRequired,
+    risks,
+    workstream: workstream.workstream,
+    errors,
+  };
 }
 
 // Only trusted GitHub review records supplied by the caller may become attestations.
