@@ -22,7 +22,7 @@ Final Risk 保留給「後果高，而且獨立高階 reviewer 能提供正交�
 
 `GOVERNANCE_GATE` 仍是高風險，但從本決策起收窄為：
 
-> 會降低、放寬、繞過、豁免、延後或改變 merge/admission/model/deploy/permission/evidence gate 的允許範圍，或可能把原本的 failure/pending 轉成 success/approval 的治理變更。
+> 會擴大原本可接受／可放行的候選集合，或降低、放寬、繞過、豁免、延後 merge/admission/model/deploy/permission/evidence gate，或可能把原本的 failure/pending 轉成 success/approval 的治理變更。
 
 典型例子：
 
@@ -70,7 +70,7 @@ Final Risk 保留給「後果高，而且獨立高階 reviewer 能提供正交�
 
 - Sol 無法證明變更只會 fail closed；
 - 同一 PR 同時含 hardening 與 relaxation；
-- 變更會修改可接受狀態集合；
+- 變更會擴大可接受／可放行狀態集合；
 - 變更會修改 model routing、waiver、exception、merge/deploy admission；
 - changed files 命中 sensitive paths；
 - 其他高風險類型同時成立。
