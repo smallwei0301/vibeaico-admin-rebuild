@@ -164,17 +164,80 @@ export function isTrustedFinalRiskAgentUser(user = {}, policy = routing) {
   );
 }
 
-/** @param {{body?: string, changedFiles?: string[] | null}} [input] */
-export function classifyAstra({ body = '', changedFiles = null } = {}, policy = routing) {
-  const risks = readField(body, 'ASTRA_RISK').split(',').map(s => s.trim()).filter(Boolean);
+const normalizedWorkstream = (body = '') => readField(body, 'WORKSTREAM').trim().toUpperCase();
+const validDate = (value) => {
+  const time = Date.parse(String(value ?? ''));
+  return Number.isFinite(time) ? time : null;
+};
+const pathWithin = (path, prefixes = []) => prefixes.some((prefix) => path === prefix || path.startsWith(prefix));
+
+/**
+ * Workstream is a trusted-main classification contract. New PRs created after
+ * workstreams.effectiveAt must declare one. Older PRs stay on legacy behavior
+ * until they are intentionally backfilled, so the rollout does not freeze the
+ * whole open inventory at once.
+ */
+export function classifyWorkstream({ body = '', changedFiles = null, createdAt = '' } = {}, policy = routing) {
+  const config = policy.workstreams ?? {};
+  const allowed = Array.isArray(config.allowed) ? config.allowed : [];
+  const raw = normalizedWorkstream(body);
   const errors = [];
+  const effectiveAt = validDate(config.effectiveAt);
+  const created = validDate(createdAt);
+  const policyApplies = effectiveAt !== null && created !== null && created >= effectiveAt;
+
+  if (!raw) {
+    if (policyApplies) errors.push('WORKSTREAM is required for PRs created after the two-workstream policy effective time');
+    return { workstream: 'LEGACY_UNCLASSIFIED', isModelGovernance: false, policyApplies, errors };
+  }
+
+  if (!allowed.includes(raw)) {
+    errors.push(`WORKSTREAM must be one of: ${allowed.join(', ')}`);
+    return { workstream: raw, isModelGovernance: false, policyApplies: true, errors };
+  }
+
+  if (raw === config.modelGovernance?.workstream) {
+    const governance = config.modelGovernance ?? {};
+    if (readField(body, 'AGENT_LANE').trim().toUpperCase() !== governance.lane) {
+      errors.push(`MODEL_GOVERNANCE requires AGENT_LANE: ${governance.lane}`);
+    }
+    if (readField(body, 'ASTRA_RISK').trim().toUpperCase() !== governance.risk) {
+      errors.push(`MODEL_GOVERNANCE requires ASTRA_RISK: ${governance.risk}`);
+    }
+    if (readField(body, 'FINAL_RISK_POLICY').trim().toUpperCase() !== governance.finalRiskPolicy) {
+      errors.push(`MODEL_GOVERNANCE requires FINAL_RISK_POLICY: ${governance.finalRiskPolicy}`);
+    }
+    const modelLine = readField(body, 'REQUESTED_MODEL / ACTUAL_MODEL');
+    if (!modelLine.includes(`requested=${governance.model}`) || !modelLine.includes(`actual=${governance.model}`)) {
+      errors.push(`MODEL_GOVERNANCE requires requested/actual model ${governance.model}`);
+    }
+    if (Array.isArray(changedFiles) && changedFiles.length) {
+      const outside = changedFiles.filter((path) => !pathWithin(path, governance.scopePrefixes));
+      if (outside.length) {
+        errors.push(`MODEL_GOVERNANCE contains Product/non-governance path(s): ${outside.join(', ')}`);
+      }
+    }
+    return { workstream: raw, isModelGovernance: true, policyApplies: true, errors };
+  }
+
+  return { workstream: raw, isModelGovernance: false, policyApplies: true, errors };
+}
+
+/** @param {{body?: string, changedFiles?: string[] | null, createdAt?: string}} [input] */
+export function classifyAstra({ body = '', changedFiles = null, createdAt = '' } = {}, policy = routing) {
+  const risks = readField(body, 'ASTRA_RISK').split(',').map(s => s.trim()).filter(Boolean);
+  const workstream = classifyWorkstream({ body, changedFiles, createdAt }, policy);
+  const errors = [...workstream.errors];
   if (!risks.length || risks.some(r => r !== 'NONE' && !policy.highRisk.includes(r)) || (risks.includes('NONE') && risks.length > 1)) {
     errors.push('ASTRA_RISK must be NONE or a comma-separated list of configured risks');
   }
   if (!meaningful(readField(body, 'ASTRA_RATIONALE'))) errors.push('ASTRA_RATIONALE requires a concrete risk assessment');
   if (!Array.isArray(changedFiles) || !changedFiles.length) errors.push('Astra classification requires actual changed files');
+  if (workstream.isModelGovernance) {
+    return { required: false, risks, errors: [...new Set(errors)], ...workstream };
+  }
   const sensitive = (changedFiles ?? []).some(path => policy.sensitivePaths.some(prefix => path.startsWith(prefix)));
-  return { required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors };
+  return { required: sensitive || risks.some(r => policy.highRisk.includes(r)), risks, errors: [...new Set(errors)], ...workstream };
 }
 
 // Only trusted GitHub review records supplied by the caller may become attestations.
@@ -206,7 +269,7 @@ export function parseAstraReviews(reviews = []) {
 
 /** @param {{body?: string, changedFiles?: string[] | null, context?: Record<string, string>, reviews?: Array<Record<string, any>>}} [input] */
 export function evaluateAstra({ body = '', changedFiles = null, context = {}, reviews = [] } = {}, policy = routing) {
-  const classification = classifyAstra({ body, changedFiles }, policy);
+  const classification = classifyAstra({ body, changedFiles, createdAt: context.createdAt }, policy);
   if (classification.errors.length) return { ...classification, status: 'ASTRA_PENDING' };
   if (!classification.required) return { ...classification, status: 'NOT_REQUIRED' };
   const errors = [];
@@ -245,7 +308,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
   if (files.length !== current.changed_files) throw new Error('Incomplete changed-file inventory');
   const changedFiles = [...new Set(files.flatMap(f => [f.filename, f.previous_filename].filter(Boolean)))];
   const body = current.body ?? '';
-  const classification = classifyAstra({ body, changedFiles }, policy);
+  const classification = classifyAstra({ body, changedFiles, createdAt: current.created_at }, policy);
   const reviews = [];
   if (classification.required && !classification.errors.length) {
     const records = await github.paginate(github.rest.pulls.listReviews, { owner, repo, pull_number: current.number, per_page: 100 });
@@ -276,7 +339,7 @@ export async function evaluateGithubAstra({ github, owner, repo, current }, poli
     repository: `${owner}/${repo}`, baseSha: current.base.sha, headSha: current.head.sha,
     policyVersion: policy.version, testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
     schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
-    changeDigest: digest,
+    changeDigest: digest, createdAt: current.created_at,
   } }, policy);
   return { ...result, changeDigest: digest };
 }
