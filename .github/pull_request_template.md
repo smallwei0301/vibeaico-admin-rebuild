@@ -31,6 +31,8 @@ FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 
 <!-- Product PRs point lifecycle issue at one closable SLICE/STANDALONE Issue. Governance PRs use GOVERNANCE and do not claim shipped Product output. -->
 
+A Product PR lifecycle `issue:` points to its closable Slice／standalone Issue; a parent Epic is recorded separately.
+
 - DELIVERY_UNIT_TYPE: SLICE | STANDALONE | EPIC | GOVERNANCE
 - PARENT_EPIC: none | #number
 - COUNT_IN_DELIVERY_OUTCOME: true | false
