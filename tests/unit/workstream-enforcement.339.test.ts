@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   classifyAstra,
-  classifyWorkstream,
   evaluateAstra,
   routing,
 } from '../../scripts/agents/astra-review-policy.mjs';
@@ -40,10 +39,8 @@ describe('MODEL_GOVERNANCE executable workstream boundary (#339)', () => {
       '.github/workflows/issue-provenance.yml',
       'tests/unit/workstream-enforcement.339.test.ts',
     ];
-    const workstream = classifyWorkstream({ body: governanceBody, changedFiles, createdAt: AFTER });
-    expect(workstream).toMatchObject({ workstream: 'MODEL_GOVERNANCE', isModelGovernance: true, errors: [] });
     const risk = classifyAstra({ body: governanceBody, changedFiles, createdAt: AFTER });
-    expect(risk.errors).toEqual([]);
+    expect(risk).toMatchObject({ workstream: 'MODEL_GOVERNANCE', isModelGovernance: true, errors: [] });
     expect(risk.required).toBe(false);
     expect(evaluateAstra({ body: governanceBody, changedFiles, context: { createdAt: AFTER }, reviews: [] }).status).toBe('NOT_REQUIRED');
   });
