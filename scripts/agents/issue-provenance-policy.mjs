@@ -10,6 +10,13 @@ export const ISSUE_ORIGIN_HEADINGS = Object.freeze([
   '### Issue origin',
 ]);
 
+export const ISSUE_WORKSTREAM_HEADINGS = Object.freeze([
+  '## WORKSTREAM',
+  '### WORKSTREAM',
+]);
+
+export const VALID_WORKSTREAMS = Object.freeze(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
+
 export const REQUIRED_AGENT_PROVENANCE_HEADINGS = Object.freeze([
   '### Parent Issue / PR',
   '### Discovered stage',
@@ -68,6 +75,17 @@ function issueOrigin(body) {
   return 'owner-or-unknown';
 }
 
+export function issueWorkstream(body = '') {
+  const exact = String(body ?? '').match(/(?:^|\n)\s*(?:[-*+]\s*)?WORKSTREAM\s*:\s*([^\n]+)/i)?.[1];
+  if (exact) return cleanLine(exact).toUpperCase();
+  for (const heading of ISSUE_WORKSTREAM_HEADINGS) {
+    const section = readHeadingSection(body, heading);
+    if (section === null) continue;
+    return (substantiveLines(section)[0] ?? '').toUpperCase();
+  }
+  return '';
+}
+
 function validateModelLine(section) {
   const text = String(section ?? '');
   const requested = text.match(/(?:^|[;；\n])\s*requested\s*=\s*([^;；\n]+)/i)?.[1]?.trim() ?? '';
@@ -82,22 +100,30 @@ function validateModelLine(section) {
   return errors;
 }
 
-export function validateIssueProvenance(body = '') {
+export function validateIssueProvenance(body = '', { requireWorkstream = false } = {}) {
   const origin = issueOrigin(body);
+  const workstream = issueWorkstream(body);
+  const workstreamErrors = [];
+  if (requireWorkstream && !workstream) workstreamErrors.push('Issue WORKSTREAM is required');
+  if (workstream && !VALID_WORKSTREAMS.includes(workstream)) {
+    workstreamErrors.push(`Issue WORKSTREAM must be one of: ${VALID_WORKSTREAMS.join(', ')}`);
+  }
+
   if (origin !== 'agent') {
     return {
       origin,
+      workstream: workstream || 'UNCLASSIFIED',
       isAgent: false,
-      valid: true,
+      valid: workstreamErrors.length === 0,
       missingHeadings: [],
       emptyHeadings: [],
-      errors: [],
+      errors: workstreamErrors,
     };
   }
 
   const missingHeadings = [];
   const emptyHeadings = [];
-  const errors = [];
+  const errors = [...workstreamErrors];
   const sections = new Map();
 
   for (const heading of REQUIRED_AGENT_PROVENANCE_HEADINGS) {
@@ -125,6 +151,7 @@ export function validateIssueProvenance(body = '') {
 
   return {
     origin,
+    workstream: workstream || 'UNCLASSIFIED',
     isAgent: true,
     valid: errors.length === 0,
     missingHeadings,
@@ -156,11 +183,11 @@ export function runCli(argv = process.argv.slice(2)) {
   if (!fs.existsSync(bodyPath) || !fs.statSync(bodyPath).isFile()) {
     throw new Error(`issue body file does not exist: ${bodyPath}`);
   }
-  const result = validateIssueProvenance(fs.readFileSync(bodyPath, 'utf8'));
+  const result = validateIssueProvenance(fs.readFileSync(bodyPath, 'utf8'), { requireWorkstream: true });
   if (!result.valid) {
     throw new Error(`ISSUE_PROVENANCE_FAILED\n${result.errors.map((error) => `- ${error}`).join('\n')}`);
   }
-  console.log(`ISSUE_PROVENANCE_PASS origin=${result.origin}`);
+  console.log(`ISSUE_PROVENANCE_PASS origin=${result.origin} workstream=${result.workstream}`);
   return result;
 }
 
