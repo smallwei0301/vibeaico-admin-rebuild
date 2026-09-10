@@ -15,9 +15,9 @@ Before working on any Issue:
 4. Read the Issue's canonical `docs/integration/**` files and
    `docs/integration/12-TESTING-TDD.md` from `main`.
 5. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
-6. Base implementation work on latest `main`, or on a designated integration branch that already contains the latest main documentation commit.
+6. Start implementation work from the then-current `main`, or from a designated integration branch with the required canonical decisions. After the working branch exists, **do not rebase only because unrelated work advanced `main`**. Follow `docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md`: re-align only for a material migration-ledger change/prefix collision, actual merge conflict, shared contract or acceptance-precondition change, or CI evidence that the new base materially affects the candidate. `HEAD^ == origin/main` is not a global invariant.
 
-Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**.
+Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**. Re-reading newer decisions is required; rebasing unrelated file content is not.
 
 ## Default execution mode
 
@@ -134,7 +134,7 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 ## Hard rules (from `docs/CONVENTIONS.md`)
 
 1. **Zero hardcoded copy.** No Chinese string literals in page components. All text lives in
-   `src/i18n/zh-TW/pages/<page>.ts` (imported as `import { xxxPage as t }`) or `common.ts`.
+   `src/i18n/zh-TW/pages/<page>.ts` (imported as `import { xxxPage as t`) or `common.ts`.
    Translating the app = copying the `zh-TW` folder; code must not change.
 2. **Zero hardcoded design values.** No raw colors, radii, shadows, or font sizes — only Tailwind
    tokens (`bg-primary`, `rounded-lg`, `shadow-md`) or `var(--…)`. Theme changes touch only
@@ -172,6 +172,7 @@ the explicitly configured allowlist: GPT-6 Astra (`gpt-6-astra`) or Claude Fable
 - `docs/AGENT-EXECUTION.md` — canonical autonomous execution, delegation, permissions, safety and stop rules
 - `docs/DELIVERY-CHAIN.md` — canonical product delivery chain: what each gate is there to catch and what its passing evidence looks like (Luna ownership check → Terra worktree build → Sol diff audit → local isolated Supabase → serialized canonical TEST → Completion Truth five-point verification)
 - `docs/AGENT-PLAYBOOK.md` — required failure/lesson log; search only entries relevant to the task
+- `docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md` — current multi-environment branch freshness policy; supersedes PB-015's old “always latest main / HEAD^” prevention sentence while preserving its base-evidence lesson
 - `docs/DOCUMENTATION-GOVERNANCE.md` — canonical docs, direct-main docs-only rule, branch policy
 - `docs/CONVENTIONS.md` — read before adding a page
 - `docs/REBUILD-SPEC.md` — design system spec + per-page section/copy inventory
@@ -191,5 +192,5 @@ the explicitly configured allowlist: GPT-6 Astra (`gpt-6-astra`) or Claude Fable
 - Owner-approved docs-only changes may go directly to `main`, but the commit must contain only allowed documentation paths. See `docs/DOCUMENTATION-GOVERNANCE.md`.
 - Runtime code, migrations, dependencies, workflows and deployment configuration use a feature branch → PR → CI → review flow.
 - `main` auto-deploys on Vercel. A docs-only main push is not permission for Production DDL/DML or runtime deployment; changes that alter production behavior require explicit Owner authorization.
-- Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch, but it must already contain the latest canonical main documentation commit.
+- Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch. It must contain the required canonical decisions when designated, and agents must continue re-reading current `main` decisions; unrelated later main commits do **not** by themselves require rebasing that branch.
 - Commit messages are mostly Traditional Chinese and should describe the user-visible or governance change.
