@@ -134,7 +134,7 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 ## Hard rules (from `docs/CONVENTIONS.md`)
 
 1. **Zero hardcoded copy.** No Chinese string literals in page components. All text lives in
-   `src/i18n/zh-TW/pages/<page>.ts` (imported as `import { xxxPage as t`) or `common.ts`.
+   `src/i18n/zh-TW/pages/<page>.ts` (imported as `import { xxxPage as t }`) or `common.ts`.
    Translating the app = copying the `zh-TW` folder; code must not change.
 2. **Zero hardcoded design values.** No raw colors, radii, shadows, or font sizes — only Tailwind
    tokens (`bg-primary`, `rounded-lg`, `shadow-md`) or `var(--…)`. Theme changes touch only
