@@ -101,8 +101,9 @@ describe('Final Risk Agent refresh workflow (#335)', () => {
     for (const text of [docs, skill]) {
       expect(text).toContain('Owner action NOT_REQUIRED');
       expect(text).toContain('changeDigest');
-      expect(text).toContain('不重跑 semantic Final Risk');
     }
+    expect(docs).toContain('不重跑 semantic Final Risk');
+    expect(skill).toContain('不要重新委派 Fable/Astra');
     expect(docs).toContain('209825114');
     expect(skill).toContain('trustedAgentBots');
   });
