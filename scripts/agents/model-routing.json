@@ -1,5 +1,5 @@
 {
-  "version": "2026-09-10.2",
+  "version": "2026-09-08.4",
   "models": {
     "scout": "gpt-5.6-luna",
     "build": "gpt-5.6-terra",
@@ -7,50 +7,6 @@
     "finalRisk": "claude-fable-5-1",
     "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1"],
     "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
-  },
-  "workstreams": {
-    "allowed": ["MODEL_GOVERNANCE", "PRODUCT_MAINLINE"],
-    "modelGovernance": {
-      "id": "MODEL_GOVERNANCE",
-      "executorModel": "gpt-5.6-sol",
-      "delegateBuild": false,
-      "finalRiskRequired": false,
-      "scopePrefixes": [
-        ".agents/skills/",
-        ".github/ISSUE_TEMPLATE/",
-        ".github/pull_request_template.md",
-        ".github/workflows/agent-",
-        ".github/workflows/dual-terra-",
-        ".github/workflows/governance-",
-        ".github/workflows/issue-provenance.yml",
-        ".github/workflows/pr-janitor.yml",
-        "AGENTS.md",
-        "CLAUDE.md",
-        "docs/AGENT-",
-        "docs/GOVERNANCE-SCOREBOARD.md",
-        "docs/MODEL-ROUTING.md",
-        "docs/OWNER-DECISIONS.md",
-        "docs/PR-LIFECYCLE.md",
-        "docs/decisions/",
-        "docs/metrics/",
-        "scripts/agents/",
-        "scripts/metrics/",
-        "tests/unit/agent-",
-        "tests/unit/astra-",
-        "tests/unit/candidate-",
-        "tests/unit/dual-terra-",
-        "tests/unit/final-risk-",
-        "tests/unit/governance-",
-        "tests/unit/provider-model-",
-        "tests/unit/run-admission-"
-      ]
-    },
-    "productMainline": {
-      "id": "PRODUCT_MAINLINE",
-      "executorModel": "provider-session-policy",
-      "delegateBuild": true,
-      "finalRiskRequired": "BY_RISK_CLASSIFICATION"
-    }
   },
   "finalRiskTrust": {
     "version": "2026-09-10.1",
@@ -60,12 +16,6 @@
   },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [
-    ".github/workflows/production-deploy-canary.yml",
-    "scripts/ci/production-deploy-canary.mjs",
-    "src/server/auth",
-    "src/server/payment",
-    "src/server/refund",
-    "src/app/api/payments/",
-    "src/app/api/payment-methods/"
+    "scripts/agents/", ".github/workflows/", "src/server/auth", "src/server/payment", "src/server/refund", "src/app/api/payments/", "src/app/api/payment-methods/"
   ]
 }
