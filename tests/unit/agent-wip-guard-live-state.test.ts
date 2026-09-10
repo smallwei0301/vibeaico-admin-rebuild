@@ -96,9 +96,9 @@ describe('agent WIP Guard live-state dispatch', () => {
 
   it('serializes only the same PR and cancels stale in-flight guard runs', () => {
     expect(workflow).toContain(
-      'group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}',
+      'group: >-\n        agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name == \'issue_comment\' && github.run_id || \'pull-request\' }}',
     );
-    expect(workflow).toContain('cancel-in-progress: true');
+    expect(workflow).not.toContain('cancel-in-progress: true');
     expect(workflow).not.toMatch(/^concurrency:/m);
     expect(workflow).toMatch(/^    concurrency:/m);
     expect(workflow).not.toContain('  pull_request_review:');
