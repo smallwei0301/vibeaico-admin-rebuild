@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { classifyAstra, routing } from '../../scripts/agents/astra-review-policy.mjs';
@@ -11,6 +13,15 @@ const riskBody = (risk: string) => [
   `ASTRA_RISK: ${risk}`,
   `ASTRA_RATIONALE: ${risk} has a concrete high-consequence failure mode`,
 ].join('\n');
+
+const astraSkill = readFileSync(
+  resolve(process.cwd(), '.agents/skills/vibeaico-astra-review/SKILL.md'),
+  'utf8',
+);
+const ownerDecision = readFileSync(
+  resolve(process.cwd(), 'docs/decisions/2026-09-10-owner-final-risk-roi-routing.md'),
+  'utf8',
+);
 
 describe('Final Risk ROI routing boundary (#332)', () => {
   it('does not require Final Risk merely because fail-closed governance metrics live under scripts/metrics', () => {
@@ -63,5 +74,19 @@ describe('Final Risk ROI routing boundary (#332)', () => {
 
     expect(result.errors).toEqual([]);
     expect(result.required).toBe(true);
+  });
+
+  it('teaches agents to dispatch an allowlisted model instead of inventing an external reviewer channel', () => {
+    for (const text of [astraSkill, ownerDecision]) {
+      expect(text).toContain('model selector');
+      expect(text).toContain('plugin');
+      expect(text).toContain('connector');
+      expect(text).toContain('MODEL_EXECUTION_UNAVAILABLE');
+      expect(text).toContain('先改派模型，再談 unavailable');
+    }
+
+    expect(astraSkill).toContain('不是另一個 plugin、connector、MCP、外部服務');
+    expect(astraSkill).toContain('不得因主 Session 本身不是 Astra/Fable');
+    expect(ownerDecision).toContain('不是 plugin、connector、MCP、外部 provider channel');
   });
 });
