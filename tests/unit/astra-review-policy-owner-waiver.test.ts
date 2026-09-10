@@ -236,8 +236,15 @@ describe('Owner Final Risk waiver admission', () => {
     expect(ownerWaiverLifecycleStatus({
       lifecycleEvent: true,
       invalidationPersisted: false,
+      invalidationJobResult: 'success',
       freshState: 'open',
-    })).toBeNull();
+    })).toBe('failure');
+    expect(ownerWaiverLifecycleStatus({
+      lifecycleEvent: true,
+      invalidationPersisted: true,
+      invalidationJobResult: 'skipped',
+      freshState: 'open',
+    })).toBe('failure');
   });
 
   it('does not revive a waiver after close-delete-reopen lifecycle', () => {
