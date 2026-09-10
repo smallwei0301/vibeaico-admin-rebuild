@@ -255,6 +255,15 @@ describe('governance scoreboard blocking finding reconciliation', () => {
     expect(result.comparisonEligible).toBe(false);
     expect(result.comparisonErrors.join('\n')).toContain('requires reconciliation');
   });
+
+  it('marks a mismatched score-input completeness as not comparable in report mode', () => {
+    const run = completeRun();
+    run.auditability.scoreInputsCompletePercent = 0;
+    const result = evaluateGovernanceScoreboard(run, emptyEvidence(), policy);
+
+    expect(result.comparisonEligible).toBe(false);
+    expect(result.comparisonErrors.join('\n')).toContain('must equal computed 100');
+  });
 });
 
 describe('governance scoreboard flow and data quality', () => {

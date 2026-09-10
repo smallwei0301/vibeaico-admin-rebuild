@@ -262,6 +262,20 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
   const startedAtValid = meaningful(startedAtRaw) && Number.isFinite(startedAt);
   const contractApplies = effectiveAtValid && startedAtValid && startedAt >= effectiveAt;
   const terminal = TERMINAL_RUN.has(run?.status);
+  const policyComparisonErrors = [];
+  if (terminal && contractApplies) {
+    if (dataQuality.percent < minimum) {
+      policyComparisonErrors.push(`terminal Run metric data quality ${dataQuality.percent}% is below ${minimum}%`);
+    }
+    if (solMismatch) policyComparisonErrors.push('terminal Run Sol flow must match durable review evidence');
+
+    const recordedCompleteness = run?.auditability?.scoreInputsCompletePercent;
+    if (recordedCompleteness === null || recordedCompleteness === undefined) {
+      policyComparisonErrors.push('terminal Run requires auditability.scoreInputsCompletePercent');
+    } else if (Math.abs(Number(recordedCompleteness) - dataQuality.percent) > 0.11) {
+      policyComparisonErrors.push(`auditability.scoreInputsCompletePercent=${recordedCompleteness} must equal computed ${dataQuality.percent}`);
+    }
+  }
   const reconciliationErrors = terminal && contractApplies
     ? validateBlockingFindingReconciliation(evidence)
     : [];
@@ -271,18 +285,7 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
     if (!startedAtValid) errors.push('terminal Run requires a valid startedAt timestamp');
 
     if (contractApplies) {
-      if (dataQuality.percent < minimum) {
-        errors.push(`terminal Run metric data quality ${dataQuality.percent}% is below ${minimum}%`);
-      }
-      if (solMismatch) errors.push('terminal Run Sol flow must match durable review evidence');
-
-      const recordedCompleteness = run?.auditability?.scoreInputsCompletePercent;
-      if (recordedCompleteness === null || recordedCompleteness === undefined) {
-        errors.push('terminal Run requires auditability.scoreInputsCompletePercent');
-      } else if (Math.abs(Number(recordedCompleteness) - dataQuality.percent) > 0.11) {
-        errors.push(`auditability.scoreInputsCompletePercent=${recordedCompleteness} must equal computed ${dataQuality.percent}`);
-      }
-
+      errors.push(...policyComparisonErrors);
       errors.push(...reconciliationErrors);
     }
   }
@@ -294,6 +297,7 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
   // required-check failure.
   const comparisonErrors = [
     ...errors,
+    ...policyComparisonErrors,
     ...reconciliationErrors,
     ...(terminal && !effectiveAtValid ? ['terminal Run has an invalid scoreboard policy timestamp'] : []),
     ...(terminal && !startedAtValid ? ['terminal Run has an invalid startedAt timestamp'] : []),
