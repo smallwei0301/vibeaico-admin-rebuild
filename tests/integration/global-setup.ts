@@ -19,7 +19,7 @@
 // 完成，不需要再改這個檔案。
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { loadCheckedTestEnv } from '../../scripts/agents/test-env-policy.mjs';
 import { resolve } from 'node:path';
 
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -61,13 +61,10 @@ async function resetTestDatabase(): Promise<void> {
 
 function loadEnvTestIfPresent(): void {
   const envTestPath = resolve(REPO_ROOT, '.env.test');
-  if (!existsSync(envTestPath)) {
+  if (!loadCheckedTestEnv(envTestPath)) {
     console.warn(`[global-setup] 找不到 .env.test（${envTestPath}），略過載入 —— 假設變數已由外部注入。`);
-    return;
   }
-  // Node >=20.12 內建；已存在的 process.env 變數不會被覆蓋（同
-  // scripts/test/_supabase-admin.mjs 的行為，見安全鎖實測）。
-  process.loadEnvFile(envTestPath);
+  // 衝突會在上方拋錯；不能先 reset/seed，再發現沿用了另一個環境的金鑰。
 }
 
 async function waitForServerReady(): Promise<void> {
