@@ -123,13 +123,14 @@
 | #37 / GUIDE | REQUEST 時段鎖定 | **旅客送出申請時不鎖時間；導遊按接受時才原子重查 availability 並鎖 PRIVATE Departure。** | 多筆待審核申請可指向同一時間；誰先成功被接受誰取得時段。接受後付款保留期限另行裁示。 |
 | #9 / #12 / GUIDE | Trip Plan 收款政策 | **沿用商店 Service 的四種收款語意，不建立旅遊專用第二套設定。** | `NONE / DEPOSIT_FIXED / DEPOSIT_PERCENT / FULL`；固定金額／比例訂金共用既有驗證與計算概念；成團與尾款生命週期由 #41 裁示補完。 |
 | repo governance | 文件治理 | 已定案的規格／架構／Owner Decision 直接進 `main`；程式仍走 branch→PR→CI | 見 `docs/DOCUMENTATION-GOVERNANCE.md`。 |
+| repo governance | 真實租戶設定變更 | **不再逐次具名授權，改由既有高風險審查制度治理**（含 LINE webhook 切換） | 五個條件須全部成立：先唯讀查現況、可逆且記錄舊值、變更後獨立驗證、依 `highRisk` 分類走 Final Risk、不得同時動憑證。Production DDL/DML、部署、真實付款退款、主動顧客通知不在放寬範圍。見 `docs/decisions/2026-09-11-owner-tenant-config-under-high-risk-review.md`。 |
 
 ## 執行規則
 
 1. 上表已裁示題目不得再次當作人工決策阻擋，除非有新規格衝突、安全風險或 Owner 明確改判。
 2. Issue body 若殘留舊人工介入點，以本索引、較新 Owner Decision 與 canonical 文件為準。
 3. 實作時把決策回併領域 canonical 文件，不能永久只靠本索引。
-4. Production DDL／DML、正式部署與會改變 runtime 的 Production merge，仍需 Owner 另行明確授權。
+4. Production DDL／DML、正式部署與會改變 runtime 的 Production merge，仍需 Owner 另行明確授權。真實租戶**設定變更**已於 2026-09-11 排除在此條之外，改由高風險審查制度治理（見上表）。
 5. 某一路線缺權限或等待外部服務時，只將該路線列為阻塞；其他安全工作依 B+ 繼續。
 6. 每次實質失敗新增或更新 `docs/AGENT-PLAYBOOK.md`；相同根因更新原條目。
 7. 任何「已完成」主張都需通過 Completion Truth Gate；尚未重新查證時不得使用完成語氣。

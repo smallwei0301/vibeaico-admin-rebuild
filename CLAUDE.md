@@ -229,5 +229,6 @@ the explicitly configured allowlist: GPT-6 Astra (`gpt-6-astra`) or Claude Fable
 - Owner-approved docs-only changes may go directly to `main`, but the commit must contain only allowed documentation paths. See `docs/DOCUMENTATION-GOVERNANCE.md`.
 - Runtime code, migrations, dependencies, workflows and deployment configuration use a feature branch → PR → CI → review flow.
 - `main` auto-deploys on Vercel. A docs-only main push is not permission for Production DDL/DML or runtime deployment; changes that alter production behavior require explicit Owner authorization.
+- **真實租戶／店家的設定變更不需要逐次具名授權**（Owner 2026-09-11 裁示），包含 LINE webhook endpoint 這類外部服務設定。它改由既有高風險審查制度治理，但五個條件必須全部成立：先唯讀確認現況、可逆且先記錄舊值、變更後以獨立查詢驗證（API 回 200 不算證據）、依 `highRisk` 分類走 Final Risk、不得在同一動作中變更憑證。見 `docs/AGENT-EXECUTION.md` §3.2 與 `docs/decisions/2026-09-11-owner-tenant-config-under-high-risk-review.md`。Production DDL/DML、部署、真實付款退款與主動顧客通知**不在放寬範圍**。
 - Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch. It must contain the required canonical decisions when designated, and agents must continue re-reading current `main` decisions; unrelated later main commits do **not** by themselves require rebasing that branch.
 - Commit messages are mostly Traditional Chinese and should describe the user-visible or governance change.

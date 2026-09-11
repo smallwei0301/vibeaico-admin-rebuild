@@ -190,6 +190,8 @@ Final Risk 綁 `changeDigest`，不是單純綁 commit SHA。若 main 由其他�
 
 兩個 workstream 的分類都不構成 Production 授權。
 
-以下仍需既有逐次具名授權：Production DDL/DML/migration、manual promote/rollback、真實 payment/refund、LINE webhook 切換、顧客通知等高影響操作。
+以下仍需既有逐次具名授權：Production DDL/DML/migration、manual promote/rollback、真實 payment/refund、主動發送真實顧客通知（broadcast／push）等高影響操作。它們的共同特徵是**不可逆、動到錢或資料，或會主動觸達真實顧客**。
+
+**真實租戶設定變更不在此列**（Owner 2026-09-11 裁示，含 LINE webhook 切換）。它改由既有高風險審查制度治理：先唯讀確認現況、記錄舊值且必須可逆、變更後以獨立查詢驗證（API 回 200 不算證據），並依 `model-routing.json` 的 `highRisk` 分類走 Final Risk。不得在同一動作中變更或輪替憑證。完整條件見 `docs/decisions/2026-09-11-owner-tenant-config-under-high-risk-review.md`。
 
 MODEL_GOVERNANCE 只改治理，不得因此取得上述權限；PRODUCT_MAINLINE 的 Sol/Fable/Astra PASS 也同樣不等於 Production 操作授權。
