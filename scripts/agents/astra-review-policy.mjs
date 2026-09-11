@@ -182,12 +182,28 @@ const governanceModels = (governance = {}) => {
 };
 
 /**
- * 逐一取出 `requested=` / `actual=` 的值再比對，而不是對整行做子字串比對。
- * 子字串比對會把 `requested=gpt-5.6-sol-preview` 這種更長的字串當成命中，
- * 而清單一旦有兩個值，寬鬆比對的誤判面積就會變大。
+ * #354: validate the whole declaration, not the first matching substring.
+ * Accept the existing semicolon/comma/slash/space separators, but exactly one
+ * requested and one actual assignment. Never discard suffixes or duplicates.
+ * An invalid pair returns empty values so the existing classifier fails closed;
+ * allowed models, Product risk policy and public status names stay unchanged.
  */
-const declaredModel = (line = '', field) =>
-  (String(line).match(new RegExp(`\\b${field}\\s*=\\s*([A-Za-z0-9._-]+)`, 'i'))?.[1] ?? '').trim();
+const declaredModels = (line = '') => {
+  const invalid = { requested: '', actual: '' };
+  const entries = String(line).trim().split(
+    /[ \t]*(?:;|,|\/)[ \t]*|[ \t]+(?=(?:requested|actual)[ \t]*=)/i,
+  );
+  if (entries.length !== 2) return invalid;
+  const result = { requested: '', actual: '' };
+  for (const entry of entries) {
+    const match = entry.trim().match(/^(requested|actual)[ \t]*=[ \t]*([A-Za-z0-9._-]+)$/i);
+    if (!match) return invalid;
+    const key = match[1].toLowerCase();
+    if (result[key]) return invalid;
+    result[key] = match[2];
+  }
+  return result;
+};
 
 /**
  * Workstream is a trusted-main classification contract. New PRs created after
@@ -229,7 +245,7 @@ export function classifyWorkstream({ body = '', changedFiles = null, createdAt =
     }
     const modelLine = readField(body, 'REQUESTED_MODEL / ACTUAL_MODEL');
     const allowedModels = governanceModels(governance);
-    const declared = { requested: declaredModel(modelLine, 'requested'), actual: declaredModel(modelLine, 'actual') };
+    const declared = declaredModels(modelLine);
     if (!allowedModels.includes(declared.requested) || !allowedModels.includes(declared.actual)) {
       errors.push(`MODEL_GOVERNANCE requires requested/actual model to be one of: ${allowedModels.join(', ')}`);
     }
