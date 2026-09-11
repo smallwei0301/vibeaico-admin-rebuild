@@ -130,9 +130,11 @@ Product 高後果類型維持：
 - `GOVERNANCE_GATE`，僅當不可拆的 Product scope 同時修改 admission / bypass semantics
 - `UNRESOLVED_HIGH_RISK`
 
-`GOVERNANCE_GATE` 指會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，或把原本 failure/pending 變成 success/approval 的不可拆 Product 治理變更。純 fail-closed hardening 若只是增加拒絕條件、證據完整度、reconciliation 或 observability，且不形成 Product 風險，仍依既有 Product 分類處理。
+`GOVERNANCE_GATE` 指會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，或把原本 failure/pending 變成 success/approval 的不可拆 Product 治理變更。純 fail-closed hardening 若**只增加拒絕條件**、證據完整度、reconciliation 或 observability，且不形成 Product 風險，仍依既有 Product 分類處理。
 
 一般文案、UI、小型接線不因存在於 Product PR 就自動要求 Final Risk。Product classifier 與 `model-routing.json.sensitivePaths` 仍 fail closed。
+
+**Scoreboard evidence contract 不等於「每張 PR 都要 Final Risk」**。歷史 Governance Scoreboard **contract v1** 的 evidence 欄位只用於重播舊資料，不會把新的 MODEL_GOVERNANCE 工作重新綁回特定 reviewer；PRODUCT_MAINLINE 是否需要 Final Risk 仍由本節風險分類決定。
 
 ## Product Final Risk model dispatch
 
@@ -146,11 +148,11 @@ Product 高後果類型維持：
 
 簡單說：**先改派模型，再談 unavailable。** 對 Product Final Risk，不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
 
-## Product Agent-native attestation
+## trusted Agent 提交 Product Final Risk evidence
 
 trusted-Agent Final Risk 只保留給 Product mainline。正常 Product Agent 路徑 **Owner action NOT_REQUIRED**。
 
-可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。
+可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。現行 trusted Agent bot 是 `claude[bot]`，immutable user id `209825114`，`type=Bot`；正式機器來源仍以 `model-routing.json` 為準。
 
 正常 Product Agent 可自己提交完整 `astra-review` COMMENT review 並 refresh guard，不要求 Owner 把同一份 Fable/Astra evidence 再貼一次。
 
