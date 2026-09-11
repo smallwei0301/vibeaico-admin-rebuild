@@ -64,6 +64,7 @@
 | PB-025 | mutation 有 entitlement 閘門、read path 沒有，等於留後門 | 讀取路徑若只看「資料庫有沒有資料」，訂閱到期的租戶只要歷史資料還在就照樣讀得到——**用「有沒有資料」代替「有沒有權利」**，且完全沒有症狀。閘門必須在任何 domain SELECT 之前。 | `docs/integration/10-TOUR-DOMAIN.md` §6.1；`docs/integration/09-*` §5 |
 | PB-026 | `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過 | 既有表可能來自另一條安裝路徑（historical overlay），欄位與 check constraint 都不同。migration 顯示成功、什麼都沒建，程式接著對著一個**不是自己定義的契約**寫入，直到某個約束把它擋下來才發現。帶新表的 migration 必須像 `0066` 那樣「加法且會協調」，不能只 `if not exists` 就當作冪等。 | `supabase/migrations/0066_*.sql`（協調範例）；`supabase/local-migrations/**` |
 | PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
+| PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
 
 ## 事件紀錄
 
@@ -568,6 +569,58 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   4. 同族陷阱：PB-019（沒併回 main 的實作等於不存在）是「repo 落後於現實」；本條是
      「Issue 內文落後於 repo」。兩者都來自「拿一份沒有回填義務的文字當現行事實」。
 - 相關教訓：PB-019、PB-024、PB-027。
+
+### PB-032 — `conclusion=success` 不等於測試執行過：`POLICY_SKIP` 也是綠的
+
+- 首次／最近：2026-09-11／2026-09-11
+- 發生次數：1
+- Issue／PR／CI：#352；run 34546518776 job `integration`；run 34546915631 job `integration`
+- 分類：CI
+- 事件：PR #352 帶進一支新的整合測試 `tests/integration/api/product-positions.238.test.ts`。
+  CI 的 `integration` check 回報 `conclusion=success`，我據此向 Owner 宣稱「完整測試套件
+  （含整合測試）在這顆 head 上跑過且綠了」。**那支測試一次都沒有執行過。**
+  `integration` job 只印了一行 policy 訊息就以 success 結束。
+- 證據：
+  ```
+  POLICY_SKIP: this PR is not the sole active TEST_VALIDATION holder
+  (source_only_pr_without_test_lane).
+  ```
+  該 job 的完整 log 只有這一行實質輸出，沒有任何 vitest 輸出、沒有測試名稱、沒有通過數。
+  對照真正執行後的 log：
+  ```
+  ✓ tests/integration/api/product-positions.238.test.ts (6 tests) 15860ms
+  ```
+- 根因：兩層，第二層才是真正的問題。
+  1. **機制層**：共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 PR 依政策
+     記一筆成功的 `POLICY_SKIP`。這是**刻意設計**，不是缺陷——它讓非 holder 的 PR 不會因為
+     搶不到 TEST 而紅。副作用是「跳過」與「通過」在 check 層級長得一模一樣。
+  2. **判斷層**：我把 `conclusion=success` 當成「測試執行且通過」的證據。那是**狀態碼**，
+     不是**執行證據**。同一個綠燈可以來自「跑了而且過了」「依政策跳過」「job 提早結束」，
+     三者在 API 回應上無法區分。這與 PB-027（用「名字出現幾次」代替「那件事真的會發生」）
+     是同一種錯誤的不同外觀：拿一個**代理指標**代替**要證明的事實**。
+- 影響：我向 Owner 報出的是一個假綠。若當下合併，#352 會帶著一支從未執行過的整合測試進 main，
+  而該測試正是這支 PR 唯一能證明「排序真的落地到 DB」的證據。無資料受影響——因為在合併前
+  自己回頭讀 job log 才發現。
+- 修正：
+  1. 查出 `POLICY_SKIP` 的成因是 `classify` 因舊 PR 內文而紅，導致本 PR 未被認定為 TEST holder。
+  2. 修正 PR 內文的中繼資料，將 lane 由 `TERRA_BUILD` 轉入 `TEST_VALIDATION`。
+  3. 以 `ci.yml` 的 `workflow_dispatch`（`lane_transition`）重新派工——**不補 no-op commit、
+     不 close/reopen**，因為 `ci.yml` 只監聽 `[opened, synchronize, reopened]`，而重跑會重播
+     舊的 event payload、再次讀到舊內文。
+  4. 向 Owner 主動更正先前的錯誤宣稱。
+- 預防：
+  1. **宣稱任何測試通過之前，必須讀 job log 並看到測試名稱與通過數。**
+     `conclusion` / `state` / check 顏色一律不接受作為執行證據。
+  2. 整合測試尤其要查：它是唯一會因為共用資源政策而被整批跳過的一類，而且跳過時是綠的。
+     判準是 log 裡有沒有 `✓ tests/integration/...(N tests)` 這一行。
+  3. 同族陷阱：任何「依政策跳過」「matrix 條件不成立」「job 提早 return」都會產生同樣的綠。
+     `skipped` 至少還看得出來，`success` 的 `POLICY_SKIP` 看不出來。
+  4. 這條屬於 Completion Truth Gate 的第一項（「成功的工具呼叫只代表 REQUESTED」）在 CI 上的
+     具體形狀：**綠燈只代表 check 回報綠，不代表它驗過你以為它驗過的東西。**
+- 驗證：重新派工後讀 log 確認 `✓ tests/integration/api/product-positions.238.test.ts (6 tests)
+  15860ms`，6 條全過。
+- 狀態：已防止（判準已寫入本條預防第 1、2 點）
+- 相關教訓：PB-027、PB-029。
 
 ### 六問開工／Review Checklist
 
