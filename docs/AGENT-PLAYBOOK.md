@@ -65,6 +65,8 @@
 | PB-026 | `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過 | 既有表可能來自另一條安裝路徑（historical overlay），欄位與 check constraint 都不同。migration 顯示成功、什麼都沒建，程式接著對著一個**不是自己定義的契約**寫入，直到某個約束把它擋下來才發現。帶新表的 migration 必須像 `0066` 那樣「加法且會協調」，不能只 `if not exists` 就當作冪等。 | `supabase/migrations/0066_*.sql`（協調範例）；`supabase/local-migrations/**` |
 | PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 | PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
+| PB-033 | 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端 | 把「這是安全修正」當成可以少一道查證。收權與加權在風險結構上對稱——兩者都可能讓線上功能當場停止，差別只在失敗方向。動線上資料庫的權限前，必須先完成呼叫端清查（全 repo grep 含測試 → client 建構函式 → 該 client 的角色 → 其他 SQL 函式內部呼叫）；migration 尾端的自我驗證要雙向，也檢查 service_role 有沒有被誤撤。 | 本檔 PB-028、PB-033 |
+| PB-034 | 用 CI 當規則查詢器：靠被退四次湊出正確的 PR 中繼資料 | 四次全是中繼資料填錯、零程式碼問題，而四條規則都明文寫在 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 裡。欄位之間有相依（`TEST_PROFILE`→`FINAL_CANONICAL_REQUIRED`；`AGENT_LANE`→`ACTIVE_CANDIDATE` 與能否派工 TEST），不能逐欄獨立猜。開 PR 前先讀那兩支腳本。 | `scripts/agents/dual-terra-wip-policy.mjs`；`scripts/ci/local-isolated-test-policy.mjs` |
 
 ## 事件紀錄
 
@@ -424,9 +426,9 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-028 — `revoke execute … from anon, authenticated` 不會關掉 PUBLIC 的預設授權
 
-- 首次／最近：2026-09-07／2026-09-07
-- 發生次數：2（`0087` 的四支 tour-order RPC；`0090` 的 `redeem_booking_points`）
-- Issue／PR／CI：Issue #8-B、#218；PR #271（Sol audit P1，由 `0088` 補）、PR #280（開工時就用正確寫法）
+- 首次／最近：2026-09-07／**2026-09-11**
+- 發生次數：3（`0087` 的四支 tour-order RPC；`0090` 的 `redeem_booking_points`；**正式庫 `egehnijjpgijmccagxac` 上三支 tour-seat RPC——實際處於可被利用狀態，非僅程式碼層**）
+- Issue／PR／CI：Issue #8-B、#218；PR #271（Sol audit P1，由 `0088` 補）、PR #280（開工時就用正確寫法）；PR #352 的 Final Risk 追查（2026-09-11）
 - 分類：權限
 - 事件：SECURITY DEFINER 的 RPC 繞過 RLS，所以執行權**就是**那道安全邊界。兩支 migration 都只寫了 `revoke execute on function … from anon, authenticated`，看起來已經把前端持有的兩個角色都撤掉了。
 - 證據：PostgreSQL 對新建函式**預設 grant EXECUTE 給 `PUBLIC`**，而 `anon` / `authenticated` 都是 PUBLIC 的成員。本機 Postgres 16 實測 —— 只撤那兩個角色之後 `has_function_privilege('anon', …, 'EXECUTE')` 仍然是 `true`；補上 `revoke all … from public` 之後才變 `false`。`pg_proc.proacl` 在只撤兩個角色時是 `NULL`（＝維持預設，PUBLIC 有權），這個「什麼都沒有」的樣子很容易被讀成「乾淨」。
@@ -434,7 +436,57 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 影響：任何登入者（甚至未登入者）可直接呼叫該 RPC，route 上的所有閘門——租戶檢查、角色檢查、金額與點數檢查——全部被繞過。#218 那支的具體後果是「扣別家店顧客的點數」。且完全沒有症狀。
 - 修正：三段式，缺一不可 —— `revoke all … from public;` → `revoke all … from anon, authenticated;` → `grant execute … to service_role;`。
 - 預防：① 每新增一支 SECURITY DEFINER 函式，執行權一律寫這三段，不要只寫角色那一段。② 驗收不能只 grep migration 文字，要**實際查權限**：`select has_function_privilege('anon', '<sig>', 'EXECUTE')` 必須是 `false`，`proacl` 必須有明確條目而不是 `NULL`。③ 整合測試的邊界案例要包含**真的登入過的** authenticated 角色，並斷言錯誤碼是 `42501`（沒有權利），而不是只斷言「有錯誤」——後者在函式根本沒被 expose 時也會通過。
-- 狀態：已防止
+- 2026-09-11 第三次發生（正式庫，實際可被利用）：
+  - 實查 `egehnijjpgijmccagxac` 的 `reserve_seats(uuid,int)`、`release_seats(uuid,int)`、
+    `create_tour_order(...)`：三支皆 `prosecdef = true`，且
+    `has_function_privilege('anon', …, 'execute') = true`。**未登入即可執行**——anon key 是公開的、
+    會送到瀏覽器裡，而 SECURITY DEFINER 繞過 RLS，這三支又只驗參數之間的歸屬（團次是否屬於
+    `p_tenant`），不驗呼叫者是否為該租戶成員。後果：任何人可把任一店家的 `seats_booked` 歸零
+    造成超賣、吃掉任一店家的名額、在任一店家底下建假單。
+  - **為什麼既有三條預防沒接住**：它們全都是針對「每新增一支 SECURITY DEFINER 函式」的作者。
+    正式庫這三支來自 `0087` 之前的另一套實作（簽章是 `p_party` / `p_customer_name`，
+    與 repo 的 `0087` 完全不同），從未被這條規則涵蓋；而**從來沒有人去查過線上資料庫的實際權限**。
+    這條教訓寫過，但只擋得住未來的作者，擋不住既存的資料庫。
+  - 修正：以與正式庫實際簽章相符的 revoke 收回（`0088` 原文在此無法套用——它要 revoke 的是
+    repo `0087` 的簽章，那些函式在正式庫不存在，照套會因函式不存在而整個回滾）。migration 尾端
+    加自我驗證：任一支仍對 `anon`／`authenticated` 開放即 `raise` 回滾。套用前後
+    `has_function_privilege` 唯讀證據皆已記錄。
+- 預防（2026-09-11 新增，這條才擋得住既存資料庫）：
+  ④ **定期對每個線上資料庫實查權限，不是只檢查 migration 文字。** 最小查詢：
+  ```sql
+  select p.proname, pg_get_function_identity_arguments(p.oid) as args
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.prosecdef
+    and (has_function_privilege('anon', p.oid, 'execute')
+      or has_function_privilege('authenticated', p.oid, 'execute'));
+  ```
+  **這個查詢回傳任何一列，就是一個待處理的權限缺口。** 正式庫與 canonical TEST 都要查。
+  ⑤ 帶 SECURITY DEFINER 函式的 migration，尾端一律加自我驗證的 `do $$ … raise … $$`，
+  讓「收權沒生效」當場失敗回滾，而不是靠事後有人想起來去查。
+  ⑥ 線上資料庫的函式簽章**可能與 repo 的 migration 完全不同**（本例即是）。撰寫任何
+  revoke／grant 之前，先查 `pg_get_function_identity_arguments` 取得實際簽章；照抄 repo 的
+  簽章會因函式不存在而讓整個 migration 回滾，結果是缺口照樣開著而你以為修好了。
+- 2026-09-11 全面查證結果（以預防 ④ 的查詢實跑）：
+  - **正式庫 `egehnijjpgijmccagxac` 共 10 支** SECURITY DEFINER 函式對 anon／authenticated 開放。
+    `proacl` 逐字為 `{=X/postgres,postgres=X/postgres,service_role=X/postgres}`——開頭的 **`=X`
+    （grantee 空白）就是 PUBLIC 持有 EXECUTE 的字面證據**，這比「`proacl` 是 NULL」更容易辨識，
+    查核時應直接看 ACL 字串有沒有 `=X`。
+  - 已撤 8 支（分兩批）：`reserve_seats`、`release_seats`、`create_tour_order`；
+    `subscribe_feature`、`subscribe_bundle`、`user_id_by_email`、`email_exists`、`next_tour_order_no`。
+    撤權前逐一查證呼叫端皆為 `createAdminSupabase()`（`SUPABASE_SERVICE_ROLE_KEY`），
+    `next_tour_order_no` 則全 repo 無應用程式呼叫、僅由 `create_tour_order` 在 SQL 內部呼叫
+    （SECURITY DEFINER 內部呼叫以擁有者身分執行，不受撤權影響）。
+  - **最嚴重的一支是 `subscribe_feature`**：`p_price` 由呼叫端提供，`p_price=0` 即可免費開通
+    任意功能與月數；亦可指定他人 `tenant` 在其 `tenant_point_transactions` 寫入 CONSUME。
+    未登入即可執行。這不是理論風險，是當時的實際狀態。
+  - **必須保留開放、不得撤**：`is_tenant_member`、`tenant_role_at_least`——RLS policy 內部要用，
+    撤掉等於全站讀不到資料。
+  - **不能用撤權解決**：`reserve_catalog_positions` 是由 `requireTenant()` 正常路徑回傳的
+    **session client（authenticated 身分）**呼叫的，撤掉會讓「新增服務／商品／作品集」當場壞掉。
+    這類要改程式走 admin client，是一支 PR，不是一行 SQL。
+  - canonical TEST `nmwhwngojosmagjuvxol` 同一查詢回 11 支，尚未處理（測試庫，不含真實資料）。
+- 狀態：**監看中**——正式庫的 8 支已撤且留有套用前後證據；`reserve_catalog_positions` 待程式修正；
+  TEST 待清理；預防 ④ 目前仍靠人工執行，尚無自動化檢查會在新缺口出現時報警。
 
 ### PB-029 — 測試名稱宣稱的，比它實際證明的多
 
@@ -621,6 +673,73 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   15860ms`，6 條全過。
 - 狀態：已防止（判準已寫入本條預防第 1、2 點）
 - 相關教訓：PB-027、PB-029。
+
+### PB-033 — 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端
+
+- 首次／最近：2026-09-11／2026-09-11
+- 發生次數：1
+- Issue／PR／CI：PR #352 的 Final Risk 追查；正式庫 `egehnijjpgijmccagxac`
+- 分類：權限
+- 事件：查到正式庫三支 tour-seat RPC 對 `anon` 開放、取得 Owner 授權後立即套用 revoke。
+  **套用之後**才去讀 `requireTenant()`，發現它在正常路徑回傳的是 **session client（authenticated
+  身分）**，不是 admin client——也就是說「被 revoke 的函式是不是正好由 authenticated 呼叫」
+  這件事，我在動手時並不知道。
+- 證據：`src/server/tenant.ts:66-125`——只有代登入分支回 `supabase: admin`，其餘一律回 session client。
+  而 `src/app/api/tour-orders/manual/route.ts:62` 正是 `t.supabase.rpc('create_tour_order', …)`。
+- 根因：把「這是安全修正」當成「可以少一道查證」。收權與加權在風險結構上是對稱的——
+  兩者都可能讓線上功能當場停止運作，差別只在失敗的方向。而我對加權會謹慎，對收權沒有。
+- 影響：**這次沒有造成損害，但那是運氣不是判斷**。事後查證發現該 route 傳的是 `0087` 的參數名
+  （`p_order_no` / `p_party_size` / `p_contact`），而正式庫的函式是另一套簽章
+  （`p_party` / `p_customer_name`），PostgREST 本來就回 PGRST202——那條路徑在我撤權之前就已經是壞的。
+  若簽章恰好相符，我就會在無預警的情況下讓正式站的建單停止運作。
+- 修正：第二批（`subscribe_feature` 等五支）改為**先逐一查證呼叫端與其使用的 client，列出證據
+  給 Owner 確認，才執行**。查證項目：全 repo grep（含 `tests/`）、呼叫端用哪個 client 建構函式、
+  該 client 用哪把 key、以及是否被其他 SQL 函式內部呼叫。
+- 預防：
+  1. **對線上資料庫執行任何 `revoke`／`drop`／`alter` 之前，先完成呼叫端清查**，把清單與每一處
+     使用的 client 列出來。「這是安全修正」不是略過這一步的理由。
+  2. 清查必須包含四個面向，缺一不可：全 repo grep（含測試）→ 呼叫端的 client 建構函式 →
+     該 client 用的 key/角色 → `pg_proc.prosrc` 裡有沒有其他函式內部呼叫它。
+  3. migration 尾端的自我驗證要**雙向**：既檢查「權限有沒有撤乾淨」，也檢查「該保留的角色
+     （通常是 `service_role`）有沒有被誤撤」。只驗前者的話，「連 service_role 一起撤掉」這種
+     會弄壞正式站的錯誤會安靜通過。
+  4. 同時提供還原指令給 Owner，並說明「repo 之外的呼叫端我無法證明不存在」這個界線。
+- 驗證：第二批五支撤權前後皆記錄 `has_function_privilege` 與 `proacl`；雙向自我驗證未觸發。
+- 狀態：已防止
+- 相關教訓：PB-028。
+
+### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
+
+- 首次／最近：2026-09-11／2026-09-11
+- 發生次數：1（單一 PR 內連續 4 次）
+- Issue／PR／CI：PR #352
+- 分類：Agent
+- 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
+  1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
+  2. `CLOSURE_SWEEP_TARGET: #239` —— 只接受 `EMPTY_WITH_SCAN` 或 `REPORT:`，PR 編號不是合法值
+  3. `AGENT_LANE: TERRA_BUILD` —— 要派工共用 TEST 必須先轉 `TEST_VALIDATION`
+  4. `ACTIVE_CANDIDATE: true` —— `TEST_VALIDATION` 規定必須是 `false`
+- 證據：四條規則全部明文寫在 repo 裡且開工前可讀：`scripts/agents/dual-terra-wip-policy.mjs`
+  （第 283-291 行的 closure 規則、`isActiveTestValidation()`）與
+  `scripts/ci/local-isolated-test-policy.mjs`（`LOCAL_ISOLATED` 的 profile 檢查）。
+- 根因：把 PR 內文當成「填完送出、錯了再改」的表單，而不是一份**有明文規格的契約**。
+  我是從既有 PR 複製欄位再逐項猜，而不是先讀那兩支 policy 腳本。
+- 影響：四輪 CI 配額與 Owner 的等待時間。每一輪都要重跑守門與分類，其中一輪還佔用了
+  共用 TEST 的派工。無程式碼或資料受影響。
+- 修正：讀 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 的實際判定式，
+  依規則一次補齊。
+- 預防：
+  1. **開 Agent PR 前，先讀會驗這份內文的兩支腳本**（`scripts/agents/dual-terra-wip-policy.mjs`、
+     `scripts/ci/local-isolated-test-policy.mjs`），不要從別的 PR 複製欄位後逐項猜。
+  2. 欄位之間有**互相依賴**，不能逐欄獨立填：`TEST_PROFILE` 決定 `FINAL_CANONICAL_REQUIRED`；
+     `AGENT_LANE` 決定 `ACTIVE_CANDIDATE` 與能不能派工共用 TEST。改一欄要回頭檢查相依欄。
+  3. 有列舉值的欄位（`CLOSURE_SWEEP_TARGET`、`SELECTION_REASON`、`AGENT_LANE`、`LANE_STATE`）
+     一律回腳本確認合法值集合，不要憑語意自創。
+  4. 同族陷阱：PB-027 是「拿代理指標代替事實」，本條是「拿試誤代替讀規格」。兩者都是
+     **用便宜的動作取代一次應該做的查證**，而在有守門的專案裡，試誤的成本會由 CI 與 Owner 承擔。
+- 驗證：第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
+  整合測試實際執行並通過。
+- 狀態：已防止
 
 ### 六問開工／Review Checklist
 
