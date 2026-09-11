@@ -211,24 +211,52 @@ describe('狀態機：confirm-payment → complete，與取消釋放名額', () 
     expect(await dbSeats(TRIP_A.departure1)).toBe(1);
   });
 
+  /**
+   * #351：這一條先前**抓不到它要抓的東西**。
+   *
+   * 舊版只建一筆佔 4 席的訂單。第一次取消後 `seats_booked` 已經是 0，第二次釋放走的是
+   * `greatest(seats_booked - p_count, 0)` —— `greatest(0 - 4, 0)` 仍然是 0。所以**就算
+   * 把 `cancel_tour_order` 的終態守門整段拿掉**、讓它真的重複釋放一次，名額斷言依然綠。
+   * 實際擋住這個回歸的只有同一條裡的 `409`；名額那條是裝飾品。
+   *
+   * `greatest(..., 0)` 是刻意的防禦，而**防禦性夾擠會掩蓋錯誤，不是修正錯誤**。單筆情境
+   * 下看不出來，真實情境（同一團次多筆訂單）裡多釋放一次就是實打實的超賣。
+   *
+   * 所以這裡先建**第二筆**訂單，讓重複釋放會把名額壓到一個看得見的錯誤值：
+   *   A 佔 4 席、B 佔 3 席 → 7
+   *   取消 A          → 3
+   *   再次取消 A      → 正確仍是 3；守門失效則 greatest(3 - 4, 0) = 0，斷言轉紅
+   */
   it('取消釋放名額；重複取消回 409 且**不再釋放一次**', async () => {
     await resetDeparture(TRIP_A.departure1, 10);
-    const created = await createOrder(ownerA, TRIP_A.departure1, 4);
-    const id = (await json<any>(created)).data!.id;
-    createdOrderIds.push(id);
-    expect(await dbSeats(TRIP_A.departure1)).toBe(4);
 
-    const cancelled = await ownerA.post(`/api/tour-orders/${id}/cancel`, { reason: '顧客改期' });
+    const createdA = await createOrder(ownerA, TRIP_A.departure1, 4);
+    const idA = (await json<any>(createdA)).data!.id;
+    createdOrderIds.push(idA);
+
+    // 同團次的第二筆訂單——它存在的唯一理由，就是讓「多釋放一次」看得見。
+    const createdB = await createOrder(ownerA, TRIP_A.departure1, 3);
+    const idB = (await json<any>(createdB)).data!.id;
+    createdOrderIds.push(idB);
+    expect(await dbSeats(TRIP_A.departure1)).toBe(7);
+
+    const cancelled = await ownerA.post(`/api/tour-orders/${idA}/cancel`, { reason: '顧客改期' });
     expect(cancelled.status).toBe(200);
     const afterCancel = (await json<any>(cancelled)).data!;
     expect(afterCancel.status).toBe('CANCELLED');
-    expect(await dbSeats(TRIP_A.departure1)).toBe(0);
+    // 只放掉 A 的 4 席，B 的 3 席必須還在
+    expect(await dbSeats(TRIP_A.departure1)).toBe(3);
 
-    // ⚠️ 這一條防的是「名額憑空多出來」：重複取消若又釋放一次，
-    // seats_booked 會被壓到負數或讓已客滿的團看起來有空位。
-    const again = await ownerA.post(`/api/tour-orders/${id}/cancel`, { reason: '再按一次' });
+    // ⚠️ 這一條防的是「名額憑空多出來」。守門失效時 greatest(3 - 4, 0) = 0，
+    // 也就是 B 這筆還在的訂單所佔的席次會被憑空放回去變成可再販售。
+    const again = await ownerA.post(`/api/tour-orders/${idA}/cancel`, { reason: '再按一次' });
     expect(again.status).toBe(409);
-    expect(await dbSeats(TRIP_A.departure1)).toBe(0);
+    expect(await dbSeats(TRIP_A.departure1)).toBe(3);
+
+    // B 沒有被牽連：它仍然是 PENDING，席次仍然屬於它
+    const detailB = await ownerA.get(`/api/tour-orders/${idB}`);
+    expect(detailB.status).toBe(200);
+    expect((await json<any>(detailB)).data!.status).toBe('PENDING');
   });
 
   it('已完成的訂單不能再取消（終態），名額也不釋放', async () => {
