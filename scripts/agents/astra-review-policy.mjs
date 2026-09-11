@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { readField } from './agent-wip-policy.mjs';
+import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
 
 export const routing = JSON.parse(readFileSync(new URL('./model-routing.json', import.meta.url), 'utf8'));
 const SHA = /^[a-f0-9]{40}$/;
 const DIGEST = /^[a-f0-9]{64}$/;
-const meaningful = (s) => typeof s === 'string' && s.trim().length >= 8 && !/^(unknown|pending|none|n\/a|tbd)$/i.test(s.trim());
+const meaningful = (s) => typeof s === 'string' && s.trim() !== AMBIGUOUS_FIELD && s.trim().length >= 8 && !/^(unknown|pending|none|n\/a|tbd)$/i.test(s.trim());
 const FINAL_RISK_DEFERRED_LANE_STATES = new Set([
   'PARKED',
   'COMPLETE',

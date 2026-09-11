@@ -1,86 +1,198 @@
+import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, it } from 'vitest';
+import {
+  AMBIGUOUS_FIELD, isPlaceholder, parseLaneMetadata, readField, validateLaneMetadata,
+} from '../../scripts/agents/agent-wip-policy.mjs';
+import { classifyAstra, evaluateAstra } from '../../scripts/agents/astra-review-policy.mjs';
 
-import { AMBIGUOUS_FIELD, isPlaceholder, parseLaneMetadata, readField } from '../../scripts/agents/agent-wip-policy.mjs';
-import { classifyAstra } from '../../scripts/agents/astra-review-policy.mjs';
-
-/**
- * 守門靠 `readField()` 讀 PR 內文的中繼資料決定要不要送 Final Risk。它原本取**第一個**
- * 匹配，而 `.github/pull_request_template.md` 的示範區塊裡就有一組合法格式的欄位值。
- *
- * 結果：作者只要沒把範本樣板刪乾淨，他誠實填的高風險宣告就永遠讀不到——讀到的是示範值
- * `ASTRA_RISK: NONE`，於是 `required=false`。這是**靜默放行**：不報錯、不亮燈，只是少跑
- * 一道專門攔付款／跨店權限／不可逆資料的審查。
- *
- * 本檔鎖住兩層修正：
- *   1. fenced code block 不再被當成中繼資料；
- *   2. 同一欄位出現多個不同值時回傳哨兵值——這一層擋的是 fence 規則涵蓋不到的容器
- *      （未閉合的 fence、四個反引號、四空格縮排、HTML 註解）。
- */
+// #347: use the actual template, including its governance example; do not replace it with a mock.
 const TEMPLATE = readFileSync(resolve(process.cwd(), '.github/pull_request_template.md'), 'utf8');
+const CREATED_AT = '2026-09-11T08:00:00Z';
 const HONEST = [
   'WORKSTREAM: PRODUCT_MAINLINE',
   'AGENT_LANE: TERRA_BUILD',
   'ASTRA_RISK: TENANT_AUTH_BOUNDARY',
-  'ASTRA_RATIONALE: 跨店讀寫邊界，改動租戶解析。',
+  'ASTRA_RATIONALE: A concrete assessment of the tenant authorization boundary.',
   'FINAL_RISK_POLICY: BY_PRODUCT_RISK_CLASSIFICATION',
 ].join('\n');
+const GOVERNANCE = [
+  'WORKSTREAM: MODEL_GOVERNANCE',
+  'WORK_ORIGIN: AGENT',
+  'AGENT_LANE: GOVERNANCE',
+  'LANE_STATE: ACTIVE',
+  'ACTIVE_CANDIDATE: false',
+  'CLOSEABILITY_SCORE: 4',
+  'SELECTION_REASON: OWNER_DIRECTED',
+  'REMAINING_AUTONOMOUS_STEPS: source-only validation and review',
+  'OWNER_OR_EXTERNAL_BLOCKER: none',
+  'CLOSURE_SWEEP_TARGET: EMPTY_WITH_SCAN',
+  'TEST_LANE_REQUIRED: false',
+  'WHY_NOT_CLOSER_CANDIDATE: none',
+  'BPLUS_MODE: false',
+  'RUN_ID: none',
+  'SCORECARD_PATH: none',
+  'REQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown',
+  'ASTRA_RISK: NONE',
+  'ASTRA_RATIONALE: Pure governance parser change without Product runtime changes.',
+  'FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY',
+].join('\n');
+const governanceResult = (body = GOVERNANCE) => evaluateAstra({
+  body, changedFiles: ['scripts/agents/agent-wip-policy.mjs'], context: { createdAt: CREATED_AT },
+});
+const closedContainers = {
+  'three backticks': (text = '') => `\`\`\`text\n${text}\n\`\`\``,
+  'three tildes': (text = '') => `~~~text\n${text}\n~~~`,
+  'four backticks': (text = '') => `\`\`\`\`text\n${text}\n\`\`\`\``,
+  'longer closing fence': (text = '') => `~~~~text\n${text}\n~~~~~~`,
+  'HTML comment': (text = '') => `<!--\n${text}\n-->`,
+  'four-space code': (text = '') => text.split('\n').map(line => `    ${line}`).join('\n'),
+  'tab-indented code': (text = '') => text.split('\n').map(line => `\t${line}`).join('\n'),
+  'space-tab code': (text = '') => text.split('\n').map(line => `  \t${line}`).join('\n'),
+  'list-item fence': (text = '') => `- \`\`\`text\n${text}\n  \`\`\``,
+  'ordered-item fence': (text = '') => `1. ~~~text\n${text}\n   ~~~`,
+};
 
-describe('readField 的中繼資料完整性', () => {
-  it('真實範本 + 誠實的高風險宣告：不得被讀成 NONE', () => {
+describe('readField metadata integrity — #347', () => {
+  it('the original full-template regression never silently reads the example NONE', () => {
     const body = `${TEMPLATE}\n\n${HONEST}`;
-    // 這是漏洞本體：修正前這裡是 'NONE'，作者宣告的 TENANT_AUTH_BOUNDARY 被吞掉。
-    expect(readField(body, 'ASTRA_RISK')).not.toBe('NONE');
-    const result = classifyAstra({ body, changedFiles: ['src/server/tenant.ts'], createdAt: '2026-09-10T09:00:00Z' });
-    expect(result.risks).not.toEqual(['NONE']);
-    // 不得靜默放行：要嘛讀到真實的高風險，要嘛明確報錯擋下。
-    expect(result.errors.length > 0 || result.required).toBe(true);
+    assert.notEqual(readField(body, 'ASTRA_RISK'), 'NONE');
+    const result = classifyAstra({ body, changedFiles: ['src/server/tenant.ts'], createdAt: CREATED_AT });
+    assert.notDeepEqual(result.risks, ['NONE']);
+    assert.ok(result.errors.length > 0 || result.required);
   });
 
-  it('fenced block 裡的欄位不再被當成宣告', () => {
-    const body = '```text\nASTRA_RISK: NONE\n```\n\nASTRA_RISK: PAYMENT_CONSISTENCY';
-    expect(readField(body, 'ASTRA_RISK')).toBe(AMBIGUOUS_FIELD);
-    expect(readField('```text\nWORK_ORIGIN: OWNER\n```', 'WORK_ORIGIN')).toBe('');
-    expect(readField('~~~\nWORK_ORIGIN: OWNER\n~~~', 'WORK_ORIGIN')).toBe('');
+  it('a populated real template reads the Product risk, without a false block from examples', () => {
+    let body = TEMPLATE;
+    for (const line of HONEST.split('\n')) {
+      const field = line.slice(0, line.indexOf(':'));
+      body = body.replace(new RegExp(`^- ${field}:.*$`, 'm'), `- ${line}`);
+    }
+    assert.ok(body.includes('For MODEL_GOVERNANCE use:'));
+    assert.ok(body.includes('```text\nAGENT_LANE: GOVERNANCE'));
+    assert.equal(readField(body, 'AGENT_LANE'), 'TERRA_BUILD');
+    assert.equal(readField(body, 'ASTRA_RISK'), 'TENANT_AUTH_BOUNDARY');
+    const result = classifyAstra({ body, changedFiles: ['src/server/tenant.ts'], createdAt: CREATED_AT });
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.required, true);
+    assert.equal(result.workstream, 'PRODUCT_MAINLINE');
   });
 
-  it('fence 規則涵蓋不到的四種容器，由「只能宣告一次」接住', () => {
-    const containers = {
-      '未閉合的 fence': '```text\nASTRA_RISK: NONE',
-      '四個反引號': '````text\nASTRA_RISK: NONE\n````',
-      '四空格縮排': '    ASTRA_RISK: NONE',
-      'HTML 註解': '<!--\nASTRA_RISK: NONE\n-->',
-    };
-    for (const [label, container] of Object.entries(containers)) {
-      const body = `${container}\n\nASTRA_RISK: TENANT_AUTH_BOUNDARY`;
-      expect(readField(body, 'ASTRA_RISK'), label).toBe(AMBIGUOUS_FIELD);
-      expect(isPlaceholder(readField(body, 'ASTRA_RISK')), `${label} 應被視為佔位符`).toBe(true);
+  for (const [name, wrap] of Object.entries(closedContainers)) {
+    it(`${name}: examples alone cannot grant the governance exemption`, () => {
+      assert.equal(readField(wrap(GOVERNANCE), 'WORKSTREAM'), '');
+      assert.equal(governanceResult(wrap(GOVERNANCE)).status, 'ASTRA_PENDING');
+    });
+    it(`${name}: examples do not conflict with an honest visible declaration`, () => {
+      const body = `${wrap(GOVERNANCE)}\n\n${HONEST}`;
+      assert.equal(readField(body, 'ASTRA_RISK'), 'TENANT_AUTH_BOUNDARY');
+      const result = classifyAstra({ body, changedFiles: ['src/server/tenant.ts'], createdAt: CREATED_AT });
+      assert.deepEqual(result.errors, []);
+      assert.equal(result.required, true);
+    });
+  }
+
+  for (const suffix of ['```text', '~~~~\n~~~', '```\n~~~', '<!-- unclosed comment']) {
+    it(`unclosed container fails closed even after valid metadata: ${suffix}`, () => {
+      const body = `${GOVERNANCE}\n\n${suffix}`;
+      assert.ok(isPlaceholder(readField(body, 'ASTRA_RISK')));
+      assert.equal(governanceResult(body).status, 'ASTRA_PENDING');
+      assert.ok(validateLaneMetadata(parseLaneMetadata({ body })).length > 0);
+    });
+  }
+
+  it('a shorter/mismatched fence cannot expose later apparent declarations', () => {
+    for (const closing of ['```', '~~~~', '```` trailing prose']) {
+      assert.equal(governanceResult(`\`\`\`\`text\n${closing}\n${GOVERNANCE}`).status, 'ASTRA_PENDING');
     }
   });
 
-  it('哨兵值走既有的 fail-closed 路徑，不需要每個消費者各自處理', () => {
-    expect(isPlaceholder(AMBIGUOUS_FIELD)).toBe(true);
-    const body = 'WORK_ORIGIN: AGENT\nAGENT_LANE: GOVERNANCE\nAGENT_LANE: TERRA_BUILD';
-    expect(parseLaneMetadata({ body, number: 1 }).lane).toBe(AMBIGUOUS_FIELD.toUpperCase());
+  for (const duplicate of [
+    'ASTRA_RISK: NONE', 'astra_risk: NONE', '- ASTRA_RISK: NONE',
+    'ASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK:',
+  ]) {
+    it(`duplicate declarations fail, including equal and blank values: ${duplicate}`, () => {
+      const body = `${GOVERNANCE}\n${duplicate}`;
+      assert.equal(readField(body, 'ASTRA_RISK'), AMBIGUOUS_FIELD);
+      assert.ok(isPlaceholder(readField(body, 'ASTRA_RISK')));
+      assert.equal(governanceResult(body).status, 'ASTRA_PENDING');
+    });
+  }
+
+  it('two blank declarations are still two declarations', () => {
+    assert.equal(readField('ASTRA_RISK:\nASTRA_RISK:', 'ASTRA_RISK'), AMBIGUOUS_FIELD);
   });
 
-  it('正常內文不受影響：宣告一次、或重複但同值', () => {
-    expect(readField('ASTRA_RISK: NONE', 'ASTRA_RISK')).toBe('NONE');
-    expect(readField('ASTRA_RISK: NONE\n\nASTRA_RISK: NONE', 'ASTRA_RISK')).toBe('NONE');
-    expect(readField('- WORK_ORIGIN: AGENT', 'WORK_ORIGIN')).toBe('AGENT');
-    expect(readField('沒有這個欄位', 'ASTRA_RISK')).toBe('');
+  it('duplicate free-text rationale is rejected, not mistaken for a meaningful sentinel', () => {
+    for (const body of [GOVERNANCE, HONEST]) {
+      const rationale = readField(body, 'ASTRA_RATIONALE');
+      for (const text of [rationale, 'Another concrete but conflicting assessment']) {
+        const duplicate = `${body}\nASTRA_RATIONALE: ${text}`;
+        const result = classifyAstra({ body: duplicate, changedFiles: ['src/server/tenant.ts'], createdAt: CREATED_AT });
+        assert.ok(result.errors.includes('ASTRA_RATIONALE requires a concrete risk assessment'));
+      }
+    }
   });
 
-  it('每個治理消費者共用同一份 readField，不得各留私有副本', () => {
+  it('the canonical sentinel follows the existing lane validation failure path', () => {
+    const body = `${GOVERNANCE}\nAGENT_LANE: GOVERNANCE`;
+    const metadata = parseLaneMetadata({ body });
+    assert.equal(metadata.lane, AMBIGUOUS_FIELD.toUpperCase());
+    assert.ok(validateLaneMetadata(metadata).includes('AGENT_LANE is missing or invalid'));
+  });
+
+  it('comment masking does not join field tokens or remove another visible declaration', () => {
+    assert.equal(readField('ASTRA_<!--hidden-->RISK: NONE', 'ASTRA_RISK'), '');
+    assert.equal(readField('<!--\nASTRA_RISK: NONE\n-->\nASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK'), 'PAYMENT_CONSISTENCY');
+    assert.equal(readField('ASTRA_RATIONALE: Concrete <!-- hidden --> risk assessment.', 'ASTRA_RATIONALE').replace(/ +/g, ' '), 'Concrete risk assessment.');
+    assert.equal(readField('<!-- first -->\n<!-- second -->\nASTRA_RISK: NONE', 'ASTRA_RISK'), 'NONE');
+  });
+
+  it('fence and comment markers inside code/comments do not leak into outer state', () => {
+    for (const sample of [
+      '```html\n<!-- literal unclosed comment\n```',
+      '    <!-- literal indented comment',
+      '<!--\n``` literal unclosed fence\n-->',
+    ]) {
+      assert.equal(governanceResult(`${sample}\n\n${GOVERNANCE}`).status, 'NOT_REQUIRED');
+    }
+  });
+
+  it('ordinary rows, bullets, inline code, CRLF and exact escaped field names remain usable', () => {
+    assert.equal(readField('   - WORK_ORIGIN: AGENT', 'WORK_ORIGIN'), 'AGENT');
+    assert.equal(readField('* WORK_ORIGIN: AGENT', 'WORK_ORIGIN'), 'AGENT');
+    assert.equal(readField('Example `ASTRA_RISK: NONE`\nASTRA_RISK: PAYMENT_CONSISTENCY', 'ASTRA_RISK'), 'PAYMENT_CONSISTENCY');
+    assert.equal(readField('ASTRA_RISK:\nWORK_ORIGIN: AGENT', 'ASTRA_RISK'), '');
+    assert.equal(readField('ASTRA_RISK: NONE\r\nWORK_ORIGIN: AGENT', 'WORK_ORIGIN'), 'AGENT');
+    assert.equal(readField('A.B: exact\nAxB: not exact', 'A.B'), 'exact');
+    assert.equal(readField('missing field', 'ASTRA_RISK'), '');
+    assert.equal(governanceResult(GOVERNANCE.replaceAll('\n', '\r\n')).status, 'NOT_REQUIRED');
+  });
+
+  it('truthful unknown governance is nonblocking, but mixed Product scope is still rejected', () => {
+    assert.equal(governanceResult().status, 'NOT_REQUIRED');
+    assert.deepEqual(validateLaneMetadata(parseLaneMetadata({ body: GOVERNANCE })), []);
+    const result = classifyAstra({ body: GOVERNANCE, changedFiles: ['src/server/tenant.ts'], createdAt: CREATED_AT });
+    assert.ok(result.errors.some(error => error.includes('Product/non-governance')));
+  });
+
+  it('Product high risk still requires Final Risk evidence', () => {
+    const result = evaluateAstra({ body: HONEST, changedFiles: ['src/server/tenant.ts'], context: { createdAt: CREATED_AT } });
+    assert.equal(result.required, true);
+    assert.equal(result.status, 'ASTRA_PENDING');
+    assert.ok(result.errors.includes('No trusted Astra attestation for this head'));
+  });
+
+  it('all governance consumers share the canonical reader', () => {
     for (const path of [
       'scripts/agents/governance-scope-budget.mjs',
       'scripts/agents/completion-truth.mjs',
       'scripts/agents/astra-review-policy.mjs',
     ]) {
       const source = readFileSync(resolve(process.cwd(), path), 'utf8');
-      expect(source, `${path} 不應自行定義 readField`).not.toMatch(/function readField\s*\(/);
-      expect(source, `${path} 應 import 共用實作`).toMatch(/import \{[^}]*readField[^}]*\} from ["']\.\/agent-wip-policy\.mjs["']/);
+      assert.doesNotMatch(source, /function readField\s*\(/, path);
+      assert.match(source, /import \{[^}]*readField[^}]*\} from ["']\.\/agent-wip-policy\.mjs["']/, path);
     }
   });
 });
