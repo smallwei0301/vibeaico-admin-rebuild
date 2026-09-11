@@ -1,9 +1,9 @@
 # 模型分工與雙 Workstream 路由
 
-模型與治理工作依 2026-09-10 Owner Decision 固定分成兩軌。最新決策：
-`docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md`。
+雙工作流沿用 2026-09-10 的分流決策。模型治理的最新執行決策為：
+`docs/decisions/2026-09-11-owner-governance-unpinned-model.md`（#360）。
 
-模型 ID、Product Final Risk allowlist 與 trust root 仍由 `scripts/agents/model-routing.json` 維護；本文件負責說明什麼工作會進那條 Product Final Risk 路徑，以及什麼工作固定由 Sol-only governance 處理。
+Product 模型 ID、Final Risk allowlist 與 trust root 仍由 `scripts/agents/model-routing.json` 維護；MODEL_GOVERNANCE 不再指定執行模型，不以模型身分作為准入條件。
 
 ## 先分類，再工作
 
@@ -21,65 +21,56 @@ WORKSTREAM: PRODUCT_MAINLINE
 
 空白、拼錯或 invented third value 都是不合法分類。既有 open work 在下一次被接手施工、promote、rebuild 或 closeout 前先補分類；不為了回填分類重寫歷史 commit。
 
-## MODEL_GOVERNANCE：audit 層 only
+## MODEL_GOVERNANCE：不指定執行模型
 
 模型路由、Agent orchestration、WIP / lane、Final Risk guard 自身治理、governance metrics / scoreboard、PR lifecycle、治理型 CI / templates 與其 regression tests，使用：
 
 ```text
 WORKSTREAM: MODEL_GOVERNANCE
 AGENT_LANE: GOVERNANCE
-REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol
+REQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown
 ASTRA_RISK: NONE
 FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 ```
 
-### 誰可以執行 MODEL_GOVERNANCE（Owner 決定，2026-09-10）
+### 誰可以執行 MODEL_GOVERNANCE（Owner 決定，2026-09-11）
 
-MODEL_GOVERNANCE 是 **audit 層**的工作，不是「某一個型號」的工作。audit 層在兩側各有一個模型，
-兩者同層等價，**都可以執行**：
+Owner 在 #360 決定：「直接把模型治理工作流中的指定模型拿掉」。
+治理主 Session 直接使用目前可用模型做 TRIAGE、IMPLEMENT、VERIFY、REVIEW、CLOSEOUT。
+不必切換 Sol／Opus，不以「audit 層」重新引入型號限制，也不要求模型執行回執才能開工或合併。
 
-| 側 | audit 層模型 | 來源 |
-|---|---|---|
-| OpenAI | `gpt-5.6-sol` | `models.audit` |
-| Anthropic | `claude-opus-5` | `anthropicEquivalents.audit` |
+`model-routing.json.workstreams.modelGovernance` 不再有 `model`／`allowedModels`，
+改以 `executorPolicy: ANY_AVAILABLE_MODEL`、`modelIdentityPolicy: TRUTHFUL_NON_BLOCKING` 記錄這項政策。
 
-機器可讀的清單是 `scripts/agents/model-routing.json` 的
-`workstreams.modelGovernance.allowedModels`，守門 (`classifyWorkstream()`) 就讀它。
+真實性要求仍保留：
 
-三件必須一起成立的事：
-
-1. `requested` 與 `actual` **各自**都必須落在清單內。一邊合規不能替另一邊背書。
-2. 比對是**逐值**的，不是子字串比對：`gpt-5.6-sol-preview` 不算 `gpt-5.6-sol`。
-3. 欄位必須記錄**實際 served 的模型**，不得以本表推定。清單放寬的是「哪些模型算合規」，
-   不是「可以照抄一個合規值」。build 層（`gpt-5.6-terra` / `claude-sonnet-5`）與 scout 層
-   （`gpt-5.6-luna` / `claude-haiku-4-5`）一律不得執行治理。
-
-在此之前守門只認 `gpt-5.6-sol` 這一個字面值，於是在 Anthropic 側誠實填 `claude-opus-5` 的治理 PR
-永遠過不了；而修這條規則的 PR 自己也是治理 PR、也過不了（守門是 `pull_request_target`，讀的是
-`main` 上的程式）。#342 因此只能靠暫時移除必要檢查才合得進去。這條清單就是為了不再發生那件事。
+1. `REQUESTED_MODEL / ACTUAL_MODEL` 保持既有紀錄用途。未指定填 `requested=not_requested`；
+   已明確指定時如實填實際要求，不照抄範例。
+2. 有可靠來源才填具體 actual；無法證明就填 `actual=unknown`，不因 unknown 單獨阻擋純治理。
+3. 取消模型門禁不代表資料已驗證。`UNKNOWN` 不升為 `PROVIDER_VERIFIED`／`OPERATOR_ATTESTED`，
+   不改寫舊 Run、舊作者或舊模型紀錄。缺少整個紀錄欄位仍由現有 metadata 檢查處理。
+4. #359 的自動取證只能是非阻塞的觀測改良，不是治理開工／合併前置。
 
 執行流程：
 
 ```text
-GPT-5.6 Sol conversation/session
+目前可用的治理主 Session
 → current truth
 → bounded governance implementation
 → source CI / regression tests
-→ Sol final exact-diff verification
+→ final exact-diff verification / counterexample review
 → merge / closeout
 ```
 
 這一軌：
 
-- 不派 Terra / Reserve Terra；
-- 不啟動 dual-Terra；
-- 不委派 Astra / Fable；
-- 不要求 `astra-review` attestation；
-- 不要求 `/astra-review-check` 作為治理放行前提；
+- 不派產品 Terra / Reserve Terra lane，不啟動 dual-Terra；這是工作車道限制，不是模型型號限制；
+- 不委派 Astra / Fable Final Risk，不要求 `astra-review` attestation 或 `/astra-review-check`；
 - 不加入 Product Delivery Run 來製造 Product throughput；
-- 不宣稱使用者可見 shipped Product output。
+- 不宣稱使用者可見 shipped Product output；
+- 同時最多一張 active 治理施工 PR。
 
-Sol-only 不是跳過驗證。source CI、必要 regression tests、final diff reread、current-main verification 與 Completion Truth 仍必須存在。
+不指定模型不等於跳過驗證。source CI、必要 regression tests、反例審查、final diff reread、current-main verification 與 Completion Truth 仍必須存在。治理主 Session 完成這些驗證後可自行進行結案，不另外要求指定型號的審查者。
 
 ### MODEL_GOVERNANCE 不能拿來偷渡產品變更
 
@@ -102,6 +93,8 @@ Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product bui
 `models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
 
 ## Lane 對應的模型層級（Owner 2026-09-10 裁示）
+
+本節只適用 PRODUCT_MAINLINE；MODEL_GOVERNANCE 依上方 2026-09-11 決策不指定模型。
 
 上一節說「其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder」。本節就是
 **Anthropic 側「等價 builder」的定義**——它收窄該句，不與之衝突。
@@ -190,7 +183,7 @@ Final Risk 綁 `changeDigest`，不是單純綁 commit SHA。若 main 由其他�
 
 ## Skill routing
 
-- `WORKSTREAM: MODEL_GOVERNANCE`：讀 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`，使用 Sol-only governance path；不要載入 Astra/Fable review skill 當成必要 gate。
+- `WORKSTREAM: MODEL_GOVERNANCE`：讀 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`，由目前可用模型直接接續治理；不要載入 Astra/Fable review skill 當成必要 gate。
 - `WORKSTREAM: PRODUCT_MAINLINE` 且 Product risk classification 需要 Final Risk：再載入 `.agents/skills/vibeaico-astra-review/SKILL.md`。
 
 ## 安全與 Production 授權
