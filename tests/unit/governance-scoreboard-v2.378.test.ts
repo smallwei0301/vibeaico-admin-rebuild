@@ -139,7 +139,7 @@ describe('Governance Scoreboard contract v2 activation', () => {
 
   it('still requires blocking findings to reconcile to a final-head PASS', () => {
     const run = completeV2Run();
-    const evidence = {
+    const evidence: any = {
       ...v2Evidence(),
       finalReviewedSha: 'b'.repeat(40),
       records: [
