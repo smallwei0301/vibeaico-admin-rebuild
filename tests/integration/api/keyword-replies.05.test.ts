@@ -456,9 +456,15 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
    * ——那句「還在準備中」從誠實變成假話，所以連同 `MSG.notReadyTrip` /
    * `MSG.notReadyDeparture` 一起刪掉。
    *
-   * `我的訂單`**維持**「準備中」，而且那是真的：`tour_orders` 表尚未建立
-   * （0066–0068 只建了 trips / trip_plans / trip_departures / trip_addons），
-   * 沒有任何地方查得到旅遊訂單。有表之前回一句編出來的進度就是說謊。
+   * `我的訂單` **2026-09-11（issue #373）起也不再回「準備中」**——最後三分之一
+   * 的前提也失效了。`0087` / `0088` 建好 `tour_orders` 與其 RPC 並進 `main`，
+   * 同日依 Owner 具名授權套用正式庫之後，那句話從「誠實的佔位」變成
+   * 「查得到卻說查不到」。`MSG.notReadyOrder` 已無呼叫端，整條移除。
+   *
+   * ⚠️ 這一條是 CI 抓到的，不是本機：#382 的作者（build 層）與覆核者（audit 層）
+   * 都沒找到這個檔案裡的斷言。它把已經不成立的行為鎖成「正確」，形狀與 #350
+   * 的 `rpc('cancel_tour_order')` 斷言、#351 的無牙名額斷言完全相同——**既有測試
+   * 把缺陷鎖成正確**。改動一個佔位訊息時，必須全域搜該字串，不能只改實作端。
    *
    * 這裡要保住的東西從頭到尾沒有變：**沉默不可接受，編造進度也不可接受。**
    */
@@ -500,11 +506,17 @@ describe('Rich Menu 六格文字全部有回應（issue #5 ③；06 §3 補列�
     expect(departures).toContain('未來 14 天可報名的團次：');
     expect(departures).toContain('A 店測試行程');
 
-    // ③ 我的訂單 → tour_orders 表還沒有，這句「準備中」是**真的**，不是遺留。
+    // ③ 我的訂單 → `tour_orders` 已建好（0087／0088），「準備中」那句已移除（#373）。
+    //
+    // 本測試的顧客**沒有綁定 LINE**，所以誠實的回覆是請他留大名與電話：那是
+    // 「我不知道你是誰」，不是「這個功能還沒做」。兩句都誠實，但不可互換——
+    // 功能已經存在卻回「準備中」，就是把「查得到卻沒接」說成「查不到」。
     const orders = await customerSays('我的訂單');
     expect(orders, '「我的訂單」按下去沒有任何回應').not.toBeNull();
     expect(orders).not.toBe(DEFAULT_REPLY);
-    expect(orders).toContain('準備中');
+    expect(orders, '「我的訂單」還在回「準備中」＝ #373 沒生效').not.toContain('準備中');
+    expect(orders, '未綁定的顧客應被請求提供大名與電話，而不是收到空清單或佔位訊息')
+      .toContain('大名');
 
     // 看診進度（叫號）同樣還沒建 → 這一句也是誠實的
     await setBusinessType('CLINIC');
