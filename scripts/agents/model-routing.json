@@ -10,20 +10,22 @@
   },
   "anthropicEquivalents": {
     "version": "2026-09-10.1",
-    "note": "Owner 2026-09-10 裁示：在 Anthropic 側執行時，lane 決定層級、層級決定模型，一律對應下表，不得往上或往下取代。Terra 一律用 Sonnet：拿 audit 層的 Opus 去做 build 是超規，拿 scout 層的 Haiku 去做 build 是不足。model ID 逐字取自 Anthropic 官方型號表，本身即完整，不得附加日期後綴。",
+    "note": "Owner 2026-09-10 裁示：在 Anthropic 側執行 PRODUCT_MAINLINE 時，lane 決定層級、層級決定模型，一律對應下表，不得往上或往下取代。Terra 一律用 Sonnet：拿 audit 層的 Opus 去做 build 是超規，拿 scout 層的 Haiku 去做 build 是不足。model ID 逐字取自 Anthropic 官方型號表，本身即完整，不得附加日期後綴。MODEL_GOVERNANCE 自 2026-09-11 起不指定模型，不套用本表做治理模型要求。",
     "scout": "claude-haiku-4-5",
     "build": "claude-sonnet-5",
     "audit": "claude-opus-5"
   },
   "workstreams": {
-    "version": "2026-09-10.2",
+    "version": "2026-09-11.1",
     "effectiveAt": "2026-09-10T08:52:28Z",
     "allowed": ["MODEL_GOVERNANCE", "PRODUCT_MAINLINE"],
     "modelGovernance": {
       "workstream": "MODEL_GOVERNANCE",
-      "model": "gpt-5.6-sol",
-      "allowedModelsNote": "Owner 2026-09-10 裁示：MODEL_GOVERNANCE 是 audit 層工作，audit 層在 OpenAI 側是 gpt-5.6-sol、在 Anthropic 側是 claude-opus-5（見 anthropicEquivalents.audit），兩者同層等價，都可執行。requested 與 actual 各自都必須落在本清單內，且必須記錄實際 served 的模型，不得以層級推定。",
-      "allowedModels": ["gpt-5.6-sol", "claude-opus-5"],
+      "modelSelectionRequired": false,
+      "modelAnalysisRequired": false,
+      "preferredMetadataSentinel": "NOT_APPLICABLE",
+      "allowedModelsNote": "Owner 2026-09-11 裁示：MODEL_GOVERNANCE 不指定模型，也不分析 requested/actual model。PR parser 相容期以 NOT_APPLICABLE 作為非模型 sentinel；既有在途 PR 的 gpt-5.6-sol / claude-opus-5 metadata 暫時 grandfathered，避免 trusted-main 切換瞬間把既有治理 PR 打紅。這個 allowlist 只服務舊 parser，相容值不得被當成治理模型政策或 Scoreboard model coverage。",
+      "allowedModels": ["NOT_APPLICABLE", "gpt-5.6-sol", "claude-opus-5"],
       "lane": "GOVERNANCE",
       "risk": "NONE",
       "finalRiskPolicy": "NOT_REQUIRED_BY_OWNER_POLICY",
