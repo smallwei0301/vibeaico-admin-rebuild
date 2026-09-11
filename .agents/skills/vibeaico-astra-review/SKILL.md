@@ -1,6 +1,6 @@
 ---
 name: vibeaico-astra-review
-description: Review high-risk PRODUCT_MAINLINE changes with Astra/Fable after Sol and test evidence are ready. MODEL_GOVERNANCE is explicitly excluded by the 2026-09-10 Owner workstream decision and stays Sol-only.
+description: Review high-risk PRODUCT_MAINLINE changes with Astra/Fable after Product Sol and test evidence are ready. MODEL_GOVERNANCE is explicitly excluded and is model-agnostic by the 2026-09-11 Owner decision.
 ---
 
 # Astra / Fable 最後風險評估
@@ -15,11 +15,11 @@ description: Review high-risk PRODUCT_MAINLINE changes with Astra/Fable after So
 WORKSTREAM: MODEL_GOVERNANCE
 ```
 
-則立即停止本 skill，不建立 Astra/Fable reviewer、不要求 attestation、不要求 `/astra-review-check`。模型路由、Agent orchestration、WIP / Final Risk guard、治理 metrics / scoreboard、PR lifecycle、治理型 CI / template 等純模型治理工作，依 2026-09-10 Owner 決策固定由 **GPT-5.6 Sol 對話模式**直接規劃、施工、驗證與收尾。
+則立即停止本 skill，不建立 Astra/Fable reviewer、不要求 attestation、不要求 `/astra-review-check`。模型路由政策、Agent orchestration、WIP / Final Risk guard、治理 metrics / scoreboard、PR lifecycle、治理型 CI / template 等純模型治理工作，依 2026-09-11 Owner 決策採 **model-agnostic governance**：不要求指定模型，也不分析 requested/actual model 或 provider model identity coverage。
 
 MODEL_GOVERNANCE 必須同時保持純治理範圍。若變更混入 Product runtime、schema/migration、payment/refund、LINE/provider、tenant product data flow 或 Production deploy behavior，先拆 PR；不能安全拆分就重新分類為 `PRODUCT_MAINLINE`，再依本 skill 做 Product 風險判斷。不得用 workstream 標記逃避產品風險。
 
-從 trusted main 讀 `docs/MODEL-ROUTING.md`、`scripts/agents/model-routing.json` 與最新 Owner Final Risk 決策；模型 ID、trust root 與風險判準以 trusted main 為準。保留 `docs/AGENT-EXECUTION.md` 的授權與 Sol 結案門檻。
+從 trusted main 讀 `docs/MODEL-ROUTING.md`、`scripts/agents/model-routing.json` 與最新 Owner Final Risk 決策；Product 模型 ID、trust root 與風險判準以 trusted main 為準。Production 授權與 Completion Truth 仍依 `docs/AGENT-EXECUTION.md` 等 canonical 規則執行。
 
 ## Model dispatch，不是外部 reviewer 通道
 
@@ -70,4 +70,4 @@ Product Final Risk 預設是每個 semantic `changeDigest` 一次，不是每顆
 
 只有 changed-file blob / `changeDigest` 改變、schema baseline 實質改變、Final Risk policy 變更，或 trusted 最新 review 為 FIX_REQUIRED／CHANGES_REQUESTED／DISMISSED 時才重跑。
 
-Astra/Fable 不替代測試、實機驗收、正式操作授權或 Sol 關閉議題權限。Production DDL/DML/migration、manual promote、真實付款/退款/通知仍需各自既有授權。
+Astra/Fable 不替代測試、實機驗收、正式操作授權或 Product Sol 關閉議題權限。Production DDL/DML/migration、manual promote、真實付款/退款/通知仍需各自既有授權。
