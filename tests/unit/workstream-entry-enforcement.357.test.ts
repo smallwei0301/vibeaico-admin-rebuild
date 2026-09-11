@@ -11,6 +11,7 @@ const issueWorkflow = read('.github/workflows/issue-provenance.yml');
 const prWorkflow = read('.github/workflows/agent-workstream-classification.yml');
 const decision = read('docs/decisions/2026-09-11-owner-workstream-entry-enforcement.md');
 const AFTER = '2026-09-11T03:00:00Z';
+const BEFORE = '2026-09-10T08:00:00Z';
 
 const governanceBody = [
   'WORKSTREAM: MODEL_GOVERNANCE',
@@ -42,7 +43,8 @@ describe('two-workstream entry enforcement (#357)', () => {
     expect(prWorkflow).toContain('classifyWorkstream');
     expect(prWorkflow).toContain("context: 'Workstream Classification'");
     expect(prWorkflow).toContain("ref: ${{ github.event.repository.default_branch }}");
-    expect(prWorkflow).toContain("effectiveWorkstream = valid && result.workstream === 'MODEL_GOVERNANCE'");
+    expect(prWorkflow).toContain("result.workstream === 'LEGACY_UNCLASSIFIED'");
+    expect(prWorkflow).toContain("effectiveWorkstream === 'MODEL_GOVERNANCE'");
   });
 
   it('rejects a new PR without WORKSTREAM and accepts an explicitly classified Product PR', () => {
@@ -56,6 +58,18 @@ describe('two-workstream entry enforcement (#357)', () => {
     });
     expect(product.workstream).toBe('PRODUCT_MAINLINE');
     expect(product.errors).toEqual([]);
+  });
+
+  it('preserves the canonical grandfathering for pre-effectiveAt legacy PRs', () => {
+    const legacy = classifyWorkstream({
+      body: '',
+      changedFiles: ['src/app/api/legacy/route.ts'],
+      createdAt: BEFORE,
+    });
+    expect(legacy.workstream).toBe('LEGACY_UNCLASSIFIED');
+    expect(legacy.errors).toEqual([]);
+    expect(prWorkflow).toContain("grandfathered = result.workstream === 'LEGACY_UNCLASSIFIED'");
+    expect(decision).toContain('維持既有 grandfathered 規則');
   });
 
   it('keeps work governance in MODEL_GOVERNANCE but fails mixed Product scope toward Product', () => {
