@@ -250,3 +250,58 @@ describe('Issue #164 WIP alert fingerprint', () => {
     expect(isDuplicateWipFailure({ previousBody, fingerprint, headSha: 'd'.repeat(40) })).toBe(false);
   });
 });
+
+/**
+ * #370 帶出來的缺口：preflight 先前**不驗** TEST_PROFILE。
+ *
+ * TEST_PROFILE / FINAL_CANONICAL_REQUIRED 由 scripts/ci/local-isolated-test-policy.mjs
+ * 驗，不在 agent-wip-policy 或 dual-terra-wip-policy 裡。於是一支 preflight 通過的 PR
+ * 仍然會被 CI 的 classify job 退掉——2026-09-11 的 #370 就是這樣被退的
+ * （TEST_PROFILE 填成不存在的 CANONICAL_TEST，正確值是 SHARED_CANONICAL）。
+ *
+ * PB-034 的預防是「開 PR 前跑 preflight，通過才推」。那條預防只有在 preflight 真的
+ * 涵蓋 CI 會擋的規則時才成立；少涵蓋一支驗證器，預防就只是**看起來**有效——而這件事
+ * 在 preflight 通過時完全看不出來。
+ */
+describe('#370 preflight 必須涵蓋 local-isolated-test-policy 的欄位', () => {
+  const withProfile = (profile: string) =>
+    productBody
+      .replace(/- TEST_PROFILE: .*/g, '')
+      .replace('- DUAL_TERRA_PILOT: false', `- TEST_PROFILE: ${profile}\n- DUAL_TERRA_PILOT: false`);
+
+  it('擋下不存在的 TEST_PROFILE（#370 實際被 CI 退掉的那個值）', () => {
+    const result = validateWipPreflight({ body: withProfile('CANONICAL_TEST') });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('TEST_PROFILE is invalid: CANONICAL_TEST');
+  });
+
+  it('放行四個合法 profile', () => {
+    for (const profile of ['SOURCE_ONLY', 'SHARED_CANONICAL']) {
+      const result = validateWipPreflight({ body: withProfile(profile) });
+      expect(result.errors).not.toContain(`TEST_PROFILE is invalid: ${profile}`);
+    }
+  });
+
+  it('本機 profile 未設 FINAL_CANONICAL_REQUIRED=true 時擋下', () => {
+    // productBody 本身帶 FINAL_CANONICAL_REQUIRED: true，所以要明確翻成 false 才測得到
+    // 這條規則——照原樣只會驗到「它本來就滿足」，等於什麼都沒驗。
+    const body = withProfile('LOCAL_ISOLATED').replace(
+      '- FINAL_CANONICAL_REQUIRED: true',
+      '- FINAL_CANONICAL_REQUIRED: false',
+    );
+    const result = validateWipPreflight({ body });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('LOCAL_ISOLATED profiles must set FINAL_CANONICAL_REQUIRED=true');
+  });
+
+  it('本機 profile 且 FINAL_CANONICAL_REQUIRED=true 時不擋（對照組）', () => {
+    const result = validateWipPreflight({ body: withProfile('LOCAL_ISOLATED') });
+    expect(result.errors).not.toContain('LOCAL_ISOLATED profiles must set FINAL_CANONICAL_REQUIRED=true');
+  });
+
+  it('已退役的 profile 給出指向替代做法的訊息，而不是泛用的 invalid', () => {
+    const result = validateWipPreflight({ body: withProfile('REMOTE_BRANCH_REQUIRED') });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(' ')).toMatch(/retired/i);
+  });
+});

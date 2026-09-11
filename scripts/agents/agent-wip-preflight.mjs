@@ -11,6 +11,7 @@ import {
   validateLaneMetadata,
 } from './dual-terra-wip-policy.mjs';
 import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
+import { decideLocalIsolatedTest } from '../ci/local-isolated-test-policy.mjs';
 
 import { classifyAstra } from './astra-review-policy.mjs';
 
@@ -150,6 +151,19 @@ export function validateWipPreflight(input = {}) {
       errors.push(...validateActualFileOwnership(metadata, changedFiles));
     }
   }
+
+  /**
+   * TEST_PROFILE / FINAL_CANONICAL_REQUIRED 由 scripts/ci/local-isolated-test-policy.mjs
+   * 驗，不在上面那幾支裡。preflight 先前沒有涵蓋它，於是一支 preflight 通過的 PR
+   * 仍然會被 CI 的 `classify` job 退掉（2026-09-11 #370：TEST_PROFILE 被填成不存在的
+   * CANONICAL_TEST，正確值是 SHARED_CANONICAL）。
+   *
+   * PB-034 的預防是「開 PR 前跑 preflight，通過才推」。那條預防只有在 preflight 真的
+   * 涵蓋 CI 會擋的規則時才成立；少涵蓋一支驗證器，預防就只是看起來有效。這裡直接
+   * 呼叫**CI 用的同一支函式**，而不是在這邊複製一份合法值清單——複製一份的話，兩邊
+   * 日後就會分歧，而分歧在 preflight 通過時看不出來。
+   */
+  errors.push(...(decideLocalIsolatedTest({ body }).errors ?? []));
 
   return {
     valid: errors.length === 0,
