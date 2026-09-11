@@ -28,10 +28,19 @@ jobs:
   historical-compatibility-candidate:
     if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       LOCAL_PROJECT_ID: schema-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      TEST_PROFILE: LOCAL_ISOLATED
+      TEST_ENV_ID: local-schema-${{ github.run_id }}
+      SETTINGS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      AUTH_SECRET: local-bootstrap-auth-secret-0123456789abcdef
+      TEST_CRON_SECRET: local-bootstrap-cron-secret
+      LINE_API_BASE: http://localhost:4123
+      LINE_DATA_API_BASE: http://localhost:4123
+      RESEND_BASE_URL: http://localhost:4124
+      RESEND_API_KEY: re_test_local_bootstrap
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,6 +100,38 @@ jobs:
           if (failed.length) throw new Error(`BOOTSTRAP_CANDIDATE_ASSERTION_FAILED: ${failed.join(', ')}`);
           console.log('BOOTSTRAP_CANDIDATE_GREEN: local replay and dependency probes only; canonical adoption and TEST/Production parity NOT_PROVEN.');
           NODE
+      - name: Export only the disposable local TEST credentials
+        run: |
+          cd "$RUNNER_TEMP/schema-bootstrap"
+          supabase status -o env >"$RUNNER_TEMP/schema-bootstrap-local.env"
+          python - <<'PYCODE'
+          import os, shlex
+          from pathlib import Path
+          from urllib.parse import urlparse
+          values = {}
+          for line in Path(os.environ['RUNNER_TEMP'], 'schema-bootstrap-local.env').read_text().splitlines():
+              if '=' in line:
+                  key, raw = line.split('=', 1)
+                  parts = shlex.split(raw)
+                  values[key] = parts[0] if parts else ''
+          mapping = {'API_URL': 'TEST_SUPABASE_URL', 'ANON_KEY': 'TEST_SUPABASE_ANON_KEY',
+                     'SERVICE_ROLE_KEY': 'TEST_SUPABASE_SERVICE_ROLE_KEY'}
+          if any(not values.get(key) for key in mapping):
+              raise SystemExit('Missing disposable TEST credentials')
+          if urlparse(values['API_URL']).hostname not in ('127.0.0.1', 'localhost'):
+              raise SystemExit('Refusing a non-local TEST target')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              for source, target in mapping.items():
+                  if source != 'API_URL':
+                      print('::add-mask::' + values[source])
+                  output.write(target + '=' + values[source] + '\n')
+          PYCODE
+      - name: Install the exact application dependency tree
+        run: npm ci
+      - name: Prove current Product integration on the clean candidate, without issue-41
+        run: npm run test:integration
+      - name: Prove current UI acceptance on the same disposable candidate
+        run: npx playwright install --with-deps chromium && npm run test:e2e
       - name: Preserve metadata-only evidence even when replay fails
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
