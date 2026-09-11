@@ -87,7 +87,20 @@ function ctxWith(admin: ReturnType<typeof fakeAdmin>) {
 
 describe('replyTourOrders() 查詢失敗不得說成「沒有訂單」（issue #373）', () => {
   it('tour_orders 查詢回 error → 回傳 false（落到 ⑤ AI／⑥ 預設回覆），完全不呼叫 LINE reply API', async () => {
-    const fetchSpy = vi.fn();
+    // ⚠️ stub 必須回一個**形狀正確**的 Response。
+    //
+    // 第一版回 undefined，於是變異驗證（拿掉 error 處理）的紅燈是
+    // `TypeError: Cannot read properties of undefined (reading 'ok')`——
+    // 那是 stub 壞掉，不是斷言抓到。斷言本身有效（換成正確形狀照樣會紅），
+    // 所以不是假綠；但未來讀到那行 TypeError 的人不會意識到「是錯誤處理被拿掉了」。
+    // 給它一個合法回應之後，變異的紅燈會落在 expect(result).toBe(false) 與
+    // expect(fetchSpy).not.toHaveBeenCalled()，訊息直接說出壞掉的是什麼。
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+      text: async () => '',
+    }));
     vi.stubGlobal('fetch', fetchSpy);
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
