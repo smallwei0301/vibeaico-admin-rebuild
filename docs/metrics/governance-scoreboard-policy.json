@@ -1,9 +1,14 @@
 {
-  "contractVersion": 1,
-  "effectiveAt": "2026-09-09T03:38:49Z",
+  "contractVersion": 2,
+  "effectiveAt": "2026-09-11T08:46:22Z",
   "minimumMetricDataQualityPercent": 95,
-  "modelReviewVerifiedRequires": "PROVIDER_VERIFIED",
-  "operatorAttestedClassification": "MODEL_REVIEW_ATTESTED",
-  "unknownIdentityClassification": "MODEL_REVIEW_IDENTITY_UNKNOWN",
+  "reviewEvidenceContractVersion": 2,
+  "governanceReviewRole": "GOVERNANCE_REVIEW",
+  "historicalContracts": {
+    "1": {
+      "effectiveAt": "2026-09-09T03:38:49Z",
+      "minimumMetricDataQualityPercent": 95
+    }
+  },
   "historicalRunsAreReadOnly": true
 }
