@@ -1,9 +1,10 @@
 # 模型分工與雙 Workstream 路由
 
-模型與治理工作依 2026-09-10 Owner Decision 固定分成兩軌。最新決策：
-`docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md`。
+模型與治理工作固定分成兩軌。MODEL_GOVERNANCE 的最新 Owner 決策：
+`docs/decisions/2026-09-11-owner-model-governance-model-agnostic.md`。
 
-模型 ID、Product Final Risk allowlist 與 trust root 仍由 `scripts/agents/model-routing.json` 維護；本文件負責說明什麼工作會進那條 Product Final Risk 路徑，以及什麼工作固定由 Sol-only governance 處理。
+模型 ID、PRODUCT_MAINLINE 的 builder／audit／Final Risk allowlist 與 trust root 由
+`scripts/agents/model-routing.json` 維護。本文件負責說明兩條 workstream 的執行邊界與 Product model routing。
 
 ## 先分類，再工作
 
@@ -21,65 +22,54 @@ WORKSTREAM: PRODUCT_MAINLINE
 
 空白、拼錯或 invented third value 都是不合法分類。既有 open work 在下一次被接手施工、promote、rebuild 或 closeout 前先補分類；不為了回填分類重寫歷史 commit。
 
-## MODEL_GOVERNANCE：audit 層 only
+## MODEL_GOVERNANCE：不指定模型
 
-模型路由、Agent orchestration、WIP / lane、Final Risk guard 自身治理、governance metrics / scoreboard、PR lifecycle、治理型 CI / templates 與其 regression tests，使用：
+模型路由政策、Agent orchestration、WIP / lane、Final Risk guard 自身治理、governance metrics / scoreboard、PR lifecycle、治理型 CI / templates 與其 regression tests，使用：
 
 ```text
 WORKSTREAM: MODEL_GOVERNANCE
 AGENT_LANE: GOVERNANCE
-REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol
+REQUESTED_MODEL / ACTUAL_MODEL: requested=NOT_APPLICABLE; actual=NOT_APPLICABLE
 ASTRA_RISK: NONE
 FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 ```
 
-### 誰可以執行 MODEL_GOVERNANCE（Owner 決定，2026-09-10）
+`NOT_APPLICABLE` 是 PR parser 相容期的**非模型 sentinel（不適用標記）**，不是模型名稱，也不能被當成模型執行證據。
 
-MODEL_GOVERNANCE 是 **audit 層**的工作，不是「某一個型號」的工作。audit 層在兩側各有一個模型，
-兩者同層等價，**都可以執行**：
+### Owner 決定，2026-09-11
 
-| 側 | audit 層模型 | 來源 |
-|---|---|---|
-| OpenAI | `gpt-5.6-sol` | `models.audit` |
-| Anthropic | `claude-opus-5` | `anthropicEquivalents.audit` |
+MODEL_GOVERNANCE 改為 **model-agnostic**：
 
-機器可讀的清單是 `scripts/agents/model-routing.json` 的
-`workstreams.modelGovernance.allowedModels`，守門 (`classifyWorkstream()`) 就讀它。
+- 不要求 Sol、Opus、Terra、Astra、Fable 或任何特定模型；
+- retrospective／scoreboard 不分析 MODEL_GOVERNANCE 的 requested model、actual model 或 provider model identity coverage；
+- 任何可執行 repo governance 的 Agent／Session 都可以在 `AGENT_LANE: GOVERNANCE` 下完成 bounded governance work；
+- 不因模型不同而判定治理工作合規或不合規；
+- PRODUCT_MAINLINE 的模型路由與 Final Risk 規則完全不受影響。
 
-三件必須一起成立的事：
+目前 trusted-main PR parser 仍會讀 `REQUESTED_MODEL / ACTUAL_MODEL`。因此新治理 PR 在相容期填 `NOT_APPLICABLE`；為避免切換時把既有在途治理 PR 全部打紅，`model-routing.json` 暫時 grandfather 舊的 `gpt-5.6-sol`／`claude-opus-5` metadata。這只是 parser 相容，不代表治理仍指定模型。
 
-1. `requested` 與 `actual` **各自**都必須落在清單內。一邊合規不能替另一邊背書。
-2. 比對是**逐值**的，不是子字串比對：`gpt-5.6-sol-preview` 不算 `gpt-5.6-sol`。
-3. 欄位必須記錄**實際 served 的模型**，不得以本表推定。清單放寬的是「哪些模型算合規」，
-   不是「可以照抄一個合規值」。build 層（`gpt-5.6-terra` / `claude-sonnet-5`）與 scout 層
-   （`gpt-5.6-luna` / `claude-haiku-4-5`）一律不得執行治理。
-
-在此之前守門只認 `gpt-5.6-sol` 這一個字面值，於是在 Anthropic 側誠實填 `claude-opus-5` 的治理 PR
-永遠過不了；而修這條規則的 PR 自己也是治理 PR、也過不了（守門是 `pull_request_target`，讀的是
-`main` 上的程式）。#342 因此只能靠暫時移除必要檢查才合得進去。這條清單就是為了不再發生那件事。
-
-執行流程：
+治理執行流程：
 
 ```text
-GPT-5.6 Sol conversation/session
-→ current truth
+current truth
 → bounded governance implementation
 → source CI / regression tests
-→ Sol final exact-diff verification
+→ final exact-diff verification
+→ Completion Truth
 → merge / closeout
 ```
 
 這一軌：
 
-- 不派 Terra / Reserve Terra；
-- 不啟動 dual-Terra；
-- 不委派 Astra / Fable；
+- 不佔 Product Terra / Reserve Terra slots；
+- 不啟動 Product dual-Terra；
+- 不因純治理範圍委派 Astra / Fable Product Final Risk；
 - 不要求 `astra-review` attestation；
 - 不要求 `/astra-review-check` 作為治理放行前提；
 - 不加入 Product Delivery Run 來製造 Product throughput；
 - 不宣稱使用者可見 shipped Product output。
 
-Sol-only 不是跳過驗證。source CI、必要 regression tests、final diff reread、current-main verification 與 Completion Truth 仍必須存在。
+model-agnostic 不等於跳過驗證。source CI、必要 regression tests、final diff reread、current-main verification 與 Completion Truth 仍必須存在。
 
 ### MODEL_GOVERNANCE 不能拿來偷渡產品變更
 
@@ -99,12 +89,11 @@ WORKSTREAM: PRODUCT_MAINLINE
 
 Product 仍走既有 B+ topology：Luna 窄盤點 → Sol TRIAGE → Product builder / Terra lane → 必要 TEST → Sol audit → 需要時 Product Final Risk → closeout。
 
-`models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
+`models.build = gpt-5.6-terra` 是 OpenAI Product builder 預設。其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder，但 Product PR 必須據實記錄 requested / actual model，不能從 lane 名稱推論模型真的跑過。
 
-## Lane 對應的模型層級（Owner 2026-09-10 裁示）
+## PRODUCT_MAINLINE Lane 對應的模型層級
 
-上一節說「其他 provider 的 Product 主 Session 可依其可用模型執行等價 builder」。本節就是
-**Anthropic 側「等價 builder」的定義**——它收窄該句，不與之衝突。
+以下只適用 `PRODUCT_MAINLINE`，不適用 `MODEL_GOVERNANCE`。
 
 lane 決定層級，層級決定模型：
 
@@ -114,28 +103,17 @@ lane 決定層級，層級決定模型：
 | `build` / Terra | **施工**（Product builder lane） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
 | `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
 
-機器可讀的來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。
-model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附加日期後綴**。
+機器可讀來源是 `scripts/agents/model-routing.json` 的 `anthropicEquivalents`；本表與它必須一致。model ID 逐字取自目前專案 canonical 型號表，本身即完整，不得自行附加日期後綴。
 
-**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 施工是超規，不是謹慎——它把審核層的成本花在施工上，
-並讓審核層去審自己的產出；拿 scout 層的 Haiku 施工則是不足。兩個方向都不由執行者自行裁量。
+**Terra 一律用 Sonnet。** 拿 audit 層的 Opus 做 Product build 是超規；拿 scout 層的 Haiku 做 Product build 則是不足。兩個方向都不由執行者自行裁量。
 
-因此 `AGENT_LANE: TERRA_BUILD` 的 PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級的
-模型。`actual=Opus 5` 出現在 `TERRA_BUILD` 上是路由違規，應如實記為違規，不是中性註記——這與上一節
-「不能從 lane 名稱推論模型真的跑過」是同一條要求的兩面。
+因此 `AGENT_LANE: TERRA_BUILD` 的 Product PR，其 `REQUESTED_MODEL / ACTUAL_MODEL` 必須宣告 build 層級模型。`actual=claude-opus-5` 出現在 `TERRA_BUILD` 上仍是 Product 路由違規。
 
-平台無法證明實際執行模型時，`actual=unknown` 仍是誠實值（見 `docs/AGENT-EXECUTION.md`），
-但它不是規避宣告層級的方式。scorecard 的 `requested`／`actual` 必須記錄**實際** served 的模型，
-不得以本表推定。
+平台無法證明 Product 實際執行模型時，`actual=unknown` 仍是誠實值（見 `docs/AGENT-EXECUTION.md`），但它不是規避 Product lane 宣告層級的方式。Product scorecard 的 requested／actual 必須記錄實際 served model，不得以 lane 名稱推定。
 
-本節與 Final Risk 彼此獨立。Final Risk 的適用範圍由下一節（`## PRODUCT_MAINLINE 的 Final Risk`）
-與 `docs/decisions/2026-09-10-owner-two-workstream-sol-governance.md` 決定，本節不擴大也不縮小它：
-施工層正確不免除 Final Risk，Final Risk 通過也不使施工層變得正確。
+本節與 Final Risk 彼此獨立。施工層正確不免除 Final Risk，Final Risk 通過也不使施工層變得正確。
 
-`scripts/agents/model-routing.json` 的頂層 `version` **刻意不因本節而 bump**。`evaluateAstra()`
-以 `policyVersion !== policy.version` 綁定既有 attestation，bump 會讓所有在途 PR 的 attestation
-立刻失效並被迫重跑 Final Risk；而 `anthropicEquivalents` 沒有任何 runtime 讀取，語意上不改變
-任何既有判定。該鍵自帶 `version` 供本身追溯。
+`scripts/agents/model-routing.json` 的頂層 `version` 不因 MODEL_GOVERNANCE 改成 model-agnostic 而 bump。`evaluateAstra()` 以頂層 policy version 綁定既有 Product attestation；無關的治理 routing 變更不應使在途 Product Final Risk evidence 全部失效。workstream policy 由自己的 `workstreams.version` 追溯。
 
 ## PRODUCT_MAINLINE 的 Final Risk
 
@@ -152,7 +130,7 @@ Product 高後果類型維持：
 - `GOVERNANCE_GATE`，僅當不可拆的 Product scope 同時修改 admission / bypass semantics
 - `UNRESOLVED_HIGH_RISK`
 
-對 `PRODUCT_MAINLINE` 保留 #332 的既有語意：`GOVERNANCE_GATE` 指會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，或把原本 failure/pending 變成 success/approval 的不可拆產品治理變更。純 fail-closed hardening 若只是**只增加拒絕條件**、證據完整度、reconciliation 或 observability，且不形成產品風險，仍依既有 Product 分類處理。
+`GOVERNANCE_GATE` 指會**擴大可接受／可放行候選集合**、降低既有 gate、增加 bypass／waiver／exception，或把原本 failure/pending 變成 success/approval 的不可拆 Product 治理變更。純 fail-closed hardening 若只是增加拒絕條件、證據完整度、reconciliation 或 observability，且不形成 Product 風險，仍依既有 Product 分類處理。
 
 一般文案、UI、小型接線不因存在於 Product PR 就自動要求 Final Risk。Product classifier 與 `model-routing.json.sensitivePaths` 仍 fail closed。
 
@@ -161,7 +139,7 @@ Product 高後果類型維持：
 需要 Product Final Risk 時：
 
 1. 讀 trusted-main `model-routing.json` 的 `models.finalRisk` / `models.finalRiskAllowedModels`。
-2. 透過 Agent / sub-agent **model selector** 指定 allowlist 模型。
+2. 透過 Agent / sub-agent model selector 指定 allowlist 模型。
 3. reviewer 名稱不等於模型身分；只有實際指定並執行的模型才能填 `actualModel`。
 4. 不搜尋所謂 Astra plugin / connector，也不要求 Owner 開外部審查通道。
 5. 只有 runtime 確實無 model delegation 或所有 allowlist models 被明確拒絕，才可記 `MODEL_EXECUTION_UNAVAILABLE`。
@@ -170,19 +148,19 @@ Product 高後果類型維持：
 
 ## Product Agent-native attestation
 
-#335 / #336 的 trusted-Agent Final Risk 仍保留給 Product mainline。正常 Product Agent 路徑 **Owner action NOT_REQUIRED**。
+trusted-Agent Final Risk 只保留給 Product mainline。正常 Product Agent 路徑 **Owner action NOT_REQUIRED**。
 
-可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。現行第一個 trusted Agent bot 是 `claude[bot]` / user id `209825114` / `Bot`。
+可信 submitting actor 可以是 write / maintain / admin actor，或 `model-routing.json.finalRiskTrust.trustedAgentBots` 中 login + immutable user id + `type=Bot` 全部吻合的 Agent bot。
 
 正常 Product Agent 可自己提交完整 `astra-review` COMMENT review 並 refresh guard，不要求 Owner 把同一份 Fable/Astra evidence 再貼一次。
 
-`OPERATOR_ATTESTED` 代表 trusted submitting actor 對 model dispatch 事實背書，不等於 provider-signed telemetry。
+`OPERATOR_ATTESTED` 代表 trusted submitting actor 對 Product model dispatch 事實背書，不等於 provider-signed telemetry。
 
 ## Product semantic review reuse
 
 Final Risk 綁 `changeDigest`，不是單純綁 commit SHA。若 main 由其他環境前進，而 PR changed-file blobs、schema baseline、Final Risk policy 與最新 verdict 都沒有實質改變：
 
-- **不重跑 semantic Final Risk**，也不因純 rebase / unrelated main advancement 重跑 semantic Astra/Fable；
+- 不重跑 semantic Final Risk，也不因純 rebase / unrelated main advancement 重跑 semantic Astra/Fable；
 - 新 head 仍跑 required exact-head CI；
 - `testBaseline` 保留 reviewer 當時實際採用的證據；
 - changed-file blob 或 `changeDigest` 真改變時舊 review 才失效；
@@ -190,7 +168,7 @@ Final Risk 綁 `changeDigest`，不是單純綁 commit SHA。若 main 由其他�
 
 ## Skill routing
 
-- `WORKSTREAM: MODEL_GOVERNANCE`：讀 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`，使用 Sol-only governance path；不要載入 Astra/Fable review skill 當成必要 gate。
+- `WORKSTREAM: MODEL_GOVERNANCE`：讀 `.agents/skills/vibeaico-agent-orchestration/SKILL.md`，使用 model-agnostic governance path；不要載入 Astra/Fable review skill 當成必要 gate，也不要分析治理工作用了哪個模型。
 - `WORKSTREAM: PRODUCT_MAINLINE` 且 Product risk classification 需要 Final Risk：再載入 `.agents/skills/vibeaico-astra-review/SKILL.md`。
 
 ## 安全與 Production 授權
