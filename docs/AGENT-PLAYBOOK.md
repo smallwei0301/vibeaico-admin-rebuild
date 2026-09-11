@@ -66,7 +66,7 @@
 | PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 | PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
 | PB-033 | 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端 | 把「這是安全修正」當成可以少一道查證。收權與加權在風險結構上對稱——兩者都可能讓線上功能當場停止，差別只在失敗方向。動線上資料庫的權限前，必須先完成呼叫端清查（全 repo grep 含測試 → client 建構函式 → 該 client 的角色 → 其他 SQL 函式內部呼叫）；migration 尾端的自我驗證要雙向，也檢查 service_role 有沒有被誤撤。 | 本檔 PB-028、PB-033 |
-| PB-034 | 用 CI 當規則查詢器：靠被退四次湊出正確的 PR 中繼資料 | 四次全是中繼資料填錯、零程式碼問題，而四條規則都明文寫在 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 裡。欄位之間有相依（`TEST_PROFILE`→`FINAL_CANONICAL_REQUIRED`；`AGENT_LANE`→`ACTIVE_CANDIDATE` 與能否派工 TEST），不能逐欄獨立猜。開 PR 前先讀那兩支腳本。 | `scripts/agents/dual-terra-wip-policy.mjs`；`scripts/ci/local-isolated-test-policy.mjs` |
+| PB-034 | 用 CI 當規則查詢器，而 repo 早就有本機檢查器 | #352 被退四次、#361 又兩次，全是中繼資料錯、零程式碼問題。**repo 本來就有 `scripts/agents/agent-wip-preflight.mjs`**，開 PR 前跑它即可，而且比 CI 守門更嚴（它會擋下守門放行的 `DELIVERY_UNIT_TYPE: PRODUCT`）。欄位錯常是 **lane 選錯的症狀**：沒有使用者可見產出的 PR 不該佔 Product lane。 | `scripts/agents/agent-wip-preflight.mjs` |
 | PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 
 ## 事件紀錄
@@ -737,18 +737,42 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   共用 TEST 的派工。無程式碼或資料受影響。
 - 修正：讀 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 的實際判定式，
   依規則一次補齊。
+- 2026-09-11 同一輪重演（PR #361），以及一個**更好的預防**：
+  寫完本條之後，我在同一個 session 開 #361，又被退了兩次中繼資料錯誤。
+  查規則時才發現 repo **本來就有 `scripts/agents/agent-wip-preflight.mjs`**——一支可以在
+  開 PR 前本機執行的檢查器：
+  ```bash
+  node scripts/agents/agent-wip-preflight.mjs \
+    --body <pr-body.md> --changed-files <files.txt> --number <pr>
+  # → WIP_PREFLIGHT_PASS issue=362 lane=GOVERNANCE
+  ```
+  也就是說本條原本的預防（「先讀那兩支腳本」）**比實際可用的工具還弱**——要人用眼睛
+  模擬一支可以直接跑的程式。這是本條會重演的真正原因。
+  實跑後它一次列出兩個 CI 當時**還沒報**的錯（`DELIVERY_UNIT_TYPE must be SLICE,
+  STANDALONE, EPIC, or GOVERNANCE`、`An active Product delivery lane must point to a
+  closable SLICE or STANDALONE Issue`），而且更嚴格：#352 填 `DELIVERY_UNIT_TYPE: PRODUCT`
+  時 CI 的守門並沒有擋，preflight 會擋。
+  那兩個錯也揭露了真正的問題不在欄位而在 **lane 選錯**：#361 改的是測試種子與 Playbook，
+  沒有任何使用者可見產出，宣告成 `TERRA_BUILD`／`SLICE` 會強制
+  `COUNT_IN_DELIVERY_OUTCOME=true`——把一支沒有交付的 PR 記成一個交付單位。改為
+  `GOVERNANCE` lane 後 preflight 一次通過。
 - 預防：
-  1. **開 Agent PR 前，先讀會驗這份內文的兩支腳本**（`scripts/agents/dual-terra-wip-policy.mjs`、
-     `scripts/ci/local-isolated-test-policy.mjs`），不要從別的 PR 複製欄位後逐項猜。
+  0. **開 Agent PR 前先跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**
+     這是唯一真正有效的一條；下面幾條是它擋不到時的備援。不要拿 CI 當規則查詢器。
+  1. 它報錯時，回頭讀會驗這份內文的腳本（`scripts/agents/dual-terra-wip-policy.mjs`、
+     `scripts/agents/agent-wip-policy.mjs`、`scripts/ci/local-isolated-test-policy.mjs`），
+     不要從別的 PR 複製欄位後逐項猜。
   2. 欄位之間有**互相依賴**，不能逐欄獨立填：`TEST_PROFILE` 決定 `FINAL_CANONICAL_REQUIRED`；
      `AGENT_LANE` 決定 `ACTIVE_CANDIDATE` 與能不能派工共用 TEST。改一欄要回頭檢查相依欄。
   3. 有列舉值的欄位（`CLOSURE_SWEEP_TARGET`、`SELECTION_REASON`、`AGENT_LANE`、`LANE_STATE`）
      一律回腳本確認合法值集合，不要憑語意自創。
   4. 同族陷阱：PB-027 是「拿代理指標代替事實」，本條是「拿試誤代替讀規格」。兩者都是
      **用便宜的動作取代一次應該做的查證**，而在有守門的專案裡，試誤的成本會由 CI 與 Owner 承擔。
-- 驗證：第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
-  整合測試實際執行並通過。
-- 狀態：已防止
+  5. 欄位錯常常是 **lane 選錯的症狀**，不是獨立的填寫失誤。改欄位之前先問：
+     這支 PR 真的是一個交付單位嗎？沒有使用者可見產出的，就不該佔 Product lane。
+- 驗證：#352 第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
+  整合測試實際執行並通過。#361 改用 preflight 後，本機一次 `WIP_PREFLIGHT_PASS` 才推。
+- 狀態：監看中——預防 0 於 2026-09-11 才建立，尚未累積足夠的執行次數證明它真的擋得住。
 
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
