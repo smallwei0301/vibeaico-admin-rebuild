@@ -23,6 +23,23 @@ async function readJson<T = unknown>(res: Response): Promise<Envelope<T>> {
   return (await res.json()) as Envelope<T>;
 }
 
+/**
+ * #41 相容 schema 要求 formation_deadline_at > now() 且 <= 出發時刻。
+ * 因此不能把「今日 23:58」永久寫死：CI 若在台北 23:58 後執行，任何今日團次都
+ * 已沒有合法的未來截止時間。能建立今日團次時，固定挑現在至少 3 分鐘後的分鐘；
+ * 已進入一天最後兩分鐘時只驗明日團次，TODAY 分類仍由既有 unit contract 鎖住。
+ */
+function futureTaipeiStartTime(now = new Date()): string | null {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(now);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value);
+  const target = hour * 60 + minute + 3;
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || target >= 24 * 60) return null;
+  return `${String(Math.floor(target / 60)).padStart(2, '0')}:${String(target % 60).padStart(2, '0')}`;
+}
+
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
 const temporaryDepartureIds: string[] = [];
@@ -115,8 +132,9 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(body.data?.some((item) => item.id === SHOP_A.bookingPending)).toBe(false);
   });
 
-  it('回傳今天與明日團次的白話資料與正確 deep link', async () => {
-    const { today, tomorrow } = getGuideActionInboxDateWindow(new Date(), 'Asia/Taipei');
+  it('回傳今日仍可建立的團次與明日團次，並給正確 deep link', async () => {
+    const now = new Date();
+    const { today, tomorrow } = getGuideActionInboxDateWindow(now, 'Asia/Taipei');
     const createDeparture = async (departsOn: string, startTime: string) => {
       const deadline = new Date(Date.now() + 60_000).toISOString();
       const tourFields = await readTourSeedFields(admin, deadline, 'OBSERVE');
@@ -136,25 +154,28 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       return data!.id;
     };
 
-    const todayId = await createDeparture(today, '23:58');
+    const todayStart = futureTaipeiStartTime(now);
+    const todayId = todayStart ? await createDeparture(today, todayStart) : null;
     const tomorrowId = await createDeparture(tomorrow, '08:02');
     const res = await ownerA.get('/api/guide/action-inbox');
     expect(res.status).toBe(200);
     const body = await readJson<GuideActionInboxItem[]>(res);
-    const todayItem = body.data?.find((item) => item.id === todayId);
     const tomorrowItem = body.data?.find((item) => item.id === tomorrowId);
 
-    expect(todayItem).toMatchObject({
-      kind: 'DEPARTURE',
-      tripId: TRIP_A.id,
-      tripName: 'A 店測試行程',
-      planName: '標準團（測試）',
-      departureDate: today,
-      startTime: '23:58',
-      departureDay: 'TODAY',
-      priority: 'TODAY',
-      href: `/tenant/trips/${TRIP_A.id}`,
-    });
+    if (todayId && todayStart) {
+      const todayItem = body.data?.find((item) => item.id === todayId);
+      expect(todayItem).toMatchObject({
+        kind: 'DEPARTURE',
+        tripId: TRIP_A.id,
+        tripName: 'A 店測試行程',
+        planName: '標準團（測試）',
+        departureDate: today,
+        startTime: todayStart,
+        departureDay: 'TODAY',
+        priority: 'TODAY',
+        href: `/tenant/trips/${TRIP_A.id}`,
+      });
+    }
     expect(tomorrowItem).toMatchObject({
       kind: 'DEPARTURE',
       departureDate: tomorrow,
