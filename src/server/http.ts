@@ -14,6 +14,7 @@ export const ERR = {
   FEATURE_LOCKED: 'FEAT_001',      // 功能未訂閱
   LINE_NOT_CONFIGURED: 'LINE_001', // 尚未設定 LINE channel
   LINE_API_ERROR: 'LINE_002',      // LINE 平台回傳錯誤
+  SEATS_UNAVAILABLE: 'TOUR_001',   // 團次名額不足（10 分冊 §2；併發搶最後一席的敗方）
   INTERNAL: 'SYS_001',
 } as const;
 

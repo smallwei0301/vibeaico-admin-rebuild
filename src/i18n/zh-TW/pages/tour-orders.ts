@@ -136,6 +136,13 @@ export const tourOrdersPage = {
     cancelled: '訂單已取消，名額已釋放',
     seatsUnavailable: '名額不足，請重新選擇團次',
     loadFailed: '載入失敗，請稍後再試',
+    /**
+     * issue #8-B：三個狀態動作與手動建單接上真實端點後，失敗必須顯示**後端的真實
+     * 訊息**（`ApiError.message`），而不是自己編一句「失敗」——店家才分得出是
+     * 未訂閱 TOUR_MODULE、名額不足（TOUR_001）、訂單狀態已被別人改過，還是網路問題。
+     * 這個前綴後面直接接後端的 message。
+     */
+    actionFailedPrefix: '操作失敗：',
   },
 
   empty: {
