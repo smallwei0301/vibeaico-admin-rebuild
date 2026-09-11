@@ -32,9 +32,9 @@ The new `agent-schema-bootstrap` workflow isolates the missing middle proof:
 
 A passing result is **HISTORICAL_COMPATIBILITY_CANDIDATE**, not CANONICAL_ONLY, schema parity,
 Product integration acceptance, or permission to apply anything to a remote database. No existing
-local-isolated/shared TEST pipeline changes. This is a Product schema reproducibility experiment under #298;
-canonical adoption and remote reconciliation remain separately reviewed Product acceptance gates.
-The workflow publishes metadata and content digests, never application rows or credentials.
+local-isolated/shared TEST pipeline changes. This is a work-governance reproducibility guard supporting
+Product #298/#362; canonical adoption and remote reconciliation remain separately reviewed Product
+acceptance gates. The workflow publishes metadata and content digests, never application rows or credentials.
 
 ## Fresh live observations, not inherited issue text
 
@@ -71,4 +71,5 @@ ACL entries are distinct; do not infer effective access solely from migration te
 - Reconciliation must use bounded forward-only Product changes. Record source SHA, exact project,
   preflight, rollback, actual apply, and read-back as separate completion events.
 - Production migration/DDL/DML remains gated by named scope authorization. This work performs none.
-- #298 and #362 stay open until their remaining acceptance is actually met.
+- This governance guard by itself closes neither #298 nor #362. Each Issue may close only after its own
+  acceptance criteria are satisfied and Completion Truth is re-read from current main/live environments.
