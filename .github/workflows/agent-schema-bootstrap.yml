@@ -1,0 +1,161 @@
+name: agent-schema-bootstrap
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/local-migrations/historical-integration-baseline/**'
+      - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/test/seed.mjs'
+      - 'scripts/test/tour-seed-profile.mjs'
+      - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/tour-seed-profile.test.ts'
+      - 'tests/integration/api/guide-action-inbox.43.test.ts'
+      - 'tests/integration/api/public-shop.46.test.ts'
+      - '.github/workflows/agent-schema-bootstrap.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/local-migrations/historical-integration-baseline/**'
+      - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/test/seed.mjs'
+      - 'scripts/test/tour-seed-profile.mjs'
+      - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/tour-seed-profile.test.ts'
+      - 'tests/integration/api/guide-action-inbox.43.test.ts'
+      - 'tests/integration/api/public-shop.46.test.ts'
+      - '.github/workflows/agent-schema-bootstrap.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: schema-bootstrap-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  historical-compatibility-candidate:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      LOCAL_PROJECT_ID: schema-proof-${{ github.run_id }}-${{ github.run_attempt }}
+      TEST_PROFILE: LOCAL_ISOLATED
+      TEST_TOUR_SEED_PROFILE: CANONICAL_CORE
+      TEST_ENV_ID: local-schema-${{ github.run_id }}
+      SETTINGS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      AUTH_SECRET: local-bootstrap-auth-secret-0123456789abcdef
+      TEST_CRON_SECRET: local-bootstrap-cron-secret
+      LINE_API_BASE: http://localhost:4123
+      LINE_DATA_API_BASE: http://localhost:4123
+      RESEND_BASE_URL: http://localhost:4124
+      RESEND_API_KEY: re_test_local_bootstrap
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+      - name: Build an isolated, hash-verified candidate without the issue-41 overlay
+        run: |
+          node scripts/agents/schema-bootstrap-candidate.mjs "$RUNNER_TEMP/schema-bootstrap"
+          mkdir -p "$RUNNER_TEMP/schema-proof"
+          cp "$RUNNER_TEMP/schema-bootstrap/candidate.json" "$RUNNER_TEMP/schema-proof/"
+      - name: Replay against a fresh local Supabase, never a linked remote project
+        id: replay
+        run: |
+          cd "$RUNNER_TEMP/schema-bootstrap"
+          supabase start --help >/dev/null
+          if supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor >"$RUNNER_TEMP/schema-bootstrap-start.log" 2>&1; then
+            echo '{"replay":"PASS","canonicalApproved":false,"environmentParity":"NOT_PROVEN"}' >"$RUNNER_TEMP/schema-proof/replay-status.json"
+          else
+            echo '{"replay":"FAIL","canonicalApproved":false,"environmentParity":"NOT_PROVEN"}' >"$RUNNER_TEMP/schema-proof/replay-status.json"
+            grep -E 'ERROR|failed|Applying migration|Stopping containers' "$RUNNER_TEMP/schema-bootstrap-start.log" >"$RUNNER_TEMP/schema-proof/replay-errors.log" || true
+            cat "$RUNNER_TEMP/schema-proof/replay-errors.log"
+            exit 1
+          fi
+      - name: Capture the existing seven-surface and ACL evidence contracts
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import { PUBLIC_SCHEMA_METADATA_SQL, ACL_METADATA_SQL } from './scripts/agents/schema-truth-evidence.mjs';
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/schema-metadata.sql`, PUBLIC_SCHEMA_METADATA_SQL);
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/schema-acl.sql`, ACL_METADATA_SQL);
+          NODE
+          docker exec -i "supabase_db_${LOCAL_PROJECT_ID}" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 <"$RUNNER_TEMP/schema-metadata.sql" >"$RUNNER_TEMP/schema-proof/metadata.json"
+          docker exec -i "supabase_db_${LOCAL_PROJECT_ID}" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 <"$RUNNER_TEMP/schema-acl.sql" >"$RUNNER_TEMP/schema-proof/acl.json"
+      - name: Verify current dependencies and reject future candidate contamination
+        run: |
+          docker exec -i "supabase_db_${LOCAL_PROJECT_ID}" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 >"$RUNNER_TEMP/schema-proof/assertions.json" <<'SQL'
+          SELECT json_build_object(
+            'booking_addons_birth_present', to_regclass('public.booking_addons') IS NOT NULL,
+            'tour_orders_present', to_regclass('public.tour_orders') IS NOT NULL,
+            'staff_assignment_present', to_regclass('public.trip_departure_staff') IS NOT NULL,
+            'paid_amount_present', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tour_orders' AND column_name='paid_amount'),
+            'expiry_rpc_present', to_regprocedure('public.expire_tour_order(uuid,uuid,text)') IS NOT NULL,
+            'future_issue_41_fields_absent', NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tour_orders' AND column_name IN ('deposit_mode_snapshot','upfront_required_amount','balance_due','balance_due_at','balance_due_hours_snapshot','balance_collection_mode_snapshot','cancellation_policy_snapshot','refunded_amount'))
+          );
+          SQL
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          const result = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/schema-proof/assertions.json`, 'utf8'));
+          const failed = Object.entries(result).filter(([, value]) => value !== true).map(([key]) => key);
+          if (failed.length) throw new Error(`BOOTSTRAP_CANDIDATE_ASSERTION_FAILED: ${failed.join(', ')}`);
+          console.log('BOOTSTRAP_CANDIDATE_GREEN: local replay and dependency probes only; canonical adoption and TEST/Production parity NOT_PROVEN.');
+          NODE
+      - name: Export only the disposable local TEST credentials
+        run: |
+          cd "$RUNNER_TEMP/schema-bootstrap"
+          supabase status -o env >"$RUNNER_TEMP/schema-bootstrap-local.env"
+          python - <<'PYCODE'
+          import os, shlex
+          from pathlib import Path
+          from urllib.parse import urlparse
+          values = {}
+          for line in Path(os.environ['RUNNER_TEMP'], 'schema-bootstrap-local.env').read_text().splitlines():
+              if '=' in line:
+                  key, raw = line.split('=', 1)
+                  parts = shlex.split(raw)
+                  values[key] = parts[0] if parts else ''
+          mapping = {'API_URL': 'TEST_SUPABASE_URL', 'ANON_KEY': 'TEST_SUPABASE_ANON_KEY',
+                     'SERVICE_ROLE_KEY': 'TEST_SUPABASE_SERVICE_ROLE_KEY'}
+          if any(not values.get(key) for key in mapping):
+              raise SystemExit('Missing disposable TEST credentials')
+          if urlparse(values['API_URL']).hostname not in ('127.0.0.1', 'localhost'):
+              raise SystemExit('Refusing a non-local TEST target')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              for source, target in mapping.items():
+                  if source != 'API_URL':
+                      print('::add-mask::' + values[source])
+                  output.write(target + '=' + values[source] + '\n')
+          PYCODE
+      - name: Install the exact application dependency tree
+        run: npm ci
+      - name: Prove current Product integration on the clean candidate, without issue-41
+        run: npm run test:integration
+      - name: Prove current UI acceptance on the same disposable candidate
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+      - name: Preserve metadata-only evidence even when replay fails
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-bootstrap-${{ env.EXPECTED_HEAD }}
+          path: ${{ runner.temp }}/schema-proof/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Destroy only this disposable local Supabase stack
+        if: ${{ always() }}
+        run: |
+          if [ -f "$RUNNER_TEMP/schema-bootstrap/supabase/config.toml" ]; then
+            cd "$RUNNER_TEMP/schema-bootstrap"
+            supabase stop --no-backup
+          fi
