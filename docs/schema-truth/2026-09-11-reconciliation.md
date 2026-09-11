@@ -36,6 +36,22 @@ local-isolated/shared TEST pipeline changes. This is a work-governance reproduci
 Product #298/#362; canonical adoption and remote reconciliation remain separately reviewed Product
 acceptance gates. The workflow publishes metadata and content digests, never application rows or credentials.
 
+### Two-phase bootstrap acceptance
+
+Installing or editing only the bounded governance guard cannot depend on Product fixes that have not yet
+merged. The workflow therefore classifies the exact diff with `schema-bootstrap-policy.mjs`:
+
+- if every changed file belongs to the explicit governance-install allowlist, the run MUST complete clean
+  DB replay, dependency/#41-absence probes, schema/ACL evidence, artifact upload and cleanup. It writes an
+  explicit `GOVERNANCE_GUARD_INSTALL_ONLY` result and **does not claim Product acceptance**;
+- any migration, historical compatibility SQL, seed/profile helper, Product fixture, or any future path
+  outside that allowlist fails closed to **full Product integration + UI/E2E** on the same disposable DB;
+- an empty or malformed changed-file inventory also requires full Product acceptance rather than silently
+  receiving the lighter path.
+
+This is a bootstrap sequencing rule, not a permanent test waiver. The Product #362 repair is expected to
+trigger the second path after the guard is on main.
+
 ## Fresh live observations, not inherited issue text
 
 Read-only catalog queries against pinned TEST `nmwhwngojosmagjuvxol` at

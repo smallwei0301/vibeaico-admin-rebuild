@@ -7,9 +7,11 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/local-migrations/historical-integration-baseline/**'
       - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/agents/schema-bootstrap-policy.mjs'
       - 'scripts/test/seed.mjs'
       - 'scripts/test/tour-seed-profile.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/schema-bootstrap-policy.test.ts'
       - 'tests/unit/tour-seed-profile.test.ts'
       - 'tests/integration/api/guide-action-inbox.43.test.ts'
       - 'tests/integration/api/public-shop.46.test.ts'
@@ -20,9 +22,11 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/local-migrations/historical-integration-baseline/**'
       - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/agents/schema-bootstrap-policy.mjs'
       - 'scripts/test/seed.mjs'
       - 'scripts/test/tour-seed-profile.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/schema-bootstrap-policy.test.ts'
       - 'tests/unit/tour-seed-profile.test.ts'
       - 'tests/integration/api/guide-action-inbox.43.test.ts'
       - 'tests/integration/api/public-shop.46.test.ts'
@@ -112,7 +116,36 @@ jobs:
           if (failed.length) throw new Error(`BOOTSTRAP_CANDIDATE_ASSERTION_FAILED: ${failed.join(', ')}`);
           console.log('BOOTSTRAP_CANDIDATE_GREEN: local replay and dependency probes only; canonical adoption and TEST/Production parity NOT_PROVEN.');
           NODE
+      - name: Classify whether this exact diff requires full Product acceptance
+        id: acceptance
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${BASE_SHA}" =~ ^[0-9a-f]{40}$ ]] || [[ "${BASE_SHA}" =~ ^0+$ ]]; then
+            echo "::error::Cannot resolve a trustworthy base SHA for schema-bootstrap acceptance classification."
+            exit 1
+          fi
+          git diff --name-only "${BASE_SHA}" "${EXPECTED_HEAD}" | sed '/^$/d' >"$RUNNER_TEMP/schema-bootstrap-changed-files.txt"
+          node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import { classifySchemaBootstrapAcceptance } from './scripts/agents/schema-bootstrap-policy.mjs';
+          const file = `${process.env.RUNNER_TEMP}/schema-bootstrap-changed-files.txt`;
+          const raw = fs.readFileSync(file, 'utf8');
+          const changedFiles = raw.split('\n').map((value) => value.trim()).filter(Boolean);
+          const result = classifySchemaBootstrapAcceptance(changedFiles);
+          const payload = { ...result, changedFiles };
+          fs.writeFileSync(`${process.env.RUNNER_TEMP}/schema-proof/product-acceptance-policy.json`, JSON.stringify(payload, null, 2) + '\n');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `product_acceptance_required=${result.productAcceptanceRequired ? 'true' : 'false'}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `reason=${result.reason}\n`);
+          console.log(JSON.stringify(payload));
+          NODE
+      - name: Record governance-only bootstrap installation boundary
+        if: ${{ steps.acceptance.outputs.product_acceptance_required != 'true' }}
+        run: |
+          echo "PRODUCT_ACCEPTANCE_NOT_RUN: ${{ steps.acceptance.outputs.reason }}. Replay/probes are the acceptance for this governance guard install; no Product pass is claimed."
       - name: Export only the disposable local TEST credentials
+        if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
         run: |
           cd "$RUNNER_TEMP/schema-bootstrap"
           supabase status -o env >"$RUNNER_TEMP/schema-bootstrap-local.env"
@@ -139,10 +172,13 @@ jobs:
                   output.write(target + '=' + values[source] + '\n')
           PYCODE
       - name: Install the exact application dependency tree
+        if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
         run: npm ci
       - name: Prove current Product integration on the clean candidate, without issue-41
+        if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
         run: npm run test:integration
       - name: Prove current UI acceptance on the same disposable candidate
+        if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
         run: npx playwright install --with-deps chromium && npm run test:e2e
       - name: Preserve metadata-only evidence even when replay fails
         if: ${{ always() }}
