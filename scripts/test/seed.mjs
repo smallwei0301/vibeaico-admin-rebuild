@@ -21,7 +21,7 @@
 // 清楚的提示訊息。
 
 import { assertSafeTestUrl, createTestAdminClient, loadTestEnv } from './_supabase-admin.mjs';
-import { readTourSeedFields } from './tour-seed-profile.mjs';
+import { readTourSeedFields, readLegacyPlanPriceColumn, legacyPlanPriceFields } from './tour-seed-profile.mjs';
 
 // ---- id 常數：必須與 tests/fixtures.ts 逐一對應（見檔頭說明）----
 const SHOP_A = {
@@ -162,7 +162,8 @@ export async function runSeed(admin) {
   // compatibility explicitly; partial schemas and all unrelated errors remain fatal.
   const tourSeed = await readTourSeedFields(admin, formationDeadlineAt,
     process.env.TEST_TOUR_SEED_PROFILE ?? 'OBSERVE');
-  console.log(`[seed] tour schema profile: ${tourSeed.profile}`);
+  const hasLegacyPlanPrice = await readLegacyPlanPriceColumn(admin);
+  console.log(`[seed] tour schema profile: ${tourSeed.profile}; legacy price column: ${hasLegacyPlanPrice}`);
 
   // ---- 1. Auth users（通常不受 Phase 1 影響，auth.users 是 Supabase 內建表）----
   const ownerAId = await ensureAuthUser(admin, SHOP_A.owner.email, SHOP_A.owner.password);
@@ -412,9 +413,10 @@ export async function runSeed(admin) {
         trip_id: TRIP_A.id,
         slug: 'standard-test-plan',
         name: '標準團（測試）',
-        // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
-        // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
+        // base_price 是主線價格；歷史相容庫若仍有必填舊價格欄位，明確填入相同值。
+        // 不依賴未合併 #41 的觸發器，也不向已移除舊欄位的 schema 寫入它。
         base_price: 3000,
+        ...legacyPlanPriceFields(3000, hasLegacyPlanPrice),
         price_type: 'PER_PERSON',
         max_participants: 10,
         ...tourSeed.plan,
@@ -426,6 +428,7 @@ export async function runSeed(admin) {
         slug: 'private-test-plan',
         name: '包團（測試）',
         base_price: 5000,
+        ...legacyPlanPriceFields(5000, hasLegacyPlanPrice),
         price_type: 'PER_PERSON',
         max_participants: 10,
         ...tourSeed.plan,

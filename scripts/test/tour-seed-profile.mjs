@@ -43,3 +43,17 @@ export async function readTourSeedFields(admin, deadline, expected = 'OBSERVE') 
     },
   };
 }
+
+// Historical compatibility schema still has this required column. A newer schema may
+// remove it; fill it only when the exact column is observed, never via a #41 trigger.
+export async function readLegacyPlanPriceColumn(admin) {
+  return columnPresent(admin, 'trip_plans', 'price_per_person');
+}
+
+export function legacyPlanPriceFields(basePrice, hasLegacyColumn) {
+  if (typeof basePrice !== 'number' || !Number.isFinite(basePrice) || basePrice < 0
+      || typeof hasLegacyColumn !== 'boolean') {
+    throw new Error('TOUR_SEED_PRICE_INVALID');
+  }
+  return hasLegacyColumn ? { price_per_person: basePrice } : {};
+}

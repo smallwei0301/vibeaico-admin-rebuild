@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { readTourSeedFields } from '../../scripts/test/tour-seed-profile.mjs';
+import { readTourSeedFields, readLegacyPlanPriceColumn, legacyPlanPriceFields } from '../../scripts/test/tour-seed-profile.mjs';
 
 const deadline = '2026-09-12T00:00:00Z';
 function client(present: boolean[], failure?: { code: string; message: string }, rest = false) {
@@ -57,5 +57,32 @@ describe('named #41 fixture fields never become implicit main schema', () => {
   });
   it('rejects an invalid candidate deadline', async () => {
     await assert.rejects(readTourSeedFields(client([]), 'not-a-date'), /INVALID/);
+  });
+});
+
+describe('legacy required price is explicit fixture compatibility', () => {
+  it('observes the named price column without reading rows', async () => {
+    assert.equal(await readLegacyPlanPriceColumn(client([true])), true);
+    assert.equal(await readLegacyPlanPriceColumn(client([false])), false);
+  });
+  it('does not hide a different missing price column', async () => {
+    const error = { code: '42703', message: 'column trip_plans.base_price does not exist' };
+    await assert.rejects(readLegacyPlanPriceColumn(client([], error)), (actual: unknown) => actual === error);
+  });
+  it('copies each actual fixture price, not a single shared default', () => {
+    assert.deepEqual(legacyPlanPriceFields(3000, true), { price_per_person: 3000 });
+    assert.deepEqual(legacyPlanPriceFields(5000, true), { price_per_person: 5000 });
+    assert.deepEqual(legacyPlanPriceFields(0, true), { price_per_person: 0 });
+  });
+  it('does not write a legacy column once it has been removed', () => {
+    assert.deepEqual(legacyPlanPriceFields(3000, false), {});
+  });
+  for (const price of [NaN, Infinity, -1, '3000', null]) {
+    it(`rejects invalid source price ${String(price)}`, () => {
+      assert.throws(() => legacyPlanPriceFields(price, true), /PRICE_INVALID/);
+    });
+  }
+  it('requires an explicit boolean presence result', () => {
+    assert.throws(() => legacyPlanPriceFields(3000, 'yes'), /PRICE_INVALID/);
   });
 });
