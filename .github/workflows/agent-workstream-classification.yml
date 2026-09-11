@@ -1,0 +1,171 @@
+name: agent-workstream-classification
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+  statuses: write
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted workstream policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/agents/astra-review-policy.mjs
+            scripts/agents/agent-wip-policy.mjs
+            scripts/agents/model-routing.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Enforce one workstream on every new PR
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const policy = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/astra-review-policy.mjs',
+            )).href);
+
+            const { owner, repo } = context.repo;
+            const pullNumber = context.payload.pull_request.number;
+            const { data: current } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pullNumber,
+            });
+
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha: current.head.sha,
+              state: 'pending',
+              context: 'Workstream Classification',
+              description: 'Checking MODEL_GOVERNANCE vs PRODUCT_MAINLINE',
+              target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pullNumber,
+              per_page: 100,
+            });
+            if (files.length !== current.changed_files) {
+              throw new Error(`Incomplete changed-file inventory: loaded ${files.length}/${current.changed_files}`);
+            }
+            const changedFiles = [...new Set(
+              files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)),
+            )];
+
+            const result = policy.classifyWorkstream({
+              body: current.body ?? '',
+              changedFiles,
+              createdAt: current.created_at,
+            });
+            const allowed = new Set(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
+            const valid = allowed.has(result.workstream) && result.errors.length === 0;
+            // Invalid or unsafe MODEL_GOVERNANCE declarations fail safe to Product mainline.
+            const effectiveWorkstream = valid && result.workstream === 'MODEL_GOVERNANCE'
+              ? 'MODEL_GOVERNANCE'
+              : 'PRODUCT_MAINLINE';
+
+            const managedLabels = {
+              'workstream:model-governance': {
+                color: '6F42C1',
+                description: 'Pure model/Agent/work/engineering governance.',
+              },
+              'workstream:product-mainline': {
+                color: '0366D6',
+                description: 'Product UI/API/runtime/schema/payment/LINE/provider/deployment mainline work.',
+              },
+              'governance:workstream-incomplete': {
+                color: 'D93F0B',
+                description: 'PR workstream is missing, invalid, or unsafe; classification fails closed.',
+              },
+            };
+
+            for (const [name, metadata] of Object.entries(managedLabels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: metadata.color,
+                  description: metadata.description,
+                });
+              }
+            }
+
+            const managedNames = new Set(Object.keys(managedLabels));
+            const existing = (current.labels ?? [])
+              .map((label) => typeof label === 'string' ? label : label.name)
+              .filter(Boolean)
+              .filter((name) => !managedNames.has(name));
+            const labels = [
+              ...existing,
+              effectiveWorkstream === 'MODEL_GOVERNANCE'
+                ? 'workstream:model-governance'
+                : 'workstream:product-mainline',
+            ];
+            if (!valid) labels.push('governance:workstream-incomplete');
+
+            await github.rest.issues.setLabels({
+              owner,
+              repo,
+              issue_number: pullNumber,
+              labels: [...new Set(labels)],
+            });
+
+            const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+            if (
+              fresh.head.sha !== current.head.sha ||
+              fresh.body !== current.body ||
+              fresh.state !== current.state ||
+              fresh.draft !== current.draft
+            ) {
+              throw new Error('PR changed during workstream classification; wait for the current event');
+            }
+
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo,
+              sha: current.head.sha,
+              state: valid ? 'success' : 'failure',
+              context: 'Workstream Classification',
+              description: valid
+                ? `Classified as ${effectiveWorkstream}`
+                : 'Missing, invalid, or unsafe WORKSTREAM; see workflow summary',
+              target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            });
+
+            await core.summary
+              .addHeading('Workstream Classification')
+              .addTable([
+                [{ data: 'Field', header: true }, { data: 'Result', header: true }],
+                ['PR', `#${pullNumber}`],
+                ['Draft', String(current.draft)],
+                ['Declared workstream', result.workstream],
+                ['Effective workstream', effectiveWorkstream],
+                ['Changed files', String(changedFiles.length)],
+                ['Validation', valid ? 'PASS' : 'FAIL'],
+                ['Errors', result.errors.join('; ') || 'none'],
+              ])
+              .write();
+
+            if (!valid) {
+              core.setFailed(result.errors.join('; ') || 'WORKSTREAM is missing or invalid');
+            }
