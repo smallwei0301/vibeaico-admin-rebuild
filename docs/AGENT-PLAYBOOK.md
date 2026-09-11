@@ -66,7 +66,8 @@
 | PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 | PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
 | PB-033 | 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端 | 把「這是安全修正」當成可以少一道查證。收權與加權在風險結構上對稱——兩者都可能讓線上功能當場停止，差別只在失敗方向。動線上資料庫的權限前，必須先完成呼叫端清查（全 repo grep 含測試 → client 建構函式 → 該 client 的角色 → 其他 SQL 函式內部呼叫）；migration 尾端的自我驗證要雙向，也檢查 service_role 有沒有被誤撤。 | 本檔 PB-028、PB-033 |
-| PB-034 | 用 CI 當規則查詢器：靠被退四次湊出正確的 PR 中繼資料 | 四次全是中繼資料填錯、零程式碼問題，而四條規則都明文寫在 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 裡。欄位之間有相依（`TEST_PROFILE`→`FINAL_CANONICAL_REQUIRED`；`AGENT_LANE`→`ACTIVE_CANDIDATE` 與能否派工 TEST），不能逐欄獨立猜。開 PR 前先讀那兩支腳本。 | `scripts/agents/dual-terra-wip-policy.mjs`；`scripts/ci/local-isolated-test-policy.mjs` |
+| PB-034 | 用 CI 當規則查詢器，而 repo 早就有本機檢查器 | #352 被退四次、#361 又兩次，全是中繼資料錯、零程式碼問題。**repo 本來就有 `scripts/agents/agent-wip-preflight.mjs`**，開 PR 前跑它即可，而且比 CI 守門更嚴（它會擋下守門放行的 `DELIVERY_UNIT_TYPE: PRODUCT`）。欄位錯常是 **lane 選錯的症狀**：沒有使用者可見產出的 PR 不該佔 Product lane。 | `scripts/agents/agent-wip-preflight.mjs` |
+| PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 
 ## 事件紀錄
 
@@ -704,7 +705,15 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
      （通常是 `service_role`）有沒有被誤撤」。只驗前者的話，「連 service_role 一起撤掉」這種
      會弄壞正式站的錯誤會安靜通過。
   4. 同時提供還原指令給 Owner，並說明「repo 之外的呼叫端我無法證明不存在」這個界線。
+  5. **同族（2026-09-11 同一輪再次發生）：用會寫入的指令去做只需要讀的事。**
+     為了找 TEST 重建工具而跑了 `git checkout -q origin/main -- .`——結尾那個 `.` 會把
+     整個工作區覆蓋掉。當時分支上是 #352 的未合併成果，於是產生一份「看起來像工作進度」
+     的未提交變更，內容其實是**把 #352 的修正全部移除**；若照 stop hook 的提示 commit 下去，
+     等於撤銷整支 PR。只想讀檔案時一律用 `git show <ref>:<path>`，不要用 `git checkout`。
+     這與本條主體同因：為了省一步，選了一個會改變狀態的動作去達成只需要觀察的目的。
 - 驗證：第二批五支撤權前後皆記錄 `has_function_privilege` 與 `proacl`；雙向自我驗證未觸發。
+  工作區污染於 commit 前查出方向（diff 顯示為移除 `reorderProducts` 接線），以
+  `git reset --hard HEAD` 丟棄，並確認被丟掉的兩份 docs 與 `origin/main` 逐位元組相同。
 - 狀態：已防止
 - 相關教訓：PB-028。
 
@@ -728,18 +737,105 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   共用 TEST 的派工。無程式碼或資料受影響。
 - 修正：讀 `dual-terra-wip-policy.mjs` 與 `local-isolated-test-policy.mjs` 的實際判定式，
   依規則一次補齊。
+- 2026-09-11 同一輪重演（PR #361），以及一個**更好的預防**：
+  寫完本條之後，我在同一個 session 開 #361，又被退了兩次中繼資料錯誤。
+  查規則時才發現 repo **本來就有 `scripts/agents/agent-wip-preflight.mjs`**——一支可以在
+  開 PR 前本機執行的檢查器：
+  ```bash
+  node scripts/agents/agent-wip-preflight.mjs \
+    --body <pr-body.md> --changed-files <files.txt> --number <pr>
+  # → WIP_PREFLIGHT_PASS issue=362 lane=GOVERNANCE
+  ```
+  也就是說本條原本的預防（「先讀那兩支腳本」）**比實際可用的工具還弱**——要人用眼睛
+  模擬一支可以直接跑的程式。這是本條會重演的真正原因。
+  實跑後它一次列出兩個 CI 當時**還沒報**的錯（`DELIVERY_UNIT_TYPE must be SLICE,
+  STANDALONE, EPIC, or GOVERNANCE`、`An active Product delivery lane must point to a
+  closable SLICE or STANDALONE Issue`），而且更嚴格：#352 填 `DELIVERY_UNIT_TYPE: PRODUCT`
+  時 CI 的守門並沒有擋，preflight 會擋。
+  那兩個錯也揭露了真正的問題不在欄位而在 **lane 選錯**：#361 改的是測試種子與 Playbook，
+  沒有任何使用者可見產出，宣告成 `TERRA_BUILD`／`SLICE` 會強制
+  `COUNT_IN_DELIVERY_OUTCOME=true`——把一支沒有交付的 PR 記成一個交付單位。改為
+  `GOVERNANCE` lane 後 preflight 一次通過。
 - 預防：
-  1. **開 Agent PR 前，先讀會驗這份內文的兩支腳本**（`scripts/agents/dual-terra-wip-policy.mjs`、
-     `scripts/ci/local-isolated-test-policy.mjs`），不要從別的 PR 複製欄位後逐項猜。
+  0. **開 Agent PR 前先跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**
+     這是唯一真正有效的一條；下面幾條是它擋不到時的備援。不要拿 CI 當規則查詢器。
+  1. 它報錯時，回頭讀會驗這份內文的腳本（`scripts/agents/dual-terra-wip-policy.mjs`、
+     `scripts/agents/agent-wip-policy.mjs`、`scripts/ci/local-isolated-test-policy.mjs`），
+     不要從別的 PR 複製欄位後逐項猜。
   2. 欄位之間有**互相依賴**，不能逐欄獨立填：`TEST_PROFILE` 決定 `FINAL_CANONICAL_REQUIRED`；
      `AGENT_LANE` 決定 `ACTIVE_CANDIDATE` 與能不能派工共用 TEST。改一欄要回頭檢查相依欄。
   3. 有列舉值的欄位（`CLOSURE_SWEEP_TARGET`、`SELECTION_REASON`、`AGENT_LANE`、`LANE_STATE`）
      一律回腳本確認合法值集合，不要憑語意自創。
   4. 同族陷阱：PB-027 是「拿代理指標代替事實」，本條是「拿試誤代替讀規格」。兩者都是
      **用便宜的動作取代一次應該做的查證**，而在有守門的專案裡，試誤的成本會由 CI 與 Owner 承擔。
-- 驗證：第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
-  整合測試實際執行並通過。
+  5. 欄位錯常常是 **lane 選錯的症狀**，不是獨立的填寫失誤。改欄位之前先問：
+     這支 PR 真的是一個交付單位嗎？沒有使用者可見產出的，就不該佔 Product lane。
+- 驗證：#352 第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
+  整合測試實際執行並通過。#361 改用 preflight 後，本機一次 `WIP_PREFLIGHT_PASS` 才推。
+- 狀態：監看中——預防 0 於 2026-09-11 才建立，尚未累積足夠的執行次數證明它真的擋得住。
+
+### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
+
+- 首次／最近：2026-09-11／2026-09-11
+- 發生次數：1
+- Issue／PR／CI：#352；canonical TEST `nmwhwngojosmagjuvxol`
+- 分類：TEST DB
+- 事件：canonical TEST 的 `tour_orders.deposit_mode_snapshot` 是 `NOT NULL` 且無 default，
+  而 `main` 的 `0087` 裡 `create_tour_order()` 的 `insert` **欄位清單沒有它**。我據此向 Owner
+  斷定：「就算把函式簽章修好，下一個錯誤會是 23502」，並以此為前提提出三個選項、取得
+  同意要新寫一支 `0096` 去補寫該欄。
+  **那個前提是錯的。** 該表上早就有 `t_tour_orders_payment_policy_snapshot`——一個
+  `BEFORE INSERT` trigger，body 第一行就是 `new.deposit_mode_snapshot := v_plan.deposit_mode;`，
+  連 `upfront_required_amount` 都一併算好。`BEFORE INSERT` 在 `NOT NULL` 檢查**之前**執行，
+  所以那筆 insert 從來就不會失敗。`0096` 完全不需要，而且寫下去會與既有 trigger 重複。
+- 證據：
+  ```sql
+  -- 我當時只查了這個，就下了結論
+  select column_name, is_nullable, column_default from information_schema.columns
+   where table_name='tour_orders' and column_name='deposit_mode_snapshot';
+  -- → NOT NULL, default null
+
+  -- 沒查這個（後來為了確認 drop 相依才順手查到）
+  select t.tgname, p.prosrc from pg_trigger t
+    join pg_class c on c.oid=t.tgrelid join pg_proc p on p.oid=t.tgfoid
+   where c.relname='tour_orders' and not t.tgisinternal;
+  -- → t_tour_orders_payment_policy_snapshot（BEFORE INSERT）已經在填那一欄
+  ```
+  實測收尾：把函式簽章對齊 `0087` 之後，`tour-orders.10` 直接由 PGRST202 轉為通過，
+  **沒有出現任何 23502**。
+- 根因：拿**靜態 schema 的一部分**去推斷**執行期行為**。一筆 insert 會不會成功，參與者不只
+  欄位定義：`BEFORE INSERT` trigger、column default、generated column、rule 都會插手，
+  而其中 trigger **可以在約束檢查之前改寫 NEW**。只看欄位就宣稱「必定違反 NOT NULL」，
+  等於把「我看到的那一半」當成「全部」。
+- 影響：向 Owner 提出了一個建立在錯誤前提上的方案並取得同意。若照做，會多一支與既有
+  trigger 重複的 migration 進入 `main`——兩處各自寫同一欄，日後只改一邊就會產生分歧，
+  而這種分歧在測試全綠的情況下看不出來。實際損害為零，因為在動工前恰好查到 trigger，
+  **但那是順手查到的，不是流程保證的**。
+- 修正：改為只對齊函式簽章（`drop` 舊多載 + 套用 `0087`／`0088`），保留 overlay 的全部
+  6 個 trigger 不動，並在 migration 尾端加斷言：該 trigger 必須存在，否則 `0087` 的 insert
+  會違反 NOT NULL。實跑四個測試檔 54 條全綠。
+- 預防：
+  1. **宣稱任何寫入會成功或失敗之前，先列出該表上所有參與寫入的物件**，不是只看欄位：
+     ```sql
+     select t.tgname,
+            case t.tgtype::int & 2 when 2 then 'BEFORE' else 'AFTER' end as timing,
+            p.proname
+       from pg_trigger t join pg_class c on c.oid = t.tgrelid
+       join pg_proc p on p.oid = t.tgfoid
+      where c.relname = '<table>' and not t.tgisinternal;
+     ```
+  2. `BEFORE INSERT`／`BEFORE UPDATE` trigger **會在約束檢查之前改寫 NEW**。因此
+     「欄位是 NOT NULL 且 insert 沒列它」**不足以**推出「一定失敗」；反過來
+     「欄位有 default」也不足以推出「值一定是 default」。
+  3. 同族判準：只要結論的形式是「某段程式碼在某個資料庫上會怎樣」，就必須有**在那個
+     資料庫上執行過**的證據，或至少列完所有參與者。本例只要多跑一句 `pg_trigger` 查詢
+     就不會發生。
+  4. 這條與 PB-032 是同一種病的不同器官：PB-032 是拿 `conclusion=success` 當執行證據，
+     本條是拿欄位定義當執行證據。**兩者都是用一個看得到的局部，代替一次沒做的查證。**
+- 驗證：對齊簽章後實跑 `tour-orders.10`、`tours.10`、`plan-advanced-settings.10`、
+  `platform-impersonation.25` 四檔共 54 條，全綠，無 23502。
 - 狀態：已防止
+- 相關教訓：PB-026、PB-027、PB-032、PB-033。
 
 ### 六問開工／Review Checklist
 
