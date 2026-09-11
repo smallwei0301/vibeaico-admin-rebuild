@@ -209,10 +209,20 @@ export function classifyWorkstream({ body = '', changedFiles = null, createdAt =
     if (readField(body, 'FINAL_RISK_POLICY').trim().toUpperCase() !== governance.finalRiskPolicy) {
       errors.push(`MODEL_GOVERNANCE requires FINAL_RISK_POLICY: ${governance.finalRiskPolicy}`);
     }
+    // Exact guard files must not grant access to sibling files or whole folders.
+    const scopeFiles = governance.scopeFiles === undefined ? [] : governance.scopeFiles;
+    const validScopeFiles = Array.isArray(scopeFiles) && scopeFiles.every((path) =>
+      typeof path === 'string' && path.length > 0 && path === path.trim() &&
+      !['\\', '*', '?', '[', ']'].some((char) => path.includes(char)) &&
+      path.split('/').every((part) => part && part !== '.' && part !== '..')
+    ) && new Set(scopeFiles).size === scopeFiles.length;
+    if (!validScopeFiles) errors.push('MODEL_GOVERNANCE scopeFiles must be unique exact relative file paths');
     // Owner #360: governance model identity is recorded, not an admission gate.
     // Do not infer actual from a role or require an execution receipt here.
     if (Array.isArray(changedFiles) && changedFiles.length) {
-      const outside = changedFiles.filter((path) => !pathWithin(path, governance.scopePrefixes));
+      const outside = changedFiles.filter((path) =>
+        !pathWithin(path, governance.scopePrefixes) && !(validScopeFiles && scopeFiles.includes(path))
+      );
       if (outside.length) {
         errors.push(`MODEL_GOVERNANCE contains Product/non-governance path(s): ${outside.join(', ')}`);
       }
