@@ -200,6 +200,14 @@ const MSG = {
     PAID_OFFLINE: '現場已付',
     REFUNDED: '已退款',
   } as Record<string, string>,
+  /* --- 旅遊訂單查詢（issue #373：GUIDE 的 ORDER 組，查 tour_orders）--- */
+  tourOrderTitle: '您最近的旅遊訂單：',
+  tourOrderEmpty: '您目前沒有旅遊訂單紀錄，歡迎輸入「行程」看看目前開放報名的行程！',
+  /**
+   * `tour_order_status` 列舉（`PENDING`/`CONFIRMED`/`COMPLETED`/`CANCELLED`，
+   * `0087`）與 `product_orders.status` 剛好同一組標籤，所以直接複用
+   * `orderStatus`，不另立一份重複的對照表（見下方 `replyTourOrders`）。
+   */
   memberTitle: '您的會員資訊：',
   memberPoints: (n: number) => `・目前點數：${n} 點`,
   memberLevel: (name: string) => `・會員等級：${name}`,
@@ -231,16 +239,14 @@ const MSG = {
    *
    * ⚠️ 這幾句的壽命由對應 Issue 決定，功能落地後**必須連同文案一起刪掉**，
    * 不要留著當備用：留著的話，下一個人讀到這組常數會以為那些功能仍未建置。
-     *   notReadyOrder → issue #8 的旅遊訂單段（`tour_orders` 表尚未建立）。
-     *     ⚠️ 只剩 GUIDE 用得到：LOCAL_SHOP／CLINIC 的「訂單查詢」已改查
-     *     `product_orders`（見 `replyOrders()`），那半邊不再是準備中。
+   *
+   * （issue #373：GUIDE 的旅遊訂單那半邊已經接回 `tour_orders`，`notReadyOrder`
+   * 因此已無任何呼叫端，整條移除——不留一個沒人走的佔位分支。）
    */
   notReadyClinicQueue:
     '「看診進度」的即時查詢還在準備中，目前無法自動查詢。\n請直接留言或來電詢問目前的看診號碼，我們會盡快回覆您。',
   notReadyNotifyToggle:
     '店家通知的開關目前還不能在這裡自行設定。\n如果您不想再收到通知，直接留言告訴我們就可以，我們會為您處理。',
-  notReadyOrder:
-    '訂單查詢還在準備中，目前無法自動查詢。\n請直接留言告訴我們您的大名，我們幫您查詢。',
 } as const;
 
 /** 服務清單最多列出筆數（06 §3 內建指令 MVP） */
@@ -906,10 +912,11 @@ async function replyProducts(ctx: BuiltinCtx): Promise<boolean> {
  * 功能（列表／建單／出貨）——查得到卻不回答，是 PB-027 的第四種形狀（符號
  * 存在 ≠ 事情會發生）。本函式把那半邊接回來。
  *
- * ⚠️ GUIDE 仍維持 `notReadyOrder`：嚮導的「我的訂單」指的是行程訂單
- * （10 分冊 §6.1），而 `tour_orders` 表至今不存在（`0066`–`0068` 只建了
- * trips / trip_plans / trip_departures / trip_addons）。拿 `product_orders`
- * 去湊一份「旅遊訂單」是回答錯的東西，比誠實說準備中更糟。
+ * ⚠️ GUIDE 走 `replyTourOrders()`（見下方）：嚮導的「我的訂單」指的是行程訂單
+ * （10 分冊 §6.1）。`tour_orders` 表與 `create_tour_order`／`cancel_tour_order`
+ * 等 rpc 已在 `0087`／`0088` 進 `main`（issue #373），2026-09-11 也已依 Owner
+ * 具名授權套用至正式庫。在表建好之後仍回「準備中」，是把「查得到卻沒接」說成
+ * 「查不到」——PB-027 的第四種形狀，比誠實的佔位訊息更糟。
  *
  * ⚠️ 只查**已綁定 LINE 的顧客**自己的訂單，且一律帶 `tenant_id`。未綁定就說
  * 未綁定，不拿姓名或電話去模糊比對湊出一筆「可能是您的訂單」——那會把別人的
@@ -921,7 +928,7 @@ async function replyProducts(ctx: BuiltinCtx): Promise<boolean> {
  * 是 10 分冊 §6.1 對行程域的明文特例，不是這一層的通則。）
  */
 async function replyOrders(ctx: BuiltinCtx): Promise<boolean> {
-  if (businessTypeOf(ctx.tenant) === 'GUIDE') return replyText(ctx, MSG.notReadyOrder);
+  if (businessTypeOf(ctx.tenant) === 'GUIDE') return replyTourOrders(ctx);
 
   const customerId = await boundCustomerId(ctx);
   if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
@@ -951,6 +958,71 @@ async function replyOrders(ctx: BuiltinCtx): Promise<boolean> {
       + `｜${MSG.orderStatus[o.status] ?? o.status}／${paid}`;
   });
   return replyText(ctx, `${MSG.orderTitle}\n${lines.join('\n')}`);
+}
+
+/* -------------------------------------------------- 內建指令：旅遊訂單查詢 */
+/**
+ * 嚮導的「訂單查詢」＝行程訂單（10 分冊 §6.1）。由 `replyOrders()` 在
+ * `businessTypeOf(ctx.tenant) === 'GUIDE'` 時轉呼叫，issue #373。
+ *
+ * 這裡刻意**不**照搬已廢棄分支 `7ad9ac53`（`claude/deploy-vercel-project-nnno59`）
+ * 的 `replyTourOrders`——那個版本早於 `main` 現行的三項慣例，照搬會把它們的違例
+ * 一起搬進來：
+ *
+ *   ① 只解構 `{ data }`，完全沒處理 `error`：查詢真的失敗時 `data` 會是
+ *      `undefined`，`!data?.length` 為真，於是回 `MSG.tourOrderEmpty`——把
+ *      「查不出來」講成「你沒有訂單」，故障被說成事實。跟 `replyOrders()`
+ *      （上方 product_orders 那支）一樣：`error` 時 `console.error` 並回 `false`，
+ *      落到 ⑤ AI／⑥ 預設回覆讓真人看見，而不是替顧客編一個「查無資料」的結論。
+ *   ② 金額用 `'en-US'` 千分位（`12,345`）。`replyOrders()`／`replyProducts()`／
+ *      `replyServiceList()` 全部統一用 `'zh-TW'`。同一個 bot 在「我的訂單」與
+ *      「旅遊訂單」兩種業態下把金額格式寫得不一樣，顧客會以為背後是兩套系統。
+ *   ③ 狀態文案另立一份函式內 `Record<string, string>`（`statusText`）。
+ *      `tour_order_status`（`PENDING`/`CONFIRMED`/`COMPLETED`/`CANCELLED`，
+ *      `0087`）跟 `product_orders.status` 剛好同一組標籤，直接複用上面已有的
+ *      `MSG.orderStatus`——不在函式裡重造一份會走鐘的複本。
+ *
+ * ⚠️ 跟 `replyOrders()` 一樣，只查**已綁定 LINE 的顧客**自己的訂單，且一律帶
+ * `tenant_id`。手動建單目前不會寫 `customer_id`（後台沒有挑選顧客的介面），
+ * 所以那類訂單在這裡查不到——查不到就說查不到，不拿姓名或電話模糊比對。
+ *
+ * ⚠️ `export` 只為了測試（同檔 `isLikelyChitchat` 已有前例）：黑箱 HTTP 打不出一個
+ * 「查詢真的失敗」的 Postgres 錯誤（`tenant_id`/`customer_id` 都是 `uuid` 型別，
+ * 正常 DML 塞不進格式錯誤的值；表結構單純也沒有可利用的關聯歧義）。要驗的是
+ * 「`error` 真的發生時，`replyTourOrders` 不會把它說成『沒有訂單』」，所以改在
+ * `tests/unit/line-tour-order-query-error.373.test.ts` 用假的 `admin` client 注入
+ * `{ data: null, error }`，直接呼叫這個函式驗證。呼叫端（`replyOrders()`）與
+ * dispatch 路徑不受影響，一般流程仍然只透過 `handleEvent()` 進入。
+ */
+export async function replyTourOrders(ctx: BuiltinCtx): Promise<boolean> {
+  const customerId = await boundCustomerId(ctx);
+  if (!customerId) return replyText(ctx, MSG.myBookingsNotBound);
+
+  const { data, error } = await ctx.admin
+    .from('tour_orders')
+    .select('order_no, party_size, total_amount, status, trips(title), trip_departures(departs_on)')
+    .eq('tenant_id', ctx.tenant.id)
+    .eq('customer_id', customerId)
+    .order('created_at', { ascending: false })
+    .limit(SERVICE_LIST_LIMIT);
+
+  // ⚠️ 同上：查詢失敗不可以當成「您沒有訂單」。回 false 讓它落到 ⑤ AI／⑥ 預設
+  // 回覆（有真人看得到），並留下 log——這正是變異驗證要守住的那一行。
+  if (error) {
+    console.error('[line] replyTourOrders 查詢 tour_orders 失敗', error);
+    return false;
+  }
+  if (!data?.length) return replyText(ctx, MSG.tourOrderEmpty);
+
+  const lines = data.map((o: any) => {
+    const day = o.trip_departures?.departs_on ? ` ${o.trip_departures.departs_on}` : '';
+    // 千分位跟 replyOrders()／replyProducts()／replyServiceList() 一致用 'zh-TW'：
+    // 同一個 bot 在不同關鍵字下把金額寫成不同樣子，顧客會以為是兩套系統。
+    return `・${o.order_no}｜${o.trips?.title ?? ''}${day}｜${o.party_size} 位`
+      + `｜NT$${Number(o.total_amount).toLocaleString('zh-TW')}`
+      + `｜${MSG.orderStatus[o.status] ?? o.status}`;
+  });
+  return replyText(ctx, `${MSG.tourOrderTitle}\n${lines.join('\n')}`);
 }
 
 /* -------------------------------------------------------- 內建指令：作品 */
