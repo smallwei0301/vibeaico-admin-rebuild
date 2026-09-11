@@ -66,7 +66,7 @@
 | PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 | PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
 | PB-033 | 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端 | 把「這是安全修正」當成可以少一道查證。收權與加權在風險結構上對稱——兩者都可能讓線上功能當場停止，差別只在失敗方向。動線上資料庫的權限前，必須先完成呼叫端清查（全 repo grep 含測試 → client 建構函式 → 該 client 的角色 → 其他 SQL 函式內部呼叫）；migration 尾端的自我驗證要雙向，也檢查 service_role 有沒有被誤撤。 | 本檔 PB-028、PB-033 |
-| PB-034 | 用 CI 當規則查詢器，而 repo 早就有本機檢查器 | #352 被退四次、#361 又兩次，全是中繼資料錯、零程式碼問題。**repo 本來就有 `scripts/agents/agent-wip-preflight.mjs`**，開 PR 前跑它即可，而且比 CI 守門更嚴（它會擋下守門放行的 `DELIVERY_UNIT_TYPE: PRODUCT`）。欄位錯常是 **lane 選錯的症狀**：沒有使用者可見產出的 PR 不該佔 Product lane。 | `scripts/agents/agent-wip-preflight.mjs` |
+| PB-034 | 用 CI 當規則查詢器；以及**預防本身涵蓋不全** | #352 退四次、#361 兩次、#370 一次，全是中繼資料錯、零程式碼問題。開 PR 前跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**但 #370 證明跑了也可能不夠**：preflight 當時沒涵蓋 `local-isolated-test-policy.mjs`，於是 preflight 綠、CI 仍退。已讓 preflight 直接呼叫 CI 的同一支函式。欄位錯常是 **lane 選錯的症狀**。 | `scripts/agents/agent-wip-preflight.mjs`、`scripts/ci/local-isolated-test-policy.mjs` |
 | PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 
 ## 事件紀錄
@@ -720,8 +720,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
 - 首次／最近：2026-09-11／2026-09-11
-- 發生次數：1（單一 PR 內連續 4 次）
-- Issue／PR／CI：PR #352
+- 發生次數：3（#352 連續 4 次、#361 2 次、#370 1 次）
+- Issue／PR／CI：PR #352、#361、#370
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
   1. `FINAL_CANONICAL_REQUIRED: false` —— `TEST_PROFILE: LOCAL_ISOLATED` 強制要求 `true`
@@ -756,6 +756,34 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   沒有任何使用者可見產出，宣告成 `TERRA_BUILD`／`SLICE` 會強制
   `COUNT_IN_DELIVERY_OUTCOME=true`——把一支沒有交付的 PR 記成一個交付單位。改為
   `GOVERNANCE` lane 後 preflight 一次通過。
+- 2026-09-11 第三次發生（PR #370），而且**預防 0 這次沒擋住**：
+  #370 的 `TEST_PROFILE` 被我填成 `CANONICAL_TEST`——一個不存在的值（合法值是
+  `SOURCE_ONLY`／`LOCAL_ISOLATED`／`LOCAL_ISOLATED_CANARY`／`SHARED_CANONICAL`）。
+  我**有**依預防 0 先跑 preflight，而且它回 `WIP_PREFLIGHT_PASS`；CI 的 `classify` job
+  照樣把 PR 退了：
+
+  ```
+  [local-test-policy] TEST_PROFILE is invalid: CANONICAL_TEST
+  ```
+
+  根因是 preflight **沒有涵蓋** `scripts/ci/local-isolated-test-policy.mjs`。它呼叫
+  `agent-wip-policy` 與 `dual-terra-wip-policy`，但 `TEST_PROFILE` /
+  `FINAL_CANONICAL_REQUIRED` 由第三支驗證器管，preflight 從來沒問過它。
+
+  **這比原本的失效模式更危險**：原本是「沒跑工具」，一旦跑了就會發現；現在是
+  **跑了工具、拿到綠燈、而綠燈是不完整的**。一條「通過才推」的預防，只有在檢查器
+  真的涵蓋 CI 會擋的規則時才成立；少涵蓋一支，預防就只是看起來有效，而這件事在
+  preflight 通過時完全看不出來。
+
+  修正不是「以後記得多讀一支腳本」——那又會退回被本條否定過的、用眼睛模擬程式的做法。
+  修正是讓 preflight **直接呼叫 CI 用的同一支函式**（`decideLocalIsolatedTest`），
+  而不是在 preflight 裡複製一份合法值清單：複製一份的話兩邊日後會分歧，而分歧同樣
+  在 preflight 通過時看不出來。已在 `agent-wip-preflight.mjs` 補上，並以
+  #370 被退的那份真實 PR 內文雙向驗證（填 `CANONICAL_TEST` → 擋下；填
+  `SHARED_CANONICAL` → 通過），另加變異驗證：拿掉那一行 → 新測試 3 條轉紅。
+- 狀態：監看中。前兩次的預防都在下一輪被繞過（第一次是工具比人弱，第二次是工具涵蓋不全），
+  所以本條不宣稱「已防止」。下一次若再以中繼資料被退，先問的不是「哪個欄位錯」，而是
+  **「preflight 是不是又少涵蓋了一支 CI 驗證器」**。
 - 預防：
   0. **開 Agent PR 前先跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**
      這是唯一真正有效的一條；下面幾條是它擋不到時的備援。不要拿 CI 當規則查詢器。
