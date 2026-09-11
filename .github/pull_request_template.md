@@ -10,7 +10,7 @@ supersedes:
 
 - WORKSTREAM: MODEL_GOVERNANCE | PRODUCT_MAINLINE
 
-`MODEL_GOVERNANCE` is only for pure model/Agent/governance work: model routing, orchestration, WIP/Final Risk guard itself, governance metrics/scoreboard, PR lifecycle, governance CI/templates and their tests/docs. It is **Sol-only**: no Terra/Reserve, no Astra/Fable Final Risk.
+`MODEL_GOVERNANCE` is only for pure model/Agent/governance work: model routing policy, orchestration, WIP/Final Risk guard itself, governance metrics/scoreboard, PR lifecycle, governance CI/templates and their tests/docs. It is **model-agnostic**: no Product Terra/Reserve slots and no Astra/Fable Product Final Risk merely for pure governance scope.
 
 `PRODUCT_MAINLINE` is required for user-visible Product behavior, API/runtime, schema/migration, tenant data flow, payment/refund, LINE/provider, Product deployment, or inseparable mixed Product+governance scope. A workstream marker is never a Product-risk bypass.
 
@@ -18,10 +18,12 @@ For MODEL_GOVERNANCE use:
 
 ```text
 AGENT_LANE: GOVERNANCE
-REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol
+REQUESTED_MODEL / ACTUAL_MODEL: requested=NOT_APPLICABLE; actual=NOT_APPLICABLE
 ASTRA_RISK: NONE
 FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 ```
+
+`NOT_APPLICABLE` is a non-model parser-compatibility sentinel. Do not treat it as a model claim or model evidence.
 
 ## Summary
 
@@ -45,7 +47,7 @@ MODEL_GOVERNANCE always uses `DELIVERY_UNIT_TYPE: GOVERNANCE`, `COUNT_IN_DELIVER
 
 ## B+ Agent lane metadata
 
-<!-- Keep exact FIELD: value lines. The WIP Guard parses them. PRODUCT_MAINLINE uses B+ lanes; MODEL_GOVERNANCE uses GOVERNANCE/Sol-only. -->
+<!-- Keep exact FIELD: value lines. The WIP Guard parses them. PRODUCT_MAINLINE uses B+ lanes; MODEL_GOVERNANCE uses GOVERNANCE and does not require a named model. -->
 
 - WORK_ORIGIN: OWNER | AGENT | UNKNOWN
 - BPLUS_MODE: true | false
@@ -63,7 +65,7 @@ MODEL_GOVERNANCE always uses `DELIVERY_UNIT_TYPE: GOVERNANCE`, `COUNT_IN_DELIVER
 - RESERVE_BOUNDARY: none | <!-- mandatory for TERRA_RESERVE -->
 - WHY_NOT_CLOSER_CANDIDATE: none | <!-- mandatory for non-CLOSE_READY Terra -->
 - GOVERNANCE_SCOPE_EXCEPTION: none | OWNER:docs/decisions/<file>.md
-- REQUESTED_MODEL / ACTUAL_MODEL: <!-- MODEL_GOVERNANCE: requested=gpt-5.6-sol; actual=gpt-5.6-sol -->
+- REQUESTED_MODEL / ACTUAL_MODEL: <!-- MODEL_GOVERNANCE compatibility sentinel: requested=NOT_APPLICABLE; actual=NOT_APPLICABLE -->
 
 When `AGENT_LANE` is present, `WORK_ORIGIN` must be explicitly `AGENT` or `OWNER`. Blank/UNKNOWN is not trusted Agent metadata.
 
@@ -75,7 +77,7 @@ MODEL_GOVERNANCE must not claim TERRA_BUILD, TERRA_RESERVE, TEST_VALIDATION or P
 - ASTRA_RATIONALE: <!-- concrete classification -->
 - FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY | BY_PRODUCT_RISK_CLASSIFICATION
 
-MODEL_GOVERNANCE uses `ASTRA_RISK: NONE` and `FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY`; required source CI/regression tests and Sol final diff verification still apply.
+MODEL_GOVERNANCE uses `ASTRA_RISK: NONE` and `FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY`; required source CI/regression tests and final exact-diff verification still apply, but no specific governance model is required.
 
 PRODUCT_MAINLINE uses current `docs/MODEL-ROUTING.md` and `scripts/agents/model-routing.json`. Required Product Final Risk is not waived by this template.
 
@@ -190,7 +192,7 @@ For a Product delivery claim, re-read the live Issue body and require `DELIVERY_
 - Weighted usage / autonomous outcome: null | <!-- only when denominator >= 1 -->
 - Actual token / weekly usage data: null | <!-- never guess -->
 
-MODEL_GOVERNANCE records truthful governance evidence but does not count as shipped Product output.
+MODEL_GOVERNANCE records truthful governance evidence but does not count as shipped Product output and does not analyze which model performed the governance work.
 
 ## Safety
 
@@ -200,4 +202,4 @@ MODEL_GOVERNANCE records truthful governance evidence but does not count as ship
 - Manual Production promote / rollback: NOT_RUN unless explicitly authorized
 - Paid Supabase Preview Branch: NOT_CREATED
 - Real payment / refund / customer notification: NOT_RUN unless explicitly authorized
-- Sol verdict:
+- Product Sol verdict:
