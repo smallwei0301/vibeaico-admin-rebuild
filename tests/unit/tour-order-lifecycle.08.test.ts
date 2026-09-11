@@ -224,7 +224,12 @@ describe('逾期 cron 不再是佔位', () => {
   it('只取消 PENDING 且已過期的單，且逐筆走同交易的 rpc', () => {
     expect(cron).toMatch(/\.eq\('status', 'PENDING'\)/);
     expect(cron).toMatch(/\.lt\('hold_expires_at'/);
-    expect(cron).toContain("rpc('cancel_tour_order'");
+    // #350：這裡刻意斷言用的是**專用**的 expire_tour_order，不是通用取消。
+    // 原本這條斷言寫的是 rpc('cancel_tour_order')——它把缺陷鎖成了「正確」：
+    // cancel_tour_order 的終態守門是 status in ('CANCELLED','COMPLETED')，
+    // CONFIRMED 不在其中，於是 select 與 rpc 之間被收款的訂單會被 cron 取消。
+    expect(cron).toContain("rpc('expire_tour_order'");
+    expect(cron).not.toContain("rpc('cancel_tour_order'");
   });
 
   it('不自己推導保留期限（只認建單端寫進 hold_expires_at 的值）', () => {
