@@ -37,6 +37,11 @@ jobs:
             const issue = context.payload.issue;
             const result = policy.validateIssueProvenance(issue.body ?? '', { requireWorkstream: true });
             const isAgent = result.isAgent;
+            const validWorkstreams = new Set(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
+            const workstreamValid = validWorkstreams.has(result.workstream);
+            // Missing / invalid classification must never accidentally enter the faster governance path.
+            // It is visibly marked incomplete and fails safe to PRODUCT_MAINLINE until the body is corrected.
+            const effectiveWorkstream = workstreamValid ? result.workstream : 'PRODUCT_MAINLINE';
 
             const managedLabels = {
               'origin:agent': {
@@ -49,7 +54,7 @@ jobs:
               },
               'workstream:model-governance': {
                 color: '6F42C1',
-                description: 'Pure model/Agent/engineering governance; handled by the Sol-only governance mode.',
+                description: 'Pure model/Agent/work/engineering governance; handled by the audit-tier governance mode.',
               },
               'workstream:product-mainline': {
                 color: '0366D6',
@@ -57,7 +62,7 @@ jobs:
               },
               'governance:workstream-incomplete': {
                 color: 'D93F0B',
-                description: 'Issue is missing or has an invalid WORKSTREAM classification.',
+                description: 'Issue is missing or has an invalid WORKSTREAM classification; fails safe to Product mainline.',
               },
               'governance:provenance-incomplete': {
                 color: 'D93F0B',
@@ -89,12 +94,11 @@ jobs:
             const nextLabels = [
               ...existing,
               isAgent ? 'origin:agent' : 'origin:owner-or-unknown',
+              effectiveWorkstream === 'MODEL_GOVERNANCE'
+                ? 'workstream:model-governance'
+                : 'workstream:product-mainline',
             ];
-            if (result.workstream === 'MODEL_GOVERNANCE') nextLabels.push('workstream:model-governance');
-            if (result.workstream === 'PRODUCT_MAINLINE') nextLabels.push('workstream:product-mainline');
-            if (!['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE'].includes(result.workstream)) {
-              nextLabels.push('governance:workstream-incomplete');
-            }
+            if (!workstreamValid) nextLabels.push('governance:workstream-incomplete');
             if (isAgent && result.errors.some((error) => !error.startsWith('Issue WORKSTREAM'))) {
               nextLabels.push('governance:provenance-incomplete');
             }
@@ -112,7 +116,9 @@ jobs:
                 [{ data: 'Field', header: true }, { data: 'Result', header: true }],
                 ['Issue', `#${issue.number}`],
                 ['Origin', result.origin],
-                ['Workstream', result.workstream],
+                ['Declared workstream', result.workstream],
+                ['Effective workstream', effectiveWorkstream],
+                ['Fail-safe fallback', workstreamValid ? 'none' : 'PRODUCT_MAINLINE until corrected'],
                 ['Missing headings', result.missingHeadings.length ? result.missingHeadings.join(', ') : 'none'],
                 ['Empty or placeholder headings', result.emptyHeadings.length ? result.emptyHeadings.join(', ') : 'none'],
                 ['Validation errors', result.errors.length ? result.errors.join('; ') : 'none'],
