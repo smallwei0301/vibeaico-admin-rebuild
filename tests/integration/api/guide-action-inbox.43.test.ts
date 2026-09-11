@@ -1,9 +1,11 @@
 /**
  * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次 + #43-C 待收款預約。
  * #43-B 透過 TEST service role 建立短命測試資料，測畢清理並驗證
- * 不跨租戶；不新增 schema、狀態機或其他外部副作用。使用 service role 是因為
- * local TEST 的 #41 overlay 會要求新團次明確帶合法 formation_deadline_at，而
- * 既有公開建立端點沒有暴露這個 bounded 欄位；本測試只驗證 action inbox 讀取路徑。
+ * 不跨租戶；不新增 schema、狀態機或其他外部副作用。
+ *
+ * 這支一般 Product integration 不得把 #41 的 TEST-only overlay 當成 main 前提。
+ * `readTourSeedFields()` 只在觀察到完整 #41 相容欄位時補上合法 snapshot；
+ * canonical core 則送空物件，讓同一套讀取斷言真的能在 main schema 上執行。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -11,6 +13,7 @@ import { SHOP_A, SHOP_B, TRIP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import type { GuideActionInboxItem } from '@/lib/types';
 import { getGuideActionInboxDateWindow } from '@/lib/guide-action-inbox';
+import { readTourSeedFields } from '../../../scripts/test/tour-seed-profile.mjs';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 
@@ -115,6 +118,8 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
   it('回傳今天與明日團次的白話資料與正確 deep link', async () => {
     const { today, tomorrow } = getGuideActionInboxDateWindow(new Date(), 'Asia/Taipei');
     const createDeparture = async (departsOn: string, startTime: string) => {
+      const deadline = new Date(Date.now() + 60_000).toISOString();
+      const tourFields = await readTourSeedFields(admin, deadline, 'OBSERVE');
       const { data, error } = await admin.from('trip_departures').insert({
         tenant_id: SHOP_A.id,
         trip_id: TRIP_A.id,
@@ -123,7 +128,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
         start_time: startTime,
         capacity: 10,
         status: 'OPEN',
-        formation_deadline_at: new Date(Date.now() + 60_000).toISOString(),
+        ...tourFields.departure,
       }).select('id').single();
       expect(error).toBeNull();
       expect(data?.id).toBeTruthy();

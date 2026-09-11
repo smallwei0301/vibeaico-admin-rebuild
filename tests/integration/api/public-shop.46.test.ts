@@ -152,47 +152,31 @@ beforeAll(async () => {
   }));
 
   /**
-   * ⚠️ `min_to_depart_snapshot` 是 not-null 且**沒有預設值**（以真 schema 逐欄查證）。
-   * 走 API 建立時它由既有機制填入，但本檔是用 service role 直接 insert，少了它會
-   * 23502——已經在 #37 的前置上踩過同一個形狀一次（漏了 `bookings.booking_no` /
-   * `duration_minutes`）。
-   */
-  /**
-   * ⚠️ **這裡沒有「已過期的團次」，因為 schema 讓它建不出來。**
+   * #362：這支一般 Product integration 的 fixture 只送 main 已存在的 departure 欄位。
+   * shared TEST 若仍帶著 #41 overlay，overlay 自己的 trigger 會從 plan 補 candidate snapshot；
+   * canonical core 沒有那些欄位也照樣能建立同一批測試資料。這樣綠燈不再依賴 TEST 超前 main。
    *
-   * `t_trip_departures_formation_snapshot`（issue #41 的成團生命週期）是一支
-   * `before insert or update of departs_on, ...` 的觸發器，它要求
-   * `formation_deadline_at > now()` 且 `<= 出發時刻`。對一個**已經過去**的出發日，
-   * 這兩個條件在數學上不可能同時成立——沒給 deadline 會自動算成過去而被擋，明確
-   * 給一個未來的 deadline 又會超過出發時刻，同樣被擋。用 update 把日期改到過去
-   * 也一樣（`departs_on` 就在觸發器的 update 欄位清單裡）。
-   *
-   * 也就是說：**過期的團次只能靠時間流逝產生，不能靠寫入產生。** 所以
-   * `.gte('departs_on', 台北今天)` 這道閘門在本檔證不到；它由
-   * `tests/unit/public-shop-exposure.46.test.ts` 以原始碼層級鎖住。這是一個誠實
-   * 的覆蓋缺口，寫在這裡而不是假裝有驗到（PB-029）。
-   *
-   * 空出來的這一格改放**已取消的團次**——那是同一段程式碼裡的另一道真閘門
-   * （`.eq('status', 'OPEN')`），而且它建得出來、驗得到。
+   * 「已過期團次」仍無法用寫入穩定製造：#41 overlay 的 deadline trigger 會阻擋過期值，
+   * core 與 overlay 又必須共用同一套斷言。因此 `.gte('departs_on', 台北今天)` 由
+   * `tests/unit/public-shop-exposure.46.test.ts` 鎖住；這裡改驗同一查詢裡可真實製造的
+   * CANCELLED 與額滿負例，不用候選欄位換一份假完整覆蓋。
    */
   mustWrite('trip_departures', await admin.from('trip_departures').upsert([
     // 未來、有空位 → 應該出現
     {
       id: DEP_FUTURE, tenant_id: SHOP_A.id, trip_id: TRIP_PUBLISHED, plan_id: PLAN_PUBLISHED,
       departs_on: FUTURE, start_time: '09:00', capacity: 8, seats_booked: 3, status: 'OPEN',
-      min_to_depart_snapshot: 2,
     },
     // 已取消 → 不該出現（顧客看到一團已經取消的行程只會白跑）
     {
       id: DEP_CANCELLED, tenant_id: SHOP_A.id, trip_id: TRIP_PUBLISHED, plan_id: PLAN_PUBLISHED,
       departs_on: FUTURE_CANCELLED, start_time: '09:00', capacity: 8, seats_booked: 0,
-      status: 'CANCELLED', min_to_depart_snapshot: 2,
+      status: 'CANCELLED',
     },
     // 未來但已額滿 → 不該出現（列一個買不到的團次只會讓顧客白跑）
     {
       id: DEP_FULL, tenant_id: SHOP_A.id, trip_id: TRIP_PUBLISHED, plan_id: PLAN_PUBLISHED,
       departs_on: FUTURE, start_time: '14:00', capacity: 4, seats_booked: 4, status: 'OPEN',
-      min_to_depart_snapshot: 2,
     },
   ]));
 
