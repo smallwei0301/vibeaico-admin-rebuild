@@ -34,6 +34,7 @@ PRODUCT_MAINLINE
 3. API 或其他入口若產生缺少／拼錯 Workstream 的 Issue，不得進治理快速線；先標記 incomplete，並 fail-safe 視為 `PRODUCT_MAINLINE`，直到修正。
 4. 所有新 PR，包含 Draft，都要執行 Workstream Classification。缺少、拼錯或把 Product scope 偽裝成 `MODEL_GOVERNANCE` 都必須失敗。
 5. PR / Issue 介面上維持唯一 workstream label，讓 Owner 可直接看出它屬於哪一條線。
+6. 在既有 workstream `effectiveAt` 之前就建立、且尚未補分類的 legacy PR，維持既有 grandfathered 規則；本決策不因單純 edit / synchronize 把歷史 PR 追溯改寫成新制度。若 legacy PR 主動補上合法 WORKSTREAM，則從該內容開始依新分類執行。
 
 ## 混合範圍
 
