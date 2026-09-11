@@ -178,10 +178,13 @@ export async function runSeed(admin) {
 
   // ---- 2.5 功能訂閱（Phase 5.5 閘門上線後必要）----
   // 09 分冊 §5 的閘門會擋未訂閱租戶（shifts 403、第 4 位員工被擋、報表 403…），
-  // 測試種子租戶預設「平台永久贈送」全部 18 項付費功能（source='GRANTED'、
+  // 測試種子租戶預設「平台永久贈送」全部付費功能（source='GRANTED'、
   // expires_at null = 永久，見 §2 有效性判定），讓既有 Phase 3/5 整合測試
   // 不因閘門而 403。gating.09.test.ts 測「未訂閱被擋」時自行 delete 特定列
   // 再還原（各測試自理，不改共用種子的這個基線）。
+  //
+  // ⚠️ 新增 FEATURE_CODES 時必須同步考慮這裡，但**不是每一項都該給兩家店**——
+  // 見下方 TOUR_MODULE 的單獨處理。
   const PAID_FEATURES = [
     'UNLIMITED_STAFF', 'SHIFT_MANAGEMENT', 'BOOKING_REMINDER', 'BIRTHDAY_GREETING',
     'CUSTOMER_RECALL', 'POINT_SYSTEM', 'ADVANCED_CUSTOMER', 'EMAIL_NOTIFICATION',
@@ -195,6 +198,29 @@ export async function runSeed(admin) {
       tenant_id: tid, code, active: true, expires_at: null, source: 'GRANTED',
     }))),
     'feature_subscriptions',
+    'tenant_id,code',
+  );
+
+  /**
+   * TOUR_MODULE 只給 SHOP_A，**刻意不給 SHOP_B**。
+   *
+   * 2026-09-11：本清單原本完全沒有 TOUR_MODULE，而它在 `src/config/features.ts` 是
+   * 正式 FEATURE_CODE。結果 tours.10 / tour-orders.10 / plan-advanced-settings.10
+   * 全數 403 FEAT_001——那三個檔都**假設**種子已經給過，它們是「先 delete 測閘門、
+   * 再 upsert 還原」的寫法，從來沒有負責建立基線。而 globalSetup 每一輪都重跑
+   * reset-db（含本 seed），所以手動在 TEST 補資料撐不過下一次執行；基線只能寫在這裡。
+   *
+   * ⚠️ 但**不可以**順手也給 SHOP_B。`tours.10` 的「別家店不得刪掉這個團次」刻意分兩段：
+   * 先確認 SHOP_B 被閘門擋成 403 FEAT_001，再臨時給它訂閱、證明即使閘門放行，租戶隔離
+   * 仍然擋成 404。SHOP_B 一旦在種子就有訂閱，第一段斷言直接失效，而租戶隔離就再也沒有
+   * 任何斷言在守它——正是 PB-025 的陷阱：用「有沒有訂閱」代替「有沒有權利」。
+   * 該測試自己會 upsert 給 SHOP_B，不需要種子幫它。
+   */
+  await safeUpsert(
+    admin,
+    'feature_subscriptions',
+    [{ tenant_id: SHOP_A.id, code: 'TOUR_MODULE', active: true, expires_at: null, source: 'GRANTED' }],
+    'feature_subscriptions（TOUR_MODULE：僅 SHOP_A）',
     'tenant_id,code',
   );
 
