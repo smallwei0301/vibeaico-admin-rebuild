@@ -55,8 +55,8 @@ FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 `NOT_APPLICABLE` is a non-model metadata sentinel used only during parser compatibility. It is not a model claim and must not be counted as model evidence.
 
 - Any capable Agent/session may perform bounded MODEL_GOVERNANCE work in the GOVERNANCE lane; do not require a named model.
-- Do not consume Product Terra or Reserve Terra slots for MODEL_GOVERNANCE.
-- Do not dispatch Astra/Fable Product Final Risk for pure MODEL_GOVERNANCE.
+- Do not spawn Terra or Reserve Terra for MODEL_GOVERNANCE; do not consume Product Terra or Reserve Terra slots for governance work.
+- Do not dispatch Astra/Fable Final Risk for MODEL_GOVERNANCE; pure governance does not enter the Product Final Risk path.
 - Required source CI/tests still apply. The active governance Agent must read the final exact diff and verify exact-head evidence before merge.
 - Do not analyze MODEL_GOVERNANCE by requested/actual model, provider model identity coverage or model-tier utilization.
 - No Product delivery-unit credit, Product Run membership, Production authorization or user-visible shipped claim is created by this workstream.
