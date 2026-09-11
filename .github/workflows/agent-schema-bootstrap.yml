@@ -33,6 +33,7 @@ jobs:
       EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
       LOCAL_PROJECT_ID: schema-proof-${{ github.run_id }}-${{ github.run_attempt }}
       TEST_PROFILE: LOCAL_ISOLATED
+      TEST_TOUR_SEED_PROFILE: CANONICAL_CORE
       TEST_ENV_ID: local-schema-${{ github.run_id }}
       SETTINGS_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       AUTH_SECRET: local-bootstrap-auth-secret-0123456789abcdef

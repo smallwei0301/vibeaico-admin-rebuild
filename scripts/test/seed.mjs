@@ -21,6 +21,7 @@
 // 清楚的提示訊息。
 
 import { assertSafeTestUrl, createTestAdminClient, loadTestEnv } from './_supabase-admin.mjs';
+import { readTourSeedFields } from './tour-seed-profile.mjs';
 
 // ---- id 常數：必須與 tests/fixtures.ts 逐一對應（見檔頭說明）----
 const SHOP_A = {
@@ -156,6 +157,12 @@ export async function runSeed(admin) {
   const seedNowMs = seedNow.getTime();
   const hourMs = 60 * 60 * 1000;
   const oneDayMs = 24 * hourMs;
+  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
+  // #298: main fixtures must not require an unmerged #41 schema. Preserve candidate
+  // compatibility explicitly; partial schemas and all unrelated errors remain fatal.
+  const tourSeed = await readTourSeedFields(admin, formationDeadlineAt,
+    process.env.TEST_TOUR_SEED_PROFILE ?? 'OBSERVE');
+  console.log(`[seed] tour schema profile: ${tourSeed.profile}`);
 
   // ---- 1. Auth users（通常不受 Phase 1 影響，auth.users 是 Supabase 內建表）----
   const ownerAId = await ensureAuthUser(admin, SHOP_A.owner.email, SHOP_A.owner.password);
@@ -410,7 +417,7 @@ export async function runSeed(admin) {
         base_price: 3000,
         price_type: 'PER_PERSON',
         max_participants: 10,
-        min_to_depart: 1,
+        ...tourSeed.plan,
       },
       {
         id: TRIP_A.planA2,
@@ -421,13 +428,12 @@ export async function runSeed(admin) {
         base_price: 5000,
         price_type: 'PER_PERSON',
         max_participants: 10,
-        min_to_depart: 1,
+        ...tourSeed.plan,
       },
     ],
     'trip_plans',
   );
 
-  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
   if (!tripPlansSeeded) {
     throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   }
@@ -444,8 +450,7 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 7 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
+        ...tourSeed.departure,
       },
       {
         id: TRIP_A.departure2,
@@ -455,8 +460,7 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 14 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
+        ...tourSeed.departure,
       },
       {
         // capacity=2：專供 12 分冊 §5 並發不超賣測試
@@ -467,8 +471,7 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 21 * oneDayMs).toISOString().slice(0, 10),
         capacity: 2,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
+        ...tourSeed.departure,
       },
     ],
     'trip_departures',
