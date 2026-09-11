@@ -44,16 +44,18 @@ jobs:
               repo,
               pull_number: pullNumber,
             });
-
-            await github.rest.repos.createCommitStatus({
+            const statusUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const setStatus = (state, description) => github.rest.repos.createCommitStatus({
               owner,
               repo,
               sha: current.head.sha,
-              state: 'pending',
+              state,
               context: 'Workstream Classification',
-              description: 'Checking MODEL_GOVERNANCE vs PRODUCT_MAINLINE',
-              target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              description,
+              target_url: statusUrl,
             });
+
+            await setStatus('pending', 'Checking MODEL_GOVERNANCE vs PRODUCT_MAINLINE');
 
             const files = await github.paginate(github.rest.pulls.listFiles, {
               owner,
@@ -62,7 +64,9 @@ jobs:
               per_page: 100,
             });
             if (files.length !== current.changed_files) {
-              throw new Error(`Incomplete changed-file inventory: loaded ${files.length}/${current.changed_files}`);
+              await setStatus('failure', `Incomplete changed-file inventory ${files.length}/${current.changed_files}`);
+              core.setFailed(`Incomplete changed-file inventory: loaded ${files.length}/${current.changed_files}`);
+              return;
             }
             const changedFiles = [...new Set(
               files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)),
@@ -74,61 +78,68 @@ jobs:
               createdAt: current.created_at,
             });
             const allowed = new Set(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
-            const valid = allowed.has(result.workstream) && result.errors.length === 0;
-            // Invalid or unsafe MODEL_GOVERNANCE declarations fail safe to Product mainline.
-            const effectiveWorkstream = valid && result.workstream === 'MODEL_GOVERNANCE'
-              ? 'MODEL_GOVERNANCE'
-              : 'PRODUCT_MAINLINE';
+            // The canonical classifier deliberately returns LEGACY_UNCLASSIFIED for PRs created
+            // before the workstream effectiveAt. Preserve that grandfathering. This workflow is
+            // an entry guard for new PRs, not a retroactive rewrite of every historical PR.
+            const grandfathered = result.workstream === 'LEGACY_UNCLASSIFIED' && result.errors.length === 0;
+            const valid = grandfathered || (allowed.has(result.workstream) && result.errors.length === 0);
+            const effectiveWorkstream = grandfathered
+              ? 'LEGACY_GRANDFATHERED'
+              : valid && result.workstream === 'MODEL_GOVERNANCE'
+                ? 'MODEL_GOVERNANCE'
+                : 'PRODUCT_MAINLINE';
 
-            const managedLabels = {
-              'workstream:model-governance': {
-                color: '6F42C1',
-                description: 'Pure model/Agent/work/engineering governance.',
-              },
-              'workstream:product-mainline': {
-                color: '0366D6',
-                description: 'Product UI/API/runtime/schema/payment/LINE/provider/deployment mainline work.',
-              },
-              'governance:workstream-incomplete': {
-                color: 'D93F0B',
-                description: 'PR workstream is missing, invalid, or unsafe; classification fails closed.',
-              },
-            };
+            if (!grandfathered) {
+              const managedLabels = {
+                'workstream:model-governance': {
+                  color: '6F42C1',
+                  description: 'Pure model/Agent/work/engineering governance.',
+                },
+                'workstream:product-mainline': {
+                  color: '0366D6',
+                  description: 'Product UI/API/runtime/schema/payment/LINE/provider/deployment mainline work.',
+                },
+                'governance:workstream-incomplete': {
+                  color: 'D93F0B',
+                  description: 'PR workstream is missing, invalid, or unsafe; classification fails closed.',
+                },
+              };
 
-            for (const [name, metadata] of Object.entries(managedLabels)) {
-              try {
-                await github.rest.issues.getLabel({ owner, repo, name });
-              } catch (error) {
-                if (error.status !== 404) throw error;
-                await github.rest.issues.createLabel({
-                  owner,
-                  repo,
-                  name,
-                  color: metadata.color,
-                  description: metadata.description,
-                });
+              for (const [name, metadata] of Object.entries(managedLabels)) {
+                try {
+                  await github.rest.issues.getLabel({ owner, repo, name });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    name,
+                    color: metadata.color,
+                    description: metadata.description,
+                  });
+                }
               }
+
+              const managedNames = new Set(Object.keys(managedLabels));
+              const existing = (current.labels ?? [])
+                .map((label) => typeof label === 'string' ? label : label.name)
+                .filter(Boolean)
+                .filter((name) => !managedNames.has(name));
+              const labels = [
+                ...existing,
+                effectiveWorkstream === 'MODEL_GOVERNANCE'
+                  ? 'workstream:model-governance'
+                  : 'workstream:product-mainline',
+              ];
+              if (!valid) labels.push('governance:workstream-incomplete');
+
+              await github.rest.issues.setLabels({
+                owner,
+                repo,
+                issue_number: pullNumber,
+                labels: [...new Set(labels)],
+              });
             }
-
-            const managedNames = new Set(Object.keys(managedLabels));
-            const existing = (current.labels ?? [])
-              .map((label) => typeof label === 'string' ? label : label.name)
-              .filter(Boolean)
-              .filter((name) => !managedNames.has(name));
-            const labels = [
-              ...existing,
-              effectiveWorkstream === 'MODEL_GOVERNANCE'
-                ? 'workstream:model-governance'
-                : 'workstream:product-mainline',
-            ];
-            if (!valid) labels.push('governance:workstream-incomplete');
-
-            await github.rest.issues.setLabels({
-              owner,
-              repo,
-              issue_number: pullNumber,
-              labels: [...new Set(labels)],
-            });
 
             const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
             if (
@@ -137,20 +148,19 @@ jobs:
               fresh.state !== current.state ||
               fresh.draft !== current.draft
             ) {
-              throw new Error('PR changed during workstream classification; wait for the current event');
+              await setStatus('failure', 'PR changed during classification; use the newest event');
+              core.setFailed('PR changed during workstream classification; wait for the current event');
+              return;
             }
 
-            await github.rest.repos.createCommitStatus({
-              owner,
-              repo,
-              sha: current.head.sha,
-              state: valid ? 'success' : 'failure',
-              context: 'Workstream Classification',
-              description: valid
-                ? `Classified as ${effectiveWorkstream}`
-                : 'Missing, invalid, or unsafe WORKSTREAM; see workflow summary',
-              target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
-            });
+            await setStatus(
+              valid ? 'success' : 'failure',
+              grandfathered
+                ? 'Legacy PR grandfathered by canonical effectiveAt'
+                : valid
+                  ? `Classified as ${effectiveWorkstream}`
+                  : 'Missing, invalid, or unsafe WORKSTREAM; see workflow summary',
+            );
 
             await core.summary
               .addHeading('Workstream Classification')
@@ -160,6 +170,7 @@ jobs:
                 ['Draft', String(current.draft)],
                 ['Declared workstream', result.workstream],
                 ['Effective workstream', effectiveWorkstream],
+                ['Legacy grandfathered', String(grandfathered)],
                 ['Changed files', String(changedFiles.length)],
                 ['Validation', valid ? 'PASS' : 'FAIL'],
                 ['Errors', result.errors.join('; ') || 'none'],
