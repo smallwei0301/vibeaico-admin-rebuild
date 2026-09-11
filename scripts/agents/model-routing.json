@@ -27,6 +27,11 @@
       "risk": "NONE",
       "finalRiskPolicy": "NOT_REQUIRED_BY_OWNER_POLICY",
       "finalRiskRequired": false,
+      "scopeFiles": [
+        "tests/integration/global-setup.ts",
+        "scripts/test/_supabase-admin.mjs",
+        "scripts/ci/repo-integrity-guard.mjs"
+      ],
       "scopePrefixes": [
         ".agents/skills/",
         "scripts/agents/",
