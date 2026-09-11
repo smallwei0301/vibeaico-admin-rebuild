@@ -7,7 +7,11 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # `PUT /repos/{o}/{r}/issues/{n}/labels` 對「PR 號碼」要求的是
+  # `issues=write; pull_requests=write` —— 兩者**同時**需要，不是擇一。
+  # 本檔原本只給 pull-requests: read，因此 setLabels 一律回 403
+  # （2026-09-11 #365；回應標頭 x-accepted-github-permissions 即載明這組）。
+  pull-requests: write
   statuses: write
 
 jobs:
@@ -89,7 +93,25 @@ jobs:
                 ? 'MODEL_GOVERNANCE'
                 : 'PRODUCT_MAINLINE';
 
+            /**
+             * 貼標籤是**裝飾**，發佈 commit status 才是閘門。
+             *
+             * 2026-09-11（#361）：repo 的 Actions 預設權限是唯讀，`setLabels` 回 403，
+             * 例外往上拋、整個 step 中斷——於是下方的 `setStatus` 永遠跑不到，
+             * commit status `Workstream Classification` 一直停在 pending。
+             * 這支 workflow 上線後的每一次執行都是這樣失敗的，而症狀（狀態卡在 pending）
+             * 完全看不出根因是「標籤貼不上去」。
+             *
+             * 權限已由 Owner 修正，但排序本身仍是缺陷：任何一次 API 暫時性錯誤都會
+             * 再次讓一個裝飾性動作殺掉整道閘門。因此把標籤管理整段包起來，失敗只記
+             * warning 並寫進 summary，判定照常發佈。
+             *
+             * ⚠️ 刻意**不吞掉判定**：`valid` 的計算、`setStatus` 與 `core.setFailed`
+             * 都在這個 try 之外，分類結果不會因為標籤失敗而變寬鬆。
+             */
+            let labelOutcome = grandfathered ? 'skipped (grandfathered)' : 'ok';
             if (!grandfathered) {
+              try {
               const managedLabels = {
                 'workstream:model-governance': {
                   color: '6F42C1',
@@ -139,6 +161,13 @@ jobs:
                 issue_number: pullNumber,
                 labels: [...new Set(labels)],
               });
+              } catch (error) {
+                labelOutcome = `failed: ${error.status ?? '?'} ${error.message ?? error}`;
+                core.warning(
+                  `Workstream labels could not be written (${labelOutcome}). ` +
+                  'Classification verdict is unaffected and is published as the commit status.',
+                );
+              }
             }
 
             const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
@@ -174,6 +203,7 @@ jobs:
                 ['Changed files', String(changedFiles.length)],
                 ['Validation', valid ? 'PASS' : 'FAIL'],
                 ['Errors', result.errors.join('; ') || 'none'],
+                ['Labels', labelOutcome],
               ])
               .write();
 
