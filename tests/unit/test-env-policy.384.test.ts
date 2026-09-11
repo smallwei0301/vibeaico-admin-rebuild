@@ -21,7 +21,7 @@ function fixture<T>(run: (root: string) => T): T {
   const root = mkdtempSync(join(tmpdir(), 'test-env-384-'));
   try { return run(root); } finally { rmSync(root, { recursive: true, force: true }); }
 }
-function child(root: string, code: string, overrides: NodeJS.ProcessEnv = {}) {
+function child(root: string, code: string, overrides: Record<string, string | undefined> = {}) {
   const env = { ...process.env };
   for (const key of [...TEST_ENV_IDENTITY_KEYS, 'NODE_OPTIONS']) delete env[key];
   return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
@@ -56,7 +56,7 @@ const setupEntry = 'import setup from "./tests/integration/global-setup.mjs"; aw
 describe('test environment identity gate (#384)', () => {
   it('loads missing values, accepts matching identities and preserves unrelated precedence', () => fixture((root) => {
     write(root, '.env.test', `SETTINGS_ENCRYPTION_KEY=${fileKey}\nUNRELATED=file\nNEW_VALUE=loaded\n`);
-    const env: NodeJS.ProcessEnv = { SETTINGS_ENCRYPTION_KEY: fileKey, UNRELATED: 'inherited' };
+    const env: Record<string, string | undefined> = { SETTINGS_ENCRYPTION_KEY: fileKey, UNRELATED: 'inherited' };
     assert.equal(loadCheckedTestEnv(join(root, '.env.test'), env), true);
     assert.deepEqual(env, { SETTINGS_ENCRYPTION_KEY: fileKey, UNRELATED: 'inherited', NEW_VALUE: 'loaded' });
   }));
@@ -117,7 +117,7 @@ describe('test environment identity gate (#384)', () => {
 
   it('uses Node env syntax for export, quotes, comments and multiline values', () => fixture((root) => {
     write(root, '.env.test', 'export AUTH_SECRET="a # literal" # outside\nMULTILINE="first\nsecond"\n');
-    const env: NodeJS.ProcessEnv = { AUTH_SECRET: 'a # literal' };
+    const env: Record<string, string | undefined> = { AUTH_SECRET: 'a # literal' };
     assert.equal(loadCheckedTestEnv(join(root, '.env.test'), env), true);
     assert.equal(env.MULTILINE, 'first\nsecond');
   }));
