@@ -6,7 +6,8 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const TERMINAL_RUN = new Set(['COMPLETE', 'OWNER_BLOCKED']);
-const REVIEW_ROLE = new Set(['SOL_AUDIT', 'FINAL_RISK']);
+const LEGACY_REVIEW_ROLE = new Set(['SOL_AUDIT', 'FINAL_RISK']);
+const GOVERNANCE_REVIEW_ROLE = new Set(['GOVERNANCE_REVIEW']);
 const IDENTITY_EVIDENCE = new Set(['PROVIDER_VERIFIED', 'OPERATOR_ATTESTED', 'UNKNOWN']);
 const VERDICT = new Set(['PASS', 'FAIL', 'FIX_REQUIRED', 'PENDING']);
 const BLOCKING_VERDICT = new Set(['FAIL', 'FIX_REQUIRED']);
@@ -15,7 +16,7 @@ const SHA40 = /^[0-9a-f]{40}$/;
 const DIGEST64 = /^[0-9a-f]{64}$/;
 const SUBJECT = /^pr#[1-9]\d*$/i;
 
-export const CORE_METRIC_PATHS = Object.freeze([
+export const LEGACY_CORE_METRIC_PATHS = Object.freeze([
   'delivery.cycleTimeMinutes',
   'ci.fullCiRuns',
   'ci.invalidReruns',
@@ -36,6 +37,10 @@ export const CORE_METRIC_PATHS = Object.freeze([
   'auditability.exactHeadTestCoveragePercent',
   'auditability.preciseBlockersPercent',
 ]);
+
+export const CORE_METRIC_PATHS = Object.freeze(
+  LEGACY_CORE_METRIC_PATHS.filter((metricPath) => !['flow.solTouches', 'flow.solIssues'].includes(metricPath)),
+);
 
 function round(value, digits = 1) {
   const factor = 10 ** digits;
@@ -85,12 +90,24 @@ function uniqueReviewRecords(records) {
   });
 }
 
+function validTimestamp(value) {
+  const raw = String(value ?? '').trim();
+  const parsed = Date.parse(raw);
+  return { raw, parsed, valid: meaningful(raw) && Number.isFinite(parsed) };
+}
+
+function evidenceContractVersion(evidence) {
+  return Number(evidence?.contractVersion);
+}
+
 export function validateReviewEvidence(evidence) {
   const errors = [];
   if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
     return ['review evidence must be an object'];
   }
-  if (evidence.contractVersion !== 1) errors.push('contractVersion must be 1');
+
+  const contractVersion = evidenceContractVersion(evidence);
+  if (![1, 2].includes(contractVersion)) errors.push('contractVersion must be 1 or 2');
   if (!meaningful(evidence.runId)) errors.push('runId is required');
   if (!Array.isArray(evidence.records)) return [...errors, 'records must be an array'];
 
@@ -116,10 +133,12 @@ export function validateReviewEvidence(evidence) {
     else ids.add(record.id);
 
     if (!SUBJECT.test(String(record.subject ?? '').trim())) errors.push(`${key}.subject must look like pr#123`);
-    if (!REVIEW_ROLE.has(record.role)) errors.push(`${key}.role is invalid`);
-    if (!meaningful(record.requestedModel)) errors.push(`${key}.requestedModel is required`);
-    if (!meaningful(record.actualModel)) errors.push(`${key}.actualModel is required`);
-    if (!IDENTITY_EVIDENCE.has(record.identityEvidence)) errors.push(`${key}.identityEvidence is invalid`);
+    const allowedRoles = contractVersion === 2 ? GOVERNANCE_REVIEW_ROLE : LEGACY_REVIEW_ROLE;
+    if (!allowedRoles.has(record.role)) {
+      errors.push(contractVersion === 2
+        ? `${key}.role must be GOVERNANCE_REVIEW for contract v2`
+        : `${key}.role is invalid`);
+    }
     if (!VERDICT.has(record.verdict)) errors.push(`${key}.verdict is invalid`);
 
     const executionRef = typeof record.executionRef === 'string' ? record.executionRef.trim() : '';
@@ -129,16 +148,22 @@ export function validateReviewEvidence(evidence) {
 
     if (!validReviewAnchor(record)) errors.push(`${key} requires reviewedSha or changeDigest`);
 
-    const actualUnknown = normalized(record.actualModel) === 'unknown';
-    if (actualUnknown && record.identityEvidence !== 'UNKNOWN') {
-      errors.push(`${key}: actualModel=unknown requires identityEvidence=UNKNOWN`);
-    }
-    if (record.identityEvidence === 'PROVIDER_VERIFIED') {
-      if (actualUnknown) errors.push(`${key}: provider-verified identity cannot have actualModel=unknown`);
-      if (!meaningful(record.providerExecutionRef)) errors.push(`${key}.providerExecutionRef is required for PROVIDER_VERIFIED`);
-    }
-    if (record.identityEvidence === 'OPERATOR_ATTESTED' && actualUnknown) {
-      errors.push(`${key}: operator attestation requires a known actualModel claim`);
+    if (contractVersion === 1) {
+      if (!meaningful(record.requestedModel)) errors.push(`${key}.requestedModel is required`);
+      if (!meaningful(record.actualModel)) errors.push(`${key}.actualModel is required`);
+      if (!IDENTITY_EVIDENCE.has(record.identityEvidence)) errors.push(`${key}.identityEvidence is invalid`);
+
+      const actualUnknown = normalized(record.actualModel) === 'unknown';
+      if (actualUnknown && record.identityEvidence !== 'UNKNOWN') {
+        errors.push(`${key}: actualModel=unknown requires identityEvidence=UNKNOWN`);
+      }
+      if (record.identityEvidence === 'PROVIDER_VERIFIED') {
+        if (actualUnknown) errors.push(`${key}: provider-verified identity cannot have actualModel=unknown`);
+        if (!meaningful(record.providerExecutionRef)) errors.push(`${key}.providerExecutionRef is required for PROVIDER_VERIFIED`);
+      }
+      if (record.identityEvidence === 'OPERATOR_ATTESTED' && actualUnknown) {
+        errors.push(`${key}: operator attestation requires a known actualModel claim`);
+      }
     }
   });
   return [...new Set(errors)];
@@ -182,15 +207,11 @@ export function validateBlockingFindingReconciliation(evidence) {
       errors.push(`${key} reconciliation.byRecordId must reference an existing review record`);
       return;
     }
-    if (resolver.verdict !== 'PASS') {
-      errors.push(`${key} must be reconciled by a PASS review`);
-    }
+    if (resolver.verdict !== 'PASS') errors.push(`${key} must be reconciled by a PASS review`);
     if (normalized(resolver.subject) !== normalized(record.subject)) {
       errors.push(`${key} must be reconciled by a review of the same subject`);
     }
-    if (resolver.role !== record.role) {
-      errors.push(`${key} must be reconciled by the same review role`);
-    }
+    if (resolver.role !== record.role) errors.push(`${key} must be reconciled by the same review role`);
     if (!recordMatchesFinalAnchor(resolver, evidence)) {
       errors.push(`${key} resolver must be anchored to the final reviewed head or changeDigest`);
     }
@@ -199,6 +220,7 @@ export function validateBlockingFindingReconciliation(evidence) {
   return [...new Set(errors)];
 }
 
+// Historical contract-v1 helper. Kept only so old scoreboards remain reproducible.
 export function computeModelReviewMetrics(evidence) {
   const records = uniqueReviewRecords(evidence?.records ?? []);
   const sol = records.filter((record) => record.role === 'SOL_AUDIT');
@@ -220,54 +242,93 @@ export function computeModelReviewMetrics(evidence) {
   };
 }
 
-export function computeMetricDataQuality(run) {
-  const present = CORE_METRIC_PATHS.filter((metricPath) => {
+export function computeGovernanceReviewMetrics(evidence) {
+  const records = uniqueReviewRecords(evidence?.records ?? []);
+  return {
+    totalReviews: records.length,
+    uniqueSubjects: new Set(records.map((record) => String(record.subject).toLowerCase())).size,
+    blockingReviews: records.filter((record) => BLOCKING_VERDICT.has(record.verdict)).length,
+    passReviews: records.filter((record) => record.verdict === 'PASS').length,
+    pendingReviews: records.filter((record) => record.verdict === 'PENDING').length,
+  };
+}
+
+export function computeMetricDataQuality(run, contractVersion = 2) {
+  const paths = Number(contractVersion) === 1 ? LEGACY_CORE_METRIC_PATHS : CORE_METRIC_PATHS;
+  const present = paths.filter((metricPath) => {
     const value = getPath(run, metricPath);
     return value !== null && value !== undefined;
   });
   return {
     present: present.length,
-    total: CORE_METRIC_PATHS.length,
-    missing: CORE_METRIC_PATHS.filter((metricPath) => !present.includes(metricPath)),
-    percent: round(present.length / CORE_METRIC_PATHS.length * 100),
+    total: paths.length,
+    missing: paths.filter((metricPath) => !present.includes(metricPath)),
+    percent: round(present.length / paths.length * 100),
+  };
+}
+
+function resolveContract(run, evidence, policy) {
+  const started = validTimestamp(run?.startedAt);
+  const currentEffective = validTimestamp(policy?.effectiveAt);
+  const policyVersion = Number(policy?.contractVersion);
+  const v2Applies = policyVersion >= 2 && currentEffective.valid && started.valid && started.parsed >= currentEffective.parsed;
+  const version = v2Applies ? 2 : 1;
+  const selectedPolicy = version === 1 ? (policy?.legacyV1 ?? policy) : policy;
+  const selectedEffective = validTimestamp(selectedPolicy?.effectiveAt);
+  return {
+    version,
+    evidenceVersion: evidenceContractVersion(evidence),
+    selectedPolicy,
+    started,
+    selectedEffective,
+    contractApplies: selectedEffective.valid && started.valid && started.parsed >= selectedEffective.parsed,
   };
 }
 
 export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enforce = false } = {}) {
   const errors = [];
   const observations = [];
+  const contract = resolveContract(run, evidence, policy);
+  const terminal = TERMINAL_RUN.has(run?.status);
+
   const evidenceErrors = validateReviewEvidence(evidence);
   errors.push(...evidenceErrors);
   if (meaningful(evidence?.runId) && evidence.runId !== run?.runId) {
     errors.push(`review evidence runId ${evidence.runId} does not match ledger ${run?.runId}`);
   }
 
-  const reviews = computeModelReviewMetrics(evidence);
-  const dataQuality = computeMetricDataQuality(run);
-  const ledgerSolTouches = Number(run?.flow?.solTouches ?? 0);
-  const ledgerSolIssues = Number(run?.flow?.solIssues ?? 0);
-  const solMismatch = ledgerSolTouches !== reviews.solTouches || ledgerSolIssues !== reviews.solSubjects;
-  if (solMismatch) {
-    observations.push(
-      `ledger Sol flow is ${ledgerSolTouches}/${ledgerSolIssues}, durable review evidence is ${reviews.solTouches}/${reviews.solSubjects}`,
-    );
+  if (terminal && contract.contractApplies && contract.evidenceVersion !== contract.version) {
+    errors.push(`terminal Run requires review evidence contractVersion ${contract.version}`);
   }
 
-  const minimum = Number(policy.minimumMetricDataQualityPercent ?? 95);
-  const effectiveAtRaw = String(policy.effectiveAt ?? '').trim();
-  const startedAtRaw = String(run?.startedAt ?? '').trim();
-  const effectiveAt = Date.parse(effectiveAtRaw);
-  const startedAt = Date.parse(startedAtRaw);
-  const effectiveAtValid = meaningful(effectiveAtRaw) && Number.isFinite(effectiveAt);
-  const startedAtValid = meaningful(startedAtRaw) && Number.isFinite(startedAt);
-  const contractApplies = effectiveAtValid && startedAtValid && startedAt >= effectiveAt;
-  const terminal = TERMINAL_RUN.has(run?.status);
+  const dataQuality = computeMetricDataQuality(run, contract.version);
+  const minimum = Number(contract.selectedPolicy?.minimumMetricDataQualityPercent ?? 95);
+  const reviews = contract.version === 1
+    ? computeModelReviewMetrics(evidence)
+    : computeGovernanceReviewMetrics(evidence);
+
+  let legacyFlow = null;
+  let legacyFlowMismatch = false;
+  if (contract.version === 1) {
+    const ledgerSolTouches = Number(run?.flow?.solTouches ?? 0);
+    const ledgerSolIssues = Number(run?.flow?.solIssues ?? 0);
+    legacyFlow = { solTouches: ledgerSolTouches, solIssues: ledgerSolIssues };
+    legacyFlowMismatch = ledgerSolTouches !== reviews.solTouches || ledgerSolIssues !== reviews.solSubjects;
+    if (legacyFlowMismatch) {
+      observations.push(
+        `ledger Sol flow is ${ledgerSolTouches}/${ledgerSolIssues}, durable review evidence is ${reviews.solTouches}/${reviews.solSubjects}`,
+      );
+    }
+  }
+
   const policyComparisonErrors = [];
-  if (terminal && contractApplies) {
+  if (terminal && contract.contractApplies) {
     if (dataQuality.percent < minimum) {
       policyComparisonErrors.push(`terminal Run metric data quality ${dataQuality.percent}% is below ${minimum}%`);
     }
-    if (solMismatch) policyComparisonErrors.push('terminal Run Sol flow must match durable review evidence');
+    if (contract.version === 1 && legacyFlowMismatch) {
+      policyComparisonErrors.push('terminal Run Sol flow must match durable review evidence');
+    }
 
     const recordedCompleteness = run?.auditability?.scoreInputsCompletePercent;
     if (recordedCompleteness === null || recordedCompleteness === undefined) {
@@ -276,61 +337,62 @@ export function evaluateGovernanceScoreboard(run, evidence, policy = {}, { enfor
       policyComparisonErrors.push(`auditability.scoreInputsCompletePercent=${recordedCompleteness} must equal computed ${dataQuality.percent}`);
     }
   }
-  const reconciliationErrors = terminal && contractApplies
+
+  const reconciliationErrors = terminal && contract.contractApplies
     ? validateBlockingFindingReconciliation(evidence)
     : [];
 
   if (enforce && terminal) {
-    if (!effectiveAtValid) errors.push('scoreboard policy requires a valid effectiveAt timestamp');
-    if (!startedAtValid) errors.push('terminal Run requires a valid startedAt timestamp');
-
-    if (contractApplies) {
+    if (!contract.selectedEffective.valid) errors.push('scoreboard policy requires a valid effectiveAt timestamp');
+    if (!contract.started.valid) errors.push('terminal Run requires a valid startedAt timestamp');
+    if (contract.contractApplies) {
       errors.push(...policyComparisonErrors);
       errors.push(...reconciliationErrors);
     }
   }
 
-  // Report generation is intentionally non-failing, but it must not label a
-  // terminal Run as comparable when a post-policy blocker is unresolved.
-  // Keep these separate from enforcement errors so the CLI can render an
-  // honest report without turning historical read-only reconciliation into a
-  // required-check failure.
   const comparisonErrors = [
     ...errors,
     ...policyComparisonErrors,
     ...reconciliationErrors,
-    ...(terminal && !effectiveAtValid ? ['terminal Run has an invalid scoreboard policy timestamp'] : []),
-    ...(terminal && !startedAtValid ? ['terminal Run has an invalid startedAt timestamp'] : []),
+    ...(terminal && !contract.selectedEffective.valid ? ['terminal Run has an invalid scoreboard policy timestamp'] : []),
+    ...(terminal && !contract.started.valid ? ['terminal Run has an invalid startedAt timestamp'] : []),
   ];
   const uniqueComparisonErrors = [...new Set(comparisonErrors)];
 
   return {
     runId: run?.runId ?? evidence?.runId ?? 'unknown',
-    contractApplies,
+    contractVersion: contract.version,
+    evidenceContractVersion: contract.evidenceVersion,
+    contractApplies: contract.contractApplies,
     terminal,
     metricDataQuality: dataQuality,
     reviews,
-    ledgerFlow: { solTouches: ledgerSolTouches, solIssues: ledgerSolIssues },
-    solFlowMismatch: solMismatch,
-    comparisonEligible: terminal && dataQuality.percent >= minimum && !solMismatch && !uniqueComparisonErrors.length,
+    legacyFlow,
+    legacyFlowMismatch,
+    comparisonEligible: terminal
+      && dataQuality.percent >= minimum
+      && !legacyFlowMismatch
+      && !uniqueComparisonErrors.length,
     comparisonErrors: uniqueComparisonErrors,
     observations,
     errors: [...new Set(errors)],
   };
 }
 
-export function renderGovernanceScoreboard(run, result) {
+function renderLegacyGovernanceScoreboard(result) {
   const show = (value) => value === null || value === undefined ? 'N/A' : String(value);
-  const lines = [
+  return [
     `# Governance Scoreboard：${result.runId}`,
     '',
+    '- Contract: **v1 historical / read-only**',
     `- Metric data quality: **${result.metricDataQuality.percent}%** (${result.metricDataQuality.present}/${result.metricDataQuality.total})`,
     `- Comparison eligible: **${result.comparisonEligible ? 'YES' : 'NO'}**`,
-    `- Sol flow (ledger → evidence): **${result.ledgerFlow.solTouches}/${result.ledgerFlow.solIssues} → ${result.reviews.solTouches}/${result.reviews.solSubjects}**`,
+    `- Sol flow (ledger → evidence): **${result.legacyFlow?.solTouches ?? 0}/${result.legacyFlow?.solIssues ?? 0} → ${result.reviews.solTouches}/${result.reviews.solSubjects}**`,
     `- Model review identity coverage (provider verified): **${show(result.reviews.modelReviewIdentityCoveragePercent)}%**`,
     `- Assigned/attested identity coverage: **${show(result.reviews.assignedIdentityCoveragePercent)}%**`,
     '',
-    '## Model review evidence',
+    '## Historical model review evidence',
     '',
     `- total reviews: ${result.reviews.totalReviews}`,
     `- Sol audit touches: ${result.reviews.solTouches}`,
@@ -340,21 +402,48 @@ export function renderGovernanceScoreboard(run, result) {
     `- operator attested: ${result.reviews.operatorAttested}`,
     `- identity unknown: ${result.reviews.identityUnknown}`,
     '',
+    '> Historical v1 fields are reproduced for audit compatibility only. New MODEL_GOVERNANCE retrospectives must not use model identity as a quality trend.',
+    '',
+  ];
+}
+
+function renderModelAgnosticGovernanceScoreboard(result) {
+  return [
+    `# Governance Scoreboard：${result.runId}`,
+    '',
+    '- Contract: **v2 model-agnostic governance**',
+    `- Metric data quality: **${result.metricDataQuality.percent}%** (${result.metricDataQuality.present}/${result.metricDataQuality.total})`,
+    `- Comparison eligible: **${result.comparisonEligible ? 'YES' : 'NO'}**`,
+    `- Review evidence records: **${result.reviews.totalReviews}**`,
+    `- Unique reviewed subjects: **${result.reviews.uniqueSubjects}**`,
+    `- Blocking review records: **${result.reviews.blockingReviews}**`,
+    '',
+    '## Governance review evidence',
+    '',
+    `- PASS: ${result.reviews.passReviews}`,
+    `- PENDING: ${result.reviews.pendingReviews}`,
+    '',
+    '> MODEL_GOVERNANCE is model-agnostic. This scoreboard intentionally does not analyze requested/actual model or provider model identity coverage.',
+    '',
+  ];
+}
+
+export function renderGovernanceScoreboard(run, result) {
+  const lines = result.contractVersion === 1
+    ? renderLegacyGovernanceScoreboard(result)
+    : renderModelAgnosticGovernanceScoreboard(result);
+
+  lines.push(
     '## Missing core metrics',
     '',
     ...(result.metricDataQuality.missing.length ? result.metricDataQuality.missing.map((item) => `- ${item}`) : ['- none']),
     '',
-  ];
+  );
   if (result.observations.length) lines.push('## Observations', '', ...result.observations.map((item) => `- ${item}`), '');
   const comparisonOnlyErrors = (result.comparisonErrors ?? []).filter((item) => !result.errors.includes(item));
   if (comparisonOnlyErrors.length) lines.push('## Comparison blockers', '', ...comparisonOnlyErrors.map((item) => `- ${item}`), '');
   if (result.errors.length) lines.push('## Contract errors', '', ...result.errors.map((item) => `- ${item}`), '');
-  lines.push(
-    '---',
-    '',
-    '`MODEL_REVIEW_VERIFIED` means provider-verified model identity. `OPERATOR_ATTESTED` remains a separate evidence class and may still be admissible to the current Final Risk merge gate; this scoreboard does not change that merge policy.',
-    '',
-  );
+  lines.push('---', '');
   return lines.join('\n');
 }
 
