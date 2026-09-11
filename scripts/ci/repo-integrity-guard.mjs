@@ -162,62 +162,92 @@ function gitLines(...args) {
   return output ? output.split('\n') : [];
 }
 
+/**
+ * Compare current base with what merging this exact candidate would produce.
+ * Comparing base directly to an older diverged head mislabels base-only additions
+ * as candidate deletions. A common-ancestor-only diff would miss concurrent
+ * migration prefix collisions, so all existing checks use the prospective tree.
+ * merge-tree writes Git objects only; it does not change refs, index or worktree.
+ */
+function comparisonTreeFor(baseRevision, headRevision) {
+  const commitOf = (revision) => {
+    const commit = execFileSync('git', ['rev-parse', '--verify', `${revision}^{commit}`], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim();
+    if (!FULL_SHA.test(commit) || (FULL_SHA.test(revision) && commit !== revision.toLowerCase())) {
+      throw new Error('Revision must identify the exact commit, not a different peeled object');
+    }
+    return commit;
+  };
+  const base = commitOf(baseRevision);
+  const head = commitOf(headRevision);
+  // A conflicted merge also prints a tree SHA, but exits nonzero. execFileSync
+  // MUST reject that result; never read its first line or fall back to old diff.
+  const tree = execFileSync('git', ['merge-tree', '--write-tree', base, head], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+  if (!FULL_SHA.test(tree) || gitLines('cat-file', '-t', tree).join('') !== 'tree') {
+    throw new Error('merge-tree did not return one valid prospective tree');
+  }
+  return tree;
+}
+
 function main() {
   let baseRevision;
   let headRevision;
   try {
     baseRevision = resolveRevision(process.env, 'BASE_REVISION', 'HEAD^');
     headRevision = resolveRevision(process.env, 'HEAD_REVISION', 'HEAD');
+    const comparisonTree = comparisonTreeFor(baseRevision, headRevision);
+    const trackedPaths = gitLines('ls-tree', '-r', '--name-only', comparisonTree);
+    const baselineTrackedPaths = gitLines('ls-tree', '-r', '--name-only', baseRevision);
+    const baselineTrackedCount = baselineTrackedPaths.length;
+    const deletedPaths = gitLines('diff', '--diff-filter=D', '--name-only', baseRevision, comparisonTree);
+    const modifiedPaths = gitLines(
+      'diff', '--diff-filter=M', '--name-only', baseRevision, comparisonTree,
+      '--', MIGRATION_DIR,
+    );
+    const shaFindings = trackedPaths.flatMap((path) => {
+      if (!SOURCE_EXTENSION.test(path)) return [];
+      try {
+        return findStandaloneGitShas(
+          path,
+          execFileSync('git', ['show', `${comparisonTree}:${path}`], { encoding: 'utf8' }),
+        );
+      } catch {
+        return [`tracked source file cannot be read: ${path}`];
+      }
+    });
+
+    const result = evaluateRepositoryIntegrity({
+      trackedPaths,
+      baselineTrackedCount,
+      deletedPaths,
+      shaFindings,
+      baselineTrackedPaths,
+      modifiedPaths,
+    });
+
+    console.log(JSON.stringify({
+      ...result,
+      baseRevision,
+      headRevision,
+      comparisonTree,
+      trackedCount: trackedPaths.length,
+      deletedCount: deletedPaths.length,
+    }, null, 2));
+
+    if (!result.ok) process.exitCode = 1;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.log(JSON.stringify({
       ok: false,
       errors: [message],
-      baseRevision: process.env.BASE_REVISION ?? '',
-      headRevision: process.env.HEAD_REVISION ?? '',
+      baseRevision: baseRevision ?? process.env.BASE_REVISION ?? '',
+      headRevision: headRevision ?? process.env.HEAD_REVISION ?? '',
     }, null, 2));
     process.exitCode = 1;
-    return;
   }
-
-  const trackedPaths = gitLines('ls-tree', '-r', '--name-only', headRevision);
-  const baselineTrackedPaths = gitLines('ls-tree', '-r', '--name-only', baseRevision);
-  const baselineTrackedCount = baselineTrackedPaths.length;
-  const deletedPaths = gitLines('diff', '--diff-filter=D', '--name-only', baseRevision, headRevision);
-  const modifiedPaths = gitLines(
-    'diff', '--diff-filter=M', '--name-only', baseRevision, headRevision,
-    '--', MIGRATION_DIR,
-  );
-  const shaFindings = trackedPaths.flatMap((path) => {
-    if (!SOURCE_EXTENSION.test(path)) return [];
-    try {
-      return findStandaloneGitShas(
-        path,
-        execFileSync('git', ['show', `${headRevision}:${path}`], { encoding: 'utf8' }),
-      );
-    } catch {
-      return [`tracked source file cannot be read: ${path}`];
-    }
-  });
-
-  const result = evaluateRepositoryIntegrity({
-    trackedPaths,
-    baselineTrackedCount,
-    deletedPaths,
-    shaFindings,
-    baselineTrackedPaths,
-    modifiedPaths,
-  });
-
-  console.log(JSON.stringify({
-    ...result,
-    baseRevision,
-    headRevision,
-    trackedCount: trackedPaths.length,
-    deletedCount: deletedPaths.length,
-  }, null, 2));
-
-  if (!result.ok) process.exitCode = 1;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
