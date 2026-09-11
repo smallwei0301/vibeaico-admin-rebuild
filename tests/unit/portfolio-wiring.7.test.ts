@@ -171,11 +171,34 @@ describe('portfolio #7 follow-up: LINE 排序真的落地（0075 line_sort_order
     expect(collectionRoute).toContain("orderBy === 'line' ? 'line_sort_order' : 'sort_order'");
   });
 
-  it('POST /api/portfolios/reorder-line mirrors /reorder exactly, writing line_sort_order, no RPC/function', () => {
-    expect(reorderLineRoute).toContain("requireTenant('MANAGER')");
-    expect(reorderLineRoute).toContain("requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE')");
-    expect(reorderLineRoute).toContain(".update({ line_sort_order: i })");
-    expect(reorderLineRoute).toContain(".eq('id', b.ids[i]).eq('tenant_id', t.tenantId)");
-    expect(reorderLineRoute).not.toMatch(/rpc\(|create function|create trigger/i);
+  /**
+   * ⚠️ 本條的原始形狀（issue #7 / 0075）鎖的是「逐筆 update({ line_sort_order: i })
+   * 且不得用 RPC」。當時的前提是 **portfolios 沒有唯一排序索引**，在那個前提下
+   * 逐筆更新是安全且最簡單的。
+   *
+   * issue #238 實測推翻了那個前提：canonical TEST 上有
+   * portfolios_tenant_sort_order_uq 與 portfolios_tenant_line_sort_order_uq，
+   * 逐筆 update 的第一次迭代就撞 23505 → 500。也就是說這條鎖原本釘住的，是一個
+   * 在有索引時**必然壞掉**的寫法。
+   *
+   * 所以這裡更新的是前提，不是放寬標準——鎖的**意圖**原封不動保留：兩支 reorder
+   * route 不得各自發明實作。只是現在的「一致」是「都走同一支 RPC helper」，
+   * 而不是「都自己寫同一個迴圈」。
+   */
+  it('POST /api/portfolios/reorder-line 與 /reorder 走同一支 helper，只差 lane（#238 後）', () => {
+    const reorderRoute = read('src/app/api/portfolios/reorder/route.ts');
+
+    for (const route of [reorderRoute, reorderLineRoute]) {
+      expect(route).toContain("requireTenant('MANAGER')");
+      expect(route).toContain("requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE')");
+      // 兩支都必須呼叫同一支 helper，不得各自複製一份實作
+      expect(route).toContain('reorderPortfolios(t.supabase, t.tenantId, b.ids');
+      // 逐筆 update 是 #238 修掉的那個缺陷本身，不得復活
+      expect(route).not.toMatch(/for \(let i = 0; i < b\.ids\.length; i\+\+\)/);
+    }
+
+    // lane 必須分開：公開頁改 sort_order、LINE 改 line_sort_order
+    expect(reorderRoute).toContain("'public'");
+    expect(reorderLineRoute).toContain("'line'");
   });
 });

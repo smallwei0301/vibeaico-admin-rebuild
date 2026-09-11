@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { insertPortfolioWithPositions } from '@/server/product-position';
 
 /**
  * /api/portfolios — 作品集 CRUD，同 services 模式（04 分冊 §B-5）。
@@ -64,29 +65,28 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PORTFOLIO_SHOWCASE');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('portfolios')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
-
-  const { data, error } = await t.supabase
-    .from('portfolios')
-    .insert({
-      tenant_id: t.tenantId,
-      title: b.title,
-      image_url: b.imageUrl,
-      description: b.description ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? -1) + 1,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  // issue #238：原本只算 sort_order，line_sort_order 完全沒給（column default 0），
+  // 於是每一筆新作品的 LINE 排序都是 0。canonical TEST 有
+  // portfolios_tenant_line_sort_order_uq，第二筆就 500（已實測）；正式庫沒有該
+  // 索引所以不會 500，但「LINE 作品排序」等於沒有作用。改走 migration 的取號
+  // 函式，兩個 lane 一起配（同 services/products，見 #128 / 0065 / 0084）。
+  const { data } = await insertPortfolioWithPositions<{ id: string }>(
+    t.supabase, t.tenantId, (positions) =>
+      t.supabase
+        .from('portfolios')
+        .insert({
+          tenant_id: t.tenantId,
+          title: b.title,
+          image_url: b.imageUrl,
+          description: b.description ?? '',
+          active: b.active ?? true,
+          line_featured: b.lineFeatured ?? false,
+          sort_order: positions.sortOrder,
+          line_sort_order: positions.lineSortOrder,
+        })
+        .select('id')
+        .single(),
+  );
 
   return ok({ id: data.id });
 });
