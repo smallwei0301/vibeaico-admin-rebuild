@@ -7,7 +7,11 @@ on:
 permissions:
   contents: read
   issues: write
-  pull-requests: read
+  # `PUT /repos/{o}/{r}/issues/{n}/labels` 對「PR 號碼」要求的是
+  # `issues=write; pull_requests=write` —— 兩者**同時**需要，不是擇一。
+  # 本檔原本只給 pull-requests: read，因此 setLabels 一律回 403
+  # （2026-09-11 #365；回應標頭 x-accepted-github-permissions 即載明這組）。
+  pull-requests: write
   statuses: write
 
 jobs:
