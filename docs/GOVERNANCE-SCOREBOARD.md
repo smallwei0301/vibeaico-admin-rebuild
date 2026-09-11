@@ -1,48 +1,93 @@
 # Governance Scoreboard
 
-本文件定義治理 Run 的可比較性、模型審查身分證據與 Scoreboard 完整度。它不改變 Product 規格，也不改變現行 Final Risk merge policy。
+本文件定義 `MODEL_GOVERNANCE` Run 的可比較性、治理證據完整度與 Scoreboard contract（評分板契約）。
+它不改變 Product 規格，也不改變 `PRODUCT_MAINLINE` 的 builder／audit／Final Risk 模型政策。
 
-## 1. 三種模型身分證據必須分開
+2026-09-11 Owner 最新決策：**MODEL_GOVERNANCE 不指定模型，也不分析使用哪個模型。**
 
-治理報表不得把「有指派模型」寫成「模型身分已被供應商證明」。
+因此 Governance Scoreboard 下一版的核心問題是：
 
-| 分類 | 定義 | 可標 `MODEL_REVIEW_VERIFIED` |
-|---|---|---|
-| `PROVIDER_VERIFIED` | 有 provider / platform 可驗證的 served-model execution reference，且 `actualModel` 已知 | 是 |
-| `OPERATOR_ATTESTED` | 操作者具名背書實際委派到某模型，但 provider served-model telemetry 不可獨立驗證 | 否，只標 `MODEL_REVIEW_ATTESTED` |
-| `UNKNOWN` | `actualModel=unknown`，或雖有模型名稱 claim 但沒有足以支持實際模型身分的證據 | 否，標 `MODEL_REVIEW_IDENTITY_UNKNOWN` |
+> 治理工作是否留下可重建、可比較、沒有假完成的證據，而且是否真的降低工程摩擦而沒有削弱 Product 安全門？
 
-`actualModel` 已知不代表 identity 已驗證。若只有模型名稱 claim、沒有 operator attestation 或 provider 可驗證證據，`identityEvidence` 應維持 `UNKNOWN`。`UNKNOWN` 永遠不得計入 provider-verified coverage。
+而不是：
 
-現行 Final Risk guard 是否接受 `OPERATOR_ATTESTED` 由 `docs/MODEL-ROUTING.md` 與 `scripts/agents/astra-review-policy.mjs` 決定。本 Scoreboard **不放寬也不收緊 merge gate**，只確保複盤與 metrics 不把 attestation 冒充 provider verification。
+> 是哪個模型做的？Sol／Opus／Astra／Fable 用了幾次？
 
-## 2. Durable review evidence contract
+## 1. Contract v2：model-agnostic governance
 
-每一筆計入治理 Scoreboard 的 Sol / Final Risk review 至少要有：
+自 `docs/metrics/governance-scoreboard-policy.json` 的 v2 `effectiveAt` 起，新 terminal Governance Run 使用 contract v2。在 policy v2 尚未合併生效前，現有 contract v1 只作歷史／相容重播，不作新的治理模型分析。
 
-- `role`: `SOL_AUDIT` 或 `FINAL_RISK`
+v2 **不要求也不評分**：
+
 - `requestedModel`
 - `actualModel`
 - `identityEvidence`
+- `providerExecutionRef`
+- provider-verified model coverage
+- operator-attested model coverage
+- Sol／Opus／Terra／Astra／Fable utilization
+
+PR metadata 若仍保留模型紀錄欄，未指定與無可靠實際型號證據時如實記：
+
+```text
+REQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown
+```
+
+這是 truth record（真實紀錄），不是模型要求，也不得被當成模型執行證據或 Scoreboard coverage。
+
+`PRODUCT_MAINLINE` 的模型路由與 Final Risk 完全不受本節影響。
+
+## 2. Durable governance review evidence contract v2
+
+每一筆計入 Governance Scoreboard v2 的 review evidence（治理審查證據）至少要有：
+
+- `role`: `GOVERNANCE_REVIEW`
 - durable `executionRef`
+- `subject`，例如 `pr#123`
 - `reviewedSha` 或 `changeDigest`
-- `verdict`
+- `verdict`: `PASS | FAIL | FIX_REQUIRED | PENDING`
 
-這裡的 `executionRef` 是「這次審查在 GitHub／治理記錄中的可追溯 reference」，例如一筆 PR review；**它不是 provider served-model execution id，也不能拿來證明模型身分**。只有 `identityEvidence=PROVIDER_VERIFIED` 時，才另外要求 `providerExecutionRef`，而 Scoreboard 的 `MODEL_REVIEW_VERIFIED` 也只計這一類。換句話說，GitHub review 證明「有留下這次審查紀錄」，provider evidence 才能證明「實際由哪個模型服務」。
-
-證據檔放在：
+證據檔仍放在：
 
 `docs/metrics/review-evidence/<runId>.json`
 
-同一筆 review 不得重複計數。`id` 與 `executionRef` 都必須唯一；如果只是換一個 record id、但仍指向同一個 executionRef，視為重複 review evidence，不能增加 Sol touches。純 attestation 修正若沒有重新執行 review，也不應被當成新的 review touch。
+v2 例子：
+
+```json
+{
+  "contractVersion": 2,
+  "runId": "2026-09-11-governance-r01",
+  "finalReviewedSha": "<40-char sha>",
+  "records": [
+    {
+      "id": "github:pr#123/review#final",
+      "subject": "pr#123",
+      "role": "GOVERNANCE_REVIEW",
+      "executionRef": "github:pr#123/review#final",
+      "reviewedSha": "<40-char sha>",
+      "changeDigest": null,
+      "verdict": "PASS"
+    }
+  ]
+}
+```
+
+同一筆 review 不得重複計數：
+
+- `id` 必須唯一；
+- `executionRef` 必須唯一；
+- 換一個 record id 但指向同一個 executionRef，仍是同一筆 evidence；
+- 純 metadata 修正、沒有重新執行 review，不得增加 review touch。
+
+低風險 Governance Run 可以 `records: []`。Scoreboard 不會為了填數字強迫多做一次 ceremony review（形式審查）。
 
 ## 3. Blocking finding 必須對 final head 做 reconciliation
 
 `FAIL` / `FIX_REQUIRED` 不會因為後面出現另一筆 PASS 就自動消失。
 
-若同一個 evidence packet 內存在 blocking review，terminal closeout 必須：
+若同一 evidence packet 存在 blocking review，terminal closeout 必須：
 
-1. 在 packet 上提供 `finalReviewedSha` 或 `finalChangeDigest`。
+1. packet 提供 `finalReviewedSha` 或 `finalChangeDigest`；
 2. 每一筆 blocking review 加上：
 
 ```json
@@ -54,72 +99,131 @@
 }
 ```
 
-3. `byRecordId` 必須真的指向同一 PR subject、同一 review role 的 `PASS` record。
-4. 該 PASS record 的 `reviewedSha` / `changeDigest` 必須與 packet 的 final anchor 相同。
+3. `byRecordId` 必須指向同一 PR subject、同一 review role 的 `PASS` record；
+4. 該 PASS 的 `reviewedSha` / `changeDigest` 必須與 packet 的 final anchor 相同。
 
-也就是說，舊 head 的 blocking finding 可以保留歷史，但 Closeout 若要宣稱「已修」，必須把它明確接到 final-head PASS。這是為了避免 review 晚到或 review 排程交錯時，單靠時間順序誤判。
+這條保留，因為它是在驗證「問題真的修到最後版本」，與使用哪個模型無關。
 
-歷史 evidence 不因本規則回寫；只有 policy 生效後的新 terminal Run 在 enforcement 時必須符合。
+## 4. Metric data quality：v2 使用 17 個 model-neutral core metrics
 
-## 4. Sol flow 不再靠人工回憶
+Governance Scoreboard v2 的 core metrics 排除舊 v1 的：
 
-`flow.solTouches` 與 `flow.solIssues` 必須能由 durable review evidence 重建：
+- `flow.solTouches`
+- `flow.solIssues`
 
-- `solTouches` = unique `executionRef` 的 `SOL_AUDIT` review records 數量
-- `solIssues` = 有 `SOL_AUDIT` 的 unique PR subjects 數量
+因為它們把治理品質綁到特定模型角色。
 
-新 terminal Run 若 ledger 與 durable evidence 對不上，視為 Scoreboard contract failure。
+v2 的 17 個核心欄位是：
 
-歷史已關閉 Run 不回寫。若發現 mismatch，只新增 reconciliation scoreboard，清楚標示 historical non-comparable。
+```text
+delivery.cycleTimeMinutes
+ci.fullCiRuns
+ci.invalidReruns
+ci.firstPassRatePercent
+quality.acceptanceEvidenceCoveragePercent
+quality.auditFirstPassRatePercent
+quality.unresolvedP0
+quality.unresolvedP1
+quality.reopenedIssues
+quality.postMergeRegressions
+quality.safetyViolations
+flow.duplicateAgentTasks
+flow.ownershipCollisions
+flow.waitTimeConvertedPercent
+auditability.evidenceFieldsCompletePercent
+auditability.exactHeadTestCoveragePercent
+auditability.preciseBlockersPercent
+```
 
-## 5. Metric data quality 與時間戳 fail closed
+`metricDataQualityPercent` 必須由 `scripts/metrics/governance-scoreboard.mjs` 實算，不接受人工填漂亮百分比。
 
-`metricDataQualityPercent` 由 `scripts/metrics/governance-scoreboard.mjs` 對核心 19 個欄位計算，不接受人工填一個漂亮百分比取代原始資料。
+新 terminal v2 Run 必須：
 
-自 `docs/metrics/governance-scoreboard-policy.json` 的 `effectiveAt` 起，新 terminal Run 必須：
+1. core metric data quality >= policy 門檻，現行目標為 95%；
+2. `auditability.scoreInputsCompletePercent` 與程式實算值一致；
+3. terminal `run.startedAt` 可解析；
+4. policy `effectiveAt` 可解析；
+5. 若存在 blocking review，完成 §3 final-head reconciliation；
+6. review evidence v2 schema 合法且 executionRef 不重複。
 
-1. 核心 metric data quality >= 95%。
-2. `auditability.scoreInputsCompletePercent` 與程式實算值一致。
-3. Sol flow 與 durable review evidence 一致。
-4. terminal `run.startedAt` 必須存在且可解析。
-5. policy `effectiveAt` 必須存在且可解析。
-6. 若存在 blocking review，必須完成 §3 的 final-head reconciliation。
+時間戳缺失／格式錯誤必須 fail closed（失敗即阻擋），不得利用壞 timestamp 靜默跳過 enforcement。
 
-`startedAt` 或 `effectiveAt` 缺失／格式錯誤時，不得把 `contractApplies=false` 當成免檢查通行證。terminal enforcement 必須 fail closed。
+Token／weekly usage 若平台拿不到，維持 unknown/null，不估算。
 
-否則 required `check` 裡的 unit gate 必須轉紅，該 Run 不得被稱為可比較 terminal scoreboard。
+## 5. Scoreboard v2 要呈現什麼
 
-Token / weekly usage 若平台拿不到，維持 unknown，不納入這個 completeness 分母，也不得估算。
+v2 報表至少呈現：
 
-## 6. 低風險工作不被強迫升級審查
+```text
+Metric data quality
+Comparison eligible
+Review evidence records
+Unique reviewed subjects
+Blocking findings / reconciliation status
+Missing core metrics
+Comparison blockers
+Contract errors
+```
 
-Scoreboard evidence contract 不等於「每張 PR 都要 Final Risk」。
+不要呈現 MODEL_GOVERNANCE 的：
 
-低風險、沒有 Sol / Final Risk requirement 的 Run 可以使用空的 `records: []`，只要 ledger flow 也誠實為 0/0。是否需要 Sol / Final Risk 仍由現行 risk routing 決定。
+```text
+requested / actual model
+provider model identity coverage
+operator-attested identity coverage
+Sol touches / Sol issues
+Final Risk model touches
+model utilization ranking
+```
 
-## 7. 歷史 r01 reconciliation
+Governance Retrospective 可以分析 CI 浪費、WIP、PR lifecycle、completion truth、provider incidents 與 evidence 品質，但不分析治理模型選擇。
 
-`2026-09-09-governance-loop-r01` 保留原 ledger 不改寫。依 durable GitHub review evidence 重建後：
+## 6. Retrospective 必須同時讀 Product 與 Governance 兩張成績單
 
-- ledger Sol flow: 0 touches / 0 subjects
-- durable evidence: 4 Sol touches / 2 subjects
-- total model reviews: 6
-- provider-verified identity: 0
-- operator-attested: 2
-- identity unknown: 4
-- metric data quality: 68.4% (13/19)
+`復盤／複盤` 不得因 Product Run 不足三輪就跳過 Governance Scoreboard。
 
-因此 r01 的工作流程完成證據仍有效，但其 Scoreboard **不可拿來和未來完整 Run 做量化優劣比較**。
+正確輸出：
+
+```text
+PRODUCT DELIVERY SCORE / TREND
+→ 如果不足 3 個 terminal + truth-verified + comparable Product Runs：NOT_GRADED
+
+GOVERNANCE SCOREBOARD
+→ 照樣重算、照樣報告 data quality / comparison eligibility / evidence gaps
+```
+
+這兩張表彼此獨立。
+
+## 7. Historical contract v1 保留、不可改寫
+
+Contract v2 生效前的 Governance Scoreboard v1 與 review evidence 全部維持 read-only history。
+
+例如 `2026-09-09-governance-loop-r01`：
+
+- metric data quality 68.4% (13/19)
+- historical comparison eligible: NO
+- ledger 與 durable evidence 曾存在 flow mismatch
+
+這些歷史事實不回寫、不補 0、不事後修成漂亮分數。
+
+v1 曾記錄模型身分欄位，程式仍保留**重建歷史報告**的能力，但新的 retrospective 不得把歷史 model identity coverage 拿來做 MODEL_GOVERNANCE 品質趨勢或模型優劣結論。
+
+簡單說：
+
+> 歷史可以重播，但舊的模型指標不再指揮未來治理。
 
 ## 8. Review / closeout 問句
 
-結案前至少回答：
+新 Governance Run 結案前至少回答：
 
-1. Sol / Final Risk 實際做了幾次？unique `executionRef` 能不能重建？
-2. `actualModel=unknown` 或只有名稱 claim 的 review 是否被錯算成 verified？
-3. operator attestation 是否與 provider verification 分開？
-4. ledger 的 Sol flow 是否與 review evidence 一致？
-5. 核心 metrics 缺值率是多少？是否達到 policy 門檻？
-6. `startedAt` / `effectiveAt` 是否有效，還是因壞時間戳靜默跳過 enforcement？
-7. 是否曾有 `FAIL` / `FIX_REQUIRED`？若有，每一筆是否明確 reconciliation 到 final-head PASS？
-8. 若資料不足，是否誠實標示 non-comparable，而不是補 0、平均值或推估？
+1. core metrics 完整度是多少？是否 >= policy 門檻？
+2. evidence packet 能否由 durable executionRef 重建？有沒有重複計數？
+3. `startedAt` / `effectiveAt` 是否有效？
+4. 是否曾有 `FAIL` / `FIX_REQUIRED`？每一筆是否 reconciliation 到 final-head PASS？
+5. exact-head required CI / tests 是否真的執行，而不是 `POLICY_SKIP` 看起來 success？
+6. Completion Truth 是否重新讀 live PR/main/file 驗證？
+7. 是否產生 invalid rerun、metadata trial-and-error、stale PR 或多餘 WIP？
+8. 如果資料不足，是否誠實標 `non-comparable`，而不是補 0、平均值或推估？
+9. 本輪治理是否減少工程摩擦，且沒有削弱 Product safety gate？
+
+**不需要回答「這輪治理是由哪個模型做的」。**
