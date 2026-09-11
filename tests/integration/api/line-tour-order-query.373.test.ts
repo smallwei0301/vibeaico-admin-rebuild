@@ -1,35 +1,28 @@
 /**
- * 「訂單查詢」系統關鍵字端到端整合測試（#251 第 2 步 parity；#5 ④ 的漏網半邊）
+ * GUIDE 的「訂單查詢」查 `tour_orders`（issue #373）整合測試
  * -----------------------------------------------------------------------------
  * ## 為什麼有這一檔
  *
- * `ORDER`（訂單查詢）是 keyword-replies 頁「系統內建關鍵字」15 組之一，**三種業態
- * 的後台都列得出來、都附一顆停用開關**。但在此之前 `replyBuiltin()` 的 `case 'ORDER'`
- * 只對 GUIDE 回一句「準備中」，LOCAL_SHOP 與 CLINIC 直接 `return false` 落到預設回覆：
+ * `replyOrders()`（`src/server/line-events.ts`）在 `businessTypeOf === 'GUIDE'`
+ * 時，曾經一律回 `MSG.notReadyOrder`（「訂單查詢還在準備中」）。那句話在
+ * `tour_orders` 表與 `create_tour_order`／`cancel_tour_order` 等 rpc 都不存在的
+ * 時候是誠實的；`0087`／`0088` 進 `main`、2026-09-11 依 Owner 具名授權套用至
+ * 正式庫之後，繼續回「準備中」就變成「查得到卻說查不到」——PB-027 的第四種
+ * 形狀（符號存在 ≠ 事情會發生）。
  *
- *   後台擺著一顆「訂單查詢」開關 → 顧客打「我的訂單」→ 收到一句無關的預設回覆
+ * 這一檔驗的是「顧客收到什麼」，走真實 webhook（簽章 → route → `after()` →
+ * mock LINE），比照 `line-order-query.251.test.ts`（`product_orders` 那半邊）
+ * 與 `keyword-replies.05.test.ts` 的既有慣例。
  *
- * 而 `product_orders` 從 `0004` 就存在，`/api/product-orders` 是完整可用的後台功能。
- * 查得到卻不回答——PB-027 的第四種形狀（符號存在 ≠ 事情會發生）。
- *
- * 這個缺口是在 #251 比對「線上 LINE bot 實際在跑的那條 preview 分支」與 `main` 時發現的：
- * 分支上有 `replyOrders()`，`main` 沒有。#251 的結論是「切 webhook 回正式站前，先把
- * 分支獨有的功能補回 main，否則修好指向＝功能倒退」——這一檔就是那個 parity 的證據。
- *
- * ## 這一檔刻意證的是「顧客收到什麼」，不是「函式存在」
- *
- * 單元層要斷言這件事，只能比對原始碼字串（「`line-events.ts` 裡有 `product_orders`」），
- * 那正是 PB-029 說的「測試名稱宣稱得比它證明的多」。所以全部案例都走真實 webhook：
- * 簽章 → route → `after()` → mock LINE，斷言 mock LINE 收到的那段文字。
- *
- * 前置資料與清理紀律比照 `keyword-replies.05.test.ts`：beforeAll 快照 SHOP_A 的
- * `tenant_settings`（line jsonb ＋ 兩個 `*_enc`）與 `tenants.business_type`，afterAll
- * 逐字還原，並刪掉本檔造出的 product_orders / line_users / chat_messages。
+ * ⚠️ 「查詢失敗不得說成『沒有訂單』」那一條驗收，改在單元測試
+ * `tests/unit/line-tour-order-query-error.373.test.ts` 驗證——原因見該檔開頭：
+ * `tour_orders` 的 `tenant_id`／`customer_id` 都是 `uuid` 型別，黑箱打不出一個
+ * 「查詢真的失敗」的 PostgREST 錯誤。
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { createHmac } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SHOP_A, SHOP_B } from '../../fixtures';
+import { SHOP_A, SHOP_B, TRIP_A } from '../../fixtures';
 import { LineMockServer, type RecordedLineRequest } from '../../helpers/line-mock';
 import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
@@ -38,28 +31,27 @@ import type { BusinessType } from '@/config/modes';
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
 
 /** 本檔專用測試憑證（明文只存在測試裡；寫進 DB 前會 encryptSecret） */
-const CHANNEL_SECRET = 'itest-line-channel-secret-o251';
-const CHANNEL_TOKEN = 'itest-line-access-token-o251';
+const CHANNEL_SECRET = 'itest-line-channel-secret-o373';
+const CHANNEL_TOKEN = 'itest-line-access-token-o373';
 
-/** 本檔專用 LINE user id（避免跟 keyword-replies.05 / line-webhook.06 互踩） */
-const USER = 'Uorder251itest00000000000000000001';
+/** 本檔專用 LINE user id（避免跟 keyword-replies.05 / line-webhook.06 / line-order-query.251 互踩） */
+const USER = 'Uorder373itest00000000000000000001';
 
 /** 「都沒命中」時的分支 ⑥ 回覆——有它，「命中」與「沒命中」在斷言上才分得開 */
-const DEFAULT_REPLY = '【itest-251】這是分支⑥的預設回覆，代表沒有任何 handler 命中';
+const DEFAULT_REPLY = '【itest-373】這是分支⑥的預設回覆，代表沒有任何 handler 命中';
 
 /**
- * 本檔造出來的訂單編號。
+ * 本檔造出來的旅遊訂單編號。
  *
- * ⚠️ 全部帶 `itest-251-` 前綴，afterAll 只刪自己的：`product_orders` 的種子資料
- * （`products-orders.b3.test.ts` 等）與本檔共用同一個 tenant，整表 delete 會把
- * 別人的前置資料一起清掉，那種測試檔會在「別人先跑過」時神秘轉紅。
+ * ⚠️ 全部帶 `itest-373-` 前綴，afterAll 只刪自己的：`tour_orders` 的唯一索引是
+ * `(tenant_id, order_no)`（`0087`），整表 delete 會把別的測試檔（例如
+ * `tour-orders.10.test.ts`）留下的訂單一起清掉。
  */
 const ORDER_NO = {
-  newest: 'itest-251-A-0003',
-  middle: 'itest-251-A-0002',
-  oldest: 'itest-251-A-0001',
-  otherCustomer: 'itest-251-A-OTHER',
-  otherTenant: 'itest-251-B-0001',
+  newest: 'itest-373-A-0003',
+  middle: 'itest-373-A-0002',
+  oldest: 'itest-373-A-0001',
+  otherCustomer: 'itest-373-A-OTHER',
 } as const;
 
 let admin: SupabaseClient;
@@ -148,7 +140,7 @@ async function bindTo(customerId: string | null): Promise<void> {
   const { error } = await admin.from('line_users').upsert({
     tenant_id: SHOP_A.id,
     line_user_id: USER,
-    display_name: 'itest-251 顧客',
+    display_name: 'itest-373 顧客',
     followed: true,
     customer_id: customerId,
   }, { onConflict: 'tenant_id,line_user_id' });
@@ -158,51 +150,68 @@ async function bindTo(customerId: string | null): Promise<void> {
 async function deleteTestOrders(): Promise<void> {
   for (const tenantId of [SHOP_A.id, SHOP_B.id]) {
     await admin
-      .from('product_orders')
+      .from('tour_orders')
       .delete()
       .eq('tenant_id', tenantId)
-      .like('order_no', 'itest-251-%');
+      .like('order_no', 'itest-373-%');
   }
 }
 
 /**
- * 造 A 店三筆訂單（顧客 A1）＋一筆同店別位顧客＋一筆 B 店。
+ * 造 A 店三筆旅遊訂單（顧客 A1）＋一筆同店別位顧客。
  *
- * ⚠️ `product_orders` 的唯一索引是 `(tenant_id, order_no)`（`0004`）。所有編號都帶
- * `itest-251-` 前綴，既避開種子資料撞號，也讓 afterAll 能只刪自己的。
+ * ⚠️ 直接 insert，不走 `create_tour_order` rpc：這裡只需要「查得到訂單」，
+ * 不需要驗名額扣減（那是 `tour-orders.10.test.ts` 的範圍）。直接 insert 也
+ * 完全不動 `trip_departures.seats_booked`，不用擔心「已知陷阱」提到的
+ * 名額殘留問題。
+ *
+ * ⚠️ 沒有「別家店的訂單」案例：共用 TEST 專案的 `tour_orders` 掛著 `#41`
+ * historical overlay trigger（`0098` 的註解已記錄這件事），會比照
+ * `create_tour_order()` 驗證 `departure_id` 真的屬於 `tenant_id`——`SHOP_B`
+ * 沒有自己的行程資料，硬塞 `tenant_id=SHOP_B` 卻指到 A 店的 `departure1` 會被
+ * 該 trigger 擋下（`DEPARTURE_NOT_FOUND`）。`tenant_id` 有沒有真的帶進
+ * `replyTourOrders()` 的查詢，由下面「同店別位顧客不會出現」＋程式碼本身
+ * 明寫的 `.eq('tenant_id', ctx.tenant.id)` 一起佐證，不再另外造一筆跨租戶
+ * 訂單（那需要先在 `SHOP_B` 建一整組行程資料，代價換不回等值的把關）。
  */
 async function seedOrders(): Promise<void> {
   await deleteTestOrders();
-  const { error } = await admin.from('product_orders').insert([
+  const base = {
+    tenant_id: SHOP_A.id,
+    trip_id: TRIP_A.id,
+    plan_id: TRIP_A.planA1,
+    departure_id: TRIP_A.departure1,
+    unit_price: 1000,
+    source: 'MANUAL' as const,
+    // ⚠️ 批次 insert 時 supabase-js／PostgREST 以「第一筆物件的 key 聯集」建立欄位
+    // 清單，某一筆沒帶到的欄位會被明寫成 NULL，不會落回 column default（0）。
+    // 所以 paid_amount 一律在 base 裡顯式帶上，需要非 0 的那筆（已收款）再覆寫。
+    paid_amount: 0,
+  };
+  const { error } = await admin.from('tour_orders').insert([
     {
-      tenant_id: SHOP_A.id, order_no: ORDER_NO.oldest, customer_id: SHOP_A.customerA1,
-      total_amount: 480, status: 'COMPLETED', payment_status: 'PAID_OFFLINE',
-      created_at: '2026-03-01T02:00:00Z',
+      ...base, order_no: ORDER_NO.oldest, customer_id: SHOP_A.customerA1,
+      party_size: 2, total_amount: 2000, status: 'COMPLETED', payment_status: 'PAID',
+      paid_amount: 2000, created_at: '2026-03-01T02:00:00Z',
     },
     {
-      tenant_id: SHOP_A.id, order_no: ORDER_NO.middle, customer_id: SHOP_A.customerA1,
-      total_amount: 1250, status: 'CANCELLED', payment_status: 'REFUNDED',
+      ...base, order_no: ORDER_NO.middle, customer_id: SHOP_A.customerA1,
+      party_size: 1, total_amount: 1250, status: 'CANCELLED', payment_status: 'REFUNDED',
       created_at: '2026-03-02T02:00:00Z',
     },
     {
-      tenant_id: SHOP_A.id, order_no: ORDER_NO.newest, customer_id: SHOP_A.customerA1,
-      total_amount: 12345, status: 'PENDING', payment_status: 'UNPAID',
-      // ⚠️ UTC 17:00 ＝ 台北隔天 01:00。這個時刻刻意選在**跨日**的位置，見下方
-      // 「台北牆上時鐘」那條案例的說明——UTC 02:00 分不出「有位移」與「沒位移」。
+      ...base, order_no: ORDER_NO.newest, customer_id: SHOP_A.customerA1,
+      party_size: 12, total_amount: 12345, status: 'PENDING', payment_status: 'UNPAID',
+      // ⚠️ UTC 17:00 ＝ 台北隔天 01:00，跟 251 的日期案例一致刻意選在跨日位置。
       created_at: '2026-03-03T17:00:00Z',
     },
     {
-      tenant_id: SHOP_A.id, order_no: ORDER_NO.otherCustomer, customer_id: SHOP_A.customerA2,
-      total_amount: 999, status: 'CONFIRMED', payment_status: 'PAID_ONLINE',
+      ...base, order_no: ORDER_NO.otherCustomer, customer_id: SHOP_A.customerA2,
+      party_size: 3, total_amount: 999, status: 'CONFIRMED', payment_status: 'UNPAID',
       created_at: '2026-03-04T02:00:00Z',
     },
-    {
-      tenant_id: SHOP_B.id, order_no: ORDER_NO.otherTenant, customer_id: SHOP_B.customerB1,
-      total_amount: 777, status: 'CONFIRMED', payment_status: 'PAID_ONLINE',
-      created_at: '2026-03-05T02:00:00Z',
-    },
   ]);
-  expect(error, `種子訂單插入失敗：${error?.message}`).toBeNull();
+  expect(error, `種子旅遊訂單插入失敗：${error?.message}`).toBeNull();
 }
 
 beforeAll(async () => {
@@ -251,6 +260,7 @@ beforeAll(async () => {
   // 自訂關鍵字優先於內建指令（06 §3 優先序 ② 早於 ④）——本檔不驗那條規則，
   // 但若別的檔留下一組含「訂單」的關鍵字，這裡會被它攔截而神秘轉紅。
   await admin.from('keyword_replies').delete().eq('tenant_id', SHOP_A.id);
+  await setBusinessType('GUIDE');
   await seedOrders();
 });
 
@@ -273,32 +283,32 @@ afterAll(async () => {
 });
 
 /* ========================================================================== */
-/* ① 一般店家：「我的訂單」真的查得到（本檔最關鍵的一條）                        */
+/* ① GUIDE 顧客：「我的訂單」真的查得到 tour_orders（本檔最關鍵的一條）           */
 /* ========================================================================== */
-describe('LOCAL_SHOP 的「訂單查詢」查得到 product_orders（#251 parity）', () => {
+describe('GUIDE 的「訂單查詢」查得到 tour_orders（issue #373）', () => {
   beforeEach(async () => {
-    await setBusinessType('LOCAL_SHOP');
+    await setBusinessType('GUIDE');
     await patchLineJsonb({ systemKeywordGroupsDisabled: [] });
     await bindTo(SHOP_A.customerA1);
     await seedOrders();
   });
 
-  it('顧客打「我的訂單」→ 收到自己的訂單清單（編號、金額、狀態、付款狀態）', async () => {
+  it('顧客打「我的訂單」→ 收到自己的旅遊訂單清單（編號、金額、人數、狀態），不是「準備中」', async () => {
     const reply = await customerSays('我的訂單');
     expect(reply).toBeTruthy();
     // 沒有落到分支 ⑥——這是「有沒有 handler」與「handler 回了什麼」的分界線
     expect(reply).not.toBe(DEFAULT_REPLY);
+    // 驗收原文的紅線：絕不能是舊的準備中佔位訊息
+    expect(reply).not.toContain('準備中');
 
     expect(reply).toContain(ORDER_NO.newest);
     expect(reply).toContain(ORDER_NO.middle);
     expect(reply).toContain(ORDER_NO.oldest);
-    // 金額走千分位（12345 → 12,345），不是原始數字字串
+    // 金額走千分位（12345 → 12,345），且用 'zh-TW'，跟 replyOrders() 一致
     expect(reply).toContain('NT$12,345');
-    // 訂單狀態與付款狀態都是顧客看得懂的中文，不是 enum 代碼
+    // 訂單狀態是顧客看得懂的中文，不是 enum 代碼
     expect(reply).toContain('待確認');
-    expect(reply).toContain('未付款');
     expect(reply).not.toContain('PENDING');
-    expect(reply).not.toContain('UNPAID');
   });
 
   it('最新的排最前面（created_at desc）', async () => {
@@ -307,33 +317,9 @@ describe('LOCAL_SHOP 的「訂單查詢」查得到 product_orders（#251 parity
     expect(reply.indexOf(ORDER_NO.middle)).toBeLessThan(reply.indexOf(ORDER_NO.oldest));
   });
 
-  it('日期是台北牆上時鐘的日期（UTC 17:00 已經是台北的隔天）', async () => {
-    // `itest-251-A-0003` 的 created_at 是 2026-03-03T17:00:00Z ＝ 台北 3/4 01:00。
-    //
-    // ⚠️ 這條案例第一版是錯的，兩層都錯，留下來的教訓比案例本身值錢：
-    //   ① 用的時刻是 UTC 02:00。那個時刻在「+8」與「完全不位移」下**都是 3/3**，
-    //      只有寫成 -8 才會變 3/2。案例名字宣稱「驗了台北時區」，實際上只驗得出
-    //      三種寫法裡的一種——PB-029 的形狀，這次發生在我自己身上。
-    //   ② 斷言寫成 `expect(reply).not.toContain('3/2（')`，比對的是**整份清單**，
-    //      而清單裡本來就有一筆真的 3/2 訂單（`itest-251-A-0002`）。那條斷言在
-    //      功能完全正確時也必定失敗，`local-isolated-a` 照設計把它打回來了。
-    //
-    // 現在改成：跨日的時刻（+8 → 3/4；不位移 → 3/3；-8 → 3/3，三者分得開），
-    // 且只斷言**那一筆訂單自己那一行**，不再拿整份清單當比對對象。
-    const reply = (await customerSays('我的訂單'))!;
-    const line = reply.split('\n').find((l) => l.includes(ORDER_NO.newest));
-    expect(line, `回覆裡找不到 ${ORDER_NO.newest} 那一行`).toBeTruthy();
-    expect(line).toContain('3/4（三）');
-  });
-
-  it('同店別位顧客的訂單不會出現（customer_id 有真的帶進查詢）', async () => {
+  it('同店別位顧客的旅遊訂單不會出現（customer_id 有真的帶進查詢）', async () => {
     const reply = (await customerSays('我的訂單'))!;
     expect(reply).not.toContain(ORDER_NO.otherCustomer);
-  });
-
-  it('別家店的訂單不會出現（tenant_id 有真的帶進查詢）', async () => {
-    const reply = (await customerSays('我的訂單'))!;
-    expect(reply).not.toContain(ORDER_NO.otherTenant);
   });
 
   it.each(['查看訂單', '訂單查詢'])('同義詞「%s」走同一條 handler', async (word) => {
@@ -342,11 +328,12 @@ describe('LOCAL_SHOP 的「訂單查詢」查得到 product_orders（#251 parity
     expect(reply).toContain(ORDER_NO.newest);
   });
 
-  it('沒有任何訂單 → 回「沒有訂單紀錄」，不是預設回覆', async () => {
+  it('沒有任何旅遊訂單 → 回「沒有旅遊訂單紀錄」，不是預設回覆、也不是「準備中」', async () => {
     await deleteTestOrders();
     const reply = await customerSays('我的訂單');
     expect(reply).not.toBe(DEFAULT_REPLY);
-    expect(reply).toContain('沒有訂單紀錄');
+    expect(reply).not.toContain('準備中');
+    expect(reply).toContain('沒有旅遊訂單紀錄');
   });
 
   it('LINE 帳號還沒綁定顧客 → 請對方留大名，不是回一份空清單', async () => {
@@ -363,37 +350,5 @@ describe('LOCAL_SHOP 的「訂單查詢」查得到 product_orders（#251 parity
     const calls = await lineCallsFor('我的訂單');
     // 停用組落到 ⑥ 的話顧客照樣收到訊息，那顆開關就是假的（與 #5 同一條規則）
     expect(calls).toHaveLength(0);
-  });
-});
-
-/* ========================================================================== */
-/* ② 診所同樣適用；嚮導查的是 tour_orders，不是 product_orders（issue #373）    */
-/* ========================================================================== */
-describe('業態分流：CLINIC 走商品訂單，GUIDE 走旅遊訂單', () => {
-  beforeEach(async () => {
-    await patchLineJsonb({ systemKeywordGroupsDisabled: [] });
-    await bindTo(SHOP_A.customerA1);
-    await seedOrders();
-  });
-
-  it('CLINIC 也查得到 product_orders（這一組不是 LOCAL_SHOP 專屬）', async () => {
-    await setBusinessType('CLINIC');
-    const reply = await customerSays('我的訂單');
-    expect(reply).not.toBe(DEFAULT_REPLY);
-    expect(reply).toContain(ORDER_NO.newest);
-  });
-
-  /**
-   * issue #373：`tour_orders` 表與其 rpc 已在 `main`，GUIDE 的「我的訂單」不再
-   * 回「準備中」。這裡只驗「不得把商品訂單當成旅遊訂單念出來」那一半——
-   * GUIDE 查的是 `tour_orders`（本檔沒有種任何一筆），內含旅遊訂單的完整
-   * 正／負向案例在 `tests/integration/api/line-tour-order-query.373.test.ts`。
-   */
-  it('GUIDE 查旅遊訂單，**不得**把商品訂單當成旅遊訂單念出來，也不再回「準備中」', async () => {
-    await setBusinessType('GUIDE');
-    const reply = (await customerSays('我的訂單'))!;
-    expect(reply).not.toBe(DEFAULT_REPLY);
-    expect(reply).not.toContain('準備中');
-    for (const no of Object.values(ORDER_NO)) expect(reply).not.toContain(no);
   });
 });
