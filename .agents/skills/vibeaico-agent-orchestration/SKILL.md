@@ -1,25 +1,26 @@
 ---
 name: vibeaico-agent-orchestration
-description: "Use for /goal, 開始 Loop, 繼續 Loop, continued autonomous delivery, model governance, Product delivery, model switches, open-Issue reduction, multi-Agent delegation, B+ WIP control, shared TEST scheduling, CI classification, PR cleanup, scorecard generation, or Issue closeout in smallwei0301/vibeaico-admin-rebuild. First classifies every new Issue/PR into MODEL_GOVERNANCE or PRODUCT_MAINLINE. MODEL_GOVERNANCE is Sol-only with no Terra and no Astra/Fable Final Risk; PRODUCT_MAINLINE keeps the B+ delivery topology and risk routing."
+description: "Use for /goal, 開始 Loop, 繼續 Loop, continued autonomous delivery, model governance, Product delivery, model switches, open-Issue reduction, multi-Agent delegation, B+ WIP control, shared TEST scheduling, CI classification, PR cleanup, scorecard generation, or Issue closeout in smallwei0301/vibeaico-admin-rebuild. First classifies every new Issue/PR into MODEL_GOVERNANCE or PRODUCT_MAINLINE. MODEL_GOVERNANCE is model-agnostic, does not consume Product Terra slots and does not require Product Astra/Fable Final Risk; PRODUCT_MAINLINE keeps the B+ delivery topology and risk routing."
 metadata:
   author: smallwei0301
-  version: "0.8.0"
+  version: "0.9.0"
 ---
 
 # VibeAI.co Agent Orchestration
 
 Canonical policy order:
 
-1. `origin/main:docs/decisions/2026-09-07-owner-governance-alignment.md`
-2. `origin/main:docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
-3. `origin/main:docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
-4. `origin/main:docs/AGENT-EXECUTION.md`
-5. `origin/main:docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-6. `origin/main:docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-7. `origin/main:docs/PR-LIFECYCLE.md`
-8. `origin/main:scripts/agents/model-routing.json`
+1. `origin/main:docs/decisions/2026-09-11-owner-model-governance-model-agnostic.md`
+2. `origin/main:docs/decisions/2026-09-07-owner-governance-alignment.md`
+3. `origin/main:docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
+4. `origin/main:docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
+5. `origin/main:docs/AGENT-EXECUTION.md`
+6. `origin/main:docs/AGENT-BPLUS-DELIVERY-LOOP.md`
+7. `origin/main:docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
+8. `origin/main:docs/PR-LIFECYCLE.md`
+9. `origin/main:scripts/agents/model-routing.json`
 
-The 2026-09-10 workstream decision wins on model-governance execution: MODEL_GOVERNANCE is Sol-only and does not use Terra or Astra/Fable Final Risk. Product B+ topology still applies to PRODUCT_MAINLINE.
+The 2026-09-11 Owner decision wins on model-governance execution: MODEL_GOVERNANCE is model-agnostic. Do not select, score or audit it by requested/actual model. Product B+ topology and Product model/risk routing still apply to PRODUCT_MAINLINE.
 
 ## Two workstreams are mandatory
 
@@ -39,22 +40,25 @@ Classify before creating the Issue/PR, not after implementation starts.
 
 ### MODEL_GOVERNANCE
 
-Use for model routing, Agent orchestration, WIP / Final Risk guard behavior, governance metrics/scoreboards, PR lifecycle, governance-only CI policy, governance templates and related durable policy docs.
+Use for model routing policy, Agent orchestration, WIP / Final Risk guard behavior, governance metrics/scoreboards, PR lifecycle, governance-only CI policy, governance templates and related durable policy docs.
 
 Execution contract:
 
 ```text
 WORKSTREAM: MODEL_GOVERNANCE
 AGENT_LANE: GOVERNANCE
-REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol
+REQUESTED_MODEL / ACTUAL_MODEL: requested=NOT_APPLICABLE; actual=NOT_APPLICABLE
 ASTRA_RISK: NONE
 FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY
 ```
 
-- GPT-5.6 Sol chat/session performs triage, implementation, review and closeout directly.
-- Do not spawn Terra or Reserve Terra for MODEL_GOVERNANCE.
-- Do not dispatch Astra/Fable Final Risk for MODEL_GOVERNANCE.
-- Required source CI/tests still apply. Sol must read the final diff and verify exact-head evidence before merge.
+`NOT_APPLICABLE` is a non-model metadata sentinel used only during parser compatibility. It is not a model claim and must not be counted as model evidence.
+
+- Any capable Agent/session may perform bounded MODEL_GOVERNANCE work in the GOVERNANCE lane; do not require a named model.
+- Do not consume Product Terra or Reserve Terra slots for MODEL_GOVERNANCE.
+- Do not dispatch Astra/Fable Product Final Risk for pure MODEL_GOVERNANCE.
+- Required source CI/tests still apply. The active governance Agent must read the final exact diff and verify exact-head evidence before merge.
+- Do not analyze MODEL_GOVERNANCE by requested/actual model, provider model identity coverage or model-tier utilization.
 - No Product delivery-unit credit, Product Run membership, Production authorization or user-visible shipped claim is created by this workstream.
 - Keep the change inside `model-routing.json.workstreams.modelGovernance.scopePrefixes`.
 
@@ -113,13 +117,13 @@ ACTIVE_CANDIDATE max 3
 
 RESERVE is not a second delivery line. It may produce at most one atomic source-only commit, then stops at `READY_FOR_PROMOTION`.
 
-This topology is for `PRODUCT_MAINLINE`. Do not create Terra slots for `MODEL_GOVERNANCE`.
+This topology is for `PRODUCT_MAINLINE`. Do not create Product Terra slots for `MODEL_GOVERNANCE`.
 
 ## Router
 
 ```text
 MODEL_GOVERNANCE
-  SOL_GOVERNANCE     current truth -> bounded implementation -> tests -> final diff review -> closeout
+  GOVERNANCE         current truth -> bounded implementation -> tests -> final diff verification -> closeout
 
 PRODUCT_MAINLINE
   LUNA_TRUTH         live facts, open work, exact heads, TEST holder
@@ -160,7 +164,7 @@ Do not copy full chat history or make multiple Luna agents scan the same invento
 
 For `PRODUCT_MAINLINE`, at `SOL_TRIAGE`, read `origin/main:docs/MODEL-ROUTING.md` and classify Product risk. When Product classification requires Final Risk, load `origin/main:.agents/skills/vibeaico-astra-review/SKILL.md` and use an allowed reviewer model.
 
-For `MODEL_GOVERNANCE`, do not load or dispatch the Astra/Fable Final Risk path merely because governance files changed. The Owner has selected Sol-only governance. Source CI/tests and a final Sol diff read are still mandatory.
+For `MODEL_GOVERNANCE`, do not perform model dispatch merely because governance files changed. Do not load or dispatch the Astra/Fable Product Final Risk path for pure governance. Source CI/tests and a final exact-diff read are still mandatory.
 
 ## TRIAGE output
 
@@ -168,9 +172,9 @@ For MODEL_GOVERNANCE:
 
 ```text
 WORKSTREAM: MODEL_GOVERNANCE
-SOL_GOVERNANCE: <Issue/PR>
+GOVERNANCE_WORK: <Issue/PR>
 SCOPE:
-RISK_WITHIN_SOL_REVIEW:
+RISK:
 TESTS:
 OWNER_OR_EXTERNAL_BLOCKER:
 ```
@@ -217,9 +221,9 @@ RESERVE_BOUNDARY: concrete file/scope/stop boundary
 
 If RESERVE needs TEST, Audit, a second commit or broader scope, stop and return to TRIAGE.
 
-## Sol audit order
+## Verification order
 
-For MODEL_GOVERNANCE, Sol is the execution mode and final reviewer. Use one bounded implementation, required tests, then re-read the final exact diff and current main before merge. Do not create a ceremonial second Sol/Astra pass that repeats the same work without new evidence.
+For MODEL_GOVERNANCE, use one bounded implementation, required tests, then re-read the final exact diff and current main before merge. Do not create ceremonial duplicate model reviews without new evidence.
 
 For PRODUCT_MAINLINE, after Terra has a reviewable complete diff, Sol may perform one early diff audit to catch fake success before costly tests. It can return advice or `FIX_REQUIRED`, never `CLOSE_APPROVED`. Final order is `Terra → early audit → fixes → required local isolated → canonical TEST when required → final Sol audit on the final exact head → merge／Issue close → Completion Truth`. A changed head requires a new final diff read.
 
@@ -230,7 +234,7 @@ A lane transition must match exact PR, branch and SHA. No no-op commits and no u
 
 MODEL_GOVERNANCE must remain source/governance-only and must not occupy the Product shared TEST lane unless the work has been reclassified to PRODUCT_MAINLINE.
 
-## Sol budget
+## Product Sol budget
 
 Normal PRODUCT_MAINLINE Issue:
 
@@ -241,7 +245,7 @@ AUDIT  1
 
 One additional Sol DIAGNOSE is allowed only for DB/Auth/payment/security, shared TEST ambiguity, cross-suite inconsistency or core ownership collision. Sol does not poll CI or move documents.
 
-MODEL_GOVERNANCE is intentionally a Sol conversation/session mode. Do not count its implementation as Terra usage and do not manufacture Astra/Fable usage.
+MODEL_GOVERNANCE is excluded from model-utilization analysis. Do not count governance work as Terra/Sol/Astra/Fable utilization and do not infer a model from its lane.
 
 ## Completion Truth Gate
 
@@ -281,7 +285,7 @@ New Product operational Runs must be schema v2 with `deliveryTruthVersion: 4`, c
 
 MODEL_GOVERNANCE may keep bounded governance evidence, but does not fabricate Product Run membership or shipped Product units.
 
-Record actual token data when available. Otherwise keep it `null`; never infer model execution from lane names. `actualModel=unknown` must remain visible when the runtime cannot prove it.
+For PRODUCT_MAINLINE, record actual token/model data when available and keep unavailable values null/unknown. For MODEL_GOVERNANCE, do not analyze which model was used; model identity is outside its retrospective/scoreboard quality criteria.
 
 ## Automatic adjustment
 
@@ -293,7 +297,7 @@ These throughput rules apply to PRODUCT_MAINLINE only:
 - Quality <24/30: stop RESERVE code work and strengthen MAIN targeted tests.
 - Two runs without CLOSED or complete OWNER_BLOCKED: enter `CLOSURE_RECOVERY`.
 
-MODEL_GOVERNANCE does not spawn Terra merely to improve utilization metrics.
+MODEL_GOVERNANCE does not spawn Product Terra merely to improve utilization metrics.
 
 ## Verdicts
 
@@ -307,7 +311,7 @@ OWNER_BLOCKED
 
 Luna or the main Agent performs mechanical close only after `CLOSE_APPROVED`, then re-fetches the Issue to verify `state=closed` before reporting it closed.
 
-For MODEL_GOVERNANCE, the Sol session may perform the mechanical close itself after exact-head tests and final diff verification because it is both the designated execution mode and governance owner for this workstream.
+For MODEL_GOVERNANCE, the active governance Agent/session may perform mechanical close after required tests, final exact-diff verification and Completion Truth. No named model is required for that closeout.
 
 ## Continue rule
 
