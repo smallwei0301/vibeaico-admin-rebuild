@@ -172,24 +172,6 @@ const validDate = (value) => {
 const pathWithin = (path, prefixes = []) => prefixes.some((prefix) => path === prefix || path.startsWith(prefix));
 
 /**
- * MODEL_GOVERNANCE 是 audit 層的工作，而 audit 層在兩個 provider 上各有一個模型：
- * OpenAI 側 `gpt-5.6-sol`、Anthropic 側 `claude-opus-5`（`anthropicEquivalents.audit`）。
- * 同層等價，所以兩者都算合規；`allowedModels` 未設定時退回單一 `model`，舊設定不受影響。
- */
-const governanceModels = (governance = {}) => {
-  const allowed = Array.isArray(governance.allowedModels) ? governance.allowedModels.filter(Boolean) : [];
-  return allowed.length ? allowed : [governance.model].filter(Boolean);
-};
-
-/**
- * 逐一取出 `requested=` / `actual=` 的值再比對，而不是對整行做子字串比對。
- * 子字串比對會把 `requested=gpt-5.6-sol-preview` 這種更長的字串當成命中，
- * 而清單一旦有兩個值，寬鬆比對的誤判面積就會變大。
- */
-const declaredModel = (line = '', field) =>
-  (String(line).match(new RegExp(`\\b${field}\\s*=\\s*([A-Za-z0-9._-]+)`, 'i'))?.[1] ?? '').trim();
-
-/**
  * Workstream is a trusted-main classification contract. New PRs created after
  * workstreams.effectiveAt must declare one. Older PRs stay on legacy behavior
  * until they are intentionally backfilled, so the rollout does not freeze the
@@ -227,12 +209,8 @@ export function classifyWorkstream({ body = '', changedFiles = null, createdAt =
     if (readField(body, 'FINAL_RISK_POLICY').trim().toUpperCase() !== governance.finalRiskPolicy) {
       errors.push(`MODEL_GOVERNANCE requires FINAL_RISK_POLICY: ${governance.finalRiskPolicy}`);
     }
-    const modelLine = readField(body, 'REQUESTED_MODEL / ACTUAL_MODEL');
-    const allowedModels = governanceModels(governance);
-    const declared = { requested: declaredModel(modelLine, 'requested'), actual: declaredModel(modelLine, 'actual') };
-    if (!allowedModels.includes(declared.requested) || !allowedModels.includes(declared.actual)) {
-      errors.push(`MODEL_GOVERNANCE requires requested/actual model to be one of: ${allowedModels.join(', ')}`);
-    }
+    // Owner #360: governance model identity is recorded, not an admission gate.
+    // Do not infer actual from a role or require an execution receipt here.
     if (Array.isArray(changedFiles) && changedFiles.length) {
       const outside = changedFiles.filter((path) => !pathWithin(path, governance.scopePrefixes));
       if (outside.length) {

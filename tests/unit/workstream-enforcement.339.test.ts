@@ -12,7 +12,7 @@ const BEFORE = '2026-09-10T08:00:00Z';
 const governanceBody = [
   'WORKSTREAM: MODEL_GOVERNANCE',
   'AGENT_LANE: GOVERNANCE',
-  'REQUESTED_MODEL / ACTUAL_MODEL: requested=gpt-5.6-sol; actual=gpt-5.6-sol',
+  'REQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown',
   'ASTRA_RISK: NONE',
   'ASTRA_RATIONALE: Pure Agent governance controller change with no Product runtime or provider behavior',
   'FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY',
@@ -29,11 +29,11 @@ const productBody = [
 describe('MODEL_GOVERNANCE executable workstream boundary (#339)', () => {
   it('keeps Product Final Risk policy version stable while versioning workstream policy independently', () => {
     expect(routing.version).toBe('2026-09-08.4');
-    expect(routing.workstreams.version).toBe('2026-09-10.2');
+    expect(routing.workstreams.version).toBe('2026-09-11.1');
     expect(routing.workstreams.allowed).toEqual(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
   });
 
-  it('accepts pure governance changed paths as Sol-only and does not require Astra/Fable', () => {
+  it('accepts pure governance without pinning an executor or requiring Astra/Fable', () => {
     const changedFiles = [
       'scripts/agents/astra-review-policy.mjs',
       '.github/workflows/issue-provenance.yml',
@@ -59,11 +59,9 @@ describe('MODEL_GOVERNANCE executable workstream boundary (#339)', () => {
     }
   });
 
-  it('requires exact Sol-only governance metadata instead of accepting a label alone', () => {
+  it('requires exact governance lane/risk metadata instead of accepting a label alone', () => {
     for (const body of [
       governanceBody.replace('AGENT_LANE: GOVERNANCE', 'AGENT_LANE: TERRA_BUILD'),
-      governanceBody.replace('requested=gpt-5.6-sol', 'requested=gpt-5.6-terra'),
-      governanceBody.replace('actual=gpt-5.6-sol', 'actual=gpt-5.6-terra'),
       governanceBody.replace('ASTRA_RISK: NONE', 'ASTRA_RISK: GOVERNANCE_GATE'),
       governanceBody.replace('FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY', 'FINAL_RISK_POLICY: BY_PRODUCT_RISK_CLASSIFICATION'),
     ]) {

@@ -16,14 +16,13 @@
     "audit": "claude-opus-5"
   },
   "workstreams": {
-    "version": "2026-09-10.2",
+    "version": "2026-09-11.1",
     "effectiveAt": "2026-09-10T08:52:28Z",
     "allowed": ["MODEL_GOVERNANCE", "PRODUCT_MAINLINE"],
     "modelGovernance": {
       "workstream": "MODEL_GOVERNANCE",
-      "model": "gpt-5.6-sol",
-      "allowedModelsNote": "Owner 2026-09-10 裁示：MODEL_GOVERNANCE 是 audit 層工作，audit 層在 OpenAI 側是 gpt-5.6-sol、在 Anthropic 側是 claude-opus-5（見 anthropicEquivalents.audit），兩者同層等價，都可執行。requested 與 actual 各自都必須落在本清單內，且必須記錄實際 served 的模型，不得以層級推定。",
-      "allowedModels": ["gpt-5.6-sol", "claude-opus-5"],
+      "executorPolicy": "ANY_AVAILABLE_MODEL",
+      "modelIdentityPolicy": "TRUTHFUL_NON_BLOCKING",
       "lane": "GOVERNANCE",
       "risk": "NONE",
       "finalRiskPolicy": "NOT_REQUIRED_BY_OWNER_POLICY",
