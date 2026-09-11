@@ -7,7 +7,12 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/local-migrations/historical-integration-baseline/**'
       - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/test/seed.mjs'
+      - 'scripts/test/tour-seed-profile.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/tour-seed-profile.test.ts'
+      - 'tests/integration/api/guide-action-inbox.43.test.ts'
+      - 'tests/integration/api/public-shop.46.test.ts'
       - '.github/workflows/agent-schema-bootstrap.yml'
   push:
     branches: [main]
@@ -15,6 +20,12 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/local-migrations/historical-integration-baseline/**'
       - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/test/seed.mjs'
+      - 'scripts/test/tour-seed-profile.mjs'
+      - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/tour-seed-profile.test.ts'
+      - 'tests/integration/api/guide-action-inbox.43.test.ts'
+      - 'tests/integration/api/public-shop.46.test.ts'
       - '.github/workflows/agent-schema-bootstrap.yml'
 
 permissions:
