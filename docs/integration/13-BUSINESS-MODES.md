@@ -14,12 +14,14 @@
 ## 1. 資料模型
 
 ```sql
--- migration 0014_business_modes.sql
-create type business_type as enum ('LOCAL_SHOP','GUIDE','CLINIC');
-alter table tenants add column if not exists business_type business_type
-  not null default 'LOCAL_SHOP';
+-- canonical migration 0103_tenants_business_type_contract.sql
+alter table tenants add column business_type text
+  not null default 'LOCAL_SHOP'::text;
+alter table tenants add constraint tenants_business_type_check
+  check (business_type = any (array['LOCAL_SHOP'::text, 'GUIDE'::text, 'CLINIC'::text]));
 ```
 
+- Canonical DB contract: `tenants.business_type` is `text not null default 'LOCAL_SHOP'::text`, guarded by a validated check for `LOCAL_SHOP` / `GUIDE` / `CLINIC`. The earlier local-only `0015_tenants_business_type.sql` is historical evidence, not a canonical migration.
 - 註冊流程（03 分冊 tenant/register）新增一步：三張卡片選業態
   （🏪 當地商店／🧭 嚮導／🏥 醫院診所），body 增加 `businessType` 欄位。
 - 店家設定頁（settings#basic）可改，僅 OWNER；**換模式不刪任何資料**，

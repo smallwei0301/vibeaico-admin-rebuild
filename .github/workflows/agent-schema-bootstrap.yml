@@ -11,7 +11,9 @@ on:
       - 'scripts/test/seed.mjs'
       - 'scripts/test/tour-seed-profile.mjs'
       - 'scripts/test/verify-assignment-schema.mjs'
+      - 'scripts/test/verify-business-type-schema.mjs'
       - 'tests/schema/assignment-schema-proof.test.mjs'
+      - 'tests/schema/business-type-schema-proof.test.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
       - 'tests/unit/schema-bootstrap-policy.test.ts'
       - 'tests/unit/tour-seed-profile.test.ts'
@@ -28,7 +30,9 @@ on:
       - 'scripts/test/seed.mjs'
       - 'scripts/test/tour-seed-profile.mjs'
       - 'scripts/test/verify-assignment-schema.mjs'
+      - 'scripts/test/verify-business-type-schema.mjs'
       - 'tests/schema/assignment-schema-proof.test.mjs'
+      - 'tests/schema/business-type-schema-proof.test.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
       - 'tests/unit/schema-bootstrap-policy.test.ts'
       - 'tests/unit/tour-seed-profile.test.ts'
@@ -184,6 +188,11 @@ jobs:
           node --test tests/schema/assignment-schema-proof.test.mjs
           node scripts/test/seed.mjs
           node scripts/test/verify-assignment-schema.mjs
+      - name: Prove business-type reconciliation on disposable PostgreSQL
+        if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
+        run: |
+          node --test tests/schema/business-type-schema-proof.test.mjs
+          node scripts/test/verify-business-type-schema.mjs
       - name: Prove current Product integration on the clean candidate, without issue-41
         if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
         run: npm run test:integration
