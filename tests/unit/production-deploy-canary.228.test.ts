@@ -120,6 +120,7 @@ describe('Issue #228 production cutover preview canary', () => {
     const body = JSON.parse(String(calls[0].init.body));
     expect(body.target).toBeUndefined();
     expect(body.gitSource).toEqual({ type: 'github', org: OWNER, repo: REPO, ref: MAIN_SHA });
+    expect(body.projectSettings).toEqual({ commandForIgnoringBuildStep: 'exit 1' });
     expect(body.meta).toMatchObject({ deploymentController: 'issue-228-preview-canary', expectedMainSha: MAIN_SHA });
   });
 
@@ -233,7 +234,9 @@ describe('Issue #228 production cutover preview canary', () => {
     expect(deploymentReads).toBe(1);
     const post = calls.find((call) => call.method === 'POST');
     expect(post).toBeTruthy();
-    expect(JSON.parse(String(post?.body)).target).toBeUndefined();
+    const postBody = JSON.parse(String(post?.body));
+    expect(postBody.target).toBeUndefined();
+    expect(postBody.projectSettings).toEqual({ commandForIgnoringBuildStep: 'exit 1' });
     expect(calls.some((call) => call.url.includes('/promote/'))).toBe(false);
   });
 
