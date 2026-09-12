@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+  assertPinnedSource,
   BASELINE_MANIFEST,
   HISTORICAL_MANIFEST,
   planFreshInstallBaseline,
@@ -152,5 +153,21 @@ describe('fresh-install compatibility baseline', () => {
     expect(workflow).toContain("application_name='issue-298-race-a' AND wait_event_type='Lock'");
     expect(workflow).not.toMatch(/\bsleep\s/);
     expect(workflow).toContain("[ \"$FINAL_COUNT\" != \"100\" ]");
+  });
+
+  it('rejects a stale or canonically changed pinned main source', () => {
+    const pinnedMainHead = baseline.source.mainHead;
+    expect(() => assertPinnedSource({
+      pinnedMainHead,
+      resolvedMainHead: pinnedMainHead,
+      mainIsAncestor: false,
+      canonicalUnchanged: true,
+    })).toThrow(/not an unchanged canonical ancestor/);
+    expect(() => assertPinnedSource({
+      pinnedMainHead,
+      resolvedMainHead: pinnedMainHead,
+      mainIsAncestor: true,
+      canonicalUnchanged: false,
+    })).toThrow(/not an unchanged canonical ancestor/);
   });
 });

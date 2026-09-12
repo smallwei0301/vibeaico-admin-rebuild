@@ -212,6 +212,13 @@ function gitSucceeded(root, args) {
   return spawnSync('git', args, { cwd: root, encoding: 'utf8', stdio: 'pipe' }).status === 0;
 }
 
+export function assertPinnedSource({ pinnedMainHead, resolvedMainHead, mainIsAncestor, canonicalUnchanged }) {
+  if (!GIT_OBJECT_ID.test(pinnedMainHead ?? '') || resolvedMainHead !== pinnedMainHead ||
+      mainIsAncestor !== true || canonicalUnchanged !== true) {
+    reject('pinned main source is not an unchanged canonical ancestor of the checkout');
+  }
+}
+
 export function createCandidate({ root, destination, expectedHead, projectId }) {
   root = fs.realpathSync(root);
   if (!GIT_OBJECT_ID.test(expectedHead ?? '') || !/^schema-proof-[a-z0-9-]{1,50}$/.test(projectId ?? '')) {
@@ -243,11 +250,13 @@ export function createCandidate({ root, destination, expectedHead, projectId }) 
   } catch {
     reject('pinned main source commit is unavailable');
   }
-  if (resolvedMainHead !== baseline.source.mainHead ||
-      !gitSucceeded(root, ['merge-base', '--is-ancestor', baseline.source.mainHead, expectedHead]) ||
-      !gitSucceeded(root, ['diff', '--quiet', baseline.source.mainHead, expectedHead, '--', CANONICAL_ROOT])) {
-    reject('pinned main source is not an unchanged canonical ancestor of the checkout');
-  }
+  assertPinnedSource({
+    pinnedMainHead: baseline.source.mainHead,
+    resolvedMainHead,
+    mainIsAncestor: gitSucceeded(root, ['merge-base', '--is-ancestor', baseline.source.mainHead, expectedHead]),
+    canonicalUnchanged: gitSucceeded(root,
+      ['diff', '--quiet', baseline.source.mainHead, expectedHead, '--', CANONICAL_ROOT]),
+  });
   const historicalSql = fs.readdirSync(path.join(root, path.dirname(HISTORICAL_MANIFEST)))
     .filter((name) => name.endsWith('.sql'));
   if (historicalSql.some((name) => !historical.files.some((entry) => entry.name === name))) {
