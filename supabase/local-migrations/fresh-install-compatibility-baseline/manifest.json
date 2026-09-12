@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "profile": "FRESH_INSTALL_COMPATIBILITY_BASELINE",
+  "mode": "LOCAL_ONLY_TRANSITIONAL",
+  "source": {
+    "repository": "smallwei0301/vibeaico-admin-rebuild",
+    "mainHead": "a15850e68182a138034b9c69e5b9fb99627a373b",
+    "canonicalSourceDigest": "55851156fcc1f9f4bcd167287860b252f3ca7b3333cd2c151aba51f318d88264",
+    "historicalManifest": "supabase/local-migrations/historical-integration-baseline/manifest.json",
+    "historicalHead": "7ad9ac53df1f7f4971a2ec96c4038587e0515b66"
+  },
+  "entries": [
+    {
+      "name": "0016_tour_domain_core.sql",
+      "blobSha": "e0080a9dd0470ad096f9f7b71912894a59da8f2b",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Creates the historical tour tables required by the approved plan-cap replay; canonical 0066 reconciles the shape later."
+    },
+    {
+      "name": "0017_chat_images_bucket_and_line_sort_order.sql",
+      "blobSha": "4f970b8c1ba0694676d54440a6908a7abaa8be71",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Provides the bucket birth referenced by the canonical storage allowlist; line-sort columns are reconciled by canonical 0065 and 0075."
+    },
+    {
+      "name": "0020_booking_addons.sql",
+      "blobSha": "e3af9d5f0498102bf32e3155b1673127e8f3a67b",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Supplies the table birth required before canonical 0082 adds its verified fields; it is not promoted as a current booking-addon API."
+    },
+    {
+      "name": "0026_tour_departures_addons_orders.sql",
+      "blobSha": "e483a30199da64ae06c3c292c10ea2f062feb0e2",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Supplies the pre-canonical tour table births and next_tour_order_no required by canonical 0097; canonical 0066 and 0087 own the current shapes."
+    },
+    {
+      "name": "0030_trip_plan_global_limit.sql",
+      "blobSha": "e30378153ca6de6ca4e624209d2d871747bf2a5e",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Owner-approved fresh-install contract: at most 100 plans per tenant and trip, with a parent lock."
+    },
+    {
+      "name": "0031_trip_plan_limit_lock_repair.sql",
+      "blobSha": "9a6d5aa9a2f5d6055f783ce11377ff556b7723b3",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": "WRAP_IN_TRANSACTION",
+      "reason": "Preserves the historical lock repair in the disposable baseline; it is not a remote migration ledger entry."
+    },
+    {
+      "name": "0032_trip_plan_statement_guard.sql",
+      "blobSha": "ffdb93d29447160ed0d2af3d9f67ff3368ad2632",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": "WRAP_IN_TRANSACTION",
+      "reason": "Preserves the approved statement-level 100-plan guard and parent-row concurrency lock."
+    }
+  ],
+  "contracts": {
+    "tripPlanLimit": {
+      "maxPlansPerTenantTrip": 100,
+      "triggerNames": [
+        "trip_plan_limit_guard",
+        "trip_plan_limit_guard_update"
+      ],
+      "function": "public.enforce_trip_plan_limit()",
+      "shape": "STATEMENT_LEVEL",
+      "concurrencyLock": "parent trip row FOR NO KEY UPDATE"
+    }
+  }
+}

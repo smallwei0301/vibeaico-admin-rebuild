@@ -7,7 +7,9 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/local-migrations/historical-integration-baseline/**'
       - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/agents/fresh-install-baseline.mjs'
       - 'scripts/agents/schema-bootstrap-policy.mjs'
+      - 'supabase/local-migrations/fresh-install-compatibility-baseline/**'
       - 'scripts/test/seed.mjs'
       - 'scripts/test/tour-seed-profile.mjs'
       - 'scripts/test/verify-assignment-schema.mjs'
@@ -15,6 +17,7 @@ on:
       - 'tests/schema/assignment-schema-proof.test.mjs'
       - 'tests/schema/business-type-schema-proof.test.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/fresh-install-baseline.test.ts'
       - 'tests/unit/schema-bootstrap-policy.test.ts'
       - 'tests/unit/tour-seed-profile.test.ts'
       - 'tests/integration/api/guide-action-inbox.43.test.ts'
@@ -26,7 +29,9 @@ on:
       - 'supabase/migrations/**'
       - 'supabase/local-migrations/historical-integration-baseline/**'
       - 'scripts/agents/schema-bootstrap-candidate.mjs'
+      - 'scripts/agents/fresh-install-baseline.mjs'
       - 'scripts/agents/schema-bootstrap-policy.mjs'
+      - 'supabase/local-migrations/fresh-install-compatibility-baseline/**'
       - 'scripts/test/seed.mjs'
       - 'scripts/test/tour-seed-profile.mjs'
       - 'scripts/test/verify-assignment-schema.mjs'
@@ -34,6 +39,7 @@ on:
       - 'tests/schema/assignment-schema-proof.test.mjs'
       - 'tests/schema/business-type-schema-proof.test.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
+      - 'tests/unit/fresh-install-baseline.test.ts'
       - 'tests/unit/schema-bootstrap-policy.test.ts'
       - 'tests/unit/tour-seed-profile.test.ts'
       - 'tests/integration/api/guide-action-inbox.43.test.ts'
@@ -77,9 +83,9 @@ jobs:
       - uses: supabase/setup-cli@v3
         with:
           version: 2.116.0
-      - name: Build an isolated, hash-verified candidate without the issue-41 overlay
+      - name: Build an isolated, hash-verified fresh-install baseline without the issue-41 overlay
         run: |
-          node scripts/agents/schema-bootstrap-candidate.mjs "$RUNNER_TEMP/schema-bootstrap"
+          node scripts/agents/fresh-install-baseline.mjs "$RUNNER_TEMP/schema-bootstrap"
           mkdir -p "$RUNNER_TEMP/schema-proof"
           cp "$RUNNER_TEMP/schema-bootstrap/candidate.json" "$RUNNER_TEMP/schema-proof/"
       - name: Replay against a fresh local Supabase, never a linked remote project
@@ -114,6 +120,33 @@ jobs:
             'staff_assignment_present', to_regclass('public.trip_departure_staff') IS NOT NULL,
             'paid_amount_present', EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tour_orders' AND column_name='paid_amount'),
             'expiry_rpc_present', to_regprocedure('public.expire_tour_order(uuid,uuid,text)') IS NOT NULL,
+            'plan_cap_function_present', to_regprocedure('public.enforce_trip_plan_limit()') IS NOT NULL,
+            'plan_cap_function_hardened', EXISTS (
+              SELECT 1 FROM pg_proc p
+               WHERE p.oid=to_regprocedure('public.enforce_trip_plan_limit()')
+                 AND p.prorettype='trigger'::regtype AND p.prosecdef
+                 AND p.proconfig @> ARRAY['search_path=public, pg_temp']
+                 AND p.prosrc LIKE '%for no key update%'
+                 AND NOT EXISTS (
+                   SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+                    WHERE a.grantee=0 AND a.privilege_type='EXECUTE'
+                 )
+                 AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+                 AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')
+                 AND NOT has_function_privilege('service_role', p.oid, 'EXECUTE')
+            ),
+            'plan_cap_insert_statement_trigger_present', EXISTS (
+              SELECT 1 FROM pg_trigger
+               WHERE tgrelid='public.trip_plans'::regclass AND tgname='trip_plan_limit_guard'
+                 AND tgfoid=to_regprocedure('public.enforce_trip_plan_limit()')
+                 AND tgtype=4 AND tgnewtable='new_trip_plans' AND tgoldtable IS NULL AND NOT tgisinternal
+            ),
+            'plan_cap_update_statement_trigger_present', EXISTS (
+              SELECT 1 FROM pg_trigger
+               WHERE tgrelid='public.trip_plans'::regclass AND tgname='trip_plan_limit_guard_update'
+                 AND tgfoid=to_regprocedure('public.enforce_trip_plan_limit()')
+                 AND tgtype=16 AND tgnewtable='new_trip_plans' AND tgoldtable IS NULL AND NOT tgisinternal
+            ),
             'future_issue_41_fields_absent', NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tour_orders' AND column_name IN ('deposit_mode_snapshot','upfront_required_amount','balance_due','balance_due_at','balance_due_hours_snapshot','balance_collection_mode_snapshot','cancellation_policy_snapshot','refunded_amount'))
           );
           SQL
@@ -122,8 +155,65 @@ jobs:
           const result = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/schema-proof/assertions.json`, 'utf8'));
           const failed = Object.entries(result).filter(([, value]) => value !== true).map(([key]) => key);
           if (failed.length) throw new Error(`BOOTSTRAP_CANDIDATE_ASSERTION_FAILED: ${failed.join(', ')}`);
-          console.log('BOOTSTRAP_CANDIDATE_GREEN: local replay and dependency probes only; canonical adoption and TEST/Production parity NOT_PROVEN.');
+          console.log('FRESH_INSTALL_BASELINE_GREEN: local replay, dependency probes, and approved 100-plan guard only; canonical adoption and TEST/Production parity NOT_PROVEN.');
           NODE
+      - name: Prove the parent lock serializes two concurrent inserts at the 100-plan boundary
+        run: |
+          set -euo pipefail
+          DB_CONTAINER="supabase_db_${LOCAL_PROJECT_ID}"
+          wait_for_true() {
+            local sql="$1"
+            local deadline=$((SECONDS + 10))
+            local observed
+            while (( SECONDS <= deadline )); do
+              observed="$(docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 -c "$sql")"
+              if [ "$observed" = "t" ]; then return 0; fi
+            done
+            echo "::error::Timed out waiting for an observable PostgreSQL lock state."
+            return 1
+          }
+          docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO public.tenants (id, shop_code, name)
+          VALUES ('29800000-0000-4000-8000-000000000001', 'issue-298-cap-proof', 'Issue 298 cap proof');
+          INSERT INTO public.trips (id, tenant_id, slug, title)
+          VALUES ('29800000-0000-4000-8000-000000000002', '29800000-0000-4000-8000-000000000001', 'cap-proof-trip', 'Cap proof trip');
+          INSERT INTO public.trip_plans (tenant_id, trip_id, slug, name, base_price, price_per_person)
+          SELECT '29800000-0000-4000-8000-000000000001', '29800000-0000-4000-8000-000000000002',
+                 'seed-' || value, 'Seed ' || value, 0, 0
+            FROM generate_series(1, 99) AS value;
+          SQL
+          coproc CAP_GATE { docker exec -e PGAPPNAME=issue-298-cap-gate -i "$DB_CONTAINER" psql -U postgres -d postgres -X -q -v ON_ERROR_STOP=1; }
+          CAP_GATE_INPUT=${CAP_GATE[1]}
+          CAP_GATE_PROCESS=$CAP_GATE_PID
+          printf 'BEGIN; SELECT pg_advisory_xact_lock(298298);\n' >&"$CAP_GATE_INPUT"
+          wait_for_true "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name='issue-298-cap-gate' AND state='idle in transaction');"
+          docker exec -e PGAPPNAME=issue-298-race-a -i "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 \
+            -c "BEGIN; INSERT INTO public.trip_plans (tenant_id, trip_id, slug, name, base_price, price_per_person) VALUES ('29800000-0000-4000-8000-000000000001','29800000-0000-4000-8000-000000000002','race-a','Race A',0,0); SELECT pg_advisory_xact_lock(298298); COMMIT;" \
+            >"$RUNNER_TEMP/plan-cap-race-a.log" 2>&1 &
+          RACE_A_PID=$!
+          wait_for_true "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name='issue-298-race-a' AND wait_event_type='Lock' AND wait_event='advisory');"
+          docker exec -e PGAPPNAME=issue-298-race-b -i "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 \
+            -c "BEGIN; INSERT INTO public.trip_plans (tenant_id, trip_id, slug, name, base_price, price_per_person) VALUES ('29800000-0000-4000-8000-000000000001','29800000-0000-4000-8000-000000000002','race-b','Race B',0,0); COMMIT;" \
+            >"$RUNNER_TEMP/plan-cap-race-b.log" 2>&1 &
+          RACE_B_PID=$!
+          wait_for_true "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name='issue-298-race-b' AND wait_event_type='Lock');"
+          printf 'COMMIT;\n\\q\n' >&"$CAP_GATE_INPUT"
+          wait "$CAP_GATE_PROCESS"
+          set +e
+          wait "$RACE_A_PID"; RACE_A_STATUS=$?
+          wait "$RACE_B_PID"; RACE_B_STATUS=$?
+          set -e
+          FINAL_COUNT="$(docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.trip_plans WHERE trip_id='29800000-0000-4000-8000-000000000002';")"
+          if { [ "$RACE_A_STATUS" -eq 0 ] && [ "$RACE_B_STATUS" -eq 0 ]; } || \
+             { [ "$RACE_A_STATUS" -ne 0 ] && [ "$RACE_B_STATUS" -ne 0 ]; } || \
+             [ "$FINAL_COUNT" != "100" ] || \
+             ! grep -q 'TRIP_PLAN_LIMIT' "$RUNNER_TEMP"/plan-cap-race-*.log; then
+            cat "$RUNNER_TEMP"/plan-cap-race-*.log
+            echo "::error::Concurrent cap proof failed: statuses=$RACE_A_STATUS,$RACE_B_STATUS count=$FINAL_COUNT"
+            exit 1
+          fi
+          printf '{"result":"PASS","raceStatuses":[%s,%s],"finalPlanCount":%s}\n' \
+            "$RACE_A_STATUS" "$RACE_B_STATUS" "$FINAL_COUNT" >"$RUNNER_TEMP/schema-proof/plan-cap-concurrency.json"
       - name: Classify whether this exact diff requires full Product acceptance
         id: acceptance
         env:
