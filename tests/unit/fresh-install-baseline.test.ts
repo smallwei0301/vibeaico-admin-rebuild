@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -8,6 +9,7 @@ import {
   BASELINE_MANIFEST,
   HISTORICAL_MANIFEST,
   planFreshInstallBaseline,
+  readVerifiedJson,
 } from '../../scripts/agents/fresh-install-baseline.mjs';
 
 const ROOT = process.cwd();
@@ -169,5 +171,34 @@ describe('fresh-install compatibility baseline', () => {
       mainIsAncestor: true,
       canonicalUnchanged: false,
     })).toThrow(/not an unchanged canonical ancestor/);
+  });
+
+  it('rejects a manifest file symlink', () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fresh-install-manifest-file-'));
+    try {
+      const outside = path.join(fixture, 'outside.json');
+      const manifestDir = path.join(fixture, path.dirname(BASELINE_MANIFEST));
+      fs.mkdirSync(manifestDir, { recursive: true });
+      fs.writeFileSync(outside, '{}\n');
+      fs.symlinkSync(outside, path.join(fixture, BASELINE_MANIFEST));
+      expect(() => readVerifiedJson(fixture, BASELINE_MANIFEST)).toThrow(/symlink input/);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a symlinked manifest parent directory', () => {
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'fresh-install-manifest-parent-'));
+    try {
+      const outside = path.join(fixture, 'outside');
+      const parent = path.join(fixture, 'supabase/local-migrations');
+      fs.mkdirSync(outside, { recursive: true });
+      fs.mkdirSync(parent, { recursive: true });
+      fs.writeFileSync(path.join(outside, 'manifest.json'), '{}\n');
+      fs.symlinkSync(outside, path.join(parent, 'fresh-install-compatibility-baseline'));
+      expect(() => readVerifiedJson(fixture, BASELINE_MANIFEST)).toThrow(/symlink input/);
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
   });
 });

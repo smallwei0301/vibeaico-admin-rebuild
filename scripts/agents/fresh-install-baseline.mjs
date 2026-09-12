@@ -36,10 +36,9 @@ function exactKeys(value, expected, label) {
   if (actual !== wanted) reject(`${label} has unknown or missing fields`);
 }
 
-function readJson(root, relative) {
-  const file = path.join(root, ...relative.split('/'));
+export function readVerifiedJson(root, relative) {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    return JSON.parse(plainFile(root, relative).toString('utf8'));
   } catch (error) {
     reject(`cannot read ${relative}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -242,8 +241,8 @@ export function createCandidate({ root, destination, expectedHead, projectId }) 
     name,
     content: plainFile(root, `${CANONICAL_ROOT}/${name}`),
   }));
-  const baseline = readJson(root, BASELINE_MANIFEST);
-  const historical = readJson(root, HISTORICAL_MANIFEST);
+  const baseline = readVerifiedJson(root, BASELINE_MANIFEST);
+  const historical = readVerifiedJson(root, HISTORICAL_MANIFEST);
   let resolvedMainHead;
   try {
     resolvedMainHead = git('rev-parse', '--verify', `${baseline.source.mainHead}^{commit}`);
