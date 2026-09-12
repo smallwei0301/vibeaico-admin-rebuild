@@ -40,8 +40,21 @@ const exactColumn = "ALTER TABLE public.tenants ADD COLUMN business_type text NO
 const exactCheck = `CHECK (business_type = ANY (${VALUES}))`;
 const contractProof = `
 DO $proof$
-DECLARE rejected boolean := false; n integer;
+DECLARE rejected boolean := false; n integer; v_type text; v_not_null boolean; v_default text;
 BEGIN
+  SELECT format_type(a.atttypid, a.atttypmod), a.attnotnull, pg_get_expr(d.adbin, d.adrelid)
+    INTO v_type, v_not_null, v_default
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+   WHERE a.attrelid = 'public.tenants'::regclass
+     AND a.attname = 'business_type'
+     AND NOT a.attisdropped;
+  IF NOT FOUND OR v_type <> 'text' OR NOT v_not_null
+     OR v_default IS DISTINCT FROM '''LOCAL_SHOP''::text' THEN
+    RAISE EXCEPTION 'PROOF_BUSINESS_TYPE_COLUMN_CONTRACT: type=% not_null=% default=%',
+      coalesce(v_type, '<missing>'), coalesce(v_not_null::text, '<missing>'),
+      coalesce(v_default, '<missing>');
+  END IF;
   SELECT count(*) INTO n FROM pg_constraint c
    WHERE c.conrelid = 'public.tenants'::regclass AND c.contype = 'c' AND c.convalidated
      AND regexp_replace(pg_get_constraintdef(c.oid, false), '\\s+', '', 'g') =
@@ -66,6 +79,8 @@ export function buildCases(migration) {
     { name: 'no-check-adds-and-validates-canonical-check', sql: `${exactColumn}\n${migration}\n${contractProof}` },
     { name: 'invalid-row-fails-and-rolls-back', sql: `${exactColumn}\nUPDATE public.tenants SET business_type='NOT_A_TYPE' WHERE shop_code='i103-proof-a';\n${migration}`, error: 'BUSINESS_TYPE_INVALID_DATA' },
     { name: 'wrong-column-shape-fails', sql: "ALTER TABLE public.tenants ADD COLUMN business_type varchar(20) NOT NULL DEFAULT 'LOCAL_SHOP';\n" + migration, error: 'BUSINESS_TYPE_COLUMN_SHAPE' },
+    { name: 'nullable-compatible-check-fails', sql: `${exactColumn.replace(' NOT NULL', '')}\nALTER TABLE public.tenants ADD CONSTRAINT i103_nullable_mode_check ${exactCheck};\n${migration}`, error: 'BUSINESS_TYPE_COLUMN_SHAPE' },
+    { name: 'wrong-default-compatible-check-fails', sql: `${exactColumn.replace("'LOCAL_SHOP'", "'GUIDE'")}\nALTER TABLE public.tenants ADD CONSTRAINT i103_guide_default_check ${exactCheck};\n${migration}`, error: 'BUSINESS_TYPE_COLUMN_SHAPE' },
     { name: 'same-name-wrong-check-fails', sql: `${exactColumn}\nALTER TABLE public.tenants ADD CONSTRAINT tenants_business_type_check CHECK (business_type <> 'CLINIC');\n${migration}`, error: 'BUSINESS_TYPE_CHECK_NAME_COLLISION' },
     { name: 'unknown-business-type-check-shape-fails', sql: `${exactColumn}\nALTER TABLE public.tenants ADD CONSTRAINT i103_unknown_mode_check CHECK (business_type <> 'CLINIC');\n${migration}`, error: 'BUSINESS_TYPE_UNKNOWN_CHECK_SHAPE' },
     { name: 'all-three-valid-values-and-one-invalid-value', sql: migration + contractProof },

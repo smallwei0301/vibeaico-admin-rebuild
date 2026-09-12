@@ -40,10 +40,12 @@ test('refuses unverified candidate evidence or altered migration bytes', () => {
 
 test('contains each contract and rollback counterexample', () => {
   const cases = buildCases('-- migration body');
-  assert.equal(cases.length, 9);
+  assert.equal(cases.length, 11);
   assert.equal(new Set(cases.map((item) => item.name)).size, cases.length);
   assert.deepEqual(cases.filter((item) => item.error).map((item) => item.error), [
     'BUSINESS_TYPE_INVALID_DATA',
+    'BUSINESS_TYPE_COLUMN_SHAPE',
+    'BUSINESS_TYPE_COLUMN_SHAPE',
     'BUSINESS_TYPE_COLUMN_SHAPE',
     'BUSINESS_TYPE_CHECK_NAME_COLLISION',
     'BUSINESS_TYPE_UNKNOWN_CHECK_SHAPE',
@@ -51,7 +53,8 @@ test('contains each contract and rollback counterexample', () => {
   for (const name of [
     'missing-column-creates-exact-contract', 'exact-contract-is-idempotent',
     'differently-named-validated-check-is-preserved', 'no-check-adds-and-validates-canonical-check',
-    'all-three-valid-values-and-one-invalid-value',
+    'all-three-valid-values-and-one-invalid-value', 'nullable-compatible-check-fails',
+    'wrong-default-compatible-check-fails',
   ]) assert.ok(cases.some((item) => item.name === name));
   assert.ok(cases.find((item) => item.name === 'invalid-row-fails-and-rolls-back').sql.includes('NOT_A_TYPE'));
   assert.equal(MIGRATION, 'supabase/migrations/0103_tenants_business_type_contract.sql');
@@ -72,4 +75,6 @@ test('pins catalog deparsing and one-statement atomic locking', () => {
   assert.match(verifier, /'table_security'/);
   assert.match(verifier, /'policies'/);
   assert.match(verifier, /'rows'/);
+  assert.match(verifier, /format_type\(a\.atttypid, a\.atttypmod\)/);
+  assert.match(verifier, /pg_get_expr\(d\.adbin, d\.adrelid\)/);
 });
