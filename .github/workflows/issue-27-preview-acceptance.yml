@@ -1,0 +1,99 @@
+# .github/workflows/issue-27-preview-acceptance.yml
+#
+# Issue #27 驗收：對指定的 Vercel Preview 部署實跑三條路徑的 Playwright 驗收，
+# 並把 scripts/verify/out/ 的截圖上傳成 artifact。
+#
+# 為什麼要用 GitHub Actions 跑：agent sandbox 的對外 proxy 會切斷瀏覽器樣式的
+# 連線（curl 打得到 Preview 回 200，Chromium 卻拿到 ERR_CONNECTION_RESET），
+# 而關閉 TLS 驗證／取消 HTTPS_PROXY 是環境明文禁止的。所以這一輪必須在
+# GitHub runner 上跑。
+#
+# ⚠️ 可否從 UI 派工的前提（GitHub 平台限制，已對本 repo 實測確認）：
+#     workflow_dispatch 只有在**工作流檔案存在於 repo 的預設分支**時才會被
+#     Actions 列為可派工。本 repo 的預設分支是 `main`，而這個檔案目前只在
+#     preview/issue-27-acceptance 分支上，因此在併回 main 之前，Actions 頁面
+#     **不會**出現這個工作流的「Run workflow」按鈕，`gh workflow run` 也會
+#     找不到它。併回 main 之後就能派工，而且可以把 ref 指到任何分支。
+#     （實測依據：本 repo 只存在於分支上的工作流—agent-wip-lanes、
+#       supabase-preview-branch-guard 等—歷來的觸發事件全是 push／pull_request，
+#       沒有一次 workflow_dispatch；而位於 main 的 local-isolated-test.yml
+#       曾被 workflow_dispatch 派到非 main 的分支 product/issue-246-real-xlsx-export。）
+#
+# 只提供 workflow_dispatch：這個工作流需要一個「已經部署好、正在跑」的 Preview
+# 網址，push／pull_request 事件拿不到、也不該自動對共用 TEST 資料庫寫入。
+
+name: issue-27-preview-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: 'Vercel Preview 網址（例：https://vibeaico-admin-rebuild-5rmpsuh0k-smallwei0301s-projects.vercel.app）'
+        required: true
+        type: string
+
+# 只需要讀 repo 內容；不寫 commit、不動 PR、不碰 packages。
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    name: issue-27 acceptance on preview
+    runs-on: ubuntu-latest
+    # ⚠️ 共用 TEST 資料庫的排隊道（勿改）：這支 spec 會寫入 bookings、
+    # tenant_settings、products。ci.yml 的 integration job 就是用這個 group
+    # 與 cancel-in-progress: false 串行化共用 TEST（ci.yml:193-195）。
+    # 加入**同一個** group 才能保證不會和 CI 的 integration/E2E 同時寫同一個
+    # 資料庫 —— repo 已有 PB-002、PB-018 兩次併發寫入事故。
+    # cancel-in-progress: false：排隊等它跑完，不是把別人砍掉。
+    concurrency:
+      group: shared-test-supabase-integration
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      # 縱深防禦的外層：瀏覽器還沒啟動就先擋掉明顯填錯的目標（正式別名、
+      # main 分支別名、http://、非本專案網域）。真正的保證仍是 spec 內的
+      # tests/e2e-target-guard.ts —— 它在登入後把實際連到的 Supabase 專案
+      # 讀回來，不是 TEST 就硬失敗。
+      - name: Validate preview URL
+        env:
+          PREVIEW_URL: ${{ inputs.preview_url }}
+        run: node scripts/ci/preview-url-policy.mjs "$PREVIEW_URL"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # 只跑 #27 的驗收 spec，--workers=1：三個 test 都會寫同一個 TEST 租戶的
+      # 資料（同一筆預約、同一份 tenant_settings），平行跑會互相打架。
+      #
+      # 只傳這支 spec 真正用到的兩個祕密：它自己那支 service-role admin client
+      # 需要 TEST_SUPABASE_URL + TEST_SUPABASE_SERVICE_ROLE_KEY。
+      # 刻意**不傳** TEST_SUPABASE_ANON_KEY / TEST_SETTINGS_ENCRYPTION_KEY /
+      # TEST_AUTH_SECRET：那三個是「應用程式伺服器」要的，而這一輪的應用程式
+      # 跑在 Vercel Preview 上、用它自己的環境變數；本機不啟動 webServer
+      # （playwright.config.ts 偵測到 E2E_BASE_URL 就不起），runner 這邊拿了
+      # 也沒有任何東西會用到。
+      - name: Run issue #27 acceptance spec
+        env:
+          E2E_BASE_URL: ${{ inputs.preview_url }}
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+        run: npx playwright test tests/e2e/issue-27-acceptance.spec.ts --workers=1
+
+      # scripts/verify/out/ 在 .gitignore 裡，artifact 是截圖離開 runner 的
+      # 唯一途徑。失敗時也要上傳 —— 驗收跑掛掉的那幾張截圖才是最有用的。
+      - name: Upload acceptance screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue-27-acceptance-screenshots
+          path: scripts/verify/out/
+          if-no-files-found: warn
+          retention-days: 30

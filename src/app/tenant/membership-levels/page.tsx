@@ -19,7 +19,6 @@ import {
   createMembershipLevel, deleteMembershipLevel, updateMembershipLevel,
 } from '@/services/coupons';
 import { listFeatures } from '@/services/settings';
-import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { membershipLevelsPage as t } from '@/i18n/zh-TW/pages/membership-levels';
@@ -27,49 +26,27 @@ import { formatCurrency, formatNumber } from '@/lib/utils';
 import type { MembershipLevel } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
+/* 欄位來源                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/** 原站 MembershipLevel 另有說明／啟用／預設旗標，骨架階段以 module 常數補齊 */
-type LevelExtras = {
+type LevelRow = MembershipLevel & {
   description: string;
   active: boolean;
   isDefault: boolean;
 };
 
-const DEFAULT_EXTRAS: LevelExtras = { description: '', active: true, isDefault: false };
-
-const LEVEL_EXTRAS_LOCAL_SHOP: Record<string, LevelExtras> = {
-  ml_1: { description: '所有新顧客的預設等級', active: true, isDefault: true },
-  ml_2: { description: '生日當月贈送護髮體驗一次', active: true, isDefault: false },
-  ml_3: { description: '專屬設計師優先排程、免費造型諮詢', active: true, isDefault: false },
-};
-
-const LEVEL_EXTRAS_GUIDE: Record<string, LevelExtras> = {
-  ml_1: { description: '所有新旅客的預設等級', active: true, isDefault: true },
-  ml_2: { description: '生日當月贈送裝備租借券一張', active: true, isDefault: false },
-  ml_3: { description: '揪團優先候補、免費裝備升級', active: true, isDefault: false },
-};
-
-const LEVEL_EXTRAS_CLINIC: Record<string, LevelExtras> = {
-  ml_1: { description: '所有新病患的預設等級', active: true, isDefault: true },
-  ml_2: { description: '需長期追蹤治療的病患，享回診提醒與優先候補', active: true, isDefault: false },
-  ml_3: { description: '年度健檢會員，享健檢加項優惠與報告解說預約', active: true, isDefault: false },
-};
+/** 說明、啟用與預設旗標由 membership_levels API 回傳，缺少時使用安全預設值。 */
+const toRow = (level: MembershipLevel): LevelRow => ({
+  ...level,
+  description: level.description ?? '',
+  active: level.active ?? true,
+  isDefault: level.isDefault ?? false,
+});
 
 /** 新增等級時的預設顏色（同 mock 的一般會員灰） */
 const DEFAULT_LEVEL_COLOR = '#86868b';
 
 /* -------------------------------------------------------------------------- */
-
-type LevelRow = MembershipLevel & LevelExtras;
-
-const toRow = (l: MembershipLevel): LevelRow => {
-  const extras = byMode({
-    LOCAL_SHOP: LEVEL_EXTRAS_LOCAL_SHOP, GUIDE: LEVEL_EXTRAS_GUIDE, CLINIC: LEVEL_EXTRAS_CLINIC,
-  });
-  return { ...l, ...(extras[l.id] ?? DEFAULT_EXTRAS) };
-};
 
 export default function MembershipLevelsPage() {
   const toast = useToast();
@@ -358,7 +335,6 @@ function LevelFormModal({
     setError('');
     setSaving(true);
     try {
-      /* description / active / isDefault 為骨架期頁內欄位，後端契約尚無對應欄位 */
       const payload = {
         name: draft.name,
         color: draft.color,
@@ -366,6 +342,9 @@ function LevelFormModal({
         discountPercent: draft.discountPercent,
         pointRateMultiplier: draft.pointRateMultiplier,
         sortOrder: draft.sortOrder,
+        description: draft.description,
+        active: draft.active,
+        isDefault: draft.isDefault,
       };
       const fresh = isEdit
         ? await updateMembershipLevel(draft.id, payload)

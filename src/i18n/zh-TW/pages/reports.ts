@@ -10,6 +10,15 @@ export const reportsPage = {
   metaTitle: '營運報表 - 店家後台',
   eyebrow: nav.navBooking,
 
+  /* -------------------------------------------------------- GUIDE 報表狀態 */
+  guideUnavailable: {
+    eyebrow: '行程營運',
+    title: 'GUIDE 專屬報表尚未建置',
+    description:
+      '目前不顯示通用店家報表，避免把示範或非旅遊領域的數字當成旅遊營運結果。待團次、訂單、付款與來源的旅遊口徑完成後，這裡會提供可追溯的 GUIDE 報表。',
+    action: '前往行程與方案',
+  },
+
   /* ------------------------------------------------------------ 日期區間 */
   range: {
     week: '本週',
@@ -22,8 +31,11 @@ export const reportsPage = {
     label: '匯出',
     excel: '匯出 Excel',
     csv: '匯出 CSV',
-    fileName: (date: string, ext: string) => `營運報表_${date}.${ext}`,
+    /* issue #246：移除 fileName(date, ext)。它讓頁面自己拼一個與實際下載檔案
+       無關的名字，是 14-GAP-AUDIT §7 判準要抓的「捏造檔名」。檔名一律由後端
+       Content-Disposition 提供，前端只負責顯示。 */
     success: '報表匯出成功',
+    successAs: (fileName: string) => `報表匯出成功：${fileName}`,
     failed: '匯出失敗，請稍後再試',
     failedPrefix: '匯出失敗:',
   },

@@ -17,7 +17,9 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, Select, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { changePassword } from '@/services';
+import { getTenantSettings, previewBusinessHours, saveTenantSettings } from '@/services/settings';
+import { removeWelcomeCardImage as removeWelcomeCardImageAsset, uploadImage } from '@/services/upload';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -86,6 +88,8 @@ export default function SettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [draft, setDraft] = React.useState<TenantSettings | null>(null);
   const [savingSection, setSavingSection] = React.useState<TabKey | null>(null);
+  const welcomeImageFileRef = React.useRef<HTMLInputElement>(null);
+  const [welcomeImageBusy, setWelcomeImageBusy] = React.useState(false);
 
   /* 點數試算（原站 #testAmount，預設 100） */
   const [testAmount, setTestAmount] = React.useState('100');
@@ -151,8 +155,12 @@ export default function SettingsPage() {
   ) => {
     setSavingSection(section);
     try {
-      await saveTenantSettings(patch);
-      toast.show(successMessage);
+      const result = await saveTenantSettings(patch);
+      if (result?.welcomeCardImageCleanupPending) {
+        toast.show(t.notification.welcomeCardImageCleanupPending, 'warning');
+      } else {
+        toast.show(successMessage);
+      }
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -208,6 +216,14 @@ export default function SettingsPage() {
     return '';
   };
 
+  /**
+   * #33②：存檔前先乾跑拿「偵測到的」數字（衝突預約、手動每週封鎖），存檔後拿
+   * 「已建立」的數字（自動封鎖）。四句既有文案各自吃**對應來源**的數字。
+   *
+   * 規則：**端點回不出來的數字就不顯示那一句**，零筆時也不顯示——
+   * 顯示「0 筆既有預約落在非營業時段」是一句沒有意義的警告。
+   * 乾跑失敗不擋存檔（它只是預覽），但那幾句就不會出現。
+   */
   const saveBusiness = async () => {
     if (!draft) return;
     const err = validateBusiness(draft.business);
@@ -215,7 +231,47 @@ export default function SettingsPage() {
       toast.show(`${t.business.validation.checkPrefix}${err}`, 'warning');
       return;
     }
-    await persist('business', { business: draft.business }, t.business.saved);
+
+    let preview: Awaited<ReturnType<typeof previewBusinessHours>> = null;
+    try {
+      preview = await previewBusinessHours(draft.business);
+    } catch {
+      preview = null;
+    }
+
+    setSavingSection('business');
+    try {
+      const result = await saveTenantSettings({ business: draft.business });
+      toast.show(t.business.saved);
+
+      const created = result?.businessHours?.autoBlockCount;
+      if (typeof created === 'number' && created > 0) {
+        toast.show(t.business.autoBlockCreated(created));
+      }
+
+      const conflicts = preview?.conflictBookingCount;
+      if (typeof conflicts === 'number' && conflicts > 0) {
+        // 有公休日設定時用「公休日或非營業時段」那一句，否則用只講時段的那一句。
+        toast.show(
+          draft.business.closedDays.length
+            ? t.business.conflictWarning(conflicts)
+            : t.business.conflictWarningHours(conflicts),
+          'warning',
+        );
+      }
+
+      const manualKept = preview?.manualWeeklyBlockCount;
+      if (typeof manualKept === 'number' && manualKept > 0) {
+        toast.show(t.business.manualBlockKept(manualKept));
+      }
+    } catch (e) {
+      toast.show(
+        `${t.messages.saveFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setSavingSection(null);
+    }
   };
 
   const saveNotification = async () => {
@@ -244,6 +300,86 @@ export default function SettingsPage() {
       },
       t.notification.saved,
     );
+  };
+
+  const uploadWelcomeCardImage = async (file: File) => {
+    if (!draft || welcomeImageBusy) return;
+    const previousUrl = draft.notify.welcomeCardImageUrl;
+    setWelcomeImageBusy(true);
+    let uploadedUrl = '';
+    let cleanupPending = false;
+    try {
+      const { url } = await uploadImage(file, 'welcome-card-images');
+      uploadedUrl = url;
+      const notify = { ...draft.notify, welcomeCardImageUrl: url };
+      try {
+        const result = await saveTenantSettings({ notify });
+        cleanupPending = result?.welcomeCardImageCleanupPending === true;
+      } catch (error) {
+        // The upload and settings write are separate resources. If the DB
+        // write fails, remove the new object before showing failure.
+        await removeWelcomeCardImageAsset(uploadedUrl).catch(() => undefined);
+        throw error;
+      }
+      if (previousUrl && previousUrl !== url) {
+        try {
+          await removeWelcomeCardImageAsset(previousUrl);
+        } catch {
+          cleanupPending = true;
+        }
+      }
+      setDraft((current) =>
+        current
+          ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: url } }
+          : current,
+      );
+      toast.show(
+        cleanupPending ? t.notification.welcomeCardImageCleanupPending : t.notification.welcomeCardImageUpdated,
+        cleanupPending ? 'warning' : undefined,
+      );
+    } catch (e) {
+      toast.show(
+        `${t.notification.validation.uploadFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
+  };
+
+  const removeWelcomeCardImage = async () => {
+    if (!draft || welcomeImageBusy) return;
+    const previousUrl = draft.notify.welcomeCardImageUrl;
+    setWelcomeImageBusy(true);
+    let cleanupPending = false;
+    try {
+      const notify = { ...draft.notify, welcomeCardImageUrl: '' };
+      const result = await saveTenantSettings({ notify });
+      cleanupPending = result?.welcomeCardImageCleanupPending === true;
+      if (previousUrl) {
+        try {
+          await removeWelcomeCardImageAsset(previousUrl);
+        } catch {
+          cleanupPending = true;
+        }
+      }
+      setDraft((current) =>
+        current
+          ? { ...current, notify: { ...current.notify, welcomeCardImageUrl: '' } }
+          : current,
+      );
+      toast.show(
+        cleanupPending ? t.notification.welcomeCardImageCleanupPending : t.notification.welcomeCardImageRemoved,
+        cleanupPending ? 'warning' : undefined,
+      );
+    } catch (e) {
+      toast.show(
+        `${t.notification.validation.removeFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setWelcomeImageBusy(false);
+    }
   };
 
   const savePoints = async () => {
@@ -289,7 +425,7 @@ export default function SettingsPage() {
   const submitPasswordChange = async () => {
     setPasswordBusy(true);
     try {
-      await new Promise((r) => setTimeout(r, 480));
+      await changePassword({ currentPassword, newPassword });
       setConfirmPasswordChange(false);
       setCurrentPassword('');
       setNewPassword('');
@@ -1092,18 +1228,33 @@ export default function SettingsPage() {
                 </FormGroup>
 
                 <FormGroup>
-                  <Label>{t.notification.welcomeCardImage}</Label>
+                  <Label htmlFor="welcomeCardImageUrl">{t.notification.welcomeCardImage}</Label>
                   <div className="flex flex-wrap items-center gap-2">
                     <Input
+                      id="welcomeCardImageUrl"
                       className="w-full max-w-md"
                       value={draft.notify.welcomeCardImageUrl}
                       placeholder={t.notification.welcomeCardImage}
                       onChange={(e) => patchNotify({ welcomeCardImageUrl: e.target.value })}
                     />
+                    <Input
+                      ref={welcomeImageFileRef}
+                      id="welcomeCardImageFile"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (file) void uploadWelcomeCardImage(file);
+                      }}
+                    />
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => toast.show(t.notification.welcomeCardImageUpdated)}
+                      loading={welcomeImageBusy}
+                      loadingText={t.notification.welcomeCardImageUploading}
+                      onClick={() => welcomeImageFileRef.current?.click()}
                     >
                       <Upload size={13} />
                       {t.notification.welcomeCardImageUpload}
@@ -1112,10 +1263,9 @@ export default function SettingsPage() {
                       <Button
                         variant="outlineDanger"
                         size="sm"
-                        onClick={() => {
-                          patchNotify({ welcomeCardImageUrl: '' });
-                          toast.show(t.notification.welcomeCardImageRemoved);
-                        }}
+                        loading={welcomeImageBusy}
+                        loadingText={t.notification.welcomeCardImageUploading}
+                        onClick={() => void removeWelcomeCardImage()}
                       >
                         <Trash2 size={13} />
                         {t.notification.welcomeCardImageRemove}

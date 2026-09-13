@@ -1,26 +1,16 @@
 // POST /api/coupons/:id/batch-issue — 批次發放（04 分冊 §B-4）。
 // body {customerIds[]}：每人一張 coupon_instances，code = 8 碼大寫英數。
-import { randomBytes } from 'crypto';
 import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+// 代碼產生器抽到 src/server/coupon-code.ts 共用（issue #176 的活動獎勵也要發券）。
+// unique (tenant_id, code) 是跨來源的，兩份各自演化會讓碰撞機率跟著實作漂移。
+import { genCouponCode } from '@/server/coupon-code';
 
 const bodySchema = z.object({
   customerIds: z.array(z.string().uuid()).min(1, '請選擇至少一位顧客'),
 });
-
-/**
- * 8 碼核銷代碼。字母表 32 字（去掉 O/0/I/1 易混淆字元），32 = 2^5，
- * 每 byte 取低 5 bit 即為均勻分布，無 modulo bias。
- */
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-function genCode(): string {
-  const bytes = randomBytes(8);
-  let code = '';
-  for (let i = 0; i < 8; i++) code += CODE_ALPHABET[bytes[i] & 31];
-  return code;
-}
 
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant();
@@ -62,7 +52,7 @@ export const POST = handle(async (req, { params }) => {
       tenant_id: t.tenantId,
       coupon_id: id,
       customer_id: customerId,
-      code: genCode(),
+      code: genCouponCode(),
     }));
     const { error } = await t.supabase.from('coupon_instances').insert(rows);
     if (!error) break;

@@ -1,0 +1,59 @@
+name: 模型／工作治理
+description: 用於模型治理、工作治理、工程治理與 repo 流程改善。這類工作固定屬於 MODEL_GOVERNANCE。
+title: "[Governance] "
+body:
+  - type: dropdown
+    id: workstream
+    attributes:
+      label: WORKSTREAM
+      description: 模型治理、工作治理、工程治理固定使用 MODEL_GOVERNANCE。若會改產品功能、API/runtime、資料庫、付款、LINE/provider 或部署，請改走 PRODUCT_MAINLINE。
+      options:
+        - MODEL_GOVERNANCE
+    validations:
+      required: true
+
+  - type: textarea
+    id: governance-outcome
+    attributes:
+      label: 要改善的治理結果
+      description: 用白話描述要讓哪個工作規則、模型路由、Agent 流程或工程守門變得更可靠。
+      placeholder: "例如：所有新 PR 一建立就必須先分成模型治理或任務主線。"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: governance-kind
+    attributes:
+      label: 治理類型
+      description: 工作治理也屬於 MODEL_GOVERNANCE。
+      options:
+        - 模型路由／Reviewer 路由
+        - 工作治理／Agent orchestration／派工流程
+        - WIP／lane／多 Agent 工作規則
+        - PR lifecycle／Issue 流程
+        - 治理型 CI／Guard／Template
+        - Metrics／Scoreboard／Run evidence
+        - 治理文件／治理測試
+        - 其他純治理工作
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: 範圍與驗收
+      description: 寫出這張治理 Issue 要改什麼、如何證明規則真的生效，以及明確不碰哪些產品功能。
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: boundary
+    attributes:
+      label: 分流邊界確認
+      options:
+        - label: 這是純模型治理／工作治理／工程治理，不改使用者可見產品功能。
+          required: true
+        - label: 不改 Product API/runtime、tenant data flow、schema/migration、payment/refund、LINE/provider 或 Product deployment。
+          required: true
+        - label: 如果後續發現治理與產品變更無法安全拆開，整張工作改分到 PRODUCT_MAINLINE。
+          required: true

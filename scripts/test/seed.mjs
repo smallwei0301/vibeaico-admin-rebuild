@@ -21,6 +21,7 @@
 // 清楚的提示訊息。
 
 import { assertSafeTestUrl, createTestAdminClient, loadTestEnv } from './_supabase-admin.mjs';
+import { readTourSeedFields, readLegacyPlanPriceColumn, legacyPlanPriceFields } from './tour-seed-profile.mjs';
 
 // ---- id 常數：必須與 tests/fixtures.ts 逐一對應（見檔頭說明）----
 const SHOP_A = {
@@ -156,6 +157,13 @@ export async function runSeed(admin) {
   const seedNowMs = seedNow.getTime();
   const hourMs = 60 * 60 * 1000;
   const oneDayMs = 24 * hourMs;
+  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
+  // #298: main fixtures must not require an unmerged #41 schema. Preserve candidate
+  // compatibility explicitly; partial schemas and all unrelated errors remain fatal.
+  const tourSeed = await readTourSeedFields(admin, formationDeadlineAt,
+    process.env.TEST_TOUR_SEED_PROFILE ?? 'OBSERVE');
+  const hasLegacyPlanPrice = await readLegacyPlanPriceColumn(admin);
+  console.log(`[seed] tour schema profile: ${tourSeed.profile}; legacy price column: ${hasLegacyPlanPrice}`);
 
   // ---- 1. Auth users（通常不受 Phase 1 影響，auth.users 是 Supabase 內建表）----
   const ownerAId = await ensureAuthUser(admin, SHOP_A.owner.email, SHOP_A.owner.password);
@@ -178,10 +186,13 @@ export async function runSeed(admin) {
 
   // ---- 2.5 功能訂閱（Phase 5.5 閘門上線後必要）----
   // 09 分冊 §5 的閘門會擋未訂閱租戶（shifts 403、第 4 位員工被擋、報表 403…），
-  // 測試種子租戶預設「平台永久贈送」全部 18 項付費功能（source='GRANTED'、
+  // 測試種子租戶預設「平台永久贈送」全部付費功能（source='GRANTED'、
   // expires_at null = 永久，見 §2 有效性判定），讓既有 Phase 3/5 整合測試
   // 不因閘門而 403。gating.09.test.ts 測「未訂閱被擋」時自行 delete 特定列
   // 再還原（各測試自理，不改共用種子的這個基線）。
+  //
+  // ⚠️ 新增 FEATURE_CODES 時必須同步考慮這裡，但**不是每一項都該給兩家店**——
+  // 見下方 TOUR_MODULE 的單獨處理。
   const PAID_FEATURES = [
     'UNLIMITED_STAFF', 'SHIFT_MANAGEMENT', 'BOOKING_REMINDER', 'BIRTHDAY_GREETING',
     'CUSTOMER_RECALL', 'POINT_SYSTEM', 'ADVANCED_CUSTOMER', 'EMAIL_NOTIFICATION',
@@ -195,6 +206,29 @@ export async function runSeed(admin) {
       tenant_id: tid, code, active: true, expires_at: null, source: 'GRANTED',
     }))),
     'feature_subscriptions',
+    'tenant_id,code',
+  );
+
+  /**
+   * TOUR_MODULE 只給 SHOP_A，**刻意不給 SHOP_B**。
+   *
+   * 2026-09-11：本清單原本完全沒有 TOUR_MODULE，而它在 `src/config/features.ts` 是
+   * 正式 FEATURE_CODE。結果 tours.10 / tour-orders.10 / plan-advanced-settings.10
+   * 全數 403 FEAT_001——那三個檔都**假設**種子已經給過，它們是「先 delete 測閘門、
+   * 再 upsert 還原」的寫法，從來沒有負責建立基線。而 globalSetup 每一輪都重跑
+   * reset-db（含本 seed），所以手動在 TEST 補資料撐不過下一次執行；基線只能寫在這裡。
+   *
+   * ⚠️ 但**不可以**順手也給 SHOP_B。`tours.10` 的「別家店不得刪掉這個團次」刻意分兩段：
+   * 先確認 SHOP_B 被閘門擋成 403 FEAT_001，再臨時給它訂閱、證明即使閘門放行，租戶隔離
+   * 仍然擋成 404。SHOP_B 一旦在種子就有訂閱，第一段斷言直接失效，而租戶隔離就再也沒有
+   * 任何斷言在守它——正是 PB-025 的陷阱：用「有沒有訂閱」代替「有沒有權利」。
+   * 該測試自己會 upsert 給 SHOP_B，不需要種子幫它。
+   */
+  await safeUpsert(
+    admin,
+    'feature_subscriptions',
+    [{ tenant_id: SHOP_A.id, code: 'TOUR_MODULE', active: true, expires_at: null, source: 'GRANTED' }],
+    'feature_subscriptions（TOUR_MODULE：僅 SHOP_A）',
     'tenant_id,code',
   );
 
@@ -238,6 +272,8 @@ export async function runSeed(admin) {
         name: '基礎剪髮（測試）',
         duration_minutes: 60,
         price: 800,
+        sort_order: 0,
+        line_sort_order: 0,
       },
       {
         id: SHOP_A.serviceA2,
@@ -245,6 +281,8 @@ export async function runSeed(admin) {
         name: '燙染組合（測試）',
         duration_minutes: 120,
         price: 2500,
+        sort_order: 1,
+        line_sort_order: 1,
       },
     ],
     'services',
@@ -335,7 +373,7 @@ export async function runSeed(admin) {
         tenant_id: SHOP_A.id,
         method_type: 'BANK_TRANSFER',
         display_name: '銀行轉帳（測試）',
-        config: { bankName: '測試銀行', bankCode: '000', accountNumber: '0000000000000', accountHolder: 'A 店測試' },
+        config: { bankName: '測試銀行', bankCode: '000', accountNumber: '0000000000000', accountHolderName: 'A 店測試' },
       },
     ],
     'tenant_payment_methods',
@@ -375,12 +413,13 @@ export async function runSeed(admin) {
         trip_id: TRIP_A.id,
         slug: 'standard-test-plan',
         name: '標準團（測試）',
-        // 0016 的單一價格欄位是 base_price；不要回寫舊版 price_per_person，
-        // 否則 PostgREST 會在 reset/seed 前就中止整個 integration suite。
+        // base_price 是主線價格；歷史相容庫若仍有必填舊價格欄位，明確填入相同值。
+        // 不依賴未合併 #41 的觸發器，也不向已移除舊欄位的 schema 寫入它。
         base_price: 3000,
+        ...legacyPlanPriceFields(3000, hasLegacyPlanPrice),
         price_type: 'PER_PERSON',
         max_participants: 10,
-        min_to_depart: 1,
+        ...tourSeed.plan,
       },
       {
         id: TRIP_A.planA2,
@@ -389,15 +428,15 @@ export async function runSeed(admin) {
         slug: 'private-test-plan',
         name: '包團（測試）',
         base_price: 5000,
+        ...legacyPlanPriceFields(5000, hasLegacyPlanPrice),
         price_type: 'PER_PERSON',
         max_participants: 10,
-        min_to_depart: 1,
+        ...tourSeed.plan,
       },
     ],
     'trip_plans',
   );
 
-  const formationDeadlineAt = new Date(seedNowMs + oneDayMs).toISOString();
   if (!tripPlansSeeded) {
     throw new Error('[seed] trip_plans seed is required before trip_departures；避免留下不完整的父子種子。');
   }
@@ -414,8 +453,7 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 7 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
+        ...tourSeed.departure,
       },
       {
         id: TRIP_A.departure2,
@@ -425,8 +463,7 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 14 * oneDayMs).toISOString().slice(0, 10),
         capacity: 10,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
+        ...tourSeed.departure,
       },
       {
         // capacity=2：專供 12 分冊 §5 並發不超賣測試
@@ -437,8 +474,7 @@ export async function runSeed(admin) {
         departs_on: new Date(seedNowMs + 21 * oneDayMs).toISOString().slice(0, 10),
         capacity: 2,
         seats_booked: 0,
-        min_to_depart_snapshot: 1,
-        formation_deadline_at: formationDeadlineAt,
+        ...tourSeed.departure,
       },
     ],
     'trip_departures',

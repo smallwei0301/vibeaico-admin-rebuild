@@ -39,6 +39,12 @@ const createSchema = z.object({
   bookable: z.boolean().optional(),
   active: z.boolean().optional(),
   serviceIds: z.array(z.string().uuid()).optional(),
+  displayName: z.string().optional(),
+  bio: z.string().optional(),
+  // >= 1：0 會讓這位員工實質上不可被預約，但欄位名稱沒有這個意思，
+  // DB 端也有 staff_max_concurrent_bookings_chk 擋著。
+  maxConcurrentBookings: z.number().int().min(1).optional(),
+  visible: z.boolean().optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -89,6 +95,13 @@ export const POST = handle(async (req) => {
       bookable: b.bookable ?? true,
       active: b.active ?? true,
       sort_order: (last?.sort_order ?? -1) + 1,
+      // 0082：四個顯示欄位。未指定時交給 DB 的 NOT NULL DEFAULT，語意與
+      // migration 檔頭寫的一致（空字串＝沒另取名／沒寫簡介，1＝一次一筆，
+      // true＝前台顯示）。
+      display_name: b.displayName ?? '',
+      bio: b.bio ?? '',
+      max_concurrent_bookings: b.maxConcurrentBookings ?? 1,
+      visible: b.visible ?? true,
     })
     .select('id')
     .single();

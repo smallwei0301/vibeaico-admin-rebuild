@@ -14,11 +14,32 @@ const createServerSupabaseMock = vi.fn(() => Promise.resolve(supabaseClient));
 
 vi.mock('@/server/supabase', () => ({
   createServerSupabase: () => createServerSupabaseMock(),
+  // requireTenant 的代登入分支（21 分冊 §2.3）會用到 service role client。
+  // 本檔驗的是**一般成員資格路徑**，所以這裡回一個「什麼都查不到」的 client：
+  // 代登入分支因此必然回 null 並落回成員資格判定，正是要驗的行為。
+  createAdminSupabase: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+          maybeSingle: async () => ({ data: null, error: null }),
+        }),
+      }),
+    }),
+  }),
 }));
 
-const cookieGetMock = vi.fn();
+/**
+ * ⚠️ 這個 mock 原本對**任何** key 都回同一個值，於是 `requireTenant()` 新增代登入
+ * 分支之後，連 `vibeai_impersonation` 都「有值」，測試就意外走進了代入路徑。
+ * 一個不看 key 的 cookie mock 證不到「讀的是哪一個 cookie」，改成認 key。
+ */
+const activeTenantCookieMock = vi.fn();
+const cookieGetMock = vi.fn((name: string) =>
+  name === 'vibeai_active_tenant' ? activeTenantCookieMock() : undefined,
+);
 vi.mock('next/headers', () => ({
-  cookies: () => Promise.resolve({ get: cookieGetMock }),
+  cookies: () => Promise.resolve({ get: (name: string) => cookieGetMock(name) }),
 }));
 
 import { ACTIVE_TENANT_COOKIE, requireUser, requireTenant } from '@/server/tenant';
@@ -57,13 +78,52 @@ describe('tenant — requireUser (01 §5.3)', () => {
       expect((e as ApiHttpError).code).toBe('AUTH_001');
     }
   });
+
+  /**
+   * ⚠️ 最終風險評估（第二輪）抓到的：`getUser()` **不會為傳輸錯誤丟例外**。
+   * auth-js 把網路失敗與 GoTrue 5xx 都當成「回傳值裡的 error」，`data.user` 同時是 null。
+   * 原本只解構 `data.user`、不看 `error`，於是 Auth 抖動被降級成 401「請先登入」——
+   * 而 `handle()` 的代登入稽核層把 401 當成合法的未登入放行，接著 handler 內
+   * `requireTenant()` 再解析一次、這次成功，那筆寫入就沒有稽核紀錄。
+   *
+   * 「沒有登入」與「問不到有沒有登入」必須是兩個不同的答案。
+   */
+  async function expectStatus(error: unknown, status: number) {
+    getUserMock.mockResolvedValue({ data: { user: null }, error });
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await requireUser();
+      expect.unreachable('應該要丟錯');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiHttpError);
+      expect((e as ApiHttpError).status).toBe(status);
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it('AuthSessionMissingError → 401（真的沒有 session）', async () => {
+    await expectStatus({ name: 'AuthSessionMissingError', status: 400 }, 401);
+  });
+
+  it('token 無效／過期（狀態 401）→ 401', async () => {
+    await expectStatus({ name: 'AuthApiError', status: 401 }, 401);
+  });
+
+  it('網路失敗（AuthRetryableFetchError）→ 503，**不得**降級成 401', async () => {
+    await expectStatus({ name: 'AuthRetryableFetchError', status: 0 }, 503);
+  });
+
+  it('GoTrue 5xx（AuthApiError 500）→ 503，**不得**降級成 401', async () => {
+    await expectStatus({ name: 'AuthApiError', status: 500 }, 503);
+  });
 });
 
 describe('tenant — requireTenant (01 §5.3)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getUserMock.mockResolvedValue({ data: { user: USER } });
-    cookieGetMock.mockReturnValue(undefined);
+    activeTenantCookieMock.mockReturnValue(undefined);
   });
 
   it('沒有任何 membership（空陣列）→ 403 AUTH_005', async () => {
@@ -96,7 +156,7 @@ describe('tenant — requireTenant (01 §5.3)', () => {
       membership('tenant-b', 'OWNER', 'shop-b', 'B 店'),
     ];
     eqMock.mockResolvedValue({ data: memberships, error: null });
-    cookieGetMock.mockReturnValue({ value: 'tenant-b' });
+    activeTenantCookieMock.mockReturnValue({ value: 'tenant-b' });
 
     const result = await requireTenant();
     expect(result.tenantId).toBe('tenant-b');
@@ -110,7 +170,7 @@ describe('tenant — requireTenant (01 §5.3)', () => {
       membership('tenant-b', 'OWNER', 'shop-b', 'B 店'),
     ];
     eqMock.mockResolvedValue({ data: memberships, error: null });
-    cookieGetMock.mockReturnValue(undefined);
+    activeTenantCookieMock.mockReturnValue(undefined);
 
     const result = await requireTenant();
     expect(result.tenantId).toBe('tenant-a');
@@ -123,7 +183,7 @@ describe('tenant — requireTenant (01 §5.3)', () => {
       membership('tenant-b', 'OWNER', 'shop-b', 'B 店'),
     ];
     eqMock.mockResolvedValue({ data: memberships, error: null });
-    cookieGetMock.mockReturnValue({ value: 'tenant-nonexistent' });
+    activeTenantCookieMock.mockReturnValue({ value: 'tenant-nonexistent' });
 
     const result = await requireTenant();
     expect(result.tenantId).toBe('tenant-a');

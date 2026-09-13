@@ -1,6 +1,11 @@
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+// 型別匯入（`import type` 編譯期即被抹除，不會把 server 端程式碼帶進前端 bundle）；
+// 通知結果的定義只留一份在 server 端，避免兩邊字串聯集各寫各的而漂移。
+import type { ProductOrderNotifyOutcome } from '@/server/line-notify';
+
+export type { ProductOrderNotifyOutcome };
 
 /**
  * 商品 / 庫存 / 商品訂單 — 寫入操作與頁內讀取的 service 層（04 分冊 §B-3）。
@@ -13,10 +18,19 @@ import { byMode } from '@/mock';
 
 /* ------------------------------------------------------------ 商品分類 */
 
-/** 原站 /api/product-categories（active 欄位 DB 未落地，後端一律回 true） */
+/**
+ * 原站 /api/product-categories。
+ * `active` 曾經是「DB 沒這欄、後端一律回 true」的假值，補上 description / active
+ * 兩欄後改為照實回傳（issue #28 第 ⑨ 筆）。
+ *
+ * ⚠️ canonical 的來源是 `0079_reconcile_category_bug_report_fields.sql`。舊註解寫的
+ * `0018` **不在 `supabase/migrations/`**，只存在於 historical overlay——見
+ * `catalog.ts` 同一段說明與 issue #197。
+ */
 export type ProductCategory = {
   id: string;
   name: string;
+  description?: string;
   active: boolean;
   sortOrder: number;
 };
@@ -59,26 +73,40 @@ export const listProductCategories = () =>
 
 let nextMockCategoryId = 1;
 
-/** POST /api/product-categories — 後端只收 name（sort_order 取最大值+1） */
-export const createProductCategory = (name: string) =>
-  adapt<{ id: string }>(
-    () => ({ id: `pc_new_${nextMockCategoryId++}` }),
-    () => request<{ id: string }>('/api/product-categories', {
-      method: 'POST', body: JSON.stringify({ name }),
+/** POST /api/product-categories 收的欄位（sortOrder 未帶時後端取最大值+1）。 */
+export type ProductCategoryInput = {
+  name: string;
+  description?: string;
+  active?: boolean;
+  sortOrder?: number;
+};
+
+/**
+ * POST /api/product-categories。
+ * 修改前只送 name，modal 上的「排序」與「啟用」兩個輸入純粹留在瀏覽器裡
+ * （issue #28 第 ⑨ 筆）；補上欄位後三者都真的送出去。canonical 的來源是 `0079`；
+ * 舊註解寫的 `0018` **不在 `supabase/migrations/`**（只存在於 historical overlay），
+ * 照著它去查會找不到欄位而誤判——見 issue #197。
+ * 回傳 sortOrder＝後端實際寫入的排序值，頁面不再自己猜一個顯示。
+ */
+export const createProductCategory = (input: ProductCategoryInput) =>
+  adapt<{ id: string; sortOrder: number }>(
+    () => ({ id: `pc_new_${nextMockCategoryId++}`, sortOrder: input.sortOrder ?? 0 }),
+    () => request<{ id: string; sortOrder: number }>('/api/product-categories', {
+      method: 'POST', body: JSON.stringify(input),
     }),
   );
 
 /** PUT /api/product-categories/:id — 只支援改名 */
-export const updateProductCategory = (id: string, name: string) =>
+export const updateProductCategory = (id: string, input: Partial<ProductCategoryInput>) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/product-categories/${id}`, {
-      method: 'PUT', body: JSON.stringify({ name }),
+    request<void>('/api/product-categories/' + id, {
+      method: 'PUT', body: JSON.stringify(input),
     }));
-
 /** DELETE — FK on delete set null，底下商品自動變未分類 */
 export const deleteProductCategory = (id: string) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/product-categories/${id}`, { method: 'DELETE' }));
+    request<void>('/api/product-categories/' + id, { method: 'DELETE' }));
 
 export const reorderProductCategories = (ids: string[]) =>
   adapt(() => undefined, () =>
@@ -379,12 +407,13 @@ let nextMockOrderId = 1;
 export const createManualProductOrder = (payload: {
   customerId: string;
   items: { productId: string; quantity: number }[];
+  notifyCustomer?: boolean;
 }) =>
-  adapt<{ id: string; orderNo: string }>(
-    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}` }),
-    () => request<{ id: string; orderNo: string }>('/api/product-orders/manual', {
-      method: 'POST', body: JSON.stringify(payload),
-    }),
+  adapt<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+    () => ({ id: `po_new_${nextMockOrderId++}`, orderNo: `PO${Date.now()}`, notify: 'NONE' }),
+    () => request<{ id: string; orderNo: string; notify: ProductOrderNotifyOutcome }>(
+      '/api/product-orders/manual', { method: 'POST', body: JSON.stringify(payload) },
+    ),
   );
 
 /** 狀態機（同 bookings 模式）：條件不符時後端回 409「此訂單狀態已變更」 */
@@ -406,3 +435,25 @@ export const cancelProductOrder = (id: string, reason?: string) =>
 export const markProductOrderPaidOffline = (id: string) =>
   adapt(() => undefined, () =>
     request<void>(`/api/product-orders/${id}/mark-paid-offline`, { method: 'POST' }));
+
+/**
+ * POST /api/product-orders/:id/apply-coupon — 核銷票券，回
+ * `{ totalAmount, couponDiscount }`（折抵後金額、本次折抵金額，兩者都是後端
+ * 算好的真實數字，頁面不可再自己假造 100 元 —— issue #33 第 ① 筆）。
+ * 找不到票券 404、已核銷或票券不屬於該顧客 409，訊息交頁面 toast 原樣顯示。
+ *
+ * product_orders 沒有欄位能長期存「這筆訂單折抵過多少」（見對應 route 註解），
+ * 因此 mock 分支固定折 100（沿用修復前頁面本來就假造的數字，只是現在真的
+ * 由這支 service 回傳，且 real 分支會回傳後端核銷後的真實金額）。
+ */
+export const applyProductOrderCoupon = (id: string, code: string, mockCurrentAmount: number) =>
+  adapt<{ totalAmount: number; couponDiscount: number }>(
+    () => {
+      const discount = Math.min(100, mockCurrentAmount);
+      return { totalAmount: mockCurrentAmount - discount, couponDiscount: discount };
+    },
+    () => request<{ totalAmount: number; couponDiscount: number }>(
+      `/api/product-orders/${id}/apply-coupon`,
+      { method: 'POST', body: JSON.stringify({ code }) },
+    ),
+  );

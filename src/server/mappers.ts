@@ -25,6 +25,11 @@ import type {
   PointTransaction,
   StaffPerformance,
   TenantSummary,
+  TourOrder,
+  Trip,
+  TripAddon,
+  TripDeparture,
+  TripPlan,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ 預約 */
@@ -103,6 +108,14 @@ export function mapStaff(r: any): Staff {
     bookable: r.bookable,
     active: r.active,
     sortOrder: r.sort_order,
+    scheduleMode: r.schedule_mode ?? 'ROTATING',
+    // 0082 的四個欄位都有 NOT NULL DEFAULT，所以正常情況下不會是 null；
+    // 這裡的 ?? 只是保護「migration 尚未套用」的環境，讓它退回與 DB 預設值
+    // 相同的解讀，而不是 undefined 到畫面上變成空白。
+    displayName: r.display_name ?? '',
+    bio: r.bio ?? '',
+    maxConcurrentBookings: Number(r.max_concurrent_bookings ?? 1),
+    visible: r.visible ?? true,
   };
 }
 
@@ -143,6 +156,9 @@ export function mapProductOrder(r: any): ProductOrder {
     status: r.status,
     paymentStatus: r.payment_status,
     createdAt: r.created_at,
+    // coupon_discount 可為 NULL（沒套用票券）。這裡收斂成 0：折抵「真的是零」，
+    // 不是「不知道」——0081 migration 檔頭有同一段說明。
+    couponDiscount: Number(r.coupon_discount ?? 0),
   };
 }
 
@@ -163,6 +179,13 @@ export function mapCoupon(r: any): Coupon {
     startAt: r.start_at ?? '',
     endAt: r.end_at ?? '',
     status: r.status,
+    minOrderAmount: r.min_order_amount == null ? null : Number(r.min_order_amount),
+    maxDiscountAmount: r.max_discount_amount == null ? null : Number(r.max_discount_amount),
+    giftItem: r.gift_item ?? '',
+    limitPerCustomer: r.limit_per_customer == null ? null : Number(r.limit_per_customer),
+    privateMode: r.private_mode ?? false,
+    // 由 GET /api/coupons 依 coupon_instances 即時附掛，不是 coupons 的欄位。
+    lastRedeemedCode: r.last_redeemed_code ?? null,
   };
 }
 
@@ -179,6 +202,9 @@ export function mapMembershipLevel(r: any): MembershipLevel {
     pointRateMultiplier: r.point_rate_multiplier,
     customerCount: r.customer_count ?? 0,
     sortOrder: r.sort_order,
+    description: r.description ?? '',
+    active: r.active ?? true,
+    isDefault: r.is_default ?? false,
   };
 }
 
@@ -234,5 +260,145 @@ export function mapTenantSummary(r: any, activeTenantId?: string): TenantSummary
     current: r.tenant_id === activeTenantId,
     businessType: r.tenants.business_type ?? undefined,
     extraModules: r.tenants.extra_modules ?? undefined,
+  };
+}
+
+/* ------------------------------------------------------------ 行程核心 */
+/**
+ * Canonical #8-A rows deliberately stay smaller than the legacy mock/UI shape.
+ * These mappers provide the existing frontend contract with explicit, honest
+ * defaults; they never invent persisted fields that are not in the four-table
+ * schema from 10-TOUR-DOMAIN.md §1.
+ */
+export function mapTrip(r: any, derived: {
+  planCount?: number;
+  minPrice?: number;
+  upcomingDepartureCount?: number;
+} = {}): Trip {
+  return {
+    id: r.id,
+    slug: r.slug,
+    title: r.title,
+    tagline: r.tagline ?? '',
+    summary: r.summary ?? '',
+    description: r.description ?? '',
+    region: r.location ?? '',
+    category: '',
+    coverImageUrl: r.cover_image_url ?? '',
+    galleryUrls: Array.isArray(r.gallery) ? r.gallery.map(String) : [],
+    meetingPoint: r.meeting_point ?? '',
+    meetingPointMapUrl: r.meeting_point_map_url ?? '',
+    inclusions: typeof r.includes === 'string'
+      ? r.includes.split('\n').map((v: string) => v.trim()).filter(Boolean)
+      : [],
+    exclusions: Array.isArray(r.exclusions) ? r.exclusions.map(String) : [],
+    notices: Array.isArray(r.notices) ? r.notices.map(String) : [],
+    safetyNotice: r.notes ?? r.safety_notice ?? '',
+    refundPolicyType: (r.refund_policy_type ?? 'STANDARD') as Trip['refundPolicyType'],
+    status: r.status,
+    midaoListing: r.midao_listing,
+    midaoListingNote: r.midao_listing_note ?? '',
+    planCount: derived.planCount ?? 0,
+    upcomingDepartureCount: derived.upcomingDepartureCount ?? 0,
+    minPrice: derived.minPrice ?? 0,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function mapTripPlan(r: any): TripPlan {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    description: r.description ?? '',
+    durationMinutes: 60,
+    priceType: 'PER_PERSON',
+    basePrice: Number(r.price_per_person ?? 0),
+    childPrice: r.child_price == null ? null : Number(r.child_price),
+    minParticipants: r.min_party ?? 1,
+    maxParticipants: r.max_party ?? 10,
+    bookingType: 'SCHEDULED',
+    depositMode: r.deposit_mode,
+    depositValue: Number(r.deposit_value ?? 0),
+    active: r.active ?? true,
+    yearRound: true,
+    seasons: [],
+    reviewState: 'NONE',
+    reviewNote: '',
+    sortOrder: r.sort_order ?? 0,
+  };
+}
+
+export function mapTripDeparture(r: any): TripDeparture {
+  const plan = Array.isArray(r.trip_plans) ? r.trip_plans[0] : r.trip_plans;
+  const rawTime = r.start_time == null ? '' : String(r.start_time).slice(0, 5);
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    planId: r.plan_id,
+    planName: plan?.name ?? '',
+    departsOn: r.departs_on,
+    startTime: rawTime,
+    capacity: r.capacity,
+    seatsBooked: r.seats_booked ?? 0,
+    status: r.status,
+    note: r.note ?? '',
+  };
+}
+
+/**
+ * tour_orders 列 → `TourOrder`（#8-B）。
+ *
+ * 刻意**不**做 PostgREST embed：0067 為 tenant-aware 完整性加了複合 FK，
+ * 於是 `tour_orders → trips` / `→ trip_plans` / `→ trip_departures` 的關聯在
+ * canonical 與 historical overlay 兩種安裝路徑下解出來的 constraint 名稱不同，
+ * embed hint 會在其中一邊解不開（PB-024）。呼叫端自己查再組，慢一點但兩邊都對。
+ *
+ * `derived` 的四個欄位都由呼叫端明確傳入而非 `?? ''` 猜——查不到就傳空字串，
+ * 但那是呼叫端知道自己查不到，不是這裡假裝有值。
+ */
+export function mapTourOrder(r: any, derived: {
+  tripTitle: string;
+  planName: string;
+  departsOn: string;
+  startTime: string;
+  paymentMethodLabel: string;
+}): TourOrder {
+  const contact = (r.contact ?? {}) as Record<string, unknown>;
+  return {
+    id: r.id,
+    orderNo: r.order_no,
+    tripId: r.trip_id,
+    tripTitle: derived.tripTitle,
+    planName: derived.planName,
+    departsOn: derived.departsOn,
+    startTime: derived.startTime,
+    customerName: String(contact.name ?? ''),
+    customerPhone: String(contact.phone ?? ''),
+    partySize: Number(r.party_size ?? 0),
+    unitPrice: Number(r.unit_price ?? 0),
+    totalAmount: Number(r.total_amount ?? 0),
+    depositAmount: Number(r.deposit_amount ?? 0),
+    status: r.status,
+    paymentStatus: r.payment_status,
+    paymentMethodLabel: derived.paymentMethodLabel,
+    paymentRef: r.payment_ref ?? '',
+    source: r.source,
+    holdExpiresAt: r.hold_expires_at ?? null,
+    note: r.note ?? '',
+    createdAt: r.created_at,
+  };
+}
+
+export function mapTripAddon(r: any): TripAddon {
+  return {
+    id: r.id,
+    tripId: r.trip_id,
+    name: r.name,
+    price: Number(r.price ?? 0),
+    unit: r.unit,
+    stock: r.stock == null ? null : Number(r.stock),
+    active: r.active ?? true,
+    sortOrder: r.sort_order ?? 0,
   };
 }

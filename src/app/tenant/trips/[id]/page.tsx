@@ -3,8 +3,8 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
-  AlertTriangle, CalendarDays, CalendarPlus, Clock, Image as ImageIcon, Layers,
-  ListPlus, Package, Pencil, Plus, Send, Trash2, Upload, Users,
+  AlertTriangle, CalendarDays, CalendarPlus, ChevronDown, ChevronUp, Clock, ExternalLink,
+  Image as ImageIcon, Layers, Package, Pencil, Plus, Send, Trash2, Upload, Users,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -22,16 +22,25 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTrip, listTripAddons, listTripDepartures, listTripPlans,
+  batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan,
+  getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
+  saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
 } from '@/services/tours';
+import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
 import { navLabel } from '@/i18n/zh-TW/nav';
-import { useBusinessType } from '@/components/layout/BusinessTypeContext';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
+import { APP_URL, USE_MOCK } from '@/config/env';
+import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
+import { ApiError } from '@/lib/api';
 import { formatCurrency, formatNumber } from '@/lib/utils';
+import {
+  reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
+} from '@/lib/trip-plan-quick-edit';
 import type {
-  DepartureStatus, PlanReviewState, PriceType, Trip, TripAddon,
-  TripBookingType, TripDeparture, TripPlan, TripPlanSeason,
+  DepartureConflict, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
+  TripDeparture, TripPlan,
 } from '@/lib/types';
 
 const GALLERY_MAX = 8;
@@ -43,6 +52,7 @@ const REVIEW_TONE: Record<PlanReviewState, 'info' | 'danger' | 'neutral'> = {
 const DEPARTURE_TONE: Record<DepartureStatus, 'success' | 'neutral' | 'danger'> = {
   OPEN: 'success', CLOSED: 'neutral', CANCELLED: 'danger',
 };
+type PlanEditorMode = 'quick' | 'advanced';
 
 /** 空白方案（新增用） */
 const emptyPlan = (tripId: string): TripPlan => ({
@@ -62,7 +72,70 @@ const emptyAddon = (tripId: string): TripAddon => ({
 const emptyDeparture = (tripId: string, planId: string): TripDeparture => ({
   id: '', tripId, planId, planName: '', departsOn: '', startTime: '09:00',
   capacity: 10, seatsBooked: 0, status: 'OPEN', note: '',
+  primaryStaffId: null, assistantStaffIds: [],
 });
+
+/**
+ * issue #37：導遊指派欄位。0/1/2+ 自動適應（Owner 2026-08-27）。
+ *
+ * - **0 位**：不顯示選擇器，顯示一句說明為什麼開不了團。後端也會擋。
+ * - **1 位**：不顯示選擇器；說明系統會自動指派。**不預先塞進表單**——那會讓
+ *   「這是後端自動決定的」看起來像「店家自己選的」，而且第二位導遊上線那天，
+ *   舊表單裡那個被塞進去的值會變成一個沒人記得為什麼在那裡的預設值。
+ * - **2 位以上**：主導遊下拉 ＋ 協同導遊複選。
+ *
+ * 忙碌人員仍然顯示（§5.1「忙碌人員可顯示但不可選」）：這一版不在前端預先標示
+ * 忙碌，因為可用性會隨著日期／時間欄位改變而變，前端算一份就等於把後端那份規則
+ * 複製一遍——兩份只要不一致就會出現「畫面說可以、存下去說不行」。這一版一律以
+ * 儲存時後端回的衝突訊息為準，訊息本身會指名是誰、為什麼。
+ */
+function GuidePicker({ guides, primaryStaffId, assistantStaffIds, onChange }: {
+  guides: Staff[];
+  primaryStaffId: string | null | undefined;
+  assistantStaffIds: string[] | undefined;
+  onChange: (patch: { primaryStaffId?: string | null; assistantStaffIds?: string[] }) => void;
+}) {
+  if (guides.length === 0) return <FormText>{t.departures.guide.noneHint}</FormText>;
+  if (guides.length === 1) return <FormText>{t.departures.guide.soloHint(guides[0].name)}</FormText>;
+
+  const assistants = assistantStaffIds ?? [];
+  const toggleAssistant = (id: string) => onChange({
+    assistantStaffIds: assistants.includes(id)
+      ? assistants.filter((v) => v !== id)
+      : [...assistants, id],
+  });
+
+  return (
+    <>
+      <FormGroup>
+        <Label required>{t.departures.fields.primaryLabel}</Label>
+        <Select
+          value={primaryStaffId ?? ''}
+          onChange={(e) => onChange({ primaryStaffId: e.target.value || null })}
+        >
+          <option value="">{t.departures.fields.primaryPlaceholder}</option>
+          {guides.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </Select>
+      </FormGroup>
+      <FormGroup>
+        <Label>{t.departures.fields.assistantLabel}</Label>
+        <div className="flex flex-wrap gap-3">
+          {guides.filter((g) => g.id !== primaryStaffId).map((g) => (
+            <label key={g.id} className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={assistants.includes(g.id)}
+                onChange={() => toggleAssistant(g.id)}
+              />
+              {g.name}
+            </label>
+          ))}
+        </div>
+        <FormText>{t.departures.fields.assistantHelp}</FormText>
+      </FormGroup>
+    </>
+  );
+}
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -70,6 +143,8 @@ export default function TripDetailPage() {
   const searchParams = useSearchParams();
   const toast = useToast();
   const businessType = useBusinessType();
+  const currentTenant = useCurrentTenant();
+  const publicShopUrl = buildPublicBookingUrl(APP_URL, currentTenant.shopCode);
   const tripId = String(params?.id ?? '');
 
   const [tab, setTab] = React.useState(searchParams?.get('tab') ?? 'basic');
@@ -78,17 +153,32 @@ export default function TripDetailPage() {
   const [plans, setPlans] = React.useState<TripPlan[]>([]);
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
   const [addons, setAddons] = React.useState<TripAddon[]>([]);
+  /**
+   * issue #37：可接案（active + bookable）人員。
+   *
+   * 這份清單的**長度**就是 0/1/2+ 自動適應的依據（Owner 2026-08-27：不做
+   * SOLO／TEAM 開關）。畫面只依人數決定顯示什麼，不存任何模式旗標。
+   */
+  const [guides, setGuides] = React.useState<Staff[]>([]);
 
-  /* 編輯中的表單狀態（骨架：只存在記憶體） */
+  /* 編輯中的表單狀態；方案 Quick Edit 會走同一個 canonical API。 */
   const [form, setForm] = React.useState<Trip | null>(null);
   const [planDraft, setPlanDraft] = React.useState<TripPlan | null>(null);
+  const [planEditorMode, setPlanEditorMode] = React.useState<PlanEditorMode>('quick');
+  const [showChildPrice, setShowChildPrice] = React.useState(false);
+  const [savingPlan, setSavingPlan] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
   const [addonDraft, setAddonDraft] = React.useState<TripAddon | null>(null);
   const [departureDraft, setDepartureDraft] = React.useState<TripDeparture | null>(null);
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [batch, setBatch] = React.useState({
     planId: '', from: '', to: '', startTime: '09:00', capacity: 10,
     weekdays: [6, 0] as number[],
+    primaryStaffId: null as string | null,
+    assistantStaffIds: [] as string[],
   });
+  /** 上一次批次開團因撞班被跳過的日期；成功訊息裡的 `skipped` 看不出原因。 */
+  const [batchConflicts, setBatchConflicts] = React.useState<DepartureConflict[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<
     { kind: 'plan' | 'addon' | 'departure'; id: string; name: string } | null
   >(null);
@@ -96,15 +186,16 @@ export default function TripDetailPage() {
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [tr, pl, dp, ad] = await Promise.all([
+      const [tr, pl, dp, ad, st] = await Promise.all([
         getTrip(tripId), listTripPlans(tripId),
-        listTripDepartures(tripId), listTripAddons(tripId),
+        listTripDepartures(tripId), listTripAddons(tripId), listStaff(),
       ]);
       setTrip(tr ?? null);
       setForm(tr ?? null);
       setPlans(pl);
       setDepartures(dp);
       setAddons(ad);
+      setGuides(st.filter((m) => m.active && m.bookable));
     } catch {
       toast.show(t.messages.loadFailed, 'danger');
     } finally {
@@ -118,67 +209,181 @@ export default function TripDetailPage() {
   const lines = (arr: string[]) => arr.join('\n');
   const toLines = (v: string) => v.split('\n').map((s) => s.trim()).filter(Boolean);
 
-  const saveBasic = () => {
+  /**
+   * issue #8：詳情頁的寫入面原本全是假的——`saveBasic` 只 `setTrip(form)` 再報成功，
+   * 店家改完標題按儲存、重新整理就恢復舊值。端點（`PUT /api/trips/:id`）與 service
+   * （`updateTrip`）早就都在 main 上，缺的只有這一層接線。
+   *
+   * 三條規則與列表頁（PR #266）一致：
+   *   ① 先呼叫端點，**成功之後才** `await load()` 重讀，不做樂觀更新。
+   *   ② 失敗顯示後端的真實訊息（`ApiError.message`），店家才分得出是未訂閱
+   *      TOUR_MODULE、代稱重複（409）還是網路問題。
+   *   ③ 失敗時不關閉對話框、不清掉 draft，讓店家可以重試。
+   */
+  const runAction = async (
+    fn: () => Promise<unknown>,
+    successMessage: string | (() => string),
+  ) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      toast.show(typeof successMessage === 'function' ? successMessage() : successMessage);
+      return true;
+    } catch (e) {
+      toast.show(
+        `${t.messages.actionFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveBasic = async () => {
     if (!form) return;
-    setTrip(form);
-    toast.show(t.messages.updated);
+    await runAction(() => updateTrip(tripId, form), t.messages.updated);
   };
 
   /* ------------------------------------------------------------- 方案 */
-  const savePlan = () => {
-    if (!planDraft) return;
-    const isNew = !planDraft.id;
-    const saved: TripPlan = isNew
-      ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
-      : planDraft;
-    setPlans((prev) => (isNew ? [...prev, saved] : prev.map((p) => (p.id === saved.id ? saved : p))));
+  const openPlanEditor = (draft: TripPlan) => {
+    setPlanEditorMode('quick');
+    setShowChildPrice(draft.childPrice !== null);
+    setPlanDraft(draft);
+  };
+
+  const resetPlanEditor = () => {
     setPlanDraft(null);
-    // 已上架 Midao 的行程，方案異動需送審（10/11 分冊）
-    const needsReview = trip?.midaoListing === 'LISTED';
-    toast.show(needsReview ? t.messages.planSubmitted : t.messages.planSaved);
+    setPlanEditorMode('quick');
+    setShowChildPrice(false);
+  };
+
+  const closePlanEditor = () => {
+    if (savingPlan) return;
+    resetPlanEditor();
+  };
+
+  const openAdvancedPlanEditor = () => {
+    if (!planDraft?.id || savingPlan) return;
+    setPlanEditorMode('advanced');
+  };
+
+  const savePlan = async () => {
+    if (!planDraft) return;
+    const validationError = planEditorMode === 'advanced'
+      ? validateAdvancedPlan(planDraft)
+      : validateQuickPlan(planDraft, showChildPrice);
+    if (validationError === 'name') {
+      toast.show(t.messages.planNameRequired, 'danger');
+      return;
+    }
+    if (validationError === 'basePrice') {
+      toast.show(t.messages.planPriceInvalid, 'danger');
+      return;
+    }
+    if (validationError === 'childPrice') {
+      toast.show(t.messages.planChildPriceInvalid, 'danger');
+      return;
+    }
+    if (validationError === 'minParticipants') {
+      toast.show(t.messages.planMinParticipantsInvalid, 'danger');
+      return;
+    }
+    if (validationError === 'maxParticipants') {
+      toast.show(t.messages.planMaxParticipantsInvalid, 'danger');
+      return;
+    }
+    if (validationError === 'partyRange') {
+      toast.show(t.messages.planPartyRangeInvalid, 'danger');
+      return;
+    }
+    if (validationError === 'deposit') {
+      toast.show(t.messages.planDepositInvalid, 'danger');
+      return;
+    }
+
+    setSavingPlan(true);
+    try {
+      if (planEditorMode === 'advanced') {
+        const advancedPlanPayload = toAdvancedPlanPayload(planDraft);
+        await saveTripPlan(tripId, advancedPlanPayload);
+      } else {
+        const quickPlanPayload = toQuickPlanPayload(planDraft);
+        await saveTripPlan(tripId, quickPlanPayload);
+      }
+
+      if (USE_MOCK) {
+        const isNew = !planDraft.id;
+        const saved: TripPlan = isNew
+          ? { ...planDraft, id: `pl_new_${plans.length + 1}`, sortOrder: plans.length + 1 }
+          : planDraft;
+        setPlans((prev) => (isNew
+          ? [...prev, saved]
+          : prev.map((p) => (p.id === saved.id ? saved : p))));
+      } else {
+        // The success toast is only shown after a fresh server read. This is
+        // the persistence check for the real tenant-scoped API path.
+        setPlans(await listTripPlans(tripId));
+      }
+
+      const needsReview = trip?.midaoListing === 'LISTED';
+      const savedMessage = needsReview
+        ? t.messages.planSubmitted
+        : planEditorMode === 'advanced' ? t.messages.planAdvancedSaved : t.messages.planSaved;
+      resetPlanEditor();
+      toast.show(savedMessage);
+    } catch (error) {
+      toast.show(
+        error instanceof Error && error.message ? error.message : t.messages.planSaveFailed,
+        'danger',
+      );
+    } finally {
+      setSavingPlan(false);
+    }
   };
 
   const patchPlan = (p: Partial<TripPlan>) => setPlanDraft((d) => (d ? { ...d, ...p } : d));
 
-  const addSeason = () => {
-    if (!planDraft) return;
-    const season: TripPlanSeason = {
-      id: `ss_new_${planDraft.seasons.length + 1}`, name: '',
-      startMonth: 1, startDay: 1, endMonth: 12, endDay: 31,
-      priceOverride: null, active: true,
-    };
-    patchPlan({ seasons: [...planDraft.seasons, season] });
-  };
-
-  const patchSeason = (id: string, p: Partial<TripPlanSeason>) => {
-    if (!planDraft) return;
-    patchPlan({ seasons: planDraft.seasons.map((s) => (s.id === id ? { ...s, ...p } : s)) });
-  };
-
-  const removeSeason = (id: string) => {
-    if (!planDraft) return;
-    patchPlan({ seasons: planDraft.seasons.filter((s) => s.id !== id) });
+  /**
+   * 移動方案並把 sortOrder 正規化成陣列位置索引，持久化到後端；清單一律依
+   * sortOrder 顯示。邊界（第一筆上移、最後一筆下移）或正規化後無需變動時
+   * 不發任何 PUT，也不顯示成功 toast。
+   */
+  const movePlan = async (index: number, delta: number) => {
+    const { plans: reordered, updates } = reorderPlans(plans, index, delta);
+    if (updates.length === 0) return;
+    try {
+      if (USE_MOCK) {
+        setPlans(reordered);
+      } else {
+        await Promise.all(
+          updates.map((u) => saveTripPlan(tripId, { id: u.id, sortOrder: u.sortOrder })),
+        );
+        setPlans(await listTripPlans(tripId));
+      }
+      toast.show(t.messages.planOrderUpdated);
+    } catch (error) {
+      toast.show(
+        error instanceof Error && error.message ? error.message : t.messages.planOrderFailed,
+        'danger',
+      );
+    }
   };
 
   /* ------------------------------------------------------------- 團次 */
-  const saveDeparture = () => {
+  const saveDeparture = async () => {
     if (!departureDraft) return;
-    const plan = plans.find((p) => p.id === departureDraft.planId);
     if (departureDraft.capacity < departureDraft.seatsBooked) {
       toast.show(t.departures.capacityTooLow(departureDraft.seatsBooked), 'danger');
       return;
     }
     const isNew = !departureDraft.id;
-    const saved: TripDeparture = {
-      ...departureDraft,
-      id: departureDraft.id || `dp_new_${departures.length + 1}`,
-      planName: plan?.name ?? '',
-    };
-    setDepartures((prev) => (isNew
-      ? [...prev, saved].sort((a, b) => a.departsOn.localeCompare(b.departsOn))
-      : prev.map((d) => (d.id === saved.id ? saved : d))));
-    setDepartureDraft(null);
-    toast.show(isNew ? t.messages.departureCreated : t.messages.departureUpdated);
+    const ok = await runAction(
+      () => saveTripDeparture(tripId, departureDraft),
+      isNew ? t.messages.departureCreated : t.messages.departureUpdated,
+    );
+    if (ok) setDepartureDraft(null);
   };
 
   const batchCount = React.useMemo(() => {
@@ -193,53 +398,81 @@ export default function TripDetailPage() {
     return n;
   }, [batch]);
 
-  const runBatch = () => {
+  /**
+   * 批次開團的日期展開由**後端**負責（`POST /api/trips/:id/departures/batch`）。
+   * `batchCount` 僅供對話框預覽筆數；成功訊息一律用後端回傳的 `created`／`skipped`
+   * ——撞到已存在的同方案同日同時團次時後端會略過，前端自己數出來的筆數會多算，
+   * 照那個數字報成功就是另一則編出來的訊息（開了 7 團，實際只開了 1 團）。
+   */
+  const runBatch = async () => {
     const plan = plans.find((p) => p.id === batch.planId);
     if (!plan || batchCount === 0) return;
-    const created: TripDeparture[] = [];
-    const from = new Date(batch.from);
-    const to = new Date(batch.to);
-    let i = 0;
-    for (const d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      if (!batch.weekdays.includes(d.getDay())) continue;
-      i += 1;
-      created.push({
-        id: `dp_batch_${i}`, tripId, planId: plan.id, planName: plan.name,
-        departsOn: d.toISOString().slice(0, 10), startTime: batch.startTime,
-        capacity: batch.capacity, seatsBooked: 0, status: 'OPEN', note: '',
-      });
-    }
-    setDepartures((prev) => [...prev, ...created]
-      .sort((a, b) => a.departsOn.localeCompare(b.departsOn)));
-    setBatchOpen(false);
-    toast.show(t.messages.departureBatchCreated(created.length));
+    let result: { created: number; skipped: number; conflicts?: DepartureConflict[] } =
+      { created: 0, skipped: 0, conflicts: [] };
+    const ok = await runAction(
+      async () => {
+        result = await batchCreateDepartures(tripId, {
+          planId: plan.id,
+          from: batch.from,
+          to: batch.to,
+          weekdays: batch.weekdays,
+          startTime: batch.startTime,
+          capacity: batch.capacity,
+          primaryStaffId: batch.primaryStaffId,
+          assistantStaffIds: batch.assistantStaffIds,
+        });
+        // 撞班而被跳過的日期單獨留在畫面上：它們混在 `skipped` 裡看不出原因，
+        // 而「哪一天、誰、為什麼」正是店家接下來要處理的事（§5.2）。
+        setBatchConflicts(result.conflicts ?? []);
+      },
+      () => t.messages.departureBatchCreated(result.created)
+        + (result.skipped > 0 ? t.messages.departureBatchSkipped(result.skipped) : ''),
+    );
+    if (ok) setBatchOpen(false);
   };
 
-  const setDepartureStatus = (id: string, status: DepartureStatus) => {
-    setDepartures((prev) => prev.map((d) => (d.id === id ? { ...d, status } : d)));
-    toast.show(t.messages.departureUpdated);
+  const setDepartureStatus = async (id: string, status: DepartureStatus) => {
+    /**
+     * issue #37：「恢復銷售」把團次改回 OPEN，而 OPEN 團次必須有一位主導遊。
+     *
+     * 舊團次可能是未指派的（§1.3 的相容策略允許），這種情況直接送出去會拿到一個
+     * 400 而畫面上**沒有任何地方可以指定主導遊**——那是一條死路。所以先把編輯視窗
+     * 打開並預設成 OPEN，讓店家在同一個地方把導遊選好再存。
+     *
+     * 只在 2 位以上時才需要：0 位本來就開不了團，1 位由後端自動指派。
+     */
+    const target = departures.find((d) => d.id === id);
+    if (status === 'OPEN' && guides.length >= 2 && target && !target.primaryStaffId) {
+      setDepartureDraft({ ...target, status: 'OPEN' });
+      toast.show(t.departures.guide.reopenNeedsGuide, 'info');
+      return;
+    }
+    await runAction(
+      () => saveTripDeparture(tripId, { id, status }),
+      t.messages.departureUpdated,
+    );
   };
 
   /* ------------------------------------------------------------- 加購 */
-  const saveAddon = () => {
+  const saveAddon = async () => {
     if (!addonDraft) return;
-    const isNew = !addonDraft.id;
-    const saved: TripAddon = isNew
-      ? { ...addonDraft, id: `ad_new_${addons.length + 1}`, sortOrder: addons.length + 1 }
-      : addonDraft;
-    setAddons((prev) => (isNew ? [...prev, saved] : prev.map((a) => (a.id === saved.id ? saved : a))));
-    setAddonDraft(null);
-    toast.show(t.messages.addonSaved);
+    const ok = await runAction(
+      () => saveTripAddon(tripId, addonDraft), t.messages.addonSaved,
+    );
+    if (ok) setAddonDraft(null);
   };
 
   /* ------------------------------------------------------------- 刪除 */
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!deleteTarget) return;
     const { kind, id } = deleteTarget;
-    if (kind === 'plan') { setPlans((p) => p.filter((x) => x.id !== id)); toast.show(t.messages.planDeleted); }
-    if (kind === 'addon') { setAddons((a) => a.filter((x) => x.id !== id)); toast.show(t.messages.addonDeleted); }
-    if (kind === 'departure') { setDepartures((d) => d.filter((x) => x.id !== id)); toast.show(t.messages.departureDeleted); }
-    setDeleteTarget(null);
+    const [remove, message] = kind === 'plan'
+      ? [() => deleteTripPlan(id), t.messages.planDeleted] as const
+      : kind === 'addon'
+        ? [() => deleteTripAddon(id), t.messages.addonDeleted] as const
+        : [() => deleteTripDeparture(id), t.messages.departureDeleted] as const;
+    const ok = await runAction(remove, message);
+    if (ok) setDeleteTarget(null);
   };
 
   if (loading || !form || !trip) {
@@ -255,14 +488,30 @@ export default function TripDetailPage() {
   const planColumns: Column<TripPlan>[] = [
     {
       key: 'name', header: t.plans.columns.name,
-      render: (p) => (
-        <div className="min-w-0">
-          <div className="font-semibold text-dark">{p.name}</div>
-          {p.description ? (
-            <div className="truncate text-2xs text-secondary">{p.description}</div>
-          ) : null}
-          <div className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted">
-            <Clock size={11} />{formatNumber(p.durationMinutes)}{' 分鐘'}
+      render: (p, i) => (
+        <div className="flex items-start gap-2">
+          <span className="btn-group">
+            <Button
+              variant="ghost" size="sm" title={t.plans.labels.moveUp} aria-label={t.plans.labels.moveUp}
+              disabled={i === 0} onClick={() => void movePlan(i, -1)}
+            >
+              <ChevronUp size={13} />
+            </Button>
+            <Button
+              variant="ghost" size="sm" title={t.plans.labels.moveDown} aria-label={t.plans.labels.moveDown}
+              disabled={i === plans.length - 1} onClick={() => void movePlan(i, 1)}
+            >
+              <ChevronDown size={13} />
+            </Button>
+          </span>
+          <div className="min-w-0">
+            <div className="font-semibold text-dark">{p.name}</div>
+            {p.description ? (
+              <div className="truncate text-2xs text-secondary">{p.description}</div>
+            ) : null}
+            <div className="mt-0.5 inline-flex items-center gap-1 text-2xs text-muted">
+              <Clock size={11} />{formatNumber(p.durationMinutes)}{' 分鐘'}
+            </div>
           </div>
         </div>
       ),
@@ -327,7 +576,7 @@ export default function TripDetailPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.actions.edit} aria-label={t.actions.edit}
-            onClick={() => setPlanDraft(p)}
+            onClick={() => openPlanEditor(p)}
           >
             <Pencil size={13} />
           </Button>
@@ -354,6 +603,23 @@ export default function TripDetailPage() {
       ),
     },
     { key: 'plan', header: t.departures.columns.plan, render: (d) => d.planName },
+    {
+      key: 'guide', header: t.departures.columns.guide, width: '160px',
+      render: (d) => {
+        const extra = d.assistantStaffIds?.length ?? 0;
+        // 未指派就顯示「未指派」——既有團次本來就可能沒有指派（10-TOUR-DOMAIN §1.3），
+        // 這裡不拿方案名或任何人名去填那個空格。
+        if (!d.primaryStaffId) return <span className="text-secondary">{t.departures.guide.unassigned}</span>;
+        return (
+          <div className="flex flex-col">
+            <div>{d.primaryStaffName || d.primaryStaffId}</div>
+            {extra > 0 ? (
+              <div className="text-2xs text-secondary">{t.departures.guide.assistantCount(extra)}</div>
+            ) : null}
+          </div>
+        );
+      },
+    },
     {
       key: 'seats', header: t.departures.columns.seats, numeric: true, width: '150px',
       render: (d) => {
@@ -474,7 +740,7 @@ export default function TripDetailPage() {
             <Button variant="outline" onClick={() => router.push('/tenant/trips')}>
               {t.actions.back}
             </Button>
-            <Button onClick={saveBasic}>{t.actions.save}</Button>
+            <Button onClick={saveBasic} loading={busy}>{t.actions.save}</Button>
           </>
         }
       />
@@ -485,7 +751,14 @@ export default function TripDetailPage() {
           : trip.midaoListing === 'LISTED' ? 'success' : 'info'}
         className="mb-3"
         action={trip.midaoListing === 'NONE' || trip.midaoListing === 'REJECTED' ? (
-          <Button size="sm" variant="outline">
+          <Button
+            size="sm"
+            variant="outline"
+            loading={busy}
+            onClick={() => runAction(
+              () => requestMidaoListing(tripId), t.messages.midaoRequested,
+            )}
+          >
             <Send size={13} />{t.actions.requestMidao}
           </Button>
         ) : undefined}
@@ -701,7 +974,7 @@ export default function TripDetailPage() {
           <DataTableHeader
             title={t.plans.sectionTitle}
             actions={
-              <Button size="sm" onClick={() => setPlanDraft(emptyPlan(tripId))}>
+              <Button size="sm" onClick={() => openPlanEditor(emptyPlan(tripId))}>
                 <Plus size={14} />{t.plans.create}
               </Button>
             }
@@ -716,7 +989,7 @@ export default function TripDetailPage() {
                 title={t.plans.empty.title}
                 description={t.plans.empty.description}
                 action={
-                  <Button onClick={() => setPlanDraft(emptyPlan(tripId))}>
+                  <Button onClick={() => openPlanEditor(emptyPlan(tripId))}>
                     <Plus size={15} />{t.plans.create}
                   </Button>
                 }
@@ -800,16 +1073,35 @@ export default function TripDetailPage() {
         <p className="mt-2 text-2xs text-muted">{t.addons.sectionHint}</p>
       </TabPanel>
 
-      {/* ================================================== 方案編輯 Modal */}
+      {/* ================================================== 方案 Quick / Advanced Edit Modal */}
       <Modal
         open={!!planDraft}
-        onClose={() => setPlanDraft(null)}
-        size="lg"
-        title={planDraft?.id ? t.plans.editTitle(planDraft.name) : t.plans.createTitle}
+        onClose={closePlanEditor}
+        title={planEditorMode === 'advanced'
+          ? t.plans.advanced.title
+          : planDraft?.id ? t.plans.editTitle(planDraft.name) : t.plans.quick.createTitle}
         footer={
           <>
-            <Button variant="secondary" onClick={() => setPlanDraft(null)}>{common.cancel}</Button>
-            <Button onClick={savePlan}>{common.save}</Button>
+            <Button
+              variant="secondary"
+              disabled={savingPlan}
+              onClick={() => {
+                if (planEditorMode === 'advanced') {
+                  setPlanEditorMode('quick');
+                } else {
+                  resetPlanEditor();
+                }
+              }}
+            >
+              {planEditorMode === 'advanced' ? t.plans.advanced.backToQuick : common.cancel}
+            </Button>
+            <Button
+              loading={savingPlan}
+              loadingText={planEditorMode === 'advanced' ? t.plans.advanced.saving : t.plans.quick.saving}
+              onClick={() => void savePlan()}
+            >
+              {planEditorMode === 'advanced' ? t.plans.advanced.save : t.plans.quick.save}
+            </Button>
           </>
         }
       >
@@ -821,215 +1113,206 @@ export default function TripDetailPage() {
               </Alert>
             ) : null}
 
-            <FormGroup>
-              <Label required>{t.plans.fields.nameLabel}</Label>
-              <Input
-                value={planDraft.name}
-                placeholder={t.plans.fields.namePlaceholder}
-                onChange={(e) => patchPlan({ name: e.target.value })}
-              />
-            </FormGroup>
-            <FormGroup>
-              <Label>{t.plans.fields.descriptionLabel}</Label>
-              <Textarea
-                rows={2}
-                value={planDraft.description}
-                onChange={(e) => patchPlan({ description: e.target.value })}
-              />
-            </FormGroup>
+            {planEditorMode === 'quick' ? (
+              <>
+                <Alert tone="info">{t.plans.quick.intro}</Alert>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormGroup>
-                <Label required>{t.plans.fields.priceTypeLabel}</Label>
-                <Select
-                  value={planDraft.priceType}
-                  onChange={(e) => patchPlan({ priceType: e.target.value as PriceType })}
-                >
-                  {(Object.keys(t.plans.priceType) as PriceType[]).map((k) => (
-                    <option key={k} value={k}>{t.plans.priceType[k]}</option>
-                  ))}
-                </Select>
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.basePriceLabel}</Label>
-                <Input
-                  type="number" min={0} value={planDraft.basePrice}
-                  onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label>{t.plans.fields.childPriceLabel}</Label>
-                <Input
-                  type="number" min={0}
-                  value={planDraft.childPrice ?? ''}
-                  onChange={(e) => patchPlan({
-                    childPrice: e.target.value === '' ? null : Number(e.target.value),
-                  })}
-                />
-                <FormText>{t.plans.fields.childPriceHelp}</FormText>
-              </FormGroup>
-            </div>
+                <FormGroup>
+                  <Label htmlFor="plan-quick-name" required>{t.plans.fields.nameLabel}</Label>
+                  <Input
+                    id="plan-quick-name"
+                    value={planDraft.name}
+                    placeholder={t.plans.fields.namePlaceholder}
+                    onChange={(e) => patchPlan({ name: e.target.value })}
+                  />
+                </FormGroup>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              <FormGroup>
-                <Label required>{t.plans.fields.durationLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.durationMinutes}
-                  onChange={(e) => patchPlan({ durationMinutes: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.minLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.minParticipants}
-                  onChange={(e) => patchPlan({ minParticipants: Number(e.target.value) })}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label required>{t.plans.fields.maxLabel}</Label>
-                <Input
-                  type="number" min={1} value={planDraft.maxParticipants}
-                  onChange={(e) => patchPlan({ maxParticipants: Number(e.target.value) })}
-                />
-                <FormText>{t.plans.fields.partyHelp}</FormText>
-              </FormGroup>
-            </div>
+                <FormGroup>
+                  <Label htmlFor="plan-quick-description">{t.plans.quick.contentLabel}</Label>
+                  <Textarea
+                    id="plan-quick-description"
+                    rows={3}
+                    value={planDraft.description}
+                    placeholder={t.plans.quick.contentPlaceholder}
+                    onChange={(e) => patchPlan({ description: e.target.value })}
+                  />
+                </FormGroup>
 
-            <FormGroup>
-              <Label required>{t.plans.fields.bookingTypeLabel}</Label>
-              <Select
-                value={planDraft.bookingType}
-                onChange={(e) => patchPlan({ bookingType: e.target.value as TripBookingType })}
-              >
-                {(Object.keys(t.plans.bookingType) as TripBookingType[]).map((k) => (
-                  <option key={k} value={k}>{t.plans.bookingType[k]}</option>
-                ))}
-              </Select>
-              <FormText>{t.plans.bookingTypeHint[planDraft.bookingType]}</FormText>
-            </FormGroup>
+                <FormGroup>
+                  <Label htmlFor="plan-quick-base-price" required>{t.plans.fields.basePriceLabel}</Label>
+                  <Input
+                    id="plan-quick-base-price"
+                    type="number"
+                    min={0}
+                    value={planDraft.basePrice}
+                    onChange={(e) => patchPlan({ basePrice: Number(e.target.value) })}
+                  />
+                  <FormText>{t.plans.quick.priceHelp}</FormText>
+                </FormGroup>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormGroup>
-                <Label required>{t.plans.fields.depositLabel}</Label>
-                <Select
-                  value={planDraft.depositMode}
-                  onChange={(e) => patchPlan({
-                    depositMode: e.target.value as TripPlan['depositMode'],
-                    depositValue: 0,
-                  })}
-                >
-                  {(Object.keys(t.plans.depositMode) as TripPlan['depositMode'][]).map((k) => (
-                    <option key={k} value={k}>{t.plans.depositMode[k]}</option>
-                  ))}
-                </Select>
-                <FormText>{t.plans.fields.depositHelp[planDraft.depositMode]}</FormText>
-              </FormGroup>
-              {planDraft.depositMode === 'DEPOSIT_FIXED'
-                || planDraft.depositMode === 'DEPOSIT_PERCENT' ? (
+                {!showChildPrice ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    block
+                    onClick={() => {
+                      setShowChildPrice(true);
+                    }}
+                  >
+                    {t.plans.quick.childPriceToggle}
+                  </Button>
+                ) : (
                   <FormGroup>
-                    <Label required>
-                      {planDraft.depositMode === 'DEPOSIT_FIXED'
-                        ? t.plans.fields.depositValueLabel
-                        : t.plans.fields.depositPercentLabel}
+                    <div className="flex items-center justify-between gap-2">
+                      <Label htmlFor="plan-quick-child-price">{t.plans.fields.childPriceLabel}</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setShowChildPrice(false);
+                          patchPlan({ childPrice: null });
+                        }}
+                      >
+                        {t.plans.quick.childPriceRemove}
+                      </Button>
+                    </div>
+                    <Input
+                      id="plan-quick-child-price"
+                      type="number"
+                      min={0}
+                      value={planDraft.childPrice ?? ''}
+                      onChange={(e) => patchPlan({
+                        childPrice: e.target.value === '' ? null : Number(e.target.value),
+                      })}
+                    />
+                    <FormText>{t.plans.fields.childPriceHelp}</FormText>
+                  </FormGroup>
+                )}
+
+                <SwitchField
+                  label={t.plans.fields.activeLabel}
+                  description={t.plans.quick.activeHelp}
+                  checked={planDraft.active}
+                  onCheckedChange={(v) => patchPlan({ active: v })}
+                  disabled={savingPlan}
+                />
+
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-dark">{t.plans.quick.previewTitle}</span>
+                    <Link
+                      href={publicShopUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                    >
+                      <ExternalLink size={14} />{t.plans.quick.previewLink}
+                    </Link>
+                  </div>
+                  <div className="mt-2 rounded-md border border-neutral-200 bg-white p-3">
+                    <div className="font-semibold text-dark">
+                      {planDraft.name.trim() || t.plans.quick.previewEmpty}
+                    </div>
+                    {planDraft.description.trim() ? (
+                      <p className="mt-1 text-sm text-secondary">{planDraft.description.trim()}</p>
+                    ) : null}
+                    <p className="mt-2 text-sm font-semibold text-primary">
+                      {formatCurrency(planDraft.basePrice)}{t.plans.priceTypeSuffix.PER_PERSON}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-neutral-200 p-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    block
+                    disabled={!planDraft.id || savingPlan}
+                    onClick={openAdvancedPlanEditor}
+                  >
+                    {t.plans.advanced.open}
+                  </Button>
+                  <FormText>
+                    {planDraft.id ? t.plans.quick.advancedHint : t.plans.advanced.requireQuickSave}
+                  </FormText>
+                </div>
+              </>
+            ) : (
+              <>
+                <Alert tone="info">{t.plans.advanced.intro}</Alert>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-min" required>{t.plans.fields.minLabel}</Label>
+                    <Input
+                      id="plan-advanced-min"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={planDraft.minParticipants}
+                      onChange={(e) => patchPlan({ minParticipants: Number(e.target.value) })}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-max" required>{t.plans.fields.maxLabel}</Label>
+                    <Input
+                      id="plan-advanced-max"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={planDraft.maxParticipants}
+                      onChange={(e) => patchPlan({ maxParticipants: Number(e.target.value) })}
+                    />
+                  </FormGroup>
+                </div>
+                <FormText>{t.plans.fields.partyHelp}</FormText>
+
+                <FormGroup>
+                  <Label htmlFor="plan-advanced-deposit-mode" required>{t.plans.fields.depositLabel}</Label>
+                  <Select
+                    id="plan-advanced-deposit-mode"
+                    value={planDraft.depositMode}
+                    onChange={(e) => {
+                      const mode = e.target.value as TripPlan['depositMode'];
+                      patchPlan({
+                        depositMode: mode,
+                        depositValue: mode === 'NONE' || mode === 'FULL' ? 0 : planDraft.depositValue,
+                      });
+                    }}
+                  >
+                    {(Object.keys(t.plans.depositMode) as TripPlan['depositMode'][]).map((mode) => (
+                      <option key={mode} value={mode}>{t.plans.depositMode[mode]}</option>
+                    ))}
+                  </Select>
+                  <FormText>{t.plans.fields.depositHelp[planDraft.depositMode]}</FormText>
+                </FormGroup>
+
+                {planDraft.depositMode === 'DEPOSIT_FIXED' || planDraft.depositMode === 'DEPOSIT_PERCENT' ? (
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-deposit-value" required>
+                      {planDraft.depositMode === 'DEPOSIT_PERCENT'
+                        ? t.plans.fields.depositPercentLabel
+                        : t.plans.fields.depositValueLabel}
                     </Label>
                     <Input
-                      type="number" min={0}
+                      id="plan-advanced-deposit-value"
+                      type="number"
+                      min={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 1 : 0}
                       max={planDraft.depositMode === 'DEPOSIT_PERCENT' ? 100 : undefined}
+                      step={1}
                       value={planDraft.depositValue}
                       onChange={(e) => patchPlan({ depositValue: Number(e.target.value) })}
                     />
-                    {planDraft.depositMode === 'DEPOSIT_FIXED'
-                      && planDraft.priceType === 'PER_PERSON' ? (
-                        <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
-                      ) : null}
+                    {planDraft.priceType === 'PER_PERSON' ? (
+                      <FormText>{t.plans.fields.depositPerPersonNote}</FormText>
+                    ) : null}
                   </FormGroup>
                 ) : null}
-            </div>
 
-            <SwitchField
-              label={t.plans.fields.activeLabel}
-              checked={planDraft.active}
-              onCheckedChange={(v) => patchPlan({ active: v })}
-            />
-
-            <div className="rounded-lg border border-neutral-200 p-3">
-              <SwitchField
-                label={t.plans.fields.yearRoundLabel}
-                description={t.plans.fields.yearRoundHelp}
-                checked={planDraft.yearRound}
-                onCheckedChange={(v) => patchPlan({ yearRound: v })}
-              />
-
-              {!planDraft.yearRound ? (
-                <div className="mt-3 border-t border-neutral-200 pt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-dark">{t.seasons.sectionTitle}</span>
-                    <Button size="sm" variant="outline" onClick={addSeason}>
-                      <ListPlus size={13} />{t.seasons.add}
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-2xs text-muted">{t.seasons.sectionHint}</p>
-
-                  {planDraft.seasons.length === 0 ? (
-                    <p className="mt-2 text-xs text-danger">{t.seasons.empty}</p>
-                  ) : (
-                    <div className="mt-2 flex flex-col gap-2">
-                      {planDraft.seasons.map((s) => (
-                        <div key={s.id} className="rounded-md border border-neutral-200 bg-neutral-50 p-2">
-                          <div className="flex items-start gap-2">
-                            <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                              <Input
-                                value={s.name}
-                                placeholder={t.seasons.fields.namePlaceholder}
-                                onChange={(e) => patchSeason(s.id, { name: e.target.value })}
-                              />
-                              <Input
-                                type="number" min={0}
-                                value={s.priceOverride ?? ''}
-                                placeholder={t.seasons.fields.pricePlaceholder}
-                                onChange={(e) => patchSeason(s.id, {
-                                  priceOverride: e.target.value === '' ? null : Number(e.target.value),
-                                })}
-                              />
-                            </div>
-                            <Button
-                              variant="ghost" size="sm"
-                              aria-label={t.actions.delete} title={t.actions.delete}
-                              onClick={() => removeSeason(s.id)}
-                            >
-                              <Trash2 size={13} className="text-danger" />
-                            </Button>
-                          </div>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-secondary">
-                            <span>{t.seasons.fields.rangeLabel}</span>
-                            {([
-                              ['startMonth', s.startMonth, 12], ['startDay', s.startDay, 31],
-                            ] as const).map(([key, val, max]) => (
-                              <Input
-                                key={key} type="number" min={1} max={max} value={val}
-                                className="w-16"
-                                onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
-                              />
-                            ))}
-                            <span>～</span>
-                            {([
-                              ['endMonth', s.endMonth, 12], ['endDay', s.endDay, 31],
-                            ] as const).map(([key, val, max]) => (
-                              <Input
-                                key={key} type="number" min={1} max={max} value={val}
-                                className="w-16"
-                                onChange={(e) => patchSeason(s.id, { [key]: Number(e.target.value) })}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                      <p className="text-2xs text-muted">{t.seasons.crossYearNote}</p>
-                    </div>
-                  )}
-                </div>
-              ) : null}
-            </div>
+                <Alert tone="info">{t.plans.advanced.scopeNote}</Alert>
+              </>
+            )}
           </div>
         ) : null}
       </Modal>
@@ -1042,7 +1325,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setDepartureDraft(null)}>{common.cancel}</Button>
-            <Button onClick={saveDeparture}>{common.save}</Button>
+            <Button onClick={saveDeparture} loading={busy}>{common.save}</Button>
           </>
         }
       >
@@ -1081,6 +1364,12 @@ export default function TripDetailPage() {
               />
               <FormText>{t.departures.fields.capacityHelp}</FormText>
             </FormGroup>
+            <GuidePicker
+              guides={guides}
+              primaryStaffId={departureDraft.primaryStaffId}
+              assistantStaffIds={departureDraft.assistantStaffIds}
+              onChange={(patch) => setDepartureDraft({ ...departureDraft, ...patch })}
+            />
             <FormGroup>
               <Label>{t.departures.fields.noteLabel}</Label>
               <Input
@@ -1101,7 +1390,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setBatchOpen(false)}>{common.cancel}</Button>
-            <Button onClick={runBatch} disabled={batchCount === 0}>
+            <Button onClick={runBatch} disabled={batchCount === 0} loading={busy}>
               {t.departures.batch.confirm}
             </Button>
           </>
@@ -1160,7 +1449,27 @@ export default function TripDetailPage() {
               />
             </FormGroup>
           </div>
+          <GuidePicker
+            guides={guides}
+            primaryStaffId={batch.primaryStaffId}
+            assistantStaffIds={batch.assistantStaffIds}
+            onChange={(patch) => setBatch({
+              ...batch,
+              primaryStaffId: patch.primaryStaffId !== undefined ? patch.primaryStaffId : batch.primaryStaffId,
+              assistantStaffIds: patch.assistantStaffIds ?? batch.assistantStaffIds,
+            })}
+          />
           <Alert tone="info">{t.departures.batch.preview(batchCount)}</Alert>
+          {batchConflicts.length > 0 ? (
+            <Alert tone="warning">
+              <div className="font-medium">{t.departures.guide.conflictTitle}</div>
+              {batchConflicts.map((c, i) => (
+                <div key={`${c.date}-${c.staffId}-${i}`} className="text-sm">
+                  {t.departures.guide.conflictRow(c.date, c.staffName || c.staffId, t.departures.guide.reason[c.reason])}
+                </div>
+              ))}
+            </Alert>
+          ) : null}
         </div>
       </Modal>
 
@@ -1172,7 +1481,7 @@ export default function TripDetailPage() {
         footer={
           <>
             <Button variant="secondary" onClick={() => setAddonDraft(null)}>{common.cancel}</Button>
-            <Button onClick={saveAddon}>{common.save}</Button>
+            <Button onClick={saveAddon} loading={busy}>{common.save}</Button>
           </>
         }
       >

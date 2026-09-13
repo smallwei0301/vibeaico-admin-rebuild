@@ -15,7 +15,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { loadCheckedTestEnv } from '../agents/test-env-policy.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
@@ -28,37 +28,32 @@ const REPO_ROOT = resolve(__dirname, '..', '..');
 const PRODUCTION_SUPABASE_HOSTNAME = 'egehnijjpgijmccagxac.supabase.co';
 
 /**
- * 載入 .env.test（若相關變數還沒出現在 process.env）。
- * globalSetup 可能已經自己讀過 .env.test 並把變數注入子行程環境，此時這裡
- * 應該是 no-op；獨立執行 `node scripts/test/reset-db.mjs` 時則由這裡負責載入。
+ * 載入 .env.test 前先驗證測試身分一致；即使 DB 變數已存在也不能跳過。
+ * globalSetup 注入一致的值時可重複呼叫；沒有檔案時保留 CI 外部注入方式。
  */
 export function loadTestEnv() {
-  if (process.env.TEST_SUPABASE_URL && process.env.TEST_SUPABASE_SERVICE_ROLE_KEY) {
-    return;
-  }
   const envTestPath = resolve(REPO_ROOT, '.env.test');
-  if (!existsSync(envTestPath)) {
-    // CI 沒有 .env.test（檔案 gitignored），變數改由 workflow 的 env: 區塊注入。
-    // 走到這裡代表「檔案沒有」**且**「變數也沒進 process.env」——在 CI 幾乎
-    // 一定是 repo secrets 沒設（GitHub Actions 對不存在的 secret 會塞空字串，
-    // 因此上面的 early return 不會成立）。訊息要同時涵蓋兩種環境，否則本機
-    // 訊息（「請建立 .env.test」）會把 CI 使用者導向錯誤的修法。
-    const inCi = !!process.env.CI;
-    console.error(
-      inCi
-        ? '[test-db] 缺少測試資料庫環境變數（TEST_SUPABASE_URL / ' +
-            'TEST_SUPABASE_SERVICE_ROLE_KEY），且此環境沒有 .env.test。' +
-            ' CI 請到 GitHub → Settings → Secrets and variables → Actions 設定：' +
-            ' TEST_SUPABASE_URL、TEST_SUPABASE_ANON_KEY、TEST_SUPABASE_SERVICE_ROLE_KEY、' +
-            ' TEST_SETTINGS_ENCRYPTION_KEY、TEST_AUTH_SECRET。'
-        : `[test-db] 找不到 .env.test（預期路徑：${envTestPath}）。` +
-            ' 請先依 docs/integration/12-TESTING-TDD.md §1.2 建立，' +
-            ' 或改以環境變數注入 TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_ROLE_KEY。',
-    );
-    process.exit(1);
-  }
-  // Node >=20.12 內建，不需要 dotenv 依賴（本專案未安裝 dotenv）。
-  process.loadEnvFile(envTestPath);
+  // 先檢查再 early return，避免獨立 reset/seed 沿用錯誤的加密金鑰。
+  if (loadCheckedTestEnv(envTestPath)) return;
+  if (process.env.TEST_SUPABASE_URL && process.env.TEST_SUPABASE_SERVICE_ROLE_KEY) return;
+  // CI 沒有 .env.test（檔案 gitignored），變數改由 workflow 的 env: 區塊注入。
+  // 走到這裡代表「檔案沒有」**且**「變數也沒進 process.env」——在 CI 幾乎
+  // 一定是 repo secrets 沒設（GitHub Actions 對不存在的 secret 會塞空字串，
+  // 因此上面的 early return 不會成立）。訊息要同時涵蓋兩種環境，否則本機
+  // 訊息（「請建立 .env.test」）會把 CI 使用者導向錯誤的修法。
+  const inCi = !!process.env.CI;
+  console.error(
+    inCi
+      ? '[test-db] 缺少測試資料庫環境變數（TEST_SUPABASE_URL / ' +
+          'TEST_SUPABASE_SERVICE_ROLE_KEY），且此環境沒有 .env.test。' +
+          ' CI 請到 GitHub → Settings → Secrets and variables → Actions 設定：' +
+          ' TEST_SUPABASE_URL、TEST_SUPABASE_ANON_KEY、TEST_SUPABASE_SERVICE_ROLE_KEY、' +
+          ' TEST_SETTINGS_ENCRYPTION_KEY、TEST_AUTH_SECRET。'
+      : `[test-db] 找不到 .env.test（預期路徑：${envTestPath}）。` +
+          ' 請先依 docs/integration/12-TESTING-TDD.md §1.2 建立，' +
+          ' 或改以環境變數注入 TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_ROLE_KEY。',
+  );
+  process.exit(1);
 }
 
 /**

@@ -17,6 +17,27 @@ export const paymentMethodsPage = {
     testConnection: '檢查金流設定',
   },
 
+  /**
+   * 線上刷卡尚未開通時的誠實說明（issue #9）。
+   *
+   * ⚠️ 在這一版之前，這一頁對「線上刷卡」做了三件不成立的事：可以填金流商憑證
+   * （其實沒有任何後端會存）、可以按「實刷測試並開通」（其實什麼都沒做）、按完
+   * 會顯示「已驗證開通」。最後那一項最嚴重——店家會據此認為可以開始收錢。
+   *
+   * 五種線下收款（LINE Pay／街口／銀行轉帳／現金／其他）在這一版是真的存得住的；
+   * 線上刷卡需要藍新／綠界的商店帳號，屬 #9 第三步，與 #12／#32 綁定。
+   */
+  onlineNotReady: {
+    badge: '線上刷卡尚未開通',
+    title: '線上刷卡串接尚未開通',
+    description:
+      '這個版本可以設定並儲存 LINE Pay、街口支付、銀行轉帳、現金等收款方式，顧客看得到你的收款資訊。'
+      + '線上刷卡需要先串接金流商（藍新／綠界）的商店帳號，那部分還沒有建置，'
+      + '所以這裡不提供金流設定欄位，也沒有「實刷測試」。',
+    formNotice:
+      '你仍然可以先把這個收款方式列出來，但目前無法在這裡填寫金流商憑證，也不會產生線上付款連結。',
+  },
+
   /* ---------------------------------------------------------- 收款類型 */
   methodTypes: {
     LINE_PAY: 'LINE Pay',
@@ -59,7 +80,9 @@ export const paymentMethodsPage = {
     displayName: '顯示名稱 *',
     displayNamePlaceholder: '如：LINE Pay、國泰世華銀行',
 
-    qrCode: 'QR Code 圖片',
+    qrCode: 'QR Code 圖片網址',
+    qrUrlPlaceholder: 'https://example.com/line-pay-qr.png',
+    qrUrlHint: '貼上圖片的公開網址。app 內直接上傳尚未開通（需要一支 storage migration），在那之前這個欄位存什麼就是什麼，不會假裝已上傳。',
     qrNoImage: '尚無圖片',
     qrRemove: '移除圖片',
     qrTooLarge: '圖片大小不能超過 5MB',

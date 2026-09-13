@@ -192,10 +192,13 @@ export const productsPage = {
   /* -------------------------------------------------- modal 3：商品分類管理 */
   category: {
     title: '商品分類管理',
+    editTitle: '編輯分類',
     intro: '依行業自由建立分類（如咖啡豆/器具/書籍/寵物用品等），最多 50 個。',
     name: '分類名稱',
     namePlaceholder: '例：熱門商品',
     nameRequired: '請填寫分類名稱',
+    description: '分類說明',
+    descriptionPlaceholder: '選填，例如：適用於公開頁分類篩選',
     sortOrder: '排序',
     active: '啟用',
     create: '新增',
@@ -203,6 +206,7 @@ export const productsPage = {
     dragHint: '拖曳左側圖示可調整分類順序',
     columns: {
       name: '名稱',
+      description: '說明',
       status: '狀態',
       actions: '操作',
     },

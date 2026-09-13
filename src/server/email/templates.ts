@@ -77,3 +77,51 @@ export interface ProductOrderNotifyDetails {
 export const orderHtml = (p: ProductOrderNotifyDetails): string => shell('新商品訂單', `
   <p style="font-size:14px;">訂單 ${esc(p.orderNo)} — ${esc(p.customerName)}，
      金額 NT$ ${p.totalAmount.toLocaleString()}</p>`);
+
+/* ------------------------------------------------------------------ 消費明細
+ * 顧客端「消費明細」信 —— issue #27 ③。
+ *
+ * 與上面的 `orderHtml`（新商品訂單通知，收件人是**店家**、只有一行摘要）是兩件
+ * 不同的信，刻意不共用：這封寄給**顧客**，是手動建單時勾選「LINE 通知顧客消費
+ * 明細（未綁 LINE 自動改寄 Email）」的 Email 備援，內容必須逐項列出品項/數量/
+ * 金額與訂單編號。把它塞進 orderHtml 會讓店家通知信也長出明細表，是另一種錯。 */
+
+/** 消費明細信的單一品項（名稱/數量/單價快照，取自 product_order_items） */
+export interface ProductOrderReceiptItem {
+  name: string;
+  quantity: number;
+  /** 單價（小計由模板算 quantity × price） */
+  price: number;
+}
+
+export interface ProductOrderReceiptDetails {
+  shopName: string;
+  orderNo: string;
+  customerName: string;
+  items: ProductOrderReceiptItem[];
+  totalAmount: number;
+}
+
+export const productOrderReceiptHtml = (p: ProductOrderReceiptDetails): string =>
+  shell(`${esc(p.shopName)} 消費明細`, `
+  <p style="font-size:14px;color:#3A3A3C;">${esc(p.customerName)} 您好，感謝您的購買！以下是本次消費明細：</p>
+  <p style="font-size:13px;color:#8E8E93;margin:4px 0 12px;">訂單編號：${esc(p.orderNo)}</p>
+  <table style="font-size:14px;color:#3A3A3C;line-height:1.9;width:100%;border-collapse:collapse;">
+    <tr style="color:#8E8E93;">
+      <th align="left" style="border-bottom:1px solid #E5E5EA;font-weight:400;">品項</th>
+      <th align="right" style="border-bottom:1px solid #E5E5EA;font-weight:400;">數量</th>
+      <th align="right" style="border-bottom:1px solid #E5E5EA;font-weight:400;">小計</th>
+    </tr>
+    ${p.items.map((i) => `
+    <tr>
+      <td>${esc(i.name)}</td>
+      <td align="right">${i.quantity}</td>
+      <td align="right">NT$ ${(i.price * i.quantity).toLocaleString()}</td>
+    </tr>`).join('')}
+    <tr>
+      <td style="border-top:1px solid #E5E5EA;font-weight:700;">合計</td>
+      <td style="border-top:1px solid #E5E5EA;"></td>
+      <td align="right" style="border-top:1px solid #E5E5EA;font-weight:700;">
+        NT$ ${p.totalAmount.toLocaleString()}</td>
+    </tr>
+  </table>`);

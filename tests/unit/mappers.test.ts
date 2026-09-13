@@ -223,6 +223,11 @@ describe('mapStaff (02 §0004 staff / staff_services)', () => {
     bookable: true,
     active: true,
     sort_order: 2,
+    schedule_mode: 'FIXED_REST',
+    display_name: '陳老師',
+    bio: '10 年美容資歷。',
+    max_concurrent_bookings: 2,
+    visible: true,
   };
 
   it('全欄位比對', () => {
@@ -237,7 +242,39 @@ describe('mapStaff (02 §0004 staff / staff_services)', () => {
       bookable: true,
       active: true,
       sortOrder: 2,
+      scheduleMode: 'FIXED_REST',
+      displayName: '陳老師',
+      bio: '10 年美容資歷。',
+      maxConcurrentBookings: 2,
+      visible: true,
     });
+  });
+
+  /**
+   * 0082 的四個欄位都有 NOT NULL DEFAULT，正常情況不會是 null。
+   * 這幾例守的是「migration 尚未套用」的環境：必須退回與 DB 預設值相同的
+   * 解讀，而不是 undefined 到畫面上變成空白或 NaN。
+   */
+  it('#7 0082 四個欄位缺欄位（尚未套用 migration 的環境）→ 退回 DB 預設值的解讀', () => {
+    const { display_name, bio, max_concurrent_bookings, visible, ...bare } = fullRow;
+    const r = mapStaff(bare);
+    expect(r.displayName).toBe('');
+    expect(r.bio).toBe('');
+    expect(r.maxConcurrentBookings).toBe(1);
+    expect(r.visible).toBe(true);
+  });
+
+  it('max_concurrent_bookings 為字串數值（Postgres integer）→ 轉成 number', () => {
+    expect(mapStaff({ ...fullRow, max_concurrent_bookings: '3' }).maxConcurrentBookings).toBe(3);
+  });
+
+  it('visible=false 不會被 ?? 誤判成「沒設定」而翻成 true', () => {
+    expect(mapStaff({ ...fullRow, visible: false }).visible).toBe(false);
+  });
+
+  it('#7 schedule_mode 缺欄位（尚未回填的舊環境）→ 預設 ROTATING', () => {
+    const { schedule_mode, ...rowWithoutScheduleMode } = fullRow;
+    expect(mapStaff(rowWithoutScheduleMode).scheduleMode).toBe('ROTATING');
   });
 
   it('phone / email / title / avatar_url null → 空字串', () => {
@@ -315,6 +352,7 @@ describe('mapProductOrder (02 §0004 product_orders / product_order_items)', () 
     status: 'CONFIRMED',
     payment_status: 'PAID_OFFLINE',
     created_at: '2026-08-10T00:00:00Z',
+    coupon_discount: 200,
   };
 
   it('全欄位比對，含 items 陣列逐項轉換', () => {
@@ -331,11 +369,22 @@ describe('mapProductOrder (02 §0004 product_orders / product_order_items)', () 
       status: 'CONFIRMED',
       paymentStatus: 'PAID_OFFLINE',
       createdAt: '2026-08-10T00:00:00Z',
+      couponDiscount: 200,
     });
   });
 
   it('items null（查無明細）→ 空陣列', () => {
     expect(mapProductOrder({ ...fullRow, items: null }).items).toEqual([]);
+  });
+
+  // coupon_discount 可為 NULL（這張單沒套票券）。收斂成 0 而不是 undefined：
+  // 折抵「真的是零」，不是「不知道」——畫面才能直接顯示「無」而不是空白。
+  it('coupon_discount null → 0（沒套票券，不是未知）', () => {
+    expect(mapProductOrder({ ...fullRow, coupon_discount: null }).couponDiscount).toBe(0);
+  });
+
+  it('coupon_discount 為字串數值（Postgres numeric）→ 轉成 number', () => {
+    expect(mapProductOrder({ ...fullRow, coupon_discount: '150' }).couponDiscount).toBe(150);
   });
 });
 
@@ -353,6 +402,12 @@ describe('mapCoupon (02 §0004 coupons / coupon_instances)', () => {
     start_at: '2026-08-01T00:00:00Z',
     end_at: '2026-09-01T00:00:00Z',
     status: 'PUBLISHED',
+    min_order_amount: 1200,
+    max_discount_amount: null,
+    gift_item: '',
+    limit_per_customer: 1,
+    private_mode: true,
+    last_redeemed_code: 'ABC12345',
   };
 
   it('全欄位比對', () => {
@@ -368,6 +423,12 @@ describe('mapCoupon (02 §0004 coupons / coupon_instances)', () => {
       startAt: '2026-08-01T00:00:00Z',
       endAt: '2026-09-01T00:00:00Z',
       status: 'PUBLISHED',
+      minOrderAmount: 1200,
+      maxDiscountAmount: null,
+      giftItem: '',
+      limitPerCustomer: 1,
+      privateMode: true,
+      lastRedeemedCode: 'ABC12345',
     });
   });
 
@@ -399,6 +460,9 @@ describe('mapMembershipLevel (02 §0004 membership_levels)', () => {
     point_rate_multiplier: 1.5,
     customer_count: 87,
     sort_order: 1,
+    description: '金卡說明',
+    active: true,
+    is_default: true,
   };
 
   it('全欄位比對', () => {
@@ -411,6 +475,9 @@ describe('mapMembershipLevel (02 §0004 membership_levels)', () => {
       pointRateMultiplier: 1.5,
       customerCount: 87,
       sortOrder: 1,
+      description: '金卡說明',
+      active: true,
+      isDefault: true,
     });
   });
 

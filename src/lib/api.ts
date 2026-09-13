@@ -40,7 +40,11 @@ export async function request<T>(
   const res = await fetch(`${BASE}${path}${qs}`, {
     ...rest,
     headers: {
-      'Content-Type': 'application/json',
+      // Let the browser add the multipart boundary for FormData. Setting an
+      // application/json content type here makes /api/upload reject the body.
+      ...(typeof FormData !== 'undefined' && rest.body instanceof FormData
+        ? {}
+        : { 'Content-Type': 'application/json' }),
       ...(rest.headers ?? {}),
     },
     credentials: 'include',

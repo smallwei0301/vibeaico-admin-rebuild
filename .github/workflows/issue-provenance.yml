@@ -1,0 +1,126 @@
+name: issue-provenance
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted Issue provenance policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          sparse-checkout: |
+            scripts/agents/issue-provenance-policy.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Classify Issue origin and workstream
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const policy = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/issue-provenance-policy.mjs',
+            )).href);
+
+            const { owner, repo } = context.repo;
+            const issue = context.payload.issue;
+            const result = policy.validateIssueProvenance(issue.body ?? '', { requireWorkstream: true });
+            const isAgent = result.isAgent;
+            const validWorkstreams = new Set(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
+            const workstreamValid = validWorkstreams.has(result.workstream);
+            // Missing / invalid classification must never accidentally enter the faster governance path.
+            // It is visibly marked incomplete and fails safe to PRODUCT_MAINLINE until the body is corrected.
+            const effectiveWorkstream = workstreamValid ? result.workstream : 'PRODUCT_MAINLINE';
+
+            const managedLabels = {
+              'origin:agent': {
+                color: '1D76DB',
+                description: 'Issue explicitly marked as agent-discovered.',
+              },
+              'origin:owner-or-unknown': {
+                color: 'BFDADC',
+                description: 'Issue has no agent provenance marker; owner-created or unknown.',
+              },
+              'workstream:model-governance': {
+                color: '6F42C1',
+                description: 'Pure model/Agent/work/engineering governance; handled by the audit-tier governance mode.',
+              },
+              'workstream:product-mainline': {
+                color: '0366D6',
+                description: 'Product UI/API/runtime/schema/payment/LINE/provider/deployment mainline work.',
+              },
+              'governance:workstream-incomplete': {
+                color: 'D93F0B',
+                description: 'Issue is missing or has an invalid WORKSTREAM classification; fails safe to Product mainline.',
+              },
+              'governance:provenance-incomplete': {
+                color: 'D93F0B',
+                description: 'Agent-discovered Issue is missing required provenance fields.',
+              },
+            };
+
+            for (const [name, metadata] of Object.entries(managedLabels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: metadata.color,
+                  description: metadata.description,
+                });
+              }
+            }
+
+            const managedNames = new Set(Object.keys(managedLabels));
+            const existing = (issue.labels ?? [])
+              .map((label) => typeof label === 'string' ? label : label.name)
+              .filter(Boolean)
+              .filter((name) => !managedNames.has(name));
+
+            const nextLabels = [
+              ...existing,
+              isAgent ? 'origin:agent' : 'origin:owner-or-unknown',
+              effectiveWorkstream === 'MODEL_GOVERNANCE'
+                ? 'workstream:model-governance'
+                : 'workstream:product-mainline',
+            ];
+            if (!workstreamValid) nextLabels.push('governance:workstream-incomplete');
+            if (isAgent && result.errors.some((error) => !error.startsWith('Issue WORKSTREAM'))) {
+              nextLabels.push('governance:provenance-incomplete');
+            }
+
+            await github.rest.issues.setLabels({
+              owner,
+              repo,
+              issue_number: issue.number,
+              labels: [...new Set(nextLabels)],
+            });
+
+            await core.summary
+              .addHeading('Issue provenance and workstream')
+              .addTable([
+                [{ data: 'Field', header: true }, { data: 'Result', header: true }],
+                ['Issue', `#${issue.number}`],
+                ['Origin', result.origin],
+                ['Declared workstream', result.workstream],
+                ['Effective workstream', effectiveWorkstream],
+                ['Fail-safe fallback', workstreamValid ? 'none' : 'PRODUCT_MAINLINE until corrected'],
+                ['Missing headings', result.missingHeadings.length ? result.missingHeadings.join(', ') : 'none'],
+                ['Empty or placeholder headings', result.emptyHeadings.length ? result.emptyHeadings.join(', ') : 'none'],
+                ['Validation errors', result.errors.length ? result.errors.join('; ') : 'none'],
+              ])
+              .write();

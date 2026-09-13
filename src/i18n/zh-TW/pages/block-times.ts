@@ -1,6 +1,9 @@
 /**
  * 封鎖時段（/tenant/block-times）文案
- * 文字全數取自原站 DOM 與 inline JS，未改寫措辭。
+ *
+ * #169：後端補齊 title/recurrence/day_of_week/full_day/auto 五個欄位
+ * （0074 migration）後，名稱／每週循環／整天封鎖／自動產生／編輯全部復原成
+ * 真的接 API，不是頁面假資料。
  */
 export const blockTimesPage = {
   title: '封鎖時段',
@@ -23,8 +26,11 @@ export const blockTimesPage = {
     date: '日期/星期',
     time: '時段',
     reason: '原因',
+    staff: '適用對象',
     actions: '操作',
   },
+
+  staffAll: '全店',
 
   /** 列表徽章 */
   tags: {
@@ -41,6 +47,7 @@ export const blockTimesPage = {
     titlePlaceholder: '例如：店休、團隊會議',
     reason: '原因',
     reasonPlaceholder: '選填',
+    staff: '適用對象',
     recurrence: '循環類型',
     single: '單次',
     weekly: '每週',
@@ -60,6 +67,11 @@ export const blockTimesPage = {
     endTime: '結束時間',
   },
 
+  auto: {
+    /** auto=true 列的說明（列表與編輯區塊皆用） */
+    hint: '由「營運時間」的每天不同營業時間設定自動產生，無法在此編輯或刪除',
+  },
+
   empty: {
     title: '尚未設定封鎖時段',
     description: '封鎖時段內不接受預約，適用所有預約入口（公開頁面、LINE Bot、後台新增預約）',
@@ -67,26 +79,20 @@ export const blockTimesPage = {
 
   messages: {
     created: '封鎖時段已新增',
-    createdWithConflict: '封鎖時段已新增（衝突由店家自行通知）',
     updated: '封鎖時段已更新',
     deleted: '已刪除',
     deleteConfirm: '確定要刪除此封鎖時段？',
-    notFound: '找不到封鎖時段',
     loadFailed: '載入失敗',
     saveFailed: '儲存失敗：',
     deleteFailed: '刪除失敗：',
-    retryLater: '請稍後再試',
-    networkError: '連線錯誤，請稍後再試',
     unknownError: '未知錯誤',
   },
 
   validation: {
     titleRequired: '請輸入封鎖名稱',
     dateRequired: '請選擇日期',
+    dayOfWeekRequired: '請選擇星期幾',
     timeRequired: '請填寫開始和結束時間',
     startBeforeEnd: '開始時間必須早於結束時間',
-    startBeforeOpen: (t: string) => `開始時間不能早於營業開始時間（${t}）`,
-    endAfterClose: (t: string) => `結束時間不能晚於營業結束時間（${t}）`,
-    overlapRest: (t: string) => `時段與休息時間（${t}）重疊，休息時段本來就不營業`,
   },
 } as const;

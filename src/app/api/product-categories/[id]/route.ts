@@ -3,24 +3,43 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 
 /**
- * PUT /api/product-categories/:id — 改名 ⚙MANAGER（同 service-categories 模式）。
+ * PUT /api/product-categories/:id — 更新分類 metadata ⚙MANAGER（排序也可明確更新）。
  */
-const bodySchema = z.object({ name: z.string().min(1, '請輸入分類名稱') });
+const bodySchema = z.object({
+  name: z.string().trim().min(1, '請輸入分類名稱').max(100).optional(),
+  description: z.string().trim().max(500).optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+}).refine((body) => Object.keys(body).length > 0, {
+  message: '至少提供一個要更新的欄位',
+});
 
 export const PUT = handle(async (req, { params }) => {
   const t = await requireTenant('MANAGER');
   const { id } = await params;
   const b = bodySchema.parse(await req.json());
+  const updates: Record<string, string | number | boolean> = {};
+
+  if (b.name !== undefined) updates.name = b.name;
+  if (b.description !== undefined) updates.description = b.description;
+  if (b.active !== undefined) updates.active = b.active;
+  if (b.sortOrder !== undefined) updates.sort_order = b.sortOrder;
 
   const { data, error } = await t.supabase
     .from('product_categories')
-    .update({ name: b.name })
+    .update(updates)
     .eq('id', id).eq('tenant_id', t.tenantId)
-    .select('id').maybeSingle();
+    .select('id, description, active, sort_order')
+    .maybeSingle();
   if (error) throw error;
   if (!data) throw new ApiHttpError(404, '找不到此分類', ERR.NOT_FOUND);
 
-  return ok();
+  return ok({
+    id: data.id,
+    description: data.description ?? '',
+    active: data.active ?? true,
+    sortOrder: data.sort_order,
+  });
 });
 
 /**

@@ -23,7 +23,7 @@ import { listProducts } from '@/services/catalog';
 import {
   adjustProductStock, createProduct, createProductCategory, deleteProduct, deleteProductCategory,
   listProductCategories, reorderProductCategories, reorderProducts, toggleProductLineFeatured,
-  updateProduct, type ProductCategory,
+  updateProduct, updateProductCategory, type ProductCategory,
 } from '@/services/products';
 import { listFeatures } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
@@ -1023,42 +1023,100 @@ function CategoryModal({
   const toast = useToast();
 
   const [name, setName] = React.useState('');
-  const [sortOrder, setSortOrder] = React.useState('0');
+  const [description, setDescription] = React.useState('');
+  const [sortOrder, setSortOrder] = React.useState('');
   const [active, setActive] = React.useState(true);
   const [error, setError] = React.useState('');
   const [deleteTarget, setDeleteTarget] = React.useState<ProductCategory | null>(null);
 
+  /** 編輯分類名稱／描述／啟用狀態的子表單（issue #28 第 ⑭ 筆：編輯按鈕先前只切換啟用狀態）。 */
+  const [editTarget, setEditTarget] = React.useState<ProductCategory | null>(null);
+  const [editName, setEditName] = React.useState('');
+  const [editDescription, setEditDescription] = React.useState('');
+  const [editActive, setEditActive] = React.useState(true);
+  const [editError, setEditError] = React.useState('');
+  const [editSaving, setEditSaving] = React.useState(false);
+
+  const openEdit = (c: ProductCategory) => {
+    setEditTarget(c);
+    setEditName(c.name);
+    setEditDescription(c.description ?? '');
+    setEditActive(c.active);
+    setEditError('');
+  };
+
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      setEditError(t.category.nameRequired);
+      return;
+    }
+    setEditError('');
+    setEditSaving(true);
+    const categoryDescription = editDescription.trim();
+    try {
+      await updateProductCategory(editTarget.id, {
+        name: trimmed, description: categoryDescription, active: editActive,
+      });
+      onChange(categories.map((x) => (
+        x.id === editTarget.id
+          ? { ...x, name: trimmed, description: categoryDescription, active: editActive }
+          : x
+      )));
+      toast.show(t.category.updated);
+      setEditTarget(null);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : t.messages.unknownError);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!open) return;
     setName('');
-    setSortOrder('0');
+    setDescription('');
+    setSortOrder('');
     setActive(true);
     setError('');
   }, [open]);
 
   const reset = () => {
     setName('');
-    setSortOrder('0');
+    setDescription('');
+    setSortOrder('');
     setActive(true);
     setError('');
   };
 
   const create = async () => {
-    if (!name.trim()) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       setError(t.category.nameRequired);
       return;
     }
+
     setError('');
+    const categoryDescription = description.trim();
+    const parsedSortOrder = Number(sortOrder);
     try {
-      /* 後端只收 name（sort_order 自動取最大值+1、無 active 欄位）；排序值與啟用僅前端狀態 */
-      const { id } = await createProductCategory(name.trim());
+      const saved = await createProductCategory({
+        name: trimmedName,
+        description: categoryDescription,
+        active,
+        sortOrder: Number.isFinite(parsedSortOrder) && sortOrder.trim() !== ''
+          ? parsedSortOrder
+          : undefined,
+      });
       onChange([
         ...categories,
         {
-          id,
-          name: name.trim(),
+          id: saved.id,
+          name: trimmedName,
+          description: categoryDescription,
           active,
-          sortOrder: Number(sortOrder) || categories.length + 1,
+          sortOrder: saved.sortOrder,
         },
       ]);
       reset();
@@ -1085,6 +1143,10 @@ function CategoryModal({
   const columns: Column<ProductCategory>[] = [
     { key: 'name', header: t.category.columns.name, render: (c) => c.name },
     {
+      key: 'description', header: t.category.columns.description,
+      render: (c) => c.description || <span className="text-muted">{common.none}</span>,
+    },
+    {
       key: 'status', header: t.category.columns.status, width: '90px',
       render: (c) => (c.active
         ? <Badge tone="success">{t.labels.enabled}</Badge>
@@ -1108,10 +1170,7 @@ function CategoryModal({
           </Button>
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
-            onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
-            }}
+            onClick={() => openEdit(c)}
           >
             <Pencil size={13} />
           </Button>
@@ -1144,6 +1203,14 @@ function CategoryModal({
               id="catName" className="form-control-sm" value={name}
               placeholder={t.category.namePlaceholder}
               onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[12rem] flex-1">
+            <Label htmlFor="catDescription">{t.category.description}</Label>
+            <Input
+              id="catDescription" className="form-control-sm" value={description}
+              placeholder={t.category.descriptionPlaceholder}
+              onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div className="w-24">
@@ -1197,6 +1264,42 @@ function CategoryModal({
           }
         }}
       />
+
+      <Modal
+        open={!!editTarget}
+        onClose={() => (editSaving ? undefined : setEditTarget(null))}
+        title={t.category.editTitle}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)} disabled={editSaving}>
+              {common.cancel}
+            </Button>
+            <Button onClick={() => void saveEdit()} disabled={editSaving}>{common.save}</Button>
+          </>
+        )}
+      >
+        <FormGroup>
+          <Label required htmlFor="editCategoryName">{t.category.name}</Label>
+          <Input
+            id="editCategoryName" value={editName}
+            placeholder={t.category.namePlaceholder}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label htmlFor="editCategoryDesc">{t.category.description}</Label>
+          <Input
+            id="editCategoryDesc" value={editDescription}
+            placeholder={t.category.descriptionPlaceholder}
+            onChange={(e) => setEditDescription(e.target.value)}
+          />
+        </FormGroup>
+        <div className="flex items-center gap-2">
+          <Switch id="editCategoryActive" checked={editActive} onCheckedChange={setEditActive} />
+          <span className="text-base text-neutral-700">{t.category.active}</span>
+        </div>
+        {editError ? <FormError>{editError}</FormError> : null}
+      </Modal>
     </>
   );
 }

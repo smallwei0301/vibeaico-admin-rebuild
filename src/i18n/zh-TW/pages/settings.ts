@@ -286,9 +286,11 @@ export const settingsPage = {
     welcomeCardTitleHelp: '留白＝系統預設（歡迎加入！）',
     welcomeCardImage: '歡迎卡片圖片（自訂）',
     welcomeCardImageUpload: '上傳圖片',
+    welcomeCardImageUploading: '上傳並儲存中...',
     welcomeCardImageRemove: '移除圖片',
     welcomeCardImageUpdated: '歡迎卡片圖片已更新',
     welcomeCardImageRemoved: '已移除歡迎卡片圖片',
+    welcomeCardImageCleanupPending: '設定已儲存，但舊圖片清理尚未完成，請稍後再試',
     welcomeFeatureListText: '歡迎卡片功能介紹清單（自訂）',
     welcomeFeatureListTextPlaceholder: '一行一項，例：預約到店試穿',
     welcomeFeatureListTextHelp:

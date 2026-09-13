@@ -3,6 +3,7 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { FEATURE_CATALOG } from '@/config/features';
+import { hasRestoreSideEffect, runRestoreSideEffects } from '@/server/feature-restore';
 
 /**
  * POST /api/feature-store/:code/apply — 訂閱／續訂單一功能（09 分冊 §3）⚙OWNER。
@@ -18,41 +19,6 @@ const bodySchema = z.object({
   months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]),
 });
 
-/**
- * §6 還原副作用：功能到期時被 cron 自動暫停（auto_paused_by_feature=true）的
- * 票券／商品，訂閱恢復後自動改回發布／上架並歸零旗標，回筆數。
- * ⚠️ 與 restore/route.ts 內同名函式刻意重複 —— 共用落點 src/server/features.ts
- * 由另一 agent 負責（檔案所有權），且 route.ts 不允許額外具名匯出。
- */
-async function runRestoreSideEffects(
-  admin: ReturnType<typeof createAdminSupabase>,
-  tenantId: string,
-  code: string,
-): Promise<{ restoredCoupons: number; restoredProducts: number }> {
-  let restoredCoupons = 0;
-  let restoredProducts = 0;
-  if (code === 'COUPON_SYSTEM') {
-    const { data, error } = await admin
-      .from('coupons')
-      .update({ status: 'PUBLISHED', auto_paused_by_feature: false })
-      .eq('tenant_id', tenantId)
-      .eq('auto_paused_by_feature', true)
-      .select('id');
-    if (error) throw error;
-    restoredCoupons = data?.length ?? 0;
-  }
-  if (code === 'PRODUCT_SALES') {
-    const { data, error } = await admin
-      .from('products')
-      .update({ active: true, auto_paused_by_feature: false })
-      .eq('tenant_id', tenantId)
-      .eq('auto_paused_by_feature', true)
-      .select('id');
-    if (error) throw error;
-    restoredProducts = data?.length ?? 0;
-  }
-  return { restoredCoupons, restoredProducts };
-}
 
 export const POST = handle(async (req, { params }) => {
   const t = await requireTenant('OWNER');
@@ -77,9 +43,9 @@ export const POST = handle(async (req, { params }) => {
     throw error;
   }
 
-  if (code === 'COUPON_SYSTEM' || code === 'PRODUCT_SALES') {
+  if (hasRestoreSideEffect(code)) {
     try {
-      return ok(await runRestoreSideEffects(admin, t.tenantId, code));
+      return ok(await runRestoreSideEffects(admin, t.tenantId, [code]));
     } catch (e) {
       // 還原失敗不可讓訂閱失敗（09 分冊 §6）；前端已有對應警示文案
       console.error('[feature-store] restore side effect failed', code, e);

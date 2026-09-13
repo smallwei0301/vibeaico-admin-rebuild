@@ -21,24 +21,42 @@ export const GET = handle(async () => {
       .order('created_at', { ascending: false }),
     t.supabase
       .from('coupon_instances')
-      .select('coupon_id, redeemed_at')
+      .select('coupon_id, code, redeemed_at')
       .eq('tenant_id', t.tenantId),
   ]);
   if (e1) throw e1;
   if (e2) throw e2;
 
-  const counts = new Map<string, { issued: number; redeemed: number }>();
+  const counts = new Map<string, {
+    issued: number;
+    redeemed: number;
+    lastRedeemedCode: string | null;
+    lastRedeemedAt: string | null;
+  }>();
   for (const inst of instances ?? []) {
-    const c = counts.get(inst.coupon_id) ?? { issued: 0, redeemed: 0 };
+    const c = counts.get(inst.coupon_id) ?? {
+      issued: 0, redeemed: 0, lastRedeemedCode: null, lastRedeemedAt: null,
+    };
     c.issued += 1;
-    if (inst.redeemed_at) c.redeemed += 1;
+    if (inst.redeemed_at) {
+      c.redeemed += 1;
+      if (c.lastRedeemedAt === null || inst.redeemed_at > c.lastRedeemedAt) {
+        c.lastRedeemedAt = inst.redeemed_at;
+        c.lastRedeemedCode = inst.code;
+      }
+    }
     counts.set(inst.coupon_id, c);
   }
 
   return ok(
     (coupons ?? []).map((r: any) => {
       const c = counts.get(r.id);
-      return mapCoupon({ ...r, issued_quantity: c?.issued ?? 0, redeemed_quantity: c?.redeemed ?? 0 });
+      return mapCoupon({
+        ...r,
+        issued_quantity: c?.issued ?? 0,
+        redeemed_quantity: c?.redeemed ?? 0,
+        last_redeemed_code: c?.lastRedeemedCode ?? null,
+      });
     }),
   );
 });
@@ -56,6 +74,11 @@ const bodySchema = z.object({
   totalQuantity: z.number().int().min(0).default(0), // 0 = 不限量（0004 註解）
   startAt: z.string().optional(),
   endAt: z.string().optional(),
+  minOrderAmount: z.number().min(0).nullable().optional(),
+  maxDiscountAmount: z.number().min(0).nullable().optional(),
+  giftItem: z.string().optional(),
+  limitPerCustomer: z.number().int().min(1).nullable().optional(),
+  privateMode: z.boolean().optional(),
 });
 
 export const POST = handle(async (req) => {
@@ -75,6 +98,11 @@ export const POST = handle(async (req) => {
       start_at: b.startAt ? b.startAt : null,
       end_at: b.endAt ? b.endAt : null,
       status: 'DRAFT',
+      min_order_amount: b.minOrderAmount ?? null,
+      max_discount_amount: b.maxDiscountAmount ?? null,
+      gift_item: b.giftItem ?? '',
+      limit_per_customer: b.limitPerCustomer ?? null,
+      private_mode: b.privateMode ?? false,
     })
     .select('id')
     .single();

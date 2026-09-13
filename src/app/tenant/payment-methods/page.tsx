@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import {
-  BadgeCheck, CreditCard, ExternalLink, Pencil, Plus, ShieldCheck, Trash2,
+  CreditCard, Pencil, Plus, Trash2,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -18,74 +18,31 @@ import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { paymentMethodsPage as t } from '@/i18n/zh-TW/pages/payment-methods';
 import { formatNumber } from '@/lib/utils';
+import {
+  createPaymentMethod, deletePaymentMethod, listPaymentMethods,
+  setPaymentMethodActive, updatePaymentMethod, type PaymentMethodRow,
+} from '@/services';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
 type MethodType = 'LINE_PAY' | 'JKOPAY' | 'BANK_TRANSFER' | 'CASH' | 'ONLINE_PAYMENT' | 'OTHER';
-type GatewaySource = 'own' | 'demo';
-type GatewayProvider = 'NEWEBPAY' | 'ECPAY';
-
-/** 原站 /api/payment-methods */
-type PaymentMethod = {
-  id: string;
-  methodType: MethodType | '';
-  displayName: string;
-  qrImageUrl: string;
-  bankName: string;
-  bankCode: string;
-  accountNumber: string;
-  accountHolderName: string;
-  gatewaySource: GatewaySource;
-  gatewayProvider: GatewayProvider;
-  gatewayMerchantId: string;
-  /** 🔐 後端回傳一律遮罩；沒重新輸入就送空字串代表不變更 */
-  gatewayHashKeySet: boolean;
-  gatewayHashIvSet: boolean;
-  gatewaySandbox: boolean;
-  /** 實刷小額測試通過才算開通 */
-  gatewayVerified: boolean;
-  sortOrder: number;
-  active: boolean;
-  instructions: string;
-};
-
-const MOCK_METHODS: PaymentMethod[] = [
-  {
-    id: 'pm_1', methodType: 'LINE_PAY', displayName: 'LINE Pay', qrImageUrl: 'line-pay-qr.png',
-    bankName: '', bankCode: '', accountNumber: '', accountHolderName: '',
-    gatewaySource: 'own', gatewayProvider: 'NEWEBPAY', gatewayMerchantId: '',
-    gatewayHashKeySet: false, gatewayHashIvSet: false, gatewaySandbox: false,
-    gatewayVerified: false, sortOrder: 1, active: true, instructions: '轉帳後請於 LINE 傳送截圖給我們核對。',
-  },
-  {
-    id: 'pm_2', methodType: 'BANK_TRANSFER', displayName: '國泰世華銀行', qrImageUrl: '',
-    bankName: '國泰世華銀行', bankCode: '013', accountNumber: '1234-5678-9012', accountHolderName: '王小明',
-    gatewaySource: 'own', gatewayProvider: 'NEWEBPAY', gatewayMerchantId: '',
-    gatewayHashKeySet: false, gatewayHashIvSet: false, gatewaySandbox: false,
-    gatewayVerified: false, sortOrder: 2, active: true, instructions: '',
-  },
-  {
-    id: 'pm_3', methodType: 'ONLINE_PAYMENT', displayName: '線上刷卡付款', qrImageUrl: '',
-    bankName: '', bankCode: '', accountNumber: '', accountHolderName: '',
-    gatewaySource: 'demo', gatewayProvider: 'ECPAY', gatewayMerchantId: '2000132',
-    gatewayHashKeySet: true, gatewayHashIvSet: true, gatewaySandbox: true,
-    gatewayVerified: false, sortOrder: 3, active: false, instructions: '',
-  },
-  {
-    id: 'pm_4', methodType: 'CASH', displayName: '現金', qrImageUrl: '',
-    bankName: '', bankCode: '', accountNumber: '', accountHolderName: '',
-    gatewaySource: 'own', gatewayProvider: 'NEWEBPAY', gatewayMerchantId: '',
-    gatewayHashKeySet: false, gatewayHashIvSet: false, gatewaySandbox: false,
-    gatewayVerified: false, sortOrder: 4, active: true, instructions: '',
-  },
-];
 
 /**
- * 原站 inline JS 的銀行代碼對照。
- * 索引與 i18n 的 `paymentMethodsPage.banks` 一一對應，避免在頁面重複寫銀行名稱。
+ * 頁面用的一列。
+ *
+ * ⚠️ 這裡**刻意沒有任何 gateway 欄位**（原本有 gatewaySource／gatewayProvider／
+ * gatewayMerchantId／gatewayHashKeySet／gatewayHashIvSet／gatewaySandbox／
+ * gatewayVerified 七個）。那七個欄位沒有任何後端會儲存，卻讓表單看起來可以設定
+ * 金流、讓「實刷測試」看起來會驗證——按完還會把 gatewayVerified 設成 true 並
+ * 顯示「已驗證開通」。店家會據此認為可以開始收錢。
+ *
+ * 線上刷卡屬 #9 第三步（需要藍新／綠界商店帳號，與 #12／#32 綁定）。在那之前，
+ * 這一頁對它只做一件事：誠實說它還沒開通。
  */
+type PaymentMethod = PaymentMethodRow;
+
 const BANK_CODES: string[] = [
   '004', '005', '006', '007', '008', '009', '011', '012', '013', '016',
   '017', '050', '052', '053', '054', '081', '021', '810', '103', '108',
@@ -98,10 +55,6 @@ const bankCodeOf = (name: string): string => {
   return i >= 0 ? BANK_CODES[i] : '';
 };
 
-/** 藍新申請頁 */
-const NEWEBPAY_APPLY_URL = 'https://www.newebpay.com/';
-
-const QR_MAX_BYTES = 5 * 1024 * 1024;
 
 const NEEDS_QR: MethodType[] = ['LINE_PAY', 'JKOPAY', 'OTHER'];
 const NEEDS_BANK: MethodType[] = ['BANK_TRANSFER'];
@@ -116,17 +69,12 @@ export default function PaymentMethodsPage() {
 
   const [formTarget, setFormTarget] = React.useState<PaymentMethod | null | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = React.useState<PaymentMethod | null>(null);
-  const [testTarget, setTestTarget] = React.useState<PaymentMethod | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-
-  const nextId = React.useRef(1);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
-      /* 骨架階段：原站呼叫 /api/payment-methods */
-      await new Promise((r) => setTimeout(r, 320));
-      setRows([...MOCK_METHODS].sort((a, b) => a.sortOrder - b.sortOrder));
+      setRows(await listPaymentMethods());
     } catch (e) {
       toast.show(
         `${t.messages.loadFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -140,15 +88,24 @@ export default function PaymentMethodsPage() {
 
   React.useEffect(() => { void load(); }, [load]);
 
-  const toggleActive = (m: PaymentMethod) => {
-    setRows((list) => list.map((x) => (x.id === m.id ? { ...x, active: !x.active } : x)));
-    toast.show(t.messages.statusUpdated);
-  };
-
-  const upsert = (draft: PaymentMethod) => {
-    setRows((list) => (list.some((m) => m.id === draft.id)
-      ? list.map((m) => (m.id === draft.id ? draft : m))
-      : [...list, draft]).sort((a, b) => a.sortOrder - b.sortOrder));
+  /**
+   * ⚠️ 啟停先寫後端、成功才重新載入，**不做樂觀更新**。
+   *
+   * 原本這裡只 setState 再跳「已更新」，重整就還原。改成樂觀更新加回滾也可以，
+   * 但這一頁的操作頻率極低（店家設定一次就不太動），多一次往返換到「畫面上看到
+   * 的一定是資料庫裡的」比較划算。
+   */
+  const toggleActive = async (m: PaymentMethod) => {
+    try {
+      await setPaymentMethodActive(m.id, !m.active);
+      toast.show(t.messages.statusUpdated);
+      await load();
+    } catch (e) {
+      toast.show(
+        `${t.messages.saveFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    }
   };
 
   return (
@@ -209,20 +166,9 @@ export default function PaymentMethodsPage() {
 
                 {m.methodType === 'ONLINE_PAYMENT' ? (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <Badge tone="neutral">
-                      {m.gatewaySource === 'demo'
-                        ? t.form.demoLabel
-                        : t.form.providerNames[m.gatewayProvider]}
-                    </Badge>
-                    {m.gatewaySource === 'demo' ? (
-                      <Badge tone="info">{t.badges.demo}</Badge>
-                    ) : null}
-                    {m.gatewaySandbox ? <Badge tone="warning">{t.badges.sandbox}</Badge> : null}
-                    {m.gatewayVerified ? (
-                      <Badge tone="success">{t.badges.verified}</Badge>
-                    ) : (
-                      <Badge tone="danger">{t.badges.notVerifiedLong}</Badge>
-                    )}
+                    {/* 原本這裡有四個 badge（金流商／示範／沙箱／已驗證開通），
+                        全部沒有後端支撐。「已驗證開通」是按下假的實刷測試後出現的。 */}
+                    <Badge tone="warning">{t.onlineNotReady.badge}</Badge>
                   </div>
                 ) : null}
 
@@ -243,11 +189,6 @@ export default function PaymentMethodsPage() {
                   <Button variant="outline" size="sm" onClick={() => toggleActive(m)}>
                     {m.active ? t.actions.disable : t.actions.enable}
                   </Button>
-                  {m.methodType === 'ONLINE_PAYMENT' ? (
-                    <Button variant="success" size="sm" onClick={() => setTestTarget(m)}>
-                      <ShieldCheck size={13} />{t.actions.testCharge}
-                    </Button>
-                  ) : null}
                   <Button variant="outlineDanger" size="sm" onClick={() => setDeleteTarget(m)}>
                     <Trash2 size={13} />{t.actions.delete}
                   </Button>
@@ -263,13 +204,21 @@ export default function PaymentMethodsPage() {
         open={formTarget !== undefined}
         method={formTarget ?? null}
         onClose={() => setFormTarget(undefined)}
-        onSaved={(draft, isEdit) => {
-          const id = isEdit ? draft.id : `pm_new_${nextId.current++}`;
-          upsert({ ...draft, id });
-          setFormTarget(undefined);
-          toast.show(isEdit ? t.messages.updated : t.messages.created);
-          if (draft.methodType === 'ONLINE_PAYMENT') {
-            toast.show(isEdit ? t.messages.updatedHint : t.messages.createdHint, 'info');
+        onSaved={async (draft, isEdit) => {
+          try {
+            if (isEdit) {
+              await updatePaymentMethod(draft.id, draft);
+            } else {
+              await createPaymentMethod(draft);
+            }
+            setFormTarget(undefined);
+            toast.show(isEdit ? t.messages.updated : t.messages.created);
+            await load();
+          } catch (e) {
+            toast.show(
+              `${t.messages.saveFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
+              'danger',
+            );
           }
         }}
       />
@@ -287,10 +236,10 @@ export default function PaymentMethodsPage() {
           if (!deleteTarget) return;
           setDeleting(true);
           try {
-            await new Promise((r) => setTimeout(r, 380));
-            setRows((list) => list.filter((m) => m.id !== deleteTarget.id));
+            await deletePaymentMethod(deleteTarget.id);
             setDeleteTarget(null);
             toast.show(t.messages.deleted);
+            await load();
           } catch (e) {
             toast.show(
               `${t.messages.deleteFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -302,23 +251,6 @@ export default function PaymentMethodsPage() {
         }}
       />
 
-      {/* ---------------------------------------------- modal 3：實刷測試 */}
-      <ConfirmModal
-        open={!!testTarget}
-        title={t.actions.testCharge}
-        confirmText={common.confirmText}
-        message={t.testCharge.confirm}
-        onClose={() => setTestTarget(null)}
-        onConfirm={() => {
-          if (testTarget) {
-            setRows((list) => list.map((m) => (m.id === testTarget.id
-              ? { ...m, gatewayVerified: true }
-              : m)));
-            toast.show(t.testCharge.success);
-          }
-          setTestTarget(null);
-        }}
-      />
     </>
   );
 }
@@ -327,12 +259,14 @@ export default function PaymentMethodsPage() {
 /* 新增 / 編輯收款方式                                                          */
 /* ========================================================================== */
 
+/**
+ * ⚠️ `methodType` 用 `'' as MethodType`：表單第一格是「請選擇」，而 `validate()`
+ * 會擋住沒選的情況。給一個真的預設值（例如 CASH）會讓沒選類型的表單直接通過。
+ */
 const EMPTY_METHOD: PaymentMethod = {
-  id: '', methodType: '', displayName: '', qrImageUrl: '',
+  id: '', methodType: '' as MethodType, displayName: '', qrImageUrl: '',
   bankName: '', bankCode: '', accountNumber: '', accountHolderName: '',
-  gatewaySource: 'own', gatewayProvider: 'NEWEBPAY', gatewayMerchantId: '',
-  gatewayHashKeySet: false, gatewayHashIvSet: false, gatewaySandbox: false,
-  gatewayVerified: false, sortOrder: 0, active: true, instructions: '',
+  sortOrder: 0, active: true, instructions: '',
 };
 
 function MethodFormModal({
@@ -347,24 +281,16 @@ function MethodFormModal({
   const isEdit = !!method;
 
   const [draft, setDraft] = React.useState<PaymentMethod>(EMPTY_METHOD);
-  /** 🔐 只有重新輸入才會送出；留空代表不變更 */
-  const [hashKey, setHashKey] = React.useState('');
-  const [hashIv, setHashIv] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const [gatewayDirty, setGatewayDirty] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
     setDraft(method ?? EMPTY_METHOD);
-    setHashKey('');
-    setHashIv('');
     setError('');
-    setGatewayDirty(false);
   }, [open, method]);
 
   const patch = (p: Partial<PaymentMethod>) => setDraft((d) => ({ ...d, ...p }));
-  const patchGateway = (p: Partial<PaymentMethod>) => { setGatewayDirty(true); patch(p); };
 
   const type = draft.methodType as MethodType;
   const showQr = NEEDS_QR.includes(type);
@@ -381,11 +307,6 @@ function MethodFormModal({
     if (showBank && (!draft.bankName.trim() || !draft.accountNumber.trim())) {
       return t.form.requiredFields;
     }
-    if (showGateway && draft.gatewaySource === 'own') {
-      if (!draft.gatewayMerchantId.trim()) return t.form.requiredFields;
-      if (!draft.gatewayHashKeySet && !hashKey.trim()) return t.form.requiredFields;
-      if (!draft.gatewayHashIvSet && !hashIv.trim()) return t.form.requiredFields;
-    }
     return '';
   };
 
@@ -395,15 +316,7 @@ function MethodFormModal({
     if (err) return;
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 420));
-      onSaved(
-        {
-          ...draft,
-          gatewayHashKeySet: draft.gatewayHashKeySet || !!hashKey.trim(),
-          gatewayHashIvSet: draft.gatewayHashIvSet || !!hashIv.trim(),
-        },
-        isEdit,
-      );
+      await onSaved(draft, isEdit);
     } catch (e) {
       toast.show(
         `${t.messages.saveFailedFull}${e instanceof Error ? e.message : t.messages.unknownError}`,
@@ -437,7 +350,12 @@ function MethodFormModal({
           <Select
             id="methodType" value={draft.methodType}
             options={[...t.methodTypeOptions]}
-            onChange={(e) => patch({ methodType: e.target.value as MethodType | '' })}
+            /*
+             * ⚠️ 下拉的第一項是「請選擇」（空字串），而 `PaymentMethodRow.methodType`
+             * 不含空字串——那是刻意的：能存進資料庫的一定是六個列舉值之一。
+             * 這裡的 cast 只發生在 draft 上，`validate()` 會在送出前擋掉沒選的情況。
+             */
+            onChange={(e) => patch({ methodType: e.target.value as MethodType })}
           />
         </FormGroup>
 
@@ -451,31 +369,27 @@ function MethodFormModal({
       </div>
 
       {/* -------------------------------------------------------- QR Code */}
+      {/*
+        * ⚠️ 這裡原本是一個 `type="file"` 的選檔器，但它 **沒有接任何上傳**：
+        * `onChange` 只做 `patch({ qrImageUrl: file.name })`，於是資料庫存進去的是
+        * 「line-pay.png」這種字串，卡片上顯示的也是檔名，圖片本身從來沒有離開過
+        * 這台電腦。店家會以為 QR 圖已經上傳好了——那是這一頁原本那種假成功的
+        * 另一個形狀（2026-09-09 最終風險評估 MINOR-1）。
+        *
+        * 這一版改成誠實的圖片網址欄位：填什麼就存什麼、重新整理讀得回來。
+        * app 內直接上傳（走 `/api/upload` 與一個新的 storage bucket）需要一支
+        * storage migration，不在本次範圍內，已列為後續事項。
+        */}
       {showQr ? (
         <FormGroup>
-          <Label htmlFor="qrUpload">{t.form.qrCode}</Label>
+          <Label htmlFor="qrImageUrl">{t.form.qrCode}</Label>
           <Input
-            id="qrUpload" type="file" accept="image/*" className="mb-2"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file && file.size > QR_MAX_BYTES) {
-                toast.show(t.form.qrTooLarge, 'warning');
-                e.target.value = '';
-                return;
-              }
-              patch({ qrImageUrl: file ? file.name : '' });
-            }}
+            id="qrImageUrl" type="url" inputMode="url"
+            value={draft.qrImageUrl}
+            placeholder={t.form.qrUrlPlaceholder}
+            onChange={(e) => patch({ qrImageUrl: e.target.value })}
           />
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-secondary">
-              {draft.qrImageUrl || t.form.qrNoImage}
-            </span>
-            {draft.qrImageUrl ? (
-              <Button variant="outline" size="sm" onClick={() => patch({ qrImageUrl: '' })}>
-                {t.form.qrRemove}
-              </Button>
-            ) : null}
-          </div>
+          <FormText>{t.form.qrUrlHint}</FormText>
         </FormGroup>
       ) : null}
 
@@ -532,121 +446,25 @@ function MethodFormModal({
       ) : null}
 
       {/* --------------------------------------------------- 線上刷卡付款 */}
+      {/*
+        * ⚠️ 這裡原本是一整組金流設定：自有／示範帳號的單選、金流商下拉、Merchant ID、
+        * HashKey、HashIV、沙箱勾選，外加「已驗證開通／尚未驗證」的狀態橫幅。
+        *
+        * **那些欄位沒有任何後端會儲存**——填了、按儲存、重整就消失；而旁邊的
+        * 「實刷測試並開通」按了之後會把 gatewayVerified 設成 true 並顯示「已驗證開通」，
+        * 實際上一次金流呼叫都沒發生。其他假成功頂多是資料沒存，這一個會讓店家
+        * 對「能不能收到錢」做出錯誤判斷。
+        *
+        * 線上刷卡需要藍新／綠界的商店帳號（#9 第三步，與 #12／#32 綁定）。在那之前
+        * 這一頁對它只做一件事：說實話。等第三步落地時，把下面這段 Alert 換回真正的
+        * 設定欄位，並且必須同時證明「實刷測試」真的會呼叫金流商。
+        */}
       {showGateway ? (
-        <div className="mb-4 rounded-md border border-neutral-250 p-3">
-          <p className="form-text">
-            {t.form.onlineIntroLead}
-            <strong>{t.form.onlineIntroStrong}</strong>
-            {t.form.onlineIntroTail}
-          </p>
-          <p className="form-text">
-            {t.form.onlineStepLead}
-            <strong>{t.form.onlineStepStrong}</strong>
-            {t.form.onlineStepMiddle}
-            <strong>{t.form.onlineStepStrong2}</strong>
-            {t.form.onlineStepTail}
-          </p>
-          <p className="form-text">
-            {t.form.onlineApplyNote}
-            {' '}
-            <a
-              className="inline-flex items-center gap-1 underline"
-              href={NEWEBPAY_APPLY_URL}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {t.form.onlineApplyLink}<ExternalLink size={12} />
-            </a>
-          </p>
-
-          <FormGroup>
-            <Label>{t.form.gatewaySource}</Label>
-            <label className="mb-1 flex items-center gap-2 text-base">
-              <input
-                type="radio" name="gatewaySource" checked={draft.gatewaySource === 'own'}
-                onChange={() => patchGateway({ gatewaySource: 'own' })}
-              />
-              {t.form.gatewaySourceOwn}
-            </label>
-            <label className="flex items-center gap-2 text-base">
-              <input
-                type="radio" name="gatewaySource" checked={draft.gatewaySource === 'demo'}
-                onChange={() => patchGateway({ gatewaySource: 'demo' })}
-              />
-              {t.form.gatewaySourceDemo}
-            </label>
-          </FormGroup>
-
-          {draft.gatewaySource === 'demo' ? (
-            <Alert tone="info" className="mb-3">
-              {t.form.demoNoticeLead}
-              <strong>{t.form.demoNoticeStrong}</strong>
-              {t.form.demoNoticeMiddle}
-              <strong>{t.form.demoNoticeCard}</strong>
-              {t.form.demoNoticeMiddle2}
-              <strong>{t.form.demoNoticeStrong2}</strong>
-              {t.form.demoNoticeTail}
-            </Alert>
-          ) : (
-            <>
-              <FormGroup>
-                <Label required htmlFor="gatewayProvider">{t.form.gatewayProvider}</Label>
-                <Select
-                  id="gatewayProvider" value={draft.gatewayProvider}
-                  options={[...t.form.gatewayProviderOptions]}
-                  onChange={(e) => patchGateway({
-                    gatewayProvider: e.target.value as GatewayProvider,
-                  })}
-                />
-              </FormGroup>
-
-              <div className="grid gap-x-4 md:grid-cols-2">
-                <FormGroup>
-                  <Label required htmlFor="gatewayMerchantId">{t.form.merchantId}</Label>
-                  <Input
-                    id="gatewayMerchantId" value={draft.gatewayMerchantId}
-                    placeholder={t.form.merchantIdPlaceholder}
-                    onChange={(e) => patchGateway({ gatewayMerchantId: e.target.value })}
-                  />
-                </FormGroup>
-
-                <FormGroup>
-                  <Label required htmlFor="gatewayHashKey">{t.form.hashKey}</Label>
-                  <Input
-                    id="gatewayHashKey" value={hashKey}
-                    placeholder={draft.gatewayHashKeySet ? t.form.hashKeySet : t.form.hashKeyPlaceholder}
-                    onChange={(e) => { setGatewayDirty(true); setHashKey(e.target.value); }}
-                  />
-                </FormGroup>
-
-                <FormGroup>
-                  <Label required htmlFor="gatewayHashIv">{t.form.hashIv}</Label>
-                  <Input
-                    id="gatewayHashIv" value={hashIv}
-                    placeholder={draft.gatewayHashIvSet ? t.form.hashIvSet : t.form.hashIvPlaceholder}
-                    onChange={(e) => { setGatewayDirty(true); setHashIv(e.target.value); }}
-                  />
-                </FormGroup>
-              </div>
-
-              <label className="mb-2 flex items-center gap-2 text-base">
-                <input
-                  type="checkbox" checked={draft.gatewaySandbox}
-                  onChange={(e) => patchGateway({ gatewaySandbox: e.target.checked })}
-                />
-                {t.form.sandbox}
-              </label>
-            </>
-          )}
-
-          {gatewayDirty ? (
-            <Alert tone="warning">{t.testCharge.dirtyBeforeTest}</Alert>
-          ) : draft.gatewayVerified ? (
-            <Alert tone="success" icon={<BadgeCheck size={16} />}>{t.badges.verified}</Alert>
-          ) : (
-            <Alert tone="warning">{t.badges.notVerifiedLong}</Alert>
-          )}
-        </div>
+        <Alert tone="warning" className="mb-3">
+          <div className="font-medium">{t.onlineNotReady.title}</div>
+          <p className="form-text">{t.onlineNotReady.description}</p>
+          <p className="form-text">{t.onlineNotReady.formNotice}</p>
+        </Alert>
       ) : null}
 
       <div className="grid gap-x-4 md:grid-cols-2">

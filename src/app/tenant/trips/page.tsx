@@ -17,7 +17,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { listTrips } from '@/services/tours';
+import {
+  createTrip, deleteTrip, listTrips, publishTrip, requestMidaoListing,
+} from '@/services/tours';
+import { ApiError } from '@/lib/api';
 import { navLabel } from '@/i18n/zh-TW/nav';
 import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { tripsPage as t } from '@/i18n/zh-TW/pages/trips';
@@ -56,6 +59,8 @@ export default function TripsPage() {
   const [deleteTarget, setDeleteTarget] = React.useState<Trip | null>(null);
   const [unpublishTarget, setUnpublishTarget] = React.useState<Trip | null>(null);
   const [midaoTarget, setMidaoTarget] = React.useState<Trip | null>(null);
+  /** 端點進行中：避免連點造成重複請求，也讓對話框的確認鈕停用 */
+  const [busy, setBusy] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -80,35 +85,73 @@ export default function TripsPage() {
     return true;
   }), [rows, statusFilter, midaoFilter, keyword]);
 
+  /**
+   * issue #8：列表頁這四個操作 ＋「新增行程」原本**只改頁面記憶體**——
+   * `setRows(...)` 之後顯示成功訊息，重新整理就恢復舊狀態。端點與 service
+   * （`publishTrip` / `requestMidaoListing` / `deleteTrip` / `createTrip`）**早就存在**，
+   * 缺的只是這一層接線。
+   *
+   * 統一規則，四個操作共用：
+   *   ① 先呼叫端點，**成功之後才** `await load()` 重讀清單——不做樂觀更新。
+   *      樂觀更新會讓失敗時畫面停在「已發布」而資料庫還是草稿，正是要修的假成功。
+   *   ② 失敗顯示**後端的真實訊息**（`ApiError.message`），不是自己編一句「失敗」。
+   *      店家才分得出是未訂閱 TOUR_MODULE、名稱重複、還是網路問題。
+   *   ③ 失敗時**不關閉對話框、不清掉 target**，讓店家可以重試。
+   */
+  const runAction = async (fn: () => Promise<unknown>, successMessage: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+      toast.show(successMessage);
+      return true;
+    } catch (e) {
+      toast.show(
+        `${t.messages.actionFailedPrefix}${e instanceof ApiError ? e.message : ''}`,
+        'danger',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   /** 只切換商店頁可見性；Midao 前台不受影響 */
-  const togglePublish = (trip: Trip) => {
+  const togglePublish = async (trip: Trip) => {
     if (trip.status === 'PUBLISHED') { setUnpublishTarget(trip); return; }
-    setRows((prev) => prev.map((r) => (r.id === trip.id ? { ...r, status: 'PUBLISHED' } : r)));
-    toast.show(t.messages.published);
+    await runAction(() => publishTrip(trip.id, true), t.messages.published);
   };
 
-  const doUnpublish = () => {
+  const doUnpublish = async () => {
     if (!unpublishTarget) return;
-    setRows((prev) => prev.map((r) => (r.id === unpublishTarget.id ? { ...r, status: 'DRAFT' } : r)));
-    setUnpublishTarget(null);
-    toast.show(t.messages.unpublished);
+    const ok = await runAction(
+      () => publishTrip(unpublishTarget.id, false), t.messages.unpublished,
+    );
+    if (ok) setUnpublishTarget(null);
   };
 
-  const doRequestMidao = () => {
+  const doRequestMidao = async () => {
     if (!midaoTarget) return;
-    setRows((prev) => prev.map((r) => (
-      r.id === midaoTarget.id ? { ...r, midaoListing: 'PENDING', midaoListingNote: '' } : r
-    )));
-    setMidaoTarget(null);
-    toast.show(t.messages.midaoRequested);
+    const ok = await runAction(
+      () => requestMidaoListing(midaoTarget.id), t.messages.midaoRequested,
+    );
+    if (ok) setMidaoTarget(null);
   };
 
-  const doDelete = () => {
+  const doDelete = async () => {
     if (!deleteTarget) return;
-    setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    toast.show(t.messages.deleted);
+    const ok = await runAction(() => deleteTrip(deleteTarget.id), t.messages.deleted);
+    if (ok) setDeleteTarget(null);
   };
+
+  /**
+   * 「新增行程」原本是一個空的 onClick（註解寫著「骨架：新增行程表單」）——
+   * 按下去完全沒有反應。建立一筆草稿後重讀清單，店家再進詳情頁改名稱與內容。
+   * 草稿不會出現在商店頁，所以不會有「按錯就對顧客曝光」的風險。
+   */
+  const doCreate = () => runAction(
+    () => createTrip({ title: t.messages.untitled }), t.messages.created,
+  );
 
   const duplicate = (trip: Trip) => {
     setRows((prev) => [
@@ -167,7 +210,8 @@ export default function TripsPage() {
             variant="ghost" size="sm"
             title={r.status === 'PUBLISHED' ? t.actions.unpublish : t.actions.publish}
             aria-label={r.status === 'PUBLISHED' ? t.actions.unpublish : t.actions.publish}
-            onClick={() => togglePublish(r)}
+            disabled={busy}
+            onClick={() => void togglePublish(r)}
           >
             {r.status === 'PUBLISHED' ? <Eye size={14} className="text-success" />
               : <EyeOff size={14} className="text-neutral-400" />}
@@ -240,7 +284,7 @@ export default function TripsPage() {
                 <ExternalLink size={15} />{t.actions.viewShop}
               </Button>
             </Link>
-            <Button onClick={() => { /* 骨架：新增行程表單 */ }}>
+            <Button disabled={busy} onClick={() => void doCreate()}>
               <Plus size={15} />{t.actions.create}
             </Button>
           </>
@@ -332,7 +376,7 @@ export default function TripsPage() {
       <ConfirmModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={doDelete}
+        onConfirm={() => void doDelete()}
         title={t.confirm.deleteTitle}
         message={deleteTarget ? t.confirm.delete(deleteTarget.title) : ''}
         confirmText={t.actions.delete}
@@ -342,7 +386,7 @@ export default function TripsPage() {
       <ConfirmModal
         open={!!unpublishTarget}
         onClose={() => setUnpublishTarget(null)}
-        onConfirm={doUnpublish}
+        onConfirm={() => void doUnpublish()}
         title={t.confirm.unpublishTitle}
         message={t.confirm.unpublish}
         confirmText={t.actions.unpublish}
@@ -352,7 +396,7 @@ export default function TripsPage() {
       <ConfirmModal
         open={!!midaoTarget}
         onClose={() => setMidaoTarget(null)}
-        onConfirm={doRequestMidao}
+        onConfirm={() => void doRequestMidao()}
         title={t.confirm.requestMidaoTitle}
         message={t.confirm.requestMidao}
         confirmText={t.actions.requestMidao}

@@ -84,8 +84,8 @@ export const portfolioPage = {
     extraImages: '其他圖片（選填，最多 8 張）',
     extraImagesHelp: '可一次選多張，讓作品展示更豐富',
     extraImagesMax: 8,
-    sortOrder: '排序',
-    sortOrderHelp: '數字越小排越前面',
+    sortOrder: '目前顯示順序',
+    sortOrderHelp: '後端只能透過卡片上的「上移／下移」調整順序，此欄位僅顯示目前位置',
     enabled: '啟用',
   },
 

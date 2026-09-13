@@ -31,6 +31,20 @@ if (existsSync(envTestPath)) {
 const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
 
+/**
+ * 外部站台模式（Issue #27 驗收：對 Vercel Preview 實測）。
+ * -----------------------------------------------------------------------------
+ * 設了 `E2E_BASE_URL` 就打那個站，並且**不啟動 webServer**（站台已經在外面跑，
+ * 再起一份 next dev 只是白佔 3100 埠、還會讓人誤以為測的是本機）。
+ *
+ * 沒設時一切照舊：baseURL 仍是 http://localhost:3100、webServer 照原樣啟動、
+ * `.env.test` 載入與 PLAYWRIGHT_BROWSERS_PATH 處理完全不變。
+ *
+ * ⚠️ 指向外部站台**不等於**可以隨便指：spec 進到任何動作之前會先把目標
+ * Supabase 專案 ref 讀回來比對（見 tests/e2e-target-guard.ts），不是 TEST 就硬失敗。
+ */
+const EXTERNAL_BASE_URL = process.env.E2E_BASE_URL?.trim() || '';
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -39,7 +53,7 @@ export default defineConfig({
   reporter: 'list',
 
   use: {
-    baseURL: BASE_URL,
+    baseURL: EXTERNAL_BASE_URL || BASE_URL,
     trace: 'on-first-retry',
   },
 
@@ -67,6 +81,9 @@ export default defineConfig({
   // .env.test 的變數 + NEXT_PUBLIC_USE_MOCK=false，起 next dev -p 3100。
   // reuseExistingServer: true —— 如果 `npm run test:integration` 或手動起的
   // dev server 已經在跑，直接沿用，不重複啟動。
+  // E2E_BASE_URL 有值＝站台在外面（Preview），不啟動本機 server；
+  // 沒值時這一整塊與加這行之前逐字相同。
+  ...(EXTERNAL_BASE_URL ? {} : {
   webServer: {
     command: `npx next dev -p ${PORT}`,
     url: BASE_URL,
@@ -88,4 +105,5 @@ export default defineConfig({
       CRON_SECRET: process.env.TEST_CRON_SECRET ?? '',
     },
   },
+  }),
 });

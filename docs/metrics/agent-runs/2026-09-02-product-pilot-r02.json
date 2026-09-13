@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-02-product-pilot-r02",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-02T16:10:00Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "owner-decision",
+      "ref": "docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md",
+      "note": "Free per-PR local Supabase; one shared remote canonical TEST; paid Preview Branch disabled."
+    },
+    {
+      "type": "github-main",
+      "ref": "c487311d0c4a0fe106b2f3cc71f7e431418f22ed",
+      "note": "Live main used to start Run 2 after verified PR #133 merge."
+    },
+    {
+      "type": "github-issue",
+      "ref": "issues/8",
+      "note": "Bounded #8-A trip catalog/plan/departure/addon backend only; #8-B remains separate."
+    },
+    {
+      "type": "historical-pr",
+      "ref": "pull/95@5ffa70b9f037d4a9c0480f38b009b8c022158a5c",
+      "note": "Used only as a source map. The stale 65-file PR is not merged or reused as current acceptance."
+    }
+  ],
+  "main": {
+    "startSha": "c487311d0c4a0fe106b2f3cc71f7e431418f22ed",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 1,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 1,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 1,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": 100,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 1,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": 100,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "Run 2 starts with one bounded Terra lane while the post-#133 main canonical TEST is still finishing.",
+    "No completion, remote TEST, merge, Issue-close or usage claim is made at initialization.",
+    "Historical PR #95 is reduced to a current-main selective rebuild; seed, payment, cron and governance files are excluded."
+  ],
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

@@ -97,6 +97,13 @@ export const tripsPage = {
     slugLabel: '網址代稱',
     slugPlaceholder: '僅限小寫英文、數字、連字號',
     slugHelp: '公開商店頁網址會用到，建立後盡量不要更動。',
+    /**
+     * issue #259：以下五個欄位（標語、費用不含、注意事項、集合地圖連結、退費規則）
+     * 在 `trips` 表**沒有對應欄位**（0066 建表時未涵蓋），`tripApiPayload()` 也不會
+     * 帶上它們。詳情頁的儲存接上真實端點之後，其餘欄位都會持久化，只有這五個不會
+     * ——與其讓店家以為存好了，不如把這件事寫在欄位旁邊。
+     * 補上 migration 需要擁有者逐次具名的正式庫 DDL 授權，見 #259。
+     */
     taglineLabel: '一句話標語',
     taglinePlaceholder: '例：跟著在地船長，找到那群飛旋海豚',
     summaryLabel: '簡介',
@@ -149,6 +156,10 @@ export const tripsPage = {
       review: '審核',
       status: '狀態',
       actions: '操作',
+    },
+    labels: {
+      moveUp: '上移',
+      moveDown: '下移',
     },
     fields: {
       nameLabel: '方案名稱',
@@ -215,6 +226,33 @@ export const tripsPage = {
       count: (n: number) => `${n} 個季節`,
       none: '未設定',
     },
+    quick: {
+      title: '快速編輯方案',
+      createTitle: '新增方案',
+      intro: '只調整最常用的內容；進階販售規則會在後續設定頁處理。',
+      contentLabel: '方案內容',
+      contentPlaceholder: '讓旅客知道這個方案包含什麼。',
+      priceHelp: '目前以每人價格保存。',
+      childPriceToggle: '設定兒童價格',
+      childPriceRemove: '取消兒童價格',
+      activeHelp: '暫停後，這個方案不會提供新的旅客訂單選擇。',
+      previewTitle: '公開頁預覽',
+      previewEmpty: '儲存方案名稱與內容後，這裡會顯示公開頁預覽摘要。',
+      previewLink: '開啟商店頁預覽',
+      advancedHint: '需要調整人數或訂金時，開啟進階設定；時長、成團門檻與季節等會在後續切片提供。',
+      save: '儲存快速編輯',
+      saving: '儲存並確認中…',
+    },
+    advanced: {
+      title: '方案進階設定',
+      intro: '這一版先提供人數與訂金政策；時長、成團門檻與季節等會在後續切片處理。',
+      open: '開啟進階設定',
+      backToQuick: '回到快速編輯',
+      requireQuickSave: '請先儲存方案基本資料，再設定進階欄位。',
+      scopeNote: '本切片不回寫既有團次；此設定會套用到之後新建立的團次，已建立或已販售中的團次維持原設定。完整團次／訂單快照與出發時定價會在後續切片處理。',
+      save: '儲存進階設定',
+      saving: '儲存並確認中…',
+    },
   },
 
   /* --------------------------------------------------------------- 季節 */
@@ -248,6 +286,7 @@ export const tripsPage = {
     columns: {
       date: '出團日期',
       plan: '方案',
+      guide: '導遊',
       seats: '名額',
       status: '狀態',
       note: '備註',
@@ -261,6 +300,31 @@ export const tripsPage = {
       capacityHelp: '調整名額時不可低於已售出的人數。',
       noteLabel: '備註',
       notePlaceholder: '只有你看得到，例：船班已確認',
+      /* ---------------- issue #37：團次實際執行人員 ---------------- */
+      primaryLabel: '主導遊',
+      primaryPlaceholder: '請選擇主導遊',
+      assistantLabel: '協同導遊',
+      assistantHelp: '可複選。協同導遊與主導遊一樣會佔用該時段，不能同時被排進另一團或一般預約。',
+    },
+    /* ---------------- issue #37：導遊指派的畫面文字 ---------------- */
+    guide: {
+      /** 既有團次可以誠實地沒有指派；不替舊資料補一個猜的主導遊。 */
+      unassigned: '未指派',
+      assistantCount: (n: number) => `＋${n} 位協同`,
+      /** 單人店：畫面不顯示選擇器，由後端自動指派唯一一位可接案人員。 */
+      soloHint: (name: string) => `目前只有一位可接案人員（${name}），系統會自動指派為主導遊。`,
+      /** 0 位可接案人員：開團會被擋下，先說清楚為什麼，而不是讓他按了才失敗。 */
+      noneHint: '目前沒有可接案的人員，無法開放報名。請先到「員工」新增一位可接案人員。',
+      /** 恢復銷售時舊團次還沒有主導遊：不能讓店家撞上一個沒地方修的 400。 */
+      reopenNeedsGuide: '這個團次還沒有指定主導遊，恢復銷售前請先選擇一位',
+      conflictTitle: '有日期因撞班被跳過',
+      conflictRow: (date: string, name: string, text: string) => `${date}　${name}：${text}`,
+      reason: {
+        SHIFT: '該日未排班',
+        BOOKING: '已有一般服務預約',
+        BLOCK: '該時段已封鎖',
+        DEPARTURE: '已被其他團次指派',
+      },
     },
     batch: {
       title: '批次開團',
@@ -341,7 +405,12 @@ export const tripsPage = {
     seasonSaved: '季節已儲存',
     seasonDeleted: '季節已刪除',
     departureCreated: '團次已建立',
+    /**
+     * 數字必須來自後端回傳的 `created`，不能用前端自己算日曆得到的筆數：
+     * 撞到「同方案同日同時」的既有團次時後端會略過，兩個數字會不一樣。
+     */
     departureBatchCreated: (n: number) => `已建立 ${n} 個團次`,
+    departureBatchSkipped: (n: number) => `，另有 ${n} 個團次因日期時間重複而略過`,
     departureUpdated: '團次已更新',
     departureDeleted: '團次已刪除',
     addonSaved: '加購項目已儲存',
@@ -349,5 +418,24 @@ export const tripsPage = {
     slugTaken: '這個網址代稱已被使用',
     needPlan: '請先建立至少一個方案',
     loadFailed: '載入失敗，請稍後再試',
+    /**
+     * issue #8：列表頁那四個操作與「新增行程」原本只改頁面記憶體，重整就恢復舊狀態。
+     * 接上真實端點之後，失敗必須顯示**後端的真實訊息**，而不是一句自己編的「失敗」
+     * ——後者會讓店家不知道是權限、名稱重複還是網路問題。這個前綴後面接 ApiError.message。
+     */
+    actionFailedPrefix: '操作失敗：',
+    /** 「新增行程」建立的草稿標題（店家接著在詳情頁改成真正的名稱） */
+    untitled: '未命名行程',
+    planNameRequired: '請輸入方案名稱',
+    planPriceInvalid: '請輸入有效的基本價格',
+    planChildPriceInvalid: '請輸入有效的兒童價格',
+    planMinParticipantsInvalid: '最少人數必須是至少 1 的整數',
+    planMaxParticipantsInvalid: '最多人數必須是至少 1 的整數',
+    planPartyRangeInvalid: '最多人數不得小於最少人數',
+    planDepositInvalid: '請檢查訂金模式與金額',
+    planAdvancedSaved: '方案進階設定已儲存',
+    planSaveFailed: '方案儲存失敗，請稍後再試',
+    planOrderUpdated: '方案顯示順序已更新',
+    planOrderFailed: '方案排序失敗，請稍後再試',
   },
 } as const;

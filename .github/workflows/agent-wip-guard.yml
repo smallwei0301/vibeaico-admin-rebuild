@@ -1,0 +1,363 @@
+name: agent-wip-guard
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, closed]
+
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  guard:
+    if: github.event_name == 'pull_request_target' || (github.event.issue.pull_request && (github.event.comment.body == '/astra-review-check' || startsWith(github.event.comment.body, '/astra-review-check')))
+    concurrency:
+      group: agent-wip-guard-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted B+ policy
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+
+      - name: Validate B+ lane metadata and WIP limits
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('node:path');
+            const { pathToFileURL } = require('node:url');
+            const policy = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/dual-terra-wip-policy.mjs',
+            )).href);
+            const alert = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/agents/wip-alert-fingerprint.mjs',
+            )).href);
+
+            const astra = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs',
+            )).href);
+
+            const { owner, repo } = context.repo;
+            const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };
+            const { data: current } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: payloadCurrent.number,
+            });
+            if (context.eventName === 'issue_comment') {
+              const firstLine = String(context.payload.comment?.body ?? '').split(/\r?\n/, 1)[0].trim();
+              if (firstLine !== '/astra-review-check') throw new Error('Invalid Final Risk refresh command');
+              const commentUser = context.payload.comment?.user ?? {};
+              const trustedAgent = astra.isTrustedFinalRiskAgentUser(commentUser);
+              if (!trustedAgent) {
+                const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
+                if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission or a trusted Final Risk Agent identity');
+              }
+            }
+            const marker = '<!-- agent-wip-guard -->';
+            if (current.state === 'open') {
+              await github.rest.repos.createCommitStatus({ owner, repo, sha: current.head.sha,
+                state: 'pending', context: 'Agent WIP Policy', description: 'Revalidating current policy and review evidence',
+              });
+            }
+            const metadata = policy.parseLaneMetadata(current);
+            const finalRiskRequired = astra.shouldEnforceFinalRisk({
+              pullRequestState: current.state,
+              draft: current.draft === true,
+              laneState: metadata.state,
+            });
+            const astraResult = current.state === 'open' && finalRiskRequired
+              ? await astra.evaluateGithubAstra({ github, owner, repo, current })
+              : { status: current.state === 'open' ? 'DEFERRED_NON_ACTIVE' : 'NOT_REQUIRED', errors: [] };
+            // Pending final review must not prevent collecting TEST evidence.
+            // It does prevent the stable required policy status from passing.
+            const isAgent = metadata.origin === 'AGENT';
+            const metadataErrors = policy.validateLaneMetadata(metadata, {
+              action: context.payload.action ?? '',
+            });
+
+            if (
+              isAgent &&
+              metadata.state === 'ACTIVE' &&
+              metadata.bplusMode === 'TRUE' &&
+              metadata.scorecardPath &&
+              !/^none$/i.test(metadata.scorecardPath) &&
+              metadataErrors.length === 0
+            ) {
+              let scorecardFound = false;
+              for (const ref of [current.head.sha, context.payload.repository.default_branch]) {
+                try {
+                  const response = await github.rest.repos.getContent({
+                    owner,
+                    repo,
+                    path: metadata.scorecardPath,
+                    ref,
+                  });
+                  if (!Array.isArray(response.data) && response.data.type === 'file') {
+                    scorecardFound = true;
+                    break;
+                  }
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
+              }
+              if (!scorecardFound) {
+                metadataErrors.push(`SCORECARD_PATH does not exist on the PR head or main: ${metadata.scorecardPath}`);
+              }
+            }
+
+            const openPulls = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const summary = policy.summarizeActiveLanes(openPulls);
+            const actualFilesByPullRequest = {};
+            const actualFileLoadErrors = [];
+
+            for (const terra of summary.activeTerra) {
+              try {
+                const files = await github.paginate(github.rest.pulls.listFiles, {
+                  owner,
+                  repo,
+                  pull_number: terra.number,
+                  per_page: 100,
+                });
+                actualFilesByPullRequest[String(terra.number)] = [
+                  ...new Set(
+                    files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)),
+                  ),
+                ];
+              } catch (error) {
+                actualFileLoadErrors.push(
+                  `Dual Terra PR #${terra.number} actual changed-file list could not be loaded: ${error.status ?? 'unknown'}`,
+                );
+              }
+            }
+
+            policy.attachActualChangedFiles(summary, actualFilesByPullRequest);
+            const capacity = policy.pilotCapacity(summary);
+            const wipErrors = isAgent && metadata.state === 'ACTIVE'
+              ? [...policy.validateGlobalWip(summary), ...actualFileLoadErrors]
+              : [];
+
+            const labels = {
+              'origin:agent': ['1D76DB', 'PR or Issue explicitly marked as Agent-origin.'],
+              'origin:owner-or-unknown': ['BFDADC', 'No explicit Agent-origin marker.'],
+              'lane:terra-build': ['0E8A16', 'One of up to two qualified free local-isolated Terra delivery lanes.'],
+              'lane:terra-reserve': ['A2EEEF', 'Single-Terra fallback source-only Reserve; disabled during dual pilot.'],
+              'lane:luna-closure': ['5319E7', 'The sole Luna Closure / Janitor lane.'],
+              'lane:test-validation': ['FBCA04', 'The sole remote canonical TEST validation lane.'],
+              'lane:governance': ['D4C5F9', 'Repository governance work.'],
+              'state:active': ['0E8A16', 'Current active B+ lane.'],
+              'state:reserve-ready': ['A2EEEF', 'Reserve source slice is ready for promotion.'],
+              'state:parked': ['BFD4F2', 'Parked; no Agent, push, rerun or polling.'],
+              'state:complete': ['006B75', 'Lane work complete.'],
+              'state:owner-blocked': ['D93F0B', 'Only Owner or external action remains.'],
+              'state:historical': ['EDEDED', 'Historical or superseded evidence only.'],
+              'candidate:active': ['B60205', `Counts toward the maximum of ${policy.MAX_ACTIVE_CANDIDATES} active Product delivery candidates.`],
+              'governance:lane-metadata-incomplete': ['D93F0B', 'B+ lane metadata is missing or invalid.'],
+              'governance:wip-violation': ['B60205', 'B+ Terra, Reserve, Closure, TEST or candidate limit is exceeded.'],
+            };
+
+            for (const [name, [color, description]] of Object.entries(labels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({ owner, repo, name, color, description });
+              }
+            }
+
+            const liveExisting = (current.labels ?? [])
+              .map((label) => typeof label === 'string' ? label : label.name)
+              .filter(Boolean);
+            const managed = new Set(Object.keys(labels));
+            const nextLabels = liveExisting.filter((name) => !managed.has(name));
+            nextLabels.push(isAgent ? 'origin:agent' : 'origin:owner-or-unknown');
+
+            const laneLabels = {
+              TERRA_BUILD: 'lane:terra-build',
+              TERRA_RESERVE: 'lane:terra-reserve',
+              LUNA_CLOSURE: 'lane:luna-closure',
+              TEST_VALIDATION: 'lane:test-validation',
+              GOVERNANCE: 'lane:governance',
+            };
+            const stateLabels = {
+              ACTIVE: 'state:active',
+              READY_FOR_PROMOTION: 'state:reserve-ready',
+              PARKED: 'state:parked',
+              COMPLETE: 'state:complete',
+              OWNER_BLOCKED: 'state:owner-blocked',
+              HISTORICAL: 'state:historical',
+            };
+
+            if (isAgent && laneLabels[metadata.lane]) nextLabels.push(laneLabels[metadata.lane]);
+            if (isAgent && stateLabels[metadata.state]) nextLabels.push(stateLabels[metadata.state]);
+            if (isAgent && metadata.activeCandidate === 'TRUE' && metadata.lane !== 'LUNA_CLOSURE') nextLabels.push('candidate:active');
+            if (metadataErrors.length) nextLabels.push('governance:lane-metadata-incomplete');
+            if (wipErrors.length) nextLabels.push('governance:wip-violation');
+
+            await github.rest.issues.setLabels({
+              owner,
+              repo,
+              issue_number: current.number,
+              labels: [...new Set(nextLabels)],
+            });
+
+            const shouldDispatchTest =
+              context.payload.action === 'edited' &&
+              isAgent &&
+              metadata.lane === 'TEST_VALIDATION' &&
+              metadata.state === 'ACTIVE' &&
+              metadata.testLaneRequired === 'TRUE' &&
+              !liveExisting.includes('lane:test-validation') &&
+              metadataErrors.length === 0 &&
+              wipErrors.length === 0 &&
+              summary.activeTest.length === 1 &&
+              summary.activeTest[0].number === current.number &&
+              current.head.repo.full_name === `${owner}/${repo}`;
+
+            let dispatched = false;
+            if (shouldDispatchTest) {
+              await github.rest.actions.createWorkflowDispatch({
+                owner,
+                repo,
+                workflow_id: 'ci.yml',
+                ref: current.head.ref,
+                inputs: {
+                  dispatch_reason: 'lane_transition',
+                  test_lane_pr: String(current.number),
+                  expected_head: current.head.sha,
+                  base_revision: current.base.sha,
+                },
+              });
+              dispatched = true;
+            }
+
+            const errors = current.state === 'open'
+              ? [...new Set([...metadataErrors, ...wipErrors, ...astraResult.errors])]
+              : [];
+            const policyStatus = astra.finalRiskGateStatus({
+              hasErrors: errors.length > 0,
+              finalRiskRequired,
+            });
+            const fingerprint = errors.length
+              ? alert.buildWipErrorFingerprint({
+                  prNumber: current.number,
+                  headSha: current.head.sha,
+                  errors,
+                })
+              : null;
+            const comments = isAgent
+              ? await github.paginate(github.rest.issues.listComments, {
+                  owner,
+                  repo,
+                  issue_number: current.number,
+                  per_page: 100,
+                })
+              : [];
+            const previous = comments.find((comment) => comment.body?.includes(marker));
+            const duplicateFailure = Boolean(
+              errors.length &&
+              previous &&
+              alert.isDuplicateWipFailure({
+                previousBody: previous.body,
+                fingerprint,
+                headSha: current.head.sha,
+              })
+            );
+
+            if (current.state === 'open') {
+              const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: current.number });
+              if (
+                fresh.head.sha !== current.head.sha ||
+                fresh.base.sha !== current.base.sha ||
+                fresh.body !== current.body ||
+                fresh.draft !== current.draft ||
+                fresh.state !== current.state
+              ) {
+                throw new Error('PR changed during policy evaluation; wait for its current event');
+              }
+              await github.rest.repos.createCommitStatus({
+                owner,
+                repo,
+                sha: current.head.sha,
+                state: policyStatus,
+                context: 'Agent WIP Policy',
+                description: policyStatus === 'failure'
+                  ? `${errors.length} WIP policy error(s); see PR comment`
+                  : policyStatus === 'success'
+                    ? 'B+ lane metadata and WIP policy passed'
+                    : 'Final Risk deferred; Agent WIP Policy intentionally remains pending and is not an approval',
+                target_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              });
+            }
+
+            const actualFileCoverage = summary.activeTerra.length
+              ? summary.activeTerra
+                  .map((terra) => `#${terra.number}:${terra.actualChangedFiles?.length ?? 'not-loaded'}`)
+                  .join(', ')
+              : 'none';
+            const metrics = [
+              ['Final Risk gate', finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'],
+              ['Astra final risk review', astraResult.status],
+              ['Astra change digest', astraResult.changeDigest || 'not-computed'],
+              ['Current PR', `#${current.number}`],
+              ['Run', metadata.runId || 'missing'],
+              ['Free dual-Terra pilot qualified', String(capacity.qualified)],
+              ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
+              ['Terra', `${summary.activeTerra.length}/${capacity.terraMax}`],
+              ['Terra actual files loaded', actualFileCoverage],
+              ['Reserve Terra', `${summary.activeReserve.length}/${capacity.reserveMax}`],
+              ['Luna Closure', `${summary.activeClosure.length}/1`],
+              ['Remote TEST validation', `${summary.activeTest.length}/1`],
+              ['Product candidates', `${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}`],
+              ['TEST dispatched', String(dispatched)],
+              ['Metadata errors', metadataErrors.join('; ') || 'none'],
+              ['WIP errors', wipErrors.join('; ') || 'none'],
+              ['Error fingerprint', fingerprint ?? 'none'],
+              ['Duplicate failure notification suppressed', String(duplicateFailure)],
+            ];
+
+            await core.summary
+              .addHeading('Agent WIP Guard — B+ free dual-Terra pilot')
+              .addTable([
+                [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
+                ...metrics,
+              ])
+              .write();
+
+            if (isAgent) {
+              const body = errors.length
+                ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: ${fingerprint}\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
+                : !finalRiskRequired
+                ? `${marker}\n## Agent WIP Guard: deferred — not an approval\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: DEFERRED_NON_ACTIVE\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- POLICY_STATUS: pending\n\nThis Draft or non-active PR is not eligible for Final Risk yet. The required \`Agent WIP Policy\` status intentionally remains pending; reactivation as an active non-draft PR restores the normal Final Risk gate.`
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
+
+              if (previous) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: current.number, body });
+              }
+
+              if (errors.length) {
+                if (duplicateFailure) {
+                  core.warning(`Duplicate WIP failure suppressed for #${current.number} ${current.head.sha}: ${fingerprint}`);
+                } else {
+                  core.setFailed(errors.join('; '));
+                }
+              }
+            }
+            if (!isAgent && errors.length) core.setFailed(errors.join('; '));

@@ -31,9 +31,16 @@ export const loginPage = {
   oauth: {
     divider: '或使用第三方登入',
     line: '用 LINE 登入',
-    lineHref: '/api/auth/oauth/line/authorize',
     google: '用 Google 登入',
-    googleHref: '/api/auth/oauth/google/authorize',
+    /** 讀取設定狀態中（GET /api/auth/oauth/status 尚未回應） */
+    checking: '設定狀態確認中…',
+    /** 平台尚未設定該 provider 的憑證（configured: false）。
+     *  文案要點出是「平台」層級：這與店家自己在後台設定的 LINE Channel
+     *  是兩套不同的憑證（見 CLAUDE.md 多租戶設定兩層），寫成「第三方登入尚未設定」
+     *  會讓店家誤以為是自己漏設、跑去改租戶設定。 */
+    notConfigured: '平台尚未設定第三方登入',
+    /** 平台已設定憑證，但 authorize/callback 端點尚未建置，仍不得連過去 */
+    buildingFlow: '已設定憑證，登入流程建置中',
     /** #oauthErrorBox：第三方導回失敗時顯示 */
     failedPrefix: '第三方登入失敗：',
   },

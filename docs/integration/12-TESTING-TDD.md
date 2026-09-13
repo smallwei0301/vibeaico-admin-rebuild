@@ -229,6 +229,19 @@ describe('POST /api/bookings/:id/confirm (04 §A-2)', () => {
 
 ### Phase 6（LINE）— 不打真 LINE API
 - 單元：webhook 簽章驗證（正確/錯誤/缺 header）；事件分派決策（keyword 命中優先序 ①→⑤）。
+- **關鍵字回覆附加圖片**（issue #50，`keyword-reply-image.50.test.ts`）：
+  上傳走既有 `/api/upload`；**必須 service role 直查 Storage 證明物件真的存在**，
+  只驗 URL 字串的話，「回一個看起來合理但不存在的網址」會全綠。
+  webhook 命中 → `type=image` 且 `originalContentUrl` 與 DB 保存值**逐字相同**；
+  停用的 reply 不送圖；移除圖片後不再送舊圖。
+  單元層另鎖：canonical migration **真的 `insert into storage.buckets`** 建立該
+  bucket（政策的允許清單提到它不算——`bucket_id in (...)` 只是字串比對，
+  Postgres 不會因為政策引用了不存在的 bucket 而抱怨；PB-024）。
+- **AI 客服設定的欄位歸屬**（issue #27 ①，`ai-settings.27.test.ts`）：
+  否定式斷言（「mock LINE 收到的**不是**提示詞原文」）**必須配一個對照組**
+  ——把提示詞塞回修好前的存法，斷言顧客真的收到提示詞原文。
+  沒有對照組的話，「這條路根本沒被走到」也會全綠，無法區分「修好了」與
+  「這段程式碼沒被執行」。這是本 repo 對所有「斷言某件壞事沒有發生」的通則。
 - 整合：`line.ts` 的 fetch 以環境變數 `LINE_API_BASE` 指向測試內建的 mock
   server（`tests/helpers/line-mock.ts` 用 node http 起本地假 LINE，記錄收到的請求）；
   驗 webhook POST（含正確簽章）→ line_users upsert、chat_messages 寫入、

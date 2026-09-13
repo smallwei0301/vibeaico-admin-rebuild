@@ -12,17 +12,24 @@ import { useToast } from '@/components/ui/Toast';
 import { common } from '@/i18n/zh-TW/common';
 import { loginPage as t } from '@/i18n/zh-TW/pages/login';
 import { ApiError } from '@/lib/api';
-import { login } from '@/services';
+import { getOAuthStatus, login } from '@/services';
+import type { OAuthStatus } from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
-/* 本頁常數（不寫進 src/mock：登入沒有領域資料，只有平台 OAuth 端點）            */
+/* 第三方登入（#26 slice 1）                                                    */
 /* -------------------------------------------------------------------------- */
+/* 誠實復原（docs/DELIVERY-CHAIN.md §5）：authorize/callback 端點還不存在，這兩顆
+ * 按鈕在任何狀態下都不得是 <a href> 也不得可點擊 —— 只用來如實顯示平台是否已經
+ * 設定 OAuth 憑證，不假裝可以真的登入。 */
 
-/** 平台級 OAuth 端點；channel 憑證在 src/config/env.ts，與店家自己的 LINE 帳號無關 */
-const OAUTH = {
-  line: t.oauth.lineHref,
-  google: t.oauth.googleHref,
-} as const;
+/**
+ * 根據載入中／是否已設定憑證，回傳要顯示的說明文字。抽成純函式方便單元測試
+ * 直接餵兩種 configured 值驗證，不需要真的 render 元件或啟動瀏覽器環境。
+ */
+function oauthNoteFor(loading: boolean, configured: boolean): string {
+  if (loading) return t.oauth.checking;
+  return configured ? t.oauth.buildingFlow : t.oauth.notConfigured;
+}
 
 export default function LoginPage() {
   const toast = useToast();
@@ -34,6 +41,27 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = React.useState(false);
   /** #oauthErrorBox：第三方導回失敗時才顯示 */
   const [oauthError, setOauthError] = React.useState('');
+  /** null = 載入中；載入完成後為 GET /api/auth/oauth/status 的真實回應 */
+  const [oauthStatus, setOauthStatus] = React.useState<OAuthStatus | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    getOAuthStatus()
+      .then((status) => {
+        if (!cancelled) setOauthStatus(status);
+      })
+      .catch(() => {
+        // 查詢失敗時維持「尚未設定」的保守顯示，不得默默當作已設定
+        if (!cancelled) setOauthStatus({ google: { configured: false }, line: { configured: false } });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const oauthLoading = oauthStatus === null;
+  const lineNote = oauthNoteFor(oauthLoading, oauthStatus?.line.configured ?? false);
+  const googleNote = oauthNoteFor(oauthLoading, oauthStatus?.google.configured ?? false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,13 +168,31 @@ export default function LoginPage() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <a className="btn btn-line btn-lg btn-block" href={OAUTH.line}>
+          <Button
+            type="button"
+            variant="line"
+            size="lg"
+            block
+            disabled
+            data-testid="oauth-line-disabled"
+            title={lineNote}
+          >
             <MessageCircle size={16} />
             {t.oauth.line}
-          </a>
-          <a className="btn btn-outline btn-lg btn-block" href={OAUTH.google}>
+          </Button>
+          <p className="text-center text-xs text-secondary">{lineNote}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="lg"
+            block
+            disabled
+            data-testid="oauth-google-disabled"
+            title={googleNote}
+          >
             {t.oauth.google}
-          </a>
+          </Button>
+          <p className="text-center text-xs text-secondary">{googleNote}</p>
         </div>
 
         <p className="mt-5 text-center text-base text-secondary">

@@ -21,6 +21,11 @@ export type CouponPayload = {
   /** 空字串 = 未設定／清空 */
   startAt?: string;
   endAt?: string;
+  minOrderAmount?: number | null;
+  maxDiscountAmount?: number | null;
+  giftItem?: string;
+  limitPerCustomer?: number | null;
+  privateMode?: boolean;
 };
 
 /** 新增票券；real 回 { id }（新票券一律 DRAFT），mock 回 undefined（頁面自產本地 id） */
@@ -123,7 +128,7 @@ export const unredeemCouponInstance = (instanceId: string) =>
 
 /* -------------------------------------------------------------- 會員等級 */
 
-/** POST /api/membership-levels、PUT :id 接受的欄位（description/active/isDefault 後端尚無） */
+/** POST /api/membership-levels、PUT :id 接受的欄位。 */
 export type MembershipLevelPayload = {
   name: string;
   color?: string;
@@ -131,6 +136,9 @@ export type MembershipLevelPayload = {
   discountPercent?: number;
   pointRateMultiplier?: number;
   sortOrder?: number;
+  description?: string;
+  active?: boolean;
+  isDefault?: boolean;
 };
 
 /**

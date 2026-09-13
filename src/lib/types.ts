@@ -51,8 +51,55 @@ export type Booking = {
   createdAt: string;
 };
 
+/* ------------------------------------------------------- GUIDE 首頁待處理事項 */
+export type GuideActionInboxPriority = 'IMMEDIATE' | 'TODAY' | 'UPCOMING';
+
+export type GuideActionInboxDepartureDay = 'TODAY' | 'TOMORROW';
+
+type GuideActionInboxItemBase = {
+  id: string;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
+export type GuideActionInboxItem =
+  | (GuideActionInboxItemBase & {
+    kind: 'BOOKING_REQUEST';
+    bookingNo: string;
+    customerName: string;
+    serviceName: string;
+  })
+  | (GuideActionInboxItemBase & {
+    kind: 'BOOKING_PAYMENT';
+    bookingNo: string;
+    customerName: string;
+    serviceName: string;
+    amount: number;
+  })
+  | (GuideActionInboxItemBase & {
+    kind: 'DEPARTURE';
+    tripId: string;
+    tripName: string;
+    planName: string;
+    departureDate: string;
+    startTime: string;
+    capacity: number;
+    seatsBooked: number;
+    departureDay: GuideActionInboxDepartureDay;
+  });
+
 /* ------------------------------------------------------------------ 顧客 */
 export type Gender = '' | 'MALE' | 'FEMALE' | 'OTHER';
+
+/**
+ * 顧客檔案來源（Issue #7，對應 DB customers.source，預設 'MANUAL'）：
+ * MANUAL = 店家後台手動新增；LINE / PUBLIC_BOOKING = 顧客透過 LINE 或公開
+ * 預約頁完成第一筆預約後系統自動建檔（見 customers 頁說明文字）。
+ * 選填：既有呼叫端與 mock 資料未必都已補上這個欄位。
+ */
+export type CustomerSource = 'MANUAL' | 'LINE' | 'PUBLIC_BOOKING';
 
 export type Customer = {
   id: string;
@@ -74,6 +121,7 @@ export type Customer = {
   atRisk: boolean;
   active: boolean;
   createdAt: string;
+  source?: CustomerSource;
 };
 
 /* ------------------------------------------------------------ 服務 / 員工 */
@@ -91,6 +139,9 @@ export type Service = {
   sortOrder: number;
 };
 
+/** #7：排班模式，per-員工屬性（staff.schedule_mode）。FIXED_REST 走週排班，ROTATING 逐日排班。 */
+export type StaffScheduleMode = 'FIXED_REST' | 'ROTATING';
+
 export type Staff = {
   id: string;
   name: string;
@@ -102,6 +153,22 @@ export type Staff = {
   bookable: boolean;
   active: boolean;
   sortOrder: number;
+  /** 選填：舊資料／尚未回填的環境沒有這個欄位，前端一律以 'ROTATING' 當預設。 */
+  scheduleMode?: StaffScheduleMode;
+  /**
+   * 對顧客顯示的名稱。空字串＝沒有另取顯示名，前台沿用 `name`。
+   * 這四個欄位原本是 staff 頁的頁內常數（STAFF_EXTRAS_*，以 mock id 為鍵），
+   * 真實租戶的 id 是 uuid，於是每一位員工都靜默落到 DEFAULT_EXTRAS——空白顯示
+   * 名、空白簡介、maxConcurrentBookings=1、visible=true，顯示在他們真實的姓名
+   * 與職稱旁邊。0082 把它們落地成真欄位。
+   */
+  displayName?: string;
+  /** 前台顯示的簡介。空字串＝還沒寫。 */
+  bio?: string;
+  /** 同一時段可同時承接的預約數，恆 >= 1。 */
+  maxConcurrentBookings?: number;
+  /** 是否顯示在顧客端前台。 */
+  visible?: boolean;
 };
 
 /* ------------------------------------------------------------ 商品 / 訂單 */
@@ -132,6 +199,12 @@ export type ProductOrder = {
   status: ProductOrderStatus;
   paymentStatus: PaymentStatus;
   createdAt: string;
+  /**
+   * 這筆訂單被票券折抵了多少。totalAmount 已經是扣完的金額，這欄是明細，
+   * 讓訂單詳情重新整理後還看得到「折抵過多少」而不是只剩一個變小的總額。
+   * 0 = 沒套用票券（後端 coupon_discount 為 NULL 時對應過來的值）。
+   */
+  couponDiscount?: number;
 };
 
 /* ------------------------------------------------------------------ 票券 */
@@ -149,6 +222,18 @@ export type Coupon = {
   startAt: string;
   endAt: string;
   status: CouponStatus;
+  /** 最低消費門檻；null 表示未設定。 */
+  minOrderAmount?: number | null;
+  /** 百分比折扣的最高折抵金額；null 表示未設定。 */
+  maxDiscountAmount?: number | null;
+  /** 兌換券的兌換項目；空字串表示未設定。 */
+  giftItem?: string;
+  /** 每人限領張數；null 表示未設定。 */
+  limitPerCustomer?: number | null;
+  /** 私密票券旗標。 */
+  privateMode?: boolean;
+  /** 最近一張已核銷實例的代碼；null 表示沒有已核銷實例。 */
+  lastRedeemedCode?: string | null;
 };
 
 /* -------------------------------------------------------------- 會員等級 */
@@ -161,6 +246,12 @@ export type MembershipLevel = {
   pointRateMultiplier: number;
   customerCount: number;
   sortOrder: number;
+  /** 等級說明；空字串表示未設定。 */
+  description?: string;
+  /** 停用的等級不參與自動升級。 */
+  active?: boolean;
+  /** 每租戶至多一個預設等級。 */
+  isDefault?: boolean;
 };
 
 /* ------------------------------------------------------------------ 報表 */
@@ -214,6 +305,12 @@ export type TenantSummary = {
   businessType?: 'LOCAL_SHOP' | 'GUIDE' | 'CLINIC';
   /** 斜槓店家加開的其他模組 */
   extraModules?: ('LOCAL_SHOP' | 'GUIDE' | 'CLINIC')[];
+};
+
+/** GET /api/auth/oauth/status —— 平台 OAuth 憑證是否已設定（見 #26） */
+export type OAuthStatus = {
+  google: { configured: boolean };
+  line: { configured: boolean };
 };
 
 export type SetupStatus = {
@@ -341,6 +438,28 @@ export type TripDeparture = {
   seatsBooked: number;
   status: DepartureStatus;
   note: string;
+  /* ---- issue #37：團次實際執行人員（10-TOUR-DOMAIN §1.3） ---- */
+  /** 主導遊；既有團次可以誠實地是 null（＝未指派），不替舊資料假造。 */
+  primaryStaffId?: string | null;
+  primaryStaffName?: string;
+  assistantStaffIds?: string[];
+  assistantStaffNames?: string[];
+};
+
+/** 團次指派撞班的原因（10-TOUR-DOMAIN §5.2）。 */
+export type DepartureConflictReason = 'SHIFT' | 'BOOKING' | 'BLOCK' | 'DEPARTURE';
+
+export type DepartureConflict = {
+  /** 批次開團時為衝突的那一天；單筆建立／更新時為該團次的日期。 */
+  date: string;
+  staffId: string;
+  staffName: string;
+  reason: DepartureConflictReason;
+  /** 給店家看的說法，例如「已有一般服務預約」。 */
+  text: string;
+  conflictStart?: string;
+  conflictEnd?: string;
+  departureId?: string;
 };
 
 export type TripAddon = {
@@ -398,6 +517,95 @@ export type TourOrder = {
  */
 export type CalendarEventType = 'BOOKING' | 'DEPARTURE' | 'BLOCK' | 'EXTERNAL';
 
+/**
+ * 作品集（/tenant/portfolio ↔ 0005 portfolios 表 + 0075 line_sort_order）。
+ * sortOrder = 公開頁順序（/api/portfolios/reorder 依 ids 索引寫入）；
+ * lineSortOrder = LINE 作品瀏覽選單順序（/api/portfolios/reorder-line）。
+ * 兩者互不影響。
+ */
+export type Portfolio = {
+  id: string;
+  title: string;
+  imageUrl: string;
+  description: string;
+  active: boolean;
+  lineFeatured: boolean;
+  sortOrder: number;
+  lineSortOrder: number;
+  createdAt: string;
+};
+
+/**
+ * 行銷活動（/tenant/campaigns）— 對應 campaigns 表（0005 migration）：
+ * id/name/keyword/content jsonb/start_at/end_at/status/created_at，DB 不拆欄。
+ * status 只有 DRAFT/PUBLISHED/PAUSED/ENDED 四種（沒有獨立持久化的 SCHEDULED，
+ * 那是前端用 status===PUBLISHED && startAt 在未來算出來的顯示狀態）。
+ *
+ * description/type/pushMessage/couponId/bonusPoints/thresholdAmount/recallDays/
+ * isAutoTrigger/imageUrl 全部收在 content jsonb（見
+ * src/app/api/campaigns/route.ts 檔頭註解），這裡把它們攤平方便頁面使用；
+ * src/services/campaigns.ts 負責在讀寫時跟 content 互轉。
+ *
+ * participantCount 沒有列在這個型別裡：repo 內沒有任何來源表可以算「參加人數」
+ * （沒有 campaign_participants，也沒有任何表帶 campaign_id 外鍵），這是純衍生
+ * 統計值，一律沒有資料可讀。頁面必須顯示誠實佔位，不可捏造 —— Issue #23
+ * Owner 待決事項：若要顯示這個數字，需要先決定它的資料來源。
+ */
+export type CampaignStatus = 'DRAFT' | 'PUBLISHED' | 'PAUSED' | 'ENDED';
+export type CampaignType =
+  | 'BIRTHDAY' | 'NEW_CUSTOMER' | 'SPENDING_THRESHOLD' | 'LIMITED_TIME' | 'RECALL' | 'REFERRAL';
+
+export type Campaign = {
+  id: string;
+  name: string;
+  keyword: string;
+  description: string;
+  type: CampaignType | '';
+  status: CampaignStatus;
+  startAt: string | null;
+  endAt: string | null;
+  pushMessage: string;
+  couponId: string | null;
+  bonusPoints: number;
+  thresholdAmount: number | null;
+  recallDays: number | null;
+  isAutoTrigger: boolean;
+  imageUrl: string;
+  createdAt: string;
+};
+
+/**
+ * 行銷推播（/tenant/marketing，marketing_pushes 表）— Issue #24。
+ *
+ * 語意見 src/app/api/marketing/pushes/route.ts 檔頭註解：
+ * - status：DRAFT/SCHEDULED/SENDING/SENT/CANCELLED/FAILED（0005 migration + LINE 發送失敗）。
+ *   SENDING 是條件式 update 佔位用的暫態，發送請求完成前後就會落到 SENT 或 FAILED。
+ * - targetType：ALL 全部已加好友顧客；MEMBERSHIP_LEVEL／TAG／CUSTOM 的 targetValue 語意
+ *   各自不同，見同一份檔頭註解，前端不得自行發明語意。
+ * - 沒有 estimatedCount（預估受眾人數）或 failedCount（個別失敗人數）欄位：
+ *   marketing_pushes 沒有任何欄位或關聯表能在發送前算出受眾人數，也不記錄逐筆失敗數，
+ *   這是誠實缺口，不可捏造 —— 見 Issue #24 Owner 待決事項。
+ */
+export type MarketingPushStatus = 'DRAFT' | 'SCHEDULED' | 'SENDING' | 'SENT' | 'CANCELLED' | 'FAILED';
+export type MarketingPushTargetType = 'ALL' | 'MEMBERSHIP_LEVEL' | 'TAG' | 'CUSTOM';
+
+export type MarketingPush = {
+  id: string;
+  title: string;
+  content: string;
+  imageUrl: string;
+  note: string;
+  targetType: MarketingPushTargetType;
+  /** MEMBERSHIP_LEVEL=等級 id；TAG=標籤名稱；CUSTOM=LINE User ID 換行清單 */
+  targetValue: string;
+  targetLabel: string;
+  status: MarketingPushStatus;
+  sentCount: number;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  createdAt: string;
+};
+
 export type CalendarEvent = {
   /** 合併陣列內唯一：`<type 小寫>:<來源列 uuid>`（不同表的 uuid 理論上不撞，前綴保險） */
   id: string;
@@ -423,6 +631,12 @@ export type CalendarEvent = {
     capacity?: number;
     /* BLOCK */
     reason?: string;
+    /**
+     * WEEKLY 封鎖規則查詢時展開成多次發生時，`id` 會帶上發生時間讓合併陣列內
+     * 保持唯一（型別頂端註解的規則）；這裡另外帶「來源規則列」的真實 uuid，
+     * 供編輯／刪除呼叫 /api/block-times/:id 用（同一規則的每次發生都指回它）。
+     */
+    blockTimeId?: string;
     /* EXTERNAL */
     calendarName?: string;
   };

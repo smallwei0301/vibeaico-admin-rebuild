@@ -87,6 +87,9 @@ export const campaignsPage = {
     pushMessage: '推播訊息',
     campaignName: '活動名稱',
     thresholdAmount: '滿額門檻金額',
+    /** 後端沒有任何來源表可以算「參加人數」（沒有 campaign_participants，也沒有
+     * 帶 campaign_id 的表），這是誠實佔位，不是假資料 —— 見 Issue #23。 */
+    participantsUnavailable: '尚未提供',
   },
 
   /* --------------------------------------------------------------- 動作 */
@@ -145,14 +148,14 @@ export const campaignsPage = {
 
     couponId: '關聯票券',
     couponNone: '不關聯票券',
-    couponHelp: '發布時自動發放票券給追蹤者',
+    couponHelp: '活動觸發時自動發放給該位顧客（不是發布時、也不是發給全體追蹤者）',
     couponPrivateLabel: (name: string) => `🔒 ${name}（私密券）`,
     couponPrivateWarning:
       '⚠️ 私密票券：只有「已建立顧客資料」的好友會收到券；沒有資料的好友收到推播後也無法自行領取這張券。',
 
     bonusPoints: '贈送點數',
     bonusPointsPlaceholder: '0',
-    bonusPointsHelp: '排程觸發時自動贈送點數',
+    bonusPointsHelp: '活動觸發時自動加到該位顧客的點數（1 點 = 1 元）',
 
     thresholdAmount: '滿額門檻金額 *',
     thresholdAmountPrefix: 'NT$',
@@ -174,7 +177,7 @@ export const campaignsPage = {
     checkLabel: '請檢查：',
     featureMissing: (featureName: string) => `尚未訂閱「${featureName}」功能（49 點/月）`,
     switchOff: (switchName: string) => `店家設定 → 通知設定的「${switchName}」開關尚未開啟`,
-    tail: '活動仍可以建立並保存，補齊上面的條件後就會開始自動發送。',
+    tail: '活動仍可以建立並保存。',
     /** 自動觸發活動對應的通知設定開關名稱 */
     switchNames: {
       BIRTHDAY: '自動推播生日祝福',
@@ -183,6 +186,70 @@ export const campaignsPage = {
     goSubscribe: '前往訂閱',
     goSettings: '前往設定',
     loadFailed: '自動活動前提檢查失敗:',
+  },
+
+  /**
+   * issue #176 誠實標示：活動頁與「通知設定」頁對生日祝福／顧客喚回**有兩套 UI，
+   * 但只有一套會執行**。真正在跑的是每日排程（birthday-greetings 09:00、
+   * customer-recall 14:00），它們讀的是 tenant_settings.notify，不是 campaigns。
+   *
+   * 這裡不移除任何欄位（DELIVERY-CHAIN §5「復原而非取消」——它們是未來要實作的
+   * 產品意圖），只把「這一份設定現在不會被送出去」講清楚，並指路到真正生效的頁面。
+   */
+  truthNotice: {
+    /** BIRTHDAY / RECALL：功能真的在跑，但吃的是另一頁的設定 */
+    drivenElsewhereTitle: '這裡的訊息內容不會被發送出去',
+    drivenElsewhere: (switchName: string) =>
+      `這項功能確實每天都在自動執行，但它發送的訊息與天數是讀「店家設定 → 通知設定」裡的「${switchName}」，`
+      + '不是這張表單。在這裡修改推播訊息，實際發出去的內容不會改變。',
+    goSettingsCta: '前往通知設定修改實際發送的內容',
+    /** 後端尚無觸發點的類型 */
+    notImplementedTitle: '這個活動類型目前不會自動執行',
+    notImplemented:
+      '目前後端還沒有這個類型的觸發點，活動可以建立並保存，但不會自動發送訊息、發券或送點數。'
+      + '唯一會真的發生的事情是：顧客在 LINE 打出與「活動關鍵字」完全相符的文字時，會收到你設定的回覆內容。',
+    /**
+     * 發券／送點數在**尚未接觸發點**的類型仍然不會自動發放。
+     * issue #176 第 2、3 項已讓 NEW_CUSTOMER / SPENDING_THRESHOLD / LIMITED_TIME
+     * 三型真的會發，那三型顯示的是下面的 rewardActive 系列，不是這一句。
+     */
+    rewardsInert:
+      '「贈送票券」與「贈送點數」在這個活動類型還不會自動發放，設定會保存下來，等該類型的觸發點實作後生效。',
+
+    /* -- issue #176 第 2、3 項落地後：這三型的獎勵**真的**會發 -- */
+    rewardActiveTitle: '這個活動的獎勵會自動發放',
+    /** 逐型說出「什麼時候發」——不寫「發布後就會生效」這種聽起來像但不精確的話 */
+    rewardActive: {
+      NEW_CUSTOMER:
+        '顧客的**第一筆**預約被標記為「已完成」時，系統會自動發放下面設定的票券與點數。',
+      SPENDING_THRESHOLD:
+        '顧客的預約被標記為「已完成」、且該筆實收金額達到下面設定的門檻時，系統會自動發放票券與點數。',
+      LIMITED_TIME:
+        '顧客在 LINE 打出上面設定的「活動關鍵字」時領取。需要該顧客的 LINE 已綁定顧客資料，否則只會收到活動說明、不會發放獎勵。',
+    } as Record<string, string>,
+    /** 冪等是產品決定，必須讓店家看得到，不能只寫在程式註解裡 */
+    rewardOncePerCustomer:
+      '每位顧客在同一個活動只會發放一次；重複觸發不會重複發放。',
+    rewardNeedsActive:
+      '活動必須是「進行中」狀態，而且當下在設定的活動期間內，才會發放。草稿、已暫停、已結束都不會。',
+    /**
+     * 閘門未訂閱時，發放會**整個活動跳過**（只留伺服器日誌，店家在畫面上看不到）。
+     * 不寫出來的話，店家只會看到「獎勵會自動發放」然後發現沒發，而且無從得知原因。
+     */
+    rewardNeedsFeature:
+      '贈送點數需要「點數系統」、贈送票券需要「票券系統」的訂閱有效；未訂閱時這個活動會整個略過（不會只發其中一半）。',
+    /** 票券限量發完時的行為，寫清楚免得店家以為是系統壞了 */
+    rewardCouponExhausted:
+      '若選定的票券已達發放總量上限，該次發放會整筆略過（不會只送點數），並記錄在伺服器日誌中。',
+
+    /**
+     * 推播訊息目前仍然不會自動送出——issue #176 第 2、3 項只做了「發券／送點數」，
+     * 沒有做推播。這一句必須獨立存在：三型的 notImplemented 提示消失之後，
+     * 表單上唯一提到推播的就只剩 `form.pushMessageHelp`，而那句話是錯的。
+     */
+    pushInert:
+      '⚠️ 這段推播訊息目前**不會**自動送給顧客。發布活動不會觸發任何 LINE 推播；'
+      + '要主動發訊息請用「行銷推播」頁。下面的「贈送票券／贈送點數」則不受影響。',
   },
 
   /* --------------------------------------------------------------- 確認 */

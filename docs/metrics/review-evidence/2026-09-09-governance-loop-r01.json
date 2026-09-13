@@ -1,0 +1,84 @@
+{
+  "contractVersion": 1,
+  "runId": "2026-09-09-governance-loop-r01",
+  "records": [
+    {
+      "id": "github:pr#305/review#5148603705",
+      "subject": "pr#305",
+      "role": "SOL_AUDIT",
+      "requestedModel": "gpt-5.6-sol",
+      "actualModel": "unknown",
+      "identityEvidence": "UNKNOWN",
+      "executionRef": "github:pr#305/review#5148603705",
+      "providerExecutionRef": null,
+      "reviewedSha": "326bdafbd87b9b839fdd1809ba735a8de93d5fb4",
+      "changeDigest": null,
+      "verdict": "PASS"
+    },
+    {
+      "id": "github:pr#305/review#5148631232",
+      "subject": "pr#305",
+      "role": "FINAL_RISK",
+      "requestedModel": "gpt-6-astra",
+      "actualModel": "gpt-6-astra",
+      "identityEvidence": "OPERATOR_ATTESTED",
+      "executionRef": "github:pr#305/review#5148631232",
+      "providerExecutionRef": null,
+      "reviewedSha": "326bdafbd87b9b839fdd1809ba735a8de93d5fb4",
+      "changeDigest": "8bc058b52299d86d94de36e9d66662ea8e5da1e7eda0157f1ea51cec5c2a337b",
+      "verdict": "PASS"
+    },
+    {
+      "id": "github:pr#307/review#5148926072",
+      "subject": "pr#307",
+      "role": "SOL_AUDIT",
+      "requestedModel": "gpt-5.6-sol",
+      "actualModel": "unknown",
+      "identityEvidence": "UNKNOWN",
+      "executionRef": "github:pr#307/review#5148926072",
+      "providerExecutionRef": null,
+      "reviewedSha": "91833d50d40f37a35d463f73206ee9a8a7ccd4e0",
+      "changeDigest": null,
+      "verdict": "PASS"
+    },
+    {
+      "id": "github:pr#307/review#5148973417",
+      "subject": "pr#307",
+      "role": "SOL_AUDIT",
+      "requestedModel": "gpt-5.6-sol",
+      "actualModel": "unknown",
+      "identityEvidence": "UNKNOWN",
+      "executionRef": "github:pr#307/review#5148973417",
+      "providerExecutionRef": null,
+      "reviewedSha": "fb0e160aa5cf57be8b199fa750a9253e2db0104e",
+      "changeDigest": null,
+      "verdict": "PASS"
+    },
+    {
+      "id": "github:pr#307/review#5149022639",
+      "subject": "pr#307",
+      "role": "SOL_AUDIT",
+      "requestedModel": "gpt-5.6-sol",
+      "actualModel": "unknown",
+      "identityEvidence": "UNKNOWN",
+      "executionRef": "github:pr#307/review#5149022639",
+      "providerExecutionRef": null,
+      "reviewedSha": "04b3aae46c637815aa85e032b2575ad5b49931b2",
+      "changeDigest": null,
+      "verdict": "PASS"
+    },
+    {
+      "id": "github:pr#307/review#5149068870",
+      "subject": "pr#307",
+      "role": "FINAL_RISK",
+      "requestedModel": "gpt-6-astra",
+      "actualModel": "gpt-6-astra",
+      "identityEvidence": "OPERATOR_ATTESTED",
+      "executionRef": "github:pr#307/review#5149068870",
+      "providerExecutionRef": null,
+      "reviewedSha": "04b3aae46c637815aa85e032b2575ad5b49931b2",
+      "changeDigest": "f8213f8d3cdb813b9712357f0fa7650499b48cc289a21ded5857381857143f57",
+      "verdict": "PASS"
+    }
+  ]
+}

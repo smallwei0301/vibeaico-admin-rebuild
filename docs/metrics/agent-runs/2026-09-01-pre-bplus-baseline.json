@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-09-01-pre-bplus-baseline",
+  "status": "BASELINE",
+  "startedAt": "2026-09-01T07:21:00+08:00",
+  "endedAt": "2026-09-01T13:42:40+08:00",
+  "sources": [
+    {
+      "type": "session-export",
+      "ref": "uploaded-session-2026-09-01",
+      "note": "工作模式與至少 143 分 29 秒的執行軌跡；未複製任何登入或工作階段秘密。"
+    },
+    {
+      "type": "github-main",
+      "ref": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
+      "note": "B+ 導入前的 current main。"
+    },
+    {
+      "type": "github-live-inventory",
+      "ref": "2026-09-01T13:42:40+08:00",
+      "note": "40 open Issues、18 open PR、5 張 active Terra PR、0 張 active TEST holder。"
+    }
+  ],
+  "main": {
+    "startSha": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
+    "endSha": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5"
+  },
+  "inventory": {
+    "openIssuesStart": 40,
+    "openIssuesEnd": 40,
+    "openPrsStart": 15,
+    "openPrsEnd": 18,
+    "mainTerraPeak": 5,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 5,
+    "sharedTestPeak": 1,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 1
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": { "luna": 1, "terra": 3, "sol": 6 },
+    "contextMultipliers": { "compact": 1, "medium": 1.5, "full": 3 },
+    "tasks": [
+      {
+        "id": "baseline-luna-groups",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "role": "truth-closure-ci-scout task groups observed in the session",
+        "count": 4,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "baseline-terra-issue-lines",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "role": "Issue #17, #66, #28 and #15 implementation lines observed",
+        "count": 4,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "baseline-sol-review-groups",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "role": "high-risk review and audit task groups observed",
+        "count": 2,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      }
+    ],
+    "fullContextReplays": 1,
+    "duplicateScans": 1
+  },
+  "delivery": {
+    "issuesStarted": 4,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 1,
+    "exactHeadCiOnly": 2,
+    "commitOnly": 0,
+    "unfinishedCarryover": 3,
+    "cycleTimeMinutes": 381.67
+  },
+  "ci": {
+    "fullCiRuns": 3,
+    "invalidReruns": 0,
+    "firstPassRatePercent": 67,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": 70,
+    "auditFirstPassRatePercent": 25,
+    "unresolvedP0": 0,
+    "unresolvedP1": 6,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 4,
+    "lunaAccepted": 3,
+    "lunaDelegationRatePercent": 45,
+    "duplicateAgentTasks": 1,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": 85,
+    "solTouches": 4,
+    "solIssues": 2
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": 75,
+    "exactHeadTestCoveragePercent": 75,
+    "stalePendingDescriptions": 2,
+    "preciseBlockersPercent": 80,
+    "scoreInputsCompletePercent": 62
+  },
+  "notes": [
+    "這是 B+ 導入前基準，不是完成輪次；它混合附件 Session 的可見軌跡與同日 live GitHub 盤點。",
+    "平台沒有提供實際 token 或週 usage 起訖，因此沒有推測真實額度消耗。",
+    "模型任務數只記錄可從附件辨識的最小工作群；actual model 無法驗證，故 actualModel=unknown。",
+    "Issue close 數在附件與 live 盤點中都沒有可證明的下降；#17 僅記為完整 Owner-blocked 出口。",
+    "P1 數取自附件中一次 API/security review 回報的 6 個 P1；不是整個 repo 的 P1 總數。"
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-09-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-09T00:00:00Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "issue/9",
+      "note": "Owner 2026-09-09 逐項裁示：同意 chore/raise-candidate-cap 的範圍預算例外、授權 0094 的 Production 建表、藍新／綠界 sandbox 憑證由 Owner 自行申請。"
+    },
+    {
+      "type": "FROZEN_PREDECESSOR",
+      "ref": "docs/metrics/agent-runs/2026-09-04-product-delivery-r01.closeout-observation.md",
+      "note": "前一個 Run 2026-09-04-product-delivery-r01 為 FROZEN_LEGACY_V3，不得再收新的 Product membership；本 Run 是它的接續，不是它的改寫。"
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "f9e7fdc57e683d32009c7fef9150e330cc26764c",
+      "note": "本 Run 起算時的 origin/main head。"
+    }
+  ],
+  "main": {
+    "startSha": "f9e7fdc57e683d32009c7fef9150e330cc26764c",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "本 Run 由 Agent WIP Guard 的指示建立：`RUN_ID 2026-09-04-product-delivery-r01 is frozen for new Product membership; start a new Delivery Truth v4 Run with an explicit closeout owner`。",
+    "closeout.ownerRole=PRODUCT_MAIN_SESSION：本 session 是 /goal 指派的產品交付主線，收尾責任歸它。",
+    "Product 成員：#306（Issue #9 第一、二步，五種線下收款方式真實持久化；0094 已套用 TEST 與 Production）。治理 PR #304 / #309 不算 Product membership，不引用本 RUN_ID。",
+    "inventory.openIssuesStart 與 openPrsStart 刻意留 null：本 Run 起算時間（2026-09-09T00:00:00Z）當下沒有做盤點，事後回填會是推算而非實查。將於 closeout 時以 GitHub 時間戳一次重建，不在此處寫入未經查證的數字。",
+    "modelUsage.actualTokensAvailable=false：本環境取不到實際 token 用量，加權用量只能以任務計數近似，與前幾個 Run 的同一限制一致。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

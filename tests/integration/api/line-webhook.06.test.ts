@@ -19,6 +19,10 @@
  * 的店 webhook 回 404」（route 的實作決策：無 secret 無從驗簽，回 5xx 只會讓
  * LINE 無限重送）。
  *
+ * issue #31：驗簽後 route 立即回 200，事件處理在 after() 執行；一般案例用
+ * drainWebhook() 取得確定性的完成訊號，只有先後順序案例使用 raw POST。
+ * 不用 sleep 猜測背景工作何時完成。
+ *
  * 基線紀律：afterAll 刪除本檔造出的 keyword_replies（只刪自己插的 id）、
  * line_users、chat_messages（含畸形事件寫入的 line_user_id='' 列），
  * tenant_settings 還原快照；不動 SHOP_A 點數交易。
@@ -32,6 +36,7 @@ import {
   MOCK_PROFILE_NAME_PREFIX,
   MOCK_PROFILE_PICTURE_URL,
 } from '../../helpers/line-mock';
+import { drainWebhook } from '../../helpers/line-webhook';
 import { encryptSecret } from '@/server/crypto';
 
 const BASE_URL = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -52,18 +57,37 @@ function sign(secret: string, rawBody: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('base64');
 }
 
-/** 以指定簽章（未給則用正確 secret 算）POST webhook；回原始 Response */
-async function postWebhook(
+/** POST 一段指定 raw body；未給簽章則用正確 secret 算，不等待背景處理。 */
+async function postWebhookRawBody(
   shopCode: string,
-  payload: unknown,
+  raw: string,
   opts: { signature?: string | null; secret?: string } = {},
 ): Promise<Response> {
-  const raw = JSON.stringify(payload);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const signature =
     opts.signature === undefined ? sign(opts.secret ?? CHANNEL_SECRET, raw) : opts.signature;
   if (signature !== null) headers['x-line-signature'] = signature;
   return fetch(`${BASE_URL}/api/line/webhook/${shopCode}`, { method: 'POST', headers, body: raw });
+}
+
+/** 以指定簽章 POST JSON webhook；不等待背景處理。 */
+async function postWebhookRaw(
+  shopCode: string,
+  payload: unknown,
+  opts: { signature?: string | null; secret?: string } = {},
+): Promise<Response> {
+  return postWebhookRawBody(shopCode, JSON.stringify(payload), opts);
+}
+
+/** POST webhook 並以測試專用 drain 等待 after() 工作完成。 */
+async function postWebhook(
+  shopCode: string,
+  payload: unknown,
+  opts: { signature?: string | null; secret?: string } = {},
+): Promise<Response> {
+  const res = await postWebhookRaw(shopCode, payload, opts);
+  await drainWebhook(shopCode, BASE_URL);
+  return res;
 }
 
 function textMessageEvent(userId: string, text: string, replyToken: string) {
@@ -185,21 +209,27 @@ beforeAll(async () => {
 
 afterAll(async () => {
   // 本檔造出的資料全清（含畸形事件寫入的 line_user_id='' 列）
-  await admin
+  const cleanupErrors: Array<[string, unknown]> = [];
+  const messagesCleanup = await admin
     .from('chat_messages')
     .delete()
     .eq('tenant_id', SHOP_A.id)
     .in('line_user_id', [USER_WEBHOOK, '']);
-  await admin
+  cleanupErrors.push(['chat_messages', messagesCleanup.error]);
+
+  const usersCleanup = await admin
     .from('line_users')
     .delete()
     .eq('tenant_id', SHOP_A.id)
     .eq('line_user_id', USER_WEBHOOK);
+  cleanupErrors.push(['line_users', usersCleanup.error]);
+
   if (insertedKeywordIds.length) {
-    await admin.from('keyword_replies').delete().in('id', insertedKeywordIds);
+    const keywordsCleanup = await admin.from('keyword_replies').delete().in('id', insertedKeywordIds);
+    cleanupErrors.push(['keyword_replies', keywordsCleanup.error]);
   }
   if (settingsSnapshot) {
-    await admin
+    const settingsCleanup = await admin
       .from('tenant_settings')
       .update({
         line: settingsSnapshot.line ?? {},
@@ -207,19 +237,94 @@ afterAll(async () => {
         line_channel_access_token_enc: settingsSnapshot.line_channel_access_token_enc,
       })
       .eq('tenant_id', SHOP_A.id);
+    cleanupErrors.push(['tenant_settings restore', settingsCleanup.error]);
   }
+
+  // Query after DELETE/restore so a green test suite cannot hide residual rows or
+  // a cleanup error that was never asserted.
+  const { data: remainingMessages, error: messagesResidueError } = await admin
+    .from('chat_messages')
+    .select('id')
+    .eq('tenant_id', SHOP_A.id)
+    .in('line_user_id', [USER_WEBHOOK, '']);
+  cleanupErrors.push(['chat_messages residue query', messagesResidueError]);
+
+  const { data: remainingUsers, error: usersResidueError } = await admin
+    .from('line_users')
+    .select('line_user_id')
+    .eq('tenant_id', SHOP_A.id)
+    .eq('line_user_id', USER_WEBHOOK);
+  cleanupErrors.push(['line_users residue query', usersResidueError]);
+
+  let remainingKeywords: unknown[] = [];
+  if (insertedKeywordIds.length) {
+    const { data, error } = await admin
+      .from('keyword_replies')
+      .select('id')
+      .in('id', insertedKeywordIds);
+    cleanupErrors.push(['keyword_replies residue query', error]);
+    remainingKeywords = data ?? [];
+  }
+
+  let restoredSettings: unknown = null;
+  if (settingsSnapshot) {
+    const { data, error } = await admin
+      .from('tenant_settings')
+      .select('line, line_channel_secret_enc, line_channel_access_token_enc')
+      .eq('tenant_id', SHOP_A.id)
+      .single();
+    cleanupErrors.push(['tenant_settings residue query', error]);
+    restoredSettings = data;
+  }
+
   await mock.stop();
+
+  for (const [operation, error] of cleanupErrors) {
+    expect(error, `${operation} must not fail`).toBeNull();
+  }
+  expect(remainingMessages, 'chat_messages residue').toEqual([]);
+  expect(remainingUsers, 'line_users residue').toEqual([]);
+  expect(remainingKeywords, 'keyword_replies residue').toEqual([]);
+  if (settingsSnapshot) {
+    expect(restoredSettings).toEqual({
+      line: settingsSnapshot.line ?? {},
+      line_channel_secret_enc: settingsSnapshot.line_channel_secret_enc,
+      line_channel_access_token_enc: settingsSnapshot.line_channel_access_token_enc,
+    });
+  }
 });
 
 describe('簽章與店家識別（06 §3）', () => {
-  it('壞簽章 → 401；事件完全不被處理', async () => {
+  it('沒有 test drain header 的 GET → 405，排空介面不對外開放', async () => {
+    const res = await fetch(`${BASE_URL}/api/line/webhook/${SHOP_A.shopCode}`);
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('POST');
+  });
+
+  it('壞簽章 → 401；事件完全不進處理且沒有排入背景工作', async () => {
     mock.reset();
-    const res = await postWebhook(SHOP_A.shopCode, {
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const res = await postWebhookRaw(SHOP_A.shopCode, {
       events: [textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-bad-sig')],
     }, { signature: 'x'.repeat(44) });
     expect(res.status).toBe(401);
+    const after = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(after.scheduled).toBe(before.scheduled);
     expect(mock.requests).toHaveLength(0);
     expect(await chatMessagesIn(USER_WEBHOOK)).toHaveLength(0);
+  });
+
+  it('好簽章但 JSON malformed → 400、有 parse log 且沒有排入背景工作', async () => {
+    mock.reset();
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const res = await postWebhookRawBody(SHOP_A.shopCode, '{"events":');
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe('invalid JSON');
+
+    const after = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(after.scheduled).toBe(before.scheduled);
+    expect(after.errors.some((e) => e.includes(`${SHOP_A.shopCode}|parse|`))).toBe(true);
+    expect(mock.requests).toHaveLength(0);
   });
 
   it('缺 x-line-signature header → 401', async () => {
@@ -358,17 +463,21 @@ describe('text message → chat_messages IN + keyword_replies 命中（06 §3 �
 });
 
 describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () => {
-  it('LINE API 回 500 令 handler 丟錯 → webhook 仍 200，且同批後續事件照常處理', async () => {
+  it('LINE API 回 500 令 handler 丟錯 → webhook 仍 200、錯誤有 log，且同批後續事件照常處理', async () => {
     mock.reset();
     mock.failNext(500); // 第一個 reply 請求（rt-err）回 500 → lineReply 丟 ApiHttpError
 
-    const res = await postWebhook(SHOP_A.shopCode, {
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const res = await postWebhookRaw(SHOP_A.shopCode, {
       events: [
         textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-err'),
         textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-after-err'),
       ],
     });
     expect(res.status).toBe(200); // 事件迴圈逐一 try/catch，不冒泡
+    const after = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(after.scheduled).toBe(before.scheduled + 1);
+    expect(after.errors.some((e) => e.includes(SHOP_A.shopCode) && e.includes('LINE API 錯誤'))).toBe(true);
 
     // 兩個事件的 IN 訊息都寫入（寫入在 reply 之前）：前面關鍵字案例 1 筆 + 本案例 2 筆
     const ins = await chatMessagesIn(USER_WEBHOOK);
@@ -386,5 +495,31 @@ describe('事件處理丟錯仍回 200（06 §3：LINE 才不會重送）', () =
       events: [{ type: 'message' }, { type: 'follow' }, { type: 'something-unknown' }],
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('先回 200、後處理事件（06 §3.1 / issue #31）', () => {
+  it('事件處理卡在 LINE 呼叫時，webhook 先回 200；放行後事件完成', async () => {
+    mock.reset();
+    const before = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    const messagesBefore = await chatMessagesIn(USER_WEBHOOK);
+    const gate = mock.holdNext('/v2/bot/message/reply');
+    const posting = postWebhookRaw(SHOP_A.shopCode, {
+      events: [textMessageEvent(USER_WEBHOOK, KEYWORD, 'rt-after-1')],
+    });
+
+    try {
+      await gate.hit;
+      const res = await posting;
+      expect(res.status).toBe(200);
+      expect(mock.requestsFor('/v2/bot/message/reply')).toHaveLength(1);
+    } finally {
+      gate.release();
+    }
+
+    const after = await drainWebhook(SHOP_A.shopCode, BASE_URL);
+    expect(after.scheduled).toBe(before.scheduled + 1);
+    expect(mock.requestsFor('/v2/bot/message/reply')).toHaveLength(1);
+    expect(await chatMessagesIn(USER_WEBHOOK)).toHaveLength(messagesBefore.length + 1);
   });
 });

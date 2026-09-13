@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "environment": "PRODUCTION",
+  "observedAt": "2026-09-09T04:39:50Z",
+  "projectRef": "egehnijjpgijmccagxac",
+  "observedMainSha": "4beb0827c2486f986bba4b2b509ae01f91e91b87",
+  "migrationLedger": {
+    "state": "PRESENT",
+    "count": 15,
+    "latestVersion": "20260909022752",
+    "latestName": "0094_tenant_payment_methods",
+    "versionsDigest": {
+      "algorithm": "MD5",
+      "value": "1bf6c62fc4a79d8e943bc6a254e7e3c9"
+    },
+    "evidenceRef": "supabase:production/schema_migrations/2026-09-09T04:39:50Z"
+  },
+  "objects": {
+    "columns": { "count": 549, "digest": { "algorithm": "MD5", "value": "76a1775d491769986a99ec5605202218" } },
+    "constraints": { "count": 187, "digest": { "algorithm": "MD5", "value": "283b60a1bb0d2b4a12b3e0c064fd88d3" } },
+    "indexes": { "count": 91, "digest": { "algorithm": "MD5", "value": "334fd5fc2ae708b13cf084734bb488b6" } },
+    "views": { "count": 2, "digest": { "algorithm": "MD5", "value": "e30a25ce6f993ee28321c5d555cc3547" } },
+    "policies": { "count": 73, "digest": { "algorithm": "MD5", "value": "f0cea50dfc3b0f2782e06d4741f14055" } },
+    "routines": { "count": 207, "digest": { "algorithm": "MD5", "value": "be803fe9bb5ce0977a9caebcacf8d6f6" } },
+    "triggers": { "count": 6, "digest": { "algorithm": "MD5", "value": "650412dd47260709265ad046c587db19" } }
+  },
+  "observations": [
+    {
+      "type": "OUT_OF_LEDGER",
+      "subject": "provider migration ledger contains identities not represented by current main migration files",
+      "evidenceRef": "supabase:production/schema_migrations/2026-09-09T04:39:50Z"
+    }
+  ]
+}

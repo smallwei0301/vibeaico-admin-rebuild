@@ -1,0 +1,14 @@
+{
+  "contractVersion": 2,
+  "effectiveAt": "2026-09-11T08:46:22Z",
+  "minimumMetricDataQualityPercent": 95,
+  "reviewEvidenceContractVersion": 2,
+  "governanceReviewRole": "GOVERNANCE_REVIEW",
+  "historicalContracts": {
+    "1": {
+      "effectiveAt": "2026-09-09T03:38:49Z",
+      "minimumMetricDataQualityPercent": 95
+    }
+  },
+  "historicalRunsAreReadOnly": true
+}

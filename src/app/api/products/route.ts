@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { insertProductWithPositions } from '@/server/product-position';
 import { mapProduct } from '@/server/mappers';
 
 /**
@@ -47,33 +48,32 @@ export const POST = handle(async (req) => {
   await requireFeature(t.tenantId, 'PRODUCT_SALES');
   const b = createSchema.parse(await req.json());
 
-  const { data: last, error: e0 } = await t.supabase
-    .from('products')
-    .select('sort_order')
-    .eq('tenant_id', t.tenantId)
-    .order('sort_order', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (e0) throw e0;
-
-  const { data, error } = await t.supabase
-    .from('products')
-    .insert({
-      tenant_id: t.tenantId,
-      category_id: b.categoryId ? b.categoryId : null,
-      name: b.name,
-      description: b.description ?? '',
-      price: b.price,
-      stock: b.stock,
-      safety_stock: b.safetyStock,
-      image_url: b.imageUrl ?? '',
-      active: b.active ?? true,
-      line_featured: b.lineFeatured ?? false,
-      sort_order: (last?.sort_order ?? 0) + 1,
-    })
-    .select('id')
-    .single();
-  if (error) throw error;
+  // issue #238：原本只算 sort_order = max+1，line_sort_order 完全沒給
+  // （column default 0），於是每一筆新商品的 LINE 排序都是 0。canonical TEST
+  // 有 products_tenant_line_sort_order_uq，第二個商品就 500；正式庫沒有該索引
+  // 所以不會 500，但「LINE 商品排序」等於沒有作用——店家拖曳、存檔、沒報錯，
+  // 顧客看到的順序卻不是他排的。改走 migration 的取號函式，兩個 lane 一起配，
+  // 併發也安全（同 services，見 #128 / 0065）。
+  const { data } = await insertProductWithPositions<{ id: string }>(t.supabase, t.tenantId, (positions) =>
+    t.supabase
+      .from('products')
+      .insert({
+        tenant_id: t.tenantId,
+        category_id: b.categoryId ? b.categoryId : null,
+        name: b.name,
+        description: b.description ?? '',
+        price: b.price,
+        stock: b.stock,
+        safety_stock: b.safetyStock,
+        image_url: b.imageUrl ?? '',
+        active: b.active ?? true,
+        line_featured: b.lineFeatured ?? false,
+        sort_order: positions.sortOrder,
+        line_sort_order: positions.lineSortOrder,
+      })
+      .select('id')
+      .single(),
+  );
 
   if (b.stock > 0) {
     const { error: lErr } = await t.supabase.from('inventory_logs').insert({

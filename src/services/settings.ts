@@ -1,14 +1,165 @@
-import { adapt, request } from '@/lib/api';
+import { ApiError, adapt, request } from '@/lib/api';
 import { APP_URL } from '@/config/env';
+import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
-  type LineSettings, type TenantSettings,
+  aiSettingsSchema, brandingSettingsSchema,
+  type AiSettings, type BrandingSettings, type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
+
+type BasicSettings = TenantSettings['basic'];
+type BusinessSettings = TenantSettings['business'];
 import type { FeatureSubscription } from '@/config/features';
 import type { SetupStatus } from '@/lib/types';
-import { MOCK_FEATURES, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
+import { MOCK_FEATURES, MOCK_MODE, MOCK_SETUP_STATUS, MOCK_TENANTS } from '@/mock';
 
 const current = MOCK_TENANTS[0];
+
+/**
+ * mock 模式下的 line 設定覆寫（目前只有 richMenuBgImageUrl 需要真的「記住」）。
+ * `getTenantSettings()` 的 mock 分支每次呼叫都用 DEFAULT_TENANT_SETTINGS() 重新算，
+ * 本身沒有持久化，所以上傳背景圖後若不補一個 mock store，「重整後仍看得到」就無從驗證。
+ * 依 CLAUDE.md 的規則延遲初始化：只在呼叫當下讀 MOCK_MODE，不在 module scope 求值。
+ */
+const mockLineSettingsStore = new Map<BusinessType, Partial<LineSettings>>();
+const getMockLineSettingsOverrides = () => {
+  if (!mockLineSettingsStore.has(MOCK_MODE)) mockLineSettingsStore.set(MOCK_MODE, {});
+  return mockLineSettingsStore.get(MOCK_MODE)!;
+};
+
+/**
+ * mock 模式下的 basic 設定覆寫（目前只有 staffTerm 需要真的「記住」）。
+ * 與 getMockLineSettingsOverrides 同一套模式：延遲初始化，只在呼叫當下讀 MOCK_MODE。
+ */
+const mockBasicSettingsStore = new Map<BusinessType, Partial<BasicSettings>>();
+const getMockBasicSettingsOverrides = () => {
+  if (!mockBasicSettingsStore.has(MOCK_MODE)) mockBasicSettingsStore.set(MOCK_MODE, {});
+  return mockBasicSettingsStore.get(MOCK_MODE)!;
+};
+
+/**
+ * #33②：帶 business 群組存檔後，後端回報這次「自動封鎖時段」重建的影響。
+ * 乾跑端點（previewBusinessHours）回同一個形狀，差別只在有沒有真的寫入。
+ */
+export interface BusinessHoursImpact {
+  perDayMode: boolean;
+  autoBlockCount: number;
+  conflictBookingCount: number;
+  manualWeeklyBlockCount: number;
+}
+
+export interface TenantSettingsSaveResult {
+  welcomeCardImageCleanupPending?: boolean;
+  /** 只有 patch 帶 business 群組時才會出現（#33②） */
+  businessHours?: BusinessHoursImpact;
+}
+
+export interface UploadRichMenuBgImageResult {
+  url: string;
+}
+
+/**
+ * Rich Menu 背景圖上傳 —— 走**專用**端點 `/api/settings/line/rich-menu/upload-bg-image`，
+ * 不能借用通用的 `uploadImage()`（`/api/upload`）：通用端點放行到 5MB，
+ * 但 create 端點會把這張圖原樣上傳給 LINE，`/v2/bot/richmenu/{id}/content` 的平台上限是
+ * 1MB —— 用通用端點上傳會讓超過 1MB 的圖片「上傳成功」，直到之後發布才失敗。
+ * 這裡在上傳當下就用與後端相同的規則擋下，並把後端的真實錯誤訊息原樣往上拋。
+ */
+const RICH_MENU_BG_MAX_BYTES = 1024 * 1024; // 1MB，對齊 upload-bg-image route 的 LINE 平台限制
+const RICH_MENU_BG_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png']);
+
+export const uploadRichMenuBgImage = (file: File) =>
+  adapt<UploadRichMenuBgImageResult>(
+    () => {
+      if (!RICH_MENU_BG_ALLOWED_TYPES.has(file.type)) {
+        throw new ApiError('僅支援 JPEG / PNG 圖片', 'VALIDATION');
+      }
+      if (file.size > RICH_MENU_BG_MAX_BYTES) {
+        throw new ApiError('圖片超過 1MB 上限（LINE Rich Menu 限制），請壓縮後再上傳', 'VALIDATION');
+      }
+      return { url: file.name };
+    },
+    () => {
+      const form = new FormData();
+      form.append('file', file);
+      return request<UploadRichMenuBgImageResult>('/api/settings/line/rich-menu/upload-bg-image', {
+        method: 'POST',
+        body: form,
+      });
+    },
+  );
+
+/**
+ * mock 分支「假倉庫」：/tenant/shop-design（Issue #7）三種業態各自的示範品牌內容
+ * + 之後透過 saveTenantSettings({ branding }) 的異動，讓 mock 模式下的儲存也像
+ * 真實後端一樣可讀回、可持久（比照 src/services/marketing.ts 的 getMockPushStore）。
+ *
+ * 延遲初始化：只在第一次被呼叫時建立（三套都建好），不在 module 頂層讀
+ * MOCK_MODE，避免凍結到錯誤業態（CLAUDE.md 明列的陷阱）。
+ */
+let mockBrandingStore: Record<BusinessType, BrandingSettings> | null = null;
+
+function getMockBrandingStore(): Record<BusinessType, BrandingSettings> {
+  if (!mockBrandingStore) {
+    mockBrandingStore = {
+      LOCAL_SHOP: brandingSettingsSchema.parse({
+        shopName: '示範美髮沙龍',
+        announcement: '8/25–8/28 公休，造型預約請提前於 LINE 預訂，感謝支持！',
+        aboutTitle: '關於我們',
+        aboutContent:
+          '成立於 2018 年的小型沙龍，每位設計師一次只服務一位客人，'
+          + '從頭皮檢測到造型建議都慢慢聊。使用低敏染劑與植萃護理，敏感頭皮也能安心。',
+        gallery: [
+          { id: 'g_1', url: '', caption: '一樓洗髮區' },
+          { id: 'g_2', url: '', caption: '設計師工作台' },
+          { id: 'g_3', url: '', caption: '護理專區' },
+        ],
+        instagram: 'https://instagram.com/demo_salon',
+        line: 'https://line.me/R/ti/p/@demo1234',
+        googleMaps: 'https://maps.example.com/demo-salon',
+        contactEmail: 'hello@demo-salon.example.com',
+      }),
+      GUIDE: brandingSettingsSchema.parse({
+        shopName: '祕島嚮導工作室',
+        announcement: '9 月賞鯨團次已開放報名，颱風季請留意出團前一日的最終確認通知。',
+        aboutTitle: '關於祕島',
+        aboutContent:
+          '我們是一群在宜蘭、花蓮長大的在地嚮導，帶你走進觀光路線之外的祕境。'
+          + '所有海域行程由持證船長領航，山域行程每 6 人配置 1 名教練，'
+          + '全程投保高山嚮導責任險。人數不多，走得慢一點，看得多一點。',
+        gallery: [
+          { id: 'g_1', url: '', caption: '龜山島牛奶海' },
+          { id: 'g_2', url: '', caption: '飛旋海豚出沒' },
+          { id: 'g_3', url: '', caption: '砂婆礑溪谷' },
+          { id: 'g_4', url: '', caption: '九份夜色' },
+        ],
+        themeColor: '#4361ee',
+        instagram: 'https://instagram.com/midao_guide',
+        line: 'https://line.me/R/ti/p/@midao888',
+        googleMaps: 'https://maps.example.com/wushi-harbor',
+        contactEmail: 'hi@midao.example.com',
+      }),
+      CLINIC: brandingSettingsSchema.parse({
+        shopName: '示範診所',
+        announcement:
+          '流感疫苗開打中，公費對象請攜帶健保卡。中秋連假 9/25–9/27 休診，急診請至鄰近醫院。',
+        aboutTitle: '門診資訊',
+        aboutContent:
+          '家庭醫學科、內科一般門診，附設健檢中心。'
+          + '看診時間：週一至週五 09:00–12:00、14:00–17:30、18:30–21:00；週六上午診。'
+          + '線上預約可查看即時看診號碼，減少現場等候。',
+        gallery: [
+          { id: 'g_1', url: '', caption: '候診區' },
+          { id: 'g_2', url: '', caption: '健檢中心' },
+        ],
+        line: 'https://line.me/R/ti/p/@democlinic',
+        googleMaps: 'https://maps.example.com/demo-clinic',
+        contactEmail: 'service@demo-clinic.example.com',
+      }),
+    };
+  }
+  return mockBrandingStore;
+}
 
 /**
  * 讀租戶設定。
@@ -24,16 +175,83 @@ export const getTenantSettings = () =>
       s.line.channelAccessToken = maskSecret('G6e//SU+Bv9k00q2cidcTOKENSAMPLEabcdef1234567890');
       s.line.webhookUrl = buildWebhookUrl(APP_URL, current.shopCode);
       s.line.lineBasicId = '@demo1234';
+      // #181 的 line 覆寫（richMenuBgImageUrl 等）與本 slice 的 branding
+      // 是兩個互不相干的群組，兩邊都要保留。
+      Object.assign(s.line, getMockLineSettingsOverrides());
+      // basic（staffTerm 等）與 branding 是互不相干的設定群組，兩邊都要保留。
+      Object.assign(s.basic, getMockBasicSettingsOverrides());
+      s.branding = getMockBrandingStore()[MOCK_MODE];
       return s;
     },
     () => request<TenantSettings>('/api/settings'),
   );
 
 export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
-  adapt(() => undefined, () => request<void>('/api/settings', { method: 'PUT', body: JSON.stringify(patch) }));
+  adapt<TenantSettingsSaveResult | undefined>(
+    () => {
+      if (patch.basic) Object.assign(getMockBasicSettingsOverrides(), patch.basic);
+      if (patch.branding) {
+        getMockBrandingStore()[MOCK_MODE] = brandingSettingsSchema.parse(patch.branding);
+      }
+      return undefined;
+    },
+    () => request<TenantSettingsSaveResult>('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    }),
+  );
+
+/**
+ * POST /api/settings/weekly-business-hours/draft —— **乾跑**，一列都不寫。
+ *
+ * ⚠️ 「乾跑」是我方選定的語意，不是原站考據結果；依據與反面證據見
+ * src/server/business-hours-blocks.ts 檔頭。真正的寫入走 saveTenantSettings。
+ *
+ * 骨架模式沒有這條鏈路（沒有 block_times 假資料可算），回 null 代表「算不出來」，
+ * 呼叫端據此**不顯示**那幾句文案——而不是顯示一個編造的數字。
+ */
+export const previewBusinessHours = (business: BusinessSettings) =>
+  adapt<BusinessHoursImpact | null>(
+    () => null,
+    () => request<BusinessHoursImpact>('/api/settings/weekly-business-hours/draft', {
+      method: 'POST',
+      body: JSON.stringify(business),
+    }),
+  );
 
 export const saveLineSettings = (patch: Partial<LineSettings>) =>
-  adapt(() => undefined, () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }));
+  adapt(
+    () => { Object.assign(getMockLineSettingsOverrides(), patch); return undefined; },
+    () => request<void>('/api/settings/line', { method: 'PUT', body: JSON.stringify(patch) }),
+  );
+
+/**
+ * 儲存 Flex 主選單（POST /api/settings/line/flex-menu，06 分冊 §6 / issue #6）。
+ *
+ * ⚠️ 這支函式在此之前**不存在**——rich-menu-design 頁 Flex 分頁的「發布」只是
+ * `toast.show(t.flex.saved)`，卡片、開關、fallback 全都只活在瀏覽器記憶體裡，
+ * 而店家看到的是「主選單已儲存！顧客下次開啟聊天時會看到新樣式」（14 分冊
+ * §1 根因 A 的典型：成功訊息宣稱了一件沒發生的事）。
+ *
+ * 端點的合併語意是 partial patch（只寫這次帶了的鍵），所以呼叫端可以只送
+ * `{ flexCards: [] }`（清除已發布）或整包（發布）。`flexCards` 超過
+ * `MAX_FLEX_CARDS` 會被端點的 zod 擋成 400，錯誤原文由 ApiError 帶回頁面。
+ *
+ * mock 分支把 patch 併進 `getMockLineSettingsOverrides()`——與 richMenuBgImageUrl
+ * 同一個假倉庫，於是骨架模式下「發布後重整卡片還在」也是真的，不是假成功。
+ */
+export const saveFlexMenu = (
+  patch: Partial<Pick<LineSettings,
+    'flexMenuEnabled' | 'flexMenuFallback' | 'flexCards' |
+    'flexHeaderColor' | 'flexHeaderTitle' | 'flexHeaderSubtitle' | 'flexShowTip'>>,
+) =>
+  adapt<void>(
+    () => { Object.assign(getMockLineSettingsOverrides(), patch); return undefined; },
+    () => request<void>('/api/settings/line/flex-menu', {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    }),
+  );
 
 export const testLineConnection = () =>
   adapt<{ ok: boolean; message: string }>(
@@ -57,6 +275,47 @@ export const verifyLineSetup = () =>
 
 export const getSetupStatus = () =>
   adapt<SetupStatus>(() => MOCK_SETUP_STATUS, () => request<SetupStatus>('/api/settings/setup-status'));
+
+/* ------------------------------------------------------------- AI 客服設定
+ * `GET/PUT /api/ai-settings`（09 分冊 §7.1）—— /tenant/ai-settings 頁專用。
+ *
+ * ⚠️ 為什麼這兩支非有不可（issue #27 ①）：ai-settings 頁原本呼叫的是
+ * `saveLineSettings({ autoReplyEnabled, defaultReply: prompt })`，也就是把
+ * **AI 提示詞**寫進 `tenant_settings.line.defaultReply`。那個欄位是 webhook
+ * 分支 ⑥ 的「沒有 AI 時的靜態罐頭回覆」，於是店家寫給 AI 的指令
+ * （「你是一間美髮沙龍的客服，語氣親切，優先引導顧客預約」）被**逐字推播給
+ * 每一位傳訊息來的顧客**，畫面卻顯示「AI 客服設定已儲存（已啟用）」。
+ * 同時 webhook 分支 ⑤ 讀的 `tenant_settings.ai.enabled` 永遠停在 zod 預設的
+ * false ——「已啟用」從來就是假的。
+ *
+ * 14 分冊 §8.1 的擁有者裁決是**分家**：
+ *   - `line.autoReplyEnabled` / `line.defaultReply` 只由 line-settings 頁寫
+ *   - `ai.*` 只由 ai-settings 頁寫（就是這兩支函式）
+ * 兩頁從此不再搶同一組欄位。
+ */
+
+export const getAiSettings = () =>
+  adapt<AiSettings>(
+    // 示範分支：沒有任何 AI 訂閱、沒有金鑰，據實回 schema 預設值（enabled=false）。
+    // 不可為了畫面好看回 true —— 那又是一個捏造的已知。
+    () => aiSettingsSchema.parse({}),
+    () => request<AiSettings>('/api/ai-settings'),
+  );
+
+/**
+ * 寫回整包 AI 設定。
+ *
+ * 端點契約是**整包覆蓋**（09 §7.1：`body = AiSettings`，`aiSettingsSchema.parse`
+ * 之後直接 upsert 進 `ai` jsonb），所以呼叫端必須送**完整**物件。頁面的作法是
+ * 載入時把 GET 回來的整包留著，儲存時只覆寫自己編輯的欄位再送回去——否則
+ * `faq` / `handoffMessage` 會被 zod 的 default 洗成空值（頁面上沒有那兩個欄位，
+ * 使用者不會知道自己弄丟了什麼）。
+ */
+export const saveAiSettings = (value: AiSettings) =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/ai-settings', { method: 'PUT', body: JSON.stringify(value) }),
+  );
 
 export const listFeatures = () =>
   adapt<FeatureSubscription[]>(() => MOCK_FEATURES, () => request<FeatureSubscription[]>('/api/feature-store'));

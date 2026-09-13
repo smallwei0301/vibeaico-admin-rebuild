@@ -212,16 +212,24 @@ export const MOCK_TRIP_PLANS: TripPlan[] = [
 ];
 
 /* ------------------------------------------------------------------ 團次 */
+/**
+ * ⚠️ 這份示範資料本身不得出現撞班：同一位導遊不能在同一天被排進兩個團。
+ * issue #37 的引擎會擋下這種組合，示範資料若違反它，展示出來的就是一個真實
+ * 系統開不出來的班表。（例：`dp_2` 與 `dp_9` 都在 08-24，兩團的人員刻意錯開。）
+ *
+ * `dp_10` 刻意**沒有**指派——10-TOUR-DOMAIN §1.3 的相容策略：既有團次可以誠實
+ * 顯示「未指派」。留一筆是為了讓那個狀態在畫面上真的看得到，不是漏填。
+ */
 export const MOCK_TRIP_DEPARTURES: TripDeparture[] = [
-  { id: 'dp_1', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-23', startTime: '09:00', capacity: 8, seatsBooked: 8, status: 'OPEN', note: '' },
-  { id: 'dp_2', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-24', startTime: '09:00', capacity: 8, seatsBooked: 5, status: 'OPEN', note: '' },
-  { id: 'dp_3', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-25', startTime: '09:00', capacity: 8, seatsBooked: 2, status: 'OPEN', note: '船班已確認' },
-  { id: 'dp_4', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-26', startTime: '13:30', capacity: 8, seatsBooked: 0, status: 'OPEN', note: '' },
-  { id: 'dp_5', tripId: 'tp_1', planId: 'pl_3', planName: '攝影特別團', departsOn: '2026-08-27', startTime: '06:00', capacity: 6, seatsBooked: 1, status: 'CLOSED', note: '方案審核中暫停銷售' },
-  { id: 'dp_6', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-28', startTime: '09:00', capacity: 8, seatsBooked: 0, status: 'CANCELLED', note: '颱風假' },
-  { id: 'dp_7', tripId: 'tp_2', planId: 'pl_4', planName: '小團導覽（4 人成行）', departsOn: '2026-08-23', startTime: '16:30', capacity: 10, seatsBooked: 6, status: 'OPEN', note: '' },
-  { id: 'dp_8', tripId: 'tp_2', planId: 'pl_4', planName: '小團導覽（4 人成行）', departsOn: '2026-08-30', startTime: '16:30', capacity: 10, seatsBooked: 3, status: 'OPEN', note: '' },
-  { id: 'dp_9', tripId: 'tp_3', planId: 'pl_6', planName: '一日溯溪體驗', departsOn: '2026-08-24', startTime: '08:00', capacity: 12, seatsBooked: 9, status: 'OPEN', note: '' },
+  { id: 'dp_1', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-23', startTime: '09:00', capacity: 8, seatsBooked: 8, status: 'OPEN', note: '', primaryStaffId: 's_1', primaryStaffName: '阿海', assistantStaffIds: [], assistantStaffNames: [] },
+  { id: 'dp_2', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-24', startTime: '09:00', capacity: 8, seatsBooked: 5, status: 'OPEN', note: '', primaryStaffId: 's_1', primaryStaffName: '阿海', assistantStaffIds: ['s_4'], assistantStaffNames: ['Kai'] },
+  { id: 'dp_3', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-25', startTime: '09:00', capacity: 8, seatsBooked: 2, status: 'OPEN', note: '船班已確認', primaryStaffId: 's_2', primaryStaffName: '小雨', assistantStaffIds: [], assistantStaffNames: [] },
+  { id: 'dp_4', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-26', startTime: '13:30', capacity: 8, seatsBooked: 0, status: 'OPEN', note: '', primaryStaffId: 's_4', primaryStaffName: 'Kai', assistantStaffIds: [], assistantStaffNames: [] },
+  { id: 'dp_5', tripId: 'tp_1', planId: 'pl_3', planName: '攝影特別團', departsOn: '2026-08-27', startTime: '06:00', capacity: 6, seatsBooked: 1, status: 'CLOSED', note: '方案審核中暫停銷售', primaryStaffId: 's_4', primaryStaffName: 'Kai', assistantStaffIds: ['s_1'], assistantStaffNames: ['阿海'] },
+  { id: 'dp_6', tripId: 'tp_1', planId: 'pl_1', planName: '標準團（共乘）', departsOn: '2026-08-28', startTime: '09:00', capacity: 8, seatsBooked: 0, status: 'CANCELLED', note: '颱風假', primaryStaffId: 's_1', primaryStaffName: '阿海', assistantStaffIds: [], assistantStaffNames: [] },
+  { id: 'dp_7', tripId: 'tp_2', planId: 'pl_4', planName: '小團導覽（4 人成行）', departsOn: '2026-08-23', startTime: '16:30', capacity: 10, seatsBooked: 6, status: 'OPEN', note: '', primaryStaffId: 's_2', primaryStaffName: '小雨', assistantStaffIds: [], assistantStaffNames: [] },
+  { id: 'dp_8', tripId: 'tp_2', planId: 'pl_4', planName: '小團導覽（4 人成行）', departsOn: '2026-08-30', startTime: '16:30', capacity: 10, seatsBooked: 3, status: 'OPEN', note: '', primaryStaffId: 's_2', primaryStaffName: '小雨', assistantStaffIds: ['s_1'], assistantStaffNames: ['阿海'] },
+  { id: 'dp_9', tripId: 'tp_3', planId: 'pl_6', planName: '一日溯溪體驗', departsOn: '2026-08-24', startTime: '08:00', capacity: 12, seatsBooked: 9, status: 'OPEN', note: '', primaryStaffId: 's_2', primaryStaffName: '小雨', assistantStaffIds: [], assistantStaffNames: [] },
   { id: 'dp_10', tripId: 'tp_3', planId: 'pl_6', planName: '一日溯溪體驗', departsOn: '2026-08-31', startTime: '08:00', capacity: 12, seatsBooked: 0, status: 'OPEN', note: '' },
 ];
 

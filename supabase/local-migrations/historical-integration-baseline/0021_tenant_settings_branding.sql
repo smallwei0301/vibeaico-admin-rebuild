@@ -1,0 +1,11 @@
+-- 0021 — tenant_settings 新增 branding jsonb（issue #7 乙：shop-design 頁接線）
+--
+-- /tenant/shop-design 頁的「儲存」原本呼叫的是 `saveTenantSettings({})`——一個空的
+-- patch，端點收到後什麼都不寫，畫面卻顯示「已儲存」（14 分冊 §1 A-1）。這一頁編的是
+-- 公開預約頁的外觀（店名、Logo、Banner、公告、關於我們、相簿、主題色、社群連結），
+-- `src/config/tenant-settings.ts` 開頭的分組對照表從一開始就寫著
+-- `branding → /tenant/shop-design`，但 tenant_settings 從來沒有這個欄位。
+--
+-- 為什麼是新欄位而不是塞進既有的 basic/business：PUT /api/settings 是**群組整包覆蓋**，
+-- 兩頁共用一包時，先儲存的那一邊會被後儲存的那一邊洗掉。分組就是這個端點的隔離單位。
+alter table tenant_settings add column branding jsonb not null default '{}';

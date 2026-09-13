@@ -1,11 +1,77 @@
 import { adapt, request } from '@/lib/api';
 import type {
-  Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged,
+  DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged,
 } from '@/lib/types';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
   MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS,
 } from '@/mock/tours';
+
+/**
+ * UI 型別仍比 canonical schema 寬（`category`、`durationDays` 等尚無欄位），
+ * 那部分的相容性繼續留在 service 邊界，不為此加寬資料表。
+ *
+ * ⚠️ issue #259：`tagline` / `meetingPointMapUrl` / `exclusions` / `notices` /
+ * `refundPolicyType` **原本刻意不在這裡**——`trips` 表沒有對應欄位，送過去也是白送。
+ * 詳情頁因此在那五個欄位下方標了「儲存後不會保留」。`0089` 補上欄位之後，
+ * 這裡必須跟著帶上它們，否則欄位建了、註記移除了，值還是存不進去——
+ * 那會變成一個比原本更難察覺的假成功。
+ */
+function tripApiPayload(payload: Partial<Trip>) {
+  return {
+    title: payload.title,
+    slug: payload.slug,
+    summary: payload.summary,
+    description: payload.description,
+    coverImageUrl: payload.coverImageUrl,
+    gallery: payload.galleryUrls,
+    location: payload.region,
+    meetingPoint: payload.meetingPoint,
+    includes: payload.inclusions?.join('\n'),
+    notes: payload.safetyNotice,
+    tagline: payload.tagline,
+    meetingPointMapUrl: payload.meetingPointMapUrl,
+    exclusions: payload.exclusions,
+    notices: payload.notices,
+    refundPolicyType: payload.refundPolicyType,
+  };
+}
+
+function planApiPayload(payload: Partial<TripPlan>) {
+  return {
+    name: payload.name,
+    description: payload.description,
+    pricePerPerson: payload.basePrice,
+    childPrice: payload.childPrice,
+    minParty: payload.minParticipants,
+    maxParty: payload.maxParticipants,
+    depositMode: payload.depositMode,
+    depositValue: payload.depositValue,
+    sortOrder: payload.sortOrder,
+    active: payload.active,
+  };
+}
+
+function departureApiPayload(payload: Partial<TripDeparture>) {
+  return {
+    planId: payload.planId,
+    departsOn: payload.departsOn,
+    startTime: payload.startTime,
+    capacity: payload.capacity,
+    status: payload.status,
+    note: payload.note,
+    /**
+     * issue #37：導遊指派。
+     *
+     * ⚠️ 這裡刻意讓 `undefined` 通過（`JSON.stringify` 會把它整個欄位拿掉），因為
+     * 後端把「沒帶這個欄位」與「帶了 null」當成兩件不同的事：前者是「這次不動指派」，
+     * 後者是「明確清空」。若在這裡補成 `?? null`，一次「只改名額」的儲存就會把既有的
+     * 主導遊清掉，而店家不會收到任何提示。
+     */
+    primaryStaffId: payload.primaryStaffId,
+    assistantStaffIds: payload.assistantStaffIds,
+  };
+}
 
 /**
  * 導遊模組（TOUR_MODULE）資料入口。
@@ -20,16 +86,25 @@ export const listTrips = () =>
 export const getTrip = (id: string) =>
   adapt<Trip | undefined>(
     () => MOCK_TRIPS.find((t) => t.id === id),
-    () => request<Trip>(`/api/trips/${id}`),
+    async () => {
+      const data = await request<Trip | { trip: Trip }>(`/api/trips/${id}`);
+      return 'trip' in data ? data.trip : data;
+    },
   );
 
 export const createTrip = (payload: Partial<Trip>) =>
   adapt(() => undefined, () =>
-    request<void>('/api/trips', { method: 'POST', body: JSON.stringify(payload) }));
+    request<void>('/api/trips', {
+      method: 'POST',
+      body: JSON.stringify(tripApiPayload(payload)),
+    }));
 
 export const updateTrip = (id: string, payload: Partial<Trip>) =>
   adapt(() => undefined, () =>
-    request<void>(`/api/trips/${id}`, { method: 'PUT', body: JSON.stringify(payload) }));
+    request<void>(`/api/trips/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(tripApiPayload(payload)),
+    }));
 
 export const deleteTrip = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/trips/${id}`, { method: 'DELETE' }));
@@ -53,8 +128,12 @@ export const listTripPlans = (tripId: string) =>
 
 export const saveTripPlan = (tripId: string, payload: Partial<TripPlan>) =>
   adapt(() => undefined, () => (payload.id
-    ? request<void>(`/api/trip-plans/${payload.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-    : request<void>(`/api/trips/${tripId}/plans`, { method: 'POST', body: JSON.stringify(payload) })));
+    ? request<void>(`/api/trip-plans/${payload.id}`, {
+      method: 'PUT', body: JSON.stringify(planApiPayload(payload)),
+    })
+    : request<void>(`/api/trips/${tripId}/plans`, {
+      method: 'POST', body: JSON.stringify(planApiPayload(payload)),
+    })));
 
 export const deleteTripPlan = (planId: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-plans/${planId}`, { method: 'DELETE' }));
@@ -68,16 +147,40 @@ export const listTripDepartures = (tripId: string) =>
 
 export const saveTripDeparture = (tripId: string, payload: Partial<TripDeparture>) =>
   adapt(() => undefined, () => (payload.id
-    ? request<void>(`/api/trip-departures/${payload.id}`, { method: 'PUT', body: JSON.stringify(payload) })
-    : request<void>(`/api/trips/${tripId}/departures`, { method: 'POST', body: JSON.stringify(payload) })));
+    ? request<void>(`/api/trip-departures/${payload.id}`, {
+      method: 'PUT', body: JSON.stringify(departureApiPayload(payload)),
+    })
+    : request<void>(`/api/trips/${tripId}/departures`, {
+      method: 'POST', body: JSON.stringify(departureApiPayload(payload)),
+    })));
 
-/** 批次開團：後端依 weekdays 展開日期區間 */
+/**
+ * 批次開團：後端依 weekdays 展開日期區間。
+ *
+ * 回傳後端實際的 `{ created, skipped }`——`skipped` 是撞到「同方案同日同時」既有團次
+ * 而略過的筆數。前端自己算日曆得到的筆數與這個數字**不一定相同**，拿前者報成功就是
+ * 一則編出來的訊息（店家會以為開了 7 團，實際只開了 1 團）。
+ */
+export type BatchDepartureResult = {
+  created: number;
+  skipped: number;
+  /** issue #37：因撞班而跳過的日期與原因。空陣列＝沒有任何日期因撞班被跳過。 */
+  conflicts?: DepartureConflict[];
+};
+
 export const batchCreateDepartures = (
   tripId: string,
-  payload: { planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number },
+  payload: {
+    planId: string; from: string; to: string; weekdays: number[]; startTime: string; capacity: number;
+    primaryStaffId?: string | null; assistantStaffIds?: string[];
+  },
 ) =>
-  adapt(() => undefined, () =>
-    request<void>(`/api/trips/${tripId}/departures/batch`, { method: 'POST', body: JSON.stringify(payload) }));
+  adapt<BatchDepartureResult>(
+    () => ({ created: 0, skipped: 0, conflicts: [] }),
+    () => request<BatchDepartureResult>(
+      `/api/trips/${tripId}/departures/batch`, { method: 'POST', body: JSON.stringify(payload) },
+    ),
+  );
 
 export const deleteTripDeparture = (id: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-departures/${id}`, { method: 'DELETE' }));

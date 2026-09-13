@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-09-01-bplus-adoption",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-01T13:42:40+08:00",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "owner-decision",
+      "ref": "current-conversation",
+      "note": "Owner approved B+, increased narrow Luna delegation, a measurable loop, repository reports, and a retrospective Skill."
+    },
+    {
+      "type": "github-main",
+      "ref": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
+      "note": "Run start main SHA."
+    },
+    {
+      "type": "github-live-inventory",
+      "ref": "2026-09-01T13:42:40+08:00",
+      "note": "40 open Issues, 18 open PRs, five active Terra PRs, no active TEST holder."
+    }
+  ],
+  "main": {
+    "startSha": "ee22d0f184ddbba1ffdc4421c5caf9ec3ef17fa5",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 40,
+    "openIssuesEnd": null,
+    "openPrsStart": 18,
+    "openPrsEnd": null,
+    "mainTerraPeak": 5,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 5,
+    "sharedTestPeak": 0,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "bplus-truth-and-baseline",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "role": "live GitHub inventory, session evidence extraction, baseline ledger, and report preparation",
+        "count": 4,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "bplus-governance-build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "role": "B+ policy, scripts, workflows, tests, and report-tool implementation",
+        "count": 1,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "bplus-triage-and-audit",
+        "requestedModel": "sol",
+        "actualModel": "unknown",
+        "role": "B+ decision synthesis and final governance audit",
+        "count": 2,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 1,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": 70,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 4,
+    "lunaAccepted": 4,
+    "lunaDelegationRatePercent": 75,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": 100,
+    "solTouches": 2,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": 85,
+    "exactHeadTestCoveragePercent": 0,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": 100,
+    "scoreInputsCompletePercent": 78
+  },
+  "notes": [
+    "This report is IN_PROGRESS until exact-head CI, Sol audit, merge, B+ PR transition, and main verification finish.",
+    "The platform did not expose actual model tokens or weekly usage start percentage, so no official usage percentage is inferred.",
+    "actualModel remains unknown where the delegation platform did not provide verifiable model identity; requested model weights are internal comparison only.",
+    "The run begins with the old Mode C live state, so peak WIP values preserve the five-Terra starting condition rather than pretending B+ already existed."
+  ]
+}

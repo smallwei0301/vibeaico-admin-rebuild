@@ -15,9 +15,9 @@ Before working on any Issue:
 4. Read the Issue's canonical `docs/integration/**` files and
    `docs/integration/12-TESTING-TDD.md` from `main`.
 5. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
-6. Base implementation work on latest `main`, or on a designated integration branch that already contains the latest main documentation commit.
+6. Start implementation work from the then-current `main`, or from a designated integration branch with the required canonical decisions. After the working branch exists, **do not rebase only because unrelated work advanced `main`**. Follow `docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md`: re-align only for a material migration-ledger change/prefix collision, actual merge conflict, shared contract or acceptance-precondition change, or CI evidence that the new base materially affects the candidate. `HEAD^ == origin/main` is not a global invariant.
 
-Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**.
+Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**. Re-reading newer decisions is required; rebasing unrelated file content is not.
 
 ## Default execution mode
 
@@ -149,11 +149,67 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 7. Money columns use `formatCurrency()` with `numeric: true`; status columns use `<Badge tone>`
    with text from a `common.*` map. Icons are lucide-react only.
 
+## Lane → model tier (Owner decision, 2026-09-10)
+
+The `Luna / Terra / Sol` lane names in `scripts/agents/model-routing.json` name a **tier of work**,
+not a vendor. On the OpenAI side they map to `gpt-5.6-*`; on the Anthropic side they map as below.
+The mapping is mandatory in both directions — the lane picks the tier, and the tier picks the model.
+
+| Lane | 職責（`docs/AGENT-EXECUTION.md`／`AGENTS.md`） | OpenAI | Anthropic |
+|---|---|---|---|
+| `scout` / Luna | 窄盤點、Closure、CI 摘要、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` |
+| `build` / Terra | **施工**（MAIN／RESERVE 完整出貨線） | `gpt-5.6-terra` | **`claude-sonnet-5`** |
+| `audit` / Sol | TRIAGE、高風險設計、最終 AUDIT、結案判定 | `gpt-5.6-sol` | `claude-opus-5` |
+
+Model IDs are taken verbatim from Anthropic's model table and are **complete as written** — never
+append a date suffix (`claude-haiku-4-5`, not a dated variant).
+
+**Terra 一律用 Sonnet.** Doing `TERRA_BUILD` work on Opus is over-spec, not diligence: it burns the
+audit tier's cost on construction and leaves the audit tier reviewing its own output. Doing it on
+Haiku is under-spec. Neither substitutes for the other, and neither is the runner's call to make.
+
+Two consequences worth stating, because both have already been violated in practice:
+
+- A PR whose `AGENT_LANE` is `TERRA_BUILD` must declare a `build`-tier model in
+  `REQUESTED_MODEL / ACTUAL_MODEL`. `actual=Opus 5` on a `TERRA_BUILD` lane is a routing violation
+  and should be recorded as one, not left as a neutral note.
+- This is separate from the final risk gate below. Where a change **is** high-risk, the Final Risk
+  review must still be delegated to a model in `models.finalRiskAllowedModels` (default
+  `claude-fable-5-1`; `gpt-6-astra` is also allowed) regardless of which tier built it. A correct
+  build tier does not remove that requirement, and passing Final Risk does not make the build tier
+  correct. Which changes are high-risk is decided by `docs/MODEL-ROUTING.md`, not by this section.
+
+`actual=unknown` stays the honest value when the platform cannot prove which model ran
+(`docs/AGENT-EXECUTION.md`) — it is not a way to avoid declaring the tier.
+
+A scorecard's `requested` / `actual` fields must record what **actually** served the lane, never
+this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run claims
+a specific model. The table says what should have run; only the run itself says what did.
+
+## Final risk review models (Owner decisions, 2026-09-08)
+
+The high-risk final review gate — the one that produces the `astra-review` attestation the
+`Agent WIP Policy` check requires — keeps Fable (`claude-fable-5-1`) as the default and accepts
+the explicitly configured allowlist: GPT-6 Astra (`gpt-6-astra`) or Claude Fable.
+
+- The model IDs live **only** in `scripts/agents/model-routing.json`: `models.finalRisk` is the
+  default, `models.finalRiskModelCatalog` records supported identities, and
+  `models.finalRiskAllowedModels` is the active subset. `requestedModel` / `actualModel` must
+  match the same allowlisted model verbatim.
+- The name **"Astra" is kept** for the gate itself and for the `ASTRA_*` PR-body fields — those
+  names are written into PR bodies, the guard workflow and existing review records, and renaming
+  them would orphan the history. Astra = the gate; Fable and Astra = the currently allowed models.
+- Running the review means actually delegating it to one explicitly allowlisted model (a subagent
+  pinned to that model). Producing the attestation without that delegation is still forbidden.
+
 ## Key docs
 
 - `AGENTS.md` — mandatory agent entry point
+- `docs/MODEL-ROUTING.md` — model routing and the high-risk final review gate; see the decision above
 - `docs/AGENT-EXECUTION.md` — canonical autonomous execution, delegation, permissions, safety and stop rules
+- `docs/DELIVERY-CHAIN.md` — canonical product delivery chain: what each gate is there to catch and what its passing evidence looks like (Luna ownership check → Terra worktree build → Sol diff audit → local isolated Supabase → serialized canonical TEST → Completion Truth five-point verification)
 - `docs/AGENT-PLAYBOOK.md` — required failure/lesson log; search only entries relevant to the task
+- `docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md` — current multi-environment branch freshness policy; supersedes PB-015's old “always latest main / HEAD^” prevention sentence while preserving its base-evidence lesson
 - `docs/DOCUMENTATION-GOVERNANCE.md` — canonical docs, direct-main docs-only rule, branch policy
 - `docs/CONVENTIONS.md` — read before adding a page
 - `docs/REBUILD-SPEC.md` — design system spec + per-page section/copy inventory
@@ -173,5 +229,5 @@ they split one `/tenant` prefix across two layout trees. The exception list live
 - Owner-approved docs-only changes may go directly to `main`, but the commit must contain only allowed documentation paths. See `docs/DOCUMENTATION-GOVERNANCE.md`.
 - Runtime code, migrations, dependencies, workflows and deployment configuration use a feature branch → PR → CI → review flow.
 - `main` auto-deploys on Vercel. A docs-only main push is not permission for Production DDL/DML or runtime deployment; changes that alter production behavior require explicit Owner authorization.
-- Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch, but it must already contain the latest canonical main documentation commit.
+- Do not hardcode one long-lived development branch in project policy. The Issue or lead agent may designate an integration branch. It must contain the required canonical decisions when designated, and agents must continue re-reading current `main` decisions; unrelated later main commits do **not** by themselves require rebasing that branch.
 - Commit messages are mostly Traditional Chinese and should describe the user-visible or governance change.

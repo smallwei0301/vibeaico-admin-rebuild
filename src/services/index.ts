@@ -5,12 +5,16 @@
  */
 export * from './auth';
 export * from './bookings';
+export * from './campaigns';
 export * from './customers';
 export * from './catalog';
 export * from './chat';
 export * from './coupons';
+export * from './marketing';
+export * from './payment-methods';
 export * from './points';
 export * from './products';
 export * from './reports';
 export * from './settings';
+export * from './shell';
 export * from './tours';

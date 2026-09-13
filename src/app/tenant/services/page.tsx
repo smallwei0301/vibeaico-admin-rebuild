@@ -16,13 +16,14 @@ import {
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import {
-  FormError, FormGroup, FormText, Input, Label, Select, Textarea,
+  FormError, FormGroup, FormText, Input, Label, Select, Switch, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
   createService, createServiceCategory, deleteService, deleteServiceCategory,
   duplicateService, listServiceCategories, listServices, listStaff,
   reorderServiceCategories, reorderServices, toggleServiceLineFeatured, updateService,
+  updateServiceCategory,
 } from '@/services/catalog';
 import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
@@ -164,7 +165,7 @@ export default function ServicesPage() {
     void (async () => {
       try {
         const list = await listServiceCategories();
-        if (list) setCategories(list.map((c) => ({ ...c, description: '', active: true })));
+        if (list) setCategories(list);
       } catch {
         toast.show(t.messages.retryLater, 'danger');
       }
@@ -1045,6 +1046,50 @@ function CategoryModal({
   const [deleteTarget, setDeleteTarget] = React.useState<ServiceCategory | null>(null);
   const nextId = React.useRef(1);
 
+  /** 編輯分類名稱／描述／啟用狀態的子表單（issue #28 第 ⑭ 筆：編輯按鈕先前只切換啟用狀態）。 */
+  const [editTarget, setEditTarget] = React.useState<ServiceCategory | null>(null);
+  const [editName, setEditName] = React.useState('');
+  const [editDescription, setEditDescription] = React.useState('');
+  const [editActive, setEditActive] = React.useState(true);
+  const [editError, setEditError] = React.useState('');
+  const [editSaving, setEditSaving] = React.useState(false);
+
+  const openEdit = (c: ServiceCategory) => {
+    setEditTarget(c);
+    setEditName(c.name);
+    setEditDescription(c.description ?? '');
+    setEditActive(c.active);
+    setEditError('');
+  };
+
+  const saveEdit = async () => {
+    if (!editTarget) return;
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      setEditError(t.category.nameRequired);
+      return;
+    }
+    setEditError('');
+    setEditSaving(true);
+    const categoryDescription = editDescription.trim();
+    try {
+      await updateServiceCategory(editTarget.id, {
+        name: trimmed, description: categoryDescription, active: editActive,
+      });
+      onChange((list) => list.map((x) => (
+        x.id === editTarget.id
+          ? { ...x, name: trimmed, description: categoryDescription, active: editActive }
+          : x
+      )));
+      toast.show(t.category.updated);
+      setEditTarget(null);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : t.messages.unknownError);
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!open) return;
     setName('');
@@ -1052,47 +1097,52 @@ function CategoryModal({
     setError('');
   }, [open]);
 
-  const create = () => {
+  const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       setError(t.category.nameRequired);
       return;
     }
+
+    const categoryDescription = description.trim();
+    const localId = 'sc_new_' + nextId.current++;
     setError('');
-    const localId = `sc_new_${nextId.current++}`;
-    onChange([
-      ...categories,
-      {
-        id: localId,
+    try {
+      const saved = await createServiceCategory({
         name: trimmed,
-        description: description.trim(),
+        description: categoryDescription,
         active: true,
-        sortOrder: categories.length + 1,
-      },
-    ]);
-    setName('');
-    setDescription('');
-    toast.show(t.category.created);
-    /* mock 分支回 null → 沿用本地 id；真實 API 回 {id} 後換成後端 id */
-    void createServiceCategory(trimmed)
-      .then((res) => {
-        if (res) onChange((list) => list.map((c) => (c.id === localId ? { ...c, id: res.id } : c)));
-      })
-      .catch((e) => {
-        toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
       });
+      onChange((list) => [
+        ...list,
+        {
+          id: saved?.id ?? localId,
+          name: trimmed,
+          description: categoryDescription,
+          active: true,
+          sortOrder: saved?.sortOrder ?? list.length + 1,
+        },
+      ]);
+      setName('');
+      setDescription('');
+      toast.show(t.category.created);
+    } catch (e) {
+      toast.show(e instanceof Error ? e.message : t.messages.unknownError, 'danger');
+    }
   };
 
-  const move = (index: number, delta: number) => {
+  const move = async (index: number, delta: number) => {
     const target = index + delta;
     if (target < 0 || target >= categories.length) return;
     const next = [...categories];
     [next[index], next[target]] = [next[target], next[index]];
-    onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
-    toast.show(t.category.reordered);
-    void reorderServiceCategories(next.map((c) => c.id)).catch((e) => {
+    try {
+      await reorderServiceCategories(next.map((c) => c.id));
+      onChange(next.map((c, i) => ({ ...c, sortOrder: i + 1 })));
+      toast.show(t.category.reordered);
+    } catch (e) {
       toast.show(e instanceof Error ? e.message : t.messages.reorderFailed, 'danger');
-    });
+    }
   };
 
   const columns: Column<ServiceCategory>[] = [
@@ -1125,10 +1175,7 @@ function CategoryModal({
           </Button>
           <Button
             variant="outline" size="sm" title={common.edit} aria-label={common.edit}
-            onClick={() => {
-              onChange(categories.map((x) => (x.id === c.id ? { ...x, active: !x.active } : x)));
-              toast.show(t.category.updated);
-            }}
+            onClick={() => openEdit(c)}
           >
             <Pencil size={13} />
           </Button>
@@ -1172,7 +1219,7 @@ function CategoryModal({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <Button size="sm" onClick={create}>
+          <Button size="sm" onClick={() => void create()}>
             <Plus size={13} />{common.create}
           </Button>
         </div>
@@ -1197,18 +1244,55 @@ function CategoryModal({
         confirmText={common.delete}
         message={t.category.deleteConfirm}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            const id = deleteTarget.id;
-            onChange(categories.filter((c) => c.id !== id));
-            void deleteServiceCategory(id).catch((e) => {
-              toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
-            });
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const id = deleteTarget.id;
+          try {
+            await deleteServiceCategory(id);
+            onChange((list) => list.filter((c) => c.id !== id));
+            setDeleteTarget(null);
+            toast.show(t.category.deleted);
+          } catch (e) {
+            toast.show(e instanceof Error ? e.message : t.messages.deleteFailed, 'danger');
           }
-          setDeleteTarget(null);
-          toast.show(t.category.deleted);
         }}
       />
+
+      <Modal
+        open={!!editTarget}
+        onClose={() => (editSaving ? undefined : setEditTarget(null))}
+        title={t.category.editTitle}
+        footer={(
+          <>
+            <Button variant="secondary" onClick={() => setEditTarget(null)} disabled={editSaving}>
+              {common.cancel}
+            </Button>
+            <Button onClick={() => void saveEdit()} disabled={editSaving}>{common.save}</Button>
+          </>
+        )}
+      >
+        <FormGroup>
+          <Label required htmlFor="editCategoryName">{t.category.name}</Label>
+          <Input
+            id="editCategoryName" value={editName}
+            placeholder={t.category.namePlaceholder}
+            onChange={(e) => setEditName(e.target.value)}
+          />
+        </FormGroup>
+        <FormGroup>
+          <Label htmlFor="editCategoryDesc">{t.category.description}</Label>
+          <Input
+            id="editCategoryDesc" value={editDescription}
+            placeholder={t.category.descriptionPlaceholder}
+            onChange={(e) => setEditDescription(e.target.value)}
+          />
+        </FormGroup>
+        <div className="flex items-center gap-2">
+          <Switch id="editCategoryActive" checked={editActive} onCheckedChange={setEditActive} />
+          <span className="text-base text-neutral-700">{t.labels.active}</span>
+        </div>
+        {editError ? <FormError>{editError}</FormError> : null}
+      </Modal>
     </>
   );
 }

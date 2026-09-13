@@ -1,6 +1,6 @@
 /**
  * 預約 API 整合測試 — 12 分冊 §4「Phase 3（核心 API）」矩陣：
- *   「bookings 列表：狀態/關鍵字/員工/日期四種篩選、分頁 totalElements 正確」
+ *   「bookings 列表：狀態/付款狀態/關鍵字/員工/日期篩選、分頁 totalElements 正確」
  *   「complete 累點：pointEarnEnabled + rate 換算 + rounding 三模式各一例；
  *    關閉時不加點」
  * 端點行為規格見 docs/integration/04-API-CONTRACTS.md §A-2、§0 參考實作。
@@ -128,6 +128,18 @@ describe('GET /api/bookings 列表篩選與分頁（04 §A-2、§0 參考實作�
     expect(body.data!.content).toHaveLength(1);
     expect(body.data!.content[0].id).toBe(SHOP_A.bookingPending);
     expect(body.data!.content[0].status).toBe('PENDING');
+  });
+
+  it('status=CONFIRMED&paymentStatus=UNPAID → 只回 seed 的 bookingConfirmed，totalElements=1', async () => {
+    const res = await ownerA.get('/api/bookings?status=CONFIRMED&paymentStatus=UNPAID');
+    expect(res.status).toBe(200);
+    const body = await readJson<Paged<Booking>>(res);
+    expect(body.success).toBe(true);
+    expect(body.data!.totalElements).toBe(1);
+    expect(body.data!.content).toHaveLength(1);
+    expect(body.data!.content[0].id).toBe(SHOP_A.bookingConfirmed);
+    expect(body.data!.content[0].status).toBe('CONFIRMED');
+    expect(body.data!.content[0].paymentStatus).toBe('UNPAID');
   });
 
   it('keyword=顧客 A1 電話尾碼（0001）→ seed 4 筆都是 customerA1，totalElements=4', async () => {

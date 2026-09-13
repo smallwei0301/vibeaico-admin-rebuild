@@ -3,6 +3,9 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
 import { taipeiTodayDateString } from '@/server/tz';
+import {
+  notifyProductOrderReceipt, type ProductOrderNotifyOutcome,
+} from '@/server/line-notify';
 
 /**
  * POST /api/product-orders/manual — 手動建單（B-3）。
@@ -16,6 +19,15 @@ import { taipeiTodayDateString } from '@/server/tz';
  *   4. 建 product_orders（單價/名稱取當下 products 快照）＋ items ＋
  *      inventory_logs（SALE_OUT:訂單 <order_no>）。
  *
+ *   5. `notifyCustomer` 為 true 時（建單視窗「LINE 通知顧客消費明細」勾選框），
+ *      送出消費明細：LINE 優先，未綁 LINE 改寄 Email，LINE 每則扣 1 推播額度
+ *      （Email 不扣）——規則逐字照那個勾選框的標籤（issue #27 ③）。
+ *      回應多帶 `notify`（實際結果，見 ProductOrderNotifyOutcome），頁面照它顯示
+ *      「已用 LINE 通知」／「已改寄 Email」／「沒送出」，不再重播標籤字面（鐵則 12）。
+ *      ⚠️ 這裡**刻意 await**：不等結果就無從得知走的是哪條路，只能寫死一句話，
+ *      那正是本 issue 要修的病。notifyProductOrderReceipt 永不拋錯，等它不會讓
+ *      已成立的訂單失敗；通知失敗只影響回應裡的 `notify` 值，訂單照樣建成功。
+ *
  * order_no：'PO' + yymmdd(Asia/Taipei) + 4 位當日流水（同租戶）。
  * migration 0004 的 product_orders.order_no 為 text + unique(tenant_id, order_no)、
  * 無 DB 端預設 → 由 API 產生；撞號（併發同時取到同一流水）靠 unique 約束
@@ -27,6 +39,8 @@ const bodySchema = z.object({
     productId: z.string().uuid(),
     quantity: z.coerce.number().int().min(1, '數量至少為 1'),
   })).min(1, '請至少選擇一項商品'),
+  /** 建單視窗的「LINE 通知顧客消費明細」勾選框；未帶＝不通知 */
+  notifyCustomer: z.boolean().optional().default(false),
 });
 
 /** CAS 調整單一商品庫存；requireNonNegative=true 時扣到負回 null（不足） */
@@ -166,5 +180,10 @@ export const POST = handle(async (req) => {
   );
   if (lErr) console.error('[api] product-orders/manual: inventory log failed', order.id, lErr);
 
-  return ok({ id: order.id, orderNo: order.order_no });
+  // 消費明細通知（見檔頭 5.）：沒勾就是 'NONE'，什麼都不做也不謊稱做了。
+  const notify: ProductOrderNotifyOutcome = b.notifyCustomer
+    ? await notifyProductOrderReceipt(t.tenantId, order.id)
+    : 'NONE';
+
+  return ok({ id: order.id, orderNo: order.order_no, notify });
 });

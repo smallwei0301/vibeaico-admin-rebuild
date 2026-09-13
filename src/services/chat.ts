@@ -2,6 +2,7 @@ import { USE_MOCK } from '@/config/env';
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import type { UnboundLineUser } from './customers';
 
 /**
  * 顧客訊息（/tenant/chat）service — 04 分冊 §B-5 / §B-5.1。
@@ -36,13 +37,6 @@ export type ChatMessage = {
   imageUrl: string;
   at: string;
   readAt: string | null;
-};
-
-export type UnboundLineUser = {
-  lineUserId: string;
-  displayName: string;
-  pictureUrl: string;
-  createdAt: string;
 };
 
 /** GET /api/chat/conversations 的原始回應列 */
@@ -322,9 +316,9 @@ export async function markThreadRead(messages: ChatMessage[]): Promise<void> {
   await Promise.allSettled(unread.map((m) => markRead(m.id)));
 }
 
-/** 未綁定顧客的 LINE 好友（followed=true 且 customer_id is null）。mock：[]。 */
-export const listUnboundLineUsers = () =>
-  adapt<UnboundLineUser[]>(() => [], () => request<UnboundLineUser[]>('/api/line-users/unbound'));
+// 未綁定顧客的 LINE 好友清單（GET /api/line-users/unbound）由 @/services/customers 的
+// listUnboundLineUsers() 提供唯一實作（mock 分支有真正的綁定/解綁往返狀態）；
+// 這裡只共用其型別，避免兩處各自宣告造成 export * 命名衝突或行為不一致。
 
 /* ----------------------------------------------------------------- 輪詢 */
 

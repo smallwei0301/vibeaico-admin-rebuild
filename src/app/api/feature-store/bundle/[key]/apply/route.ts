@@ -3,6 +3,7 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { createAdminSupabase } from '@/server/supabase';
 import { FEATURE_BUNDLES, type FeatureBundleKey } from '@/config/features';
+import { runRestoreSideEffects } from '@/server/feature-restore';
 
 /**
  * POST /api/feature-store/bundle/:key/apply — 訂閱套裝方案（09 分冊 §3）⚙OWNER。
@@ -11,6 +12,15 @@ import { FEATURE_BUNDLES, type FeatureBundleKey } from '@/config/features';
  * rpc subscribe_bundle（migration 0011，寫法比照 subscribe_feature）。
  * LITE→PRO 升級：訂 PRO 前先把 source='BUNDLE_LITE' 的列 cancelled_at=now()
  * （剩餘天數不退點，原站規則）；方案與單買並存，取消方案不影響單買。
+ *
+ * §6 還原副作用：套裝的 codes 若含 COUPON_SYSTEM／PRODUCT_SALES，訂閱成功後
+ * 要把被 cron 自動暫停的票券／商品改回發布／上架——與單項 apply 同一條路徑
+ * （src/server/feature-restore.ts）。
+ *
+ * ⚠️ 這一段本來是漏的：單項 apply 與 restore 各自有一份拷貝，套裝這一支根本沒寫。
+ * 於是店家取消 COUPON_SYSTEM（票券被自動暫停）後改訂 PRO 方案，方案含
+ * COUPON_SYSTEM、功能確實變成已訂閱，**但票券還是停用的**——畫面說功能有了，
+ * 東西卻還藏著，而且沒有任何錯誤訊息。
  */
 const bodySchema = z.object({
   months: z.union([z.literal(1), z.literal(3), z.literal(6), z.literal(12)]),
@@ -50,5 +60,12 @@ export const POST = handle(async (req, { params }) => {
     throw error;
   }
 
-  return ok();
+  // 還原失敗不可讓訂閱失敗（09 分冊 §6，與單項 apply 同一條規則）：點數已經扣了，
+  // 這裡再丟例外會讓店家看到「訂閱失敗」卻已被扣點。
+  try {
+    return ok(await runRestoreSideEffects(admin, t.tenantId, bundle.codes));
+  } catch (e) {
+    console.error('[feature-store] bundle restore side effect failed', key, e);
+    return ok({ restoreSideEffectFailed: true });
+  }
 });

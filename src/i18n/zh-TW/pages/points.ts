@@ -135,6 +135,7 @@ export const pointsPage = {
   messages: {
     transferred: (points: string, targetName: string) => `已轉出 ${points} 點到「${targetName}」`,
     transferFailed: '轉點失敗:',
+    topupRequested: '已送出儲值申請',
     payCreateFailed: '付款建立失敗:',
     payCreateFailedFull: '付款建立失敗：',
     payCreateFailedRetry: '建立付款失敗，請稍後再試',

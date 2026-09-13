@@ -1,0 +1,348 @@
+/**
+ * #8-A focused HTTP acceptance matrix. Running it invokes the shared TEST
+ * reset/seed lane; CI serializes it with the repo-wide TEST_VALIDATION holder.
+ */
+import { describe, expect, it, beforeAll } from 'vitest';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'node:crypto';
+import { SHOP_A, SHOP_B, TRIP_A } from '../../fixtures';
+import { loginAs, type AuthedApi } from '../../helpers/auth';
+
+type Envelope<T = unknown> = { success: boolean; data?: T; message?: string; code?: string };
+const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
+const PLAN_ID = '7a000000-0000-4000-8000-000000000011';
+
+async function json<T>(response: Response): Promise<Envelope<T>> {
+  return (await response.json()) as Envelope<T>;
+}
+
+let admin: SupabaseClient;
+let ownerA: AuthedApi;
+let ownerB: AuthedApi;
+
+beforeAll(async () => {
+  admin = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  ownerA = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
+  ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+});
+
+describe('trips and lifecycle actions', () => {
+  it('GET list succeeds; unauthenticated request is 401 AUTH_001', async () => {
+    const response = await ownerA.get('/api/trips');
+    expect(response.status).toBe(200);
+    expect((await json(response)).success).toBe(true);
+    const anonymous = await fetch(`${BASE}/api/trips`);
+    expect(anonymous.status).toBe(401);
+    expect((await json(anonymous)).code).toBe('AUTH_001');
+  });
+
+  it('rejects authenticated direct REST DML on core tour tables', async () => {
+    const rest = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: login, error: loginError } = await rest.auth.signInWithPassword({
+      email: SHOP_A.owner.email,
+      password: SHOP_A.owner.password,
+    });
+    expect(loginError).toBeNull();
+    expect(login.session).toBeTruthy();
+
+    const deniedInsert = await rest.from('trips').insert({
+      id: randomUUID(),
+      tenant_id: SHOP_A.id,
+      title: null,
+    });
+    expect(deniedInsert.data).toBeNull();
+    expect(deniedInsert.error?.code).toBe('42501');
+
+    const impossibleId = '7a000000-0000-4000-8000-000000000099';
+    const deniedUpdate = await rest.from('trips').update({ title: 'blocked' }).eq('id', impossibleId);
+    expect(deniedUpdate.data).toBeNull();
+    expect(deniedUpdate.error?.code).toBe('42501');
+
+    for (const table of ['trips', 'trip_plans', 'trip_departures', 'trip_addons']) {
+      const deniedDelete = await rest.from(table).delete().eq('id', impossibleId);
+      expect(deniedDelete.data).toBeNull();
+      expect(deniedDelete.error?.code).toBe('42501');
+    }
+  });
+
+  it('invalid create is 400 REQ_001 and other tenant cannot read the trip', async () => {
+    const invalid = await ownerA.post('/api/trips', { title: '' });
+    expect(invalid.status).toBe(400);
+    expect((await json(invalid)).code).toBe('REQ_001');
+    const crossTenant = await ownerB.get(`/api/trips/${TRIP_A.id}`);
+    expect(crossTenant.status).toBe(404);
+  });
+
+  it('blocks every core mutation when TOUR_MODULE is not active', async () => {
+    const { error: deleteError } = await admin.from('feature_subscriptions').delete()
+      .eq('tenant_id', SHOP_A.id).eq('code', 'TOUR_MODULE');
+    expect(deleteError).toBeNull();
+
+    const { count: tripsBefore, error: beforeError } = await admin
+      .from('trips').select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_A.id);
+    expect(beforeError).toBeNull();
+
+    const unknownId = '7a000000-0000-4000-8000-000000000099';
+    try {
+      const mutationRequests = [
+        // Validation runs before the feature gate, so this request must be
+        // valid enough to reach FEAT_001 while still not inserting a row.
+        () => ownerA.post('/api/trips', { title: `gated-${randomUUID()}` }),
+        () => ownerA.put(`/api/trips/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trips/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/plans`, {}),
+        () => ownerA.put(`/api/trip-plans/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trip-plans/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/departures`, {}),
+        () => ownerA.post(`/api/trips/${unknownId}/departures/batch`, {}),
+        () => ownerA.put(`/api/trip-departures/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trip-departures/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/addons`, {}),
+        () => ownerA.put(`/api/trip-addons/${unknownId}`, {}),
+        () => ownerA.delete(`/api/trip-addons/${unknownId}`),
+        () => ownerA.post(`/api/trips/${unknownId}/publish`),
+        () => ownerA.post(`/api/trips/${unknownId}/unpublish`),
+        () => ownerA.post(`/api/trips/${unknownId}/request-midao-listing`),
+      ];
+
+      for (const request of mutationRequests) {
+        const response = await request();
+        expect(response.status).toBe(403);
+        const body = await json(response);
+        expect(body.success).toBe(false);
+        expect(body.code).toBe('FEAT_001');
+      }
+
+      const { count: tripsAfter, error: afterError } = await admin
+        .from('trips').select('id', { count: 'exact', head: true }).eq('tenant_id', SHOP_A.id);
+      expect(afterError).toBeNull();
+      expect(tripsAfter).toBe(tripsBefore);
+    } finally {
+      const { error } = await admin.from('feature_subscriptions').upsert({
+        tenant_id: SHOP_A.id,
+        code: 'TOUR_MODULE',
+        active: true,
+        expires_at: null,
+        source: 'GRANTED',
+        cancelled_at: null,
+      }, { onConflict: 'tenant_id,code' });
+      expect(error).toBeNull();
+    }
+  });
+
+  it('supports publish/unpublish and NONE/REJECTED listing transitions', async () => {
+    const response = await ownerA.post('/api/trips', { title: `lifecycle-${randomUUID()}` });
+    expect(response.status).toBe(200);
+    const tripId = (await json<{ id: string }>(response)).data!.id;
+    try {
+      const notesUpdate = await ownerA.put(`/api/trips/${tripId}`, { notes: '請攜帶雨具' });
+      expect(notesUpdate.status).toBe(200);
+      expect((await json<{ safetyNotice: string }>(notesUpdate)).data?.safetyNotice).toBe('請攜帶雨具');
+      const reread = await ownerA.get(`/api/trips/${tripId}`);
+      expect((await json<{ trip: { safetyNotice: string } }>(reread)).data?.trip.safetyNotice).toBe('請攜帶雨具');
+
+      const listing = await ownerA.post(`/api/trips/${tripId}/request-midao-listing`);
+      expect(listing.status).toBe(200);
+      expect((await json(listing)).data).toMatchObject({ midaoListing: 'PENDING' });
+      const duplicateListing = await ownerA.post(`/api/trips/${tripId}/request-midao-listing`);
+      expect(duplicateListing.status).toBe(409);
+      const publish = await ownerA.post(`/api/trips/${tripId}/publish`);
+      expect(publish.status).toBe(200);
+      const unpublish = await ownerA.post(`/api/trips/${tripId}/unpublish`);
+      expect(unpublish.status).toBe(200);
+    } finally {
+      await admin.from('trips').delete().eq('id', tripId).eq('tenant_id', SHOP_A.id);
+    }
+  });
+});
+
+describe('plans, departures and addons CRUD', () => {
+  it('creates and updates each child resource with tenant-owned parent checks', async () => {
+    const trip = await ownerA.post('/api/trips', { title: `#8-A ${randomUUID()}`, slug: `test-${randomUUID()}` });
+    expect(trip.status).toBe(200);
+    const tripId = (await json<{ id: string }>(trip)).data!.id;
+    try {
+      const invalidFixed = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '超額訂金方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 1001,
+      });
+      expect(invalidFixed.status).toBe(400);
+
+      const zeroFixed = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '零元訂金方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_FIXED', depositValue: 0,
+      });
+      expect(zeroFixed.status).toBe(400);
+
+      const invalidPercent = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '超額比例方案', pricePerPerson: 1000, depositMode: 'DEPOSIT_PERCENT', depositValue: 101,
+      });
+      expect(invalidPercent.status).toBe(400);
+
+      const plan = await ownerA.post(`/api/trips/${tripId}/plans`, { name: '測試方案', pricePerPerson: 1000 });
+      expect(plan.status).toBe(200);
+      const planId = (await json<{ id: string }>(plan)).data!.id;
+      // issue #37：OPEN 團次現在必須有一位主導遊（10-TOUR-DOMAIN §1.3、§3
+      // 「不產生未指派半成品」）。SHOP_A 有兩位可接案人員，server 不會自動解析，
+      // 呼叫端必須指名——這是刻意的契約變更，不是為了讓測試變綠而加的參數。
+      const departure = await ownerA.post(`/api/trips/${tripId}/departures`, {
+        planId, departsOn: '2027-01-10', capacity: 2, startTime: '09:00',
+        primaryStaffId: SHOP_A.staffA1,
+      });
+      expect(departure.status).toBe(200);
+      const addon = await ownerA.post(`/api/trips/${tripId}/addons`, { name: '接送', price: 0 });
+      expect(addon.status).toBe(200);
+      const addonPayload = await json<{ id: string; name: string; price: number }>(addon);
+      expect(addonPayload.data).toMatchObject({ name: '接送', price: 0 });
+      const plans = await ownerA.get(`/api/trips/${tripId}/plans`);
+      expect((await json(plans)).data).toHaveLength(1);
+      const update = await ownerA.put(`/api/trip-plans/${planId}`, { pricePerPerson: 1200 });
+      expect(update.status).toBe(200);
+      const invalidUpdate = await ownerA.put(`/api/trip-plans/${planId}`, {
+        depositMode: 'DEPOSIT_FIXED', depositValue: 1201,
+      });
+      expect(invalidUpdate.status).toBe(400);
+      const validFixedUpdate = await ownerA.put(`/api/trip-plans/${planId}`, {
+        depositMode: 'DEPOSIT_FIXED', depositValue: 500,
+      });
+      expect(validFixedUpdate.status).toBe(200);
+      const departureId = (await json<{ id: string }>(departure)).data!.id;
+      await admin.from('trip_departures').update({ seats_booked: 2 }).eq('id', departureId);
+      const invalidCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 0 });
+      expect(invalidCapacity.status).toBe(400);
+      const lowCapacity = await ownerA.put(`/api/trip-departures/${departureId}`, { capacity: 1 });
+      expect(lowCapacity.status).toBe(409);
+      // issue #37：批次開團建立的一律是 OPEN 團次，同樣必須指定主導遊。
+      const tooWide = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
+        planId, from: '2020-01-01', to: '2022-01-01', weekdays: [1], capacity: 2,
+        primaryStaffId: SHOP_A.staffA1,
+      });
+      expect(tooWide.status).toBe(400);
+      const batch = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
+        planId, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
+        primaryStaffId: SHOP_A.staffA1,
+      });
+      expect(batch.status).toBe(200);
+      expect((await json<{ created: number; skipped: number }>(batch)).data).toMatchObject({ created: 1, skipped: 0 });
+      /**
+       * 第二次跑同一段區間仍然是 created 0 / skipped 1。
+       *
+       * ⚠️ issue #37 之後，這一筆略過的**原因**變了：本行程是用 `POST /api/trips`
+       * 建的（沒有 durationHours → `duration_hours` 為 null → 團次整日佔用），所以
+       * 第一次建立的那一團已經把 staffA1 在 2027-02-02 佔滿，第二次會先在撞班檢查
+       * 就被擋下並記進 `conflicts[]`，走不到「同方案同日同時已存在」那一段。
+       * 兩條路徑都得到 skipped 1，原斷言仍成立，但別誤讀成它還在驗重複偵測。
+       */
+      const batchAgain = await ownerA.post(`/api/trips/${tripId}/departures/batch`, {
+        planId, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
+        primaryStaffId: SHOP_A.staffA1,
+      });
+      expect((await json<{ created: number; skipped: number }>(batchAgain)).data).toMatchObject({ created: 0, skipped: 1 });
+      const addonId = addonPayload.data!.id;
+      expect((await ownerA.put(`/api/trip-addons/${addonId}`, { stock: null })).status).toBe(200);
+      expect((await ownerA.delete(`/api/trip-addons/${addonId}`)).status).toBe(200);
+      expect((await ownerA.delete(`/api/trip-plans/${planId}`)).status).toBe(200);
+    } finally {
+      await admin.from('trips').delete().eq('id', tripId).eq('tenant_id', SHOP_A.id);
+    }
+  });
+
+  it('batch rejects a cross-tenant/missing parent with 404 REQ_002', async () => {
+    const result = await ownerA.post('/api/trips/TRIP_NOT_FOUND/departures/batch', {
+      planId: PLAN_ID, from: '2027-02-01', to: '2027-02-07', weekdays: [1], capacity: 2,
+    });
+    expect(result.status).toBe(404);
+    expect((await json(result)).code).toBe('REQ_002');
+  });
+
+  /**
+   * `DELETE /api/trip-departures/:id` 原本不存在，但詳情頁的刪除鍵並沒有跟著停用——
+   * 它只是 `setDepartures(filter)` 再報「團次已刪除」，重新整理團次就回來了。
+   *
+   * 這一組不只驗 HTTP 狀態碼：**每一條都用 service role 直查 `trip_departures`**，
+   * 因為「回 200 但沒刪掉」與「回 409 卻已經刪掉」都會讓只看狀態碼的測試全綠，
+   * 而那正是本 issue 要修的那種假成功。
+   */
+  it('deletes an empty departure and refuses one that already has seats', async () => {
+    const trip = await ownerA.post('/api/trips', {
+      title: `departure-delete ${randomUUID()}`, slug: `dd-${randomUUID()}`,
+    });
+    expect(trip.status).toBe(200);
+    const tripId = (await json<{ id: string }>(trip)).data!.id;
+    try {
+      const plan = await ownerA.post(`/api/trips/${tripId}/plans`, {
+        name: '刪除測試方案', pricePerPerson: 1000,
+      });
+      expect(plan.status).toBe(200);
+      const planId = (await json<{ id: string }>(plan)).data!.id;
+
+      const mk = async (departsOn: string) => {
+        const r = await ownerA.post(`/api/trips/${tripId}/departures`, {
+          // issue #37：OPEN 團次必須指定主導遊。兩個日期不同天，同一位導遊不衝突。
+          planId, departsOn, capacity: 4, startTime: '09:00',
+          primaryStaffId: SHOP_A.staffA1,
+        });
+        expect(r.status).toBe(200);
+        return (await json<{ id: string }>(r)).data!.id;
+      };
+      const emptyId = await mk('2027-03-01');
+      const bookedId = await mk('2027-03-02');
+
+      // ① 沒有人報名 → 200，而且真的從資料庫消失
+      const removed = await ownerA.delete(`/api/trip-departures/${emptyId}`);
+      expect(removed.status).toBe(200);
+      const { data: gone, error: goneError } = await admin.from('trip_departures')
+        .select('id').eq('id', emptyId).maybeSingle();
+      expect(goneError).toBeNull();
+      expect(gone, '回了 200 但資料列還在').toBeNull();
+
+      // ② 已有人報名 → 409，而且資料列必須原封不動
+      const { error: seatError } = await admin.from('trip_departures')
+        .update({ seats_booked: 2 }).eq('id', bookedId);
+      expect(seatError).toBeNull();
+      const refused = await ownerA.delete(`/api/trip-departures/${bookedId}`);
+      expect(refused.status).toBe(409);
+      expect((await json(refused)).code).toBe('REQ_003');
+      const { data: kept, error: keptError } = await admin.from('trip_departures')
+        .select('id, seats_booked').eq('id', bookedId).maybeSingle();
+      expect(keptError).toBeNull();
+      expect(kept, '回了 409 卻把團次刪掉了').not.toBeNull();
+      expect(kept!.seats_booked).toBe(2);
+
+      // ③ 別家店不得刪掉這個團次。
+      //
+      // ⚠️ 這裡刻意分成兩段。SHOP_B 的種子沒有 TOUR_MODULE 訂閱，所以直接打會被
+      // 功能閘門擋在 403 —— 那證明的是「沒訂閱」，不是「沒有權利」（PB-025：
+      // 用有沒有資料／有沒有訂閱代替有沒有權利）。訂閱一旦補上，租戶隔離就沒有
+      // 任何斷言在守它了。所以先驗閘門，再**臨時給 SHOP_B 訂閱**，證明即使閘門
+      // 放行，租戶隔離仍然把它擋成 404。
+      const gated = await ownerB.delete(`/api/trip-departures/${bookedId}`);
+      expect(gated.status).toBe(403);
+      expect((await json(gated)).code).toBe('FEAT_001');
+
+      const { error: grantError } = await admin.from('feature_subscriptions').upsert({
+        tenant_id: SHOP_B.id, code: 'TOUR_MODULE', active: true,
+        expires_at: null, source: 'GRANTED', cancelled_at: null,
+      }, { onConflict: 'tenant_id,code' });
+      expect(grantError).toBeNull();
+      try {
+        const crossTenant = await ownerB.delete(`/api/trip-departures/${bookedId}`);
+        expect(crossTenant.status, '閘門放行後仍必須被租戶隔離擋下').toBe(404);
+        expect((await json(crossTenant)).code).toBe('REQ_002');
+      } finally {
+        await admin.from('feature_subscriptions').delete()
+          .eq('tenant_id', SHOP_B.id).eq('code', 'TOUR_MODULE');
+      }
+      const { data: stillThere } = await admin.from('trip_departures')
+        .select('id').eq('id', bookedId).maybeSingle();
+      expect(stillThere, '別家店把團次刪掉了').not.toBeNull();
+
+      // ④ 已刪掉的再刪一次 → 404，不是回成功
+      expect((await ownerA.delete(`/api/trip-departures/${emptyId}`)).status).toBe(404);
+    } finally {
+      await admin.from('trips').delete().eq('id', tripId).eq('tenant_id', SHOP_A.id);
+    }
+  });
+});
