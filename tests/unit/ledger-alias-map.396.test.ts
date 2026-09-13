@@ -414,8 +414,8 @@ describe('#396 已提交的正式資料', () => {
   const snapshot = loadRealSnapshot();
   const repoFiles = loadRealRepoFiles();
 
-  it('repo 有 53 個 migration 檔案，正式庫快照有 49 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(53);
+  it('repo 有 54 個 migration 檔案，正式庫快照有 49 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(54);
     expect(snapshot.ledgerRowNames).toHaveLength(49);
   });
 
@@ -430,14 +430,14 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：42 EXACT、6 ALIAS、5 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：42 EXACT、6 ALIAS、6 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
     }
     expect(counts.EXACT).toBe(42);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED).toBe(5);
+    expect(counts.NOT_APPLIED).toBe(6);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -698,7 +698,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    expect(notApplied.length).toBe(5);
+    expect(notApplied.length).toBe(6);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

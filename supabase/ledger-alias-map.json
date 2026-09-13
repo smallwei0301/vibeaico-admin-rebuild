@@ -450,6 +450,13 @@
       ],
       "classification": "LEDGER_ONLY",
       "evidence": "正式庫有此 ledger row，但目前 main 沒有任何檔案對應到它；座位 RPC（reserve/release seat 一類）的公開執行權異動已分別記在 0087_issue_8b_tour_orders／0088_issue_8b_tour_order_rpc_acl 各自的 ledger row 內，這一筆很可能是那兩支施工過程中的中繼歷史，不需要、也不應該補一個新的 repo 檔案去對應它。"
+    },
+    {
+      "repoFile": "0105_issue_44_traveler_risk_policies",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #44 source-only checkpoint（terra/issue-44-traveler-risk-cbc8）：新增 traveler_risk_policies 表＋RLS＋view，尚未合併進 main，也尚未依 docs/AGENT-EXECUTION.md §3.1 取得逐次授權套用到任何 Supabase 專案（TEST 或正式庫）。編號依 PB-017 先佔號，實際套用時機必須晚於檔名在 main 定案；套用前應重新核對屆時的 main 頭部是否仍是 0104。"
     }
   ]
 }
