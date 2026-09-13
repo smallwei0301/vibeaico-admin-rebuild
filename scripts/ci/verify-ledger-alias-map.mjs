@@ -19,7 +19,8 @@ import { fileURLToPath } from 'node:url';
  * 這支 script 只做 source-only 比對：
  *   - repo 端：讀 `supabase/migrations/*.sql` 的檔名（不讀檔案內容、不連資料庫）；
  *   - 正式庫端：讀一份**手動蒐證、已提交進 repo 的** ledger row 名稱快照
- *     （`docs/schema-truth/*-production-ledger-snapshot.json`），不現場查詢。
+ *     （`supabase/production-ledger-snapshot.json`，由對照表的 ledgerSnapshotRef 指定），
+ *     不現場查詢。
  *   - 對照表：`supabase/ledger-alias-map.json`。
  *
  * Fail closed：repo 檔案沒被對照表涵蓋、ledger row 沒被涵蓋、對照表指到不存在的

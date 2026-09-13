@@ -134,6 +134,14 @@ The lifecycle has two sides, and both are the author's responsibility:
    pointing at a row the snapshot does not contain fails — but it cannot tell you that the pair is jointly
    out of date.
 
+`LEDGER_NAME_PATTERN` in `scripts/ci/verify-ledger-alias-map.mjs` additionally constrains the *shape* of
+every ledger name to lowercase alphanumerics separated by single underscores, so a hyphen or a capital
+letter fails closed. Supabase's ledger `name` column is free text — none of the current 49 rows use
+either, but a row created from the Dashboard or by `supabase migration new add-index` legitimately could.
+If Production ever records such a name, widen `LEDGER_NAME_PATTERN` **in the same change as the
+re-capture**; never edit the snapshot to make a real ledger name fit the pattern, because the snapshot
+must remain a verbatim copy of what Production reports.
+
 The snapshot is a point-in-time capture. The checker never connects to a database, so it cannot refresh
 the snapshot or detect that Production has moved on: **a stale snapshot is invisible until someone
 re-captures it.** Refreshing it is a manual, read-only evidence step with its own Completion Truth record,

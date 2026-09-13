@@ -196,6 +196,81 @@ describe('#396 verifyLedgerAliasMap — 建構樣本', () => {
   });
 });
 
+/**
+ * 迴歸測試（pin #396 的 assertExactKeys 串聯修正）——這個 describe 存在的唯一理由，
+ * 是擋住一個曾經真的發生過、而且所有既有測試都抓不到的回頭路。
+ *
+ * assertExactKeys() 的回傳值被呼叫端當成「這一筆 entry 還值不值得繼續檢查」：
+ * 回 false 就 `return`，跳過這一筆剩下的所有形狀檢查與重複認領追蹤。所以它只能回報
+ * **自己這一次**有沒有加出新的錯誤：
+ *
+ *   const before = errors.length;  …  return errors.length === before;   ← 正確
+ *   return errors.length === 0;                                          ← 退版後的樣子
+ *
+ * 退版成 `errors.length === 0` 之後，只要前面任何一筆 entry 累積過錯誤，後面每一筆
+ * 形狀完全正確的 entry 都會被誤判成「形狀壞掉」而整筆跳過——失敗訊息只剩第一個缺陷，
+ * 第二、第三個缺陷靜靜消失，重複認領也不再被追蹤。
+ *
+ * 既有的突變測試每次只注入「一個」缺陷，所以退版後照樣全綠，這正是當初能通過審查的原因。
+ * 底下這個案例刻意在同一份輸入裡放三個缺陷，而且第二、第三個只有在第一個沒有造成
+ * 短路時才看得到，所以它對這次修正是敏感的：把上面兩行改回 `=== 0`，它必須變紅。
+ */
+describe('#396 迴歸：assertExactKeys 短路不得吃掉同一份輸入裡的後續缺陷', () => {
+  function multiDefectAliasMap(): any {
+    return {
+      schemaVersion: 1,
+      issue: 999,
+      description: '造樣資料：同一份輸入裡刻意放三個缺陷',
+      ledgerSnapshotRef: 'supabase/fixture.json',
+      classifications: { EXACT: 'x', ALIAS: 'x', NOT_APPLIED: 'x', LEDGER_ONLY: 'x' },
+      notAppliedReasons: { VERIFIED_NOT_APPLIED: 'x', PENDING_APPLY: 'x' },
+      knownPrefixCollisions: [],
+      entries: [
+        // 缺陷 1：未知的 classification（第一個累積出錯誤的地方）。
+        { repoFile: '0001_a', ledgerNames: ['0001_a'], classification: 'BOGUS', evidence: 'x' },
+        // 缺陷 2：EXACT 卻與 ledgerNames 對不上——只有在缺陷 1 沒有短路時才看得到。
+        { repoFile: '0002_b', ledgerNames: ['renamed_b'], classification: 'EXACT', evidence: 'x' },
+        // 缺陷 3：repoFile 與 entries[1] 重複——重複追蹤只在 entries[1] 沒被跳過時才會建立。
+        {
+          repoFile: '0002_b',
+          ledgerNames: [],
+          classification: 'NOT_APPLIED',
+          notAppliedReason: 'VERIFIED_NOT_APPLIED',
+          evidence: 'x',
+        },
+      ],
+    };
+  }
+
+  it('三個缺陷必須全部被回報，不能只剩第一個', () => {
+    const { errors } = validateAliasMapShape(multiDefectAliasMap());
+
+    // 缺陷 1：退版與否都會被抓到（它就是第一個錯誤）。
+    expect(errors.some((e) => e.includes('entries[0]') && e.includes('未知的 classification'))).toBe(true);
+    // 缺陷 2：退版後會消失。
+    expect(errors.some((e) => e.includes('entries[1]') && e.includes('EXACT 必須是'))).toBe(true);
+    // 缺陷 3：退版後會消失。
+    expect(errors.some((e) => e.includes('entries[2]') && e.includes('0002_b') && e.includes('重複 entry'))).toBe(true);
+  });
+
+  it('形狀正確的 entry 不會因為前面某一筆已經出錯就被判成形狀壞掉', () => {
+    const aliasMap = multiDefectAliasMap();
+    // 只留下「前面一筆壞掉、後面一筆完全正確」的最小情境：
+    // 正確的那一筆不該產生任何屬於它自己的錯誤訊息。
+    aliasMap.entries = [
+      { repoFile: '0001_a', ledgerNames: ['0001_a'], classification: 'BOGUS', evidence: 'x' },
+      { repoFile: '0002_b', ledgerNames: ['renamed_b'], classification: 'ALIAS', evidence: 'x' },
+    ];
+    const { errors } = validateAliasMapShape(aliasMap);
+    expect(errors.some((e) => e.includes('entries[1]'))).toBe(false);
+    // 而且它確實被追蹤過：再加一筆同名 repoFile 就必須被判成重複。
+    aliasMap.entries.push({ repoFile: '0002_b', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' });
+    const second = validateAliasMapShape(aliasMap);
+    expect(second.errors.some((e) => e.includes('entries[2]') && e.includes('重複 entry'))).toBe(true);
+  });
+});
+
+
 describe('#396 detectPrefixCollisions — pure function', () => {
   it('同前綴、不同完整名稱（跨 repo／ledger）回報一筆撞號', () => {
     const collisions = detectPrefixCollisions({
