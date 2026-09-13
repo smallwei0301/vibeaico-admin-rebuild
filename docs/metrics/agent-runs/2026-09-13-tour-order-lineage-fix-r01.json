@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-13-tour-order-lineage-fix-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-13T00:00:00Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "issue/396",
+      "note": "Final Risk 覆核 0104_tour_order_lineage_keys.sql 回報 PASS 但有四項 non-blocking findings；本 Run 修四項並補一支測試與一支真實資料庫 schema proof。"
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "b361ff5",
+      "note": "本 Run 起算時的分支 head（claude/project-governance-rules-vraejm）。"
+    }
+  ],
+  "main": { "startSha": "b361ff5", "endSha": null },
+  "inventory": {
+    "openIssuesStart": null, "openIssuesEnd": null, "openPrsStart": null, "openPrsEnd": null,
+    "mainTerraPeak": 0, "reserveTerraPeak": 0, "activeCandidatePeak": 0, "sharedTestPeak": 0,
+    "closureSweeps": 0, "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null, "weeklyUsageEndPercent": null, "weightedUsageImprovementPercent": null,
+    "weights": { "luna": 1, "terra": 3, "sol": 6 },
+    "contextMultipliers": { "compact": 1, "medium": 1.5, "full": 3 },
+    "tasks": [], "fullContextReplays": 0, "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1, "issuesClosed": 0, "auditReady": 0, "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0, "commitOnly": 0, "unfinishedCarryover": 0, "cycleTimeMinutes": null
+  },
+  "ci": { "fullCiRuns": 0, "invalidReruns": 0, "firstPassRatePercent": null, "sharedTestCollisions": 0 },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null, "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0, "unresolvedP1": 0, "reopenedIssues": 0, "postMergeRegressions": 0,
+    "safetyViolations": 0, "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0, "lunaAccepted": 0, "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0, "ownershipCollisions": 0, "waitTimeConvertedPercent": null,
+    "solTouches": 0, "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null, "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0, "preciseBlockersPercent": null, "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "修 0104 的四項 Final Risk non-blocking findings：鎖序改父表先子表後、後置條件加 confdelsetcols 檢查、加欄位形狀前置條件、重寫契約測試堵住四個突變。",
+    "新增 tests/schema/tour-order-lineage-schema-proof.test.mjs 與 scripts/test/verify-tour-order-lineage-schema.mjs，比照既有 assignment/business-type schema proof 慣例，並在 agent-schema-bootstrap.yml 掛上對應步驟。",
+    "本機用拋棄式 PostgreSQL 16 叢集（非 docker/supabase CLI，環境無 docker daemon）手動驗證 (a)(b)(c)(d) 四項行為與 Fix1／Fix3 的鎖序／欄位形狀，細節見 PR 說明。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1, "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN", "closedAt": null, "evidenceRef": null
+  },
+  "completionTruth": { "status": "NOT_CHECKED", "checkedAt": null, "claims": [] }
+}

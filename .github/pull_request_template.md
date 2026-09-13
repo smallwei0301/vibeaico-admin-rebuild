@@ -76,6 +76,10 @@ MODEL_GOVERNANCE must not claim TERRA_BUILD, TERRA_RESERVE, TEST_VALIDATION or P
 - ASTRA_RISK: NONE | PAYMENT_CONSISTENCY | TENANT_AUTH_BOUNDARY | IRREVERSIBLE_DATA | CROSS_REPO_CONTRACT | GOVERNANCE_GATE | UNRESOLVED_HIGH_RISK
 - ASTRA_RATIONALE: <!-- concrete classification -->
 - FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY | BY_PRODUCT_RISK_CLASSIFICATION
+- ASTRA_TEST_BASELINE: <!-- REQUIRED when ASTRA_RISK is not NONE. The exact head plus what was actually run: before/after comparison, commands and counts. -->
+- ASTRA_SCHEMA_BASELINE: <!-- REQUIRED when ASTRA_RISK is not NONE. Which DDL objects change, which dependencies already exist in each environment, and what is NOT applied to Production. -->
+
+`ASTRA_TEST_BASELINE` and `ASTRA_SCHEMA_BASELINE` are validated by `scripts/agents/astra-review-policy.mjs`; an empty or placeholder value fails the `Agent WIP Policy` status with `Missing concrete testBaseline` / `Missing concrete schemaBaseline`. `MODEL_GOVERNANCE` leaves both as `none`.
 
 MODEL_GOVERNANCE uses `ASTRA_RISK: NONE` and `FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY`; required source CI/regression tests, final diff verification and counterexample review still apply without a specified reviewer model.
 

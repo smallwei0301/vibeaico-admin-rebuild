@@ -14,8 +14,10 @@ on:
       - 'scripts/test/tour-seed-profile.mjs'
       - 'scripts/test/verify-assignment-schema.mjs'
       - 'scripts/test/verify-business-type-schema.mjs'
+      - 'scripts/test/verify-tour-order-lineage-schema.mjs'
       - 'tests/schema/assignment-schema-proof.test.mjs'
       - 'tests/schema/business-type-schema-proof.test.mjs'
+      - 'tests/schema/tour-order-lineage-schema-proof.test.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
       - 'tests/unit/fresh-install-baseline.test.ts'
       - 'tests/unit/schema-bootstrap-policy.test.ts'
@@ -36,8 +38,10 @@ on:
       - 'scripts/test/tour-seed-profile.mjs'
       - 'scripts/test/verify-assignment-schema.mjs'
       - 'scripts/test/verify-business-type-schema.mjs'
+      - 'scripts/test/verify-tour-order-lineage-schema.mjs'
       - 'tests/schema/assignment-schema-proof.test.mjs'
       - 'tests/schema/business-type-schema-proof.test.mjs'
+      - 'tests/schema/tour-order-lineage-schema-proof.test.mjs'
       - 'tests/unit/schema-bootstrap-candidate.test.ts'
       - 'tests/unit/fresh-install-baseline.test.ts'
       - 'tests/unit/schema-bootstrap-policy.test.ts'
@@ -283,6 +287,11 @@ jobs:
         run: |
           node --test tests/schema/business-type-schema-proof.test.mjs
           node scripts/test/verify-business-type-schema.mjs
+      - name: Prove tour_orders lineage-key reconciliation on disposable PostgreSQL
+        if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
+        run: |
+          node --test tests/schema/tour-order-lineage-schema-proof.test.mjs
+          node scripts/test/verify-tour-order-lineage-schema.mjs
       - name: Prove current Product integration on the clean candidate, without issue-41
         if: ${{ steps.acceptance.outputs.product_acceptance_required == 'true' }}
         run: npm run test:integration
