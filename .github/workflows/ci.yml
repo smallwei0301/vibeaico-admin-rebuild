@@ -155,6 +155,8 @@ jobs:
           BASE_REVISION: ${{ needs.classify-changes.outputs.base_revision }}
           HEAD_REVISION: ${{ needs.classify-changes.outputs.head_revision }}
         run: npm run guard:repo-integrity
+      - name: Verify production ledger alias map (#396)
+        run: npm run guard:ledger-alias-map
       - name: Validate .claude skill symlinks
         run: |
           if [ -d .claude/skills ] && find .claude/skills -type l ! -exec test -e {} \; -print -quit | grep -q .; then
