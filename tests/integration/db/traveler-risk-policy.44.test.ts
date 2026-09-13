@@ -170,21 +170,30 @@ describe('值域：資料庫是最後一道防線（不只靠應用層 zod）', 
 });
 
 describe('append-only：不可篡改的稽核帳本', () => {
-  it('UPDATE/DELETE 對已存在列無效（RLS 沒有對應 policy，受影響筆數為 0，不是報錯）', async () => {
+  // 這條原本斷言「RLS 沒有對應 policy → 影響 0 列、不報錯」。在 local isolated
+  // 從 0001 建起的真實資料庫上實跑後，拿到的是 42501（insufficient_privilege），
+  // 不是安靜的 0 列——因為 0105 依 PB-028 三段式處理，連 authenticated 的
+  // UPDATE/DELETE **授權本身**都撤掉了，缺 GRANT 會在 RLS 被諮詢之前就擋下。
+  //
+  // 也就是說實際行為比原本的預期更強：篡改者拿到硬錯誤，而不是以為「我改了但
+  // 沒生效」。修正的是斷言，不是 migration。
+  //
+  // 刻意釘住具體錯誤碼而不是只寫 `toBeTruthy()`：日後若有人把 UPDATE 權限
+  // 補回給 authenticated，行為會退化成「只靠 RLS 擋、回 0 列且 error 為 null」，
+  // 那時這條會轉紅。寫成 truthy 就抓不到那種退化。
+  it('UPDATE/DELETE 被授權層直接擋下（42501），不是安靜地影響 0 列', async () => {
     const created = await assignTravelerRiskPolicy(asOwnerA, SHOP_A.id, ownerAUid, {
       customerId: TARGET_CUSTOMER, policy: 'REQUEST_ONLY',
       reason: '不可篡改測試基準列', actorLabel: 'Wayne',
     });
 
-    const { data: updated, error: updateErr } = await asOwnerA
+    const { error: updateErr } = await asOwnerA
       .from('traveler_risk_policies').update({ reason: '被竄改' }).eq('id', created.id).select('*');
-    expect(updateErr).toBeNull();
-    expect(updated).toEqual([]); // 沒有任何一列真的被改到
+    expect(updateErr?.code).toBe('42501');
 
-    const { data: deleted, error: deleteErr } = await asOwnerA
+    const { error: deleteErr } = await asOwnerA
       .from('traveler_risk_policies').delete().eq('id', created.id).select('*');
-    expect(deleteErr).toBeNull();
-    expect(deleted).toEqual([]);
+    expect(deleteErr?.code).toBe('42501');
 
     // service role 直查證明原始列真的還在、內容未變（不是巧合地 update 影響了別列）
     const { data: row } = await admin.from('traveler_risk_policies').select('reason').eq('id', created.id).single();
