@@ -248,12 +248,12 @@ test('③ 手動建單勾選通知後，顯示的是後端回報的實際結果�
   // 每一輪都靜默失敗、殘留無上限累積。所以先清依賴列，再刪商品，並且檢查錯誤。
   const { data: stale, error: staleErr } = await db.from('products')
     .select('id').eq('tenant_id', SHOP_A.id).like('name', 'E2E27 驗收商品 %');
-  if (staleErr) throw staleErr;
+  if (staleErr) throw new Error(`[issue-27] 讀取殘留測試商品失敗：${staleErr.message}`);
   for (const row of stale ?? []) {
     const staleId = row.id as string;
     const { data: staleItems, error: itemErr } = await db
       .from('product_order_items').select('order_id').eq('product_id', staleId);
-    if (itemErr) throw itemErr;
+    if (itemErr) throw new Error(`[issue-27] 讀取殘留訂單明細失敗：${itemErr.message}`);
     const staleOrderIds = [...new Set((staleItems ?? []).map((i) => i.order_id as string))];
     if (staleOrderIds.length) {
       await db.from('product_order_items').delete().in('order_id', staleOrderIds);
