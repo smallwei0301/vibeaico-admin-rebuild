@@ -241,7 +241,30 @@ test('③ 手動建單勾選通知後，顯示的是後端回報的實際結果�
 
   // 先掃掉上一輪殘留的測試商品：test 逾時時 Playwright 會直接中斷，finally 不會
   // 執行，殘留的商品會一路留在下拉選單裡干擾之後每一輪。
-  await db.from('products').delete().eq('tenant_id', SHOP_A.id).like('name', 'E2E27 驗收商品 %');
+  //
+  // 不能只下一句 delete products：`product_order_items.product_id` 是
+  // `on delete restrict`（0004:178），上一輪若已建單才逾時，這句會被 FK 擋下。
+  // 而 supabase-js 的 delete 不會 throw，錯誤只在回傳值裡 —— 不檢查就等於
+  // 每一輪都靜默失敗、殘留無上限累積。所以先清依賴列，再刪商品，並且檢查錯誤。
+  const { data: stale, error: staleErr } = await db.from('products')
+    .select('id').eq('tenant_id', SHOP_A.id).like('name', 'E2E27 驗收商品 %');
+  if (staleErr) throw staleErr;
+  for (const row of stale ?? []) {
+    const staleId = row.id as string;
+    const { data: staleItems, error: itemErr } = await db
+      .from('product_order_items').select('order_id').eq('product_id', staleId);
+    if (itemErr) throw itemErr;
+    const staleOrderIds = [...new Set((staleItems ?? []).map((i) => i.order_id as string))];
+    if (staleOrderIds.length) {
+      await db.from('product_order_items').delete().in('order_id', staleOrderIds);
+      await db.from('product_orders').delete().in('id', staleOrderIds);
+    }
+    await db.from('inventory_logs').delete().eq('product_id', staleId);
+    const { error } = await db.from('products').delete().eq('id', staleId);
+    if (error) {
+      throw new Error(`[issue-27] 無法清除上一輪殘留的測試商品 ${staleId}：${error.message}`);
+    }
+  }
 
   // products 有 (tenant_id, sort_order) / (tenant_id, line_sort_order) 唯一索引，
   // 取一個不會和既有資料撞號的區段。
