@@ -414,12 +414,12 @@ describe('#396 已提交的正式資料', () => {
   const snapshot = loadRealSnapshot();
   const repoFiles = loadRealRepoFiles();
 
-  it('repo 有 53 個 migration 檔案，正式庫快照有 49 筆 ledger row', () => {
+  it('repo 有 53 個 migration 檔案，正式庫快照有 54 筆 ledger row', () => {
     expect(repoFiles).toHaveLength(53);
-    expect(snapshot.ledgerRowNames).toHaveLength(49);
+    expect(snapshot.ledgerRowNames).toHaveLength(54);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 53 個 repo 檔案與 49 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 53 個 repo 檔案與 54 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -430,14 +430,16 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：42 EXACT、6 ALIAS、5 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：47 EXACT、6 ALIAS、0 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
     }
-    expect(counts.EXACT).toBe(42);
+    // 2026-09-13：0069–0073 五支經 Owner 具名授權套用至正式庫並回讀驗證，
+    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47），NOT_APPLIED 歸零。
+    expect(counts.EXACT).toBe(47);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED).toBe(5);
+    expect(counts.NOT_APPLIED ?? 0).toBe(0);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -459,7 +461,10 @@ describe('#396 已提交的正式資料', () => {
     expect(entry.ledgerNames).toEqual(['0082_staff_display_fields']);
   });
 
-  it('五個 welcome-card 相關檔案都是 NOT_APPLIED', () => {
+  it('五個 welcome-card 相關檔案都是 EXACT，且帳本列名逐字等於檔名', () => {
+    // 2026-09-13 套用前這五支是 NOT_APPLIED。套用後帳本列名必須**逐字等於檔名**，
+    // 不得產生新的別名——0072 曾被誤寫成 0072_welcome_card_storage_side_door，
+    // 已在同一次作業內更正，這條斷言就是防止那類錯誤再次悄悄留下。
     const files = [
       '0069_welcome_card_images',
       '0070_welcome_card_image_retirement',
@@ -470,8 +475,9 @@ describe('#396 已提交的正式資料', () => {
     for (const file of files) {
       const entry = aliasMap.entries.find((e: any) => e.repoFile === file);
       expect(entry, `entry for ${file}`).toBeTruthy();
-      expect(entry.classification).toBe('NOT_APPLIED');
-      expect(entry.ledgerNames).toEqual([]);
+      expect(entry.classification, `classification for ${file}`).toBe('EXACT');
+      expect(entry.ledgerNames, `ledgerNames for ${file}`).toEqual([file]);
+      expect(snapshot.ledgerRowNames, `snapshot row for ${file}`).toContain(file);
     }
   });
 });
@@ -698,7 +704,10 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    expect(notApplied.length).toBe(5);
+    // 2026-09-13 起目前為 0 筆（0069–0073 已套用）。這條規則刻意不因為「現在沒有」
+    // 就變成空轉：先釘住目前的數量，任何人日後新增一筆 NOT_APPLIED 會先撞到這一行，
+    // 被迫同時面對下面那條「必須有合法 notAppliedReason」的規則。
+    expect(notApplied.length).toBe(0);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }
