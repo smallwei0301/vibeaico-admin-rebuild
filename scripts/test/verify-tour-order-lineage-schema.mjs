@@ -35,16 +35,23 @@ export function assertDisposableTarget(env, evidence, sql) {
       || !input || input.sha256 !== digest) throw new Error('UNVERIFIED_SCHEMA_PROOF_SOURCE');
 }
 
-// #396 之前，正式庫與帳本（0087）都是這種單欄弱形狀——把已升級的 canonical TEST
-// 拆回這個形狀，才能重演「升級」這件事本身。
+// 實查兩座 Supabase（2026-09-13，見 0104 開頭的現況記錄）：正式庫的
+// trips/trip_plans/trip_departures 三支 (tenant_id, id 系) 父鍵，早在 0067
+// 就已經建立，而且 trip_plans_tenant_trip_id_id_key 被 0067 的
+// trip_departures_tenant_trip_plan_fkey 依賴、trips_tenant_id_id_key 被
+// trip_plans/trip_addons/trip_departures 的 tenant_trip_fkey 依賴——這三支鍵
+// 在任何有 0067 之後 migration 的資料庫上都無法被 DROP（其他物件依賴它），
+// 正式庫也確實一直帶著它們。正式庫真正缺的只有 customers_tenant_id_id_key
+// （只有 0104 本身會建立它）。tour_orders 這邊則一直是帳本（0087）留下的
+// 四條單欄 FK，直到 0104 才升級成複合鏈。這裡把已升級的 canonical TEST 拆回
+// 「正式庫真正的形狀」（父鍵維持複合、tour_orders 四鍵降回單欄、customers
+// 父鍵不存在），才能重演「升級」這件事本身，而不是重演一個沒有任何環境
+// 有過的假形狀。
 const weakKeys = `
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_departure_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_customer_fkey;
-ALTER TABLE public.trips DROP CONSTRAINT IF EXISTS trips_tenant_id_id_key;
-ALTER TABLE public.trip_plans DROP CONSTRAINT IF EXISTS trip_plans_tenant_trip_id_id_key;
-ALTER TABLE public.trip_departures DROP CONSTRAINT IF EXISTS trip_departures_tenant_trip_plan_id_id_key;
 ALTER TABLE public.customers DROP CONSTRAINT IF EXISTS customers_tenant_id_id_key;
 ALTER TABLE public.tour_orders ADD CONSTRAINT tour_orders_trip_id_fkey
   FOREIGN KEY (trip_id) REFERENCES public.trips (id) ON DELETE RESTRICT;
@@ -141,11 +148,14 @@ export function buildCases(migration) {
     { name: 'existing-test-shape-idempotence', sql: migration + migration + assertStrong + dmlProof },
     { name: 'production-shaped-simple-keys-upgrade', sql: weakKeys + migration + assertStrong + dmlProof },
     { name: 'mixed-shape-upgrade-trips-already-strong', sql: `
+      -- trips 這條保持複合（tenant_trip_fkey 不動），只把 plan/departure/customer
+      -- 降回單欄——trip_plans_tenant_trip_id_id_key、
+      -- trip_departures_tenant_trip_plan_id_id_key 兩支父鍵不能動：前者被 0067 的
+      -- trip_departures_tenant_trip_plan_fkey 依賴，DROP 會炸 dependency error，
+      -- 且兩支鍵在正式庫上本來就存在，不該被拆掉才能算「trips 已經是強形狀」。
       ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_fkey;
       ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_departure_fkey;
       ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_customer_fkey;
-      ALTER TABLE public.trip_plans DROP CONSTRAINT IF EXISTS trip_plans_tenant_trip_id_id_key;
-      ALTER TABLE public.trip_departures DROP CONSTRAINT IF EXISTS trip_departures_tenant_trip_plan_id_id_key;
       ALTER TABLE public.customers DROP CONSTRAINT IF EXISTS customers_tenant_id_id_key;
       ALTER TABLE public.tour_orders ADD CONSTRAINT tour_orders_plan_id_fkey
         FOREIGN KEY (plan_id) REFERENCES public.trip_plans (id) ON DELETE RESTRICT;
