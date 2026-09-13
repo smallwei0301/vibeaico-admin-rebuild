@@ -161,6 +161,22 @@ export async function getCurrentTravelerRiskPolicy(
   return data ? mapTravelerRiskPolicyRow(data as PolicyRow) : null;
 }
 
+/**
+ * 前後端契約 DTO（`src/lib/types.ts` 的 `TravelerRiskPolicy`）——只回傳畫面需要
+ * 的欄位，`tenantId`／`customerId`／`actorUserId` 不外露（租戶與旅客身分已由
+ * URL／RLS 決定，`actorUserId` 是內部稽核用途，畫面只需要 `actorLabel`）。
+ */
+export function toTravelerRiskPolicyDto(p: TravelerRiskPolicy) {
+  return {
+    id: p.id,
+    policy: p.policy,
+    deposit: p.deposit,
+    reason: p.reason,
+    actorLabel: p.actorLabel,
+    createdAt: p.createdAt,
+  };
+}
+
 /** 完整歷史（最新在前）——供「原因：2026-08-28 由 Wayne 設定」這類卡片沿革使用。 */
 export async function listTravelerRiskPolicyHistory(
   supabase: AnyClient,

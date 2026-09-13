@@ -294,6 +294,33 @@ export type PointTransaction = {
   createdAt: string;
 };
 
+/* -------------------------------------------------------- 旅客風險政策（#44） */
+/**
+ * 對應 `src/server/traveler-risk-policy.ts` 的 `TRAVELER_RISK_POLICY_KINDS`；
+ * 逐字對齊既有 kernel `TravelerBookingPolicy['kind']`。第一版依
+ * `docs/decisions/2026-09-11-guide-traveler-policy-no-deposit-waiver.md`
+ * 刻意只有這四個值，不提供熟客免訂金等價能力。
+ */
+export type TravelerRiskPolicyKind = 'DEFAULT' | 'FORCE_DEPOSIT' | 'REQUEST_ONLY' | 'BLOCK_SELF_SERVICE';
+export type TravelerRiskDepositMode = 'DEPOSIT_FIXED' | 'DEPOSIT_PERCENT';
+export type TravelerRiskDeposit = { mode: TravelerRiskDepositMode; value: number };
+
+/** GET /api/customers/:id/risk-policy 單筆；帳本事件（append-only），非「可編輯列」。 */
+export type TravelerRiskPolicy = {
+  id: string;
+  policy: TravelerRiskPolicyKind;
+  deposit: TravelerRiskDeposit | null;
+  reason: string;
+  actorLabel: string;
+  createdAt: string;
+};
+
+/** GET /api/customers/:id/risk-policy 回應：目前生效政策 ＋ 完整歷史（最新在前）。 */
+export type TravelerRiskPolicyDetail = {
+  current: TravelerRiskPolicy | null;
+  history: TravelerRiskPolicy[];
+};
+
 /* ------------------------------------------------------------------ 租戶 */
 export type TenantSummary = {
   id: string;
