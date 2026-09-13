@@ -114,6 +114,39 @@ A branch-only migration must never be described as durable schema truth merely b
 or because a provider ledger contains a similarly numbered row. `main` source truth, live schema truth,
 and provider-ledger truth remain three separate surfaces until explicitly reconciled.
 
+## Production ledger alias map maintenance (#396)
+
+`supabase/ledger-alias-map.json` maps every file under `supabase/migrations/` to the Production provider
+ledger rows in `supabase/production-ledger-snapshot.json`. Both files are **CI gate inputs**, not
+documentation: `npm run guard:ledger-alias-map` reads them and fails closed. They deliberately live under
+`supabase/` so that the docs-only direct-to-main route in `docs/DOCUMENTATION-GOVERNANCE.md` §2.1 can never
+admit a change to them.
+
+The lifecycle has two sides, and both are the author's responsibility:
+
+1. **When you add a migration**, add a matching entry to the alias map in the same change and choose its
+   classification. A `NOT_APPLIED` entry must also carry `notAppliedReason`: `PENDING_APPLY` for a merged
+   migration not yet deployed, `VERIFIED_NOT_APPLIED` for one that was checked and deliberately never
+   applied. The checker rejects an uncovered migration file and rejects `NOT_APPLIED` without that field.
+2. **When a migration is applied to Production**, re-capture `supabase/production-ledger-snapshot.json`
+   from the live ledger and flip the entry's classification to `EXACT` or `ALIAS` **in the same change**.
+   The checker enforces that the two edits agree — a snapshot row with no entry fails, and an entry
+   pointing at a row the snapshot does not contain fails — but it cannot tell you that the pair is jointly
+   out of date.
+
+`LEDGER_NAME_PATTERN` in `scripts/ci/verify-ledger-alias-map.mjs` additionally constrains the *shape* of
+every ledger name to lowercase alphanumerics separated by single underscores, so a hyphen or a capital
+letter fails closed. Supabase's ledger `name` column is free text — none of the current 49 rows use
+either, but a row created from the Dashboard or by `supabase migration new add-index` legitimately could.
+If Production ever records such a name, widen `LEDGER_NAME_PATTERN` **in the same change as the
+re-capture**; never edit the snapshot to make a real ledger name fit the pattern, because the snapshot
+must remain a verbatim copy of what Production reports.
+
+The snapshot is a point-in-time capture. The checker never connects to a database, so it cannot refresh
+the snapshot or detect that Production has moved on: **a stale snapshot is invisible until someone
+re-captures it.** Refreshing it is a manual, read-only evidence step with its own Completion Truth record,
+and it is not authorization to apply anything to Production.
+
 ## Command
 
 ```bash
