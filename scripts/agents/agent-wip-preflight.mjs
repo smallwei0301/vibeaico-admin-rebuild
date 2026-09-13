@@ -13,7 +13,7 @@ import {
 import { parseGovernanceScopeException } from './governance-scope-budget.mjs';
 import { decideLocalIsolatedTest } from '../ci/local-isolated-test-policy.mjs';
 
-import { classifyAstra } from './astra-review-policy.mjs';
+import { changeDigestOf, classifyAstra, evaluateAstra, routing } from './astra-review-policy.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const ORIGINS = new Set(['OWNER', 'AGENT', 'UNKNOWN']);
@@ -25,6 +25,37 @@ function upper(value) {
 function shouldValidateScorecardPath(value) {
   const text = String(value ?? '').trim();
   return Boolean(text) && !isPlaceholder(text) && !/^none$/i.test(text);
+}
+
+/**
+ * PB-034：preflight 必須跟 CI 問同一支函式，不能自己複述規則。
+ *
+ * `evaluateAstra()` 產出的錯誤裡，只有一部分是**本機就能知道**的：
+ * `ASTRA_TEST_BASELINE` / `ASTRA_SCHEMA_BASELINE` 這兩個欄位完全來自 PR 內文。
+ * 其餘（baseSha／headSha／changeDigest／是否已有可信 attestation）要等 PR 存在、
+ * 要等審查者送出 review，本機必然不知道——所以這裡用合法的替身值把那些檢查填飽，
+ * 再只留下那兩個欄位的結果。多回報本機證明不了的東西，就是另一種假證據。
+ *
+ * 這一條是被 #397 抓出來的：本機 preflight 綠、CI 以
+ * `Missing concrete testBaseline; Missing concrete schemaBaseline` 退件，
+ * 因為那兩個欄位連 PR 模板都沒有列出來。
+ */
+function missingAstraBaselines(body, changedFiles) {
+  const placeholderSha = '0'.repeat(40);
+  const result = evaluateAstra({
+    body,
+    changedFiles,
+    context: {
+      repository: 'owner/repo',
+      baseSha: placeholderSha,
+      headSha: placeholderSha,
+      changeDigest: changeDigestOf([]),
+      policyVersion: routing.version,
+      testBaseline: readField(body, 'ASTRA_TEST_BASELINE'),
+      schemaBaseline: readField(body, 'ASTRA_SCHEMA_BASELINE'),
+    },
+  });
+  return (result.errors ?? []).filter((error) => /^Missing concrete (testBaseline|schemaBaseline)$/.test(error));
 }
 
 function parseArgs(argv) {
@@ -108,6 +139,7 @@ export function validateWipPreflight(input = {}) {
   if (input.requireAstraClassification) {
     errors.push(...classifyAstra({ body: text, changedFiles }).errors);
   }
+  errors.push(...missingAstraBaselines(text, changedFiles));
 
   if (!ORIGINS.has(origin)) errors.push('WORK_ORIGIN must be OWNER, AGENT, or UNKNOWN');
   if (isPlaceholder(readField(text, 'REQUESTED_MODEL / ACTUAL_MODEL'))) {
