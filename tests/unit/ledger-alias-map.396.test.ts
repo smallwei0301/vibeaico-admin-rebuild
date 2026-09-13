@@ -1,11 +1,15 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve, join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import {
   CLASSIFICATIONS,
+  NOT_APPLIED_REASONS,
   detectPrefixCollisions,
+  readJsonFile,
+  runChecker,
   validateAliasMapShape,
   validateLedgerSnapshotShape,
   verifyLedgerAliasMap,
@@ -26,7 +30,7 @@ import {
 const REPO_ROOT = resolve(process.cwd());
 const ALIAS_MAP_PATH = resolve(REPO_ROOT, 'supabase/ledger-alias-map.json');
 const MIGRATIONS_DIR = resolve(REPO_ROOT, 'supabase/migrations');
-const SNAPSHOT_PATH = resolve(REPO_ROOT, 'docs/schema-truth/2026-09-13-issue-396-production-ledger-snapshot.json');
+const SNAPSHOT_PATH = resolve(REPO_ROOT, 'supabase/production-ledger-snapshot.json');
 const CHECKER_SCRIPT = resolve(REPO_ROOT, 'scripts/ci/verify-ledger-alias-map.mjs');
 
 function loadRealAliasMap() {
@@ -54,18 +58,28 @@ function minimalFixture(): { repoFiles: string[]; ledgerRowNames: string[]; alia
       schemaVersion: 1,
       issue: 999,
       description: '造樣資料',
-      ledgerSnapshotRef: 'docs/schema-truth/fixture.json',
+      ledgerSnapshotRef: 'supabase/fixture.json',
       classifications: {
         EXACT: 'x',
         ALIAS: 'x',
         NOT_APPLIED: 'x',
         LEDGER_ONLY: 'x',
       },
+      notAppliedReasons: {
+        VERIFIED_NOT_APPLIED: 'x',
+        PENDING_APPLY: 'x',
+      },
       knownPrefixCollisions: [],
       entries: [
         { repoFile: '0001_a', ledgerNames: ['0001_a'], classification: 'EXACT', evidence: '名字一樣' },
         { repoFile: '0002_b', ledgerNames: ['renamed_b'], classification: 'ALIAS', evidence: '已套用但改名了' },
-        { repoFile: '0003_c', ledgerNames: [], classification: 'NOT_APPLIED', evidence: '查證過，未套用' },
+        {
+          repoFile: '0003_c',
+          ledgerNames: [],
+          classification: 'NOT_APPLIED',
+          notAppliedReason: 'VERIFIED_NOT_APPLIED',
+          evidence: '查證過，刻意未套用',
+        },
         { repoFile: null, ledgerNames: ['0090_c'], classification: 'LEDGER_ONLY', evidence: '正式庫有，repo 沒有對應檔案' },
       ],
     },
@@ -107,6 +121,7 @@ describe('#396 verifyLedgerAliasMap — 建構樣本', () => {
     const { repoFiles, ledgerRowNames, aliasMap } = minimalFixture();
     const notApplied = aliasMap.entries.find((entry: any) => entry.classification === 'NOT_APPLIED');
     notApplied.classification = 'EXACT';
+    delete notApplied.notAppliedReason;
     const result = verifyLedgerAliasMap({ repoFiles, ledgerRowNames, aliasMap });
     expect(result.ok).toBe(false);
     expect(result.errors.some((e: string) => e.includes('EXACT 必須是'))).toBe(true);
@@ -116,6 +131,7 @@ describe('#396 verifyLedgerAliasMap — 建構樣本', () => {
     const { repoFiles, ledgerRowNames, aliasMap } = minimalFixture();
     const notApplied = aliasMap.entries.find((entry: any) => entry.classification === 'NOT_APPLIED');
     notApplied.classification = 'EXACT';
+    delete notApplied.notAppliedReason;
     notApplied.ledgerNames = ['0003_c']; // 正式庫其實沒有這筆——0003_c 是「未套用」
     const result = verifyLedgerAliasMap({ repoFiles, ledgerRowNames, aliasMap });
     expect(result.ok).toBe(false);
@@ -234,6 +250,7 @@ describe('#396 verifyLedgerAliasMap — 前綴撞號必須被 knownPrefixCollisi
         description: 'x',
         ledgerSnapshotRef: 'x.json',
         classifications: { EXACT: 'x', ALIAS: 'x', NOT_APPLIED: 'x', LEDGER_ONLY: 'x' },
+        notAppliedReasons: { VERIFIED_NOT_APPLIED: 'x', PENDING_APPLY: 'x' },
         knownPrefixCollisions: [],
         entries: [
           { repoFile: '0082_a', ledgerNames: ['0082_a'], classification: 'EXACT', evidence: 'x' },
@@ -278,7 +295,8 @@ describe('#396 validateAliasMapShape / validateLedgerSnapshotShape', () => {
       issue: 1,
       description: 'x',
       ledgerSnapshotRef: 'x.json',
-      classifications: {},
+      classifications: { EXACT: 'x', ALIAS: 'x', NOT_APPLIED: 'x', LEDGER_ONLY: 'x' },
+      notAppliedReasons: { VERIFIED_NOT_APPLIED: 'x', PENDING_APPLY: 'x' },
       knownPrefixCollisions: [],
       entries: [{ repoFile: 'oops', ledgerNames: ['x'], classification: 'LEDGER_ONLY', evidence: 'x' }],
     });
@@ -387,5 +405,293 @@ describe('#396 CLI 薄殼', () => {
   it('對已提交的真實資料執行 CLI，成功結束且印出 OK', () => {
     const output = execFileSync('node', [CHECKER_SCRIPT], { cwd: REPO_ROOT, encoding: 'utf8' });
     expect(output).toContain('OK');
+  });
+});
+
+/**
+ * 以下三組是 Final Risk 後補上的：checker 的**可讀性**與**歧義**本身也要有測試。
+ * 「fail closed 但訊息像 CI runner 壞了」會讓下一個維護者選擇刪掉這道關卡，
+ * 而不是修好對照表。
+ */
+
+function makeScratchRepo(options: {
+  aliasMapText?: string;
+  snapshotText?: string | null;
+  snapshotAsDirectory?: boolean;
+} = {}): string {
+  const root = mkdtempSync(join(tmpdir(), 'ledger-alias-map-'));
+  mkdirSync(join(root, 'supabase', 'migrations'), { recursive: true });
+  writeFileSync(join(root, 'supabase', 'migrations', '0001_a.sql'), '-- noop\n');
+
+  const aliasMap = {
+    schemaVersion: 1,
+    issue: 999,
+    description: 'x',
+    ledgerSnapshotRef: 'supabase/production-ledger-snapshot.json',
+    classifications: { EXACT: 'x', ALIAS: 'x', NOT_APPLIED: 'x', LEDGER_ONLY: 'x' },
+    notAppliedReasons: { VERIFIED_NOT_APPLIED: 'x', PENDING_APPLY: 'x' },
+    knownPrefixCollisions: [],
+    entries: [{ repoFile: '0001_a', ledgerNames: ['0001_a'], classification: 'EXACT', evidence: 'x' }],
+  };
+  const snapshot = {
+    schemaVersion: 1,
+    issue: 999,
+    environment: 'PRODUCTION',
+    projectRef: 'egehnijjpgijmccagxac',
+    capturedAt: '2026-09-13',
+    source: 'x',
+    note: 'x',
+    rowCount: 1,
+    ledgerRowNames: ['0001_a'],
+  };
+
+  writeFileSync(
+    join(root, 'supabase', 'ledger-alias-map.json'),
+    options.aliasMapText ?? JSON.stringify(aliasMap, null, 2),
+  );
+  if (options.snapshotAsDirectory) {
+    mkdirSync(join(root, 'supabase', 'production-ledger-snapshot.json'));
+  } else if (options.snapshotText !== null) {
+    writeFileSync(
+      join(root, 'supabase', 'production-ledger-snapshot.json'),
+      options.snapshotText ?? JSON.stringify(snapshot, null, 2),
+    );
+  }
+  return root;
+}
+
+describe('#396 CLI 診斷（壞掉的輸入必須說得出是哪個檔案壞在哪，不能丟 stack）', () => {
+  const scratchRoots: string[] = [];
+  function scratch(options?: Parameters<typeof makeScratchRepo>[0]) {
+    const root = makeScratchRepo(options);
+    scratchRoots.push(root);
+    return root;
+  }
+  afterAll(() => {
+    for (const root of scratchRoots) rmSync(root, { recursive: true, force: true });
+  });
+
+  it('乾淨的 scratch repo 通過', () => {
+    const result = runChecker(scratch());
+    expect(result.ok).toBe(true);
+    expect(result.messages.join('\n')).toContain('OK');
+  });
+
+  it('對照表檔案不存在 → 指名檔案，不丟 ENOENT stack', () => {
+    const root = scratch();
+    rmSync(join(root, 'supabase', 'ledger-alias-map.json'));
+    const result = runChecker(root);
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('ledger-alias-map.json');
+    expect(result.messages[0]).toContain('不存在');
+  });
+
+  it('對照表是目錄（EISDIR）→ 說明它是目錄', () => {
+    const root = scratch();
+    rmSync(join(root, 'supabase', 'ledger-alias-map.json'));
+    mkdirSync(join(root, 'supabase', 'ledger-alias-map.json'));
+    const result = runChecker(root);
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('目錄');
+  });
+
+  it('對照表 JSON 語法壞掉 → 說「不是合法的 JSON」，不丟 SyntaxError stack', () => {
+    const result = runChecker(scratch({ aliasMapText: '{ "schemaVersion": 1, ' }));
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('不是合法的 JSON');
+    expect(result.messages[0]).toContain('ledger-alias-map.json');
+  });
+
+  it('對照表最外層是陣列 → 說「最外層必須是 object」，不丟 TypeError', () => {
+    const result = runChecker(scratch({ aliasMapText: '[]' }));
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('最外層必須是一個 JSON object');
+    expect(result.messages[0]).toContain('陣列');
+  });
+
+  it('對照表最外層是 null → 同樣被擋下', () => {
+    const result = runChecker(scratch({ aliasMapText: 'null' }));
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('最外層必須是一個 JSON object');
+    expect(result.messages[0]).toContain('null');
+  });
+
+  it('對照表最外層是字串／數字 → 同樣被擋下', () => {
+    for (const text of ['"oops"', '42']) {
+      const result = runChecker(scratch({ aliasMapText: text }));
+      expect(result.ok).toBe(false);
+      expect(result.messages[0]).toContain('最外層必須是一個 JSON object');
+    }
+  });
+
+  it('ledgerSnapshotRef 缺少或不是字串 → 指名這個欄位', () => {
+    for (const text of ['{}', '{ "ledgerSnapshotRef": 123 }', '{ "ledgerSnapshotRef": "" }']) {
+      const result = runChecker(scratch({ aliasMapText: text }));
+      expect(result.ok).toBe(false);
+      expect(result.messages[0]).toContain('ledgerSnapshotRef');
+    }
+  });
+
+  it('ledgerSnapshotRef 指到不存在的路徑 → 指名路徑', () => {
+    const result = runChecker(scratch({
+      aliasMapText: JSON.stringify({ ledgerSnapshotRef: 'supabase/nope.json' }),
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('不存在');
+    expect(result.messages[0]).toContain('supabase/nope.json');
+  });
+
+  it('ledgerSnapshotRef 指到一個目錄 → 說明它是目錄，而不是 EISDIR', () => {
+    const result = runChecker(scratch({ snapshotAsDirectory: true }));
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('目錄');
+    expect(result.messages[0]).not.toContain('EISDIR');
+  });
+
+  it('ledgerSnapshotRef 指到 repo 之外 → 拒絕', () => {
+    const result = runChecker(scratch({
+      aliasMapText: JSON.stringify({ ledgerSnapshotRef: '../../etc/passwd' }),
+    }));
+    expect(result.ok).toBe(false);
+    expect(result.messages[0]).toContain('repo 之外');
+  });
+
+  it('快照 JSON 壞掉／最外層不是 object → 指名快照檔', () => {
+    for (const text of ['{ oops', '[]']) {
+      const result = runChecker(scratch({ snapshotText: text }));
+      expect(result.ok).toBe(false);
+      expect(result.messages[0]).toContain('production-ledger-snapshot.json');
+    }
+  });
+
+  it('readJsonFile 本身不會把例外丟出來，一律回傳可讀訊息', () => {
+    const result = readJsonFile('/definitely/not/here.json', '測試用檔案');
+    expect(result.ok).toBe(false);
+    const message = (result as { ok: false; message: string }).message;
+    expect(message).toContain('測試用檔案');
+    expect(message).toContain('不存在');
+  });
+});
+
+describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
+  it('NOT_APPLIED_REASONS 剛好是兩種', () => {
+    expect([...NOT_APPLIED_REASONS].sort()).toEqual(['PENDING_APPLY', 'VERIFIED_NOT_APPLIED']);
+  });
+
+  it('NOT_APPLIED 缺 notAppliedReason → 擋下', () => {
+    const { repoFiles, ledgerRowNames, aliasMap } = minimalFixture();
+    const entry = aliasMap.entries.find((e: any) => e.classification === 'NOT_APPLIED');
+    delete entry.notAppliedReason;
+    const result = verifyLedgerAliasMap({ repoFiles, ledgerRowNames, aliasMap });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('notAppliedReason'))).toBe(true);
+  });
+
+  it('notAppliedReason 寫了不認得的值 → 擋下', () => {
+    const { repoFiles, ledgerRowNames, aliasMap } = minimalFixture();
+    const entry = aliasMap.entries.find((e: any) => e.classification === 'NOT_APPLIED');
+    entry.notAppliedReason = 'MAYBE_LATER';
+    const result = verifyLedgerAliasMap({ repoFiles, ledgerRowNames, aliasMap });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('notAppliedReason'))).toBe(true);
+  });
+
+  it('PENDING_APPLY 是合法值（新合併、尚未部署的 migration）', () => {
+    const { repoFiles, ledgerRowNames, aliasMap } = minimalFixture();
+    const entry = aliasMap.entries.find((e: any) => e.classification === 'NOT_APPLIED');
+    entry.notAppliedReason = 'PENDING_APPLY';
+    entry.evidence = '已合併進 main，尚未部署到正式庫。';
+    const result = verifyLedgerAliasMap({ repoFiles, ledgerRowNames, aliasMap });
+    expect(result.ok).toBe(true);
+  });
+
+  it('非 NOT_APPLIED 的 entry 帶 notAppliedReason → 擋下（避免改分類時忘了拿掉）', () => {
+    const { repoFiles, ledgerRowNames, aliasMap } = minimalFixture();
+    aliasMap.entries[0].notAppliedReason = 'PENDING_APPLY';
+    const result = verifyLedgerAliasMap({ repoFiles, ledgerRowNames, aliasMap });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('只有 NOT_APPLIED 可以有 notAppliedReason'))).toBe(true);
+  });
+
+  it('對照表的 notAppliedReasons 定義必須跟 checker 認得的列舉逐字一致', () => {
+    const { aliasMap } = minimalFixture();
+    delete aliasMap.notAppliedReasons.PENDING_APPLY;
+    const result = validateAliasMapShape(aliasMap);
+    expect(result.errors.some((e) => e.includes('notAppliedReasons') && e.includes('PENDING_APPLY'))).toBe(true);
+  });
+
+  it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
+    const aliasMap = loadRealAliasMap();
+    const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
+    expect(notApplied.length).toBe(5);
+    for (const entry of notApplied) {
+      expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
+    }
+  });
+});
+
+describe('#396 名稱抄寫錯誤（空白／大小寫）必須擋下', () => {
+  it('兩邊都抄成 "0001_a " 也不能通過', () => {
+    const { aliasMap } = minimalFixture();
+    aliasMap.entries[0].repoFile = '0001_a ';
+    aliasMap.entries[0].ledgerNames = ['0001_a '];
+    const result = verifyLedgerAliasMap({
+      repoFiles: ['0001_a ', '0002_b', '0003_c'],
+      ledgerRowNames: ['0001_a ', 'renamed_b', '0090_c'],
+      aliasMap,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('空白'))).toBe(true);
+  });
+
+  it('ledger 快照裡的 row 名稱有前後空白 → 擋下', () => {
+    const result = validateLedgerSnapshotShape({
+      schemaVersion: 1,
+      issue: 396,
+      environment: 'PRODUCTION',
+      projectRef: 'egehnijjpgijmccagxac',
+      capturedAt: '2026-09-13',
+      source: 'x',
+      note: 'x',
+      rowCount: 1,
+      ledgerRowNames: [' 0001_a'],
+    });
+    expect(result.errors.some((e) => e.includes('空白'))).toBe(true);
+  });
+
+  it('大寫、雙底線、頭尾底線都不合法', () => {
+    for (const bad of ['0001_A', '0001__a', '_0001_a', '0001_a_']) {
+      const result = validateLedgerSnapshotShape({
+        schemaVersion: 1,
+        issue: 396,
+        environment: 'PRODUCTION',
+        projectRef: 'egehnijjpgijmccagxac',
+        capturedAt: '2026-09-13',
+        source: 'x',
+        note: 'x',
+        rowCount: 1,
+        ledgerRowNames: [bad],
+      });
+      expect(result.errors.some((e) => e.includes(bad)), bad).toBe(true);
+    }
+  });
+
+  it('目前實際存在的非數字前綴名稱仍然合法', () => {
+    const result = validateLedgerSnapshotShape({
+      schemaVersion: 1,
+      issue: 396,
+      environment: 'PRODUCTION',
+      projectRef: 'egehnijjpgijmccagxac',
+      capturedAt: '2026-09-13',
+      source: 'x',
+      note: 'x',
+      rowCount: 3,
+      ledgerRowNames: [
+        'customer_source',
+        'close_tour_seat_rpc_public_execute',
+        'close_public_execute_on_server_only_security_definer_rpcs',
+      ],
+    });
+    expect(result.errors).toEqual([]);
   });
 });

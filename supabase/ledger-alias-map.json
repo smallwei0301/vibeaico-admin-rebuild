@@ -1,13 +1,17 @@
 {
   "schemaVersion": 1,
   "issue": 396,
-  "description": "repo supabase/migrations/**（main 上的 canonical 檔案）與正式庫（Production, egehnijjpgijmccagxac）provider migration 帳本（supabase_migrations.schema_migrations）之間的逐筆對照表。每一筆記錄 repo 檔名、正式庫 ledger row 名稱（可能為 0 或多筆）、分類與證據。這份檔案本身就是 source of truth，checker 不得連線資料庫查證，只能比對這份檔案、repo 檔名與 supabase/ledger-alias-map-snapshot 這份帳本快照。",
-  "ledgerSnapshotRef": "docs/schema-truth/2026-09-13-issue-396-production-ledger-snapshot.json",
+  "description": "repo supabase/migrations/**（main 上的 canonical 檔案）與正式庫（Production, egehnijjpgijmccagxac）provider migration 帳本（supabase_migrations.schema_migrations）之間的逐筆對照表。每一筆記錄 repo 檔名、正式庫 ledger row 名稱（可能為 0 或多筆）、分類與證據。這份檔案本身就是 source of truth，checker 不得連線資料庫查證，只能比對這份檔案、repo 檔名與 supabase/production-ledger-snapshot.json 這份帳本快照。維護流程（新增 migration、套用到正式庫後的兩邊同步更新）見 docs/SCHEMA-TRUTH-GOVERNANCE.md。",
+  "ledgerSnapshotRef": "supabase/production-ledger-snapshot.json",
   "classifications": {
     "EXACT": "ledger row 名稱與 repo 檔名逐字相同。",
     "ALIAS": "已套用到正式庫，但 ledger row 名稱與 repo 檔名不同（前綴不同、或改用描述性名稱）。",
-    "NOT_APPLIED": "repo 上存在，但已查證未套用到正式庫，正式庫沒有對應 ledger row。",
+    "NOT_APPLIED": "repo 上存在，但正式庫沒有對應 ledger row。這一格同時涵蓋兩種相反的狀態，必須另外用 notAppliedReason 明講是哪一種，不可以只寫在 evidence 自由文字裡。",
     "LEDGER_ONLY": "正式庫有 ledger row，但 main 上沒有任何檔案對應到它。"
+  },
+  "notAppliedReasons": {
+    "VERIFIED_NOT_APPLIED": "已查證「刻意未套用」到正式庫：正式庫的實際狀態與本檔案內容不同，且目前沒有要套用它的計畫。",
+    "PENDING_APPLY": "已合併進 main、但尚未部署到正式庫的 migration，屬於「尚未套用」。套用到正式庫的那一次變更，必須同時重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
   },
   "knownPrefixCollisions": [
     {
@@ -16,7 +20,7 @@
         "0082_reconcile_booking_addon_notify_fields",
         "0082_staff_display_fields"
       ],
-      "evidence": "正式庫 ledger 用同一個 0082 前綴記了兩筆不同的東西：repo 檔案 0082_reconcile_booking_addon_notify_fields 本身的 EXACT ledger row，以及 repo 檔案 0083_staff_display_fields 被回填成的 0082_staff_display_fields ALIAS row。純靠 4 碼前綴比對兩邊帳本，會把這兩筆誤判成同一筆，或把 0083 誤判成 0082。另外正式庫回填 schema_migrations.version 欄位時，這一筆的 version 字串本身也直接寫成 \"0082\"（沒有時間戳格式），是第三個容易被混淆、但不屬於 name 欄位、本檔案不驗證的東西——三者只能用完整名稱／完整欄位區分，不能只看前綴。"
+      "evidence": "正式庫 ledger 用同一個 0082 前綴記了兩筆不同的 row：(1) 0082_reconcile_booking_addon_notify_fields——repo 同名檔案的 EXACT row；(2) 0082_staff_display_fields——repo 檔案 0083_staff_display_fields 被回填成的 ALIAS row。純靠 4 碼前綴比對兩邊帳本，會把這兩筆誤判成同一筆，或把 0083 誤判成 0082。另外，正式庫 schema_migrations.version 欄位在這兩筆上也不一致：0082_reconcile_booking_addon_notify_fields 這一筆的 version 字串直接寫成 \"0082\"（沒有時間戳格式），而 0082_staff_display_fields 這一筆的 version 是 \"20260907024138\"。version 不屬於 name 欄位、本檔案不驗證；三者只能用完整名稱／完整欄位區分，不能只看前綴。"
     }
   ],
   "entries": [
@@ -168,30 +172,35 @@
       "repoFile": "0069_welcome_card_images",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
       "evidence": "正式庫 p_storage_write 與 supabase/local-migrations/historical-integration-baseline/0024_welcome_card_images_bucket.sql 逐字相同（單一 7-bucket 清單 + is_tenant_member），不是本檔要求 welcome-card-images 需 tenant_role_at_least(..., 'MANAGER') 的兩分支寫法；確認未套用到正式庫。"
     },
     {
       "repoFile": "0070_welcome_card_image_retirement",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
       "evidence": "welcome_card_image_retirements 資料表與 retire_welcome_card_image／prevent_retired_welcome_card_image 函式在正式庫皆不存在；確認未套用。"
     },
     {
       "repoFile": "0071_welcome_card_image_retirement_acl",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
       "evidence": "本檔的 ACL 依賴 0070 建立的資料表與函式；0070 未套用到正式庫，本檔邏輯上也未套用。"
     },
     {
       "repoFile": "0072_welcome_card_upload_acl",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
       "evidence": "正式庫目前的 write 允許清單結尾是 ..., chat-images, welcome-card-images；本檔會把它改成 ..., chat-images, keyword-reply-images，兩者不同，確認未套用。"
     },
     {
       "repoFile": "0073_restore_keyword_reply_storage_write",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
       "evidence": "同上一筆的驗證方式：正式庫 write 清單仍停在 welcome-card-images，不是 keyword-reply-images，確認未套用到正式庫。"
     },
     {
