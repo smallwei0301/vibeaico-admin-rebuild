@@ -835,6 +835,29 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
         trip_plans: { name: 'Plan' },
         trip_departure_staff: assignment('s-shared', '雨後'),
       },
+      {
+        // `.in('status', ['OPEN', 'CLOSED'])` 對照組：租戶、未來日期、有指派、
+        // 該員工在該時段確實有一筆真正的 BOOKING 衝突——除了 `status` 是
+        // `CANCELLED`（不在 `['OPEN', 'CLOSED']` 內）以外，其餘條件都會讓它成為
+        // 衝突卡片。拿掉 `.in('status', ...)` 這一段過濾器，這筆必須冒出來。
+        id: 'dep-cancelled-conflict', tenant_id: TENANT_ID, trip_id: 't-cancelled', plan_id: 'p1',
+        departs_on: '2026-10-03', start_time: '09:00:00', status: 'CANCELLED',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Cancelled Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-cancelled', '阿聰'),
+      },
+      {
+        // `.gte('departs_on', today)` 對照組：同理，除了 `departs_on` 落在 NOW
+        // （2026-09-25）之前以外，其餘條件都會讓它成為衝突卡片。拿掉這段下限，
+        // 這筆必須冒出來。
+        id: 'dep-stale-conflict', tenant_id: TENANT_ID, trip_id: 't-stale', plan_id: 'p1',
+        departs_on: '2026-09-20', start_time: '09:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Stale Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-stale', '子欣'),
+      },
     ];
 
     const fullDayShift = (staffId: string, workDate: string) => ({
@@ -850,12 +873,26 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       // 「這個租戶完全沒有班表資料」的全時段可排放行情況。
       { tenant_id: TENANT_ID, staff_id: 's-other', work_date: '2026-09-30', start_time: '00:00:00', end_time: '23:59:00' },
       fullDayShift('s-clean', '2026-10-01'),
+      fullDayShift('s-cancelled', '2026-10-03'),
+      fullDayShift('s-stale', '2026-09-20'),
     ];
 
     const BOOKING_ROWS: FakeRow[] = [
       {
         tenant_id: TENANT_ID, staff_id: 's-shared', status: 'CONFIRMED',
         start_at: '2026-09-28T02:00:00.000Z', end_at: '2026-09-28T04:00:00.000Z',
+      },
+      {
+        // `dep-cancelled-conflict` 的真正 BOOKING 衝突來源——證明它「除了 status
+        // 是 CANCELLED 以外」本來就會被判定撞期。
+        tenant_id: TENANT_ID, staff_id: 's-cancelled', status: 'CONFIRMED',
+        start_at: '2026-10-03T02:00:00.000Z', end_at: '2026-10-03T04:00:00.000Z',
+      },
+      {
+        // `dep-stale-conflict` 的真正 BOOKING 衝突來源——證明它「除了日期在今天
+        // 之前以外」本來就會被判定撞期。
+        tenant_id: TENANT_ID, staff_id: 's-stale', status: 'CONFIRMED',
+        start_at: '2026-09-20T02:00:00.000Z', end_at: '2026-09-20T04:00:00.000Z',
       },
     ];
 
@@ -920,6 +957,13 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       // `dep-unassigned`，兩者都誠實地不產生卡片——不是「只要有指派就一定顯示」。
       expect(items.some((i) => i.id === 'dep-clean')).toBe(false);
       expect(items.some((i) => i.id === 'dep-unassigned')).toBe(false);
+
+      // `.in('status', ['OPEN', 'CLOSED'])` 與 `.gte('departs_on', today)` 對照
+      // 組：`dep-cancelled-conflict`／`dep-stale-conflict` 除了 status／日期以外
+      // 都會被判定撞期（見上方 fixture 註解），必須誠實地不出現——拿掉任一段
+      // 過濾器都要讓這兩行紅。
+      expect(items.some((i) => i.id === 'dep-cancelled-conflict')).toBe(false);
+      expect(items.some((i) => i.id === 'dep-stale-conflict')).toBe(false);
 
       // 跨租戶：`dep-other-tenant` 與 `dep-conflict-booking` 共用同一位員工、同一段
       // 時間，如果 `.eq('tenant_id', t.tenantId)` 被拿掉，它會被撈進候選名單並套
