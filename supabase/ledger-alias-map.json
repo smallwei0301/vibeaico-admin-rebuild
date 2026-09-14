@@ -170,38 +170,43 @@
     },
     {
       "repoFile": "0069_welcome_card_images",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "正式庫 p_storage_write 與 supabase/local-migrations/historical-integration-baseline/0024_welcome_card_images_bucket.sql 逐字相同（單一 7-bucket 清單 + is_tenant_member），不是本檔要求 welcome-card-images 需 tenant_role_at_least(..., 'MANAGER') 的兩分支寫法；確認未套用到正式庫。"
+      "ledgerNames": [
+        "0069_welcome_card_images"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫，帳本列名與檔名逐字相同。套用後正式庫 p_storage_read 為 7 個 bucket，逐字等於本檔輸出；p_storage_write 隨後被同批的 0072／0073 覆寫，屬正常 migration 沿革。"
     },
     {
       "repoFile": "0070_welcome_card_image_retirement",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "welcome_card_image_retirements 資料表與 retire_welcome_card_image／prevent_retired_welcome_card_image 函式在正式庫皆不存在；確認未套用。"
+      "ledgerNames": [
+        "0070_welcome_card_image_retirement"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：welcome_card_image_retirements 表存在且 RLS 啟用、retire_welcome_card_image 與 prevent_retired_welcome_card_image 兩支函式存在、trg_prevent_retired_welcome_card_image 觸發器掛在 tenant_settings 上；函式 prosrc、觸發器 pg_get_triggerdef、表欄位定義的 md5 皆與 canonical TEST 逐字相同。"
     },
     {
       "repoFile": "0071_welcome_card_image_retirement_acl",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "本檔的 ACL 依賴 0070 建立的資料表與函式；0070 未套用到正式庫，本檔邏輯上也未套用。"
+      "ledgerNames": [
+        "0071_welcome_card_image_retirement_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：兩支函式的 proacl 為 postgres=X／service_role=X（無 PUBLIC 的裸 =X、無 anon、無 authenticated）、proconfig 為 search_path=\"\"、表 relacl 僅 postgres 與 service_role，皆與 canonical TEST 逐字相同。"
     },
     {
       "repoFile": "0072_welcome_card_upload_acl",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "正式庫目前的 write 允許清單結尾是 ..., chat-images, welcome-card-images；本檔會把它改成 ..., chat-images, keyword-reply-images，兩者不同，確認未套用。"
+      "ledgerNames": [
+        "0072_welcome_card_upload_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：welcome-card-images bucket 的 file_size_limit=5242880、allowed_mime_types=image/jpeg,image/png,image/webp。⚠️ 本列的帳本名稱曾被錯誤寫成 0072_welcome_card_storage_side_door（套用者憑印象編名，未照檔名），已於同一次作業內以 UPDATE 更正為檔名並回讀確認零筆殘留；SQL 內容自始即為本檔內容，未受影響。"
     },
     {
       "repoFile": "0073_restore_keyword_reply_storage_write",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "VERIFIED_NOT_APPLIED",
-      "evidence": "同上一筆的驗證方式：正式庫 write 清單仍停在 welcome-card-images，不是 keyword-reply-images，確認未套用到正式庫。"
+      "ledgerNames": [
+        "0073_restore_keyword_reply_storage_write"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：p_storage_write 的 with-check 運算式與 canonical TEST 逐字相同（7 個 bucket，含 keyword-reply-images、不含 welcome-card-images）。"
     },
     {
       "repoFile": "0074_block_times_recurrence_fields",
