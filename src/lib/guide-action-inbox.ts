@@ -5,13 +5,12 @@ import {
 import type {
   DepartureFormationStatus,
   GuideActionInboxDepartureDay,
-  GuideActionInboxItem,
+  GuideActionInboxItem as GuideActionInboxBaseItem,
   GuideActionInboxPriority,
 } from '@/lib/types';
 
 export type {
   GuideActionInboxDepartureDay,
-  GuideActionInboxItem,
   GuideActionInboxPriority,
 } from '@/lib/types';
 
@@ -23,14 +22,12 @@ export const DEFAULT_GUIDE_TIME_ZONE = DEFAULT_TENANT_TIME_ZONE;
  * 這裡只挑出「需要租戶決定」的兩個值，COLLECTING/FORMED/FAILED 不進收件匣，也不在這裡
  * 重新推算成團與否——那是 0107 註記明確保留給日後 transaction 切片的工作。
  *
- * `GuideActionInboxFormationItem` 刻意**不**併進 `GuideActionInboxItem`（`src/lib/types.ts`
- * 既有聯集）。`src/app/tenant/dashboard/page.tsx` 用 `item.kind==='BOOKING_REQUEST' ? … :
- * item.kind==='BOOKING_PAYMENT' ? … : （其餘視為 DEPARTURE）` 這種非窮盡寫法直接讀這個
- * 型別名稱；把新 kind 併進同一個聯集會讓那個 else 分支的殘餘型別多出兩種它不認得的
- * 形狀，導致該檔案編譯失敗——但那個檔案不在 #43 的 FILE_OWNERSHIP 內，不得代為修改
- * （見 PR 說明的 STOP 條款）。因此這裡的 formation 型別、guard 與 builder 都是新增匯出，
- * 不改動既有 `GuideActionInboxItem` 的定義或呼叫端看到的形狀；串接進 dashboard 是後續
- * 由擁有該檔案的 lane 負責的工作。
+ * `GuideActionInboxItem` 是 `src/lib/types.ts` 既有聯集再加上這個新變體。新變體寫在這裡
+ * 而不是 `src/lib/types.ts`（那個檔案屬另一條 Terra lane，#43 不可碰）；呼叫端一律從這個
+ * 檔案 import `GuideActionInboxItem`，不要再直接從 `@/lib/types` 取用這個型別名稱——
+ * `src/app/tenant/dashboard/page.tsx` 本來就是這樣 import 的，所以這個聯集一變寬，
+ * dashboard 對 kind 的窮舉判斷會被 TS 逼著跟上（這正是要的效果，見該檔案的
+ * exhaustive check）。
  */
 export type GuideActionInboxFormationKind = Extract<DepartureFormationStatus, 'REVIEW_REQUIRED' | 'AT_RISK'>;
 
@@ -52,6 +49,8 @@ export type GuideActionInboxFormationItem = {
   createdAt: string;
   href: string;
 };
+
+export type GuideActionInboxItem = GuideActionInboxBaseItem | GuideActionInboxFormationItem;
 
 const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
 

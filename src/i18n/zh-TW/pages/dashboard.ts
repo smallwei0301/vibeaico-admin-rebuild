@@ -58,6 +58,16 @@ export const dashboardPage = {
       TOMORROW: '明日出發',
     },
     departureSeats: (booked: number, capacity: number) => `${booked}/${capacity} 人已報名`,
+    /* ---- #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）／AT_RISK（已成團後人數跌破門檻） ---- */
+    reviewRequired: '成團尚待決定',
+    atRisk: '成團人數跌破門檻',
+    /** REVIEW_REQUIRED 且還沒達到成團門檻：白話顯示還差幾人。 */
+    formationSeatsShort: (n: number) => `還差 ${n} 人成團`,
+    /** REVIEW_REQUIRED 但目前人數已達門檻，只是還沒過決定期限：不當作「還差」處理。 */
+    formationSeatsReached: '已達成團門檻，等待確認',
+    /** AT_RISK：已經成團過，之後人數又跌破門檻，白話顯示目前人數與門檻。 */
+    formationAtRiskDetail: (current: number, min: number) => `目前 ${current} 人，已跌破成團門檻 ${min} 人`,
+    formationDeadline: '成團決定期限',
     priority: {
       IMMEDIATE: '需要立即處理',
       TODAY: '今天處理',
@@ -66,6 +76,7 @@ export const dashboardPage = {
     open: '查看並處理',
     openPayment: '查看收款',
     openDeparture: '查看團次',
+    openFormation: '查看團次並決定',
     viewBookings: '查看待確認預約',
     viewPayments: '查看待收款預約',
     count: (n: number) => `${n} 筆`,

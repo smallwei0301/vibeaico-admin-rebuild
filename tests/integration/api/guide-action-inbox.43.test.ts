@@ -8,17 +8,14 @@
  * `readTourSeedFields()` 只在觀察到完整 #41 相容欄位時補上合法 snapshot；
  * canonical core 則送空物件，讓同一套讀取斷言真的能在 main schema 上執行。
  *
- * 類別 3／4 走獨立端點 `/api/guide/action-inbox/formation`（見
- * `src/app/api/guide/action-inbox/formation/route.ts` 的說明：不併進既有
- * `/api/guide/action-inbox` 回應陣列，因為那支端點的型別被 dashboard 頁面直接消費，
- * 該頁面還不認得這兩種新 kind，也不在 #43 的 FILE_OWNERSHIP 內）。
+ * 類別 3／4 併進既有單一聚合端點 `GET /api/guide/action-inbox`（#43 §4：不可把不同
+ * 資料表全抓到前端後自行拼湊，建議單一聚合端點由 server 端彙整）——不是獨立端點。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A, SHOP_B, TRIP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
-import type { GuideActionInboxItem } from '@/lib/types';
-import { getGuideActionInboxDateWindow, type GuideActionInboxFormationItem } from '@/lib/guide-action-inbox';
+import { getGuideActionInboxDateWindow, type GuideActionInboxItem } from '@/lib/guide-action-inbox';
 import { readTourSeedFields } from '../../../scripts/test/tour-seed-profile.mjs';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -198,7 +195,7 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBBody.data?.some((item) => temporaryDepartureIds.includes(item.id))).toBe(false);
   });
 
-  it('GET /api/guide/action-inbox/formation 回傳 REVIEW_REQUIRED 與 AT_RISK 團次，並且不跨租戶（#43 類別 3／4）', async () => {
+  it('GET /api/guide/action-inbox 也回傳 REVIEW_REQUIRED 與 AT_RISK 團次（同一聚合端點），並且不跨租戶（#43 類別 3／4）', async () => {
     const now = new Date();
     const { tomorrow } = getGuideActionInboxDateWindow(now, 'Asia/Taipei');
     const futureDeadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
@@ -240,9 +237,10 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     const atRiskId = atRiskRow!.id as string;
     temporaryDepartureIds.push(atRiskId);
 
-    const res = await ownerA.get('/api/guide/action-inbox/formation');
+    // 同一支既有端點，不是另開的 /formation 端點——這正是 #43 §4 要求的單一聚合入口。
+    const res = await ownerA.get('/api/guide/action-inbox');
     expect(res.status).toBe(200);
-    const body = await readJson<GuideActionInboxFormationItem[]>(res);
+    const body = await readJson<GuideActionInboxItem[]>(res);
     expect(body.success).toBe(true);
 
     const reviewItem = body.data?.find((item) => item.id === reviewId);
@@ -266,15 +264,18 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     // AT_RISK 的下一個真正期限是出發時刻，不是舊的 formation_deadline_at（本例根本沒設）。
     expect(atRiskItem?.dueAt).not.toBe(futureDeadline);
 
-    // 未登入回 401；SHOP_B 看不到 SHOP_A 這兩筆。
-    const unauth = await fetch(`${BASE}/api/guide/action-inbox/formation`);
-    expect(unauth.status).toBe(401);
-    expect((await readJson(unauth)).code).toBe('AUTH_001');
+    // 兩筆 formation 卡片與既有 booking/departure 卡片混在同一份已排序清單裡，
+    // 而不是分開的兩份清單——鎖住 #43 §2「同優先級依截止時間、建立時間排序」
+    // 只在單一清單上成立這件事。
+    const priorityRank: Record<GuideActionInboxItem['priority'], number> = { IMMEDIATE: 0, TODAY: 1, UPCOMING: 2 };
+    for (let i = 1; i < (body.data?.length ?? 0); i += 1) {
+      expect(priorityRank[body.data![i - 1].priority]).toBeLessThanOrEqual(priorityRank[body.data![i].priority]);
+    }
 
     const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
-    const shopBResponse = await ownerB.get('/api/guide/action-inbox/formation');
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
     expect(shopBResponse.status).toBe(200);
-    const shopBBody = await readJson<GuideActionInboxFormationItem[]>(shopBResponse);
+    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
     expect(shopBBody.data?.some((item) => item.id === reviewId || item.id === atRiskId)).toBe(false);
   });
 });

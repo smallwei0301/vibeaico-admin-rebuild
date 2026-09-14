@@ -7,7 +7,6 @@ import {
   getGuideActionInboxPriority,
   isGuideActionInboxFormationStatus,
   sortGuideActionInboxItems,
-  type GuideActionInboxFormationItem,
   type GuideActionInboxFormationKind,
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
@@ -20,8 +19,15 @@ const bookingPaymentHref = (id: string) =>
   `/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=${encodeURIComponent(id)}`;
 
 /**
- * GUIDE 首頁目前可自主完成的 action inbox slice：既有待確認與待收款預約。
- * mock 只模擬相對於現在的預約時間，避免舊 fixture 日期讓首頁顯示過期假資料。
+ * GUIDE 首頁 action inbox：待確認預約、待收款預約、今日／明日出發團次，以及 #43
+ * 類別 3／4——REVIEW_REQUIRED（成團截止不足）與 AT_RISK（已成團後人數跌破門檻）。
+ * 單一聚合入口，由這裡在 server／mock 端把不同資料表的候選彙整、排序成一份清單
+ * 再回傳（#43 §4：「不可把不同資料表全抓到前端後自行拼湊」）；前端只消費這一份
+ * 已排序好的陣列，不需要也不應該自己併多次呼叫的結果。
+ *
+ * formation 兩類只讀 `trip_departures.formation_status`（0107, #41 canonical）與其
+ * snapshot 欄位，不建立新狀態、不重新推算成團與否，也不觸發通知、付款或其他外部
+ * 副作用；mock 只模擬相對於現在的預約時間，避免舊 fixture 日期讓首頁顯示過期假資料。
  */
 export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
   return adapt(
@@ -95,29 +101,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           };
         })
         .filter((item): item is GuideActionInboxItem => item !== null);
-      return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems]);
-    },
-    () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
-  );
-}
-
-/**
- * #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）與 AT_RISK（已成團後人數跌破門檻）。
- * 刻意是獨立於 `getGuideActionInbox()` 的另一個匯出：後者的回傳型別 `GuideActionInboxItem[]`
- * 被 `src/app/tenant/dashboard/page.tsx` 直接消費，而該頁面不在 #43 的 FILE_OWNERSHIP 內、
- * 也還沒有能認得這兩種新 kind 的渲染分支。把它們併進同一個函式會讓頁面在型別層或執行期
- * 收到它處理不了的卡片；分成獨立函式讓資料層可以誠實、完整地出貨，串接進首頁 UI 留給
- * 擁有 dashboard 頁面的 lane 決定何時、如何呈現。
- *
- * 只讀 `trip_departures.formation_status`（0107, #41 canonical），不建立新狀態、
- * 不重新推算成團與否，也不觸發通知、付款或其他外部副作用。
- */
-export function getGuideActionInboxFormationItems(): Promise<GuideActionInboxFormationItem[]> {
-  return adapt(
-    () => {
-      const now = Date.now();
-      const nowDate = new Date(now);
-      const items = MOCK_TRIP_DEPARTURES
+      const formationItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES
         .filter((departure) =>
           departure.status !== 'CANCELLED'
           && isGuideActionInboxFormationStatus(departure.formationStatus))
@@ -140,8 +124,8 @@ export function getGuideActionInboxFormationItems(): Promise<GuideActionInboxFor
             createdAt: new Date(now).toISOString(),
           }, nowDate);
         });
-      return sortGuideActionInboxItems(items);
+      return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems, ...formationItems]);
     },
-    () => request<GuideActionInboxFormationItem[]>('/api/guide/action-inbox/formation'),
+    () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
   );
 }
