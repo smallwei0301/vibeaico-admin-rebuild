@@ -10,15 +10,23 @@ const body = [
   'FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY',
   'REQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown',
 ].join('\n');
+/*
+ * Owner 2026-09-14（docs/decisions/2026-09-14-governance-exact-scope-classify-changes.md）
+ * 加入第四個檔：`scripts/ci/classify-changes.mjs` 直接決定一筆變更走 docs-only 輕量
+ * 路線還是完整 runtime CI，屬 CI governance。裁示明文「僅增加此單一檔案，不授權
+ * scripts/ci/ 目錄，也不構成其他 CI 檔案自動納入的先例」——本測試其餘保證因此原封不動：
+ * 不得目錄授權、不得前綴或路徑穿越匹配、畸形名單一律拒絕。
+ */
 const exactFiles = [
   'tests/integration/global-setup.ts',
   'scripts/test/_supabase-admin.mjs',
   'scripts/ci/repo-integrity-guard.mjs',
+  'scripts/ci/classify-changes.mjs',
 ];
 const classify = (files: string[], policy = routing) => classifyAstra({ body, changedFiles: files }, policy);
 
 describe('governance exact-file admission prerequisite (#384 / #380)', () => {
-  it('admits exactly the three named guard files without broad directory grants', () => {
+  it('admits exactly the four named guard files without broad directory grants', () => {
     assert.deepEqual(routing.workstreams.modelGovernance.scopeFiles, exactFiles);
     for (const file of exactFiles) {
       const result = classify([file]);
