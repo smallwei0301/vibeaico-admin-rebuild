@@ -67,6 +67,27 @@ const PRIORITY_ORDER: Record<GuideActionInboxPriority, number> = {
   UPCOMING: 2,
 };
 
+/**
+ * #43 defect review: `dueAt`／`formationDeadlineAt` 在真實 API 上不是同一種字面
+ * 格式——來自 PostgREST 直讀的 timestamptz（`formation_deadline_at`、
+ * `bookings_view.start_at`）是 `...541+00:00`，經過 `getGuideDepartureDueAt()`
+ * 算出來的（AT_RISK、DEPARTURE 卡片）則是 `Date.toISOString()` 的 `...541Z`。
+ * 兩者是同一個 instant 的不同序列化，不是資料錯誤。
+ *
+ * 決定：**不在 route.ts 邊界正規化成單一格式**，原因：
+ *   1. `Date.parse()` 對兩種格式都正確——這裡的 `comparableTime()` 已經是唯一
+ *      依賴它做排序的地方，不受影響。
+ *   2. 目前沒有任何呼叫端（dashboard 卡片渲染、`sortGuideActionInboxItems`、
+ *      本檔／service 的測試）依賴這兩個欄位的字串字面值相等，只有整合測試曾經
+ *      誤用 `toMatchObject` 字串比較——那是測試的錯，已改用 `Date.parse(...)`
+ *      比較 instant（見 `tests/integration/api/guide-action-inbox.43.test.ts`，
+ *      沿用 `tests/integration/api/bookings-modified.27.test.ts:375` 的既有慣例）。
+ *   3. 要正規化就得替整個 API 回應挑一個正典格式並在 `route.ts` 逐欄位轉換，
+ *      這會動到 `bookings_view`／`trip_departures` 直接透出的其他 timestamp 欄位
+ *      （不只 formation 這兩個新欄位），範圍超出 #43 這一輪、也超出本
+ *      FILE_OWNERSHIP（`src/lib/types.ts` 屬另一條 lane）。沒有觀察到的好處，
+ *      不做用不到的正規化。
+ */
 function comparableTime(iso: string): number {
   const time = Date.parse(iso);
   return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;

@@ -268,10 +268,14 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
       kind: 'REVIEW_REQUIRED',
       tripId: TRIP_A.id,
       minToDepart: 4,
-      formationDeadlineAt: futureDeadline,
-      dueAt: futureDeadline,
       href: `/tenant/trips/${TRIP_A.id}`,
     });
+    // PostgREST 回傳 timestamptz 是 `...541+00:00`，`futureDeadline` 是
+    // `toISOString()` 產出的 `...541Z`——兩者是同一個 instant 的不同字面表示法，
+    // 不能用 `toMatchObject` 做字串相等。跟 `bookings-modified.27.test.ts:375`
+    // 同一套作法：比較解析後的 instant，不是字串本身。
+    expect(Date.parse((reviewItem as { formationDeadlineAt?: string })?.formationDeadlineAt as string)).toBe(Date.parse(futureDeadline));
+    expect(Date.parse(reviewItem?.dueAt as string)).toBe(Date.parse(futureDeadline));
 
     const atRiskItem = atRiskMatches[0];
     expect(atRiskItem).toMatchObject({

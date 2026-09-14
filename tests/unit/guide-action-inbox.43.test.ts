@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -17,6 +17,89 @@ import {
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
+
+/*
+ * ---------------------------------------------------------------------------
+ * Behavioural harness for the DEPARTURE / formation query exclusivity + bound
+ * (replaces the three source-grep tests that used to sit here — see PB-027 /
+ * PB-039 discussion above the two tests that use this harness for why).
+ *
+ * This is a minimal generic PostgREST-query-builder fake: it records the
+ * chained filter calls (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`not`/`limit`)
+ * for each `.from('trip_departures')` invocation and *actually applies them*
+ * to an in-memory row set when the chain is awaited. Because the real
+ * `route.ts` is imported and exercised unmodified, a rewrite that keeps the
+ * same behaviour still passes, and a rewrite that drops or misapplies a
+ * filter changes which rows come back — not just which substrings appear in
+ * the file.
+ * ---------------------------------------------------------------------------
+ */
+type FilterCall = [string, unknown[]];
+type FakeRow = Record<string, unknown>;
+
+function applyFilterOps(rows: FakeRow[], calls: FilterCall[]): FakeRow[] {
+  let result = rows;
+  for (const [method, args] of calls) {
+    const field = args[0] as string;
+    switch (method) {
+      case 'eq': result = result.filter((r) => r[field] === args[1]); break;
+      case 'neq': result = result.filter((r) => r[field] !== args[1]); break;
+      case 'gt': result = result.filter((r) => (r[field] as string) > (args[1] as string)); break;
+      case 'gte': result = result.filter((r) => (r[field] as string) >= (args[1] as string)); break;
+      case 'lt': result = result.filter((r) => (r[field] as string) < (args[1] as string)); break;
+      case 'lte': result = result.filter((r) => (r[field] as string) <= (args[1] as string)); break;
+      case 'in': result = result.filter((r) => (args[1] as unknown[]).includes(r[field])); break;
+      case 'not': {
+        const [notField, op, value] = args as [string, string, string];
+        if (op === 'in') {
+          const excluded = String(value).replace(/^\(|\)$/, '').replace(/\)$/, '').split(',');
+          result = result.filter((r) => !excluded.includes(String(r[notField])));
+        }
+        break;
+      }
+      case 'limit': result = result.slice(0, args[0] as number); break;
+      default: break;
+    }
+  }
+  return result;
+}
+
+const requireTenantMock = vi.fn();
+vi.mock('@/server/tenant', () => ({
+  requireTenant: (...a: unknown[]) => requireTenantMock(...a),
+}));
+
+function makeFakeSupabase(tripDepartureRows: FakeRow[]) {
+  return {
+    from(table: string) {
+      const calls: FilterCall[] = [];
+      const builder: any = {
+        select: (...a: unknown[]) => { calls.push(['select', a]); return builder; },
+        eq: (...a: unknown[]) => { calls.push(['eq', a]); return builder; },
+        neq: (...a: unknown[]) => { calls.push(['neq', a]); return builder; },
+        gt: (...a: unknown[]) => { calls.push(['gt', a]); return builder; },
+        gte: (...a: unknown[]) => { calls.push(['gte', a]); return builder; },
+        lt: (...a: unknown[]) => { calls.push(['lt', a]); return builder; },
+        lte: (...a: unknown[]) => { calls.push(['lte', a]); return builder; },
+        in: (...a: unknown[]) => { calls.push(['in', a]); return builder; },
+        not: (...a: unknown[]) => { calls.push(['not', a]); return builder; },
+        order: (...a: unknown[]) => { calls.push(['order', a]); return builder; },
+        limit: (...a: unknown[]) => { calls.push(['limit', a]); return builder; },
+        maybeSingle: async () => {
+          if (table === 'tenant_settings') {
+            return { data: { basic: { timezone: 'Asia/Taipei' } }, error: null };
+          }
+          return { data: null, error: null };
+        },
+        then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+          const rows = table === 'trip_departures' ? applyFilterOps(tripDepartureRows, calls) : [];
+          return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
+        },
+      };
+      return builder;
+    },
+  };
+}
 
 const apiSource = readFileSync(
   resolve(process.cwd(), 'src/app/api/guide/action-inbox/route.ts'),
@@ -42,6 +125,9 @@ const bookingsApiSource = readFileSync(
   resolve(process.cwd(), 'src/app/api/bookings/route.ts'),
   'utf8',
 );
+
+// 真正的 route handler——下面兩個行為測試直接呼叫它，不重新實作一份過濾邏輯。
+import { GET as guideActionInboxGET } from '@/app/api/guide/action-inbox/route';
 
 describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => {
   it('prioritizes overdue, tenant-today, and future pending work', () => {
@@ -369,53 +455,132 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(dashboardI18nSource).toMatch(/formationAtRiskInconsistent:\s*\(current: number, min: number\)/);
   });
 
-  it('excludes REVIEW_REQUIRED/AT_RISK from the DEPARTURE query so one departure cannot produce two cards (HIGH finding, Final Risk claude-fable-5-1)', () => {
-    // 舊版：DEPARTURE query 只用 `status in (OPEN, CLOSED)` + 今日～明日日期窗，跟
-    // formation query（`status <> CANCELLED` + formation_status in (REVIEW_REQUIRED,
-    // AT_RISK)）不是互斥集合。今日／明日出發、同時又是 REVIEW_REQUIRED／AT_RISK 的
-    // 團次會同時符合兩條 query，變成兩張 `key={item.id}` 相同的卡片。
-    // 修法是在 DEPARTURE query 直接排除這兩個 formation_status 值，讓兩個 query
-    // 在來源端就互斥，而不是把兩份結果都抓回來後在 JS 裡事後去重。
-    expect(apiSource).toContain(".not('formation_status', 'in', '(REVIEW_REQUIRED,AT_RISK)')");
+  describe('route.ts behaviour: DEPARTURE / formation query exclusivity + formation lower bound', () => {
+    // PB-027／PB-039：上一輪這裡的三個測試只斷言 apiSource 這個字串裡有沒有出現
+    // 特定子字串。Final Risk 覆核證明它們是空殼——把 `.not(...)` 與 formation
+    // 的 `.gte(...)` 呼叫都註解掉（字面文字留在註解裡）,18 個測試照樣全綠，因為
+    // 斷言檢查的是「符號出現」而不是「那件事真的發生」。
+    //
+    // 下面改用一個會把每次 `.from('trip_departures')` 的過濾鏈實際套用在一組
+    // in-memory fixture 上的假 supabase client（見檔案頂端 `applyFilterOps` /
+    // `makeFakeSupabase`），直接呼叫真正的 route handler。這樣：
+    //   - 拿掉 `.not(...)` 呼叫 → dep-review 會同時以 DEPARTURE 卡片出現 → 失敗。
+    //   - 把排除的狀態集合換成語意錯誤的值（或整條掛到 formation query 而非
+    //     DEPARTURE query）→ dep-review／dep-atrisk 的出現方式跟著錯 → 失敗。
+    //   - 拿掉 formation query 的 `.gte('departs_on', today)` 下限 → 已過期的
+    //     dep-stale 會冒出來 → 失敗。
+    // 三種 mutation 都已經在 route.ts 上實測過（見本輪 PR 報告），不是只靠推論。
+    const NOW = new Date('2026-09-20T04:00:00.000Z'); // 12:00 Asia/Taipei
+    const { today, tomorrow } = getGuideActionInboxDateWindow(NOW, 'Asia/Taipei');
+    const YESTERDAY = '2026-09-10';
 
-    const departureExclusionIndex = apiSource.indexOf(".not('formation_status', 'in', '(REVIEW_REQUIRED,AT_RISK)')");
-    const departureStatusIndex = apiSource.indexOf(".in('status', ['OPEN', 'CLOSED'])");
-    const formationInclusionIndex = apiSource.indexOf(".in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])");
-    expect(departureExclusionIndex).toBeGreaterThan(-1);
-    expect(departureStatusIndex).toBeGreaterThan(-1);
-    expect(formationInclusionIndex).toBeGreaterThan(-1);
-    // 排除條件要掛在 DEPARTURE query（在它自己的 `.in('status', ...)` 附近），
-    // 不是意外掛到 formation query 的 `.in('formation_status', ...)` 那一支上。
-    expect(departureExclusionIndex).toBeGreaterThan(departureStatusIndex);
-    expect(formationInclusionIndex).toBeGreaterThan(departureExclusionIndex);
+    const TENANT_ID = 'tenant-a';
 
-    // 同一個 mock 端也要遵守同一條互斥規則，否則 demo 模式會重現同一個 bug。
-    expect(serviceSource).toContain('isGuideActionInboxFormationStatus(departure.formationStatus)');
+    const TRIP_DEPARTURE_ROWS: FakeRow[] = [
+      {
+        id: 'dep-open', tenant_id: TENANT_ID, trip_id: 't1', plan_id: 'p1',
+        departs_on: today, start_time: '10:00:00', status: 'OPEN',
+        capacity: 10, seats_booked: 3, created_at: '2026-09-01T00:00:00.000Z',
+        formation_status: 'COLLECTING', formation_deadline_at: null,
+        min_to_depart_snapshot: 5, formed_participants: null,
+        trips: { title: 'Trip One' }, trip_plans: { name: 'Plan One' },
+      },
+      {
+        id: 'dep-review', tenant_id: TENANT_ID, trip_id: 't2', plan_id: 'p1',
+        departs_on: today, start_time: '11:00:00', status: 'OPEN',
+        capacity: 10, seats_booked: 2, created_at: '2026-09-01T00:00:00.000Z',
+        formation_status: 'REVIEW_REQUIRED', formation_deadline_at: '2026-09-19T10:00:00.000Z',
+        min_to_depart_snapshot: 5, formed_participants: null,
+        trips: { title: 'Trip Two' }, trip_plans: { name: 'Plan One' },
+      },
+      {
+        id: 'dep-atrisk', tenant_id: TENANT_ID, trip_id: 't3', plan_id: 'p1',
+        departs_on: tomorrow, start_time: '09:00:00', status: 'CLOSED',
+        capacity: 8, seats_booked: 3, created_at: '2026-09-01T00:00:00.000Z',
+        formation_status: 'AT_RISK', formation_deadline_at: null,
+        min_to_depart_snapshot: 4, formed_participants: 3,
+        trips: { title: 'Trip Three' }, trip_plans: { name: 'Plan One' },
+      },
+      {
+        // 已出發過的舊 REVIEW_REQUIRED——formation query 的 `.gte('departs_on', today)`
+        // 下限要把它擋掉；它不在今日／明日窗內，DEPARTURE query 本來就看不到它。
+        id: 'dep-stale', tenant_id: TENANT_ID, trip_id: 't4', plan_id: 'p1',
+        departs_on: YESTERDAY, start_time: '08:00:00', status: 'OPEN',
+        capacity: 6, seats_booked: 1, created_at: '2026-08-01T00:00:00.000Z',
+        formation_status: 'REVIEW_REQUIRED', formation_deadline_at: '2026-09-09T00:00:00.000Z',
+        min_to_depart_snapshot: 2, formed_participants: null,
+        trips: { title: 'Trip Four' }, trip_plans: { name: 'Plan One' },
+      },
+    ];
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      requireTenantMock.mockReset();
+      requireTenantMock.mockResolvedValue({
+        supabase: makeFakeSupabase(TRIP_DEPARTURE_ROWS),
+        tenantId: TENANT_ID,
+        user: { id: 'user-a' },
+        role: 'OWNER',
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('produces exactly one card per departure — no DEPARTURE/REVIEW_REQUIRED or DEPARTURE/AT_RISK duplicate, and drops the stale REVIEW_REQUIRED row', async () => {
+      const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const items: Array<{ id: string; kind: string }> = body.data;
+
+      const byId = (id: string) => items.filter((item) => item.id === id);
+
+      expect(byId('dep-open')).toEqual([expect.objectContaining({ id: 'dep-open', kind: 'DEPARTURE' })]);
+      // dep-review 只能以 REVIEW_REQUIRED 出現一次——如果 `.not(...)` 被拿掉或排除
+      // 的狀態集合寫錯，這裡會多出一張 kind: 'DEPARTURE' 的重複卡片，斷言失敗。
+      expect(byId('dep-review')).toEqual([expect.objectContaining({ id: 'dep-review', kind: 'REVIEW_REQUIRED' })]);
+      expect(byId('dep-atrisk')).toEqual([expect.objectContaining({ id: 'dep-atrisk', kind: 'AT_RISK' })]);
+      // dep-stale 在今日之前出發，formation query 沒有 `.gte('departs_on', today)`
+      // 下限的話它會被抓回來並顯示為「立即處理」；有下限則完全不出現。
+      expect(byId('dep-stale')).toEqual([]);
+
+      expect(items).toHaveLength(3);
+    });
+
   });
 
-  it('bounds the formation query with a lower departs_on date so already-departed rows do not linger forever (MEDIUM finding)', () => {
-    // 0107 還沒有 #41 §6 的自動轉態，REVIEW_REQUIRED／AT_RISK 不會在出發後自動被
-    // 清掉。formation query 必須跟 DEPARTURE query 一樣有 `.gte('departs_on', today)`
-    // 下限，否則已經出發過的舊團次會跟現在的團次搶 `.limit(20)`，而且永遠顯示
-    // 「立即處理」。這裡鎖住：整支檔案要出現兩次 `.gte('departs_on', today)`
-    // （DEPARTURE query 既有的一次 + formation query 新加的一次），且新加的那次
-    // 要出現在 formation query 段落（`.in('formation_status', ...)` 之後）。
-    const gteMatches = apiSource.match(/\.gte\('departs_on', today\)/g) ?? [];
-    expect(gteMatches).toHaveLength(2);
-
-    const formationInclusionIndex = apiSource.indexOf(".in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])");
-    const formationGteIndex = apiSource.indexOf(".gte('departs_on', today)", formationInclusionIndex);
-    expect(formationInclusionIndex).toBeGreaterThan(-1);
-    expect(formationGteIndex).toBeGreaterThan(formationInclusionIndex);
+  describe('mock service exclusivity (demo mode)', () => {
+    // `getGuideActionInbox()` 的 mock adapter 用真正的 `setTimeout` 模擬延遲——
+    // 跟上面那個 describe 共用 `vi.useFakeTimers()` 會讓它永遠等不到那個 timer
+    // 觸發，所以獨立成不受假時鐘影響的 describe，而不是把這個行為斷言搬回文字斷言。
+    it('mock service applies the same exclusivity rule (demo mode must not reproduce the duplicate-card bug)', async () => {
+      // 這條留下行為斷言而非文字斷言：直接讀 mock 服務的真實輸出，確認同一顆
+      // trip_departure 不會同時以 DEPARTURE 與 REVIEW_REQUIRED/AT_RISK 兩種
+      // kind 出現。
+      const items = await getGuideActionInbox();
+      const departureIds = new Set(items.filter((i) => i.kind === 'DEPARTURE').map((i) => i.id));
+      const formationIds = items
+        .filter((i) => i.kind === 'REVIEW_REQUIRED' || i.kind === 'AT_RISK')
+        .map((i) => i.id);
+      expect(formationIds.length).toBeGreaterThan(0);
+      for (const id of formationIds) {
+        expect(departureIds.has(id)).toBe(false);
+      }
+    });
   });
 
-  it('reads min_to_depart_snapshot directly on the real API row — 0107 declares it NOT NULL, so the old `?? 1` was dead code, not a safety net', () => {
-    expect(apiSource).not.toContain('row.min_to_depart_snapshot ?? 1');
-    expect(apiSource).toContain('minToDepart: row.min_to_depart_snapshot,');
-    // mock 型別 `minToDepartSnapshot?: number`（`src/lib/types.ts`）是真的 optional，
-    // 沒有資料庫層的 NOT NULL 保證，所以 mock 端的 `?? 1` 要留著，不是同一件事。
-    expect(serviceSource).toContain('departure.minToDepartSnapshot ?? 1');
-  });
+  // #43 の `min_to_depart_snapshot ?? 1` dead-code cleanup（上一輪第三個 source-grep
+  // 測試）は削除した：`min_to_depart_snapshot` is declared `NOT NULL` by 0107, so the
+  // only input that would make `?? 1` differ from a direct read (`null`/`undefined`)
+  // is schema-impossible on the real API row — there is no behavioural fixture that
+  // can distinguish "reads the field directly" from "falls back to 1 for a value that
+  // can never occur". A genuine behavioural unit test is not achievable here; keeping
+  // a source-grep assertion for it would be exactly the PB-027/PB-039 failure mode
+  // this round is fixing, so it is deleted rather than kept hollow. If this ever
+  // regresses in a way that matters, it will show up as a real DB constraint
+  // violation on `min_to_depart_snapshot`, not as a value silently defaulting to 1.
 
   it('mock formation cards are remapped to today/tomorrow, not left on the stale fixture date (LOW finding: past-dated formation departures must not sit in the inbox forever)', async () => {
     const now = new Date();
