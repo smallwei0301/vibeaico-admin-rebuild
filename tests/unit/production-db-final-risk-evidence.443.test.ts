@@ -131,12 +131,18 @@ function liveReview(overrides: Record<string, unknown> = {}, user: any = { login
   };
 }
 
-function fakeGithub({
-  files = LIVE_FILES,
-  reviews = [liveReview()],
-  changedFiles = files.length,
-  permission = 'read',
-} = {}) {
+type FakeGithubOptions = {
+  files?: typeof LIVE_FILES;
+  reviews?: ReturnType<typeof liveReview>[];
+  changedFiles?: number;
+  permission?: string;
+};
+
+function fakeGithub(options: FakeGithubOptions = {}) {
+  const files = options.files ?? LIVE_FILES;
+  const reviews = options.reviews ?? [liveReview()];
+  const changedFiles = options.changedFiles ?? files.length;
+  const permission = options.permission ?? 'read';
   const listFiles = vi.fn();
   const listReviews = vi.fn();
   const get = vi.fn(async () => ({
