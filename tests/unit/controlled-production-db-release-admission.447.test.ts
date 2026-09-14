@@ -4,7 +4,7 @@ import { createProductionDbApplyReceipt } from '../../scripts/agents/production-
 import { createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
 import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
-import { runControlledProductionRelease } from '../../scripts/db/controlled-production-db-release.mjs';
+import { prepareControlledProductionReleaseAttempt } from '../../scripts/db/controlled-production-db-release.mjs';
 
 const MAIN = 'a'.repeat(40);
 const NOW = '2026-09-14T12:40:00Z';
@@ -40,21 +40,21 @@ function packet(p: any) {
 }
 
 describe('Issue #447 controlled writer admission negatives', () => {
-  it('rejects wrong project in release packet before network', async () => {
+  it('rejects wrong project in release packet before any network', async () => {
     const p = plan(); const pkt = packet(p); pkt.productionProjectRef = 'wrong-project';
     const fetchImpl = vi.fn();
-    await expect(runControlledProductionRelease({
+    await expect(prepareControlledProductionReleaseAttempt({
       plan: p, releasePacket: pkt, journal: journal(p), receipt: receipt(p),
       aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/WRONG_PROJECT/);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('rejects stale consistency evidence before network', async () => {
+  it('rejects stale consistency evidence before any network', async () => {
     const p = plan(); const pkt = packet(p); const fetchImpl = vi.fn();
     pkt.consistency.observedAt = '2026-09-14T12:00:00Z';
     pkt.finalRisk.evidenceDigest = releaseEvidenceDigestOf(pkt);
-    await expect(runControlledProductionRelease({
+    await expect(prepareControlledProductionReleaseAttempt({
       plan: p, releasePacket: pkt, journal: journal(p), receipt: receipt(p),
       aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
