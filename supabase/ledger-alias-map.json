@@ -473,10 +473,11 @@
     },
     {
       "repoFile": "0107_issue_41_formation_state_model",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#41 成團生命週期的狀態模型。本筆隨建立 0107 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權；套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "ledgerNames": [
+        "0107_issue_41_formation_state_model"
+      ],
+      "classification": "EXACT",
+      "evidence": "#41 成團生命週期的狀態模型。已於 2026-09-14 由 Owner 具名授權套用到正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260914094736 / 0107_issue_41_formation_state_model，名稱與 repo 檔名逐字相同，故為 EXACT。套用前重新查證 trip_plans／trip_departures／tour_orders 三表皆 0 列，capacity < 1 前置 guard 無風險；套用後 trip_departures 由 11 欄增為 19 欄。套用的同一次作業已重新擷取 supabase/production-ledger-snapshot.json（rowCount 56 → 57）。套用前已依 AGENTS.md「schema 變更的授權來源」查證本檔以最終內容合併進 main（PR #438／#440 一併涉及）。"
     },
     {
       "repoFile": "0108_issue_41_payment_state_model",
