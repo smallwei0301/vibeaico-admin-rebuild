@@ -6,6 +6,7 @@ const SCANNED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.yml'
 const ALLOWED_WRITE_ENDPOINT_FILES = new Set([
   'scripts/db/controlled-production-db-release.mjs',
   'scripts/db/run-migrations.mjs',
+  'scripts/db/validate-production-db-release-on-test.mjs',
 ]);
 
 function fail(code, message) {
@@ -44,6 +45,30 @@ function assertLegacyTestRunnerCannotWriteProduction(source) {
   }
 }
 
+function assertReleaseTestValidatorCannotWriteProduction(source) {
+  if (!source.includes("const TEST_PROJECT_REF = 'nmwhwngojosmagjuvxol';")) {
+    fail('G3_TEST_PROJECT_PIN_MISSING', 'release TEST validator must pin canonical TEST');
+  }
+  if (!source.includes("const PRODUCTION_PROJECT_REF = 'egehnijjpgijmccagxac';")) {
+    fail('G3_PRODUCTION_PROJECT_GUARD_MISSING', 'release TEST validator must know the forbidden Production project');
+  }
+  if (!source.includes('PRODUCTION_TARGET_FORBIDDEN')) {
+    fail('G3_PRODUCTION_FAIL_CLOSED_MISSING', 'release TEST validator must fail closed on Production target');
+  }
+  if (!source.includes('TEST_DB_RELEASE_TOKEN')) {
+    fail('G3_SCOPED_TOKEN_NAME_MISSING', 'release TEST validator must use the dedicated TEST release token');
+  }
+  if (source.includes('SUPABASE_ACCESS_TOKEN')) {
+    fail('G3_BROAD_TOKEN_REFERENCE', 'release TEST validator must not reference broad SUPABASE_ACCESS_TOKEN');
+  }
+  const executionStart = source.indexOf('async function executeAtomicTestRelease');
+  const targetGuard = source.indexOf('assertTestReleaseTarget(projectRef);', executionStart);
+  const writeEndpoint = source.indexOf('/database/query`', executionStart);
+  if (executionStart < 0 || targetGuard <= executionStart || writeEndpoint <= targetGuard) {
+    fail('G3_TEST_TARGET_GUARD_ORDER_INVALID', 'canonical TEST target guard must run before the mutable endpoint');
+  }
+}
+
 function assertFingerprintToolIsReadOnly(source) {
   if (!source.includes('/database/query/read-only')) fail('FINGERPRINT_READ_ONLY_ENDPOINT_MISSING', 'schema fingerprint tool must use read-only endpoint');
   if (!source.includes('SCHEMA_OBSERVER_TOKEN')) fail('FINGERPRINT_OBSERVER_TOKEN_MISSING', 'schema fingerprint tool must use observer credential');
@@ -71,6 +96,10 @@ export function auditProductionDbWriterBypasses(sources = {}) {
   const legacy = sources['scripts/db/run-migrations.mjs'];
   if (!legacy) fail('LEGACY_RUNNER_MISSING', 'run-migrations source is unavailable');
   assertLegacyTestRunnerCannotWriteProduction(String(legacy));
+
+  const g3Validator = sources['scripts/db/validate-production-db-release-on-test.mjs'];
+  if (!g3Validator) fail('G3_TEST_VALIDATOR_MISSING', 'release TEST validator source is unavailable');
+  assertReleaseTestValidatorCannotWriteProduction(String(g3Validator));
 
   const fingerprint = sources['scripts/db/schema-fingerprint-diff.mjs'];
   if (!fingerprint) fail('FINGERPRINT_TOOL_MISSING', 'schema-fingerprint-diff source is unavailable');
