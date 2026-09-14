@@ -1,0 +1,106 @@
+name: production-db-restore-rehearsal
+
+on:
+  schedule:
+    - cron: '17 19 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-db-restore-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  local-logical-restore-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      LOCAL_PROJECT_ID: production-db-restore-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify trusted main checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "MAIN_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+
+      - name: Start disposable canonical local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/agents/fresh-install-baseline.mjs "$RUNNER_TEMP/restore-rehearsal"
+          cd "$RUNNER_TEMP/restore-rehearsal"
+          supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
+
+      - name: Exercise dump restore and readback on a disposable canary schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_CONTAINER="supabase_db_${LOCAL_PROJECT_ID}"
+          CANARY="restore_canary_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          RESTORE_DB="restore_rehearsal_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          DUMP="$RUNNER_TEMP/restore-canary.sql"
+
+          docker exec "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 -c \
+            "create schema $CANARY; create table $CANARY.probe(id int primary key, marker text not null); insert into $CANARY.probe values (447, 'restore-ok');"
+
+          docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres \
+            --schema="$CANARY" --no-owner --no-privileges --format=p > "$DUMP"
+          test -s "$DUMP"
+
+          docker exec "$DB_CONTAINER" createdb -U postgres "$RESTORE_DB"
+          docker exec -i "$DB_CONTAINER" psql -U postgres -d "$RESTORE_DB" -X -v ON_ERROR_STOP=1 < "$DUMP"
+          RESULT="$(docker exec "$DB_CONTAINER" psql -U postgres -d "$RESTORE_DB" -X -At -v ON_ERROR_STOP=1 -c "select id || ':' || marker from $CANARY.probe;")"
+          test "$RESULT" = "447:restore-ok"
+
+          docker exec "$DB_CONTAINER" dropdb -U postgres "$RESTORE_DB"
+          docker exec "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 -c "drop schema $CANARY cascade;"
+
+          node --input-type=module > "$RUNNER_TEMP/production-db-restore-rehearsal.json" <<'NODE'
+          const evidence = {
+            schemaVersion: 1,
+            status: 'RESTORE_REHEARSAL_VERIFIED',
+            rehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY',
+            verifiedAt: new Date().toISOString(),
+            mainSha: process.env.MAIN_SHA,
+            runId: process.env.GITHUB_RUN_ID,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            source: 'TRUSTED_MAIN_GITHUB_ACTIONS',
+            productionBackupRestored: false,
+            storageObjectsCovered: false,
+            databaseMutationAuthorized: false,
+          };
+          console.log(JSON.stringify(evidence, null, 2));
+          NODE
+
+      - name: Upload sanitized rehearsal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-db-restore-rehearsal
+          path: ${{ runner.temp }}/production-db-restore-rehearsal.json
+          if-no-files-found: error
+          retention-days: 35
+
+      - name: Destroy disposable local database
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          test ! -d "$RUNNER_TEMP/restore-rehearsal" || (cd "$RUNNER_TEMP/restore-rehearsal" && supabase stop --no-backup)
