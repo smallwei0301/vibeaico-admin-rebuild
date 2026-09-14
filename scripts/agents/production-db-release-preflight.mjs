@@ -23,6 +23,7 @@ export const PRODUCTION_DB_POLICY = Object.freeze({
 });
 
 const RISK_TIERS = new Set(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ', 'BACKFILL']);
+const RESTORE_REHEARSAL_KINDS = new Set(['LOCAL_LOGICAL_RESTORE_CANARY', 'PRODUCTION_BACKUP_CLONE']);
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -146,6 +147,13 @@ function assertCommon(packet, nowMs) {
     nowMs,
     PRODUCTION_DB_POLICY.restoreRehearsalMaxAgeDays * 24 * 60 * 60 * 1000,
   );
+  const restoreRehearsalKind = String(recovery.restoreRehearsalKind ?? 'LOCAL_LOGICAL_RESTORE_CANARY').trim().toUpperCase();
+  if (!RESTORE_REHEARSAL_KINDS.has(restoreRehearsalKind)) {
+    fail('INVALID_RESTORE_REHEARSAL_KIND', `unsupported restore rehearsal kind: ${restoreRehearsalKind || '<empty>'}`);
+  }
+  if (restoreRehearsalKind === 'PRODUCTION_BACKUP_CLONE' && recovery.productionBackupRestored !== true) {
+    fail('PRODUCTION_BACKUP_CLONE_UNVERIFIED', 'Production backup clone evidence must prove a Production backup was actually restored');
+  }
   if (recovery.storageObjectsCovered === true) fail('BACKUP_SCOPE_OVERCLAIM', 'database backup must not claim Storage object coverage');
 
   const evidenceDigest = releaseEvidenceDigestOf(packet);
@@ -166,7 +174,7 @@ function assertCommon(packet, nowMs) {
   requiredString(finalRisk.executionRef, 'finalRisk.executionRef');
   requiredString(finalRisk.reviewId, 'finalRisk.reviewId');
 
-  return { releaseId, mainSha, planDigest, evidenceDigest, riskTier };
+  return { releaseId, mainSha, planDigest, evidenceDigest, riskTier, restoreRehearsalKind };
 }
 
 function assertRiskAdaptiveEvidence(packet, riskTier) {
@@ -180,6 +188,9 @@ function assertRiskAdaptiveEvidence(packet, riskTier) {
   }
 
   if (riskTier === 'BACKFILL') {
+    if (String(recovery.restoreRehearsalKind ?? '').trim().toUpperCase() !== 'PRODUCTION_BACKUP_CLONE' || recovery.productionBackupRestored !== true) {
+      fail('PRODUCTION_BACKUP_RESTORE_REQUIRED', 'BACKFILL release requires recent Production backup clone/restore evidence');
+    }
     if (recovery.preimageBackupVerified !== true) fail('PREIMAGE_BACKUP_REQUIRED', 'BACKFILL release requires preimage backup evidence');
     if (data.paymentFactsTouched === true) fail('PAYMENT_FACTS_FORBIDDEN', 'v1 backfill gate does not authorize payment fact rewrites');
     if (!Number.isSafeInteger(data.batchSize) || data.batchSize < 1 || data.batchSize > PRODUCTION_DB_POLICY.maxBackfillRowsPerBatch) {
@@ -204,6 +215,7 @@ export function evaluateReleasePreflight(packet, { now = new Date().toISOString(
     planDigest: common.planDigest,
     evidenceDigest: common.evidenceDigest,
     riskTier: common.riskTier,
+    restoreRehearsalKind: common.restoreRehearsalKind,
     evaluatedAt: nowIso,
     nextRequiredGate: 'G6_WRITER_LOCK_AND_LIVE_RECHECK',
     databaseMutationAuthorized: false,
