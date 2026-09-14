@@ -43,6 +43,30 @@
 - 本檔過往的「已防止／仍待處理」與數量，是各事件當時的紀錄，不是今日全專案狀態。
   送出新的進度或處置前，仍須重查當下來源。修正建議、候選已提交與 main 已驗證要分開寫。
 
+### PB-015／PB-027／PB-034 補充：baseline pin 與非交付修復（2026-09-14）
+
+- 來源：PR #425 的更正留言 `5658751113`、#420 與 #77 的歷史對照；
+  現行判準見 `scripts/agents/fresh-install-baseline.mjs` 的 `assertPinnedSource()`。
+- 事件：#420 的 baseline（重建基礎）指向分支提交，squash（壓成一筆合併）後，
+  該原提交不是 main 的祖先；#77 用 merge commit（保留兩邊歷史的合併）則保留了它。
+- 根因：把「檔案內容已合併」當成「被 pin（指定）的提交仍在 main 歷史中」。
+  兩者不同；Git 還找得到物件，也不等於它能從 main 沿歷史追到。
+- 預防：依目前 baseline 契約，同時檢查指定提交可解析、是受驗版本的祖先，
+  且 `supabase/migrations` 的內容沒有差異。不能只檢查 SHA 存在或檔案相同。
+  有新 migration（資料庫變更檔）時，可先提交 SQL 得到 P，再用下一筆提交更新
+  manifest（來源清單）指向 P；P 必須包含與候選相同的 canonical migrations。
+  此類候選採 merge commit 保留 P，不用 squash／rebase 重寫這段歷史。
+- 合併後：重新抓取 main，實際執行祖先與 SQL 內容檢查，並核對主線重建結果。
+  這不是恢復 `HEAD^ == main`，也不是要求所有文件 PR 一律使用同一種合併方式。
+- #425 的另一項教訓：工作領域與工作性質分開記。碰到 `supabase/**` 屬產品範圍，
+  但單純修復 baseline pin 不因此成為新功能交付。該案正確組合是
+  `WORKSTREAM: PRODUCT_MAINLINE`、`AGENT_LANE: GOVERNANCE`、
+  `DELIVERY_UNIT_TYPE: GOVERNANCE`、`COUNT_IN_DELIVERY_OUTCOME: false`。
+  不借用現成 Product Run 來湊綠燈，也不為放行而擴大治理檔案授權。
+- 驗證界線：本段整理既有事件及目前檢查器判準，不代表本輪重跑了完整建庫或
+  TEST／Production 驗收；來源正確亦不構成正式資料庫修改授權。
+- 狀態：監看中；保留原 PB 事件與計數，不把此次整理再計成一件事故。
+
 ## 每筆必填格式
 
 ```md
@@ -91,7 +115,7 @@
 | PB-024 | FK constraint 名稱在不同安裝路徑上不同，不可綁進 runtime | canonical（`create table`）與整合測試的 historical overlay 產生的 constraint 名稱不是同一組；PostgREST 的 `!fk_name` embed hint 因此在其中一邊解不開。多條 FK 造成 ambiguous embed 時，改用多次一般查詢。 | `12-TESTING-TDD.md` §1.5；`supabase/local-migrations/**` |
 | PB-025 | mutation 有 entitlement 閘門、read path 沒有，等於留後門 | 讀取路徑若只看「資料庫有沒有資料」，訂閱到期的租戶只要歷史資料還在就照樣讀得到——**用「有沒有資料」代替「有沒有權利」**，且完全沒有症狀。閘門必須在任何 domain SELECT 之前。 | `docs/integration/10-TOUR-DOMAIN.md` §6.1；`docs/integration/09-*` §5 |
 | PB-026 | `create table if not exists` 遇到「同名但形狀不同」的表會靜默跳過 | 既有表可能來自另一條安裝路徑（historical overlay），欄位與 check constraint 都不同。migration 顯示成功、什麼都沒建，程式接著對著一個**不是自己定義的契約**寫入，直到某個約束把它擋下來才發現。帶新表的 migration 必須像 `0066` 那樣「加法且會協調」，不能只 `if not exists` 就當作冪等。 | `supabase/migrations/0066_*.sql`（協調範例）；`supabase/local-migrations/**` |
-| PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋ 型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
+| PB-027 | 用「名字出現幾次」代替「那件事真的會發生」 | 四種同型：規格存在≠功能可用、路由存在≠功能可用、政策提到≠物件存在、符號出現≠符號被使用。`grep -c` 數到的可能全是**定義本身**（一支 service 的 export ＋型別就兩次）。可機械檢查的判準是**「呼叫端在哪裡」**，不是名稱出現次數。 | `docs/integration/14-GAP-AUDIT.md` §7.4.4 |
 | PB-032 | `conclusion=success` 不等於測試執行過 | 共用 TEST 一次只允許一位 `TEST_VALIDATION` holder，非 holder 的 `integration` job 會印一行 `POLICY_SKIP` 後以 **success** 結束——跳過與通過在 check 層級長得一模一樣。宣稱測試通過前必須讀 job log 看到 `✓ tests/integration/...(N tests)`；`conclusion`／check 顏色不是執行證據。 | `docs/AGENT-EXECUTION.md` §3.1；Completion Truth Gate |
 | PB-033 | 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端 | 把「這是安全修正」當成可以少一道查證。收權與加權在風險結構上對稱——兩者都可能讓線上功能當場停止，差別只在失敗方向。動線上資料庫的權限前，必須先完成呼叫端清查（全 repo grep 含測試 → client 建構函式 → 該 client 的角色 → 其他 SQL 函式內部呼叫）；migration 尾端的自我驗證要雙向，也檢查 service_role 有沒有被誤撤。 | 本檔 PB-028、PB-033 |
 | PB-034 | 用 CI 當規則查詢器；以及**預防本身涵蓋不全** | #352 退四次、#361 兩次、#370 一次、#397 一次，全是中繼資料錯、零程式碼問題。開 PR 前跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**但 #370 證明跑了也可能不夠**：preflight 當時沒涵蓋 `local-isolated-test-policy.mjs`，於是 preflight 綠、CI 仍退。已讓 preflight 直接呼叫 CI 的同一支函式。**#397 再證一次**：`ASTRA_TEST_BASELINE`／`ASTRA_SCHEMA_BASELINE` 由 `astra-review-policy.mjs` 驗證，卻連 PR 模板都沒列出來——照模板填完仍然必退。preflight 已改呼叫 `evaluateAstra()`，但只留下本機真的能知道的那兩條錯誤；模板也補上了這兩個欄位。欄位錯常是 **lane 選錯的症狀**。 | `scripts/agents/agent-wip-preflight.mjs`、`scripts/ci/local-isolated-test-policy.mjs` |
@@ -374,7 +398,7 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 分類：CI
 - 事件：在 worktree 裡用 `ln -s .../node_modules node_modules` 借用相依套件。rebase 之後 `git add` 把**那條 symlink 本身**收進了索引。它通過了 `npx tsc --noEmit`、1013 條單元測試、`scripts/ci/repo-integrity-guard.mjs`（`ok: true`）與全部 9 道 CI 檢查。只有在我依習慣重讀一次 `git diff --name-status` 時才看見。
 - 證據：`.gitignore` 的 `node_modules/` 尾端有斜線，只比對**目錄**；同名的 symlink 在 git 眼中是 mode `120000` 的 blob，不是目錄，因此不被該規則涵蓋。`git status --short` 會顯示 `?? node_modules`，容易被當成「就是那個被忽略的目錄」而略過。
-- 根因：忽略規則的比對單位是「路徑型別 ＋ 樣式」，不是「名字」。而所有既有閘門檢查的都是**內容**（型別、測試、完整性），沒有一道檢查「這次提交是否包含不該入版控的路徑型別」。
+- 根因：忽略規則的比對單位是「路徑型別 ＋樣式」，不是「名字」。而所有既有閘門檢查的都是**內容**（型別、測試、完整性），沒有一道檢查「這次提交是否包含不該入版控的路徑型別」。
 - 影響：差一步就把一條指向 `/home/user/...` 的絕對路徑 symlink 推進 `main`。它在別人的環境會是一條斷掉的連結，且 `npm ci` 的行為會變得不可預期。
 - 修正：`git rm --cached node_modules`，重新提交。
 - 預防：① **在 worktree 裡借 `node_modules` 之後，push 前一律重讀 `git diff --cached --name-status` 逐檔確認**——不是看 `git status`，因為 `?? node_modules` 在兩種情況下長得一模一樣。② 改用明確列舉的 `git add <path> …`，不要 `git add -A` / `git add .`。③ 綠燈不是「沒問題」的證據，只是「這幾件事沒問題」的證據；閘門沒有涵蓋的類別，綠燈完全不表態。
@@ -448,10 +472,10 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - Issue／PR／CI：Issue #27、#50、#8；PR #264、#268、#271、#273
 - 分類：稽核方法
 - 事件：同一輪出現四種同型的誤判——
-  1. **規格存在 ≠ 功能可用**：04／06 分冊描述 `imageStorageRef` ＋ preview ＋ 清理 queue，`main` 上零命中（那是未合併的 PR #98 的設計）。
+  1. **規格存在 ≠ 功能可用**：04／06 分冊描述 `imageStorageRef` ＋ preview ＋清理 queue，`main` 上零命中（那是未合併的 PR #98 的設計）。
   2. **路由存在 ≠ 功能可用**：`src/app/api/ai-settings/route.ts` 在 `main` 上齊全、閘門完整，但**全 repo 沒有任何一處呼叫它**；店家按下儲存打的是別的端點。
   3. **政策提到 ≠ 物件存在**：`p_storage_write` 的允許清單列了 `keyword-reply-images`，我據此推論 bucket 已存在——`bucket_id in (...)` 只是字串比對，Postgres 不會因為政策引用了不存在的 bucket 而抱怨（PB-024 的同族）。
-  4. **符號出現 ≠ 符號被使用**：我用 `grep -c` 數到四支 tour-order service「8 處引用」，據此在 #8 寫下「tour-orders 頁本來就已接 service」。那 8 處全在 `src/services/tours.ts` 裡（一支 service 的 export ＋ 型別就是兩次），頁面實際上四個寫入動作**一個都沒接**。
+  4. **符號出現 ≠ 符號被使用**：我用 `grep -c` 數到四支 tour-order service「8 處引用」，據此在 #8 寫下「tour-orders 頁本來就已接 service」。那 8 處全在 `src/services/tours.ts` 裡（一支 service 的 export ＋型別就是兩次），頁面實際上四個寫入動作**一個都沒接**。
 - 根因：判準錯了。四者都在問「這個名字在某處出現了嗎」，而該問的是「那件事真的會發生嗎」。名稱出現是**必要非充分**條件，而它剛好很容易 grep 到，於是變成預設判準。
 - 影響：第 4 項是我自己寫進 issue 的錯誤結論，若沒有在實作 #271 時撞到，會直接變成一個假打勾。第 2 項讓一個「已經在對真實顧客做錯事」的缺陷在 issue 上顯示為已完成。
 - 修正：#273 把四種形態並列寫進 `14-GAP-AUDIT.md` §7.4.4；#8 的錯誤結論已發留言更正。
@@ -496,7 +520,7 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   ```
   **這個查詢回傳任何一列，就是一個待處理的權限缺口。** 正式庫與 canonical TEST 都要查。
   ⑤ 帶 SECURITY DEFINER 函式的 migration，尾端一律加自我驗證的 `do $$ … raise … $$`，
-  讓「收權沒生效」當場失敗回滾，而不是靠事後有人想起來去查。
+    讓「收權沒生效」當場失敗回滾，而不是靠事後有人想起來去查。
   ⑥ 線上資料庫的函式簽章**可能與 repo 的 migration 完全不同**（本例即是）。撰寫任何
   revoke／grant 之前，先查 `pg_get_function_identity_arguments` 取得實際簽章；照抄 repo 的
   簽章會因函式不存在而讓整個 migration 回滾，結果是缺口照樣開著而你以為修好了。
@@ -554,7 +578,7 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 - 根因：`local-isolated` 與 canonical TEST 都是「先套 historical overlay `0016`、再套 canonical 的調和 `0066`」建出來的，結果是一個**兩種寫法都滿足的超集**。超集對兩套寫法都回綠，所以它不只是「證明不了與線上一致」，而是**連不一致都顯示不出來**。
 - 影響：比 #197 §影響第 2 點原本的描述更嚴重。原文說 `local-isolated` 證明的是「migration 寫對了」不是「與線上一致」；實際上兩個環境同時綠燈，而正式庫是壞的——沒有任何一道閘門有機會紅。
-- 修正：以 `scripts/db/schema-fingerprint-diff.mjs` 取「欄位數 ＋ 排序後欄位名的 md5」逐表比對 repo 與線上，這才看得到分歧；並依擁有者具名授權把 canonical `0066`/`0067`/`0068` 補套到正式庫（`trips` 28 → 32 欄，指紋與 canonical TEST 逐字相同）。
+- 修正：以 `scripts/db/schema-fingerprint-diff.mjs` 取「欄位數 ＋排序後欄位名的 md5」逐表比對 repo 與線上，這才看得到分歧；並依擁有者具名授權把 canonical `0066`/`0067`/`0068` 補套到正式庫（`trips` 28 → 32 欄，指紋與 canonical TEST 逐字相同）。
 - 預防：① **建庫路徑不同的環境不能互相當對照組**——要驗「與線上一致」，唯一有效的對照組是線上本身，其餘都只是驗「migration 跑得完」。② 對兩套並存的欄位名，測試綠不構成證據；直接查 `information_schema.columns` 取指紋比對。③ 同族陷阱見 PB-026（`create table if not exists` 對同名不同形狀的表靜默跳過），那正是超集的成因之一。④ 我自己在本輪還多踩一層：看到「repo 用 A 名、正式庫用 B 名」就推論成**設計分歧**，沒有回頭讀 `0066` 到底做了什麼——那支 migration 就是為調和這件事而寫的，只是從未被套上去。**先讀那支 migration，再下結論。**
 - 狀態：已防止（工具已合併；#197 建議處置第 2 步「讓 repo 能重現線上」仍未完成）
 
@@ -1254,4 +1278,3 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 6. **變異反證**：刻意拔掉最重要的 guard／lock／filter 後，測試會不會真的轉紅？
 
 若其中任何一題的答案是「不知道」，不得用「測試很多」「CI 綠」「畫面看起來正常」代替答案；先把該層的真實證據補齊。
-
