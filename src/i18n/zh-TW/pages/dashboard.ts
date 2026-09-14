@@ -49,6 +49,12 @@ export const dashboardPage = {
     title: '待處理事項',
     bookingRequest: '待確認預約',
     bookingPayment: '待收款預約',
+    /* ---- #43 類別 1（GUIDE 旅遊側）：待導遊接受／拒絕的 REQUEST（先申請再確認） ---- */
+    tourRequest: '待確認申請',
+    /** 19 分冊 §1.6 誠實狀態：REQUEST 已送出、導遊尚未接受時只能顯示這句，不可說「預約成功」。 */
+    tourRequestSubmitted: '已送出申請，等待導遊確認',
+    tourRequestParty: (n: number) => `${n} 人`,
+    openTourRequest: '查看申請',
     bookingAt: '預約時間',
     paymentAmount: (amount: string) => '應收 ' + amount,
     departure: '出發團次',

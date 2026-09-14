@@ -149,6 +149,9 @@ export const MOCK_TRIP_PLANS: TripPlan[] = [
     depositMode: 'DEPOSIT_FIXED', depositValue: 5000,
     active: true, yearRound: true, seasons: [],
     reviewState: 'PENDING', reviewNote: '', sortOrder: 2,
+    // #43 類別 1：先申請再確認（18 分冊 §1／0107 canonical），GUIDE 行動收件匣
+    // 用這個欄位判斷「待導遊接受／拒絕的 REQUEST」，見 to_9。
+    salesMode: 'REQUEST',
   },
   {
     id: 'pl_3', tripId: 'tp_1', name: '攝影特別團',
@@ -319,5 +322,18 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     source: 'VIBEAI_SHOP', holdExpiresAt: null, note: '旅客因病取消，退款申請已送出，等待金流商處理',
     createdAt: '2026-08-22T11:05:00+08:00',
     refundedAmount: 0,
+  },
+  {
+    // #43 類別 1：待導遊接受／拒絕的 REQUEST（先申請再確認，19 分冊 §1.6／§2.3）。
+    // `planName` 對應 pl_2「包船專案」——那個方案的 `salesMode` 是 'REQUEST'，
+    // GUIDE 行動收件匣用它判斷這筆訂單需要導遊自己決定要不要接受，而不是已成立
+    // 的預約；`holdExpiresAt: null` 是誠實狀態——送出申請當下不鎖導遊時間。
+    id: 'to_9', orderNo: 'T2608230021', tripId: 'tp_1', tripTitle: '龜山島賞鯨半日遊',
+    planName: '包船專案', departsOn: '2026-09-05', startTime: '08:00',
+    customerName: '蔡欣妤', customerPhone: '0937-660-215', partySize: 6,
+    unitPrice: 18000, totalAmount: 18000, depositAmount: 0, status: 'PENDING', paymentStatus: 'UNPAID',
+    paymentMethodLabel: '', paymentRef: '',
+    source: 'MIDAO', holdExpiresAt: null, note: '想包船拍婚紗，詢問是否能配合傍晚時段',
+    createdAt: '2026-08-23T14:20:00+08:00',
   },
 ];
