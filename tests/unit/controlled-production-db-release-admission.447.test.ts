@@ -37,17 +37,17 @@ describe('Issue #447 controlled writer admission negatives', () => {
     const fetchImpl = vi.fn();
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: pkt,
-      lockEvidence: { status: 'LOCK_VERIFIED', releaseId: p.releaseId, projectRef: p.productionProjectRef, planDigest: p.planDigest, acquiredAt: '2026-09-14T12:39:30Z', holder: 'x', liveBaselineRechecked: true },
       aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/WRONG_PROJECT/);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('rejects stale lock before network', async () => {
-    const p = plan(); const fetchImpl = vi.fn();
+  it('rejects stale consistency evidence before network', async () => {
+    const p = plan(); const pkt = packet(p); const fetchImpl = vi.fn();
+    pkt.consistency.observedAt = '2026-09-14T12:00:00Z';
+    pkt.finalRisk.evidenceDigest = releaseEvidenceDigestOf(pkt);
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p),
-      lockEvidence: { status: 'LOCK_VERIFIED', releaseId: p.releaseId, projectRef: p.productionProjectRef, planDigest: p.planDigest, acquiredAt: '2026-09-14T12:38:00Z', holder: 'x', liveBaselineRechecked: true },
+      plan: p, releasePacket: pkt,
       aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchImpl).not.toHaveBeenCalled();
