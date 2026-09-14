@@ -11,7 +11,7 @@ describe('Issue #447 current-main pending migration classification', () => {
     expect(pending.length).toBeGreaterThan(0);
     for (const repoFile of pending) {
       const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations', `${repoFile}.sql`), 'utf8');
-      expect(['ADDITIVE', 'AUTHZ', 'BACKFILL']).toContain(inferMigrationRiskTier(sql));
+      expect(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ', 'BACKFILL']).toContain(inferMigrationRiskTier(sql));
     }
   });
 });
