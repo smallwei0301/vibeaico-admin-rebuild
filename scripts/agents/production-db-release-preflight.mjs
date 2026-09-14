@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
@@ -67,6 +68,26 @@ function assertStatus(value, expected, label) {
   }
 }
 
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalize(value[key])]),
+    );
+  }
+  return value;
+}
+
+export function releaseEvidenceDigestOf(packet = {}) {
+  const evidence = canonicalize({
+    source: packet.source ?? null,
+    consistency: packet.consistency ?? null,
+    test: packet.test ?? null,
+    recovery: packet.recovery ?? null,
+  });
+  return createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
+}
+
 function allowedFinalRiskModels(policy = routing) {
   const catalog = policy.models?.finalRiskModelCatalog;
   const allowed = policy.models?.finalRiskAllowedModels;
@@ -127,6 +148,7 @@ function assertCommon(packet, nowMs) {
   );
   if (recovery.storageObjectsCovered === true) fail('BACKUP_SCOPE_OVERCLAIM', 'database backup must not claim Storage object coverage');
 
+  const evidenceDigest = releaseEvidenceDigestOf(packet);
   const finalRisk = packet.finalRisk ?? {};
   assertStatus(finalRisk.status, 'ASTRA_APPROVED', 'finalRisk.status');
   const requestedModel = requiredString(finalRisk.requestedModel, 'finalRisk.requestedModel');
@@ -134,6 +156,7 @@ function assertCommon(packet, nowMs) {
   const allowed = allowedFinalRiskModels();
   if (requestedModel !== actualModel || !allowed.has(requestedModel)) fail('FINAL_RISK_MODEL_UNVERIFIED', 'Final Risk model must be one current allowlisted identity');
   if (validDigest(finalRisk.planDigest, 'finalRisk.planDigest') !== planDigest) fail('FINAL_RISK_PLAN_MISMATCH', 'Final Risk is for another plan');
+  if (validDigest(finalRisk.evidenceDigest, 'finalRisk.evidenceDigest') !== evidenceDigest) fail('FINAL_RISK_EVIDENCE_MISMATCH', 'Final Risk did not review the current source/consistency/TEST/recovery evidence bundle');
   assertFresh(
     finalRisk.reviewedAt,
     'finalRisk.reviewedAt',
@@ -143,7 +166,7 @@ function assertCommon(packet, nowMs) {
   requiredString(finalRisk.executionRef, 'finalRisk.executionRef');
   requiredString(finalRisk.reviewId, 'finalRisk.reviewId');
 
-  return { releaseId, mainSha, planDigest, riskTier };
+  return { releaseId, mainSha, planDigest, evidenceDigest, riskTier };
 }
 
 function assertRiskAdaptiveEvidence(packet, riskTier) {
@@ -179,6 +202,7 @@ export function evaluateReleasePreflight(packet, { now = new Date().toISOString(
     releaseId: common.releaseId,
     mainSha: common.mainSha,
     planDigest: common.planDigest,
+    evidenceDigest: common.evidenceDigest,
     riskTier: common.riskTier,
     evaluatedAt: nowIso,
     nextRequiredGate: 'G6_WRITER_LOCK_AND_LIVE_RECHECK',

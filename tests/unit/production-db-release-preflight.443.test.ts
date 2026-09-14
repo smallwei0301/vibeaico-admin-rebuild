@@ -4,6 +4,7 @@ import {
   PRODUCTION_DB_POLICY,
   evaluateApplyAdmission,
   evaluateReleasePreflight,
+  releaseEvidenceDigestOf,
 } from '../../scripts/agents/production-db-release-preflight.mjs';
 
 const NOW = '2026-09-14T10:00:00Z';
@@ -11,7 +12,7 @@ const MAIN = 'a'.repeat(40);
 const PLAN = 'b'.repeat(64);
 
 function packet(overrides: Record<string, unknown> = {}) {
-  const value = {
+  const value: any = {
     schemaVersion: 1,
     releaseId: 'release-20260914-001',
     repository: PRODUCTION_DB_POLICY.repository,
@@ -54,6 +55,7 @@ function packet(overrides: Record<string, unknown> = {}) {
       requestedModel: 'claude-fable-5-1',
       actualModel: 'claude-fable-5-1',
       planDigest: PLAN,
+      evidenceDigest: '',
       reviewedAt: '2026-09-14T09:20:00Z',
       executionRef: 'github-review-execution-123',
       reviewId: 'review-123',
@@ -64,7 +66,9 @@ function packet(overrides: Record<string, unknown> = {}) {
       maxRows: 1000,
     },
   };
-  return Object.assign(value, overrides);
+  Object.assign(value, overrides);
+  value.finalRisk.evidenceDigest = releaseEvidenceDigestOf(value);
+  return value;
 }
 
 function lock(overrides: Record<string, unknown> = {}) {
@@ -129,12 +133,21 @@ describe('Production DB release preflight', () => {
     expect(() => evaluateReleasePreflight(stalePlan, { now: NOW })).toThrow(/FINAL_RISK_PLAN_MISMATCH/);
   });
 
+  it('invalidates Final Risk when any reviewed release evidence changes', () => {
+    const changed = packet();
+    changed.consistency.observedAt = '2026-09-14T09:51:00Z';
+    expect(() => evaluateReleasePreflight(changed, { now: NOW })).toThrow(/FINAL_RISK_EVIDENCE_MISMATCH/);
+  });
+
   it('adds tenant and negative-role evidence only for AUTHZ changes', () => {
     const authz = packet({ riskTier: 'AUTHZ' });
     expect(() => evaluateReleasePreflight(authz, { now: NOW })).toThrow(/TENANT_BOUNDARY_TEST_REQUIRED/);
     authz.test.tenantBoundaryVerified = true;
+    expect(() => evaluateReleasePreflight(authz, { now: NOW })).toThrow(/FINAL_RISK_EVIDENCE_MISMATCH/);
+    authz.finalRisk.evidenceDigest = releaseEvidenceDigestOf(authz);
     expect(() => evaluateReleasePreflight(authz, { now: NOW })).toThrow(/NEGATIVE_ROLE_TEST_REQUIRED/);
     authz.test.negativeRoleTestsPassed = true;
+    authz.finalRisk.evidenceDigest = releaseEvidenceDigestOf(authz);
     expect(evaluateReleasePreflight(authz, { now: NOW }).status).toBe('READY_FOR_LOCK');
   });
 
@@ -142,6 +155,7 @@ describe('Production DB release preflight', () => {
     const backfill = packet({ riskTier: 'BACKFILL' });
     expect(() => evaluateReleasePreflight(backfill, { now: NOW })).toThrow(/PREIMAGE_BACKUP_REQUIRED/);
     backfill.recovery.preimageBackupVerified = true;
+    backfill.finalRisk.evidenceDigest = releaseEvidenceDigestOf(backfill);
 
     backfill.data.batchSize = 1001;
     expect(() => evaluateReleasePreflight(backfill, { now: NOW })).toThrow(/BACKFILL_BATCH_LIMIT/);
