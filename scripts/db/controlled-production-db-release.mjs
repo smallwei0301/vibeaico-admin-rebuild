@@ -183,6 +183,18 @@ function preparationCore(prepared) {
  * journal/receipt to APPLYING/CONSUMING in memory and returns a serializable
  * attempt envelope. The caller MUST durably persist this returned envelope
  * before calling executePreparedControlledProductionRelease().
+ *
+ * @param {{
+ *   plan?: any,
+ *   releasePacket?: any,
+ *   journal?: any,
+ *   receipt?: any,
+ *   aliasMap?: any,
+ *   readCanonicalSql?: (path: string) => string,
+ *   token?: string,
+ *   fetchImpl?: typeof fetch,
+ *   now?: string,
+ * }} [input]
  */
 export async function prepareControlledProductionReleaseAttempt({
   plan,
@@ -252,6 +264,17 @@ function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCa
  * been durably persisted outside process memory. This function never accepts
  * PRE_APPLY/ISSUED state, so a process crash cannot silently fall back to the
  * reusable pre-attempt state.
+ *
+ * @param {{
+ *   prepared?: any,
+ *   plan?: any,
+ *   releasePacket?: any,
+ *   aliasMap?: any,
+ *   readCanonicalSql?: (path: string) => string,
+ *   token?: string,
+ *   fetchImpl?: typeof fetch,
+ *   now?: string,
+ * }} [input]
  */
 export async function executePreparedControlledProductionRelease({
   prepared,
