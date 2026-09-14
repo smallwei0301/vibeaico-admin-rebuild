@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-14-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-14T02:35:00Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "issue/42",
+      "note": "Owner 2026-09-14：先做 #60／#42 讓今天有一個 ✅，接著 #46，順序由執行者決定，維持平行多路線。"
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "45b65b64a2fc17371c7ce6320b6dba06ce88a14a",
+      "note": "本 Run 起算時的 origin/main head。"
+    }
+  ],
+  "main": {
+    "startSha": "45b65b64a2fc17371c7ce6320b6dba06ce88a14a",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 46,
+    "openIssuesEnd": null,
+    "openPrsStart": 13,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": 0,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "本 Run 是 #411 結案後第一本『從一開始就埋點』的 Product Run：modelUsage.tasks、flow 的委派計數、ci.fullCiRuns 於發生當下即時寫入，不事後回填。目標是累積三本可比較的 Run，讓 PRODUCT_RUN_TREND 可以真的評分。",
+    "inventory start 以與 #411 相同的方法即時觀察：46 open Issues／13 open PRs @ 2026-09-14T02:35Z。",
+    "modelUsage.actualTokensAvailable=false 仍然成立：本環境取不到 per-task token 用量，加權用量以任務計數近似，此限制與前九本一致且如實記錄。weeklyUsageStartPercent 以 0 起算，結案時記錄相對增量而非平台百分比。",
+    "開工盤點發現：src/server/mappers.ts 的 mapTripPlan 對 durationMinutes(60)、priceType(PER_PERSON)、bookingType(SCHEDULED)、yearRound(true)、seasons([])、reviewState(NONE) 六個 TripPlan 契約欄位回傳寫死常數，trip_plans 資料表從 0066 起就沒有這些欄位。這是真實的假成功，不是待辦。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
