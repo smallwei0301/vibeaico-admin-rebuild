@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
-    "closureSweeps": 3,
+    "closureSweeps": 4,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -88,10 +88,10 @@
         "id": "issue-41-luna-closure-sweep",
         "requestedModel": "luna",
         "actualModel": "luna",
-        "role": "LUNA_CLOSURE 掃描（scout 層，實際委派 claude-haiku-4-5）：逐張 open PR 取 lane metadata、draft/mergeable、落後 main 的 commit 數與最近 check 結果，回答「有沒有 closeability>=3 且非 OWNER_BLOCKED 非 draft 的候選」",
+        "role": "LUNA_CLOSURE 掃描（scout 層，實際委派 claude-haiku-4-5）：逐張 open PR 取 lane metadata、draft/mergeable、落後 main 的 commit 數與最近 check 結果，回答「有沒有 closeability>=3 且非 OWNER_BLOCKED 非 draft 的候選」。回報採用，並**訂正了我自己的錯誤**：我先前手動掃用 `grep '^- LANE_STATE:'`，漏掉格式沒有項目符號的 #312，因而誤報它「無 lane metadata」。",
         "count": 1,
         "contextClass": "compact",
-        "accepted": false,
+        "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
@@ -153,7 +153,11 @@
     "**flow.lunaTasks=0 與 solTouches=0 是如實記錄的違規，不是「還沒填」。** 本 Run 的所有窄盤點（掃 open PR 的 lane metadata、grep REVIEW_REQUIRED／AT_RISK、查帳本結構）都由執行者自己做，沒有委派給 scout 層；也沒有任何 Sol early diff audit，PR #418 與 #428 的 diff 是自審的。",
     "**模型分層違規（PB-036 第三次）**：PR #418 與 #428 的 AGENT_LANE 都是 TERRA_BUILD，而 ACTUAL_MODEL 都是 claude-opus-5。CLAUDE.md 的 Lane → model tier 表寫明 Terra 一律用 claude-sonnet-5。前兩次是 #370 與 #396。本 Run 依規定記為違規，不寫成中性註記。",
     "2026-09-14 §5／§6 開工盤點（委派 claude-haiku-4-5，scout 層）採用結果：(a) 既有 security definer 函式 reserve_seats／release_seats／create_tour_order／cancel_tour_order（0087）與 expire_tour_order（0100）；(b) tour_orders 只有 paid_amount，upfront_required_amount／refunded_amount／deposit_mode_snapshot 皆不存在，0087:98 明文標為「屬 #41」；(c) tour_payment_status 目前只有 UNPAID／PAID／REFUNDED——**缺 18 分冊 §4 要求的 PARTIAL 與 REFUND_PENDING**；(d) seats_booked 只由 reserve_seats／release_seats 寫入，其餘皆唯讀；(e) canonical 對 tour_orders 與 trip_departures 沒有任何 trigger（0098:13 有明文記載，歷史 overlay 有 6 個）。",
-    "帳本 schema 的兩個限制，記下來以免下次又踩：(1) modelUsage.tasks[].actualModel 的值域是層級名（luna／terra／sol／unknown），不是具體 model ID——因此「有沒有委派」驗得出來，「委派給哪一個具體模型」只能靠 role 與 PR 的 ACTUAL_MODEL，PB-036 那種違規在帳本層面驗不出來；(2) accepted 必須是布林，沒有 pending 狀態，所以派出當下只能記 false，驗收後才翻 true。兩者都不是我可以自行改的 schema。"
+    "帳本 schema 的兩個限制，記下來以免下次又踩：(1) modelUsage.tasks[].actualModel 的值域是層級名（luna／terra／sol／unknown），不是具體 model ID——因此「有沒有委派」驗得出來，「委派給哪一個具體模型」只能靠 role 與 PR 的 ACTUAL_MODEL，PB-036 那種違規在帳本層面驗不出來；(2) accepted 必須是布林，沒有 pending 狀態，所以派出當下只能記 false，驗收後才翻 true。兩者都不是我可以自行改的 schema。",
+    "2026-09-14 LUNA_CLOSURE 掃描（委派 claude-haiku-4-5）結果：13 張 open PR，**沒有任何一張可推進或可關閉**（#87 是唯一 closeability>=3 且非 OWNER_BLOCKED 的，但它是 draft）。EMPTY_WITH_SCAN 成立。",
+    "同一次掃描查出一個值得單獨記的事實：**13 張 open PR 全部落後 main 超過 200 個 commit**（#312 落後 256，其餘 557–600）。落後 600 個 commit 的 PR 已經不是「待推進」而是需要重建；這解釋了為什麼每一輪 closure sweep 都掃出 EMPTY，也意味著 open PR 數字高估了實際在途工作量。",
+    "**委派的 scout 訂正了我自己的錯誤（PB-037 第三次）。** 我先前兩次手動 closure sweep 用 `grep -m1 '^- LANE_STATE:'` 取 lane metadata，而 #312 的欄位格式沒有 `- ` 項目符號，於是零命中、被我報成「無 lane metadata」，並寫進 PR #418 與 #428 的 sweep 表格。實際上 #312 有完整欄位（AGENT_LANE: GOVERNANCE／LANE_STATE: OWNER_BLOCKED／CLOSEABILITY_SCORE: 1）。結論碰巧仍成立，但理由是錯的——而「結論碰巧對」正是這類錯誤最容易存活的原因。",
+    "施工 agent 在過程中回退過工作樹，把我對本帳本的一次編輯（接受 closure sweep）沖掉了。已重做。記下來是因為這是多路線併行的真實副作用：**兩個執行者共用一個工作樹時，未提交的編輯不是安全的**；下次應在委派前先提交，或讓 subagent 在 worktree 隔離下工作。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {

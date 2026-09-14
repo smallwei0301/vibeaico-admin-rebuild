@@ -1,0 +1,127 @@
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import { mapTourOrder } from '@/server/mappers';
+
+const MIGRATION = readFileSync(
+  resolve(__dirname, '../../supabase/migrations/0108_issue_41_payment_state_model.sql'),
+  'utf8',
+);
+
+const derived = {
+  tripTitle: '標準團',
+  planName: '標準方案',
+  departsOn: '2026-10-01',
+  startTime: '09:00',
+  paymentMethodLabel: '匯款',
+};
+
+const orderRow = (extra: Record<string, unknown> = {}) => ({
+  id: 'order-1',
+  order_no: 'A0001',
+  trip_id: 'trip-1',
+  party_size: 2,
+  unit_price: 1000,
+  total_amount: 2000,
+  deposit_amount: 0,
+  contact: { name: '王小明', phone: '0900000000' },
+  status: 'PENDING',
+  payment_status: 'UNPAID',
+  payment_ref: '',
+  source: 'MANUAL',
+  hold_expires_at: null,
+  note: '',
+  created_at: '2026-09-14T00:00:00Z',
+  ...extra,
+});
+
+/*
+ * 18 分冊 §4／§9.3 的平台固定底線：「payment/refund state 必須誠實」。窄化方向
+ * 一律取「最不會讓 UI 誤宣稱已收到錢／已退款」的那個值——查不到或看不懂的輸入，
+ * 寧可窄成「沒有頭期款要求」「沒有退款」「不知道收款政策」，也不能猜出一個會讓
+ * UI 顯示已收錢/已退款的具體數字或狀態。
+ */
+describe('#41 §4 mapTourOrder：新欄位的窄化必須 fail-closed', () => {
+  describe('upfrontRequiredAmount：非有限數字一律收斂成 0', () => {
+    it.each([undefined, null, '', 'abc', 'NaN', {}, []])(
+      '把 %s 收斂成 0',
+      (raw) => {
+        expect(mapTourOrder(orderRow({ upfront_required_amount: raw }), derived).upfrontRequiredAmount).toBe(0);
+      },
+    );
+
+    it('保留合法的數字', () => {
+      expect(mapTourOrder(orderRow({ upfront_required_amount: 500 }), derived).upfrontRequiredAmount).toBe(500);
+    });
+
+    it('字串數字也視為合法（DB 驅動可能回字串）', () => {
+      expect(mapTourOrder(orderRow({ upfront_required_amount: '500' }), derived).upfrontRequiredAmount).toBe(500);
+    });
+  });
+
+  describe('refundedAmount：非有限數字一律收斂成 0', () => {
+    it.each([undefined, null, '', 'abc', 'NaN', {}, []])(
+      '把 %s 收斂成 0',
+      (raw) => {
+        expect(mapTourOrder(orderRow({ refunded_amount: raw }), derived).refundedAmount).toBe(0);
+      },
+    );
+
+    it('保留合法的數字', () => {
+      expect(mapTourOrder(orderRow({ refunded_amount: 300 }), derived).refundedAmount).toBe(300);
+    });
+  });
+
+  describe('depositModeSnapshot：不在值域內一律收斂成 null', () => {
+    it.each(['NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL'])('保留合法值 %s', (raw) => {
+      expect(mapTourOrder(orderRow({ deposit_mode_snapshot: raw }), derived).depositModeSnapshot).toBe(raw);
+    });
+
+    it.each([undefined, null, '', 'none', 'Full', 'OTHER', 7, {}])(
+      '把不合法的 %s 收斂成 null',
+      (raw) => {
+        expect(mapTourOrder(orderRow({ deposit_mode_snapshot: raw }), derived).depositModeSnapshot).toBeNull();
+      },
+    );
+  });
+});
+
+/*
+ * 這一組不是在測 SQL 執行結果——那要真實資料庫，由 agent-schema-bootstrap 負責。
+ * 這裡守的是「migration 文字裡確實寫了這些不變量」，避免它們在後續編輯中被悄悄
+ * 拿掉（沿用 0107 單元測試的既有樣式）。
+ */
+describe('#41 0108 的資料庫層不變量', () => {
+  it.each([
+    ['頭期款不得超過總額', 'tour_orders_upfront_required_amount_ck'],
+    ['退款不得超過實收', 'tour_orders_refunded_amount_ck'],
+    ['收款政策 snapshot 值域', 'tour_orders_deposit_mode_snapshot_ck'],
+    ['PARTIAL 必須誠實', 'tour_orders_partial_paid_amount_ck'],
+    ['REFUND_PENDING 必須誠實', 'tour_orders_refund_pending_paid_amount_ck'],
+  ])('保留 %s 的 CHECK', (_label, name) => {
+    expect(MIGRATION).toContain(name);
+  });
+
+  it('付款狀態 enum 補齊 PARTIAL 與 REFUND_PENDING，且五個值同時聲明', () => {
+    expect(MIGRATION).toMatch(/'UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED'/);
+    expect(MIGRATION).toContain("add value if not exists ''PARTIAL''");
+    expect(MIGRATION).toContain("add value if not exists ''REFUND_PENDING''");
+  });
+
+  it('不得移除或改寫既有的 paid_amount', () => {
+    expect(MIGRATION).not.toMatch(/drop column[^\n]*paid_amount/i);
+    expect(MIGRATION).not.toMatch(/rename column[^\n]*paid_amount/i);
+    // migration 自己也有一條後置斷言守這件事
+    expect(MIGRATION).toContain('tour_orders.paid_amount 不見了');
+  });
+
+  it('deposit_mode_snapshot 的值域與 0066 的 trip_plans.deposit_mode 相同', () => {
+    expect(MIGRATION).toContain("'NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL'");
+  });
+
+  it('post-assertion 用 regtype 而非 format_type() 做型別比對', () => {
+    expect(MIGRATION).toContain('::regtype');
+    expect(MIGRATION).not.toMatch(/atttypid\s*=\s*format_type/);
+  });
+});
