@@ -185,8 +185,12 @@ async function seedOrders(): Promise<void> {
     source: 'MANUAL' as const,
     // ⚠️ 批次 insert 時 supabase-js／PostgREST 以「第一筆物件的 key 聯集」建立欄位
     // 清單，某一筆沒帶到的欄位會被明寫成 NULL，不會落回 column default（0）。
-    // 所以 paid_amount 一律在 base 裡顯式帶上，需要非 0 的那筆（已收款）再覆寫。
+    // 所以 base 裡要顯式帶上「這個批次任何一筆會覆寫」的欄位，否則沒覆寫到的
+    // 那幾筆會被塞進明寫的 NULL。paid_amount 和 refunded_amount 都屬於這種情況
+    // （後者是 `0108` 新增的 NOT NULL money 欄位，同一批次裡 REFUNDED 那筆會
+    // 覆寫成非 0），需要非 0 的那筆再各自覆寫。
     paid_amount: 0,
+    refunded_amount: 0,
   };
   const { error } = await admin.from('tour_orders').insert([
     {
