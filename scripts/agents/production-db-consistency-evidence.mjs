@@ -12,7 +12,9 @@ function signature(item) {
   ])).digest('hex');
 }
 
-export function buildProductionConsistencyEvidence({ report, plannedProductionDifferences = [], mainSha, planDigest }) {
+const EMPTY_PLANNED_DIFFERENCES = /** @type {Array<Record<string, unknown>>} */ ([]);
+
+export function buildProductionConsistencyEvidence({ report, plannedProductionDifferences = EMPTY_PLANNED_DIFFERENCES, mainSha, planDigest }) {
   if (!report || report.observedMainSha !== mainSha) fail('CONSISTENCY_MAIN_MISMATCH', 'drift report is not for the selected main SHA');
   if (report.safety?.authorizesDatabaseWrite !== false) fail('OBSERVER_SCOPE_ESCALATION', 'drift observer must stay read-only');
   if (report.status === 'DRIFT_BLOCKED' || report.status === 'EVIDENCE_UNAVAILABLE') fail('DRIFT_BLOCKED', `drift report status is ${report.status}`);
