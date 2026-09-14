@@ -43,10 +43,12 @@ function relatedValue(value: RelatedName): { name?: string | null; title?: strin
  * 新狀態、不重新推算成團與否，也不觸發通知、付款或其他外部副作用。預約卡片帶
  * bookingId deep link，讓操作人直接開啟該筆詳情而不是重新搜尋列表；formation 卡片
  * 沿用既有團次深連結（`/tenant/trips/:id`），因為成團決定發生在團次詳情頁；
- * REFUND_PENDING 卡片帶 orderId deep link 到 `/tenant/tour-orders`（該頁目前尚未
- * 消費 `orderId`／`paymentStatus` query string 自動開啟詳情——那是額外的頁面接線，
- * 不在 #43 類別 5 的施工範圍內；deep link 目前只保證帶著正確的查詢字串，不保證
- * 該頁會自動用它篩選或開啟詳情）。
+ * REFUND_PENDING 卡片帶 orderId deep link 到 `/tenant/tour-orders`——該頁已消費
+ * `paymentStatus`／`orderId` query string（`src/app/tenant/tour-orders/page.tsx`：
+ * `paymentStatus` 只接受 `TourPaymentStatus` 值域內的值，值域外忽略；`orderId` 比照
+ * `/tenant/bookings` 的 `bookingId` 作法，目標列不在目前頁面時用既有 tenant-scoped
+ * `/api/tour-orders?orderId=` 精準撈一筆再開啟該筆詳情 modal），所以這個 deep link
+ * 現在真的會套用篩選並自動開啟詳情，不只是帶著查詢字串。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();

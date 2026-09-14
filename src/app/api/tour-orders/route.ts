@@ -21,10 +21,15 @@ export const GET = handle(async (req) => {
   const source = url.searchParams.get('source');
   const paymentStatus = url.searchParams.get('paymentStatus');
   const keyword = (url.searchParams.get('keyword') ?? '').trim();
+  // GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
+  // 比照 `/api/bookings` 的 `bookingId`——`.eq('tenant_id', ...)` 已經先套用，這裡再加
+  // `.eq('id', orderId)` 不會、也不能繞過租戶邊界：跨租戶的 id 一律撈不到任何列。
+  const orderId = url.searchParams.get('orderId');
 
   let query = t.supabase.from('tour_orders')
     .select('*', { count: 'exact' })
     .eq('tenant_id', t.tenantId);
+  if (orderId) query = query.eq('id', orderId);
   if (status) query = query.eq('status', status);
   if (source) query = query.eq('source', source);
   if (paymentStatus) query = query.eq('payment_status', paymentStatus);

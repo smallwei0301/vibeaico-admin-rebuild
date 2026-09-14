@@ -17,6 +17,7 @@ import {
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
 import { getGuideActionInbox } from '@/services/guide-action-inbox';
+import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
 
 /*
  * ---------------------------------------------------------------------------
@@ -660,11 +661,45 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       });
 
       // #43 §4：唯一入口，只排序一次。
-      expect(items.length).toBe(refundItems.length + items.filter((i) => i.kind !== 'REFUND_PENDING').length);
+      //
+      // 上一版這裡寫的是 `items.length === refundItems.length + items.filter(kind !==
+      // 'REFUND_PENDING').length`——這是 |A| = |A∩P| + |A∩¬P|，對任何陣列恆成立，
+      // 沒有任何 mutation 能讓它失敗（PB-039／PB-041）。換成從 fixture 可推得的實際
+      // 總筆數與 kind 分佈：這份 fixture 除了 2 筆 tenant-a 的 REFUND_PENDING，
+      // `bookings_view` 裡故意撞 id 那筆（status=CONFIRMED、payment_status=UNPAID、
+      // final_price=999>0）會合法命中 BOOKING_PAYMENT 查詢條件，`trip_departures`
+      // 表未提供、視為空表——所以預期總筆數是 3，且只有 REFUND_PENDING（2）與
+      // BOOKING_PAYMENT（1）兩種 kind，沒有第三種。拿掉 payment_status 過濾會讓
+      // ord-paid-a 混入、拿掉 tenant_id 過濾會讓 ord-refund-b 混入，兩者都會把
+      // REFUND_PENDING 的筆數從 2 變成別的數字，被下面的 toHaveLength 抓到。
+      expect(items).toHaveLength(3);
+      expect(items.filter((i) => i.kind === 'REFUND_PENDING')).toHaveLength(2);
+      expect(items.filter((i) => i.kind === 'BOOKING_PAYMENT')).toHaveLength(1);
+      expect(
+        items.filter((i) => i.kind !== 'REFUND_PENDING' && i.kind !== 'BOOKING_PAYMENT'),
+      ).toHaveLength(0);
 
-      // 18 分冊 §9.3：REFUND_PENDING 不可顯示成 REFUNDED——回應裡不該有任何一張
-      // 卡片的 kind 字面等於 'REFUNDED'。
-      expect(items.some((i) => i.kind === 'REFUNDED')).toBe(false);
+      // `sortGuideActionInboxItems` 只被套用一次、且是套在合併後的整份清單上：兩筆
+      // REFUND_PENDING 的 priority 都是 'IMMEDIATE'，所以要靠下一層 tie-break
+      // （dueAt = updated_at 升冪）決定順序——ord-refund-partial（updated_at
+      // 09-17）必須排在 ord-refund-a（updated_at 09-18）之前。如果 route.ts 對
+      // REFUND_PENDING 子清單多排序一次、漏排、或把不同來源的清單各自排序後才
+      // concat（而不是先 concat 再排序一次），這個相對順序會被打亂或變成插入順序。
+      const refundIdsInOrder = items
+        .filter((i) => i.kind === 'REFUND_PENDING')
+        .map((i) => i.id);
+      expect(refundIdsInOrder).toEqual(['ord-refund-partial', 'ord-refund-a']);
+
+      // 18 分冊 §9.3：REFUND_PENDING 不可顯示成「已退款」。`kind` 是型別層級的
+      // union 字面量（沒有 'REFUNDED' 這個成員，TS 編譯期就會擋），所以對 kind 字面
+      // 比對是恆假斷言、沒有 mutation 能讓它紅。真正會壞的是 i18n copy：斷言
+      // dashboard 的 REFUND_PENDING 相關文案（`refundPending`／`openRefund`／
+      // `refundOutstanding(...)`）都不包含「已退款」三個字——把 `refundPending`
+      // 改成 '已退款' 這個 mutation 必須讓這條斷言紅。
+      const refundCopy = dashboardPage.actionInbox;
+      expect(refundCopy.refundPending).not.toContain('已退款');
+      expect(refundCopy.openRefund).not.toContain('已退款');
+      expect(refundCopy.refundOutstanding('NT$2,670')).not.toContain('已退款');
 
       // 撞 id 的 bookings_view 列（會被 BOOKING_PAYMENT query 合法抓到，因為它的
       // status/payment_status/final_price 本就符合那條 query）不會污染
