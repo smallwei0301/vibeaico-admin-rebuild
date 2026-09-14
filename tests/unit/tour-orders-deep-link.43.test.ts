@@ -22,11 +22,29 @@
  *      的 pass-through 賦值，不在這個測試邊界內，本專案目前的測試基礎設施做不到對它
  *      的行為驗證（見上一段原因）。這是誠實的落差，不是用其他測試假裝補上。
  *
- *   2. `/api/tour-orders` route（(c)：orderId 精準查詢是否繞過租戶邊界）：這是
- *      伺服器端邏輯，跟 React／DOM 無關，可以比照
+ *   2. `/api/tour-orders` route（(c)：orderId 精準查詢是否繞過租戶邊界；F1：非 uuid
+ *      orderId 是否回 400）：這是伺服器端邏輯，跟 React／DOM 無關，可以比照
  *      `tests/unit/guide-action-inbox.43.test.ts` 的假 supabase query-builder harness，
  *      直接呼叫真正的 route handler、實際套用過濾鏈，驗證 `.eq('tenant_id', ...)`
  *      在有 `orderId` 時仍然生效——跨租戶的 id 精準查詢撈不到任何列。
+ *
+ * ## Final Risk F2（本檔覆蓋邊界，如實記錄，不擴充 harness）
+ *
+ * `applyFilterOps()`（本檔）只實作了 `eq` 與 `in` 兩種過濾——`select` / `neq` / `or` /
+ * `order` / `range` 都只是被記錄進 `calls`，`then()` 套用時完全被忽略（見上面
+ * `switch` 的 `default: break`）。這比 `guide-action-inbox.43.test.ts` 的 harness
+ * 覆蓋更窄（那邊至少實作了 `limit`）。後果：
+ *
+ *   - 拿掉 route.ts 裡的 `.order('created_at', { ascending: false })` 這個 mutation
+ *     **抓不到**：本檔 fixture 本來就只有兩筆、不同租戶，排序與否不影響哪些列被
+ *     `tenant_id`/`orderId` 過濾出來，這裡的斷言看的是「哪些 id 出現」不是「出現順序」。
+ *   - `.range()` 同理完全沒被套用——分頁截斷的正確性不在這個檔的覆蓋範圍內。
+ *   - 因此「拿掉 DB 端 `.order()` 造成 `.range()` 截斷取到錯誤那一頁」這類 mutation，
+ *     本檔和 `guide-action-inbox.43.test.ts` 都抓不到，需要 integration 測試（對真實
+ *     TEST Supabase）才能證到——這不在本輪範圍內，如實記錄而非假裝已覆蓋。
+ *
+ * 刻意不去擴充這個 harness 讓它支援 order/limit/range——那是另一件事的範圍，見
+ * PR #442 Final Risk 覆核 F2。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { parseTourOrdersDeepLink } from '@/services/tours';
@@ -118,9 +136,14 @@ function makeFakeSupabase(tables: Record<string, FakeRow[]>) {
 const TENANT_ID = 'tenant-a';
 const OTHER_TENANT_ID = 'tenant-b';
 
+// F1 修正後 orderId 要通過 `z.string().uuid()`，fixture 的 id 一併改成合法 uuid
+// （原本的 `ord-a-1` / `ord-b-1` 字面值本身就不合法，F1 之後會被 400 擋下）。
+const ORDER_A_ID = '11111111-1111-4111-8111-111111111111';
+const ORDER_B_ID = '22222222-2222-4222-8222-222222222222';
+
 const TOUR_ORDER_ROWS: FakeRow[] = [
   {
-    id: 'ord-a-1', tenant_id: TENANT_ID, order_no: 'T001', contact: { name: '許家瑜', phone: '' },
+    id: ORDER_A_ID, tenant_id: TENANT_ID, order_no: 'T001', contact: { name: '許家瑜', phone: '' },
     party_size: 1, unit_price: 100, total_amount: 100, deposit_amount: 0,
     status: 'CONFIRMED', payment_status: 'REFUND_PENDING', payment_ref: '', source: 'MANUAL',
     hold_expires_at: null, note: '', created_at: '2026-09-10T00:00:00.000Z',
@@ -128,7 +151,7 @@ const TOUR_ORDER_ROWS: FakeRow[] = [
   },
   {
     // 其他租戶但**同一個 id 字面值不同**——先證明一般情況下 tenant_id 過濾本來就在擋。
-    id: 'ord-b-1', tenant_id: OTHER_TENANT_ID, order_no: 'T002', contact: { name: '林小美', phone: '' },
+    id: ORDER_B_ID, tenant_id: OTHER_TENANT_ID, order_no: 'T002', contact: { name: '林小美', phone: '' },
     party_size: 1, unit_price: 100, total_amount: 100, deposit_amount: 0,
     status: 'CONFIRMED', payment_status: 'REFUND_PENDING', payment_ref: '', source: 'MANUAL',
     hold_expires_at: null, note: '', created_at: '2026-09-11T00:00:00.000Z',
@@ -151,10 +174,10 @@ describe('route.ts behaviour: /api/tour-orders orderId 精準查詢（#43 類別
       role: 'OWNER',
     });
 
-    const res = await callRoute('?orderId=ord-a-1');
+    const res = await callRoute(`?orderId=${ORDER_A_ID}`);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data.content.map((o: any) => o.id)).toEqual(['ord-a-1']);
+    expect(body.data.content.map((o: any) => o.id)).toEqual([ORDER_A_ID]);
   });
 
   it(
@@ -171,7 +194,7 @@ describe('route.ts behaviour: /api/tour-orders orderId 精準查詢（#43 類別
 
       // tenant-a 的 session，卻查 tenant-b 那一筆的 id——必須查無資料，不能因為
       // orderId 精準到單一 id 就悄悄放行到其他租戶的資料。
-      const res = await callRoute('?orderId=ord-b-1');
+      const res = await callRoute(`?orderId=${ORDER_B_ID}`);
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.data.content).toEqual([]);
@@ -191,6 +214,26 @@ describe('route.ts behaviour: /api/tour-orders orderId 精準查詢（#43 類別
     const res = await callRoute('');
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.data.content.map((o: any) => o.id)).toEqual(['ord-a-1']);
+    expect(body.data.content.map((o: any) => o.id)).toEqual([ORDER_A_ID]);
   });
+
+  it(
+    '非 uuid 的 orderId 回 400，不是 500 也不是靜默當成沒帶（Final Risk F1；mutation：'
+      + '拿掉 orderId 的 uuid 驗證，這裡會因為 Postgres 22P02 變成 500，或被錯誤地吞成 200 全清單）',
+    async () => {
+      requireTenantMock.mockReset();
+      requireTenantMock.mockResolvedValue({
+        supabase: makeFakeSupabase({ tour_orders: TOUR_ORDER_ROWS }),
+        tenantId: TENANT_ID,
+        user: { id: 'user-a' },
+        role: 'OWNER',
+      });
+
+      const res = await callRoute('?orderId=not-a-uuid');
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.success).toBe(false);
+      expect(body.code).toBe('REQ_001');
+    },
+  );
 });

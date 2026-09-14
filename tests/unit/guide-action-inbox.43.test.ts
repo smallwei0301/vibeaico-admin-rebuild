@@ -33,6 +33,20 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * same behaviour still passes, and a rewrite that drops or misapplies a
  * filter changes which rows come back — not just which substrings appear in
  * the file.
+ *
+ * Coverage boundary (PR #442 Final Risk F2, recorded honestly, not fixed here):
+ * `.select()` and `.order()` are recorded into `calls` but never applied by
+ * `applyFilterOps()` — only `eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`/`not`/`limit`
+ * actually filter the in-memory rows. `.or()` isn't implemented at all in this
+ * harness (only `tests/unit/tour-orders-deep-link.43.test.ts` has an `.or()`
+ * call, and that harness doesn't apply it either — see that file's own header).
+ * Consequence: a mutation that removes the route's server-side `.order(...)`
+ * before `.limit(...)` is undetectable here — `limit()` truncates whatever
+ * order the fixture array is already in, not what the DB would return, so
+ * dropping the real `.order()` doesn't change which rows this harness keeps.
+ * That class of mutation needs an integration test against real TEST Supabase;
+ * it is out of scope for this PR, and the harness is deliberately left as-is
+ * rather than extended to cover it (that would be a different PR's scope).
  * ---------------------------------------------------------------------------
  */
 type FilterCall = [string, unknown[]];
