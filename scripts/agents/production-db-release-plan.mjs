@@ -6,7 +6,7 @@ const SHA = /^[0-9a-f]{40}$/;
 const RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{7,119}$/;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const LEDGER_VERSION = /^\d{14}$/;
-const RISK_ORDER = Object.freeze({ ADDITIVE: 1, AUTHZ: 2, BACKFILL: 3 });
+const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -70,18 +70,6 @@ function stripComments(sql) {
     .replace(/--[^\r\n]*/g, ' ');
 }
 
-export function inferMigrationRiskTier(sql) {
-  const text = stripComments(sql);
-  if (/\b(truncate\s+table|drop\s+(table|schema|column)|alter\s+table[\s\S]{0,120}\bdrop\b)\b/i.test(text)) {
-    fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'destructive SQL must use expand → migrate → contract outside v1');
-  }
-  if (/\b(create|alter|drop)\s+policy\b|\benable\s+row\s+level\s+security\b|\bforce\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
-    return 'AUTHZ';
-  }
-  if (/\b(update|delete\s+from)\b/i.test(text)) return 'BACKFILL';
-  return 'ADDITIVE';
-}
-
 export function highestRiskTier(tiers = []) {
   let selected = 'ADDITIVE';
   for (const raw of tiers) {
@@ -90,6 +78,27 @@ export function highestRiskTier(tiers = []) {
     if (RISK_ORDER[tier] > RISK_ORDER[selected]) selected = tier;
   }
   return selected;
+}
+
+export function inferMigrationRiskTier(sql) {
+  const text = stripComments(sql);
+
+  // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
+  // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、
+  // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
+  if (/\btruncate\s+table\b|\bdrop\s+(table|schema)\b|\balter\s+table\b[\s\S]{0,240}\bdrop\s+column\b/i.test(text)) {
+    fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
+  }
+
+  const tiers = ['ADDITIVE'];
+  if (/\balter\s+table\b[\s\S]{0,240}\bdrop\s+constraint\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\bdrop\s+default\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\btype\b/i.test(text)) {
+    tiers.push('SCHEMA_REPAIR');
+  }
+  if (/\b(create|alter|drop)\s+policy\b|\benable\s+row\s+level\s+security\b|\bforce\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
+    tiers.push('AUTHZ');
+  }
+  if (/\bupdate\b|\bdelete\s+from\b/i.test(text)) tiers.push('BACKFILL');
+  return highestRiskTier(tiers);
 }
 
 /**
