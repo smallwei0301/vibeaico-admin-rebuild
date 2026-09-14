@@ -301,4 +301,60 @@ begin
   if v_missing is not null then
     raise exception 'traveler_risk_policies 缺少必要的 CHECK 約束：%', v_missing;
   end if;
+
+  -- 2026-09-11 裁示點名禁止的那個值，直接斷言它**不在**值域裡。
+  -- 上一版只驗「片段存在」，把 FORCE_NO_DEPOSIT 加進去仍然會過（覆核 N19）。
+  if exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.traveler_risk_policies'::regclass
+       and contype = 'c'
+       and pg_get_constraintdef(oid) like '%FORCE_NO_DEPOSIT%'
+  ) then
+    raise exception
+      'traveler_risk_policies 的值域出現 FORCE_NO_DEPOSIT——'
+      '2026-09-11 Owner Decision 明文禁止熟客免訂金或任何等價能力';
+  end if;
+
+  -- FK 的刪除語意（覆核 N21）。0104 對自己的血統鍵也是這樣驗 confdeltype 的，
+  -- 這裡沿用同一招：改成 RESTRICT 會讓顧客刪不掉，改成 SET NULL 會留下孤兒列。
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.traveler_risk_policies'::regclass
+       and conname = 'traveler_risk_policies_customer_tenant_fk'
+       and confdeltype = 'c'
+  ) then
+    raise exception
+      'traveler_risk_policies_customer_tenant_fk 的 ON DELETE 語意不是 CASCADE';
+  end if;
+
+  -- RLS policy 的**內容**，不只是名稱（覆核 N20）。
+  --
+  -- 這是本 Issue 最核心的兩條保證：`tenant_role_at_least(..., 'MANAGER')` 擋掉
+  -- Issue 原話的「工作人員誤用」，`actor_user_id = auth.uid()` 擋掉稽核紀錄被
+  -- 偽造。上一版只比對政策的名稱集合，於是把門檻降成 STAFF、或整條拿掉 actor
+  -- 檢查，都還是會通過——而本區塊存在的理由正是「跳過了與建好了在套用日誌上
+  -- 長得一模一樣」。名稱對、內容被掏空，是同一個病的更深一層。
+  --
+  -- 比對片段而非整串運算式：pg_get_expr 的輸出經過正規化，跨版本可能改寫，
+  -- 釘死整串會在無關的升級上假性失敗。
+  if not exists (
+    select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
+     where c.relname = 'traveler_risk_policies'
+       and p.polname = 'p_trp_i'
+       and pg_get_expr(p.polwithcheck, p.polrelid) like '%MANAGER%'
+       and pg_get_expr(p.polwithcheck, p.polrelid) like '%auth.uid()%'
+  ) then
+    raise exception
+      'p_trp_i 的 with-check 不再同時包含 MANAGER 門檻與 actor_user_id = auth.uid()'
+      '——工作人員誤用與稽核操作者偽造將不再被擋下';
+  end if;
+
+  if not exists (
+    select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
+     where c.relname = 'traveler_risk_policies'
+       and p.polname = 'p_trp_r'
+       and pg_get_expr(p.polqual, p.polrelid) like '%is_tenant_member%'
+  ) then
+    raise exception 'p_trp_r 的 using 不再以 is_tenant_member 限制租戶——跨租戶讀取將不再被擋下';
+  end if;
 end $$;
