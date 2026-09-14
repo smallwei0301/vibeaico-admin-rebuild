@@ -1319,7 +1319,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 - 首次／最近：2026-09-14／2026-09-14
 - 發生次數：2（同一輪內 PR #440 與 #442；同一個欄位 `formation_status`）
-- Issue／PR／CI：Issue #41（formation state model）；PR #440（第 1 類 COLLECT）、PR #442（第 5 類 REFUND_PENDING）；`supabase/migrations/0107_issue_41_formation_state_model.sql`；`src/app/api/guide/action-inbox/route.ts`；`docs/schema-truth/2026-09-14-production-0107-not-applied.md`
+- Issue／PR／CI：Issue #41（formation state model）；PR #440（#43 的第 3／4 類成團待決定）、PR #442（#43 的第 5 類退款待確認）；`supabase/migrations/0107_issue_41_formation_state_model.sql`；`src/app/api/guide/action-inbox/route.ts`；`docs/schema-truth/2026-09-14-production-0107-not-applied.md`
 - 分類：Production Schema；PR Review；依賴判定
 - 事件：
   - PR #440：`PRODUCTION_SCHEMA_STATUS` 填成 `NOT_REQUIRED`，證據欄寫「本 PR 無任何 DDL；所讀欄位來自**已在 main 的** `0107` 與 `0066`」。結果 `/api/guide/action-inbox` 在正式環境回 `42703: column "formation_status" does not exist`。
@@ -1335,14 +1335,14 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   - **填欄位但不查環境，等於沒有這一格。** 與 PB-040（把埋點欄位建好卻不埋）是同一種病：**欄位存在讓它看起來有在把關，但實際上沒有任何驗證發生**。
   - 二度犯錯時的跳步：已知第 4 條預防（全表掃描）理論上應該檢查，但審核時沒有擴大檢查範圍到「這支端點內**所有**既有查詢」。
 - 影響：
-  - 正式環境持續 500（當時已自動部署）；待辦區（共五類查詢）因為同一個 `Promise.all` 整個無法使用
+  - 正式環境應會持續 500（當時已自動部署）；待辦區（共五類查詢）因為同一個 `Promise.all` 整個無法使用。**此項為程式邏輯推導：欄位不存在 ⇒ PostgREST 回 42703 ⇒ route 逐一 `throw` ⇒ 整支端點 500**——不是從正式環境的執行記錄觀察到的。
   - 驗收時未能抓住根因：若基於「所有測試綠」與「主要欄位正確」就宣稱「功能驗收通過」，其實是在驗收一個與 canonical **不等價** 的環境上的程式
   - 修正的遺漏放大：第二次犯錯代表第一次的預防措施沒有被確實執行或推廣
 - 修正：
   1. 檢查正式庫 ledger 與結構，確認 `0107` 真的沒有套用
   2. Owner 具名授權後，套用 `0107` 到正式庫（ledger row `20260914094736`）
   3. `trip_departures` 由 11 欄變 19 欄；先前必定 `42703` 的查詢改回傳空集合
-  4. `0109` 第四段依賴 `0107` 的現象（if not exists）現在成立，但**後置驗證仍必要**——「環境上沒有問題」只證明這一環，不證明上層應用的完整性
+  4. `0107` 套用後 `0109` 第四段在正式庫上變成**真正的 no-op**（`min_to_depart_snapshot` default `1`、`formation_status` default `'COLLECTING'::departure_formation_status` 已符合 canonical）。但該段的**欄位存在性守衛必須保留**——它守的是「`0107` 尚未套用」的環境，那種環境仍會出現（任何新建或只套到一半的環境）
 - 預防（必須機械檢查，不能依賴人工記憶）：
   1. **填 `PRODUCTION_SCHEMA_STATUS` 之前，對正式庫下唯讀查詢，驗證**本 PR 實際會讀到的每一個欄位**都存在。不是驗證「migration 在 main 上」，是驗證「欄位在環境裡」。**不能只查 ledger 帳本，必須真的跑查詢。**
   2. **檢查範圍是整支端點**，不只是本 PR 新增的那幾行——本 PR 沒改到的既有查詢一樣會在同一個 `Promise.all` 裡把整支端點拖垮。
@@ -1350,9 +1350,15 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   4. **`ledger-alias-map.json` 裡分類為 `NOT_APPLIED / PENDING_APPLY` 的 migration，其欄位不得被視為正式環境可用**——這一項現在沒有任何 CI 在做，但應該機械檢查（preflight 或 astra-review-policy）。
   5. **不只是 pull request review；PR 模板應該明確要求填寫者貼出驗證查詢。** 「我查過」的承諾必須附上實際執行過的 SQL 與結果。
 - 驗證：
-  1. 正式庫查詢已補欄位（`trip_departures` 19 欄）
-  2. `/api/guide/action-inbox` 在正式環境不再 500
-  3. 整支待辦區五類查詢都恢復（第 1、2、5 類原本就應該有資料；第 3、4 類的 DEPARTURE 查詢條件也通過）
+  - **已驗證**：
+    1. 正式庫 `trip_departures` 由 11 欄變 19 欄（`show tables` → column count ＋ system catalog 查證）
+    2. `select id, formation_status from public.trip_departures limit 1;` 由 `ERROR 42703` 變成回傳 `[]`
+    3. ledger 56 → 57，新增 row `20260914094736 / 0107_issue_41_formation_state_model`（帳本同步已完成）
+    4. `0107` 自己的五段後置斷言全數通過（任一不符都會 `raise exception` 中止整支 migration，所以套用成功即為其成立的充要證據）
+  - **尚未驗證**：
+    - 沒有人呼叫過正式環境的 `/api/guide/action-inbox` 端點；也沒有人登入正式環境看過待辦區畫面
+    - `AUTHENTICATED_PRODUCTION_ACCEPTED` 仍是 `NOT_RUN`
+    - **欄位補上、查詢不再報錯，不等於畫面正常——這正是本條目所講述的現象**
 - 同類教訓（與 PB-027 第五種同型、PB-040 的欄位形式主義）：
   - PB-027：「名字出現≠真的會發生」
   - PB-040：「埋點欄位存在≠實際埋點」
