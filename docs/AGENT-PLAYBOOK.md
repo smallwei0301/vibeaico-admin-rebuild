@@ -1413,11 +1413,77 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   4. **多維度掃描：新增查詢、既有查詢、同一個端點的所有查詢都要檢**。不要只檢本次新增的過濾器；一支端點若把多條查詢放在同一個 `Promise.all` 並逐一 `throw`，既有查詢的過濾器漂移也會導致端點失敗。
   5. **存在性與行為覆蓋分開確認**。過濾器的欄位可能存在（避免編譯錯誤），但不代表 SQL 執行期有約束力——fixture 要驗的是行為後果，不是語法正確。
 
-- 待處理項（明確寫出來，不要寫成已完成）：
-  L111 的 `.in('status', ['OPEN','CLOSED'])` **仍然沒有行為覆蓋**。本條目只是把它從 PR body 的已知缺口提升為 Playbook 記錄，尚未修復。補法已知（比照 #448 加一筆 `status='CANCELLED'` 且其他條件都滿足的今／明日團次 fixture），屬 #440 既有範圍。
+- 待處理項 → **已關閉（2026-09-14，PR #449）**：
+  原記述為「L111 的 `.in('status', ['OPEN','CLOSED'])` 仍然沒有行為覆蓋」。PR #449 在
+  `tests/unit/guide-action-inbox.43.test.ts` 補上對照組後，這一條已有行為覆蓋。
+  **合併後於 `origin/main` 實測覆核**（獨立 worktree，`sed -i "${L}d"` 行號刪除，每次還原後
+  `git status --porcelain` 為空）：baseline 24 passed；刪 L124（DEPARTURE 查詢）→ `1 failed | 23 passed`；
+  刪 L170（第 7 類 STAFF_CONFLICT 查詢）→ `1 failed | 23 passed`。行號因 #449 併入新查詢而由
+  L111 位移至 L124，是同一條過濾器。
+
+  記一句給下一個人：這一項從「被順帶量到」到真的補上，橫跨三輪。**讓它關閉的不是決心，是
+  把判準寫成機械可執行的那一句**——「把過濾器刪掉，測試必須變紅」。前兩輪寫的是「應該補」。
 
 - 順帶記一項相關但不同的覆蓋邊界：
   
   Final Risk 在同一輪指出：`loadStaffLoad()`（`src/server/staff-availability.ts` L128–141）與 `queryEffectiveBlockTimes()`（`src/server/block-times.ts` L100–105）內部的四條 `.eq('tenant_id')` 在**全專案沒有任何突變或行為覆蓋**——`tests/unit/departure-guide-assignment.37.test.ts` 沒有觸及租戶。#448 的跨租戶測試只證明了**候選查詢**的租戶條件。它的結論是：程式碼審讀加上正式庫實查的 RLS（八張表 SELECT 都是 `is_tenant_member(tenant_id)`）讓這一點可以接受，但**「租戶邊界有測試」不能被讀成涵蓋整條鏈**。這是非阻擋的已知邊界，不是缺陷。
 
-- 狀態：監看中；L111 的 `.in('status', ['OPEN','CLOSED'])` 待補 fixture；`loadStaffLoad()` 與 `queryEffectiveBlockTimes()` 的租戶邊界由 #43 進一步整合決定
+- 狀態：過濾器覆蓋部分**已關閉**（2026-09-14 於 `origin/main` 實測，見上）；仍監看中的是 `loadStaffLoad()` 與 `queryEffectiveBlockTimes()` 的租戶邊界，由 #43 進一步整合決定
+
+### PB-049 — 在證據還沒送達之前就觸發檢查閘門，然後把時序問題讀成內容問題
+
+- 首次／最近：2026-09-14 / 2026-09-14
+- 發生次數：1（但與 PB-044「驗證有保存期限」是同一個家族的第二個面向）
+- Issue／PR／CI：Issue #43 第 1 類；PR #449；`agent-wip-guard` run `34838245246`、`34838537190`（皆 failure）、`34838944744`（success）
+- 分類：流程順序；證據時序
+
+- 事實經過（時序，皆為 UTC）：
+
+  | 時間 | 事件 |
+  |---|---|
+  | `11:26:51` | guard（`pull_request_target`）跑在 `a7a9e8c` → **failure** |
+  | `11:30:19` | 我貼 `/astra-review-check`，guard 再跑 → **failure** |
+  | `11:32:18` | Final Risk 對 `a7a9e8c` 的 **PASS** review 才送達 API |
+  | `11:35:06` | 我再貼一次 `/astra-review-check` → **success** |
+
+  兩次紅燈的訊息都是：
+  `Astra evidence is stale: testBaseline; Astra evidence is stale: changeDigest; Astra verdict is not PASS`
+
+- 根因：`parseAstraReviews()`（`scripts/agents/astra-review-policy.mjs` L277）以 `submittedAt`
+  降序排序後只取 `parsed[0]`。在 `11:32:18` 之前，最新的一則是對前一個 head `81a42b3` 的
+  `CHANGES_REQUESTED`——它的 `testBaseline` 釘在舊 body、`changeDigest` 是 `e0c5be1e…`、
+  `verdict` 是 `CHANGES_REQUESTED`。**三條錯誤訊息完全自洽，而且全部都是對的。**
+
+  我的錯誤不在讀錯訊息，而在**觸發的時機**：我在委派 Final Risk 之後、確認 review 真的
+  存在於 API 之前，就把 `/astra-review-check` 貼出去了。
+
+- 為什麼容易犯：`review 送出` 直覺上像是一個會自己推進流程的事件。它不是。
+  `agent-wip-guard.yml` L19 的觸發條件只有兩個：`pull_request_target`，或首行為
+  `/astra-review-check` 的 issue comment。**submit review 不在其中**。所以 review 送出後
+  guard 不會自己重跑，而任何在 review 送達前觸發的 guard，讀到的必然是舊證據。
+
+- 這條與 PB-044 的關係：PB-044 說的是「驗證有保存期限——舊 head 的結論不能用在新 head」。
+  本條是同一件事的另一個方向：**新 head 的結論也不能在它還沒送達之前就拿來觸發閘門**。
+  兩者的共同判準是：**閘門讀的是它執行當下的狀態，不是我心裡以為已經完成的狀態。**
+
+- 影響：兩次多餘的 CI run，約 4 分鐘。沒有錯誤合併，沒有偽造證據——guard 擋住了，而且
+  擋得對。這是閘門正常運作的紀錄，不是閘門的缺陷。
+
+- 預防（機械可執行）：
+  1. **觸發 guard 之前，先以 API 確認 review 已存在且 head 相符**：
+     ```bash
+     gh api repos/<owner>/<repo>/pulls/<n>/reviews \
+       --jq '[.[] | select(.commit_id=="<HEAD_SHA>")] | last | {state, submitted_at}'
+     ```
+     回傳為 `null` 就是還沒送達——**等，不要貼指令**。
+  2. **確認 `verdict` 真的是 `PASS` 再觸發**。`parsed[0]` 只看最新一則；一則較新的
+     `CHANGES_REQUESTED` 會直接蓋掉較舊的 `PASS`。
+  3. **guard 紅燈先分辨「時序」與「內容」**：比對 guard 的 `completed_at` 與最新 review 的
+     `submitted_at`。前者早於後者，就是時序問題，重貼指令即可，**不要去改 PR body 或 review
+     內容**——那會把一個正確的 attestation 改壞。
+  4. 一般化：**任何「我已經請某人做了 X」到「X 的結果已經可被系統觀察」之間都有延遲。**
+     下一步若依賴 X，就必須先查 X 是否已可觀察，而不是依賴自己的記憶。本 Run 這是第二次
+     因為「沒有先確認狀態就宣布下一步」而付出代價（前一次是 `git push` 的結果被 pipe 吃掉，
+     在分支仍 `ahead 1` 的情況下回報成功）。
+
+- 狀態：已關閉（預防規則已寫成上述可執行指令）；同類再犯視為第二次。

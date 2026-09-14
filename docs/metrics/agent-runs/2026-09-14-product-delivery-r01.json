@@ -18,7 +18,7 @@
   ],
   "main": {
     "startSha": "45b65b64a2fc17371c7ce6320b6dba06ce88a14a",
-    "endSha": null
+    "endSha": "35e2e1a64bcc9a8cc8297b9a8fe72ac75be801ee"
   },
   "inventory": {
     "openIssuesStart": 46,
@@ -765,8 +765,8 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 19,
-    "invalidReruns": 0,
+    "fullCiRuns": 22,
+    "invalidReruns": 2,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
   },
@@ -814,7 +814,10 @@
     "施工 agent 在過程中回退過工作樹，把我對本帳本的一次編輯（接受 closure sweep）沖掉了。已重做。記下來是因為這是多路線併行的真實副作用：**兩個執行者共用一個工作樹時，未提交的編輯不是安全的**；下次應在委派前先提交，或讓 subagent 在 worktree 隔離下工作。",
     "四條 scout 平行盤點的採用結論：(1) #43 八類待辦中只有第 6 類（今明出團）DB 與應用兩側都齊；第 1–5 類 DB 側有狀態但**應用側完全沒接**；第 7 類（人員衝突）與第 8 類（通知永久失敗）兩側皆無。(2) #46 旅客旅程七步有五步無任何支撐程式，但 `/s/[shopCode]` **沒有假成功按鈕**——它誠實地只提供聯絡方式。(3) #41 §6 要擴充的五支 RPC 都是 security definer，併發防超賣靠 reserve_seats 的條件式 UPDATE（`seats_booked + p_count <= capacity` 寫在 WHERE 裡），cancel/expire 都會呼叫 release_seats。(4) #40 的 outbox 只在 overlay，canonical 一張表都沒有。",
     "**一項 scout 的證據來源錯誤，已訂正。** #43 那條引用 `0108:36` 作為 tour_orders 付款狀態的依據，但 0108 只存在於本分支（施工中），不在 origin/main——委派時明寫要讀 origin/main，它讀了工作樹。結論方向仍成立（0108 合併後第 2、5 類就有 DB 來源），但把「本分支未合併的東西」報成「main 上已有」是危險的 provenance 錯誤。教訓：**委派唯讀盤點時，若工作樹與 main 不同，要明確要求用 `git show origin/main:<path>` 而不是讀檔案**，否則 subagent 會讀到我自己還沒合併的東西再回報給我，形成迴圈自證。",
-    "**一項 scout 的方法需補強（PB-028）。** #41 §6 那條宣稱五支 RPC「EXECUTE 已從 anon/PUBLIC 撤銷」，但它只讀 migration 文字。Postgres 的函式預設把 EXECUTE 授予 PUBLIC，而 `revoke ... from anon, authenticated` **不會**移除 PUBLIC 那一筆——0101 的檔頭自己就寫著這件事。我實查後確認 0088（reserve/release/create/cancel）與 0100（expire）都另有 `revoke all ... from public`，所以結論成立。但這是查出來的，不是推定出來的；PB-028 的要求是查 proacl，而那在本機做不到，只能靠 migration 全量比對。"
+    "**一項 scout 的方法需補強（PB-028）。** #41 §6 那條宣稱五支 RPC「EXECUTE 已從 anon/PUBLIC 撤銷」，但它只讀 migration 文字。Postgres 的函式預設把 EXECUTE 授予 PUBLIC，而 `revoke ... from anon, authenticated` **不會**移除 PUBLIC 那一筆——0101 的檔頭自己就寫著這件事。我實查後確認 0088（reserve/release/create/cancel）與 0100（expire）都另有 `revoke all ... from public`，所以結論成立。但這是查出來的，不是推定出來的；PB-028 的要求是查 proacl，而那在本機做不到，只能靠 migration 全量比對。",
+    "PR #449（#43 第 1 類 TOUR_REQUEST）以 merge commit 併入 main：35e2e1a64bcc9a8cc8297b9a8fe72ac75be801ee，實測 3 parents、base 25a94b3 與 head a7a9e8c 皆為祖先、supabase/migrations 零變更。閘門實況：Agent WIP Policy success（11:35:21Z）、Final Risk PASS（review 5197082770，claude-fable-5-1，changeDigest 2bef09ee…3bfa2）、check success、local-isolated-a success。integration 為 POLICY_SKIP（source_only_pr_without_test_lane，10 秒完成），依 PB-032 不計為測試通過。",
+    "guard 兩次紅燈（11:26:51Z、11:30:19Z）為我觸發時序錯誤：Final Risk 的 PASS review 於 11:32:18Z 才送達 API，parseAstraReviews() 取到的仍是對 81a42b3 的 CHANGES_REQUESTED。已記為 PB-049，ci.invalidReruns +2 如實記入——這兩次不是 CI 不穩，是我的操作順序錯誤。",
+    "PB-048 的待處理項已關閉：合併後於 origin/main 獨立 worktree 實測，baseline 24 passed；刪 route.ts L124（DEPARTURE）→ 1 failed；刪 L170（STAFF_CONFLICT）→ 1 failed。同輪仍未關閉者：trip_plans!inner 無行為覆蓋、第 7 類 DEPARTURE reason 未觸發、loadStaffLoad()／queryEffectiveBlockTimes() 的租戶過濾器全庫無突變覆蓋。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
