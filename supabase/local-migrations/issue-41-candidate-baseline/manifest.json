@@ -8,7 +8,7 @@
     "pullRequest": 73,
     "status": "CANDIDATE_SOURCE_NOT_CANONICAL"
   },
-  "reason": "Supply only the Issue #41 candidate schema needed to make the disposable local baseline match the current standard seed. This does not make PR #73 canonical or modify the remote migration ledger.",
+  "reason": "Supply only the Issue #40 notification-outbox candidate schema needed to make the disposable local baseline match the current standard seed. This does not make PR #73 canonical or modify the remote migration ledger.\n\n2026-09-14：移除 0040_issue_41_group_formation_lifecycle.sql。canonical 0107 已把 #41 的成團狀態模型納入 supabase/migrations，兩者直接衝突——overlay 把 formation_status 建成 text，canonical 要的是 departure_formation_status enum，而 overlay 先跑，canonical 的 add column if not exists 因此靜默變成 no-op（PB-026 的形狀，由 0107 自己的後置斷言抓到）。Owner 2026-09-14 裁示不採用 TEST 的歷史 #41 overlay，canonical 取而代之；留著它不只是冗餘，而是會讓非 canonical 的形狀在每一次 local-isolated 安裝上勝出。0040 另外帶進的 tour_orders 完整付款模型（upfront_required_amount／refunded_amount／deposit_mode_snapshot）本來就被 0087 明文標為「屬 #41」而刻意未納 canonical，目前 src/、tests/、scripts/ 皆無引用，將由 #41 後續切片以 canonical migration 補齊。",
   "files": [
     {
       "name": "0038_notification_outbox_delivery.sql",
@@ -18,10 +18,6 @@
       "name": "0038a_restrict_internal_notification_functions.sql",
       "targetName": "0039_restrict_internal_notification_functions_local.sql",
       "blobSha": "a592fa2f73cf79669b8504a5a2e22287e5b581fe"
-    },
-    {
-      "name": "0040_issue_41_group_formation_lifecycle.sql",
-      "blobSha": "92eecadd8426c9d3ab92e0a0c2566ff3f3b372de"
     }
   ]
 }

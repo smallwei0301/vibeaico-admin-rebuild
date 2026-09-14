@@ -14,19 +14,27 @@ function client(present: boolean[], failure?: { code: string; message: string },
   } }; } }; } };
 }
 
-describe('named #41 fixture fields never become implicit main schema', () => {
-  it('seeds the canonical core without future fields', async () => {
-    assert.deepEqual(await readTourSeedFields(client([false, false, false]), deadline, 'CANONICAL_CORE'),
-      { profile: 'CANONICAL_CORE', plan: {}, departure: {} });
-  });
-  it('preserves the existing candidate seed when all three fields actually exist', async () => {
-    assert.deepEqual(await readTourSeedFields(client([true, true, true]), deadline), {
-      profile: 'ISSUE_41_COMPATIBILITY', plan: { min_to_depart: 1 },
+/*
+ * canonical `0107`（#41，Owner 2026-09-14）之後，這三個欄位是 canonical 的一部分，
+ * 探針的意義因此翻轉：`CANONICAL_CORE` ＝ 三個欄位都在；`PRE_ISSUE_41` ＝ 尚未套用
+ * `0107`。後者出現在走完整 canonical 鏈的安裝上，就是 PB-026 那個失敗形狀
+ * （migration 套用「成功」但欄位其實沒建起來）。探針的其餘保證一字未動：不讀資料列、
+ * 不吞任何非指名的錯誤、半套一律 fail closed。
+ */
+describe('named #41 fields are canonical after 0107, and must actually exist', () => {
+  it('seeds the post-#41 canonical shape with the #41 fields', async () => {
+    assert.deepEqual(await readTourSeedFields(client([true, true, true]), deadline, 'CANONICAL_CORE'), {
+      profile: 'CANONICAL_CORE', plan: { min_to_depart: 1 },
       departure: { min_to_depart_snapshot: 1, formation_deadline_at: deadline },
     });
   });
+  it('reports a pre-0107 install without inventing the #41 fields', async () => {
+    assert.deepEqual(await readTourSeedFields(client([false, false, false]), deadline), {
+      profile: 'PRE_ISSUE_41', plan: {}, departure: {},
+    });
+  });
   it('recognizes only the exact named PostgREST missing-column response', async () => {
-    assert.equal((await readTourSeedFields(client([false, false, false], undefined, true), deadline)).profile, 'CANONICAL_CORE');
+    assert.equal((await readTourSeedFields(client([false, false, false], undefined, true), deadline)).profile, 'PRE_ISSUE_41');
   });
   for (const fields of [[true, false, false], [false, true, false], [false, false, true],
     [true, true, false], [true, false, true], [false, true, true]]) {
@@ -46,11 +54,19 @@ describe('named #41 fixture fields never become implicit main schema', () => {
       await assert.rejects(readTourSeedFields(client([], error), deadline), (actual: unknown) => actual === error);
     });
   }
-  it('rejects candidate contamination when the job explicitly expects canonical core', async () => {
-    await assert.rejects(readTourSeedFields(client([true, true, true]), deadline, 'CANONICAL_CORE'), /MISMATCH/);
+  /*
+   * 這一條是翻轉後最重要的保護：`agent-schema-bootstrap` 與兩支 schema proof 都以
+   * `TEST_TOUR_SEED_PROFILE=CANONICAL_CORE` 作為前置條件。若 `0107` 在該安裝上其實
+   * 沒生效（PB-026 的 no-op），這裡會 MISMATCH 而不是讓後續測試對著不存在的欄位跑。
+   */
+  it('rejects a canonical install where 0107 did not actually take effect', async () => {
+    await assert.rejects(readTourSeedFields(client([false, false, false]), deadline, 'CANONICAL_CORE'), /MISMATCH/);
   });
-  it('rejects a missing candidate instead of silently accepting core', async () => {
-    await assert.rejects(readTourSeedFields(client([false, false, false]), deadline, 'ISSUE_41_COMPATIBILITY'), /MISMATCH/);
+  it('rejects a post-0107 install when the job explicitly expects the pre-0107 shape', async () => {
+    await assert.rejects(readTourSeedFields(client([true, true, true]), deadline, 'PRE_ISSUE_41'), /MISMATCH/);
+  });
+  it('no longer accepts the retired ISSUE_41_COMPATIBILITY profile name', async () => {
+    await assert.rejects(readTourSeedFields(client([]), deadline, 'ISSUE_41_COMPATIBILITY'), /INVALID/);
   });
   it('rejects an unknown declared profile', async () => {
     await assert.rejects(readTourSeedFields(client([]), deadline, 'CANONCIAL_CORE'), /INVALID/);

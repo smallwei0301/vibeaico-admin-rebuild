@@ -415,6 +415,30 @@ export type PlanReviewState = 'NONE' | 'PENDING' | 'CHANGES_REQUESTED';
  */
 export type TripPlanSource = 'GUIDE' | 'PLATFORM_ASSISTED' | 'IMPORTED';
 
+/**
+ * 販售方式（18 分冊 §1）。FIXED_DEPARTURE 固定團次、INSTANT 自選時間直接成立、
+ * REQUEST 先申請再確認。
+ */
+export type TripSalesMode = 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
+
+/** 團型（18 分冊 §1）。SHARED 散客併團、PRIVATE 私人包團。 */
+export type TripParticipationMode = 'SHARED' | 'PRIVATE';
+
+/**
+ * 成團狀態軸（18 分冊 §3）。與 DepartureStatus(OPEN/CLOSED/CANCELLED) 是**兩條
+ * 獨立的軸**：前者回答「還能不能賣」，這裡回答「這團是否已對旅客做出出團承諾」。
+ * FORMED 不等同 CLOSED。
+ */
+export type DepartureFormationStatus =
+  | 'COLLECTING'
+  | 'FORMED'
+  | 'REVIEW_REQUIRED'
+  | 'AT_RISK'
+  | 'FAILED';
+
+/** 成團是由系統自動宣布，還是導遊在 REVIEW_REQUIRED 時人工決定。 */
+export type DepartureFormedBy = 'SYSTEM' | 'GUIDE_OVERRIDE';
+
 export type TripPlan = {
   id: string;
   tripId: string;
@@ -446,6 +470,17 @@ export type TripPlan = {
   sortOrder: number;
   /** 來源標記；舊資料與 mock 未帶時視為 GUIDE。 */
   source?: TripPlanSource;
+  /* ---- #41：成團規則（18 分冊 §1–§2）。舊資料未帶時由 mapper 填預設。 ---- */
+  salesMode?: TripSalesMode;
+  participationMode?: TripParticipationMode;
+  /**
+   * 整個 Departure 合計至少幾人才宣布成團。
+   * **與 `minParticipants`（單筆訂單最少幾人）是不同概念**，不得混用：
+   * 「1 人可報名、4 人成團」就是 minParticipants=1、minToDepart=4。
+   */
+  minToDepart?: number;
+  /** 成團截止日＝出發日前 N 天。預設 7；0 代表可募集到出發日。 */
+  formationDeadlineDaysBefore?: number;
 };
 
 /** 販售季節（月/日區間，可跨年） */
@@ -480,6 +515,15 @@ export type TripDeparture = {
   primaryStaffName?: string;
   assistantStaffIds?: string[];
   assistantStaffNames?: string[];
+  /* ---- #41：成團狀態與一次性成團證據（18 分冊 §3） ---- */
+  formationStatus?: DepartureFormationStatus;
+  /** 建立團次時算出的實際截止時間；Plan 日後調整不回頭改已公開的團次。 */
+  formationDeadlineAt?: string | null;
+  /** 建立團次時從 Plan snapshot 的成團門檻。 */
+  minToDepartSnapshot?: number;
+  formedAt?: string | null;
+  formedBy?: DepartureFormedBy | null;
+  formedParticipants?: number | null;
 };
 
 /** 團次指派撞班的原因（10-TOUR-DOMAIN §5.2）。 */

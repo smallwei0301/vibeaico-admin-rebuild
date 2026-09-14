@@ -296,8 +296,24 @@ export const tripsPage = {
       guide: '導遊',
       seats: '名額',
       status: '狀態',
+      formation: '成團',
       note: '備註',
       actions: '操作',
+    },
+    /*
+     * 成團狀態是與「還能不能賣」不同的一條軸（18 分冊 §3）。用白話寫，不露
+     * COLLECTING／REVIEW_REQUIRED 這些 enum 名稱給導遊看。
+     */
+    formation: {
+      COLLECTING: '募集中',
+      FORMED: '已成團',
+      REVIEW_REQUIRED: '待決定',
+      AT_RISK: '人數不足',
+      FAILED: '未成團',
+      progress: (booked: number, need: number) => `${booked}／${need} 人`,
+      noThreshold: '無門檻',
+      reviewHint: '募集期限已到但人數未達門檻，需要你決定是否照常出團、延長募集或取消。',
+      atRiskHint: '已宣布成團後人數跌破門檻。若照常出團，剩餘旅客維持原價，不補差額。',
     },
     fields: {
       planLabel: '方案',

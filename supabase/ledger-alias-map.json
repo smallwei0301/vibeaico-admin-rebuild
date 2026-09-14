@@ -470,6 +470,13 @@
       ],
       "classification": "EXACT",
       "evidence": "2026-09-14 由 Owner 具名授權套用至 Production，provider ledger row 為 20260914032304 / 0106_deduplicate_redundant_indexes。postflight 確認 trip_addons 與 tour_orders 的三組重複索引已移除，保留索引 definition、valid/ready/live 狀態正常；受影響表的 RLS、ACL 與 live-row 統計未變。"
+    },
+    {
+      "repoFile": "0107_issue_41_formation_state_model",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#41 成團生命週期的狀態模型。本筆隨建立 0107 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權；套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     }
   ]
 }
