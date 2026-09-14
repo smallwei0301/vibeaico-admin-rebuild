@@ -554,6 +554,32 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-final-risk-442-r2",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "role": "PR #442 Final Risk 第二輪 @ 1b57e97，verdict=PASS（findings 改為字串——第一輪寫成陣列是我在委派時給錯契約）。獨立重算 digest 765dc27c… 與 guard 一致；重跑三個租戶邊界突變（M1/M2/M3）確認在新 head 仍紅；另設計四個 F1 突變（無驗證／safeParse 吞錯／降為 z.string()／try-catch 吞錯）全紅；自己讀 src/server/http.ts:156-157 確認 ZodError→400/REQ_001；提交前用 origin/main 的 evaluateAstra() 模擬 guard 得 ASTRA_APPROVED errors:[]。並自我更正第一輪對 harness 覆蓋範圍的過窄陳述。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-final-sol-1b57e97",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "final Sol 對 final exact head 1b57e97 重讀並判定 CLOSE_APPROVED。實測結構不變式：單一端點 1、單一 service 函式 1、sortGuideActionInboxItems 各路徑只呼叫 1 次、tenant 條件 8 處、窮舉守衛 4 個、新增中文字面值在 page/api 為 0（全在 i18n）。獨立跑滿 gate 與 3 個突變。以 check-run API 逐筆確認 local-isolated-a=success，不從列表推測。合併後實測 merge commit 有 3 個 parent、exact head 是 main 祖先（assertPinnedSource 的條件），並直接讀 origin/main 覆核落地內容。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -570,7 +596,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 17,
+    "fullCiRuns": 18,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -592,7 +618,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 10,
+    "solTouches": 12,
     "solIssues": 1
   },
   "auditability": {
