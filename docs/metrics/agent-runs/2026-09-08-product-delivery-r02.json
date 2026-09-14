@@ -1,22 +1,22 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-08-product-delivery-r02",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-07T23:26:46.000Z",
-  "endedAt": null,
+  "endedAt": "2026-09-09T00:00:00Z",
   "sources": [
     "github:issue#8",
     "github:pr#271"
   ],
   "main": {
     "startSha": "d5dda47cef4505e1456c466aaf73dda7ce1e7b60",
-    "endSha": null
+    "endSha": "6814751f5ded0526b7df0446deb291897aa3aed3"
   },
   "inventory": {
-    "openIssuesStart": null,
-    "openIssuesEnd": null,
-    "openPrsStart": null,
-    "openPrsEnd": null,
+    "openIssuesStart": 48,
+    "openIssuesEnd": 48,
+    "openPrsStart": 16,
+    "openPrsEnd": 20,
     "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 1,
@@ -88,16 +88,19 @@
   },
   "notes": [
     "Delivery Truth v4 Run opened for PR #271 / Issue #8-B after legacy Run 2026-09-04-product-delivery-r01 was frozen.",
-    "Current Product scope is the bounded tour-order admin slice; Production 0088 DDL and final GPT-6 Astra review remain explicit gates."
+    "Current Product scope is the bounded tour-order admin slice; Production 0088 DDL and final GPT-6 Astra review remain explicit gates.",
+    "2026-09-14 Owner 裁示：本 Run 已實際結束但全程未埋點，以「terminal 但不可評分」正式結案。status=COMPLETE 與 closeout.state=CLOSED 只表示『這本 Run 結束了』，不表示它可以評分：completionTruth 維持 NOT_CHECKED，modelUsage.weightedUsageImprovementPercent、flow.lunaDelegationRatePercent/waitTimeConvertedPercent、quality 與 auditability 的百分比欄位一律維持 null，因為那些量只在 Run 進行當下可觀察，事後回填只會是推算而非實查。本 Run 因此不進入 PRODUCT_RUN_TREND 的可比較集合。",
+    "inventory 的 start/end 四個數字是結案時以 GitHub 時間戳一次重建：取 created_at <= 該時點且（未關閉或 closed_at > 該時點）的 Issue 與 PR 計數，方法以『現在時點』對照實際 open 清單校驗過（46 Issues／13 PRs 相符）。",
+    "main.endSha 取 endedAt（2026-09-09T00:00:00Z）當下的 origin/main head 6814751；後繼 Run 2026-09-09-product-delivery-r01 自述的 MAIN_BASE f9e7fdc 是它自己起算時（02:22Z）的 head，時點不同，故不採用。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
     "contractVersion": 1,
     "ownerRole": "PRODUCT_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-09T00:00:00Z",
+    "evidenceRef": "github:pr#271"
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
