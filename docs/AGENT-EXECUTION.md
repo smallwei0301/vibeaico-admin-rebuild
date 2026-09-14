@@ -10,6 +10,8 @@
 > 2026-09-10 lane 對應模型層級／多環境 base freshness／Product Final Risk，以及
 > 2026-09-11 雙 Workstream 與純治理模型解綁。
 >
+> 最新 Production DB 授權裁示：`docs/decisions/2026-09-14-owner-production-db-policy-gate.md`；見 §3.2。
+>
 > 本文件是本 repo 的 Agent 執行方式唯一正式版本。產品規格仍以各
 > `docs/integration/**` 分冊為準；Owner Decision 保留「為什麼改」，本文件負責「現在怎麼做」。
 >
@@ -109,7 +111,8 @@ current truth
 | Vercel Preview 驗證 | 允許 | 不提升 Production |
 | docs-only 輕量路徑 | 允許 | 只在文件治理白名單內；**不得繞過 live branch protection**，若 main 要求 PR／required checks 就正常走 PR |
 | 程式／workflow／skill 合併 main | 需明確任務授權 | CI、Audit、安全邊界成立；不得偷渡產品發布 |
-| Production DDL／DML／migration／reset／seed | **禁止** | 需針對精確專案與範圍的新授權 |
+| Production DDL／DML／migration | **staged policy gate** | §3.2；`AUTOMATION_READY` 前沿用現行逐次 Owner gate，ACTIVE 後改由機器關卡放行，不需逐次人工批准 |
+| Production reset／seed／災難性刪除 | **禁止** | 不在 §3.2 允許範圍，不能藉人工同意跳過關卡 |
 | Production deployment／promote／流量切換 | **禁止** | 需新授權 |
 | 真實付款、退款、訂單或顧客通知 | **禁止** | 測試只用 sandbox、mock 或明確安全接收者 |
 | 輸出或提交 token、密碼、key、完整 `.env` | **禁止** | 秘密只在執行環境短暫使用 |
@@ -126,6 +129,50 @@ current truth
 4. reset／seed 只清 TEST 測試資料。
 5. 不呼叫真實付款或通知。
 6. 全 repo 同時只有一位 `TEST_VALIDATION` holder。
+
+### 3.2 Production 資料庫：Machine Policy Gate（分階段啟用）
+
+Owner 2026-09-14 裁示見 `docs/decisions/2026-09-14-owner-production-db-policy-gate.md`。
+唯一詳細流程是 `docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`；本節是日常操作入口，不維護第二份不同的門檻。
+
+```text
+AUTHORIZATION_MODE: POLICY_APPROVED_AUTOMATION_PENDING
+TARGET_MODE: POLICY_GATED_ACTIVE
+PER_RUN_OWNER_APPROVAL: REQUIRED_UNTIL_AUTOMATION_READY
+PRODUCTION_PROJECT_REF: egehnijjpgijmccagxac
+PRODUCTION_FINAL_RISK_REQUIRED: true
+```
+
+只授權本 repo 明確範圍內的相容式 migration、結構／權限修復及可復原的有界非金流資料回填。
+正式庫套用、資料修復與執行器接線屬 `PRODUCT_MAINLINE`，不能借純治理免審查規則放行。
+其他 Production 專案、網站發布、真實付款／退款、顧客通知與 LINE 仍依原本領域授權。
+正式庫 reset／seed、災難性刪除、不可復原的資料變更不在本政策允許範圍。
+
+| 關卡 | 沒有此證據就停止 |
+|---|---|
+| G0 計畫鎖定 | 唯一 release ID、精確 main SQL 與 digest、相依、對象、筆數上限、復原及副作用範圍 |
+| G1 來源與 CI | canonical migration 已在 current main；實際 SQL 相同；必要 CI／schema tests 真正執行 |
+| G2 資料庫一致性 | 重建標準、TEST、Production 的結構／權限／帳本及依賴逐項比對；未解釋差異為零 |
+| G3 真實 TEST | 空白重建、正式庫形狀升級、正反例、必要 API／E2E、重跑及清理證據；不是 POLICY_SKIP |
+| G4 備份與復原 | 可用且涵蓋範圍正確的備份、復原演練、線上相容與健康檢查 |
+| G5 高風險審查 | 獨立執行允許模型，對本次操作計畫與正式庫基線留下可驗證 PASS |
+| G6 寫入前再次檢查 | trusted-main 機器驗證、單次限時回執、正確 project、跨工具互斥鎖與基線重查 |
+| G7 套用後回讀 | 實際結構、權限、資料／帳本及安全通路驗證相符，才能 APPLIED_VERIFIED |
+
+在 `AUTOMATION_READY` 前，G0–G6 全成仍保留現行逐次 Owner gate，作為 bootstrap safety。當 trusted-main executable policy 證明 `AUTOMATION_READY=true` 且 `PRODUCTION_DB_AUTHORIZATION_MODE=POLICY_GATED_ACTIVE` 後，G0–G5 及寫入當下 G6 全成即可由受控執行器套用，不需再等 Owner 逐次「同意」。此切換不需要 Owner 第二次啟用裁示。
+一個 observer MATCH、main merge、CI 綠燈、人工 checkbox 或舊 source review 都不能單獨授權。
+精確的待套用差異／受審查修復走詳細流程，不要求「先完全一樣才能修」，也不允許籠統豁免。
+缺證據、審查、備份或執行器時，分別記 EVIDENCE_BLOCKED、REVIEW_BLOCKED、
+RECOVERY_BLOCKED、IMPLEMENTATION_BLOCKED／EXECUTION_BLOCKED。automation pending 期間若其餘技術關卡已全成，才可如實記 `BOOTSTRAP_OWNER_GATE_PENDING`；ACTIVE 後不得再把逐次 Owner approval 列成常態 blocker。
+
+遠端只套 main SQL 的規則不變。新 schema 使用「資料庫準備」與「功能啟用」兩段：
+先隔離演練與必要 source review／CI，再合併不會啟用相依程式的 schema 準備，
+之後套 canonical TEST 並驗收，再走正式庫關卡；正式 schema ready 後才啟用相依功能。
+一般 Product 驗收不變；既有 guard 不支援安全分段時先補接線，不繞過檢查。
+
+**政策制定不等於自動化已上線。** 本文件不建立生產排程、憑證或可寫工作；
+完整 gate／writer／備份／審查／互斥鎖未經實作驗證前，不得宣稱 AUTOMATION_READY 或直接套用。
+所有舊文件的逐次人工 DB 授權敘述，在 automation pending 期間仍是 bootstrap safety；trusted-main 證明 ACTIVE 後，才在上述精確範圍內由新裁示自動取代。
 
 ## 4. Product B+ 角色與模型路由
 
@@ -184,7 +231,7 @@ LUNA_TASKS       default 4，max 6，另有 1 位 Aggregator
   才可啟動。
 - 必須明寫 `RESERVE_BOUNDARY`。
 - 只做必要規格、紅燈測試、獨立 source slice、unit／typecheck／build、最多一個原子 commit。
-- 不得持有 TEST lane、進 Sol Audit、開第二輪 full CI、碰 MAIN hot files 或吸入鄰近問題。
+- 不得持有 TEST lane、進 Sol Audit、開第二輪 full CI、碰 MAIN hot files或吸入鄰近問題。
 - 完成後停在 `READY_FOR_PROMOTION`；MAIN 進入出口後由 Sol 決定升格或 Park。
 
 ### 5.3 LUNA_CLOSURE
@@ -287,6 +334,7 @@ Product 高後果範圍才需要 Final Risk，例如：
 `scripts/agents/model-routing.json` 為準。
 
 - 一般 UI、文案、小型接線不因是 Product PR 就自動要求 Final Risk。
+- 正式庫寫入是 §3.2 的獨立操作關卡：本次 Production DB release 一律要高風險審查，不能只沿用 source PR 的免審分類。
 - Final Risk 綁 `changeDigest`／實質 changed-file blobs，不因無關 main 前進或純 rebase 自動重跑 semantic review。
 - 最新 `FIX_REQUIRED`／`CHANGES_REQUESTED`／`DISMISSED` 不得被較舊 PASS 蓋掉。
 - 純 `MODEL_GOVERNANCE` 不要求 Astra/Fable Final Risk。
@@ -337,6 +385,9 @@ SOURCE_VERIFIED
 
 最後一階必須是登入正式站後的真實接受測試。缺任一階就是 `PRODUCTION_PENDING` 或其他未完成狀態；
 PR merged、CI 綠、Issue closed 都不能單獨冒充已出貨。
+
+涉及新資料庫依賴時，§3.2 的安全執行順序優先：先 PRODUCTION_SCHEMA_READY，再啟用相依程式。
+上列五項交付證據仍全數必要，不授權網站先啟用、之後才補資料庫；歷史帳本與評分不回寫。
 
 ### 9.2 Completion Truth
 
@@ -400,3 +451,4 @@ Owner 說「復盤」或「複盤」時，載入
 
 結束前重新查 open Issue、open PR、CI、MAIN、RESERVE、Closure、TEST holder、Owner blockers、
 active governance work 與本輪 scorecard。最終報告不得只寫「目前進度」。
+符合 §3.2 的 DB 變更在 `POLICY_GATED_ACTIVE` 後不再以逐次人工批准為停止理由；automation pending 期間保留 bootstrap gate，技術關卡未過則保留其真實阻塞。
