@@ -53,18 +53,39 @@
 -- 所有寫入路徑一致生效，`with check` 只對 PostgREST 走的那條路徑生效）。
 
 -- ---------------------------------------------------------- customers 複合 FK 靶
--- id 已是主鍵（全域唯一），加一個 (id, tenant_id) 的具名 UNIQUE 約束不改變任何
--- 既有語意，只是讓下面的複合 FK 有東西可以指。刻意用 `add constraint … unique`
--- 而不是裸 `create unique index`：兩者都能滿足 FK 的目標需求，但前者在
--- `information_schema.table_constraints` 留下明確、可稽核的約束名稱。
+-- 本檔的第一版在這裡自己 `add constraint customers_id_tenant_uq unique (id, tenant_id)`，
+-- 存在性檢查只比對**名稱**。那是錯的：`0104_tour_order_lineage_keys.sql` 早就建了
+-- `customers_tenant_id_id_key unique (tenant_id, id)`（同一個欄位集合，只是順序相反，
+-- 且 `0067` 對 trips／trip_plans／trip_addons／trip_departures 用的是同一套命名慣例）。
+-- 只比對名稱的結果是多加一條語意重複的約束。
+--
+-- 那條重複約束不只是冗餘，它會**實際弄壞別的東西**：FK 綁上去之後，
+-- `agent-schema-bootstrap` 的 `production-shaped-simple-keys-upgrade` 證明在嘗試
+-- drop `customers_tenant_id_id_key` 時會失敗：
+--   ERROR: cannot drop constraint customers_tenant_id_id_key ... because other
+--          objects depend on it
+--   DETAIL: constraint traveler_risk_policies_customer_tenant_fk depends on
+--           index customers_tenant_id_id_key
+--
+-- 所以改成**重用**既有約束，並在缺少時大聲失敗而不是安靜地自己補一條——「物件不在
+-- 就自己建」正是會製造重複的那種寫法。
 do $$
 begin
   if not exists (
     select 1 from pg_constraint
      where conrelid = 'public.customers'::regclass
-       and conname = 'customers_id_tenant_uq'
+       and contype = 'u'
+       and conkey = (
+         select array_agg(attnum order by attnum)
+           from pg_attribute
+          where attrelid = 'public.customers'::regclass
+            and attname in ('tenant_id', 'id')
+            and not attisdropped
+       )
   ) then
-    alter table public.customers add constraint customers_id_tenant_uq unique (id, tenant_id);
+    raise exception
+      'customers 缺少 (tenant_id, id) 的唯一約束（預期由 0104 建立的 customers_tenant_id_id_key）；'
+      '本檔的複合 FK 需要它作為目標，不自行補建以免產生語意重複的約束';
   end if;
 end $$;
 
@@ -83,8 +104,11 @@ create table if not exists public.traveler_risk_policies (
   actor_label   text not null check (length(btrim(actor_label)) between 1 and 100),
   created_at    timestamptz not null default now(),
 
+  -- 欄位順序寫成 (tenant_id, customer_id) → (tenant_id, id)，與 0104／0067 的
+  -- `<table>_tenant_id_id_key` 慣例一致。Postgres 是以欄位集合找唯一索引，順序
+  -- 不影響是否成立，但寫成一致的順序讓它指向哪一條約束一眼可見。
   constraint traveler_risk_policies_customer_tenant_fk
-    foreign key (customer_id, tenant_id) references public.customers (id, tenant_id) on delete cascade,
+    foreign key (tenant_id, customer_id) references public.customers (tenant_id, id) on delete cascade,
 
   -- 值域：只有 FORCE_DEPOSIT 可以帶 deposit_mode/deposit_value，且兩個欄位的
   -- 邊界值逐字對齊 src/server/payment-policy.ts 的 resolvePaymentPolicy()。
