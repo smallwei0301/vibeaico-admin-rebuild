@@ -90,15 +90,21 @@ export function inferMigrationRiskTier(sql) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
 
-  const tiers = ['ADDITIVE'];
+  const specialized = [];
   if (/\balter\s+table\b[\s\S]{0,240}\bdrop\s+constraint\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\bdrop\s+default\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\btype\b/i.test(text)) {
-    tiers.push('SCHEMA_REPAIR');
+    specialized.push('SCHEMA_REPAIR');
   }
   if (/\b(create|alter|drop)\s+policy\b|\benable\s+row\s+level\s+security\b|\bforce\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
-    tiers.push('AUTHZ');
+    specialized.push('AUTHZ');
   }
-  if (/\bupdate\b|\bdelete\s+from\b/i.test(text)) tiers.push('BACKFILL');
-  return highestRiskTier(tiers);
+  if (/\bupdate\b|\bdelete\s+from\b/i.test(text)) specialized.push('BACKFILL');
+
+  // v1 不用「選最高級」來掩蓋另一類必要證據。若一支 migration 同時混進兩種
+  // specialized risk，先拆成 bounded migrations，讓每一支都有完整對應測試與復原證據。
+  if (specialized.length > 1) {
+    fail('MIXED_RISK_MIGRATION_NOT_ADMITTED', `split migration by risk class before v1 apply: ${specialized.join('+')}`);
+  }
+  return specialized[0] ?? 'ADDITIVE';
 }
 
 /**
