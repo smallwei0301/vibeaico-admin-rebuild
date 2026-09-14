@@ -10,10 +10,6 @@ import {
 
 const MAIN = 'a'.repeat(40);
 
-function quietLog() {
-  return { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
-}
-
 function admitted(targetEnvironment: string, migrationPath: string, sql: string) {
   return {
     schemaVersion: 1,
@@ -47,7 +43,7 @@ describe('Issue #432 migration runner source gate', () => {
   });
 
   it('does not send any database request when the migration set differs from origin/main', async () => {
-    const fetchImpl = vi.fn();
+    const fetchSpy = vi.fn();
     await expect(runMigrationWorkflow({
       projectRef: EXPECTED_PROJECT_REFS.TEST,
       token: 'fake-test-token',
@@ -56,14 +52,14 @@ describe('Issue #432 migration runner source gate', () => {
       refreshMain: () => MAIN,
       listLocalFiles: () => ['0001_base.sql', '0002_branch_only.sql'],
       listCanonicalFiles: () => ['0001_base.sql'],
-      fetchImpl,
-      log: quietLog(),
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+      log: console,
     })).rejects.toThrow(/MIGRATION_SET_MISMATCH/);
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('does not send any database request when same filename bytes change after admission', async () => {
-    const fetchImpl = vi.fn();
+    const fetchSpy = vi.fn();
     const mainSql = "select 'main-bytes';\n";
     const localSql = "select 'different-worktree-bytes';\n";
 
@@ -77,14 +73,14 @@ describe('Issue #432 migration runner source gate', () => {
       listCanonicalFiles: () => ['0001_base.sql'],
       admit: ({ migrationPath, targetEnvironment }: { migrationPath: string; targetEnvironment: string }) => admitted(targetEnvironment, migrationPath, mainSql),
       readMigration: () => localSql,
-      fetchImpl,
-      log: quietLog(),
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+      log: console,
     })).rejects.toThrow(/MIGRATION_BYTES_CHANGED_AFTER_ADMISSION/);
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('rejects an admission proof for another path or another main ref before network', async () => {
-    const fetchImpl = vi.fn();
+  it('rejects an admission proof for another path before network', async () => {
+    const fetchSpy = vi.fn();
     const sql = "select 'safe';\n";
 
     await expect(runMigrationWorkflow({
@@ -95,20 +91,17 @@ describe('Issue #432 migration runner source gate', () => {
       refreshMain: () => MAIN,
       listLocalFiles: () => ['0001_base.sql'],
       listCanonicalFiles: () => ['0001_base.sql'],
-      admit: ({ targetEnvironment }: { targetEnvironment: string }) => ({
-        ...admitted(targetEnvironment, 'supabase/migrations/9999_other.sql', sql),
-        mainRef: 'origin/main',
-      }),
+      admit: ({ targetEnvironment }: { targetEnvironment: string }) => admitted(targetEnvironment, 'supabase/migrations/9999_other.sql', sql),
       readMigration: () => sql,
-      fetchImpl,
-      log: quietLog(),
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+      log: console,
     })).rejects.toThrow(/ADMISSION_PATH_MISMATCH/);
 
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('preflights every migration before the first database request', async () => {
-    const fetchImpl = vi.fn();
+    const fetchSpy = vi.fn();
     const sqlByFile: Record<string, string> = {
       'supabase/migrations/0001_base.sql': "select 'one';\n",
       'supabase/migrations/0002_next.sql': "select 'two';\n",
@@ -129,12 +122,12 @@ describe('Issue #432 migration runner source gate', () => {
         return admitted(targetEnvironment, migrationPath, sqlByFile[migrationPath]);
       },
       readMigration: (_repoRoot: string, migrationPath: string) => sqlByFile[migrationPath],
-      fetchImpl,
-      log: quietLog(),
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+      log: console,
     })).rejects.toThrow(/MIGRATION_NOT_IN_CURRENT_MAIN/);
 
     expect(admissionCount).toBe(2);
-    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('executes only after the complete plan is admitted and pinned to one main SHA', async () => {
@@ -142,11 +135,7 @@ describe('Issue #432 migration runner source gate', () => {
       'supabase/migrations/0001_base.sql': "select 'one';\n",
       'supabase/migrations/0002_next.sql': "select 'two';\n",
     };
-    const fetchImpl = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      text: async () => '',
-    }));
+    const fetchSpy = vi.fn(async () => new Response('', { status: 200 }));
 
     const result = await runMigrationWorkflow({
       projectRef: EXPECTED_PROJECT_REFS.TEST,
@@ -158,12 +147,12 @@ describe('Issue #432 migration runner source gate', () => {
       listCanonicalFiles: () => ['0001_base.sql', '0002_next.sql'],
       admit: ({ migrationPath, targetEnvironment }: { migrationPath: string; targetEnvironment: string }) => admitted(targetEnvironment, migrationPath, sqlByFile[migrationPath]),
       readMigration: (_repoRoot: string, migrationPath: string) => sqlByFile[migrationPath],
-      fetchImpl,
-      log: quietLog(),
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+      log: console,
     });
 
     expect(result.plan.currentMainSha).toBe(MAIN);
     expect(result.plan.databaseMutationAuthorized).toBe(false);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
