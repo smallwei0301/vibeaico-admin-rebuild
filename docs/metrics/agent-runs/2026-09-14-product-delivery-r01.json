@@ -775,14 +775,66 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "scout-open-issue-pr-inventory-post-451-453",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "actualModelId": "claude-haiku-4-5",
+        "accepted": true,
+        "role": "治理 PR #451/452/453 合併後的窄盤點：掃 open Issue／open PR 找本輪 MAIN 候選。回報 #447(PR #450)、#228(PR #312) 為最接近可關候選；後續核實兩者皆非（#450 高風險正式庫 writer 半成品由另一 session 施工中且已有 routing violation、#312 OWNER_BLOCKED），改由 audit 層重新查證 #8。",
+        "count": 1,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-8-reaudit-root-cause-stale-check",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "actualModelId": "unknown",
+        "accepted": true,
+        "role": "唯讀重新查證 Issue #8 歷史根因（tour_orders 表／reserve_seats RPC 不在 main）是否已被 #41 後續 migration（0087/0088/0104/0107/0108）解決。確認已解決，並精確定位剩餘兩個具體缺口（trip 複製假成功、tests/e2e/tour-admin.spec.ts 缺失），順帶核對 #20／#218 現況。未指定 model override，實際 served model 平台無法證明，如實記 unknown。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-218-final-sol-audit-close-approved",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "Issue #218 第 6 格最終審核。獨立以唯讀 SQL 對 TEST(nmwhwngojosmagjuvxol)與正式庫(egehnijjpgijmccagxac)核對 redeem_booking_points 的 prosrc md5／SECURITY DEFINER／EXECUTE 權限完全一致，並發現兩邊實跑的是 0093（#291 後續修正）疊代版本而非 0090 原版，逐位元組核對與 origin/main 上 0093 相符（PB-017/037 內容比對標準）。判定 CLOSE_APPROVED，並指出一個帳務缺口（0090/0091/0093 缺具名 Owner 授權留存紀錄）供之後補齊。首次派工因平台 session rate limit 中止，未產出任何需保留結果，重派後完整完成，不重複計入。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-8-terra-build-trip-duplicate-e2e",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "actualModelId": "claude-sonnet-5",
+        "accepted": true,
+        "role": "TERRA_BUILD：Issue #8 剩餘缺口實際施工。行程列表「複製」按鈕改接真實 createTrip（確認 trip_duplicate_atomic 只存在 local-migrations overlay、非 canonical main，未沿用），新建 tests/e2e/tour-admin.spec.ts。typecheck 0 error、unit 172 files/2325 tests passed、build 成功、e2e 對 canonical TEST 實跑 1 passed。已如實揭露：e2e 執行對 shared TEST 做了一次未宣告 TEST lane 的 DML（insert+delete 同一筆，已獨立核實零殘留）。落地為 PR #456。首次派工因目錄不在 git repo 內啟動失敗（worktree isolation 需求），未產出任何結果，重派後完整完成，不重複計入。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 2,
-    "issuesClosed": 1,
+    "issuesStarted": 3,
+    "issuesClosed": 2,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -807,13 +859,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 15,
-    "lunaAccepted": 12,
+    "lunaTasks": 17,
+    "lunaAccepted": 14,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 17,
+    "solTouches": 18,
     "solIssues": 1
   },
   "auditability": {
@@ -849,7 +901,8 @@
     "LUNA_CLOSURE s07（#449 合併後）：候選 1 → Issue #246 已於 11:57:10Z 以 completed 關閉。結案依據由 audit 層在 origin/main 35e2e1a6 自行實查（exceljs、兩支測試檔、兩條路由的 CSV+Excel 值域、src/server/xlsx.ts 共用產生器、reports 路由確為五區塊營運報表且 CSV/xlsx 共用 reportRows、unit 2315 passed、#250 closed、#248 merged），未重跑 integration／E2E（本輪未動用 canonical TEST），該界線已寫進結案留言與 sweep 紀錄。scout 本輪第四次事實錯誤：#250 關閉日期、open PR 計數、open Issue 清單漏列 #218／#221，且自評「不確定項：無」。候選判定本身正確，錯誤全在支撐事實——故 scout 產出必須逐項覆核而非抽查。未隨 #246 關閉的後續：#33 ③-2 的「永久留白，無 xlsx generator」理由已失效，需回頭重評。",
     "更正前一則 note：「#33 ③-2 需回頭重評」是錯的。該格已由 PR #285 於 2026-09-08T03:41:01Z（59e79f57…）實作合併，#33 內文 §3 已標 ✅，bookings 路由 SUPPORTED_FORMATS 已含 xlsx，tests/integration/api/export-bookings-xlsx.33.test.ts 存在。成因：讀到 #246 內文的「需回頭重評」就當成現在仍待辦，沒查是否已被處理——與同一份 sweep 紀錄裡批評 scout 的錯誤完全同型。教訓：Issue 內文的待辦敘述與 scout 回報同屬未查證來源，都要對著當前倉庫狀態覆核。",
     "s07 補充：scout 漏列的 #218 其實是第二個結案候選。9 項驗收 8 項已勾，唯一未勾的第 9 格阻擋理由是「0090 尚未套用正式庫與 canonical TEST」——唯讀實查顯示該理由六天前就已消失：0090 ledger row 在正式庫（20260908134502）與 TEST（20260908132012）皆存在，public.redeem_booking_points 實體存在（prosecdef=true），0093 guard 亦在正式庫且pg_get_functiondef 確含 not in (PENDING, CONFIRMED)；#291 已 closed/completed。差點犯 PB-037：初驗時查函式是否含 COMPLETED/CANCELLED/NO_SHOW，三者皆 false，看似正式庫漂移；實際上那三個字只出現在 0093 的註解（轉述 Owner 裁示），實作刻意用白名單。先讀 canonical 再下結論才沒誤報。處置：列為候選但不自行關閉——第 9 格的語意是「是否經逐次具名授權後套用」，套用發生於 2026-09-08，授權紀錄不在本輪視野內，該確認屬 Owner 判斷。",
-    "ROUTING VIOLATION（PB-036 第五次，如實記為違規而非中性註記）：本輪五份 scout 層文件（PB-049／PB-050／ledger 詞彙修正／s07 sweep／#41 §5 盤點）全由 audit 層 claude-opus-5 直接產出。前四次是 TERRA_BUILD 施工跑在 Opus 上，第五次換成文件——舊預防「開工前先跑 lane 分類」綁在「施工」這個詞上，換一種形狀就繞過去了。已改為路徑判準寫入 CLAUDE.md。量化背景：本 session transcript 113 MB、9,092 次工具呼叫，每次都把完整上下文重送 audit 層模型；五份文件本身不貴，貴的是各自帶著的整個上下文。"
+    "ROUTING VIOLATION（PB-036 第五次，如實記為違規而非中性註記）：本輪五份 scout 層文件（PB-049／PB-050／ledger 詞彙修正／s07 sweep／#41 §5 盤點）全由 audit 層 claude-opus-5 直接產出。前四次是 TERRA_BUILD 施工跑在 Opus 上，第五次換成文件——舊預防「開工前先跑 lane 分類」綁在「施工」這個詞上，換一種形狀就繞過去了。已改為路徑判準寫入 CLAUDE.md。量化背景：本 session transcript 113 MB、9,092 次工具呼叫，每次都把完整上下文重送 audit 層模型；五份文件本身不貴，貴的是各自帶著的整個上下文。",
+    "2026-09-14 續：治理分支 claude/project-governance-rules-vraejm（PB-036 第五次違規/PB-047-050/closure sweep s06-07/schema-truth 四份唯讀文件）依 8 檔/800 行預算拆成 PR #451/#452/#453，三張皆綠燈合併進 main（cce54177/99265147/e0edaeaf）。B+ loop 續：scout 盤點 → 發現 #447/#228 候選皆不可行 → audit 層重新查證 #8 根因已被 #41 解決 → Sol 對 #218 第 6 格獨立唯讀核實給 CLOSE_APPROVED 並關閉 → Terra 對 #8 剩餘缺口實際施工（trip 複製 + tour-admin e2e），落地 PR #456（draft，CI 待跑）。兩次背景 agent 因平台 session rate limit 中止重派，均未產出需保留結果，不重複計入 modelUsage。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
