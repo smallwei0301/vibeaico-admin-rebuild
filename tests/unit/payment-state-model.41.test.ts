@@ -183,4 +183,47 @@ describe('#41 0108 的資料庫層不變量', () => {
     expect(MIGRATION).toContain('::regtype');
     expect(MIGRATION).not.toMatch(/atttypid\s*=\s*format_type/);
   });
+
+  /*
+   * PB-043：M1（REFUNDED）的既有資料前置 guard 曾經缺席——`refunded_amount` 是
+   * 本檔新增的欄位，既有 REFUNDED 列的預設值必然是 0，`add constraint
+   * tour_orders_refunded_paid_amount_ck` 會對既有資料驗證而以 23514 中止，且
+   * 錯誤訊息對人沒有幫助。M2（UNPAID）一直都有等價的前置 guard；這裡鎖住兩者
+   * 對稱，避免未來編輯拿掉其中一個卻留著另一個。
+   */
+  describe('M1／M2 既有資料前置 guard 必須對稱存在（PB-043）', () => {
+    it('REFUNDED 有前置 guard：查詢既有違規列並 raise exception，不得憑空消失', () => {
+      const idx = MIGRATION.indexOf("payment_status::text = 'REFUNDED'");
+      expect(idx).toBeGreaterThan(-1);
+      const block = MIGRATION.slice(Math.max(0, idx - 400), idx + 800);
+      expect(block).toContain('raise exception');
+      expect(block).toContain('bad_rows');
+    });
+
+    it('UNPAID 有前置 guard：查詢既有違規列並 raise exception', () => {
+      const idx = MIGRATION.indexOf("payment_status::text = 'UNPAID' and paid_amount <> 0");
+      expect(idx).toBeGreaterThan(-1);
+      const block = MIGRATION.slice(Math.max(0, idx - 400), idx + 400);
+      expect(block).toContain('raise exception');
+      expect(block).toContain('bad_rows');
+    });
+
+    it('M1 guard 出現在 refunded_amount 欄位新增之後、REFUNDED 的 add constraint 之前', () => {
+      const columnIdx = MIGRATION.indexOf('add column if not exists refunded_amount');
+      const guardIdx = MIGRATION.indexOf("payment_status::text = 'REFUNDED'\n     and not (paid_amount > 0 and refunded_amount > 0)");
+      const constraintIdx = MIGRATION.indexOf('add constraint tour_orders_refunded_paid_amount_ck');
+      expect(columnIdx).toBeGreaterThan(-1);
+      expect(guardIdx).toBeGreaterThan(-1);
+      expect(constraintIdx).toBeGreaterThan(-1);
+      expect(guardIdx).toBeGreaterThan(columnIdx);
+      expect(constraintIdx).toBeGreaterThan(guardIdx);
+    });
+
+    it('M1 guard 不得替既有列猜退款金額（不得出現 update ... set refunded_amount）', () => {
+      const idx = MIGRATION.indexOf("payment_status::text = 'REFUNDED'\n     and not (paid_amount > 0 and refunded_amount > 0)");
+      expect(idx).toBeGreaterThan(-1);
+      const block = MIGRATION.slice(Math.max(0, idx - 400), idx + 800);
+      expect(block).not.toMatch(/update\s+public\.tour_orders\s+set\s+refunded_amount/i);
+    });
+  });
 });

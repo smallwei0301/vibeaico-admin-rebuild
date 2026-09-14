@@ -52,6 +52,30 @@ alter table public.tour_orders
   add column if not exists refunded_amount numeric not null default 0,
   add column if not exists deposit_mode_snapshot text;
 
+-- M1（Final Risk 2026-09-14；PB-043）：REFUNDED 的既有資料前置 guard，與下面的
+-- M2 對稱。這裡要擋的不是「REFUNDED 這個 enum 標籤」本身——REFUNDED 在 0087
+-- 就存在，不是本檔新增的值域。真正的風險是 `refunded_amount` 是本檔剛用
+-- `add column ... not null default 0` 加上去的欄位：任何一筆既有的
+-- payment_status='REFUNDED' 訂單，加完欄位後 refunded_amount 必然是 0（沒有
+-- 任何舊資料寫過這個欄位），而下面 `tour_orders_refunded_paid_amount_ck` 要求
+-- REFUNDED 必須 paid_amount > 0 and refunded_amount > 0——`add constraint` 會
+-- 對既有列做驗證，於是這種既有列必定以 23514 讓整支 migration 中止在
+-- `add constraint` 那一行，錯誤訊息對操作者毫無幫助。
+-- 跟 M2 一樣：migration 不會替這些既有列猜一個退款金額（猜多少都是編造），
+-- 發現就整段中止，讓人先去確認真實退款金額再手動補上。
+do $$
+declare
+  bad_rows int;
+begin
+  select count(*) into bad_rows
+    from public.tour_orders
+   where payment_status::text = 'REFUNDED'
+     and not (paid_amount > 0 and refunded_amount > 0);
+  if bad_rows > 0 then
+    raise exception '0108 無法加上 REFUNDED 誠實 CHECK：有 % 筆既有 tour_orders 標成 REFUNDED，但 paid_amount 或 refunded_amount 不滿足「曾經收過錢、而且真的退了」（paid_amount > 0 and refunded_amount > 0）。refunded_amount 是本檔新增的欄位，既有列的預設值是 0，本 migration 不會替它們猜一個退款金額，請先確認實際退款金額並手動補上這些列的 refunded_amount，再重新套用本檔。', bad_rows;
+  end if;
+end $$;
+
 -- M2（Final Risk 2026-09-14）：UNPAID 但 paid_amount > 0 的訂單語意上根本不是
 -- 「未付款」——它應該是 PARTIAL 或 PAID，繼續讓 UI 顯示「未付款」是說謊。0087
 -- 當時只顧到 PAID 那一側（見上方 tour_orders_paid_amount_consistent），PARTIAL
