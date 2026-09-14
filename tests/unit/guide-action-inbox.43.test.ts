@@ -361,6 +361,82 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(dashboardI18nSource).toMatch(/formationAtRiskDetail:\s*\(current: number, min: number\)/);
   });
 
+  it('degrades the AT_RISK copy instead of claiming "已跌破成團門檻" when seats_booked has already caught back up to the threshold (LOW finding #3)', () => {
+    // AT_RISK 是唯讀觀察值：#41 §6 的自動轉態還沒做，人數事後追回門檻不會自動變回
+    // FORMED。這種不一致資料上不能繼續顯示「已跌破」字樣——那是對使用者的誤導。
+    expect(pageSource).toContain('t.actionInbox.formationAtRiskInconsistent');
+    expect(pageSource).toContain('item.seatsBooked < item.minToDepart');
+    expect(dashboardI18nSource).toMatch(/formationAtRiskInconsistent:\s*\(current: number, min: number\)/);
+  });
+
+  it('excludes REVIEW_REQUIRED/AT_RISK from the DEPARTURE query so one departure cannot produce two cards (HIGH finding, Final Risk claude-fable-5-1)', () => {
+    // 舊版：DEPARTURE query 只用 `status in (OPEN, CLOSED)` + 今日～明日日期窗，跟
+    // formation query（`status <> CANCELLED` + formation_status in (REVIEW_REQUIRED,
+    // AT_RISK)）不是互斥集合。今日／明日出發、同時又是 REVIEW_REQUIRED／AT_RISK 的
+    // 團次會同時符合兩條 query，變成兩張 `key={item.id}` 相同的卡片。
+    // 修法是在 DEPARTURE query 直接排除這兩個 formation_status 值，讓兩個 query
+    // 在來源端就互斥，而不是把兩份結果都抓回來後在 JS 裡事後去重。
+    expect(apiSource).toContain(".not('formation_status', 'in', '(REVIEW_REQUIRED,AT_RISK)')");
+
+    const departureExclusionIndex = apiSource.indexOf(".not('formation_status', 'in', '(REVIEW_REQUIRED,AT_RISK)')");
+    const departureStatusIndex = apiSource.indexOf(".in('status', ['OPEN', 'CLOSED'])");
+    const formationInclusionIndex = apiSource.indexOf(".in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])");
+    expect(departureExclusionIndex).toBeGreaterThan(-1);
+    expect(departureStatusIndex).toBeGreaterThan(-1);
+    expect(formationInclusionIndex).toBeGreaterThan(-1);
+    // 排除條件要掛在 DEPARTURE query（在它自己的 `.in('status', ...)` 附近），
+    // 不是意外掛到 formation query 的 `.in('formation_status', ...)` 那一支上。
+    expect(departureExclusionIndex).toBeGreaterThan(departureStatusIndex);
+    expect(formationInclusionIndex).toBeGreaterThan(departureExclusionIndex);
+
+    // 同一個 mock 端也要遵守同一條互斥規則，否則 demo 模式會重現同一個 bug。
+    expect(serviceSource).toContain('isGuideActionInboxFormationStatus(departure.formationStatus)');
+  });
+
+  it('bounds the formation query with a lower departs_on date so already-departed rows do not linger forever (MEDIUM finding)', () => {
+    // 0107 還沒有 #41 §6 的自動轉態，REVIEW_REQUIRED／AT_RISK 不會在出發後自動被
+    // 清掉。formation query 必須跟 DEPARTURE query 一樣有 `.gte('departs_on', today)`
+    // 下限，否則已經出發過的舊團次會跟現在的團次搶 `.limit(20)`，而且永遠顯示
+    // 「立即處理」。這裡鎖住：整支檔案要出現兩次 `.gte('departs_on', today)`
+    // （DEPARTURE query 既有的一次 + formation query 新加的一次），且新加的那次
+    // 要出現在 formation query 段落（`.in('formation_status', ...)` 之後）。
+    const gteMatches = apiSource.match(/\.gte\('departs_on', today\)/g) ?? [];
+    expect(gteMatches).toHaveLength(2);
+
+    const formationInclusionIndex = apiSource.indexOf(".in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])");
+    const formationGteIndex = apiSource.indexOf(".gte('departs_on', today)", formationInclusionIndex);
+    expect(formationInclusionIndex).toBeGreaterThan(-1);
+    expect(formationGteIndex).toBeGreaterThan(formationInclusionIndex);
+  });
+
+  it('reads min_to_depart_snapshot directly on the real API row — 0107 declares it NOT NULL, so the old `?? 1` was dead code, not a safety net', () => {
+    expect(apiSource).not.toContain('row.min_to_depart_snapshot ?? 1');
+    expect(apiSource).toContain('minToDepart: row.min_to_depart_snapshot,');
+    // mock 型別 `minToDepartSnapshot?: number`（`src/lib/types.ts`）是真的 optional，
+    // 沒有資料庫層的 NOT NULL 保證，所以 mock 端的 `?? 1` 要留著，不是同一件事。
+    expect(serviceSource).toContain('departure.minToDepartSnapshot ?? 1');
+  });
+
+  it('mock formation cards are remapped to today/tomorrow, not left on the stale fixture date (LOW finding: past-dated formation departures must not sit in the inbox forever)', async () => {
+    const now = new Date();
+    const { today, tomorrow } = getGuideActionInboxDateWindow(now);
+    const items = await getGuideActionInbox();
+    const formationItems = items.filter(
+      (item) => item.kind === 'REVIEW_REQUIRED' || item.kind === 'AT_RISK',
+    );
+
+    // dp_4／dp_8 是 mock/tours.ts 裡唯二的 REVIEW_REQUIRED／AT_RISK fixture，兩者都必須
+    // 出現，且都要被 remap 到今日／明日——跟 route.ts 新加的 `.gte('departs_on', today)`
+    // 下限保持一致，不能再是 fixture 寫死的 2026-08 過期日期。
+    expect(formationItems).toHaveLength(2);
+    for (const item of formationItems) {
+      expect('departureDate' in item ? item.departureDate : null).not.toBeNull();
+      if ('departureDate' in item) {
+        expect([today, tomorrow]).toContain(item.departureDate);
+      }
+    }
+  });
+
   it('shows the slice only in GUIDE mode and renders a mobile-safe action', () => {
     expect(pageSource).toContain('modePreset.showActionInbox');
     expect(pageSource).not.toContain("businessType === 'GUIDE'");

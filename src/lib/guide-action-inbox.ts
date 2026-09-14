@@ -82,8 +82,8 @@ type SortableGuideActionInboxItem = {
 /**
  * 先按處理優先級，再按出發時間、建立時間與 id，保持列表穩定可測試。
  * 用結構型別泛型而不是固定 `GuideActionInboxItem[]`，讓 #43 類別 3／4 的
- * `GuideActionInboxFormationItem[]`（刻意沒有併進那個聯集，見上方說明）能共用同一套排序，
- * 不必為了排序而複製一份邏輯或把兩種陣列型別攪在一起。
+ * `GuideActionInboxFormationItem[]`（已併進上方 `GuideActionInboxItem` 聯集，見該處
+ * 說明）能共用同一套排序，不必為了排序而複製一份邏輯或把兩種陣列型別攪在一起。
  */
 export function sortGuideActionInboxItems<T extends SortableGuideActionInboxItem>(items: T[]): T[] {
   return [...items].sort((a, b) =>

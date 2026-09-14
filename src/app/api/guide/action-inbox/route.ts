@@ -75,6 +75,12 @@ export const GET = handle(async () => {
       .in('status', ['OPEN', 'CLOSED'])
       .gte('departs_on', today)
       .lte('departs_on', tomorrow)
+      // 一個團次不能同時是「今日／明日出發」卡片又是「成團決定」卡片：兩者的深連結
+      // 完全相同（/tenant/trips/:tripId），guide 只需要被問一次。formation query 是
+      // 這兩個 formation_status 值的唯一權威來源，這裡直接在來源排除，而不是把兩組
+      // 結果都抓回來後在 JS 裡事後去重——排除條件在這裡是可證的（誰是權威一望即知），
+      // 事後去重只會讓人猜哪一個 query 才是準的。
+      .not('formation_status', 'in', '(REVIEW_REQUIRED,AT_RISK)')
       .order('departs_on', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
@@ -85,6 +91,12 @@ export const GET = handle(async () => {
       .eq('tenant_id', t.tenantId)
       .neq('status', 'CANCELLED')
       .in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])
+      // 0107 還沒有 #41 §6 的自動轉態 transaction，REVIEW_REQUIRED／AT_RISK 不會在
+      // 出發後自動被清掉。沒有下限的話，已經出發過的舊團次會跟現在的團次一起用
+      // `.order('departs_on' asc).limit(20)` 排序，陳舊列可能擠掉還活著的列，而且
+      // 永遠顯示「立即處理」。這裡只加下限，不去猜測／改寫它們的 formation_status——
+      // 那是 #41 §6 要做的事，不是這個唯讀收件匣端點的責任。
+      .gte('departs_on', today)
       .order('departs_on', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
@@ -166,7 +178,9 @@ export const GET = handle(async () => {
         startTime,
         capacity: row.capacity,
         seatsBooked: row.seats_booked,
-        minToDepart: row.min_to_depart_snapshot ?? 1,
+        // `min_to_depart_snapshot` 是 `not null default 1`，且有 `>= 1 AND <= capacity`
+        // 的 CHECK（0107），不會是 null——這裡直接讀欄位，不再用 `?? 1` 假裝它可能缺值。
+        minToDepart: row.min_to_depart_snapshot,
         formationStatus: row.formation_status,
         formationDeadlineAt: row.formation_deadline_at ?? null,
         formedParticipants: row.formed_participants ?? null,

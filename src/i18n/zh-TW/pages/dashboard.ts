@@ -67,6 +67,13 @@ export const dashboardPage = {
     formationSeatsReached: '已達成團門檻，等待確認',
     /** AT_RISK：已經成團過，之後人數又跌破門檻，白話顯示目前人數與門檻。 */
     formationAtRiskDetail: (current: number, min: number) => `目前 ${current} 人，已跌破成團門檻 ${min} 人`,
+    /**
+     * AT_RISK 但 `seats_booked >= min_to_depart_snapshot`：資料不一致（理論上不該
+     * 發生——這個狀態代表門檻是之後才被人數追上，但沒有自動轉態把它改回 FORMED，
+     * #41 §6 尚未實作）。不能沿用「已跌破」的措辭去描述一個沒有跌破的數字，改用
+     * 中性的「需要人工確認」，不猜測真正原因。
+     */
+    formationAtRiskInconsistent: (current: number, min: number) => `目前 ${current} 人（門檻 ${min} 人），狀態待人工確認`,
     formationDeadline: '成團決定期限',
     priority: {
       IMMEDIATE: '需要立即處理',

@@ -159,17 +159,27 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
         </>
       );
     }
-    case 'AT_RISK':
+    case 'AT_RISK': {
+      // AT_RISK 的字面意思是「已跌破門檻」，但目前的 snapshot 是唯讀觀察值——沒有
+      // #41 §6 的自動轉態，人數事後又追回門檻時狀態不會自己變回 FORMED。與其讓
+      // 「已跌破」這句話在人數其實達標時仍然顯示（誤導使用者去做一個其實不必做的
+      // 決定），不如在這種不一致的資料上改用中性措辭，不隱藏卡片也不假裝沒看到。
+      const isConsistent = item.seatsBooked < item.minToDepart;
       return (
         <>
           <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
           <div className="text-sm text-secondary">{item.planName}</div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
-            <span>{t.actionInbox.formationAtRiskDetail(item.seatsBooked, item.minToDepart)}</span>
+            <span>
+              {isConsistent
+                ? t.actionInbox.formationAtRiskDetail(item.seatsBooked, item.minToDepart)
+                : t.actionInbox.formationAtRiskInconsistent(item.seatsBooked, item.minToDepart)}
+            </span>
             <span>{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
           </div>
         </>
       );
+    }
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
