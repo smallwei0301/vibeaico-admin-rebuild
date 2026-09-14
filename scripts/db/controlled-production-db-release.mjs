@@ -1,3 +1,4 @@
+import { advanceApplyReceipt, assertApplyReceiptAdmitted } from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
 import { pendingProductionMigrations, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
@@ -141,14 +142,16 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
 }
 
 /**
- * G0-G5 are verified before the mutable endpoint. G6 lock + live-ledger recheck
- * are enforced inside the same database transaction. A durable journal stop
- * marker is mandatory: APPLY_UNKNOWN / POSTCHECK_FAILED can never blind-retry.
+ * G0-G5 are verified before the mutable endpoint. G6 requires both a durable
+ * journal and a fresh project/plan-bound single-use receipt. The receipt is
+ * consumed for this attempt; APPLY_UNKNOWN / POSTCHECK_FAILED journal states
+ * cannot be bypassed by issuing another receipt.
  *
  * @param {{
  *   plan?: any,
  *   releasePacket?: any,
  *   journal?: any,
+ *   receipt?: any,
  *   aliasMap?: any,
  *   readCanonicalSql?: (path: string) => string,
  *   token?: string,
@@ -160,6 +163,7 @@ export async function runControlledProductionRelease({
   plan,
   releasePacket,
   journal,
+  receipt,
   aliasMap,
   readCanonicalSql,
   token,
@@ -169,6 +173,7 @@ export async function runControlledProductionRelease({
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   assertReleaseJournalMatchesPlan(journal, plan);
   assertWriterAttemptAllowed(journal);
+  assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now });
   if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
     fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
   }
@@ -180,6 +185,7 @@ export async function runControlledProductionRelease({
   const applyingJournal = advanceReleaseJournal(journal, {
     status: 'APPLYING', at: now, evidenceRef: 'writer:mutable-request-start',
   });
+  const consumingReceipt = advanceApplyReceipt(receipt, 'CONSUMING', now);
 
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
@@ -188,6 +194,7 @@ export async function runControlledProductionRelease({
     const confirmedJournal = advanceReleaseJournal(applyingJournal, {
       status: 'APPLIED_CONFIRMED', at: now, evidenceRef: 'readback:provider-ledger-applied',
     });
+    const consumedReceipt = advanceApplyReceipt(consumingReceipt, 'CONSUMED', now);
     return {
       schemaVersion: 1,
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
@@ -195,7 +202,8 @@ export async function runControlledProductionRelease({
       planDigest: plan.planDigest,
       mainSha: plan.mainSha,
       journal: confirmedJournal,
-      g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
+      receipt: consumedReceipt,
+      g6: 'SINGLE_USE_RECEIPT_PLUS_DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK',
       nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
       databaseMutationAuthorized: false,
     };
@@ -203,9 +211,11 @@ export async function runControlledProductionRelease({
     const unknownJournal = advanceReleaseJournal(applyingJournal, {
       status: 'APPLY_UNKNOWN', at: now, evidenceRef: 'writer:mutable-or-readback-uncertain',
     });
+    const unknownReceipt = advanceApplyReceipt(consumingReceipt, 'UNKNOWN', now);
     const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
     wrapped.code = 'APPLY_UNKNOWN';
     wrapped.journal = unknownJournal;
+    wrapped.receipt = unknownReceipt;
     throw wrapped;
   }
 }
