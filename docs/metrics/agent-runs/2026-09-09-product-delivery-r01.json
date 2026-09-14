@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-09-product-delivery-r01",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-09T00:00:00Z",
-  "endedAt": null,
+  "endedAt": "2026-09-13T00:00:00Z",
   "sources": [
     {
       "type": "OWNER_INSTRUCTION",
@@ -23,13 +23,13 @@
   ],
   "main": {
     "startSha": "f9e7fdc57e683d32009c7fef9150e330cc26764c",
-    "endSha": null
+    "endSha": "f6ff7a1802dec27b92c78a95d39249e6a5cbe944"
   },
   "inventory": {
-    "openIssuesStart": null,
-    "openIssuesEnd": null,
-    "openPrsStart": null,
-    "openPrsEnd": null,
+    "openIssuesStart": 48,
+    "openIssuesEnd": 44,
+    "openPrsStart": 20,
+    "openPrsEnd": 14,
     "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 0,
@@ -104,16 +104,19 @@
     "closeout.ownerRole=PRODUCT_MAIN_SESSION：本 session 是 /goal 指派的產品交付主線，收尾責任歸它。",
     "Product 成員：#306（Issue #9 第一、二步，五種線下收款方式真實持久化；0094 已套用 TEST 與 Production）。治理 PR #304 / #309 不算 Product membership，不引用本 RUN_ID。",
     "inventory.openIssuesStart 與 openPrsStart 刻意留 null：本 Run 起算時間（2026-09-09T00:00:00Z）當下沒有做盤點，事後回填會是推算而非實查。將於 closeout 時以 GitHub 時間戳一次重建，不在此處寫入未經查證的數字。",
-    "modelUsage.actualTokensAvailable=false：本環境取不到實際 token 用量，加權用量只能以任務計數近似，與前幾個 Run 的同一限制一致。"
+    "modelUsage.actualTokensAvailable=false：本環境取不到實際 token 用量，加權用量只能以任務計數近似，與前幾個 Run 的同一限制一致。",
+    "2026-09-14 Owner 裁示：本 Run 已實際結束但全程未埋點，以「terminal 但不可評分」正式結案。status=COMPLETE 與 closeout.state=CLOSED 只表示『這本 Run 結束了』，不表示它可以評分：completionTruth 維持 NOT_CHECKED，modelUsage.weightedUsageImprovementPercent、flow.lunaDelegationRatePercent/waitTimeConvertedPercent、quality 與 auditability 的百分比欄位一律維持 null，因為那些量只在 Run 進行當下可觀察，事後回填只會是推算而非實查。本 Run 因此不進入 PRODUCT_RUN_TREND 的可比較集合。",
+    "inventory 的 start/end 四個數字是結案時以 GitHub 時間戳一次重建：取 created_at <= 該時點且（未關閉或 closed_at > 該時點）的 Issue 與 PR 計數，方法以『現在時點』對照實際 open 清單校驗過（46 Issues／13 PRs 相符）。",
+    "main.endSha 取 endedAt（2026-09-13T00:00:00Z）當下的 origin/main head f6ff7a1。本 Run 原註記承諾「將於 closeout 時以 GitHub 時間戳一次重建」inventory，此處即為兌現。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
     "contractVersion": 1,
     "ownerRole": "PRODUCT_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-13T00:00:00Z",
+    "evidenceRef": "github:pr#306"
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
