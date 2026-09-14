@@ -385,6 +385,58 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-final-sol",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "#440 的 final Sol（§7.1：early verdict 不得放行，必須對 final exact head 重讀）。機械檢查全數通過：單一端點、單一公開 service 函式、sortGuideActionInboxItems 單次呼叫、tenant 條件 5 處、_exhaustive: never 窮舉守衛 4 處、本 PR 新增中文字串字面值 0 處、7 個變更檔案全在宣告的 FILE_OWNERSHIP 內。判定 CLOSE_APPROVED 後以 merge commit 合併。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-final-sol",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "#438 的 final Sol。七條 CHECK 齊備、兩條既有資料前置 guard 對稱、workflow 斷言收窄正確、baseline exit 0。過程中我自己的 grep 誤報「有兩處 enum literal 沒用 ::text」，查下去發現那兩處都是解釋該陷阱的註解——若不查證就會誤判一個已正確的 migration 有缺陷。合併後實查 baseline pin 的 commit 9572274 對 main 仍可達，assertPinnedSource 的祖先條件成立。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-final-risk-r3",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "role": "#440 第三輪 Final Risk，PASS。對替換後的行為測試做 7 個突變，五個證明會落網。M6 找到真缺口：formation 查詢的 CANCELLED 排除無行為覆蓋。並訂正我一個錯誤說法——我稱 28 條 grep 斷言全為既有，實際是 17 既有 + 本 PR 新增 9。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-final-risk-r3",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "role": "#438 對 505b2fe 與 d1391af 兩個新 head 的確認。它沒有只說「migration 沒變所以沿用」——把修正後的四筆 fixture 列以一個 batch 插進已套 0108 的 PG16 資料庫實測，全部接受並逐列對照每條 CHECK。changeDigest 也由它以 repo 自己的 changeDigestOf() 獨立重算，與我算的一致才採用。",
+        "count": 2,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -401,7 +453,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 13,
+    "fullCiRuns": 16,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -423,7 +475,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 5,
+    "solTouches": 7,
     "solIssues": 1
   },
   "auditability": {
