@@ -7,6 +7,7 @@ import {
   computeMetricDataQuality,
   computeModelReviewMetrics,
   evaluateGovernanceScoreboard,
+  isGovernanceRun,
   validateBlockingFindingReconciliation,
   validateReviewEvidence,
 } from '../../scripts/metrics/governance-scoreboard.mjs';
@@ -331,21 +332,45 @@ describe('governance scoreboard flow and data quality', () => {
     expect(result.comparisonEligible).toBe(false);
   });
 
+  /*
+   * The Governance Scoreboard is scoped to MODEL_GOVERNANCE Runs: the evaluator
+   * itself returns "not applicable" for anything else, and the review-evidence
+   * schema only describes governance review roles. Demanding a governance
+   * evidence file from a Product Run asks for an artifact that has no meaning
+   * for it — so the requirement follows the evaluator's own scope, and the
+   * Product branch still asserts something rather than silently skipping.
+   */
   it('guards every post-policy terminal Run committed to the repo', () => {
     const ledgerDir = path.join(root, 'docs/metrics/agent-runs');
     const evidenceDir = path.join(root, 'docs/metrics/review-evidence');
     const effectiveAt = Date.parse(policy.effectiveAt);
+    let inspected = 0;
 
     for (const name of fs.readdirSync(ledgerDir).filter((item) => item.endsWith('.json'))) {
       const run = JSON.parse(fs.readFileSync(path.join(ledgerDir, name), 'utf8'));
       const terminal = run.status === 'COMPLETE' || run.status === 'OWNER_BLOCKED';
       if (!terminal || Date.parse(run.startedAt) < effectiveAt) continue;
+      inspected += 1;
 
       const evidencePath = path.join(evidenceDir, `${run.runId}.json`);
+      if (!isGovernanceRun(run)) {
+        const result = evaluateGovernanceScoreboard(run, {}, policy, { enforce: true });
+        expect(result.governanceRun, `${run.runId} must be out of Governance Scoreboard scope`).toBe(false);
+        expect(result.errors, `${run.runId}: ${result.errors.join('; ')}`).toEqual([]);
+        continue;
+      }
+
       expect(fs.existsSync(evidencePath), `${run.runId} must have durable review evidence`).toBe(true);
       const evidence = JSON.parse(fs.readFileSync(evidencePath, 'utf8'));
       const result = evaluateGovernanceScoreboard(run, evidence, policy, { enforce: true });
       expect(result.errors, `${run.runId}: ${result.errors.join('; ')}`).toEqual([]);
     }
+
+    /*
+     * Until 2026-09-14 every committed Run was either pre-policy or still in
+     * progress, so this loop ran zero times and asserted nothing. A guard that
+     * never sees a subject cannot fail; pin that it has one.
+     */
+    expect(inspected, 'no post-policy terminal Run was inspected; this guard would be vacuous').toBeGreaterThan(0);
   });
 });
