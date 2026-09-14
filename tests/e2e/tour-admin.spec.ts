@@ -17,6 +17,10 @@
  * 資料準備仿照 `tests/e2e/inventory-export.spec.ts` 的慣例：用 service-role admin
  * client 直接插入一筆已知 id 的 `trips` 列（SHOP_A 已有 TOUR_MODULE，見
  * `scripts/test/seed.mjs`），跑完在 `finally` 刪除，不污染共用 TEST 資料庫。
+ *
+ * ⚠️ 執行揭露：這支 spec 對 canonical TEST（`nmwhwngojosmagjuvxol`）的 `trips` 表
+ * 做一筆真實 insert／delete。若要在本輪 PR 的 CI／本機重跑，須先依 B+ 規則宣告
+ * `TEST_VALIDATION` lane 並取得唯一 shared TEST holder 資格，不得未宣告直接跑。
  */
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
