@@ -305,6 +305,10 @@ export function mapTrip(r: any, derived: {
   };
 }
 
+/* #41：值域收斂用的集合。與 0107 的 CHECK 是同一組值，兩邊不得各自漂移。 */
+const SALES_MODE = new Set(['FIXED_DEPARTURE', 'INSTANT', 'REQUEST']);
+const FORMATION_STATUS = new Set(['COLLECTING', 'FORMED', 'REVIEW_REQUIRED', 'AT_RISK', 'FAILED']);
+
 export function mapTripPlan(r: any): TripPlan {
   return {
     id: r.id,
@@ -329,6 +333,17 @@ export function mapTripPlan(r: any): TripPlan {
     // 0095 起 trip_plans.source 是真實欄位；未知值一律收斂成 GUIDE，
     // 寧可少顯示一個 badge，也不要把不認識的來源當成 Midao 代建。
     source: r.source === 'PLATFORM_ASSISTED' || r.source === 'IMPORTED' ? r.source : 'GUIDE',
+    /*
+     * #41（18 分冊 §1–§2）：販售規則與成團門檻。未知值收斂成 18 分冊寫明的
+     * 預設組合（FIXED_DEPARTURE + SHARED、門檻 1、截止 7 天前），而不是
+     * undefined——這幾個欄位的預設在 SQL 與這裡必須是同一組，否則同一筆資料
+     * 在有無後端兩條路徑下會顯示成不同的規則。
+     */
+    salesMode: SALES_MODE.has(r.sales_mode) ? r.sales_mode : 'FIXED_DEPARTURE',
+    participationMode: r.participation_mode === 'PRIVATE' ? 'PRIVATE' : 'SHARED',
+    minToDepart: Number.isFinite(Number(r.min_to_depart)) ? Number(r.min_to_depart) : 1,
+    formationDeadlineDaysBefore: Number.isFinite(Number(r.formation_deadline_days_before))
+      ? Number(r.formation_deadline_days_before) : 7,
   };
 }
 
@@ -346,6 +361,18 @@ export function mapTripDeparture(r: any): TripDeparture {
     seatsBooked: r.seats_booked ?? 0,
     status: r.status,
     note: r.note ?? '',
+    /*
+     * #41（18 分冊 §3）：成團狀態是**另一條軸**，不是 status 的別名。
+     * 未知值一律收斂成 COLLECTING——「還在募集」是最保守的解讀，
+     * 不會讓 UI 誤宣稱一團已經成立。
+     */
+    formationStatus: FORMATION_STATUS.has(r.formation_status) ? r.formation_status : 'COLLECTING',
+    formationDeadlineAt: r.formation_deadline_at ?? null,
+    minToDepartSnapshot: Number.isFinite(Number(r.min_to_depart_snapshot))
+      ? Number(r.min_to_depart_snapshot) : 1,
+    formedAt: r.formed_at ?? null,
+    formedBy: r.formed_by === 'SYSTEM' || r.formed_by === 'GUIDE_OVERRIDE' ? r.formed_by : null,
+    formedParticipants: r.formed_participants == null ? null : Number(r.formed_participants),
   };
 }
 
