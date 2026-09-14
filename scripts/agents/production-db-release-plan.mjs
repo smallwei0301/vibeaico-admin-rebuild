@@ -4,6 +4,8 @@ import { PRODUCTION_DB_POLICY } from './production-db-release-preflight.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const RELEASE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{7,119}$/;
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
+const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, AUTHZ: 2, BACKFILL: 3 });
 
 function fail(code, message) {
@@ -36,6 +38,19 @@ function normalizedRepoFile(value) {
     fail('INVALID_REPO_MIGRATION_NAME', `invalid repoFile: ${name || '<empty>'}`);
   }
   return name;
+}
+
+function normalizePlannedAt(value) {
+  const text = String(value ?? '').trim();
+  if (!ISO_UTC.test(text) || Number.isNaN(Date.parse(text))) fail('INVALID_PLANNED_AT', 'plannedAt must be ISO UTC');
+  return new Date(text).toISOString();
+}
+
+function ledgerVersionAt(plannedAt, offsetSeconds) {
+  const date = new Date(Date.parse(plannedAt) + offsetSeconds * 1000);
+  const year = date.getUTCFullYear();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${year}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
 }
 
 export function pendingProductionMigrations(aliasMap = {}) {
@@ -86,6 +101,7 @@ export function highestRiskTier(tiers = []) {
 export function buildProductionDbReleasePlan({
   releaseId,
   mainSha,
+  plannedAt,
   aliasMap,
   readCanonicalSql,
 } = {}) {
@@ -93,12 +109,13 @@ export function buildProductionDbReleasePlan({
   if (!RELEASE_ID.test(id)) fail('INVALID_RELEASE_ID', 'releaseId has an invalid shape');
   const sha = String(mainSha ?? '').trim().toLowerCase();
   if (!SHA.test(sha)) fail('INVALID_MAIN_SHA', 'mainSha must be an exact 40-character SHA');
+  const normalizedPlannedAt = normalizePlannedAt(plannedAt);
   if (typeof readCanonicalSql !== 'function') fail('CANONICAL_READER_REQUIRED', 'readCanonicalSql is required');
 
   const names = pendingProductionMigrations(aliasMap);
   if (!names.length) fail('NO_PENDING_PRODUCTION_MIGRATIONS', 'alias map has no PENDING_APPLY migrations');
 
-  const migrations = names.map((repoFile) => {
+  const migrations = names.map((repoFile, index) => {
     const path = `supabase/migrations/${repoFile}.sql`;
     const sql = String(readCanonicalSql(path));
     if (!sql.trim()) fail('EMPTY_CANONICAL_MIGRATION', `${path} is empty`);
@@ -107,6 +124,7 @@ export function buildProductionDbReleasePlan({
       path,
       sha256: sha256(Buffer.from(sql)),
       riskTier: inferMigrationRiskTier(sql),
+      ledgerVersion: ledgerVersionAt(normalizedPlannedAt, index),
     };
   });
 
@@ -116,6 +134,7 @@ export function buildProductionDbReleasePlan({
     repository: PRODUCTION_DB_POLICY.repository,
     productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
     mainSha: sha,
+    plannedAt: normalizedPlannedAt,
     riskTier: highestRiskTier(migrations.map((entry) => entry.riskTier)),
     migrations,
   };
@@ -128,6 +147,7 @@ export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql
   if (plan.productionProjectRef !== PRODUCTION_DB_POLICY.productionProjectRef) fail('WRONG_PROJECT', 'release plan project is not canonical Production');
   if (!SHA.test(String(plan.mainSha ?? ''))) fail('INVALID_MAIN_SHA', 'release plan has no exact main SHA');
   if (!RELEASE_ID.test(String(plan.releaseId ?? ''))) fail('INVALID_RELEASE_ID', 'release plan has invalid releaseId');
+  normalizePlannedAt(plan.plannedAt);
   if (releasePlanDigestOf(plan) !== plan.planDigest) fail('PLAN_DIGEST_MISMATCH', 'release plan digest is stale or forged');
 
   const pending = pendingProductionMigrations(aliasMap);
@@ -136,6 +156,10 @@ export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql
     fail('PENDING_SET_MISMATCH', `plan=[${names.join(', ')}], pending=[${pending.join(', ')}]`);
   }
   if (new Set(names).size !== names.length) fail('DUPLICATE_PLAN_MIGRATION', 'plan migrations must be unique');
+  const versions = plan.migrations.map((entry) => String(entry?.ledgerVersion ?? ''));
+  if (versions.some((version) => !LEDGER_VERSION.test(version)) || new Set(versions).size !== versions.length) {
+    fail('INVALID_LEDGER_VERSION_PLAN', 'ledger versions must be unique 14-digit values fixed at plan time');
+  }
   if (typeof readCanonicalSql !== 'function') fail('CANONICAL_READER_REQUIRED', 'readCanonicalSql is required');
 
   const tiers = [];
