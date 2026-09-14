@@ -25,11 +25,11 @@
     "openIssuesEnd": null,
     "openPrsStart": 13,
     "openPrsEnd": null,
-    "mainTerraPeak": 1,
+    "mainTerraPeak": 2,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 1,
+    "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 4,
+    "closureSweeps": 5,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -143,6 +143,66 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-payment-audit",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "role": "#41 §4 付款狀態模型的 audit 層覆核（claude-opus-5）。抓到 build 端一個本機 gate 驗不出來的真缺陷：0108 用 `alter type ... add value` 新增 PARTIAL／REFUND_PENDING 之後，又在同一交易內以 enum literal 引用它們（PostgreSQL 的 unsafe use of new value；Supabase CLI 每支 migration 都包在一個交易裡）。在 overlay 安裝路徑上那是真正的新值，會直接失敗。已改為 `payment_status::text` 比對並補上兩條 regression 測試。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-cat34-build-slot2",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#43 第 3／4 類（REVIEW_REQUIRED／AT_RISK）行動收件匣接線，TERRA_SLOT 2（claude-sonnet-5），在獨立 worktree 施工。FILE_OWNERSHIP 限於 guide-action-inbox 五個路徑，與 slot 1 零重疊；明確禁止碰第 5 類（REFUND_PENDING），因為它依賴尚未併入 main 的 0108。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "luna-closure-r01-s05",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "本輪 LUNA_CLOSURE（claude-haiku-4-5）：掃 13 張 open PR 與 58 張 open Issue。回報採用，候選為 #246（匯出 Excel 三處假成功，10 個驗收框全勾，證據 PR #248 已併入 main）。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-46-journey-gap",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#46 旅客付款動線盤點（claude-haiku-4-5）：逐條驗收對照 origin/main 實際程式碼。回報採用——`/pay/*` 與 `/checkout/*` 在 main 上完全不存在，十條驗收有八條無任何支撐程式。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "luna-ci-r01-s08",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "main CI 健康度盤點（claude-haiku-4-5）。回報**部分採用**：它正確找出 main 是紅的、失敗測試與 verbatim 錯誤（PGRST205 traveler_risk_policies 不在 schema cache），但把成因歸給 bf0c0a6（#427）是錯的——該 commit 只加了 docs、一支 script 與兩支 unit 測試，不可能造成整合測試缺表。我實查 TEST 的 supabase_migrations.schema_migrations，真正成因是 canonical 0105 從未套用到 shared TEST（0106 先套、0105 被跳過）。方法教訓：時間相鄰不等於因果。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -159,7 +219,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 6,
+    "fullCiRuns": 7,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -175,13 +235,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 6,
-    "lunaAccepted": 6,
+    "lunaTasks": 9,
+    "lunaAccepted": 9,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 1,
+    "solTouches": 2,
     "solIssues": 1
   },
   "auditability": {
