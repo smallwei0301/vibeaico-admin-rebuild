@@ -75,13 +75,19 @@ begin
     select 1 from pg_constraint
      where conrelid = 'public.customers'::regclass
        and contype = 'u'
-       and conkey = (
-         select array_agg(attnum order by attnum)
-           from pg_attribute
-          where attrelid = 'public.customers'::regclass
-            and attname in ('tenant_id', 'id')
-            and not attisdropped
-       )
+       -- `pg_constraint.conkey` 保留的是**約束宣告時的欄位順序**，不是排序後的
+       -- 值：`unique (tenant_id, id)` 在 customers（id=attnum 1、tenant_id=2）
+       -- 上得到的是 `{2,1}`。第一版直接拿它跟一個 `order by attnum` 的
+       -- `array_agg`（`{1,2}`）比，於是永遠不相等，斷言必定誤報「約束不存在」。
+       -- 要比的是**欄位集合**，所以兩邊都排序後再比。
+       and (select array_agg(k order by k) from unnest(conkey) k)
+           = (
+             select array_agg(attnum order by attnum)
+               from pg_attribute
+              where attrelid = 'public.customers'::regclass
+                and attname in ('tenant_id', 'id')
+                and not attisdropped
+           )
   ) then
     raise exception
       'customers 缺少 (tenant_id, id) 的唯一約束（預期由 0104 建立的 customers_tenant_id_id_key）；'
