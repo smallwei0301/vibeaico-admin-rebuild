@@ -69,6 +69,7 @@
 | PB-034 | 用 CI 當規則查詢器；以及**預防本身涵蓋不全** | #352 退四次、#361 兩次、#370 一次、#397 一次，全是中繼資料錯、零程式碼問題。開 PR 前跑 `scripts/agents/agent-wip-preflight.mjs`，通過才推。**但 #370 證明跑了也可能不夠**：preflight 當時沒涵蓋 `local-isolated-test-policy.mjs`，於是 preflight 綠、CI 仍退。已讓 preflight 直接呼叫 CI 的同一支函式。**#397 再證一次**：`ASTRA_TEST_BASELINE`／`ASTRA_SCHEMA_BASELINE` 由 `astra-review-policy.mjs` 驗證，卻連 PR 模板都沒列出來——照模板填完仍然必退。preflight 已改呼叫 `evaluateAstra()`，但只留下本機真的能知道的那兩條錯誤；模板也補上了這兩個欄位。欄位錯常是 **lane 選錯的症狀**。 | `scripts/agents/agent-wip-preflight.mjs`、`scripts/ci/local-isolated-test-policy.mjs` |
 | PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 | PB-036 | `TERRA_BUILD` 的施工跑在 audit 層模型上 | CLAUDE.md 寫得很直白：Terra 一律用 Sonnet，把施工放在 Opus 上是 over-spec，不是 diligence——它燒掉 audit 層的成本，還讓 audit 層變成在審自己的產出。已發生兩次（#370、#396），兩次都是「我人已經在跑了，順手做完比較快」。**開工前先判斷這一輪是不是施工**：新增／修改 migration、route、server 模組或測試就是 `TERRA_BUILD`，必須委派給 build 層模型；不是委派不了，是沒有先問。已發生就如實記為違規，不得寫成中性註記。 | `CLAUDE.md`「Lane → model tier」；`docs/MODEL-ROUTING.md` |
+| PB-037 | 把「欄位集合」當成「欄位順序」，並用一次找不到的搜尋證明「它不存在」 | 同一支 migration（`0105`）同一輪內犯兩次。先是 grep `id, tenant_id` 漏掉既有的 `unique (tenant_id, id)`，據此斷定「沒有等價約束」而自建一條重複的，害 schema proof 在 drop 既有約束時被依賴擋下；修正時又把 `conkey`（**保留宣告順序**，`{2,1}`）拿去比排序過的 `{1,2}`，讓保護性斷言必定誤報。**判定「是否已存在」一律查系統目錄並兩邊排序比欄位集合；任何證明「X 不存在」的搜尋，送出結論前先餵一個已知存在的正向對照。** 「我沒找到」是關於搜尋的陳述，不是關於世界的陳述。 | `supabase/migrations/0105_issue_44_traveler_risk_policies.sql`、`0104:138`、`0067` |
 
 ## 事件紀錄
 
@@ -927,6 +928,67 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
      是同一條違規再加一條不實中繼資料。
   4. 已發生的違規如實記在 PR 上，不寫成「註記」。
 - 狀態：監看中（第 3 次再發生時，改為開工前強制先跑一次 lane 分類並記錄結果）
+
+### PB-037 — 把「欄位集合」當成「欄位順序」，然後用一次找不到的搜尋證明「它不存在」
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：**2（同一支 migration、同一輪內）**
+- Issue／PR／CI：#44／PR #77；`agent-schema-bootstrap` run 34791455530、34791859620
+- 分類：Schema／驗證方法
+- 事件：`0105` 需要一個 `customers` 上的唯一約束當複合 FK 的目標。兩次都在同一個
+  觀念上出錯。
+
+  **第 1 次——用文字搜尋判定「不存在」。** 我下的是
+  `grep -iE "unique \(id, tenant_id\)|id, tenant_id"`，零命中，於是寫下
+  「`customers` 上確實沒有等價的唯一約束，所以那個 FK 靶是必要的」並據此
+  `add constraint customers_id_tenant_uq unique (id, tenant_id)`。
+  但 `0104_tour_order_lineage_keys.sql:138`（同一天稍早才由我套用到正式庫的那支）
+  早就建了 `customers_tenant_id_id_key unique (tenant_id, id)`——**同一個欄位集合，
+  只是宣告順序相反**，我的樣式因此漏掉它。
+  後果不只是多一條冗餘約束：FK 綁上去之後，`agent-schema-bootstrap` 的
+  `production-shaped-simple-keys-upgrade` 證明在 drop 既有約束時被依賴關係擋下。
+
+  **第 2 次——修正時又踩同一個觀念。** 改成「重用既有約束、缺少就 raise」是對的
+  方向，但判斷式寫成 `conkey = (select array_agg(attnum order by attnum) ...)`。
+  `pg_constraint.conkey` **保留的是約束宣告時的欄位順序**，不是排序後的值：
+  `customers` 的 `id=attnum 1`、`tenant_id=2`，所以 `unique (tenant_id, id)` 的
+  `conkey` 是 `{2,1}`，而我拿 `{1,2}` 去比，**永遠不相等**，於是那條「保護性」斷言
+  必定誤報「約束不存在」並中止整支 migration。
+- 證據：
+  ```sql
+  -- 對 canonical TEST 實查（唯讀），一次看清兩件事
+  select conname,
+         conkey::int[]                                        as conkey_宣告順序,
+         (select array_agg(k order by k) from unnest(conkey) k)::int[] as conkey_排序後,
+         (select array_agg(attnum order by attnum) from pg_attribute
+           where attrelid='public.customers'::regclass
+             and attname in ('tenant_id','id') and not attisdropped)::int[] as 我的運算式
+    from pg_constraint
+   where conrelid='public.customers'::regclass and contype='u';
+  -- → customers_tenant_id_id_key | {2,1} | {1,2} | {1,2}
+  --   宣告順序 {2,1} ≠ 我的 {1,2}；排序後才相等
+
+  -- 兩個判斷式直接對打
+  -- 修正後（兩邊都排序）→ true
+  -- 修正前（直接比 conkey）→ false
+  ```
+- 預防（可機械執行）：
+  1. **「唯一約束／索引是否已存在」不得用文字搜尋判定。** 一律查系統目錄，並以
+     **欄位集合**比對：`(select array_agg(k order by k) from unnest(conkey) k)`
+     對 `(select array_agg(attnum order by attnum) from pg_attribute ...)`。
+     `conkey`／`indkey` 依設計保留順序，兩邊不各自排序就是在比「順序」不是「集合」。
+  2. **新增 UNIQUE／index 當 FK 靶之前，先查是否已有等價者；有就重用。**
+     「照名稱查不到 → 自己建」正是製造重複約束的那個形狀。本 repo 既有慣例是
+     `<table>_tenant_id_id_key unique (tenant_id, id)`（見 `0067`、`0104`）。
+  3. **正向對照（positive control）**：任何用來證明「X 不存在」的搜尋或判斷式，
+     送出結論前必須先拿一個**已知存在**的案例餵它。找不到那個已知案例，代表
+     搜尋壞了，不代表世界是空的。第 2 次若先拿 `customers_tenant_id_id_key`
+     餵一次判斷式，當場就會看到 `false`。
+  4. **「我沒找到」不是「它不存在」。** 前者是關於我的搜尋的陳述，後者是關於世界的
+     陳述。寫進 PR／Issue 前先分清楚自己在講哪一個。
+- 狀態：監看中。第 3 次再發生時，改為：任何 migration 內用來判定「物件是否已存在」
+  的述詞，必須在 PR 證據裡附上**對真實資料庫跑過的正向對照結果**，否則該 PR 不得
+  進入 Final Risk。
 
 ### 六問開工／Review Checklist
 
