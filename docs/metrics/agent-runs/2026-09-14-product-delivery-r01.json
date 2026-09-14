@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 7,
+    "closureSweeps": 8,
     "closureAdvancedOrClosed": 1
   },
   "modelUsage": {
@@ -916,7 +916,8 @@
     "s07 補充：scout 漏列的 #218 其實是第二個結案候選。9 項驗收 8 項已勾，唯一未勾的第 9 格阻擋理由是「0090 尚未套用正式庫與 canonical TEST」——唯讀實查顯示該理由六天前就已消失：0090 ledger row 在正式庫（20260908134502）與 TEST（20260908132012）皆存在，public.redeem_booking_points 實體存在（prosecdef=true），0093 guard 亦在正式庫且pg_get_functiondef 確含 not in (PENDING, CONFIRMED)；#291 已 closed/completed。差點犯 PB-037：初驗時查函式是否含 COMPLETED/CANCELLED/NO_SHOW，三者皆 false，看似正式庫漂移；實際上那三個字只出現在 0093 的註解（轉述 Owner 裁示），實作刻意用白名單。先讀 canonical 再下結論才沒誤報。處置：列為候選但不自行關閉——第 9 格的語意是「是否經逐次具名授權後套用」，套用發生於 2026-09-08，授權紀錄不在本輪視野內，該確認屬 Owner 判斷。",
     "ROUTING VIOLATION（PB-036 第五次，如實記為違規而非中性註記）：本輪五份 scout 層文件（PB-049／PB-050／ledger 詞彙修正／s07 sweep／#41 §5 盤點）全由 audit 層 claude-opus-5 直接產出。前四次是 TERRA_BUILD 施工跑在 Opus 上，第五次換成文件——舊預防「開工前先跑 lane 分類」綁在「施工」這個詞上，換一種形狀就繞過去了。已改為路徑判準寫入 CLAUDE.md。量化背景：本 session transcript 113 MB、9,092 次工具呼叫，每次都把完整上下文重送 audit 層模型；五份文件本身不貴，貴的是各自帶著的整個上下文。",
     "2026-09-14 續：治理分支 claude/project-governance-rules-vraejm（PB-036 第五次違規/PB-047-050/closure sweep s06-07/schema-truth 四份唯讀文件）依 8 檔/800 行預算拆成 PR #451/#452/#453，三張皆綠燈合併進 main（cce54177/99265147/e0edaeaf）。B+ loop 續：scout 盤點 → 發現 #447/#228 候選皆不可行 → audit 層重新查證 #8 根因已被 #41 解決 → Sol 對 #218 第 6 格獨立唯讀核實給 CLOSE_APPROVED 並關閉 → Terra 對 #8 剩餘缺口實際施工（trip 複製 + tour-admin e2e），落地 PR #456（draft，CI 待跑）。兩次背景 agent 因平台 session rate limit 中止重派，均未產出需保留結果，不重複計入 modelUsage。",
-    "2026-09-14 續：PR #456（Issue #8 trip 複製真實化 + tour-admin e2e）Sol final diff audit CLOSE_APPROVED，squash 合併 dccc6d47，已驗證可達 main 並回讀。PR #457（ledger 埋點）squash 合併 066af643，同樣驗證。四項 Sol 非阻擋建議記錄於 Issue #8 留言供下一輪處理。本輪 CI 全綠次數 +5（#451/452/453/456/457）。"
+    "2026-09-14 續：PR #456（Issue #8 trip 複製真實化 + tour-admin e2e）Sol final diff audit CLOSE_APPROVED，squash 合併 dccc6d47，已驗證可達 main 並回讀。PR #457（ledger 埋點）squash 合併 066af643，同樣驗證。四項 Sol 非阻擋建議記錄於 Issue #8 留言供下一輪處理。本輪 CI 全綠次數 +5（#451/452/453/456/457）。",
+    "2026-09-14 續：closure sweep s08（見 docs/metrics/closure-sweeps/2026-09-14-product-delivery-r01-s08.md），EMPTY_WITH_SCAN——16 張 open PR 全數為 Draft／owner-blocked／parked／另一 session 施工中，其中 #312（#228）已在本輪稍早詳細核實 LANE_STATE=OWNER_BLOCKED，非遺漏。本輪 Product 側新增：Issue #218 關閉、PR #456 合併（Issue #8 trip 複製 + e2e）；治理側 PR #451/452/453/457/458 全部合併。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
