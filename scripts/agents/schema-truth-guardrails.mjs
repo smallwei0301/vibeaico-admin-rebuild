@@ -14,6 +14,7 @@ const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const MIGRATION_PATH = /^supabase\/migrations\/\d{4}_[A-Za-z0-9._-]+\.sql$/;
 const SURFACES = new Set(['columns', 'constraints', 'indexes', 'views', 'policies', 'routines', 'triggers']);
 const TARGETS = new Set(['TEST', 'PRODUCTION']);
+const CANONICAL_MAIN_REF = 'origin/main';
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -58,6 +59,12 @@ function normalizeCanonicalMigrationPath(value) {
   return normalized;
 }
 
+function normalizeMainRef(value) {
+  const ref = String(value ?? '').trim();
+  if (ref !== CANONICAL_MAIN_REF) fail('INVALID_MAIN_REF', `mainRef must be ${CANONICAL_MAIN_REF}`);
+  return ref;
+}
+
 function runGit(repoRoot, args, { binary = false } = {}) {
   const result = spawnSync('git', ['-C', repoRoot, ...args], {
     encoding: binary ? undefined : 'utf8',
@@ -85,15 +92,16 @@ export function admitCanonicalMigrationSource({
   repoRoot,
   migrationPath,
   targetEnvironment,
-  mainRef = 'origin/main',
+  mainRef = CANONICAL_MAIN_REF,
   expectedSha256 = null,
 }) {
   const root = fs.realpathSync(path.resolve(repoRoot));
   const target = String(targetEnvironment ?? '').trim().toUpperCase();
   if (!TARGETS.has(target)) fail('INVALID_TARGET_ENVIRONMENT', 'targetEnvironment must be TEST or PRODUCTION');
   const relativePath = normalizeCanonicalMigrationPath(migrationPath);
-  const currentMainSha = normalizeSha(String(runGit(root, ['rev-parse', mainRef])).trim(), 'current main SHA');
-  const mainBytes = readMainFile(root, mainRef, relativePath);
+  const canonicalMainRef = normalizeMainRef(mainRef);
+  const currentMainSha = normalizeSha(String(runGit(root, ['rev-parse', canonicalMainRef])).trim(), 'current main SHA');
+  const mainBytes = readMainFile(root, canonicalMainRef, relativePath);
 
   const localPath = path.resolve(root, relativePath);
   const relative = path.relative(root, localPath);
@@ -101,8 +109,13 @@ export function admitCanonicalMigrationSource({
   if (!fs.existsSync(localPath)) fail('LOCAL_MIGRATION_MISSING', relativePath);
   const info = fs.lstatSync(localPath);
   if (!info.isFile() || info.isSymbolicLink()) fail('LOCAL_MIGRATION_INVALID', `${relativePath} must be a regular file`);
-  const localBytes = fs.readFileSync(localPath);
-  if (!localBytes.equals(mainBytes)) fail('WORKTREE_MIGRATION_DIFFERS_FROM_MAIN', `${relativePath} bytes differ from ${mainRef}`);
+  const realParent = fs.realpathSync(path.dirname(localPath));
+  if (realParent !== path.dirname(localPath)) fail('MIGRATION_PARENT_SYMLINK_REJECTED', `${relativePath} parent directory must not be a symlink`);
+  const realLocalPath = fs.realpathSync(localPath);
+  const realRelative = path.relative(root, realLocalPath);
+  if (realRelative.startsWith(`..${path.sep}`) || realRelative === '..' || path.isAbsolute(realRelative)) fail('MIGRATION_OUTSIDE_REPO', relativePath);
+  const localBytes = fs.readFileSync(realLocalPath);
+  if (!localBytes.equals(mainBytes)) fail('WORKTREE_MIGRATION_DIFFERS_FROM_MAIN', `${relativePath} bytes differ from ${canonicalMainRef}`);
 
   const digest = sha256(mainBytes);
   if (expectedSha256 !== null) {
@@ -116,7 +129,7 @@ export function admitCanonicalMigrationSource({
     status: 'SOURCE_ADMITTED',
     targetEnvironment: target,
     currentMainSha,
-    mainRef,
+    mainRef: canonicalMainRef,
     migrationPath: relativePath,
     migrationSha256: digest,
     databaseMutationAuthorized: false,
@@ -296,7 +309,7 @@ export function runCli(argv = process.argv.slice(2)) {
       repoRoot: args['repo-root'] ?? '.',
       migrationPath: args.migration,
       targetEnvironment: args.target,
-      mainRef: args['main-ref'] ?? 'origin/main',
+      mainRef: args['main-ref'] ?? CANONICAL_MAIN_REF,
       expectedSha256: args['expected-sha256'] ?? null,
     });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
