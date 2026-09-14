@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { routing } from '../../scripts/agents/astra-review-policy.mjs';
-import { buildProductionDbFinalRiskEvidence } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
+import { changeDigestOf, routing } from '../../scripts/agents/astra-review-policy.mjs';
+import {
+  buildProductionDbFinalRiskEvidence,
+  buildProductionDbFinalRiskEvidenceFromGithub,
+} from '../../scripts/agents/production-db-final-risk-evidence.mjs';
 import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 
 const BASE = '1'.repeat(40);
@@ -15,6 +18,22 @@ const BODY = [
   'ASTRA_RISK: GOVERNANCE_GATE',
   'ASTRA_RATIONALE: Production DB release changes a protected database execution boundary.',
 ].join('\n');
+const LIVE_TEST_BASELINE = 'trusted main shared TEST integration and E2E evidence';
+const LIVE_SCHEMA_BASELINE = 'scoped Production DB schema release evidence';
+const LIVE_BODY = [
+  BODY,
+  `ASTRA_TEST_BASELINE: ${LIVE_TEST_BASELINE}`,
+  `ASTRA_SCHEMA_BASELINE: ${LIVE_SCHEMA_BASELINE}`,
+].join('\n');
+const LIVE_FILES = [
+  {
+    filename: 'ops/production-db-releases/release-20260914-001.json',
+    previous_filename: null,
+    status: 'added',
+    sha: 'a'.repeat(40),
+  },
+];
+const LIVE_CHANGE = changeDigestOf(LIVE_FILES);
 
 function releasePacket() {
   return {
@@ -78,6 +97,71 @@ function review(overrides: Record<string, unknown> = {}) {
     user: { login: 'claude[bot]', id: 209825114, type: 'Bot' },
     body: `astra-review\n\n\`\`\`astra-review\n${JSON.stringify(attestation)}\n\`\`\``,
   };
+}
+
+function liveReview(overrides: Record<string, unknown> = {}, user: any = { login: 'claude[bot]', id: 209825114, type: 'Bot' }) {
+  const packet = releasePacket();
+  const attestation = {
+    repository: 'smallwei0301/vibeaico-admin-rebuild',
+    policyVersion: routing.version,
+    baseSha: BASE,
+    headSha: HEAD,
+    testBaseline: LIVE_TEST_BASELINE,
+    schemaBaseline: LIVE_SCHEMA_BASELINE,
+    changeDigest: LIVE_CHANGE,
+    requestedModel: 'claude-fable-5-1',
+    actualModel: 'claude-fable-5-1',
+    identityEvidence: 'OPERATOR_ATTESTED',
+    verdict: 'PASS',
+    report: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#pullrequestreview-456',
+    findings: 'Live GitHub Final Risk independently reviewed the exact Production DB release evidence.',
+    productionDbReviewScope: 'PRODUCTION_DB_RELEASE',
+    productionDbReleaseId: RELEASE,
+    productionDbPlanDigest: PLAN,
+    productionDbEvidenceDigest: releaseEvidenceDigestOf(packet),
+    ...overrides,
+  };
+  return {
+    state: 'COMMENTED',
+    commit_id: HEAD,
+    submitted_at: '2026-09-14T09:25:00Z',
+    id: 456,
+    user,
+    body: `astra-review\n\n\`\`\`astra-review\n${JSON.stringify(attestation)}\n\`\`\``,
+  };
+}
+
+function fakeGithub({
+  files = LIVE_FILES,
+  reviews = [liveReview()],
+  changedFiles = files.length,
+  permission = 'read',
+} = {}) {
+  const listFiles = vi.fn();
+  const listReviews = vi.fn();
+  const get = vi.fn(async () => ({
+    data: {
+      number: 999,
+      body: LIVE_BODY,
+      changed_files: changedFiles,
+      created_at: '2026-09-14T08:00:00Z',
+      base: { sha: BASE },
+      head: { sha: HEAD },
+    },
+  }));
+  const getCollaboratorPermissionLevel = vi.fn(async () => ({ data: { permission } }));
+  const github = {
+    rest: {
+      pulls: { get, listFiles, listReviews },
+      repos: { getCollaboratorPermissionLevel },
+    },
+    paginate: vi.fn(async (method: any) => {
+      if (method === listFiles) return files;
+      if (method === listReviews) return reviews;
+      throw new Error('unexpected paginate method');
+    }),
+  };
+  return { github, get, getCollaboratorPermissionLevel };
 }
 
 describe('Production DB Final Risk evidence adapter', () => {
@@ -147,5 +231,68 @@ describe('Production DB Final Risk evidence adapter', () => {
       reviews: [untrusted],
       releasePacket: releasePacket(),
     })).toThrow(/FINAL_RISK_NOT_APPROVED/);
+  });
+
+  it('reconstructs Final Risk from live GitHub PR/files/reviews using the trusted bot root', async () => {
+    const { github, getCollaboratorPermissionLevel } = fakeGithub();
+    const packet = releasePacket();
+    const result = await buildProductionDbFinalRiskEvidenceFromGithub({
+      github,
+      owner: 'smallwei0301',
+      repo: 'vibeaico-admin-rebuild',
+      prNumber: 999,
+      releasePacket: packet,
+    });
+    expect(result).toMatchObject({
+      status: 'ASTRA_APPROVED',
+      releaseId: RELEASE,
+      planDigest: PLAN,
+      evidenceDigest: releaseEvidenceDigestOf(packet),
+      sourcePrNumber: 999,
+      sourcePrHeadSha: HEAD,
+      changeDigest: LIVE_CHANGE,
+      trustSource: 'TRUSTED_AGENT_BOT',
+      databaseMutationAuthorized: false,
+    });
+    expect(getCollaboratorPermissionLevel).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when GitHub changed-file inventory is incomplete', async () => {
+    const { github } = fakeGithub({ changedFiles: 2 });
+    await expect(buildProductionDbFinalRiskEvidenceFromGithub({
+      github,
+      owner: 'smallwei0301',
+      repo: 'vibeaico-admin-rebuild',
+      prNumber: 999,
+      releasePacket: releasePacket(),
+    })).rejects.toThrow(/FINAL_RISK_CHANGED_FILES_INCOMPLETE/);
+  });
+
+  it('does not trust a lookalike bot without the trusted immutable identity or write permission', async () => {
+    const lookalike = liveReview({}, { login: 'claude[bot]', id: 1, type: 'Bot' });
+    const { github, getCollaboratorPermissionLevel } = fakeGithub({ reviews: [lookalike], permission: 'read' });
+    await expect(buildProductionDbFinalRiskEvidenceFromGithub({
+      github,
+      owner: 'smallwei0301',
+      repo: 'vibeaico-admin-rebuild',
+      prNumber: 999,
+      releasePacket: releasePacket(),
+    })).rejects.toThrow(/FINAL_RISK_NOT_APPROVED/);
+    expect(getCollaboratorPermissionLevel).toHaveBeenCalledWith({
+      owner: 'smallwei0301', repo: 'vibeaico-admin-rebuild', username: 'claude[bot]',
+    });
+  });
+
+  it('rejects a release packet for another repository before querying the PR', async () => {
+    const { github, get } = fakeGithub();
+    const packet = { ...releasePacket(), repository: 'smallwei0301/other-repo' };
+    await expect(buildProductionDbFinalRiskEvidenceFromGithub({
+      github,
+      owner: 'smallwei0301',
+      repo: 'vibeaico-admin-rebuild',
+      prNumber: 999,
+      releasePacket: packet,
+    })).rejects.toThrow(/FINAL_RISK_REPOSITORY_MISMATCH/);
+    expect(get).not.toHaveBeenCalled();
   });
 });
