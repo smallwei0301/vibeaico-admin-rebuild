@@ -338,8 +338,8 @@ begin
   -- 比對片段而非整串運算式：pg_get_expr 的輸出經過正規化，跨版本可能改寫，
   -- 釘死整串會在無關的升級上假性失敗。
   if not exists (
-    select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
-     where c.relname = 'traveler_risk_policies'
+    select 1 from pg_policy p
+     where p.polrelid = 'public.traveler_risk_policies'::regclass
        and p.polname = 'p_trp_i'
        and pg_get_expr(p.polwithcheck, p.polrelid) like '%MANAGER%'
        and pg_get_expr(p.polwithcheck, p.polrelid) like '%auth.uid()%'
@@ -349,12 +349,47 @@ begin
       '——工作人員誤用與稽核操作者偽造將不再被擋下';
   end if;
 
+  -- 片段釘到**欄位**而不只是函式名（覆核 N25）：`is_tenant_member(customer_id)`
+  -- 會通過只比對函式名的版本，但它限制的是錯的欄位，等於沒有租戶隔離。
+  -- 實查正規化輸出為 `is_tenant_member(tenant_id)`，所以這個片段不會誤報。
   if not exists (
-    select 1 from pg_policy p join pg_class c on c.oid = p.polrelid
-     where c.relname = 'traveler_risk_policies'
+    select 1 from pg_policy p
+     where p.polrelid = 'public.traveler_risk_policies'::regclass
        and p.polname = 'p_trp_r'
-       and pg_get_expr(p.polqual, p.polrelid) like '%is_tenant_member%'
+       and pg_get_expr(p.polqual, p.polrelid) like '%is_tenant_member(tenant_id)%'
   ) then
-    raise exception 'p_trp_r 的 using 不再以 is_tenant_member 限制租戶——跨租戶讀取將不再被擋下';
+    raise exception
+      'p_trp_r 的 using 不再是 is_tenant_member(tenant_id)——跨租戶讀取將不再被擋下';
+  end if;
+
+  -- view 的 security_invoker（覆核 N24）。少了它，view 會以 owner（postgres，
+  -- BYPASSRLS）執行，authenticated 透過 traveler_risk_current_policy 就能讀到
+  -- 別店的政策——一條繞過本表 RLS 的跨租戶讀取路徑。
+  -- `create or replace view … with (security_invoker = true)` 每次套用都會重設它，
+  -- 所以出貨的 SQL 本身沒問題；有洞的是這個斷言區塊，與 N20 同一家族。
+  if not exists (
+    select 1 from pg_class
+     where oid = 'public.traveler_risk_current_policy'::regclass
+       and 'security_invoker=true' = any(reloptions)
+  ) then
+    raise exception
+      'traveler_risk_current_policy 未啟用 security_invoker——'
+      'view 將以 owner 權限執行並繞過本表 RLS，形成跨租戶讀取路徑';
+  end if;
+
+  -- deposit 值域不得出現 FULL／NONE（覆核 N23）。TripPlan.depositMode 有這兩個值，
+  -- 若混進來，FORCE_DEPOSIT 就變成「強制全額」或「強制不用訂金」——後者正是
+  -- 2026-09-11 裁示禁止的等價豁免，只是換一個寫法。
+  if exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.traveler_risk_policies'::regclass
+       and contype = 'c'
+       and conname = 'traveler_risk_policies_deposit_domain_ck'
+       and (pg_get_constraintdef(oid) like '%''FULL''%'
+         or pg_get_constraintdef(oid) like '%''NONE''%')
+  ) then
+    raise exception
+      'traveler_risk_policies 的 deposit 值域出現 FULL／NONE——'
+      '那是 2026-09-11 Owner Decision 禁止的等價豁免的另一種寫法';
   end if;
 end $$;
