@@ -229,4 +229,54 @@ describe('schema truth evidence contract', () => {
     }));
     expect(() => normalizeMetadataEvidencePacket(value, MAIN)).toThrow(/INVALID_LEDGER_IDENTITY/);
   });
+
+  /*
+   * #396 recorded two distinct 0082 rows on the production ledger: a
+   * four-digit backfill row and the original Supabase timestamp row that share
+   * the same migration name. They are two identities, not one, and a
+   * four-digit prefix is not enough to collapse them. Keep both.
+   */
+  it('keeps the two documented 0082 ledger identities as separate rows', () => {
+    const value = finalize(packet('PRODUCTION', {
+      migrationLedger: {
+        state: 'PRESENT',
+        identities: [
+          { version: '0082', name: '0082_staff_display_fields' },
+          { version: '20260907024138', name: '0082_staff_display_fields' },
+        ],
+      },
+    }));
+    expect(normalizeMetadataEvidencePacket(value, MAIN).migrationLedger.identities).toEqual([
+      { version: '0082', name: '0082_staff_display_fields' },
+      { version: '20260907024138', name: '0082_staff_display_fields' },
+    ]);
+  });
+
+  it('still rejects a repeated ledger identity after four-digit versions are allowed', () => {
+    const value = finalize(packet('PRODUCTION', {
+      migrationLedger: {
+        state: 'PRESENT',
+        identities: [
+          { version: '0082', name: '0082_staff_display_fields' },
+          { version: '0082', name: '0082_staff_display_fields' },
+        ],
+      },
+    }));
+    expect(() => normalizeMetadataEvidencePacket(value, MAIN)).toThrow(/DUPLICATE_LEDGER_IDENTITY/);
+  });
+
+  it.each([
+    ['non-numeric', '008a'],
+    ['numeric type', 82],
+    ['null', null],
+    ['empty', ''],
+  ])('rejects a %s migration version', (_label, version) => {
+    const value = finalize(packet('TEST', {
+      migrationLedger: {
+        state: 'PRESENT',
+        identities: [{ version, name: '0082_staff_display_fields' }],
+      },
+    }));
+    expect(() => normalizeMetadataEvidencePacket(value, MAIN)).toThrow(/INVALID_LEDGER_IDENTITY/);
+  });
 });
