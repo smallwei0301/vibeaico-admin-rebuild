@@ -101,6 +101,30 @@ describe('mapTravelerRiskPolicyRow', () => {
     expect(mapped.deposit).toEqual({ mode: 'DEPOSIT_PERCENT', value: 30 });
   });
 
+  // 2026-09-11 Owner Decision（不提供熟客免訂金）明文要求：第一版不得有
+  // FORCE_NO_DEPOSIT 或任何「等價能力」。TripPlan.depositMode 有 NONE／FULL
+  // 兩個值，若它們能從這裡進來，FORCE_DEPOSIT 就變成「強制不用訂金」或
+  // 「強制全額」——前者正是被禁止的等價豁免。
+  //
+  // 這兩條由 Final Risk 覆核（claude-fable-5-1）查出缺口而補：它把 zod 的
+  // FORCE_DEPOSIT_MODES 放寬到含 FULL／NONE，22 條測試仍全綠（突變存活）。
+  // 當時 DB 的 CHECK 與 kernel 的 resolveTravelerBookingPolicy() 都仍會拒絕，
+  // 所以不是安全漏洞；但 API 層的守門沒有任何回歸測試，日後放寬只會在
+  // 資料庫層才被發現。這兩條把守門釘在最靠近入口的地方。
+  it.each(['FULL', 'NONE'])(
+    'FORCE_DEPOSIT 的 deposit.mode 不接受 %s（2026-09-11 裁示禁止的等價豁免）',
+    (mode) => {
+      const result = assignTravelerRiskPolicySchema.safeParse({
+        customerId: '00000000-0000-4000-8000-000000000001',
+        policy: 'FORCE_DEPOSIT',
+        deposit: { mode, value: 1 },
+        reason: '測試等價豁免必須被擋下',
+        actorLabel: 'Wayne',
+      });
+      expect(result.success).toBe(false);
+    },
+  );
+
   it('deposit_mode 為 null 時 deposit 回 null', () => {
     const mapped = mapTravelerRiskPolicyRow({
       id: 'p2', tenant_id: 't1', customer_id: 'c1', policy: 'DEFAULT',
