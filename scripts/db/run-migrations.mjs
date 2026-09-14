@@ -23,7 +23,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, resolve, join } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import process from 'node:process';
 
 import { admitCanonicalMigrationSource, sha256 } from '../agents/schema-truth-guardrails.mjs';
@@ -33,6 +33,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..', '..');
 const MIGRATIONS_DIR = resolve(REPO_ROOT, 'supabase', 'migrations');
 const MIGRATION_PREFIX = 'supabase/migrations/';
+const CANONICAL_MAIN_REF = 'origin/main';
 const API = 'https://api.supabase.com';
 
 function fail(code, message) {
@@ -61,7 +62,7 @@ function runGit(repoRoot, args, runner = spawnSync) {
 
 export function refreshCanonicalMain(repoRoot = REPO_ROOT, runner = spawnSync) {
   runGit(repoRoot, ['fetch', '--quiet', 'origin', 'main'], runner);
-  const sha = runGit(repoRoot, ['rev-parse', 'origin/main'], runner).trim().toLowerCase();
+  const sha = runGit(repoRoot, ['rev-parse', CANONICAL_MAIN_REF], runner).trim().toLowerCase();
   if (!/^[0-9a-f]{40}$/.test(sha)) fail('INVALID_MAIN_SHA', 'origin/main did not resolve to a commit SHA');
   return sha;
 }
@@ -73,7 +74,7 @@ export function listLocalMigrationFiles(migrationsDir = MIGRATIONS_DIR) {
 export function listCanonicalMigrationFiles(repoRoot = REPO_ROOT, runner = spawnSync) {
   const output = runGit(
     repoRoot,
-    ['ls-tree', '-r', '--name-only', 'origin/main', '--', 'supabase/migrations'],
+    ['ls-tree', '-r', '--name-only', CANONICAL_MAIN_REF, '--', 'supabase/migrations'],
     runner,
   );
   return output
@@ -131,6 +132,15 @@ export function buildAdmittedMigrationPlan({
     }
     if (admission.targetEnvironment !== targetEnvironment) {
       fail('TARGET_ENVIRONMENT_MISMATCH', `${migrationPath} admission target changed unexpectedly`);
+    }
+    if (admission.mainRef !== CANONICAL_MAIN_REF) {
+      fail('ADMISSION_MAIN_REF_MISMATCH', `${migrationPath} was not admitted from ${CANONICAL_MAIN_REF}`);
+    }
+    if (admission.migrationPath !== migrationPath) {
+      fail('ADMISSION_PATH_MISMATCH', `${migrationPath} admission proof belongs to another path`);
+    }
+    if (!/^[0-9a-f]{40}$/.test(String(admission.currentMainSha ?? ''))) {
+      fail('INVALID_ADMISSION_MAIN_SHA', `${migrationPath} admission proof has no valid main SHA`);
     }
     if (pinnedMainSha === null) pinnedMainSha = admission.currentMainSha;
     else if (admission.currentMainSha !== pinnedMainSha) {
