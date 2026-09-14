@@ -12,7 +12,7 @@ const MAIN = 'a'.repeat(40);
 const PLAN = 'b'.repeat(64);
 
 function packet(overrides: Record<string, unknown> = {}) {
-  const value = {
+  const value: any = {
     schemaVersion: 1,
     releaseId: 'release-20260914-001',
     repository: PRODUCTION_DB_POLICY.repository,
@@ -135,9 +135,7 @@ describe('Production DB release preflight', () => {
 
   it('invalidates Final Risk when any reviewed release evidence changes', () => {
     const changed = packet();
-    changed.consistency.unexplainedDifferences = 1;
     changed.consistency.observedAt = '2026-09-14T09:51:00Z';
-    changed.consistency.unexplainedDifferences = 0;
     expect(() => evaluateReleasePreflight(changed, { now: NOW })).toThrow(/FINAL_RISK_EVIDENCE_MISMATCH/);
   });
 
