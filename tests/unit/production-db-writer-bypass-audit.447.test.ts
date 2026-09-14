@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { auditProductionDbWriterBypasses, collectProductionDbExecutableSources } from '../../scripts/agents/production-db-writer-bypass-audit.mjs';
 
 describe('Production DB writer bypass audit #447',()=>{
-  it('keeps the real repo write surface bounded to controlled writer + TEST-only legacy runner',()=>{
+  it('keeps the real repo write surface bounded to controlled writer + two TEST-only runners',()=>{
     const result=auditProductionDbWriterBypasses(collectProductionDbExecutableSources(process.cwd()));
     expect(result).toMatchObject({
       status:'PRODUCTION_DB_WRITE_BYPASS_AUDIT_CLEAN',
@@ -12,6 +12,7 @@ describe('Production DB writer bypass audit #447',()=>{
     expect(result.writeEndpointFiles).toEqual([
       'scripts/db/controlled-production-db-release.mjs',
       'scripts/db/run-migrations.mjs',
+      'scripts/db/validate-production-db-release-on-test.mjs',
     ]);
   });
 
@@ -31,5 +32,17 @@ describe('Production DB writer bypass audit #447',()=>{
     const sources=collectProductionDbExecutableSources(process.cwd());
     sources['scripts/db/run-migrations.mjs']=String(sources['scripts/db/run-migrations.mjs']).replace('PRODUCTION_CONTROLLED_WRITER_REQUIRED','REMOVED_GUARD');
     expect(()=>auditProductionDbWriterBypasses(sources)).toThrow(/LEGACY_RUNNER_PRODUCTION_GUARD_MISSING/);
+  });
+
+  it('rejects weakening the modern G3 validator Production guard or scoped-token boundary',()=>{
+    for (const mutate of [
+      (source:string)=>source.replace('PRODUCTION_TARGET_FORBIDDEN','REMOVED_GUARD'),
+      (source:string)=>source.replace('TEST_DB_RELEASE_TOKEN','SUPABASE_ACCESS_TOKEN'),
+      (source:string)=>source.replace("const TEST_PROJECT_REF = 'nmwhwngojosmagjuvxol';","const TEST_PROJECT_REF = 'other';"),
+    ]) {
+      const sources=collectProductionDbExecutableSources(process.cwd());
+      sources['scripts/db/validate-production-db-release-on-test.mjs']=mutate(String(sources['scripts/db/validate-production-db-release-on-test.mjs']));
+      expect(()=>auditProductionDbWriterBypasses(sources)).toThrow(/G3_/);
+    }
   });
 });
