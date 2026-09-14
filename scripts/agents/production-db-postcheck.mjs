@@ -27,6 +27,14 @@ function verifyPostReport(report, plan) {
   }
 }
 
+/**
+ * @param {{
+ *   report?: any,
+ *   plan?: any,
+ *   journal?: any,
+ *   now?: string,
+ * }} [input]
+ */
 export function finalizeProductionDbPostcheck({ report, plan, journal, now = new Date().toISOString() } = {}) {
   assertReleaseJournalMatchesPlan(journal, plan);
   if (journal.status !== 'APPLIED_CONFIRMED') fail('POSTCHECK_JOURNAL_NOT_APPLIED', `journal status is ${journal.status}`);
