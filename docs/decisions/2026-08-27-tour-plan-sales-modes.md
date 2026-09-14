@@ -42,7 +42,20 @@ Owner 選擇方案 B：**旅客送出 REQUEST 時不鎖導遊時間；導遊按�
 - 若另一筆訂單／團次已搶先占用同一時間，接受動作必須失敗並回可理解的 conflict，不得覆蓋或雙重指派；UI 應協助改提其他時間。
 - 多人團隊仍依共用 availability engine 選定／驗證實際 PRIMARY，不因 REQUEST 路徑另寫一套撞班邏輯。
 
-**尚未裁示：導遊接受 REQUEST 後，等待旅客付款的 Departure 要保留多久，以及逾期後如何釋放。** 此題獨立決策，不與「送申請時是否鎖時間」混為一談。
+#### REQUEST 接受後等待付款的保留時間（Owner 2026-09-14）
+
+Owner 選擇方案 B：**預設保留 12 小時，但 12 小時不是寫死值，必須保留導遊可調整的彈性。**
+
+- 導遊接受 REQUEST 後才建立／啟用 PRIVATE Departure 並正式占用導遊時間。
+- 等待旅客完成必要付款的**預設保留時間為 12 小時**。
+- 此值必須可由導遊依方案需求調整，不得把 12 小時散落硬編碼在 checkout、cron 或 UI。
+- 接受單一 REQUEST 時允許覆寫本次保留時間；實際成立時應 snapshot 成具體的 `hold_expires_at`（或等價絕對截止時間），後續修改 Plan 預設不得回頭改既有 REQUEST／TourOrder。
+- 畫面必須讓導遊與旅客看到實際付款截止時間，而不是只顯示「12 小時內」。
+- 到期時只能在該 TourOrder **仍為待付款且截止時間確實已過**時取消／釋放；必須在鎖定後重新驗證，不能拿 cron 先前掃描到的舊狀態直接取消。
+- 若付款已在期限前被 provider callback 或合法人工確認，逾期程序不得再取消，也不得釋放已成立訂單的名額／導遊時間。
+- 逾期釋放必須與既有專用 expiry RPC／等價原子流程整合，不另寫第二套取消真相。
+
+更完整的 2026-09-14 決策紀錄見 `docs/decisions/2026-09-14-guide-request-payment-hold.md`。
 
 ## 旅客 UX
 
@@ -63,6 +76,7 @@ Owner 選擇方案 B：**旅客送出 REQUEST 時不鎖導遊時間；導遊按�
 - FIXED_DEPARTURE：候選時間來自預先建立的 Departure。
 - INSTANT / REQUEST：候選時間由方案規則 + 共用 staff availability engine 產生。
 - REQUEST 待審核階段不占用 availability；接受時才原子重查並正式建立／鎖定 PRIVATE Departure。
+- REQUEST 接受後依 snapshot 的付款保留截止時間占用 availability；逾期且仍待付款時才原子釋放。
 - staff 的 `DEFAULT_AVAILABLE / EXPLICIT_ONLY` 只決定是否要求 shift coverage，不自行產生 24 小時可售時段。
 - 所有模式都必須排除 block_times、既有 booking、其他 Departure 與後續外部 busy event。
 
@@ -72,7 +86,7 @@ Owner 選擇方案 B：**旅客送出 REQUEST 時不鎖導遊時間；導遊按�
 - 不為三種販售方式建立三套訂單資料表。
 - 不讓 INSTANT／REQUEST 繞過 Departure 直接占用導遊時間。
 - 不讓尚未接受的 REQUEST 占住導遊行事曆。
-- 不在本決策中裁示「接受後等待付款」的保留時限。
+- 不把 REQUEST 接受後的付款保留時間永久寫死為 12 小時；12 小時只是預設值。
 
 ## 後續實作
 
