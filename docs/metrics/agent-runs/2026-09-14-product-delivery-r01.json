@@ -671,6 +671,45 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c7-terra",
+        "requestedModel": "build",
+        "actualModel": "unknown",
+        "actualModelId": "claude-sonnet-5",
+        "accepted": true,
+        "role": "#43 第 7 類 STAFF_CONFLICT 施工兩輪。第一輪分支基底錯誤（從治理分支而非 origin/main 開出，帶進 16 檔無關內容）——成因是我委派時沒交代主工作目錄當時 checkout 在別的分支，不是代理的錯；第二輪改用獨立 worktree 從 origin/main 重開，6 檔 454 行乾淨。補測試時它不採信我的突變回報、自己重跑後指出我 regex 誤中另一條查詢，並自查出第二個同類缺口（departs_on 下限也無覆蓋）一併補上。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c7-sol-audit",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "#43 第 7 類 audit。獨立跑 gate（2294 測試）與三個突變，抓到 .in(status) 無行為覆蓋並開 FIX_REQUIRED。**自我更正一項誤報**：先前回報 .gte(departs_on) 有覆蓋是錯的，perl regex 未加 /g 只換第一個匹配，實際動到 L135 的 formation 查詢而非新查詢；改用行號精準刪除重驗。依 PB-047 規則對正式庫逐項查證整支端點所需欄位（不只新增行），開 PR #448。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c7-final-risk-448",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": null,
+        "role": "PR #448 Final Risk 委派，ASTRA_RISK=TENANT_AUTH_BOUNDARY。已明確要求它自己設計突變、不要採信 PR body 表格，並告知 audit 層先前 regex 誤中其他查詢的具體形狀。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -709,7 +748,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 15,
+    "solTouches": 16,
     "solIssues": 1
   },
   "auditability": {
