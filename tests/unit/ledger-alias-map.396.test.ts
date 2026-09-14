@@ -414,15 +414,16 @@ describe('#396 已提交的正式資料', () => {
   const snapshot = loadRealSnapshot();
   const repoFiles = loadRealRepoFiles();
 
-  // repo 端多出尚未套用的 0105、0107、0108 與本候選的 0109，正式庫快照維持 55 筆
-  // 實際 ledger row（0106 已於 2026-09-14 經 Owner 具名授權套用，因此它在快照裡）。
+  // repo 端多出尚未套用的 0105、0107 與本候選的 0109，正式庫快照維持 56 筆
+  // 實際 ledger row（0106 已於 2026-09-14 經 Owner 具名授權套用，0108 已於
+  // 2026-09-14 由 Owner 具名授權套用並重新擷取本快照，兩者都在快照裡）。
   // 數字不是推算的，是對 current main／submitted candidate 的實際檔案跑一次得到的。
-  it('repo 有 58 個 migration 檔案，正式庫快照有 55 筆 ledger row', () => {
+  it('repo 有 58 個 migration 檔案，正式庫快照有 56 筆 ledger row', () => {
     expect(repoFiles).toHaveLength(58);
-    expect(snapshot.ledgerRowNames).toHaveLength(55);
+    expect(snapshot.ledgerRowNames).toHaveLength(56);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 57 個 repo 檔案與 55 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 58 個 repo 檔案與 56 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -433,19 +434,21 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：48 EXACT、6 ALIAS、4 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：49 EXACT、6 ALIAS、3 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
     }
     // 2026-09-13：0069–0073 五支經 Owner 具名授權套用至正式庫並回讀驗證，
-    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47）。0105、0107、0108 已進 main 但尚未
-    // 套用，0106 已套用至 Production 並完成 postflight。尚未套用的是 0105、0107、
-    // 0108 與本候選的 0109，所以 NOT_APPLIED 是 4。0105／0107／0108／0109 依
-    // AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
-    expect(counts.EXACT).toBe(48);
+    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47）。2026-09-14：0106 套用至
+    // Production 並完成 postflight（47 → 48）；0108 同日由 Owner 具名授權套用，
+    // 同一次作業重新擷取本快照（48 → 49）。0105、0107 已進 main 但尚未套用。
+    // 尚未套用的是 0105、0107 與本候選的 0109，所以 NOT_APPLIED 是 3。
+    // 0105／0107／0109 依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的
+    // 套用授權。
+    expect(counts.EXACT).toBe(49);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(4);
+    expect(counts.NOT_APPLIED ?? 0).toBe(3);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -710,11 +713,12 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 4 筆（0105、0107、0108 與本候選 0109，皆 PENDING_APPLY）。保留 main
-    // 那一版的意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條
-    // 規則會靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，
-    // 被迫同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(4);
+    // 目前為 3 筆（0105、0107 與本候選 0109，皆 PENDING_APPLY；0108 已套用正式庫
+    // 轉為 EXACT）。保留 main 那一版的意圖：釘住數量而不是只檢查「每一筆都有
+    // 理由」，否則清單變空時這條規則會靜悄悄變成空轉。任何人日後新增或移除
+    // NOT_APPLIED 都會先撞到這一行，被迫同時面對下面那條「必須有合法
+    // notAppliedReason」的規則。
+    expect(notApplied.length).toBe(3);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

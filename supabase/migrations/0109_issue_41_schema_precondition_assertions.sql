@@ -107,6 +107,19 @@ begin
 
     -- 依 canonical 逐字加回五條 CHECK。**不**加回 `tour_orders_payment_status_check`
     -- ——enum 型別本身就是值域，那條 CHECK 是 text 時代的替代品，canonical 沒有它。
+    --
+    -- ⚠️ 已知且刻意接受的行為差異：上面被刪掉的 CHECK 也包含
+    -- `tour_orders_payment_amounts_nonnegative`——0087 明文接受的 overlay 別名（見
+    -- 0087 對這個名字的 `if not exists` 判斷式），但在某些環境上它的實際內容是
+    -- canonical 的**超集**：除了 canonical 的界線之外，還多帶一條
+    -- `payment_status <> 'PARTIAL' or paid_amount >= upfront_required_amount`
+    -- （PARTIAL 時已收金額不得低於應收頭期款）。本檔加回的五條是逐字抄自
+    -- canonical 的內容，**不包含**這條額外不變量，所以走過這條修復路徑的環境
+    -- 會從「canonical + 這條額外不變量」退回「純 canonical」。這是刻意的、不是
+    -- 遺漏：本檔的目的是把前提修回 canonical 宣告的形狀，不是替 canonical 悄悄
+    -- 追加一條它沒有明文要求的規則。若 PARTIAL 的已收金額下限應該成為平台行為，
+    -- 需要另開一支 canonical migration 明確加上這條 CHECK，不能靠一個 overlay
+    -- 殘留物在背後撐著。
 
     -- origin/main:supabase/migrations/0087_issue_8b_tour_orders.sql
     -- （tour_orders_paid_amount_consistent，逐字）
@@ -273,8 +286,8 @@ begin
 end $$;
 
 -- =============================================================================
--- 第四段：trip_departures.min_to_depart_snapshot 的 default——斷言，並在不符合
--- canonical 時修回 canonical 形狀
+-- 第四段：trip_departures 的 default——斷言，並在不符合 canonical 時修回 canonical
+-- 形狀
 -- =============================================================================
 -- 這一段在防什麼：先前 `min_to_depart_snapshot` 曾在某環境上是 not null 卻沒有
 -- default（`add column if not exists` 對已存在欄位的 no-op 特性），沒有被 0107
@@ -282,6 +295,13 @@ end $$;
 -- formation_state_model.sql:104）明確是 `not null default 1`，所以這裡不只斷言，
 -- 不符合時直接修回 canonical 的 default 1——修回而不只是報錯，是因為這個欄位的
 -- 正確 default 在 canonical 裡有明確、單一的答案，不需要人工判定。
+--
+-- `formation_status`（同檔 0107:102，`not null default 'COLLECTING'`）是完全同一
+-- 類缺口：同一支 canonical、同一個 `add column if not exists` no-op 成因、同樣
+-- 只被舊斷言比對過型別／nullability，沒比對過 default。只補
+-- `min_to_depart_snapshot` 卻漏掉 `formation_status`，等於這支檔案自己犯了它正在
+-- 修的那個毛病（只補自己想到的個案，不補同類）。canonical 同樣只有一個明確、單一
+-- 的 default 答案，所以比照修回，不只是報錯。
 do $$
 declare
   d text;
@@ -300,5 +320,25 @@ begin
 
   if d is distinct from '1' then
     raise exception '0109 後置斷言失敗——trip_departures.min_to_depart_snapshot 的 default 期望是 1（canonical 0107），修復後實際仍是 %。', coalesce(d, '(無 default)');
+  end if;
+
+  -- formation_status：與 payment_status 的 default 斷言（第二段）同理，
+  -- `pg_get_expr()` 是否替 enum 型別加上 `public.` schema 前綴取決於呼叫當下的
+  -- search_path，因此改用片段比對而不是整串相等比對。
+  select pg_get_expr(ad.adbin, ad.adrelid) into d
+    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+   where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'formation_status';
+
+  if d is null or d not like '%COLLECTING%' or d not like '%departure_formation_status%' then
+    alter table public.trip_departures
+      alter column formation_status set default 'COLLECTING'::public.departure_formation_status;
+  end if;
+
+  select pg_get_expr(ad.adbin, ad.adrelid) into d
+    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+   where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'formation_status';
+
+  if d is null or d not like '%COLLECTING%' or d not like '%departure_formation_status%' then
+    raise exception '0109 後置斷言失敗——trip_departures.formation_status 的 default 期望是 ''COLLECTING''::public.departure_formation_status（canonical 0107），修復後實際仍是 %。', coalesce(d, '(無 default)');
   end if;
 end $$;
