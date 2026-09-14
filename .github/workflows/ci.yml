@@ -244,3 +244,57 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+      - name: Emit trusted-main shared TEST raw evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' }}
+        shell: bash
+        env:
+          MAIN_SHA: ${{ github.sha }}
+          EXPECTED_HEAD: ${{ inputs.expected_head }}
+          BASE_REVISION: ${{ inputs.base_revision }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          TEST_POLICY_REASON: ${{ needs.classify-changes.outputs.test_policy_reason }}
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          test "$MAIN_SHA" = "$EXPECTED_HEAD"
+          node --input-type=module <<'NODE'
+          const url = new URL(process.env.TEST_SUPABASE_URL);
+          if (url.hostname !== 'nmwhwngojosmagjuvxol.supabase.co') {
+            throw new Error(`wrong canonical TEST project host: ${url.hostname}`);
+          }
+          NODE
+          node --input-type=module > "$RUNNER_TEMP/shared-test-run-evidence.json" <<'NODE'
+          const evidence = {
+            schemaVersion: 1,
+            status: 'SHARED_TEST_RUN_VERIFIED',
+            policySkip: false,
+            repository: 'smallwei0301/vibeaico-admin-rebuild',
+            workflowPath: '.github/workflows/ci.yml',
+            event: 'workflow_dispatch',
+            dispatchReason: 'main_manual',
+            mainSha: process.env.MAIN_SHA,
+            expectedHead: process.env.EXPECTED_HEAD,
+            baseRevision: process.env.BASE_REVISION,
+            testProjectRef: 'nmwhwngojosmagjuvxol',
+            sourceRunId: process.env.RUN_ID,
+            sourceRunAttempt: Number(process.env.RUN_ATTEMPT),
+            policyReason: process.env.TEST_POLICY_REASON,
+            integrationStep: 'PASSED',
+            e2eStep: 'PASSED',
+            cleanupClaim: 'NOT_INFERRED_FROM_WORKFLOW_SUCCESS',
+            authzCoverageClaim: 'NOT_INFERRED_FROM_WORKFLOW_SUCCESS',
+            databaseMutationAuthorized: false,
+            productionMutationPerformed: false,
+            emittedAt: new Date().toISOString(),
+          };
+          console.log(JSON.stringify(evidence, null, 2));
+          NODE
+      - name: Upload trusted-main shared TEST raw evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-test-run-evidence-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/shared-test-run-evidence.json
+          if-no-files-found: error
+          retention-days: 14
