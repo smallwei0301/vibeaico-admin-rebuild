@@ -6,11 +6,20 @@ name: agent-schema-drift-watch
         description: Exact current main SHA to observe
         required: true
         type: string
+  workflow_call:
+    inputs:
+      expected_main_sha:
+        description: Exact current main SHA to observe
+        required: true
+        type: string
+    secrets:
+      SCHEMA_OBSERVER_TOKEN:
+        required: true
 permissions:
   contents: read
 concurrency:
-  group: schema-drift-watch-${{ github.ref }}
-  cancel-in-progress: true
+  group: schema-drift-watch-${{ inputs.expected_main_sha }}
+  cancel-in-progress: false
 jobs:
   read-only-three-way:
     if: ${{ github.ref == 'refs/heads/main' }}
@@ -83,5 +92,5 @@ jobs:
       - name: Destroy disposable local database
         if: ${{ always() }}
         run: test ! -d "$RUNNER_TEMP/schema-bootstrap" || (cd "$RUNNER_TEMP/schema-bootstrap" && supabase stop --no-backup)
-# Deliberately manual until the first local+TEST+Production run is reviewed.
-# Future schedule: 17 1 * * * (UTC), plus a main migration-source change trigger.
+# Manual dispatch remains available for diagnosis. workflow_call lets a trusted-main
+# release gate obtain the same read-only evidence without human approval.
