@@ -120,6 +120,11 @@ describe('#41 0108 的資料庫層不變量', () => {
     ['收款政策 snapshot 值域', 'tour_orders_deposit_mode_snapshot_ck'],
     ['PARTIAL 必須誠實', 'tour_orders_partial_paid_amount_ck'],
     ['REFUND_PENDING 必須誠實', 'tour_orders_refund_pending_paid_amount_ck'],
+    // Final Risk（claude-fable-5-1，2026-09-14）M1／M2：REFUNDED／UNPAID 原本
+    // 沒有誠實 CHECK，分別接受過「從未收款卻自稱已退款」與「明明收過錢卻標成
+    // 未付款」的髒資料。
+    ['REFUNDED 必須誠實', 'tour_orders_refunded_paid_amount_ck'],
+    ['UNPAID 必須誠實', 'tour_orders_unpaid_amount_ck'],
   ])('保留 %s 的 CHECK', (_label, name) => {
     expect(MIGRATION).toContain(name);
   });
@@ -137,6 +142,8 @@ describe('#41 0108 的資料庫層不變量', () => {
   it.each([
     'tour_orders_partial_paid_amount_ck',
     'tour_orders_refund_pending_paid_amount_ck',
+    'tour_orders_refunded_paid_amount_ck',
+    'tour_orders_unpaid_amount_ck',
   ])('%s 以 ::text 比對，避免同交易內使用剛新增的 enum 值', (name) => {
     const block = MIGRATION.slice(MIGRATION.indexOf(`add constraint ${name}`));
     const check = block.slice(0, block.indexOf('end if;'));
@@ -159,6 +166,17 @@ describe('#41 0108 的資料庫層不變量', () => {
 
   it('deposit_mode_snapshot 的值域與 0066 的 trip_plans.deposit_mode 相同', () => {
     expect(MIGRATION).toContain("'NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL'");
+  });
+
+  it('不再保留無對應環境的 historical alias skip 名字（死碼，Final Risk 2026-09-14）', () => {
+    // 只有說明性的散文（解釋「這兩個名字為什麼被移除」）可以提到這兩個字串；
+    // 不能再有 `conname = '…_bounds'` 這種實際被拿來查詢／跳過建立約束的用法。
+    expect(MIGRATION).not.toMatch(/conname\s*=\s*'tour_orders_upfront_amount_bounds'/);
+    expect(MIGRATION).not.toMatch(/conname\s*=\s*'tour_orders_refunded_amount_bounds'/);
+  });
+
+  it('post-assertion 第 2 步同時比對數字欄位的 nullability（I1，Final Risk 2026-09-14）', () => {
+    expect(MIGRATION).toContain('attnotnull');
   });
 
   it('post-assertion 用 regtype 而非 format_type() 做型別比對', () => {

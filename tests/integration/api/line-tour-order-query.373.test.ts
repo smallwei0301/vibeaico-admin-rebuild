@@ -195,9 +195,13 @@ async function seedOrders(): Promise<void> {
       paid_amount: 2000, created_at: '2026-03-01T02:00:00Z',
     },
     {
+      // ⚠️ #41 0108 的 tour_orders_refunded_paid_amount_ck 要求 REFUNDED 誠實：
+      // paid_amount 與 refunded_amount 都必須 > 0（一筆從未收款的訂單不能自稱
+      // 「已退款」）。這裡補上「先收齊全額、後來整筆退款」的真實情境，而不是
+      // 沿用 base 的 paid_amount: 0。
       ...base, order_no: ORDER_NO.middle, customer_id: SHOP_A.customerA1,
       party_size: 1, total_amount: 1250, status: 'CANCELLED', payment_status: 'REFUNDED',
-      created_at: '2026-03-02T02:00:00Z',
+      paid_amount: 1250, refunded_amount: 1250, created_at: '2026-03-02T02:00:00Z',
     },
     {
       ...base, order_no: ORDER_NO.newest, customer_id: SHOP_A.customerA1,

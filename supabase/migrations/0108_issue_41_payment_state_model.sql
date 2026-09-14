@@ -52,9 +52,33 @@ alter table public.tour_orders
   add column if not exists refunded_amount numeric not null default 0,
   add column if not exists deposit_mode_snapshot text;
 
--- 約束只在「本檔的名字」與「同用途的 historical 名字」都不存在時才建：兩邊同時掛
--- 會變成同一條規則有兩份定義，日後只改了一邊就會出現「兩個約束互相矛盾」的死結
--- （沿用 0087 的既有慣例）。
+-- M2（Final Risk 2026-09-14）：UNPAID 但 paid_amount > 0 的訂單語意上根本不是
+-- 「未付款」——它應該是 PARTIAL 或 PAID，繼續讓 UI 顯示「未付款」是說謊。0087
+-- 當時只顧到 PAID 那一側（見上方 tour_orders_paid_amount_consistent），PARTIAL
+-- 在本檔才出現，UNPAID 這一側的誠實檢查因此一直缺。跟 0107 對 capacity<1 的
+-- 既有資料一樣：migration 不會替違規列決定一個新狀態，發現就整段中止。
+do $$
+declare
+  bad_rows int;
+begin
+  select count(*) into bad_rows
+    from public.tour_orders
+   where payment_status::text = 'UNPAID' and paid_amount <> 0;
+  if bad_rows > 0 then
+    raise exception '0108 無法加上 UNPAID 誠實 CHECK：有 % 筆既有 tour_orders 標成 UNPAID 卻 paid_amount <> 0。這些列語意上是 PARTIAL 或 PAID，請先修正它們的 payment_status，本 migration 不會替它們決定一個狀態。', bad_rows;
+  end if;
+end $$;
+
+-- 約束只在「本檔的名字」不存在時才建，避免重跑時撞名。
+--
+-- ⚠️ 這裡原本還多掛了一組「同用途的 historical 名字」skip 條件
+-- （`tour_orders_upfront_amount_bounds` / `tour_orders_refunded_amount_bounds`），
+-- 是沿用 0087 對 `tour_orders_payment_amounts_nonnegative` 的既有慣例寫的。但那組
+-- 慣例存在是因為 0087 的名字**真的**在 historical overlay 出現過（0087 的註解與
+-- `supabase/local-migrations/**` 都查得到）。這兩個 `_bounds` 名字反查
+-- `supabase/**` 全庫零命中——它們不對應任何已知的 historical overlay 物件，是
+-- 複製慣例時多寫的防禦，不是真的有這麼一個環境。Final Risk 覆核（claude-fable-5-1，
+-- 2026-09-14）指出這段死碼；既然找不到會用到它的環境，予以移除而非保留猜測。
 do $$
 begin
   -- upfront_required_amount 必須落在 [0, total_amount]：不能要求收超過訂單總額
@@ -63,10 +87,6 @@ begin
     select 1 from pg_constraint
      where conrelid = 'public.tour_orders'::regclass
        and conname = 'tour_orders_upfront_required_amount_ck'
-  ) and not exists (
-    select 1 from pg_constraint
-     where conrelid = 'public.tour_orders'::regclass
-       and conname = 'tour_orders_upfront_amount_bounds'
   ) then
     alter table public.tour_orders
       add constraint tour_orders_upfront_required_amount_ck
@@ -80,10 +100,6 @@ begin
     select 1 from pg_constraint
      where conrelid = 'public.tour_orders'::regclass
        and conname = 'tour_orders_refunded_amount_ck'
-  ) and not exists (
-    select 1 from pg_constraint
-     where conrelid = 'public.tour_orders'::regclass
-       and conname = 'tour_orders_refunded_amount_bounds'
   ) then
     alter table public.tour_orders
       add constraint tour_orders_refunded_amount_ck
@@ -139,6 +155,37 @@ begin
       add constraint tour_orders_refund_pending_paid_amount_ck
       check (payment_status::text <> 'REFUND_PENDING' or paid_amount > 0);
   end if;
+
+  -- M1（Final Risk 2026-09-14）：REFUNDED 必須誠實——「已退款」的前提是「曾經
+  -- 收過錢，而且真的退了」。修正前接受 payment_status='REFUNDED' + paid_amount=0
+  -- + refunded_amount=0，也就是一筆從未收款的訂單自稱「已退款」，是同一種假宣稱
+  -- （見 0087 對 PAID 的既有告誡：畫面說了，資料庫裡卻沒有金額佐證）。
+  --
+  -- ⚠️ 沿用上面 PARTIAL／REFUND_PENDING 兩條的 `payment_status::text <> '…'`
+  -- 寫法，即使 REFUNDED 本身不是本檔新增的標籤（0087 就有），理由是保持本檔
+  -- 內部一致：同一個檔案的付款狀態 CHECK 只要有一種安全寫法，就不要讓維護者
+  -- 得先分辨「這個標籤是不是新加的」才知道能不能省略 ::text——那個判斷本身
+  -- 就是上面那段長註解在講的陷阱來源，讓所有人一律用安全寫法比較不會出錯。
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.tour_orders'::regclass
+       and conname = 'tour_orders_refunded_paid_amount_ck'
+  ) then
+    alter table public.tour_orders
+      add constraint tour_orders_refunded_paid_amount_ck
+      check (payment_status::text <> 'REFUNDED' or (paid_amount > 0 and refunded_amount > 0));
+  end if;
+
+  -- M2（Final Risk 2026-09-14）：UNPAID 必須誠實——見上方的既有資料前置檢查。
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.tour_orders'::regclass
+       and conname = 'tour_orders_unpaid_amount_ck'
+  ) then
+    alter table public.tour_orders
+      add constraint tour_orders_unpaid_amount_ck
+      check (payment_status::text <> 'UNPAID' or paid_amount = 0);
+  end if;
 end $$;
 
 comment on column public.tour_orders.upfront_required_amount is
@@ -185,16 +232,28 @@ begin
       '0108 後置斷言失敗——tour_payment_status 的值不是五個（18 分冊 §4 要求 UNPAID／PARTIAL／PAID／REFUND_PENDING／REFUNDED）。';
   end if;
 
-  -- 2. 欄位存在且型別正確。比對用 `regtype` 的 OID，不用 `format_type()` 的字串
-  --    （0107 的教訓：`format_type()` 依 search_path 決定要不要加 schema 前綴，
-  --    拿拼寫去比會在欄位其實完全正確的情況下誤報，那比沒有斷言更糟）。
+  -- 2. 欄位存在、型別正確、而且 nullability 也對。比對型別用 `regtype` 的 OID，
+  --    不用 `format_type()` 的字串（0107 的教訓：`format_type()` 依 search_path
+  --    決定要不要加 schema 前綴，拿拼寫去比會在欄位其實完全正確的情況下誤報，
+  --    那比沒有斷言更糟）。
+  --
+  --    ⚠️ I1（Final Risk 2026-09-14）：只比對 `atttypid` 抓不住「型別對、但
+  --    nullable 不對」的殘留欄位——`add column if not exists` 遇到一個同名同型別
+  --    但可為 null 的既有欄位會直接 no-op，不會補上 `not null`，而本檔上面所有
+  --    數字欄位的誠實 CHECK 全部假設它們一定有值（`upfront_required_amount >= 0`
+  --    這類比較式在欄位是 null 時整條 CHECK 直接評估成 unknown、被當成通過，
+  --    等於誠實檢查形同虛設）。2026-09-14 實查 shared TEST，`trip_departures.
+  --    formation_status` 正是這個形狀——型別對但 nullable，來自 historical
+  --    overlay——不是假設性風險。三個數字欄位補上 `a.attnotnull = true`；
+  --    `deposit_mode_snapshot` 設計上本來就允許 null（見上方欄位註解「未補這個
+  --    欄位的舊資料」），維持 false，不能對它也要求 not null。
   select string_agg(expected.col, ', ') into missing
     from (values
-      ('tour_orders', 'upfront_required_amount', 'numeric'),
-      ('tour_orders', 'refunded_amount', 'numeric'),
-      ('tour_orders', 'deposit_mode_snapshot', 'text'),
-      ('tour_orders', 'paid_amount', 'numeric')
-    ) as expected(tbl, col, typ)
+      ('tour_orders', 'upfront_required_amount', 'numeric', true),
+      ('tour_orders', 'refunded_amount', 'numeric', true),
+      ('tour_orders', 'deposit_mode_snapshot', 'text', false),
+      ('tour_orders', 'paid_amount', 'numeric', true)
+    ) as expected(tbl, col, typ, want_notnull)
    where not exists (
      select 1 from pg_attribute a
       where a.attrelid = ('public.' || expected.tbl)::regclass
@@ -202,26 +261,67 @@ begin
         and not a.attisdropped
         and a.attnum > 0
         and a.atttypid = expected.typ::regtype
+        and a.attnotnull = expected.want_notnull
    );
   if missing is not null then
-    raise exception '0108 後置斷言失敗——以下欄位不存在或型別不符：%。這通常代表 historical overlay 已先建過同名物件，導致本檔的 add column 變成 no-op（PB-026）。', missing;
+    raise exception '0108 後置斷言失敗——以下欄位不存在、型別不符或 nullability 不符：%。這通常代表 historical overlay 已先建過同名物件，導致本檔的 add column 變成 no-op（PB-026）。', missing;
   end if;
 
-  -- 3. 五個新 CHECK 都在，而且內容真的是我要的那一條。
+  -- 3. 七個新 CHECK 都在，而且內容真的是我要的那一條。
+  --
+  --    ⚠️（Final Risk 2026-09-14，原斷言是空殼）：改版前每條只比對一個 `like`
+  --    片段（例如 `%PARTIAL%`），而一個被掏空成 `check (payment_status::text <>
+  --    'PARTIAL' or true)` 的 CHECK——語法合法、完全不擋任何資料——照樣含有
+  --    'PARTIAL' 這個字，照樣通過那條斷言。單一片段測的是「這個標籤字串還在
+  --    constraint 定義裡」，不是「這條不變量真的還在擋東西」，兩者是不同的
+  --    斷言，原本的寫法在斷言名稱上宣稱做到後者，實際只做到前者。
+  --
+  --    改成每條 CHECK 配一組片段、**全部**都要在 `pg_get_constraintdef()` 的
+  --    輸出裡命中才算數（`bool_and`）：不只比對狀態標籤本身，也比對金額比較式
+  --    的兩側（欄位名＋運算子）。下面每組片段旁邊的註解寫的是「這組片段現在能
+  --    多擋住什麼樣的掏空版本」，不是重複描述 CHECK 本身要做什麼。
   select string_agg(expected.name, ', ') into missing
     from (values
-      ('tour_orders', 'tour_orders_upfront_required_amount_ck', '%upfront_required_amount%'),
-      ('tour_orders', 'tour_orders_refunded_amount_ck', '%refunded_amount%'),
-      ('tour_orders', 'tour_orders_deposit_mode_snapshot_ck', '%DEPOSIT_PERCENT%'),
-      ('tour_orders', 'tour_orders_partial_paid_amount_ck', '%PARTIAL%'),
-      ('tour_orders', 'tour_orders_refund_pending_paid_amount_ck', '%REFUND_PENDING%')
-    ) as expected(tbl, name, fragment)
+      -- 只有 '%PARTIAL%' 擋不住 `check (... 'PARTIAL' or true)`；加上兩側的
+      -- 金額比較式之後，任何拿掉 `paid_amount > 0` 或 `paid_amount < total_amount`
+      -- 其中一半的掏空版本都會在這裡落網。
+      ('tour_orders', 'tour_orders_partial_paid_amount_ck',
+        array['%PARTIAL%', '%paid_amount > %', '%paid_amount < total_amount%']),
+      -- 同理：只有 '%REFUND_PENDING%' 擋不住把 `paid_amount > 0` 拿掉的掏空版本。
+      ('tour_orders', 'tour_orders_refund_pending_paid_amount_ck',
+        array['%REFUND_PENDING%', '%paid_amount > %']),
+      -- M1 新增：REFUNDED 必須同時比對「有收過款」與「有退過款」兩側，否則
+      -- `check (... 'REFUNDED' or paid_amount > 0)`（漏掉 refunded_amount 那半）
+      -- 一樣會被判定成合法。
+      ('tour_orders', 'tour_orders_refunded_paid_amount_ck',
+        array['%REFUNDED%', '%paid_amount > %', '%refunded_amount > %']),
+      -- M2 新增：UNPAID 必須比對到 `paid_amount = …` 那個等式本身，不只是
+      -- 'UNPAID' 這個字。（Postgres 正規化後 `0` 會變成 `(0)::numeric`，所以
+      -- 片段只到 `=` 為止，不釘死字面 `0` 的寫法。）
+      ('tour_orders', 'tour_orders_unpaid_amount_ck',
+        array['%UNPAID%', '%paid_amount = %']),
+      -- upfront_required_amount 的上下界各自需要獨立片段，否則拿掉其中一側的
+      -- 邊界（例如只剩 `>= 0`，任意超收頭期款都會通過）測不出來。
+      ('tour_orders', 'tour_orders_upfront_required_amount_ck',
+        array['%upfront_required_amount >= %', '%upfront_required_amount <= total_amount%']),
+      -- refunded_amount 同理，且上界必須真的是 `paid_amount`（不能被悄悄換成
+      -- `total_amount`——那會允許退款超過實收金額，正是 §9.3 要擋的事）。
+      ('tour_orders', 'tour_orders_refunded_amount_ck',
+        array['%refunded_amount >= %', '%refunded_amount <= paid_amount%']),
+      -- deposit_mode_snapshot 除了值域字串，也要求「is null」那個分支還在——
+      -- 拿掉它會讓舊資料（null）全部無法通過本 CHECK，屬於另一種掏空（過嚴）。
+      ('tour_orders', 'tour_orders_deposit_mode_snapshot_ck',
+        array['%DEPOSIT_PERCENT%', '%deposit_mode_snapshot IS NULL%'])
+    ) as expected(tbl, name, fragments)
    where not exists (
      select 1 from pg_constraint c
       where c.conrelid = ('public.' || expected.tbl)::regclass
         and c.conname = expected.name
         and c.contype = 'c'
-        and pg_get_constraintdef(c.oid) like expected.fragment
+        and (
+          select bool_and(pg_get_constraintdef(c.oid) like frag)
+            from unnest(expected.fragments) as frag
+        )
    );
   if missing is not null then
     raise exception '0108 後置斷言失敗——以下 CHECK 不存在或內容不符：%。', missing;

@@ -76,7 +76,13 @@ describe('#41 §4：付款狀態值域補齊 PARTIAL／REFUND_PENDING', () => {
       if (status === 'PARTIAL') extra.paid_amount = 500;
       if (status === 'PAID') extra.paid_amount = 2000;
       if (status === 'REFUND_PENDING') extra.paid_amount = 2000;
-      if (status === 'REFUNDED') extra.paid_amount = 2000;
+      // tour_orders_refunded_paid_amount_ck（#41 0108 M1）要求 REFUNDED 同時
+      // paid_amount > 0 與 refunded_amount > 0——一筆從未收款的訂單不能自稱
+      // 「已退款」。
+      if (status === 'REFUNDED') {
+        extra.paid_amount = 2000;
+        extra.refunded_amount = 2000;
+      }
       const { error } = await insertOrder(extra);
       expect(error).toBeNull();
     },
@@ -117,6 +123,48 @@ describe('#41 §4：REFUND_PENDING 必須誠實——代表確實收過錢，正
 
   it('paid_amount > 0 時合法', async () => {
     const { error } = await insertOrder({ payment_status: 'REFUND_PENDING', paid_amount: 2000 });
+    expect(error).toBeNull();
+  });
+});
+
+/*
+ * Final Risk（claude-fable-5-1，2026-09-14）M1：REFUNDED 之前沒有誠實 CHECK，
+ * `payment_status='REFUNDED', paid_amount=0, refunded_amount=0`（一筆從未收款
+ * 的訂單自稱已退款）曾被接受。
+ */
+describe('#41 §4 M1：REFUNDED 必須誠實——確實收過錢、也確實退了款', () => {
+  it('paid_amount = 0 且 refunded_amount = 0 時不得標成 REFUNDED', async () => {
+    const { error } = await insertOrder({ payment_status: 'REFUNDED', paid_amount: 0, refunded_amount: 0 });
+    expect(error).toBeTruthy();
+    expect(error!.code).toBe('23514');
+  });
+
+  it('paid_amount > 0 但 refunded_amount = 0 時仍不得標成 REFUNDED（只收錢沒退錢）', async () => {
+    const { error } = await insertOrder({ payment_status: 'REFUNDED', paid_amount: 2000, refunded_amount: 0 });
+    expect(error).toBeTruthy();
+    expect(error!.code).toBe('23514');
+  });
+
+  it('paid_amount > 0 且 refunded_amount > 0 時合法', async () => {
+    const { error } = await insertOrder({ payment_status: 'REFUNDED', paid_amount: 2000, refunded_amount: 2000 });
+    expect(error).toBeNull();
+  });
+});
+
+/*
+ * Final Risk M2：UNPAID 之前只有值域限制，`payment_status='UNPAID',
+ * paid_amount=500` 曾被接受——語意上那筆訂單其實是 PARTIAL 或 PAID，卻在畫面
+ * 上顯示成「未付款」。
+ */
+describe('#41 §4 M2：UNPAID 必須誠實——沒收過錢才能標成 UNPAID', () => {
+  it('paid_amount > 0 時不得標成 UNPAID', async () => {
+    const { error } = await insertOrder({ payment_status: 'UNPAID', paid_amount: 500 });
+    expect(error).toBeTruthy();
+    expect(error!.code).toBe('23514');
+  });
+
+  it('paid_amount = 0 時合法', async () => {
+    const { error } = await insertOrder({ payment_status: 'UNPAID', paid_amount: 0 });
     expect(error).toBeNull();
   });
 });

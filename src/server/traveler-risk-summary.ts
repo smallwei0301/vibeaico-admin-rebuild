@@ -92,14 +92,21 @@ export function summarizeTravelerRiskFacts(facts: readonly TravelerRiskFact[]): 
 //     這不是妥協，是既有 kernel（PR #77 第二則 checkpoint）就明文選擇的設計：
 //     「UNKNOWN cancellation 不猜責任」。之後 #41 若補上真正的取消者欄位，
 //     `TRAVELER`／`GUIDE` 才會有真實資料可分辨，這裡不先猜。
-//   - `REFUND_PENDING`／`REFUND_DISPUTED` 同樣不會被產生：`tour_payment_status`
-//     只有 UNPAID/PAID/REFUNDED，沒有「待退款中」與「退款爭議」的中間狀態，
-//     那同樣是 #41 的付款生命週期延伸。
+//   - `REFUND_DISPUTED` 仍然不會被產生：`tour_payment_status` 沒有「退款爭議」
+//     這個中間狀態，那屬於更後面的退款流程（18 分冊 §9），不在 #41 0108 的
+//     範圍內。
+//   - ⚠️ `REFUND_PENDING` 這一條在 #41 0108（`supabase/migrations/
+//     0108_issue_41_payment_state_model.sql`）之後**已經可以出現**——
+//     `tour_payment_status` 補上了 PARTIAL／REFUND_PENDING 兩個標籤。下面的
+//     `TourOrderRiskRow.payment_status` 型別與 `mapTourOrderRowToRiskFact()`
+//     已同步更新，不再假設只有 UNPAID/PAID/REFUNDED 三種值（Final Risk
+//     claude-fable-5-1，2026-09-14 指出這裡原本仍是舊契約，且 `REFUND_PENDING`
+//     搭配 `status=CANCELLED` 時會誤落進 `CANCELLED` 分支，見下方函式內註解）。
 
 /** `loadTravelerRiskSummary()` 需要的 `tour_orders` 欄位子集。 */
 type TourOrderRiskRow = {
   status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
-  payment_status: 'UNPAID' | 'PAID' | 'REFUNDED';
+  payment_status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'REFUND_PENDING' | 'REFUNDED';
   cancel_reason: string | null;
   updated_at: string;
 };
@@ -114,6 +121,16 @@ export function mapTourOrderRowToRiskFact(row: TourOrderRiskRow): TravelerRiskFa
   const occurredAt = row.updated_at;
   if (row.payment_status === 'REFUNDED') {
     return { kind: 'REFUNDED', occurredAt };
+  }
+  // ⚠️ 這條必須排在 `status === 'CANCELLED'` 之前。#41 0108 之後
+  // REFUND_PENDING 訂單常見的真實形狀是「先取消、再進入退款流程」
+  // （status=CANCELLED, payment_status=REFUND_PENDING）；退款事實優先於單純的
+  // 取消事實，理由與上面 REFUNDED 完全一樣——不與取消／未付款失效重複計算
+  // （Issue #44 §1）。Final Risk（claude-fable-5-1，2026-09-14）指出修正前
+  // 這種列會落進下面的 `status === 'CANCELLED'` 分支、被誤記為單純取消，
+  // 退款中的事實整筆遺失。
+  if (row.payment_status === 'REFUND_PENDING') {
+    return { kind: 'REFUND_PENDING', occurredAt };
   }
   if (row.status === 'COMPLETED') {
     return { kind: 'COMPLETED', occurredAt };
