@@ -1,6 +1,6 @@
 import { adapt, request } from '@/lib/api';
 import type {
-  DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TourOrder, Paged,
+  DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TourOrder, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -204,6 +204,12 @@ export const deleteTripAddon = (id: string) =>
 export type TourOrderQuery = {
   page?: number; size?: number; status?: string; source?: string;
   paymentStatus?: string; keyword?: string;
+  /**
+   * GUIDE 收件匣 REFUND_PENDING 卡片的 deep link（#43 類別 5）以 orderId 精準撈一筆，
+   * 比照 `BookingQuery.bookingId`（`src/services/bookings.ts`）——不是分頁篩選條件，
+   * 只在目標列可能不在目前已載入頁面時使用。
+   */
+  orderId?: string;
 };
 
 export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>> {
@@ -211,6 +217,7 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
     () => {
       const page = q.page ?? 0, size = q.size ?? 20;
       let rows = MOCK_TOUR_ORDERS;
+      if (q.orderId) rows = rows.filter((o) => o.id === q.orderId);
       if (q.status) rows = rows.filter((o) => o.status === q.status);
       if (q.source) rows = rows.filter((o) => o.source === q.source);
       if (q.paymentStatus) rows = rows.filter((o) => o.paymentStatus === q.paymentStatus);
@@ -229,6 +236,37 @@ export function listTourOrders(q: TourOrderQuery = {}): Promise<Paged<TourOrder>
     },
     () => request<Paged<TourOrder>>('/api/tour-orders', { query: q as Record<string, string> }),
   );
+}
+
+/** `TourPaymentStatus` 值域，供 deep link 驗證與 UI 下拉共用同一份清單。 */
+export const TOUR_PAYMENT_STATUS_VALUES: TourPaymentStatus[] = [
+  'UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED',
+];
+
+/**
+ * `/tenant/tour-orders` 的 `?paymentStatus=`／`?orderId=` deep link 解析（#43 類別 5，
+ * GUIDE 收件匣 REFUND_PENDING 卡片；`src/app/api/guide/action-inbox/route.ts` 產生
+ * `?paymentStatus=REFUND_PENDING&orderId=<id>`）。比照 `/tenant/bookings` 既有的
+ * `?status`／`?paymentStatus=UNPAID`／`?bookingId` query-string 慣例。
+ *
+ * 抽成純函式、獨立於頁面元件之外：本專案的 vitest 單元測試跑在 node 環境
+ * （`vitest.config.mts`: `environment: 'node'`），未安裝 `@testing-library/react`，
+ * 無法掛載 `'use client'` 頁面元件做真正的互動測試（`window.location` 也不存在）。
+ * 把「解析＋值域驗證」這段抽出來，至少能對它做真正的行為測試——而不是再一次對
+ * 頁面原始碼字串 grep（PB-027／PB-039 記錄過的假測試模式）。頁面 `useEffect` 呼叫
+ * 這個函式後把回傳值指定給 `paymentFilter`／`requestedOrderId` 兩個 state，那一步
+ * 是機械的 pass-through，這個測試邊界涵蓋不到它——PR 報告裡如實說明。
+ */
+export function parseTourOrdersDeepLink(search: string): {
+  paymentStatus: TourPaymentStatus | ''; orderId: string;
+} {
+  const params = new URLSearchParams(search);
+  const ps = params.get('paymentStatus');
+  const paymentStatus = ps && (TOUR_PAYMENT_STATUS_VALUES as string[]).includes(ps)
+    ? (ps as TourPaymentStatus)
+    : '';
+  const orderId = params.get('orderId') ?? '';
+  return { paymentStatus, orderId };
 }
 
 export const confirmTourOrderPayment = (id: string) =>

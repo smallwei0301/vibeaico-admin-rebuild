@@ -307,4 +307,17 @@ export const MOCK_TOUR_ORDERS: TourOrder[] = [
     source: 'MIDAO', holdExpiresAt: null, note: '因海況取消，已全額退款',
     createdAt: '2026-08-14T16:38:00+08:00',
   },
+  {
+    // #43 類別 5：REFUND_PENDING（退款尚未完成，18 分冊 §9.3 不可顯示成
+    // REFUNDED）——`to_7` 是「已退款」的既有 fixture，這筆是它的對照組：已取消、
+    // 已收過款，但退款流程還在處理中，`refundedAmount` 仍是 0。
+    id: 'to_8', orderNo: 'T2608220014', tripId: 'tp_2', tripTitle: '九份山城夜訪散策',
+    planName: '小團導覽（4 人成行）', departsOn: '2026-08-26', startTime: '16:30',
+    customerName: '許家瑜', customerPhone: '0928-517-063', partySize: 3,
+    unitPrice: 890, totalAmount: 2670, depositAmount: 0, status: 'CANCELLED', paymentStatus: 'REFUND_PENDING',
+    paymentMethodLabel: '線上刷卡付款', paymentRef: 'ECPay 2608220014882',
+    source: 'VIBEAI_SHOP', holdExpiresAt: null, note: '旅客因病取消，退款申請已送出，等待金流商處理',
+    createdAt: '2026-08-22T11:05:00+08:00',
+    refundedAmount: 0,
+  },
 ];

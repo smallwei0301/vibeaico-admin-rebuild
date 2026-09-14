@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import {
   buildGuideActionInboxFormationItem,
+  buildGuideActionInboxRefundPendingItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -11,7 +12,10 @@ import {
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
 import { MOCK_BOOKINGS } from '@/mock';
-import { MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } from '@/mock/tours';
+import { MOCK_TOUR_ORDERS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } from '@/mock/tours';
+
+const refundPendingHref = (id: string) =>
+  `/tenant/tour-orders?paymentStatus=REFUND_PENDING&orderId=${encodeURIComponent(id)}`;
 
 const bookingRequestHref = (id: string) =>
   `/tenant/bookings?status=PENDING&bookingId=${encodeURIComponent(id)}`;
@@ -139,7 +143,32 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
             createdAt: new Date(now).toISOString(),
           }, nowDate);
         });
-      return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems, ...formationItems]);
+      // #43 類別 5：REFUND_PENDING。獨立 fixture 表（MOCK_TOUR_ORDERS），與上面
+      // MOCK_BOOKINGS 衍生的 paymentItems 天生不相交（不同的 mock 資料集、不同
+      // 的 paymentStatus 值域），理由同 route.ts 檔案頂端註解。
+      const refundPendingItems: GuideActionInboxItem[] = MOCK_TOUR_ORDERS
+        .filter((order) => order.paymentStatus === 'REFUND_PENDING')
+        .slice(0, 20)
+        .map((order) => buildGuideActionInboxRefundPendingItem({
+          id: order.id,
+          orderNo: order.orderNo,
+          customerName: order.customerName,
+          // mock 的 TourOrder 沒有 paidAmount 欄位（#41 選填欄位目前只補了
+          // refundedAmount，見 src/lib/types.ts）；demo fixture 誠實地假設
+          // REFUND_PENDING 訂單先前已收足 totalAmount，尚未退回的金額 =
+          // totalAmount - refundedAmount，跟 route.ts 用 paid_amount -
+          // refunded_amount 是同一個算法在不同資料形狀下的等價寫法。
+          refundOutstandingAmount: Math.max(order.totalAmount - (order.refundedAmount ?? 0), 0),
+          // mock 的 TourOrder 沒有 updatedAt 欄位，誠實地借用 createdAt——理由同
+          // buildGuideActionInboxRefundPendingItem() 的說明：priority 固定
+          // IMMEDIATE，這裡只影響同為 IMMEDIATE 卡片間的排序。
+          dueAt: order.createdAt,
+          createdAt: order.createdAt,
+          href: refundPendingHref(order.id),
+        }));
+      return sortGuideActionInboxItems([
+        ...items, ...paymentItems, ...departureItems, ...formationItems, ...refundPendingItems,
+      ]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
   );

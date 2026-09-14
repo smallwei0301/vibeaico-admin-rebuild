@@ -50,7 +50,34 @@ export type GuideActionInboxFormationItem = {
   href: string;
 };
 
-export type GuideActionInboxItem = GuideActionInboxBaseItem | GuideActionInboxFormationItem;
+/*
+ * #43 類別 5：REFUND_PENDING（退款尚未完成）。來源是 `tour_orders`
+ * （`supabase/migrations/0108_issue_41_payment_state_model.sql`，#41 canonical），
+ * 不是 `trip_departures`——跟上面的 formation 兩類是不同資料表、不同 enum
+ * （`tour_payment_status` vs `bookings.payment_status`），因此與下面
+ * BOOKING_PAYMENT（讀 `bookings_view`）天生不相交，見 route.ts 對應查詢旁的說明。
+ *
+ * 18 分冊 §9.3 平台固定底線：「REFUND_PENDING 不可顯示成 REFUNDED」。這個型別與其
+ * i18n copy（`src/i18n/zh-TW/pages/dashboard.ts` 的 `refundPending` / `openRefund` /
+ * `refundOutstanding`）刻意不沿用「已退款」字樣，一律使用「待退款／退款處理中」。
+ */
+export type GuideActionInboxRefundPendingItem = {
+  id: string;
+  kind: 'REFUND_PENDING';
+  orderNo: string;
+  customerName: string;
+  /** 已收但尚未退回旅客的金額（paid_amount - refunded_amount），不得為負。 */
+  refundOutstandingAmount: number;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
+export type GuideActionInboxItem =
+  | GuideActionInboxBaseItem
+  | GuideActionInboxFormationItem
+  | GuideActionInboxRefundPendingItem;
 
 const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
 
@@ -289,5 +316,46 @@ export function buildGuideActionInboxFormationItem(
     dueAt,
     createdAt: input.createdAt,
     href: `/tenant/trips/${input.tripId}`,
+  };
+}
+
+export type GuideActionInboxRefundPendingInput = {
+  id: string;
+  orderNo: string;
+  customerName: string;
+  refundOutstandingAmount: number;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
+/**
+ * #43 類別 5：把一筆 `payment_status = 'REFUND_PENDING'` 的 tour_orders 列轉成
+ * 收件匣卡片。
+ *
+ * priority 固定為 `'IMMEDIATE'`，不像 booking/departure 那樣比較 `dueAt` 才決定：
+ * 19 分冊 §3.1 把「退款」明列在「立即處理」的觸發條件之一——欠旅客錢這件事本身
+ * 就已經是要立刻處理的事，不需要再用一個時間門檻去判斷「是不是還沒到期」。
+ *
+ * `dueAt` 誠實地使用呼叫端傳入的「這筆訂單最後一次異動時間」（真實 API 是
+ * `tour_orders.updated_at`；mock 是同一筆 fixture 的 `createdAt`）。schema 目前
+ * 沒有「何時申請退款」這種專屬欄位（18 分冊 §4／0108 都沒有補這一欄——那屬於
+ * §5-§6 之後的退款流程切片），捏造一個不存在的申請時間會比誠實地借用「最後異動
+ * 時間」更糟；且因為 priority 固定 IMMEDIATE，`dueAt` 只影響同為 IMMEDIATE 卡片間
+ * 的排序，不影響「要不要顯示成立即處理」這件事本身。
+ */
+export function buildGuideActionInboxRefundPendingItem(
+  input: GuideActionInboxRefundPendingInput,
+): GuideActionInboxRefundPendingItem {
+  return {
+    id: input.id,
+    kind: 'REFUND_PENDING',
+    orderNo: input.orderNo,
+    customerName: input.customerName,
+    refundOutstandingAmount: input.refundOutstandingAmount,
+    priority: 'IMMEDIATE',
+    dueAt: input.dueAt,
+    createdAt: input.createdAt,
+    href: input.href,
   };
 }

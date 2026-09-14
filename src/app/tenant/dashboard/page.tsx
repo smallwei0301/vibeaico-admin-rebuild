@@ -77,6 +77,8 @@ function actionInboxKindLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.reviewRequired;
     case 'AT_RISK':
       return t.actionInbox.atRisk;
+    case 'REFUND_PENDING':
+      return t.actionInbox.refundPending;
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -95,6 +97,8 @@ function actionInboxOpenLabel(item: GuideActionInboxItem): string {
     case 'REVIEW_REQUIRED':
     case 'AT_RISK':
       return t.actionInbox.openFormation;
+    case 'REFUND_PENDING':
+      return t.actionInbox.openRefund;
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -180,6 +184,16 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
         </>
       );
     }
+    case 'REFUND_PENDING':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.customerName || item.orderNo}</div>
+          <div className="text-sm text-secondary">{item.orderNo}</div>
+          <div className="mt-1 text-xs text-secondary">
+            {t.actionInbox.refundOutstanding(formatCurrency(item.refundOutstandingAmount))}
+          </div>
+        </>
+      );
     default: {
       const _exhaustive: never = item;
       return _exhaustive;

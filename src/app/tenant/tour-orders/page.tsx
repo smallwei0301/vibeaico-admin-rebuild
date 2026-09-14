@@ -18,7 +18,7 @@ import { FormGroup, FormText, Input, Label, Select, Textarea } from '@/component
 import { useToast } from '@/components/ui/Toast';
 import {
   cancelTourOrder, completeTourOrder, confirmTourOrderPayment, createManualTourOrder,
-  listTourOrders, listTripDepartures, listTripPlans, listTrips,
+  listTourOrders, listTripDepartures, listTripPlans, listTrips, parseTourOrdersDeepLink,
 } from '@/services/tours';
 import { ApiError } from '@/lib/api';
 import { common } from '@/i18n/zh-TW/common';
@@ -100,6 +100,18 @@ export default function TourOrdersPage() {
   const [departures, setDepartures] = React.useState<TripDeparture[]>([]);
   const [busy, setBusy] = React.useState(false);
 
+  /** GUIDE 收件匣 REFUND_PENDING 卡片帶 `?paymentStatus=REFUND_PENDING&orderId=<id>`
+   * 進來（#43 類別 5）；比照 `/tenant/bookings` 既有的 `?status` / `?paymentStatus=UNPAID`
+   * / `?bookingId` 作法，載入後套用篩選並開啟該筆詳情。 */
+  const [requestedOrderId, setRequestedOrderId] = React.useState('');
+  const openedDeepLinkId = React.useRef('');
+
+  React.useEffect(() => {
+    const { paymentStatus, orderId } = parseTourOrdersDeepLink(window.location.search);
+    if (paymentStatus) setPaymentFilter(paymentStatus);
+    if (orderId) setRequestedOrderId(orderId);
+  }, []);
+
   const load = React.useCallback(async () => {
     setLoading(true);
     try {
@@ -109,12 +121,32 @@ export default function TourOrdersPage() {
       });
       setRows(res.content);
       setTotal(res.totalElements);
+
+      if (requestedOrderId && openedDeepLinkId.current !== requestedOrderId) {
+        let requested = res.content.find((o) => o.id === requestedOrderId);
+        if (!requested) {
+          /*
+           * 目標列可能不在目前這一頁（伺服器端分頁，每頁 PAGE_SIZE 筆）——比照
+           * bookings 頁面的既有作法，用既有 tenant-scoped list API 以 orderId
+           * 精準撈一筆，而不是放棄開啟詳情 modal。
+           */
+          const exact = await listTourOrders({
+            page: 0, size: 1, orderId: requestedOrderId,
+            status: statusFilter, source: sourceFilter, paymentStatus: paymentFilter,
+          });
+          requested = exact.content.find((o) => o.id === requestedOrderId);
+        }
+        if (requested) {
+          setDetail(requested);
+          openedDeepLinkId.current = requestedOrderId;
+        }
+      }
     } catch {
       toast.show(t.messages.loadFailed, 'danger');
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, toast]);
+  }, [page, keyword, statusFilter, sourceFilter, paymentFilter, requestedOrderId, toast]);
 
   React.useEffect(() => { void load(); }, [load]);
 
