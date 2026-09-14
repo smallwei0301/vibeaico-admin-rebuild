@@ -422,7 +422,7 @@ describe('#396 已提交的正式資料', () => {
     expect(snapshot.ledgerRowNames).toHaveLength(54);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 53 個 repo 檔案與 54 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 54 個 repo 檔案與 54 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -439,7 +439,8 @@ describe('#396 已提交的正式資料', () => {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
     }
     // 2026-09-13：0069–0073 五支經 Owner 具名授權套用至正式庫並回讀驗證，
-    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47），NOT_APPLIED 歸零。
+    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47）。本分支另新增 0105（尚未套用），
+    // 所以 NOT_APPLIED 是 1 而不是 0。
     expect(counts.EXACT).toBe(47);
     expect(counts.ALIAS).toBe(6);
     // 唯一一筆 NOT_APPLIED 是本分支新增的 0105（PENDING_APPLY，尚未套用到

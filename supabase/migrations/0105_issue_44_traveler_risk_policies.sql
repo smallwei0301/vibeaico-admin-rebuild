@@ -240,4 +240,39 @@ begin
   ) then
     raise exception 'traveler_risk_policies 不應對 authenticated 開放 UPDATE/DELETE（append-only 帳本）';
   end if;
+
+  -- 複合 FK 與 CHECK 也必須逐項斷言，理由與上面的欄位斷言完全相同，先前漏掉了。
+  --
+  -- 由 Final Risk 覆核（claude-fable-5-1）的 N12 突變查出：對 customers 下
+  -- `DROP CONSTRAINT customers_tenant_id_id_key CASCADE` 會**靜默移除**本表的
+  -- 複合 FK；此時重跑本檔會因為 `create table if not exists` 跳過建表而 exit 0，
+  -- 而 FK 仍然不存在——本區塊當時只檢查欄位／RLS／policy／grant，剛好放過了
+  -- 這張表最重要的那條租戶邊界保證。
+  if not exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.traveler_risk_policies'::regclass
+       and conname = 'traveler_risk_policies_customer_tenant_fk'
+       and contype = 'f'
+       and confrelid = 'public.customers'::regclass
+  ) then
+    raise exception
+      'traveler_risk_policies 缺少指向 customers 的複合 FK '
+      'traveler_risk_policies_customer_tenant_fk——跨租戶 customer_id 將不再被擋下';
+  end if;
+
+  -- 值域 CHECK：少了它們，資料庫就不再是「最後一道防線」，
+  -- 2026-09-11 裁示禁止的等價豁免會只剩應用層在擋。
+  select string_agg(want.name, ', ' order by want.name) into v_missing
+    from (values
+      ('traveler_risk_policies_deposit_domain_ck')
+    ) as want(name)
+   where not exists (
+     select 1 from pg_constraint
+      where conrelid = 'public.traveler_risk_policies'::regclass
+        and contype = 'c'
+        and conname = want.name
+   );
+  if v_missing is not null then
+    raise exception 'traveler_risk_policies 缺少必要的 CHECK 約束：%', v_missing;
+  end if;
 end $$;

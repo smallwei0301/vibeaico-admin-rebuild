@@ -65,6 +65,28 @@ ALTER TABLE public.traveler_risk_policies
   DROP CONSTRAINT IF EXISTS traveler_risk_policies_customer_tenant_fk;
 `;
 
+// 驗完之後把 0105 的 FK 加回去，並斷言它**重新綁回** customers_tenant_id_id_key。
+// 這是 Final Risk 覆核（claude-fable-5-1）在第三輪提出並原型驗證過的做法：它在
+// 當前 head 通過，而對「0104 少建 customers 父鍵」那個突變會轉紅——等於免費替
+// 本證明多加一層敏感度，而不是只把依賴卸掉就算了。
+const restoreCustomerCompositeDependents = `
+ALTER TABLE public.traveler_risk_policies
+  ADD CONSTRAINT traveler_risk_policies_customer_tenant_fk
+  FOREIGN KEY (tenant_id, customer_id) REFERENCES public.customers (tenant_id, id) ON DELETE CASCADE;
+DO $restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class i ON i.oid = c.conindid
+     WHERE c.conrelid = 'public.traveler_risk_policies'::regclass
+       AND c.conname = 'traveler_risk_policies_customer_tenant_fk'
+       AND i.relname = 'customers_tenant_id_id_key'
+  ) THEN
+    RAISE EXCEPTION 'traveler_risk_policies_customer_tenant_fk 沒有綁回 customers_tenant_id_id_key';
+  END IF;
+END $restore$;
+`;
+
 const weakKeys = `
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_fkey;
@@ -165,7 +187,7 @@ export function buildCases(migration) {
   return [
     { name: 'fresh-schema-and-real-tenant-boundaries', sql: assertStrong + dmlProof },
     { name: 'existing-test-shape-idempotence', sql: migration + migration + assertStrong + dmlProof },
-    { name: 'production-shaped-simple-keys-upgrade', sql: weakKeys + migration + assertStrong + dmlProof },
+    { name: 'production-shaped-simple-keys-upgrade', sql: weakKeys + migration + restoreCustomerCompositeDependents + assertStrong + dmlProof },
     { name: 'mixed-shape-upgrade-trips-already-strong', sql: `
       -- trips 這條保持複合（tenant_trip_fkey 不動），只把 plan/departure/customer
       -- 降回單欄——trip_plans_tenant_trip_id_id_key、
@@ -183,7 +205,7 @@ export function buildCases(migration) {
         FOREIGN KEY (departure_id) REFERENCES public.trip_departures (id) ON DELETE RESTRICT;
       ALTER TABLE public.tour_orders ADD CONSTRAINT tour_orders_customer_id_fkey
         FOREIGN KEY (customer_id) REFERENCES public.customers (id) ON DELETE SET NULL;
-      ` + migration + assertStrong + dmlProof },
+      ` + migration + restoreCustomerCompositeDependents + assertStrong + dmlProof },
     { name: 'dirty-data-must-not-be-repaired', sql: weakKeys + fixtures + badOrderTripCrossTenant + migration,
       error: 'TOUR_ORDER_LINEAGE_DATA_MISMATCH' },
     { name: 'unknown-delete-semantics-must-stop', sql: weakKeys + `
