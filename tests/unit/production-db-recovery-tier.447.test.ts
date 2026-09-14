@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -60,5 +62,20 @@ describe('Production DB recovery evidence tiers #447', () => {
     value.recovery.productionBackupRestored = false;
     value.finalRisk.evidenceDigest = releaseEvidenceDigestOf(value);
     expect(() => evaluateReleasePreflight(value, { now: NOW })).toThrow(/PRODUCTION_BACKUP_CLONE_UNVERIFIED/);
+  });
+
+  it('keeps the local restore rehearsal exact-main bound and explicitly non-Production', () => {
+    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/production-db-restore-rehearsal.yml'), 'utf8');
+    expect(workflow).toContain('workflow_call:');
+    expect(workflow).toContain('expected_main_sha:');
+    expect(workflow).toContain("ref: ${{ inputs.expected_main_sha || 'main' }}");
+    expect(workflow).toContain('test "$CHECKED_SHA" = "$BOUND_SHA"');
+    expect(workflow).toContain('test "$CURRENT_MAIN_SHA" = "$BOUND_SHA"');
+    expect(workflow).toContain("rehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY'");
+    expect(workflow).toContain('expectedMainSha: process.env.BOUND_MAIN_SHA');
+    expect(workflow).toContain('productionBackupRestored: false');
+    expect(workflow).toContain('storageObjectsCovered: false');
+    expect(workflow).toContain('databaseMutationAuthorized: false');
+    expect(workflow).not.toContain('productionBackupRestored: true');
   });
 });
