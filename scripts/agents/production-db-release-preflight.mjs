@@ -22,7 +22,7 @@ export const PRODUCTION_DB_POLICY = Object.freeze({
   maxBackfillRowsPerRelease: 10_000,
 });
 
-const RISK_TIERS = new Set(['ADDITIVE', 'AUTHZ', 'BACKFILL']);
+const RISK_TIERS = new Set(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ', 'BACKFILL']);
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
