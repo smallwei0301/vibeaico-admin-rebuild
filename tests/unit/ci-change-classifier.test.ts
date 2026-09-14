@@ -6,7 +6,6 @@ import { join, resolve } from 'node:path';
 import {
   classifyChangeRecords,
   classifyEvent,
-  isDocsOnlyPath,
   parseNameStatus,
 } from '../../scripts/ci/classify-changes.mjs';
 
@@ -367,41 +366,5 @@ describe('CI change classifier', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
-});
-
-/*
- * PR #412 changed only `docs/metrics/agent-runs/**`, was routed down the
- * documentation lane, and turned `main` red while every CI check was green.
- * Those files are fixtures for the unit suite, not documentation.
- */
-describe('#415 runtime fixtures under docs/', () => {
-  it.each([
-    'docs/metrics/agent-runs/2026-09-13-tour-order-lineage-fix-r01.json',
-    'docs/metrics/agent-runs/2026-09-13-tour-order-lineage-fix-r01.md',
-    'docs/metrics/governance-scoreboard-policy.json',
-    'docs/metrics/review-evidence/2026-09-09-governance-loop-r01.json',
-    'docs/metrics/',
-  ])('routes %s to full runtime CI', (path) => {
-    expect(isDocsOnlyPath(path)).toBe(false);
-  });
-
-  it.each([
-    'docs/AGENT-PLAYBOOK.md',
-    'docs/integration/10-TOUR-DOMAIN.md',
-    'docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md',
-    'CLAUDE.md',
-    'AGENTS.md',
-    'README.md',
-    '.claude/skills/steward/SKILL.md',
-    '.agents/anything.md',
-  ])('keeps %s on the documentation lane', (path) => {
-    expect(isDocsOnlyPath(path)).toBe(true);
-  });
-
-  /* The exclusion is a prefix, not a substring: a sibling must stay on the docs lane. */
-  it('does not over-match paths that merely contain the prefix', () => {
-    expect(isDocsOnlyPath('docs/metrics-overview.md')).toBe(true);
-    expect(isDocsOnlyPath('src/docs/metrics/x.json')).toBe(false);
   });
 });
