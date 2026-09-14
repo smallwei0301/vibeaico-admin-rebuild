@@ -367,10 +367,17 @@ begin
   -- 別店的政策——一條繞過本表 RLS 的跨租戶讀取路徑。
   -- `create or replace view … with (security_invoker = true)` 每次套用都會重設它，
   -- 所以出貨的 SQL 本身沒問題；有洞的是這個斷言區塊，與 N20 同一家族。
+  --
+  -- 刻意**不**比對 reloptions 的字面值：`security_invoker = on` 是合法的等價寫法，
+  -- Postgres 會原樣存成 `{security_invoker=on}`，字面值比對會對它誤擋（覆核 N24c）。
+  -- 恆真的斷言只是沒用，**永遠失敗的斷言會擋住合法套用**，比恆真更糟。
+  -- 改用 pg_options_to_table + ::boolean，`on` 與 `true` 都收、`false` 與不存在都拒。
   if not exists (
-    select 1 from pg_class
-     where oid = 'public.traveler_risk_current_policy'::regclass
-       and 'security_invoker=true' = any(reloptions)
+    select 1 from pg_class c
+     cross join lateral pg_options_to_table(c.reloptions) o
+     where c.oid = 'public.traveler_risk_current_policy'::regclass
+       and o.option_name = 'security_invoker'
+       and o.option_value::boolean
   ) then
     raise exception
       'traveler_risk_current_policy 未啟用 security_invoker——'
