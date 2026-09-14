@@ -27,6 +27,20 @@ const created: string[] = [];
 /** 專屬本檔的團次 id 前綴，afterAll 一律清掉，避免污染其他測試。 */
 const DEP = (n: number) => `41000000-0000-4000-8000-0000000000${String(n).padStart(2, '0')}`;
 
+/*
+ * `trip_departures` 有 `unique (tenant_id, plan_id, departs_on, start_time)`。
+ * 每個案例必須用不同的出團日期，否則第二筆之後會撞 23505 而不是測到我要測的東西——
+ * 而且「預期失敗」的案例還會因為 CHECK 先於唯一索引求值而**看似通過**，那是最糟的
+ * 一種綠燈：測試通過了，但通過的理由不是我以為的那個。日期由 id 序號決定，
+ * 確保一一對應。
+ */
+function departureDate(id: string) {
+  const seq = Number(id.slice(-2));
+  const day = new Date(Date.UTC(2026, 11, 1));
+  day.setUTCDate(day.getUTCDate() + seq);
+  return day.toISOString().slice(0, 10);
+}
+
 async function insertDeparture(id: string, extra: Record<string, unknown> = {}) {
   created.push(id);
   return admin.from('trip_departures').insert({
@@ -34,7 +48,7 @@ async function insertDeparture(id: string, extra: Record<string, unknown> = {}) 
     tenant_id: TRIP_A.tenantId,
     trip_id: TRIP_A.id,
     plan_id: TRIP_A.planA1,
-    departs_on: '2026-12-01',
+    departs_on: departureDate(id),
     start_time: '09:00:00',
     capacity: 8,
     seats_booked: 0,
@@ -102,7 +116,8 @@ describe('#41 §3：一次性成團證據不可缺、也不可被抹掉', () => 
     ['AT_RISK', {}],
     ['AT_RISK', { formed_at: new Date().toISOString(), formed_by: 'SYSTEM' }],
   ])('%s 缺少完整證據時被 CHECK 擋下', async (formation, evidence) => {
-    const { error } = await insertDeparture(DEP(40), { formation_status: formation, ...evidence });
+    const { error } = await insertDeparture(DEP(40 + Object.keys(evidence).length + (formation === 'AT_RISK' ? 3 : 0)),
+      { formation_status: formation, ...evidence });
     expect(error).toBeTruthy();
     expect(error!.code).toBe('23514');
   });
@@ -127,7 +142,7 @@ describe('#41 §3：一次性成團證據不可缺、也不可被抹掉', () => 
   });
 
   it.each([undefined, 'guide_override', 'OTHER', ''])('拒絕不合法的 formed_by %s', async (formedBy) => {
-    const { error } = await insertDeparture(DEP(45), {
+    const { error } = await insertDeparture(DEP(50 + ['undefined', 'guide_override', 'OTHER', ''].indexOf(String(formedBy))), {
       formation_status: 'FORMED', formed_at: new Date().toISOString(),
       formed_by: formedBy, formed_participants: 3,
     });
@@ -136,7 +151,7 @@ describe('#41 §3：一次性成團證據不可缺、也不可被抹掉', () => 
 
   it('拒絕 formed_participants 為 0 或負數', async () => {
     for (const n of [0, -1]) {
-      const { error } = await insertDeparture(DEP(46), {
+      const { error } = await insertDeparture(DEP(55 + Math.abs(n)), {
         formation_status: 'FORMED', formed_at: new Date().toISOString(),
         formed_by: 'SYSTEM', formed_participants: n,
       });
@@ -148,18 +163,18 @@ describe('#41 §3：一次性成團證據不可缺、也不可被抹掉', () => 
 
 describe('#41 §1–§2：成團門檻與容量、截止天數的值域', () => {
   it('門檻不得超過容量', async () => {
-    const { error } = await insertDeparture(DEP(50), { capacity: 4, min_to_depart_snapshot: 5 });
+    const { error } = await insertDeparture(DEP(60), { capacity: 4, min_to_depart_snapshot: 5 });
     expect(error).toBeTruthy();
     expect(error!.code).toBe('23514');
   });
 
   it('門檻等於容量是合法的（整團包下）', async () => {
-    const { error } = await insertDeparture(DEP(51), { capacity: 4, min_to_depart_snapshot: 4 });
+    const { error } = await insertDeparture(DEP(61), { capacity: 4, min_to_depart_snapshot: 4 });
     expect(error).toBeNull();
   });
 
   it('門檻不得小於 1', async () => {
-    const { error } = await insertDeparture(DEP(52), { min_to_depart_snapshot: 0 });
+    const { error } = await insertDeparture(DEP(62), { min_to_depart_snapshot: 0 });
     expect(error).toBeTruthy();
     expect(error!.code).toBe('23514');
   });
