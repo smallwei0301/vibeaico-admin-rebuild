@@ -170,3 +170,52 @@ rollback, payment, notification, or force-push. It must not generate migration S
 
 Governance work uses `TEST_PROFILE=SOURCE_ONLY`. It must not take the shared canonical TEST lane from a
 Product session merely to regenerate this report.
+
+## Schema Truth v2 read-only drift watch follow-up
+
+The merged #431 change owns source admission; this follow-up adds only the live, read-only observer. It is
+a source-only governance candidate on current main. It does not replace an Owner Decision, change the
+existing Product TEST/Final Risk gates, or authorize a database write.
+
+The source-admission guard in PR #431 proves the exact current `origin/main` commit, its reachability from
+the checked-out head, the complete canonical migration manifest, and byte equality between the selected
+worktree SQL and its main blob. Its result is `SOURCE_VERIFIED` only; `authorizesDatabaseWrite` and
+`databaseMutationPerformed` remain false. This follow-up does not duplicate that guard: a branch, PR, live
+database, copied SQL, or stale snapshot cannot be an execution authority.
+
+`schema-drift-watch.mjs` emits observer packet `schemaVersion=2`, intentionally separate from the existing
+evidence packet v1 because it adds a fresh local `LOCAL_EXPECTED` replay and object-level fingerprints. It
+uses one checked-in read-only catalog query for the seven existing surfaces, ACL/RLS metadata, and the
+migration ledger. TEST and Production are captured separately via the Supabase read-only query endpoint.
+Only object keys, counts, migration identities, and SHA-256 fingerprints are persisted in the report. Raw
+definitions exist only as ephemeral runner-temp input for normalization; they are not included in reports,
+repository files, or uploaded artifacts. A stale main SHA, invalid response, missing/empty ledger, missing
+permission, HTTP error, or wrong query contract is `EVIDENCE_UNAVAILABLE`, never `MATCH`.
+The comparison enforces a 60-minute evidence-age window (configurable only within 1–1440 minutes); stale
+or future captures become `EVIDENCE_UNAVAILABLE`. When TEST and Production have different approved states,
+the report retains both in `environmentStatuses` instead of flattening them into an approval.
+Automatic pending-rollout classification is limited to an exact ledger subset of current main: definition
+mismatches, extra or aliased ledger identities, and missing objects with an otherwise equal ledger remain
+`DRIFT_BLOCKED` unless covered by an exact intentional exception.
+
+The live observer uses `docs/schema-truth/schema-drift-exceptions.json`, a separate contract because each
+entry binds the environment plus both expected and observed fingerprints. It does not replace #431's
+exact-entry-digest policy or create a blanket waiver. The report statuses are `MATCH`, `EXPECTED_PENDING_TEST`, `EXPECTED_PENDING_PRODUCTION`,
+`INTENTIONAL_DIFFERENCE`, `DRIFT_BLOCKED`, and `EVIDENCE_UNAVAILABLE`. Unapproved object-level differences
+block. The exception file is empty by default; each entry must bind one environment, one surface/object key,
+expected and observed fingerprints, an Issue, a reason, and a UTC expiry. Expired or unused exceptions also
+block, and TEST's historical #41 overlay remains isolated `FUTURE_PRODUCT` work rather than an automatically
+accepted shared-TEST baseline.
+
+The workflow is deliberately `workflow_dispatch` only. Before activation, provision a separate
+least-privilege `SCHEMA_OBSERVER_TOKEN`, run local fresh replay plus both remote captures once, inspect
+response shape and cleanup, inspect the sanitized uploaded report, classify each difference, and review the exceptions. Do not fall back to
+`SUPABASE_ACCESS_TOKEN` or grant Production access to make the ledger readable. Scheduling at UTC 01:17 and
+triggering after main migration-source changes are follow-up activation work.
+
+This observer does not prove customer-row equality, Storage, enum/sequence/default privileges, role
+inheritance, or provider configuration. Therefore every report keeps `fullEnvironmentParityProven=false`
+and `authorizesDatabaseWrite=false`. Database preparation and program enablement remain separate release
+phases: a program depending on new fields cannot deploy ahead of the authorized migration, and this
+read-only guard is not the writer/release gate. Wiring the legacy SQL writer, credential bypasses, and #414
+required checks is a separate bounded Product/deployment review.

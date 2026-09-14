@@ -1,0 +1,87 @@
+name: agent-schema-drift-watch
+'on':
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact current main SHA to observe
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: schema-drift-watch-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  read-only-three-way:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+      EXPECTED_HEAD: ${{ inputs.expected_main_sha }}
+      TEST_PROFILE: SOURCE_ONLY
+      LOCAL_PROJECT_ID: schema-proof-observer-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.116.0
+      - name: Verify exact main and dedicated read-only credential
+        env:
+          SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$EXPECTED_MAIN_SHA"
+          test "$TEST_PROFILE" = SOURCE_ONLY
+          test -n "$SCHEMA_OBSERVER_TOKEN"
+          test -z "${SUPABASE_ACCESS_TOKEN:-}"
+      - name: Build and replay a disposable canonical local database
+        run: |
+          node scripts/agents/fresh-install-baseline.mjs "$RUNNER_TEMP/schema-bootstrap"
+          cd "$RUNNER_TEMP/schema-bootstrap"
+          supabase start -x studio,postgres-meta,edge-runtime,logflare,vector,supavisor
+      - name: Capture local expected metadata without saving raw SQL
+        run: |
+          node --input-type=module >"$RUNNER_TEMP/schema-observer.sql" <<'NODE'
+          import { READ_ONLY_SNAPSHOT_SQL } from './scripts/agents/schema-drift-watch.mjs';
+          process.stdout.write(READ_ONLY_SNAPSHOT_SQL);
+          NODE
+          docker exec -i "supabase_db_${LOCAL_PROJECT_ID}" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 <"$RUNNER_TEMP/schema-observer.sql" >"$RUNNER_TEMP/local-raw.json"
+          node scripts/agents/schema-drift-watch.mjs normalize --environment LOCAL_EXPECTED --project-ref local-fresh --current-main-sha "$EXPECTED_MAIN_SHA" --raw-json "$RUNNER_TEMP/local-raw.json" --json-out "$RUNNER_TEMP/expected.json"
+      - name: Capture TEST and Production through read-only API only
+        env:
+          SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
+        run: |
+          node scripts/agents/schema-drift-watch.mjs capture --environment TEST --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/test.json"
+          node scripts/agents/schema-drift-watch.mjs capture --environment PRODUCTION --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/production.json"
+      - name: Compare exact object fingerprints and fail closed
+        run: |
+          node scripts/agents/schema-drift-watch.mjs compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
+      - name: Emit sanitized drift report summary
+        if: ${{ always() }}
+        run: |
+          if test -s "$RUNNER_TEMP/report.json"; then
+            node --input-type=module -e "import fs from 'node:fs'; const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/report.json')); console.log(JSON.stringify({status:r.status,differenceCount:r.differenceCount,environmentStatuses:r.environmentStatuses ?? null,fullEnvironmentParityProven:r.safety.fullEnvironmentParityProven,authorizesDatabaseWrite:r.safety.authorizesDatabaseWrite}));"
+          else
+            echo '{"status":"EVIDENCE_UNAVAILABLE","reason":"REPORT_NOT_WRITTEN"}'
+          fi
+      - name: Upload sanitized drift report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-drift-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/report.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Destroy disposable local database
+        if: ${{ always() }}
+        run: test ! -d "$RUNNER_TEMP/schema-bootstrap" || (cd "$RUNNER_TEMP/schema-bootstrap" && supabase stop --no-backup)
+# Deliberately manual until the first local+TEST+Production run is reviewed.
+# Future schedule: 17 1 * * * (UTC), plus a main migration-source change trigger.
