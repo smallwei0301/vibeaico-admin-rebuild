@@ -106,6 +106,17 @@ begin
   -- PARTIAL 必須誠實：已收了一部分、但還沒收齊。paid_amount = 0 或
   -- paid_amount = total_amount 都不該被標成 PARTIAL——前者根本還沒收錢，後者
   -- 應該是 PAID。
+  -- ⚠️ 這兩條 CHECK 刻意寫成 `payment_status::text <> '…'`，不是
+  --    `payment_status <> '…'`。PostgreSQL 規定：**同一個交易內以
+  --    `alter type … add value` 新增的 enum 值，不能在該交易內被使用**，否則
+  --    `unsafe use of new value "PARTIAL" of enum type`。Supabase CLI 預設把每支
+  --    migration 包在一個交易裡，而本檔上方才剛新增這兩個值——在 historical
+  --    overlay 的安裝路徑上那是真的新增（overlay 的 0026 只建了三個值），不是
+  --    no-op。把欄位轉成 text 之後，字面值就只是字串，不會被解析成 enum label。
+  --
+  --    0087 用同樣的 `payment_status <> 'PAID'` 寫法卻沒事，是因為 'PAID' 在
+  --    overlay 上早就存在，它那次 add value 是 no-op——沒有新值被引入，自然沒有
+  --    不安全使用。差別在「這個值是不是本交易新增的」，不在寫法本身。
   if not exists (
     select 1 from pg_constraint
      where conrelid = 'public.tour_orders'::regclass
@@ -113,7 +124,7 @@ begin
   ) then
     alter table public.tour_orders
       add constraint tour_orders_partial_paid_amount_ck
-      check (payment_status <> 'PARTIAL' or (paid_amount > 0 and paid_amount < total_amount));
+      check (payment_status::text <> 'PARTIAL' or (paid_amount > 0 and paid_amount < total_amount));
   end if;
 
   -- REFUND_PENDING：18 分冊 §9.3「REFUND_PENDING 不可顯示成 REFUNDED」的前提是
@@ -126,7 +137,7 @@ begin
   ) then
     alter table public.tour_orders
       add constraint tour_orders_refund_pending_paid_amount_ck
-      check (payment_status <> 'REFUND_PENDING' or paid_amount > 0);
+      check (payment_status::text <> 'REFUND_PENDING' or paid_amount > 0);
   end if;
 end $$;
 

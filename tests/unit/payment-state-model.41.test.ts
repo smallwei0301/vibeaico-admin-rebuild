@@ -103,6 +103,26 @@ describe('#41 0108 的資料庫層不變量', () => {
     expect(MIGRATION).toContain(name);
   });
 
+  /*
+   * 這兩條 CHECK 必須用 `payment_status::text <> '…'`，不能用
+   * `payment_status <> '…'`。PostgreSQL 規定同一交易內以 `alter type … add value`
+   * 新增的 enum 值不得在該交易內被使用，而 Supabase CLI 把每支 migration 包在一個
+   * 交易裡；本檔上方才剛新增 PARTIAL 與 REFUND_PENDING，在 historical overlay 的
+   * 安裝路徑上那是**真的新增**（overlay 的 0026 只建了三個值）。
+   *
+   * 這個錯誤本機測不出來——沒有 Postgres 可跑——所以把它釘成文字斷言，否則下次
+   * 有人「順手」把 ::text 拿掉，只會在 CI 的 local-isolated 上炸。
+   */
+  it.each([
+    'tour_orders_partial_paid_amount_ck',
+    'tour_orders_refund_pending_paid_amount_ck',
+  ])('%s 以 ::text 比對，避免同交易內使用剛新增的 enum 值', (name) => {
+    const block = MIGRATION.slice(MIGRATION.indexOf(`add constraint ${name}`));
+    const check = block.slice(0, block.indexOf('end if;'));
+    expect(check).toContain('payment_status::text');
+    expect(check).not.toMatch(/payment_status\s*<>/);
+  });
+
   it('付款狀態 enum 補齊 PARTIAL 與 REFUND_PENDING，且五個值同時聲明', () => {
     expect(MIGRATION).toMatch(/'UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED'/);
     expect(MIGRATION).toContain("add value if not exists ''PARTIAL''");
