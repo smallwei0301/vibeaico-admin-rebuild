@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { advanceApplyReceipt, createProductionDbApplyReceipt } from '../../scripts/agents/production-db-apply-receipt.mjs';
 import { createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
 import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
@@ -36,6 +37,18 @@ function plan() {
 
 function journal(p: any) {
   return createReleaseJournal({ releaseId: p.releaseId, mainSha: p.mainSha, planDigest: p.planDigest, createdAt: '2026-09-14T12:39:00Z' });
+}
+
+function receipt(p: any) {
+  return createProductionDbApplyReceipt({
+    releaseId: p.releaseId,
+    mainSha: p.mainSha,
+    planDigest: p.planDigest,
+    projectRef: p.productionProjectRef,
+    githubRunId: '44701',
+    githubRunAttempt: 1,
+    issuedAt: '2026-09-14T12:39:30Z',
+  });
 }
 
 function packet(p: any) {
@@ -111,13 +124,14 @@ describe('Controlled Production DB writer #447', () => {
     });
 
     const result = await runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     });
     expect(result).toMatchObject({
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
       journal: { status: 'APPLIED_CONFIRMED' },
-      g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
+      receipt: { status: 'CONSUMED' },
+      g6: 'SINGLE_USE_RECEIPT_PLUS_DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK',
       nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
       databaseMutationAuthorized: false,
     });
@@ -125,7 +139,7 @@ describe('Controlled Production DB writer #447', () => {
     expect(requests.filter((item) => item.endsWith('/database/query/read-only')).length).toBe(2);
   });
 
-  it('turns mutable/readback uncertainty into APPLY_UNKNOWN journal state and does not blind retry', async () => {
+  it('turns mutable/readback uncertainty into APPLY_UNKNOWN journal + UNKNOWN receipt and does not blind retry', async () => {
     const p = plan();
     let mutableCalls = 0;
     const fetchSpy = vi.fn(async (url: string | URL | Request) => {
@@ -135,25 +149,31 @@ describe('Controlled Production DB writer #447', () => {
       throw new Error('connection reset after send');
     });
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
-    })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' } });
+    })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' }, receipt: { status: 'UNKNOWN' } });
     expect(mutableCalls).toBe(1);
   });
 
-  it('rejects packet/plan or journal/plan mismatch before a Production write', async () => {
+  it('rejects packet/journal mismatch and receipt replay before a Production write', async () => {
     const p = plan();
     const fetchSpy = vi.fn();
     const badPacket = packet(p); badPacket.planDigest = 'b'.repeat(64);
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: badPacket, journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: badPacket, journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/RELEASE_PACKET_PLAN_MISMATCH/);
     const badJournal = { ...journal(p), planDigest: 'c'.repeat(64) };
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), journal: badJournal, aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: badJournal, receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/RELEASE_JOURNAL_PLAN_MISMATCH/);
+    const consuming = advanceApplyReceipt(receipt(p), 'CONSUMING', '2026-09-14T12:39:40Z');
+    const consumed = advanceApplyReceipt(consuming, 'CONSUMED', '2026-09-14T12:39:50Z');
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), journal: journal(p), receipt: consumed, aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/APPLY_RECEIPT_REPLAY/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
