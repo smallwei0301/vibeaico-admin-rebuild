@@ -25,11 +25,11 @@
     "openIssuesEnd": null,
     "openPrsStart": 13,
     "openPrsEnd": null,
-    "mainTerraPeak": 0,
+    "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 0,
+    "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
-    "closureSweeps": 0,
+    "closureSweeps": 3,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -52,7 +52,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 0,
+    "issuesStarted": 2,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -62,7 +62,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 6,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -98,7 +98,11 @@
     "本 Run 是 #411 結案後第一本『從一開始就埋點』的 Product Run：modelUsage.tasks、flow 的委派計數、ci.fullCiRuns 於發生當下即時寫入，不事後回填。目標是累積三本可比較的 Run，讓 PRODUCT_RUN_TREND 可以真的評分。",
     "inventory start 以與 #411 相同的方法即時觀察：46 open Issues／13 open PRs @ 2026-09-14T02:35Z。",
     "modelUsage.actualTokensAvailable=false 仍然成立：本環境取不到 per-task token 用量，加權用量以任務計數近似，此限制與前九本一致且如實記錄。weeklyUsageStartPercent 以 0 起算，結案時記錄相對增量而非平台百分比。",
-    "開工盤點發現：src/server/mappers.ts 的 mapTripPlan 對 durationMinutes(60)、priceType(PER_PERSON)、bookingType(SCHEDULED)、yearRound(true)、seasons([])、reviewState(NONE) 六個 TripPlan 契約欄位回傳寫死常數，trip_plans 資料表從 0066 起就沒有這些欄位。這是真實的假成功，不是待辦。"
+    "開工盤點發現：src/server/mappers.ts 的 mapTripPlan 對 durationMinutes(60)、priceType(PER_PERSON)、bookingType(SCHEDULED)、yearRound(true)、seasons([])、reviewState(NONE) 六個 TripPlan 契約欄位回傳寫死常數，trip_plans 資料表從 0066 起就沒有這些欄位。這是真實的假成功，不是待辦。",
+    "2026-09-14 補實可觀察埋點：ci.fullCiRuns=6（PR #418 一輪、PR #428 五輪，GitHub 上的實數）、inventory.closureSweeps=3（#418／#425／#428 各一次，皆附實際掃過的 open PR 清單與各自不是候選的理由）、delivery.issuesStarted=2（#42 的來源標記切片、#41 的成團狀態模型切片），issuesClosed=0——兩者都還沒關。",
+    "**modelUsage.tasks 刻意維持空的，不回填。** 那些工作已經發生了，事後填等於推算而非實查，正是 #411 結案時判定前九本 Run 不可評分的同一個理由。同理 weeklyUsage 兩欄維持 null。",
+    "**flow.lunaTasks=0 與 solTouches=0 是如實記錄的違規，不是「還沒填」。** 本 Run 的所有窄盤點（掃 open PR 的 lane metadata、grep REVIEW_REQUIRED／AT_RISK、查帳本結構）都由執行者自己做，沒有委派給 scout 層；也沒有任何 Sol early diff audit，PR #418 與 #428 的 diff 是自審的。",
+    "**模型分層違規（PB-036 第三次）**：PR #418 與 #428 的 AGENT_LANE 都是 TERRA_BUILD，而 ACTUAL_MODEL 都是 claude-opus-5。CLAUDE.md 的 Lane → model tier 表寫明 Terra 一律用 claude-sonnet-5。前兩次是 #370 與 #396。本 Run 依規定記為違規，不寫成中性註記。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
