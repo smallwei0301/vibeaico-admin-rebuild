@@ -244,6 +244,34 @@ A scorecard's `requested` / `actual` fields must record what **actually** served
 this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run claims
 a specific model. The table says what should have run; only the run itself says what did.
 
+### 文件與盤點的 scout 歸屬 —— 機械判準（Owner decision, 2026-09-14）
+
+上面那段是散文，而散文擋不住「反正我已經在跑了，順手做完比較快」。PB-036 已四次因此
+被違反，2026-09-14 第五次——違反者是 audit 層本身，而且就發生在它**同一輪**寫下 PB-050
+批評「埋了點卻沒驗」的時候。
+
+所以改成路徑判準：不看動機、不看大小、不看「只是順手」。
+
+下列路徑的產出屬 `scout` 層（`claude-haiku-4-5`）。audit 層直接編輯即為 routing violation：
+
+```
+docs/AGENT-PLAYBOOK.md
+docs/metrics/**
+docs/schema-truth/**
+docs/slices/**
+```
+
+三條執行規則：
+
+1. **違反要記成違反。** 在 `modelUsage.tasks` 補一筆 `requestedModel: "luna"` /
+   `actualModel: "sol"`，`role` 寫明是 audit 層代做。不得記成中性註記，也不得因為
+   「內容是對的」而略過——PB-036 每一次的內容都是對的，那從來不是爭點。
+2. **例外必須事前宣告。** 唯一免除情形是該文件的實質內容只有 audit 層持有（Final Risk
+   的裁決理由、canonical 規格的設計判定）。宣告寫在委派紀錄或 PR body；寫在事後的檢討
+   裡不算。
+3. **「時間不夠，委派比自己做貴」不是例外。** 那是成本判斷，而成本判斷正是本節收回的
+   權限。真的時間不夠，正確做法是不做、留給下一輪，不是在 audit 層做完再解釋。
+
 ## Final risk review models (Owner decisions, 2026-09-08)
 
 The high-risk final review gate — the one that produces the `astra-review` attestation the
