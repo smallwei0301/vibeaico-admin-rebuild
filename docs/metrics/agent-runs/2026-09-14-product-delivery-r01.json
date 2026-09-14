@@ -203,6 +203,18 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #438（ASTRA_RISK=PAYMENT_CONSISTENCY）的 Final Risk 覆核，依 models.finalRisk 委派給 claude-fable-5-1。Final Risk 不屬 luna/terra/sol 三個 tier，ledger 的 tier 值域無法表達它，故記為 unknown 並在此說明實際模型——不假借某個 tier 來讓欄位看起來有值。任務為對抗性反例搜尋：金額真相、enum 同交易解析、後置斷言的突變測試（CATCHES/VACUOUS）、重複套用與 overlay 形狀、mapper 收斂方向、對照 18 分冊 §4。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
