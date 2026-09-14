@@ -414,12 +414,15 @@ describe('#396 已提交的正式資料', () => {
   const snapshot = loadRealSnapshot();
   const repoFiles = loadRealRepoFiles();
 
-  it('repo 有 53 個 migration 檔案，正式庫快照有 54 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(53);
+  // 合併衝突的正確解：兩邊各有一半是對的。檔數來自本分支（main 的 53 ＋ 0105），
+  // 快照列數來自 main（PR #401 把 0069–0073 補登後為 54）。數字不是推算的，是對
+  // 合併後的實際檔案跑一次得到的。
+  it('repo 有 54 個 migration 檔案，正式庫快照有 54 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(54);
     expect(snapshot.ledgerRowNames).toHaveLength(54);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 53 個 repo 檔案與 54 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 54 個 repo 檔案與 54 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -430,16 +433,19 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：47 EXACT、6 ALIAS、0 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：47 EXACT、6 ALIAS、1 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
     }
     // 2026-09-13：0069–0073 五支經 Owner 具名授權套用至正式庫並回讀驗證，
-    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47），NOT_APPLIED 歸零。
+    // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47）。本分支另新增 0105（尚未套用），
+    // 所以 NOT_APPLIED 是 1 而不是 0。
     expect(counts.EXACT).toBe(47);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(0);
+    // 唯一一筆 NOT_APPLIED 是本分支新增的 0105（PENDING_APPLY，尚未套用到
+    // canonical TEST 或正式庫）。0069–0073 已由 PR #401 轉為 EXACT。
+    expect(counts.NOT_APPLIED ?? 0).toBe(1);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -704,10 +710,11 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 2026-09-13 起目前為 0 筆（0069–0073 已套用）。這條規則刻意不因為「現在沒有」
-    // 就變成空轉：先釘住目前的數量，任何人日後新增一筆 NOT_APPLIED 會先撞到這一行，
-    // 被迫同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(0);
+    // 目前為 1 筆（0105，PENDING_APPLY）。保留 main 那一版的意圖：釘住數量而不是
+    // 只檢查「每一筆都有理由」，否則清單變空時這條規則會靜悄悄變成空轉。任何人
+    // 日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫同時面對下面那條
+    // 「必須有合法 notAppliedReason」的規則。
+    expect(notApplied.length).toBe(1);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

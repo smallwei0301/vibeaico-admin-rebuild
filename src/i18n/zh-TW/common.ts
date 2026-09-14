@@ -206,6 +206,17 @@ export const common = {
     OTHER: '不公開',
   },
   weekdays: ['週日', '週一', '週二', '週三', '週四', '週五', '週六'],
+  /** 旅客風險政策（GUIDE，issue #44）— `TravelerRiskPolicyKind` 對照。 */
+  travelerRiskPolicy: {
+    DEFAULT: '一般（依平台預設規則）',
+    FORCE_DEPOSIT: '強制訂金',
+    REQUEST_ONLY: '僅接受人工確認',
+    BLOCK_SELF_SERVICE: '停用自助下單',
+  },
+  travelerRiskDepositMode: {
+    DEPOSIT_FIXED: '固定金額',
+    DEPOSIT_PERCENT: '比例（%）',
+  },
 } as const;
 
 export type Common = typeof common;

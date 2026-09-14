@@ -18,6 +18,15 @@ type AnyClient = {
   from: (table: string) => any;
 };
 
+/**
+ * `expire_tour_order` 的 `cancel_reason` 標記字串（#350 逾期釋位；見
+ * `src/app/api/cron/tour-order-expiry/route.ts`）。抽成具名常數並由該 route
+ * 與 `src/server/traveler-risk-summary.ts` 的 #44 真實讀取路徑共用，避免兩處各
+ * 自硬編同一段中文字面值而日後漂移——那正是 #44 用來把「系統因逾期未付款取消」
+ * 與「人工取消」分開判讀的唯一可靠訊號，因為現有 schema 沒有另外的取消者欄位。
+ */
+export const TOUR_ORDER_AUTO_EXPIRE_REASON = '未在保留期限內完成付款，系統自動取消';
+
 /** 一批 tour_orders 列 → TourOrder[]，關聯值以 3 趟 `.in()` 查詢補齊 */
 export async function hydrateTourOrders(
   supabase: AnyClient, tenantId: string, rows: any[],

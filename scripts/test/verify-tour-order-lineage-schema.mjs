@@ -47,11 +47,52 @@ export function assertDisposableTarget(env, evidence, sql) {
 // 「正式庫真正的形狀」（父鍵維持複合、tour_orders 四鍵降回單欄、customers
 // 父鍵不存在），才能重演「升級」這件事本身，而不是重演一個沒有任何環境
 // 有過的假形狀。
+// 0105（#44）在 traveler_risk_policies 上建了一條指向 customers(tenant_id, id) 的
+// 複合 FK。本證明是在**跑過全部 canonical migration**（含 0105）的拋棄式資料庫上
+// 執行，所以要把 customers 父鍵拆掉之前，必須先按相依順序卸掉那條 FK——否則
+// `DROP CONSTRAINT customers_tenant_id_id_key` 會直接被 dependency error 擋下，
+// 而那個錯誤與本證明要驗的「0104 能不能升級正式庫形狀」毫無關係。
+//
+// 這不削弱證明：本檔的斷言（assertStrong／dmlProof）全部是關於 tour_orders 的
+// 四條血統鍵，traveler_risk_policies 只是剛好也依賴同一支父鍵的旁觀者。它自己的
+// 租戶邊界由 tests/integration/db/traveler-risk-policy.44.test.ts 在 local isolated
+// 上獨立證明（跨租戶 customer_id 必須被 23503 拒絕）。
+//
+// 同族先例見下方 mixed-shape 案例的註解：哪些父鍵能不能動，本來就要看當下資料庫
+// 上實際存在的依賴關係，不能照「理論上的正式庫形狀」硬拆。
+const dropCustomerCompositeDependents = `
+ALTER TABLE public.traveler_risk_policies
+  DROP CONSTRAINT IF EXISTS traveler_risk_policies_customer_tenant_fk;
+`;
+
+// 驗完之後把 0105 的 FK 加回去，並斷言它**重新綁回** customers_tenant_id_id_key。
+// 這是 Final Risk 覆核（claude-fable-5-1）在第三輪提出並原型驗證過的做法：它在
+// 當前 head 通過，而對「0104 少建 customers 父鍵」那個突變會轉紅——等於免費替
+// 本證明多加一層敏感度，而不是只把依賴卸掉就算了。
+const restoreCustomerCompositeDependents = `
+ALTER TABLE public.traveler_risk_policies
+  ADD CONSTRAINT traveler_risk_policies_customer_tenant_fk
+  FOREIGN KEY (tenant_id, customer_id) REFERENCES public.customers (tenant_id, id) ON DELETE CASCADE;
+DO $restore$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint c
+      JOIN pg_class i ON i.oid = c.conindid
+     WHERE c.conrelid = 'public.traveler_risk_policies'::regclass
+       AND c.conname = 'traveler_risk_policies_customer_tenant_fk'
+       AND i.relname = 'customers_tenant_id_id_key'
+  ) THEN
+    RAISE EXCEPTION 'traveler_risk_policies_customer_tenant_fk 沒有綁回 customers_tenant_id_id_key';
+  END IF;
+END $restore$;
+`;
+
 const weakKeys = `
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_departure_fkey;
 ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_customer_fkey;
+${dropCustomerCompositeDependents}
 ALTER TABLE public.customers DROP CONSTRAINT IF EXISTS customers_tenant_id_id_key;
 ALTER TABLE public.tour_orders ADD CONSTRAINT tour_orders_trip_id_fkey
   FOREIGN KEY (trip_id) REFERENCES public.trips (id) ON DELETE RESTRICT;
@@ -146,7 +187,7 @@ export function buildCases(migration) {
   return [
     { name: 'fresh-schema-and-real-tenant-boundaries', sql: assertStrong + dmlProof },
     { name: 'existing-test-shape-idempotence', sql: migration + migration + assertStrong + dmlProof },
-    { name: 'production-shaped-simple-keys-upgrade', sql: weakKeys + migration + assertStrong + dmlProof },
+    { name: 'production-shaped-simple-keys-upgrade', sql: weakKeys + migration + restoreCustomerCompositeDependents + assertStrong + dmlProof },
     { name: 'mixed-shape-upgrade-trips-already-strong', sql: `
       -- trips 這條保持複合（tenant_trip_fkey 不動），只把 plan/departure/customer
       -- 降回單欄——trip_plans_tenant_trip_id_id_key、
@@ -156,6 +197,7 @@ export function buildCases(migration) {
       ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_fkey;
       ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_trip_plan_departure_fkey;
       ALTER TABLE public.tour_orders DROP CONSTRAINT tour_orders_tenant_customer_fkey;
+      ${dropCustomerCompositeDependents}
       ALTER TABLE public.customers DROP CONSTRAINT IF EXISTS customers_tenant_id_id_key;
       ALTER TABLE public.tour_orders ADD CONSTRAINT tour_orders_plan_id_fkey
         FOREIGN KEY (plan_id) REFERENCES public.trip_plans (id) ON DELETE RESTRICT;
@@ -163,7 +205,7 @@ export function buildCases(migration) {
         FOREIGN KEY (departure_id) REFERENCES public.trip_departures (id) ON DELETE RESTRICT;
       ALTER TABLE public.tour_orders ADD CONSTRAINT tour_orders_customer_id_fkey
         FOREIGN KEY (customer_id) REFERENCES public.customers (id) ON DELETE SET NULL;
-      ` + migration + assertStrong + dmlProof },
+      ` + migration + restoreCustomerCompositeDependents + assertStrong + dmlProof },
     { name: 'dirty-data-must-not-be-repaired', sql: weakKeys + fixtures + badOrderTripCrossTenant + migration,
       error: 'TOUR_ORDER_LINEAGE_DATA_MISMATCH' },
     { name: 'unknown-delete-semantics-must-stop', sql: weakKeys + `

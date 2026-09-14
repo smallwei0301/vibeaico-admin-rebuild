@@ -92,6 +92,24 @@ test.beforeAll(() => {
  * 「載入中...」上逾時）。Preview 是 production build，不會這麼慢，但同一份 spec
  * 兩邊都要能跑。
  */
+// 這份 spec 是「對已部署的 Preview 站台」做的驗收，不是一般的本機 E2E：
+// 它由 .github/workflows/issue-27-preview-acceptance.yml 派工，該 workflow 一定
+// 會設 E2E_BASE_URL 指向 Preview，而 Preview 的 NEXT_PUBLIC_SUPABASE_URL 指向
+// TEST 專案。
+//
+// 沒有 E2E_BASE_URL 時（例如 local-isolated 那條 lane，資料庫是 127.0.0.1 的
+// 本機 Supabase），本 spec 沒有可驗收的目標。若照跑，tests/e2e-target-guard.ts
+// 會正確地攔下——它是 allowlist，判不出專案就中止——於是這條 lane 每次都紅，
+// 紅的原因卻與該 lane 要驗的東西無關。
+//
+// 因此這裡限定適用範圍而不是放寬安全鎖：鎖維持嚴格，spec 在沒有 Preview 目標
+// 時明確標記為 skipped（不是 passed），專屬 workflow 仍照常執行它。
+test.skip(
+  !process.env.E2E_BASE_URL,
+  '本 spec 只對已部署的 Preview 站台執行；未設 E2E_BASE_URL 時沒有可驗收的目標'
+    + '（由 .github/workflows/issue-27-preview-acceptance.yml 派工）',
+);
+
 test.beforeEach(() => {
   test.setTimeout(180_000);
 });

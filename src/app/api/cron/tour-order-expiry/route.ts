@@ -37,6 +37,7 @@
  */
 import { NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/server/supabase';
+import { TOUR_ORDER_AUTO_EXPIRE_REASON } from '@/server/tour-orders';
 
 export const runtime = 'nodejs';
 
@@ -72,7 +73,7 @@ export async function GET(req: Request) {
       const { data: released, error: rpcError } = await admin.rpc('expire_tour_order', {
         p_tenant: row.tenant_id,
         p_order: row.id,
-        p_reason: '未在保留期限內完成付款，系統自動取消',
+        p_reason: TOUR_ORDER_AUTO_EXPIRE_REASON,
       });
       if (rpcError) throw rpcError;
       if (released === true) cancelled++;

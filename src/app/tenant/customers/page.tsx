@@ -1,7 +1,7 @@
 'use client';
 import * as React from 'react';
 import {
-  Download, Info, Link2, Pencil, Plus, Search, Trash2, Unlink, Users, X,
+  Download, Info, Link2, Pencil, Plus, Search, ShieldAlert, Trash2, Unlink, Users, X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -23,12 +23,22 @@ import {
 } from '@/services/customers';
 import { listMembershipLevels } from '@/services/catalog';
 import { exportCustomersExcel } from '@/services/reports';
+import {
+  assignTravelerRiskPolicy as assignTravelerRiskPolicyApi,
+  getTravelerRiskPolicy,
+  type AssignTravelerRiskPolicyPayload,
+} from '@/services/traveler-risk';
 import { MOCK_CUSTOMERS } from '@/mock';
+import { useBusinessType, useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { customersPage as t } from '@/i18n/zh-TW/pages/customers';
-import { formatCurrency, formatDate, formatNumber } from '@/lib/utils';
-import type { Customer, Gender, MembershipLevel } from '@/lib/types';
+import { travelerRiskPage as trp } from '@/i18n/zh-TW/pages/traveler-risk';
+import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/lib/utils';
+import type {
+  Customer, Gender, MembershipLevel,
+  TravelerRiskDepositMode, TravelerRiskPolicy, TravelerRiskPolicyDetail, TravelerRiskPolicyKind,
+} from '@/lib/types';
 
 /* -------------------------------------------------------------------------- */
 /* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
@@ -63,6 +73,8 @@ const toNumber = (v: string): number | undefined => (v.trim() === '' ? undefined
 
 export default function CustomersPage() {
   const toast = useToast();
+  const businessType = useBusinessType();
+  const { role } = useCurrentTenant();
 
   const [rows, setRows] = React.useState<Customer[]>([]);
   const [total, setTotal] = React.useState(0);
@@ -87,6 +99,7 @@ export default function CustomersPage() {
   const [deleteTarget, setDeleteTarget] = React.useState<Customer | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [unbinding, setUnbinding] = React.useState(false);
+  const [riskTarget, setRiskTarget] = React.useState<Customer | null>(null);
 
   /** 原站以 /tenant/customers?atRisk=true 從儀表板的流失預警進入本頁 */
   React.useEffect(() => {
@@ -221,6 +234,14 @@ export default function CustomersPage() {
           >
             <Pencil size={13} />
           </Button>
+          {businessType === 'GUIDE' ? (
+            <Button
+              variant="outline" size="sm" title={trp.action} aria-label={trp.action}
+              onClick={() => setRiskTarget(c)}
+            >
+              <ShieldAlert size={13} />
+            </Button>
+          ) : null}
           {c.lineUserId ? (
             <Button
               variant="outline" size="sm" title={t.actions.unbindLine} aria-label={t.actions.unbindLine}
@@ -505,6 +526,14 @@ export default function CustomersPage() {
           }
         }}
       />
+
+      {/* --------------------------------------- modal 5：旅客風險政策（GUIDE） */}
+      <TravelerRiskPolicyModal
+        customer={riskTarget}
+        canManage={role === 'MANAGER' || role === 'OWNER'}
+        onClose={() => setRiskTarget(null)}
+        onAssigned={() => toast.show(trp.messages.assigned)}
+      />
     </>
   );
 }
@@ -756,6 +785,235 @@ function BindLineModal({
             </button>
           ))}
         </div>
+      )}
+    </Modal>
+  );
+}
+
+/* ========================================================================== */
+/* 旅客風險政策（GUIDE，issue #44）                                            */
+/* ========================================================================== */
+
+const RISK_POLICY_TONE: Record<TravelerRiskPolicyKind, 'neutral' | 'warning' | 'info' | 'danger'> = {
+  DEFAULT: 'neutral',
+  FORCE_DEPOSIT: 'warning',
+  REQUEST_ONLY: 'info',
+  BLOCK_SELF_SERVICE: 'danger',
+};
+
+function formatDeposit(deposit: TravelerRiskPolicy['deposit']): string {
+  if (!deposit) return '';
+  const mode = common.travelerRiskDepositMode[deposit.mode];
+  const value = deposit.mode === 'DEPOSIT_FIXED' ? formatCurrency(deposit.value) : `${deposit.value}%`;
+  return trp.depositLabel(mode, value);
+}
+
+function TravelerRiskPolicyCard({ policy }: { policy: TravelerRiskPolicy }) {
+  return (
+    <div className="rounded-md border border-neutral-250 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={RISK_POLICY_TONE[policy.policy]}>{common.travelerRiskPolicy[policy.policy]}</Badge>
+        {policy.deposit ? <span className="text-sm text-neutral-700">{formatDeposit(policy.deposit)}</span> : null}
+      </div>
+      <div className="mt-1.5 text-sm text-dark">{trp.reasonPrefix}{policy.reason}</div>
+      <div className="mt-1 text-xs text-secondary">
+        {trp.appliedBy(policy.actorLabel, formatDateTime(policy.createdAt))}
+      </div>
+    </div>
+  );
+}
+
+function TravelerRiskPolicyModal({
+  customer, canManage, onClose, onAssigned,
+}: {
+  customer: Customer | null;
+  canManage: boolean;
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const toast = useToast();
+  const [loading, setLoading] = React.useState(false);
+  const [detail, setDetail] = React.useState<TravelerRiskPolicyDetail | null>(null);
+
+  const [policy, setPolicy] = React.useState<TravelerRiskPolicyKind>('DEFAULT');
+  const [depositMode, setDepositMode] = React.useState<TravelerRiskDepositMode>('DEPOSIT_PERCENT');
+  const [depositValue, setDepositValue] = React.useState('');
+  const [reason, setReason] = React.useState('');
+  const [actorLabel, setActorLabel] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const reload = React.useCallback(async (customerId: string) => {
+    setLoading(true);
+    try {
+      setDetail(await getTravelerRiskPolicy(customerId));
+    } catch {
+      toast.show(trp.loadFailed, 'danger');
+      setDetail(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  React.useEffect(() => {
+    if (!customer) return;
+    setPolicy('DEFAULT');
+    setDepositMode('DEPOSIT_PERCENT');
+    setDepositValue('');
+    setReason('');
+    setActorLabel('');
+    setError('');
+    void reload(customer.id);
+  }, [customer, reload]);
+
+  const validate = (targetPolicy: TravelerRiskPolicyKind): string => {
+    if (reason.trim().length < 4) return trp.messages.reasonRequired;
+    if (!actorLabel.trim()) return trp.messages.actorLabelRequired;
+    if (targetPolicy === 'FORCE_DEPOSIT') {
+      const value = Number(depositValue);
+      if (!Number.isFinite(value)) return trp.messages.depositRequired;
+      if (depositMode === 'DEPOSIT_FIXED' && !(value > 0)) return trp.messages.depositFixedInvalid;
+      if (depositMode === 'DEPOSIT_PERCENT' && !(value >= 1 && value <= 100)) {
+        return trp.messages.depositPercentInvalid;
+      }
+    }
+    return '';
+  };
+
+  const submit = async (targetPolicy: TravelerRiskPolicyKind) => {
+    if (!customer) return;
+    const err = validate(targetPolicy);
+    if (err) { setError(err); return; }
+    setError('');
+    setSubmitting(true);
+    try {
+      const payload: AssignTravelerRiskPolicyPayload = {
+        policy: targetPolicy,
+        reason: reason.trim(),
+        actorLabel: actorLabel.trim(),
+        ...(targetPolicy === 'FORCE_DEPOSIT'
+          ? { deposit: { mode: depositMode, value: Number(depositValue) } }
+          : {}),
+      };
+      await assignTravelerRiskPolicyApi(customer.id, payload);
+      await reload(customer.id);
+      setReason('');
+      onAssigned();
+    } catch (e) {
+      toast.show(
+        `${trp.messages.assignFailed}${e instanceof Error ? `: ${e.message}` : ''}`,
+        'danger',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal open={!!customer} onClose={onClose} size="lg" title={trp.modalTitle(customer?.name ?? '')}>
+      {loading ? (
+        <div className="py-8 text-center text-muted">{trp.loading}</div>
+      ) : (
+        <>
+          <h6 className="mb-2 text-base font-bold text-dark">{trp.currentTitle}</h6>
+          {detail?.current ? (
+            <TravelerRiskPolicyCard policy={detail.current} />
+          ) : (
+            <EmptyState title={trp.currentEmpty.title} description={trp.currentEmpty.description} />
+          )}
+
+          <h6 className="mb-2 mt-4 text-base font-bold text-dark">{trp.historyTitle}</h6>
+          {detail && detail.history.length > 0 ? (
+            <div className="flex max-h-48 flex-col gap-2 overflow-y-auto">
+              {detail.history.map((p) => <TravelerRiskPolicyCard key={p.id} policy={p} />)}
+            </div>
+          ) : (
+            <p className="text-sm text-secondary">{trp.historyEmpty}</p>
+          )}
+
+          <h6 className="mb-2 mt-4 text-base font-bold text-dark">{trp.formTitle}</h6>
+          {!canManage ? (
+            <Alert tone="info">{trp.managerOnlyNotice}</Alert>
+          ) : (
+            <>
+              <FormGroup>
+                <Label htmlFor="riskPolicyKind">{trp.form.policy}</Label>
+                <Select
+                  id="riskPolicyKind" value={policy}
+                  onChange={(e) => setPolicy(e.target.value as TravelerRiskPolicyKind)}
+                >
+                  {(Object.keys(common.travelerRiskPolicy) as TravelerRiskPolicyKind[]).map((k) => (
+                    <option key={k} value={k}>{common.travelerRiskPolicy[k]}</option>
+                  ))}
+                </Select>
+              </FormGroup>
+
+              {policy === 'FORCE_DEPOSIT' ? (
+                <div className="grid gap-x-4 md:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="riskDepositMode">{trp.form.depositMode}</Label>
+                    <Select
+                      id="riskDepositMode" value={depositMode}
+                      onChange={(e) => setDepositMode(e.target.value as TravelerRiskDepositMode)}
+                    >
+                      {(Object.keys(common.travelerRiskDepositMode) as TravelerRiskDepositMode[]).map((m) => (
+                        <option key={m} value={m}>{common.travelerRiskDepositMode[m]}</option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="riskDepositValue">{trp.form.depositValue}</Label>
+                    <Input
+                      id="riskDepositValue" type="number" value={depositValue}
+                      placeholder={depositMode === 'DEPOSIT_FIXED'
+                        ? trp.form.depositValuePlaceholderFixed
+                        : trp.form.depositValuePlaceholderPercent}
+                      onChange={(e) => setDepositValue(e.target.value)}
+                    />
+                  </FormGroup>
+                </div>
+              ) : null}
+
+              <FormGroup>
+                <Label required htmlFor="riskReason">{trp.form.reason}</Label>
+                <Textarea
+                  id="riskReason" rows={2} value={reason} maxLength={trp.form.reasonMax}
+                  placeholder={trp.form.reasonPlaceholder}
+                  onChange={(e) => setReason(e.target.value)}
+                />
+              </FormGroup>
+
+              <FormGroup>
+                <Label required htmlFor="riskActorLabel">{trp.form.actorLabel}</Label>
+                <Input
+                  id="riskActorLabel" value={actorLabel} placeholder={trp.form.actorLabelPlaceholder}
+                  onChange={(e) => setActorLabel(e.target.value)}
+                />
+              </FormGroup>
+
+              {error ? <FormError>{error}</FormError> : null}
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-250 pt-3">
+                <div>
+                  <div className="text-sm font-semibold text-dark">{trp.form.reset.title}</div>
+                  <div className="text-xs text-secondary">{trp.form.reset.description}</div>
+                </div>
+                <Button
+                  variant="outline" size="sm" disabled={submitting}
+                  onClick={() => void submit('DEFAULT')}
+                >
+                  {trp.form.reset.submit}
+                </Button>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <Button loading={submitting} loadingText={trp.form.submitting} onClick={() => void submit(policy)}>
+                  {trp.form.submit}
+                </Button>
+              </div>
+            </>
+          )}
+        </>
       )}
     </Modal>
   );
