@@ -555,8 +555,10 @@ export type TripAddon = {
 };
 
 export type TourOrderStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
-export type TourPaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED';
+export type TourPaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID' | 'REFUND_PENDING' | 'REFUNDED';
 export type TourOrderSource = 'MIDAO' | 'VIBEAI_SHOP' | 'LINE' | 'MANUAL';
+/** 18 分冊 §4：成交當下 trip_plans.deposit_mode 的 snapshot，值域同 0066 的 deposit_mode。 */
+export type TourDepositModeSnapshot = 'NONE' | 'DEPOSIT_FIXED' | 'DEPOSIT_PERCENT' | 'FULL';
 
 export type TourOrder = {
   id: string;
@@ -584,6 +586,12 @@ export type TourOrder = {
   holdExpiresAt: string | null;
   note: string;
   createdAt: string;
+  /** 18 分冊 §4：成交當下要求收多少頭期款（訂金或全額）的 snapshot。#41，選填。 */
+  upfrontRequiredAmount?: number;
+  /** 18 分冊 §4／§9.3：實際已退款金額；不得為負、不得超過 paidAmount。#41，選填。 */
+  refundedAmount?: number;
+  /** 18 分冊 §4：成交當下的收款政策 snapshot；null = 尚未補這個欄位。#41，選填。 */
+  depositModeSnapshot?: TourDepositModeSnapshot | null;
 };
 
 /* -------------------------------------------------------------- 行事曆 */

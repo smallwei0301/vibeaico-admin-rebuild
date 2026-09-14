@@ -95,6 +95,54 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-data-source-inventory",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#43 八類待辦的資料來源盤點（scout，claude-haiku-4-5）：0107 落地後每一類在 DB 側與應用側各自是否已有真實來源",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-46-journey-gap-inventory",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#46 旅客自助預約旅程缺口盤點（scout，claude-haiku-4-5）：目標流程七步各自有無支撐程式，並找出「按了沒反應」的假成功入口",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s6-function-inventory",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#41 §6 自動推進所要擴充的既有函式盤點（scout，claude-haiku-4-5）：reserve/release_seats、create/cancel/expire_tour_order 的實際行為、鎖、併發控制與授權",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-40-outbox-inventory",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#40 通知 outbox 盤點（scout，claude-haiku-4-5）：canonical 與 overlay 各有什麼，#43 第 8 類與 #41 §7 依賴的是哪一邊",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -127,7 +175,7 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 2,
+    "lunaTasks": 6,
     "lunaAccepted": 0,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
