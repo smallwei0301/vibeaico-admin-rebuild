@@ -19,6 +19,22 @@
 -- 上是 not null 卻沒有 default，同樣沒有被任何斷言抓到——因為 `add column if not
 -- exists` 對已存在的同名欄位是 no-op，不會補上型別、nullability 或 default 任何一項。
 --
+-- 同一類缺口的第三個例子，而且是本檔自己犯過一次才發現的：第四段第一版無條件
+-- 假設 `trip_departures.min_to_depart_snapshot`／`formation_status` 兩個欄位存在，
+-- 直接對它們跑 `alter column ... set default`。但 Production 實測（2026-09-14）
+-- 顯示 `0107_issue_41_formation_state_model` 在正式庫上是
+-- `NOT_APPLIED / PENDING_APPLY`——`0108` 已套用、`0107` 沒有，兩者是各自獨立由
+-- Owner 授權套用，**不是**嚴格依編號順序執行。於是這兩個欄位根本不存在，
+-- `alter column` 直接以 `42703 undefined_column` 中止。這正是本檔第一段點名的
+-- 同一個病：**依賴一個前提（這裡是「0107 已經套用」）卻從未斷言它**——差別只在
+-- 於 0108 是「靜默通過」，這裡原本會是「直接中止」，成因完全相同。修法是先確認
+-- 前提物件存在，不存在就整段 no-op（該欄位／型別由對應的 migration 日後套用時
+-- 自己建出 canonical 形狀，不需要本檔越俎代庖），而不是中止。這個模式（先用
+-- `to_regclass()`／`to_regtype()`／`pg_attribute` 存在性查詢，確認前提物件存在
+-- 才動作）貫穿全檔四段，包含 `tour_orders` 表本身、`tour_payment_status` 型別、
+-- 0108 新增的三個 `tour_orders` 欄位，與 `trip_departures` 表本身——同一輪盤點
+-- 過，找到的同類缺口都已一併補齊，理由與範圍見各段落內的行內註解。
+--
 -- ## 設計原則：canonical／overlay／Production 上必須是 no-op
 --
 -- 三邊查證過的事實（同一份 schema-truth 文件）：canonical `0087:71`、overlay
@@ -38,6 +54,19 @@
 -- 但從未驗證過這個前提。如果環境上它其實是 `text`（外加一條 CHECK 在頂替值域），
 -- 0108 的四條「誠實 CHECK」與本檔第二段的斷言全部會失效或誤判。這裡把前提修回
 -- canonical 形狀，而不是讓後面的斷言在一個錯的地基上通過。
+--
+-- ⚠️（同一輪 Production 實測後回頭自查）：這一段以及第二、三段都隱含「
+-- `public.tour_orders` 這張表存在」的前提，跟第四段原本對 `trip_departures`
+-- 兩個欄位犯的是同一類問題——只是這裡假設的是「表存在」而不是「欄位存在」。
+-- 差別在於這個前提目前明顯更穩固：`0108`（已證實套用於 Production）本身就是
+-- `alter table public.tour_orders add column if not exists ...`，這個語句要成功
+-- 執行，`tour_orders` 表**必須**在 0108 套用當下就已經存在——所以任何 0108 已
+-- 套用的環境，`tour_orders` 表必然存在，這不是待驗證的假設，是 0108 能套用成功
+-- 這件事本身的邏輯後果。但為了不讓本檔本身也犯「前提沒斷言」的問題，這裡仍然
+-- 用 `to_regclass()`（找不到物件回傳 null，不會像 `::regclass` literal cast 那樣
+-- 直接丟錯）明確查一次，查不到就整支 no-op：那代表這個環境連 `tour_orders` 都
+-- 還沒建出來，0087（或建出它的 overlay 路徑）本身尚未套用，不是本檔要修的漂移，
+-- 中止或嘗試建表都不是 0109 的職責。
 do $$
 declare
   current_type oid;
@@ -45,6 +74,11 @@ declare
   bad_values   text;
   ck           record;
 begin
+  if to_regclass('public.tour_orders') is null then
+    raise notice '0109 第一段 no-op：public.tour_orders 不存在，代表 0087（或建出它的路徑）尚未套用到這個環境。這不是本檔要修的漂移；本檔修的是「payment_status 已經是別的型別」，不是「表還沒被建出來」。';
+    return;
+  end if;
+
   select a.atttypid
     into current_type
     from pg_attribute a
@@ -54,8 +88,17 @@ begin
      and a.attnum > 0;
 
   if current_type is null then
-    raise exception '0109 中止：public.tour_orders.payment_status 欄位不存在，無法判斷前置狀態。';
-  elsif current_type = 'public.tour_payment_status'::regtype then
+    -- 這裡不是「還沒套用某支 migration」——`payment_status` 是 0087 建表當下就有
+    -- 的核心欄位（`create table` 本體的一部分，不是像 `min_to_depart_snapshot`
+    -- 那樣事後才用 `add column if not exists` 補上去的），只要 `tour_orders` 表
+    -- 存在，這個欄位理應存在。表在、欄位不在是真正反常的狀態，維持中止。
+    raise exception '0109 中止：public.tour_orders 存在，但 payment_status 欄位不存在，這是反常狀態（payment_status 是 0087 建表當下就有的核心欄位），無法判斷前置狀態，需要人工判定。';
+  -- 用 `to_regtype()` 而不是 `'public.tour_payment_status'::regtype` 字面 cast：
+  -- 後者在型別真的不存在時會直接丟錯，讓這裡在「type 根本沒被建出來」的環境上
+  -- 崩潰而不是走到下面任何一個分支去正確分類。`to_regtype()` 找不到就回傳
+  -- null，`current_type = null` 自然為 false，會安全地落到下一個分支判斷，
+  -- 不會提早炸掉。
+  elsif current_type = to_regtype('public.tour_payment_status') then
     -- canonical／overlay／Production 走這條：型別本來就對，no-op。
     null;
   elsif current_type = 'text'::regtype then
@@ -168,13 +211,40 @@ end $$;
 -- migration 時 `tour_orders.payment_status` 的型別、nullability、default 與
 -- `tour_payment_status` 的值域都必須是 canonical 形狀；任何一項不符就中止，而不是
 -- 讓 migration「成功套用」但地基是錯的（正是 0108 這次踩到的坑）。
+--
+-- ⚠️ 與第一段同理，本段一樣隱含「`tour_orders` 表存在」的前提，一樣用
+-- `to_regclass()` 查而不是讓 `::regclass` literal cast 在表不存在時直接丟錯；
+-- 表不存在就整段 no-op（理由同第一段：0087 尚未套用，不是本檔要修的漂移）。
+--
+-- 另外，「`tour_payment_status` 剛好五個 label」這件事本身是 **0108** 的產物
+-- （0087 只建了 UNPAID／PAID／REFUNDED 三個，PARTIAL／REFUND_PENDING 是 0108
+-- 才加的）。如果 0108 在這個環境上還沒套用，enum 只會有三個 label——這不是
+-- 漂移，是「這支 migration 還沒輪到」，跟第四段 `trip_departures` 兩個欄位不存在
+-- 是同一類前提缺口，所以五個 label 的檢查另外用 `upfront_required_amount`
+-- 欄位（0108 的專屬產物）是否存在來判斷「0108 是否已套用」，沒套用就跳過這條
+-- 檢查，不中止。型別／nullability／default 三項不受影響、維持無條件檢查——
+-- 它們是 0087 的產物，只要 `payment_status` 欄位存在就該成立，與 0108 是否
+-- 套用無關。
 do $$
 declare
   status_type    oid;
   status_notnull boolean;
   status_default text;
   missing        text;
+  has_0108       boolean;
 begin
+  if to_regclass('public.tour_orders') is null then
+    raise notice '0109 第二段 no-op：public.tour_orders 不存在，理由同第一段。';
+    return;
+  end if;
+
+  select exists(
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.tour_orders'::regclass
+       and a.attname = 'upfront_required_amount'
+       and not a.attisdropped and a.attnum > 0
+  ) into has_0108;
+
   select a.atttypid, a.attnotnull
     into status_type, status_notnull
     from pg_attribute a
@@ -183,7 +253,9 @@ begin
      and not a.attisdropped
      and a.attnum > 0;
 
-  if status_type is distinct from 'public.tour_payment_status'::regtype then
+  -- 用 `to_regtype()` 而非字面 `::regtype` cast，理由同第一段：找不到型別時
+  -- 回傳 null 而不是直接丟錯。
+  if status_type is distinct from to_regtype('public.tour_payment_status') then
     raise exception '0109 後置斷言失敗——tour_orders.payment_status 的型別不是 public.tour_payment_status（實際 regtype=%）。', status_type::regtype;
   end if;
 
@@ -207,42 +279,49 @@ begin
     raise exception '0109 後置斷言失敗——tour_orders.payment_status 的 default 期望是 ''UNPAID''::public.tour_payment_status，實際是 %。', coalesce(status_default, '(無 default)');
   end if;
 
-  -- tour_payment_status 的 label 集合必須正好是五個，不多不少。
-  --
-  -- ⚠️ PB-041：`pg_enum.enumlabel` 型別是 `name`，走 C collation，`REFUNDED` 會
-  -- 排在 `REFUND_PENDING` 之前——0108 第一版就是把 `array_agg(... order by
-  -- enumlabel)` 拿去跟手寫的有序陣列比對，寫出一條永遠為假的斷言。這裡改用
-  -- full outer join 做純集合比對（差集為空），完全不依賴任何排序規則。
-  select string_agg(
-           case
-             when actual.enumlabel is null then '(missing:' || expected.label || ')'
-             else '(unexpected:' || actual.enumlabel || ')'
-           end,
-           ', ')
-    into missing
-    from (
-      select e.enumlabel::text as enumlabel
-        from pg_enum e
+  -- tour_payment_status 的 label 集合必須正好是五個，不多不少——但**只在 0108
+  -- 已套用時**才檢查。五個 label 裡的 PARTIAL／REFUND_PENDING 是 0108 才加的
+  -- （見本段開頭註解），`has_0108 = false` 代表這個環境合法地只會有 0087 的三個
+  -- label，那不是漂移，是「0108 這支 migration 還沒輪到」；0108 套用時自己會把
+  -- label 補齊，不需要本檔在它之前搶著斷言一個它還沒達到的狀態。
+  if has_0108 then
+    -- ⚠️ PB-041：`pg_enum.enumlabel` 型別是 `name`，走 C collation，`REFUNDED` 會
+    -- 排在 `REFUND_PENDING` 之前——0108 第一版就是把 `array_agg(... order by
+    -- enumlabel)` 拿去跟手寫的有序陣列比對，寫出一條永遠為假的斷言。這裡改用
+    -- full outer join 做純集合比對（差集為空），完全不依賴任何排序規則。
+    select string_agg(
+             case
+               when actual.enumlabel is null then '(missing:' || expected.label || ')'
+               else '(unexpected:' || actual.enumlabel || ')'
+             end,
+             ', ')
+      into missing
+      from (
+        select e.enumlabel::text as enumlabel
+          from pg_enum e
+          join pg_type t on t.oid = e.enumtypid
+          join pg_namespace n on n.oid = t.typnamespace
+         where n.nspname = 'public' and t.typname = 'tour_payment_status'
+      ) actual
+      full outer join (
+        select unnest(array['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED']) as label
+      ) expected on expected.label = actual.enumlabel
+     where actual.enumlabel is null or expected.label is null;
+
+    if missing is not null then
+      raise exception '0109 後置斷言失敗——tour_payment_status 的值域集合與 18 分冊 §4 的 UNPAID／PARTIAL／PAID／REFUND_PENDING／REFUNDED 不完全相同：%。', missing;
+    end if;
+
+    if (
+      select count(*) from pg_enum e
         join pg_type t on t.oid = e.enumtypid
         join pg_namespace n on n.oid = t.typnamespace
        where n.nspname = 'public' and t.typname = 'tour_payment_status'
-    ) actual
-    full outer join (
-      select unnest(array['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED']) as label
-    ) expected on expected.label = actual.enumlabel
-   where actual.enumlabel is null or expected.label is null;
-
-  if missing is not null then
-    raise exception '0109 後置斷言失敗——tour_payment_status 的值域集合與 18 分冊 §4 的 UNPAID／PARTIAL／PAID／REFUND_PENDING／REFUNDED 不完全相同：%。', missing;
-  end if;
-
-  if (
-    select count(*) from pg_enum e
-      join pg_type t on t.oid = e.enumtypid
-      join pg_namespace n on n.oid = t.typnamespace
-     where n.nspname = 'public' and t.typname = 'tour_payment_status'
-  ) <> 5 then
-    raise exception '0109 後置斷言失敗——tour_payment_status 的值不是剛好五個。';
+    ) <> 5 then
+      raise exception '0109 後置斷言失敗——tour_payment_status 的值不是剛好五個。';
+    end if;
+  else
+    raise notice '0109 第二段跳過五個 label 的檢查：upfront_required_amount 不存在，代表 0108_issue_41_payment_state_model 尚未套用到這個環境，tour_payment_status 合法地只會有 0087 的三個 label。';
   end if;
 end $$;
 
@@ -254,34 +333,80 @@ end $$;
 -- default，於是一個「型別對、nullable 對，但 default 被人工拿掉或改掉」的欄位
 -- 可以無聲地通過兩份既有斷言。這裡把 0108 新增的三個欄位（tour_orders）與 0107
 -- 曾經在某環境上漏掉 default 的 `min_to_depart_snapshot` 一併補上斷言。
+--
+-- ⚠️ 與第四段對 `trip_departures` 兩個欄位同一類前提：這三個欄位是 0108 用
+-- `alter table ... add column if not exists` 加上去的，不是 0087 建表當下就有
+-- 的核心欄位，所以「0108 還沒套用到這個環境」是合法狀態，不是漂移——0108 套用
+-- 時自己會把這三個欄位連同正確的 default 一起建出來。因此每個欄位都先用
+-- `pg_attribute` 確認存在才斷言，不存在就對那個欄位整段 no-op，不中止。
+--
+-- 本段也是獨立的 `do $$ … $$` 陳述式，不會繼承第一、二段是否已經 no-op 的狀態，
+-- 所以一樣先用 `to_regclass()` 查一次 `tour_orders` 表本身是否存在，理由同第一
+-- 段：表不存在時整段 no-op，不讓 `::regclass` literal cast 直接丟錯。
 do $$
 declare
   d text;
+  col_exists boolean;
 begin
+  if to_regclass('public.tour_orders') is null then
+    raise notice '0109 第三段 no-op：public.tour_orders 不存在，理由同第一段。';
+    return;
+  end if;
+
   -- upfront_required_amount：canonical 0108 `add column ... not null default 0`。
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
-    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
-   where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'upfront_required_amount';
-  if d is distinct from '0' then
-    raise exception '0109 後置斷言失敗——tour_orders.upfront_required_amount 的 default 期望是 0，實際是 %。', coalesce(d, '(無 default)');
+  select exists(
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.tour_orders'::regclass
+       and a.attname = 'upfront_required_amount'
+       and not a.attisdropped and a.attnum > 0
+  ) into col_exists;
+  if not col_exists then
+    raise notice '0109 第三段跳過 upfront_required_amount：欄位不存在，代表 0108 尚未套用到這個環境，理由同上。';
+  else
+    select pg_get_expr(ad.adbin, ad.adrelid) into d
+      from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+     where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'upfront_required_amount';
+    if d is distinct from '0' then
+      raise exception '0109 後置斷言失敗——tour_orders.upfront_required_amount 的 default 期望是 0，實際是 %。', coalesce(d, '(無 default)');
+    end if;
   end if;
 
   -- refunded_amount：canonical 0108 `add column ... not null default 0`。
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
-    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
-   where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'refunded_amount';
-  if d is distinct from '0' then
-    raise exception '0109 後置斷言失敗——tour_orders.refunded_amount 的 default 期望是 0，實際是 %。', coalesce(d, '(無 default)');
+  select exists(
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.tour_orders'::regclass
+       and a.attname = 'refunded_amount'
+       and not a.attisdropped and a.attnum > 0
+  ) into col_exists;
+  if not col_exists then
+    raise notice '0109 第三段跳過 refunded_amount：欄位不存在，代表 0108 尚未套用到這個環境，理由同上。';
+  else
+    select pg_get_expr(ad.adbin, ad.adrelid) into d
+      from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+     where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'refunded_amount';
+    if d is distinct from '0' then
+      raise exception '0109 後置斷言失敗——tour_orders.refunded_amount 的 default 期望是 0，實際是 %。', coalesce(d, '(無 default)');
+    end if;
   end if;
 
   -- deposit_mode_snapshot：canonical 0108 `add column ... deposit_mode_snapshot text`
   -- ——刻意沒有 default（null = 建單當時尚未補這個欄位，見 0108 欄位註解）。
   -- 這裡斷言「沒有 default」，不是自己發明一個 canonical 沒說過的值。
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
-    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
-   where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'deposit_mode_snapshot';
-  if d is not null then
-    raise exception '0109 後置斷言失敗——tour_orders.deposit_mode_snapshot 依 canonical（0108）不應該有 default，實際卻是 %。', d;
+  select exists(
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.tour_orders'::regclass
+       and a.attname = 'deposit_mode_snapshot'
+       and not a.attisdropped and a.attnum > 0
+  ) into col_exists;
+  if not col_exists then
+    raise notice '0109 第三段跳過 deposit_mode_snapshot：欄位不存在，代表 0108 尚未套用到這個環境，理由同上。';
+  else
+    select pg_get_expr(ad.adbin, ad.adrelid) into d
+      from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+     where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'deposit_mode_snapshot';
+    if d is not null then
+      raise exception '0109 後置斷言失敗——tour_orders.deposit_mode_snapshot 依 canonical（0108）不應該有 default，實際卻是 %。', d;
+    end if;
   end if;
 end $$;
 
@@ -302,24 +427,83 @@ end $$;
 -- `min_to_depart_snapshot` 卻漏掉 `formation_status`，等於這支檔案自己犯了它正在
 -- 修的那個毛病（只補自己想到的個案，不補同類）。canonical 同樣只有一個明確、單一
 -- 的 default 答案，所以比照修回，不只是報錯。
+--
+-- ⚠️（Production 實測，2026-09-14）：這一段原本無條件假設 `min_to_depart_snapshot`
+-- 與 `formation_status` 兩個欄位存在，直接對它們跑 `alter column ... set
+-- default`。但正式庫上 `0107_issue_41_formation_state_model` 目前是
+-- `NOT_APPLIED / PENDING_APPLY`——`0108` 已套用、`0107` 沒有，兩者是各自獨立由
+-- Owner 授權套用，不是嚴格依編號順序執行。於是這兩個欄位在正式庫上**根本不
+-- 存在**，`alter column min_to_depart_snapshot ...` 直接以 `42703
+-- undefined_column` 中止，`'COLLECTING'::public.departure_formation_status` 更
+-- 早一步炸在型別解析（型別本身也不存在）。
+--
+-- 這正是本檔第一段開頭點名的同一個病：**依賴一個前提（這裡是「0107 已經套用」）
+-- 卻從未斷言它，於是在前提不成立的環境上失敗**——差別只在於 0108 是「靜默通過」，
+-- 這裡原本會是「直接中止」，成因完全相同。
+--
+-- 修法比照本檔全篇「no-op 優先於中止」的原則，而不是替這兩個欄位加一個
+-- exception 分支：一個還沒套用 0107 的環境本來就不該有這些欄位，那不是漂移；
+-- 0107 日後套用時，它自己的 `add column ... not null default 1／'COLLECTING'`
+-- 會直接建成 canonical 形狀，不需要本檔越俎代庖。所以每個欄位都先用
+-- `pg_attribute` 確認存在才動作，欄位不存在就整段 no-op、不報錯、不中止—— 讓
+-- 0109 在「只套用到 0108、還沒套用 0107」的環境上仍然可以完整套用（第一到
+-- 第三段對這個環境是有意義的，那些欄位確實都在）。
+--
+-- 與前三段同理，`trip_departures` 這張表本身（0066 建立，比 0107 更早）也是
+-- 隱含前提；`to_regclass()` 查一次，表都不存在時直接整段 no-op——那是比「0107
+-- 沒套用」更早期的環境，同樣不是本檔要處理的漂移。
 do $$
 declare
-  d text;
+  d                      text;
+  min_to_depart_exists   boolean;
+  formation_status_exists boolean;
 begin
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
-    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
-   where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'min_to_depart_snapshot';
-
-  if d is distinct from '1' then
-    alter table public.trip_departures alter column min_to_depart_snapshot set default 1;
+  if to_regclass('public.trip_departures') is null then
+    raise notice '0109 第四段 no-op：public.trip_departures 不存在，代表比 0107 更早的旅遊團次模型（0066）尚未套用到這個環境；本檔不處理這麼早期的漂移。';
+    return;
   end if;
 
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
-    from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
-   where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'min_to_depart_snapshot';
+  select exists(
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.trip_departures'::regclass
+       and a.attname = 'min_to_depart_snapshot'
+       and not a.attisdropped and a.attnum > 0
+  ) into min_to_depart_exists;
 
-  if d is distinct from '1' then
-    raise exception '0109 後置斷言失敗——trip_departures.min_to_depart_snapshot 的 default 期望是 1（canonical 0107），修復後實際仍是 %。', coalesce(d, '(無 default)');
+  if not min_to_depart_exists then
+    raise notice '0109 第四段 no-op（min_to_depart_snapshot）：trip_departures.min_to_depart_snapshot 不存在，代表 0107_issue_41_formation_state_model 尚未套用到這個環境。這不是漂移——0107 套用時會直接以 canonical 的 not null default 1 建出這個欄位，不需要本檔介入；中止或猜一個欄位定義反而更危險。';
+  else
+    select pg_get_expr(ad.adbin, ad.adrelid) into d
+      from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+     where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'min_to_depart_snapshot';
+
+    if d is distinct from '1' then
+      alter table public.trip_departures alter column min_to_depart_snapshot set default 1;
+    end if;
+
+    select pg_get_expr(ad.adbin, ad.adrelid) into d
+      from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
+     where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'min_to_depart_snapshot';
+
+    if d is distinct from '1' then
+      raise exception '0109 後置斷言失敗——trip_departures.min_to_depart_snapshot 的 default 期望是 1（canonical 0107），修復後實際仍是 %。', coalesce(d, '(無 default)');
+    end if;
+  end if;
+
+  -- formation_status：與 min_to_depart_snapshot 同一段、同一種「0107 是否已套用」
+  -- 的存在性前提，各自獨立判斷（不能假設兩個欄位總是一起存在或一起不存在——
+  -- 雖然目前 canonical 是同一支 migration 加的，但存在性判斷仍應以系統目錄
+  -- 實查為準，不以「反正是同一個檔案」去推論）。
+  select exists(
+    select 1 from pg_attribute a
+     where a.attrelid = 'public.trip_departures'::regclass
+       and a.attname = 'formation_status'
+       and not a.attisdropped and a.attnum > 0
+  ) into formation_status_exists;
+
+  if not formation_status_exists then
+    raise notice '0109 第四段 no-op（formation_status）：trip_departures.formation_status 不存在，代表 0107_issue_41_formation_state_model 尚未套用到這個環境；理由同上，0107 套用時會直接建出 canonical 形狀。';
+    return;
   end if;
 
   -- formation_status：與 payment_status 的 default 斷言（第二段）同理，
