@@ -1487,3 +1487,79 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
      在分支仍 `ahead 1` 的情況下回報成功）。
 
 - 狀態：已關閉（預防規則已寫成上述可執行指令）；同類再犯視為第二次。
+
+### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
+
+- 首次／最近：2026-09-14 / 2026-09-14
+- 發生次數：1（PB-040 的下一層。PB-040 是「欄位建好沒埋」，本條是「埋了但沒驗，而且埋錯詞彙」）
+- Issue／PR／CI：Run `2026-09-14-product-delivery-r01`；`scripts/agents/run-ledger.mjs` L13–14、L119、L125；`scripts/agents/score-run.mjs` L41–43
+- 分類：度量正確性；自我驗證缺口
+
+- 事實經過：整輪結束前我第一次執行
+  `node scripts/agents/run-ledger-v2.mjs validate <ledger>`，得到 **24 個錯誤**。
+  這本 ledger 從 Run 開始就在寫，**中間沒有任何一次被驗證過**。
+
+- 根因（三個，成因不同，後果一致）：
+
+  1. **詞彙漂移，而且是靜默的。** `modelUsage.tasks` 混用了兩套命名：
+     `scout / build / audit` 與 `luna / terra / sol`；`narrow` 與 `compact`。
+     但 ledger 自己的 `modelUsage.weights` 只定義 `{luna:1, terra:3, sol:6}`，
+     `contextMultipliers` 只定義 `{compact:1, medium:1.5, full:3}`。
+
+     `computeWeightedUsage()`（`score-run.mjs` L41–43）對未知 key **靜默回退**：
+     ```js
+     const modelWeight   = weights[attributedModel] ?? weights.terra;   // 3
+     const contextWeight = context[task.contextClass] ?? context.full;  // 3
+     ```
+     於是一次 `scout` + `narrow` 的窄委派被記成 `3 × 3 = 9` units，而不是 `1 × 1 = 1`。
+     **這不是缺資料，是錯資料**——而且錯的方向是把最便宜的委派記成最貴的，
+     正好會讓 `weightedUsageImprovementPercent` 看起來比實際差。
+
+  2. **借用一個不存在的 tier 值來把欄位填滿。** 七筆 Final Risk 委派寫成
+     `requestedModel: "finalRisk"`。這個值在 `MODEL` 值域（`luna/terra/sol/unknown`）裡不存在。
+     諷刺的是，**同一本 ledger 的 `tasks[13]` 與 `[15]` 早就立好了正確慣例**，並逐字寫下理由：
+     > Final Risk 不屬 luna/terra/sol 三個 tier，ledger 的 tier 值域無法表達它，故記為 unknown
+     > 並在此說明實際模型——**不假借某個 tier 來讓欄位看起來有值**。
+
+     後來的七筆違反了本檔自己寫下的規則。**慣例寫在資料裡，不寫在檢查裡，就只是一句話。**
+
+  3. **`accepted` 八筆維持 `null`。** 這一項反而是三者中最無害的：null 是誠實的「不知道」。
+     但它同樣讓驗證器紅著，於是前兩項真正的錯誤被埋在噪音裡。
+
+- 影響：`weightedUsageUnits` 被系統性高估；`weightedUsageImprovementPercent` 因此不可信。
+  修正後 ledger 首次通過驗證（`VALID_V2`），加權 usage 為 452。
+  `PRODUCT_RUN_TREND` 仍為 `NOT_GRADED`，但原因已變成單純的 `run is still in progress`，
+  不再是資料不合格。
+
+- 這條與 PB-039／PB-040／PB-048 的關係：四條都是**「留下了在做的痕跡，實質檢查沒有發生」**。
+  遞進關係值得記住：
+
+  | | 痕跡 | 缺的東西 |
+  |---|---|---|
+  | PB-039 | guard 存在 | 沒有受測對象 |
+  | PB-040 | 欄位存在 | 沒有埋點 |
+  | PB-048 | 過濾器存在 | 沒有會被它擋掉的 fixture |
+  | PB-050 | 埋點存在 | **沒有跑驗證器，而且值在另一套詞彙裡** |
+
+  每一層都比上一層更像「有在做」。這一層尤其危險，因為欄位是滿的、`notes` 是詳細的、
+  數字是有的——**只有數字是錯的**。
+
+- 預防（機械可執行）：
+  1. **每次寫 ledger 就跑一次驗證器**，不是收尾才跑：
+     `node scripts/agents/run-ledger-v2.mjs validate docs/metrics/agent-runs/<RUN_ID>.json`。
+     一次寫入一次驗證，錯誤永遠只有一筆，不會累積成 24 筆噪音。
+  2. **委派埋點時，把值域一起給出去。** 委派訊息裡直接寫明
+     `requestedModel ∈ {luna, terra, sol, unknown}`、`contextClass ∈ {compact, medium, full, unknown}`，
+     不要只說「記成 scout 層」——lane 名（`scout/build/audit`）與 ledger 的 tier 值
+     （`luna/terra/sol`）是兩套拼寫，`CLAUDE.md` 的 Lane 表同時列出兩者正是漂移的來源。
+  3. **靜默回退要當成缺陷看待。** `weights[x] ?? weights.terra` 讓一個打錯的字變成一個
+     看起來合理的數字。讀到這種 `??` 回退時，要問的是「回退發生時我看得見嗎」——
+     看不見，就該由驗證器在寫入當下擋下來，而不是由評分器在事後靜默吸收。
+  4. **資料裡寫下的慣例，要有一個地方會檢查它。** `tasks[13]` 的那段說明是對的，
+     但它只存在於 `role` 字串裡，沒有任何東西會因為違反它而變紅——所以七輪之後就被違反了。
+
+- 狀態：本 Run 已修正並通過驗證（`VALID_V2`）。
+  仍在外部、**未處理**：`weights` 沒有 `finalRisk` 這一格，Final Risk 只能記為 `unknown`
+  並回退為 `terra` 的權重（3）——Final Risk 實際成本接近 `sol`（6）。
+  這需要 Owner 對權重表裁示，屬治理決策，不由 runner 自行新增；在那之前本 Run 的
+  加權 usage 對 Final Risk 是**低估**的，已如實記在 ledger notes。
