@@ -9,14 +9,26 @@ const DOCS_ONLY_PATHS = [
   'CLAUDE.md',
 ];
 
+/*
+ * `docs/metrics/**` lives under `docs/` but is not documentation: the Run
+ * ledgers, their rendered reports, the scoreboard policy and the review
+ * evidence are read as fixtures by tests/unit/governance-scoreboard.test.ts
+ * and the agent-run-scorecard workflow. Routing them down the lightweight
+ * documentation lane let a ledger change turn `main` red with CI green
+ * (2026-09-14, PR #412). Fail closed to full runtime CI instead.
+ */
+const RUNTIME_FIXTURE_PREFIXES = [
+  'docs/metrics/',
+];
+
 /** A path is safe for the lightweight documentation CI route only when explicitly listed. */
 export function isDocsOnlyPath(path) {
-  return typeof path === 'string'
-    && !/[\r\n]/.test(path)
-    && (DOCS_ONLY_PATHS.includes(path)
+  if (typeof path !== 'string' || /[\r\n]/.test(path)) return false;
+  if (RUNTIME_FIXTURE_PREFIXES.some((prefix) => path.startsWith(prefix))) return false;
+  return DOCS_ONLY_PATHS.includes(path)
     || path.startsWith('docs/')
     || path.startsWith('.agents/')
-    || path.startsWith('.claude/'));
+    || path.startsWith('.claude/');
 }
 
 /**
