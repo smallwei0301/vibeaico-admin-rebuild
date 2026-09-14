@@ -461,7 +461,14 @@
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
-      "evidence": "issue #44 source-only checkpoint（terra/issue-44-traveler-risk-cbc8）：新增 traveler_risk_policies 表＋RLS＋view，尚未合併進 main，也尚未依 docs/AGENT-EXECUTION.md §3.1 取得逐次授權套用到任何 Supabase 專案（TEST 或正式庫）。編號依 PB-017 先佔號，實際套用時機必須晚於檔名在 main 定案；套用前應重新核對屆時的 main 頭部是否仍是 0104。"
+      "evidence": "0105 已進入 current main，但仍未依 Owner 對 #44 的 TEST／Production 授權套用到任何 Supabase 專案；正式庫快照仍沒有這筆 ledger row。套用前仍須重新核對 merged main source 與 #44 的 TEST lane。"
+    },
+    {
+      "repoFile": "0106_deduplicate_redundant_indexes",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "PR #420 的 merged-source candidate：只清理 #413 已完成 live preflight 的四組非唯一重複索引，尚未進入 main／尚未套用到 TEST 或正式庫。合併後必須先以 main 的 exact source 在唯一 TEST lane 套用並完成 postflight，再依當時明確授權處理正式庫；本檔不虛構 provider ledger row。"
     }
   ]
 }
