@@ -58,7 +58,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-41-s4-triage",
@@ -70,7 +71,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-opus-5"
       },
       {
         "id": "issue-41-s4-build",
@@ -82,7 +84,8 @@
         "accepted": false,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       },
       {
         "id": "issue-41-luna-closure-sweep",
@@ -94,7 +97,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-43-data-source-inventory",
@@ -106,7 +110,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-46-journey-gap-inventory",
@@ -118,7 +123,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-41-s6-function-inventory",
@@ -130,7 +136,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-40-outbox-inventory",
@@ -142,7 +149,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-41-s4-payment-audit",
@@ -154,7 +162,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-opus-5"
       },
       {
         "id": "issue-43-cat34-build-slot2",
@@ -166,7 +175,8 @@
         "accepted": false,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       },
       {
         "id": "luna-closure-r01-s05",
@@ -178,7 +188,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-46-journey-gap",
@@ -190,7 +201,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "luna-ci-r01-s08",
@@ -202,7 +214,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "issue-41-s4-final-risk",
@@ -214,7 +227,8 @@
         "accepted": false,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       },
       {
         "id": "issue-43-cat34-audit",
@@ -226,7 +240,8 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-opus-5"
       },
       {
         "id": "issue-43-cat34-final-risk",
@@ -238,7 +253,8 @@
         "accepted": false,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       },
       {
         "id": "issue-41-s4-findings-build",
@@ -250,7 +266,8 @@
         "accepted": false,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       },
       {
         "id": "luna-metrics-r01-s09",
@@ -262,13 +279,106 @@
         "accepted": true,
         "inputTokens": null,
         "outputTokens": null,
-        "cachedTokens": null
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       },
       {
         "id": "luna-truth-r01-s10",
         "requestedModel": "luna",
         "actualModel": "luna",
         "role": "#43 第 1／2／6／7／8 類在 origin/main 的現況盤點（claude-haiku-4-5）。回報採用：第 1／2／6 類已實作（BOOKING_REQUEST／BOOKING_PAYMENT／DEPARTURE），第 7 類未建但 trip_departure_staff（0092）canonical 存在，第 8 類**被卡住**——notification_outbox 只存在於 overlay。下一個最便宜的真切片是第 7 類。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
+      },
+      {
+        "id": "issue-41-s4-enum-assert-fix",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "actualModelId": "claude-opus-5",
+        "role": "**Routing violation，如實記錄（PB-036 第四次）。** 0108 的 enum 值域斷言恆假，修正屬 TERRA_BUILD 施工（修改 migration），依 CLAUDE.md 應委派 claude-sonnet-5，實際由 audit 層 claude-opus-5 直接做。當時 Final Risk 剛回 BLOCK，修一行是「顯然正確且很小」的事——正是那個「很小」讓分層被跳過。本筆是 Owner 2026-09-14 裁示新增 actualModelId 之後，第一筆能從 ledger 本身看出違規的紀錄：requestedModel=terra 但 actualModelId=claude-opus-5。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-findings-build-r2",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "actualModelId": "claude-sonnet-5",
+        "role": "依 Final Risk BLOCK findings 修正 0108 第二輪：M1 前置 guard（第一輪回報遺漏此項，audit 實查檔案才發現，已要求改用逐項 FIXED/NOT_FIXED 格式）、收窄 agent-schema-bootstrap.yml 的 future_issue_41_fields_absent 斷言。真實 PG16 探測有逐字輸出：既有 REFUNDED 列會停在新 guard 而非裸 23514。",
+        "count": 2,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-fixture-sweep",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "actualModelId": "claude-sonnet-5",
+        "role": "373 種子訂單 refunded_amount NULL 修正與全 repo 批次 insert 掃描。成因是該 fixture 自己的註解早就寫明的陷阱（supabase-js 批次 insert 以第一筆 key 聯集建欄位清單，沒帶到的欄位被明寫 NULL 而非落回 default），build 端讀了它、照它處理了 paid_amount，卻對自己新加的 refunded_amount 踩同一個坑。掃描結果：唯一曝險點就是這一處，其餘 11 個站點逐一列出 SAFE 理由。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-behaviour-tests",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "actualModelId": "claude-sonnet-5",
+        "role": "#440 修正：dueAt 時間格式改用 Date.parse 比對（PostgREST 回 +00:00 而非 Z，兩個 DB lane 因此全紅）；三個 source-grep 測試改寫為真行為測試（假 query builder 套用過濾到 in-memory fixture，呼叫真實 route handler，斷言回傳 JSON），兩種突變皆有 verbatim 失敗輸出；第三個無法用行為測試的直接刪除並說明理由，不留空殼。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-final-risk-r2",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "role": "PR #438 第二輪 Final Risk，verdict PASS。跑 17 個情境資料庫，重放 canonical 0001–0107 再套 0108，每條先前 finding 做正反向突變（含 PB-041 的 over-strict 方向）。**verdict 由它自己決定**：它先給 PASS_WITH_FINDINGS，policy 要求逐字 PASS，我沒有改寫，而是要求它重新查證兩個前提後自行判定；它用 git grep 確認分支上沒有任何 refunded_amount 的 runtime writer，money-truth 缺口 unreachable 而非延後，才給 PASS。attestation 已貼。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-final-risk-r2",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "role": "PR #440 第二輪 Final Risk，PASS_WITH_FINDINGS。抓到兩件本機 gate 看不出來的事：(1) integration 那個綠燈是 POLICY_SKIP，真正的 DB lane 兩個都紅，我一度誤讀為修正有效；(2) 三個 regression 測試是 source-grep，它把真正的 .not(...) 註解掉、字串留在註解裡，18 個測試全過——證明它們鎖的是文字不是行為。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "luna-truth-r01-s11",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "actualModelId": "claude-haiku-4-5",
+        "role": "shared TEST 的舊 #41 overlay 依賴盤點（15 function + 8 trigger）。回報採用：repo 端零引用，定義來源 overlay 0040 已於 b0a7ed5 退役。**但方法有盲點需 audit 補**：trigger 是自動觸發的，grep 函式名找不到「測試依賴 trigger 副作用」這種依賴。我親讀 snapshot_trip_departure_formation 本體，發現它會拒絕 formation_deadline_at <= now() 的 INSERT，且會自動填 min_to_depart_snapshot——canonical 0107 沒有這個 trigger，因此 TEST 的寫入行為不等於 canonical。",
         "count": 1,
         "contextClass": "compact",
         "accepted": true,
@@ -291,7 +401,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 9,
+    "fullCiRuns": 13,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -307,13 +417,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 11,
-    "lunaAccepted": 11,
+    "lunaTasks": 12,
+    "lunaAccepted": 12,
     "lunaDelegationRatePercent": null,
-    "duplicateAgentTasks": 0,
+    "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 3,
+    "solTouches": 5,
     "solIssues": 1
   },
   "auditability": {
