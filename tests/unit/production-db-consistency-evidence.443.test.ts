@@ -9,8 +9,9 @@ describe('Production scoped consistency evidence',()=>{
     const r=buildProductionConsistencyEvidence({report:report([pending]),plannedProductionDifferences:[pending],mainSha:MAIN,planDigest:PLAN});
     expect(r).toMatchObject({status:'CONSISTENCY_VERIFIED',plannedProductionDifferenceCount:1,databaseMutationAuthorized:false});
   });
-  it('blocks unplanned Production drift and pending TEST schema',()=>{
+  it('blocks unplanned or changed Production drift and pending TEST schema',()=>{
     expect(()=>buildProductionConsistencyEvidence({report:report([pending]),mainSha:MAIN,planDigest:PLAN})).toThrow(/UNPLANNED_PRODUCTION_DIFF/);
+    expect(()=>buildProductionConsistencyEvidence({report:report([{...pending,observedFingerprint:'d'.repeat(64)}]),plannedProductionDifferences:[pending],mainSha:MAIN,planDigest:PLAN})).toThrow(/UNPLANNED_PRODUCTION_DIFF/);
     const r=report(); r.environmentStatuses.TEST='EXPECTED_PENDING_TEST';
     expect(()=>buildProductionConsistencyEvidence({report:r,mainSha:MAIN,planDigest:PLAN})).toThrow(/TEST_SCHEMA_NOT_READY/);
   });
