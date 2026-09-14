@@ -54,13 +54,27 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * departures a staff member is occupied by" via
  * `.from('trip_departure_staff').select(...).neq('trip_departures.status', …)
  * .gte('trip_departures.departs_on', …).lte('trip_departures.departs_on', …)`
- * — PostgREST's dot-path syntax for filtering on a joined table. This fake
- * `applyFilterOps()` only ever does `row[field]`, a literal property lookup —
- * it has no join-aware behaviour, so `row['trip_departures.departs_on']` is
- * always `undefined` on this harness's fixture shape, and `undefined >= x` /
- * `undefined <= x` are always `false` in JS. The `.gte(...)` call alone is
- * therefore enough to filter every row out, regardless of fixture content:
- * `loadStaffLoad()`'s `departures` array is always `[]` under this harness.
+ * — PostgREST's dot-path syntax for filtering on a joined table.
+ *
+ * As of #43 類別 1 this harness's `applyFilterOps()` is join-aware: the
+ * `getFieldValue()` helper above resolves a `關聯.欄位` path by reading the
+ * named relation off the row (unwrapping the first element if it's an array,
+ * matching how PostgREST embeds work) before comparing — every filter branch
+ * (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`) goes through it. A dot-path filter
+ * on a *genuinely nested* fixture value is evaluated for real here, it is not
+ * a no-op.
+ *
+ * `loadStaffLoad()`'s `departures` array is nonetheless still always `[]`
+ * under this harness — but the reason is fixture content, not a harness
+ * limitation: none of the `trip_departure_staff` rows below carry a nested
+ * `trip_departures: { status, departs_on }` object, so
+ * `getFieldValue(row, 'trip_departures.departs_on')` resolves to `undefined`
+ * on every row, and `undefined >= x` / `undefined <= x` are always `false` in
+ * JS — the `.gte(...)` call alone is enough to filter every row out. (The
+ * four nested `trip_departures: { … }` objects that do exist in this file
+ * — the `TOUR_ORDER_ROWS` fixtures added for #43 類別 1's `TOUR_REQUEST`
+ * query — are on a different table's fixture, `tour_orders`, and don't reach
+ * this path at all.)
  * Two consequences, both real and both untested here:
  *   1. The `'DEPARTURE'` conflict reason (staff double-booked across two
  *      departures) can never actually fire through this route-level harness.
@@ -74,6 +88,13 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  *      a departure's own occupied slot isn't mistaken for a conflict with
  *      itself) can't be exercised either, because `load.departures` is always
  *      empty regardless of whether that filter runs.
+ * This gap is fixable, not structural: adding a nested `trip_departures: {
+ * status, departs_on }` object to a `trip_departure_staff` fixture row below
+ * would make `getFieldValue()` resolve real values and let `.gte()`/`.lte()`/
+ * `.neq()` actually filter — the harness would then exercise both
+ * consequences above. That fixture change is left for a future PR (#448's
+ * `DEPARTURE`-reason route-level coverage is its own follow-up), not because
+ * the harness can't evaluate dot-path filters on nested fixtures.
  * The `BOOKING`, `BLOCK` and `SHIFT` reasons don't have this problem —
  * `loadStaffLoad()`'s `bookings`/`block_times`/`shifts` queries only ever
  * filter on the queried table's own columns (`tenant_id`, `status`,
