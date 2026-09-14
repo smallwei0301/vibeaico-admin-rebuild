@@ -70,6 +70,8 @@
 | PB-035 | 從欄位定義推斷 insert 會失敗，卻沒查參與寫入的 trigger | `NOT NULL` 且無 default、而 insert 沒列該欄，**不足以**推出「一定 23502」——`BEFORE INSERT` trigger 會在約束檢查之前改寫 NEW，本例該欄早就被 trigger 填好。宣稱任何寫入會成功或失敗之前，先用 `pg_trigger` 列出該表上所有參與寫入的物件，或直接在那個資料庫上跑一次。 | 本檔 PB-032、PB-035 |
 | PB-036 | `TERRA_BUILD` 的施工跑在 audit 層模型上 | CLAUDE.md 寫得很直白：Terra 一律用 Sonnet，把施工放在 Opus 上是 over-spec，不是 diligence——它燒掉 audit 層的成本，還讓 audit 層變成在審自己的產出。已發生兩次（#370、#396），兩次都是「我人已經在跑了，順手做完比較快」。**開工前先判斷這一輪是不是施工**：新增／修改 migration、route、server 模組或測試就是 `TERRA_BUILD`，必須委派給 build 層模型；不是委派不了，是沒有先問。已發生就如實記為違規，不得寫成中性註記。 | `CLAUDE.md`「Lane → model tier」；`docs/MODEL-ROUTING.md` |
 | PB-037 | 把「欄位集合」當成「欄位順序」，並用一次找不到的搜尋證明「它不存在」 | 同一支 migration（`0105`）同一輪內犯兩次。先是 grep `id, tenant_id` 漏掉既有的 `unique (tenant_id, id)`，據此斷定「沒有等價約束」而自建一條重複的，害 schema proof 在 drop 既有約束時被依賴擋下；修正時又把 `conkey`（**保留宣告順序**，`{2,1}`）拿去比排序過的 `{1,2}`，讓保護性斷言必定誤報。**判定「是否已存在」一律查系統目錄並兩邊排序比欄位集合；任何證明「X 不存在」的搜尋，送出結論前先餵一個已知存在的正向對照。** 「我沒找到」是關於搜尋的陳述，不是關於世界的陳述。 | `supabase/migrations/0105_issue_44_traveler_risk_policies.sql`、`0104:138`、`0067` |
+| PB-038 | 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去 | 已發生三次。`npm run … \| tail`、`npx vitest run … \| grep`、以及 `npx vitest … > file 2>&1; echo "EXIT=$?"; git add && git commit && git push`——最後這個 `;` 讓 `git push` 完全不受測試結果影響，於是我在 1 failed / 2109 passed 的情況下推了上去。管線取的是最後一段的退出碼，`;` 根本不看前一段。**驗證與推送永遠用 `&&` 串成一條；要保留輸出就先重導向到檔案，再讓 `&&` 接下去，不要用 `;` 分隔。** 推送前最後一個動作必須是一個「紅了就會擋住推送」的指令。 | PR #416（`57de3b9`）、PR #77 早期 |
+| PB-039 | 一個從來沒有受測對象的 guard，永遠不會失敗 | `governance-scoreboard.test.ts` 的「每一本 post-policy terminal Run 都要有 durable review evidence」寫得很嚴格，但在 2026-09-14 之前，repo 裡沒有任何一本 Run 同時是 terminal 且晚於 policy 生效日——**迴圈跑零次**。它從寫下的那天起就一直是綠的，不是因為受檢查的東西是對的，而是因為它沒有東西可檢查。#412 給了它第一個對象，潛伏的範圍錯誤才連同 main 紅燈一起爆出來。**任何「對所有符合條件的 X 都斷言 Y」的 guard，必須同時斷言符合條件的 X 至少有一個**；並在寫完當下故意讓條件落空一次，確認那個反空轉斷言真的會擋。 | `tests/unit/governance-scoreboard.test.ts`、PR #412／#416、Issue #415 |
 
 ## 事件紀錄
 
@@ -989,6 +991,103 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 狀態：監看中。第 3 次再發生時，改為：任何 migration 內用來判定「物件是否已存在」
   的述詞，必須在 PR 證據裡附上**對真實資料庫跑過的正向對照結果**，否則該 PR 不得
   進入 Final Risk。
+
+### PB-038 — 用 `;` 把退出碼吃掉，然後在測試是紅的情況下推上去
+
+- 首次／最近：2026-09-13／2026-09-14
+- 發生次數：**3**
+- Issue／PR／CI：PR #77（早期兩次）、PR #416（`57de3b937c8a18b90f484c9d7bec2f7502a9de25`）
+- 分類：驗證方法／工具使用
+- 事件：三次都是同一個機制——**我以為自己在檢查，實際上那個檢查的結果沒有進到任何判斷**。
+
+  1. `npm run … | tail`：拿到的是 `tail` 的退出碼，永遠是 0。
+  2. `npx vitest run tests/unit | grep …`：拿到的是 `grep` 的退出碼，後面的 `&&`
+     照樣往下走，於是在 5 支測試紅的情況下 commit。
+  3. 2026-09-14，PR #416：
+
+     ```bash
+     npx vitest run tests/unit > /tmp/u.txt 2>&1; echo "UNIT=$?"; \
+       git add … && git commit … && git push …
+     ```
+
+     這次我**有**把退出碼印出來（`UNIT=1`），但 `echo` 之後那個 `;` 讓 `git push`
+     跟測試結果毫無關係。輸出裡明明白白寫著 `1 failed | 2109 passed`，推送照樣完成。
+
+  第 3 次特別值得記：前兩次是「沒看到退出碼」，第 3 次是「**看到了退出碼，但沒有讓它
+  控制任何事**」。把結果印出來給自己看，不等於讓它擋住下一步。
+- 證據：
+  ```bash
+  # 管線：取最後一段的退出碼
+  false | tail -1; echo $?     # → 0
+
+  # 分號：完全不看前一段
+  false; echo "EXIT=$?"; echo "我照樣執行了"   # → EXIT=1，然後照樣執行
+
+  # 正確：紅了就擋住
+  npx vitest run tests/unit > /tmp/u.txt 2>&1 && git push …
+  ```
+- 預防（可機械執行）：
+  1. **驗證與推送永遠用 `&&` 串成一條。** 要保留輸出就重導向到檔案
+     （`> file 2>&1`）再用 `&&` 接下去，不要用管線、也不要用 `;` 分隔。
+  2. **推送前的最後一個指令，必須是一個「紅了就會擋住推送」的指令。**
+     若中間插入了 `echo`、`grep`、`tail` 之類，那條鏈就已經斷了。
+  3. 需要看摘要時，順序是「先 `&&` 跑完驗證，再單獨讀檔」，不是「邊跑邊過濾」。
+  4. 推送後若才發現紅燈，**立刻修，不等 CI 告訴我**；本次 CI 也確實在下一輪擋下了。
+- 狀態：監看中。第 4 次再發生時，改為：任何 push 之前必須先執行一個專用的
+  verify 腳本，由該腳本自己 `set -euo pipefail` 並在失敗時非零退出，不再允許
+  在對話中臨時拼裝驗證鏈。
+
+### PB-039 — 一個從來沒有受測對象的 guard，永遠不會失敗
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1（但它已經靜默存在了三天）
+- Issue／PR／CI：Issue #415；PR #412（引爆）、PR #416（修正）
+- 分類：測試設計／證據強度
+- 事件：`tests/unit/governance-scoreboard.test.ts` 有一條看起來很嚴格的 guard：
+
+  ```ts
+  for (const name of fs.readdirSync(ledgerDir)…) {
+    const run = JSON.parse(…);
+    if (!terminal || Date.parse(run.startedAt) < effectiveAt) continue;
+    expect(fs.existsSync(evidencePath), `${run.runId} must have durable review evidence`).toBe(true);
+    …
+  }
+  ```
+
+  policy 的 `effectiveAt` 是 `2026-09-11T08:46:22Z`。在 2026-09-14 之前，repo 裡
+  唯一 terminal 的 Run 是 `2026-09-09-governance-loop-r01`，起算於 09-09——**早於
+  生效日**。也就是說這個迴圈從寫下的那一刻起就跑零次，什麼都沒斷言，而測試一直是綠的。
+
+  #412 把三本 Run 收成 terminal，它才第一次拿到對象，並立刻暴露出兩件事：guard 的
+  適用範圍與 evaluator 自己的範圍不一致（向 Product Run 索取 governance 證據），
+  以及 main 就這樣紅了。
+
+  這跟 PB-037 是同一種病的兩個面向：PB-037 是「一次找不到就當作不存在」，PB-039 是
+  「一次都沒找到對象就當作通過」。**綠燈在「沒有受測對象」與「受測對象全部正確」
+  之間沒有任何鑑別力。**
+- 證據：
+  ```bash
+  # 逐本檢查 #412 之前的 ledger，看有沒有任何一本會進入迴圈
+  for f in $(git ls-tree --name-only 45b65b6^:docs/metrics/agent-runs/ | grep json); do
+    git show 45b65b6^:docs/metrics/agent-runs/$f | python3 -c "…terminal and startedAt >= effectiveAt…"
+  done
+  # → 無任何輸出：迴圈跑零次
+
+  # 反向對照：把 effectiveAt 暫時改到 2027 後，新的反空轉斷言確實會擋
+  # → AssertionError: no post-policy terminal Run was inspected; expected 0 to be greater than 0
+  ```
+- 預防（可機械執行）：
+  1. **任何「對所有符合條件的 X 都斷言 Y」的 guard，必須同時斷言符合條件的 X 至少
+     有一個**（`expect(inspected).toBeGreaterThan(0)`）。沒有這一行，它就只是一段
+     可能永遠不執行的程式碼。
+  2. **寫完當下故意讓條件落空一次**，確認反空轉斷言真的會擋——跟 PB-037 的正向
+     對照是同一個要求，只是方向相反。
+  3. **guard 的適用範圍要跟它所依賴的 evaluator 的範圍一致。** 這次是測試比
+     evaluator 更寬：evaluator 明說「非 MODEL_GOVERNANCE 的 Run 不適用」，測試卻
+     無條件索取 governance 證據。範圍不一致時，以**被呼叫者自己宣告的範圍**為準。
+  4. 「範圍外」也是一個要被證明的事實，不要用 `continue` 靜默跳過——改成正面斷言
+     「它確實在範圍外且沒有 errors」。
+- 狀態：監看中。
 
 ### 六問開工／Review Checklist
 
