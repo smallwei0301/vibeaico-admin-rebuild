@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import {
   classifyChangeRecords,
   classifyEvent,
+  isDocsOnlyPath,
   parseNameStatus,
 } from '../../scripts/ci/classify-changes.mjs';
 
@@ -366,5 +367,52 @@ describe('CI change classifier', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+/*
+ * Owner 2026-09-14（docs/decisions/2026-09-14-governance-exact-scope-classify-changes.md）：
+ * `docs/metrics/**` 是測試輸入而非文件。PR #412 只改了 `docs/metrics/agent-runs/**`，
+ * 被判為 docs-only 而跳過整組 runtime CI，結果 main 測試變紅而每一支 CI 檢查都是綠的。
+ * 修正方向由裁示明定為 fail closed，且不得過度匹配相似名稱。
+ */
+describe('#415 runtime fixtures under docs/', () => {
+  it.each([
+    'docs/metrics/agent-runs/2026-09-13-tour-order-lineage-fix-r01.json',
+    'docs/metrics/agent-runs/2026-09-13-tour-order-lineage-fix-r01.md',
+    'docs/metrics/governance-scoreboard-policy.json',
+    'docs/metrics/review-evidence/2026-09-09-governance-loop-r01.json',
+    'docs/metrics/',
+  ])('routes %s to full runtime CI', (path) => {
+    expect(isDocsOnlyPath(path)).toBe(false);
+  });
+
+  it.each([
+    'docs/AGENT-PLAYBOOK.md',
+    'docs/integration/10-TOUR-DOMAIN.md',
+    'docs/decisions/2026-09-14-governance-exact-scope-classify-changes.md',
+    'CLAUDE.md',
+    'AGENTS.md',
+    'README.md',
+    '.claude/skills/steward/SKILL.md',
+    '.agents/anything.md',
+  ])('keeps %s on the documentation lane', (path) => {
+    expect(isDocsOnlyPath(path)).toBe(true);
+  });
+
+  /*
+   * 裁示點名的過度匹配案例：`docs/metrics-overview.md` 必須仍留在文件路線。
+   * 排除條件是前綴（含尾斜線），不是子字串。
+   */
+  it('does not over-match paths that merely look like the prefix', () => {
+    expect(isDocsOnlyPath('docs/metrics-overview.md')).toBe(true);
+    expect(isDocsOnlyPath('docs/metricsalike/x.md')).toBe(true);
+    expect(isDocsOnlyPath('src/docs/metrics/x.json')).toBe(false);
+  });
+
+  /* 一筆 docs/metrics 變更混在其他文件裡，整批仍必須離開輕量路線。 */
+  it('takes the whole change set off the documentation lane when one fixture is touched', () => {
+    const paths = ['docs/AGENT-PLAYBOOK.md', 'CLAUDE.md', 'docs/metrics/agent-runs/x.json'];
+    expect(paths.every(isDocsOnlyPath)).toBe(false);
   });
 });
