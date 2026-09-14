@@ -14,14 +14,14 @@ function quietLog() {
   return { log: vi.fn(), warn: vi.fn(), error: vi.fn() };
 }
 
-function admitted(targetEnvironment: string, sql: string) {
+function admitted(targetEnvironment: string, migrationPath: string, sql: string) {
   return {
     schemaVersion: 1,
     status: 'SOURCE_ADMITTED',
     targetEnvironment,
     currentMainSha: MAIN,
     mainRef: 'origin/main',
-    migrationPath: 'supabase/migrations/example.sql',
+    migrationPath,
     migrationSha256: sha256(Buffer.from(sql)),
     databaseMutationAuthorized: false,
   };
@@ -75,11 +75,35 @@ describe('Issue #432 migration runner source gate', () => {
       refreshMain: () => MAIN,
       listLocalFiles: () => ['0001_base.sql'],
       listCanonicalFiles: () => ['0001_base.sql'],
-      admit: ({ targetEnvironment }: { targetEnvironment: string }) => admitted(targetEnvironment, mainSql),
+      admit: ({ migrationPath, targetEnvironment }: { migrationPath: string; targetEnvironment: string }) => admitted(targetEnvironment, migrationPath, mainSql),
       readMigration: () => localSql,
       fetchImpl,
       log: quietLog(),
     })).rejects.toThrow(/MIGRATION_BYTES_CHANGED_AFTER_ADMISSION/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects an admission proof for another path or another main ref before network', async () => {
+    const fetchImpl = vi.fn();
+    const sql = "select 'safe';\n";
+
+    await expect(runMigrationWorkflow({
+      projectRef: EXPECTED_PROJECT_REFS.TEST,
+      token: 'fake-test-token',
+      repoRoot: '/repo',
+      migrationsDir: '/repo/supabase/migrations',
+      refreshMain: () => MAIN,
+      listLocalFiles: () => ['0001_base.sql'],
+      listCanonicalFiles: () => ['0001_base.sql'],
+      admit: ({ targetEnvironment }: { targetEnvironment: string }) => ({
+        ...admitted(targetEnvironment, 'supabase/migrations/9999_other.sql', sql),
+        mainRef: 'origin/main',
+      }),
+      readMigration: () => sql,
+      fetchImpl,
+      log: quietLog(),
+    })).rejects.toThrow(/ADMISSION_PATH_MISMATCH/);
+
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
@@ -102,7 +126,7 @@ describe('Issue #432 migration runner source gate', () => {
       admit: ({ migrationPath, targetEnvironment }: { migrationPath: string; targetEnvironment: string }) => {
         admissionCount += 1;
         if (admissionCount === 2) throw new Error('MIGRATION_NOT_IN_CURRENT_MAIN');
-        return admitted(targetEnvironment, sqlByFile[migrationPath]);
+        return admitted(targetEnvironment, migrationPath, sqlByFile[migrationPath]);
       },
       readMigration: (_repoRoot: string, migrationPath: string) => sqlByFile[migrationPath],
       fetchImpl,
@@ -132,7 +156,7 @@ describe('Issue #432 migration runner source gate', () => {
       refreshMain: () => MAIN,
       listLocalFiles: () => ['0001_base.sql', '0002_next.sql'],
       listCanonicalFiles: () => ['0001_base.sql', '0002_next.sql'],
-      admit: ({ migrationPath, targetEnvironment }: { migrationPath: string; targetEnvironment: string }) => admitted(targetEnvironment, sqlByFile[migrationPath]),
+      admit: ({ migrationPath, targetEnvironment }: { migrationPath: string; targetEnvironment: string }) => admitted(targetEnvironment, migrationPath, sqlByFile[migrationPath]),
       readMigration: (_repoRoot: string, migrationPath: string) => sqlByFile[migrationPath],
       fetchImpl,
       log: quietLog(),
