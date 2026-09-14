@@ -29,8 +29,8 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 6,
-    "closureAdvancedOrClosed": 0
+    "closureSweeps": 7,
+    "closureAdvancedOrClosed": 1
   },
   "modelUsage": {
     "actualTokensAvailable": false,
@@ -749,6 +749,19 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "closure-sweep-07",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "actualModelId": "claude-haiku-4-5",
+        "accepted": false,
+        "role": "LUNA_CLOSURE 第 07 輪（#449 合併後）。窄盤點 open Issue／open PR 的可結案候選，屬 scout 層，依 CLAUDE.md 的 Lane 表委派 claude-haiku-4-5。唯讀，明令不得改檔／開 PR／執行 DDL。因本 Run 的 scout 已三次「從未查證的前提推出聽起來很急的結論」，委派訊息內含三條硬規則：不存在類宣稱須附實際指令與輸出、無依賴類宣稱須先讀 Issue 內文第一段、寧可 EMPTY_WITH_SCAN 也不湊候選且須附逐項理由。gh GraphQL 在本環境被擋，已指明改用 gh api REST。 結果：候選判定正確（#246），但周邊事實三處錯誤（#250 關閉日期差一週、open PR 數 15 vs 實際 14、open Issue 清單漏列 #218／#221 卻又在下一節討論），且自評「不確定項：無」。經 audit 層逐項覆核修正後採用，記為 accepted=false。",
+        "count": 1,
+        "contextClass": "compact",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -756,7 +769,7 @@
   },
   "delivery": {
     "issuesStarted": 2,
-    "issuesClosed": 0,
+    "issuesClosed": 1,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -781,7 +794,7 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 14,
+    "lunaTasks": 15,
     "lunaAccepted": 12,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 1,
@@ -818,7 +831,9 @@
     "PR #449（#43 第 1 類 TOUR_REQUEST）以 merge commit 併入 main：35e2e1a64bcc9a8cc8297b9a8fe72ac75be801ee，實測 3 parents、base 25a94b3 與 head a7a9e8c 皆為祖先、supabase/migrations 零變更。閘門實況：Agent WIP Policy success（11:35:21Z）、Final Risk PASS（review 5197082770，claude-fable-5-1，changeDigest 2bef09ee…3bfa2）、check success、local-isolated-a success。integration 為 POLICY_SKIP（source_only_pr_without_test_lane，10 秒完成），依 PB-032 不計為測試通過。",
     "guard 兩次紅燈（11:26:51Z、11:30:19Z）為我觸發時序錯誤：Final Risk 的 PASS review 於 11:32:18Z 才送達 API，parseAstraReviews() 取到的仍是對 81a42b3 的 CHANGES_REQUESTED。已記為 PB-049，ci.invalidReruns +2 如實記入——這兩次不是 CI 不穩，是我的操作順序錯誤。",
     "PB-048 的待處理項已關閉：合併後於 origin/main 獨立 worktree 實測，baseline 24 passed；刪 route.ts L124（DEPARTURE）→ 1 failed；刪 L170（STAFF_CONFLICT）→ 1 failed。同輪仍未關閉者：trip_plans!inner 無行為覆蓋、第 7 類 DEPARTURE reason 未觸發、loadStaffLoad()／queryEffectiveBlockTimes() 的租戶過濾器全庫無突變覆蓋。",
-    "本 Run 的 ledger 直到 2026-09-14T11:5x 才第一次通過 agent:run:validate（VALID_V2）。在那之前它有 24 個錯誤，而我整輪都沒有跑過驗證器——CLAUDE.md 第 5 點要求的是「即時埋點」，我埋了，但沒有驗。三類成因：(1) 詞彙漂移——tasks 混用了兩套命名（scout/build/audit/narrow 與 luna/terra/sol/compact），而 modelUsage.weights 只定義 luna/terra/sol、contextMultipliers 只定義 compact/medium/full。computeWeightedUsage() 對未知 key 靜默回退（weights.terra=3、context.full=3），所以 scout+narrow 的委派被當成 terra+full 記成 9 units 而不是 1——數字不是缺，是錯。已純拼寫對齊（scout→luna、build→terra、narrow→compact），tier 歸屬零變更。(2) finalRisk 七筆借用了一個不存在的 tier 值。本檔 tasks[13]／[15] 早就立了正確慣例：Final Risk 不屬三 tier，記 unknown 並在 role 註明實際模型，不假借 tier 讓欄位看起來有值。後來的七筆違反了自己的慣例，已還原。weights 對 finalRisk 與 unknown 同樣回退為 terra，故無數值變動。(3) accepted 八筆為 null。已依「產出是否被原樣採用」逐筆補齊，每筆依據可查：terra-fix-round2／0109-assertion-gap／f1-fix 原樣併入 #442／#443；c7-final-risk-448 據以合併 #448 且無取代紀錄；pb044-046-writeup 因 PB 撞號由我在提交前重編、pb047-writeup 由 commit 36d5e25 修正三處未經查證的宣稱，c5-final-risk-442 被 -r1／-r2 取代、0109-final-risk-443 被 -pass 取代——後四筆記為 false。"
+    "本 Run 的 ledger 直到 2026-09-14T11:5x 才第一次通過 agent:run:validate（VALID_V2）。在那之前它有 24 個錯誤，而我整輪都沒有跑過驗證器——CLAUDE.md 第 5 點要求的是「即時埋點」，我埋了，但沒有驗。三類成因：(1) 詞彙漂移——tasks 混用了兩套命名（scout/build/audit/narrow 與 luna/terra/sol/compact），而 modelUsage.weights 只定義 luna/terra/sol、contextMultipliers 只定義 compact/medium/full。computeWeightedUsage() 對未知 key 靜默回退（weights.terra=3、context.full=3），所以 scout+narrow 的委派被當成 terra+full 記成 9 units 而不是 1——數字不是缺，是錯。已純拼寫對齊（scout→luna、build→terra、narrow→compact），tier 歸屬零變更。(2) finalRisk 七筆借用了一個不存在的 tier 值。本檔 tasks[13]／[15] 早就立了正確慣例：Final Risk 不屬三 tier，記 unknown 並在 role 註明實際模型，不假借 tier 讓欄位看起來有值。後來的七筆違反了自己的慣例，已還原。weights 對 finalRisk 與 unknown 同樣回退為 terra，故無數值變動。(3) accepted 八筆為 null。已依「產出是否被原樣採用」逐筆補齊，每筆依據可查：terra-fix-round2／0109-assertion-gap／f1-fix 原樣併入 #442／#443；c7-final-risk-448 據以合併 #448 且無取代紀錄；pb044-046-writeup 因 PB 撞號由我在提交前重編、pb047-writeup 由 commit 36d5e25 修正三處未經查證的宣稱，c5-final-risk-442 被 -r1／-r2 取代、0109-final-risk-443 被 -pass 取代——後四筆記為 false。",
+    "#449 合併後對 origin/main（35e2e1a6）本身實跑覆核——合併結果是一個沒有任何 CI run 測過的狀態，PR 上的綠燈測的是 head a7a9e8c，不是 merge commit：npx tsc --noEmit 0 errors；npx vitest run tests/unit 171 files / 2315 tests passed；guard:repo-integrity ok（trackedCount 1078、deletedCount 0）；guard:ledger-alias-map OK（58 個 repo migration 檔案、57 筆正式庫 ledger row 全數對上）。另於同一棵樹實測 PB-048 的兩條過濾器：刪 route.ts L124 → 1 failed、刪 L170 → 1 failed。",
+    "LUNA_CLOSURE s07（#449 合併後）：候選 1 → Issue #246 已於 11:57:10Z 以 completed 關閉。結案依據由 audit 層在 origin/main 35e2e1a6 自行實查（exceljs、兩支測試檔、兩條路由的 CSV+Excel 值域、src/server/xlsx.ts 共用產生器、reports 路由確為五區塊營運報表且 CSV/xlsx 共用 reportRows、unit 2315 passed、#250 closed、#248 merged），未重跑 integration／E2E（本輪未動用 canonical TEST），該界線已寫進結案留言與 sweep 紀錄。scout 本輪第四次事實錯誤：#250 關閉日期、open PR 計數、open Issue 清單漏列 #218／#221，且自評「不確定項：無」。候選判定本身正確，錯誤全在支撐事實——故 scout 產出必須逐項覆核而非抽查。未隨 #246 關閉的後續：#33 ③-2 的「永久留白，無 xlsx generator」理由已失效，需回頭重評。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
