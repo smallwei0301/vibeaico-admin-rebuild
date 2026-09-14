@@ -528,6 +528,32 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-final-risk-442-r1",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "role": "PR #442 Final Risk 第一輪，verdict=PASS（字面 PASS，非 PASS_WITH_FINDINGS）。以 repo 自己的 changeDigestOf() 獨立重算 digest f87981e0…，與 guard comment 一致。獨立實跑 9 個突變（含兩種 tenant bypass 形狀），確認新換上的斷言不是換形式的恆真斷言。獨立驗證不相交性主張（0002:4 enum、0004:98 欄位型別、0082:61-98 view 無 cast、origin/main 零 alter type 命中）。留三項 findings：F1 orderId 缺 uuid 驗證導致 500 而非 400；F2 假 harness 只模擬 eq/in，order/limit/or 的突變抓不到；F3 頁面層 pass-through 無測試（PR 已如實記載）。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-f1-fix",
+        "requestedModel": "build",
+        "actualModel": "unknown",
+        "actualModelId": "claude-sonnet-5",
+        "accepted": null,
+        "role": "Final Risk F1 的修正委派：orderId 加 uuid 驗證使畸形輸入回 400 而非 500，並如實記載 F2 的 harness 覆蓋邊界。修改 route 與測試＝施工，不在 audit 層順手做。此推送會改變 head，因此第一輪 PASS attestation 失效，需重跑 Final Risk——這是誠實流程，不是問題。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -544,7 +570,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 16,
+    "fullCiRuns": 17,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -566,7 +592,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 9,
+    "solTouches": 10,
     "solIssues": 1
   },
   "auditability": {
