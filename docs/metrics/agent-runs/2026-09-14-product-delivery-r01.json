@@ -827,6 +827,19 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-8-pr456-final-sol-audit-close-approved",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "PR #456 final diff audit（CI 全綠、exact head ee5e1cf3）。逐檔核對 duplicate() 15 個複製欄位在 tripApiPayload→tripCreateSchema→tripRow 鏈路上無漏傳、無跨租戶洩漏（tenant_id 伺服器端派生）、雙擊防護（disabled busy + slug 帶時間戳，撞鍵回 409）、複本預設 DRAFT/NONE 對照 migration 0066 預設值成立；e2e 斷言逐條核對非套套邏輯；unit 測試斷言確認耦合到實作而非只驗存在。判定 CLOSE_APPROVED，並列四項非阻擋建議（e2e 補點複製按鈕、12 分冊表格對齊、duration_hours 遺漏、slug 超長 400）已記錄到 Issue #8 留言，不阻擋本輪合併。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -843,7 +856,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 22,
+    "fullCiRuns": 27,
     "invalidReruns": 2,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -865,7 +878,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 18,
+    "solTouches": 19,
     "solIssues": 1
   },
   "auditability": {
@@ -902,7 +915,8 @@
     "更正前一則 note：「#33 ③-2 需回頭重評」是錯的。該格已由 PR #285 於 2026-09-08T03:41:01Z（59e79f57…）實作合併，#33 內文 §3 已標 ✅，bookings 路由 SUPPORTED_FORMATS 已含 xlsx，tests/integration/api/export-bookings-xlsx.33.test.ts 存在。成因：讀到 #246 內文的「需回頭重評」就當成現在仍待辦，沒查是否已被處理——與同一份 sweep 紀錄裡批評 scout 的錯誤完全同型。教訓：Issue 內文的待辦敘述與 scout 回報同屬未查證來源，都要對著當前倉庫狀態覆核。",
     "s07 補充：scout 漏列的 #218 其實是第二個結案候選。9 項驗收 8 項已勾，唯一未勾的第 9 格阻擋理由是「0090 尚未套用正式庫與 canonical TEST」——唯讀實查顯示該理由六天前就已消失：0090 ledger row 在正式庫（20260908134502）與 TEST（20260908132012）皆存在，public.redeem_booking_points 實體存在（prosecdef=true），0093 guard 亦在正式庫且pg_get_functiondef 確含 not in (PENDING, CONFIRMED)；#291 已 closed/completed。差點犯 PB-037：初驗時查函式是否含 COMPLETED/CANCELLED/NO_SHOW，三者皆 false，看似正式庫漂移；實際上那三個字只出現在 0093 的註解（轉述 Owner 裁示），實作刻意用白名單。先讀 canonical 再下結論才沒誤報。處置：列為候選但不自行關閉——第 9 格的語意是「是否經逐次具名授權後套用」，套用發生於 2026-09-08，授權紀錄不在本輪視野內，該確認屬 Owner 判斷。",
     "ROUTING VIOLATION（PB-036 第五次，如實記為違規而非中性註記）：本輪五份 scout 層文件（PB-049／PB-050／ledger 詞彙修正／s07 sweep／#41 §5 盤點）全由 audit 層 claude-opus-5 直接產出。前四次是 TERRA_BUILD 施工跑在 Opus 上，第五次換成文件——舊預防「開工前先跑 lane 分類」綁在「施工」這個詞上，換一種形狀就繞過去了。已改為路徑判準寫入 CLAUDE.md。量化背景：本 session transcript 113 MB、9,092 次工具呼叫，每次都把完整上下文重送 audit 層模型；五份文件本身不貴，貴的是各自帶著的整個上下文。",
-    "2026-09-14 續：治理分支 claude/project-governance-rules-vraejm（PB-036 第五次違規/PB-047-050/closure sweep s06-07/schema-truth 四份唯讀文件）依 8 檔/800 行預算拆成 PR #451/#452/#453，三張皆綠燈合併進 main（cce54177/99265147/e0edaeaf）。B+ loop 續：scout 盤點 → 發現 #447/#228 候選皆不可行 → audit 層重新查證 #8 根因已被 #41 解決 → Sol 對 #218 第 6 格獨立唯讀核實給 CLOSE_APPROVED 並關閉 → Terra 對 #8 剩餘缺口實際施工（trip 複製 + tour-admin e2e），落地 PR #456（draft，CI 待跑）。兩次背景 agent 因平台 session rate limit 中止重派，均未產出需保留結果，不重複計入 modelUsage。"
+    "2026-09-14 續：治理分支 claude/project-governance-rules-vraejm（PB-036 第五次違規/PB-047-050/closure sweep s06-07/schema-truth 四份唯讀文件）依 8 檔/800 行預算拆成 PR #451/#452/#453，三張皆綠燈合併進 main（cce54177/99265147/e0edaeaf）。B+ loop 續：scout 盤點 → 發現 #447/#228 候選皆不可行 → audit 層重新查證 #8 根因已被 #41 解決 → Sol 對 #218 第 6 格獨立唯讀核實給 CLOSE_APPROVED 並關閉 → Terra 對 #8 剩餘缺口實際施工（trip 複製 + tour-admin e2e），落地 PR #456（draft，CI 待跑）。兩次背景 agent 因平台 session rate limit 中止重派，均未產出需保留結果，不重複計入 modelUsage。",
+    "2026-09-14 續：PR #456（Issue #8 trip 複製真實化 + tour-admin e2e）Sol final diff audit CLOSE_APPROVED，squash 合併 dccc6d47，已驗證可達 main 並回讀。PR #457（ledger 埋點）squash 合併 066af643，同樣驗證。四項 Sol 非阻擋建議記錄於 Issue #8 留言供下一輪處理。本輪 CI 全綠次數 +5（#451/452/453/456/457）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
