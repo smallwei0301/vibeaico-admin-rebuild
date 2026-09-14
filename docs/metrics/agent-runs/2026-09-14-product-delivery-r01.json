@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 5,
+    "closureSweeps": 6,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
