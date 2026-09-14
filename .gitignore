@@ -46,3 +46,6 @@ yarn-error.log*
 # editor
 .idea/
 .vscode/
+
+# Claude Code agent worktrees — never commit; they make the schema-source checkout dirty
+.claude/worktrees/

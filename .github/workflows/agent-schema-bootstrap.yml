@@ -151,7 +151,18 @@ jobs:
                  AND tgfoid=to_regprocedure('public.enforce_trip_plan_limit()')
                  AND tgtype=16 AND tgnewtable='new_trip_plans' AND tgoldtable IS NULL AND NOT tgisinternal
             ),
-            'future_issue_41_fields_absent', NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tour_orders' AND column_name IN ('deposit_mode_snapshot','upfront_required_amount','balance_due','balance_due_at','balance_due_hours_snapshot','balance_collection_mode_snapshot','cancellation_policy_snapshot','refunded_amount'))
+            -- 這條斷言原本守「#41 尚未開工，這八個欄位一個都不該出現在 baseline candidate
+            -- 裡」。`supabase/migrations/0108_issue_41_payment_state_model.sql`（Owner
+            -- 2026-09-14「從 current main 重新建立 canonical 的成團／付款生命週期」裁示）
+            -- 已經把其中三個——`deposit_mode_snapshot`／`upfront_required_amount`／
+            -- `refunded_amount`——變成 canonical `tour_orders` 欄位，它們的前提已經不成立。
+            -- 繼續把已 canonical 的欄位留在這份清單裡，不是保留一道還有效的邊界，是讓這條
+            -- 斷言對自己該放行的東西恆假（PB-041：恆假的斷言會擋住合法套用，不是多一層
+            -- 保護）。其餘五個——`balance_due`／`balance_due_at`／
+            -- `balance_due_hours_snapshot`／`balance_collection_mode_snapshot`／
+            -- `cancellation_policy_snapshot`——仍屬 #41 §9（取消／退款流程）尚未實作的範圍，
+            -- 斷言對它們繼續生效，未被放寬。
+            'future_issue_41_fields_absent', NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tour_orders' AND column_name IN ('balance_due','balance_due_at','balance_due_hours_snapshot','balance_collection_mode_snapshot','cancellation_policy_snapshot'))
           );
           SQL
           node --input-type=module - <<'NODE'

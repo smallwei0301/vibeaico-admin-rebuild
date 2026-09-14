@@ -45,7 +45,7 @@ describe('summarizeTravelerRiskFacts (#44 factual traveler risk)', () => {
 describe('mapTourOrderRowToRiskFact (#44 真實讀取路徑：tour_orders → TravelerRiskFact)', () => {
   const row = (over: Partial<{
     status: 'PENDING' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
-    payment_status: 'UNPAID' | 'PAID' | 'REFUNDED';
+    payment_status: 'UNPAID' | 'PARTIAL' | 'PAID' | 'REFUND_PENDING' | 'REFUNDED';
     cancel_reason: string | null;
     updated_at: string;
   }> = {}) => ({
@@ -92,5 +92,21 @@ describe('mapTourOrderRowToRiskFact (#44 真實讀取路徑：tour_orders → Tr
   it('payment_status=REFUNDED 且 status=COMPLETED → 仍回 REFUNDED，不回 COMPLETED', () => {
     expect(mapTourOrderRowToRiskFact(row({ status: 'COMPLETED', payment_status: 'REFUNDED' })))
       .toEqual({ kind: 'REFUNDED', occurredAt: '2026-08-15T09:00:00.000Z' });
+  });
+
+  /*
+   * #41 0108 之後 tour_payment_status 補上 REFUND_PENDING，這裡是回歸測試：
+   * Final Risk（claude-fable-5-1，2026-09-14）指出修正前 REFUND_PENDING 搭配
+   * status=CANCELLED 會落進 CANCELLED 分支，退款中的事實遺失。
+   */
+  it('payment_status=REFUND_PENDING 且 status=CANCELLED → 回 REFUND_PENDING，不回 CANCELLED', () => {
+    expect(mapTourOrderRowToRiskFact(row({
+      status: 'CANCELLED', payment_status: 'REFUND_PENDING', cancel_reason: TOUR_ORDER_AUTO_EXPIRE_REASON,
+    }))).toEqual({ kind: 'REFUND_PENDING', occurredAt: '2026-08-15T09:00:00.000Z' });
+  });
+
+  it('payment_status=REFUND_PENDING 且 status=COMPLETED → 仍回 REFUND_PENDING，不回 COMPLETED', () => {
+    expect(mapTourOrderRowToRiskFact(row({ status: 'COMPLETED', payment_status: 'REFUND_PENDING' })))
+      .toEqual({ kind: 'REFUND_PENDING', occurredAt: '2026-08-15T09:00:00.000Z' });
   });
 });
