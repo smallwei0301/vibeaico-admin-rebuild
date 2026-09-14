@@ -16,10 +16,20 @@ function required(value, label) {
   return text;
 }
 
+/**
+ * @param {{
+ *   body?: string,
+ *   changedFiles?: any[],
+ *   context?: Record<string, any>,
+ *   reviews?: any[],
+ *   releasePacket?: Record<string, any>,
+ * }} [input]
+ * @param {any} [policy]
+ */
 export function buildProductionDbFinalRiskEvidence({
   body = '',
   changedFiles = [],
-  context = /** @type {any} */ ({}),
+  context = {},
   reviews = [],
   releasePacket,
 } = {}, policy = routing) {
