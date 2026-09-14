@@ -148,6 +148,16 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
  *
  * A network error is surfaced as APPLY_UNKNOWN; callers must persist the journal
  * and run readback before any retry.
+ *
+ * @param {{
+ *   plan?: any,
+ *   releasePacket?: any,
+ *   aliasMap?: any,
+ *   readCanonicalSql?: (path: string) => string,
+ *   token?: string,
+ *   fetchImpl?: typeof fetch,
+ *   now?: string,
+ * }} [input]
  */
 export async function runControlledProductionRelease({
   plan,
