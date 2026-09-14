@@ -248,29 +248,55 @@ begin
   -- 複合 FK；此時重跑本檔會因為 `create table if not exists` 跳過建表而 exit 0，
   -- 而 FK 仍然不存在——本區塊當時只檢查欄位／RLS／policy／grant，剛好放過了
   -- 這張表最重要的那條租戶邊界保證。
+  --
+  -- 第二輪覆核（N15）指出上一版只驗名稱／型別／目標表，**沒驗被參照的欄位集合**：
+  -- 一條同名但被改弱成 `references customers(id)` 的 FK 會通過。所以這裡連兩端的
+  -- 欄位集合一起驗，而且兩邊都排序後比（`conkey`／`confkey` 保留宣告順序，PB-037）。
   if not exists (
-    select 1 from pg_constraint
-     where conrelid = 'public.traveler_risk_policies'::regclass
-       and conname = 'traveler_risk_policies_customer_tenant_fk'
-       and contype = 'f'
-       and confrelid = 'public.customers'::regclass
+    select 1 from pg_constraint c
+     where c.conrelid = 'public.traveler_risk_policies'::regclass
+       and c.conname = 'traveler_risk_policies_customer_tenant_fk'
+       and c.contype = 'f'
+       and c.confrelid = 'public.customers'::regclass
+       and (
+         select array_agg(a.attname::text order by a.attname)
+           from unnest(c.conkey) k join pg_attribute a
+             on a.attrelid = c.conrelid and a.attnum = k
+       ) = ARRAY['customer_id', 'tenant_id']
+       and (
+         select array_agg(a.attname::text order by a.attname)
+           from unnest(c.confkey) k join pg_attribute a
+             on a.attrelid = c.confrelid and a.attnum = k
+       ) = ARRAY['id', 'tenant_id']
   ) then
     raise exception
-      'traveler_risk_policies 缺少指向 customers 的複合 FK '
-      'traveler_risk_policies_customer_tenant_fk——跨租戶 customer_id 將不再被擋下';
+      'traveler_risk_policies 的複合 FK traveler_risk_policies_customer_tenant_fk '
+      '不存在或形狀不符（需為 (customer_id, tenant_id) → customers(id, tenant_id)）'
+      '——跨租戶 customer_id 將不再被擋下';
   end if;
 
   -- 值域 CHECK：少了它們，資料庫就不再是「最後一道防線」，
   -- 2026-09-11 裁示禁止的等價豁免會只剩應用層在擋。
-  select string_agg(want.name, ', ' order by want.name) into v_missing
+  --
+  -- 第二輪覆核（N16）指出上一版只列了 deposit_domain_ck，而**真正執行那條裁示的**
+  -- policy 值域 CHECK 沒被斷言——把它 drop 掉仍然 exit 0。這一版改為列舉這張表
+  -- 應有的**全部四條** CHECK。
+  --
+  -- 刻意不靠約束名稱：其中三條是 Postgres 自動命名的（`<table>_<column>_check`），
+  -- 名稱隨欄位改動而變、也可能因重建而不同。改成比對 `pg_get_constraintdef` 的
+  -- 語意片段，名稱怎麼變都驗得到。
+  select string_agg(want.label, '、' order by want.label) into v_missing
     from (values
-      ('traveler_risk_policies_deposit_domain_ck')
-    ) as want(name)
+      ('policy 四值域（2026-09-11 裁示：不得有等價豁免）', '%BLOCK_SELF_SERVICE%'),
+      ('deposit 值域', '%DEPOSIT_PERCENT%'),
+      ('reason 長度', '%btrim(reason)%'),
+      ('actor_label 長度', '%btrim(actor_label)%')
+    ) as want(label, fragment)
    where not exists (
      select 1 from pg_constraint
       where conrelid = 'public.traveler_risk_policies'::regclass
         and contype = 'c'
-        and conname = want.name
+        and pg_get_constraintdef(oid) like want.fragment
    );
   if v_missing is not null then
     raise exception 'traveler_risk_policies 缺少必要的 CHECK 約束：%', v_missing;
