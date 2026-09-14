@@ -47,7 +47,20 @@
       "medium": 1.5,
       "full": 3
     },
-    "tasks": [],
+    "tasks": [
+      {
+        "id": "issue-41-s5-s6-inventory",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#41 §5／§6 開工窄盤點（實際委派 claude-haiku-4-5，scout 層）：既有 seat／departure RPC、tour_orders 付款欄位、狀態 enum、seats_booked 寫入點、既有 trigger。回報六題皆附 file:line，全數採用；查出 tour_payment_status 只有 UNPAID/PAID/REFUNDED，缺 18 分冊 §4 要求的 PARTIAL 與 REFUND_PENDING。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      }
+    ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
@@ -78,7 +91,7 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 0,
+    "lunaTasks": 1,
     "lunaAccepted": 0,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
@@ -102,7 +115,8 @@
     "2026-09-14 補實可觀察埋點：ci.fullCiRuns=6（PR #418 一輪、PR #428 五輪，GitHub 上的實數）、inventory.closureSweeps=3（#418／#425／#428 各一次，皆附實際掃過的 open PR 清單與各自不是候選的理由）、delivery.issuesStarted=2（#42 的來源標記切片、#41 的成團狀態模型切片），issuesClosed=0——兩者都還沒關。",
     "**modelUsage.tasks 刻意維持空的，不回填。** 那些工作已經發生了，事後填等於推算而非實查，正是 #411 結案時判定前九本 Run 不可評分的同一個理由。同理 weeklyUsage 兩欄維持 null。",
     "**flow.lunaTasks=0 與 solTouches=0 是如實記錄的違規，不是「還沒填」。** 本 Run 的所有窄盤點（掃 open PR 的 lane metadata、grep REVIEW_REQUIRED／AT_RISK、查帳本結構）都由執行者自己做，沒有委派給 scout 層；也沒有任何 Sol early diff audit，PR #418 與 #428 的 diff 是自審的。",
-    "**模型分層違規（PB-036 第三次）**：PR #418 與 #428 的 AGENT_LANE 都是 TERRA_BUILD，而 ACTUAL_MODEL 都是 claude-opus-5。CLAUDE.md 的 Lane → model tier 表寫明 Terra 一律用 claude-sonnet-5。前兩次是 #370 與 #396。本 Run 依規定記為違規，不寫成中性註記。"
+    "**模型分層違規（PB-036 第三次）**：PR #418 與 #428 的 AGENT_LANE 都是 TERRA_BUILD，而 ACTUAL_MODEL 都是 claude-opus-5。CLAUDE.md 的 Lane → model tier 表寫明 Terra 一律用 claude-sonnet-5。前兩次是 #370 與 #396。本 Run 依規定記為違規，不寫成中性註記。",
+    "2026-09-14 §5／§6 開工盤點（委派 claude-haiku-4-5，scout 層）採用結果：(a) 既有 security definer 函式 reserve_seats／release_seats／create_tour_order／cancel_tour_order（0087）與 expire_tour_order（0100）；(b) tour_orders 只有 paid_amount，upfront_required_amount／refunded_amount／deposit_mode_snapshot 皆不存在，0087:98 明文標為「屬 #41」；(c) tour_payment_status 目前只有 UNPAID／PAID／REFUNDED——**缺 18 分冊 §4 要求的 PARTIAL 與 REFUND_PENDING**；(d) seats_booked 只由 reserve_seats／release_seats 寫入，其餘皆唯讀；(e) canonical 對 tour_orders 與 trip_departures 沒有任何 trigger（0098:13 有明文記載，歷史 overlay 有 6 個）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
