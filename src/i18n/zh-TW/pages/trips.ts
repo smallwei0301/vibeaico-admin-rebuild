@@ -221,6 +221,13 @@ export const tripsPage = {
       noteLabel: '管理者說明',
       submitNotice: '方案內容與定價的異動會送 Midao 管理者審核；未上架 Midao 的行程不受影響。',
     },
+    source: {
+      label: '來源',
+      GUIDE: '自建',
+      PLATFORM_ASSISTED: 'Midao 協助建立',
+      IMPORTED: '匯入',
+      assistedHint: '這個方案由 Midao 管理者協助建立，你仍然可以自由修改名稱、內容與價格。',
+    },
     seasonSummary: {
       yearRound: '全年',
       count: (n: number) => `${n} 個季節`,

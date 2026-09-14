@@ -61,7 +61,7 @@ const emptyPlan = (tripId: string): TripPlan => ({
   minParticipants: 1, maxParticipants: 10, bookingType: 'SCHEDULED',
   depositMode: 'FULL', depositValue: 0,
   active: true, yearRound: true, seasons: [], reviewState: 'NONE',
-  reviewNote: '', sortOrder: 0,
+  reviewNote: '', sortOrder: 0, source: 'GUIDE',
 });
 
 const emptyAddon = (tripId: string): TripAddon => ({
@@ -532,6 +532,12 @@ export default function TripDetailPage() {
           <Users size={12} className="text-muted" />{p.minParticipants}–{p.maxParticipants}
         </span>
       ),
+    },
+    {
+      key: 'source', header: t.plans.source.label, width: '120px',
+      render: (p) => ((p.source ?? 'GUIDE') === 'GUIDE'
+        ? <span className="text-muted">{t.plans.source.GUIDE}</span>
+        : <Badge tone="primary">{t.plans.source[p.source ?? 'GUIDE']}</Badge>),
     },
     {
       key: 'bookingType', header: t.plans.columns.bookingType, width: '110px',
@@ -1107,6 +1113,13 @@ export default function TripDetailPage() {
       >
         {planDraft ? (
           <div className="flex flex-col gap-3">
+            {planDraft.source && planDraft.source !== 'GUIDE' ? (
+              <Alert tone="info">
+                <span className="font-semibold">{t.plans.source[planDraft.source]}</span>
+                <span className="ml-1">{t.plans.source.assistedHint}</span>
+              </Alert>
+            ) : null}
+
             {planDraft.reviewState === 'CHANGES_REQUESTED' && planDraft.reviewNote ? (
               <Alert tone="warning" icon={<AlertTriangle size={18} className="mt-0.5" />}>
                 <span className="font-semibold">{t.plans.review.noteLabel}：</span>{planDraft.reviewNote}

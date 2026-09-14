@@ -408,6 +408,13 @@ export type TripBookingType = 'INSTANT' | 'REQUEST' | 'SCHEDULED';
 /** 方案送審狀態（Midao 管理者審核方案內容與定價） */
 export type PlanReviewState = 'NONE' | 'PENDING' | 'CHANGES_REQUESTED';
 
+/**
+ * 方案的來源標記（#42／21 分冊 §6）。只是 provenance badge，不鎖住導遊：
+ * PLATFORM_ASSISTED 的方案導遊一樣可以 Quick Edit 與 Advanced Edit。
+ * 由伺服器端依代登入狀態決定，客戶端不得傳入。
+ */
+export type TripPlanSource = 'GUIDE' | 'PLATFORM_ASSISTED' | 'IMPORTED';
+
 export type TripPlan = {
   id: string;
   tripId: string;
@@ -437,6 +444,8 @@ export type TripPlan = {
   reviewState: PlanReviewState;
   reviewNote: string;
   sortOrder: number;
+  /** 來源標記；舊資料與 mock 未帶時視為 GUIDE。 */
+  source?: TripPlanSource;
 };
 
 /** 販售季節（月/日區間，可跨年） */

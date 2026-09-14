@@ -326,6 +326,9 @@ export function mapTripPlan(r: any): TripPlan {
     reviewState: 'NONE',
     reviewNote: '',
     sortOrder: r.sort_order ?? 0,
+    // 0095 起 trip_plans.source 是真實欄位；未知值一律收斂成 GUIDE，
+    // 寧可少顯示一個 badge，也不要把不認識的來源當成 Midao 代建。
+    source: r.source === 'PLATFORM_ASSISTED' || r.source === 'IMPORTED' ? r.source : 'GUIDE',
   };
 }
 

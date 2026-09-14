@@ -139,7 +139,7 @@ export const MOCK_TRIP_PLANS: TripPlan[] = [
       { id: 'ss_1', name: '賞鯨旺季', startMonth: 4, startDay: 1, endMonth: 9, endDay: 30, priceOverride: null, active: true },
       { id: 'ss_2', name: '淡季優惠', startMonth: 10, startDay: 1, endMonth: 11, endDay: 30, priceOverride: 980, active: true },
     ],
-    reviewState: 'NONE', reviewNote: '', sortOrder: 1,
+    reviewState: 'NONE', reviewNote: '', sortOrder: 1, source: 'GUIDE',
   },
   {
     id: 'pl_2', tripId: 'tp_1', name: '包船專案',
@@ -167,7 +167,7 @@ export const MOCK_TRIP_PLANS: TripPlan[] = [
     minParticipants: 2, maxParticipants: 10, bookingType: 'SCHEDULED',
     depositMode: 'FULL', depositValue: 0,
     active: true, yearRound: true, seasons: [],
-    reviewState: 'NONE', reviewNote: '', sortOrder: 1,
+    reviewState: 'NONE', reviewNote: '', sortOrder: 1, source: 'PLATFORM_ASSISTED',
   },
   {
     id: 'pl_5', tripId: 'tp_2', name: '私人包團',
