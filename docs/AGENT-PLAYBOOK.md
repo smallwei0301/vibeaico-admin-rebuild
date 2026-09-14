@@ -1416,7 +1416,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 事實經過（時序順序）：
   1. **PR #440**（Issue #43 第 3／4 類）的「已知缺口」第 1 項逐字記述：
      > formation 查詢的 `CANCELLED` 排除只有 source-grep 斷言保護。突變測試 M6（把 `.neq('status','CANCELLED')` 改成 `'ZZZ'`）**不會**讓行為測試失敗，因為 fixture 裡沒有 CANCELLED 的團次。
-     
+
      記下來了，沒有補。
 
   2. **PR #448**（Issue #43 第 7 類）：audit 層實跑突變時發現**新查詢**的 `.in('status', ['OPEN','CLOSED'])` 拿掉之後 21 個測試全綠——同一檔案、同一類過濾器、同一成因（fixture 裡沒有反例）。這一次補了：加入 `dep-cancelled-conflict` 與 `dep-stale-conflict` 兩筆對照組。補完後拿掉過濾器測試會紅。
@@ -1452,7 +1452,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   把判準寫成機械可執行的那一句**——「把過濾器刪掉，測試必須變紅」。前兩輪寫的是「應該補」。
 
 - 順帶記一項相關但不同的覆蓋邊界：
-  
+
   Final Risk 在同一輪指出：`loadStaffLoad()`（`src/server/staff-availability.ts` L128–141）與 `queryEffectiveBlockTimes()`（`src/server/block-times.ts` L100–105）內部的四條 `.eq('tenant_id')` 在**全專案沒有任何突變或行為覆蓋**——`tests/unit/departure-guide-assignment.37.test.ts` 沒有觸及租戶。#448 的跨租戶測試只證明了**候選查詢**的租戶條件。它的結論是：程式碼審讀加上正式庫實查的 RLS（八張表 SELECT 都是 `is_tenant_member(tenant_id)`）讓這一點可以接受，但**「租戶邊界有測試」不能被讀成涵蓋整條鏈**。這是非阻擋的已知邊界，不是缺陷。
 
 - 狀態：過濾器覆蓋部分**已關閉**（2026-09-14 於 `origin/main` 實測，見上）；仍監看中的是 `loadStaffLoad()` 與 `queryEffectiveBlockTimes()` 的租戶邊界，由 #43 進一步整合決定
