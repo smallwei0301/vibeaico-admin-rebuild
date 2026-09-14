@@ -178,14 +178,32 @@ do $$
 declare
   missing text;
 begin
-  -- 1. 欄位存在且型別正確
+  -- 1. enum 的值域完全正確（不多不少）。先查它，因為第 2 步的型別比對要用到它。
+  if (
+    select array_agg(e.enumlabel::text order by e.enumlabel)
+      from pg_enum e join pg_type t on t.oid = e.enumtypid
+      join pg_namespace n on n.oid = t.typnamespace
+     where n.nspname = 'public' and t.typname = 'departure_formation_status'
+  ) is distinct from array['AT_RISK', 'COLLECTING', 'FAILED', 'FORMED', 'REVIEW_REQUIRED'] then
+    raise exception '0107 後置斷言失敗——departure_formation_status 的值域不是 18 分冊 §3 的那五個。';
+  end if;
+
+  -- 2. 欄位存在且型別正確
+  /*
+   * 型別比對用 `regtype` 的 OID，不用 `format_type()` 的字串。
+   * `format_type()` 會依 search_path 決定要不要加 schema 前綴——同一個 enum 在
+   * 不同 search_path 下會拼成 `departure_formation_status` 或
+   * `public.departure_formation_status`。拿拼寫去比，斷言會在「欄位其實完全正確」
+   * 的情況下誤報，那比沒有斷言更糟（永遠失敗的斷言會擋住合法套用）。
+   * `::regtype` 把兩邊都解析成同一個 OID，不受拼寫與 search_path 影響。
+   */
   select string_agg(expected.col, ', ') into missing
     from (values
       ('trip_plans', 'sales_mode', 'text'),
       ('trip_plans', 'participation_mode', 'text'),
       ('trip_plans', 'min_to_depart', 'integer'),
       ('trip_plans', 'formation_deadline_days_before', 'integer'),
-      ('trip_departures', 'formation_status', 'departure_formation_status'),
+      ('trip_departures', 'formation_status', 'public.departure_formation_status'),
       ('trip_departures', 'formation_deadline_at', 'timestamp with time zone'),
       ('trip_departures', 'min_to_depart_snapshot', 'integer'),
       ('trip_departures', 'formed_at', 'timestamp with time zone'),
@@ -200,20 +218,10 @@ begin
         and a.attname = expected.col
         and not a.attisdropped
         and a.attnum > 0
-        and format_type(a.atttypid, null) = expected.typ
+        and a.atttypid = expected.typ::regtype
    );
   if missing is not null then
     raise exception '0107 後置斷言失敗——以下欄位不存在或型別不符：%。這通常代表 historical overlay 已先建過同名物件，導致本檔的 add column 變成 no-op（PB-026）。', missing;
-  end if;
-
-  -- 2. enum 的值域完全正確（不多不少）
-  if (
-    select array_agg(e.enumlabel::text order by e.enumlabel)
-      from pg_enum e join pg_type t on t.oid = e.enumtypid
-      join pg_namespace n on n.oid = t.typnamespace
-     where n.nspname = 'public' and t.typname = 'departure_formation_status'
-  ) is distinct from array['AT_RISK', 'COLLECTING', 'FAILED', 'FORMED', 'REVIEW_REQUIRED'] then
-    raise exception '0107 後置斷言失敗——departure_formation_status 的值域不是 18 分冊 §3 的那五個。';
   end if;
 
   -- 3. 六個 CHECK 都在，而且內容真的是我要的那一條
