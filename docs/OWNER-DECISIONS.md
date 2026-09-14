@@ -2,7 +2,16 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-11。
+> 最後更新：2026-09-14。
+
+## 2026-09-14 已裁示
+
+| 範圍 | 主題 | Owner 決策 | 後續實作重點 |
+|---|---|---|---|
+| 本 repo Production DB | 逐次人工授權改為 machine policy gate | **目標模式為 `POLICY_GATED_ACTIVE`：完整自動 gate 驗證後 `PER_RUN_OWNER_APPROVAL=NOT_REQUIRED`。目前先進 `POLICY_APPROVED_AUTOMATION_PENDING`，在 executable policy 尚未證明 `AUTOMATION_READY=true` 前保留既有逐次 gate；READY 成立後自動切換，不需要 Owner 第二次啟用。** | 必須完成精確 main 來源、scoped consistency、真實 TEST、備份/復原、獨立允許模型 Final Risk、single-use admission、跨工具 writer lock 與 post-apply readback。來源：`docs/decisions/2026-09-14-owner-production-db-policy-gate.md`；入口：`docs/AGENT-EXECUTION.md` §3.2；詳細流程：`docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`。 |
+| 本 repo Production DB | 安全 rollout 與 risk-adaptive gate | **政策決定先落 main；read-only preflight、backup observer、review adapter、lock、controlled writer 與 postcheck 再逐步接線。沒有 automation-ready 不能先拔舊保護。** | ADDITIVE 不強迫 AUTHZ/BACKFILL 專屬檢查；AUTHZ 才加 tenant/negative-role；BACKFILL 才加 preimage/row cap；destructive v1 不准用人工特批跳過。unexplained drift 必須為 0，但不要求全球 differenceCount=0。 |
+
+歷史授權紀錄保留。下方舊的逐次 Production DB 規則在 automation pending 期間仍是 bootstrap safety；trusted-main 證明 `POLICY_GATED_ACTIVE` 後才對本 workflow 範圍自動被新規則取代。
 
 ## 2026-09-11 已裁示
 
@@ -136,7 +145,7 @@
 1. 上表已裁示題目不得再次當作人工決策阻擋，除非有新規格衝突、安全風險或 Owner 明確改判。
 2. Issue body 若殘留舊人工介入點，以本索引、較新 Owner Decision 與 canonical 文件為準。
 3. 實作時把決策回併領域 canonical 文件，不能永久只靠本索引。
-4. Production DDL／DML、正式部署與會改變 runtime 的 Production merge，仍需 Owner 另行明確授權。
+4. 本政策涵蓋的 Production DB 操作先進 `POLICY_APPROVED_AUTOMATION_PENDING`；`AUTOMATION_READY=true` 前沿用舊逐次 gate。trusted-main 證明 `POLICY_GATED_ACTIVE` 後，自動改依 `docs/AGENT-EXECUTION.md` §3.2 放行，不需要 Owner 第二次啟用或逐次批准；正式部署、流量切換及其他不在範圍內的操作仍依各領域規則。
 5. 某一路線缺權限或等待外部服務時，只將該路線列為阻塞；其他安全工作依 B+ 繼續。
 6. 每次實質失敗新增或更新 `docs/AGENT-PLAYBOOK.md`；相同根因更新原條目。
 7. 任何「已完成」主張都需通過 Completion Truth Gate；尚未重新查證時不得使用完成語氣。
