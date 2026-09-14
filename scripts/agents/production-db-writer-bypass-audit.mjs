@@ -14,6 +14,7 @@ function fail(code, message) {
   throw error;
 }
 
+/** @param {string} root @param {string} dir @param {Record<string,string>} out */
 function walk(root, dir, out) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -22,7 +23,9 @@ function walk(root, dir, out) {
   }
 }
 
+/** @returns {Record<string,string>} */
 export function collectProductionDbExecutableSources(repoRoot = process.cwd()) {
+  /** @type {Record<string,string>} */
   const out = {};
   for (const path of ['scripts', '.github/workflows']) walk(repoRoot, join(repoRoot, path), out);
   return out;
@@ -47,6 +50,7 @@ function assertFingerprintToolIsReadOnly(source) {
   if (!source.includes('拒絕 broad SUPABASE_ACCESS_TOKEN fallback')) fail('FINGERPRINT_BROAD_TOKEN_GUARD_MISSING', 'schema fingerprint tool must reject broad-token fallback');
 }
 
+/** @param {Record<string,string>} sources */
 export function auditProductionDbWriterBypasses(sources = {}) {
   const writeEndpointFiles = [];
   const broadTokenConsumers = [];
