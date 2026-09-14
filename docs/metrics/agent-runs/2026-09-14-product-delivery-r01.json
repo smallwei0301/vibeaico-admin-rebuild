@@ -463,6 +463,45 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "test-drift-repair-tour-orders",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "TEST 環境漂移修復（環境操作，非程式施工）。兩項：(1) tour_orders 上兩個 canonical／overlay／Production 全數零命中的孤兒 trigger，其中 snapshot_tour_order_payment_policy 無條件覆寫 upfront_required_amount 與 deposit_mode_snapshot，是 0108 驗收 7 紅的成因；(2) payment_status 在 TEST 是 text 而非 tour_payment_status enum。兩項都先做四邊查證（canonical／overlay／Production／TEST）再動手，移除前逐字留檔，修復後以 rollback 探針實測 6 個案例全部符合驗收預期（含 22P02 從 23514 修正）。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-0109-assertion-gap",
+        "requestedModel": "build",
+        "actualModel": "unknown",
+        "actualModelId": "claude-sonnet-5",
+        "accepted": null,
+        "role": "canonical 0109：補上 0108 沒斷言的前提（payment_status 型別／default）與 0107／0108 共同缺的 default 斷言。新增 migration＝施工，委派 build tier。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "playbook-pb044-046-writeup",
+        "requestedModel": "scout",
+        "actualModel": "unknown",
+        "actualModelId": "claude-haiku-4-5",
+        "accepted": null,
+        "role": "PB 三條新條目（驗證有保存期限／兩件不同的事不等於不同的檔案／後置斷言不檢查自己依賴的前提）與 PB-041 補實例。文件屬 scout 層，事實由 audit 層提供，代理只做轉錄與格式對齊。",
+        "count": 1,
+        "contextClass": "narrow",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -495,7 +534,7 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 12,
+    "lunaTasks": 13,
     "lunaAccepted": 12,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 1,
