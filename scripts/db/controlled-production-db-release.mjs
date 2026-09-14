@@ -1,4 +1,4 @@
-import { PRODUCTION_DB_POLICY, evaluateApplyAdmission } from '../agents/production-db-release-preflight.mjs';
+import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { pendingProductionMigrations, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 
 const API = 'https://api.supabase.com';
@@ -140,15 +140,18 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
 }
 
 /**
- * This is the only repo Production writer entry point. It deliberately requires
- * a machine-admitted packet + fresh lock evidence before the mutable endpoint is
- * called. A network error is surfaced as APPLY_UNKNOWN; callers must persist the
- * journal and run readback before any retry.
+ * This is the only repo Production writer entry point. G0–G5 are verified before
+ * the mutable endpoint. G6 is deliberately enforced *inside the same database
+ * transaction*: advisory lock first, then live-ledger baseline recheck, then and
+ * only then migration SQL. A caller-provided JSON object can never claim that the
+ * database lock was acquired.
+ *
+ * A network error is surfaced as APPLY_UNKNOWN; callers must persist the journal
+ * and run readback before any retry.
  */
 export async function runControlledProductionRelease({
   plan,
   releasePacket,
-  lockEvidence,
   aliasMap,
   readCanonicalSql,
   token,
@@ -160,7 +163,7 @@ export async function runControlledProductionRelease({
     fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
   }
   if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
-  evaluateApplyAdmission(releasePacket, lockEvidence, { now });
+  evaluateReleasePreflight(releasePacket, { now });
 
   const before = await captureProductionLedger({ token, fetchImpl });
   const sql = buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
@@ -179,6 +182,7 @@ export async function runControlledProductionRelease({
     releaseId: plan.releaseId,
     planDigest: plan.planDigest,
     mainSha: plan.mainSha,
+    g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
     nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
     databaseMutationAuthorized: false,
   };
