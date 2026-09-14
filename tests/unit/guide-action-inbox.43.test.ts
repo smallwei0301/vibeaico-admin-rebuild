@@ -69,7 +69,17 @@ vi.mock('@/server/tenant', () => ({
   requireTenant: (...a: unknown[]) => requireTenantMock(...a),
 }));
 
-function makeFakeSupabase(tripDepartureRows: FakeRow[]) {
+/**
+ * #43 類別 5 擴充：原本只特化 `trip_departures` 一張表——`then()` 對任何其他表一律
+ * 回空陣列。REFUND_PENDING 的行為測試需要對 `tour_orders` 也做同樣的「真的套用過濾
+ * 鏈」驗證，所以這裡改成任意表名 → fixture rows 的對照表；沒有列在 `tableRows` 裡的
+ * 表仍然乖乖回空陣列（維持既有呼叫端 `makeFakeSupabase(TRIP_DEPARTURE_ROWS)` 的
+ * 行為不變，見下方相容 overload）。
+ */
+function makeFakeSupabase(tableRows: FakeRow[] | Record<string, FakeRow[]>) {
+  const tables: Record<string, FakeRow[]> = Array.isArray(tableRows)
+    ? { trip_departures: tableRows }
+    : tableRows;
   return {
     from(table: string) {
       const calls: FilterCall[] = [];
@@ -92,7 +102,7 @@ function makeFakeSupabase(tripDepartureRows: FakeRow[]) {
           return { data: null, error: null };
         },
         then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
-          const rows = table === 'trip_departures' ? applyFilterOps(tripDepartureRows, calls) : [];
+          const rows = tables[table] ? applyFilterOps(tables[table], calls) : [];
           return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
         },
       };
@@ -549,6 +559,121 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       expect(items).toHaveLength(3);
     });
 
+  });
+
+  describe('route.ts behaviour: #43 類別 5 REFUND_PENDING (tour_orders)', () => {
+    // 行為測試，不是字串比對（本檔開頭已說明理由）：一個會把
+    // `.from('tour_orders')` 的過濾鏈實際套用在 in-memory fixture 上的假
+    // supabase client，直接呼叫真正的 route handler。
+    //
+    // 可證的不相交性（PR 報告會重複貼一次結論）：REFUND_PENDING 讀
+    // `tour_orders`，BOOKING_PAYMENT 讀 `bookings_view`（其底層 `public.bookings`
+    // 的 `payment_status` 用 0002 的 `payment_status` enum，值域裡根本沒有
+        // `REFUND_PENDING` 這個標籤）——兩者是不同表、不同 enum 值域，data-level
+    // 不可能重疊，不需要事後去重。這裡的 fixture 刻意也在 `bookings_view` 放一筆
+    // 同 id 的列，用來證明就算 id 撞名，兩張表的查詢各自獨立、不會互相污染。
+    const TENANT_ID = 'tenant-a';
+    const OTHER_TENANT_ID = 'tenant-b';
+
+    const TOUR_ORDER_ROWS: FakeRow[] = [
+      {
+        // 目標列：tenant-a、REFUND_PENDING，應該出現，且金額算法要對
+        // （paid_amount - refunded_amount = 2670 - 0 = 2670）。
+        id: 'ord-refund-a', tenant_id: TENANT_ID, order_no: 'T2609180001',
+        contact: { name: '許家瑜' }, paid_amount: 2670, refunded_amount: 0,
+        payment_status: 'REFUND_PENDING',
+        updated_at: '2026-09-18T02:00:00.000Z', created_at: '2026-09-10T00:00:00.000Z',
+      },
+      {
+        // 部分退款中的列：paid_amount - refunded_amount = 1000 - 400 = 600。
+        id: 'ord-refund-partial', tenant_id: TENANT_ID, order_no: 'T2609170002',
+        contact: { name: '王小明' }, paid_amount: 1000, refunded_amount: 400,
+        payment_status: 'REFUND_PENDING',
+        updated_at: '2026-09-17T01:00:00.000Z', created_at: '2026-09-05T00:00:00.000Z',
+      },
+      {
+        // 同租戶但 PAID：不應該出現。用來證明 query 真的在過濾 payment_status，
+        // 不是只憑 tenant_id 就把整張表當成 REFUND_PENDING。
+        id: 'ord-paid-a', tenant_id: TENANT_ID, order_no: 'T2609160003',
+        contact: { name: '陳大文' }, paid_amount: 1000, refunded_amount: 0,
+        payment_status: 'PAID',
+        updated_at: '2026-09-16T00:00:00.000Z', created_at: '2026-09-01T00:00:00.000Z',
+      },
+      {
+        // 其他租戶的 REFUND_PENDING：不應該出現。證明 tenant_id 過濾真的在擋。
+        id: 'ord-refund-b', tenant_id: OTHER_TENANT_ID, order_no: 'T2609190004',
+        contact: { name: '林小美' }, paid_amount: 500, refunded_amount: 0,
+        payment_status: 'REFUND_PENDING',
+        updated_at: '2026-09-19T00:00:00.000Z', created_at: '2026-09-11T00:00:00.000Z',
+      },
+    ];
+
+    // 刻意跟 `ord-refund-a` 撞同一個 id，證明兩張表的查詢互不污染（見上方說明）。
+    const BOOKINGS_VIEW_ROWS: FakeRow[] = [
+      {
+        id: 'ord-refund-a', tenant_id: TENANT_ID, booking_no: 'BK-COLLIDE',
+        customer_name: '不應該出現在 REFUND_PENDING', service_name: 'x',
+        status: 'CONFIRMED', payment_status: 'UNPAID', final_price: 999,
+        start_at: '2026-09-20T01:00:00.000Z', created_at: '2026-09-01T00:00:00.000Z',
+      },
+    ];
+
+    beforeEach(() => {
+      requireTenantMock.mockReset();
+      requireTenantMock.mockResolvedValue({
+        supabase: makeFakeSupabase({
+          tour_orders: TOUR_ORDER_ROWS,
+          bookings_view: BOOKINGS_VIEW_ROWS,
+        }),
+        tenantId: TENANT_ID,
+        user: { id: 'user-a' },
+        role: 'OWNER',
+      });
+    });
+
+    it('reads only tenant-scoped REFUND_PENDING tour_orders, computes the outstanding amount honestly, and never as REFUNDED', async () => {
+      const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const items: any[] = body.data;
+      const refundItems = items.filter((i) => i.kind === 'REFUND_PENDING');
+
+      // 只有 tenant-a 的兩筆 REFUND_PENDING 出現；PAID（ord-paid-a）與其他租戶
+      // （ord-refund-b）都不在——如果 `.eq('payment_status', 'REFUND_PENDING')`
+      // 被拿掉，ord-paid-a 會混進來；如果 `.eq('tenant_id', ...)` 被拿掉或
+      // payment_status 的值寫錯，ord-refund-b 會混進來或 ord-refund-a 會消失。
+      expect(refundItems.map((i) => i.id).sort()).toEqual(['ord-refund-a', 'ord-refund-partial']);
+
+      const full = refundItems.find((i) => i.id === 'ord-refund-a');
+      expect(full).toMatchObject({
+        orderNo: 'T2609180001',
+        customerName: '許家瑜',
+        refundOutstandingAmount: 2670,
+        priority: 'IMMEDIATE',
+        href: '/tenant/tour-orders?paymentStatus=REFUND_PENDING&orderId=ord-refund-a',
+      });
+
+      const partial = refundItems.find((i) => i.id === 'ord-refund-partial');
+      expect(partial).toMatchObject({
+        refundOutstandingAmount: 600,
+        priority: 'IMMEDIATE',
+      });
+
+      // #43 §4：唯一入口，只排序一次。
+      expect(items.length).toBe(refundItems.length + items.filter((i) => i.kind !== 'REFUND_PENDING').length);
+
+      // 18 分冊 §9.3：REFUND_PENDING 不可顯示成 REFUNDED——回應裡不該有任何一張
+      // 卡片的 kind 字面等於 'REFUNDED'。
+      expect(items.some((i) => i.kind === 'REFUNDED')).toBe(false);
+
+      // 撞 id 的 bookings_view 列（會被 BOOKING_PAYMENT query 合法抓到，因為它的
+      // status/payment_status/final_price 本就符合那條 query）不會污染
+      // REFUND_PENDING 卡片的內容——`ord-refund-a` 這個 id 只能有一張
+      // kind: 'REFUND_PENDING' 卡片，且它的客戶姓名／金額必須來自 tour_orders
+      // 那筆，不是被 bookings_view 那筆覆蓋或合併。
+      expect(full!.customerName).not.toBe('不應該出現在 REFUND_PENDING');
+      expect(items.filter((i) => i.id === 'ord-refund-a' && i.kind === 'REFUND_PENDING')).toHaveLength(1);
+    });
   });
 
   describe('mock service exclusivity (demo mode)', () => {

@@ -75,6 +75,11 @@ export const dashboardPage = {
      */
     formationAtRiskInconsistent: (current: number, min: number) => `目前 ${current} 人（門檻 ${min} 人），狀態待人工確認`,
     formationDeadline: '成團決定期限',
+    /* ---- #43 類別 5：REFUND_PENDING（退款尚未完成；18 分冊 §9.3：不可顯示成「已退款」） ---- */
+    refundPending: '待退款',
+    /** 已收但尚未退回旅客的金額。與「已退款」在字面上明確分開，不沿用同一個詞。 */
+    refundOutstanding: (amount: string) => `應退 ${amount}`,
+    openRefund: '查看退款',
     priority: {
       IMMEDIATE: '需要立即處理',
       TODAY: '今天處理',
