@@ -39,7 +39,7 @@ import {
   reorderPlans, toAdvancedPlanPayload, toQuickPlanPayload, validateAdvancedPlan, validateQuickPlan,
 } from '@/lib/trip-plan-quick-edit';
 import type {
-  DepartureConflict, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
+  DepartureConflict, DepartureFormationStatus, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
   TripDeparture, TripPlan,
 } from '@/lib/types';
 
@@ -51,6 +51,15 @@ const REVIEW_TONE: Record<PlanReviewState, 'info' | 'danger' | 'neutral'> = {
 };
 const DEPARTURE_TONE: Record<DepartureStatus, 'success' | 'neutral' | 'danger'> = {
   OPEN: 'success', CLOSED: 'neutral', CANCELLED: 'danger',
+};
+/*
+ * #41（18 分冊 §3）：成團狀態與 OPEN/CLOSED/CANCELLED 是兩條獨立的軸。
+ * 需要導遊做決定的兩個狀態（REVIEW_REQUIRED、AT_RISK）用 warning／danger，
+ * 讓它們在列表裡自己跳出來——那正是這兩個狀態存在的理由。
+ */
+const FORMATION_TONE: Record<DepartureFormationStatus, 'success' | 'neutral' | 'warning' | 'danger'> = {
+  COLLECTING: 'neutral', FORMED: 'success',
+  REVIEW_REQUIRED: 'warning', AT_RISK: 'danger', FAILED: 'neutral',
 };
 type PlanEditorMode = 'quick' | 'advanced';
 
@@ -643,6 +652,23 @@ export default function TripDetailPage() {
     {
       key: 'status', header: t.departures.columns.status, width: '100px',
       render: (d) => <Badge tone={DEPARTURE_TONE[d.status]}>{t.departures.status[d.status]}</Badge>,
+    },
+    {
+      key: 'formation', header: t.departures.columns.formation, width: '130px',
+      render: (d) => {
+        const state = d.formationStatus ?? 'COLLECTING';
+        const need = d.minToDepartSnapshot ?? 1;
+        return (
+          <div>
+            <Badge tone={FORMATION_TONE[state]}>{t.departures.formation[state]}</Badge>
+            <div className="mt-0.5 text-2xs text-secondary">
+              {need > 1
+                ? t.departures.formation.progress(d.seatsBooked, need)
+                : t.departures.formation.noThreshold}
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: 'note', header: t.departures.columns.note,
