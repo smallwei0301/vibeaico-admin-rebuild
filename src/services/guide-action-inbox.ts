@@ -1,10 +1,13 @@
 import { adapt, request } from '@/lib/api';
 import {
+  buildGuideActionInboxFormationItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
+  isGuideActionInboxFormationStatus,
   sortGuideActionInboxItems,
+  type GuideActionInboxFormationKind,
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
 import { MOCK_BOOKINGS } from '@/mock';
@@ -16,8 +19,15 @@ const bookingPaymentHref = (id: string) =>
   `/tenant/bookings?status=CONFIRMED&paymentStatus=UNPAID&bookingId=${encodeURIComponent(id)}`;
 
 /**
- * GUIDE 首頁目前可自主完成的 action inbox slice：既有待確認與待收款預約。
- * mock 只模擬相對於現在的預約時間，避免舊 fixture 日期讓首頁顯示過期假資料。
+ * GUIDE 首頁 action inbox：待確認預約、待收款預約、今日／明日出發團次，以及 #43
+ * 類別 3／4——REVIEW_REQUIRED（成團截止不足）與 AT_RISK（已成團後人數跌破門檻）。
+ * 單一聚合入口，由這裡在 server／mock 端把不同資料表的候選彙整、排序成一份清單
+ * 再回傳（#43 §4：「不可把不同資料表全抓到前端後自行拼湊」）；前端只消費這一份
+ * 已排序好的陣列，不需要也不應該自己併多次呼叫的結果。
+ *
+ * formation 兩類只讀 `trip_departures.formation_status`（0107, #41 canonical）與其
+ * snapshot 欄位，不建立新狀態、不重新推算成團與否，也不觸發通知、付款或其他外部
+ * 副作用；mock 只模擬相對於現在的預約時間，避免舊 fixture 日期讓首頁顯示過期假資料。
  */
 export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
   return adapt(
@@ -64,7 +74,12 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           };
         });
       const departureItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES
-        .filter((departure) => departure.status !== 'CANCELLED')
+        .filter((departure) =>
+          departure.status !== 'CANCELLED'
+          // 與 route.ts 的 DEPARTURE query 同一條規則：REVIEW_REQUIRED／AT_RISK 團次
+          // 只當作 formation 卡片出現，不再同時當作「今日／明日出發」卡片——否則
+          // 同一個團次、同一個深連結會在收件匣裡出現兩張卡。
+          && !isGuideActionInboxFormationStatus(departure.formationStatus))
         .slice(0, 2)
         .map((departure, index): GuideActionInboxItem | null => {
           const departureDate = index === 0 ? today : tomorrow;
@@ -91,7 +106,40 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           };
         })
         .filter((item): item is GuideActionInboxItem => item !== null);
-      return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems]);
+      const formationItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES
+        .filter((departure) =>
+          departure.status !== 'CANCELLED'
+          && isGuideActionInboxFormationStatus(departure.formationStatus))
+        .map((departure, index) => {
+          const trip = MOCK_TRIPS.find((candidate) => candidate.id === departure.tripId);
+          const plan = MOCK_TRIP_PLANS.find((candidate) => candidate.id === departure.planId);
+          // fixture 的 departsOn 是固定寫死的日期（Aug 2026），跟 DEPARTURE 卡片在
+          // `:80` 一樣，這裡也要把它換算成相對於「現在」的今日／明日，否則 demo 模式
+          // 會永遠顯示兩張過期的「立即處理」卡片，跟本檔開頭的註解自相矛盾——也跟
+          // route.ts 新加的 `.gte('departs_on', today)` 下限不一致（真實 API 不會回
+          // 過期的 formation 列，mock 不該回）。
+          const departureDate = index === 0 ? today : tomorrow;
+          return buildGuideActionInboxFormationItem({
+            id: departure.id,
+            tripId: departure.tripId,
+            tripName: trip?.title ?? '',
+            planName: plan?.name ?? departure.planName,
+            departureDate,
+            startTime: departure.startTime || '00:00',
+            capacity: departure.capacity,
+            seatsBooked: departure.seatsBooked,
+            // 注意：這裡的 `?? 1` 是給 mock fixture 型別（`minToDepartSnapshot?: number`，
+            // `src/lib/types.ts`）用的，跟 route.ts 那個已移除的 `?? 1` 不是同一件事——
+            // 真實 DB 欄位 `min_to_depart_snapshot` 是 `not null`，mock 型別的這個欄位
+            // 沒有那條資料庫層的保證，所以這裡的防禦性 fallback 要留著。
+            minToDepart: departure.minToDepartSnapshot ?? 1,
+            formationStatus: departure.formationStatus as GuideActionInboxFormationKind,
+            formationDeadlineAt: departure.formationDeadlineAt ?? null,
+            formedParticipants: departure.formedParticipants ?? null,
+            createdAt: new Date(now).toISOString(),
+          }, nowDate);
+        });
+      return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems, ...formationItems]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
   );

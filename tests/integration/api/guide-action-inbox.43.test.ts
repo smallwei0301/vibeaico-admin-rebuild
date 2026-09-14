@@ -1,18 +1,21 @@
 /**
- * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次 + #43-C 待收款預約。
- * #43-B 透過 TEST service role 建立短命測試資料，測畢清理並驗證
+ * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次 + #43-C 待收款預約
+ * + #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）／AT_RISK（已成團後人數跌破門檻）。
+ * #43-B／類別 3／4 透過 TEST service role 建立短命測試資料，測畢清理並驗證
  * 不跨租戶；不新增 schema、狀態機或其他外部副作用。
  *
  * 這支一般 Product integration 不得把 #41 的 TEST-only overlay 當成 main 前提。
  * `readTourSeedFields()` 只在觀察到完整 #41 相容欄位時補上合法 snapshot；
  * canonical core 則送空物件，讓同一套讀取斷言真的能在 main schema 上執行。
+ *
+ * 類別 3／4 併進既有單一聚合端點 `GET /api/guide/action-inbox`（#43 §4：不可把不同
+ * 資料表全抓到前端後自行拼湊，建議單一聚合端點由 server 端彙整）——不是獨立端點。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A, SHOP_B, TRIP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
-import type { GuideActionInboxItem } from '@/lib/types';
-import { getGuideActionInboxDateWindow } from '@/lib/guide-action-inbox';
+import { getGuideActionInboxDateWindow, type GuideActionInboxItem } from '@/lib/guide-action-inbox';
 import { readTourSeedFields } from '../../../scripts/test/tour-seed-profile.mjs';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -190,5 +193,146 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBResponse.status).toBe(200);
     const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
     expect(shopBBody.data?.some((item) => temporaryDepartureIds.includes(item.id))).toBe(false);
+  });
+
+  it('GET /api/guide/action-inbox 也回傳 REVIEW_REQUIRED 與 AT_RISK 團次（同一聚合端點），並且不跨租戶（#43 類別 3／4）', async () => {
+    const now = new Date();
+    const { tomorrow } = getGuideActionInboxDateWindow(now, 'Asia/Taipei');
+    const futureDeadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: reviewRow, error: reviewError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: tomorrow,
+      start_time: '09:00',
+      capacity: 10,
+      status: 'OPEN',
+      formation_status: 'REVIEW_REQUIRED',
+      min_to_depart_snapshot: 4,
+      formation_deadline_at: futureDeadline,
+    }).select('id').single();
+    expect(reviewError).toBeNull();
+    expect(reviewRow?.id).toBeTruthy();
+    const reviewId = reviewRow!.id as string;
+    temporaryDepartureIds.push(reviewId);
+
+    const { data: atRiskRow, error: atRiskError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: tomorrow,
+      start_time: '10:00',
+      capacity: 10,
+      seats_booked: 3,
+      status: 'OPEN',
+      formation_status: 'AT_RISK',
+      min_to_depart_snapshot: 4,
+      formed_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      formed_by: 'SYSTEM',
+      formed_participants: 5,
+    }).select('id').single();
+    expect(atRiskError).toBeNull();
+    expect(atRiskRow?.id).toBeTruthy();
+    const atRiskId = atRiskRow!.id as string;
+    temporaryDepartureIds.push(atRiskId);
+
+    // 同一支既有端點，不是另開的 /formation 端點——這正是 #43 §4 要求的單一聚合入口。
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+
+    // Final Risk（claude-fable-5-1）覆核發現的 HIGH：這兩筆的 departs_on 是 tomorrow
+    // 且 status OPEN，因此同時落在舊版 DEPARTURE query（status in OPEN/CLOSED，
+    // 今日～明日）與 formation query（formation_status in REVIEW_REQUIRED/AT_RISK）
+    // 的交集裡——同一個團次會被彙整成兩張卡。單靠 `find()` 抓第一筆符合的卡片
+    // 測不出「這個 id 出現了兩次」，因為 `find()` 只回傳陣列裡第一個符合的元素，
+    // 不管後面還有沒有重複。所以這裡改成先把整份清單依 id 分組，斷言：
+    //   1. 每個 id 在整份已排序清單裡只出現一次（用 `(id, kind)` 而不只是 id，
+    //      避免「id 唯一但 kind 抓錯」這種更隱晦的錯誤悄悄過關）。
+    //   2. 該 id 對應的 kind 是 formation query 的 REVIEW_REQUIRED／AT_RISK，
+    //      不是舊 DEPARTURE query 的 'DEPARTURE'——後者才是這個 HIGH 實際重現時
+    //      （reviewer 記錄的 `Y:DEPARTURE X:DEPARTURE X:AT_RISK Y:REVIEW_REQUIRED`）
+    //      `find()` 會抓到的那張假卡片。
+    const items = body.data ?? [];
+    const reviewMatches = items.filter((item) => item.id === reviewId);
+    const atRiskMatches = items.filter((item) => item.id === atRiskId);
+    expect(reviewMatches).toHaveLength(1);
+    expect(atRiskMatches).toHaveLength(1);
+    expect(reviewMatches.map((item) => item.kind)).toEqual(['REVIEW_REQUIRED']);
+    expect(atRiskMatches.map((item) => item.kind)).toEqual(['AT_RISK']);
+
+    const reviewItem = reviewMatches[0];
+    expect(reviewItem).toMatchObject({
+      kind: 'REVIEW_REQUIRED',
+      tripId: TRIP_A.id,
+      minToDepart: 4,
+      href: `/tenant/trips/${TRIP_A.id}`,
+    });
+    // PostgREST 回傳 timestamptz 是 `...541+00:00`，`futureDeadline` 是
+    // `toISOString()` 產出的 `...541Z`——兩者是同一個 instant 的不同字面表示法，
+    // 不能用 `toMatchObject` 做字串相等。跟 `bookings-modified.27.test.ts:375`
+    // 同一套作法：比較解析後的 instant，不是字串本身。
+    expect(Date.parse((reviewItem as { formationDeadlineAt?: string })?.formationDeadlineAt as string)).toBe(Date.parse(futureDeadline));
+    expect(Date.parse(reviewItem?.dueAt as string)).toBe(Date.parse(futureDeadline));
+
+    const atRiskItem = atRiskMatches[0];
+    expect(atRiskItem).toMatchObject({
+      kind: 'AT_RISK',
+      tripId: TRIP_A.id,
+      minToDepart: 4,
+      formedParticipants: 5,
+      href: `/tenant/trips/${TRIP_A.id}`,
+    });
+    // AT_RISK 的下一個真正期限是出發時刻，不是舊的 formation_deadline_at（本例根本沒設）。
+    expect(atRiskItem?.dueAt).not.toBe(futureDeadline);
+
+    // 兩筆 formation 卡片與既有 booking/departure 卡片混在同一份已排序清單裡，
+    // 而不是分開的兩份清單——鎖住 #43 §2「同優先級依截止時間、建立時間排序」
+    // 只在單一清單上成立這件事。
+    const priorityRank: Record<GuideActionInboxItem['priority'], number> = { IMMEDIATE: 0, TODAY: 1, UPCOMING: 2 };
+    for (let i = 1; i < (body.data?.length ?? 0); i += 1) {
+      expect(priorityRank[body.data![i - 1].priority]).toBeLessThanOrEqual(priorityRank[body.data![i].priority]);
+    }
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+    expect(shopBResponse.status).toBe(200);
+    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+    expect(shopBBody.data?.some((item) => item.id === reviewId || item.id === atRiskId)).toBe(false);
+  });
+
+  it('已經出發過但仍是 REVIEW_REQUIRED／AT_RISK 的舊團次不會永遠卡在收件匣（MEDIUM finding）', async () => {
+    // 0107 還沒有 #41 §6 的自動轉態，理論上這種列不該長期存在，但既然可能發生，
+    // formation query 就必須有 `.gte('departs_on', today)` 這個下限，否則已出發的
+    // 舊團次會跟現在的團次搶 `.limit(20)` 的名額，而且永遠顯示「立即處理」。
+    const now = new Date();
+    const { today } = getGuideActionInboxDateWindow(now, 'Asia/Taipei');
+    const yesterday = new Date(new Date(`${today}T12:00:00.000Z`).getTime() - 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+
+    const { data: staleRow, error: staleError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: yesterday,
+      start_time: '09:00',
+      capacity: 10,
+      status: 'OPEN',
+      formation_status: 'REVIEW_REQUIRED',
+      min_to_depart_snapshot: 4,
+      formation_deadline_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+    }).select('id').single();
+    expect(staleError).toBeNull();
+    expect(staleRow?.id).toBeTruthy();
+    const staleId = staleRow!.id as string;
+    temporaryDepartureIds.push(staleId);
+
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+    expect(body.data?.some((item) => item.id === staleId)).toBe(false);
   });
 });

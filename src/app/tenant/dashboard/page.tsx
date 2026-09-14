@@ -58,6 +58,135 @@ const ACTION_INBOX_TONE: Record<GuideActionInboxPriority, 'danger' | 'warning' |
   UPCOMING: 'info',
 };
 
+/**
+ * #43 §3／§4：action inbox 卡片對 `item.kind` 窮舉，而不是「非 A 非 B 就當 C」的
+ * 三元鏈——舊寫法在 #43 類別 3／4（REVIEW_REQUIRED／AT_RISK）加入後會把它們誤當成
+ * DEPARTURE 渲染，出現不存在的 `departureDay` 索引。`const _exhaustive: never = item`
+ * 讓將來任何人再加一種 kind、卻忘了在這三個函式補上分支時，typecheck 會擋下來，
+ * 不會又靜默落回某個 default 分支。
+ */
+function actionInboxKindLabel(item: GuideActionInboxItem): string {
+  switch (item.kind) {
+    case 'BOOKING_REQUEST':
+      return t.actionInbox.bookingRequest;
+    case 'BOOKING_PAYMENT':
+      return t.actionInbox.bookingPayment;
+    case 'DEPARTURE':
+      return t.actionInbox.departure;
+    case 'REVIEW_REQUIRED':
+      return t.actionInbox.reviewRequired;
+    case 'AT_RISK':
+      return t.actionInbox.atRisk;
+    default: {
+      const _exhaustive: never = item;
+      return _exhaustive;
+    }
+  }
+}
+
+function actionInboxOpenLabel(item: GuideActionInboxItem): string {
+  switch (item.kind) {
+    case 'BOOKING_REQUEST':
+      return t.actionInbox.open;
+    case 'BOOKING_PAYMENT':
+      return t.actionInbox.openPayment;
+    case 'DEPARTURE':
+      return t.actionInbox.openDeparture;
+    case 'REVIEW_REQUIRED':
+    case 'AT_RISK':
+      return t.actionInbox.openFormation;
+    default: {
+      const _exhaustive: never = item;
+      return _exhaustive;
+    }
+  }
+}
+
+function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
+  switch (item.kind) {
+    case 'BOOKING_REQUEST':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+          <div className="text-sm text-secondary">{item.serviceName}</div>
+          <div className="mt-1 text-xs text-secondary">
+            {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
+          </div>
+        </>
+      );
+    case 'BOOKING_PAYMENT':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
+          <div className="text-sm text-secondary">{item.serviceName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
+            <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
+          </div>
+        </>
+      );
+    case 'DEPARTURE':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>{t.actionInbox.departureDay[item.departureDay]}</span>
+            <span>{t.actionInbox.departureAt}：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
+            <span>{t.actionInbox.departureSeats(item.seatsBooked, item.capacity)}</span>
+          </div>
+        </>
+      );
+    case 'REVIEW_REQUIRED': {
+      const seatsShort = Math.max(item.minToDepart - item.seatsBooked, 0);
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>
+              {seatsShort > 0
+                ? t.actionInbox.formationSeatsShort(seatsShort)
+                : t.actionInbox.formationSeatsReached}
+            </span>
+            <span>{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
+            {item.formationDeadlineAt ? (
+              <span>
+                {t.actionInbox.formationDeadline}：{formatDate(item.formationDeadlineAt)} {formatTime(item.formationDeadlineAt)}
+              </span>
+            ) : null}
+          </div>
+        </>
+      );
+    }
+    case 'AT_RISK': {
+      // AT_RISK 的字面意思是「已跌破門檻」，但目前的 snapshot 是唯讀觀察值——沒有
+      // #41 §6 的自動轉態，人數事後又追回門檻時狀態不會自己變回 FORMED。與其讓
+      // 「已跌破」這句話在人數其實達標時仍然顯示（誤導使用者去做一個其實不必做的
+      // 決定），不如在這種不一致的資料上改用中性措辭，不隱藏卡片也不假裝沒看到。
+      const isConsistent = item.seatsBooked < item.minToDepart;
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>
+              {isConsistent
+                ? t.actionInbox.formationAtRiskDetail(item.seatsBooked, item.minToDepart)
+                : t.actionInbox.formationAtRiskInconsistent(item.seatsBooked, item.minToDepart)}
+            </span>
+            <span>{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
+          </div>
+        </>
+      );
+    }
+    default: {
+      const _exhaustive: never = item;
+      return _exhaustive;
+    }
+  }
+}
+
 const QUICK_ACTIONS = [
   { key: 'newBooking', href: '/tenant/bookings', icon: CalendarCheck },
   { key: 'calendar', href: '/tenant/calendar', icon: CalendarDays },
@@ -273,51 +402,16 @@ export default function DashboardPage() {
                           {t.actionInbox.priority[item.priority]}
                         </Badge>
                         <span className="text-sm font-semibold text-dark">
-                          {item.kind === 'BOOKING_REQUEST'
-                            ? t.actionInbox.bookingRequest
-                            : item.kind === 'BOOKING_PAYMENT'
-                              ? t.actionInbox.bookingPayment
-                              : t.actionInbox.departure}
+                          {actionInboxKindLabel(item)}
                         </span>
                       </div>
-                      {item.kind === 'BOOKING_REQUEST' ? (
-                        <>
-                          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
-                          <div className="text-sm text-secondary">{item.serviceName}</div>
-                          <div className="mt-1 text-xs text-secondary">
-                            {t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}
-                          </div>
-                        </>
-                      ) : item.kind === 'BOOKING_PAYMENT' ? (
-                        <>
-                          <div className="truncate text-base font-semibold text-dark">{item.customerName}</div>
-                          <div className="text-sm text-secondary">{item.serviceName}</div>
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
-                            <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
-                            <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
-                          <div className="text-sm text-secondary">{item.planName}</div>
-                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
-                            <span>{t.actionInbox.departureDay[item.departureDay]}</span>
-                            <span>{t.actionInbox.departureAt}：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
-                            <span>{t.actionInbox.departureSeats(item.seatsBooked, item.capacity)}</span>
-                          </div>
-                        </>
-                      )}
+                      <ActionInboxCardBody item={item} />
                     </div>
                     <Link
                       href={item.href}
                       className="btn btn-primary btn-sm w-full flex-shrink-0 sm:w-auto"
                     >
-                      {item.kind === 'BOOKING_REQUEST'
-                        ? t.actionInbox.open
-                        : item.kind === 'BOOKING_PAYMENT'
-                          ? t.actionInbox.openPayment
-                          : t.actionInbox.openDeparture}
+                      {actionInboxOpenLabel(item)}
                     </Link>
                   </li>
                 ))}
