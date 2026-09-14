@@ -437,6 +437,32 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-sol-audit-b6cd5eb",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "#43 類別 5 候選 b6cd5eb 的 audit 層驗證。沒有採信施工代理的報告：獨立重跑 tsc（0 error）、獨立設計並實跑四個 mutation（拿掉 payment_status 過濾／拿掉 tenant_id 過濾／outstanding 改成 paidAmount／priority 改成 TODAY），四個都被測試抓到，證明新測試是真的行為測試而非 source-grep。另獨立從 0002_enums.sql 與 0087 驗證 bookings.payment_status 值域確實沒有 REFUND_PENDING 標籤，代理主張的「天生不相交」成立。開出 FIX_REQUIRED 兩項：兩條恆真斷言、deep link 未接線。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-terra-fix-round2",
+        "requestedModel": "build",
+        "actualModel": "unknown",
+        "actualModelId": "claude-sonnet-5",
+        "accepted": null,
+        "role": "FIX_REQUIRED 兩項的施工委派（改測試＝施工，依 CLAUDE.md 一律委派 build tier，不在 audit 層順手做）。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -475,7 +501,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 7,
+    "solTouches": 8,
     "solIssues": 1
   },
   "auditability": {
