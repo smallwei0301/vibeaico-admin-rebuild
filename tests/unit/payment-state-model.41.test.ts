@@ -43,6 +43,27 @@ const orderRow = (extra: Record<string, unknown> = {}) => ({
  * UI 顯示已收錢/已退款的具體數字或狀態。
  */
 describe('#41 §4 mapTourOrder：新欄位的窄化必須 fail-closed', () => {
+  describe('paymentStatus 也必須收斂，不得直通', () => {
+    /*
+     * 「canonical 端是 enum，DB 已保證值域」不足以支撐直通：2026-09-14 實查
+     * shared TEST，trip_departures.formation_status 就是歷史 overlay 殘留的 text。
+     * 同一個工作的另一半欄位能以 text 存在於某個環境，payment_status 沒有豁免。
+     */
+    it.each([undefined, null, '', 'partial', 'UNKNOWN', 'FORMED', 7, {}])(
+      '未知值 %p 收斂成 UNPAID，不得讓 UI 誤宣稱已收款',
+      (raw) => {
+        expect(mapTourOrder(orderRow({ payment_status: raw }), derived).paymentStatus).toBe('UNPAID');
+      },
+    );
+
+    it.each(['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED'])(
+      '合法值 %s 原樣保留',
+      (raw) => {
+        expect(mapTourOrder(orderRow({ payment_status: raw }), derived).paymentStatus).toBe(raw);
+      },
+    );
+  });
+
   describe('upfrontRequiredAmount：非有限數字一律收斂成 0', () => {
     it.each([undefined, null, '', 'abc', 'NaN', {}, []])(
       '把 %s 收斂成 0',

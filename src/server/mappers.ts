@@ -310,6 +310,19 @@ const SALES_MODE = new Set(['FIXED_DEPARTURE', 'INSTANT', 'REQUEST']);
 const FORMATION_STATUS = new Set(['COLLECTING', 'FORMED', 'REVIEW_REQUIRED', 'AT_RISK', 'FAILED']);
 /* #41：與 0108 的 deposit_mode_snapshot CHECK、0066 的 trip_plans.deposit_mode 是同一組值。 */
 const DEPOSIT_MODE_SNAPSHOT = new Set(['NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT', 'FULL']);
+/*
+ * #41：與 0108 的 tour_payment_status 值域是同一組值。
+ *
+ * 「canonical 端這一欄是 enum，資料庫已經保證值域，直接透傳即可」這個假設在真實
+ * 環境裡不成立：2026-09-14 實查 shared TEST 時，trip_departures.formation_status
+ * 是 **text**——那是歷史 #41 overlay 的殘留，canonical 0107 的
+ * `add column if not exists` 對它是 no-op。同一個工作的另一半欄位既然能以 text
+ * 的形式存在於某個環境，payment_status 沒有理由被當成「必然是 enum」。
+ *
+ * 收斂方向取「最不會讓 UI 誤宣稱已收到錢」的那一個：未知值一律當成 UNPAID，
+ * 而不是保留原字串讓下游的窮舉 Record 查表落空。
+ */
+const TOUR_PAYMENT_STATUS = new Set(['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED']);
 
 export function mapTripPlan(r: any): TripPlan {
   return {
@@ -412,7 +425,7 @@ export function mapTourOrder(r: any, derived: {
     totalAmount: Number(r.total_amount ?? 0),
     depositAmount: Number(r.deposit_amount ?? 0),
     status: r.status,
-    paymentStatus: r.payment_status,
+    paymentStatus: TOUR_PAYMENT_STATUS.has(r.payment_status) ? r.payment_status : 'UNPAID',
     paymentMethodLabel: derived.paymentMethodLabel,
     paymentRef: r.payment_ref ?? '',
     source: r.source,
