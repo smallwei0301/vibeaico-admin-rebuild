@@ -1315,6 +1315,51 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 同類缺口補充：在排查 #43 類別 5 時發現，後置斷言（恆假）與測試斷言（恆真）中都存在「永遠失敗」或「永遠成立」的缺陷，與 PB-039 的「恆真 guard」是同一個家族：(a) 恆假例：`0108` 的 enum 後置斷言因 `pg_enum.enumlabel` 走 C collation 導致排序不同，永遠失敗；(b) 恆真例：`tests/unit/guide-action-inbox.43.test.ts` 的兩條測試斷言（集合論身分式永遠成立，型別 union 不涵蓋的值無法觸發）。共同教訓：恆真與恆假都是「看起來在守，實際上沒有」——任何斷言寫完後都要反問「如果這件事壞掉，斷言會不會轉紅」；不會就不是斷言。
 - 狀態：監看中；TEST 環境漂移的根本修正（重建 historical overlay）由 #43 的進一步整合決定
 
+### PB-047 — `PRODUCTION_SCHEMA_STATUS` 填了卻沒有去查正式庫
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：2（同一輪內 PR #440 與 #442；同一個欄位 `formation_status`）
+- Issue／PR／CI：Issue #41（formation state model）；PR #440（第 1 類 COLLECT）、PR #442（第 5 類 REFUND_PENDING）；`supabase/migrations/0107_issue_41_formation_state_model.sql`；`src/app/api/guide/action-inbox/route.ts`；`docs/schema-truth/2026-09-14-production-0107-not-applied.md`
+- 分類：Production Schema；PR Review；依賴判定
+- 事件：
+  - PR #440：`PRODUCTION_SCHEMA_STATUS` 填成 `NOT_REQUIRED`，證據欄寫「本 PR 無任何 DDL；所讀欄位來自**已在 main 的** `0107` 與 `0066`」。結果 `/api/guide/action-inbox` 在正式環境回 `42703: column "formation_status" does not exist`。
+  - PR #442：由 audit 層（Opus）填 `PRODUCTION_SCHEMA_STATUS: READY`，理由是它依賴的 `0108` 已套用正式庫。問題是**沒有檢查同一支端點裡既有的 formation 查詢**——同一個根因、換一個欄位、又犯一次。
+  - `/api/guide/action-inbox` 把五條查詢放在同一個 `Promise.all` 並逐一 `throw`，所以 formation 查詢一旦失敗，整支端點就 500——不是「成團卡片不顯示」，是「待辦區整個壞掉」。正式庫當時唯一的租戶就是 `GUIDE`——唯一會看到這個畫面的人。
+- 證據：
+  1. 正式庫唯讀查詢：`select id, formation_status from public.trip_departures limit 1;` → `ERROR 42703: column "formation_status" does not exist`
+  2. 欄位清單查證：`trip_departures` 只有 `0066` 的 11 個欄位，`0107` 的八個欄位一個都不在（`formation_status`、`formation_deadline_at`、`min_to_depart_snapshot` 等）
+  3. `supabase/ledger-alias-map.json` 分類：`0107` = `NOT_APPLIED / PENDING_APPLY`，ledger row 編號最後到 56，找不到 `0107`
+  4. 與「已在 main」的區別：`git show origin/main:supabase/migrations/0107_issue_41_formation_state_model.sql` 確實存在，但**環境中沒有**
+- 根因：
+  - **「已在 main」被當成「已在正式庫」回答了。** `PRODUCTION_SCHEMA_STATUS` 這一格問的是「執行這支 PR 時需要的欄位有沒有在它將執行的環境上」，不是「需要的檔案有沒有在 repo 裡」。
+  - **填欄位但不查環境，等於沒有這一格。** 與 PB-040（把埋點欄位建好卻不埋）是同一種病：**欄位存在讓它看起來有在把關，但實際上沒有任何驗證發生**。
+  - 二度犯錯時的跳步：已知第 4 條預防（全表掃描）理論上應該檢查，但審核時沒有擴大檢查範圍到「這支端點內**所有**既有查詢」。
+- 影響：
+  - 正式環境持續 500（當時已自動部署）；待辦區（共五類查詢）因為同一個 `Promise.all` 整個無法使用
+  - 驗收時未能抓住根因：若基於「所有測試綠」與「主要欄位正確」就宣稱「功能驗收通過」，其實是在驗收一個與 canonical **不等價** 的環境上的程式
+  - 修正的遺漏放大：第二次犯錯代表第一次的預防措施沒有被確實執行或推廣
+- 修正：
+  1. 檢查正式庫 ledger 與結構，確認 `0107` 真的沒有套用
+  2. Owner 具名授權後，套用 `0107` 到正式庫（ledger row `20260914094736`）
+  3. `trip_departures` 由 11 欄變 19 欄；先前必定 `42703` 的查詢改回傳空集合
+  4. `0109` 第四段依賴 `0107` 的現象（if not exists）現在成立，但**後置驗證仍必要**——「環境上沒有問題」只證明這一環，不證明上層應用的完整性
+- 預防（必須機械檢查，不能依賴人工記憶）：
+  1. **填 `PRODUCTION_SCHEMA_STATUS` 之前，對正式庫下唯讀查詢，驗證**本 PR 實際會讀到的每一個欄位**都存在。不是驗證「migration 在 main 上」，是驗證「欄位在環境裡」。**不能只查 ledger 帳本，必須真的跑查詢。**
+  2. **檢查範圍是整支端點**，不只是本 PR 新增的那幾行——本 PR 沒改到的既有查詢一樣會在同一個 `Promise.all` 裡把整支端點拖垮。
+  3. **一支端點若把多條查詢放在同一個 `Promise.all` 並逐一 `throw`，評估影響時要以整支端點為單位**。不是「我加的那張卡片」，是「這支端點整體」。
+  4. **`ledger-alias-map.json` 裡分類為 `NOT_APPLIED / PENDING_APPLY` 的 migration，其欄位不得被視為正式環境可用**——這一項現在沒有任何 CI 在做，但應該機械檢查（preflight 或 astra-review-policy）。
+  5. **不只是 pull request review；PR 模板應該明確要求填寫者貼出驗證查詢。** 「我查過」的承諾必須附上實際執行過的 SQL 與結果。
+- 驗證：
+  1. 正式庫查詢已補欄位（`trip_departures` 19 欄）
+  2. `/api/guide/action-inbox` 在正式環境不再 500
+  3. 整支待辦區五類查詢都恢復（第 1、2、5 類原本就應該有資料；第 3、4 類的 DEPARTURE 查詢條件也通過）
+- 同類教訓（與 PB-027 第五種同型、PB-040 的欄位形式主義）：
+  - PB-027：「名字出現≠真的會發生」
+  - PB-040：「埋點欄位存在≠實際埋點」
+  - 本條：「驗證欄位存在≠查詢過環境」
+  - 共同性質：**程序通過留下的痕跡（欄位、紀錄、檔案）被當成了實質確認，而實質確認的工作從未發生。**
+- 狀態：已修復（正式庫已補欄位；ledger row 及帳本同步已完成）；預防措施（第 4、5 點）尚未機械化
+
 ### 六問開工／Review Checklist
 
 對任何涉及狀態一致性、共享資源或外部承諾的功能，在施工與 Sol／Final Risk review 時至少問一次：
