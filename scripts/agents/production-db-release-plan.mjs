@@ -70,6 +70,15 @@ function stripComments(sql) {
     .replace(/--[^\r\n]*/g, ' ');
 }
 
+function hasImmediateBackfillDml(text) {
+  // `UPDATE` / `DELETE` 也會合法出現在 ACL 語句與 policy 定義中，例如
+  // `GRANT UPDATE`、`REVOKE DELETE`、`FOR UPDATE`。只有真正的資料 DML 才算
+  // BACKFILL：UPDATE <relation> ... SET ... 或 DELETE FROM <relation> ...。
+  const update = /\bupdate\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*(?:\s+(?:as\s+)?[A-Za-z_][\w$]*)?\s+set\b/i.test(text);
+  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*\b/i.test(text);
+  return update || deletion;
+}
+
 export function highestRiskTier(tiers = []) {
   let selected = 'ADDITIVE';
   for (const raw of tiers) {
@@ -97,7 +106,7 @@ export function inferMigrationRiskTier(sql) {
   if (/\b(create|alter|drop)\s+policy\b|\benable\s+row\s+level\s+security\b|\bforce\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
     specialized.push('AUTHZ');
   }
-  if (/\bupdate\b|\bdelete\s+from\b/i.test(text)) specialized.push('BACKFILL');
+  if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
 
   // v1 不用「選最高級」來掩蓋另一類必要證據。若一支 migration 同時混進兩種
   // specialized risk，先拆成 bounded migrations，讓每一支都有完整對應測試與復原證據。
