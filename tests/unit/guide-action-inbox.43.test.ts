@@ -7,6 +7,7 @@ import {
 } from '@/config/tenant-settings';
 import {
   buildGuideActionInboxFormationItem,
+  buildGuideActionInboxTourRequestItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -53,13 +54,36 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * departures a staff member is occupied by" via
  * `.from('trip_departure_staff').select(...).neq('trip_departures.status', …)
  * .gte('trip_departures.departs_on', …).lte('trip_departures.departs_on', …)`
- * — PostgREST's dot-path syntax for filtering on a joined table. This fake
- * `applyFilterOps()` only ever does `row[field]`, a literal property lookup —
- * it has no join-aware behaviour, so `row['trip_departures.departs_on']` is
- * always `undefined` on this harness's fixture shape, and `undefined >= x` /
- * `undefined <= x` are always `false` in JS. The `.gte(...)` call alone is
- * therefore enough to filter every row out, regardless of fixture content:
- * `loadStaffLoad()`'s `departures` array is always `[]` under this harness.
+ * — PostgREST's dot-path syntax for filtering on a joined table.
+ *
+ * As of #43 類別 1 this harness's `applyFilterOps()` is join-aware: the
+ * `getFieldValue()` helper above resolves a `關聯.欄位` path by reading the
+ * named relation off the row (unwrapping the first element if it's an array,
+ * matching how PostgREST embeds work) before comparing — every filter branch
+ * (`eq`/`neq`/`gt`/`gte`/`lt`/`lte`/`in`) goes through it. A dot-path filter
+ * on a *genuinely nested* fixture value is evaluated for real here, it is not
+ * a no-op.
+ *
+ * `loadStaffLoad()`'s `departures` array is nonetheless still always `[]`
+ * under the STAFF_CONFLICT describe block below — but the reason is one layer
+ * earlier than any dot-path question: that block's `makeFakeSupabase(...)`
+ * only registers `trip_departures` / `shifts` / `bookings` / `block_times` as
+ * top-level tables. It never registers a top-level `trip_departure_staff`
+ * table. `then()` (above) returns `[]` whenever `tables[table]` is
+ * `undefined` — for an unregistered table, `applyFilterOps()` is never even
+ * called, so `loadStaffLoad()`'s filter chain (dot-path or not) is never
+ * evaluated at all. This has nothing to do with whether `getFieldValue()` can
+ * resolve dot-paths — it never gets the chance to try.
+ *
+ * A likely misread here (this file has already made it once): fixture rows in
+ * `TRIP_DEPARTURE_ROWS` below do carry a `trip_departure_staff: [...]` key,
+ * and it's tempting to treat that as "the `trip_departure_staff` table, just
+ * with the wrong shape." It isn't. That key is an *embed nested inside a
+ * `trip_departures` row* — it's what feeds `route.ts`'s own
+ * `.from('trip_departures').select('..., trip_departure_staff(...)')` query
+ * for departure staff assignments. It is unrelated to, and can't stand in
+ * for, `loadStaffLoad()`'s separate `.from('trip_departure_staff')` query,
+ * which this harness never sees hit any registered table.
  * Two consequences, both real and both untested here:
  *   1. The `'DEPARTURE'` conflict reason (staff double-booked across two
  *      departures) can never actually fire through this route-level harness.
@@ -73,6 +97,16 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  *      a departure's own occupied slot isn't mistaken for a conflict with
  *      itself) can't be exercised either, because `load.departures` is always
  *      empty regardless of whether that filter runs.
+ * This gap is fixable, not structural, and has been verified by hand: adding
+ * a top-level `trip_departure_staff` table to this describe block's
+ * `makeFakeSupabase(...)` call — rows carrying `tenant_id` / `departure_id` /
+ * `staff_id` plus a nested `trip_departures: { id, departs_on, start_time,
+ * status, trips: { duration_hours } }` — with the same staff member also
+ * assigned to a second, time-overlapping departure in the window, makes
+ * `dep-clean` immediately surface as `conflicts: [{ staffId: 's-clean',
+ * staffName: '阿海', reason: 'DEPARTURE' }]`. That fixture/table addition is
+ * left for a future PR (#448's `DEPARTURE`-reason route-level coverage is its
+ * own follow-up), not attempted here.
  * The `BOOKING`, `BLOCK` and `SHIFT` reasons don't have this problem —
  * `loadStaffLoad()`'s `bookings`/`block_times`/`shifts` queries only ever
  * filter on the queried table's own columns (`tenant_id`, `status`,
@@ -80,28 +114,85 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * column, so this harness filters them correctly; the STAFF_CONFLICT describe
  * block below covers all three plus the tenant boundary and a genuinely
  * clean (no-conflict) control row.
+ *
+ * Three further `getFieldValue()` boundaries, recorded because each fails
+ * *silently* (rows get filtered out, not an error) rather than throwing:
+ *   1. It only `split('.')`s into two segments. A three-level path like
+ *      `trip_departures.trips.duration_hours` would compare against the
+ *      middle relation object itself, never the leaf value — always `false`.
+ *      No query in this codebase currently does this, but one added later
+ *      would silently fail under this harness.
+ *   2. A to-many embed only ever reads its first element
+ *      (`Array.isArray(relationValue) ? relationValue[0] : relationValue`).
+ *      Real PostgREST filters inside the array; this harness can't.
+ *   3. Every dot-path filter here behaves as if the join were `!inner`
+ *      (a row whose relation is missing/null is dropped). That happens to
+ *      match every dot-path query that exists in this file today
+ *      (`loadStaffLoad()`'s `trip_departures!inner`, and the `TOUR_REQUEST`
+ *      query's `trip_plans!inner`), but this harness has no way to represent
+ *      a non-inner embed filter, where a row with a null relation should
+ *      survive with the embed as `null` rather than being dropped.
+ *
+ * Related but distinct boundary: the `TOUR_REQUEST` query's
+ * `trip_plans!inner(sales_mode, name)` has no behavioural coverage of the
+ * `!inner` keyword itself — changing it to `trip_plans(sales_mode, name)`
+ * (a left join) leaves all 24 tests in this file passing, because this fake
+ * `applyFilterOps()` always drops a row when a dot-path filter's relation is
+ * missing regardless of `!inner`/left-join wording (see boundary 3 above).
+ * Under real PostgREST, dropping `!inner` would turn the embed into `null`
+ * for non-REQUEST plans instead of excluding the row, and every tenant-scoped
+ * PENDING order — not just REQUEST-mode ones — would leak into the
+ * `TOUR_REQUEST` category. It doesn't threaten the tenant boundary itself
+ * (`.eq('tenant_id', ...)` still applies and is independently covered), only
+ * the sales_mode-narrowing correctness of this one category. A source-grep
+ * assertion (`expect(apiSource).toContain("trip_plans!inner(sales_mode")`)
+ * would catch a literal accidental edit, but this file has already been
+ * burned twice by exactly that pattern — a real call commented out, with the
+ * expected substring left sitting in the comment, all 18 tests still green.
+ * Deliberately not adding one here; joining the boundary list above `.order`/
+ * `.limit` (PR #442 Final Risk F2) instead of an assertion that the same
+ * trick would defeat.
  * ---------------------------------------------------------------------------
  */
 type FilterCall = [string, unknown[]];
 type FakeRow = Record<string, unknown>;
+
+/**
+ * #43 類別 1 擴充：route.ts 的新 TOUR_REQUEST query 用
+ * `.eq('trip_plans.sales_mode', 'REQUEST')` 過濾內嵌關聯欄位（PostgREST
+ * `!inner` join 的寫法，見 `src/app/api/reports/top-products/route.ts` 的既有
+ * 先例）。原本的 `applyFilterOps` 只認得扁平欄位（`r[field]`），遇到帶點號的
+ * 內嵌路徑會直接讀到 `undefined`、把所有列都濾掉。這裡加一個小 helper 支援
+ * `關聯.欄位` 這種路徑（關聯值可能是物件或陣列，比照 route.ts 的 embed 慣例
+ * 取第一筆），純粹是新增能力、不改變既有扁平欄位呼叫的行為。
+ */
+function getFieldValue(row: FakeRow, field: string): unknown {
+  if (!field.includes('.')) return row[field];
+  const [relation, key] = field.split('.');
+  const relationValue = row[relation];
+  const relationRow = Array.isArray(relationValue) ? relationValue[0] : relationValue;
+  return relationRow && typeof relationRow === 'object'
+    ? (relationRow as FakeRow)[key]
+    : undefined;
+}
 
 function applyFilterOps(rows: FakeRow[], calls: FilterCall[]): FakeRow[] {
   let result = rows;
   for (const [method, args] of calls) {
     const field = args[0] as string;
     switch (method) {
-      case 'eq': result = result.filter((r) => r[field] === args[1]); break;
-      case 'neq': result = result.filter((r) => r[field] !== args[1]); break;
-      case 'gt': result = result.filter((r) => (r[field] as string) > (args[1] as string)); break;
-      case 'gte': result = result.filter((r) => (r[field] as string) >= (args[1] as string)); break;
-      case 'lt': result = result.filter((r) => (r[field] as string) < (args[1] as string)); break;
-      case 'lte': result = result.filter((r) => (r[field] as string) <= (args[1] as string)); break;
-      case 'in': result = result.filter((r) => (args[1] as unknown[]).includes(r[field])); break;
+      case 'eq': result = result.filter((r) => getFieldValue(r, field) === args[1]); break;
+      case 'neq': result = result.filter((r) => getFieldValue(r, field) !== args[1]); break;
+      case 'gt': result = result.filter((r) => (getFieldValue(r, field) as string) > (args[1] as string)); break;
+      case 'gte': result = result.filter((r) => (getFieldValue(r, field) as string) >= (args[1] as string)); break;
+      case 'lt': result = result.filter((r) => (getFieldValue(r, field) as string) < (args[1] as string)); break;
+      case 'lte': result = result.filter((r) => (getFieldValue(r, field) as string) <= (args[1] as string)); break;
+      case 'in': result = result.filter((r) => (args[1] as unknown[]).includes(getFieldValue(r, field))); break;
       case 'not': {
         const [notField, op, value] = args as [string, string, string];
         if (op === 'in') {
           const excluded = String(value).replace(/^\(|\)$/, '').replace(/\)$/, '').split(',');
-          result = result.filter((r) => !excluded.includes(String(r[notField])));
+          result = result.filter((r) => !excluded.includes(String(getFieldValue(r, notField))));
         }
         break;
       }
@@ -489,6 +580,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect((pageSource.match(/const _exhaustive: never = item/g) ?? []).length).toBeGreaterThanOrEqual(3);
     expect(pageSource).toContain("case 'BOOKING_REQUEST':");
     expect(pageSource).toContain("case 'BOOKING_PAYMENT':");
+    expect(pageSource).toContain("case 'TOUR_REQUEST':");
     expect(pageSource).toContain("case 'DEPARTURE':");
     expect(pageSource).toContain("case 'REVIEW_REQUIRED':");
     expect(pageSource).toContain("case 'AT_RISK':");
@@ -503,6 +595,16 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(dashboardI18nSource).toContain('atRisk:');
     expect(dashboardI18nSource).toMatch(/formationSeatsShort:\s*\(n: number\)/);
     expect(dashboardI18nSource).toMatch(/formationAtRiskDetail:\s*\(current: number, min: number\)/);
+
+    // #43 類別 1：TOUR_REQUEST 白話文案，同樣來自 i18n，不在元件裡寫死中文字面值。
+    expect(pageSource).toContain('t.actionInbox.tourRequestSubmitted');
+    expect(pageSource).toContain('t.actionInbox.tourRequestParty');
+    expect(dashboardI18nSource).toContain('tourRequest:');
+    expect(dashboardI18nSource).toContain('tourRequestSubmitted:');
+    expect(dashboardI18nSource).toMatch(/tourRequestParty:\s*\(n: number\)/);
+    expect(dashboardI18nSource).toContain('openTourRequest:');
+    // 19 分冊 §1.6 誠實狀態表：REQUEST 已送出、尚未接受時不可顯示成「預約成功」。
+    expect(dashboardPage.actionInbox.tourRequestSubmitted).not.toContain('預約成功');
   });
 
   it('degrades the AT_RISK copy instead of claiming "已跌破成團門檻" when seats_booked has already caught back up to the threshold (LOW finding #3)', () => {
@@ -569,6 +671,20 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
         min_to_depart_snapshot: 2, formed_participants: null,
         trips: { title: 'Trip Four' }, trip_plans: { name: 'Plan One' },
       },
+      {
+        // #440 帶進來、被 PB-048 記錄的缺口：DEPARTURE query 的
+        // `.in('status', ['OPEN', 'CLOSED'])` 之前只有原始碼比對斷言覆蓋——刪掉它
+        // 測試仍全綠，因為 fixture 裡沒有一筆 CANCELLED 團次能證明這條過濾器真的在
+        // 擋東西。這一筆除了 `status: 'CANCELLED'` 以外，其餘條件（tenant、今日出發、
+        // 非 formation 狀態）都符合 DEPARTURE query 的其他條件，用來讓這條過濾器有
+        // 真正的行為覆蓋：拿掉 `.in('status', ...)` 之後，它會混進 DEPARTURE 卡片。
+        id: 'dep-cancelled', tenant_id: TENANT_ID, trip_id: 't5', plan_id: 'p1',
+        departs_on: today, start_time: '12:00:00', status: 'CANCELLED',
+        capacity: 10, seats_booked: 4, created_at: '2026-09-01T00:00:00.000Z',
+        formation_status: 'COLLECTING', formation_deadline_at: null,
+        min_to_depart_snapshot: 5, formed_participants: null,
+        trips: { title: 'Trip Five' }, trip_plans: { name: 'Plan One' },
+      },
     ];
 
     beforeEach(() => {
@@ -603,6 +719,10 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       // dep-stale 在今日之前出發，formation query 沒有 `.gte('departs_on', today)`
       // 下限的話它會被抓回來並顯示為「立即處理」；有下限則完全不出現。
       expect(byId('dep-stale')).toEqual([]);
+      // dep-cancelled 的其他條件都符合 DEPARTURE query（tenant、今日出發、非
+      // formation 狀態），唯獨 status 是 CANCELLED——如果 `.in('status', ['OPEN',
+      // 'CLOSED'])` 被拿掉，它會混進來變成一張 DEPARTURE 卡片。
+      expect(byId('dep-cancelled')).toEqual([]);
 
       expect(items).toHaveLength(3);
     });
@@ -972,6 +1092,138 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     });
   });
 
+  describe('route.ts behaviour: #43 類別 1 TOUR_REQUEST (tour_orders + trip_plans.sales_mode)', () => {
+    // 行為測試，不是字串比對：一個會把 `.from('tour_orders')` 的過濾鏈（含
+    // `trip_plans.sales_mode` 這種內嵌關聯路徑，見檔案頂端 `getFieldValue` 擴充）
+    // 實際套用在 in-memory fixture 上的假 supabase client，直接呼叫真正的 route
+    // handler。
+    const TENANT_ID = 'tenant-a';
+    const OTHER_TENANT_ID = 'tenant-b';
+
+    const TOUR_ORDER_ROWS: FakeRow[] = [
+      {
+        // 目標列：tenant-a、PENDING、方案 sales_mode 是 REQUEST——應該出現。
+        id: 'ord-request-a', tenant_id: TENANT_ID, order_no: 'T2609200001',
+        party_size: 6, total_amount: 18000, contact: { name: '蔡欣妤' },
+        hold_expires_at: null, status: 'PENDING',
+        trip_plans: { sales_mode: 'REQUEST', name: '包船專案' },
+        trips: { title: '龜山島賞鯨半日遊' },
+        trip_departures: { departs_on: '2026-09-25', start_time: '08:00:00' },
+        created_at: '2026-09-12T00:00:00.000Z',
+      },
+      {
+        // 同租戶、同樣 REQUEST 方案，但訂單已經是 CONFIRMED：導遊已經決定過了，
+        // 不該再出現在「待接受／拒絕」的收件匣裡。證明 query 真的在濾 status，
+        // 不是只憑方案的 sales_mode 就把整張表當成待處理。
+        id: 'ord-confirmed-request', tenant_id: TENANT_ID, order_no: 'T2609190002',
+        party_size: 2, total_amount: 2560, contact: { name: '已確認旅客' },
+        hold_expires_at: null, status: 'CONFIRMED',
+        trip_plans: { sales_mode: 'REQUEST', name: '包船專案' },
+        trips: { title: '龜山島賞鯨半日遊' },
+        trip_departures: { departs_on: '2026-09-24', start_time: '09:00:00' },
+        created_at: '2026-09-10T00:00:00.000Z',
+      },
+      {
+        // 同租戶、PENDING，但方案是 FIXED_DEPARTURE（固定團次，不是先申請再確認）：
+        // 不該出現。證明 query 真的在濾 `trip_plans.sales_mode`，不是只憑
+        // tenant_id + status 就把整張表當成 REQUEST。
+        id: 'ord-pending-fixed', tenant_id: TENANT_ID, order_no: 'T2609180003',
+        party_size: 2, total_amount: 2560, contact: { name: '固定團次旅客' },
+        hold_expires_at: null, status: 'PENDING',
+        trip_plans: { sales_mode: 'FIXED_DEPARTURE', name: '標準團（共乘）' },
+        trips: { title: '龜山島賞鯨半日遊' },
+        trip_departures: { departs_on: '2026-09-24', start_time: '09:00:00' },
+        created_at: '2026-09-09T00:00:00.000Z',
+      },
+      {
+        // 其他租戶，PENDING + REQUEST：不該出現。證明 tenant_id 過濾真的在擋。
+        id: 'ord-request-b', tenant_id: OTHER_TENANT_ID, order_no: 'T2609170004',
+        party_size: 4, total_amount: 6800, contact: { name: '別家旅客' },
+        hold_expires_at: null, status: 'PENDING',
+        trip_plans: { sales_mode: 'REQUEST', name: '私人包團' },
+        trips: { title: '九份山城夜訪散策' },
+        trip_departures: { departs_on: '2026-09-23', start_time: '17:00:00' },
+        created_at: '2026-09-08T00:00:00.000Z',
+      },
+    ];
+
+    beforeEach(() => {
+      requireTenantMock.mockReset();
+      requireTenantMock.mockResolvedValue({
+        supabase: makeFakeSupabase({ tour_orders: TOUR_ORDER_ROWS }),
+        tenantId: TENANT_ID,
+        user: { id: 'user-a' },
+        role: 'OWNER',
+      });
+    });
+
+    it('reads only tenant-scoped PENDING orders whose plan sales_mode is REQUEST, honestly labelled as awaiting the guide\'s decision', async () => {
+      const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const items: any[] = body.data;
+      const requestItems = items.filter((i) => i.kind === 'TOUR_REQUEST');
+
+      // 只有 ord-request-a 出現——如果拿掉 `.eq('status', 'PENDING')`，
+      // ord-confirmed-request 會混進來；如果拿掉 `.eq('trip_plans.sales_mode',
+      // 'REQUEST')`，ord-pending-fixed 會混進來；如果拿掉
+      // `.eq('tenant_id', ...)`，ord-request-b 會混進來。三者都會讓這個陣列
+      // 不再只有一筆。
+      expect(requestItems.map((i) => i.id)).toEqual(['ord-request-a']);
+
+      expect(requestItems[0]).toMatchObject({
+        orderNo: 'T2609200001',
+        customerName: '蔡欣妤',
+        tripName: '龜山島賞鯨半日遊',
+        planName: '包船專案',
+        partySize: 6,
+        totalAmount: 18000,
+        href: '/tenant/tour-orders?orderId=ord-request-a',
+      });
+
+      // 唯一入口：整份清單裡只有這一種 kind，且長度可由 fixture 精確推得——
+      // trip_departures／bookings_view 未提供，視為空表。
+      expect(items).toHaveLength(1);
+    });
+  });
+
+  describe('buildGuideActionInboxTourRequestItem (#43 類別 1 due-at)', () => {
+    it('uses hold_expires_at when present, falls back to the departure instant, and finally to createdAt', () => {
+      const now = new Date('2026-09-14T00:00:00.000Z');
+
+      const withHold = buildGuideActionInboxTourRequestItem({
+        id: 'req-1', orderNo: 'T1', customerName: '旅客一', tripName: '行程',
+        planName: '方案', partySize: 2, totalAmount: 2000,
+        holdExpiresAt: '2026-09-15T05:00:00.000Z',
+        departureDate: '2026-09-20', departureStartTime: '09:00',
+        createdAt: '2026-09-10T00:00:00.000Z',
+        href: '/tenant/tour-orders?orderId=req-1',
+      }, now, 'Asia/Taipei');
+      expect(withHold.dueAt).toBe('2026-09-15T05:00:00.000Z');
+
+      const withoutHold = buildGuideActionInboxTourRequestItem({
+        id: 'req-2', orderNo: 'T2', customerName: '旅客二', tripName: '行程',
+        planName: '方案', partySize: 2, totalAmount: 2000,
+        holdExpiresAt: null,
+        departureDate: '2026-09-20', departureStartTime: '09:00',
+        createdAt: '2026-09-10T00:00:00.000Z',
+        href: '/tenant/tour-orders?orderId=req-2',
+      }, now, 'Asia/Taipei');
+      expect(withoutHold.dueAt).toBe(getGuideDepartureDueAt('2026-09-20', '09:00', 'Asia/Taipei'));
+
+      const withNeither = buildGuideActionInboxTourRequestItem({
+        id: 'req-3', orderNo: 'T3', customerName: '旅客三', tripName: '行程',
+        planName: '方案', partySize: 2, totalAmount: 2000,
+        holdExpiresAt: null,
+        departureDate: null, departureStartTime: null,
+        createdAt: '2026-09-10T00:00:00.000Z',
+        href: '/tenant/tour-orders?orderId=req-3',
+      }, now, 'Asia/Taipei');
+      expect(withNeither.dueAt).toBe('2026-09-10T00:00:00.000Z');
+      expect(withNeither.kind).toBe('TOUR_REQUEST');
+    });
+  });
+
   describe('mock service exclusivity (demo mode)', () => {
     // `getGuideActionInbox()` 的 mock adapter 用真正的 `setTimeout` 模擬延遲——
     // 跟上面那個 describe 共用 `vi.useFakeTimers()` 會讓它永遠等不到那個 timer
@@ -989,6 +1241,20 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       for (const id of formationIds) {
         expect(departureIds.has(id)).toBe(false);
       }
+    });
+
+    it('exposes the mock TOUR_REQUEST card (#43 類別 1) from the same single aggregated inbox', async () => {
+      const items = await getGuideActionInbox();
+      const requestItems = items.filter((i) => i.kind === 'TOUR_REQUEST');
+      // to_9 是 mock/tours.ts 裡唯一 status=PENDING 且方案 salesMode='REQUEST'
+      // 的 fixture（pl_2「包船專案」）；其餘 PENDING 訂單（to_1）掛在
+      // FIXED_DEPARTURE 方案下，誠實地不出現在這裡。
+      expect(requestItems).toHaveLength(1);
+      expect(requestItems[0]).toMatchObject({
+        id: 'to_9',
+        planName: '包船專案',
+        href: '/tenant/tour-orders?orderId=to_9',
+      });
     });
   });
 

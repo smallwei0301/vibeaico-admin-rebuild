@@ -2,6 +2,7 @@ import { adapt, request } from '@/lib/api';
 import {
   buildGuideActionInboxFormationItem,
   buildGuideActionInboxRefundPendingItem,
+  buildGuideActionInboxTourRequestItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -16,6 +17,8 @@ import { MOCK_TOUR_ORDERS, MOCK_TRIP_DEPARTURES, MOCK_TRIP_PLANS, MOCK_TRIPS } f
 
 const refundPendingHref = (id: string) =>
   `/tenant/tour-orders?paymentStatus=REFUND_PENDING&orderId=${encodeURIComponent(id)}`;
+const tourRequestHref = (id: string) =>
+  `/tenant/tour-orders?orderId=${encodeURIComponent(id)}`;
 
 const bookingRequestHref = (id: string) =>
   `/tenant/bookings?status=PENDING&bookingId=${encodeURIComponent(id)}`;
@@ -172,9 +175,39 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
       // （#43 §4：「無資料時回誠實空陣列，不捏造示範待辦」）。真實行為由
       // route.ts 呼叫 `loadStaffLoad()`/`findStaffConflicts()` 判斷。
       const staffConflictItems: GuideActionInboxItem[] = [];
+      // #43 類別 1：待導遊接受／拒絕的 REQUEST。用 (tripId, planName) 找出訂單所屬
+      // 方案——mock 的 `TourOrder` 型別沒有 `planId` 欄位（見 `src/lib/types.ts`），
+      // 這是既有 mock 資料形狀的限制，不是這裡新造的規則。只有方案 `salesMode ===
+      // 'REQUEST'` 且訂單 `status === 'PENDING'` 才算，跟 route.ts 的
+      // `.eq('trip_plans.sales_mode', 'REQUEST')` 是同一條規則。
+      const tourRequestItems: GuideActionInboxItem[] = MOCK_TOUR_ORDERS
+        .filter((order) => {
+          if (order.status !== 'PENDING') return false;
+          const plan = MOCK_TRIP_PLANS.find((candidate) =>
+            candidate.tripId === order.tripId && candidate.name === order.planName);
+          return plan?.salesMode === 'REQUEST';
+        })
+        .slice(0, 20)
+        .map((order) => buildGuideActionInboxTourRequestItem({
+          id: order.id,
+          orderNo: order.orderNo,
+          customerName: order.customerName,
+          tripName: order.tripTitle,
+          planName: order.planName,
+          partySize: order.partySize,
+          totalAmount: order.totalAmount,
+          // fixture 的 `holdExpiresAt`／`departsOn` 是寫死的過去日期；跟 DEPARTURE／
+          // formation 卡片一樣，改用相對於「現在」的明天，避免 demo 模式永遠顯示一張
+          // 「已逾期」的假卡片（理由同上面 formation LOW finding 的修正）。
+          holdExpiresAt: null,
+          departureDate: tomorrow,
+          departureStartTime: order.startTime || '00:00',
+          createdAt: order.createdAt,
+          href: tourRequestHref(order.id),
+        }, nowDate));
       return sortGuideActionInboxItems([
         ...items, ...paymentItems, ...departureItems, ...formationItems, ...refundPendingItems,
-        ...staffConflictItems,
+        ...staffConflictItems, ...tourRequestItems,
       ]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),

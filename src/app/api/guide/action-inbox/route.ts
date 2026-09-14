@@ -4,6 +4,7 @@ import {
   buildGuideActionInboxFormationItem,
   buildGuideActionInboxRefundPendingItem,
   buildGuideActionInboxStaffConflictItem,
+  buildGuideActionInboxTourRequestItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
@@ -24,10 +25,22 @@ function relatedValue(value: RelatedName): { name?: string | null; title?: strin
   return Array.isArray(value) ? value[0] ?? null : value;
 }
 
+/** 通用版：PostgREST 內嵌關聯可能回單一物件或陣列，這裡只取第一筆（或 null）。 */
+function firstOf<T>(value: T | T[] | null | undefined): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
 /**
  * GUIDE 首頁單一聚合 action inbox 端點（#43 §4：不可把不同資料表全抓到前端後自行
  * 拼湊，改由 server 端用相同 tenant 邊界彙整成一份已排序清單）：
  *   - 待確認預約（BOOKING_REQUEST）、待收款預約（BOOKING_PAYMENT）— bookings_view。
+ *     這是 LOCAL_SHOP 的服務預約流程，跟下面的 TOUR_REQUEST 是不同資料表、不同
+ *     業務流程，天生不相交。
+ *   - #43 類別 1（GUIDE 旅遊側）：待導遊接受／拒絕的 REQUEST（TOUR_REQUEST）—
+ *     `tour_orders.status = 'PENDING'` 且其 `trip_plans.sales_mode = 'REQUEST'`
+ *     （0107，#41 canonical）。19 分冊 §1.6／§2.3「先申請再確認」：旅客送出申請
+ *     時不鎖導遊時間，這裡只誠實呈現既有的 PENDING + REQUEST 訂單，不新建狀態、
+ *     不代替導遊決定要不要接受。
  *   - 今日／明日出發團次（DEPARTURE）— trip_departures。
  *   - #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）／AT_RISK（已成團後人數跌破
  *     門檻）— trip_departures.formation_status（`supabase/migrations/0107_issue_41_
@@ -84,7 +97,7 @@ export const GET = handle(async () => {
 
   const [
     bookingResult, paymentBookingResult, departureResult, formationResult, refundPendingResult,
-    staffAssignmentResult,
+    staffAssignmentResult, tourRequestResult,
   ] = await Promise.all([
     t.supabase
       .from('bookings_view')
@@ -160,6 +173,18 @@ export const GET = handle(async () => {
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
       .limit(20),
+    // #43 類別 1：待導遊接受／拒絕的 REQUEST。`trip_plans!inner(...)` 讓
+    // `.eq('trip_plans.sales_mode', 'REQUEST')` 這條內嵌欄位過濾真的生效（同一
+    // 寫法見 `src/app/api/reports/top-products/route.ts`），不是只抓整張
+    // tour_orders 表再指望前端自己挑出 REQUEST 方案。
+    t.supabase
+      .from('tour_orders')
+      .select('id, order_no, party_size, total_amount, contact, hold_expires_at, created_at, trip_plans!inner(sales_mode, name), trips(title), trip_departures(departs_on, start_time)')
+      .eq('tenant_id', t.tenantId)
+      .eq('status', 'PENDING')
+      .eq('trip_plans.sales_mode', 'REQUEST')
+      .order('created_at', { ascending: true })
+      .limit(20),
   ]);
 
   if (bookingResult.error) throw bookingResult.error;
@@ -168,6 +193,7 @@ export const GET = handle(async () => {
   if (formationResult.error) throw formationResult.error;
   if (refundPendingResult.error) throw refundPendingResult.error;
   if (staffAssignmentResult.error) throw staffAssignmentResult.error;
+  if (tourRequestResult.error) throw tourRequestResult.error;
 
   const bookingItems: GuideActionInboxItem[] = (bookingResult.data ?? []).map((row) => ({
     id: row.id,
@@ -338,6 +364,27 @@ export const GET = handle(async () => {
       .filter((item): item is GuideActionInboxItem => item !== null);
   }
 
+  const tourRequestItems: GuideActionInboxItem[] = (tourRequestResult.data ?? []).map((row: any) => {
+    const contact = (row.contact ?? {}) as Record<string, unknown>;
+    const trip = firstOf<{ title?: string | null }>(row.trips);
+    const plan = firstOf<{ name?: string | null }>(row.trip_plans);
+    const departure = firstOf<{ departs_on?: string | null; start_time?: string | null }>(row.trip_departures);
+    return buildGuideActionInboxTourRequestItem({
+      id: row.id,
+      orderNo: row.order_no,
+      customerName: String(contact.name ?? ''),
+      tripName: trip?.title ?? '',
+      planName: plan?.name ?? '',
+      partySize: row.party_size,
+      totalAmount: Number(row.total_amount ?? 0),
+      holdExpiresAt: row.hold_expires_at ?? null,
+      departureDate: departure?.departs_on ? String(departure.departs_on).slice(0, 10) : null,
+      departureStartTime: departure?.start_time ? String(departure.start_time).slice(0, 5) : null,
+      createdAt: row.created_at,
+      href: `/tenant/tour-orders?orderId=${encodeURIComponent(row.id)}`,
+    }, now, timeZone);
+  });
+
   return ok(sortGuideActionInboxItems([
     ...bookingItems,
     ...bookingPaymentItems,
@@ -345,5 +392,6 @@ export const GET = handle(async () => {
     ...formationItems,
     ...refundPendingItems,
     ...staffConflictItems,
+    ...tourRequestItems,
   ]));
 });

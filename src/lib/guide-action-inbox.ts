@@ -112,11 +112,43 @@ export type GuideActionInboxStaffConflictItem = {
   href: string;
 };
 
+/*
+ * #43 類別 1（GUIDE 旅遊側）：待導遊接受／拒絕的 REQUEST（19 分冊 §1.6／§2.3
+ * 「先申請再確認」：旅客送出申請時不鎖導遊時間，導遊接受時才原子重查並保留時段）。
+ *
+ * `GuideActionInboxBaseItem` 裡既有的 `'BOOKING_REQUEST'` 是 LOCAL_SHOP 的服務預約
+ * 流程（讀 `bookings_view`，`status = 'PENDING'`）——那張表完全沒有 GUIDE 旅遊訂單，
+ * 不能把旅遊 REQUEST 硬塞進同一個 kind，那會讓一張卡片的 `href`／欄位同時代表兩種
+ * 不同資料表的東西。旅遊側改用獨立的 `'TOUR_REQUEST'` kind，來源是 `tour_orders`
+ * （`supabase/migrations/0087_issue_8b_tour_orders.sql`）join
+ * `trip_plans.sales_mode`（`supabase/migrations/0107_issue_41_formation_state_model.sql`，
+ * #41 canonical，CHECK 值域 `FIXED_DEPARTURE|INSTANT|REQUEST`）：
+ * `tour_orders.status = 'PENDING'` 且其 `trip_plans.sales_mode = 'REQUEST'`。
+ *
+ * 與既有 REFUND_PENDING／formation／STAFF_CONFLICT 三類一樣，這裡只讀既有欄位、不
+ * 建立新狀態、不重新推算「是不是 REQUEST 訂單」——`sales_mode` 是唯一權威。
+ */
+export type GuideActionInboxTourRequestItem = {
+  id: string;
+  kind: 'TOUR_REQUEST';
+  orderNo: string;
+  customerName: string;
+  tripName: string;
+  planName: string;
+  partySize: number;
+  totalAmount: number;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
 export type GuideActionInboxItem =
   | GuideActionInboxBaseItem
   | GuideActionInboxFormationItem
   | GuideActionInboxRefundPendingItem
-  | GuideActionInboxStaffConflictItem;
+  | GuideActionInboxStaffConflictItem
+  | GuideActionInboxTourRequestItem;
 
 const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
 
@@ -439,5 +471,59 @@ export function buildGuideActionInboxStaffConflictItem(
     dueAt: getGuideDepartureDueAt(input.departureDate, startTime, timeZone),
     createdAt: input.createdAt,
     href: `/tenant/trips/${input.tripId}`,
+  };
+}
+
+export type GuideActionInboxTourRequestInput = {
+  id: string;
+  orderNo: string;
+  customerName: string;
+  tripName: string;
+  planName: string;
+  partySize: number;
+  totalAmount: number;
+  /** `tour_orders.hold_expires_at`；先申請再確認的流程不鎖時段（19 分冊
+   * §2.3），所以多數 REQUEST 訂單這欄會是 null——不是資料缺漏。 */
+  holdExpiresAt: string | null;
+  /** 來自 `trip_departures.departs_on`（經 `departure_id` FK，一定存在）。 */
+  departureDate: string | null;
+  departureStartTime: string | null;
+  createdAt: string;
+  href: string;
+};
+
+/**
+ * #43 類別 1（GUIDE 旅遊側）：把一筆 `status = 'PENDING'` 且方案 `sales_mode =
+ * 'REQUEST'` 的 `tour_orders` 列轉成收件匣卡片。
+ *
+ * `dueAt`／需要決定的期限：
+ *   1. 有 `hold_expires_at`（極少數情況——例如這筆申請後續被排進保留流程）就用它。
+ *   2. 否則誠實地用出發時刻本身：導遊最晚要在出發前決定是否接受這筆申請，這是
+ *      唯一保證存在的期限，不虛構一個不存在的「申請保留時間」。
+ *   3. 兩者都缺（理論上不會發生——`departure_id` 是 not null FK）才退回
+ *      `createdAt`，避免產生一個無法排序的空字串。
+ */
+export function buildGuideActionInboxTourRequestItem(
+  input: GuideActionInboxTourRequestInput,
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): GuideActionInboxTourRequestItem {
+  const departureDueAt = input.departureDate
+    ? getGuideDepartureDueAt(input.departureDate, input.departureStartTime || '00:00', timeZone)
+    : '';
+  const dueAt = input.holdExpiresAt || departureDueAt || input.createdAt;
+  return {
+    id: input.id,
+    kind: 'TOUR_REQUEST',
+    orderNo: input.orderNo,
+    customerName: input.customerName,
+    tripName: input.tripName,
+    planName: input.planName,
+    partySize: input.partySize,
+    totalAmount: input.totalAmount,
+    priority: getGuideActionInboxPriority(dueAt, now, timeZone),
+    dueAt,
+    createdAt: input.createdAt,
+    href: input.href,
   };
 }

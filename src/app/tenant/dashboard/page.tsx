@@ -71,6 +71,8 @@ function actionInboxKindLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.bookingRequest;
     case 'BOOKING_PAYMENT':
       return t.actionInbox.bookingPayment;
+    case 'TOUR_REQUEST':
+      return t.actionInbox.tourRequest;
     case 'DEPARTURE':
       return t.actionInbox.departure;
     case 'REVIEW_REQUIRED':
@@ -94,6 +96,8 @@ function actionInboxOpenLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.open;
     case 'BOOKING_PAYMENT':
       return t.actionInbox.openPayment;
+    case 'TOUR_REQUEST':
+      return t.actionInbox.openTourRequest;
     case 'DEPARTURE':
       return t.actionInbox.openDeparture;
     case 'REVIEW_REQUIRED':
@@ -130,6 +134,18 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
             <span>{t.actionInbox.paymentAmount(formatCurrency(item.amount))}</span>
             <span>{t.actionInbox.bookingAt}：{formatDate(item.dueAt)} {formatTime(item.dueAt)}</span>
+          </div>
+        </>
+      );
+    case 'TOUR_REQUEST':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>{t.actionInbox.tourRequestSubmitted}</span>
+            <span>{item.customerName}</span>
+            <span>{t.actionInbox.tourRequestParty(item.partySize)}</span>
           </div>
         </>
       );
