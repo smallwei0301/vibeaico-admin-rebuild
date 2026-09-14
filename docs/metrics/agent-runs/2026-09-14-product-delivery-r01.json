@@ -632,6 +632,45 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-41-0109-final-risk-443-pass",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "role": "PR #443 Final Risk，verdict=PASS，findings 一次寫對成字串。獨立重算 digest ca8b1424… 與 guard 一致。本機 PG16 對正式檔案跑 14 種起始狀態並逐次比對 catalog 快照；以 commit-tree 模擬 merge commit 驗證 assertPinnedSource 在 merge 下成立、squash 下失效；查 Supabase CLI Go 與 TS 原始碼證明 CLI 是單一 pipeline 隱含交易，並指出 Management API（MCP apply_migration）的交易語意無法查證——那正是我今天套 0107 走的路徑。另指出 PR body 兩處過時與一處把必要設計說成鬆度。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-0109-final-sol-fce8dcd",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "final Sol 對 fce8dcd 重讀並判定 CLOSE_APPROVED。獨立覆核守衛完整性：自己數出 20 處 ::regclass / 9 處 to_regclass / 1 處殘留 ::regtype，展開上下文確認那一處在註解裡——同一個 session 稍早覆核 0108 時我的 grep 就報過假陽性，不重犯。逐一確認四個 do 區塊的守衛行號。合併後實測 merge commit 3 個 parent、exact head 與 pinned ec033e1 皆為 main 祖先，並直接讀 origin/main 覆核落地內容。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "test-drift-dependency-inventory",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "依 Owner 裁示對 TEST 九個無出處欄位做依賴盤點（純唯讀）。tour_orders 五個 §9 欄位與 trip_departures 四個殘留 formation 欄位，canonical／overlay／scripts／src 全數零命中；依賴只有五條 CHECK，trigger／function／view／index 四類皆 0 筆。與上次清 overlay 被 trigger 依賴擋下（PB-042 第二實例）不同，這次四類一起查。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -648,7 +687,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 18,
+    "fullCiRuns": 19,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -670,7 +709,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 13,
+    "solTouches": 15,
     "solIssues": 1
   },
   "auditability": {
