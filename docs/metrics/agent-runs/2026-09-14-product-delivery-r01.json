@@ -502,6 +502,32 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-sol-audit-646ae60",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "#43 類別 5 第二輪候選 646ae60 的 audit 覆驗。同樣不採信施工報告：獨立重跑 tsc（0 error）、tests/unit 全量 2290 passed、npm run build 成功、guard:repo-integrity ok，並獨立設計實跑 5 個突變（拿掉 /api/tour-orders 的 tenant 條件 → 2 failed；拿掉 paymentStatus 值域驗證 → 1 failed；拿掉 orderId 解析 → 2 failed；refundPending copy 改成「已退款」→ 1 failed；拿掉收件匣 payment_status 過濾 → 1 failed）。確認兩條恆真斷言已換成會紅的斷言。開 PR #442。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c5-final-risk-442",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": null,
+        "role": "PR #442 的高風險 Final Risk（Astra gate）覆核委派。ASTRA_RISK=TENANT_AUTH_BOUNDARY：/api/tour-orders 新增 client 可控的 orderId 精準查詢。Guard 已如預期以 No trusted Astra attestation for this head 擋下。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -540,7 +566,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 8,
+    "solTouches": 9,
     "solIssues": 1
   },
   "auditability": {
