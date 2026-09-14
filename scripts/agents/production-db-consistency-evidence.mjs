@@ -8,7 +8,7 @@ function fail(code, message) {
 
 function signature(item) {
   return createHash('sha256').update(JSON.stringify([
-    item?.surface ?? '', item?.objectKey ?? '', item?.expectedFingerprint ?? '',
+    item?.surface ?? '', item?.objectKey ?? '', item?.expectedFingerprint ?? '', item?.observedFingerprint ?? null,
   ])).digest('hex');
 }
 
