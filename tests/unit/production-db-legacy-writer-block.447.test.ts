@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { sha256 } from '../../scripts/agents/schema-truth-guardrails.mjs';
 import { EXPECTED_PROJECT_REFS } from '../../scripts/agents/schema-truth-evidence.mjs';
 import { runMigrationWorkflow } from '../../scripts/db/run-migrations.mjs';
 
@@ -35,7 +36,7 @@ describe('Issue #447 legacy Production writer bypass', () => {
         currentMainSha: 'a'.repeat(40),
         mainRef: 'origin/main',
         migrationPath,
-        migrationSha256: (await import('../../scripts/agents/schema-truth-guardrails.mjs')).sha256(Buffer.from(sql)),
+        migrationSha256: sha256(Buffer.from(sql)),
         databaseMutationAuthorized: false,
       }),
       readMigration: () => sql,
