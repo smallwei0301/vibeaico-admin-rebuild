@@ -1,4 +1,10 @@
-import { advanceApplyReceipt, assertApplyReceiptAdmitted } from '../agents/production-db-apply-receipt.mjs';
+import { createHash } from 'node:crypto';
+
+import {
+  advanceApplyReceipt,
+  assertApplyReceiptAdmitted,
+  assertConsumingApplyReceipt,
+} from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
 import { pendingProductionMigrations, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
@@ -11,6 +17,10 @@ function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
   throw error;
+}
+
+function sha256(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 function sqlLiteral(value) {
@@ -26,6 +36,11 @@ function normalizedLedgerNames(rows) {
   const names = rows.map((row) => String(row?.name ?? '').trim()).filter(Boolean).sort();
   if (new Set(names).size !== names.length) fail('DUPLICATE_LIVE_LEDGER_NAME', 'live Production ledger has duplicate migration names');
   return names;
+}
+
+function sanitizedLedgerRows(rows) {
+  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
+  return rows.map((row) => ({ version: String(row?.version ?? ''), name: String(row?.name ?? '') }));
 }
 
 export function expectedAppliedLedgerNames(aliasMap = {}) {
@@ -141,25 +156,35 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
   return { status: 'POST_APPLY_LEDGER_VERIFIED', applied: plan.migrations.map((entry) => entry.repoFile), databaseMutationAuthorized: false };
 }
 
+function assertReleasePacketMatchesPlan(releasePacket, plan, now) {
+  if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
+    fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
+  }
+  if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
+  evaluateReleasePreflight(releasePacket, { now });
+}
+
+function preparationCore(prepared) {
+  return {
+    schemaVersion: prepared.schemaVersion,
+    status: prepared.status,
+    releaseId: prepared.releaseId,
+    planDigest: prepared.planDigest,
+    mainSha: prepared.mainSha,
+    preparedAt: prepared.preparedAt,
+    baselineLedgerRows: prepared.baselineLedgerRows,
+    journal: prepared.journal,
+    receipt: prepared.receipt,
+  };
+}
+
 /**
- * G0-G5 are verified before the mutable endpoint. G6 requires both a durable
- * journal and a fresh project/plan-bound single-use receipt. The receipt is
- * consumed for this attempt; APPLY_UNKNOWN / POSTCHECK_FAILED journal states
- * cannot be bypassed by issuing another receipt.
- *
- * @param {{
- *   plan?: any,
- *   releasePacket?: any,
- *   journal?: any,
- *   receipt?: any,
- *   aliasMap?: any,
- *   readCanonicalSql?: (path: string) => string,
- *   token?: string,
- *   fetchImpl?: typeof fetch,
- *   now?: string,
- * }} [input]
+ * Phase 1. This function performs only read-only network work, then moves the
+ * journal/receipt to APPLYING/CONSUMING in memory and returns a serializable
+ * attempt envelope. The caller MUST durably persist this returned envelope
+ * before calling executePreparedControlledProductionRelease().
  */
-export async function runControlledProductionRelease({
+export async function prepareControlledProductionReleaseAttempt({
   plan,
   releasePacket,
   journal,
@@ -174,27 +199,81 @@ export async function runControlledProductionRelease({
   assertReleaseJournalMatchesPlan(journal, plan);
   assertWriterAttemptAllowed(journal);
   assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now });
-  if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
-    fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
-  }
-  if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
-  evaluateReleasePreflight(releasePacket, { now });
+  assertReleasePacketMatchesPlan(releasePacket, plan, now);
 
   const before = await captureProductionLedger({ token, fetchImpl });
-  const sql = buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
-  const applyingJournal = advanceReleaseJournal(journal, {
-    status: 'APPLYING', at: now, evidenceRef: 'writer:mutable-request-start',
+  buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
+
+  const prepared = {
+    schemaVersion: 1,
+    status: 'CONTROLLED_APPLY_PREPARED',
+    releaseId: plan.releaseId,
+    planDigest: plan.planDigest,
+    mainSha: plan.mainSha,
+    preparedAt: now,
+    baselineLedgerRows: sanitizedLedgerRows(before),
+    journal: advanceReleaseJournal(journal, {
+      status: 'APPLYING', at: now, evidenceRef: 'writer:prepared-before-mutable',
+    }),
+    receipt: advanceApplyReceipt(receipt, 'CONSUMING', now),
+  };
+  return {
+    ...prepared,
+    preparationDigest: sha256(preparationCore(prepared)),
+    nextRequiredStep: 'DURABLY_PERSIST_ATTEMPT_ENVELOPE_BEFORE_MUTABLE_REQUEST',
+    databaseMutationAuthorized: false,
+  };
+}
+
+function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now }) {
+  if (!prepared || prepared.schemaVersion !== 1 || prepared.status !== 'CONTROLLED_APPLY_PREPARED') {
+    fail('DURABLE_PREPARED_ATTEMPT_REQUIRED', 'mutable writer requires a prepared attempt envelope');
+  }
+  if (prepared.releaseId !== plan?.releaseId || prepared.mainSha !== plan?.mainSha || prepared.planDigest !== plan?.planDigest) {
+    fail('PREPARED_ATTEMPT_PLAN_MISMATCH', 'prepared attempt belongs to another release plan');
+  }
+  if (sha256(preparationCore(prepared)) !== prepared.preparationDigest) {
+    fail('PREPARED_ATTEMPT_DIGEST_MISMATCH', 'prepared attempt changed after preparation');
+  }
+  assertReleaseJournalMatchesPlan(prepared.journal, plan);
+  if (prepared.journal.status !== 'APPLYING') fail('DURABLE_APPLYING_JOURNAL_REQUIRED', `writer requires APPLYING journal, got ${prepared.journal.status}`);
+  assertConsumingApplyReceipt(prepared.receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now });
+  assertReleasePacketMatchesPlan(releasePacket, plan, now);
+  return buildAtomicProductionApplySql({
+    plan,
+    aliasMap,
+    liveLedgerRows: prepared.baselineLedgerRows,
+    readCanonicalSql,
   });
-  const consumingReceipt = advanceApplyReceipt(receipt, 'CONSUMING', now);
+}
+
+/**
+ * Phase 2. The caller may invoke this only after the exact prepared envelope has
+ * been durably persisted outside process memory. This function never accepts
+ * PRE_APPLY/ISSUED state, so a process crash cannot silently fall back to the
+ * reusable pre-attempt state.
+ */
+export async function executePreparedControlledProductionRelease({
+  prepared,
+  plan,
+  releasePacket,
+  aliasMap,
+  readCanonicalSql,
+  token,
+  fetchImpl = fetch,
+  now = new Date().toISOString(),
+} = {}) {
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now });
 
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
     const after = await captureProductionLedger({ token, fetchImpl });
     verifyPostApplyLedger({ plan, liveLedgerRows: after });
-    const confirmedJournal = advanceReleaseJournal(applyingJournal, {
+    const confirmedJournal = advanceReleaseJournal(prepared.journal, {
       status: 'APPLIED_CONFIRMED', at: now, evidenceRef: 'readback:provider-ledger-applied',
     });
-    const consumedReceipt = advanceApplyReceipt(consumingReceipt, 'CONSUMED', now);
+    const consumedReceipt = advanceApplyReceipt(prepared.receipt, 'CONSUMED', now);
     return {
       schemaVersion: 1,
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
@@ -203,15 +282,15 @@ export async function runControlledProductionRelease({
       mainSha: plan.mainSha,
       journal: confirmedJournal,
       receipt: consumedReceipt,
-      g6: 'SINGLE_USE_RECEIPT_PLUS_DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK',
+      g6: 'DURABLE_ATTEMPT_THEN_SINGLE_USE_RECEIPT_PLUS_DB_LOCK_AND_POST_LOCK_RECHECK',
       nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
       databaseMutationAuthorized: false,
     };
   } catch (error) {
-    const unknownJournal = advanceReleaseJournal(applyingJournal, {
+    const unknownJournal = advanceReleaseJournal(prepared.journal, {
       status: 'APPLY_UNKNOWN', at: now, evidenceRef: 'writer:mutable-or-readback-uncertain',
     });
-    const unknownReceipt = advanceApplyReceipt(consumingReceipt, 'UNKNOWN', now);
+    const unknownReceipt = advanceApplyReceipt(prepared.receipt, 'UNKNOWN', now);
     const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
     wrapped.code = 'APPLY_UNKNOWN';
     wrapped.journal = unknownJournal;
