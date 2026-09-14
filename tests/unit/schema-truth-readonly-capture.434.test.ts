@@ -35,8 +35,10 @@ function ledgerRows() {
 }
 
 function fakeFetchFactory({ productionMetadata = metadataRows() } = {}) {
-  const requests: Array<{ url: string; init: any; contract: string }> = [];
-  const fetchImpl = async (url: string, init: any) => {
+  const requests: Array<{ url: string; init: RequestInit; contract: string }> = [];
+  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (!init?.body) throw new Error('missing request body');
     const body = JSON.parse(String(init.body));
     const contract = Object.entries(READ_ONLY_QUERY_CONTRACTS)
       .find(([, query]) => query === body.query)?.[0];
@@ -52,8 +54,8 @@ function fakeFetchFactory({ productionMetadata = metadataRows() } = {}) {
       ok: true,
       status: 201,
       text: async () => JSON.stringify(rows),
-    };
-  };
+    } as Response;
+  }) as typeof fetch;
   return { requests, fetchImpl };
 }
 
@@ -81,7 +83,7 @@ describe('Issue #434 read-only schema evidence capture', () => {
       environment: 'TEST', currentMainSha: MAIN, token: TOKEN, fetchImpl, observedAt: '2026-09-14T04:30:00Z',
     });
     expect(requests.map((request) => request.contract)).toEqual(['metadata', 'acl', 'ledger']);
-    expect(requests.map((request) => JSON.parse(request.init.body).query)).toEqual([
+    expect(requests.map((request) => JSON.parse(String(request.init.body)).query)).toEqual([
       READ_ONLY_QUERY_CONTRACTS.metadata,
       READ_ONLY_QUERY_CONTRACTS.acl,
       READ_ONLY_QUERY_CONTRACTS.ledger,
@@ -94,7 +96,7 @@ describe('Issue #434 read-only schema evidence capture', () => {
       environment: 'TEST', currentMainSha: MAIN, token: TOKEN, fetchImpl, observedAt: '2026-09-14T04:30:00Z',
     });
     expect(requests.every((request) => !String(request.init.body).includes(TOKEN))).toBe(true);
-    expect(requests.every((request) => request.init.headers.Authorization === `Bearer ${TOKEN}`)).toBe(true);
+    expect(requests.every((request) => (request.init.headers as Record<string, string>).Authorization === `Bearer ${TOKEN}`)).toBe(true);
     expect(JSON.stringify(packet)).not.toContain(TOKEN);
     expect(packet.rawDataIncluded).toBe(false);
   });
