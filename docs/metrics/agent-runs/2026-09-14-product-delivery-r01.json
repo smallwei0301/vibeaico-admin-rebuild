@@ -172,7 +172,7 @@
         "id": "luna-closure-r01-s05",
         "requestedModel": "luna",
         "actualModel": "luna",
-        "role": "本輪 LUNA_CLOSURE（claude-haiku-4-5）：掃 13 張 open PR 與 58 張 open Issue。回報採用，候選為 #246（匯出 Excel 三處假成功，10 個驗收框全勾，證據 PR #248 已併入 main）。",
+        "role": "本輪 LUNA_CLOSURE（claude-haiku-4-5）：掃 13 張 open PR 與 58 張 open Issue。回報**部分採用**。它提出唯一候選 #246（驗收框 10/10 全勾、證據 PR #248 已在 main），我親自覆核後推翻：#246 的 state_reason 是 **reopened**，標題本身就寫著「報表頁內容仍是顧客名單冒充營運報表（#250 承接）」——驗收框全勾不等於 Issue 可關，Owner 重新開啟它是因為還有一個未解問題已轉交 #250。scout 只比對「框全勾 + PR 已合併」兩個條件，沒讀 state_reason，也沒讀標題。這是本 Run 第二次 scout 方法錯誤（第一次見 luna-ci-r01-s08）。本輪 closure sweep 的正確結果因此是 EMPTY_WITH_SCAN。",
         "count": 1,
         "contextClass": "compact",
         "accepted": true,
