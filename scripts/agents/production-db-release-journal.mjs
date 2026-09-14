@@ -42,6 +42,16 @@ export function createReleaseJournal({ releaseId, mainSha, planDigest, createdAt
   };
 }
 
+export function assertReleaseJournalMatchesPlan(journal, plan) {
+  if (!journal || journal.schemaVersion !== 1 || !STATES.has(journal.status) || !Array.isArray(journal.events)) {
+    fail('INVALID_RELEASE_JOURNAL', 'journal is invalid');
+  }
+  if (!plan || journal.releaseId !== plan.releaseId || journal.mainSha !== plan.mainSha || journal.planDigest !== plan.planDigest) {
+    fail('RELEASE_JOURNAL_PLAN_MISMATCH', 'journal does not identify the exact release plan');
+  }
+  return { status: 'RELEASE_JOURNAL_VERIFIED', releaseId: journal.releaseId, databaseMutationAuthorized: false };
+}
+
 export function advanceReleaseJournal(journal, { status, at, evidenceRef } = {}) {
   if (!journal || journal.schemaVersion !== 1 || !STATES.has(journal.status) || !Array.isArray(journal.events)) {
     fail('INVALID_RELEASE_JOURNAL', 'journal is invalid');
