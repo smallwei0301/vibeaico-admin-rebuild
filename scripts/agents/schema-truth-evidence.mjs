@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isMigrationLedgerVersion } from './schema-truth-proof-policy.mjs';
 
 export const EVIDENCE_SCHEMA_VERSION = 1;
 export const METADATA_QUERY_VERSION = 'public-schema-metadata-v1';
@@ -231,7 +232,7 @@ function normalizeMigrationLedger(value) {
     assertKeys(identity, ['version', 'name'], `migrationLedger.identities[${index}]`);
     const version = typeof identity.version === 'string' ? identity.version.trim() : '';
     const name = typeof identity.name === 'string' ? identity.name.trim() : '';
-    if (!/^\d{8,20}$/.test(version) || !/^[A-Za-z0-9._-]{1,160}$/.test(name)) {
+    if (!isMigrationLedgerVersion(version) || !/^[A-Za-z0-9._-]{1,160}$/.test(name)) {
       fail('INVALID_LEDGER_IDENTITY', `migrationLedger.identities[${index}] is invalid`);
     }
     return { version, name };

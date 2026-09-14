@@ -145,6 +145,68 @@ describe('schema truth report', () => {
     expect(report.comparison.overall).toBe('EVIDENCE_INCOMPLETE');
   });
 
+  it('accepts four-digit ledger versions without dropping leading zeros', () => {
+    const value = snapshot('TEST', {
+      migrationLedger: {
+        state: 'PRESENT', count: 1, latestVersion: '0082', latestName: '0082_legacy_baseline',
+        versionsDigest: digest('b'), evidenceRef: 'supabase:test/schema-fingerprint',
+      },
+    });
+    expect(normalizeSnapshot(value, 'TEST', MAIN).migrationLedger.latestVersion).toBe('0082');
+  });
+
+  it('records an explicit migration dependency plan instead of implying replay safety', () => {
+    const report = buildSchemaTruthReport({
+      testSnapshot: snapshot('TEST'),
+      productionSnapshot: snapshot('PRODUCTION'),
+      migrationManifest: buildMigrationManifestFromEntries([
+        { path: '0001_initial_schema.sql', bytes: 'select 1;\n' },
+        { path: '0002_add_customers.sql', bytes: 'select 2;\n' },
+      ]),
+      migrationDependencyPlan: {
+        schemaVersion: 1,
+        migrations: [
+          { identity: '0002_add_customers', dependsOn: ['0001_initial_schema'] },
+          { identity: '0001_initial_schema', dependsOn: [] },
+        ],
+      },
+      currentMainSha: MAIN,
+    });
+    expect(report.migrationDependencyPlan).toMatchObject({
+      status: 'PASS',
+      replayOrder: ['0001_initial_schema', '0002_add_customers'],
+    });
+    expect(renderMarkdown(report)).toContain('Migration replay dependency plan');
+    expect(renderMarkdown(report)).toContain('0001_initial_schema → 0002_add_customers');
+  });
+
+  it('records proof controls and rejects a broken positive control', () => {
+    const controls = {
+      schemaVersion: 1,
+      positive: { subject: 'constraint:known_present', found: true, evidenceRef: 'proof:positive' },
+      negative: { subject: 'constraint:known_absent', found: false, evidenceRef: 'proof:negative' },
+      mutation: { subject: 'constraint:known_present', baselineFound: true, mutatedFound: false, evidenceRef: 'proof:mutation' },
+      keySetComparison: { observed: ['tenant_id', 'id'], expected: ['id', 'tenant_id'], equivalent: true },
+    };
+    const report = buildSchemaTruthReport({
+      testSnapshot: snapshot('TEST'),
+      productionSnapshot: snapshot('PRODUCTION'),
+      migrationManifest: manifest(),
+      proofControls: controls,
+      currentMainSha: MAIN,
+    });
+    expect(report.proofControls).toMatchObject({ schemaVersion: 1, status: 'PASS' });
+    expect(renderMarkdown(report)).toContain('Schema proof controls');
+
+    expect(() => buildSchemaTruthReport({
+      testSnapshot: snapshot('TEST'),
+      productionSnapshot: snapshot('PRODUCTION'),
+      migrationManifest: manifest(),
+      proofControls: { ...controls, positive: { ...controls.positive, found: false } },
+      currentMainSha: MAIN,
+    })).toThrow(/PROOF_POSITIVE_CONTROL_FAILED/);
+  });
+
   it.each([
     ['negative count', () => {
       const value = snapshot('TEST');

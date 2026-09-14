@@ -207,4 +207,26 @@ describe('schema truth evidence contract', () => {
     const tampered = { ...value, captureDigest: { algorithm: 'SHA256', value: 'f'.repeat(64) } };
     expect(() => normalizeMetadataEvidencePacket(tampered, MAIN)).toThrow(/CAPTURE_DIGEST_MISMATCH/);
   });
+
+  it('accepts four-digit migration versions and preserves leading zero identity', () => {
+    const value = finalize(packet('TEST', {
+      migrationLedger: {
+        state: 'PRESENT',
+        identities: [{ version: '0082', name: '0082_legacy_baseline' }],
+      },
+    }));
+    expect(normalizeMetadataEvidencePacket(value, MAIN).migrationLedger.identities).toEqual([
+      { version: '0082', name: '0082_legacy_baseline' },
+    ]);
+  });
+
+  it.each(['12345', '1234567', '123456789012345678901'])('rejects unsupported migration version width %s', (version) => {
+    const value = finalize(packet('TEST', {
+      migrationLedger: {
+        state: 'PRESENT',
+        identities: [{ version, name: '0082_invalid_width' }],
+      },
+    }));
+    expect(() => normalizeMetadataEvidencePacket(value, MAIN)).toThrow(/INVALID_LEDGER_IDENTITY/);
+  });
 });
