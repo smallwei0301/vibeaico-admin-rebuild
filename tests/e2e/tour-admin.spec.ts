@@ -21,6 +21,7 @@
  * ⚠️ 執行揭露：這支 spec 對 canonical TEST（`nmwhwngojosmagjuvxol`）的 `trips` 表
  * 做一筆真實 insert／delete。若要在本輪 PR 的 CI／本機重跑，須先依 B+ 規則宣告
  * `TEST_VALIDATION` lane 並取得唯一 shared TEST holder 資格，不得未宣告直接跑。
+ * 該次執行使用的列以 `title like 'E2E行程-%'` 命名，已獨立查證跑完後零殘留。
  */
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
