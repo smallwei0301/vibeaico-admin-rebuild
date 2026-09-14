@@ -74,10 +74,49 @@ export type GuideActionInboxRefundPendingItem = {
   href: string;
 };
 
+/*
+ * #43 類別 7：人員指派或時間衝突等不可履約風險。
+ *
+ * 撞班判斷**不在這裡重新實作**——`src/server/staff-availability.ts` 的
+ * `loadStaffLoad()` / `findStaffConflicts()`（issue #37 §5.3 canonical）已經是
+ * 團次建立／編輯／batch 三處共用的唯一撞班引擎；`trip_departure_staff`（0092）是
+ * 團次人員指派的唯一真相。這裡只定義「把引擎回傳的 `StaffConflict[]` 轉成一張
+ * 收件匣卡片」需要的形狀，實際查詢與判斷都在 route.ts 呼叫既有引擎完成。
+ *
+ * 只涵蓋「已指派人員、但該指派實際撞期」——不含「尚未指派人員」。後者
+ * （`10-TOUR-DOMAIN.md` §1.3 相容策略允許的既有「未指派」團次）是否也該進收件匣、
+ * 用什麼優先級判斷，屬於需要 Owner 另外裁示的獨立範圍，本切片不擅自涵蓋，見
+ * route.ts 檔案頂端與本輪 PR 說明。
+ */
+export type GuideActionInboxStaffConflictReason = 'SHIFT' | 'BOOKING' | 'BLOCK' | 'DEPARTURE';
+
+export type GuideActionInboxStaffConflictDetail = {
+  staffId: string;
+  staffName: string;
+  reason: GuideActionInboxStaffConflictReason;
+};
+
+export type GuideActionInboxStaffConflictItem = {
+  id: string;
+  kind: 'STAFF_CONFLICT';
+  tripId: string;
+  tripName: string;
+  planName: string;
+  departureDate: string;
+  startTime: string;
+  /** 這團所有「已指派但撞期」的人員，可能不只一位。 */
+  conflicts: GuideActionInboxStaffConflictDetail[];
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
 export type GuideActionInboxItem =
   | GuideActionInboxBaseItem
   | GuideActionInboxFormationItem
-  | GuideActionInboxRefundPendingItem;
+  | GuideActionInboxRefundPendingItem
+  | GuideActionInboxStaffConflictItem;
 
 const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
 
@@ -357,5 +396,48 @@ export function buildGuideActionInboxRefundPendingItem(
     dueAt: input.dueAt,
     createdAt: input.createdAt,
     href: input.href,
+  };
+}
+
+export type GuideActionInboxStaffConflictInput = {
+  id: string;
+  tripId: string;
+  tripName: string;
+  planName: string;
+  departureDate: string;
+  startTime: string;
+  conflicts: GuideActionInboxStaffConflictDetail[];
+  createdAt: string;
+};
+
+/**
+ * #43 類別 7：把一團「已指派人員實際撞期」的判斷結果轉成收件匣卡片。
+ *
+ * priority 固定 `'IMMEDIATE'`，理由同 REFUND_PENDING：Issue #43 §2 把「排班衝突」
+ * 明列在「立即處理」的觸發條件之一，撞班本身已經是阻礙履約的風險，不需要再比
+ * `dueAt` 才決定要不要立即處理。`dueAt` 沿用出發時刻，只影響同為 IMMEDIATE
+ * 卡片間的排序（與其他出發／成團卡片一致地用同一種「真正 instant」排序）。
+ *
+ * `conflicts` 不做去重或裁切——一團可能不只一位人員撞期，每一位都要讓店家看到，
+ * 不能只顯示第一個就讓其他撞期悄悄消失。
+ */
+export function buildGuideActionInboxStaffConflictItem(
+  input: GuideActionInboxStaffConflictInput,
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): GuideActionInboxStaffConflictItem {
+  const startTime = input.startTime || '00:00';
+  return {
+    id: input.id,
+    kind: 'STAFF_CONFLICT',
+    tripId: input.tripId,
+    tripName: input.tripName,
+    planName: input.planName,
+    departureDate: input.departureDate,
+    startTime,
+    conflicts: input.conflicts,
+    priority: 'IMMEDIATE',
+    dueAt: getGuideDepartureDueAt(input.departureDate, startTime, timeZone),
+    createdAt: input.createdAt,
+    href: `/tenant/trips/${input.tripId}`,
   };
 }

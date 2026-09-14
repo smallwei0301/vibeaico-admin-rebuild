@@ -47,6 +47,39 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * That class of mutation needs an integration test against real TEST Supabase;
  * it is out of scope for this PR, and the harness is deliberately left as-is
  * rather than extended to cover it (that would be a different PR's scope).
+ *
+ * Coverage boundary (#43 類別 7 STAFF_CONFLICT, recorded honestly, not fixed
+ * here): `src/server/staff-availability.ts`'s `loadStaffLoad()` reads "other
+ * departures a staff member is occupied by" via
+ * `.from('trip_departure_staff').select(...).neq('trip_departures.status', …)
+ * .gte('trip_departures.departs_on', …).lte('trip_departures.departs_on', …)`
+ * — PostgREST's dot-path syntax for filtering on a joined table. This fake
+ * `applyFilterOps()` only ever does `row[field]`, a literal property lookup —
+ * it has no join-aware behaviour, so `row['trip_departures.departs_on']` is
+ * always `undefined` on this harness's fixture shape, and `undefined >= x` /
+ * `undefined <= x` are always `false` in JS. The `.gte(...)` call alone is
+ * therefore enough to filter every row out, regardless of fixture content:
+ * `loadStaffLoad()`'s `departures` array is always `[]` under this harness.
+ * Two consequences, both real and both untested here:
+ *   1. The `'DEPARTURE'` conflict reason (staff double-booked across two
+ *      departures) can never actually fire through this route-level harness.
+ *      It is not uncovered in the codebase, though — the pure function itself
+ *      (`findStaffConflicts`) already has direct behavioural coverage of the
+ *      `DEPARTURE` branch in `tests/unit/departure-guide-assignment.37.test.ts`
+ *      ("其他團次重疊 → DEPARTURE，且指得出是哪一團"); what's untested is only
+ *      the route's glue code that feeds it real `trip_departure_staff` rows.
+ *   2. `route.ts`'s per-departure self-exclusion
+ *      (`load.departures.filter((d) => d.departureId !== c.row.id)`, needed so
+ *      a departure's own occupied slot isn't mistaken for a conflict with
+ *      itself) can't be exercised either, because `load.departures` is always
+ *      empty regardless of whether that filter runs.
+ * The `BOOKING`, `BLOCK` and `SHIFT` reasons don't have this problem —
+ * `loadStaffLoad()`'s `bookings`/`block_times`/`shifts` queries only ever
+ * filter on the queried table's own columns (`tenant_id`, `status`,
+ * `start_at`/`end_at`, `recurrence`, `work_date`), never a joined table's
+ * column, so this harness filters them correctly; the STAFF_CONFLICT describe
+ * block below covers all three plus the tenant boundary and a genuinely
+ * clean (no-conflict) control row.
  * ---------------------------------------------------------------------------
  */
 type FilterCall = [string, unknown[]];
@@ -725,6 +758,220 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     });
   });
 
+  describe('route.ts behaviour: #43 類別 7 STAFF_CONFLICT (trip_departure_staff + staff-availability engine)', () => {
+    // 行為測試，不是字串比對：直接呼叫真正的 route handler，撞班判斷本身也是真正
+    // 呼叫 `src/server/staff-availability.ts` 的 `loadStaffLoad()`/`findStaffConflicts()`
+    // （issue #37 canonical、已有自己的 `tests/unit/departure-guide-assignment.37.test.ts`
+    // 覆蓋），這裡只驗證 route.ts 的「挑候選、餵資料、組卡片」glue 是否正確——見本檔
+    // 頂端「Coverage boundary (#43 類別 7 STAFF_CONFLICT...)」，DEPARTURE 這個
+    // conflict reason 在這個假 harness 上無法真正觸發，改由既有的
+    // `departure-guide-assignment.37.test.ts` 覆蓋 `findStaffConflicts` 本身。
+    const NOW = new Date('2026-09-25T04:00:00.000Z'); // 12:00 Asia/Taipei
+    const TENANT_ID = 'tenant-a';
+    const OTHER_TENANT_ID = 'tenant-b';
+
+    const assignment = (staffId: string, staffName: string) => ([{
+      staff_id: staffId, role: 'PRIMARY', staff: { name: staffName },
+    }]);
+
+    // `dep-conflict-booking` 與 `dep-other-tenant` 刻意共用同一位員工
+    // （`s-shared`）與同一段時間——這是下面「不洩漏跨租戶」測試需要的：真正的
+    // BOOKING 衝突資料只存在於 tenant-a，如果 route.ts 的
+    // `.eq('tenant_id', t.tenantId)` 被拿掉，`dep-other-tenant`（tenant-b）會被
+    // 撈進候選名單，然後套用 tenant-a 的 `loadStaffLoad()`（它本身有自己獨立的
+    // tenant 過濾，不受這個 mutation 影響）算出同一個假衝突，因而錯誤地出現在
+    // 結果裡。
+    const TRIP_DEPARTURE_ROWS: FakeRow[] = [
+      {
+        id: 'dep-conflict-booking', tenant_id: TENANT_ID, trip_id: 't-book', plan_id: 'p1',
+        departs_on: '2026-09-28', start_time: '09:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Booking Conflict Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-shared', '雨後'),
+      },
+      {
+        id: 'dep-conflict-block', tenant_id: TENANT_ID, trip_id: 't-block', plan_id: 'p1',
+        departs_on: '2026-09-29', start_time: '14:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Block Conflict Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-block', '阿凱'),
+      },
+      {
+        id: 'dep-conflict-shift', tenant_id: TENANT_ID, trip_id: 't-shift', plan_id: 'p1',
+        departs_on: '2026-09-30', start_time: '10:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Shift Conflict Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-noshift', '小美'),
+      },
+      {
+        // 對照組：有指派、有班表覆蓋、沒有任何預約／封鎖／團次衝突——必須誠實地
+        // 不出現在 STAFF_CONFLICT，不是「只要有指派就一定產生卡片」。
+        id: 'dep-clean', tenant_id: TENANT_ID, trip_id: 't-clean', plan_id: 'p1',
+        departs_on: '2026-10-01', start_time: '10:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Clean Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-clean', '阿海'),
+      },
+      {
+        // 對照組：#43 §7 只涵蓋「已指派但撞期」，未指派人員的既有團次（10-TOUR-
+        // DOMAIN §1.3 相容策略）在這裡先被排除，不進入撞班判斷。
+        id: 'dep-unassigned', tenant_id: TENANT_ID, trip_id: 't-unassigned', plan_id: 'p1',
+        departs_on: '2026-10-02', start_time: '10:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Unassigned Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: [],
+      },
+      {
+        // 跨租戶對照組，見上方說明。
+        id: 'dep-other-tenant', tenant_id: OTHER_TENANT_ID, trip_id: 't-other', plan_id: 'p1',
+        departs_on: '2026-09-28', start_time: '09:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Other Tenant Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-shared', '雨後'),
+      },
+      {
+        // `.in('status', ['OPEN', 'CLOSED'])` 對照組：租戶、未來日期、有指派、
+        // 該員工在該時段確實有一筆真正的 BOOKING 衝突——除了 `status` 是
+        // `CANCELLED`（不在 `['OPEN', 'CLOSED']` 內）以外，其餘條件都會讓它成為
+        // 衝突卡片。拿掉 `.in('status', ...)` 這一段過濾器，這筆必須冒出來。
+        id: 'dep-cancelled-conflict', tenant_id: TENANT_ID, trip_id: 't-cancelled', plan_id: 'p1',
+        departs_on: '2026-10-03', start_time: '09:00:00', status: 'CANCELLED',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Cancelled Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-cancelled', '阿聰'),
+      },
+      {
+        // `.gte('departs_on', today)` 對照組：同理，除了 `departs_on` 落在 NOW
+        // （2026-09-25）之前以外，其餘條件都會讓它成為衝突卡片。拿掉這段下限，
+        // 這筆必須冒出來。
+        id: 'dep-stale-conflict', tenant_id: TENANT_ID, trip_id: 't-stale', plan_id: 'p1',
+        departs_on: '2026-09-20', start_time: '09:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Stale Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: assignment('s-stale', '子欣'),
+      },
+    ];
+
+    const fullDayShift = (staffId: string, workDate: string) => ({
+      tenant_id: TENANT_ID, staff_id: staffId, work_date: workDate,
+      start_time: '00:00:00', end_time: '23:59:00',
+    });
+
+    const SHIFT_ROWS: FakeRow[] = [
+      fullDayShift('s-shared', '2026-09-28'),
+      fullDayShift('s-block', '2026-09-29'),
+      // `s-noshift` 那天租戶確實有班表資料（`s-other` 的班），但 `s-noshift` 自己
+      // 沒有——`tenantHasShiftsThatDay=true` 但 `mine=[]`，因而是 SHIFT 衝突，不是
+      // 「這個租戶完全沒有班表資料」的全時段可排放行情況。
+      { tenant_id: TENANT_ID, staff_id: 's-other', work_date: '2026-09-30', start_time: '00:00:00', end_time: '23:59:00' },
+      fullDayShift('s-clean', '2026-10-01'),
+      fullDayShift('s-cancelled', '2026-10-03'),
+      fullDayShift('s-stale', '2026-09-20'),
+    ];
+
+    const BOOKING_ROWS: FakeRow[] = [
+      {
+        tenant_id: TENANT_ID, staff_id: 's-shared', status: 'CONFIRMED',
+        start_at: '2026-09-28T02:00:00.000Z', end_at: '2026-09-28T04:00:00.000Z',
+      },
+      {
+        // `dep-cancelled-conflict` 的真正 BOOKING 衝突來源——證明它「除了 status
+        // 是 CANCELLED 以外」本來就會被判定撞期。
+        tenant_id: TENANT_ID, staff_id: 's-cancelled', status: 'CONFIRMED',
+        start_at: '2026-10-03T02:00:00.000Z', end_at: '2026-10-03T04:00:00.000Z',
+      },
+      {
+        // `dep-stale-conflict` 的真正 BOOKING 衝突來源——證明它「除了日期在今天
+        // 之前以外」本來就會被判定撞期。
+        tenant_id: TENANT_ID, staff_id: 's-stale', status: 'CONFIRMED',
+        start_at: '2026-09-20T02:00:00.000Z', end_at: '2026-09-20T04:00:00.000Z',
+      },
+    ];
+
+    const BLOCK_TIME_ROWS: FakeRow[] = [
+      {
+        id: 'bt-1', tenant_id: TENANT_ID, staff_id: 's-block', recurrence: 'SINGLE',
+        start_at: '2026-09-29T07:00:00.000Z', end_at: '2026-09-29T09:00:00.000Z',
+        reason: '', title: '', day_of_week: null, full_day: false, auto: false,
+      },
+    ];
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(NOW);
+      requireTenantMock.mockReset();
+      requireTenantMock.mockResolvedValue({
+        supabase: makeFakeSupabase({
+          trip_departures: TRIP_DEPARTURE_ROWS,
+          shifts: SHIFT_ROWS,
+          bookings: BOOKING_ROWS,
+          block_times: BLOCK_TIME_ROWS,
+        }),
+        tenantId: TENANT_ID,
+        user: { id: 'user-a' },
+        role: 'OWNER',
+      });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('flags only departures whose assigned staff genuinely conflicts (BOOKING/BLOCK/SHIFT), never a clean or unassigned departure, and never leaks another tenant', async () => {
+      const res = await guideActionInboxGET(new Request('https://app.test/api/guide/action-inbox'), {});
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const items: any[] = body.data;
+      const conflictItems = items.filter((i) => i.kind === 'STAFF_CONFLICT');
+      const ids = conflictItems.map((i) => i.id).sort();
+
+      // 三種真正撞期的團次都出現，乾淨、未指派、跨租戶的都不出現。
+      expect(ids).toEqual(['dep-conflict-block', 'dep-conflict-booking', 'dep-conflict-shift']);
+
+      const byId = (id: string) => conflictItems.find((i) => i.id === id);
+
+      const bookingItem = byId('dep-conflict-booking');
+      expect(bookingItem).toMatchObject({
+        tripId: 't-book', tripName: 'Booking Conflict Trip', priority: 'IMMEDIATE',
+        href: '/tenant/trips/t-book',
+      });
+      expect(bookingItem.conflicts).toEqual([{ staffId: 's-shared', staffName: '雨後', reason: 'BOOKING' }]);
+
+      const blockItem = byId('dep-conflict-block');
+      expect(blockItem.conflicts).toEqual([{ staffId: 's-block', staffName: '阿凱', reason: 'BLOCK' }]);
+      expect(blockItem.priority).toBe('IMMEDIATE');
+
+      const shiftItem = byId('dep-conflict-shift');
+      expect(shiftItem.conflicts).toEqual([{ staffId: 's-noshift', staffName: '小美', reason: 'SHIFT' }]);
+      expect(shiftItem.priority).toBe('IMMEDIATE');
+
+      // 對照組：有指派、有班表覆蓋、沒有其他撞期來源的 `dep-clean`，以及未指派的
+      // `dep-unassigned`，兩者都誠實地不產生卡片——不是「只要有指派就一定顯示」。
+      expect(items.some((i) => i.id === 'dep-clean')).toBe(false);
+      expect(items.some((i) => i.id === 'dep-unassigned')).toBe(false);
+
+      // `.in('status', ['OPEN', 'CLOSED'])` 與 `.gte('departs_on', today)` 對照
+      // 組：`dep-cancelled-conflict`／`dep-stale-conflict` 除了 status／日期以外
+      // 都會被判定撞期（見上方 fixture 註解），必須誠實地不出現——拿掉任一段
+      // 過濾器都要讓這兩行紅。
+      expect(items.some((i) => i.id === 'dep-cancelled-conflict')).toBe(false);
+      expect(items.some((i) => i.id === 'dep-stale-conflict')).toBe(false);
+
+      // 跨租戶：`dep-other-tenant` 與 `dep-conflict-booking` 共用同一位員工、同一段
+      // 時間，如果 `.eq('tenant_id', t.tenantId)` 被拿掉，它會被撈進候選名單並套
+      // 用 tenant-a 的撞班資料而「被誤判撞期」，出現在這裡——見上方 fixture 註解。
+      expect(items.some((i) => i.id === 'dep-other-tenant')).toBe(false);
+    });
+  });
+
   describe('mock service exclusivity (demo mode)', () => {
     // `getGuideActionInbox()` 的 mock adapter 用真正的 `setTimeout` 模擬延遲——
     // 跟上面那個 describe 共用 `vi.useFakeTimers()` 會讓它永遠等不到那個 timer
@@ -796,5 +1043,30 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(bookingsApiSource).toContain("query.eq('id', q.bookingId)");
     expect(bookingsPageSource).toContain('paymentStatusFilter');
     expect(bookingsPageSource).toContain('paymentStatus: paymentStatusFilter || undefined');
+  });
+
+  it('mock GUIDE mode never fabricates a STAFF_CONFLICT demo card (#43 §4: 無資料時回誠實空陣列)', async () => {
+    // `MOCK_TRIP_DEPARTURES` 的檔頭註解明講示範資料刻意不得撞班；這裡直接讀
+    // `getGuideActionInbox()` 的真實輸出，鎖住「demo 模式沒有第 7 類卡片」這個
+    // 行為本身，而不是只檢查原始碼裡有沒有寫 `STAFF_CONFLICT` 這個字面值——後者
+    // 就算真的塞了一筆假衝突資料也會通過，是恆真的假保護。
+    const items = await getGuideActionInbox();
+    expect(items.filter((item) => item.kind === 'STAFF_CONFLICT')).toEqual([]);
+  });
+
+  it('exhaustively narrows STAFF_CONFLICT on the dashboard card with i18n-only copy (#43 類別 7)', () => {
+    // 三個 switch 都要有 STAFF_CONFLICT 分支，否則 `const _exhaustive: never = item`
+    // 在加入這個 kind 後會讓 typecheck 失敗——見檔案頂端 `_exhaustive` 的說明。
+    expect(pageSource).toContain("case 'STAFF_CONFLICT':");
+    expect((pageSource.match(/case 'STAFF_CONFLICT':/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(pageSource).toContain('t.actionInbox.staffConflict');
+    expect(pageSource).toContain('t.actionInbox.staffConflictSummary');
+    expect(pageSource).toContain('t.actionInbox.staffConflictReason');
+    expect(pageSource).toContain('t.actionInbox.openStaffConflict');
+
+    expect(dashboardI18nSource).toContain('staffConflict:');
+    expect(dashboardI18nSource).toMatch(/staffConflictSummary:\s*\(n: number\)/);
+    expect(dashboardI18nSource).toContain('staffConflictReason:');
+    expect(dashboardI18nSource).toContain('openStaffConflict:');
   });
 });
