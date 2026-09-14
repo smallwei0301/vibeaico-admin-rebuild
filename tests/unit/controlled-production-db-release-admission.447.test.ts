@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { createProductionDbApplyReceipt } from '../../scripts/agents/production-db-apply-receipt.mjs';
 import { createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
 import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
@@ -19,6 +20,9 @@ function plan() {
 }
 function journal(p: any) {
   return createReleaseJournal({ releaseId: p.releaseId, mainSha: p.mainSha, planDigest: p.planDigest, createdAt: '2026-09-14T12:39:00Z' });
+}
+function receipt(p: any) {
+  return createProductionDbApplyReceipt({ releaseId: p.releaseId, mainSha: p.mainSha, planDigest: p.planDigest, projectRef: p.productionProjectRef, githubRunId: '44702', githubRunAttempt: 1, issuedAt: '2026-09-14T12:39:30Z' });
 }
 function packet(p: any) {
   const value: any = {
@@ -40,7 +44,7 @@ describe('Issue #447 controlled writer admission negatives', () => {
     const p = plan(); const pkt = packet(p); pkt.productionProjectRef = 'wrong-project';
     const fetchImpl = vi.fn();
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: pkt, journal: journal(p),
+      plan: p, releasePacket: pkt, journal: journal(p), receipt: receipt(p),
       aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/WRONG_PROJECT/);
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -51,7 +55,7 @@ describe('Issue #447 controlled writer admission negatives', () => {
     pkt.consistency.observedAt = '2026-09-14T12:00:00Z';
     pkt.finalRisk.evidenceDigest = releaseEvidenceDigestOf(pkt);
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: pkt, journal: journal(p),
+      plan: p, releasePacket: pkt, journal: journal(p), receipt: receipt(p),
       aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchImpl).not.toHaveBeenCalled();
