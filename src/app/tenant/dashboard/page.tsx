@@ -79,6 +79,8 @@ function actionInboxKindLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.atRisk;
     case 'REFUND_PENDING':
       return t.actionInbox.refundPending;
+    case 'STAFF_CONFLICT':
+      return t.actionInbox.staffConflict;
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -99,6 +101,8 @@ function actionInboxOpenLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.openFormation;
     case 'REFUND_PENDING':
       return t.actionInbox.openRefund;
+    case 'STAFF_CONFLICT':
+      return t.actionInbox.openStaffConflict;
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -191,6 +195,24 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
           <div className="text-sm text-secondary">{item.orderNo}</div>
           <div className="mt-1 text-xs text-secondary">
             {t.actionInbox.refundOutstanding(formatCurrency(item.refundOutstandingAmount))}
+          </div>
+        </>
+      );
+    case 'STAFF_CONFLICT':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-col gap-0.5 text-xs text-secondary">
+            <span>
+              {t.actionInbox.staffConflictSummary(item.conflicts.length)}
+              ：{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}
+            </span>
+            {item.conflicts.map((conflict) => (
+              <span key={conflict.staffId}>
+                {conflict.staffName || conflict.staffId}：{t.actionInbox.staffConflictReason[conflict.reason]}
+              </span>
+            ))}
           </div>
         </>
       );

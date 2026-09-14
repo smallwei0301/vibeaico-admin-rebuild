@@ -166,8 +166,15 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
           createdAt: order.createdAt,
           href: refundPendingHref(order.id),
         }));
+      // #43 類別 7：人員指派或時間衝突。`MOCK_TRIP_DEPARTURES` 的檔頭註解明講這份
+      // 示範資料「刻意」不得撞班（同一位導遊不能在同一天被排進兩個團），所以這裡
+      // 誠實回空陣列，不為了畫面好看去捏造一個真實系統開不出來的撞班班表
+      // （#43 §4：「無資料時回誠實空陣列，不捏造示範待辦」）。真實行為由
+      // route.ts 呼叫 `loadStaffLoad()`/`findStaffConflicts()` 判斷。
+      const staffConflictItems: GuideActionInboxItem[] = [];
       return sortGuideActionInboxItems([
         ...items, ...paymentItems, ...departureItems, ...formationItems, ...refundPendingItems,
+        ...staffConflictItems,
       ]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),

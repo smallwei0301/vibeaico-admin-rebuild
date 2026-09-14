@@ -80,6 +80,18 @@ export const dashboardPage = {
     /** 已收但尚未退回旅客的金額。與「已退款」在字面上明確分開，不沿用同一個詞。 */
     refundOutstanding: (amount: string) => `應退 ${amount}`,
     openRefund: '查看退款',
+    /* ---- #43 類別 7：人員指派或時間衝突（不可履約風險） ---- */
+    staffConflict: '人員時間衝突',
+    /** 白話摘要：這團有幾位已指派人員實際撞期。 */
+    staffConflictSummary: (n: number) => `${n} 位人員撞期，需要調整`,
+    /** 撞班理由對照表，鍵值對應 `src/server/staff-availability.ts` 的 `ConflictReason`。 */
+    staffConflictReason: {
+      SHIFT: '該日未排班',
+      BOOKING: '已有一般服務預約',
+      BLOCK: '該時段已封鎖（不可接案／私人行程／休假）',
+      DEPARTURE: '已被其他團次指派',
+    },
+    openStaffConflict: '查看團次並調整人員',
     priority: {
       IMMEDIATE: '需要立即處理',
       TODAY: '今天處理',
