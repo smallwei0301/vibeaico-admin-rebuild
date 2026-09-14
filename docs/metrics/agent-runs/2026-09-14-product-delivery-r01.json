@@ -580,6 +580,58 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "prod-0107-apply-and-incident",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "從 0109 的 42703 往上追，發現 /api/guide/action-inbox（已合併、已自動部署）也在讀正式庫不存在的 trip_departures.formation_status，五條查詢共用 Promise.all 逐一 throw ⇒ 整個待辦區 500，而正式庫唯一租戶就是 GUIDE。以唯讀查詢取得證據後提請 Owner 裁示，獲具名授權後套用 canonical 0107（逐字取自 origin/main，head db5c8c6）。套用前一刻重查（PB-044）三表皆 0 列；套用後 11 欄→19 欄、ledger 56→57、先前必定 42703 的查詢改回傳空集合。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-0109-sol-audit-fce8dcd",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "0109 三輪 audit。第一輪逐段審 migration 並開三項；第二輪覆驗後以唯讀查詢對正式庫實測，發現第四段會 42703 並開 FIX_REQUIRED，且要求不得只修個案而要自查同類前提；第三輪覆驗帳本合併後狀態（entries=59、EXACT=50、NOT_APPLIED=2）與 snapshot 逐字相同，獨立重跑 tsc／2282 測試／build／guard／ledger checker 後開 PR #443。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-0109-final-risk-443",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": null,
+        "role": "PR #443 的 Final Risk 委派。ASTRA_RISK=IRREVERSIBLE_DATA：migration 在 text 修復路徑上會 drop CHECK 並轉換欄位型別。已明確告知 findings 必須是字串（上一個 PR 第一輪因我給錯契約寫成陣列被擋）。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "playbook-pb047-writeup",
+        "requestedModel": "scout",
+        "actualModel": "unknown",
+        "actualModelId": "claude-haiku-4-5",
+        "accepted": null,
+        "role": "PB 新條目：PRODUCTION_SCHEMA_STATUS 填了卻沒去查正式庫等於沒有這一格。文件屬 scout 層，事實由 audit 層提供。已特別提醒編號要同時涵蓋表格列與小節兩種承載形式，避免重演上一輪的撞號。",
+        "count": 1,
+        "contextClass": "narrow",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -612,13 +664,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 13,
+    "lunaTasks": 14,
     "lunaAccepted": 12,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 12,
+    "solTouches": 13,
     "solIssues": 1
   },
   "auditability": {
