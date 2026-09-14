@@ -418,7 +418,7 @@ describe('#396 已提交的正式資料', () => {
   // 數字不是推算的，是對 current main／submitted candidate 的實際檔案跑一次得到的。
   it('repo 有 55 個 migration 檔案，正式庫快照有 55 筆 ledger row', () => {
     expect(repoFiles).toHaveLength(55);
-    expect(snapshot.ledgerRowNames).toHaveLength(54);
+    expect(snapshot.ledgerRowNames).toHaveLength(55);
   });
 
   it('supabase/ledger-alias-map.json 完全涵蓋這 55 個 repo 檔案與 54 筆 ledger row', () => {
@@ -440,9 +440,9 @@ describe('#396 已提交的正式資料', () => {
     // 2026-09-13：0069–0073 五支經 Owner 具名授權套用至正式庫並回讀驗證，
     // 因此從 NOT_APPLIED 轉為 EXACT（42 → 47）。0105 已進 main 但尚未套用，
     // 0106 已套用至 Production 並完成 postflight；只剩 0105 尚未套用，所以 NOT_APPLIED 是 1。
-    expect(counts.EXACT).toBe(47);
+    expect(counts.EXACT).toBe(48);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(2);
+    expect(counts.NOT_APPLIED ?? 0).toBe(1);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
