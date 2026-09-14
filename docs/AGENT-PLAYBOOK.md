@@ -1245,6 +1245,76 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
      Opus 上，都是如實的違規記錄，不是「還沒填」。
 - 狀態：監看中。下一輪若 `modelUsage.tasks` 仍為空而該輪確實有委派，視為第二次。
 
+### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1
+- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration
+- 分類：TEST DB／Agent
+- 事件：07:20 查詢 TEST 上 `trip_departures` 的 `formation_status`，結果是「3 列全部 COLLECTING」，於是告訴 Owner「drop 掉再重建是安全的」。07:45 準備真的執行 drop/recreate 之前再查一次，結果變成「1 列 AT_RISK + 2 列 COLLECTING」——中間 25 分鐘內 CI 跑了 #440 的 integration 測試，seed 改掉了資料。
+- 證據：兩次查詢間隔、查詢結果各一份、migration 日誌顯示該時間段有 seed 執行。
+- 根因：在共用環境（TEST 被 CI 與其他 lane 共用）上，「我剛剛查過」不等於「現在還是這樣」。查證與破壞性動作之間隔了一次對話往返，環境狀態有時間改變。
+- 影響：若按照 07:20 的結論執行 drop/recreate，會丟掉真實資料。改用 `alter column type … using` 保住資料，但延遲了排查進度。
+- 修正：放棄第一份查詢結果，改以最新查詢為準；在 migration 與 seed script 前加鎖序列化 TEST DDL。
+- 預防：
+  1. **破壞性動作的前置查證必須緊貼動作本身**。drop／truncate／alter 之前，把查證與動作放在同一個交易或同一次 RPC 呼叫裡。
+  2. **做不到原子化就在動作前一刻重查一次**，並把兩次的結果都記下來。查證的有效期是幾分鐘，不是一個 session。
+  3. 在共用資源上，任何「我剛驗過」都必須問「期間有沒有其他工作可能改過」，特別是 CI lane 在跑時。
+- 驗證：後續 TEST 動作前先確認無 CI 運行，或改用原子查證+動作；重查成功執行且資料一致。
+- 狀態：已防止
+
+### PB-045 — 並行工作的判準是檔案所有權與 Issue 邊界，不是功能描述
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1
+- Issue／PR／CI：Issue #43；PR #418、PR #428；dual Terra 宣告
+- 分類：Agent
+- 事件：我判定 #43 的「第 5 類」與「第 7 類」可以開雙 Terra 並行，理由是「兩件不同的事，功能目標有區別」。
+- 實際：兩條 lane 改的是**完全重疊**的檔案集：都動到 `src/app/api/`、`src/server/`、相同的 supabase migration、相同的 page；而且**同屬一個 Issue #43**。`docs/AGENT-EXECUTION.md` §5 的 dual Terra 契約明確要求「不同的 primary Issue」與「FILE_OWNERSHIP 零重疊」，兩條都違反。
+- 證據：兩個 PR 的 `git diff --name-only` 結果有 95% 的重疊；Issue 號碼都是 #43；dual Terra 宣告的時間點早於實際檔案清查。
+- 根因：把功能描述上的差異（「訂單管理」vs「退款管理」）當成了可並行的判準，沒有在宣告之前實際列出檔案所有權並做交集。
+- 影響：兩條 lane 可能同時改一個檔案、同時跑 integration，造成 merge conflict、TEST 序列化違反、或一方覆蓋另一方的工作。
+- 修正：停止其中一條 lane，改為序列執行；檔案合併後再開第二條。
+- 預防：
+  1. **並行的判準只有一個：檔案所有權與 Issue 邊界**。在宣告雙 Terra 之前，對每一條 lane 實際列出 `git diff --name-only` 與所有依賴的 supabase migration 編號。
+  2. **計算交集並寫下來**。交集非空就一律不是雙 Terra 候選，這是可機械檢查的。
+  3. **同一個 Issue 下的工作不得並行**，除非已正式分割成子 Issue。primary Issue 相同時，後續動作必須等待前置方完成。
+  4. 功能上「聽起來是不是兩件事」不構成並行資格——要證明的是**可觀察的工作邊界**，不是功能描述。
+- 驗證：改為序列執行後，確認第一條完成合併、第二條的 diff 與第一條無重疊、分別通過 integration；merge 與上線時只有一個時間點。
+- 狀態：已防止
+
+### PB-046 — 後置斷言只檢查本檔新增的欄位，不檢查所依賴的前提
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1（但涉及 canonical migration 與環境漂移）
+- Issue／PR／CI：Issue #41（payment state 模型）；PR #432；`supabase/migrations/0108_issue_41_payment_state_model.sql`；TEST 環境漂移排查
+- 分類：Migration
+- 事件：`0108` 整支都在替 `public.tour_payment_status` enum 補 `PARTIAL`、`REFUND_PENDING` 兩個 label，並加上一整組後置斷言檢查新增欄位的型別。它依 PB-026 寫了斷言，但只檢查**本檔新增的三個欄位**的型別與 nullability，沒有檢查它所依賴的前置條件。實際上 TEST 上 `tour_orders.payment_status` 的型別是 `text`（外加一條整個 repo 反查零命中的古舊 check constraint），根本不是那個 enum。`0108` 在 TEST 上完整套用成功、零告警——它從來沒有斷言過自己所依賴的前提。
+- 證據：
+  1. **Canonical**：`git show origin/main:supabase/migrations/0087_tour_schema_foundation.sql | grep -A3 'payment_status'` → `payment_status tour_payment_status not null`（enum）
+  2. **Production**：同上，enum 正常
+  3. **TEST**：`select column_name, udt_name from information_schema.columns where table_name='tour_orders' and column_name='payment_status'` → `(payment_status, text)`
+  4. **同表其他欄**：`status` 與 `source` 也都是 enum，只有 `payment_status` 一欄被改成 text
+  5. **後置斷言發現漂移的機制**：不是靠盤點，是靠一個**沒有變綠的探針**。移除另一項漂移（孤兒 trigger）後 7 個 integration 失敗案例有 5 個轉綠，剩下一個仍紅：`expected '23514' to be '22P02'`。`22P02` = 字串不是 enum 的合法 label（正常 enum 通過），`23514` = 被 CHECK constraint 擋（非 enum 型別通過初始檢查但被老舊 constraint 擋）。拿到 `23514` 只有一種解釋：這個欄位根本不是 enum。
+- 根因：migration 的後置斷言只對**自己建的東西**負責，忽略了**依賴的前提**。一支 migration 依賴「某欄位是某型別」才能執行，就應該把那個前提寫成斷言；否則它可以在前提不成立的環境上「成功」。
+- 影響：TEST 的狀態對 `0108` 是隱形的，所有以 TEST 跑出的測試結論（payment state transition、refund logic 等）都是在一個**與 canonical 不等價的 schema** 上驗收的。若以 TEST 的「通過」宣稱「功能正確」，實際上只是證明了程式碼在錯的 schema 上不會撞到它自己的新 check——沒有證明它在正的 enum 上也會通過。
+- 同類缺口（同一本 migration）：`0107` 與 `0108` 的後置斷言都檢查型別與 nullability，**都不檢查 default**。`add column if not exists` 對已存在的欄位是 no-op，不會修 default，所以 default 的漂移同樣不會被抓到。先前 `trip_departures.min_to_depart_snapshot` 是 NOT NULL 卻沒有 default 就是這樣漏掉的。
+- 修正：
+  1. 檢查 canonical 與 TEST 的 `information_schema.columns` → payment_status 型別確實不同
+  2. 查出 TEST 上是否存在相應的舊 migration、overlay 或手工修改 → 找到 `supabase/local-migrations/historical-integration-baseline/` 有整套舊 #41 實作
+  3. 未修改 TEST（保留漂移作為診斷記錄），改用 canonical 版本的 schema 重新跑一遍，所有探針轉綠
+- 預防：
+  1. **後置斷言的檢查清單至少涵蓋三項**：(a) 本檔新增的欄位 / constraint / index / trigger / function 的型別、nullability、default；(b) 本檔依賴的既有欄位與其型別、nullability、default（「本檔會改它」或「本檔的邏輯依賴它是某個型別」都算）；(c) 型別、nullability、default 三者都要檢，缺一項就留盲點。
+  2. **對 catalog 排序前確認型別**。`pg_enum.enumlabel` 走 C collation 會改變結果，不能跟 `text` array 比；enum 值陣列排序要用集合運算而不是字串順序比對。
+  3. **新增或修改後置斷言時，至少跑一次真的資料庫**。字串比對的 unit 測試證明不了 SQL 斷言會通過。
+  4. **帶新表或新欄位的 migration，每條 check 都要問「既有資料會不會違規」**。新增 CHECK 時，新欄位的 default 幾乎必然不滿足誠實性約束，要嘛附既有資料前置 guard，要嘛明確說明為何既有資料不可能違規。
+- 驗證：
+  1. TEST 診斷已完整記錄，canonical canonical 探針全綠
+  2. 已補上「既有資料」測試案例（本檔新增的欄位必須能通過本檔新增的 check）
+  3. `0108` 的後置斷言已擴展為同時檢查 `tour_orders.payment_status` 的型別前提
+- 同類缺口補充：在排查 #43 類別 5 時發現，後置斷言（恆假）與測試斷言（恆真）中都存在「永遠失敗」或「永遠成立」的缺陷，與 PB-039 的「恆真 guard」是同一個家族：(a) 恆假例：`0108` 的 enum 後置斷言因 `pg_enum.enumlabel` 走 C collation 導致排序不同，永遠失敗；(b) 恆真例：`tests/unit/guide-action-inbox.43.test.ts` 的兩條測試斷言（集合論身分式永遠成立，型別 union 不涵蓋的值無法觸發）。共同教訓：恆真與恆假都是「看起來在守，實際上沒有」——任何斷言寫完後都要反問「如果這件事壞掉，斷言會不會轉紅」；不會就不是斷言。
+- 狀態：監看中；TEST 環境漂移的根本修正（重建 historical overlay）由 #43 的進一步整合決定
+
 ### 六問開工／Review Checklist
 
 對任何涉及狀態一致性、共享資源或外部承諾的功能，在施工與 Sol／Final Risk review 時至少問一次：
