@@ -69,10 +69,16 @@ describe('Production DB release plan #447', () => {
     expect(() => verifyProductionDbReleasePlan({ plan: forged, aliasMap: aliasMap(), readCanonicalSql })).toThrow(/PLAN_DIGEST_MISMATCH/);
   });
 
-  it('classifies authorization/backfill risk and rejects destructive v1 SQL', () => {
+  it('distinguishes additive, schema repair, authorization and backfill risk', () => {
+    expect(inferMigrationRiskTier('create table public.t(id int);')).toBe('ADDITIVE');
+    expect(inferMigrationRiskTier('alter table public.t drop constraint old_ck; alter table public.t alter column x type bigint using x::bigint;')).toBe('SCHEMA_REPAIR');
     expect(inferMigrationRiskTier('create policy p on public.t for select using (true);')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('update public.t set x=1 where id=1;')).toBe('BACKFILL');
-    expect(inferMigrationRiskTier('create table public.t(id int);')).toBe('ADDITIVE');
+  });
+
+  it('rejects destructive and mixed-specialized-risk v1 SQL instead of silently dropping one evidence class', () => {
     expect(() => inferMigrationRiskTier('drop table public.t;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
+      .toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);
   });
 });
