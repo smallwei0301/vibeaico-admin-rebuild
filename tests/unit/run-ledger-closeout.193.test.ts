@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createHistoricalRunLedgerV3,
+  closeRunLedgerV2,
   createRunLedgerV2,
   RUN_CLOSEOUT_TERMINAL_POLICY,
   runCli,
@@ -147,6 +148,49 @@ describe('Issue #193 Run closeout contract', () => {
 
     run.closeout.closedAt = '2026-09-05T02:00:01Z';
     expect(validateRunLedgerV2(run)).toContain('closeout.closedAt must equal endedAt');
+  });
+
+  it('builds an immutable closeout candidate from terminal facts', () => {
+    const source = createV4Run();
+    const candidate = closeRunLedgerV2(source, {
+      status: 'COMPLETE',
+      endedAt: ENDED_AT,
+      mainEndSha: 'c'.repeat(40),
+      openIssuesEnd: 8,
+      openPrsEnd: 1,
+      evidenceRef: 'github:issue#193',
+    });
+
+    expect(validateRunLedgerV2(candidate)).toEqual([]);
+    expect(candidate.closeout).toMatchObject({ state: 'CLOSED', closedAt: ENDED_AT, evidenceRef: 'github:issue#193' });
+    expect(source.status).toBe('IN_PROGRESS');
+    expect(source.closeout.state).toBe('OPEN');
+    expect(source.main.endSha).toBeNull();
+  });
+
+  it('writes a closeout candidate to a new path without overwriting the open ledger', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'run-closeout-'));
+    const input = path.join(directory, 'open.json');
+    const output = path.join(directory, 'closed.json');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      fs.writeFileSync(input, `${JSON.stringify(createV4Run(), null, 2)}\n`, 'utf8');
+      runCli([
+        'closeout', input,
+        '--status', 'COMPLETE',
+        '--ended-at', ENDED_AT,
+        '--main-end-sha', 'd'.repeat(40),
+        '--open-issues-end', '8',
+        '--open-prs-end', '1',
+        '--evidence-ref', 'github:issue#193',
+        '--output', output,
+      ]);
+      expect(validateRunLedgerV2(JSON.parse(fs.readFileSync(output, 'utf8')))).toEqual([]);
+      expect(JSON.parse(fs.readFileSync(input, 'utf8')).closeout.state).toBe('OPEN');
+    } finally {
+      log.mockRestore();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it.each([

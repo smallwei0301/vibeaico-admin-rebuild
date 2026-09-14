@@ -6,6 +6,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { buildMigrationDependencyPlan, ensureMigrationDependencyPlanCoverage, isMigrationLedgerVersion, normalizeSchemaProofControls } from './schema-truth-proof-policy.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const PROJECT_REF = /^[a-z0-9]{6,32}$/;
@@ -81,7 +82,7 @@ function normalizeLedger(value, label) {
   const latestVersion = value.latestVersion === null ? null : String(value.latestVersion).trim();
   const latestName = value.latestName === null ? null : String(value.latestName).trim();
   if (count === 0 && (latestVersion !== null || latestName !== null)) fail('INVALID_LEDGER_STATE', `${label} count=0 requires null latest migration`);
-  if (count > 0 && (!/^\d{8,20}$/.test(latestVersion ?? '') || !/^[A-Za-z0-9._-]{1,160}$/.test(latestName ?? ''))) {
+  if (count > 0 && (!isMigrationLedgerVersion(latestVersion ?? '') || !/^[A-Za-z0-9._-]{1,160}$/.test(latestName ?? ''))) {
     fail('INVALID_LEDGER_STATE', `${label} PRESENT requires latestVersion and latestName`);
   }
   return {
@@ -201,7 +202,24 @@ function compareLedger(test, production) {
     ? 'MATCH' : 'ENVIRONMENT_DIFF';
 }
 
-export function buildSchemaTruthReport({ testSnapshot, productionSnapshot, migrationManifest, currentMainSha }) {
+/**
+ * @param {{
+ *   testSnapshot: object,
+ *   productionSnapshot: object,
+ *   migrationManifest: object,
+ *   migrationDependencyPlan?: object | null,
+ *   proofControls?: object | null,
+ *   currentMainSha: string,
+ * }} input
+ */
+export function buildSchemaTruthReport({
+  testSnapshot,
+  productionSnapshot,
+  migrationManifest,
+  migrationDependencyPlan = null,
+  proofControls = null,
+  currentMainSha,
+}) {
   const mainSha = String(currentMainSha ?? '').trim().toLowerCase();
   if (!SHA.test(mainSha)) fail('INVALID_MAIN_SHA', 'currentMainSha must be a 40-character SHA');
   const test = normalizeSnapshot(testSnapshot, 'TEST', mainSha);
@@ -215,12 +233,20 @@ export function buildSchemaTruthReport({ testSnapshot, productionSnapshot, migra
     ...test.observations.map((item) => ({ environment: 'TEST', ...item })),
     ...production.observations.map((item) => ({ environment: 'PRODUCTION', ...item })),
   ].sort((left, right) => stableStringify(left).localeCompare(stableStringify(right)));
+  const replayPlan = migrationDependencyPlan === null
+    ? { status: 'NOT_RUN', reason: 'NO_MIGRATION_DEPENDENCY_PLAN' }
+    : ensureMigrationDependencyPlanCoverage(buildMigrationDependencyPlan(migrationDependencyPlan), migrationManifest);
+  const proof = proofControls === null
+    ? { status: 'NOT_RUN', reason: 'NO_PROOF_CONTROLS_SUPPLIED' }
+    : normalizeSchemaProofControls(proofControls);
   const incomplete = ledgerStatus === 'LEDGER_UNAVAILABLE';
   const differs = ledgerStatus !== 'MATCH' || Object.values(objectComparison).includes('ENVIRONMENT_DIFF') || explicitOutOfLedger.length > 0;
   const core = {
     schemaVersion: 1,
     observedMainSha: mainSha,
     repoMigrations: migrationManifest,
+    migrationDependencyPlan: replayPlan,
+    proofControls: proof,
     environments: { TEST: test, PRODUCTION: production },
     comparison: {
       overall: incomplete ? 'EVIDENCE_INCOMPLETE' : differs ? 'DRIFT_OBSERVED' : 'MATCH',
@@ -254,7 +280,10 @@ export function renderMarkdown(report) {
     const value = report.environments[environment].migrationLedger;
     return `| ${environment} | ${value.state} | ${value.count ?? 'null'} | ${value.latestVersion ?? 'null'} | ${value.latestName ?? 'null'} |`;
   };
-  return `# Schema Truth Report\n\n- observed main: \`${report.observedMainSha}\`\n- report digest: \`${report.reportDigest}\`\n- overall: **${report.comparison.overall}**\n- repo migrations: ${report.repoMigrations.count} files / \`${report.repoMigrations.manifestDigest}\`\n\n## Migration ledger\n\n| Environment | State | Count | Latest version | Latest name |\n|---|---:|---:|---|---|\n${ledger('TEST')}\n${ledger('PRODUCTION')}\n\nComparison: **${report.comparison.migrationLedger}**\n\n## Public schema fingerprints\n\n| Kind | TEST count | Production count | Status |\n|---|---:|---:|---|\n${rows}\n\n## Explicit out-of-ledger evidence\n\n${observations}\n\n## Safety\n\nThis report is read-only evidence. It is **not** authorization to apply a Production migration, DDL, DML, promote, rollback, or force-push. Fingerprint differences identify a truth gap; they do not prove which environment is correct.\n`;
+  const replayPlan = report.migrationDependencyPlan ?? { status: 'NOT_RUN', reason: 'NO_MIGRATION_DEPENDENCY_PLAN' };
+  const replayOrder = replayPlan.status === 'PASS' ? replayPlan.replayOrder.join(' → ') : 'not supplied';
+  const proofStatus = report.proofControls?.status ?? 'NOT_RUN';
+  return `# Schema Truth Report\n\n- observed main: \`${report.observedMainSha}\`\n- report digest: \`${report.reportDigest}\`\n- overall: **${report.comparison.overall}**\n- repo migrations: ${report.repoMigrations.count} files / \`${report.repoMigrations.manifestDigest}\`\n\n## Migration ledger\n\n| Environment | State | Count | Latest version | Latest name |\n|---|---:|---:|---|---|\n${ledger('TEST')}\n${ledger('PRODUCTION')}\n\nComparison: **${report.comparison.migrationLedger}**\n\n## Migration replay dependency plan\n\n- status: **${replayPlan.status}**\n- replay order: ${replayOrder}\n\n## Schema proof controls\n\n- status: **${proofStatus}**\n\n## Public schema fingerprints\n\n| Kind | TEST count | Production count | Status |\n|---|---:|---:|---|\n${rows}\n\n## Explicit out-of-ledger evidence\n\n${observations}\n\n## Safety\n\nThis report is read-only evidence. It is **not** authorization to apply a Production migration, DDL, DML, promote, rollback, or force-push. Fingerprint differences identify a truth gap; they do not prove which environment is correct.\n`;
 }
 
 function gitHead(repoRoot) {
@@ -284,7 +313,7 @@ function writeAtomic(target, content) {
 
 export function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (args.command !== 'report') fail('USAGE', 'schema-truth-report.mjs report --test-snapshot <json> --production-snapshot <json> --repo-root <path> --current-main-sha <sha> --json-out <json> --markdown-out <md>');
+  if (args.command !== 'report') fail('USAGE', 'schema-truth-report.mjs report --test-snapshot <json> --production-snapshot <json> --repo-root <path> --current-main-sha <sha> --json-out <json> --markdown-out <md> [--migration-dependency-plan <json>] [--proof-controls <json>]');
   for (const key of ['test-snapshot', 'production-snapshot', 'repo-root', 'current-main-sha', 'json-out', 'markdown-out']) {
     if (!args[key]) fail('MISSING_ARGUMENT', `--${key} is required`);
   }
@@ -296,6 +325,12 @@ export function runCli(argv = process.argv.slice(2)) {
     testSnapshot: JSON.parse(fs.readFileSync(path.resolve(args['test-snapshot']), 'utf8')),
     productionSnapshot: JSON.parse(fs.readFileSync(path.resolve(args['production-snapshot']), 'utf8')),
     migrationManifest: readMigrationManifest(repoRoot),
+    migrationDependencyPlan: args['migration-dependency-plan']
+      ? JSON.parse(fs.readFileSync(path.resolve(args['migration-dependency-plan']), 'utf8'))
+      : null,
+    proofControls: args['proof-controls']
+      ? JSON.parse(fs.readFileSync(path.resolve(args['proof-controls']), 'utf8'))
+      : null,
     currentMainSha,
   });
   const json = `${JSON.stringify(report, null, 2)}\n`;

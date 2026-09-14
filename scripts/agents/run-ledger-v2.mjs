@@ -162,6 +162,43 @@ function validateCloseoutContract(run) {
   return errors;
 }
 
+/**
+ * Build a terminal v4 candidate from facts observed by the caller.
+ *
+ * The helper is deliberately immutable and does not contact GitHub or write a
+ * ledger. It makes the closeout step quick without allowing a session to turn
+ * an open Run into a completed Run from a prose claim alone.
+ */
+export function closeRunLedgerV2(run, {
+  status,
+  endedAt,
+  mainEndSha,
+  openIssuesEnd,
+  openPrsEnd,
+  evidenceRef,
+} = {}) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) throw new Error('CLOSEOUT_INPUT_INVALID: run must be an object');
+  if (run.deliveryTruthVersion !== 4) throw new Error('CLOSEOUT_REQUIRES_V4: only operational Delivery Truth v4 Runs may be closed by this helper');
+  const inputErrors = validateRunLedgerV2(run);
+  if (inputErrors.length) throw new Error(`CLOSEOUT_INPUT_INVALID:\n${inputErrors.map((item) => `- ${item}`).join('\n')}`);
+  if (run.closeout.state === 'CLOSED') throw new Error('CLOSEOUT_ALREADY_CLOSED: refusing to rewrite a closed Run');
+  if (!FINAL_RUN_STATUS.has(status)) throw new Error('CLOSEOUT_STATUS_INVALID: status must be BASELINE, COMPLETE, or OWNER_BLOCKED');
+
+  const candidate = structuredClone(run);
+  candidate.status = status;
+  candidate.endedAt = endedAt;
+  candidate.main.endSha = String(mainEndSha ?? '').trim().toLowerCase();
+  candidate.inventory.openIssuesEnd = openIssuesEnd;
+  candidate.inventory.openPrsEnd = openPrsEnd;
+  candidate.closeout.state = 'CLOSED';
+  candidate.closeout.closedAt = endedAt;
+  candidate.closeout.evidenceRef = evidenceRef;
+
+  const errors = validateRunLedgerV2(candidate);
+  if (errors.length) throw new Error(`CLOSEOUT_CANDIDATE_INVALID:\n${errors.map((item) => `- ${item}`).join('\n')}`);
+  return candidate;
+}
+
 export function validateRunLedgerV2(run) {
   if (!run || typeof run !== "object" || Array.isArray(run)) return ["run must be an object"];
   const errors = [];
@@ -242,8 +279,37 @@ export function runCli(argv = process.argv.slice(2)) {
     console.log(`VALID_V2 ${run.runId}`);
     return run;
   }
+  if (input.command === "closeout") {
+    const file = input.positional[0];
+    if (!file) throw new Error("ledger path is required");
+    if (typeof input.output !== "string" || !input.output.trim()) throw new Error("--output is required for closeout candidates");
+    if (path.resolve(file) === path.resolve(input.output)) throw new Error("refusing to overwrite the open ledger; choose a different --output");
+    for (const key of ["status", "ended-at", "main-end-sha", "open-issues-end", "open-prs-end", "evidence-ref"]) {
+      if (input[key] === undefined || input[key] === true) throw new Error(`--${key} is required`);
+    }
+    const parseCount = (value, key) => {
+      if (!/^\d+$/.test(String(value))) throw new Error(`--${key} must be a non-negative integer`);
+      const count = Number(value);
+      if (!Number.isSafeInteger(count)) throw new Error(`--${key} must be a safe non-negative integer`);
+      return count;
+    };
+    const run = JSON.parse(fs.readFileSync(file, "utf8"));
+    const candidate = closeRunLedgerV2(run, {
+      status: String(input.status).trim().toUpperCase(),
+      endedAt: input["ended-at"],
+      mainEndSha: input["main-end-sha"],
+      openIssuesEnd: parseCount(input["open-issues-end"], "open-issues-end"),
+      openPrsEnd: parseCount(input["open-prs-end"], "open-prs-end"),
+      evidenceRef: input["evidence-ref"],
+    });
+    if (fs.existsSync(input.output)) throw new Error(`refusing to overwrite existing closeout candidate: ${input.output}`);
+    fs.mkdirSync(path.dirname(path.resolve(input.output)), { recursive: true });
+    fs.writeFileSync(input.output, `${JSON.stringify(candidate, null, 2)}\n`, "utf8");
+    console.log(input.output);
+    return candidate;
+  }
   throw new Error(
-    "Usage: run-ledger-v2.mjs init --run-id YYYY-MM-DD-name --closeout-owner PRODUCT_MAIN_SESSION|GOVERNANCE_MAIN_SESSION|OWNER | validate <file>",
+    "Usage: run-ledger-v2.mjs init --run-id YYYY-MM-DD-name --closeout-owner PRODUCT_MAIN_SESSION|GOVERNANCE_MAIN_SESSION|OWNER | validate <file> | closeout <file> --status BASELINE|COMPLETE|OWNER_BLOCKED --ended-at <ISO UTC> --main-end-sha <sha> --open-issues-end <n> --open-prs-end <n> --evidence-ref <ref> --output <new-file>",
   );
 }
 
