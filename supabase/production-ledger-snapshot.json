@@ -3,10 +3,10 @@
   "issue": 396,
   "environment": "PRODUCTION",
   "projectRef": "egehnijjpgijmccagxac",
-  "capturedAt": "2026-09-14T03:23:04Z",
-  "source": "正式庫 supabase_migrations.schema_migrations 的 55 筆 ledger row 名稱（依 version 由小到大排序）。本次於 2026-09-14T03:23:04Z 由 Owner 具名授權的 #413／PR #420 套用作業後，直接自正式庫即時擷取（single query，select json_agg(name order by version)），不是人工謄寫或沿用上一版再手動補列。新增的 0106 row 為 20260914032304 / 0106_deduplicate_redundant_indexes；本檔不含即時查詢，供 scripts/ci/verify-ledger-alias-map.mjs 做 source-only 比對用，該 script 不得連線資料庫。",
+  "capturedAt": "2026-09-14T09:47:36Z",
+  "source": "正式庫 supabase_migrations.schema_migrations 的 57 筆 ledger row 名稱（依 version 由小到大排序）。本次於 2026-09-14T09:47:36Z 由 Owner 具名授權的 0107 套用作業後，直接自正式庫即時擷取（single query，select json_agg(name order by version)），不是人工謄寫或沿用上一版再手動補列。新增的 row 為 20260914094736 / 0107_issue_41_formation_state_model（前一次是 20260914082715 / 0108_issue_41_payment_state_model）；本檔不含即時查詢，供 scripts/ci/verify-ledger-alias-map.mjs 做 source-only 比對用，該 script 不得連線資料庫。",
   "note": "此快照只記錄 provider ledger 的 name 欄位，依 version 由小到大排序；不含 version 時間戳字串或其他資料庫欄位。這是一份 point-in-time 快照，checker 無法自己更新它——正式庫每次套用 migration 之後，都必須由人重新擷取本檔並同步更新 supabase/ledger-alias-map.json 的分類，否則快照會無聲過期（見 docs/SCHEMA-TRUTH-GOVERNANCE.md）。0082_reconcile_booking_addon_notify_fields 與 0082_staff_display_fields 是兩筆不同的 row，共用 0082 這個 4 碼前綴——詳見 supabase/ledger-alias-map.json 對 0083_staff_display_fields 的說明。 本次 0106 套用後重新擷取，並以 postflight 確認 Production 三組重複索引已移除、保留索引仍 valid/ready/live。",
-  "rowCount": 55,
+  "rowCount": 57,
   "ledgerRowNames": [
     "0001_extensions_and_functions",
     "0002_enums",
@@ -62,6 +62,8 @@
     "0071_welcome_card_image_retirement_acl",
     "0072_welcome_card_upload_acl",
     "0073_restore_keyword_reply_storage_write",
-    "0106_deduplicate_redundant_indexes"
+    "0106_deduplicate_redundant_indexes",
+    "0108_issue_41_payment_state_model",
+    "0107_issue_41_formation_state_model"
   ]
 }
