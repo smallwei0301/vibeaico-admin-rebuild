@@ -215,6 +215,66 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-cat34-audit",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "role": "#43 第 3／4 類的 early Sol diff audit（claude-opus-5）。第一輪判定 FIX_REQUIRED——build 端為了不越界把兩類做成獨立端點，違反 #43 §4「單一聚合端點、不可把不同資料表全抓到前端後自行拼湊」，且會讓 §2 的三段排序在兩份清單各自排序後失效。擴大其 FILE_OWNERSHIP 至 dashboard 與 i18n 後重做。第二輪覆核在獨立 git worktree 重跑（不採信回報）：tsc 0 errors、unit 2213 passed，並實查單一端點、tenant 條件、三處窮舉、無硬編中文、seats_booked 真實存在於 0066:242。依 AGENT-EXECUTION §7.1，early Sol 不得 CLOSE_APPROVED，final Sol 未執行。",
+        "count": 2,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-cat34-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #440（ASTRA_RISK=TENANT_AUTH_BOUNDARY）的 Final Risk 覆核，委派 claude-fable-5-1。重點：巢狀 select（trips(title)、trip_plans(name)）是否繞過租戶界線、是否另建第二套成團狀態、窮舉是否真窮舉、差額人數的 NULL 安全性、混合五種 kind 後排序是否仍全序且穩定。Final Risk 不屬三 tier，ledger 值域無法表達，記 unknown 並在此註明實際模型。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-41-s4-findings-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "依 Final Risk 的 BLOCK findings 修正 0108（claude-sonnet-5）：M1 REFUNDED 誠實 CHECK、M2 UNPAID 誠實 CHECK 加既有資料前置 guard、I1 斷言補驗 attnotnull、斷言 3 由單一 like 改為 bool_and 多片段（實測掏空版本現在會落網）、移除死碼、S1 修正 traveler-risk-summary 的過時契約與 REFUND_PENDING 誤分類。它真的起了 PostgreSQL 16 做 9 次 INSERT 探測與突變測試。**audit 覆核後判定 FIX_REQUIRED**：M1 缺既有資料前置 guard，而 refunded_amount 是本檔新增欄位（default 0），既有 REFUNDED 列會讓 add constraint 以 23514 失敗——它在自建的空最小 schema 上測不出來（PB-043）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "luna-metrics-r01-s09",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "近 3～4 份 Run scorecard 的建議落實盤點（claude-haiku-4-5）。回報採用。最大未處理項是 PB-036：ledger 只記 tier 名稱，無法從帳本驗證 routing 違規，因此 Opus 施工被記成合規。它也正確指出 scorecard schema 沒有獨立的建議欄位，建議散在 notes 裡。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "luna-truth-r01-s10",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "#43 第 1／2／6／7／8 類在 origin/main 的現況盤點（claude-haiku-4-5）。回報採用：第 1／2／6 類已實作（BOOKING_REQUEST／BOOKING_PAYMENT／DEPARTURE），第 7 類未建但 trip_departure_staff（0092）canonical 存在，第 8 類**被卡住**——notification_outbox 只存在於 overlay。下一個最便宜的真切片是第 7 類。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -231,7 +291,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 7,
+    "fullCiRuns": 9,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -247,13 +307,13 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 9,
-    "lunaAccepted": 9,
+    "lunaTasks": 11,
+    "lunaAccepted": 11,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 2,
+    "solTouches": 3,
     "solIssues": 1
   },
   "auditability": {
