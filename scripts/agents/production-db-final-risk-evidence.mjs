@@ -19,7 +19,7 @@ function required(value, label) {
 export function buildProductionDbFinalRiskEvidence({
   body = '',
   changedFiles = [],
-  context = {},
+  context = /** @type {any} */ ({}),
   reviews = [],
   releasePacket,
 } = {}, policy = routing) {
