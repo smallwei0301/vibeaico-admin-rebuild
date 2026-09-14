@@ -270,7 +270,17 @@ function snapshotSummary(value) {
   };
 }
 function itemsByKey(items) { return new Map(items.map((item) => [item.key, item.fingerprint])); }
-function compareEnvironment({ expected, actual, environment, exceptions, now }) {
+function ledgerItems(snapshot) {
+  return snapshot.migrationLedger.identities.map((item) => ({ key: `${item.version}/${item.name}`, fingerprint: sha256(stableStringify(item)) }));
+}
+function ledgerRelation(expected, actual) {
+  const expectedKeys = new Set(ledgerItems(expected).map((item) => item.key));
+  const actualKeys = new Set(ledgerItems(actual).map((item) => item.key));
+  const missing = [...expectedKeys].filter((key) => !actualKeys.has(key));
+  const extra = [...actualKeys].filter((key) => !expectedKeys.has(key));
+  return { exact: missing.length === 0 && extra.length === 0, strictSubset: missing.length > 0 && extra.length === 0 };
+}
+function compareEnvironment({ expected, actual, environment, exceptions, now, pendingClassification = null }) {
   const differences = [];
   const usedExceptions = new Set();
   const exceptionFor = (surface, objectKey, expectedFingerprint, observedFingerprint) => exceptions.findIndex((item) =>
@@ -283,54 +293,86 @@ function compareEnvironment({ expected, actual, environment, exceptions, now }) 
       const expectedFingerprint = left.get(objectKey) ?? null;
       const observedFingerprint = right.get(objectKey) ?? null;
       if (expectedFingerprint === observedFingerprint) continue;
+      const automaticClassification = expectedFingerprint !== null && observedFingerprint === null ? pendingClassification : null;
       const index = exceptionFor(surface, objectKey, expectedFingerprint, observedFingerprint);
       const exception = index >= 0 ? exceptions[index] : null;
-      if (exception && Date.parse(exception.expiresAt) >= now &&
-          (exception.classification === 'INTENTIONAL_DIFFERENCE' || exception.classification === `EXPECTED_PENDING_${environment}`)) usedExceptions.add(index);
+      const exceptionIsActive = exception && Date.parse(exception.expiresAt) >= now &&
+        (exception.classification === 'INTENTIONAL_DIFFERENCE' ||
+          (automaticClassification === `EXPECTED_PENDING_${environment}` && exception.classification === automaticClassification));
+      if (exceptionIsActive) usedExceptions.add(index);
       differences.push({ environment, surface, objectKey, expectedFingerprint, observedFingerprint,
-        exception: exception && usedExceptions.has(index) ? { classification: exception.classification, issue: exception.issue, expiresAt: exception.expiresAt } : null });
+        classification: automaticClassification ?? (exceptionIsActive ? exception.classification : null),
+        exception: exceptionIsActive ? { classification: exception.classification, issue: exception.issue, expiresAt: exception.expiresAt } : null });
     }
   };
   for (const surface of SURFACES) compareItems(surface, expected.surfaces[surface].items, actual.surfaces[surface].items);
   compareItems('acl', expected.acl.items, actual.acl.items);
-  compareItems('migrationLedger', expected.migrationLedger.identities.map((item) => ({ key: `${item.version}/${item.name}`, fingerprint: sha256(stableStringify(item)) })), actual.migrationLedger.identities.map((item) => ({ key: `${item.version}/${item.name}`, fingerprint: sha256(stableStringify(item)) })));
+  compareItems('migrationLedger', ledgerItems(expected), ledgerItems(actual));
   const relevant = exceptions.map((item, index) => ({ item, index })).filter(({ item }) => item.environment === environment);
   const expired = relevant.filter(({ item }) => Date.parse(item.expiresAt) < now).map(({ index }) => index);
   const unmatched = relevant.filter(({ index }) => !usedExceptions.has(index) && !expired.includes(index)).map(({ index }) => index);
-  const unresolved = differences.filter((item) => !item.exception);
+  const unresolved = differences.filter((item) => !item.classification);
   let status = 'MATCH';
   if (expired.length || unmatched.length || unresolved.length) status = 'DRIFT_BLOCKED';
   else if (differences.length) {
-    const classes = new Set(differences.map((item) => item.exception.classification));
+    const classes = new Set(differences.map((item) => item.classification));
     status = classes.size === 1 ? [...classes][0] : 'INTENTIONAL_DIFFERENCE';
   }
   return { status, differences, usedExceptions, expired, unmatched };
 }
-export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now() }) {
+function evidenceAgeStatus(snapshot, now, maxAgeMs) {
+  if (snapshot.status !== 'CAPTURED') return null;
+  const observedAt = Date.parse(snapshot.observedAt);
+  if (!Number.isFinite(observedAt) || observedAt > now + 5 * 60 * 1000 || now - observedAt > maxAgeMs) return 'EVIDENCE_STALE';
+  return null;
+}
+function evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason, affectedEnvironments = [] }) {
+  const affected = new Set(affectedEnvironments);
+  const reportedEnvironments = Object.fromEntries(Object.entries(environments).map(([label, summary]) => [label,
+    affected.has(label) ? { ...summary, status: 'EVIDENCE_UNAVAILABLE', reason } : summary]));
+  return { schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status: 'EVIDENCE_UNAVAILABLE', differenceCount: 0,
+    differences: [], environments: reportedEnvironments,
+    evidence: { status: 'EVIDENCE_UNAVAILABLE', reason, affectedEnvironments: [...affected] },
+    exceptionSummary: { provided: normalizedExceptions.length, matched: 0, expired: 0, unmatched: 0 },
+    safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } };
+}
+export function compareObserverSnapshots({ expectedSnapshot, testSnapshot, productionSnapshot, currentMainSha, exceptions = [], now = Date.now(), maxEvidenceAgeMinutes = 60 }) {
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const compareTime = typeof now === 'number' ? now : Date.parse(now);
   if (!Number.isFinite(compareTime)) fail('INVALID_COMPARE_TIME', 'comparison time must be finite');
+  if (!Number.isInteger(maxEvidenceAgeMinutes) || maxEvidenceAgeMinutes < 1 || maxEvidenceAgeMinutes > 24 * 60) fail('INVALID_EVIDENCE_AGE', 'maxEvidenceAgeMinutes must be an integer between 1 and 1440');
   const expected = normalizeObserverSnapshot(expectedSnapshot, mainSha);
   const test = normalizeObserverSnapshot(testSnapshot, mainSha);
   const production = normalizeObserverSnapshot(productionSnapshot, mainSha);
   const normalizedExceptions = normalizeExceptions(exceptions);
   const environments = { expected: snapshotSummary(expected), TEST: snapshotSummary(test), PRODUCTION: snapshotSummary(production) };
   if ([expected, test, production].some((snapshot) => snapshot.status === 'EVIDENCE_UNAVAILABLE')) {
-    return { schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status: 'EVIDENCE_UNAVAILABLE', differenceCount: 0,
-      differences: [], environments, exceptionSummary: { provided: normalizedExceptions.length, matched: 0, expired: 0, unmatched: 0 },
-      safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } };
+    return evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason: 'EVIDENCE_UNAVAILABLE',
+      affectedEnvironments: [['expected', expected], ['TEST', test], ['PRODUCTION', production]]
+        .filter(([, snapshot]) => snapshot.status === 'EVIDENCE_UNAVAILABLE').map(([label]) => label) });
   }
+  const maxAgeMs = maxEvidenceAgeMinutes * 60 * 1000;
+  const staleEnvironments = [['expected', expected], ['TEST', test], ['PRODUCTION', production]]
+    .filter(([, snapshot]) => evidenceAgeStatus(snapshot, compareTime, maxAgeMs)).map(([label]) => label);
+  if (staleEnvironments.length) return evidenceUnavailableReport({ mainSha, environments, normalizedExceptions, reason: 'EVIDENCE_STALE', affectedEnvironments: staleEnvironments });
   if (expected.queryDigest.value !== test.queryDigest.value || expected.queryDigest.value !== production.queryDigest.value) fail('QUERY_CONTRACT_MISMATCH', 'snapshot query contracts differ');
-  const testResult = compareEnvironment({ expected, actual: test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime });
-  const productionResult = compareEnvironment({ expected, actual: production, environment: 'PRODUCTION', exceptions: normalizedExceptions, now: compareTime });
+  const testLedger = ledgerRelation(expected, test);
+  const productionLedger = ledgerRelation(expected, production);
+  const testResult = compareEnvironment({ expected, actual: test, environment: 'TEST', exceptions: normalizedExceptions, now: compareTime,
+    pendingClassification: testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null });
+  const productionPendingClassification = productionLedger.strictSubset
+    ? testLedger.exact ? 'EXPECTED_PENDING_PRODUCTION' : testLedger.strictSubset ? 'EXPECTED_PENDING_TEST' : null
+    : null;
+  const productionResult = compareEnvironment({ expected, actual: production, environment: 'PRODUCTION', exceptions: normalizedExceptions, now: compareTime,
+    pendingClassification: productionPendingClassification });
   const allDifferences = [...testResult.differences, ...productionResult.differences];
   const blocked = testResult.status === 'DRIFT_BLOCKED' || productionResult.status === 'DRIFT_BLOCKED';
   const statuses = [testResult.status, productionResult.status].filter((status) => status !== 'MATCH');
   const status = blocked ? 'DRIFT_BLOCKED' : statuses.length === 0 ? 'MATCH' : new Set(statuses).size === 1 ? statuses[0] : 'INTENTIONAL_DIFFERENCE';
   return {
     schemaVersion: DRIFT_WATCH_SCHEMA_VERSION, observedMainSha: mainSha, status, differenceCount: allDifferences.length,
-    differences: allDifferences, environments,
-    exceptionSummary: { provided: normalizedExceptions.length, matched: normalizedExceptions.length - new Set([...testResult.expired, ...testResult.unmatched, ...productionResult.expired, ...productionResult.unmatched]).size,
+    differences: allDifferences, environments, environmentStatuses: { TEST: testResult.status, PRODUCTION: productionResult.status },
+    exceptionSummary: { provided: normalizedExceptions.length, matched: new Set([...testResult.usedExceptions, ...productionResult.usedExceptions]).size,
       expired: new Set([...testResult.expired, ...productionResult.expired]).size, unmatched: new Set([...testResult.unmatched, ...productionResult.unmatched]).size },
     safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false },
   };
@@ -391,7 +433,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       const result = buildObserverSnapshotFromRaw({ environment: input.environment, projectRef: input['project-ref'], observedAt: input['observed-at'] ?? new Date().toISOString(), observedMainSha: input['current-main-sha'], evidenceRef: input['evidence-ref'] ?? 'local:fresh-install', raw: readJson(input['raw-json']) });
       writeJson(input['json-out'], result);
     } else if (input.command === 'compare') {
-      const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [] });
+      const result = compareObserverSnapshots({ expectedSnapshot: readJson(input['expected-snapshot']), testSnapshot: readJson(input['test-snapshot']), productionSnapshot: readJson(input['production-snapshot']), currentMainSha: input['current-main-sha'], exceptions: input.exceptions ? readJson(input.exceptions).exceptions : [], maxEvidenceAgeMinutes: input['max-evidence-age-minutes'] ? Number(input['max-evidence-age-minutes']) : undefined });
       writeJson(input['json-out'], result);
       if (result.status === 'DRIFT_BLOCKED' || result.status === 'EVIDENCE_UNAVAILABLE') process.exitCode = 2;
     } else fail('INVALID_ARGUMENT', 'command must be capture, normalize, or compare');

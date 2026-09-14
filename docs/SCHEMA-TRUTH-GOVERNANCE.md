@@ -191,6 +191,12 @@ Only object keys, counts, migration identities, and SHA-256 fingerprints are per
 definitions exist only as ephemeral runner-temp input for normalization; they are not included in reports,
 repository files, or uploaded artifacts. A stale main SHA, invalid response, missing/empty ledger, missing
 permission, HTTP error, or wrong query contract is `EVIDENCE_UNAVAILABLE`, never `MATCH`.
+The comparison enforces a 60-minute evidence-age window (configurable only within 1–1440 minutes); stale
+or future captures become `EVIDENCE_UNAVAILABLE`. When TEST and Production have different approved states,
+the report retains both in `environmentStatuses` instead of flattening them into an approval.
+Automatic pending-rollout classification is limited to an exact ledger subset of current main: definition
+mismatches, extra or aliased ledger identities, and missing objects with an otherwise equal ledger remain
+`DRIFT_BLOCKED` unless covered by an exact intentional exception.
 
 The live observer uses `docs/schema-truth/schema-drift-exceptions.json`, a separate contract because each
 entry binds the environment plus both expected and observed fingerprints. It does not replace #431's
@@ -203,7 +209,7 @@ accepted shared-TEST baseline.
 
 The workflow is deliberately `workflow_dispatch` only. Before activation, provision a separate
 least-privilege `SCHEMA_OBSERVER_TOKEN`, run local fresh replay plus both remote captures once, inspect
-response shape and cleanup, classify each difference, and review the exceptions. Do not fall back to
+response shape and cleanup, inspect the sanitized uploaded report, classify each difference, and review the exceptions. Do not fall back to
 `SUPABASE_ACCESS_TOKEN` or grant Production access to make the ledger readable. Scheduling at UTC 01:17 and
 triggering after main migration-source changes are follow-up activation work.
 

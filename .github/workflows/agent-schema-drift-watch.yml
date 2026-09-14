@@ -64,7 +64,22 @@ jobs:
       - name: Compare exact object fingerprints and fail closed
         run: |
           node scripts/agents/schema-drift-watch.mjs compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
-          node --input-type=module -e "import fs from 'node:fs'; const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/report.json')); console.log(JSON.stringify({status:r.status,differenceCount:r.differenceCount,fullEnvironmentParityProven:r.safety.fullEnvironmentParityProven,authorizesDatabaseWrite:r.safety.authorizesDatabaseWrite}));"
+      - name: Emit sanitized drift report summary
+        if: ${{ always() }}
+        run: |
+          if test -s "$RUNNER_TEMP/report.json"; then
+            node --input-type=module -e "import fs from 'node:fs'; const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+'/report.json')); console.log(JSON.stringify({status:r.status,differenceCount:r.differenceCount,environmentStatuses:r.environmentStatuses ?? null,fullEnvironmentParityProven:r.safety.fullEnvironmentParityProven,authorizesDatabaseWrite:r.safety.authorizesDatabaseWrite}));"
+          else
+            echo '{"status":"EVIDENCE_UNAVAILABLE","reason":"REPORT_NOT_WRITTEN"}'
+          fi
+      - name: Upload sanitized drift report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-drift-report-${{ github.run_id }}
+          path: ${{ runner.temp }}/report.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Destroy disposable local database
         if: ${{ always() }}
         run: test ! -d "$RUNNER_TEMP/schema-bootstrap" || (cd "$RUNNER_TEMP/schema-bootstrap" && supabase stop --no-backup)
