@@ -419,6 +419,12 @@ export const tripsPage = {
     deleted: '行程已刪除',
     archived: '行程已封存',
     duplicated: '已複製行程',
+    /**
+     * issue #8：「複製」按鈕原本只改前端記憶體，重整就消失。接上 `createTrip` 之後
+     * 新行程需要一個看得出來是複本的標題後綴，不能沿用來源標題（會撞上店家自己
+     * 分辨不出哪個是原本）。
+     */
+    duplicateTitleSuffix: '（複本）',
     published: '行程已發布到商店頁',
     unpublished: '行程已從商店頁下架',
     midaoRequested: '已送出 Midao 上架申請',
