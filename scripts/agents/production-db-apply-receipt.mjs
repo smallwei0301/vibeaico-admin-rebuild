@@ -56,6 +56,16 @@ function assertShape(receipt) {
   if (digestOf(core(receipt)) !== receipt.receiptDigest) fail('APPLY_RECEIPT_DIGEST_MISMATCH', 'receipt was modified after issuance');
 }
 
+function assertIdentityAndFreshness(receipt, plan, projectRef, now) {
+  if (!plan || receipt.releaseId !== plan.releaseId || receipt.mainSha !== plan.mainSha || receipt.planDigest !== plan.planDigest) {
+    fail('APPLY_RECEIPT_PLAN_MISMATCH', 'receipt does not identify the exact release plan');
+  }
+  if (receipt.projectRef !== projectRef) fail('APPLY_RECEIPT_PROJECT_MISMATCH', 'receipt belongs to another project');
+  const nowMs = Date.parse(iso(now, 'now'));
+  const ageMs = nowMs - Date.parse(receipt.issuedAt);
+  if (ageMs < -60_000 || ageMs > APPLY_RECEIPT_MAX_AGE_SECONDS * 1000) fail('APPLY_RECEIPT_STALE', 'receipt is outside its admission window');
+}
+
 export function createProductionDbApplyReceipt({ releaseId, mainSha, planDigest, projectRef, githubRunId, githubRunAttempt, issuedAt } = {}) {
   const normalizedIssuedAt = iso(issuedAt, 'issuedAt');
   if (!SHA.test(String(mainSha ?? '')) || !DIGEST.test(String(planDigest ?? '')) || !PROJECT_REF.test(String(projectRef ?? ''))) {
@@ -84,14 +94,15 @@ export function createProductionDbApplyReceipt({ releaseId, mainSha, planDigest,
 export function assertApplyReceiptAdmitted(receipt, plan, projectRef, { now = new Date().toISOString() } = {}) {
   assertShape(receipt);
   if (receipt.status !== 'ISSUED') fail('APPLY_RECEIPT_REPLAY', `receipt status ${receipt.status} is not reusable`);
-  if (!plan || receipt.releaseId !== plan.releaseId || receipt.mainSha !== plan.mainSha || receipt.planDigest !== plan.planDigest) {
-    fail('APPLY_RECEIPT_PLAN_MISMATCH', 'receipt does not identify the exact release plan');
-  }
-  if (receipt.projectRef !== projectRef) fail('APPLY_RECEIPT_PROJECT_MISMATCH', 'receipt belongs to another project');
-  const nowMs = Date.parse(iso(now, 'now'));
-  const ageMs = nowMs - Date.parse(receipt.issuedAt);
-  if (ageMs < -60_000 || ageMs > APPLY_RECEIPT_MAX_AGE_SECONDS * 1000) fail('APPLY_RECEIPT_STALE', 'receipt is outside its admission window');
+  assertIdentityAndFreshness(receipt, plan, projectRef, now);
   return { status: 'APPLY_RECEIPT_ADMITTED', receiptId: receipt.receiptId, databaseMutationAuthorized: false };
+}
+
+export function assertConsumingApplyReceipt(receipt, plan, projectRef, { now = new Date().toISOString() } = {}) {
+  assertShape(receipt);
+  if (receipt.status !== 'CONSUMING') fail('APPLY_RECEIPT_NOT_DURABLY_CONSUMING', `writer requires CONSUMING receipt, got ${receipt.status}`);
+  assertIdentityAndFreshness(receipt, plan, projectRef, now);
+  return { status: 'CONSUMING_APPLY_RECEIPT_VERIFIED', receiptId: receipt.receiptId, databaseMutationAuthorized: false };
 }
 
 export function advanceApplyReceipt(receipt, status, at) {
