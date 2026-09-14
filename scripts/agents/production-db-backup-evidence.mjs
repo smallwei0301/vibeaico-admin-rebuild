@@ -27,6 +27,10 @@ function exactMainSha(value, label = 'mainSha') {
   return text;
 }
 
+/**
+ * @param {any} payload
+ * @param {{projectRef?: string, capturedAt?: string, mainSha?: string | null}} [options]
+ */
 export function normalizeBackupResponse(payload, {
   projectRef = EXPECTED_PROJECT_REF,
   capturedAt = new Date().toISOString(),
@@ -81,19 +85,21 @@ export function normalizeBackupResponse(payload, {
       earliest: earliestPhysicalBackupAt,
       latest: latestPhysicalBackupAt,
     },
-    // Supabase database backup covers DB state/metadata, not Storage object bytes.
     storageObjectsCovered: false,
     databaseMutationPerformed: false,
   };
 }
 
+/**
+ * @param {{token?: string, projectRef?: string, expectedMainSha?: string | null, fetchImpl?: typeof fetch, now?: () => string}} [input]
+ */
 export async function captureBackupEvidence({
   token,
   projectRef = EXPECTED_PROJECT_REF,
   expectedMainSha = null,
   fetchImpl = fetch,
   now = () => new Date().toISOString(),
-}) {
+} = {}) {
   if (projectRef !== EXPECTED_PROJECT_REF) fail('WRONG_PROJECT', 'refusing backup lookup for a non-canonical Production project');
   if (!String(token ?? '').trim()) fail('MISSING_BACKUP_OBSERVER_TOKEN', 'a fine-grained backup read token is required');
   const mainSha = expectedMainSha == null ? null : exactMainSha(expectedMainSha, 'expectedMainSha');
@@ -121,6 +127,8 @@ export async function captureBackupEvidence({
  * Convert two independent trusted-main recovery artifacts into the shape consumed
  * by the Production DB release preflight. This adapter never turns a local restore
  * rehearsal into a Production backup clone claim.
+ *
+ * @param {{backupEvidence?: any, restoreEvidence?: any, plan?: any, preimageEvidence?: any | null}} [input]
  */
 export function buildProductionDbRecoveryEvidence({
   backupEvidence,
