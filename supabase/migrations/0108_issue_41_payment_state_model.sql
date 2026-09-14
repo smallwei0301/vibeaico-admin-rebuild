@@ -157,13 +157,32 @@ declare
 begin
   -- 1. 付款狀態 enum 的值域完全正確（不多不少）。先查它，因為第 2 步的型別比對
   --    要用到 tour_payment_status 這個型別本身是否存在、是否為預期名稱。
+  --    刻意**不**用 `array_agg(... order by e.enumlabel)` 去比一個手寫的有序陣列。
+  --    第一版那樣寫，被 CI 的 fresh-install replay 擋下來：`pg_enum.enumlabel` 的
+  --    型別是 `name`，它的排序走 C collation，於是 'REFUNDED' 會排在
+  --    'REFUND_PENDING' **之前**（共同前綴 'REFUND' 之後比 'E'=0x45 與 '_'=0x5F），
+  --    而手寫的期望陣列把兩者寫反了。更糟的是，換一個 collation 的資料庫可能又
+  --    是另一個順序——一條會隨環境變動的斷言，不是保證，是定時炸彈。
+  --
+  --    改成比對**集合**：數量剛好五個，且沒有任何一個值落在預期集合之外。
+  --    完全不依賴排序規則。
+  select string_agg(e.enumlabel::text, ', ' order by e.enumlabel::text) into missing
+    from pg_enum e join pg_type t on t.oid = e.enumtypid
+    join pg_namespace n on n.oid = t.typnamespace
+   where n.nspname = 'public' and t.typname = 'tour_payment_status'
+     and e.enumlabel::text not in ('UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED');
+  if missing is not null then
+    raise exception
+      '0108 後置斷言失敗——tour_payment_status 出現 18 分冊 §4 以外的值：%', missing;
+  end if;
+
   if (
-    select array_agg(e.enumlabel::text order by e.enumlabel)
-      from pg_enum e join pg_type t on t.oid = e.enumtypid
-      join pg_namespace n on n.oid = t.typnamespace
-     where n.nspname = 'public' and t.typname = 'tour_payment_status'
-  ) is distinct from array['PAID', 'PARTIAL', 'REFUND_PENDING', 'REFUNDED', 'UNPAID'] then
-    raise exception '0108 後置斷言失敗——tour_payment_status 的值域不是 18 分冊 §4 的那五個。';
+    select count(*) from pg_enum e join pg_type t on t.oid = e.enumtypid
+     join pg_namespace n on n.oid = t.typnamespace
+    where n.nspname = 'public' and t.typname = 'tour_payment_status'
+  ) <> 5 then
+    raise exception
+      '0108 後置斷言失敗——tour_payment_status 的值不是五個（18 分冊 §4 要求 UNPAID／PARTIAL／PAID／REFUND_PENDING／REFUNDED）。';
   end if;
 
   -- 2. 欄位存在且型別正確。比對用 `regtype` 的 OID，不用 `format_type()` 的字串
