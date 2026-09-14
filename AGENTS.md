@@ -205,7 +205,41 @@ Owner blocker、requested／actual model、Run ID 與 scorecard。實質失敗�
 - docs-only 可依治理規則直進 main；程式、workflow、skill、依賴與 migration 走 PR／CI／Audit。
 - remote TEST 長期授權只限 Supabase project `nmwhwngojosmagjuvxol`，仍需唯一 TEST holder。
 - Production DDL／DML／migration／部署、真實付款／退款／顧客通知，沒有新授權一律禁止。
+- **schema 變更的唯一授權來源是 current `origin/main` 的 canonical migration。** 見下節。
 - 不輸出或提交 token、密碼、key、完整 `.env`。
+
+## schema 變更的授權來源（Owner 裁示 2026-09-14）
+
+任何 Agent 在對 **TEST 或 Production** 執行 schema 變更之前，**必須先證明該變更已經存在於
+current `origin/main` 的 canonical migration**（`supabase/migrations/**`）。證明不出來就
+**禁止執行**，不是「先做再補」。
+
+下列來源**都不是**執行授權，任何一個都不足以讓 schema 變更落到 TEST 或 Production：
+
+| 不是授權來源 | 為什麼 |
+|---|---|
+| feature branch 上的 migration | 分支上的東西是草稿；未合併就不是 canonical |
+| 已開但未合併的 PR | 同上，CI 綠也一樣 |
+| `supabase/local-migrations/**` 的 local／overlay migration | 它們的 manifest 自標 `CANDIDATE_SOURCE_NOT_CANONICAL`／`LOCAL_ONLY_TRANSITIONAL`，是重播用的基線，不是產品契約 |
+| TEST 現況 | TEST 可能帶著實驗殘留；「TEST 已經有了」是漂移的證據，不是正確性的證據 |
+| Production 現況 | 同上，方向相反；正式庫已存在只代表歷史，不代表 main 承認它 |
+
+證明方式是具體的，不是宣稱：
+
+```bash
+git fetch origin main
+git show origin/main:supabase/migrations/<檔名> | head   # 檔案真的在 main 上
+```
+
+要對照的是**內容**，不只是檔名——同名不同內容、或只有前綴相同，都不算數（PB-017、PB-037）。
+
+這條規則要擋的是一種具體的失敗：先在 TEST 或 Production 手動套一個「等一下就會補進 migration」
+的變更，然後那支 migration 因為 review、衝突或改設計而從未以同樣內容合併進 main。此後
+canonical 與實際環境永久分歧，而分歧的那一刻在任何日誌上都看不出來。#396 的三方分歧、
+`p_storage_read` 的 TEST 漂移、以及 `issue-41-candidate-baseline` 這類殘留，都是同一個形狀。
+
+順序因此是固定的：**先讓 migration 以最終內容合併進 `main`，再談套用**。套用本身若涉及
+Production，仍需 Owner 另外具名授權——本規則只是它的必要條件，不是充分條件。
 
 ## 復盤
 
