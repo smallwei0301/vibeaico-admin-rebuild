@@ -3,6 +3,7 @@ import {
   isValidTenantTimeZone,
 } from '@/config/tenant-settings';
 import type {
+  DepartureFormationStatus,
   GuideActionInboxDepartureDay,
   GuideActionInboxItem,
   GuideActionInboxPriority,
@@ -16,6 +17,51 @@ export type {
 
 export const DEFAULT_GUIDE_TIME_ZONE = DEFAULT_TENANT_TIME_ZONE;
 
+/*
+ * #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）與 AT_RISK（已成團後人數跌破門檻）。
+ * `trip_departures.formation_status`（0107, #41 canonical）是這兩個狀態的唯一真相；
+ * 這裡只挑出「需要租戶決定」的兩個值，COLLECTING/FORMED/FAILED 不進收件匣，也不在這裡
+ * 重新推算成團與否——那是 0107 註記明確保留給日後 transaction 切片的工作。
+ *
+ * `GuideActionInboxFormationItem` 刻意**不**併進 `GuideActionInboxItem`（`src/lib/types.ts`
+ * 既有聯集）。`src/app/tenant/dashboard/page.tsx` 用 `item.kind==='BOOKING_REQUEST' ? … :
+ * item.kind==='BOOKING_PAYMENT' ? … : （其餘視為 DEPARTURE）` 這種非窮盡寫法直接讀這個
+ * 型別名稱；把新 kind 併進同一個聯集會讓那個 else 分支的殘餘型別多出兩種它不認得的
+ * 形狀，導致該檔案編譯失敗——但那個檔案不在 #43 的 FILE_OWNERSHIP 內，不得代為修改
+ * （見 PR 說明的 STOP 條款）。因此這裡的 formation 型別、guard 與 builder 都是新增匯出，
+ * 不改動既有 `GuideActionInboxItem` 的定義或呼叫端看到的形狀；串接進 dashboard 是後續
+ * 由擁有該檔案的 lane 負責的工作。
+ */
+export type GuideActionInboxFormationKind = Extract<DepartureFormationStatus, 'REVIEW_REQUIRED' | 'AT_RISK'>;
+
+export type GuideActionInboxFormationItem = {
+  id: string;
+  kind: GuideActionInboxFormationKind;
+  tripId: string;
+  tripName: string;
+  planName: string;
+  departureDate: string;
+  startTime: string;
+  capacity: number;
+  seatsBooked: number;
+  minToDepart: number;
+  formationDeadlineAt: string | null;
+  formedParticipants: number | null;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
+const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
+
+/** 型別守衛：只有這兩個 formation_status 值代表收件匣需要出現的決定。 */
+export function isGuideActionInboxFormationStatus(
+  status: DepartureFormationStatus | string | null | undefined,
+): status is GuideActionInboxFormationKind {
+  return status != null && (FORMATION_INBOX_KINDS as readonly string[]).includes(status);
+}
+
 const PRIORITY_ORDER: Record<GuideActionInboxPriority, number> = {
   IMMEDIATE: 0,
   TODAY: 1,
@@ -27,8 +73,20 @@ function comparableTime(iso: string): number {
   return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
 }
 
-/** 先按處理優先級，再按出發時間、建立時間與 id，保持列表穩定可測試。 */
-export function sortGuideActionInboxItems(items: GuideActionInboxItem[]): GuideActionInboxItem[] {
+type SortableGuideActionInboxItem = {
+  id: string;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+};
+
+/**
+ * 先按處理優先級，再按出發時間、建立時間與 id，保持列表穩定可測試。
+ * 用結構型別泛型而不是固定 `GuideActionInboxItem[]`，讓 #43 類別 3／4 的
+ * `GuideActionInboxFormationItem[]`（刻意沒有併進那個聯集，見上方說明）能共用同一套排序，
+ * 不必為了排序而複製一份邏輯或把兩種陣列型別攪在一起。
+ */
+export function sortGuideActionInboxItems<T extends SortableGuideActionInboxItem>(items: T[]): T[] {
   return [...items].sort((a, b) =>
     PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]
       || comparableTime(a.dueAt) - comparableTime(b.dueAt)
@@ -159,4 +217,57 @@ export function getGuideActionInboxPriority(
   if (Number.isNaN(start.getTime())) return 'UPCOMING';
   if (start.getTime() <= now.getTime()) return 'IMMEDIATE';
   return dateKey(start, timeZone) === dateKey(now, timeZone) ? 'TODAY' : 'UPCOMING';
+}
+
+export type GuideActionInboxFormationInput = {
+  id: string;
+  tripId: string;
+  tripName: string;
+  planName: string;
+  departureDate: string;
+  startTime: string;
+  capacity: number;
+  seatsBooked: number;
+  minToDepart: number;
+  formationStatus: GuideActionInboxFormationKind;
+  formationDeadlineAt: string | null;
+  formedParticipants: number | null;
+  createdAt: string;
+};
+
+/**
+ * 把一筆 REVIEW_REQUIRED／AT_RISK 團次轉成收件匣卡片，mock 與真實 API 共用同一套規則：
+ * - REVIEW_REQUIRED：截止時間就是 `formation_deadline_at`；舊資料沒有這個欄位時，
+ *   誠實地退回出發時刻本身（那是最後還能做決定的時間點），不得虛構一個截止時間。
+ * - AT_RISK：這團已經成團過，`formation_deadline_at` 不再是下一個真正的期限——
+ *   出發時刻才是。
+ */
+export function buildGuideActionInboxFormationItem(
+  input: GuideActionInboxFormationInput,
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): GuideActionInboxFormationItem {
+  const startTime = input.startTime || '00:00';
+  const departureDueAt = getGuideDepartureDueAt(input.departureDate, startTime, timeZone);
+  const dueAt = input.formationStatus === 'REVIEW_REQUIRED' && input.formationDeadlineAt
+    ? input.formationDeadlineAt
+    : departureDueAt;
+  return {
+    id: input.id,
+    kind: input.formationStatus,
+    tripId: input.tripId,
+    tripName: input.tripName,
+    planName: input.planName,
+    departureDate: input.departureDate,
+    startTime,
+    capacity: input.capacity,
+    seatsBooked: input.seatsBooked,
+    minToDepart: input.minToDepart,
+    formationDeadlineAt: input.formationDeadlineAt,
+    formedParticipants: input.formedParticipants,
+    priority: getGuideActionInboxPriority(dueAt, now, timeZone),
+    dueAt,
+    createdAt: input.createdAt,
+    href: `/tenant/trips/${input.tripId}`,
+  };
 }

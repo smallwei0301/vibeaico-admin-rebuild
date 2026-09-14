@@ -20,6 +20,11 @@ function relatedValue(value: RelatedName): { name?: string | null; title?: strin
  * GUIDE 首頁目前可出貨的 action inbox 類別：待確認預約、待收款預約與今日／明日出發團次。
  * 只讀既有 bookings_view 與 tenant timezone，不建立新狀態，也不觸發通知、付款或其他外部副作用。
  * 預約卡片帶 bookingId deep link，讓操作人直接開啟該筆詳情而不是重新搜尋列表。
+ *
+ * #43 類別 3／4（REVIEW_REQUIRED／AT_RISK）刻意**不**併進這支 handler 回傳的陣列：
+ * `src/app/tenant/dashboard/page.tsx` 直接以這個端點的回應型別做非窮盡的 kind 判斷
+ * （其餘一律當 DEPARTURE），而該檔案不在 #43 的 FILE_OWNERSHIP 內，不得代為修改讓它認得
+ * 新 kind。那兩類改在同目錄下的 `formation/route.ts` 提供，見該檔案說明。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();

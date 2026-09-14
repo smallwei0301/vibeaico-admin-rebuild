@@ -1,10 +1,14 @@
 import { adapt, request } from '@/lib/api';
 import {
+  buildGuideActionInboxFormationItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
+  isGuideActionInboxFormationStatus,
   sortGuideActionInboxItems,
+  type GuideActionInboxFormationItem,
+  type GuideActionInboxFormationKind,
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
 import { MOCK_BOOKINGS } from '@/mock';
@@ -94,5 +98,50 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
       return sortGuideActionInboxItems([...items, ...paymentItems, ...departureItems]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
+  );
+}
+
+/**
+ * #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）與 AT_RISK（已成團後人數跌破門檻）。
+ * 刻意是獨立於 `getGuideActionInbox()` 的另一個匯出：後者的回傳型別 `GuideActionInboxItem[]`
+ * 被 `src/app/tenant/dashboard/page.tsx` 直接消費，而該頁面不在 #43 的 FILE_OWNERSHIP 內、
+ * 也還沒有能認得這兩種新 kind 的渲染分支。把它們併進同一個函式會讓頁面在型別層或執行期
+ * 收到它處理不了的卡片；分成獨立函式讓資料層可以誠實、完整地出貨，串接進首頁 UI 留給
+ * 擁有 dashboard 頁面的 lane 決定何時、如何呈現。
+ *
+ * 只讀 `trip_departures.formation_status`（0107, #41 canonical），不建立新狀態、
+ * 不重新推算成團與否，也不觸發通知、付款或其他外部副作用。
+ */
+export function getGuideActionInboxFormationItems(): Promise<GuideActionInboxFormationItem[]> {
+  return adapt(
+    () => {
+      const now = Date.now();
+      const nowDate = new Date(now);
+      const items = MOCK_TRIP_DEPARTURES
+        .filter((departure) =>
+          departure.status !== 'CANCELLED'
+          && isGuideActionInboxFormationStatus(departure.formationStatus))
+        .map((departure) => {
+          const trip = MOCK_TRIPS.find((candidate) => candidate.id === departure.tripId);
+          const plan = MOCK_TRIP_PLANS.find((candidate) => candidate.id === departure.planId);
+          return buildGuideActionInboxFormationItem({
+            id: departure.id,
+            tripId: departure.tripId,
+            tripName: trip?.title ?? '',
+            planName: plan?.name ?? departure.planName,
+            departureDate: departure.departsOn,
+            startTime: departure.startTime || '00:00',
+            capacity: departure.capacity,
+            seatsBooked: departure.seatsBooked,
+            minToDepart: departure.minToDepartSnapshot ?? 1,
+            formationStatus: departure.formationStatus as GuideActionInboxFormationKind,
+            formationDeadlineAt: departure.formationDeadlineAt ?? null,
+            formedParticipants: departure.formedParticipants ?? null,
+            createdAt: new Date(now).toISOString(),
+          }, nowDate);
+        });
+      return sortGuideActionInboxItems(items);
+    },
+    () => request<GuideActionInboxFormationItem[]>('/api/guide/action-inbox/formation'),
   );
 }

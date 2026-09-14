@@ -6,18 +6,24 @@ import {
   basicSettingsSchema,
 } from '@/config/tenant-settings';
 import {
+  buildGuideActionInboxFormationItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
   getGuideDepartureDay,
   getGuideActionInboxPriority,
+  isGuideActionInboxFormationStatus,
   normalizeGuideTimeZone,
   sortGuideActionInboxItems,
   type GuideActionInboxItem,
 } from '@/lib/guide-action-inbox';
-import { getGuideActionInbox } from '@/services/guide-action-inbox';
+import { getGuideActionInbox, getGuideActionInboxFormationItems } from '@/services/guide-action-inbox';
 
 const apiSource = readFileSync(
   resolve(process.cwd(), 'src/app/api/guide/action-inbox/route.ts'),
+  'utf8',
+);
+const formationApiSource = readFileSync(
+  resolve(process.cwd(), 'src/app/api/guide/action-inbox/formation/route.ts'),
   'utf8',
 );
 const serviceSource = readFileSync(
@@ -138,6 +144,106 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     });
   });
 
+  it('only treats REVIEW_REQUIRED and AT_RISK formation_status as inbox-worthy (#43 類別 3／4)', () => {
+    expect(isGuideActionInboxFormationStatus('REVIEW_REQUIRED')).toBe(true);
+    expect(isGuideActionInboxFormationStatus('AT_RISK')).toBe(true);
+    expect(isGuideActionInboxFormationStatus('COLLECTING')).toBe(false);
+    expect(isGuideActionInboxFormationStatus('FORMED')).toBe(false);
+    expect(isGuideActionInboxFormationStatus('FAILED')).toBe(false);
+    expect(isGuideActionInboxFormationStatus(null)).toBe(false);
+    expect(isGuideActionInboxFormationStatus(undefined)).toBe(false);
+  });
+
+  it('derives formation card due-at honestly from real DB columns, never fabricating a deadline', () => {
+    const now = new Date('2026-08-19T00:00:00.000Z');
+
+    // REVIEW_REQUIRED：有 formation_deadline_at 就直接用它作為截止時間。
+    const reviewWithDeadline = buildGuideActionInboxFormationItem({
+      id: 'dp_review',
+      tripId: 'trip_1',
+      tripName: '行程',
+      planName: '方案',
+      departureDate: '2026-08-26',
+      startTime: '13:30',
+      capacity: 8,
+      seatsBooked: 0,
+      minToDepart: 4,
+      formationStatus: 'REVIEW_REQUIRED',
+      formationDeadlineAt: '2026-08-19T15:59:00.000Z',
+      formedParticipants: null,
+      createdAt: '2026-08-10T00:00:00.000Z',
+    }, now, 'Asia/Taipei');
+    expect(reviewWithDeadline).toMatchObject({
+      kind: 'REVIEW_REQUIRED',
+      dueAt: '2026-08-19T15:59:00.000Z',
+      href: '/tenant/trips/trip_1',
+      minToDepart: 4,
+      formationDeadlineAt: '2026-08-19T15:59:00.000Z',
+      formedParticipants: null,
+    });
+
+    // REVIEW_REQUIRED 但缺 formation_deadline_at（舊資料）：誠實退回出發時刻，
+    // 不得虛構一個不存在的截止時間。
+    const reviewWithoutDeadline = buildGuideActionInboxFormationItem({
+      id: 'dp_review_2',
+      tripId: 'trip_1',
+      tripName: '行程',
+      planName: '方案',
+      departureDate: '2026-08-26',
+      startTime: '13:30',
+      capacity: 8,
+      seatsBooked: 0,
+      minToDepart: 4,
+      formationStatus: 'REVIEW_REQUIRED',
+      formationDeadlineAt: null,
+      formedParticipants: null,
+      createdAt: '2026-08-10T00:00:00.000Z',
+    }, now, 'Asia/Taipei');
+    expect(reviewWithoutDeadline.dueAt).toBe(getGuideDepartureDueAt('2026-08-26', '13:30', 'Asia/Taipei'));
+
+    // AT_RISK：即使 formation_deadline_at 還留著舊值，下一個真正的期限是出發時刻，不是它。
+    const atRisk = buildGuideActionInboxFormationItem({
+      id: 'dp_at_risk',
+      tripId: 'trip_2',
+      tripName: '行程二',
+      planName: '方案二',
+      departureDate: '2026-08-30',
+      startTime: '16:30',
+      capacity: 10,
+      seatsBooked: 3,
+      minToDepart: 4,
+      formationStatus: 'AT_RISK',
+      formationDeadlineAt: '2026-08-18T15:59:00.000Z',
+      formedParticipants: 5,
+      createdAt: '2026-08-10T00:00:00.000Z',
+    }, now, 'Asia/Taipei');
+    expect(atRisk.dueAt).toBe(getGuideDepartureDueAt('2026-08-30', '16:30', 'Asia/Taipei'));
+    expect(atRisk.kind).toBe('AT_RISK');
+    expect(atRisk.formedParticipants).toBe(5);
+  });
+
+  it('exposes mock REVIEW_REQUIRED / AT_RISK departures without inventing demo data for other statuses', async () => {
+    const items = await getGuideActionInboxFormationItems();
+    const reviewRequired = items.filter((item) => item.kind === 'REVIEW_REQUIRED');
+    const atRisk = items.filter((item) => item.kind === 'AT_RISK');
+
+    // dp_4（REVIEW_REQUIRED）與 dp_8（AT_RISK）是 mock/tours.ts 既有唯二符合的 fixture；
+    // 其餘 formation_status（COLLECTING/FORMED/FAILED）與已取消的 dp_6 都必須誠實地不
+    // 出現在這兩個類別，不得為了畫面好看而多加。
+    expect(reviewRequired).toHaveLength(1);
+    expect(reviewRequired[0]).toMatchObject({ id: 'dp_4', href: '/tenant/trips/tp_1' });
+    expect(atRisk).toHaveLength(1);
+    expect(atRisk[0]).toMatchObject({ id: 'dp_8', href: '/tenant/trips/tp_2' });
+    expect(items.every((item) => 'minToDepart' in item && 'formedParticipants' in item)).toBe(true);
+
+    // #43 類別 3／4 是獨立匯出（見 lib/service/route 的說明）：既有的統一收件匣清單
+    // `getGuideActionInbox()` 不受影響，繼續只回舊的三種 kind，不會偷偷多出新卡片，
+    // 因為它的回傳型別被 dashboard 頁面（不在 FILE_OWNERSHIP 內）直接消費。
+    const baseItems = await getGuideActionInbox();
+    expect(baseItems.every((item) =>
+      item.kind === 'BOOKING_REQUEST' || item.kind === 'BOOKING_PAYMENT' || item.kind === 'DEPARTURE')).toBe(true);
+  });
+
   it('reads only tenant-scoped pending and unpaid confirmed bookings plus the tenant timezone', () => {
     expect(apiSource).toContain(".from('bookings_view')");
     expect(apiSource).toContain(".eq('tenant_id', t.tenantId)");
@@ -160,6 +266,26 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C)', () => {
     expect(serviceSource).toContain("request<GuideActionInboxItem[]>('/api/guide/action-inbox')");
     expect(serviceSource).toContain("kind: 'BOOKING_PAYMENT'");
     expect(serviceSource).toContain("kind: 'DEPARTURE'");
+  });
+
+  it('derives #43 類別 3／4 only from trip_departures.formation_status, never a parallel status', () => {
+    expect(formationApiSource).toContain('formation_status, formation_deadline_at, min_to_depart_snapshot, formed_participants');
+    expect(formationApiSource).toContain(".in('formation_status', ['REVIEW_REQUIRED', 'AT_RISK'])");
+    expect(formationApiSource).toContain(".neq('status', 'CANCELLED')");
+    expect(formationApiSource).toContain(".eq('tenant_id', t.tenantId)");
+    expect(formationApiSource).toContain('buildGuideActionInboxFormationItem');
+    expect(formationApiSource).toContain('isGuideActionInboxFormationStatus');
+    expect(formationApiSource).toContain('requireTenant');
+    expect(serviceSource).toContain('buildGuideActionInboxFormationItem');
+    expect(serviceSource).toContain('isGuideActionInboxFormationStatus');
+    expect(serviceSource).toContain('getGuideActionInboxFormationItems');
+    expect(serviceSource).toContain("request<GuideActionInboxFormationItem[]>('/api/guide/action-inbox/formation')");
+    expect(serviceSource).toContain('MOCK_TRIP_DEPARTURES');
+
+    // 類別 3／4 不進既有統一收件匣端點的回應——那支端點的型別被 dashboard 頁面
+    // （不在 FILE_OWNERSHIP 內）直接消費，還不認得這兩種新 kind。
+    expect(apiSource).not.toContain('formation_status');
+    expect(apiSource).not.toContain('buildGuideActionInboxFormationItem');
   });
 
   it('shows the slice only in GUIDE mode and renders a mobile-safe action', () => {

@@ -1,18 +1,24 @@
 /**
- * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次 + #43-C 待收款預約。
- * #43-B 透過 TEST service role 建立短命測試資料，測畢清理並驗證
+ * GUIDE action inbox API — #43-A 待確認預約 + #43-B 今日／明日出發團次 + #43-C 待收款預約
+ * + #43 類別 3／4：REVIEW_REQUIRED（成團截止不足）／AT_RISK（已成團後人數跌破門檻）。
+ * #43-B／類別 3／4 透過 TEST service role 建立短命測試資料，測畢清理並驗證
  * 不跨租戶；不新增 schema、狀態機或其他外部副作用。
  *
  * 這支一般 Product integration 不得把 #41 的 TEST-only overlay 當成 main 前提。
  * `readTourSeedFields()` 只在觀察到完整 #41 相容欄位時補上合法 snapshot；
  * canonical core 則送空物件，讓同一套讀取斷言真的能在 main schema 上執行。
+ *
+ * 類別 3／4 走獨立端點 `/api/guide/action-inbox/formation`（見
+ * `src/app/api/guide/action-inbox/formation/route.ts` 的說明：不併進既有
+ * `/api/guide/action-inbox` 回應陣列，因為那支端點的型別被 dashboard 頁面直接消費，
+ * 該頁面還不認得這兩種新 kind，也不在 #43 的 FILE_OWNERSHIP 內）。
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SHOP_A, SHOP_B, TRIP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 import type { GuideActionInboxItem } from '@/lib/types';
-import { getGuideActionInboxDateWindow } from '@/lib/guide-action-inbox';
+import { getGuideActionInboxDateWindow, type GuideActionInboxFormationItem } from '@/lib/guide-action-inbox';
 import { readTourSeedFields } from '../../../scripts/test/tour-seed-profile.mjs';
 
 const BASE = process.env.INTEGRATION_BASE_URL ?? 'http://localhost:3100';
@@ -190,5 +196,85 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBResponse.status).toBe(200);
     const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
     expect(shopBBody.data?.some((item) => temporaryDepartureIds.includes(item.id))).toBe(false);
+  });
+
+  it('GET /api/guide/action-inbox/formation 回傳 REVIEW_REQUIRED 與 AT_RISK 團次，並且不跨租戶（#43 類別 3／4）', async () => {
+    const now = new Date();
+    const { tomorrow } = getGuideActionInboxDateWindow(now, 'Asia/Taipei');
+    const futureDeadline = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString();
+
+    const { data: reviewRow, error: reviewError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: tomorrow,
+      start_time: '09:00',
+      capacity: 10,
+      status: 'OPEN',
+      formation_status: 'REVIEW_REQUIRED',
+      min_to_depart_snapshot: 4,
+      formation_deadline_at: futureDeadline,
+    }).select('id').single();
+    expect(reviewError).toBeNull();
+    expect(reviewRow?.id).toBeTruthy();
+    const reviewId = reviewRow!.id as string;
+    temporaryDepartureIds.push(reviewId);
+
+    const { data: atRiskRow, error: atRiskError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: tomorrow,
+      start_time: '10:00',
+      capacity: 10,
+      seats_booked: 3,
+      status: 'OPEN',
+      formation_status: 'AT_RISK',
+      min_to_depart_snapshot: 4,
+      formed_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      formed_by: 'SYSTEM',
+      formed_participants: 5,
+    }).select('id').single();
+    expect(atRiskError).toBeNull();
+    expect(atRiskRow?.id).toBeTruthy();
+    const atRiskId = atRiskRow!.id as string;
+    temporaryDepartureIds.push(atRiskId);
+
+    const res = await ownerA.get('/api/guide/action-inbox/formation');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxFormationItem[]>(res);
+    expect(body.success).toBe(true);
+
+    const reviewItem = body.data?.find((item) => item.id === reviewId);
+    expect(reviewItem).toMatchObject({
+      kind: 'REVIEW_REQUIRED',
+      tripId: TRIP_A.id,
+      minToDepart: 4,
+      formationDeadlineAt: futureDeadline,
+      dueAt: futureDeadline,
+      href: `/tenant/trips/${TRIP_A.id}`,
+    });
+
+    const atRiskItem = body.data?.find((item) => item.id === atRiskId);
+    expect(atRiskItem).toMatchObject({
+      kind: 'AT_RISK',
+      tripId: TRIP_A.id,
+      minToDepart: 4,
+      formedParticipants: 5,
+      href: `/tenant/trips/${TRIP_A.id}`,
+    });
+    // AT_RISK 的下一個真正期限是出發時刻，不是舊的 formation_deadline_at（本例根本沒設）。
+    expect(atRiskItem?.dueAt).not.toBe(futureDeadline);
+
+    // 未登入回 401；SHOP_B 看不到 SHOP_A 這兩筆。
+    const unauth = await fetch(`${BASE}/api/guide/action-inbox/formation`);
+    expect(unauth.status).toBe(401);
+    expect((await readJson(unauth)).code).toBe('AUTH_001');
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox/formation');
+    expect(shopBResponse.status).toBe(200);
+    const shopBBody = await readJson<GuideActionInboxFormationItem[]>(shopBResponse);
+    expect(shopBBody.data?.some((item) => item.id === reviewId || item.id === atRiskId)).toBe(false);
   });
 });
