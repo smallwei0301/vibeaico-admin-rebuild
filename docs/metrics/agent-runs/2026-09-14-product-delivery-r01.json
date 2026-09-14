@@ -710,6 +710,45 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c1-terra",
+        "requestedModel": "build",
+        "actualModel": "unknown",
+        "actualModelId": "claude-sonnet-5",
+        "accepted": true,
+        "role": "#43 第 1 類 TOUR_REQUEST 施工。第一輪在主工作目錄的壞分支上改檔（成因：我委派時寫了「用獨立 worktree」但沒要求自證），audit 層在 commit 前攔截，改為存 patch → 開乾淨 worktree → 以 origin/main 為底重套，三檔因 #448 已合併而衝突由它手動重套。第二、三輪為註解修正。它也擴充了假 harness 使其 join-aware（getFieldValue），讓 dot-path 過濾器真的被評估。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c1-sol-audit",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "actualModelId": "claude-opus-5",
+        "accepted": true,
+        "role": "#43 第 1 類 audit。獨立跑 gate（2315 測試）與四個行號精準突變（含關閉 PB-048 待補項）。開 PR 前依 PB-047 對正式庫逐項查證整支端點欄位，並主動沿用 #448 Final Risk 的方法以 pg_constraint 驗證三條 embed 路徑都是含 tenant_id 的複合 FK。**但兩次診斷錯誤**：(1) 誤判 harness 不支援 dot-path，實際上本 PR 已擴充；(2) 誤判 load.departures 為空是因 fixture 缺巢狀欄位，實際上是 makeFakeSupabase 根本沒註冊該表——查了一層就停，沒問「表註冊了沒」。第二項還導致我指示代理寫出錯誤的註解。",
+        "count": 1,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      },
+      {
+        "id": "issue-43-c1-final-risk-449",
+        "requestedModel": "finalRisk",
+        "actualModel": "unknown",
+        "actualModelId": "claude-fable-5-1",
+        "accepted": true,
+        "role": "PR #449 Final Risk 三輪：faadf69 PASS → 81a42b3 CHANGES_REQUESTED。**抓到 audit 層的錯誤診斷**：不是讀程式碼推論，而是實驗證實真正前提（註冊頂層 trip_departure_staff 表＋巢狀 trip_departures＋同 staff 第二個重疊團次 → dep-clean 以 reason DEPARTURE 出現）。另以額外探針發現 trip_plans!inner 無行為覆蓋（改成非 inner 仍 24 passed），並分析 getFieldValue 只會多濾不會少濾（PostgREST to-many 是任一子列符合就留父列）。",
+        "count": 3,
+        "contextClass": "full",
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
       }
     ],
     "fullContextReplays": 0,
@@ -748,7 +787,7 @@
     "duplicateAgentTasks": 1,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 16,
+    "solTouches": 17,
     "solIssues": 1
   },
   "auditability": {
