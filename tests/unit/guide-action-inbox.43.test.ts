@@ -65,16 +65,25 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * a no-op.
  *
  * `loadStaffLoad()`'s `departures` array is nonetheless still always `[]`
- * under this harness — but the reason is fixture content, not a harness
- * limitation: none of the `trip_departure_staff` rows below carry a nested
- * `trip_departures: { status, departs_on }` object, so
- * `getFieldValue(row, 'trip_departures.departs_on')` resolves to `undefined`
- * on every row, and `undefined >= x` / `undefined <= x` are always `false` in
- * JS — the `.gte(...)` call alone is enough to filter every row out. (The
- * four nested `trip_departures: { … }` objects that do exist in this file
- * — the `TOUR_ORDER_ROWS` fixtures added for #43 類別 1's `TOUR_REQUEST`
- * query — are on a different table's fixture, `tour_orders`, and don't reach
- * this path at all.)
+ * under the STAFF_CONFLICT describe block below — but the reason is one layer
+ * earlier than any dot-path question: that block's `makeFakeSupabase(...)`
+ * only registers `trip_departures` / `shifts` / `bookings` / `block_times` as
+ * top-level tables. It never registers a top-level `trip_departure_staff`
+ * table. `then()` (above) returns `[]` whenever `tables[table]` is
+ * `undefined` — for an unregistered table, `applyFilterOps()` is never even
+ * called, so `loadStaffLoad()`'s filter chain (dot-path or not) is never
+ * evaluated at all. This has nothing to do with whether `getFieldValue()` can
+ * resolve dot-paths — it never gets the chance to try.
+ *
+ * A likely misread here (this file has already made it once): fixture rows in
+ * `TRIP_DEPARTURE_ROWS` below do carry a `trip_departure_staff: [...]` key,
+ * and it's tempting to treat that as "the `trip_departure_staff` table, just
+ * with the wrong shape." It isn't. That key is an *embed nested inside a
+ * `trip_departures` row* — it's what feeds `route.ts`'s own
+ * `.from('trip_departures').select('..., trip_departure_staff(...)')` query
+ * for departure staff assignments. It is unrelated to, and can't stand in
+ * for, `loadStaffLoad()`'s separate `.from('trip_departure_staff')` query,
+ * which this harness never sees hit any registered table.
  * Two consequences, both real and both untested here:
  *   1. The `'DEPARTURE'` conflict reason (staff double-booked across two
  *      departures) can never actually fire through this route-level harness.
@@ -88,13 +97,16 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  *      a departure's own occupied slot isn't mistaken for a conflict with
  *      itself) can't be exercised either, because `load.departures` is always
  *      empty regardless of whether that filter runs.
- * This gap is fixable, not structural: adding a nested `trip_departures: {
- * status, departs_on }` object to a `trip_departure_staff` fixture row below
- * would make `getFieldValue()` resolve real values and let `.gte()`/`.lte()`/
- * `.neq()` actually filter — the harness would then exercise both
- * consequences above. That fixture change is left for a future PR (#448's
- * `DEPARTURE`-reason route-level coverage is its own follow-up), not because
- * the harness can't evaluate dot-path filters on nested fixtures.
+ * This gap is fixable, not structural, and has been verified by hand: adding
+ * a top-level `trip_departure_staff` table to this describe block's
+ * `makeFakeSupabase(...)` call — rows carrying `tenant_id` / `departure_id` /
+ * `staff_id` plus a nested `trip_departures: { id, departs_on, start_time,
+ * status, trips: { duration_hours } }` — with the same staff member also
+ * assigned to a second, time-overlapping departure in the window, makes
+ * `dep-clean` immediately surface as `conflicts: [{ staffId: 's-clean',
+ * staffName: '阿海', reason: 'DEPARTURE' }]`. That fixture/table addition is
+ * left for a future PR (#448's `DEPARTURE`-reason route-level coverage is its
+ * own follow-up), not attempted here.
  * The `BOOKING`, `BLOCK` and `SHIFT` reasons don't have this problem —
  * `loadStaffLoad()`'s `bookings`/`block_times`/`shifts` queries only ever
  * filter on the queried table's own columns (`tenant_id`, `status`,
@@ -102,6 +114,44 @@ import { dashboardPage } from '@/i18n/zh-TW/pages/dashboard';
  * column, so this harness filters them correctly; the STAFF_CONFLICT describe
  * block below covers all three plus the tenant boundary and a genuinely
  * clean (no-conflict) control row.
+ *
+ * Three further `getFieldValue()` boundaries, recorded because each fails
+ * *silently* (rows get filtered out, not an error) rather than throwing:
+ *   1. It only `split('.')`s into two segments. A three-level path like
+ *      `trip_departures.trips.duration_hours` would compare against the
+ *      middle relation object itself, never the leaf value — always `false`.
+ *      No query in this codebase currently does this, but one added later
+ *      would silently fail under this harness.
+ *   2. A to-many embed only ever reads its first element
+ *      (`Array.isArray(relationValue) ? relationValue[0] : relationValue`).
+ *      Real PostgREST filters inside the array; this harness can't.
+ *   3. Every dot-path filter here behaves as if the join were `!inner`
+ *      (a row whose relation is missing/null is dropped). That happens to
+ *      match every dot-path query that exists in this file today
+ *      (`loadStaffLoad()`'s `trip_departures!inner`, and the `TOUR_REQUEST`
+ *      query's `trip_plans!inner`), but this harness has no way to represent
+ *      a non-inner embed filter, where a row with a null relation should
+ *      survive with the embed as `null` rather than being dropped.
+ *
+ * Related but distinct boundary: the `TOUR_REQUEST` query's
+ * `trip_plans!inner(sales_mode, name)` has no behavioural coverage of the
+ * `!inner` keyword itself — changing it to `trip_plans(sales_mode, name)`
+ * (a left join) leaves all 24 tests in this file passing, because this fake
+ * `applyFilterOps()` always drops a row when a dot-path filter's relation is
+ * missing regardless of `!inner`/left-join wording (see boundary 3 above).
+ * Under real PostgREST, dropping `!inner` would turn the embed into `null`
+ * for non-REQUEST plans instead of excluding the row, and every tenant-scoped
+ * PENDING order — not just REQUEST-mode ones — would leak into the
+ * `TOUR_REQUEST` category. It doesn't threaten the tenant boundary itself
+ * (`.eq('tenant_id', ...)` still applies and is independently covered), only
+ * the sales_mode-narrowing correctness of this one category. A source-grep
+ * assertion (`expect(apiSource).toContain("trip_plans!inner(sales_mode")`)
+ * would catch a literal accidental edit, but this file has already been
+ * burned twice by exactly that pattern — a real call commented out, with the
+ * expected substring left sitting in the comment, all 18 tests still green.
+ * Deliberately not adding one here; joining the boundary list above `.order`/
+ * `.limit` (PR #442 Final Risk F2) instead of an assertion that the same
+ * trick would defeat.
  * ---------------------------------------------------------------------------
  */
 type FilterCall = [string, unknown[]];
