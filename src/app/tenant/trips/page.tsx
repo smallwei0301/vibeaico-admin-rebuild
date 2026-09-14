@@ -153,14 +153,37 @@ export default function TripsPage() {
     () => createTrip({ title: t.messages.untitled }), t.messages.created,
   );
 
-  const duplicate = (trip: Trip) => {
-    setRows((prev) => [
-      { ...trip, id: `${trip.id}_copy`, title: `${trip.title}（複本）`, slug: `${trip.slug}-copy`,
-        status: 'DRAFT', midaoListing: 'NONE', midaoListingNote: '' },
-      ...prev,
-    ]);
-    toast.show(t.messages.duplicated);
-  };
+  /**
+   * issue #8：「複製」按鈕原本只在前端記憶體塞一筆假資料（id 加 `_copy`），
+   * 重整就消失，端點從未被呼叫。
+   *
+   * `trip_duplicate_atomic` 只存在 `supabase/local-migrations/` 的歷史基準線
+   * overlay，**不在 `origin/main` 的 `supabase/migrations/**`**——依本репо schema
+   * 授權規則（`CLAUDE.md`／`AGENTS.md`），overlay 不是 canonical 來源，不得沿用其
+   * RPC。因此改用既有的 `createTrip` service，複製行程本身的欄位建立一筆新草稿。
+   *
+   * 範圍刻意收緊在「行程本身」：`createTrip` 目前不回傳新行程 id，要接著複製方案／
+   * 團次／加購需要先讓 service 多回傳一個 id 並串三支端點，牽動面比這次修復大，
+   * 留待下一輪（PR 說明會標明）。複本一律是 DRAFT／未申請 Midao，不會被旅客看到，
+   * 店家進詳情頁補方案與團次即可。
+   */
+  const duplicate = (trip: Trip) => runAction(() => createTrip({
+    title: `${trip.title}${t.messages.duplicateTitleSuffix}`,
+    slug: `${trip.slug}-copy-${Date.now().toString(36)}`,
+    tagline: trip.tagline,
+    summary: trip.summary,
+    description: trip.description,
+    coverImageUrl: trip.coverImageUrl,
+    galleryUrls: trip.galleryUrls,
+    region: trip.region,
+    meetingPoint: trip.meetingPoint,
+    meetingPointMapUrl: trip.meetingPointMapUrl,
+    inclusions: trip.inclusions,
+    exclusions: trip.exclusions,
+    notices: trip.notices,
+    safetyNotice: trip.safetyNotice,
+    refundPolicyType: trip.refundPolicyType,
+  }), t.messages.duplicated);
 
   const columns: Column<Trip>[] = [
     {
@@ -255,7 +278,8 @@ export default function TripsPage() {
           </Link>
           <Button
             variant="outline" size="sm" title={t.actions.duplicate} aria-label={t.actions.duplicate}
-            onClick={() => duplicate(r)}
+            disabled={busy}
+            onClick={() => void duplicate(r)}
           >
             <Copy size={13} />
           </Button>
