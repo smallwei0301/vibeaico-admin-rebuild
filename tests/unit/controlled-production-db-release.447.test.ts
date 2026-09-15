@@ -90,17 +90,30 @@ describe('Controlled Production DB writer #447', () => {
       readCanonicalSql: () => 'create index concurrently x_idx on public.x(id);',
     })).toThrow(/MIGRATION_BYTES_MISMATCH|TRANSACTION_UNSAFE_MIGRATION/);
 
-    const transactionSql = 'commit;';
-    const transactionPlan = buildProductionDbReleasePlan({
+    for (const transactionSql of ['commit;', 'rollback;', 'abort;', 'end;', 'start transaction;', 'savepoint writer_savepoint;']) {
+      const transactionPlan = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => transactionSql,
+      });
+      expect(() => buildAtomicProductionApplySql({
+        plan: transactionPlan,
+        aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows,
+        readCanonicalSql: () => transactionSql,
+      })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+    }
+
+    const proceduralSql = 'do $$ begin perform 1; end $$;';
+    const proceduralPlan = buildProductionDbReleasePlan({
       releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
-      aliasMap: aliasMap(), readCanonicalSql: () => transactionSql,
+      aliasMap: aliasMap(), readCanonicalSql: () => proceduralSql,
     });
     expect(() => buildAtomicProductionApplySql({
-      plan: transactionPlan,
+      plan: proceduralPlan,
       aliasMap: aliasMap(),
       liveLedgerRows: beforeRows,
-      readCanonicalSql: () => transactionSql,
-    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+      readCanonicalSql: () => proceduralSql,
+    })).not.toThrow();
   });
 
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
@@ -179,6 +192,23 @@ describe('Controlled Production DB writer #447', () => {
     })).rejects.toThrow(/APPLY_UNKNOWN/);
     expect(readOnlyCalls).toBe(2);
     expect(mutableCalls).toBe(1);
+  });
+
+  it('rejects missing, extra and version-drifted full-ledger identities after apply', () => {
+    const p = plan();
+    const applied = [...beforeRows, { version: p.migrations[0].ledgerVersion, name: '0109_assertions' }];
+    expect(() => verifyPostApplyLedger({
+      plan: p, baselineLedgerRows: beforeRows,
+      liveLedgerRows: [...applied, { version: '3', name: 'unexpected_manual_row' }],
+    })).toThrow(/POST_APPLY_LEDGER_MISMATCH/);
+    expect(() => verifyPostApplyLedger({
+      plan: p, baselineLedgerRows: beforeRows,
+      liveLedgerRows: [{ version: p.migrations[0].ledgerVersion, name: '0109_assertions' }],
+    })).toThrow(/POST_APPLY_LEDGER_MISMATCH/);
+    expect(() => verifyPostApplyLedger({
+      plan: p, baselineLedgerRows: beforeRows,
+      liveLedgerRows: [...applied.map((row) => row.name === '0001_base' ? { ...row, version: 'drifted' } : row)],
+    })).toThrow(/POST_APPLY_LEDGER_VERSION_MISMATCH/);
   });
 
 });

@@ -1,5 +1,5 @@
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
-import { pendingProductionMigrations, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import { pendingProductionMigrations, splitSqlStatements, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 
 const API = 'https://api.supabase.com';
 const WRITER_CREATED_BY = 'vibeaico-controlled-writer';
@@ -15,70 +15,40 @@ function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-function textArray(values) {
-  return `ARRAY[${values.map(sqlLiteral).join(', ')}]::text[]`;
+function ledgerIdentityValues(rows = []) {
+  return rows.map((entry) => {
+    const name = String(entry?.name ?? entry?.repoFile ?? '').trim();
+    const version = String(entry?.version ?? entry?.ledgerVersion ?? '').trim();
+    if (!name || !version) fail('INVALID_LEDGER_IDENTITY', 'ledger name and version are required for reconciliation');
+    return `(${sqlLiteral(name)}, ${sqlLiteral(version)})`;
+  }).join(', ');
 }
 
-function ledgerIdentityValues(migrations = []) {
-  return migrations.map((entry) => `(${sqlLiteral(entry.repoFile)}, ${sqlLiteral(entry.ledgerVersion)})`).join(', ');
+function expectedPostApplyLedgerRows({ plan, baselineRows } = {}) {
+  const rows = [
+    ...baselineRows,
+    ...plan.migrations.map((entry) => ({ name: entry.repoFile, version: entry.ledgerVersion })),
+  ];
+  const names = rows.map((row) => row.name);
+  if (new Set(names).size !== names.length) fail('DUPLICATE_EXPECTED_LEDGER_NAME', 'baseline and planned ledger names must be unique');
+  return rows;
+}
+function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
+  return `do $ledgercheck$ declare mismatches text[]; begin with expected(name, version) as (values ${ledgerIdentity}), actual(name, version) as (select m.name::text, m.version::text from supabase_migrations.schema_migrations m), differences(item) as (select 'MISSING:' || x.name || '@' || x.version from expected x where not exists (select 1 from actual m where m.name = x.name and m.version = x.version) union all select 'EXTRA:' || m.name || '@' || m.version from actual m where not exists (select 1 from expected x where m.name = x.name and m.version = x.version) union all select 'DUPLICATE:' || m.name || '@' || m.version from actual m group by m.name, m.version having count(*) > 1) select array_agg(item order by item) into mismatches from differences; if mismatches is not null then raise exception '${errorFormat}', array_to_string(mismatches, ','); end if; end $ledgercheck$;`;
 }
 
-function normalizedLedgerRows(rows) {
-  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
-  const normalized = rows
-    .map((row) => ({
-      version: String(row?.version ?? '').trim(),
-      name: String(row?.name ?? '').trim(),
-    }))
-    .filter((row) => row.name);
-  const names = normalized.map((row) => row.name);
-  if (new Set(names).size !== names.length) fail('DUPLICATE_LIVE_LEDGER_NAME', 'live Production ledger has duplicate migration names');
-  return normalized;
-}
-
-function normalizedLedgerNames(rows) {
-  return normalizedLedgerRows(rows).map((row) => row.name).sort();
-}
-
-export function expectedAppliedLedgerNames(aliasMap = {}) {
-  if (aliasMap?.schemaVersion !== 1 || !Array.isArray(aliasMap?.entries)) fail('INVALID_ALIAS_MAP', 'ledger alias map is unavailable');
-  const names = [];
-  for (const entry of aliasMap.entries) {
-    const classification = String(entry?.classification ?? '');
-    const ledgerNames = Array.isArray(entry?.ledgerNames) ? entry.ledgerNames.map(String) : [];
-    if (classification === 'NOT_APPLIED') {
-      if (ledgerNames.length) fail('INVALID_NOT_APPLIED_LEDGER_NAMES', `${entry?.repoFile ?? '<unknown>'} cannot be NOT_APPLIED and have ledger names`);
-      continue;
-    }
-    for (const name of ledgerNames) {
-      if (!name.trim()) fail('INVALID_LEDGER_ALIAS', 'ledger alias names must be non-empty');
-      names.push(name.trim());
-    }
-  }
-  const sorted = names.sort();
-  if (new Set(sorted).size !== sorted.length) fail('DUPLICATE_ALIAS_LEDGER_NAME', 'alias map maps the same live ledger name more than once');
-  return sorted;
-}
-
-export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {}) {
-  const expected = expectedAppliedLedgerNames(aliasMap);
-  const actual = normalizedLedgerNames(liveLedgerRows);
-  if (expected.join('\n') !== actual.join('\n')) {
-    const expectedSet = new Set(expected);
-    const actualSet = new Set(actual);
-    const extraLive = actual.filter((name) => !expectedSet.has(name));
-    const missingLive = expected.filter((name) => !actualSet.has(name));
-    fail('LIVE_LEDGER_DRIFT', `extraLive=[${extraLive.join(', ')}], missingLive=[${missingLive.join(', ')}]`);
-  }
-  return { status: 'LIVE_LEDGER_VERIFIED', ledgerRowCount: actual.length, databaseMutationAuthorized: false };
-}
 
 function assertAtomicCompatibleSql(sql, repoFile) {
-  const text = String(sql ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\r\n]*/g, ' ');
-  const transactionControl = /(?:^|;)\s*(?:begin(?:\s+(?:work|transaction))?\s*(?:;|$)|start\s+transaction\b|commit\b|rollback\b|end\s+(?:work|transaction)\b|savepoint\b|release\s+savepoint\b|prepare\s+transaction\b)/i;
-  if (transactionControl.test(text)) {
-    fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
+  const statements = splitSqlStatements(sql);
+  const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release\s+savepoint\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
+  const procedural = /^(?:do\b|create\s+(?:or\s+replace\s+)?(?:function|procedure)\b)/i;
+  for (const statement of statements) {
+    const trimmed = statement.trim();
+    if (transactionControl.test(trimmed) || (procedural.test(trimmed) && /\b(?:commit|rollback|abort|savepoint|release\s+savepoint|prepare\s+transaction)\b/i.test(trimmed))) {
+      fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
+    }
   }
+  const text = statements.join('\n');
   if (/\b(create|reindex)\s+index\s+concurrently\b/i.test(text)) {
     fail('TRANSACTION_UNSAFE_MIGRATION', `${repoFile} uses CONCURRENTLY and cannot run in the atomic v1 writer`);
   }
@@ -100,13 +70,15 @@ export function buildAtomicProductionApplySql({
   const planned = plan.migrations.map((entry) => entry.repoFile).sort();
   if (pending.join('\n') !== planned.join('\n')) fail('PENDING_SET_MISMATCH', 'live apply plan no longer equals canonical PENDING_APPLY set');
 
-  const baselineNames = normalizedLedgerNames(liveLedgerRows);
+  const baselineRows = normalizedLedgerRows(liveLedgerRows);
+  const expectedPostApplyRows = expectedPostApplyLedgerRows({ plan, baselineRows });
+  const baselineIdentity = ledgerIdentityValues(baselineRows);
   const statements = [
     'begin;',
     "set local lock_timeout = '5s';",
     "set local statement_timeout = '60s';",
     `do $lock$ begin if not pg_try_advisory_xact_lock(hashtextextended(${sqlLiteral(LOCK_KEY)}, 0)) then raise exception 'PRODUCTION_DB_WRITER_LOCK_BUSY'; end if; end $lock$;`,
-    `do $baseline$ declare actual text[]; expected text[] := ${textArray(baselineNames)}; begin select coalesce(array_agg(name order by name), array[]::text[]) into actual from supabase_migrations.schema_migrations; if actual is distinct from expected then raise exception 'PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK'; end if; end $baseline$;`,
+    ledgerReconciliationSql({ ledgerIdentity: baselineIdentity, errorFormat: 'PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK:%' }),
   ];
 
   for (const entry of plan.migrations) {
@@ -122,10 +94,9 @@ export function buildAtomicProductionApplySql({
 
   const ledgerIdentity = ledgerIdentityValues(plan.migrations);
   statements.push(
-    `do $postledger$ declare missing text[]; begin select array_agg(x.name || '@' || x.version order by x.name) into missing from (values ${ledgerIdentity}) as x(name, version) where not exists (select 1 from supabase_migrations.schema_migrations m where m.name = x.name and m.version = x.version); if missing is not null then raise exception 'PRODUCTION_DB_POST_LEDGER_MISSING:%', array_to_string(missing, ','); end if; end $postledger$;`,
+    ledgerReconciliationSql({ ledgerIdentity: ledgerIdentityValues(expectedPostApplyRows), errorFormat: 'PRODUCTION_DB_POST_LEDGER_MISMATCH:%' }),
     'commit;',
   );
-
   return statements.join('\n\n');
 }
 
@@ -153,18 +124,22 @@ export async function executeAtomicProductionApply({ sql, token, fetchImpl = fet
   return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
 }
 
-export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
+export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows } = {}) {
   const rows = normalizedLedgerRows(liveLedgerRows);
-  const byName = new Map(rows.map((row) => [row.name, row]));
-  const missing = plan.migrations.map((entry) => entry.repoFile).filter((name) => !byName.has(name));
-  if (missing.length) fail('POST_APPLY_LEDGER_MISMATCH', `missing=[${missing.join(', ')}]`);
-  const versionMismatches = plan.migrations
-    .filter((entry) => byName.get(entry.repoFile)?.version !== String(entry.ledgerVersion ?? '').trim())
-    .map((entry) => `${entry.repoFile}:expected=${entry.ledgerVersion},actual=${byName.get(entry.repoFile)?.version || '<empty>'}`);
+  const expected = Array.isArray(baselineLedgerRows)
+    ? expectedPostApplyLedgerRows({ plan, baselineRows: normalizedLedgerRows(baselineLedgerRows) })
+    : plan.migrations.map((entry) => ({ name: entry.repoFile, version: String(entry.ledgerVersion ?? '').trim() }));
+  const actualByName = new Map(rows.map((row) => [row.name, row]));
+  const expectedByName = new Map(expected.map((row) => [row.name, row]));
+  const missing = expected.filter((row) => !actualByName.has(row.name)).map((row) => `${row.name}@${row.version}`);
+  const extra = rows.filter((row) => !expectedByName.has(row.name)).map((row) => `${row.name}@${row.version}`);
+  if (missing.length || extra.length) fail('POST_APPLY_LEDGER_MISMATCH', `missing=[${missing.join(', ')}], extra=[${extra.join(', ')}]`);
+  const versionMismatches = expected
+    .filter((row) => actualByName.get(row.name)?.version !== String(row.version ?? '').trim())
+    .map((row) => `${row.name}:expected=${row.version},actual=${actualByName.get(row.name)?.version || '<empty>'}`);
   if (versionMismatches.length) fail('POST_APPLY_LEDGER_VERSION_MISMATCH', versionMismatches.join(', '));
   return { status: 'POST_APPLY_LEDGER_VERIFIED', applied: plan.migrations.map((entry) => entry.repoFile), databaseMutationAuthorized: false };
 }
-
 
 /**
  * This is the only repo Production writer entry point. G0–G5 are verified before
@@ -207,7 +182,7 @@ export async function runControlledProductionRelease({
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
     const after = await captureProductionLedger({ token, fetchImpl });
-    verifyPostApplyLedger({ plan, liveLedgerRows: after });
+    verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: before });
   } catch (error) {
     if (error?.code === 'APPLY_UNKNOWN') throw error;
     const wrapped = new Error(`APPLY_UNKNOWN: mutable request or post-state readback did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);

@@ -64,11 +64,116 @@ export function pendingProductionMigrations(aliasMap = {}) {
   return pending.sort();
 }
 
-function stripComments(sql) {
-  return String(sql ?? '')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/--[^\r\n]*/g, ' ');
+function quotedTokenEnd(input, start, quote) {
+  const backslashEscapes = quote === "'" && /[eE]/.test(input[start - 1] ?? '');
+  let index = start + 1;
+  while (index < input.length) {
+    if (backslashEscapes && input[index] === '\\' && index + 1 < input.length) {
+      index += 2;
+      continue;
+    }
+    if (input[index] === quote) {
+      if (input[index + 1] === quote) {
+        index += 2;
+        continue;
+      }
+      return index + 1;
+    }
+    index += 1;
+  }
+  fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated quoted SQL token');
 }
+
+
+
+function dollarQuoteAt(input, index) {
+  return input.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/)?.[0] ?? '';
+}
+
+export function stripSqlComments(sql) {
+  const input = String(sql ?? '');
+  if (/\bstandard_conforming_strings\s*(?:=|to)\s*off\b/i.test(input)) {
+    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'standard_conforming_strings=off is not admitted by the fail-closed classifier');
+  }
+  let output = '';
+  let index = 0;
+  while (index < input.length) {
+    const char = input[index];
+    const next = input[index + 1];
+    if (char === "'" || char === '"') {
+      const end = quotedTokenEnd(input, index, char);
+      output += input.slice(index, end);
+      index = end;
+      continue;
+    }
+    const dollar = dollarQuoteAt(input, index);
+    if (dollar) {
+      const end = input.indexOf(dollar, index + dollar.length);
+      if (end < 0) {
+        fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted SQL token');
+      }
+      const endIndex = end + dollar.length;
+      output += input.slice(index, endIndex);
+      index = endIndex;
+      continue;
+    }
+    if (char === '-' && next === '-') {
+      output += '  ';
+      index += 2;
+      while (index < input.length && input[index] !== '\n') {
+        output += ' ';
+        index += 1;
+      }
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      output += '  ';
+      index += 2;
+      while (index < input.length && !(input[index] === '*' && input[index + 1] === '/')) {
+        output += input[index] === '\n' ? '\n' : ' ';
+        index += 1;
+      }
+      if (index < input.length) {
+        output += '  ';
+        index += 2;
+      }
+      continue;
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
+}
+
+export function splitSqlStatements(sql) {
+  const input = stripSqlComments(sql);
+  const statements = [];
+  let start = 0;
+  let index = 0;
+  while (index < input.length) {
+    const char = input[index];
+    if (char === "'" || char === '"') {
+      index = quotedTokenEnd(input, index, char);
+      continue;
+    }
+    const dollar = dollarQuoteAt(input, index);
+    if (dollar) {
+      const end = input.indexOf(dollar, index + dollar.length);
+      index = end < 0 ? input.length : end + dollar.length;
+      continue;
+    }
+    if (char === ';') {
+      const statement = input.slice(start, index).trim();
+      if (statement) statements.push(statement);
+      start = index + 1;
+    }
+    index += 1;
+  }
+  const tail = input.slice(start).trim();
+  if (tail) statements.push(tail);
+  return statements;
+}
+
 
 function stripStoredRoutineBodies(text) {
   // UPDATE / DELETE inside a stored function is runtime behavior, not a migration-time
@@ -86,8 +191,8 @@ function hasImmediateBackfillDml(text) {
   // 執行的資料 DML 才算 BACKFILL；stored function/procedure 內的 DML 是日後 RPC
   // 執行時才發生，不能把整支 migration 誤判成 BACKFILL。
   const immediateText = stripStoredRoutineBodies(text);
-  const update = /\bupdate\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*(?:\s+(?:as\s+)?[A-Za-z_][\w$]*)?\s+set\b/i.test(immediateText);
-  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*\b/i.test(immediateText);
+  const update = /\bupdate\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?(?:\s+(?:as\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s+set\b/i.test(immediateText);
+  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?(?=\s|;|$)/i.test(immediateText);
   return update || deletion;
 }
 
@@ -102,7 +207,7 @@ export function highestRiskTier(tiers = []) {
 }
 
 function rejectUnclassifiedDropStatements(text) {
-  const fragments = String(text).split(';').filter((fragment) => /\bdrop\b/i.test(fragment));
+  const fragments = splitSqlStatements(text).filter((fragment) => /\bdrop\b/i.test(fragment));
   for (const fragment of fragments) {
     const recognized =
       /\bdrop\s+(?:table|schema)\b/i.test(fragment) ||
@@ -128,7 +233,8 @@ export function inferMigrationRiskTier(sql) {
   // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
   // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、
   // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
-  if (/\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]{0,240}\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(text)) {
+  const statements = splitSqlStatements(text);
+  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]{0,240}\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
   rejectUnclassifiedDropStatements(text);
