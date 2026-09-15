@@ -81,6 +81,11 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  *     二套撞班規則，也不改 `staff-availability.ts` 的行為。STAFF_UNASSIGNED 這
  *     半先前（#448）刻意留給 Owner 另外裁示，本輪依 Sol TRIAGE 明確授權的範圍
  *     補上，見 `src/lib/guide-action-inbox.ts` 對應型別上的說明。
+ *     這個候選查詢跟 DEPARTURE 查詢一樣，必須排除 formation query 已經涵蓋的
+ *     REVIEW_REQUIRED／AT_RISK 團次（#479 修復）——STAFF_CONFLICT／
+ *     STAFF_UNASSIGNED 卡片的深連結跟 formation 卡片相同，都是
+ *     `/tenant/trips/:tripId`，沒有這條排除的話，一個尚未成團、也沒有 PRIMARY
+ *     指派的團次會同時冒出 STAFF_UNASSIGNED 與 REVIEW_REQUIRED／AT_RISK 兩張卡。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -168,12 +173,24 @@ export const GET = handle(async () => {
     // 讀出（`trip_departure_staff(staff_id, role, staff(name))`）。這一批候選同時
     // 餵給 STAFF_CONFLICT（有 PRIMARY，撞不撞班留給下面 loadStaffLoad()/
     // findStaffConflicts() 判斷）與 STAFF_UNASSIGNED（沒有 PRIMARY）兩種卡片。
+    //
+    // #479 修復：STAFF_CONFLICT／STAFF_UNASSIGNED 卡片的深連結跟 DEPARTURE／
+    // formation 卡片完全相同（皆是 `/tenant/trips/:tripId`，見
+    // `guide-action-inbox.ts` 對應的 build*Item()），但這裡先前沒有跟 DEPARTURE
+    // query（上面）一樣排除 formation query 已經涵蓋的 REVIEW_REQUIRED／AT_RISK
+    // 團次——一個尚未成團、且沒有 PRIMARY 指派的團次，會同時被這裡判成
+    // STAFF_UNASSIGNED、又被下面的 formation query 判成 REVIEW_REQUIRED／
+    // AT_RISK，同一個團次疊出兩張卡（真正的重複根因；不是原本懷疑的 DEPARTURE
+    // query 排除失效——那條排除本身其實有效，見 Issue #479 調查記錄）。跟
+    // DEPARTURE query 用一樣的排除條件、一樣的理由：formation 卡片是這個團次
+    // 唯一權威的「需要決定」入口，人員指派問題留到成團決定之後才有意義追。
     t.supabase
       .from('trip_departures')
       .select('id, trip_id, plan_id, departs_on, start_time, status, created_at, trips(title, duration_hours), trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
       .eq('tenant_id', t.tenantId)
       .in('status', ['OPEN', 'CLOSED'])
       .gte('departs_on', today)
+      .not('formation_status', 'in', '(REVIEW_REQUIRED,AT_RISK)')
       .order('departs_on', { ascending: true })
       .order('start_time', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
