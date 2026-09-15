@@ -141,6 +141,18 @@ describe('Controlled Production DB writer #447', () => {
       liveLedgerRows: beforeRows,
       readCanonicalSql: () => proceduralNoticeSql,
     })).not.toThrow();
+
+    const proceduralCommitSql = "do $ begin commit; end $;";
+    const proceduralCommitPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => proceduralCommitSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: proceduralCommitPlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => proceduralCommitSql,
+    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
   });
 
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
