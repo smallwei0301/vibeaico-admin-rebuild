@@ -361,6 +361,32 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-23-pr513-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#23 TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：推廣頁面真實訪客統計。新增 migration supabase/migrations/0113_issue_23_promotion_page_view_events.sql，建立 page_view_events 表（無原始 IP 欄位，採匿名日輪轉鹽值 visitor_hash，RLS 設定為認証用戶專屬 is_tenant_member(tenant_id) SELECT policy，禁止 anon/authenticated INSERT——寫入僅服務角色可）；新增 GET /api/promotion/stats?range=7|30|90 租戶範圍聚合查詢 endpoint；新增 180 天保留政策清理 cron route（未納入 vercel.json crons，待授權）；服務端頁面瀏覽事件紀錄，公開商店頁面按 ?src=qr|line 分組；/tenant/promote 頁面接線，用真實 PV/近似 UV/來源/日統計替換假數字，含誠實空態。本地隔離 Supabase 驗證 0001–0113 全套用成功、unit 176/2334 全綠、build 成功。CI 初期紅燈（fresh-install-baseline manifest.json 的 mainHead 欄位過期），follow-up commit 3b153b3c 重計 canonicalSourceDigest 後 2464 test 全綠。已開立 PR #513。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-23-pr513-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #513 的高風險 Final Risk（Astra gate）覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=TENANT_AUTH_BOUNDARY：新增 page_view_events 表與 RLS policy。審計方式：本機隔離 Supabase（project_id=vibeaico-fable-513-review）從 0001 全新建庫套用到 0113，直接查 pg_policy 確認恰好一支 policy（authenticated-only SELECT via is_tenant_member），無 INSERT policy；並模擬 anon/authenticated/service_role 角色行為測試（anon 讀 0 筆＋無法 INSERT 返回 42501；authenticated 租戶 B 所有者只見租戶 B 行數且無法 INSERT；service_role 可正常寫入）；PostgREST 層級探測相同邊界。回報 ASTRA_VERDICT=PASS。審計中發現 PR 原 head（9f3e5270）CI 紅燈（check ＋ historical-compatibility-candidate ＋ 5 個 fresh-install-baseline 案例失敗），PR body 錯誤宣稱「此故障亦見於乾淨 main」；審計員獨立驗證：同測試對基數（d80409b5）與合併基數（b83ba16f）跑過，9/9 案例全綠，直接駁斥此假聲稱。本 session 已推送 commit 3b153b3c 修復（重計 manifest digest），並在 Fable 審計員最終簽認前更正 PR body 的誤報。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       }
     ]
   },
@@ -429,6 +455,7 @@
     "modelUsage.tasks 均為即時埋點，非事後回填；未觀測欄位（token 用量、weeklyUsage 增量、lunaDelegationRatePercent、各項 percent 欄位）維持 null，不推算。",
     "同一輪雙 Terra：#42（PR #464，已合併/完成）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。新一層雙 Terra：#477 P1a（PR #506，已 merged）與 #228（PR #507，新開），亦無檔案重疊。",
     "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。",
-    "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。"
+    "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。",
+    "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。"
   ]
 }
