@@ -2,6 +2,7 @@ name: issue-447-shared-test-validation
 on:
   push:
     branches: [test/issue-447-exact-head-validation]
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
