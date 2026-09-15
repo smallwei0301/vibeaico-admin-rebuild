@@ -60,7 +60,7 @@ const ACCESS_TOKEN_MIN_LENGTH = 100;
 
 const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
-type VerifyCheckStatus = 'PASS' | 'WARN' | 'FAIL';
+type VerifyCheckStatus = 'PASS' | 'FAIL' | 'INFO';
 type VerifyCheck = { key: string; status: VerifyCheckStatus; pass: boolean; message: string };
 
 /* -------------------------------------------------------------------------- */
@@ -401,10 +401,12 @@ export default function LineSettingsPage() {
     }
   };
 
-  // WARN（如 AUTO_REPLY——LINE 無公開 API 可直接查詢）不計入失敗數，只有真正
-  // 的 FAIL 才算失敗（Issue #477 P0：AUTO_REPLY 不再是假 FAIL）。
-  const failCount = verifyChecks?.filter((c) => c.status === 'FAIL').length ?? 0;
-  const warnCount = verifyChecks?.filter((c) => c.status === 'WARN').length ?? 0;
+  // AUTO_REPLY 是獨立的人工確認提示（status:'INFO'），不計入通過／失敗清單——
+  // 只有六項可查證檢查（CREDENTIALS/TOKEN/ID_SECRET_PAIR/BOT_MODE/WEBHOOK/
+  // WEBHOOK_TEST）才會是 PASS 或 FAIL。
+  const verifiableChecks = verifyChecks?.filter((c) => c.status !== 'INFO') ?? [];
+  const infoChecks = verifyChecks?.filter((c) => c.status === 'INFO') ?? [];
+  const failCount = verifiableChecks.filter((c) => c.status === 'FAIL').length;
 
   /* -------------------------------------------------------------- render */
 
@@ -1227,25 +1229,23 @@ export default function LineSettingsPage() {
         }
       >
         <div className="mb-3 flex flex-wrap gap-2">
-          {failCount === 0 && warnCount === 0 ? (
-            <Badge tone="success">{t.verifyReport.allPass}</Badge>
+          {failCount === 0 ? (
+            <Badge tone="success">
+              <CheckCircle2 size={13} className="mr-1 inline-block" />
+              {t.verifyReport.allPass}
+            </Badge>
           ) : (
-            <>
-              {failCount > 0 ? <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge> : null}
-              {warnCount > 0 ? <Badge tone="warning">{t.verifyReport.warnCount(warnCount)}</Badge> : null}
-            </>
+            <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge>
           )}
         </div>
         <div className="flex flex-col gap-2">
-          {(verifyChecks ?? []).map((c) => (
+          {verifiableChecks.map((c) => (
             <div
               key={c.key}
               className="flex items-start gap-2 rounded-md border border-neutral-250 px-3 py-2"
             >
               {c.status === 'PASS' ? (
                 <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-success" />
-              ) : c.status === 'WARN' ? (
-                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-warning" />
               ) : (
                 <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-danger" />
               )}
@@ -1254,9 +1254,6 @@ export default function LineSettingsPage() {
                   {t.verifyReport.checkNames[c.key as keyof typeof t.verifyReport.checkNames] ?? c.key}
                 </div>
                 <div className="form-text">{c.message}</div>
-                {c.status === 'WARN' && c.key === 'AUTO_REPLY' ? (
-                  <div className="form-text font-semibold">{t.verifyReport.autoReplyWarnHint}</div>
-                ) : null}
                 {c.status === 'FAIL' && c.key === 'WEBHOOK' ? (
                   <div className="form-text">{t.verifyReport.webhookOffHint}</div>
                 ) : null}
@@ -1264,15 +1261,23 @@ export default function LineSettingsPage() {
             </div>
           ))}
         </div>
-        <a
-          className="btn btn-outline btn-sm mt-3"
-          href={t.tutorial.managerHref}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <ExternalLink size={13} />
-          {t.verifyReport.gotoLineConsole}
-        </a>
+
+        {/* 人工確認提示（AUTO_REPLY）——藍色資訊樣式，獨立於上方通過／失敗清單，
+            不是「偵測到問題」的黃色警告。 */}
+        {infoChecks.map((c) => (
+          <Alert key={c.key} tone="info" className="mt-3" title={t.verifyReport.autoReplyInfo.title}>
+            <p className="mt-1">{t.verifyReport.autoReplyInfo.body}</p>
+            <a
+              className="btn btn-outline btn-sm mt-2"
+              href={t.tutorial.managerHref}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLink size={13} />
+              {t.verifyReport.autoReplyInfo.cta}
+            </a>
+          </Alert>
+        ))}
       </Modal>
 
       {/* ------------------------------------------------ modal：圖文教學 */}

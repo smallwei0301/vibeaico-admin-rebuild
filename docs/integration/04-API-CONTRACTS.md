@@ -106,7 +106,7 @@ export const POST = handle(async (_req, { params }) => {
 | PUT `/api/settings` | body = `Partial<TenantSettings>`（各群組整包覆蓋）。逐群組 zod 驗證後寫回 jsonb。`basic.shopCode`/`basic.tenantName` 變更時同步更新 `tenants` 表（shopCode 需查重，重複回 409 `AUTH_006`）。需 `MANAGER` |
 | PUT `/api/settings/line` | body = `Partial<LineSettings>`。**秘密欄位規則（鐵則 6）**：`channelSecret`/`channelAccessToken` 為空字串 → 不動 DB 舊值；非空 → `encryptSecret()` 後寫 `*_enc` 欄位。其餘欄位寫進 `line` jsonb（jsonb 內永不存這兩個 secret）。需 `MANAGER` |
 | POST `/api/settings/line/test` | 解密 token → `GET https://api.line.me/v2/bot/info`。200 → `{ok:true,message:'連線正常'}`；否則 `{ok:false,message:<LINE 錯誤>}`（HTTP 仍 200，錯誤放 data） |
-| POST `/api/settings/line/verify` | 回 `{checks:[{key,status,pass,message}]}`，key 依序 `TOKEN`/`WEBHOOK`/`AUTO_REPLY`/`RICH_MENU`/`QUOTA`。`status:'PASS'\|'WARN'\|'FAIL'` 為三態語意主欄位（issue #477，2026-09-15 修正）；`pass:boolean` 保留供既有呼叫端相容，永遠是 `status==='PASS'` 的衍生欄位，不再獨立判定。實作見 06 分冊 §7 |
+| POST `/api/settings/line/verify` | 回 `{checks:[{key,status,pass,message}]}`，key 依序 `CREDENTIALS`/`TOKEN`/`ID_SECRET_PAIR`/`BOT_MODE`/`WEBHOOK`/`WEBHOOK_TEST`/`AUTO_REPLY`。`status:'PASS'\|'FAIL'\|'INFO'`（`INFO` 僅 `AUTO_REPLY` 專用，不計入通過／失敗）為主欄位（issue #477，2026-09-15 首次修正三態語意，同日依 Owner 新版報告設計重構為六項可查證檢查＋一項 INFO 提示）；`pass:boolean` 保留供既有呼叫端相容，永遠是 `status==='PASS'` 的衍生欄位，不再獨立判定。無 token 時只回六項可查證檢查（皆 FAIL），無 `AUTO_REPLY`。實作見 06 分冊 §7 |
 | GET `/api/settings/setup-status` | 回 `SetupStatus`。步驟判定：SHOP_INFO=basic.tenantPhone/Address 有值；STAFF=staff 至少 1；SERVICE=services 至少 1；BUSINESS_HOURS=business 曾儲存（jsonb ≠ '{}'）；LINE_BOT=token 已設定。percent = done 數/5*100 |
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 

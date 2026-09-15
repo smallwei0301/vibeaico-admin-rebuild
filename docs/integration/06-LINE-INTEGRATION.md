@@ -302,19 +302,34 @@ inactive row 不參與 webhook 查詢；移除圖片後寫回 TEXT，故不再�
 
 ---
 
-## 7. `/api/settings/line/verify` 的五項檢查（補 04 分冊 A-1；issue #477 2026-09-15 修正三態語意）
+## 7. `/api/settings/line/verify` 的六項可查證檢查 + 一項人工確認提示（補 04 分冊 A-1；
+   issue #477 2026-09-15 首次修正三態語意，同日稍後依 Owner 提供的新版報告設計重構為
+   六項可查證檢查 + 獨立 INFO 提示，見 `src/app/api/settings/line/verify/route.ts` 檔頭）
 
-回應每項 check 帶 `status:'PASS'|'WARN'|'FAIL'`（主欄位）與 `pass:boolean`（`= status==='PASS'`，僅供既有呼叫端相容，不再獨立判定）。
+回應每項 check 帶 `status:'PASS'|'FAIL'|'INFO'`（主欄位；INFO 僅 AUTO_REPLY 專用）與
+`pass:boolean`（`= status==='PASS'`，僅供既有呼叫端相容，不再獨立判定）。
+
+六項可查證檢查（皆可能是 PASS 或 FAIL）：
 
 | key | 判定 |
 |---|---|
-| TOKEN | `lineBotInfo()` 成功 → PASS，否則 FAIL |
+| CREDENTIALS | 本地檢查（不呼叫 LINE）：Channel ID／Secret／Access Token 是否都已填寫 |
+| TOKEN | `GET /v2/bot/info` 成功 → PASS，否則 FAIL |
+| ID_SECRET_PAIR | `POST /oauth2/v2.1/token`（client_credentials grant，Channel ID 當 client_id、Channel Secret 當 client_secret）成功換發短期 token → PASS（代表兩者確實互相配對，不是各自單獨有效但湊錯對）；LINE 回 invalid_client 等非 2xx → FAIL |
+| BOT_MODE | 沿用 TOKEN 檢查同一次 `GET /v2/bot/info` 的 `chatMode` 欄位：`'bot'` → PASS（回應方式為 Bot 模式）；`'chat'` 或缺欄位 → FAIL。⚠️ 這與下面的 AUTO_REPLY 是兩個完全不同的 LINE 設定——chatMode 代表 LINE OA Manager「回應方式」，是官方公開 API 欄位，這裡讀它判斷「回應方式」正當；AUTO_REPLY 檢查的是同一頁裡「自動回應訊息」這顆*另外*的開關，LINE 未公開讀取 API，兩者不可混用同一個判斷來源（這正是本項目的前身、舊版 AUTO_REPLY 誤用 chatMode 的坑） |
 | WEBHOOK | `GET /v2/bot/channel/webhook/endpoint` 的 endpoint 等於本店 webhook URL 且 active → PASS，否則 FAIL |
-| AUTO_REPLY | 恆回 **WARN**（不是 PASS，也不是舊版的恆假 FAIL）。LINE 官方沒有公開 API 能直接讀取「自動回應訊息」這顆開關本身；`GET /v2/bot/info` 的 `chatMode` 欄位只代表 LINE OA Manager 的「Chat」開／關，不是自動回應開關，不能拿 `chatMode` 的值去推論 PASS 或 FAIL（那是舊版的錯誤推論，已移除）。無法用可觀察證據判定的項目，誠實語意就是 WARN——既不能謊稱已查到 PASS，也不能誤報沒有失敗證據的 FAIL；文案導引店家自行到 LINE Official Account Manager 確認 |
-| RICH_MENU | `GET /v2/bot/user/all/richmenu` 有值 → PASS，否則 FAIL |
-| QUOTA | `GET /v2/bot/message/quota/consumption` 對比 quota，回剩餘則數 → PASS；查詢失敗 → FAIL |
+| WEBHOOK_TEST | `POST /v2/bot/channel/webhook/test`（LINE 主動對已註冊 endpoint 送一次測試請求）回 `success:true` → PASS，否則 FAIL |
 
-無 LINE Channel Access Token 時，五項一律 `status:'FAIL'`（統一提示尚未設定），且不對 LINE 發出任何請求——這與「有 token 但查不到 AUTO_REPLY」的 WARN 是兩種不同情境，不可混用同一種狀態。
+一項獨立的人工確認提示（`AUTO_REPLY`，status 恆為 **INFO**，不計入通過／失敗任一邊）：
+LINE 官方沒有公開 API 能直接讀取「自動回應訊息」這顆開關本身，一律導引店家自行到
+LINE Official Account Manager 確認並視需要關閉，避免 LINE 內建自動回應攔截 Bot
+訊息。不論 chatMode 為何、缺欄位、甚至 `/v2/bot/info` 呼叫失敗，AUTO_REPLY 皆為
+INFO——這一點延續自 issue #477 首次修正時建立的規則（拿 chatMode 推論 AUTO_REPLY
+是錯的，2026-09-15 稍早的教訓）。前端把它獨立渲染成藍色資訊提示，不是黃色警告。
+
+無 LINE Channel Access Token 時，六項可查證檢查一律 `status:'FAIL'`（統一提示尚未
+設定），且不對 LINE 發出任何請求；此時也不顯示 AUTO_REPLY 人工提示——連基本設定
+都還沒接上，提醒一個還沒生效的開關沒有意義。
 
 ---
 

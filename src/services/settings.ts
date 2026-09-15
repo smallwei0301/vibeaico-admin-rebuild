@@ -312,26 +312,40 @@ export const testLineConnection = () =>
   );
 
 /**
- * 三態語意（Issue #477 P0）：status 為 'PASS' | 'WARN' | 'FAIL'；`pass` 欄位保留
- * 相容（`pass === (status === 'PASS')`），呼叫端計算失敗數須用 status==='FAIL'，
- * 不得把 WARN 算進失敗數。AUTO_REPLY 恆回 WARN——LINE 無公開 API 可直接查詢
- * 該開關本身，見 src/app/api/settings/line/verify/route.ts 檔頭說明。
+ * 六項可查證檢查（status 只會是 PASS/FAIL）+ 一項人工確認提示（AUTO_REPLY，
+ * status 恆為 INFO）—— 見 src/app/api/settings/line/verify/route.ts 檔頭說明。
+ * `pass` 欄位保留相容（`pass === (status === 'PASS')`），呼叫端計算失敗數須用
+ * status==='FAIL'，AUTO_REPLY 的 INFO 不計入通過／失敗任一邊。
  */
 export const verifyLineSetup = () =>
-  adapt<{ checks: { key: string; status: 'PASS' | 'WARN' | 'FAIL'; pass: boolean; message: string }[] }>(
+  adapt<{ checks: { key: string; status: 'PASS' | 'FAIL' | 'INFO'; pass: boolean; message: string }[] }>(
     () => ({
       checks: [
-        { key: 'TOKEN', status: 'PASS', pass: true, message: 'Channel Access Token 有效' },
-        { key: 'WEBHOOK', status: 'PASS', pass: true, message: 'Webhook URL 已設定且可連線' },
+        { key: 'CREDENTIALS', status: 'PASS', pass: true, message: 'Channel ID / Secret / Access Token 都已填寫' },
+        { key: 'TOKEN', status: 'PASS', pass: true, message: 'Access Token 有效（LINE 認證通過）' },
+        {
+          key: 'ID_SECRET_PAIR', status: 'PASS', pass: true,
+          message: 'Channel ID 與 Secret 配對正確（webhook 簽章可通過）',
+        },
+        {
+          key: 'BOT_MODE', status: 'PASS', pass: true,
+          message: 'LINE 官方帳號後台「回應方式」為 Bot 模式（推薦）',
+        },
+        {
+          key: 'WEBHOOK', status: 'PASS', pass: true,
+          message: 'Use webhook 已開啟（LINE 會把使用者點選／訊息事件送到本系統）',
+        },
+        {
+          key: 'WEBHOOK_TEST', status: 'PASS', pass: true,
+          message: 'Webhook 實際測試通過（LINE → 本系統 200 OK）',
+        },
         {
           key: 'AUTO_REPLY',
-          status: 'WARN',
+          status: 'INFO',
           pass: false,
           message:
-            '「自動回應訊息」開關無公開 API 可直接查詢，請自行至 LINE Official Account Manager 確認並視需要關閉，避免攔截 Bot 訊息',
+            '「自動回應訊息」開關無公開 API 可直接查詢，請自行至 LINE Official Account Manager 確認並關閉，避免 LINE 內建自動回應攔截 Bot 訊息',
         },
-        { key: 'RICH_MENU', status: 'PASS', pass: true, message: 'Rich Menu 已發布' },
-        { key: 'QUOTA', status: 'PASS', pass: true, message: '本月推播額度尚有 68 則' },
       ],
     }),
     () => request('/api/settings/line/verify', { method: 'POST' }),
