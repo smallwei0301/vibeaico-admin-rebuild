@@ -10,9 +10,9 @@ function readJson(path) {
 }
 
 function main() {
-  const [planPath, rawPath, releasePlanPath, cleanupPath, coveragePath, outputPath] = process.argv.slice(2);
-  if (!planPath || !rawPath || !releasePlanPath || !cleanupPath || !coveragePath || !outputPath) {
-    console.error('usage: assemble-production-db-test-evidence.mjs <plan.json> <raw.json> <test-release-plan.json> <cleanup.json> <coverage.json> <output.json>');
+  const [planPath, rawPath, releasePlanPath, cleanupPath, coveragePath, postTestSchemaPath, outputPath] = process.argv.slice(2);
+  if (!planPath || !rawPath || !releasePlanPath || !cleanupPath || !coveragePath || !postTestSchemaPath || !outputPath) {
+    console.error('usage: assemble-production-db-test-evidence.mjs <plan.json> <raw.json> <test-release-plan.json> <cleanup.json> <coverage.json> <post-test-schema.json> <output.json>');
     process.exitCode = 1;
     return;
   }
@@ -23,6 +23,7 @@ function main() {
       releasePlanEvidence: readJson(releasePlanPath),
       cleanupEvidence: readJson(cleanupPath),
       coverageEvidence: readJson(coveragePath),
+      postTestSchemaEvidence: readJson(postTestSchemaPath),
     });
     writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
   } catch (error) {
