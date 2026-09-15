@@ -296,7 +296,10 @@ function rejectImmediateRoutineInvocations(statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText);
+    const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
+      || /^\s*create\s+(?:(?:temporary|temp|unlogged)\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
+      || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
+      || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
@@ -317,7 +320,7 @@ function rejectImmediateConfigurationMutations(statements) {
     if (!/^\s*do\b/i.test(lexicalText)) continue;
     const body = immediateProceduralBody(immediateText);
     const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true, true);
-    if (/(?:^\s*(?:set|reset)\b|(?:^|;)\s*begin\s+(?:set|reset)\b|(?:^|;|\b(?:then|else|loop|exception)\b)\s*(?:set|reset)\b)/i.test(bodyLexical)) {
+    if (/(?:^\s*(?:set|reset)\b|\bbegin\s+(?:set|reset)\b|(?:^|;|\b(?:then|else|loop|exception)\b)\s*(?:set|reset)\b)/i.test(bodyLexical)) {
       fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'SET/RESET inside an immediate procedural block is not admitted by the fail-closed classifier');
     }
   }
