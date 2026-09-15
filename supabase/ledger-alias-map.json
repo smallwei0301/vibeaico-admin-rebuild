@@ -500,6 +500,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#42 補上 trip_plans.duration_minutes／price_type／year_round 三欄，並讓 create_tour_order 依 price_type 決定 total_amount（PER_GROUP 一口價、PER_PERSON 單價乘人數）。本筆隨建立 0110 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0111_issue_46_guide_request_accept",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#46（GUIDE 側）：REQUEST 訂單導遊接受／拒絕，並修正 create_tour_order 對 REQUEST 方案在建單當下就 reserve_seats 的名額鎖定時機（違反 18 分冊 §0.2「送出申請不鎖導遊時間」）。新增 trip_plans.request_hold_hours／tour_orders.seats_reserved 兩欄與 accept_tour_request／reject_tour_request 兩支 rpc；create_tour_order 簽章不變，只換本體（0099 的 overload 教訓）。本筆隨建立 0111 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     }
   ]
 }

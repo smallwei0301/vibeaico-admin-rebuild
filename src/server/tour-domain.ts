@@ -307,6 +307,20 @@ export const cancelTourOrderSchema = z.object({
 });
 
 /**
+ * #46（GUIDE 側）：導遊接受 REQUEST 訂單。`holdHours` 是「接受單一 REQUEST 時
+ * 可再針對該次交易覆寫保留時間」（2026-09-14 owner decision）的入口——不填就
+ * 用該方案的 `request_hold_hours` 預設，兩者都由 `accept_tour_request` rpc
+ * 單一算出 `hold_expires_at`，不在這裡或前端重複算一次。
+ */
+export const acceptTourRequestSchema = z.object({
+  holdHours: z.number().finite().positive().max(168, '保留時數過長，請確認輸入').optional(),
+});
+
+export const rejectTourRequestSchema = z.object({
+  reason: optionalText,
+});
+
+/**
  * 狀態機（10 分冊 §3）：
  *
  *   PENDING（已佔名額）──付款確認──► CONFIRMED ──出團後──► COMPLETED

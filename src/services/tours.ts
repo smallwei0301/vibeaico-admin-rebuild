@@ -286,3 +286,26 @@ export const createManualTourOrder = (payload: {
 }) =>
   adapt(() => undefined, () =>
     request<void>('/api/tour-orders/manual', { method: 'POST', body: JSON.stringify(payload) }));
+
+/**
+ * #46（GUIDE 側）：導遊接受／拒絕 REQUEST 訂單。`holdHours` 對映
+ * `docs/decisions/2026-09-14-guide-request-payment-hold.md` 的「接受單一
+ * REQUEST 時可再針對該次交易覆寫保留時間」；不傳就用該方案的
+ * `request_hold_hours` 預設，實際算出的截止時間一律由後端 rpc 單一來源決定。
+ *
+ * ⚠️ 這裡先只補齊 service 層。`/tenant/tour-orders` 頁的清單／詳情目前
+ * 沒有攜帶 `salesMode`（`TourOrder` 型別沒有這個欄位——加它、以及在詳情 modal
+ * 畫出「接受／拒絕」按鈕與覆寫保留時數的輸入框，是比「換一顆按鈕」更大的 UI
+ * 工作），本輪誠實只交付後端端點；UI 接線留給下一輪，見 PR 說明。
+ */
+export const acceptTourOrder = (id: string, holdHours?: number) =>
+  adapt(() => undefined, () =>
+    request<void>(`/api/tour-orders/${id}/accept`, {
+      method: 'POST', body: JSON.stringify({ holdHours }),
+    }));
+
+export const rejectTourOrder = (id: string, reason?: string) =>
+  adapt(() => undefined, () =>
+    request<void>(`/api/tour-orders/${id}/reject`, {
+      method: 'POST', body: JSON.stringify({ reason }),
+    }));
