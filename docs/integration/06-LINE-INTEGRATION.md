@@ -230,6 +230,79 @@ export async function notifyBookingStatus(
 
 ---
 
+## 5.5 老闆通知 owner-notify（Issue #18）
+
+推的對象是**店家團隊**（老闆／主管），不是顧客——與上面 §5 的顧客端推播是
+兩條不同通道，共用同一份每月推播額度（`push_quota_usage`），但名單、觸發
+事件、文案都不同，不得合併成同一支函式。
+
+**Canonical flow（不得走回頭路的舊 bind-code 模式）**：
+
+```
+已加入 LINE 好友 → 後台從 line_users 挑人 → 本人在 LINE 上按確認「是我」
+→ 加入 owner-notify recipients
+```
+
+### 資料模型（migration `0116_issue_18_owner_notify.sql`）
+
+- `owner_notify_bind_requests`：「已推出確認訊息、等待本人按確認」的暫存態。
+  `status` ∈ PENDING/CONFIRMED/EXPIRED/CANCELLED，24 小時過期，同一位好友同時
+  只能有一筆 PENDING（DB 部分唯一索引）。
+- `owner_notify_recipients`：正式名單。`is_primary`（DB 部分唯一索引保證單一
+  租戶最多一位）、`notify_new_booking`、`notify_cancel` 兩個獨立開關。
+  FK 到 `line_users(tenant_id, line_user_id) on delete cascade`——好友被刪
+  （unfollow 清理）時一併移除通知名單資格。
+- 兩表 RLS 皆 `is_tenant_member(tenant_id)`，四操作全開放（比照 0066 trips
+  系列 all policy）。
+
+### 上限與規則（Owner 已裁決，Issue #18 本文，不可再議）
+
+- 每租戶最多 **3 位**接收者，**無付費解鎖**——寫死在
+  `src/server/owner-notify.ts` 的 `OWNER_NOTIFY_MAX_RECIPIENTS`，不是 DB 可調欄位。
+- 第一位加入者自動成為主要；移除主要時依 `created_at` 遞補最早的下一位；
+  移除最後一位接收者即停止該租戶所有老闆 LINE 通知。
+- 事件對應：
+  | 事件 | 觸發對象 |
+  |---|---|
+  | 新預約 | `notify_new_booking = true` 的接收者 |
+  | 旅客自行取消 | `notify_cancel = true` 的接收者 |
+  | 訂閱到期／儲值提醒 | 僅主要接收者，無視上面兩個開關（本 PR 未實作寄送 cron，見下方範圍註記） |
+- 送給 N 位＝消耗 N 則推播額度（`lineMulticast` + `consumePushQuota(tenantId, N)`），
+  不得少算成 1 則。
+- 「已綁定」（有正式接收者）與「LINE provider 可連線」是兩個不同概念：
+  後者由 `checkOwnerNotifyProviderHealth()` 實際打一次 `GET /v2/bot/info`
+  才回報 healthy，不是看有沒有存 Token 就宣稱已連線。
+
+### 四支端點
+
+| 端點 | 做法 |
+|---|---|
+| GET／POST `/api/settings/line/owner-notify` | 總覽：目前接收者、`maxRecipients`、實測的 provider 連線狀態；POST 為「重新檢查」按鈕，不落庫 |
+| GET `/api/settings/line/owner-notify/line-users` | 候選清單：已加好友、扣掉已是正式接收者的，帶回進行中邀請的 id |
+| POST `/api/settings/line/owner-notify/bind` | 發起本人確認：推一則帶 `postback` 確認按鈕的訊息＋記一筆 PENDING 請求，**不會**直接加入名單 |
+| `/api/settings/line/owner-notify/recipients/*` | CRUD：POST（把已確認的請求落地成正式接收者——正常路徑走 webhook postback，這支端點供沒有真 LINE webhook 環境的測試重放同一段邏輯）、DELETE（remove-all）、`[id]` 的 PATCH（切換開關／指定主要）與 DELETE（移除單一，主要遞補） |
+
+### webhook postback 分派（`src/server/line-events.ts`）
+
+沿用既有 webhook 收件端點（`src/app/api/line/webhook/[shopCode]/route.ts`），
+**沒有新建 webhook 路由**：`postback.data` 為 `ownerNotifyConfirm:<requestId>`
+時呼叫 `confirmOwnerNotifyBind()`（service-role client，因為 webhook 沒有
+登入 session）；`ownerNotifyDecline:<requestId>` 呼叫 `declineOwnerNotifyBind()`
+把請求標記 CANCELLED。
+
+### 本 PR 範圍與明確延後項目
+
+- 未建立「訂閱到期／儲值提醒」的實際寄送 cron；資料模型（僅主要接收者收到）
+  已就緒，寄送邏輯留待對應的訂閱到期偵測 Issue 一併實作。
+- 本 repo 沒有未登入的旅客自助取消入口（`src/app/s/[shopCode]` 只有展示，
+  沒有取消動作），「旅客自行取消」通知掛在既有的
+  `POST /api/bookings/:id/cancel`，由呼叫端明確帶 `customerInitiated: true`
+  才觸發——不是靠「誰呼叫了這支 API」自動判斷，因為目前呼叫者一律是已登入
+  店家成員。真正的旅客自助取消入口出現時，一樣呼叫本端點並帶這個旗標即可
+  重用同一段邏輯。
+
+---
+
 ## 6. Rich Menu / Flex 選單（line-settings、rich-menu-design 頁）
 
 端點（原站清單 `/api/settings/line/rich-menu*`）最小可用集：

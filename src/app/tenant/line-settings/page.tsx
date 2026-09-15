@@ -25,6 +25,7 @@ import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
+import { OwnerNotifySection } from '@/components/line-settings/OwnerNotifySection';
 
 /* -------------------------------------------------------------------------- */
 /* 常數                                                                        */
@@ -1177,6 +1178,11 @@ export default function LineSettingsPage() {
       </Card>
 
       {/* ========================================================== 使用說明 */}
+      {/* ====================================================== 老闆通知（Issue #18） */}
+      <div className="mb-4">
+        <OwnerNotifySection />
+      </div>
+
       <Card className="mb-4">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
