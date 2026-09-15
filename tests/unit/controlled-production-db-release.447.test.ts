@@ -161,6 +161,18 @@ describe('Controlled Production DB writer #447', () => {
       })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
     }
 
+    const typedLiteralSql = "select name'\\'; commit; -- ';";
+    const typedLiteralPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => typedLiteralSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: typedLiteralPlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => typedLiteralSql,
+    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+
     const proceduralSql = 'do $$ begin perform 1; end $$;';
     const proceduralPlan = buildProductionDbReleasePlan({
       releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
