@@ -126,6 +126,14 @@ describe('Production DB release plan #447', () => {
     const dollarQuote = String.fromCharCode(36, 36);
     const doDropSql = 'do ' + dollarQuote + ' begin drop view public.t; drop constraint old_ck; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(doDropSql)).toThrow(/UNCLASSIFIED_DROP_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('select $é$--$é$; commit; drop table public.tenant_data;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    const dynamicDmlSql = 'do ' + dollarQuote + " begin execute 'delete from public.tenant_data'; end " + dollarQuote + ';';
+    expect(inferMigrationRiskTier(dynamicDmlSql)).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('set session role app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('reset role;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('set session authorization app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('alter domain public.order_id owner to app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('alter foreign table public.orders owner to app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter view public.tenant_records reset (security_invoker);')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('update only (public.tenant_records) set tenant_id = \'other\';')).toBe('BACKFILL');
     expect(inferMigrationRiskTier('update public . tenant_records set tenant_id = \'other\';')).toBe('BACKFILL');
