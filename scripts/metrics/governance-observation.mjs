@@ -41,7 +41,7 @@ function median(values) {
 function parseBodyField(body, key) {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = String(body ?? '').match(new RegExp(`(?:^|\\n)\\s*(?:-\\s*)?${escaped}\\s*:\\s*([^\\n]+)`, 'i'));
-  return match ? text(match[1]).replace(/[`*_]/g, '').trim() : null;
+  return match ? text(match[1]).replace(/[`*]/g, '').trim() : null;
 }
 
 export function classifyGovernancePr(pr) {
