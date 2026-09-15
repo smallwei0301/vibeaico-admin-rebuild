@@ -245,24 +245,56 @@ function stripStoredRoutineBodies(statement) {
   return input;
 }
 
-function hasRoutineInvocation(text) {
-  return /\b(?!(?:in|exists|any|all|some|from|select|where|having|case|when)\b)(?:[A-Za-z_][\w$]*\s*\.\s*)?[A-Za-z_][\w$]*\s*\(/i.test(text);
+const SAFE_IMMEDIATE_SQL_FUNCTIONS = new Set([
+  'array_agg', 'array_length', 'array_to_string', 'btrim', 'coalesce', 'count',
+  'date_part', 'date_trunc', 'format', 'gen_random_uuid', 'json_agg',
+  'json_build_object', 'jsonb_agg', 'jsonb_build_object', 'length', 'least',
+  'lower', 'now', 'pg_get_constraintdef', 'pg_get_expr',
+  'pg_get_function_def', 'pg_get_function_identity_arguments', 'pg_get_functiondef',
+  'pg_options_to_table', 'regexp_replace', 'round', 'string_agg', 'to_regclass',
+  'to_regtype', 'unnest', 'upper',
+]);
+
+const SQL_PARENTHESES_WORDS = new Set([
+  'all', 'and', 'any', 'as', 'case', 'check', 'exists', 'filter', 'from', 'group',
+  'having', 'in', 'limit', 'not', 'offset', 'on', 'or', 'over', 'partition',
+  'returning', 'select', 'some', 'using', 'values', 'when', 'where', 'with',
+]);
+
+function hasUnverifiedRoutineInvocation(text) {
+  const candidates = String(text).matchAll(
+    /\b(?:[A-Za-z_][\w$]*\s*\.\s*)?([A-Za-z_][\w$]*)\s*\(/gi,
+  );
+  for (const match of candidates) {
+    const name = String(match[1]).toLowerCase();
+    const qualified = /\./.test(match[0]);
+    if (!qualified && (SAFE_IMMEDIATE_SQL_FUNCTIONS.has(name) || SQL_PARENTHESES_WORDS.has(name))) continue;
+    return true;
+  }
+  return false;
 }
 
 function rejectImmediateRoutineInvocations(statements) {
+  const checkCommandText = (text) => {
+    const lexical = stripSqlStringLiterals(text, true);
+    const commandSegments = [
+      ...lexical.matchAll(/\b(?:select|perform)\b[\s\S]*?(?=;|$)/gi),
+    ];
+    return commandSegments.some((segment) => hasUnverifiedRoutineInvocation(segment[0]));
+  };
+
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && hasRoutineInvocation(lexicalText);
-    if (topLevelCall || topLevelSelectCall) {
+    const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && checkCommandText(lexicalText);
+    if (topLevelCall || topLevelSelectCall || checkCommandText(lexicalText)) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
 
     if (/^\s*do\b/i.test(lexicalText)) {
       const body = immediateProceduralBody(immediateText);
-      const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true);
-      if (/\b(?:select|call|perform)\b/i.test(bodyLexical) && hasRoutineInvocation(bodyLexical)) {
+      if (body !== null && checkCommandText(body)) {
         fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside an immediate procedural block is not admitted');
       }
     }
