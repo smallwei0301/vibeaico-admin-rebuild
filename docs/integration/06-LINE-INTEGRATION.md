@@ -230,6 +230,79 @@ export async function notifyBookingStatus(
 
 ---
 
+## 5.5 老闆通知 owner-notify（Issue #18）
+
+推的對象是**店家團隊**（老闆／主管），不是顧客——與上面 §5 的顧客端推播是
+兩條不同通道，共用同一份每月推播額度（`push_quota_usage`），但名單、觸發
+事件、文案都不同，不得合併成同一支函式。
+
+**Canonical flow（不得走回頭路的舊 bind-code 模式）**：
+
+```
+已加入 LINE 好友 → 後台從 line_users 挑人 → 本人在 LINE 上按確認「是我」
+→ 加入 owner-notify recipients
+```
+
+### 資料模型（migration `0116_issue_18_owner_notify.sql`）
+
+- `owner_notify_bind_requests`：「已推出確認訊息、等待本人按確認」的暫存態。
+  `status` ∈ PENDING/CONFIRMED/EXPIRED/CANCELLED，24 小時過期，同一位好友同時
+  只能有一筆 PENDING（DB 部分唯一索引）。
+- `owner_notify_recipients`：正式名單。`is_primary`（DB 部分唯一索引保證單一
+  租戶最多一位）、`notify_new_booking`、`notify_cancel` 兩個獨立開關。
+  FK 到 `line_users(tenant_id, line_user_id) on delete cascade`——好友被刪
+  （unfollow 清理）時一併移除通知名單資格。
+- 兩表 RLS 皆 `is_tenant_member(tenant_id)`，四操作全開放（比照 0066 trips
+  系列 all policy）。
+
+### 上限與規則（Owner 已裁決，Issue #18 本文，不可再議）
+
+- 每租戶最多 **3 位**接收者，**無付費解鎖**——寫死在
+  `src/server/owner-notify.ts` 的 `OWNER_NOTIFY_MAX_RECIPIENTS`，不是 DB 可調欄位。
+- 第一位加入者自動成為主要；移除主要時依 `created_at` 遞補最早的下一位；
+  移除最後一位接收者即停止該租戶所有老闆 LINE 通知。
+- 事件對應：
+  | 事件 | 觸發對象 |
+  |---|---|
+  | 新預約 | `notify_new_booking = true` 的接收者 |
+  | 旅客自行取消 | `notify_cancel = true` 的接收者 |
+  | 訂閱到期／儲值提醒 | 僅主要接收者，無視上面兩個開關（本 PR 未實作寄送 cron，見下方範圍註記） |
+- 送給 N 位＝消耗 N 則推播額度（`lineMulticast` + `consumePushQuota(tenantId, N)`），
+  不得少算成 1 則。
+- 「已綁定」（有正式接收者）與「LINE provider 可連線」是兩個不同概念：
+  後者由 `checkOwnerNotifyProviderHealth()` 實際打一次 `GET /v2/bot/info`
+  才回報 healthy，不是看有沒有存 Token 就宣稱已連線。
+
+### 四支端點
+
+| 端點 | 做法 |
+|---|---|
+| GET／POST `/api/settings/line/owner-notify` | 總覽：目前接收者、`maxRecipients`、實測的 provider 連線狀態；POST 為「重新檢查」按鈕，不落庫 |
+| GET `/api/settings/line/owner-notify/line-users` | 候選清單：已加好友、扣掉已是正式接收者的，帶回進行中邀請的 id |
+| POST `/api/settings/line/owner-notify/bind` | 發起本人確認：推一則帶 `postback` 確認按鈕的訊息＋記一筆 PENDING 請求，**不會**直接加入名單 |
+| `/api/settings/line/owner-notify/recipients/*` | CRUD：POST（把已確認的請求落地成正式接收者——正常路徑走 webhook postback，這支端點供沒有真 LINE webhook 環境的測試重放同一段邏輯）、DELETE（remove-all）、`[id]` 的 PATCH（切換開關／指定主要）與 DELETE（移除單一，主要遞補） |
+
+### webhook postback 分派（`src/server/line-events.ts`）
+
+沿用既有 webhook 收件端點（`src/app/api/line/webhook/[shopCode]/route.ts`），
+**沒有新建 webhook 路由**：`postback.data` 為 `ownerNotifyConfirm:<requestId>`
+時呼叫 `confirmOwnerNotifyBind()`（service-role client，因為 webhook 沒有
+登入 session）；`ownerNotifyDecline:<requestId>` 呼叫 `declineOwnerNotifyBind()`
+把請求標記 CANCELLED。
+
+### 本 PR 範圍與明確延後項目
+
+- 未建立「訂閱到期／儲值提醒」的實際寄送 cron；資料模型（僅主要接收者收到）
+  已就緒，寄送邏輯留待對應的訂閱到期偵測 Issue 一併實作。
+- 本 repo 沒有未登入的旅客自助取消入口（`src/app/s/[shopCode]` 只有展示，
+  沒有取消動作），「旅客自行取消」通知掛在既有的
+  `POST /api/bookings/:id/cancel`，由呼叫端明確帶 `customerInitiated: true`
+  才觸發——不是靠「誰呼叫了這支 API」自動判斷，因為目前呼叫者一律是已登入
+  店家成員。真正的旅客自助取消入口出現時，一樣呼叫本端點並帶這個旗標即可
+  重用同一段邏輯。
+
+---
+
 ## 6. Rich Menu / Flex 選單（line-settings、rich-menu-design 頁）
 
 端點（原站清單 `/api/settings/line/rich-menu*`）最小可用集：
@@ -302,15 +375,34 @@ inactive row 不參與 webhook 查詢；移除圖片後寫回 TEXT，故不再�
 
 ---
 
-## 7. `/api/settings/line/verify` 的五項檢查（補 04 分冊 A-1）
+## 7. `/api/settings/line/verify` 的六項可查證檢查 + 一項人工確認提示（補 04 分冊 A-1；
+   issue #477 2026-09-15 首次修正三態語意，同日稍後依 Owner 提供的新版報告設計重構為
+   六項可查證檢查 + 獨立 INFO 提示，見 `src/app/api/settings/line/verify/route.ts` 檔頭）
+
+回應每項 check 帶 `status:'PASS'|'FAIL'|'INFO'`（主欄位；INFO 僅 AUTO_REPLY 專用）與
+`pass:boolean`（`= status==='PASS'`，僅供既有呼叫端相容，不再獨立判定）。
+
+六項可查證檢查（皆可能是 PASS 或 FAIL）：
 
 | key | 判定 |
 |---|---|
-| TOKEN | `lineBotInfo()` 成功 |
-| WEBHOOK | `GET /v2/bot/channel/webhook/endpoint` 的 endpoint 等於本店 webhook URL 且 active |
-| AUTO_REPLY | 無公開 API 可查 → 恆回 `pass:false` + 提醒文案（與原站行為一致，提醒店家手動關閉） |
-| RICH_MENU | `GET /v2/bot/user/all/richmenu` 有值 |
-| QUOTA | `GET /v2/bot/message/quota/consumption` 對比 quota，回剩餘則數 |
+| CREDENTIALS | 本地檢查（不呼叫 LINE）：Channel ID／Secret／Access Token 是否都已填寫 |
+| TOKEN | `GET /v2/bot/info` 成功 → PASS，否則 FAIL |
+| ID_SECRET_PAIR | `POST /oauth2/v2.1/token`（client_credentials grant，Channel ID 當 client_id、Channel Secret 當 client_secret）成功換發短期 token → PASS（代表兩者確實互相配對，不是各自單獨有效但湊錯對）；LINE 回 invalid_client 等非 2xx → FAIL |
+| BOT_MODE | 沿用 TOKEN 檢查同一次 `GET /v2/bot/info` 的 `chatMode` 欄位：`'bot'` → PASS（回應方式為 Bot 模式）；`'chat'` 或缺欄位 → FAIL。⚠️ 這與下面的 AUTO_REPLY 是兩個完全不同的 LINE 設定——chatMode 代表 LINE OA Manager「回應方式」，是官方公開 API 欄位，這裡讀它判斷「回應方式」正當；AUTO_REPLY 檢查的是同一頁裡「自動回應訊息」這顆*另外*的開關，LINE 未公開讀取 API，兩者不可混用同一個判斷來源（這正是本項目的前身、舊版 AUTO_REPLY 誤用 chatMode 的坑） |
+| WEBHOOK | `GET /v2/bot/channel/webhook/endpoint` 的 endpoint 等於本店 webhook URL 且 active → PASS，否則 FAIL |
+| WEBHOOK_TEST | `POST /v2/bot/channel/webhook/test`（LINE 主動對已註冊 endpoint 送一次測試請求）回 `success:true` → PASS，否則 FAIL |
+
+一項獨立的人工確認提示（`AUTO_REPLY`，status 恆為 **INFO**，不計入通過／失敗任一邊）：
+LINE 官方沒有公開 API 能直接讀取「自動回應訊息」這顆開關本身，一律導引店家自行到
+LINE Official Account Manager 確認並視需要關閉，避免 LINE 內建自動回應攔截 Bot
+訊息。不論 chatMode 為何、缺欄位、甚至 `/v2/bot/info` 呼叫失敗，AUTO_REPLY 皆為
+INFO——這一點延續自 issue #477 首次修正時建立的規則（拿 chatMode 推論 AUTO_REPLY
+是錯的，2026-09-15 稍早的教訓）。前端把它獨立渲染成藍色資訊提示，不是黃色警告。
+
+無 LINE Channel Access Token 時，六項可查證檢查一律 `status:'FAIL'`（統一提示尚未
+設定），且不對 LINE 發出任何請求；此時也不顯示 AUTO_REPLY 人工提示——連基本設定
+都還沒接上，提醒一個還沒生效的開關沒有意義。
 
 ---
 

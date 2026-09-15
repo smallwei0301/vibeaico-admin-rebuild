@@ -6,7 +6,7 @@
 >
 > 原 Mode C 決策保留為歷史；其「不同 Issue 可同時有多條完整 Terra BUILD」已被取代。
 >
-> 2026-09-15 同步既有 Workstream／條件雙 Terra 裁示；不新增 lane 配額、模型門檻或授權。
+> 2026-09-15 同步既有 Workstream／條件雙 Terra與 continuous-refill 裁示；不提高 lane 配額、candidate 上限、模型門檻或授權。
 
 ## 1. B+ PR 預算
 
@@ -18,13 +18,18 @@
 ### 全 repo Product B+ 上限
 
 ```text
-MAIN_TERRA implementation PR 預設最多 1；Guard 對兩張候選皆 qualified 時最多 2
-RESERVE_TERRA source-only PR 單 Terra 時最多 1；雙 Terra 時固定 0（不算 active candidate）
+MAIN_TERRA BUILD occupancy：兩張候選 qualified 時 throughput target 2；不 qualified 時 safety fallback 1
+AUDIT_READY verification tail：不占 BUILD slot，但仍占 ACTIVE_CANDIDATE；最多仍受 candidate=3 約束
+RESERVE_TERRA source-only PR 單 Terra 時最多 1；雙 Terra BUILD 時固定 0（不算 active candidate）
 1 ACTIVE LUNA_CLOSURE PR
 1 ACTIVE TEST_VALIDATION holder
 1 FINAL_SOL_AUDIT；1 Merge（均維持單線）
 最多 3 張 ACTIVE_CANDIDATE PR
 ```
+
+`AUDIT_READY` 不等於第四條施工線。只有 source exact head 已凍結、既有 dual/refill contract 完整，且
+`DUAL_TERRA_PILOT=true` 的 `TERRA_BUILD` 才可把 BUILD occupancy 釋放；它仍是 active candidate，仍須正常走
+CI／TEST／Final Risk／merge。若缺 dual metadata、隔離或 ownership 證據，安全退回一般 BUILD occupancy。
 
 ### 每個 Issue（兩種 Workstream 都適用）
 
@@ -81,11 +86,25 @@ TEST_LANE_REQUIRED: false
 AGENT_LANE: TERRA_BUILD
 LANE_STATE: ACTIVE
 ACTIVE_CANDIDATE: true
+COMPLETION_CLAIM: IN_PROGRESS | AUDIT_READY
 ```
 
-全 repo 預設最多一張完整施工候選；只有 `docs/AGENT-EXECUTION.md` §5.1 的 executable Guard
-在啟動前對兩張候選都判定 qualified，才可同時兩張。必須同一 RUN_ID、不同 Issue／slot／local 環境、
-不重疊的檔案責任範圍與各自健康證據；任一契約、cleanup 或隔離條件失敗就回到一張，不能把例外當配額。
+- `IN_PROGRESS`（以及任何非 `AUDIT_READY` claim）代表 source BUILD occupancy。
+- `AUDIT_READY` 代表 source exact head 已完成並凍結，只剩 CI／local 或 canonical TEST／Final Risk／merge／main readback；
+  它**仍是 active candidate**，只是當既有 `DUAL_TERRA_PILOT`／local isolation／`FILE_OWNERSHIP` 契約完整時，不再占 BUILD slot。
+- `AUDIT_READY` 期間不得修改 source。CI／review／Final Risk 若要求 source repair，必須先把
+  `COMPLETION_CLAIM` 降回 `IN_PROGRESS`，再修改 source；修完與重新驗證後才可再次宣告 `AUDIT_READY`。
+- verification tail 與新 BUILD 的 `FILE_OWNERSHIP` 不得重疊；兩個 verification tail 彼此也不得重疊。
+
+同一 Run 若有兩張 executable Guard 判定 qualified、互不衝突的 Product slices，throughput target 是維持兩個 BUILD slots；
+沒有第二張安全候選、candidate cap 已滿、local isolation 不健康，或同一 hot boundary（schema／migration ledger、auth／RLS、
+payment／refund、mutable provider）衝突時，安全降級為一張。
+
+BUILD slot 因 `AUDIT_READY`、merge 或完整 blocker 釋放後，只要 `ACTIVE_CANDIDATE < 3` 且有另一張 qualified independent slice，
+應立即 continuous refill；不得因前一張仍在等 CI／Final Risk／merge 就讓 BUILD slot 空轉。
+
+兩條同時 BUILD 時仍必須同一 RUN_ID、不同 Issue／slot／local 環境、不重疊檔案責任範圍與各自健康證據；
+任一契約、cleanup 或隔離條件失敗就降回一張。WIP=3、Terra BUILD max=2、shared TEST=1、Final Risk／merge 單線均不變。
 
 ### RESERVE_TERRA
 
@@ -97,7 +116,7 @@ TEST_LANE_REQUIRED: false
 RESERVE_BOUNDARY: <精確範圍>
 ```
 
-只在單 Terra 模式且 MAIN 真正等待時做一個 source-only 原子切片；雙 Terra 時固定 0。
+只在單 Terra 模式且 MAIN 真正等待時做一個 source-only 原子切片；雙 Terra BUILD 時固定 0。
 不能跑 shared TEST、進 Sol Audit 或變成第二條完整工地，完成即停在 READY_FOR_PROMOTION。
 
 ### LUNA_CLOSURE
@@ -131,7 +150,7 @@ TEST_LANE_REQUIRED: true
 
 ## 4. Janitor 分類
 
-- `ACTIVE`：所屬 Issue 目前的 implementation candidate；Product 是否占 MAIN／Closure、純治理是否占 GOVERNANCE 由 lane metadata 判定。
+- `ACTIVE`：所屬 Issue 目前的 implementation candidate；Product 是否占 BUILD slot／verification tail／Closure、純治理是否占 GOVERNANCE 由 lane metadata + Completion Truth 判定。
 - `VALIDATION`：短命 canary／環境確認。
 - `SUPERSEDED`：同 Issue 新候選已完整取代。
 - `REBUILD_REQUIRED`：已證明需要重整或等待未來升格；依 `docs/AGENT-EXECUTION.md` §2.1 的 material-change 規則判定，不能只因無關 main 前進就重建。
@@ -168,7 +187,8 @@ RESERVE 不必新增 lifecycle state；它通常保持 `ACTIVE` 或 `REBUILD_REQ
 
 以下角色適用 Product B+；純治理依 §3 GOVERNANCE 與 canonical execution flow 執行，不強制套用 Product 模型路由。
 
-- 每張 qualified MAIN Terra 各自維護一個完整候選；預設一張，條件雙 Terra 最多兩張。
+- qualified independent Product slices 存在時，維持最多兩個 Terra BUILD slots；沒有第二張安全候選時降為一個。
+- `AUDIT_READY` verification tail 仍是 active candidate，但不應無故占住 BUILD slot。
 - RESERVE Terra 只備料，完成即停。
 - Luna 做 inventory、ancestry、evidence、comment 與機械 closeout。
 - Sol 只處理 canonical 候選不明、高風險差異與最終 Audit。
@@ -189,3 +209,6 @@ janitor_reviews_requiring_sol
 invalid_ci_reruns
 closed_issues
 ```
+
+後續 Scorecard 應另外觀測 BUILD slot utilization、qualified-wait、verification-tail wait 與 rework；
+只有真實觀測到 candidate cap 飽和時，才有證據討論提高 WIP，而不是先放寬上限。

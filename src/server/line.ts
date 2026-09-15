@@ -151,6 +151,61 @@ export async function lineGetRaw(token: string, path: string) {
   return { ok: res.ok, status: res.status, body: body as Record<string, any> };
 }
 
+/**
+ * 不丟錯版的 POST（同 lineGetRaw 的理由：verify 端點要把失敗轉成 message，
+ * HTTP 一律 200，不能走 lineFetch 的 502 拋錯路徑）。
+ */
+export async function linePostRaw(token: string, path: string, body?: unknown) {
+  const res = await fetch(`${lineApiBase()}${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const resBody = await res.json().catch(() => ({}) as any);
+  return { ok: res.ok, status: res.status, body: resBody as Record<string, any> };
+}
+
+/**
+ * 不丟錯版的 PUT（同 lineGetRaw／linePostRaw 的理由）—— Issue #477 P1a webhook
+ * 自動同步用：`PUT /v2/bot/channel/webhook/endpoint` 與
+ * `PUT /v2/bot/channel/webhook/setActive` 兩個端點失敗時要讓呼叫端把它轉成
+ * 誠實訊息（保留原設定、顯示人工複製 fallback），不能走 lineFetch 的 502 拋錯
+ * 路徑讓整個請求變成未定義行為。
+ */
+export async function linePutRaw(token: string, path: string, body?: unknown) {
+  const res = await fetch(`${lineApiBase()}${path}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const resBody = await res.json().catch(() => ({}) as any);
+  return { ok: res.ok, status: res.status, body: resBody as Record<string, any> };
+}
+
+/**
+ * `POST /oauth2/v2.1/token`（client_credentials grant）—— LINE 設定檢查報告
+ * 「Channel ID 與 Secret 配對正確」項目用。這是 LINE Login/Messaging API 共用的 OAuth 端點，
+ * 用 Channel ID（client_id）＋ Channel Secret（client_secret）換發一顆短期
+ * stateless channel access token；成功即代表這組 ID／Secret 確實互相配對
+ * （不是各自有效但湊錯對），失敗（invalid_client 等）代表配對錯誤或其中一項
+ * 本身就是錯的。刻意不重用已存的長期 token 做這項判定——長期 token 只證明
+ * token 本身有效，證明不了「這把 Secret 就是同一個 Channel 的 Secret」。
+ * 換到的 token 用完即棄，不落地保存。
+ */
+export async function lineOAuthClientCredentialsRaw(channelId: string, channelSecret: string) {
+  const res = await fetch(`${lineApiBase()}/oauth2/v2.1/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: channelId,
+      client_secret: channelSecret,
+    }).toString(),
+  });
+  const body = await res.json().catch(() => ({}) as any);
+  return { ok: res.ok, status: res.status, body: body as Record<string, any> };
+}
+
 /** POST /v2/bot/richmenu → 回 richMenuId（06 §6 ②） */
 export async function lineCreateRichMenu(token: string, richMenu: unknown): Promise<string> {
   const body = await lineFetch(token, '/v2/bot/richmenu', {

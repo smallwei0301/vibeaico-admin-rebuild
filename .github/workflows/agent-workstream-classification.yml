@@ -2,7 +2,7 @@ name: agent-workstream-classification
 
 on:
   pull_request_target:
-    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft]
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -14,8 +14,16 @@ permissions:
   pull-requests: write
   statuses: write
 
+concurrency:
+  group: agent-workstream-classification-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   classify:
+    if: >-
+      github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
+      startsWith(github.event.label.name, 'workstream:') ||
+      github.event.label.name == 'governance:workstream-incomplete'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted workstream policy
@@ -27,6 +35,7 @@ jobs:
             scripts/agents/astra-review-policy.mjs
             scripts/agents/agent-wip-policy.mjs
             scripts/agents/model-routing.json
+            scripts/agents/governance-workstream-boundary.mjs
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -41,6 +50,9 @@ jobs:
               'scripts/agents/astra-review-policy.mjs',
             )).href);
 
+            const boundary = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/governance-workstream-boundary.mjs',
+            )).href);
             const { owner, repo } = context.repo;
             const pullNumber = context.payload.pull_request.number;
             const { data: current } = await github.rest.pulls.get({
@@ -48,6 +60,8 @@ jobs:
               repo,
               pull_number: pullNumber,
             });
+            // Late label/edit events for a closed PR must not rewrite historical statuses.
+            if (current.state !== 'open') return;
             const statusUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const setStatus = (state, description) => github.rest.repos.createCommitStatus({
               owner,
@@ -81,6 +95,7 @@ jobs:
               changedFiles,
               createdAt: current.created_at,
             });
+            result.errors.push(...boundary.validateBookkeepingWorkstream({ body: current.body ?? '', changedFiles }));
             const allowed = new Set(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
             // The canonical classifier deliberately returns LEGACY_UNCLASSIFIED for PRs created
             // before the workstream effectiveAt. Preserve that grandfathering. This workflow is
@@ -155,11 +170,15 @@ jobs:
               ];
               if (!valid) labels.push('governance:workstream-incomplete');
 
-              await github.rest.issues.setLabels({
-                owner,
-                repo,
-                issue_number: pullNumber,
-                labels: [...new Set(labels)],
+              // Change only classification labels; never erase another guard's concurrent labels.
+              const before = (current.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
+              for (const name of before.filter(name => managedNames.has(name) && !labels.includes(name))) {
+                try { await github.rest.issues.removeLabel({ owner, repo, issue_number: pullNumber, name }); }
+                catch (error) { if (error.status !== 404) throw error; }
+              }
+              const additions = [...new Set(labels)].filter(name => managedNames.has(name) && !before.includes(name));
+              if (additions.length) await github.rest.issues.addLabels({
+                owner, repo, issue_number: pullNumber, labels: additions,
               });
               } catch (error) {
                 labelOutcome = `failed: ${error.status ?? '?'} ${error.message ?? error}`;

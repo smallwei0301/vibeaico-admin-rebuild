@@ -1,4 +1,6 @@
-import { readField } from "./agent-wip-policy.mjs";
+import { readField, parseLaneMetadata } from "./agent-wip-policy.mjs";
+import { classifyWorkstream } from "./astra-review-policy.mjs";
+import { boundaryPaths, validateBookkeepingWorkstream, validateDeliveryUnitBoundary } from "./governance-workstream-boundary.mjs";
 
 const REACHABLE_STATUSES = new Set(["ahead", "identical"]);
 
@@ -174,6 +176,16 @@ export function evaluateProductDeliveryTruth(input = {}) {
   const vercel = classifyVercelStatus(commitStatuses);
   const issueNumber = readLifecycleIssue(body);
   const deliveryUnitType = upper(readField(body, "DELIVERY_UNIT_TYPE"));
+  const paths = boundaryPaths(changedFiles);
+  const classification = classifyWorkstream({ body, changedFiles: paths, createdAt: pr.created_at ?? "" });
+  const metadataErrors = [...classification.errors,
+    ...validateBookkeepingWorkstream({ body, changedFiles: paths })];
+  // Historical records are not silently rewritten to satisfy a new authoring contract.
+  if (readField(body, "WORKSTREAM") || classification.policyApplies) {
+    metadataErrors.push(...validateDeliveryUnitBoundary(body, parseLaneMetadata(pr)));
+  }
+  const isModelGovernance = paths.length > 0 && classification.isModelGovernance && metadataErrors.length === 0;
+  const requiresProductProof = !isModelGovernance;
   const deliveryEligible = Boolean(
     issueNumber && DELIVERY_UNIT_TYPES.has(deliveryUnitType) &&
     upper(readField(body, "COUNT_IN_DELIVERY_OUTCOME")) === "TRUE" &&
@@ -182,14 +194,14 @@ export function evaluateProductDeliveryTruth(input = {}) {
   const migrationTouched = changedFiles.some((file) => [file?.filename ?? file, file?.previous_filename]
     .filter(Boolean)
     .some((name) => String(name).startsWith("supabase/migrations/")));
-  const schema = deliveryEligible
+  const schema = requiresProductProof
     ? classifySchemaTruth(body, migrationTouched)
     : { state: "NOT_APPLICABLE", ready: true, errors: [] };
-  const acceptance = deliveryEligible
+  const acceptance = requiresProductProof
     ? classifyProductionAcceptance(body)
     : { state: "NOT_APPLICABLE", accepted: true, errors: [] };
-  const errors = [...merge.errors, ...schema.errors, ...acceptance.errors];
-  if (deliveryEligible && !source.verified) errors.push(`exact-head source CI is not verified (${source.state})`);
+  const errors = [...merge.errors, ...metadataErrors, ...schema.errors, ...acceptance.errors];
+  if (requiresProductProof && !source.verified) errors.push(`exact-head source CI is not verified (${source.state})`);
   const warnings = [];
   if (deliveryEligible && vercel.ready && /Production\s+(?:DDL\s*\/\s*DML\s*\/\s*)?deploy\s*:\s*NOT_RUN/i.test(body)) {
     warnings.push("legacy `Production deploy: NOT_RUN` conflicts with live Vercel READY; distinguish automatic deploy from manual promote");
@@ -206,6 +218,9 @@ export function evaluateProductDeliveryTruth(input = {}) {
     issueNumber,
     deliveryUnitType: deliveryUnitType || null,
     deliveryEligible,
+    workstream: classification.workstream,
+    isModelGovernance,
+    metadataErrors,
     migrationTouched,
     manualPromote: upper(readField(body, "MANUAL_PRODUCTION_PROMOTE")) || "UNDECLARED",
     source,
@@ -217,10 +232,12 @@ export function evaluateProductDeliveryTruth(input = {}) {
 }
 
 export function formatProductDeliveryTruth(result, verifiedAt = new Date().toISOString()) {
-  const status = !result.deliveryEligible
-    ? "NON_PRODUCT_GOVERNANCE"
-    : result.productionAccepted ? "AUTHENTICATED_PRODUCTION_ACCEPTED"
-      : result.merge.verified ? "PRODUCTION_PENDING" : "MERGE_UNVERIFIED";
+  const status = result.metadataErrors?.length
+    ? "DELIVERY_METADATA_INVALID"
+    : result.isModelGovernance ? "NON_PRODUCT_GOVERNANCE"
+      : result.productionAccepted ? "AUTHENTICATED_PRODUCTION_ACCEPTED"
+        : !result.merge.verified ? "MERGE_UNVERIFIED"
+          : result.deliveryEligible ? "PRODUCTION_PENDING" : "PRODUCT_NON_SHIPPING";
   const list = (items) => items.length ? items.map((item) => `- ${item}`).join("\n") : "- none";
   return [
     "<!-- agent-completion-truth -->",
@@ -229,6 +246,7 @@ export function formatProductDeliveryTruth(result, verifiedAt = new Date().toISO
     `- STATUS: ${status}`,
     `- PR: ${result.pullRequestNumber ? `#${result.pullRequestNumber}` : "unknown"}`,
     `- ISSUE: ${result.issueNumber ? `#${result.issueNumber}` : "none"}`,
+    `- WORKSTREAM: ${result.workstream ?? "unknown"}`,
     `- DELIVERY_UNIT_TYPE: ${result.deliveryUnitType ?? "none"}`,
     `- SOURCE_VERIFIED: ${result.source.state}`,
     `- MERGED_TO_MAIN: ${result.merge.verified ? "VERIFIED" : "UNVERIFIED"}`,

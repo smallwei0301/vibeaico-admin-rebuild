@@ -2064,7 +2064,7 @@ webhook 早已回 200；放行後處理照常完成」`、`:「壞簽章 → 401
 | 補的組 | 檔 | 案例數 |
 |---|---|---|
 | rich menu create/delete | `tests/integration/api/line-rich-menu.06.test.ts` | 7 |
-| verify 五項全分支 | `tests/integration/api/line-verify.06.test.ts` | 16 |
+| verify 五項全分支 | `tests/integration/api/line-verify.06.test.ts` | ⚠️ 記載為 16，2026-09-15（issue #477）查證為幻影證據——見下方 (2) 更正，檔案在 main 上當時不存在 |
 | 預約狀態推播（line-notify） | `tests/integration/api/line-booking-notify.06.test.ts` | 7 |
 | B-6 報表進階/匯出 | `tests/integration/api/reports-advanced.b6.test.ts` | 20 |
 
@@ -2076,14 +2076,35 @@ webhook 早已回 200；放行後處理照常完成」`、`:「壞簽章 → 401
 `src/config/rich-menu-themes.ts` 的主題色。同一條案例也先斷言 bucket 真的沒有
 `themes/{THEME}.png|jpg`——不驗前置條件的話，那條退路可能根本沒被走到。
 
-**(2) verify 那一組除了逐項 pass/fail，另外釘死兩件事。** 這一節整個存在的理由
+**(2) verify 那一組除了逐項 pass/fail，另外釘死關鍵性質。** 這一節整個存在的理由
 就是 CLAUDE.md 開頭那個「永遠紅的 AUTO_REPLY」，所以案例不只驗「各項回什麼」：
-- **WARN 不得被算成 FAIL**：判準寫成 `!pass && severity !== 'WARN'`，逐案例斷言
-  哪些是真失敗、哪些只是提醒。
-- **報告在正常設定下真的能全綠**：`「五項全部通過」` 那一條。變異測試把
-  AUTO_REPLY 改回「永遠 `pass:false`」時，紅的正是這一條——**一個永遠不可能全綠
-  的檢查等於沒有檢查**，這條斷言就是它的探針。
-`chatMode` 三態（`bot` / `chat` / 讀不到）各一條。
+- **WARN 不得被算成 FAIL**：逐案例斷言哪些是真失敗、哪些只是提醒。
+- **⚠️ 2026-09-15 更正（issue #477）**：本節當時記載的「報告在正常設定下真的能
+  全綠」驗收條件，配上舊版程式碼裡 AUTO_REPLY 恆回 `pass:false` 的實作，
+  **邏輯上永遠不可能同時成立**——這正是 #477 要修的 P0 問題本身。且
+  `tests/integration/api/line-verify.06.test.ts` 在 main 上當時並不存在
+  （Sol early diff audit 以 `git cat-file -e origin/main:...` 確認），下面
+  「16/16 綠」與「變異測試」的說法缺乏可查證依據，不應沿用。
+  正確、且已由 #477 落地驗證的驗收標準改為：**四項（TOKEN／WEBHOOK／RICH_MENU／
+  QUOTA）在正常設定下皆可為 PASS，AUTO_REPLY 固定為 WARN 並要求人工至 LINE
+  Official Account Manager 確認，不再要求五項全綠**——因為 AUTO_REPLY 本來就
+  沒有可讀取的公開 API 能查詢「自動回應訊息」開關本身，`chatMode` 只代表 OA
+  Manager 的 Chat 開關，兩者不可混用。誠實回報 WARN 比冒充 PASS 或錯誤地恆報
+  FAIL 更正確；「一個永遠不可能全綠的檢查等於沒有檢查」這個判斷本身沒有錯，
+  錯的是把「全綠」定義成包含一個本質上查不到證據的項目——修法是改驗收標準，
+  不是硬湊一個假的 PASS 或維持一個假的 FAIL。見 06 分冊 §7、08 分冊 verify
+  五項檢查條目的完整更正說明。
+`chatMode` 三態（`bot` / `chat` / 讀不到）與 `/v2/bot/info` 呼叫失敗共四種情境，
+現況驗證皆為 WARN（不再是 `bot`→PASS／`chat`→WARN 的舊敘述）。
+
+**⚠️ 2026-09-15 同日稍後二次更正**：上面「四項 PASS ＋ AUTO_REPLY 恆 WARN」的
+五項結構已被取代——依 Owner 提供的新版報告設計，重構為**六項可查證檢查**
+（CREDENTIALS/TOKEN/ID_SECRET_PAIR/BOT_MODE/WEBHOOK/WEBHOOK_TEST，只有
+PASS/FAIL 兩態）＋**一項獨立的人工確認提示**（AUTO_REPLY，status 恆為 `INFO`，
+不再是 `WARN`，也完全不計入通過／失敗任一邊）。RICH_MENU／QUOTA 從本報告移除；
+新增的三項見 06 分冊 §7。`line-verify.06.test.ts` 全面改寫為 12 案例，對本地
+next dev + line-mock 實跑 12/12 綠（詳見 08 清單同一節同日的更正記錄，含改版
+過程中先出現、後修正的兩個真實紅燈）。
 
 **(3) 「額度用盡 → 零請求」不能用固定秒數等。** 見下方 §6.16-a。
 

@@ -26,8 +26,16 @@ const WRITE_METHODS = ['POST', 'PUT', 'PATCH', 'DELETE'] as const;
  * - LINE webhook：呼叫方是 LINE 的伺服器，沒有登入者、沒有 cookie，
  *   代登入在這條路徑上不可能成立；它也需要原始 body 做簽章驗證，
  *   而且依 LINE 規範必須一律回 200，套用 `handle()` 的錯誤轉換反而是錯的。
+ * - ECPay 贊助 callback（issue #25 C 段）：呼叫方是綠界的伺服器，同樣沒有
+ *   登入者、沒有 cookie，代登入不可能成立；依 ECPay 規範一律回純文字
+ *   `1|OK`／`0|...`（不是 `{success,data}` 信封），`handle()` 的信封化與
+ *   ZodError→400 轉換都不適用。簽章驗證與冪等在 `processDonationCallback()`
+ *   （`src/server/donations.ts`）內部完成，不依賴這一層。
  */
-const AUDIT_EXEMPT = new Set(['src/app/api/line/webhook/[shopCode]/route.ts']);
+const AUDIT_EXEMPT = new Set([
+  'src/app/api/line/webhook/[shopCode]/route.ts',
+  'src/app/api/donations/callback/route.ts',
+]);
 
 function routeFiles(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

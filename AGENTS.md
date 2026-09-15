@@ -40,11 +40,13 @@
 ## 最新工作模式：B+ 免費雙 Terra 試行
 
 2026-09-01 Owner 先用 B+ 取代無上限 Mode C；2026-09-02 Owner 再授權以免費 per-PR local
-Supabase 試行最多兩條完整 Terra。這不是恢復無上限多工：
+Supabase 試行最多兩條完整 Terra；2026-09-15 依實際 Run evidence 將 qualified dual Terra 改為 throughput target。
+這不是恢復無上限多工：
 
 ```text
-TERRA_BUILD      預設最多 1；只有兩張 PR 都通過 DUAL_TERRA_PILOT 契約時最多 2
-TERRA_RESERVE    單 Terra 時最多 1；雙 Terra 試行時固定 0
+TERRA_BUILD      qualified independent slices 存在時 throughput target 2；不 qualified 時 safety fallback 1
+VERIFY_TAIL      TERRA_BUILD + ACTIVE + AUDIT_READY；不占 BUILD slot但仍占 ACTIVE_CANDIDATE
+TERRA_RESERVE    單 Terra 時最多 1；雙 Terra BUILD 時固定 0
 LUNA_CLOSURE     最多 1，固定收尾／Janitor 線
 LUNA_TASKS       預設 4，最多 6，另有 1 位 Aggregator
 LOCAL_ISOLATED   每張 Terra PR 各自一套免費本機 Supabase，最多 2
@@ -55,9 +57,16 @@ FINAL_SOL_AUDIT       最多 1，僅對必要測試完成的 exact head 放行
 Merge                 最多 1
 ```
 
-雙 Terra 是**條件入口**，不是配額：Guard 必須先對兩張候選 PR 的同一 `RUN_ID`、不同 `TERRA_SLOT` 1／2、
-primary Issue、`TEST_ENV_ID`、不重疊 `FILE_OWNERSHIP`、各自 local isolated 健康與無 shared TEST holder 衝突
-判定 qualified，才可同時啟動。任一契約不完整、slot 不健康、cleanup 失敗或檔案撞車，立刻回到完整 Terra 最多 1。
+雙 Terra 是**條件入口，也是有安全題目時的 throughput target**：Guard 必須先對候選 PR 的同一 `RUN_ID`、
+不同 primary Issue／`TERRA_SLOT`／`TEST_ENV_ID`、不重疊 `FILE_OWNERSHIP`、各自 local isolated 健康與
+無 shared TEST holder 衝突判定 qualified。任一契約不完整、slot 不健康、cleanup 失敗或檔案撞車，
+立刻安全降級為完整 Terra 最多 1。
+
+Source exact head 已完成並凍結時，可把 `COMPLETION_CLAIM` 標成 `AUDIT_READY`。只有同時保留
+`DUAL_TERRA_PILOT=true` 與完整 isolation／ownership contract 的 `AUDIT_READY` Terra 才釋放 BUILD slot；
+它仍是 `ACTIVE_CANDIDATE=true`，仍受 WIP=3、TEST、Final Risk、merge 限制。若 CI／review／Final Risk
+要求 source fix，**先把 claim 降回 `IN_PROGRESS` 再改 source**，修完後才能重新宣告 `AUDIT_READY`。
+BUILD slot 一空出且 candidate 尚未滿 3，就應補下一張 qualified independent Product slice，不因前一張在驗證尾段等待而空轉。
 
 ## 隔離 TEST 現行路線
 
@@ -101,16 +110,22 @@ docs/metrics/agent-runs/<RUN_ID>.md
   問題，預設最多 15 行；一位 Luna Aggregator 去重後再交 Sol。
 - **Sol**：Terra slot 1／2 選題、重大 scope／file collision、remote TEST 順序、模糊 CI、
   高風險設計、早期 diff audit 與必要測試完成後的最終 `CLOSE_APPROVED | FIX_REQUIRED | OWNER_BLOCKED`。早期 audit 不可放行；不做 CI 輪詢與一般施工。
-- **Terra slot 1／2**：各自完整施工一張邊界清楚的候選，做到
-  `CLOSED | AUDIT_READY | OWNER_BLOCKED`；第二條不是配額，沒有安全題目就不啟動。
+- **Terra slot 1／2**：有兩張 qualified independent slices 時主動填滿兩個 BUILD slots；各自施工到
+  source frozen／`AUDIT_READY`、`CLOSED` 或完整 `OWNER_BLOCKED`。`AUDIT_READY` tail 仍占 candidate WIP，
+  但 qualified 時釋放 BUILD slot供下一張安全題目 continuous refill。
 - **RESERVE Terra**：只在單 Terra 模式且主線真正等待時做一個 source-only 小切片；不碰 TEST、
   不進 Audit、最多一個原子 commit，停在 `READY_FOR_PROMOTION`。
 
 ## 強制護欄
 
-- 完整 Terra 預設最多 1；只有 executable dual-Terra Guard 判定 qualified 時最多 2；
-  Reserve 最多 1，但雙 Terra 時為 0；Closure、remote TEST、最終 Sol Audit、merge 各最多 1；早期 Sol diff audit 不占最終放行。
-- 兩張完整 Terra 必須同一 `RUN_ID`，但 Issue、slot、local 環境與檔案 ownership 不同。
+- Qualified independent Product slices 存在時 Terra BUILD throughput target 為 2；沒有第二張安全題目、
+  hot boundary 衝突、隔離不健康或 candidate cap 不足時 safety fallback 為 1。Terra BUILD max 永遠是 2。
+- 只有 `DUAL_TERRA_PILOT=true`、完整 isolation／ownership contract 的 `AUDIT_READY` Terra 才可釋放 BUILD slot；
+  verification tail 仍占 `ACTIVE_CANDIDATE`，source fix 前必須先回 `IN_PROGRESS`。
+- 新 BUILD 與 `AUDIT_READY` tail、兩個 tail 彼此的 `FILE_OWNERSHIP` 不得重疊；同一 schema／migration ledger、
+  auth／RLS、payment／refund、mutable provider boundary 不平行施工。
+- Reserve 最多 1，但雙 Terra BUILD 時為 0；Closure、remote TEST、最終 Sol Audit、merge 各最多 1；早期 Sol diff audit 不占最終放行。
+- 兩張完整 BUILD Terra 必須同一 `RUN_ID`，但 Issue、slot、local 環境與檔案 ownership 不同。
 - MAIN／Terra 必須有 Closure target，或明確 `EMPTY_WITH_SCAN`／`REPORT:<path>` 證據。
 - RESERVE 必須填 `RESERVE_BOUNDARY`、`TEST_LANE_REQUIRED=false`，且不可是 active candidate。
 - 一般 runtime PR 若不是唯一 remote TEST holder，可依 `TEST_PROFILE` 跑 local isolated TEST，
