@@ -651,8 +651,8 @@ function assertSingleRiskTier(tiers = []) {
 
 function hasAuthzConfigurationMutation(statement) {
   const input = String(statement);
-  return /\bset\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i.test(input)
-    || /\breset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i.test(input);
+  return /^\s*set\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i.test(input)
+    || /^\s*reset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i.test(input);
 }
 
 export function inferMigrationRiskTier(sql) {
