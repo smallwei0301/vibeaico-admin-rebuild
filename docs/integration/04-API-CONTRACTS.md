@@ -119,18 +119,27 @@ export const POST = handle(async (_req, { params }) => {
 > `/gallery`，不另計一支；本輪未實作獨立的單張刪除端點，刪除單張圖片仍走現有頁面流程
 > （本地移除該筆 → `PUT /api/settings/shop-page` 送出不含該筆的 `gallery` 全量陣列）。
 >
-> **本輪範圍只有 `GET/PUT /api/settings/shop-page` 與
-> `POST /api/settings/shop-page/gallery/reorder` 三支。**
-> `POST .../banner-video/presign`、`POST .../banner-video/confirm`、
-> `DELETE .../banner-video` 需要 Supabase Storage 直傳簽名，是另一個更大且需獨立稽核的
-> slice，**本輪刻意不實作**，留給 #22 後續分冊補完；其大小上限／格式白名單／孤兒檔清理
-> 策略等設計決策待該輪一併寫入本節。
+> 前一輪範圍只有 `GET/PUT /api/settings/shop-page` 與
+> `POST /api/settings/shop-page/gallery/reorder` 三支，`banner-video/*` 三支
+> 當時刻意留白。**本輪（#22 Part A）補上 `banner-video/presign`／`confirm`／
+> `DELETE` 三支**，設計決策見下表與 migration `0114_issue_22_banner_video_uploads.sql`
+> 檔頭；孤兒清理 cron 見 `src/app/api/cron/banner-video-uploads-cleanup/route.ts`。
 
 | 端點 | 說明 |
 |---|---|
 | GET `/api/settings/shop-page` | 回 `BrandingSettings`（`/tenant/shop-design` 六分頁整包資料：`shopName`／`logoUrl`／`logoHidden`／`bannerUrl`／`bannerVideoUrl`／`bannerVideoSound`／`announcement`／`aboutTitle`／`aboutContent`／`aboutImageUrl`／`gallery[]`／`themeColor`／`facebook`／`instagram`／`line`／`threads`／`googleMaps`／`contactEmail`）。組法：讀 `tenant_settings.branding` 一欄 → `brandingSettingsSchema.parse()` 補預設值。與 `GET /api/settings` 回應裡的 `data.branding` 是同一顆 jsonb、同一組欄位，只是本端點只回這一群組 |
 | PUT `/api/settings/shop-page` | body = `Partial<BrandingSettings>`（**真實 diff**：前端只送這次真的異動的欄位，不得整包重送、更不得送 `{}` 當作觸發存檔的手段）。伺服器讀現有 `branding` → 用 zod `.partial()` 驗證 body → 淺層合併（`{...current, ...patch}`）→ `brandingSettingsSchema.parse()` 再驗一次 → 寫回 → **回傳合併後的全量 `BrandingSettings`**，前端必須用這個回傳值重繪畫面（不得只信送出前的本地 state；這是 14 分冊「空 patch＝假成功」根因的正式修法）。`gallery` 若出現在 body 是整批取代（新增/刪除圖片走這裡）；**只改變既有圖片的相對順序**要走下面的 reorder 端點，不要把整個 `gallery` 陣列塞進這支的 patch。需 `MANAGER` |
 | POST `/api/settings/shop-page/gallery/reorder` | body = `{ids: string[]}`，`ids` 必須是目前 `branding.gallery[].id` 的**完整排列**（可換順序，不可增減／不可含目前不存在的 id）；否則 400 `REQ_001`。伺服器依 `ids` 順序重排 `gallery` 陣列並寫回 `branding` jsonb，回傳重排後的 `GalleryImage[]`。**排序本身沒有獨立的排序欄位** —— `gallery` 是 jsonb 陣列，順序即陣列索引，不像 `services`/`staff` 需要 `sort_order` 欄位或 migration，這支端點單純是「讀現有陣列 → 依 `ids` 重新排列 → 整包寫回」。需 `MANAGER` |
+| POST `/api/settings/shop-page/banner-video/presign` | body = `{contentType:'video/mp4'\|'video/webm', sizeBytes:number}`（用戶端宣稱值，只做第一道 fail-closed 檢查）。通過後：伺服器組出 `{tenantId}/banner-video/{uuid}.{ext}` 路徑（用戶端無法指定或影響）→ 用 service role 呼叫 Supabase Storage `createSignedUploadUrl()` → 在 `banner_video_pending_uploads` 記一列（`tenant_id`／`storage_path`）→ 回 `{bucket, path, signedUrl, token}`。用戶端拿 `signedUrl` 直接 `PUT` 上傳影片位元組，**不經過本 Next.js server**。需 `MANAGER` |
+| POST `/api/settings/shop-page/banner-video/confirm` | body = `{path:string}`（原樣回傳 presign 給的 `path`）。**真正的安全邊界**：重新向 Storage 要一次真實 metadata（`.list()` 的 `size`／`mimetype`），不是相信用戶端「我上傳完了」。驗證順序：① path 前綴必須是自己 tenantId ② `banner_video_pending_uploads` 查得到 `tenant_id`+`storage_path` 這一列 ③ Storage 回報的真實 size/mimetype 仍在允許範圍內。三者皆通過才把 `branding.bannerVideoUrl` 更新為該物件的 public URL 並回傳合併後的 `BrandingSettings`；任何一步不通過分別回 403／404／400，**不寫入**。成功後補記 `banner_video_pending_uploads.confirmed_at`，並 best-effort 清掉被取代的舊影片物件（清理失敗只 log，不影響本次確認結果）。需 `MANAGER` |
+| DELETE `/api/settings/shop-page/banner-video` | 無 body。沒有 `bannerVideoUrl` 或其網址不屬於呼叫端租戶時是安全的 no-op（`{removed:false}`）。否則：先把 `branding.bannerVideoUrl` 清成 `''` 並寫回 DB，再嘗試刪除 Storage 物件——**Storage 刪除失敗時整個請求回 `success:false`（502），絕不假裝乾淨**（誠實失敗，而不是「DB 清了就當作完成」）。需 `MANAGER` |
+
+**banner-video 三支端點的設計決策**（migration `0114_issue_22_banner_video_uploads.sql` 檔頭逐字版本）：
+- 兩階段上傳（`presign → 用戶端直傳 → confirm`）是刻意選擇：50MB 上限的影片不該塞進 JSON PATCH body 經過這個 server。
+- bucket `banner-videos`：`public=true`（公開頁 `<video>` 直接播放）、`file_size_limit=52428800`（50 MiB）、`allowed_mime_types` 只收 `video/mp4`／`video/webm`，三者與 route 層驗證重複但不是唯一防線（bucket 層是最後一道）。
+- 兩階段上傳不需要在 `storage.objects` 開放 authenticated 直接 INSERT policy——上傳靠 `createSignedUploadUrl()` 核發的一次性簽名 token（由 service role 簽發），不經 RLS INSERT 判斷；這與 `#402` 剛關掉的「authenticated 直寫側門」是同一種洞，這裡從一開始就不開。
+- 孤兒清理：`banner_video_pending_uploads` 記每次 presign，`GET /api/cron/banner-video-uploads-cleanup`（`CRON_SECRET` 保護，**故意不掛進 `vercel.json` 的 `crons`**，理由同 #23 的 `promotion-events-cleanup`）刪除超過 24 小時仍未 confirm 的列與其 Storage 物件。24 小時窗口：遠短於「無限累積」，又足夠寬容使用者中斷後才回來完成上傳的情境。
+- Cross-tenant 隔離三重防線：presign 產生的路徑本身以 tenantId 開頭 → confirm 端點檢查 path 前綴 + `banner_video_pending_uploads` 的 `tenant_id` 查詢條件 → DELETE 端點用 `tenantOwnedPublicStoragePath()`（`src/server/storage.ts`，本來就是租戶泛型 helper）解析網址，不屬於自己租戶的網址視為「沒有東西可刪」而非誤刪。
 
 **欄位歸屬邊界表（`PUT /api/settings` vs `PUT /api/settings/shop-page`）** —— 每個欄位/群組只能歸一支，避免兩支端點互相覆蓋：
 
