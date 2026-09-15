@@ -261,8 +261,9 @@ async function main() {
       return;
     }
     if (command === 'cleanup') {
-      const [planPath, outputPath] = args;
-      if (!planPath || !outputPath) fail('USAGE', 'cleanup <plan.json> <output.json>');
+      const [planPath, outputOrLegacyPlaceholder, legacyOutputPath] = args;
+      const outputPath = legacyOutputPath || outputOrLegacyPlaceholder;
+      if (!planPath || !outputPath) fail('USAGE', 'cleanup <plan.json> <output.json> | cleanup <plan.json> <legacy-placeholder> <output.json>');
       const evidence = await captureProductionDbTestCleanupEvidence({
         plan: JSON.parse(readFileSync(planPath, 'utf8')),
         testSupabaseUrl: process.env.TEST_SUPABASE_URL,
