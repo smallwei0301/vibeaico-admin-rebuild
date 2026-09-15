@@ -114,6 +114,7 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
     .filter(Boolean))].sort();
   if (!executedFiles.length) fail('EMPTY_TEST_FILE_EVIDENCE', 'Vitest report has no executed test files');
 
+  /** @type {Record<string, {status:string, executedFiles:string[], tenantBoundaryVerified:boolean, negativeRoleTestsPassed:boolean}>} */
   const migrations = {};
   for (const migration of plan.migrations) {
     if (String(migration?.riskTier ?? '').trim().toUpperCase() !== 'AUTHZ') continue;
@@ -245,9 +246,10 @@ export async function captureProductionDbTestCleanupEvidence({
 }
 
 async function main() {
-  const [command, planPath, inputPath, outputPath] = process.argv.slice(2);
+  const [command, ...args] = process.argv.slice(2);
   try {
     if (command === 'coverage') {
+      const [planPath, inputPath, outputPath] = args;
       if (!planPath || !inputPath || !outputPath) fail('USAGE', 'coverage <plan.json> <vitest-report.json> <output.json>');
       const evidence = buildProductionDbTestCoverageEvidence({
         plan: JSON.parse(readFileSync(planPath, 'utf8')),
@@ -259,7 +261,8 @@ async function main() {
       return;
     }
     if (command === 'cleanup') {
-      if (!planPath || !outputPath) fail('USAGE', 'cleanup <plan.json> ignored <output.json>');
+      const [planPath, outputPath] = args;
+      if (!planPath || !outputPath) fail('USAGE', 'cleanup <plan.json> <output.json>');
       const evidence = await captureProductionDbTestCleanupEvidence({
         plan: JSON.parse(readFileSync(planPath, 'utf8')),
         testSupabaseUrl: process.env.TEST_SUPABASE_URL,
