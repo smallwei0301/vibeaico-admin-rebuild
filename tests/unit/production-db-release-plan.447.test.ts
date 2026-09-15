@@ -108,7 +108,7 @@ describe('Production DB release plan #447', () => {
   it('rejects a release plan that mixes risk classes across migrations', () => {
     const mixed = aliasMap();
     mixed.entries.push({ repoFile: '0111_backfill', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' });
-    const mixedSql = {
+    const mixedSql: Record<string, string> = {
       ...sqlByPath,
       'supabase/migrations/0111_backfill.sql': 'update public.t set x=1 where id=1;',
     };
