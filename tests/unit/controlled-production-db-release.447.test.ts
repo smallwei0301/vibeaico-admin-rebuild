@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as controlledWriter from '../../scripts/db/controlled-production-db-release.mjs';
 
 import { PRODUCTION_DB_POLICY, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
-import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
+import { buildProductionDbReleasePlan, releasePlanDigestOf, sha256 } from '../../scripts/agents/production-db-release-plan.mjs';
 import {
   assertLiveLedgerMatchesAliasMap,
   buildAtomicProductionApplySql,
@@ -64,6 +64,30 @@ describe('Controlled Production DB writer #447', () => {
   // Clock injection is test-only at the runtime boundary, not writer input.
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
   afterEach(() => { vi.useRealTimers(); });
+
+  it('rejects a previously additive plan with quoted-schema routine calls before any request', async () => {
+    for (const call of ['"public".filter()', '"public" . filter()', '"public"/* schema */.filter()',
+      '"public"."filter"()', 'public.filter()', '"租戶".filter()',
+      '"pub""lic".filter()', 'U&"publ\\0069c".filter()']) {
+      const sql = `create function "public".filter() returns integer language plpgsql as $ begin delete from public.orders; return 1; end; $; select ${call};`;
+      // Model a plan admitted by the old classifier. Valid byte/digest bindings
+      // must not bypass reclassification when the writer verifies the plan.
+      const p = plan();
+      p.migrations[0].sha256 = sha256(Buffer.from(sql));
+      p.planDigest = releasePlanDigestOf(p);
+      const evidence = packet(p);
+      expect(() => buildAtomicProductionApplySql({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+      })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+      await expect(runControlledProductionRelease({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => sql, fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
 
   it('does not export the raw SQL mutable transport', () => {
     expect(Object.keys(controlledWriter)).not.toContain('executeAtomicProductionApply');
