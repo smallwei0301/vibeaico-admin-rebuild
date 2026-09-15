@@ -78,6 +78,22 @@ current truth
 純治理依 2026-09-11 #360 不指定執行模型；`requested=not_requested`，沒有可靠來源時
 `actual=unknown`。取消模型門檻不代表取消驗證。
 
+### 1.3 工作線隔離與純記帳分類（#500 收尾）
+
+- 先用本 PR 的完整 actual changed-file list（包含 rename 前後路徑）、既有 scope 白名單、
+  Workstream 與 lane metadata 驗證分類，不能只因自稱 `MODEL_GOVERNANCE` 就跳過檢查。
+- 合法的純治理 PR 不讀取或繼承其他 Product PR 的 Terra／Reserve／candidate／shared TEST
+  global-WIP 錯誤；自己的 scope、metadata、source CI、反例審查與 branch protection 仍必須通過。
+- Product／混合範圍、分類不明或自己契約不完整的 active Agent PR，維持完整 Product WIP 檢查。
+  這不授權治理工作使用 shared TEST，也不放寬 Product 的 ownership 或任何安全上限。
+- 純 `docs/metrics/**` 或 `docs/schema-truth/**` 的獨立記帳 PR 屬 `MODEL_GOVERNANCE`。
+  記錄 Product Run 不等於本次工作是 Product；不得借用 Product Run 名稱占 Product candidate。
+  真正包含 runtime／schema／provider 變更的混合 PR 仍按 Product，不以文件路徑掩蓋它。
+- preflight、必要的 WIP guard、分類 workflow 與 Completion Truth 共用
+  `scripts/agents/governance-workstream-boundary.mjs` 的對應判準；不能只補本機檢查而漏掉遠端入口。
+- BUILD／VERIFY 繼續遵守 §5 的 qualified `AUDIT_READY` 語意，不恢復舊的
+  `TEST_VALIDATION` active-candidate tail 設計。
+
 ## 2. 強制開工順序（低摩擦 default entry）
 
 原則：**本文件是 default execution entry，不再每輪無條件重讀整套治理背景。** 安全規則沒有減少，改成依任務 trigger 載入，降低 context、時間與「讀太多反而用錯舊規則」的摩擦。
@@ -405,6 +421,17 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
   TEST、risk、unproven、next、requested／actual model、RUN_ID 與 scorecard path。
 - 不貼整份 CI log，不複製完整舊對話。
 
+### 9.0 收尾以 GitHub 真實開關狀態為準
+
+- 已合併 PR 清除 `state:active`／`candidate:active` 與已終止的 lane 警報，標示
+  `state:complete`；未合併而關閉的 PR 標示 `state:historical`，不能冒充已完成產品。
+- closed 事件只收工作位置與標籤，不重寫歷史 CI／review／WIP 結果為 pending，不觸發 TEST。
+  清除警報標籤不表示那次錯誤沒有發生；原留言與執行歷史必須保留。
+- 分類與 WIP workflow 只增刪各自管理的標籤，不能用整包取代抹掉另一支 workflow 的更新。
+- 重複候選先逐項確認被取代的內容與真正殘留缺口，再沿用既有 PR 縮範圍；不得重做已合併工作。
+- stacked PR（相依分支）不是 WIP 豁免。需明確列出當前施工者、等待的相依與短命驗證位置；
+  清理者不能擅自停掉其他 Agent 的在途工作、刪其分支，或為消除警報虛構 Owner 例外。
+
 ### 9.1 `CLOSED` 不等於 shipped
 
 Product Issue 只有以下五階全部成立，才可計為 `shipped_unit`：
@@ -422,6 +449,20 @@ PR merged、CI 綠、Issue closed 都不能單獨冒充已出貨。
 
 涉及新資料庫依賴時，§3.2 的安全執行順序優先：先 PRODUCTION_SCHEMA_READY，再啟用相依程式。
 上列五項交付證據仍全數必要，不授權網站先啟用、之後才補資料庫；歷史帳本與評分不回寫。
+
+### 9.1.1 工作分類、計數資格與上線驗收分開
+
+- `WORKSTREAM` 回答工作屬於哪一條線；`COUNT_IN_DELIVERY_OUTCOME` 只回答是否納入交付計數。
+  `false` 不代表治理，不得使真實 Product migration／正式驗收變成 `NOT_APPLICABLE`。
+- `SLICE`／`STANDALONE` 必須 `COUNT_IN_DELIVERY_OUTCOME=true`、
+  `RETROACTIVE_TRACKING_MIGRATION=false`，並提供可追蹤 Issue 與 `USER_VISIBLE_OUTCOME`。
+  本機 preflight 與遠端必要 WIP guard 使用同一支驗證器；契約矛盾必須拒絕，而不是改判治理。
+- 計數資格成立不等於 shipped。尚未套用正式 schema、部署或登入驗收，仍如實保留未完成階段。
+  Product 非交付記錄與資料不足記錄也不能因不計數，就取得假造的 schema-ready／accepted 證據。
+- `NON_PRODUCT_GOVERNANCE` 僅用於完整實際檔案已驗證為純治理且自身契約合法的記錄。
+  `DELIVERY_METADATA_INVALID` 表示契約錯誤，不能當成功；`PRODUCT_NON_SHIPPING` 不代表已出貨。
+- 更正舊 PR 的分類或展示時附上查證來源，保留歷史執行結果；不得改寫舊 Run 數字、補造測試，
+  或把修正計數資格當成正式站驗收完成。
 
 ### 9.2 Completion Truth
 

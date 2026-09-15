@@ -34,7 +34,7 @@ describe('agent WIP Guard live-state dispatch', () => {
       'const liveExisting = (current.labels ?? [])',
     );
     const labelWriteIndex = workflow.indexOf(
-      'await github.rest.issues.setLabels({',
+      'if (additions.length) await github.rest.issues.addLabels({',
     );
     const dispatchDecisionIndex = workflow.indexOf(
       "!liveExisting.includes('lane:test-validation')",
@@ -45,6 +45,7 @@ describe('agent WIP Guard live-state dispatch', () => {
 
     expect(liveLabelsIndex).toBeGreaterThan(-1);
     expect(labelWriteIndex).toBeGreaterThan(liveLabelsIndex);
+    expect(workflow).not.toContain('await github.rest.issues.setLabels({');
     expect(dispatchDecisionIndex).toBeGreaterThan(labelWriteIndex);
     expect(dispatchIndex).toBeGreaterThan(dispatchDecisionIndex);
     expect(workflow).not.toContain(
