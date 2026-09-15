@@ -535,6 +535,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#21：外部行事曆匯入 external_calendars（subscription 表＋external_calendar_events 快取表＋service-role-only 的 sync_replace_external_calendar_events／mark_external_calendar_sync_error 兩支 rpc）。subscription 表用既有 `is_tenant_member(tenant_id)` 全操作 RLS policy（CRUD 走 session client）；快取表只給 authenticated select policy，寫入僅透過 service-role-only rpc（cron 呼叫），與 0113 page_view_events／0114 banner_video_pending_uploads 同一套「內部記帳表，租戶不直接寫」立場。員工個人 ICS output token rotation 刻意不在本筆範圍內（Issue #21 明講這是後續獨立範圍）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0116_issue_25b_support_chat_threads",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #25 B 段：客服對話串第一版（support_chat_threads／support_chat_messages 兩張表），規格見 docs/decisions/2026-09-11-support-chat-human-escalation.md。兩張表皆啟用 RLS，讀寫走 is_tenant_member(tenant_id)（threads）與 tenant_id 一致性 check（messages 的 insert policy 額外鎖 sender_role='TENANT' 且 tenant_id 與其 thread 相符），全部走 session client（t.supabase），不使用 service role。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     }
   ]
 }

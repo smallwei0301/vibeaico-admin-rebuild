@@ -414,17 +414,17 @@ describe('#396 已提交的正式資料', () => {
   const snapshot = loadRealSnapshot();
   const repoFiles = loadRealRepoFiles();
 
-  // repo 端多出尚未套用的 0105、0109、0110、0111、0112、0113、0114 與本候選的
-  // 0115_issue_21_external_calendars，正式庫快照維持 57 筆實際
+  // repo 端多出尚未套用的 0105、0109、0110、0111、0112、0113、0114、0115 與
+  // 本候選的 0116_issue_25b_support_chat_threads，正式庫快照維持 57 筆實際
   // ledger row（0106／0108／0107 已分別於 2026-09-14 經 Owner 具名授權套用並
   // 重新擷取本快照，三者都在快照裡）。
   // 數字不是推算的，是對 current main／submitted candidate 的實際檔案跑一次得到的。
-  it('repo 有 64 個 migration 檔案，正式庫快照有 57 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(64);
+  it('repo 有 65 個 migration 檔案，正式庫快照有 57 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(65);
     expect(snapshot.ledgerRowNames).toHaveLength(57);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 64 個 repo 檔案與 57 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 65 個 repo 檔案與 57 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -451,7 +451,7 @@ describe('#396 已提交的正式資料', () => {
     // 是 8。八者依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
     expect(counts.EXACT).toBe(50);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(8);
+    expect(counts.NOT_APPLIED ?? 0).toBe(9);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -722,7 +722,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // 「每一筆都有理由」，否則清單變空時這條規則會靜悄悄變成空轉。任何人日後
     // 新增或移除 NOT_APPLIED 都會先撞到這一行，被迫同時面對下面那條「必須有
     // 合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(8);
+    expect(notApplied.length).toBe(9);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }
