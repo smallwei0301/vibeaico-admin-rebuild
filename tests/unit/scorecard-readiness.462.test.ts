@@ -51,7 +51,8 @@ describe('scorecard live readiness (#462)', () => {
       taskCount: 3,
       lunaTasks: 2,
       lunaAccepted: 2,
-      solTouches: 1,
+      solTaskCount: 1,
+      recordedSolTouches: 1,
       fullCiRuns: 2,
     });
   });
@@ -78,7 +79,7 @@ describe('scorecard live readiness (#462)', () => {
     );
   });
 
-  it('detects drift between durable task records and flow counters', () => {
+  it('detects drift between durable Luna task records and flow counters', () => {
     const run = activeRun();
     run.flow.lunaTasks = 9;
     run.flow.lunaAccepted = 8;
@@ -93,9 +94,10 @@ describe('scorecard live readiness (#462)', () => {
     expect(result.consistencyWarnings).toContain(
       'flow.lunaAccepted=8 disagrees with modelUsage.tasks-derived 2',
     );
-    expect(result.consistencyWarnings).toContain(
+    expect(result.consistencyWarnings).not.toContain(
       'flow.solTouches=7 disagrees with modelUsage.tasks-derived 1',
     );
+    expect(result.observed).toMatchObject({ solTaskCount: 1, recordedSolTouches: 7 });
   });
 
   it('does not require legacy manual percentage fields', () => {
