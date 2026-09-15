@@ -17,36 +17,11 @@ import { calendarSyncPage as t } from '@/i18n/zh-TW/pages/calendar-sync';
 import { APP_URL } from '@/config/env';
 import { useCurrentTenant } from '@/components/layout/BusinessTypeContext';
 import { formatDateTime } from '@/lib/utils';
-
-/* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
-/* -------------------------------------------------------------------------- */
-
-type ExternalCalendar = {
-  id: string;
-  name: string;
-  url: string;
-  color: string;
-  enabled: boolean;
-  lastSyncAt: string | null;
-  lastEventCount: number;
-  syncError: boolean;
-};
-
-const MOCK_EXTERNAL_CALENDARS: ExternalCalendar[] = [
-  {
-    id: 'ec_1', name: 'Booking.com 名單',
-    url: 'https://calendar.google.com/calendar/ical/demo/private-abc/basic.ics',
-    color: '#9aa0a6', enabled: true,
-    lastSyncAt: '2026-08-20T09:15:00+08:00', lastEventCount: 12, syncError: false,
-  },
-  {
-    id: 'ec_2', name: '老闆私人行程',
-    url: 'https://calendar.google.com/calendar/ical/demo/private-xyz/basic.ics',
-    color: '#4361ee', enabled: false,
-    lastSyncAt: null, lastEventCount: 0, syncError: true,
-  },
-];
+import {
+  listExternalCalendars, createExternalCalendar, deleteExternalCalendar,
+  type ExternalCalendarSubscription,
+} from '@/services/external-calendars';
+import { ApiError } from '@/lib/api';
 
 
 
@@ -71,30 +46,32 @@ export default function CalendarSyncPage() {
   const [confirmRegen, setConfirmRegen] = React.useState(false);
   const [regenBusy, setRegenBusy] = React.useState(false);
 
-  const [externals, setExternals] = React.useState<ExternalCalendar[]>([]);
+  const [externals, setExternals] = React.useState<ExternalCalendarSubscription[]>([]);
   const [loadingExternals, setLoadingExternals] = React.useState(true);
   const [name, setName] = React.useState('');
   const [url, setUrl] = React.useState('');
-  const [color, setColor] = React.useState<string>(t.external.defaultColor);
   const [adding, setAdding] = React.useState(false);
-  const [deleting, setDeleting] = React.useState<ExternalCalendar | null>(null);
+  const [deleting, setDeleting] = React.useState<ExternalCalendarSubscription | null>(null);
+  const [deletingBusy, setDeletingBusy] = React.useState(false);
 
   const currentTenant = useCurrentTenant();
   const icsUrl = buildIcsUrl(currentTenant.shopCode, icsToken);
   const googleUrl = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(icsUrl)}`;
 
-  React.useEffect(() => {
-    void (async () => {
-      try {
-        await new Promise((r) => setTimeout(r, 320));
-        setExternals(MOCK_EXTERNAL_CALENDARS);
-      } catch {
-        toast.show(t.messages.loadFailed, 'danger');
-      } finally {
-        setLoadingExternals(false);
-      }
-    })();
+  const reloadExternals = React.useCallback(async () => {
+    setLoadingExternals(true);
+    try {
+      setExternals(await listExternalCalendars());
+    } catch {
+      toast.show(t.messages.loadFailed, 'danger');
+    } finally {
+      setLoadingExternals(false);
+    }
   }, [toast]);
+
+  React.useEffect(() => {
+    void reloadExternals();
+  }, [reloadExternals]);
 
   const copy = async (text: string, message: string) => {
     try {
@@ -110,18 +87,12 @@ export default function CalendarSyncPage() {
     if (!url.trim()) { toast.show(t.external.urlRequired, 'warning'); return; }
     setAdding(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
-      setExternals((s) => [
-        ...s,
-        {
-          id: `ec_new_${s.length + 1}`, name: name.trim(), url: url.trim(), color,
-          enabled: true, lastSyncAt: null, lastEventCount: 0, syncError: false,
-        },
-      ]);
-      setName(''); setUrl(''); setColor(t.external.defaultColor);
+      await createExternalCalendar({ name: name.trim(), icsUrl: url.trim() });
+      setName(''); setUrl('');
       toast.show(t.external.added);
-    } catch {
-      toast.show(`${t.messages.loadFailedPrefix}${t.messages.unknownError}`, 'danger');
+      await reloadExternals();
+    } catch (e) {
+      toast.show(`${t.external.addFailed}：${e instanceof ApiError ? e.message : t.messages.unknownError}`, 'danger');
     } finally {
       setAdding(false);
     }
@@ -199,23 +170,14 @@ export default function CalendarSyncPage() {
             </h5>
             <FormText className="mb-3">{t.external.description}</FormText>
 
-            <div className="grid gap-x-3 md:grid-cols-2">
-              <FormGroup>
-                <Label htmlFor="extName">{t.external.name}</Label>
-                <Input
-                  id="extName" className="form-control-sm" value={name}
-                  placeholder={t.external.namePlaceholder}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </FormGroup>
-              <FormGroup>
-                <Label htmlFor="extColor">{t.external.color}</Label>
-                <Input
-                  id="extColor" type="color" className="form-control-sm h-8 p-1" value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                />
-              </FormGroup>
-            </div>
+            <FormGroup>
+              <Label htmlFor="extName">{t.external.name}</Label>
+              <Input
+                id="extName" className="form-control-sm" value={name}
+                placeholder={t.external.namePlaceholder}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </FormGroup>
             <FormGroup>
               <Label htmlFor="extUrl">{t.external.url}</Label>
               <Input
@@ -237,30 +199,17 @@ export default function CalendarSyncPage() {
                 <ul className="flex flex-col gap-2">
                   {externals.map((c) => (
                     <li key={c.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-neutral-50 p-3">
-                      <span
-                        aria-hidden
-                        className="h-3 w-3 flex-shrink-0 rounded-pill"
-                        style={{ background: c.color }}
-                      />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-base font-semibold text-dark">{c.name}</div>
-                        <div className="truncate text-xs text-secondary">{c.url}</div>
+                        <div className="truncate text-xs text-secondary">{c.icsUrl}</div>
                       </div>
-                      {c.syncError ? (
-                        <Badge tone="danger">{t.external.syncError}</Badge>
-                      ) : c.lastSyncAt ? (
-                        <Badge tone="success">{t.external.eventCount(c.lastEventCount)}</Badge>
+                      {c.lastSyncStatus === 'ERROR' ? (
+                        <Badge tone="danger">{t.external.syncStatus.error(c.lastSyncError ?? '')}</Badge>
+                      ) : c.lastSyncStatus === 'OK' && c.lastSyncedAt ? (
+                        <Badge tone="success">{t.external.syncStatus.ok(formatDateTime(c.lastSyncedAt))}</Badge>
                       ) : (
-                        <Badge tone="neutral">{t.external.neverSynced}</Badge>
+                        <Badge tone="neutral">{t.external.syncStatus.neverSynced}</Badge>
                       )}
-                      <Button
-                        size="sm"
-                        variant={c.enabled ? 'outline' : 'secondary'}
-                        onClick={() => setExternals((s) =>
-                          s.map((x) => (x.id === c.id ? { ...x, enabled: !x.enabled } : x)))}
-                      >
-                        {c.enabled ? t.external.disable : t.external.enable}
-                      </Button>
                       <Button
                         size="sm" variant="outlineDanger" aria-label={common.delete}
                         onClick={() => setDeleting(c)}
@@ -317,6 +266,7 @@ export default function CalendarSyncPage() {
       <ConfirmModal
         open={!!deleting}
         danger
+        loading={deletingBusy}
         title={common.delete}
         confirmText={common.delete}
         message={
@@ -325,10 +275,19 @@ export default function CalendarSyncPage() {
           </span>
         }
         onClose={() => setDeleting(null)}
-        onConfirm={() => {
-          setExternals((s) => s.filter((x) => x.id !== deleting?.id));
-          setDeleting(null);
-          toast.show(t.external.deleted);
+        onConfirm={async () => {
+          if (!deleting) return;
+          setDeletingBusy(true);
+          try {
+            await deleteExternalCalendar(deleting.id);
+            toast.show(t.external.deleted);
+            setDeleting(null);
+            await reloadExternals();
+          } catch (e) {
+            toast.show(`${t.external.deleteFailed}：${e instanceof ApiError ? e.message : t.messages.unknownError}`, 'danger');
+          } finally {
+            setDeletingBusy(false);
+          }
         }}
       />
     </>
