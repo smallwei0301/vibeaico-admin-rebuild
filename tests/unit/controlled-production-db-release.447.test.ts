@@ -65,6 +65,64 @@ describe('Controlled Production DB writer #447', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it.each(['btree', 'hash'])('builds ADDITIVE %s indexes while refusing embedded routines', async (method) => {
+    const sql = `create index orders_id_idx on public.orders using ${method} (id) where id > 0;`;
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => sql,
+    });
+    expect(p.riskTier).toBe('ADDITIVE');
+    expect(buildAtomicProductionApplySql({
+      plan: p, releasePacket: packet(p), aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+    })).toContain(sql);
+
+    for (const unsafeSql of [
+      `create index orders_id_idx on public.orders using ${method} ((custom_routine(id)));`,
+      `create index orders_id_idx on public.orders using ${method} (id) where custom_routine(id);`,
+    ]) {
+      const stalePlan = plan();
+      stalePlan.migrations[0].sha256 = sha256(Buffer.from(unsafeSql));
+      stalePlan.planDigest = releasePlanDigestOf(stalePlan);
+      const evidence = packet(stalePlan);
+      expect(() => buildAtomicProductionApplySql({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => unsafeSql,
+      })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+      await expect(runControlledProductionRelease({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => unsafeSql, fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it('keeps partial-index conflict DML and its nested routines outside the writer', async () => {
+    const sql = 'insert into public.orders(id) values (1) on conflict (id) where id > 0 do nothing;';
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => sql,
+    });
+    expect(p.riskTier).toBe('BACKFILL');
+    for (const candidate of [sql, sql.replace('id > 0', 'custom_routine(id)')]) {
+      const stalePlan = plan();
+      stalePlan.migrations[0].sha256 = sha256(Buffer.from(candidate));
+      stalePlan.planDigest = releasePlanDigestOf(stalePlan);
+      const evidence = packet(stalePlan);
+      expect(() => buildAtomicProductionApplySql({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => candidate,
+      })).toThrow();
+      const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+      await expect(runControlledProductionRelease({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => candidate, fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
+
   it.each([
     'begin', 'brin', 'btree', 'conflict', 'declare', 'exception', 'exclude',
     'filter', 'gin', 'gist', 'hash', 'if', 'join', 'loop', 'over', 'partition',
