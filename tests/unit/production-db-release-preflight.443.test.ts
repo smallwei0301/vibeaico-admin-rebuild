@@ -111,6 +111,12 @@ describe('Production DB release preflight', () => {
     const drift = packet();
     drift.consistency.unexplainedDifferences = 1;
     expect(() => evaluateReleasePreflight(drift, { now: NOW })).toThrow(/UNEXPLAINED_DRIFT/);
+    for (const invalid of [null, false, '', '0']) {
+      const malformed = packet();
+      malformed.consistency.unexplainedDifferences = invalid;
+      malformed.finalRisk.evidenceDigest = releaseEvidenceDigestOf(malformed);
+      expect(() => evaluateReleasePreflight(malformed, { now: NOW })).toThrow(/UNEXPLAINED_DRIFT/);
+    }
   });
 
   it('does not treat a policy skip or zero executed tests as TEST evidence', () => {
