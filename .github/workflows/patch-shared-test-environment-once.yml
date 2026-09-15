@@ -1,0 +1,34 @@
+name: patch-shared-test-environment-once
+on:
+  push:
+    branches: [product/issue-447-release-workflow-v1]
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: product/issue-447-release-workflow-v1
+          fetch-depth: 0
+      - name: Bind integration job to validated shared TEST environment and self-remove
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/ci.yml')
+          s=p.read_text()
+          old='  integration:\n    name: integration\n    needs: [classify-changes, check]\n    if: ${{ needs.check.result == \'success\' }}\n    runs-on: ubuntu-latest\n'
+          new=old+'    environment: shared-test-validation\n'
+          if '    environment: shared-test-validation\n' not in s:
+              if old not in s: raise SystemExit('integration anchor not found')
+              s=s.replace(old,new,1)
+          p.write_text(s)
+          PY
+          rm .github/workflows/patch-shared-test-environment-once.yml
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/ci.yml .github/workflows/patch-shared-test-environment-once.yml
+          git commit -m 'fix(#447): bind shared TEST integration to environment secrets'
+          git push origin HEAD:product/issue-447-release-workflow-v1
