@@ -312,6 +312,22 @@ export const testLineConnection = () =>
   );
 
 /**
+ * Issue #477 P1a：把 verify 報告裡「Webhook 沒開啟」的提示文案，換成一顆真的能
+ * 呼叫 LINE 官方 API 修好的按鈕（PUT endpoint + PUT setActive，皆用該租戶自己的
+ * Channel Token）。`synced:false` 時保留誠實的失敗訊息，前端不得顯示成功、也
+ * 不清除既有設定。mock 模式一律回同步成功，讓 demo 流程可走完全程。
+ */
+export const syncLineWebhook = () =>
+  adapt<{ synced: boolean; message: string; endpoint?: string }>(
+    () => ({ synced: true, message: 'Webhook 網址已更新並開啟（demo 模式）' }),
+    () =>
+      request<{ synced: boolean; message: string; endpoint?: string }>(
+        '/api/settings/line/webhook-sync',
+        { method: 'POST' },
+      ),
+  );
+
+/**
  * 六項可查證檢查（status 只會是 PASS/FAIL）+ 一項人工確認提示（AUTO_REPLY，
  * status 恆為 INFO）—— 見 src/app/api/settings/line/verify/route.ts 檔頭說明。
  * `pass` 欄位保留相容（`pass === (status === 'PASS')`），呼叫端計算失敗數須用

@@ -166,6 +166,23 @@ export async function linePostRaw(token: string, path: string, body?: unknown) {
 }
 
 /**
+ * 不丟錯版的 PUT（同 lineGetRaw／linePostRaw 的理由）—— Issue #477 P1a webhook
+ * 自動同步用：`PUT /v2/bot/channel/webhook/endpoint` 與
+ * `PUT /v2/bot/channel/webhook/setActive` 兩個端點失敗時要讓呼叫端把它轉成
+ * 誠實訊息（保留原設定、顯示人工複製 fallback），不能走 lineFetch 的 502 拋錯
+ * 路徑讓整個請求變成未定義行為。
+ */
+export async function linePutRaw(token: string, path: string, body?: unknown) {
+  const res = await fetch(`${lineApiBase()}${path}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  const resBody = await res.json().catch(() => ({}) as any);
+  return { ok: res.ok, status: res.status, body: resBody as Record<string, any> };
+}
+
+/**
  * `POST /oauth2/v2.1/token`（client_credentials grant）—— LINE 設定檢查報告
  * 「Channel ID 與 Secret 配對正確」項目用。這是 LINE Login/Messaging API 共用的 OAuth 端點，
  * 用 Channel ID（client_id）＋ Channel Secret（client_secret）換發一顆短期
