@@ -249,10 +249,15 @@ function immediateProceduralBody(statement) {
     skipWhitespace();
   }
 
-  const quoteIndex = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'" ? index + 1 : index;
+  const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
+  const quoteIndex = extended ? index + 1 : index;
   if (input[quoteIndex] === "'") {
     const end = quotedTokenEnd(input, quoteIndex, "'");
-    return input.slice(quoteIndex + 1, end - 1).replace(/''/g, "'");
+    const rawBody = input.slice(quoteIndex + 1, end - 1);
+    if (extended && /\\/.test(rawBody)) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'backslash-escaped E-string procedural bodies are not admitted');
+    }
+    return rawBody.replace(/''/g, "'");
   }
 
   const dollar = dollarQuoteAt(input, index);
@@ -279,10 +284,15 @@ function firstDynamicSqlTemplate(fragment) {
     skipWhitespace();
   }
 
-  const quoteIndex = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'" ? index + 1 : index;
+  const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
+  const quoteIndex = extended ? index + 1 : index;
   if (input[quoteIndex] === "'") {
     const end = quotedTokenEnd(input, quoteIndex, "'");
-    return input.slice(quoteIndex + 1, end - 1);
+    const rawTemplate = input.slice(quoteIndex + 1, end - 1);
+    if (extended && /\\/.test(rawTemplate)) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'backslash-escaped E-string dynamic SQL templates are not admitted');
+    }
+    return rawTemplate.replace(/''/g, "'");
   }
 
   const dollar = dollarQuoteAt(input, index);
@@ -307,12 +317,20 @@ function dynamicExecuteFragments(body) {
 function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
-  if (/\|\|/.test(fragment)) {
-    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'concatenated dynamic SQL is not admitted');
-  }
-  if (/^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)) return 'SCHEMA_REPAIR';
+  const formatCall = /^\s*\(*\s*format\s*\(/i.test(fragment);
+  const templateStatements = splitSqlStatements(template);
+  const boundedConstraintRepair = /^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)
+    && !/%(?!I\b)[A-Za-z]/i.test(template)
+    && templateStatements.length === 1;
+  if (boundedConstraintRepair) return 'SCHEMA_REPAIR';
   if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
+  }
+  if (templateStatements.length !== 1) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must contain exactly one statically bounded statement');
+  }
+  if (formatCall) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic format SQL is not admitted unless it is a bounded constraint repair');
   }
   if (!/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalTemplate)) {
     fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must be a statically bounded DML template');
