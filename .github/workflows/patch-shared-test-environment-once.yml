@@ -19,12 +19,13 @@ jobs:
           from pathlib import Path
           p=Path('.github/workflows/ci.yml')
           s=p.read_text()
-          old='  integration:\n    name: integration\n    needs: [classify-changes, check]\n    if: ${{ needs.check.result == \'success\' }}\n    runs-on: ubuntu-latest\n'
-          new=old+'    environment: shared-test-validation\n'
-          if '    environment: shared-test-validation\n' not in s:
-              if old not in s: raise SystemExit('integration anchor not found')
-              s=s.replace(old,new,1)
-          p.write_text(s)
+          head, sep, tail=s.partition('  integration:\n')
+          if not sep: raise SystemExit('integration job not found')
+          marker='    runs-on: ubuntu-latest\n'
+          if '    environment: shared-test-validation\n' not in tail:
+              if marker not in tail: raise SystemExit('integration runs-on anchor not found')
+              tail=tail.replace(marker, marker+'    environment: shared-test-validation\n', 1)
+          p.write_text(head+sep+tail)
           PY
           rm .github/workflows/patch-shared-test-environment-once.yml
           git diff --check
