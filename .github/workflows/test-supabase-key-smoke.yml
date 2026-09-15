@@ -7,10 +7,11 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     environment: shared-test-validation
     concurrency:
       group: shared-test-supabase-integration
-      cancel-in-progress: false
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,7 +34,7 @@ jobs:
           console.log('CANONICAL_TEST_IDENTITY_VERIFIED');
           NODE
       - name: Run integration tests
-        run: npm run test:integration
+        run: timeout 900s npm run test:integration
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
@@ -46,7 +47,7 @@ jobs:
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
       - name: Run E2E tests
-        run: npx playwright install --with-deps chromium && npm run test:e2e
+        run: timeout 900s bash -lc 'npx playwright install --with-deps chromium && npm run test:e2e'
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
