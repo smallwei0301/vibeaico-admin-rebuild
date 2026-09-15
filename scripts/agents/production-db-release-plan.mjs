@@ -250,11 +250,11 @@ function stripStoredRoutineBodies(statement) {
 }
 
 const SQL_PARENTHESES_WORDS = new Set([
-  'all', 'and', 'any', 'as', 'begin', 'case', 'check', 'conflict', 'declare', 'else',
-  'end', 'exception', 'exists', 'filter', 'for', 'from', 'group', 'having', 'if',
+  'all', 'and', 'any', 'as', 'begin', 'brin', 'btree', 'case', 'check', 'conflict', 'declare', 'else',
+  'end', 'exception', 'exclude', 'exists', 'filter', 'for', 'foreign', 'from', 'gin', 'gist', 'group', 'hash', 'having', 'if',
   'in', 'into', 'join', 'lateral', 'limit', 'loop', 'not', 'offset', 'on', 'only',
-  'or', 'order', 'over', 'partition', 'raise', 'returning', 'select', 'set', 'some',
-  'then', 'using', 'values', 'when', 'where', 'while', 'with',
+  'or', 'order', 'over', 'partition', 'primary', 'raise', 'returning', 'select', 'set', 'some',
+  'then', 'unique', 'using', 'values', 'when', 'where', 'while', 'with',
 ]);
 
 function isDmlTargetColumnList(text, index) {
@@ -310,6 +310,9 @@ function rejectImmediateRoutineInvocations(statements) {
     const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
       || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
+      || /^\s*create\s+(?:or\s+replace\s+)?view\b[\s\S]*\bas\b/i.test(lexicalText)
+      || /^\s*create\s+(?:unique\s+)?index\b[\s\S]*\bon\b[\s\S]*\(/i.test(lexicalText)
+      || /^\s*alter\s+table\b[\s\S]*\badd\s+constraint\b[\s\S]*\bcheck\s*\(/i.test(lexicalText)
       || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
@@ -671,6 +674,9 @@ function rejectUnclassifiedDropStatements(text) {
     .map((fragment) => stripStoredRoutineBodies(stripSqlStringLiterals(fragment)))
     .filter((fragment) => /\bdrop\b/i.test(fragment));
   for (const fragment of fragments) {
+    if (/\bdrop\b[\s\S]*\bcascade\b/i.test(fragment)) {
+      fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP ... CASCADE is not admitted by the fail-closed v1 writer');
+    }
     const drops = [...fragment.matchAll(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi)];
     if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
     for (const match of drops) {
