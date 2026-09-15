@@ -288,18 +288,19 @@ function hasUnverifiedRoutineInvocation(text) {
 }
 
 function rejectUnsupportedPreparedStatements(statements) {
-  const preparedExecute = /\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?:\s+with\s+(?:no\s+)?data)?(?=\s*(?:;|$))/iu;
+  const preparedExecute = /\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu;
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
-    const procedural = /^\s*do\b/i.test(immediateText);
+    const procedural = /^do\b/i.test(immediateText);
     const executableText = procedural ? immediateProceduralBody(immediateText) ?? immediateText : immediateText;
     const lexicalText = stripSqlStringLiterals(executableText);
-    // SQL PREPARE/EXECUTE is not PL/pgSQL dynamic EXECUTE. Check the whole
-    // immediate command so EXPLAIN and CTAS wrappers cannot hide a prepared name.
+    // SQL EXECUTE is not PL/pgSQL dynamic EXECUTE. Check the entire immediate
+    // command, not an end-anchored prepared name: EXPLAIN options, quoted names
+    // and CTAS WITH [NO] DATA must not hide it. Privilege declarations are inert.
     const privilegeDeclaration = /^(?:grant|revoke|alter\s+default\s+privileges)\b/i.test(lexicalText);
     const immediateExecute = !procedural
-      && !privilegeDeclaration
-      && /\bexecute\b/i.test(lexicalText);
+      && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure|(?:constraint\s+)?trigger)\b/i.test(lexicalText)
+      && !privilegeDeclaration && /\bexecute\b/i.test(lexicalText);
     if (/\bprepare\b/i.test(lexicalText) || immediateExecute || preparedExecute.test(lexicalText)) {
       fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'SQL-level PREPARE/EXECUTE is not admitted by the v1 classifier');
     }
@@ -315,9 +316,10 @@ function rejectImmediateRoutineInvocations(statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    // DDL expressions can execute routines while validating rows, defaults,
-    // generated columns, indexes, domains, views, or table rewrites. Inspect
-    // their expression tails after stored routine bodies have been removed.
+    // DDL can evaluate expressions while validating existing rows, rewriting a
+    // column or building an index. Inspect expression tails without treating a
+    // table's declaration/column list as a routine call. Unknown calls fail closed
+    // even if a caller describes them as immutable or as deferred defaults.
     if (/^(?:create|alter)\b/i.test(lexicalText)
       && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexicalText)) {
       for (const expression of lexicalText.matchAll(/\b(?:check|default|using|as|where|generated|partition)\b/gi)) {
@@ -325,6 +327,7 @@ function rejectImmediateRoutineInvocations(statements) {
           fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'DDL expression routine invocation is not admitted');
         }
       }
+      // An index expression need not have a CHECK/USING/WHERE introducer.
       if (/^create\s+(?:unique\s+)?index\b/i.test(lexicalText)) {
         const open = lexicalText.indexOf('(');
         if (open >= 0 && checkCommandText(immediateText.slice(open))) {
@@ -335,9 +338,6 @@ function rejectImmediateRoutineInvocations(statements) {
     const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
       || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
-      || /^\s*create\s+(?:or\s+replace\s+)?view\b[\s\S]*\bas\b/i.test(lexicalText)
-      || /^\s*create\s+(?:unique\s+)?index\b[\s\S]*\bon\b[\s\S]*\(/i.test(lexicalText)
-      || /^\s*alter\s+table\b[\s\S]*\badd\s+constraint\b[\s\S]*\bcheck\s*\(/i.test(lexicalText)
       || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
@@ -632,8 +632,8 @@ function dynamicCommandKind(fragment) {
   if (/\bdrop\b[\s\S]*\bcascade\b/i.test(lexicalTemplate)) {
     fail('CASCADE_NOT_ADMITTED', 'dynamic schema repair cannot prove the dependency scope of CASCADE');
   }
-  // Only a single ALTER TABLE ... DROP CONSTRAINT [RESTRICT] is a bounded
-  // schema repair. A single dynamic statement must not smuggle other actions.
+  // One DROP CONSTRAINT only; a comma must not smuggle ADD CHECK/default/USING
+  // or another ALTER action past migration-time expression admission.
   const identifier = '(?:%I|"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
   const boundedDrop = new RegExp('^alter\\s+table\\s+(?:only\\s+)?' + identifier
     + '(?:\\s*\\.\\s*' + identifier + ')?\\s+drop\\s+constraint\\s+(?:if\\s+exists\\s+)?'
@@ -705,12 +705,14 @@ function rejectUnsupportedRoutineLiteralBodies(statements) {
 
 function rejectUnclassifiedDropStatements(text) {
   const fragments = splitSqlStatements(text)
-    .map((fragment) => stripStoredRoutineBodies(stripSqlStringLiterals(fragment)))
+    .map((fragment) => {
+      const immediate = stripStoredRoutineBodies(fragment).trim();
+      // Single-quoted DO bodies execute too; do not mask their DROP/CASCADE.
+      const executable = /^do\b/i.test(immediate) ? immediateProceduralBody(immediate) ?? immediate : immediate;
+      return stripSqlStringLiterals(executable);
+    })
     .filter((fragment) => /\bdrop\b/i.test(fragment));
   for (const fragment of fragments) {
-    if (/\bdrop\b[\s\S]*\bcascade\b/i.test(fragment)) {
-      fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP ... CASCADE is not admitted by the fail-closed v1 writer');
-    }
     const drops = [...fragment.matchAll(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi)];
     if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
     for (const match of drops) {
@@ -718,6 +720,9 @@ function rejectUnclassifiedDropStatements(text) {
       if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column']).has(objectType)) {
         fail('UNCLASSIFIED_DROP_NOT_ADMITTED', `unrecognized DROP form: ${objectType}`);
       }
+    }
+    if (/\bcascade\b/i.test(fragment)) {
+      fail('CASCADE_NOT_ADMITTED', 'schema repair cannot prove the dependency scope of CASCADE');
     }
   }
 }
@@ -775,6 +780,8 @@ export function inferMigrationRiskTier(sql) {
  * the alias-map entries explicitly classified PENDING_APPLY. `readCanonicalSql`
  * must read `origin/main:<path>` (or an equivalent immutable main snapshot), never
  * a PR/worktree overlay.
+ * This source core verifies consistency with the supplied reader, not its Git
+ * provenance. #455 owns trusted-main admission; #450 alone is not automation-ready.
  */
 export function buildProductionDbReleasePlan({
   releaseId,
