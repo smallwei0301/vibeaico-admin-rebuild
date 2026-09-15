@@ -65,6 +65,30 @@ describe('Controlled Production DB writer #447', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it.each([
+    'select filter();',
+    '(select "public".filter());',
+    'copy (select "public".filter()) to stdout;',
+  ])('rejects keyword routine/wrapper bypass before any request: %s', async (query) => {
+    const sql = `create function public.filter() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; ${query}`;
+    // An old ADDITIVE plan with otherwise valid byte and digest bindings must
+    // be reclassified before both transaction construction and the ledger read.
+    const p = plan();
+    p.migrations[0].sha256 = sha256(Buffer.from(sql));
+    p.planDigest = releasePlanDigestOf(p);
+    const evidence = packet(p);
+    expect(() => buildAtomicProductionApplySql({
+      plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+    })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+      readCanonicalSql: () => sql, fetchImpl: fetchSpy as unknown as typeof fetch,
+    })).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('rejects a previously additive plan with quoted-schema routine calls before any request', async () => {
     for (const call of ['"public".filter()', '"public" . filter()', '"public"/* schema */.filter()',
       '"public"."filter"()', 'public.filter()', '"租戶".filter()',
