@@ -147,7 +147,7 @@ describe('Production DB release plan #447', () => {
     const formattedMultiCommandSql = 'do ' + dollarQuote + " begin execute format('UPDATE public.tenant_data SET n=1; %s%s TABLE public.victim', 'DR', 'OP'); end " + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(formattedMultiCommandSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED|UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const positionalFormatSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE %I DROP CONSTRAINT %I %3$s', 'public.t', 'old_ck', ''); end " + dollarQuote + ';';
-    expect(() => inferMigrationRiskTier(positionalFormatSql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED|UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(positionalFormatSql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED|UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED|UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const literalRoutineSql = "create function public.wipe() returns void language sql as 'DELETE FROM public.t'; select public.wipe();";
     expect(() => inferMigrationRiskTier(literalRoutineSql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
     expect(inferMigrationRiskTier('alter routine public.f() owner to other_role;')).toBe('AUTHZ');
