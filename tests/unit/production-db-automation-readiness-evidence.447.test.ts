@@ -137,7 +137,7 @@ describe('Production DB automation readiness evidence #447', () => {
     }
   });
 
-  it('still stays pending with valid credential metadata while the mutable trusted-main orchestrator workflow is absent', () => {
+  it('recognizes the current trusted-main orchestrator wiring when externally verified credential metadata is supplied', () => {
     const { evidence, readiness } = evaluateProductionDbAutomationReadiness({
       mainSha: MAIN,
       exactHeadCi: ci(),
@@ -154,15 +154,25 @@ describe('Production DB automation readiness evidence #447', () => {
       singleUseReceiptVerified: true,
       failureJournalVerified: true,
     });
-    expect(evidence.orchestrator.g3EvidenceConsumerWired).toBe(false);
-    expect(evidence.orchestrator.preparedEnvelopePersistBeforeExecute).toBe(false);
-    expect(readiness.automationReady).toBe(false);
-    expect(readiness.blockers).toEqual(expect.arrayContaining([
-      'ORCHESTRATOR_G3EVIDENCECONSUMERWIRED_REQUIRED',
-      'ORCHESTRATOR_PREPAREDENVELOPEPERSISTBEFOREEXECUTE_REQUIRED',
-      'ORCHESTRATOR_PREPAREDENVELOPERELOADVERIFIED_REQUIRED',
-      'ORCHESTRATOR_G7POSTCHECKWIRED_REQUIRED',
-    ]));
+    expect(evidence.orchestrator).toMatchObject({
+      trustedMainOnly: true,
+      g3EvidenceConsumerWired: true,
+      g4BackupEvidenceConsumerWired: true,
+      g4RestoreEvidenceConsumerWired: true,
+      finalRiskLiveFetchWired: true,
+      preparedEnvelopePersistBeforeExecute: true,
+      preparedEnvelopeReloadVerified: true,
+      g7PostcheckWired: true,
+      terminalResultPersisted: true,
+    });
+    expect(readiness).toMatchObject({
+      status: 'AUTOMATION_READY',
+      automationReady: true,
+      authorizationMode: 'POLICY_GATED_ACTIVE',
+      perRunOwnerApproval: 'NOT_REQUIRED',
+      blockers: [],
+      databaseMutationAuthorized: false,
+    });
   });
 
   it('can become AUTOMATION_READY only when every canonical source, credential, orchestrator, CI and counterexample condition is present', () => {
