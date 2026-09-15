@@ -181,21 +181,34 @@ describe('#42 Advanced Settings persistence', () => {
  */
 describe('#42 priceType 影響 create_tour_order 的 total_amount', () => {
   it('PER_GROUP 一口價、PER_PERSON 單價乘人數', async () => {
-    const tripResponse = await ownerA.post('/api/trips', {
-      title: `#42 PriceType Order ${randomUUID()}`,
+    // 各自一個 trip：同一 trip 底下建兩個未指定 slug 的方案，在本機隔離測試
+    // 環境會撞上 local-isolated 專用歷史相容 overlay 帶來的
+    // `trip_plans_tenant_trip_slug_key`（tenant_id, trip_id, slug）唯一約束
+    // ——這個約束**不存在於 canonical `0066`**，純粹是 local-isolated 測試殼層
+    // 的既有形狀差異（見 Issue #42 任務說明的「overlay 表形狀已明顯分岔」提醒），
+    // 分成兩個 trip 可以繞開這個與本次驗收無關的既有落差。
+    const perPersonTrip = await ownerA.post('/api/trips', {
+      title: `#42 PriceType Order 每人 ${randomUUID()}`,
       slug: `test-${randomUUID()}`,
     });
-    expect(tripResponse.status).toBe(200);
-    const tripId = (await json<{ id: string }>(tripResponse)).data!.id;
+    expect(perPersonTrip.status).toBe(200);
+    const perPersonTripId = (await json<{ id: string }>(perPersonTrip)).data!.id;
+
+    const perGroupTrip = await ownerA.post('/api/trips', {
+      title: `#42 PriceType Order 每團 ${randomUUID()}`,
+      slug: `test-${randomUUID()}`,
+    });
+    expect(perGroupTrip.status).toBe(200);
+    const perGroupTripId = (await json<{ id: string }>(perGroupTrip)).data!.id;
 
     try {
-      const perPersonPlan = await ownerA.post(`/api/trips/${tripId}/plans`, {
+      const perPersonPlan = await ownerA.post(`/api/trips/${perPersonTripId}/plans`, {
         name: '每人計價方案', pricePerPerson: 1000, minParty: 1, maxParty: 10,
       });
       expect(perPersonPlan.status).toBe(200);
       const perPersonPlanId = (await json<PlanResponse>(perPersonPlan)).data!.id;
 
-      const perGroupPlan = await ownerA.post(`/api/trips/${tripId}/plans`, {
+      const perGroupPlan = await ownerA.post(`/api/trips/${perGroupTripId}/plans`, {
         name: '每團計價方案', pricePerPerson: 1000, minParty: 1, maxParty: 10,
       });
       expect(perGroupPlan.status).toBe(200);
@@ -203,14 +216,14 @@ describe('#42 priceType 影響 create_tour_order 的 total_amount', () => {
       const setPriceType = await ownerA.put(`/api/trip-plans/${perGroupPlanId}`, { priceType: 'PER_GROUP' });
       expect(setPriceType.status).toBe(200);
 
-      const perPersonDeparture = await ownerA.post(`/api/trips/${tripId}/departures`, {
+      const perPersonDeparture = await ownerA.post(`/api/trips/${perPersonTripId}/departures`, {
         planId: perPersonPlanId, departsOn: '2027-02-10', capacity: 20, startTime: '09:00',
         primaryStaffId: SHOP_A.staffA2,
       });
       expect(perPersonDeparture.status).toBe(200);
       const perPersonDepartureId = (await json<{ id: string }>(perPersonDeparture)).data!.id;
 
-      const perGroupDeparture = await ownerA.post(`/api/trips/${tripId}/departures`, {
+      const perGroupDeparture = await ownerA.post(`/api/trips/${perGroupTripId}/departures`, {
         planId: perGroupPlanId, departsOn: '2027-02-11', capacity: 20, startTime: '09:00',
         primaryStaffId: SHOP_A.staffA2,
       });
@@ -241,7 +254,8 @@ describe('#42 priceType 影響 create_tour_order 的 total_amount', () => {
 
       await admin.from('tour_orders').delete().in('id', [perPersonOrderData.id, perGroupOrderData.id]);
     } finally {
-      await admin.from('trips').delete().eq('id', tripId).eq('tenant_id', SHOP_A.id);
+      await admin.from('trips').delete().eq('id', perPersonTripId).eq('tenant_id', SHOP_A.id);
+      await admin.from('trips').delete().eq('id', perGroupTripId).eq('tenant_id', SHOP_A.id);
     }
   });
 });
