@@ -94,17 +94,63 @@ function assertReleasePlanExecutionEvidence(releasePlanEvidence, plan, sourceRun
   }
 }
 
+function assertPostTestSchemaEvidence(postTestSchemaEvidence, plan, sourceRun, mainSha, planDigest) {
+  if (!postTestSchemaEvidence || postTestSchemaEvidence.status !== 'TEST_POST_APPLY_SCHEMA_CAPTURED') {
+    fail('POST_TEST_SCHEMA_EVIDENCE_REQUIRED', 'fresh post-TEST schema capture evidence is required');
+  }
+  if (postTestSchemaEvidence.repository !== EXPECTED_REPOSITORY) {
+    fail('POST_TEST_SCHEMA_REPOSITORY_MISMATCH', 'post-TEST schema evidence belongs to another repository');
+  }
+  if (postTestSchemaEvidence.testProjectRef !== TEST_PROJECT_REF) {
+    fail('POST_TEST_SCHEMA_PROJECT_MISMATCH', 'post-TEST schema evidence belongs to another TEST project');
+  }
+  if (exactSha(postTestSchemaEvidence.mainSha, 'postTestSchema.mainSha') !== mainSha) {
+    fail('POST_TEST_SCHEMA_MAIN_MISMATCH', 'post-TEST schema evidence belongs to another main SHA');
+  }
+  if (exactDigest(postTestSchemaEvidence.planDigest, 'postTestSchema.planDigest') !== planDigest) {
+    fail('POST_TEST_SCHEMA_PLAN_MISMATCH', 'post-TEST schema evidence belongs to another release plan');
+  }
+  if (String(postTestSchemaEvidence.releaseId ?? '').trim() !== String(plan.releaseId ?? '').trim()) {
+    fail('POST_TEST_SCHEMA_RELEASE_MISMATCH', 'post-TEST schema evidence belongs to another release');
+  }
+  assertSameRun(postTestSchemaEvidence, sourceRun, 'postTestSchemaEvidence');
+  if (postTestSchemaEvidence.comparisonClaim !== 'CAPTURE_ONLY_G2_COMPARISON_REQUIRED') {
+    fail('POST_TEST_SCHEMA_COMPARISON_OVERCLAIM', 'G3 post-TEST evidence must not claim the G2 three-way comparison');
+  }
+  if (postTestSchemaEvidence.readOnly !== true || postTestSchemaEvidence.databaseMutationAuthorized !== false || postTestSchemaEvidence.productionMutationPerformed !== false) {
+    fail('POST_TEST_SCHEMA_SCOPE_ESCALATION', 'post-TEST schema evidence must remain read-only and non-Production');
+  }
+  exactDigest(postTestSchemaEvidence.captureDigest, 'postTestSchema.captureDigest');
+  exactDigest(postTestSchemaEvidence.migrationLedgerDigest, 'postTestSchema.migrationLedgerDigest');
+  if (!Number.isFinite(Date.parse(String(postTestSchemaEvidence.observedAt ?? '')))) {
+    fail('POST_TEST_SCHEMA_TIMESTAMP_REQUIRED', 'post-TEST schema observedAt is invalid');
+  }
+
+  const observed = Array.isArray(postTestSchemaEvidence.plannedMigrations) ? postTestSchemaEvidence.plannedMigrations : [];
+  if (observed.length !== plan.migrations.length) {
+    fail('POST_TEST_SCHEMA_MIGRATION_COUNT_MISMATCH', 'post-TEST schema evidence migration count differs from the locked plan');
+  }
+  for (const migration of plan.migrations) {
+    const repoFile = String(migration?.repoFile ?? '').trim();
+    const matches = observed.filter((entry) => String(entry?.repoFile ?? '').trim() === repoFile);
+    if (matches.length !== 1 || !String(matches[0]?.ledgerVersion ?? '').trim()) {
+      fail('POST_TEST_SCHEMA_LEDGER_MISMATCH', `${repoFile || '<unknown>'} is not uniquely represented in the post-TEST ledger evidence`);
+    }
+  }
+}
+
 /**
  * Convert trusted-main shared TEST raw evidence, exact release-plan execution,
- * independent cleanup and coverage evidence into the TEST_VERIFIED shape consumed
- * by release preflight. Generic workflow success is never enough for migration
- * execution, cleanup or AUTHZ claims.
+ * independent cleanup/coverage and a fresh post-TEST schema recapture into the
+ * TEST_VERIFIED shape consumed by release preflight. Generic workflow success is
+ * never enough for migration execution, cleanup, AUTHZ or schema recapture claims.
  *
- * @param {{rawRunEvidence?: any, releasePlanEvidence?: any, cleanupEvidence?: any, coverageEvidence?: any, plan?: any}} [input]
+ * @param {{rawRunEvidence?: any, releasePlanEvidence?: any, postTestSchemaEvidence?: any, cleanupEvidence?: any, coverageEvidence?: any, plan?: any}} [input]
  */
 export function buildProductionDbTestEvidence({
   rawRunEvidence,
   releasePlanEvidence,
+  postTestSchemaEvidence,
   cleanupEvidence,
   coverageEvidence,
   plan,
@@ -187,6 +233,8 @@ export function buildProductionDbTestEvidence({
     negativeRoleTestsPassed = true;
   }
 
+  assertPostTestSchemaEvidence(postTestSchemaEvidence, plan, sourceRun, mainSha, planDigest);
+
   return {
     status: 'TEST_VERIFIED',
     policySkip: false,
@@ -205,6 +253,8 @@ export function buildProductionDbTestEvidence({
     releasePlanEvidenceStatus: releasePlanEvidence.status,
     cleanupEvidenceStatus: cleanupEvidence.status,
     coverageEvidenceStatus: coverageEvidence.status,
+    postTestSchemaEvidenceStatus: postTestSchemaEvidence.status,
+    postTestSchemaComparisonClaim: postTestSchemaEvidence.comparisonClaim,
     databaseMutationAuthorized: false,
   };
 }
