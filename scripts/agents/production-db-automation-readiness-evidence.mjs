@@ -117,11 +117,11 @@ export function buildProductionDbAutomationReadinessEvidence({
     status: 'CONTROLLED_WRITER_VERIFIED',
     mainSha: sha,
     exactPendingSetVerified: includesAll(controlledWriter, ['PENDING_SET_MISMATCH', 'pendingProductionMigrations']),
-    singleUseReceiptVerified: includesAll(receipt, ['CONSUMING', 'CONSUMED', 'UNKNOWN', 'APPLY_RECEIPT_REPLAYED']),
+    singleUseReceiptVerified: includesAll(receipt, ['CONSUMING', 'CONSUMED', 'UNKNOWN', 'APPLY_RECEIPT_REPLAY']),
     databaseLockVerified: includesAll(controlledWriter, ['pg_try_advisory_xact_lock', 'PRODUCTION_DB_WRITER_LOCK_BUSY']),
     durablePreparedEnvelopeVerified: includesAll(controlledWriter, ['CONTROLLED_APPLY_PREPARED', 'preparationDigest', 'DURABLE_PREPARED_ATTEMPT_REQUIRED']),
     postcheckVerified: includesAll(postcheck, ['PRODUCTION_SCHEMA_READY', 'POSTCHECK_FAILED']),
-    failureJournalVerified: includesAll(journal, ['APPLY_UNKNOWN', 'POSTCHECK_FAILED', 'TERMINAL']),
+    failureJournalVerified: includesAll(journal, ['APPLY_UNKNOWN', 'POSTCHECK_FAILED', 'PRODUCTION_SCHEMA_READY', 'WRITER_RETRY_BLOCKED']),
     bypassAuditClean,
     ...credential,
   };
