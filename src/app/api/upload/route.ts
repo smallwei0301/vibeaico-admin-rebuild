@@ -33,9 +33,14 @@ const ALLOWED_BUCKETS = new Set([
   /*
    * issue #50：關鍵字回覆的附加圖片。
    *
-   * ⚠️ 這個 bucket **本來就存在**（`0073_restore_keyword_reply_storage_write.sql`
-   * 的 `p_storage_write` 允許清單裡有它），缺的一直只是「`/api/upload` 不收它」
+   * 這個 bucket 本來就存在（0086 建立），一度也留在
+   * `0073_restore_keyword_reply_storage_write.sql` 的 `p_storage_write`
+   * authenticated 直寫允許清單裡；缺的曾經只是「`/api/upload` 不收它」
    * ——於是後台那個 `<input type="file">` 只能停用，畫面上寫「尚未建置」。
+   *
+   * issue #402（`0112_keyword_reply_images_upload_acl.sql`）之後，authenticated
+   * 直寫側門已關閉：它已從 `p_storage_write` 允許清單移除，正常上傳一律經這支
+   * `/api/upload`（service_role 寫入，含角色／MIME／大小／隨機路徑檢查）。
    * 與其他 LINE 可讀 bucket 同性質：public、tenant 前綴路徑、只收 JPEG/PNG/WebP。
    */
   'keyword-reply-images',
