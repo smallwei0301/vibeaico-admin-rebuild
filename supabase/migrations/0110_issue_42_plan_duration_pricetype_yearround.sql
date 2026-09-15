@@ -152,3 +152,28 @@ end; $$ language plpgsql security definer set search_path = public;
 revoke execute on function public.create_tour_order(
   uuid, text, uuid, int, uuid, jsonb, public.tour_order_source, uuid, text, timestamptz
 ) from anon, authenticated;
+
+-- Final Risk (claude-fable-5-1) 非阻擋建議：比照 0099 的作法，讓「create or
+-- replace 沒有意外多出一個 overload、簽章仍是原本那組」這件事自我驗證，而不是
+-- 只靠審查時人工比對兩份 SQL 文字。
+do $$
+declare
+  v_args text;
+  v_n    int;
+begin
+  select count(*) into v_n
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'create_tour_order';
+
+  if v_n <> 1 then
+    raise exception 'create_tour_order 應唯一，實際 % 個（>1 代表 create or replace 意外新增了 overload，會 PGRST203）', v_n;
+  end if;
+
+  select pg_get_function_identity_arguments(p.oid) into v_args
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'create_tour_order';
+
+  if v_args <> 'p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone' then
+    raise exception '簽章與 0087/0099 的 canonical 版本不一致，ACL 可能已重置：%', v_args;
+  end if;
+end $$;
