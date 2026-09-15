@@ -89,6 +89,13 @@ export type PublicShopData = {
   shop: PublicShop;
   trips: PublicTrip[];
   services: PublicService[];
+  /**
+   * 內部用租戶 id（issue #23 推廣成效埋點需要）——刻意放在頂層而不是 `shop`
+   * 裡面：`shop` 是「這個檔頭三條規則要守住的、真的會被序列化進公開 HTML 的
+   * 白名單欄位」，`tenantId` 不在那份白名單上，只給呼叫端（頁面自己的
+   * server-side 埋點呼叫）用，不代表它可以被當成公開資料隨意渲染出去。
+   */
+  tenantId: string;
 };
 
 /** 一個行程最多顯示幾個近期團次——公開頁不是後台，不需要全部列出來。 */
@@ -272,7 +279,7 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     price: Number(row.price ?? 0),
   }));
 
-  return { shop, trips, services };
+  return { shop, trips, services, tenantId };
 }
 
 /**

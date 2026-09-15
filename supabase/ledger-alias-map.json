@@ -514,6 +514,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#402：關閉 keyword-reply-images 的 authenticated 直寫 Storage 側門，與 0072_welcome_card_upload_acl 同型（固定 file_size_limit=5MiB、allowed_mime_types 限 jpeg/png/webp，並把此 bucket 從 p_storage_write 的 authenticated 允許清單移除；bucket 仍為 public，供 LINE 直接讀圖）。Owner 已在 Issue #402 留言（2026-09-15）裁示上述參數，本次僅做 local 驗證，未套用 canonical TEST 或 Production。本筆隨建立 0112 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0113_issue_23_promotion_page_view_events",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#23：新增 page_view_events（推廣成效匿名近似 UV 埋點），依 Owner Decision `docs/decisions/2026-09-14-promotion-anonymous-approximate-uv.md`——不存原始 IP，只存每日輪替 salt 算出的 visitor_hash；RLS 只給 authenticated 一條 `is_tenant_member(tenant_id)` 的 select policy，不開放 anon/authenticated 的 insert（寫入僅走 service role，見 `src/server/promotion-events.ts`）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     }
   ]
 }

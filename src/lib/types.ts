@@ -729,3 +729,21 @@ export type CalendarEvent = {
     calendarName?: string;
   };
 };
+
+/* ============================================================================
+ * 推廣成效統計（Issue #23 — GET /api/promotion/stats?range=7|30|90）
+ * `approximate` 依 Owner Decision 2026-09-14 永遠是 true：UV 是匿名近似值，
+ * 不是精準去重人口計數（每日輪替 salt，同一人跨日回訪可能被重複計數）。
+ * 零資料時 `hasData: false`，`pv`/`uv` 為 0、`bySource`/`byDay` 為空陣列——
+ * UI 必須顯示 EmptyState，不得畫示意假曲線。
+ * ========================================================================== */
+export type PromotionSourceStat = { source: string; pv: number; uv: number };
+export type PromotionDayStat = { day: string; pv: number; uv: number };
+export type PromotionStats = {
+  pv: number;
+  uv: number;
+  bySource: PromotionSourceStat[];
+  byDay: PromotionDayStat[];
+  approximate: true;
+  hasData: boolean;
+};
