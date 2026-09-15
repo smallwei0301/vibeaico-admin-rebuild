@@ -115,8 +115,59 @@ function assertAtomicCompatibleSql(sql, repoFile) {
 }
 
 
+function controlledBackfillTag(input) {
+  let tag = '$controlledbackfill$';
+  let suffix = 0;
+  while (String(input).includes(tag)) tag = '$controlledbackfill' + String(suffix++) + '$';
+  return tag;
+}
+
+function buildBoundedBackfillSql({ sql, repoFile, releasePacket, plan } = {}) {
+  if (!releasePacket || releasePacket.riskTier !== 'BACKFILL' || releasePacket.data?.executionBounded !== true) {
+    fail('BACKFILL_EXECUTION_BOUND_REQUIRED', repoFile + ' requires packet evidence that the controlled row-count guard is enabled');
+  }
+  if (!Array.isArray(plan?.migrations) || plan.migrations.length !== 1) {
+    fail('BACKFILL_RELEASE_SCOPE_NOT_ADMITTED', 'v1 BACKFILL requires exactly one migration per controlled release');
+  }
+  const batchSize = releasePacket.data?.batchSize;
+  const maxRows = releasePacket.data?.maxRows;
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > PRODUCTION_DB_POLICY.maxBackfillRowsPerBatch) {
+    fail('BACKFILL_BATCH_LIMIT', 'controlled BACKFILL requires a valid batchSize');
+  }
+  if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > PRODUCTION_DB_POLICY.maxBackfillRowsPerRelease) {
+    fail('BACKFILL_RELEASE_LIMIT', 'controlled BACKFILL requires a valid maxRows');
+  }
+
+  const statements = splitSqlStatements(sql);
+  if (statements.length !== 1) {
+    fail('BACKFILL_EXECUTION_BOUND_REQUIRED', repoFile + ' must contain exactly one direct DML statement');
+  }
+  const statement = statements[0].trim();
+  const lexical = stripSqlStringLiterals(statement).trim();
+  if (!/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexical)) {
+    fail('BACKFILL_EXECUTION_BOUND_REQUIRED', repoFile + ' must use one direct DML statement so ROW_COUNT can be enforced');
+  }
+  if (/\breturning\b/i.test(lexical)) {
+    fail('BACKFILL_EXECUTION_BOUND_REQUIRED', repoFile + ' RETURNING is not admitted by the row-count guard');
+  }
+
+  const limit = Math.min(batchSize, maxRows);
+  const tag = controlledBackfillTag(repoFile + '\n' + sql + '\n' + String(limit));
+  return 'do ' + tag + '\n'
+    + 'declare\n'
+    + '  affected bigint;\n'
+    + 'begin\n'
+    + '  ' + statement + ';\n'
+    + '  get diagnostics affected = row_count;\n'
+    + '  if affected > ' + String(limit) + ' then\n'
+    + "    raise exception 'CONTROLLED_BACKFILL_ROW_LIMIT_EXCEEDED:" + repoFile + ":%', affected;\n"
+    + '  end if;\n'
+    + 'end ' + tag + ';';
+}
+
 export function buildAtomicProductionApplySql({
   plan,
+  releasePacket,
   aliasMap,
   liveLedgerRows,
   readCanonicalSql,
@@ -142,7 +193,10 @@ export function buildAtomicProductionApplySql({
     const sql = String(readCanonicalSql(entry.path));
     if (sha256(Buffer.from(sql)) !== entry.sha256) fail('MIGRATION_BYTES_MISMATCH', `${entry.path} differs from reviewed main bytes`);
     assertAtomicCompatibleSql(sql, entry.repoFile);
-    statements.push(`-- controlled migration ${entry.repoFile}\n${sql.trim()}${sql.trim().endsWith(';') ? '' : ';'}`);
+    const migrationSql = entry.riskTier === 'BACKFILL'
+      ? buildBoundedBackfillSql({ sql, repoFile: entry.repoFile, releasePacket, plan })
+      : '-- controlled migration ' + entry.repoFile + '\n' + sql.trim() + (sql.trim().endsWith(';') ? '' : ';');
+    statements.push(migrationSql);
     statements.push(
       `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key) values (` +
       `${sqlLiteral(entry.ledgerVersion)}, null, ${sqlLiteral(entry.repoFile)}, ${sqlLiteral(WRITER_CREATED_BY)}, ` +
@@ -236,7 +290,7 @@ export async function runControlledProductionRelease({
   evaluateReleasePreflight(releasePacket, { now });
 
   const before = await captureProductionLedger({ token, fetchImpl });
-  const sql = buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
+  const sql = buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
     const after = await captureProductionLedger({ token, fetchImpl });
