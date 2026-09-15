@@ -44,7 +44,10 @@ export const GET = handle(async (req) => {
       .lt('start_at', q.to).gt('end_at', q.from),
   ]);
   if (bErr) throw bErr;
-  if (extErr) throw extErr;
+  // external_calendar_events 讀取失敗（例如 0115 migration 尚未套用到本環境、
+  // 表還不存在）比照檔頭承諾：只讓 EXTERNAL 那一段變空，不拖垮 BOOKING/BLOCK。
+  if (extErr) console.error('[api/calendar] external_calendar_events query failed', extErr);
+  const safeExternals = extErr ? [] : externals;
 
   const events: CalendarEvent[] = [
     ...(bookings ?? []).map((r): CalendarEvent => ({
@@ -74,7 +77,7 @@ export const GET = handle(async (req) => {
         blockTimeId: r.id,
       },
     })),
-    ...(externals ?? []).map((r): CalendarEvent => ({
+    ...(safeExternals ?? []).map((r): CalendarEvent => ({
       id: `external:${r.id}`,
       type: 'EXTERNAL',
       title: r.title,

@@ -8,7 +8,7 @@
  *     租戶的快取事件混進來——這裡直接斷言查詢用的是 mock 回傳的、已經照
  *     tenant_id 過濾過的資料，並確認 `.eq('tenant_id', …)` 真的被呼叫。
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const TENANT_ID = 'tenant-a';
 
@@ -22,13 +22,26 @@ function makeQuery(result: { data: unknown; error: unknown }, spy?: (method: str
 }
 
 const eqCalls: [string, unknown][] = [];
+let externalQueryError: { message: string } | null = null;
 
 function fakeSessionSupabase() {
   return {
     from: (table: string) => {
-      if (table === 'bookings_view') return makeQuery({ data: [], error: null });
+      if (table === 'bookings_view') {
+        return makeQuery({
+          data: [
+            {
+              id: 'bk-1', booking_no: 'B001', status: 'CONFIRMED',
+              start_at: '2026-09-01T08:00:00.000Z', end_at: '2026-09-01T08:30:00.000Z',
+              customer_name: '客人', service_name: '服務', staff_id: null, staff_name: null,
+            },
+          ],
+          error: null,
+        });
+      }
       if (table === 'block_times') return makeQuery({ data: [], error: null });
       if (table === 'external_calendar_events') {
+        if (externalQueryError) return makeQuery({ data: null, error: externalQueryError });
         return makeQuery(
           {
             data: [
@@ -56,6 +69,22 @@ function makeReq(from: string, to: string) {
 }
 
 describe('GET /api/calendar — EXTERNAL 事件合併（issue #21）', () => {
+  beforeEach(() => {
+    externalQueryError = null;
+  });
+
+  it('external_calendar_events 查詢失敗（例如 0115 尚未套用到本環境）時，仍回 200 且 BOOKING 事件照常出現，不拖垮整個行事曆頁', async () => {
+    externalQueryError = { message: 'relation "external_calendar_events" does not exist' };
+    const res = await GET(makeReq('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z'), {} as any);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const booking = body.data.events.filter((e: any) => e.type === 'BOOKING');
+    const external = body.data.events.filter((e: any) => e.type === 'EXTERNAL');
+    expect(booking).toHaveLength(1);
+    expect(booking[0]).toMatchObject({ id: 'booking:bk-1' });
+    expect(external).toHaveLength(0);
+  });
+
   it('回傳的 events 陣列包含快取表的 EXTERNAL 事件', async () => {
     const res = await GET(makeReq('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z'), {} as any);
     const body = await res.json();
