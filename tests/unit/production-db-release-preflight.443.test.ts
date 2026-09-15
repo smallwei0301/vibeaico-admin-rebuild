@@ -45,6 +45,8 @@ function packet(overrides: Record<string, unknown> = {}) {
     },
     recovery: {
       status: 'RECOVERY_VERIFIED',
+      productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
+      databaseMutationAuthorized: false,
       backupObservedAt: '2026-09-14T09:30:00Z',
       restoreRehearsedAt: '2026-09-01T03:00:00Z',
       storageObjectsCovered: false,
@@ -127,6 +129,28 @@ describe('Production DB release preflight', () => {
     const empty = packet();
     empty.test.executedTests = 0;
     expect(() => evaluateReleasePreflight(empty, { now: NOW })).toThrow(/EMPTY_TEST_EVIDENCE/);
+  });
+
+  it('rejects missing or non-boolean scope evidence', () => {
+    const missingPolicySkip = packet();
+    delete missingPolicySkip.test.policySkip;
+    expect(() => evaluateReleasePreflight(missingPolicySkip, { now: NOW })).toThrow(/TEST_POLICY_SKIP/);
+
+    const missingStorageScope = packet();
+    delete missingStorageScope.recovery.storageObjectsCovered;
+    expect(() => evaluateReleasePreflight(missingStorageScope, { now: NOW })).toThrow(/BACKUP_SCOPE_OVERCLAIM/);
+
+    const stringStorageScope = packet();
+    stringStorageScope.recovery.storageObjectsCovered = 'false';
+    expect(() => evaluateReleasePreflight(stringStorageScope, { now: NOW })).toThrow(/BACKUP_SCOPE_OVERCLAIM/);
+
+    const wrongRecoveryProject = packet();
+    wrongRecoveryProject.recovery.productionProjectRef = 'other-project';
+    expect(() => evaluateReleasePreflight(wrongRecoveryProject, { now: NOW })).toThrow(/RECOVERY_PROJECT_MISMATCH/);
+
+    const recoveryScopeEscalation = packet();
+    recoveryScopeEscalation.recovery.databaseMutationAuthorized = true;
+    expect(() => evaluateReleasePreflight(recoveryScopeEscalation, { now: NOW })).toThrow(/RECOVERY_SCOPE_ESCALATION/);
   });
 
   it('requires a current allowlisted Final Risk identity and the same reviewed plan', () => {
