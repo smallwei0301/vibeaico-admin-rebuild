@@ -23,6 +23,9 @@ describe('Issue #447 provider ledger identity', () => {
     expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows: [
       { version: '0082', name: '0082_reconcile_booking_addon_notify_fields' },
     ] })).toThrow(/LIVE_LEDGER_DRIFT/);
+    expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows: [
+      { version: '0082', name: '0082_reconcile_booking_addon_notify_fields\n0082_staff_display_fields' },
+    ] })).toThrow(/INVALID_LEDGER_IDENTITY/);
   });
   it('requires the planned provider ledger version after mutable apply', () => {
     const plan = { migrations: [{ repoFile: '0082_staff_display_fields', ledgerVersion: '20260907024138' }] };

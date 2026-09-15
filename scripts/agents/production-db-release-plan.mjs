@@ -120,7 +120,7 @@ export function stripSqlComments(sql) {
     if (char === '-' && next === '-') {
       output += '  ';
       index += 2;
-      while (index < input.length && input[index] !== '\n') {
+      while (index < input.length && input[index] !== '\n' && input[index] !== '\r') {
         output += ' ';
         index += 1;
       }
@@ -185,6 +185,35 @@ export function splitSqlStatements(sql) {
 }
 
 
+
+export function stripSqlStringLiterals(sql) {
+  const input = stripSqlComments(sql);
+  let output = '';
+  let index = 0;
+  while (index < input.length) {
+    const char = input[index];
+    if (char === "'" || char === '"') {
+      const end = quotedTokenEnd(input, index, char);
+      output += ' '.repeat(end - index);
+      index = end;
+      continue;
+    }
+    const dollar = dollarQuoteAt(input, index);
+    if (dollar) {
+      const end = input.indexOf(dollar, index + dollar.length);
+      if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted SQL token');
+      output += ' '.repeat(dollar.length);
+      output += stripSqlStringLiterals(input.slice(index + dollar.length, end));
+      output += ' '.repeat(dollar.length);
+      index = end + dollar.length;
+      continue;
+    }
+    output += char;
+    index += 1;
+  }
+  return output;
+}
+
 function stripStoredRoutineBodies(text) {
   // UPDATE / DELETE inside a stored function is runtime behavior, not a migration-time
   // backfill. Keep DO $$ ... $$ blocks intact because those execute immediately while
@@ -201,8 +230,8 @@ function hasImmediateBackfillDml(text) {
   // 執行的資料 DML 才算 BACKFILL；stored function/procedure 內的 DML 是日後 RPC
   // 執行時才發生，不能把整支 migration 誤判成 BACKFILL。
   const immediateText = stripStoredRoutineBodies(text);
-  const update = /\bupdate\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?(?:\s+(?:as\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s+set\b/i.test(immediateText);
-  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?(?=\s|;|$)/i.test(immediateText);
+  const update = /\bupdate\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\*?(?:\s+(?:as\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s+set\b/i.test(immediateText);
+  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\*?(?=\s|;|$)/i.test(immediateText);
   return update || deletion;
 }
 
@@ -223,7 +252,7 @@ function rejectUnclassifiedDropStatements(text) {
       /\bdrop\s+(?:table|schema)\b/i.test(fragment) ||
       /\b(?:create|alter|drop)\s+policy\b/i.test(fragment) ||
       /\bdrop\s+(?:constraint|default)\b/i.test(fragment) ||
-      /\balter\s+table\b[\s\S]{0,240}\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(fragment);
+      /\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(fragment);
     if (!recognized) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'unrecognized DROP form must be reviewed explicitly');
   }
 }
@@ -244,16 +273,16 @@ export function inferMigrationRiskTier(sql) {
   // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、
   // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
   const statements = splitSqlStatements(text);
-  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]{0,240}\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
+  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
   rejectUnclassifiedDropStatements(text);
 
   const specialized = [];
-  if (/\balter\s+table\b[\s\S]{0,240}\bdrop\s+constraint\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\bdrop\s+default\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\btype\b/i.test(text)) {
+  if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (/\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure))\b[\s\S]*\bowner\s+to\b|\balter\s+default\s+privileges\b/i.test(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');

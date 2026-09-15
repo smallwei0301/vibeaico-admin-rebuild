@@ -104,6 +104,11 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier('alter table public.t enable row level security; drop policy p on public.t;')).toBe('AUTHZ');
     expect(() => inferMigrationRiskTier("select '--'; drop table public.t;")).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier('select 1 /* unterminated')).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+    expect(() => inferMigrationRiskTier("select 'x'; -- hidden\rdrop table public.t;")).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(inferMigrationRiskTier('delete from public.t*;')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('update public.t * set x=1;')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('alter table public.orders owner to authenticated;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('alter role authenticated bypassrls;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('update "public"."t" set x=1 where id=1;')).toBe('BACKFILL');
     expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
       .toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);

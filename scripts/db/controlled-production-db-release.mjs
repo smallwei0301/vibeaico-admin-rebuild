@@ -1,5 +1,5 @@
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
-import { pendingProductionMigrations, splitSqlStatements, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 
 const API = 'https://api.supabase.com';
 const WRITER_CREATED_BY = 'vibeaico-controlled-writer';
@@ -20,7 +20,7 @@ function normalizedLedgerRows(rows = []) {
   const normalized = rows.map((row) => {
     const version = String(row?.version ?? '').trim();
     const name = String(row?.name ?? '').trim();
-    if (!name || !version) fail('INVALID_LEDGER_IDENTITY', 'live ledger rows require non-empty name and version');
+    if (!name || !version || /[\r\n]/.test(name) || /[\r\n]/.test(version)) fail('INVALID_LEDGER_IDENTITY', 'live ledger rows require non-empty single-line name and version');
     return { version, name };
   });
   const names = normalized.map((row) => row.name);
@@ -43,7 +43,7 @@ export function expectedAppliedLedgerNames(aliasMap = {}) {
       continue;
     }
     for (const name of ledgerNames) {
-      if (!name.trim()) fail('INVALID_LEDGER_ALIAS', 'ledger alias names must be non-empty');
+      if (!name.trim() || /[\r\n]/.test(name)) fail('INVALID_LEDGER_ALIAS', 'ledger alias names must be non-empty single-line values');
       names.push(name.trim());
     }
   }
@@ -55,7 +55,7 @@ export function expectedAppliedLedgerNames(aliasMap = {}) {
 export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {}) {
   const expected = expectedAppliedLedgerNames(aliasMap);
   const actual = normalizedLedgerNames(liveLedgerRows);
-  if (expected.join('\n') !== actual.join('\n')) {
+  if (expected.length !== actual.length || expected.some((name, index) => name !== actual[index])) {
     const expectedSet = new Set(expected);
     const actualSet = new Set(actual);
     const extraLive = actual.filter((name) => !expectedSet.has(name));
@@ -91,11 +91,13 @@ function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
 
 function assertAtomicCompatibleSql(sql, repoFile) {
   const statements = splitSqlStatements(sql);
-  const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release\s+savepoint\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
+  const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release(?:\s+savepoint)?\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
   const procedural = /^(?:do\b|create\s+(?:or\s+replace\s+)?(?:function|procedure)\b)/i;
+  const proceduralTransactionControl = /\b(?:commit|rollback|abort|savepoint|release(?:\s+savepoint)?|prepare\s+transaction)\b/i;
   for (const statement of statements) {
     const trimmed = statement.trim();
-    if (transactionControl.test(trimmed) || (procedural.test(trimmed) && /\b(?:commit|rollback|abort|savepoint|release\s+savepoint|prepare\s+transaction)\b/i.test(trimmed))) {
+    const lexicalBody = procedural.test(trimmed) ? stripSqlStringLiterals(trimmed) : '';
+    if (transactionControl.test(trimmed) || (lexicalBody && proceduralTransactionControl.test(lexicalBody))) {
       fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
     }
   }
@@ -134,6 +136,7 @@ export function buildAtomicProductionApplySql({
 
   for (const entry of plan.migrations) {
     const sql = String(readCanonicalSql(entry.path));
+    if (sha256(Buffer.from(sql)) !== entry.sha256) fail('MIGRATION_BYTES_MISMATCH', `${entry.path} differs from reviewed main bytes`);
     assertAtomicCompatibleSql(sql, entry.repoFile);
     statements.push(`-- controlled migration ${entry.repoFile}\n${sql.trim()}${sql.trim().endsWith(';') ? '' : ';'}`);
     statements.push(

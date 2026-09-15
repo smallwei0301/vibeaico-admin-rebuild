@@ -105,7 +105,7 @@ describe('Controlled Production DB writer #447', () => {
       readCanonicalSql: () => 'create index concurrently x_idx on public.x(id);',
     })).toThrow(/MIGRATION_BYTES_MISMATCH|TRANSACTION_UNSAFE_MIGRATION/);
 
-    for (const transactionSql of ['commit;', 'rollback;', 'abort;', 'end;', 'start transaction;', 'savepoint writer_savepoint;']) {
+    for (const transactionSql of ['commit;', 'rollback;', 'abort;', 'end;', 'start transaction;', 'savepoint writer_savepoint;', 'release writer_savepoint;']) {
       const transactionPlan = buildProductionDbReleasePlan({
         releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
         aliasMap: aliasMap(), readCanonicalSql: () => transactionSql,
@@ -128,6 +128,18 @@ describe('Controlled Production DB writer #447', () => {
       aliasMap: aliasMap(),
       liveLedgerRows: beforeRows,
       readCanonicalSql: () => proceduralSql,
+    })).not.toThrow();
+
+    const proceduralNoticeSql = "do $ begin raise notice 'commit'; end $;";
+    const proceduralNoticePlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => proceduralNoticeSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: proceduralNoticePlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => proceduralNoticeSql,
     })).not.toThrow();
   });
 
