@@ -126,7 +126,7 @@ jobs:
             const actualFilesByPullRequest = {};
             const actualFileLoadErrors = [];
 
-            for (const terra of summary.activeTerra) {
+            for (const terra of [...summary.activeTerra, ...summary.verifyingTerra]) {
               try {
                 const files = await github.paginate(github.rest.pulls.listFiles, {
                   owner,
@@ -305,8 +305,9 @@ jobs:
               });
             }
 
-            const actualFileCoverage = summary.activeTerra.length
-              ? summary.activeTerra
+            const actualFileSubjects = [...summary.activeTerra, ...summary.verifyingTerra];
+            const actualFileCoverage = actualFileSubjects.length
+              ? actualFileSubjects
                   .map((terra) => `#${terra.number}:${terra.actualChangedFiles?.length ?? 'not-loaded'}`)
                   .join(', ')
               : 'none';
