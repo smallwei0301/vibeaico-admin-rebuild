@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-15-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-15T00:40:00Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "issue/42",
+      "note": "Owner /goal 2026-09-15：PRODUCT DELIVERY MAIN SESSION，WORKSTREAM=PRODUCT_MAINLINE。Issue #42 durationMinutes/priceType/yearRound persistence + create_tour_order PER_GROUP pricing fix，TERRA_BUILD lane 已完成本地驗證，PR #464 開立並取得 ASTRA_RISK=PAYMENT_CONSISTENCY Final Risk CLOSE_APPROVED。"
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "3bef80c526bbb3b54fe70a53570514968decccb1",
+      "note": "本 Run 起算時的 origin/main head。"
+    }
+  ],
+  "main": {
+    "startSha": "3bef80c526bbb3b54fe70a53570514968decccb1",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 42,
+    "openIssuesEnd": null,
+    "openPrsStart": 17,
+    "openPrsEnd": null,
+    "mainTerraPeak": 2,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 2,
+    "sharedTestPeak": 0,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": 0,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "fullContextReplays": null,
+    "duplicateScans": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "issue-42-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#42 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5，worktree-isolated）：real durationMinutes/priceType/yearRound 欄位持久化（migration 0110）、mapTripPlan/tour-domain/PUT route/Advanced Settings UI 接線、create_tour_order 依 price_type 分支的訂單金額計算（PER_GROUP 整團一口價）。本地隔離 Supabase 0001–0110 全套用，targeted 整合測試 17/17、全量 test:integration 623/623、unit 2334/2334、typecheck 0 error、build 成功。已核實 diff 與其自報一致，推送並開立 PR #464。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "tour-platform-pricing-scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "掃描 smallwei0301/tour-platform 是否有 duration/priceType/yearRound/seasons/reviewState 可直接搬移的程式碼（scout 層，claude-haiku-4-5）。結論：本輪 3 欄位（duration/priceType/yearRound）因 schema 與多租戶模型不相容，無直接可搬程式碼，已在本輪自行重寫。唯一高價值發現：tour-platform 的審核／核准 workflow 狀態機 `apps/web/src/lib/activity-review-transition.mjs`（純函式，語意上與租戶無關）評估為下一輪 `reviewState` 切片值得整段搬用的邏輯；其 `review_state` + `pending_changes` JSONB 的 schema pattern 可當設計參考，但 API route／RLS 因租戶模型不同不可照搬。季節定價無可用參考（tour-platform 本身尚未實作）。已告知使用者此結論不會塞進本輪 PR #464。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
+      },
+      {
+        "id": "issue-42-pr464-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #464 的高風險 Final Risk（Astra gate）覆核委派。ASTRA_RISK=PAYMENT_CONSISTENCY：create_tour_order 新增 price_type 分支定價邏輯。Final Risk 不屬 luna/terra/sol 三個 tier，ledger 的 tier 值域無法表達它，故記為 unknown 並在此說明實際模型：已委派 claude-fable-5-1，7 項檢查（PER_PERSON 算式不變、人數上限檢查不受影響、訂金上限計算、ACL 簽名一致性、無第二條假設 per-person 的路徑、fail-closed enum、租戶隔離）逐項查證後回報 ASTRA_VERDICT=CLOSE_APPROVED，已貼回 PR #464。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-43-category7-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#43 GUIDE 行動收件匣第 7 類（人員指派衝突／未指派）施工（build 層，claude-sonnet-5，worktree-isolated）：讀取既有 canonical trip_departure_staff（0092），只做唯讀聚合查詢，不建立新 migration／狀態機。委派中，尚未回報完成。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "governance-464-scorecard-scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "建立本 RUN_ID 的 scorecard／closure sweep 文件以解除 PR #464 的 Agent WIP Guard 阻擋（scout 層，claude-haiku-4-5，docs/metrics/** 機械路徑判準）。首次產出 schema 驗證失敗（缺 quality/auditability/notes/completionTruth 等欄位，且捏造了 main SHA 後半段與 tour-platform 檔案行號引用），由本 session（build 層）核實並修正後開立 PR #465。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
+      }
+    ]
+  },
+  "flow": {
+    "lunaTasks": 2,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0,
+    "terraSlots": 2,
+    "terraActive": 2
+  },
+  "delivery": {
+    "issuesStarted": 2,
+    "issuesClosed": 0,
+    "slicesCompleted": 0,
+    "slicesInProgress": 2,
+    "auditReady": 1,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "lastCheckSha": "edf4e5c6b3e3d6d4c9b0f7f7277696963d503c56",
+    "lastCheckConclusion": "failure",
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "sharedTestCollisions": 0,
+    "firstPassRatePercent": null
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  },
+  "notes": [
+    "本 Run 延續 /goal PRODUCT DELIVERY MAIN SESSION 指令：WORKSTREAM=PRODUCT_MAINLINE，governance/metrics 工作僅在直接卡住 Product Slice 時才做。",
+    "PR #464 開立後 Agent WIP Guard 立刻失敗：缺 BPLUS_MODE/RUN_ID/SCORECARD_PATH/LUNA_CLOSURE 埋點，本輪原打算以 BPLUS_MODE=false 誠實留白略過，但這是 CI 機械強制的欄位，不是可略過的記帳品質問題——已改為委派 scout 補齊。",
+    "scout 首次產出的 scorecard 未通過 validate-scorecards：缺 quality/auditability/notes/completionTruth 四個頂層欄位，且 flow.solIssues 型別錯誤（應為 number 不是 array）。已由本 session 核實並修正，另外發現並修正兩處捏造：main.startSha 後半段是編造的十六進位、tour-platform review-workflow 的檔案路徑與行號（scout 寫成 src/services/review-workflow.ts:42-98，實際是 apps/web/src/lib/activity-review-transition.mjs）與先前已核實的 scout 報告不符。",
+    "modelUsage.tasks 均為即時埋點，非事後回填；未觀測欄位（token 用量、weeklyUsage 增量、lunaDelegationRatePercent、各項 percent 欄位）維持 null，不推算。",
+    "同一輪雙 Terra：#42（PR #464，收尾中）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。"
+  ]
+}
