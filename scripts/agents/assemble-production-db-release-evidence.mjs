@@ -20,6 +20,7 @@ function fail(code, message) {
   throw error;
 }
 
+/** @param {{plan?: any, report?: any, impactManifest?: any}} [input] */
 export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest } = {}) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) fail('PLAN_REQUIRED', 'release plan is required');
   return buildProductionDbConsistencyEvidence({
@@ -31,6 +32,7 @@ export function assembleProductionDbConsistencyEvidence({ plan, report, impactMa
   });
 }
 
+/** @param {{plan?: any, backupEvidence?: any, restoreEvidence?: any, preimageEvidence?: any | null}} [input] */
 export function assembleProductionDbRecoveryEvidence({
   plan,
   backupEvidence,
