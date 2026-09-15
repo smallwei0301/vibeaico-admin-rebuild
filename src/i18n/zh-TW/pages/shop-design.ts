@@ -89,6 +89,8 @@ export const shopDesignPage = {
     counter: (used: number, max: number) => `${used}/${max}`,
     add: '新增圖片',
     caption: '圖片說明',
+    moveUp: '上移',
+    moveDown: '下移',
     delete: '刪除',
     emptyTitle: '尚未新增圖片',
     emptyDescription: '上傳店家環境、作品或活動照片，最多 9 張，可拖曳調整順序。',

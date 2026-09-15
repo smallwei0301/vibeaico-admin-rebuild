@@ -2,7 +2,7 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-14
+> 最近更新：2026-09-15
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
@@ -76,19 +76,45 @@ current truth
 純治理依 2026-09-11 #360 不指定執行模型；`requested=not_requested`，沒有可靠來源時
 `actual=unknown`。取消模型門檻不代表取消驗證。
 
-## 2. 強制開工順序
+## 2. 強制開工順序（低摩擦 default entry）
 
-1. `git fetch origin --prune`。
-2. 從 `origin/main` 讀 `AGENTS.md`、`CLAUDE.md`、本文件、`docs/MODEL-ROUTING.md`、
-   `docs/AGENT-BPLUS-DELIVERY-LOOP.md`、`docs/DOCUMENTATION-GOVERNANCE.md`、
-   `docs/OWNER-DECISIONS.md` 與比本文件更新的 Owner Decision。
+原則：**本文件是 default execution entry，不再每輪無條件重讀整套治理背景。** 安全規則沒有減少，改成依任務 trigger 載入，降低 context、時間與「讀太多反而用錯舊規則」的摩擦。
+
+每次接手固定只做：
+
+1. `git fetch origin --prune`，從 live GitHub 重建 current `main`、open Issue／PR、exact head、CI、shared TEST holder。
+2. 從 `origin/main` 讀 `AGENTS.md`、`CLAUDE.md`、**本文件**、`docs/OWNER-DECISIONS.md` 中與本 Issue／領域直接相關的現行裁示，以及比本文件更新且命中本範圍的 Owner Decision。
 3. 先確認 `WORKSTREAM`；只有 `PRODUCT_MAINLINE` 才套 Product B+ lane／model／Final Risk 規則。
-4. 讀 Issue 指定的 canonical 文件與 `docs/integration/12-TESTING-TDD.md`；Playbook 只搜尋
-   直接相關錯誤或領域，不全量重讀。
-5. 讀最新 1～3 份 `docs/metrics/agent-runs/*.json`／`.md`，確認上一輪建議與尚未修正問題。
-6. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 usage 基準。
-7. Product B+ 由多位 Luna 做窄範圍盤點，再由一位 Luna Aggregator 去重。
-8. Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target；雙 Terra 只能在 Guard 對兩條候選都判定 qualified 後啟動。
+4. 讀 Issue 指定 canonical 文件與直接相關的 integration／testing 章節；Playbook 只搜尋本次錯誤、Issue 或領域，不全量重讀。
+5. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 raw-event 基線，並跑一次 §10 Live Scorecard readiness。
+6. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
+7. 雙 Terra 只能在 Guard 對兩條候選都判定 qualified 後啟動。
+
+以下文件改為 **trigger-based load**，不是每輪 mandatory read：
+
+| 文件／skill | 何時載入 |
+|---|---|
+| `docs/MODEL-ROUTING.md` | Product lane/model routing、Final Risk、模型層級衝突 |
+| `docs/AGENT-BPLUS-DELIVERY-LOOP.md` | 本文件與 B+ 背景規則有衝突、需追溯歷史裁示 |
+| `docs/DOCUMENTATION-GOVERNANCE.md` | canonical docs、文件延伸、文件治理範圍 |
+| `.agents/skills/**` | 對應任務真的觸發該 skill 時 |
+| `docs/AGENT-PLAYBOOK.md` | 以錯誤碼／Issue／領域關鍵字搜尋直接相關條目 |
+| 最近 1～3 份 Run | 接續同一 Run、做 score/retro、或需要比較上一輪建議時 |
+
+### 2.0.1 Deterministic metadata：preflight-first
+
+PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 deterministic contract，**不得把 remote CI 當互動式表單驗證器**。
+
+```text
+填 metadata
+→ local / trusted preflight
+→ PASS
+→ 才 push / dispatch remote CI
+```
+
+- metadata 到 CI 才第一次被擋，優先視為 **preflight coverage gap**；補 shared validator／parser，而不是再教每個 Agent 背一段 prose exception。
+- metadata 修正不靠 blind rerun；workflow 若不監聽 `edited`，使用既有 `workflow_dispatch` 或下一個**真實內容變更**觸發，不堆 no-op commit。
+- 同一 deterministic error 不用多輪 CI 猜合法值；先讀 validator 或讓 preflight 直接呼叫與 CI 相同的判定函式。
 
 ### 2.1 Branch base freshness 現行規則
 
@@ -413,19 +439,54 @@ docs/metrics/agent-runs/<RUN_ID>.json
 docs/metrics/agent-runs/<RUN_ID>.md
 ```
 
-JSON 是原始帳本，Markdown 必須由既有 `scripts/agents/score-run-v2.mjs` 重算。新 Run 用既有
-`scripts/agents/run-ledger-v2.mjs init --closeout-owner ...` 建立 schema v2／`deliveryTruthVersion: 4`；
-schema v1 與歷史 DeliveryTruth v2／v3 僅可唯讀重算，不得改寫。final v4 Run 必須依腳本通過
-`closeout.state=CLOSED`、`closedAt=endedAt`、main end SHA、結束 inventory 與 durable evidence 的驗證。
+JSON 是原始帳本。schema v2／`deliveryTruthVersion: 4` 新 Run 用
+`scripts/agents/run-ledger-v2.mjs init --closeout-owner ...` 建立；schema v1 與歷史 DeliveryTruth v2／v3 僅可唯讀重算，不得改寫。
+
+### 10.1 Current scoring truth：OBSERVED_V1
+
+- `scripts/agents/score-run-current.mjs` 是 current Product Scorecard dispatcher。
+- `startedAt < 2026-09-15T00:00:00Z` 的歷史 Run 保持 `LEGACY_V2` replay，不因後來結案而切換算法。
+- cutoff 起才開始、terminal + v4 Product closeout 的 Run 使用 `OBSERVED_V1`，直接從 durable raw events 與 Completion Truth 衍生分數。
+- legacy manual percentages（如 first-pass、人工 evidence coverage 等）保留為 supplemental telemetry，**不再是新 Product Run 的 grading hard gate**；沒有可信 denominator 就維持 `null`，不得為了評分猜值。
+- Completion Truth 未 VERIFIED、沒有 observed task records、矛盾 claim、safety violation／hard fail 仍 fail closed。
+- `CLOSED` 但 Production pending 可以被評分，但不算 shipped。
+
+Markdown report 必須由 current dispatcher 重算；不得手工改分數或用舊 `score-run-v2.mjs` 冒充 current profile。
+
+### 10.2 Live Scorecard Contract（不要等複盤才發現沒資料）
+
+Active Product Run 使用：
+
+```bash
+node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.json
+```
+
+它只檢查 **raw-event capture health**，不產生分數、不參與跨 Run 比較，也不要求 legacy manual percentages。
+
+固定 checkpoint：
+
+1. **Run start**：建立／接續 ledger 後立即跑一次。
+2. **Observable event**：accepted/rejected Agent task、full CI、invalid rerun、Audit／Final Risk、TEST collision、安全事件、closure sweep 後，先寫 raw fact，再跑 readiness。
+3. **Delivery stage change**：merge、Issue close／owner-blocked、Vercel Production READY、Production schema readiness、authenticated Production acceptance 後，立即寫 Completion Truth evidence，再跑 readiness。
+4. **Pre-closeout**：`rawCaptureGaps=[]` 且 `consistencyWarnings=[]` 才進 terminal closeout；已失去的歷史觀測不得用推算或預設 0 補綠。
+
+readiness 會把 `endedAt`、`main.endSha`、end inventory、closeout、Completion Truth 等 active Run 合理尚未具備的欄位列為 `terminalOnlyPending`，**不因它們 pending 而失敗**。
+
+詳細 raw counter consistency 與操作例見 `docs/metrics/SCORECARD-LIVE-READINESS.md`。
+
+### 10.3 事件發生時就記 raw facts
 
 以下量必須在事件發生時即時寫入，不在 closeout 時倒推：
 
-- `modelUsage.tasks`
-- `flow` 的 Luna／Sol／Terra 委派計數
-- `ci.fullCiRuns`
-- `delivery.issuesStarted` / `delivery.issuesClosed`
+- `modelUsage.tasks`（含 accepted/rejected 與 count）；
+- `flow` 的 Luna／Sol／Terra 委派 counters；
+- `ci.fullCiRuns`、`ci.invalidReruns`；
+- `delivery.issuesStarted` / `delivery.issuesClosed`；
+- closure sweep count / advanced-or-closed；
+- safety violation、reopen、post-merge regression、shared TEST collision；
+- merge／close／Production stage 的 durable Completion Truth claims。
 
-至少記錄：
+至少保留：
 
 - main、open Issue／PR 起訖；
 - MAIN／RESERVE／candidate／TEST 峰值；
@@ -433,12 +494,18 @@ schema v1 與歷史 DeliveryTruth v2／v3 僅可唯讀重算，不得改寫。fi
 - 實際 token／週 usage，或明確 `unavailable`；
 - internal weighted usage（Luna=1、Terra=3、Sol=6，非官方換算）；
 - `CLOSED`、AUDIT_READY、完整 OWNER_BLOCKED、carryover，以及 `CLOSED` 但仍 `PRODUCTION_PENDING` 的數量；`CLOSED` 不得單獨計入 shipped units；
-- full CI、invalid rerun、品質、安全、Luna 採用率、Sol touches；
-- 100 分 scorecard 與最多 2 項下一輪調整。
+- full CI、invalid rerun、品質、安全、Luna／Sol raw events；
+- current score profile、scorecard 與最多 2 項下一輪調整。
+
+### 10.4 復盤
 
 Owner 說「復盤」或「複盤」時，載入
 `.agents/skills/vibeaico-agent-retrospective/SKILL.md`，驗證並比較最近 3 輪；資料不足則讀全部。
-只提出一到兩項最有影響的治理改良，不在復盤時順便改產品。
+
+- 只對 terminal + truth-verified + comparison-eligible Product Run 下效率趨勢結論。
+- Active Run 可報 Live Readiness，但不得拿 readiness 百分比冒充分數。
+- 若新 Run 仍因 raw evidence 缺失而 `NOT_GRADED`，復盤必須指出是**哪個 checkpoint 沒有留下資料**，而不是再用「資料不足」四字結案。
+- 只提出一到兩項最有影響的治理改良，不在復盤時順便改產品。
 
 ## 11. 停止條件
 

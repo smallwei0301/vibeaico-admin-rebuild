@@ -83,6 +83,8 @@ function actionInboxKindLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.refundPending;
     case 'STAFF_CONFLICT':
       return t.actionInbox.staffConflict;
+    case 'STAFF_UNASSIGNED':
+      return t.actionInbox.staffUnassigned;
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -107,6 +109,8 @@ function actionInboxOpenLabel(item: GuideActionInboxItem): string {
       return t.actionInbox.openRefund;
     case 'STAFF_CONFLICT':
       return t.actionInbox.openStaffConflict;
+    case 'STAFF_UNASSIGNED':
+      return t.actionInbox.openStaffUnassigned;
     default: {
       const _exhaustive: never = item;
       return _exhaustive;
@@ -229,6 +233,17 @@ function ActionInboxCardBody({ item }: { item: GuideActionInboxItem }) {
                 {conflict.staffName || conflict.staffId}：{t.actionInbox.staffConflictReason[conflict.reason]}
               </span>
             ))}
+          </div>
+        </>
+      );
+    case 'STAFF_UNASSIGNED':
+      return (
+        <>
+          <div className="truncate text-base font-semibold text-dark">{item.tripName}</div>
+          <div className="text-sm text-secondary">{item.planName}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-secondary">
+            <span>{t.actionInbox.staffUnassignedDetail}</span>
+            <span>{item.departureDate.replaceAll('-', '/')} {item.startTime || '--:--'}</span>
           </div>
         </>
       );

@@ -15,6 +15,14 @@ type Context = { params: Promise<{ id: string }> };
  * ⚠️ 這支**不做任何真實金流**。它記錄的是「導遊說他收到錢了」——匯款五碼比對、
  * 綠界 callback 都屬後續切片。名字叫 confirm-payment 但只改狀態，是刻意的：
  * 手動單本來就是線下收款。
+ *
+ * ⚠️ Final Risk B2（claude-fable-5-1，#46）：REQUEST 訂單在導遊接受
+ * （`accept_tour_request`）之前 `seats_reserved = false`，代表名額根本還沒鎖。
+ * 這支路由原本只看 `status` 轉換合不合法，不看 `seats_reserved`——若對一筆還
+ * 沒被接受的 PENDING REQUEST 訂單呼叫，會做出「已收款、已確認」的訂單，但席次
+ * 從未真的鎖住，等於允許一筆得到店家承諾、卻沒有真實名額支撐的訂單，是這個
+ * Issue 在修的同一種假成功換一個進入點。修法：`seats_reserved = false` 一律
+ * 409，要求先呼叫 `/accept` 完成原子重查與鎖位，才能確認收款。
  */
 export const POST = handle(async (_req, { params }: Context) => {
   const { id } = await params;
@@ -22,12 +30,15 @@ export const POST = handle(async (_req, { params }: Context) => {
   await requireFeature(t.tenantId, 'TOUR_MODULE');
 
   const { data: current, error: readError } = await t.supabase.from('tour_orders')
-    .select('id, status, total_amount').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+    .select('id, status, total_amount, seats_reserved').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (readError) throw readError;
   if (!current) return fail(404, '找不到此訂單', ERR.NOT_FOUND);
   // 已經是 CONFIRMED 也回 409：店家按下去沒有發生他以為會發生的事，就必須被告知。
   if (!canTransitionTourOrder(current.status, 'CONFIRMED')) {
     return fail(409, '此訂單狀態已變更', ERR.CONFLICT);
+  }
+  if (!current.seats_reserved) {
+    return fail(409, '此訂單尚未鎖定名額，請先接受申請', ERR.TOUR_REQUEST_NOT_ELIGIBLE);
   }
 
   const { data, error } = await t.supabase.from('tour_orders')

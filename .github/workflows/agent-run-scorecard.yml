@@ -12,6 +12,7 @@ on:
       - 'scripts/agents/review-runs*.mjs'
       - 'tests/unit/agent-run-score.test.ts'
       - 'tests/unit/run-ledger-reconcile.test.ts'
+      - 'tests/unit/observed-scorecard*.test.ts'
   push:
     branches: [main]
     paths:
@@ -38,6 +39,7 @@ jobs:
           node --check scripts/agents/run-ledger-reconcile.mjs
           node --check scripts/agents/score-run.mjs
           node --check scripts/agents/score-run-v2.mjs
+          node --check scripts/agents/score-run-current.mjs
           node --check scripts/agents/review-runs.mjs
           node --check scripts/agents/review-runs-v2.mjs
       - name: Validate and reproduce every committed report
@@ -57,7 +59,7 @@ jobs:
             if [ "$schema_version" = "2" ]; then
               node scripts/agents/run-ledger-v2.mjs validate "$ledger"
               generated="$(mktemp)"
-              node scripts/agents/score-run-v2.mjs "$ledger" > "$generated"
+              node scripts/agents/score-run-current.mjs "$ledger" > "$generated"
               diff -u "$report" "$generated"
             elif [ "$schema_version" = "1" ]; then
               node scripts/agents/run-ledger.mjs validate "$ledger"

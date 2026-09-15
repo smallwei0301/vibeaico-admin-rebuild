@@ -38,6 +38,9 @@ export const PUT = handle(async (req, { params }: Context) => {
   if (body.depositValue !== undefined) patch.deposit_value = body.depositValue;
   if (body.sortOrder !== undefined) patch.sort_order = body.sortOrder;
   if (body.active !== undefined) patch.active = body.active;
+  if (body.durationMinutes !== undefined) patch.duration_minutes = body.durationMinutes;
+  if (body.priceType !== undefined) patch.price_type = body.priceType;
+  if (body.yearRound !== undefined) patch.year_round = body.yearRound;
   if (Object.keys(patch).length === 0) return ok(mapTripPlan(current));
 
   const { data, error } = await t.supabase.from('trip_plans').update(patch)

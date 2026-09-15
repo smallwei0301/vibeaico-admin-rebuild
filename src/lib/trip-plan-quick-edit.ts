@@ -50,6 +50,12 @@ export function toAdvancedPlanPayload(plan: TripPlan): Partial<TripPlan> {
     maxParticipants: plan.maxParticipants,
     depositMode: plan.depositMode,
     depositValue: plan.depositValue,
+    // issue #42：時長／計價方式／是否全年販售現在是真實可存的欄位，
+    // Advanced Settings 存檔時要一起送出，否則畫面上的輸入只是改本地
+    // state，永遠存不進去。
+    durationMinutes: plan.durationMinutes,
+    priceType: plan.priceType,
+    yearRound: plan.yearRound,
   };
 }
 

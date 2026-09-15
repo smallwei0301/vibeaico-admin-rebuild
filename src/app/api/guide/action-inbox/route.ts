@@ -4,6 +4,7 @@ import {
   buildGuideActionInboxFormationItem,
   buildGuideActionInboxRefundPendingItem,
   buildGuideActionInboxStaffConflictItem,
+  buildGuideActionInboxStaffUnassignedItem,
   buildGuideActionInboxTourRequestItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
@@ -67,16 +68,19 @@ function firstOf<T>(value: T | T[] | null | undefined): T | null {
  * `/tenant/bookings` 的 `bookingId` 作法，目標列不在目前頁面時用既有 tenant-scoped
  * `/api/tour-orders?orderId=` 精準撈一筆再開啟該筆詳情 modal），所以這個 deep link
  * 現在真的會套用篩選並自動開啟詳情，不只是帶著查詢字串。
- *   - #43 類別 7：人員指派或時間衝突（不可履約風險）— 只涵蓋「已指派人員、但該
- *     指派實際撞期」；判斷本身**不在這裡重新實作**，直接呼叫既有的
- *     `loadStaffLoad()` / `findStaffConflicts()`（`src/server/staff-availability.ts`，
- *     issue #37 §5.3 canonical，團次建立／編輯／batch 三處共用的唯一撞班引擎），
- *     人員指派讀 `trip_departure_staff`（0092，issue #37 canonical）。這裡只做
- *     兩件事：挑出「未來、已指派人員」的團次，然後把引擎的判斷結果轉成卡片；
- *     不新增第二套撞班規則，也不改 `staff-availability.ts` 的行為。
- *     只涵蓋「已指派但撞期」，不含「尚未指派人員」的團次——後者是否該進收件匣、
- *     用什麼優先級判斷，屬於需要 Owner 另外裁示的獨立範圍，見
- *     `src/lib/guide-action-inbox.ts` 對應型別上的說明。
+ *   - #43 類別 7：人員指派或時間衝突（不可履約風險）— 讀同一次
+ *     `trip_departures(...trip_departure_staff(...))` 查詢，依「這團有沒有
+ *     `role = 'PRIMARY'` 的指派」把候選團次分成兩組，兩組天生不相交：
+ *       - 有 PRIMARY：可能「已指派人員、但該指派實際撞期」（STAFF_CONFLICT）。
+ *         判斷本身**不在這裡重新實作**，直接呼叫既有的 `loadStaffLoad()` /
+ *         `findStaffConflicts()`（`src/server/staff-availability.ts`，issue #37
+ *         §5.3 canonical，團次建立／編輯／batch 三處共用的唯一撞班引擎）。
+ *       - 沒有 PRIMARY：無論完全未指派還是只指派了 ASSISTANT，都是「還沒滿足
+ *         `10-TOUR-DOMAIN.md` §1.3 最低可履約門檻」（STAFF_UNASSIGNED）。
+ *     人員指派讀 `trip_departure_staff`（0092，issue #37 canonical）；不新增第
+ *     二套撞班規則，也不改 `staff-availability.ts` 的行為。STAFF_UNASSIGNED 這
+ *     半先前（#448）刻意留給 Owner 另外裁示，本輪依 Sol TRIAGE 明確授權的範圍
+ *     補上，見 `src/lib/guide-action-inbox.ts` 對應型別上的說明。
  */
 export const GET = handle(async () => {
   const t = await requireTenant();
@@ -160,9 +164,10 @@ export const GET = handle(async () => {
       .eq('payment_status', 'REFUND_PENDING')
       .order('updated_at', { ascending: true })
       .limit(20),
-    // #43 類別 7：未來、非取消、已指派至少一位人員的團次。人員指派內嵌在同一次
-    // 查詢裡（`trip_departure_staff(staff_id, role, staff(name))`），撞不撞班留給
-    // 下面 loadStaffLoad()/findStaffConflicts() 判斷，這裡只負責挑出候選。
+    // #43 類別 7：未來、可履約（OPEN／CLOSED）的團次，連同其人員指派一起內嵌
+    // 讀出（`trip_departure_staff(staff_id, role, staff(name))`）。這一批候選同時
+    // 餵給 STAFF_CONFLICT（有 PRIMARY，撞不撞班留給下面 loadStaffLoad()/
+    // findStaffConflicts() 判斷）與 STAFF_UNASSIGNED（沒有 PRIMARY）兩種卡片。
     t.supabase
       .from('trip_departures')
       .select('id, trip_id, plan_id, departs_on, start_time, status, created_at, trips(title, duration_hours), trip_plans(name), trip_departure_staff(staff_id, role, staff(name))')
@@ -293,16 +298,33 @@ export const GET = handle(async () => {
     });
   });
 
-  // #43 類別 7：挑出「未來、已指派至少一位人員」的候選團次。沒指派人員的團次
-  // （`10-TOUR-DOMAIN.md` §1.3 允許的既有「未指派」相容狀態）在這裡先被排除，
-  // 不進入下面的撞班判斷——見本檔頂端與 `guide-action-inbox.ts` 型別上的說明。
+  // #43 類別 7：把候選團次依「有沒有 PRIMARY 指派」分成兩組——STAFF_UNASSIGNED
+  // （沒有 PRIMARY，含完全未指派與只指派 ASSISTANT 兩種情況）在這裡直接組卡片；
+  // 有 PRIMARY 的才進下面的撞班候選名單。兩組天生不相交，見本檔頂端與
+  // `guide-action-inbox.ts` 對應型別上的說明。
+  const staffUnassignedItems: GuideActionInboxItem[] = [];
   const staffConflictCandidates = (staffAssignmentResult.data ?? [])
     .map((row: any) => {
       const assignments = (Array.isArray(row.trip_departure_staff) ? row.trip_departure_staff : []) as Array<{
         staff_id: string;
+        role: string;
         staff: RelatedName;
       }>;
-      if (assignments.length === 0) return null;
+      const hasPrimary = assignments.some((assignment) => assignment.role === 'PRIMARY');
+      if (!hasPrimary) {
+        const trip = relatedValue(row.trips as RelatedName) as { title?: string | null } | null;
+        const plan = relatedValue(row.trip_plans as RelatedName);
+        staffUnassignedItems.push(buildGuideActionInboxStaffUnassignedItem({
+          id: row.id,
+          tripId: row.trip_id,
+          tripName: trip?.title ?? '',
+          planName: plan?.name ?? '',
+          departureDate: String(row.departs_on).slice(0, 10),
+          startTime: row.start_time ? String(row.start_time).slice(0, 5) : '',
+          createdAt: row.created_at,
+        }, now, timeZone));
+        return null;
+      }
       const departureDate = String(row.departs_on).slice(0, 10);
       const startTime = row.start_time ? String(row.start_time).slice(0, 5) : '';
       const trip = relatedValue(row.trips as RelatedName) as
@@ -392,6 +414,7 @@ export const GET = handle(async () => {
     ...formationItems,
     ...refundPendingItems,
     ...staffConflictItems,
+    ...staffUnassignedItems,
     ...tourRequestItems,
   ]));
 });

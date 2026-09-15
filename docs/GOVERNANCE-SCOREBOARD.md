@@ -194,6 +194,24 @@ GOVERNANCE SCOREBOARD
 
 這兩張表彼此獨立。
 
+### 6.1 Current observation：formal trend 不可比，也要有當期真數字
+
+每次 retrospective 固定窗口都必須另外執行：
+
+```bash
+node scripts/metrics/governance-observation.mjs --since <ISO> --until <ISO> --json
+```
+
+這是**既有 Governance Scoreboard 的 current observation layer**，不是第三套分數，也不取代 v1/v2 historical replay 或 §3 blocking-finding reconciliation。
+
+- formal Governance comparison 可以誠實維持 `NOT_GRADED`，但仍必須報 current observation 的 PR 數、WIP、cycle time、CI first-pass、same-head rerun、metadata gate recovery、分類／lifecycle／scope 異常與 `unavailableMetrics`。
+- 不要求每張低風險 governance PR 額外建立一份手填 governance ledger；能從 GitHub PR／Actions／commit status 重建的直接重建。
+- provider history 取不到時對應 metric 必須 `null` 並列入 `unavailableMetrics`，不得補 0；其他已取得的數字照常輸出。
+- collector 本身不可用時寫 `GOVERNANCE_OBSERVATION_UNAVAILABLE`，不得把 unavailable 冒充零事件。
+- retrospective skill 已將本文件列為 mandatory input，因此本節是該 skill 的 canonical current-observation 規則，不再複製第二份 prose contract。
+
+操作與欄位說明見 `docs/metrics/GOVERNANCE-OBSERVATION.md`。
+
 ## 7. Historical contract v1 保留、不可改寫
 
 Contract v2 生效前的 Governance Scoreboard v1 與 review evidence 全部維持 read-only history。

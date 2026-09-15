@@ -72,6 +72,11 @@ describe('#42 Advanced Settings contract', () => {
       maxParticipants: 10,
       depositMode: 'FULL',
       depositValue: 0,
+      // issue #42：時長／計價方式／全年販售現在是真實可存欄位，Advanced
+      // Settings 存檔時必須一起送出，否則畫面上的輸入永遠存不進去。
+      durationMinutes: 180,
+      priceType: 'PER_PERSON',
+      yearRound: true,
     });
   });
 

@@ -2,6 +2,7 @@ import { adapt, request } from '@/lib/api';
 import {
   buildGuideActionInboxFormationItem,
   buildGuideActionInboxRefundPendingItem,
+  buildGuideActionInboxStaffUnassignedItem,
   buildGuideActionInboxTourRequestItem,
   getGuideActionInboxDateWindow,
   getGuideDepartureDueAt,
@@ -175,6 +176,29 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
       // （#43 §4：「無資料時回誠實空陣列，不捏造示範待辦」）。真實行為由
       // route.ts 呼叫 `loadStaffLoad()`/`findStaffConflicts()` 判斷。
       const staffConflictItems: GuideActionInboxItem[] = [];
+      // #43 類別 7（後段）：STAFF_UNASSIGNED——未來、可履約（非 CANCELLED）團次沒有
+      // `primaryStaffId`（`src/lib/types.ts` 的 `TripDeparture.primaryStaffId`，對應
+      // route.ts 讀的 `trip_departure_staff` 有沒有 `role = 'PRIMARY'` 那一列）。
+      // 目前 fixture 裡每筆團次都有 `primaryStaffId`，所以誠實地算出空陣列，不是
+      // 寫死的空殼——理由同上面 staffConflictItems 旁的說明。
+      const staffUnassignedItems: GuideActionInboxItem[] = MOCK_TRIP_DEPARTURES
+        .filter((departure) =>
+          (departure.status === 'OPEN' || departure.status === 'CLOSED')
+          && !departure.primaryStaffId
+          && departure.departsOn >= today)
+        .map((departure) => {
+          const trip = MOCK_TRIPS.find((candidate) => candidate.id === departure.tripId);
+          const plan = MOCK_TRIP_PLANS.find((candidate) => candidate.id === departure.planId);
+          return buildGuideActionInboxStaffUnassignedItem({
+            id: departure.id,
+            tripId: departure.tripId,
+            tripName: trip?.title ?? '',
+            planName: plan?.name ?? departure.planName,
+            departureDate: departure.departsOn,
+            startTime: departure.startTime || '00:00',
+            createdAt: new Date(now).toISOString(),
+          }, nowDate);
+        });
       // #43 類別 1：待導遊接受／拒絕的 REQUEST。用 (tripId, planName) 找出訂單所屬
       // 方案——mock 的 `TourOrder` 型別沒有 `planId` 欄位（見 `src/lib/types.ts`），
       // 這是既有 mock 資料形狀的限制，不是這裡新造的規則。只有方案 `salesMode ===
@@ -207,7 +231,7 @@ export function getGuideActionInbox(): Promise<GuideActionInboxItem[]> {
         }, nowDate));
       return sortGuideActionInboxItems([
         ...items, ...paymentItems, ...departureItems, ...formationItems, ...refundPendingItems,
-        ...staffConflictItems, ...tourRequestItems,
+        ...staffConflictItems, ...staffUnassignedItems, ...tourRequestItems,
       ]);
     },
     () => request<GuideActionInboxItem[]>('/api/guide/action-inbox'),
