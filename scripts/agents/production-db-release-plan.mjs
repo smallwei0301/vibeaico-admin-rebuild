@@ -190,7 +190,7 @@ export function splitSqlStatements(sql) {
 
 
 
-export function stripSqlStringLiterals(sql, nestedDollarBody = false) {
+export function stripSqlStringLiterals(sql, nestedDollarBody = false, preserveDoubleQuotedIdentifiers = false) {
   const input = stripSqlComments(sql);
   let output = '';
   let index = 0;
@@ -198,7 +198,11 @@ export function stripSqlStringLiterals(sql, nestedDollarBody = false) {
     const char = input[index];
     if (char === "'" || char === '"') {
       const end = quotedTokenEnd(input, index, char);
-      output += ' '.repeat(end - index);
+      if (char === '"' && preserveDoubleQuotedIdentifiers) {
+        output += input.slice(index, end);
+      } else {
+        output += ' '.repeat(end - index);
+      }
       index = end;
       continue;
     }
@@ -245,16 +249,6 @@ function stripStoredRoutineBodies(statement) {
   return input;
 }
 
-const SAFE_IMMEDIATE_SQL_FUNCTIONS = new Set([
-  'array_agg', 'array_length', 'array_to_string', 'btrim', 'coalesce', 'count',
-  'date_part', 'date_trunc', 'format', 'gen_random_uuid', 'json_agg',
-  'json_build_object', 'jsonb_agg', 'jsonb_build_object', 'length', 'least',
-  'lower', 'now', 'pg_get_constraintdef', 'pg_get_expr',
-  'pg_get_function_def', 'pg_get_function_identity_arguments', 'pg_get_functiondef',
-  'pg_options_to_table', 'regexp_replace', 'round', 'string_agg', 'to_regclass',
-  'to_regtype', 'unnest', 'upper',
-]);
-
 const SQL_PARENTHESES_WORDS = new Set([
   'all', 'and', 'any', 'as', 'case', 'check', 'exists', 'filter', 'from', 'group',
   'having', 'in', 'limit', 'not', 'offset', 'on', 'or', 'over', 'partition',
@@ -262,13 +256,13 @@ const SQL_PARENTHESES_WORDS = new Set([
 ]);
 
 function hasUnverifiedRoutineInvocation(text) {
+  if (/"(?:[^"]|"")*"\s*\(/i.test(text)) return true;
   const candidates = String(text).matchAll(
     /\b(?:[A-Za-z_][\w$]*\s*\.\s*)?([A-Za-z_][\w$]*)\s*\(/gi,
   );
   for (const match of candidates) {
     const name = String(match[1]).toLowerCase();
-    const qualified = /\./.test(match[0]);
-    if (!qualified && (SAFE_IMMEDIATE_SQL_FUNCTIONS.has(name) || SQL_PARENTHESES_WORDS.has(name))) continue;
+    if (SQL_PARENTHESES_WORDS.has(name)) continue;
     return true;
   }
   return false;
@@ -276,7 +270,7 @@ function hasUnverifiedRoutineInvocation(text) {
 
 function rejectImmediateRoutineInvocations(statements) {
   const checkCommandText = (text) => {
-    const lexical = stripSqlStringLiterals(text, true);
+    const lexical = stripSqlStringLiterals(text, true, true);
     const commandSegments = [
       ...lexical.matchAll(/\b(?:select|perform|call)\b[\s\S]*?(?=;|$)/gi),
     ];
@@ -287,7 +281,7 @@ function rejectImmediateRoutineInvocations(statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && checkCommandText(lexicalText);
+    const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && checkCommandText(immediateText);
     if (topLevelCall || topLevelSelectCall) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
@@ -372,10 +366,101 @@ function matchingParenthesisEnd(input, openIndex) {
   fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL expression has unbalanced parentheses');
 }
 
-function assertFormatFirstArgumentBounded(input, firstArgEnd) {
-  const remainder = input.slice(firstArgEnd).trimStart();
-  if (remainder && !remainder.startsWith(',') && !remainder.startsWith(')')) {
+function splitTopLevelFormatArguments(input) {
+  const values = [];
+  let start = 0;
+  let index = 0;
+  let depth = 0;
+  while (index < input.length) {
+    const char = input[index];
+    if (char === "'" || char === '"') {
+      index = quotedTokenEnd(input, index, char);
+      continue;
+    }
+    const dollar = dollarQuoteAt(input, index);
+    if (dollar) {
+      const end = input.indexOf(dollar, index + dollar.length);
+      if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted format argument');
+      index = end + dollar.length;
+      continue;
+    }
+    if (char === '(') {
+      depth += 1;
+    } else if (char === ')') {
+      if (depth === 0) fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'format arguments have unbalanced parentheses');
+      depth -= 1;
+    } else if (char === ',' && depth === 0) {
+      values.push(input.slice(start, index).trim());
+      start = index + 1;
+    }
+    index += 1;
+  }
+  if (depth !== 0) fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'format arguments have unbalanced parentheses');
+  values.push(input.slice(start).trim());
+  return values;
+}
+
+function isSimpleFormatArgument(value) {
+  const input = String(value).trim();
+  if (!input) return false;
+  if (/^(?:null|true|false)$/i.test(input)) return true;
+  if (/^\$[0-9]+$/.test(input)) return true;
+  if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i.test(input)) return true;
+
+  const extended = /[eE]/.test(input[0] ?? '') && input[1] === "'";
+  const quoteIndex = extended ? 1 : 0;
+  if (input[quoteIndex] === "'") {
+    const end = quotedTokenEnd(input, quoteIndex, "'");
+    return input.slice(end).trim() === '';
+  }
+
+  const dollar = dollarQuoteAt(input, 0);
+  if (dollar) {
+    const end = input.indexOf(dollar, dollar.length);
+    return end >= 0 && input.slice(end + dollar.length).trim() === '';
+  }
+
+  return /^(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))*$/u.test(input);
+}
+
+function boundedFormatPlaceholderCount(template) {
+  let count = 0;
+  for (let index = 0; index < String(template).length; index += 1) {
+    if (template[index] !== '%') continue;
+    if (template[index + 1] === '%') {
+      index += 1;
+      continue;
+    }
+    if (template[index + 1] === 'I') {
+      count += 1;
+      index += 1;
+      continue;
+    }
+    return -1;
+  }
+  return count;
+}
+
+function assertFormatArgumentsBounded(input, firstArgEnd, formatEnd, template) {
+  const placeholderCount = boundedFormatPlaceholderCount(template);
+  if (placeholderCount < 0) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format contains an unbounded placeholder');
+  }
+  let cursor = firstArgEnd;
+  while (/\s/.test(input[cursor] ?? '')) cursor += 1;
+  if (input[cursor] === ')') {
+    if (placeholderCount !== 0) {
+      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format is missing an identifier argument');
+    }
+    return;
+  }
+  if (input[cursor] !== ',') {
     fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format first argument has unconsumed syntax');
+  }
+
+  const args = splitTopLevelFormatArguments(input.slice(cursor + 1, formatEnd - 1));
+  if (args.length !== placeholderCount || !args.every(isSimpleFormatArgument)) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format arguments must be exactly bounded, side-effect-free identifiers or literals');
   }
 }
 
@@ -400,12 +485,12 @@ function firstDynamicSqlTemplate(fragment) {
     const quoteIndex = extended ? index + 1 : index;
     if (input[quoteIndex] === "'") {
       const end = quotedTokenEnd(input, quoteIndex, "'");
-      assertFormatFirstArgumentBounded(input, end);
       const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
+      const rawTemplate = input.slice(quoteIndex + 1, end - 1);
+      assertFormatArgumentsBounded(input, end, formatEnd, rawTemplate);
       if (input.slice(formatEnd).trim()) {
         fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format expression has unconsumed trailing syntax');
       }
-      const rawTemplate = input.slice(quoteIndex + 1, end - 1);
       if (extended && /\\/.test(rawTemplate)) {
         fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'backslash-escaped E-string dynamic SQL templates are not admitted');
       }
@@ -416,12 +501,13 @@ function firstDynamicSqlTemplate(fragment) {
     if (dollar) {
       const end = input.indexOf(dollar, index + dollar.length);
       if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dynamic SQL template');
-      assertFormatFirstArgumentBounded(input, end + dollar.length);
       const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
+      const rawTemplate = input.slice(index + dollar.length, end);
+      assertFormatArgumentsBounded(input, end + dollar.length, formatEnd, rawTemplate);
       if (input.slice(formatEnd).trim()) {
         fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format expression has unconsumed trailing syntax');
       }
-      return input.slice(index + dollar.length, end);
+      return rawTemplate;
     }
     return '';
   }
