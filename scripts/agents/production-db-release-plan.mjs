@@ -292,34 +292,21 @@ function firstDynamicSqlTemplate(fragment) {
   return input.slice(index + dollar.length, end);
 }
 
-function dynamicCommandLooksLikeDml(fragment) {
+function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
-  if (!template) return false;
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
-  return /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalTemplate);
-}
-
-function dynamicExecuteFragments(body) {
-  if (body == null) return [];
-  const fragments = [];
-  for (const statement of splitSqlStatements(body)) {
-    const lexicalStatement = stripSqlStringLiterals(statement, true);
-    for (const match of lexicalStatement.matchAll(/\bexecute\b/gi)) {
-      fragments.push(statement.slice(match.index + match[0].length));
-    }
+  if (/^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)) return 'SCHEMA_REPAIR';
+  if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
+    fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
   }
-  return fragments;
+  if (!/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalTemplate)) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must be a statically bounded DML template');
+  }
+  return 'BACKFILL';
 }
 
 function assertDynamicExecutionSafe(body) {
-  for (const fragment of dynamicExecuteFragments(body)) {
-    if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
-      fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
-    }
-    if (!dynamicCommandLooksLikeDml(fragment)) {
-      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must be a statically bounded DML template');
-    }
-  }
+  return dynamicExecuteFragments(body).map(dynamicCommandKind);
 }
 
 function hasImmediateBackfillDml(text) {
@@ -333,11 +320,10 @@ function hasImmediateBackfillDml(text) {
     const explainedDml = /^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
     const compoundDml = /^(?:with\b|do\b)[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
     const proceduralDml = body !== null && /\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(executableBody);
-    if (body !== null) assertDynamicExecutionSafe(body);
-    return directDml || explainedDml || compoundDml || proceduralDml || dynamicExecuteFragments(body).length > 0;
+    const dynamicKinds = body !== null ? assertDynamicExecutionSafe(body) : [];
+    return directDml || explainedDml || compoundDml || proceduralDml || dynamicKinds.includes('BACKFILL');
   });
 }
-
 export function highestRiskTier(tiers = []) {
   let selected = 'ADDITIVE';
   for (const raw of tiers) {
