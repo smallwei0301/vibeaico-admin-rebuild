@@ -160,6 +160,8 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier(unqualifiedRoutineOverloadSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const withRoutineInvocationSql = 'create function public.review_wipe() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; with r as (select public.review_wipe() as n) select n from r;';
     expect(() => inferMigrationRiskTier(withRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    const ddlRoutineInvocationSql = 'create function public.review_wipe() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; create table public.release_probe as select public.review_wipe();';
+    expect(() => inferMigrationRiskTier(ddlRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const qualifiedKeywordRoutineSql = 'create function public.filter() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; do ' + dollarQuote + ' declare n integer := public.filter(); begin null; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(qualifiedKeywordRoutineSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const unicodeRoutineInvocationSql = 'create function public.清除() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; select public.清除();';
@@ -191,6 +193,8 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier("set U&\"ro\\006ce\" = 'app_user';")).toBe('AUTHZ');
     const doConfigurationSql = 'do ' + dollarQuote + " begin set U&\"ro\\006ce\" = 'app_user'; end " + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(doConfigurationSql)).toThrow(/UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
+    const labeledDoConfigurationSql = 'do ' + dollarQuote + " <<b>> begin set local U&\"ro\\006ce\" = 'privileged_role'; end " + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(labeledDoConfigurationSql)).toThrow(/UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('alter domain public.order_id owner to app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter foreign table public.orders owner to app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter view public.tenant_records reset (security_invoker);')).toBe('AUTHZ');
