@@ -230,8 +230,6 @@ describe('Controlled Production DB writer #447', () => {
     })).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
   });
 
-  it('uses read-only ledger  });
-
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
     const p = plan();
     const requests: string[] = [];
