@@ -32,13 +32,14 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(releaseBlock).toContain('validate-production-db-release-on-test.mjs apply');
   });
 
-  it('executes exact-plan TEST validation before integration/E2E and evidence assembly after both', () => {
+  it('executes exact-plan TEST validation before integration/E2E and captures TEST-after schema before final assembly', () => {
     const releaseApply = position('- name: Validate exact Production DB release plan on canonical TEST');
     const integration = position('- name: Run integration tests');
     const e2e = position('- name: Run E2E tests');
     const raw = position('- name: Emit trusted-main shared TEST raw evidence');
     const coverage = position('- name: Build Production DB G3 coverage evidence');
     const cleanup = position('- name: Verify Production DB G3 migration-scoped cleanup');
+    const postSchema = position('- name: Capture Production DB G3 post-TEST schema evidence');
     const assemble = position('- name: Assemble final Production DB G3 TEST_VERIFIED evidence');
     const upload = position('- name: Upload Production DB G3 trusted evidence bundle');
 
@@ -47,7 +48,8 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(e2e).toBeLessThan(raw);
     expect(raw).toBeLessThan(coverage);
     expect(coverage).toBeLessThan(cleanup);
-    expect(cleanup).toBeLessThan(assemble);
+    expect(cleanup).toBeLessThan(postSchema);
+    expect(postSchema).toBeLessThan(assemble);
     expect(assemble).toBeLessThan(upload);
   });
 
@@ -61,7 +63,19 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(rawBlock).toContain('productionMutationPerformed: false');
   });
 
-  it('keeps final machine evidence assembled from separate plan/run/cleanup/coverage artifacts', () => {
+  it('uses read-only schema observer evidence after TEST and explicitly rejects broad Management API token fallback', () => {
+    const postSchemaStart = position('- name: Capture Production DB G3 post-TEST schema evidence');
+    const assembleStart = position('- name: Assemble final Production DB G3 TEST_VERIFIED evidence');
+    const block = source.slice(postSchemaStart, assembleStart);
+    expect(block).toContain('SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}');
+    expect(block).toContain('test -n "$SCHEMA_OBSERVER_TOKEN"');
+    expect(block).toContain('test -z "${SUPABASE_ACCESS_TOKEN:-}"');
+    expect(block).toContain('production-db-g3-post-test-schema.mjs capture');
+    expect(block).toContain('production-db-test-post-schema-snapshot.json');
+    expect(block).toContain('production-db-test-post-schema-evidence.json');
+  });
+
+  it('keeps final machine evidence assembled from separate plan/run/cleanup/coverage/post-schema artifacts', () => {
     const assembleStart = position('- name: Assemble final Production DB G3 TEST_VERIFIED evidence');
     const uploadStart = position('- name: Upload Production DB G3 trusted evidence bundle');
     const block = source.slice(assembleStart, uploadStart);
@@ -71,6 +85,16 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(block).toContain('production-db-test-release-evidence.json');
     expect(block).toContain('production-db-test-cleanup-evidence.json');
     expect(block).toContain('production-db-test-coverage-evidence.json');
+    expect(block).toContain('production-db-test-post-schema-evidence.json');
+    expect(block).toContain('production-db-test-verified.json');
+  });
+
+  it('retains both the sanitized post-TEST snapshot and its release-bound evidence in the durable bundle', () => {
+    const uploadStart = position('- name: Upload Production DB G3 trusted evidence bundle');
+    const rawUploadStart = position('- name: Upload trusted-main shared TEST raw evidence');
+    const block = source.slice(uploadStart, rawUploadStart);
+    expect(block).toContain('production-db-test-post-schema-snapshot.json');
+    expect(block).toContain('production-db-test-post-schema-evidence.json');
     expect(block).toContain('production-db-test-verified.json');
   });
 });
