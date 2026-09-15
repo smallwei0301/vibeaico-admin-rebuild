@@ -1,38 +1,28 @@
 # AGENTS.md
 
-所有 Agent 在本 repo 開工前必須先讀：
+## 低摩擦開工入口
 
-1. `CLAUDE.md`
-2. `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
-3. `docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
-4. `docs/decisions/2026-09-01-owner-isolated-test-lanes.md`（歷史基線）
-5. `docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`（雙 Terra 基線）
-6. `docs/decisions/2026-09-07-owner-governance-alignment.md`（最新交付完成、v4 結案、Sol audit 與條件雙 Terra 裁示；衝突時優先）
-7. `docs/AGENT-EXECUTION.md`
-8. `docs/DELIVERY-CHAIN.md`（產品交付鏈路：每一關要抓什麼、通過的證據長什麼樣）
-9. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-10. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-11. `docs/DELIVERY-OUTCOME-V2.md`
-12. `docs/DOCUMENTATION-GOVERNANCE.md`
-13. `docs/OWNER-DECISIONS.md`
-14. 該 Issue 指定的 `docs/integration/**` canonical 文件
-15. `docs/integration/12-TESTING-TDD.md`
-16. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
-17. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
-    報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-18. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
-    響應式或 GUIDE 共用 UI，另讀 `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與
-    `docs/assets/guide-mobile-ui/README.md`
-19. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
-    `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
-20. Owner 說「復盤」或「複盤」時，載入
-    `.agents/skills/vibeaico-agent-retrospective/SKILL.md`
-21. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
-    載入 `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`；若該 Skill 與 2026-09-02
-    最新 Owner Decision 衝突，以最新 Decision 為準，付費 Branch 不得執行。
-22. Sol TRIAGE 時，若 `origin/main` 已有 `docs/MODEL-ROUTING.md`，載入它分類任務；分類為高風險且
-    `origin/main` 已有 `.agents/skills/vibeaico-astra-review/SKILL.md` 時，才載入 Astra skill。任一檔案
-    尚未合併時沿用既有 Sol／Terra 規則，不得阻塞 TRIAGE 或交付。
+`docs/AGENT-EXECUTION.md` 是本 repo 的 **canonical default execution entry**。不要每輪無條件重讀整套治理背景；先讀最小必要集合，再依任務 trigger 補載。
+
+每次接手固定只做：
+
+1. `git fetch origin --prune`，用 live GitHub 重建 current `main`、open Issue／PR、exact head、CI 與 shared TEST holder。
+2. 從 `origin/main` 讀 `CLAUDE.md` 與 `docs/AGENT-EXECUTION.md`。
+3. 讀與本 Issue／領域**直接相關**的最新 Owner Decision 與 Issue 指定 canonical `docs/integration/**`。
+4. 其餘治理文件、skills、Playbook、歷史 Run 一律依 `docs/AGENT-EXECUTION.md` §2 的 trigger-based load 規則載入，不因「可能用得到」就整包塞進 context。
+
+固定安全邊界沒有因此縮減：Product lane/model/Final Risk、TEST serialization、Completion Truth、Production DB gate、文件治理與 schema canonical-source 規則仍依 `docs/AGENT-EXECUTION.md` 對應章節執行。
+
+常見 trigger：
+
+- Product model routing／Final Risk → `docs/MODEL-ROUTING.md`。
+- 文件 canonical scope／延伸規則 → `docs/DOCUMENTATION-GOVERNANCE.md`。
+- `/goal`、Loop、多 Agent、CI 判案、closeout → `.agents/skills/vibeaico-agent-orchestration/SKILL.md`。
+- `復盤`／`複盤` → `.agents/skills/vibeaico-agent-retrospective/SKILL.md`。
+- Issue #104、local Supabase、TEST_PROFILE、雙 Terra → `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`。
+- GUIDE 首頁、旅客自助、方案 UX、通知、風險、LINE 開通、報表、收費 → `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`。
+- GUIDE 導航／Dashboard／Calendar／Customers／Chat／響應式 → `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與 `docs/assets/guide-mobile-ui/README.md`。
+- Playbook → 只以 Issue／錯誤碼／測試／領域搜尋直接相關條目。
 
 ## 自然語言入口
 
