@@ -283,7 +283,12 @@ function hasUnverifiedRoutineInvocation(text) {
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
     if (calledName === 'pg_catalog.format') continue;
-    if (!calledName.includes('.') && SQL_PARENTHESES_WORDS.has(name)) continue;
+    if (!calledName.includes('.') && SQL_PARENTHESES_WORDS.has(name)) {
+      // FILTER is also a legal routine name. Only its aggregate-clause grammar
+      // (FILTER (WHERE ...)) is syntax; filter() / filter(value) are calls.
+      if (name === 'filter' && !/^\s*where\b/i.test(input.slice(match.index + match[0].length))) return true;
+      continue;
+    }
     return true;
   }
   return false;
@@ -337,7 +342,13 @@ function rejectImmediateRoutineInvocations(statements) {
         }
       }
     }
-    const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
+    // Parentheses do not defer a query. COPY (query) executes the query too;
+    // strip only its COPY introducer so COPY itself is not mistaken for a call.
+    const copyQuery = /^\s*copy\s*\(/i.exec(lexicalText);
+    if (copyQuery && checkCommandText(immediateText.slice(copyQuery[0].length))) {
+      fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside a COPY query is not admitted');
+    }
+    const topLevelExecutable = /^\s*(?:\(\s*)*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
       || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
