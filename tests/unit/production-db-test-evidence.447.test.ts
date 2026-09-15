@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildProductionDbTestEvidence } from '../../scripts/agents/production-db-test-evidence.mjs';
+import { buildProductionDbTestEvidence as buildProductionDbTestEvidenceRaw } from '../../scripts/agents/production-db-test-evidence.mjs';
 
 const REPO = 'smallwei0301/vibeaico-admin-rebuild';
 const PROD = 'egehnijjpgijmccagxac';
@@ -121,8 +121,42 @@ function coverage(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function postTestSchema(forPlan = plan(), overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    status: 'TEST_POST_APPLY_SCHEMA_CAPTURED',
+    repository: REPO,
+    testProjectRef: TEST,
+    mainSha: MAIN,
+    planDigest: forPlan.planDigest,
+    releaseId: forPlan.releaseId,
+    sourceRunId: RUN_ID,
+    sourceRunAttempt: RUN_ATTEMPT,
+    observedAt: '2026-09-15T00:10:00.000Z',
+    captureDigest: '4'.repeat(64),
+    migrationLedgerDigest: '5'.repeat(64),
+    plannedMigrations: forPlan.migrations.map((migration: any, index: number) => ({
+      repoFile: migration.repoFile,
+      ledgerVersion: `20260915000${index}00`,
+    })),
+    comparisonClaim: 'CAPTURE_ONLY_G2_COMPARISON_REQUIRED',
+    readOnly: true,
+    databaseMutationAuthorized: false,
+    productionMutationPerformed: false,
+    ...overrides,
+  };
+}
+
+function buildProductionDbTestEvidence(input: any) {
+  const forPlan = input?.plan ?? plan();
+  return buildProductionDbTestEvidenceRaw({
+    postTestSchemaEvidence: postTestSchema(forPlan),
+    ...input,
+  });
+}
+
 describe('Production DB G3 TEST evidence adapter #447', () => {
-  it('builds TEST_VERIFIED only from matching raw run + exact release-plan TEST execution + cleanup + explicit AUTHZ coverage', () => {
+  it('builds TEST_VERIFIED only from matching raw run + exact release-plan TEST execution + cleanup + coverage + post-TEST schema capture', () => {
     const lockedPlan = plan();
     expect(buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
@@ -146,6 +180,8 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
       negativeRoleTestsPassed: true,
       authzMigrationCount: 1,
       releasePlanEvidenceStatus: 'TEST_RELEASE_PLAN_VERIFIED',
+      postTestSchemaEvidenceStatus: 'TEST_POST_APPLY_SCHEMA_CAPTURED',
+      postTestSchemaComparisonClaim: 'CAPTURE_ONLY_G2_COMPARISON_REQUIRED',
       databaseMutationAuthorized: false,
     });
   });
@@ -279,6 +315,7 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
       tenantBoundaryVerified: false,
       negativeRoleTestsPassed: false,
       authzMigrationCount: 0,
+      postTestSchemaEvidenceStatus: 'TEST_POST_APPLY_SCHEMA_CAPTURED',
     });
   });
 
@@ -297,6 +334,35 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
         coverageEvidence: badCoverage,
         plan: lockedPlan,
       })).toThrow(/TEST_COVERAGE_|TEST_EVIDENCE_RUN_MISMATCH|EMPTY_TEST_EVIDENCE/);
+    }
+  });
+
+  it('requires post-TEST schema capture from the same release/main/run and forbids claiming G2 compare', () => {
+    const lockedPlan = plan();
+    expect(() => buildProductionDbTestEvidence({
+      rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
+      cleanupEvidence: cleanup(),
+      coverageEvidence: coverage(),
+      postTestSchemaEvidence: undefined,
+      plan: lockedPlan,
+    })).toThrow(/POST_TEST_SCHEMA_EVIDENCE_REQUIRED/);
+
+    for (const bad of [
+      postTestSchema(lockedPlan, { mainSha: 'd'.repeat(40) }),
+      postTestSchema(lockedPlan, { planDigest: 'e'.repeat(64) }),
+      postTestSchema(lockedPlan, { sourceRunAttempt: 2 }),
+      postTestSchema(lockedPlan, { comparisonClaim: 'G2_CONSISTENCY_VERIFIED' }),
+      postTestSchema(lockedPlan, { plannedMigrations: [] }),
+    ]) {
+      expect(() => buildProductionDbTestEvidence({
+        rawRunEvidence: raw(),
+        releasePlanEvidence: releasePlanEvidence(lockedPlan),
+        cleanupEvidence: cleanup(),
+        coverageEvidence: coverage(),
+        postTestSchemaEvidence: bad,
+        plan: lockedPlan,
+      })).toThrow(/POST_TEST_SCHEMA_|TEST_EVIDENCE_RUN_MISMATCH/);
     }
   });
 });
