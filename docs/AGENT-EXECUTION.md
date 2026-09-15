@@ -7,8 +7,8 @@
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
 > 2026-09-07 交付完成／v4 結案／條件雙 Terra、2026-09-09 active candidate 上限、
-> 2026-09-10 lane 對應模型層級／多環境 base freshness／Product Final Risk，以及
-> 2026-09-11 雙 Workstream 與純治理模型解綁。
+> 2026-09-10 lane 對應模型層級／多環境 base freshness／Product Final Risk、
+> 2026-09-11 雙 Workstream 與純治理模型解綁，以及 2026-09-15 qualified dual Terra continuous refill。
 >
 > 最新 Production DB 授權裁示：`docs/decisions/2026-09-14-owner-production-db-policy-gate.md`；見 §3.2。
 >
@@ -22,8 +22,10 @@
 
 - 主 Agent 是專案主導者，不只是回報者。收到 Issue、`/goal` 或「繼續」後，持續完成
   所有安全且可自主施工的工作，直到符合 §11 停止條件。
-- CI、TEST、Preview、Agent 或外部讀取正在等待，不代表整個 goal 暫停；但也不得因此
-  再開第二條完整大型 Terra 工地。
+- CI、TEST、Preview、Agent 或外部讀取正在等待，不代表整個 goal 暫停。若現有 Product 候選已
+  source-frozen、符合 `AUDIT_READY` verification-tail 契約，且仍有 qualified independent slice，
+  應 continuous refill 空出的 BUILD slot；不得因此突破 candidate=3、Terra BUILD=2、shared TEST=1
+  或 hot-boundary／ownership 安全限制。
 - 每次接手先讀 live GitHub：current `main`、open Issue、open PR、exact head、CI、
   shared TEST holder 與最新 scorecard。舊對話只當線索。
 - 優先接續既有可用 branch／PR，不 reset、force-push 或重做已完成的 migration／測試。
@@ -88,7 +90,7 @@ current truth
 4. 讀 Issue 指定 canonical 文件與直接相關的 integration／testing 章節；Playbook 只搜尋本次錯誤、Issue 或領域，不全量重讀。
 5. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 raw-event 基線，並跑一次 §10 Live Scorecard readiness。
 6. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
-7. 雙 Terra 只能在 Guard 對兩條候選都判定 qualified 後啟動。
+7. 同一 Run 若有兩張 executable Guard 判定 qualified、互不衝突的 Product slices，應主動維持兩個 BUILD slots；沒有第二張安全候選、candidate cap 不足或隔離／hot-boundary 條件不成立時安全降級為一條。
 
 以下文件改為 **trigger-based load**，不是每輪 mandatory read：
 
@@ -207,7 +209,9 @@ RECOVERY_BLOCKED、IMPLEMENTATION_BLOCKED／EXECUTION_BLOCKED。automation pendi
 ```text
 LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
                          ↓
-               MAIN_TERRA BUILD（條件雙 Terra）
+          MAIN_TERRA BUILD（qualified target 2）
+                         ↓
+           AUDIT_READY verify tail（釋放 BUILD slot）
                          ↓
                  EARLY_SOL_DIFF_AUDIT
                          ↓
@@ -219,6 +223,8 @@ LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
                          ↓
                      NEXT LOOP
 ```
+
+`AUDIT_READY` tail 只釋放 BUILD occupancy，不增加 WIP 上限，也不讓 TEST／Final Risk／merge 變成多線。
 
 | 角色 | 主要工作 | OpenAI | Anthropic | 禁止事項 |
 |---|---|---|---|---|
@@ -233,23 +239,25 @@ Product lane 決定層級，層級決定模型。Terra 一律使用 build 層；
 ## 5. 全域 B+ WIP 上限
 
 ```text
-MAIN_TERRA       預設 max 1；Guard 對兩條完整候選皆 qualified 時 max 2 → AGENT_LANE=TERRA_BUILD
-RESERVE_TERRA    max 1；雙 Terra 時固定 0 → AGENT_LANE=TERRA_RESERVE
+MAIN_TERRA BUILD qualified target 2；不 qualified safety fallback 1；hard max 2 → AGENT_LANE=TERRA_BUILD
+VERIFY_TAIL      qualified TERRA_BUILD + ACTIVE + AUDIT_READY；不占 BUILD slot但仍占 ACTIVE_CANDIDATE
+RESERVE_TERRA    max 1；雙 Terra BUILD 時固定 0 → AGENT_LANE=TERRA_RESERVE
 LUNA_CLOSURE     max 1 → AGENT_LANE=LUNA_CLOSURE
 TEST_VALIDATION  max 1 → AGENT_LANE=TEST_VALIDATION
-ACTIVE_CANDIDATE max 3 → 通常 MAIN + Closure，第三張留給併行的第二條產品線
+ACTIVE_CANDIDATE max 3 → BUILD 與 AUDIT_READY tail 合計仍不得超過 3
 LUNA_TASKS       default 4，max 6，另有 1 位 Aggregator
 ```
 
 ### 5.1 MAIN_TERRA
 
-- 預設唯一可完整施工、進 shared TEST、修明確 CI、交 Sol audit 的中大型 Issue。
-- 雙 Terra 是條件例外：同一 `RUN_ID` 的兩張候選必須有不同 primary Issue、`TERRA_SLOT` 1／2、
-  `TEST_ENV_ID`、零重疊 `FILE_OWNERSHIP`、各自健康的 local isolated 證據，且 Guard 在啟動前
-  判定 qualified；任一項失敗立即回到一條。雙 Terra 時 Reserve 固定為 0。
-- 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。
-- `PR 已開`、`CI 綠`、`正在等 Preview` 不是完成。
-- MAIN 未抵達出口前，不啟動第二條完整 BUILD，除非上述 Guard 已同時放行雙 Terra。
+- 有兩張同 Run、互不衝突、executable Guard 判定 qualified 的 Product slices 時，throughput target 是維持兩個 BUILD slots；沒有第二張安全候選、candidate cap 不足、local isolation 不健康或 hot boundary 衝突時安全降級一條。
+- 雙 Terra qualification 不變：不同 primary Issue、`TERRA_SLOT` 1／2、不同 `TEST_ENV_ID`、零重疊 `FILE_OWNERSHIP`、各自健康的 local isolated 證據，且 Guard 在啟動前判定 qualified。兩張 BUILD 同時存在時 Reserve 固定為 0。
+- Source exact head 完成並凍結後，`TERRA_BUILD + LANE_STATE=ACTIVE + ACTIVE_CANDIDATE=true + COMPLETION_CLAIM=AUDIT_READY` 只有在 `DUAL_TERRA_PILOT=true` 且上述 isolation／ownership contract 完整時，才不再占 BUILD slot；它仍占 active candidate WIP，仍走原本 CI／TEST／Final Risk／merge。
+- `AUDIT_READY` verification tail 期間不得修改 source。CI／review／Final Risk 要求 source repair 時，必須先把 `COMPLETION_CLAIM` 降回 `IN_PROGRESS`，再改 source；修完並重新驗證後才能再次宣告 `AUDIT_READY`。
+- BUILD slot 因 `AUDIT_READY`、merge 或完整 blocker 釋放後，只要 `ACTIVE_CANDIDATE < 3` 且有另一張 qualified independent Product slice，就立即 continuous refill；不得因前一張仍在等 CI／Final Risk／merge而讓施工線空轉。
+- 新 BUILD 與 `AUDIT_READY` tail，以及兩個 verification tail 彼此的 `FILE_OWNERSHIP` 不得重疊。相同 schema／migration ledger、auth／RLS、payment／refund、mutable provider boundary 視為 hot boundary，不平行施工。
+- 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。`PR 已開`、`CI 綠`、`正在等 Preview` 本身不是完成。
+- WIP=3、Terra BUILD hard max=2、shared TEST=1、Final Risk=1、Merge=1 均不因 continuous refill 改變。
 
 ### 5.2 RESERVE_TERRA
 
@@ -268,7 +276,7 @@ LUNA_TASKS       default 4，max 6，另有 1 位 Aggregator
 
 ### 5.4 ACTIVE_CANDIDATE
 
-- 全 repo 最多 3 張（Owner 2026-09-09 由 2 調整），通常是 MAIN、Closure，第三張留給併行的第二條產品線。
+- 全 repo最多 3 張（Owner 2026-09-09 由 2 調整）。`AUDIT_READY` verification tail **繼續算 active candidate**，所以可存在 2 BUILD + 1 tail，但第 4 張 candidate 仍必須 fail closed。
 - RESERVE、TEST、Parked、Historical、Owner-blocked 不得標 active candidate。
 - 舊 Mode C PR 不是因為 open 就自動 active；必須經 B+ TRIAGE 重新分配。
 
