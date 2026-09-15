@@ -75,15 +75,29 @@ function issueOrigin(body) {
   return 'owner-or-unknown';
 }
 
+// Issue declarations are top-level fields or form headings, not quoted examples.
 export function issueWorkstream(body = '') {
-  const exact = String(body ?? '').match(/(?:^|\n)\s*(?:[-*+]\s*)?WORKSTREAM\s*:\s*([^\n]+)/i)?.[1];
-  if (exact) return cleanLine(exact).toUpperCase();
-  for (const heading of ISSUE_WORKSTREAM_HEADINGS) {
-    const section = readHeadingSection(body, heading);
-    if (section === null) continue;
-    return (substantiveLines(section)[0] ?? '').toUpperCase();
+  let fence = '';
+  const text = String(body ?? '').replace(/<!--[\s\S]*?-->/g, '')
+    .split(/\r?\n/).map(line => {
+      const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (marker) {
+        if (!fence) fence = marker[1];
+        else if (marker[1][0] === fence[0] && marker[1].length >= fence.length) fence = '';
+        return '';
+      }
+      return fence ? '' : line;
+    }).join('\n');
+  const values = [...text.matchAll(/^[ \t]*(?:[-*+][ \t]+)?WORKSTREAM[ \t]*:[ \t]*(.*)$/gim)]
+    .map(match => cleanLine(match[1]).toUpperCase());
+  for (const match of text.matchAll(/^#{2,3}[ \t]+WORKSTREAM[ \t]*$/gim)) {
+    const remainder = text.slice(match.index + match[0].length);
+    const nextHeading = remainder.search(/\r?\n(?=#{1,6}[ \t]+\S)/);
+    const section = nextHeading < 0 ? remainder : remainder.slice(0, nextHeading);
+    values.push((substantiveLines(section)[0] ?? '').toUpperCase());
   }
-  return '';
+  // Even identical duplicates are ambiguous: one authoritative field only.
+  return values.length > 1 ? 'AMBIGUOUS_WORKSTREAM' : (values[0] ?? '');
 }
 
 function validateModelLine(section) {
@@ -105,7 +119,9 @@ export function validateIssueProvenance(body = '', { requireWorkstream = false }
   const workstream = issueWorkstream(body);
   const workstreamErrors = [];
   if (requireWorkstream && !workstream) workstreamErrors.push('Issue WORKSTREAM is required');
-  if (workstream && !VALID_WORKSTREAMS.includes(workstream)) {
+  if (workstream === 'AMBIGUOUS_WORKSTREAM') {
+    workstreamErrors.push('Issue WORKSTREAM must have exactly one declaration; remove duplicates');
+  } else if (workstream && !VALID_WORKSTREAMS.includes(workstream)) {
     workstreamErrors.push(`Issue WORKSTREAM must be one of: ${VALID_WORKSTREAMS.join(', ')}`);
   }
 
