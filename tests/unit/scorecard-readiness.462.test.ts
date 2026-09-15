@@ -43,6 +43,8 @@ describe('scorecard live readiness (#462)', () => {
 
     expect(result.validLedger).toBe(true);
     expect(result.scoreProfileTarget).toBe('OBSERVED_V1');
+    expect(result.liveCaptureStatus).toBe('LIVE_CAPTURE_READY');
+    expect('liveReadinessPercent' in result).toBe(false);
     expect(result.rawCaptureGaps).toEqual([]);
     expect(result.consistencyWarnings).toEqual([]);
     expect(result.readyForContinuedCapture).toBe(true);
@@ -54,6 +56,8 @@ describe('scorecard live readiness (#462)', () => {
       solTaskCount: 1,
       recordedSolTouches: 1,
       fullCiRuns: 2,
+      verifiedIssueClosedSubjects: 0,
+      recordedIssuesClosed: 0,
     });
   });
 
@@ -73,6 +77,7 @@ describe('scorecard live readiness (#462)', () => {
 
     const result = analyzeScorecardReadiness(run);
 
+    expect(result.liveCaptureStatus).toBe('NEEDS_CAPTURE');
     expect(result.readyForContinuedCapture).toBe(false);
     expect(result.rawCaptureGaps).toContain(
       'modelUsage.tasks has no observed task records despite recorded Run activity',
@@ -100,6 +105,38 @@ describe('scorecard live readiness (#462)', () => {
     expect(result.observed).toMatchObject({ solTaskCount: 1, recordedSolTouches: 7 });
   });
 
+  it('detects a recorded Issue close that has no verified Completion Truth claim', () => {
+    const run = activeRun();
+    run.delivery.issuesClosed = 1;
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.liveCaptureStatus).toBe('NEEDS_CAPTURE');
+    expect(result.readyForContinuedCapture).toBe(false);
+    expect(result.consistencyWarnings).toContain(
+      'verified ISSUE_CLOSED subjects=0 disagrees with delivery.issuesClosed=1',
+    );
+  });
+
+  it('detects verified ISSUE_CLOSED evidence that is not reflected in the delivery counter', () => {
+    const run = activeRun();
+    run.completionTruth.claims.push({
+      type: 'ISSUE_CLOSED',
+      subject: 'issue#123',
+      claimedState: 'closed',
+      observedState: 'closed',
+      verification: 'VERIFIED',
+      evidenceRef: 'github:issue#123',
+    });
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.readyForContinuedCapture).toBe(false);
+    expect(result.consistencyWarnings).toContain(
+      'verified ISSUE_CLOSED subjects=1 disagrees with delivery.issuesClosed=0',
+    );
+  });
+
   it('does not require legacy manual percentage fields', () => {
     const run = activeRun();
     run.ci.firstPassRatePercent = null;
@@ -115,6 +152,7 @@ describe('scorecard live readiness (#462)', () => {
     const result = analyzeScorecardReadiness(run);
 
     expect(result.readyForContinuedCapture).toBe(true);
+    expect(result.liveCaptureStatus).toBe('LIVE_CAPTURE_READY');
     expect(result.rawCaptureGaps).toEqual([]);
     expect(result.consistencyWarnings).toEqual([]);
   });
