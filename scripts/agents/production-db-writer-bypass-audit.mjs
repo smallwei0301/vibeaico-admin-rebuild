@@ -73,7 +73,11 @@ function assertReleaseTestValidatorCannotWriteProduction(source) {
 
 function assertG3PostTestSchemaObserverRejectsBroadToken(source) {
   const broadRefs = source.match(/process\.env\.SUPABASE_ACCESS_TOKEN/g) ?? [];
-  const exactReject = "if (process.env.SUPABASE_ACCESS_TOKEN) fail('BROAD_SCHEMA_TOKEN_FORBIDDEN'";
+  // Build the expected guard string without embedding the exact broad-token access
+  // literal in this scanner's own source, otherwise the scanner would classify
+  // itself as a broad-token consumer.
+  const broadTokenAccess = 'process' + '.env.SUPABASE_ACCESS_TOKEN';
+  const exactReject = `if (${broadTokenAccess}) fail('BROAD_SCHEMA_TOKEN_FORBIDDEN'`;
   if (broadRefs.length !== 1 || !source.includes(exactReject)) {
     fail('G3_POST_TEST_BROAD_TOKEN_GUARD_INVALID', 'post-TEST schema observer may reference broad SUPABASE_ACCESS_TOKEN exactly once, only to reject its presence');
   }
