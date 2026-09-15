@@ -143,11 +143,55 @@ export type GuideActionInboxTourRequestItem = {
   href: string;
 };
 
+/*
+ * #43 類別 7（後段）：STAFF_UNASSIGNED——未來、可履約（`OPEN`／`CLOSED`）的團次
+ * 完全沒有指派 PRIMARY 主導遊。
+ *
+ * `10-TOUR-DOMAIN.md` §1.3（Owner 2026-08-27 裁示）逐字：「新建或重新編輯且狀態為
+ * `OPEN` 的團次，完成後必須有一位 PRIMARY」；`0092` 也用 partial unique index把
+ * 「每團最多一位 PRIMARY」做成資料庫層保證。反過來看，`trip_departure_staff`
+ * 裡完全沒有 `role = 'PRIMARY'` 那一列，就是這團還沒有滿足這個最低可履約門檻——
+ * 不論它是「舊資料本來就沒有指派」（§1.3 允許的相容狀態）還是「只指派了
+ * ASSISTANT、忘了指派 PRIMARY」，站在收件匣的角度都是同一件需要店家決定的事：
+ * 去指派一位主導遊。
+ *
+ * 這裡刻意用「零 PRIMARY」而不是「零列」判斷：只有 ASSISTANT、沒有 PRIMARY 的團次
+ * 一樣算未指派——因為 PRIMARY 才是 §1.3 保證的最低要求，光有協同導遊不構成「已指派」。
+ * 這個判斷只讀既有欄位，不新建狀態、不改 `trip_departure_staff` 或
+ * `staff-availability.ts` 的任何既有行為（`findStaffConflicts()` 仍然只判斷「已指派
+ * 但撞期」，見上面 `GuideActionInboxStaffConflictItem` 的說明——STAFF_UNASSIGNED
+ * 與 STAFF_CONFLICT 因此天生不相交：route.ts 依「這團有沒有 PRIMARY」把候選團次分成
+ * 兩組，各自只進其中一種卡片，不會同一團次同時出現兩張卡）。
+ *
+ * priority 沿用出發時刻本身，不像 STAFF_CONFLICT／REFUND_PENDING 那樣固定
+ * `IMMEDIATE`：「還沒排人」的急迫程度會隨出發日接近而升高，跟 DEPARTURE／
+ * formation 兩類同樣的道理——一個 30 天後才出發、還沒排人的團，跟明天就要出發、
+ * 還沒排人的團，不該用同一個「立即處理」把使用者的注意力平均攤在兩者上。
+ *
+ * 這一類先前（`ce28f916`／`25a94b3d`）刻意排除在 STAFF_CONFLICT 之外，原因是
+ * 「該範圍留待 Owner 另外裁示」；本次施工依當輪 Sol TRIAGE 指示的明確範圍把它補上，
+ * 見本輪 PR 說明。
+ */
+export type GuideActionInboxStaffUnassignedItem = {
+  id: string;
+  kind: 'STAFF_UNASSIGNED';
+  tripId: string;
+  tripName: string;
+  planName: string;
+  departureDate: string;
+  startTime: string;
+  priority: GuideActionInboxPriority;
+  dueAt: string;
+  createdAt: string;
+  href: string;
+};
+
 export type GuideActionInboxItem =
   | GuideActionInboxBaseItem
   | GuideActionInboxFormationItem
   | GuideActionInboxRefundPendingItem
   | GuideActionInboxStaffConflictItem
+  | GuideActionInboxStaffUnassignedItem
   | GuideActionInboxTourRequestItem;
 
 const FORMATION_INBOX_KINDS: readonly GuideActionInboxFormationKind[] = ['REVIEW_REQUIRED', 'AT_RISK'];
@@ -469,6 +513,42 @@ export function buildGuideActionInboxStaffConflictItem(
     conflicts: input.conflicts,
     priority: 'IMMEDIATE',
     dueAt: getGuideDepartureDueAt(input.departureDate, startTime, timeZone),
+    createdAt: input.createdAt,
+    href: `/tenant/trips/${input.tripId}`,
+  };
+}
+
+export type GuideActionInboxStaffUnassignedInput = {
+  id: string;
+  tripId: string;
+  tripName: string;
+  planName: string;
+  departureDate: string;
+  startTime: string;
+  createdAt: string;
+};
+
+/**
+ * #43 類別 7（後段）：把一團「未來、可履約、沒有 PRIMARY 指派」的團次轉成收件匣
+ * 卡片。priority 用出發時刻本身算，理由見上方型別定義旁的說明。
+ */
+export function buildGuideActionInboxStaffUnassignedItem(
+  input: GuideActionInboxStaffUnassignedInput,
+  now: Date = new Date(),
+  timeZone: string = DEFAULT_GUIDE_TIME_ZONE,
+): GuideActionInboxStaffUnassignedItem {
+  const startTime = input.startTime || '00:00';
+  const dueAt = getGuideDepartureDueAt(input.departureDate, startTime, timeZone);
+  return {
+    id: input.id,
+    kind: 'STAFF_UNASSIGNED',
+    tripId: input.tripId,
+    tripName: input.tripName,
+    planName: input.planName,
+    departureDate: input.departureDate,
+    startTime,
+    priority: getGuideActionInboxPriority(dueAt, now, timeZone),
+    dueAt,
     createdAt: input.createdAt,
     href: `/tenant/trips/${input.tripId}`,
   };

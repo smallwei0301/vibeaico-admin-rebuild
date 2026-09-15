@@ -98,6 +98,10 @@ export const dashboardPage = {
       DEPARTURE: '已被其他團次指派',
     },
     openStaffConflict: '查看團次並調整人員',
+    /* ---- #43 類別 7（後段）：尚未指派 PRIMARY 主導遊 ---- */
+    staffUnassigned: '尚未指派主導遊',
+    staffUnassignedDetail: '尚未指派主導遊，需要安排人員才能出團',
+    openStaffUnassigned: '指派人員',
     priority: {
       IMMEDIATE: '需要立即處理',
       TODAY: '今天處理',
