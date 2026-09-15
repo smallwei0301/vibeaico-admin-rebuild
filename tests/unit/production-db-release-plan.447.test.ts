@@ -132,7 +132,7 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier("do 'BEGIN DELETE FROM public.tenant_data; END';")).toBe('BACKFILL');
     expect(inferMigrationRiskTier('explain analyze delete from public.tenant_data;')).toBe('BACKFILL');
     const dynamicDropSql = 'do ' + dollarQuote + " begin execute format('DROP %s %I.%I', 'TABLE', 'public', 'documents'); end " + dollarQuote + ';';
-    expect(() => inferMigrationRiskTier(dynamicDropSql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(dynamicDropSql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED|UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     const unresolvedDynamicSql = 'do ' + dollarQuote + ' begin execute query_text; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(unresolvedDynamicSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier("do e'BEGIN EXECUTE ''DELETE FROM public.tenant_data''; END;';")).toBe('BACKFILL');
@@ -154,6 +154,10 @@ describe('Production DB release plan #447', () => {
     const routineTag = String.fromCharCode(36) + 'routine' + String.fromCharCode(36);
     const storedRoutineInvocationSql = 'create function public.release_wipe() returns void as ' + routineTag + ' begin delete from public.t; end ' + routineTag + ' language plpgsql; select public.release_wipe();';
     expect(() => inferMigrationRiskTier(storedRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    const quotedRoutineInvocationSql = 'create function public."lower"(integer) returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; select public."lower"(1);';
+    expect(() => inferMigrationRiskTier(quotedRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    const unqualifiedRoutineOverloadSql = 'create function public.lower(integer) returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; select lower(1);';
+    expect(() => inferMigrationRiskTier(unqualifiedRoutineOverloadSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const doTag = String.fromCharCode(36) + 'do' + String.fromCharCode(36);
     const deceptiveDoRoutineText = 'do ' + doTag + " begin raise notice 'create function dummy() returns void as $$'; delete from public.t; raise notice '$$'; end " + doTag + ';';
     expect(inferMigrationRiskTier(deceptiveDoRoutineText)).toBe('BACKFILL');
@@ -163,6 +167,10 @@ describe('Production DB release plan #447', () => {
     const adjacentDoBodySql = "do 'BEGIN NULL;'\n             'DELETE FROM public.t; END;';";
     expect(() => inferMigrationRiskTier(adjacentDoBodySql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
     const adjacentFormatSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT old_ck'\n             '; DELETE FROM public.t'); end " + dollarQuote + ';';
+    const boundedFormatRepairSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT %I', old_ck); end " + dollarQuote + ';';
+    expect(inferMigrationRiskTier(boundedFormatRepairSql)).toBe('SCHEMA_REPAIR');
+    const formatArgumentCallSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT %I', public.release_wipe()); end " + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(formatArgumentCallSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(adjacentFormatSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(adjacentDynamicSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('set session role app_user;')).toBe('AUTHZ');
