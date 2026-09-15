@@ -18,10 +18,10 @@ function task(id: string, requestedModel: 'luna' | 'terra' | 'sol', count = 1, a
   };
 }
 
-function activeRun(): any {
+function activeRun(startedAt = '2026-09-15T00:00:00Z'): any {
   const run: any = createRunLedgerV2(
     '2026-09-15-readiness-test',
-    '2026-09-15T00:00:00Z',
+    startedAt,
     { closeoutOwner: 'PRODUCT_MAIN_SESSION' },
   );
   run.delivery.issuesStarted = 1;
@@ -54,6 +54,13 @@ describe('scorecard live readiness (#462)', () => {
       solTouches: 1,
       fullCiRuns: 2,
     });
+  });
+
+  it('never relabels a pre-cutoff Run as OBSERVED_V1', () => {
+    const result = analyzeScorecardReadiness(activeRun('2026-09-14T23:59:59Z'));
+
+    expect(result.scoreProfileTarget).toBe('LEGACY_V2');
+    expect(result.observedScoreEffectiveAt).toBe('2026-09-15T00:00:00Z');
   });
 
   it('fails early when Run activity exists but modelUsage.tasks was never captured', () => {
