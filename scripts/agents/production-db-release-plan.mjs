@@ -230,8 +230,8 @@ function hasImmediateBackfillDml(text) {
   // 執行的資料 DML 才算 BACKFILL；stored function/procedure 內的 DML 是日後 RPC
   // 執行時才發生，不能把整支 migration 誤判成 BACKFILL。
   const immediateText = stripStoredRoutineBodies(text);
-  const update = /\bupdate\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\*?(?:\s+(?:as\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*set\b/i.test(immediateText);
-  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\.(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\*?(?=\s|[A-Za-z_]|;|$)/i.test(immediateText);
+  const update = /\bupdate\s+(?:only\s+)?(?:\(\s*)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\)?\s*\*?(?:\s+(?:as\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*set\b/i.test(immediateText);
+  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:\(\s*)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\)?\s*\*?(?=\s|[A-Za-z_]|;|$)/i.test(immediateText);
   return update || deletion;
 }
 
@@ -282,7 +282,7 @@ export function inferMigrationRiskTier(sql) {
   if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure))\b[\s\S]*\bowner\s+to\b|\balter\s+default\s+privileges\b/i.test(statement))) {
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\balter\s+default\s+privileges\b/i.test(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');

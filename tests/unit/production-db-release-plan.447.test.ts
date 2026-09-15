@@ -114,6 +114,11 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier('reassign owned by old_owner to app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('create role newcomer in role privileged_role;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter group privileged_role add user app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('alter view public.tenant_records set (security_invoker = false);')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('alter view public.tenant_records reset (security_invoker);')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('update only (public.tenant_records) set tenant_id = \'other\';')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('update public . tenant_records set tenant_id = \'other\';')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('delete only (public.tenant_records) from public.tenant_records;')).toBe('BACKFILL');
     expect(inferMigrationRiskTier('update "public"."t" set x=1 where id=1;')).toBe('BACKFILL');
     expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
       .toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);
