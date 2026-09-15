@@ -76,7 +76,7 @@ function closurePr(number: number, issueNumber = number) {
 function testPr(number: number, issueNumber = number) {
   return pr(number, {
     AGENT_LANE: "TEST_VALIDATION",
-    ACTIVE_CANDIDATE: "false",
+    ACTIVE_CANDIDATE: "true",
     TEST_LANE_REQUIRED: "true",
     CLOSURE_SWEEP_TARGET: "none",
   }, "open", issueNumber);
@@ -147,7 +147,7 @@ describe("B+ lane validation", () => {
     ]));
   });
 
-  it("requires Closure and TEST lanes to declare their roles", () => {
+  it("requires Closure and VERIFY lanes to declare their roles", () => {
     const closure = parseLaneMetadata(pr(20, {
       AGENT_LANE: "LUNA_CLOSURE",
       ACTIVE_CANDIDATE: "false",
@@ -162,13 +162,25 @@ describe("B+ lane validation", () => {
 
     const test = parseLaneMetadata(pr(30, {
       AGENT_LANE: "TEST_VALIDATION",
-      ACTIVE_CANDIDATE: "true",
+      ACTIVE_CANDIDATE: "false",
       TEST_LANE_REQUIRED: "false",
     }));
     expect(validateLaneMetadata(test)).toEqual(expect.arrayContaining([
-      "TEST_VALIDATION must set ACTIVE_CANDIDATE=false",
+      "TEST_VALIDATION verify tail must set ACTIVE_CANDIDATE=true",
       "An active TEST_VALIDATION lane must set TEST_LANE_REQUIRED=true",
     ]));
+  });
+
+  it("freezes source while a candidate is in the VERIFY tail", () => {
+    const verify = parseLaneMetadata(testPr(30));
+    expect(validateLaneMetadata(verify, { action: "synchronize" })).toContain(
+      "An active TEST_VALIDATION verify tail received a new commit; switch to TERRA_BUILD and re-acquire a BUILD slot before source mutation",
+    );
+
+    const build = parseLaneMetadata(pr(30));
+    expect(validateLaneMetadata(build, { action: "synchronize" })).not.toContain(
+      "An active TEST_VALIDATION verify tail received a new commit; switch to TERRA_BUILD and re-acquire a BUILD slot before source mutation",
+    );
   });
 
   it("rejects a new commit on a parked PR", () => {
@@ -194,7 +206,7 @@ describe("global B+ WIP limits", () => {
     expect(validateGlobalWip(summarizeActiveLanes(rows))).toEqual([]);
   });
 
-  it("rejects second Main, Reserve, Closure, TEST and third active candidate", () => {
+  it("rejects second Main, Reserve, Closure, TEST and excessive active candidates", () => {
     const rows = [
       pr(10, { CLOSURE_SWEEP_TARGET: "Issue #20" }),
       pr(11, { CLOSURE_SWEEP_TARGET: "Issue #20" }),
@@ -210,7 +222,7 @@ describe("global B+ WIP limits", () => {
     expect(errors.some((value) => value.includes("active TERRA_RESERVE count is 2"))).toBe(true);
     expect(errors.some((value) => value.includes("active LUNA_CLOSURE count is 2"))).toBe(true);
     expect(errors.some((value) => value.includes("active TEST_VALIDATION count is 2"))).toBe(true);
-    expect(errors.some((value) => value.includes("ACTIVE_CANDIDATE count is 4"))).toBe(true);
+    expect(errors.some((value) => value.includes("ACTIVE_CANDIDATE count is 6"))).toBe(true);
   });
 
   it("requires Reserve to accompany a different Main Issue", () => {
