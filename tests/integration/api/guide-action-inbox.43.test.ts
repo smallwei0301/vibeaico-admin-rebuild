@@ -46,6 +46,17 @@ function futureTaipeiStartTime(now = new Date()): string | null {
 let admin: SupabaseClient;
 let ownerA: AuthedApi;
 const temporaryDepartureIds: string[] = [];
+/**
+ * #43 收尾：類別 5（REFUND_PENDING）／類別 7（STAFF_CONFLICT／STAFF_UNASSIGNED）／
+ * 類別 1（TOUR_REQUEST）先前只有 `tests/unit/guide-action-inbox.43.test.ts` 的
+ * in-memory PostgREST fake 覆蓋（見該檔頂端說明：`.select()`/`.order()` 不會被
+ * 假 harness 真的套用），從未對真實 TEST Supabase 驗證過。Issue #43 驗收標準
+ * 「8 類待辦逐類至少一個整合測試」對這四類其實是缺口——這裡補齊，不是重做既有
+ * 契約。第 8 類（通知永久失敗）仍卡在 #40（canonical `notification_outbox` 尚未
+ * 存在），本輪不補、也不假造。
+ */
+const temporaryTourOrderIds: string[] = [];
+let requestPlanId: string | null = null;
 
 beforeAll(async () => {
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
@@ -57,9 +68,23 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // 刪除順序：先刪 tour_orders（它 `plan_id`／`departure_id` 都是
+  // `on delete restrict`），再刪本檔另外建立的 trip_departures／trip_plans，
+  // 避免違反 FK 限制。trip_departure_staff 對 departure_id 是 `on delete
+  // cascade`（0092），刪 departure 會一併清掉，不必另外處理。
+  for (const id of temporaryTourOrderIds) {
+    const { error } = await admin.from('tour_orders').delete()
+      .eq('tenant_id', SHOP_A.id).eq('id', id);
+    if (error) throw error;
+  }
   for (const id of temporaryDepartureIds) {
     const { error } = await admin.from('trip_departures').delete()
       .eq('tenant_id', SHOP_A.id).eq('id', id);
+    if (error) throw error;
+  }
+  if (requestPlanId) {
+    const { error } = await admin.from('trip_plans').delete()
+      .eq('tenant_id', SHOP_A.id).eq('id', requestPlanId);
     if (error) throw error;
   }
 });
@@ -375,5 +400,219 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     const body = await readJson<GuideActionInboxItem[]>(res);
     expect(body.success).toBe(true);
     expect(body.data?.some((item) => item.id === staleId)).toBe(false);
+  });
+
+  it('#43 類別 5：REFUND_PENDING 的 tour_orders 列會出現在收件匣，退款餘額正確且不跨租戶', async () => {
+    const orderNo = `I43-REFUND-${Date.now()}`;
+    const { data: orderRow, error: orderError } = await admin.from('tour_orders').insert({
+      tenant_id: SHOP_A.id,
+      order_no: orderNo,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departure_id: TRIP_A.departure1,
+      party_size: 2,
+      unit_price: 1000,
+      total_amount: 2000,
+      contact: { name: '退款測試旅客' },
+      status: 'CANCELLED',
+      payment_status: 'REFUND_PENDING',
+      paid_amount: 2000,
+      refunded_amount: 800,
+      source: 'MANUAL',
+    }).select('id, updated_at, created_at').single();
+    expect(orderError).toBeNull();
+    expect(orderRow?.id).toBeTruthy();
+    const orderId = orderRow!.id as string;
+    temporaryTourOrderIds.push(orderId);
+
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+
+    const matches = (body.data ?? []).filter((item) => item.id === orderId);
+    expect(matches).toHaveLength(1);
+    const item = matches[0];
+    if (item.kind !== 'REFUND_PENDING') {
+      throw new Error('REFUND_PENDING action inbox item 種類錯誤');
+    }
+    expect(item).toMatchObject({
+      kind: 'REFUND_PENDING',
+      orderNo,
+      // 800 已退，2000 已收，尚欠 1200——不是 paid_amount 或 refunded_amount 本身。
+      refundOutstandingAmount: 1200,
+      priority: 'IMMEDIATE',
+      href: `/tenant/tour-orders?paymentStatus=REFUND_PENDING&orderId=${orderId}`,
+    });
+    expect(Date.parse(item.dueAt)).toBe(Date.parse(orderRow!.updated_at as string));
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+    expect(shopBResponse.status).toBe(200);
+    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+    expect(shopBBody.data?.some((entry) => entry.id === orderId)).toBe(false);
+  });
+
+  it('#43 類別 1（旅遊側）：TOUR_REQUEST 的 PENDING＋REQUEST 方案訂單會出現在收件匣，且不跨租戶', async () => {
+    const { data: planRow, error: planError } = await admin.from('trip_plans').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      name: 'REQUEST 方案（測試）',
+      price_per_person: 1500,
+      min_party: 1,
+      max_party: 8,
+      sales_mode: 'REQUEST',
+    }).select('id').single();
+    expect(planError).toBeNull();
+    expect(planRow?.id).toBeTruthy();
+    requestPlanId = planRow!.id as string;
+
+    const orderNo = `I43-REQUEST-${Date.now()}`;
+    const { data: orderRow, error: orderError } = await admin.from('tour_orders').insert({
+      tenant_id: SHOP_A.id,
+      order_no: orderNo,
+      trip_id: TRIP_A.id,
+      plan_id: requestPlanId,
+      departure_id: TRIP_A.departure1,
+      party_size: 3,
+      unit_price: 1500,
+      total_amount: 4500,
+      contact: { name: 'REQUEST 測試旅客' },
+      status: 'PENDING',
+      source: 'MANUAL',
+    }).select('id').single();
+    expect(orderError).toBeNull();
+    expect(orderRow?.id).toBeTruthy();
+    const orderId = orderRow!.id as string;
+    temporaryTourOrderIds.push(orderId);
+
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+
+    const matches = (body.data ?? []).filter((item) => item.id === orderId);
+    expect(matches).toHaveLength(1);
+    const item = matches[0];
+    if (item.kind !== 'TOUR_REQUEST') {
+      throw new Error('TOUR_REQUEST action inbox item 種類錯誤');
+    }
+    expect(item).toMatchObject({
+      kind: 'TOUR_REQUEST',
+      orderNo,
+      customerName: 'REQUEST 測試旅客',
+      tripName: 'A 店測試行程',
+      planName: 'REQUEST 方案（測試）',
+      partySize: 3,
+      totalAmount: 4500,
+      href: `/tenant/tour-orders?orderId=${orderId}`,
+    });
+    expect(['IMMEDIATE', 'TODAY', 'UPCOMING']).toContain(item.priority);
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+    expect(shopBResponse.status).toBe(200);
+    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+    expect(shopBBody.data?.some((entry) => entry.id === orderId)).toBe(false);
+  });
+
+  it('#43 類別 7（前段）：未來、可履約、完全沒有人員指派的團次會出現 STAFF_UNASSIGNED，且不跨租戶', async () => {
+    // 挑一個遠離 today/tomorrow 視窗（DEPARTURE query 只看今日／明日）的未來日期，
+    // 避免跟同檔其他測試或 DEPARTURE 卡片搶同一團次。
+    const farFuture = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { data: unassignedRow, error: unassignedError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: farFuture,
+      start_time: '09:00',
+      capacity: 10,
+      status: 'OPEN',
+    }).select('id').single();
+    expect(unassignedError).toBeNull();
+    expect(unassignedRow?.id).toBeTruthy();
+    const unassignedId = unassignedRow!.id as string;
+    temporaryDepartureIds.push(unassignedId);
+
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+
+    const matches = (body.data ?? []).filter((item) => item.id === unassignedId);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]).toMatchObject({
+      kind: 'STAFF_UNASSIGNED',
+      tripId: TRIP_A.id,
+      departureDate: farFuture,
+      startTime: '09:00',
+      href: `/tenant/trips/${TRIP_A.id}`,
+    });
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+    expect(shopBResponse.status).toBe(200);
+    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+    expect(shopBBody.data?.some((entry) => entry.id === unassignedId)).toBe(false);
+  });
+
+  it('#43 類別 7（後段）：同一位 PRIMARY 導遊被指派到同一天兩團會各自冒出 STAFF_CONFLICT，且不跨租戶', async () => {
+    // TRIP_A 的 `trips.duration_hours` 種子沒有設值，`departureInterval()`
+    // （src/server/staff-availability.ts）在缺 duration_hours 時把整團視為
+    // 「佔用一整個台北日」——這裡不需要精算時段重疊，只要同一天兩團、同一位
+    // PRIMARY 就一定衝突，是既有引擎行為，不是本測試新造的規則。
+    const farFuture = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const insertConflictDeparture = async (startTime: string) => {
+      const { data, error } = await admin.from('trip_departures').insert({
+        tenant_id: SHOP_A.id,
+        trip_id: TRIP_A.id,
+        plan_id: TRIP_A.planA1,
+        departs_on: farFuture,
+        start_time: startTime,
+        capacity: 10,
+        status: 'OPEN',
+      }).select('id').single();
+      expect(error).toBeNull();
+      expect(data?.id).toBeTruthy();
+      const id = data!.id as string;
+      temporaryDepartureIds.push(id);
+      const { error: staffError } = await admin.from('trip_departure_staff').insert({
+        tenant_id: SHOP_A.id,
+        departure_id: id,
+        staff_id: SHOP_A.staffA1,
+        role: 'PRIMARY',
+      });
+      expect(staffError).toBeNull();
+      return id;
+    };
+
+    const departureOneId = await insertConflictDeparture('09:00');
+    const departureTwoId = await insertConflictDeparture('15:00');
+
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+    const items = body.data ?? [];
+
+    for (const id of [departureOneId, departureTwoId]) {
+      const matches = items.filter((item) => item.id === id);
+      expect(matches).toHaveLength(1);
+      const item = matches[0];
+      if (item.kind !== 'STAFF_CONFLICT') {
+        throw new Error(`STAFF_CONFLICT action inbox item 種類錯誤：${item.kind}`);
+      }
+      expect(item.tripId).toBe(TRIP_A.id);
+      expect(item.href).toBe(`/tenant/trips/${TRIP_A.id}`);
+      expect(item.priority).toBe('IMMEDIATE');
+      expect(item.conflicts.length).toBeGreaterThan(0);
+      expect(item.conflicts.some((conflict) => conflict.staffId === SHOP_A.staffA1)).toBe(true);
+    }
+
+    const ownerB = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
+    const shopBResponse = await ownerB.get('/api/guide/action-inbox');
+    expect(shopBResponse.status).toBe(200);
+    const shopBBody = await readJson<GuideActionInboxItem[]>(shopBResponse);
+    expect(shopBBody.data?.some((entry) => entry.id === departureOneId || entry.id === departureTwoId)).toBe(false);
   });
 });
