@@ -117,6 +117,34 @@ describe('Controlled Production DB writer #447', () => {
     expect(sql.trim().endsWith('commit;')).toBe(true);
   });
 
+  it('enforces BACKFILL row-count bounds inside the controlled transaction', () => {
+    const backfillSql = 'delete from public.guard_447 where id is not null;';
+    const backfillPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => backfillSql,
+    });
+    expect(backfillPlan.riskTier).toBe('BACKFILL');
+
+    const backfillPacket = packet(backfillPlan);
+    backfillPacket.riskTier = 'BACKFILL';
+    backfillPacket.recovery.preimageBackupVerified = true;
+    backfillPacket.data.executionBounded = true;
+    backfillPacket.data.batchSize = 1;
+    backfillPacket.data.maxRows = 1;
+    backfillPacket.finalRisk.evidenceDigest = releaseEvidenceDigestOf(backfillPacket);
+
+    const sql = buildAtomicProductionApplySql({
+      plan: backfillPlan, releasePacket: backfillPacket,
+      aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql: () => backfillSql,
+    });
+    expect(sql).toContain('get diagnostics affected = row_count;');
+    expect(sql).toContain('CONTROLLED_BACKFILL_ROW_LIMIT_EXCEEDED:0109_assertions:%');
+    expect(sql).toContain('delete from public.guard_447 where id is not null;');
+    expect(() => buildAtomicProductionApplySql({
+      plan: backfillPlan, aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql: () => backfillSql,
+    })).toThrow(/BACKFILL_EXECUTION_BOUND_REQUIRED/);
+  });
+
   it('rejects transaction-unsafe migration commands before any mutable request', () => {
     const p = plan();
     expect(() => buildAtomicProductionApplySql({
