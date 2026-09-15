@@ -43,6 +43,20 @@ function beforeLedger() {
   ];
 }
 
+function expectedPostLedger(plan:any) {
+  return [
+    ...beforeLedger(),
+    ...plan.migrations
+      .filter((item:any) => item.repoFile !== '0105_issue_44_traveler_risk_policies')
+      .map((item:any) => ({
+        version: item.ledgerVersion,
+        name: item.repoFile,
+        created_by: 'vibeaico-g3-test-validator',
+        idempotency_key: `g3:${RELEASE}:${item.repoFile}`,
+      })),
+  ];
+}
+
 describe('Production DB exact-plan remote TEST validator #447', () => {
   it('hard-blocks Production and unknown targets before any network concern', () => {
     expect(() => assertTestReleaseTarget(PROD)).toThrow(/PRODUCTION_TARGET_FORBIDDEN/);
@@ -62,7 +76,7 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
     expect(names).toContain('0109_issue_41_schema_precondition_assertions');
   });
 
-  it('replays an already-ledgered TEST migration but inserts ledger identity only for an absent migration', () => {
+  it('replays an already-ledgered TEST migration but inserts ledger identity for every absent pending migration', () => {
     const plan = buildPlan();
     const aliasMap = JSON.parse(require('node:fs').readFileSync('supabase/ledger-alias-map.json', 'utf8'));
     const readCanonicalSql = (path:string) => require('node:fs').readFileSync(path, 'utf8');
@@ -78,7 +92,8 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
     expect(d109).toMatchObject({ existedBefore: false });
     expect(built.sql).toContain('G3 exact-main validation 0105_issue_44_traveler_risk_policies');
     expect(built.sql).toContain('G3 exact-main validation 0109_issue_41_schema_precondition_assertions');
-    expect(built.sql.match(/insert into supabase_migrations\.schema_migrations/g)?.length).toBe(1);
+    const absentCount = plan.migrations.filter((item:any) => item.repoFile !== '0105_issue_44_traveler_risk_policies').length;
+    expect(built.sql.match(/insert into supabase_migrations\.schema_migrations/g)?.length).toBe(absentCount);
     expect(built.sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(built.sql.indexOf('G3 exact-main validation 0105'));
   });
 
@@ -100,7 +115,6 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
 
   it('executes exactly one atomic TEST write between two read-only ledger captures and returns plan-bound evidence', async () => {
     const plan = buildPlan();
-    const migration109 = plan.migrations.find((item:any) => item.repoFile === '0109_issue_41_schema_precondition_assertions')!;
     const calls:string[] = [];
     let readonly = 0;
     const fetchImpl = vi.fn(async (url:string|URL|Request, init?:RequestInit) => {
@@ -108,14 +122,7 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
       calls.push(text);
       if (text.endsWith('/database/query/read-only')) {
         readonly += 1;
-        const rows = readonly === 1
-          ? beforeLedger()
-          : [...beforeLedger(), {
-              version: migration109.ledgerVersion,
-              name: '0109_issue_41_schema_precondition_assertions',
-              created_by: 'vibeaico-g3-test-validator',
-              idempotency_key: `g3:${RELEASE}:0109_issue_41_schema_precondition_assertions`,
-            }];
+        const rows = readonly === 1 ? beforeLedger() : expectedPostLedger(plan);
         return new Response(JSON.stringify(rows), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       expect(text).toContain(`/projects/${TEST}/database/query`);
@@ -150,7 +157,9 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
       databaseMutationAuthorized: false,
     });
     expect(evidence.migrations.find((item:any)=>item.repoFile.startsWith('0105_'))?.execution).toBe('REPLAY_VERIFIED');
-    expect(evidence.migrations.find((item:any)=>item.repoFile.startsWith('0109_'))?.execution).toBe('APPLIED_VERIFIED');
+    for (const item of evidence.migrations.filter((item:any)=>!item.repoFile.startsWith('0105_'))) {
+      expect(item.execution).toBe('APPLIED_VERIFIED');
+    }
   });
 
   it('rejects Production target with zero network calls even when a token is supplied', async () => {
