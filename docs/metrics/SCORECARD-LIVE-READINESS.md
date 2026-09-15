@@ -11,7 +11,8 @@
 ```text
 LIVE READINESS
 → active Run 的 raw-event capture health
-→ 不產生分數、不參與跨 Run 比較
+→ 只輸出 LIVE_CAPTURE_READY / NEEDS_CAPTURE
+→ 不產生百分比、不參與跨 Run 比較
 
 FINAL SCORE
 → scripts/agents/score-run-current.mjs
@@ -60,7 +61,9 @@ node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.jso
 
 - `ci.invalidReruns <= ci.fullCiRuns`
 - `inventory.closureAdvancedOrClosed <= inventory.closureSweeps`
-- verified `ISSUE_CLOSED` 數不可大於 `delivery.issuesClosed`
+- verified `ISSUE_CLOSED` subjects 與 `delivery.issuesClosed`：只要任一側非 0，就必須精確相等
+
+最後一條同時抓兩個方向：不能「claim 關了但 counter 沒記」，也不能「counter 說關了但 Completion Truth 沒證據」。
 
 這些不是新的分數，它們只是避免「raw events 一套、summary counters 另一套」。
 
@@ -127,7 +130,7 @@ PR #463 第一輪就是第 1 類：現行 preflight 本來已會檢查 Astra cla
 ## 與 #461 OBSERVED_V1 的邊界
 
 - `score-run-current.mjs` 決定 final score / profile。
-- `scorecard-readiness.mjs` 只檢查 active Run 的 raw capture health。
+- `scorecard-readiness.mjs` 只檢查 active Run 的 raw capture health，輸出類別狀態，不輸出另一個分數或百分比。
 - readiness 不要求 `firstPassRatePercent`、`acceptanceEvidenceCoveragePercent`、`auditFirstPassRatePercent`、`lunaDelegationRatePercent`、`waitTimeConvertedPercent` 或 auditability legacy 百分比。
 - 歷史 `LEGACY_V2` 不回寫、不重算成 OBSERVED_V1。
 
@@ -144,7 +147,7 @@ PR #463 第一輪就是第 1 類：現行 preflight 本來已會檢查 Astra cla
 ## `docs/AGENT-EXECUTION.md` 已納入的核心規則
 
 - 新 Product Run 以 `score-run-current.mjs` 的 `OBSERVED_V1` 為 current scoring truth；legacy manual percentages 不再是新 Run 的 grading gate。
-- Active Run 使用 `scorecard-readiness.mjs` 檢查 durable raw events 與有定義的不變量，不產生分數。
+- Active Run 使用 `scorecard-readiness.mjs` 檢查 durable raw events 與有定義的不變量，不產生分數或百分比。
 - 固定 checkpoint：Run start、每次 observable event 後、每次 delivery stage change 後、pre-closeout。
 - Pre-closeout 必須 `rawCaptureGaps=[]` 且 `consistencyWarnings=[]`；terminal-only pending 在 active Run 不算失敗，也不得為了變綠事後猜值。
 - Deterministic metadata preflight-first；remote CI 不作規格查詢器，不堆 no-op commit，不 blind rerun。
