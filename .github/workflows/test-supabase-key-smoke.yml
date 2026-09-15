@@ -13,19 +13,19 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - name: Verify current TEST backend key without printing it
+      - name: Verify environment legacy TEST keys without printing them
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
-          TEST_SUPABASE_SECRET_KEY: ${{ secrets.TEST_SUPABASE_SECRET_KEY }}
-          TEST_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.TEST_SUPABASE_PUBLISHABLE_KEY }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           node --input-type=module <<'NODE'
           import { createClient } from '@supabase/supabase-js';
-          const { TEST_SUPABASE_URL: url, TEST_SUPABASE_SECRET_KEY: secret, TEST_SUPABASE_PUBLISHABLE_KEY: publishable } = process.env;
-          if (!url || !secret || !publishable) throw new Error('CURRENT_TEST_API_KEYS_NOT_CONFIGURED');
+          const { TEST_SUPABASE_URL: url, TEST_SUPABASE_SERVICE_ROLE_KEY: secret, TEST_SUPABASE_ANON_KEY: anon } = process.env;
+          if (!url || !secret || !anon) throw new Error('LEGACY_TEST_API_KEYS_NOT_CONFIGURED');
           if (new URL(url).hostname !== 'nmwhwngojosmagjuvxol.supabase.co') throw new Error('WRONG_TEST_PROJECT_URL');
           const admin = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
           const { error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
-          if (error) throw new Error(`TEST_SECRET_KEY_REJECTED:${error.message}`);
-          console.log('CURRENT_TEST_API_KEYS_ACCEPTED');
+          if (error) throw new Error(`LEGACY_TEST_SERVICE_KEY_REJECTED:${error.message}`);
+          console.log('LEGACY_TEST_API_KEYS_ACCEPTED');
           NODE
