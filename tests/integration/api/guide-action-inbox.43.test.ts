@@ -467,13 +467,34 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(planRow?.id).toBeTruthy();
     requestPlanId = planRow!.id as string;
 
+    // tour_orders 的 (tenant_id, trip_id, plan_id, departure_id) FK 要求 departure
+    // 必須屬於同一個 plan_id；不能沿用其他測試方案（TRIP_A.planA1）底下的
+    // TRIP_A.departure1，必須為這個新建的 REQUEST 方案另建一筆 departure。
+    const requestDeadline = new Date(Date.now() + 60_000).toISOString();
+    const requestTourFields = await readTourSeedFields(admin, requestDeadline, 'OBSERVE');
+    const { data: requestDepartureRow, error: requestDepartureError } = await admin
+      .from('trip_departures').insert({
+        tenant_id: SHOP_A.id,
+        trip_id: TRIP_A.id,
+        plan_id: requestPlanId,
+        departs_on: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        start_time: '10:00',
+        capacity: 8,
+        status: 'OPEN',
+        ...requestTourFields.departure,
+      }).select('id').single();
+    expect(requestDepartureError).toBeNull();
+    expect(requestDepartureRow?.id).toBeTruthy();
+    const requestDepartureId = requestDepartureRow!.id as string;
+    temporaryDepartureIds.push(requestDepartureId);
+
     const orderNo = `I43-REQUEST-${Date.now()}`;
     const { data: orderRow, error: orderError } = await admin.from('tour_orders').insert({
       tenant_id: SHOP_A.id,
       order_no: orderNo,
       trip_id: TRIP_A.id,
       plan_id: requestPlanId,
-      departure_id: TRIP_A.departure1,
+      departure_id: requestDepartureId,
       party_size: 3,
       unit_price: 1500,
       total_amount: 4500,
