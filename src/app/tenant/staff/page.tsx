@@ -19,7 +19,7 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import {
   createStaff, createStaffLeave, deleteStaff, deleteStaffLeave,
-  listServices, listStaff, listStaffLeaves, updateStaff, type StaffLeave,
+  listServices, listStaff, listStaffLeaves, reorderStaff, updateStaff, type StaffLeave,
 } from '@/services/catalog';
 import { getTenantSettings, saveTenantSettings } from '@/services/settings';
 import { common } from '@/i18n/zh-TW/common';
@@ -164,15 +164,30 @@ export default function StaffPage() {
       : [...list, draft]));
   };
 
-  const move = (index: number, delta: number) => {
-    setRows((list) => {
-      const target = index + delta;
-      if (target < 0 || target >= list.length) return list;
-      const next = [...list];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next.map((s, i) => ({ ...s, sortOrder: i + 1 }));
-    });
-    toast.show(t.messages.reordered);
+  /**
+   * issue #22：以前這裡只改本地 state、toast「已更新排序」——重新整理排序就
+   * 回原樣，因為從來沒有任何請求打去後端（`grep -rn "reorderStaff" src/` 在
+   * 本次修復前完全查無此名）。現在真的呼叫 `POST /api/staff/reorder` 持久化，
+   * 失敗時把畫面復原並顯示後端真實錯誤，不再是無條件的樂觀 toast。
+   */
+  const move = async (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= rows.length) return;
+    const previous = rows;
+    const next = [...rows];
+    [next[index], next[target]] = [next[target], next[index]];
+    const reordered = next.map((s, i) => ({ ...s, sortOrder: i + 1 }));
+    setRows(reordered);
+    try {
+      await reorderStaff(reordered.map((s) => s.id));
+      toast.show(t.messages.reordered);
+    } catch (e) {
+      setRows(previous);
+      toast.show(
+        `${t.messages.reorderFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    }
   };
 
   const copyLink = async (s: StaffRow) => {
@@ -241,13 +256,13 @@ export default function StaffPage() {
         <div className="btn-group">
           <Button
             variant="outline" size="sm" title={t.labels.moveUp} aria-label={t.labels.moveUp}
-            disabled={i === 0} onClick={() => move(i, -1)}
+            disabled={i === 0} onClick={() => void move(i, -1)}
           >
             <ChevronUp size={13} />
           </Button>
           <Button
             variant="outline" size="sm" title={t.labels.moveDown} aria-label={t.labels.moveDown}
-            disabled={i === rows.length - 1} onClick={() => move(i, 1)}
+            disabled={i === rows.length - 1} onClick={() => void move(i, 1)}
           >
             <ChevronDown size={13} />
           </Button>
