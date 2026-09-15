@@ -30,6 +30,35 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  it('classifies data-modifying CTEs inside execution wrappers as BACKFILL', () => {
+    for (const prefix of [
+      'create table public.archive as ',
+      'create global temp table public.archive as ',
+      'create materialized view public.archive as ',
+      'create view public.archive as ',
+      'create or replace view public.archive as ',
+      'explain ',
+      'copy (',
+    ]) {
+      for (const dml of [
+        'delete from public.orders returning *',
+        'update public.orders set amount = 0 returning *',
+        'insert into public.orders values (1) returning *',
+      ]) {
+        const query = `with moved as (${dml}) select * from moved`;
+        const suffix = prefix === 'copy (' ? ') to stdout' : '';
+        expect(inferMigrationRiskTier(`${prefix}${query}${suffix};`)).toBe('BACKFILL');
+      }
+    }
+    // Quoted/commented SQL and stored routine bodies are not immediate DML.
+    expect(inferMigrationRiskTier("create table public.archive as select 'with moved as (delete from public.orders)' as note;"))
+      .toBe('ADDITIVE');
+    expect(inferMigrationRiskTier('create table public.archive as /* delete from public.orders */ select 1 as id;'))
+      .toBe('ADDITIVE');
+    expect(inferMigrationRiskTier('create function public.archive_orders() returns void language sql as $ with moved as (delete from public.orders returning *) select * from moved; $;'))
+      .toBe('ADDITIVE');
+  });
+
   it('rejects prepared execution through immediate wrappers, quoted names and CTAS tails', () => {
     for (const command of ['execute "wipe"', 'execute wipe(1)', 'execute "清除"(1)']) {
       for (const wrapper of ['', 'explain ', 'explain (analyze true, buffers true) ',
