@@ -230,14 +230,111 @@ function stripStoredRoutineBodies(text) {
   );
 }
 
+function immediateProceduralBody(statement) {
+  const input = String(statement);
+  const match = input.match(/^\s*do\b/i);
+  if (!match) return null;
+
+  let index = match[0].length;
+  const skipWhitespace = () => {
+    while (/\s/.test(input[index] ?? '')) index += 1;
+  };
+  skipWhitespace();
+
+  const language = input.slice(index).match(/^language\b/i);
+  if (language) {
+    index += language[0].length;
+    skipWhitespace();
+    while (index < input.length && !/\s/.test(input[index])) index += 1;
+    skipWhitespace();
+  }
+
+  const quoteIndex = input[index] === 'E' && input[index + 1] === "'" ? index + 1 : index;
+  if (input[quoteIndex] === "'") {
+    const end = quotedTokenEnd(input, quoteIndex, "'");
+    return input.slice(quoteIndex + 1, end - 1);
+  }
+
+  const dollar = dollarQuoteAt(input, index);
+  if (!dollar) return null;
+  const end = input.indexOf(dollar, index + dollar.length);
+  if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted procedural body');
+  return input.slice(index + dollar.length, end);
+}
+
+function firstDynamicSqlTemplate(fragment) {
+  const input = String(fragment).trim();
+  let index = 0;
+  const skipWhitespace = () => {
+    while (/\s/.test(input[index] ?? '')) index += 1;
+  };
+  while (input[index] === '(') {
+    index += 1;
+    skipWhitespace();
+  }
+
+  const format = input.slice(index).match(/^format\s*\(/i);
+  if (format) {
+    index += format[0].length;
+    skipWhitespace();
+  }
+
+  const quoteIndex = input[index] === 'E' && input[index + 1] === "'" ? index + 1 : index;
+  if (input[quoteIndex] === "'") {
+    const end = quotedTokenEnd(input, quoteIndex, "'");
+    return input.slice(quoteIndex + 1, end - 1);
+  }
+
+  const dollar = dollarQuoteAt(input, index);
+  if (!dollar) return '';
+  const end = input.indexOf(dollar, index + dollar.length);
+  if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dynamic SQL template');
+  return input.slice(index + dollar.length, end);
+}
+
+function dynamicCommandLooksLikeDml(fragment) {
+  const template = firstDynamicSqlTemplate(fragment);
+  if (!template) return false;
+  const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
+  return /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalTemplate);
+}
+
+function dynamicExecuteFragments(body) {
+  if (body == null) return [];
+  const fragments = [];
+  for (const statement of splitSqlStatements(body)) {
+    const lexicalStatement = stripSqlStringLiterals(statement, true);
+    for (const match of lexicalStatement.matchAll(/\bexecute\b/gi)) {
+      fragments.push(statement.slice(match.index + match[0].length));
+    }
+  }
+  return fragments;
+}
+
+function assertDynamicExecutionSafe(body) {
+  for (const fragment of dynamicExecuteFragments(body)) {
+    if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
+      fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
+    }
+    if (!dynamicCommandLooksLikeDml(fragment)) {
+      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must be a statically bounded DML template');
+    }
+  }
+}
+
 function hasImmediateBackfillDml(text) {
   return splitSqlStatements(text).some((statement) => {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
+    const procedural = /^do\b/i.test(lexicalText);
+    const body = procedural ? immediateProceduralBody(immediateText) : null;
+    const executableBody = body === null ? '' : stripSqlStringLiterals(body, true);
     const directDml = /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalText);
+    const explainedDml = /^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
     const compoundDml = /^(?:with\b|do\b)[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
-    const dynamicDml = /^do\b/i.test(lexicalText) && /\bexecute\b/i.test(immediateText);
-    return directDml || compoundDml || dynamicDml;
+    const proceduralDml = body !== null && /\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(executableBody);
+    if (body !== null) assertDynamicExecutionSafe(body);
+    return directDml || explainedDml || compoundDml || proceduralDml || dynamicExecuteFragments(body).length > 0;
   });
 }
 
