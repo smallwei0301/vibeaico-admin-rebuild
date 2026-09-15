@@ -203,15 +203,36 @@
 - [x] verify 五項檢查
       **（重開 2026-08-24：端點零測試，曾長期帶著 AUTO_REPLY 假錯誤無人發現。
       重勾條件：五項各自的 pass/WARN/FAIL 分支都有 line-mock 整合案例）**
-      **重勾 2026-08-26（issue #7 甲）**：`tests/integration/api/line-verify.06.test.ts` 16/16 綠，
-      含 `:「五項全部通過：報告在正常設定下真的能是全綠（沒有任何 FAIL，也沒有任何 WARN）」`、
-      `:「未設定 Channel Access Token → 五項全 fail、統一提示，且一個 LINE 請求都不發」`、
-      chatMode 三態 `:「chatMode=bot → AUTO_REPLY 通過（不是永遠的紅色失敗）」`／
-      `:「chatMode=chat → AUTO_REPLY 是 WARN 而非 FAIL，其餘四項仍全綠」`／
-      `:「chatMode 讀不到（/v2/bot/info 回應沒有這個欄位）→ AUTO_REPLY 是 WARN 提醒，不是失敗」`，
-      以及 TOKEN／WEBHOOK／RICH_MENU／QUOTA 各自的 pass 與 FAIL/WARN 分支。
-      變異驗證：把 AUTO_REPLY 改回「永遠 `pass:false`」→ 「五項全部通過」那條轉紅
-      （＝那條斷言真的在防「報告永遠不可能全綠」）。
+      **⚠️ 2026-08-26 重勾紀錄更正（issue #477，2026-09-15）**：下方原本的
+      「`tests/integration/api/line-verify.06.test.ts` 16/16 綠」紀錄是幻影證據——
+      Sol early diff audit 以 `git cat-file -e origin/main:tests/integration/api/line-verify.06.test.ts`
+      確認**這個檔案在 main 上從未存在過**，與 #477 本文 GitHub 查 404 的證據一致。
+      2026-08-26 當時記下的「五項全部通過：報告在正常設定下真的能全綠」與
+      「chatMode=bot → AUTO_REPLY 通過」兩條驗收敘述，配上舊版程式碼裡 AUTO_REPLY
+      恆回 `pass:false` 的實作，**在邏輯上永遠不可能同時成立**——這正是 #477 要修的
+      P0 問題本身，而不是一條已經驗證過的紀錄。本檔案由 #477 這次修復第一次真正
+      建立並執行（8/8 綠，不是先前記載的 16），舊的 16/16 數字不得沿用。
+      **重勾條件已改寫為新的、誠實的驗收標準**（原本「五項全綠」的條件在
+      AUTO_REPLY 恆為 WARN 的新語意下永遠不可能成立，見 06 分冊 §7／14 分冊
+      §6.16 更正說明）：
+      - TOKEN／WEBHOOK／RICH_MENU／QUOTA 四項在正常設定下皆可為 `status:'PASS'`；
+        AUTO_REPLY 固定為 `status:'WARN'` 並引導人工至 LINE Official Account
+        Manager 自行確認——**不再要求五項全綠**，因為 AUTO_REPLY 本來就沒有可讀
+        取的公開 API。
+      - `chatMode=bot` → AUTO_REPLY 為 **WARN**（不是舊版恆假的 FAIL，也不是誤報
+        的 PASS）；`chatMode=chat`、缺欄位、`/v2/bot/info` 呼叫失敗三種情境
+        AUTO_REPLY 同樣皆為 WARN——`chatMode` 的值不影響判定（不得拿它推論
+        PASS/FAIL）。
+      - 未設定 Channel Access Token → 五項全 `status:'FAIL'`、統一提示訊息，且一
+        個 LINE 請求都不發。
+      - 摘要失敗數只計入真正的 `status:'FAIL'`，WARN 不算失敗；`pass` 欄位須對
+        全部五項滿足 `pass === (status==='PASS')` 這條向後相容不變式。
+      實測見 `tests/integration/api/line-verify.06.test.ts`（8/8 綠，涵蓋
+      chatMode 三態＋API 失敗共四種情境下 AUTO_REPLY 皆為 WARN、TOKEN 真實失敗
+      時仍正確產生 FAIL 且不受 AUTO_REPLY 連坐、WARN 不計入摘要失敗數、無 token
+      時五項皆 FAIL 且零 LINE 請求、`pass`/`status` 相容不變式）。
+      變異驗證：把 AUTO_REPLY 改回「永遠 `pass:false`」→ 「摘要失敗數只計入真正
+      FAIL」與「AUTO_REPLY 不應出現在 FAIL 清單」兩條轉紅。
 - [x] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）

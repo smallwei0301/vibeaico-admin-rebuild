@@ -65,6 +65,12 @@ export class LineMockServer {
   /** 覆寫 GET /v2/bot/info 的回應內容（issue #477 line-verify 三態測試用）；
    * null 代表用預設固定值。傳整個物件取代，呼叫端自行決定要不要帶 chatMode。 */
   private botInfoOverride: Record<string, any> | null = null;
+  /** 覆寫 GET /v2/bot/channel/webhook/endpoint 的回應內容（issue #477 line-verify
+   * 測試用，讓 WEBHOOK 項目在正常設定下可以真的 PASS）；null 代表預設 `{}`。 */
+  private webhookEndpointOverride: Record<string, any> | null = null;
+  /** 覆寫 GET /v2/bot/user/all/richmenu 的回應內容（issue #477 line-verify
+   * 測試用，讓 RICH_MENU 項目在正常設定下可以真的 PASS）；null 代表預設 `{}`。 */
+  private richMenuAllOverride: Record<string, any> | null = null;
   private hold: {
     path: string;
     hit: boolean;
@@ -152,6 +158,14 @@ export class LineMockServer {
           res.end(JSON.stringify({ richMenuId: 'richmenu-mock-0001' }));
           return;
         }
+        if (path === '/v2/bot/channel/webhook/endpoint') {
+          res.end(JSON.stringify(this.webhookEndpointOverride ?? {}));
+          return;
+        }
+        if (path === '/v2/bot/user/all/richmenu') {
+          res.end(JSON.stringify(this.richMenuAllOverride ?? {}));
+          return;
+        }
         res.end('{}');
       });
     });
@@ -182,6 +196,8 @@ export class LineMockServer {
     this.requests.length = 0;
     this.failQueue = [];
     this.botInfoOverride = null;
+    this.webhookEndpointOverride = null;
+    this.richMenuAllOverride = null;
     this.hold?.release?.();
     this.hold = null;
   }
@@ -194,6 +210,18 @@ export class LineMockServer {
    */
   setBotInfo(payload: Record<string, any> | null): void {
     this.botInfoOverride = payload;
+  }
+
+  /** 覆寫 GET /v2/bot/channel/webhook/endpoint 的回應內容；null 還原預設 `{}`。
+   * issue #477 line-verify.06 用來讓 WEBHOOK 項目可以真的判定為 PASS。 */
+  setWebhookEndpoint(payload: Record<string, any> | null): void {
+    this.webhookEndpointOverride = payload;
+  }
+
+  /** 覆寫 GET /v2/bot/user/all/richmenu 的回應內容；null 還原預設 `{}`。
+   * issue #477 line-verify.06 用來讓 RICH_MENU 項目可以真的判定為 PASS。 */
+  setRichMenuAll(payload: Record<string, any> | null): void {
+    this.richMenuAllOverride = payload;
   }
 
   /** 暫停下一個指定路徑的回應，直到 release()。 */

@@ -302,15 +302,19 @@ inactive row 不參與 webhook 查詢；移除圖片後寫回 TEXT，故不再�
 
 ---
 
-## 7. `/api/settings/line/verify` 的五項檢查（補 04 分冊 A-1）
+## 7. `/api/settings/line/verify` 的五項檢查（補 04 分冊 A-1；issue #477 2026-09-15 修正三態語意）
+
+回應每項 check 帶 `status:'PASS'|'WARN'|'FAIL'`（主欄位）與 `pass:boolean`（`= status==='PASS'`，僅供既有呼叫端相容，不再獨立判定）。
 
 | key | 判定 |
 |---|---|
-| TOKEN | `lineBotInfo()` 成功 |
-| WEBHOOK | `GET /v2/bot/channel/webhook/endpoint` 的 endpoint 等於本店 webhook URL 且 active |
-| AUTO_REPLY | 無公開 API 可查 → 恆回 `pass:false` + 提醒文案（與原站行為一致，提醒店家手動關閉） |
-| RICH_MENU | `GET /v2/bot/user/all/richmenu` 有值 |
-| QUOTA | `GET /v2/bot/message/quota/consumption` 對比 quota，回剩餘則數 |
+| TOKEN | `lineBotInfo()` 成功 → PASS，否則 FAIL |
+| WEBHOOK | `GET /v2/bot/channel/webhook/endpoint` 的 endpoint 等於本店 webhook URL 且 active → PASS，否則 FAIL |
+| AUTO_REPLY | 恆回 **WARN**（不是 PASS，也不是舊版的恆假 FAIL）。LINE 官方沒有公開 API 能直接讀取「自動回應訊息」這顆開關本身；`GET /v2/bot/info` 的 `chatMode` 欄位只代表 LINE OA Manager 的「Chat」開／關，不是自動回應開關，不能拿 `chatMode` 的值去推論 PASS 或 FAIL（那是舊版的錯誤推論，已移除）。無法用可觀察證據判定的項目，誠實語意就是 WARN——既不能謊稱已查到 PASS，也不能誤報沒有失敗證據的 FAIL；文案導引店家自行到 LINE Official Account Manager 確認 |
+| RICH_MENU | `GET /v2/bot/user/all/richmenu` 有值 → PASS，否則 FAIL |
+| QUOTA | `GET /v2/bot/message/quota/consumption` 對比 quota，回剩餘則數 → PASS；查詢失敗 → FAIL |
+
+無 LINE Channel Access Token 時，五項一律 `status:'FAIL'`（統一提示尚未設定），且不對 LINE 發出任何請求——這與「有 token 但查不到 AUTO_REPLY」的 WARN 是兩種不同情境，不可混用同一種狀態。
 
 ---
 
