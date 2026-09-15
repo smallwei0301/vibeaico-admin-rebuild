@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 1,
+    "closureSweeps": 2,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -114,12 +114,77 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-haiku-4-5"
+      },
+      {
+        "id": "issue-46-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#46 TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：GUIDE 端 REQUEST 訂單接受/拒絕邏輯（migration 0111）、API route 與行動收件匣 UI 接線、修復既存 bug create_tour_order 未依 sales_mode 分支導致位置總被鎖定。本地隔離 Supabase 完整 0001–0111 套用、unit 176/2376、build 成功、integration 及所有 60 migrations 完整驗證。Final Risk 第一次回報 FIX_REQUIRED（B1/B2 about cancel_tour_order/expire_tour_order/confirm-payment 未尊重新增 seats_reserved 欄位），本 session 推送修復並驗證，Final Risk 第二次回報 ASTRA_VERDICT=CLOSE_APPROVED，merge commit a3c7253b。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-46-pr476-final-risk-1",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #476 的高風險 Final Risk（Astra gate）首次覆核委派。實際委派模型：claude-fable-5-1。檢視 seats_reserved 新增欄位下 cancel_tour_order/expire_tour_order/confirm-payment 的一致性、狀態轉移正確性、ACL 簽名完整性。回報 ASTRA_VERDICT=FIX_REQUIRED（B1: cancel_tour_order 未遞減 seats_reserved；B2: confirm-payment 未檢視新狀態聯動）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-46-pr476-final-risk-2",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #476 的高風險 Final Risk（Astra gate）二次覆核委派。實際委派模型：claude-fable-5-1。檢視本 session 推送的 FIX_REQUIRED 兩項修復（B1: cancel_tour_order 改為遞減 seats_reserved；B2: confirm-payment 改為檢視新狀態）。驗證修復完整性、無新增邊界案例。回報 ASTRA_VERDICT=CLOSE_APPROVED。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-44-production-db-release-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "Issue #44 Production 環境 migration 0105（租戶群組化重構）套用前的高風險 Final Risk（Astra gate）委派。實際委派模型：claude-fable-5-1。完整檢視源遷移檔、TEST/Production 套前狀態對齐、RLS 租戶隔離、安全性 advisor、冪等性保證。回報 ASTRA_VERDICT=PASS（with apply conditions）。經 Owner 授權後於 2026-09-15 套用至 Production 專案 egehnijjpgijmccagxac 單一事務，完整 post-apply readback 驗證 TEST 一致性。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "metrics-update-2026-09-15-scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "RUN_ID 2026-09-15-product-delivery-r01 metrics ledger 即時埋點更新（scout 層，claude-haiku-4-5，docs/metrics/** 機械路徑判準）：補齊 PR #476 Terra 施工、兩次 Final Risk 覆核、Issue #44 Production release Final Risk 四個即時事件。掃描發現 PR #476 squash-merge 破損 fresh-install-compatibility-baseline/manifest.json 的 mainHead 指標（Issue #474 同類問題）；單檔修復已併入 PR #482。遞增 inventory.closureSweeps。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       }
     ]
   },
   "flow": {
-    "lunaTasks": 2,
-    "lunaAccepted": 1,
+    "lunaTasks": 3,
+    "lunaAccepted": 2,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
