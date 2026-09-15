@@ -70,7 +70,7 @@ describe('Production DB release plan #447', () => {
       .toBe('ADDITIVE');
     expect(inferMigrationRiskTier('create table public.archive as /* delete from public.orders */ select 1 as id;'))
       .toBe('ADDITIVE');
-    expect(inferMigrationRiskTier('create function public.archive_orders() returns void language sql as $ with moved as (delete from public.orders returning *) select * from moved; $;'))
+    expect(inferMigrationRiskTier('create function public.archive_orders() returns void language sql as \u0024\u0024 with moved as (delete from public.orders returning *) select * from moved; \u0024\u0024;'))
       .toBe('ADDITIVE');
   });
 
