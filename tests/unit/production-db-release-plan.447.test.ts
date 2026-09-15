@@ -39,7 +39,7 @@ describe('Production DB release plan #447', () => {
       expect(() => inferMigrationRiskTier(`select ${call};`))
         .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     }
-    const sql = 'create function "public".filter() returns integer language plpgsql as $ begin delete from public.orders; return 1; end; $; select "public".filter();';
+    const sql = 'create function "public".filter() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; select "public".filter();';
     expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('select 1 where exists (select 1);')).toBe('ADDITIVE');
     expect(inferMigrationRiskTier('insert into "public".orders(id) values (1);')).toBe('BACKFILL');
