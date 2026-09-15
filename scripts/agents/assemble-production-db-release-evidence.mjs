@@ -3,7 +3,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
-import { buildProductionDbConsistencyEvidence } from './production-db-consistency-evidence.mjs';
+import { buildProductionConsistencyEvidence } from './production-db-consistency-evidence.mjs';
 import { buildProductionDbRecoveryEvidence } from './production-db-backup-evidence.mjs';
 
 function readJson(path) {
@@ -23,7 +23,7 @@ function fail(code, message) {
 /** @param {{plan?: any, report?: any, impactManifest?: any}} [input] */
 export function assembleProductionDbConsistencyEvidence({ plan, report, impactManifest } = {}) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan)) fail('PLAN_REQUIRED', 'release plan is required');
-  return buildProductionDbConsistencyEvidence({
+  return buildProductionConsistencyEvidence({
     report,
     plan,
     impactManifest,
