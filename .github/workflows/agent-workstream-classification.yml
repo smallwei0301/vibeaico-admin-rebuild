@@ -2,7 +2,7 @@ name: agent-workstream-classification
 
 on:
   pull_request_target:
-    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft]
+    types: [opened, edited, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -14,8 +14,16 @@ permissions:
   pull-requests: write
   statuses: write
 
+concurrency:
+  group: agent-workstream-classification-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
 jobs:
   classify:
+    if: >-
+      github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
+      startsWith(github.event.label.name, 'workstream:') ||
+      github.event.label.name == 'governance:workstream-incomplete'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted workstream policy
@@ -52,6 +60,8 @@ jobs:
               repo,
               pull_number: pullNumber,
             });
+            // Late label/edit events for a closed PR must not rewrite historical statuses.
+            if (current.state !== 'open') return;
             const statusUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
             const setStatus = (state, description) => github.rest.repos.createCommitStatus({
               owner,
