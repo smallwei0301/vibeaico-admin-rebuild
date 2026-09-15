@@ -52,6 +52,11 @@ function historicalRun() {
   run.completionTruth = {
     status: 'VERIFIED', checkedAt: '2026-09-02T01:01:00Z', claims: [
       claim('ISSUE_CLOSED', 'issue#10', 'closed'),
+      claim('SOURCE_VERIFIED', 'issue#10', 'success'),
+      claim('MERGED_TO_MAIN', 'issue#10', 'merged'),
+      claim('AUTO_VERCEL_DEPLOYED', 'issue#10', 'ready'),
+      claim('PRODUCTION_SCHEMA_READY', 'issue#10', 'ready'),
+      claim('AUTHENTICATED_PRODUCTION_ACCEPTED', 'issue#10', 'accepted'),
       claim('RUN_COMPLETE', run.runId, 'complete', 'complete', 'github:issue#10'),
     ],
   };
