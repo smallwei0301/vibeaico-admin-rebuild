@@ -1,8 +1,8 @@
 'use client';
 import * as React from 'react';
 import {
-  Eye, Film, Image as ImageIcon, Images, Info, Lightbulb, Link2, Palette, Plus,
-  Save, Share2, Trash2, Upload, UserCircle,
+  ChevronDown, ChevronUp, Eye, Film, Image as ImageIcon, Images, Info, Lightbulb, Link2, Palette,
+  Plus, Save, Share2, Trash2, Upload, UserCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +16,7 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { getTenantSettings, reorderShopPageGallery, saveShopPageSettings } from '@/services/settings';
 import { brandingSettingsSchema, buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { BrandingSettings, GalleryImage, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -79,12 +79,22 @@ export default function ShopDesignPage() {
   /** 新增圖片的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
   const nextImageId = React.useRef(1);
 
+  /**
+   * 上一次與伺服器同步（載入完成／存檔成功／排序成功）的值——`save()` 用它跟
+   * 目前的 `config` 算出**真的異動的欄位**才送出，不是每次都把整包 config
+   * 塞進 patch（那樣雖然不是完全空的 patch，但仍然掩蓋了「這次到底改了什麼」，
+   * 也讓多分頁併發編輯時互相覆蓋的風險變大）。
+   */
+  const lastSyncedRef = React.useRef<ShopPageConfig>(brandingSettingsSchema.parse({}));
+
   React.useEffect(() => {
     void (async () => {
       try {
         const s = await getTenantSettings();
         setSettings(s);
-        setConfig({ ...s.branding, shopName: s.branding.shopName || s.basic.tenantName });
+        const loaded = { ...s.branding, shopName: s.branding.shopName || s.basic.tenantName };
+        setConfig(loaded);
+        lastSyncedRef.current = loaded;
       } catch {
         toast.show(t.messages.loadFailed, 'danger');
       } finally {
@@ -100,10 +110,27 @@ export default function ShopDesignPage() {
     : '';
   const lineBasicId = settings?.line.lineBasicId ?? '';
 
+  /** 只挑出真的和上次同步值不同的欄位——PUT /api/settings/shop-page 的真實 diff。 */
+  const diffFromLastSynced = (): Partial<ShopPageConfig> => {
+    const base = lastSyncedRef.current;
+    const result: Partial<ShopPageConfig> = {};
+    (Object.keys(config) as (keyof ShopPageConfig)[]).forEach((key) => {
+      if (JSON.stringify(config[key]) !== JSON.stringify(base[key])) {
+        (result as Record<string, unknown>)[key] = config[key];
+      }
+    });
+    return result;
+  };
+
   const save = async () => {
     setSaving(true);
     try {
-      await saveTenantSettings({ branding: config });
+      // 送真實 diff（可能是 {}——沒有任何欄位異動時也要能安全送出且不清空既有
+      // 資料，這正是 PUT /api/settings/shop-page 要保證的行為），存檔成功後
+      // 用伺服器回傳的合併結果重繪，不信任送出前的本地 state。
+      const updated = await saveShopPageSettings(diffFromLastSynced());
+      lastSyncedRef.current = updated;
+      setConfig(updated);
       toast.show(t.messages.saved);
     } catch (e) {
       toast.show(
@@ -112,6 +139,27 @@ export default function ShopDesignPage() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const moveGalleryImage = async (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= config.gallery.length) return;
+    const previous = config.gallery;
+    const reordered = [...config.gallery];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    patch({ gallery: reordered });
+    try {
+      const saved = await reorderShopPageGallery(reordered.map((g) => g.id));
+      patch({ gallery: saved });
+      lastSyncedRef.current = { ...lastSyncedRef.current, gallery: saved };
+      toast.show(t.messages.orderUpdated);
+    } catch (e) {
+      patch({ gallery: previous });
+      toast.show(
+        e instanceof Error ? e.message : t.messages.reorderFailed,
+        'danger',
+      );
     }
   };
 
@@ -421,7 +469,7 @@ export default function ShopDesignPage() {
               />
             ) : (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-                {config.gallery.map((img) => (
+                {config.gallery.map((img, index) => (
                   <div key={img.id} className="rounded-md border border-neutral-200 p-2">
                     <div className="flex h-24 items-center justify-center rounded-sm bg-neutral-100 text-secondary">
                       <ImageIcon size={22} />
@@ -438,6 +486,28 @@ export default function ShopDesignPage() {
                         })
                       }
                     />
+                    <div className="mt-2 flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title={t.gallery.moveUp}
+                        aria-label={t.gallery.moveUp}
+                        disabled={index === 0}
+                        onClick={() => void moveGalleryImage(index, -1)}
+                      >
+                        <ChevronUp size={13} />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        title={t.gallery.moveDown}
+                        aria-label={t.gallery.moveDown}
+                        disabled={index === config.gallery.length - 1}
+                        onClick={() => void moveGalleryImage(index, 1)}
+                      >
+                        <ChevronDown size={13} />
+                      </Button>
+                    </div>
                     <Button
                       variant="outlineDanger"
                       size="sm"

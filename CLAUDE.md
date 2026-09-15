@@ -2,22 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Mandatory start — read main before touching code
+## 對話輸出語言（強制）
 
-Before working on any Issue:
+對使用者的所有對話輸出——狀態回報、進度更新、解釋、提問、摘要——一律使用繁體中文，
+不得夾雜整段英文說明；程式碼、指令、檔名、API／欄位名、錯誤碼、log、commit message
+與 PR 內文不受此限，維持原有慣例（多數已是繁體中文，程式相關詞彙照舊不譯）。這條規則
+沒有「情境許可就可以用英文」的例外；每一輪要輸出給使用者的文字前，先確認語言是否符合。
+被 context 壓縮或恢復後，這條規則不因此失效，必須在下一次輸出前重新對齊。
 
-1. `git fetch origin`.
-2. Read `origin/main:AGENTS.md`, `origin/main:docs/AGENT-EXECUTION.md`,
-   `origin/main:docs/DOCUMENTATION-GOVERNANCE.md`, and
-   `origin/main:docs/OWNER-DECISIONS.md`.
-3. Search `origin/main:docs/AGENT-PLAYBOOK.md` by Issue, error code, test, or domain and read
-   the relevant lessons only.
-4. Read the Issue's canonical `docs/integration/**` files and
-   `docs/integration/12-TESTING-TDD.md` from `main`.
-5. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
+## Mandatory start — low-friction current truth
+
+`docs/AGENT-EXECUTION.md` is the canonical default execution entry. Before working on any Issue:
+
+1. `git fetch origin --prune`.
+2. Read `origin/main:AGENTS.md` and `origin/main:docs/AGENT-EXECUTION.md`.
+3. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
+4. Read only the Owner Decision and canonical `docs/integration/**` / testing sections directly relevant to the current Issue or domain.
+5. Load `docs/MODEL-ROUTING.md`, `docs/DOCUMENTATION-GOVERNANCE.md`, B+ background decisions, skills, Playbook entries and historical Runs only when the trigger table in `docs/AGENT-EXECUTION.md` §2 says they are relevant. Do not preload the whole governance library “just in case”.
 6. Start implementation work from the then-current `main`, or from a designated integration branch with the required canonical decisions. After the working branch exists, **do not rebase only because unrelated work advanced `main`**. Follow `docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md`: re-align only for a material migration-ledger change/prefix collision, actual merge conflict, shared contract or acceptance-precondition change, or CI evidence that the new base materially affects the candidate. `HEAD^ == origin/main` is not a global invariant.
 
-Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**. Re-reading newer decisions is required; rebasing unrelated file content is not.
+Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**. Re-reading newer relevant decisions is required; rebasing unrelated file content is not.
 
 ## Default execution mode
 
@@ -66,13 +70,14 @@ MAIN 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。
 `modelUsage.tasks`、`flow` 的委派計數、`ci.fullCiRuns`、`delivery.issuesStarted/Closed`
 必須**在事情發生的當下**寫進 `docs/metrics/agent-runs/<RUN_ID>.json`，不是收尾時回填。
 
-理由不是形式：`modelUsage.weightedUsageImprovementPercent` 與
-`flow.lunaDelegationRatePercent` 依賴的量**只在 Run 進行當下可觀察**，事後填只會是
-推算。2026-09-14 之前的九本 Run 全部 `modelUsage.tasks: []`，因此 `PRODUCT_RUN_TREND`
-永遠是 `NOT_GRADED`——不是系統沒進步，是施工速度跑在記帳速度前面。
+理由不是形式：current `OBSERVED_V1` 直接從這些 durable raw events 衍生 Product Scorecard；
+人工 `weightedUsageImprovementPercent`、`lunaDelegationRatePercent` 等 legacy percentages 對新 Run
+只保留為 supplemental telemetry，不再是 grading hard gate。2026-09-14 以前的舊 Run 多數
+`modelUsage.tasks: []`，因此缺少可重建的真實事件，歷史仍不能被事後補漂亮數字。
 
 **把埋點欄位建好卻不埋，比誠實地說「沒埋點」更糟**：它看起來像有在做。這與 PB-039
-（一個從來沒有受測對象的 guard）是同一種病。
+（一個從來沒有受測對象的 guard）是同一種病。Active Run 依 `docs/AGENT-EXECUTION.md` §10
+使用 `scorecard-readiness.mjs` 在事件發生時抓漏，不等複盤才發現。
 
 ### 6. 收尾判定
 
@@ -243,6 +248,34 @@ Two consequences worth stating, because both have already been violated in pract
 A scorecard's `requested` / `actual` fields must record what **actually** served the lane, never
 this table by assumption — verify per `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md` when a run claims
 a specific model. The table says what should have run; only the run itself says what did.
+
+### 文件與盤點的 scout 歸屬 —— 機械判準（Owner decision, 2026-09-14）
+
+上面那段是散文，而散文擋不住「反正我已經在跑了，順手做完比較快」。PB-036 已四次因此
+被違反，2026-09-14 第五次——違反者是 audit 層本身，而且就發生在它**同一輪**寫下 PB-050
+批評「埋了點卻沒驗」的時候。
+
+所以改成路徑判準：不看動機、不看大小、不看「只是順手」。
+
+下列路徑的產出屬 `scout` 層（`claude-haiku-4-5`）。audit 層直接編輯即為 routing violation：
+
+```
+docs/AGENT-PLAYBOOK.md
+docs/metrics/**
+docs/schema-truth/**
+docs/slices/**
+```
+
+三條執行規則：
+
+1. **違反要記成違反。** 在 `modelUsage.tasks` 補一筆 `requestedModel: "luna"` /
+   `actualModel: "sol"`，`role` 寫明是 audit 層代做。不得記成中性註記，也不得因為
+   「內容是對的」而略過——PB-036 每一次的內容都是對的，那從來不是爭點。
+2. **例外必須事前宣告。** 唯一免除情形是該文件的實質內容只有 audit 層持有（Final Risk
+   的裁決理由、canonical 規格的設計判定）。宣告寫在委派紀錄或 PR body；寫在事後的檢討
+   裡不算。
+3. **「時間不夠，委派比自己做貴」不是例外。** 那是成本判斷，而成本判斷正是本節收回的
+   權限。真的時間不夠，正確做法是不做、留給下一輪，不是在 audit 層做完再解釋。
 
 ## Final risk review models (Owner decisions, 2026-09-08)
 

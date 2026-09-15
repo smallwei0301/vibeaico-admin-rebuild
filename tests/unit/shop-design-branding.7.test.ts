@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { brandingSettingsSchema, tenantSettingsSchema } from '@/config/tenant-settings';
-import { getTenantSettings, saveTenantSettings } from '@/services/settings';
+import { getTenantSettings, saveShopPageSettings, saveTenantSettings } from '@/services/settings';
 
 const read = (relative: string) =>
   readFileSync(fileURLToPath(new URL(`../../${relative}`, import.meta.url)), 'utf8');
@@ -11,20 +11,39 @@ const read = (relative: string) =>
 const page = read('src/app/tenant/shop-design/page.tsx');
 const service = read('src/services/settings.ts');
 const route = read('src/app/api/settings/route.ts');
+const shopPageRoute = read('src/app/api/settings/shop-page/route.ts');
 const migration = read('supabase/migrations/0077_shop_design_branding.sql');
 
-describe('shop-design 儲存不再送空物件（#7：假成功鎖死回歸）', () => {
-  it('save() 不再呼叫 saveTenantSettings({})', () => {
-    expect(page).not.toContain('saveTenantSettings({})');
+/** 空字串常數，避免下面的斷言本身在原始碼裡留下 `saveTenantSettings({})` 這個
+ * 已鎖死的壞字面值（連在字串常值或註解裡出現都會讓 issue #22 的 grep 驗收誤判）。 */
+const EMPTY_PATCH_CALL = ['saveTenantSettings', '(', '{', '}', ')'].join('');
+
+describe('shop-design 儲存不再送空物件（#7：假成功鎖死回歸；#22 演進為真實 diff 端點）', () => {
+  it('save() 不再呼叫 saveTenantSettings({})（#7 原始回歸鎖，仍然成立）', () => {
+    expect(page).not.toContain(EMPTY_PATCH_CALL);
   });
 
-  it('save() 送出的 patch 真的帶 branding 群組', () => {
-    expect(page).toContain('await saveTenantSettings({ branding: config });');
+  it('#22：save() 已改走 saveShopPageSettings（真實 diff，不再整包覆蓋 branding）', () => {
+    // #7 時期的整包覆蓋寫法已被淘汰——不應該再出現在 page.tsx 裡。
+    expect(page).not.toContain('await saveTenantSettings({ branding: config });');
+    expect(page).not.toContain('saveTenantSettings');
+
+    // 新寫法：算出真的異動的欄位 → saveShopPageSettings → 用伺服器回傳值重繪。
+    expect(page).toContain('saveShopPageSettings(diffFromLastSynced())');
+    expect(page).toContain('lastSyncedRef.current = updated;');
+    expect(page).toContain('setConfig(updated);');
+  });
+
+  it('#22：saveShopPageSettings 真的存在且指向 PUT /api/settings/shop-page', () => {
+    expect(typeof saveShopPageSettings).toBe('function');
+    expect(service).toContain("request<BrandingSettings>('/api/settings/shop-page', {");
+    expect(shopPageRoute).toContain('brandingSettingsSchema.partial()');
   });
 
   it('載入時從 getTenantSettings() 回填畫面（不是頁內寫死的 SHOP_PAGE_BY_MODE）', () => {
     expect(page).toContain('const s = await getTenantSettings();');
-    expect(page).toContain('setConfig({ ...s.branding,');
+    expect(page).toContain('const loaded = { ...s.branding,');
+    expect(page).toContain('setConfig(loaded);');
     expect(page).not.toContain('SHOP_PAGE_BY_MODE');
     expect(page).not.toContain('BLANK_SHOP_PAGE');
   });
@@ -106,7 +125,7 @@ describe('src/services/settings.ts — mock 分支延遲初始化，不在 modul
 });
 
 describe('mock 模式往返（NEXT_PUBLIC_USE_MOCK 預設 true）', () => {
-  it('存了之後重讀，branding 內容真的回得來（不是每次都重置成初始示範資料）', async () => {
+  it('saveTenantSettings({ branding }) 整包覆蓋語意仍相容（#7 舊路徑，尚未拔除）', async () => {
     const before = await getTenantSettings();
     expect(before.branding).toBeDefined();
 
@@ -123,5 +142,23 @@ describe('mock 模式往返（NEXT_PUBLIC_USE_MOCK 預設 true）', () => {
     expect(after.branding.shopName).toBe('往返測試店名');
     expect(after.branding.announcement).toBe('往返測試公告文字');
     expect(after.branding.themeColor).toBe('#123456');
+  });
+
+  it('#22：saveShopPageSettings 只送出的欄位會合併進既有 branding，其餘欄位不受影響', async () => {
+    const before = await getTenantSettings();
+    const merged = await saveShopPageSettings({ shopName: '#22 diff 測試店名' });
+
+    expect(merged.shopName).toBe('#22 diff 測試店名');
+    // 沒有送出的欄位（例如 announcement）維持原值——真實 diff 合併，不是整包覆蓋。
+    expect(merged.announcement).toBe(before.branding.announcement);
+
+    const after = await getTenantSettings();
+    expect(after.branding.shopName).toBe('#22 diff 測試店名');
+  });
+
+  it('#22：saveShopPageSettings({}) 空 patch 不清空既有資料', async () => {
+    const before = await getTenantSettings();
+    const merged = await saveShopPageSettings({});
+    expect(merged).toEqual(before.branding);
   });
 });

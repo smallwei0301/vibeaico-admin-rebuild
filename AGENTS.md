@@ -1,38 +1,28 @@
 # AGENTS.md
 
-所有 Agent 在本 repo 開工前必須先讀：
+## 低摩擦開工入口
 
-1. `CLAUDE.md`
-2. `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
-3. `docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
-4. `docs/decisions/2026-09-01-owner-isolated-test-lanes.md`（歷史基線）
-5. `docs/decisions/2026-09-02-owner-free-local-dual-terra-pilot.md`（雙 Terra 基線）
-6. `docs/decisions/2026-09-07-owner-governance-alignment.md`（最新交付完成、v4 結案、Sol audit 與條件雙 Terra 裁示；衝突時優先）
-7. `docs/AGENT-EXECUTION.md`
-8. `docs/DELIVERY-CHAIN.md`（產品交付鏈路：每一關要抓什麼、通過的證據長什麼樣）
-9. `docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-10. `docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-11. `docs/DELIVERY-OUTCOME-V2.md`
-12. `docs/DOCUMENTATION-GOVERNANCE.md`
-13. `docs/OWNER-DECISIONS.md`
-14. 該 Issue 指定的 `docs/integration/**` canonical 文件
-15. `docs/integration/12-TESTING-TDD.md`
-16. 以 Issue／錯誤碼搜尋 `docs/AGENT-PLAYBOOK.md`，只讀相關條目
-17. 若任務涉及 GUIDE 首頁、旅客自助、方案 UX、通知體驗、旅客風險、LINE 開通、
-    報表或收費驗證，另讀 `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`
-18. 若任務涉及 GUIDE 導航、Dashboard、Calendar、Customers、Chat、手機／平板／桌機
-    響應式或 GUIDE 共用 UI，另讀 `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與
-    `docs/assets/guide-mobile-ui/README.md`
-19. 長程 `/goal`、開始／繼續 Loop、多 Agent 派工、CI 判案或 Issue closeout，載入
-    `.agents/skills/vibeaico-agent-orchestration/SKILL.md`
-20. Owner 說「復盤」或「複盤」時，載入
-    `.agents/skills/vibeaico-agent-retrospective/SKILL.md`
-21. 任務涉及 Issue #104、local Supabase、TEST_PROFILE、Supabase Preview Branch 或雙 Terra，
-    載入 `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`；若該 Skill 與 2026-09-02
-    最新 Owner Decision 衝突，以最新 Decision 為準，付費 Branch 不得執行。
-22. Sol TRIAGE 時，若 `origin/main` 已有 `docs/MODEL-ROUTING.md`，載入它分類任務；分類為高風險且
-    `origin/main` 已有 `.agents/skills/vibeaico-astra-review/SKILL.md` 時，才載入 Astra skill。任一檔案
-    尚未合併時沿用既有 Sol／Terra 規則，不得阻塞 TRIAGE 或交付。
+`docs/AGENT-EXECUTION.md` 是本 repo 的 **canonical default execution entry**。不要每輪無條件重讀整套治理背景；先讀最小必要集合，再依任務 trigger 補載。
+
+每次接手固定只做：
+
+1. `git fetch origin --prune`，用 live GitHub 重建 current `main`、open Issue／PR、exact head、CI 與 shared TEST holder。
+2. 從 `origin/main` 讀 `CLAUDE.md` 與 `docs/AGENT-EXECUTION.md`。
+3. 讀與本 Issue／領域**直接相關**的最新 Owner Decision 與 Issue 指定 canonical `docs/integration/**`。
+4. 其餘治理文件、skills、Playbook、歷史 Run 一律依 `docs/AGENT-EXECUTION.md` §2 的 trigger-based load 規則載入，不因「可能用得到」就整包塞進 context。
+
+固定安全邊界沒有因此縮減：Product lane/model/Final Risk、TEST serialization、Completion Truth、Production DB gate、文件治理與 schema canonical-source 規則仍依 `docs/AGENT-EXECUTION.md` 對應章節執行。
+
+常見 trigger：
+
+- Product model routing／Final Risk → `docs/MODEL-ROUTING.md`。
+- 文件 canonical scope／延伸規則 → `docs/DOCUMENTATION-GOVERNANCE.md`。
+- `/goal`、Loop、多 Agent、CI 判案、closeout → `.agents/skills/vibeaico-agent-orchestration/SKILL.md`。
+- `復盤`／`複盤` → `.agents/skills/vibeaico-agent-retrospective/SKILL.md`。
+- Issue #104、local Supabase、TEST_PROFILE、雙 Terra → `.agents/skills/vibeaico-isolated-test-orchestration/SKILL.md`。
+- GUIDE 首頁、旅客自助、方案 UX、通知、風險、LINE 開通、報表、收費 → `docs/integration/19-GUIDE-PRODUCT-EXPERIENCE.md`。
+- GUIDE 導航／Dashboard／Calendar／Customers／Chat／響應式 → `docs/integration/20-GUIDE-RESPONSIVE-UI.md` 與 `docs/assets/guide-mobile-ui/README.md`。
+- Playbook → 只以 Issue／錯誤碼／測試／領域搜尋直接相關條目。
 
 ## 自然語言入口
 
@@ -169,9 +159,10 @@ autonomous_outcome_units   = shipped_unit × 1.0 + verified complete OWNER_BLOCK
 wip_inventory              = CLOSED 但未完成五階 + Audit Ready + CI-only + commit-only + unfinished carryover
 ```
 
-`CLOSED` 只表示 Issue 結案，不是出貨；Audit Ready、CI 綠與 commit 也只列在製品，不再折算成品。`IN_PROGRESS`／`CLOSURE_RECOVERY`、
-缺結束資料、缺必要百分比或 Completion Truth 未驗證時一律 `NOT_GRADED`，不補中性 50 分。
-每件真正出貨 usage 只在 `shipped_units >= 1` 時計算。
+`CLOSED` 只表示 Issue 結案，不是出貨；Audit Ready、CI 綠與 commit 也只列在製品，不再折算成品。
+- `OBSERVED_V1` 新 Run：`IN_PROGRESS`／`CLOSURE_RECOVERY`、terminal facts 缺失、沒有 observed raw task evidence 或 Completion Truth 未驗證時 `NOT_GRADED`；legacy manual percentages 缺失本身不再卡死評分。
+- `LEGACY_V2` 歷史 Run：維持原演算法與原 hard gates 唯讀重播，不回寫歷史。
+- 每件真正出貨 usage 只在 `shipped_units >= 1` 時計算。
 
 ## CI、TEST 與常見診斷
 
@@ -245,10 +236,9 @@ Production，仍需 Owner 另外具名授權——本規則只是它的必要條
 
 Owner 說「復盤」或「複盤」時：
 
-1. 找最新 schema v2 `docs/metrics/agent-runs/*.json`，比較最近最多 3 個已完成且 truth-verified 的 Run。
-2. 先用 live GitHub 驗證完成主張，再用 `run-ledger-v2.mjs`、`score-run-v2.mjs` 與
-   `review-runs-v2.mjs` 重算；新 Run 必須是 schema v2 的 `deliveryTruthVersion: 4`，schema v1 與歷史 DeliveryTruth v2／v3 只作唯讀重算。
-3. 比較 shipped units、autonomous outcomes、WIP、usage、close 率、品質、Sol touches、
-   Luna 採用率、carryover 與 Completion Truth 失敗。
-4. 每次只提出一到兩個最大改良；治理改良走 focused governance PR，不順便改產品。
-5. 不得改寫歷史弱分數、把 requested model 冒充 actual model，或拿未完成 Run 與完成 Run 比效率。
+1. 找最新 schema v2 `docs/metrics/agent-runs/*.json`，比較最近最多 3 個 terminal + truth-verified + comparison-eligible Product Run；不足時仍可報 current active Run 的 live readiness，但不得冒充分數。
+2. 先用 live GitHub 驗證完成主張，再用 `run-ledger-v2.mjs` 驗 ledger、`score-run-current.mjs` 重算 current Product score、`review-runs-v2.mjs` 做跨 Run 比較。`score-run-v2.mjs` 只負責 historical `LEGACY_V2` replay，不再是 current dispatcher。
+3. Product 與 Governance 是兩個 score surfaces；Governance Scoreboard 依 `.agents/skills/vibeaico-agent-retrospective/SKILL.md` 與 `docs/GOVERNANCE-SCOREBOARD.md` 獨立重算，不因 Product `NOT_GRADED` 而省略。
+4. 比較 shipped units、autonomous outcomes、WIP、usage、close 率、品質、Sol touches、Luna 採用率、carryover 與 Completion Truth 失敗；資料不足時指出是哪個 capture checkpoint 缺失，不用「資料不足」四字帶過。
+5. 每次只提出一到兩個最大改良；治理改良走 focused governance PR，不順便改產品。
+6. 不得改寫歷史弱分數、把 requested model 冒充 actual model，或拿未完成 Run 與完成 Run 比效率。

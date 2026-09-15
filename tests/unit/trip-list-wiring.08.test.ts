@@ -40,8 +40,8 @@ function handlerBody(name: string): string {
   return page.slice(start, next > 0 ? next : undefined);
 }
 
-describe('四個寫入操作都真的打端點（不是只改 state）', () => {
-  it('頁面從 @/services/tours 匯入四支寫入 service', () => {
+describe('五個寫入操作都真的打端點（不是只改 state）', () => {
+  it('頁面從 @/services/tours 匯入五支寫入 service', () => {
     const m = page.match(/import\s*\{([^}]*)\}\s*from\s*'@\/services\/tours'/);
     expect(m, '頁面沒有從 @/services/tours 匯入').not.toBeNull();
     const names = m![1].split(',').map((x) => x.trim());
@@ -56,17 +56,39 @@ describe('四個寫入操作都真的打端點（不是只改 state）', () => {
     ['doRequestMidao', 'requestMidaoListing(midaoTarget.id)'],
     ['doDelete', 'deleteTrip(deleteTarget.id)'],
     ['doCreate', 'createTrip('],
+    ['duplicate', 'createTrip('],
   ])('%s 呼叫 %s', (handler, call) => {
     expect(handlerBody(handler)).toContain(call);
   });
 
   it('**沒有任何 handler 還在用 setRows 直接偽造結果**', () => {
-    for (const h of ['togglePublish', 'doUnpublish', 'doRequestMidao', 'doDelete', 'doCreate']) {
+    for (const h of ['togglePublish', 'doUnpublish', 'doRequestMidao', 'doDelete', 'doCreate', 'duplicate']) {
       expect(
         handlerBody(h),
         `${h} 仍然直接改 rows —— 那就是重整後會恢復舊狀態的假成功`,
       ).not.toContain('setRows(');
     }
+  });
+
+  it('duplicate 透過共用的 runAction（成功才重讀清單、失敗顯示真實訊息），不是自己另開一套', () => {
+    const body = handlerBody('duplicate');
+    expect(body).toContain('runAction(() => createTrip(');
+    expect(body).toContain('t.messages.duplicated');
+  });
+
+  it('duplicate 複製行程本身的內容欄位，且複本標題帶有可辨識的後綴', () => {
+    const body = handlerBody('duplicate');
+    for (const field of [
+      'title:', 'slug:', 'summary:', 'description:', 'region:', 'meetingPoint:',
+      'inclusions:', 'exclusions:', 'notices:', 'safetyNotice:', 'refundPolicyType:',
+    ]) {
+      expect(body, `duplicate 缺少欄位 ${field}`).toContain(field);
+    }
+    expect(body).toContain('t.messages.duplicateTitleSuffix');
+  });
+
+  it('複製按鈕的 onClick 呼叫 duplicate(r)（不是舊的樂觀更新版本）', () => {
+    expect(page).toContain('onClick={() => void duplicate(r)}');
   });
 
   it('「新增行程」的按鈕不再是空的 onClick', () => {

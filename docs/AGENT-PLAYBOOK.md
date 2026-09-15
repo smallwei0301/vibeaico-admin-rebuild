@@ -932,8 +932,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-036 — `TERRA_BUILD` 的施工跑在 audit 層模型上，因為「反正我已經在跑了」
 
-- 首次／最近：2026-09-12／2026-09-13
-- 發生次數：2
+- 首次／最近：2026-09-12／2026-09-14
+- 發生次數：**5**（第 5 次見本條最末「2026-09-14 第五次」）
 - Issue／PR／CI：#370（migration＋RPC＋route＋測試，掛在 `TEST_VALIDATION` lane 上）；
   #396（`0104_tour_order_lineage_keys.sql`＋契約測試＋基線 manifest）
 - 後續：#397 的 Final Risk 覆核發現修正已**確實委派給 build 層（Sonnet）**，預防第一次真的生效。
@@ -961,7 +961,34 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   3. lane 欄位不得用來讓規則失效。填 `TEST_VALIDATION` 而實際在新增 migration，
      是同一條違規再加一條不實中繼資料。
   4. 已發生的違規如實記在 PR 上，不寫成「註記」。
-- 狀態：監看中（第 3 次再發生時，改為開工前強制先跑一次 lane 分類並記錄結果）
+#### 2026-09-14 第五次 —— 這次不是施工，是文件，而且違反者是 audit 層自己
+
+前四次都是 `TERRA_BUILD` 的施工跑在 Opus 上。第五次換了形狀：**文件與盤點屬 `scout` 層
+（`claude-haiku-4-5`），我整段都在 Opus 5 上做完了**——PB-049、PB-050、ledger 詞彙修正、
+s07 sweep 紀錄、`docs/slices/` 的 #41 §5 盤點，五份，一次都沒委派。
+
+最難看的一點：**PB-050 就是我在同一輪寫的**，內容是批評「把埋點欄位建好卻不埋」
+「慣例寫在資料裡而不寫在檢查裡，就只是一句話」。我一邊寫這句話，一邊示範它。
+
+- 觸發我承認的是 Owner 問「為什麼額度消耗這麼快」。**不是我自己在收尾自檢時發現的**，
+  儘管 `CLAUDE.md` 明文要求每輪結束前對六個步驟各答一次「做了沒有」。那份自檢我寫了，
+  而且寫的是「✅ 即時埋點」——答案是對的，問的問題是錯的：我檢查了「有沒有埋」，
+  沒檢查「該由誰埋」。
+- 代價可量化的部分：本 session transcript 113 MB、9,092 次工具呼叫，每一次都把完整
+  上下文重送給 audit 層模型。那五份文件本身不貴，貴的是它們各自帶著的整個上下文。
+- 為什麼前四次的預防沒擋住：預防寫的是「開工前強制先跑一次 lane 分類」，而
+  **「寫文件」在直覺上不像「開工」**。判準綁在「施工」這個詞上，於是換一種形狀就繞過去了。
+
+修正：改成**路徑判準**，見 `CLAUDE.md`「文件與盤點的 scout 歸屬 —— 機械判準」。
+不看動機、不看大小、不看是不是「開工」，只看改了哪些路徑。
+
+一併收回一個我當場用過的藉口：「剩下時間不多，委派一輪比自己做貴」。那是成本判斷，
+而成本判斷正是這條規則明文收回的權限（`CLAUDE.md`：「neither is the runner's call to
+make」）。時間真的不夠，正確做法是**不做**、留給下一輪。
+
+- 狀態：監看中。第 6 次再發生時，本條的預防已證明**兩種寫法都失效**（詞彙判準、路徑判準），
+  屆時應停止再寫預防文字，改為在 CI 加一道真正會擋下的檢查——例如比對 PR 變更路徑與
+  `modelUsage.tasks` 是否有對應的 scout 委派紀錄。
 
 ### PB-037 — 把「欄位集合」當成「欄位順序」，然後用一次找不到的搜尋證明「它不存在」
 
@@ -1245,6 +1272,127 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
      Opus 上，都是如實的違規記錄，不是「還沒填」。
 - 狀態：監看中。下一輪若 `modelUsage.tasks` 仍為空而該輪確實有委派，視為第二次。
 
+### PB-044 — 破壞性動作前的查證，有效期只有幾分鐘
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1
+- Issue／PR／CI：shared TEST 漂移排查；CI 與 scout 並行跑 integration
+- 分類：TEST DB／Agent
+- 事件：07:20 查詢 TEST 上 `trip_departures` 的 `formation_status`，結果是「3 列全部 COLLECTING」，於是告訴 Owner「drop 掉再重建是安全的」。07:45 準備真的執行 drop/recreate 之前再查一次，結果變成「1 列 AT_RISK + 2 列 COLLECTING」——中間 25 分鐘內 CI 跑了 #440 的 integration 測試，seed 改掉了資料。
+- 證據：兩次查詢間隔、查詢結果各一份、migration 日誌顯示該時間段有 seed 執行。
+- 根因：在共用環境（TEST 被 CI 與其他 lane 共用）上，「我剛剛查過」不等於「現在還是這樣」。查證與破壞性動作之間隔了一次對話往返，環境狀態有時間改變。
+- 影響：若按照 07:20 的結論執行 drop/recreate，會丟掉真實資料。改用 `alter column type … using` 保住資料，但延遲了排查進度。
+- 修正：放棄第一份查詢結果，改以最新查詢為準；在 migration 與 seed script 前加鎖序列化 TEST DDL。
+- 預防：
+  1. **破壞性動作的前置查證必須緊貼動作本身**。drop／truncate／alter 之前，把查證與動作放在同一個交易或同一次 RPC 呼叫裡。
+  2. **做不到原子化就在動作前一刻重查一次**，並把兩次的結果都記下來。查證的有效期是幾分鐘，不是一個 session。
+  3. 在共用資源上，任何「我剛驗過」都必須問「期間有沒有其他工作可能改過」，特別是 CI lane 在跑時。
+- 驗證：後續 TEST 動作前先確認無 CI 運行，或改用原子查證+動作；重查成功執行且資料一致。
+- 狀態：已防止
+
+### PB-045 — 並行工作的判準是檔案所有權與 Issue 邊界，不是功能描述
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1
+- Issue／PR／CI：Issue #43；PR #418、PR #428；dual Terra 宣告
+- 分類：Agent
+- 事件：我判定 #43 的「第 5 類」與「第 7 類」可以開雙 Terra 並行，理由是「兩件不同的事，功能目標有區別」。
+- 實際：兩條 lane 改的是**完全重疊**的檔案集：都動到 `src/app/api/`、`src/server/`、相同的 supabase migration、相同的 page；而且**同屬一個 Issue #43**。`docs/AGENT-EXECUTION.md` §5 的 dual Terra 契約明確要求「不同的 primary Issue」與「FILE_OWNERSHIP 零重疊」，兩條都違反。
+- 證據：兩個 PR 的 `git diff --name-only` 結果有 95% 的重疊；Issue 號碼都是 #43；dual Terra 宣告的時間點早於實際檔案清查。
+- 根因：把功能描述上的差異（「訂單管理」vs「退款管理」）當成了可並行的判準，沒有在宣告之前實際列出檔案所有權並做交集。
+- 影響：兩條 lane 可能同時改一個檔案、同時跑 integration，造成 merge conflict、TEST 序列化違反、或一方覆蓋另一方的工作。
+- 修正：停止其中一條 lane，改為序列執行；檔案合併後再開第二條。
+- 預防：
+  1. **並行的判準只有一個：檔案所有權與 Issue 邊界**。在宣告雙 Terra 之前，對每一條 lane 實際列出 `git diff --name-only` 與所有依賴的 supabase migration 編號。
+  2. **計算交集並寫下來**。交集非空就一律不是雙 Terra 候選，這是可機械檢查的。
+  3. **同一個 Issue 下的工作不得並行**，除非已正式分割成子 Issue。primary Issue 相同時，後續動作必須等待前置方完成。
+  4. 功能上「聽起來是不是兩件事」不構成並行資格——要證明的是**可觀察的工作邊界**，不是功能描述。
+- 驗證：改為序列執行後，確認第一條完成合併、第二條的 diff 與第一條無重疊、分別通過 integration；merge 與上線時只有一個時間點。
+- 狀態：已防止
+
+### PB-046 — 後置斷言只檢查本檔新增的欄位，不檢查所依賴的前提
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：1（但涉及 canonical migration 與環境漂移）
+- Issue／PR／CI：Issue #41（payment state 模型）；PR #432；`supabase/migrations/0108_issue_41_payment_state_model.sql`；TEST 環境漂移排查
+- 分類：Migration
+- 事件：`0108` 整支都在替 `public.tour_payment_status` enum 補 `PARTIAL`、`REFUND_PENDING` 兩個 label，並加上一整組後置斷言檢查新增欄位的型別。它依 PB-026 寫了斷言，但只檢查**本檔新增的三個欄位**的型別與 nullability，沒有檢查它所依賴的前置條件。實際上 TEST 上 `tour_orders.payment_status` 的型別是 `text`（外加一條整個 repo 反查零命中的古舊 check constraint），根本不是那個 enum。`0108` 在 TEST 上完整套用成功、零告警——它從來沒有斷言過自己所依賴的前提。
+- 證據：
+  1. **Canonical**：`git show origin/main:supabase/migrations/0087_tour_schema_foundation.sql | grep -A3 'payment_status'` → `payment_status tour_payment_status not null`（enum）
+  2. **Production**：同上，enum 正常
+  3. **TEST**：`select column_name, udt_name from information_schema.columns where table_name='tour_orders' and column_name='payment_status'` → `(payment_status, text)`
+  4. **同表其他欄**：`status` 與 `source` 也都是 enum，只有 `payment_status` 一欄被改成 text
+  5. **後置斷言發現漂移的機制**：不是靠盤點，是靠一個**沒有變綠的探針**。移除另一項漂移（孤兒 trigger）後 7 個 integration 失敗案例有 5 個轉綠，剩下一個仍紅：`expected '23514' to be '22P02'`。`22P02` = 字串不是 enum 的合法 label（正常 enum 通過），`23514` = 被 CHECK constraint 擋（非 enum 型別通過初始檢查但被老舊 constraint 擋）。拿到 `23514` 只有一種解釋：這個欄位根本不是 enum。
+- 根因：migration 的後置斷言只對**自己建的東西**負責，忽略了**依賴的前提**。一支 migration 依賴「某欄位是某型別」才能執行，就應該把那個前提寫成斷言；否則它可以在前提不成立的環境上「成功」。
+- 影響：TEST 的狀態對 `0108` 是隱形的，所有以 TEST 跑出的測試結論（payment state transition、refund logic 等）都是在一個**與 canonical 不等價的 schema** 上驗收的。若以 TEST 的「通過」宣稱「功能正確」，實際上只是證明了程式碼在錯的 schema 上不會撞到它自己的新 check——沒有證明它在正的 enum 上也會通過。
+- 同類缺口（同一本 migration）：`0107` 與 `0108` 的後置斷言都檢查型別與 nullability，**都不檢查 default**。`add column if not exists` 對已存在的欄位是 no-op，不會修 default，所以 default 的漂移同樣不會被抓到。先前 `trip_departures.min_to_depart_snapshot` 是 NOT NULL 卻沒有 default 就是這樣漏掉的。
+- 修正：
+  1. 檢查 canonical 與 TEST 的 `information_schema.columns` → payment_status 型別確實不同
+  2. 查出 TEST 上是否存在相應的舊 migration、overlay 或手工修改 → 找到 `supabase/local-migrations/historical-integration-baseline/` 有整套舊 #41 實作
+  3. 未修改 TEST（保留漂移作為診斷記錄），改用 canonical 版本的 schema 重新跑一遍，所有探針轉綠
+- 預防：
+  1. **後置斷言的檢查清單至少涵蓋三項**：(a) 本檔新增的欄位 / constraint / index / trigger / function 的型別、nullability、default；(b) 本檔依賴的既有欄位與其型別、nullability、default（「本檔會改它」或「本檔的邏輯依賴它是某個型別」都算）；(c) 型別、nullability、default 三者都要檢，缺一項就留盲點。
+  2. **對 catalog 排序前確認型別**。`pg_enum.enumlabel` 走 C collation 會改變結果，不能跟 `text` array 比；enum 值陣列排序要用集合運算而不是字串順序比對。
+  3. **新增或修改後置斷言時，至少跑一次真的資料庫**。字串比對的 unit 測試證明不了 SQL 斷言會通過。
+  4. **帶新表或新欄位的 migration，每條 check 都要問「既有資料會不會違規」**。新增 CHECK 時，新欄位的 default 幾乎必然不滿足誠實性約束，要嘛附既有資料前置 guard，要嘛明確說明為何既有資料不可能違規。
+- 驗證：
+  1. TEST 診斷已完整記錄，canonical canonical 探針全綠
+  2. 已補上「既有資料」測試案例（本檔新增的欄位必須能通過本檔新增的 check）
+  3. `0108` 的後置斷言已擴展為同時檢查 `tour_orders.payment_status` 的型別前提
+- 同類缺口補充：在排查 #43 類別 5 時發現，後置斷言（恆假）與測試斷言（恆真）中都存在「永遠失敗」或「永遠成立」的缺陷，與 PB-039 的「恆真 guard」是同一個家族：(a) 恆假例：`0108` 的 enum 後置斷言因 `pg_enum.enumlabel` 走 C collation 導致排序不同，永遠失敗；(b) 恆真例：`tests/unit/guide-action-inbox.43.test.ts` 的兩條測試斷言（集合論身分式永遠成立，型別 union 不涵蓋的值無法觸發）。共同教訓：恆真與恆假都是「看起來在守，實際上沒有」——任何斷言寫完後都要反問「如果這件事壞掉，斷言會不會轉紅」；不會就不是斷言。
+- 狀態：監看中；TEST 環境漂移的根本修正（重建 historical overlay）由 #43 的進一步整合決定
+
+### PB-047 — `PRODUCTION_SCHEMA_STATUS` 填了卻沒有去查正式庫
+
+- 首次／最近：2026-09-14／2026-09-14
+- 發生次數：2（同一輪內 PR #440 與 #442；同一個欄位 `formation_status`）
+- Issue／PR／CI：Issue #41（formation state model）；PR #440（#43 的第 3／4 類成團待決定）、PR #442（#43 的第 5 類退款待確認）；`supabase/migrations/0107_issue_41_formation_state_model.sql`；`src/app/api/guide/action-inbox/route.ts`；`docs/schema-truth/2026-09-14-production-0107-not-applied.md`
+- 分類：Production Schema；PR Review；依賴判定
+- 事件：
+  - PR #440：`PRODUCTION_SCHEMA_STATUS` 填成 `NOT_REQUIRED`，證據欄寫「本 PR 無任何 DDL；所讀欄位來自**已在 main 的** `0107` 與 `0066`」。結果 `/api/guide/action-inbox` 在正式環境回 `42703: column "formation_status" does not exist`。
+  - PR #442：由 audit 層（Opus）填 `PRODUCTION_SCHEMA_STATUS: READY`，理由是它依賴的 `0108` 已套用正式庫。問題是**沒有檢查同一支端點裡既有的 formation 查詢**——同一個根因、換一個欄位、又犯一次。
+  - `/api/guide/action-inbox` 把五條查詢放在同一個 `Promise.all` 並逐一 `throw`，所以 formation 查詢一旦失敗，整支端點就 500——不是「成團卡片不顯示」，是「待辦區整個壞掉」。正式庫當時唯一的租戶就是 `GUIDE`——唯一會看到這個畫面的人。
+- 證據：
+  1. 正式庫唯讀查詢：`select id, formation_status from public.trip_departures limit 1;` → `ERROR 42703: column "formation_status" does not exist`
+  2. 欄位清單查證：`trip_departures` 只有 `0066` 的 11 個欄位，`0107` 的八個欄位一個都不在（`formation_status`、`formation_deadline_at`、`min_to_depart_snapshot` 等）
+  3. `supabase/ledger-alias-map.json` 分類：`0107` = `NOT_APPLIED / PENDING_APPLY`，ledger row 編號最後到 56，找不到 `0107`
+  4. 與「已在 main」的區別：`git show origin/main:supabase/migrations/0107_issue_41_formation_state_model.sql` 確實存在，但**環境中沒有**
+- 根因：
+  - **「已在 main」被當成「已在正式庫」回答了。** `PRODUCTION_SCHEMA_STATUS` 這一格問的是「執行這支 PR 時需要的欄位有沒有在它將執行的環境上」，不是「需要的檔案有沒有在 repo 裡」。
+  - **填欄位但不查環境，等於沒有這一格。** 與 PB-040（把埋點欄位建好卻不埋）是同一種病：**欄位存在讓它看起來有在把關，但實際上沒有任何驗證發生**。
+  - 二度犯錯時的跳步：已知第 4 條預防（全表掃描）理論上應該檢查，但審核時沒有擴大檢查範圍到「這支端點內**所有**既有查詢」。
+- 影響：
+  - 正式環境應會持續 500（當時已自動部署）；待辦區（共五類查詢）因為同一個 `Promise.all` 整個無法使用。**此項為程式邏輯推導：欄位不存在 ⇒ PostgREST 回 42703 ⇒ route 逐一 `throw` ⇒ 整支端點 500**——不是從正式環境的執行記錄觀察到的。
+  - 驗收時未能抓住根因：若基於「所有測試綠」與「主要欄位正確」就宣稱「功能驗收通過」，其實是在驗收一個與 canonical **不等價** 的環境上的程式
+  - 修正的遺漏放大：第二次犯錯代表第一次的預防措施沒有被確實執行或推廣
+- 修正：
+  1. 檢查正式庫 ledger 與結構，確認 `0107` 真的沒有套用
+  2. Owner 具名授權後，套用 `0107` 到正式庫（ledger row `20260914094736`）
+  3. `trip_departures` 由 11 欄變 19 欄；先前必定 `42703` 的查詢改回傳空集合
+  4. `0107` 套用後 `0109` 第四段在正式庫上變成**真正的 no-op**（`min_to_depart_snapshot` default `1`、`formation_status` default `'COLLECTING'::departure_formation_status` 已符合 canonical）。但該段的**欄位存在性守衛必須保留**——它守的是「`0107` 尚未套用」的環境，那種環境仍會出現（任何新建或只套到一半的環境）
+- 預防（必須機械檢查，不能依賴人工記憶）：
+  1. **填 `PRODUCTION_SCHEMA_STATUS` 之前，對正式庫下唯讀查詢，驗證**本 PR 實際會讀到的每一個欄位**都存在。不是驗證「migration 在 main 上」，是驗證「欄位在環境裡」。**不能只查 ledger 帳本，必須真的跑查詢。**
+  2. **檢查範圍是整支端點**，不只是本 PR 新增的那幾行——本 PR 沒改到的既有查詢一樣會在同一個 `Promise.all` 裡把整支端點拖垮。
+  3. **一支端點若把多條查詢放在同一個 `Promise.all` 並逐一 `throw`，評估影響時要以整支端點為單位**。不是「我加的那張卡片」，是「這支端點整體」。
+  4. **`ledger-alias-map.json` 裡分類為 `NOT_APPLIED / PENDING_APPLY` 的 migration，其欄位不得被視為正式環境可用**——這一項現在沒有任何 CI 在做，但應該機械檢查（preflight 或 astra-review-policy）。
+  5. **不只是 pull request review；PR 模板應該明確要求填寫者貼出驗證查詢。** 「我查過」的承諾必須附上實際執行過的 SQL 與結果。
+- 驗證：
+  - **已驗證**：
+    1. 正式庫 `trip_departures` 由 11 欄變 19 欄（`show tables` → column count ＋ system catalog 查證）
+    2. `select id, formation_status from public.trip_departures limit 1;` 由 `ERROR 42703` 變成回傳 `[]`
+    3. ledger 56 → 57，新增 row `20260914094736 / 0107_issue_41_formation_state_model`（帳本同步已完成）
+    4. `0107` 自己的五段後置斷言全數通過（任一不符都會 `raise exception` 中止整支 migration，所以套用成功即為其成立的充要證據）
+  - **尚未驗證**：
+    - 沒有人呼叫過正式環境的 `/api/guide/action-inbox` 端點；也沒有人登入正式環境看過待辦區畫面
+    - `AUTHENTICATED_PRODUCTION_ACCEPTED` 仍是 `NOT_RUN`
+    - **欄位補上、查詢不再報錯，不等於畫面正常——這正是本條目所講述的現象**
+- 同類教訓（與 PB-027 第五種同型、PB-040 的欄位形式主義）：
+  - PB-027：「名字出現≠真的會發生」
+  - PB-040：「埋點欄位存在≠實際埋點」
+  - 本條：「驗證欄位存在≠查詢過環境」
+  - 共同性質：**程序通過留下的痕跡（欄位、紀錄、檔案）被當成了實質確認，而實質確認的工作從未發生。**
+- 狀態：已修復（正式庫已補欄位；ledger row 及帳本同步已完成）；預防措施（第 4、5 點）尚未機械化
+
 ### 六問開工／Review Checklist
 
 對任何涉及狀態一致性、共享資源或外部承諾的功能，在施工與 Sol／Final Risk review 時至少問一次：
@@ -1258,3 +1406,187 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 若其中任何一題的答案是「不知道」，不得用「測試很多」「CI 綠」「畫面看起來正常」代替答案；先把該層的真實證據補齊。
 
+
+### PB-048 — 被順帶量到沒有覆蓋的過濾器，三次都沒人補
+
+- 首次／最近：2026-09-11 / 2026-09-14
+- 發生次數：3（同一檔案、同一類過濾器、同一成因）
+- Issue／PR／CI：Issue #43（第 3／4 類成團待決定、第 5 類退款待確認、第 7 類訂單行為盤點）；PR #440、PR #448、同一輪 audit 層查驗
+- 分類：測試覆蓋；既知缺口
+- 事實經過（時序順序）：
+  1. **PR #440**（Issue #43 第 3／4 類）的「已知缺口」第 1 項逐字記述：
+     > formation 查詢的 `CANCELLED` 排除只有 source-grep 斷言保護。突變測試 M6（把 `.neq('status','CANCELLED')` 改成 `'ZZZ'`）**不會**讓行為測試失敗，因為 fixture 裡沒有 CANCELLED 的團次。
+
+     記下來了，沒有補。
+
+  2. **PR #448**（Issue #43 第 7 類）：audit 層實跑突變時發現**新查詢**的 `.in('status', ['OPEN','CLOSED'])` 拿掉之後 21 個測試全綠——同一檔案、同一類過濾器、同一成因（fixture 裡沒有反例）。這一次補了：加入 `dep-cancelled-conflict` 與 `dep-stale-conflict` 兩筆對照組。補完後拿掉過濾器測試會紅。
+
+  3. **同一輪**，audit 層順手量既有的 `DEPARTURE` 查詢（`src/app/api/guide/action-inbox/route.ts` L111，#440 帶進來的那一條）的 `.in('status', ['OPEN','CLOSED'])`：刪掉後仍然 **21 passed**。Final Risk（claude-fable-5-1）獨立用 `sed` 逐行刪除重驗，得到同樣結果，並明確建議：
+     > 這一項應該在 #440 的後續或 PB 補一筆，不要讓它第三次被「順帶量到」。
+
+- 根因：規格（如 `docs/integration/18-*` 或 issue checklist）會要求排除 `CANCELLED`，開發者也照寫了，但**寫過濾器的那一刻沒有同時寫出會被它擋掉的那一筆資料**。於是：
+  - 過濾器存在，看起來有在守
+  - 測試全綠，看起來有被驗證
+  - 實際上拿掉它不會有任何測試變紅
+
+  這與 PB-039（從來沒有受測對象的 guard）、PB-040（埋點欄位建好卻沒埋）是同一個家族：**留下了「有在做」的痕跡，實質檢查沒有發生**。差別在於本條的痕跡是「已知缺口」欄位本身——**把缺口誠實記錄下來，不等於處理了它**。誠實記錄是必要的，但如果三輪過去那一行字沒有變成一筆 fixture，記錄就只是把債務寫得比較好看。
+
+- 影響（推導，非觀測）：L111 那條過濾器若失效，效果是「今天／明天出發、狀態為 `CANCELLED` 的團次會多出一張 DEPARTURE 卡片」。**這是從程式碼與查詢條件推導的，不是從線上觀察**——目前正式庫 `trip_departures` 是 0 列。不是租戶邊界問題。
+
+- 預防（寫成可執行的檢查，不要寫成心法）：
+  1. **每加一個過濾器，同一次 commit 就加一筆會被它擋掉的 fixture**。判準是機械的：把那個過濾器刪掉，測試必須變紅。
+  2. **「已知缺口」欄位不是垃圾桶**。一項缺口若在兩輪之內沒有被處理，就該變成一張 Issue 或一筆 PB，而不是繼續在每張 PR 的 body 裡被複製貼上。
+  3. **突變要用行號精準定位，不要用 regex**。同一支檔案可能有多處相同字串——`src/app/api/guide/action-inbox/route.ts` 就有三處 `.gte('departs_on', today)`（L112／L135／L158）。audit 層先前用不帶 `/g` 的 perl regex 做突變，只換到第一個匹配，因而把「另一條查詢有覆蓋」誤報成「本查詢有覆蓋」。
+  4. **多維度掃描：新增查詢、既有查詢、同一個端點的所有查詢都要檢**。不要只檢本次新增的過濾器；一支端點若把多條查詢放在同一個 `Promise.all` 並逐一 `throw`，既有查詢的過濾器漂移也會導致端點失敗。
+  5. **存在性與行為覆蓋分開確認**。過濾器的欄位可能存在（避免編譯錯誤），但不代表 SQL 執行期有約束力——fixture 要驗的是行為後果，不是語法正確。
+
+- 待處理項 → **已關閉（2026-09-14，PR #449）**：
+  原記述為「L111 的 `.in('status', ['OPEN','CLOSED'])` 仍然沒有行為覆蓋」。PR #449 在
+  `tests/unit/guide-action-inbox.43.test.ts` 補上對照組後，這一條已有行為覆蓋。
+  **合併後於 `origin/main` 實測覆核**（獨立 worktree，`sed -i "${L}d"` 行號刪除，每次還原後
+  `git status --porcelain` 為空）：baseline 24 passed；刪 L124（DEPARTURE 查詢）→ `1 failed | 23 passed`；
+  刪 L170（第 7 類 STAFF_CONFLICT 查詢）→ `1 failed | 23 passed`。行號因 #449 併入新查詢而由
+  L111 位移至 L124，是同一條過濾器。
+
+  記一句給下一個人：這一項從「被順帶量到」到真的補上，橫跨三輪。**讓它關閉的不是決心，是
+  把判準寫成機械可執行的那一句**——「把過濾器刪掉，測試必須變紅」。前兩輪寫的是「應該補」。
+
+- 順帶記一項相關但不同的覆蓋邊界：
+
+  Final Risk 在同一輪指出：`loadStaffLoad()`（`src/server/staff-availability.ts` L128–141）與 `queryEffectiveBlockTimes()`（`src/server/block-times.ts` L100–105）內部的四條 `.eq('tenant_id')` 在**全專案沒有任何突變或行為覆蓋**——`tests/unit/departure-guide-assignment.37.test.ts` 沒有觸及租戶。#448 的跨租戶測試只證明了**候選查詢**的租戶條件。它的結論是：程式碼審讀加上正式庫實查的 RLS（八張表 SELECT 都是 `is_tenant_member(tenant_id)`）讓這一點可以接受，但**「租戶邊界有測試」不能被讀成涵蓋整條鏈**。這是非阻擋的已知邊界，不是缺陷。
+
+- 狀態：過濾器覆蓋部分**已關閉**（2026-09-14 於 `origin/main` 實測，見上）；仍監看中的是 `loadStaffLoad()` 與 `queryEffectiveBlockTimes()` 的租戶邊界，由 #43 進一步整合決定
+
+### PB-049 — 在證據還沒送達之前就觸發檢查閘門，然後把時序問題讀成內容問題
+
+- 首次／最近：2026-09-14 / 2026-09-14
+- 發生次數：1（但與 PB-044「驗證有保存期限」是同一個家族的第二個面向）
+- Issue／PR／CI：Issue #43 第 1 類；PR #449；`agent-wip-guard` run `34838245246`、`34838537190`（皆 failure）、`34838944744`（success）
+- 分類：流程順序；證據時序
+
+- 事實經過（時序，皆為 UTC）：
+
+  | 時間 | 事件 |
+  |---|---|
+  | `11:26:51` | guard（`pull_request_target`）跑在 `a7a9e8c` → **failure** |
+  | `11:30:19` | 我貼 `/astra-review-check`，guard 再跑 → **failure** |
+  | `11:32:18` | Final Risk 對 `a7a9e8c` 的 **PASS** review 才送達 API |
+  | `11:35:06` | 我再貼一次 `/astra-review-check` → **success** |
+
+  兩次紅燈的訊息都是：
+  `Astra evidence is stale: testBaseline; Astra evidence is stale: changeDigest; Astra verdict is not PASS`
+
+- 根因：`parseAstraReviews()`（`scripts/agents/astra-review-policy.mjs` L277）以 `submittedAt`
+  降序排序後只取 `parsed[0]`。在 `11:32:18` 之前，最新的一則是對前一個 head `81a42b3` 的
+  `CHANGES_REQUESTED`——它的 `testBaseline` 釘在舊 body、`changeDigest` 是 `e0c5be1e…`、
+  `verdict` 是 `CHANGES_REQUESTED`。**三條錯誤訊息完全自洽，而且全部都是對的。**
+
+  我的錯誤不在讀錯訊息，而在**觸發的時機**：我在委派 Final Risk 之後、確認 review 真的
+  存在於 API 之前，就把 `/astra-review-check` 貼出去了。
+
+- 為什麼容易犯：`review 送出` 直覺上像是一個會自己推進流程的事件。它不是。
+  `agent-wip-guard.yml` L19 的觸發條件只有兩個：`pull_request_target`，或首行為
+  `/astra-review-check` 的 issue comment。**submit review 不在其中**。所以 review 送出後
+  guard 不會自己重跑，而任何在 review 送達前觸發的 guard，讀到的必然是舊證據。
+
+- 這條與 PB-044 的關係：PB-044 說的是「驗證有保存期限——舊 head 的結論不能用在新 head」。
+  本條是同一件事的另一個方向：**新 head 的結論也不能在它還沒送達之前就拿來觸發閘門**。
+  兩者的共同判準是：**閘門讀的是它執行當下的狀態，不是我心裡以為已經完成的狀態。**
+
+- 影響：兩次多餘的 CI run，約 4 分鐘。沒有錯誤合併，沒有偽造證據——guard 擋住了，而且
+  擋得對。這是閘門正常運作的紀錄，不是閘門的缺陷。
+
+- 預防（機械可執行）：
+  1. **觸發 guard 之前，先以 API 確認 review 已存在且 head 相符**：
+     ```bash
+     gh api repos/<owner>/<repo>/pulls/<n>/reviews \
+       --jq '[.[] | select(.commit_id=="<HEAD_SHA>")] | last | {state, submitted_at}'
+     ```
+     回傳為 `null` 就是還沒送達——**等，不要貼指令**。
+  2. **確認 `verdict` 真的是 `PASS` 再觸發**。`parsed[0]` 只看最新一則；一則較新的
+     `CHANGES_REQUESTED` 會直接蓋掉較舊的 `PASS`。
+  3. **guard 紅燈先分辨「時序」與「內容」**：比對 guard 的 `completed_at` 與最新 review 的
+     `submitted_at`。前者早於後者，就是時序問題，重貼指令即可，**不要去改 PR body 或 review
+     內容**——那會把一個正確的 attestation 改壞。
+  4. 一般化：**任何「我已經請某人做了 X」到「X 的結果已經可被系統觀察」之間都有延遲。**
+     下一步若依賴 X，就必須先查 X 是否已可觀察，而不是依賴自己的記憶。本 Run 這是第二次
+     因為「沒有先確認狀態就宣布下一步」而付出代價（前一次是 `git push` 的結果被 pipe 吃掉，
+     在分支仍 `ahead 1` 的情況下回報成功）。
+
+- 狀態：已關閉（預防規則已寫成上述可執行指令）；同類再犯視為第二次。
+
+### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
+
+- 首次／最近：2026-09-14 / 2026-09-14
+- 發生次數：1（PB-040 的下一層。PB-040 是「欄位建好沒埋」，本條是「埋了但沒驗，而且埋錯詞彙」）
+- Issue／PR／CI：Run `2026-09-14-product-delivery-r01`；`scripts/agents/run-ledger.mjs` L13–14、L119、L125；`scripts/agents/score-run.mjs` L41–43
+- 分類：度量正確性；自我驗證缺口
+
+- 事實經過：整輪結束前我第一次執行
+  `node scripts/agents/run-ledger-v2.mjs validate <ledger>`，得到 **24 個錯誤**。
+  這本 ledger 從 Run 開始就在寫，**中間沒有任何一次被驗證過**。
+
+- 根因（三個，成因不同，後果一致）：
+
+  1. **詞彙漂移，而且是靜默的。** `modelUsage.tasks` 混用了兩套命名：
+     `scout / build / audit` 與 `luna / terra / sol`；`narrow` 與 `compact`。
+     但 ledger 自己的 `modelUsage.weights` 只定義 `{luna:1, terra:3, sol:6}`，
+     `contextMultipliers` 只定義 `{compact:1, medium:1.5, full:3}`。
+
+     `computeWeightedUsage()`（`score-run.mjs` L41–43）對未知 key **靜默回退**：
+     ```js
+     const modelWeight   = weights[attributedModel] ?? weights.terra;   // 3
+     const contextWeight = context[task.contextClass] ?? context.full;  // 3
+     ```
+     於是一次 `scout` + `narrow` 的窄委派被記成 `3 × 3 = 9` units，而不是 `1 × 1 = 1`。
+     **這不是缺資料，是錯資料**——而且錯的方向是把最便宜的委派記成最貴的，
+     正好會讓 `weightedUsageImprovementPercent` 看起來比實際差。
+
+  2. **借用一個不存在的 tier 值來把欄位填滿。** 七筆 Final Risk 委派寫成
+     `requestedModel: "finalRisk"`。這個值在 `MODEL` 值域（`luna/terra/sol/unknown`）裡不存在。
+     諷刺的是，**同一本 ledger 的 `tasks[13]` 與 `[15]` 早就立好了正確慣例**，並逐字寫下理由：
+     > Final Risk 不屬 luna/terra/sol 三個 tier，ledger 的 tier 值域無法表達它，故記為 unknown
+     > 並在此說明實際模型——**不假借某個 tier 來讓欄位看起來有值**。
+
+     後來的七筆違反了本檔自己寫下的規則。**慣例寫在資料裡，不寫在檢查裡，就只是一句話。**
+
+  3. **`accepted` 八筆維持 `null`。** 這一項反而是三者中最無害的：null 是誠實的「不知道」。
+     但它同樣讓驗證器紅著，於是前兩項真正的錯誤被埋在噪音裡。
+
+- 影響：`weightedUsageUnits` 被系統性高估；`weightedUsageImprovementPercent` 因此不可信。
+  修正後 ledger 首次通過驗證（`VALID_V2`），加權 usage 為 452。
+  `PRODUCT_RUN_TREND` 仍為 `NOT_GRADED`，但原因已變成單純的 `run is still in progress`，
+  不再是資料不合格。
+
+- 這條與 PB-039／PB-040／PB-048 的關係：四條都是**「留下了在做的痕跡，實質檢查沒有發生」**。
+  遞進關係值得記住：
+
+  | | 痕跡 | 缺的東西 |
+  |---|---|---|
+  | PB-039 | guard 存在 | 沒有受測對象 |
+  | PB-040 | 欄位存在 | 沒有埋點 |
+  | PB-048 | 過濾器存在 | 沒有會被它擋掉的 fixture |
+  | PB-050 | 埋點存在 | **沒有跑驗證器，而且值在另一套詞彙裡** |
+
+  每一層都比上一層更像「有在做」。這一層尤其危險，因為欄位是滿的、`notes` 是詳細的、
+  數字是有的——**只有數字是錯的**。
+
+- 預防（機械可執行）：
+  1. **每次寫 ledger 就跑一次驗證器**，不是收尾才跑：
+     `node scripts/agents/run-ledger-v2.mjs validate docs/metrics/agent-runs/<RUN_ID>.json`。
+     一次寫入一次驗證，錯誤永遠只有一筆，不會累積成 24 筆噪音。
+  2. **委派埋點時，把值域一起給出去。** 委派訊息裡直接寫明
+     `requestedModel ∈ {luna, terra, sol, unknown}`、`contextClass ∈ {compact, medium, full, unknown}`，
+     不要只說「記成 scout 層」——lane 名（`scout/build/audit`）與 ledger 的 tier 值
+     （`luna/terra/sol`）是兩套拼寫，`CLAUDE.md` 的 Lane 表同時列出兩者正是漂移的來源。
+  3. **靜默回退要當成缺陷看待。** `weights[x] ?? weights.terra` 讓一個打錯的字變成一個
+     看起來合理的數字。讀到這種 `??` 回退時，要問的是「回退發生時我看得見嗎」——
+     看不見，就該由驗證器在寫入當下擋下來，而不是由評分器在事後靜默吸收。
+  4. **資料裡寫下的慣例，要有一個地方會檢查它。** `tasks[13]` 的那段說明是對的，
+     但它只存在於 `role` 字串裡，沒有任何東西會因為違反它而變紅——所以七輪之後就被違反了。
+
+- 狀態：本 Run 已修正並通過驗證（`VALID_V2`）。
+  仍在外部、**未處理**：`weights` 沒有 `finalRisk` 這一格，Final Risk 只能記為 `unknown`
+  並回退為 `terra` 的權重（3）——Final Risk 實際成本接近 `sol`（6）。
+  這需要 Owner 對權重表裁示，屬治理決策，不由 runner 自行新增；在那之前本 Run 的
+  加權 usage 對 Final Risk 是**低估**的，已如實記在 ledger notes。

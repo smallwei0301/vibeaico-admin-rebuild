@@ -638,12 +638,18 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
 
     const TRIP_DEPARTURE_ROWS: FakeRow[] = [
       {
+        // #43 類別 7 擴充後，這批 OPEN／CLOSED、未來出發的團次也會被 staff
+        // 候選查詢撈到（同一張 `trip_departures` 表、同一個假 harness）。這個
+        // describe block 只測 DEPARTURE／formation 互斥，不是類別 7，所以每筆
+        // 都補一位 PRIMARY 指派，讓它們誠實地「已指派」，不混進 STAFF_UNASSIGNED
+        // 卡片——類別 7 自己的正負例覆蓋在下面獨立的 STAFF_CONFLICT describe block。
         id: 'dep-open', tenant_id: TENANT_ID, trip_id: 't1', plan_id: 'p1',
         departs_on: today, start_time: '10:00:00', status: 'OPEN',
         capacity: 10, seats_booked: 3, created_at: '2026-09-01T00:00:00.000Z',
         formation_status: 'COLLECTING', formation_deadline_at: null,
         min_to_depart_snapshot: 5, formed_participants: null,
         trips: { title: 'Trip One' }, trip_plans: { name: 'Plan One' },
+        trip_departure_staff: [{ staff_id: 's-1', role: 'PRIMARY', staff: { name: '阿海' } }],
       },
       {
         id: 'dep-review', tenant_id: TENANT_ID, trip_id: 't2', plan_id: 'p1',
@@ -652,6 +658,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
         formation_status: 'REVIEW_REQUIRED', formation_deadline_at: '2026-09-19T10:00:00.000Z',
         min_to_depart_snapshot: 5, formed_participants: null,
         trips: { title: 'Trip Two' }, trip_plans: { name: 'Plan One' },
+        trip_departure_staff: [{ staff_id: 's-2', role: 'PRIMARY', staff: { name: '小雨' } }],
       },
       {
         id: 'dep-atrisk', tenant_id: TENANT_ID, trip_id: 't3', plan_id: 'p1',
@@ -660,6 +667,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
         formation_status: 'AT_RISK', formation_deadline_at: null,
         min_to_depart_snapshot: 4, formed_participants: 3,
         trips: { title: 'Trip Three' }, trip_plans: { name: 'Plan One' },
+        trip_departure_staff: [{ staff_id: 's-3', role: 'PRIMARY', staff: { name: 'Kai' } }],
       },
       {
         // 已出發過的舊 REVIEW_REQUIRED——formation query 的 `.gte('departs_on', today)`
@@ -878,7 +886,7 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     });
   });
 
-  describe('route.ts behaviour: #43 類別 7 STAFF_CONFLICT (trip_departure_staff + staff-availability engine)', () => {
+  describe('route.ts behaviour: #43 類別 7 STAFF_CONFLICT／STAFF_UNASSIGNED (trip_departure_staff + staff-availability engine)', () => {
     // 行為測試，不是字串比對：直接呼叫真正的 route handler，撞班判斷本身也是真正
     // 呼叫 `src/server/staff-availability.ts` 的 `loadStaffLoad()`/`findStaffConflicts()`
     // （issue #37 canonical、已有自己的 `tests/unit/departure-guide-assignment.37.test.ts`
@@ -886,6 +894,11 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     // 頂端「Coverage boundary (#43 類別 7 STAFF_CONFLICT...)」，DEPARTURE 這個
     // conflict reason 在這個假 harness 上無法真正觸發，改由既有的
     // `departure-guide-assignment.37.test.ts` 覆蓋 `findStaffConflicts` 本身。
+    //
+    // STAFF_UNASSIGNED（沒有 PRIMARY 指派的候選團次）是本輪新增：route.ts 依
+    // 「這團有沒有 role='PRIMARY' 的指派」把候選分成兩組，兩組天生不相交——下面
+    // 同一個 fixture 集合、同一次呼叫就驗證兩種卡片都各自正確，以及兩者不會同時
+    // 出現在同一團次上。
     const NOW = new Date('2026-09-25T04:00:00.000Z'); // 12:00 Asia/Taipei
     const TENANT_ID = 'tenant-a';
     const OTHER_TENANT_ID = 'tenant-b';
@@ -937,14 +950,26 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
         trip_departure_staff: assignment('s-clean', '阿海'),
       },
       {
-        // 對照組：#43 §7 只涵蓋「已指派但撞期」，未指派人員的既有團次（10-TOUR-
-        // DOMAIN §1.3 相容策略）在這裡先被排除，不進入撞班判斷。
+        // STAFF_UNASSIGNED 正例：完全沒有任何指派（`trip_departure_staff: []`）——
+        // 沒有 PRIMARY，也不進撞班判斷，改出現在 STAFF_UNASSIGNED。
         id: 'dep-unassigned', tenant_id: TENANT_ID, trip_id: 't-unassigned', plan_id: 'p1',
         departs_on: '2026-10-02', start_time: '10:00:00', status: 'OPEN',
         created_at: '2026-09-01T00:00:00.000Z',
         trips: { title: 'Unassigned Trip', duration_hours: 2 },
         trip_plans: { name: 'Plan' },
         trip_departure_staff: [],
+      },
+      {
+        // STAFF_UNASSIGNED 正例（不同資料形狀）：只指派了 ASSISTANT，沒有
+        // PRIMARY——`10-TOUR-DOMAIN.md` §1.3「完成後必須有一位 PRIMARY」的最低
+        // 門檻沒被滿足，一樣算未指派，不是「只要 trip_departure_staff 有列就算
+        // 已指派」。
+        id: 'dep-assistant-only', tenant_id: TENANT_ID, trip_id: 't-assistant-only', plan_id: 'p1',
+        departs_on: '2026-09-25', start_time: '08:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Assistant Only Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: [{ staff_id: 's-assist', role: 'ASSISTANT', staff: { name: '協同小廖' } }],
       },
       {
         // 跨租戶對照組，見上方說明。
@@ -954,6 +979,16 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
         trips: { title: 'Other Tenant Trip', duration_hours: 2 },
         trip_plans: { name: 'Plan' },
         trip_departure_staff: assignment('s-shared', '雨後'),
+      },
+      {
+        // 跨租戶對照組（STAFF_UNASSIGNED 版）：完全未指派、屬於 tenant-b——不得
+        // 洩漏進 tenant-a 的收件匣。
+        id: 'dep-other-tenant-unassigned', tenant_id: OTHER_TENANT_ID, trip_id: 't-other-unassigned', plan_id: 'p1',
+        departs_on: '2026-09-26', start_time: '09:00:00', status: 'OPEN',
+        created_at: '2026-09-01T00:00:00.000Z',
+        trips: { title: 'Other Tenant Unassigned Trip', duration_hours: 2 },
+        trip_plans: { name: 'Plan' },
+        trip_departure_staff: [],
       },
       {
         // `.in('status', ['OPEN', 'CLOSED'])` 對照組：租戶、未來日期、有指派、
@@ -1073,10 +1108,9 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       expect(shiftItem.conflicts).toEqual([{ staffId: 's-noshift', staffName: '小美', reason: 'SHIFT' }]);
       expect(shiftItem.priority).toBe('IMMEDIATE');
 
-      // 對照組：有指派、有班表覆蓋、沒有其他撞期來源的 `dep-clean`，以及未指派的
-      // `dep-unassigned`，兩者都誠實地不產生卡片——不是「只要有指派就一定顯示」。
+      // 負控制組：有指派、有班表覆蓋、沒有其他撞期來源的 `dep-clean`——必須誠實地
+      // 不產生任何一種卡片，不是「只要有指派就一定顯示」。
       expect(items.some((i) => i.id === 'dep-clean')).toBe(false);
-      expect(items.some((i) => i.id === 'dep-unassigned')).toBe(false);
 
       // `.in('status', ['OPEN', 'CLOSED'])` 與 `.gte('departs_on', today)` 對照
       // 組：`dep-cancelled-conflict`／`dep-stale-conflict` 除了 status／日期以外
@@ -1089,6 +1123,46 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
       // 時間，如果 `.eq('tenant_id', t.tenantId)` 被拿掉，它會被撈進候選名單並套
       // 用 tenant-a 的撞班資料而「被誤判撞期」，出現在這裡——見上方 fixture 註解。
       expect(items.some((i) => i.id === 'dep-other-tenant')).toBe(false);
+
+      // ---- STAFF_UNASSIGNED（沒有 PRIMARY 指派）----
+      const unassignedItems = items.filter((i) => i.kind === 'STAFF_UNASSIGNED');
+      const unassignedIds = unassignedItems.map((i) => i.id).sort();
+
+      // 完全未指派（`dep-unassigned`）與只有 ASSISTANT、沒有 PRIMARY
+      // （`dep-assistant-only`）都應該出現；有 PRIMARY 的 `dep-clean` 不該出現在
+      // 這裡（上面已斷言它完全不出現在任何卡片裡）。
+      expect(unassignedIds).toEqual(['dep-assistant-only', 'dep-unassigned']);
+
+      const byUnassignedId = (id: string) => unassignedItems.find((i) => i.id === id);
+
+      const unassigned = byUnassignedId('dep-unassigned');
+      expect(unassigned).toMatchObject({
+        tripId: 't-unassigned', tripName: 'Unassigned Trip', planName: 'Plan',
+        departureDate: '2026-10-02', startTime: '10:00',
+        href: '/tenant/trips/t-unassigned',
+        // 出發日在未來（2026-10-02 > NOW 的 2026-09-25），priority 依出發時刻算，
+        // 不像 STAFF_CONFLICT／REFUND_PENDING 那樣寫死 IMMEDIATE——見
+        // `guide-action-inbox.ts` 對應型別上的說明。
+        priority: 'UPCOMING',
+      });
+
+      const assistantOnly = byUnassignedId('dep-assistant-only');
+      expect(assistantOnly).toMatchObject({
+        tripId: 't-assistant-only', tripName: 'Assistant Only Trip',
+        href: '/tenant/trips/t-assistant-only',
+        // 出發時刻（2026-09-25 08:00 Asia/Taipei）已早於 NOW（12:00），同一套
+        // 「已逾期 → IMMEDIATE」規則跟 DEPARTURE／formation 卡片一致。
+        priority: 'IMMEDIATE',
+      });
+
+      // STAFF_CONFLICT 與 STAFF_UNASSIGNED 天生不相交：任何一個 id 不會同時出現
+      // 在兩種卡片裡。
+      const conflictIdSet = new Set(ids);
+      for (const id of unassignedIds) expect(conflictIdSet.has(id)).toBe(false);
+
+      // 跨租戶（STAFF_UNASSIGNED 版）：tenant-b 完全未指派的團次不得洩漏進
+      // tenant-a 的收件匣。
+      expect(items.some((i) => i.id === 'dep-other-tenant-unassigned')).toBe(false);
     });
   });
 
@@ -1320,6 +1394,15 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(items.filter((item) => item.kind === 'STAFF_CONFLICT')).toEqual([]);
   });
 
+  it('mock GUIDE mode never fabricates a STAFF_UNASSIGNED demo card (every fixture departure already has a primaryStaffId)', async () => {
+    // 跟上面 STAFF_CONFLICT 的 mock 測試同一個道理，但檢查的是另一個方向的誠實：
+    // `MOCK_TRIP_DEPARTURES` 目前每一筆都有 `primaryStaffId`，所以 `getGuideActionInbox()`
+    // 算出來的 STAFF_UNASSIGNED 也該是空陣列——不是因為程式碼寫死回空，而是因為
+    // 示範資料本來就沒有未指派的團次可以顯示。
+    const items = await getGuideActionInbox();
+    expect(items.filter((item) => item.kind === 'STAFF_UNASSIGNED')).toEqual([]);
+  });
+
   it('exhaustively narrows STAFF_CONFLICT on the dashboard card with i18n-only copy (#43 類別 7)', () => {
     // 三個 switch 都要有 STAFF_CONFLICT 分支，否則 `const _exhaustive: never = item`
     // 在加入這個 kind 後會讓 typecheck 失敗——見檔案頂端 `_exhaustive` 的說明。
@@ -1334,5 +1417,18 @@ describe('GUIDE action inbox (#43-A / #43-B / #43-C / #43 類別 3／4)', () => 
     expect(dashboardI18nSource).toMatch(/staffConflictSummary:\s*\(n: number\)/);
     expect(dashboardI18nSource).toContain('staffConflictReason:');
     expect(dashboardI18nSource).toContain('openStaffConflict:');
+  });
+
+  it('exhaustively narrows STAFF_UNASSIGNED on the dashboard card with i18n-only copy (#43 類別 7 後段)', () => {
+    // 同上，這裡是 STAFF_UNASSIGNED 這個新 kind 的等價覆蓋。
+    expect(pageSource).toContain("case 'STAFF_UNASSIGNED':");
+    expect((pageSource.match(/case 'STAFF_UNASSIGNED':/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    expect(pageSource).toContain('t.actionInbox.staffUnassigned');
+    expect(pageSource).toContain('t.actionInbox.staffUnassignedDetail');
+    expect(pageSource).toContain('t.actionInbox.openStaffUnassigned');
+
+    expect(dashboardI18nSource).toContain('staffUnassigned:');
+    expect(dashboardI18nSource).toContain('staffUnassignedDetail:');
+    expect(dashboardI18nSource).toContain('openStaffUnassigned:');
   });
 });

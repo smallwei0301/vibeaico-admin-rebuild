@@ -245,6 +245,27 @@ export const updateStaff = (id: string, payload: Partial<StaffPayload>) =>
 
 export const deleteStaff = (id: string) => deleteWithFallback(`/api/staff/${id}`);
 
+/**
+ * POST /api/staff/reorder — 依 ids 順序寫 sort_order（issue #22；04 §B-2）。
+ * mock 分支要真的存得住：依 ids 順序原地重排 MOCK_STAFF 陣列並回填 sortOrder
+ * （同 updateStaff 的 mock 分支慣例：原地 mutate 陣列元素，不重新指派 live
+ * binding），下一次 listStaff() 才會看到新順序。
+ */
+export const reorderStaff = (ids: string[]) =>
+  adapt(
+    () => {
+      const byId = new Map(MOCK_STAFF.map((s) => [s.id, s]));
+      const reordered = ids.map((id) => byId.get(id)).filter((s): s is Staff => !!s);
+      const untouched = MOCK_STAFF.filter((s) => !ids.includes(s.id));
+      const next = [...reordered, ...untouched].map((s, i) => ({ ...s, sortOrder: i }));
+      next.forEach((s, i) => { MOCK_STAFF[i] = s; });
+      return undefined;
+    },
+    () => request<void>('/api/staff/reorder', {
+      method: 'POST', body: JSON.stringify({ ids }),
+    }),
+  );
+
 /* ------------------------------------------------------------------ 請假 */
 
 /**
