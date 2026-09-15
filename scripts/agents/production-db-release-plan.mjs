@@ -274,7 +274,9 @@ function hasUnverifiedRoutineInvocation(text) {
   }
 
   const candidates = input.matchAll(
-    /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
+    // Keep quoted schema qualifiers in the match: "public".filter() is a
+    // qualified call, never an unqualified SQL keyword from the allowlist.
+    /(?<![\p{ID_Continue}$])(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
   );
   for (const match of candidates) {
     if (isDmlTargetColumnList(input, match.index)) continue;
