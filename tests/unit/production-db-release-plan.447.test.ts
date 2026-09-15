@@ -76,6 +76,25 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier('update public.t set x=1 where id=1;')).toBe('BACKFILL');
   });
 
+  it('does not mistake runtime DML inside a stored RPC for migration-time backfill', () => {
+    const rpc = `
+      create or replace function public.accept_request(p_id uuid) returns void as $$
+      begin
+        update public.tour_orders set status = 'CONFIRMED' where id = p_id;
+      end;
+      $$ language plpgsql security definer set search_path = public;
+      revoke execute on function public.accept_request(uuid) from anon, authenticated;
+    `;
+    expect(inferMigrationRiskTier(rpc)).toBe('AUTHZ');
+
+    const immediateDoBlock = `
+      do $$ begin
+        update public.tour_orders set status = 'CONFIRMED' where false;
+      end $$;
+    `;
+    expect(inferMigrationRiskTier(immediateDoBlock)).toBe('BACKFILL');
+  });
+
   it('rejects destructive and mixed-specialized-risk v1 SQL instead of silently dropping one evidence class', () => {
     expect(() => inferMigrationRiskTier('drop table public.t;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
