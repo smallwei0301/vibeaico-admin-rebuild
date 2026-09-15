@@ -179,6 +179,19 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-haiku-4-5"
+      },
+      {
+        "id": "issue-477-webhook-sync-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#477 P1a TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：LINE webhook 自動同步端點實作完成。新增 `POST /api/settings/line/webhook-sync` route，呼叫 LINE 官方 PUT /v2/bot/channel/webhook/endpoint 與 PUT /v2/bot/channel/webhook/setActive，使用該租戶自己的 Channel Access Token；前端新增「自動修正網址」按鈕並接線至新 route。新增 5 個 mock 單元測試全綠、typecheck 0 error、build 成功、guard:repo-integrity 通過。已開立 PR #506（product/issue-477-line-webhook-sync 分支，exact head f9c87fb2，base main 09a7d46d）。ASTRA_RISK=NONE，未派工 Final Risk。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ]
   },
@@ -191,11 +204,11 @@
     "waitTimeConvertedPercent": null,
     "solTouches": 0,
     "solIssues": 0,
-    "terraSlots": 2,
-    "terraActive": 2
+    "terraSlots": 1,
+    "terraActive": 1
   },
   "delivery": {
-    "issuesStarted": 2,
+    "issuesStarted": 3,
     "issuesClosed": 0,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
@@ -241,6 +254,7 @@
     "PR #464 開立後 Agent WIP Guard 立刻失敗：缺 BPLUS_MODE/RUN_ID/SCORECARD_PATH/LUNA_CLOSURE 埋點，本輪原打算以 BPLUS_MODE=false 誠實留白略過，但這是 CI 機械強制的欄位，不是可略過的記帳品質問題——已改為委派 scout 補齊。",
     "scout 首次產出的 scorecard 未通過 validate-scorecards：缺 quality/auditability/notes/completionTruth 四個頂層欄位，且 flow.solIssues 型別錯誤（應為 number 不是 array）。已由本 session 核實並修正，另外發現並修正兩處捏造：main.startSha 後半段是編造的十六進位、tour-platform review-workflow 的檔案路徑與行號（scout 寫成 src/services/review-workflow.ts:42-98，實際是 apps/web/src/lib/activity-review-transition.mjs）與先前已核實的 scout 報告不符。",
     "modelUsage.tasks 均為即時埋點，非事後回填；未觀測欄位（token 用量、weeklyUsage 增量、lunaDelegationRatePercent、各項 percent 欄位）維持 null，不推算。",
-    "同一輪雙 Terra：#42（PR #464，收尾中）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。"
+    "同一輪雙 Terra：#42（PR #464，收尾中）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。",
+    "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：新增 Issue #477 P1a TERRA_BUILD 條目（LINE webhook sync route 實作，PR #506 已開立）。#42 已合併/完成、#43 未推進，現況一個 Terra 槽位活躍；遞增 issuesStarted 以計數 #477 啟動。"
   ]
 }
