@@ -288,19 +288,12 @@ function hasUnverifiedRoutineInvocation(text) {
 }
 
 function rejectUnsupportedPreparedStatements(statements) {
+  const preparedExecute = /\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu;
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
-    if (/^\s*(?:prepare|execute)\b/i.test(lexicalText)) {
+    if (/\bprepare\b/i.test(lexicalText) || preparedExecute.test(lexicalText)) {
       fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'SQL-level PREPARE/EXECUTE is not admitted by the v1 classifier');
-    }
-    if (!/^\s*do\b/i.test(lexicalText)) continue;
-    const body = immediateProceduralBody(immediateText);
-    if (body === null) continue;
-    const bodyLexical = stripSqlStringLiterals(body, true, true);
-    if (/(?:^|;|\bbegin\b)\s*prepare\b/i.test(bodyLexical)
-      || /(?:^|;|\bbegin\b)\s*execute\s+[A-Za-z_][\w$]*(?:\s*;|$)/i.test(bodyLexical)) {
-      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'prepared SQL statements are not admitted inside an immediate procedural block');
     }
   }
 }
