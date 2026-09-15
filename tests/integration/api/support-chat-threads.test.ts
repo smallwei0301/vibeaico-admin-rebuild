@@ -2,7 +2,7 @@
  * 客服對話串真的持久化，且租戶邊界成立 — `POST/GET /api/support-chat/threads*`
  * -----------------------------------------------------------------------------
  * 規格：`docs/decisions/2026-09-11-support-chat-human-escalation.md`，
- * migration：`supabase/migrations/0116_issue_25b_support_chat_threads.sql`。
+ * migration：`supabase/migrations/0117_issue_25b_support_chat_threads.sql`。
  *
  * ⚠️ 誠實聲明（issue #25 B 段驗收要求）：本檔已撰寫完整，但**尚未在本 agent
  * worktree 執行**——此 worktree 沒有 TEST Supabase 憑證（`TEST_SUPABASE_URL` /

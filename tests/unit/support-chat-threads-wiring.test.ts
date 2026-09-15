@@ -27,7 +27,7 @@ const routeMessages = readFileSync(
   'src/app/api/support-chat/threads/[threadId]/messages/route.ts', 'utf8',
 );
 const migration = readFileSync(
-  'supabase/migrations/0116_issue_25b_support_chat_threads.sql', 'utf8',
+  'supabase/migrations/0117_issue_25b_support_chat_threads.sql', 'utf8',
 );
 
 describe('三支新端點都經過 requireTenant()，且不使用 service role', () => {

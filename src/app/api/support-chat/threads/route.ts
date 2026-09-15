@@ -3,7 +3,7 @@
 //
 // ⚠️ 與 `POST /api/support-chat/ask` 是兩支完全不同語意的端點（見該檔案檔頭
 // 說明與 docs/integration/04-API-CONTRACTS.md）。這裡是持久化的客服案件／
-// 對話串（issue #25 B 段），走 `t.supabase`（session client），由 0116
+// 對話串（issue #25 B 段），走 `t.supabase`（session client），由 0117
 // migration 的 RLS 政策把關租戶邊界，不使用 service role。
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';

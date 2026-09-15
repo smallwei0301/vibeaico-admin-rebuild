@@ -1,6 +1,6 @@
 // POST /api/support-chat/threads/:threadId/messages — 在既有客服對話串追加
 // 一則店家留言。第一版沒有平台後台可以回覆，所以這支端點只會寫入
-// sender_role='TENANT' 的訊息（0116 migration 的 RLS insert policy 也鎖死這一點）。
+// sender_role='TENANT' 的訊息（0117 migration 的 RLS insert policy 也鎖死這一點）。
 import { z } from 'zod';
 import { handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';

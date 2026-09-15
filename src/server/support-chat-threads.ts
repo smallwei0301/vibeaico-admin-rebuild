@@ -8,7 +8,7 @@
  * 兩者刻意分檔，避免日後有人以為它們共用同一套規則。
  *
  * 這一層一律用 `t.supabase`（帶 session 的 client，RLS 把關），不使用
- * `createAdminSupabase()`——0116 migration 的政策集合已經足以讓一般店員
+ * `createAdminSupabase()`——0117 migration 的政策集合已經足以讓一般店員
  * 讀寫自己店的 thread／訊息，沒有理由繞過 RLS 多一個攻擊面。
  */
 import type { SupabaseClient } from '@supabase/supabase-js';

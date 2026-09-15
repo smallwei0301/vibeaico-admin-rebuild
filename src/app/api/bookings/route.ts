@@ -7,6 +7,7 @@ import { mapBooking } from '@/server/mappers';
 import { createAdminSupabase } from '@/server/supabase';
 import { notifyBookingEvent } from '@/server/email/notify';
 import { taipeiTodayDateString } from '@/server/tz';
+import { notifyOwnerNewBooking } from '@/server/owner-notify';
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(0).default(0),
@@ -144,5 +145,7 @@ export const POST = handle(async (req) => {
   // Email 通知（05 分冊 §3 notifyNewBooking / notifyStaffBooking）：不 await ——
   // 寄信慢或失敗都不可拖垮回應，函式內部已吞錯（比照 cancel/route.ts）。
   void notifyBookingEvent(createAdminSupabase(), t.tenantId, bookingId, 'NEW');
+  // 老闆通知 owner-notify（Issue #18）：新預約事件，只發給開了此開關的接收者。
+  void notifyOwnerNewBooking(t.tenantId, bookingId);
   return ok({ id: bookingId });
 });

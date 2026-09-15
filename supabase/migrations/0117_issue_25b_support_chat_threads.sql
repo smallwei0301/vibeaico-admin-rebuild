@@ -1,4 +1,4 @@
--- 0116 — Support chat 完整客服對話串第一版（issue #25 B 段）
+-- 0117 — Support chat 完整客服對話串第一版（issue #25 B 段）
 -- =============================================================================
 -- Owner Decision 2026-09-11（docs/decisions/2026-09-11-support-chat-human-escalation.md）：
 -- 第一版採 Email 升級，不建立平台客服後台。流程：
