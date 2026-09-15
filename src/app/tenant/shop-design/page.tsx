@@ -16,7 +16,11 @@ import {
   CharCounter, FormGroup, FormText, Input, Label, SwitchField, Textarea,
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
-import { getTenantSettings, reorderShopPageGallery, saveShopPageSettings } from '@/services/settings';
+import {
+  confirmBannerVideo, deleteBannerVideo, getTenantSettings, presignBannerVideo,
+  reorderShopPageGallery, saveShopPageSettings, uploadBannerVideoToSignedUrl,
+} from '@/services/settings';
+import { ApiError } from '@/lib/api';
 import { brandingSettingsSchema, buildPublicBookingUrl } from '@/config/tenant-settings';
 import type { BrandingSettings, GalleryImage, TenantSettings } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
@@ -75,6 +79,9 @@ export default function ShopDesignPage() {
   const [settings, setSettings] = React.useState<TenantSettings | null>(null);
   const [config, setConfig] = React.useState<ShopPageConfig>(() => brandingSettingsSchema.parse({}));
   const [deleteTarget, setDeleteTarget] = React.useState<GalleryImage | null>(null);
+  const [videoUploading, setVideoUploading] = React.useState(false);
+  const [videoRemoving, setVideoRemoving] = React.useState(false);
+  const videoInputRef = React.useRef<HTMLInputElement>(null);
 
   /** 新增圖片的本地 id 產生器：render 期不可用 Date.now()／Math.random() */
   const nextImageId = React.useRef(1);
@@ -178,6 +185,51 @@ export default function ShopDesignPage() {
     patch({ gallery: config.gallery.filter((g) => g.id !== deleteTarget.id) });
     setDeleteTarget(null);
     toast.show(t.messages.imageDeleted);
+  };
+
+  /**
+   * 橫幅影片兩階段上傳（issue #22 Part A）：presign → 直傳 Storage 簽名網址 →
+   * confirm。**只在 confirm 成功後才更新 `config`／`lastSyncedRef`**——與
+   * `onPickImage`（keyword-replies 頁）同一個原則：失敗時畫面維持原狀，不能
+   * 先樂觀顯示、按了儲存卻指向一個確認不了的網址。confirm 成功後
+   * `tenant_settings.branding.bannerVideoUrl` 已經在伺服器端寫入完成，這裡
+   * 直接同步 `lastSyncedRef`，避免 `save()` 的 diff 邏輯誤以為這欄位仍待送出。
+   */
+  const onPickVideo = async (file: File) => {
+    setVideoUploading(true);
+    try {
+      const { path, signedUrl } = await presignBannerVideo(file.type, file.size);
+      if (signedUrl) {
+        // mock 分支的 signedUrl 是空字串，不需要（也無法）真的發請求。
+        await uploadBannerVideoToSignedUrl(signedUrl, file);
+      }
+      const merged = await confirmBannerVideo(path);
+      patch({ bannerVideoUrl: merged.bannerVideoUrl });
+      lastSyncedRef.current = { ...lastSyncedRef.current, bannerVideoUrl: merged.bannerVideoUrl };
+      toast.show(t.messages.videoUploaded);
+    } catch (e) {
+      const detail = e instanceof ApiError ? e.message : t.messages.networkError;
+      toast.show(`${t.messages.videoUploadFailedPrefix}${detail}`, 'danger');
+    } finally {
+      setVideoUploading(false);
+    }
+  };
+
+  const onRemoveVideo = async () => {
+    setVideoRemoving(true);
+    try {
+      await deleteBannerVideo();
+      patch({ bannerVideoUrl: '' });
+      lastSyncedRef.current = { ...lastSyncedRef.current, bannerVideoUrl: '' };
+      toast.show(t.messages.videoRemoved);
+    } catch (e) {
+      // ⚠️ 刪除失敗（尤其是 Storage 物件真的刪不掉時）不更新本地 state——
+      // 畫面應該繼續顯示影片仍然存在，讓使用者知道要重試，不是假裝已經清空。
+      const detail = e instanceof ApiError ? e.message : t.messages.networkError;
+      toast.show(`${t.messages.videoRemoveFailedPrefix}${detail}`, 'danger');
+    } finally {
+      setVideoRemoving(false);
+    }
   };
 
   const fillLineLink = () => {
@@ -325,8 +377,26 @@ export default function ShopDesignPage() {
               <Film size={15} />
               {t.banner.videoTitle}
             </h3>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm">
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,video/webm"
+              className="hidden"
+              disabled={videoUploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void onPickVideo(file);
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                loading={videoUploading}
+                loadingText={t.banner.videoUploading}
+                onClick={() => videoInputRef.current?.click()}
+              >
                 <Upload size={13} />
                 {t.banner.videoUpload}
               </Button>
@@ -334,13 +404,26 @@ export default function ShopDesignPage() {
                 <Button
                   variant="outlineDanger"
                   size="sm"
-                  onClick={() => patch({ bannerVideoUrl: '' })}
+                  loading={videoRemoving}
+                  loadingText={t.banner.videoRemoving}
+                  onClick={() => void onRemoveVideo()}
                 >
                   <Trash2 size={13} />
                   {t.banner.videoRemove}
                 </Button>
               ) : null}
             </div>
+            {config.bannerVideoUrl ? (
+              <video
+                key={config.bannerVideoUrl}
+                src={config.bannerVideoUrl}
+                muted
+                loop
+                playsInline
+                controls
+                className="mt-2 max-h-40 rounded-md border border-neutral-200"
+              />
+            ) : null}
             <FormText>
               {t.banner.videoHelpLead}
               <strong>{t.banner.videoHelpStrong1}</strong>

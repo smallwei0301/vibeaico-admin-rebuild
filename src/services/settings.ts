@@ -254,6 +254,94 @@ export const reorderShopPageGallery = (ids: string[]) =>
   );
 
 /**
+ * banner video 兩階段上傳（issue #22 Part A；04 分冊 §A-1.1）——
+ * `presignBannerVideo()` → 用戶端直接 PUT 到回傳的 `signedUrl` → 上傳成功後
+ * 呼叫 `confirmBannerVideo()`。大檔案（最大 50MB）直傳 Storage，完全不經過
+ * 這個 Next.js server 的 JSON body。
+ *
+ * mock 分支：沒有真的 Storage 好直傳，直接把 `file.name` 當成「上傳完成的
+ * 網址」寫回 mock branding store，行為與其他 mock 上傳分支（見上方
+ * `uploadRichMenuBgImage`）一致：只驗證 UI 流程，不驗證真實網路互動。
+ */
+export interface PresignBannerVideoResult {
+  bucket: string;
+  path: string;
+  signedUrl: string;
+  token: string;
+}
+
+export const BANNER_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+const BANNER_VIDEO_ALLOWED_TYPES = new Set(['video/mp4', 'video/webm']);
+
+export const presignBannerVideo = (contentType: string, sizeBytes: number) =>
+  adapt<PresignBannerVideoResult>(
+    () => {
+      if (!BANNER_VIDEO_ALLOWED_TYPES.has(contentType)) {
+        throw new ApiError('影片只支援 MP4 / WebM 格式', 'VALIDATION');
+      }
+      if (sizeBytes > BANNER_VIDEO_MAX_BYTES) {
+        throw new ApiError('影片大小不可超過 50MB', 'VALIDATION');
+      }
+      return { bucket: 'banner-videos', path: 'mock/banner-video/mock.mp4', signedUrl: '', token: '' };
+    },
+    () => request<PresignBannerVideoResult>('/api/settings/shop-page/banner-video/presign', {
+      method: 'POST',
+      body: JSON.stringify({ contentType, sizeBytes }),
+    }),
+  );
+
+/**
+ * 直傳到 Storage 簽名網址。**不走 `request()`**——那支輔助函式假設回應信封是
+ * `{success,data}`，但 Storage 的 PUT 端點回的是它自己的格式；這裡直接用
+ * `fetch`，非 2xx 一律視為失敗並丟出錯誤訊息帶 HTTP 狀態碼方便除錯。
+ */
+export const uploadBannerVideoToSignedUrl = async (signedUrl: string, file: File) => {
+  const res = await fetch(signedUrl, {
+    method: 'PUT',
+    headers: { 'content-type': file.type },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new ApiError(`上傳到儲存空間失敗（HTTP ${res.status}）`, 'INTERNAL');
+  }
+};
+
+export const confirmBannerVideo = (path: string) =>
+  adapt<BrandingSettings>(
+    () => {
+      const store = getMockBrandingStore();
+      const merged = brandingSettingsSchema.parse({
+        ...store[MOCK_MODE],
+        bannerVideoUrl: `mock://banner-video/${path}`,
+      });
+      store[MOCK_MODE] = merged;
+      return merged;
+    },
+    () => request<BrandingSettings>('/api/settings/shop-page/banner-video/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  );
+
+export interface DeleteBannerVideoResult {
+  removed: boolean;
+}
+
+export const deleteBannerVideo = () =>
+  adapt<DeleteBannerVideoResult>(
+    () => {
+      const store = getMockBrandingStore();
+      const current = store[MOCK_MODE];
+      const removed = !!current.bannerVideoUrl;
+      store[MOCK_MODE] = brandingSettingsSchema.parse({ ...current, bannerVideoUrl: '' });
+      return { removed };
+    },
+    () => request<DeleteBannerVideoResult>('/api/settings/shop-page/banner-video', {
+      method: 'DELETE',
+    }),
+  );
+
+/**
  * POST /api/settings/weekly-business-hours/draft —— **乾跑**，一列都不寫。
  *
  * ⚠️ 「乾跑」是我方選定的語意，不是原站考據結果；依據與反面證據見

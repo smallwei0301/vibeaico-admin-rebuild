@@ -414,17 +414,17 @@ describe('#396 已提交的正式資料', () => {
   const snapshot = loadRealSnapshot();
   const repoFiles = loadRealRepoFiles();
 
-  // repo 端多出尚未套用的 0105、0109、0110、0111、0112 與本候選的
-  // 0113_issue_23_promotion_page_view_events，正式庫快照維持 57 筆實際
+  // repo 端多出尚未套用的 0105、0109、0110、0111、0112、0113 與本候選的
+  // 0114_issue_22_banner_video_uploads，正式庫快照維持 57 筆實際
   // ledger row（0106／0108／0107 已分別於 2026-09-14 經 Owner 具名授權套用並
   // 重新擷取本快照，三者都在快照裡）。
   // 數字不是推算的，是對 current main／submitted candidate 的實際檔案跑一次得到的。
-  it('repo 有 62 個 migration 檔案，正式庫快照有 57 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(62);
+  it('repo 有 63 個 migration 檔案，正式庫快照有 57 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(63);
     expect(snapshot.ledgerRowNames).toHaveLength(57);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 62 個 repo 檔案與 57 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 63 個 repo 檔案與 57 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -435,7 +435,7 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：50 EXACT、6 ALIAS、6 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：50 EXACT、6 ALIAS、7 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
@@ -451,7 +451,7 @@ describe('#396 已提交的正式資料', () => {
     // 6。六者依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
     expect(counts.EXACT).toBe(50);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(6);
+    expect(counts.NOT_APPLIED ?? 0).toBe(7);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -722,7 +722,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // 「每一筆都有理由」，否則清單變空時這條規則會靜悄悄變成空轉。任何人日後
     // 新增或移除 NOT_APPLIED 都會先撞到這一行，被迫同時面對下面那條「必須有
     // 合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(6);
+    expect(notApplied.length).toBe(7);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }
