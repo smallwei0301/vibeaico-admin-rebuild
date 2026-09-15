@@ -335,6 +335,19 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-47-pr508-merge",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "Issue #47 TERRA_BUILD 施工＋merge：發現 LINE 設定頁「解除連線」按鈕呼叫 saveLineSettings({channelSecret:'',channelAccessToken:''})，但 PUT /api/settings/line 鐵則 6 把空字串定義成「不動舊值」，導致秘密欄位從未被真的清空；既有 POST /api/settings/line/disconnect（OWNER-only，行為正確）從未被前端呼叫、零測試覆蓋。新增 disconnectLine() service 函式改接線，補上 route 行為測試（3 案例）與頁面接線靜態回歸測試（2 案例）。CI 全綠後 merge commit 51fd3c72 進 main，已完成 Completion Truth 五點驗證（ref=main 重讀 page.tsx 確認 disconnectLine 已接線）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ]
   },
@@ -351,7 +364,7 @@
     "terraActive": 0
   },
   "delivery": {
-    "issuesStarted": 3,
+    "issuesStarted": 4,
     "issuesClosed": 0,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
@@ -393,6 +406,7 @@
     "claims": []
   },
   "notes": [
+    "PR #508（Issue #47）merge commit 51fd3c72 進 main：修復 LINE 設定頁「解除連線」從未真的清空 line_channel_secret_enc／line_channel_access_token_enc 的既有回歸缺口（本輪 audit 期間發現），dual-Terra 槽位釋放。",
     "PR #507（Issue #228 exact-SHA Preview canary Ignored Build Step 修復）CI 全綠後 merge commit cd710fe8 進 main，已完成 Completion Truth 五點驗證。剩餘步驟（實際 dispatch preview_canary workflow）為 OWNER/EXTERNAL_CONFIG 被擋（需要 VERCEL_TOKEN 存取），釋放 BUILD slot 供下一輪補充。",
     "PR #506（Issue #477 P1a LINE webhook sync）merge commit a48f684d 併入 main，merge 前解決一筆真實 merge conflict（與 PR #504 同時修改 run ledger），已驗證 Completion Truth 五點。PR #507（Issue #228 exact-SHA canary 修復）新開，dual-Terra 第二槽接續，檔案無重疊，符合 dual-Terra guard。",
     "第 s02 輪 LUNA_CLOSURE：scout 對全部 12 張 open PR 做真實掃描，結論 EMPTY_WITH_SCAN，報告 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s02.md；解除 PR #506 的 Agent WIP Guard 阻擋。",
