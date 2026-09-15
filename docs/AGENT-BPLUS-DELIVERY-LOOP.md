@@ -1,19 +1,25 @@
 # B+ Agent 出貨迴圈
 
-> Canonical Owner Decision：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
+> 歷史 B+ 基線 Owner Decision：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
 >
 > WIP preflight／alert decision：`docs/decisions/2026-09-04-owner-wip-preflight-and-alert-fingerprint.md`
 >
 > Run closeout contract：`docs/RUN-CLOSEOUT-CONTRACT.md`
 >
-> 本文件是執行手冊。若與較新的 Owner Decision 衝突，以較新的 Owner Decision 為準。
+> 2026-09-15 入口定位同步：本文件保留 Product B+ 的背景、歷史演進及詳細說明，不是另一份現行操作入口。
+>
+> **現在怎麼做以 `docs/AGENT-EXECUTION.md` 為唯一正式操作入口**；只在需追溯 B+ 背景或釐清衝突時載入本文件。
+> 交付流程與證據標準另見 `docs/DELIVERY-CHAIN.md`；命中本範圍的最新 main Owner Decision 仍依文件治理優先順序採用。
+>
+> 本文 Product lane／Run／模型／評分描述不得套到純 `MODEL_GOVERNANCE`；純治理走 `docs/AGENT-EXECUTION.md` §1.2。
+> 歷史說明若與現行執行、授權或觀測評分規則有差異，以現行正式規則為準，不改寫歷史 Run 來湊證據。
 
 ## 1. 為什麼從 Mode C 改成 B+
 
 Mode C 讓不同 Issue 的 Terra 同時施工，能減少等待，但共用 TEST、Sol 最終 Audit 與 closeout
 仍是窄出口。若同時開四張大型 PR，前端施工速度變快，最後會在 TEST 與審查門口塞車。
 
-B+ 保留平行能力，但改成：
+2026-09-01 B+ 單 Terra 基線保留平行能力，改成下列分工；現行條件雙 Terra 例外與 Reserve=0 以 `docs/AGENT-EXECUTION.md` §5 為準：
 
 ```text
 一條完整出貨線
