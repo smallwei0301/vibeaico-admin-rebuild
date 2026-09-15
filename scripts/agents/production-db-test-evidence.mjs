@@ -46,15 +46,65 @@ function assertSameRun(evidence, expected, label) {
   }
 }
 
+function assertReleasePlanExecutionEvidence(releasePlanEvidence, plan, sourceRun, mainSha, planDigest) {
+  if (!releasePlanEvidence || releasePlanEvidence.status !== 'TEST_RELEASE_PLAN_VERIFIED') {
+    fail('TEST_RELEASE_PLAN_EVIDENCE_REQUIRED', 'exact release-plan execution evidence on canonical TEST is required');
+  }
+  if (releasePlanEvidence.repository !== EXPECTED_REPOSITORY) {
+    fail('TEST_RELEASE_PLAN_REPOSITORY_MISMATCH', 'release-plan TEST evidence belongs to another repository');
+  }
+  if (releasePlanEvidence.testProjectRef !== TEST_PROJECT_REF) {
+    fail('TEST_RELEASE_PLAN_PROJECT_MISMATCH', 'release-plan TEST evidence belongs to another TEST project');
+  }
+  if (exactSha(releasePlanEvidence.mainSha, 'releasePlanEvidence.mainSha') !== mainSha) {
+    fail('TEST_RELEASE_PLAN_MAIN_MISMATCH', 'release-plan TEST evidence belongs to another main SHA');
+  }
+  if (exactDigest(releasePlanEvidence.planDigest, 'releasePlanEvidence.planDigest') !== planDigest) {
+    fail('TEST_RELEASE_PLAN_DIGEST_MISMATCH', 'release-plan TEST evidence belongs to another plan');
+  }
+  if (String(releasePlanEvidence.releaseId ?? '').trim() !== String(plan.releaseId ?? '').trim()) {
+    fail('TEST_RELEASE_ID_MISMATCH', 'release-plan TEST evidence belongs to another release');
+  }
+  assertSameRun(releasePlanEvidence, sourceRun, 'releasePlanEvidence');
+  if (releasePlanEvidence.testMutationPerformed !== true || releasePlanEvidence.productionMutationPerformed !== false) {
+    fail('TEST_RELEASE_PLAN_SCOPE_MISMATCH', 'release-plan evidence must prove TEST execution and zero Production mutation');
+  }
+  if (releasePlanEvidence.databaseMutationAuthorized !== false) {
+    fail('TEST_RELEASE_PLAN_SCOPE_ESCALATION', 'release-plan TEST evidence must not authorize Production mutation');
+  }
+
+  const observed = Array.isArray(releasePlanEvidence.migrations) ? releasePlanEvidence.migrations : [];
+  if (observed.length !== plan.migrations.length) {
+    fail('TEST_RELEASE_PLAN_MIGRATION_COUNT_MISMATCH', 'release-plan TEST evidence migration count differs from the locked plan');
+  }
+  for (const migration of plan.migrations) {
+    const repoFile = String(migration?.repoFile ?? '').trim();
+    const match = observed.filter((entry) => String(entry?.repoFile ?? '').trim() === repoFile);
+    if (match.length !== 1) fail('TEST_RELEASE_PLAN_MIGRATION_MISSING', `${repoFile || '<unknown>'} is not uniquely represented in TEST release evidence`);
+    const entry = match[0];
+    if (String(entry?.sha256 ?? '').trim().toLowerCase() !== String(migration?.sha256 ?? '').trim().toLowerCase()) {
+      fail('TEST_RELEASE_PLAN_BYTES_MISMATCH', `${repoFile} TEST execution used different migration bytes`);
+    }
+    if (String(entry?.riskTier ?? '').trim().toUpperCase() !== String(migration?.riskTier ?? '').trim().toUpperCase()) {
+      fail('TEST_RELEASE_PLAN_RISK_MISMATCH', `${repoFile} TEST execution used a different risk classification`);
+    }
+    if (!['APPLIED_VERIFIED', 'REPLAY_VERIFIED'].includes(String(entry?.execution ?? '').trim().toUpperCase())) {
+      fail('TEST_RELEASE_PLAN_EXECUTION_UNVERIFIED', `${repoFile} has no verified TEST apply/replay result`);
+    }
+  }
+}
+
 /**
- * Convert trusted-main shared TEST raw evidence plus independent cleanup and
- * coverage evidence into the TEST_VERIFIED shape consumed by release preflight.
- * Generic workflow success is never enough for cleanup or AUTHZ claims.
+ * Convert trusted-main shared TEST raw evidence, exact release-plan execution,
+ * independent cleanup and coverage evidence into the TEST_VERIFIED shape consumed
+ * by release preflight. Generic workflow success is never enough for migration
+ * execution, cleanup or AUTHZ claims.
  *
- * @param {{rawRunEvidence?: any, cleanupEvidence?: any, coverageEvidence?: any, plan?: any}} [input]
+ * @param {{rawRunEvidence?: any, releasePlanEvidence?: any, cleanupEvidence?: any, coverageEvidence?: any, plan?: any}} [input]
  */
 export function buildProductionDbTestEvidence({
   rawRunEvidence,
+  releasePlanEvidence,
   cleanupEvidence,
   coverageEvidence,
   plan,
@@ -88,6 +138,8 @@ export function buildProductionDbTestEvidence({
     fail('RAW_TEST_SCOPE_ESCALATION', 'raw TEST evidence must not authorize or claim Production mutation');
   }
   const sourceRun = runIdentity(rawRunEvidence, 'rawRunEvidence');
+
+  assertReleasePlanExecutionEvidence(releasePlanEvidence, plan, sourceRun, mainSha, planDigest);
 
   if (!cleanupEvidence || cleanupEvidence.status !== 'TEST_CLEANUP_VERIFIED') fail('TEST_CLEANUP_EVIDENCE_REQUIRED', 'independent TEST cleanup evidence is required');
   if (exactSha(cleanupEvidence.mainSha, 'cleanup.mainSha') !== mainSha) fail('TEST_CLEANUP_MAIN_MISMATCH', 'cleanup evidence is for another main SHA');
@@ -150,6 +202,7 @@ export function buildProductionDbTestEvidence({
     tenantBoundaryVerified,
     negativeRoleTestsPassed,
     authzMigrationCount: authzMigrations.length,
+    releasePlanEvidenceStatus: releasePlanEvidence.status,
     cleanupEvidenceStatus: cleanupEvidence.status,
     coverageEvidenceStatus: coverageEvidence.status,
     databaseMutationAuthorized: false,
