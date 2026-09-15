@@ -169,7 +169,8 @@ describe('Production DB release preflight', () => {
     expect(() => evaluateReleasePreflight(backfill, { now: NOW })).toThrow(/PAYMENT_FACTS_FORBIDDEN/);
     backfill.data.paymentFactsTouched = false;
 
-    expect(evaluateReleasePreflight(backfill, { now: NOW }).status).toBe('READY_FOR_LOCK');
+    expect(() => evaluateReleasePreflight(backfill, { now: NOW }))
+      .toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
   });
 
   it('requires a fresh project-bound lock and a post-lock live recheck for apply admission', () => {
