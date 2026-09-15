@@ -142,9 +142,12 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier(escapedDoDmlSql)).toBe('BACKFILL');
     const escapedDestructiveSql = "do e'BEGIN \\x44ROP TABLE public.tenant_data; END';";
     expect(() => inferMigrationRiskTier(escapedDestructiveSql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+    const unicodeEscapedDoSql = "do U&'BEGIN \\0044ROP \\0054ABLE public.tenant_data; END';";
+    expect(() => inferMigrationRiskTier(unicodeEscapedDoSql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
     const formattedMultiCommandSql = 'do ' + dollarQuote + " begin execute format('UPDATE public.tenant_data SET n=1; %s%s TABLE public.victim', 'DR', 'OP'); end " + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(formattedMultiCommandSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('set session role app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier("set \"role\" = 'privileged_role';")).toBe('AUTHZ');
     expect(inferMigrationRiskTier('reset role;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('set session authorization app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter domain public.order_id owner to app_user;')).toBe('AUTHZ');
