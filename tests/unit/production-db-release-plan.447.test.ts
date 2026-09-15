@@ -135,6 +135,9 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier(dynamicDropSql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
     const unresolvedDynamicSql = 'do ' + dollarQuote + ' begin execute query_text; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(unresolvedDynamicSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    expect(inferMigrationRiskTier("do e'BEGIN EXECUTE ''DELETE FROM public.tenant_data''; END;';")).toBe('BACKFILL');
+    const concatenatedDynamicSql = 'do ' + dollarQuote + " begin execute 'UPDATE public.tenant_data SET n=1; ' || 'TRUN' || 'CATE public.tenant_data'; end " + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(concatenatedDynamicSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('set session role app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('reset role;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('set session authorization app_user;')).toBe('AUTHZ');
