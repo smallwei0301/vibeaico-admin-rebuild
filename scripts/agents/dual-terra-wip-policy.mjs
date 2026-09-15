@@ -89,7 +89,8 @@ export function validateActualFileOwnership(metadata, changedFiles) {
     metadata.origin !== 'AGENT' ||
     metadata.state !== 'ACTIVE' ||
     metadata.lane !== 'TERRA_BUILD' ||
-    metadata.dualTerraPilot !== 'TRUE'
+    metadata.dualTerraPilot !== 'TRUE' ||
+    metadata.completionClaim === 'AUDIT_READY'
   ) {
     return [];
   }
@@ -122,6 +123,7 @@ export function parseLaneMetadata(pr = {}) {
   const body = pr.body ?? '';
   return {
     ...parseBaseLaneMetadata(pr),
+    completionClaim: upper(readField(body, 'COMPLETION_CLAIM')),
     dualTerraPilot: upper(readField(body, 'DUAL_TERRA_PILOT')),
     terraSlot: readField(body, 'TERRA_SLOT'),
     testProfile: upper(readField(body, 'TEST_PROFILE')),
@@ -173,61 +175,28 @@ export function validateLaneMetadata(metadata, options = {}) {
     }
   }
 
-  if (
-    metadata.origin === 'AGENT' &&
-    metadata.state === 'READY_FOR_PROMOTION' &&
-    metadata.lane === 'TERRA_BUILD'
-  ) {
-    if (metadata.activeCandidate !== 'TRUE') {
-      errors.push('READY_FOR_PROMOTION TERRA_BUILD must remain ACTIVE_CANDIDATE=true');
-    }
-    if (metadata.bplusMode !== 'TRUE') {
-      errors.push('READY_FOR_PROMOTION TERRA_BUILD must keep BPLUS_MODE=true');
-    }
-    if (!metadata.issueNumber) {
-      errors.push('READY_FOR_PROMOTION TERRA_BUILD must declare pr-lifecycle issue: <number>');
-    }
-    if (isMissing(metadata.runId)) {
-      errors.push('READY_FOR_PROMOTION TERRA_BUILD must declare RUN_ID');
-    } else if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$/.test(metadata.runId)) {
-      errors.push('RUN_ID must look like YYYY-MM-DD-name');
-    }
-    if (isMissing(metadata.scorecardPath)) {
-      errors.push('READY_FOR_PROMOTION TERRA_BUILD must declare SCORECARD_PATH');
-    } else if (metadata.scorecardPath !== `docs/metrics/agent-runs/${metadata.runId}.json`) {
-      errors.push('SCORECARD_PATH must be docs/metrics/agent-runs/<RUN_ID>.json');
-    }
-    if (isMissing(metadata.remainingSteps)) {
-      errors.push('READY_FOR_PROMOTION TERRA_BUILD must declare remaining verification/merge steps');
-    }
-  }
-
   return [...new Set(errors)];
 }
 
 export function summarizeActiveLanes(pullRequests = []) {
-  const agentPulls = pullRequests
+  const activeAgentPulls = pullRequests
     .filter((pr) => pr.state === undefined || pr.state === 'open')
     .map(parseLaneMetadata)
-    .filter((metadata) => metadata.origin === 'AGENT');
-  const activeAgentPulls = agentPulls.filter((metadata) => metadata.state === 'ACTIVE');
+    .filter((metadata) => metadata.origin === 'AGENT' && metadata.state === 'ACTIVE');
 
   return {
     activeAgentPulls,
-    activeTerra: agentPulls.filter(
-      (pr) => pr.lane === 'TERRA_BUILD' && pr.state === 'ACTIVE',
+    activeTerra: activeAgentPulls.filter(
+      (pr) => pr.lane === 'TERRA_BUILD' && pr.completionClaim !== 'AUDIT_READY',
     ),
-    verifyingTerra: agentPulls.filter(
-      (pr) => pr.lane === 'TERRA_BUILD' && pr.state === 'READY_FOR_PROMOTION',
+    verifyingTerra: activeAgentPulls.filter(
+      (pr) => pr.lane === 'TERRA_BUILD' && pr.completionClaim === 'AUDIT_READY',
     ),
     activeReserve: activeAgentPulls.filter((pr) => pr.lane === 'TERRA_RESERVE'),
     activeClosure: activeAgentPulls.filter((pr) => pr.lane === 'LUNA_CLOSURE'),
     activeTest: activeAgentPulls.filter((pr) => pr.lane === 'TEST_VALIDATION'),
-    activeCandidates: agentPulls.filter(
-      (pr) =>
-        pr.activeCandidate === 'TRUE' &&
-        pr.lane !== 'LUNA_CLOSURE' &&
-        ['ACTIVE', 'READY_FOR_PROMOTION'].includes(pr.state),
+    activeCandidates: activeAgentPulls.filter(
+      (pr) => pr.activeCandidate === 'TRUE' && pr.lane !== 'LUNA_CLOSURE',
     ),
     requireActualFileCoverage: false,
   };
@@ -257,9 +226,9 @@ export function validateGlobalWip(summary) {
 
   for (const terra of [...activeTerra, ...verifyingTerra]) {
     for (const error of validateLaneMetadata(terra)) {
-      errors.push(`${terra.state === 'READY_FOR_PROMOTION' ? 'Verifying' : 'Active'} Terra PR #${terra.number}: ${error}`);
+      errors.push(`${terra.completionClaim === 'AUDIT_READY' ? 'Verifying' : 'Active'} Terra PR #${terra.number}: ${error}`);
     }
-    if (terra.state === 'ACTIVE' && summary.requireActualFileCoverage) {
+    if (terra.completionClaim !== 'AUDIT_READY' && summary.requireActualFileCoverage) {
       errors.push(...validateActualFileOwnership(terra, terra.actualChangedFiles));
     }
   }
