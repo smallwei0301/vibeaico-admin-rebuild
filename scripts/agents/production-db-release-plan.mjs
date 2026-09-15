@@ -249,10 +249,10 @@ function immediateProceduralBody(statement) {
     skipWhitespace();
   }
 
-  const quoteIndex = input[index] === 'E' && input[index + 1] === "'" ? index + 1 : index;
+  const quoteIndex = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'" ? index + 1 : index;
   if (input[quoteIndex] === "'") {
     const end = quotedTokenEnd(input, quoteIndex, "'");
-    return input.slice(quoteIndex + 1, end - 1);
+    return input.slice(quoteIndex + 1, end - 1).replace(/''/g, "'");
   }
 
   const dollar = dollarQuoteAt(input, index);
@@ -279,7 +279,7 @@ function firstDynamicSqlTemplate(fragment) {
     skipWhitespace();
   }
 
-  const quoteIndex = input[index] === 'E' && input[index + 1] === "'" ? index + 1 : index;
+  const quoteIndex = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'" ? index + 1 : index;
   if (input[quoteIndex] === "'") {
     const end = quotedTokenEnd(input, quoteIndex, "'");
     return input.slice(quoteIndex + 1, end - 1);
@@ -307,6 +307,9 @@ function dynamicExecuteFragments(body) {
 function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
+  if (/\|\|/.test(fragment)) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'concatenated dynamic SQL is not admitted');
+  }
   if (/^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)) return 'SCHEMA_REPAIR';
   if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
