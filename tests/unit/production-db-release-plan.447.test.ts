@@ -25,7 +25,7 @@ function aliasMap() {
 
 const sqlByPath: Record<string, string> = {
   'supabase/migrations/0105_authz.sql': 'alter table public.x enable row level security; grant select on public.x to authenticated;',
-  'supabase/migrations/0109_assertions.sql': 'create table if not exists public.y(id uuid primary key);',
+  'supabase/migrations/0109_assertions.sql': 'grant select on public.y to authenticated;',
 };
 const readCanonicalSql = (path: string) => sqlByPath[path];
 

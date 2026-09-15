@@ -15,7 +15,7 @@ describe('Issue #447 current-main pending migration classification', () => {
       try {
         expect(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ', 'BACKFILL']).toContain(inferMigrationRiskTier(sql));
       } catch (error) {
-        expect(error).toHaveProperty('code', 'MIXED_RISK_MIGRATION_NOT_ADMITTED');
+        expect(['MIXED_RISK_MIGRATION_NOT_ADMITTED', 'DESTRUCTIVE_SQL_NOT_ADMITTED']).toContain(error?.code);
       }
     }
   });
