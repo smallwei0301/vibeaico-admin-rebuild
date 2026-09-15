@@ -123,6 +123,15 @@ describe('Issue #460 observed-first scorecard', () => {
     expect(incomplete.gradingGaps).toContain('quality.acceptanceEvidenceCoveragePercent is missing');
   });
 
+  it('keeps a Run that started before the cutoff on LEGACY_V2 even if it ends after the cutoff', () => {
+    const run = observedRun();
+    run.startedAt = '2026-09-14T23:59:59Z';
+    const result = scoreRunCurrent(run);
+    expect(usesObservedScoreProfile(run)).toBe(false);
+    expect(result.scoreProfile).toBe('LEGACY_V2');
+    expect(result.scoreStatus).toBe('NOT_GRADED');
+  });
+
   it('grades a new terminal Product Run from observed facts even when legacy manual percentages are null', () => {
     const run = observedRun();
     expect(run.modelUsage.weightedUsageImprovementPercent).toBeNull();
@@ -138,6 +147,7 @@ describe('Issue #460 observed-first scorecard', () => {
     expect(result.comparisonEligible).toBe(true);
     expect(result.productionPendingUnits).toBe(1);
     expect(result.observedMetrics?.cycleTimeMinutes).toBe(60);
+    expect(result.observedMetrics?.observedTaskCount).toBe(1);
     expect(result.observedMetrics?.lunaAcceptancePercent).toBe(100);
   });
 
