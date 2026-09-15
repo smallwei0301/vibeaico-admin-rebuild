@@ -278,7 +278,7 @@ function rejectImmediateRoutineInvocations(statements) {
   const checkCommandText = (text) => {
     const lexical = stripSqlStringLiterals(text, true);
     const commandSegments = [
-      ...lexical.matchAll(/\b(?:select|perform)\b[\s\S]*?(?=;|$)/gi),
+      ...lexical.matchAll(/\b(?:select|perform|call)\b[\s\S]*?(?=;|$)/gi),
     ];
     return commandSegments.some((segment) => hasUnverifiedRoutineInvocation(segment[0]));
   };
@@ -324,6 +324,9 @@ function immediateProceduralBody(statement) {
   const quoteIndex = extended ? index + 1 : index;
   if (input[quoteIndex] === "'") {
     const end = quotedTokenEnd(input, quoteIndex, "'");
+    if (input.slice(end).trim()) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'procedural body has unconsumed trailing syntax');
+    }
     const rawBody = input.slice(quoteIndex + 1, end - 1);
     if (extended && /\\/.test(rawBody)) {
       fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'backslash-escaped E-string procedural bodies are not admitted');
@@ -335,6 +338,10 @@ function immediateProceduralBody(statement) {
   if (!dollar) return null;
   const end = input.indexOf(dollar, index + dollar.length);
   if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted procedural body');
+  const tokenEnd = end + dollar.length;
+  if (input.slice(tokenEnd).trim()) {
+    fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'procedural body has unconsumed trailing syntax');
+  }
   return input.slice(index + dollar.length, end);
 }
 
@@ -365,6 +372,13 @@ function matchingParenthesisEnd(input, openIndex) {
   fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL expression has unbalanced parentheses');
 }
 
+function assertFormatFirstArgumentBounded(input, firstArgEnd) {
+  const remainder = input.slice(firstArgEnd).trimStart();
+  if (remainder && !remainder.startsWith(',') && !remainder.startsWith(')')) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format first argument has unconsumed syntax');
+  }
+}
+
 function firstDynamicSqlTemplate(fragment) {
   const input = String(fragment).trim();
   let index = 0;
@@ -386,6 +400,7 @@ function firstDynamicSqlTemplate(fragment) {
     const quoteIndex = extended ? index + 1 : index;
     if (input[quoteIndex] === "'") {
       const end = quotedTokenEnd(input, quoteIndex, "'");
+      assertFormatFirstArgumentBounded(input, end);
       const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
       if (input.slice(formatEnd).trim()) {
         fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format expression has unconsumed trailing syntax');
@@ -401,6 +416,7 @@ function firstDynamicSqlTemplate(fragment) {
     if (dollar) {
       const end = input.indexOf(dollar, index + dollar.length);
       if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dynamic SQL template');
+      assertFormatFirstArgumentBounded(input, end + dollar.length);
       const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
       if (input.slice(formatEnd).trim()) {
         fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format expression has unconsumed trailing syntax');
