@@ -249,13 +249,27 @@ function stripStoredRoutineBodies(statement) {
   return input;
 }
 
-const SQL_PARENTHESES_WORDS = new Set([
-  'all', 'and', 'any', 'as', 'begin', 'brin', 'btree', 'case', 'check', 'conflict', 'declare', 'else',
-  'end', 'exception', 'exclude', 'exists', 'filter', 'for', 'foreign', 'from', 'gin', 'gist', 'group', 'hash', 'having', 'if',
-  'in', 'into', 'join', 'lateral', 'limit', 'loop', 'not', 'offset', 'on', 'only',
-  'or', 'order', 'over', 'partition', 'primary', 'raise', 'returning', 'select', 'set', 'some',
-  'then', 'unique', 'using', 'values', 'when', 'where', 'while', 'with',
-]);
+function isSqlParenthesisSyntax(name, before, input, openIndex) {
+  // PostgreSQL gram.y: an unqualified func_name is a type_function_name
+  // (IDENT, unreserved_keyword or type_func_name_keyword). Only non-callable
+  // grammar terminals may be recognized by spelling alone. In particular,
+  // JOIN, FILTER, OVER, IF, SET and index access-method names are NOT terminals
+  // that can safely be exempted everywhere. Unknown/ambiguous forms fail closed.
+  // All terminals below are RESERVED_KEYWORD, except VALUES (COL_NAME_KEYWORD);
+  // neither category is an unqualified type_function_name. Quoted/qualified
+  // versions never reach this helper. Nested candidates are still inspected.
+  if (/^(?:all|and|any|as|case|check|else|end|for|foreign|from|group|having|in|into|lateral|limit|not|offset|on|only|or|order|primary|returning|select|some|then|unique|using|values|when|where|with)$/.test(name)) return true;
+  if (name === 'exists') {
+    return /^\s*(?:\(\s*)*(?:select|with|values)\b/i.test(input.slice(openIndex + 1));
+  }
+  // CONFLICT is callable. ON alone is insufficient (JOIN ... ON conflict()
+  // would be a routine call); require the INSERT conflict-action continuation.
+  if (name === 'conflict' && /\bon\s*$/i.test(before)) {
+    const close = matchingParenthesisEnd(input, openIndex);
+    return /^\s*do\s+(?:nothing|update)\b/i.test(input.slice(close));
+  }
+  return false;
+}
 
 function isDmlTargetColumnList(text, index) {
   return /\binsert\s+into\s+(?:only\s+)?(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?$/iu.test(
@@ -283,12 +297,9 @@ function hasUnverifiedRoutineInvocation(text) {
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
     if (calledName === 'pg_catalog.format') continue;
-    if (!calledName.includes('.') && SQL_PARENTHESES_WORDS.has(name)) {
-      // FILTER is also a legal routine name. Only its aggregate-clause grammar
-      // (FILTER (WHERE ...)) is syntax; filter() / filter(value) are calls.
-      if (name === 'filter' && !/^\s*where\b/i.test(input.slice(match.index + match[0].length))) return true;
-      continue;
-    }
+    if (!calledName.includes('.') && isSqlParenthesisSyntax(
+      name, input.slice(0, match.index), input, match.index + match[0].length - 1,
+    )) continue;
     return true;
   }
   return false;
