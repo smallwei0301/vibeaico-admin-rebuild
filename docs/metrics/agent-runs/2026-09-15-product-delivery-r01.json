@@ -348,6 +348,19 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-43-pr511-merge",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#43 GUIDE 行動收件匣補齊整合測試 PR #511（build 層，claude-sonnet-5，worktree-isolated）：調查後發現 8 類中 7 類已於舊 PR (#133/#157/#158/#440/#488) 先行出貨；與其重建，改為新增 4 支缺失的真實整合測試至 tests/integration/api/guide-action-inbox.43.test.ts，覆蓋 REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT。Agent WIP Guard 需求數次 metadata 修正（BPLUS_MODE/RUN_ID/SCORECARD_PATH/pr-lifecycle HTML comment/SELECTION_REASON enum/WHY_NOT_CLOSER_CANDIDATE）。CI 的 historical-compatibility-candidate job（`.github/workflows/agent-schema-bootstrap.yml`）抓到真實 FK bug：測試新增 tour_orders row 參考不同 trip_plan 所屬的 trip_departure，違反 tour_orders_tenant_trip_plan_departure_fkey constraint (code 23503)；follow-up commit 4aea3046 建立專用 trip_departures row 後修復。CI 全綠後 squash-merge commit b83ba16f 進 main，已完成 Completion Truth 五點驗證（merge_commit_sha 比對 origin/main head、ref=main 重讀測試檔確認修復已生效）。Issue #43 仍開啟，餘下 2 項缺口：category 8（待 Issue #40 canonical schema）與瀏覽器 E2E/Preview 行動驗收（無 tests/e2e 覆蓋）。本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新增使用者可見功能）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ]
   },
@@ -415,6 +428,7 @@
     "scout 首次產出的 scorecard 未通過 validate-scorecards：缺 quality/auditability/notes/completionTruth 四個頂層欄位，且 flow.solIssues 型別錯誤（應為 number 不是 array）。已由本 session 核實並修正，另外發現並修正兩處捏造：main.startSha 後半段是編造的十六進位、tour-platform review-workflow 的檔案路徑與行號（scout 寫成 src/services/review-workflow.ts:42-98，實際是 apps/web/src/lib/activity-review-transition.mjs）與先前已核實的 scout 報告不符。",
     "modelUsage.tasks 均為即時埋點，非事後回填；未觀測欄位（token 用量、weeklyUsage 增量、lunaDelegationRatePercent、各項 percent 欄位）維持 null，不推算。",
     "同一輪雙 Terra：#42（PR #464，已合併/完成）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。新一層雙 Terra：#477 P1a（PR #506，已 merged）與 #228（PR #507，新開），亦無檔案重疊。",
-    "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。"
+    "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。",
+    "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。"
   ]
 }
