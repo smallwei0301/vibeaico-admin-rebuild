@@ -57,20 +57,27 @@ body / label 不一致時仍收進來，但增加 `workstreamMismatches`。這�
 - final-head `ci` attempts；
 - same-final-head redundant reruns；
 - final-head first-pass CI：**numerator / denominator / derived percent**；
-- Agent WIP / WIP guard 在同一 final head 出現 failure 後 success 的 PR 數，作為 deterministic metadata preflight miss 的 proxy。
+- final-head commit status history 裡，`Agent WIP Policy` / `Agent WIP Guard` 在同一 head 出現 failure 後 success 的 PR 數，作為 deterministic metadata preflight miss 的 proxy。
 
-不同 SHA 的 CI 不算 same-head rerun。
+不同 SHA 的 CI 不算 same-head rerun。`ci` metrics 來源是 GitHub Actions；metadata-gate recovery 來源是 commit status history，兩種 provider evidence 分開計算，不互相代填。
 
 ## Unknown 不等於 0
 
-若 GitHub Actions history endpoint 對任一 governance PR 無法讀取：
+Collector 對 provider evidence 採**分來源 fail-open-for-observation / fail-closed-for-claim**：拿不到哪一組歷史，只把那一組 metric 標成 unknown，不把 unknown 寫成 0，也不抹掉其他已取得數字。
 
-- workflow-derived metrics 使用 `null`；
-- `unavailableMetrics[]` 明確列出缺口；
-- PR count、inventory、cycle time、budget/lifecycle 等仍照常輸出；
-- 不因一組 provider evidence unavailable 就把整份 observation 變成空白。
+若 GitHub Actions history 對任一 governance PR 無法讀取：
 
-`comparisonEligible=false` 只代表本 snapshot 不適合拿來做正式趨勢比較，**不會隱藏當期 raw numbers**。
+- `ciAttempts`、`redundantSameHeadReruns`、`firstPassCi` 使用 `null`；
+- `unavailableMetrics[]` 明確列出上述缺口；
+- commit-status 可得時，`metadataGateRecoveryCount` 仍照常輸出。
+
+若 final-head commit status history 無法讀取：
+
+- `metadataGateRecoveryCount = null`；
+- `unavailableMetrics[]` 加入 `metadataGateRecoveryCount`；
+- Actions 可得時，CI attempts / first-pass / same-head rerun 仍照常輸出。
+
+PR count、inventory、cycle time、budget/lifecycle 等不依賴這兩組 provider history，仍照常輸出。`comparisonEligible=false` 只代表本 snapshot 不適合拿來做正式趨勢比較，**不會隱藏當期 raw numbers**。
 
 ## 與正式 Governance Scoreboard 的關係
 
