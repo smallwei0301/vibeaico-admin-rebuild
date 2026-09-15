@@ -5,6 +5,7 @@ import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db
 import {
   assertLiveLedgerMatchesAliasMap,
   buildAtomicProductionApplySql,
+  verifyPostApplyLedger,
   runControlledProductionRelease,
 } from '../../scripts/db/controlled-production-db-release.mjs';
 
@@ -74,6 +75,7 @@ describe('Controlled Production DB writer #447', () => {
     expect(recheckAt).toBeGreaterThan(lockAt);
     expect(migrationAt).toBeGreaterThan(recheckAt);
     expect(sql).toContain(p.migrations[0].ledgerVersion);
+    expect(sql).toContain('m.version = x.version');
     expect(sql).toContain("'0109_assertions'");
     expect(sql.trim().startsWith('begin;')).toBe(true);
     expect(sql.trim().endsWith('commit;')).toBe(true);
@@ -87,6 +89,18 @@ describe('Controlled Production DB writer #447', () => {
       liveLedgerRows: beforeRows,
       readCanonicalSql: () => 'create index concurrently x_idx on public.x(id);',
     })).toThrow(/MIGRATION_BYTES_MISMATCH|TRANSACTION_UNSAFE_MIGRATION/);
+
+    const transactionSql = 'commit;';
+    const transactionPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => transactionSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: transactionPlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => transactionSql,
+    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
   });
 
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
@@ -145,4 +159,26 @@ describe('Controlled Production DB writer #447', () => {
     })).rejects.toThrow(/RELEASE_PACKET_PLAN_MISMATCH/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+  it('maps post-apply ledger readback uncertainty to APPLY_UNKNOWN without retrying', async () => {
+    const p = plan();
+    let readOnlyCalls = 0;
+    let mutableCalls = 0;
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const text = String(url);
+      if (text.endsWith('/database/query/read-only')) {
+        readOnlyCalls += 1;
+        if (readOnlyCalls === 1) return new Response(JSON.stringify(beforeRows), { status: 200, headers: { 'content-type': 'application/json' } });
+        throw new Error('ledger read timed out after apply');
+      }
+      mutableCalls += 1;
+      return new Response('[]', { status: 200 });
+    });
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/APPLY_UNKNOWN/);
+    expect(readOnlyCalls).toBe(2);
+    expect(mutableCalls).toBe(1);
+  });
+
 });

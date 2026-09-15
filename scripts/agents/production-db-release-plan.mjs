@@ -101,21 +101,43 @@ export function highestRiskTier(tiers = []) {
   return selected;
 }
 
+function rejectUnclassifiedDropStatements(text) {
+  const fragments = String(text).split(';').filter((fragment) => /\bdrop\b/i.test(fragment));
+  for (const fragment of fragments) {
+    const recognized =
+      /\bdrop\s+(?:table|schema)\b/i.test(fragment) ||
+      /\b(?:create|alter|drop)\s+policy\b/i.test(fragment) ||
+      /\bdrop\s+(?:constraint|default)\b/i.test(fragment) ||
+      /\balter\s+table\b[\s\S]{0,240}\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(fragment);
+    if (!recognized) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'unrecognized DROP form must be reviewed explicitly');
+  }
+}
+
+function assertSingleRiskTier(tiers = []) {
+  const highest = highestRiskTier(tiers);
+  const unique = [...new Set(tiers.map((raw) => String(raw ?? '').toUpperCase()))];
+  if (unique.length > 1) {
+    fail('MIXED_RISK_RELEASE_NOT_ADMITTED', 'split release plan by risk class before v1 apply: ' + unique.join('+'));
+  }
+  return highest;
+}
+
 export function inferMigrationRiskTier(sql) {
   const text = stripComments(sql);
 
   // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
   // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、
   // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
-  if (/\btruncate\s+table\b|\bdrop\s+(table|schema)\b|\balter\s+table\b[\s\S]{0,240}\bdrop\s+column\b/i.test(text)) {
+  if (/\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]{0,240}\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(text)) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
+  rejectUnclassifiedDropStatements(text);
 
   const specialized = [];
   if (/\balter\s+table\b[\s\S]{0,240}\bdrop\s+constraint\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\bdrop\s+default\b|\balter\s+table\b[\s\S]{0,240}\balter\s+column\b[\s\S]{0,160}\btype\b/i.test(text)) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (/\b(create|alter|drop)\s+policy\b|\benable\s+row\s+level\s+security\b|\bforce\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
+  if (/\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(auth\.|tenant_role|is_tenant_member)/i.test(text)) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
@@ -171,7 +193,7 @@ export function buildProductionDbReleasePlan({
     productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
     mainSha: sha,
     plannedAt: normalizedPlannedAt,
-    riskTier: highestRiskTier(migrations.map((entry) => entry.riskTier)),
+    riskTier: assertSingleRiskTier(migrations.map((entry) => entry.riskTier)),
     migrations,
   };
   return { ...plan, planDigest: releasePlanDigestOf(plan) };
@@ -208,6 +230,6 @@ export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql
     if (entry.riskTier !== inferred) fail('MIGRATION_RISK_MISMATCH', `${entry.repoFile} risk tier changed`);
     tiers.push(inferred);
   }
-  if (plan.riskTier !== highestRiskTier(tiers)) fail('RELEASE_RISK_MISMATCH', 'release risk tier does not match migration risk floor');
+  if (plan.riskTier !== assertSingleRiskTier(tiers)) fail('RELEASE_RISK_MISMATCH', 'release risk tier does not match migration risk floor');
   return { status: 'PLAN_VERIFIED', planDigest: plan.planDigest, migrationCount: names.length, riskTier: plan.riskTier, databaseMutationAuthorized: false };
 }

@@ -97,7 +97,24 @@ describe('Production DB release plan #447', () => {
 
   it('rejects destructive and mixed-specialized-risk v1 SQL instead of silently dropping one evidence class', () => {
     expect(() => inferMigrationRiskTier('drop table public.t;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('truncate public.t;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('alter table public.t drop x;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(inferMigrationRiskTier('alter table public.t disable row level security;')).toBe('AUTHZ');
+    expect(() => inferMigrationRiskTier('drop view public.t;')).toThrow(/UNCLASSIFIED_DROP_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
       .toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);
+  });
+
+  it('rejects a release plan that mixes risk classes across migrations', () => {
+    const mixed = aliasMap();
+    mixed.entries.push({ repoFile: '0111_backfill', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' });
+    const mixedSql = {
+      ...sqlByPath,
+      'supabase/migrations/0111_backfill.sql': 'update public.t set x=1 where id=1;',
+    };
+    expect(() => buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: mixed, readCanonicalSql: (path: string) => mixedSql[path],
+    })).toThrow(/MIXED_RISK_RELEASE_NOT_ADMITTED/);
   });
 });

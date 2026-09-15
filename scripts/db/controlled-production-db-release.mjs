@@ -19,11 +19,25 @@ function textArray(values) {
   return `ARRAY[${values.map(sqlLiteral).join(', ')}]::text[]`;
 }
 
-function normalizedLedgerNames(rows) {
+function ledgerIdentityValues(migrations = []) {
+  return migrations.map((entry) => `(${sqlLiteral(entry.repoFile)}, ${sqlLiteral(entry.ledgerVersion)})`).join(', ');
+}
+
+function normalizedLedgerRows(rows) {
   if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
-  const names = rows.map((row) => String(row?.name ?? '').trim()).filter(Boolean).sort();
+  const normalized = rows
+    .map((row) => ({
+      version: String(row?.version ?? '').trim(),
+      name: String(row?.name ?? '').trim(),
+    }))
+    .filter((row) => row.name);
+  const names = normalized.map((row) => row.name);
   if (new Set(names).size !== names.length) fail('DUPLICATE_LIVE_LEDGER_NAME', 'live Production ledger has duplicate migration names');
-  return names;
+  return normalized;
+}
+
+function normalizedLedgerNames(rows) {
+  return normalizedLedgerRows(rows).map((row) => row.name).sort();
 }
 
 export function expectedAppliedLedgerNames(aliasMap = {}) {
@@ -61,6 +75,10 @@ export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {
 
 function assertAtomicCompatibleSql(sql, repoFile) {
   const text = String(sql ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\r\n]*/g, ' ');
+  const transactionControl = /(?:^|;)\s*(?:begin(?:\s+(?:work|transaction))?\s*(?:;|$)|start\s+transaction\b|commit\b|rollback\b|end\s+(?:work|transaction)\b|savepoint\b|release\s+savepoint\b|prepare\s+transaction\b)/i;
+  if (transactionControl.test(text)) {
+    fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
+  }
   if (/\b(create|reindex)\s+index\s+concurrently\b/i.test(text)) {
     fail('TRANSACTION_UNSAFE_MIGRATION', `${repoFile} uses CONCURRENTLY and cannot run in the atomic v1 writer`);
   }
@@ -68,6 +86,7 @@ function assertAtomicCompatibleSql(sql, repoFile) {
     fail('TRANSACTION_UNSAFE_MIGRATION', `${repoFile} contains a command not admitted by the atomic v1 writer`);
   }
 }
+
 
 export function buildAtomicProductionApplySql({
   plan,
@@ -101,10 +120,12 @@ export function buildAtomicProductionApplySql({
     );
   }
 
+  const ledgerIdentity = ledgerIdentityValues(plan.migrations);
   statements.push(
-    `do $postledger$ declare missing text[]; begin select array_agg(x) into missing from unnest(${textArray(planned)}) x where not exists (select 1 from supabase_migrations.schema_migrations m where m.name=x); if missing is not null then raise exception 'PRODUCTION_DB_POST_LEDGER_MISSING:%', array_to_string(missing, ','); end if; end $postledger$;`,
+    `do $postledger$ declare missing text[]; begin select array_agg(x.name || '@' || x.version order by x.name) into missing from (values ${ledgerIdentity}) as x(name, version) where not exists (select 1 from supabase_migrations.schema_migrations m where m.name = x.name and m.version = x.version); if missing is not null then raise exception 'PRODUCTION_DB_POST_LEDGER_MISSING:%', array_to_string(missing, ','); end if; end $postledger$;`,
     'commit;',
   );
+
   return statements.join('\n\n');
 }
 
@@ -133,11 +154,17 @@ export async function executeAtomicProductionApply({ sql, token, fetchImpl = fet
 }
 
 export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
-  const names = new Set(normalizedLedgerNames(liveLedgerRows));
-  const missing = plan.migrations.map((entry) => entry.repoFile).filter((name) => !names.has(name));
+  const rows = normalizedLedgerRows(liveLedgerRows);
+  const byName = new Map(rows.map((row) => [row.name, row]));
+  const missing = plan.migrations.map((entry) => entry.repoFile).filter((name) => !byName.has(name));
   if (missing.length) fail('POST_APPLY_LEDGER_MISMATCH', `missing=[${missing.join(', ')}]`);
+  const versionMismatches = plan.migrations
+    .filter((entry) => byName.get(entry.repoFile)?.version !== String(entry.ledgerVersion ?? '').trim())
+    .map((entry) => `${entry.repoFile}:expected=${entry.ledgerVersion},actual=${byName.get(entry.repoFile)?.version || '<empty>'}`);
+  if (versionMismatches.length) fail('POST_APPLY_LEDGER_VERSION_MISMATCH', versionMismatches.join(', '));
   return { status: 'POST_APPLY_LEDGER_VERIFIED', applied: plan.migrations.map((entry) => entry.repoFile), databaseMutationAuthorized: false };
 }
+
 
 /**
  * This is the only repo Production writer entry point. G0–G5 are verified before
@@ -179,13 +206,16 @@ export async function runControlledProductionRelease({
   const sql = buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
+    const after = await captureProductionLedger({ token, fetchImpl });
+    verifyPostApplyLedger({ plan, liveLedgerRows: after });
   } catch (error) {
-    const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
+    if (error?.code === 'APPLY_UNKNOWN') throw error;
+    const wrapped = new Error(`APPLY_UNKNOWN: mutable request or post-state readback did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
     wrapped.code = 'APPLY_UNKNOWN';
+    wrapped.cause = error;
     throw wrapped;
   }
-  const after = await captureProductionLedger({ token, fetchImpl });
-  verifyPostApplyLedger({ plan, liveLedgerRows: after });
+
   return {
     schemaVersion: 1,
     status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
