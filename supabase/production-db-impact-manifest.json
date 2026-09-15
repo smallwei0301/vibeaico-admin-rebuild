@@ -53,6 +53,18 @@
         { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_refunded_paid_amount_ck" },
         { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_unpaid_amount_ck" }
       ]
+    },
+    {
+      "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
+      "impacts": [
+        { "surface": "columns", "objectKey": "public.trip_plans.duration_minutes" },
+        { "surface": "columns", "objectKey": "public.trip_plans.price_type" },
+        { "surface": "columns", "objectKey": "public.trip_plans.year_round" },
+        { "surface": "constraints", "objectKey": "public.trip_plans.trip_plans_duration_minutes_positive" },
+        { "surface": "constraints", "objectKey": "public.trip_plans.trip_plans_price_type_check" },
+        { "surface": "routines", "objectKey": "public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)" },
+        { "surface": "acl", "objectKey": "function:public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)" }
+      ]
     }
   ]
 }
