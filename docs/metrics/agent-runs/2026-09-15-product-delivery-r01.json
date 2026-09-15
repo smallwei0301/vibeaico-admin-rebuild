@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 2,
+    "closureSweeps": 3,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -192,6 +192,19 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "closure-sweep-s02-scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "委派 scout 對全部 12 張 open PR 做 LUNA_CLOSURE 真實掃描（#506/#502/#496/#455/#454/#450/#312/#99/#98/#96/#87/#75），逐張列出現況與不是候選的理由，結論 EMPTY_WITH_SCAN，報告寫入 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s02.md，用以解除 PR #506 的 Agent WIP Guard 阻擋。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
       }
     ]
   },
@@ -250,6 +263,7 @@
     "claims": []
   },
   "notes": [
+    "第 s02 輪 LUNA_CLOSURE：scout 對全部 12 張 open PR 做真實掃描，結論 EMPTY_WITH_SCAN，報告 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s02.md；解除 PR #506 的 Agent WIP Guard 阻擋。",
     "本 Run 延續 /goal PRODUCT DELIVERY MAIN SESSION 指令：WORKSTREAM=PRODUCT_MAINLINE，governance/metrics 工作僅在直接卡住 Product Slice 時才做。",
     "PR #464 開立後 Agent WIP Guard 立刻失敗：缺 BPLUS_MODE/RUN_ID/SCORECARD_PATH/LUNA_CLOSURE 埋點，本輪原打算以 BPLUS_MODE=false 誠實留白略過，但這是 CI 機械強制的欄位，不是可略過的記帳品質問題——已改為委派 scout 補齊。",
     "scout 首次產出的 scorecard 未通過 validate-scorecards：缺 quality/auditability/notes/completionTruth 四個頂層欄位，且 flow.solIssues 型別錯誤（應為 number 不是 array）。已由本 session 核實並修正，另外發現並修正兩處捏造：main.startSha 後半段是編造的十六進位、tour-platform review-workflow 的檔案路徑與行號（scout 寫成 src/services/review-workflow.ts:42-98，實際是 apps/web/src/lib/activity-review-transition.mjs）與先前已核實的 scout 報告不符。",
