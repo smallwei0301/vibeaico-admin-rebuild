@@ -115,6 +115,17 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier('create role newcomer in role privileged_role;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter group privileged_role add user app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter view public.tenant_records set (security_invoker = false);')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('insert into public.t(id) values (1) on conflict (id) do update set id = excluded.id;')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('merge into public.t as target using public.s as source on target.id = source.id when matched then update set x = source.x;')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('update public.資料 set x=1;')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('create group operators with superuser;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('alter type public.order_status owner to app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('create schema tenant authorization app_user;')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier('set role app_user;')).toBe('AUTHZ');
+    expect(() => inferMigrationRiskTier('drop view "drop default" cascade;')).toThrow(/UNCLASSIFIED_DROP_NOT_ADMITTED/);
+    const dollarQuote = String.fromCharCode(36, 36);
+    const doDropSql = 'do ' + dollarQuote + ' begin drop view public.t; drop constraint old_ck; end ' + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(doDropSql)).toThrow(/UNCLASSIFIED_DROP_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('alter view public.tenant_records reset (security_invoker);')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('update only (public.tenant_records) set tenant_id = \'other\';')).toBe('BACKFILL');
     expect(inferMigrationRiskTier('update public . tenant_records set tenant_id = \'other\';')).toBe('BACKFILL');

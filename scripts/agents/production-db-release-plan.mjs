@@ -87,6 +87,8 @@ function quotedTokenEnd(input, start, quote) {
 
 
 function dollarQuoteAt(input, index) {
+  const previous = input[index - 1] ?? '';
+  if (previous && /[\p{L}\p{N}_$]/u.test(previous)) return '';
   return input.slice(index).match(/^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/)?.[0] ?? '';
 }
 
@@ -186,7 +188,7 @@ export function splitSqlStatements(sql) {
 
 
 
-export function stripSqlStringLiterals(sql) {
+export function stripSqlStringLiterals(sql, nestedDollarBody = false) {
   const input = stripSqlComments(sql);
   let output = '';
   let index = 0;
@@ -202,10 +204,15 @@ export function stripSqlStringLiterals(sql) {
     if (dollar) {
       const end = input.indexOf(dollar, index + dollar.length);
       if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted SQL token');
-      output += ' '.repeat(dollar.length);
-      output += stripSqlStringLiterals(input.slice(index + dollar.length, end));
-      output += ' '.repeat(dollar.length);
-      index = end + dollar.length;
+      const endIndex = end + dollar.length;
+      if (nestedDollarBody) {
+        output += ' '.repeat(endIndex - index);
+      } else {
+        output += ' '.repeat(dollar.length);
+        output += stripSqlStringLiterals(input.slice(index + dollar.length, end), true);
+        output += ' '.repeat(dollar.length);
+      }
+      index = endIndex;
       continue;
     }
     output += char;
@@ -213,7 +220,6 @@ export function stripSqlStringLiterals(sql) {
   }
   return output;
 }
-
 function stripStoredRoutineBodies(text) {
   // UPDATE / DELETE inside a stored function is runtime behavior, not a migration-time
   // backfill. Keep DO $$ ... $$ blocks intact because those execute immediately while
@@ -225,14 +231,13 @@ function stripStoredRoutineBodies(text) {
 }
 
 function hasImmediateBackfillDml(text) {
-  // `UPDATE` / `DELETE` 也會合法出現在 ACL 語句與 policy 定義中，例如
-  // `GRANT UPDATE`、`REVOKE DELETE`、`FOR UPDATE`。只有 migration 套用當下真的
-  // 執行的資料 DML 才算 BACKFILL；stored function/procedure 內的 DML 是日後 RPC
-  // 執行時才發生，不能把整支 migration 誤判成 BACKFILL。
-  const immediateText = stripStoredRoutineBodies(text);
-  const update = /\bupdate\s+(?:only\s+)?(?:\(\s*)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\)?\s*\*?(?:\s+(?:as\s+)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*set\b/i.test(immediateText);
-  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:\(\s*)?(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*)(?:\s*\.\s*(?:"(?:[^"]|"")*"|[A-Za-z_][\w$]*))?\s*\)?\s*\*?(?=\s|[A-Za-z_]|;|$)/i.test(immediateText);
-  return update || deletion;
+  return splitSqlStatements(text).some((statement) => {
+    const immediateText = stripStoredRoutineBodies(statement).trim();
+    const lexicalText = stripSqlStringLiterals(immediateText);
+    const directDml = /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalText);
+    const compoundDml = /^(?:with\b|do\b)[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    return directDml || compoundDml;
+  });
 }
 
 export function highestRiskTier(tiers = []) {
@@ -246,14 +251,18 @@ export function highestRiskTier(tiers = []) {
 }
 
 function rejectUnclassifiedDropStatements(text) {
-  const fragments = splitSqlStatements(text).filter((fragment) => /\bdrop\b/i.test(fragment));
+  const fragments = splitSqlStatements(text)
+    .map((fragment) => stripStoredRoutineBodies(stripSqlStringLiterals(fragment)))
+    .filter((fragment) => /\bdrop\b/i.test(fragment));
   for (const fragment of fragments) {
-    const recognized =
-      /\bdrop\s+(?:table|schema)\b/i.test(fragment) ||
-      /\b(?:create|alter|drop)\s+policy\b/i.test(fragment) ||
-      /\bdrop\s+(?:constraint|default)\b/i.test(fragment) ||
-      /\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(fragment);
-    if (!recognized) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'unrecognized DROP form must be reviewed explicitly');
+    const drops = [...fragment.matchAll(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi)];
+    if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
+    for (const match of drops) {
+      const objectType = String(match[1]).toLowerCase();
+      if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column']).has(objectType)) {
+        fail('UNCLASSIFIED_DROP_NOT_ADMITTED', `unrecognized DROP form: ${objectType}`);
+      }
+    }
   }
 }
 
@@ -282,7 +291,7 @@ export function inferMigrationRiskTier(sql) {
   if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\balter\s+default\s+privileges\b/i.test(statement))) {
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:local\s+)?role\b|\balter\s+default\s+privileges\b/i.test(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
