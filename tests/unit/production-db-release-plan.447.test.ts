@@ -30,6 +30,39 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  it.each([
+    '(select "public".filter());',
+    '( /* outer */ (select "public".filter()) );',
+    'copy (select "public".filter()) to stdout;',
+    'copy /* query */ ((select "public".filter())) to stdout;',
+  ])('rejects routine calls inside query wrappers: %s', (query) => {
+    expect(() => inferMigrationRiskTier(query)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
+  it.each(['filter()', 'FILTER (1)', 'filter /* comment */ ()'])('rejects unqualified keyword-named routine %s', (call) => {
+    const sql = `create function public.filter() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; select ${call};`;
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
+  it('preserves safe SQL keyword syntax without widening the routine allowlist', () => {
+    for (const query of [
+      'select 1 where exists (select 1);',
+      '(select 1 where not exists (select 1 where false));',
+      'copy (select 1 where exists (select 1)) to stdout;',
+      'select 1 where true and (false or true);',
+      'select 1 where 1 in (1, 2);',
+      'create table public.probe(id int check (id > 0));',
+      // Defining this stored routine does not execute its aggregate/FILTER.
+      'create function public.filtered_count() returns bigint language sql as \u0024\u0024 select count(*) filter (where true) from public.orders; \u0024\u0024;',
+    ]) expect(inferMigrationRiskTier(query)).toBe('ADDITIVE');
+    // Aggregate calls were not on the executable-routine allowlist before this
+    // patch. FILTER syntax must not make the preceding unknown call trusted.
+    expect(() => inferMigrationRiskTier('select count(*) filter (where true) from public.orders;'))
+      .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('select filter() filter (where true);'))
+      .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
   it('rejects qualified keyword-named routines even when the schema is quoted', () => {
     for (const call of [
       '"public".filter()', '"public" . filter()', '"public"/* schema */.filter()',
