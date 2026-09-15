@@ -222,14 +222,51 @@ export function stripSqlStringLiterals(sql, nestedDollarBody = false) {
   }
   return output;
 }
-function stripStoredRoutineBodies(text) {
-  // UPDATE / DELETE inside a stored function is runtime behavior, not a migration-time
-  // backfill. Keep DO $$ ... $$ blocks intact because those execute immediately while
-  // applying the migration and therefore must still count as BACKFILL when they mutate rows.
-  return String(text).replace(
-    /\bcreate\s+(?:or\s+replace\s+)?(?:function|procedure)\b[\s\S]*?\bas\s+(\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$)[\s\S]*?\1/gi,
-    ' ',
-  );
+function stripStoredRoutineBodies(statement) {
+  // Mask strings and dollar-quoted bodies while locating AS, then remove only a
+  // lexically identified top-level CREATE FUNCTION/PROCEDURE body. In particular,
+  // never run a raw regex over a DO body: notice text must not be able to erase
+  // executable DML from the migration-time classifier.
+  const input = String(statement);
+  const lexical = stripSqlStringLiterals(input, true);
+  if (!/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexical)) return input;
+
+  for (const as of lexical.matchAll(/\bas\b/gi)) {
+    let bodyStart = as.index + as[0].length;
+    while (/\s/.test(lexical[bodyStart] ?? '')) bodyStart += 1;
+    const dollar = dollarQuoteAt(input, bodyStart);
+    if (!dollar) continue;
+    const end = input.indexOf(dollar, bodyStart + dollar.length);
+    if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated stored routine body');
+    return input.slice(0, bodyStart)
+      + ' '.repeat(end + dollar.length - bodyStart)
+      + input.slice(end + dollar.length);
+  }
+  return input;
+}
+
+function hasRoutineInvocation(text) {
+  return /\b(?!(?:in|exists|any|all|some|from|select|where|having|case|when)\b)(?:[A-Za-z_][\w$]*\s*\.\s*)?[A-Za-z_][\w$]*\s*\(/i.test(text);
+}
+
+function rejectImmediateRoutineInvocations(statements) {
+  for (const statement of statements) {
+    const immediateText = stripStoredRoutineBodies(statement).trim();
+    const lexicalText = stripSqlStringLiterals(immediateText);
+    const topLevelCall = /^\s*call\b/i.test(lexicalText);
+    const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && hasRoutineInvocation(lexicalText);
+    if (topLevelCall || topLevelSelectCall) {
+      fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
+    }
+
+    if (/^\s*do\b/i.test(lexicalText)) {
+      const body = immediateProceduralBody(immediateText);
+      const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true);
+      if (/\b(?:select|call|perform)\b/i.test(bodyLexical) && hasRoutineInvocation(bodyLexical)) {
+        fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside an immediate procedural block is not admitted');
+      }
+    }
+  }
 }
 
 function immediateProceduralBody(statement) {
@@ -269,6 +306,33 @@ function immediateProceduralBody(statement) {
   return input.slice(index + dollar.length, end);
 }
 
+function matchingParenthesisEnd(input, openIndex) {
+  let depth = 0;
+  let index = openIndex;
+  while (index < input.length) {
+    const char = input[index];
+    if (char === "'" || char === '"') {
+      index = quotedTokenEnd(input, index, char);
+      continue;
+    }
+    const dollar = dollarQuoteAt(input, index);
+    if (dollar) {
+      const end = input.indexOf(dollar, index + dollar.length);
+      if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dollar-quoted dynamic SQL expression');
+      index = end + dollar.length;
+      continue;
+    }
+    if (char === '(') {
+      depth += 1;
+    } else if (char === ')') {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+    index += 1;
+  }
+  fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL expression has unbalanced parentheses');
+}
+
 function firstDynamicSqlTemplate(fragment) {
   const input = String(fragment).trim();
   let index = 0;
@@ -282,14 +346,45 @@ function firstDynamicSqlTemplate(fragment) {
 
   const format = input.slice(index).match(/^format\s*\(/i);
   if (format) {
+    const formatOpenIndex = index + format[0].lastIndexOf('(');
     index += format[0].length;
     skipWhitespace();
+
+    const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
+    const quoteIndex = extended ? index + 1 : index;
+    if (input[quoteIndex] === "'") {
+      const end = quotedTokenEnd(input, quoteIndex, "'");
+      const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
+      if (input.slice(formatEnd).trim()) {
+        fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format expression has unconsumed trailing syntax');
+      }
+      const rawTemplate = input.slice(quoteIndex + 1, end - 1);
+      if (extended && /\\/.test(rawTemplate)) {
+        fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'backslash-escaped E-string dynamic SQL templates are not admitted');
+      }
+      return rawTemplate.replace(/''/g, "'");
+    }
+
+    const dollar = dollarQuoteAt(input, index);
+    if (dollar) {
+      const end = input.indexOf(dollar, index + dollar.length);
+      if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dynamic SQL template');
+      const formatEnd = matchingParenthesisEnd(input, formatOpenIndex);
+      if (input.slice(formatEnd).trim()) {
+        fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL format expression has unconsumed trailing syntax');
+      }
+      return input.slice(index + dollar.length, end);
+    }
+    return '';
   }
 
   const extended = /[eE]/.test(input[index] ?? '') && input[index + 1] === "'";
   const quoteIndex = extended ? index + 1 : index;
   if (input[quoteIndex] === "'") {
     const end = quotedTokenEnd(input, quoteIndex, "'");
+    if (input.slice(end).trim()) {
+      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL expression has unconsumed trailing syntax');
+    }
     const rawTemplate = input.slice(quoteIndex + 1, end - 1);
     if (extended && /\\/.test(rawTemplate)) {
       fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'backslash-escaped E-string dynamic SQL templates are not admitted');
@@ -301,6 +396,10 @@ function firstDynamicSqlTemplate(fragment) {
   if (!dollar) return '';
   const end = input.indexOf(dollar, index + dollar.length);
   if (end < 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated dynamic SQL template');
+  const tokenEnd = end + dollar.length;
+  if (input.slice(tokenEnd).trim()) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL expression has unconsumed trailing syntax');
+  }
   return input.slice(index + dollar.length, end);
 }
 
@@ -424,6 +523,7 @@ export function inferMigrationRiskTier(sql) {
   // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
   const statements = splitSqlStatements(text);
   rejectUnsupportedRoutineLiteralBodies(statements);
+  rejectImmediateRoutineInvocations(statements);
   if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
