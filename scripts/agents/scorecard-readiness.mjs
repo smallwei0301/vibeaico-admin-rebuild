@@ -41,7 +41,7 @@ function observedTaskCounters(run) {
   let total = 0;
   let lunaTasks = 0;
   let lunaAccepted = 0;
-  let solTouches = 0;
+  let solTaskCount = 0;
   const ids = new Set();
   const duplicateIds = new Set();
 
@@ -58,10 +58,10 @@ function observedTaskCounters(run) {
       lunaTasks += count;
       if (task?.accepted === true) lunaAccepted += count;
     }
-    if (requested === 'sol') solTouches += count;
+    if (requested === 'sol') solTaskCount += count;
   }
 
-  return { total, lunaTasks, lunaAccepted, solTouches, duplicateIds: [...duplicateIds] };
+  return { total, lunaTasks, lunaAccepted, solTaskCount, duplicateIds: [...duplicateIds] };
 }
 
 function verifiedIssueCloseCount(run) {
@@ -103,9 +103,6 @@ export function analyzeScorecardReadiness(run) {
     }
     if (num(run?.flow?.lunaAccepted) !== tasks.lunaAccepted) {
       consistencyWarnings.push(`flow.lunaAccepted=${num(run?.flow?.lunaAccepted)} disagrees with modelUsage.tasks-derived ${tasks.lunaAccepted}`);
-    }
-    if (num(run?.flow?.solTouches) !== tasks.solTouches) {
-      consistencyWarnings.push(`flow.solTouches=${num(run?.flow?.solTouches)} disagrees with modelUsage.tasks-derived ${tasks.solTouches}`);
     }
     if (num(run?.ci?.invalidReruns) > num(run?.ci?.fullCiRuns)) {
       consistencyWarnings.push(`ci.invalidReruns=${num(run?.ci?.invalidReruns)} exceeds ci.fullCiRuns=${num(run?.ci?.fullCiRuns)}`);
@@ -149,7 +146,8 @@ export function analyzeScorecardReadiness(run) {
       taskCount: tasks.total,
       lunaTasks: tasks.lunaTasks,
       lunaAccepted: tasks.lunaAccepted,
-      solTouches: tasks.solTouches,
+      solTaskCount: tasks.solTaskCount,
+      recordedSolTouches: num(run?.flow?.solTouches),
       fullCiRuns: num(run?.ci?.fullCiRuns),
       invalidReruns: num(run?.ci?.invalidReruns),
       closureSweeps: num(run?.inventory?.closureSweeps),
@@ -173,7 +171,7 @@ export function renderScorecardReadiness(result) {
     '',
     `- tasks: ${result.observed.taskCount}`,
     `- Luna tasks / accepted: ${result.observed.lunaTasks} / ${result.observed.lunaAccepted}`,
-    `- Sol touches from tasks: ${result.observed.solTouches}`,
+    `- Sol task records / recorded Sol touches: ${result.observed.solTaskCount} / ${result.observed.recordedSolTouches}`,
     `- full CI / invalid reruns: ${result.observed.fullCiRuns} / ${result.observed.invalidReruns}`,
     `- closure sweeps: ${result.observed.closureSweeps}`,
     `- verified ISSUE_CLOSED subjects: ${result.observed.verifiedIssueClosedSubjects}`,
@@ -196,6 +194,7 @@ export function renderScorecardReadiness(result) {
     '',
     ...(result.terminalOnlyPending.length ? result.terminalOnlyPending.map((item) => `- ${item}`) : ['- none']),
     '',
+    '> Sol task records and flow.solTouches are shown side-by-side but are not asserted equal: the repository defines solTouches as triage/audit touches, not as a strict alias of task-record count.',
     '> Readiness never rewrites a legacy Run into OBSERVED_V1. Runs started before the cutoff remain LEGACY_V2. For new OBSERVED_V1 Runs, this tool checks raw capture health without requiring legacy manual percentage fields.',
     '',
   );
