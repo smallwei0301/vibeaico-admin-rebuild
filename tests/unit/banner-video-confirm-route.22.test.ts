@@ -21,7 +21,9 @@ const listMock = vi.fn(async (_dir: string, opts: { search?: string }) => ({
 }));
 const removeMock = vi.fn(async (_paths: string[]) => ({ error: null as { message: string } | null }));
 const updatePendingMock = vi.fn((_payload: Record<string, unknown>) => ({
-  eq: async () => ({ error: null as { message: string } | null }),
+  eq: () => ({
+    eq: async () => ({ error: null as { message: string } | null }),
+  }),
 }));
 
 function fakeSessionSupabase() {

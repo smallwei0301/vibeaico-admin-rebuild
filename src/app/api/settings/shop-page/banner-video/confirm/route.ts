@@ -93,10 +93,16 @@ export const POST = handle(async (req) => {
     .upsert({ tenant_id: t.tenantId, branding: merged }, { onConflict: 'tenant_id' });
   if (upsertError) throw upsertError;
 
+  // ⚠️ 這裡再收窄一次 tenant_id（`pendingRow` 已經是上面 tenant_id 收窄查詢找到
+  // 的列，理論上多此一舉）：`docs/integration/21-PLATFORM-ADMIN-IMPERSONATION.md`
+  // §2.4 的原始碼鎖要求代登入可達路徑的每一段述句都自帶 tenant_id 收窄——代登入
+  // 下這條路徑用的是 service role，RLS 不會兜底，沒有第二道防線，不能靠「這個 id
+  // 反正只可能是自己租戶的」這種跨述句推論。
   const { error: confirmedError } = await admin
     .from('banner_video_pending_uploads')
     .update({ confirmed_at: new Date().toISOString() })
-    .eq('id', pendingRow.id);
+    .eq('id', pendingRow.id)
+    .eq('tenant_id', t.tenantId);
   if (confirmedError) throw confirmedError;
 
   // 換掉舊影片時盡量清掉舊物件；這是 best-effort（不影響本次確認結果）——
