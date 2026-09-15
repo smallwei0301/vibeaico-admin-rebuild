@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 對話輸出語言（強制）
+
+對使用者的所有對話輸出——狀態回報、進度更新、解釋、提問、摘要——一律使用繁體中文，
+不得夾雜整段英文說明；程式碼、指令、檔名、API／欄位名、錯誤碼、log、commit message
+與 PR 內文不受此限，維持原有慣例（多數已是繁體中文，程式相關詞彙照舊不譯）。這條規則
+沒有「情境許可就可以用英文」的例外；每一輪要輸出給使用者的文字前，先確認語言是否符合。
+被 context 壓縮或恢復後，這條規則不因此失效，必須在下一次輸出前重新對齊。
+
 ## Mandatory start — low-friction current truth
 
 `docs/AGENT-EXECUTION.md` is the canonical default execution entry. Before working on any Issue:
