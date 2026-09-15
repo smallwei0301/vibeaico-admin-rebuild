@@ -1,26 +1,10 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { validateRunLedgerV2 } from './run-ledger-v2.mjs';
-
-const LIVE_CAPTURE_INPUTS = Object.freeze([
-  'ci.firstPassRatePercent',
-  'quality.acceptanceEvidenceCoveragePercent',
-  'quality.auditFirstPassRatePercent',
-  'flow.lunaDelegationRatePercent',
-  'flow.waitTimeConvertedPercent',
-  'auditability.evidenceFieldsCompletePercent',
-  'auditability.exactHeadTestCoveragePercent',
-  'auditability.preciseBlockersPercent',
-]);
-
-const CLOSEOUT_DERIVED_INPUTS = Object.freeze([
-  'modelUsage.weightedUsageImprovementPercent',
-  'auditability.scoreInputsCompletePercent',
-]);
 
 const TERMINAL_ONLY_INPUTS = Object.freeze([
   'endedAt',
@@ -34,6 +18,9 @@ const TERMINAL_ONLY_INPUTS = Object.freeze([
   'completionTruth.checkedAt',
 ]);
 
+const num = (value) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const lower = (value) => String(value ?? '').trim().toLowerCase();
+
 function valueAt(object, dottedPath) {
   return dottedPath.split('.').reduce((value, key) => value?.[key], object);
 }
@@ -42,36 +29,89 @@ function isMissing(value) {
   return value === null || value === undefined || value === '';
 }
 
-function round(value, digits = 1) {
-  const factor = 10 ** digits;
-  return Math.round((value + Number.EPSILON) * factor) / factor;
+function observedTaskCounters(run) {
+  const tasks = Array.isArray(run?.modelUsage?.tasks) ? run.modelUsage.tasks : [];
+  let total = 0;
+  let lunaTasks = 0;
+  let lunaAccepted = 0;
+  let solTouches = 0;
+  const ids = new Set();
+  const duplicateIds = new Set();
+
+  for (const task of tasks) {
+    const count = Math.max(0, num(task?.count));
+    total += count;
+    const id = String(task?.id ?? '').trim();
+    if (id) {
+      if (ids.has(id)) duplicateIds.add(id);
+      ids.add(id);
+    }
+    const requested = lower(task?.requestedModel);
+    if (requested === 'luna') {
+      lunaTasks += count;
+      if (task?.accepted === true) lunaAccepted += count;
+    }
+    if (requested === 'sol') solTouches += count;
+  }
+
+  return { total, lunaTasks, lunaAccepted, solTouches, duplicateIds: [...duplicateIds] };
 }
 
-function deriveLunaDelegationRate(run) {
-  const tasks = Number(run?.flow?.lunaTasks ?? 0);
-  const accepted = Number(run?.flow?.lunaAccepted ?? 0);
-  if (!Number.isFinite(tasks) || tasks <= 0 || !Number.isFinite(accepted)) return null;
-  return round(Math.min(100, Math.max(0, (accepted / tasks) * 100)));
+function verifiedIssueCloseCount(run) {
+  const claims = Array.isArray(run?.completionTruth?.claims) ? run.completionTruth.claims : [];
+  const subjects = new Set();
+  for (const claim of claims) {
+    if (claim?.type !== 'ISSUE_CLOSED' || claim?.verification !== 'VERIFIED') continue;
+    if (lower(claim?.observedState) !== 'closed') continue;
+    const match = String(claim?.subject ?? '').match(/(?:issue#|#)(\d+)/i);
+    if (match) subjects.add(match[1]);
+  }
+  return subjects.size;
 }
 
 export function analyzeScorecardReadiness(run) {
   const validationErrors = validateRunLedgerV2(run);
-  if (validationErrors.length) {
-    return {
-      runId: run?.runId ?? null,
-      validLedger: false,
-      validationErrors,
-      liveReadinessPercent: 0,
-      liveCaptureMissing: [...LIVE_CAPTURE_INPUTS],
-      closeoutDerivedMissing: [...CLOSEOUT_DERIVED_INPUTS],
-      terminalOnlyPending: [...TERMINAL_ONLY_INPUTS],
-      consistencyWarnings: [],
-      readyForCloseoutDataCapture: false,
-    };
+  const tasks = observedTaskCounters(run);
+  const rawCaptureGaps = [];
+  const consistencyWarnings = [];
+
+  if (validationErrors.length === 0) {
+    const observableActivity =
+      num(run?.delivery?.issuesStarted) > 0 ||
+      num(run?.ci?.fullCiRuns) > 0 ||
+      num(run?.inventory?.closureSweeps) > 0 ||
+      num(run?.flow?.solTouches) > 0 ||
+      num(run?.flow?.lunaTasks) > 0;
+
+    if (observableActivity && tasks.total === 0) {
+      rawCaptureGaps.push('modelUsage.tasks has no observed task records despite recorded Run activity');
+    }
+    if (tasks.duplicateIds.length) {
+      rawCaptureGaps.push(`modelUsage.tasks has duplicate task id(s): ${tasks.duplicateIds.join(', ')}`);
+    }
+
+    if (num(run?.flow?.lunaTasks) !== tasks.lunaTasks) {
+      consistencyWarnings.push(`flow.lunaTasks=${num(run?.flow?.lunaTasks)} disagrees with modelUsage.tasks-derived ${tasks.lunaTasks}`);
+    }
+    if (num(run?.flow?.lunaAccepted) !== tasks.lunaAccepted) {
+      consistencyWarnings.push(`flow.lunaAccepted=${num(run?.flow?.lunaAccepted)} disagrees with modelUsage.tasks-derived ${tasks.lunaAccepted}`);
+    }
+    if (num(run?.flow?.solTouches) !== tasks.solTouches) {
+      consistencyWarnings.push(`flow.solTouches=${num(run?.flow?.solTouches)} disagrees with modelUsage.tasks-derived ${tasks.solTouches}`);
+    }
+    if (num(run?.ci?.invalidReruns) > num(run?.ci?.fullCiRuns)) {
+      consistencyWarnings.push(`ci.invalidReruns=${num(run?.ci?.invalidReruns)} exceeds ci.fullCiRuns=${num(run?.ci?.fullCiRuns)}`);
+    }
+    if (num(run?.inventory?.closureAdvancedOrClosed) > num(run?.inventory?.closureSweeps)) {
+      consistencyWarnings.push(`inventory.closureAdvancedOrClosed=${num(run?.inventory?.closureAdvancedOrClosed)} exceeds closureSweeps=${num(run?.inventory?.closureSweeps)}`);
+    }
+
+    const verifiedClosed = verifiedIssueCloseCount(run);
+    if (verifiedClosed > num(run?.delivery?.issuesClosed)) {
+      consistencyWarnings.push(`verified ISSUE_CLOSED subjects=${verifiedClosed} exceeds delivery.issuesClosed=${num(run?.delivery?.issuesClosed)}`);
+    }
   }
 
-  const liveCaptureMissing = LIVE_CAPTURE_INPUTS.filter((field) => isMissing(valueAt(run, field)));
-  const closeoutDerivedMissing = CLOSEOUT_DERIVED_INPUTS.filter((field) => isMissing(valueAt(run, field)));
   const terminalOnlyPending = TERMINAL_ONLY_INPUTS.filter((field) => {
     const value = valueAt(run, field);
     if (field === 'closeout.state') return value !== 'CLOSED';
@@ -79,37 +119,34 @@ export function analyzeScorecardReadiness(run) {
     return isMissing(value);
   });
 
-  const consistencyWarnings = [];
-  const derivedLunaRate = deriveLunaDelegationRate(run);
-  const storedLunaRate = run?.flow?.lunaDelegationRatePercent;
-  if (derivedLunaRate !== null && storedLunaRate === null) {
-    consistencyWarnings.push(`flow.lunaDelegationRatePercent can already be derived as ${derivedLunaRate}% from lunaAccepted/lunaTasks`);
-  } else if (derivedLunaRate !== null && typeof storedLunaRate === 'number' && Math.abs(storedLunaRate - derivedLunaRate) > 0.1) {
-    consistencyWarnings.push(`flow.lunaDelegationRatePercent=${storedLunaRate} disagrees with counters-derived ${derivedLunaRate}%`);
-  }
-
-  const captured = LIVE_CAPTURE_INPUTS.length - liveCaptureMissing.length;
-  const liveReadinessPercent = round((captured / LIVE_CAPTURE_INPUTS.length) * 100);
-  const expectedScoreInputsCompletePercent = round(
-    ((LIVE_CAPTURE_INPUTS.length + CLOSEOUT_DERIVED_INPUTS.length - liveCaptureMissing.length - closeoutDerivedMissing.length)
-      / (LIVE_CAPTURE_INPUTS.length + CLOSEOUT_DERIVED_INPUTS.length)) * 100,
-  );
-  const storedScoreInputs = run?.auditability?.scoreInputsCompletePercent;
-  if (typeof storedScoreInputs === 'number' && Math.abs(storedScoreInputs - expectedScoreInputsCompletePercent) > 0.1) {
-    consistencyWarnings.push(`auditability.scoreInputsCompletePercent=${storedScoreInputs} disagrees with observable ${expectedScoreInputsCompletePercent}%`);
-  }
+  const checks = [
+    validationErrors.length === 0,
+    rawCaptureGaps.length === 0,
+    consistencyWarnings.length === 0,
+  ];
+  const passed = checks.filter(Boolean).length;
+  const liveReadinessPercent = Math.round((passed / checks.length) * 1000) / 10;
 
   return {
-    runId: run.runId,
-    validLedger: true,
-    validationErrors: [],
+    runId: run?.runId ?? null,
+    validLedger: validationErrors.length === 0,
+    validationErrors,
+    scoreProfileTarget: 'OBSERVED_V1',
     liveReadinessPercent,
-    expectedScoreInputsCompletePercent,
-    liveCaptureMissing,
-    closeoutDerivedMissing,
-    terminalOnlyPending,
+    rawCaptureGaps,
     consistencyWarnings,
-    readyForCloseoutDataCapture: liveCaptureMissing.length === 0,
+    terminalOnlyPending,
+    observed: {
+      taskCount: tasks.total,
+      lunaTasks: tasks.lunaTasks,
+      lunaAccepted: tasks.lunaAccepted,
+      solTouches: tasks.solTouches,
+      fullCiRuns: num(run?.ci?.fullCiRuns),
+      invalidReruns: num(run?.ci?.invalidReruns),
+      closureSweeps: num(run?.inventory?.closureSweeps),
+      verifiedIssueClosedSubjects: verifiedIssueCloseCount(run),
+    },
+    readyForContinuedCapture: validationErrors.length === 0 && rawCaptureGaps.length === 0 && consistencyWarnings.length === 0,
   };
 }
 
@@ -117,38 +154,39 @@ export function renderScorecardReadiness(result) {
   const lines = [
     `# Scorecard Live Readiness: ${result.runId ?? 'unknown'}`,
     '',
+    `- Target score profile: ${result.scoreProfileTarget}`,
     `- Ledger valid: ${result.validLedger ? 'YES' : 'NO'}`,
-    `- Live capture readiness: ${result.liveReadinessPercent}%`,
-    `- Ready for closeout data capture: ${result.readyForCloseoutDataCapture ? 'YES' : 'NO'}`,
+    `- Live readiness: ${result.liveReadinessPercent}%`,
+    `- Raw capture healthy: ${result.readyForContinuedCapture ? 'YES' : 'NO'}`,
+    '',
+    '## Observed raw facts',
+    '',
+    `- tasks: ${result.observed.taskCount}`,
+    `- Luna tasks / accepted: ${result.observed.lunaTasks} / ${result.observed.lunaAccepted}`,
+    `- Sol touches from tasks: ${result.observed.solTouches}`,
+    `- full CI / invalid reruns: ${result.observed.fullCiRuns} / ${result.observed.invalidReruns}`,
+    `- closure sweeps: ${result.observed.closureSweeps}`,
+    `- verified ISSUE_CLOSED subjects: ${result.observed.verifiedIssueClosedSubjects}`,
   ];
-
-  if (typeof result.expectedScoreInputsCompletePercent === 'number') {
-    lines.push(`- Observable score-input completeness: ${result.expectedScoreInputsCompletePercent}%`);
-  }
 
   if (result.validationErrors.length) {
     lines.push('', '## Ledger validation errors', '', ...result.validationErrors.map((item) => `- ${item}`));
   }
   lines.push(
     '',
-    '## Live-capture gaps',
+    '## Raw-capture gaps',
     '',
-    ...(result.liveCaptureMissing.length ? result.liveCaptureMissing.map((item) => `- ${item}`) : ['- none']),
+    ...(result.rawCaptureGaps.length ? result.rawCaptureGaps.map((item) => `- ${item}`) : ['- none']),
     '',
-    '## Closeout-derived gaps',
+    '## Counter consistency warnings',
     '',
-    ...(result.closeoutDerivedMissing.length ? result.closeoutDerivedMissing.map((item) => `- ${item}`) : ['- none']),
+    ...(result.consistencyWarnings.length ? result.consistencyWarnings.map((item) => `- ${item}`) : ['- none']),
     '',
     '## Terminal-only pending fields',
     '',
     ...(result.terminalOnlyPending.length ? result.terminalOnlyPending.map((item) => `- ${item}`) : ['- none']),
-  );
-  if (result.consistencyWarnings.length) {
-    lines.push('', '## Consistency warnings', '', ...result.consistencyWarnings.map((item) => `- ${item}`));
-  }
-  lines.push(
     '',
-    '> Live-capture gaps are the dangerous ones: if they stay missing until closeout, the final Product score remains NOT_GRADED. Terminal-only fields are expected to remain pending while a Run is active.',
+    '> This tool does not require legacy manual percentage fields. OBSERVED_V1 scores terminal Product Runs from durable raw events and Completion Truth. The readiness check exists to catch missing or contradictory raw evidence before retrospective/closeout.',
     '',
   );
   return lines.join('\n');
@@ -161,9 +199,7 @@ function cli(argv = process.argv.slice(2)) {
   const result = analyzeScorecardReadiness(run);
   if (argv.includes('--json')) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   else process.stdout.write(renderScorecardReadiness(result));
-  if (argv.includes('--strict-live') && (!result.validLedger || result.liveCaptureMissing.length > 0 || result.consistencyWarnings.length > 0)) {
-    process.exitCode = 2;
-  }
+  if (argv.includes('--strict-live') && !result.readyForContinuedCapture) process.exitCode = 2;
   return result;
 }
 
