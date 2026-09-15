@@ -1,26 +1,25 @@
 # Product Scorecard Live Readiness
 
-> Status: canonical companion for Issue #462. This document does not create a third score surface and does not change the 100-point formula. It defines when existing Product score inputs must be captured so that `score-run-v2.mjs` can actually grade a terminal Run.
+> #460 / PR #461 已建立 current `OBSERVED_V1` Scorecard。本文不是第三套分數，也不改 100 分公式；它只負責在 Product Run 還進行中時，確認 durable raw events 沒有漏記或互相矛盾。
 
-## Problem
+## 為什麼還需要 readiness
 
-The current system is truthful but too late: a Product Run may stay `IN_PROGRESS` for hours, merge several PRs, run CI, perform review and closure sweeps, then only at retrospective/closeout discover that required percentage inputs are still `null`. Historical facts cannot be safely reconstructed after the fact, so the final result becomes `NOT_GRADED` again.
+`OBSERVED_V1` 已經解掉「人工百分比缺一格 → 整輪 NOT_GRADED」的根因，但它仍需要真實 raw evidence。若一輪工作有 CI、委派、closure sweep，ledger 卻沒有對應 task / counter / Completion Truth，terminal 時仍無法誠實評分。
 
-The fix is not to invent values. The fix is to surface missing score inputs while the events are still observable.
-
-## One score, two views
+因此現在只有一套分數、兩個時點：
 
 ```text
 LIVE READINESS
-→ Can this active Run still become honestly gradable?
-→ Shows missing live-capture fields now.
+→ active Run 的 raw-event capture health
+→ 不產生分數、不參與跨 Run 比較
 
 FINAL SCORE
-→ Existing score-run-v2 100-point score.
-→ Only terminal + Completion Truth verified + all required inputs present.
+→ scripts/agents/score-run-current.mjs
+→ 新 Product Run 使用 OBSERVED_V1
+→ terminal + truth verified 才真正評分
 ```
 
-Live Readiness is not a score and is not comparison-eligible. It is a data-capture health check.
+Legacy manual percentages 只保留歷史 / supplemental telemetry，**不是**新 Run 的 live readiness gate。
 
 ## Command
 
@@ -28,47 +27,45 @@ Live Readiness is not a score and is not comparison-eligible. It is a data-captu
 node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.json
 ```
 
-Machine-readable form:
+Machine readable：
 
 ```bash
 node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.json --json
 ```
 
-Checkpoint gate:
+Checkpoint gate：
 
 ```bash
 node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.json --strict-live
 ```
 
-`--strict-live` exits non-zero only for invalid ledgers, missing live-capture inputs, or internal consistency warnings. It does **not** fail merely because terminal-only fields such as `endedAt` are naturally pending during an active Run.
+`--strict-live` 只會因 ledger invalid、raw capture gap 或 counter inconsistency 非零退出；active Run 尚未有 `endedAt`、`main.endSha`、terminal Completion Truth 是正常狀態，不因此失敗。
 
-## Input classes
+## 現在檢查什麼
 
-### Live-capture inputs
+### 1. Raw task evidence
 
-These must be maintained while the Run is active. If they remain missing until closeout, the Run will become `NOT_GRADED` and the missing fact may no longer be reconstructable honestly.
+當 ledger 已記錄實際施工／CI／closure activity 時，`modelUsage.tasks` 不可以仍是空陣列。這是 OBSERVED_V1 最基本的「這輪真的有觀測」證據。
 
-- `ci.firstPassRatePercent`
-- `quality.acceptanceEvidenceCoveragePercent`
-- `quality.auditFirstPassRatePercent`
-- `flow.lunaDelegationRatePercent`
-- `flow.waitTimeConvertedPercent`
-- `auditability.evidenceFieldsCompletePercent`
-- `auditability.exactHeadTestCoveragePercent`
-- `auditability.preciseBlockersPercent`
+### 2. Durable counter consistency
 
-### Closeout-derived inputs
+能從 `modelUsage.tasks` 機械推導的 counters 必須相符：
 
-These can be calculated at closeout from already captured raw facts / the previous comparable Run. They are not a reason to fail an active Run's live readiness.
+- `flow.lunaTasks`
+- `flow.lunaAccepted`
+- `flow.solTouches`
 
-- `modelUsage.weightedUsageImprovementPercent`
-- `auditability.scoreInputsCompletePercent`
+此外：
 
-The readiness tool independently calculates observable score-input completeness and warns when a stored `scoreInputsCompletePercent` disagrees with the fields actually present.
+- `ci.invalidReruns <= ci.fullCiRuns`
+- `inventory.closureAdvancedOrClosed <= inventory.closureSweeps`
+- verified `ISSUE_CLOSED` 數不可大於 `delivery.issuesClosed`
 
-### Terminal-only inputs
+這些不是新的分數，它們只是避免「raw events 一套、summary counters 另一套」。
 
-These are expected to remain pending during active work:
+### 3. Terminal-only pending
+
+active Run 可以、也應該暫時缺：
 
 - `endedAt`
 - `main.endSha`
@@ -77,67 +74,75 @@ These are expected to remain pending during active work:
 - closeout envelope
 - `completionTruth.status/checkedAt`
 
-## Required checkpoints
+readiness 會把它們列出，但不視為 active Run 的失敗。
 
-A Product Main Session must run or logically perform the same readiness check at four checkpoints:
+## 四個固定 checkpoint
 
 1. **RUN START**
-   - create/reuse `RUN_ID`;
-   - record start main SHA and inventory;
-   - immediately see which live fields need future capture.
+   - 建立／接續 `RUN_ID`；
+   - 記錄 start main SHA、open Issue / PR；
+   - 跑一次 readiness，確認 ledger schema 與初始狀態可用。
 2. **OBSERVABLE EVENT**
-   - after each accepted/rejected Agent task, full CI attempt, Final/Audit verdict, TEST collision, safety violation, closure sweep, or other event used by a score input;
-   - update raw counters/facts first, then refresh readiness.
+   - accepted/rejected Agent task、full CI、invalid rerun、Audit / Final Risk、TEST collision、安全事件、closure sweep 發生後；
+   - 先寫 durable raw fact，再跑 readiness。
 3. **DELIVERY STAGE CHANGE**
-   - after merge, Issue close/owner-blocked disposition, Vercel Production READY, Production schema readiness, authenticated Production acceptance;
-   - update Completion Truth evidence and coverage while the provider state is still easy to verify.
+   - merge、Issue close / owner-blocked、Vercel Production READY、Production schema readiness、authenticated Production acceptance 後；
+   - 立即寫 Completion Truth evidence，不等複盤再回想。
 4. **PRE-CLOSEOUT**
-   - `liveCaptureMissing` must be empty before terminal closeout unless the Run explicitly ends `OWNER_BLOCKED` because the missing evidence itself is externally unavailable;
-   - missing historical observations must remain missing. Never backfill a guess just to make readiness green.
+   - `rawCaptureGaps=[]`、`consistencyWarnings=[]` 才進 terminal closeout；
+   - 已失去的歷史觀測不得用推算或預設 0 補成綠色。
 
-## Friction rule
+## 降低治理摩擦
 
-Deterministic metadata must be validated before spending remote CI:
+### Default entry 只讀必要來源
+
+日常 Product / Governance 接手應以 `docs/AGENT-EXECUTION.md` 為單一 default execution entry。其他治理文件改為 trigger-based load：
+
+- Model routing / Final Risk 只有碰 Product lane、模型路由或高風險審查時讀。
+- Documentation Governance 只有 docs scope / canonical-doc change 時讀。
+- B+ 歷史背景文件只有規則衝突或追溯裁示時讀。
+- Playbook 只搜尋本次錯誤／領域，不全量重讀。
+- skill 只在對應任務 trigger 時載入。
+
+安全規則沒有減少，只是不再每輪把全部背景一起塞進 context。
+
+### Deterministic metadata preflight-first
 
 ```text
-PR metadata / TEST_PROFILE / lane / candidate / Final Risk metadata
-→ local/trusted preflight first
-→ only then push / dispatch remote CI
+PR body / TEST_PROFILE / lane / candidate / Final Risk metadata
+→ local/trusted preflight
+→ PASS 才 push / dispatch remote CI
 ```
 
-Do not use GitHub Actions as an interactive form validator. A deterministic metadata failure is a preflight defect or a preflight-coverage gap. Fix the local validator or shared parser instead of teaching every Agent another prose exception.
+如果 deterministic metadata 到 remote CI 才第一次被抓到，優先判定為 **preflight coverage gap**。修 shared parser / preflight，不要教每個 Agent 背另一段散文，也不得用 no-op commit 或 blind rerun 試錯。
 
-## What this does not change
+PR #463 第一輪就提供一個真實例子：source 尚未被檢查前，`Agent WIP Policy` 只因 `ASTRA_RATIONALE` 太抽象而退件。正確處置是修 metadata / preflight coverage，不是重跑同一 workflow。
 
-- Completion Truth remains mandatory.
-- `CLOSED` still does not mean shipped.
-- Production five-stage truth remains unchanged.
-- TEST holder / shared TEST safety remains unchanged.
-- Product Final Risk remains unchanged.
-- MODEL_GOVERNANCE remains model-agnostic.
-- Historical ledgers remain immutable and are not retroactively repaired.
+## 與 #461 OBSERVED_V1 的邊界
 
-## Proposed `docs/AGENT-EXECUTION.md` §10 insertion
+- `score-run-current.mjs` 決定 final score / profile。
+- `scorecard-readiness.mjs` 只檢查 active Run 的 raw capture health。
+- readiness 不要求 `firstPassRatePercent`、`acceptanceEvidenceCoveragePercent`、`auditFirstPassRatePercent`、`lunaDelegationRatePercent`、`waitTimeConvertedPercent` 或 auditability legacy 百分比。
+- 歷史 `LEGACY_V2` 不回寫、不重算成 OBSERVED_V1。
 
-The following is the exact bounded text intended to be merged into §10 once the active file owner / parallel diff is clear:
+## 不改變的安全邊界
+
+- Completion Truth 仍必須 VERIFIED 才能正常 final grading。
+- `CLOSED` 不等於 shipped。
+- Production five-stage truth 不變。
+- TEST holder / shared TEST serialization 不變。
+- Product Final Risk 不變。
+- MODEL_GOVERNANCE 維持 model-agnostic。
+- 歷史 ledger 不回填猜測值。
+
+## 準備納入 `docs/AGENT-EXECUTION.md` 的核心文字
 
 ```md
-### 10.1 Live Scorecard Contract（不要等復盤才發現沒資料）
+### Live Scorecard Contract
 
-Scorecard 有兩個視角但只有一套分數：`LIVE_READINESS` 是 active Run 的資料完整度檢查；`FINAL_SCORE` 才是既有 `score-run-v2.mjs` 的 terminal 100 分。Live readiness 不可拿來跨 Run 比較，也不可冒充分數。
+新 Product Run 以 `score-run-current.mjs` 的 `OBSERVED_V1` 為 current scoring truth；legacy manual percentages 不再是新 Run 的 grading gate。Active Run 使用 `scorecard-readiness.mjs` 檢查 durable raw events 與 counters 是否完整一致，不產生分數。
 
-執行：
+固定 checkpoint：Run start、每次 observable event 後、每次 delivery stage change 後、pre-closeout。Pre-closeout 必須 `rawCaptureGaps=[]` 且 `consistencyWarnings=[]`；terminal-only pending 在 active Run 不算失敗，也不得為了變綠事後猜值。
 
-`node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.json`
-
-固定 checkpoint：
-
-1. Run start：建立／接續 ledger 後立即跑一次。
-2. 每次 accepted/rejected Agent task、full CI、Audit/Final Risk、TEST collision、安全事件或 closure sweep 後：先更新 raw facts，再跑 readiness。
-3. 每次 merge／Issue close／Owner-blocked／Vercel Production READY／Production schema／authenticated Production acceptance 後：立即更新 Completion Truth / coverage，再跑 readiness。
-4. closeout 前：`liveCaptureMissing` 必須為空；不可在 closeout 倒推或猜測已經失去的歷史資料。
-
-Live-capture 欄位與 terminal-only 欄位的 canonical 分類見 `docs/metrics/SCORECARD-LIVE-READINESS.md`。缺 terminal-only 欄位在 active Run 是正常；缺 live-capture 欄位是現在就要處理的資料品質問題。
-
-Deterministic metadata 先跑 preflight。PR body / TEST_PROFILE / lane / candidate / Final Risk metadata 若在 CI 才第一次被發現錯誤，優先補 preflight coverage；不得把 remote CI 當規格查詢器，也不得為同一 metadata 問題堆 no-op commit。
+Deterministic metadata 一律 preflight-first。PR body / TEST_PROFILE / lane / candidate / Final Risk metadata 若在 remote CI 才第一次被擋，視為 preflight coverage gap；修 validator / parser，不用 CI 當規格查詢器，不堆 no-op commit，不 blind rerun。
 ```
