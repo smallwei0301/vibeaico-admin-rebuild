@@ -207,7 +207,6 @@ export const lineSettingsPage = {
     },
     webhookOffHint:
       'Webhook 沒開啟 → LINE 不會把使用者點選/訊息送到本系統 → 看起來 Bot 像在睡覺。修好後馬上活過來。',
-    gotoLineConsole: '直接前往 LINE 後台',
 
     /* 人工確認提示（AUTO_REPLY）——獨立於上方六項通過／失敗清單之外，
      * 藍色資訊樣式而非黃色警告：這不是一個「偵測到問題」的結果，而是

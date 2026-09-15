@@ -260,6 +260,48 @@ describe('POST /api/settings/line/verify — 六項可查證檢查 + AUTO_REPLY 
     expect(findCheck(body.data!.checks, 'WEBHOOK_TEST').status).toBe('PASS');
   });
 
+  it('Webhook 端點網址與本店不符時 WEBHOOK 為 FAIL（不是隨便回 PASS）', async () => {
+    mock.reset();
+    mock.setWebhookEndpoint({ endpoint: 'https://not-this-shop.example.com/webhook', active: true });
+    const api = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
+    const res = await api.post('/api/settings/line/verify');
+    const body = await readJson<{ checks: Check[] }>(res);
+    expect(findCheck(body.data!.checks, 'WEBHOOK').status).toBe('FAIL');
+  });
+
+  it('Webhook 端點 active:false（Use webhook 未開啟）時 WEBHOOK 為 FAIL', async () => {
+    mock.reset();
+    const url = await expectedWebhookUrl();
+    mock.setWebhookEndpoint({ endpoint: url, active: false });
+    const api = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
+    const res = await api.post('/api/settings/line/verify');
+    const body = await readJson<{ checks: Check[] }>(res);
+    expect(findCheck(body.data!.checks, 'WEBHOOK').status).toBe('FAIL');
+  });
+
+  it('缺 Channel Secret 時 CREDENTIALS 為 FAIL（token 有填但憑證不完整）', async () => {
+    mock.reset();
+    const { error } = await admin
+      .from('tenant_settings')
+      .update({ line_channel_secret_enc: '' })
+      .eq('tenant_id', SHOP_A.id);
+    expect(error).toBeNull();
+    try {
+      const api = await loginAs(SHOP_A.owner.email, SHOP_A.owner.password);
+      const res = await api.post('/api/settings/line/verify');
+      const body = await readJson<{ checks: Check[] }>(res);
+      expect(findCheck(body.data!.checks, 'CREDENTIALS').status).toBe('FAIL');
+      // 缺 Secret 也會讓 ID_SECRET_PAIR 直接判 FAIL（不呼叫 LINE 就能判定）。
+      expect(findCheck(body.data!.checks, 'ID_SECRET_PAIR').status).toBe('FAIL');
+    } finally {
+      const { error: eRestore } = await admin
+        .from('tenant_settings')
+        .update({ line_channel_secret_enc: encryptSecret(CHANNEL_SECRET) })
+        .eq('tenant_id', SHOP_A.id);
+      expect(eRestore).toBeNull();
+    }
+  });
+
   it('Webhook 測試回 success:false 時 WEBHOOK_TEST 為 FAIL（即使 WEBHOOK 端點設定本身是 PASS）', async () => {
     mock.reset();
     const url = await expectedWebhookUrl();

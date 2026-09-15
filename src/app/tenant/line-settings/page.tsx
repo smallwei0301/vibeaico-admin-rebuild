@@ -1278,16 +1278,6 @@ export default function LineSettingsPage() {
             </a>
           </Alert>
         ))}
-
-        <a
-          className="btn btn-outline btn-sm mt-3"
-          href={t.tutorial.managerHref}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <ExternalLink size={13} />
-          {t.verifyReport.gotoLineConsole}
-        </a>
       </Modal>
 
       {/* ------------------------------------------------ modal：圖文教學 */}
