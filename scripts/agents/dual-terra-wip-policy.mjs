@@ -99,8 +99,7 @@ export function validateActualFileOwnership(metadata, changedFiles) {
     metadata.origin !== 'AGENT' ||
     metadata.state !== 'ACTIVE' ||
     metadata.lane !== 'TERRA_BUILD' ||
-    metadata.dualTerraPilot !== 'TRUE' ||
-    metadata.completionClaim === 'AUDIT_READY'
+    metadata.dualTerraPilot !== 'TRUE'
   ) {
     return [];
   }
@@ -212,7 +211,7 @@ export function summarizeActiveLanes(pullRequests = []) {
 
 export function attachActualChangedFiles(summary, filesByPullRequest = {}) {
   summary.requireActualFileCoverage = true;
-  for (const terra of summary.activeTerra) {
+  for (const terra of [...summary.activeTerra, ...(summary.verifyingTerra ?? [])]) {
     const files = filesByPullRequest[String(terra.number)];
     terra.actualChangedFiles = Array.isArray(files) ? [...files] : null;
   }
@@ -236,7 +235,7 @@ export function validateGlobalWip(summary) {
     for (const error of validateLaneMetadata(terra)) {
       errors.push(`${isVerificationTail(terra) ? 'Verifying' : 'Active'} Terra PR #${terra.number}: ${error}`);
     }
-    if (!isVerificationTail(terra) && summary.requireActualFileCoverage) {
+    if (summary.requireActualFileCoverage) {
       errors.push(...validateActualFileOwnership(terra, terra.actualChangedFiles));
     }
   }
