@@ -85,7 +85,7 @@ describe('POST /api/external-calendars（issue #21）', () => {
   });
 
   it('建立成功：tenant_id 一律取自 session，忽略 body 裡任何 tenantId 欄位', async () => {
-    const res = await POST(makeReq('POST', { name: 'Booking.com', icsUrl: 'https://x.example/a.ics', tenantId: 'evil-tenant' } as any));
+    const res = await POST(makeReq('POST', { name: 'Booking.com', icsUrl: 'https://x.example/a.ics', tenantId: 'evil-tenant' } as any), {} as any);
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
@@ -97,12 +97,12 @@ describe('POST /api/external-calendars（issue #21）', () => {
   });
 
   it('缺 name → 400', async () => {
-    const res = await POST(makeReq('POST', { icsUrl: 'https://x.example/a.ics' }));
+    const res = await POST(makeReq('POST', { icsUrl: 'https://x.example/a.ics' }), {} as any);
     expect(res.status).toBe(400);
   });
 
   it('不合法的 icsUrl（非 http(s)）→ 400', async () => {
-    const res = await POST(makeReq('POST', { name: 'X', icsUrl: 'file:///etc/passwd' }));
+    const res = await POST(makeReq('POST', { name: 'X', icsUrl: 'file:///etc/passwd' }), {} as any);
     expect(res.status).toBe(400);
   });
 });
@@ -116,7 +116,7 @@ describe('GET /api/external-calendars（issue #21，tenant isolation）', () => 
   });
 
   it('只回自己租戶的列，不會看到另一個租戶的訂閱', async () => {
-    const res = await GET(makeReq('GET'));
+    const res = await GET(makeReq('GET'), {} as any);
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data).toHaveLength(1);

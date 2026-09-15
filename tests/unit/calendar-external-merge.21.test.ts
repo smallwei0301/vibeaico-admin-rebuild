@@ -57,7 +57,7 @@ function makeReq(from: string, to: string) {
 
 describe('GET /api/calendar — EXTERNAL 事件合併（issue #21）', () => {
   it('回傳的 events 陣列包含快取表的 EXTERNAL 事件', async () => {
-    const res = await GET(makeReq('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z'));
+    const res = await GET(makeReq('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z'), {} as any);
     const body = await res.json();
     expect(res.status).toBe(200);
     const external = body.data.events.filter((e: any) => e.type === 'EXTERNAL');
@@ -73,7 +73,7 @@ describe('GET /api/calendar — EXTERNAL 事件合併（issue #21）', () => {
 
   it('查詢快取表時真的用 session 解析出的 tenantId 做過濾（不信任 client 輸入）', async () => {
     eqCalls.length = 0;
-    await GET(makeReq('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z'));
+    await GET(makeReq('2026-09-01T00:00:00.000Z', '2026-09-02T00:00:00.000Z'), {} as any);
     expect(eqCalls).toContainEqual(['tenant_id', TENANT_ID]);
   });
 });
