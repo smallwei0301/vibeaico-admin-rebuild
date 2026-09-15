@@ -202,6 +202,10 @@ export function attachActualChangedFiles(summary, filesByPullRequest = {}) {
   return summary;
 }
 
+export function shouldApplyProductGlobalWip(metadata = {}) {
+  return metadata.origin === 'AGENT' && metadata.state === 'ACTIVE' && metadata.lane !== 'GOVERNANCE';
+}
+
 export function validateGlobalWip(summary) {
   const errors = [];
   const { activeTerra, activeReserve, activeClosure, activeTest, activeCandidates } = summary;
