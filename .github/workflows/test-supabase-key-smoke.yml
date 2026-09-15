@@ -46,6 +46,15 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+      - name: Clean integration test servers
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          pkill -f 'next dev' || true
+          pkill -f 'next-server' || true
+          pkill -f 'mock-line' || true
+          pkill -f 'mock-resend' || true
+          sleep 2
       - name: Run E2E tests
         run: timeout 900s bash -lc 'npx playwright install --with-deps chromium && npm run test:e2e'
         env:
@@ -59,3 +68,12 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+      - name: Clean E2E test servers
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          pkill -f 'next dev' || true
+          pkill -f 'next-server' || true
+          pkill -f 'mock-line' || true
+          pkill -f 'mock-resend' || true
+          sleep 2
