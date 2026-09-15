@@ -25,11 +25,27 @@
  * 與 webhook postback 走同一段 `confirmOwnerNotifyBind()` 商業邏輯，不是另一套
  * 假邏輯（見該 route 檔頭說明）。
  *
- * ⚠️ 執行揭露（本次 PR 誠實聲明）：本 spec 需要 canonical TEST Supabase 憑證
- * （`TEST_SUPABASE_URL` / `TEST_SUPABASE_SERVICE_ROLE_KEY`）、
- * `SETTINGS_ENCRYPTION_KEY`，以及上述兩個 test-confirm flag，這個 agent
- * worktree 沒有這些憑證，**沒有實際執行過這支 spec**，只完成撰寫。依 B+ 規則，
- * 實跑需先宣告 `TEST_VALIDATION` lane 並取得唯一 shared TEST holder 資格。
+ * ⚠️ 執行紀錄（PR #519 CI 紅燈後的實跑修復）：CI 的 historical-compatibility-
+ * candidate 在本 spec 連續紅燈 3/3，訊息是「找不到 owner-notify-section」，跟
+ * 上面 test-confirm flag 那次修正是不同根因。用
+ * `scripts/agents/fresh-install-baseline.mjs` 建出一份包含
+ * `0116_issue_18_owner_notify.sql` 的乾淨本地 Supabase 實跑後，實際看到的是：
+ *   1. 根因：下面種資料時給的 `channelId` 不是純數字（曾經是
+ *      `e2e-owner-notify-${suffix}`），而 `src/config/tenant-settings.ts` 的
+ *      zod schema 要求 `channelId` 符合 `^\d*$`。GET LINE 設定 API 用同一份
+ *      schema 解析 DB 值，解析失敗讓整頁 `line-settings/page.tsx` 的
+ *      `settings` state 永遠停在 null——該頁在 `if (loading || !settings)` 提早
+ *      return 一個 loading skeleton，連帶讓不條件渲染的 `OwnerNotifySection`
+ *      （含它的 `data-testid="owner-notify-section"` 根節點）整個進不了 DOM。
+ *      跟 `OwnerNotifySection` 元件本身、跟它的 `confirmOwnerNotifyBind()` 商業
+ *      邏輯完全無關。修法：channelId 改用純數字的 `String(Date.now())`。
+ *   2. 修完①之後浮出的第二個、獨立的既有 spec 錯誤：`oT.pendingBadge`
+ *      （「邀請中，等待本人在 LINE 上確認」）同時出現在候選 `<select>` 的
+ *      `<option>` 標籤與待確認列的 `<span>` 裡，`section.getByText(...)` 因此
+ *      比對到兩個節點，觸發 Playwright strict mode violation。改用待確認列的
+ *      `border-dashed` 容器 class 縮小定位範圍後即可穩定通過。
+ * 兩個修正都完成後，本 spec 在本地隔離 Supabase 上完整跑過一次：
+ * `1 passed (54.2s)`。
  */
 import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -77,7 +93,16 @@ test('老闆通知：加入兩位→切換開關→移除主要遞補→全部�
   try {
     await admin.from('tenant_settings').upsert({
       tenant_id: SHOP_A.id,
-      line: { ...(originalLineJsonb ?? {}), channelId: `e2e-owner-notify-${suffix}` },
+      // channelId 受 src/config/tenant-settings.ts 的 zod schema 限制為純數字
+      // （`^\d*$`，訊息「請輸入純數字的 Channel ID」）——GET LINE 設定 API 用同一份
+      // schema 解析 DB 值，解析失敗會讓整頁的 `settings` state 永遠停在 null，
+      // 連帶讓不條件渲染的 OwnerNotifySection 也卡在頁面自己的 loading 閘門後面
+      // 出不來（page.tsx 的 `if (loading || !settings) return …` 早退）。之前這裡
+      // 塞的是 `e2e-owner-notify-${suffix}`（suffix 是 Date.now().toString(36)，
+      // 含字母與連字號），觸發的正是這個驗證失敗，而不是 OwnerNotifySection 本身
+      // 的問題——實測見 CI「找不到 owner-notify-section」的根因。改用純數字的
+      // Date.now() 字串既滿足 schema，也保留跨次執行的唯一性。
+      line: { ...(originalLineJsonb ?? {}), channelId: String(Date.now()) },
       line_channel_secret_enc: encryptSecret('e2e-secret'),
       line_channel_access_token_enc: encryptSecret('e2e-token'),
     }, { onConflict: 'tenant_id' });
@@ -98,7 +123,15 @@ test('老闆通知：加入兩位→切換開關→移除主要遞補→全部�
     await candidateSelect.selectOption({ label: 'E2E 好友 A' });
     await section.getByRole('button', { name: '發送確認邀請' }).click();
     await expect(page.getByText('已送出確認邀請，請對方在 LINE 上確認')).toBeVisible({ timeout: 15_000 });
-    await expect(section.getByText('邀請中，等待本人在 LINE 上確認')).toBeVisible();
+    // 這段文案（`oT.pendingBadge`）同時出現在候選下拉的 <option> 標籤裡（見
+    // OwnerNotifySection.tsx 的候選 <select>）與下方待確認列的 <span> 裡——單純用
+    // `section.getByText(...)` 會同時比對到這兩個節點，觸發 Playwright strict
+    // mode violation（跟 owner-notify-section 那個根因是兩回事：那個是整頁的
+    // settings 卡在 loading 沒渲染，這個是 locator 本身模糊）。用待確認列固定的
+    // `border-dashed` 容器 class 縮小範圍，只比對真正的待確認列。
+    await expect(
+      section.locator('div.border-dashed', { hasText: '邀請中，等待本人在 LINE 上確認' }),
+    ).toBeVisible();
 
     await section.getByRole('button', { name: '模擬本人已確認（Demo，僅測試環境）' }).click();
     await expect(page.getByText('已加入通知名單')).toBeVisible({ timeout: 15_000 });
