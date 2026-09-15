@@ -30,6 +30,18 @@ const serverSchema = z.object({
   /** Resend 寄信（Phase 4，見 05 分冊） */
   RESEND_API_KEY: z.string().optional(),
 
+  /**
+   * 平台客服信箱（issue #25 B 段／`docs/decisions/2026-09-11-support-chat-human-escalation.md`）。
+   * 店家在 support-chat widget「轉人工」時，通知信寄去這個信箱。
+   *
+   * ⚠️ 未設定時**不擋** thread／訊息寫入——店家的留言仍會成功保存，只是
+   * `src/server/email/send.ts` 的 `sendSupportChatNotifyEmail()` 會回
+   * `SKIPPED_NO_RECIPIENT`，UI 依此誠實顯示「已保存，通知尚未送出」。
+   * 絕不可 fallback 成任何個人信箱或 repo owner 帳號——那會讓一個沒設定的平台
+   * 悄悄把客服信寄去某個人的私人信箱而不留痕跡。
+   */
+  PLATFORM_SUPPORT_NOTIFY_EMAIL: z.string().email().optional(),
+
   /** Vercel Cron 呼叫 /api/cron/* 的 Bearer token（Phase 7，見 07 分冊） */
   CRON_SECRET: z.string().optional(),
 

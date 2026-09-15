@@ -747,3 +747,38 @@ export type PromotionStats = {
   approximate: true;
   hasData: boolean;
 };
+
+/**
+ * Support chat 客服對話串（issue #25 B 段）。與 `SupportAnswer`（自助查詢的
+ * 回覆殼，見 `src/server/support-chat.ts`）是兩件不同的東西——這裡是持久化的
+ * 客服案件／訊息紀錄，見 `docs/decisions/2026-09-11-support-chat-human-escalation.md`。
+ */
+export type SupportChatThreadStatus = 'OPEN' | 'CLOSED';
+/**
+ * 通知寄送的誠實狀態，直接對應 DB 的 `support_chat_threads.notify_status`。
+ * UI 不得從 thread 存在本身推斷通知已送達——沒有 SENT 就不能說「平台已收到」。
+ */
+export type SupportChatNotifyStatus = 'SENT' | 'FAILED' | 'SKIPPED_NO_KEY' | 'SKIPPED_NO_RECIPIENT';
+export type SupportChatSenderRole = 'TENANT' | 'PLATFORM';
+
+export type SupportChatMessage = {
+  id: string;
+  senderRole: SupportChatSenderRole;
+  senderEmail: string;
+  body: string;
+  createdAt: string;
+};
+
+export type SupportChatThreadSummary = {
+  id: string;
+  subject: string;
+  status: SupportChatThreadStatus;
+  notifyStatus: SupportChatNotifyStatus;
+  lastMessageAt: string;
+  unread: boolean;
+  createdAt: string;
+};
+
+export type SupportChatThreadDetail = SupportChatThreadSummary & {
+  messages: SupportChatMessage[];
+};
