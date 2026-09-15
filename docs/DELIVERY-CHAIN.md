@@ -8,6 +8,9 @@
 > 治理定位：本文件描述**交付流程**；`docs/AGENT-EXECUTION.md` 規範**執行模式與 WIP 上限**；
 > `docs/DOCUMENTATION-GOVERNANCE.md` 規範**文件與分支**。三者衝突時，以 `main` 上較新的
 > Owner Decision 為準。
+>
+> 2026-09-15 同步 `docs/AGENT-EXECUTION.md` §3.2 的資料庫分段交付與授權；
+> Production DB 唯一詳細流程是 `docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`，本文件不另造關卡。
 
 ## 0. 這條鏈路要解決什麼問題
 
@@ -22,6 +25,9 @@ CI 抓不到第一種（假成功的程式碼是合法的、型別正確的、�
 因此鏈路的每一關都有一個**明確要抓的東西**，而不是「再檢查一次」。
 
 ## 1. 鏈路總覽
+
+下圖是一般 Product 功能的驗收順序。需要新 schema 的工作另依 §1.1 分段，
+不得將「canonical TEST 必須在功能合併前」套成「schema 準備也只能在遠端 TEST 後合併」。
 
 ```text
 Luna 查證歸屬（避免重複 Issue、確認沒被 owner-blocked）
@@ -42,6 +48,31 @@ Completion Truth 五項驗證（不信 API 回應，實查 main）
 **任何一關可以判定「這一關不適用」，但不能判定「這一關略過」。** 不適用要寫出理由並留在
 PR body 的對應欄位（例如 `MIGRATION_TOUCH: false` 時本機隔離 Supabase 仍要跑，但
 `ISOLATION_CANARY_STATUS: NOT_RUN` 可以，理由要寫）。
+
+### 1.1 新 schema：資料庫準備與功能啟用分開
+
+依 `docs/AGENT-EXECUTION.md` §3.2，遠端只套用 main 上的 canonical migration。
+以下是既有政策的交付順序，不是免驗收捷徑：
+
+```text
+資料庫準備候選（不啟用依賴新 schema 的產品程式）
+  → 本機隔離演練、必要 source review／CI
+  → schema 準備合併 main，完成該 PR 的 Completion Truth
+  → 唯一 canonical TEST holder 套用完全相同的 main SQL 並真實驗收
+  → Production DB release G0–G7（含 TEST、備份／復原、Final Risk、寫入前重查及套用後回讀）
+  → PRODUCTION_SCHEMA_READY
+  → 依賴功能候選完成必要 Product TEST／final audit／merge
+  → 依領域授權啟用功能，正式登入操作驗收
+```
+
+schema 準備不是功能交付；不能把該段的 source CI 或合併當成 canonical TEST、
+Production 套用或 `shipped_unit`。一般 Product 必要驗收、Product Final Risk、
+remote TEST 單線與合併保護不變。所需 guard 尚不支援安全分段時先補接線，不能繞過檢查。
+相依功能在 Production schema ready 前不得被啟用；已部署但未啟用也不能當成正式驗收。
+
+G0–G7 的範圍、精確版本／證據綁定與風險分級只維護於
+`docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`。空白重建不能替代該流程要求的正式庫形狀升級、
+真實 TEST 行為與權限驗證；所需證據缺失時停止受影響階段，不得以 `POLICY_SKIP` 充數。
 
 ## 2. 各關的職責與通過條件
 
@@ -102,7 +133,7 @@ Sol 一次只審一張 PR。早期 audit 與最終 audit 的 head 不同時，�
 
 **要抓的東西：migration 對「空白資料庫」是不是真的正確。**
 
-這是**唯一**能證明 migration 正確性的地方。原因：線上 TEST 與 PROD 已經有那些欄位了，
+這是驗證 migration **從空白重建**的必要環節，不代表 Production 升級已驗收。原因：線上 TEST 與 PROD 若已經有那些欄位，
 冪等 migration（`add column if not exists`）在它們身上跑起來是 **no-op** —— 跑綠什麼都沒證明。
 只有全新建庫、從第一支 migration 依序套到最後一支，才會暴露順序錯誤、相依缺失、約束名稱衝突。
 
@@ -120,6 +151,8 @@ Sol 一次只審一張 PR。早期 audit 與最終 audit 的 head 不同時，�
 **要抓的東西：搶用共用資源，以及把「沒跑測試的綠」當成綠。**
 
 canonical TEST 是**唯一一套**遠端共用環境，**全 repo 同時最多一個 holder**。
+新 schema 依 §1.1 先完成 schema 準備合併，再由 holder 套用 main 的相同 SQL；
+不得使用 branch-only SQL，也不能把套用成功本身當成整合／操作／權限測試通過。
 
 - 只有唯一的 `TEST_VALIDATION` holder 可以使用 TEST secrets。
 - 非 holder 的 `integration` job 會留下一個**成功的 `POLICY_SKIP`**。
@@ -134,7 +167,10 @@ canonical TEST 是**唯一一套**遠端共用環境，**全 repo 同時最多�
 
 ### 2.6 Sol 最終放行與 Completion Truth 五項驗證
 
-最終順序固定為：`Terra → early Sol diff audit → 必要修正 → local isolated → canonical TEST（若需要）→ final Sol audit → merge／Issue close → Completion Truth`。缺少必要測試或最終 audit 時，不得 `CLOSE_APPROVED`。
+一般 Product 功能的最終順序為：`Terra → early Sol diff audit → 必要修正 → local isolated → canonical TEST（若需要）→ final Sol audit → merge／Issue close → Completion Truth`。缺少該階段必要測試或最終 audit 時，不得 `CLOSE_APPROVED`。
+
+新 schema 準備依 §1.1 與 `docs/AGENT-EXECUTION.md` §3.2 的分段流程；其 source review／CI
+只放行資料庫準備候選，不代替後續 canonical TEST、Production Final Risk 或功能最終驗收。
 
 ### 2.7 Completion Truth 五項驗證
 
@@ -163,6 +199,10 @@ SOURCE_VERIFIED
         → AUTHENTICATED_PRODUCTION_ACCEPTED
 ```
 
+以上保留既有交付證據階梯，不是授權先啟用功能再補資料庫的操作順序。
+涉及新 schema 時仍必須依 §1.1，先確認 `PRODUCTION_SCHEMA_READY` 再啟用依賴功能；
+schema 準備與功能候選各自保留精確版本證據，不得拼接無關版本的綠燈。
+
 **五階全數成立才是 `shipped_unit`；`CLOSED` 只代表 Issue 結案，不能單獨代表完成交付；其餘一律記為 `PRODUCTION_PENDING`。**
 
 特別注意最後一階：`AUTHENTICATED_PRODUCTION_ACCEPTED` 指**以登入帳號在正式站實機操作驗收**。
@@ -170,17 +210,28 @@ SOURCE_VERIFIED
 
 同時，**「沒有手動部署」不得被寫成「Production 完全沒有部署」**：`main` 會自動觸發 Vercel。
 
-## 4. 授權邊界（未取得明確授權一律禁止）
+## 4. 授權邊界（依現行分階段政策）
 
-- Production DDL
-- Production DML
-- Production migration
-- Production reset / seed
-- 手動 Production deploy / promote
-- 真實付款、真實退款
-- 真實顧客通知
+Production DDL／DML／migration 依 `docs/AGENT-EXECUTION.md` §3.2 與
+`docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`，不再以本節維護另一份永久逐次人工規則。
 
-Owner 的授權是**逐次、具名**的：一次「僅限本次新增欄位」的授權，不延伸到下一次。
+- `POLICY_APPROVED_AUTOMATION_PENDING`：完整技術關卡成立後，仍保留逐次、具名的
+  bootstrap Owner gate；一次核准不延伸到下一次，也不能替代任何技術證據。
+- 只有 trusted-main executable policy 證明 `AUTOMATION_READY=true` 且
+  `PRODUCTION_DB_AUTHORIZATION_MODE=POLICY_GATED_ACTIVE`，才在該政策精確範圍內由
+  完整機器關卡及受控 writer 放行，`PER_RUN_OWNER_APPROVAL=NOT_REQUIRED`；
+  不需要 Owner 第二次啟用裁示或逐支 migration 批准。
+- 文件更新、PR 合併、CI 綠燈、人工 checkbox 或舊審查都不能單獨證明 AUTOMATION_READY，
+  也不授權本輪直接寫入正式庫。自動化失效依正式流程停止，不以人工同意取代失效防線。
+- Production reset／seed、災難性刪除與不可復原資料變更不在本政策允許範圍，
+  不能藉人工同意跳過關卡。
+- 網站 Production deploy／promote／流量切換、真實付款／退款／訂單事實修改、
+  顧客通知／LINE 及其他 Production 專案不在本 DB 政策內；仍依各自領域授權，
+  不得從 DB 自動化授權推導出操作許可。
+
+正式庫執行器接線、套用與資料修復屬 `PRODUCT_MAINLINE`，不得借純治理免 Product Final Risk
+的規則放行。未具備執行器、憑證、獨立審查或實測證據時，如實記錄對應技術阻塞；
+在自動化尚未完成時，不得只把狀態文字改成 ACTIVE。
 
 ## 5. 治理原則：復原，而不是取消
 
@@ -215,6 +266,7 @@ GitHub 現況 > main 上的 canonical 文件 > 交接文件 > 舊對話與記憶
 ## 7. 相關文件
 
 - `docs/AGENT-EXECUTION.md` — 執行模式、B+ 角色路由、WIP 上限、停止條件
+- `docs/PRODUCTION-DB-RELEASE-WORKFLOW.md`：Production DB 分階段授權與 G0–G7 詳細關卡
 - `docs/DOCUMENTATION-GOVERNANCE.md` — 文件治理與分支規則
 - `docs/OWNER-DECISIONS.md` — Owner 決策紀錄
 - `docs/AGENT-PLAYBOOK.md` — 失敗／教訓索引
