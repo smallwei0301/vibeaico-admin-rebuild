@@ -68,12 +68,24 @@
 --      就沒鎖過名額，不呼叫 `release_seats`——呼叫了才是憑空多放一次名額。
 --   2. `status` → CANCELLED，`cancel_reason` 記導遊填的理由。
 --
--- 兩支都不是把 `cancel_tour_order` 加參數重疊語意：`cancel_tour_order` 的語意是
--- 「不論為什麼，把一筆已經在生效中的訂單取消掉」，`reject_tour_request` 的語意是
--- 「導遊還沒做出承諾之前，回絕這筆申請」，兩者在名額釋放的前提判斷不同（前者
--- 無條件釋放；後者要看 `seats_reserved` 才知道有沒有東西可放），沿用 `0099`
--- 對 `expire_tour_order` vs `cancel_tour_order` 的同一個理由：把不同語意塞進
--- 同一支函式，會讓其中一種呼叫方式多一個容易傳錯、傳錯又靜默不對的參數。
+-- `reject_tour_request` 不是把 `cancel_tour_order` 加參數重疊語意：
+-- `cancel_tour_order` 的語意是「不論為什麼，把一筆已經在生效中的訂單取消掉」，
+-- `reject_tour_request` 的語意是「導遊還沒做出承諾之前，回絕這筆申請」，沿用
+-- `0099` 對 `expire_tour_order` vs `cancel_tour_order` 的同一個理由：把不同
+-- 語意塞進同一支函式，會讓其中一種呼叫方式多一個容易傳錯、傳錯又靜默不對的
+-- 參數。
+--
+-- ## Final Risk B1（claude-fable-5-1）：cancel_tour_order／expire_tour_order 也要修
+--
+-- 上一段刻意不寫「`cancel_tour_order` 無條件釋放」——那句話在本檔套用前成立，
+-- 是因為套用前所有訂單建單當下就鎖位，`release_seats` 因此永遠有東西可放。
+-- 本檔讓 REQUEST 訂單可以在 PENDING 階段沒鎖位，這個前提就不再對所有訂單成立：
+-- 若這種訂單被導遊經由既有 `/api/tour-orders/:id/cancel` 取消，或未來
+-- `hold_expires_at` 非 null 時被 cron 經由 `expire_tour_order` 逾期釋放，這兩支
+-- 函式會對一個從未鎖過的名額呼叫 `release_seats`，把別筆已確認訂單的席次憑空
+-- 放出來——跟 `reject_tour_request` 要防的是同一件事，只是換一個既有入口，
+-- 必須一起補上，不能只修新加的 `reject_tour_request`。本檔因此也
+-- `create or replace` 這兩支（簽章不變），加上同一種 `seats_reserved` 守門。
 
 -- ------------------------------------------------------------------ 新欄位
 alter table public.trip_plans
@@ -282,10 +294,94 @@ begin
   return true;
 end; $$ language plpgsql security definer set search_path = public;
 
+-- ------------------------------------------------------- cancel_tour_order／expire_tour_order：補 seats_reserved 守門
+--
+-- Final Risk (claude-fable-5-1) B1：`cancel_tour_order`（0087）與
+-- `expire_tour_order`（0100）都無條件 `release_seats`。修好之前的 REQUEST
+-- 訂單建單當下就鎖位，這個假設在本檔之前一直成立；但本檔讓 PENDING 的
+-- REQUEST 訂單可以「還沒鎖位」（`seats_reserved = false`）——若這種訂單被
+-- 導遊經由既有 `/cancel` 取消，或未來 hold_expires_at 非 null 時被 cron
+-- 經由 `expire_tour_order` 逾期釋放，這兩支函式會對一個從未鎖過的名額呼叫
+-- `release_seats`，把別的已確認訂單的席次憑空放出來——這正是本檔標題要修的
+-- 「假成功」的另一面，只是換一個進入點，必須一起補上，不能只修
+-- `reject_tour_request` 這一個新入口。
+--
+-- 兩支簽章與 0087／0100 完全相同，`create or replace` 只換函式本體。
+create or replace function public.cancel_tour_order(
+  p_tenant uuid,
+  p_order  uuid,
+  p_reason text
+) returns boolean as $$
+declare
+  v_order record;
+begin
+  select id, departure_id, party_size, status, seats_reserved into v_order
+    from public.tour_orders
+   where id = p_order and tenant_id = p_tenant
+   for update;
+  if not found then
+    return false;
+  end if;
+  if v_order.status in ('CANCELLED', 'COMPLETED') then
+    return false;
+  end if;
+
+  update public.tour_orders
+     set status = 'CANCELLED',
+         cancel_reason = coalesce(p_reason, ''),
+         seats_reserved = false,
+         updated_at = now()
+   where id = p_order and tenant_id = p_tenant;
+
+  -- 只在真的鎖著名額時才釋放；REQUEST 訂單在導遊接受前 seats_reserved 為
+  -- false，本來就沒鎖過，呼叫 release_seats 會讓 seats_booked 憑空少計，
+  -- 之後 reserve_seats 就能超賣。
+  if v_order.seats_reserved then
+    perform public.release_seats(v_order.departure_id, v_order.party_size);
+  end if;
+  return true;
+end; $$ language plpgsql security definer set search_path = public;
+
+create or replace function public.expire_tour_order(
+  p_tenant uuid,
+  p_order  uuid,
+  p_reason text
+) returns boolean as $$
+declare
+  v_order record;
+begin
+  select id, departure_id, party_size, seats_reserved into v_order
+    from public.tour_orders
+   where id = p_order
+     and tenant_id = p_tenant
+     and status = 'PENDING'
+     and hold_expires_at is not null
+     and hold_expires_at < now()
+   for update;
+
+  if not found then
+    return false;
+  end if;
+
+  update public.tour_orders
+     set status = 'CANCELLED',
+         cancel_reason = coalesce(p_reason, ''),
+         seats_reserved = false,
+         updated_at = now()
+   where id = p_order and tenant_id = p_tenant;
+
+  if v_order.seats_reserved then
+    perform public.release_seats(v_order.departure_id, v_order.party_size);
+  end if;
+  return true;
+end; $$ language plpgsql security definer set search_path = public;
+
 -- --------------------------------------------------------------------- ACL
 -- 同 0088／0100：security definer 繞過 RLS，只能由 server 端 service_role 呼叫。
 -- 先 revoke all from public 再個別 grant，PostgreSQL 對新函式預設
 -- `GRANT EXECUTE TO PUBLIC`，只 revoke anon/authenticated 不夠（PB-028）。
+-- `cancel_tour_order`／`expire_tour_order` 用完全相同簽名 create or replace，
+-- 0088／0100 既有的 service_role-only 授權不受影響，這裡不重複 grant。
 revoke all on function public.accept_tour_request(uuid, uuid, numeric) from public;
 revoke all on function public.accept_tour_request(uuid, uuid, numeric) from anon, authenticated;
 grant execute on function public.accept_tour_request(uuid, uuid, numeric) to service_role;
@@ -411,14 +507,37 @@ begin
     raise exception '0111 後置斷言失敗——tour_orders.seats_reserved 不存在或型別不符';
   end if;
 
-  -- ⑤ 反向：不得動到既有的 reserve_seats / release_seats / cancel_tour_order /
-  -- expire_tour_order。
+  -- ⑤ reserve_seats／release_seats 兩支底層 rpc 一定要還在（本檔完全不碰它們，
+  -- 只是重新分流「誰在什麼時機呼叫」）。
   if not exists (
     select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-     where n.nspname = 'public' and p.proname in
-       ('reserve_seats', 'release_seats', 'cancel_tour_order', 'expire_tour_order')
-     group by 1 having count(*) = 4
+     where n.nspname = 'public' and p.proname in ('reserve_seats', 'release_seats')
+     group by 1 having count(*) = 2
   ) then
-    raise exception '0111 後置斷言失敗——reserve_seats/release_seats/cancel_tour_order/expire_tour_order 其中一支不見了';
+    raise exception '0111 後置斷言失敗——reserve_seats/release_seats 其中一支不見了';
+  end if;
+
+  -- ⑥ Final Risk B1：cancel_tour_order／expire_tour_order 本檔**故意**改了
+  -- （不是「反向不得動到」），必須依 seats_reserved 才決定要不要 release_seats
+  -- ——否則 PENDING 的 REQUEST 訂單（seats_reserved=false）被取消／逾期時，
+  -- 會對一個從未鎖過的名額呼叫 release_seats，把別筆已確認訂單的席次憑空放出。
+  select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'cancel_tour_order';
+  if v_def is null then
+    raise exception '0111 後置斷言失敗——cancel_tour_order 不見了';
+  end if;
+  if v_def !~* 'seats_reserved' then
+    raise exception '⑥ cancel_tour_order 沒有依 seats_reserved 判斷要不要釋放名額（Final Risk B1）';
+  end if;
+
+  select pg_get_functiondef(p.oid) into v_def
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.proname = 'expire_tour_order';
+  if v_def is null then
+    raise exception '0111 後置斷言失敗——expire_tour_order 不見了';
+  end if;
+  if v_def !~* 'seats_reserved' then
+    raise exception '⑥ expire_tour_order 沒有依 seats_reserved 判斷要不要釋放名額（Final Risk B1）';
   end if;
 end $$;

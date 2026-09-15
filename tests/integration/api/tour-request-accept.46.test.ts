@@ -328,6 +328,103 @@ describe('導遊拒絕 REQUEST 訂單（reject）', () => {
   });
 });
 
+describe('cancel_tour_order 對 seats_reserved 的守門（0111 Final Risk B1，claude-fable-5-1）', () => {
+  it('取消一筆從未被接受的 PENDING REQUEST 訂單 → 200，seats_booked 完全不動（從未鎖過，不該被放）', async () => {
+    await resetDeparture(TRIP_A.departure1, 10);
+    await setPlanRequestMode(TRIP_A.planA1, 'REQUEST');
+    const before = await dbSeats(TRIP_A.departure1);
+
+    const created = await createOrder(ownerA, TRIP_A.departure1, 2);
+    const order = (await json<any>(created)).data!;
+    createdOrderIds.push(order.id);
+    expect(await dbSeats(TRIP_A.departure1)).toBe(before);
+
+    const cancelled = await ownerA.post(`/api/tour-orders/${order.id}/cancel`, { reason: '顧客取消申請' });
+    expect(cancelled.status).toBe(200);
+    const afterCancel = (await json<any>(cancelled)).data!;
+    expect(afterCancel.status).toBe('CANCELLED');
+    // ⚠️ 修法前 cancel_tour_order 無條件 release_seats，這裡會變成 before - 2。
+    expect(await dbSeats(TRIP_A.departure1)).toBe(before);
+
+    const { data: row, error } = await admin.from('tour_orders')
+      .select('seats_reserved').eq('id', order.id).maybeSingle();
+    expect(error).toBeNull();
+    expect(row!.seats_reserved).toBe(false);
+  });
+
+  it('取消一筆已被接受（CONFIRMED，seats_reserved=true）的 REQUEST 訂單 → 名額釋放剛好一次', async () => {
+    await resetDeparture(TRIP_A.departure1, 10);
+    await setPlanRequestMode(TRIP_A.planA1, 'REQUEST');
+    const before = await dbSeats(TRIP_A.departure1);
+
+    const created = await createOrder(ownerA, TRIP_A.departure1, 3);
+    const order = (await json<any>(created)).data!;
+    createdOrderIds.push(order.id);
+
+    expect((await ownerA.post(`/api/tour-orders/${order.id}/accept`, {})).status).toBe(200);
+    expect(await dbSeats(TRIP_A.departure1)).toBe(before + 3);
+
+    const cancelled = await ownerA.post(`/api/tour-orders/${order.id}/cancel`, { reason: '導遊臨時取消' });
+    expect(cancelled.status).toBe(200);
+    // 已鎖住的 3 個名額被放回，且只放一次。
+    expect(await dbSeats(TRIP_A.departure1)).toBe(before);
+
+    const { data: row, error } = await admin.from('tour_orders')
+      .select('status, seats_reserved').eq('id', order.id).maybeSingle();
+    expect(error).toBeNull();
+    expect(row!.status).toBe('CANCELLED');
+    expect(row!.seats_reserved).toBe(false);
+  });
+});
+
+describe('confirm-payment 對 seats_reserved 的守門（0111 Final Risk B2，claude-fable-5-1）', () => {
+  it('對尚未被接受（PENDING，seats_reserved=false）的 REQUEST 訂單呼叫 confirm-payment → 409 TOUR_002，不改動任何資料', async () => {
+    await resetDeparture(TRIP_A.departure1, 10);
+    await setPlanRequestMode(TRIP_A.planA1, 'REQUEST');
+    const before = await dbSeats(TRIP_A.departure1);
+
+    const created = await createOrder(ownerA, TRIP_A.departure1, 2);
+    const order = (await json<any>(created)).data!;
+    createdOrderIds.push(order.id);
+    expect(await dbSeats(TRIP_A.departure1)).toBe(before);
+
+    const confirmed = await ownerA.post(`/api/tour-orders/${order.id}/confirm-payment`, {});
+    expect(confirmed.status).toBe(409);
+    expect((await json(confirmed)).code).toBe('TOUR_002');
+    // ⚠️ 修法前這裡會回 200，做出一筆「已收款、已確認」但從未鎖過名額的訂單。
+    expect(await dbSeats(TRIP_A.departure1)).toBe(before);
+
+    const { data: row, error } = await admin.from('tour_orders')
+      .select('status, payment_status, paid_amount').eq('id', order.id).maybeSingle();
+    expect(error).toBeNull();
+    expect(row!.status).toBe('PENDING');
+    expect(row!.payment_status).not.toBe('PAID');
+    expect(Number(row!.paid_amount ?? 0)).toBe(0);
+  });
+
+  it('先 accept 鎖定名額後再 confirm-payment → 200，正常轉為 CONFIRMED／PAID', async () => {
+    await resetDeparture(TRIP_A.departure1, 10);
+    await setPlanRequestMode(TRIP_A.planA1, 'REQUEST');
+
+    const created = await createOrder(ownerA, TRIP_A.departure1, 1);
+    const order = (await json<any>(created)).data!;
+    createdOrderIds.push(order.id);
+
+    expect((await ownerA.post(`/api/tour-orders/${order.id}/accept`, {})).status).toBe(200);
+
+    const confirmed = await ownerA.post(`/api/tour-orders/${order.id}/confirm-payment`, {});
+    expect(confirmed.status).toBe(200);
+    const afterConfirm = (await json<any>(confirmed)).data!;
+    expect(afterConfirm.status).toBe('CONFIRMED');
+
+    const { data: row, error } = await admin.from('tour_orders')
+      .select('payment_status, hold_expires_at').eq('id', order.id).maybeSingle();
+    expect(error).toBeNull();
+    expect(row!.payment_status).toBe('PAID');
+    expect(row!.hold_expires_at).toBeNull();
+  });
+});
+
 describe('TOUR_MODULE 未訂閱時，accept／reject 一律 403', () => {
   it('停用訂閱 → accept／reject 都 403 FEAT_001，且不改動任何資料', async () => {
     await resetDeparture(TRIP_A.departure1, 10);
