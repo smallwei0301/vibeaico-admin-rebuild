@@ -1,19 +1,22 @@
-name: test-supabase-key-smoke
+name: issue-447-shared-test-validation
 on:
   push:
     branches: [test/issue-447-exact-head-validation]
 permissions:
   contents: read
 jobs:
-  smoke:
+  validate:
     runs-on: ubuntu-latest
     environment: shared-test-validation
+    concurrency:
+      group: shared-test-supabase-integration
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - name: Verify environment legacy TEST keys without printing them
+      - name: Verify canonical TEST identity and admin key
         env:
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
@@ -22,10 +25,36 @@ jobs:
           node --input-type=module <<'NODE'
           import { createClient } from '@supabase/supabase-js';
           const { TEST_SUPABASE_URL: url, TEST_SUPABASE_SERVICE_ROLE_KEY: secret, TEST_SUPABASE_ANON_KEY: anon } = process.env;
-          if (!url || !secret || !anon) throw new Error('LEGACY_TEST_API_KEYS_NOT_CONFIGURED');
+          if (!url || !secret || !anon) throw new Error('TEST_API_KEYS_NOT_CONFIGURED');
           if (new URL(url).hostname !== 'nmwhwngojosmagjuvxol.supabase.co') throw new Error('WRONG_TEST_PROJECT_URL');
           const admin = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
           const { error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1 });
-          if (error) throw new Error(`LEGACY_TEST_SERVICE_KEY_REJECTED:${error.message}`);
-          console.log('LEGACY_TEST_API_KEYS_ACCEPTED');
+          if (error) throw new Error(`TEST_SERVICE_KEY_REJECTED:${error.message}`);
+          console.log('CANONICAL_TEST_IDENTITY_VERIFIED');
           NODE
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
+          AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
+          TEST_CRON_SECRET: ci-cron-secret-0711
+          LINE_API_BASE: http://localhost:4123
+          LINE_DATA_API_BASE: http://localhost:4123
+          RESEND_BASE_URL: http://localhost:4124
+          RESEND_API_KEY: re_test_ci_local_mock
+      - name: Run E2E tests
+        run: npx playwright install --with-deps chromium && npm run test:e2e
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.TEST_SETTINGS_ENCRYPTION_KEY }}
+          AUTH_SECRET: ${{ secrets.TEST_AUTH_SECRET }}
+          TEST_CRON_SECRET: ci-cron-secret-0711
+          LINE_API_BASE: http://localhost:4123
+          LINE_DATA_API_BASE: http://localhost:4123
+          RESEND_BASE_URL: http://localhost:4124
+          RESEND_API_KEY: re_test_ci_local_mock
