@@ -123,32 +123,36 @@ jobs:
               per_page: 100,
             });
             const summary = policy.summarizeActiveLanes(openPulls);
+            const productWipApplies =
+              isAgent && metadata.state === 'ACTIVE' && metadata.lane !== 'GOVERNANCE';
             const actualFilesByPullRequest = {};
             const actualFileLoadErrors = [];
 
-            for (const terra of summary.activeTerra) {
-              try {
-                const files = await github.paginate(github.rest.pulls.listFiles, {
-                  owner,
-                  repo,
-                  pull_number: terra.number,
-                  per_page: 100,
-                });
-                actualFilesByPullRequest[String(terra.number)] = [
-                  ...new Set(
-                    files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)),
-                  ),
-                ];
-              } catch (error) {
-                actualFileLoadErrors.push(
-                  `Dual Terra PR #${terra.number} actual changed-file list could not be loaded: ${error.status ?? 'unknown'}`,
-                );
+            if (productWipApplies) {
+              for (const terra of summary.activeTerra) {
+                try {
+                  const files = await github.paginate(github.rest.pulls.listFiles, {
+                    owner,
+                    repo,
+                    pull_number: terra.number,
+                    per_page: 100,
+                  });
+                  actualFilesByPullRequest[String(terra.number)] = [
+                    ...new Set(
+                      files.flatMap((file) => [file.filename, file.previous_filename].filter(Boolean)),
+                    ),
+                  ];
+                } catch (error) {
+                  actualFileLoadErrors.push(
+                    `Dual Terra PR #${terra.number} actual changed-file list could not be loaded: ${error.status ?? 'unknown'}`,
+                  );
+                }
               }
-            }
 
-            policy.attachActualChangedFiles(summary, actualFilesByPullRequest);
+              policy.attachActualChangedFiles(summary, actualFilesByPullRequest);
+            }
             const capacity = policy.pilotCapacity(summary);
-            const wipErrors = isAgent && metadata.state === 'ACTIVE'
+            const wipErrors = productWipApplies
               ? [...policy.validateGlobalWip(summary), ...actualFileLoadErrors]
               : [];
 
@@ -316,6 +320,7 @@ jobs:
               ['Astra change digest', astraResult.changeDigest || 'not-computed'],
               ['Current PR', `#${current.number}`],
               ['Run', metadata.runId || 'missing'],
+              ['Product global WIP applied', String(productWipApplies)],
               ['Free dual-Terra pilot qualified', String(capacity.qualified)],
               ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
               ['Terra', `${summary.activeTerra.length}/${capacity.terraMax}`],
