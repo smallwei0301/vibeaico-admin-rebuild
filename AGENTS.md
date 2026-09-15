@@ -159,9 +159,10 @@ autonomous_outcome_units   = shipped_unit × 1.0 + verified complete OWNER_BLOCK
 wip_inventory              = CLOSED 但未完成五階 + Audit Ready + CI-only + commit-only + unfinished carryover
 ```
 
-`CLOSED` 只表示 Issue 結案，不是出貨；Audit Ready、CI 綠與 commit 也只列在製品，不再折算成品。`IN_PROGRESS`／`CLOSURE_RECOVERY`、
-缺結束資料、缺必要百分比或 Completion Truth 未驗證時一律 `NOT_GRADED`，不補中性 50 分。
-每件真正出貨 usage 只在 `shipped_units >= 1` 時計算。
+`CLOSED` 只表示 Issue 結案，不是出貨；Audit Ready、CI 綠與 commit 也只列在製品，不再折算成品。
+- `OBSERVED_V1` 新 Run：`IN_PROGRESS`／`CLOSURE_RECOVERY`、terminal facts 缺失、沒有 observed raw task evidence 或 Completion Truth 未驗證時 `NOT_GRADED`；legacy manual percentages 缺失本身不再卡死評分。
+- `LEGACY_V2` 歷史 Run：維持原演算法與原 hard gates 唯讀重播，不回寫歷史。
+- 每件真正出貨 usage 只在 `shipped_units >= 1` 時計算。
 
 ## CI、TEST 與常見診斷
 
@@ -235,10 +236,9 @@ Production，仍需 Owner 另外具名授權——本規則只是它的必要條
 
 Owner 說「復盤」或「複盤」時：
 
-1. 找最新 schema v2 `docs/metrics/agent-runs/*.json`，比較最近最多 3 個已完成且 truth-verified 的 Run。
-2. 先用 live GitHub 驗證完成主張，再用 `run-ledger-v2.mjs`、`score-run-v2.mjs` 與
-   `review-runs-v2.mjs` 重算；新 Run 必須是 schema v2 的 `deliveryTruthVersion: 4`，schema v1 與歷史 DeliveryTruth v2／v3 只作唯讀重算。
-3. 比較 shipped units、autonomous outcomes、WIP、usage、close 率、品質、Sol touches、
-   Luna 採用率、carryover 與 Completion Truth 失敗。
-4. 每次只提出一到兩個最大改良；治理改良走 focused governance PR，不順便改產品。
-5. 不得改寫歷史弱分數、把 requested model 冒充 actual model，或拿未完成 Run 與完成 Run 比效率。
+1. 找最新 schema v2 `docs/metrics/agent-runs/*.json`，比較最近最多 3 個 terminal + truth-verified + comparison-eligible Product Run；不足時仍可報 current active Run 的 live readiness，但不得冒充分數。
+2. 先用 live GitHub 驗證完成主張，再用 `run-ledger-v2.mjs` 驗 ledger、`score-run-current.mjs` 重算 current Product score、`review-runs-v2.mjs` 做跨 Run 比較。`score-run-v2.mjs` 只負責 historical `LEGACY_V2` replay，不再是 current dispatcher。
+3. Product 與 Governance 是兩個 score surfaces；Governance Scoreboard 依 `.agents/skills/vibeaico-agent-retrospective/SKILL.md` 與 `docs/GOVERNANCE-SCOREBOARD.md` 獨立重算，不因 Product `NOT_GRADED` 而省略。
+4. 比較 shipped units、autonomous outcomes、WIP、usage、close 率、品質、Sol touches、Luna 採用率、carryover 與 Completion Truth 失敗；資料不足時指出是哪個 capture checkpoint 缺失，不用「資料不足」四字帶過。
+5. 每次只提出一到兩個最大改良；治理改良走 focused governance PR，不順便改產品。
+6. 不得改寫歷史弱分數、把 requested model 冒充 actual model，或拿未完成 Run 與完成 Run 比效率。
