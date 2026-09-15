@@ -250,18 +250,22 @@ function stripStoredRoutineBodies(statement) {
 }
 
 const SQL_PARENTHESES_WORDS = new Set([
-  'all', 'and', 'any', 'as', 'case', 'check', 'exists', 'filter', 'from', 'group',
-  'having', 'in', 'limit', 'not', 'offset', 'on', 'or', 'over', 'partition',
-  'returning', 'select', 'some', 'using', 'values', 'when', 'where', 'with',
+  'all', 'and', 'any', 'as', 'begin', 'case', 'check', 'declare', 'else', 'end',
+  'exception', 'exists', 'filter', 'for', 'from', 'group', 'having', 'if', 'in',
+  'into', 'join', 'lateral', 'limit', 'loop', 'not', 'offset', 'on', 'or', 'order',
+  'over', 'partition', 'raise', 'returning', 'select', 'some', 'then', 'using',
+  'values', 'when', 'where', 'while', 'with',
 ]);
 
 function hasUnverifiedRoutineInvocation(text) {
   if (/"(?:[^"]|"")*"\s*\(/i.test(text)) return true;
   const candidates = String(text).matchAll(
-    /\b(?:[A-Za-z_][\w$]*\s*\.\s*)?([A-Za-z_][\w$]*)\s*\(/gi,
+    /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
   );
   for (const match of candidates) {
+    const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
+    if (calledName === 'pg_catalog.format') continue;
     if (SQL_PARENTHESES_WORDS.has(name)) continue;
     return true;
   }
@@ -269,13 +273,9 @@ function hasUnverifiedRoutineInvocation(text) {
 }
 
 function rejectImmediateRoutineInvocations(statements) {
-  const checkCommandText = (text) => {
-    const lexical = stripSqlStringLiterals(text, true, true);
-    const commandSegments = [
-      ...lexical.matchAll(/\b(?:select|perform|call)\b[\s\S]*?(?=;|$)/gi),
-    ];
-    return commandSegments.some((segment) => hasUnverifiedRoutineInvocation(segment[0]));
-  };
+  const checkCommandText = (text) => hasUnverifiedRoutineInvocation(
+    stripSqlStringLiterals(text, true, true),
+  );
 
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
@@ -475,7 +475,7 @@ function firstDynamicSqlTemplate(fragment) {
     skipWhitespace();
   }
 
-  const format = input.slice(index).match(/^format\s*\(/i);
+  const format = input.slice(index).match(/^pg_catalog\s*\.\s*format\s*\(/i);
   if (format) {
     const formatOpenIndex = index + format[0].lastIndexOf('(');
     index += format[0].length;
@@ -557,7 +557,7 @@ function formatPlaceholdersAreBounded(template) {
 function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
-  const formatCall = /^\s*\(*\s*format\s*\(/i.test(fragment);
+  const formatCall = /^\s*\(*\s*(?:pg_catalog\s*\.\s*)?format\s*\(/i.test(fragment);
   const templateStatements = splitSqlStatements(template);
   const boundedConstraintRepair = /^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)
     && formatPlaceholdersAreBounded(template)
@@ -649,6 +649,12 @@ function assertSingleRiskTier(tiers = []) {
   return highest;
 }
 
+function hasAuthzConfigurationMutation(statement) {
+  const input = String(statement);
+  return /\bset\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i.test(input)
+    || /\breset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i.test(input);
+}
+
 export function inferMigrationRiskTier(sql) {
   const text = stripSqlComments(sql);
 
@@ -667,7 +673,7 @@ export function inferMigrationRiskTier(sql) {
   if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement))) {
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement) || hasAuthzConfigurationMutation(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
