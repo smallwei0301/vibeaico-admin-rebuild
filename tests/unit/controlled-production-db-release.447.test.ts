@@ -69,7 +69,7 @@ describe('Controlled Production DB writer #447', () => {
     for (const call of ['"public".filter()', '"public" . filter()', '"public"/* schema */.filter()',
       '"public"."filter"()', 'public.filter()', '"租戶".filter()',
       '"pub""lic".filter()', 'U&"publ\\0069c".filter()']) {
-      const sql = `create function "public".filter() returns integer language plpgsql as $ begin delete from public.orders; return 1; end; $; select ${call};`;
+      const sql = `create function "public".filter() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; select ${call};`;
       // Model a plan admitted by the old classifier. Valid byte/digest bindings
       // must not bypass reclassification when the writer verifies the plan.
       const p = plan();
