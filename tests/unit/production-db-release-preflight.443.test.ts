@@ -153,6 +153,8 @@ describe('Production DB release preflight', () => {
 
   it('uses bounded extra checks for BACKFILL instead of forcing them on every migration', () => {
     const backfill = packet({ riskTier: 'BACKFILL' });
+    expect(() => evaluateReleasePreflight(backfill, { now: NOW })).toThrow(/BACKFILL_EXECUTION_BOUND_REQUIRED/);
+    backfill.data.executionBounded = true;
     expect(() => evaluateReleasePreflight(backfill, { now: NOW })).toThrow(/PREIMAGE_BACKUP_REQUIRED/);
     backfill.recovery.preimageBackupVerified = true;
     backfill.finalRisk.evidenceDigest = releaseEvidenceDigestOf(backfill);
