@@ -668,6 +668,9 @@ function assertDynamicExecutionSafe(body) {
 function hasImmediateBackfillDml(text) {
   return splitSqlStatements(text).some((statement) => {
     const immediateText = stripStoredRoutineBodies(statement).trim();
+    // Creating a stored routine does not execute its body. Keep this boundary
+    // explicit before looking for DML inside arbitrary immediate wrappers.
+    if (/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(immediateText)) return false;
     const lexicalText = stripSqlStringLiterals(immediateText);
     const procedural = /^do\b/i.test(lexicalText);
     const body = procedural ? immediateProceduralBody(immediateText) : null;
@@ -677,7 +680,10 @@ function hasImmediateBackfillDml(text) {
     const executableBody = body === null ? '' : stripSqlStringLiterals(body, true);
     const directDml = /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalText);
     const explainedDml = /^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
-    const compoundDml = /^(?:with\b|do\b)[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    // WITH can be nested under CTAS, views, EXPLAIN, COPY or other wrappers.
+    // Inspect every immediate WITH/DO, not just the first statement keyword;
+    // routine declarations are excluded and quoted/commented text is masked.
+    const compoundDml = /\b(?:with|do)\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
     const proceduralDml = body !== null && /\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(executableBody);
     const dynamicKinds = body !== null ? assertDynamicExecutionSafe(body) : [];
     return directDml || explainedDml || compoundDml || proceduralDml || dynamicKinds.includes('BACKFILL');
