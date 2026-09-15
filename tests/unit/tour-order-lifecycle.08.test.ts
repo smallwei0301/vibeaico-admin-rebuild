@@ -197,8 +197,9 @@ describe('付款狀態與實收金額必須一致', () => {
   });
 
   it('金額取自 DB 的 total_amount，不是用戶端送來的值', () => {
-    // 讀回 current 時必須把 total_amount 一起選出來
-    expect(confirmRoute).toMatch(/\.select\('id, status, total_amount'\)/);
+    // 讀回 current 時必須把 total_amount 一起選出來（#46 之後還多選了 seats_reserved
+    // 做 Final Risk B2 的名額鎖定守門，但這一條只在乎 total_amount 有沒有被移掉）。
+    expect(confirmRoute).toMatch(/\.select\('id, status, total_amount[^']*'\)/);
     // 不得從 request body 取金額——那等於讓呼叫端自己宣告收了多少錢
     expect(confirmRoute).not.toMatch(/await req\.json\(\)/);
   });
