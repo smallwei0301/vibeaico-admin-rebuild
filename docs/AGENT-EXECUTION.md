@@ -7,10 +7,12 @@
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
 > 2026-09-07 交付完成／v4 結案／條件雙 Terra、2026-09-09 active candidate 上限、
-> 2026-09-10 lane 對應模型層級／多環境 base freshness／Product Final Risk，以及
-> 2026-09-11 雙 Workstream 與純治理模型解綁。
+> 2026-09-10 lane 對應模型層級／多環境 base freshness／Product Final Risk、
+> 2026-09-11 雙 Workstream 與純治理模型解綁，以及
+> 2026-09-15 BUILD／VERIFY 分離與 continuous refill。
 >
 > 最新 Production DB 授權裁示：`docs/decisions/2026-09-14-owner-production-db-policy-gate.md`；見 §3.2。
+> Product throughput 裁示：`docs/decisions/2026-09-15-owner-build-verify-continuous-refill.md`；見 §5。
 >
 > 本文件是本 repo 的 Agent 執行方式唯一正式版本。產品規格仍以各
 > `docs/integration/**` 分冊為準；Owner Decision 保留「為什麼改」，本文件負責「現在怎麼做」。
@@ -22,8 +24,9 @@
 
 - 主 Agent 是專案主導者，不只是回報者。收到 Issue、`/goal` 或「繼續」後，持續完成
   所有安全且可自主施工的工作，直到符合 §11 停止條件。
-- CI、TEST、Preview、Agent 或外部讀取正在等待，不代表整個 goal 暫停；但也不得因此
-  再開第二條完整大型 Terra 工地。
+- CI、TEST、Preview、Agent 或外部讀取正在等待，不代表整個 goal 暫停。Product source work
+  與 VERIFY tail 分離：有第二張 qualified、非重疊候選時，應補滿可用 BUILD slot，而不是
+  因另一張候選正在 CI／TEST／Final Risk／merge 就把施工線一起停住。
 - 每次接手先讀 live GitHub：current `main`、open Issue、open PR、exact head、CI、
   shared TEST holder 與最新 scorecard。舊對話只當線索。
 - 優先接續既有可用 branch／PR，不 reset、force-push 或重做已完成的 migration／測試。
@@ -63,7 +66,9 @@ WORKSTREAM: MODEL_GOVERNANCE
   Product contract 時，整張按 `PRODUCT_MAINLINE` 處理。
 - `PRODUCT_MAINLINE` 走 Product B+。
 - `MODEL_GOVERNANCE` 不啟動 Product Terra／Reserve／dual-Terra，也不要求 Product Final Risk；
-  改走 bounded governance flow：
+  改走 bounded governance flow。Governance PR 仍驗自己的 metadata、scope 與 regression，
+  但不因其他 Product PR 的 Terra／Reserve／TEST／candidate global-WIP 錯誤被連坐阻擋；
+  Product PR 的 global WIP 檢查保持完整。
 
 ```text
 current truth
@@ -87,8 +92,8 @@ current truth
 3. 先確認 `WORKSTREAM`；只有 `PRODUCT_MAINLINE` 才套 Product B+ lane／model／Final Risk 規則。
 4. 讀 Issue 指定 canonical 文件與直接相關的 integration／testing 章節；Playbook 只搜尋本次錯誤、Issue 或領域，不全量重讀。
 5. Product Run 建立或接續 `RUN_ID`，記錄 main、open Issue／PR、lane、TEST holder 與 raw-event 基線，並跑一次 §10 Live Scorecard readiness。
-6. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 MAIN、可選 RESERVE 與 Closure target。
-7. 雙 Terra 只能在 Guard 對兩條候選都判定 qualified 後啟動。
+6. Product B+ 由窄範圍 Luna/scout 盤點，再由一位 Aggregator 去重；Sol 只根據精簡包選 BUILD candidates、可選 RESERVE 與 Closure target。
+7. 若同一 Run 有兩張候選都被 Guard 判定 qualified，`TERRA_BUILD` target occupancy 是 2；只有第二張候選不安全、不獨立或不存在時才降回 1。
 
 以下文件改為 **trigger-based load**，不是每輪 mandatory read：
 
@@ -207,11 +212,12 @@ RECOVERY_BLOCKED、IMPLEMENTATION_BLOCKED／EXECUTION_BLOCKED。automation pendi
 ```text
 LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
                          ↓
-               MAIN_TERRA BUILD（條件雙 Terra）
-                         ↓
+              TERRA_BUILD SLOT 1
+              TERRA_BUILD SLOT 2（qualified 時）
+                         ↓ source-complete
                  EARLY_SOL_DIFF_AUDIT
                          ↓
-                  TEST_VALIDATION
+               TEST_VALIDATION / VERIFY
                          ↓
                  FINAL_SOL_AUDIT
                          ↓
@@ -220,10 +226,12 @@ LUNA_FAN_OUT → LUNA_FAN_IN → SOL_TRIAGE
                      NEXT LOOP
 ```
 
+BUILD 與 VERIFY 是流水線，不是同一個 slot。某候選進入 VERIFY 後，釋放的 BUILD slot 立即依 §5 continuous refill；不用等該候選完成 Final Risk／merge 才選下一張安全 Product slice。
+
 | 角色 | 主要工作 | OpenAI | Anthropic | 禁止事項 |
 |---|---|---|---|---|
 | Luna / scout | 真實盤點、Closure、CI 摘要、Janitor、文件、QA、Metrics | `gpt-5.6-luna` | `claude-haiku-4-5` | 不做產品／安全決策，不展開大型 code |
-| Terra / build | Product 施工（MAIN／RESERVE） | `gpt-5.6-terra` | `claude-sonnet-5` | 不擴大驗收、不自行關 Issue |
+| Terra / build | Product source 施工（BUILD／RESERVE） | `gpt-5.6-terra` | `claude-sonnet-5` | 不擴大驗收、不自行關 Issue |
 | Sol / audit | TRIAGE、早期 diff audit、模糊 CI、高風險設計、final Audit | `gpt-5.6-sol` | `claude-opus-5` | 不做 grep、輪詢、一般 CRUD、完整舊對話重讀 |
 
 Product lane 決定層級，層級決定模型。Terra 一律使用 build 層；拿 audit 層模型施工或 scout
@@ -233,28 +241,27 @@ Product lane 決定層級，層級決定模型。Terra 一律使用 build 層；
 ## 5. 全域 B+ WIP 上限
 
 ```text
-MAIN_TERRA       預設 max 1；Guard 對兩條完整候選皆 qualified 時 max 2 → AGENT_LANE=TERRA_BUILD
+TERRA_BUILD      qualified 時 target 2，hard max 2；沒有第二張安全候選時 fallback 1
 RESERVE_TERRA    max 1；雙 Terra 時固定 0 → AGENT_LANE=TERRA_RESERVE
 LUNA_CLOSURE     max 1 → AGENT_LANE=LUNA_CLOSURE
-TEST_VALIDATION  max 1 → AGENT_LANE=TEST_VALIDATION
-ACTIVE_CANDIDATE max 3 → 通常 MAIN + Closure，第三張留給併行的第二條產品線
+TEST_VALIDATION  max 1；唯一 VERIFY / shared TEST holder，且仍是 active candidate
+ACTIVE_CANDIDATE max 3 → 正常穩態最多 2 BUILD + 1 VERIFY
 LUNA_TASKS       default 4，max 6，另有 1 位 Aggregator
 ```
 
-### 5.1 MAIN_TERRA
+### 5.1 TERRA_BUILD
 
-- 預設唯一可完整施工、進 shared TEST、修明確 CI、交 Sol audit 的中大型 Issue。
-- 雙 Terra 是條件例外：同一 `RUN_ID` 的兩張候選必須有不同 primary Issue、`TERRA_SLOT` 1／2、
-  `TEST_ENV_ID`、零重疊 `FILE_OWNERSHIP`、各自健康的 local isolated 證據，且 Guard 在啟動前
-  判定 qualified；任一項失敗立即回到一條。雙 Terra 時 Reserve 固定為 0。
-- 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。
-- `PR 已開`、`CI 綠`、`正在等 Preview` 不是完成。
-- MAIN 未抵達出口前，不啟動第二條完整 BUILD，除非上述 Guard 已同時放行雙 Terra。
+- `TERRA_BUILD` 代表**仍允許 source mutation 的 BUILD slot**，hard max 2。
+- 同一 `RUN_ID` 有兩張完整候選，且不同 primary Issue、`TERRA_SLOT` 1／2、不同 `TEST_ENV_ID`、
+  零重疊 `FILE_OWNERSHIP`、各自健康 local isolated 證據並經 Guard qualified 時，**預設目標是兩個 BUILD slot 都有工作**；不是等第一張完全 merge 才把第二張當例外打開。
+- 若只有一張安全候選、hot boundary 重疊或任一資格失敗，立即 fallback 為單 Terra。雙 Terra 時 Reserve 固定為 0。
+- 同一 migration／migration ledger、payment／refund transaction、Auth／RLS／ACL、Production DB writer／release 或其他共享高風險 hot boundary，不得為追求吞吐量強行雙線施工。
+- source 完成、可進 exact-head 驗證後，候選必須離開 `TERRA_BUILD`，轉 §5.5 VERIFY tail；不能因還在等 CI／Final Risk／merge 就占著 BUILD slot。
+- `PR 已開`、`CI 綠`、`正在等 Preview` 仍不是完成；它們只是不同 pipeline stage。
 
 ### 5.2 RESERVE_TERRA
 
-- 只有 MAIN 正在等 CI、TEST、Preview 或外部唯讀結果，且 MAIN 沒有可繼續的 source 工作時
-  才可啟動。
+- 只在單 Terra fallback 模式下，MAIN 正在等 CI、TEST、Preview 或外部唯讀結果，且沒有第二張 qualified full BUILD candidate 時才可啟動。
 - 必須明寫 `RESERVE_BOUNDARY`。
 - 只做必要規格、紅燈測試、獨立 source slice、unit／typecheck／build、最多一個原子 commit。
 - 不得持有 TEST lane、進 Sol Audit、開第二輪 full CI、碰 MAIN hot files或吸入鄰近問題。
@@ -268,9 +275,18 @@ LUNA_TASKS       default 4，max 6，另有 1 位 Aggregator
 
 ### 5.4 ACTIVE_CANDIDATE
 
-- 全 repo 最多 3 張（Owner 2026-09-09 由 2 調整），通常是 MAIN、Closure，第三張留給併行的第二條產品線。
-- RESERVE、TEST、Parked、Historical、Owner-blocked 不得標 active candidate。
+- 全 repo 最多 3 張（Owner 2026-09-09 由 2 調整）。正常滿載形狀是 **2 BUILD + 1 VERIFY**；實際少於 3 不是錯誤，但有 qualified backlog 時不應無理由留空 BUILD slot。
+- `TERRA_BUILD` 與 active `TEST_VALIDATION` 都計入 Product active candidate；`LUNA_CLOSURE` 是 shared closure lane，不吃 Product candidate cap。
+- RESERVE、Parked、Historical、Owner-blocked 不得標 active candidate。
 - 舊 Mode C PR 不是因為 open 就自動 active；必須經 B+ TRIAGE 重新分配。
+
+### 5.5 TEST_VALIDATION / VERIFY tail 與 continuous refill
+
+- source-complete candidate 轉為：`AGENT_LANE=TEST_VALIDATION`、`LANE_STATE=ACTIVE`、`ACTIVE_CANDIDATE=true`、`TEST_LANE_REQUIRED=true`。它仍是 Product WIP，但**不再占 TERRA_BUILD slot**。
+- 全 repo 同時最多一個 VERIFY / shared TEST holder；BUILD 與 VERIFY 必須屬同一 `RUN_ID`，避免把舊 Run 尾巴混入新 Run pipeline。
+- BUILD → VERIFY 一成立，空出的 `TERRA_SLOT` 立即重新掃 qualified Product backlog；只要 active candidate 尚未達 3，就 continuous refill 下一張不重疊候選。
+- VERIFY lane 是 source-freeze。`synchronize`／新 source commit 必須 fail closed；若 CI／Final Risk 找到要修的 source，先把 candidate 轉回 `TERRA_BUILD`、重新通過 WIP Guard 取得可用 BUILD slot，**之後**才 push 修正。
+- VERIFY 等待不允許第二位 shared TEST holder；Final Risk、branch protection、Production DB gate 都不因 continuous refill 放寬。
 
 ## 6. Luna 小隊與 Token 節流
 
@@ -370,8 +386,9 @@ Product 高後果範圍才需要 Final Risk，例如：
 - docs-only 不安裝 npm、不讀 TEST secret、不跑 Chromium。
 - 一般 runtime PR 跑 typecheck／unit／build，但若不是唯一 Active `TEST_VALIDATION` holder，
   integration／E2E 留下成功的 `POLICY_SKIP`，不得碰 shared TEST。
-- 只有唯一 TEST holder 與 `main` push 可以使用 TEST secrets 並進
+- 只有唯一 TEST holder 與 `main` push 可以使用 TEST secrets並進
   `shared-test-supabase-integration`。
+- Active `TEST_VALIDATION` 是 VERIFY source-freeze；它若收到新 commit，trusted WIP Guard 必須失敗。需要修 source 時，先回 `TERRA_BUILD` 並重新取得 BUILD slot。
 - Branch 手動 full CI 必須證明 exact PR、exact branch、exact SHA 與唯一 holder。
 - 同一 exact head、同一環境、同一命令不盲目重跑。
 - 環境錯誤連續兩次後停止該路徑，保存證據並切其他安全工作。
@@ -385,7 +402,7 @@ Product 高後果範圍才需要 Final Risk，例如：
   `npm ci` 是必要證據。不存在的版本、peer 衝突或 lockfile 不一致都在 Preview 前停止。
 
 CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼、重現性、TEST holder、
-環境變化。明確 code bug 交 MAIN Terra；模糊或高風險才交 Sol。
+環境變化。明確 code bug 交可用 `TERRA_BUILD`；模糊或高風險才交 Sol。
 
 ## 9. PR、Janitor、Completion Truth 與交接
 
@@ -512,10 +529,10 @@ Owner 說「復盤」或「複盤」時，載入
 只有以下情況可送終止性 final：
 
 1. 所有 open Issue 都完成、合併到要求分支並依各自 Workstream 正確關閉；或
-2. 剩餘項目只缺 Owner／外部人類／Production／合法 final gate，且 Product MAIN、RESERVE、
-   Closure、TEST、可施工 backlog 與 active governance work 都已處理；或
+2. 剩餘項目只缺 Owner／外部人類／Production／合法 final gate，且 Product BUILD、RESERVE、
+   Closure、VERIFY、可施工 backlog 與 active governance work 都已處理；或
 3. 平台無法繼續，且已留下可直接接手的 exact checkpoint 與本輪 IN_PROGRESS report。
 
-結束前重新查 open Issue、open PR、CI、MAIN、RESERVE、Closure、TEST holder、Owner blockers、
+結束前重新查 open Issue、open PR、CI、BUILD、RESERVE、Closure、VERIFY holder、Owner blockers、
 active governance work 與本輪 scorecard。最終報告不得只寫「目前進度」。
 符合 §3.2 的 DB 變更在 `POLICY_GATED_ACTIVE` 後不再以逐次人工批准為停止理由；automation pending 期間保留 bootstrap gate，技術關卡未過則保留其真實阻塞。
