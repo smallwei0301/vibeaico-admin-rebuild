@@ -84,6 +84,16 @@ function ownershipOverlap(left, right) {
   return null;
 }
 
+function isVerificationTail(metadata) {
+  return (
+    metadata.lane === 'TERRA_BUILD' &&
+    metadata.state === 'ACTIVE' &&
+    metadata.activeCandidate === 'TRUE' &&
+    metadata.completionClaim === 'AUDIT_READY' &&
+    metadata.dualTerraPilot === 'TRUE'
+  );
+}
+
 export function validateActualFileOwnership(metadata, changedFiles) {
   if (
     metadata.origin !== 'AGENT' ||
@@ -187,11 +197,9 @@ export function summarizeActiveLanes(pullRequests = []) {
   return {
     activeAgentPulls,
     activeTerra: activeAgentPulls.filter(
-      (pr) => pr.lane === 'TERRA_BUILD' && pr.completionClaim !== 'AUDIT_READY',
+      (pr) => pr.lane === 'TERRA_BUILD' && !isVerificationTail(pr),
     ),
-    verifyingTerra: activeAgentPulls.filter(
-      (pr) => pr.lane === 'TERRA_BUILD' && pr.completionClaim === 'AUDIT_READY',
-    ),
+    verifyingTerra: activeAgentPulls.filter(isVerificationTail),
     activeReserve: activeAgentPulls.filter((pr) => pr.lane === 'TERRA_RESERVE'),
     activeClosure: activeAgentPulls.filter((pr) => pr.lane === 'LUNA_CLOSURE'),
     activeTest: activeAgentPulls.filter((pr) => pr.lane === 'TEST_VALIDATION'),
@@ -226,9 +234,9 @@ export function validateGlobalWip(summary) {
 
   for (const terra of [...activeTerra, ...verifyingTerra]) {
     for (const error of validateLaneMetadata(terra)) {
-      errors.push(`${terra.completionClaim === 'AUDIT_READY' ? 'Verifying' : 'Active'} Terra PR #${terra.number}: ${error}`);
+      errors.push(`${isVerificationTail(terra) ? 'Verifying' : 'Active'} Terra PR #${terra.number}: ${error}`);
     }
-    if (terra.completionClaim !== 'AUDIT_READY' && summary.requireActualFileCoverage) {
+    if (!isVerificationTail(terra) && summary.requireActualFileCoverage) {
       errors.push(...validateActualFileOwnership(terra, terra.actualChangedFiles));
     }
   }
@@ -269,6 +277,27 @@ export function validateGlobalWip(summary) {
         .filter((path) => firstActual.has(path));
       if (actualOverlap.length) {
         errors.push(`Dual Terra actual changed files overlap: ${actualOverlap.slice(0, 10).join(', ')}`);
+      }
+    }
+  }
+
+  for (const build of activeTerra) {
+    for (const tail of verifyingTerra) {
+      const overlap = ownershipOverlap(build.fileOwnership, tail.fileOwnership);
+      if (overlap) {
+        errors.push(
+          `BUILD / AUDIT_READY FILE_OWNERSHIP overlaps: PR #${build.number} <> PR #${tail.number}: ${overlap}`,
+        );
+      }
+    }
+  }
+  for (let i = 0; i < verifyingTerra.length; i += 1) {
+    for (let j = i + 1; j < verifyingTerra.length; j += 1) {
+      const overlap = ownershipOverlap(verifyingTerra[i].fileOwnership, verifyingTerra[j].fileOwnership);
+      if (overlap) {
+        errors.push(
+          `AUDIT_READY FILE_OWNERSHIP overlaps: PR #${verifyingTerra[i].number} <> PR #${verifyingTerra[j].number}: ${overlap}`,
+        );
       }
     }
   }
