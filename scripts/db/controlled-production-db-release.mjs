@@ -2,7 +2,6 @@ import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/produc
 import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 
 const API = 'https://api.supabase.com';
-const WRITER_CREATED_BY = 'vibeaico-controlled-writer';
 const LOCK_KEY = `vibeaico-production-db-writer:${PRODUCTION_DB_POLICY.productionProjectRef}`;
 
 function fail(code, message) {
@@ -96,11 +95,16 @@ function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
 function assertAtomicCompatibleSql(sql, repoFile) {
   const statements = splitSqlStatements(sql);
   const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release(?:\s+savepoint)?\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
+  const writerTimeoutOverride = /\b(?:set\s+(?:(?:local|session)\s+)?(?:lock_timeout|statement_timeout|idle_in_transaction_session_timeout)\b|reset\s+(?:lock_timeout|statement_timeout|idle_in_transaction_session_timeout|all)\b|set_config\s*\()/i;
   const procedural = /^(?:do\b|create\s+(?:or\s+replace\s+)?(?:function|procedure)\b)/i;
   const proceduralTransactionControl = /\b(?:commit|rollback|abort|savepoint|release(?:\s+savepoint)?|prepare\s+transaction)\b/i;
   for (const statement of statements) {
     const trimmed = statement.trim();
+    const lexicalText = stripSqlStringLiterals(trimmed, false, true);
     const lexicalBody = procedural.test(trimmed) ? stripSqlStringLiterals(trimmed) : '';
+    if (writerTimeoutOverride.test(lexicalText)) {
+      fail('WRITER_TIMEOUT_OVERRIDE_NOT_ADMITTED', `${repoFile} cannot override the controlled writer timeout boundary`);
+    }
     if (transactionControl.test(trimmed) || (lexicalBody && proceduralTransactionControl.test(lexicalBody))) {
       fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
     }
@@ -152,9 +156,8 @@ export function buildAtomicProductionApplySql({
       : '-- controlled migration ' + entry.repoFile + '\n' + sql.trim() + (sql.trim().endsWith(';') ? '' : ';');
     statements.push(migrationSql);
     statements.push(
-      `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key) values (` +
-      `${sqlLiteral(entry.ledgerVersion)}, null, ${sqlLiteral(entry.repoFile)}, ${sqlLiteral(WRITER_CREATED_BY)}, ` +
-      `${sqlLiteral(`${plan.releaseId}:${entry.repoFile}`)});`,
+      `insert into supabase_migrations.schema_migrations(version, statements, name) values (` +
+      `${sqlLiteral(entry.ledgerVersion)}, null, ${sqlLiteral(entry.repoFile)});`,
     );
   }
 
@@ -178,7 +181,7 @@ export async function captureProductionLedger({ token, fetchImpl = fetch } = {})
   return body;
 }
 
-export async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
+async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
   if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
   const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query`, {
     method: 'POST',
@@ -224,7 +227,6 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
  *   readCanonicalSql?: (path: string) => string,
  *   token?: string,
  *   fetchImpl?: typeof fetch,
- *   now?: string,
  * }} [input]
  */
 export async function runControlledProductionRelease({
@@ -234,14 +236,13 @@ export async function runControlledProductionRelease({
   readCanonicalSql,
   token,
   fetchImpl = fetch,
-  now = new Date().toISOString(),
 } = {}) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
     fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
   }
   if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
-  evaluateReleasePreflight(releasePacket, { now });
+  evaluateReleasePreflight(releasePacket, { now: new Date().toISOString() });
 
   const before = await captureProductionLedger({ token, fetchImpl });
   const sql = buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
