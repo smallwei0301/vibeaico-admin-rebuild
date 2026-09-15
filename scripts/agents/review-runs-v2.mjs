@@ -4,10 +4,17 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { scoreRunV2 } from "./score-run-v2.mjs";
+import { scoreRunCurrent } from "./score-run-current.mjs";
+
+function isProductRun(run) {
+  return run?.closeout?.ownerRole !== "GOVERNANCE_MAIN_SESSION"
+    && !/(^|[-_])governance($|[-_])/i.test(String(run?.runId ?? ""));
+}
 
 export function reviewRunsV2(items, limit = 3) {
-  const scored = items.map(({ file, run }) => ({ file, run, score: scoreRunV2(run) }));
+  const scored = items
+    .filter(({ run }) => isProductRun(run))
+    .map(({ file, run }) => ({ file, run, score: scoreRunCurrent(run) }));
   const eligible = scored.filter((item) => item.score.comparisonEligible).slice(-Math.max(1, limit));
   const excluded = scored.filter((item) => !item.score.comparisonEligible);
   const latest = eligible.at(-1) ?? null;
@@ -27,12 +34,18 @@ export function reviewRunsV2(items, limit = 3) {
 
 const show = (value) => value === null || value === undefined ? "資料不足" : String(Math.round(value * 100) / 100);
 export function renderReviewV2(result) {
-  const lines = ["# Delivery Outcome v2 復盤", "", `> 可比較完成輪次：${result.eligible.length}`, `> 排除未完成／不合格輪次：${result.excluded.length}`, ""];
-  if (!result.eligible.length) lines.push("沒有完成且通過 Completion Truth 的 v2 Run，因此不下效率結論。", "");
+  const lines = [
+    "# Delivery Outcome 復盤",
+    "",
+    `> 可比較完成輪次：${result.eligible.length}`,
+    `> 排除未完成／不合格輪次：${result.excluded.length}`,
+    "",
+  ];
+  if (!result.eligible.length) lines.push("沒有完成且通過 Completion Truth 的 Product Run，因此不下效率結論。", "");
   else lines.push(
-    "| Run | 分數 | 真正出貨 | 自主完成 | 每件出貨 usage | Carryover |",
-    "|---|---:|---:|---:|---:|---:|",
-    ...result.eligible.map(({ run, score }) => `| ${run.runId} | ${score.total} (${score.grade}) | ${score.shippedUnits} | ${score.autonomousOutcomeUnits} | ${show(score.weightedUsagePerShippedUnit)} | ${score.wipInventory.unfinishedCarryover} |`),
+    "| Run | Profile | 分數 | 真正出貨 | 自主完成 | 每件出貨 usage | Carryover |",
+    "|---|---|---:|---:|---:|---:|---:|",
+    ...result.eligible.map(({ run, score }) => `| ${run.runId} | ${score.scoreProfile ?? "LEGACY_V2"} | ${score.total} (${score.grade}) | ${score.shippedUnits} | ${score.autonomousOutcomeUnits} | ${show(score.weightedUsagePerShippedUnit)} | ${score.wipInventory.unfinishedCarryover} |`),
     "",
   );
   if (result.trends) lines.push(
@@ -44,7 +57,7 @@ export function renderReviewV2(result) {
   );
   if (result.excluded.length) lines.push(
     "## 排除清單", "",
-    ...result.excluded.map(({ run, score }) => `- ${run.runId}：${score.scoreStatus}${score.gradingGaps.length ? `，${score.gradingGaps[0]}` : ""}`), "",
+    ...result.excluded.map(({ run, score }) => `- ${run.runId} [${score.scoreProfile ?? "LEGACY_V2"}]：${score.scoreStatus}${score.gradingGaps.length ? `，${score.gradingGaps[0]}` : ""}`), "",
   );
   return lines.join("\n");
 }
