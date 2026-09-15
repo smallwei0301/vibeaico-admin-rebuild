@@ -55,6 +55,7 @@ jobs:
           FINAL_RISK_PR: ${{ inputs.final_risk_pr }}
         run: |
           set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
           git fetch --quiet origin main
           test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
