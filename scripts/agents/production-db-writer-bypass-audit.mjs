@@ -4,6 +4,7 @@ import process from 'node:process';
 
 const SCANNED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.yml', '.yaml']);
 const AUDIT_SOURCE_PATH = 'scripts/agents/production-db-writer-bypass-audit.mjs';
+const G3_POST_TEST_SCHEMA_PATH = 'scripts/agents/production-db-g3-post-test-schema.mjs';
 const ALLOWED_WRITE_ENDPOINT_FILES = new Set([
   'scripts/db/controlled-production-db-release.mjs',
   'scripts/db/run-migrations.mjs',
@@ -70,6 +71,26 @@ function assertReleaseTestValidatorCannotWriteProduction(source) {
   }
 }
 
+function assertG3PostTestSchemaObserverRejectsBroadToken(source) {
+  const broadRefs = source.match(/process\.env\.SUPABASE_ACCESS_TOKEN/g) ?? [];
+  const exactReject = "if (process.env.SUPABASE_ACCESS_TOKEN) fail('BROAD_SCHEMA_TOKEN_FORBIDDEN'";
+  if (broadRefs.length !== 1 || !source.includes(exactReject)) {
+    fail('G3_POST_TEST_BROAD_TOKEN_GUARD_INVALID', 'post-TEST schema observer may reference broad SUPABASE_ACCESS_TOKEN exactly once, only to reject its presence');
+  }
+  if (!source.includes('SCHEMA_OBSERVER_TOKEN')) {
+    fail('G3_POST_TEST_OBSERVER_TOKEN_MISSING', 'post-TEST schema capture must use SCHEMA_OBSERVER_TOKEN');
+  }
+  if (!source.includes("environment: 'TEST'")) {
+    fail('G3_POST_TEST_PROJECT_PIN_MISSING', 'post-TEST schema capture must pin the TEST environment');
+  }
+  if (!source.includes("comparisonClaim: 'CAPTURE_ONLY_G2_COMPARISON_REQUIRED'")) {
+    fail('G3_POST_TEST_COMPARISON_BOUNDARY_MISSING', 'post-TEST schema capture must not claim the G2 comparison');
+  }
+  if (hasWriteEndpoint(source)) {
+    fail('G3_POST_TEST_WRITE_ENDPOINT_FORBIDDEN', 'post-TEST schema observer must not contain a Management API write endpoint');
+  }
+}
+
 function assertFingerprintToolIsReadOnly(source) {
   if (!source.includes('/database/query/read-only')) fail('FINGERPRINT_READ_ONLY_ENDPOINT_MISSING', 'schema fingerprint tool must use read-only endpoint');
   if (!source.includes('SCHEMA_OBSERVER_TOKEN')) fail('FINGERPRINT_OBSERVER_TOKEN_MISSING', 'schema fingerprint tool must use observer credential');
@@ -88,7 +109,13 @@ export function auditProductionDbWriterBypasses(sources = {}) {
     // its own detector literal as a database writer. All other scripts/workflows
     // remain in the executable-surface scan.
     if (path !== AUDIT_SOURCE_PATH && hasWriteEndpoint(source)) writeEndpointFiles.push(path);
-    if (/process\.env\.SUPABASE_ACCESS_TOKEN/.test(source) && path !== 'scripts/db/run-migrations.mjs' && path !== 'scripts/db/schema-fingerprint-diff.mjs') {
+    const broadEnvReference = /process\.env\.SUPABASE_ACCESS_TOKEN/.test(source);
+    if (
+      broadEnvReference &&
+      path !== 'scripts/db/run-migrations.mjs' &&
+      path !== 'scripts/db/schema-fingerprint-diff.mjs' &&
+      path !== G3_POST_TEST_SCHEMA_PATH
+    ) {
       broadTokenConsumers.push(path);
     }
     if (/secrets\.SUPABASE_ACCESS_TOKEN/.test(source)) broadTokenConsumers.push(path);
@@ -105,6 +132,10 @@ export function auditProductionDbWriterBypasses(sources = {}) {
   const g3Validator = sources['scripts/db/validate-production-db-release-on-test.mjs'];
   if (!g3Validator) fail('G3_TEST_VALIDATOR_MISSING', 'release TEST validator source is unavailable');
   assertReleaseTestValidatorCannotWriteProduction(String(g3Validator));
+
+  const postTestSchema = sources[G3_POST_TEST_SCHEMA_PATH];
+  if (!postTestSchema) fail('G3_POST_TEST_SCHEMA_OBSERVER_MISSING', 'post-TEST schema observer source is unavailable');
+  assertG3PostTestSchemaObserverRejectsBroadToken(String(postTestSchema));
 
   const fingerprint = sources['scripts/db/schema-fingerprint-diff.mjs'];
   if (!fingerprint) fail('FINGERPRINT_TOOL_MISSING', 'schema-fingerprint-diff source is unavailable');
