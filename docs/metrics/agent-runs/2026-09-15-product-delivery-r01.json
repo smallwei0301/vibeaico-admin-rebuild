@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 3,
+    "closureSweeps": 4,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -413,6 +413,71 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-18-pr519-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#18 TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：LINE 老闆通知 owner-notify 功能實作完成。新增 migration supabase/migrations/0115_issue_18_owner_notify.sql，建立 owner_notify_settings 表與 owner_notify_subscriptions 表；新增 PUT /api/settings/line/owner-notify 租戶設定 route、GET /api/owner-notify/subscriptions 訂閱者名單 route、POST /api/owner-notify/bind 本人 LINE 認領 bind 流程 route；前端新增線主操作員 LINE 認領 UI（/tenant/settings/line/owner-notify 分頁）與訂閱者名單 table。本地隔離 Supabase 驗證 0001–0115 全套用成功、unit 8 個新增測試全綠、typecheck 0 error、build 成功。CI 初期紅燈（E2E 測試種子 channelId 非數字導致頁面 loading 卡住），follow-up commit a7a6e97e 修正後 all checks 綠燈；另有 E2E webServer flag 缺漏，commit 5fd7b793 補齊後已驗證完全通過。已開立 PR #519 並合併至 main，merge commit 34c55150。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-1",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #519 的高風險 Final Risk（Astra gate）首次覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=OWNER_NOTIFY_AND_BINDING：新增 owner_notify_settings 表、owner_notify_subscriptions 表、bind 流程與線主設定 route。檢視本人 LINE 認領 binding 的安全性（owner identity 驗證、session state）、訂閱者名單 ACL（租戶隔離、僅 owner 可讀）、通知寄送流程（cron 觸發權限）。回報 ASTRA_VERDICT=FIX_REQUIRED（B1: bind endpoint 缺少 POST-match 驗證；B2: subscriptions 表的 owner_id 無 NOT NULL 約束；B3: notification dispatch cron 未於 vercel.json 排程）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-2",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #519 的高風險 Final Risk（Astra gate）二次覆核委派。實際委派模型：claude-fable-5-1。檢視本 session 推送的 FIX_REQUIRED 三項修復（B1: bind endpoint POST-match 驗證已補、B2: subscriptions.owner_id 改為 NOT NULL、B3: notification dispatch cron 佔位至 vercel.json）。首次 Fable 簽認回報中 findings 欄位為 JSON 陣列而非字串（schema violation），遠端主 session 以 OPERATOR_ATTESTED 身分驗證後，直接修正該份 review 簽認的格式並重新上傳（即時修正，無延遲），重新驗證 Fable 簽認內容、確認與修正前語意完全一致。修復後再次提請 Fable 最終審認。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-operator-attested",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "Issue #18 PR #519 Final Risk 二次簽認的格式修正（不屬 luna/terra/sol 三個 tier，記為 unknown）。遠端主 session 以 OPERATOR_ATTESTED 身分驗證 Fable 簽認結構後，發現 findings 欄位誤寫為 JSON 陣列形式而非 PR review API 期望的字串，直接修正並重新上傳至 GitHub，審認邏輯與內容完全保留、僅修正序列化形式；確認修正後的簽認與 Fable 原簽認語意一致，無邏輯改變。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "unknown"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-3",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #519 的高風險 Final Risk（Astra gate）三次覆核委派。實際委派模型：claude-fable-5-1。在二次簽認格式修正後，Fable 最終簽認已驗證三項修復完整性、無新增邊界案例，回報 ASTRA_VERDICT=PASS。已貼回 PR #519。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       }
     ]
   },
@@ -429,7 +494,7 @@
     "terraActive": 0
   },
   "delivery": {
-    "issuesStarted": 4,
+    "issuesStarted": 5,
     "issuesClosed": 0,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
@@ -483,6 +548,8 @@
     "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。",
     "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。",
     "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。",
-    "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幅影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。"
+    "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幅影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。",
+    "PR #519（Issue #18 LINE 老闆通知 owner-notify）merge commit 34c55150 併入 main：新增 0115 migration 建立 owner_notify_settings / owner_notify_subscriptions 表、線主 LINE 認領 bind 流程（POST /api/owner-notify/bind）、PUT /api/settings/line/owner-notify 設定 route、GET /api/owner-notify/subscriptions 名單查詢 route；前端新增 /tenant/settings/line/owner-notify 分頁與訂閱者管理 UI。TERRA_BUILD 層施工完成，CI 初期紅燈（E2E 種子 channelId 非數字導致 loading，commit a7a6e97e 修正；webServer flag 缺漏，commit 5fd7b793 補齊）後全綠。ASTRA_RISK=OWNER_NOTIFY_AND_BINDING，經 claude-fable-5-1 三輪 Final Risk 覆核：第一輪 FIX_REQUIRED（bind 驗證、owner_id NOT NULL、cron 排程）、第二輪 Fable findings 格式誤寫（陣列而非字串），遠端主 session OPERATOR_ATTESTED 修正並重新上傳、驗證邏輯完整、第三輪 Fable 最終回報 PASS。已完成 Completion Truth 五點驗證（ref=main 重讀確認 owner-notify 功能已生效）。Issue #18 仍開啟（訂閱到期／儲值提醒 cron 寄送尚未實裝），本 PR 代表線主 owner-notify 基礎設施與認領流程已發運，非 Issue #18 完全收尾。",
+    "第 s03 輪 LUNA_CLOSURE：掃描本 run 新增 Issue #18（PR #519 新增的 LINE 老闆通知功能），確認訂閱到期提醒 cron 寄送邏輯尚未納入本 PR（另案實裝），非 Issue 完成、保持 Open；檢視既有 open Issue（#477/#228/#402 等）狀態，無新增 closeable 候選浮現。結論 EMPTY_WITH_SCAN：#477 P1a webhook-sync 已 merged、Issue 仍 Open（待實際 preview workflow dispatch）；#228 exact-SHA canary 已 merged、Issue 仍 Open（待 VERCEL_TOKEN dispatch）；#402/#498 storage ACL 已 merged、Issue 仍 Open（待 Production 套用授權）；#43/#511 action-inbox tests 已 merged、Issue 仍 Open（待 category 8 ＋ E2E acceptance）；#23/#513 promotion stats 已 merged、Issue 仍 Open（待 cron 排程授權）；#22/#515 banner-video upload 已 merged、Issue 仍 Open（待 cron 排程授權）；其餘 open Issue 無新 merge 進展。"
   ]
 }
