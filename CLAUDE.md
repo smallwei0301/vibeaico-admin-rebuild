@@ -2,22 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Mandatory start — read main before touching code
+## Mandatory start — low-friction current truth
 
-Before working on any Issue:
+`docs/AGENT-EXECUTION.md` is the canonical default execution entry. Before working on any Issue:
 
-1. `git fetch origin`.
-2. Read `origin/main:AGENTS.md`, `origin/main:docs/AGENT-EXECUTION.md`,
-   `origin/main:docs/DOCUMENTATION-GOVERNANCE.md`, and
-   `origin/main:docs/OWNER-DECISIONS.md`.
-3. Search `origin/main:docs/AGENT-PLAYBOOK.md` by Issue, error code, test, or domain and read
-   the relevant lessons only.
-4. Read the Issue's canonical `docs/integration/**` files and
-   `docs/integration/12-TESTING-TDD.md` from `main`.
-5. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
+1. `git fetch origin --prune`.
+2. Read `origin/main:AGENTS.md` and `origin/main:docs/AGENT-EXECUTION.md`.
+3. Re-read the live Issue, PR, branch and CI state; old conversations are not current evidence.
+4. Read only the Owner Decision and canonical `docs/integration/**` / testing sections directly relevant to the current Issue or domain.
+5. Load `docs/MODEL-ROUTING.md`, `docs/DOCUMENTATION-GOVERNANCE.md`, B+ background decisions, skills, Playbook entries and historical Runs only when the trigger table in `docs/AGENT-EXECUTION.md` §2 says they are relevant. Do not preload the whole governance library “just in case”.
 6. Start implementation work from the then-current `main`, or from a designated integration branch with the required canonical decisions. After the working branch exists, **do not rebase only because unrelated work advanced `main`**. Follow `docs/decisions/2026-09-10-owner-multi-environment-base-freshness.md`: re-align only for a material migration-ledger change/prefix collision, actual merge conflict, shared contract or acceptance-precondition change, or CI evidence that the new base materially affects the candidate. `HEAD^ == origin/main` is not a global invariant.
 
-Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**. Re-reading newer decisions is required; rebasing unrelated file content is not.
+Final product, architecture, API and acceptance documentation lives on `main`. A branch-only document is a draft unless `main` explicitly says otherwise. If a working branch conflicts with a newer Owner Decision or canonical spec on `main`, **main wins**. Re-reading newer relevant decisions is required; rebasing unrelated file content is not.
 
 ## Default execution mode
 
@@ -66,13 +62,14 @@ MAIN 必須一路做到 `CLOSED`、`AUDIT_READY` 或完整 `OWNER_BLOCKED`。
 `modelUsage.tasks`、`flow` 的委派計數、`ci.fullCiRuns`、`delivery.issuesStarted/Closed`
 必須**在事情發生的當下**寫進 `docs/metrics/agent-runs/<RUN_ID>.json`，不是收尾時回填。
 
-理由不是形式：`modelUsage.weightedUsageImprovementPercent` 與
-`flow.lunaDelegationRatePercent` 依賴的量**只在 Run 進行當下可觀察**，事後填只會是
-推算。2026-09-14 之前的九本 Run 全部 `modelUsage.tasks: []`，因此 `PRODUCT_RUN_TREND`
-永遠是 `NOT_GRADED`——不是系統沒進步，是施工速度跑在記帳速度前面。
+理由不是形式：current `OBSERVED_V1` 直接從這些 durable raw events 衍生 Product Scorecard；
+人工 `weightedUsageImprovementPercent`、`lunaDelegationRatePercent` 等 legacy percentages 對新 Run
+只保留為 supplemental telemetry，不再是 grading hard gate。2026-09-14 以前的舊 Run 多數
+`modelUsage.tasks: []`，因此缺少可重建的真實事件，歷史仍不能被事後補漂亮數字。
 
 **把埋點欄位建好卻不埋，比誠實地說「沒埋點」更糟**：它看起來像有在做。這與 PB-039
-（一個從來沒有受測對象的 guard）是同一種病。
+（一個從來沒有受測對象的 guard）是同一種病。Active Run 依 `docs/AGENT-EXECUTION.md` §10
+使用 `scorecard-readiness.mjs` 在事件發生時抓漏，不等複盤才發現。
 
 ### 6. 收尾判定
 
