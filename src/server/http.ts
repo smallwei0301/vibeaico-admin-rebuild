@@ -18,6 +18,7 @@ export const ERR = {
   OWNER_NOTIFY_BIND_INVALID: 'LINE_004', // 邀請已不存在／已過期／對象不符
   SEATS_UNAVAILABLE: 'TOUR_001',   // 團次名額不足（10 分冊 §2；併發搶最後一席的敗方）
   TOUR_REQUEST_NOT_ELIGIBLE: 'TOUR_002', // REQUEST 訂單非 PENDING 或方案非 REQUEST，不能接受／拒絕（#46）
+  EXTERNAL_CONFIG_BLOCKED: 'EXT_001',    // 依賴的外部憑證／設定尚未到位（例：平台 ECPay 商店憑證，issue #25 C 段）
   INTERNAL: 'SYS_001',
 } as const;
 

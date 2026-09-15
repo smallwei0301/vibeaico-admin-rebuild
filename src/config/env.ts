@@ -87,6 +87,22 @@ const serverSchema = z.object({
    * 只影響 salt 隨機性），所以這裡維持 optional，不擋骨架模式全空 env 起動。
    */
   PROMOTION_VISITOR_SALT_SECRET: z.string().optional(),
+
+  /**
+   * 平台贊助金流（issue #25 C 段，`docs` 見 PR 說明）：綠界（ECPay）AIO 商店憑證。
+   *
+   * ⚠️ 這是**平台自己**收贊助用的商店，跟任何一家租戶的收款方式（#9
+   * `tenant_payment_methods`）完全無關，不可混用、不可從那邊借憑證。
+   *
+   * 2026-09-15 盤點 `midao.env`：三者皆未設定（EXTERNAL_CONFIG_BLOCKED）。未設定
+   * 時 `/api/donations` 的建單（純寫我方 DB）仍正常運作，只有「取得付款頁表單」
+   * 那一步會回 503 + `EXT_001`，不會用假憑證簽出一組必然被 ECPay 拒絕的表單。
+   */
+  ECPAY_MERCHANT_ID: z.string().optional(),
+  ECPAY_HASH_KEY: z.string().optional(),
+  ECPAY_HASH_IV: z.string().optional(),
+  /** 'production' 打正式 ECPay；其餘（含未設定）一律視為測試站，指向 payment-stage */
+  ECPAY_ENV: z.enum(['production', 'stage']).default('stage'),
 });
 
 const clientSchema = z.object({
