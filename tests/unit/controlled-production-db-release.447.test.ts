@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as controlledWriter from '../../scripts/db/controlled-production-db-release.mjs';
 
-import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
+import { PRODUCTION_DB_POLICY, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
 import {
   assertLiveLedgerMatchesAliasMap,
@@ -10,8 +11,7 @@ import {
 } from '../../scripts/db/controlled-production-db-release.mjs';
 
 const MAIN = 'a'.repeat(40);
-const NOW = new Date().toISOString();
-const minutesAgo = (minutes: number) => new Date(Date.parse(NOW) - minutes * 60_000).toISOString();
+const NOW = '2026-09-14T12:40:00Z';
 const PLANNED_AT = '2026-09-14T12:30:00Z';
 
 function aliasMap() {
@@ -45,10 +45,10 @@ function packet(p: any) {
     planDigest: p.planDigest,
     riskTier: p.riskTier,
     source: { status: 'SOURCE_VERIFIED', mainSha: p.mainSha, planDigest: p.planDigest, databaseMutationAuthorized: false },
-    consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: minutesAgo(5), mainSha: p.mainSha, planDigest: p.planDigest },
+    consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T12:35:00Z', mainSha: p.mainSha, planDigest: p.planDigest },
     test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 8, cleanup: 'PASSED', mainSha: p.mainSha, planDigest: p.planDigest },
-    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: minutesAgo(20), restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false, preimageBackupVerified: false },
-    finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: minutesAgo(15), executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#review', reviewId: 'review-447' },
+    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false, preimageBackupVerified: false },
+    finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z', executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#review', reviewId: 'review-447' },
     data: { paymentFactsTouched: false, batchSize: 100, maxRows: 1000 },
   };
   value.finalRisk.evidenceDigest = releaseEvidenceDigestOf(value);
@@ -61,6 +61,66 @@ const beforeRows = [
 ];
 
 describe('Controlled Production DB writer #447', () => {
+  // Clock injection is test-only at the runtime boundary, not writer input.
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('does not export the raw SQL mutable transport', () => {
+    expect(Object.keys(controlledWriter)).not.toContain('executeAtomicProductionApply');
+  });
+
+  it('rejects stale evidence even when the caller supplies its former valid clock', async () => {
+    vi.setSystemTime(new Date('2026-09-16T12:40:00Z'));
+    const p = plan();
+    const fetchSpy = vi.fn();
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/STALE_EVIDENCE/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rechecks wall-clock freshness after a slow ledger read and before mutation', async () => {
+    const p = plan();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toMatch(/\/read-only$/);
+      vi.setSystemTime(new Date('2026-09-14T13:00:00Z'));
+      return new Response(JSON.stringify(beforeRows), { status: 200 });
+    });
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/STALE_EVIDENCE/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects migration configuration overrides while preserving writer timeouts', () => {
+    for (const command of ["set lock_timeout = '0';", "set local statement_timeout = '0';",
+      "set session statement_timeout to '0';", 'reset statement_timeout;', 'reset all;',
+      'set "lock_timeout" = 0;', 'set U&"statement\\005ftimeout" = 0;', 'discard all;']) {
+      const p = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => command,
+      });
+      expect(() => buildAtomicProductionApplySql({
+        plan: p, aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql: () => command,
+      })).toThrow(/WRITER_CONFIGURATION_NOT_ADMITTED/);
+    }
+    for (const sql of ["select pg_catalog.set_config('statement_timeout', '0', true);",
+      "alter table public.t add column x text default pg_catalog.set_config('lock_timeout', '0', true);",
+      "do $$ begin reset all; end $$;"]) {
+      expect(() => buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => sql,
+      })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED|UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
+    }
+    const sql = buildAtomicProductionApplySql({ plan: plan(), aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql });
+    expect(sql).toContain("set local lock_timeout = '5s';");
+    expect(sql).toContain("set local statement_timeout = '60s';");
+    expect(sql).toContain('schema_migrations(version, name) values (');
+    expect(sql).not.toMatch(/created_by|idempotency_key|schema_migrations\(version, statements/);
+  });
+
   it('requires live provider ledger to match the trusted alias map before building mutable SQL', () => {
     expect(assertLiveLedgerMatchesAliasMap({ aliasMap: aliasMap(), liveLedgerRows: beforeRows })).toMatchObject({ status: 'LIVE_LEDGER_VERIFIED' });
     expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap: aliasMap(), liveLedgerRows: [...beforeRows, { version: 'x', name: 'manual_unknown' }] })).toThrow(/LIVE_LEDGER_DRIFT/);
@@ -210,24 +270,6 @@ describe('Controlled Production DB writer #447', () => {
       liveLedgerRows: beforeRows,
       readCanonicalSql: () => proceduralCommitSql,
     })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
-    for (const timeoutSql of ['set local statement_timeout = 0;', 'reset lock_timeout;']) {
-      const timeoutPlan = buildProductionDbReleasePlan({
-        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
-        aliasMap: aliasMap(), readCanonicalSql: () => timeoutSql,
-      });
-      expect(() => buildAtomicProductionApplySql({
-        plan: timeoutPlan,
-        aliasMap: aliasMap(),
-        liveLedgerRows: beforeRows,
-        readCanonicalSql: () => timeoutSql,
-      })).toThrow(/WRITER_TIMEOUT_OVERRIDE_NOT_ADMITTED/);
-    }
-
-    expect(() => buildProductionDbReleasePlan({
-      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
-      aliasMap: aliasMap(),
-      readCanonicalSql: () => 'alter table public.guard_447 drop constraint old_ck cascade;',
-    })).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
   });
 
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
@@ -248,7 +290,7 @@ describe('Controlled Production DB writer #447', () => {
 
     const result = await runControlledProductionRelease({
       plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     });
     expect(result).toMatchObject({
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
@@ -271,7 +313,7 @@ describe('Controlled Production DB writer #447', () => {
     });
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/APPLY_UNKNOWN/);
     expect(mutableCalls).toBe(1);
   });
@@ -282,7 +324,7 @@ describe('Controlled Production DB writer #447', () => {
     const badPacket = packet(p); badPacket.planDigest = 'b'.repeat(64);
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: badPacket, aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/RELEASE_PACKET_PLAN_MISMATCH/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -302,7 +344,7 @@ describe('Controlled Production DB writer #447', () => {
     });
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/APPLY_UNKNOWN/);
     expect(readOnlyCalls).toBe(2);
     expect(mutableCalls).toBe(1);
