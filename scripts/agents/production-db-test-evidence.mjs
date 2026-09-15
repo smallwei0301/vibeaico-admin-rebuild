@@ -1,16 +1,10 @@
+import { getProductionDbG3AuthzContract, PRODUCTION_DB_G3_AUTHZ_CONTRACTS } from './production-db-g3-authz-contracts.mjs';
+
 const EXPECTED_REPOSITORY = 'smallwei0301/vibeaico-admin-rebuild';
 const PRODUCTION_PROJECT_REF = 'egehnijjpgijmccagxac';
 const TEST_PROJECT_REF = 'nmwhwngojosmagjuvxol';
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
-
-const AUTHZ_TEST_CONTRACTS = Object.freeze({
-  '0105_issue_44_traveler_risk_policies': Object.freeze({
-    requiredFile: 'tests/integration/db/traveler-risk-policy.44.test.ts',
-    requireTenantBoundary: true,
-    requireNegativeRole: true,
-  }),
-});
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -211,20 +205,23 @@ export function buildProductionDbTestEvidence({
   let negativeRoleTestsPassed = false;
   for (const migration of authzMigrations) {
     const repoFile = String(migration?.repoFile ?? '').trim();
-    const contract = AUTHZ_TEST_CONTRACTS[repoFile];
+    const contract = getProductionDbG3AuthzContract(repoFile);
     if (!contract) fail('AUTHZ_TEST_MAPPING_REQUIRED', `no explicit AUTHZ TEST contract exists for ${repoFile || '<unknown>'}`);
     const perMigration = coverageEvidence.migrations?.[repoFile];
     if (!perMigration || perMigration.status !== 'MIGRATION_TEST_COVERAGE_VERIFIED') {
       fail('AUTHZ_TEST_COVERAGE_REQUIRED', `${repoFile} has no migration-specific coverage evidence`);
     }
     const files = Array.isArray(perMigration.executedFiles) ? perMigration.executedFiles.map(String) : [];
-    if (!files.includes(contract.requiredFile) || !coverageEvidence.executedFiles.map(String).includes(contract.requiredFile)) {
-      fail('AUTHZ_REQUIRED_TEST_FILE_MISSING', `${repoFile} did not execute ${contract.requiredFile}`);
+    const allExecutedFiles = coverageEvidence.executedFiles.map(String);
+    for (const requiredFile of contract.requiredFiles) {
+      if (!files.includes(requiredFile) || !allExecutedFiles.includes(requiredFile)) {
+        fail('AUTHZ_REQUIRED_TEST_FILE_MISSING', `${repoFile} did not execute ${requiredFile}`);
+      }
     }
-    if (contract.requireTenantBoundary && perMigration.tenantBoundaryVerified !== true) {
+    if (perMigration.tenantBoundaryVerified !== true) {
       fail('TENANT_BOUNDARY_TEST_REQUIRED', `${repoFile} lacks explicit tenant-boundary evidence`);
     }
-    if (contract.requireNegativeRole && perMigration.negativeRoleTestsPassed !== true) {
+    if (perMigration.negativeRoleTestsPassed !== true) {
       fail('NEGATIVE_ROLE_TEST_REQUIRED', `${repoFile} lacks explicit negative-role evidence`);
     }
   }
@@ -259,4 +256,4 @@ export function buildProductionDbTestEvidence({
   };
 }
 
-export const PRODUCTION_DB_AUTHZ_TEST_CONTRACTS = AUTHZ_TEST_CONTRACTS;
+export const PRODUCTION_DB_AUTHZ_TEST_CONTRACTS = PRODUCTION_DB_G3_AUTHZ_CONTRACTS;
