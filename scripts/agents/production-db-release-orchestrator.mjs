@@ -92,11 +92,6 @@ function assertEvidenceIdentity(evidence, expectedStatus, plan, label) {
   if (evidence.databaseMutationAuthorized === true) fail(`${label}_SCOPE_ESCALATION`, `${label} evidence cannot authorize a database mutation`);
 }
 
-/**
- * Build the release packet before Final Risk. The Final Risk evidence digest is
- * defined over these four evidence groups, so the reviewer can inspect this base
- * packet without a circular dependency.
- */
 export function buildProductionDbBaseReleasePacket({
   plan,
   sourceEvidence,
@@ -104,7 +99,7 @@ export function buildProductionDbBaseReleasePacket({
   testEvidence,
   recoveryEvidence,
   data = {},
-} = {}) {
+} = /** @type {any} */ ({})) {
   if (!plan || plan.repository !== PRODUCTION_DB_POLICY.repository || plan.productionProjectRef !== PRODUCTION_DB_POLICY.productionProjectRef) {
     fail('WRONG_RELEASE_PLAN', 'release plan repository/project is not canonical');
   }
@@ -137,7 +132,7 @@ export function buildProductionDbBaseReleasePacket({
   };
 }
 
-export function attachProductionDbFinalRisk({ basePacket, finalRiskEvidence, now = new Date().toISOString() } = {}) {
+export function attachProductionDbFinalRisk({ basePacket, finalRiskEvidence, now = new Date().toISOString() } = /** @type {any} */ ({})) {
   if (!basePacket || typeof basePacket !== 'object' || Array.isArray(basePacket)) fail('BASE_PACKET_REQUIRED', 'base release packet is required');
   if (!finalRiskEvidence || finalRiskEvidence.status !== 'ASTRA_APPROVED') fail('FINAL_RISK_REQUIRED', 'trusted Production DB Final Risk evidence is required');
   if (String(finalRiskEvidence.releaseId ?? '') !== String(basePacket.releaseId ?? '')) fail('FINAL_RISK_RELEASE_MISMATCH', 'Final Risk belongs to another release');
@@ -148,11 +143,7 @@ export function attachProductionDbFinalRisk({ basePacket, finalRiskEvidence, now
   return packet;
 }
 
-/**
- * Compute activation from the canonical readiness verifier. Callers cannot pass a
- * boolean ready flag to bypass missing evidence.
- */
-export function assertPolicyGatedAutomationActive({ automationEvidence, plan } = {}) {
+export function assertPolicyGatedAutomationActive({ automationEvidence, plan } = /** @type {any} */ ({})) {
   const readiness = evaluateAutomationReadiness(automationEvidence);
   if (!readiness.automationReady || readiness.status !== 'AUTOMATION_READY' || readiness.authorizationMode !== 'POLICY_GATED_ACTIVE') {
     const blockers = Array.isArray(readiness.blockers) ? readiness.blockers.join(',') : 'UNKNOWN';
@@ -169,7 +160,7 @@ export function createProductionDbOrchestratorState({
   githubRunId,
   githubRunAttempt,
   now = new Date().toISOString(),
-} = {}) {
+} = /** @type {any} */ ({})) {
   assertPolicyGatedAutomationActive({ automationEvidence, plan });
   const journal = createReleaseJournal({
     releaseId: plan.releaseId,
@@ -189,11 +180,6 @@ export function createProductionDbOrchestratorState({
   return { journal, receipt, databaseMutationAuthorized: false };
 }
 
-/**
- * Phase 1 only. The delegated writer performs a fresh read-only Production ledger
- * capture and returns the prepared envelope. The caller must persist this output
- * durably before invoking executeProductionDbPreparedRelease().
- */
 export async function prepareProductionDbRelease({
   automationEvidence,
   plan,
@@ -205,7 +191,7 @@ export async function prepareProductionDbRelease({
   runner = spawnSync,
   fetchImpl = fetch,
   now = new Date().toISOString(),
-} = {}) {
+} = /** @type {any} */ ({})) {
   assertPolicyGatedAutomationActive({ automationEvidence, plan });
   assertExactTrustedMain(plan, { repoRoot, runner });
   const { aliasMap, readCanonicalSql } = assertPlan(plan, { repoRoot });
@@ -216,11 +202,6 @@ export async function prepareProductionDbRelease({
   });
 }
 
-/**
- * Phase 2 only. `prepared` is expected to have been serialized, uploaded,
- * downloaded and parsed again by the workflow. The underlying writer verifies the
- * preparation digest plus APPLYING/CONSUMING durable state before mutation.
- */
 export async function executeProductionDbPreparedRelease({
   automationEvidence,
   plan,
@@ -231,7 +212,7 @@ export async function executeProductionDbPreparedRelease({
   runner = spawnSync,
   fetchImpl = fetch,
   now = new Date().toISOString(),
-} = {}) {
+} = /** @type {any} */ ({})) {
   assertPolicyGatedAutomationActive({ automationEvidence, plan });
   assertExactTrustedMain(plan, { repoRoot, runner });
   const { aliasMap, readCanonicalSql } = assertPlan(plan, { repoRoot });
@@ -242,7 +223,7 @@ export async function executeProductionDbPreparedRelease({
   });
 }
 
-export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport, now = new Date().toISOString() } = {}) {
+export function finalizeProductionDbRelease({ plan, applyResult, postcheckReport, now = new Date().toISOString() } = /** @type {any} */ ({})) {
   if (!applyResult || applyResult.status !== 'APPLY_NEEDS_SCHEMA_POSTCHECK') fail('APPLY_RESULT_REQUIRED', 'verified apply result is required before G7');
   if (applyResult.releaseId !== plan?.releaseId || applyResult.mainSha !== plan?.mainSha || applyResult.planDigest !== plan?.planDigest) {
     fail('APPLY_RESULT_PLAN_MISMATCH', 'apply result belongs to another release plan');
