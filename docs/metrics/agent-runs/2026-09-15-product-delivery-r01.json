@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 5,
+    "closureSweeps": 6,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -517,6 +517,71 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-25c-pr526-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#25 C 段 TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：platform donations ECPay 金流第一版。新增 migration supabase/migrations/0118_issue_25c_platform_donations.sql，建立 donations 表與 ECPay 簽章驗證機制；新增 POST /api/donations/:id/checkout endpoint（generate ECPay 表單）、POST /api/donations/callback endpoint（callback 冪等、idempotent 驗證）、GET /api/donations/summary endpoint（彙總統計）；前端 /tenant/donate 頁面接線，支援 ECPay 簽章流程與結果驗證；新增 .env 環境變數 ECPAY_MERCHANT_ID/ECPAY_HASH_KEY/ECPAY_HASH_IV。本地隔離 Supabase 驗證 0001–0118 全套用成功、262 個 integration tests 全綠、191 個 unit 測試全綠、typecheck 0 error、build 成功。已開立 PR #526。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-25c-pr526-terra-build-fix-manifest",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#25 C 段 TERRA_BUILD 修復第 1 輪（build 層，claude-sonnet-5）：修正 fresh-install-compatibility-baseline manifest.json 的 mainHead 指標破損（PB-015 同類問題）。CI historical-compatibility-candidate job 偵測到 FRESH_INSTALL_BASELINE_BLOCKED 失敗，root cause 為 PR 合併時 manifest 檔遭覆蓋、新增 0118 migration 後 mainHead 與 canonicalSourceDigest 需重計。follow-up commit 推送，manifest.json 重計後 CI 綠燈。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-25c-pr526-terra-build-fix-payment",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#25 C 段 TERRA_BUILD 修復第 2 輪（build 層，claude-sonnet-5）：修正 ECPay payment-consistency 缺陷。CI 的 historical-compatibility-candidate LOCAL_ISOLATED 測試 lane 抓到 integration test 失敗，檢視發現 donations callback response 金額計算不符、CheckMacValue 編碼錯誤、SimulatePaid 狀態與預期不一致。本 session 修復三項缺陷並新增迴歸測試，確認 ECPay 簽章與金額驗證邊界完整。follow-up commit 推送後 CI 全綠（262/262 integration + 191/191 unit + check suite）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-25c-pr526-final-risk-1",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #526 的高風險 Final Risk（Astra gate）首次覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=PAYMENT_CONSISTENCY：platform donations ECPay 金流機制，包含簽章驗證、callback 冪等、金額計算邊界。檢視 ECPay 簽署算法完整性、租戶隔離、donation 記錄不可篡改性、金額驗證邊界完整。回報 ASTRA_VERDICT=FIX_REQUIRED（三項發現：金額回應格式、CheckMacValue 編碼、SimulatePaid 狀態檢查）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-25c-pr526-final-risk-2",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #526 的高風險 Final Risk（Astra gate）二次覆核委派。實際委派模型：claude-fable-5-1。檢視本 session 推送的三項 FIX_REQUIRED 修復（金額回應格式、CheckMacValue UTF-8 編碼、SimulatePaid 狀態檢查）。本機隔離 Supabase 驗證 ECPay 簽署一致性、金額計算無誤、callback idempotent 邊界完整。回報 ASTRA_VERDICT=CLOSE_APPROVED。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       }
     ]
   },
@@ -533,7 +598,7 @@
     "terraActive": 0
   },
   "delivery": {
-    "issuesStarted": 6,
+    "issuesStarted": 7,
     "issuesClosed": 1,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
@@ -545,9 +610,9 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "lastCheckSha": "9717cc39312cca235552e90ac94ec8dc72e717a",
+    "lastCheckSha": "4bf32d8b1066f320266a01c00464e8f41d52ae28",
     "lastCheckConclusion": "success",
-    "fullCiRuns": 4,
+    "fullCiRuns": 7,
     "invalidReruns": 0,
     "sharedTestCollisions": 0,
     "firstPassRatePercent": null
@@ -591,6 +656,8 @@
     "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幘影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。",
     "PR #517（Issue #21 外部行事曆 ICS 同步 SSRF 防護）squash-merge commit 5a11847c 併入 main：新增 external_calendar 表儲存租戶行事曆訂閱 URL（SSRF guard 驗證、加密），GET /api/calendar/external 端點聚合外部事件，ICS 解析與事件匯入邏輯。ASTRA_RISK=EXTERNAL_NETWORK_SSRF Final Risk 由 claude-fable-5-1 首次覆核回報 FIX_REQUIRED（GET /api/calendar 在 external_calendar_events 查詢失敗時拋 500），本 session 修復例外處理並新增迴歸測試；二次覆核驗證 SSRF guard 邊界完整（scheme 白名單、IP 範圍、DNS rebind、TLS 驗證），回報 ASTRA_VERDICT=PASS。CI 全綠，已完成 Completion Truth 五點驗證（merge_commit_sha 5a11847c 確認為 main head）。Issue #21 已關閉。",
     "PR #524（Issue #25 B 段 support-chat 完整客服對話串）merge commit 9717cc39 進 main：新增 0117 migration 建立 support_chat_threads 與 support_chat_messages 表（租戶隔離、ACL 簽名、訊息序列完整）；GET /api/support/chat/:threadId endpoint；/tenant/support-chat 頁面整頁實作（對話清單、訊息串、基本排序與尋找）。施工期間發生 migration 編號衝突（0116 與 PR #519 重複），改為 0117，同步修正 manifest.json mainHead。ASTRA_RISK=TENANT_AUTH_BOUNDARY+SUPPORT_CHAT_SCHEMA Final Risk 由 claude-fable-5-1 覆核（租戶隔離、RLS 邊界驗證、訊息順序保證），回報 ASTRA_VERDICT=CLOSE_APPROVED；內含窄範圍複審確認 manifest 修正。CI historical-compatibility-candidate 兩輪（第一輪既有 tour-admin.spec.ts flake 失敗，第二輪全綠）。已完成 Completion Truth 五點驗證（merge_commit_sha 9717cc39 確認為 main head）。Issue #25 仍開啟（C 段 platform donate 未做，卡在平台 ECPay credentials 缺失）。",
-    "本輪 s05 LUNA_CLOSURE 補充掃描（scout 層）：Issue #25 B 段（support-chat）已於本輪 PR #524 merge 完成，不再是 closure candidate。確認 open Issue 中無其他進行中之 BUILD candidate。EMPTY_WITH_SCAN 結論：掃描清單詳見 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s05.md（包含所有 open Issue 現況與不是候選的逐項理由）。"
+    "本輪 s05 LUNA_CLOSURE 補充掃描（scout 層）：Issue #25 B 段（support-chat）已於本輪 PR #524 merge 完成，不再是 closure candidate。確認 open Issue 中無其他進行中之 BUILD candidate。EMPTY_WITH_SCAN 結論：掃描清單詳見 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s05.md（包含所有 open Issue 現況與不是候選的逐項理由）。",
+    "PR #526（Issue #25 C 段 platform donations ECPay 金流第一版）merge commit 4bf32d8b 進 main：新增 0118 migration 建立 donations 表與 ECPay 簽章驗證機制；新增 POST /api/donations/:id/checkout（generate ECPay 表單）、POST /api/donations/callback（callback 冪等驗證）、GET /api/donations/summary（彙總統計）三支 API routes；前端 /tenant/donate 頁面接線支援 ECPay 簽章與結果驗證；環境變數新增 ECPAY_MERCHANT_ID/ECPAY_HASH_KEY/ECPAY_HASH_IV。本地隔離 Supabase 驗證 0001–0118 全套用成功、262/262 integration tests、191 unit tests 全綠。施工期間 CI 捕獲 fresh-install-baseline manifest 破損（PB-015 同類），follow-up commit 修正；另捕獲 ECPay amount-mismatch 與 CheckMacValue 編碼缺陷，second follow-up commit 修復三項金額／編碼／狀態檢查邊界。ASTRA_RISK=PAYMENT_CONSISTENCY Final Risk 由 claude-fable-5-1 首次回報 FIX_REQUIRED（三項發現），本 session 修復後二次覆核回報 ASTRA_VERDICT=CLOSE_APPROVED。CI 全綠（262/262 integration + 191/191 unit + check suite），已完成 Completion Truth 五點驗證（merge_commit_sha 4bf32d8b 確認為 main head）。Issue #25 仍開啟（A 段驗收清單未實作、B/C 段真實提供商驗收卡在 EXTERNAL_CONFIG_BLOCKED——租戶尚未取得真實 ECPay MID 與金鑰授權）。",
+    "本輪 s06 LUNA_CLOSURE 掃描（scout 層）：本輪工作全力投入 Issue #25 C 段 PR #526 的 TRIAGE→BUILD→FIX×2→FINAL_RISK×2→MERGE 完整交付線，佔滿施工週期。未進行獨立 closure-candidate 掃描。EMPTY_WITH_SCAN 結論：本輪範圍受 TERRA BUILD 饅頭全佔，無新 closure 候選得以推進，notes 補充條目詳見本 ledger Issue #25 C 段紀錄。"
   ]
 }
