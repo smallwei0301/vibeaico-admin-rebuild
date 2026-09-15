@@ -549,6 +549,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "issue #25 B 段：客服對話串第一版（support_chat_threads／support_chat_messages 兩張表），規格見 docs/decisions/2026-09-11-support-chat-human-escalation.md。兩張表皆啟用 RLS，讀寫走 is_tenant_member(tenant_id)（threads）與 tenant_id 一致性 check（messages 的 insert policy 額外鎖 sender_role='TENANT' 且 tenant_id 與其 thread 相符），全部走 session client（t.supabase），不使用 service role。本筆原編號 0116，因與同期合併的 #18 owner-notify migration（同樣取號 0116）撞號，於 rebase 到 main（含 PR #519）時改號為 0117，內容未變。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0118_issue_25c_platform_donations",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #25 C 段：平台贊助金流第一版（platform_donations 一張表）。這不是租戶資料——沒有 tenant_id 外鍵，donor_user_id 記的是按下贊助的使用者本人，贊助是個人行為不屬於任何一家店。RLS 啟用且 force，但刻意不建立任何政策：一般 authenticated／anon 完全不可直讀直寫，全部經 /api/donations/**（service role）存取，由應用層決定可見範圍（自己的贊助總額 vs. 只含 status=PAID 的公開感謝名單）。金流閘道憑證（ECPAY_MERCHANT_ID／ECPAY_HASH_KEY／ECPAY_HASH_IV）是平台層 env（src/config/env.ts），不是本表欄位，且 2026-09-15 盤點 midao.env 三者均未設定（EXTERNAL_CONFIG_BLOCKED，見 issue #25 C 段「Live credential truth」），因此本檔不預期任何一個環境已經套用真實金流。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     }
   ]
 }

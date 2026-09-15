@@ -782,3 +782,36 @@ export type SupportChatThreadSummary = {
 export type SupportChatThreadDetail = SupportChatThreadSummary & {
   messages: SupportChatMessage[];
 };
+
+/**
+ * 平台贊助（`/tenant/donate`，issue #25 C 段）。
+ * ⚠️ 這不是租戶資料——`platform_donations` 沒有 `tenant_id`，贊助是使用者個人
+ * 行為，見 `supabase/migrations/0118_issue_25c_platform_donations.sql` 檔頭。
+ */
+export type DonationStatus = 'PENDING' | 'PAID' | 'FAILED';
+
+export type DonationDonor = {
+  id: string;
+  displayName: string;
+  donatedAt: string;
+};
+
+/** GET /api/donations/summary */
+export type DonationSummary = {
+  totalDonated: number;
+  myDonated: number;
+  donors: DonationDonor[];
+};
+
+/** POST /api/donations */
+export type DonationOrder = {
+  id: string;
+  merchantTradeNo: string;
+  amount: number;
+};
+
+/** GET /api/donations/:id/checkout —— 一組要自動 POST 到 ECPay 的表單欄位 */
+export type DonationCheckout = {
+  actionUrl: string;
+  fields: Record<string, string>;
+};

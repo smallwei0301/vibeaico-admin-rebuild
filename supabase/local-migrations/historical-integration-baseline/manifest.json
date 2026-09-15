@@ -16,7 +16,7 @@
     {"name":"0020_booking_addons.sql","blobSha":"e3af9d5f0498102bf32e3155b1673127e8f3a67b"},
     {"name":"0021_tenant_settings_branding.sql","blobSha":"305e347f0ec666f697f87e0cfea4b7771a013794"},
     {"name":"0022_page_local_display_fields.sql","blobSha":"6286e81703bed05d6c3633bf73c39cf4ea552504"},
-    {"name":"0023_owner_notify.sql","blobSha":"79ab14a93391b180981bed28a844e7ba07e4bb90"},
+    {"name":"0023_owner_notify.sql","blobSha":"79ab14a93391b180981bed28a844e7ba07e4bb90","retiredBy":"0116_issue_18_owner_notify.sql"},
     {"name":"0024_welcome_card_images_bucket.sql","blobSha":"9961b80cafb9da8f51279ef2ae0057b788d6628a"},
     {"name":"0025_rich_menu_designs.sql","blobSha":"020bb76985f6896d397ab8a8978ce39bb461c5a3"},
     {"name":"0026_tour_departures_addons_orders.sql","blobSha":"e483a30199da64ae06c3c292c10ea2f062feb0e2"},
