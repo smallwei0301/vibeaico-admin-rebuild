@@ -106,25 +106,48 @@ export const promotePage = {
   },
 
   /* ------------------------------------------------------ 卡片 4：推廣成效 */
+  /**
+   * issue #23：此區塊改為真實資料（`GET /api/promotion/stats`），UV 依
+   * 2026-09-14 Owner Decision 為「匿名近似值」，文案必須明確標示「近似」，
+   * 不得宣稱精準到人。來源分類為公開頁埋點的 `?src=qr` / `?src=line` /
+   * 無參數三種（QR／LINE／直接造訪），與上方卡片 3 的 `utm_source` 連結
+   * 教學是兩件事，卡片 3 保持原樣不受影響。
+   */
   stats: {
-    heading: '推廣成效（各通路帶來的瀏覽）',
+    heading: '推廣成效（PV／近似 UV）',
     daysOptions: [
       { value: '7', label: '最近 7 天' },
       { value: '30', label: '最近 30 天' },
       { value: '90', label: '最近 90 天' },
     ],
-    columns: {
-      source: '通路來源',
+    totals: {
       pv: '瀏覽次數 (PV)',
-      uv: '不重複訪客 (UV)',
+      uv: '近似 UV（近似訪客）',
+    },
+    approximateNote:
+      '「近似 UV」為匿名估算，不是精準真人計數：系統以每日輪替的匿名代碼辨識同日重複瀏覽，同一人跨日回訪、或更換裝置／網路，都可能被重複計算或低估。我們不保存原始 IP，也不會把這組代碼與任何顧客身分資料建立關聯。',
+    columns: {
+      source: '來源',
+      pv: '瀏覽次數 (PV)',
+      uv: '近似 UV',
+    },
+    sourceLabels: {
+      QR: 'QR Code',
+      LINE: 'LINE',
+      DIRECT: '直接造訪',
+    },
+    byDay: {
+      heading: '每日趨勢',
+      columns: {
+        day: '日期',
+        pv: '瀏覽次數 (PV)',
+        uv: '近似 UV',
+      },
     },
     loading: '載入中...',
     loadFailed: '載入失敗，請稍後再試',
-    directLabel: '直接造訪',
-    footnote:
-      '「直接造訪」= 沒有經由帶標記的推廣連結進來（例如直接輸入網址、書籤、或你貼的是未加標記的舊連結）。多用上方「複製即用」的連結，這份報表就會越準。',
-    emptyTitle: '這段期間還沒有瀏覽資料，把上方連結貼出去看看吧！',
-    emptyDescription: '把上方「複製即用」的連結貼到 Google、FB、IG 或 Email 簽名檔，數據就會開始累積。',
+    emptyTitle: '尚無資料',
+    emptyDescription: '這段期間還沒有瀏覽紀錄。把上方「複製即用」的連結或 QR Code 貼出去，數據就會開始累積。',
   },
 
   /* --------------------------------------------------------------- 訊息 */

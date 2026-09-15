@@ -41,26 +41,26 @@ export const calendarSyncPage = {
   external: {
     title: '匯入外部行事曆',
     description:
-      '貼上 Google 日曆的「密鑰 iCal 網址」等外部 ICS，事件會以 唯讀灰色 顯示在 後台行事曆 上供核對名單（約每 15 分鐘更新，不可在此編輯外部事件）。',
+      '貼上 Google 日曆的「密鑰 iCal 網址」等外部 ICS，事件會以唯讀方式顯示在後台行事曆上供核對名單（每小時自動同步一次，不可在此編輯外部事件）。',
     name: '名稱',
     namePlaceholder: '例如：Booking.com 名單',
     url: 'ICS 網址（https）',
     urlPlaceholder: 'https://calendar.google.com/calendar/ical/.../basic.ics',
-    color: '顏色',
-    defaultColor: '#9aa0a6',
     add: '新增',
-    enable: '啟用',
-    disable: '停用',
     empty: '尚未匯入任何外部行事曆。',
-    eventCount: (n: number) => `✓ ${n} 筆`,
-    syncError: '⚠ 同步異常',
-    neverSynced: '尚未同步',
+    syncStatus: {
+      neverSynced: '尚未同步',
+      ok: (lastSyncedAt: string) => `✓ 最後同步：${lastSyncedAt}`,
+      error: (message: string) => `⚠ 同步異常：${message}`,
+    },
     nameRequired: '請填名稱',
     urlRequired: '請填 ICS 網址',
-    added: '已新增，行事曆稍後會顯示外部事件',
+    added: '已新增，下次每小時同步後行事曆會顯示外部事件',
     deleted: '已刪除',
     deleteConfirm: (name: string) =>
       `確定刪除「${name}」？\n後台行事曆將不再顯示這個來源的事件。`,
+    addFailed: '新增失敗',
+    deleteFailed: '刪除失敗',
   },
 
   /** 教學卡：怎麼拿 Google 的 ICS 網址 */

@@ -258,11 +258,16 @@ export const keywordRepliesPage = {
      * 組 LINE image message），service 層 `toApiPayload` 也會依 imageUrl 決定
      * replyType，**唯一缺的是 `/api/upload` 不收關鍵字回覆的 bucket**。
      *
-     * 而 `keyword-reply-images` 這個 bucket **本來就存在**——
+     * 而 `keyword-reply-images` 這個 bucket **本來就存在**（0086 建立），當時
      * `0073_restore_keyword_reply_storage_write.sql` 的 `p_storage_write`
-     * 允許清單裡就有它。所以本輪不需要新的 storage bucket，也不需要 migration：
+     * 允許清單裡也還有它。所以那一輪不需要新的 storage bucket，也不需要 migration：
      * 只是把它加進 `/api/upload` 的 ALLOWED_BUCKETS 與 `UploadBucket` 型別，
      * 再把畫面上那個停用的 `<input type="file">` 接上既有的 uploadImage()。
+     *
+     * ⚠️ issue #402（`0112_keyword_reply_images_upload_acl.sql`）之後，
+     * `p_storage_write` 的 authenticated 直寫允許清單已不再包含這個 bucket；
+     * 正常上傳流程不受影響（本來就是這裡的 uploadImage() 經 `/api/upload`
+     * service_role 寫入），但上面「允許清單裡就有它」是歷史敘述，非現況。
      *
      * ⚠️ 上傳失敗的文案**不放在這裡**：`messages.imageUploadFailedPrefix` 已經有
      * 逐字相同的一句（聊天圖上傳在用）。同一句話存兩份，改了其中一份就會兩處不一致，

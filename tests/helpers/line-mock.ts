@@ -62,6 +62,23 @@ export class LineMockServer {
 
   private server: Server | undefined;
   private failQueue: number[] = [];
+  /** 覆寫 GET /v2/bot/info 的回應內容（issue #477 line-verify 三態測試用）；
+   * null 代表用預設固定值。傳整個物件取代，呼叫端自行決定要不要帶 chatMode。 */
+  private botInfoOverride: Record<string, any> | null = null;
+  /** 覆寫 GET /v2/bot/channel/webhook/endpoint 的回應內容（issue #477 line-verify
+   * 測試用，讓 WEBHOOK 項目在正常設定下可以真的 PASS）；null 代表預設 `{}`。 */
+  private webhookEndpointOverride: Record<string, any> | null = null;
+  /** 覆寫 GET /v2/bot/user/all/richmenu 的回應內容（issue #477 line-verify
+   * 測試用，讓 RICH_MENU 項目在正常設定下可以真的 PASS）；null 代表預設 `{}`。 */
+  private richMenuAllOverride: Record<string, any> | null = null;
+  /** 覆寫 POST /oauth2/v2.1/token 的回應內容與狀態碼（LINE 設定檢查報告
+   * ID_SECRET_PAIR 項目用）；null 代表預設成功（200 + 一顆假 access_token）。
+   * 需要模擬配對失敗時帶非 200 status（真實 LINE 對 invalid_client 回 400），
+   * 光靠 override body 沒用——route.ts 用 `res.ok` 判定，body 不影響 status。 */
+  private oauthTokenOverride: { status: number; body: Record<string, any> } | null = null;
+  /** 覆寫 POST /v2/bot/channel/webhook/test 的回應內容（WEBHOOK_TEST 項目用）；
+   * null 代表預設 `{success:true,statusCode:200}`。 */
+  private webhookTestOverride: Record<string, any> | null = null;
   private hold: {
     path: string;
     hit: boolean;
@@ -115,6 +132,16 @@ export class LineMockServer {
           return;
         }
 
+        // oauthTokenOverride 可能帶非 200 status（模擬 invalid_client），必須在
+        // 下面的通用 res.writeHead(200,...) 之前處理，否則 writeHead 已呼叫過一次
+        // 會丟「Cannot set headers after they are sent」。
+        if (path === '/oauth2/v2.1/token' && this.oauthTokenOverride) {
+          const override = this.oauthTokenOverride;
+          res.writeHead(override.status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(override.body));
+          return;
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         const profileMatch = path.match(/^\/v2\/bot\/profile\/(.+)$/);
         if (profileMatch) {
@@ -131,13 +158,15 @@ export class LineMockServer {
         }
         if (path === '/v2/bot/info') {
           res.end(
-            JSON.stringify({
-              userId: 'Umockbot0000000000000000000000000',
-              basicId: '@mockbot',
-              displayName: 'Mock 官方帳號',
-              chatMode: 'bot',
-              markAsReadMode: 'auto',
-            }),
+            JSON.stringify(
+              this.botInfoOverride ?? {
+                userId: 'Umockbot0000000000000000000000000',
+                basicId: '@mockbot',
+                displayName: 'Mock 官方帳號',
+                chatMode: 'bot',
+                markAsReadMode: 'auto',
+              },
+            ),
           );
           return;
         }
@@ -145,6 +174,40 @@ export class LineMockServer {
         // （richmenu 建立回 richMenuId，順手帶上以免未來測試踩到）
         if (path === '/v2/bot/richmenu') {
           res.end(JSON.stringify({ richMenuId: 'richmenu-mock-0001' }));
+          return;
+        }
+        if (path === '/v2/bot/channel/webhook/endpoint') {
+          res.end(JSON.stringify(this.webhookEndpointOverride ?? {}));
+          return;
+        }
+        if (path === '/v2/bot/user/all/richmenu') {
+          res.end(JSON.stringify(this.richMenuAllOverride ?? {}));
+          return;
+        }
+        if (path === '/oauth2/v2.1/token') {
+          // 非 200 的 override 已在上面提早處理過（見那裡的註解），走到這裡代表
+          // 沒有 override，一律回預設成功內容。
+          res.end(
+            JSON.stringify({
+              access_token: 'mock-stateless-channel-token',
+              expires_in: 1800,
+              token_type: 'Bearer',
+            }),
+          );
+          return;
+        }
+        if (path === '/v2/bot/channel/webhook/test') {
+          res.end(
+            JSON.stringify(
+              this.webhookTestOverride ?? {
+                success: true,
+                timestamp: '2026-09-15T00:00:00.000Z',
+                statusCode: 200,
+                reason: 'OK',
+                detail: 'ok',
+              },
+            ),
+          );
           return;
         }
         res.end('{}');
@@ -176,8 +239,49 @@ export class LineMockServer {
   reset(): void {
     this.requests.length = 0;
     this.failQueue = [];
+    this.botInfoOverride = null;
+    this.webhookEndpointOverride = null;
+    this.richMenuAllOverride = null;
+    this.oauthTokenOverride = null;
+    this.webhookTestOverride = null;
     this.hold?.release?.();
     this.hold = null;
+  }
+
+  /**
+   * 覆寫下一次（含之後，直到再次呼叫或 reset()）GET /v2/bot/info 的回應內容；
+   * 傳 null 還原預設固定值。issue #477 line-verify.06 測試用來模擬
+   * chatMode='bot'/'chat'/缺欄位三種情境（AUTO_REPLY 三者皆應回 WARN，見
+   * src/app/api/settings/line/verify/route.ts 檔頭說明）。
+   */
+  setBotInfo(payload: Record<string, any> | null): void {
+    this.botInfoOverride = payload;
+  }
+
+  /** 覆寫 GET /v2/bot/channel/webhook/endpoint 的回應內容；null 還原預設 `{}`。
+   * issue #477 line-verify.06 用來讓 WEBHOOK 項目可以真的判定為 PASS。 */
+  setWebhookEndpoint(payload: Record<string, any> | null): void {
+    this.webhookEndpointOverride = payload;
+  }
+
+  /** 覆寫 GET /v2/bot/user/all/richmenu 的回應內容；null 還原預設 `{}`。
+   * issue #477 line-verify.06 用來讓 RICH_MENU 項目可以真的判定為 PASS。 */
+  setRichMenuAll(payload: Record<string, any> | null): void {
+    this.richMenuAllOverride = payload;
+  }
+
+  /** 覆寫 POST /oauth2/v2.1/token 的回應內容與狀態碼；null 還原預設 200 成功
+   * 回應。LINE 設定檢查報告 ID_SECRET_PAIR 項目測試用——要測配對失敗（route.ts
+   * 用 `res.ok` 判定）必須帶非 200 的 status，例如
+   * `setOAuthToken({error:'invalid_client'}, 400)`。 */
+  setOAuthToken(payload: Record<string, any> | null, status = 200): void {
+    this.oauthTokenOverride = payload ? { status, body: payload } : null;
+  }
+
+  /** 覆寫 POST /v2/bot/channel/webhook/test 的回應內容；null 還原預設
+   * `{success:true,statusCode:200}`。WEBHOOK_TEST 項目測試用。 */
+  setWebhookTest(payload: Record<string, any> | null): void {
+    this.webhookTestOverride = payload;
   }
 
   /** 暫停下一個指定路徑的回應，直到 release()。 */

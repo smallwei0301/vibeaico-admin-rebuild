@@ -123,6 +123,32 @@ describe('Issue #228 production cutover preview canary', () => {
     expect(body.meta).toMatchObject({ deploymentController: 'issue-228-preview-canary', expectedMainSha: MAIN_SHA });
   });
 
+  it('ignores the exact-SHA ref for the global Ignored Build Step guard, deployment-scoped only', async () => {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetchImpl = async (url: string | URL | Request, init: RequestInit = {}) => {
+      calls.push({ url: String(url), init });
+      return response({ id: 'dpl_preview', readyState: 'QUEUED' });
+    };
+
+    await createPreviewDeployment({
+      token: 'secret-for-test-only',
+      teamId: TEAM_ID,
+      projectId: PROJECT_ID,
+      projectName: PROJECT_NAME,
+      owner: OWNER,
+      repo: REPO,
+      sha: MAIN_SHA,
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    const body = JSON.parse(String(calls[0].init.body));
+    // Deployment-scoped override on this single API-created Preview request only —
+    // it must NOT touch the project's global vercel-ignore-build.mjs allowlist.
+    expect(body.projectSettings).toEqual({ commandForIgnoringBuildStep: 'exit 1' });
+    // Still no Production target: only the ignore-build override changed.
+    expect(body.target).toBeUndefined();
+  });
+
   it('accepts only a READY explicit-null Preview target with exact project/repo/SHA identity', () => {
     expect(verifyPreviewDeployment(preview(), {
       projectId: PROJECT_ID,
