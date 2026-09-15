@@ -339,6 +339,10 @@ function dynamicCommandKind(fragment) {
 }
 
 function assertDynamicExecutionSafe(body) {
+  const lexicalBody = stripSqlStringLiterals(body, true);
+  if (/\bexecute\b[\s\S]*\|\|/i.test(lexicalBody)) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'concatenated dynamic SQL is not admitted');
+  }
   return dynamicExecuteFragments(body).map(dynamicCommandKind);
 }
 
