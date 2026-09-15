@@ -95,18 +95,19 @@ function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
 function assertAtomicCompatibleSql(sql, repoFile) {
   const statements = splitSqlStatements(sql);
   const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release(?:\s+savepoint)?\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
-  const writerTimeoutOverride = /\b(?:set\s+(?:(?:local|session)\s+)?(?:lock_timeout|statement_timeout|idle_in_transaction_session_timeout)\b|reset\s+(?:lock_timeout|statement_timeout|idle_in_transaction_session_timeout|all)\b|set_config\s*\()/i;
   const procedural = /^(?:do\b|create\s+(?:or\s+replace\s+)?(?:function|procedure)\b)/i;
   const proceduralTransactionControl = /\b(?:commit|rollback|abort|savepoint|release(?:\s+savepoint)?|prepare\s+transaction)\b/i;
   for (const statement of statements) {
     const trimmed = statement.trim();
-    const lexicalText = stripSqlStringLiterals(trimmed, false, true);
     const lexicalBody = procedural.test(trimmed) ? stripSqlStringLiterals(trimmed) : '';
-    if (writerTimeoutOverride.test(lexicalText)) {
-      fail('WRITER_TIMEOUT_OVERRIDE_NOT_ADMITTED', `${repoFile} cannot override the controlled writer timeout boundary`);
-    }
     if (transactionControl.test(trimmed) || (lexicalBody && proceduralTransactionControl.test(lexicalBody))) {
       fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
+    }
+    // Deny every session configuration statement, including quoted/U& names and
+    // RESET ALL. Re-applying timeouts afterwards would leave the migration itself
+    // unbounded. DO-block configuration and set_config calls fail in the planner.
+    if (/^(?:set|reset|discard)\b/i.test(trimmed)) {
+      fail('WRITER_CONFIGURATION_NOT_ADMITTED', `${repoFile} cannot override the writer session configuration`);
     }
   }
   const text = statements.join('\n');
@@ -156,12 +157,14 @@ export function buildAtomicProductionApplySql({
       : '-- controlled migration ' + entry.repoFile + '\n' + sql.trim() + (sql.trim().endsWith(';') ? '' : ';');
     statements.push(migrationSql);
     statements.push(
-      `insert into supabase_migrations.schema_migrations(version, statements, name) values (` +
-      `${sqlLiteral(entry.ledgerVersion)}, null, ${sqlLiteral(entry.repoFile)});`,
+      // Only name/version are guaranteed by the canonical ledger contract.
+      // Single-use attempt identity belongs to #455's durable receipt, not to
+      // undeclared provider columns.
+      `insert into supabase_migrations.schema_migrations(version, name) values (` +
+      `${sqlLiteral(entry.ledgerVersion)}, ${sqlLiteral(entry.repoFile)});`,
     );
   }
 
-  const ledgerIdentity = ledgerIdentityValues(plan.migrations);
   statements.push(
     ledgerReconciliationSql({ ledgerIdentity: ledgerIdentityValues(expectedPostApplyRows), errorFormat: 'PRODUCTION_DB_POST_LEDGER_MISMATCH:%' }),
     'commit;',
@@ -181,6 +184,7 @@ export async function captureProductionLedger({ token, fetchImpl = fetch } = {})
   return body;
 }
 
+// Private transport: importing this module must not expose a raw-SQL write path.
 async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
   if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
   const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query`, {
@@ -219,6 +223,11 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
  *
  * A network error is surfaced as APPLY_UNKNOWN; callers must persist the journal
  * and run readback before any retry.
+ * This is source core, not automation admission: #454 owns journal semantics and
+ * #455 owns trusted-main verification and durable PREPARE -> persist -> EXECUTE.
+ * Do not wire this single-phase entry point directly into an automated workflow.
+ * The legacy `now` input is ignored; deterministic clocks belong in pure preflight
+ * tests or test-runtime mocks, never in mutable release admission.
  *
  * @param {{
  *   plan?: any,
@@ -227,6 +236,7 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
  *   readCanonicalSql?: (path: string) => string,
  *   token?: string,
  *   fetchImpl?: typeof fetch,
+ *   now?: string,
  * }} [input]
  */
 export async function runControlledProductionRelease({
@@ -236,16 +246,20 @@ export async function runControlledProductionRelease({
   readCanonicalSql,
   token,
   fetchImpl = fetch,
+  now: _ignoredNow,
 } = {}) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
     fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
   }
   if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
-  evaluateReleasePreflight(releasePacket, { now: new Date().toISOString() });
+  // Mutable admission always uses the wall clock.
+  evaluateReleasePreflight(releasePacket);
 
   const before = await captureProductionLedger({ token, fetchImpl });
   const sql = buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
+  // A slow ledger read/build must not carry expired evidence into the write.
+  evaluateReleasePreflight(releasePacket);
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
     const after = await captureProductionLedger({ token, fetchImpl });
