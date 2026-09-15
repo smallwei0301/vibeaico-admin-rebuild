@@ -250,19 +250,34 @@ function stripStoredRoutineBodies(statement) {
 }
 
 const SQL_PARENTHESES_WORDS = new Set([
-  'all', 'and', 'any', 'as', 'begin', 'case', 'check', 'declare', 'else', 'end',
-  'exception', 'exists', 'filter', 'for', 'from', 'group', 'having', 'if', 'in',
-  'into', 'join', 'lateral', 'limit', 'loop', 'not', 'offset', 'on', 'or', 'order',
-  'over', 'partition', 'raise', 'returning', 'select', 'some', 'then', 'using',
-  'values', 'when', 'where', 'while', 'with',
+  'all', 'and', 'any', 'as', 'begin', 'case', 'check', 'conflict', 'declare', 'else',
+  'end', 'exception', 'exists', 'filter', 'for', 'from', 'group', 'having', 'if',
+  'in', 'into', 'join', 'lateral', 'limit', 'loop', 'not', 'offset', 'on', 'only',
+  'or', 'order', 'over', 'partition', 'raise', 'returning', 'select', 'set', 'some',
+  'then', 'using', 'values', 'when', 'where', 'while', 'with',
 ]);
 
+function isDmlTargetColumnList(text, index) {
+  return /\binsert\s+into\s+(?:only\s+)?(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?$/iu.test(
+    String(text).slice(0, index),
+  );
+}
+
 function hasUnverifiedRoutineInvocation(text) {
-  if (/"(?:[^"]|"")*"\s*\(/i.test(text)) return true;
-  const candidates = String(text).matchAll(
+  const input = String(text);
+  const quotedCandidates = input.matchAll(
+    /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu,
+  );
+  for (const match of quotedCandidates) {
+    if (isDmlTargetColumnList(input, match.index)) continue;
+    return true;
+  }
+
+  const candidates = input.matchAll(
     /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
   );
   for (const match of candidates) {
+    if (isDmlTargetColumnList(input, match.index)) continue;
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
     if (calledName === 'pg_catalog.format') continue;
@@ -302,7 +317,7 @@ function rejectImmediateConfigurationMutations(statements) {
     if (!/^\s*do\b/i.test(lexicalText)) continue;
     const body = immediateProceduralBody(immediateText);
     const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true, true);
-    if (/\b(?:set|reset)\b/i.test(bodyLexical)) {
+    if (/(?:^\s*(?:set|reset)\b|(?:^|;)\s*begin\s+(?:set|reset)\b|(?:^|;|\b(?:then|else|loop|exception)\b)\s*(?:set|reset)\b)/i.test(bodyLexical)) {
       fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'SET/RESET inside an immediate procedural block is not admitted by the fail-closed classifier');
     }
   }
