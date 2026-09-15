@@ -80,6 +80,27 @@ describe('Controlled Production DB writer #447', () => {
     expect(sql).toContain('select null::text as name, null::text as version where false');
   });
 
+  it('uses a non-colliding procedural tag for ledger identity values', () => {
+    const dollar = String.fromCharCode(36);
+    const collisionName = [dollar, 'ledgercheck', dollar].join('');
+    const collisionAliasMap = {
+      schemaVersion: 1,
+      entries: [
+        { repoFile: '0001_base', ledgerNames: [collisionName], classification: 'EXACT', evidence: 'x' },
+        { repoFile: '0109_assertions', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+      ],
+    };
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: collisionAliasMap, readCanonicalSql,
+    });
+    const sql = buildAtomicProductionApplySql({
+      plan: p, aliasMap: collisionAliasMap,
+      liveLedgerRows: [{ version: '1', name: collisionName }], readCanonicalSql,
+    });
+    expect(sql).toContain('do ' + dollar + 'ledgercheck0' + dollar);
+  });
+
   it('builds one atomic transaction with DB advisory lock before live recheck, exact main SQL and ledger identity', () => {
     const p = plan();
     const sql = buildAtomicProductionApplySql({ plan: p, aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql });
