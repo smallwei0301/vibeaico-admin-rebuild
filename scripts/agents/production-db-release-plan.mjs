@@ -266,7 +266,7 @@ function hasUnverifiedRoutineInvocation(text) {
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
     if (calledName === 'pg_catalog.format') continue;
-    if (SQL_PARENTHESES_WORDS.has(name)) continue;
+    if (!calledName.includes('.') && SQL_PARENTHESES_WORDS.has(name)) continue;
     return true;
   }
   return false;
@@ -281,8 +281,8 @@ function rejectImmediateRoutineInvocations(statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && checkCommandText(immediateText);
-    if (topLevelCall || topLevelSelectCall) {
+    const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText);
+    if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
 
@@ -291,6 +291,19 @@ function rejectImmediateRoutineInvocations(statements) {
       if (body !== null && checkCommandText(body)) {
         fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside an immediate procedural block is not admitted');
       }
+    }
+  }
+}
+
+function rejectImmediateConfigurationMutations(statements) {
+  for (const statement of statements) {
+    const immediateText = stripStoredRoutineBodies(statement).trim();
+    const lexicalText = stripSqlStringLiterals(immediateText);
+    if (!/^\s*do\b/i.test(lexicalText)) continue;
+    const body = immediateProceduralBody(immediateText);
+    const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true, true);
+    if (/\b(?:set|reset)\b/i.test(bodyLexical)) {
+      fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'SET/RESET inside an immediate procedural block is not admitted by the fail-closed classifier');
     }
   }
 }
@@ -664,6 +677,7 @@ export function inferMigrationRiskTier(sql) {
   const statements = splitSqlStatements(text);
   rejectUnsupportedRoutineLiteralBodies(statements);
   rejectImmediateRoutineInvocations(statements);
+  rejectImmediateConfigurationMutations(statements);
   if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
