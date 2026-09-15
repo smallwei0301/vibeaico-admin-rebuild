@@ -118,7 +118,7 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier('alter view public.tenant_records reset (security_invoker);')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('update only (public.tenant_records) set tenant_id = \'other\';')).toBe('BACKFILL');
     expect(inferMigrationRiskTier('update public . tenant_records set tenant_id = \'other\';')).toBe('BACKFILL');
-    expect(inferMigrationRiskTier('delete only (public.tenant_records) from public.tenant_records;')).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('delete from only (public.tenant_records) where true;')).toBe('BACKFILL');
     expect(inferMigrationRiskTier('update "public"."t" set x=1 where id=1;')).toBe('BACKFILL');
     expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
       .toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);
