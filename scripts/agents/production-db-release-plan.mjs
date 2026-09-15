@@ -288,7 +288,7 @@ function rejectImmediateRoutineInvocations(statements) {
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
     const topLevelSelectCall = /^\s*select\b/i.test(lexicalText) && checkCommandText(lexicalText);
-    if (topLevelCall || topLevelSelectCall || checkCommandText(lexicalText)) {
+    if (topLevelCall || topLevelSelectCall) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
 
