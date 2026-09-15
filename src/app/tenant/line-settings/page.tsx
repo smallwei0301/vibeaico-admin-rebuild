@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTenantSettings, saveLineSettings, syncLineWebhook, testLineConnection, verifyLineSetup,
+  disconnectLine, getTenantSettings, saveLineSettings, syncLineWebhook, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
@@ -401,9 +401,7 @@ export default function LineSettingsPage() {
   const disconnect = async () => {
     setDisconnecting(true);
     try {
-      await saveLineSettings({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '',
-      });
+      await disconnectLine();
       setChannelId('');
       setLineBasicId('');
       setRichMenuPublished(false);

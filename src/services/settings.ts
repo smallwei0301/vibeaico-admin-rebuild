@@ -328,6 +328,21 @@ export const syncLineWebhook = () =>
   );
 
 /**
+ * Issue #47 驗收「關閉／解除連線後，秘密欄位清除且狀態誠實回到未設定」——
+ * `saveLineSettings({ channelSecret: '', channelAccessToken: '' })` 做不到這件事：
+ * `PUT /api/settings/line`（06 分冊鐵則 6）把空字串明確定義成「不動舊值」，是為了
+ * 一般編輯表單不要求每次都重貼 Token；但那個語意套在「解除連線」上正好相反——
+ * 呼叫端以為秘密被清空了，資料庫裡其實原封不動。真正會清空
+ * `line_channel_secret_enc`／`line_channel_access_token_enc` 的是既有的
+ * `POST /api/settings/line/disconnect`，必須改呼叫這支而不是 `saveLineSettings()`。
+ */
+export const disconnectLine = () =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/settings/line/disconnect', { method: 'POST' }),
+  );
+
+/**
  * 六項可查證檢查（status 只會是 PASS/FAIL）+ 一項人工確認提示（AUTO_REPLY，
  * status 恆為 INFO）—— 見 src/app/api/settings/line/verify/route.ts 檔頭說明。
  * `pass` 欄位保留相容（`pass === (status === 'PASS')`），呼叫端計算失敗數須用
