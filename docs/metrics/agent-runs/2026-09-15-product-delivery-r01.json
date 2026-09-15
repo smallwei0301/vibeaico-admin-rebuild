@@ -387,6 +387,32 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-22-pr515-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#22 TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：橫幅影片兩階段上傳（presign/confirm/delete）。新增 migration supabase/migrations/0114_issue_22_banner_video_uploads.sql，建立 banner-videos Storage bucket（public，50MiB 限額，video/mp4 與 video/webm 限定，無認証直寫 policy）、banner_video_pending_uploads 追蹤表（RLS 啟用、零 policy）；新增三支租戶範圍 API routes 實作兩階段簽署上傳流程：POST .../banner-video/presign、POST .../banner-video/confirm、DELETE .../banner-video；新增 24 小時孤檔清理 cron route（未納入 vercel.json crons，待授權）；新增真實上傳 UI 至 /tenant/shop-design 的橫幅影片頁籤（先前為非功能按鈕）。本地隔離 Supabase 驗證 0001–0114 全套用成功、unit 40 個新增測試全綠、typecheck 0 error、build 成功。已開立 PR #515。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-22-pr515-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #515 的高風險 Final Risk（Astra gate）覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=TENANT_AUTH_BOUNDARY：新增 banner-videos Storage bucket 與租戶範圍的簽署上傳 ACL。審計方式極為詳盡——本機隔離 Supabase（project_id 新建）從 0001 全新建庫套用到 0114，逕查 pg_policy 確認 storage.objects 表恰好保持既有兩支 policy（p_storage_read/p_storage_write），均未涉及 banner-videos bucket——意即零 policy 直接授予該 bucket 任何寫入權；新建 banner_video_pending_uploads 表 RLS 啟用、零 policy。隨後用 `set local role` 與實際 Storage HTTP API 進行行為測試：合法租戶 A 成員的 JWT 對 banner-videos PUT 得 403（對照案例：同 JWT 對既有影像 bucket 成功，釐清邊界生效）、anon 得 403、租戶 A 的簽署 token 對租戶 B 路徑得 400 InvalidSignature、超大／錯誤 MIME 上傳得 413/415；逕驗 confirm endpoint 的 Storage metadata 形狀與 storage-api v1.72.1 實際回應一致。回報 ASTRA_VERDICT=PASS。審計中併記三項無阻斷發現：(1) Storage 無內容嗅探，confirm 的 MIME 檢查實為 bucket 制約內的標籤檢查，與既有影像 bucket 同型無迴歸；(2) DELETE 步驟在 DB 參考已清空後失敗，該物件成為永久孤檔，因 pending-upload 列已標記確認、cleanup cron 不會觸及——儲存衛生缺口非安全缺口；(3) presign 於插入追蹤列前即簽署 URL，一支狹窄排序邊界案例。已貼回兩份 PR review（詳細完整報告 + 短簽認附加報告 URL）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       }
     ]
   },
@@ -456,6 +482,7 @@
     "同一輪雙 Terra：#42（PR #464，已合併/完成）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。新一層雙 Terra：#477 P1a（PR #506，已 merged）與 #228（PR #507，新開），亦無檔案重疊。",
     "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。",
     "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。",
-    "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。"
+    "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。",
+    "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幅影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。"
   ]
 }
