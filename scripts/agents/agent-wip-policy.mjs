@@ -252,8 +252,11 @@ export function validateLaneMetadata(metadata, { action = "" } = {}) {
   }
 
   if (metadata.state === "ACTIVE" && metadata.lane === "TEST_VALIDATION") {
-    if (metadata.activeCandidate !== "FALSE") errors.push("TEST_VALIDATION must set ACTIVE_CANDIDATE=false");
+    if (metadata.activeCandidate !== "TRUE") errors.push("TEST_VALIDATION verify tail must set ACTIVE_CANDIDATE=true");
     if (metadata.testLaneRequired !== "TRUE") errors.push("An active TEST_VALIDATION lane must set TEST_LANE_REQUIRED=true");
+    if (action === "synchronize") {
+      errors.push("An active TEST_VALIDATION verify tail received a new commit; switch to TERRA_BUILD and re-acquire a BUILD slot before source mutation");
+    }
   }
 
   if (metadata.state === "PARKED") {
@@ -324,6 +327,7 @@ export function isActiveTestValidation(metadata) {
   return metadata.origin === "AGENT" &&
     metadata.lane === "TEST_VALIDATION" &&
     metadata.state === "ACTIVE" &&
+    metadata.activeCandidate === "TRUE" &&
     metadata.bplusMode === "TRUE" &&
     metadata.testLaneRequired === "TRUE";
 }
