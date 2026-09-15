@@ -160,7 +160,7 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier(unqualifiedRoutineOverloadSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const unicodeRoutineInvocationSql = 'create function public.清除() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; select public.清除();';
     expect(() => inferMigrationRiskTier(unicodeRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
-    const assignmentRoutineInvocationSql = 'create function public.wipe() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; do ' + doTag + ' declare n integer; begin n := public.wipe(); end ' + doTag + ';';
+    const assignmentRoutineInvocationSql = 'create function public.wipe() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; do ' + dollarQuote + ' declare n integer; begin n := public.wipe(); end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(assignmentRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const doTag = String.fromCharCode(36) + 'do' + String.fromCharCode(36);
     const deceptiveDoRoutineText = 'do ' + doTag + " begin raise notice 'create function dummy() returns void as $$'; delete from public.t; raise notice '$$'; end " + doTag + ';';
@@ -173,6 +173,8 @@ describe('Production DB release plan #447', () => {
     const adjacentFormatSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT old_ck'\n             '; DELETE FROM public.t'); end " + dollarQuote + ';';
     const boundedFormatRepairSql = 'do ' + dollarQuote + " begin execute pg_catalog.format('ALTER TABLE public.t DROP CONSTRAINT %I', old_ck); end " + dollarQuote + ';';
     expect(inferMigrationRiskTier(boundedFormatRepairSql)).toBe('SCHEMA_REPAIR');
+    const unqualifiedFormatRepairSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT %I', old_ck); end " + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(unqualifiedFormatRepairSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const formatArgumentCallSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT %I', public.release_wipe()); end " + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(formatArgumentCallSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED|UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(adjacentFormatSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED|UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
@@ -181,8 +183,8 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier("set \"role\" = 'privileged_role';")).toBe('AUTHZ');
     expect(inferMigrationRiskTier('reset role;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('set session authorization app_user;')).toBe('AUTHZ');
-    expect(inferMigrationRiskTier('set "session_authorization" = \\'app_user\\';')).toBe('AUTHZ');
-    expect(inferMigrationRiskTier('set U&"ro\\006ce" = \\'app_user\\';')).toBe('AUTHZ');
+    expect(inferMigrationRiskTier("set \"session_authorization\" = 'app_user';")).toBe('AUTHZ');
+    expect(inferMigrationRiskTier("set U&\"ro\\006ce\" = 'app_user';")).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter domain public.order_id owner to app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter foreign table public.orders owner to app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('alter view public.tenant_records reset (security_invoker);')).toBe('AUTHZ');
