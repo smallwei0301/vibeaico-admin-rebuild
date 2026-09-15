@@ -200,6 +200,32 @@ describe('Controlled Production DB writer #447', () => {
     })).toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
   });
 
+  it('rejects data-modifying CTEs wrapped in DDL before any mutable request', async () => {
+    for (const prefix of ['create table', 'create materialized view', 'create view']) {
+      const sql = `${prefix} public.archive as with moved as (delete from public.orders returning *) select * from moved;`;
+      const p = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => sql,
+      });
+      expect(p.riskTier).toBe('BACKFILL');
+      const evidence = packet(p);
+      evidence.data.executionBounded = true;
+      evidence.recovery.preimageBackupVerified = true;
+      evidence.finalRisk.evidenceDigest = releaseEvidenceDigestOf(evidence);
+      expect(() => buildAtomicProductionApplySql({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+      })).toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
+      const fetchSpy = vi.fn();
+      await expect(runControlledProductionRelease({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => sql, token: 'test-only-placeholder',
+        fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
+
   it('rejects transaction-unsafe migration commands before any mutable request', () => {
     const p = plan();
     expect(() => buildAtomicProductionApplySql({
