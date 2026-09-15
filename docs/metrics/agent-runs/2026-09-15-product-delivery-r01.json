@@ -296,6 +296,32 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-haiku-4-5"
+      },
+      {
+        "id": "issue-477-pr506-merge",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "Issue #477 P1a LINE webhook 自動同步 PR #506（product/issue-477-line-webhook-sync）CI 全綠後 merge 進 main，merge commit a48f684d。merge 前發現並解決一個真實 merge conflict：origin/main 在分支建立後推進一筆 PR #504（記錄 PR #498/#501 的埋點事件），與本分支同時修改同一份 run ledger json/md；已用 git merge 解衝突並以 score-run-current.mjs 重新產生 scorecard.md，確認與 validator 輸出一致後再 push。已完成 Completion Truth 五點驗證（re-fetch PR 確認 merged=true、merge_commit_sha 比對 main head、ref=main 重讀變更檔案內容一致）。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-228-preview-canary-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "Issue #228 TERRA_BUILD 施工（build 層，claude-sonnet-5，dual-Terra 第二槽）：修復 exact-SHA Preview canary 被 Vercel Ignored Build Step 取消的問題。在 createPreviewDeployment() 的唯一一次 POST /v13/deployments 加 projectSettings.commandForIgnoringBuildStep=\"exit 1\"（deployment-scoped，不動全域 vercel-ignore-build.mjs allowlist，target 仍全程 omitted）。這是 PR #312（已卡在過期的 #322 Final Risk provider blocker）已驗證過的相同 3-file patch，在 current main 上全新重建，不 cherry-pick 舊分支。新增 unit test 斷言 request body 含正確 override 且 target 仍 undefined；tests/unit/production-deploy-canary.228.test.ts 13/13 全過、typecheck 0 error、build 成功、guard:repo-integrity 通過。已開立 PR #507，ASTRA_RISK=NONE（理由：CI 腳本單次 outbound request payload 修正，不擴大核准集合、不改全域 allowlist）。此修復解鎖 Issue #33 的三格 Playwright acceptance（皆依賴這條 canary 路徑）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ]
   },
@@ -354,12 +380,13 @@
     "claims": []
   },
   "notes": [
+    "PR #506（Issue #477 P1a LINE webhook sync）merge commit a48f684d 併入 main，merge 前解決一筆真實 merge conflict（與 PR #504 同時修改 run ledger），已驗證 Completion Truth 五點。PR #507（Issue #228 exact-SHA canary 修復）新開，dual-Terra 第二槽接續，檔案無重疊，符合 dual-Terra guard。",
     "第 s02 輪 LUNA_CLOSURE：scout 對全部 12 張 open PR 做真實掃描，結論 EMPTY_WITH_SCAN，報告 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s02.md；解除 PR #506 的 Agent WIP Guard 阻擋。",
     "本 Run 延續 /goal PRODUCT DELIVERY MAIN SESSION 指令：WORKSTREAM=PRODUCT_MAINLINE，governance/metrics 工作僅在直接卡住 Product Slice 時才做。",
     "PR #464 開立後 Agent WIP Guard 立刻失敗：缺 BPLUS_MODE/RUN_ID/SCORECARD_PATH/LUNA_CLOSURE 埋點，本輪原打算以 BPLUS_MODE=false 誠實留白略過，但這是 CI 機械強制的欄位，不是可略過的記帳品質問題——已改為委派 scout 補齊。",
     "scout 首次產出的 scorecard 未通過 validate-scorecards：缺 quality/auditability/notes/completionTruth 四個頂層欄位，且 flow.solIssues 型別錯誤（應為 number 不是 array）。已由本 session 核實並修正，另外發現並修正兩處捏造：main.startSha 後半段是編造的十六進位、tour-platform review-workflow 的檔案路徑與行號（scout 寫成 src/services/review-workflow.ts:42-98，實際是 apps/web/src/lib/activity-review-transition.mjs）與先前已核實的 scout 報告不符。",
     "modelUsage.tasks 均為即時埋點，非事後回填；未觀測欄位（token 用量、weeklyUsage 增量、lunaDelegationRatePercent、各項 percent 欄位）維持 null，不推算。",
-    "同一輪雙 Terra：#42（PR #464，收尾中）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。",
-    "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：新增 Issue #477 P1a TERRA_BUILD 條目（LINE webhook sync route 實作，PR #506 已開立）。#42 已合併/完成、#43 未推進，現況一個 Terra 槽位活躍；遞增 issuesStarted 以計數 #477 啟動。"
+    "同一輪雙 Terra：#42（PR #464，已合併/完成）與 #43 category 7（施工中），FILE_OWNERSHIP 不重疊（前者動 trip_plans/mappers/tour-domain，後者動 action-inbox 聚合模組），符合 dual-Terra guard。新一層雙 Terra：#477 P1a（PR #506，已 merged）與 #228（PR #507，新開），亦無檔案重疊。",
+    "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。"
   ]
 }
