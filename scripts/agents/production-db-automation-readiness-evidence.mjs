@@ -90,7 +90,7 @@ export function buildProductionDbAutomationReadinessEvidence({
     status: 'SOURCE_CONTROLS_VERIFIED',
     mainSha: sha,
     readOnlyPreflightMergedMain: includesAll(preflight, ['evaluateReleasePreflight', 'databaseMutationAuthorized: false']),
-    scopedConsistencyAdapterMergedMain: includesAll(consistency, ['buildProductionDbConsistencyEvidence', 'CONSISTENCY_VERIFIED']),
+    scopedConsistencyAdapterMergedMain: includesAll(consistency, ['buildProductionConsistencyEvidence', 'CONSISTENCY_VERIFIED']),
     backupObserverMergedMain: includesAll(backupWorkflow, ['workflow_call:', 'expected_main_sha:', 'SUPABASE_BACKUP_OBSERVER_TOKEN']),
     restoreRehearsalCallableMergedMain: includesAll(restoreWorkflow, ['workflow_call:', 'expected_main_sha:', 'RESTORE_REHEARSAL_VERIFIED']),
     sharedTestEvidenceEmitterMergedMain: includesAll(ciWorkflow, ['production_db_release_id:', 'TEST_DB_RELEASE_TOKEN', 'production-db-test-verified.json', 'production-db-test-post-schema-evidence.json']),
