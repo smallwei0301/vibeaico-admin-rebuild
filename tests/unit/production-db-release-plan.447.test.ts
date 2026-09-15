@@ -30,6 +30,21 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  it('rejects qualified keyword-named routines even when the schema is quoted', () => {
+    for (const call of [
+      '"public".filter()', '"public" . filter()', '"public"/* schema */.filter()',
+      '"public"."filter"()', 'public.filter()', '"租戶".filter()',
+      '"pub""lic".filter()', 'U&"publ\\0069c".filter()',
+    ]) {
+      expect(() => inferMigrationRiskTier(`select ${call};`))
+        .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    }
+    const sql = 'create function "public".filter() returns integer language plpgsql as $ begin delete from public.orders; return 1; end; $; select "public".filter();';
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(inferMigrationRiskTier('select 1 where exists (select 1);')).toBe('ADDITIVE');
+    expect(inferMigrationRiskTier('insert into "public".orders(id) values (1);')).toBe('BACKFILL');
+  });
+
   it('classifies data-modifying CTEs inside execution wrappers as BACKFILL', () => {
     for (const prefix of [
       'create table public.archive as ',
