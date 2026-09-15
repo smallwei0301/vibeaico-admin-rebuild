@@ -330,8 +330,11 @@ export function mapTripPlan(r: any): TripPlan {
     tripId: r.trip_id,
     name: r.name,
     description: r.description ?? '',
-    durationMinutes: 60,
-    priceType: 'PER_PERSON',
+    // issue #42：這三個欄位在 0110 之前是寫死的假值。現在讀真實欄位，未知
+    // priceType 一律 fail-closed 成 PER_PERSON，與 salesMode/source 既有的
+    // 收斂模式一致。
+    durationMinutes: Number(r.duration_minutes ?? 60),
+    priceType: r.price_type === 'PER_GROUP' ? 'PER_GROUP' : 'PER_PERSON',
     basePrice: Number(r.price_per_person ?? 0),
     childPrice: r.child_price == null ? null : Number(r.child_price),
     minParticipants: r.min_party ?? 1,
@@ -340,7 +343,7 @@ export function mapTripPlan(r: any): TripPlan {
     depositMode: r.deposit_mode,
     depositValue: Number(r.deposit_value ?? 0),
     active: r.active ?? true,
-    yearRound: true,
+    yearRound: r.year_round ?? true,
     seasons: [],
     reviewState: 'NONE',
     reviewNote: '',

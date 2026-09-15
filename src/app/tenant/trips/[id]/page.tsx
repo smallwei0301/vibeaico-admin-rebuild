@@ -1257,7 +1257,7 @@ export default function TripDetailPage() {
                       <p className="mt-1 text-sm text-secondary">{planDraft.description.trim()}</p>
                     ) : null}
                     <p className="mt-2 text-sm font-semibold text-primary">
-                      {formatCurrency(planDraft.basePrice)}{t.plans.priceTypeSuffix.PER_PERSON}
+                      {formatCurrency(planDraft.basePrice)}{t.plans.priceTypeSuffix[planDraft.priceType]}
                     </p>
                   </div>
                 </div>
@@ -1280,6 +1280,40 @@ export default function TripDetailPage() {
             ) : (
               <>
                 <Alert tone="info">{t.plans.advanced.intro}</Alert>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-duration" required>{t.plans.fields.durationLabel}</Label>
+                    <Input
+                      id="plan-advanced-duration"
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={planDraft.durationMinutes}
+                      onChange={(e) => patchPlan({ durationMinutes: Number(e.target.value) })}
+                    />
+                  </FormGroup>
+                  <FormGroup>
+                    <Label htmlFor="plan-advanced-price-type" required>{t.plans.fields.priceTypeLabel}</Label>
+                    <Select
+                      id="plan-advanced-price-type"
+                      value={planDraft.priceType}
+                      onChange={(e) => patchPlan({ priceType: e.target.value as PriceType })}
+                    >
+                      {(Object.keys(t.plans.priceType) as PriceType[]).map((k) => (
+                        <option key={k} value={k}>{t.plans.priceType[k]}</option>
+                      ))}
+                    </Select>
+                  </FormGroup>
+                </div>
+
+                <SwitchField
+                  label={t.plans.fields.yearRoundLabel}
+                  description={t.plans.fields.yearRoundHelp}
+                  checked={planDraft.yearRound}
+                  onCheckedChange={(v) => patchPlan({ yearRound: v })}
+                  disabled={savingPlan}
+                />
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <FormGroup>

@@ -51,6 +51,10 @@ const planFields = {
   depositValue: z.number().finite().nonnegative('定金不得為負數').optional(),
   sortOrder: z.number().int().optional(),
   active: z.boolean().optional(),
+  /* ---- issue #42：時長／計價方式／是否全年販售，取代 mapTripPlan() 過去的假值 ---- */
+  durationMinutes: z.number().int().positive().optional(),
+  priceType: z.enum(['PER_PERSON', 'PER_GROUP']).optional(),
+  yearRound: z.boolean().optional(),
 };
 
 export const planCreateSchema = z.object({
@@ -258,6 +262,11 @@ export function planRow(
     deposit_value: input.depositValue ?? 0,
     sort_order: input.sortOrder ?? sortOrder,
     active: input.active ?? true,
+    // issue #42：與 0110 的欄位預設值（60 / 'PER_PERSON' / true）保持一致，
+    // 否則同一筆資料在有無帶欄位兩條路徑下會出現不同預設。
+    duration_minutes: input.durationMinutes ?? 60,
+    price_type: input.priceType ?? 'PER_PERSON',
+    year_round: input.yearRound ?? true,
   };
 }
 
