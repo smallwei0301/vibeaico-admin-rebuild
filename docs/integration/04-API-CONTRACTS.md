@@ -111,6 +111,39 @@ export const POST = handle(async (_req, { params }) => {
 | GET `/api/feature-store` | 回 `FeatureSubscription[]`：讀 `feature_subscriptions`，`active = active && (expires_at is null or expires_at > now())` |
 
 
+#### A-1.1 shop-page 端點群（#22；`src/services/settings.ts` 呼叫）
+
+> 出處：`docs/specs/shop-design.json` 的 `jsApiCalls`（路徑一律含 `settings/` 前綴，
+> 2026-08-25 issue #22 改寫紀錄已更正）。原站另有 `/api/settings/shop-page/gallery/`
+> （尾斜線代表 `${id}` 樣板，單張刪除）——`docs/specs/_endpoints.json` 把它正規化併進
+> `/gallery`，不另計一支；本輪未實作獨立的單張刪除端點，刪除單張圖片仍走現有頁面流程
+> （本地移除該筆 → `PUT /api/settings/shop-page` 送出不含該筆的 `gallery` 全量陣列）。
+>
+> **本輪範圍只有 `GET/PUT /api/settings/shop-page` 與
+> `POST /api/settings/shop-page/gallery/reorder` 三支。**
+> `POST .../banner-video/presign`、`POST .../banner-video/confirm`、
+> `DELETE .../banner-video` 需要 Supabase Storage 直傳簽名，是另一個更大且需獨立稽核的
+> slice，**本輪刻意不實作**，留給 #22 後續分冊補完；其大小上限／格式白名單／孤兒檔清理
+> 策略等設計決策待該輪一併寫入本節。
+
+| 端點 | 說明 |
+|---|---|
+| GET `/api/settings/shop-page` | 回 `BrandingSettings`（`/tenant/shop-design` 六分頁整包資料：`shopName`／`logoUrl`／`logoHidden`／`bannerUrl`／`bannerVideoUrl`／`bannerVideoSound`／`announcement`／`aboutTitle`／`aboutContent`／`aboutImageUrl`／`gallery[]`／`themeColor`／`facebook`／`instagram`／`line`／`threads`／`googleMaps`／`contactEmail`）。組法：讀 `tenant_settings.branding` 一欄 → `brandingSettingsSchema.parse()` 補預設值。與 `GET /api/settings` 回應裡的 `data.branding` 是同一顆 jsonb、同一組欄位，只是本端點只回這一群組 |
+| PUT `/api/settings/shop-page` | body = `Partial<BrandingSettings>`（**真實 diff**：前端只送這次真的異動的欄位，不得整包重送、更不得送 `{}` 當作觸發存檔的手段）。伺服器讀現有 `branding` → 用 zod `.partial()` 驗證 body → 淺層合併（`{...current, ...patch}`）→ `brandingSettingsSchema.parse()` 再驗一次 → 寫回 → **回傳合併後的全量 `BrandingSettings`**，前端必須用這個回傳值重繪畫面（不得只信送出前的本地 state；這是 14 分冊「空 patch＝假成功」根因的正式修法）。`gallery` 若出現在 body 是整批取代（新增/刪除圖片走這裡）；**只改變既有圖片的相對順序**要走下面的 reorder 端點，不要把整個 `gallery` 陣列塞進這支的 patch。需 `MANAGER` |
+| POST `/api/settings/shop-page/gallery/reorder` | body = `{ids: string[]}`，`ids` 必須是目前 `branding.gallery[].id` 的**完整排列**（可換順序，不可增減／不可含目前不存在的 id）；否則 400 `REQ_001`。伺服器依 `ids` 順序重排 `gallery` 陣列並寫回 `branding` jsonb，回傳重排後的 `GalleryImage[]`。**排序本身沒有獨立的排序欄位** —— `gallery` 是 jsonb 陣列，順序即陣列索引，不像 `services`/`staff` 需要 `sort_order` 欄位或 migration，這支端點單純是「讀現有陣列 → 依 `ids` 重新排列 → 整包寫回」。需 `MANAGER` |
+
+**欄位歸屬邊界表（`PUT /api/settings` vs `PUT /api/settings/shop-page`）** —— 每個欄位/群組只能歸一支，避免兩支端點互相覆蓋：
+
+| 欄位／群組 | `PUT /api/settings` | `PUT /api/settings/shop-page` |
+|---|---|---|
+| `basic`／`business`／`notify`／`privacy`／`points` | 寫（既有語意不變） | 不接受此欄位（body schema 沒有這些鍵） |
+| `line`（LINE Bot Channel 設定） | 出現即忽略（走專用 `PUT /api/settings/line`，既有語意不變） | 不接受此欄位 |
+| `branding`（六分頁欄位，見上表逐字列出） | **保留舊版整包覆蓋語意**（`if (b.branding) update.branding = b.branding`）——這是 issue #7 既有回歸測試（`tests/unit/shop-design-branding.7.test.ts`）與 mock 分支共用倉庫鎖定的既有行為，**繼續存在但自本 issue 起沒有任何頁面會再呼叫它送 `branding`** | **本 issue 起，`/tenant/shop-design` 頁寫 `branding` 的唯一入口**；差異合併語意（見上），不是整包覆蓋 |
+| `branding.gallery` 的相對順序 | 不適用（整包覆蓋不特別處理順序，只是陣列整包換掉） | `POST /api/settings/shop-page/gallery/reorder` 專責 |
+
+⚠️ 為什麼不索性把 `branding` 從 `PUT /api/settings` 的 body schema 移除：`tests/unit/shop-design-branding.7.test.ts` 是 issue #7（「shop-design 儲存送空 patch」）的既有回歸鎖，逐字斷言 `src/app/api/settings/route.ts` 含
+`branding: brandingSettingsSchema.optional()` 與 `if (b.branding) update.branding = b.branding;`，且斷言 mock 分支的 `saveTenantSettings({ branding })` 往返可用。拔掉會讓一個已經修好的回歸重新變成無測試覆蓋的裸奔欄位。保留舊路徑、只在**頁面呼叫端**收斂到新端點，兩者都滿足：舊回歸鎖不倒、新端點是唯一實際寫入來源，欄位真正只有一個「現役」入口。
+
 #### A-1.2 `POST /api/settings/weekly-business-hours/draft`（逐日營業時間乾跑）
 
 > `src/app/api/settings/weekly-business-hours/draft/route.ts` 與
@@ -213,6 +246,7 @@ export const POST = handle(async (_req, { params }) => {
 | POST `/api/services/:id/toggle-line-featured` | 切換 line_featured |
 | GET/POST `/api/service-categories`、PUT/DELETE `:id`、reorder | 同模式 |
 | POST `/api/staff`、PUT/DELETE `:id` | CRUD ⚙M；body 含 `serviceIds[]` → 先寫 staff 再全刪重插 staff_services |
+| POST `/api/staff/reorder` | `{ids:[]}` 依序寫 `sort_order=index`（`staff.sort_order` 欄位由 0078 既有，本端點不需 migration）。與 `service-categories/reorder` 同一種簡單模式（逐筆 `update({sort_order:i}).eq('id',...).eq('tenant_id',...)`），不是 `services/reorder` 用的 `reorder_catalog_items` RPC——staff 沒有 line/public 兩條 lane，不需要原子重排 RPC。呼叫端（`staff/page.tsx` 的上移/下移）必須送完整的目前排序清單（不支援部分 id），伺服器不補未提交項目 ⚙M |
 | GET `/api/staff/bookable` | active且bookable 的精簡清單 |
 | GET/POST `/api/staff/:id/leaves`、DELETE | 請假 CRUD |
 | GET/POST `/api/shift-templates`、PUT/DELETE `:id` | 班別 CRUD |

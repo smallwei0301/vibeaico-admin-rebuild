@@ -4,7 +4,7 @@ import type { BusinessType } from '@/config/modes';
 import {
   DEFAULT_TENANT_SETTINGS, buildWebhookUrl, maskSecret,
   aiSettingsSchema, brandingSettingsSchema,
-  type AiSettings, type BrandingSettings, type LineSettings, type TenantSettings,
+  type AiSettings, type BrandingSettings, type GalleryImage, type LineSettings, type TenantSettings,
 } from '@/config/tenant-settings';
 
 type BasicSettings = TenantSettings['basic'];
@@ -198,6 +198,58 @@ export const saveTenantSettings = (patch: Partial<TenantSettings>) =>
     () => request<TenantSettingsSaveResult>('/api/settings', {
       method: 'PUT',
       body: JSON.stringify(patch),
+    }),
+  );
+
+/**
+ * shop-page 端點群（issue #22；04 分冊 §A-1.1）—— `/tenant/shop-design` 頁
+ * 讀寫 `branding` 群組的**唯一入口**，取代原本借用 `saveTenantSettings({ branding })`
+ * 整包覆蓋、也修掉 14 分冊記錄的「儲存送空 patch」根因：`saveShopPageSettings()`
+ * 只送真的異動的欄位，並把伺服器回傳的合併結果交回呼叫端重繪（不是信任本地 state）。
+ *
+ * `saveTenantSettings({ branding })` 的整包覆蓋語意**仍然保留**（見該函式與
+ * `src/app/api/settings/route.ts` 的檔頭註解）——那是 issue #7 既有回歸測試與
+ * mock 分支共用倉庫鎖定的既有行為，但自本 issue 起沒有任何頁面會再呼叫它送
+ * branding，一律改用這裡的兩支函式。
+ */
+export const getShopPageSettings = () =>
+  adapt<BrandingSettings>(
+    () => getMockBrandingStore()[MOCK_MODE],
+    () => request<BrandingSettings>('/api/settings/shop-page'),
+  );
+
+export const saveShopPageSettings = (patch: Partial<BrandingSettings>) =>
+  adapt<BrandingSettings>(
+    () => {
+      const store = getMockBrandingStore();
+      const merged = brandingSettingsSchema.parse({ ...store[MOCK_MODE], ...patch });
+      store[MOCK_MODE] = merged;
+      return merged;
+    },
+    () => request<BrandingSettings>('/api/settings/shop-page', {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    }),
+  );
+
+/**
+ * POST /api/settings/shop-page/gallery/reorder —— 圖片展示排序持久化。
+ * `gallery` 是 `branding` jsonb 裡的一個陣列，沒有獨立的 sort_order 欄位，
+ * 順序就是陣列索引；`ids` 必須是目前 gallery 的完整排列。
+ */
+export const reorderShopPageGallery = (ids: string[]) =>
+  adapt<GalleryImage[]>(
+    () => {
+      const store = getMockBrandingStore();
+      const current = store[MOCK_MODE];
+      const byId = new Map(current.gallery.map((g) => [g.id, g]));
+      const reordered = ids.map((id) => byId.get(id)).filter((g): g is GalleryImage => !!g);
+      store[MOCK_MODE] = { ...current, gallery: reordered };
+      return reordered;
+    },
+    () => request<GalleryImage[]>('/api/settings/shop-page/gallery/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
     }),
   );
 
