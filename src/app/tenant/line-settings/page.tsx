@@ -60,7 +60,8 @@ const ACCESS_TOKEN_MIN_LENGTH = 100;
 
 const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
-type VerifyCheck = { key: string; pass: boolean; message: string };
+type VerifyCheckStatus = 'PASS' | 'WARN' | 'FAIL';
+type VerifyCheck = { key: string; status: VerifyCheckStatus; pass: boolean; message: string };
 
 /* -------------------------------------------------------------------------- */
 
@@ -400,7 +401,10 @@ export default function LineSettingsPage() {
     }
   };
 
-  const failCount = verifyChecks?.filter((c) => !c.pass).length ?? 0;
+  // WARN（如 AUTO_REPLY——LINE 無公開 API 可直接查詢）不計入失敗數，只有真正
+  // 的 FAIL 才算失敗（Issue #477 P0：AUTO_REPLY 不再是假 FAIL）。
+  const failCount = verifyChecks?.filter((c) => c.status === 'FAIL').length ?? 0;
+  const warnCount = verifyChecks?.filter((c) => c.status === 'WARN').length ?? 0;
 
   /* -------------------------------------------------------------- render */
 
@@ -1222,11 +1226,14 @@ export default function LineSettingsPage() {
           </Button>
         }
       >
-        <div className="mb-3">
-          {failCount === 0 ? (
+        <div className="mb-3 flex flex-wrap gap-2">
+          {failCount === 0 && warnCount === 0 ? (
             <Badge tone="success">{t.verifyReport.allPass}</Badge>
           ) : (
-            <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge>
+            <>
+              {failCount > 0 ? <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge> : null}
+              {warnCount > 0 ? <Badge tone="warning">{t.verifyReport.warnCount(warnCount)}</Badge> : null}
+            </>
           )}
         </div>
         <div className="flex flex-col gap-2">
@@ -1235,8 +1242,10 @@ export default function LineSettingsPage() {
               key={c.key}
               className="flex items-start gap-2 rounded-md border border-neutral-250 px-3 py-2"
             >
-              {c.pass ? (
+              {c.status === 'PASS' ? (
                 <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-success" />
+              ) : c.status === 'WARN' ? (
+                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-warning" />
               ) : (
                 <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-danger" />
               )}
@@ -1245,10 +1254,10 @@ export default function LineSettingsPage() {
                   {t.verifyReport.checkNames[c.key as keyof typeof t.verifyReport.checkNames] ?? c.key}
                 </div>
                 <div className="form-text">{c.message}</div>
-                {!c.pass && c.key === 'AUTO_REPLY' ? (
-                  <div className="form-text font-semibold">{t.verifyReport.culprit}</div>
+                {c.status === 'WARN' && c.key === 'AUTO_REPLY' ? (
+                  <div className="form-text font-semibold">{t.verifyReport.autoReplyWarnHint}</div>
                 ) : null}
-                {!c.pass && c.key === 'WEBHOOK' ? (
+                {c.status === 'FAIL' && c.key === 'WEBHOOK' ? (
                   <div className="form-text">{t.verifyReport.webhookOffHint}</div>
                 ) : null}
               </div>

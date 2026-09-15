@@ -205,7 +205,8 @@ export const lineSettingsPage = {
       RICH_MENU: 'Rich Menu',
       QUOTA: '推播額度',
     },
-    culprit: '👉 這就是「按 Bot 沒反應」的元兇',
+    autoReplyWarnHint:
+      '👉 這項無法由系統自動確認，若 Bot 按了沒反應，這通常就是原因——請自行到 LINE Official Account Manager 確認並關閉「自動回應訊息」',
     webhookOffHint:
       'Webhook 沒開啟 → LINE 不會把使用者點選/訊息送到本系統 → 看起來 Bot 像在睡覺。修好後馬上活過來。',
     gotoLineConsole: '直接前往 LINE 後台',
