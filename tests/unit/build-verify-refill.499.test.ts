@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  parseLaneMetadata,
   summarizeActiveLanes,
   validateGlobalWip,
-  validateLaneMetadata,
 } from '../../scripts/agents/dual-terra-wip-policy.mjs';
 
 const RUN_ID = '2026-09-15-throughput-r01';
@@ -13,14 +11,14 @@ function terraPr({
   number,
   issue,
   slot,
-  state = 'ACTIVE',
+  completionClaim = 'IN_PROGRESS',
   activeCandidate = true,
   dual = true,
 }: {
   number: number;
   issue: number;
   slot: 1 | 2;
-  state?: 'ACTIVE' | 'READY_FOR_PROMOTION';
+  completionClaim?: 'IN_PROGRESS' | 'AUDIT_READY';
   activeCandidate?: boolean;
   dual?: boolean;
 }) {
@@ -38,7 +36,7 @@ supersedes:
 - RUN_ID: ${RUN_ID}
 - SCORECARD_PATH: docs/metrics/agent-runs/${RUN_ID}.json
 - AGENT_LANE: TERRA_BUILD
-- LANE_STATE: ${state}
+- LANE_STATE: ACTIVE
 - ACTIVE_CANDIDATE: ${activeCandidate}
 - CLOSEABILITY_SCORE: 4
 - SELECTION_REASON: CLOSE_READY
@@ -54,16 +52,17 @@ supersedes:
 - TEST_PROFILE: LOCAL_ISOLATED
 - TEST_ENV_ID: local-${number}
 - FINAL_CANONICAL_REQUIRED: true
-- FILE_OWNERSHIP: src/feature-${number}`,
+- FILE_OWNERSHIP: src/feature-${number}
+- COMPLETION_CLAIM: ${completionClaim}`,
   };
 }
 
 describe('Issue #499 BUILD / verification-tail refill semantics', () => {
-  it('allows two BUILD lanes plus one READY_FOR_PROMOTION verification tail within WIP=3', () => {
+  it('allows two BUILD lanes plus one AUDIT_READY verification tail within WIP=3', () => {
     const rows = [
       terraPr({ number: 501, issue: 41, slot: 1 }),
       terraPr({ number: 502, issue: 42, slot: 2 }),
-      terraPr({ number: 503, issue: 43, slot: 1, state: 'READY_FOR_PROMOTION' }),
+      terraPr({ number: 503, issue: 43, slot: 1, completionClaim: 'AUDIT_READY' }),
     ];
     const summary = summarizeActiveLanes(rows);
 
@@ -73,12 +72,12 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
     expect(validateGlobalWip(summary)).toEqual([]);
   });
 
-  it('still rejects a fourth candidate even when the extra work is only a verification tail', () => {
+  it('still rejects a fourth candidate when a verification tail already uses the third WIP slot', () => {
     const rows = [
       terraPr({ number: 501, issue: 41, slot: 1 }),
       terraPr({ number: 502, issue: 42, slot: 2 }),
-      terraPr({ number: 503, issue: 43, slot: 1, state: 'READY_FOR_PROMOTION' }),
-      terraPr({ number: 504, issue: 44, slot: 2, state: 'READY_FOR_PROMOTION' }),
+      terraPr({ number: 503, issue: 43, slot: 1, completionClaim: 'AUDIT_READY' }),
+      terraPr({ number: 504, issue: 44, slot: 2, completionClaim: 'AUDIT_READY' }),
     ];
 
     expect(validateGlobalWip(summarizeActiveLanes(rows))).toContain(
@@ -88,8 +87,8 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
 
   it('allows two verification tails plus one BUILD, but a second BUILD is blocked by WIP=3', () => {
     const three = [
-      terraPr({ number: 503, issue: 43, slot: 1, state: 'READY_FOR_PROMOTION' }),
-      terraPr({ number: 504, issue: 44, slot: 2, state: 'READY_FOR_PROMOTION' }),
+      terraPr({ number: 503, issue: 43, slot: 1, completionClaim: 'AUDIT_READY' }),
+      terraPr({ number: 504, issue: 44, slot: 2, completionClaim: 'AUDIT_READY' }),
       terraPr({ number: 501, issue: 41, slot: 1 }),
     ];
     const summary = summarizeActiveLanes(three);
@@ -104,43 +103,37 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
     );
   });
 
-  it('fails closed when a READY_FOR_PROMOTION Terra stops counting itself as a candidate', () => {
+  it('does not let an AUDIT_READY candidate count as a BUILD lane', () => {
+    const summary = summarizeActiveLanes([
+      terraPr({ number: 503, issue: 43, slot: 1, completionClaim: 'AUDIT_READY' }),
+    ]);
+
+    expect(summary.activeTerra).toHaveLength(0);
+    expect(summary.verifyingTerra).toHaveLength(1);
+    expect(summary.activeCandidates).toHaveLength(1);
+  });
+
+  it('keeps IN_PROGRESS candidates in BUILD occupancy', () => {
+    const summary = summarizeActiveLanes([
+      terraPr({ number: 501, issue: 41, slot: 1, completionClaim: 'IN_PROGRESS', dual: false }),
+    ]);
+
+    expect(summary.activeTerra).toHaveLength(1);
+    expect(summary.verifyingTerra).toHaveLength(0);
+  });
+
+  it('AUDIT_READY does not let a candidate escape ordinary active B+ validation', () => {
     const malformed = terraPr({
       number: 503,
       issue: 43,
       slot: 1,
-      state: 'READY_FOR_PROMOTION',
+      completionClaim: 'AUDIT_READY',
       activeCandidate: false,
     });
-    expect(validateLaneMetadata(parseLaneMetadata(malformed))).toContain(
-      'READY_FOR_PROMOTION TERRA_BUILD must remain ACTIVE_CANDIDATE=true',
+
+    const errors = validateGlobalWip(summarizeActiveLanes([malformed]));
+    expect(errors).toContain(
+      'Verifying Terra PR #503: An active TERRA_BUILD must set ACTIVE_CANDIDATE=true',
     );
-  });
-
-  it('fails closed when a READY_FOR_PROMOTION Terra drops its B+ run identity', () => {
-    const malformed = terraPr({
-      number: 503,
-      issue: 43,
-      slot: 1,
-      state: 'READY_FOR_PROMOTION',
-    });
-    malformed.body = malformed.body
-      .replace('- BPLUS_MODE: true', '- BPLUS_MODE: false')
-      .replace(`- RUN_ID: ${RUN_ID}`, '- RUN_ID: none')
-      .replace(`- SCORECARD_PATH: docs/metrics/agent-runs/${RUN_ID}.json`, '- SCORECARD_PATH: none');
-
-    expect(validateLaneMetadata(parseLaneMetadata(malformed))).toEqual(expect.arrayContaining([
-      'READY_FOR_PROMOTION TERRA_BUILD must keep BPLUS_MODE=true',
-      'READY_FOR_PROMOTION TERRA_BUILD must declare RUN_ID',
-      'READY_FOR_PROMOTION TERRA_BUILD must declare SCORECARD_PATH',
-    ]));
-  });
-
-  it('does not let a verification tail count as an ACTIVE build lane', () => {
-    const verifyingOnly = summarizeActiveLanes([
-      terraPr({ number: 503, issue: 43, slot: 1, state: 'READY_FOR_PROMOTION' }),
-    ]);
-    expect(verifyingOnly.activeTerra).toHaveLength(0);
-    expect(verifyingOnly.verifyingTerra).toHaveLength(1);
   });
 });
