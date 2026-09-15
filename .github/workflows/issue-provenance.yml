@@ -2,14 +2,24 @@ name: issue-provenance
 
 on:
   issues:
-    types: [opened, edited]
+    types: [opened, edited, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: issue-provenance-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   classify:
+    if: >-
+      github.event.action != 'labeled' && github.event.action != 'unlabeled' ||
+      startsWith(github.event.label.name, 'workstream:') ||
+      startsWith(github.event.label.name, 'origin:') ||
+      github.event.label.name == 'governance:workstream-incomplete' ||
+      github.event.label.name == 'governance:provenance-incomplete'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted Issue provenance policy
@@ -34,7 +44,11 @@ jobs:
             )).href);
 
             const { owner, repo } = context.repo;
-            const issue = context.payload.issue;
+            // Event bodies can be stale; only the current server snapshot is authoritative.
+            const { data: issue } = await github.rest.issues.get({
+              owner, repo, issue_number: context.payload.issue.number,
+            });
+            if (issue.pull_request || issue.state !== 'open') return;
             const result = policy.validateIssueProvenance(issue.body ?? '', { requireWorkstream: true });
             const isAgent = result.isAgent;
             const validWorkstreams = new Set(['MODEL_GOVERNANCE', 'PRODUCT_MAINLINE']);
@@ -54,7 +68,7 @@ jobs:
               },
               'workstream:model-governance': {
                 color: '6F42C1',
-                description: 'Pure model/Agent/work/engineering governance; handled by the audit-tier governance mode.',
+                description: 'Pure model/Agent/work/engineering governance; executor model is not an admission gate.',
               },
               'workstream:product-mainline': {
                 color: '0366D6',
@@ -103,11 +117,20 @@ jobs:
               nextLabels.push('governance:provenance-incomplete');
             }
 
-            await github.rest.issues.setLabels({
-              owner,
-              repo,
-              issue_number: issue.number,
-              labels: [...new Set(nextLabels)],
+            const { data: fresh } = await github.rest.issues.get({ owner, repo, issue_number: issue.number });
+            if (fresh.body !== issue.body || fresh.state !== issue.state) {
+              core.setFailed('Issue changed during classification; use the newest event');
+              return;
+            }
+            // Touch only our labels, never erase a concurrent Product/TEST/lifecycle label.
+            const before = (fresh.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
+            for (const name of before.filter(name => managedNames.has(name) && !nextLabels.includes(name))) {
+              try { await github.rest.issues.removeLabel({ owner, repo, issue_number: issue.number, name }); }
+              catch (error) { if (error.status !== 404) throw error; }
+            }
+            const additions = [...new Set(nextLabels)].filter(name => managedNames.has(name) && !before.includes(name));
+            if (additions.length) await github.rest.issues.addLabels({
+              owner, repo, issue_number: issue.number, labels: additions,
             });
 
             await core.summary
@@ -124,3 +147,4 @@ jobs:
                 ['Validation errors', result.errors.length ? result.errors.join('; ') : 'none'],
               ])
               .write();
+            if (!workstreamValid) core.setFailed('Issue WORKSTREAM is missing, invalid or duplicated; correct the body');
