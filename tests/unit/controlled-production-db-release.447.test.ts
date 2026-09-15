@@ -10,7 +10,8 @@ import {
 } from '../../scripts/db/controlled-production-db-release.mjs';
 
 const MAIN = 'a'.repeat(40);
-const NOW = '2026-09-14T12:40:00Z';
+const NOW = new Date().toISOString();
+const minutesAgo = (minutes: number) => new Date(Date.parse(NOW) - minutes * 60_000).toISOString();
 const PLANNED_AT = '2026-09-14T12:30:00Z';
 
 function aliasMap() {
@@ -44,10 +45,10 @@ function packet(p: any) {
     planDigest: p.planDigest,
     riskTier: p.riskTier,
     source: { status: 'SOURCE_VERIFIED', mainSha: p.mainSha, planDigest: p.planDigest, databaseMutationAuthorized: false },
-    consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T12:35:00Z', mainSha: p.mainSha, planDigest: p.planDigest },
+    consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: minutesAgo(5), mainSha: p.mainSha, planDigest: p.planDigest },
     test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 8, cleanup: 'PASSED', mainSha: p.mainSha, planDigest: p.planDigest },
-    recovery: { status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false, preimageBackupVerified: false },
-    finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z', executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#review', reviewId: 'review-447' },
+    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: minutesAgo(20), restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false, preimageBackupVerified: false },
+    finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: minutesAgo(15), executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#review', reviewId: 'review-447' },
     data: { paymentFactsTouched: false, batchSize: 100, maxRows: 1000 },
   };
   value.finalRisk.evidenceDigest = releaseEvidenceDigestOf(value);
@@ -209,7 +210,27 @@ describe('Controlled Production DB writer #447', () => {
       liveLedgerRows: beforeRows,
       readCanonicalSql: () => proceduralCommitSql,
     })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+    for (const timeoutSql of ['set local statement_timeout = 0;', 'reset lock_timeout;']) {
+      const timeoutPlan = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => timeoutSql,
+      });
+      expect(() => buildAtomicProductionApplySql({
+        plan: timeoutPlan,
+        aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows,
+        readCanonicalSql: () => timeoutSql,
+      })).toThrow(/WRITER_TIMEOUT_OVERRIDE_NOT_ADMITTED/);
+    }
+
+    expect(() => buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(),
+      readCanonicalSql: () => 'alter table public.guard_447 drop constraint old_ck cascade;',
+    })).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
   });
+
+  it('uses read-only ledger  });
 
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
     const p = plan();
@@ -229,7 +250,7 @@ describe('Controlled Production DB writer #447', () => {
 
     const result = await runControlledProductionRelease({
       plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
     });
     expect(result).toMatchObject({
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
@@ -252,7 +273,7 @@ describe('Controlled Production DB writer #447', () => {
     });
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
     })).rejects.toThrow(/APPLY_UNKNOWN/);
     expect(mutableCalls).toBe(1);
   });
@@ -263,7 +284,7 @@ describe('Controlled Production DB writer #447', () => {
     const badPacket = packet(p); badPacket.planDigest = 'b'.repeat(64);
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: badPacket, aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
     })).rejects.toThrow(/RELEASE_PACKET_PLAN_MISMATCH/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -283,7 +304,7 @@ describe('Controlled Production DB writer #447', () => {
     });
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, 
     })).rejects.toThrow(/APPLY_UNKNOWN/);
     expect(readOnlyCalls).toBe(2);
     expect(mutableCalls).toBe(1);
