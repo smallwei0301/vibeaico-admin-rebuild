@@ -30,6 +30,37 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  it.each(['btree', 'hash'])('preserves %s index syntax without trusting routine calls', (method) => {
+    for (const sql of [
+      `create index orders_id_idx on public.orders using ${method} (id);`,
+      `CREATE INDEX IF NOT EXISTS "orders_idx" ON "public"."orders" USING ${method.toUpperCase()} /* method */ (id) WHERE (id > 0);`,
+    ]) expect(inferMigrationRiskTier(sql), sql).toBe('ADDITIVE');
+    for (const sql of [
+      `create index orders_id_idx on public.orders using ${method} ((custom_routine(id)));`,
+      `create index orders_id_idx on public.orders using ${method} (id) where custom_routine(id);`,
+      `select ${method}(id) from public.orders;`,
+    ]) expect(() => inferMigrationRiskTier(sql), sql)
+      .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
+  it('classifies partial-index ON CONFLICT predicates while checking their nested calls', () => {
+    for (const predicate of ['id > 0', '(id > 0) and (id < 10)', 'exists (select 1)', '"do" > 0']) {
+      for (const action of ['do nothing', 'do update set id = excluded.id']) {
+        const sql = `insert into public.orders(id) values (1) on conflict (id) where ${predicate} ${action};`;
+        expect(inferMigrationRiskTier(sql), sql).toBe('BACKFILL');
+      }
+    }
+    for (const predicate of ['custom_routine(id)', '(hash(id) > 0)', 'exists (select "public".btree())']) {
+      const sql = `insert into public.orders(id) values (1) on conflict (id) where ${predicate} do nothing;`;
+      expect(() => inferMigrationRiskTier(sql), sql).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    }
+    for (const sql of [
+      'insert into public.orders(id) values (1) on conflict ((custom_routine(id))) where id > 0 do nothing;',
+      'insert into public.orders(id) values (1) on conflict (id) where id > 0 do update set id = custom_routine(id);',
+      'select 1 from public.orders join public.other on conflict() where id > 0;',
+    ]) expect(() => inferMigrationRiskTier(sql), sql).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
   // IDENT, unreserved_keyword and type_func_name_keyword are all callable
   // in PostgreSQL. Syntax-like spelling alone must never grant admission.
   it.each([
