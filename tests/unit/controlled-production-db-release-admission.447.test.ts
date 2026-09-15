@@ -5,7 +5,8 @@ import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db
 import { runControlledProductionRelease } from '../../scripts/db/controlled-production-db-release.mjs';
 
 const MAIN = 'a'.repeat(40);
-const NOW = '2026-09-14T12:40:00Z';
+const NOW = new Date().toISOString();
+const minutesAgo = (minutes: number) => new Date(Date.parse(NOW) - minutes * 60_000).toISOString();
 const SQL = 'create table if not exists public.guard_447(id uuid primary key);';
 
 function aliasMap() {
@@ -21,10 +22,10 @@ function packet(p: any) {
     schemaVersion: 1, releaseId: p.releaseId, repository: p.repository, productionProjectRef: p.productionProjectRef,
     mainSha: p.mainSha, planDigest: p.planDigest, riskTier: p.riskTier,
     source: { status: 'SOURCE_VERIFIED', mainSha: p.mainSha, planDigest: p.planDigest, databaseMutationAuthorized: false },
-    consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T12:35:00Z', mainSha: p.mainSha, planDigest: p.planDigest },
+    consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: minutesAgo(5), mainSha: p.mainSha, planDigest: p.planDigest },
     test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 1, cleanup: 'PASSED', mainSha: p.mainSha, planDigest: p.planDigest },
-    recovery: { status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false },
-    finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z', executionRef: 'https://github.com/example/review', reviewId: '447' },
+    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: minutesAgo(20), restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false },
+    finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: minutesAgo(15), executionRef: 'https://github.com/example/review', reviewId: '447' },
     data: { paymentFactsTouched: false, batchSize: 1, maxRows: 1 },
   };
   value.finalRisk.evidenceDigest = releaseEvidenceDigestOf(value);
@@ -37,18 +38,18 @@ describe('Issue #447 controlled writer admission negatives', () => {
     const fetchImpl = vi.fn();
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: pkt,
-      aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
+      aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, 
     })).rejects.toThrow(/WRONG_PROJECT/);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
   it('rejects stale consistency evidence before network', async () => {
     const p = plan(); const pkt = packet(p); const fetchImpl = vi.fn();
-    pkt.consistency.observedAt = '2026-09-14T12:00:00Z';
+    pkt.consistency.observedAt = minutesAgo(20);
     pkt.finalRisk.evidenceDigest = releaseEvidenceDigestOf(pkt);
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: pkt,
-      aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, now: NOW,
+      aliasMap: aliasMap(), readCanonicalSql: () => SQL, token: 'x', fetchImpl: fetchImpl as unknown as typeof fetch, 
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
