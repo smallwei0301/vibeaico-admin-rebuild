@@ -413,6 +413,32 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-21-pr517-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#21 TERRA_BUILD 施工（build 層，claude-sonnet-5）：外部行事曆 ICS 同步與 SSRF 防護。新增 external_calendar 表用於租戶儲存行事曆訂閱 URL（經 SSRF guard 驗證、加密儲存），新增 GET /api/calendar/external 端點聚合租戶外部行事曆事件，實作 ICS 解析與事件匯入邏輯。新增迴歸測試驗證 SSRF 防護機制、URL 驗證、TLS 憑證檢查。本地隔離 Supabase 驗證成功、單元測試全綠、build 成功。CI 全綠，已開立 PR #517。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-21-pr517-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #517 的高風險 Final Risk（Astra gate）覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=EXTERNAL_NETWORK_SSRF：外部行事曆 ICS 同步新增 SSRF 攻擊面。首次覆核回報 FIX_REQUIRED（B1: GET /api/calendar 在 external_calendar_events 查詢失敗時未妥善處理異常，會 500 導致租戶日曆頁卡死），本 session 修復例外處理並新增迴歸測試。二次覆核驗證修復完整性、SSRF guard 邊界完整（URL scheme 白名單、IP 範圍檢查、DNS rebind 防護、TLS 憑證驗證），回報 ASTRA_VERDICT=PASS。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       }
     ]
   },
@@ -430,7 +456,7 @@
   },
   "delivery": {
     "issuesStarted": 4,
-    "issuesClosed": 0,
+    "issuesClosed": 1,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
     "auditReady": 1,
@@ -483,6 +509,7 @@
     "metrics ledger 本次即時埋點更新正確委派至 scout 層（claude-haiku-4-5，per CLAUDE.md docs/metrics/** 機械路徑判準）：記錄 Issue #477 P1a PR #506 merge 完成 + Issue #228 PR #507 新開兩筆事件。dual-Terra 槽位釋放與重用正確執行（不同 Issue、無檔案重疊）；現況一個 Terra 槽位活躍。",
     "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。",
     "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。",
-    "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幅影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。"
+    "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幘影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。",
+    "PR #517（Issue #21 外部行事曆 ICS 同步 SSRF 防護）squash-merge commit 5a11847c 併入 main：新增 external_calendar 表儲存租戶行事曆訂閱 URL（SSRF guard 驗證、加密），GET /api/calendar/external 端點聚合外部事件，ICS 解析與事件匯入邏輯。ASTRA_RISK=EXTERNAL_NETWORK_SSRF Final Risk 由 claude-fable-5-1 首次覆核回報 FIX_REQUIRED（GET /api/calendar 在 external_calendar_events 查詢失敗時拋 500），本 session 修復例外處理並新增迴歸測試；二次覆核驗證 SSRF guard 邊界完整（scheme 白名單、IP 範圍、DNS rebind、TLS 驗證），回報 ASTRA_VERDICT=PASS。CI 全綠，已完成 Completion Truth 五點驗證（merge_commit_sha 5a11847c 確認為 main head）。Issue #21 已關閉。"
   ]
 }
