@@ -10,10 +10,12 @@ const PLAN = 'b'.repeat(64);
 const RUN_ID = '44703';
 const RUN_ATTEMPT = 1;
 const AUTHZ_FILE = 'tests/integration/db/traveler-risk-policy.44.test.ts';
+const SHA_0105 = '1'.repeat(64);
+const SHA_0109 = '2'.repeat(64);
 
 function plan(migrations: any[] = [
-  { repoFile: '0105_issue_44_traveler_risk_policies', riskTier: 'AUTHZ' },
-  { repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR' },
+  { repoFile: '0105_issue_44_traveler_risk_policies', riskTier: 'AUTHZ', sha256: SHA_0105 },
+  { repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR', sha256: SHA_0109 },
 ]) {
   return {
     schemaVersion: 1,
@@ -50,6 +52,31 @@ function raw(overrides: Record<string, unknown> = {}) {
     databaseMutationAuthorized: false,
     productionMutationPerformed: false,
     emittedAt: '2026-09-15T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function releasePlanEvidence(forPlan = plan(), overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    status: 'TEST_RELEASE_PLAN_VERIFIED',
+    repository: REPO,
+    testProjectRef: TEST,
+    mainSha: MAIN,
+    planDigest: forPlan.planDigest,
+    releaseId: forPlan.releaseId,
+    sourceRunId: RUN_ID,
+    sourceRunAttempt: RUN_ATTEMPT,
+    migrations: forPlan.migrations.map((migration: any, index: number) => ({
+      repoFile: migration.repoFile,
+      sha256: migration.sha256,
+      riskTier: migration.riskTier,
+      execution: index === 0 ? 'REPLAY_VERIFIED' : 'APPLIED_VERIFIED',
+      ledgerVersion: `20260915000${index}00`,
+    })),
+    testMutationPerformed: true,
+    productionMutationPerformed: false,
+    databaseMutationAuthorized: false,
     ...overrides,
   };
 }
@@ -95,12 +122,14 @@ function coverage(overrides: Record<string, unknown> = {}) {
 }
 
 describe('Production DB G3 TEST evidence adapter #447', () => {
-  it('builds TEST_VERIFIED only from matching raw run + cleanup + explicit AUTHZ coverage', () => {
+  it('builds TEST_VERIFIED only from matching raw run + exact release-plan TEST execution + cleanup + explicit AUTHZ coverage', () => {
+    const lockedPlan = plan();
     expect(buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
       cleanupEvidence: cleanup(),
       coverageEvidence: coverage(),
-      plan: plan(),
+      plan: lockedPlan,
     })).toMatchObject({
       status: 'TEST_VERIFIED',
       policySkip: false,
@@ -116,47 +145,91 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
       tenantBoundaryVerified: true,
       negativeRoleTestsPassed: true,
       authzMigrationCount: 1,
+      releasePlanEvidenceStatus: 'TEST_RELEASE_PLAN_VERIFIED',
       databaseMutationAuthorized: false,
     });
   });
 
-  it('never lets raw workflow success self-approve cleanup or AUTHZ', () => {
+  it('requires exact release-plan TEST execution from the same plan and run', () => {
+    const lockedPlan = plan();
     expect(() => buildProductionDbTestEvidence({
-      rawRunEvidence: raw({ cleanupClaim: 'PASSED' }),
+      rawRunEvidence: raw(),
+      releasePlanEvidence: undefined,
       cleanupEvidence: cleanup(),
       coverageEvidence: coverage(),
-      plan: plan(),
+      plan: lockedPlan,
+    })).toThrow(/TEST_RELEASE_PLAN_EVIDENCE_REQUIRED/);
+
+    const wrongBytes = releasePlanEvidence(lockedPlan, {
+      migrations: lockedPlan.migrations.map((migration: any) => ({
+        repoFile: migration.repoFile,
+        sha256: migration.repoFile.startsWith('0105') ? '9'.repeat(64) : migration.sha256,
+        riskTier: migration.riskTier,
+        execution: 'REPLAY_VERIFIED',
+      })),
+    });
+    expect(() => buildProductionDbTestEvidence({
+      rawRunEvidence: raw(),
+      releasePlanEvidence: wrongBytes,
+      cleanupEvidence: cleanup(),
+      coverageEvidence: coverage(),
+      plan: lockedPlan,
+    })).toThrow(/TEST_RELEASE_PLAN_BYTES_MISMATCH/);
+
+    expect(() => buildProductionDbTestEvidence({
+      rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan, { sourceRunId: 'other-run' }),
+      cleanupEvidence: cleanup(),
+      coverageEvidence: coverage(),
+      plan: lockedPlan,
+    })).toThrow(/TEST_EVIDENCE_RUN_MISMATCH/);
+  });
+
+  it('never lets raw workflow success self-approve cleanup or AUTHZ', () => {
+    const lockedPlan = plan();
+    expect(() => buildProductionDbTestEvidence({
+      rawRunEvidence: raw({ cleanupClaim: 'PASSED' }),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
+      cleanupEvidence: cleanup(),
+      coverageEvidence: coverage(),
+      plan: lockedPlan,
     })).toThrow(/RAW_TEST_CLEANUP_OVERCLAIM/);
     expect(() => buildProductionDbTestEvidence({
       rawRunEvidence: raw({ authzCoverageClaim: 'PASSED' }),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
       cleanupEvidence: cleanup(),
       coverageEvidence: coverage(),
-      plan: plan(),
+      plan: lockedPlan,
     })).toThrow(/RAW_TEST_AUTHZ_OVERCLAIM/);
   });
 
   it('requires independent zero-residue cleanup evidence from the same exact run', () => {
+    const lockedPlan = plan();
     expect(() => buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
       cleanupEvidence: undefined,
       coverageEvidence: coverage(),
-      plan: plan(),
+      plan: lockedPlan,
     })).toThrow(/TEST_CLEANUP_EVIDENCE_REQUIRED/);
     expect(() => buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
       cleanupEvidence: cleanup({ residueCount: 1 }),
       coverageEvidence: coverage(),
-      plan: plan(),
+      plan: lockedPlan,
     })).toThrow(/TEST_CLEANUP_REQUIRED/);
     expect(() => buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
       cleanupEvidence: cleanup({ sourceRunId: 'other-run' }),
       coverageEvidence: coverage(),
-      plan: plan(),
+      plan: lockedPlan,
     })).toThrow(/TEST_EVIDENCE_RUN_MISMATCH/);
   });
 
   it('rejects generic suite-green evidence when 0105 specific AUTHZ test coverage is absent', () => {
+    const lockedPlan = plan();
     const missing = coverage({
       executedFiles: ['tests/integration/db/other.test.ts'],
       migrations: {
@@ -170,18 +243,20 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
     });
     expect(() => buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(lockedPlan),
       cleanupEvidence: cleanup(),
       coverageEvidence: missing,
-      plan: plan(),
+      plan: lockedPlan,
     })).toThrow(/AUTHZ_REQUIRED_TEST_FILE_MISSING/);
   });
 
   it('fails closed for an unknown AUTHZ migration instead of inheriting 0105 coverage', () => {
     const unknownPlan = plan([
-      { repoFile: '0110_unknown_authz', riskTier: 'AUTHZ' },
+      { repoFile: '0110_unknown_authz', riskTier: 'AUTHZ', sha256: '3'.repeat(64) },
     ]);
     expect(() => buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(unknownPlan),
       cleanupEvidence: cleanup(),
       coverageEvidence: coverage(),
       plan: unknownPlan,
@@ -190,10 +265,11 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
 
   it('allows SCHEMA_REPAIR to use generic real execution + cleanup without inventing tenant-boundary claims', () => {
     const schemaPlan = plan([
-      { repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR' },
+      { repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR', sha256: SHA_0109 },
     ]);
     const result = buildProductionDbTestEvidence({
       rawRunEvidence: raw(),
+      releasePlanEvidence: releasePlanEvidence(schemaPlan),
       cleanupEvidence: cleanup(),
       coverageEvidence: coverage({ migrations: {} }),
       plan: schemaPlan,
@@ -207,6 +283,7 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
   });
 
   it('rejects coverage from another main/project/run or an empty executed test set', () => {
+    const lockedPlan = plan();
     for (const badCoverage of [
       coverage({ mainSha: 'd'.repeat(40) }),
       coverage({ testProjectRef: 'other-test-project' }),
@@ -215,9 +292,10 @@ describe('Production DB G3 TEST evidence adapter #447', () => {
     ]) {
       expect(() => buildProductionDbTestEvidence({
         rawRunEvidence: raw(),
+        releasePlanEvidence: releasePlanEvidence(lockedPlan),
         cleanupEvidence: cleanup(),
         coverageEvidence: badCoverage,
-        plan: plan(),
+        plan: lockedPlan,
       })).toThrow(/TEST_COVERAGE_|TEST_EVIDENCE_RUN_MISMATCH|EMPTY_TEST_EVIDENCE/);
     }
   });
