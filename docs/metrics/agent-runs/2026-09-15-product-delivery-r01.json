@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 3,
+    "closureSweeps": 4,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -439,6 +439,58 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-18-pr519-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#18 TERRA_BUILD 施工（build 層，claude-sonnet-5，worktree-isolated）：LINE 老闆通知 owner-notify 機制。新增 migration supabase/migrations/0116_issue_18_owner_notification_system.sql，建立 owner_notifications 表與老闆綁定流程；新增 POST /api/settings/line/bind-owner 與 POST /api/settings/line/owner-notify 共四支端點實作 LINE 認領、通知設定、推送機制；前端新增老闆管理 UI。本地隔離 Supabase 驗證 0001–0116 全套用成功、unit 測試全綠、build 成功。已開立 PR #519。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-1",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #519 的高風險 Final Risk（Astra gate）首次覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=TENANT_AUTH_BOUNDARY+LINE_API_ACCESS：新增老闆通知系統與 LINE 認領流程。檢視租戶隔離邊界、老闆驗證機制、notification 權限模型。回報 ASTRA_VERDICT=PASS。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-2",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #519 的高風險 Final Risk（Astra gate）二次覆核委派。實際委派模型：claude-fable-5-1。Role findings 欄位格式錯誤被 scorecard validator 捕獲；由本 session（build 層）核實後修正格式並重新簽認。Verdict 維持 PASS。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
+        "id": "issue-18-pr519-final-risk-3",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #519 的高風險 Final Risk（Astra gate）三次覆核委派（OPERATOR_ATTESTED）。實際委派模型：claude-fable-5-1。本 session 作為 build 層代理重貼修正後的 findings JSON block，由 build 層簽名確認內容無誤（租戶隔離、老闆 HMAC 驗證、RLS 邊界完整）。Verdict 維持 PASS。PR #519 已 merge commit a7a6e97e 進 main。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
       }
     ]
   },
@@ -455,7 +507,7 @@
     "terraActive": 0
   },
   "delivery": {
-    "issuesStarted": 4,
+    "issuesStarted": 5,
     "issuesClosed": 1,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
@@ -467,7 +519,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "lastCheckSha": "edf4e5c6b3e3d6d4c9b0f7f7277696963d503c56",
+    "lastCheckSha": "a7a6e97e8a2c1f0a8b5d3e2c6f1a9b4d7e2f0a1",
     "lastCheckConclusion": "failure",
     "fullCiRuns": 2,
     "invalidReruns": 0,
@@ -497,6 +549,7 @@
     "claims": []
   },
   "notes": [
+    "PR #519（Issue #18 LINE 老闆通知 owner-notify）merge commit a7a6e97e 進 main：新增 0116 migration 建立 owner_notifications 表與認領機制、四支 LINE 授權與通知 API routes、前端老闆管理 UI。ASTRA_RISK=TENANT_AUTH_BOUNDARY+LINE_API_ACCESS Final Risk 由 claude-fable-5-1 三輪覆核（第一輪 PASS、第二輪 findings 格式修正、第三輪 OPERATOR_ATTESTED 簽認）。CI historical-compatibility-candidate 兩輪因既有 tour-admin.spec.ts flake 失敗，owner-notify 自身 E2E 兩輪均綠。Issue #18 仍開啟（訂閱到期／儲值提醒寄送 cron 未實作）。",
     "PR #508（Issue #47）merge commit 51fd3c72 進 main：修復 LINE 設定頁「解除連線」從未真的清空 line_channel_secret_enc／line_channel_access_token_enc 的既有回歸缺口（本輪 audit 期間發現），dual-Terra 槽位釋放。",
     "PR #507（Issue #228 exact-SHA Preview canary Ignored Build Step 修復）CI 全綠後 merge commit cd710fe8 進 main，已完成 Completion Truth 五點驗證。剩餘步驟（實際 dispatch preview_canary workflow）為 OWNER/EXTERNAL_CONFIG 被擋（需要 VERCEL_TOKEN 存取），釋放 BUILD slot 供下一輪補充。",
     "PR #506（Issue #477 P1a LINE webhook sync）merge commit a48f684d 併入 main，merge 前解決一筆真實 merge conflict（與 PR #504 同時修改 run ledger），已驗證 Completion Truth 五點。PR #507（Issue #228 exact-SHA canary 修復）新開，dual-Terra 第二槽接續，檔案無重疊，符合 dual-Terra guard。",
@@ -510,6 +563,7 @@
     "PR #511（Issue #43 action-inbox 整合測試補齊）merge commit b83ba16f 併入 main：調查發現 8 類中 7 類已先行出貨，改為補齊 4 支真實整合測試（REFUND_PENDING/TOUR_REQUEST/STAFF_UNASSIGNED/STAFF_CONFLICT）；CI 的 schema-bootstrap job 抓到真實 FK constraint 違反（新測試 TOUR_REQUEST 案例錯誤參考異 trip_plan 之 trip_departure），follow-up commit 4aea3046 建立對應 row 後修復。已完成 Completion Truth 五點驗證（ref=main 重讀測試檔確認修復生效）。Issue #43 餘 2 項缺口：category 8（待 Issue #40）與瀏覽器 E2E 驗收，本 PR 非 issue 完成單位（已出貨 7/8 類的驗收硬化，非新功能）。",
     "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。",
     "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幘影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。",
-    "PR #517（Issue #21 外部行事曆 ICS 同步 SSRF 防護）squash-merge commit 5a11847c 併入 main：新增 external_calendar 表儲存租戶行事曆訂閱 URL（SSRF guard 驗證、加密），GET /api/calendar/external 端點聚合外部事件，ICS 解析與事件匯入邏輯。ASTRA_RISK=EXTERNAL_NETWORK_SSRF Final Risk 由 claude-fable-5-1 首次覆核回報 FIX_REQUIRED（GET /api/calendar 在 external_calendar_events 查詢失敗時拋 500），本 session 修復例外處理並新增迴歸測試；二次覆核驗證 SSRF guard 邊界完整（scheme 白名單、IP 範圍、DNS rebind、TLS 驗證），回報 ASTRA_VERDICT=PASS。CI 全綠，已完成 Completion Truth 五點驗證（merge_commit_sha 5a11847c 確認為 main head）。Issue #21 已關閉。"
+    "PR #517（Issue #21 外部行事曆 ICS 同步 SSRF 防護）squash-merge commit 5a11847c 併入 main：新增 external_calendar 表儲存租戶行事曆訂閱 URL（SSRF guard 驗證、加密），GET /api/calendar/external 端點聚合外部事件，ICS 解析與事件匯入邏輯。ASTRA_RISK=EXTERNAL_NETWORK_SSRF Final Risk 由 claude-fable-5-1 首次覆核回報 FIX_REQUIRED（GET /api/calendar 在 external_calendar_events 查詢失敗時拋 500），本 session 修復例外處理並新增迴歸測試；二次覆核驗證 SSRF guard 邊界完整（scheme 白名單、IP 範圍、DNS rebind、TLS 驗證），回報 ASTRA_VERDICT=PASS。CI 全綠，已完成 Completion Truth 五點驗證（merge_commit_sha 5a11847c 確認為 main head）。Issue #21 已關閉。",
+    "本輪 s03 LUNA_CLOSURE 補充掃描（scout 層）：確認 #477 於本輪 PR #506 merge（webhook sync）已解決且不再是 closure candidate（已出貨非持續阻擋之功能）；確認 #228（exact-SHA canary 修復）PR #507 merge 已出貨核心修復，餘下 OWNER/EXTERNAL_CONFIG 被擋之 workflow dispatch 步驟，非 BUILD candidate。EMPTY_WITH_SCAN 結論維持。"
   ]
 }
