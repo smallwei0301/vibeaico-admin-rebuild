@@ -140,6 +140,19 @@ export async function createPreviewDeployment({
         repo: required(repo, 'GITHUB_REPO'),
         ref: expectedSha,
       },
+      /**
+       * Issue #228: Vercel exposes the exact Git SHA this canary requests as
+       * `VERCEL_GIT_COMMIT_REF`, and the project's global Ignored Build Step
+       * (`scripts/ci/vercel-ignore-build.mjs`) only allowlists `main` /
+       * `preview/**` refs — so a bare exact-SHA canary is correctly canceled
+       * by that global guard before it ever builds. This deployment-scoped
+       * override applies `exit 1` (never skip) to this single API-created
+       * Preview request only; it does not touch the global ignore-build
+       * script or any other deployment's build-step behavior.
+       */
+      projectSettings: {
+        commandForIgnoringBuildStep: 'exit 1',
+      },
       meta: {
         deploymentController: 'issue-228-preview-canary',
         expectedMainSha: expectedSha,
