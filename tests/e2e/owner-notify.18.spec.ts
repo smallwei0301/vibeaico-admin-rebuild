@@ -14,17 +14,22 @@
  * http://localhost:4123` 慣例）——不打真 LINE 平台，也因此能斷言「N 位接收者
  * 觸發 N 次 multicast 收件人」與「移除全部後不再有任何推播」。
  *
- * 「本人在 LINE 上確認」用畫面上的「模擬本人已確認（Demo）」按鈕代替：這個
- * repo 沒有可在 E2E 中重放的真 LINE webhook 環境（Issue #18 本文「Explicitly
- * OUT of scope」也點名了這件事），該按鈕呼叫的
- * `POST /api/settings/line/owner-notify/recipients` 與 webhook postback 走同一段
- * `confirmOwnerNotifyBind()` 商業邏輯，不是另一套假邏輯（見該 route 檔頭說明）。
+ * 「本人在 LINE 上確認」用畫面上的「模擬本人已確認（Demo，僅測試環境）」按鈕代替：Final
+ * Risk 覆核（PR #519）指出該按鈕與其對應端點若在正式環境無條件存在，任何
+ * OWNER 都能繞過 Issue #18 Owner 裁示的「本人在 LINE 確認」步驟，因此已比照
+ * `LINE_WEBHOOK_DRAIN_ENABLED` 的閘門寫法收進
+ * `NEXT_PUBLIC_OWNER_NOTIFY_TEST_CONFIRM_ENABLED`（client）／
+ * `OWNER_NOTIFY_TEST_CONFIRM_ENABLED`（server）兩個非 production flag——
+ * **執行本 spec 前必須在測試環境同時設定這兩個變數為 `'true'`**，否則按鈕不會
+ * 渲染、端點回 404。該按鈕呼叫的 `POST /api/settings/line/owner-notify/recipients`
+ * 與 webhook postback 走同一段 `confirmOwnerNotifyBind()` 商業邏輯，不是另一套
+ * 假邏輯（見該 route 檔頭說明）。
  *
  * ⚠️ 執行揭露（本次 PR 誠實聲明）：本 spec 需要 canonical TEST Supabase 憑證
- * （`TEST_SUPABASE_URL` / `TEST_SUPABASE_SERVICE_ROLE_KEY`）與
- * `SETTINGS_ENCRYPTION_KEY`，這個 agent worktree 沒有這些憑證，**沒有實際執行
- * 過這支 spec**，只完成撰寫。依 B+ 規則，實跑需先宣告 `TEST_VALIDATION` lane
- * 並取得唯一 shared TEST holder 資格。
+ * （`TEST_SUPABASE_URL` / `TEST_SUPABASE_SERVICE_ROLE_KEY`）、
+ * `SETTINGS_ENCRYPTION_KEY`，以及上述兩個 test-confirm flag，這個 agent
+ * worktree 沒有這些憑證，**沒有實際執行過這支 spec**，只完成撰寫。依 B+ 規則，
+ * 實跑需先宣告 `TEST_VALIDATION` lane 並取得唯一 shared TEST holder 資格。
  */
 import { randomUUID } from 'node:crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -95,7 +100,7 @@ test('老闆通知：加入兩位→切換開關→移除主要遞補→全部�
     await expect(page.getByText('已送出確認邀請，請對方在 LINE 上確認')).toBeVisible({ timeout: 15_000 });
     await expect(section.getByText('邀請中，等待本人在 LINE 上確認')).toBeVisible();
 
-    await section.getByRole('button', { name: '模擬本人已確認（Demo）' }).click();
+    await section.getByRole('button', { name: '模擬本人已確認（Demo，僅測試環境）' }).click();
     await expect(page.getByText('已加入通知名單')).toBeVisible({ timeout: 15_000 });
 
     await page.reload();
@@ -107,7 +112,7 @@ test('老闆通知：加入兩位→切換開關→移除主要遞補→全部�
     await candidateSelect.selectOption({ label: 'E2E 好友 B' });
     await section.getByRole('button', { name: '發送確認邀請' }).click();
     await expect(page.getByText('已送出確認邀請，請對方在 LINE 上確認')).toBeVisible({ timeout: 15_000 });
-    await section.getByRole('button', { name: '模擬本人已確認（Demo）' }).click();
+    await section.getByRole('button', { name: '模擬本人已確認（Demo，僅測試環境）' }).click();
     await expect(page.getByText('已加入通知名單')).toBeVisible({ timeout: 15_000 });
     await page.reload();
     const recipientB = section.getByTestId(`owner-notify-recipient-${lineUserB}`);

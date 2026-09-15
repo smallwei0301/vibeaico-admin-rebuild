@@ -10,22 +10,28 @@ const bodySchema = z.object({
 });
 
 /**
- * POST /api/settings/line/owner-notify/recipients — 把一筆**已確認**的邀請
- * 落地成正式接收者（Issue #18「add after bind-confirm」）。
+ * POST /api/settings/line/owner-notify/recipients — 測試專用：把一筆**已確認**
+ * 的邀請落地成正式接收者，模擬本人已經在 LINE 上按下確認（Issue #18「add
+ * after bind-confirm」的驗收路徑）。
  *
- * 正常流程下，這件事是本人在 LINE 上按下確認按鈕、由 webhook postback
- * （`src/server/line-events.ts` → `confirmOwnerNotifyBind`）直接完成，不會經過
- * 這支 HTTP 端點——那條路徑用 service-role admin client，因為 webhook 沒有
- * 登入 session。
- *
- * 這支端點存在的理由：這個 repo 沒有可在單元測試／Playwright E2E 中重放的真
- * LINE webhook 環境（Issue 本文「Explicitly OUT of scope」也點名了這件事），
- * 呼叫它等同「模擬本人已經在 LINE 上按下確認」，讓驗收流程（加入→切換→移除
- * →遞補主要）可以端到端測試，而不必假造一個 webhook 請求。它與
- * `confirmOwnerNotifyBind` 走同一段商業邏輯（同一函式），不是第二套實作。
- * `lineUserId` 必須與該筆待確認請求相符——不能單靠 requestId 猜對象。
+ * 正式流程下，這件事只能由本人在 LINE 上按下確認、經 webhook postback
+ * （`src/server/line-events.ts` → `confirmOwnerNotifyBind`）完成——那條路徑用
+ * service-role admin client，因為 webhook 沒有登入 session。這支端點不是第二
+ * 條正式入口：Final Risk 覆核（PR #519）指出，若不加閘門，任何 OWNER 都能繞過
+ * 「本人確認」直接把自己選的好友加進通知名單，與 Issue #18 Owner 已裁示的
+ * canonical flow 相衝。因此僅在非 production 且明確開啟
+ * `OWNER_NOTIFY_TEST_CONFIRM_ENABLED` 時才存在，比照
+ * `src/app/api/line/webhook/[shopCode]/route.ts` 的 `LINE_WEBHOOK_DRAIN_ENABLED`
+ * 閘門寫法；生產環境下這支端點回 404，驗收只能真的走簽章 webhook postback。
  */
+function isTestConfirmEnabled() {
+  return process.env.NODE_ENV !== 'production' && process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED === 'true';
+}
+
 export const POST = handle(async (req) => {
+  if (!isTestConfirmEnabled()) {
+    throw new ApiHttpError(404, '找不到該資源', ERR.NOT_FOUND);
+  }
   const t = await requireTenant('OWNER');
   const b = bodySchema.parse(await req.json());
   const admin = createAdminSupabase();

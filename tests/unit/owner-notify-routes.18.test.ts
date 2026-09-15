@@ -7,7 +7,7 @@
  * 的 mocking 風格）。老闆通知名單比顧客端 LINE 設定更敏感，寫入一律要求 OWNER；
  * 讀取（總覽、候選清單）維持一般成員（STAFF）可讀。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiHttpError, ERR } from '@/server/http';
 
 type Role = 'STAFF' | 'MANAGER' | 'OWNER';
@@ -57,10 +57,21 @@ function req(url: string, init?: RequestInit) {
 const noParams = { params: Promise.resolve({}) };
 const idParams = (id: string) => ({ params: Promise.resolve({ id }) });
 
+const ORIGINAL_TEST_CONFIRM_FLAG = process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED;
+
 beforeEach(() => {
   currentRole = 'OWNER';
+  // `POST recipients`（Demo 模擬確認）比照 `LINE_WEBHOOK_DRAIN_ENABLED` 收進非
+  // production flag（Final Risk 覆核 PR #519 的阻斷項修正）；預設在測試環境開啟，
+  // 讓既有的角色/邊界案例維持原本行為，另有專門案例驗證關閉時被拒。
+  process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED = 'true';
   [getOverviewMock, listCandidatesMock, initiateBindMock, confirmBindMock, removeAllMock, removeOneMock, updateOneMock]
     .forEach((m) => m.mockClear());
+});
+
+afterEach(() => {
+  if (ORIGINAL_TEST_CONFIRM_FLAG === undefined) delete process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED;
+  else process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED = ORIGINAL_TEST_CONFIRM_FLAG;
 });
 
 describe('GET /api/settings/line/owner-notify — 一般成員可讀', () => {
@@ -122,6 +133,26 @@ describe('POST /api/settings/line/owner-notify/recipients — 落地確認，要
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.code).toBe('LINE_003');
+  });
+
+  it('OWNER_NOTIFY_TEST_CONFIRM_ENABLED 未開啟時，即使是 OWNER 也回 404，不呼叫 confirmBind（Final Risk PR #519 阻斷項修正）', async () => {
+    delete process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED;
+    const res = await recipientsPOST(req('http://localhost/x', {
+      method: 'POST',
+      body: JSON.stringify({ requestId: '11111111-1111-1111-1111-111111111111', lineUserId: 'lu_1' }),
+    }), noParams);
+    expect(res.status).toBe(404);
+    expect(confirmBindMock).not.toHaveBeenCalled();
+  });
+
+  it('OWNER_NOTIFY_TEST_CONFIRM_ENABLED="false"（非字面 "true"）同樣視為關閉', async () => {
+    process.env.OWNER_NOTIFY_TEST_CONFIRM_ENABLED = 'false';
+    const res = await recipientsPOST(req('http://localhost/x', {
+      method: 'POST',
+      body: JSON.stringify({ requestId: '11111111-1111-1111-1111-111111111111', lineUserId: 'lu_1' }),
+    }), noParams);
+    expect(res.status).toBe(404);
+    expect(confirmBindMock).not.toHaveBeenCalled();
   });
 });
 

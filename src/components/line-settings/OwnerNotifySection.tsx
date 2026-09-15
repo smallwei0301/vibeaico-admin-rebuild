@@ -22,6 +22,18 @@ import { ApiError } from '@/lib/api';
 const oT = t.ownerNotify;
 
 /**
+ * 「模擬本人已確認（Demo）」只在非 production 且明確開啟時存在——比照
+ * `src/app/api/line/webhook/[shopCode]/route.ts` 的 `LINE_WEBHOOK_DRAIN_ENABLED`
+ * 閘門寫法。Final Risk 覆核（PR #519）指出：若不加閘門，任何 OWNER 都能繞過
+ * Issue #18 Owner 裁示的「本人在 LINE 確認」步驟，直接把自己選的好友加入名單。
+ * `NEXT_PUBLIC_` 前綴讓這個判斷在 build 時就烙進 client bundle；正式環境的
+ * build 不會設這個變數，按鈕因此不存在，對應端點也在 server 端同樣被擋
+ * （見 `src/app/api/settings/line/owner-notify/recipients/route.ts`）。
+ */
+const OWNER_NOTIFY_TEST_CONFIRM_ENABLED =
+  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_OWNER_NOTIFY_TEST_CONFIRM_ENABLED === 'true';
+
+/**
  * 老闆通知（Issue #18）——鐵則 6：loading／EmptyState／ConfirmModal／成功 toast 齊全。
  * 這個區塊管自己的載入與寫入狀態，只透過 `@/services/owner-notify` 存取資料，
  * 不直接 fetch（鐵則：頁面／區塊只認 services，見 CLAUDE.md「Pages never fetch」）。
@@ -194,7 +206,7 @@ export function OwnerNotifySection() {
                   <option value="">{candidates.length === 0 ? oT.noCandidates : oT.pickCandidate}</option>
                   {candidates.map((c) => (
                     <option key={c.lineUserId} value={c.lineUserId}>
-                      {c.displayName || '(LINE 用戶)'}{c.pendingBindRequestId ? `（${oT.pendingBadge}）` : ''}
+                      {c.displayName || oT.unknownLineUser}{c.pendingBindRequestId ? `（${oT.pendingBadge}）` : ''}
                     </option>
                   ))}
                 </select>
@@ -209,17 +221,21 @@ export function OwnerNotifySection() {
               </div>
             </FormGroup>
 
-            {/* 進行中的邀請：Demo 模擬確認按鈕 */}
+            {/* 進行中的邀請：正式環境只顯示等待狀態，本人須在 LINE 上按下確認；
+                「模擬本人已確認（Demo）」按鈕僅在測試環境開啟時才渲染，見上方
+                OWNER_NOTIFY_TEST_CONFIRM_ENABLED 檔頭註解。 */}
             {candidates.filter((c) => c.pendingBindRequestId).map((c) => (
               <div key={c.lineUserId} className="flex items-center justify-between rounded-md border border-dashed p-2 text-sm">
-                <span>{c.displayName || '(LINE 用戶)'} — {oT.pendingBadge}</span>
-                <Button
-                  size="sm" variant="secondary"
-                  loading={confirmingId === c.lineUserId}
-                  onClick={() => handleConfirmForDemo(c)}
-                >
-                  {oT.confirmForDemo}
-                </Button>
+                <span>{c.displayName || oT.unknownLineUser} — {oT.pendingBadge}</span>
+                {OWNER_NOTIFY_TEST_CONFIRM_ENABLED ? (
+                  <Button
+                    size="sm" variant="secondary"
+                    loading={confirmingId === c.lineUserId}
+                    onClick={() => handleConfirmForDemo(c)}
+                  >
+                    {oT.confirmForDemo}
+                  </Button>
+                ) : null}
               </div>
             ))}
 
@@ -236,7 +252,7 @@ export function OwnerNotifySection() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 font-medium">
-                        {r.displayName || '(LINE 用戶)'}
+                        {r.displayName || oT.unknownLineUser}
                         {r.isPrimary ? (
                           <Badge tone="primary"><Star size={12} className="mr-1 inline" />{oT.primaryBadge}</Badge>
                         ) : null}
