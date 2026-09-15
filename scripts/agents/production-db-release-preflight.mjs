@@ -180,6 +180,7 @@ function assertRiskAdaptiveEvidence(packet, riskTier) {
   }
 
   if (riskTier === 'BACKFILL') {
+    if (data.executionBounded !== true) fail('BACKFILL_EXECUTION_BOUND_REQUIRED', 'BACKFILL release requires the controlled row-count guard evidence');
     if (recovery.preimageBackupVerified !== true) fail('PREIMAGE_BACKUP_REQUIRED', 'BACKFILL release requires preimage backup evidence');
     if (data.paymentFactsTouched === true) fail('PAYMENT_FACTS_FORBIDDEN', 'v1 backfill gate does not authorize payment fact rewrites');
     if (!Number.isSafeInteger(data.batchSize) || data.batchSize < 1 || data.batchSize > PRODUCTION_DB_POLICY.maxBackfillRowsPerBatch) {
