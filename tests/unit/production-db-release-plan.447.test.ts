@@ -162,6 +162,14 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier(withRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const ddlRoutineInvocationSql = 'create function public.review_wipe() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; create table public.release_probe as select public.review_wipe();';
     expect(() => inferMigrationRiskTier(ddlRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    for (const tempTablePrefix of ['global temp table', 'local temporary table']) {
+      const prefixedDdlRoutineInvocationSql = 'create function public.review_wipe() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; create ' + tempTablePrefix + ' public.release_probe as select public.review_wipe();';
+      expect(() => inferMigrationRiskTier(prefixedDdlRoutineInvocationSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    }
+    const preparedDmlSql = 'prepare wipe as delete from public.t; execute wipe;';
+    expect(() => inferMigrationRiskTier(preparedDmlSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    const proceduralPreparedDmlSql = 'do ' + dollarQuote + ' begin prepare wipe as delete from public.t; execute wipe; end ' + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(proceduralPreparedDmlSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     const qualifiedKeywordRoutineSql = 'create function public.filter() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; do ' + dollarQuote + ' declare n integer := public.filter(); begin null; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(qualifiedKeywordRoutineSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const unicodeRoutineInvocationSql = 'create function public.清除() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; select public.清除();';
