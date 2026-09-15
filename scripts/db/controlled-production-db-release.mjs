@@ -15,6 +15,40 @@ function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+export function expectedAppliedLedgerNames(aliasMap = {}) {
+  if (aliasMap?.schemaVersion !== 1 || !Array.isArray(aliasMap?.entries)) fail('INVALID_ALIAS_MAP', 'ledger alias map is unavailable');
+  const names = [];
+  for (const entry of aliasMap.entries) {
+    const classification = String(entry?.classification ?? '');
+    const ledgerNames = Array.isArray(entry?.ledgerNames) ? entry.ledgerNames.map(String) : [];
+    if (classification === 'NOT_APPLIED') {
+      if (ledgerNames.length) fail('INVALID_NOT_APPLIED_LEDGER_NAMES', `${entry?.repoFile ?? '<unknown>'} cannot be NOT_APPLIED and have ledger names`);
+      continue;
+    }
+    for (const name of ledgerNames) {
+      if (!name.trim()) fail('INVALID_LEDGER_ALIAS', 'ledger alias names must be non-empty');
+      names.push(name.trim());
+    }
+  }
+  const sorted = names.sort();
+  if (new Set(sorted).size !== sorted.length) fail('DUPLICATE_ALIAS_LEDGER_NAME', 'alias map maps the same live ledger name more than once');
+  return sorted;
+}
+
+export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {}) {
+  const expected = expectedAppliedLedgerNames(aliasMap);
+  const actual = normalizedLedgerNames(liveLedgerRows);
+  if (expected.join('\n') !== actual.join('\n')) {
+    const expectedSet = new Set(expected);
+    const actualSet = new Set(actual);
+    const extraLive = actual.filter((name) => !expectedSet.has(name));
+    const missingLive = expected.filter((name) => !actualSet.has(name));
+    fail('LIVE_LEDGER_DRIFT', `extraLive=[${extraLive.join(', ')}], missingLive=[${missingLive.join(', ')}]`);
+  }
+  return { status: 'LIVE_LEDGER_VERIFIED', ledgerRowCount: actual.length, databaseMutationAuthorized: false };
+}
+
+
 function ledgerIdentityValues(rows = []) {
   return rows.map((entry) => {
     const name = String(entry?.name ?? entry?.repoFile ?? '').trim();
