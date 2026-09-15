@@ -2,6 +2,10 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
+import {
+  getProductionDbG3AuthzContract,
+  PRODUCTION_DB_G3_AUTHZ_CONTRACTS,
+} from './production-db-g3-authz-contracts.mjs';
 
 const EXPECTED_REPOSITORY = 'smallwei0301/vibeaico-admin-rebuild';
 const TEST_PROJECT_REF = 'nmwhwngojosmagjuvxol';
@@ -9,19 +13,6 @@ const TEST_HOST = `${TEST_PROJECT_REF}.supabase.co`;
 const SHOP_A_ID = 'a1000000-0000-4000-8000-000000000001';
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
-
-const AUTHZ_CONTRACTS = Object.freeze({
-  '0105_issue_44_traveler_risk_policies': Object.freeze({
-    requiredFile: 'tests/integration/db/traveler-risk-policy.44.test.ts',
-    tenantBoundaryAssertions: Object.freeze([
-      'A owner 指派一筆政策後，B owner 完全查不到',
-      'A owner 想寫入 tenant_id=B 店',
-    ]),
-    negativeRoleAssertions: Object.freeze([
-      'STAFF 讀得到，但寫不了',
-    ]),
-  }),
-});
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -119,20 +110,22 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
   for (const migration of plan.migrations) {
     if (String(migration?.riskTier ?? '').trim().toUpperCase() !== 'AUTHZ') continue;
     const repoFile = String(migration?.repoFile ?? '').trim();
-    const contract = AUTHZ_CONTRACTS[repoFile];
+    const contract = getProductionDbG3AuthzContract(repoFile);
     if (!contract) fail('AUTHZ_TEST_MAPPING_REQUIRED', `no explicit AUTHZ coverage contract exists for ${repoFile || '<unknown>'}`);
-    if (!executedFiles.includes(contract.requiredFile)) {
-      fail('AUTHZ_REQUIRED_TEST_FILE_MISSING', `${repoFile} did not execute ${contract.requiredFile}`);
+    for (const requiredFile of contract.requiredFiles) {
+      if (!executedFiles.includes(requiredFile)) {
+        fail('AUTHZ_REQUIRED_TEST_FILE_MISSING', `${repoFile} did not execute ${requiredFile}`);
+      }
     }
-    const tenantBoundaryVerified = contract.tenantBoundaryAssertions.every((fragment) =>
-      includesAssertion(assertions, contract.requiredFile, fragment));
-    const negativeRoleTestsPassed = contract.negativeRoleAssertions.every((fragment) =>
-      includesAssertion(assertions, contract.requiredFile, fragment));
+    const tenantBoundaryVerified = contract.tenantBoundaryAssertions.every((assertion) =>
+      includesAssertion(assertions, assertion.file, assertion.fragment));
+    const negativeRoleTestsPassed = contract.negativeRoleAssertions.every((assertion) =>
+      includesAssertion(assertions, assertion.file, assertion.fragment));
     if (!tenantBoundaryVerified) fail('TENANT_BOUNDARY_TEST_REQUIRED', `${repoFile} required tenant-boundary assertions did not pass`);
     if (!negativeRoleTestsPassed) fail('NEGATIVE_ROLE_TEST_REQUIRED', `${repoFile} required negative-role assertions did not pass`);
     migrations[repoFile] = {
       status: 'MIGRATION_TEST_COVERAGE_VERIFIED',
-      executedFiles: [contract.requiredFile],
+      executedFiles: [...contract.requiredFiles],
       tenantBoundaryVerified: true,
       negativeRoleTestsPassed: true,
     };
@@ -283,4 +276,4 @@ async function main() {
 
 if (process.argv[1]?.endsWith('production-db-g3-test-artifacts.mjs')) main();
 
-export const G3_TEST_AUTHZ_CONTRACTS = AUTHZ_CONTRACTS;
+export const G3_TEST_AUTHZ_CONTRACTS = PRODUCTION_DB_G3_AUTHZ_CONTRACTS;
