@@ -288,11 +288,19 @@ function hasUnverifiedRoutineInvocation(text) {
 }
 
 function rejectUnsupportedPreparedStatements(statements) {
-  const preparedExecute = /\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?=\s*(?:;|$))/iu;
+  const preparedExecute = /\bexecute\s+(?!(?:pg_catalog\s*\.\s*)?format\b)(?:(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?[\p{ID_Start}_][\p{ID_Continue}_$]*|"(?:[^"]|"")*")(?:\s*\([^;]*\))?(?:\s+with\s+(?:no\s+)?data)?(?=\s*(?:;|$))/iu;
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
-    const lexicalText = stripSqlStringLiterals(immediateText);
-    if (/\bprepare\b/i.test(lexicalText) || preparedExecute.test(lexicalText)) {
+    const procedural = /^\s*do\b/i.test(immediateText);
+    const executableText = procedural ? immediateProceduralBody(immediateText) ?? immediateText : immediateText;
+    const lexicalText = stripSqlStringLiterals(executableText);
+    // SQL PREPARE/EXECUTE is not PL/pgSQL dynamic EXECUTE. Check the whole
+    // immediate command so EXPLAIN and CTAS wrappers cannot hide a prepared name.
+    const privilegeDeclaration = /^(?:grant|revoke|alter\s+default\s+privileges)\b/i.test(lexicalText);
+    const immediateExecute = !procedural
+      && !privilegeDeclaration
+      && /\bexecute\b/i.test(lexicalText);
+    if (/\bprepare\b/i.test(lexicalText) || immediateExecute || preparedExecute.test(lexicalText)) {
       fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'SQL-level PREPARE/EXECUTE is not admitted by the v1 classifier');
     }
   }
@@ -307,6 +315,23 @@ function rejectImmediateRoutineInvocations(statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
+    // DDL expressions can execute routines while validating rows, defaults,
+    // generated columns, indexes, domains, views, or table rewrites. Inspect
+    // their expression tails after stored routine bodies have been removed.
+    if (/^(?:create|alter)\b/i.test(lexicalText)
+      && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexicalText)) {
+      for (const expression of lexicalText.matchAll(/\b(?:check|default|using|as|where|generated|partition)\b/gi)) {
+        if (checkCommandText(immediateText.slice(expression.index + expression[0].length))) {
+          fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'DDL expression routine invocation is not admitted');
+        }
+      }
+      if (/^create\s+(?:unique\s+)?index\b/i.test(lexicalText)) {
+        const open = lexicalText.indexOf('(');
+        if (open >= 0 && checkCommandText(immediateText.slice(open))) {
+          fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'index expression routine invocation is not admitted');
+        }
+      }
+    }
     const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
       || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
@@ -604,7 +629,229 @@ function dynamicCommandKind(fragment) {
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
   const formatCall = /^\s*\(*\s*(?:pg_catalog\s*\.\s*)?format\s*\(/i.test(fragment);
   const templateStatements = splitSqlStatements(template);
-  const boundedConstraintRepair = /^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)
+  if (/\bdrop\b[\s\S]*\bcascade\b/i.test(lexicalTemplate)) {
+    fail('CASCADE_NOT_ADMITTED', 'dynamic schema repair cannot prove the dependency scope of CASCADE');
+  }
+  // Only a single ALTER TABLE ... DROP CONSTRAINT [RESTRICT] is a bounded
+  // schema repair. A single dynamic statement must not smuggle other actions.
+  const identifier = '(?:%I|"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
+  const boundedDrop = new RegExp('^alter\\s+table\\s+(?:only\\s+)?' + identifier
+    + '(?:\\s*\\.\\s*' + identifier + ')?\\s+drop\\s+constraint\\s+(?:if\\s+exists\\s+)?'
+    + identifier + '(?:\\s+restrict)?\\s*;?\\s*
+  if (boundedConstraintRepair) return 'SCHEMA_REPAIR';
+  if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
+    fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'dynamic SQL may execute an unbounded destructive command');
+  }
+  if (templateStatements.length !== 1) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must contain exactly one statically bounded statement');
+  }
+  if (formatCall) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic format SQL is not admitted unless it is a bounded constraint repair');
+  }
+  if (!/^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalTemplate)) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'dynamic SQL must be a statically bounded DML template');
+  }
+  return 'BACKFILL';
+}
+
+function assertDynamicExecutionSafe(body) {
+  const lexicalBody = stripSqlStringLiterals(body, true);
+  if (/\bexecute\b[\s\S]*\|\|/i.test(lexicalBody)) {
+    fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'concatenated dynamic SQL is not admitted');
+  }
+  return dynamicExecuteFragments(body).map(dynamicCommandKind);
+}
+
+function hasImmediateBackfillDml(text) {
+  return splitSqlStatements(text).some((statement) => {
+    const immediateText = stripStoredRoutineBodies(statement).trim();
+    const lexicalText = stripSqlStringLiterals(immediateText);
+    const procedural = /^do\b/i.test(lexicalText);
+    const body = procedural ? immediateProceduralBody(immediateText) : null;
+    if (procedural && body === null) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unrecognized DO body form is not admitted');
+    }
+    const executableBody = body === null ? '' : stripSqlStringLiterals(body, true);
+    const directDml = /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalText);
+    const explainedDml = /^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    const compoundDml = /^(?:with\b|do\b)[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    const proceduralDml = body !== null && /\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(executableBody);
+    const dynamicKinds = body !== null ? assertDynamicExecutionSafe(body) : [];
+    return directDml || explainedDml || compoundDml || proceduralDml || dynamicKinds.includes('BACKFILL');
+  });
+}
+export function highestRiskTier(tiers = []) {
+  let selected = 'ADDITIVE';
+  for (const raw of tiers) {
+    const tier = String(raw ?? '').toUpperCase();
+    if (!(tier in RISK_ORDER)) fail('UNSUPPORTED_RISK_TIER', `unsupported risk tier: ${tier || '<empty>'}`);
+    if (RISK_ORDER[tier] > RISK_ORDER[selected]) selected = tier;
+  }
+  return selected;
+}
+
+function rejectUnsupportedRoutineLiteralBodies(statements) {
+  for (const statement of statements) {
+    const lexical = stripSqlStringLiterals(statement);
+    if (/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexical)
+      && /\bas\s+(?:[eE]|[uU]&)?\s*'/i.test(statement)) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'single-quoted routine bodies are not admitted by the fail-closed classifier');
+    }
+  }
+}
+
+function rejectUnclassifiedDropStatements(text) {
+  const fragments = splitSqlStatements(text)
+    .map((fragment) => stripStoredRoutineBodies(stripSqlStringLiterals(fragment)))
+    .filter((fragment) => /\bdrop\b/i.test(fragment));
+  for (const fragment of fragments) {
+    if (/\bdrop\b[\s\S]*\bcascade\b/i.test(fragment)) {
+      fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP ... CASCADE is not admitted by the fail-closed v1 writer');
+    }
+    const drops = [...fragment.matchAll(/\bdrop\s+(?:if\s+exists\s+)?([A-Za-z_][\w$]*)/gi)];
+    if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
+    for (const match of drops) {
+      const objectType = String(match[1]).toLowerCase();
+      if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column']).has(objectType)) {
+        fail('UNCLASSIFIED_DROP_NOT_ADMITTED', `unrecognized DROP form: ${objectType}`);
+      }
+    }
+  }
+}
+
+function assertSingleRiskTier(tiers = []) {
+  const highest = highestRiskTier(tiers);
+  const unique = [...new Set(tiers.map((raw) => String(raw ?? '').toUpperCase()))];
+  if (unique.length > 1) {
+    fail('MIXED_RISK_RELEASE_NOT_ADMITTED', 'split release plan by risk class before v1 apply: ' + unique.join('+'));
+  }
+  return highest;
+}
+
+function hasAuthzConfigurationMutation(statement) {
+  const input = String(statement);
+  return /^\s*set\s+(?:(?:local|session)\s+)?(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))\s*(?:=|\bto\b)/i.test(input)
+    || /^\s*reset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i.test(input);
+}
+
+export function inferMigrationRiskTier(sql) {
+  const text = stripSqlComments(sql);
+
+  // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
+  // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、
+  // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
+  const statements = splitSqlStatements(text);
+  rejectUnsupportedRoutineLiteralBodies(statements);
+  rejectUnsupportedPreparedStatements(statements);
+  rejectImmediateRoutineInvocations(statements);
+  rejectImmediateConfigurationMutations(statements);
+  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
+    fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
+  }
+  rejectUnclassifiedDropStatements(text);
+
+  const specialized = [];
+  if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
+    specialized.push('SCHEMA_REPAIR');
+  }
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement) || hasAuthzConfigurationMutation(statement))) {
+    specialized.push('AUTHZ');
+  }
+  if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
+
+  // v1 不用「選最高級」來掩蓋另一類必要證據。若一支 migration 同時混進兩種
+  // specialized risk，先拆成 bounded migrations，讓每一支都有完整對應測試與復原證據。
+  if (specialized.length > 1) {
+    fail('MIXED_RISK_MIGRATION_NOT_ADMITTED', `split migration by risk class before v1 apply: ${specialized.join('+')}`);
+  }
+  return specialized[0] ?? 'ADDITIVE';
+}
+
+/**
+ * Build a release plan exclusively from current-main canonical migration bytes and
+ * the alias-map entries explicitly classified PENDING_APPLY. `readCanonicalSql`
+ * must read `origin/main:<path>` (or an equivalent immutable main snapshot), never
+ * a PR/worktree overlay.
+ */
+export function buildProductionDbReleasePlan({
+  releaseId,
+  mainSha,
+  plannedAt,
+  aliasMap,
+  readCanonicalSql,
+} = {}) {
+  const id = String(releaseId ?? '').trim();
+  if (!RELEASE_ID.test(id)) fail('INVALID_RELEASE_ID', 'releaseId has an invalid shape');
+  const sha = String(mainSha ?? '').trim().toLowerCase();
+  if (!SHA.test(sha)) fail('INVALID_MAIN_SHA', 'mainSha must be an exact 40-character SHA');
+  const normalizedPlannedAt = normalizePlannedAt(plannedAt);
+  if (typeof readCanonicalSql !== 'function') fail('CANONICAL_READER_REQUIRED', 'readCanonicalSql is required');
+
+  const names = pendingProductionMigrations(aliasMap);
+  if (!names.length) fail('NO_PENDING_PRODUCTION_MIGRATIONS', 'alias map has no PENDING_APPLY migrations');
+
+  const migrations = names.map((repoFile, index) => {
+    const path = `supabase/migrations/${repoFile}.sql`;
+    const sql = String(readCanonicalSql(path));
+    if (!sql.trim()) fail('EMPTY_CANONICAL_MIGRATION', `${path} is empty`);
+    return {
+      repoFile,
+      path,
+      sha256: sha256(Buffer.from(sql)),
+      riskTier: inferMigrationRiskTier(sql),
+      ledgerVersion: ledgerVersionAt(normalizedPlannedAt, index),
+    };
+  });
+
+  const plan = {
+    schemaVersion: 1,
+    releaseId: id,
+    repository: PRODUCTION_DB_POLICY.repository,
+    productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
+    mainSha: sha,
+    plannedAt: normalizedPlannedAt,
+    riskTier: assertSingleRiskTier(migrations.map((entry) => entry.riskTier)),
+    migrations,
+  };
+  return { ...plan, planDigest: releasePlanDigestOf(plan) };
+}
+
+export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql } = {}) {
+  if (!plan || typeof plan !== 'object' || Array.isArray(plan)) fail('PLAN_REQUIRED', 'release plan is required');
+  if (plan.repository !== PRODUCTION_DB_POLICY.repository) fail('WRONG_REPOSITORY', 'release plan repository is not canonical');
+  if (plan.productionProjectRef !== PRODUCTION_DB_POLICY.productionProjectRef) fail('WRONG_PROJECT', 'release plan project is not canonical Production');
+  if (!SHA.test(String(plan.mainSha ?? ''))) fail('INVALID_MAIN_SHA', 'release plan has no exact main SHA');
+  if (!RELEASE_ID.test(String(plan.releaseId ?? ''))) fail('INVALID_RELEASE_ID', 'release plan has invalid releaseId');
+  normalizePlannedAt(plan.plannedAt);
+  if (releasePlanDigestOf(plan) !== plan.planDigest) fail('PLAN_DIGEST_MISMATCH', 'release plan digest is stale or forged');
+
+  const pending = pendingProductionMigrations(aliasMap);
+  const names = (Array.isArray(plan.migrations) ? plan.migrations : []).map((entry) => normalizedRepoFile(entry?.repoFile));
+  if (pending.join('\n') !== [...names].sort().join('\n')) {
+    fail('PENDING_SET_MISMATCH', `plan=[${names.join(', ')}], pending=[${pending.join(', ')}]`);
+  }
+  if (new Set(names).size !== names.length) fail('DUPLICATE_PLAN_MIGRATION', 'plan migrations must be unique');
+  const versions = plan.migrations.map((entry) => String(entry?.ledgerVersion ?? ''));
+  if (versions.some((version) => !LEDGER_VERSION.test(version)) || new Set(versions).size !== versions.length) {
+    fail('INVALID_LEDGER_VERSION_PLAN', 'ledger versions must be unique 14-digit values fixed at plan time');
+  }
+  if (typeof readCanonicalSql !== 'function') fail('CANONICAL_READER_REQUIRED', 'readCanonicalSql is required');
+
+  const tiers = [];
+  for (const entry of plan.migrations) {
+    const expectedPath = `supabase/migrations/${entry.repoFile}.sql`;
+    if (entry.path !== expectedPath) fail('MIGRATION_PATH_MISMATCH', `${entry.repoFile} path is not canonical`);
+    const sql = String(readCanonicalSql(expectedPath));
+    if (sha256(Buffer.from(sql)) !== entry.sha256) fail('MIGRATION_BYTES_MISMATCH', `${expectedPath} differs from reviewed main bytes`);
+    const inferred = inferMigrationRiskTier(sql);
+    if (entry.riskTier !== inferred) fail('MIGRATION_RISK_MISMATCH', `${entry.repoFile} risk tier changed`);
+    tiers.push(inferred);
+  }
+  if (plan.riskTier !== assertSingleRiskTier(tiers)) fail('RELEASE_RISK_MISMATCH', 'release risk tier does not match migration risk floor');
+  return { status: 'PLAN_VERIFIED', planDigest: plan.planDigest, migrationCount: names.length, riskTier: plan.riskTier, databaseMutationAuthorized: false };
+}
+, 'iu');
+  const boundedConstraintRepair = boundedDrop.test(template.trim())
     && formatPlaceholdersAreBounded(template)
     && templateStatements.length === 1;
   if (boundedConstraintRepair) return 'SCHEMA_REPAIR';
