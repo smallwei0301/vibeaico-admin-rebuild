@@ -39,7 +39,7 @@ Checkpoint gate：
 node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.json --strict-live
 ```
 
-`--strict-live` 只會因 ledger invalid、raw capture gap 或 counter inconsistency 非零退出；active Run 尚未有 `endedAt`、`main.endSha`、terminal Completion Truth 是正常狀態，不因此失敗。
+`--strict-live` 只會因 ledger invalid、raw capture gap 或有明確不變量的 counter inconsistency 非零退出；active Run 尚未有 `endedAt`、`main.endSha`、terminal Completion Truth 是正常狀態，不因此失敗。
 
 ## 現在檢查什麼
 
@@ -49,13 +49,14 @@ node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.jso
 
 ### 2. Durable counter consistency
 
-能從 `modelUsage.tasks` 機械推導的 counters 必須相符：
+只有 repo 已明確定義成同一件事、可從 `modelUsage.tasks` 機械推導的 counters 才做 strict equality：
 
 - `flow.lunaTasks`
 - `flow.lunaAccepted`
-- `flow.solTouches`
 
-此外：
+`flow.solTouches` 的 canonical 語意是 triage / audit touches，不保證等於 Sol task record count，所以 readiness **只並列顯示，不宣告兩者必須相等**。
+
+此外，以下不變量會 fail closed：
 
 - `ci.invalidReruns <= ci.fullCiRuns`
 - `inventory.closureAdvancedOrClosed <= inventory.closureSweeps`
@@ -114,9 +115,14 @@ PR body / TEST_PROFILE / lane / candidate / Final Risk metadata
 → PASS 才 push / dispatch remote CI
 ```
 
-如果 deterministic metadata 到 remote CI 才第一次被抓到，優先判定為 **preflight coverage gap**。修 shared parser / preflight，不要教每個 Agent 背另一段散文，也不得用 no-op commit 或 blind rerun 試錯。
+如果 deterministic metadata 到 remote CI 才第一次被抓到，先區分兩種情況：
 
-PR #463 第一輪就提供一個真實例子：source 尚未被檢查前，`Agent WIP Policy` 只因 `ASTRA_RATIONALE` 太抽象而退件。正確處置是修 metadata / preflight coverage，不是重跑同一 workflow。
+1. **preflight 沒跑**：修執行順序。
+2. **preflight 跑了仍漏掉**：才是 preflight coverage gap，補 shared parser / validator。
+
+兩者都不得用 no-op commit 或 blind rerun 猜合法值。
+
+PR #463 第一輪就是第 1 類：現行 preflight 本來已會檢查 Astra classification，但本 session 因沒有可執行的本機 repo 就直接開 PR，結果 `Agent WIP Policy` 在 source CI 前因 `ASTRA_RATIONALE` 太抽象退件。正確教訓是 **preflight-first 必須成為真正執行順序**，不是再新增另一支重複 validator。
 
 ## 與 #461 OBSERVED_V1 的邊界
 
@@ -135,14 +141,10 @@ PR #463 第一輪就提供一個真實例子：source 尚未被檢查前，`Agen
 - MODEL_GOVERNANCE 維持 model-agnostic。
 - 歷史 ledger 不回填猜測值。
 
-## 準備納入 `docs/AGENT-EXECUTION.md` 的核心文字
+## `docs/AGENT-EXECUTION.md` 已納入的核心規則
 
-```md
-### Live Scorecard Contract
-
-新 Product Run 以 `score-run-current.mjs` 的 `OBSERVED_V1` 為 current scoring truth；legacy manual percentages 不再是新 Run 的 grading gate。Active Run 使用 `scorecard-readiness.mjs` 檢查 durable raw events 與 counters 是否完整一致，不產生分數。
-
-固定 checkpoint：Run start、每次 observable event 後、每次 delivery stage change 後、pre-closeout。Pre-closeout 必須 `rawCaptureGaps=[]` 且 `consistencyWarnings=[]`；terminal-only pending 在 active Run 不算失敗，也不得為了變綠事後猜值。
-
-Deterministic metadata 一律 preflight-first。PR body / TEST_PROFILE / lane / candidate / Final Risk metadata 若在 remote CI 才第一次被擋，視為 preflight coverage gap；修 validator / parser，不用 CI 當規格查詢器，不堆 no-op commit，不 blind rerun。
-```
+- 新 Product Run 以 `score-run-current.mjs` 的 `OBSERVED_V1` 為 current scoring truth；legacy manual percentages 不再是新 Run 的 grading gate。
+- Active Run 使用 `scorecard-readiness.mjs` 檢查 durable raw events 與有定義的不變量，不產生分數。
+- 固定 checkpoint：Run start、每次 observable event 後、每次 delivery stage change 後、pre-closeout。
+- Pre-closeout 必須 `rawCaptureGaps=[]` 且 `consistencyWarnings=[]`；terminal-only pending 在 active Run 不算失敗，也不得為了變綠事後猜值。
+- Deterministic metadata preflight-first；remote CI 不作規格查詢器，不堆 no-op commit，不 blind rerun。
