@@ -6,8 +6,16 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const DEFAULT_REPO = 'smallwei0301/vibeaico-admin-rebuild';
-const TERMINAL_LIFECYCLE = new Set(['COMPLETE', 'CLOSED', 'MERGED', 'OWNER_BLOCKED', 'SUPERSEDED']);
-const FAILURE_CONCLUSIONS = new Set(['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure']);
+const TERMINAL_LIFECYCLE = new Set([
+  'COMPLETE', 'CLOSED', 'MERGED', 'OWNER_BLOCKED', 'SUPERSEDED',
+  'VERIFIED_FIXED', 'VERIFIED_MERGED', 'VERIFIED_CLOSED',
+]);
+const TERMINAL_MERGE_STATUS = new Set(['MERGED', 'VERIFIED_MERGED']);
+const TERMINAL_COMPLETION = new Set([
+  'COMPLETE', 'CLOSED', 'OWNER_BLOCKED', 'SUPERSEDED',
+  'VERIFIED_FIXED', 'VERIFIED_MERGED', 'VERIFIED_CLOSED', 'VERIFIED_COMPLETED',
+]);
+const WIP_STATUS_CONTEXTS = new Set(['agent wip policy', 'agent wip guard']);
 
 const round = (value, digits = 1) => {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
@@ -63,12 +71,15 @@ function laneState(pr) {
 function lifecycleState(pr) {
   const body = String(pr?.body ?? '');
   const marker = body.match(/<!--\s*pr-lifecycle[\s\S]*?\bstate\s*:\s*([A-Z_]+)[\s\S]*?-->/i);
-  if (marker) return { present: true, terminal: TERMINAL_LIFECYCLE.has(upper(marker[1])), source: 'pr-lifecycle', value: upper(marker[1]) };
+  if (marker) {
+    const value = upper(marker[1]);
+    return { present: true, terminal: TERMINAL_LIFECYCLE.has(value), source: 'pr-lifecycle', value };
+  }
 
   const mergeStatus = upper(parseBodyField(body, 'MERGE_STATUS'));
   const completion = upper(parseBodyField(body, 'COMPLETION_CLAIM'));
   if (mergeStatus || completion) {
-    const terminal = mergeStatus === 'MERGED' || /^(VERIFIED_FIXED|COMPLETE|CLOSED|OWNER_BLOCKED|SUPERSEDED)$/.test(completion);
+    const terminal = TERMINAL_MERGE_STATUS.has(mergeStatus) || TERMINAL_COMPLETION.has(completion);
     return { present: true, terminal, source: 'completion-fields', value: mergeStatus || completion };
   }
   return { present: false, terminal: false, source: null, value: null };
@@ -76,10 +87,6 @@ function lifecycleState(pr) {
 
 function isCiRun(run) {
   return text(run?.name).toLowerCase() === 'ci';
-}
-
-function isWipRun(run) {
-  return /(agent[- ]?wip|wip[- ]?(guard|policy))/i.test(text(run?.name));
 }
 
 function finalHeadRuns(pr, runs) {
@@ -91,12 +98,26 @@ function finalHeadRuns(pr, runs) {
   }).sort((a, b) => (parseTimestamp(a?.created_at) ?? 0) - (parseTimestamp(b?.created_at) ?? 0));
 }
 
-function hasFailureThenSuccess(runs) {
+function normalizeStatusContext(value) {
+  return text(value).toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
+}
+
+function wipStatuses(statuses) {
+  return (statuses ?? [])
+    .filter((status) => WIP_STATUS_CONTEXTS.has(normalizeStatusContext(status?.context)))
+    .sort((a, b) => {
+      const aTime = parseTimestamp(a?.created_at ?? a?.updated_at) ?? 0;
+      const bTime = parseTimestamp(b?.created_at ?? b?.updated_at) ?? 0;
+      return aTime - bTime;
+    });
+}
+
+function statusFailureThenSuccess(statuses) {
   let sawFailure = false;
-  for (const run of runs) {
-    const conclusion = text(run?.conclusion).toLowerCase();
-    if (FAILURE_CONCLUSIONS.has(conclusion)) sawFailure = true;
-    if (sawFailure && conclusion === 'success') return true;
+  for (const status of wipStatuses(statuses)) {
+    const state = text(status?.state).toLowerCase();
+    if (state === 'failure' || state === 'error') sawFailure = true;
+    if (sawFailure && state === 'success') return true;
   }
   return false;
 }
@@ -105,20 +126,51 @@ function percent(numerator, denominator) {
   return denominator > 0 ? round(numerator / denominator * 100, 1) : null;
 }
 
-export function buildGovernanceObservation({
-  repo = DEFAULT_REPO,
-  since,
-  until,
-  generatedAt = new Date().toISOString(),
-  prs = [],
-  workflowRunsBySha = {},
-  workflowUnavailableShas = [],
-} = {}) {
+function prTouchesWindow(pr, sinceMs, untilMs) {
+  return [pr?.updated_at, pr?.merged_at, pr?.closed_at]
+    .map(parseTimestamp)
+    .some((value) => value !== null && value >= sinceMs && value <= untilMs);
+}
+
+/**
+ * @typedef {Object} GovernanceObservationInput
+ * @property {string} [repo]
+ * @property {string} since
+ * @property {string} until
+ * @property {string} [generatedAt]
+ * @property {any[]} [prs]
+ * @property {Record<string, any[]>} [workflowRunsBySha]
+ * @property {string[]} [workflowUnavailableShas]
+ * @property {Record<string, any[]>} [statusHistoryBySha]
+ * @property {string[]} [statusUnavailableShas]
+ */
+
+/**
+ * Build the current observation layer for the existing Governance Scoreboard.
+ * Unknown provider evidence remains null/unavailable rather than becoming zero.
+ *
+ * @param {GovernanceObservationInput} options
+ */
+export function buildGovernanceObservation(options) {
+  const {
+    repo = DEFAULT_REPO,
+    since,
+    until,
+    generatedAt = new Date().toISOString(),
+    prs = [],
+    workflowRunsBySha = {},
+    workflowUnavailableShas = [],
+    statusHistoryBySha = {},
+    statusUnavailableShas = [],
+  } = options ?? {};
+
   const sinceMs = parseTimestamp(since);
   const untilMs = parseTimestamp(until);
   if (sinceMs === null || untilMs === null || sinceMs > untilMs) throw new Error('since/until must be valid ISO timestamps with since <= until');
 
-  const governancePrs = prs.filter((pr) => classifyGovernancePr(pr).candidate);
+  const governancePrs = prs
+    .filter((pr) => prTouchesWindow(pr, sinceMs, untilMs))
+    .filter((pr) => classifyGovernancePr(pr).candidate);
   const merged = governancePrs.filter((pr) => Boolean(pr?.merged_at));
   const open = governancePrs.filter((pr) => text(pr?.state).toLowerCase() === 'open');
   const cycleMinutes = merged.map((pr) => {
@@ -150,34 +202,44 @@ export function buildGovernanceObservation({
     }
   }
 
-  const unavailableSet = new Set((workflowUnavailableShas ?? []).map((sha) => text(sha).toLowerCase()).filter(Boolean));
-  const workflowHistoryComplete = governancePrs.every((pr) => !unavailableSet.has(text(pr?.head?.sha).toLowerCase()));
+  const workflowUnavailableSet = new Set((workflowUnavailableShas ?? []).map((sha) => text(sha).toLowerCase()).filter(Boolean));
+  const statusUnavailableSet = new Set((statusUnavailableShas ?? []).map((sha) => text(sha).toLowerCase()).filter(Boolean));
+  const workflowHistoryComplete = governancePrs.every((pr) => !workflowUnavailableSet.has(text(pr?.head?.sha).toLowerCase()));
+  const statusHistoryComplete = governancePrs.every((pr) => !statusUnavailableSet.has(text(pr?.head?.sha).toLowerCase()));
+
   let ciAttempts = 0;
   let redundantSameHeadReruns = 0;
   let firstPassSuccess = 0;
   let firstPassDenominator = 0;
-  let metadataGateRecoveryCount = 0;
 
   if (workflowHistoryComplete) {
     for (const pr of governancePrs) {
       const sha = text(pr?.head?.sha).toLowerCase();
       const runs = finalHeadRuns(pr, workflowRunsBySha[sha] ?? workflowRunsBySha[pr?.head?.sha] ?? []);
       const ciRuns = runs.filter(isCiRun);
-      const wipRuns = runs.filter(isWipRun);
       ciAttempts += ciRuns.length;
       redundantSameHeadReruns += Math.max(0, ciRuns.length - 1);
       if (ciRuns.length) {
         firstPassDenominator += 1;
         if (text(ciRuns[0]?.conclusion).toLowerCase() === 'success') firstPassSuccess += 1;
       }
-      if (hasFailureThenSuccess(wipRuns)) metadataGateRecoveryCount += 1;
+    }
+  }
+
+  let metadataGateRecoveryCount = 0;
+  if (statusHistoryComplete) {
+    for (const pr of governancePrs) {
+      const sha = text(pr?.head?.sha).toLowerCase();
+      const statuses = statusHistoryBySha[sha] ?? statusHistoryBySha[pr?.head?.sha] ?? [];
+      if (statusFailureThenSuccess(statuses)) metadataGateRecoveryCount += 1;
     }
   }
 
   const unavailableMetrics = [];
   if (!workflowHistoryComplete) {
-    unavailableMetrics.push('ciAttempts', 'redundantSameHeadReruns', 'firstPassCi', 'metadataGateRecoveryCount');
+    unavailableMetrics.push('ciAttempts', 'redundantSameHeadReruns', 'firstPassCi');
   }
+  if (!statusHistoryComplete) unavailableMetrics.push('metadataGateRecoveryCount');
 
   const observation = {
     contractVersion: 1,
@@ -190,6 +252,7 @@ export function buildGovernanceObservation({
       'github:search/issues?is=pr&updated-window',
       'github:pull-detail',
       'github:actions/runs?head_sha=<final-head>',
+      'github:commits/<final-head>/statuses',
     ],
     counts: {
       totalGovernancePrs: governancePrs.length,
@@ -205,22 +268,20 @@ export function buildGovernanceObservation({
       mergedSampleCount: cycleMinutes.length,
       medianMinutes: round(median(cycleMinutes), 1),
     },
-    ci: workflowHistoryComplete ? {
-      attempts: ciAttempts,
-      redundantSameHeadReruns,
-      firstPass: {
-        numerator: firstPassSuccess,
-        denominator: firstPassDenominator,
-        percent: percent(firstPassSuccess, firstPassDenominator),
-      },
-      metadataGateRecoveryCount,
-    } : {
-      attempts: null,
-      redundantSameHeadReruns: null,
-      firstPass: { numerator: null, denominator: null, percent: null },
-      metadataGateRecoveryCount: null,
+    ci: {
+      attempts: workflowHistoryComplete ? ciAttempts : null,
+      redundantSameHeadReruns: workflowHistoryComplete ? redundantSameHeadReruns : null,
+      firstPass: workflowHistoryComplete
+        ? {
+          numerator: firstPassSuccess,
+          denominator: firstPassDenominator,
+          percent: percent(firstPassSuccess, firstPassDenominator),
+        }
+        : { numerator: null, denominator: null, percent: null },
+      metadataGateRecoveryCount: statusHistoryComplete ? metadataGateRecoveryCount : null,
     },
-    workflowHistoryUnavailablePrs: unavailableSet.size,
+    workflowHistoryUnavailablePrs: workflowUnavailableSet.size,
+    statusHistoryUnavailablePrs: statusUnavailableSet.size,
     unavailableMetrics,
     comparisonEligible: governancePrs.length > 0 && merged.length > 0 && unavailableMetrics.length === 0,
   };
@@ -230,7 +291,7 @@ export function buildGovernanceObservation({
 export function renderGovernanceObservation(observation) {
   const show = (value) => value === null || value === undefined ? 'N/A' : String(value);
   const lines = [
-    `# Governance Scoreboard Current Observation`,
+    '# Governance Scoreboard Current Observation',
     '',
     `- Repo: ${observation.repo}`,
     `- Window: ${observation.since} → ${observation.until}`,
@@ -279,16 +340,14 @@ async function discoverLiveInputs({ repo, since, until, token }) {
   const prs = [];
   const workflowRunsBySha = {};
   const workflowUnavailableShas = [];
+  const statusHistoryBySha = {};
+  const statusUnavailableShas = [];
   const sinceMs = Date.parse(since);
   const untilMs = Date.parse(until);
 
   for (const item of search.items ?? []) {
     const detail = await githubJson(`https://api.github.com/repos/${repo}/pulls/${item.number}`, token);
-    const updated = parseTimestamp(detail.updated_at);
-    const merged = parseTimestamp(detail.merged_at);
-    const closed = parseTimestamp(detail.closed_at);
-    const inWindow = [updated, merged, closed].some((value) => value !== null && value >= sinceMs && value <= untilMs);
-    if (!inWindow || !classifyGovernancePr(detail).candidate) continue;
+    if (!prTouchesWindow(detail, sinceMs, untilMs) || !classifyGovernancePr(detail).candidate) continue;
     prs.push(detail);
 
     const sha = text(detail?.head?.sha).toLowerCase();
@@ -299,8 +358,14 @@ async function discoverLiveInputs({ repo, since, until, token }) {
     } catch {
       workflowUnavailableShas.push(sha);
     }
+    try {
+      const statuses = await githubJson(`https://api.github.com/repos/${repo}/commits/${encodeURIComponent(sha)}/statuses?per_page=100`, token);
+      statusHistoryBySha[sha] = Array.isArray(statuses) ? statuses : [];
+    } catch {
+      statusUnavailableShas.push(sha);
+    }
   }
-  return { prs, workflowRunsBySha, workflowUnavailableShas };
+  return { prs, workflowRunsBySha, workflowUnavailableShas, statusHistoryBySha, statusUnavailableShas };
 }
 
 function parseArgs(argv) {
