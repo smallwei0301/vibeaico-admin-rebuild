@@ -30,6 +30,22 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  // IDENT, unreserved_keyword and type_func_name_keyword are all callable
+  // in PostgreSQL. Syntax-like spelling alone must never grant admission.
+  it.each([
+    'begin', 'brin', 'btree', 'conflict', 'declare', 'exception', 'exclude',
+    'filter', 'gin', 'gist', 'hash', 'if', 'join', 'loop', 'over', 'partition',
+    'raise', 'set', 'while', 'custom_routine',
+  ])('rejects callable syntax-like name %s in every immediate query wrapper', (name) => {
+    const declaration = `create function public.${name}() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024;`;
+    for (const call of [`${name}()`, `${name.toUpperCase()} /* gap */ (1)`, `"${name}"()`, `"public".${name}()`]) {
+      for (const query of [`select ${call};`, `(select ${call});`, `copy ((select ${call})) to stdout;`]) {
+        expect(() => inferMigrationRiskTier(`${declaration} ${query}`), query)
+          .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      }
+    }
+  });
+
   it.each([
     '(select "public".filter());',
     '( /* outer */ (select "public".filter()) );',
@@ -51,6 +67,9 @@ describe('Production DB release plan #447', () => {
       'copy (select 1 where exists (select 1)) to stdout;',
       'select 1 where true and (false or true);',
       'select 1 where 1 in (1, 2);',
+      'select (1 + 2) where (true);',
+      'with probe as (select 1 as id) select (id) from probe;',
+      'values (1), (2);',
       'create table public.probe(id int check (id > 0));',
       // Defining this stored routine does not execute its aggregate/FILTER.
       'create function public.filtered_count() returns bigint language sql as \u0024\u0024 select count(*) filter (where true) from public.orders; \u0024\u0024;',
@@ -60,6 +79,18 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier('select count(*) filter (where true) from public.orders;'))
       .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier('select filter() filter (where true);'))
+      .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    // A real ON CONFLICT target is syntax, but JOIN ... ON conflict() executes
+    // a boolean routine. Nested calls must not inherit an outer syntax exemption.
+    expect(inferMigrationRiskTier('insert into public.t(id) values (1) on conflict (id) do nothing;'))
+      .toBe('BACKFILL');
+    for (const query of [
+      'select 1 from public.t join public.s on conflict();',
+      'select 1 where exists (select btree());',
+      'select true and (hash() > 0);',
+      'with probe as (select gin()) select * from probe;',
+      'values (gist());',
+    ]) expect(() => inferMigrationRiskTier(query), query)
       .toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
   });
 
