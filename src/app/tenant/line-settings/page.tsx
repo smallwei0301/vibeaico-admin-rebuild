@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
+  getTenantSettings, saveLineSettings, syncLineWebhook, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
@@ -122,6 +122,7 @@ export default function LineSettingsPage() {
   const [testing, setTesting] = React.useState(false);
   const [verifying, setVerifying] = React.useState(false);
   const [disconnecting, setDisconnecting] = React.useState(false);
+  const [syncingWebhook, setSyncingWebhook] = React.useState(false);
 
   /* --- modal --- */
   const [tutorialOpen, setTutorialOpen] = React.useState(false);
@@ -374,6 +375,26 @@ export default function LineSettingsPage() {
       );
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const syncWebhook = async () => {
+    setSyncingWebhook(true);
+    try {
+      const res = await syncLineWebhook();
+      if (res.synced) {
+        toast.show(t.verifyReport.webhookSync.doneSuccess);
+        await runVerify();
+      } else {
+        toast.show(`${t.verifyReport.webhookSync.failedPrefix}${res.message}`, 'danger');
+      }
+    } catch (e) {
+      toast.show(
+        `${t.verifyReport.webhookSync.unexpectedFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setSyncingWebhook(false);
     }
   };
 
@@ -1255,7 +1276,19 @@ export default function LineSettingsPage() {
                 </div>
                 <div className="form-text">{c.message}</div>
                 {c.status === 'FAIL' && c.key === 'WEBHOOK' ? (
-                  <div className="form-text">{t.verifyReport.webhookOffHint}</div>
+                  <>
+                    <div className="form-text">{t.verifyReport.webhookOffHint}</div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      loading={syncingWebhook}
+                      loadingText={t.verifyReport.webhookSync.syncing}
+                      onClick={() => void syncWebhook()}
+                    >
+                      {t.verifyReport.webhookSync.action}
+                    </Button>
+                  </>
                 ) : null}
               </div>
             </div>
