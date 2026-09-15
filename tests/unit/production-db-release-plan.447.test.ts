@@ -129,6 +129,12 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier('select $é$--$é$; commit; drop table public.tenant_data;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
     const dynamicDmlSql = 'do ' + dollarQuote + " begin execute 'delete from public.tenant_data'; end " + dollarQuote + ';';
     expect(inferMigrationRiskTier(dynamicDmlSql)).toBe('BACKFILL');
+    expect(inferMigrationRiskTier("do 'BEGIN DELETE FROM public.tenant_data; END';")).toBe('BACKFILL');
+    expect(inferMigrationRiskTier('explain analyze delete from public.tenant_data;')).toBe('BACKFILL');
+    const dynamicDropSql = 'do ' + dollarQuote + " begin execute format('DROP %s %I.%I', 'TABLE', 'public', 'documents'); end " + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(dynamicDropSql)).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    const unresolvedDynamicSql = 'do ' + dollarQuote + ' begin execute query_text; end ' + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(unresolvedDynamicSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('set session role app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('reset role;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier('set session authorization app_user;')).toBe('AUTHZ');
