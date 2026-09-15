@@ -158,6 +158,12 @@ describe('Production DB release plan #447', () => {
     const deceptiveDoRoutineText = 'do ' + doTag + " begin raise notice 'create function dummy() returns void as $$'; delete from public.t; raise notice '$$'; end " + doTag + ';';
     expect(inferMigrationRiskTier(deceptiveDoRoutineText)).toBe('BACKFILL');
     const adjacentDynamicSql = 'do ' + dollarQuote + " begin execute 'ALTER TABLE public.t DROP CONSTRAINT old_ck'\n             '; DELETE FROM public.t'; end " + dollarQuote + ';';
+    const storedProcedureCallSql = 'create procedure public.release_wipe() language plpgsql as ' + routineTag + ' begin delete from public.t; end ' + routineTag + '; do ' + doTag + ' begin call public.release_wipe(); end ' + doTag + ';';
+    expect(() => inferMigrationRiskTier(storedProcedureCallSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    const adjacentDoBodySql = "do 'BEGIN NULL;'\n             'DELETE FROM public.t; END;';";
+    expect(() => inferMigrationRiskTier(adjacentDoBodySql)).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
+    const adjacentFormatSql = 'do ' + dollarQuote + " begin execute format('ALTER TABLE public.t DROP CONSTRAINT old_ck'\n             '; DELETE FROM public.t'); end " + dollarQuote + ';';
+    expect(() => inferMigrationRiskTier(adjacentFormatSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(adjacentDynamicSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('set session role app_user;')).toBe('AUTHZ');
     expect(inferMigrationRiskTier("set \"role\" = 'privileged_role';")).toBe('AUTHZ');
