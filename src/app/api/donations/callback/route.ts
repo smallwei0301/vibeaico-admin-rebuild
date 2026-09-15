@@ -44,8 +44,26 @@ export async function POST(req: Request) {
         });
         return new Response('0|OrderNotFound', { status: 200 });
       case 'ALREADY_PROCESSED':
+        // 訂單已經是終局狀態（PAID 或 FAILED），這一筆是重送／併發撞上的第二筆
+        // callback：不重覆寫入，但仍回 `1|OK`——訂單已經有結論，讓 ECPay 別再重試。
+        return new Response('1|OK', { status: 200 });
       case 'PROCESSED':
         return new Response('1|OK', { status: 200 });
+      case 'PROCESSED_FAILED': {
+        // 這是「第一次」把訂單判定為失敗（金額不符／SimulatePaid／RtnCode 失敗），
+        // 呼叫端不能被告知「成功」——回應刻意不是 `1|OK`，見
+        // `docs/integration/04-API-CONTRACTS.md`。
+        console.error('[donations/callback] 訂單判定失敗，標記 FAILED', {
+          donationId: outcome.donationId,
+          reason: outcome.reason,
+        });
+        const code = outcome.reason === 'AMOUNT_MISMATCH'
+          ? '0|AmountMismatch'
+          : outcome.reason === 'SIMULATED_PAYMENT'
+            ? '0|SimulatePaidRejected'
+            : '0|PaymentFailed';
+        return new Response(code, { status: 200 });
+      }
     }
   } catch (e) {
     console.error('[donations/callback] 未預期錯誤', e);

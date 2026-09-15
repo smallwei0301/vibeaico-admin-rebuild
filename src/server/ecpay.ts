@@ -15,7 +15,11 @@
  * 4. 因為 JS 的 `encodeURIComponent` 與 .NET 的 `UrlEncode` 對某些字元的編碼不同，
  *    ECPay 的官方文件要求做以下取代（皆在小寫化之後）：
  *    `%2d`→`-`、`%5f`→`_`、`%2e`→`.`、`%21`→`!`、`%2a`→`*`、`%28`→`(`、`%29`→`)`，
- *    以及空白（`%20`）→`+`。
+ *    空白（`%20`）→`+`；反過來，.NET 的 `HttpUtility.UrlEncode` 會把
+ *    `encodeURIComponent` 留白不編碼的單引號 `'`、波浪號 `~` 分別編成
+ *    `%27`／`%7e`，所以這裡也要對這兩個字元補做同樣的轉換——否則使用者輸入
+ *    帶 `'`／`~` 的欄位（例如 `display_name` 進到 `ItemName`）會讓這裡算出來的
+ *    CheckMacValue 跟 ECPay 官方算出來的對不上（issue #25 C 段 Final Risk F3）。
  * 5. SHA256 雜湊，轉大寫，得到 `CheckMacValue`。
  *
  * ## ⚠️ 本檔沒有、也不能有官方驗證向量
@@ -50,7 +54,9 @@ function dotNetStyleEncode(input: string): string {
     .replace(/%2a/g, '*')
     .replace(/%28/g, '(')
     .replace(/%29/g, ')')
-    .replace(/%20/g, '+');
+    .replace(/%20/g, '+')
+    .replace(/'/g, '%27')
+    .replace(/~/g, '%7e');
 }
 
 /**

@@ -84,6 +84,7 @@ function signedCallbackFields(input: {
   merchantTradeNo: string;
   amount: number;
   rtnCode?: string;
+  simulatePaid?: '0' | '1';
 }): Record<string, string> {
   const base = {
     MerchantID: ITEST_ECPAY_CREDENTIALS.merchantId,
@@ -94,6 +95,7 @@ function signedCallbackFields(input: {
     TradeAmt: String(input.amount),
     PaymentDate: '2026/09/15 12:00:00',
     PaymentType: 'Credit_CreditCard',
+    ...(input.simulatePaid ? { SimulatePaid: input.simulatePaid } : {}),
   };
   const mac = computeCheckMacValue(base, ITEST_ECPAY_CREDENTIALS.hashKey, ITEST_ECPAY_CREDENTIALS.hashIv);
   return { ...base, CheckMacValue: mac };
@@ -186,6 +188,22 @@ describe('POST /api/donations/callback —— fail closed', () => {
 
     const row = await dbRow(order.id);
     expect(row!.status).toBe('FAILED');
+  });
+
+  it('SimulatePaid=1：簽章與金額都對，仍不能標記 PAID（ECPay 商店後台模擬付款，不是真的收到款）', async () => {
+    const order = await createOrder(ownerA, 400, `${TAG}模擬付款`);
+    const fields = signedCallbackFields({
+      merchantTradeNo: order.merchantTradeNo,
+      amount: 400,
+      simulatePaid: '1',
+    });
+    const { status, text } = await postCallback(fields);
+    expect(status).toBe(200);
+    expect(text).not.toBe('1|OK');
+
+    const row = await dbRow(order.id);
+    expect(row!.status).toBe('FAILED');
+    expect(row!.paid_at).toBeNull();
   });
 });
 

@@ -6,6 +6,7 @@
  * `src/server/ecpay.ts` 檔頭）。全部使用測試用的假 hash key/iv（不是任何真實
  * 憑證），驗的是演算法本身的性質：能簽出來、能驗證通過、竄改會被抓到。
  */
+import { createHash } from 'crypto';
 import { describe, expect, it } from 'vitest';
 import {
   buildAioCheckoutFields,
@@ -97,6 +98,39 @@ describe('computeCheckMacValue / verifyCheckMacValue', () => {
     const mac = computeCheckMacValue(params, TEST_HASH_KEY, TEST_HASH_IV);
     expect(verifyCheckMacValue({ ...params, TotalAmount: '500', CheckMacValue: mac }, TEST_HASH_KEY, TEST_HASH_IV))
       .toBe(true);
+  });
+
+  it('單引號與波浪號依 .NET UrlEncode 規則轉成 %27／%7e 再雜湊（Final Risk F3：display_name 帶 \' 或 ~ 時不能跟 ECPay 官方算出來的值對不上）', () => {
+    // 這裡獨立重刻一份「正確」演算法（不是呼叫被測程式碼），拿來當 oracle：
+    // .NET 的 HttpUtility.UrlEncode 會把 encodeURIComponent 留白不編碼的
+    // `'`／`~` 分別編成 `%27`／`%7e`；在修好之前，computeCheckMacValue 對這
+    // 兩個字元不做轉換，算出來的雜湊會跟這個 oracle 不同，這個測試就會失敗。
+    const params = { ItemName: "Joe's Shop ~vip", TotalAmount: 500 };
+    const sortedKeys = Object.keys(params).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    const raw = [
+      `HashKey=${TEST_HASH_KEY}`,
+      ...sortedKeys.map((k) => `${k}=${(params as Record<string, string | number>)[k]}`),
+      `HashIV=${TEST_HASH_IV}`,
+    ].join('&');
+    const expectedEncoded = encodeURIComponent(raw)
+      .toLowerCase()
+      .replace(/%2d/g, '-')
+      .replace(/%5f/g, '_')
+      .replace(/%2e/g, '.')
+      .replace(/%21/g, '!')
+      .replace(/%2a/g, '*')
+      .replace(/%28/g, '(')
+      .replace(/%29/g, ')')
+      .replace(/%20/g, '+')
+      .replace(/'/g, '%27')
+      .replace(/~/g, '%7e');
+    // 先確認 oracle 本身真的把 ' 跟 ~ 編碼了，不是這個測試自己也漏做。
+    expect(expectedEncoded).toContain('%27');
+    expect(expectedEncoded).toContain('%7e');
+
+    const expectedMac = createHash('sha256').update(expectedEncoded).digest('hex').toUpperCase();
+    const actualMac = computeCheckMacValue(params, TEST_HASH_KEY, TEST_HASH_IV);
+    expect(actualMac).toBe(expectedMac);
   });
 });
 

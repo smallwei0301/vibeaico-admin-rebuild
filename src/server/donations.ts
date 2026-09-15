@@ -123,12 +123,25 @@ export async function buildDonationCheckout(input: {
   return { actionUrl, fields };
 }
 
+/** `PROCESSED_FAILED` 的理由，決定 route 層要回哪一種 ECPay 失敗代碼。 */
+export type ProcessedFailedReason = 'AMOUNT_MISMATCH' | 'SIMULATED_PAYMENT' | 'RTN_CODE_FAILED';
+
 export type CallbackOutcome =
   | { kind: 'INVALID_SIGNATURE' }
   | { kind: 'NOT_CONFIGURED' }
   | { kind: 'UNKNOWN_ORDER'; merchantTradeNo: string }
   | { kind: 'ALREADY_PROCESSED'; donationId: string }
-  | { kind: 'PROCESSED'; donationId: string; status: 'PAID' | 'FAILED' };
+  | { kind: 'PROCESSED'; donationId: string; status: 'PAID' }
+  /**
+   * 這一筆 callback 是「第一次」把訂單從 PENDING 轉成 FAILED（金額不符／
+   * SimulatePaid／RtnCode 失敗）。刻意跟 `ALREADY_PROCESSED` 分開：同一筆
+   * callback 之後被 ECPay 重送、打到一個已經是 FAILED 的訂單，走
+   * `ALREADY_PROCESSED`（回 `1|OK`，不重試已經終局的訂單）；但「第一次」
+   * 判定為失敗時，呼叫端必須知道這不是成功——回應不能是 `1|OK`
+   * （見 `docs/integration/04-API-CONTRACTS.md` 與
+   * `tests/integration/api/donations.25c.test.ts`「金額不符」案例）。
+   */
+  | { kind: 'PROCESSED_FAILED'; donationId: string; reason: ProcessedFailedReason };
 
 /**
  * POST /api/donations/callback —— ECPay server-to-server 通知（`ReturnURL`）。
@@ -167,8 +180,20 @@ export async function processDonationCallback(
 
   const rtnCode = raw.RtnCode;
   const paidAmount = Number(raw.TradeAmt ?? raw.TotalAmount ?? NaN);
-  const isSuccess = rtnCode === '1' && paidAmount === existing.amount;
+  const amountMatches = paidAmount === existing.amount;
+  const rtnOk = rtnCode === '1';
+  // `SimulatePaid=1`：ECPay 商店後台「模擬付款」測試功能，簽章合法但**不是**真的
+  // 收到款項——真商家可以從自己的 ECPay 後台觸發，絕不能被當成真實付款放行。
+  const isSimulated = raw.SimulatePaid === '1';
+  const isSuccess = rtnOk && amountMatches && !isSimulated;
   const nextStatus: 'PAID' | 'FAILED' = isSuccess ? 'PAID' : 'FAILED';
+  const failedReason: ProcessedFailedReason | null = isSuccess
+    ? null
+    : isSimulated
+      ? 'SIMULATED_PAYMENT'
+      : !amountMatches
+        ? 'AMOUNT_MISMATCH'
+        : 'RTN_CODE_FAILED';
 
   const { data: updated, error: e1 } = await admin
     .from('platform_donations')
@@ -185,7 +210,8 @@ export async function processDonationCallback(
   if (e1) throw e1;
   if (!updated) return { kind: 'ALREADY_PROCESSED', donationId: existing.id as string };
 
-  return { kind: 'PROCESSED', donationId: existing.id as string, status: nextStatus };
+  if (isSuccess) return { kind: 'PROCESSED', donationId: existing.id as string, status: 'PAID' };
+  return { kind: 'PROCESSED_FAILED', donationId: existing.id as string, reason: failedReason! };
 }
 
 /** GET /api/donations/summary */
