@@ -14,38 +14,14 @@ import { ConfirmModal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { getTenantSettings } from '@/services/settings';
+import { getPromotionStats, type PromotionRange } from '@/services/promotion';
 import { buildPublicBookingUrl } from '@/config/tenant-settings';
 import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { promotePage as t } from '@/i18n/zh-TW/pages/promote';
 import { formatNumber } from '@/lib/utils';
-
-/* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
-/* -------------------------------------------------------------------------- */
-
-/** 原站 /api/promotion/stats 的單列；source 為 utm_source，空字串＝直接造訪 */
-type PromotionStat = { source: string; pv: number; uv: number };
-
-const MOCK_PROMOTION_STATS: Record<string, PromotionStat[]> = {
-  '7': [
-    { source: 'google', pv: 128, uv: 96 },
-    { source: 'instagram', pv: 74, uv: 61 },
-    { source: 'line', pv: 52, uv: 44 },
-    { source: 'facebook', pv: 31, uv: 27 },
-    { source: '', pv: 88, uv: 70 },
-  ],
-  '30': [
-    { source: 'google', pv: 512, uv: 388 },
-    { source: 'instagram', pv: 296, uv: 231 },
-    { source: 'line', pv: 214, uv: 178 },
-    { source: 'facebook', pv: 143, uv: 118 },
-    { source: 'email', pv: 36, uv: 30 },
-    { source: '', pv: 352, uv: 284 },
-  ],
-  '90': [],
-};
+import type { PromotionStats } from '@/lib/types';
 
 /** QR Code 圖檔在骨架階段以本地占位圖代替；正式站由後端產生 */
 const QR_PLACEHOLDER_AVAILABLE = true;
@@ -58,8 +34,8 @@ export default function PromotePage() {
   const [shopCode, setShopCode] = React.useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = React.useState(true);
 
-  const [days, setDays] = React.useState('7');
-  const [stats, setStats] = React.useState<PromotionStat[]>([]);
+  const [days, setDays] = React.useState<PromotionRange>('7');
+  const [stats, setStats] = React.useState<PromotionStats | null>(null);
   const [loadingStats, setLoadingStats] = React.useState(true);
 
   const [qrConfirmOpen, setQrConfirmOpen] = React.useState(false);
@@ -85,13 +61,23 @@ export default function PromotePage() {
   React.useEffect(() => {
     let cancelled = false;
     setLoadingStats(true);
-    const timer = setTimeout(() => {
-      if (cancelled) return;
-      setStats(MOCK_PROMOTION_STATS[days] ?? []);
-      setLoadingStats(false);
-    }, 320);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [days]);
+    void (async () => {
+      try {
+        const result = await getPromotionStats(days);
+        if (!cancelled) setStats(result);
+      } catch (e) {
+        if (cancelled) return;
+        setStats(null);
+        toast.show(
+          `${t.stats.loadFailed}${e instanceof Error ? `：${e.message}` : ''}`,
+          'danger',
+        );
+      } finally {
+        if (!cancelled) setLoadingStats(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [days, toast]);
 
   const publicUrl = shopCode ? buildPublicBookingUrl(APP_URL, shopCode) : '';
 
@@ -113,13 +99,10 @@ export default function PromotePage() {
     toast.show(t.messages.downloadStarted(t.qr.filename));
   };
 
-  const sourceLabel = (source: string) => {
-    if (!source) return t.stats.directLabel;
-    const item = t.channels.items.find((c) => c.utmSource === source);
-    return item ? item.name : source;
-  };
+  const sourceLabel = (source: string) =>
+    t.stats.sourceLabels[source as keyof typeof t.stats.sourceLabels] ?? source;
 
-  const statColumns: Column<PromotionStat>[] = [
+  const bySourceColumns: Column<PromotionStats['bySource'][number]>[] = [
     {
       key: 'source', header: t.stats.columns.source,
       render: (s) => <span className="font-semibold text-dark">{sourceLabel(s.source)}</span>,
@@ -131,6 +114,18 @@ export default function PromotePage() {
     {
       key: 'uv', header: t.stats.columns.uv, numeric: true, width: '160px',
       render: (s) => formatNumber(s.uv),
+    },
+  ];
+
+  const byDayColumns: Column<PromotionStats['byDay'][number]>[] = [
+    { key: 'day', header: t.stats.byDay.columns.day, render: (d) => d.day },
+    {
+      key: 'pv', header: t.stats.byDay.columns.pv, numeric: true, width: '160px',
+      render: (d) => formatNumber(d.pv),
+    },
+    {
+      key: 'uv', header: t.stats.byDay.columns.uv, numeric: true, width: '160px',
+      render: (d) => formatNumber(d.uv),
     },
   ];
 
@@ -257,28 +252,64 @@ export default function PromotePage() {
             className="form-select-sm w-auto"
             aria-label={t.stats.heading}
             value={days}
-            onChange={(e) => setDays(e.target.value)}
+            onChange={(e) => setDays(e.target.value as PromotionRange)}
           >
             {t.stats.daysOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </Select>
         </CardHeader>
-        <DataTable
-          columns={statColumns}
-          rows={stats}
-          loading={loadingStats}
-          rowKey={(s) => s.source || 'direct'}
-          empty={
+
+        {!loadingStats && stats && !stats.hasData ? (
+          <CardBody>
             <EmptyState
               icon={BarChart3}
               title={t.stats.emptyTitle}
               description={t.stats.emptyDescription}
             />
-          }
-        />
+          </CardBody>
+        ) : (
+          <>
+            <CardBody className="flex flex-wrap gap-6 border-b border-neutral-250 pb-4">
+              <div>
+                <div className="text-2xs text-secondary">{t.stats.totals.pv}</div>
+                <div className="text-2xl font-bold text-dark">
+                  {loadingStats ? t.stats.loading : formatNumber(stats?.pv ?? 0)}
+                </div>
+              </div>
+              <div>
+                <div className="text-2xs text-secondary">{t.stats.totals.uv}</div>
+                <div className="text-2xl font-bold text-dark">
+                  {loadingStats ? t.stats.loading : formatNumber(stats?.uv ?? 0)}
+                </div>
+              </div>
+            </CardBody>
+
+            <DataTable
+              columns={bySourceColumns}
+              rows={stats?.bySource ?? []}
+              loading={loadingStats}
+              rowKey={(s) => s.source}
+            />
+
+            {stats && stats.byDay.length > 0 ? (
+              <>
+                <CardBody className="border-t border-neutral-250 pb-0 pt-4">
+                  <h6 className="text-sm font-bold text-dark">{t.stats.byDay.heading}</h6>
+                </CardBody>
+                <DataTable
+                  columns={byDayColumns}
+                  rows={stats.byDay}
+                  loading={loadingStats}
+                  rowKey={(d) => d.day}
+                />
+              </>
+            ) : null}
+          </>
+        )}
+
         <CardBody>
-          <p className="form-text">{t.stats.footnote}</p>
+          <p className="form-text">{t.stats.approximateNote}</p>
         </CardBody>
       </Card>
 

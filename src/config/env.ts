@@ -67,6 +67,14 @@ const serverSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),
+
+  /**
+   * 推廣成效匿名 visitor_hash 的每日輪替 salt 密鑰（issue #23，
+   * 見 `src/server/promotion-visitor-hash.ts`）。未設定時退回
+   * `SETTINGS_ENCRYPTION_KEY`、再退回一個固定字串（不影響公開頁可用性，
+   * 只影響 salt 隨機性），所以這裡維持 optional，不擋骨架模式全空 env 起動。
+   */
+  PROMOTION_VISITOR_SALT_SECRET: z.string().optional(),
 });
 
 const clientSchema = z.object({

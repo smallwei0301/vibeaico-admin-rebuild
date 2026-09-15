@@ -33,10 +33,14 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { loadPublicShop, type PublicShopData } from '@/server/public-shop';
+import { recordPromotionPageView } from '@/server/promotion-events';
 import { publicShopPage as t } from '@/i18n/zh-TW/pages/public-shop';
 import { formatCurrency } from '@/lib/utils';
 
-type Params = { params: Promise<{ shopCode: string }> };
+type Params = {
+  params: Promise<{ shopCode: string }>;
+  searchParams: Promise<{ src?: string }>;
+};
 
 /**
  * ⚠️ 這裡的 try/catch **不是防禦性程式碼的裝飾**，是一個實測到的資訊洩漏修補。
@@ -120,13 +124,21 @@ function ContactActions({ shop }: { shop: PublicShopData['shop'] }) {
   return <div className="flex flex-wrap gap-2">{actions}</div>;
 }
 
-export default async function PublicShopPage({ params }: Params) {
+export default async function PublicShopPage({ params, searchParams }: Params) {
   const { shopCode } = await params;
   const data = await loadPublicShop(shopCode);
   if (!data) notFound();
 
-  const { shop, trips, services } = data;
+  const { shop, trips, services, tenantId } = data;
   const hasContent = trips.length > 0 || services.length > 0;
+
+  // best-effort：`recordPromotionPageView` 內部吞掉所有錯誤、絕不丟出例外
+  // （issue #23，見 src/server/promotion-events.ts 檔頭）。這裡刻意 await 它
+  // ——Vercel serverless function 在 response 送出後可能不會保證背景 promise
+  // 跑完，不 await 等於「大概率會記到、但不保證」，而驗收要求的是「造訪真的
+  // 產生 event」，所以寧可多等這一次 insert，也不要讓埋點變成看運氣。
+  const { src } = await searchParams;
+  await recordPromotionPageView({ tenantId, path: `/s/${shopCode}`, rawSrc: src });
 
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
