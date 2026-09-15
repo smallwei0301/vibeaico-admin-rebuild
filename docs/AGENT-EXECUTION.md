@@ -94,6 +94,25 @@ current truth
 - BUILD／VERIFY 繼續遵守 §5 的 qualified `AUDIT_READY` 語意，不恢復舊的
   `TEST_VALIDATION` active-candidate tail 設計。
 
+### 1.4 分類防復發：入口、事件重查與唯讀巡查（#520）
+
+- Issue 在建立前執行 `node scripts/agents/issue-provenance-policy.mjs --body <issue.md>`。
+  本文欄位或表單 `WORKSTREAM` 標題只能有一份有效宣告；相同值重複也拒絕。
+  程式碼圍欄、引用範例與 HTML 註解不是 Issue 分類來源；漏填／衝突不能當通過。
+- Issue 宣告是規劃，不是產品安全豁免。PR 仍須依 §1.3 用完整實際檔案與 rename 兩端
+  通過原有 preflight、分類及必要 WIP 檢查；不得按標題、模型、父 Issue 或 Run 名稱猜分類。
+- Issue／PR 建立、修改本文、重新開啟及增刪分類標籤時，由現行 workflow 重新讀 live 資料。
+  只增刪自己管理的標籤，不整包覆寫；失效事件不得改寫 closed PR 的歷史狀態。
+- `agent-workstream-watch` 每日 UTC 22:17（台灣 06:17）、手動及分類巡查程式合併後執行。
+  唯讀盤點全部 open Issue／PR 與最近 72 小時更新的 closed PR，重用現行分類器，
+  檢查本文、分類標籤、純記帳範圍與完整檔案證據；舊 PR grandfathering 保留並另外計數。
+- 巡查留下 `workstream-observation.json` 與 Actions summary：一致才 PASS，發現錯誤為
+  DRIFT_DETECTED；讀取失敗、分頁不完整或讀取中版本變動為 EVIDENCE_UNAVAILABLE。
+  未知不補成零；報告綁觀測時間與 trusted policy SHA，不是一次檢查永久有效。
+- 巡查只報告，不改本文、不關單、不合併、不派 Product、不占 TEST、不取得 Production 權限。
+  修正者依具體 finding 核對後正常更新，不能為了讓報告變綠而刪除歷史證據。
+- 路徑與欄位檢查不能證明每個語意都正確；最終 exact-diff／反例審查及原有安全關卡仍必要。
+
 ## 2. 強制開工順序（低摩擦 default entry）
 
 原則：**本文件是 default execution entry，不再每輪無條件重讀整套治理背景。** 安全規則沒有減少，改成依任務 trigger 載入，降低 context、時間與「讀太多反而用錯舊規則」的摩擦。
