@@ -287,6 +287,24 @@ function hasUnverifiedRoutineInvocation(text) {
   return false;
 }
 
+function rejectUnsupportedPreparedStatements(statements) {
+  for (const statement of statements) {
+    const immediateText = stripStoredRoutineBodies(statement).trim();
+    const lexicalText = stripSqlStringLiterals(immediateText);
+    if (/^\s*(?:prepare|execute)\b/i.test(lexicalText)) {
+      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'SQL-level PREPARE/EXECUTE is not admitted by the v1 classifier');
+    }
+    if (!/^\s*do\b/i.test(lexicalText)) continue;
+    const body = immediateProceduralBody(immediateText);
+    if (body === null) continue;
+    const bodyLexical = stripSqlStringLiterals(body, true, true);
+    if (/(?:^|;|\bbegin\b)\s*prepare\b/i.test(bodyLexical)
+      || /(?:^|;|\bbegin\b)\s*execute\s+[A-Za-z_][\w$]*(?:\s*;|$)/i.test(bodyLexical)) {
+      fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'prepared SQL statements are not admitted inside an immediate procedural block');
+    }
+  }
+}
+
 function rejectImmediateRoutineInvocations(statements) {
   const checkCommandText = (text) => hasUnverifiedRoutineInvocation(
     stripSqlStringLiterals(text, true, true),
@@ -297,7 +315,7 @@ function rejectImmediateRoutineInvocations(statements) {
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
     const topLevelExecutable = /^\s*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
-      || /^\s*create\s+(?:(?:temporary|temp|unlogged)\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
+      || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
@@ -694,6 +712,7 @@ export function inferMigrationRiskTier(sql) {
   // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
   const statements = splitSqlStatements(text);
   rejectUnsupportedRoutineLiteralBodies(statements);
+  rejectUnsupportedPreparedStatements(statements);
   rejectImmediateRoutineInvocations(statements);
   rejectImmediateConfigurationMutations(statements);
   if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
