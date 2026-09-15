@@ -65,7 +65,9 @@ export function pendingProductionMigrations(aliasMap = {}) {
 }
 
 function quotedTokenEnd(input, start, quote) {
-  const backslashEscapes = quote === "'" && /[eE]/.test(input[start - 1] ?? '');
+  const backslashEscapes = quote === "'"
+    && /[eE]/.test(input[start - 1] ?? '')
+    && !/[\p{L}\p{N}_$]/u.test(input[start - 2] ?? '');
   let index = start + 1;
   while (index < input.length) {
     if (backslashEscapes && input[index] === '\\' && index + 1 < input.length) {
@@ -352,6 +354,9 @@ function hasImmediateBackfillDml(text) {
     const lexicalText = stripSqlStringLiterals(immediateText);
     const procedural = /^do\b/i.test(lexicalText);
     const body = procedural ? immediateProceduralBody(immediateText) : null;
+    if (procedural && body === null) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unrecognized DO body form is not admitted');
+    }
     const executableBody = body === null ? '' : stripSqlStringLiterals(body, true);
     const directDml = /^(?:update\b|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(lexicalText);
     const explainedDml = /^explain\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
@@ -412,7 +417,7 @@ export function inferMigrationRiskTier(sql) {
   if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?role\b|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement))) {
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)\b|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
