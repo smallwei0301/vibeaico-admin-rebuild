@@ -103,6 +103,7 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier('drop view public.t;')).toThrow(/UNCLASSIFIED_DROP_NOT_ADMITTED/);
     expect(inferMigrationRiskTier('alter table public.t enable row level security; drop policy p on public.t;')).toBe('AUTHZ');
     expect(() => inferMigrationRiskTier("select '--'; drop table public.t;")).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('select 1 /* unterminated')).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM/);
     expect(inferMigrationRiskTier('update "public"."t" set x=1 where id=1;')).toBe('BACKFILL');
     expect(() => inferMigrationRiskTier('grant select on public.t to authenticated; update public.t set x=1;'))
       .toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);

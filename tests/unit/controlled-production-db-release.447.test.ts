@@ -65,6 +65,21 @@ describe('Controlled Production DB writer #447', () => {
     expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap: aliasMap(), liveLedgerRows: [...beforeRows, { version: 'x', name: 'manual_unknown' }] })).toThrow(/LIVE_LEDGER_DRIFT/);
   });
 
+  it('builds a valid ledger reconciliation for an empty live baseline', () => {
+    const emptyAliasMap = {
+      schemaVersion: 1,
+      entries: [{ repoFile: '0109_assertions', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' }],
+    };
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: emptyAliasMap, readCanonicalSql,
+    });
+    const sql = buildAtomicProductionApplySql({
+      plan: p, aliasMap: emptyAliasMap, liveLedgerRows: [], readCanonicalSql,
+    });
+    expect(sql).toContain('select null::text as name, null::text as version where false');
+  });
+
   it('builds one atomic transaction with DB advisory lock before live recheck, exact main SQL and ledger identity', () => {
     const p = plan();
     const sql = buildAtomicProductionApplySql({ plan: p, aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql });

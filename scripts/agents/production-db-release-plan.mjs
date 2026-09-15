@@ -129,14 +129,24 @@ export function stripSqlComments(sql) {
     if (char === '/' && next === '*') {
       output += '  ';
       index += 2;
-      while (index < input.length && !(input[index] === '*' && input[index + 1] === '/')) {
+      let depth = 1;
+      while (index < input.length && depth > 0) {
+        if (input[index] === '/' && input[index + 1] === '*') {
+          output += '  ';
+          index += 2;
+          depth += 1;
+          continue;
+        }
+        if (input[index] === '*' && input[index + 1] === '/') {
+          output += '  ';
+          index += 2;
+          depth -= 1;
+          continue;
+        }
         output += input[index] === '\n' ? '\n' : ' ';
         index += 1;
       }
-      if (index < input.length) {
-        output += '  ';
-        index += 2;
-      }
+      if (depth !== 0) fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'unterminated block SQL comment');
       continue;
     }
     output += char;
