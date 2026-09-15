@@ -6,6 +6,7 @@ import {
   attachActualChangedFiles,
   parseLaneMetadata,
   pilotCapacity,
+  shouldApplyProductGlobalWip,
   summarizeActiveLanes,
   validateActualFileOwnership,
   validateGlobalWip,
@@ -194,6 +195,34 @@ describe('dual Terra peer validation', () => {
     expect(validateGlobalWip(summary)).toContain(
       'Active TERRA_BUILD and TEST_VALIDATION lanes must belong to the same RUN_ID',
     );
+  });
+
+  it('applies Product global WIP to Product lanes but not to pure Governance', () => {
+    expect(shouldApplyProductGlobalWip(parseLaneMetadata(pilotPr(20, 120, 1, true, 'src/a')))).toBe(true);
+
+    const governance = parseLaneMetadata({
+      number: 99,
+      state: 'open',
+      body: `- WORK_ORIGIN: AGENT
+- AGENT_LANE: GOVERNANCE
+- LANE_STATE: ACTIVE
+- ACTIVE_CANDIDATE: false
+- CLOSEABILITY_SCORE: 5
+- SELECTION_REASON: GOVERNANCE
+- REMAINING_AUTONOMOUS_STEPS: verify and merge
+- OWNER_OR_EXTERNAL_BLOCKER: none
+- CLOSURE_SWEEP_TARGET: none
+- TEST_LANE_REQUIRED: false
+- REQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown
+- BPLUS_MODE: false
+- RUN_ID: none
+- RESERVE_BOUNDARY: none
+- SCORECARD_PATH: none`,
+    });
+    expect(shouldApplyProductGlobalWip(governance)).toBe(false);
+
+    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/agent-wip-guard.yml'), 'utf8');
+    expect(workflow).toContain('policy.shouldApplyProductGlobalWip(metadata)');
   });
 
   it('allows a declared directory root to cover its actual descendant files', () => {
