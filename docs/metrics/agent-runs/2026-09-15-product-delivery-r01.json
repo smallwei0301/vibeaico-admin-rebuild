@@ -158,7 +158,7 @@
         "id": "issue-44-production-db-release-final-risk",
         "requestedModel": "unknown",
         "actualModel": "unknown",
-        "role": "Issue #44 Production 環境 migration 0105（租戶群組化重構）套用前的高風險 Final Risk（Astra gate）委派。實際委派模型：claude-fable-5-1。完整檢視源遷移檔、TEST/Production 套前狀態對齐、RLS 租戶隔離、安全性 advisor、冪等性保證。回報 ASTRA_VERDICT=PASS（with apply conditions）。經 Owner 授權後於 2026-09-15 套用至 Production 專案 egehnijjpgijmccagxac 單一事務，完整 post-apply readback 驗證 TEST 一致性。",
+        "role": "Issue #44 Production 環境 migration 0105（旅客風險政策：append-only 帳本表 traveler_risk_policies 與 traveler_risk_current_policy view）套用前的高風險 Final Risk（Astra gate）委派。實際委派模型：claude-fable-5-1。完整檢視源遷移檔、TEST/Production 套前狀態對齐、RLS 租戶隔離、安全性 advisor、冪等性保證。回報 ASTRA_VERDICT=PASS（with apply conditions）。經 Owner 授權後於 2026-09-15 套用至 Production 專案 egehnijjpgijmccagxac 單一事務，完整 post-apply readback 驗證 TEST 一致性。",
         "count": 1,
         "contextClass": "full",
         "accepted": true,
