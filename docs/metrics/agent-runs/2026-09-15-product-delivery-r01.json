@@ -322,6 +322,19 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-228-pr507-merge",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "Issue #228 PR #507（exact-SHA Preview canary Ignored Build Step 修復）CI 全綠後 merge 進 main，merge commit cd710fe8。已完成 Completion Truth 五點驗證（re-fetch PR 確認 merged=true、ref=main 重讀 scripts/ci/production-deploy-canary.mjs 確認 projectSettings.commandForIgnoringBuildStep 已生效）。已在 Issue #228 留言記錄剩餘步驟（實際 dispatch preview_canary workflow 需要 VERCEL_TOKEN，不在本 session 權限內，標記 OWNER/EXTERNAL_CONFIG，釋放 BUILD slot）。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ]
   },
@@ -334,8 +347,8 @@
     "waitTimeConvertedPercent": null,
     "solTouches": 2,
     "solIssues": 0,
-    "terraSlots": 1,
-    "terraActive": 1
+    "terraSlots": 0,
+    "terraActive": 0
   },
   "delivery": {
     "issuesStarted": 3,
@@ -380,6 +393,7 @@
     "claims": []
   },
   "notes": [
+    "PR #507（Issue #228 exact-SHA Preview canary Ignored Build Step 修復）CI 全綠後 merge commit cd710fe8 進 main，已完成 Completion Truth 五點驗證。剩餘步驟（實際 dispatch preview_canary workflow）為 OWNER/EXTERNAL_CONFIG 被擋（需要 VERCEL_TOKEN 存取），釋放 BUILD slot 供下一輪補充。",
     "PR #506（Issue #477 P1a LINE webhook sync）merge commit a48f684d 併入 main，merge 前解決一筆真實 merge conflict（與 PR #504 同時修改 run ledger），已驗證 Completion Truth 五點。PR #507（Issue #228 exact-SHA canary 修復）新開，dual-Terra 第二槽接續，檔案無重疊，符合 dual-Terra guard。",
     "第 s02 輪 LUNA_CLOSURE：scout 對全部 12 張 open PR 做真實掃描，結論 EMPTY_WITH_SCAN，報告 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s02.md；解除 PR #506 的 Agent WIP Guard 阻擋。",
     "本 Run 延續 /goal PRODUCT DELIVERY MAIN SESSION 指令：WORKSTREAM=PRODUCT_MAINLINE，governance/metrics 工作僅在直接卡住 Product Slice 時才做。",
