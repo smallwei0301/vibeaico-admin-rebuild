@@ -228,7 +228,7 @@ function assertSingleRiskTier(tiers = []) {
 }
 
 export function inferMigrationRiskTier(sql) {
-  const text = stripComments(sql);
+  const text = stripSqlComments(sql);
 
   // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
   // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、

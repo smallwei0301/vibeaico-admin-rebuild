@@ -15,6 +15,23 @@ function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
+function normalizedLedgerRows(rows = []) {
+  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
+  const normalized = rows.map((row) => {
+    const version = String(row?.version ?? '').trim();
+    const name = String(row?.name ?? '').trim();
+    if (!name || !version) fail('INVALID_LEDGER_IDENTITY', 'live ledger rows require non-empty name and version');
+    return { version, name };
+  });
+  const names = normalized.map((row) => row.name);
+  if (new Set(names).size !== names.length) fail('DUPLICATE_LIVE_LEDGER_NAME', 'live Production ledger has duplicate migration names');
+  return normalized;
+}
+
+function normalizedLedgerNames(rows) {
+  return normalizedLedgerRows(rows).map((row) => row.name).sort();
+}
+
 export function expectedAppliedLedgerNames(aliasMap = {}) {
   if (aliasMap?.schemaVersion !== 1 || !Array.isArray(aliasMap?.entries)) fail('INVALID_ALIAS_MAP', 'ledger alias map is unavailable');
   const names = [];
