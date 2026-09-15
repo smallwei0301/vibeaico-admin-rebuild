@@ -14,6 +14,7 @@ function terraPr({
   completionClaim = 'IN_PROGRESS',
   activeCandidate = true,
   dual = true,
+  ownership = `src/feature-${number}`,
 }: {
   number: number;
   issue: number;
@@ -21,6 +22,7 @@ function terraPr({
   completionClaim?: 'IN_PROGRESS' | 'AUDIT_READY';
   activeCandidate?: boolean;
   dual?: boolean;
+  ownership?: string;
 }) {
   return {
     number,
@@ -52,13 +54,13 @@ supersedes:
 - TEST_PROFILE: LOCAL_ISOLATED
 - TEST_ENV_ID: local-${number}
 - FINAL_CANONICAL_REQUIRED: true
-- FILE_OWNERSHIP: src/feature-${number}
+- FILE_OWNERSHIP: ${ownership}
 - COMPLETION_CLAIM: ${completionClaim}`,
   };
 }
 
 describe('Issue #499 BUILD / verification-tail refill semantics', () => {
-  it('allows two BUILD lanes plus one AUDIT_READY verification tail within WIP=3', () => {
+  it('allows two qualified BUILD lanes plus one qualified AUDIT_READY verification tail within WIP=3', () => {
     const rows = [
       terraPr({ number: 501, issue: 41, slot: 1 }),
       terraPr({ number: 502, issue: 42, slot: 2 }),
@@ -103,7 +105,7 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
     );
   });
 
-  it('does not let an AUDIT_READY candidate count as a BUILD lane', () => {
+  it('does not let a qualified AUDIT_READY candidate count as a BUILD lane', () => {
     const summary = summarizeActiveLanes([
       terraPr({ number: 503, issue: 43, slot: 1, completionClaim: 'AUDIT_READY' }),
     ]);
@@ -113,6 +115,21 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
     expect(summary.activeCandidates).toHaveLength(1);
   });
 
+  it('keeps AUDIT_READY in BUILD occupancy when the dual/refill contract is not enabled', () => {
+    const summary = summarizeActiveLanes([
+      terraPr({
+        number: 503,
+        issue: 43,
+        slot: 1,
+        completionClaim: 'AUDIT_READY',
+        dual: false,
+      }),
+    ]);
+
+    expect(summary.activeTerra).toHaveLength(1);
+    expect(summary.verifyingTerra).toHaveLength(0);
+  });
+
   it('keeps IN_PROGRESS candidates in BUILD occupancy', () => {
     const summary = summarizeActiveLanes([
       terraPr({ number: 501, issue: 41, slot: 1, completionClaim: 'IN_PROGRESS', dual: false }),
@@ -120,6 +137,46 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
 
     expect(summary.activeTerra).toHaveLength(1);
     expect(summary.verifyingTerra).toHaveLength(0);
+  });
+
+  it('blocks a refill BUILD that overlaps an AUDIT_READY tail ownership boundary', () => {
+    const summary = summarizeActiveLanes([
+      terraPr({ number: 501, issue: 41, slot: 1, ownership: 'src/shared' }),
+      terraPr({
+        number: 503,
+        issue: 43,
+        slot: 2,
+        completionClaim: 'AUDIT_READY',
+        ownership: 'src/shared/route.ts',
+      }),
+    ]);
+
+    expect(validateGlobalWip(summary)).toContain(
+      'BUILD / AUDIT_READY FILE_OWNERSHIP overlaps: PR #501 <> PR #503: src/shared <> src/shared/route.ts',
+    );
+  });
+
+  it('blocks overlapping verification tails that could conflict at merge', () => {
+    const summary = summarizeActiveLanes([
+      terraPr({
+        number: 503,
+        issue: 43,
+        slot: 1,
+        completionClaim: 'AUDIT_READY',
+        ownership: 'src/shared',
+      }),
+      terraPr({
+        number: 504,
+        issue: 44,
+        slot: 2,
+        completionClaim: 'AUDIT_READY',
+        ownership: 'src/shared/file.ts',
+      }),
+    ]);
+
+    expect(validateGlobalWip(summary)).toContain(
+      'AUDIT_READY FILE_OWNERSHIP overlaps: PR #503 <> PR #504: src/shared <> src/shared/file.ts',
+    );
   });
 
   it('AUDIT_READY does not let a candidate escape ordinary active B+ validation', () => {
@@ -133,7 +190,7 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
 
     const errors = validateGlobalWip(summarizeActiveLanes([malformed]));
     expect(errors).toContain(
-      'Verifying Terra PR #503: An active TERRA_BUILD must set ACTIVE_CANDIDATE=true',
+      'Active Terra PR #503: An active TERRA_BUILD must set ACTIVE_CANDIDATE=true',
     );
   });
 });
