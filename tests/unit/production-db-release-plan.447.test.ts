@@ -170,6 +170,11 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier(preparedDmlSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
     const proceduralPreparedDmlSql = 'do ' + dollarQuote + ' begin prepare wipe as delete from public.t; execute wipe; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(proceduralPreparedDmlSql)).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('explain analyze execute wipe;')).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    for (const tempTablePrefix of ['create global temp table', 'create local temporary table']) {
+      expect(() => inferMigrationRiskTier(tempTablePrefix + ' public.release_probe as execute wipe;'))
+        .toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    }
     const qualifiedKeywordRoutineSql = 'create function public.filter() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; do ' + dollarQuote + ' declare n integer := public.filter(); begin null; end ' + dollarQuote + ';';
     expect(() => inferMigrationRiskTier(qualifiedKeywordRoutineSql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     const unicodeRoutineInvocationSql = 'create function public.清除() returns integer as ' + routineTag + ' begin delete from public.t; return 1; end ' + routineTag + ' language plpgsql; select public.清除();';
