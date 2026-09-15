@@ -29,7 +29,7 @@
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
     "sharedTestPeak": 0,
-    "closureSweeps": 4,
+    "closureSweeps": 5,
     "closureAdvancedOrClosed": 0
   },
   "modelUsage": {
@@ -272,6 +272,32 @@
         "actualModelId": "claude-haiku-4-5"
       },
       {
+        "id": "issue-25b-pr524-terra-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "Issue #25 B 段 support-chat 完整客服對話串 TERRA_BUILD 施工（build 層，claude-sonnet-5）：新增 migration supabase/migrations/0117_issue_25b_support_chat_threads.sql，建立 support_chat_threads 與 support_chat_messages 表；新增 GET /api/support/chat/:threadId endpoint；/tenant/support-chat 頁面整頁實作，包含客服對話清單、訊息串。本地隔離 Supabase 驗證 0001–0117 全套用成功、unit 測試全綠、build 成功。PR #524 開立並通過 Agent WIP Guard。施工過程中發生 migration 編號衝突（0116 與 PR #519 重複，改為 0117），同步修正 fresh-install-compatibility-baseline manifest.json 的 mainHead 指標。CI historical-compatibility-candidate 兩輪（第一輪因既有 tour-admin.spec.ts flake 失敗，第二輪全綠）。已完成 Completion Truth 五點驗證（merge_commit_sha 9717cc39 確認為 main head）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-25b-pr524-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #524 的高風險 Final Risk（Astra gate）覆核委派。實際委派模型：claude-fable-5-1。ASTRA_RISK=TENANT_AUTH_BOUNDARY+SUPPORT_CHAT_SCHEMA：新增 support_chat_threads/support_chat_messages 表與客服租戶隔離邊界、ACL 簽名完整性、訊息順序保證。本機隔離 Supabase 驗證租戶隔離與 RLS 邊界、message threading 一致性。回報 ASTRA_VERDICT=CLOSE_APPROVED。另內含一次窄範圍複審（merge conflict 解決後的 manifest.json 修正驗證），確認 canonicalSourceDigest 重計正確。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      },
+      {
         "id": "issue-477-webhook-sync-terra-build",
         "requestedModel": "terra",
         "actualModel": "terra",
@@ -507,7 +533,7 @@
     "terraActive": 0
   },
   "delivery": {
-    "issuesStarted": 5,
+    "issuesStarted": 6,
     "issuesClosed": 1,
     "slicesCompleted": 0,
     "slicesInProgress": 2,
@@ -519,9 +545,9 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "lastCheckSha": "a7a6e97e8a2c1f0a8b5d3e2c6f1a9b4d7e2f0a1",
-    "lastCheckConclusion": "failure",
-    "fullCiRuns": 2,
+    "lastCheckSha": "9717cc39312cca235552e90ac94ec8dc72e717a",
+    "lastCheckConclusion": "success",
+    "fullCiRuns": 4,
     "invalidReruns": 0,
     "sharedTestCollisions": 0,
     "firstPassRatePercent": null
@@ -564,6 +590,7 @@
     "PR #513（Issue #23 推廣成效統計真實資料）squash-merge commit bac104db 併入 main：新增 0113 migration 建立 page_view_events 表（RLS 限制 authenticated SELECT + is_tenant_member + 無 INSERT policy），GET /api/promotion/stats endpoint，公開頁面事件紀錄（?src=qr|line），/tenant/promote 頁面用真實 PV/近似 UV/來源/日統計取代假數字，含空態。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 覆核，本機隔離 Supabase 驗證 RLS 邊界（anon 0 筆禁插、authenticated 租戶隔離、service_role 可寫），回報 PASS。審計期間發現 PR 原 head CI 紅燈（fresh-install-baseline manifest digest 過期），PR body 誤稱「乾淨 main 亦失敗」——Fable 審計員驗證基數與合併基數，兩者 9/9 綠，推翻假聲稱；本 session 推送 commit 3b153b3c 修復 digest，正確測試 2464/2464 全綠，並修正 PR body 誤報後簽認。已完成 Completion Truth 五點驗證（merge_commit_sha bac104db 確認為 main head）。Issue #23 仍開啟，外部驗證缺口：Preview/E2E 公開頁面接納、tests/integration/api/promotion-stats.23.test.ts HTTP 驗收（RLS 斷言逕驗、未跑 HTTP）、migration 0113 套用 TEST/Production（待授權）、180 天清理 cron 在 vercel.json 排程（待授權）。本 PR 代表真實使用者可見新功能已發運至 main（非測試硬化），非 Issue #23 完全收尾。",
     "PR #515（Issue #22 橫幅影片兩階段上傳）squash-merge commit 4163566ee 併入 main：新增 0114 migration 建立 banner-videos Storage bucket（public，50MiB 限額，video MIME 限定，無直接寫入 policy）與 banner_video_pending_uploads 表（RLS 啟用、零 policy）；三支租戶範圍 API routes 實作簽署上傳流程（presign/confirm/delete）；24 小時孤檔清理 cron（未排程）；/tenant/shop-design 橫幅影片頁籤接線（替換非功能按鈕）。ASTRA_RISK=TENANT_AUTH_BOUNDARY Final Risk 由 claude-fable-5-1 執行極為詳盡的現場測試：本機隔離 Supabase 確認 storage.objects 零新 policy、banner_video_pending_uploads 零 policy；用 `set local role` 與實際 Storage HTTP API 驗證行為（租戶 A 成員 403、anon 403、越境 token 400、超大／誤 MIME 413/415、metadata 形狀一致）。Verdict: PASS。非阻斷發現：(1) MIME 檢查為標籤檢查、無迴歸；(2) DELETE 失敗後孤檔、儲存衛生缺口；(3) presign 排序邊界。已貼回詳細報告與簽認。已完成 Completion Truth 五點驗證（merge_commit_sha 4163566e 確認為 main head，ref=main 重讀 confirm route 確認已生效）。Issue #22 仍開啟（Part A 已出貨、Part B 先行出貨於 PR #469），餘缺：Preview/瀏覽器驗收、tests/integration/api/** HTTP 測試、migration 0114 套用 TEST/Production（待授權）、cleanup cron 排程 vercel.json（待授權）。本 PR 真實使用者可見新功能已發運（shop 負責人可新增／替換／刪除橫幘影片於商店設定頁，replace 既有非功能按鈕），非 Issue #22 完全收尾。",
     "PR #517（Issue #21 外部行事曆 ICS 同步 SSRF 防護）squash-merge commit 5a11847c 併入 main：新增 external_calendar 表儲存租戶行事曆訂閱 URL（SSRF guard 驗證、加密），GET /api/calendar/external 端點聚合外部事件，ICS 解析與事件匯入邏輯。ASTRA_RISK=EXTERNAL_NETWORK_SSRF Final Risk 由 claude-fable-5-1 首次覆核回報 FIX_REQUIRED（GET /api/calendar 在 external_calendar_events 查詢失敗時拋 500），本 session 修復例外處理並新增迴歸測試；二次覆核驗證 SSRF guard 邊界完整（scheme 白名單、IP 範圍、DNS rebind、TLS 驗證），回報 ASTRA_VERDICT=PASS。CI 全綠，已完成 Completion Truth 五點驗證（merge_commit_sha 5a11847c 確認為 main head）。Issue #21 已關閉。",
-    "本輪 s03 LUNA_CLOSURE 補充掃描（scout 層）：確認 #477 於本輪 PR #506 merge（webhook sync）已解決且不再是 closure candidate（已出貨非持續阻擋之功能）；確認 #228（exact-SHA canary 修復）PR #507 merge 已出貨核心修復，餘下 OWNER/EXTERNAL_CONFIG 被擋之 workflow dispatch 步驟，非 BUILD candidate。EMPTY_WITH_SCAN 結論維持。"
+    "PR #524（Issue #25 B 段 support-chat 完整客服對話串）merge commit 9717cc39 進 main：新增 0117 migration 建立 support_chat_threads 與 support_chat_messages 表（租戶隔離、ACL 簽名、訊息序列完整）；GET /api/support/chat/:threadId endpoint；/tenant/support-chat 頁面整頁實作（對話清單、訊息串、基本排序與尋找）。施工期間發生 migration 編號衝突（0116 與 PR #519 重複），改為 0117，同步修正 manifest.json mainHead。ASTRA_RISK=TENANT_AUTH_BOUNDARY+SUPPORT_CHAT_SCHEMA Final Risk 由 claude-fable-5-1 覆核（租戶隔離、RLS 邊界驗證、訊息順序保證），回報 ASTRA_VERDICT=CLOSE_APPROVED；內含窄範圍複審確認 manifest 修正。CI historical-compatibility-candidate 兩輪（第一輪既有 tour-admin.spec.ts flake 失敗，第二輪全綠）。已完成 Completion Truth 五點驗證（merge_commit_sha 9717cc39 確認為 main head）。Issue #25 仍開啟（C 段 platform donate 未做，卡在平台 ECPay credentials 缺失）。",
+    "本輪 s05 LUNA_CLOSURE 補充掃描（scout 層）：Issue #25 B 段（support-chat）已於本輪 PR #524 merge 完成，不再是 closure candidate。確認 open Issue 中無其他進行中之 BUILD candidate。EMPTY_WITH_SCAN 結論：掃描清單詳見 docs/metrics/closure-sweeps/2026-09-15-product-delivery-r01-s05.md（包含所有 open Issue 現況與不是候選的逐項理由）。"
   ]
 }
