@@ -3,6 +3,7 @@ import { extname, join, relative } from 'node:path';
 import process from 'node:process';
 
 const SCANNED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.yml', '.yaml']);
+const AUDIT_SOURCE_PATH = 'scripts/agents/production-db-writer-bypass-audit.mjs';
 const ALLOWED_WRITE_ENDPOINT_FILES = new Set([
   'scripts/db/controlled-production-db-release.mjs',
   'scripts/db/run-migrations.mjs',
@@ -82,7 +83,11 @@ export function auditProductionDbWriterBypasses(sources = {}) {
 
   for (const [path, sourceValue] of Object.entries(sources)) {
     const source = String(sourceValue);
-    if (hasWriteEndpoint(source)) writeEndpointFiles.push(path);
+    // This audit source contains the endpoint-matching regex as inert source text.
+    // Exclude only this scanner file from endpoint discovery so it cannot classify
+    // its own detector literal as a database writer. All other scripts/workflows
+    // remain in the executable-surface scan.
+    if (path !== AUDIT_SOURCE_PATH && hasWriteEndpoint(source)) writeEndpointFiles.push(path);
     if (/process\.env\.SUPABASE_ACCESS_TOKEN/.test(source) && path !== 'scripts/db/run-migrations.mjs' && path !== 'scripts/db/schema-fingerprint-diff.mjs') {
       broadTokenConsumers.push(path);
     }
