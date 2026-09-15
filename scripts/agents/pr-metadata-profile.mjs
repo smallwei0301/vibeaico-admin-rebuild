@@ -150,6 +150,20 @@ export function materializeProfileBody(body = '') {
   return { valid: true, profile: name, body: output, generated: rows.map(([field]) => field), errors: [] };
 }
 
+/**
+ * Materialize compact profile input, then ask the existing preflight to validate
+ * the explicit result. This keeps one validation contract instead of inventing a
+ * profile-specific remote guard.
+ *
+ * @param {{
+ *   body?: string,
+ *   changedFiles?: string[] | null,
+ *   prNumber?: number | string,
+ *   action?: string,
+ *   repositoryRoot?: string,
+ *   fileExists?: (path: import('node:fs').PathLike) => boolean,
+ * }} [input]
+ */
 export function validateProfileBody({
   body = '',
   changedFiles = null,
