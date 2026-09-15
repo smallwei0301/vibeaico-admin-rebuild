@@ -14,7 +14,7 @@ import {
 
 const runId = '2026-09-02-dual-pilot-r01';
 
-function pilotPr(number: number, issue: number, slot: number, active: boolean, ownership: string) {
+function pilotPr(number: number, issue: number, slot: number, active: boolean, ownership: string, selectedRunId = runId) {
   return {
     number,
     state: 'open',
@@ -25,8 +25,8 @@ supersedes:
 -->
 - WORK_ORIGIN: AGENT
 - BPLUS_MODE: true
-- RUN_ID: ${runId}
-- SCORECARD_PATH: docs/metrics/agent-runs/${runId}.json
+- RUN_ID: ${selectedRunId}
+- SCORECARD_PATH: docs/metrics/agent-runs/${selectedRunId}.json
 - AGENT_LANE: TERRA_BUILD
 - LANE_STATE: ACTIVE
 - ACTIVE_CANDIDATE: ${active}
@@ -34,7 +34,7 @@ supersedes:
 - SELECTION_REASON: CLOSE_READY
 - REMAINING_AUTONOMOUS_STEPS: local test, canonical test, audit and merge
 - OWNER_OR_EXTERNAL_BLOCKER: none
-- CLOSURE_SWEEP_TARGET: REPORT:docs/metrics/agent-runs/${runId}.json
+- CLOSURE_SWEEP_TARGET: REPORT:docs/metrics/agent-runs/${selectedRunId}.json
 - TEST_LANE_REQUIRED: false
 - RESERVE_BOUNDARY: none
 - WHY_NOT_CLOSER_CANDIDATE: none
@@ -45,6 +45,39 @@ supersedes:
 - TEST_ENV_ID: AUTO_PR_${number}
 - FINAL_CANONICAL_REQUIRED: true
 - FILE_OWNERSHIP: ${ownership}`,
+  };
+}
+
+function verifyPr(number: number, issue: number, selectedRunId = runId) {
+  return {
+    number,
+    state: 'open',
+    body: `<!-- pr-lifecycle
+issue: ${issue}
+state: ACTIVE
+supersedes:
+-->
+- WORK_ORIGIN: AGENT
+- BPLUS_MODE: true
+- RUN_ID: ${selectedRunId}
+- SCORECARD_PATH: docs/metrics/agent-runs/${selectedRunId}.json
+- AGENT_LANE: TEST_VALIDATION
+- LANE_STATE: ACTIVE
+- ACTIVE_CANDIDATE: true
+- CLOSEABILITY_SCORE: 4
+- SELECTION_REASON: CLOSE_READY
+- REMAINING_AUTONOMOUS_STEPS: canonical TEST, final audit and merge
+- OWNER_OR_EXTERNAL_BLOCKER: none
+- CLOSURE_SWEEP_TARGET: none
+- TEST_LANE_REQUIRED: true
+- RESERVE_BOUNDARY: none
+- WHY_NOT_CLOSER_CANDIDATE: none
+- REQUESTED_MODEL / ACTUAL_MODEL: requested=Terra; actual=unknown
+- DUAL_TERRA_PILOT: false
+- TEST_PROFILE: CANONICAL
+- TEST_ENV_ID: CANONICAL_TEST
+- FINAL_CANONICAL_REQUIRED: true
+- FILE_OWNERSHIP: none`,
   };
 }
 
@@ -108,6 +141,59 @@ describe('dual Terra peer validation', () => {
 
     expect(validateGlobalWip(summary)).toEqual([]);
     expect(pilotCapacity(summary)).toEqual({ terraMax: 2, reserveMax: 0, qualified: true });
+  });
+
+  it('accepts two qualified BUILD lanes plus one VERIFY tail as the full three-candidate pipeline', () => {
+    const summary = attachActualChangedFiles(
+      summarizeActiveLanes([
+        pilotPr(20, 120, 1, true, 'src/app/api/bookings'),
+        pilotPr(21, 121, 2, true, 'src/app/api/bug-report'),
+        verifyPr(22, 119),
+      ]),
+      {
+        20: ['src/app/api/bookings/[id]/route.ts'],
+        21: ['src/app/api/bug-report/route.ts'],
+      },
+    );
+
+    expect(summary.activeTerra).toHaveLength(2);
+    expect(summary.activeTest).toHaveLength(1);
+    expect(summary.activeCandidates).toHaveLength(3);
+    expect(validateGlobalWip(summary)).toEqual([]);
+    expect(pilotCapacity(summary)).toEqual({ terraMax: 2, reserveMax: 0, qualified: true });
+  });
+
+  it('still rejects a third BUILD lane', () => {
+    const summary = summarizeActiveLanes([
+      pilotPr(20, 120, 1, true, 'src/a'),
+      pilotPr(21, 121, 2, true, 'src/b'),
+      pilotPr(22, 122, 1, true, 'src/c'),
+    ]);
+
+    expect(validateGlobalWip(summary)).toContain(
+      'active TERRA_BUILD count is 3; max is 2 during the free local pilot',
+    );
+  });
+
+  it('still rejects two VERIFY tails', () => {
+    const summary = summarizeActiveLanes([
+      pilotPr(20, 120, 1, true, 'src/a'),
+      verifyPr(30, 119),
+      verifyPr(31, 118),
+    ]);
+
+    expect(validateGlobalWip(summary)).toContain('active TEST_VALIDATION count is 2; max is 1');
+  });
+
+  it('rejects mixing BUILD and VERIFY tails from different Product Runs', () => {
+    const summary = summarizeActiveLanes([
+      pilotPr(20, 120, 1, true, 'src/a'),
+      verifyPr(30, 119, '2026-09-15-other-r01'),
+    ]);
+
+    expect(validateGlobalWip(summary)).toContain(
+      'Active TERRA_BUILD and TEST_VALIDATION lanes must belong to the same RUN_ID',
+    );
   });
 
   it('allows a declared directory root to cover its actual descendant files', () => {
