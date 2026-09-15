@@ -119,7 +119,9 @@ function assertCommon(packet, nowMs) {
 
   const consistency = packet.consistency ?? {};
   assertStatus(consistency.status, 'CONSISTENCY_VERIFIED', 'consistency.status');
-  if (Number(consistency.unexplainedDifferences) !== 0) fail('UNEXPLAINED_DRIFT', 'unexplained database differences must be zero');
+  if (consistency.unexplainedDifferences !== 0 || !Number.isSafeInteger(consistency.unexplainedDifferences)) {
+    fail('UNEXPLAINED_DRIFT', 'unexplained database differences must be the exact numeric value 0');
+  }
   assertFresh(
     consistency.observedAt,
     'consistency.observedAt',
