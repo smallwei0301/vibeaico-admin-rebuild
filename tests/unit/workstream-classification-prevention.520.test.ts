@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -154,9 +155,15 @@ describe('Issue workflow executes current state and owns only its labels', () =>
       setLabels: vi.fn(() => { throw new Error('whole-label replacement forbidden'); }),
     };
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-    await new AsyncFunction('github', 'context', 'core', 'require', script)(
+    // Vitest's VM cannot import inside AsyncFunction. Inject only the loader, not policy results.
+    const executable = script.replace('await import(', 'await importPolicy(');
+    const loadPolicy = async (url: string) => {
+      expect(url).toBe(pathToFileURL(path.resolve('scripts/agents/issue-provenance-policy.mjs')).href);
+      return { validateIssueProvenance };
+    };
+    await new AsyncFunction('github', 'context', 'core', 'require', 'importPolicy', executable)(
       { rest: { issues: api } }, { repo: { owner: 'test', repo: 'repo' }, payload: { issue: issue() } },
-      { summary, setFailed: failed }, createRequire(import.meta.url),
+      { summary, setFailed: failed }, createRequire(import.meta.url), loadPolicy,
     );
     expect(api.get).toHaveBeenCalledTimes(2);
     expect(api.setLabels).not.toHaveBeenCalled();
