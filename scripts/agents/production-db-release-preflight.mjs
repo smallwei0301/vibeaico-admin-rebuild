@@ -189,6 +189,7 @@ function assertRiskAdaptiveEvidence(packet, riskTier) {
     if (!Number.isSafeInteger(data.maxRows) || data.maxRows < 1 || data.maxRows > PRODUCTION_DB_POLICY.maxBackfillRowsPerRelease) {
       fail('BACKFILL_RELEASE_LIMIT', `maxRows must be 1..${PRODUCTION_DB_POLICY.maxBackfillRowsPerRelease}`);
     }
+    fail('BACKFILL_EXECUTOR_NOT_ADMITTED', 'v1 controlled writer does not execute arbitrary BACKFILL SQL');
   }
 }
 
