@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  attachActualChangedFiles,
   summarizeActiveLanes,
   validateGlobalWip,
 } from '../../scripts/agents/dual-terra-wip-policy.mjs';
@@ -176,6 +177,25 @@ describe('Issue #499 BUILD / verification-tail refill semantics', () => {
 
     expect(validateGlobalWip(summary)).toContain(
       'AUDIT_READY FILE_OWNERSHIP overlaps: PR #503 <> PR #504: src/shared <> src/shared/file.ts',
+    );
+  });
+
+  it('verifies actual changed-file coverage for an AUDIT_READY tail before freeing its BUILD slot', () => {
+    const summary = summarizeActiveLanes([
+      terraPr({
+        number: 503,
+        issue: 43,
+        slot: 1,
+        completionClaim: 'AUDIT_READY',
+        ownership: 'src/feature-503',
+      }),
+    ]);
+    attachActualChangedFiles(summary, {
+      '503': ['src/feature-503/route.ts', 'docs/unowned.md'],
+    });
+
+    expect(validateGlobalWip(summary)).toContain(
+      'Dual Terra PR #503 changed files outside FILE_OWNERSHIP: docs/unowned.md',
     );
   });
 
