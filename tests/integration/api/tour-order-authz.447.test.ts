@@ -1,13 +1,15 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SHOP_A, SHOP_B, STAFF_A2, TRIP_A } from '../../fixtures';
+import { SHOP_B, STAFF_A2, TRIP_A } from '../../fixtures';
 import { loginAs, type AuthedApi } from '../../helpers/auth';
 
 let staffApi: AuthedApi;
+let ownerBApi: AuthedApi;
 let staffClient: SupabaseClient;
 
 beforeAll(async () => {
   staffApi = await loginAs(STAFF_A2.email, STAFF_A2.password);
+  ownerBApi = await loginAs(SHOP_B.owner.email, SHOP_B.owner.password);
   staffClient = createClient(process.env.TEST_SUPABASE_URL!, process.env.TEST_SUPABASE_ANON_KEY!, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
@@ -27,6 +29,16 @@ describe('#447 / 0110 create_tour_order AUTHZ boundary', () => {
       partySize: 1,
     });
     expect(response.status).toBe(403);
+  });
+
+  it('cross-tenant owner cannot use another tenant departure', async () => {
+    const response = await ownerBApi.post('/api/tour-orders/manual', {
+      departureId: TRIP_A.departure1,
+      customerName: '#447 cross-tenant forbidden',
+      customerPhone: '0912345678',
+      partySize: 1,
+    });
+    expect([403, 404]).toContain(response.status);
   });
 
   it('authenticated role cannot invoke SECURITY DEFINER create_tour_order directly', async () => {
