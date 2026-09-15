@@ -112,8 +112,9 @@ export function analyzeScorecardReadiness(run) {
     }
 
     const verifiedClosed = verifiedIssueCloseCount(run);
-    if (verifiedClosed > num(run?.delivery?.issuesClosed)) {
-      consistencyWarnings.push(`verified ISSUE_CLOSED subjects=${verifiedClosed} exceeds delivery.issuesClosed=${num(run?.delivery?.issuesClosed)}`);
+    const recordedClosed = num(run?.delivery?.issuesClosed);
+    if ((verifiedClosed > 0 || recordedClosed > 0) && verifiedClosed !== recordedClosed) {
+      consistencyWarnings.push(`verified ISSUE_CLOSED subjects=${verifiedClosed} disagrees with delivery.issuesClosed=${recordedClosed}`);
     }
   }
 
@@ -124,13 +125,9 @@ export function analyzeScorecardReadiness(run) {
     return isMissing(value);
   });
 
-  const checks = [
-    validationErrors.length === 0,
-    rawCaptureGaps.length === 0,
-    consistencyWarnings.length === 0,
-  ];
-  const passed = checks.filter(Boolean).length;
-  const liveReadinessPercent = Math.round((passed / checks.length) * 1000) / 10;
+  const readyForContinuedCapture = validationErrors.length === 0
+    && rawCaptureGaps.length === 0
+    && consistencyWarnings.length === 0;
 
   return {
     runId: run?.runId ?? null,
@@ -138,7 +135,7 @@ export function analyzeScorecardReadiness(run) {
     validationErrors,
     scoreProfileTarget,
     observedScoreEffectiveAt: OBSERVED_SCORE_EFFECTIVE_AT,
-    liveReadinessPercent,
+    liveCaptureStatus: readyForContinuedCapture ? 'LIVE_CAPTURE_READY' : 'NEEDS_CAPTURE',
     rawCaptureGaps,
     consistencyWarnings,
     terminalOnlyPending,
@@ -152,8 +149,9 @@ export function analyzeScorecardReadiness(run) {
       invalidReruns: num(run?.ci?.invalidReruns),
       closureSweeps: num(run?.inventory?.closureSweeps),
       verifiedIssueClosedSubjects: verifiedIssueCloseCount(run),
+      recordedIssuesClosed: num(run?.delivery?.issuesClosed),
     },
-    readyForContinuedCapture: validationErrors.length === 0 && rawCaptureGaps.length === 0 && consistencyWarnings.length === 0,
+    readyForContinuedCapture,
   };
 }
 
@@ -164,7 +162,7 @@ export function renderScorecardReadiness(result) {
     `- Target score profile: ${result.scoreProfileTarget}`,
     `- OBSERVED_V1 effective at: ${result.observedScoreEffectiveAt}`,
     `- Ledger valid: ${result.validLedger ? 'YES' : 'NO'}`,
-    `- Live readiness: ${result.liveReadinessPercent}%`,
+    `- Live capture status: ${result.liveCaptureStatus}`,
     `- Raw capture healthy: ${result.readyForContinuedCapture ? 'YES' : 'NO'}`,
     '',
     '## Observed raw facts',
@@ -174,7 +172,7 @@ export function renderScorecardReadiness(result) {
     `- Sol task records / recorded Sol touches: ${result.observed.solTaskCount} / ${result.observed.recordedSolTouches}`,
     `- full CI / invalid reruns: ${result.observed.fullCiRuns} / ${result.observed.invalidReruns}`,
     `- closure sweeps: ${result.observed.closureSweeps}`,
-    `- verified ISSUE_CLOSED subjects: ${result.observed.verifiedIssueClosedSubjects}`,
+    `- verified / recorded ISSUE_CLOSED: ${result.observed.verifiedIssueClosedSubjects} / ${result.observed.recordedIssuesClosed}`,
   ];
 
   if (result.validationErrors.length) {
@@ -195,7 +193,8 @@ export function renderScorecardReadiness(result) {
     ...(result.terminalOnlyPending.length ? result.terminalOnlyPending.map((item) => `- ${item}`) : ['- none']),
     '',
     '> Sol task records and flow.solTouches are shown side-by-side but are not asserted equal: the repository defines solTouches as triage/audit touches, not as a strict alias of task-record count.',
-    '> Readiness never rewrites a legacy Run into OBSERVED_V1. Runs started before the cutoff remain LEGACY_V2. For new OBSERVED_V1 Runs, this tool checks raw capture health without requiring legacy manual percentage fields.',
+    '> Readiness is a categorical capture gate, not a score. It never rewrites a legacy Run into OBSERVED_V1. Runs started before the cutoff remain LEGACY_V2.',
+    '> For new OBSERVED_V1 Runs, this tool checks raw capture health without requiring legacy manual percentage fields.',
     '',
   );
   return lines.join('\n');
