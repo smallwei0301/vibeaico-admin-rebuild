@@ -66,6 +66,34 @@ describe('Controlled Production DB writer #447', () => {
   afterEach(() => { vi.useRealTimers(); });
 
   it.each([
+    'begin', 'brin', 'btree', 'conflict', 'declare', 'exception', 'exclude',
+    'filter', 'gin', 'gist', 'hash', 'if', 'join', 'loop', 'over', 'partition',
+    'raise', 'set', 'while', 'custom_routine',
+  ])('rejects syntax-like routine %s in query wrappers before any network request', async (name) => {
+    for (const call of [`${name}()`, `${name.toUpperCase()} /* gap */ (1)`, `"${name}"()`, `"public".${name}()`]) {
+      for (const query of [`select ${call};`, `(select ${call});`, `copy ((select ${call})) to stdout;`]) {
+        const sql = `create function public.${name}() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; ${query}`;
+        // Recreate a previously admitted ADDITIVE plan with correct byte and
+        // digest bindings. Both public boundaries must reclassify the SQL.
+        const p = plan();
+        p.migrations[0].sha256 = sha256(Buffer.from(sql));
+        p.planDigest = releasePlanDigestOf(p);
+        const evidence = packet(p);
+        expect(() => buildAtomicProductionApplySql({
+          plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+          liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+        }), query).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+        const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+        await expect(runControlledProductionRelease({
+          plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+          readCanonicalSql: () => sql, fetchImpl: fetchSpy as unknown as typeof fetch,
+        }), query).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+        expect(fetchSpy, query).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it.each([
     'select filter();',
     '(select "public".filter());',
     'copy (select "public".filter()) to stdout;',
