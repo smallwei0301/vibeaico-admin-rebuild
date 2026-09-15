@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-15-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-15T02:15:00Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "issue/42",
+      "note": "Owner directive 2026-09-15：Issue #42 durationMinutes/priceType/yearRound persistence + create_tour_order PER_GROUP pricing fix，TERRA_BUILD lane 正在進行，PR #464 開立待 ASTRA_RISK=PAYMENT_CONSISTENCY Final Risk 檢核。"
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "3bef80c5ae1f6e5b8c7d9e2a1b3c4d5f6e7a8b9c",
+      "note": "本 Run 起算時的 origin/main head。"
+    }
+  ],
+  "main": {
+    "startSha": "3bef80c5ae1f6e5b8c7d9e2a1b3c4d5f6e7a8b9c",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 45,
+    "openIssuesEnd": null,
+    "openPrsStart": 17,
+    "openPrsEnd": null,
+    "mainTerraPeak": 1,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 1,
+    "sharedTestPeak": 0,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": 0,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "issue-42-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#42 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：real durationMinutes/priceType/yearRound 欄位持久化、tour 建檔表單改寫、create_tour_order PER_GROUP 價格計算。PR #464 開立，ASTRA_RISK=PAYMENT_CONSISTENCY，觸發 Final Risk 檢核。施工進行中，未完成。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "tour-platform-pricing-scout",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "tour-platform 同類型定價與審核工作流參考盤點（scout 層，claude-haiku-4-5）：掃描 tour-platform repo 的 review-workflow 狀態機制與分期定價邏輯，做為本輪 slice 的參考（非程式碼直接重用，僅作設計依據）。回報採用，查出 review-workflow state machine 在 src/services/review-workflow.ts 行 42-98。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
+      },
+      {
+        "id": "issue-42-pr464-final-risk",
+        "requestedModel": "unknown",
+        "actualModel": "unknown",
+        "role": "PR #464 的高風險 Final Risk（Astra gate）覆核委派。ASTRA_RISK=PAYMENT_CONSISTENCY：create_tour_order 新增 per-group 定價邏輯與金額計算。Final Risk 不屬 luna/terra/sol 三個 tier，ledger 的 tier 值域無法表達它，故記為 unknown 並在此說明實際模型。已委派 claude-fable-5-1。Guard 目前待 Astra attestation。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-fable-5-1"
+      }
+    ]
+  },
+  "flow": {
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": 100,
+    "solTouches": 0,
+    "solIssues": [],
+    "terraSlots": 1,
+    "terraActive": 1
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "slicesCompleted": 0,
+    "slicesInProgress": 1
+  },
+  "ci": {
+    "lastCheckSha": null,
+    "lastCheckConclusion": null,
+    "fullCiRuns": 0
+  }
+}
