@@ -316,13 +316,18 @@ function dynamicExecuteFragments(body) {
   return fragments;
 }
 
+function formatPlaceholdersAreBounded(template) {
+  const residual = String(template).replaceAll('%I', '').replaceAll('%%', '');
+  return !residual.includes('%');
+}
+
 function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
   const formatCall = /^\s*\(*\s*format\s*\(/i.test(fragment);
   const templateStatements = splitSqlStatements(template);
   const boundedConstraintRepair = /^alter\s+table\b[\s\S]*\bdrop\s+constraint\b/i.test(lexicalTemplate)
-    && !/%(?!I\b)[A-Za-z]/i.test(template)
+    && formatPlaceholdersAreBounded(template)
     && templateStatements.length === 1;
   if (boundedConstraintRepair) return 'SCHEMA_REPAIR';
   if (/\bdrop\b|\btruncate\b|\balter\s+table\b[\s\S]*\bdrop\b/i.test(fragment)) {
@@ -376,6 +381,16 @@ export function highestRiskTier(tiers = []) {
   return selected;
 }
 
+function rejectUnsupportedRoutineLiteralBodies(statements) {
+  for (const statement of statements) {
+    const lexical = stripSqlStringLiterals(statement);
+    if (/^\s*create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexical)
+      && /\bas\s+(?:[eE]|[uU]&)?\s*'/i.test(statement)) {
+      fail('UNSUPPORTED_SQL_LEXICAL_FORM', 'single-quoted routine bodies are not admitted by the fail-closed classifier');
+    }
+  }
+}
+
 function rejectUnclassifiedDropStatements(text) {
   const fragments = splitSqlStatements(text)
     .map((fragment) => stripStoredRoutineBodies(stripSqlStringLiterals(fragment)))
@@ -408,6 +423,7 @@ export function inferMigrationRiskTier(sql) {
   // 則不是同一件事：例如 0109 在已知漂移環境中，會先拿掉舊 CHECK/default、
   // 把欄位型別修回 canonical enum，再於同一 transaction 重建正確約束。
   const statements = splitSqlStatements(text);
+  rejectUnsupportedRoutineLiteralBodies(statements);
   if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
@@ -417,7 +433,7 @@ export function inferMigrationRiskTier(sql) {
   if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop\s+constraint\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\bdrop\s+default\b|\balter\s+table\b[\s\S]*\balter\s+column\b[\s\S]*\btype\b/i.test(statement))) {
     specialized.push('SCHEMA_REPAIR');
   }
-  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement))) {
+  if (statements.some((statement) => /\b(create|alter|drop)\s+policy\b|\b(?:enable|disable|force|no force)\s+row\s+level\s+security\b|\bgrant\b|\brevoke\b|\bsecurity\s+(definer|invoker)\b|\b(?:auth\.|tenant_role|is_tenant_member)\b|\breassign\s+owned\b|\balter\s+group\b[\s\S]*\b(?:add|drop)\s+user\b|\b(?:alter|create)\s+(?:role|user|group)\b|\b(?:alter|create)\s+(?:role|user)\b[\s\S]*\b(?:bypassrls|nobypassrls|superuser|nosuperuser|createrole|nocreaterole|createdb|nocreatedb|replication|noreplication|inherit|noinherit|login|nologin)\b|\b(?:alter\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|routine|type|domain|foreign\s+table)|create\s+(?:table|schema|sequence|view|materialized\s+view|function|procedure|type))\b[\s\S]*\bowner\s+to\b|\b(?:create|alter)\s+(?:or\s+replace\s+)?(?:view|materialized\s+view)\b[\s\S]*\bsecurity_(?:invoker|barrier)\b|\bcreate\s+schema\b[\s\S]*\bauthorization\b|\bset\s+(?:(?:local|session)\s+)?(?:"role"|role)(?![\p{L}\p{N}_$])|\breset\s+role\b|\bset\s+(?:(?:local|session)\s+)?authorization\b|\balter\s+default\s+privileges\b/i.test(statement))) {
     specialized.push('AUTHZ');
   }
   if (hasImmediateBackfillDml(text)) specialized.push('BACKFILL');
