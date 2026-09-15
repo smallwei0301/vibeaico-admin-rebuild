@@ -85,13 +85,23 @@ function readAliasMap(repoRoot) {
   return JSON.parse(readFileSync(resolve(repoRoot, 'supabase/ledger-alias-map.json'), 'utf8'));
 }
 
+/**
+ * Build the Production release plan only from an exact trusted-main checkout.
+ * @param {{
+ *   releaseId: string,
+ *   mainSha: string,
+ *   plannedAt: string,
+ *   repoRoot?: string,
+ *   runner?: typeof spawnSync,
+ * }} input
+ */
 export function buildTestReleasePlanFromCheckout({
   releaseId,
   mainSha,
   plannedAt,
   repoRoot = process.cwd(),
   runner = spawnSync,
-} = {}) {
+} = /** @type {any} */ ({})) {
   const exactMain = exactSha(mainSha);
   assertTrustedMainCheckout(exactMain, repoRoot, runner);
   return buildProductionDbReleasePlan({
@@ -103,11 +113,18 @@ export function buildTestReleasePlanFromCheckout({
   });
 }
 
+/**
+ * @param {{
+ *   token?: string,
+ *   projectRef?: string,
+ *   fetchImpl?: typeof fetch,
+ * }} input
+ */
 export async function captureTestProviderLedger({
   token,
   projectRef = TEST_PROJECT_REF,
   fetchImpl = fetch,
-} = {}) {
+} = /** @type {any} */ ({})) {
   const target = assertTestReleaseTarget(projectRef);
   if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN is required');
   const response = await fetchImpl(`${API}/v1/projects/${target}/database/query/read-only`, {
@@ -191,7 +208,10 @@ export function buildAtomicTestReleaseValidationSql({
   return { sql: statements.join('\n\n'), decisions };
 }
 
-async function executeAtomicTestRelease({ token, projectRef = TEST_PROJECT_REF, sql, fetchImpl = fetch } = {}) {
+/**
+ * @param {{token?: string, projectRef?: string, sql?: string, fetchImpl?: typeof fetch}} input
+ */
+async function executeAtomicTestRelease({ token, projectRef = TEST_PROJECT_REF, sql, fetchImpl = fetch } = /** @type {any} */ ({})) {
   const target = assertTestReleaseTarget(projectRef);
   if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN is required');
   const response = await fetchImpl(`${API}/v1/projects/${target}/database/query`, {
@@ -213,6 +233,21 @@ function verifyPostTestLedger(plan, rows) {
   return result;
 }
 
+/**
+ * Execute the locked release plan on canonical TEST only. Production is rejected
+ * before any network request. The returned envelope is TEST evidence only and
+ * never a Production mutation credential.
+ * @param {{
+ *   plan: any,
+ *   token: string,
+ *   projectRef?: string,
+ *   sourceRunId: string | number,
+ *   sourceRunAttempt: number,
+ *   repoRoot?: string,
+ *   fetchImpl?: typeof fetch,
+ *   runner?: typeof spawnSync,
+ * }} input
+ */
 export async function validateProductionDbReleasePlanOnTest({
   plan,
   token,
@@ -222,7 +257,7 @@ export async function validateProductionDbReleasePlanOnTest({
   repoRoot = process.cwd(),
   fetchImpl = fetch,
   runner = spawnSync,
-} = {}) {
+} = /** @type {any} */ ({})) {
   const target = assertTestReleaseTarget(projectRef);
   if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN is required');
   const runId = String(sourceRunId ?? '').trim();
@@ -285,7 +320,7 @@ async function main() {
         token: process.env.TEST_DB_RELEASE_TOKEN,
         projectRef: process.env.TEST_PROJECT_REF || TEST_PROJECT_REF,
         sourceRunId: process.env.GITHUB_RUN_ID,
-        sourceRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        sourceRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
       });
       writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`);
       return;
