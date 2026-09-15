@@ -249,6 +249,37 @@ function stripStoredRoutineBodies(statement) {
   return input;
 }
 
+function hasConflictActionContinuation(input, start) {
+  if (/^\s*do\s+(?:nothing|update)\b/i.test(input.slice(start))) return true;
+  const predicate = /^\s*where\b/i.exec(input.slice(start));
+  if (!predicate) return false;
+  // Locate DO outside predicate parentheses/quoted identifiers. This only
+  // recognizes the CONFLICT clause; the caller still scans every nested call.
+  let index = start + predicate[0].length;
+  while (index < input.length) {
+    const char = input[index];
+    if (char === '(') {
+      index = matchingParenthesisEnd(input, index);
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      index = quotedTokenEnd(input, index, char);
+      continue;
+    }
+    if (char === ')' || char === ';') return false;
+    const word = /^[\p{ID_Start}_][\p{ID_Continue}_$]*/u.exec(input.slice(index));
+    if (word) {
+      if (word[0].toLowerCase() === 'do') {
+        return /^do\s+(?:nothing|update)\b/i.test(input.slice(index));
+      }
+      index += word[0].length;
+    } else {
+      index += 1;
+    }
+  }
+  return false;
+}
+
 function isSqlParenthesisSyntax(name, before, input, openIndex) {
   // PostgreSQL gram.y: an unqualified func_name is a type_function_name
   // (IDENT, unreserved_keyword or type_func_name_keyword). Only non-callable
@@ -266,7 +297,7 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
   // would be a routine call); require the INSERT conflict-action continuation.
   if (name === 'conflict' && /\bon\s*$/i.test(before)) {
     const close = matchingParenthesisEnd(input, openIndex);
-    return /^\s*do\s+(?:nothing|update)\b/i.test(input.slice(close));
+    return hasConflictActionContinuation(input, close);
   }
   return false;
 }
@@ -325,6 +356,16 @@ function rejectUnsupportedPreparedStatements(statements) {
   }
 }
 
+function indexAccessMethodColumnListStart(text) {
+  // Only this anchored CREATE INDEX prefix makes btree/hash syntax rather
+  // than a routine call. Leave the column expressions and predicate intact.
+  const identifier = '(?:"(?:[^"]|"")*"|[\\p{ID_Start}_][\\p{ID_Continue}_$]*)';
+  const prefix = new RegExp('^create\\s+(?:unique\\s+)?index\\s+(?:concurrently\\s+)?'
+    + '(?:if\\s+not\\s+exists\\s+)?(?:' + identifier + '\\s+)?on\\s+(?:only\\s+)?'
+    + identifier + '(?:\\s*\\.\\s*' + identifier + ')?\\s+using\\s+(?:btree|hash)\\s*(?=\\()', 'iu');
+  return prefix.exec(stripSqlStringLiterals(text, true, true))?.[0].length ?? -1;
+}
+
 function rejectImmediateRoutineInvocations(statements) {
   const checkCommandText = (text) => hasUnverifiedRoutineInvocation(
     stripSqlStringLiterals(text, true, true),
@@ -340,8 +381,13 @@ function rejectImmediateRoutineInvocations(statements) {
     // even if a caller describes them as immutable or as deferred defaults.
     if (/^(?:create|alter)\b/i.test(lexicalText)
       && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexicalText)) {
+      const indexColumnsStart = indexAccessMethodColumnListStart(immediateText);
       for (const expression of lexicalText.matchAll(/\b(?:check|default|using|as|where|generated|partition)\b/gi)) {
-        if (checkCommandText(immediateText.slice(expression.index + expression[0].length))) {
+        let expressionStart = expression.index + expression[0].length;
+        if (/^using$/i.test(expression[0]) && expressionStart < indexColumnsStart) {
+          expressionStart = indexColumnsStart;
+        }
+        if (checkCommandText(immediateText.slice(expressionStart))) {
           fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'DDL expression routine invocation is not admitted');
         }
       }
