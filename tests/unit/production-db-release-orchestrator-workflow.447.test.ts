@@ -26,6 +26,7 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
     const readyGate = position('- name: Require machine POLICY_GATED_ACTIVE before any release evidence job');
     const firstWriterSecret = position('PRODUCTION_DB_RELEASE_TOKEN: ${{ secrets.PRODUCTION_DB_RELEASE_TOKEN }}');
     expect(readyGate).toBeLessThan(firstWriterSecret);
+    expect(source).toContain("test \"$GITHUB_REF\" = 'refs/heads/main'");
     expect(source).toContain('git rev-parse origin/main');
     expect(source).toContain("readiness.status !== 'AUTOMATION_READY'");
     expect(source).toContain("readiness.authorizationMode !== 'POLICY_GATED_ACTIVE'");
