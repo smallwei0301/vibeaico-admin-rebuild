@@ -1,5 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import * as dualPolicy from '../../scripts/agents/dual-terra-wip-policy.mjs';
+import * as alertPolicy from '../../scripts/agents/wip-alert-fingerprint.mjs';
+import * as astraPolicy from '../../scripts/agents/astra-review-policy.mjs';
+import * as boundaryPolicy from '../../scripts/agents/governance-workstream-boundary.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyWorkstream } from '../../scripts/agents/astra-review-policy.mjs';
 import { parseLaneMetadata } from '../../scripts/agents/agent-wip-policy.mjs';
@@ -63,7 +69,9 @@ function truth(body: string, changedFiles: any[] = ['supabase/migrations/0113_te
     commitStatuses: [{ context: 'Vercel', state: 'success', description: 'Deployment has completed' }] });
 }
 
-// Execute the actual trusted workflow script, with only GitHub I/O replaced.
+// Execute the actual trusted workflow script with real policy modules and fake GitHub I/O.
+// Vitest's VM cannot dynamically import from AsyncFunction. Replace module loading only,
+// not policy behavior: each exact trusted file URL resolves to its real static import.
 async function runWorkflow(file: string, current = subject(), files: any[] = paths, peers: any[] = []) {
   vi.stubEnv('GITHUB_WORKSPACE', process.cwd());
   const failures: string[] = []; const statuses: any[] = []; const calls: string[] = [];
@@ -99,10 +107,22 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
   const source = readFileSync(file, 'utf8').split('          script: |\n')[1];
   expect(source).toBeTruthy();
   const script = source.split('\n').map(line => line.replace(/^ {12}/, '')).join('\n');
+  const modules = new Map<string, unknown>([
+    ['dual-terra-wip-policy.mjs', dualPolicy],
+    ['wip-alert-fingerprint.mjs', alertPolicy],
+    ['astra-review-policy.mjs', astraPolicy],
+    ['governance-workstream-boundary.mjs', boundaryPolicy],
+  ].map(([name, module]) => [pathToFileURL(resolve(process.cwd(), 'scripts/agents', String(name))).href, module]));
+  const loadPolicy = async (specifier: string) => {
+    if (!modules.has(specifier)) throw new Error(`Unexpected policy module: ${specifier}`);
+    return modules.get(specifier);
+  };
+  const executable = script.replace(/\bimport\s*\(/g, 'loadPolicy(');
+  expect(executable).not.toMatch(/\bimport\s*\(/);
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  await new AsyncFunction('require', 'process', 'github', 'context', 'core', script)(
+  await new AsyncFunction('require', 'process', 'github', 'context', 'core', 'loadPolicy', executable)(
     createRequire(import.meta.url), process, github, context,
-    { summary, setFailed: (message: string) => failures.push(message), warning: () => {} });
+    { summary, setFailed: (message: string) => failures.push(message), warning: () => {} }, loadPolicy);
   return { failures, statuses, calls, labels };
 }
 afterEach(() => vi.unstubAllEnvs());
