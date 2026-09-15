@@ -62,6 +62,9 @@ export class LineMockServer {
 
   private server: Server | undefined;
   private failQueue: number[] = [];
+  /** 覆寫 GET /v2/bot/info 的回應內容（issue #477 line-verify 三態測試用）；
+   * null 代表用預設固定值。傳整個物件取代，呼叫端自行決定要不要帶 chatMode。 */
+  private botInfoOverride: Record<string, any> | null = null;
   private hold: {
     path: string;
     hit: boolean;
@@ -131,13 +134,15 @@ export class LineMockServer {
         }
         if (path === '/v2/bot/info') {
           res.end(
-            JSON.stringify({
-              userId: 'Umockbot0000000000000000000000000',
-              basicId: '@mockbot',
-              displayName: 'Mock 官方帳號',
-              chatMode: 'bot',
-              markAsReadMode: 'auto',
-            }),
+            JSON.stringify(
+              this.botInfoOverride ?? {
+                userId: 'Umockbot0000000000000000000000000',
+                basicId: '@mockbot',
+                displayName: 'Mock 官方帳號',
+                chatMode: 'bot',
+                markAsReadMode: 'auto',
+              },
+            ),
           );
           return;
         }
@@ -176,8 +181,19 @@ export class LineMockServer {
   reset(): void {
     this.requests.length = 0;
     this.failQueue = [];
+    this.botInfoOverride = null;
     this.hold?.release?.();
     this.hold = null;
+  }
+
+  /**
+   * 覆寫下一次（含之後，直到再次呼叫或 reset()）GET /v2/bot/info 的回應內容；
+   * 傳 null 還原預設固定值。issue #477 line-verify.06 測試用來模擬
+   * chatMode='bot'/'chat'/缺欄位三種情境（AUTO_REPLY 三者皆應回 WARN，見
+   * src/app/api/settings/line/verify/route.ts 檔頭說明）。
+   */
+  setBotInfo(payload: Record<string, any> | null): void {
+    this.botInfoOverride = payload;
   }
 
   /** 暫停下一個指定路徑的回應，直到 release()。 */

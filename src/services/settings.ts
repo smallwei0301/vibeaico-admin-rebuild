@@ -311,15 +311,27 @@ export const testLineConnection = () =>
     () => request<{ ok: boolean; message: string }>('/api/settings/line/test', { method: 'POST' }),
   );
 
+/**
+ * 三態語意（Issue #477 P0）：status 為 'PASS' | 'WARN' | 'FAIL'；`pass` 欄位保留
+ * 相容（`pass === (status === 'PASS')`），呼叫端計算失敗數須用 status==='FAIL'，
+ * 不得把 WARN 算進失敗數。AUTO_REPLY 恆回 WARN——LINE 無公開 API 可直接查詢
+ * 該開關本身，見 src/app/api/settings/line/verify/route.ts 檔頭說明。
+ */
 export const verifyLineSetup = () =>
-  adapt<{ checks: { key: string; pass: boolean; message: string }[] }>(
+  adapt<{ checks: { key: string; status: 'PASS' | 'WARN' | 'FAIL'; pass: boolean; message: string }[] }>(
     () => ({
       checks: [
-        { key: 'TOKEN', pass: true, message: 'Channel Access Token 有效' },
-        { key: 'WEBHOOK', pass: true, message: 'Webhook URL 已設定且可連線' },
-        { key: 'AUTO_REPLY', pass: false, message: 'LINE 官方帳號的「自動回應訊息」仍為開啟，會攔截 Bot 訊息' },
-        { key: 'RICH_MENU', pass: true, message: 'Rich Menu 已發布' },
-        { key: 'QUOTA', pass: true, message: '本月推播額度尚有 68 則' },
+        { key: 'TOKEN', status: 'PASS', pass: true, message: 'Channel Access Token 有效' },
+        { key: 'WEBHOOK', status: 'PASS', pass: true, message: 'Webhook URL 已設定且可連線' },
+        {
+          key: 'AUTO_REPLY',
+          status: 'WARN',
+          pass: false,
+          message:
+            '「自動回應訊息」開關無公開 API 可直接查詢，請自行至 LINE Official Account Manager 確認並視需要關閉，避免攔截 Bot 訊息',
+        },
+        { key: 'RICH_MENU', status: 'PASS', pass: true, message: 'Rich Menu 已發布' },
+        { key: 'QUOTA', status: 'PASS', pass: true, message: '本月推播額度尚有 68 則' },
       ],
     }),
     () => request('/api/settings/line/verify', { method: 'POST' }),
