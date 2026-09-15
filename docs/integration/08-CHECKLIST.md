@@ -233,6 +233,25 @@
       時五項皆 FAIL 且零 LINE 請求、`pass`/`status` 相容不變式）。
       變異驗證：把 AUTO_REPLY 改回「永遠 `pass:false`」→ 「摘要失敗數只計入真正
       FAIL」與「AUTO_REPLY 不應出現在 FAIL 清單」兩條轉紅。
+      **⚠️ 2026-09-15 同日稍後二次改版（依 Owner 提供的新版報告設計）**：上面
+      「五項檢查」與 WARN 語意已被取代——原五項 TOKEN/WEBHOOK/AUTO_REPLY/
+      RICH_MENU/QUOTA 重構為**六項可查證檢查**（CREDENTIALS/TOKEN/
+      ID_SECRET_PAIR/BOT_MODE/WEBHOOK/WEBHOOK_TEST，status 只有 PASS/FAIL）
+      **＋一項獨立的人工確認提示**（AUTO_REPLY，status 恆為 INFO，不計入通過／
+      失敗任一邊），見 06 分冊 §7 全文重寫版本。RICH_MENU／QUOTA 兩項從本報告移除
+      （不代表底層功能被移除，只是這份「為什麼 Bot 沒反應」報告不再涵蓋）；
+      新增 ID_SECRET_PAIR（`POST /oauth2/v2.1/token` client_credentials 換發驗
+      Channel ID/Secret 配對）、BOT_MODE（沿用同一次 `/v2/bot/info` 的 chatMode，
+      與 AUTO_REPLY 是兩個不同設定，見 06 §7 的區分說明）、WEBHOOK_TEST
+      （`POST /v2/bot/channel/webhook/test` 真實測試 LINE→本系統連線）。
+      `tests/integration/api/line-verify.06.test.ts` 同步全面改寫（12 案例，
+      非新增在舊 8 案例之外），對本地 next dev + line-mock 實跑 **12/12 綠**
+      （2026-09-15 本次改版當下實測，非沿用先前 8/8 的數字）；`npm test`
+      2413/2413 綠、`npm run typecheck` 0 error、`npm run build` 成功。
+      變異驗證：把 no-token 分支的 `checks` 長度斷言從 6 改回 7（誤把 AUTO_REPLY
+      算進無憑證情境）、把 ID_SECRET_PAIR 的 mock 覆寫從「非 200 status」改回
+      「只覆寫 body 內容」（route.ts 用 `res.ok` 判定，body 不影響 status）——
+      這兩個正是本次改版過程中先出現、後修正的真實紅燈（不是憑空列舉的假設）。
 - [x] 【新增】webhook 關鍵字覆蓋：`MODE_PRESETS.richMenuCells` 三業態每個格子送出的
       文字都有對應回覆分支；系統關鍵字 15 組含同義詞正確分派；`systemGroupDisabled`
       停用的組不回應（06 §3 修正後規格）

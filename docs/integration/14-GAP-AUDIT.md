@@ -2097,6 +2097,15 @@ webhook 早已回 200；放行後處理照常完成」`、`:「壞簽章 → 401
 `chatMode` 三態（`bot` / `chat` / 讀不到）與 `/v2/bot/info` 呼叫失敗共四種情境，
 現況驗證皆為 WARN（不再是 `bot`→PASS／`chat`→WARN 的舊敘述）。
 
+**⚠️ 2026-09-15 同日稍後二次更正**：上面「四項 PASS ＋ AUTO_REPLY 恆 WARN」的
+五項結構已被取代——依 Owner 提供的新版報告設計，重構為**六項可查證檢查**
+（CREDENTIALS/TOKEN/ID_SECRET_PAIR/BOT_MODE/WEBHOOK/WEBHOOK_TEST，只有
+PASS/FAIL 兩態）＋**一項獨立的人工確認提示**（AUTO_REPLY，status 恆為 `INFO`，
+不再是 `WARN`，也完全不計入通過／失敗任一邊）。RICH_MENU／QUOTA 從本報告移除；
+新增的三項見 06 分冊 §7。`line-verify.06.test.ts` 全面改寫為 12 案例，對本地
+next dev + line-mock 實跑 12/12 綠（詳見 08 清單同一節同日的更正記錄，含改版
+過程中先出現、後修正的兩個真實紅燈）。
+
 **(3) 「額度用盡 → 零請求」不能用固定秒數等。** 見下方 §6.16-a。
 
 **未改動 `src/`**：本輪只新增 `tests/integration/api/*.test.ts` 四支，並在
