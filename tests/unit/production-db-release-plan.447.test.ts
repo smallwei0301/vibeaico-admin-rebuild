@@ -30,6 +30,66 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  it('rejects prepared execution through immediate wrappers, quoted names and CTAS tails', () => {
+    for (const command of ['execute "wipe"', 'execute wipe(1)', 'execute "清除"(1)']) {
+      for (const wrapper of ['', 'explain ', 'explain (analyze true, buffers true) ',
+        'create table public.probe as ', 'create global temp table public.probe as ',
+        'create local temporary table public.probe as ']) {
+        const tail = wrapper.startsWith('create') ? ' with no data' : '';
+        expect(() => inferMigrationRiskTier(`${wrapper}${command}${tail};`))
+          .toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+      }
+    }
+    expect(() => inferMigrationRiskTier('prepare "wipe" as delete from public.t;'))
+      .toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier("do 'begin prepare wipe as delete from public.t; end';"))
+      .toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    expect(inferMigrationRiskTier('grant execute on function public.f(integer) to authenticated;')).toBe('AUTHZ');
+  });
+
+  it('rejects migration-time DDL expression calls, including quoted and nested routines', () => {
+    for (const call of ['public.wipe()', '"public"."wipe"()', 'wipe()', 'public.filter()']) {
+      for (const sql of [
+        `alter table public.t add constraint ck check (${call} > 0);`,
+        `create table public.t(id int check (${call} > 0));`,
+        `alter table public.t add column x int default ${call};`,
+        `alter table public.t alter column x set default ${call};`,
+        `create table public.t(x int default ${call});`,
+        `alter table public.t alter column x type int using ${call};`,
+        `create index idx on public.t ((${call}));`,
+        `create index idx on public.t (id) where ${call} > 0;`,
+        `create materialized view public.mv as select ${call};`,
+        `create global temp table public.probe as select ${call};`,
+        `create domain public.positive as int check (${call} > 0);`,
+        `alter table public.t add column x int generated always as (${call}) stored;`,
+      ]) {
+        expect(() => inferMigrationRiskTier(sql)).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      }
+    }
+    expect(inferMigrationRiskTier('create table public.t(id int default 1 check (id > 0));')).toBe('ADDITIVE');
+    expect(inferMigrationRiskTier('create index idx on public.t (id) where id > 0;')).toBe('ADDITIVE');
+    expect(inferMigrationRiskTier('alter table public.t alter column x type bigint using x::bigint;')).toBe('SCHEMA_REPAIR');
+  });
+
+  it('rejects CASCADE and multi-action dynamic constraint repairs without dependency proof', () => {
+    expect(() => inferMigrationRiskTier('alter table public.t drop constraint ck cascade;'))
+      .toThrow(/CASCADE_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier('do $$ begin alter table public.t drop constraint ck cascade; end $$;'))
+      .toThrow(/CASCADE_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier("do 'begin alter table public.t drop constraint ck cascade; end';"))
+      .toThrow(/CASCADE_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier("do $$ begin execute 'ALTER TABLE public.t DROP CONSTRAINT ck CASCADE'; end $$;"))
+      .toThrow(/CASCADE_NOT_ADMITTED/);
+    for (const template of ['ALTER TABLE public.t DROP CONSTRAINT %I CASCADE',
+      'ALTER TABLE public.t DROP CONSTRAINT %I, ADD CHECK (public.wipe() > 0)']) {
+      expect(() => inferMigrationRiskTier(`do $$ begin execute pg_catalog.format('${template}', old_ck); end $$;`))
+        .toThrow(/CASCADE_NOT_ADMITTED|DESTRUCTIVE_SQL_NOT_ADMITTED|UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
+    }
+    expect(inferMigrationRiskTier('alter table public.t drop constraint ck restrict;')).toBe('SCHEMA_REPAIR');
+    expect(inferMigrationRiskTier("do $$ begin execute pg_catalog.format('ALTER TABLE public.t DROP CONSTRAINT %I RESTRICT', old_ck); end $$;"))
+      .toBe('SCHEMA_REPAIR');
+  });
+
   it('uses only PENDING_APPLY entries and excludes VERIFIED_NOT_APPLIED', () => {
     expect(pendingProductionMigrations(aliasMap())).toEqual(['0105_authz', '0109_assertions']);
   });
