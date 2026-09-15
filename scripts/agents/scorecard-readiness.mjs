@@ -6,6 +6,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { validateRunLedgerV2 } from './run-ledger-v2.mjs';
 
+const OBSERVED_SCORE_EFFECTIVE_AT = '2026-09-15T00:00:00Z';
 const TERMINAL_ONLY_INPUTS = Object.freeze([
   'endedAt',
   'main.endSha',
@@ -27,6 +28,12 @@ function valueAt(object, dottedPath) {
 
 function isMissing(value) {
   return value === null || value === undefined || value === '';
+}
+
+function targetScoreProfile(run) {
+  const startedAt = Date.parse(String(run?.startedAt ?? ''));
+  const cutoff = Date.parse(OBSERVED_SCORE_EFFECTIVE_AT);
+  return Number.isFinite(startedAt) && startedAt >= cutoff ? 'OBSERVED_V1' : 'LEGACY_V2';
 }
 
 function observedTaskCounters(run) {
@@ -74,6 +81,7 @@ export function analyzeScorecardReadiness(run) {
   const tasks = observedTaskCounters(run);
   const rawCaptureGaps = [];
   const consistencyWarnings = [];
+  const scoreProfileTarget = targetScoreProfile(run);
 
   if (validationErrors.length === 0) {
     const observableActivity =
@@ -131,7 +139,8 @@ export function analyzeScorecardReadiness(run) {
     runId: run?.runId ?? null,
     validLedger: validationErrors.length === 0,
     validationErrors,
-    scoreProfileTarget: 'OBSERVED_V1',
+    scoreProfileTarget,
+    observedScoreEffectiveAt: OBSERVED_SCORE_EFFECTIVE_AT,
     liveReadinessPercent,
     rawCaptureGaps,
     consistencyWarnings,
@@ -155,6 +164,7 @@ export function renderScorecardReadiness(result) {
     `# Scorecard Live Readiness: ${result.runId ?? 'unknown'}`,
     '',
     `- Target score profile: ${result.scoreProfileTarget}`,
+    `- OBSERVED_V1 effective at: ${result.observedScoreEffectiveAt}`,
     `- Ledger valid: ${result.validLedger ? 'YES' : 'NO'}`,
     `- Live readiness: ${result.liveReadinessPercent}%`,
     `- Raw capture healthy: ${result.readyForContinuedCapture ? 'YES' : 'NO'}`,
@@ -186,7 +196,7 @@ export function renderScorecardReadiness(result) {
     '',
     ...(result.terminalOnlyPending.length ? result.terminalOnlyPending.map((item) => `- ${item}`) : ['- none']),
     '',
-    '> This tool does not require legacy manual percentage fields. OBSERVED_V1 scores terminal Product Runs from durable raw events and Completion Truth. The readiness check exists to catch missing or contradictory raw evidence before retrospective/closeout.',
+    '> Readiness never rewrites a legacy Run into OBSERVED_V1. Runs started before the cutoff remain LEGACY_V2. For new OBSERVED_V1 Runs, this tool checks raw capture health without requiring legacy manual percentage fields.',
     '',
   );
   return lines.join('\n');
