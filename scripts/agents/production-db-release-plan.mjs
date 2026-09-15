@@ -70,12 +70,24 @@ function stripComments(sql) {
     .replace(/--[^\r\n]*/g, ' ');
 }
 
+function stripStoredRoutineBodies(text) {
+  // UPDATE / DELETE inside a stored function is runtime behavior, not a migration-time
+  // backfill. Keep DO $$ ... $$ blocks intact because those execute immediately while
+  // applying the migration and therefore must still count as BACKFILL when they mutate rows.
+  return String(text).replace(
+    /\bcreate\s+(?:or\s+replace\s+)?(?:function|procedure)\b[\s\S]*?\bas\s+(\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$)[\s\S]*?\1/gi,
+    ' ',
+  );
+}
+
 function hasImmediateBackfillDml(text) {
   // `UPDATE` / `DELETE` 也會合法出現在 ACL 語句與 policy 定義中，例如
-  // `GRANT UPDATE`、`REVOKE DELETE`、`FOR UPDATE`。只有真正的資料 DML 才算
-  // BACKFILL：UPDATE <relation> ... SET ... 或 DELETE FROM <relation> ...。
-  const update = /\bupdate\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*(?:\s+(?:as\s+)?[A-Za-z_][\w$]*)?\s+set\b/i.test(text);
-  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*\b/i.test(text);
+  // `GRANT UPDATE`、`REVOKE DELETE`、`FOR UPDATE`。只有 migration 套用當下真的
+  // 執行的資料 DML 才算 BACKFILL；stored function/procedure 內的 DML 是日後 RPC
+  // 執行時才發生，不能把整支 migration 誤判成 BACKFILL。
+  const immediateText = stripStoredRoutineBodies(text);
+  const update = /\bupdate\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*(?:\s+(?:as\s+)?[A-Za-z_][\w$]*)?\s+set\b/i.test(immediateText);
+  const deletion = /\bdelete\s+from\s+(?:only\s+)?(?:[A-Za-z_][\w$]*\.)?[A-Za-z_][\w$]*\b/i.test(immediateText);
   return update || deletion;
 }
 
