@@ -273,6 +273,13 @@ export function validateGlobalWip(summary) {
     errors.push(`ACTIVE_CANDIDATE count is ${activeCandidates.length}; max is ${MAX_ACTIVE_CANDIDATES}`);
   }
 
+  if (activeTerra.length > 0 && activeTest.length === 1) {
+    const buildRunIds = new Set(activeTerra.map((pr) => pr.runId));
+    if (buildRunIds.size !== 1 || !buildRunIds.has(activeTest[0].runId) || isMissing(activeTest[0].runId)) {
+      errors.push('Active TERRA_BUILD and TEST_VALIDATION lanes must belong to the same RUN_ID');
+    }
+  }
+
   if (activeReserve.length === 1 && !dualPilotRequested) {
     if (activeTerra.length !== 1) {
       errors.push('TERRA_RESERVE requires exactly one active MAIN TERRA_BUILD');
