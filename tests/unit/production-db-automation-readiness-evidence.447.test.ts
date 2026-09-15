@@ -45,7 +45,7 @@ function write(root: string, path: string, content: string) {
 function completeSyntheticRepo() {
   const root = mkdtempSync(join(tmpdir(), 'production-db-readiness-'));
   write(root, 'scripts/agents/production-db-release-preflight.mjs', 'evaluateReleasePreflight\ndatabaseMutationAuthorized: false');
-  write(root, 'scripts/agents/production-db-consistency-evidence.mjs', 'buildProductionDbConsistencyEvidence\nCONSISTENCY_VERIFIED');
+  write(root, 'scripts/agents/production-db-consistency-evidence.mjs', 'buildProductionConsistencyEvidence\nCONSISTENCY_VERIFIED');
   write(root, '.github/workflows/agent-production-db-backup-observer.yml', 'workflow_call:\nexpected_main_sha:\nSUPABASE_BACKUP_OBSERVER_TOKEN');
   write(root, '.github/workflows/production-db-restore-rehearsal.yml', 'workflow_call:\nexpected_main_sha:\nRESTORE_REHEARSAL_VERIFIED');
   write(root, '.github/workflows/ci.yml', 'production_db_release_id:\nTEST_DB_RELEASE_TOKEN\nproduction-db-test-verified.json\nproduction-db-test-post-schema-evidence.json');
