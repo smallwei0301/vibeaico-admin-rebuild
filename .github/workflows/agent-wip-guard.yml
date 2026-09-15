@@ -123,8 +123,7 @@ jobs:
               per_page: 100,
             });
             const summary = policy.summarizeActiveLanes(openPulls);
-            const productWipApplies =
-              isAgent && metadata.state === 'ACTIVE' && metadata.lane !== 'GOVERNANCE';
+            const productWipApplies = policy.shouldApplyProductGlobalWip(metadata);
             const actualFilesByPullRequest = {};
             const actualFileLoadErrors = [];
 
