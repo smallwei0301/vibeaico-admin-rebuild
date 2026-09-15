@@ -303,6 +303,47 @@ describe('GET /api/guide/action-inbox（#43-A / #43-B / #43-C）', () => {
     expect(shopBBody.data?.some((item) => item.id === reviewId || item.id === atRiskId)).toBe(false);
   });
 
+  it('沒有 PRIMARY 指派的 REVIEW_REQUIRED／AT_RISK 團次不會同時冒出 STAFF_UNASSIGNED 卡片（#479 根因迴歸鎖）', async () => {
+    // Issue #479 的真正重複根因：#43 類別 7（STAFF_CONFLICT／STAFF_UNASSIGNED）
+    // 的候選查詢跟 DEPARTURE 查詢一樣讀 `status in (OPEN,CLOSED)` 且
+    // `departs_on >= today`，但先前沒有排除 formation query 已經涵蓋的
+    // REVIEW_REQUIRED／AT_RISK 團次。一個尚未成團、且完全沒有人員指派的團次
+    // 天生沒有 PRIMARY，會被類別 7 判成 STAFF_UNASSIGNED，同時又被 formation
+    // query 判成 REVIEW_REQUIRED／AT_RISK——同一個團次疊出兩張卡，深連結
+    // （`/tenant/trips/:tripId`）還完全一樣。這條測試直接鎖住「類別 7 查詢也要
+    // 排除 formation_status」這個修法，不只靠上面那條端對端聚合斷言反推：上面
+    // 那條測試就算類別 7 查詢忘了排除，只要 DEPARTURE 查詢本身排除正確，
+    // reviewMatches/atRiskMatches 的長度斷言一樣會抓到重複，但不會告訴你重複
+    // 的第二張卡到底是哪個查詢生出來的——這裡直接斷言 kind 不是 STAFF_UNASSIGNED。
+    const { tomorrow } = getGuideActionInboxDateWindow(new Date(), 'Asia/Taipei');
+
+    const { data: reviewNoStaffRow, error: reviewNoStaffError } = await admin.from('trip_departures').insert({
+      tenant_id: SHOP_A.id,
+      trip_id: TRIP_A.id,
+      plan_id: TRIP_A.planA1,
+      departs_on: tomorrow,
+      start_time: '11:00',
+      capacity: 10,
+      status: 'OPEN',
+      formation_status: 'REVIEW_REQUIRED',
+      min_to_depart_snapshot: 4,
+      formation_deadline_at: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+    }).select('id').single();
+    expect(reviewNoStaffError).toBeNull();
+    expect(reviewNoStaffRow?.id).toBeTruthy();
+    const reviewNoStaffId = reviewNoStaffRow!.id as string;
+    temporaryDepartureIds.push(reviewNoStaffId);
+
+    const res = await ownerA.get('/api/guide/action-inbox');
+    expect(res.status).toBe(200);
+    const body = await readJson<GuideActionInboxItem[]>(res);
+    expect(body.success).toBe(true);
+
+    const matches = (body.data ?? []).filter((item) => item.id === reviewNoStaffId);
+    expect(matches).toHaveLength(1);
+    expect(matches.map((item) => item.kind)).toEqual(['REVIEW_REQUIRED']);
+  });
+
   it('已經出發過但仍是 REVIEW_REQUIRED／AT_RISK 的舊團次不會永遠卡在收件匣（MEDIUM finding）', async () => {
     // 0107 還沒有 #41 §6 的自動轉態，理論上這種列不該長期存在，但既然可能發生，
     // formation query 就必須有 `.gte('departs_on', today)` 這個下限，否則已出發的
