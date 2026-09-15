@@ -292,6 +292,18 @@ function firstDynamicSqlTemplate(fragment) {
   return input.slice(index + dollar.length, end);
 }
 
+function dynamicExecuteFragments(body) {
+  if (body == null) return [];
+  const fragments = [];
+  for (const statement of splitSqlStatements(body)) {
+    const lexicalStatement = stripSqlStringLiterals(statement, true);
+    for (const match of lexicalStatement.matchAll(/\bexecute\b/gi)) {
+      fragments.push(statement.slice(match.index + match[0].length));
+    }
+  }
+  return fragments;
+}
+
 function dynamicCommandKind(fragment) {
   const template = firstDynamicSqlTemplate(fragment);
   const lexicalTemplate = stripSqlStringLiterals(template, true).trim();
