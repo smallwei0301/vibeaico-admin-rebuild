@@ -13,6 +13,21 @@ const discoveredTemplate = read('.github/ISSUE_TEMPLATE/agent-discovered.yml');
 const deliveryTemplate = read('.github/ISSUE_TEMPLATE/delivery-slice.yml');
 
 describe('two-workstream routing policy (#339)', () => {
+  it('keeps AGENT-EXECUTION as the sole orchestration entrypoint (#539)', () => {
+    const entry = 'origin/main:docs/AGENT-EXECUTION.md';
+    const entrypointSection = orchestration.slice(
+      orchestration.indexOf('## Canonical governance entrypoint'),
+      orchestration.indexOf('## Two workstreams are mandatory'),
+    );
+    expect(orchestration).toContain('sole canonical workflow entrypoint');
+    expect(entrypointSection).toContain(entry);
+    expect(entrypointSection).not.toContain('docs/decisions/2026-09-07-owner-governance-alignment.md');
+    expect(orchestration).toContain('`AGENTS.md` and `CLAUDE.md` remain repository/environment constraints');
+    expect(orchestration).toContain('follow `AGENT-EXECUTION.md` and open one bounded governance item');
+    expect(orchestration).toContain('#360) as subordinate rationale; it does not create an independent override path');
+    expect(orchestration).not.toContain('Canonical policy order:\n\n1. `origin/main:docs/decisions');
+  });
+
   it('defines MODEL_GOVERNANCE as Sol-only without Terra or Astra/Fable Final Risk', () => {
     for (const text of [orchestration, routingDoc, decision]) {
       expect(text).toContain('MODEL_GOVERNANCE');

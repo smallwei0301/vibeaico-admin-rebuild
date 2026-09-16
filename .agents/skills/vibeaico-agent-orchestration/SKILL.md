@@ -8,18 +8,15 @@ metadata:
 
 # VibeAI.co Agent Orchestration
 
-Canonical policy order:
+## Canonical governance entrypoint
 
-1. `origin/main:docs/decisions/2026-09-07-owner-governance-alignment.md`
-2. `origin/main:docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
-3. `origin/main:docs/decisions/2026-09-01-owner-natural-loop-commands-and-completion-truth.md`
-4. `origin/main:docs/AGENT-EXECUTION.md`
-5. `origin/main:docs/AGENT-BPLUS-DELIVERY-LOOP.md`
-6. `origin/main:docs/AGENT-PROJECT-COMMANDS-AND-TRUTH.md`
-7. `origin/main:docs/PR-LIFECYCLE.md`
-8. `origin/main:scripts/agents/model-routing.json`
+For daily delivery and governance, read **current** `origin/main:docs/AGENT-EXECUTION.md` first. It is the sole canonical workflow entrypoint.
 
-For MODEL_GOVERNANCE, the latest `origin/main:docs/decisions/2026-09-11-owner-governance-unpinned-model.md` (#360) overrides earlier model restrictions: use the currently available model directly. No Sol/Opus requirement, no model-execution receipt prerequisite, no Product Terra lane and no Astra/Fable Final Risk. Product B+ topology and Product model/risk rules remain unchanged.
+`AGENTS.md` and `CLAUDE.md` remain repository/environment constraints. Historical B+ documents, Owner Decisions, lifecycle material and `scripts/agents/model-routing.json` are subordinate material: load them only when `AGENT-EXECUTION.md` triggers them. They must not form a parallel entrypoint or outrank it.
+
+When a historical document, skill or Owner Decision conflicts with current `AGENT-EXECUTION.md`, follow `AGENT-EXECUTION.md` and open one bounded governance item to reconcile the real rule difference. Do not restore historical priority by copying an old decision into a current workflow.
+
+For MODEL_GOVERNANCE, follow the current `AGENT-EXECUTION.md` rule to use the currently available model directly. When that entrypoint triggers its model-governance provenance, load `origin/main:docs/decisions/2026-09-11-owner-governance-unpinned-model.md` (#360) as subordinate rationale; it does not create an independent override path. No Sol/Opus requirement, no model-execution receipt prerequisite, no Product Terra lane and no Astra/Fable Final Risk. Product B+ topology and Product model/risk rules remain unchanged.
 
 ## Two workstreams are mandatory
 
@@ -95,7 +92,7 @@ Never create an unclassified new Issue/PR. A typo, blank value or invented third
 ## Start or resume
 
 1. Fetch latest `origin/main`.
-2. Read the canonical files above, `AGENTS.md`, `CLAUDE.md`, `docs/OWNER-DECISIONS.md`, the Issue's canonical docs, and only directly relevant Playbook entries.
+2. Read current `origin/main:docs/AGENT-EXECUTION.md` as the only workflow entrypoint, then `AGENTS.md` / `CLAUDE.md` constraints and only the subordinate material it triggers.
 3. Read live open Issues／PRs, exact heads, CI, TEST holder and the latest 1–3 run reports.
 4. Classify the target workstream before any new Issue/PR is created. Existing work keeps its live workstream; do not infer it from a stale lane label when current files show otherwise.
 5. For PRODUCT_MAINLINE, resume the newest valid `IN_PROGRESS` Product Run; create a `RUN_ID` only when none exists. MODEL_GOVERNANCE does not join a Product Run merely to satisfy metadata.
