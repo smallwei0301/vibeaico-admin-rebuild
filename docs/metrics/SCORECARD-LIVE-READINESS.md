@@ -151,3 +151,13 @@ PR #463 第一輪就是第 1 類：現行 preflight 本來已會檢查 Astra cla
 - 固定 checkpoint：Run start、每次 observable event 後、每次 delivery stage change 後、pre-closeout。
 - Pre-closeout 必須 `rawCaptureGaps=[]` 且 `consistencyWarnings=[]`；terminal-only pending 在 active Run 不算失敗，也不得為了變綠事後猜值。
 - Deterministic metadata preflight-first；remote CI 不作規格查詢器，不堆 no-op commit，不 blind rerun。
+
+## Required path 與 shared helper（#538，承接 #531／#532）
+
+`scorecard-required-gate.mjs` 只轉接既有 schema validators 與 `analyzeScorecardReadiness`，不建立第二套 counters／評分規則。變更中的 v2 `IN_PROGRESS`／`CLOSURE_RECOVERY` ledger 必須通過 raw-capture consistency；未變更的歷史 ledger 不讀、不回寫。
+
+完整 `agent-wip-preflight.mjs` CLI 必須提供 `--body` 與完整 `--changed-files` 清單，讀取本機實際檔案。相容的 metadata-only API 呼叫會回報 `rawCaptureChecked=false`，不能當成完整 capture PASS。
+
+Remote `Agent WIP Policy` 使用 trusted-main helper，從完整分頁的 live PR file inventory 取得 immutable blob SHA，核對 bytes／size／hash 後以同一 helper 驗證。缺頁、缺檔、壞 JSON、錯誤 blob、raw gap／counter contradiction 均 fail closed；不執行候選分支程式，不相信本文宣告的 PASS。獨立 scorecard workflow 仍保留格式、報表重現與 strict-live 檢查，不以它取代 required status。
+
+Raw capture errors 只阻擋當前 PR 與 TEST dispatch，不混入 workstream scope errors，也不使純 Governance 占用 Product WIP。只有 metadata／scope 已合法的純治理才適用既有隔離。這不授權 TEST／Production 寫入、放寬 Final Risk、調高 WIP，或把 source merge 算成產品出貨。

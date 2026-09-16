@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -6,6 +7,8 @@ import * as dualPolicy from '../../scripts/agents/dual-terra-wip-policy.mjs';
 import * as alertPolicy from '../../scripts/agents/wip-alert-fingerprint.mjs';
 import * as astraPolicy from '../../scripts/agents/astra-review-policy.mjs';
 import * as boundaryPolicy from '../../scripts/agents/governance-workstream-boundary.mjs';
+import * as capturePolicy from '../../scripts/agents/scorecard-required-gate.mjs';
+import { createRunLedgerV2 } from '../../scripts/agents/run-ledger-v2.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classifyWorkstream } from '../../scripts/agents/astra-review-policy.mjs';
 import { parseLaneMetadata } from '../../scripts/agents/agent-wip-policy.mjs';
@@ -81,6 +84,12 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
   for (const name of ['addHeading', 'addRaw', 'addTable', 'write']) summary[name] = () => summary;
   const github: any = {
     rest: {
+      git: { getBlob: async ({ file_sha }: any) => {
+        const file = files.find(item => item.sha === file_sha && typeof item.content === 'string');
+        if (!file) throw new Error('Missing fixture blob');
+        return { data: { sha: file_sha, encoding: 'base64', size: Buffer.byteLength(file.content),
+          content: Buffer.from(file.content).toString('base64') } };
+      } },
       pulls: { get: async () => ({ data: current }), listFiles, list },
       repos: { createCommitStatus: async (value: any) => { statuses.push(value); },
         getContent: async () => ({ data: { type: 'file' } }) },
@@ -112,6 +121,7 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
     ['wip-alert-fingerprint.mjs', alertPolicy],
     ['astra-review-policy.mjs', astraPolicy],
     ['governance-workstream-boundary.mjs', boundaryPolicy],
+    ['scorecard-required-gate.mjs', capturePolicy],
   ].map(([name, module]) => [pathToFileURL(resolve(process.cwd(), 'scripts/agents', String(name))).href, module]));
   const loadPolicy = async (specifier: string) => {
     if (!modules.has(specifier)) throw new Error(`Unexpected policy module: ${specifier}`);
@@ -199,6 +209,21 @@ describe('governance boundary regression #500', () => {
     expect(result.statuses).toEqual([]);
     expect(result.calls.every(call => call === 'labels')).toBe(true);
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
+  });
+  it('executes the real raw-capture policy: bad ledger fails required status without borrowing Product WIP', async () => {
+    const run = createRunLedgerV2('2026-09-16-synthetic-538', created_at,
+      { closeoutOwner: 'PRODUCT_MAIN_SESSION' }) as unknown as { delivery: Record<string, unknown> };
+    for (const closedCount of [0, 1]) {
+      const content = JSON.stringify({ ...run, delivery: { ...run.delivery, issuesClosed: closedCount } });
+      const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+      const file = { filename: 'docs/metrics/agent-runs/2026-09-16-synthetic-538.json', status: 'modified', sha, content };
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(), [file]);
+      expect(result.calls).not.toContain('product-peers');
+      expect(result.calls).not.toContain('dispatch');
+      expect(result.statuses.at(-1).state).toBe(closedCount ? 'failure' : 'pending');
+      if (closedCount) expect(result.failures.join('\n')).toContain('SCORECARD_CAPTURE_REJECTED');
+      else expect(result.failures).toEqual([]);
+    }
   });
   it('executes classification workflow: pure bookkeeping incorrectly marked Product is rejected', async () => {
     const result = await runWorkflow('.github/workflows/agent-workstream-classification.yml', subject(product));

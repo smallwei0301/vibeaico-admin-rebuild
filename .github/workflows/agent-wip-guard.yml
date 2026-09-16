@@ -51,6 +51,10 @@ jobs:
               process.env.GITHUB_WORKSPACE, 'scripts/agents/governance-workstream-boundary.mjs',
             )).href);
 
+            const capture = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/scorecard-required-gate.mjs',
+            )).href);
+
             const { owner, repo } = context.repo;
             const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };
             const { data: current } = await github.rest.pulls.get({
@@ -121,6 +125,9 @@ jobs:
             if (isAgent && metadata.state === 'ACTIVE') {
               metadataErrors.push(...boundary.validateDeliveryUnitBoundary(current.body ?? '', metadata));
             }
+            const captureErrors = await capture.validateGithubRunLedgerChanges({
+              github, owner, repo, current, changedFiles: ownFiles,
+            });
             const productWipApplies = boundary.shouldApplyProductGlobalWip({
               metadata, classification, ownErrors: metadataErrors, completeInventory,
             });
@@ -266,6 +273,7 @@ jobs:
               metadata.testLaneRequired === 'TRUE' &&
               !liveExisting.includes('lane:test-validation') &&
               metadataErrors.length === 0 &&
+              captureErrors.length === 0 &&
               wipErrors.length === 0 &&
               summary.activeTest.length === 1 &&
               summary.activeTest[0].number === current.number &&
@@ -289,7 +297,7 @@ jobs:
             }
 
             const errors = current.state === 'open'
-              ? [...new Set([...metadataErrors, ...wipErrors, ...astraResult.errors])]
+              ? [...new Set([...metadataErrors, ...captureErrors, ...wipErrors, ...astraResult.errors])]
               : [];
             const policyStatus = astra.finalRiskGateStatus({
               hasErrors: errors.length > 0,
@@ -370,6 +378,7 @@ jobs:
               ['Product candidates', `${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}`],
               ['TEST dispatched', String(dispatched)],
               ['Metadata errors', metadataErrors.join('; ') || 'none'],
+              ['Raw capture errors', captureErrors.join('; ') || 'none'],
               ['WIP errors', wipErrors.join('; ') || 'none'],
               ['Error fingerprint', fingerprint ?? 'none'],
               ['Duplicate failure notification suppressed', String(duplicateFailure)],
