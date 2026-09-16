@@ -13,8 +13,18 @@ import {
 } from '../../scripts/agents/scorecard-required-gate.mjs';
 
 const ledgerPath = 'docs/metrics/agent-runs/2026-09-16-synthetic-538.json';
-const makeRun = () => createRunLedgerV2('2026-09-16-synthetic-538', '2026-09-16T02:00:00Z',
-  { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+// The JS factory spreads a legacy record; TypeScript cannot infer its full runtime shape.
+type RunFixture = {
+  status: string;
+  delivery: { issuesClosed: number };
+  completionTruth: { claims: Array<typeof claim> };
+  modelUsage: { tasks: Array<typeof task> };
+  flow: { lunaTasks: number; lunaAccepted: number; solTouches: number };
+  ci: { invalidReruns: number; fullCiRuns: number };
+  inventory: { closureAdvancedOrClosed: number; closureSweeps: number };
+};
+const makeRun = (): RunFixture => createRunLedgerV2('2026-09-16-synthetic-538', '2026-09-16T02:00:00Z',
+  { closeoutOwner: 'PRODUCT_MAIN_SESSION' }) as unknown as RunFixture;
 const task = { id: 'observed', requestedModel: 'luna', actualModel: 'unknown', role: 'test fixture',
   count: 1, contextClass: 'compact', accepted: true, inputTokens: null, outputTokens: null, cachedTokens: null };
 const claim = { type: 'ISSUE_CLOSED', subject: 'issue#538', claimedState: 'closed', observedState: 'closed',
