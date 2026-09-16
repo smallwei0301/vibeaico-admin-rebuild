@@ -16,9 +16,8 @@
 //
 // ## 兩種來源
 //
-//   --project <ref>   經 Supabase Management API（純 HTTPS）。沙箱只放行 HTTPS，
-//                     PostgreSQL wire protocol 穿不過政策代理——理由見
-//                     `run-migrations.mjs` 檔頭。需要 SUPABASE_ACCESS_TOKEN。
+//   --project <ref>   經 Supabase Management API 的 read-only query endpoint。
+//                     只需要最小權限 SCHEMA_OBSERVER_TOKEN，不接受 broad PAT fallback。
 //   --psql <conninfo> 經本機 psql，用來對「以 repo migrations 現建的乾淨資料庫」
 //                     取指紋。conninfo 直接餵給 psql（例：'-h /tmp -p 5432 -U postgres dbname'）。
 //   --file <path>     讀先前 --emit 出來的 JSON。
@@ -26,7 +25,7 @@
 // ## 用法
 //
 //   # 取一份指紋存檔
-//   SUPABASE_ACCESS_TOKEN=sbp_xxx node scripts/db/schema-fingerprint-diff.mjs \
+//   SCHEMA_OBSERVER_TOKEN=... node scripts/db/schema-fingerprint-diff.mjs \
 //     --project nmwhwngojosmagjuvxol --emit test-schema.json
 //
 //   # 比對兩份（任意來源組合）；不一致時 exit 1，適合當 CI gate
@@ -75,15 +74,16 @@ function parseLines(lines) {
 }
 
 async function viaProject(ref, query) {
-  const token = process.env.SUPABASE_ACCESS_TOKEN;
-  if (!token) throw new Error('缺 SUPABASE_ACCESS_TOKEN（Supabase Personal Access Token，sbp_ 開頭）');
-  const res = await fetch(`${API}/v1/projects/${ref}/database/query`, {
+  const token = process.env.SCHEMA_OBSERVER_TOKEN;
+  if (!token) throw new Error('缺 SCHEMA_OBSERVER_TOKEN（必須是 read-only schema observer credential）');
+  if (process.env.SUPABASE_ACCESS_TOKEN) throw new Error('拒絕 broad SUPABASE_ACCESS_TOKEN fallback；schema fingerprint 只能走 read-only observer credential');
+  const res = await fetch(`${API}/v1/projects/${ref}/database/query/read-only`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`Management API HTTP ${res.status}: ${text}`);
+  if (!res.ok) throw new Error(`Management API read-only HTTP ${res.status}: ${text}`);
   const rows = JSON.parse(text);
   return rows.map((r) => String(Object.values(r)[0] ?? ''));
 }
@@ -106,21 +106,13 @@ async function load(source, query) {
 
 /** 指紋不同時，把「只在左」「只在右」的欄位列出來（此時才需要第二次查詢）。 */
 async function columnsOf(source, table) {
-  if (source.kind === 'file') return null; // 檔案只存指紋，展不開
+  if (source.kind === 'file') return null;
   const rows = source.kind === 'project'
     ? await viaProject(source.value, COLUMNS_SQL(table))
     : viaPsql(source.value, COLUMNS_SQL(table));
   return (rows[0] ?? '').split(',').filter(Boolean);
 }
 
-/**
- * `--left` / `--right` 是選用的：沒有寫的話，來源依出現順序填 left 再填 right。
- *
- * 這一點要明講，因為天真的寫法（用一個 `side` 變數、預設 'left'）會讓
- * `--psql A --file B` 把 B 覆蓋掉 A，然後**安靜地拿 B 跟 B 自己比**，回報
- * 「完全一致」。那正是這支腳本存在的目的所要防的事：一個看起來通過、實際上
- * 什麼都沒比的結果。
- */
 function parseArgs(argv) {
   const sources = { left: null, right: null };
   let side = null;
