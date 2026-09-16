@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { auditProductionDbWriterBypasses, collectProductionDbExecutableSources } from '../../scripts/agents/production-db-writer-bypass-audit.mjs';
 
 describe('Production DB writer bypass audit #447',()=>{
-  it('keeps the real repo write surface bounded to controlled writer + two TEST-only runners',()=>{
+  it('keeps the real repo Management API write surface bounded to two TEST-only runners',()=>{
     const result=auditProductionDbWriterBypasses(collectProductionDbExecutableSources(process.cwd()));
     expect(result).toMatchObject({
       status:'PRODUCTION_DB_WRITE_BYPASS_AUDIT_CLEAN',
@@ -19,6 +19,26 @@ describe('Production DB writer bypass audit #447',()=>{
     const sources=collectProductionDbExecutableSources(process.cwd());
     sources['scripts/db/new-side-door.mjs']="fetch('https://api.supabase.com/v1/projects/x/database/query')";
     expect(()=>auditProductionDbWriterBypasses(sources)).toThrow(/UNAPPROVED_PRODUCTION_DB_WRITE_PATH/);
+  });
+
+  it('rejects any mutable SQL method added back to the project-bound transport',()=>{
+    const sources=collectProductionDbExecutableSources(process.cwd());
+    const path='scripts/db/production-db-postgres-transport.mjs';
+    sources[path]=`${String(sources[path])}\nasync function executePlanBoundTransaction(command) { return command.sql; }\n`;
+    expect(()=>auditProductionDbWriterBypasses(sources)).toThrow(/CONTROLLED_WRITER_RAW_SQL_BYPASS/);
+  });
+
+  it('rejects removal of the private controlled mutation core or post-lock catalog gate',()=>{
+    for (const mutate of [
+      (source:string)=>source.replace('async function executeAtomicProductionApply','async function removedPrivateWriter'),
+      (source:string)=>source.replace('buildProductionDbCatalogFingerprintRecheckSql','removedCatalogRecheck'),
+      (source:string)=>source.replace('DURABLE_PREPARED_ATTEMPT_REQUIRED','REMOVED_DURABLE_PREPARE'),
+    ]) {
+      const sources=collectProductionDbExecutableSources(process.cwd());
+      const path='scripts/db/controlled-production-db-release.mjs';
+      sources[path]=mutate(String(sources[path]));
+      expect(()=>auditProductionDbWriterBypasses(sources)).toThrow(/CONTROLLED_WRITER_/);
+    }
   });
 
   it('rejects workflow consumption of broad SUPABASE_ACCESS_TOKEN',()=>{
