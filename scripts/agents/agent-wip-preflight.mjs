@@ -15,7 +15,8 @@ import { decideLocalIsolatedTest } from '../ci/local-isolated-test-policy.mjs';
 
 import { changeDigestOf, classifyAstra, evaluateAstra, routing } from './astra-review-policy.mjs';
 
-const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
+import { validateDeliveryUnitBoundary, validateBookkeepingWorkstream } from './governance-workstream-boundary.mjs';
+export { validateDeliveryUnitBoundary } from './governance-workstream-boundary.mjs';
 const ORIGINS = new Set(['OWNER', 'AGENT', 'UNKNOWN']);
 
 function upper(value) {
@@ -72,45 +73,6 @@ function parseArgs(argv) {
   return result;
 }
 
-export function validateDeliveryUnitBoundary(body = '', metadata = {}) {
-  const errors = [];
-  const type = upper(readField(body, 'DELIVERY_UNIT_TYPE'));
-  const count = upper(readField(body, 'COUNT_IN_DELIVERY_OUTCOME'));
-  const retroactive = upper(readField(body, 'RETROACTIVE_TRACKING_MIGRATION'));
-  const outcome = readField(body, 'USER_VISIBLE_OUTCOME');
-
-  if (!DELIVERY_TYPES.has(type)) errors.push('DELIVERY_UNIT_TYPE must be SLICE, STANDALONE, EPIC, or GOVERNANCE');
-  if (!['TRUE', 'FALSE'].includes(count)) errors.push('COUNT_IN_DELIVERY_OUTCOME must be true or false');
-  if (!['TRUE', 'FALSE'].includes(retroactive)) errors.push('RETROACTIVE_TRACKING_MIGRATION must be true or false');
-
-  if (['EPIC', 'GOVERNANCE'].includes(type) && count !== 'FALSE') {
-    errors.push(`${type} must set COUNT_IN_DELIVERY_OUTCOME=false`);
-  }
-  if (retroactive === 'TRUE' && count !== 'FALSE') {
-    errors.push('A retroactive tracking migration must set COUNT_IN_DELIVERY_OUTCOME=false');
-  }
-  if (['SLICE', 'STANDALONE'].includes(type)) {
-    if (count !== 'TRUE') errors.push(`${type} must set COUNT_IN_DELIVERY_OUTCOME=true`);
-    if (retroactive !== 'FALSE') errors.push(`${type} counted as new delivery must set RETROACTIVE_TRACKING_MIGRATION=false`);
-    if (!metadata.issueNumber) errors.push(`${type} must declare pr-lifecycle issue: <number>`);
-    if (isPlaceholder(outcome) || /^none$/i.test(outcome)) {
-      errors.push(`${type} must declare one USER_VISIBLE_OUTCOME`);
-    }
-  }
-
-  const activeProductLane = metadata.origin === 'AGENT' &&
-    metadata.state === 'ACTIVE' &&
-    ['TERRA_BUILD', 'TEST_VALIDATION'].includes(metadata.lane);
-  if (activeProductLane && !['SLICE', 'STANDALONE'].includes(type)) {
-    errors.push('An active Product delivery lane must point to a closable SLICE or STANDALONE Issue');
-  }
-  if (metadata.lane === 'GOVERNANCE' && type && type !== 'GOVERNANCE') {
-    errors.push('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
-  }
-
-  return [...new Set(errors)];
-}
-
 /**
  * @param {{
  *   body?: string,
@@ -147,6 +109,7 @@ export function validateWipPreflight(input = {}) {
   }
   errors.push(...validateLaneMetadata(metadata, { action }));
   errors.push(...validateDeliveryUnitBoundary(text, metadata));
+  errors.push(...validateBookkeepingWorkstream({ body: text, changedFiles: changedFiles ?? [] }));
 
   if (
     metadata.origin === 'AGENT' &&

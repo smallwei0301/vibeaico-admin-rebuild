@@ -103,6 +103,13 @@ export default defineConfig({
       NEXT_PUBLIC_APP_URL: BASE_URL,
       // 同 tests/integration/global-setup.ts：cron Bearer 驗證用（07 分冊）。
       CRON_SECRET: process.env.TEST_CRON_SECRET ?? '',
+      // Issue #18 老闆通知「模擬本人已確認（Demo）」的非 production 閘門
+      // （見 src/app/api/settings/line/owner-notify/recipients/route.ts 與
+      // src/components/line-settings/OwnerNotifySection.tsx 檔頭）。這個
+      // webServer 只在本機／CI 的 E2E 情境啟動，從不是正式部署，固定開啟
+      // 才能讓 tests/e2e/owner-notify.18.spec.ts 找到該按鈕與端點。
+      OWNER_NOTIFY_TEST_CONFIRM_ENABLED: 'true',
+      NEXT_PUBLIC_OWNER_NOTIFY_TEST_CONFIRM_ENABLED: 'true',
     },
   },
   }),

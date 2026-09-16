@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  getTenantSettings, saveLineSettings, testLineConnection, verifyLineSetup,
+  disconnectLine, getTenantSettings, saveLineSettings, syncLineWebhook, testLineConnection, verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
@@ -25,6 +25,7 @@ import { APP_URL } from '@/config/env';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { lineSettingsPage as t } from '@/i18n/zh-TW/pages/line-settings';
+import { OwnerNotifySection } from '@/components/line-settings/OwnerNotifySection';
 
 /* -------------------------------------------------------------------------- */
 /* 常數                                                                        */
@@ -60,7 +61,8 @@ const ACCESS_TOKEN_MIN_LENGTH = 100;
 
 const isUrlLike = (v: string) => /^https?:\/\//i.test(v.trim());
 
-type VerifyCheck = { key: string; pass: boolean; message: string };
+type VerifyCheckStatus = 'PASS' | 'FAIL' | 'INFO';
+type VerifyCheck = { key: string; status: VerifyCheckStatus; pass: boolean; message: string };
 
 /* -------------------------------------------------------------------------- */
 
@@ -121,6 +123,7 @@ export default function LineSettingsPage() {
   const [testing, setTesting] = React.useState(false);
   const [verifying, setVerifying] = React.useState(false);
   const [disconnecting, setDisconnecting] = React.useState(false);
+  const [syncingWebhook, setSyncingWebhook] = React.useState(false);
 
   /* --- modal --- */
   const [tutorialOpen, setTutorialOpen] = React.useState(false);
@@ -376,12 +379,30 @@ export default function LineSettingsPage() {
     }
   };
 
+  const syncWebhook = async () => {
+    setSyncingWebhook(true);
+    try {
+      const res = await syncLineWebhook();
+      if (res.synced) {
+        toast.show(t.verifyReport.webhookSync.doneSuccess);
+        await runVerify();
+      } else {
+        toast.show(`${t.verifyReport.webhookSync.failedPrefix}${res.message}`, 'danger');
+      }
+    } catch (e) {
+      toast.show(
+        `${t.verifyReport.webhookSync.unexpectedFailedPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`,
+        'danger',
+      );
+    } finally {
+      setSyncingWebhook(false);
+    }
+  };
+
   const disconnect = async () => {
     setDisconnecting(true);
     try {
-      await saveLineSettings({
-        channelId: '', channelSecret: '', channelAccessToken: '', lineBasicId: '',
-      });
+      await disconnectLine();
       setChannelId('');
       setLineBasicId('');
       setRichMenuPublished(false);
@@ -400,7 +421,12 @@ export default function LineSettingsPage() {
     }
   };
 
-  const failCount = verifyChecks?.filter((c) => !c.pass).length ?? 0;
+  // AUTO_REPLY 是獨立的人工確認提示（status:'INFO'），不計入通過／失敗清單——
+  // 只有六項可查證檢查（CREDENTIALS/TOKEN/ID_SECRET_PAIR/BOT_MODE/WEBHOOK/
+  // WEBHOOK_TEST）才會是 PASS 或 FAIL。
+  const verifiableChecks = verifyChecks?.filter((c) => c.status !== 'INFO') ?? [];
+  const infoChecks = verifyChecks?.filter((c) => c.status === 'INFO') ?? [];
+  const failCount = verifiableChecks.filter((c) => c.status === 'FAIL').length;
 
   /* -------------------------------------------------------------- render */
 
@@ -1152,6 +1178,11 @@ export default function LineSettingsPage() {
       </Card>
 
       {/* ========================================================== 使用說明 */}
+      {/* ====================================================== 老闆通知（Issue #18） */}
+      <div className="mb-4">
+        <OwnerNotifySection />
+      </div>
+
       <Card className="mb-4">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1222,20 +1253,23 @@ export default function LineSettingsPage() {
           </Button>
         }
       >
-        <div className="mb-3">
+        <div className="mb-3 flex flex-wrap gap-2">
           {failCount === 0 ? (
-            <Badge tone="success">{t.verifyReport.allPass}</Badge>
+            <Badge tone="success">
+              <CheckCircle2 size={13} className="mr-1 inline-block" />
+              {t.verifyReport.allPass}
+            </Badge>
           ) : (
             <Badge tone="danger">{t.verifyReport.failCount(failCount)}</Badge>
           )}
         </div>
         <div className="flex flex-col gap-2">
-          {(verifyChecks ?? []).map((c) => (
+          {verifiableChecks.map((c) => (
             <div
               key={c.key}
               className="flex items-start gap-2 rounded-md border border-neutral-250 px-3 py-2"
             >
-              {c.pass ? (
+              {c.status === 'PASS' ? (
                 <CheckCircle2 size={16} className="mt-0.5 flex-shrink-0 text-success" />
               ) : (
                 <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-danger" />
@@ -1245,25 +1279,42 @@ export default function LineSettingsPage() {
                   {t.verifyReport.checkNames[c.key as keyof typeof t.verifyReport.checkNames] ?? c.key}
                 </div>
                 <div className="form-text">{c.message}</div>
-                {!c.pass && c.key === 'AUTO_REPLY' ? (
-                  <div className="form-text font-semibold">{t.verifyReport.culprit}</div>
-                ) : null}
-                {!c.pass && c.key === 'WEBHOOK' ? (
-                  <div className="form-text">{t.verifyReport.webhookOffHint}</div>
+                {c.status === 'FAIL' && c.key === 'WEBHOOK' ? (
+                  <>
+                    <div className="form-text">{t.verifyReport.webhookOffHint}</div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      loading={syncingWebhook}
+                      loadingText={t.verifyReport.webhookSync.syncing}
+                      onClick={() => void syncWebhook()}
+                    >
+                      {t.verifyReport.webhookSync.action}
+                    </Button>
+                  </>
                 ) : null}
               </div>
             </div>
           ))}
         </div>
-        <a
-          className="btn btn-outline btn-sm mt-3"
-          href={t.tutorial.managerHref}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <ExternalLink size={13} />
-          {t.verifyReport.gotoLineConsole}
-        </a>
+
+        {/* 人工確認提示（AUTO_REPLY）——藍色資訊樣式，獨立於上方通過／失敗清單，
+            不是「偵測到問題」的黃色警告。 */}
+        {infoChecks.map((c) => (
+          <Alert key={c.key} tone="info" className="mt-3" title={t.verifyReport.autoReplyInfo.title}>
+            <p className="mt-1">{t.verifyReport.autoReplyInfo.body}</p>
+            <a
+              className="btn btn-outline btn-sm mt-2"
+              href={t.tutorial.managerHref}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLink size={13} />
+              {t.verifyReport.autoReplyInfo.cta}
+            </a>
+          </Alert>
+        ))}
       </Modal>
 
       {/* ------------------------------------------------ modal：圖文教學 */}

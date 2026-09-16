@@ -179,6 +179,48 @@ export const common = {
     suggestions: ['LINE 串接狀態', '本月推播額度', '方案與權益到期'],
   },
 
+  /**
+   * 客服對話串（issue #25 B 段）——「轉人工」之後的持久化留言，與上面
+   * `supportChat`（自助查詢）是兩件事。文案依決策文件明文要求：不暗示即時
+   * 真人在線，通知狀態誠實顯示，不假造「處理中／已回覆／已解決」。
+   */
+  supportChatEscalation: {
+    escalateButton: '轉真人客服',
+    panelTitle: '客服對話',
+    newTab: '新留言',
+    historyTab: '歷史紀錄',
+    subject: '主旨',
+    subjectPlaceholder: '用一句話描述您的問題',
+    subjectRequired: '請輸入主旨',
+    message: '內容',
+    messagePlaceholder: '請詳細說明您遇到的狀況',
+    messageRequired: '請輸入內容',
+    submit: '送出給客服',
+    submitting: '送出中…',
+    submitFailed: '送出失敗，請稍後再試一次。',
+    followUpPlaceholder: '在這則對話串繼續留言',
+    followUpFailed: '留言送出失敗，請稍後再試一次。',
+    backToList: '返回列表',
+    empty: '尚無客服紀錄。點選「轉真人客服」開始第一則留言。',
+    loading: '讀取中…',
+    loadFailed: '讀取失敗，請稍後再試一次。',
+    unreadBadge: '未讀',
+    /**
+     * 狀態文案直接對應 `SupportChatNotifyStatus`；不得再新增
+     * 「處理中」「已回覆」「已解決」等系統無法驗證的狀態。
+     */
+    notifyStatus: {
+      SENT: '已送出，將由平台方查看並回覆您。',
+      FAILED: '內容已保存，但通知信寄送失敗，平台方可能會晚一點看到；我們會持續嘗試。',
+      SKIPPED_NO_KEY: '內容已保存，但平台通知功能尚未設定，我們會盡快補上。',
+      SKIPPED_NO_RECIPIENT: '內容已保存，但平台客服信箱尚未設定，我們會盡快補上。',
+    },
+    sentBy: {
+      TENANT: '您',
+      PLATFORM: '平台客服',
+    },
+  },
+
   /* ---- 預約狀態 ---- */
   bookingStatus: {
     PENDING: '待確認',

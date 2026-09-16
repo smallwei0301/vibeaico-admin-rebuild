@@ -26,7 +26,8 @@ function packet(riskTier = 'ADDITIVE', restoreKind = 'LOCAL_LOGICAL_RESTORE_CANA
       tenantBoundaryVerified: riskTier === 'AUTHZ', negativeRoleTestsPassed: riskTier === 'AUTHZ',
     },
     recovery: {
-      status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z',
+      status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false,
+      backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z',
       restoreRehearsalKind: restoreKind, productionBackupRestored: restoreKind === 'PRODUCTION_BACKUP_CLONE',
       storageObjectsCovered: false, preimageBackupVerified: riskTier === 'BACKFILL',
     },
@@ -35,7 +36,7 @@ function packet(riskTier = 'ADDITIVE', restoreKind = 'LOCAL_LOGICAL_RESTORE_CANA
       planDigest: PLAN, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z',
       executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/450#review', reviewId: 'recovery-447',
     },
-    data: { paymentFactsTouched: false, batchSize: 100, maxRows: 1000 },
+    data: { paymentFactsTouched: false, batchSize: 100, maxRows: 1000, executionBounded: riskTier === 'BACKFILL' },
   };
   value.finalRisk.evidenceDigest = releaseEvidenceDigestOf(value);
   return value;
@@ -50,9 +51,13 @@ describe('Production DB recovery evidence tiers #447', () => {
 
   it('BACKFILL requires a real Production backup clone rather than local rehearsal', () => {
     expect(() => evaluateReleasePreflight(packet('BACKFILL'), { now: NOW })).toThrow(/PRODUCTION_BACKUP_RESTORE_REQUIRED/);
-    expect(evaluateReleasePreflight(packet('BACKFILL', 'PRODUCTION_BACKUP_CLONE'), { now: NOW })).toMatchObject({
-      status: 'READY_FOR_LOCK', restoreRehearsalKind: 'PRODUCTION_BACKUP_CLONE',
-    });
+    // Even with a genuine Production backup clone/restore, v1 still does not execute
+    // arbitrary BACKFILL SQL through the controlled writer (BACKFILL_EXECUTOR_NOT_ADMITTED
+    // in assertRiskAdaptiveEvidence, mirrored by buildBoundedBackfillSql at the SQL-build
+    // layer) — the clone/restore gate only proves the *recovery* evidence is real, it does
+    // not by itself admit BACKFILL for execution.
+    expect(() => evaluateReleasePreflight(packet('BACKFILL', 'PRODUCTION_BACKUP_CLONE'), { now: NOW }))
+      .toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
   });
 
   it('rejects a clone label that does not prove a Production backup was restored', () => {

@@ -78,6 +78,31 @@ export const orderHtml = (p: ProductOrderNotifyDetails): string => shell('新商
   <p style="font-size:14px;">訂單 ${esc(p.orderNo)} — ${esc(p.customerName)}，
      金額 NT$ ${p.totalAmount.toLocaleString()}</p>`);
 
+/* ------------------------------------------------------------- Support chat
+ * 客服對話串通知信（issue #25 B 段）——店家在 widget「轉人工」時寄給平台管理者。
+ * 收件人是平台，不是店家；不得包含任何密文／token（決策文件明文要求）。 */
+
+export interface SupportChatNotifyDetails {
+  shopName: string;
+  shopCode: string;
+  senderEmail: string;
+  subject: string;
+  body: string;
+  threadId: string;
+  appUrl: string;
+}
+
+export const supportChatNotifyHtml = (p: SupportChatNotifyDetails): string => shell('客服對話串通知', `
+  <table style="font-size:14px;color:#3A3A3C;line-height:2;">
+    <tr><td style="color:#8E8E93;padding-right:16px;">店家</td>
+        <td>${esc(p.shopName)}（${esc(p.shopCode)}）</td></tr>
+    <tr><td style="color:#8E8E93;">送出者</td><td>${esc(p.senderEmail)}</td></tr>
+    <tr><td style="color:#8E8E93;">主旨</td><td>${esc(p.subject)}</td></tr>
+  </table>
+  <p style="font-size:14px;color:#3A3A3C;white-space:pre-wrap;margin:16px 0;
+            border-left:3px solid #C9A961;padding-left:12px;">${esc(p.body)}</p>
+  <p style="font-size:12px;color:#8E8E93;">Thread ID：${esc(p.threadId)}</p>`);
+
 /* ------------------------------------------------------------------ 消費明細
  * 顧客端「消費明細」信 —— issue #27 ③。
  *

@@ -729,3 +729,89 @@ export type CalendarEvent = {
     calendarName?: string;
   };
 };
+
+/* ============================================================================
+ * 推廣成效統計（Issue #23 — GET /api/promotion/stats?range=7|30|90）
+ * `approximate` 依 Owner Decision 2026-09-14 永遠是 true：UV 是匿名近似值，
+ * 不是精準去重人口計數（每日輪替 salt，同一人跨日回訪可能被重複計數）。
+ * 零資料時 `hasData: false`，`pv`/`uv` 為 0、`bySource`/`byDay` 為空陣列——
+ * UI 必須顯示 EmptyState，不得畫示意假曲線。
+ * ========================================================================== */
+export type PromotionSourceStat = { source: string; pv: number; uv: number };
+export type PromotionDayStat = { day: string; pv: number; uv: number };
+export type PromotionStats = {
+  pv: number;
+  uv: number;
+  bySource: PromotionSourceStat[];
+  byDay: PromotionDayStat[];
+  approximate: true;
+  hasData: boolean;
+};
+
+/**
+ * Support chat 客服對話串（issue #25 B 段）。與 `SupportAnswer`（自助查詢的
+ * 回覆殼，見 `src/server/support-chat.ts`）是兩件不同的東西——這裡是持久化的
+ * 客服案件／訊息紀錄，見 `docs/decisions/2026-09-11-support-chat-human-escalation.md`。
+ */
+export type SupportChatThreadStatus = 'OPEN' | 'CLOSED';
+/**
+ * 通知寄送的誠實狀態，直接對應 DB 的 `support_chat_threads.notify_status`。
+ * UI 不得從 thread 存在本身推斷通知已送達——沒有 SENT 就不能說「平台已收到」。
+ */
+export type SupportChatNotifyStatus = 'SENT' | 'FAILED' | 'SKIPPED_NO_KEY' | 'SKIPPED_NO_RECIPIENT';
+export type SupportChatSenderRole = 'TENANT' | 'PLATFORM';
+
+export type SupportChatMessage = {
+  id: string;
+  senderRole: SupportChatSenderRole;
+  senderEmail: string;
+  body: string;
+  createdAt: string;
+};
+
+export type SupportChatThreadSummary = {
+  id: string;
+  subject: string;
+  status: SupportChatThreadStatus;
+  notifyStatus: SupportChatNotifyStatus;
+  lastMessageAt: string;
+  unread: boolean;
+  createdAt: string;
+};
+
+export type SupportChatThreadDetail = SupportChatThreadSummary & {
+  messages: SupportChatMessage[];
+};
+
+/**
+ * 平台贊助（`/tenant/donate`，issue #25 C 段）。
+ * ⚠️ 這不是租戶資料——`platform_donations` 沒有 `tenant_id`，贊助是使用者個人
+ * 行為，見 `supabase/migrations/0118_issue_25c_platform_donations.sql` 檔頭。
+ */
+export type DonationStatus = 'PENDING' | 'PAID' | 'FAILED';
+
+export type DonationDonor = {
+  id: string;
+  displayName: string;
+  donatedAt: string;
+};
+
+/** GET /api/donations/summary */
+export type DonationSummary = {
+  totalDonated: number;
+  myDonated: number;
+  donors: DonationDonor[];
+};
+
+/** POST /api/donations */
+export type DonationOrder = {
+  id: string;
+  merchantTradeNo: string;
+  amount: number;
+};
+
+/** GET /api/donations/:id/checkout —— 一組要自動 POST 到 ECPay 的表單欄位 */
+export type DonationCheckout = {
+  actionUrl: string;
+  fields: Record<string, string>;
+};

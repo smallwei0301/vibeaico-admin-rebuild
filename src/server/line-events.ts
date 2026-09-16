@@ -268,12 +268,39 @@ export async function handleEvent(
     case 'message':
       return onMessage(admin, tenant, token, lineConfig, ev);
     case 'postback':
-      // 保留：data 格式 action=xxx&…（10 分冊 §6.2 的聊天內下單流程）。MVP 先 log。
-      console.log('[line-events] postback', tenant.id, ev.postback?.data ?? '');
-      return;
+      return onPostback(admin, tenant, ev);
     default:
       return; // 其他事件（join/leave/beacon…）MVP 忽略
   }
+}
+
+/* -------------------------------------------------------------- postback */
+/**
+ * postback 分派（Issue #18 owner-notify 的「本人在 LINE 上確認」）。
+ * `data` 格式沿用 06 分冊註記的 `action=xxx&…`，owner-notify 用
+ * `ownerNotifyConfirm:<requestId>` / `ownerNotifyDecline:<requestId>`
+ * （見 `src/server/owner-notify.ts` 的 `ownerNotifyConfirmMessage`）。
+ * 其餘 postback（10 分冊 §6.2 聊天內下單流程）尚未實作，保留 log。
+ */
+async function onPostback(admin: SupabaseClient, tenant: WebhookTenant, ev: any): Promise<void> {
+  const data: string = ev.postback?.data ?? '';
+  const lineUserId: string = ev.source?.userId ?? '';
+  if (!lineUserId) return;
+
+  const confirmMatch = /^ownerNotifyConfirm:(.+)$/.exec(data);
+  const declineMatch = /^ownerNotifyDecline:(.+)$/.exec(data);
+  if (confirmMatch) {
+    const { confirmOwnerNotifyBind } = await import('./owner-notify');
+    await confirmOwnerNotifyBind(admin, tenant.id, confirmMatch[1], lineUserId);
+    return;
+  }
+  if (declineMatch) {
+    const { declineOwnerNotifyBind } = await import('./owner-notify');
+    await declineOwnerNotifyBind(admin, tenant.id, declineMatch[1], lineUserId);
+    return;
+  }
+
+  console.log('[line-events] postback', tenant.id, data);
 }
 
 /* ---------------------------------------------------------------- follow */

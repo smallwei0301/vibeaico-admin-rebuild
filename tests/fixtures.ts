@@ -107,3 +107,20 @@ export const TRIP_A = {
   /** capacity=2 的團次 —— 專供並發 checkout 測試（12 分冊 §5）。 */
   departureCap2: '7a000000-0000-4000-8000-000000000023',
 } as const;
+
+/**
+ * 平台贊助金流整合測試用的假 ECPay 憑證（issue #25 C 段）——**不是真實憑證**，
+ * 平台目前根本沒有真的 ECPay 商店（EXTERNAL_CONFIG_BLOCKED，見 `src/config/env.ts`）。
+ * `tests/integration/global-setup.ts` 用同樣的字面值（那邊獨立內嵌一份，見該檔
+ * 開頭註解——它必須能被 `tests/unit/test-env-policy.384.test.ts` transpile 進
+ * 隔離沙盒目錄單獨執行，不能有額外的 relative import）當 spawn 出來的
+ * `next dev` server 的預設值，`tests/integration/api/donations.25c.test.ts`
+ * 則 import 這裡的常數自己簽出 CheckMacValue 去打 `/api/donations/callback`——
+ * 這是跟自己對帳，驗證的是簽章／驗簽／冪等的邏輯本身，不是打真的 ECPay。
+ * ⚠️ 兩邊字面值必須一致，改一邊要記得改另一邊。
+ */
+export const ITEST_ECPAY_CREDENTIALS = {
+  merchantId: 'itest-merchant-000',
+  hashKey: 'itest-hash-key-not-real',
+  hashIv: 'itest-hash-iv-not-real',
+} as const;

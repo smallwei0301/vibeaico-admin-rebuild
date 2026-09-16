@@ -29,7 +29,7 @@ function schemaRepairPacket() {
       negativeRoleTestsPassed: false,
     },
     recovery: {
-      status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T12:20:00Z',
+      status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T12:20:00Z',
       restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false,
       // Intentionally false: schema repair must not inherit BACKFILL-only preimage requirements.
       preimageBackupVerified: false,

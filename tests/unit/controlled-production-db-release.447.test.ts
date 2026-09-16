@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as controlledWriter from '../../scripts/db/controlled-production-db-release.mjs';
 
 import { createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
-import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
-import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
+import { PRODUCTION_DB_POLICY, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
+import { buildProductionDbReleasePlan, releasePlanDigestOf, sha256 } from '../../scripts/agents/production-db-release-plan.mjs';
 import {
   assertLiveLedgerMatchesAliasMap,
   buildAtomicProductionApplySql,
+  verifyPostApplyLedger,
   runControlledProductionRelease,
 } from '../../scripts/db/controlled-production-db-release.mjs';
 
@@ -50,7 +52,7 @@ function packet(p: any) {
     source: { status: 'SOURCE_VERIFIED', mainSha: p.mainSha, planDigest: p.planDigest, databaseMutationAuthorized: false },
     consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T12:35:00Z', mainSha: p.mainSha, planDigest: p.planDigest },
     test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 8, cleanup: 'PASSED', mainSha: p.mainSha, planDigest: p.planDigest },
-    recovery: { status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY', productionBackupRestored: false, storageObjectsCovered: false, preimageBackupVerified: false },
+    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY', productionBackupRestored: false, storageObjectsCovered: false, preimageBackupVerified: false },
     finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z', executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#review', reviewId: 'review-447' },
     data: { paymentFactsTouched: false, batchSize: 100, maxRows: 1000 },
   };
@@ -64,9 +66,239 @@ const beforeRows = [
 ];
 
 describe('Controlled Production DB writer #447', () => {
+  // Clock injection is test-only at the runtime boundary, not writer input.
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it.each(['btree', 'hash'])('builds ADDITIVE %s indexes while refusing embedded routines', async (method) => {
+    const sql = `create index orders_id_idx on public.orders using ${method} (id) where id > 0;`;
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => sql,
+    });
+    expect(p.riskTier).toBe('ADDITIVE');
+    expect(buildAtomicProductionApplySql({
+      plan: p, releasePacket: packet(p), aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+    })).toContain(sql);
+
+    for (const unsafeSql of [
+      `create index orders_id_idx on public.orders using ${method} ((custom_routine(id)));`,
+      `create index orders_id_idx on public.orders using ${method} (id) where custom_routine(id);`,
+    ]) {
+      const stalePlan = plan();
+      stalePlan.migrations[0].sha256 = sha256(Buffer.from(unsafeSql));
+      stalePlan.planDigest = releasePlanDigestOf(stalePlan);
+      const evidence = packet(stalePlan);
+      expect(() => buildAtomicProductionApplySql({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => unsafeSql,
+      })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+      await expect(runControlledProductionRelease({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => unsafeSql, fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it('keeps partial-index conflict DML and its nested routines outside the writer', async () => {
+    const sql = 'insert into public.orders(id) values (1) on conflict (id) where id > 0 do nothing;';
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => sql,
+    });
+    expect(p.riskTier).toBe('BACKFILL');
+    for (const candidate of [sql, sql.replace('id > 0', 'custom_routine(id)')]) {
+      const stalePlan = plan();
+      stalePlan.migrations[0].sha256 = sha256(Buffer.from(candidate));
+      stalePlan.planDigest = releasePlanDigestOf(stalePlan);
+      const evidence = packet(stalePlan);
+      expect(() => buildAtomicProductionApplySql({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => candidate,
+      })).toThrow();
+      const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+      await expect(runControlledProductionRelease({
+        plan: stalePlan, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => candidate, fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    'begin', 'brin', 'btree', 'conflict', 'declare', 'exception', 'exclude',
+    'filter', 'gin', 'gist', 'hash', 'if', 'join', 'loop', 'over', 'partition',
+    'raise', 'set', 'while', 'custom_routine',
+  ])('rejects syntax-like routine %s in query wrappers before any network request', async (name) => {
+    for (const call of [`${name}()`, `${name.toUpperCase()} /* gap */ (1)`, `"${name}"()`, `"public".${name}()`]) {
+      for (const query of [`select ${call};`, `(select ${call});`, `copy ((select ${call})) to stdout;`]) {
+        const sql = `create function public.${name}() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; ${query}`;
+        // Recreate a previously admitted ADDITIVE plan with correct byte and
+        // digest bindings. Both public boundaries must reclassify the SQL.
+        const p = plan();
+        p.migrations[0].sha256 = sha256(Buffer.from(sql));
+        p.planDigest = releasePlanDigestOf(p);
+        const evidence = packet(p);
+        expect(() => buildAtomicProductionApplySql({
+          plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+          liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+        }), query).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+        const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+        await expect(runControlledProductionRelease({
+          plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+          readCanonicalSql: () => sql, fetchImpl: fetchSpy as unknown as typeof fetch,
+        }), query).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+        expect(fetchSpy, query).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  it.each([
+    'select filter();',
+    '(select "public".filter());',
+    'copy (select "public".filter()) to stdout;',
+  ])('rejects keyword routine/wrapper bypass before any request: %s', async (query) => {
+    const sql = `create function public.filter() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; ${query}`;
+    // An old ADDITIVE plan with otherwise valid byte and digest bindings must
+    // be reclassified before both transaction construction and the ledger read.
+    const p = plan();
+    p.migrations[0].sha256 = sha256(Buffer.from(sql));
+    p.planDigest = releasePlanDigestOf(p);
+    const evidence = packet(p);
+    expect(() => buildAtomicProductionApplySql({
+      plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+    })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+      readCanonicalSql: () => sql, fetchImpl: fetchSpy as unknown as typeof fetch,
+    })).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a previously additive plan with quoted-schema routine calls before any request', async () => {
+    for (const call of ['"public".filter()', '"public" . filter()', '"public"/* schema */.filter()',
+      '"public"."filter"()', 'public.filter()', '"租戶".filter()',
+      '"pub""lic".filter()', 'U&"publ\\0069c".filter()']) {
+      const sql = `create function "public".filter() returns integer language plpgsql as \u0024\u0024 begin delete from public.orders; return 1; end; \u0024\u0024; select ${call};`;
+      // Model a plan admitted by the old classifier. Valid byte/digest bindings
+      // must not bypass reclassification when the writer verifies the plan.
+      const p = plan();
+      p.migrations[0].sha256 = sha256(Buffer.from(sql));
+      p.planDigest = releasePlanDigestOf(p);
+      const evidence = packet(p);
+      expect(() => buildAtomicProductionApplySql({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+      })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      const fetchSpy = vi.fn(() => { throw new Error('unexpected network request'); });
+      await expect(runControlledProductionRelease({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        readCanonicalSql: () => sql, fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
+  });
+
+  it('does not export the raw SQL mutable transport', () => {
+    expect(Object.keys(controlledWriter)).not.toContain('executeAtomicProductionApply');
+  });
+
+  it('rejects stale evidence even when the caller supplies its former valid clock', async () => {
+    vi.setSystemTime(new Date('2026-09-16T12:40:00Z'));
+    const p = plan();
+    const fetchSpy = vi.fn();
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/STALE_EVIDENCE/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('rechecks wall-clock freshness after a slow ledger read and before mutation', async () => {
+    const p = plan();
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toMatch(/\/read-only$/);
+      vi.setSystemTime(new Date('2026-09-14T13:00:00Z'));
+      return new Response(JSON.stringify(beforeRows), { status: 200 });
+    });
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/STALE_EVIDENCE/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects migration configuration overrides while preserving writer timeouts', () => {
+    for (const command of ["set lock_timeout = '0';", "set local statement_timeout = '0';",
+      "set session statement_timeout to '0';", 'reset statement_timeout;', 'reset all;',
+      'set "lock_timeout" = 0;', 'set U&"statement\\005ftimeout" = 0;', 'discard all;']) {
+      const p = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => command,
+      });
+      expect(() => buildAtomicProductionApplySql({
+        plan: p, aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql: () => command,
+      })).toThrow(/WRITER_CONFIGURATION_NOT_ADMITTED/);
+    }
+    for (const sql of ["select pg_catalog.set_config('statement_timeout', '0', true);",
+      "alter table public.t add column x text default pg_catalog.set_config('lock_timeout', '0', true);",
+      "do $$ begin reset all; end $$;"]) {
+      expect(() => buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => sql,
+      })).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED|UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
+    }
+    const sql = buildAtomicProductionApplySql({ plan: plan(), aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql });
+    expect(sql).toContain("set local lock_timeout = '5s';");
+    expect(sql).toContain("set local statement_timeout = '60s';");
+    expect(sql).toContain('schema_migrations(version, name) values (');
+    expect(sql).not.toMatch(/created_by|idempotency_key|schema_migrations\(version, statements/);
+  });
+
   it('requires live provider ledger to match the trusted alias map before building mutable SQL', () => {
     expect(assertLiveLedgerMatchesAliasMap({ aliasMap: aliasMap(), liveLedgerRows: beforeRows })).toMatchObject({ status: 'LIVE_LEDGER_VERIFIED' });
     expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap: aliasMap(), liveLedgerRows: [...beforeRows, { version: 'x', name: 'manual_unknown' }] })).toThrow(/LIVE_LEDGER_DRIFT/);
+  });
+
+  it('builds a valid ledger reconciliation for an empty live baseline', () => {
+    const emptyAliasMap = {
+      schemaVersion: 1,
+      entries: [{ repoFile: '0109_assertions', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' }],
+    };
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: emptyAliasMap, readCanonicalSql,
+    });
+    const sql = buildAtomicProductionApplySql({
+      plan: p, aliasMap: emptyAliasMap, liveLedgerRows: [], readCanonicalSql,
+    });
+    expect(sql).toContain('select null::text as name, null::text as version where false');
+  });
+
+  it('uses a non-colliding procedural tag for ledger identity values', () => {
+    const dollar = String.fromCharCode(36);
+    const collisionName = [dollar, 'ledgercheck', dollar].join('');
+    const collisionAliasMap = {
+      schemaVersion: 1,
+      entries: [
+        { repoFile: '0001_base', ledgerNames: [collisionName], classification: 'EXACT', evidence: 'x' },
+        { repoFile: '0109_assertions', ledgerNames: [], classification: 'NOT_APPLIED', notAppliedReason: 'PENDING_APPLY', evidence: 'x' },
+      ],
+    };
+    const p = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: collisionAliasMap, readCanonicalSql,
+    });
+    const sql = buildAtomicProductionApplySql({
+      plan: p, aliasMap: collisionAliasMap,
+      liveLedgerRows: [{ version: '1', name: collisionName }], readCanonicalSql,
+    });
+    expect(sql).toContain('do ' + dollar + 'ledgercheck0' + dollar);
   });
 
   it('builds one atomic transaction with DB advisory lock before live recheck, exact main SQL and ledger identity', () => {
@@ -79,9 +311,60 @@ describe('Controlled Production DB writer #447', () => {
     expect(recheckAt).toBeGreaterThan(lockAt);
     expect(migrationAt).toBeGreaterThan(recheckAt);
     expect(sql).toContain(p.migrations[0].ledgerVersion);
+    expect(sql).toContain('m.version = x.version');
     expect(sql).toContain("'0109_assertions'");
     expect(sql.trim().startsWith('begin;')).toBe(true);
     expect(sql.trim().endsWith('commit;')).toBe(true);
+  });
+
+  it('keeps arbitrary BACKFILL out of the v1 writer even with row-limit evidence', () => {
+    const backfillSql = 'delete from public.guard_447 where id is not null;';
+    const backfillPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => backfillSql,
+    });
+    expect(backfillPlan.riskTier).toBe('BACKFILL');
+
+    const backfillPacket = packet(backfillPlan);
+    backfillPacket.riskTier = 'BACKFILL';
+    backfillPacket.recovery.preimageBackupVerified = true;
+    backfillPacket.data.executionBounded = true;
+    backfillPacket.data.batchSize = 1;
+    backfillPacket.data.maxRows = 1;
+    backfillPacket.finalRisk.evidenceDigest = releaseEvidenceDigestOf(backfillPacket);
+
+    expect(() => buildAtomicProductionApplySql({
+      plan: backfillPlan, releasePacket: backfillPacket,
+      aliasMap: aliasMap(), liveLedgerRows: beforeRows, readCanonicalSql: () => backfillSql,
+    })).toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
+  });
+
+  it('rejects data-modifying CTEs wrapped in DDL before any mutable request', async () => {
+    for (const prefix of ['create table', 'create materialized view', 'create view']) {
+      const sql = `${prefix} public.archive as with moved as (delete from public.orders returning *) select * from moved;`;
+      const p = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => sql,
+      });
+      expect(p.riskTier).toBe('BACKFILL');
+      const evidence = packet(p);
+      evidence.data.executionBounded = true;
+      evidence.recovery.preimageBackupVerified = true;
+      evidence.recovery.restoreRehearsalKind = 'PRODUCTION_BACKUP_CLONE';
+      evidence.recovery.productionBackupRestored = true;
+      evidence.finalRisk.evidenceDigest = releaseEvidenceDigestOf(evidence);
+      expect(() => buildAtomicProductionApplySql({
+        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows, readCanonicalSql: () => sql,
+      })).toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
+      const fetchSpy = vi.fn();
+      await expect(runControlledProductionRelease({
+        plan: p, releasePacket: evidence, journal: journal(p), aliasMap: aliasMap(),
+        readCanonicalSql: () => sql, token: 'test-only-placeholder',
+        fetchImpl: fetchSpy as unknown as typeof fetch,
+      })).rejects.toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    }
   });
 
   it('rejects transaction-unsafe migration commands before any mutable request', () => {
@@ -92,6 +375,68 @@ describe('Controlled Production DB writer #447', () => {
       liveLedgerRows: beforeRows,
       readCanonicalSql: () => 'create index concurrently x_idx on public.x(id);',
     })).toThrow(/MIGRATION_BYTES_MISMATCH|TRANSACTION_UNSAFE_MIGRATION/);
+
+    for (const transactionSql of ['commit;', 'rollback;', 'abort;', 'end;', 'start transaction;', 'savepoint writer_savepoint;', 'release writer_savepoint;']) {
+      const transactionPlan = buildProductionDbReleasePlan({
+        releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+        aliasMap: aliasMap(), readCanonicalSql: () => transactionSql,
+      });
+      expect(() => buildAtomicProductionApplySql({
+        plan: transactionPlan,
+        aliasMap: aliasMap(),
+        liveLedgerRows: beforeRows,
+        readCanonicalSql: () => transactionSql,
+      })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+    }
+
+    const typedLiteralSql = "select name'\\'; commit; -- ';";
+    const typedLiteralPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => typedLiteralSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: typedLiteralPlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => typedLiteralSql,
+    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+
+    const proceduralSql = 'do $$ begin perform 1; end $$;';
+    const proceduralPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => proceduralSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: proceduralPlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => proceduralSql,
+    })).not.toThrow();
+
+    const dollarQuote = String.fromCharCode(36, 36);
+    const proceduralNoticeSql = 'do ' + dollarQuote + " begin raise notice 'commit'; end " + dollarQuote + ';';
+    const proceduralNoticePlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => proceduralNoticeSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: proceduralNoticePlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => proceduralNoticeSql,
+    })).not.toThrow();
+
+    const proceduralCommitSql = 'do ' + dollarQuote + ' begin commit; end ' + dollarQuote + ';';
+    const proceduralCommitPlan = buildProductionDbReleasePlan({
+      releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
+      aliasMap: aliasMap(), readCanonicalSql: () => proceduralCommitSql,
+    });
+    expect(() => buildAtomicProductionApplySql({
+      plan: proceduralCommitPlan,
+      aliasMap: aliasMap(),
+      liveLedgerRows: beforeRows,
+      readCanonicalSql: () => proceduralCommitSql,
+    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
   });
 
   it('uses read-only ledger → one DB-locked mutable transaction → read-only ledger, then stops for schema/ACL/RLS postcheck', async () => {
@@ -156,4 +501,44 @@ describe('Controlled Production DB writer #447', () => {
     })).rejects.toThrow(/RELEASE_JOURNAL_PLAN_MISMATCH/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it('maps post-apply ledger readback uncertainty to APPLY_UNKNOWN without retrying', async () => {
+    const p = plan();
+    let readOnlyCalls = 0;
+    let mutableCalls = 0;
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const text = String(url);
+      if (text.endsWith('/database/query/read-only')) {
+        readOnlyCalls += 1;
+        if (readOnlyCalls === 1) return new Response(JSON.stringify(beforeRows), { status: 200, headers: { 'content-type': 'application/json' } });
+        throw new Error('ledger read timed out after apply');
+      }
+      mutableCalls += 1;
+      return new Response('[]', { status: 200 });
+    });
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' } });
+    expect(readOnlyCalls).toBe(2);
+    expect(mutableCalls).toBe(1);
+  });
+
+  it('rejects missing, extra and version-drifted full-ledger identities after apply', () => {
+    const p = plan();
+    const applied = [...beforeRows, { version: p.migrations[0].ledgerVersion, name: '0109_assertions' }];
+    expect(() => verifyPostApplyLedger({
+      plan: p, baselineLedgerRows: beforeRows,
+      liveLedgerRows: [...applied, { version: '3', name: 'unexpected_manual_row' }],
+    })).toThrow(/POST_APPLY_LEDGER_MISMATCH/);
+    expect(() => verifyPostApplyLedger({
+      plan: p, baselineLedgerRows: beforeRows,
+      liveLedgerRows: [{ version: p.migrations[0].ledgerVersion, name: '0109_assertions' }],
+    })).toThrow(/POST_APPLY_LEDGER_MISMATCH/);
+    expect(() => verifyPostApplyLedger({
+      plan: p, baselineLedgerRows: beforeRows,
+      liveLedgerRows: [...applied.map((row) => row.name === '0001_base' ? { ...row, version: 'drifted' } : row)],
+    })).toThrow(/POST_APPLY_LEDGER_VERSION_MISMATCH/);
+  });
+
 });

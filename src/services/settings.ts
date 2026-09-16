@@ -254,6 +254,94 @@ export const reorderShopPageGallery = (ids: string[]) =>
   );
 
 /**
+ * banner video 兩階段上傳（issue #22 Part A；04 分冊 §A-1.1）——
+ * `presignBannerVideo()` → 用戶端直接 PUT 到回傳的 `signedUrl` → 上傳成功後
+ * 呼叫 `confirmBannerVideo()`。大檔案（最大 50MB）直傳 Storage，完全不經過
+ * 這個 Next.js server 的 JSON body。
+ *
+ * mock 分支：沒有真的 Storage 好直傳，直接把 `file.name` 當成「上傳完成的
+ * 網址」寫回 mock branding store，行為與其他 mock 上傳分支（見上方
+ * `uploadRichMenuBgImage`）一致：只驗證 UI 流程，不驗證真實網路互動。
+ */
+export interface PresignBannerVideoResult {
+  bucket: string;
+  path: string;
+  signedUrl: string;
+  token: string;
+}
+
+export const BANNER_VIDEO_MAX_BYTES = 50 * 1024 * 1024;
+const BANNER_VIDEO_ALLOWED_TYPES = new Set(['video/mp4', 'video/webm']);
+
+export const presignBannerVideo = (contentType: string, sizeBytes: number) =>
+  adapt<PresignBannerVideoResult>(
+    () => {
+      if (!BANNER_VIDEO_ALLOWED_TYPES.has(contentType)) {
+        throw new ApiError('影片只支援 MP4 / WebM 格式', 'VALIDATION');
+      }
+      if (sizeBytes > BANNER_VIDEO_MAX_BYTES) {
+        throw new ApiError('影片大小不可超過 50MB', 'VALIDATION');
+      }
+      return { bucket: 'banner-videos', path: 'mock/banner-video/mock.mp4', signedUrl: '', token: '' };
+    },
+    () => request<PresignBannerVideoResult>('/api/settings/shop-page/banner-video/presign', {
+      method: 'POST',
+      body: JSON.stringify({ contentType, sizeBytes }),
+    }),
+  );
+
+/**
+ * 直傳到 Storage 簽名網址。**不走 `request()`**——那支輔助函式假設回應信封是
+ * `{success,data}`，但 Storage 的 PUT 端點回的是它自己的格式；這裡直接用
+ * `fetch`，非 2xx 一律視為失敗並丟出錯誤訊息帶 HTTP 狀態碼方便除錯。
+ */
+export const uploadBannerVideoToSignedUrl = async (signedUrl: string, file: File) => {
+  const res = await fetch(signedUrl, {
+    method: 'PUT',
+    headers: { 'content-type': file.type },
+    body: file,
+  });
+  if (!res.ok) {
+    throw new ApiError(`上傳到儲存空間失敗（HTTP ${res.status}）`, 'INTERNAL');
+  }
+};
+
+export const confirmBannerVideo = (path: string) =>
+  adapt<BrandingSettings>(
+    () => {
+      const store = getMockBrandingStore();
+      const merged = brandingSettingsSchema.parse({
+        ...store[MOCK_MODE],
+        bannerVideoUrl: `mock://banner-video/${path}`,
+      });
+      store[MOCK_MODE] = merged;
+      return merged;
+    },
+    () => request<BrandingSettings>('/api/settings/shop-page/banner-video/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+  );
+
+export interface DeleteBannerVideoResult {
+  removed: boolean;
+}
+
+export const deleteBannerVideo = () =>
+  adapt<DeleteBannerVideoResult>(
+    () => {
+      const store = getMockBrandingStore();
+      const current = store[MOCK_MODE];
+      const removed = !!current.bannerVideoUrl;
+      store[MOCK_MODE] = brandingSettingsSchema.parse({ ...current, bannerVideoUrl: '' });
+      return { removed };
+    },
+    () => request<DeleteBannerVideoResult>('/api/settings/shop-page/banner-video', {
+      method: 'DELETE',
+    }),
+  );
+
+/**
  * POST /api/settings/weekly-business-hours/draft —— **乾跑**，一列都不寫。
  *
  * ⚠️ 「乾跑」是我方選定的語意，不是原站考據結果；依據與反面證據見
@@ -311,15 +399,72 @@ export const testLineConnection = () =>
     () => request<{ ok: boolean; message: string }>('/api/settings/line/test', { method: 'POST' }),
   );
 
+/**
+ * Issue #477 P1a：把 verify 報告裡「Webhook 沒開啟」的提示文案，換成一顆真的能
+ * 呼叫 LINE 官方 API 修好的按鈕（PUT endpoint + PUT setActive，皆用該租戶自己的
+ * Channel Token）。`synced:false` 時保留誠實的失敗訊息，前端不得顯示成功、也
+ * 不清除既有設定。mock 模式一律回同步成功，讓 demo 流程可走完全程。
+ */
+export const syncLineWebhook = () =>
+  adapt<{ synced: boolean; message: string; endpoint?: string }>(
+    () => ({ synced: true, message: 'Webhook 網址已更新並開啟（demo 模式）' }),
+    () =>
+      request<{ synced: boolean; message: string; endpoint?: string }>(
+        '/api/settings/line/webhook-sync',
+        { method: 'POST' },
+      ),
+  );
+
+/**
+ * Issue #47 驗收「關閉／解除連線後，秘密欄位清除且狀態誠實回到未設定」——
+ * `saveLineSettings({ channelSecret: '', channelAccessToken: '' })` 做不到這件事：
+ * `PUT /api/settings/line`（06 分冊鐵則 6）把空字串明確定義成「不動舊值」，是為了
+ * 一般編輯表單不要求每次都重貼 Token；但那個語意套在「解除連線」上正好相反——
+ * 呼叫端以為秘密被清空了，資料庫裡其實原封不動。真正會清空
+ * `line_channel_secret_enc`／`line_channel_access_token_enc` 的是既有的
+ * `POST /api/settings/line/disconnect`，必須改呼叫這支而不是 `saveLineSettings()`。
+ */
+export const disconnectLine = () =>
+  adapt<void>(
+    () => undefined,
+    () => request<void>('/api/settings/line/disconnect', { method: 'POST' }),
+  );
+
+/**
+ * 六項可查證檢查（status 只會是 PASS/FAIL）+ 一項人工確認提示（AUTO_REPLY，
+ * status 恆為 INFO）—— 見 src/app/api/settings/line/verify/route.ts 檔頭說明。
+ * `pass` 欄位保留相容（`pass === (status === 'PASS')`），呼叫端計算失敗數須用
+ * status==='FAIL'，AUTO_REPLY 的 INFO 不計入通過／失敗任一邊。
+ */
 export const verifyLineSetup = () =>
-  adapt<{ checks: { key: string; pass: boolean; message: string }[] }>(
+  adapt<{ checks: { key: string; status: 'PASS' | 'FAIL' | 'INFO'; pass: boolean; message: string }[] }>(
     () => ({
       checks: [
-        { key: 'TOKEN', pass: true, message: 'Channel Access Token 有效' },
-        { key: 'WEBHOOK', pass: true, message: 'Webhook URL 已設定且可連線' },
-        { key: 'AUTO_REPLY', pass: false, message: 'LINE 官方帳號的「自動回應訊息」仍為開啟，會攔截 Bot 訊息' },
-        { key: 'RICH_MENU', pass: true, message: 'Rich Menu 已發布' },
-        { key: 'QUOTA', pass: true, message: '本月推播額度尚有 68 則' },
+        { key: 'CREDENTIALS', status: 'PASS', pass: true, message: 'Channel ID / Secret / Access Token 都已填寫' },
+        { key: 'TOKEN', status: 'PASS', pass: true, message: 'Access Token 有效（LINE 認證通過）' },
+        {
+          key: 'ID_SECRET_PAIR', status: 'PASS', pass: true,
+          message: 'Channel ID 與 Secret 配對正確（webhook 簽章可通過）',
+        },
+        {
+          key: 'BOT_MODE', status: 'PASS', pass: true,
+          message: 'LINE 官方帳號後台「回應方式」為 Bot 模式（推薦）',
+        },
+        {
+          key: 'WEBHOOK', status: 'PASS', pass: true,
+          message: 'Use webhook 已開啟（LINE 會把使用者點選／訊息事件送到本系統）',
+        },
+        {
+          key: 'WEBHOOK_TEST', status: 'PASS', pass: true,
+          message: 'Webhook 實際測試通過（LINE → 本系統 200 OK）',
+        },
+        {
+          key: 'AUTO_REPLY',
+          status: 'INFO',
+          pass: false,
+          message:
+            '「自動回應訊息」開關無公開 API 可直接查詢，請自行至 LINE Official Account Manager 確認並關閉，避免 LINE 內建自動回應攔截 Bot 訊息',
+        },
       ],
     }),
     () => request('/api/settings/line/verify', { method: 'POST' }),

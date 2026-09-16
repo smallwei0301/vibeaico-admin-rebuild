@@ -15,7 +15,7 @@ body:
     id: workstream
     attributes:
       label: WORKSTREAM
-      description: Choose MODEL_GOVERNANCE only for pure model/agent/governance work. Any Product runtime, schema/migration, payment/refund, LINE/provider, tenant data or Product deployment work uses PRODUCT_MAINLINE. Mixed inseparable scope also uses PRODUCT_MAINLINE.
+      description: Choose MODEL_GOVERNANCE only for pure model/agent/governance work. Any Product runtime, schema/migration, payment/refund, LINE/provider, tenant data or Product deployment work uses PRODUCT_MAINLINE. Mixed inseparable scope also uses PRODUCT_MAINLINE. Standalone metrics/schema-truth bookkeeping remains MODEL_GOVERNANCE even when recording a Product Run. Use exactly one declaration, not both a form heading and a second field.
       options:
         - MODEL_GOVERNANCE
         - PRODUCT_MAINLINE
@@ -87,8 +87,8 @@ body:
     id: model
     attributes:
       label: Requested model / actual model
-      description: MODEL_GOVERNANCE uses requested=gpt-5.6-sol; actual=gpt-5.6-sol. Product work records the actual provider/model truth.
-      placeholder: "requested=gpt-5.6-sol; actual=gpt-5.6-sol"
+      description: Pure governance does not require a specific model. Use requested=not_requested; actual=unknown when reliable identity evidence is unavailable. Product work records actual provider/model truth; never infer identity from a lane.
+      placeholder: "requested=not_requested; actual=unknown"
     validations:
       required: true
 

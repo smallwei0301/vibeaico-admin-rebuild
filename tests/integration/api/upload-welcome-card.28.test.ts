@@ -17,7 +17,6 @@ let ownerStorage: SupabaseClient;
 let ownerA: AuthedApi;
 let staffA: AuthedApi;
 let uploadedPath: string | null = null;
-let keywordReplyPath: string | null = null;
 let retiredUrl: string | null = null;
 let createdLocalKeywordReplyBucket = false;
 
@@ -44,7 +43,8 @@ beforeAll(async () => {
 
   // The disposable local baseline intentionally does not replay the old remote
   // 0039 migration that created keyword-reply-images. Create only that bucket
-  // as a local test fixture so this regression test reaches p_storage_write.
+  // as a local test fixture so the rejection test below hits a real bucket
+  // (and not a "bucket not found" error that would mask the ACL behaviour).
   // The remote canonical environment must already contain the real bucket;
   // missing remote infrastructure remains a hard failure rather than a fixture.
   const { data: keywordReplyBucket, error: keywordReplyBucketError } =
@@ -78,10 +78,6 @@ afterAll(async () => {
   if (uploadedPath) {
     const { error } = await admin.storage.from(BUCKET).remove([uploadedPath]);
     if (error) console.error('[upload-welcome-card.28] 清理 storage 物件失敗：', error);
-  }
-  if (keywordReplyPath) {
-    const { error } = await admin.storage.from(KEYWORD_REPLY_BUCKET).remove([keywordReplyPath]);
-    if (error) console.error('[upload-welcome-card.28] 清理 keyword reply 物件失敗：', error);
   }
   if (createdLocalKeywordReplyBucket) {
     const { error } = await admin.storage.deleteBucket(KEYWORD_REPLY_BUCKET);
@@ -128,20 +124,23 @@ describe('POST /api/upload welcome-card-images (#28⑥)', () => {
     expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
   });
 
-  it('preserves direct authenticated keyword-reply uploads outside this repair', async () => {
+  it('rejects direct authenticated keyword-reply-images uploads, same shape as welcome-card-images (#402)', async () => {
     const fileName = `keyword-${Date.now().toString(36)}.png`;
-    keywordReplyPath = `${SHOP_A.id}/${fileName}`;
+    const path = `${SHOP_A.id}/${fileName}`;
     const { error } = await ownerStorage.storage
       .from(KEYWORD_REPLY_BUCKET)
-      .upload(keywordReplyPath, PNG_1X1, { contentType: 'image/png', upsert: false });
-    expect(error).toBeNull();
+      .upload(path, PNG_1X1, { contentType: 'image/png', upsert: false });
 
-    const { data: blob, error: downloadError } = await admin.storage
+    if (!error) {
+      await admin.storage.from(KEYWORD_REPLY_BUCKET).remove([path]);
+    }
+    expect(error).not.toBeNull();
+
+    const { data: remaining, error: listError } = await admin.storage
       .from(KEYWORD_REPLY_BUCKET)
-      .download(keywordReplyPath);
-    expect(downloadError).toBeNull();
-    expect(blob).not.toBeNull();
-    expect(Buffer.from(await blob!.arrayBuffer())).toEqual(PNG_1X1);
+      .list(SHOP_A.id, { search: fileName });
+    expect(listError).toBeNull();
+    expect(remaining?.some((entry) => entry.name === fileName)).toBe(false);
   });
 
   it('protects a referenced image, then removes it after the reference is released', async () => {

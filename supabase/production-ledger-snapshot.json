@@ -3,10 +3,10 @@
   "issue": 396,
   "environment": "PRODUCTION",
   "projectRef": "egehnijjpgijmccagxac",
-  "capturedAt": "2026-09-14T09:47:36Z",
-  "source": "正式庫 supabase_migrations.schema_migrations 的 57 筆 ledger row 名稱（依 version 由小到大排序）。本次於 2026-09-14T09:47:36Z 由 Owner 具名授權的 0107 套用作業後，直接自正式庫即時擷取（single query，select json_agg(name order by version)），不是人工謄寫或沿用上一版再手動補列。新增的 row 為 20260914094736 / 0107_issue_41_formation_state_model（前一次是 20260914082715 / 0108_issue_41_payment_state_model）；本檔不含即時查詢，供 scripts/ci/verify-ledger-alias-map.mjs 做 source-only 比對用，該 script 不得連線資料庫。",
-  "note": "此快照只記錄 provider ledger 的 name 欄位，依 version 由小到大排序；不含 version 時間戳字串或其他資料庫欄位。這是一份 point-in-time 快照，checker 無法自己更新它——正式庫每次套用 migration 之後，都必須由人重新擷取本檔並同步更新 supabase/ledger-alias-map.json 的分類，否則快照會無聲過期（見 docs/SCHEMA-TRUTH-GOVERNANCE.md）。0082_reconcile_booking_addon_notify_fields 與 0082_staff_display_fields 是兩筆不同的 row，共用 0082 這個 4 碼前綴——詳見 supabase/ledger-alias-map.json 對 0083_staff_display_fields 的說明。 本次 0106 套用後重新擷取，並以 postflight 確認 Production 三組重複索引已移除、保留索引仍 valid/ready/live。",
-  "rowCount": 57,
+  "capturedAt": "2026-09-15T00:00:00Z",
+  "source": "正式庫 supabase_migrations.schema_migrations 的 58 筆 ledger row 名稱（依 version 由小到大排序）。2026-09-14T09:47:36Z 由 Owner 具名授權的 0107 套用作業後，直接自正式庫即時擷取（single query，select json_agg(name order by version)），不是人工謄寫或沿用上一版再手動補列。新增的 row 為 20260914094736 / 0107_issue_41_formation_state_model（前一次是 20260914082715 / 0108_issue_41_payment_state_model）；本檔不含即時查詢，供 scripts/ci/verify-ledger-alias-map.mjs 做 source-only 比對用，該 script 不得連線資料庫。2026-09-15T00:00:00Z 更正：先前本檔漏記 0105_issue_44_traveler_risk_policies 已套用至正式庫這件事——本檔曾誤標 rowCount 57、ledgerRowNames 未列入該筆，導致與正式庫實際狀態（58 筆）不符。以唯讀查詢（select count(*)、select version, name where name ilike '%0105%' or name ilike '%traveler_risk%'）重新核對 supabase_migrations.schema_migrations 確認：正式庫共 58 筆，且 0105_issue_44_traveler_risk_policies 已在其中，provider ledger row 為 20260915033841 / 0105_issue_44_traveler_risk_policies（version 晚於 0107 的 20260914094736 與 0108 的 20260914082715，故排在 ledgerRowNames 最後一筆）。本次僅為修正既有漏記的唯讀確認，未執行任何 apply_migration 或 DDL/DML。",
+  "note": "此快照只記錄 provider ledger 的 name 欄位，依 version 由小到大排序；不含 version 時間戳字串或其他資料庫欄位。這是一份 point-in-time 快照，checker 無法自己更新它——正式庫每次套用 migration 之後，都必須由人重新擷取本檔並同步更新 supabase/ledger-alias-map.json 的分類，否則快照會無聲過期（見 docs/SCHEMA-TRUTH-GOVERNANCE.md）。0082_reconcile_booking_addon_notify_fields 與 0082_staff_display_fields 是兩筆不同的 row，共用 0082 這個 4 碼前綴——詳見 supabase/ledger-alias-map.json 對 0083_staff_display_fields 的說明。 本次 0106 套用後重新擷取，並以 postflight 確認 Production 三組重複索引已移除、保留索引仍 valid/ready/live。2026-09-15 更正：0105_issue_44_traveler_risk_policies 先前在本檔與 ledger-alias-map.json 被誤標為 NOT_APPLIED／PENDING_APPLY，實際上已套用於正式庫；本次以唯讀查詢核對 ledger row 存在後同步更正 rowCount 與 ledgerRowNames，並同步更正 supabase/ledger-alias-map.json 的分類。",
+  "rowCount": 58,
   "ledgerRowNames": [
     "0001_extensions_and_functions",
     "0002_enums",
@@ -64,6 +64,7 @@
     "0073_restore_keyword_reply_storage_write",
     "0106_deduplicate_redundant_indexes",
     "0108_issue_41_payment_state_model",
-    "0107_issue_41_formation_state_model"
+    "0107_issue_41_formation_state_model",
+    "0105_issue_44_traveler_risk_policies"
   ]
 }

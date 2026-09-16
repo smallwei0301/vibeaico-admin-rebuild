@@ -30,6 +30,18 @@ const serverSchema = z.object({
   /** Resend 寄信（Phase 4，見 05 分冊） */
   RESEND_API_KEY: z.string().optional(),
 
+  /**
+   * 平台客服信箱（issue #25 B 段／`docs/decisions/2026-09-11-support-chat-human-escalation.md`）。
+   * 店家在 support-chat widget「轉人工」時，通知信寄去這個信箱。
+   *
+   * ⚠️ 未設定時**不擋** thread／訊息寫入——店家的留言仍會成功保存，只是
+   * `src/server/email/send.ts` 的 `sendSupportChatNotifyEmail()` 會回
+   * `SKIPPED_NO_RECIPIENT`，UI 依此誠實顯示「已保存，通知尚未送出」。
+   * 絕不可 fallback 成任何個人信箱或 repo owner 帳號——那會讓一個沒設定的平台
+   * 悄悄把客服信寄去某個人的私人信箱而不留痕跡。
+   */
+  PLATFORM_SUPPORT_NOTIFY_EMAIL: z.string().email().optional(),
+
   /** Vercel Cron 呼叫 /api/cron/* 的 Bearer token（Phase 7，見 07 分冊） */
   CRON_SECRET: z.string().optional(),
 
@@ -67,6 +79,30 @@ const serverSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),
+
+  /**
+   * 推廣成效匿名 visitor_hash 的每日輪替 salt 密鑰（issue #23，
+   * 見 `src/server/promotion-visitor-hash.ts`）。未設定時退回
+   * `SETTINGS_ENCRYPTION_KEY`、再退回一個固定字串（不影響公開頁可用性，
+   * 只影響 salt 隨機性），所以這裡維持 optional，不擋骨架模式全空 env 起動。
+   */
+  PROMOTION_VISITOR_SALT_SECRET: z.string().optional(),
+
+  /**
+   * 平台贊助金流（issue #25 C 段，`docs` 見 PR 說明）：綠界（ECPay）AIO 商店憑證。
+   *
+   * ⚠️ 這是**平台自己**收贊助用的商店，跟任何一家租戶的收款方式（#9
+   * `tenant_payment_methods`）完全無關，不可混用、不可從那邊借憑證。
+   *
+   * 2026-09-15 盤點 `midao.env`：三者皆未設定（EXTERNAL_CONFIG_BLOCKED）。未設定
+   * 時 `/api/donations` 的建單（純寫我方 DB）仍正常運作，只有「取得付款頁表單」
+   * 那一步會回 503 + `EXT_001`，不會用假憑證簽出一組必然被 ECPay 拒絕的表單。
+   */
+  ECPAY_MERCHANT_ID: z.string().optional(),
+  ECPAY_HASH_KEY: z.string().optional(),
+  ECPAY_HASH_IV: z.string().optional(),
+  /** 'production' 打正式 ECPay；其餘（含未設定）一律視為測試站，指向 payment-stage */
+  ECPAY_ENV: z.enum(['production', 'stage']).default('stage'),
 });
 
 const clientSchema = z.object({
