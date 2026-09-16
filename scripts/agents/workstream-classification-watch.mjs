@@ -27,7 +27,7 @@ export function inspectClassification(item, files = null, policy = routing) {
   let result;
   if (isPr) {
     if (!Array.isArray(files) || !Number.isSafeInteger(item.changed_files) ||
-        files.length !== item.changed_files || files.length === 0 ||
+        files.length !== item.changed_files ||
         new Set(files.map(file => file.filename)).size !== files.length ||
         files.some(file => typeof file.filename !== 'string' || !file.filename ||
           (file.status === 'renamed' && !file.previous_filename))) {
@@ -56,6 +56,7 @@ export function inspectClassification(item, files = null, policy = routing) {
     number: item.number, kind: isPr ? 'PR' : 'ISSUE',
     workstream: Object.hasOwn(LABELS, result.workstream) || legacy ? result.workstream : 'INVALID',
     status: legacy ? 'LEGACY_GRANDFATHERED' : errors.length ? 'FAIL' : 'PASS',
+    contentEvidence: isPr && files.length === 0 ? 'CONFIRMED_ZERO_CONTENT' : 'CONTENT_PRESENT',
     errors: [...new Set(errors)],
   };
 }
