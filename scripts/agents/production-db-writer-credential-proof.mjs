@@ -7,7 +7,7 @@ import process from 'node:process';
 import { PRODUCTION_DB_POLICY } from './production-db-release-preflight.mjs';
 import {
   CANONICAL_PRODUCTION_DB_OWNER_ROLE,
-  CANONICAL_PRODUCTION_DB_WRITER_ROLE,
+  assertDedicatedProductionDbWriterCapabilities,
   createProjectBoundProductionDbTransport,
   parseProjectBoundProductionDbWriterUrl,
 } from '../db/production-db-postgres-transport.mjs';
@@ -18,70 +18,15 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function asBool(value) {
-  return value === true || value === 't' || value === 'true';
-}
-
 async function build(mainSha, connectionString) {
   const parsed = parseProjectBoundProductionDbWriterUrl(connectionString);
   const transport = createProjectBoundProductionDbTransport({ connectionString });
-  const [ledger, capabilities, catalogFingerprint] = await Promise.all([
+  const [ledger, capabilities] = await Promise.all([
     transport.captureLedger(),
     transport.captureCredentialCapabilities(),
-    transport.captureCatalogFingerprint(),
   ]);
-
-  const writerFlagsSafe = Boolean(
-    asBool(capabilities.role_can_login) &&
-    !asBool(capabilities.role_superuser) &&
-    !asBool(capabilities.role_can_create_role) &&
-    !asBool(capabilities.role_can_create_database) &&
-    !asBool(capabilities.role_can_replicate) &&
-    !asBool(capabilities.role_bypass_rls),
-  );
-  const ownerFlagsSafe = Boolean(
-    !asBool(capabilities.owner_can_login) &&
-    !asBool(capabilities.owner_superuser) &&
-    !asBool(capabilities.owner_can_create_role) &&
-    !asBool(capabilities.owner_can_create_database) &&
-    !asBool(capabilities.owner_can_replicate) &&
-    !asBool(capabilities.owner_bypass_rls),
-  );
-  const roleEscalationBoundaryVerified = Boolean(
-    Number(capabilities.writer_membership_count) === 1 &&
-    asBool(capabilities.owner_membership_exact) &&
-    asBool(capabilities.writer_can_set_owner) &&
-    asBool(capabilities.dangerous_set_role_absent),
-  );
-  const migrationOwnershipVerified = Boolean(
-    asBool(capabilities.required_relation_ownership) &&
-    asBool(capabilities.required_routine_ownership) &&
-    asBool(capabilities.reserve_seats_execute) &&
-    asBool(capabilities.release_seats_execute) &&
-    asBool(capabilities.owner_public_default_acl_present),
-  );
-  const migrationPrivilegesVerified = Boolean(
-    asBool(capabilities.public_schema_usage) &&
-    asBool(capabilities.public_schema_create) &&
-    asBool(capabilities.ledger_schema_usage) &&
-    asBool(capabilities.ledger_select) &&
-    asBool(capabilities.ledger_insert),
-  );
-  const identityVerified = Boolean(
-    String(capabilities.database_name ?? '') === parsed.database &&
-    String(capabilities.database_user ?? '') === CANONICAL_PRODUCTION_DB_WRITER_ROLE &&
-    String(capabilities.session_user ?? '') === CANONICAL_PRODUCTION_DB_WRITER_ROLE,
-  );
-
-  const dedicatedRoleVerified = Boolean(
-    identityVerified &&
-    writerFlagsSafe &&
-    ownerFlagsSafe &&
-    roleEscalationBoundaryVerified &&
-    migrationOwnershipVerified &&
-    migrationPrivilegesVerified,
-  );
-  if (!dedicatedRoleVerified) throw new Error('DEDICATED_WRITER_ROLE_CAPABILITIES_NOT_VERIFIED');
+  const verification = assertDedicatedProductionDbWriterCapabilities(capabilities);
+  const catalogFingerprint = await transport.captureCatalogFingerprint();
 
   const ledgerDigest = sha256(JSON.stringify(ledger.map((row) => ({ version: String(row.version), name: String(row.name) }))));
   return {
@@ -95,13 +40,7 @@ async function build(mainSha, connectionString) {
     database: parsed.database,
     databaseUser: parsed.role,
     ownerRole: CANONICAL_PRODUCTION_DB_OWNER_ROLE,
-    dedicatedRoleVerified,
-    identityVerified,
-    writerFlagsSafe,
-    ownerFlagsSafe,
-    roleEscalationBoundaryVerified,
-    migrationOwnershipVerified,
-    migrationPrivilegesVerified,
+    ...verification,
     migrationLedgerObserved: true,
     migrationLedgerDigest: ledgerDigest,
     catalogFingerprint,
