@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   attachActualChangedFiles,
+  createSourceFreeze,
   summarizeActiveLanes,
   validateGlobalWip,
 } from '../../scripts/agents/dual-terra-wip-policy.mjs';
@@ -28,6 +29,7 @@ function terraPr({
   return {
     number,
     state: 'open',
+    head: { sha: 'a'.repeat(40) },
     html_url: `https://example.test/${number}`,
     body: `<!-- pr-lifecycle
 issue: ${issue}
@@ -56,7 +58,8 @@ supersedes:
 - TEST_ENV_ID: local-${number}
 - FINAL_CANONICAL_REQUIRED: true
 - FILE_OWNERSHIP: ${ownership}
-- COMPLETION_CLAIM: ${completionClaim}`,
+- COMPLETION_CLAIM: ${completionClaim}
+- SOURCE_FREEZE: ${createSourceFreeze("a".repeat(40))}`,
   };
 }
 

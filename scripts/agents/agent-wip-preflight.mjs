@@ -8,6 +8,7 @@ import { validateLocalRunLedgerChanges } from './scorecard-required-gate.mjs';
 import { isPlaceholder, readField } from './agent-wip-policy.mjs';
 import {
   parseLaneMetadata,
+  readFrozenCheckoutHead,
   validateActualFileOwnership,
   validateLaneMetadata,
 } from './dual-terra-wip-policy.mjs';
@@ -95,9 +96,15 @@ export function validateWipPreflight(input = {}) {
     fileExists = existsSync,
   } = input;
   const text = String(body ?? '');
-  const pr = { number: Number(prNumber) || 1, state: 'open', body: text };
-  const metadata = parseLaneMetadata(pr);
   const errors = [];
+  let headSha = '';
+  if (upper(readField(text, 'COMPLETION_CLAIM')) === 'AUDIT_READY'
+    && upper(readField(text, 'AGENT_LANE')) === 'TERRA_BUILD') {
+    try { headSha = readFrozenCheckoutHead(repositoryRoot); }
+    catch { errors.push('SOURCE_FREEZE requires a clean, readable current Git checkout'); }
+  }
+  const pr = { number: Number(prNumber) || 1, state: 'open', body: text, head: { sha: headSha } };
+  const metadata = parseLaneMetadata(pr);
   // Metadata-only API callers stay compatible; the full CLI requires an inventory.
   if (changedFiles !== null) errors.push(...validateLocalRunLedgerChanges({ changedFiles, repositoryRoot }));
   const origin = upper(readField(text, 'WORK_ORIGIN'));
