@@ -198,7 +198,7 @@ describe('Final Risk canonical handoff persistence (#533)', () => {
 
     const result = buildFinalRiskPacket({ ...baseInput(), reviews: [review] }, deps);
     expect('reviewMode' in result && result.reviewMode).toBe('DELTA');
-    expect(result.previousReviewSource).toBe('CANONICAL_GITHUB_REVIEW');
+    expect('previousReviewSource' in result && result.previousReviewSource).toBe('CANONICAL_GITHUB_REVIEW');
     expect(result.packet?.scope.deltaFiles).toEqual(['src/server/payment/a.ts']);
   });
 
@@ -206,7 +206,7 @@ describe('Final Risk canonical handoff persistence (#533)', () => {
     const review = canonicalReview({ changedFileRecords: undefined, findingDetails: undefined, supportFiles: undefined });
     const result = buildFinalRiskPacket({ ...baseInput(), reviews: [review] }, deps);
     expect('reviewMode' in result && result.reviewMode).toBe('FULL');
-    expect(result.plan.resetReasons).toContain('previous reviewed blob manifest is unavailable or invalid');
+    expect('plan' in result && result.plan.resetReasons).toContain('previous reviewed blob manifest is unavailable or invalid');
   });
 
   it('does not use an older good review when the newest canonical review is ineligible', () => {
@@ -216,7 +216,7 @@ describe('Final Risk canonical handoff persistence (#533)', () => {
     expect(restored?.canonicalTrustEligible).toBe(false);
     const result = buildFinalRiskPacket({ ...baseInput(), reviews: [older, newest] }, deps);
     expect('reviewMode' in result && result.reviewMode).toBe('FULL');
-    expect(result.plan.resetReasons).toContain('previous canonical review is not eligible for semantic reuse');
+    expect('plan' in result && result.plan.resetReasons).toContain('previous canonical review is not eligible for semantic reuse');
   });
 });
 
