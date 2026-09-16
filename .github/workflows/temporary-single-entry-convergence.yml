@@ -1,0 +1,77 @@
+name: temporary-single-entry-convergence
+
+on:
+  push:
+    branches:
+      - governance/issue-528-single-entry-retro-v2
+    paths:
+      - '.github/workflows/temporary-single-entry-convergence.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  converge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: governance/issue-528-single-entry-retro-v2
+          fetch-depth: 0
+      - name: Patch canonical entrypoint relationships
+        shell: python {0}
+        run: |
+          from pathlib import Path
+
+          agent = Path('docs/AGENT-EXECUTION.md')
+          text = agent.read_text()
+          text = text.replace('> 最近更新：2026-09-15', '> 最近更新：2026-09-16', 1)
+          old = '''### 10.4 復盤
+
+Owner 說「復盤」或「複盤」時，載入
+`.agents/skills/vibeaico-agent-retrospective/SKILL.md`，驗證並比較最近 3 輪；資料不足則讀全部。
+'''
+          new = '''### 10.4 復盤
+
+`docs/AGENT-EXECUTION.md` 是本 repo **唯一日常操作入口**。Owner 說「復盤」或「複盤」時，Agent 不得直接把任何 skill、決策文件或複盤文件當成平行入口；必須從本節開始，依序載入：
+
+1. `docs/RETROSPECTIVE-PROTOCOL.md`：完整複盤 SOP、證據面向、時間窗與輸出契約；
+2. `.agents/skills/vibeaico-agent-retrospective/SKILL.md`：依上述 SOP 執行的工具化流程。
+
+`RETROSPECTIVE-PROTOCOL.md` 與 retrospective skill 都是本節的 subordinate material（從屬材料），不得覆蓋或取代本文件的 Workstream、WIP、TEST、Production、Completion Truth 或停止條件。若三者文字衝突，以本文件為準並建立 bounded governance issue 收斂差異。
+
+完成載入後，驗證並比較最近 3 輪；資料不足則讀全部。
+'''
+          if old not in text:
+              raise SystemExit('AGENT_EXECUTION_RETRO_BLOCK_NOT_FOUND')
+          agent.write_text(text.replace(old, new, 1))
+
+          protocol = Path('docs/RETROSPECTIVE-PROTOCOL.md')
+          text = protocol.read_text()
+          old = '> 這份文件規範「怎麼完整複盤」。實際 Agent 執行規則仍以 `docs/AGENT-EXECUTION.md` 為準；複盤 skill 仍由 `.agents/skills/vibeaico-agent-retrospective/SKILL.md` 觸發。'
+          new = '> **入口規則：本文件不是獨立操作入口。** 只有 `docs/AGENT-EXECUTION.md` §10.4 是複盤的 canonical entrypoint；Agent 必須由該節載入本文件，再依本文件使用 `.agents/skills/vibeaico-agent-retrospective/SKILL.md`。若內容衝突，以 `AGENT-EXECUTION.md` 為準。'
+          if old not in text:
+              raise SystemExit('RETRO_PROTOCOL_ENTRY_BLOCK_NOT_FOUND')
+          protocol.write_text(text.replace(old, new, 1))
+
+          skill = Path('.agents/skills/vibeaico-agent-retrospective/SKILL.md')
+          text = skill.read_text()
+          marker = '## Default behavior\n\n'
+          insert = '''## Default behavior
+
+**This skill is not an independent daily entrypoint.** `docs/AGENT-EXECUTION.md` §10.4 is the sole canonical entry. When retrospective work is triggered, follow §10.4 first, load `docs/RETROSPECTIVE-PROTOCOL.md`, then use this skill only as the execution procedure. If this skill conflicts with `AGENT-EXECUTION.md`, the latter wins and the mismatch must be converged through bounded governance work.
+
+'''
+          if marker not in text:
+              raise SystemExit('RETRO_SKILL_DEFAULT_BLOCK_NOT_FOUND')
+          skill.write_text(text.replace(marker, insert, 1))
+
+          Path('.github/workflows/temporary-single-entry-convergence.yml').unlink()
+      - name: Commit converged governance entrypoints
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/AGENT-EXECUTION.md docs/RETROSPECTIVE-PROTOCOL.md .agents/skills/vibeaico-agent-retrospective/SKILL.md .github/workflows/temporary-single-entry-convergence.yml
+          git diff --cached --check
+          git commit -m "docs(governance #528): make AGENT-EXECUTION sole entrypoint"
+          git push origin HEAD:governance/issue-528-single-entry-retro-v2
