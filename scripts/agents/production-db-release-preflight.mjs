@@ -22,7 +22,7 @@ export const PRODUCTION_DB_POLICY = Object.freeze({
   maxBackfillRowsPerRelease: 10_000,
 });
 
-const RISK_TIERS = new Set(['ADDITIVE', 'AUTHZ', 'BACKFILL']);
+const RISK_TIERS = new Set(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ', 'BACKFILL']);
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -119,7 +119,9 @@ function assertCommon(packet, nowMs) {
 
   const consistency = packet.consistency ?? {};
   assertStatus(consistency.status, 'CONSISTENCY_VERIFIED', 'consistency.status');
-  if (Number(consistency.unexplainedDifferences) !== 0) fail('UNEXPLAINED_DRIFT', 'unexplained database differences must be zero');
+  if (consistency.unexplainedDifferences !== 0 || !Number.isSafeInteger(consistency.unexplainedDifferences)) {
+    fail('UNEXPLAINED_DRIFT', 'unexplained database differences must be the exact numeric value 0');
+  }
   assertFresh(
     consistency.observedAt,
     'consistency.observedAt',
@@ -131,7 +133,7 @@ function assertCommon(packet, nowMs) {
 
   const test = packet.test ?? {};
   assertStatus(test.status, 'TEST_VERIFIED', 'test.status');
-  if (test.policySkip === true) fail('TEST_POLICY_SKIP', 'required TEST evidence cannot be POLICY_SKIP');
+  if (test.policySkip !== false) fail('TEST_POLICY_SKIP', 'required TEST evidence must explicitly prove policySkip=false');
   if (!Number.isSafeInteger(test.executedTests) || test.executedTests < 1) fail('EMPTY_TEST_EVIDENCE', 'at least one real test must execute');
   if (String(test.cleanup ?? '').trim().toUpperCase() !== 'PASSED') fail('TEST_CLEANUP_REQUIRED', 'TEST cleanup must pass');
   if (validSha(test.mainSha, 'test.mainSha') !== mainSha) fail('TEST_MAIN_MISMATCH', 'TEST evidence is for another main SHA');
@@ -139,6 +141,8 @@ function assertCommon(packet, nowMs) {
 
   const recovery = packet.recovery ?? {};
   assertStatus(recovery.status, 'RECOVERY_VERIFIED', 'recovery.status');
+  if (recovery.productionProjectRef !== PRODUCTION_DB_POLICY.productionProjectRef) fail('RECOVERY_PROJECT_MISMATCH', 'recovery evidence is for another Production project');
+  if (recovery.databaseMutationAuthorized !== false) fail('RECOVERY_SCOPE_ESCALATION', 'recovery evidence must remain read-only');
   assertFresh(recovery.backupObservedAt, 'recovery.backupObservedAt', nowMs, 24 * 60 * 60 * 1000);
   assertFresh(
     recovery.restoreRehearsedAt,
@@ -146,7 +150,7 @@ function assertCommon(packet, nowMs) {
     nowMs,
     PRODUCTION_DB_POLICY.restoreRehearsalMaxAgeDays * 24 * 60 * 60 * 1000,
   );
-  if (recovery.storageObjectsCovered === true) fail('BACKUP_SCOPE_OVERCLAIM', 'database backup must not claim Storage object coverage');
+  if (recovery.storageObjectsCovered !== false) fail('BACKUP_SCOPE_OVERCLAIM', 'database backup must explicitly prove storageObjectsCovered=false');
 
   const evidenceDigest = releaseEvidenceDigestOf(packet);
   const finalRisk = packet.finalRisk ?? {};
@@ -180,14 +184,16 @@ function assertRiskAdaptiveEvidence(packet, riskTier) {
   }
 
   if (riskTier === 'BACKFILL') {
+    if (data.executionBounded !== true) fail('BACKFILL_EXECUTION_BOUND_REQUIRED', 'BACKFILL release requires the controlled row-count guard evidence');
     if (recovery.preimageBackupVerified !== true) fail('PREIMAGE_BACKUP_REQUIRED', 'BACKFILL release requires preimage backup evidence');
-    if (data.paymentFactsTouched === true) fail('PAYMENT_FACTS_FORBIDDEN', 'v1 backfill gate does not authorize payment fact rewrites');
+    if (data.paymentFactsTouched !== false) fail('PAYMENT_FACTS_FORBIDDEN', 'v1 backfill gate requires paymentFactsTouched=false');
     if (!Number.isSafeInteger(data.batchSize) || data.batchSize < 1 || data.batchSize > PRODUCTION_DB_POLICY.maxBackfillRowsPerBatch) {
       fail('BACKFILL_BATCH_LIMIT', `batchSize must be 1..${PRODUCTION_DB_POLICY.maxBackfillRowsPerBatch}`);
     }
     if (!Number.isSafeInteger(data.maxRows) || data.maxRows < 1 || data.maxRows > PRODUCTION_DB_POLICY.maxBackfillRowsPerRelease) {
       fail('BACKFILL_RELEASE_LIMIT', `maxRows must be 1..${PRODUCTION_DB_POLICY.maxBackfillRowsPerRelease}`);
     }
+    fail('BACKFILL_EXECUTOR_NOT_ADMITTED', 'v1 controlled writer does not execute arbitrary BACKFILL SQL');
   }
 }
 

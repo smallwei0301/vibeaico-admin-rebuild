@@ -458,10 +458,11 @@
     },
     {
       "repoFile": "0105_issue_44_traveler_risk_policies",
-      "ledgerNames": [],
-      "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "0105 已進入 current main，但仍未依 Owner 對 #44 的 TEST／Production 授權套用到任何 Supabase 專案；正式庫快照仍沒有這筆 ledger row。套用前仍須重新核對 merged main source 與 #44 的 TEST lane。"
+      "ledgerNames": [
+        "0105_issue_44_traveler_risk_policies"
+      ],
+      "classification": "EXACT",
+      "evidence": "已套用至正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260915033841 / 0105_issue_44_traveler_risk_policies，名稱與 repo 檔名逐字相同，故為 EXACT。本檔先前誤標記為 NOT_APPLIED／PENDING_APPLY，與正式庫實際狀態不符。2026-09-15 以唯讀查詢（select count(*) from supabase_migrations.schema_migrations；select version, name where name ilike '%0105%' or name ilike '%traveler_risk%'）重新核對正式庫，確認該 ledger row 確實存在後更正分類。本次僅確認 ledger row 存在，未執行資料表結構／RLS／ACL 的 postflight 讀回驗證，也未執行任何 apply_migration 或 DDL/DML；如需完整結構驗證需另案核對。"
     },
     {
       "repoFile": "0106_deduplicate_redundant_indexes",

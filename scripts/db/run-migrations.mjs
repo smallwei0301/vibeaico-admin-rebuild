@@ -1,21 +1,20 @@
 #!/usr/bin/env node
 // scripts/db/run-migrations.mjs
 //
-// 依序把 current origin/main 的 supabase/migrations/NNNN_*.sql 套用到指定 Supabase 專案。
+// 依序把 current origin/main 的 supabase/migrations/NNNN_*.sql 套用到 canonical TEST。
 // 在任何 SQL HTTP request 之前，先完成整份 migration plan 的 canonical source admission。
 //
 // 安全原則：
 //   1. 只接受本 repo 已知的 canonical TEST / Production project ref。
-//   2. 先 read-only fetch origin/main，失敗就停止。
-//   3. worktree migration 檔名集合必須與 current origin/main 完全相同。
-//   4. 每一檔 exact bytes 都必須通過 schema-truth-guardrails.mjs。
-//   5. 整份 plan 全部通過後才開始第一個 database POST。
+//   2. Production project ref 在任何資料庫 request 前 fail closed；Production 只能走
+//      scripts/db/controlled-production-db-release.mjs 的 policy-gated writer。
+//   3. TEST 先 read-only fetch origin/main，失敗就停止。
+//   4. worktree migration 檔名集合必須與 current origin/main 完全相同。
+//   5. 每一檔 exact bytes 都必須通過 schema-truth-guardrails.mjs。
+//   6. 整份 plan 全部通過後才開始第一個 TEST database POST。
 //
-// 注意：source admission 只是必要條件，不是 Production 授權。
-// Production DDL / migration 仍需要 Owner 對該次操作另外具名授權。
-//
-// 用法：
-//   SUPABASE_ACCESS_TOKEN=sbp_xxx node scripts/db/run-migrations.mjs <project_ref>
+// 用法（TEST only）：
+//   SUPABASE_ACCESS_TOKEN=sbp_xxx node scripts/db/run-migrations.mjs <test_project_ref>
 //
 // token 必須是 Supabase Personal Access Token。專案 anon / service_role / sb_secret
 // 不能用於 Management API。
@@ -177,9 +176,18 @@ export async function executeMigrationPlan({
   fetchImpl = fetch,
   log = console,
 }) {
+  // This exported executor can be called without runMigrationWorkflow. Enforce
+  // the TEST-only boundary here too, before inspecting SQL or making requests.
+  const targetEnvironment = resolveTargetEnvironment(projectRef);
+  if (targetEnvironment !== 'TEST') {
+    fail(
+      'PRODUCTION_CONTROLLED_WRITER_REQUIRED',
+      'legacy executeMigrationPlan may only write canonical TEST; Production requires the controlled writer',
+    );
+  }
   const results = [];
   for (const entry of plan.migrations) {
-    const res = await fetchImpl(`${API}/v1/projects/${projectRef}/database/query`, {
+    const res = await fetchImpl(`${API}/v1/projects/${EXPECTED_PROJECT_REFS.TEST}/database/query`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -213,6 +221,12 @@ export async function runMigrationWorkflow({
 }) {
   if (!token) fail('MISSING_ACCESS_TOKEN', 'SUPABASE_ACCESS_TOKEN is required');
   const targetEnvironment = resolveTargetEnvironment(projectRef);
+  if (targetEnvironment === 'PRODUCTION') {
+    fail(
+      'PRODUCTION_CONTROLLED_WRITER_REQUIRED',
+      'legacy run-migrations.mjs may not write Production; use the policy-gated controlled Production DB writer',
+    );
+  }
 
   const fetchedMainSha = refreshMain(repoRoot);
   const localFiles = listLocalFiles(migrationsDir);
@@ -232,10 +246,6 @@ export async function runMigrationWorkflow({
   }
 
   log.log(`[migrate] source preflight 通過：${targetEnvironment} / main ${plan.currentMainSha} / ${plan.migrations.length} migrations`);
-  if (targetEnvironment === 'PRODUCTION') {
-    log.warn('[migrate] 注意：source preflight 通過不等於 Production 授權；仍需本次具名 Owner authorization。');
-  }
-
   const results = await executeMigrationPlan({ plan, projectRef, token, fetchImpl, log });
   return { plan, results };
 }
@@ -244,14 +254,14 @@ async function main() {
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   const projectRef = process.argv[2];
   if (!projectRef) {
-    console.error('[migrate] 用法：SUPABASE_ACCESS_TOKEN=sbp_xxx node scripts/db/run-migrations.mjs <project_ref>');
+    console.error('[migrate] 用法：SUPABASE_ACCESS_TOKEN=sbp_xxx node scripts/db/run-migrations.mjs <test_project_ref>');
     process.exitCode = 1;
     return;
   }
 
   try {
     const { plan } = await runMigrationWorkflow({ projectRef, token });
-    console.log(`[migrate] 全部 migration 套用完成。source main=${plan.currentMainSha}`);
+    console.log(`[migrate] TEST migrations 套用完成。source main=${plan.currentMainSha}`);
   } catch (error) {
     console.error('[migrate] 中止：', error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
