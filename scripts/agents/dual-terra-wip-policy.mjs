@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process';
+import { classifyRiskPaths } from '../ci/local-isolated-test-policy.mjs';
 import {
   MAX_ACTIVE_CANDIDATES,
   parseLaneMetadata as parseBaseLaneMetadata,
@@ -84,13 +86,56 @@ function ownershipOverlap(left, right) {
   return null;
 }
 
+// An acknowledgement is bound to live GitHub/local Git identity, never a body HEAD claim.
+// It does not attest to a model identity or observe an Agent's uncommitted activity.
+export const SOURCE_FREEZE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const SHA40 = /^(?!0{40}$)[a-f0-9]{40}$/;
+const UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
+
+export function sourceFreezeError(metadata, now = Date.now()) {
+  let receipt;
+  try { receipt = JSON.parse(metadata.sourceFreeze || 'null'); } catch { return 'invalid SOURCE_FREEZE JSON'; }
+  if (!receipt || receipt.writes !== 'STOPPED') return 'SOURCE_FREEZE requires stopped-writer acknowledgement';
+  if (!SHA40.test(metadata.headSha || '') || receipt.head !== metadata.headSha) return 'SOURCE_FREEZE does not match live exact head';
+  const captured = UTC.test(receipt.at || '') ? Date.parse(receipt.at) : NaN;
+  if (!Number.isFinite(captured) || new Date(captured).toISOString().slice(0, 19) !== receipt.at.slice(0, 19)
+    || !Number.isFinite(now) || captured > now || now - captured > SOURCE_FREEZE_MAX_AGE_MS) {
+    return 'SOURCE_FREEZE is missing a current timestamp or has expired';
+  }
+  return null;
+}
+
+export function createSourceFreeze(headSha, at = new Date().toISOString()) {
+  const receipt = { head: headSha, writes: 'STOPPED', at };
+  const error = sourceFreezeError({ headSha, sourceFreeze: JSON.stringify(receipt) }, Date.parse(at));
+  if (error) throw new Error(error);
+  return JSON.stringify(receipt);
+}
+
+// Call only after the Product writer has acknowledged STOPPED; this verifies Git,
+// not the existence/identity of an external Agent process. No refs are mutated.
+export function readFrozenCheckoutHead(repositoryRoot = process.cwd()) {
+  const git = (...args) => execFileSync('git', args, { cwd: repositoryRoot, encoding: 'utf8' }).trim();
+  const head = git('rev-parse', '--verify', 'HEAD');
+  if (git('status', '--porcelain=v1', '--untracked-files=normal') || git('rev-parse', '--verify', 'HEAD') !== head) {
+    throw new Error('SOURCE_FREEZE requires a clean stable Git checkout');
+  }
+  return head;
+}
+
+export function createSourceFreezeFromGit(repositoryRoot = process.cwd(), writerStopped = false) {
+  if (writerStopped !== true) throw new Error('Explicit writer-stopped acknowledgement is required');
+  return createSourceFreeze(readFrozenCheckoutHead(repositoryRoot));
+}
+
 function isVerificationTail(metadata) {
   return (
     metadata.lane === 'TERRA_BUILD' &&
     metadata.state === 'ACTIVE' &&
     metadata.activeCandidate === 'TRUE' &&
     metadata.completionClaim === 'AUDIT_READY' &&
-    metadata.dualTerraPilot === 'TRUE'
+    metadata.dualTerraPilot === 'TRUE' &&
+    metadata.freezeError === null
   );
 }
 
@@ -130,8 +175,11 @@ export function validateActualFileOwnership(metadata, changedFiles) {
 
 export function parseLaneMetadata(pr = {}) {
   const body = pr.body ?? '';
-  return {
+  const parsed = {
     ...parseBaseLaneMetadata(pr),
+    headSha: pr.head?.sha ?? '',
+    sourceFreeze: readField(body, 'SOURCE_FREEZE'),
+    declaredRisks: upper(readField(body, 'ASTRA_RISK')).split(',').map(value => value.trim()),
     completionClaim: upper(readField(body, 'COMPLETION_CLAIM')),
     dualTerraPilot: upper(readField(body, 'DUAL_TERRA_PILOT')),
     terraSlot: readField(body, 'TERRA_SLOT'),
@@ -143,7 +191,10 @@ export function parseLaneMetadata(pr = {}) {
     countInDeliveryOutcome: upper(readField(body, 'COUNT_IN_DELIVERY_OUTCOME')),
     retroactiveTrackingMigration: upper(readField(body, 'RETROACTIVE_TRACKING_MIGRATION')),
     actualChangedFiles: null,
+    freezeError: /** @type {string | null} */ (null),
   };
+  parsed.freezeError = sourceFreezeError(parsed);
+  return parsed;
 }
 
 export function validateLaneMetadata(metadata, options = {}) {
@@ -162,6 +213,9 @@ export function validateLaneMetadata(metadata, options = {}) {
     metadata.lane === 'TERRA_BUILD' &&
     metadata.dualTerraPilot === 'TRUE'
   ) {
+    if (metadata.completionClaim === 'AUDIT_READY' && metadata.freezeError !== null) {
+      errors.push(metadata.freezeError || 'SOURCE_FREEZE evidence unavailable');
+    }
     if (!/^[12]$/.test(metadata.terraSlot)) {
       errors.push('Dual Terra TERRA_BUILD must set TERRA_SLOT to 1 or 2');
     }
@@ -193,6 +247,19 @@ export function summarizeActiveLanes(pullRequests = []) {
     .map(parseLaneMetadata)
     .filter((metadata) => metadata.origin === 'AGENT' && metadata.state === 'ACTIVE');
 
+  // A TEST carrier retains its delivery candidate. Same Run + primary Issue
+  // identifies one delivery across stacked BUILD/VERIFY/TEST carriers, not one worker.
+  // Unknown identity is never collapsed; BUILD occupancy remains conservatively per carrier.
+  const candidateRows = activeAgentPulls.filter((pr) => pr.lane !== 'LUNA_CLOSURE'
+    && (pr.activeCandidate === 'TRUE' || pr.lane === 'TEST_VALIDATION'));
+  const candidateKey = (pr, index) => Number.isSafeInteger(pr.issueNumber) && pr.issueNumber > 0
+    && /^\d{4}-\d{2}-\d{2}-[a-zA-Z0-9._-]+$/.test(pr.runId)
+    ? `${pr.runId}:issue:${pr.issueNumber}` : `unknown:${index}:pr:${pr.number}`;
+  const candidates = new Map();
+  candidateRows.forEach((pr, index) => {
+    const key = candidateKey(pr, index);
+    if (!candidates.has(key)) candidates.set(key, pr);
+  });
   return {
     activeAgentPulls,
     activeTerra: activeAgentPulls.filter(
@@ -202,9 +269,8 @@ export function summarizeActiveLanes(pullRequests = []) {
     activeReserve: activeAgentPulls.filter((pr) => pr.lane === 'TERRA_RESERVE'),
     activeClosure: activeAgentPulls.filter((pr) => pr.lane === 'LUNA_CLOSURE'),
     activeTest: activeAgentPulls.filter((pr) => pr.lane === 'TEST_VALIDATION'),
-    activeCandidates: activeAgentPulls.filter(
-      (pr) => pr.activeCandidate === 'TRUE' && pr.lane !== 'LUNA_CLOSURE',
-    ),
+    activeCandidateCarriers: candidateRows,
+    activeCandidates: [...candidates.values()],
     requireActualFileCoverage: false,
   };
 }
@@ -216,6 +282,21 @@ export function attachActualChangedFiles(summary, filesByPullRequest = {}) {
     terra.actualChangedFiles = Array.isArray(files) ? [...files] : null;
   }
   return summary;
+}
+
+// Reuse existing risk paths and declared Product risks. A shared coarse boundary
+// is not evidence of safe independence, even when filenames do not overlap.
+function sharedMutableBoundaries(metadata) {
+  const paths = [...parseOwnedPaths(metadata.fileOwnership), ...(metadata.actualChangedFiles ?? [])];
+  const boundaries = new Set(classifyRiskPaths(paths).reasons);
+  const risks = metadata.declaredRisks ?? [];
+  if (risks.includes('TENANT_AUTH_BOUNDARY')) boundaries.add('AUTH');
+  if (risks.includes('PAYMENT_CONSISTENCY') || paths.some(path => /(?:payment|refund|ecpay)/i.test(path))) boundaries.add('PAYMENT');
+  for (const provider of ['line', 'resend', 'vercel']) {
+    if (paths.some(path => new RegExp(`(^|/)${provider}([/.-]|$)`, 'i').test(path))) boundaries.add(`PROVIDER_${provider}`);
+  }
+  if (risks.some(risk => ['IRREVERSIBLE_DATA', 'CROSS_REPO_CONTRACT', 'UNRESOLVED_HIGH_RISK'].includes(risk))) boundaries.add('EXCLUSIVE');
+  return boundaries;
 }
 
 export function validateGlobalWip(summary) {
@@ -230,6 +311,18 @@ export function validateGlobalWip(summary) {
   } = summary;
   const pilotTerra = activeTerra.filter((pr) => pr.dualTerraPilot === 'TRUE');
   const dualPilotRequested = pilotTerra.length > 0;
+  const sourceCandidates = [...activeTerra, ...verifyingTerra];
+  for (let i = 0; i < sourceCandidates.length; i += 1) {
+    for (const right of sourceCandidates.slice(i + 1)) {
+      const left = sourceCandidates[i];
+      const a = sharedMutableBoundaries(left);
+      const b = sharedMutableBoundaries(right);
+      const shared = [...a].filter(value => b.has(value));
+      if (a.has('EXCLUSIVE') || b.has('EXCLUSIVE')) shared.push('EXCLUSIVE');
+      if (shared.length) errors.push(`Shared mutable boundary requires serial work: PR #${left.number} <> PR #${right.number}: ${[...new Set(shared)].join(', ')}`);
+    }
+  }
+
 
   for (const terra of [...activeTerra, ...verifyingTerra]) {
     for (const error of validateLaneMetadata(terra)) {
