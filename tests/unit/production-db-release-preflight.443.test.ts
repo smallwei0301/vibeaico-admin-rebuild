@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PRODUCTION_DB_POLICY,
   evaluateApplyAdmission,
+  evaluateAutomationReadiness,
   evaluateReleasePreflight,
   releaseEvidenceDigestOf,
 } from '../../scripts/agents/production-db-release-preflight.mjs';
@@ -83,6 +84,79 @@ function lock(overrides: Record<string, unknown> = {}) {
     holder: 'workflow:123/job:456',
     liveBaselineRechecked: true,
   }, overrides);
+}
+
+function automationEvidence() {
+  return {
+    schemaVersion: 1,
+    repository: PRODUCTION_DB_POLICY.repository,
+    productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
+    mainSha: MAIN,
+    databaseMutationAuthorized: false,
+    sourceControls: {
+      status: 'SOURCE_CONTROLS_VERIFIED',
+      mainSha: MAIN,
+      readOnlyPreflightMergedMain: true,
+      scopedConsistencyAdapterMergedMain: true,
+      backupObserverMergedMain: true,
+      restoreRehearsalCallableMergedMain: true,
+      sharedTestEvidenceEmitterMergedMain: true,
+      exactHeadCiGreen: true,
+    },
+    finalRiskAdapter: {
+      status: 'FINAL_RISK_ADAPTER_VERIFIED',
+      mainSha: MAIN,
+      liveGithubFetch: true,
+      currentAllowedReviewerVerified: true,
+      releaseBoundDigestVerified: true,
+    },
+    writer: {
+      status: 'CONTROLLED_WRITER_VERIFIED',
+      mainSha: MAIN,
+      exactPendingSetVerified: true,
+      singleUseReceiptVerified: true,
+      databaseLockVerified: true,
+      durablePreparedEnvelopeVerified: true,
+      postcheckVerified: true,
+      failureJournalVerified: true,
+      bypassAuditClean: true,
+      projectBoundWriterCredentialPresent: true,
+      credentialProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
+      writerTransport: 'POSTGRES_PROJECT_BOUND',
+      writerCredentialKind: 'POSTGRES_CONNECTION_URL',
+      broadPatFallbackAbsent: true,
+      classicPatFallbackAbsent: true,
+      observerWriterCredentialSeparationVerified: true,
+    },
+    orchestrator: {
+      status: 'TRUSTED_MAIN_ORCHESTRATOR_VERIFIED',
+      mainSha: MAIN,
+      trustedMainOnly: true,
+      g3EvidenceConsumerWired: true,
+      g4BackupEvidenceConsumerWired: true,
+      g4RestoreEvidenceConsumerWired: true,
+      finalRiskLiveFetchWired: true,
+      preparedEnvelopePersistBeforeExecute: true,
+      preparedEnvelopeReloadVerified: true,
+      g7PostcheckWired: true,
+      terminalResultPersisted: true,
+    },
+    counterexamples: {
+      status: 'COUNTEREXAMPLES_VERIFIED',
+      mainSha: MAIN,
+      wrongProject: true,
+      staleEvidence: true,
+      unplannedDrift: true,
+      emptyTest: true,
+      fakeOrStaleReview: true,
+      missingRecovery: true,
+      receiptReplay: true,
+      parallelWriter: true,
+      partialApply: true,
+      postcheckFail: true,
+      lostRunnerCrashWindow: true,
+    },
+  };
 }
 
 describe('Production DB release preflight', () => {
@@ -219,5 +293,66 @@ describe('Production DB release preflight', () => {
       .toThrow(/STALE_EVIDENCE/);
     expect(() => evaluateApplyAdmission(packet(), lock({ projectRef: 'wrong-project' }), { now: NOW }))
       .toThrow(/LOCK_PROJECT_MISMATCH/);
+  });
+});
+
+describe('Production DB AUTOMATION_READY verifier #447', () => {
+  it('activates policy mode only when every canonical source/runtime/counterexample condition is verified on one main SHA', () => {
+    const result = evaluateAutomationReadiness(automationEvidence());
+    expect(result).toMatchObject({
+      status: 'AUTOMATION_READY',
+      automationReady: true,
+      authorizationMode: 'POLICY_GATED_ACTIVE',
+      perRunOwnerApproval: 'NOT_REQUIRED',
+      mainSha: MAIN,
+      blockers: [],
+      databaseMutationAuthorized: false,
+    });
+  });
+
+  it('cannot be self-declared ready when the dedicated writer credential is not evidenced', () => {
+    const evidence: any = automationEvidence();
+    evidence.automationReady = true;
+    evidence.writer.projectBoundWriterCredentialPresent = false;
+    const result = evaluateAutomationReadiness(evidence);
+    expect(result.automationReady).toBe(false);
+    expect(result.authorizationMode).toBe('POLICY_APPROVED_AUTOMATION_PENDING');
+    expect(result.blockers).toContain('WRITER_PROJECTBOUNDWRITERCREDENTIALPRESENT_REQUIRED');
+    expect(result.databaseMutationAuthorized).toBe(false);
+  });
+
+  it('requires durable PREPARE persistence/reload before the orchestrator can count as verified', () => {
+    const evidence: any = automationEvidence();
+    evidence.orchestrator.preparedEnvelopePersistBeforeExecute = false;
+    evidence.orchestrator.preparedEnvelopeReloadVerified = false;
+    const result = evaluateAutomationReadiness(evidence);
+    expect(result.automationReady).toBe(false);
+    expect(result.blockers).toContain('ORCHESTRATOR_PREPAREDENVELOPEPERSISTBEFOREEXECUTE_REQUIRED');
+    expect(result.blockers).toContain('ORCHESTRATOR_PREPAREDENVELOPERELOADVERIFIED_REQUIRED');
+  });
+
+  it.each(['parallelWriter', 'partialApply', 'postcheckFail', 'lostRunnerCrashWindow'])('requires the %s counterexample to fail closed before activation', (name) => {
+    const evidence: any = automationEvidence();
+    evidence.counterexamples[name] = false;
+    const result = evaluateAutomationReadiness(evidence);
+    expect(result.automationReady).toBe(false);
+    expect(result.blockers).toContain(`COUNTEREXAMPLE_${name.toUpperCase()}_REQUIRED`);
+  });
+
+  it('requires every readiness evidence group to be bound to the same exact main SHA', () => {
+    const evidence: any = automationEvidence();
+    evidence.finalRiskAdapter.mainSha = 'c'.repeat(40);
+    const result = evaluateAutomationReadiness(evidence);
+    expect(result.automationReady).toBe(false);
+    expect(result.blockers).toContain('FINAL_RISK_ADAPTER_MAIN_SHA_MISMATCH');
+  });
+
+  it('never turns repository readiness evidence itself into a Production mutation credential', () => {
+    const evidence: any = automationEvidence();
+    evidence.databaseMutationAuthorized = true;
+    const result = evaluateAutomationReadiness(evidence);
+    expect(result.automationReady).toBe(false);
+    expect(result.blockers).toContain('AUTOMATION_EVIDENCE_SELF_AUTHORIZED_MUTATION');
+    expect(result.databaseMutationAuthorized).toBe(false);
   });
 });

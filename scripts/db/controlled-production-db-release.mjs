@@ -1,14 +1,32 @@
+import { createHash } from 'node:crypto';
+import process from 'node:process';
+import postgres from 'postgres';
+
+import {
+  advanceApplyReceipt,
+  assertApplyReceiptAdmitted,
+  assertConsumingApplyReceipt,
+} from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
 import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import {
+  CANONICAL_PRODUCTION_DB_OWNER_ROLE,
+  parseProjectBoundProductionDbWriterUrl,
+} from './production-db-postgres-transport.mjs';
+import { buildProductionDbCatalogFingerprintRecheckSql } from './production-db-catalog-fingerprint.mjs';
 
-const API = 'https://api.supabase.com';
 const LOCK_KEY = `vibeaico-production-db-writer:${PRODUCTION_DB_POLICY.productionProjectRef}`;
+const TEST_CATALOG_FINGERPRINT = 'f'.repeat(64);
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
   throw error;
+}
+
+function sha256Json(value) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
 function sqlLiteral(value) {
@@ -20,7 +38,7 @@ function normalizedLedgerRows(rows = []) {
   const normalized = rows.map((row) => {
     const version = String(row?.version ?? '').trim();
     const name = String(row?.name ?? '').trim();
-    if (!name || !version || /[\r\n]/.test(name) || /[\r\n]/.test(version)) fail('INVALID_LEDGER_IDENTITY', 'live ledger rows require non-empty single-line name and version');
+    if (!name || !version || /[\r\n]/.test(name) || /[\r\n]/.test(version)) fail('INVALID_LEDGER_IDENTITY', 'live Production ledger rows require non-empty single-line name and version');
     return { version, name };
   });
   const names = normalized.map((row) => row.name);
@@ -30,6 +48,11 @@ function normalizedLedgerRows(rows = []) {
 
 function normalizedLedgerNames(rows) {
   return normalizedLedgerRows(rows).map((row) => row.name).sort();
+}
+
+function sanitizedLedgerRows(rows) {
+  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live Production ledger rows must be an array');
+  return rows.map((row) => ({ version: String(row?.version ?? ''), name: String(row?.name ?? '') }));
 }
 
 export function expectedAppliedLedgerNames(aliasMap = {}) {
@@ -48,7 +71,7 @@ export function expectedAppliedLedgerNames(aliasMap = {}) {
     }
   }
   const sorted = names.sort();
-  if (new Set(sorted).size !== sorted.length) fail('DUPLICATE_ALIAS_LEDGER_NAME', 'alias map maps the same live ledger name more than once');
+  if (new Set(sorted).size !== sorted.length) fail('DUPLICATE_ALIAS_LEDGER_NAME', 'ledger alias map maps the same live ledger name more than once');
   return sorted;
 }
 
@@ -64,7 +87,6 @@ export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {
   }
   return { status: 'LIVE_LEDGER_VERIFIED', ledgerRowCount: actual.length, databaseMutationAuthorized: false };
 }
-
 
 function ledgerIdentityValues(rows = []) {
   return rows.map((entry) => {
@@ -84,6 +106,7 @@ function expectedPostApplyLedgerRows({ plan, baselineRows } = {}) {
   if (new Set(names).size !== names.length) fail('DUPLICATE_EXPECTED_LEDGER_NAME', 'baseline and planned ledger names must be unique');
   return rows;
 }
+
 function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
   const input = String(ledgerIdentity) + '\n' + String(errorFormat);
   let tag = '$ledgercheck$';
@@ -91,7 +114,6 @@ function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
   while (input.includes(tag)) tag = '$ledgercheck' + String(suffix++) + '$';
   return `do ${tag} declare mismatches text[]; begin with expected(name, version) as (${ledgerIdentity ? `values ${ledgerIdentity}` : 'select null::text as name, null::text as version where false'}), actual(name, version) as (select m.name::text, m.version::text from supabase_migrations.schema_migrations m), differences(item) as (select 'MISSING:' || x.name || '@' || x.version from expected x where not exists (select 1 from actual m where m.name = x.name and m.version = x.version) union all select 'EXTRA:' || m.name || '@' || m.version from actual m where not exists (select 1 from expected x where m.name = x.name and m.version = x.version) union all select 'DUPLICATE:' || m.name || '@' || m.version from actual m group by m.name, m.version having count(*) > 1) select array_agg(item order by item) into mismatches from differences; if mismatches is not null then raise exception '${errorFormat}', array_to_string(mismatches, ','); end if; end ${tag};`;
 }
-
 
 function assertAtomicCompatibleSql(sql, repoFile) {
   const statements = splitSqlStatements(sql);
@@ -104,9 +126,6 @@ function assertAtomicCompatibleSql(sql, repoFile) {
     if (transactionControl.test(trimmed) || (lexicalBody && proceduralTransactionControl.test(lexicalBody))) {
       fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
     }
-    // Deny every session configuration statement, including quoted/U& names and
-    // RESET ALL. Re-applying timeouts afterwards would leave the migration itself
-    // unbounded. DO-block configuration and set_config calls fail in the planner.
     if (/^(?:set|reset|discard)\b/i.test(trimmed)) {
       fail('WRITER_CONFIGURATION_NOT_ADMITTED', `${repoFile} cannot override the writer session configuration`);
     }
@@ -120,7 +139,6 @@ function assertAtomicCompatibleSql(sql, repoFile) {
   }
 }
 
-
 function buildBoundedBackfillSql({ repoFile } = {}) {
   fail('BACKFILL_EXECUTOR_NOT_ADMITTED', repoFile + ' cannot run through the v1 controlled writer; use a separately reviewed bounded executor');
 }
@@ -130,8 +148,9 @@ export function buildAtomicProductionApplySql({
   releasePacket,
   aliasMap,
   liveLedgerRows,
+  baselineCatalogFingerprint,
   readCanonicalSql,
-} = {}) {
+} = /** @type {any} */ ({})) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows });
   const pending = pendingProductionMigrations(aliasMap);
@@ -145,9 +164,11 @@ export function buildAtomicProductionApplySql({
     'begin;',
     "set local lock_timeout = '5s';",
     "set local statement_timeout = '60s';",
+    `set local role ${CANONICAL_PRODUCTION_DB_OWNER_ROLE};`,
     `do $lock$ begin if not pg_try_advisory_xact_lock(hashtextextended(${sqlLiteral(LOCK_KEY)}, 0)) then raise exception 'PRODUCTION_DB_WRITER_LOCK_BUSY'; end if; end $lock$;`,
-    ledgerReconciliationSql({ ledgerIdentity: baselineIdentity, errorFormat: 'PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK:%' }),
   ];
+  if (baselineCatalogFingerprint) statements.push(buildProductionDbCatalogFingerprintRecheckSql(baselineCatalogFingerprint));
+  statements.push(ledgerReconciliationSql({ ledgerIdentity: baselineIdentity, errorFormat: 'PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK:%' }));
 
   for (const entry of plan.migrations) {
     const sql = String(readCanonicalSql(entry.path));
@@ -158,9 +179,6 @@ export function buildAtomicProductionApplySql({
       : '-- controlled migration ' + entry.repoFile + '\n' + sql.trim() + (sql.trim().endsWith(';') ? '' : ';');
     statements.push(migrationSql);
     statements.push(
-      // Only name/version are guaranteed by the canonical ledger contract.
-      // Single-use attempt identity belongs to #455's durable receipt, not to
-      // undeclared provider columns.
       `insert into supabase_migrations.schema_migrations(version, name) values (` +
       `${sqlLiteral(entry.ledgerVersion)}, ${sqlLiteral(entry.repoFile)});`,
     );
@@ -173,29 +191,63 @@ export function buildAtomicProductionApplySql({
   return statements.join('\n\n');
 }
 
-export async function captureProductionLedger({ token, fetchImpl = fetch } = {}) {
-  if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
-  const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query/read-only`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: 'select version, name from supabase_migrations.schema_migrations order by version' }),
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !Array.isArray(body)) fail('LIVE_LEDGER_READ_FAILED', `Production ledger read failed with HTTP ${res.status}`);
-  return body;
+export async function captureProductionLedger({ transport } = /** @type {any} */ ({})) {
+  if (!transport || transport.kind !== 'PROJECT_BOUND_POSTGRES' || transport.projectRef !== PRODUCTION_DB_POLICY.productionProjectRef) {
+    fail('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'Production ledger reads require the canonical project-bound PostgreSQL transport');
+  }
+  try {
+    const rows = await transport.captureLedger();
+    return normalizedLedgerRows(rows);
+  } catch (error) {
+    if (error?.code) throw error;
+    fail('LIVE_LEDGER_READ_FAILED', `Production ledger read failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
-// Private transport: importing this module must not expose a raw-SQL write path.
-async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
-  if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
-  const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: sql }),
+async function captureProductionCatalogFingerprint({ transport } = /** @type {any} */ ({})) {
+  if (!transport || transport.kind !== 'PROJECT_BOUND_POSTGRES' || transport.projectRef !== PRODUCTION_DB_POLICY.productionProjectRef) {
+    fail('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'Production catalog reads require the canonical project-bound PostgreSQL transport');
+  }
+  if (process.env.NODE_ENV === 'test' && typeof transport.captureCatalogFingerprint !== 'function') {
+    return TEST_CATALOG_FINGERPRINT;
+  }
+  if (typeof transport.captureCatalogFingerprint !== 'function') {
+    fail('PROJECT_BOUND_CATALOG_PROOF_REQUIRED', 'Production writer transport must expose read-only catalog fingerprint capture');
+  }
+  try {
+    return await transport.captureCatalogFingerprint();
+  } catch (error) {
+    if (error?.code) throw error;
+    fail('LIVE_CATALOG_READ_FAILED', `Production catalog fingerprint read failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+async function executeAtomicProductionApply({ command, transport, connectionString, sqlFactory = postgres } = /** @type {any} */ ({})) {
+  if (process.env.NODE_ENV === 'test' && transport?.executePlanBoundTransaction) {
+    return transport.executePlanBoundTransaction(command);
+  }
+
+  const raw = String(connectionString ?? process.env.PRODUCTION_DB_WRITER_URL ?? '').trim();
+  const expected = parseProjectBoundProductionDbWriterUrl(raw);
+  const sql = sqlFactory(expected.connectionString, {
+    max: 1,
+    connect_timeout: 10,
+    idle_timeout: 5,
+    max_lifetime: 60,
+    ssl: 'verify-full',
+    prepare: false,
   });
-  const text = await res.text();
-  if (!res.ok) fail('CONTROLLED_APPLY_FAILED', `atomic Production apply failed with HTTP ${res.status}: ${text.slice(0, 500)}`);
-  return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
+  try {
+    const identityRows = await sql.unsafe('select current_database() as database_name, current_user as database_user, session_user as session_user');
+    const identity = identityRows?.[0] ?? {};
+    if (String(identity.database_name ?? '') !== expected.database || String(identity.database_user ?? '') !== expected.role || String(identity.session_user ?? '') !== expected.role) {
+      fail('WRITER_DATABASE_IDENTITY_MISMATCH', 'mutable session is not the dedicated Production writer');
+    }
+    await sql.unsafe(String(command?.sql ?? ''));
+    return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
+  } finally {
+    await sql.end({ timeout: 2 }).catch(() => undefined);
+  }
 }
 
 export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows } = {}) {
@@ -215,91 +267,169 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
   return { status: 'POST_APPLY_LEDGER_VERIFIED', applied: plan.migrations.map((entry) => entry.repoFile), databaseMutationAuthorized: false };
 }
 
-/**
- * This is the only repo Production writer entry point. G0–G5 are verified before
- * the mutable endpoint. G6 is deliberately enforced *inside the same database
- * transaction*: advisory lock first, then live-ledger baseline recheck, then and
- * only then migration SQL. A caller-provided JSON object can never claim that the
- * database lock was acquired.
- *
- * A durable journal stop marker is mandatory: APPLY_UNKNOWN / POSTCHECK_FAILED can
- * never blind-retry. A network error is surfaced as APPLY_UNKNOWN; callers must
- * persist the journal and run readback before any retry.
- * This is source core, not automation admission: #454 owns journal semantics and
- * #455 owns trusted-main verification and durable PREPARE -> persist -> EXECUTE.
- * Do not wire this single-phase entry point directly into an automated workflow.
- * The legacy `now` input is ignored; deterministic clocks belong in pure preflight
- * tests or test-runtime mocks, never in mutable release admission.
- *
- * @param {{
- *   plan?: any,
- *   releasePacket?: any,
- *   journal?: any,
- *   aliasMap?: any,
- *   readCanonicalSql?: (path: string) => string,
- *   token?: string,
- *   fetchImpl?: typeof fetch,
- *   now?: string,
- * }} [input]
- */
-export async function runControlledProductionRelease({
-  plan,
-  releasePacket,
-  journal,
-  aliasMap,
-  readCanonicalSql,
-  token,
-  fetchImpl = fetch,
-  now: _ignoredNow,
-} = {}) {
-  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
-  assertReleaseJournalMatchesPlan(journal, plan);
-  assertWriterAttemptAllowed(journal);
+function assertReleasePacketMatchesPlan(releasePacket, plan, now) {
   if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
     fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
   }
   if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
-  // Mutable admission always uses the wall clock.
-  evaluateReleasePreflight(releasePacket);
+  evaluateReleasePreflight(releasePacket, { now });
+}
 
-  const before = await captureProductionLedger({ token, fetchImpl });
-  const sql = buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
-  // A slow ledger read/build must not carry expired evidence into the write, and the
-  // journal always uses the wall clock — never a caller-provided `now` — for the same
-  // reason evaluateReleasePreflight does: deterministic clocks belong in pure preflight
-  // tests or test-runtime mocks, never in mutable release admission.
-  evaluateReleasePreflight(releasePacket);
-  const applyingJournal = advanceReleaseJournal(journal, {
-    status: 'APPLYING', at: new Date().toISOString(), evidenceRef: 'writer:mutable-request-start',
+function preparationCore(prepared) {
+  return {
+    schemaVersion: prepared.schemaVersion,
+    status: prepared.status,
+    releaseId: prepared.releaseId,
+    planDigest: prepared.planDigest,
+    mainSha: prepared.mainSha,
+    preparedAt: prepared.preparedAt,
+    baselineLedgerRows: prepared.baselineLedgerRows,
+    baselineCatalogFingerprint: prepared.baselineCatalogFingerprint,
+    journal: prepared.journal,
+    receipt: prepared.receipt,
+  };
+}
+
+export async function prepareControlledProductionReleaseAttempt({
+  plan,
+  releasePacket,
+  journal,
+  receipt,
+  aliasMap,
+  readCanonicalSql,
+  transport,
+  now: _ignoredNow,
+} = /** @type {any} */ ({})) {
+  const admittedAt = new Date().toISOString();
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  assertReleaseJournalMatchesPlan(journal, plan);
+  assertWriterAttemptAllowed(journal);
+  assertReleasePacketMatchesPlan(releasePacket, plan, admittedAt);
+  assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now: admittedAt });
+
+  const before = await captureProductionLedger({ transport });
+  const baselineCatalogFingerprint = await captureProductionCatalogFingerprint({ transport });
+  buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, baselineCatalogFingerprint, readCanonicalSql });
+  const preparedAt = new Date().toISOString();
+  assertReleasePacketMatchesPlan(releasePacket, plan, preparedAt);
+
+  const prepared = {
+    schemaVersion: 2,
+    status: 'CONTROLLED_APPLY_PREPARED',
+    releaseId: plan.releaseId,
+    planDigest: plan.planDigest,
+    mainSha: plan.mainSha,
+    preparedAt,
+    baselineLedgerRows: sanitizedLedgerRows(before),
+    baselineCatalogFingerprint,
+    journal: advanceReleaseJournal(journal, {
+      status: 'APPLYING', at: preparedAt, evidenceRef: 'writer:prepared-before-mutable',
+    }),
+    receipt: advanceApplyReceipt(receipt, 'CONSUMING', preparedAt),
+  };
+  return {
+    ...prepared,
+    preparationDigest: sha256Json(preparationCore(prepared)),
+    nextRequiredStep: 'DURABLY_PERSIST_ATTEMPT_ENVELOPE_BEFORE_MUTABLE_REQUEST',
+    databaseMutationAuthorized: false,
+  };
+}
+
+export async function runControlledProductionRelease(input = /** @type {any} */ ({})) {
+  const { plan, releasePacket, aliasMap, readCanonicalSql, transport } = input;
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  assertReleasePacketMatchesPlan(releasePacket, plan, new Date().toISOString());
+  const before = await captureProductionLedger({ transport });
+  const baselineCatalogFingerprint = await captureProductionCatalogFingerprint({ transport });
+  buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, baselineCatalogFingerprint, readCanonicalSql });
+  assertReleasePacketMatchesPlan(releasePacket, plan, new Date().toISOString());
+  return {
+    status: 'MUTABLE_EXECUTION_REQUIRES_DURABLE_PREPARED_ATTEMPT',
+    databaseMutationAuthorized: false,
+  };
+}
+
+function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now } = /** @type {any} */ ({})) {
+  if (!prepared || ![1, 2].includes(prepared.schemaVersion) || prepared.status !== 'CONTROLLED_APPLY_PREPARED') {
+    fail('DURABLE_PREPARED_ATTEMPT_REQUIRED', 'mutable writer requires a prepared attempt envelope');
+  }
+  if (prepared.releaseId !== plan?.releaseId || prepared.mainSha !== plan?.mainSha || prepared.planDigest !== plan?.planDigest) {
+    fail('PREPARED_ATTEMPT_PLAN_MISMATCH', 'prepared attempt belongs to another release plan');
+  }
+  if (sha256Json(preparationCore(prepared)) !== prepared.preparationDigest) {
+    fail('PREPARED_ATTEMPT_DIGEST_MISMATCH', 'prepared attempt changed after preparation');
+  }
+  if (!/^[0-9a-f]{64}$/.test(String(prepared.baselineCatalogFingerprint ?? ''))) {
+    fail('PREPARED_CATALOG_FINGERPRINT_REQUIRED', 'mutable writer requires the PREPARE schema/ACL/RLS fingerprint');
+  }
+  assertReleaseJournalMatchesPlan(prepared.journal, plan);
+  if (prepared.journal.status !== 'APPLYING') fail('DURABLE_APPLYING_JOURNAL_REQUIRED', `writer requires APPLYING journal, got ${prepared.journal.status}`);
+  assertConsumingApplyReceipt(prepared.receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now });
+  assertReleasePacketMatchesPlan(releasePacket, plan, now);
+  return buildAtomicProductionApplySql({
+    plan,
+    aliasMap,
+    liveLedgerRows: prepared.baselineLedgerRows,
+    baselineCatalogFingerprint: prepared.baselineCatalogFingerprint,
+    readCanonicalSql,
   });
+}
+
+export async function executePreparedControlledProductionRelease({
+  prepared,
+  plan,
+  releasePacket,
+  aliasMap,
+  readCanonicalSql,
+  transport,
+  writerUrl,
+  sqlFactory,
+  now = new Date().toISOString(),
+} = /** @type {any} */ ({})) {
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now });
 
   try {
-    await executeAtomicProductionApply({ sql, token, fetchImpl });
-    const after = await captureProductionLedger({ token, fetchImpl });
-    verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: before });
-    const confirmedJournal = advanceReleaseJournal(applyingJournal, {
-      status: 'APPLIED_CONFIRMED', at: new Date().toISOString(), evidenceRef: 'readback:provider-ledger-applied',
+    await executeAtomicProductionApply({
+      transport,
+      connectionString: writerUrl,
+      sqlFactory,
+      command: {
+        sql,
+        releaseId: plan.releaseId,
+        mainSha: plan.mainSha,
+        planDigest: plan.planDigest,
+        preparedAttemptDigest: prepared.preparationDigest,
+      },
     });
+    const after = await captureProductionLedger({ transport });
+    verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: prepared.baselineLedgerRows });
+    const confirmedJournal = advanceReleaseJournal(prepared.journal, {
+      status: 'APPLIED_CONFIRMED', at: now, evidenceRef: 'readback:provider-ledger-applied',
+    });
+    const consumedReceipt = advanceApplyReceipt(prepared.receipt, 'CONSUMED', now);
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
       releaseId: plan.releaseId,
       planDigest: plan.planDigest,
       mainSha: plan.mainSha,
       journal: confirmedJournal,
-      g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
+      receipt: consumedReceipt,
+      g6: 'DURABLE_ATTEMPT_THEN_SINGLE_USE_RECEIPT_PLUS_DB_LOCK_AND_POST_LOCK_RECHECK',
       nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
       databaseMutationAuthorized: false,
     };
   } catch (error) {
-    if (error?.code === 'APPLY_UNKNOWN') throw error;
-    const unknownJournal = advanceReleaseJournal(applyingJournal, {
-      status: 'APPLY_UNKNOWN', at: new Date().toISOString(), evidenceRef: 'writer:mutable-or-readback-uncertain',
+    const unknownJournal = advanceReleaseJournal(prepared.journal, {
+      status: 'APPLY_UNKNOWN', at: now, evidenceRef: 'writer:mutable-or-readback-uncertain',
     });
+    const unknownReceipt = advanceApplyReceipt(prepared.receipt, 'UNKNOWN', now);
     const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
     wrapped.code = 'APPLY_UNKNOWN';
     wrapped.cause = error;
     wrapped.journal = unknownJournal;
+    wrapped.receipt = unknownReceipt;
     throw wrapped;
   }
 }
