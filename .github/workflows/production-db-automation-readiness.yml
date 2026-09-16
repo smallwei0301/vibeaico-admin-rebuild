@@ -1,0 +1,157 @@
+name: production-db-automation-readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Exact current main SHA to evaluate
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      expected_main_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+
+concurrency:
+  group: production-db-automation-readiness
+  cancel-in-progress: false
+
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+
+      - name: Verify exact current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_main_sha }}"
+          test "$(git rev-parse origin/main)" = "${{ inputs.expected_main_sha }}"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install exact locked dependency tree
+        run: npm ci
+
+      - name: Run Production DB counterexample suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vitest run \
+            tests/unit/production-db-release-preflight.443.test.ts \
+            tests/unit/production-db-consistency-evidence.443.test.ts \
+            tests/unit/production-db-test-evidence.447.test.ts \
+            tests/unit/production-db-backup-evidence.443.test.ts \
+            tests/unit/production-db-final-risk-evidence.443.test.ts \
+            tests/unit/controlled-production-db-release.447.test.ts \
+            tests/unit/production-db-apply-receipt.447.test.ts \
+            tests/unit/production-db-postcheck.447.test.ts \
+            tests/unit/production-db-release-orchestrator.447.test.ts \
+            tests/unit/production-db-writer-bypass-audit.447.test.ts \
+            tests/unit/production-db-automation-readiness-evidence.447.test.ts
+
+      - name: Reconstruct exact-head required check evidence
+        uses: actions/github-script@v9
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const expected = String(process.env.EXPECTED_MAIN_SHA || '').trim().toLowerCase();
+            if (!/^[0-9a-f]{40}$/.test(expected)) {
+              core.setFailed('expected_main_sha is not an exact SHA');
+              return;
+            }
+            const response = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: expected,
+              per_page: 100,
+              filter: 'latest',
+            });
+            const runs = response.data.check_runs
+              .filter((run) => run.name === 'check' && String(run.head_sha || '').toLowerCase() === expected)
+              .sort((a, b) => Date.parse(b.completed_at || b.started_at || '1970-01-01') - Date.parse(a.completed_at || a.started_at || '1970-01-01'));
+            const latest = runs[0];
+            if (!latest || latest.conclusion !== 'success') {
+              core.setFailed(`latest exact-head check is not successful: ${latest?.conclusion || 'missing'}`);
+              return;
+            }
+            const evidence = {
+              schemaVersion: 1,
+              status: 'EXACT_HEAD_CI_GREEN',
+              mainSha: expected,
+              checkName: 'check',
+              checkRunId: latest.id,
+              conclusion: latest.conclusion,
+              targetedCounterexampleSuitePassed: true,
+              observedAt: new Date().toISOString(),
+              databaseMutationAuthorized: false,
+            };
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/production-db-exact-head-ci-evidence.json`, `${JSON.stringify(evidence, null, 2)}\n`);
+
+      - name: Build machine automation readiness evidence
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/agents/production-db-automation-readiness-evidence.mjs build \
+            "$EXPECTED_MAIN_SHA" \
+            "$RUNNER_TEMP/production-db-exact-head-ci-evidence.json" \
+            - \
+            "$RUNNER_TEMP/production-db-automation-evidence.json" \
+            "$RUNNER_TEMP/production-db-automation-readiness.json"
+
+      - name: Publish readiness truth
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = `${process.env.RUNNER_TEMP}/production-db-automation-readiness.json`;
+          const result = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (result.databaseMutationAuthorized !== false) {
+            throw new Error('readiness evidence must never authorize Production mutation');
+          }
+          const blockers = Array.isArray(result.blockers) ? result.blockers : [];
+          const lines = [
+            '## Production DB Automation Readiness',
+            '',
+            `- status: ${result.status}`,
+            `- automationReady: ${result.automationReady}`,
+            `- authorizationMode: ${result.authorizationMode}`,
+            `- perRunOwnerApproval: ${result.perRunOwnerApproval}`,
+            `- blockers: ${blockers.length ? blockers.join(', ') : 'none'}`,
+            '- databaseMutationAuthorized: false',
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join('\n')}\n`);
+          console.log(JSON.stringify(result, null, 2));
+          NODE
+
+      - name: Upload sanitized readiness artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-db-automation-readiness-${{ inputs.expected_main_sha }}
+          path: |
+            ${{ runner.temp }}/production-db-exact-head-ci-evidence.json
+            ${{ runner.temp }}/production-db-automation-evidence.json
+            ${{ runner.temp }}/production-db-automation-readiness.json
+          if-no-files-found: error
+          retention-days: 14
