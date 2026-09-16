@@ -152,14 +152,21 @@ export function planFinalRiskReview(input = {}) {
   if (!previous) return { mode: 'FULL', reason: 'INITIAL_REVIEW', resetReasons: [] };
 
   const previousVerdict = upper(previous.verdict);
-  if (previousVerdict === 'PASS' && text(previous.changeDigest) === currentDigest) {
+  const sameRisk = upper(previous.riskClass) === currentRisk;
+  const samePolicy = text(previous.policyVersion) === currentPolicy;
+  if (
+    previousVerdict === 'PASS' &&
+    text(previous.changeDigest) === currentDigest &&
+    sameRisk &&
+    samePolicy
+  ) {
     return { mode: 'REUSE', reason: 'UNCHANGED_SEMANTIC_DIGEST', resetReasons: [] };
   }
 
   const resetReasons = [];
   if (!FIX_VERDICTS.has(previousVerdict)) resetReasons.push(`previous verdict is ${previousVerdict || 'missing'}`);
-  if (upper(previous.riskClass) !== currentRisk) resetReasons.push('risk class changed');
-  if (text(previous.policyVersion) !== currentPolicy) resetReasons.push('Final Risk policy version changed');
+  if (!sameRisk) resetReasons.push('risk class changed');
+  if (!samePolicy) resetReasons.push('Final Risk policy version changed');
   if (input.hotBoundaryExpanded === true) resetReasons.push('high-risk boundary expanded');
   if (input.reviewerRequestedFullReset === true) resetReasons.push('reviewer requested FULL reset');
   if (!pass(input.coreRegressionStatus)) resetReasons.push('core regression suite is not PASS');
