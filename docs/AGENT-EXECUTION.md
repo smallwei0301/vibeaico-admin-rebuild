@@ -231,7 +231,7 @@ RECOVERY_BLOCKED、IMPLEMENTATION_BLOCKED／EXECUTION_BLOCKED。automation pendi
 遠端只套 main SQL 的規則不變。新 schema 使用「資料庫準備」與「功能啟用」兩段：
 先隔離演練與必要 source review／CI，再合併不會啟用相依程式的 schema 準備，
 之後套 canonical TEST 並驗收，再走正式庫關卡；正式 schema ready 後才啟用相依功能。
-一般 Product 驗收不變；既有 guard 不支援安全分段時先補接線，不繞過檢查。
+一般 Product 驗收不變；既有 guard 不支援安全分段時先補接線，不繞過檢查。`agent-wip-preflight` 與必要的 `Agent WIP Policy` 共用 `schema-staged-release-policy.mjs`：migration 加 Product runtime/API/UI 預設拒絕，除非同張 PREPARE PR 的**每個變更 runtime 檔**都可機械追蹤至同一個 `DEFAULT_OFF` gate，且每個 exported entry 的第一個可執行分支都是 gate 關閉時 `return/throw` 的早退；所有 top-level DB/network 副作用也會被拒絕。因此相依操作在預設狀態不可達。之後的 ACTIVATE PR 不得再帶 migration，且只能引用 current base 已存在、不可由該 PR 補造的 schema readiness receipt。trusted guard 會重新查 canonical `ci` 內 integration 與 E2E steps 都真實成功，以及 read-only `agent-schema-drift-watch` 的真實成功結果；兩者 head 必須都是 receipt 的 schema-prep commit，並驗證該 commit 是目前 base 的祖先。單純 schema prep、或 migration 加文件／測試不會被此規則誤擋。
 
 **政策制定不等於自動化已上線。** 本文件不建立生產排程、憑證或可寫工作；
 完整 gate／writer／備份／審查／互斥鎖未經實作驗證前，不得宣稱 AUTOMATION_READY 或直接套用。
