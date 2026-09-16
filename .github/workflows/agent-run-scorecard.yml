@@ -99,15 +99,24 @@ jobs:
             exit 1
           fi
 
-          mapfile -t changed_ledgers < <(git diff --name-only "$base_sha" "$GITHUB_SHA" -- 'docs/metrics/agent-runs/*.json')
+          # Process substitution hides git's exit status from set -e.
+          # Prove the complete NUL-delimited diff before accepting an empty list.
+          changed_ledger_list="$(mktemp)"
+          trap 'rm -f "$changed_ledger_list"' EXIT
+          if ! git diff --name-only -z "$base_sha" "$GITHUB_SHA" -- 'docs/metrics/agent-runs/*.json' > "$changed_ledger_list"; then
+            echo 'Unable to prove changed ledgers; strict-live fails closed.' >&2
+            exit 1
+          fi
+          mapfile -d '' -t changed_ledgers < "$changed_ledger_list"
           if [ ${#changed_ledgers[@]} -eq 0 ]; then
             echo 'No changed run ledger in this transition; strict-live check not applicable.'
             exit 0
           fi
 
           for ledger in "${changed_ledgers[@]}"; do
-            test -f "$ledger" || continue
-            read -r schema_version status < <(node -e 'const fs=require("fs"); const run=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log(`${run.schemaVersion ?? ""} ${run.status ?? ""}`)' "$ledger")
+            test -f "$ledger" || { echo "Changed ledger is missing: $ledger" >&2; exit 1; }
+            ledger_state="$(node -e 'const fs=require("fs"); const run=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log(`${run.schemaVersion ?? ""} ${run.status ?? ""}`)' "$ledger")"
+            read -r schema_version status <<< "$ledger_state"
             if [ "$schema_version" = "2" ] && [ "$status" = "IN_PROGRESS" ]; then
               echo "Strict live readiness: $ledger"
               node scripts/agents/scorecard-readiness.mjs "$ledger" --strict-live
