@@ -211,7 +211,8 @@ describe('governance boundary regression #500', () => {
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
   });
   it('executes the real raw-capture policy: bad ledger fails required status without borrowing Product WIP', async () => {
-    const run = createRunLedgerV2('2026-09-16-synthetic-538', created_at, { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+    const run = createRunLedgerV2('2026-09-16-synthetic-538', created_at,
+      { closeoutOwner: 'PRODUCT_MAIN_SESSION' }) as unknown as { delivery: Record<string, unknown> };
     for (const closedCount of [0, 1]) {
       const content = JSON.stringify({ ...run, delivery: { ...run.delivery, issuesClosed: closedCount } });
       const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
