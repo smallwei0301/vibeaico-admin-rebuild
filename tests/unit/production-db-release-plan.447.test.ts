@@ -296,10 +296,10 @@ describe('Production DB release plan #447', () => {
 
   it('allows bounded built-ins in declarative defaults and catalog checks, but not arbitrary immediate routines', () => {
     expect(inferMigrationRiskTier(
-      "create table public.release_probe(id uuid default gen_random_uuid(), created_at timestamptz default now());",
+      "create table public.release_probe(id uuid default pg_catalog.gen_random_uuid(), created_at timestamptz default pg_catalog.now());",
     )).toBe('ADDITIVE');
     expect(inferMigrationRiskTier(
-      "do $ declare present regclass; begin present := to_regclass('public.release_probe'); end $;",
+      "do $ declare present regclass; begin present := pg_catalog.to_regclass('public.release_probe'); end $;",
     )).toBe('ADDITIVE');
     expect(() => inferMigrationRiskTier(
       "create table public.release_probe(id uuid default public.untrusted_default());",
@@ -311,8 +311,20 @@ describe('Production DB release plan #447', () => {
 
   it('treats policy predicates as AUTHZ declarations while preserving their G3 contract gate', () => {
     expect(inferMigrationRiskTier(
-      "create policy tenant_read on public.release_probe for select using (public.is_tenant_member(tenant_id));",
+      "create policy tenant_read on public.release_probe for select using (is_tenant_member(tenant_id));",
     )).toBe('AUTHZ');
+  });
+
+  it('rejects unqualified built-in lookalikes, unknown policy helpers and parenthesized dynamic SQL', () => {
+    expect(() => inferMigrationRiskTier(
+      "do $ begin perform to_regclass(1); end $;",
+    )).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(
+      "create policy unsafe on public.release_probe for select using (public.untrusted_helper(tenant_id));",
+    )).toThrow(/UNSUPPORTED_POLICY_ROUTINE_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(
+      "do $ begin execute (format('select 1')); end $;",
+    )).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
   });
 
   it('rejects destructive and mixed-specialized-risk v1 SQL instead of silently dropping one evidence class', () => {
