@@ -262,7 +262,7 @@ export function decideFinalRiskRecovery(input = {}) {
   const failureClass = upper(input.failureClass);
   const sameClassAttempts = Number(input.sameClassAttempts ?? 0);
   const currentModel = text(input.currentModel);
-  const allowedModels = unique(input.allowedModels ?? routing.models?.finalRiskAllowedModels ?? []);
+  const allowedModels = unique(routing.models?.finalRiskAllowedModels ?? []);
   const attemptedModels = new Set(unique([...(input.attemptedModels ?? []), currentModel]));
 
   if (failureClass === 'CONTENT_FINDING' || failureClass === 'REVIEW_FINDING') {
