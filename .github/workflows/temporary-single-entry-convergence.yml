@@ -19,8 +19,9 @@ jobs:
           ref: governance/issue-528-single-entry-retro-v2
           fetch-depth: 0
       - name: Patch canonical entrypoint relationships
-        shell: python {0}
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           agent = Path('docs/AGENT-EXECUTION.md')
@@ -65,13 +66,12 @@ Owner 說「復盤」或「複盤」時，載入
           if marker not in text:
               raise SystemExit('RETRO_SKILL_DEFAULT_BLOCK_NOT_FOUND')
           skill.write_text(text.replace(marker, insert, 1))
-
-          Path('.github/workflows/temporary-single-entry-convergence.yml').unlink()
+          PY
       - name: Commit converged governance entrypoints
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/AGENT-EXECUTION.md docs/RETROSPECTIVE-PROTOCOL.md .agents/skills/vibeaico-agent-retrospective/SKILL.md .github/workflows/temporary-single-entry-convergence.yml
+          git add docs/AGENT-EXECUTION.md docs/RETROSPECTIVE-PROTOCOL.md .agents/skills/vibeaico-agent-retrospective/SKILL.md
           git diff --cached --check
           git commit -m "docs(governance #528): make AGENT-EXECUTION sole entrypoint"
           git push origin HEAD:governance/issue-528-single-entry-retro-v2
