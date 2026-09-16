@@ -30,7 +30,7 @@ const receipt = JSON.stringify({ schemaVersion: 1, preparedCommit: sha,
   canonicalTest: { workflowRunId: 123, workflowName: 'ci' },
   productionSchema: { workflowRunId: 456, workflowName: 'agent-schema-drift-watch' },
 });
-const errors = (input: Parameters<typeof validateSchemaStagedRelease>[0]) => validateSchemaStagedRelease(input).join('\n');
+const errors = (input: any) => validateSchemaStagedRelease(input).join('\n');
 
 describe('#530 schema staged-release policy', () => {
   it('allows schema-prep-only and migration plus docs/tests without inventing an activation gate', () => {
@@ -69,7 +69,7 @@ describe('#530 schema staged-release policy', () => {
   });
 
   it('requires a later activation to cite canonical TEST and Production schema evidence with exact identities', () => {
-    assert.equal(errors({ body: activationBody, changedFiles: [runtime], readFile: (name) => name === receiptPath ? receipt : undefined }), '');
+    assert.equal(errors({ body: activationBody, changedFiles: [runtime], readFile: (name: string) => name === receiptPath ? receipt : undefined }), '');
     assert.match(errors({ body: activationBody, changedFiles: [runtime], readFile: () => '{' }), /not valid JSON/);
     assert.match(errors({ body: activationBody, changedFiles: [runtime], readFile: () => JSON.stringify({ schemaVersion: 1 }) }), /preparedCommit SHA/);
     assert.match(errors({ body: activationBody, changedFiles: [migration, runtime] }), /must not include migration evidence/);
