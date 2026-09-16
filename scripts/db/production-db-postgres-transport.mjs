@@ -19,6 +19,10 @@ function fail(code, message) {
   throw error;
 }
 
+function asBool(value) {
+  return value === true || value === 't' || value === 'true';
+}
+
 function decodeUsername(value) {
   try {
     return decodeURIComponent(String(value ?? ''));
@@ -97,12 +101,16 @@ with writer as (
   select * from pg_roles where rolname = '${writer}'
 ), owner_role as (
   select * from pg_roles where rolname = '${owner}'
-), membership as (
-  select m.*
+), memberships as (
+  select member.rolname as member_name,
+         parent.rolname as parent_name,
+         m.admin_option,
+         m.inherit_option,
+         m.set_option
   from pg_auth_members m
   join pg_roles parent on parent.oid = m.roleid
   join pg_roles member on member.oid = m.member
-  where member.rolname = '${writer}'
+  where member.rolname in ('${writer}', '${owner}')
 ), required_relations(name) as (
   values ('trip_plans'), ('trip_departures'), ('tour_orders')
 ), required_routines(name, args) as (
@@ -110,6 +118,26 @@ with writer as (
     ('create_tour_order', 'p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone'),
     ('cancel_tour_order', 'p_tenant uuid, p_order uuid, p_reason text'),
     ('expire_tour_order', 'p_tenant uuid, p_order uuid, p_reason text')
+), default_acl_entries as (
+  select owner_acl.rolname as owner_name,
+         d.defaclobjtype,
+         coalesce(grantee.rolname, 'PUBLIC') as grantee_name,
+         x.privilege_type,
+         x.is_grantable
+  from pg_default_acl d
+  join pg_roles owner_acl on owner_acl.oid = d.defaclrole
+  join pg_namespace n on n.oid = d.defaclnamespace
+  cross join lateral aclexplode(d.defaclacl) x
+  left join pg_roles grantee on grantee.oid = x.grantee
+  where n.nspname = 'public'
+    and owner_acl.rolname in ('postgres', '${owner}')
+    and d.defaclobjtype in ('r', 'S', 'f')
+), owner_default_acl as (
+  select defaclobjtype, grantee_name, privilege_type, is_grantable
+  from default_acl_entries where owner_name = '${owner}'
+), postgres_default_acl as (
+  select defaclobjtype, grantee_name, privilege_type, is_grantable
+  from default_acl_entries where owner_name = 'postgres'
 )
 select
   current_database() as database_name,
@@ -121,29 +149,29 @@ select
   w.rolcreatedb as role_can_create_database,
   w.rolreplication as role_can_replicate,
   w.rolbypassrls as role_bypass_rls,
+  w.rolinherit as role_inherit,
   o.rolcanlogin as owner_can_login,
   o.rolsuper as owner_superuser,
   o.rolcreaterole as owner_can_create_role,
   o.rolcreatedb as owner_can_create_database,
   o.rolreplication as owner_can_replicate,
   o.rolbypassrls as owner_bypass_rls,
-  (select count(*) from membership) as writer_membership_count,
+  o.rolinherit as owner_inherit,
+  (select count(*) from memberships where member_name = '${writer}') as writer_membership_count,
+  (select count(*) from memberships where member_name = '${owner}') as owner_membership_count,
   exists (
-    select 1 from membership m
-    join pg_roles parent on parent.oid = m.roleid
-    where parent.rolname = '${owner}'
+    select 1 from memberships m
+    where m.member_name = '${writer}'
+      and m.parent_name = '${owner}'
       and m.admin_option = false
       and m.inherit_option = false
       and m.set_option = true
   ) as owner_membership_exact,
   pg_has_role(current_user, '${owner}', 'SET') as writer_can_set_owner,
   not exists (
-    select 1
-    from pg_auth_members m
-    join pg_roles parent on parent.oid = m.roleid
-    join pg_roles member on member.oid = m.member
-    where member.rolname in ('${writer}', '${owner}')
-      and parent.rolname in ('postgres', 'supabase_admin', 'service_role')
+    select 1 from memberships m
+    where m.member_name in ('${writer}', '${owner}')
+      and m.parent_name in ('postgres', 'supabase_admin', 'service_role')
       and m.set_option = true
   ) as dangerous_set_role_absent,
   has_schema_privilege('${owner}', 'public', 'USAGE') as public_schema_usage,
@@ -171,17 +199,85 @@ select
   ) as required_routine_ownership,
   has_function_privilege('${owner}', 'public.reserve_seats(uuid,integer)', 'EXECUTE') as reserve_seats_execute,
   has_function_privilege('${owner}', 'public.release_seats(uuid,integer)', 'EXECUTE') as release_seats_execute,
-  (
-    select count(*) = 3
-    from pg_default_acl d
-    join pg_namespace n on n.oid = d.defaclnamespace
-    where d.defaclrole = o.oid
-      and n.nspname = 'public'
-      and d.defaclobjtype in ('r', 'S', 'f')
-  ) as owner_public_default_acl_present
+  (select count(distinct defaclobjtype) = 3 from owner_default_acl) as owner_default_acl_types_present,
+  not exists (
+    (select * from owner_default_acl except select * from postgres_default_acl)
+    union all
+    (select * from postgres_default_acl except select * from owner_default_acl)
+  ) as owner_public_default_acl_matches_postgres
 from writer w
 cross join owner_role o
 `;
+}
+
+export function assertDedicatedProductionDbWriterCapabilities(capabilities = {}) {
+  const identityVerified = Boolean(
+    String(capabilities.database_name ?? '') === EXPECTED_DATABASE &&
+    String(capabilities.database_user ?? '') === CANONICAL_PRODUCTION_DB_WRITER_ROLE &&
+    String(capabilities.session_user ?? '') === CANONICAL_PRODUCTION_DB_WRITER_ROLE,
+  );
+  const writerFlagsSafe = Boolean(
+    asBool(capabilities.role_can_login) &&
+    !asBool(capabilities.role_superuser) &&
+    !asBool(capabilities.role_can_create_role) &&
+    !asBool(capabilities.role_can_create_database) &&
+    !asBool(capabilities.role_can_replicate) &&
+    !asBool(capabilities.role_bypass_rls) &&
+    !asBool(capabilities.role_inherit),
+  );
+  const ownerFlagsSafe = Boolean(
+    !asBool(capabilities.owner_can_login) &&
+    !asBool(capabilities.owner_superuser) &&
+    !asBool(capabilities.owner_can_create_role) &&
+    !asBool(capabilities.owner_can_create_database) &&
+    !asBool(capabilities.owner_can_replicate) &&
+    !asBool(capabilities.owner_bypass_rls) &&
+    !asBool(capabilities.owner_inherit),
+  );
+  const roleEscalationBoundaryVerified = Boolean(
+    Number(capabilities.writer_membership_count) === 1 &&
+    Number(capabilities.owner_membership_count) === 0 &&
+    asBool(capabilities.owner_membership_exact) &&
+    asBool(capabilities.writer_can_set_owner) &&
+    asBool(capabilities.dangerous_set_role_absent),
+  );
+  const migrationOwnershipVerified = Boolean(
+    asBool(capabilities.required_relation_ownership) &&
+    asBool(capabilities.required_routine_ownership) &&
+    asBool(capabilities.reserve_seats_execute) &&
+    asBool(capabilities.release_seats_execute),
+  );
+  const migrationPrivilegesVerified = Boolean(
+    asBool(capabilities.public_schema_usage) &&
+    asBool(capabilities.public_schema_create) &&
+    asBool(capabilities.ledger_schema_usage) &&
+    asBool(capabilities.ledger_select) &&
+    asBool(capabilities.ledger_insert),
+  );
+  const defaultAclMirrorVerified = Boolean(
+    asBool(capabilities.owner_default_acl_types_present) &&
+    asBool(capabilities.owner_public_default_acl_matches_postgres),
+  );
+  const dedicatedRoleVerified = Boolean(
+    identityVerified &&
+    writerFlagsSafe &&
+    ownerFlagsSafe &&
+    roleEscalationBoundaryVerified &&
+    migrationOwnershipVerified &&
+    migrationPrivilegesVerified &&
+    defaultAclMirrorVerified,
+  );
+  if (!dedicatedRoleVerified) fail('DEDICATED_WRITER_ROLE_CAPABILITIES_NOT_VERIFIED', 'live writer/owner capabilities no longer match the dedicated Production writer contract');
+  return {
+    dedicatedRoleVerified,
+    identityVerified,
+    writerFlagsSafe,
+    ownerFlagsSafe,
+    roleEscalationBoundaryVerified,
+    migrationOwnershipVerified,
+    migrationPrivilegesVerified,
+    defaultAclMirrorVerified,
+  };
 }
 
 export function createProjectBoundProductionDbTransport({ connectionString, sqlFactory = postgres } = /** @type {any} */ ({})) {
@@ -220,7 +316,13 @@ export function createProjectBoundProductionDbTransport({ connectionString, sqlF
     },
 
     async captureCatalogFingerprint() {
-      return withSession(async (sql) => normalizeProductionDbCatalogFingerprint(await sql.unsafe(PRODUCTION_DB_CATALOG_FINGERPRINT_SQL)));
+      return withSession(async (sql) => {
+        const capabilityRows = await sql.unsafe(credentialCapabilitySql());
+        const capabilities = capabilityRows?.[0];
+        if (!capabilities) fail('WRITER_CAPABILITY_EVIDENCE_MISSING', 'writer capability introspection returned no row');
+        assertDedicatedProductionDbWriterCapabilities(capabilities);
+        return normalizeProductionDbCatalogFingerprint(await sql.unsafe(PRODUCTION_DB_CATALOG_FINGERPRINT_SQL));
+      });
     },
 
     async captureCredentialCapabilities() {
