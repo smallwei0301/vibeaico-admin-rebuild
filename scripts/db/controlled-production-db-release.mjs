@@ -1,3 +1,10 @@
+import { createHash } from 'node:crypto';
+
+import {
+  advanceApplyReceipt,
+  assertApplyReceiptAdmitted,
+  assertConsumingApplyReceipt,
+} from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
 import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
@@ -9,6 +16,14 @@ function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
   throw error;
+}
+
+// `sha256` (imported above) hashes raw SQL bytes/strings against the reviewed
+// migration digest; the prepared-attempt envelope needs to hash an arbitrary
+// JS object instead, so it gets its own JSON-based digest helper rather than
+// a second, colliding `sha256` declaration.
+function preparationDigestOf(prepared) {
+  return createHash('sha256').update(JSON.stringify(prepared)).digest('hex');
 }
 
 function sqlLiteral(value) {
@@ -30,6 +45,11 @@ function normalizedLedgerRows(rows = []) {
 
 function normalizedLedgerNames(rows) {
   return normalizedLedgerRows(rows).map((row) => row.name).sort();
+}
+
+function sanitizedLedgerRows(rows) {
+  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
+  return rows.map((row) => ({ version: String(row?.version ?? ''), name: String(row?.name ?? '') }));
 }
 
 export function expectedAppliedLedgerNames(aliasMap = {}) {
@@ -215,18 +235,201 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
   return { status: 'POST_APPLY_LEDGER_VERIFIED', applied: plan.migrations.map((entry) => entry.repoFile), databaseMutationAuthorized: false };
 }
 
+function assertReleasePacketMatchesPlan(releasePacket, plan, now) {
+  if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
+    fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
+  }
+  if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
+  evaluateReleasePreflight(releasePacket, { now });
+}
+
+function preparationCore(prepared) {
+  return {
+    schemaVersion: prepared.schemaVersion,
+    status: prepared.status,
+    releaseId: prepared.releaseId,
+    planDigest: prepared.planDigest,
+    mainSha: prepared.mainSha,
+    preparedAt: prepared.preparedAt,
+    baselineLedgerRows: prepared.baselineLedgerRows,
+    journal: prepared.journal,
+    receipt: prepared.receipt,
+  };
+}
+
 /**
- * This is the only repo Production writer entry point. G0–G5 are verified before
- * the mutable endpoint. G6 is deliberately enforced *inside the same database
- * transaction*: advisory lock first, then live-ledger baseline recheck, then and
- * only then migration SQL. A caller-provided JSON object can never claim that the
+ * Phase 1. This function performs only read-only network work, then moves the
+ * journal/receipt to APPLYING/CONSUMING in memory and returns a serializable
+ * attempt envelope. The caller MUST durably persist this returned envelope
+ * before calling executePreparedControlledProductionRelease(). This phase is
+ * pure/read-only, so — unlike the mutable admission in Phase 2 below and in
+ * `runControlledProductionRelease()` — it honors a caller-supplied `now` for
+ * its evidence-freshness checks; a slow ledger read must still not let
+ * expired evidence slip through, so freshness is rechecked after it.
+ *
+ * @param {{
+ *   plan?: any,
+ *   releasePacket?: any,
+ *   journal?: any,
+ *   receipt?: any,
+ *   aliasMap?: any,
+ *   readCanonicalSql?: (path: string) => string,
+ *   token?: string,
+ *   fetchImpl?: typeof fetch,
+ *   now?: string,
+ * }} [input]
+ */
+export async function prepareControlledProductionReleaseAttempt({
+  plan,
+  releasePacket,
+  journal,
+  receipt,
+  aliasMap,
+  readCanonicalSql,
+  token,
+  fetchImpl = fetch,
+  now = new Date().toISOString(),
+} = {}) {
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  assertReleaseJournalMatchesPlan(journal, plan);
+  assertWriterAttemptAllowed(journal);
+  assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now });
+  assertReleasePacketMatchesPlan(releasePacket, plan, now);
+
+  const before = await captureProductionLedger({ token, fetchImpl });
+  buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
+  // The ledger read above is a network round trip; re-verify the evidence is
+  // still fresh right before committing to the prepared envelope.
+  assertReleasePacketMatchesPlan(releasePacket, plan, now);
+
+  const prepared = {
+    schemaVersion: 1,
+    status: 'CONTROLLED_APPLY_PREPARED',
+    releaseId: plan.releaseId,
+    planDigest: plan.planDigest,
+    mainSha: plan.mainSha,
+    preparedAt: now,
+    baselineLedgerRows: sanitizedLedgerRows(before),
+    journal: advanceReleaseJournal(journal, {
+      status: 'APPLYING', at: now, evidenceRef: 'writer:prepared-before-mutable',
+    }),
+    receipt: advanceApplyReceipt(receipt, 'CONSUMING', now),
+  };
+  return {
+    ...prepared,
+    preparationDigest: preparationDigestOf(preparationCore(prepared)),
+    nextRequiredStep: 'DURABLY_PERSIST_ATTEMPT_ENVELOPE_BEFORE_MUTABLE_REQUEST',
+    databaseMutationAuthorized: false,
+  };
+}
+
+function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql }) {
+  if (!prepared || prepared.schemaVersion !== 1 || prepared.status !== 'CONTROLLED_APPLY_PREPARED') {
+    fail('DURABLE_PREPARED_ATTEMPT_REQUIRED', 'mutable writer requires a prepared attempt envelope');
+  }
+  if (prepared.releaseId !== plan?.releaseId || prepared.mainSha !== plan?.mainSha || prepared.planDigest !== plan?.planDigest) {
+    fail('PREPARED_ATTEMPT_PLAN_MISMATCH', 'prepared attempt belongs to another release plan');
+  }
+  if (preparationDigestOf(preparationCore(prepared)) !== prepared.preparationDigest) {
+    fail('PREPARED_ATTEMPT_DIGEST_MISMATCH', 'prepared attempt changed after preparation');
+  }
+  assertReleaseJournalMatchesPlan(prepared.journal, plan);
+  if (prepared.journal.status !== 'APPLYING') fail('DURABLE_APPLYING_JOURNAL_REQUIRED', `writer requires APPLYING journal, got ${prepared.journal.status}`);
+  // Time may have passed arbitrarily long between durable persistence and this
+  // call — this is the actual mutable-admission gate, immediately before the
+  // write below, so (like `runControlledProductionRelease()`) it always uses
+  // the real wall clock, never `prepared.preparedAt` or a caller-supplied `now`.
+  assertConsumingApplyReceipt(prepared.receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef);
+  assertReleasePacketMatchesPlan(releasePacket, plan);
+  return buildAtomicProductionApplySql({
+    plan,
+    aliasMap,
+    liveLedgerRows: prepared.baselineLedgerRows,
+    readCanonicalSql,
+  });
+}
+
+/**
+ * Phase 2. The caller may invoke this only after the exact prepared envelope has
+ * been durably persisted outside process memory. This function never accepts
+ * PRE_APPLY/ISSUED state, so a process crash cannot silently fall back to the
+ * reusable pre-attempt state.
+ *
+ * @param {{
+ *   prepared?: any,
+ *   plan?: any,
+ *   releasePacket?: any,
+ *   aliasMap?: any,
+ *   readCanonicalSql?: (path: string) => string,
+ *   token?: string,
+ *   fetchImpl?: typeof fetch,
+ *   now?: string,
+ * }} [input]
+ */
+export async function executePreparedControlledProductionRelease({
+  prepared,
+  plan,
+  releasePacket,
+  aliasMap,
+  readCanonicalSql,
+  token,
+  fetchImpl = fetch,
+  now: _ignoredNow,
+} = {}) {
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql });
+
+  try {
+    await executeAtomicProductionApply({ sql, token, fetchImpl });
+    const after = await captureProductionLedger({ token, fetchImpl });
+    verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: prepared.baselineLedgerRows });
+    const confirmedAt = new Date().toISOString();
+    const confirmedJournal = advanceReleaseJournal(prepared.journal, {
+      status: 'APPLIED_CONFIRMED', at: confirmedAt, evidenceRef: 'readback:provider-ledger-applied',
+    });
+    const consumedReceipt = advanceApplyReceipt(prepared.receipt, 'CONSUMED', confirmedAt);
+    return {
+      schemaVersion: 1,
+      status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
+      releaseId: plan.releaseId,
+      planDigest: plan.planDigest,
+      mainSha: plan.mainSha,
+      journal: confirmedJournal,
+      receipt: consumedReceipt,
+      g6: 'DURABLE_ATTEMPT_THEN_SINGLE_USE_RECEIPT_PLUS_DB_LOCK_AND_POST_LOCK_RECHECK',
+      nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
+      databaseMutationAuthorized: false,
+    };
+  } catch (error) {
+    if (error?.code === 'APPLY_UNKNOWN') throw error;
+    const unknownAt = new Date().toISOString();
+    const unknownJournal = advanceReleaseJournal(prepared.journal, {
+      status: 'APPLY_UNKNOWN', at: unknownAt, evidenceRef: 'writer:mutable-or-readback-uncertain',
+    });
+    const unknownReceipt = advanceApplyReceipt(prepared.receipt, 'UNKNOWN', unknownAt);
+    const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
+    wrapped.code = 'APPLY_UNKNOWN';
+    wrapped.cause = error;
+    wrapped.journal = unknownJournal;
+    wrapped.receipt = unknownReceipt;
+    throw wrapped;
+  }
+}
+
+/**
+ * This is the legacy single-phase repo Production writer entry point, kept
+ * for direct/manual use and its own regression coverage; `#455`'s durable
+ * two-phase pair above (`prepareControlledProductionReleaseAttempt` /
+ * `executePreparedControlledProductionRelease`) is what the automated
+ * workflow wires. G0–G5 are verified before the mutable endpoint. G6 is
+ * deliberately enforced *inside the same database transaction*: advisory
+ * lock first, then live-ledger baseline recheck, then and only then
+ * migration SQL. A caller-provided JSON object can never claim that the
  * database lock was acquired.
  *
  * A durable journal stop marker is mandatory: APPLY_UNKNOWN / POSTCHECK_FAILED can
  * never blind-retry. A network error is surfaced as APPLY_UNKNOWN; callers must
  * persist the journal and run readback before any retry.
- * This is source core, not automation admission: #454 owns journal semantics and
- * #455 owns trusted-main verification and durable PREPARE -> persist -> EXECUTE.
  * Do not wire this single-phase entry point directly into an automated workflow.
  * The legacy `now` input is ignored; deterministic clocks belong in pure preflight
  * tests or test-runtime mocks, never in mutable release admission.

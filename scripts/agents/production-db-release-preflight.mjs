@@ -24,6 +24,19 @@ export const PRODUCTION_DB_POLICY = Object.freeze({
 
 const RISK_TIERS = new Set(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ', 'BACKFILL']);
 const RESTORE_REHEARSAL_KINDS = new Set(['LOCAL_LOGICAL_RESTORE_CANARY', 'PRODUCTION_BACKUP_CLONE']);
+const AUTOMATION_COUNTEREXAMPLES = Object.freeze([
+  'wrongProject',
+  'staleEvidence',
+  'unplannedDrift',
+  'emptyTest',
+  'fakeOrStaleReview',
+  'missingRecovery',
+  'receiptReplay',
+  'parallelWriter',
+  'partialApply',
+  'postcheckFail',
+  'lostRunnerCrashWindow',
+]);
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -254,6 +267,113 @@ export function evaluateApplyAdmission(packet, lockEvidence, { now = new Date().
   };
 }
 
+function addReadinessBlocker(blockers, condition, code) {
+  if (!condition) blockers.push(code);
+}
+
+function sameAutomationMain(blockers, group, mainSha, label) {
+  addReadinessBlocker(blockers, group?.mainSha === mainSha, `${label}_MAIN_SHA_MISMATCH`);
+}
+
+/**
+ * Repository-level activation verifier. This is deliberately separate from one
+ * release's G0-G7 admission. Even AUTOMATION_READY=true is not a DB credential
+ * and never authorizes a mutation by itself.
+ */
+export function evaluateAutomationReadiness(evidence = {}) {
+  const blockers = [];
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
+    return {
+      schemaVersion: 1,
+      status: 'AUTOMATION_PENDING',
+      automationReady: false,
+      authorizationMode: 'POLICY_APPROVED_AUTOMATION_PENDING',
+      perRunOwnerApproval: 'REQUIRED_DURING_BOOTSTRAP',
+      blockers: ['AUTOMATION_EVIDENCE_REQUIRED'],
+      databaseMutationAuthorized: false,
+    };
+  }
+
+  addReadinessBlocker(blockers, evidence.schemaVersion === 1, 'INVALID_AUTOMATION_SCHEMA_VERSION');
+  addReadinessBlocker(blockers, evidence.repository === PRODUCTION_DB_POLICY.repository, 'AUTOMATION_WRONG_REPOSITORY');
+  addReadinessBlocker(blockers, evidence.productionProjectRef === PRODUCTION_DB_POLICY.productionProjectRef, 'AUTOMATION_WRONG_PROJECT');
+  const mainSha = typeof evidence.mainSha === 'string' && SHA.test(evidence.mainSha) ? evidence.mainSha : '';
+  addReadinessBlocker(blockers, Boolean(mainSha), 'AUTOMATION_MAIN_SHA_INVALID');
+  addReadinessBlocker(blockers, evidence.databaseMutationAuthorized !== true, 'AUTOMATION_EVIDENCE_SELF_AUTHORIZED_MUTATION');
+
+  const source = evidence.sourceControls ?? {};
+  addReadinessBlocker(blockers, source.status === 'SOURCE_CONTROLS_VERIFIED', 'SOURCE_CONTROLS_NOT_VERIFIED');
+  sameAutomationMain(blockers, source, mainSha, 'SOURCE_CONTROLS');
+  for (const key of [
+    'readOnlyPreflightMergedMain',
+    'scopedConsistencyAdapterMergedMain',
+    'backupObserverMergedMain',
+    'restoreRehearsalCallableMergedMain',
+    'sharedTestEvidenceEmitterMergedMain',
+    'exactHeadCiGreen',
+  ]) addReadinessBlocker(blockers, source[key] === true, `SOURCE_${key.toUpperCase()}_REQUIRED`);
+
+  const finalRiskAdapter = evidence.finalRiskAdapter ?? {};
+  addReadinessBlocker(blockers, finalRiskAdapter.status === 'FINAL_RISK_ADAPTER_VERIFIED', 'FINAL_RISK_ADAPTER_NOT_VERIFIED');
+  sameAutomationMain(blockers, finalRiskAdapter, mainSha, 'FINAL_RISK_ADAPTER');
+  for (const key of ['liveGithubFetch', 'currentAllowedReviewerVerified', 'releaseBoundDigestVerified']) {
+    addReadinessBlocker(blockers, finalRiskAdapter[key] === true, `FINAL_RISK_${key.toUpperCase()}_REQUIRED`);
+  }
+
+  const writer = evidence.writer ?? {};
+  addReadinessBlocker(blockers, writer.status === 'CONTROLLED_WRITER_VERIFIED', 'CONTROLLED_WRITER_NOT_VERIFIED');
+  sameAutomationMain(blockers, writer, mainSha, 'CONTROLLED_WRITER');
+  for (const key of [
+    'exactPendingSetVerified',
+    'singleUseReceiptVerified',
+    'databaseLockVerified',
+    'durablePreparedEnvelopeVerified',
+    'postcheckVerified',
+    'failureJournalVerified',
+    'bypassAuditClean',
+    'dedicatedScopedCredentialPresent',
+    'classicPatFallbackAbsent',
+    'observerWriterCredentialSeparationVerified',
+  ]) addReadinessBlocker(blockers, writer[key] === true, `WRITER_${key.toUpperCase()}_REQUIRED`);
+  addReadinessBlocker(blockers, writer.credentialProjectRef === PRODUCTION_DB_POLICY.productionProjectRef, 'WRITER_CREDENTIAL_PROJECT_MISMATCH');
+  addReadinessBlocker(blockers, writer.credentialScope === 'DATABASE_READ_WRITE', 'WRITER_CREDENTIAL_SCOPE_INVALID');
+
+  const orchestrator = evidence.orchestrator ?? {};
+  addReadinessBlocker(blockers, orchestrator.status === 'TRUSTED_MAIN_ORCHESTRATOR_VERIFIED', 'TRUSTED_MAIN_ORCHESTRATOR_NOT_VERIFIED');
+  sameAutomationMain(blockers, orchestrator, mainSha, 'TRUSTED_MAIN_ORCHESTRATOR');
+  for (const key of [
+    'trustedMainOnly',
+    'g3EvidenceConsumerWired',
+    'g4BackupEvidenceConsumerWired',
+    'g4RestoreEvidenceConsumerWired',
+    'finalRiskLiveFetchWired',
+    'preparedEnvelopePersistBeforeExecute',
+    'preparedEnvelopeReloadVerified',
+    'g7PostcheckWired',
+    'terminalResultPersisted',
+  ]) addReadinessBlocker(blockers, orchestrator[key] === true, `ORCHESTRATOR_${key.toUpperCase()}_REQUIRED`);
+
+  const counterexamples = evidence.counterexamples ?? {};
+  addReadinessBlocker(blockers, counterexamples.status === 'COUNTEREXAMPLES_VERIFIED', 'COUNTEREXAMPLES_NOT_VERIFIED');
+  sameAutomationMain(blockers, counterexamples, mainSha, 'COUNTEREXAMPLES');
+  for (const name of AUTOMATION_COUNTEREXAMPLES) {
+    addReadinessBlocker(blockers, counterexamples[name] === true, `COUNTEREXAMPLE_${name.toUpperCase()}_REQUIRED`);
+  }
+
+  const automationReady = blockers.length === 0;
+  return {
+    schemaVersion: 1,
+    status: automationReady ? 'AUTOMATION_READY' : 'AUTOMATION_PENDING',
+    automationReady,
+    authorizationMode: automationReady ? 'POLICY_GATED_ACTIVE' : 'POLICY_APPROVED_AUTOMATION_PENDING',
+    perRunOwnerApproval: automationReady ? 'NOT_REQUIRED' : 'REQUIRED_DURING_BOOTSTRAP',
+    mainSha: mainSha || null,
+    blockers,
+    // Activation truth is not a release receipt and cannot itself mutate Production.
+    databaseMutationAuthorized: false,
+  };
+}
+
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
@@ -269,7 +389,13 @@ function main() {
       console.log(JSON.stringify(evaluateApplyAdmission(readJson(packetPath), readJson(lockPath)), null, 2));
       return;
     }
-    fail('USAGE', 'use: production-db-release-preflight.mjs preflight <packet.json> | admit <packet.json> <lock.json>');
+    if (command === 'readiness' && packetPath) {
+      const result = evaluateAutomationReadiness(readJson(packetPath));
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.automationReady) process.exitCode = 1;
+      return;
+    }
+    fail('USAGE', 'use: production-db-release-preflight.mjs preflight <packet.json> | admit <packet.json> <lock.json> | readiness <automation-evidence.json>');
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
