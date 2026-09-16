@@ -5,8 +5,10 @@ import process from 'node:process';
 const SCANNED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.tsx', '.yml', '.yaml']);
 const AUDIT_SOURCE_PATH = 'scripts/agents/production-db-writer-bypass-audit.mjs';
 const G3_POST_TEST_SCHEMA_PATH = 'scripts/agents/production-db-g3-post-test-schema.mjs';
+const CONTROLLED_WRITER_PATH = 'scripts/db/controlled-production-db-release.mjs';
+const POSTGRES_TRANSPORT_PATH = 'scripts/db/production-db-postgres-transport.mjs';
 const ALLOWED_WRITE_ENDPOINT_FILES = new Set([
-  'scripts/db/controlled-production-db-release.mjs',
+  CONTROLLED_WRITER_PATH,
   'scripts/db/run-migrations.mjs',
   'scripts/db/validate-production-db-release-on-test.mjs',
 ]);
@@ -42,9 +44,6 @@ function assertLegacyTestRunnerCannotWriteProduction(source) {
   const environmentGuard = source.indexOf("targetEnvironment === 'PRODUCTION'");
   const directWriteGuard = source.indexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED');
   const directWriteEndpoint = source.indexOf('/database/query');
-  // The function declaration itself also contains `executeMigrationPlan({`.
-  // Audit the last occurrence, which is the call on the legacy workflow path,
-  // so the fail-closed guard is required before an actual migration apply.
   const workflowGuard = source.lastIndexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED');
   const execution = source.lastIndexOf('executeMigrationPlan({');
   if (
@@ -84,9 +83,6 @@ function assertReleaseTestValidatorCannotWriteProduction(source) {
 
 function assertG3PostTestSchemaObserverRejectsBroadToken(source) {
   const broadRefs = source.match(/process\.env\.SUPABASE_ACCESS_TOKEN/g) ?? [];
-  // Build the expected guard string without embedding the exact broad-token access
-  // literal in this scanner's own source, otherwise the scanner would classify
-  // itself as a broad-token consumer.
   const broadTokenAccess = 'process' + '.env.SUPABASE_ACCESS_TOKEN';
   const exactReject = `if (${broadTokenAccess}) fail('BROAD_SCHEMA_TOKEN_FORBIDDEN'`;
   if (broadRefs.length !== 1 || !source.includes(exactReject)) {
@@ -112,6 +108,36 @@ function assertFingerprintToolIsReadOnly(source) {
   if (!source.includes('拒絕 broad SUPABASE_ACCESS_TOKEN fallback')) fail('FINGERPRINT_BROAD_TOKEN_GUARD_MISSING', 'schema fingerprint tool must reject broad-token fallback');
 }
 
+function assertProjectBoundPostgresWriterBoundary({ controlled, transport }) {
+  if (!controlled || !transport || !controlled.includes('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED') || !transport.includes('PROJECT_BOUND_POSTGRES')) {
+    fail('CONTROLLED_WRITER_MISSING', 'controlled project-bound PostgreSQL writer transport is unavailable');
+  }
+  if (controlled.includes('/database/query') || transport.includes('/database/query')) {
+    fail('CONTROLLED_WRITER_MANAGEMENT_API_FORBIDDEN', 'controlled writer must not use a Management API SQL endpoint');
+  }
+  if (controlled.includes('SUPABASE_ACCESS_TOKEN') || transport.includes('SUPABASE_ACCESS_TOKEN')) {
+    fail('CONTROLLED_WRITER_BROAD_TOKEN_REFERENCE', 'controlled writer must not reference broad SUPABASE_ACCESS_TOKEN');
+  }
+
+  // The transport is an evidence/read-only adapter. It must never expose a
+  // caller-supplied mutable SQL method. The only admitted PostgreSQL mutation
+  // lives in controlled-production-db-release.mjs after durable PREPARE,
+  // receipt/journal validation, writer identity validation, SET LOCAL ROLE,
+  // advisory locking and post-lock catalog/ledger rechecks.
+  if (/executePlanBoundTransaction\s*\(|executeAtomic\s*\(|executeRaw\s*\(|runSql\s*\(/.test(transport)) {
+    fail('CONTROLLED_WRITER_RAW_SQL_BYPASS', 'project-bound transport must remain read-only and expose no mutable SQL method');
+  }
+  if (!controlled.includes('async function executeAtomicProductionApply') || !controlled.includes('parseProjectBoundProductionDbWriterUrl')) {
+    fail('CONTROLLED_WRITER_PRIVATE_MUTATION_CORE_MISSING', 'controlled release core must own the private PostgreSQL mutation path');
+  }
+  if (!controlled.includes('set local role ${CANONICAL_PRODUCTION_DB_OWNER_ROLE}') || !controlled.includes('buildProductionDbCatalogFingerprintRecheckSql')) {
+    fail('CONTROLLED_WRITER_POST_LOCK_ADMISSION_MISSING', 'controlled mutation must SET LOCAL ROLE and recheck catalog truth after lock');
+  }
+  if (!controlled.includes('DURABLE_PREPARED_ATTEMPT_REQUIRED') || !controlled.includes('PREPARED_ATTEMPT_DIGEST_MISMATCH')) {
+    fail('CONTROLLED_WRITER_DURABLE_ADMISSION_MISSING', 'mutable execution must require an untampered durable prepared attempt');
+  }
+}
+
 /** @param {Record<string,string>} sources */
 export function auditProductionDbWriterBypasses(sources = {}) {
   const writeEndpointFiles = [];
@@ -119,10 +145,6 @@ export function auditProductionDbWriterBypasses(sources = {}) {
 
   for (const [path, sourceValue] of Object.entries(sources)) {
     const source = String(sourceValue);
-    // This audit source contains the endpoint-matching regex as inert source text.
-    // Exclude only this scanner file from endpoint discovery so it cannot classify
-    // its own detector literal as a database writer. All other scripts/workflows
-    // remain in the executable-surface scan.
     if (path !== AUDIT_SOURCE_PATH && hasWriteEndpoint(source)) writeEndpointFiles.push(path);
     const broadEnvReference = /process\.env\.SUPABASE_ACCESS_TOKEN/.test(source);
     if (
@@ -156,16 +178,10 @@ export function auditProductionDbWriterBypasses(sources = {}) {
   if (!fingerprint) fail('FINGERPRINT_TOOL_MISSING', 'schema-fingerprint-diff source is unavailable');
   assertFingerprintToolIsReadOnly(String(fingerprint));
 
-  const controlled = String(sources['scripts/db/controlled-production-db-release.mjs'] ?? '');
-  const postgresTransport = String(sources['scripts/db/production-db-postgres-transport.mjs'] ?? '');
-  if (!controlled || !postgresTransport || !controlled.includes('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED') || !postgresTransport.includes('PROJECT_BOUND_POSTGRES')) {
-    fail('CONTROLLED_WRITER_MISSING', 'controlled project-bound PostgreSQL writer transport is unavailable');
-  }
-  if (controlled.includes('/database/query') || postgresTransport.includes('/database/query')) fail('CONTROLLED_WRITER_MANAGEMENT_API_FORBIDDEN', 'controlled writer must not use a Management API SQL endpoint');
-  if (controlled.includes('SUPABASE_ACCESS_TOKEN')) fail('CONTROLLED_WRITER_BROAD_TOKEN_REFERENCE', 'controlled writer must not reference broad SUPABASE_ACCESS_TOKEN');
-  if (postgresTransport.includes('executeAtomic(') || !postgresTransport.includes('executePlanBoundTransaction(command)') || !postgresTransport.includes('PLAN_BOUND_EXECUTION_REQUIRED')) {
-    fail('CONTROLLED_WRITER_RAW_SQL_BYPASS', 'project-bound transport must reject free-standing raw SQL execution');
-  }
+  assertProjectBoundPostgresWriterBoundary({
+    controlled: String(sources[CONTROLLED_WRITER_PATH] ?? ''),
+    transport: String(sources[POSTGRES_TRANSPORT_PATH] ?? ''),
+  });
 
   return {
     status: 'PRODUCTION_DB_WRITE_BYPASS_AUDIT_CLEAN',
