@@ -59,13 +59,17 @@ node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.jso
 
 此外，以下不變量會 fail closed：
 
+- 事件次數與 WIP／TEST 峰值必須是已觀測的非負安全整數；未知維持 `null/unavailable`，不可顯示成 0
 - `ci.invalidReruns <= ci.fullCiRuns`
 - `inventory.closureAdvancedOrClosed <= inventory.closureSweeps`
+- `inventory.mainTerraPeak <= inventory.activeCandidatePeak`
 - verified `ISSUE_CLOSED` subjects 與 `delivery.issuesClosed`：只要任一側非 0，就必須精確相等
 
 最後一條同時抓兩個方向：不能「claim 關了但 counter 沒記」，也不能「counter 說關了但 Completion Truth 沒證據」。
 
 這些不是新的分數，它們只是避免「raw events 一套、summary counters 另一套」。
+
+目前峰值欄位會明確標示 `RECORDED_ONLY`：它們是 ledger（帳本）中已記錄、並通過內部一致性檢查的數字，還不是由逐筆 BUILD／VERIFY／TEST 事件獨立重建的證明。`sharedTestPeak` 與 `activeCandidatePeak` 是不同語意：TEST carrier 不得標成 active candidate，因此兩者不做大小推論。沒有原始事件時不得把這個標示升級成已重建，也不得補造歷史數字。
 
 ### 3. Terminal-only pending
 

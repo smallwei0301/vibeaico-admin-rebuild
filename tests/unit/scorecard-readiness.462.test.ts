@@ -156,4 +156,70 @@ describe('scorecard live readiness (#462)', () => {
     expect(result.rawCaptureGaps).toEqual([]);
     expect(result.consistencyWarnings).toEqual([]);
   });
+
+  it('keeps unknown event counters unavailable instead of silently turning them into zero', () => {
+    const run = activeRun();
+    run.ci.fullCiRuns = null;
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.readyForContinuedCapture).toBe(false);
+    expect(result.liveCaptureStatus).toBe('NEEDS_CAPTURE');
+    expect(result.rawCaptureGaps).toContain(
+      'ci.fullCiRuns must be an observed non-negative safe integer; unknown stays null/unavailable',
+    );
+    expect(result.observed.fullCiRuns).toBeNull();
+  });
+
+  it.each([
+    ['inventory.sharedTestPeak', (run: any) => { run.inventory.sharedTestPeak = 0.5; }],
+    ['ci.fullCiRuns', (run: any) => { run.ci.fullCiRuns = 1.5; }],
+    ['modelUsage.tasks count', (run: any) => { run.modelUsage.tasks[0].count = 1.5; }],
+  ])('rejects fractional event counts: %s', (_label, mutate) => {
+    const run = activeRun();
+    mutate(run);
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.readyForContinuedCapture).toBe(false);
+  });
+
+  it('rejects a BUILD peak that exceeds the recorded candidate peak', () => {
+    const buildRun = activeRun();
+    buildRun.inventory.mainTerraPeak = 2;
+    buildRun.inventory.activeCandidatePeak = 0;
+    const buildResult = analyzeScorecardReadiness(buildRun);
+    expect(buildResult.consistencyWarnings).toContain(
+      'inventory.mainTerraPeak=2 exceeds activeCandidatePeak=0',
+    );
+
+  });
+
+  it('keeps TEST occupancy separate from active-candidate metadata', () => {
+    const run = activeRun();
+    run.inventory.sharedTestPeak = 1;
+    run.inventory.activeCandidatePeak = 0;
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.consistencyWarnings).not.toContain(
+      'inventory.sharedTestPeak=1 exceeds activeCandidatePeak=0',
+    );
+    expect(result.observed).toMatchObject({ sharedTestPeak: 1, activeCandidatePeak: 0 });
+  });
+
+  it('labels peak counters as recorded-only rather than independently reconstructed', () => {
+    const run = activeRun();
+    run.inventory.mainTerraPeak = 1;
+    run.inventory.activeCandidatePeak = 1;
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.observed).toMatchObject({
+      mainTerraPeak: 1,
+      activeCandidatePeak: 1,
+      sharedTestPeak: 0,
+      counterEvidence: 'RECORDED_ONLY',
+    });
+  });
 });
