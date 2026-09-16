@@ -294,6 +294,27 @@ describe('Production DB release plan #447', () => {
     expect(inferMigrationRiskTier(immediateDoBlock)).toBe('BACKFILL');
   });
 
+  it('allows bounded built-ins in declarative defaults and catalog checks, but not arbitrary immediate routines', () => {
+    expect(inferMigrationRiskTier(
+      "create table public.release_probe(id uuid default gen_random_uuid(), created_at timestamptz default now());",
+    )).toBe('ADDITIVE');
+    expect(inferMigrationRiskTier(
+      "do $ declare present regclass; begin present := to_regclass('public.release_probe'); end $;",
+    )).toBe('ADDITIVE');
+    expect(() => inferMigrationRiskTier(
+      "create table public.release_probe(id uuid default public.untrusted_default());",
+    )).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(
+      "do $ begin perform public.untrusted_helper(); end $;",
+    )).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
+  it('treats policy predicates as AUTHZ declarations while preserving their G3 contract gate', () => {
+    expect(inferMigrationRiskTier(
+      "create policy tenant_read on public.release_probe for select using (public.is_tenant_member(tenant_id));",
+    )).toBe('AUTHZ');
+  });
+
   it('rejects destructive and mixed-specialized-risk v1 SQL instead of silently dropping one evidence class', () => {
     expect(() => inferMigrationRiskTier('drop table public.t;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier('truncate public.t;')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
