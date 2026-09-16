@@ -112,17 +112,6 @@ PRODUCT_MAINLINE uses current `docs/MODEL-ROUTING.md` and `scripts/agents/model-
 - CANONICAL_TEST_STATUS: NOT_RUN | PENDING | FAILED | VERIFIED_GREEN
 - TEST_CLEANUP_STATUS: NOT_RUN | PENDING | FAILED | LOCAL_CLEANUP_VERIFIED
 
-## Schema staged release metadata
-
-<!-- Required by the executable guard when a migration and Product runtime/API/UI change together. PREPARE is legal only with a changed, mechanically visible default-off gate. ACTIVATE must be a later no-migration PR with immutable TEST and Production schema evidence. -->
-
-- SCHEMA_RELEASE_STAGE: PREPARE | ACTIVATE | <!-- omit for ordinary non-schema work -->
-- SCHEMA_ACTIVATION_GATE: DEFAULT_OFF | <!-- required for migration + runtime PREPARE -->
-- SCHEMA_ACTIVATION_ENV: <!-- required for migration + runtime PREPARE; e.g. NEW_SCHEMA_FEATURE -->
-- SCHEMA_ACTIVATION_GUARD_PATH: <!-- changed runtime path that defines the gate symbol -->
-- SCHEMA_ACTIVATION_GATE_SYMBOL: <!-- required for migration + runtime PREPARE; every exported entry in each changed runtime path must begin `if (!<symbol>()) return/throw`; top-level DB/network work is forbidden -->
-- SCHEMA_READINESS_EVIDENCE_PATH: <!-- ACTIVATE only: existing `docs/schema-truth/release-evidence/*.json`, immutable from this PR; it records successful exact-prep `ci` and `agent-schema-drift-watch` workflow run IDs -->
-
 `REMOTE_BRANCH_REQUIRED` is retired. Product Migration/Auth/Storage work uses `LOCAL_ISOLATED` and then the single `SHARED_CANONICAL` gate when required. A paid branch requires a future explicit Owner Decision.
 
 MODEL_GOVERNANCE must remain source/governance-only. If it needs Product TEST, schema mutation, provider behavior or Production behavior, split or reclassify to PRODUCT_MAINLINE.
