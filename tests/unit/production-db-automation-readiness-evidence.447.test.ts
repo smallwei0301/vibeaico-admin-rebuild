@@ -68,7 +68,7 @@ function completeSyntheticRepo() {
     'PRODUCTION_DB_WRITER_LOCK_BUSY', 'CONTROLLED_APPLY_PREPARED', 'preparationDigest',
     'DURABLE_PREPARED_ATTEMPT_REQUIRED',
   ].join('\n'));
-  write(root, 'scripts/db/production-db-postgres-transport.mjs', 'PROJECT_BOUND_POSTGRES');
+  write(root, 'scripts/db/production-db-postgres-transport.mjs', 'PROJECT_BOUND_POSTGRES\nexecutePlanBoundTransaction(command)\nPLAN_BOUND_EXECUTION_REQUIRED');
   write(root, 'scripts/db/run-migrations.mjs', [
     "targetEnvironment === 'PRODUCTION'", 'PRODUCTION_CONTROLLED_WRITER_REQUIRED', '/database/query',
     'executeMigrationPlan({',
