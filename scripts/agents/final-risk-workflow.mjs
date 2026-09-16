@@ -264,6 +264,9 @@ export function decideFinalRiskRecovery(input = {}) {
   const currentModel = text(input.currentModel);
   const allowedModels = unique(routing.models?.finalRiskAllowedModels ?? []);
   const attemptedModels = new Set(unique([...(input.attemptedModels ?? []), currentModel]));
+  const continueElsewhere = () => input.independentSliceAvailable === true
+    ? { breaker: 'OPEN', action: 'PARK_CURRENT_AND_REFILL_BUILD', nextModel: null }
+    : { breaker: 'OPEN', action: 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE', nextModel: null };
 
   if (failureClass === 'CONTENT_FINDING' || failureClass === 'REVIEW_FINDING') {
     return { breaker: 'CLOSED', action: 'RETURN_TO_SOURCE_FIX', nextModel: null };
@@ -275,8 +278,15 @@ export function decideFinalRiskRecovery(input = {}) {
     return { breaker: 'CLOSED', action: 'CLASSIFY_FAILURE_ONCE_THEN_REENTER', nextModel: null };
   }
 
+  if (!allowedModels.includes(currentModel)) {
+    const trusted = allowedModels.find((model) => !attemptedModels.has(model)) ?? allowedModels[0];
+    return trusted
+      ? { breaker: 'OPEN_FOR_CURRENT_MODEL', action: 'SWITCH_REVIEWER_MODEL', nextModel: trusted }
+      : continueElsewhere();
+  }
+
   if (sameClassAttempts <= 1) {
-    return { breaker: 'CLOSED', action: 'RETRY_SAME_MODEL_ONCE', nextModel: currentModel || null };
+    return { breaker: 'CLOSED', action: 'RETRY_SAME_MODEL_ONCE', nextModel: currentModel };
   }
 
   const alternate = allowedModels.find((model) => !attemptedModels.has(model));
@@ -284,9 +294,7 @@ export function decideFinalRiskRecovery(input = {}) {
     return { breaker: 'OPEN_FOR_CURRENT_MODEL', action: 'SWITCH_REVIEWER_MODEL', nextModel: alternate };
   }
 
-  return input.independentSliceAvailable === true
-    ? { breaker: 'OPEN', action: 'PARK_CURRENT_AND_REFILL_BUILD', nextModel: null }
-    : { breaker: 'OPEN', action: 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE', nextModel: null };
+  return continueElsewhere();
 }
 
 function parseArgs(argv) {
