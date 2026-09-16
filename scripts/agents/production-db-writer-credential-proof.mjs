@@ -6,6 +6,7 @@ import process from 'node:process';
 
 import { PRODUCTION_DB_POLICY } from './production-db-release-preflight.mjs';
 import {
+  CANONICAL_PRODUCTION_DB_OWNER_ROLE,
   CANONICAL_PRODUCTION_DB_WRITER_ROLE,
   createProjectBoundProductionDbTransport,
   parseProjectBoundProductionDbWriterUrl,
@@ -17,47 +18,97 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function asBool(value) {
+  return value === true || value === 't' || value === 'true';
+}
+
 async function build(mainSha, connectionString) {
   const parsed = parseProjectBoundProductionDbWriterUrl(connectionString);
   const transport = createProjectBoundProductionDbTransport({ connectionString });
-  const ledger = await transport.captureLedger();
-  const capabilities = (await transport.captureCredentialCapabilities())[0];
+  const [ledger, capabilities, catalogFingerprint] = await Promise.all([
+    transport.captureLedger(),
+    transport.captureCredentialCapabilities(),
+    transport.captureCatalogFingerprint(),
+  ]);
+
+  const writerFlagsSafe = Boolean(
+    asBool(capabilities.role_can_login) &&
+    !asBool(capabilities.role_superuser) &&
+    !asBool(capabilities.role_can_create_role) &&
+    !asBool(capabilities.role_can_create_database) &&
+    !asBool(capabilities.role_can_replicate) &&
+    !asBool(capabilities.role_bypass_rls),
+  );
+  const ownerFlagsSafe = Boolean(
+    !asBool(capabilities.owner_can_login) &&
+    !asBool(capabilities.owner_superuser) &&
+    !asBool(capabilities.owner_can_create_role) &&
+    !asBool(capabilities.owner_can_create_database) &&
+    !asBool(capabilities.owner_can_replicate) &&
+    !asBool(capabilities.owner_bypass_rls),
+  );
+  const roleEscalationBoundaryVerified = Boolean(
+    Number(capabilities.writer_membership_count) === 1 &&
+    asBool(capabilities.owner_membership_exact) &&
+    asBool(capabilities.writer_can_set_owner) &&
+    asBool(capabilities.dangerous_set_role_absent),
+  );
+  const migrationOwnershipVerified = Boolean(
+    asBool(capabilities.required_relation_ownership) &&
+    asBool(capabilities.required_routine_ownership) &&
+    asBool(capabilities.reserve_seats_execute) &&
+    asBool(capabilities.release_seats_execute) &&
+    asBool(capabilities.owner_public_default_acl_present),
+  );
+  const migrationPrivilegesVerified = Boolean(
+    asBool(capabilities.public_schema_usage) &&
+    asBool(capabilities.public_schema_create) &&
+    asBool(capabilities.ledger_schema_usage) &&
+    asBool(capabilities.ledger_select) &&
+    asBool(capabilities.ledger_insert),
+  );
+  const identityVerified = Boolean(
+    String(capabilities.database_name ?? '') === parsed.database &&
+    String(capabilities.database_user ?? '') === CANONICAL_PRODUCTION_DB_WRITER_ROLE &&
+    String(capabilities.session_user ?? '') === CANONICAL_PRODUCTION_DB_WRITER_ROLE,
+  );
+
   const dedicatedRoleVerified = Boolean(
-    capabilities &&
-    capabilities.role_name === CANONICAL_PRODUCTION_DB_WRITER_ROLE &&
-    capabilities.role_can_login === true &&
-    capabilities.role_superuser === false &&
-    capabilities.role_can_create_role === false &&
-    capabilities.role_can_create_database === false &&
-    capabilities.role_can_replicate === false &&
-    capabilities.role_bypass_rls === false &&
-    capabilities.public_schema_usage === true &&
-    capabilities.public_schema_create === true &&
-    capabilities.ledger_schema_usage === true &&
-    capabilities.ledger_select === true &&
-    capabilities.ledger_insert === true,
+    identityVerified &&
+    writerFlagsSafe &&
+    ownerFlagsSafe &&
+    roleEscalationBoundaryVerified &&
+    migrationOwnershipVerified &&
+    migrationPrivilegesVerified,
   );
   if (!dedicatedRoleVerified) throw new Error('DEDICATED_WRITER_ROLE_CAPABILITIES_NOT_VERIFIED');
+
   const ledgerDigest = sha256(JSON.stringify(ledger.map((row) => ({ version: String(row.version), name: String(row.name) }))));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: STATUS,
     mainSha,
     projectRef: PRODUCTION_DB_POLICY.productionProjectRef,
     transport: 'POSTGRES_PROJECT_BOUND',
+    transportMode: parsed.transportMode,
     credentialKind: 'POSTGRES_CONNECTION_URL',
     database: parsed.database,
-    dedicatedRoleVerified,
     databaseUser: parsed.role,
+    ownerRole: CANONICAL_PRODUCTION_DB_OWNER_ROLE,
+    dedicatedRoleVerified,
+    identityVerified,
+    writerFlagsSafe,
+    ownerFlagsSafe,
+    roleEscalationBoundaryVerified,
+    migrationOwnershipVerified,
+    migrationPrivilegesVerified,
     migrationLedgerObserved: true,
     migrationLedgerDigest: ledgerDigest,
+    catalogFingerprint,
     classicPatFallbackAbsent: true,
     broadPatFallbackAbsent: true,
-    // This job is the sole workflow location receiving the writer secret. The
-    // workflow is source-tested for that isolation; this proof only attests to
-    // the job context, not an unobservable claim about every other workflow.
     observerWriterCredentialSeparationVerified: process.env.WRITER_CREDENTIAL_ENVIRONMENT === 'production-db-writer',
-    proofRef: `postgres-writer-proof:${mainSha}:${ledgerDigest.slice(0, 16)}`,
+    proofRef: `postgres-writer-proof:${mainSha}:${ledgerDigest.slice(0, 16)}:${catalogFingerprint.slice(0, 16)}`,
     databaseMutationAuthorized: false,
   };
 }
@@ -70,7 +121,7 @@ async function main() {
     writeFileSync(outputPath, `${JSON.stringify(proof, null, 2)}\n`);
   } catch (error) {
     writeFileSync(outputPath, `${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       status: 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_NOT_EVIDENCED',
       mainSha,
       projectRef: PRODUCTION_DB_POLICY.productionProjectRef,
