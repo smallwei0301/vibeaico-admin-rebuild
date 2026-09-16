@@ -67,11 +67,13 @@ function automationReady(overrides: Record<string, any> = {}) {
       postcheckVerified: true,
       failureJournalVerified: true,
       bypassAuditClean: true,
-      dedicatedScopedCredentialPresent: true,
+      projectBoundWriterCredentialPresent: true,
       classicPatFallbackAbsent: true,
       observerWriterCredentialSeparationVerified: true,
       credentialProjectRef: PROD,
-      credentialScope: 'DATABASE_READ_WRITE',
+      writerTransport: 'POSTGRES_PROJECT_BOUND',
+      writerCredentialKind: 'POSTGRES_CONNECTION_URL',
+      broadPatFallbackAbsent: true,
     },
     orchestrator: {
       status: 'TRUSTED_MAIN_ORCHESTRATOR_VERIFIED', mainSha: MAIN,
@@ -232,7 +234,7 @@ describe('Production DB trusted-main release orchestrator #447', () => {
     const fetchSpy = vi.fn();
     const runnerSpy = vi.fn();
     const pending = automationReady();
-    pending.writer.dedicatedScopedCredentialPresent = false;
+    pending.writer.projectBoundWriterCredentialPresent = false;
 
     await expect(prepareProductionDbRelease({
       automationEvidence: pending,

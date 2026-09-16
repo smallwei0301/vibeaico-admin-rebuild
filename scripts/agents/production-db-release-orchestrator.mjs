@@ -18,6 +18,7 @@ import {
   executePreparedControlledProductionRelease,
   prepareControlledProductionReleaseAttempt,
 } from '../db/controlled-production-db-release.mjs';
+import { createProjectBoundProductionDbTransport } from '../db/production-db-postgres-transport.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
@@ -186,19 +187,19 @@ export async function prepareProductionDbRelease({
   releasePacket,
   journal,
   receipt,
-  token,
+  writerUrl,
+  transport,
   repoRoot = process.cwd(),
   runner = spawnSync,
-  fetchImpl = fetch,
   now = new Date().toISOString(),
 } = /** @type {any} */ ({})) {
   assertPolicyGatedAutomationActive({ automationEvidence, plan });
   assertExactTrustedMain(plan, { repoRoot, runner });
   const { aliasMap, readCanonicalSql } = assertPlan(plan, { repoRoot });
-  if (!String(token ?? '').trim()) fail('MISSING_PRODUCTION_RELEASE_TOKEN', 'PRODUCTION_DB_RELEASE_TOKEN is required');
+  const writerTransport = transport ?? createProjectBoundProductionDbTransport({ connectionString: writerUrl });
   return prepareControlledProductionReleaseAttempt({
     plan, releasePacket, journal, receipt, aliasMap, readCanonicalSql,
-    token, fetchImpl, now,
+    transport: writerTransport, now,
   });
 }
 
@@ -207,19 +208,19 @@ export async function executeProductionDbPreparedRelease({
   plan,
   releasePacket,
   prepared,
-  token,
+  writerUrl,
+  transport,
   repoRoot = process.cwd(),
   runner = spawnSync,
-  fetchImpl = fetch,
   now = new Date().toISOString(),
 } = /** @type {any} */ ({})) {
   assertPolicyGatedAutomationActive({ automationEvidence, plan });
   assertExactTrustedMain(plan, { repoRoot, runner });
   const { aliasMap, readCanonicalSql } = assertPlan(plan, { repoRoot });
-  if (!String(token ?? '').trim()) fail('MISSING_PRODUCTION_RELEASE_TOKEN', 'PRODUCTION_DB_RELEASE_TOKEN is required');
+  const writerTransport = transport ?? createProjectBoundProductionDbTransport({ connectionString: writerUrl });
   return executePreparedControlledProductionRelease({
     prepared, plan, releasePacket, aliasMap, readCanonicalSql,
-    token, fetchImpl, now,
+    transport: writerTransport, now,
   });
 }
 
@@ -271,7 +272,7 @@ async function main() {
       if (!automationPath || !planPath || !packetPath || !journalPath || !receiptPath || !outputPath) fail('USAGE', 'prepare <automation> <plan> <packet> <journal> <receipt> <prepared-output>');
       const prepared = await prepareProductionDbRelease({
         automationEvidence: readJson(automationPath), plan: readJson(planPath), releasePacket: readJson(packetPath),
-        journal: readJson(journalPath), receipt: readJson(receiptPath), token: process.env.PRODUCTION_DB_RELEASE_TOKEN,
+        journal: readJson(journalPath), receipt: readJson(receiptPath), writerUrl: process.env.PRODUCTION_DB_WRITER_URL,
       });
       writeJson(outputPath, prepared);
       return;
@@ -282,7 +283,7 @@ async function main() {
       try {
         const result = await executeProductionDbPreparedRelease({
           automationEvidence: readJson(automationPath), plan: readJson(planPath), releasePacket: readJson(packetPath),
-          prepared: readJson(preparedPath), token: process.env.PRODUCTION_DB_RELEASE_TOKEN,
+          prepared: readJson(preparedPath), writerUrl: process.env.PRODUCTION_DB_WRITER_URL,
         });
         writeJson(outputPath, result);
       } catch (error) {

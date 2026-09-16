@@ -10,7 +10,7 @@ function position(text: string) {
 }
 
 describe('Production DB automation readiness workflow #447', () => {
-  it('is an exact-main read-only observer and exposes no database credential', () => {
+  it('keeps the writer credential in one protected, non-mutating proof job', () => {
     expect(source).toContain('workflow_dispatch:');
     expect(source).toContain('workflow_call:');
     expect(source).toContain('expected_main_sha:');
@@ -19,7 +19,9 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain('actions: read');
     expect(source).toContain('ref: ${{ inputs.expected_main_sha }}');
     expect(source).toContain('git rev-parse origin/main');
-    expect(source).not.toContain('${{ secrets.');
+    expect(source).toContain('credential-proof:');
+    expect(source).toContain('environment: production-db-writer');
+    expect(source).toContain('PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}');
     expect(source).not.toContain('PRODUCTION_DB_RELEASE_TOKEN');
     expect(source).not.toContain('TEST_DB_RELEASE_TOKEN');
     expect(source).not.toContain('SUPABASE_ACCESS_TOKEN');
@@ -54,12 +56,12 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain('targetedCounterexampleSuitePassed: true');
   });
 
-  it('keeps credential proof explicitly absent until a trusted proof source exists', () => {
+  it('builds readiness from the sanitized protected credential proof', () => {
     const buildStart = position('- name: Build machine automation readiness evidence');
     const publishStart = position('- name: Publish readiness truth');
     const block = source.slice(buildStart, publishStart);
     expect(block).toContain('production-db-exact-head-ci-evidence.json');
-    expect(block).toContain('\n            - \\');
+    expect(block).toContain('production-db-writer-credential-proof.json');
     expect(block).toContain('production-db-automation-evidence.json');
     expect(block).toContain('production-db-automation-readiness.json');
     expect(source).not.toContain('PRODUCTION_DB_SCOPED_CREDENTIAL_VERIFIED');

@@ -23,7 +23,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  credential-proof:
+    runs-on: ubuntu-latest
+    environment: production-db-writer
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Verify project-bound writer credential without mutation
+        env:
+          PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
+        run: node scripts/agents/production-db-writer-credential-proof.mjs "${{ inputs.expected_main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-db-writer-credential-proof-${{ inputs.expected_main_sha }}
+          path: ${{ runner.temp }}/production-db-writer-credential-proof.json
+          if-no-files-found: error
+          retention-days: 14
+
   readiness:
+    needs: credential-proof
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -60,6 +86,7 @@ jobs:
             tests/unit/production-db-backup-evidence.443.test.ts \
             tests/unit/production-db-final-risk-evidence.443.test.ts \
             tests/unit/controlled-production-db-release.447.test.ts \
+            tests/unit/production-db-postgres-transport.447.test.ts \
             tests/unit/production-db-apply-receipt.447.test.ts \
             tests/unit/production-db-postcheck.447.test.ts \
             tests/unit/production-db-release-orchestrator.447.test.ts \
@@ -106,6 +133,12 @@ jobs:
             };
             fs.writeFileSync(`${process.env.RUNNER_TEMP}/production-db-exact-head-ci-evidence.json`, `${JSON.stringify(evidence, null, 2)}\n`);
 
+      - name: Download sanitized project-bound writer credential proof
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-writer-credential-proof-${{ inputs.expected_main_sha }}
+          path: ${{ runner.temp }}/credential-proof
+
       - name: Build machine automation readiness evidence
         env:
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
@@ -115,7 +148,7 @@ jobs:
           node scripts/agents/production-db-automation-readiness-evidence.mjs build \
             "$EXPECTED_MAIN_SHA" \
             "$RUNNER_TEMP/production-db-exact-head-ci-evidence.json" \
-            - \
+            "$RUNNER_TEMP/credential-proof/production-db-writer-credential-proof.json" \
             "$RUNNER_TEMP/production-db-automation-evidence.json" \
             "$RUNNER_TEMP/production-db-automation-readiness.json"
 

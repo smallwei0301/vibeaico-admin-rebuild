@@ -331,12 +331,14 @@ export function evaluateAutomationReadiness(evidence = {}) {
     'postcheckVerified',
     'failureJournalVerified',
     'bypassAuditClean',
-    'dedicatedScopedCredentialPresent',
+    'projectBoundWriterCredentialPresent',
     'classicPatFallbackAbsent',
+    'broadPatFallbackAbsent',
     'observerWriterCredentialSeparationVerified',
   ]) addReadinessBlocker(blockers, writer[key] === true, `WRITER_${key.toUpperCase()}_REQUIRED`);
   addReadinessBlocker(blockers, writer.credentialProjectRef === PRODUCTION_DB_POLICY.productionProjectRef, 'WRITER_CREDENTIAL_PROJECT_MISMATCH');
-  addReadinessBlocker(blockers, writer.credentialScope === 'DATABASE_READ_WRITE', 'WRITER_CREDENTIAL_SCOPE_INVALID');
+  addReadinessBlocker(blockers, writer.writerTransport === 'POSTGRES_PROJECT_BOUND', 'WRITER_TRANSPORT_INVALID');
+  addReadinessBlocker(blockers, writer.writerCredentialKind === 'POSTGRES_CONNECTION_URL', 'WRITER_CREDENTIAL_KIND_INVALID');
 
   const orchestrator = evidence.orchestrator ?? {};
   addReadinessBlocker(blockers, orchestrator.status === 'TRUSTED_MAIN_ORCHESTRATOR_VERIFIED', 'TRUSTED_MAIN_ORCHESTRATOR_NOT_VERIFIED');

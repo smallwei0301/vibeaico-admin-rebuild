@@ -120,9 +120,11 @@ function automationEvidence() {
       postcheckVerified: true,
       failureJournalVerified: true,
       bypassAuditClean: true,
-      dedicatedScopedCredentialPresent: true,
+      projectBoundWriterCredentialPresent: true,
       credentialProjectRef: PRODUCTION_DB_POLICY.productionProjectRef,
-      credentialScope: 'DATABASE_READ_WRITE',
+      writerTransport: 'POSTGRES_PROJECT_BOUND',
+      writerCredentialKind: 'POSTGRES_CONNECTION_URL',
+      broadPatFallbackAbsent: true,
       classicPatFallbackAbsent: true,
       observerWriterCredentialSeparationVerified: true,
     },
@@ -311,11 +313,11 @@ describe('Production DB AUTOMATION_READY verifier #447', () => {
   it('cannot be self-declared ready when the dedicated writer credential is not evidenced', () => {
     const evidence: any = automationEvidence();
     evidence.automationReady = true;
-    evidence.writer.dedicatedScopedCredentialPresent = false;
+    evidence.writer.projectBoundWriterCredentialPresent = false;
     const result = evaluateAutomationReadiness(evidence);
     expect(result.automationReady).toBe(false);
     expect(result.authorizationMode).toBe('POLICY_APPROVED_AUTOMATION_PENDING');
-    expect(result.blockers).toContain('WRITER_DEDICATEDSCOPEDCREDENTIALPRESENT_REQUIRED');
+    expect(result.blockers).toContain('WRITER_PROJECTBOUNDWRITERCREDENTIALPRESENT_REQUIRED');
     expect(result.databaseMutationAuthorized).toBe(false);
   });
 

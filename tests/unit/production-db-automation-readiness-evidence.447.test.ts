@@ -25,11 +25,14 @@ function ci(overrides: Record<string, unknown> = {}) {
 
 function credential(overrides: Record<string, unknown> = {}) {
   return {
-    status: 'PRODUCTION_DB_SCOPED_CREDENTIAL_VERIFIED',
+    status: 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED',
     projectRef: PROD,
-    scope: 'DATABASE_READ_WRITE',
-    tokenKind: 'SCOPED_PAT',
+    transport: 'POSTGRES_PROJECT_BOUND',
+    credentialKind: 'POSTGRES_CONNECTION_URL',
+    database: 'postgres',
+    dedicatedRoleVerified: true,
     classicPatFallbackAbsent: true,
+    broadPatFallbackAbsent: true,
     observerWriterCredentialSeparationVerified: true,
     proofRef: 'owner-secure-bootstrap-proof-20260915',
     ...overrides,
@@ -61,10 +64,11 @@ function completeSyntheticRepo() {
     'production-db-terminal-result', 'if: ${{ always() }}',
   ].join('\n'));
   write(root, 'scripts/db/controlled-production-db-release.mjs', [
-    '/database/query', 'PENDING_SET_MISMATCH', 'pendingProductionMigrations', 'pg_try_advisory_xact_lock',
+    'PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'PENDING_SET_MISMATCH', 'pendingProductionMigrations', 'pg_try_advisory_xact_lock',
     'PRODUCTION_DB_WRITER_LOCK_BUSY', 'CONTROLLED_APPLY_PREPARED', 'preparationDigest',
     'DURABLE_PREPARED_ATTEMPT_REQUIRED',
   ].join('\n'));
+  write(root, 'scripts/db/production-db-postgres-transport.mjs', 'PROJECT_BOUND_POSTGRES');
   write(root, 'scripts/db/run-migrations.mjs', [
     "targetEnvironment === 'PRODUCTION'", 'PRODUCTION_CONTROLLED_WRITER_REQUIRED', '/database/query',
     'executeMigrationPlan({',
@@ -93,11 +97,11 @@ describe('Production DB automation readiness evidence #447', () => {
     });
 
     expect(evidence.writer).toMatchObject({
-      dedicatedScopedCredentialPresent: false,
+      projectBoundWriterCredentialPresent: false,
       classicPatFallbackAbsent: false,
       observerWriterCredentialSeparationVerified: false,
       credentialProjectRef: null,
-      credentialScope: null,
+      writerTransport: null,
     });
     expect(readiness).toMatchObject({
       status: 'AUTOMATION_PENDING',
@@ -107,18 +111,18 @@ describe('Production DB automation readiness evidence #447', () => {
       databaseMutationAuthorized: false,
     });
     expect(readiness.blockers).toEqual(expect.arrayContaining([
-      'WRITER_DEDICATEDSCOPEDCREDENTIALPRESENT_REQUIRED',
+      'WRITER_PROJECTBOUNDWRITERCREDENTIALPRESENT_REQUIRED',
       'WRITER_CREDENTIAL_PROJECT_MISMATCH',
-      'WRITER_CREDENTIAL_SCOPE_INVALID',
+      'WRITER_TRANSPORT_INVALID',
     ]));
   });
 
   it('does not accept malformed, classic, wrong-project, or wrong-scope credential metadata as proof', () => {
     const invalid = [
       credential({ status: 'SELF_ATTESTED' }),
-      credential({ tokenKind: 'CLASSIC_PAT' }),
+      credential({ credentialKind: 'CLASSIC_PAT' }),
       credential({ projectRef: 'other-project' }),
-      credential({ scope: 'DATABASE_READ' }),
+      credential({ transport: 'MANAGEMENT_API' }),
       credential({ classicPatFallbackAbsent: false }),
       credential({ observerWriterCredentialSeparationVerified: false }),
       credential({ proofRef: 'short' }),
@@ -131,9 +135,9 @@ describe('Production DB automation readiness evidence #447', () => {
         credentialProof: proof,
         repoRoot: process.cwd(),
       });
-      expect(evidence.writer.dedicatedScopedCredentialPresent).toBe(false);
+      expect(evidence.writer.projectBoundWriterCredentialPresent).toBe(false);
       expect(evidence.writer.credentialProjectRef).toBeNull();
-      expect(evidence.writer.credentialScope).toBeNull();
+      expect(evidence.writer.writerTransport).toBeNull();
     }
   });
 
@@ -146,11 +150,11 @@ describe('Production DB automation readiness evidence #447', () => {
     });
 
     expect(evidence.writer).toMatchObject({
-      dedicatedScopedCredentialPresent: true,
+      projectBoundWriterCredentialPresent: true,
       classicPatFallbackAbsent: true,
       observerWriterCredentialSeparationVerified: true,
       credentialProjectRef: PROD,
-      credentialScope: 'DATABASE_READ_WRITE',
+      writerTransport: 'POSTGRES_PROJECT_BOUND',
       singleUseReceiptVerified: true,
       failureJournalVerified: true,
     });
@@ -200,7 +204,7 @@ describe('Production DB automation readiness evidence #447', () => {
         postcheckVerified: true,
         failureJournalVerified: true,
         bypassAuditClean: true,
-        dedicatedScopedCredentialPresent: true,
+        projectBoundWriterCredentialPresent: true,
       });
       expect(evidence.orchestrator).toMatchObject({
         trustedMainOnly: true,

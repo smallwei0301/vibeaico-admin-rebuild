@@ -8,8 +8,8 @@ import {
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
 import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import { createProjectBoundProductionDbTransport } from './production-db-postgres-transport.mjs';
 
-const API = 'https://api.supabase.com';
 const LOCK_KEY = `vibeaico-production-db-writer:${PRODUCTION_DB_POLICY.productionProjectRef}`;
 
 function fail(code, message) {
@@ -189,29 +189,30 @@ export function buildAtomicProductionApplySql({
   return statements.join('\n\n');
 }
 
-export async function captureProductionLedger({ token, fetchImpl = fetch } = {}) {
-  if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
-  const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query/read-only`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: 'select version, name from supabase_migrations.schema_migrations order by version' }),
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok || !Array.isArray(body)) fail('LIVE_LEDGER_READ_FAILED', `Production ledger read failed with HTTP ${res.status}`);
-  return body;
+export async function captureProductionLedger({ transport } = {}) {
+  if (!transport || transport.kind !== 'PROJECT_BOUND_POSTGRES' || transport.projectRef !== PRODUCTION_DB_POLICY.productionProjectRef) {
+    fail('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'Production ledger reads require the canonical project-bound PostgreSQL transport');
+  }
+  try {
+    const rows = await transport.captureLedger();
+    return normalizedLedgerRows(rows);
+  } catch (error) {
+    if (error?.code) throw error;
+    fail('LIVE_LEDGER_READ_FAILED', `Production ledger read failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 // Private transport: importing this module must not expose a raw-SQL write path.
-async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
-  if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
-  const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: sql }),
-  });
-  const text = await res.text();
-  if (!res.ok) fail('CONTROLLED_APPLY_FAILED', `atomic Production apply failed with HTTP ${res.status}: ${text.slice(0, 500)}`);
-  return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
+async function executeAtomicProductionApply({ sql, transport } = {}) {
+  if (!transport || transport.kind !== 'PROJECT_BOUND_POSTGRES' || transport.projectRef !== PRODUCTION_DB_POLICY.productionProjectRef) {
+    fail('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'Production mutations require the canonical project-bound PostgreSQL transport');
+  }
+  try {
+    return await transport.executeAtomic(sql);
+  } catch (error) {
+    if (error?.code) throw error;
+    fail('CONTROLLED_APPLY_FAILED', `atomic Production apply failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows } = {}) {
@@ -257,20 +258,18 @@ function preparationCore(prepared) {
  * Phase 1. This function performs only read-only network work, then moves the
  * journal/receipt to APPLYING/CONSUMING in memory and returns a serializable
  * attempt envelope. The caller MUST durably persist this returned envelope
-<<<<<<< HEAD
  * before calling executePreparedControlledProductionRelease(). This source core
  * only prepares data; the workflow must persist the exact envelope before it can
  * make a mutable request.
  *
- * @param {{
+ * @param {{ [key:string]: any,
  *   plan?: any,
  *   releasePacket?: any,
  *   journal?: any,
  *   receipt?: any,
  *   aliasMap?: any,
  *   readCanonicalSql?: (path: string) => string,
- *   token?: string,
- *   fetchImpl?: typeof fetch,
+ *   transport?: ReturnType<typeof createProjectBoundProductionDbTransport>,
  *   now?: string,
  * }} [input]
  */
@@ -281,8 +280,7 @@ export async function prepareControlledProductionReleaseAttempt({
   receipt,
   aliasMap,
   readCanonicalSql,
-  token,
-  fetchImpl = fetch,
+  transport,
   now: _ignoredNow,
 } = {}) {
   const admittedAt = new Date().toISOString();
@@ -292,7 +290,7 @@ export async function prepareControlledProductionReleaseAttempt({
   assertReleasePacketMatchesPlan(releasePacket, plan, admittedAt);
   assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now: admittedAt });
 
-  const before = await captureProductionLedger({ token, fetchImpl });
+  const before = await captureProductionLedger({ transport });
   buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
   // A slow ledger read cannot carry evidence past its expiry into the persisted
   // envelope. The workflow must start over rather than execute stale evidence.
@@ -326,10 +324,10 @@ export async function prepareControlledProductionReleaseAttempt({
  * production execution must use the persisted two-phase envelope above.
  */
 export async function runControlledProductionRelease(input = {}) {
-  const { plan, releasePacket, aliasMap, readCanonicalSql, token, fetchImpl = fetch } = input;
+  const { plan, releasePacket, aliasMap, readCanonicalSql, transport } = input;
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   assertReleasePacketMatchesPlan(releasePacket, plan, new Date().toISOString());
-  const before = await captureProductionLedger({ token, fetchImpl });
+  const before = await captureProductionLedger({ transport });
   buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
   assertReleasePacketMatchesPlan(releasePacket, plan, new Date().toISOString());
   return {
@@ -366,14 +364,13 @@ function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCa
  * PRE_APPLY/ISSUED state, so a process crash cannot silently fall back to the
  * reusable pre-attempt state.
  *
- * @param {{
+ * @param {{ [key:string]: any,
  *   prepared?: any,
  *   plan?: any,
  *   releasePacket?: any,
  *   aliasMap?: any,
  *   readCanonicalSql?: (path: string) => string,
- *   token?: string,
- *   fetchImpl?: typeof fetch,
+ *   transport?: ReturnType<typeof createProjectBoundProductionDbTransport>,
  *   now?: string,
  * }} [input]
  */
@@ -383,16 +380,15 @@ export async function executePreparedControlledProductionRelease({
   releasePacket,
   aliasMap,
   readCanonicalSql,
-  token,
-  fetchImpl = fetch,
+  transport,
   now = new Date().toISOString(),
 } = {}) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now });
 
   try {
-    await executeAtomicProductionApply({ sql, token, fetchImpl });
-    const after = await captureProductionLedger({ token, fetchImpl });
+    await executeAtomicProductionApply({ sql, transport });
+    const after = await captureProductionLedger({ transport });
     verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: prepared.baselineLedgerRows });
     const confirmedJournal = advanceReleaseJournal(prepared.journal, {
       status: 'APPLIED_CONFIRMED', at: now, evidenceRef: 'readback:provider-ledger-applied',

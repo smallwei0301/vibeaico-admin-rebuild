@@ -35,19 +35,24 @@ function includesAll(text, needles) {
 
 function credentialTruth(proof) {
   const valid = !!proof &&
-    proof.status === 'PRODUCTION_DB_SCOPED_CREDENTIAL_VERIFIED' &&
+    proof.status === 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED' &&
     proof.projectRef === PROD &&
-    proof.scope === 'DATABASE_READ_WRITE' &&
-    proof.tokenKind === 'SCOPED_PAT' &&
+    proof.transport === 'POSTGRES_PROJECT_BOUND' &&
+    proof.credentialKind === 'POSTGRES_CONNECTION_URL' &&
+    proof.database === 'postgres' &&
+    proof.dedicatedRoleVerified === true &&
     proof.classicPatFallbackAbsent === true &&
+    proof.broadPatFallbackAbsent === true &&
     proof.observerWriterCredentialSeparationVerified === true &&
     typeof proof.proofRef === 'string' && proof.proofRef.trim().length >= 8;
   return {
-    dedicatedScopedCredentialPresent: valid,
+    projectBoundWriterCredentialPresent: valid,
     classicPatFallbackAbsent: valid && proof.classicPatFallbackAbsent === true,
+    broadPatFallbackAbsent: valid && proof.broadPatFallbackAbsent === true,
     observerWriterCredentialSeparationVerified: valid && proof.observerWriterCredentialSeparationVerified === true,
     credentialProjectRef: valid ? proof.projectRef : null,
-    credentialScope: valid ? proof.scope : null,
+    writerTransport: valid ? proof.transport : null,
+    writerCredentialKind: valid ? proof.credentialKind : null,
     credentialProofRef: valid ? proof.proofRef : null,
   };
 }
@@ -201,4 +206,4 @@ function main() {
 
 if (process.argv[1]?.endsWith('production-db-automation-readiness-evidence.mjs')) main();
 
-export const PRODUCTION_DB_CREDENTIAL_PROOF_STATUS = 'PRODUCTION_DB_SCOPED_CREDENTIAL_VERIFIED';
+export const PRODUCTION_DB_CREDENTIAL_PROOF_STATUS = 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED';

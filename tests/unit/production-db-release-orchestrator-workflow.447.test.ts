@@ -24,15 +24,15 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
 
   it('requires exact trusted main and AUTOMATION_READY before any writer credential is exposed', () => {
     const readyGate = position('- name: Require machine POLICY_GATED_ACTIVE before any release evidence job');
-    const firstWriterSecret = position('PRODUCTION_DB_RELEASE_TOKEN: ${{ secrets.PRODUCTION_DB_RELEASE_TOKEN }}');
+    const firstWriterSecret = position('PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}');
     expect(readyGate).toBeLessThan(firstWriterSecret);
     expect(source).toContain("test \"$GITHUB_REF\" = 'refs/heads/main'");
     expect(source).toContain('git rev-parse origin/main');
     expect(source).toContain("readiness.status !== 'AUTOMATION_READY'");
     expect(source).toContain("readiness.authorizationMode !== 'POLICY_GATED_ACTIVE'");
     expect(source).toContain("readiness.perRunOwnerApproval !== 'NOT_REQUIRED'");
-    expect(source).toContain("evidence.writer?.dedicatedScopedCredentialPresent !== true");
-    expect(source).toContain("evidence.writer?.credentialScope !== 'DATABASE_READ_WRITE'");
+    expect(source).toContain("evidence.writer?.projectBoundWriterCredentialPresent !== true");
+    expect(source).toContain("evidence.writer?.writerTransport !== 'POSTGRES_PROJECT_BOUND'");
     expect(source).not.toContain('${{ secrets.SUPABASE_ACCESS_TOKEN }}');
   });
 
@@ -108,7 +108,8 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
   it('keeps observer/test credentials separated from the Production writer credential', () => {
     expect(source).toContain('SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}');
     expect(source).toContain('SUPABASE_BACKUP_OBSERVER_TOKEN: ${{ secrets.SUPABASE_BACKUP_OBSERVER_TOKEN }}');
-    expect(source.match(/PRODUCTION_DB_RELEASE_TOKEN: \$\{\{ secrets\.PRODUCTION_DB_RELEASE_TOKEN \}\}/g)?.length).toBe(2);
+    expect(source.match(/PRODUCTION_DB_WRITER_URL: \$\{\{ secrets\.PRODUCTION_DB_WRITER_URL \}\}/g)?.length).toBe(2);
+    expect(source.match(/environment: production-db-writer/g)?.length).toBe(2);
     expect(source).not.toContain('TEST_DB_RELEASE_TOKEN');
     expect(source).not.toContain('TEST_SUPABASE_SERVICE_ROLE_KEY');
     expect(source).not.toContain('SUPABASE_ACCESS_TOKEN: ${{ secrets.');

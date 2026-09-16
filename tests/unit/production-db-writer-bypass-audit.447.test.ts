@@ -10,7 +10,6 @@ describe('Production DB writer bypass audit #447',()=>{
       databaseMutationAuthorized:false,
     });
     expect(result.writeEndpointFiles).toEqual([
-      'scripts/db/controlled-production-db-release.mjs',
       'scripts/db/run-migrations.mjs',
       'scripts/db/validate-production-db-release-on-test.mjs',
     ]);

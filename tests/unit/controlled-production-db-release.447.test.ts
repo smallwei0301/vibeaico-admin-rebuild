@@ -80,6 +80,23 @@ const beforeRows = [
   { version: '2', name: '0082_source' },
 ];
 
+function testTransport(fetchSpy: ReturnType<typeof vi.fn>) {
+  const fetcher = fetchSpy as unknown as (...args: any[]) => any;
+  return {
+    kind: 'PROJECT_BOUND_POSTGRES' as const,
+    projectRef: PRODUCTION_DB_POLICY.productionProjectRef,
+    async captureLedger() {
+      const response = await fetcher('test-postgres/database/query/read-only');
+      return response instanceof Response ? response.json() : response;
+    },
+    async executeAtomic(sql: string) {
+      const response = await fetcher('test-postgres/database/query', { body: JSON.stringify({ query: sql }) });
+      if (response instanceof Response && !response.ok) throw new Error(`test apply failed: ${response.status}`);
+      return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
+    },
+  };
+}
+
 describe('Controlled Production DB writer #447', () => {
   // Clock injection is test-only at the runtime boundary, not writer input.
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(NOW)); });
@@ -229,7 +246,7 @@ describe('Controlled Production DB writer #447', () => {
     const fetchSpy = vi.fn();
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -243,7 +260,7 @@ describe('Controlled Production DB writer #447', () => {
     });
     await expect(runControlledProductionRelease({
       plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
@@ -472,7 +489,7 @@ describe('Controlled Production DB writer #447', () => {
 
     const prepared = await prepareControlledProductionReleaseAttempt({
       plan: p, releasePacket: packet(p), journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     });
     expect(prepared).toMatchObject({
       status: 'CONTROLLED_APPLY_PREPARED',
@@ -488,7 +505,7 @@ describe('Controlled Production DB writer #447', () => {
     const durablePrepared = JSON.parse(JSON.stringify(prepared));
     const result = await executePreparedControlledProductionRelease({
       prepared: durablePrepared, plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     });
     expect(result).toMatchObject({
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
@@ -513,11 +530,11 @@ describe('Controlled Production DB writer #447', () => {
     });
     const prepared = await prepareControlledProductionReleaseAttempt({
       plan: p, releasePacket: packet(p), journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     });
     await expect(executePreparedControlledProductionRelease({
       prepared: JSON.parse(JSON.stringify(prepared)), plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' }, receipt: { status: 'UNKNOWN' } });
     expect(mutableCalls).toBe(1);
   });
@@ -560,11 +577,11 @@ describe('Controlled Production DB writer #447', () => {
     });
     const prepared = await prepareControlledProductionReleaseAttempt({
       plan: p, releasePacket: packet(p), journal: journal(p), receipt: receipt(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     });
     await expect(executePreparedControlledProductionRelease({
       prepared: JSON.parse(JSON.stringify(prepared)), plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
-      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+      transport: testTransport(fetchSpy), now: NOW,
     })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' } });
     expect(readOnlyCalls).toBe(2);
     expect(mutableCalls).toBe(1);

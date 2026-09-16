@@ -157,7 +157,11 @@ export function auditProductionDbWriterBypasses(sources = {}) {
   assertFingerprintToolIsReadOnly(String(fingerprint));
 
   const controlled = String(sources['scripts/db/controlled-production-db-release.mjs'] ?? '');
-  if (!controlled || !hasWriteEndpoint(controlled)) fail('CONTROLLED_WRITER_MISSING', 'controlled Production writer endpoint is unavailable');
+  const postgresTransport = String(sources['scripts/db/production-db-postgres-transport.mjs'] ?? '');
+  if (!controlled || !postgresTransport || !controlled.includes('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED') || !postgresTransport.includes('PROJECT_BOUND_POSTGRES')) {
+    fail('CONTROLLED_WRITER_MISSING', 'controlled project-bound PostgreSQL writer transport is unavailable');
+  }
+  if (controlled.includes('/database/query') || postgresTransport.includes('/database/query')) fail('CONTROLLED_WRITER_MANAGEMENT_API_FORBIDDEN', 'controlled writer must not use a Management API SQL endpoint');
   if (controlled.includes('SUPABASE_ACCESS_TOKEN')) fail('CONTROLLED_WRITER_BROAD_TOKEN_REFERENCE', 'controlled writer must not reference broad SUPABASE_ACCESS_TOKEN');
 
   return {
