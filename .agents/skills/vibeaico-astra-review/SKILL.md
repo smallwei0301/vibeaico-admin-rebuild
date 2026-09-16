@@ -56,7 +56,7 @@ MODEL_GOVERNANCE 必須同時保持純治理範圍。若變更混入 Product run
 3. readiness packet 綁 repository、exact head、`changeDigest`、policy、TEST/schema 基線、bounded diff scope、測試證據與未驗證事項。
 4. 第一次 semantic review 固定 `FULL`；若前一輪為 blocking finding，修復後只有工具判定 `DELTA` 才可做 finding-fix review。任何新 scope／risk／policy／hot boundary 或 reviewer 要求都回 `FULL`。
 5. 使用 allowlist 模型建立獨立唯讀風險評估，要求具體反例與阻塞項目。
-6. 將結果保存於 GitHub，由 write-capable actor 或 trusted Agent bot 提交 canonical review。
+6. 將結果保存於 GitHub，由 write-capable actor 或 trusted Agent bot 提交 canonical review。**下一輪要考慮 DELTA 時，`prepare` 必須讀 live GitHub reviews；不得把單一 Session 記憶當 previous-review evidence。**
 7. 提交／編輯／撤銷後刷新 guard，合併前確認 current required status。
 
 ## Fail early：昂貴 reviewer 前的 readiness gate
@@ -86,6 +86,30 @@ MODEL_GOVERNANCE 必須同時保持純治理範圍。若變更混入 Product run
 - blob-derived delta 只落在 reviewer 前一輪明示的 finding paths／support files；
 - core regression 重新 PASS；
 - reviewer 沒要求 FULL reset。
+
+### Canonical review 必須留下可跨 Session 重建的 DELTA 證據
+
+既有 `astra-review` 欄位（例如 `findings` 人類可讀字串、`report`、模型身分）照舊；另外把 reviewer packet 中的以下欄位保存到**同一份 canonical `astra-review` JSON**：
+
+```json
+{
+  "riskClass": "PAYMENT_CONSISTENCY",
+  "changedFileRecords": [
+    { "filename": "...", "previous_filename": "", "status": "modified", "sha": "<blob sha>" }
+  ],
+  "findingDetails": [
+    { "id": "F1", "paths": ["src/..."], "summary": "blocking finding summary" }
+  ],
+  "supportFiles": ["src/related-file.ts"]
+}
+```
+
+規則：
+
+- `riskClass` 與 `changedFileRecords` 必須從 reviewer packet **原樣複製**，不能人工重算或少列。
+- `findings` 仍保留既有的人類可讀字串，避免破壞現行 Final Risk merge guard。
+- 有 blocking finding 時，`findingDetails` 每一項要有穩定 id、實際受影響 paths 與摘要；必要的唯讀相關檔可放 `supportFiles`。
+- 下一輪 `prepare` 會從 live GitHub 的最新 trusted review 重建 previous state。最新 review 缺 manifest、模型不可信、structured paths 不完整或 digest 對不上時，**fail closed 回 FULL**，不去找更舊的 PASS 偷渡。
 
 DELTA reviewer 仍必須審新的 current `changeDigest` 並留下新的 trusted verdict。它只省掉「重新理解已經審過、且沒有變的範圍」，不省掉真正的風險判斷。
 
