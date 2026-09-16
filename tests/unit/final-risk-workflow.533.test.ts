@@ -150,7 +150,7 @@ describe('Final Risk delta routing (#533)', () => {
     expect(result.resetReasons).toContain('reviewer requested FULL reset');
   });
 
-  it('reuses an existing PASS only when semantic digest is unchanged', () => {
+  it('reuses an existing PASS only when semantic digest, risk and policy are unchanged', () => {
     const result = planFinalRiskReview({
       ...baseInput(),
       riskClass: 'PAYMENT_CONSISTENCY',
@@ -162,6 +162,22 @@ describe('Final Risk delta routing (#533)', () => {
       },
     });
     expect(result.mode).toBe('REUSE');
+  });
+
+  it('does not reuse a PASS from an older Final Risk policy even when digest is unchanged', () => {
+    const result = planFinalRiskReview({
+      ...baseInput(),
+      riskClass: 'PAYMENT_CONSISTENCY',
+      changedFiles: ['src/server/payment/a.ts', 'src/server/payment/b.ts'],
+      previousReview: {
+        ...previousReview,
+        verdict: 'PASS',
+        changeDigest: baseInput().changeDigest,
+        policyVersion: 'older-policy',
+      },
+    });
+    expect(result.mode).toBe('FULL');
+    expect(result.resetReasons).toContain('Final Risk policy version changed');
   });
 });
 
