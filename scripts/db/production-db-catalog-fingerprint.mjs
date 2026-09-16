@@ -45,7 +45,7 @@ with state(item) as (
   from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
-  left join pg_attrdef d on d.adrelid = a.adrelid and d.adnum = a.attnum
+  left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
   where n.nspname in ('public', 'supabase_migrations')
     and c.relkind in ('r', 'p', 'v', 'm')
     and a.attnum > 0
