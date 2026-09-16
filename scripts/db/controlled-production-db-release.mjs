@@ -203,12 +203,12 @@ export async function captureProductionLedger({ transport } = {}) {
 }
 
 // Private transport: importing this module must not expose a raw-SQL write path.
-async function executeAtomicProductionApply({ sql, transport } = {}) {
+async function executeAtomicProductionApply({ command, transport } = {}) {
   if (!transport || transport.kind !== 'PROJECT_BOUND_POSTGRES' || transport.projectRef !== PRODUCTION_DB_POLICY.productionProjectRef) {
     fail('PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'Production mutations require the canonical project-bound PostgreSQL transport');
   }
   try {
-    return await transport.executeAtomic(sql);
+    return await transport.executePlanBoundTransaction(command);
   } catch (error) {
     if (error?.code) throw error;
     fail('CONTROLLED_APPLY_FAILED', `atomic Production apply failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -387,7 +387,16 @@ export async function executePreparedControlledProductionRelease({
   const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now });
 
   try {
-    await executeAtomicProductionApply({ sql, transport });
+    await executeAtomicProductionApply({
+      transport,
+      command: {
+        sql,
+        releaseId: plan.releaseId,
+        mainSha: plan.mainSha,
+        planDigest: plan.planDigest,
+        preparedAttemptDigest: prepared.preparationDigest,
+      },
+    });
     const after = await captureProductionLedger({ transport });
     verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: prepared.baselineLedgerRows });
     const confirmedJournal = advanceReleaseJournal(prepared.journal, {

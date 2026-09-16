@@ -23,14 +23,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify-exact-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      main_sha: ${{ steps.verify.outputs.main_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - id: verify
+        name: Verify exact current main before any secret-bearing job
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ inputs.expected_main_sha }}"
+          test "$expected" = "$(git rev-parse HEAD)"
+          git fetch --quiet origin main
+          test "$expected" = "$(git rev-parse origin/main)"
+          printf 'main_sha=%s\n' "$expected" >> "$GITHUB_OUTPUT"
+
   credential-proof:
+    needs: verify-exact-main
     runs-on: ubuntu-latest
     environment: production-db-writer
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.expected_main_sha }}
+          ref: ${{ needs.verify-exact-main.outputs.main_sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
@@ -40,23 +63,24 @@ jobs:
       - name: Verify project-bound writer credential without mutation
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
-        run: node scripts/agents/production-db-writer-credential-proof.mjs "${{ inputs.expected_main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
+          WRITER_CREDENTIAL_ENVIRONMENT: production-db-writer
+        run: node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: production-db-writer-credential-proof-${{ inputs.expected_main_sha }}
+          name: production-db-writer-credential-proof-${{ needs.verify-exact-main.outputs.main_sha }}
           path: ${{ runner.temp }}/production-db-writer-credential-proof.json
           if-no-files-found: error
           retention-days: 14
 
   readiness:
-    needs: credential-proof
+    needs: [verify-exact-main, credential-proof]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout exact trusted main
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.expected_main_sha }}
+          ref: ${{ needs.verify-exact-main.outputs.main_sha }}
           fetch-depth: 0
 
       - name: Verify exact current main

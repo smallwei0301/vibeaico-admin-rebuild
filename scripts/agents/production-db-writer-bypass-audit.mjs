@@ -163,6 +163,9 @@ export function auditProductionDbWriterBypasses(sources = {}) {
   }
   if (controlled.includes('/database/query') || postgresTransport.includes('/database/query')) fail('CONTROLLED_WRITER_MANAGEMENT_API_FORBIDDEN', 'controlled writer must not use a Management API SQL endpoint');
   if (controlled.includes('SUPABASE_ACCESS_TOKEN')) fail('CONTROLLED_WRITER_BROAD_TOKEN_REFERENCE', 'controlled writer must not reference broad SUPABASE_ACCESS_TOKEN');
+  if (postgresTransport.includes('executeAtomic(') || !postgresTransport.includes('executePlanBoundTransaction(command)') || !postgresTransport.includes('PLAN_BOUND_EXECUTION_REQUIRED')) {
+    fail('CONTROLLED_WRITER_RAW_SQL_BYPASS', 'project-bound transport must reject free-standing raw SQL execution');
+  }
 
   return {
     status: 'PRODUCTION_DB_WRITE_BYPASS_AUDIT_CLEAN',

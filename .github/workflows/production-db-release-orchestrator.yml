@@ -177,6 +177,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install locked Production writer dependencies
+        run: npm ci
+
       - name: Re-verify exact main before assembling release evidence
         shell: bash
         env:
@@ -407,6 +410,9 @@ jobs:
         with:
           node-version: 22
 
+      - name: Install locked Production writer dependencies
+        run: npm ci
+
       - name: Re-verify exact main immediately before EXECUTE
         shell: bash
         env:
@@ -494,6 +500,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Install locked Production writer dependencies
+        run: npm ci
 
       - name: Download durable prepared attempt
         uses: actions/download-artifact@v4

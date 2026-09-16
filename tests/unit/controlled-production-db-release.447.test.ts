@@ -89,8 +89,17 @@ function testTransport(fetchSpy: ReturnType<typeof vi.fn>) {
       const response = await fetcher('test-postgres/database/query/read-only');
       return response instanceof Response ? response.json() : response;
     },
-    async executeAtomic(sql: string) {
-      const response = await fetcher('test-postgres/database/query', { body: JSON.stringify({ query: sql }) });
+    async captureCredentialCapabilities() {
+      return [{
+        role_name: 'production_migration_writer', role_superuser: false,
+        role_can_create_role: false, role_can_create_database: false,
+        role_can_replicate: false, role_bypass_rls: false, role_can_login: true,
+        public_schema_usage: true, public_schema_create: true,
+        ledger_schema_usage: true, ledger_select: true, ledger_insert: true,
+      }];
+    },
+    async executePlanBoundTransaction(command: { sql: string }) {
+      const response = await fetcher('test-postgres/database/query', { body: JSON.stringify({ query: command.sql }) });
       if (response instanceof Response && !response.ok) throw new Error(`test apply failed: ${response.status}`);
       return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
     },
