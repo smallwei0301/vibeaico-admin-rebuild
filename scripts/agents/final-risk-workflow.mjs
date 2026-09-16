@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { readField } from './agent-wip-policy.mjs';
 import { validateWipPreflight } from './agent-wip-preflight.mjs';
-import { changeDigestOf, routing } from './astra-review-policy.mjs';
+import { changeDigestOf, parseAstraReviews, routing } from './astra-review-policy.mjs';
 
 const SHA40 = /^[a-f0-9]{40}$/;
 const DIGEST64 = /^[a-f0-9]{64}$/;
@@ -29,6 +29,8 @@ const upper = (value) => text(value).toUpperCase();
 const pass = (value) => PASS.has(upper(value));
 const meaningful = (value) => !PLACEHOLDER.test(text(value)) && text(value).length >= 3;
 const unique = (values = []) => [...new Set((Array.isArray(values) ? values : []).map(text).filter(Boolean))];
+const sorted = (values = []) => [...unique(values)].sort();
+const sameMembers = (left = [], right = []) => sorted(left).join('\0') === sorted(right).join('\0');
 
 function fileNames(records = []) {
   return unique((Array.isArray(records) ? records : []).map((record) => record?.filename));
@@ -38,6 +40,17 @@ function recordSignature(record = {}) {
   return [record.filename, record.previous_filename ?? '', record.status, record.sha].map(text).join('\0');
 }
 
+function findingDetails(review = {}) {
+  return Array.isArray(review?.findingDetails) ? review.findingDetails : [];
+}
+
+function findingPaths(review = {}) {
+  return unique([
+    ...findingDetails(review).flatMap((finding) => Array.isArray(finding?.paths) ? finding.paths : []),
+    ...(Array.isArray(review?.supportFiles) ? review.supportFiles : []),
+  ]);
+}
+
 function validatePacketBudget(input = {}) {
   const errors = [];
   const summary = text(input.triageSummary);
@@ -45,15 +58,46 @@ function validatePacketBudget(input = {}) {
   const changedFiles = fileNames(input.changedFileRecords);
   const deltaFiles = unique(input.deltaFiles);
   const evidenceRefs = unique(input.evidenceRefs);
-  const findings = Array.isArray(input.previousReview?.findings) ? input.previousReview.findings : [];
+  const details = findingDetails(input.previousReview);
 
   if (summaryLines > 30) errors.push(`triageSummary exceeds 30 lines (${summaryLines})`);
   if (summary.length > 6000) errors.push(`triageSummary exceeds 6000 characters (${summary.length})`);
   if (changedFiles.length > 40) errors.push(`review packet changed-file scope exceeds 40 (${changedFiles.length})`);
   if (deltaFiles.length > 20) errors.push(`delta-file scope exceeds 20 (${deltaFiles.length})`);
   if (evidenceRefs.length > 30) errors.push(`evidenceRefs exceeds 30 (${evidenceRefs.length})`);
-  if (findings.length > 20) errors.push(`previous findings exceeds 20 (${findings.length})`);
+  if (details.length > 20) errors.push(`previous findingDetails exceeds 20 (${details.length})`);
   return errors;
+}
+
+/**
+ * Rebuild the previous semantic-review state from live GitHub canonical reviews,
+ * never from session memory. parseAstraReviews already ignores untrusted records
+ * and sorts newest-first. Unknown/legacy payloads are retained but marked
+ * ineligible, so the planner safely falls back to FULL rather than silently using
+ * an older review.
+ */
+export function previousReviewFromCanonicalReviews(reviews = [], repository = '') {
+  const latest = parseAstraReviews(reviews)[0] ?? null;
+  if (!latest) return null;
+
+  const allowedModels = new Set(unique(routing.models?.finalRiskAllowedModels ?? []));
+  const canonicalTrustEligible =
+    latest.parseError !== true &&
+    allowedModels.has(text(latest.requestedModel)) &&
+    allowedModels.has(text(latest.actualModel)) &&
+    latest.identityEvidence === 'OPERATOR_ATTESTED' &&
+    DIGEST64.test(text(latest.changeDigest)) &&
+    routing.highRisk.includes(upper(latest.riskClass)) &&
+    (!repository || text(latest.repository) === text(repository));
+
+  return {
+    ...latest,
+    evidenceSource: 'CANONICAL_GITHUB_REVIEW',
+    canonicalTrustEligible,
+    changedFileRecords: Array.isArray(latest.changedFileRecords) ? latest.changedFileRecords : [],
+    findingDetails: findingDetails(latest),
+    supportFiles: Array.isArray(latest.supportFiles) ? latest.supportFiles : [],
+  };
 }
 
 /**
@@ -133,14 +177,6 @@ export function evaluateFinalRiskReadiness(input = {}, deps = {}) {
   };
 }
 
-function findingPaths(review = {}) {
-  const findings = Array.isArray(review.findings) ? review.findings : [];
-  return unique([
-    ...findings.flatMap((finding) => Array.isArray(finding?.paths) ? finding.paths : []),
-    ...(Array.isArray(review.supportFiles) ? review.supportFiles : []),
-  ]);
-}
-
 /**
  * First semantic review is FULL. A finding-fix round may be DELTA only when the
  * reviewed universe did not grow and the fix stays inside reviewer-declared
@@ -159,16 +195,19 @@ export function planFinalRiskReview(input = {}) {
   const previousVerdict = upper(previous.verdict);
   const sameRisk = upper(previous.riskClass) === currentRisk;
   const samePolicy = text(previous.policyVersion) === currentPolicy;
+  const trustedCanonical = previous.canonicalTrustEligible !== false;
   if (
     previousVerdict === 'PASS' &&
     text(previous.changeDigest) === currentDigest &&
     sameRisk &&
-    samePolicy
+    samePolicy &&
+    trustedCanonical
   ) {
     return { mode: 'REUSE', reason: 'UNCHANGED_SEMANTIC_DIGEST', resetReasons: [] };
   }
 
   const resetReasons = [];
+  if (!trustedCanonical) resetReasons.push('previous canonical review is not eligible for semantic reuse');
   if (!FIX_VERDICTS.has(previousVerdict)) resetReasons.push(`previous verdict is ${previousVerdict || 'missing'}`);
   if (!sameRisk) resetReasons.push('risk class changed');
   if (!samePolicy) resetReasons.push('Final Risk policy version changed');
@@ -178,16 +217,24 @@ export function planFinalRiskReview(input = {}) {
 
   const previousRecords = Array.isArray(previous.changedFileRecords) ? previous.changedFileRecords : [];
   const previousFiles = fileNames(previousRecords);
-  if (!previousRecords.length || changeDigestOf(previousRecords) !== text(previous.changeDigest)) resetReasons.push('previous reviewed blob manifest is unavailable or invalid');
-  if (currentFiles.join('\0') !== previousFiles.join('\0')) resetReasons.push('changed-file universe changed');
+  if (!previousRecords.length || changeDigestOf(previousRecords) !== text(previous.changeDigest)) {
+    resetReasons.push('previous reviewed blob manifest is unavailable or invalid');
+  }
+  if (!sameMembers(currentFiles, previousFiles)) resetReasons.push('changed-file universe changed');
+
   const previousByFile = new Map(previousRecords.map((record) => [text(record.filename), recordSignature(record)]));
-  const deltaFiles = currentRecords.filter((record) => previousByFile.get(text(record.filename)) !== recordSignature(record)).map((record) => text(record.filename));
+  const deltaFiles = currentRecords
+    .filter((record) => previousByFile.get(text(record.filename)) !== recordSignature(record))
+    .map((record) => text(record.filename));
   if (!deltaFiles.length) resetReasons.push('blob-derived delta is empty');
   if (deltaFiles.length > 20) resetReasons.push(`blob-derived delta exceeds 20 files (${deltaFiles.length})`);
+
   const declaredDelta = unique(input.deltaFiles);
-  if (declaredDelta.length && declaredDelta.join('\0') !== deltaFiles.join('\0')) resetReasons.push('declared delta does not match blob-derived delta');
+  if (declaredDelta.length && !sameMembers(declaredDelta, deltaFiles)) {
+    resetReasons.push('declared delta does not match blob-derived delta');
+  }
   const allowedDelta = new Set(findingPaths(previous));
-  if (!allowedDelta.size) resetReasons.push('previous review did not declare finding/support paths');
+  if (!allowedDelta.size) resetReasons.push('previous review did not declare structured finding/support paths');
   const outsideFinding = deltaFiles.filter((path) => !allowedDelta.has(path));
   if (outsideFinding.length) resetReasons.push(`delta escaped finding/support scope: ${outsideFinding.join(', ')}`);
 
@@ -197,12 +244,14 @@ export function planFinalRiskReview(input = {}) {
 }
 
 export function buildFinalRiskPacket(input = {}, deps = {}) {
-  const readiness = evaluateFinalRiskReadiness(input, deps);
+  const previousReview = previousReviewFromCanonicalReviews(input.reviews, input.repository);
+  const normalized = { ...input, previousReview };
+  const readiness = evaluateFinalRiskReadiness(normalized, deps);
   if (readiness.status === 'NOT_REQUIRED') return { ...readiness, packet: null };
   if (!readiness.ready) return { ...readiness, packet: null };
 
   const plan = planFinalRiskReview({
-    ...input,
+    ...normalized,
     riskClass: readiness.riskClass,
     policyVersion: readiness.policyVersion,
     changedFileRecords: input.changedFileRecords,
@@ -212,6 +261,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
     return {
       ...readiness,
       reviewMode: 'REUSE',
+      previousReviewSource: previousReview?.evidenceSource ?? 'NONE',
       nextAction: 'USE_EXISTING_ATTESTATION_AND_RUN_EXACT_HEAD_CI',
       packet: null,
       plan,
@@ -220,7 +270,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
 
   const evidenceRefs = unique(input.evidenceRefs);
   const packet = {
-    packetVersion: 1,
+    packetVersion: 2,
     reviewMode: plan.mode,
     repository: text(input.repository),
     prNumber: Number(input.prNumber) || null,
@@ -239,13 +289,23 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
           deltaFiles: plan.deltaFiles,
           reviewedUniverse: readiness.changedFiles,
           changedFileRecords: input.changedFileRecords,
-          previousChangeDigest: text(input.previousReview?.changeDigest),
-          previousFindings: input.previousReview?.findings ?? [],
+          previousChangeDigest: text(previousReview?.changeDigest),
+          previousFindingDetails: findingDetails(previousReview),
         }
       : { changedFiles: readiness.changedFiles, changedFileRecords: input.changedFileRecords },
+    attestationPersistence: {
+      copyExactly: {
+        riskClass: readiness.riskClass,
+        changedFileRecords: input.changedFileRecords,
+      },
+      reviewerStructuredFields: ['findingDetails', 'supportFiles'],
+      keepExistingRequiredFields: ['findings', 'report', 'requestedModel', 'actualModel', 'identityEvidence'],
+    },
     reviewerContract: [
       'Do not repeat ordinary CI unless needed to challenge evidence.',
       'Prioritize concurrency, tenant boundary, rollback, permission bypass, fake-success and negative controls.',
+      'Persist riskClass + changedFileRecords in the canonical astra-review payload.',
+      'For blocking findings, persist findingDetails [{id, paths, summary}] and optional supportFiles; keep findings as the existing human-readable string.',
       'DELTA mode still requires a fresh trusted verdict for the current changeDigest.',
       'If the fix creates new scope or uncertainty, require FULL reset.',
     ],
@@ -254,6 +314,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
   return {
     ...readiness,
     reviewMode: plan.mode,
+    previousReviewSource: previousReview?.evidenceSource ?? 'NONE',
     nextAction: 'DISPATCH_FINAL_RISK_REVIEWER',
     plan,
     packet,

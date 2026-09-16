@@ -51,7 +51,7 @@ Final Risk 的工作仍是 concurrency、tenant boundary、rollback、permission
 - Final Risk policy version 不變；
 - current changed-file universe 沒增加新檔；
 - 沒擴大 payment/auth/schema/provider 等 high-risk boundary；
-- delta 只落在前一輪 reviewer 明確 finding paths／support files；
+- delta 由前後兩輪 changed-file blob 自動計算，而且只落在前一輪 reviewer 明確 finding paths／support files；
 - core regression 全部重新 PASS；
 - reviewer 沒要求 FULL reset。
 
@@ -60,6 +60,19 @@ Final Risk 的工作仍是 concurrency、tenant boundary、rollback、permission
 DELTA **不是沿用舊 PASS**。它仍由 allowlisted Final Risk model 對新的 current `changeDigest` 做真正審查，並提交新的 trusted verdict。現有 merge admission gate 完全不變。
 
 若 previous PASS 的 semantic `changeDigest` 完全沒變，沿用現行規則直接 reuse semantic attestation，僅重跑 exact-head CI；不再重新召喚 reviewer。
+
+### 4.1 DELTA 證據必須可跨 Session 重建
+
+不能靠「上一個 Agent 還記得它審過哪些檔案」。canonical GitHub `astra-review` JSON 除既有 merge-gate 欄位外，還要保存：
+
+- `riskClass`；
+- reviewer packet 原樣的 `changedFileRecords`（含 filename / previous_filename / status / blob sha）；
+- blocking finding 的 `findingDetails`，至少含穩定 id、實際 paths、summary；
+- 必要唯讀相關檔 `supportFiles`。
+
+既有 `findings` 人類可讀字串仍保留，不改現有 Final Risk gate 契約。下一輪 `prepare` 從 live GitHub reviews 取**最新** trusted review 重建 previous state，不信 Session memory；最新 review 的模型身分、manifest、structured finding paths 或 digest 有缺漏時，fail closed 回 FULL，而且不得跳去較舊 PASS 偷渡。
+
+這個設計讓 DELTA 是「可重建的省成本」，不是「只有同一個長對話才省得到」。
 
 ## 5. 熔斷與替代路徑
 
@@ -93,7 +106,7 @@ readiness／invalid input／packet budget 問題也不消耗 reviewer retry：�
 - reviewer changed-file scope：最多 40 檔；
 - DELTA files：最多 20 檔；
 - evidence refs：最多 30；
-- previous findings：最多 20。
+- previous structured findings：最多 20。
 
 超過不是截斷後假裝完整，而是 fail early，要求縮小 scope 或重新整理 manifest。未知資訊不得補成 PASS。
 
