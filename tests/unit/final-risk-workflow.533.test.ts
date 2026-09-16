@@ -74,7 +74,7 @@ describe('Final Risk fail-early workflow (#533)', () => {
   it('builds an initial FULL packet only after all cheap gates pass', () => {
     const result = buildFinalRiskPacket(baseInput(), deps);
     expect(result.ready).toBe(true);
-    expect(result.reviewMode).toBe('FULL');
+    expect('reviewMode' in result && result.reviewMode).toBe('FULL');
     expect(result.nextAction).toBe('DISPATCH_FINAL_RISK_REVIEWER');
     expect(result.packet?.scope.changedFiles).toEqual([
       'src/server/payment/a.ts',
