@@ -20,7 +20,26 @@ const TERMINAL_ONLY_INPUTS = Object.freeze([
 ]);
 
 const num = (value) => typeof value === 'number' && Number.isFinite(value) ? value : 0;
+const observedNumber = (value) => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const lower = (value) => String(value ?? '').trim().toLowerCase();
+
+const REQUIRED_EVENT_COUNTERS = Object.freeze([
+  'delivery.issuesStarted',
+  'delivery.issuesClosed',
+  'ci.fullCiRuns',
+  'ci.invalidReruns',
+  'ci.sharedTestCollisions',
+  'inventory.mainTerraPeak',
+  'inventory.reserveTerraPeak',
+  'inventory.activeCandidatePeak',
+  'inventory.sharedTestPeak',
+  'inventory.closureSweeps',
+  'inventory.closureAdvancedOrClosed',
+  'flow.lunaTasks',
+  'flow.lunaAccepted',
+  'flow.solTouches',
+  'flow.solIssues',
+]);
 
 function valueAt(object, dottedPath) {
   return dottedPath.split('.').reduce((value, key) => value?.[key], object);
@@ -84,6 +103,19 @@ export function analyzeScorecardReadiness(run) {
   const scoreProfileTarget = targetScoreProfile(run);
 
   if (validationErrors.length === 0) {
+    for (const field of REQUIRED_EVENT_COUNTERS) {
+      const value = valueAt(run, field);
+      if (!Number.isSafeInteger(value) || value < 0) {
+        rawCaptureGaps.push(`${field} must be an observed non-negative safe integer; unknown stays null/unavailable`);
+      }
+    }
+    const taskRows = Array.isArray(run?.modelUsage?.tasks) ? run.modelUsage.tasks : [];
+    taskRows.forEach((task, index) => {
+      if (!Number.isSafeInteger(task?.count) || task.count < 0) {
+        rawCaptureGaps.push(`modelUsage.tasks[${index}].count must be an observed non-negative safe integer`);
+      }
+    });
+
     const observableActivity =
       num(run?.delivery?.issuesStarted) > 0 ||
       num(run?.ci?.fullCiRuns) > 0 ||
@@ -110,7 +142,11 @@ export function analyzeScorecardReadiness(run) {
     if (num(run?.inventory?.closureAdvancedOrClosed) > num(run?.inventory?.closureSweeps)) {
       consistencyWarnings.push(`inventory.closureAdvancedOrClosed=${num(run?.inventory?.closureAdvancedOrClosed)} exceeds closureSweeps=${num(run?.inventory?.closureSweeps)}`);
     }
-
+    if (Number.isSafeInteger(run?.inventory?.mainTerraPeak)
+      && Number.isSafeInteger(run?.inventory?.activeCandidatePeak)
+      && run.inventory.mainTerraPeak > run.inventory.activeCandidatePeak) {
+      consistencyWarnings.push(`inventory.mainTerraPeak=${run.inventory.mainTerraPeak} exceeds activeCandidatePeak=${run.inventory.activeCandidatePeak}`);
+    }
     const verifiedClosed = verifiedIssueCloseCount(run);
     const recordedClosed = num(run?.delivery?.issuesClosed);
     if ((verifiedClosed > 0 || recordedClosed > 0) && verifiedClosed !== recordedClosed) {
@@ -145,11 +181,15 @@ export function analyzeScorecardReadiness(run) {
       lunaAccepted: tasks.lunaAccepted,
       solTaskCount: tasks.solTaskCount,
       recordedSolTouches: num(run?.flow?.solTouches),
-      fullCiRuns: num(run?.ci?.fullCiRuns),
-      invalidReruns: num(run?.ci?.invalidReruns),
-      closureSweeps: num(run?.inventory?.closureSweeps),
+      fullCiRuns: observedNumber(run?.ci?.fullCiRuns),
+      invalidReruns: observedNumber(run?.ci?.invalidReruns),
+      closureSweeps: observedNumber(run?.inventory?.closureSweeps),
       verifiedIssueClosedSubjects: verifiedIssueCloseCount(run),
-      recordedIssuesClosed: num(run?.delivery?.issuesClosed),
+      recordedIssuesClosed: observedNumber(run?.delivery?.issuesClosed),
+      mainTerraPeak: observedNumber(run?.inventory?.mainTerraPeak),
+      activeCandidatePeak: observedNumber(run?.inventory?.activeCandidatePeak),
+      sharedTestPeak: observedNumber(run?.inventory?.sharedTestPeak),
+      counterEvidence: 'RECORDED_ONLY',
     },
     readyForContinuedCapture,
   };
@@ -173,6 +213,8 @@ export function renderScorecardReadiness(result) {
     `- full CI / invalid reruns: ${result.observed.fullCiRuns} / ${result.observed.invalidReruns}`,
     `- closure sweeps: ${result.observed.closureSweeps}`,
     `- verified / recorded ISSUE_CLOSED: ${result.observed.verifiedIssueClosedSubjects} / ${result.observed.recordedIssuesClosed}`,
+    `- recorded BUILD / candidate / shared TEST peaks: ${result.observed.mainTerraPeak} / ${result.observed.activeCandidatePeak} / ${result.observed.sharedTestPeak}`,
+    `- counter evidence: ${result.observed.counterEvidence}`,
   ];
 
   if (result.validationErrors.length) {
@@ -193,6 +235,7 @@ export function renderScorecardReadiness(result) {
     ...(result.terminalOnlyPending.length ? result.terminalOnlyPending.map((item) => `- ${item}`) : ['- none']),
     '',
     '> Sol task records and flow.solTouches are shown side-by-side but are not asserted equal: the repository defines solTouches as triage/audit touches, not as a strict alias of task-record count.',
+    '> RECORDED_ONLY means the peak counters are ledger claims checked for internal consistency; it is not independent event reconstruction.',
     '> Readiness is a categorical capture gate, not a score. It never rewrites a legacy Run into OBSERVED_V1. Runs started before the cutoff remain LEGACY_V2.',
     '> For new OBSERVED_V1 Runs, this tool checks raw capture health without requiring legacy manual percentage fields.',
     '',
