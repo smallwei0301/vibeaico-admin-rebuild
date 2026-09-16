@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { validateLocalRunLedgerChanges } from './scorecard-required-gate.mjs';
 import { isPlaceholder, readField } from './agent-wip-policy.mjs';
 import {
   parseLaneMetadata,
@@ -97,6 +98,8 @@ export function validateWipPreflight(input = {}) {
   const pr = { number: Number(prNumber) || 1, state: 'open', body: text };
   const metadata = parseLaneMetadata(pr);
   const errors = [];
+  // Metadata-only API callers stay compatible; the full CLI requires an inventory.
+  if (changedFiles !== null) errors.push(...validateLocalRunLedgerChanges({ changedFiles, repositoryRoot }));
   const origin = upper(readField(text, 'WORK_ORIGIN'));
   if (input.requireAstraClassification) {
     errors.push(...classifyAstra({ body: text, changedFiles }).errors);
@@ -164,13 +167,14 @@ export function validateWipPreflight(input = {}) {
     valid: errors.length === 0,
     errors: [...new Set(errors)],
     metadata,
+    rawCaptureChecked: Array.isArray(changedFiles),
   };
 }
 
 function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  if (!args.body) {
-    throw new Error('Usage: agent-wip-preflight.mjs --body <pr-body.md> [--changed-files <files.txt>] [--number <pr>]');
+  if (!args.body || !args['changed-files']) {
+    throw new Error('Usage: agent-wip-preflight.mjs --body <pr-body.md> --changed-files <files.txt> [--number <pr>]');
   }
   const body = readFileSync(args.body, 'utf8');
   const changedFiles = args['changed-files']
