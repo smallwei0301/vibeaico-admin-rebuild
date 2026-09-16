@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { validateLocalRunLedgerChanges } from './scorecard-required-gate.mjs';
+import { validateSchemaStagedRelease } from './schema-staged-release-policy.mjs';
 import { isPlaceholder, readField } from './agent-wip-policy.mjs';
 import {
   parseLaneMetadata,
@@ -106,7 +107,14 @@ export function validateWipPreflight(input = {}) {
   const pr = { number: Number(prNumber) || 1, state: 'open', body: text, head: { sha: headSha } };
   const metadata = parseLaneMetadata(pr);
   // Metadata-only API callers stay compatible; the full CLI requires an inventory.
-  if (changedFiles !== null) errors.push(...validateLocalRunLedgerChanges({ changedFiles, repositoryRoot }));
+  if (changedFiles !== null) {
+    errors.push(...validateLocalRunLedgerChanges({ changedFiles, repositoryRoot }));
+    errors.push(...validateSchemaStagedRelease({
+      body: text,
+      changedFiles,
+      readFile: (name) => readFileSync(resolve(repositoryRoot, name), 'utf8'),
+    }));
+  }
   const origin = upper(readField(text, 'WORK_ORIGIN'));
   if (input.requireAstraClassification) {
     errors.push(...classifyAstra({ body: text, changedFiles }).errors);
