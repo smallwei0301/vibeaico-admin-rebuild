@@ -1,4 +1,5 @@
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
+import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
 import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 
 const API = 'https://api.supabase.com';
@@ -221,8 +222,9 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
  * only then migration SQL. A caller-provided JSON object can never claim that the
  * database lock was acquired.
  *
- * A network error is surfaced as APPLY_UNKNOWN; callers must persist the journal
- * and run readback before any retry.
+ * A durable journal stop marker is mandatory: APPLY_UNKNOWN / POSTCHECK_FAILED can
+ * never blind-retry. A network error is surfaced as APPLY_UNKNOWN; callers must
+ * persist the journal and run readback before any retry.
  * This is source core, not automation admission: #454 owns journal semantics and
  * #455 owns trusted-main verification and durable PREPARE -> persist -> EXECUTE.
  * Do not wire this single-phase entry point directly into an automated workflow.
@@ -232,6 +234,7 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
  * @param {{
  *   plan?: any,
  *   releasePacket?: any,
+ *   journal?: any,
  *   aliasMap?: any,
  *   readCanonicalSql?: (path: string) => string,
  *   token?: string,
@@ -242,6 +245,7 @@ export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows
 export async function runControlledProductionRelease({
   plan,
   releasePacket,
+  journal,
   aliasMap,
   readCanonicalSql,
   token,
@@ -249,6 +253,8 @@ export async function runControlledProductionRelease({
   now: _ignoredNow,
 } = {}) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  assertReleaseJournalMatchesPlan(journal, plan);
+  assertWriterAttemptAllowed(journal);
   if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
     fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
   }
@@ -258,28 +264,42 @@ export async function runControlledProductionRelease({
 
   const before = await captureProductionLedger({ token, fetchImpl });
   const sql = buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
-  // A slow ledger read/build must not carry expired evidence into the write.
+  // A slow ledger read/build must not carry expired evidence into the write, and the
+  // journal always uses the wall clock — never a caller-provided `now` — for the same
+  // reason evaluateReleasePreflight does: deterministic clocks belong in pure preflight
+  // tests or test-runtime mocks, never in mutable release admission.
   evaluateReleasePreflight(releasePacket);
+  const applyingJournal = advanceReleaseJournal(journal, {
+    status: 'APPLYING', at: new Date().toISOString(), evidenceRef: 'writer:mutable-request-start',
+  });
+
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
     const after = await captureProductionLedger({ token, fetchImpl });
     verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: before });
+    const confirmedJournal = advanceReleaseJournal(applyingJournal, {
+      status: 'APPLIED_CONFIRMED', at: new Date().toISOString(), evidenceRef: 'readback:provider-ledger-applied',
+    });
+    return {
+      schemaVersion: 1,
+      status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
+      releaseId: plan.releaseId,
+      planDigest: plan.planDigest,
+      mainSha: plan.mainSha,
+      journal: confirmedJournal,
+      g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
+      nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
+      databaseMutationAuthorized: false,
+    };
   } catch (error) {
     if (error?.code === 'APPLY_UNKNOWN') throw error;
-    const wrapped = new Error(`APPLY_UNKNOWN: mutable request or post-state readback did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
+    const unknownJournal = advanceReleaseJournal(applyingJournal, {
+      status: 'APPLY_UNKNOWN', at: new Date().toISOString(), evidenceRef: 'writer:mutable-or-readback-uncertain',
+    });
+    const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
     wrapped.code = 'APPLY_UNKNOWN';
     wrapped.cause = error;
+    wrapped.journal = unknownJournal;
     throw wrapped;
   }
-
-  return {
-    schemaVersion: 1,
-    status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
-    releaseId: plan.releaseId,
-    planDigest: plan.planDigest,
-    mainSha: plan.mainSha,
-    g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
-    nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
-    databaseMutationAuthorized: false,
-  };
 }

@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "repoFile": "0105_issue_44_traveler_risk_policies",
+      "impacts": [
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.tenant_id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.customer_id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.policy" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.deposit_mode" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.deposit_value" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.reason" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.actor_user_id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.actor_label" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_policies.created_at" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.tenant_id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.customer_id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.policy" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.deposit_mode" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.deposit_value" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.reason" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.actor_user_id" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.actor_label" },
+        { "surface": "columns", "objectKey": "public.traveler_risk_current_policy.created_at" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_pkey" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_tenant_id_fkey" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_policy_check" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_reason_check" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_actor_user_id_fkey" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_actor_label_check" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_customer_tenant_fk" },
+        { "surface": "constraints", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_deposit_domain_ck" },
+        { "surface": "indexes", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_pkey" },
+        { "surface": "indexes", "objectKey": "public.traveler_risk_policies.traveler_risk_policies_lookup_idx" },
+        { "surface": "views", "objectKey": "public.traveler_risk_current_policy" },
+        { "surface": "policies", "objectKey": "public.traveler_risk_policies.p_trp_r" },
+        { "surface": "policies", "objectKey": "public.traveler_risk_policies.p_trp_i" },
+        { "surface": "acl", "objectKey": "table:public.traveler_risk_policies" },
+        { "surface": "acl", "objectKey": "table:public.traveler_risk_current_policy" }
+      ]
+    },
+    {
+      "repoFile": "0109_issue_41_schema_precondition_assertions",
+      "impacts": [
+        { "surface": "columns", "objectKey": "public.tour_orders.payment_status" },
+        { "surface": "columns", "objectKey": "public.trip_departures.min_to_depart_snapshot" },
+        { "surface": "columns", "objectKey": "public.trip_departures.formation_status" },
+        { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_paid_amount_consistent" },
+        { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_partial_paid_amount_ck" },
+        { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_refund_pending_paid_amount_ck" },
+        { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_refunded_paid_amount_ck" },
+        { "surface": "constraints", "objectKey": "public.tour_orders.tour_orders_unpaid_amount_ck" }
+      ]
+    }
+  ]
+}

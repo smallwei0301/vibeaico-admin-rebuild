@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as controlledWriter from '../../scripts/db/controlled-production-db-release.mjs';
 
+import { createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
 import { PRODUCTION_DB_POLICY, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbReleasePlan, releasePlanDigestOf, sha256 } from '../../scripts/agents/production-db-release-plan.mjs';
 import {
@@ -35,6 +36,10 @@ function plan() {
   });
 }
 
+function journal(p: any) {
+  return createReleaseJournal({ releaseId: p.releaseId, mainSha: p.mainSha, planDigest: p.planDigest, createdAt: '2026-09-14T12:39:00Z' });
+}
+
 function packet(p: any) {
   const value: any = {
     schemaVersion: 1,
@@ -47,7 +52,7 @@ function packet(p: any) {
     source: { status: 'SOURCE_VERIFIED', mainSha: p.mainSha, planDigest: p.planDigest, databaseMutationAuthorized: false },
     consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T12:35:00Z', mainSha: p.mainSha, planDigest: p.planDigest },
     test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 8, cleanup: 'PASSED', mainSha: p.mainSha, planDigest: p.planDigest },
-    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', storageObjectsCovered: false, preimageBackupVerified: false },
+    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY', productionBackupRestored: false, storageObjectsCovered: false, preimageBackupVerified: false },
     finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z', executionRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999#review', reviewId: 'review-447' },
     data: { paymentFactsTouched: false, batchSize: 100, maxRows: 1000 },
   };
@@ -208,7 +213,7 @@ describe('Controlled Production DB writer #447', () => {
     const p = plan();
     const fetchSpy = vi.fn();
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -222,7 +227,7 @@ describe('Controlled Production DB writer #447', () => {
       return new Response(JSON.stringify(beforeRows), { status: 200 });
     });
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/STALE_EVIDENCE/);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -345,6 +350,8 @@ describe('Controlled Production DB writer #447', () => {
       const evidence = packet(p);
       evidence.data.executionBounded = true;
       evidence.recovery.preimageBackupVerified = true;
+      evidence.recovery.restoreRehearsalKind = 'PRODUCTION_BACKUP_CLONE';
+      evidence.recovery.productionBackupRestored = true;
       evidence.finalRisk.evidenceDigest = releaseEvidenceDigestOf(evidence);
       expect(() => buildAtomicProductionApplySql({
         plan: p, releasePacket: evidence, aliasMap: aliasMap(),
@@ -352,7 +359,7 @@ describe('Controlled Production DB writer #447', () => {
       })).toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
       const fetchSpy = vi.fn();
       await expect(runControlledProductionRelease({
-        plan: p, releasePacket: evidence, aliasMap: aliasMap(),
+        plan: p, releasePacket: evidence, journal: journal(p), aliasMap: aliasMap(),
         readCanonicalSql: () => sql, token: 'test-only-placeholder',
         fetchImpl: fetchSpy as unknown as typeof fetch,
       })).rejects.toThrow(/BACKFILL_EXECUTOR_NOT_ADMITTED/);
@@ -449,11 +456,12 @@ describe('Controlled Production DB writer #447', () => {
     });
 
     const result = await runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     });
     expect(result).toMatchObject({
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
+      journal: { status: 'APPLIED_CONFIRMED' },
       g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
       nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
       databaseMutationAuthorized: false,
@@ -462,7 +470,7 @@ describe('Controlled Production DB writer #447', () => {
     expect(requests.filter((item) => item.endsWith('/database/query/read-only')).length).toBe(2);
   });
 
-  it('turns any mutable-call uncertainty into APPLY_UNKNOWN and does not blind retry', async () => {
+  it('turns mutable/readback uncertainty into APPLY_UNKNOWN journal state and does not blind retry', async () => {
     const p = plan();
     let mutableCalls = 0;
     const fetchSpy = vi.fn(async (url: string | URL | Request) => {
@@ -472,22 +480,28 @@ describe('Controlled Production DB writer #447', () => {
       throw new Error('connection reset after send');
     });
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
-    })).rejects.toThrow(/APPLY_UNKNOWN/);
+    })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' } });
     expect(mutableCalls).toBe(1);
   });
 
-  it('rejects packet/plan mismatch before a Production write', async () => {
+  it('rejects packet/plan or journal/plan mismatch before a Production write', async () => {
     const p = plan();
     const fetchSpy = vi.fn();
     const badPacket = packet(p); badPacket.planDigest = 'b'.repeat(64);
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: badPacket, aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: badPacket, journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
     })).rejects.toThrow(/RELEASE_PACKET_PLAN_MISMATCH/);
+    const badJournal = { ...journal(p), planDigest: 'c'.repeat(64) };
+    await expect(runControlledProductionRelease({
+      plan: p, releasePacket: packet(p), journal: badJournal, aliasMap: aliasMap(), readCanonicalSql,
+      token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
+    })).rejects.toThrow(/RELEASE_JOURNAL_PLAN_MISMATCH/);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
   it('maps post-apply ledger readback uncertainty to APPLY_UNKNOWN without retrying', async () => {
     const p = plan();
     let readOnlyCalls = 0;
@@ -503,9 +517,9 @@ describe('Controlled Production DB writer #447', () => {
       return new Response('[]', { status: 200 });
     });
     await expect(runControlledProductionRelease({
-      plan: p, releasePacket: packet(p), aliasMap: aliasMap(), readCanonicalSql,
+      plan: p, releasePacket: packet(p), journal: journal(p), aliasMap: aliasMap(), readCanonicalSql,
       token: 'writer-token', fetchImpl: fetchSpy as unknown as typeof fetch, now: NOW,
-    })).rejects.toThrow(/APPLY_UNKNOWN/);
+    })).rejects.toMatchObject({ code: 'APPLY_UNKNOWN', journal: { status: 'APPLY_UNKNOWN' } });
     expect(readOnlyCalls).toBe(2);
     expect(mutableCalls).toBe(1);
   });

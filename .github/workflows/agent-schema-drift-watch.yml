@@ -6,11 +6,21 @@ name: agent-schema-drift-watch
         description: Exact current main SHA to observe
         required: true
         type: string
+      artifact_suffix:
+        description: Distinguish pre/post release evidence artifacts
+        required: false
+        default: evidence
+        type: string
   workflow_call:
     inputs:
       expected_main_sha:
         description: Exact current main SHA to observe
         required: true
+        type: string
+      artifact_suffix:
+        description: Distinguish pre/post release evidence artifacts
+        required: false
+        default: evidence
         type: string
     secrets:
       SCHEMA_OBSERVER_TOKEN:
@@ -18,7 +28,7 @@ name: agent-schema-drift-watch
 permissions:
   contents: read
 concurrency:
-  group: schema-drift-watch-${{ inputs.expected_main_sha }}
+  group: schema-drift-watch-${{ inputs.expected_main_sha }}-${{ inputs.artifact_suffix }}
   cancel-in-progress: false
 jobs:
   read-only-three-way:
@@ -29,7 +39,7 @@ jobs:
       EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
       EXPECTED_HEAD: ${{ inputs.expected_main_sha }}
       TEST_PROFILE: SOURCE_ONLY
-      LOCAL_PROJECT_ID: schema-proof-observer-${{ github.run_id }}-${{ github.run_attempt }}
+      LOCAL_PROJECT_ID: schema-proof-observer-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.artifact_suffix }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -85,7 +95,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: schema-drift-report-${{ github.run_id }}
+          name: schema-drift-report-${{ github.run_id }}-${{ inputs.artifact_suffix }}
           path: ${{ runner.temp }}/report.json
           if-no-files-found: warn
           retention-days: 14
@@ -93,4 +103,4 @@ jobs:
         if: ${{ always() }}
         run: test ! -d "$RUNNER_TEMP/schema-bootstrap" || (cd "$RUNNER_TEMP/schema-bootstrap" && supabase stop --no-backup)
 # Manual dispatch remains available for diagnosis. workflow_call lets a trusted-main
-# release gate obtain the same read-only evidence without human approval.
+# release gate obtain the same read-only schema evidence without human approval.
