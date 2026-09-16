@@ -37,13 +37,15 @@ jobs:
       - id: verify
         name: Verify exact current main before any secret-bearing job
         shell: bash
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
         run: |
           set -euo pipefail
-          expected="${{ inputs.expected_main_sha }}"
-          test "$expected" = "$(git rev-parse HEAD)"
+          [[ "$EXPECTED_MAIN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$EXPECTED_MAIN_SHA" = "$(git rev-parse HEAD)"
           git fetch --quiet origin main
-          test "$expected" = "$(git rev-parse origin/main)"
-          printf 'main_sha=%s\n' "$expected" >> "$GITHUB_OUTPUT"
+          test "$EXPECTED_MAIN_SHA" = "$(git rev-parse origin/main)"
+          printf 'main_sha=%s\n' "$EXPECTED_MAIN_SHA" >> "$GITHUB_OUTPUT"
 
   credential-proof:
     needs: verify-exact-main
