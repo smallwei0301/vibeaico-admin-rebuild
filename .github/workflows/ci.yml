@@ -24,6 +24,14 @@ on:
         description: Exact base SHA used for the dispatched diff and repository-integrity comparison
         required: true
         type: string
+      production_db_release_id:
+        description: Optional Production DB releaseId; requires main_manual on main together with planned_at
+        required: false
+        type: string
+      production_db_planned_at:
+        description: Optional ISO UTC plan timestamp for Production DB G3 validation; requires release_id
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -200,6 +208,23 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Validate optional Production DB G3 dispatch contract
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        shell: bash
+        env:
+          RELEASE_ID: ${{ inputs.production_db_release_id }}
+          PLANNED_AT: ${{ inputs.production_db_planned_at }}
+          DISPATCH_REASON: ${{ inputs.dispatch_reason }}
+          EXPECTED_HEAD: ${{ inputs.expected_head }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RELEASE_ID" ] || [ -n "$PLANNED_AT" ]; then
+            test -n "$RELEASE_ID"
+            test -n "$PLANNED_AT"
+            test "$GITHUB_REF" = 'refs/heads/main'
+            test "$DISPATCH_REASON" = 'main_manual'
+            test "$GITHUB_SHA" = "$EXPECTED_HEAD"
+          fi
       - name: Documentation policy skip evidence
         if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
         run: |
@@ -216,10 +241,29 @@ jobs:
       - name: Install dependencies
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
         run: npm ci
+      - name: Validate exact Production DB release plan on canonical TEST
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
+        shell: bash
+        env:
+          RELEASE_ID: ${{ inputs.production_db_release_id }}
+          PLANNED_AT: ${{ inputs.production_db_planned_at }}
+          MAIN_SHA: ${{ github.sha }}
+          TEST_PROJECT_REF: nmwhwngojosmagjuvxol
+          TEST_DB_RELEASE_TOKEN: ${{ secrets.TEST_DB_RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$TEST_DB_RELEASE_TOKEN"
+          node scripts/db/validate-production-db-release-on-test.mjs plan \
+            "$RELEASE_ID" "$MAIN_SHA" "$PLANNED_AT" \
+            "$RUNNER_TEMP/production-db-release-plan.json"
+          node scripts/db/validate-production-db-release-on-test.mjs apply \
+            "$RUNNER_TEMP/production-db-release-plan.json" \
+            "$RUNNER_TEMP/production-db-test-release-evidence.json"
       - name: Run integration tests
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
-        run: npm run test:integration
+        shell: bash
         env:
+          RELEASE_ID: ${{ inputs.production_db_release_id }}
           TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
           TEST_SUPABASE_ANON_KEY: ${{ secrets.TEST_SUPABASE_ANON_KEY }}
           TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
@@ -230,6 +274,17 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+        run: |
+          set -euo pipefail
+          if [ -n "${RELEASE_ID:-}" ]; then
+            npx vitest run tests/integration \
+              --config vitest.integration.config.mts \
+              --no-file-parallelism \
+              --reporter=default --reporter=json \
+              --outputFile.json="$RUNNER_TEMP/production-db-g3-integration.json"
+          else
+            npm run test:integration
+          fi
       - name: Run E2E tests
         if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' }}
         run: npx playwright install --with-deps chromium && npm run test:e2e
@@ -244,3 +299,114 @@ jobs:
           LINE_DATA_API_BASE: http://localhost:4123
           RESEND_BASE_URL: http://localhost:4124
           RESEND_API_KEY: re_test_ci_local_mock
+      - name: Emit trusted-main shared TEST raw evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' }}
+        shell: bash
+        env:
+          MAIN_SHA: ${{ github.sha }}
+          EXPECTED_HEAD: ${{ inputs.expected_head }}
+          BASE_REVISION: ${{ inputs.base_revision }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          TEST_POLICY_REASON: ${{ needs.classify-changes.outputs.test_policy_reason }}
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          test "$MAIN_SHA" = "$EXPECTED_HEAD"
+          node --input-type=module <<'NODE'
+          const url = new URL(process.env.TEST_SUPABASE_URL);
+          if (url.hostname !== 'nmwhwngojosmagjuvxol.supabase.co') {
+            throw new Error(`wrong canonical TEST project host: ${url.hostname}`);
+          }
+          NODE
+          node --input-type=module > "$RUNNER_TEMP/shared-test-run-evidence.json" <<'NODE'
+          const evidence = {
+            schemaVersion: 1,
+            status: 'SHARED_TEST_RUN_VERIFIED',
+            policySkip: false,
+            repository: 'smallwei0301/vibeaico-admin-rebuild',
+            workflowPath: '.github/workflows/ci.yml',
+            event: 'workflow_dispatch',
+            dispatchReason: 'main_manual',
+            mainSha: process.env.MAIN_SHA,
+            expectedHead: process.env.EXPECTED_HEAD,
+            baseRevision: process.env.BASE_REVISION,
+            testProjectRef: 'nmwhwngojosmagjuvxol',
+            sourceRunId: process.env.RUN_ID,
+            sourceRunAttempt: Number(process.env.RUN_ATTEMPT),
+            policyReason: process.env.TEST_POLICY_REASON,
+            integrationStep: 'PASSED',
+            e2eStep: 'PASSED',
+            cleanupClaim: 'NOT_INFERRED_FROM_WORKFLOW_SUCCESS',
+            authzCoverageClaim: 'NOT_INFERRED_FROM_WORKFLOW_SUCCESS',
+            databaseMutationAuthorized: false,
+            productionMutationPerformed: false,
+            emittedAt: new Date().toISOString(),
+          };
+          console.log(JSON.stringify(evidence, null, 2));
+          NODE
+      - name: Build Production DB G3 coverage evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
+        run: |
+          node scripts/agents/production-db-g3-test-artifacts.mjs coverage \
+            "$RUNNER_TEMP/production-db-release-plan.json" \
+            "$RUNNER_TEMP/production-db-g3-integration.json" \
+            "$RUNNER_TEMP/production-db-test-coverage-evidence.json"
+      - name: Verify Production DB G3 migration-scoped cleanup
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
+        env:
+          TEST_SUPABASE_URL: ${{ secrets.TEST_SUPABASE_URL }}
+          TEST_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.TEST_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          node scripts/agents/production-db-g3-test-artifacts.mjs cleanup \
+            "$RUNNER_TEMP/production-db-release-plan.json" \
+            "$RUNNER_TEMP/production-db-test-cleanup-evidence.json"
+      - name: Capture Production DB G3 post-TEST schema evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
+        shell: bash
+        env:
+          SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$SCHEMA_OBSERVER_TOKEN"
+          test -z "${SUPABASE_ACCESS_TOKEN:-}"
+          node scripts/agents/production-db-g3-post-test-schema.mjs capture \
+            "$RUNNER_TEMP/production-db-release-plan.json" \
+            "$RUNNER_TEMP/production-db-test-post-schema-snapshot.json" \
+            "$RUNNER_TEMP/production-db-test-post-schema-evidence.json"
+      - name: Assemble final Production DB G3 TEST_VERIFIED evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
+        run: |
+          node scripts/agents/assemble-production-db-test-evidence.mjs \
+            "$RUNNER_TEMP/production-db-release-plan.json" \
+            "$RUNNER_TEMP/shared-test-run-evidence.json" \
+            "$RUNNER_TEMP/production-db-test-release-evidence.json" \
+            "$RUNNER_TEMP/production-db-test-cleanup-evidence.json" \
+            "$RUNNER_TEMP/production-db-test-coverage-evidence.json" \
+            "$RUNNER_TEMP/production-db-test-post-schema-evidence.json" \
+            "$RUNNER_TEMP/production-db-test-verified.json"
+      - name: Upload Production DB G3 trusted evidence bundle
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' && inputs.production_db_release_id != '' && inputs.production_db_planned_at != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-db-g3-evidence-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/production-db-release-plan.json
+            ${{ runner.temp }}/production-db-test-release-evidence.json
+            ${{ runner.temp }}/shared-test-run-evidence.json
+            ${{ runner.temp }}/production-db-g3-integration.json
+            ${{ runner.temp }}/production-db-test-coverage-evidence.json
+            ${{ runner.temp }}/production-db-test-cleanup-evidence.json
+            ${{ runner.temp }}/production-db-test-post-schema-snapshot.json
+            ${{ runner.temp }}/production-db-test-post-schema-evidence.json
+            ${{ runner.temp }}/production-db-test-verified.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload trusted-main shared TEST raw evidence
+        if: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dispatch_reason == 'main_manual' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-test-run-evidence-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/shared-test-run-evidence.json
+          if-no-files-found: error
+          retention-days: 14

@@ -45,6 +45,7 @@ describe('keyword-reply-images 直寫 Storage 側門修復 #402', () => {
     expect(migration).toContain(
       "allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']::text[]",
     );
+    expect(migration).toContain('update storage.buckets');
   });
 
   it('把 keyword-reply-images 從 p_storage_write 的 authenticated 允許清單移除', () => {
