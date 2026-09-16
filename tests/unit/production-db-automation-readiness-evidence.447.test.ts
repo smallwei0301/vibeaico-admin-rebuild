@@ -66,7 +66,7 @@ function completeSyntheticRepo() {
     'DURABLE_PREPARED_ATTEMPT_REQUIRED',
   ].join('\n'));
   write(root, 'scripts/db/run-migrations.mjs', [
-    '/database/query', "targetEnvironment === 'PRODUCTION'", 'PRODUCTION_CONTROLLED_WRITER_REQUIRED',
+    "targetEnvironment === 'PRODUCTION'", 'PRODUCTION_CONTROLLED_WRITER_REQUIRED', '/database/query',
     'executeMigrationPlan({',
   ].join('\n'));
   write(root, 'scripts/db/validate-production-db-release-on-test.mjs', [

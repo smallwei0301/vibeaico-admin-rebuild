@@ -72,6 +72,40 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  '0115_issue_21_external_calendars': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/db/external-calendars-rls.21.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/external-calendars-rls.21.test.ts',
+        fragment: 'B 店登入使用者讀不到 A 店的 external calendar（tenant 隔離）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/external-calendars-rls.21.test.ts',
+        fragment: 'authenticated 角色不能直接寫入 external calendar event cache',
+      }),
+    ]),
+  }),
+  '0116_issue_18_owner_notify': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/db/owner-notify-rls.18.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/owner-notify-rls.18.test.ts',
+        fragment: 'B 店登入使用者讀不到 A 店的 owner-notify bind request（tenant 隔離）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/owner-notify-rls.18.test.ts',
+        fragment: 'B 店登入使用者不能直接在 A 店建立 owner-notify bind request',
+      }),
+    ]),
+  }),
   // #455 TERRA_BUILD (2026-09-16): support_chat_threads/support_chat_messages
   // RLS (p_sct_r/p_sct_i/p_sct_u/p_scm_r/p_scm_i) already has real live-TEST
   // tenant-boundary coverage in the existing #? integration suite. There is no

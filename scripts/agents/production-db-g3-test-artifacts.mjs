@@ -170,6 +170,24 @@ function cleanupScopes(plan) {
       filterValue: SHOP_A_ID,
     });
   }
+  if (plan.migrations.some((migration) => String(migration?.repoFile ?? '') === '0115_issue_21_external_calendars')) {
+    scopes.push({
+      migration: '0115_issue_21_external_calendars',
+      table: 'external_calendars',
+      filterColumn: 'name',
+      filterOperator: 'like',
+      filterValue: '[G3-447] external-calendar%',
+    });
+  }
+  if (plan.migrations.some((migration) => String(migration?.repoFile ?? '') === '0116_issue_18_owner_notify')) {
+    scopes.push({
+      migration: '0116_issue_18_owner_notify',
+      table: 'line_users',
+      filterColumn: 'line_user_id',
+      filterOperator: 'like',
+      filterValue: 'g3-447-owner-notify-%',
+    });
+  }
   return scopes;
 }
 
@@ -198,7 +216,7 @@ export async function captureProductionDbTestCleanupEvidence({
   const checkedScopes = [];
   for (const scope of scopes) {
     const params = new URLSearchParams({ select: 'id' });
-    params.set(scope.filterColumn, `eq.${scope.filterValue}`);
+    params.set(scope.filterColumn, `${scope.filterOperator ?? 'eq'}.${scope.filterValue}`);
     const response = await fetchImpl(`${origin}/rest/v1/${scope.table}?${params.toString()}`, {
       method: 'GET',
       headers: {
@@ -215,7 +233,7 @@ export async function captureProductionDbTestCleanupEvidence({
     checkedScopes.push({
       migration: scope.migration,
       table: scope.table,
-      filter: `${scope.filterColumn}=eq.${scope.filterValue}`,
+      filter: `${scope.filterColumn}=${scope.filterOperator ?? 'eq'}.${scope.filterValue}`,
       residueCount: body.length,
     });
   }

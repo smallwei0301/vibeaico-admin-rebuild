@@ -289,8 +289,8 @@ export async function prepareControlledProductionReleaseAttempt({
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   assertReleaseJournalMatchesPlan(journal, plan);
   assertWriterAttemptAllowed(journal);
-  assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now: admittedAt });
   assertReleasePacketMatchesPlan(releasePacket, plan, admittedAt);
+  assertApplyReceiptAdmitted(receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now: admittedAt });
 
   const before = await captureProductionLedger({ token, fetchImpl });
   buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });

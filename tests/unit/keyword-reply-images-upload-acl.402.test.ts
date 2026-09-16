@@ -21,14 +21,6 @@ const read = (relative: string) =>
 const sha256 = (content: string) => createHash('sha256').update(content, 'utf8').digest('hex');
 
 const migration = read('supabase/migrations/0112_keyword_reply_images_upload_acl.sql');
-// 2026-09-16（PR #455 TERRA_BUILD 回合）：0112 原本同時混了 bucket 大小/MIME 限制
-// （BACKFILL：對既有列的 UPDATE）與 ACL 變更（AUTHZ：CREATE POLICY），
-// `production-db-release-plan.mjs` 的 `inferMigrationRiskTier` 對單檔混兩種
-// specialized risk tier 一律 fail closed，因此把 bucket 限制值那段拆到獨立的
-// 0119，內容逐字未變。0112 現在只剩 ACL 那半。
-const bucketLimitsMigration = read(
-  'supabase/migrations/0119_issue_402_keyword_reply_images_bucket_limits.sql',
-);
 const uploadRoute = read('src/app/api/upload/route.ts');
 const uploadService = read('src/services/upload.ts');
 
@@ -47,14 +39,13 @@ const HISTORICAL_MIGRATION_SHA256: Record<string, string> = {
 };
 
 describe('keyword-reply-images 直寫 Storage 側門修復 #402', () => {
-  it('固定 file_size_limit 為 5MiB、allowed_mime_types 限 jpeg/png/webp（現拆分於 0119）', () => {
-    expect(bucketLimitsMigration).toContain("where id = 'keyword-reply-images'");
-    expect(bucketLimitsMigration).toContain('file_size_limit = 5242880');
-    expect(bucketLimitsMigration).toContain(
+  it('固定 file_size_limit 為 5MiB、allowed_mime_types 限 jpeg/png/webp', () => {
+    expect(migration).toContain("where id = 'keyword-reply-images'");
+    expect(migration).toContain('file_size_limit = 5242880');
+    expect(migration).toContain(
       "allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']::text[]",
     );
-    // 0112 本身不再含這段 BACKFILL 語句——拆分後只剩 ACL（AUTHZ）。
-    expect(migration).not.toContain('update storage.buckets');
+    expect(migration).toContain('update storage.buckets');
   });
 
   it('把 keyword-reply-images 從 p_storage_write 的 authenticated 允許清單移除', () => {

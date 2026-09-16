@@ -136,6 +136,47 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     })).toThrow(/AUTHZ_TEST_MAPPING_REQUIRED/);
   });
 
+  it('binds #21 and #18 to their concrete canonical-TEST RLS assertions', () => {
+    const externalFile = 'tests/integration/db/external-calendars-rls.21.test.ts';
+    const ownerNotifyFile = 'tests/integration/db/owner-notify-rls.18.test.ts';
+    const result = buildProductionDbTestCoverageEvidence({
+      plan: plan([
+        { repoFile: '0115_issue_21_external_calendars', riskTier: 'AUTHZ', sha256: '3'.repeat(64) },
+        { repoFile: '0116_issue_18_owner_notify', riskTier: 'AUTHZ', sha256: '4'.repeat(64) },
+      ]),
+      report: report({
+        numTotalTests: 4,
+        numPassedTests: 4,
+        testResults: [
+          {
+            name: externalFile,
+            assertionResults: [
+              { status: 'passed', fullName: '0115 external calendars RLS B 店登入使用者讀不到 A 店的 external calendar（tenant 隔離）' },
+              { status: 'passed', fullName: '0115 external calendars RLS authenticated 角色不能直接寫入 external calendar event cache' },
+            ],
+          },
+          {
+            name: ownerNotifyFile,
+            assertionResults: [
+              { status: 'passed', fullName: '0116 owner notification RLS B 店登入使用者讀不到 A 店的 owner-notify bind request（tenant 隔離）' },
+              { status: 'passed', fullName: '0116 owner notification RLS B 店登入使用者不能直接在 A 店建立 owner-notify bind request' },
+            ],
+          },
+        ],
+      }),
+      sourceRunId: '34920000000',
+      sourceRunAttempt: 1,
+    });
+    expect(result.migrations['0115_issue_21_external_calendars']).toMatchObject({
+      tenantBoundaryVerified: true,
+      negativeRoleTestsPassed: true,
+    });
+    expect(result.migrations['0116_issue_18_owner_notify']).toMatchObject({
+      tenantBoundaryVerified: true,
+      negativeRoleTestsPassed: true,
+    });
+  });
+
   it('captures migration-scoped cleanup using GET only and the canonical SHOP_A tenant filter', async () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('GET');

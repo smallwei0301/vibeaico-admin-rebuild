@@ -40,9 +40,20 @@ function hasWriteEndpoint(source) {
 
 function assertLegacyTestRunnerCannotWriteProduction(source) {
   const environmentGuard = source.indexOf("targetEnvironment === 'PRODUCTION'");
-  const guardFailure = source.indexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED');
+  const directWriteGuard = source.indexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED');
+  const directWriteEndpoint = source.indexOf('/database/query');
+  // The function declaration itself also contains `executeMigrationPlan({`.
+  // Audit the last occurrence, which is the call on the legacy workflow path,
+  // so the fail-closed guard is required before an actual migration apply.
+  const workflowGuard = source.lastIndexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED');
   const execution = source.lastIndexOf('executeMigrationPlan({');
-  if (environmentGuard < 0 || guardFailure <= environmentGuard || execution <= guardFailure) {
+  if (
+    environmentGuard < 0 ||
+    workflowGuard <= environmentGuard ||
+    execution <= workflowGuard ||
+    directWriteGuard < 0 ||
+    directWriteEndpoint <= directWriteGuard
+  ) {
     fail('LEGACY_RUNNER_PRODUCTION_GUARD_MISSING', 'run-migrations Production fail-closed guard must execute before migration apply');
   }
 }
