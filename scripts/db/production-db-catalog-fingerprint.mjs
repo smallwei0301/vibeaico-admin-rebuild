@@ -6,6 +6,9 @@ function fail(code, message) {
   throw error;
 }
 
+const WRITER_ROLE = 'production_migration_writer';
+const OWNER_ROLE = 'production_migration_owner';
+
 const STATE_CTE = `
 with state(item) as (
   select format('schema|%s|owner=%s|acl=%s',
@@ -42,7 +45,7 @@ with state(item) as (
   from pg_attribute a
   join pg_class c on c.oid = a.attrelid
   join pg_namespace n on n.oid = c.relnamespace
-  left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+  left join pg_attrdef d on d.adrelid = a.adrelid and d.adnum = a.attnum
   where n.nspname in ('public', 'supabase_migrations')
     and c.relkind in ('r', 'p', 'v', 'm')
     and a.attnum > 0
@@ -113,6 +116,51 @@ with state(item) as (
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public'
     and not t.tgisinternal
+
+  union all
+
+  select format('writer_role|%s|login=%s|super=%s|createrole=%s|createdb=%s|replication=%s|bypassrls=%s|inherit=%s',
+    r.rolname,
+    r.rolcanlogin,
+    r.rolsuper,
+    r.rolcreaterole,
+    r.rolcreatedb,
+    r.rolreplication,
+    r.rolbypassrls,
+    r.rolinherit)
+  from pg_roles r
+  where r.rolname in ('${WRITER_ROLE}', '${OWNER_ROLE}')
+
+  union all
+
+  select format('writer_membership|member=%s|parent=%s|admin=%s|inherit=%s|set=%s',
+    member.rolname,
+    parent.rolname,
+    m.admin_option,
+    m.inherit_option,
+    m.set_option)
+  from pg_auth_members m
+  join pg_roles parent on parent.oid = m.roleid
+  join pg_roles member on member.oid = m.member
+  where member.rolname in ('${WRITER_ROLE}', '${OWNER_ROLE}')
+
+  union all
+
+  select format('default_acl|owner=%s|schema=%s|type=%s|grantee=%s|privilege=%s|grantable=%s',
+    owner_role.rolname,
+    n.nspname,
+    d.defaclobjtype,
+    coalesce(grantee.rolname, 'PUBLIC'),
+    x.privilege_type,
+    x.is_grantable)
+  from pg_default_acl d
+  join pg_roles owner_role on owner_role.oid = d.defaclrole
+  join pg_namespace n on n.oid = d.defaclnamespace
+  cross join lateral aclexplode(d.defaclacl) x
+  left join pg_roles grantee on grantee.oid = x.grantee
+  where n.nspname = 'public'
+    and owner_role.rolname in ('postgres', '${OWNER_ROLE}')
+    and d.defaclobjtype in ('r', 'S', 'f')
 )
 `;
 
@@ -130,7 +178,7 @@ from state
 export function normalizeProductionDbCatalogFingerprint(rows) {
   const fingerprint = String(Array.isArray(rows) ? rows[0]?.catalog_fingerprint ?? '' : '').trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) {
-    fail('PRODUCTION_DB_CATALOG_FINGERPRINT_INVALID', 'schema/ACL/RLS catalog fingerprint is missing or invalid');
+    fail('PRODUCTION_DB_CATALOG_FINGERPRINT_INVALID', 'schema/ACL/RLS/writer-contract catalog fingerprint is missing or invalid');
   }
   return fingerprint;
 }
@@ -138,7 +186,7 @@ export function normalizeProductionDbCatalogFingerprint(rows) {
 export function buildProductionDbCatalogFingerprintRecheckSql(expectedFingerprint) {
   const expected = String(expectedFingerprint ?? '').trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(expected)) {
-    fail('PRODUCTION_DB_CATALOG_FINGERPRINT_INVALID', 'expected schema/ACL/RLS fingerprint must be SHA-256');
+    fail('PRODUCTION_DB_CATALOG_FINGERPRINT_INVALID', 'expected schema/ACL/RLS/writer-contract fingerprint must be SHA-256');
   }
   return `do $catalogcheck$
 declare
