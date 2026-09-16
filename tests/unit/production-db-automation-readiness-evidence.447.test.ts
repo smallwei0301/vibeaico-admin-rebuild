@@ -66,9 +66,11 @@ function completeSyntheticRepo() {
   write(root, 'scripts/db/controlled-production-db-release.mjs', [
     'PROJECT_BOUND_WRITER_TRANSPORT_REQUIRED', 'PENDING_SET_MISMATCH', 'pendingProductionMigrations', 'pg_try_advisory_xact_lock',
     'PRODUCTION_DB_WRITER_LOCK_BUSY', 'CONTROLLED_APPLY_PREPARED', 'preparationDigest',
-    'DURABLE_PREPARED_ATTEMPT_REQUIRED',
+    'async function executeAtomicProductionApply', 'parseProjectBoundProductionDbWriterUrl',
+    'set local role ${CANONICAL_PRODUCTION_DB_OWNER_ROLE}', 'buildProductionDbCatalogFingerprintRecheckSql',
+    'DURABLE_PREPARED_ATTEMPT_REQUIRED', 'PREPARED_ATTEMPT_DIGEST_MISMATCH',
   ].join('\n'));
-  write(root, 'scripts/db/production-db-postgres-transport.mjs', 'PROJECT_BOUND_POSTGRES\nexecutePlanBoundTransaction(command)\nPLAN_BOUND_EXECUTION_REQUIRED');
+  write(root, 'scripts/db/production-db-postgres-transport.mjs', 'PROJECT_BOUND_POSTGRES\nREAD_ONLY_TRANSPORT_ONLY');
   write(root, 'scripts/db/run-migrations.mjs', [
     "targetEnvironment === 'PRODUCTION'", 'PRODUCTION_CONTROLLED_WRITER_REQUIRED', '/database/query',
     'executeMigrationPlan({',

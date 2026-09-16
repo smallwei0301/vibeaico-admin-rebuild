@@ -30,9 +30,9 @@ describe('Production DB writer bypass audit #447',()=>{
 
   it('rejects removal of the private controlled mutation core or post-lock catalog gate',()=>{
     for (const mutate of [
-      (source:string)=>source.replace('async function executeAtomicProductionApply','async function removedPrivateWriter'),
-      (source:string)=>source.replace('buildProductionDbCatalogFingerprintRecheckSql','removedCatalogRecheck'),
-      (source:string)=>source.replace('DURABLE_PREPARED_ATTEMPT_REQUIRED','REMOVED_DURABLE_PREPARE'),
+      (source:string)=>source.replaceAll('async function executeAtomicProductionApply','async function removedPrivateWriter'),
+      (source:string)=>source.replaceAll('buildProductionDbCatalogFingerprintRecheckSql','removedCatalogRecheck'),
+      (source:string)=>source.replaceAll('DURABLE_PREPARED_ATTEMPT_REQUIRED','REMOVED_DURABLE_PREPARE'),
     ]) {
       const sources=collectProductionDbExecutableSources(process.cwd());
       const path='scripts/db/controlled-production-db-release.mjs';
