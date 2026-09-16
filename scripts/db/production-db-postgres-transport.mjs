@@ -34,15 +34,6 @@ function assertTlsMode(parsed) {
   }
 }
 
-/**
- * Parse only the two project-bound PostgreSQL transports admitted for the
- * Production writer:
- *   - direct project host on 5432; or
- *   - Supavisor SESSION pooler on 5432, where the project ref is part of the
- *     username and is verified before any connection is opened.
- * Transaction-pooler 6543 is deliberately rejected because G6 depends on a
- * session-scoped role switch plus an advisory transaction lock.
- */
 export function parseProjectBoundProductionDbWriterUrl(connectionString) {
   const raw = String(connectionString ?? '').trim();
   if (!raw) fail('MISSING_PRODUCTION_DB_WRITER_URL', 'PRODUCTION_DB_WRITER_URL is required');
@@ -193,7 +184,7 @@ cross join owner_role o
 `;
 }
 
-export function createProjectBoundProductionDbTransport({ connectionString, sqlFactory = postgres } = {}) {
+export function createProjectBoundProductionDbTransport({ connectionString, sqlFactory = postgres } = /** @type {any} */ ({})) {
   const expected = parseProjectBoundProductionDbWriterUrl(connectionString);
 
   async function withSession(fn) {
@@ -240,10 +231,5 @@ export function createProjectBoundProductionDbTransport({ connectionString, sqlF
         return row;
       });
     },
-
-    // The transport deliberately exposes no raw-SQL mutation method. Mutable
-    // execution belongs exclusively to controlled-production-db-release.mjs,
-    // which reconstructs and validates admission from the durable prepared
-    // attempt before opening its private write session.
   });
 }
