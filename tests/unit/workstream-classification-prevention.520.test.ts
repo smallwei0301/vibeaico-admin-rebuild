@@ -84,6 +84,12 @@ describe('watcher reuses actual-file classification, not titles or parent Runs',
     expect(inspectClassification(pr({ body: 'New work', labels: [] }), files()).status).toBe('FAIL');
   });
   it.each([{ evidence: null }, { evidence: [] }, { evidence: [{ filename: 'docs/metrics/a', status: 'renamed' }] }])('missing or partial file evidence never proves governance: %j', ({ evidence }) => {
+    if (Array.isArray(evidence) && evidence.length === 0) {
+      expect(inspectClassification(pr({ changed_files: 0 }), evidence)).toMatchObject({
+        status: 'PASS', contentEvidence: 'CONFIRMED_ZERO_CONTENT',
+      });
+      return;
+    }
     expect(() => inspectClassification(pr(), evidence)).toThrow();
   });
   it('rejects duplicate file rows and path traversal', () => {
@@ -92,7 +98,7 @@ describe('watcher reuses actual-file classification, not titles or parent Runs',
   });
 });
 
-function provider(options: { mismatch?: boolean; unavailable?: boolean; stale?: boolean; truncated?: boolean } = {}) {
+function provider(options: { mismatch?: boolean; unavailable?: boolean; stale?: boolean; truncated?: boolean; zeroContent?: boolean } = {}) {
   let reads = 0;
   const request = vi.fn(async (route: string) => {
     // The test rejects every mutation method; the collector must stay read-only.
@@ -104,10 +110,11 @@ function provider(options: { mismatch?: boolean; unavailable?: boolean; stale?: 
     }
     if (resource === 'pulls') return { data: options.truncated ? Array.from({ length: 100 }, (_, i) => pr({ number: 600 + i })) : [] };
     if (resource === 'issues/520') return { data: structuredClone(issue()) };
-    if (resource === 'pulls/521/files') return { data: files() };
+    if (resource === 'pulls/521/files') return { data: options.zeroContent ? [] : files() };
     if (resource === 'pulls/521') {
       reads += 1;
       return { data: structuredClone(pr({
+        ...(options.zeroContent ? { changed_files: 0 } : {}),
         labels: options.mismatch ? [label(PRODUCT)] : [label()],
         ...(options.stale && reads > 1 ? { head: { sha: 'c'.repeat(40) } } : {}),
       })) };
@@ -127,6 +134,11 @@ describe('read-only patrol proves what it read and preserves unknown', () => {
     const result = await observeClassifications({ github: provider({ mismatch: true }), owner: 'test', repo: 'repo', now, policySha });
     expect(result.status).toBe('DRIFT_DETECTED');
     expect(result.findings[0].number).toBe(521);
+  });
+  it('treats a stable, fully paginated zero-file PR as confirmed zero content', async () => {
+    const result = await observeClassifications({ github: provider({ zeroContent: true }), owner: 'test', repo: 'repo', now, policySha });
+    expect(result.status).toBe('PASS');
+    expect(result.unavailable).toEqual([]);
   });
   it.each([{ unavailable: true }, { stale: true }, { truncated: true }])('unavailable, racing or truncated evidence is not PASS: %j', options => {
     return observeClassifications({ github: provider(options), owner: 'test', repo: 'repo', now, policySha, maxPages: 1 }).then(result => {
