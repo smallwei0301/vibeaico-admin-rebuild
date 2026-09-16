@@ -3,22 +3,28 @@ name: agent-run-scorecard
 on:
   pull_request:
     paths:
+      - '.github/workflows/agent-run-scorecard.yml'
       - 'docs/metrics/agent-runs/**'
       - 'docs/AGENT-BPLUS-DELIVERY-LOOP.md'
       - '.agents/schemas/agent-run*.schema.json'
       - '.agents/skills/vibeaico-agent-retrospective/**'
       - 'scripts/agents/run-ledger*.mjs'
       - 'scripts/agents/score-run*.mjs'
+      - 'scripts/agents/scorecard-readiness.mjs'
       - 'scripts/agents/review-runs*.mjs'
       - 'tests/unit/agent-run-score.test.ts'
       - 'tests/unit/run-ledger-reconcile.test.ts'
       - 'tests/unit/observed-scorecard*.test.ts'
+      - 'tests/unit/scorecard-readiness*.test.ts'
+      - 'tests/unit/scorecard-live-workflow*.test.ts'
   push:
     branches: [main]
     paths:
+      - '.github/workflows/agent-run-scorecard.yml'
       - 'docs/metrics/agent-runs/**'
       - 'scripts/agents/run-ledger*.mjs'
       - 'scripts/agents/score-run*.mjs'
+      - 'scripts/agents/scorecard-readiness.mjs'
       - 'scripts/agents/review-runs*.mjs'
   workflow_dispatch:
 
@@ -30,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - name: Syntax check
@@ -40,6 +48,7 @@ jobs:
           node --check scripts/agents/score-run.mjs
           node --check scripts/agents/score-run-v2.mjs
           node --check scripts/agents/score-run-current.mjs
+          node --check scripts/agents/scorecard-readiness.mjs
           node --check scripts/agents/review-runs.mjs
           node --check scripts/agents/review-runs-v2.mjs
       - name: Validate and reproduce every committed report
@@ -67,5 +76,42 @@ jobs:
             else
               echo "Unsupported schemaVersion in $ledger: $schema_version" >&2
               exit 1
+            fi
+          done
+      - name: Strict live readiness for changed active v2 ledgers
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base_sha="$PR_BASE_SHA"
+          else
+            base_sha="$PUSH_BEFORE_SHA"
+          fi
+
+          if [ -z "$base_sha" ] || [ "$base_sha" = "0000000000000000000000000000000000000000" ]; then
+            echo 'No stable comparison base; no changed-ledger strict-live check can be proven.' >&2
+            exit 1
+          fi
+
+          mapfile -t changed_ledgers < <(git diff --name-only "$base_sha" "$GITHUB_SHA" -- 'docs/metrics/agent-runs/*.json')
+          if [ ${#changed_ledgers[@]} -eq 0 ]; then
+            echo 'No changed run ledger in this transition; strict-live check not applicable.'
+            exit 0
+          fi
+
+          for ledger in "${changed_ledgers[@]}"; do
+            test -f "$ledger" || continue
+            read -r schema_version status < <(node -e 'const fs=require("fs"); const run=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); console.log(`${run.schemaVersion ?? ""} ${run.status ?? ""}`)' "$ledger")
+            if [ "$schema_version" = "2" ] && [ "$status" = "IN_PROGRESS" ]; then
+              echo "Strict live readiness: $ledger"
+              node scripts/agents/scorecard-readiness.mjs "$ledger" --strict-live
+            else
+              echo "Skip strict-live for non-active/non-v2 ledger: $ledger (schema=$schema_version status=$status)"
             fi
           done
