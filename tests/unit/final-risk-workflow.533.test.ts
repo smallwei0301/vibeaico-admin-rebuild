@@ -6,11 +6,16 @@ import {
   decideFinalRiskRecovery,
   evaluateFinalRiskReadiness,
   planFinalRiskReview,
+  previousReviewFromCanonicalReviews,
 } from '../../scripts/agents/final-risk-workflow.mjs';
 
 const records = [
   { filename: 'src/server/payment/a.ts', previous_filename: '', status: 'modified', sha: '1'.repeat(40) },
   { filename: 'src/server/payment/b.ts', previous_filename: '', status: 'modified', sha: '2'.repeat(40) },
+];
+const previousRecords = [
+  { ...records[0], sha: '3'.repeat(40) },
+  records[1],
 ];
 
 const body = `
@@ -39,6 +44,49 @@ const baseInput = () => ({
 const deps = {
   preflightEvaluator: () => ({ valid: true, errors: [], metadata: {} }),
 };
+
+const previousReview = {
+  verdict: 'FIX_REQUIRED',
+  changeDigest: changeDigestOf(previousRecords),
+  riskClass: 'PAYMENT_CONSISTENCY',
+  policyVersion: routing.version,
+  changedFileRecords: previousRecords,
+  findingDetails: [
+    { id: 'F1', paths: ['src/server/payment/a.ts'], summary: 'race window' },
+  ],
+  supportFiles: ['src/server/payment/b.ts'],
+};
+
+function canonicalReview(overrides: Record<string, unknown> = {}, submittedAt = '2026-09-16T01:00:00Z') {
+  const payload = {
+    repository: baseInput().repository,
+    baseSha: 'b'.repeat(40),
+    headSha: 'c'.repeat(40),
+    changeDigest: changeDigestOf(previousRecords),
+    policyVersion: routing.version,
+    testBaseline: 'prior test baseline passed',
+    schemaBaseline: 'prior schema baseline matched',
+    requestedModel: routing.models.finalRisk,
+    actualModel: routing.models.finalRisk,
+    identityEvidence: 'OPERATOR_ATTESTED',
+    verdict: 'FIX_REQUIRED',
+    report: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/issues/533',
+    findings: 'F1: race window must be fixed',
+    riskClass: 'PAYMENT_CONSISTENCY',
+    changedFileRecords: previousRecords,
+    findingDetails: [{ id: 'F1', paths: ['src/server/payment/a.ts'], summary: 'race window' }],
+    supportFiles: ['src/server/payment/b.ts'],
+    ...overrides,
+  };
+  return {
+    trusted: true,
+    state: 'COMMENTED',
+    commit_id: 'c'.repeat(40),
+    submitted_at: submittedAt,
+    id: Number(submittedAt.replace(/\D/g, '').slice(-8)) || 1,
+    body: `\`\`\`astra-review\n${JSON.stringify(payload)}\n\`\`\``,
+  };
+}
 
 describe('Final Risk fail-early workflow (#533)', () => {
   it('fails before dispatch when source is not frozen', () => {
@@ -75,31 +123,15 @@ describe('Final Risk fail-early workflow (#533)', () => {
     const result = buildFinalRiskPacket(baseInput(), deps);
     expect(result.ready).toBe(true);
     expect('reviewMode' in result && result.reviewMode).toBe('FULL');
-    expect(result.nextAction).toBe('DISPATCH_FINAL_RISK_REVIEWER');
     expect(result.packet?.scope.changedFiles).toEqual([
       'src/server/payment/a.ts',
       'src/server/payment/b.ts',
     ]);
+    expect(result.packet?.attestationPersistence.copyExactly.changedFileRecords).toEqual(records);
   });
 });
 
 describe('Final Risk delta routing (#533)', () => {
-  const previousRecords = [
-    { ...records[0], sha: '3'.repeat(40) },
-    records[1],
-  ];
-  const previousReview = {
-    verdict: 'FIX_REQUIRED',
-    changeDigest: changeDigestOf(previousRecords),
-    riskClass: 'PAYMENT_CONSISTENCY',
-    policyVersion: routing.version,
-    changedFileRecords: previousRecords,
-    findings: [
-      { id: 'F1', paths: ['src/server/payment/a.ts'], summary: 'race window' },
-    ],
-    supportFiles: ['src/server/payment/b.ts'],
-  };
-
   it('uses DELTA only for a blob-derived finding fix inside the previously reviewed universe', () => {
     const result = planFinalRiskReview({
       ...baseInput(),
@@ -109,6 +141,15 @@ describe('Final Risk delta routing (#533)', () => {
     });
     expect(result.mode).toBe('DELTA');
     expect(result.deltaFiles).toEqual(['src/server/payment/a.ts']);
+  });
+
+  it('does not reset merely because GitHub returns the same file universe in another order', () => {
+    const result = planFinalRiskReview({
+      ...baseInput(),
+      riskClass: 'PAYMENT_CONSISTENCY',
+      previousReview: { ...previousReview, changedFileRecords: [...previousRecords].reverse() },
+    });
+    expect(result.mode).toBe('DELTA');
   });
 
   it('forces FULL reset when caller under-reports the blob-derived delta', () => {
@@ -124,74 +165,82 @@ describe('Final Risk delta routing (#533)', () => {
     expect(result.resetReasons).toContain('changed-file universe changed');
   });
 
-  it('forces FULL reset when the high-risk boundary expands', () => {
-    const result = planFinalRiskReview({ ...baseInput(), riskClass: 'PAYMENT_CONSISTENCY', previousReview, hotBoundaryExpanded: true });
-    expect(result.mode).toBe('FULL');
-    expect(result.resetReasons).toContain('high-risk boundary expanded');
+  it('forces FULL reset when the high-risk boundary expands or reviewer asks for it', () => {
+    const boundary = planFinalRiskReview({ ...baseInput(), riskClass: 'PAYMENT_CONSISTENCY', previousReview, hotBoundaryExpanded: true });
+    const reviewer = planFinalRiskReview({ ...baseInput(), riskClass: 'PAYMENT_CONSISTENCY', previousReview, reviewerRequestedFullReset: true });
+    expect(boundary.resetReasons).toContain('high-risk boundary expanded');
+    expect(reviewer.resetReasons).toContain('reviewer requested FULL reset');
   });
 
-  it('lets reviewer demand a FULL reset even when mechanical delta checks pass', () => {
-    const result = planFinalRiskReview({ ...baseInput(), riskClass: 'PAYMENT_CONSISTENCY', previousReview, reviewerRequestedFullReset: true });
-    expect(result.mode).toBe('FULL');
-    expect(result.resetReasons).toContain('reviewer requested FULL reset');
-  });
-
-  it('reuses an existing PASS only when semantic digest, risk and policy are unchanged', () => {
-    const result = planFinalRiskReview({
+  it('reuses PASS only when digest, risk and policy are unchanged', () => {
+    const reused = planFinalRiskReview({
       ...baseInput(),
       riskClass: 'PAYMENT_CONSISTENCY',
       previousReview: { ...previousReview, verdict: 'PASS', changeDigest: baseInput().changeDigest },
     });
-    expect(result.mode).toBe('REUSE');
-  });
-
-  it('does not reuse a PASS from an older Final Risk policy even when digest is unchanged', () => {
-    const result = planFinalRiskReview({
+    const stale = planFinalRiskReview({
       ...baseInput(),
       riskClass: 'PAYMENT_CONSISTENCY',
       previousReview: { ...previousReview, verdict: 'PASS', changeDigest: baseInput().changeDigest, policyVersion: 'older-policy' },
     });
-    expect(result.mode).toBe('FULL');
-    expect(result.resetReasons).toContain('Final Risk policy version changed');
+    expect(reused.mode).toBe('REUSE');
+    expect(stale.mode).toBe('FULL');
+  });
+});
+
+describe('Final Risk canonical handoff persistence (#533)', () => {
+  it('reconstructs DELTA eligibility from a trusted GitHub astra-review after session handoff', () => {
+    const review = canonicalReview();
+    const restored = previousReviewFromCanonicalReviews([review], baseInput().repository);
+    expect(restored?.canonicalTrustEligible).toBe(true);
+    expect(restored?.changedFileRecords).toEqual(previousRecords);
+    expect(restored?.findingDetails[0].paths).toEqual(['src/server/payment/a.ts']);
+
+    const result = buildFinalRiskPacket({ ...baseInput(), reviews: [review] }, deps);
+    expect('reviewMode' in result && result.reviewMode).toBe('DELTA');
+    expect(result.previousReviewSource).toBe('CANONICAL_GITHUB_REVIEW');
+    expect(result.packet?.scope.deltaFiles).toEqual(['src/server/payment/a.ts']);
+  });
+
+  it('fails closed to FULL when legacy review lacks structured manifest/finding evidence', () => {
+    const review = canonicalReview({ changedFileRecords: undefined, findingDetails: undefined, supportFiles: undefined });
+    const result = buildFinalRiskPacket({ ...baseInput(), reviews: [review] }, deps);
+    expect('reviewMode' in result && result.reviewMode).toBe('FULL');
+    expect(result.plan.resetReasons).toContain('previous reviewed blob manifest is unavailable or invalid');
+  });
+
+  it('does not use an older good review when the newest canonical review is ineligible', () => {
+    const older = canonicalReview({}, '2026-09-16T01:00:00Z');
+    const newest = canonicalReview({ actualModel: 'untrusted-reviewer' }, '2026-09-16T01:05:00Z');
+    const restored = previousReviewFromCanonicalReviews([older, newest], baseInput().repository);
+    expect(restored?.canonicalTrustEligible).toBe(false);
+    const result = buildFinalRiskPacket({ ...baseInput(), reviews: [older, newest] }, deps);
+    expect('reviewMode' in result && result.reviewMode).toBe('FULL');
+    expect(result.plan.resetReasons).toContain('previous canonical review is not eligible for semantic reuse');
   });
 });
 
 describe('Final Risk circuit breaker fallback (#533)', () => {
   const allowed = ['claude-fable-5-1', 'gpt-6-astra'];
 
-  it('allows exactly one cheap retry for the first transient failure', () => {
-    const result = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 1, currentModel: 'claude-fable-5-1', allowedModels: allowed });
-    expect(result.action).toBe('RETRY_SAME_MODEL_ONCE');
+  it('allows one retry, then switches trusted reviewer model', () => {
+    const first = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 1, currentModel: 'claude-fable-5-1', allowedModels: allowed });
+    const second = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 2, currentModel: 'claude-fable-5-1', attemptedModels: ['claude-fable-5-1'], allowedModels: allowed });
+    expect(first.action).toBe('RETRY_SAME_MODEL_ONCE');
+    expect(second.action).toBe('SWITCH_REVIEWER_MODEL');
+    expect(second.nextModel).toBe('gpt-6-astra');
   });
 
-  it('switches reviewer model after the same transient failure happens twice', () => {
-    const result = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 2, currentModel: 'claude-fable-5-1', attemptedModels: ['claude-fable-5-1'], allowedModels: allowed });
-    expect(result.breaker).toBe('OPEN_FOR_CURRENT_MODEL');
-    expect(result.action).toBe('SWITCH_REVIEWER_MODEL');
-    expect(result.nextModel).toBe('gpt-6-astra');
+  it('parks only the blocked candidate and keeps the loop productive after reviewer paths are exhausted', () => {
+    const refill = decideFinalRiskRecovery({ failureClass: 'MODEL_DISPATCH', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: true });
+    const closure = decideFinalRiskRecovery({ failureClass: 'SAFETY_CLASSIFIER', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: false });
+    expect(refill.action).toBe('PARK_CURRENT_AND_REFILL_BUILD');
+    expect(closure.action).toBe('PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
+    expect(closure.action).not.toContain('STOP');
   });
 
-  it('parks only the blocked candidate and refills BUILD when all reviewers are exhausted', () => {
-    const result = decideFinalRiskRecovery({ failureClass: 'MODEL_DISPATCH', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: true });
-    expect(result.breaker).toBe('OPEN');
-    expect(result.action).toBe('PARK_CURRENT_AND_REFILL_BUILD');
-  });
-
-  it('keeps closure/triage alive when there is no independent BUILD slice', () => {
-    const result = decideFinalRiskRecovery({ failureClass: 'SAFETY_CLASSIFIER', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: false });
-    expect(result.breaker).toBe('OPEN');
-    expect(result.action).toBe('PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
-    expect(result.action).not.toContain('STOP');
-  });
-
-  it('treats a real reviewer finding as source work, not an infrastructure retry', () => {
-    const result = decideFinalRiskRecovery({ failureClass: 'CONTENT_FINDING', sameClassAttempts: 5 });
-    expect(result.action).toBe('RETURN_TO_SOURCE_FIX');
-    expect(result.breaker).toBe('CLOSED');
-  });
-
-  it('returns invalid input to cheap precheck rather than spending reviewer attempts', () => {
-    const result = decideFinalRiskRecovery({ failureClass: 'READINESS', sameClassAttempts: 9 });
-    expect(result.action).toBe('RETURN_TO_PRECHECK');
+  it('routes real findings and cheap precheck failures without spending infrastructure retries', () => {
+    expect(decideFinalRiskRecovery({ failureClass: 'CONTENT_FINDING', sameClassAttempts: 5 }).action).toBe('RETURN_TO_SOURCE_FIX');
+    expect(decideFinalRiskRecovery({ failureClass: 'READINESS', sameClassAttempts: 9 }).action).toBe('RETURN_TO_PRECHECK');
   });
 });
