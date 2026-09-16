@@ -295,17 +295,18 @@ describe('Production DB release plan #447', () => {
   });
 
   it('allows bounded built-ins in declarative defaults and catalog checks, but not arbitrary immediate routines', () => {
+    const dollarQuote = String.fromCharCode(36, 36);
     expect(inferMigrationRiskTier(
       "create table public.release_probe(id uuid default pg_catalog.gen_random_uuid(), created_at timestamptz default pg_catalog.now());",
     )).toBe('ADDITIVE');
     expect(inferMigrationRiskTier(
-      "do $ declare present regclass; begin present := pg_catalog.to_regclass('public.release_probe'); end $;",
+      'do ' + dollarQuote + " declare present regclass; begin present := pg_catalog.to_regclass('public.release_probe'); end " + dollarQuote + ';',
     )).toBe('ADDITIVE');
     expect(() => inferMigrationRiskTier(
       "create table public.release_probe(id uuid default public.untrusted_default());",
     )).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(
-      "do $ begin perform public.untrusted_helper(); end $;",
+      'do ' + dollarQuote + " begin perform public.untrusted_helper(); end " + dollarQuote + ';',
     )).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
   });
 
@@ -316,14 +317,15 @@ describe('Production DB release plan #447', () => {
   });
 
   it('rejects unqualified built-in lookalikes, unknown policy helpers and parenthesized dynamic SQL', () => {
+    const dollarQuote = String.fromCharCode(36, 36);
     expect(() => inferMigrationRiskTier(
-      "do $ begin perform to_regclass(1); end $;",
+      'do ' + dollarQuote + ' begin perform to_regclass(1); end ' + dollarQuote + ';',
     )).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(
       "create policy unsafe on public.release_probe for select using (public.untrusted_helper(tenant_id));",
     )).toThrow(/UNSUPPORTED_POLICY_ROUTINE_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier(
-      "do $ begin execute (format('select 1')); end $;",
+      'do ' + dollarQuote + " begin execute (format('select 1')); end " + dollarQuote + ';',
     )).toThrow(/UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED/);
   });
 
