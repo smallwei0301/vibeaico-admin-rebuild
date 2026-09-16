@@ -51,6 +51,7 @@ jobs:
         env:
           SUPABASE_BACKUP_OBSERVER_TOKEN: ${{ secrets.SUPABASE_BACKUP_OBSERVER_TOKEN }}
           PRODUCTION_PROJECT_REF: egehnijjpgijmccagxac
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -62,6 +63,7 @@ jobs:
             const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
             if (p.status !== "BACKUP_EVIDENCE_CAPTURED") throw new Error("backup evidence was not captured");
             if (p.projectRef !== "egehnijjpgijmccagxac") throw new Error("wrong Production project");
+            if (p.mainSha !== process.env.EXPECTED_MAIN_SHA) throw new Error("backup evidence is not bound to exact main");
             if (p.databaseMutationPerformed !== false) throw new Error("observer must remain read-only");
             if (p.storageObjectsCovered !== false) throw new Error("DB backup must not overclaim Storage object coverage");
           ' "$RUNNER_TEMP/production-db-backup-evidence.json"
