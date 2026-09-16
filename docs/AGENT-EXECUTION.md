@@ -2,7 +2,7 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-15
+> 最近更新：2026-09-16
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
@@ -451,6 +451,34 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
 - stacked PR（相依分支）不是 WIP 豁免。需明確列出當前施工者、等待的相依與短命驗證位置；
   清理者不能擅自停掉其他 Agent 的在途工作、刪其分支，或為消除警報虛構 Owner 例外。
 
+### 9.0.1 POST_MERGE_CLOSEOUT：Issue 清理與 Playbook 教訓必做（Owner 2026-09-16）
+
+原 PR 依 §9.2 驗證已 merge 到目標 main 後，**不得直接跳到下一個同 Issue 工作或宣告本輪完成**；
+必須先完成下列 POST_MERGE_CLOSEOUT。這是 Product 與 MODEL_GOVERNANCE 共用的機械收尾，不改變各自驗收門檻。
+
+1. **重新讀 live Issue／PR／main。** 核對 merged PR、merge commit、current main、關聯 Issue、
+   acceptance checklist、相依與尚未完成範圍，不能用 merge 前快照清理。
+2. **清 Issue state 與 labels。** 已完成就用正確 state reason 關閉，移除已失效的
+   `state:active`、`candidate:active`、舊 lane、已解除的 blocked／pending 警報；保留 workstream、origin、
+   歷史／稽核分類。若仍有真實未完成範圍，不得為了漂亮狀態硬關，必須留下精確 remaining scope。
+3. **同步 Issue body 本體。** 更新 checklist、CURRENT STATUS、已解除 blocker／dependency、被取代敘述與
+   `REMAINING_BOUNDED_SCOPE`；保留問題背景與歷史決策，不把舊內容刪到無法稽核。舊 body 若會讓下一個
+   Agent 誤以為已完成工作仍需重做，必須明確標示 resolved／superseded，而不是只靠最新留言猜現況。
+4. **留下 authoritative closeout comment。** 至少寫 PR、merge SHA、current main、exact-head CI／必要驗收、
+   Issue 最終或剩餘狀態、以及 `PLAYBOOK_DELTA`。歷史留言、CI、review 不刪除；新的 closeout comment
+   是接手者判讀 live 狀態的最後索引，不把錯誤曾經發生過的證據洗掉。
+5. **檢查 PR→merge 過程的問題與教訓。** 至少掃過 preflight／metadata、CI、TEST、review／Final Risk、
+   branch/base/merge、provider／環境、post-merge reread。若出現實質失敗、錯誤診斷、重跑、阻塞、
+   lifecycle 漂移或可重用教訓，必須在 `docs/AGENT-PLAYBOOK.md` 更新相同根因的既有 PB 條目；沒有相同
+   根因才新增 PB。更新至少包含最近發生、次數、Issue／PR／CI 證據、本次修正、預防與驗證。
+6. **Playbook 必須真的進 main。** 若教訓在原 PR merge 後才完整形成，開最小 docs-only governance follow-up
+   讓 Playbook 更新經正常 branch protection 進 main；在該更新 merge 前，原 Issue 的 closeout 只能記
+   `PLAYBOOK_DELTA: PENDING`，不能稱完整收尾。若本次沒有任何新的或重複的實質教訓，禁止硬造條目，
+   closeout comment 明寫 `PLAYBOOK_DELTA: NONE` 與查核範圍即可。
+7. **防止下一個 Agent 重工。** 只有 Issue state／labels／body／closeout comment 與適用的 Playbook delta
+   都同步完成，才算 `POST_MERGE_CLOSEOUT=COMPLETE`。同一 Issue 在此之前不得被當成新的 executable slice；
+   若 Issue 保持 open，下一個 Agent 只能接 `REMAINING_BOUNDED_SCOPE`，不得重做已 merged 範圍。
+
 ### 9.1 `CLOSED` 不等於 shipped
 
 Product Issue 只有以下五階全部成立，才可計為 `shipped_unit`：
@@ -583,6 +611,9 @@ Owner 說「復盤」或「複盤」時，載入
 2. 剩餘項目只缺 Owner／外部人類／Production／合法 final gate，且 Product MAIN、RESERVE、
    Closure、TEST、可施工 backlog 與 active governance work 都已處理；或
 3. 平台無法繼續，且已留下可直接接手的 exact checkpoint 與本輪 IN_PROGRESS report。
+
+任何已 merge PR 若仍有 §9.0.1 的 Issue state／labels／body／closeout comment 或適用的 Playbook delta
+未完成，都仍算可施工的 Closure 工作；不得因 source 已 merge 就送終止性 final。
 
 結束前重新查 open Issue、open PR、CI、MAIN、RESERVE、Closure、TEST holder、Owner blockers、
 active governance work 與本輪 scorecard。最終報告不得只寫「目前進度」。
