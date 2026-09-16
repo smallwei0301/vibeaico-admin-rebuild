@@ -52,10 +52,55 @@ MODEL_GOVERNANCE 必須同時保持純治理範圍。若變更混入 Product run
 ## PRODUCT_MAINLINE Review flow
 
 1. Sol 填 Product 風險分類與理由；範圍擴大時重新分類。
-2. 必要測試與 Sol diff 審核後，整理 repository、base/head、policy、TEST/schema 基線、diff、測試證據與未驗證事項。
-3. 使用 allowlist 模型建立獨立唯讀風險評估，要求具體反例與阻塞項目。
-4. 將結果保存於 GitHub，由 write-capable actor 或 trusted Agent bot 提交 canonical review。
-5. 提交／編輯／撤銷後刷新 guard，合併前確認 current required status。
+2. 必要測試與 Sol diff 審核後，先跑 `scripts/agents/final-risk-workflow.mjs prepare`。只有 `READY` 才建立昂貴 reviewer；`NOT_READY` 回 cheap precheck，不算 reviewer round。
+3. readiness packet 綁 repository、exact head、`changeDigest`、policy、TEST/schema 基線、bounded diff scope、測試證據與未驗證事項。
+4. 第一次 semantic review 固定 `FULL`；若前一輪為 blocking finding，修復後只有工具判定 `DELTA` 才可做 finding-fix review。任何新 scope／risk／policy／hot boundary 或 reviewer 要求都回 `FULL`。
+5. 使用 allowlist 模型建立獨立唯讀風險評估，要求具體反例與阻塞項目。
+6. 將結果保存於 GitHub，由 write-capable actor 或 trusted Agent bot 提交 canonical review。
+7. 提交／編輯／撤銷後刷新 guard，合併前確認 current required status。
+
+## Fail early：昂貴 reviewer 前的 readiness gate
+
+不要叫 Fable/Astra 幫我們找 metadata 填錯、digest 算錯、source 還在動或一般測試沒跑完。
+
+`final-risk-workflow.mjs prepare` 必須先確認：
+
+- 現行 `agent-wip-preflight` PASS；
+- source frozen；
+- exact head + 完整 changed-file records；
+- `changeDigest` 可從 blob 重算且一致；
+- source CI／必要 test evidence／core regressions PASS；
+- concrete test/schema baseline；
+- TRIAGE／reviewer packet 沒超過 bounded context 預算。
+
+任何一項不成立：`RETURN_TO_PRECHECK`。這是便宜失敗，不消耗 Final Risk round。
+
+## Phase 2：DELTA review 不是舊 PASS 延命
+
+第一輪一律 FULL。只有 FULL reviewer 已留下 `FIX_REQUIRED`／`CHANGES_REQUESTED`，且修復後同時滿足以下條件，才可 DELTA：
+
+- risk class、policy version 不變；
+- current changed-file universe 沒增加；
+- 沒擴大 high-risk boundary；
+- fix delta 只落在 reviewer 前一輪明示的 finding paths／support files；
+- core regression 重新 PASS；
+- reviewer 沒要求 FULL reset。
+
+DELTA reviewer 仍必須審新的 current `changeDigest` 並留下新的 trusted verdict。它只省掉「重新理解已經審過、且沒有變的範圍」，不省掉真正的風險判斷。
+
+若 previous PASS 的 semantic `changeDigest` 完全相同，沿用既有 semantic attestation，僅重跑 exact-head CI；這不是 DELTA review。
+
+## Circuit breaker：熔斷 reviewer 路徑，不熔斷整個 loop
+
+對 tooling／environment／model-dispatch／rate-limit／timeout／safety-classifier 類失敗：
+
+1. 同類第一次失敗：只允許同模型再試一次。
+2. 同類第二次失敗：對 current model 開 breaker，改派 allowlist 另一 reviewer model。
+3. allowlist 都暫時不可用：當前高風險 candidate 保持 blocked／parked，不准 merge；有 independent Product slice 就 `PARK_CURRENT_AND_REFILL_BUILD`，沒有就繼續 Closure／TRIAGE。
+
+不得把 breaker 寫成 `STOP_RUN`。真正 reviewer finding 則不是 infra retry，直接回 source fix，修完再重算 FULL／DELTA eligibility。
+
+可用 `scripts/agents/final-risk-workflow.mjs recover` 產生下一步，不靠 Agent 臨場猜路徑。
 
 ## 純換底不得重跑 semantic Final Risk
 
