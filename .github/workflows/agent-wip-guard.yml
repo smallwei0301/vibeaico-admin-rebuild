@@ -47,6 +47,10 @@ jobs:
               process.env.GITHUB_WORKSPACE, 'scripts/agents/astra-review-policy.mjs',
             )).href);
 
+            const boundary = await import(pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE, 'scripts/agents/governance-workstream-boundary.mjs',
+            )).href);
+
             const { owner, repo } = context.repo;
             const payloadCurrent = context.payload.pull_request ?? { number: context.payload.issue.number };
             const { data: current } = await github.rest.pulls.get({
@@ -63,6 +67,24 @@ jobs:
                 const actor = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username: context.actor });
                 if (!['admin', 'maintain', 'write'].includes(actor.data.permission)) throw new Error('Review refresh requires write permission or a trusted Final Risk Agent identity');
               }
+            }
+            // Closed-event housekeeping must not overwrite historical guard evidence or dispatch TEST.
+            const terminal = boundary.terminalLabelPlan(current);
+            if (terminal) {
+              const names = (current.labels ?? []).map(label => typeof label === 'string' ? label : label.name);
+              for (const name of terminal.remove.filter(name => names.includes(name))) {
+                try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); }
+                catch (error) { if (error.status !== 404) throw error; }
+              }
+              try { await github.rest.issues.getLabel({ owner, repo, name: terminal.add }); }
+              catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({ owner, repo, name: terminal.add, color: '006B75' });
+              }
+              await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] });
+              await core.summary.addHeading('Closed PR lane reconciled')
+                .addRaw('Lane closed; no Product acceptance, new status, or rewritten review evidence.').write();
+              return;
             }
             const marker = '<!-- agent-wip-guard -->';
             if (current.state === 'open') {
@@ -84,6 +106,23 @@ jobs:
             const isAgent = metadata.origin === 'AGENT';
             const metadataErrors = policy.validateLaneMetadata(metadata, {
               action: context.payload.action ?? '',
+            });
+            const ownFiles = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: current.number, per_page: 100,
+            });
+            const completeInventory = ownFiles.length > 0 && ownFiles.length === current.changed_files;
+            const ownPaths = boundary.boundaryPaths(ownFiles);
+            const classification = astra.classifyWorkstream({
+              body: current.body ?? '', changedFiles: ownPaths, createdAt: current.created_at,
+            });
+            if (!completeInventory) metadataErrors.push('Incomplete current PR changed-file inventory');
+            metadataErrors.push(...classification.errors,
+              ...boundary.validateBookkeepingWorkstream({ body: current.body ?? '', changedFiles: ownPaths }));
+            if (isAgent && metadata.state === 'ACTIVE') {
+              metadataErrors.push(...boundary.validateDeliveryUnitBoundary(current.body ?? '', metadata));
+            }
+            const productWipApplies = boundary.shouldApplyProductGlobalWip({
+              metadata, classification, ownErrors: metadataErrors, completeInventory,
             });
 
             if (
@@ -116,17 +155,17 @@ jobs:
               }
             }
 
-            const openPulls = await github.paginate(github.rest.pulls.list, {
+            const openPulls = productWipApplies ? await github.paginate(github.rest.pulls.list, {
               owner,
               repo,
               state: 'open',
               per_page: 100,
-            });
+            }) : [];
             const summary = policy.summarizeActiveLanes(openPulls);
             const actualFilesByPullRequest = {};
             const actualFileLoadErrors = [];
 
-            for (const terra of summary.activeTerra) {
+            for (const terra of [...summary.activeTerra, ...summary.verifyingTerra]) {
               try {
                 const files = await github.paginate(github.rest.pulls.listFiles, {
                   owner,
@@ -148,7 +187,7 @@ jobs:
 
             policy.attachActualChangedFiles(summary, actualFilesByPullRequest);
             const capacity = policy.pilotCapacity(summary);
-            const wipErrors = isAgent && metadata.state === 'ACTIVE'
+            const wipErrors = productWipApplies
               ? [...policy.validateGlobalWip(summary), ...actualFileLoadErrors]
               : [];
 
@@ -209,11 +248,14 @@ jobs:
             if (metadataErrors.length) nextLabels.push('governance:lane-metadata-incomplete');
             if (wipErrors.length) nextLabels.push('governance:wip-violation');
 
-            await github.rest.issues.setLabels({
-              owner,
-              repo,
-              issue_number: current.number,
-              labels: [...new Set(nextLabels)],
+            // Update only this guard's labels, so concurrent classification cannot lose its labels.
+            for (const name of liveExisting.filter(name => managed.has(name) && !nextLabels.includes(name))) {
+              try { await github.rest.issues.removeLabel({ owner, repo, issue_number: current.number, name }); }
+              catch (error) { if (error.status !== 404) throw error; }
+            }
+            const additions = [...new Set(nextLabels)].filter(name => managed.has(name) && !liveExisting.includes(name));
+            if (additions.length) await github.rest.issues.addLabels({
+              owner, repo, issue_number: current.number, labels: additions,
             });
 
             const shouldDispatchTest =
@@ -305,8 +347,9 @@ jobs:
               });
             }
 
-            const actualFileCoverage = summary.activeTerra.length
-              ? summary.activeTerra
+            const actualFileSubjects = [...summary.activeTerra, ...summary.verifyingTerra];
+            const actualFileCoverage = actualFileSubjects.length
+              ? actualFileSubjects
                   .map((terra) => `#${terra.number}:${terra.actualChangedFiles?.length ?? 'not-loaded'}`)
                   .join(', ')
               : 'none';
@@ -316,6 +359,7 @@ jobs:
               ['Astra change digest', astraResult.changeDigest || 'not-computed'],
               ['Current PR', `#${current.number}`],
               ['Run', metadata.runId || 'missing'],
+              ['Product global WIP applied', String(productWipApplies)],
               ['Free dual-Terra pilot qualified', String(capacity.qualified)],
               ['Origin / lane / state', `${metadata.origin || 'missing'} / ${metadata.lane || 'missing'} / ${metadata.state || 'missing'}`],
               ['Terra', `${summary.activeTerra.length}/${capacity.terraMax}`],
@@ -344,7 +388,7 @@ jobs:
                 ? `${marker}\n## Agent WIP Guard: blocked\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: ${fingerprint}\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- DUPLICATE_NOTIFICATION_SUPPRESSED: ${duplicateFailure}\n\n${errors.map((error) => `- ${error}`).join('\n')}\n\nFix the metadata or WIP state before continuing. Do not add no-op commits or rerun CI to work around this guard. The custom commit status \`Agent WIP Policy\` remains failed until the errors are resolved.`
                 : !finalRiskRequired
                 ? `${marker}\n## Agent WIP Guard: deferred — not an approval\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: DEFERRED_NON_ACTIVE\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- POLICY_STATUS: pending\n\nThis Draft or non-active PR is not eligible for Final Risk yet. The required \`Agent WIP Policy\` status intentionally remains pending; reactivation as an active non-draft PR restores the normal Final Risk gate.`
-                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}\n- TEST dispatched on this transition: ${dispatched}\n\nDeclared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames. This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
+                : `${marker}\n## Agent WIP Guard: passed — free dual-Terra B+\n\n- EXACT_HEAD: ${current.head.sha}\n- FINAL_RISK_GATE: ${finalRiskRequired ? 'ENFORCED' : 'DEFERRED_NON_ACTIVE'}\n- ERROR_FINGERPRINT: none\n- ASTRA_CHANGE_DIGEST: ${astraResult.changeDigest || 'not-computed'}\n- Terra: ${summary.activeTerra.length}/${capacity.terraMax}\n- Terra actual files loaded: ${actualFileCoverage}\n- Reserve Terra: ${summary.activeReserve.length}/${capacity.reserveMax}\n- Luna Closure: ${summary.activeClosure.length}/1\n- Remote TEST validation: ${summary.activeTest.length}/1\n- Product candidates: ${summary.activeCandidates.length}/${policy.MAX_ACTIVE_CANDIDATES}\n- TEST dispatched on this transition: ${dispatched}\n\n${productWipApplies ? "Declared FILE_OWNERSHIP was checked against GitHub's actual changed-file list, including both current and previous filenames for renames." : "Current governance scope and metadata were validated; unrelated Product WIP was not applied."} This Hook validates observable GitHub metadata; it cannot prove which delegated model actually ran.`;
 
               if (previous) {
                 await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });

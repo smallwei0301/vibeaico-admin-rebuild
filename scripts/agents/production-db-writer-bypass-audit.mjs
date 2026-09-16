@@ -39,10 +39,37 @@ function hasWriteEndpoint(source) {
 }
 
 function assertLegacyTestRunnerCannotWriteProduction(source) {
-  const environmentGuard = source.indexOf("targetEnvironment === 'PRODUCTION'");
-  const guardFailure = source.indexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED');
-  const execution = source.lastIndexOf('executeMigrationPlan({');
-  if (environmentGuard < 0 || guardFailure <= environmentGuard || execution <= guardFailure) {
+  // Two independent guards close two different call paths and must each be
+  // checked in their own scope: runMigrationWorkflow() rejects a Production
+  // target before ever building a plan, and executeMigrationPlan() — exported
+  // and directly callable, bypassing the workflow entirely — independently
+  // re-checks the resolved environment before issuing any request. A single
+  // repo-wide indexOf() cannot tell these apart once both guards share the
+  // same fail-closed error code, so each is verified against its own
+  // function body instead.
+  const executorStart = source.indexOf('export async function executeMigrationPlan(');
+  const workflowStart = source.indexOf('export async function runMigrationWorkflow(');
+  if (executorStart < 0 || workflowStart < 0) {
+    fail('LEGACY_RUNNER_PRODUCTION_GUARD_MISSING', 'run-migrations executor/workflow shape changed unexpectedly');
+  }
+
+  const executorFirstFetch = source.indexOf('fetchImpl(', executorStart);
+  const executorGuard = source.indexOf("targetEnvironment !== 'TEST'", executorStart);
+  const executorFailure = executorGuard < 0 ? -1 : source.indexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED', executorGuard);
+  if (
+    executorFirstFetch < 0 || executorGuard < executorStart || executorGuard >= executorFirstFetch
+    || executorFailure <= executorGuard || executorFailure >= executorFirstFetch
+  ) {
+    fail('LEGACY_RUNNER_PRODUCTION_GUARD_MISSING', 'executeMigrationPlan must fail closed on a non-TEST target before any request');
+  }
+
+  const workflowCallsExecutor = source.indexOf('executeMigrationPlan({', workflowStart);
+  const workflowGuard = source.indexOf("targetEnvironment === 'PRODUCTION'", workflowStart);
+  const workflowFailure = workflowGuard < 0 ? -1 : source.indexOf('PRODUCTION_CONTROLLED_WRITER_REQUIRED', workflowGuard);
+  if (
+    workflowCallsExecutor < 0 || workflowGuard < workflowStart || workflowGuard >= workflowCallsExecutor
+    || workflowFailure <= workflowGuard || workflowFailure >= workflowCallsExecutor
+  ) {
     fail('LEGACY_RUNNER_PRODUCTION_GUARD_MISSING', 'run-migrations Production fail-closed guard must execute before migration apply');
   }
 }

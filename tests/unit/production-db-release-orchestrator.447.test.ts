@@ -120,7 +120,7 @@ function testEvidence() {
 }
 function recoveryEvidence() {
   return {
-    status: 'RECOVERY_VERIFIED', mainSha: MAIN, planDigest: PLAN,
+    status: 'RECOVERY_VERIFIED', mainSha: MAIN, planDigest: PLAN, productionProjectRef: PROD,
     backupObservedAt: '2026-09-15T00:20:00Z',
     restoreRehearsedAt: '2026-09-14T00:00:00Z',
     restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY',

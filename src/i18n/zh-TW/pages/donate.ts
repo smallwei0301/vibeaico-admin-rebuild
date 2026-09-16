@@ -26,11 +26,17 @@ export const donatePage = {
     displayNameMax: 50,
     submit: '前往贊助',
     submitting: '處理中...',
-    payHint: '透過藍新金流安全付款，支援信用卡 / Apple Pay / Google Pay',
+    payHint: '透過綠界金流安全付款，支援信用卡',
     amountInvalidInteger: '請輸入整數贊助金額',
     amountOutOfRange: '贊助金額須介於 NT$ 10 ~ 100,000',
     confirmTitle: '前往贊助',
-    confirmMessage: (amount: string) => `即將以 ${amount} 前往藍新金流付款頁面，確定要繼續嗎？`,
+    confirmMessage: (amount: string) => `即將以 ${amount} 前往綠界金流付款頁面，確定要繼續嗎？`,
+  },
+
+  /* ------------------------------------------------------ 金流尚未開通 */
+  checkoutBlocked: {
+    title: '金流尚未開通',
+    body: '平台金流設定尚未完成，暫時無法建立付款頁面。你的贊助意願已經記錄下來，開通後我們會另行通知，或請聯絡：',
   },
 
   /* ---------------------------------------------------------- 付款結果 */

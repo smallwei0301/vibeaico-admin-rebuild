@@ -66,8 +66,19 @@ function completeSyntheticRepo() {
     'DURABLE_PREPARED_ATTEMPT_REQUIRED',
   ].join('\n'));
   write(root, 'scripts/db/run-migrations.mjs', [
-    '/database/query', "targetEnvironment === 'PRODUCTION'", 'PRODUCTION_CONTROLLED_WRITER_REQUIRED',
-    'executeMigrationPlan({',
+    '/database/query',
+    'export async function executeMigrationPlan({',
+    "  if (targetEnvironment !== 'TEST') {",
+    "    fail('PRODUCTION_CONTROLLED_WRITER_REQUIRED');",
+    '  }',
+    '  fetchImpl(url);',
+    '}',
+    'export async function runMigrationWorkflow({',
+    "  if (targetEnvironment === 'PRODUCTION') {",
+    "    fail('PRODUCTION_CONTROLLED_WRITER_REQUIRED');",
+    '  }',
+    '  executeMigrationPlan({});',
+    '}',
   ].join('\n'));
   write(root, 'scripts/db/validate-production-db-release-on-test.mjs', [
     "const TEST_PROJECT_REF = 'nmwhwngojosmagjuvxol';",

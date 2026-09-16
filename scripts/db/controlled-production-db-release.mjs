@@ -7,10 +7,9 @@ import {
 } from '../agents/production-db-apply-receipt.mjs';
 import { PRODUCTION_DB_POLICY, evaluateReleasePreflight } from '../agents/production-db-release-preflight.mjs';
 import { advanceReleaseJournal, assertReleaseJournalMatchesPlan, assertWriterAttemptAllowed } from '../agents/production-db-release-journal.mjs';
-import { pendingProductionMigrations, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
+import { pendingProductionMigrations, sha256, splitSqlStatements, stripSqlStringLiterals, verifyProductionDbReleasePlan } from '../agents/production-db-release-plan.mjs';
 
 const API = 'https://api.supabase.com';
-const WRITER_CREATED_BY = 'vibeaico-controlled-writer';
 const LOCK_KEY = `vibeaico-production-db-writer:${PRODUCTION_DB_POLICY.productionProjectRef}`;
 
 function fail(code, message) {
@@ -19,23 +18,33 @@ function fail(code, message) {
   throw error;
 }
 
-function sha256(value) {
-  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+// `sha256` (imported above) hashes raw SQL bytes/strings against the reviewed
+// migration digest; the prepared-attempt envelope needs to hash an arbitrary
+// JS object instead, so it gets its own JSON-based digest helper rather than
+// a second, colliding `sha256` declaration.
+function preparationDigestOf(prepared) {
+  return createHash('sha256').update(JSON.stringify(prepared)).digest('hex');
 }
 
 function sqlLiteral(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-function textArray(values) {
-  return `ARRAY[${values.map(sqlLiteral).join(', ')}]::text[]`;
+function normalizedLedgerRows(rows = []) {
+  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
+  const normalized = rows.map((row) => {
+    const version = String(row?.version ?? '').trim();
+    const name = String(row?.name ?? '').trim();
+    if (!name || !version || /[\r\n]/.test(name) || /[\r\n]/.test(version)) fail('INVALID_LEDGER_IDENTITY', 'live ledger rows require non-empty single-line name and version');
+    return { version, name };
+  });
+  const names = normalized.map((row) => row.name);
+  if (new Set(names).size !== names.length) fail('DUPLICATE_LIVE_LEDGER_NAME', 'live Production ledger has duplicate migration names');
+  return normalized;
 }
 
 function normalizedLedgerNames(rows) {
-  if (!Array.isArray(rows)) fail('INVALID_LEDGER_ROWS', 'live ledger rows must be an array');
-  const names = rows.map((row) => String(row?.name ?? '').trim()).filter(Boolean).sort();
-  if (new Set(names).size !== names.length) fail('DUPLICATE_LIVE_LEDGER_NAME', 'live Production ledger has duplicate migration names');
-  return names;
+  return normalizedLedgerRows(rows).map((row) => row.name).sort();
 }
 
 function sanitizedLedgerRows(rows) {
@@ -54,7 +63,7 @@ export function expectedAppliedLedgerNames(aliasMap = {}) {
       continue;
     }
     for (const name of ledgerNames) {
-      if (!name.trim()) fail('INVALID_LEDGER_ALIAS', 'ledger alias names must be non-empty');
+      if (!name.trim() || /[\r\n]/.test(name)) fail('INVALID_LEDGER_ALIAS', 'ledger alias names must be non-empty single-line values');
       names.push(name.trim());
     }
   }
@@ -66,7 +75,7 @@ export function expectedAppliedLedgerNames(aliasMap = {}) {
 export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {}) {
   const expected = expectedAppliedLedgerNames(aliasMap);
   const actual = normalizedLedgerNames(liveLedgerRows);
-  if (expected.join('\n') !== actual.join('\n')) {
+  if (expected.length !== actual.length || expected.some((name, index) => name !== actual[index])) {
     const expectedSet = new Set(expected);
     const actualSet = new Set(actual);
     const extraLive = actual.filter((name) => !expectedSet.has(name));
@@ -76,8 +85,53 @@ export function assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows } = {
   return { status: 'LIVE_LEDGER_VERIFIED', ledgerRowCount: actual.length, databaseMutationAuthorized: false };
 }
 
+
+function ledgerIdentityValues(rows = []) {
+  return rows.map((entry) => {
+    const name = String(entry?.name ?? entry?.repoFile ?? '').trim();
+    const version = String(entry?.version ?? entry?.ledgerVersion ?? '').trim();
+    if (!name || !version) fail('INVALID_LEDGER_IDENTITY', 'ledger name and version are required for reconciliation');
+    return `(${sqlLiteral(name)}, ${sqlLiteral(version)})`;
+  }).join(', ');
+}
+
+function expectedPostApplyLedgerRows({ plan, baselineRows } = {}) {
+  const rows = [
+    ...baselineRows,
+    ...plan.migrations.map((entry) => ({ name: entry.repoFile, version: entry.ledgerVersion })),
+  ];
+  const names = rows.map((row) => row.name);
+  if (new Set(names).size !== names.length) fail('DUPLICATE_EXPECTED_LEDGER_NAME', 'baseline and planned ledger names must be unique');
+  return rows;
+}
+function ledgerReconciliationSql({ ledgerIdentity, errorFormat }) {
+  const input = String(ledgerIdentity) + '\n' + String(errorFormat);
+  let tag = '$ledgercheck$';
+  let suffix = 0;
+  while (input.includes(tag)) tag = '$ledgercheck' + String(suffix++) + '$';
+  return `do ${tag} declare mismatches text[]; begin with expected(name, version) as (${ledgerIdentity ? `values ${ledgerIdentity}` : 'select null::text as name, null::text as version where false'}), actual(name, version) as (select m.name::text, m.version::text from supabase_migrations.schema_migrations m), differences(item) as (select 'MISSING:' || x.name || '@' || x.version from expected x where not exists (select 1 from actual m where m.name = x.name and m.version = x.version) union all select 'EXTRA:' || m.name || '@' || m.version from actual m where not exists (select 1 from expected x where m.name = x.name and m.version = x.version) union all select 'DUPLICATE:' || m.name || '@' || m.version from actual m group by m.name, m.version having count(*) > 1) select array_agg(item order by item) into mismatches from differences; if mismatches is not null then raise exception '${errorFormat}', array_to_string(mismatches, ','); end if; end ${tag};`;
+}
+
+
 function assertAtomicCompatibleSql(sql, repoFile) {
-  const text = String(sql ?? '').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\r\n]*/g, ' ');
+  const statements = splitSqlStatements(sql);
+  const transactionControl = /^(?:begin\b|start\s+transaction\b|commit\b|rollback\b|abort\b|end(?:\s+(?:work|transaction|and\s+chain))?\b|savepoint\b|release(?:\s+savepoint)?\b|prepare\s+transaction\b|set\s+(?:(?:local|session)\s+)?transaction\b|set\s+session\s+characteristics\s+as\s+transaction\b)/i;
+  const procedural = /^(?:do\b|create\s+(?:or\s+replace\s+)?(?:function|procedure)\b)/i;
+  const proceduralTransactionControl = /\b(?:commit|rollback|abort|savepoint|release(?:\s+savepoint)?|prepare\s+transaction)\b/i;
+  for (const statement of statements) {
+    const trimmed = statement.trim();
+    const lexicalBody = procedural.test(trimmed) ? stripSqlStringLiterals(trimmed) : '';
+    if (transactionControl.test(trimmed) || (lexicalBody && proceduralTransactionControl.test(lexicalBody))) {
+      fail('TRANSACTION_CONTROL_NOT_ADMITTED', `${repoFile} contains a transaction boundary command that would escape the atomic writer`);
+    }
+    // Deny every session configuration statement, including quoted/U& names and
+    // RESET ALL. Re-applying timeouts afterwards would leave the migration itself
+    // unbounded. DO-block configuration and set_config calls fail in the planner.
+    if (/^(?:set|reset|discard)\b/i.test(trimmed)) {
+      fail('WRITER_CONFIGURATION_NOT_ADMITTED', `${repoFile} cannot override the writer session configuration`);
+    }
+  }
+  const text = statements.join('\n');
   if (/\b(create|reindex)\s+index\s+concurrently\b/i.test(text)) {
     fail('TRANSACTION_UNSAFE_MIGRATION', `${repoFile} uses CONCURRENTLY and cannot run in the atomic v1 writer`);
   }
@@ -86,8 +140,14 @@ function assertAtomicCompatibleSql(sql, repoFile) {
   }
 }
 
+
+function buildBoundedBackfillSql({ repoFile } = {}) {
+  fail('BACKFILL_EXECUTOR_NOT_ADMITTED', repoFile + ' cannot run through the v1 controlled writer; use a separately reviewed bounded executor');
+}
+
 export function buildAtomicProductionApplySql({
   plan,
+  releasePacket,
   aliasMap,
   liveLedgerRows,
   readCanonicalSql,
@@ -98,28 +158,36 @@ export function buildAtomicProductionApplySql({
   const planned = plan.migrations.map((entry) => entry.repoFile).sort();
   if (pending.join('\n') !== planned.join('\n')) fail('PENDING_SET_MISMATCH', 'live apply plan no longer equals canonical PENDING_APPLY set');
 
-  const baselineNames = normalizedLedgerNames(liveLedgerRows);
+  const baselineRows = normalizedLedgerRows(liveLedgerRows);
+  const expectedPostApplyRows = expectedPostApplyLedgerRows({ plan, baselineRows });
+  const baselineIdentity = ledgerIdentityValues(baselineRows);
   const statements = [
     'begin;',
     "set local lock_timeout = '5s';",
     "set local statement_timeout = '60s';",
     `do $lock$ begin if not pg_try_advisory_xact_lock(hashtextextended(${sqlLiteral(LOCK_KEY)}, 0)) then raise exception 'PRODUCTION_DB_WRITER_LOCK_BUSY'; end if; end $lock$;`,
-    `do $baseline$ declare actual text[]; expected text[] := ${textArray(baselineNames)}; begin select coalesce(array_agg(name order by name), array[]::text[]) into actual from supabase_migrations.schema_migrations; if actual is distinct from expected then raise exception 'PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK'; end if; end $baseline$;`,
+    ledgerReconciliationSql({ ledgerIdentity: baselineIdentity, errorFormat: 'PRODUCTION_DB_LIVE_LEDGER_CHANGED_AFTER_LOCK:%' }),
   ];
 
   for (const entry of plan.migrations) {
     const sql = String(readCanonicalSql(entry.path));
+    if (sha256(Buffer.from(sql)) !== entry.sha256) fail('MIGRATION_BYTES_MISMATCH', `${entry.path} differs from reviewed main bytes`);
     assertAtomicCompatibleSql(sql, entry.repoFile);
-    statements.push(`-- controlled migration ${entry.repoFile}\n${sql.trim()}${sql.trim().endsWith(';') ? '' : ';'}`);
+    const migrationSql = entry.riskTier === 'BACKFILL'
+      ? buildBoundedBackfillSql({ sql, repoFile: entry.repoFile, releasePacket, plan })
+      : '-- controlled migration ' + entry.repoFile + '\n' + sql.trim() + (sql.trim().endsWith(';') ? '' : ';');
+    statements.push(migrationSql);
     statements.push(
-      `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key) values (` +
-      `${sqlLiteral(entry.ledgerVersion)}, null, ${sqlLiteral(entry.repoFile)}, ${sqlLiteral(WRITER_CREATED_BY)}, ` +
-      `${sqlLiteral(`${plan.releaseId}:${entry.repoFile}`)});`,
+      // Only name/version are guaranteed by the canonical ledger contract.
+      // Single-use attempt identity belongs to #455's durable receipt, not to
+      // undeclared provider columns.
+      `insert into supabase_migrations.schema_migrations(version, name) values (` +
+      `${sqlLiteral(entry.ledgerVersion)}, ${sqlLiteral(entry.repoFile)});`,
     );
   }
 
   statements.push(
-    `do $postledger$ declare missing text[]; begin select array_agg(x) into missing from unnest(${textArray(planned)}) x where not exists (select 1 from supabase_migrations.schema_migrations m where m.name=x); if missing is not null then raise exception 'PRODUCTION_DB_POST_LEDGER_MISSING:%', array_to_string(missing, ','); end if; end $postledger$;`,
+    ledgerReconciliationSql({ ledgerIdentity: ledgerIdentityValues(expectedPostApplyRows), errorFormat: 'PRODUCTION_DB_POST_LEDGER_MISMATCH:%' }),
     'commit;',
   );
   return statements.join('\n\n');
@@ -137,7 +205,8 @@ export async function captureProductionLedger({ token, fetchImpl = fetch } = {})
   return body;
 }
 
-export async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
+// Private transport: importing this module must not expose a raw-SQL write path.
+async function executeAtomicProductionApply({ sql, token, fetchImpl = fetch } = {}) {
   if (!token) fail('MISSING_WRITER_TOKEN', 'Production DB writer token is required');
   const res = await fetchImpl(`${API}/v1/projects/${PRODUCTION_DB_POLICY.productionProjectRef}/database/query`, {
     method: 'POST',
@@ -149,10 +218,20 @@ export async function executeAtomicProductionApply({ sql, token, fetchImpl = fet
   return { status: 'APPLY_REQUEST_CONFIRMED', databaseMutationAuthorized: false };
 }
 
-export function verifyPostApplyLedger({ plan, liveLedgerRows } = {}) {
-  const names = new Set(normalizedLedgerNames(liveLedgerRows));
-  const missing = plan.migrations.map((entry) => entry.repoFile).filter((name) => !names.has(name));
-  if (missing.length) fail('POST_APPLY_LEDGER_MISMATCH', `missing=[${missing.join(', ')}]`);
+export function verifyPostApplyLedger({ plan, liveLedgerRows, baselineLedgerRows } = {}) {
+  const rows = normalizedLedgerRows(liveLedgerRows);
+  const expected = Array.isArray(baselineLedgerRows)
+    ? expectedPostApplyLedgerRows({ plan, baselineRows: normalizedLedgerRows(baselineLedgerRows) })
+    : plan.migrations.map((entry) => ({ name: entry.repoFile, version: String(entry.ledgerVersion ?? '').trim() }));
+  const actualByName = new Map(rows.map((row) => [row.name, row]));
+  const expectedByName = new Map(expected.map((row) => [row.name, row]));
+  const missing = expected.filter((row) => !actualByName.has(row.name)).map((row) => `${row.name}@${row.version}`);
+  const extra = rows.filter((row) => !expectedByName.has(row.name)).map((row) => `${row.name}@${row.version}`);
+  if (missing.length || extra.length) fail('POST_APPLY_LEDGER_MISMATCH', `missing=[${missing.join(', ')}], extra=[${extra.join(', ')}]`);
+  const versionMismatches = expected
+    .filter((row) => actualByName.get(row.name)?.version !== String(row.version ?? '').trim())
+    .map((row) => `${row.name}:expected=${row.version},actual=${actualByName.get(row.name)?.version || '<empty>'}`);
+  if (versionMismatches.length) fail('POST_APPLY_LEDGER_VERSION_MISMATCH', versionMismatches.join(', '));
   return { status: 'POST_APPLY_LEDGER_VERIFIED', applied: plan.migrations.map((entry) => entry.repoFile), databaseMutationAuthorized: false };
 }
 
@@ -182,7 +261,11 @@ function preparationCore(prepared) {
  * Phase 1. This function performs only read-only network work, then moves the
  * journal/receipt to APPLYING/CONSUMING in memory and returns a serializable
  * attempt envelope. The caller MUST durably persist this returned envelope
- * before calling executePreparedControlledProductionRelease().
+ * before calling executePreparedControlledProductionRelease(). This phase is
+ * pure/read-only, so — unlike the mutable admission in Phase 2 below and in
+ * `runControlledProductionRelease()` — it honors a caller-supplied `now` for
+ * its evidence-freshness checks; a slow ledger read must still not let
+ * expired evidence slip through, so freshness is rechecked after it.
  *
  * @param {{
  *   plan?: any,
@@ -215,6 +298,9 @@ export async function prepareControlledProductionReleaseAttempt({
 
   const before = await captureProductionLedger({ token, fetchImpl });
   buildAtomicProductionApplySql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
+  // The ledger read above is a network round trip; re-verify the evidence is
+  // still fresh right before committing to the prepared envelope.
+  assertReleasePacketMatchesPlan(releasePacket, plan, now);
 
   const prepared = {
     schemaVersion: 1,
@@ -231,26 +317,30 @@ export async function prepareControlledProductionReleaseAttempt({
   };
   return {
     ...prepared,
-    preparationDigest: sha256(preparationCore(prepared)),
+    preparationDigest: preparationDigestOf(preparationCore(prepared)),
     nextRequiredStep: 'DURABLY_PERSIST_ATTEMPT_ENVELOPE_BEFORE_MUTABLE_REQUEST',
     databaseMutationAuthorized: false,
   };
 }
 
-function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now }) {
+function assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql }) {
   if (!prepared || prepared.schemaVersion !== 1 || prepared.status !== 'CONTROLLED_APPLY_PREPARED') {
     fail('DURABLE_PREPARED_ATTEMPT_REQUIRED', 'mutable writer requires a prepared attempt envelope');
   }
   if (prepared.releaseId !== plan?.releaseId || prepared.mainSha !== plan?.mainSha || prepared.planDigest !== plan?.planDigest) {
     fail('PREPARED_ATTEMPT_PLAN_MISMATCH', 'prepared attempt belongs to another release plan');
   }
-  if (sha256(preparationCore(prepared)) !== prepared.preparationDigest) {
+  if (preparationDigestOf(preparationCore(prepared)) !== prepared.preparationDigest) {
     fail('PREPARED_ATTEMPT_DIGEST_MISMATCH', 'prepared attempt changed after preparation');
   }
   assertReleaseJournalMatchesPlan(prepared.journal, plan);
   if (prepared.journal.status !== 'APPLYING') fail('DURABLE_APPLYING_JOURNAL_REQUIRED', `writer requires APPLYING journal, got ${prepared.journal.status}`);
-  assertConsumingApplyReceipt(prepared.receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef, { now });
-  assertReleasePacketMatchesPlan(releasePacket, plan, now);
+  // Time may have passed arbitrarily long between durable persistence and this
+  // call — this is the actual mutable-admission gate, immediately before the
+  // write below, so (like `runControlledProductionRelease()`) it always uses
+  // the real wall clock, never `prepared.preparedAt` or a caller-supplied `now`.
+  assertConsumingApplyReceipt(prepared.receipt, plan, PRODUCTION_DB_POLICY.productionProjectRef);
+  assertReleasePacketMatchesPlan(releasePacket, plan);
   return buildAtomicProductionApplySql({
     plan,
     aliasMap,
@@ -284,19 +374,20 @@ export async function executePreparedControlledProductionRelease({
   readCanonicalSql,
   token,
   fetchImpl = fetch,
-  now = new Date().toISOString(),
+  now: _ignoredNow,
 } = {}) {
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
-  const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql, now });
+  const sql = assertPreparedAttempt({ prepared, plan, releasePacket, aliasMap, readCanonicalSql });
 
   try {
     await executeAtomicProductionApply({ sql, token, fetchImpl });
     const after = await captureProductionLedger({ token, fetchImpl });
-    verifyPostApplyLedger({ plan, liveLedgerRows: after });
+    verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: prepared.baselineLedgerRows });
+    const confirmedAt = new Date().toISOString();
     const confirmedJournal = advanceReleaseJournal(prepared.journal, {
-      status: 'APPLIED_CONFIRMED', at: now, evidenceRef: 'readback:provider-ledger-applied',
+      status: 'APPLIED_CONFIRMED', at: confirmedAt, evidenceRef: 'readback:provider-ledger-applied',
     });
-    const consumedReceipt = advanceApplyReceipt(prepared.receipt, 'CONSUMED', now);
+    const consumedReceipt = advanceApplyReceipt(prepared.receipt, 'CONSUMED', confirmedAt);
     return {
       schemaVersion: 1,
       status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
@@ -310,14 +401,108 @@ export async function executePreparedControlledProductionRelease({
       databaseMutationAuthorized: false,
     };
   } catch (error) {
+    if (error?.code === 'APPLY_UNKNOWN') throw error;
+    const unknownAt = new Date().toISOString();
     const unknownJournal = advanceReleaseJournal(prepared.journal, {
-      status: 'APPLY_UNKNOWN', at: now, evidenceRef: 'writer:mutable-or-readback-uncertain',
+      status: 'APPLY_UNKNOWN', at: unknownAt, evidenceRef: 'writer:mutable-or-readback-uncertain',
     });
-    const unknownReceipt = advanceApplyReceipt(prepared.receipt, 'UNKNOWN', now);
+    const unknownReceipt = advanceApplyReceipt(prepared.receipt, 'UNKNOWN', unknownAt);
     const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
     wrapped.code = 'APPLY_UNKNOWN';
+    wrapped.cause = error;
     wrapped.journal = unknownJournal;
     wrapped.receipt = unknownReceipt;
+    throw wrapped;
+  }
+}
+
+/**
+ * This is the legacy single-phase repo Production writer entry point, kept
+ * for direct/manual use and its own regression coverage; `#455`'s durable
+ * two-phase pair above (`prepareControlledProductionReleaseAttempt` /
+ * `executePreparedControlledProductionRelease`) is what the automated
+ * workflow wires. G0–G5 are verified before the mutable endpoint. G6 is
+ * deliberately enforced *inside the same database transaction*: advisory
+ * lock first, then live-ledger baseline recheck, then and only then
+ * migration SQL. A caller-provided JSON object can never claim that the
+ * database lock was acquired.
+ *
+ * A durable journal stop marker is mandatory: APPLY_UNKNOWN / POSTCHECK_FAILED can
+ * never blind-retry. A network error is surfaced as APPLY_UNKNOWN; callers must
+ * persist the journal and run readback before any retry.
+ * Do not wire this single-phase entry point directly into an automated workflow.
+ * The legacy `now` input is ignored; deterministic clocks belong in pure preflight
+ * tests or test-runtime mocks, never in mutable release admission.
+ *
+ * @param {{
+ *   plan?: any,
+ *   releasePacket?: any,
+ *   journal?: any,
+ *   aliasMap?: any,
+ *   readCanonicalSql?: (path: string) => string,
+ *   token?: string,
+ *   fetchImpl?: typeof fetch,
+ *   now?: string,
+ * }} [input]
+ */
+export async function runControlledProductionRelease({
+  plan,
+  releasePacket,
+  journal,
+  aliasMap,
+  readCanonicalSql,
+  token,
+  fetchImpl = fetch,
+  now: _ignoredNow,
+} = {}) {
+  verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
+  assertReleaseJournalMatchesPlan(journal, plan);
+  assertWriterAttemptAllowed(journal);
+  if (releasePacket?.releaseId !== plan.releaseId || releasePacket?.mainSha !== plan.mainSha || releasePacket?.planDigest !== plan.planDigest) {
+    fail('RELEASE_PACKET_PLAN_MISMATCH', 'release packet does not identify the verified release plan');
+  }
+  if (releasePacket?.riskTier !== plan.riskTier) fail('RELEASE_PACKET_RISK_MISMATCH', 'release packet risk tier is not the plan risk tier');
+  // Mutable admission always uses the wall clock.
+  evaluateReleasePreflight(releasePacket);
+
+  const before = await captureProductionLedger({ token, fetchImpl });
+  const sql = buildAtomicProductionApplySql({ plan, releasePacket, aliasMap, liveLedgerRows: before, readCanonicalSql });
+  // A slow ledger read/build must not carry expired evidence into the write, and the
+  // journal always uses the wall clock — never a caller-provided `now` — for the same
+  // reason evaluateReleasePreflight does: deterministic clocks belong in pure preflight
+  // tests or test-runtime mocks, never in mutable release admission.
+  evaluateReleasePreflight(releasePacket);
+  const applyingJournal = advanceReleaseJournal(journal, {
+    status: 'APPLYING', at: new Date().toISOString(), evidenceRef: 'writer:mutable-request-start',
+  });
+
+  try {
+    await executeAtomicProductionApply({ sql, token, fetchImpl });
+    const after = await captureProductionLedger({ token, fetchImpl });
+    verifyPostApplyLedger({ plan, liveLedgerRows: after, baselineLedgerRows: before });
+    const confirmedJournal = advanceReleaseJournal(applyingJournal, {
+      status: 'APPLIED_CONFIRMED', at: new Date().toISOString(), evidenceRef: 'readback:provider-ledger-applied',
+    });
+    return {
+      schemaVersion: 1,
+      status: 'APPLY_NEEDS_SCHEMA_POSTCHECK',
+      releaseId: plan.releaseId,
+      planDigest: plan.planDigest,
+      mainSha: plan.mainSha,
+      journal: confirmedJournal,
+      g6: 'DB_ADVISORY_LOCK_AND_POST_LOCK_LEDGER_RECHECK_ENFORCED_IN_ATOMIC_TRANSACTION',
+      nextRequiredGate: 'G7_SCHEMA_ACL_RLS_READBACK',
+      databaseMutationAuthorized: false,
+    };
+  } catch (error) {
+    if (error?.code === 'APPLY_UNKNOWN') throw error;
+    const unknownJournal = advanceReleaseJournal(applyingJournal, {
+      status: 'APPLY_UNKNOWN', at: new Date().toISOString(), evidenceRef: 'writer:mutable-or-readback-uncertain',
+    });
+    const wrapped = new Error(`APPLY_UNKNOWN: mutable request did not produce a verified post-state; readback is required before retry. ${error instanceof Error ? error.message : String(error)}`);
+    wrapped.code = 'APPLY_UNKNOWN';
+    wrapped.cause = error;
+    wrapped.journal = unknownJournal;
     throw wrapped;
   }
 }

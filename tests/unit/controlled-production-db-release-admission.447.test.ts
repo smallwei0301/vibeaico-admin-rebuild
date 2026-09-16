@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { createProductionDbApplyReceipt } from '../../scripts/agents/production-db-apply-receipt.mjs';
 import { createReleaseJournal } from '../../scripts/agents/production-db-release-journal.mjs';
-import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
+import { PRODUCTION_DB_POLICY, releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
 import { buildProductionDbReleasePlan } from '../../scripts/agents/production-db-release-plan.mjs';
 import { prepareControlledProductionReleaseAttempt } from '../../scripts/db/controlled-production-db-release.mjs';
 
@@ -31,7 +31,7 @@ function packet(p: any) {
     source: { status: 'SOURCE_VERIFIED', mainSha: p.mainSha, planDigest: p.planDigest, databaseMutationAuthorized: false },
     consistency: { status: 'CONSISTENCY_VERIFIED', unexplainedDifferences: 0, observedAt: '2026-09-14T12:35:00Z', mainSha: p.mainSha, planDigest: p.planDigest },
     test: { status: 'TEST_VERIFIED', policySkip: false, executedTests: 1, cleanup: 'PASSED', mainSha: p.mainSha, planDigest: p.planDigest },
-    recovery: { status: 'RECOVERY_VERIFIED', backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY', productionBackupRestored: false, storageObjectsCovered: false },
+    recovery: { status: 'RECOVERY_VERIFIED', productionProjectRef: PRODUCTION_DB_POLICY.productionProjectRef, databaseMutationAuthorized: false, backupObservedAt: '2026-09-14T12:20:00Z', restoreRehearsedAt: '2026-09-01T03:00:00Z', restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY', productionBackupRestored: false, storageObjectsCovered: false },
     finalRisk: { status: 'ASTRA_APPROVED', requestedModel: 'claude-fable-5-1', actualModel: 'claude-fable-5-1', planDigest: p.planDigest, evidenceDigest: '', reviewedAt: '2026-09-14T12:25:00Z', executionRef: 'https://github.com/example/review', reviewId: '447' },
     data: { paymentFactsTouched: false, batchSize: 1, maxRows: 1 },
   };

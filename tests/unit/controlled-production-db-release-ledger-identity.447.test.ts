@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { assertLiveLedgerMatchesAliasMap, expectedAppliedLedgerNames } from '../../scripts/db/controlled-production-db-release.mjs';
+import { assertLiveLedgerMatchesAliasMap, expectedAppliedLedgerNames, verifyPostApplyLedger } from '../../scripts/db/controlled-production-db-release.mjs';
 
 describe('Issue #447 provider ledger identity', () => {
   it('supports historical aliases but requires the exact full ledger names', () => {
@@ -23,5 +23,20 @@ describe('Issue #447 provider ledger identity', () => {
     expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows: [
       { version: '0082', name: '0082_reconcile_booking_addon_notify_fields' },
     ] })).toThrow(/LIVE_LEDGER_DRIFT/);
+    expect(() => assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows: [
+      { version: '0082', name: '0082_reconcile_booking_addon_notify_fields\n0082_staff_display_fields' },
+    ] })).toThrow(/INVALID_LEDGER_IDENTITY/);
   });
+  it('requires the planned provider ledger version after mutable apply', () => {
+    const plan = { migrations: [{ repoFile: '0082_staff_display_fields', ledgerVersion: '20260907024138' }] };
+    expect(() => verifyPostApplyLedger({
+      plan,
+      liveLedgerRows: [{ version: 'wrong', name: '0082_staff_display_fields' }],
+    })).toThrow(/POST_APPLY_LEDGER_VERSION_MISMATCH/);
+    expect(verifyPostApplyLedger({
+      plan,
+      liveLedgerRows: [{ version: '20260907024138', name: '0082_staff_display_fields' }],
+    }).status).toBe('POST_APPLY_LEDGER_VERIFIED');
+  });
+
 });

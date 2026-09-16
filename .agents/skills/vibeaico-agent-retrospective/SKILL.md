@@ -3,7 +3,7 @@ name: vibeaico-agent-retrospective
 description: "Trigger when the Owner says 復盤 or 複盤, asks to review Agent efficiency, token/usage, delivery throughput, quality, CI waste, completion truth, governance scoreboard quality, or improve the B+ loop in smallwei0301/vibeaico-admin-rebuild. Finds recent reports, reads Gmail incident notifications, verifies completion claims against live systems, recomputes Product scores and Governance Scoreboards, compares eligible trends, and proposes at most two auditable governance changes."
 metadata:
   author: smallwei0301
-  version: "1.5.0"
+  version: "1.6.0"
 ---
 
 # VibeAI.co Agent Loop 復盤
@@ -16,14 +16,22 @@ Agent-process improvement.
 
 ## Default behavior
 
+**This skill is not an independent daily entrypoint.** `docs/AGENT-EXECUTION.md` is the sole canonical
+operating entry for this repo. Retrospective work reaches this skill only through
+`docs/AGENT-EXECUTION.md` §10.4; after invocation, load `docs/RETROSPECTIVE-PROTOCOL.md` and execute that
+protocol. If this skill, the protocol, or any historical decision conflicts with `AGENT-EXECUTION.md`,
+`AGENT-EXECUTION.md` wins and the mismatch must be converged through bounded governance work.
+
 A bare `復盤`／`複盤` means read-only review first. Do not modify Product code, Production, payments,
 notifications or databases. Governance changes are allowed only when the Owner says「復盤並優化」／
 「複盤並優化」or otherwise clearly authorizes implementation.
 
 ## Load order
 
-1. Fetch latest `origin/main`.
-2. Read:
+1. Confirm this skill was reached from `docs/AGENT-EXECUTION.md` §10.4, then read
+   `docs/RETROSPECTIVE-PROTOCOL.md`. Do not use this skill or the protocol as a parallel operating entry.
+2. Fetch latest `origin/main`.
+3. Read:
    - `docs/decisions/2026-09-11-owner-governance-unpinned-model.md`
    - `docs/decisions/2026-09-07-owner-governance-alignment.md`
    - `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`
@@ -33,22 +41,22 @@ notifications or databases. Governance changes are allowed only when the Owner s
    - `docs/DELIVERY-OUTCOME-V2.md`
    - **`docs/GOVERNANCE-SCOREBOARD.md`**
    - **`docs/metrics/governance-scoreboard-policy.json`**
-3. Find the latest `docs/metrics/governance-scoreboards/*` and matching
+4. Find the latest `docs/metrics/governance-scoreboards/*` and matching
    `docs/metrics/review-evidence/*`. Governance Scoreboard is a mandatory retrospective input even when
    Product Runs are not comparable.
-4. Resolve the requested Run／calendar window in `Asia/Taipei`, then search Gmail for that exact window.
+5. Resolve the requested Run／calendar window in `Asia/Taipei`, then search Gmail for that exact window.
    Search at minimum for the repository／project name and the providers relevant to the Run, including
    Vercel, GitHub Actions, Supabase, Resend／Email and LINE when those systems were touched.
-5. Read the full relevant Gmail messages or threads. Search snippets alone are discovery evidence, not
+6. Read the full relevant Gmail messages or threads. Search snippets alone are discovery evidence, not
    incident evidence. Record the Gmail query, message IDs, received timestamps, sender／subject and any
    branch, exact SHA, deployment ID, workflow ID, provider error code or quota signal present in the body.
    Never copy access tokens, passwords, keys or full secret-bearing messages into the repository.
-6. Find `docs/metrics/agent-runs/*.json`, sorted by `startedAt` and filename.
-7. Compare the latest three completed, truth-verified schema v2 **Product** runs when three comparable
+7. Find `docs/metrics/agent-runs/*.json`, sorted by `startedAt` and filename.
+8. Compare the latest three completed, truth-verified schema v2 **Product** runs when three comparable
    runs exist. New operational Product Runs must also have `deliveryTruthVersion: 4` and a validated
    closeout envelope; schema v1 and historical DeliveryTruth v2/v3 are read-only history. Keep schema v1
    reports as `LEGACY_V1` history and do not mix their Delivery Unit with v2 outcomes.
-8. Validate and reproduce selected Product v2 reports:
+9. Validate and reproduce selected Product v2 reports:
 
 ```text
 node scripts/agents/run-ledger-v2.mjs validate <run.json>
@@ -58,13 +66,13 @@ node scripts/agents/score-run-v2.mjs <run.json>
 Use `agent:run:legacy:*` only to reproduce schema v1 history; reproduce historical DeliveryTruth v2/v3
 with the existing v2 tools, without creating or rewriting a ledger. If a report cannot be reproduced,
 mark it `AUDIT_DATA_INVALID` and do not trust its score.
-9. Generate the Product v2 comparison with:
+10. Generate the Product v2 comparison with:
 
 ```text
 node scripts/agents/review-runs-v2.mjs docs/metrics/agent-runs
 ```
 
-10. Independently reproduce the relevant Governance Scoreboard with:
+11. Independently reproduce the relevant Governance Scoreboard with:
 
 ```text
 node scripts/metrics/governance-scoreboard.mjs \

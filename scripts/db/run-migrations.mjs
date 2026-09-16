@@ -176,9 +176,18 @@ export async function executeMigrationPlan({
   fetchImpl = fetch,
   log = console,
 }) {
+  // This exported executor can be called without runMigrationWorkflow. Enforce
+  // the TEST-only boundary here too, before inspecting SQL or making requests.
+  const targetEnvironment = resolveTargetEnvironment(projectRef);
+  if (targetEnvironment !== 'TEST') {
+    fail(
+      'PRODUCTION_CONTROLLED_WRITER_REQUIRED',
+      'legacy executeMigrationPlan may only write canonical TEST; Production requires the controlled writer',
+    );
+  }
   const results = [];
   for (const entry of plan.migrations) {
-    const res = await fetchImpl(`${API}/v1/projects/${projectRef}/database/query`, {
+    const res = await fetchImpl(`${API}/v1/projects/${EXPECTED_PROJECT_REFS.TEST}/database/query`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,

@@ -194,21 +194,36 @@ export const lineSettingsPage = {
   /* -------------------------------------------------------- 設定檢查報告 */
   verifyReport: {
     title: 'LINE 設定檢查報告',
-    allPass: '✅ 全部通過',
+    allPass: '全部通過',
     failCount: (n: number) => `❌ 有 ${n} 項失敗`,
-    warnCount: (n: number) => `⚠️ 有 ${n} 項警告`,
     close: '關閉',
     checkNames: {
-      TOKEN: 'Channel Access Token',
-      WEBHOOK: 'Webhook URL',
-      AUTO_REPLY: 'LINE 自動回應訊息',
-      RICH_MENU: 'Rich Menu',
-      QUOTA: '推播額度',
+      CREDENTIALS: 'Channel ID / Secret / Access Token 都已填寫',
+      TOKEN: 'Access Token 有效（LINE 認證通過）',
+      ID_SECRET_PAIR: 'Channel ID 與 Secret 配對正確（webhook 簽章可通過）',
+      BOT_MODE: 'LINE 官方帳號後台 → 回應方式：Bot 模式（推薦）',
+      WEBHOOK: 'Use webhook 已開啟（LINE 會把使用者點選／訊息事件送到本系統）',
+      WEBHOOK_TEST: 'Webhook 實際測試通過（LINE → 本系統 200 OK）',
     },
-    culprit: '👉 這就是「按 Bot 沒反應」的元兇',
     webhookOffHint:
       'Webhook 沒開啟 → LINE 不會把使用者點選/訊息送到本系統 → 看起來 Bot 像在睡覺。修好後馬上活過來。',
-    gotoLineConsole: '直接前往 LINE 後台',
+    webhookSync: {
+      action: '自動修正網址',
+      syncing: '修正中…',
+      doneSuccess: 'Webhook 網址已更新並開啟，請重新檢查確認',
+      failedPrefix: '自動修正失敗：',
+      unexpectedFailedPrefix: '自動修正時發生錯誤：',
+    },
+
+    /* 人工確認提示（AUTO_REPLY）——獨立於上方六項通過／失敗清單之外，
+     * 藍色資訊樣式而非黃色警告：這不是一個「偵測到問題」的結果，而是
+     * LINE 本來就沒有公開 API 可查、需要店家自行動作的既定事實。 */
+    autoReplyInfo: {
+      title: '請手動確認：「自動回應訊息」已關閉',
+      body:
+        'LINE 沒有提供公開 API 可以讀取「自動回應訊息」這顆開關本身，系統無法自動判斷。若沒有關閉，LINE 內建的自動回應會搶在本系統之前攔截並回覆顧客訊息，Bot 看起來會完全沒反應。',
+      cta: '直接前往 LINE 後台',
+    },
   },
 
   /* ------------------------------------------------------- 加好友 QR Code */
@@ -406,6 +421,44 @@ export const lineSettingsPage = {
     doneRichMenuLeft:
       'LINE 帳號已解除綁定，但 Rich Menu 無法自動刪除（Token 已失效）。\n\n請到 LINE Developer Console 手動刪除 Rich Menu，否則顧客仍會看到舊選單。',
     failedPrefix: '解除綁定失敗：',
+  },
+
+  /* --------------------------------------------------------- 老闆通知（Issue #18） */
+  ownerNotify: {
+    title: '老闆通知',
+    description: '從已加入的 LINE 好友中挑人，本人在 LINE 上確認後即可接收新預約與旅客取消通知。',
+    maxRecipientsNote: (max: number) => `最多可設定 ${max} 位接收者，無法加購提升上限。`,
+    limitReached: '已達上限，請先移除一位接收者才能新增。',
+    providerHealthyBadge: 'LINE 連線正常',
+    providerUnhealthyBadge: '目前無法確認連線',
+    recheckHealth: '重新檢查連線',
+    primaryBadge: '主要',
+    setPrimary: '設為主要',
+    empty: '尚未設定任何接收者，新預約與旅客取消將不會通知任何人。',
+    pickCandidate: '選擇要邀請的 LINE 好友',
+    noCandidates: '目前沒有可邀請的好友（好友需先加入 LINE 官方帳號）',
+    invite: '發送確認邀請',
+    inviting: '邀請中...',
+    pendingBadge: '邀請中，等待本人在 LINE 上確認',
+    confirmForDemo: '模擬本人已確認（Demo，僅測試環境）',
+    unknownLineUser: '(LINE 用戶)',
+    eventNewBooking: '新預約',
+    eventCancel: '旅客自行取消',
+    eventSubscriptionExpiry: '訂閱到期／儲值提醒（僅主要接收者，無法關閉）',
+    quotaNote: '每次通知會同時發給所有開啟該事件的接收者，每人各消耗 1 則推播額度。',
+    remove: '移除',
+    removeConfirmTitle: '移除接收者',
+    removeConfirmMessage: '確定要移除這位接收者嗎？若為主要接收者，將自動由最早加入的下一位遞補。',
+    removeAll: '全部移除',
+    removeAllConfirmTitle: '清空老闆通知名單',
+    removeAllConfirmMessage: '確定要移除全部接收者嗎？移除後將停止所有老闆 LINE 通知，此操作無法復原。',
+    inviteSent: '已送出確認邀請，請對方在 LINE 上確認',
+    recipientAdded: '已加入通知名單',
+    recipientRemoved: '已移除該接收者',
+    allRemoved: '已清空通知名單',
+    toggleUpdated: '已更新通知設定',
+    primaryUpdated: '已指定為主要接收者',
+    actionFailedPrefix: '操作失敗：',
   },
 
   /* ------------------------------------------------------------------ 共用 */

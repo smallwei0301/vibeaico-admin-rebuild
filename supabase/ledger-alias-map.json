@@ -1,63 +1,562 @@
-{"schemaVersion":1,"issue":396,"description":"Canonical repo migration to Production provider-ledger mapping. Evidence text is intentionally concise; classifications are backed by the committed Production ledger snapshot and live read-only recapture on 2026-09-15.","ledgerSnapshotRef":"supabase/production-ledger-snapshot.json","classifications":{"EXACT":"repo and ledger names are identical","ALIAS":"applied under a different ledger name","NOT_APPLIED":"repo migration has no Production ledger row","LEDGER_ONLY":"Production ledger row has no repo migration"},"notAppliedReasons":{"VERIFIED_NOT_APPLIED":"verified intentionally absent","PENDING_APPLY":"merged but not yet applied"},"knownPrefixCollisions":[{"prefix":"0082","names":["0082_reconcile_booking_addon_notify_fields","0082_staff_display_fields"],"evidence":"Two distinct Production ledger names share prefix 0082; full names are authoritative."}],"entries":[
-{"repoFile":"0001_extensions_and_functions","ledgerNames":["0001_extensions_and_functions"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0002_enums","ledgerNames":["0002_enums"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0003_tenants_and_accounts","ledgerNames":["0003_tenants_and_accounts"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0004_core_business_tables","ledgerNames":["0004_core_business_tables"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0005_line_marketing_other","ledgerNames":["0005_line_marketing_other"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0006_rls_policies","ledgerNames":["0006_rls_policies"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0007_views","ledgerNames":["0007_views"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0008_storage_buckets","ledgerNames":["0008_storage_buckets"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0009_tenant_settings_insert_policy","ledgerNames":["0009_tenant_settings_insert_policy"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0010_auth_helpers","ledgerNames":["0010_auth_helpers"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0011_feature_store","ledgerNames":["0011_feature_store"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0012_points_transfer_and_bug_reports","ledgerNames":["0012_points_transfer_and_bug_reports"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0013_cron_dedup_columns","ledgerNames":["0013_cron_dedup_columns"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0014_recreate_customers_view","ledgerNames":["0014_recreate_customers_view"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0065_issue_128_services_order_invariants","ledgerNames":["0065_issue_128_services_order_invariants"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0066_issue_8_tour_domain_core","ledgerNames":["0066_issue_8_tour_domain_core"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0067_issue_8_tour_integrity","ledgerNames":["0067_issue_8_tour_integrity"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0068_issue_8_tour_rest_dml_acl","ledgerNames":["0068_issue_8_tour_rest_dml_acl"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0069_welcome_card_images","ledgerNames":["0069_welcome_card_images"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0070_welcome_card_image_retirement","ledgerNames":["0070_welcome_card_image_retirement"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0071_welcome_card_image_retirement_acl","ledgerNames":["0071_welcome_card_image_retirement_acl"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0072_welcome_card_upload_acl","ledgerNames":["0072_welcome_card_upload_acl"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0073_restore_keyword_reply_storage_write","ledgerNames":["0073_restore_keyword_reply_storage_write"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0074_block_times_recurrence_fields","ledgerNames":["0074_block_times_recurrence_fields"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0075_portfolios_line_sort_order","ledgerNames":["0075_portfolios_line_sort_order"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0076_customer_source","ledgerNames":["customer_source"],"classification":"ALIAS","evidence":"snapshot alias"},
-{"repoFile":"0077_shop_design_branding","ledgerNames":["0077_shop_design_branding"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0078_staff_schedule_mode","ledgerNames":["0078_staff_schedule_mode"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0079_reconcile_category_bug_report_fields","ledgerNames":["0079_reconcile_category_bug_report_fields"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0080_page_local_display_fields","ledgerNames":["0015_page_local_display_fields"],"classification":"ALIAS","evidence":"snapshot alias"},
-{"repoFile":"0081_reconcile_product_order_coupon_fields","ledgerNames":["0081_reconcile_product_order_coupon_fields"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0082_reconcile_booking_addon_notify_fields","ledgerNames":["0082_reconcile_booking_addon_notify_fields"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0083_staff_display_fields","ledgerNames":["0082_staff_display_fields"],"classification":"ALIAS","evidence":"snapshot alias; prefix collision declared above"},
-{"repoFile":"0084_catalog_position_bridge","ledgerNames":["0084_catalog_position_bridge"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0086_keyword_reply_images_bucket","ledgerNames":["0086_keyword_reply_images_bucket"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0087_issue_8b_tour_orders","ledgerNames":["0087_issue_8b_tour_orders"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0088_issue_8b_tour_order_rpc_acl","ledgerNames":["0088_issue_8b_tour_order_rpc_acl"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0089_trip_display_fields","ledgerNames":["0089_trip_display_fields"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0090_atomic_booking_points_redemption","ledgerNames":["0090_atomic_booking_points_redemption"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0091_campaign_reward_grants","ledgerNames":["0091_campaign_reward_grants"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0092_trip_departure_staff","ledgerNames":["0092_trip_departure_staff"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0093_booking_points_status_guard","ledgerNames":["0093_booking_points_status_guard"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0094_tenant_payment_methods","ledgerNames":["0094_tenant_payment_methods"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0095_platform_admin_impersonation","ledgerNames":["0095_platform_admin_impersonation"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0096_catalog_position_invariants","ledgerNames":["0096_catalog_position_invariants"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0097_close_server_only_rpc_public_execute","ledgerNames":["close_public_execute_on_server_only_security_definer_rpcs"],"classification":"ALIAS","evidence":"snapshot alias"},
-{"repoFile":"0098_reconcile_tour_orders_legacy_contact_columns","ledgerNames":["reconcile_tour_orders_legacy_contact_columns"],"classification":"ALIAS","evidence":"snapshot alias"},
-{"repoFile":"0099_drop_legacy_create_tour_order_overload","ledgerNames":["drop_legacy_create_tour_order_overload"],"classification":"ALIAS","evidence":"snapshot alias"},
-{"repoFile":"0100_issue_350_expire_tour_order","ledgerNames":["0100_issue_350_expire_tour_order"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0101_catalog_rpc_close_public_and_anon_execute","ledgerNames":["0101_catalog_rpc_close_public_and_anon_execute"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0102_assignment_tenant_parent_keys","ledgerNames":["0102_assignment_tenant_parent_keys"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0103_tenants_business_type_contract","ledgerNames":["0103_tenants_business_type_contract"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0104_tour_order_lineage_keys","ledgerNames":["0104_tour_order_lineage_keys"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":null,"ledgerNames":["close_tour_seat_rpc_public_execute"],"classification":"LEDGER_ONLY","evidence":"historical Production ledger row without canonical repo file"},
-{"repoFile":"0105_issue_44_traveler_risk_policies","ledgerNames":["0105_issue_44_traveler_risk_policies"],"classification":"EXACT","evidence":"2026-09-15 live read-only Production ledger recapture: version 20260915033841; no mutation performed by this sync"},
-{"repoFile":"0106_deduplicate_redundant_indexes","ledgerNames":["0106_deduplicate_redundant_indexes"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0107_issue_41_formation_state_model","ledgerNames":["0107_issue_41_formation_state_model"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0108_issue_41_payment_state_model","ledgerNames":["0108_issue_41_payment_state_model"],"classification":"EXACT","evidence":"snapshot"},
-{"repoFile":"0109_issue_41_schema_precondition_assertions","ledgerNames":[],"classification":"NOT_APPLIED","notAppliedReason":"PENDING_APPLY","evidence":"merged on main; absent from 2026-09-15 Production ledger recapture"},
-{"repoFile":"0110_issue_42_plan_duration_pricetype_yearround","ledgerNames":[],"classification":"NOT_APPLIED","notAppliedReason":"PENDING_APPLY","evidence":"merged on main; absent from 2026-09-15 Production ledger recapture"},
-{"repoFile":"0111_issue_46_guide_request_accept","ledgerNames":[],"classification":"NOT_APPLIED","notAppliedReason":"PENDING_APPLY","evidence":"merged on main; absent from 2026-09-15 Production ledger recapture"}
-]}
+{
+  "schemaVersion": 1,
+  "issue": 396,
+  "description": "repo supabase/migrations/**（main 上的 canonical 檔案）與正式庫（Production, egehnijjpgijmccagxac）provider migration 帳本（supabase_migrations.schema_migrations）之間的逐筆對照表。每一筆記錄 repo 檔名、正式庫 ledger row 名稱（可能為 0 或多筆）、分類與證據。這份檔案本身就是 source of truth，checker 不得連線資料庫查證，只能比對這份檔案、repo 檔名與 supabase/production-ledger-snapshot.json 這份帳本快照。維護流程（新增 migration、套用到正式庫後的兩邊同步更新）見 docs/SCHEMA-TRUTH-GOVERNANCE.md。",
+  "ledgerSnapshotRef": "supabase/production-ledger-snapshot.json",
+  "classifications": {
+    "EXACT": "ledger row 名稱與 repo 檔名逐字相同。",
+    "ALIAS": "已套用到正式庫，但 ledger row 名稱與 repo 檔名不同（前綴不同、或改用描述性名稱）。",
+    "NOT_APPLIED": "repo 上存在，但正式庫沒有對應 ledger row。這一格同時涵蓋兩種相反的狀態，必須另外用 notAppliedReason 明講是哪一種，不可以只寫在 evidence 自由文字裡。",
+    "LEDGER_ONLY": "正式庫有 ledger row，但 main 上沒有任何檔案對應到它。"
+  },
+  "notAppliedReasons": {
+    "VERIFIED_NOT_APPLIED": "已查證「刻意未套用」到正式庫：正式庫的實際狀態與本檔案內容不同，且目前沒有要套用它的計畫。",
+    "PENDING_APPLY": "已合併進 main、但尚未部署到正式庫的 migration，屬於「尚未套用」。套用到正式庫的那一次變更，必須同時重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+  },
+  "knownPrefixCollisions": [
+    {
+      "prefix": "0082",
+      "names": [
+        "0082_reconcile_booking_addon_notify_fields",
+        "0082_staff_display_fields"
+      ],
+      "evidence": "正式庫 ledger 用同一個 0082 前綴記了兩筆不同的 row：(1) 0082_reconcile_booking_addon_notify_fields——repo 同名檔案的 EXACT row；(2) 0082_staff_display_fields——repo 檔案 0083_staff_display_fields 被回填成的 ALIAS row。純靠 4 碼前綴比對兩邊帳本，會把這兩筆誤判成同一筆，或把 0083 誤判成 0082。另外，正式庫 schema_migrations.version 欄位在這兩筆上也不一致：0082_reconcile_booking_addon_notify_fields 這一筆的 version 字串直接寫成 \"0082\"（沒有時間戳格式），而 0082_staff_display_fields 這一筆的 version 是 \"20260907024138\"。version 不屬於 name 欄位、本檔案不驗證；三者只能用完整名稱／完整欄位區分，不能只看前綴。"
+    }
+  ],
+  "entries": [
+    {
+      "repoFile": "0001_extensions_and_functions",
+      "ledgerNames": [
+        "0001_extensions_and_functions"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0002_enums",
+      "ledgerNames": [
+        "0002_enums"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0003_tenants_and_accounts",
+      "ledgerNames": [
+        "0003_tenants_and_accounts"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0004_core_business_tables",
+      "ledgerNames": [
+        "0004_core_business_tables"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0005_line_marketing_other",
+      "ledgerNames": [
+        "0005_line_marketing_other"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0006_rls_policies",
+      "ledgerNames": [
+        "0006_rls_policies"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0007_views",
+      "ledgerNames": [
+        "0007_views"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0008_storage_buckets",
+      "ledgerNames": [
+        "0008_storage_buckets"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0009_tenant_settings_insert_policy",
+      "ledgerNames": [
+        "0009_tenant_settings_insert_policy"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0010_auth_helpers",
+      "ledgerNames": [
+        "0010_auth_helpers"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0011_feature_store",
+      "ledgerNames": [
+        "0011_feature_store"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0012_points_transfer_and_bug_reports",
+      "ledgerNames": [
+        "0012_points_transfer_and_bug_reports"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0013_cron_dedup_columns",
+      "ledgerNames": [
+        "0013_cron_dedup_columns"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0014_recreate_customers_view",
+      "ledgerNames": [
+        "0014_recreate_customers_view"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0065_issue_128_services_order_invariants",
+      "ledgerNames": [
+        "0065_issue_128_services_order_invariants"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0066_issue_8_tour_domain_core",
+      "ledgerNames": [
+        "0066_issue_8_tour_domain_core"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0067_issue_8_tour_integrity",
+      "ledgerNames": [
+        "0067_issue_8_tour_integrity"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0068_issue_8_tour_rest_dml_acl",
+      "ledgerNames": [
+        "0068_issue_8_tour_rest_dml_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0069_welcome_card_images",
+      "ledgerNames": [
+        "0069_welcome_card_images"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫，帳本列名與檔名逐字相同。套用後正式庫 p_storage_read 為 7 個 bucket，逐字等於本檔輸出；p_storage_write 隨後被同批的 0072／0073 覆寫，屬正常 migration 沿革。"
+    },
+    {
+      "repoFile": "0070_welcome_card_image_retirement",
+      "ledgerNames": [
+        "0070_welcome_card_image_retirement"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：welcome_card_image_retirements 表存在且 RLS 啟用、retire_welcome_card_image 與 prevent_retired_welcome_card_image 兩支函式存在、trg_prevent_retired_welcome_card_image 觸發器掛在 tenant_settings 上；函式 prosrc、觸發器 pg_get_triggerdef、表欄位定義的 md5 皆與 canonical TEST 逐字相同。"
+    },
+    {
+      "repoFile": "0071_welcome_card_image_retirement_acl",
+      "ledgerNames": [
+        "0071_welcome_card_image_retirement_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：兩支函式的 proacl 為 postgres=X／service_role=X（無 PUBLIC 的裸 =X、無 anon、無 authenticated）、proconfig 為 search_path=\"\"、表 relacl 僅 postgres 與 service_role，皆與 canonical TEST 逐字相同。"
+    },
+    {
+      "repoFile": "0072_welcome_card_upload_acl",
+      "ledgerNames": [
+        "0072_welcome_card_upload_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：welcome-card-images bucket 的 file_size_limit=5242880、allowed_mime_types=image/jpeg,image/png,image/webp。⚠️ 本列的帳本名稱曾被錯誤寫成 0072_welcome_card_storage_side_door（套用者憑印象編名，未照檔名），已於同一次作業內以 UPDATE 更正為檔名並回讀確認零筆殘留；SQL 內容自始即為本檔內容，未受影響。"
+    },
+    {
+      "repoFile": "0073_restore_keyword_reply_storage_write",
+      "ledgerNames": [
+        "0073_restore_keyword_reply_storage_write"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-13 由 Owner 具名授權套用至正式庫。回讀驗證：p_storage_write 的 with-check 運算式與 canonical TEST 逐字相同（7 個 bucket，含 keyword-reply-images、不含 welcome-card-images）。"
+    },
+    {
+      "repoFile": "0074_block_times_recurrence_fields",
+      "ledgerNames": [
+        "0074_block_times_recurrence_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0075_portfolios_line_sort_order",
+      "ledgerNames": [
+        "0075_portfolios_line_sort_order"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0076_customer_source",
+      "ledgerNames": [
+        "customer_source"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用到正式庫，但 ledger row 名稱只留 customer_source，沒有保留 0076 這個 4 碼前綴。"
+    },
+    {
+      "repoFile": "0077_shop_design_branding",
+      "ledgerNames": [
+        "0077_shop_design_branding"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0078_staff_schedule_mode",
+      "ledgerNames": [
+        "0078_staff_schedule_mode"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0079_reconcile_category_bug_report_fields",
+      "ledgerNames": [
+        "0079_reconcile_category_bug_report_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0080_page_local_display_fields",
+      "ledgerNames": [
+        "0015_page_local_display_fields"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，但 ledger row 沿用早期回填時使用的 0015 序號，與目前 repo 檔名的 0080 前綴不同；不是同一個變更被重複記錄，只是同一個變更的兩個不同編號。"
+    },
+    {
+      "repoFile": "0081_reconcile_product_order_coupon_fields",
+      "ledgerNames": [
+        "0081_reconcile_product_order_coupon_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0082_reconcile_booking_addon_notify_fields",
+      "ledgerNames": [
+        "0082_reconcile_booking_addon_notify_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同；但 0082 這個 4 碼前綴在正式庫另外還掛著 0082_staff_display_fields 這一筆不同的 ledger row（實為 repo 0083_staff_display_fields 的 ALIAS，見該筆），純靠前綴比對會把兩者混為一談。"
+    },
+    {
+      "repoFile": "0083_staff_display_fields",
+      "ledgerNames": [
+        "0082_staff_display_fields"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，但 ledger row 使用 0082 前綴，與 repo 檔名的 0083 前綴不同。這使得「0082」在正式庫同時代表三件不同的事：(1) repo 檔案 0082_reconcile_booking_addon_notify_fields 本身（EXACT，見該筆），(2) 這一筆 ledger row 名稱 0082_staff_display_fields（其實是 repo 的 0083_staff_display_fields），(3) 正式庫回填 schema_migrations.version 時寫入的純數字字串 \"0082\"。三者不可互換，只能用完整名稱區分；純靠 4 碼前綴比對會把三者誤判成同一筆。"
+    },
+    {
+      "repoFile": "0084_catalog_position_bridge",
+      "ledgerNames": [
+        "0084_catalog_position_bridge"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0086_keyword_reply_images_bucket",
+      "ledgerNames": [
+        "0086_keyword_reply_images_bucket"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0087_issue_8b_tour_orders",
+      "ledgerNames": [
+        "0087_issue_8b_tour_orders"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0088_issue_8b_tour_order_rpc_acl",
+      "ledgerNames": [
+        "0088_issue_8b_tour_order_rpc_acl"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0089_trip_display_fields",
+      "ledgerNames": [
+        "0089_trip_display_fields"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0090_atomic_booking_points_redemption",
+      "ledgerNames": [
+        "0090_atomic_booking_points_redemption"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0091_campaign_reward_grants",
+      "ledgerNames": [
+        "0091_campaign_reward_grants"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0092_trip_departure_staff",
+      "ledgerNames": [
+        "0092_trip_departure_staff"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0093_booking_points_status_guard",
+      "ledgerNames": [
+        "0093_booking_points_status_guard"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0094_tenant_payment_methods",
+      "ledgerNames": [
+        "0094_tenant_payment_methods"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0095_platform_admin_impersonation",
+      "ledgerNames": [
+        "0095_platform_admin_impersonation"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0096_catalog_position_invariants",
+      "ledgerNames": [
+        "0096_catalog_position_invariants"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0097_close_server_only_rpc_public_execute",
+      "ledgerNames": [
+        "close_public_execute_on_server_only_security_definer_rpcs"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，正式庫回填 ledger 時改用完整敘述性名稱，未保留 0097 前綴。"
+    },
+    {
+      "repoFile": "0098_reconcile_tour_orders_legacy_contact_columns",
+      "ledgerNames": [
+        "reconcile_tour_orders_legacy_contact_columns"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，ledger row 只保留描述性名稱，未保留 0098 前綴。"
+    },
+    {
+      "repoFile": "0099_drop_legacy_create_tour_order_overload",
+      "ledgerNames": [
+        "drop_legacy_create_tour_order_overload"
+      ],
+      "classification": "ALIAS",
+      "evidence": "已套用，ledger row 只保留描述性名稱，未保留 0099 前綴。"
+    },
+    {
+      "repoFile": "0100_issue_350_expire_tour_order",
+      "ledgerNames": [
+        "0100_issue_350_expire_tour_order"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0101_catalog_rpc_close_public_and_anon_execute",
+      "ledgerNames": [
+        "0101_catalog_rpc_close_public_and_anon_execute"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0102_assignment_tenant_parent_keys",
+      "ledgerNames": [
+        "0102_assignment_tenant_parent_keys"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0103_tenants_business_type_contract",
+      "ledgerNames": [
+        "0103_tenants_business_type_contract"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": "0104_tour_order_lineage_keys",
+      "ledgerNames": [
+        "0104_tour_order_lineage_keys"
+      ],
+      "classification": "EXACT",
+      "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
+    },
+    {
+      "repoFile": null,
+      "ledgerNames": [
+        "close_tour_seat_rpc_public_execute"
+      ],
+      "classification": "LEDGER_ONLY",
+      "evidence": "正式庫有此 ledger row，但目前 main 沒有任何檔案對應到它；座位 RPC（reserve/release seat 一類）的公開執行權異動已分別記在 0087_issue_8b_tour_orders／0088_issue_8b_tour_order_rpc_acl 各自的 ledger row 內，這一筆很可能是那兩支施工過程中的中繼歷史，不需要、也不應該補一個新的 repo 檔案去對應它。"
+    },
+    {
+      "repoFile": "0105_issue_44_traveler_risk_policies",
+      "ledgerNames": [
+        "0105_issue_44_traveler_risk_policies"
+      ],
+      "classification": "EXACT",
+      "evidence": "已套用至正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260915033841 / 0105_issue_44_traveler_risk_policies，名稱與 repo 檔名逐字相同，故為 EXACT。本檔先前誤標記為 NOT_APPLIED／PENDING_APPLY，與正式庫實際狀態不符。2026-09-15 以唯讀查詢（select count(*) from supabase_migrations.schema_migrations；select version, name where name ilike '%0105%' or name ilike '%traveler_risk%'）重新核對正式庫，確認該 ledger row 確實存在後更正分類。本次僅確認 ledger row 存在，未執行資料表結構／RLS／ACL 的 postflight 讀回驗證，也未執行任何 apply_migration 或 DDL/DML；如需完整結構驗證需另案核對。"
+    },
+    {
+      "repoFile": "0106_deduplicate_redundant_indexes",
+      "ledgerNames": [
+        "0106_deduplicate_redundant_indexes"
+      ],
+      "classification": "EXACT",
+      "evidence": "2026-09-14 由 Owner 具名授權套用至 Production，provider ledger row 為 20260914032304 / 0106_deduplicate_redundant_indexes。postflight 確認 trip_addons 與 tour_orders 的三組重複索引已移除，保留索引 definition、valid/ready/live 狀態正常；受影響表的 RLS、ACL 與 live-row 統計未變。"
+    },
+    {
+      "repoFile": "0107_issue_41_formation_state_model",
+      "ledgerNames": [
+        "0107_issue_41_formation_state_model"
+      ],
+      "classification": "EXACT",
+      "evidence": "#41 成團生命週期的狀態模型。已於 2026-09-14 由 Owner 具名授權套用到正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260914094736 / 0107_issue_41_formation_state_model，名稱與 repo 檔名逐字相同，故為 EXACT。套用前重新查證 trip_plans／trip_departures／tour_orders 三表皆 0 列，capacity < 1 前置 guard 無風險；套用後 trip_departures 由 11 欄增為 19 欄。套用的同一次作業已重新擷取 supabase/production-ledger-snapshot.json（rowCount 56 → 57）。套用前已依 AGENTS.md「schema 變更的授權來源」查證本檔以最終內容合併進 main（PR #438／#440 一併涉及）。"
+    },
+    {
+      "repoFile": "0108_issue_41_payment_state_model",
+      "ledgerNames": [
+        "0108_issue_41_payment_state_model"
+      ],
+      "classification": "EXACT",
+      "evidence": "#41 成團生命週期的付款狀態模型（18 分冊 §4）。已於 2026-09-14 由 Owner 具名授權套用到正式庫（egehnijjpgijmccagxac），provider ledger row 為 20260914082715 / 0108_issue_41_payment_state_model，名稱與 repo 檔名逐字相同，故為 EXACT。套用的同一次作業已重新擷取 supabase/production-ledger-snapshot.json（rowCount 55 → 56）。套用前已依 AGENTS.md「schema 變更的授權來源」查證本檔以最終內容合併進 main（PR #438）。"
+    },
+    {
+      "repoFile": "0109_issue_41_schema_precondition_assertions",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "補上 0108 沒斷言的前提（tour_orders.payment_status 的型別／default）與 0107／0108 都沒比對過的 default 缺口。本筆隨建立 0109 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權；在 canonical／Production 上 payment_status 本來就是 enum，套用時預期整支 migration no-op。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#42 補上 trip_plans.duration_minutes／price_type／year_round 三欄，並讓 create_tour_order 依 price_type 決定 total_amount（PER_GROUP 一口價、PER_PERSON 單價乘人數）。本筆隨建立 0110 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0111_issue_46_guide_request_accept",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#46（GUIDE 側）：REQUEST 訂單導遊接受／拒絕，並修正 create_tour_order 對 REQUEST 方案在建單當下就 reserve_seats 的名額鎖定時機（違反 18 分冊 §0.2「送出申請不鎖導遊時間」）。新增 trip_plans.request_hold_hours／tour_orders.seats_reserved 兩欄與 accept_tour_request／reject_tour_request 兩支 rpc；create_tour_order 簽章不變，只換本體（0099 的 overload 教訓）。本筆隨建立 0111 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0112_keyword_reply_images_upload_acl",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#402：關閉 keyword-reply-images 的 authenticated 直寫 Storage 側門，與 0072_welcome_card_upload_acl 同型（固定 file_size_limit=5MiB、allowed_mime_types 限 jpeg/png/webp，並把此 bucket 從 p_storage_write 的 authenticated 允許清單移除；bucket 仍為 public，供 LINE 直接讀圖）。Owner 已在 Issue #402 留言（2026-09-15）裁示上述參數，本次僅做 local 驗證，未套用 canonical TEST 或 Production。本筆隨建立 0112 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0113_issue_23_promotion_page_view_events",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#23：新增 page_view_events（推廣成效匿名近似 UV 埋點），依 Owner Decision `docs/decisions/2026-09-14-promotion-anonymous-approximate-uv.md`——不存原始 IP，只存每日輪替 salt 算出的 visitor_hash；RLS 只給 authenticated 一條 `is_tenant_member(tenant_id)` 的 select policy，不開放 anon/authenticated 的 insert（寫入僅走 service role，見 `src/server/promotion-events.ts`）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0114_issue_22_banner_video_uploads",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#22 Part A：banner video 兩階段上傳（presign/confirm/delete）。新增 storage.buckets 的 `banner-videos`（public=true、file_size_limit=52428800／50MiB、allowed_mime_types 限 video/mp4、video/webm）與新表 `banner_video_pending_uploads`（presign 時的追蹤列，供孤兒清理 cron 使用）；刻意不對 storage.objects 開放 authenticated 直接 INSERT policy（上傳靠 service role 核發的一次性簽名 token，不經 RLS，見 04 分冊 §A-1.1 與本檔頭）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0115_issue_21_external_calendars",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#21：外部行事曆匯入 external_calendars（subscription 表＋external_calendar_events 快取表＋service-role-only 的 sync_replace_external_calendar_events／mark_external_calendar_sync_error 兩支 rpc）。subscription 表用既有 `is_tenant_member(tenant_id)` 全操作 RLS policy（CRUD 走 session client）；快取表只給 authenticated select policy，寫入僅透過 service-role-only rpc（cron 呼叫），與 0113 page_view_events／0114 banner_video_pending_uploads 同一套「內部記帳表，租戶不直接寫」立場。員工個人 ICS output token rotation 刻意不在本筆範圍內（Issue #21 明講這是後續獨立範圍）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0116_issue_18_owner_notify",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#18：LINE 老闆通知 owner-notify（本人在 LINE 上確認「是我」→ 加入通知名單的 canonical flow，不是舊的 bind-code 模式）。新增 owner_notify_bind_requests（待確認邀請，24 小時過期，同一好友同時只能有一筆 PENDING）與 owner_notify_recipients（正式名單，`is_primary` 部分唯一索引保證單一租戶最多一位主要，`notify_new_booking`／`notify_cancel` 兩個獨立事件開關）；兩表都 FK 到既有 `line_users(tenant_id, line_user_id) on delete cascade`，好友被刪（unfollow 清理）時一併移除通知資格。RLS 皆 `is_tenant_member(tenant_id)` 全操作 policy，與 0066 trips 系列、0115 external_calendars 同一慣例。上限 3 位／租戶、無付費解鎖，寫死在 `src/server/owner-notify.ts` 的 `OWNER_NOTIFY_MAX_RECIPIENTS`，不是 DB 可調欄位。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0117_issue_25b_support_chat_threads",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #25 B 段：客服對話串第一版（support_chat_threads／support_chat_messages 兩張表），規格見 docs/decisions/2026-09-11-support-chat-human-escalation.md。兩張表皆啟用 RLS，讀寫走 is_tenant_member(tenant_id)（threads）與 tenant_id 一致性 check（messages 的 insert policy 額外鎖 sender_role='TENANT' 且 tenant_id 與其 thread 相符），全部走 session client（t.supabase），不使用 service role。本筆原編號 0116，因與同期合併的 #18 owner-notify migration（同樣取號 0116）撞號，於 rebase 到 main（含 PR #519）時改號為 0117，內容未變。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0118_issue_25c_platform_donations",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "issue #25 C 段：平台贊助金流第一版（platform_donations 一張表）。這不是租戶資料——沒有 tenant_id 外鍵，donor_user_id 記的是按下贊助的使用者本人，贊助是個人行為不屬於任何一家店。RLS 啟用且 force，但刻意不建立任何政策：一般 authenticated／anon 完全不可直讀直寫，全部經 /api/donations/**（service role）存取，由應用層決定可見範圍（自己的贊助總額 vs. 只含 status=PAID 的公開感謝名單）。金流閘道憑證（ECPAY_MERCHANT_ID／ECPAY_HASH_KEY／ECPAY_HASH_IV）是平台層 env（src/config/env.ts），不是本表欄位，且 2026-09-15 盤點 midao.env 三者均未設定（EXTERNAL_CONFIG_BLOCKED，見 issue #25 C 段「Live credential truth」），因此本檔不預期任何一個環境已經套用真實金流。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    }
+  ]
+}

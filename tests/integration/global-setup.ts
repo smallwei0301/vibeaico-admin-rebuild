@@ -22,6 +22,20 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { loadCheckedTestEnv } from '../../scripts/agents/test-env-policy.mjs';
 import { resolve } from 'node:path';
 
+/**
+ * 平台贊助金流整合測試用的假 ECPay 憑證（issue #25 C 段）——**不是真實憑證**。
+ * ⚠️ 刻意不 import `../fixtures`：`tests/unit/test-env-policy.384.test.ts` 把本檔
+ * transpile 成獨立檔案塞進一個乾淨的臨時目錄重跑，只帶它自己列出的那幾個
+ * 檔案，額外的 relative import 會在那個沙盒目錄裡找不到模組而炸掉
+ * （`ERR_MODULE_NOT_FOUND`）。這裡的字面值必須與 `tests/fixtures.ts` 的
+ * `ITEST_ECPAY_CREDENTIALS` **保持一致**——兩邊改動時要一起改。
+ */
+const ITEST_ECPAY_CREDENTIALS = {
+  merchantId: 'itest-merchant-000',
+  hashKey: 'itest-hash-key-not-real',
+  hashIv: 'itest-hash-iv-not-real',
+} as const;
+
 const REPO_ROOT = resolve(__dirname, '..', '..');
 const PORT = 3100;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -128,6 +142,16 @@ function spawnNextDevServer(): ChildProcess {
       // cron 端點（/api/cron/*）的 Bearer 驗證（07 分冊）；測試以 TEST_ 前綴供值，
       // 這裡映射進 server，feature-expiry.09 等 cron 整合測試才打得了正例。
       CRON_SECRET: process.env.TEST_CRON_SECRET ?? '',
+      // 平台贊助金流（issue #25 C 段）。⚠️ 這些**不是真實 ECPay 商店憑證**——
+      // 平台目前根本沒有真的憑證（EXTERNAL_CONFIG_BLOCKED，見
+      // src/config/env.ts）。這裡固定一組整合測試專用的假值，讓
+      // tests/integration/api/donations.25c.test.ts 能對自己簽出來的
+      // CheckMacValue 做完整的 order→callback→狀態變化與偽造/重放驗證——
+      // 這是我方跟自己對帳，不是打真的 ECPay，跟真實 provider acceptance
+      // （另需真憑證）無關。
+      ECPAY_MERCHANT_ID: process.env.ECPAY_MERCHANT_ID ?? ITEST_ECPAY_CREDENTIALS.merchantId,
+      ECPAY_HASH_KEY: process.env.ECPAY_HASH_KEY ?? ITEST_ECPAY_CREDENTIALS.hashKey,
+      ECPAY_HASH_IV: process.env.ECPAY_HASH_IV ?? ITEST_ECPAY_CREDENTIALS.hashIv,
     },
   });
   child.on('error', (err) => {

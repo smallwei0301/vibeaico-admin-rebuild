@@ -14,9 +14,9 @@
 import { Resend } from 'resend';
 import { APP_URL } from '@/config/env';
 import {
-  verificationHtml, bookingHtml, orderHtml, productOrderReceiptHtml,
+  verificationHtml, bookingHtml, orderHtml, productOrderReceiptHtml, supportChatNotifyHtml,
   type BookingNotifyDetails, type ProductOrderNotifyDetails,
-  type ProductOrderReceiptDetails,
+  type ProductOrderReceiptDetails, type SupportChatNotifyDetails,
 } from './templates';
 
 const resend = () => new Resend(process.env.RESEND_API_KEY!);
@@ -90,4 +90,18 @@ export async function sendProductOrderReceiptEmail(
   to: string, p: ProductOrderReceiptDetails,
 ): Promise<EmailSendResult> {
   return send(to, `【${p.shopName}】消費明細 ${p.orderNo}`, productOrderReceiptHtml(p));
+}
+
+/**
+ * Support chat 客服對話串通知信（issue #25 B 段）。
+ *
+ * ⚠️ 與其他 `sendXxx()` 不同：收件人不是店家或顧客，是平台客服信箱
+ * （`PLATFORM_SUPPORT_NOTIFY_EMAIL`）。呼叫端（`src/server/support-chat-threads.ts`）
+ * 必須在信箱未設定時**自己**判定為 `SKIPPED_NO_RECIPIENT`、完全不呼叫這個函式——
+ * 這裡不 fallback 到任何硬編碼信箱，那正是決策文件明文禁止的事。
+ */
+export async function sendSupportChatNotifyEmail(
+  to: string, p: SupportChatNotifyDetails,
+): Promise<EmailSendResult> {
+  return send(to, `【VibeAI 客服】${p.shopName} — ${p.subject}`, supportChatNotifyHtml(p));
 }

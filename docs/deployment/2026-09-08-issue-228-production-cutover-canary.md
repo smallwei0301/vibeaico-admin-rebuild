@@ -130,3 +130,24 @@ Old deployment deletion remains out of scope even after cutover.
 ## Current external/tooling boundary
 
 The connected GitHub API surface available to this session can create branches, commits, PRs and workflows but intentionally does not expose repository Actions Secret writes. The canary source can therefore be completed and reviewed without a secret; actually dispatching it requires `VERCEL_TOKEN` to be installed through an authorized GitHub secret-management surface. This is a tooling boundary, not a request for a new Owner decision.
+
+## 2026-09-15 repair — deployment-scoped Ignored Build Step override
+
+A live `preview_canary` run after this doc was first written proved every identity check (GitHub admission, secret access, Production baseline) but the created Preview was **canceled**, not `READY`.
+
+Root cause: Vercel exposes the exact Git SHA this canary requests as `VERCEL_GIT_COMMIT_REF`, and this project's global Ignored Build Step (`scripts/ci/vercel-ignore-build.mjs`) only allowlists `main` / `preview/**` refs. An exact-SHA ref is therefore correctly treated as out-of-allowlist and the deployment's build step is skipped/canceled by design — the global guard is working as intended, it just was never told this one controller-created deployment is exempt.
+
+Fix — `createPreviewDeployment()` in `scripts/ci/production-deploy-canary.mjs` now sends one additional field on its single `POST /v13/deployments` request:
+
+```json
+{ "projectSettings": { "commandForIgnoringBuildStep": "exit 1" } }
+```
+
+`exit 1` means "never skip the build step" for this one API-created deployment only (Vercel's [Ignored Build Step](https://vercel.com/docs/deployments/skip-deployments) contract: an override that always exits non-zero always builds). Scope of this change:
+
+- Deployment-scoped: applies only to the request body of this one `POST /v13/deployments` call.
+- Does **not** modify `scripts/ci/vercel-ignore-build.mjs` or its `main` / `preview/**` allowlist — the global guard is unchanged and continues to protect every other deployment (including real `preview/**` branch pushes).
+- Does **not** set `target: 'production'` — `createPreviewDeployment()` still omits `target` entirely, and `verifyPreviewDeployment()` still requires the response to carry an explicit `target: null` (see "Green canary definition" above, unchanged).
+- No other request field changed.
+
+This closes the only known gap between "all identity/admission checks green" and an actual `READY` Preview for #33's three Playwright-acceptance cells, which depend on this same canary path.
