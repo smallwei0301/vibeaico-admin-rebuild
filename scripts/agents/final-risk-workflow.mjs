@@ -34,6 +34,10 @@ function fileNames(records = []) {
   return unique((Array.isArray(records) ? records : []).map((record) => record?.filename));
 }
 
+function recordSignature(record = {}) {
+  return [record.filename, record.previous_filename ?? '', record.status, record.sha].map(text).join('\0');
+}
+
 function validatePacketBudget(input = {}) {
   const errors = [];
   const summary = text(input.triageSummary);
@@ -147,7 +151,8 @@ export function planFinalRiskReview(input = {}) {
   const currentDigest = text(input.changeDigest);
   const currentRisk = upper(input.riskClass);
   const currentPolicy = text(input.policyVersion || routing.version);
-  const currentFiles = unique(input.changedFiles);
+  const currentRecords = Array.isArray(input.changedFileRecords) ? input.changedFileRecords : [];
+  const currentFiles = fileNames(currentRecords);
 
   if (!previous) return { mode: 'FULL', reason: 'INITIAL_REVIEW', resetReasons: [] };
 
@@ -171,23 +176,24 @@ export function planFinalRiskReview(input = {}) {
   if (input.reviewerRequestedFullReset === true) resetReasons.push('reviewer requested FULL reset');
   if (!pass(input.coreRegressionStatus)) resetReasons.push('core regression suite is not PASS');
 
-  const previousFiles = new Set(unique(previous.changedFiles));
-  const addedFiles = currentFiles.filter((path) => !previousFiles.has(path));
-  if (addedFiles.length) resetReasons.push(`new changed-file scope: ${addedFiles.join(', ')}`);
-
-  const deltaFiles = unique(input.deltaFiles);
-  if (!deltaFiles.length) resetReasons.push('deltaFiles is empty');
-  const currentSet = new Set(currentFiles);
+  const previousRecords = Array.isArray(previous.changedFileRecords) ? previous.changedFileRecords : [];
+  const previousFiles = fileNames(previousRecords);
+  if (!previousRecords.length || changeDigestOf(previousRecords) !== text(previous.changeDigest)) resetReasons.push('previous reviewed blob manifest is unavailable or invalid');
+  if (currentFiles.join('\0') !== previousFiles.join('\0')) resetReasons.push('changed-file universe changed');
+  const previousByFile = new Map(previousRecords.map((record) => [text(record.filename), recordSignature(record)]));
+  const deltaFiles = currentRecords.filter((record) => previousByFile.get(text(record.filename)) !== recordSignature(record)).map((record) => text(record.filename));
+  if (!deltaFiles.length) resetReasons.push('blob-derived delta is empty');
+  if (deltaFiles.length > 20) resetReasons.push(`blob-derived delta exceeds 20 files (${deltaFiles.length})`);
+  const declaredDelta = unique(input.deltaFiles);
+  if (declaredDelta.length && declaredDelta.join('\0') !== deltaFiles.join('\0')) resetReasons.push('declared delta does not match blob-derived delta');
   const allowedDelta = new Set(findingPaths(previous));
   if (!allowedDelta.size) resetReasons.push('previous review did not declare finding/support paths');
-  const outsideCurrent = deltaFiles.filter((path) => !currentSet.has(path));
-  if (outsideCurrent.length) resetReasons.push(`delta file not in current PR scope: ${outsideCurrent.join(', ')}`);
   const outsideFinding = deltaFiles.filter((path) => !allowedDelta.has(path));
   if (outsideFinding.length) resetReasons.push(`delta escaped finding/support scope: ${outsideFinding.join(', ')}`);
 
   return resetReasons.length
-    ? { mode: 'FULL', reason: 'FULL_RESET_REQUIRED', resetReasons: unique(resetReasons) }
-    : { mode: 'DELTA', reason: 'FINDING_FIX_ONLY', resetReasons: [] };
+    ? { mode: 'FULL', reason: 'FULL_RESET_REQUIRED', resetReasons: unique(resetReasons), deltaFiles }
+    : { mode: 'DELTA', reason: 'FINDING_FIX_ONLY', resetReasons: [], deltaFiles };
 }
 
 export function buildFinalRiskPacket(input = {}, deps = {}) {
@@ -199,7 +205,7 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
     ...input,
     riskClass: readiness.riskClass,
     policyVersion: readiness.policyVersion,
-    changedFiles: readiness.changedFiles,
+    changedFileRecords: input.changedFileRecords,
   });
 
   if (plan.mode === 'REUSE') {
@@ -230,12 +236,13 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
     triageSummary: text(input.triageSummary),
     scope: plan.mode === 'DELTA'
       ? {
-          deltaFiles: unique(input.deltaFiles),
+          deltaFiles: plan.deltaFiles,
           reviewedUniverse: readiness.changedFiles,
+          changedFileRecords: input.changedFileRecords,
           previousChangeDigest: text(input.previousReview?.changeDigest),
           previousFindings: input.previousReview?.findings ?? [],
         }
-      : { changedFiles: readiness.changedFiles },
+      : { changedFiles: readiness.changedFiles, changedFileRecords: input.changedFileRecords },
     reviewerContract: [
       'Do not repeat ordinary CI unless needed to challenge evidence.',
       'Prioritize concurrency, tenant boundary, rollback, permission bypass, fake-success and negative controls.',
