@@ -41,13 +41,13 @@ function recordSignature(record = {}) {
 }
 
 function findingDetails(review = {}) {
-  return Array.isArray(review.findingDetails) ? review.findingDetails : [];
+  return Array.isArray(review?.findingDetails) ? review.findingDetails : [];
 }
 
 function findingPaths(review = {}) {
   return unique([
     ...findingDetails(review).flatMap((finding) => Array.isArray(finding?.paths) ? finding.paths : []),
-    ...(Array.isArray(review.supportFiles) ? review.supportFiles : []),
+    ...(Array.isArray(review?.supportFiles) ? review.supportFiles : []),
   ]);
 }
 
