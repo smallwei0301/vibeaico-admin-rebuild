@@ -8,6 +8,24 @@ const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 
+// A routine name alone is never enough to admit a call. These two sets are
+// intentionally small and are used only in the contexts wired below.
+const SAFE_DECLARATIVE_ROUTINES = new Set(['now', 'gen_random_uuid']);
+const SAFE_PROCEDURAL_CATALOG_ROUTINES = new Set([
+  'to_regclass',
+  'to_regtype',
+  'count',
+  'string_agg',
+  'coalesce',
+  'pg_get_constraintdef',
+  'pg_get_expr',
+  'array_agg',
+  'unnest',
+  'pg_get_function_identity_arguments',
+  'pg_get_functiondef',
+  'format',
+]);
+
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
@@ -308,7 +326,7 @@ function isDmlTargetColumnList(text, index) {
   );
 }
 
-function hasUnverifiedRoutineInvocation(text) {
+function hasUnverifiedRoutineInvocation(text, allowedUnqualifiedRoutines = new Set()) {
   const input = String(text);
   const quotedCandidates = input.matchAll(
     /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu,
@@ -327,9 +345,15 @@ function hasUnverifiedRoutineInvocation(text) {
     if (isDmlTargetColumnList(input, match.index)) continue;
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
+    const before = input.slice(0, match.index);
     if (calledName === 'pg_catalog.format') continue;
+    if (!calledName.includes('.') && allowedUnqualifiedRoutines.has(name)) {
+      // Unqualified format() is safe only when it is not building an immediate
+      // EXECUTE command. Dynamic SQL keeps the existing pg_catalog-only rule.
+      if (name !== 'format' || !/\\bexecute\\s*$/i.test(before)) continue;
+    }
     if (!calledName.includes('.') && isSqlParenthesisSyntax(
-      name, input.slice(0, match.index), input, match.index + match[0].length - 1,
+      name, before, input, match.index + match[0].length - 1,
     )) continue;
     return true;
   }
@@ -367,8 +391,9 @@ function indexAccessMethodColumnListStart(text) {
 }
 
 function rejectImmediateRoutineInvocations(statements) {
-  const checkCommandText = (text) => hasUnverifiedRoutineInvocation(
+  const checkCommandText = (text, allowedUnqualifiedRoutines = new Set()) => hasUnverifiedRoutineInvocation(
     stripSqlStringLiterals(text, true, true),
+    allowedUnqualifiedRoutines,
   );
 
   for (const statement of statements) {
@@ -379,15 +404,17 @@ function rejectImmediateRoutineInvocations(statements) {
     // column or building an index. Inspect expression tails without treating a
     // table's declaration/column list as a routine call. Unknown calls fail closed
     // even if a caller describes them as immutable or as deferred defaults.
-    if (/^(?:create|alter)\b/i.test(lexicalText)
-      && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexicalText)) {
+    const policyDeclaration = /^\\s*create\\s+policy\\b/i.test(lexicalText);
+    if (/^(?:create|alter)\\b/i.test(lexicalText)
+      && !policyDeclaration
+      && !/^create\\s+(?:or\\s+replace\\s+)?(?:function|procedure)\\b/i.test(lexicalText)) {
       const indexColumnsStart = indexAccessMethodColumnListStart(immediateText);
       for (const expression of lexicalText.matchAll(/\b(?:check|default|using|as|where|generated|partition)\b/gi)) {
         let expressionStart = expression.index + expression[0].length;
         if (/^using$/i.test(expression[0]) && expressionStart < indexColumnsStart) {
           expressionStart = indexColumnsStart;
         }
-        if (checkCommandText(immediateText.slice(expressionStart))) {
+        if (checkCommandText(immediateText.slice(expressionStart), SAFE_DECLARATIVE_ROUTINES)) {
           fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'DDL expression routine invocation is not admitted');
         }
       }
@@ -415,7 +442,7 @@ function rejectImmediateRoutineInvocations(statements) {
 
     if (/^\s*do\b/i.test(lexicalText)) {
       const body = immediateProceduralBody(immediateText);
-      if (body !== null && checkCommandText(body)) {
+      if (body !== null && checkCommandText(body, SAFE_PROCEDURAL_CATALOG_ROUTINES)) {
         fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside an immediate procedural block is not admitted');
       }
     }
