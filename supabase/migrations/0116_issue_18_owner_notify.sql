@@ -29,15 +29,15 @@
 --   「primary only, unconditionally」），故不需要第三個開關欄位。
 
 create table if not exists public.owner_notify_bind_requests (
-  id            uuid primary key default gen_random_uuid(),
+  id            uuid primary key default pg_catalog.gen_random_uuid(),
   tenant_id     uuid not null references public.tenants(id) on delete cascade,
   line_user_id  text not null,
   status        text not null default 'PENDING'
                   check (status in ('PENDING', 'CONFIRMED', 'EXPIRED', 'CANCELLED')),
-  created_at    timestamptz not null default now(),
+  created_at    timestamptz not null default pg_catalog.now(),
   -- 24 小時後前端／webhook 一律視為過期（見 src/server/owner-notify.ts）；
   -- 存欄位而非硬編在應用程式碼，方便之後調整而不必動表結構。
-  expires_at    timestamptz not null default (now() + interval '24 hours'),
+  expires_at    timestamptz not null default (pg_catalog.now() + interval '24 hours'),
   confirmed_at  timestamptz,
   foreign key (tenant_id, line_user_id)
     references public.line_users (tenant_id, line_user_id) on delete cascade
@@ -91,7 +91,7 @@ create policy p_owner_notify_bind_requests_all on public.owner_notify_bind_reque
 -- ------------------------------------------------------------------ 正式名單
 
 create table if not exists public.owner_notify_recipients (
-  id                  uuid primary key default gen_random_uuid(),
+  id                  uuid primary key default pg_catalog.gen_random_uuid(),
   tenant_id           uuid not null references public.tenants(id) on delete cascade,
   line_user_id        text not null,
   -- 「主要」：訂閱到期／儲值提醒只發給這一位（Issue 逐字）。第一位加入的
@@ -99,7 +99,7 @@ create table if not exists public.owner_notify_recipients (
   is_primary          boolean not null default false,
   notify_new_booking  boolean not null default true,
   notify_cancel       boolean not null default true,
-  created_at          timestamptz not null default now(),
+  created_at          timestamptz not null default pg_catalog.now(),
   -- 同一位好友不可重複加入名單。
   unique (tenant_id, line_user_id),
   -- 名單只能從「該店已加入的 LINE 好友」挑人；好友被刪（unfollow 清理）時

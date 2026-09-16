@@ -50,7 +50,7 @@
 --      若訂單已經是 `seats_reserved = true`（例如本檔套用前就已用舊行為建立的
 --      既有 REQUEST 訂單），不重複鎖位、直接視為「名額本來就在」——這是把既有
 --      資料的既成事實接上新狀態機，不是替它們重新分配名額。
---   2. `hold_expires_at` = `now() + (p_hold_hours 或 plan 的 request_hold_hours
+--   2. `hold_expires_at` = `pg_catalog.now() + (p_hold_hours 或 plan 的 request_hold_hours
 --      預設) 小時`，一次算好寫進去，snapshot 成具體時間；之後 Plan 改預設值
 --      不回頭改這一筆（決策文件明講的「不得事後偷偷回寫舊單」同一類不變量）。
 --   3. `status` PENDING → CONFIRMED——沿用既有狀態機（`canTransitionTourOrder`
@@ -402,21 +402,21 @@ declare
 begin
   -- ① create_tour_order 仍然唯一，且簽章與 0087/0099 canonical 完全相同——
   -- 這是本檔最重要的一條：本檔的整個安全論證建立在「沒有新建 overload」上。
-  select count(*) into v_n
+  select pg_catalog.count(*) into v_n
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'create_tour_order';
   if v_n <> 1 then
     raise exception '0111 後置斷言失敗——create_tour_order 應唯一，實際 % 個（>1 代表本檔的 create or replace 意外多建了一個 overload，會 PGRST203）', v_n;
   end if;
 
-  select pg_get_function_identity_arguments(p.oid) into v_args
+  select pg_catalog.pg_get_function_identity_arguments(p.oid) into v_args
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'create_tour_order';
   if v_args <> 'p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone' then
     raise exception '0111 後置斷言失敗——create_tour_order 的簽章被改動，不是 0099 canonical：%', v_args;
   end if;
 
-  select pg_get_functiondef(p.oid) into v_def
+  select pg_catalog.pg_get_functiondef(p.oid) into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'create_tour_order';
   -- ⚠️ 這裡不能直接找 `sales_mode\s*<>\s*'REQUEST'`：實際寫法是
@@ -433,7 +433,7 @@ begin
 
   -- ② accept_tour_request：三個前提都要在鎖的保護範圍內求值，而且真的會呼叫
   -- reserve_seats（不是只改狀態、假裝鎖了名額）。
-  select pg_get_functiondef(p.oid) into v_def
+  select pg_catalog.pg_get_functiondef(p.oid) into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'accept_tour_request';
   if v_def is null then
@@ -466,7 +466,7 @@ begin
   end if;
 
   -- ③ reject_tour_request：只在 seats_reserved 為真時才釋放名額。
-  select pg_get_functiondef(p.oid) into v_def
+  select pg_catalog.pg_get_functiondef(p.oid) into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'reject_tour_request';
   if v_def is null then
@@ -512,7 +512,7 @@ begin
   if not exists (
     select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
      where n.nspname = 'public' and p.proname in ('reserve_seats', 'release_seats')
-     group by 1 having count(*) = 2
+     group by 1 having pg_catalog.count(*) = 2
   ) then
     raise exception '0111 後置斷言失敗——reserve_seats/release_seats 其中一支不見了';
   end if;
@@ -521,7 +521,7 @@ begin
   -- （不是「反向不得動到」），必須依 seats_reserved 才決定要不要 release_seats
   -- ——否則 PENDING 的 REQUEST 訂單（seats_reserved=false）被取消／逾期時，
   -- 會對一個從未鎖過的名額呼叫 release_seats，把別筆已確認訂單的席次憑空放出。
-  select pg_get_functiondef(p.oid) into v_def
+  select pg_catalog.pg_get_functiondef(p.oid) into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'cancel_tour_order';
   if v_def is null then
@@ -531,7 +531,7 @@ begin
     raise exception '⑥ cancel_tour_order 沒有依 seats_reserved 判斷要不要釋放名額（Final Risk B1）';
   end if;
 
-  select pg_get_functiondef(p.oid) into v_def
+  select pg_catalog.pg_get_functiondef(p.oid) into v_def
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'expire_tour_order';
   if v_def is null then

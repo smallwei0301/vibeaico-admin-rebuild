@@ -161,7 +161,7 @@ declare
   v_args text;
   v_n    int;
 begin
-  select count(*) into v_n
+  select pg_catalog.count(*) into v_n
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'create_tour_order';
 
@@ -169,7 +169,7 @@ begin
     raise exception 'create_tour_order 應唯一，實際 % 個（>1 代表 create or replace 意外新增了 overload，會 PGRST203）', v_n;
   end if;
 
-  select pg_get_function_identity_arguments(p.oid) into v_args
+  select pg_catalog.pg_get_function_identity_arguments(p.oid) into v_args
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'create_tour_order';
 

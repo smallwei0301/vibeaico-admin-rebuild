@@ -316,7 +316,7 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
   // All terminals below are RESERVED_KEYWORD, except VALUES (COL_NAME_KEYWORD);
   // neither category is an unqualified type_function_name. Quoted/qualified
   // versions never reach this helper. Nested candidates are still inspected.
-  if (/^(?:all|and|any|as|case|check|coalesce|else|end|for|foreign|from|group|having|in|into|lateral|limit|not|offset|on|only|or|order|primary|returning|select|some|then|unique|using|values|when|where|with)$/.test(name)) return true;
+  if (/^(?:all|and|any|as|case|check|coalesce|default|else|end|for|foreign|from|group|having|in|into|lateral|limit|not|offset|on|only|or|order|primary|returning|select|some|then|unique|using|values|when|where|with)$/.test(name)) return true;
   if (name === 'exists') {
     return /^\s*(?:\(\s*)*(?:select|with|values)\b/i.test(input.slice(openIndex + 1));
   }
@@ -326,6 +326,11 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
     const close = matchingParenthesisEnd(input, openIndex);
     return hasConflictActionContinuation(input, close);
   }
+  // KEY alone is callable (unlike CHECK/UNIQUE, it is not a reserved keyword),
+  // but `PRIMARY KEY (` / `FOREIGN KEY (` is the fixed table-constraint column
+  // list grammar — never a function call — so only that exact two-word
+  // continuation is recognized, not bare KEY everywhere.
+  if (name === 'key' && /\b(?:primary|foreign)\s+$/i.test(before)) return true;
   return false;
 }
 
@@ -335,13 +340,37 @@ function isDmlTargetColumnList(text, index) {
   );
 }
 
+function isReferencesColumnList(text, index) {
+  // `references [schema.]table(col[, col...])` is DDL foreign-key syntax, not a
+  // routine call — the parenthesized part is a column list, not an argument list.
+  // The candidate match itself already covers the optional schema-qualified
+  // table name (mirroring how `isDmlTargetColumnList` covers `insert into
+  // schema.table(`), so this only needs to confirm the immediately preceding
+  // token is the `references` keyword. Any routine call that merely follows a
+  // REFERENCES clause later in the statement still falls through to full
+  // routine-invocation scrutiny, because its own preceding text will not end in
+  // `references\s+`.
+  return /\breferences\s+$/iu.test(String(text).slice(0, index));
+}
+
+function isAliasColumnList(text, index) {
+  // `... AS alias(col1, col2, ...)` renames a derived table/VALUES list's
+  // columns — the parenthesized part is a column-name list, not an argument
+  // list, so it is not a routine call. Only the exact `AS <candidate-name>(`
+  // spelling is recognized (the word immediately before the candidate identifier
+  // must be the `AS` keyword); an implicit (AS-less) alias column list still
+  // falls through to full routine-invocation scrutiny.
+  return /\bas\s+$/iu.test(String(text).slice(0, index));
+}
+
 function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
   const input = String(text);
   const quotedCandidates = input.matchAll(
     /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu,
   );
   for (const match of quotedCandidates) {
-    if (isDmlTargetColumnList(input, match.index)) continue;
+    if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
+      || isAliasColumnList(input, match.index)) continue;
     return true;
   }
 
@@ -349,7 +378,8 @@ function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
     /(?<![\p{ID_Continue}$])(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
   );
   for (const match of candidates) {
-    if (isDmlTargetColumnList(input, match.index)) continue;
+    if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
+      || isAliasColumnList(input, match.index)) continue;
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
     const before = input.slice(0, match.index);
@@ -435,10 +465,18 @@ function rejectImmediateRoutineInvocations(statements) {
     if (copyQuery && checkCommandText(immediateText.slice(copyQuery[0].length))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside a COPY query is not admitted');
     }
+    // Only USING (an ALTER COLUMN TYPE rewrite expression, evaluated against
+    // every existing row) is held to the zero-allowance immediate-execution bar
+    // here. A bare column DEFAULT is not re-scanned with an empty allowlist —
+    // the DDL expression scan above already vets it against
+    // SAFE_DECLARATIVE_CATALOG_ROUTINES (the Owner-approved pg_catalog-prefixed
+    // builtin allowlist), so re-including `default` here would silently
+    // re-reject the very pg_catalog.now()/pg_catalog.gen_random_uuid() calls
+    // that scan just admitted, with zero allowance instead of that allowlist.
     const topLevelExecutable = /^\s*(?:\(\s*)*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
       || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
-      || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
+      || /^\s*alter\s+table\b[\s\S]*\busing\b/i.test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
@@ -830,7 +868,7 @@ function rejectUnclassifiedDropStatements(text) {
     if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
     for (const match of drops) {
       const objectType = String(match[1]).toLowerCase();
-      if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column']).has(objectType)) {
+      if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column', 'trigger']).has(objectType)) {
         fail('UNCLASSIFIED_DROP_NOT_ADMITTED', `unrecognized DROP form: ${objectType}`);
       }
     }

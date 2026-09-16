@@ -49,25 +49,25 @@ end $$;
 
 -- -------------------------------------------------------------------- 資料表
 create table if not exists public.support_chat_threads (
-  id                uuid primary key default gen_random_uuid(),
+  id                uuid primary key default pg_catalog.gen_random_uuid(),
   tenant_id         uuid not null references public.tenants(id) on delete cascade,
   subject           text not null default '',
   status            public.support_chat_thread_status not null default 'OPEN',
   created_by        uuid not null references auth.users(id),
   created_by_email  text not null default '',
   notify_status     public.support_chat_notify_status not null default 'SKIPPED_NO_RECIPIENT',
-  last_message_at   timestamptz not null default now(),
+  last_message_at   timestamptz not null default pg_catalog.now(),
   -- 店家上次讀取這個 thread 的時間；widget 用它算「未讀」。NULL＝從未讀過。
   tenant_read_at    timestamptz,
-  created_at        timestamptz not null default now(),
-  updated_at        timestamptz not null default now()
+  created_at        timestamptz not null default pg_catalog.now(),
+  updated_at        timestamptz not null default pg_catalog.now()
 );
 
 create index if not exists support_chat_threads_tenant_recent
   on public.support_chat_threads (tenant_id, last_message_at desc);
 
 create table if not exists public.support_chat_messages (
-  id            uuid primary key default gen_random_uuid(),
+  id            uuid primary key default pg_catalog.gen_random_uuid(),
   thread_id     uuid not null references public.support_chat_threads(id) on delete cascade,
   -- 冗餘存 tenant_id（而非只靠 thread_id join）：RLS 與應用層的租戶收窄鎖
   -- （tests/unit/impersonation-tenant-scope-lock.test.ts）要求每一段查詢述句
@@ -76,7 +76,7 @@ create table if not exists public.support_chat_messages (
   sender_role   public.support_chat_sender_role not null,
   sender_email  text not null default '',
   body          text not null,
-  created_at    timestamptz not null default now()
+  created_at    timestamptz not null default pg_catalog.now()
 );
 
 create index if not exists support_chat_messages_thread_created
@@ -127,7 +127,7 @@ do $$
 declare
   v_missing text;
 begin
-  select string_agg(want.col, ', ' order by want.col) into v_missing
+  select pg_catalog.string_agg(want.col, ', ' order by want.col) into v_missing
     from (values
       ('id'), ('tenant_id'), ('subject'), ('status'), ('created_by'),
       ('created_by_email'), ('notify_status'), ('last_message_at'),
@@ -142,7 +142,7 @@ begin
     raise exception 'support_chat_threads 缺少必要欄位：%', v_missing;
   end if;
 
-  select string_agg(want.col, ', ' order by want.col) into v_missing
+  select pg_catalog.string_agg(want.col, ', ' order by want.col) into v_missing
     from (values
       ('id'), ('thread_id'), ('tenant_id'), ('sender_role'),
       ('sender_email'), ('body'), ('created_at')
@@ -169,7 +169,7 @@ begin
     raise exception 'support_chat_messages 沒有啟用 RLS';
   end if;
 
-  select string_agg(p.polname, ', ' order by p.polname) into v_missing
+  select pg_catalog.string_agg(p.polname, ', ' order by p.polname) into v_missing
     from pg_policy p join pg_class c on c.oid = p.polrelid
     join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relname = 'support_chat_threads';
@@ -177,7 +177,7 @@ begin
     raise exception 'support_chat_threads 的 RLS 政策集合不如預期：%', v_missing;
   end if;
 
-  select string_agg(p.polname, ', ' order by p.polname) into v_missing
+  select pg_catalog.string_agg(p.polname, ', ' order by p.polname) into v_missing
     from pg_policy p join pg_class c on c.oid = p.polrelid
     join pg_namespace n on n.oid = c.relnamespace
    where n.nspname = 'public' and c.relname = 'support_chat_messages';

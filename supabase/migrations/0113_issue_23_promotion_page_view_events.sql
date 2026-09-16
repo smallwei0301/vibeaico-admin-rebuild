@@ -20,7 +20,7 @@
 -- 範圍」的道理，只是這裡方向反過來（寫而不是讀）。
 
 create table if not exists public.page_view_events (
-  id               uuid primary key default gen_random_uuid(),
+  id               uuid primary key default pg_catalog.gen_random_uuid(),
   tenant_id        uuid not null references public.tenants(id) on delete cascade,
   path             text not null,
   -- 'QR' | 'LINE' | 'DIRECT'（Issue #23 最小分類）。只有 current public-link
@@ -31,7 +31,7 @@ create table if not exists public.page_view_events (
   -- 低敏 UA 分類桶（'MOBILE' | 'DESKTOP' | 'BOT' | 'OTHER'）——不存原始 User-Agent
   -- 字串，避免它變成事實上可指紋辨識訪客的欄位。
   user_agent_class text not null default 'OTHER',
-  created_at       timestamptz not null default now()
+  created_at       timestamptz not null default pg_catalog.now()
   -- ⚠️ 刻意沒有任何 IP 欄位（ip / ip_address / raw_ip / client_ip ……一律不存）
   --    ——這是本表最重要的一條隱私邊界，下面的 do 區塊會再次硬性檢查它。
 );

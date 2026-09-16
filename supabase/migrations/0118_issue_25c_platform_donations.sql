@@ -27,7 +27,7 @@
 
 -- -------------------------------------------------------------------- 資料表
 create table if not exists public.platform_donations (
-  id                 uuid primary key default gen_random_uuid(),
+  id                 uuid primary key default pg_catalog.gen_random_uuid(),
   donor_user_id      uuid not null references auth.users(id) on delete cascade,
   display_name       text not null default '',
   amount             integer not null check (amount between 10 and 100000),
@@ -45,8 +45,8 @@ create table if not exists public.platform_donations (
   -- callback 完整參數（不含任何我方憑證），供事後追查金額 / RtnCode 不符的原因。
   raw_callback       jsonb,
   paid_at            timestamptz,
-  created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now()
+  created_at         timestamptz not null default pg_catalog.now(),
+  updated_at         timestamptz not null default pg_catalog.now()
 );
 
 alter table public.platform_donations
@@ -59,8 +59,8 @@ alter table public.platform_donations
   add column if not exists provider_trade_no text,
   add column if not exists raw_callback      jsonb,
   add column if not exists paid_at           timestamptz,
-  add column if not exists created_at        timestamptz not null default now(),
-  add column if not exists updated_at        timestamptz not null default now();
+  add column if not exists created_at        timestamptz not null default pg_catalog.now(),
+  add column if not exists updated_at        timestamptz not null default pg_catalog.now();
 
 create unique index if not exists platform_donations_merchant_trade_no_uq
   on public.platform_donations (merchant_trade_no);
@@ -92,7 +92,7 @@ do $$
 declare
   v_missing text;
 begin
-  select string_agg(want.col, ', ' order by want.col) into v_missing
+  select pg_catalog.string_agg(want.col, ', ' order by want.col) into v_missing
     from (values
       ('id'), ('donor_user_id'), ('display_name'), ('amount'), ('status'),
       ('provider'), ('merchant_trade_no'), ('provider_trade_no'), ('raw_callback'),

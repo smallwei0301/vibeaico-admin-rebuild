@@ -43,6 +43,35 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  // #455 TERRA_BUILD (2026-09-16): support_chat_threads/support_chat_messages
+  // RLS (p_sct_r/p_sct_i/p_sct_u/p_scm_r/p_scm_i) already has real live-TEST
+  // tenant-boundary coverage in the existing #? integration suite. There is no
+  // negative-role restriction for this feature by design — STAFF is
+  // deliberately allowed the same access as MANAGER/OWNER (support chat is a
+  // communication channel, not a privileged action), which the existing test
+  // asserts directly ("STAFF 也能建立 thread（這是溝通管道，不需要 MANAGER）"). An
+  // empty `negativeRoleAssertions` here is therefore an honest reflection of
+  // the feature, not a missing check.
+  '0117_issue_25b_support_chat_threads': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/support-chat-threads.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/support-chat-threads.test.ts',
+        fragment: 'B 店的列表裡沒有 A 店的 thread id',
+      }),
+      Object.freeze({
+        file: 'tests/integration/api/support-chat-threads.test.ts',
+        fragment: 'B 店直接打 A 店的 thread 詳情',
+      }),
+      Object.freeze({
+        file: 'tests/integration/api/support-chat-threads.test.ts',
+        fragment: 'B 店對 A 店的 thread 追加留言',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([]),
+  }),
 });
 
 export function getProductionDbG3AuthzContract(repoFile) {

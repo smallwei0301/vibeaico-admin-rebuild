@@ -24,7 +24,7 @@
 --     /api/calendar` 併入 EXTERNAL 事件要讀這張表）。
 --   - `sync_replace_external_calendar_events`：single security-definer rpc，
 --     在同一個 transaction 內「刪除該 subscription 的舊快取 → 寫入新快取 →
---     更新 subscription 為 last_sync_status='OK'／last_synced_at=now()／
+--     更新 subscription 為 last_sync_status='OK'／last_synced_at=pg_catalog.now()／
 --     last_sync_error=null」，滿足 Issue「一次 sync 原子替換」的要求
 --     （supabase-js 沒有跨陳述式交易，postgres function 是唯一能保證原子性的
 --     地方）。**同步失敗（ICS 抓取或解析失敗）完全不呼叫這支 rpc**——
@@ -34,7 +34,7 @@
 --     （Issue「provider 失敗時保留上次成功資料」）。
 
 create table if not exists public.external_calendars (
-  id               uuid primary key default gen_random_uuid(),
+  id               uuid primary key default pg_catalog.gen_random_uuid(),
   tenant_id        uuid not null references public.tenants(id) on delete cascade,
   staff_id         uuid references public.staff(id) on delete set null,
   name             text not null,
@@ -44,7 +44,7 @@ create table if not exists public.external_calendars (
                      check (last_sync_status in ('NEVER_SYNCED', 'OK', 'ERROR')),
   last_sync_error  text,
   active           boolean not null default true,
-  created_at       timestamptz not null default now()
+  created_at       timestamptz not null default pg_catalog.now()
 );
 
 -- PB-026：`create table if not exists` 對既有同名異形表會靜默跳過，這裡把它變成
@@ -98,7 +98,7 @@ create policy p_external_calendars_all on public.external_calendars
 -- ---------------------------------------------------------------- 事件快取表
 
 create table if not exists public.external_calendar_events (
-  id                    uuid primary key default gen_random_uuid(),
+  id                    uuid primary key default pg_catalog.gen_random_uuid(),
   external_calendar_id  uuid not null references public.external_calendars(id) on delete cascade,
   -- denormalized：RLS／`GET /api/calendar` 查詢直接用，不必為了讀快取多 join。
   tenant_id             uuid not null references public.tenants(id) on delete cascade,
@@ -110,7 +110,7 @@ create table if not exists public.external_calendar_events (
   start_at              timestamptz not null,
   end_at                timestamptz not null,
   all_day               boolean not null default false,
-  created_at            timestamptz not null default now()
+  created_at            timestamptz not null default pg_catalog.now()
 );
 
 do $$

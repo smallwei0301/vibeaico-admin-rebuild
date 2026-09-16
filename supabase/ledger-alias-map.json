@@ -492,8 +492,8 @@
       "repoFile": "0109_issue_41_schema_precondition_assertions",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "補上 0108 沒斷言的前提（tour_orders.payment_status 的型別／default）與 0107／0108 都沒比對過的 default 缺口。本筆隨建立 0109 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權；在 canonical／Production 上 payment_status 本來就是 enum，套用時預期整支 migration no-op。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "補上 0108 沒斷言的前提（tour_orders.payment_status 的型別／default）與 0107／0108 都沒比對過的 default 缺口。在 canonical／Production 上 payment_status 本來就是 enum，套用時預期整支 migration no-op。2026-09-16（PR #455 TERRA_BUILD 回合）：本檔第一段對 tour_orders.payment_status 做 ALTER COLUMN ... TYPE 與 DROP CONSTRAINT，`scripts/agents/production-db-release-plan.mjs` 的 `inferMigrationRiskTier` 因此把本檔判為 SCHEMA_REPAIR risk tier；同一批 PENDING_APPLY 的其餘 9 支（0110–0118）在完成分類器修正後都落在 AUTHZ tier（多數只因為新表一律 ENABLE ROW LEVEL SECURITY）。`buildProductionDbReleasePlan` 的 `assertSingleRiskTier` 要求同一次 release 裡所有 PENDING_APPLY migration 必須是同一個 risk tier，SCHEMA_REPAIR 與 AUTHZ 無法併入同一次 release；本檔的斷言／修復邏輯本質上就是 schema 完整性修復，不屬於也不應該偽裝成 AUTHZ，classifier 對本檔的判定是正確的，不是誤判。因此暫時改標 VERIFIED_NOT_APPLIED，把本檔移出目前這批 AUTHZ-tier release 的範圍，待未來有專屬的 SCHEMA_REPAIR release（含對應 G3 證據）時再改回 PENDING_APPLY——本檔本身的分類器相容性修正（pg_catalog 前綴、避開 `if (subquery)`／`join (subquery)` 這類會被誤判成呼叫的語法）已經完成且逐一驗證過，套用內容完全未變，只是這一輪先不把它排進這批 release。這是本輪唯一一項超出「加 pg_catalog 前綴」原始授權範圍的判斷，記錄於 PR body，待 Owner／Sol 覆核。"
     },
     {
       "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
@@ -514,7 +514,7 @@
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#402：關閉 keyword-reply-images 的 authenticated 直寫 Storage 側門，與 0072_welcome_card_upload_acl 同型（固定 file_size_limit=5MiB、allowed_mime_types 限 jpeg/png/webp，並把此 bucket 從 p_storage_write 的 authenticated 允許清單移除；bucket 仍為 public，供 LINE 直接讀圖）。Owner 已在 Issue #402 留言（2026-09-15）裁示上述參數，本次僅做 local 驗證，未套用 canonical TEST 或 Production。本筆隨建立 0112 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "evidence": "#402：關閉 keyword-reply-images 的 authenticated 直寫 Storage 側門（drop/create policy p_storage_write，移除該 bucket 的直寫允許）。Owner 已在 Issue #402 留言（2026-09-15）裁示相關參數，本次僅做 local 驗證，未套用 canonical TEST 或 Production。2026-09-16（PR #455 TERRA_BUILD 回合）：原本同檔還含 bucket file_size_limit／allowed_mime_types 的 UPDATE（BACKFILL risk），與這裡的 CREATE POLICY（AUTHZ risk）混在一起，被 `inferMigrationRiskTier` 判為 MIXED_RISK_MIGRATION_NOT_ADMITTED；已拆到 `0119_issue_402_keyword_reply_images_bucket_limits.sql`（內容逐字未變），本檔現在只保留 ACL 半邊，單獨分類為 AUTHZ。本筆隨建立 0112 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     },
     {
       "repoFile": "0113_issue_23_promotion_page_view_events",
@@ -528,7 +528,7 @@
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#22 Part A：banner video 兩階段上傳（presign/confirm/delete）。新增 storage.buckets 的 `banner-videos`（public=true、file_size_limit=52428800／50MiB、allowed_mime_types 限 video/mp4、video/webm）與新表 `banner_video_pending_uploads`（presign 時的追蹤列，供孤兒清理 cron 使用）；刻意不對 storage.objects 開放 authenticated 直接 INSERT policy（上傳靠 service role 核發的一次性簽名 token，不經 RLS，見 04 分冊 §A-1.1 與本檔頭）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "evidence": "#22 Part A：banner video 兩階段上傳（presign/confirm/delete）。新表 `banner_video_pending_uploads`（presign 時的追蹤列，供孤兒清理 cron 使用），ENABLE ROW LEVEL SECURITY 但刻意不建立任何 policy（租戶／匿名一律讀不到寫不到，只有 service role 存取，見本檔頭與 04 分冊 §A-1.1）。2026-09-16（PR #455 TERRA_BUILD 回合）：原本同檔還含 `banner-videos` bucket 的 `INSERT ... ON CONFLICT DO UPDATE`（BACKFILL risk），與這裡的 ENABLE ROW LEVEL SECURITY（AUTHZ risk）混在一起，被 `inferMigrationRiskTier` 判為 MIXED_RISK_MIGRATION_NOT_ADMITTED；已拆到 `0120_issue_22_banner_videos_bucket_seed.sql`（內容逐字未變），本檔現在只保留新表＋RLS 半邊，單獨分類為 AUTHZ。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
     },
     {
       "repoFile": "0115_issue_21_external_calendars",
@@ -557,6 +557,20 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "issue #25 C 段：平台贊助金流第一版（platform_donations 一張表）。這不是租戶資料——沒有 tenant_id 外鍵，donor_user_id 記的是按下贊助的使用者本人，贊助是個人行為不屬於任何一家店。RLS 啟用且 force，但刻意不建立任何政策：一般 authenticated／anon 完全不可直讀直寫，全部經 /api/donations/**（service role）存取，由應用層決定可見範圍（自己的贊助總額 vs. 只含 status=PAID 的公開感謝名單）。金流閘道憑證（ECPAY_MERCHANT_ID／ECPAY_HASH_KEY／ECPAY_HASH_IV）是平台層 env（src/config/env.ts），不是本表欄位，且 2026-09-15 盤點 midao.env 三者均未設定（EXTERNAL_CONFIG_BLOCKED，見 issue #25 C 段「Live credential truth」），因此本檔不預期任何一個環境已經套用真實金流。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0119_issue_402_keyword_reply_images_bucket_limits",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "2026-09-16（PR #455 TERRA_BUILD 回合）：從 0112_keyword_reply_images_upload_acl.sql 拆出的 BACKFILL 半邊（對 storage.buckets 既有 keyword-reply-images 列的 file_size_limit／allowed_mime_types UPDATE，內容逐字未變），起因是 `inferMigrationRiskTier` 對單檔混 AUTHZ＋BACKFILL 兩種 specialized risk tier fail closed。刻意標記 VERIFIED_NOT_APPLIED 而非 PENDING_APPLY：目前的 0110–0118（含拆分後的 0112／0114）這批 PENDING_APPLY migration 全部落在 AUTHZ tier，`buildProductionDbReleasePlan` 的 `assertSingleRiskTier` 要求同一次 release 只能有一個 risk tier，本檔是 BACKFILL，併不進這批 release。待日後有專屬的 BACKFILL-tier release（可以與 0120 一起）並補齊該 release 自己的 G3 證據後，再改回 PENDING_APPLY。這是本輪超出「加 pg_catalog 前綴」原始授權範圍的判斷之一，記錄於 PR body，待 Owner／Sol 覆核。"
+    },
+    {
+      "repoFile": "0120_issue_22_banner_videos_bucket_seed",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "2026-09-16（PR #455 TERRA_BUILD 回合）：從 0114_issue_22_banner_video_uploads.sql 拆出的 BACKFILL 半邊（對 storage.buckets 的 banner-videos bucket INSERT ... ON CONFLICT DO UPDATE，內容逐字未變），起因是 `inferMigrationRiskTier` 對單檔混 AUTHZ＋BACKFILL 兩種 specialized risk tier fail closed。刻意標記 VERIFIED_NOT_APPLIED 而非 PENDING_APPLY，理由與 0119 相同：目前的 PENDING_APPLY 批次全部是 AUTHZ tier，`assertSingleRiskTier` 不接受本檔這個 BACKFILL tier 混進同一次 release。待日後有專屬的 BACKFILL-tier release（可以與 0119 一起）並補齊該 release 自己的 G3 證據後，再改回 PENDING_APPLY。這是本輪超出「加 pg_catalog 前綴」原始授權範圍的判斷之一，記錄於 PR body，待 Owner／Sol 覆核。"
     }
   ]
 }

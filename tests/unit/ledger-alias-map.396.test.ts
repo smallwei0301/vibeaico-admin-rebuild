@@ -421,9 +421,14 @@ describe('#396 已提交的正式資料', () => {
   // 維持 58 筆實際 ledger row（0106／0108／0107 已分別於 2026-09-14 經 Owner
   // 具名授權套用並重新擷取本快照；0105 於 2026-09-15 以唯讀查詢確認先前已套用
   // 於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，四者都在快照裡）。
+  // 2026-09-16（PR #455 TERRA_BUILD 回合）：0112／0114 各自混了 AUTHZ＋BACKFILL
+  // 兩種 specialized risk tier，被 `inferMigrationRiskTier` fail closed，分別拆出
+  // 0119_issue_402_keyword_reply_images_bucket_limits、
+  // 0120_issue_22_banner_videos_bucket_seed 兩支新檔（各自的 BACKFILL 半邊，內容
+  // 逐字未變），repo 檔案數 67 → 69。
   // 數字不是推算的，是合併 origin/main 後對實際檔案跑一次得到的。
-  it('repo 有 67 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(67);
+  it('repo 有 69 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(69);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
@@ -456,9 +461,17 @@ describe('#396 已提交的正式資料', () => {
     // 0117_issue_25b_support_chat_threads 與本候選的 0118_issue_25c_platform_donations
     // （後幾筆合併自 origin/main 的 #519/#524/#526/#527 等 PR），所以 NOT_APPLIED
     // 是 10。十者依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
+    // 2026-09-16（PR #455 TERRA_BUILD 回合）：0112／0114 拆分各自多出一支 BACKFILL
+    // 半邊新檔（0119、0120），兩者都是 NOT_APPLIED（VERIFIED_NOT_APPLIED——理由見
+    // 各自的 evidence：與同批其餘 AUTHZ tier 的 PENDING_APPLY migration 無法併入
+    // 同一次 release，待專屬 BACKFILL release 才轉回 PENDING_APPLY）。同一輪，
+    // 0109 因為是 SCHEMA_REPAIR tier、與其餘 9 支 AUTHZ tier 無法併入同一次
+    // release，也改標 VERIFIED_NOT_APPLIED（分類器相容性修正已完成，只是暫不
+    // 排進這批 release）。NOT_APPLIED 總數 10 → 12（0110–0118 這 9 支維持
+    // PENDING_APPLY；0109／0119／0120 這 3 支是 VERIFIED_NOT_APPLIED）。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(10);
+    expect(counts.NOT_APPLIED ?? 0).toBe(12);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -723,15 +736,20 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 10 筆（0109、0110、0111、0112、0113、0114、0115、
-    // 0116_issue_18_owner_notify、0117_issue_25b_support_chat_threads 與本候選
-    // 0118_issue_25c_platform_donations，皆 PENDING_APPLY；0107／0108 已套用
-    // 正式庫轉為 EXACT；0105 於 2026-09-15 以唯讀查詢確認先前已套用於正式庫，
-    // 本檔誤標記已更正為 EXACT）。保留 main 那一版的意圖：釘住數量而不是只檢查
-    // 「每一筆都有理由」，否則清單變空時這條規則會靜悄悄變成空轉。任何人日後
-    // 新增或移除 NOT_APPLIED 都會先撞到這一行，被迫同時面對下面那條「必須有
-    // 合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(10);
+    // 目前為 12 筆：0110、0111、0112、0113、0114、0115、
+    // 0116_issue_18_owner_notify、0117_issue_25b_support_chat_threads、
+    // 0118_issue_25c_platform_donations 這 9 支是 PENDING_APPLY；0109（SCHEMA_REPAIR
+    // tier，與其餘 9 支的 AUTHZ tier 無法併入同一次 release）、
+    // 0119_issue_402_keyword_reply_images_bucket_limits、
+    // 0120_issue_22_banner_videos_bucket_seed（分別是 0112／0114 拆出的 BACKFILL
+    // 半邊，同一個「單一 release 單一 risk tier」理由）這 3 支是
+    // VERIFIED_NOT_APPLIED（2026-09-16，PR #455 TERRA_BUILD 回合；詳見各自
+    // evidence）。0107／0108 已套用正式庫轉為 EXACT；0105 於 2026-09-15 以唯讀
+    // 查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。保留 main 那一版的
+    // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
+    // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
+    // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
+    expect(notApplied.length).toBe(12);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

@@ -15,11 +15,18 @@
 --     write) — no second, direct-to-Storage upload path.
 --   - Forward-only migration; local verification only. Not authorized for
 --     canonical TEST or Production application in this change.
-
-update storage.buckets
-   set file_size_limit = 5242880,
-       allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp']::text[]
- where id = 'keyword-reply-images';
+--
+-- Split from the original single-file #402 fix (2026-09-16, PR #455 TERRA_BUILD
+-- round): the `storage.buckets` size/MIME-type update is BACKFILL risk (direct
+-- DML on an existing config row) while the ACL change below is AUTHZ risk
+-- (CREATE POLICY); `scripts/agents/production-db-release-plan.mjs`'s
+-- `inferMigrationRiskTier` fails closed on a single migration mixing two
+-- specialized risk tiers ("split migration by risk class before v1 apply").
+-- The bucket update now lives in
+-- `0119_issue_402_keyword_reply_images_bucket_limits.sql` — same statement,
+-- byte-for-byte, just in its own bounded file. This file keeps only the ACL
+-- half. See that file's header and `supabase/ledger-alias-map.json` for the
+-- full rationale.
 
 -- The application POST /api/upload performs role, MIME, size, random-path and
 -- tenant checks before using service_role. Authenticated clients therefore do

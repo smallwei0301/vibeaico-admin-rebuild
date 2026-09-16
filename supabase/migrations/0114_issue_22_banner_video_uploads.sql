@@ -28,19 +28,22 @@
 --     `welcome_card_image_retirements` 同一套「租戶不需要、也不該直接碰內部記帳
 --     表」的立場；`confirm`／`delete` 的租戶邊界改由 route 內
 --     `tenant_id = t.tenantId` 的查詢條件與 storage path 前綴雙重把關。
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types) values
-  ('banner-videos', 'banner-videos', true, 52428800, array['video/mp4', 'video/webm']::text[])
-on conflict (id) do update
-  set public = excluded.public,
-      file_size_limit = excluded.file_size_limit,
-      allowed_mime_types = excluded.allowed_mime_types;
+--
+-- 拆分說明（2026-09-16，PR #455 TERRA_BUILD 回合）：`banner-videos` bucket 的
+-- upsert 原本與下面的 `banner_video_pending_uploads` 建表＋RLS 放在同一支檔案，
+-- 但前者是 BACKFILL risk（對 storage.buckets 既有列的 INSERT ... ON CONFLICT DO
+-- UPDATE），後者是 AUTHZ risk（ENABLE ROW LEVEL SECURITY）；
+-- `scripts/agents/production-db-release-plan.mjs` 的 `inferMigrationRiskTier`
+-- 對單檔混兩種 specialized risk tier 一律 fail closed（"split migration by risk
+-- class before v1 apply"）。bucket upsert 現在移到獨立的
+-- `0120_issue_22_banner_videos_bucket_seed.sql`，內容逐字未變；本檔只留
+-- AUTHZ 那半。
 
 create table if not exists public.banner_video_pending_uploads (
-  id            uuid primary key default gen_random_uuid(),
+  id            uuid primary key default pg_catalog.gen_random_uuid(),
   tenant_id     uuid not null references public.tenants(id) on delete cascade,
   storage_path  text not null unique,
-  created_at    timestamptz not null default now(),
+  created_at    timestamptz not null default pg_catalog.now(),
   confirmed_at  timestamptz
 );
 

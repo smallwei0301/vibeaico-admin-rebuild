@@ -30,7 +30,7 @@
 -- 於 0108 是「靜默通過」，這裡原本會是「直接中止」，成因完全相同。修法是先確認
 -- 前提物件存在，不存在就整段 no-op（該欄位／型別由對應的 migration 日後套用時
 -- 自己建出 canonical 形狀，不需要本檔越俎代庖），而不是中止。這個模式（先用
--- `to_regclass()`／`to_regtype()`／`pg_attribute` 存在性查詢，確認前提物件存在
+-- `pg_catalog.to_regclass()`／`pg_catalog.to_regtype()`／`pg_attribute` 存在性查詢，確認前提物件存在
 -- 才動作）貫穿全檔四段，包含 `tour_orders` 表本身、`tour_payment_status` 型別、
 -- 0108 新增的三個 `tour_orders` 欄位，與 `trip_departures` 表本身——同一輪盤點
 -- 過，找到的同類缺口都已一併補齊，理由與範圍見各段落內的行內註解。
@@ -75,7 +75,7 @@
 -- 執行，`tour_orders` 表**必須**在 0108 套用當下就已經存在——所以任何 0108 已
 -- 套用的環境，`tour_orders` 表必然存在，這不是待驗證的假設，是 0108 能套用成功
 -- 這件事本身的邏輯後果。但為了不讓本檔本身也犯「前提沒斷言」的問題，這裡仍然
--- 用 `to_regclass()`（找不到物件回傳 null，不會像 `::regclass` literal cast 那樣
+-- 用 `pg_catalog.to_regclass()`（找不到物件回傳 null，不會像 `::regclass` literal cast 那樣
 -- 直接丟錯）明確查一次，查不到就整支 no-op：那代表這個環境連 `tour_orders` 都
 -- 還沒建出來，0087（或建出它的 overlay 路徑）本身尚未套用，不是本檔要修的漂移，
 -- 中止或嘗試建表都不是 0109 的職責。
@@ -86,7 +86,7 @@ declare
   bad_values   text;
   ck           record;
 begin
-  if to_regclass('public.tour_orders') is null then
+  if pg_catalog.to_regclass('public.tour_orders') is null then
     raise notice '0109 第一段 no-op：public.tour_orders 不存在，代表 0087（或建出它的路徑）尚未套用到這個環境。這不是本檔要修的漂移；本檔修的是「payment_status 已經是別的型別」，不是「表還沒被建出來」。';
     return;
   end if;
@@ -105,12 +105,12 @@ begin
     -- 那樣事後才用 `add column if not exists` 補上去的），只要 `tour_orders` 表
     -- 存在，這個欄位理應存在。表在、欄位不在是真正反常的狀態，維持中止。
     raise exception '0109 中止：public.tour_orders 存在，但 payment_status 欄位不存在，這是反常狀態（payment_status 是 0087 建表當下就有的核心欄位），無法判斷前置狀態，需要人工判定。';
-  -- 用 `to_regtype()` 而不是 `'public.tour_payment_status'::regtype` 字面 cast：
+  -- 用 `pg_catalog.to_regtype()` 而不是 `'public.tour_payment_status'::regtype` 字面 cast：
   -- 後者在型別真的不存在時會直接丟錯，讓這裡在「type 根本沒被建出來」的環境上
-  -- 崩潰而不是走到下面任何一個分支去正確分類。`to_regtype()` 找不到就回傳
+  -- 崩潰而不是走到下面任何一個分支去正確分類。`pg_catalog.to_regtype()` 找不到就回傳
   -- null，`current_type = null` 自然為 false，會安全地落到下一個分支判斷，
   -- 不會提早炸掉。
-  elsif current_type = to_regtype('public.tour_payment_status') then
+  elsif current_type = pg_catalog.to_regtype('public.tour_payment_status') then
     -- canonical／overlay／Production 走這條：型別本來就對，no-op。
     null;
   elsif current_type = 'text'::regtype then
@@ -121,7 +121,7 @@ begin
     -- 用 `is null or ... not in (...)` 明確把 NULL 也算進「不合法」）。
     -- 沿用 0107／0108 對既有資料的一貫態度：發現不乾淨的資料就整段 raise
     -- exception 中止，不替它猜一個值。
-    select count(*), string_agg(distinct coalesce(payment_status, '<NULL>'), ', ')
+    select pg_catalog.count(*), pg_catalog.string_agg(distinct coalesce(payment_status, '<NULL>'), ', ')
       into bad_rows, bad_values
       from public.tour_orders
      where payment_status is null
@@ -143,9 +143,9 @@ begin
         from pg_constraint c
        where c.conrelid = 'public.tour_orders'::regclass
          and c.contype = 'c'
-         and pg_get_constraintdef(c.oid) ilike '%payment_status%'
+         and pg_catalog.pg_get_constraintdef(c.oid) ilike '%payment_status%'
     loop
-      execute format('alter table public.tour_orders drop constraint %I', ck.conname);
+      execute pg_catalog.format('alter table public.tour_orders drop constraint %I', ck.conname);
     end loop;
 
     -- 型別轉換前先拿掉舊 default，避免 Postgres 嘗試把一個 text 型別的 default
@@ -225,7 +225,7 @@ end $$;
 -- 讓 migration「成功套用」但地基是錯的（正是 0108 這次踩到的坑）。
 --
 -- ⚠️ 與第一段同理，本段一樣隱含「`tour_orders` 表存在」的前提，一樣用
--- `to_regclass()` 查而不是讓 `::regclass` literal cast 在表不存在時直接丟錯；
+-- `pg_catalog.to_regclass()` 查而不是讓 `::regclass` literal cast 在表不存在時直接丟錯；
 -- 表不存在就整段 no-op（理由同第一段：0087 尚未套用，不是本檔要修的漂移）。
 --
 -- 另外，「`tour_payment_status` 剛好五個 label」這件事本身是 **0108** 的產物
@@ -244,8 +244,9 @@ declare
   status_default text;
   missing        text;
   has_0108       boolean;
+  label_count    int;
 begin
-  if to_regclass('public.tour_orders') is null then
+  if pg_catalog.to_regclass('public.tour_orders') is null then
     raise notice '0109 第二段 no-op：public.tour_orders 不存在，理由同第一段。';
     return;
   end if;
@@ -265,9 +266,9 @@ begin
      and not a.attisdropped
      and a.attnum > 0;
 
-  -- 用 `to_regtype()` 而非字面 `::regtype` cast，理由同第一段：找不到型別時
+  -- 用 `pg_catalog.to_regtype()` 而非字面 `::regtype` cast，理由同第一段：找不到型別時
   -- 回傳 null 而不是直接丟錯。
-  if status_type is distinct from to_regtype('public.tour_payment_status') then
+  if status_type is distinct from pg_catalog.to_regtype('public.tour_payment_status') then
     raise exception '0109 後置斷言失敗——tour_orders.payment_status 的型別不是 public.tour_payment_status（實際 regtype=%）。', status_type::regtype;
   end if;
 
@@ -275,14 +276,14 @@ begin
     raise exception '0109 後置斷言失敗——tour_orders.payment_status 必須是 not null，目前不是。';
   end if;
 
-  select pg_get_expr(ad.adbin, ad.adrelid)
+  select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid)
     into status_default
     from pg_attrdef ad
     join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
    where ad.adrelid = 'public.tour_orders'::regclass
      and a.attname = 'payment_status';
 
-  -- 用 `like` 片段而不是整串相等比對：`pg_get_expr()` 是否替 enum 型別加上
+  -- 用 `like` 片段而不是整串相等比對：`pg_catalog.pg_get_expr()` 是否替 enum 型別加上
   -- `public.` schema 前綴取決於呼叫當下的 search_path，兩種拼法在語意上都是
   -- 「default 是 UNPAID」，字串完全相等比對會在型別其實完全正確時誤報。
   if status_default is null
@@ -298,38 +299,52 @@ begin
   -- label 補齊，不需要本檔在它之前搶著斷言一個它還沒達到的狀態。
   if has_0108 then
     -- ⚠️ PB-041：`pg_enum.enumlabel` 型別是 `name`，走 C collation，`REFUNDED` 會
-    -- 排在 `REFUND_PENDING` 之前——0108 第一版就是把 `array_agg(... order by
+    -- 排在 `REFUND_PENDING` 之前——0108 第一版就是把 `pg_catalog.array_agg(... order by
     -- enumlabel)` 拿去跟手寫的有序陣列比對，寫出一條永遠為假的斷言。這裡改用
     -- full outer join 做純集合比對（差集為空），完全不依賴任何排序規則。
-    select string_agg(
+    --
+    -- 兩邊集合各自先命名成 CTE（actual／expected）再 join，語意與直接對兩個內嵌
+    -- 子查詢 `full outer join (select …) x on …` 完全相同，純粹是寫法調整：
+    -- 這支 migration 的分類器只認得明確 `pg_catalog.` 前綴的內建函式呼叫與少數
+    -- 固定的 SQL 語法終端字（見 production-db-release-plan.mjs 的
+    -- isSqlParenthesisSyntax），JOIN 之後緊接著一個未命名子查詢的左括號會被判讀
+    -- 成「呼叫一個叫 join 的函式」，因此先具名再 join，語意不變。
+    with actual as (
+      select e.enumlabel::text as enumlabel
+        from pg_enum e
+        join pg_type t on t.oid = e.enumtypid
+        join pg_namespace n on n.oid = t.typnamespace
+       where n.nspname = 'public' and t.typname = 'tour_payment_status'
+    ), expected as (
+      select pg_catalog.unnest(array['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED']) as label
+    )
+    select pg_catalog.string_agg(
              case
                when actual.enumlabel is null then '(missing:' || expected.label || ')'
                else '(unexpected:' || actual.enumlabel || ')'
              end,
              ', ')
       into missing
-      from (
-        select e.enumlabel::text as enumlabel
-          from pg_enum e
-          join pg_type t on t.oid = e.enumtypid
-          join pg_namespace n on n.oid = t.typnamespace
-         where n.nspname = 'public' and t.typname = 'tour_payment_status'
-      ) actual
-      full outer join (
-        select unnest(array['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED']) as label
-      ) expected on expected.label = actual.enumlabel
+      from actual
+      full outer join expected on expected.label = actual.enumlabel
      where actual.enumlabel is null or expected.label is null;
 
     if missing is not null then
       raise exception '0109 後置斷言失敗——tour_payment_status 的值域集合與 18 分冊 §4 的 UNPAID／PARTIAL／PAID／REFUND_PENDING／REFUNDED 不完全相同：%。', missing;
     end if;
 
-    if (
-      select count(*) from pg_enum e
-        join pg_type t on t.oid = e.enumtypid
-        join pg_namespace n on n.oid = t.typnamespace
-       where n.nspname = 'public' and t.typname = 'tour_payment_status'
-    ) <> 5 then
+    -- 同理，把「子查詢直接接在 IF 後面」（`if (select …) <> 5 then`）改成先
+    -- `select … into` 一個區域變數再比較：`if (` 這個寫法會被分類器判讀成呼叫
+    -- 一個叫 if 的函式（IF 在一般 SQL 文法裡不是保留字，不能只憑拼字放行），
+    -- 先賦值到變數再比較，語意不變。
+    select pg_catalog.count(*)
+      into label_count
+      from pg_enum e
+      join pg_type t on t.oid = e.enumtypid
+      join pg_namespace n on n.oid = t.typnamespace
+     where n.nspname = 'public' and t.typname = 'tour_payment_status';
+
+    if label_count <> 5 then
       raise exception '0109 後置斷言失敗——tour_payment_status 的值不是剛好五個。';
     end if;
   else
@@ -353,14 +368,14 @@ end $$;
 -- `pg_attribute` 確認存在才斷言，不存在就對那個欄位整段 no-op，不中止。
 --
 -- 本段也是獨立的 `do $$ … $$` 陳述式，不會繼承第一、二段是否已經 no-op 的狀態，
--- 所以一樣先用 `to_regclass()` 查一次 `tour_orders` 表本身是否存在，理由同第一
+-- 所以一樣先用 `pg_catalog.to_regclass()` 查一次 `tour_orders` 表本身是否存在，理由同第一
 -- 段：表不存在時整段 no-op，不讓 `::regclass` literal cast 直接丟錯。
 do $$
 declare
   d text;
   col_exists boolean;
 begin
-  if to_regclass('public.tour_orders') is null then
+  if pg_catalog.to_regclass('public.tour_orders') is null then
     raise notice '0109 第三段 no-op：public.tour_orders 不存在，理由同第一段。';
     return;
   end if;
@@ -375,7 +390,7 @@ begin
   if not col_exists then
     raise notice '0109 第三段跳過 upfront_required_amount：欄位不存在，代表 0108 尚未套用到這個環境，理由同上。';
   else
-    select pg_get_expr(ad.adbin, ad.adrelid) into d
+    select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
       from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
      where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'upfront_required_amount';
     if d is distinct from '0' then
@@ -393,7 +408,7 @@ begin
   if not col_exists then
     raise notice '0109 第三段跳過 refunded_amount：欄位不存在，代表 0108 尚未套用到這個環境，理由同上。';
   else
-    select pg_get_expr(ad.adbin, ad.adrelid) into d
+    select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
       from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
      where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'refunded_amount';
     if d is distinct from '0' then
@@ -413,7 +428,7 @@ begin
   if not col_exists then
     raise notice '0109 第三段跳過 deposit_mode_snapshot：欄位不存在，代表 0108 尚未套用到這個環境，理由同上。';
   else
-    select pg_get_expr(ad.adbin, ad.adrelid) into d
+    select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
       from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
      where ad.adrelid = 'public.tour_orders'::regclass and a.attname = 'deposit_mode_snapshot';
     if d is not null then
@@ -462,7 +477,7 @@ end $$;
 -- 第三段對這個環境是有意義的，那些欄位確實都在）。
 --
 -- 與前三段同理，`trip_departures` 這張表本身（0066 建立，比 0107 更早）也是
--- 隱含前提；`to_regclass()` 查一次，表都不存在時直接整段 no-op——那是比「0107
+-- 隱含前提；`pg_catalog.to_regclass()` 查一次，表都不存在時直接整段 no-op——那是比「0107
 -- 沒套用」更早期的環境，同樣不是本檔要處理的漂移。
 do $$
 declare
@@ -470,7 +485,7 @@ declare
   min_to_depart_exists   boolean;
   formation_status_exists boolean;
 begin
-  if to_regclass('public.trip_departures') is null then
+  if pg_catalog.to_regclass('public.trip_departures') is null then
     raise notice '0109 第四段 no-op：public.trip_departures 不存在，代表比 0107 更早的旅遊團次模型（0066）尚未套用到這個環境；本檔不處理這麼早期的漂移。';
     return;
   end if;
@@ -485,7 +500,7 @@ begin
   if not min_to_depart_exists then
     raise notice '0109 第四段 no-op（min_to_depart_snapshot）：trip_departures.min_to_depart_snapshot 不存在，代表 0107_issue_41_formation_state_model 尚未套用到這個環境。這不是漂移——0107 套用時會直接以 canonical 的 not null default 1 建出這個欄位，不需要本檔介入；中止或猜一個欄位定義反而更危險。';
   else
-    select pg_get_expr(ad.adbin, ad.adrelid) into d
+    select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
       from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
      where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'min_to_depart_snapshot';
 
@@ -493,7 +508,7 @@ begin
       alter table public.trip_departures alter column min_to_depart_snapshot set default 1;
     end if;
 
-    select pg_get_expr(ad.adbin, ad.adrelid) into d
+    select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
       from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
      where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'min_to_depart_snapshot';
 
@@ -519,9 +534,9 @@ begin
   end if;
 
   -- formation_status：與 payment_status 的 default 斷言（第二段）同理，
-  -- `pg_get_expr()` 是否替 enum 型別加上 `public.` schema 前綴取決於呼叫當下的
+  -- `pg_catalog.pg_get_expr()` 是否替 enum 型別加上 `public.` schema 前綴取決於呼叫當下的
   -- search_path，因此改用片段比對而不是整串相等比對。
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
+  select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
     from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
    where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'formation_status';
 
@@ -530,7 +545,7 @@ begin
       alter column formation_status set default 'COLLECTING'::public.departure_formation_status;
   end if;
 
-  select pg_get_expr(ad.adbin, ad.adrelid) into d
+  select pg_catalog.pg_get_expr(ad.adbin, ad.adrelid) into d
     from pg_attrdef ad join pg_attribute a on a.attrelid = ad.adrelid and a.attnum = ad.adnum
    where ad.adrelid = 'public.trip_departures'::regclass and a.attname = 'formation_status';
 
