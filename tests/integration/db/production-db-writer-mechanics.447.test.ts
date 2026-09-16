@@ -28,7 +28,12 @@ localDescribe('Issue #447 dedicated Production-writer mechanics on isolated Post
     await admin.unsafe(`create role ${OWNER} nologin nosuperuser nocreatedb nocreaterole noreplication nobypassrls noinherit`);
     await admin.unsafe(`create role ${WRITER} login password '${PASSWORD}' nosuperuser nocreatedb nocreaterole noreplication nobypassrls noinherit`);
     await admin.unsafe(`grant ${OWNER} to ${WRITER} with inherit false, set true`);
-    await admin.unsafe(`create schema ${SCHEMA} authorization ${OWNER}`);
+
+    // Supabase's postgres role is intentionally not a true PostgreSQL SUPERUSER.
+    // Keep the test schema admin-owned, mirroring Production's existing public schema,
+    // and grant only the schema privileges the migration owner needs to create objects.
+    await admin.unsafe(`create schema ${SCHEMA}`);
+    await admin.unsafe(`grant usage, create on schema ${SCHEMA} to ${OWNER}`);
 
     writer = postgres(`postgresql://${WRITER}:${PASSWORD}@127.0.0.1:54322/postgres`, {
       max: 4,
