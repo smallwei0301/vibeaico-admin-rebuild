@@ -208,7 +208,7 @@ describe('scorecard live readiness (#462)', () => {
     expect(result.observed).toMatchObject({ sharedTestPeak: 1, activeCandidatePeak: 0 });
   });
 
-  it('labels peak counters as recorded-only rather than independently reconstructed', () => {
+  it('reconstructs zero peaks from an explicitly empty new-run event stream', () => {
     const run = activeRun();
     run.inventory.mainTerraPeak = 1;
     run.inventory.activeCandidatePeak = 1;
@@ -219,7 +219,50 @@ describe('scorecard live readiness (#462)', () => {
       mainTerraPeak: 1,
       activeCandidatePeak: 1,
       sharedTestPeak: 0,
-      counterEvidence: 'RECORDED_ONLY',
+      counterEvidence: 'WIP_EVENTS_RECONSTRUCTED',
     });
+  });
+
+  it('keeps an active OBSERVED_V1 Run unready when its WIP raw-event stream is unavailable', () => {
+    const run = activeRun();
+    delete run.wipLifecycle;
+
+    const result = analyzeScorecardReadiness(run);
+
+    expect(result.readyForContinuedCapture).toBe(false);
+    expect(result.liveCaptureStatus).toBe('NEEDS_CAPTURE');
+    expect(result.rawCaptureGaps).toContain(
+      'wipLifecycle events are required for OBSERVED_V1 WIP peak evidence; unknown remains unavailable',
+    );
+    expect(result.observed.counterEvidence).toBe('RECORDED_ONLY');
+  });
+
+  it('reconstructs BUILD, candidate and TEST peaks from identity-bound lifecycle events', () => {
+    const run = activeRun();
+    const sha = 'a'.repeat(40);
+    run.wipLifecycle.events = [
+      { id: 'build-1', at: '2026-09-15T01:00:00Z', kind: 'BUILD_ENTER', pr: 11, issue: 101, head: sha, workstream: 'PRODUCT_MAINLINE', reason: 'selected' },
+      { id: 'build-2', at: '2026-09-15T01:01:00Z', kind: 'BUILD_ENTER', pr: 12, issue: 102, head: sha, workstream: 'PRODUCT_MAINLINE', reason: 'selected' },
+      { id: 'build-1-exit', at: '2026-09-15T01:02:00Z', kind: 'BUILD_EXIT', pr: 11, issue: 101, head: sha, workstream: 'PRODUCT_MAINLINE', reason: 'frozen' },
+      { id: 'test-1', at: '2026-09-15T01:03:00Z', kind: 'TEST_ENTER', pr: 11, issue: 101, head: sha, workstream: 'PRODUCT_MAINLINE', reason: 'canonical test' },
+    ];
+    run.inventory.mainTerraPeak = 2;
+    run.inventory.activeCandidatePeak = 2;
+    run.inventory.sharedTestPeak = 1;
+    const result = analyzeScorecardReadiness(run);
+    expect(result.readyForContinuedCapture).toBe(true);
+    expect(result.observed.counterEvidence).toBe('WIP_EVENTS_RECONSTRUCTED');
+  });
+
+  it('fails closed for malformed, out-of-order or head-mismatched lifecycle events', () => {
+    const run = activeRun();
+    const sha = 'a'.repeat(40);
+    run.wipLifecycle.events = [
+      { id: 'same', at: '2026-09-15T01:01:00Z', kind: 'BUILD_EXIT', pr: 11, issue: 101, head: sha, workstream: 'PRODUCT_MAINLINE', reason: 'bad' },
+      { id: 'same', at: '2026-09-15T01:00:00Z', kind: 'BUILD_ENTER', pr: 11, issue: 101, head: 'b'.repeat(40), workstream: 'PRODUCT_MAINLINE', reason: 'bad' },
+    ];
+    const result = analyzeScorecardReadiness(run);
+    expect(result.validLedger).toBe(false);
+    expect(result.liveCaptureStatus).toBe('NEEDS_CAPTURE');
   });
 });

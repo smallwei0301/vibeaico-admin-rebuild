@@ -95,12 +95,31 @@ function verifiedIssueCloseCount(run) {
   return subjects.size;
 }
 
+function reconstructWipPeaks(run) {
+  const events = run?.wipLifecycle?.events;
+  if (!Array.isArray(events)) return { available: false, peaks: null };
+  const states = new Map();
+  const peaks = { mainTerraPeak: 0, activeCandidatePeak: 0, sharedTestPeak: 0 };
+  for (const event of events) {
+    const enter = { BUILD_ENTER: 'BUILD', VERIFY_ENTER: 'VERIFY', TEST_ENTER: 'TEST' }[event.kind];
+    const exit = { BUILD_EXIT: 'BUILD', VERIFY_EXIT: 'VERIFY', TEST_EXIT: 'TEST' }[event.kind];
+    if (enter) states.set(event.pr, { state: enter, issue: event.issue });
+    if (exit) states.delete(event.pr);
+    const active = [...states.values()];
+    peaks.mainTerraPeak = Math.max(peaks.mainTerraPeak, active.filter(item => item.state === 'BUILD').length);
+    peaks.sharedTestPeak = Math.max(peaks.sharedTestPeak, active.filter(item => item.state === 'TEST').length);
+    peaks.activeCandidatePeak = Math.max(peaks.activeCandidatePeak, new Set(active.map(item => item.issue)).size);
+  }
+  return { available: true, peaks };
+}
+
 export function analyzeScorecardReadiness(run) {
   const validationErrors = validateRunLedgerV2(run);
   const tasks = observedTaskCounters(run);
   const rawCaptureGaps = [];
   const consistencyWarnings = [];
   const scoreProfileTarget = targetScoreProfile(run);
+  const lifecycle = reconstructWipPeaks(run);
 
   if (validationErrors.length === 0) {
     for (const field of REQUIRED_EVENT_COUNTERS) {
@@ -128,6 +147,16 @@ export function analyzeScorecardReadiness(run) {
     }
     if (tasks.duplicateIds.length) {
       rawCaptureGaps.push(`modelUsage.tasks has duplicate task id(s): ${tasks.duplicateIds.join(', ')}`);
+    }
+    if (scoreProfileTarget === 'OBSERVED_V1' && !lifecycle.available) {
+      rawCaptureGaps.push('wipLifecycle events are required for OBSERVED_V1 WIP peak evidence; unknown remains unavailable');
+    }
+    if (lifecycle.available) {
+      for (const field of ['mainTerraPeak', 'activeCandidatePeak', 'sharedTestPeak']) {
+        if (run.inventory?.[field] !== lifecycle.peaks[field]) {
+          consistencyWarnings.push(`inventory.${field}=${run.inventory?.[field]} disagrees with wipLifecycle-derived ${lifecycle.peaks[field]}`);
+        }
+      }
     }
 
     if (num(run?.flow?.lunaTasks) !== tasks.lunaTasks) {
@@ -189,7 +218,7 @@ export function analyzeScorecardReadiness(run) {
       mainTerraPeak: observedNumber(run?.inventory?.mainTerraPeak),
       activeCandidatePeak: observedNumber(run?.inventory?.activeCandidatePeak),
       sharedTestPeak: observedNumber(run?.inventory?.sharedTestPeak),
-      counterEvidence: 'RECORDED_ONLY',
+      counterEvidence: lifecycle.available ? 'WIP_EVENTS_RECONSTRUCTED' : 'RECORDED_ONLY',
     },
     readyForContinuedCapture,
   };

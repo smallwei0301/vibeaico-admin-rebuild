@@ -20,6 +20,10 @@ const CLOSEOUT_STATE = new Set(["OPEN", "CLOSED"]);
 const SHA40 = /^[0-9a-f]{40}$/;
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const DURABLE_EVIDENCE_REF = /^[a-z][a-z0-9+.-]*:[A-Za-z0-9._/#:-]{1,299}$/i;
+const WIP_EVENT_KIND = new Set([
+  "BUILD_ENTER", "BUILD_EXIT", "VERIFY_ENTER", "VERIFY_EXIT",
+  "TEST_ENTER", "TEST_EXIT", "REFILL_ADMITTED", "REFILL_REJECTED",
+]);
 
 export const RUN_CLOSEOUT_TERMINAL_POLICY =
   "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED";
@@ -103,8 +107,52 @@ export function createRunLedgerV2(
       closedAt: null,
       evidenceRef: null,
     },
+    // This starts empty deliberately: an empty append-only observation stream is
+    // evidence of no recorded WIP transitions, not an invented historical peak.
+    wipLifecycle: { schemaVersion: 1, events: [] },
     completionTruth: { status: "NOT_CHECKED", checkedAt: null, claims: [] },
   };
+}
+
+function validateWipLifecycle(run) {
+  if (run.wipLifecycle === undefined) return [];
+  const lifecycle = run.wipLifecycle;
+  if (!hasExactKeys(lifecycle, ["schemaVersion", "events"])) {
+    return ["wipLifecycle requires exactly schemaVersion and events"];
+  }
+  const errors = [];
+  if (lifecycle.schemaVersion !== 1) errors.push("wipLifecycle.schemaVersion must be 1");
+  if (!Array.isArray(lifecycle.events)) return [...errors, "wipLifecycle.events must be an array"];
+  const ids = new Set();
+  let previousAt = -Infinity;
+  const states = new Map();
+  lifecycle.events.forEach((event, index) => {
+    const key = `wipLifecycle.events[${index}]`;
+    if (!hasExactKeys(event, ["id", "at", "kind", "pr", "issue", "head", "workstream", "reason"])) {
+      errors.push(`${key} must contain exactly id, at, kind, pr, issue, head, workstream, reason`); return;
+    }
+    if (typeof event.id !== "string" || !event.id.trim() || ids.has(event.id)) errors.push(`${key}.id must be unique and non-empty`);
+    ids.add(event.id);
+    if (!isValidUtcTimestamp(event.at) || Date.parse(event.at) < previousAt) errors.push(`${key}.at must be non-decreasing ISO UTC`);
+    previousAt = Math.max(previousAt, Date.parse(event.at));
+    if (!WIP_EVENT_KIND.has(event.kind)) errors.push(`${key}.kind is invalid`);
+    if (!Number.isSafeInteger(event.pr) || event.pr <= 0) errors.push(`${key}.pr must be a positive safe integer`);
+    if (!Number.isSafeInteger(event.issue) || event.issue <= 0) errors.push(`${key}.issue must be a positive safe integer`);
+    if (!SHA40.test(event.head ?? "")) errors.push(`${key}.head must be a 40-character SHA`);
+    if (event.workstream !== "PRODUCT_MAINLINE") errors.push(`${key}.workstream must be PRODUCT_MAINLINE`);
+    if (typeof event.reason !== "string" || !event.reason.trim()) errors.push(`${key}.reason is required`);
+    const current = states.get(event.pr);
+    const enters = { BUILD_ENTER: "BUILD", VERIFY_ENTER: "VERIFY", TEST_ENTER: "TEST" };
+    const exits = { BUILD_EXIT: "BUILD", VERIFY_EXIT: "VERIFY", TEST_EXIT: "TEST" };
+    if (enters[event.kind]) {
+      if (current) errors.push(`${key} cannot enter ${enters[event.kind]} while PR #${event.pr} is ${current.state}`);
+      else states.set(event.pr, { state: enters[event.kind], head: event.head });
+    } else if (exits[event.kind]) {
+      if (!current || current.state !== exits[event.kind] || current.head !== event.head) errors.push(`${key} must exit the same live state and head it entered`);
+      else states.delete(event.pr);
+    }
+  });
+  return [...new Set(errors)];
 }
 
 function validateCloseoutContract(run) {
@@ -214,6 +262,7 @@ export function validateRunLedgerV2(run) {
   errors.push(...validateLegacyLedger(legacy));
 
   if (run.deliveryTruthVersion === 4) errors.push(...validateCloseoutContract(run));
+  errors.push(...validateWipLifecycle(run));
 
   const truth = run.completionTruth;
   if (!truth || typeof truth !== "object" || Array.isArray(truth)) return [...errors, "completionTruth must be an object"];
