@@ -49,6 +49,8 @@ function assertBackupEnvelopeCommon(backupEvidence, mainSha) {
  * This is not a PASS by itself. The recovery adapter may accept it only for
  * non-BACKFILL risk tiers where the canonical recovery control is the trusted
  * local restore rehearsal. BACKFILL always rejects this marker.
+ *
+ * @param {{projectRef?: string, capturedAt?: string, mainSha?: string, reason?: string}} [input]
  */
 export function buildBackupMetadataNotCaptured({
   projectRef = EXPECTED_PROJECT_REF,
