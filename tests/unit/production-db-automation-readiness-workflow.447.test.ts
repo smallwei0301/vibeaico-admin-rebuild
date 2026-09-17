@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('.github/workflows/production-db-automation-readiness.yml', 'utf8');
+const caBundle = readFileSync('config/supabase-production-root-bundle.crt', 'utf8');
 
 function position(text: string) {
   const index = source.indexOf(text);
@@ -22,8 +24,8 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain('credential-proof:');
     expect(source).toContain('environment: production-db-writer');
     expect(source).toContain('PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}');
-    expect(source).toContain('PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}');
-    expect(source).toContain('NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt');
+    expect(source).toContain('NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt');
+    expect(source).not.toContain('PRODUCTION_DB_SSL_ROOT_CERT');
     expect(source).not.toContain('NODE_TLS_REJECT_UNAUTHORIZED');
     expect(source).not.toContain('rejectUnauthorized: false');
     expect(source).not.toContain('PRODUCTION_DB_RELEASE_TOKEN');
@@ -33,6 +35,14 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).not.toContain('databaseMutationAuthorized: true');
   });
 
+  it('pins the public Supabase production CA bundle used by the official CLI', () => {
+    expect(caBundle.match(/-----BEGIN CERTIFICATE-----/g)?.length).toBe(2);
+    expect(caBundle).not.toContain('PRIVATE KEY');
+    expect(createHash('sha256').update(caBundle).digest('hex')).toBe(
+      '6ecd239038a7db063a6619b71742372ecfe06c0b0ec12a9993fee4445bf0d4d6',
+    );
+  });
+
   it('fails closed when the sanitized credential proof is not actually verified', () => {
     const proofStart = position('- name: Verify project-bound writer credential without mutation');
     const upload = position('- uses: actions/upload-artifact@v4');
@@ -40,6 +50,7 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain("proof.status !== 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED'");
     expect(source).toContain("proof.databaseMutationAuthorized !== false");
     expect(source).toContain('if: ${{ always() }}');
+    expect(source).toContain('test -s "$NODE_EXTRA_CA_CERTS"');
   });
 
   it('allows one protected-main activation marker without enabling readiness on every push', () => {
