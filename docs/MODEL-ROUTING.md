@@ -156,7 +156,10 @@ Product 高後果類型維持：
 300 秒沒有可核對的實際執行證據即降級；明確失敗／無回應／不能切換模型立即降級。
 諮詢後修改重審一律 Sol (`gpt-5.6-sol`) 或 Opus (`claude-opus-5`)；不再 retry／互換 Astra/Fable。
 無 selector 時用 CURRENT_AGENT 模式，requested=not_requested；未知 actual/identity 明記 unknown/UNKNOWN。
-不要找外部模型插件，不要因 lack of selector 要求 Owner 再授權，更不能假填指定模型。
+模型由 runtime 的 model selector 選擇，不是另開 plugin（外掛）或 connector（連接器）。
+不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
+MODEL_EXECUTION_UNAVAILABLE 僅用於連已授權的 CURRENT_AGENT 也不能實際審查；
+不能選模型時依 #552 直接使用目前 agent，不要求第二次 Owner 授權或再試昂貴模型。
 
 Sol／Opus 從 `models.finalRiskDowngradeAllowedModels` 讀取。CURRENT_AGENT 是條件模式，不是全域 wildcard。
 兩類降級都要保留真實 adversarialEvidence、lineage、executionRef、reason/evidence、prior findings、current digest。
