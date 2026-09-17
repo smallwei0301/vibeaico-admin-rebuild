@@ -66,12 +66,41 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - name: Install Supabase Production CA for verify-full
+        shell: bash
+        env:
+          PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_DB_SSL_ROOT_CERT"
+          case "$PRODUCTION_DB_SSL_ROOT_CERT" in
+            *"-----BEGIN CERTIFICATE-----"*"-----END CERTIFICATE-----"*) ;;
+            *) echo '::error::PRODUCTION_DB_SSL_ROOT_CERT must contain a PEM certificate'; exit 1 ;;
+          esac
+          printf '%s\n' "$PRODUCTION_DB_SSL_ROOT_CERT" > "$RUNNER_TEMP/supabase-production-root.crt"
+          chmod 600 "$RUNNER_TEMP/supabase-production-root.crt"
       - name: Verify project-bound writer credential without mutation
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
           WRITER_CREDENTIAL_ENVIRONMENT: production-db-writer
-        run: node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = `${process.env.RUNNER_TEMP}/production-db-writer-credential-proof.json`;
+          const proof = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (proof.status !== 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED') {
+            throw new Error(`writer credential proof is not verified: ${proof.status || 'missing'}`);
+          }
+          if (proof.databaseMutationAuthorized !== false) {
+            throw new Error('credential proof must never authorize Production mutation');
+          }
+          NODE
       - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: production-db-writer-credential-proof-${{ needs.verify-exact-main.outputs.main_sha }}
           path: ${{ runner.temp }}/production-db-writer-credential-proof.json
