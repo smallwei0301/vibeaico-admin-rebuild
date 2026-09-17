@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-17-issue-447-readiness-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-17T02:42:09Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "issue/447",
+      "note": "Owner 2026-09-17 directed #447 to finish without further premium Fable/Astra retries, use current GPT-5.6 Sol adversarial review under #552, reduce duplicated defensive process, and keep Production migrations NOT_RUN during source/readiness work."
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "e17512320dcbca7baa16275e2f410d5c7aff4589",
+      "note": "Live origin/main when the final Evidence + Orchestration + Readiness slice was rebuilt after #556 Run-binding governance merged."
+    }
+  ],
+  "main": {
+    "startSha": "e17512320dcbca7baa16275e2f410d5c7aff4589",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 1,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "issue-447-final-readiness-sol",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "role": "Issue #447 final Evidence + Orchestration + Readiness consolidation and adversarial review. Rebuilt the remaining slice from live main, kept pending Production DDL/DML/migrations NOT_RUN, aligned G4 with canonical risk tiers, and used Owner #552 Sol downgrade rather than repeating premium review.",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": false,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 1,
+    "solIssues": 1
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "This Run begins after #551 Writer Core merged. Historical #455/#551 premium-review attempts are not reset or rewritten.",
+    "The final source/readiness slice combines the previously planned B and C work to avoid duplicating CI, Final Risk, and closeout cycles while remaining below the 40-file review-packet bound.",
+    "No Production migration, DDL, DML, payment/order mutation, reset/seed, or deployment promotion is authorized by this Run."
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
