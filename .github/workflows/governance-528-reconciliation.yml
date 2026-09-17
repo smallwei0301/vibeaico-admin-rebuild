@@ -1,0 +1,73 @@
+name: Governance 528 reconciliation evidence
+on:
+  push:
+    branches: [governance/issue-528-reconciliation-audit]
+    paths: [.github/workflows/governance-528-reconciliation.yml]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 4db7496a9b0b2e08f432a720e0342f29b6f47f98
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { pathToFileURL } = require('node:url');
+            const { execFileSync } = require('node:child_process');
+            const crypto = require('node:crypto');
+            const policySha = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+            const {owner, repo} = context.repo;
+            const mainBefore = (await github.rest.repos.getBranch({owner,repo,branch:'main'})).data.commit.sha;
+            const {observeClassifications} = await import(pathToFileURL(process.cwd()+'/scripts/agents/workstream-classification-watch.mjs').href);
+            const items = new Map();
+            const files = new Map();
+            const wrapped = {request: async (route, params) => {
+              const response = await github.request(route, params);
+              const match = String(route).match(/\/(issues|pulls)\/(\d+)$/);
+              if (match) items.set(Number(match[2]), response.data);
+              const fm = String(route).match(/\/pulls\/(\d+)\/files$/);
+              if (fm) { const n=Number(fm[1]); if(params.page===1) files.set(n,[]); files.set(n,[...(files.get(n)||[]),...response.data.map(f=>({filename:f.filename,previous_filename:f.previous_filename,status:f.status,sha:f.sha}))]); }
+              return response;
+            }};
+            const report = await observeClassifications({github:wrapped,owner,repo,policySha});
+            fs.mkdirSync('reconciliation',{recursive:true});
+            fs.writeFileSync('reconciliation/observation.json',JSON.stringify(report,null,2)+'\n');
+            const compact = [...items.values()].map(i=>({number:i.number,kind:i.head?'PR':'ISSUE',title:i.title,body:i.body,state:i.state,state_reason:i.state_reason,merged:i.merged,merged_at:i.merged_at,closed_at:i.closed_at,created_at:i.created_at,updated_at:i.updated_at,url:i.html_url,head:i.head?{sha:i.head.sha,ref:i.head.ref}:null,base:i.base?{sha:i.base.sha,ref:i.base.ref}:null,changed_files:i.changed_files,labels:i.labels.map(l=>l.name),bodySha256:crypto.createHash('sha256').update(i.body||'').digest('hex'),files:files.get(i.number)||null}));
+            fs.writeFileSync('reconciliation/items.json',JSON.stringify(compact,null,2)+'\n');
+            const captures=[];
+            for (const [name,ref,path] of [['old-run',policySha,'docs/metrics/agent-runs/2026-09-15-product-delivery-r01.json'],['candidate-run','93f4de6e094ef0848515565bffdab4750cf1a89e','docs/metrics/agent-runs/2026-09-17-product-delivery-r01.json']]) {
+              const response=(await github.rest.repos.getContent({owner,repo,path,ref})).data;
+              if(Array.isArray(response)||response.type!=='file'||response.encoding!=='base64') throw new Error('Invalid ledger file response');
+              const bytes=Buffer.from(response.content,'base64');
+              const blob=crypto.createHash('sha1').update(Buffer.concat([Buffer.from('blob '+bytes.length+'\0'),bytes])).digest('hex');
+              if(blob!==response.sha) throw new Error('Ledger blob mismatch');
+              const dest='reconciliation/'+name+'.json'; fs.writeFileSync(dest,bytes);
+              let status=0,stdout='';
+              try{stdout=execFileSync('node',['scripts/agents/scorecard-readiness.mjs',dest,'--strict-live'],{encoding:'utf8',stdio:['ignore','pipe','pipe']});}
+              catch(e){status=e.status??-1; stdout=String(e.stdout||'');}
+              fs.writeFileSync('reconciliation/'+name+'-readiness.txt',stdout);
+              captures.push({name,ref,path,blob,readinessExitCode:status});
+            }
+            const mainAfter=(await github.rest.repos.getBranch({owner,repo,branch:'main'})).data.commit.sha;
+            fs.writeFileSync('reconciliation/capture.json',JSON.stringify({mode:'READ_ONLY',runId:context.runId,policySha,mainBefore,mainAfter,mainStable:mainBefore===mainAfter,captures},null,2)+'\n');
+            execFileSync('git',['archive','--format=tar','-o','reconciliation/trusted-policy.tar',policySha,'scripts/agents','docs/metrics','docs/AGENT-EXECUTION.md','docs/OWNER-DECISIONS.md','docs/AGENT-PLAYBOOK.md']);
+            core.info(JSON.stringify({mode:'READ_ONLY',policySha,mainBefore,mainAfter,observedAt:report.observedAt,counts:report.counts,findings:report.findings.length,unavailable:report.unavailable.length,captures}));
+            await core.summary.addHeading('Issue 528 read-only evidence').addRaw('No Issue, PR, branch, database or deployment was changed by this job.\n').addCodeBlock(JSON.stringify({counts:report.counts,findings:report.findings.length,unavailable:report.unavailable.length,policySha,mainBefore,mainAfter},null,2),'json').write();
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: governance-528-readonly-evidence
+          path: reconciliation/
+          if-no-files-found: error
+          retention-days: 14
