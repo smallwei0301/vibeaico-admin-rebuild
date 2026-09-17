@@ -1,4 +1,4 @@
-name: Issue 552 fixture fix
+name: Issue 552 documentation contract fix
 on:
   push:
     branches: [governance/issue-552-fixture-fix-transfer]
@@ -14,37 +14,52 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Apply only two exact verified source edits
+      - name: Apply three exact document edits and verify the existing contract
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import subprocess
-          test = Path('tests/unit/final-risk-cost-policy.552.test.ts')
+          skill = Path('.agents/skills/vibeaico-astra-review/SKILL.md')
+          routing = Path('docs/MODEL-ROUTING.md')
           playbook = Path('docs/AGENT-PLAYBOOK.md')
           def blob(p): return subprocess.check_output(['git', 'hash-object', str(p)], text=True).strip()
-          assert blob(test) == '024685cbfd75047eeec3bb63b0764d98b250b8ab'
-          assert blob(playbook) == '89c220f4c29c1925d859ac7858c02c8ef0c87948'
-          source = test.read_text()
-          before = 'const evaluate = (reviewer, extra = {}, trusted = true)'
-          assert source.count(before) == 1
-          test.write_text(source.replace(before, 'const evaluate = (reviewer = {}, extra = {}, trusted = true)'))
-          lesson = '- 本輪 CI 教訓（#554，run `35168810388`）：局部 Node 反例測試 34/34 通過，仍未涵蓋\n  TypeScript 型別檢查；fixture 參數漏寫型別造成 TS7006。以空物件預設值補上型別推導，\n  不使用 any／忽略錯誤或放寬 strict。局部測試只能證明行為，完整 typecheck、Vitest、build\n  必須另外取得實際通過證據；最終重驗結果記入 #552 closeout，不盲目重跑失敗版本。\n'
-          playbook.write_text(playbook.read_text() + lesson)
-          assert blob(test) == 'c654e396a1ced1926d0e1748422dcf718b56c4e6'
+          assert blob(skill) == '70aa1bf1a645d10eb9cffcb7fa65f4148d2b4ba6'
+          assert blob(routing) == 'f0b8c41181ac06871989bb22192d1115b6d42b57'
           assert blob(playbook) == '7007c22dfeba9f5a1c42cbe9ec74a2ffaa190dbc'
-          Path('tests/unit/.issue-552-local.mjs').write_text(test.read_text().replace("from 'vitest'", "from 'node:test'"))
+          s = skill.read_text()
+          anchor = '`prepare` 會附 reviewerRoute；`recover` 不再輸出昂貴同級 retry/switch。\n'
+          addition = '\n模型選擇不是另一個 plugin、connector、MCP、外部服務。不得因主 Session 本身不是 Astra/Fable\n就搜尋額外 plugin（外掛）或 connector（連接器）、要求 Owner 開通審查通道。\n「先改派模型，再談 unavailable」在 #552 下指依已授權路由降為 Sol/Opus，或無 selector\n時使用 CURRENT_AGENT，不是再試另一個昂貴模型。只有包含 CURRENT_AGENT 在內的可用路徑\n都無法真正執行審查，才記 MODEL_EXECUTION_UNAVAILABLE 並停放該候選；不停止其他安全工作。\n'
+          assert s.count(anchor) == 1
+          s = s.replace(anchor, anchor + addition)
+          old = '只有 `READY` 才建立昂貴 reviewer；`NOT_READY` 回 cheap precheck，不算 reviewer round。'
+          new = '只有 `READY` 才依 reviewerRoute 執行相應審查；`READY` 本身不是昂貴模型派送許可。`NOT_READY` 回 cheap precheck，不算 reviewer round。'
+          assert s.count(old) == 1
+          skill.write_text(s.replace(old, new))
+          old = '不要找外部模型插件，不要因 lack of selector 要求 Owner 再授權，更不能假填指定模型。\n'
+          new = '模型由 runtime 的 model selector 選擇，不是另開 plugin（外掛）或 connector（連接器）。\n不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。\nMODEL_EXECUTION_UNAVAILABLE 僅用於連已授權的 CURRENT_AGENT 也不能實際審查；\n不能選模型時依 #552 直接使用目前 agent，不要求第二次 Owner 授權或再試昂貴模型。\n'
+          assert routing.read_text().count(old) == 1
+          routing.write_text(routing.read_text().replace(old, new))
+          lesson = '- 同輪文件契約教訓（#554，run `35169102295`）：2,912 項測試通過，1 項因 skill 改寫時\n  遺失「模型不是外部 plugin／connector 通道」的既有提醒而失敗。補回有實際意義的指引，\n  並明定 unavailable 必須連 CURRENT_AGENT 也無法執行；不刪測試、不恢復昂貴互換。\n  文件替換前要跑既有跨文件契約，避免局部新測試全綠卻漏掉舊入口要求。\n'
+          playbook.write_text(playbook.read_text() + lesson)
+          assert blob(skill) == '85a3763c983b858d44d019ae4b5e5a500c25e358'
+          assert blob(routing) == '25f52f4f12a76cae1349698c8e9b994e604ad78f'
+          assert blob(playbook) == '17260e420c509d1b74d85a4e3b06e6dfc7a41d99'
+          owner = Path('docs/decisions/2026-09-10-owner-final-risk-roi-routing.md').read_text()
+          for text in [skill.read_text(), routing.read_text(), owner]:
+              for token in ['model selector', 'plugin', 'connector', 'MODEL_EXECUTION_UNAVAILABLE']:
+                  assert token in text, token
+          for text in [skill.read_text(), owner]:
+              assert '先改派模型，再談 unavailable' in text
+          for text, tokens in [(skill.read_text(), ['不是另一個 plugin、connector、MCP、外部服務', '不得因主 Session 本身不是 Astra/Fable']), (routing.read_text(), ['擴大可接受／可放行候選集合', '只增加拒絕條件', '不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道']), (owner, ['不是 plugin、connector、MCP、外部 provider channel', '擴大原本可接受／可放行的候選集合', '只增加拒絕條件'])]:
+              for token in tokens: assert token in text, token
+          print('Existing #332 documentation assertions: 22/22 PASS')
+          subprocess.run(['git', 'add', '--', str(skill), str(routing), str(playbook)], check=True)
           PY
-          trap 'rm -f tests/unit/.issue-552-local.mjs' EXIT
-          node --test tests/unit/.issue-552-local.mjs
-          git add -- tests/unit/final-risk-cost-policy.552.test.ts docs/AGENT-PLAYBOOK.md
           git diff --cached --check
-          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          test "$(git diff --cached --name-only | wc -l)" -eq 3
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(#552): infer fixture type and record full-CI lesson'
+          git commit -m 'fix(#552): preserve model-channel documentation contract and CI lesson'
           git push origin HEAD:refs/heads/governance/issue-552-fixture-fix-transfer
