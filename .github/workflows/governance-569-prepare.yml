@@ -1,0 +1,80 @@
+name: Prepare bounded issue 569 source
+on:
+  push:
+    branches: [governance/issue-569-scorecard-window]
+    paths: [.github/workflows/governance-569-prepare.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    if: github.repository == 'smallwei0301/vibeaico-admin-rebuild'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: governance/issue-569-scorecard-window
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply only the reviewed source patch
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = 'governance/issue-569-scorecard-window'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git apply --check .governance-569.patch
+          git apply .governance-569.patch
+          git diff --check
+          mkdir -p "$RUNNER_TEMP/issue569-evidence"
+          git diff -- scripts/agents/scorecard-readiness.mjs docs/AGENT-EXECUTION.md docs/AGENT-PLAYBOOK.md > "$RUNNER_TEMP/issue569-evidence/reviewed-source.diff"
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Real focused positive and counterexample tests
+        run: |
+          set -euo pipefail
+          npx vitest run tests/unit/scorecard-readiness-window.569.test.ts tests/unit/scorecard-readiness.462.test.ts 2>&1 | tee "$RUNNER_TEMP/issue569-evidence/focused-tests.log"
+          cp scripts/agents/scorecard-readiness.mjs "$RUNNER_TEMP/issue569-readiness-original.mjs"
+          trap 'cp "$RUNNER_TEMP/issue569-readiness-original.mjs" scripts/agents/scorecard-readiness.mjs' EXIT
+          node --input-type=module - <<'JS'
+          import fs from 'node:fs';
+          const path='scripts/agents/scorecard-readiness.mjs';
+          const source=fs.readFileSync(path,'utf8');
+          const needle="if (scoreProfileTarget === 'OBSERVED_V1') {";
+          if(source.split(needle).length!==2)throw new Error('Mutation target not unique');
+          fs.writeFileSync(path,source.replace(needle,'if (false) {'));
+          JS
+          set +e
+          npx vitest run tests/unit/scorecard-readiness-window.569.test.ts > "$RUNNER_TEMP/issue569-evidence/mutation-tests.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          echo "REMOVED_TIME_BOUNDARY_DETECTED exit=$result" | tee "$RUNNER_TEMP/issue569-evidence/mutation-verdict.txt"
+          cp "$RUNNER_TEMP/issue569-readiness-original.mjs" scripts/agents/scorecard-readiness.mjs
+          trap - EXIT
+          npx vitest run tests/unit/scorecard-readiness-window.569.test.ts > "$RUNNER_TEMP/issue569-evidence/restored-tests.log" 2>&1
+      - name: Commit only four source files, retire this transport, never touch main
+        run: |
+          set -euo pipefail
+          git rm .governance-569.patch .github/workflows/governance-569-prepare.yml
+          git add scripts/agents/scorecard-readiness.mjs tests/unit/scorecard-readiness-window.569.test.ts docs/AGENT-EXECUTION.md docs/AGENT-PLAYBOOK.md
+          git diff --cached --check
+          node --input-type=module - <<'JS'
+          import {execFileSync} from 'node:child_process';
+          const expected=['docs/AGENT-EXECUTION.md','docs/AGENT-PLAYBOOK.md','scripts/agents/scorecard-readiness.mjs','tests/unit/scorecard-readiness-window.569.test.ts'].sort();
+          const actual=execFileSync('git',['diff','--name-only','4db7496a9b0b2e08f432a720e0342f29b6f47f98'],{encoding:'utf8'}).trim().split('\n').sort();
+          if(JSON.stringify(actual)!==JSON.stringify(expected))throw new Error('Unexpected source scope');
+          JS
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(governance): reject WIP events outside their Run window (#569)'
+          git push origin HEAD:refs/heads/governance/issue-569-scorecard-window
+          git rev-parse HEAD > "$RUNNER_TEMP/issue569-evidence/exact-head.txt"
+          git diff --stat 4db7496a9b0b2e08f432a720e0342f29b6f47f98 > "$RUNNER_TEMP/issue569-evidence/scope.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: issue569-source-validation
+          path: ${{ runner.temp }}/issue569-evidence/
+          if-no-files-found: error
+          retention-days: 14
