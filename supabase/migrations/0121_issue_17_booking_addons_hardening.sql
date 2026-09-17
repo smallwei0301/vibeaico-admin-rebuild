@@ -172,9 +172,15 @@ begin
 
   -- 鎖住 booking 列：序列化同一筆預約上的併發加購，且讓 INHERIT 的 staff_id
   -- snapshot 讀到的是「當下」而不是交易開始前的舊值。
-  select id, staff_id, final_price, duration_minutes, end_at into v_booking
-    from public.bookings
-   where id = p_booking and tenant_id = p_tenant
+  --
+  -- ⚠️ 這裡的欄位一律要用 `b.` 明確限定：`final_price`／`duration_minutes`／
+  -- `end_at` 同時也是本函式 `returns table (...)` 宣告的 OUT 參數名稱，
+  -- plpgsql 會把它們同時當成區域變數。不限定 table alias 時 Postgres 判斷
+  -- 不出該用哪一個，直接丟 42702（ambiguous column reference），這正是本次
+  -- CI 12 個測項全部收斂成 500 的唯一成因（見 commit 說明的實測 psql 錯誤）。
+  select b.id, b.staff_id, b.final_price, b.duration_minutes, b.end_at into v_booking
+    from public.bookings b
+   where b.id = p_booking and b.tenant_id = p_tenant
    for update;
   if not found then
     raise exception 'BOOKING_NOT_FOUND' using errcode = 'P0002';
