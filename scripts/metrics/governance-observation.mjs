@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const DEFAULT_REPO = 'smallwei0301/vibeaico-admin-rebuild';
 const TERMINAL_LIFECYCLE = new Set([
   'COMPLETE', 'CLOSED', 'MERGED', 'OWNER_BLOCKED', 'SUPERSEDED',
-  'VERIFIED_FIXED', 'VERIFIED_MERGED', 'VERIFIED_CLOSED',
+  'VERIFIED_FIXED', 'VERIFIED_MERGED', 'VERIFIED_CLOSED', 'HISTORICAL',
 ]);
 const TERMINAL_MERGE_STATUS = new Set(['MERGED', 'VERIFIED_MERGED']);
 const TERMINAL_COMPLETION = new Set([
