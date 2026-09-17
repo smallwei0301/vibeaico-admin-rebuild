@@ -45,6 +45,7 @@ export const nav = {
   points: '點數管理',
   donate: '贊助我們',
   report_issue: '回報問題',
+  more: '更多',
 } as const;
 
 export type NavKey = keyof typeof nav;
@@ -72,3 +73,16 @@ export const navByMode: Partial<Record<string, Partial<Record<NavKey, string>>>>
 /** 取得某個業態模式下的選單文案 */
 export const navLabel = (key: NavKey, businessType = 'LOCAL_SHOP'): string =>
   navByMode[businessType]?.[key] ?? nav[key];
+
+/**
+ * GUIDE 手機五大父層級底部導航文案（見 `docs/integration/20-GUIDE-RESPONSIVE-UI.md` §2）。
+ * 與桌機 `nav.dashboard`（儀表板）故意不同字——基準圖與 20 分冊皆用「首頁」，
+ * 這是 GUIDE 手機第一層專屬名詞，不覆寫桌機既有用字。
+ */
+export const guideBottomNav = {
+  home: '首頁',
+  departures: '團次',
+  travelers: '旅客',
+  messages: '訊息',
+  more: '更多',
+} as const;
