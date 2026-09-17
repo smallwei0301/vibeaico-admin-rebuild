@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import { deleteTenantStorageObjectBestEffort, KEYWORD_REPLY_IMAGES_BUCKET } from '@/server/storage-cleanup';
+import { tenantOwnedPublicStorageUrl } from '@/server/storage';
 
 /**
  * PUT/DELETE /api/settings/line/keyword-replies/:id（04 分冊 §B-5）。
@@ -30,6 +32,15 @@ import { requireFeature } from '@/server/features';
  *
  * 判斷方式刻意寫成「**只有**停用、沒有夾帶任何內容變更」才放行——
  * 否則送 `{ active: false, content: {...} }` 就能繞過閘門改內容。
+ *
+ * ## 換圖／移除圖片時清掉舊 Storage 物件（Issue #50 item B）
+ *
+ * `content` 是整欄覆寫（不是逐欄 merge），所以「換圖」在 DB 層看起來就是
+ * 「舊 content.imageUrl 消失、新 content.imageUrl 出現」。PUT 在覆寫前先讀一次
+ * 舊 `content.imageUrl`，覆寫成功後若新舊網址不同（含「新的是空字串」＝移除
+ * 圖片），就呼叫 `deleteTenantStorageObjectBestEffort()` 刪掉舊物件。
+ * 這個呼叫 best-effort、永不 throw——刪不掉只留孤兒（可由共用清理 Issue 之後
+ * 回收），但 UPDATE 已經成功的儲存結果不能因為 Storage 清理失敗而回頭失敗。
  */
 
 const bodySchema = z.object({
@@ -69,12 +80,42 @@ export const PUT = handle(async (req, { params }) => {
     return ok();
   }
 
+  // content 整欄覆寫前先讀舊 imageUrl（換圖／移除圖片後才知道要不要清 Storage）。
+  let oldImageUrl = '';
+  if (b.content !== undefined) {
+    const { data: existing, error: existingError } = await t.supabase
+      .from('keyword_replies').select('content')
+      .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+    const existingContent = (existing.content ?? {}) as Record<string, unknown>;
+    oldImageUrl = typeof existingContent.imageUrl === 'string' ? existingContent.imageUrl : '';
+  }
+
   const { data, error } = await t.supabase
     .from('keyword_replies').update(update)
     .eq('id', id).eq('tenant_id', t.tenantId)
     .select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+
+  // 換圖／移除圖片：儲存已成功，再 best-effort 清掉舊物件；不影響回應結果。
+  // 用 canonical URL 比對（見 storage.ts 檔頭），避免同一物件的不同別名寫法
+  // （query string／百分比編碼差異）被誤判成「換了圖」而刪掉仍在用的物件。
+  if (b.content !== undefined) {
+    const newImageUrl = typeof b.content.imageUrl === 'string' ? (b.content.imageUrl as string) : '';
+    const canonicalOld =
+      tenantOwnedPublicStorageUrl(oldImageUrl, KEYWORD_REPLY_IMAGES_BUCKET, t.tenantId) ?? oldImageUrl;
+    const canonicalNew =
+      tenantOwnedPublicStorageUrl(newImageUrl, KEYWORD_REPLY_IMAGES_BUCKET, t.tenantId) ?? newImageUrl;
+    if (oldImageUrl && canonicalOld !== canonicalNew) {
+      await deleteTenantStorageObjectBestEffort({
+        bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+        url: oldImageUrl,
+        tenantId: t.tenantId,
+      });
+    }
+  }
 
   return ok();
 });
