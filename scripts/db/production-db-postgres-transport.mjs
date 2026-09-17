@@ -31,10 +31,18 @@ function decodeUsername(value) {
   }
 }
 
-function assertTlsMode(parsed) {
-  const sslmode = String(parsed.searchParams.get('sslmode') ?? '').trim().toLowerCase();
-  if (sslmode !== 'verify-full') {
-    fail('WRITER_URL_TLS_VERIFICATION_REQUIRED', 'Production DB writer URL must use sslmode=verify-full');
+function assertConnectionQuery(parsed) {
+  const entries = [...parsed.searchParams.entries()];
+  if (
+    entries.length !== 1 ||
+    entries[0][0] !== 'sslmode' ||
+    String(entries[0][1]).trim().toLowerCase() !== 'verify-full' ||
+    parsed.hash
+  ) {
+    fail(
+      'WRITER_URL_QUERY_PARAMETER_FORBIDDEN',
+      'Production DB writer URL must contain exactly one connection query parameter: sslmode=verify-full',
+    );
   }
 }
 
@@ -59,7 +67,7 @@ export function parseProjectBoundProductionDbWriterUrl(connectionString) {
 
   if (port !== '5432') fail('WRITER_URL_SESSION_MODE_REQUIRED', 'Production writer requires session/direct port 5432');
   if (database !== EXPECTED_DATABASE) fail('WRITER_DATABASE_MISMATCH', `expected database ${EXPECTED_DATABASE}`);
-  assertTlsMode(parsed);
+  assertConnectionQuery(parsed);
 
   let transportMode;
   if (host === DIRECT_HOST) {
