@@ -884,6 +884,23 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 - #555 首次驗證 run 35171817256：23/24 通過；唯一失敗是測試把 UNKNOWN+AGENT_LANE 當合法。保留既有來源規則，僅修正對照組；不得為測試通過放寬身分契約。
 
+#### 2026-09-17 綁定入口缺口：只驗 changed ledger 不代表所有 Product 已記帳（#556）
+
+- #551 有 Product CI、隔離測試與審查，但當時正文無 RUN_ID/SCORECARD_PATH；#538 只遍歷變更 ledger，
+  沒改帳本的 PR 沒有被要求提出有效綁定。這是檢查適用範圍缺口，不是再缺一套評分演算法。
+- 沿用既有 JSON/schema/strict-live 判定，從同一 required helper 核對 Product Run ID、exact-head bytes，
+  Product closeout owner、issue source 與 task；本機 full preflight 傳入同一正文。OWNER 不是記帳豁免。
+- 正例包含跨日 Run、JSON/Markdown 路徑與純治理不借 Run；反例含缺 ID、錯 Run、空 Run、closed/governance owner，
+  壞 JSON、symlink、blob/size 不符和來源缺失。直接執行 WIP workflow，確認未改 ledger 仍會失敗。
+- 未來不要用「今天沒有新檔名」推斷漏記；查同一 Run 的事件覆蓋。歷史 lost events 保持 unavailable，
+  current observation 只能證明重查時的事實，不能當成事件發生時的採集或效率分數。
+
+- #556 初次 branch-only runner 因 YAML 未引用 scalar 的冒號未啟動；修正為 block scalar，載體不保留於 main。
+- #556 run 35173223274：局部48/48、缺接線反例8項轉紅、還原48/48；完整測試2993/2994。
+  唯一失敗為 #497 正例只建空白 Run。補精確 issue/43 與 synthetic task 後仍保留原 freeze/dirty-worktree 斷言，未豁免新規則。
+
+- #556 run 35173586198 型別檢查指出 JS factory 的推導型別未包含展開欄位；僅對 synthetic fixture 明示型別，保留正式驗證器與全部斷言。
+
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
 - 首次／最近：2026-09-11／2026-09-11

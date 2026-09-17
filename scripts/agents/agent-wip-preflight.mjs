@@ -108,7 +108,7 @@ export function validateWipPreflight(input = {}) {
   const metadata = parseLaneMetadata(pr);
   // Metadata-only API callers stay compatible; the full CLI requires an inventory.
   if (changedFiles !== null) {
-    errors.push(...validateLocalRunLedgerChanges({ changedFiles, repositoryRoot }));
+    errors.push(...validateLocalRunLedgerChanges({ changedFiles, repositoryRoot, body: text }));
     errors.push(...validateSchemaStagedRelease({
       body: text,
       changedFiles,
