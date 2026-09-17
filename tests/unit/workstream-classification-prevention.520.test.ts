@@ -100,11 +100,12 @@ describe('watcher reuses actual-file classification, not titles or parent Runs',
 
 function provider(options: { mismatch?: boolean; unavailable?: boolean; stale?: boolean; truncated?: boolean; zeroContent?: boolean } = {}) {
   let reads = 0;
-  const request = vi.fn(async (route: string) => {
+  const request = vi.fn(async (route: string, params: { state?: string } = {}) => {
     // The test rejects every mutation method; the collector must stay read-only.
     expect(route.startsWith('GET ')).toBe(true);
     const resource = route.split('/{repo}/')[1];
     if (resource === 'issues') {
+      if (params.state === 'closed') return { data: [] };
       if (options.unavailable) throw new Error('do not leak this provider detail');
       return { data: [issue(), { ...pr(), pull_request: {} }] };
     }

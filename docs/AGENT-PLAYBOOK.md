@@ -901,6 +901,15 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 - #556 run 35173586198 型別檢查指出 JS factory 的推導型別未包含展開欄位；僅對 synthetic fixture 明示型別，保留正式驗證器與全部斷言。
 
+#### 2026-09-17 結案項目退出巡查的盲點（#558）
+
+- #530 曾 closed 卻保留 active；舊巡查只讀 open Issues 和近期 closed PR，關閉 Issue 後反而失去觀測。
+- 在既有唯讀巡查加入近期更新的 closed Issues，排除其中的 PR；用原欄位 parser 忽略範例、查殘留施工宣告。
+- snapshot 同時核對生命周期標籤；讀取失敗、缺頁與讀取中標籤變化仍 unavailable，不自動清除任何工作位置。
+- 正反例直接執行 collector，包括 closed+active、正常 closed、open active、PR 去重、72h、失敗分頁與標籤競態；
+  移除 closed-Issue inventory 或 snapshot lifecycle labels 必須使對應測試失敗。
+- 本輪擴大觀測母體，新舊 findings 總數不可直接當改善率；修補巡查不等於已清空既有分類存量。
+
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
 - 首次／最近：2026-09-11／2026-09-11
