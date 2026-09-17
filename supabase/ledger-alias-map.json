@@ -564,6 +564,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#18 缺口 A：owner-notify「本人確認加入」的 3 位上限併發洞修復。confirmOwnerNotifyBind() 原本是 app 層先 count 再 insert（不在同一交易），兩個好友幾乎同時在 LINE 上確認可能突破 Issue #18 明文裁決的 3 位上限、無付費解鎖。本筆新增 confirm_owner_notify_bind（SECURITY DEFINER，pg_advisory_xact_lock 依 tenant_id 串行化同租戶併發確認，bind request 列 for update 鎖，count 在鎖內讀取）與 owner_notify_max_recipients 常數函式；三段式 ACL 撤 PUBLIC／anon／authenticated、只授 service_role（同 0090 慣例）。不改動既有表結構／既有 RLS policy，只新增兩支函式。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
+      "repoFile": "0121_issue_17_booking_addons_hardening",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#17：booking_addons hardening migration。新增 C+ 業績三態、冪等 idempotency_key、deleted_at 軟刪、notification_requested，並新增 service_role-only 的 create_booking_addon／delete_booking_addon SECURITY DEFINER RPC。此 source 由 PR #565 最終修正版 0dad3e25 重建到 current main；舊 exact head 已在 disposable local Supabase 實際套用 0121 並通過 booking-addons.17 19 tests、全量 integration 825 passed/6 skipped 與 E2E 25 passed/6 skipped，當時唯一後續失敗是 stale fresh-install manifest pin。本 successor 仍需 exact-head CI 重驗。尚未套用 canonical TEST 或 Production；合併進 main 後仍為 PENDING_APPLY，遠端套用另走既有授權流程。"
     }
   ]
 }
