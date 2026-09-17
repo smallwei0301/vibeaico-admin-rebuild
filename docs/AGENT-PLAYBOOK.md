@@ -1604,3 +1604,7 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   留在降級審查，不把降低成本誤寫成免審。CURRENT_AGENT 身分未知就誠實標記。
 - 驗證：`tests/unit/final-risk-cost-policy.552.test.ts` 涵蓋時間邊界、假執行、假降級、
   未解 finding、WIP 與 release 一致性；實際 exact-head CI 結果見 #552 closeout。
+- 本輪 CI 教訓（#554，run `35168810388`）：局部 Node 反例測試 34/34 通過，仍未涵蓋
+  TypeScript 型別檢查；fixture 參數漏寫型別造成 TS7006。以空物件預設值補上型別推導，
+  不使用 any／忽略錯誤或放寬 strict。局部測試只能證明行為，完整 typecheck、Vitest、build
+  必須另外取得實際通過證據；最終重驗結果記入 #552 closeout，不盲目重跑失敗版本。
