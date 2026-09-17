@@ -2,7 +2,7 @@
 
 > Owner 首次裁示：2026-08-28
 >
-> 最近更新：2026-09-16
+> 最近更新：2026-09-17
 >
 > 現行 Product B+ 以本文件為單一操作入口。歷史基線見
 > `docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`；後續已收斂裁示包含：
@@ -159,6 +159,39 @@ PR body、`TEST_PROFILE`、lane、candidate、Closure、Final Risk metadata 等 
 - metadata 到 CI 才第一次被擋，優先視為 **preflight coverage gap**；補 shared validator／parser，而不是再教每個 Agent 背一段 prose exception。
 - metadata 修正不靠 blind rerun；workflow 若不監聽 `edited`，使用既有 `workflow_dispatch` 或下一個**真實內容變更**觸發，不堆 no-op commit。
 - 同一 deterministic error 不用多輪 CI 猜合法值；先讀 validator 或讓 preflight 直接呼叫與 CI 相同的判定函式。
+
+### 2.0.2 Final Risk blocker 判讀：審查、提交證據、Owner action 必須分開
+
+遇到 Product Final Risk 紅燈時，**不得把「審查尚未被 guard 接受」直接翻譯成「等待 Owner 簽核」**。日常處置固定遵守以下三點：
+
+1. **審查執行者、GitHub 證據提交者、Owner 核准者是三個不同角色。**
+   §7.2 允許的 Final Risk 可以是首次 Astra／Fable、降級 Sol／Opus，或無 model selector 時的
+   `CURRENT_AGENT` 真實對抗審查。canonical `astra-review` 仍須由 guard 接受的 trusted actor 提交：
+   `model-routing.json.finalRiskTrust.trustedAgentBots` 內明確 allowlist 的 bot，或 GitHub live permission
+   可驗證為 `write`／`maintain`／`admin` 的 actor。trusted actor 把**真實已發生**的審查證據提交成
+   COMMENT review，不等於冒充 Owner，也不等於宣稱該 actor 就是被選定的 Astra／Fable。
+   除非某一條現行政策明文要求 Owner action，正常 Product Agent-native attestation 不應再要求 Owner
+   把同一份審查重新貼一次。
+
+2. **沒有具體權限拒絕證據，不得標成 `OWNER_BLOCKED` 或「等 Owner／claude[bot] 簽核」。**
+   先讀 exact-head `Agent WIP Policy`、canonical PR reviews 與當前 `changeDigest`，把 blocker 精確分類：
+   `STALE_ATTESTATION`（test/schema/changeDigest 不符）、`LATEST_VERDICT_NOT_PASS`、
+   `REVIEW_IDENTITY_INVALID`、`DEFERRED_NON_ACTIVE`、`TRUSTED_SUBMITTER_UNAVAILABLE`、
+   `ACTUAL_PERMISSION_DENIED` 或其他真實錯誤。若目前 GitHub actor 符合 trusted actor 條件，應使用現有
+   允許路徑提交誠實 review／refresh guard，而不是因「本 Session 不是 Astra/Fable」自行停工。
+   只有實際呼叫被權限、GitHub 或外部平台拒絕，而且合法替代路徑也不存在時，才可把 Owner／external
+   action 列為唯一 blocker；交接必須附上被拒的 action、actor、錯誤與 exact head，不能只寫「需要簽核」。
+
+3. **`manifest re-pin` 是完整性中繼資料維護，不是 Final Risk 簽核。**
+   migration SQL 因合法修正而改變位元內容，使 fresh-install compatibility manifest 的 digest／mainHead
+   過期時，先確認 SQL 變更本身是預期內容，再依 canonical script／既有先例重算 pin，且**不得修改、刪除
+   或放寬防竄改檢查邏輯**；之後重跑 baseline／integrity 相關測試與必要 CI。若執行環境的 safety
+   classifier 或工具層真的阻擋 re-pin，應記為 `ENVIRONMENT_BLOCKER`，附上實際被拒 action／command／錯誤；
+   不得把它混報成 Astra／Owner Final Risk blocker，也不得要求 Owner 以「授權弱化 guard」方式解決。
+
+在任何「等待 Owner」結論前，Agent 必須能回答三個問題：**到底哪個機械條件失敗？目前 actor 依法能否
+自行修復／提交？Owner 或外部人類是否真的是唯一剩餘動作？** 任一題沒有 live evidence，就繼續調查或走
+現有自主路徑，不得先停工再把責任上拋。
 
 ### 2.1 Branch base freshness 現行規則
 
@@ -419,6 +452,7 @@ Owner 2026-09-17 #552 已授權成本降級，取代 #533 的同級重試／互�
 - tier／reason／lineage／executionRef／adversarialEvidence 必須記進 canonical review；WIP
   與 DB release 共用同一驗證器，CURRENT_AGENT 不視為獨立指定模型審查。
 - 取消／隔離超時原任務後再降級（runtime 支援時），不得並行燒兩份審查；無可用便宜路徑才 park。
+- Final Risk blocker 的日常判讀一律依 §2.0.2；**缺 PASS、證據過期或 deferred 本身不等於 Owner blocker**，不得把可由目前 trusted actor 自主提交／refresh 的證據工作上拋給 Owner。
 
 完整欄位與證據契約：`docs/decisions/2026-09-17-owner-final-risk-cost-downgrade.md`。
 模型型號由 trusted-main `scripts/agents/model-routing.json` 維護；本授權不改 Production 操作門檻。
@@ -477,7 +511,6 @@ CI 失敗由 Luna 先壓縮：exact head、job／step、suite／case、錯誤碼
 
 原 PR 依 §9.2 驗證已 merge 到目標 main 後，**不得直接跳到下一個同 Issue 工作或宣告本輪完成**；
 必須先完成下列 POST_MERGE_CLOSEOUT。這是 Product 與 MODEL_GOVERNANCE 共用的機械收尾，不改變各自驗收門檻。
-
 1. **重新讀 live Issue／PR／main。** 核對 merged PR、merge commit、current main、關聯 Issue、
    acceptance checklist、相依與尚未完成範圍，不能用 merge 前快照清理。
 2. **清 Issue state 與 labels。** 已完成就用正確 state reason 關閉，移除已失效的
@@ -597,7 +630,6 @@ node scripts/agents/scorecard-readiness.mjs docs/metrics/agent-runs/<RUN_ID>.jso
 ```
 
 它只檢查 **raw-event capture health**，不產生分數、不參與跨 Run 比較，也不要求 legacy manual percentages。
-
 固定 checkpoint：
 
 1. **Run start**：建立／接續 ledger 後立即跑一次。
