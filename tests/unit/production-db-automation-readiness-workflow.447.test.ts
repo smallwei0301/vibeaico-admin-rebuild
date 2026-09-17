@@ -22,11 +22,24 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain('credential-proof:');
     expect(source).toContain('environment: production-db-writer');
     expect(source).toContain('PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}');
+    expect(source).toContain('PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}');
+    expect(source).toContain('NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt');
+    expect(source).not.toContain('NODE_TLS_REJECT_UNAUTHORIZED');
+    expect(source).not.toContain('rejectUnauthorized: false');
     expect(source).not.toContain('PRODUCTION_DB_RELEASE_TOKEN');
     expect(source).not.toContain('TEST_DB_RELEASE_TOKEN');
     expect(source).not.toContain('SUPABASE_ACCESS_TOKEN');
     expect(source).not.toContain('/database/query');
     expect(source).not.toContain('databaseMutationAuthorized: true');
+  });
+
+  it('fails closed when the sanitized credential proof is not actually verified', () => {
+    const proofStart = position('- name: Verify project-bound writer credential without mutation');
+    const upload = position('- uses: actions/upload-artifact@v4');
+    expect(proofStart).toBeLessThan(upload);
+    expect(source).toContain("proof.status !== 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED'");
+    expect(source).toContain("proof.databaseMutationAuthorized !== false");
+    expect(source).toContain('if: ${{ always() }}');
   });
 
   it('allows one protected-main activation marker without enabling readiness on every push', () => {
