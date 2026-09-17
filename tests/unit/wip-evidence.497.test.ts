@@ -122,8 +122,13 @@ describe('#497 source freeze and delivery identity', () => {
     try {
       git('init', '-q'); git('config', 'user.email', 'test@example.invalid'); git('config', 'user.name', 'test');
       fs.mkdirSync(path.join(cwd, 'docs/metrics/agent-runs'), { recursive: true });
-      fs.writeFileSync(path.join(cwd, 'docs/metrics/agent-runs/2026-09-16-fixture.json'), JSON.stringify(
-        createRunLedgerV2('2026-09-16-fixture', new Date().toISOString(), { closeoutOwner: 'PRODUCT_MAIN_SESSION' })));
+      const run: any = createRunLedgerV2('2026-09-16-fixture', new Date().toISOString(), { closeoutOwner: 'PRODUCT_MAIN_SESSION' });
+      run.sources = [{ type: 'ISSUE', ref: 'issue/43', note: 'Synthetic preflight fixture, not Product history' }];
+      run.delivery.issuesStarted = 1;
+      run.modelUsage.tasks = [{ id: 'synthetic-497', requestedModel: 'unknown', actualModel: 'unknown',
+        role: 'Synthetic preflight fixture', count: 1, contextClass: 'compact', accepted: false,
+        inputTokens: null, outputTokens: null, cachedTokens: null }];
+      fs.writeFileSync(path.join(cwd, 'docs/metrics/agent-runs/2026-09-16-fixture.json'), JSON.stringify(run));
       git('add', '.'); git('commit', '-qm', 'fixture');
       const receipt = createSourceFreezeFromGit(cwd, true);
       const body = carrier(3, 43, 'TERRA_BUILD', true).body.replace(/^SOURCE_FREEZE:.*$/m, `SOURCE_FREEZE: ${receipt}`)

@@ -279,6 +279,14 @@ describe('governance boundary regression #500', () => {
       else expect(result.failures).toEqual([]);
     }
   });
+  it.each(['OWNER', 'AGENT', 'UNKNOWN'])('requires Product Run binding for %s even without a changed ledger', async (origin) => {
+    const body = product.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`)
+      .replace('RUN_ID: 2026-09-15-product-delivery-r01', 'RUN_ID: none');
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body), ['src/app/page.tsx']);
+    expect(result.failures.join('\n')).toContain('PRODUCT_RUN_BINDING_REJECTED');
+    expect(result.statuses.at(-1).state).toBe('failure');
+    expect(result.calls).not.toContain('dispatch');
+  });
   it('executes classification workflow: pure bookkeeping incorrectly marked Product is rejected', async () => {
     const result = await runWorkflow('.github/workflows/agent-workstream-classification.yml', subject(product));
     expect(result.failures.length).toBeGreaterThan(0);

@@ -571,6 +571,15 @@ Markdown report 必須由 current dispatcher 重算；不得手工改分數或�
 
 ### 10.2 Live Scorecard Contract（不要等複盤才發現沒資料）
 
+- #556：完整 preflight 與 required WIP gate 都檢查每張 Product PR 的 Run 綁定，即使沒有修改 ledger，
+  也不因 OWNER／UNKNOWN 來源或 BPLUS_MODE=false 略過。純治理不借用 Product Run。
+- RUN_ID 必須對上 `docs/metrics/agent-runs/<RUN_ID>.json`；SCORECARD_PATH 可指此 JSON 或同名產生的 Markdown，
+  判定始終讀 JSON。遠端只讀 PR exact head 的檔案並驗證 blob bytes，不退回可變 main 或另一份歷史帳本。
+- 綁定 Run 必須 v4、尚未關帳且由 Product/Owner 持有；sources 以 `issue/<number>` 精確引用本次議題，
+  有真實 task 與 issuesStarted，並通過既有 strict-live 一致性規則。空白 Run 不能替實際施工背書。
+- 同一 Run 可跨日接續，不要求每天新建檔案；不得把治理帳本、已關帳 Run、事後重建觀測冒充即時 Product capture。
+  缺原始事件時保留 NEEDS_CAPTURE 與原因，交原 Product 工作線接續或如實交接，不補造零、不替它強行關帳。
+
 Active Product Run 使用：
 
 ```bash
