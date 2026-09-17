@@ -1,0 +1,50 @@
+name: Issue 552 fixture fix
+on:
+  push:
+    branches: [governance/issue-552-fixture-fix-transfer]
+    paths: [.github/workflows/issue-552-fixture-fix.yml]
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.repository == 'smallwei0301/vibeaico-admin-rebuild' && github.ref == 'refs/heads/governance/issue-552-fixture-fix-transfer'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply only two exact verified source edits
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          test = Path('tests/unit/final-risk-cost-policy.552.test.ts')
+          playbook = Path('docs/AGENT-PLAYBOOK.md')
+          def blob(p): return subprocess.check_output(['git', 'hash-object', str(p)], text=True).strip()
+          assert blob(test) == '024685cbfd75047eeec3bb63b0764d98b250b8ab'
+          assert blob(playbook) == '89c220f4c29c1925d859ac7858c02c8ef0c87948'
+          source = test.read_text()
+          before = 'const evaluate = (reviewer, extra = {}, trusted = true)'
+          assert source.count(before) == 1
+          test.write_text(source.replace(before, 'const evaluate = (reviewer = {}, extra = {}, trusted = true)'))
+          lesson = '- 本輪 CI 教訓（#554，run `35168810388`）：局部 Node 反例測試 34/34 通過，仍未涵蓋\n  TypeScript 型別檢查；fixture 參數漏寫型別造成 TS7006。以空物件預設值補上型別推導，\n  不使用 any／忽略錯誤或放寬 strict。局部測試只能證明行為，完整 typecheck、Vitest、build\n  必須另外取得實際通過證據；最終重驗結果記入 #552 closeout，不盲目重跑失敗版本。\n'
+          playbook.write_text(playbook.read_text() + lesson)
+          assert blob(test) == 'c654e396a1ced1926d0e1748422dcf718b56c4e6'
+          assert blob(playbook) == '7007c22dfeba9f5a1c42cbe9ec74a2ffaa190dbc'
+          Path('tests/unit/.issue-552-local.mjs').write_text(test.read_text().replace("from 'vitest'", "from 'node:test'"))
+          PY
+          trap 'rm -f tests/unit/.issue-552-local.mjs' EXIT
+          node --test tests/unit/.issue-552-local.mjs
+          git add -- tests/unit/final-risk-cost-policy.552.test.ts docs/AGENT-PLAYBOOK.md
+          git diff --cached --check
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(#552): infer fixture type and record full-CI lesson'
+          git push origin HEAD:refs/heads/governance/issue-552-fixture-fix-transfer
