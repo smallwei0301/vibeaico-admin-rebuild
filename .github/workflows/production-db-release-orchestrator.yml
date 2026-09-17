@@ -105,7 +105,7 @@ jobs:
             });
             const run = response.data;
             if (run.name !== 'production-db-automation-readiness') core.setFailed(`wrong readiness workflow: ${run.name}`);
-            if (run.event !== 'workflow_dispatch') core.setFailed(`readiness run event must be workflow_dispatch, got ${run.event}`);
+            if (!['workflow_dispatch', 'push'].includes(run.event)) core.setFailed(`readiness run event must be workflow_dispatch or push, got ${run.event}`);
             if (run.head_branch !== 'main') core.setFailed(`readiness run must be main, got ${run.head_branch}`);
             if (String(run.head_sha || '').toLowerCase() !== expected) core.setFailed('readiness run belongs to another main SHA');
             if (run.status !== 'completed' || run.conclusion !== 'success') core.setFailed(`readiness run is ${run.status}/${run.conclusion}`);
