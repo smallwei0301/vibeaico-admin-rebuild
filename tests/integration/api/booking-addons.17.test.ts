@@ -11,6 +11,15 @@
  * `docs/AGENT-ISOLATED-TEST-LANES.md`）跑這份檔案；本 session 沒有可用的
  * docker/本機 Supabase 執行環境，因此本檔屬於**已撰寫、未執行**——見 PR body
  * 的 ENVIRONMENT_BLOCKER 段落，不得誤讀成「已跑過且綠燈」。
+ *
+ * ⚠️ PREPARE 階段 gate（#530 staged schema release）：`GET/POST/DELETE
+ * /api/bookings/:id/addons*` 三個路由的本體第一行都是
+ * `if (!bookingAddonsSchemaActive()) …`，預設關閉（`process.env
+ * .BOOKING_ADDONS_SCHEMA_ACTIVE !== 'true'`）。跑本機 `next dev`（供
+ * `global-setup.ts` 起服務）前必須先把
+ * `BOOKING_ADDONS_SCHEMA_ACTIVE=true` 放進該次啟動的環境變數，否則以下
+ * 全部案例只會收到 404「加購功能尚未啟用」。ACTIVATE PR 拿掉這些 gate
+ * 判斷之後才不再需要這個環境變數。
  */
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';

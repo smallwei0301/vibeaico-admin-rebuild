@@ -1,14 +1,25 @@
 /**
  * 預約加購（issue #17）—— 單元測試：不需要資料庫就能證明的那一半。
  * -----------------------------------------------------------------------------
+ * PREPARE 階段（#530 staged schema release）：本 PR 同時帶 migration 與新的
+ * Product runtime 檔案，所以 `src/app/api/bookings/[id]/addons/**`、
+ * `src/server/booking-addons-notify.ts`、`src/services/booking-addons.ts`
+ * 都是全新、彼此獨立的檔案，且每個 exported entry 第一行都是
+ * `if (!bookingAddonsSchemaActive()) …`（`BOOKING_ADDONS_SCHEMA_ACTIVE`
+ * 預設關閉）。既有 `src/app/tenant/bookings/page.tsx`／`src/services/bookings.ts`／
+ * `src/server/line-notify.ts`／`src/lib/types.ts` 本輪未變動，UI 接線留給
+ * 不帶 migration 的 ACTIVATE PR。
+ *
  * 真的併發、真的回滾、真的冪等回放留在
  * `tests/integration/api/booking-addons.17.test.ts`（需要本機/canonical
- * TEST Supabase 才跑得動）。本檔守：
+ * TEST Supabase，且需要 `BOOKING_ADDONS_SCHEMA_ACTIVE=true` 才跑得動）。本檔守：
  *
  *   ① route 不再自己做三步寫入，一律走 create_booking_addon／delete_booking_addon rpc；
  *   ② money/mode 驗證規則（price>=0、quantity>=1、SPECIFIC_STAFF 必填）確實存在；
  *   ③ 0119 migration 的兩支 rpc 有鎖、有冪等回放、有回滾邊界、有正確的執行權撤銷；
- *   ④ 通知結果與加購成功分離（notify=false 時完全不呼叫 notifyBookingAddonReceipt）。
+ *   ④ 通知結果與加購成功分離（notify=false 時完全不呼叫 notifyBookingAddonReceipt）；
+ *   ⑤ 每個新 runtime 檔案的每個 export 都被同一顆 default-off gate 擋住，且
+ *      被 gate 遮罩後的檔案不含任何 top-level DB/network 呼叫。
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -18,12 +29,18 @@ const ROOT = process.cwd();
 const withoutComments = (code: string): string =>
   code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const postRoute = withoutComments(readFileSync(
-  resolve(ROOT, 'src/app/api/bookings/[id]/addons/route.ts'), 'utf8',
-));
-const deleteRoute = withoutComments(readFileSync(
+const postRouteRaw = readFileSync(resolve(ROOT, 'src/app/api/bookings/[id]/addons/route.ts'), 'utf8');
+const deleteRouteRaw = readFileSync(
   resolve(ROOT, 'src/app/api/bookings/[id]/addons/[addonId]/route.ts'), 'utf8',
-));
+);
+const notifyFileRaw = readFileSync(resolve(ROOT, 'src/server/booking-addons-notify.ts'), 'utf8');
+const serviceFileRaw = readFileSync(resolve(ROOT, 'src/services/booking-addons.ts'), 'utf8');
+
+const postRoute = withoutComments(postRouteRaw);
+const deleteRoute = withoutComments(deleteRouteRaw);
+const notifyFile = withoutComments(notifyFileRaw);
+const serviceFile = withoutComments(serviceFileRaw);
+
 const sql = readFileSync(
   resolve(ROOT, 'supabase/migrations/0119_issue_17_booking_addons_hardening.sql'), 'utf8',
 );
@@ -208,5 +225,86 @@ describe('兩支 rpc 都是 security definer，且執行權只留 service_role',
   it('兩支函式都宣告 security definer', () => {
     const occurrences = strippedSql.match(/language plpgsql security definer/g) ?? [];
     expect(occurrences.length).toBe(2);
+  });
+});
+
+describe('PREPARE 階段 default-off gate（#530 staged schema release）', () => {
+  const SYMBOL = 'bookingAddonsSchemaActive';
+  const ENV = 'BOOKING_ADDONS_SCHEMA_ACTIVE';
+  const GUARD_PATH = 'src/server/booking-addons-notify.ts';
+
+  it('guard 檔（src/server/booking-addons-notify.ts）帶有可機讀的宣告註解', () => {
+    expect(notifyFileRaw).toMatch(
+      new RegExp(`schema-activation-gate:\\s*${ENV}\\s+default-off\\s+symbol=${SYMBOL}`),
+    );
+  });
+
+  it('guard 檔定義 gate 函式本身，且判斷式是 process.env.<ENV> === \'true\'（預設關閉）', () => {
+    expect(notifyFile).toMatch(new RegExp(`function\\s+${SYMBOL}\\b`));
+    expect(notifyFile).toMatch(new RegExp(`process\\.env\\.${ENV}\\s*===\\s*(['"])true\\1`));
+  });
+
+  /**
+   * 這裡不再自己土法重寫遮罩/掃描邏輯——上一版曾經因為手寫的括號比對過於
+   * 天真（誤把參數列裡物件型別的 `{` 當成函式本體開頭），把明明合規的程式碼
+   * 判成不合規。與其維護一份可能與正式 checker 行為分岐的複本，直接呼叫
+   * `scripts/agents/schema-staged-release-policy.mjs` 匯出的
+   * `validateSchemaStagedRelease()` 本尊，帶真實檔案內容跑一次——這就是
+   * CI 的 `Agent WIP Policy` 實際會跑的同一份程式碼與同一套正則。
+   */
+  const REPO_FILES = [
+    'supabase/migrations/0119_issue_17_booking_addons_hardening.sql',
+    'src/app/api/bookings/[id]/addons/route.ts',
+    'src/app/api/bookings/[id]/addons/[addonId]/route.ts',
+    'src/server/booking-addons-notify.ts',
+    'src/services/booking-addons.ts',
+    'src/types/booking-addons.ts',
+  ];
+
+  const PR_BODY = [
+    '- MIGRATION_TOUCH: true',
+    '- SCHEMA_RELEASE_STAGE: PREPARE',
+    '- SCHEMA_ACTIVATION_GATE: DEFAULT_OFF',
+    `- SCHEMA_ACTIVATION_ENV: ${ENV}`,
+    `- SCHEMA_ACTIVATION_GUARD_PATH: ${GUARD_PATH}`,
+    `- SCHEMA_ACTIVATION_GATE_SYMBOL: ${SYMBOL}`,
+  ].join('\n');
+
+  function readRepoFile(name: string): string | undefined {
+    try { return readFileSync(resolve(ROOT, name), 'utf8'); } catch { return undefined; }
+  }
+
+  it('validateSchemaStagedRelease() 對本 PR 實際變動的檔案回報零錯誤', async () => {
+    const { validateSchemaStagedRelease } = await import('../../scripts/agents/schema-staged-release-policy.mjs') as any;
+    const errors = validateSchemaStagedRelease({
+      body: PR_BODY,
+      changedFiles: REPO_FILES,
+      readFile: readRepoFile,
+    });
+    expect(errors).toEqual([]);
+  });
+
+  it('拿掉 gate 判斷會被 validateSchemaStagedRelease() 抓到（反向對照，證明上一條測試不是空轉）', async () => {
+    const { validateSchemaStagedRelease } = await import('../../scripts/agents/schema-staged-release-policy.mjs') as any;
+    const tamperedPostRoute = postRouteRaw.replace(
+      `if (!${SYMBOL}()) {\n    return NextResponse.json({ success: false, message: '加購功能尚未啟用', code: ERR.NOT_FOUND }, { status: 404 });\n  }\n  try {`,
+      'try {',
+    );
+    expect(tamperedPostRoute, '對照組沒有真的拿掉 gate，反向測試沒有意義').not.toEqual(postRouteRaw);
+    const errors = validateSchemaStagedRelease({
+      body: PR_BODY,
+      changedFiles: REPO_FILES,
+      readFile: (name: string) =>
+        (name === 'src/app/api/bookings/[id]/addons/route.ts' ? tamperedPostRoute : readRepoFile(name)),
+    });
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('services/booking-addons.ts 沒有跨界匯入 src/server/**（避免把伺服器端模組拉進瀏覽器 bundle）', () => {
+    expect(serviceFileRaw).not.toMatch(/from ['"]@\/server\//);
+  });
+
+  it('services/bookings.ts 本輪未被本 PR 的新服務層 re-export（避免既有 export 一起落入 gate 掃描）', () => {
+    expect(serviceFileRaw).not.toMatch(/from ['"]@\/services\/bookings['"]/);
   });
 });

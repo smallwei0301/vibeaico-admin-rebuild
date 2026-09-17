@@ -202,11 +202,8 @@ export const bookingsPage = {
       { value: '120', label: '120 分鐘' },
     ],
     quantity: '數量',
-    staffLabel: '業績歸戶',
+    staffLabel: '執行 服務人員 （業績歸戶）',
     staffSame: '同本預約的人員',
-    /** issue #17：C+ 業績三態之一，明確「不計個人業績」，不得用空白 staff 選項同時代表這個意思與「同本預約的人員」 */
-    performanceNone: '不計個人業績（僅計店家營收）',
-    performanceHelp: '此加購金額一律計入店家營收；此處只決定是否，以及計給哪一位服務人員的個人業績。',
     notify: '通知顧客消費明細（連續加多項時可先勾掉、最後一項再通知，避免顧客連收多則）',
     footnote:
       '佔時間的加購會延長預約結束時間；耗材類選「不佔時間」只加金額。加錯了？回預約詳情逐項移除後重新加入—— 顧客已收到的明細訊息不會自動更正或收回，更正後請自行告知顧客 。',
@@ -333,7 +330,6 @@ export const bookingsPage = {
 
     requiredFields: '請填寫所有必填欄位',
     invalidAmount: '請輸入有效金額（0 以上的數字）',
-    invalidQuantity: '請輸入有效數量（1 以上的整數）',
     couponRequired: '請輸入票券代碼',
     itemNameRequired: '請輸入項目名稱',
     pastDate: '預約日期不能是過去的日期',

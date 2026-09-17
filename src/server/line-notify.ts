@@ -21,7 +21,6 @@ import { createAdminSupabase } from './supabase';
 import { notifySettingsSchema } from '@/config/tenant-settings';
 import { getLineCredentials, linePush, consumePushQuota } from './line';
 import { sendProductOrderReceiptEmail } from './email/send';
-import { ApiHttpError, ERR } from './http';
 
 export type BookingStatusKind =
   | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'MODIFIED' | 'NO_SHOW' | 'REMINDER';
@@ -224,105 +223,6 @@ export async function notifyProductOrderReceipt(
     return result === 'SENT' ? 'EMAIL' : 'FAILED';
   } catch (e) {
     console.error('[line-notify] notifyProductOrderReceipt 失敗', tenantId, orderId, e);
-    return 'FAILED';
-  }
-}
-
-/* ====================================================================== ④
- * 預約加購「消費明細」通知（issue #17）
- *
- * 與 ③ 商品訂單的差異：加購沒有 Email fallback——原站 addonModal 的勾選框文案
- * 只講 LINE（「通知顧客消費明細」），沒有「未綁 LINE 改寄 Email」這句，改動範圍
- * 之外不擅自加一條新的送達管道。未綁 LINE 時維持 0082 已收斂的 `notified='NO_LINE'`
- * 語意，畫面上告知店家「請自行告知顧客」（既有 i18n `messages.addonAddedNoLine`）。
- *
- * 回傳值直接對映 `booking_addons.notified`（0082 canonical 的 6 個值），呼叫端
- * （POST /api/bookings/:id/addons）原樣寫回同一欄，不再另外詮釋一次。
- *
- * #17／#40 分工：這裡只做「這一則現在能不能送、送不送得出去」的**同步**判斷與
- * 一次嘗試，不建重試佇列、不建第二套 outbox——那是 #40 canonical
- * （`docs/integration/17-NOTIFICATION-DELIVERY.md`）的範圍。`addonNotify=false`
- * 時呼叫端根本不會呼叫本函式，本函式因此永遠只在「有要求通知」時才執行一次嘗試，
- * 不會有零意圖卻仍發生的 provider request。
- */
-export type BookingAddonNotifyOutcome =
-  /** 顧客已綁 LINE → 已推播，扣 1 推播額度 */
-  | 'LINE'
-  /** 顧客未綁 LINE → 沒有 fallback 管道，畫面提醒店家自行告知 */
-  | 'NO_LINE'
-  /** 該店尚未設定 LINE Channel */
-  | 'NOT_CONFIGURED'
-  /** 已綁 LINE 但本月推播額度不足 */
-  | 'QUOTA_EXCEEDED'
-  /** 試著送了但沒送成（LINE 平台回錯、或查詢預約/顧客/店名時發生非預期錯誤） */
-  | 'FAILED';
-
-/** 加購消費明細的 LINE 純文字版（純函式，供單元測試直接驗內容） */
-export function buildBookingAddonReceiptText(v: {
-  shop: string;
-  bookingNo: string;
-  itemName: string;
-  quantity: number;
-  amount: number;
-}): string {
-  return [
-    `【${v.shop}】消費明細更新 🧾`,
-    `預約編號：${v.bookingNo}`,
-    `・${v.itemName} ×${v.quantity}`,
-    `本次加購金額：NT$ ${v.amount.toLocaleString()}`,
-  ].join('\n');
-}
-
-/**
- * 依「該筆加購是否要求通知」送出一次消費明細推播。
- * 呼叫端只在 `notificationRequested=true` 時呼叫本函式；永不拋錯，任何非預期
- * 例外都轉成 'FAILED' 回傳，不影響已經成功寫入的加購（加購成功與通知結果分離，
- * 見 issue #17 §6「通知」裁示）。
- */
-export async function notifyBookingAddonReceipt(
-  tenantId: string,
-  bookingId: string,
-  item: { name: string; quantity: number; amount: number },
-): Promise<BookingAddonNotifyOutcome> {
-  try {
-    const admin = createAdminSupabase();
-
-    const { data: b } = await admin.from('bookings_view')
-      .select('booking_no, customer_id')
-      .eq('id', bookingId).eq('tenant_id', tenantId).maybeSingle();
-    if (!b) return 'FAILED';
-
-    const [{ data: customer }, { data: tenant }] = await Promise.all([
-      admin.from('customers').select('line_user_id')
-        .eq('id', b.customer_id).eq('tenant_id', tenantId).maybeSingle(),
-      admin.from('tenants').select('name').eq('id', tenantId).maybeSingle(),
-    ]);
-    if (!customer?.line_user_id) return 'NO_LINE';
-
-    let token: string;
-    try {
-      ({ token } = await getLineCredentials(tenantId));
-    } catch (e) {
-      if (e instanceof ApiHttpError && e.code === ERR.LINE_NOT_CONFIGURED) return 'NOT_CONFIGURED';
-      throw e;
-    }
-
-    if (!(await consumePushQuota(tenantId, 1))) {
-      console.error('[line-notify] 加購明細：推播額度不足', tenantId, bookingId);
-      return 'QUOTA_EXCEEDED';
-    }
-
-    const text = buildBookingAddonReceiptText({
-      shop: tenant?.name ?? '',
-      bookingNo: String(b.booking_no ?? ''),
-      itemName: item.name,
-      quantity: item.quantity,
-      amount: item.amount,
-    });
-    await linePush(token, customer.line_user_id, [{ type: 'text', text }]);
-    return 'LINE';
-  } catch (e) {
-    console.error('[line-notify] notifyBookingAddonReceipt 失敗', tenantId, bookingId, e);
     return 'FAILED';
   }
 }

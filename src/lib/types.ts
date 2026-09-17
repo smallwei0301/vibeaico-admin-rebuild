@@ -51,36 +51,6 @@ export type Booking = {
   createdAt: string;
 };
 
-/* ------------------------------------------------------------- 預約加購（#17） */
-
-/** C+ 業績歸戶三態；staff_id=null 不得同時代表 INHERIT 與 NONE，見 0119 migration 檔頭。 */
-export type BookingAddonPerformanceMode = 'INHERIT' | 'SPECIFIC_STAFF' | 'NONE';
-
-/** 消費明細通知的實際結果；notified='NONE' 時代表沒有要求通知（見 0082 canonical 值域）。 */
-export type BookingAddonNotifiedOutcome =
-  'NONE' | 'LINE' | 'NO_LINE' | 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'FAILED';
-
-export type BookingAddon = {
-  id: string;
-  bookingId: string;
-  serviceId: string | null;
-  name: string;
-  price: number;
-  quantity: number;
-  durationMinutes: number;
-  /** 執行人員（僅紀錄「誰做的」，不參與業績歸戶——業績歸戶看 performanceMode/performanceStaffId） */
-  staffId: string | null;
-  staffName: string | null;
-  appliedAmount: number;
-  appliedMinutes: number;
-  performanceMode: BookingAddonPerformanceMode;
-  performanceStaffId: string | null;
-  performanceStaffName: string | null;
-  notificationRequested: boolean;
-  notified: BookingAddonNotifiedOutcome;
-  createdAt: string;
-};
-
 /* ------------------------------------------------------- GUIDE 首頁待處理事項 */
 export type GuideActionInboxPriority = 'IMMEDIATE' | 'TODAY' | 'UPCOMING';
 
