@@ -152,6 +152,21 @@ export function analyzeScorecardReadiness(run) {
       rawCaptureGaps.push('wipLifecycle events are required for OBSERVED_V1 WIP peak evidence; unknown remains unavailable');
     }
     if (lifecycle.available) {
+      // New-run events must belong to this Run; chronological sorting alone is insufficient.
+      // This is consistency checking, not proof that an event was actually observed.
+      if (scoreProfileTarget === 'OBSERVED_V1') {
+        const startedAt = Date.parse(run.startedAt);
+        const endedAt = run.endedAt === null ? null : Date.parse(run.endedAt);
+        run.wipLifecycle.events.forEach((event, index) => {
+          const at = Date.parse(event.at);
+          if (at < startedAt) {
+            rawCaptureGaps.push(`wipLifecycle.events[${index}].at precedes Run startedAt; do not backdate the Run or invent dispatch evidence`);
+          }
+          if (endedAt !== null && Number.isFinite(endedAt) && at > endedAt) {
+            rawCaptureGaps.push(`wipLifecycle.events[${index}].at exceeds Run endedAt; keep outside-window observations separate`);
+          }
+        });
+      }
       for (const field of ['mainTerraPeak', 'activeCandidatePeak', 'sharedTestPeak']) {
         if (run.inventory?.[field] !== lifecycle.peaks[field]) {
           consistencyWarnings.push(`inventory.${field}=${run.inventory?.[field]} disagrees with wipLifecycle-derived ${lifecycle.peaks[field]}`);

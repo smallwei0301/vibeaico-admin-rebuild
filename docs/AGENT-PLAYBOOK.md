@@ -784,6 +784,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+- 2026-09-17 #566 續例（母單 #528）：#554 的分類器新增 final-risk-cost-policy.mjs import，
+  trusted sparse-checkout 卻漏下載該檔。分類入口在判定前即 ERR_MODULE_NOT_FOUND；
+  PR #562/#563/#564/#565 的分類紅燈與缺標籤因此不能直接歸因各張產品修改。
+  #566 原一行修補又漏填治理欄位，屬另一個已知 metadata 問題，不把兩者混成同一錯誤。
+  修正沿用既有 #566，補齊欄位與 sparse 路徑；不另開重複 PR、不改模型政策或產品原始碼。
+  預防測試從 workflow 真正的 sparse 清單建立乾淨目錄，在新 Node 程序 import 分類入口；
+  刻意移除 cost-policy 或 model-routing.json 時必須失敗，防止完整 checkout 掩蓋缺檔。
+  首次 focused 測試與 mutation 成功後，完整型別檢查抓到隔離程序 env 漏填必要 NODE_ENV；
+  明確補 NODE_ENV=test，不傳入全部 CI 環境或憑證，不用型別轉換隱藏問題。
+  驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
+  SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
+
 - 首次／最近：2026-09-11／2026-09-17
 - 發生次數：4（#352、#361、#370、#553；次數是事件，不是 CI 執行總數）
 - Issue／PR／CI：PR #352、#361、#370
@@ -866,6 +878,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：#352 第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
   整合測試實際執行並通過。#361 改用 preflight 後，本機一次 `WIP_PREFLIGHT_PASS` 才推。
 - 狀態：監看中——預防 0 於 2026-09-11 才建立，尚未累積足夠的執行次數證明它真的擋得住。
+
+#### 2026-09-17 再發：#564 的排序合法不等於屬於本輪（#569）
+
+- 原件：#564 head 93f4de6，Run startedAt=03:54:26.487Z，兩筆 BUILD_ENTER 卻是03:15Z、03:24Z。
+  原作者在 comment5708493841 說明時間為事後估計，ci.fullCiRuns=0也是漏記，不是已證實零次。
+- 根因：既有驗證器只驗事件彼此排序及峰值，沒有驗事件是否落在 Run 起訖內；因此 strict-live 曾假綠。
+- 修法：同一 analyzeScorecardReadiness 補 OBSERVED_V1 時間邊界，由既有本機／遠端入口共同使用。
+  保留 legacy replay；不改原始帳本、不倒填起點、不把 PR created_at 冒充模型派送。
+- 驗證：專用測試覆蓋前於起點、後於終點、相等邊界、全部事件、輸入不變、歷史語意及真正 CLI 退出碼。
+  拿掉邊界判定必須重現假綠；恢復後拒絕。通過時間檢查仍不等於已驗證證據來源。
+- 首次準備 run35184377429 的 CLI 測試誤把拒絕碼寫成1；既有 strict-live 契約是2，執行例外才是1。
+  修正測試並同時驗證無執行例外、NEEDS_CAPTURE 與合法輸入回0；不修改正式 CLI 或放寬失敗判準。
 
 #### 2026-09-17 再發：#553 的 OWNER 來源漏過遠端交付驗證（#555）
 
