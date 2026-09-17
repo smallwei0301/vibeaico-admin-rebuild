@@ -1590,3 +1590,17 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   並回退為 `terra` 的權重（3）——Final Risk 實際成本接近 `sol`（6）。
   這需要 Owner 對權重表裁示，屬治理決策，不由 runner 自行新增；在那之前本 Run 的
   加權 usage 對 Final Risk 是**低估**的，已如實記在 ledger notes。
+
+
+### PB-051：昂貴審查反覆重派，且入口／WIP／release 各保留一份模型規則
+
+- 最近發生：2026-09-17；次數：本輪確認 1 次成本政策收斂事件，歷史諮詢總數未知，不補零。
+- 證據：Owner 成本超支回報、#552；#551 保留 #455 與既有昂貴派送歷史。
+- 根因：#533 將首次故障視為同級重試；修復重審可反覆使用昂貴模型。WIP 與 release
+  各有 allowlist 驗證副本，只改文件會造成便宜審查仍被擋。
+- 修正：300 秒無實際執行證據直接降級，昂貴諮詢預算以持久 lineage 合計一次；
+  共用 reviewer validator；已用／未知歷史不因換版本或 Session 歸零。
+- 預防：dispatch 前先持久記帳；接手先核對舊 review／派送；將來源凍結、反例與未解 finding
+  留在降級審查，不把降低成本誤寫成免審。CURRENT_AGENT 身分未知就誠實標記。
+- 驗證：`tests/unit/final-risk-cost-policy.552.test.ts` 涵蓋時間邊界、假執行、假降級、
+  未解 finding、WIP 與 release 一致性；實際 exact-head CI 結果見 #552 closeout。

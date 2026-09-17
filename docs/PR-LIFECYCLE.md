@@ -1,5 +1,16 @@
 # PR Lifecycle 與 Janitor 規則
 
+## Final Risk 成本上限（Owner 2026-09-17 #552）
+
+依 `docs/AGENT-EXECUTION.md` §7.2：同一工作鏈 Astra/Fable 合計最多一次；首次故障、
+300 秒沒有實際執行證據、或諮詢後修復重審，直接 Sol／Opus，不重試昂貴同級。
+無模型選擇能力則目前 agent/model 做真實對抗審查。新版本／新 Session 不重置預算。
+本節取代任何舊的「兩次環境錯誤才換昂貴模型」文字；不改一般 CI 停損、WIP 數量或資料庫授權。
+降級仍須可信來源、當前 digest、反例與舊 finding 核對、新 PASS；完整證據欄位見 #552 決策。
+
+WIP candidate=3、BUILD=2、shared TEST=1、Final Risk/merge 單線不變。source fix 必須先退出 AUDIT_READY；模型降級本身不新增 BUILD slot。
+
+
 > 現行執行與 WIP 規則：`docs/AGENT-EXECUTION.md` §1.2、§5；本文件是 PR 機械化補充。
 >
 > 歷史 B+ 基線：`docs/decisions/2026-09-01-owner-bplus-delivery-loop.md`。

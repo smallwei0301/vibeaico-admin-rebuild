@@ -1,5 +1,8 @@
 # Production 資料庫 Policy-Gated Release Workflow
 
+> **Final Risk reviewer 更新（Owner 2026-09-17 #552）**：本 release 自己的 plan/evidence 綁定仍必須審查，但允許 Sol/Opus 或無 selector 的 current-agent 對抗審查，依 `AGENT-EXECUTION.md` §7.2。`production-db-release-preflight.mjs` 與 WIP 使用同一降級證據驗證器。通過只代表下一道安全關卡可檢查，不授予 Production 寫入權；G0–G7 其餘條件不變。
+
+
 > Owner 裁示：2026-09-14
 > 狀態：`POLICY_APPROVED_AUTOMATION_PENDING`
 > 目標狀態：`POLICY_GATED_ACTIVE`

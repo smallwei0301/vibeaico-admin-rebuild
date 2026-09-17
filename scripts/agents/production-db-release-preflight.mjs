@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
 
+import { finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
 import { routing } from './astra-review-policy.mjs';
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -89,16 +90,6 @@ export function releaseEvidenceDigestOf(packet = {}) {
   return createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
 }
 
-function allowedFinalRiskModels(policy = routing) {
-  const catalog = policy.models?.finalRiskModelCatalog;
-  const allowed = policy.models?.finalRiskAllowedModels;
-  if (!Array.isArray(catalog) || !Array.isArray(allowed) || !catalog.length || !allowed.length) return new Set();
-  if (new Set(catalog).size !== catalog.length || new Set(allowed).size !== allowed.length) return new Set();
-  const catalogSet = new Set(catalog);
-  if (!allowed.every((model) => catalogSet.has(model))) return new Set();
-  if (!allowed.includes(policy.models?.finalRisk)) return new Set();
-  return new Set(allowed);
-}
 
 function assertCommon(packet, nowMs) {
   if (!packet || typeof packet !== 'object' || Array.isArray(packet)) fail('INVALID_PACKET', 'release packet must be an object');
@@ -163,10 +154,9 @@ function assertCommon(packet, nowMs) {
   const evidenceDigest = releaseEvidenceDigestOf(packet);
   const finalRisk = packet.finalRisk ?? {};
   assertStatus(finalRisk.status, 'ASTRA_APPROVED', 'finalRisk.status');
-  const requestedModel = requiredString(finalRisk.requestedModel, 'finalRisk.requestedModel');
-  const actualModel = requiredString(finalRisk.actualModel, 'finalRisk.actualModel');
-  const allowed = allowedFinalRiskModels();
-  if (requestedModel !== actualModel || !allowed.has(requestedModel)) fail('FINAL_RISK_MODEL_UNVERIFIED', 'Final Risk model must be one current allowlisted identity');
+  if (finalRiskReviewerErrors(finalRisk, routing).length) {
+    fail('FINAL_RISK_MODEL_UNVERIFIED', 'Final Risk reviewer identity or downgrade evidence is invalid');
+  }
   if (validDigest(finalRisk.planDigest, 'finalRisk.planDigest') !== planDigest) fail('FINAL_RISK_PLAN_MISMATCH', 'Final Risk is for another plan');
   if (validDigest(finalRisk.evidenceDigest, 'finalRisk.evidenceDigest') !== evidenceDigest) fail('FINAL_RISK_EVIDENCE_MISMATCH', 'Final Risk did not review the current source/consistency/TEST/recovery evidence bundle');
   assertFresh(

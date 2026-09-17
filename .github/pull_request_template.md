@@ -73,6 +73,12 @@ MODEL_GOVERNANCE must not claim TERRA_BUILD, TERRA_RESERVE, TEST_VALIDATION or P
 
 ## Risk routing
 
+Owner #552 (2026-09-17): one premium consultation total; first dispatch fault, 300 seconds without actual
+execution proof, or post-consultation source repair uses Sol/Opus. No selector permits current-agent adversarial
+review. Record downgrade evidence in canonical astra-review, not a forged Astra/Fable identity. See
+`docs/AGENT-EXECUTION.md` §7.2. This does not change candidate/BUILD/TEST caps or Production authorization.
+
+
 - ASTRA_RISK: NONE | PAYMENT_CONSISTENCY | TENANT_AUTH_BOUNDARY | IRREVERSIBLE_DATA | CROSS_REPO_CONTRACT | GOVERNANCE_GATE | UNRESOLVED_HIGH_RISK
 - ASTRA_RATIONALE: <!-- concrete classification -->
 - FINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY | BY_PRODUCT_RISK_CLASSIFICATION

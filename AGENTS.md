@@ -1,5 +1,14 @@
 # AGENTS.md
 
+## Final Risk 成本上限（Owner 2026-09-17 #552）
+
+依 `docs/AGENT-EXECUTION.md` §7.2：同一工作鏈 Astra/Fable 合計最多一次；首次故障、
+300 秒沒有實際執行證據、或諮詢後修復重審，直接 Sol／Opus，不重試昂貴同級。
+無模型選擇能力則目前 agent/model 做真實對抗審查。新版本／新 Session 不重置預算。
+本節取代任何舊的「兩次環境錯誤才換昂貴模型」文字；不改一般 CI 停損、WIP 數量或資料庫授權。
+降級仍須可信來源、當前 digest、反例與舊 finding 核對、新 PASS；完整證據欄位見 #552 決策。
+
+
 ## 低摩擦開工入口
 
 `docs/AGENT-EXECUTION.md` 是本 repo 的 **canonical default execution entry**。不要每輪無條件重讀整套治理背景；先讀最小必要集合，再依任務 trigger 補載。

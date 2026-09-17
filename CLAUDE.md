@@ -236,11 +236,9 @@ Two consequences worth stating, because both have already been violated in pract
 - A PR whose `AGENT_LANE` is `TERRA_BUILD` must declare a `build`-tier model in
   `REQUESTED_MODEL / ACTUAL_MODEL`. `actual=Opus 5` on a `TERRA_BUILD` lane is a routing violation
   and should be recorded as one, not left as a neutral note.
-- This is separate from the final risk gate below. Where a change **is** high-risk, the Final Risk
-  review must still be delegated to a model in `models.finalRiskAllowedModels` (default
-  `claude-fable-5-1`; `gpt-6-astra` is also allowed) regardless of which tier built it. A correct
-  build tier does not remove that requirement, and passing Final Risk does not make the build tier
-  correct. Which changes are high-risk is decided by `docs/MODEL-ROUTING.md`, not by this section.
+- Product high-risk work still requires Final Risk, but Owner #552 (2026-09-17) limits premium
+  consultation to one total and authorizes Sol/Opus or no-selector current-agent adversarial review.
+  This changes reviewer cost routing, not the builder tier or source/test/Production safety requirements.
 
 `actual=unknown` stays the honest value when the platform cannot prove which model ran
 (`docs/AGENT-EXECUTION.md`) — it is not a way to avoid declaring the tier.
@@ -277,21 +275,21 @@ docs/slices/**
 3. **「時間不夠，委派比自己做貴」不是例外。** 那是成本判斷，而成本判斷正是本節收回的
    權限。真的時間不夠，正確做法是不做、留給下一輪，不是在 audit 層做完再解釋。
 
-## Final risk review models (Owner decisions, 2026-09-08)
+## Final Risk cost downgrade (Owner #552, 2026-09-17)
 
-The high-risk final review gate — the one that produces the `astra-review` attestation the
-`Agent WIP Policy` check requires — keeps Fable (`claude-fable-5-1`) as the default and accepts
-the explicitly configured allowlist: GPT-6 Astra (`gpt-6-astra`) or Claude Fable.
+`docs/AGENT-EXECUTION.md` §7.2 is canonical. One Astra/Fable consultation total per durable review lineage;
+not one per model, head or Session. Save the reservation before dispatch. No premium retries or peer switches.
+After premium consultation and source repair, use Sol/Opus for adversarial re-review, even after FULL reset.
+A dispatch fault/no response/unavailable model downgrades immediately; without verifiable RUNNING/token/tool
+execution evidence within 300 seconds of dispatch, downgrade. Queued/accepted/self-reported status is not proof.
+A genuinely running first consultation is not subject to a five-minute total-review deadline.
 
-- The model IDs live **only** in `scripts/agents/model-routing.json`: `models.finalRisk` is the
-  default, `models.finalRiskModelCatalog` records supported identities, and
-  `models.finalRiskAllowedModels` is the active subset. `requestedModel` / `actualModel` must
-  match the same allowlisted model verbatim.
-- The name **"Astra" is kept** for the gate itself and for the `ASTRA_*` PR-body fields — those
-  names are written into PR bodies, the guard workflow and existing review records, and renaming
-  them would orphan the history. Astra = the gate; Fable and Astra = the currently allowed models.
-- Running the review means actually delegating it to one explicitly allowlisted model (a subagent
-  pinned to that model). Producing the attestation without that delegation is still forbidden.
+Use `models.finalRiskDowngradeAllowedModels` for audit-tier selection. If the runtime cannot select a model,
+perform CURRENT_AGENT adversarial review. Record not_requested/unknown when appropriate; never impersonate a
+premium/audit model or describe this fallback as an independent selected reviewer. Missing history downgrades.
+Both WIP and release evidence use `final-risk-cost-policy.mjs`; preserve trusted author, real adversarial evidence,
+prior findings, current digest, tests and Production authority. The legacy ASTRA_* gate name is not a model claim.
+Real safety refusals are not model faults and cannot be bypassed by rerouting.
 
 ## Key docs
 

@@ -1,6 +1,6 @@
 ---
 name: vibeaico-astra-review
-description: Review high-risk PRODUCT_MAINLINE changes with Astra/Fable after source and test evidence are ready. MODEL_GOVERNANCE is excluded from Product Final Risk and follows the bounded governance flow without a pinned executor model.
+description: Review high-risk PRODUCT_MAINLINE changes with one premium consultation and Owner-authorized audit/current-agent downgrade after source and test evidence are ready. MODEL_GOVERNANCE is excluded from Product Final Risk and follows the bounded governance flow without a pinned executor model.
 ---
 
 # Astra / Fable 最後風險評估
@@ -21,21 +21,15 @@ MODEL_GOVERNANCE 必須同時保持純治理範圍。若變更混入 Product run
 
 從 trusted main 讀 `docs/MODEL-ROUTING.md`、`scripts/agents/model-routing.json` 與最新 Owner Final Risk 決策；模型 ID、trust root 與風險判準以 trusted main 為準。保留 `docs/AGENT-EXECUTION.md` 的授權與 Product 結案門檻。
 
-## Model dispatch，不是外部 reviewer 通道
+## Model dispatch 與 Owner #552 成本降級
 
-以下只針對 `PRODUCT_MAINLINE`。
-
-`gpt-6-astra` 與 `claude-fable-5-1` 是 Final Risk reviewer 的模型選擇，不是另一個 plugin、connector、MCP、外部服務或需要 Owner 額外開通的「審查通道」。
-
-需要 Product Final Risk 時：
-
-1. 從 `model-routing.json` 讀 `models.finalRisk` 與 `models.finalRiskAllowedModels`。
-2. 使用執行環境既有的 Agent／子代理 model selector 明確指定預設 Final Risk 模型；預設模型不可用時再試 allowlist 內另一個模型。
-3. reviewer agent 名稱不等於模型身分；只有實際指定並執行 allowlist 模型，才能寫成 `actualModel`。
-4. 不得因主 Session 本身不是 Astra/Fable 就搜尋 plugin、connector 或要求 Owner 開 reviewer channel。
-5. 只有 runtime 確實沒有任何可指定模型的委派能力，或 allowlist 模型均被明確拒絕，才能記 `MODEL_EXECUTION_UNAVAILABLE` 並保持 pending。
-
-簡單說：**先改派模型，再談 unavailable。**
+只適用 Product。完整現行契約：`docs/AGENT-EXECUTION.md` §7.2 與
+`docs/decisions/2026-09-17-owner-final-risk-cost-downgrade.md`。
+Astra/Fable 合計最多一輪；首次要從持久歷史證明未使用，保存唯一預算紀錄再派送。
+首次故障／無回應／300 秒無真正執行證據直接 Sol/Opus；已諮詢修復重審直接 Sol/Opus。
+無 model selector 時使用目前 agent/model 對抗審查，不要求外部 channel 或第二次 Owner 授權。
+不能靠更名假裝切換模型；CURRENT_AGENT 的 actual 不明就 unknown，執行事實與型號證據分開。
+`prepare` 會附 reviewerRoute；`recover` 不再輸出昂貴同級 retry/switch。
 
 ## Trusted Agent 可以自己提交 Product Final Risk evidence
 
@@ -55,7 +49,7 @@ MODEL_GOVERNANCE 必須同時保持純治理範圍。若變更混入 Product run
 2. 必要測試與 Sol diff 審核後，先跑 `scripts/agents/final-risk-workflow.mjs prepare`。只有 `READY` 才建立昂貴 reviewer；`NOT_READY` 回 cheap precheck，不算 reviewer round。
 3. readiness packet 綁 repository、exact head、`changeDigest`、policy、TEST/schema 基線、bounded diff scope、測試證據與未驗證事項。
 4. 第一次 semantic review 固定 `FULL`；若前一輪為 blocking finding，修復後只有工具判定 `DELTA` 才可做 finding-fix review。任何新 scope／risk／policy／hot boundary 或 reviewer 要求都回 `FULL`。
-5. 使用 allowlist 模型建立獨立唯讀風險評估，要求具體反例與阻塞項目。
+5. 依 reviewerRoute 使用單次 premium、降級 Sol/Opus 或無 selector 的 CURRENT_AGENT 做唯讀對抗審查；最後者明記不是獨立指定模型。要求具體反例、舊 finding 解法與阻塞項目。
 6. 將結果保存於 GitHub，由 write-capable actor 或 trusted Agent bot 提交 canonical review。**下一輪要考慮 DELTA 時，`prepare` 必須讀 live GitHub reviews；不得把單一 Session 記憶當 previous-review evidence。**
 7. 提交／編輯／撤銷後刷新 guard，合併前確認 current required status。
 
@@ -115,17 +109,19 @@ DELTA reviewer 仍必須審新的 current `changeDigest` 並留下新的 trusted
 
 若 previous PASS 的 semantic `changeDigest` 完全相同，沿用既有 semantic attestation，僅重跑 exact-head CI；這不是 DELTA review。
 
-## Circuit breaker：熔斷 reviewer 路徑，不熔斷整個 loop
+## Circuit breaker：首次昂貴故障即降級，不熔斷整個 loop
 
-對 tooling／environment／model-dispatch／rate-limit／timeout／safety-classifier 類失敗：
+Owner #552 取代同模型重試／昂貴互換：dispatch request 起 300 秒沒有同 task id 的 runtime
+RUNNING／token／tool 證據即降級；QUEUED／ACCEPTED／自述不算，明確無回應則立即降級。
+已確認在執行的唯一諮詢可繼續，不重新開昂貴子代理。取消／隔離原超時任務後採便宜路徑。
+修復重審不論 FULL／DELTA 都用 Sol／Opus；沒有 selector 就目前 agent 真實對抗審查。
+新的 `astra-review` 保存 reviewerTier、costPolicyVersion、downgradeReason、downgradeEvidenceRef、
+reviewLineage、executionRef、adversarialEvidence、priorFindingsReviewed、unresolvedFindingCount。
+CURRENT_AGENT 另明記 modelSelectionAvailable=false 與 executionEvidence；未知型號不假造身分。
 
-1. 同類第一次失敗：只允許同模型再試一次。
-2. 同類第二次失敗：對 current model 開 breaker，改派 trusted-main allowlist 另一 reviewer model。
-3. allowlist 都暫時不可用：當前高風險 candidate 保持 blocked／parked，不准 merge；有 independent Product slice 就 `PARK_CURRENT_AND_REFILL_BUILD`，沒有就繼續 Closure／TRIAGE。
-
-不得把 breaker 寫成 `STOP_RUN`。真正 reviewer finding 則不是 infra retry，直接回 source fix，修完再重算 FULL／DELTA eligibility。
-
-可用 `scripts/agents/final-risk-workflow.mjs recover` 產生下一步，不靠 Agent 臨場猜路徑。
+真 finding 回 source fix，任何未解問題保持 FIX_REQUIRED。便宜路徑也不可用才 park current candidate，
+繼續 independent BUILD／Closure／TRIAGE。安全拒絕不得藉換模型繞過。
+`final-risk-workflow.mjs recover` 給明確下一步；同一歷史不因換 head／Session 清空。
 
 ## 純換底不得重跑 semantic Final Risk
 

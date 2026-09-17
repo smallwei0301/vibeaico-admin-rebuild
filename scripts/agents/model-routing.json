@@ -5,8 +5,17 @@
     "build": "gpt-5.6-terra",
     "audit": "gpt-5.6-sol",
     "finalRisk": "claude-fable-5-1",
-    "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1"],
+    "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1", "gpt-5.6-sol", "claude-opus-5"],
+    "finalRiskDowngradeAllowedModels": ["gpt-5.6-sol", "claude-opus-5"],
     "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
+  },
+  "finalRiskCostControl": {
+    "version": "2026-09-17.1",
+    "ownerDecision": "docs/decisions/2026-09-17-owner-final-risk-cost-downgrade.md",
+    "maxPremiumConsultationsPerLineage": 1,
+    "startupEvidenceTimeoutSeconds": 300,
+    "sameTierRetryAllowed": false,
+    "currentAgentWhenNoModelSelector": true
   },
   "anthropicEquivalents": {
     "version": "2026-09-10.1",
