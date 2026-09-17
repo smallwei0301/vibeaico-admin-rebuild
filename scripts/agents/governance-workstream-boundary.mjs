@@ -22,6 +22,12 @@ export function validateBookkeepingWorkstream({ body = '', changedFiles = [] } =
   return [];
 }
 
+/** Shared applicability with Completion Truth; work origin is not an exemption.
+ * @param {string} body @param {{policyApplies?: boolean}} classification */
+export function shouldValidateDeliveryUnitBoundary(body = '', classification = {}) {
+  return Boolean(readField(body, 'WORKSTREAM') || classification.policyApplies);
+}
+
 // Shared by preflight and the required remote guard; do not duplicate this contract.
 /** @param {string} body @param {any} metadata */
 export function validateDeliveryUnitBoundary(body = '', metadata = {}) {

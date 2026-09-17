@@ -784,8 +784,8 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
-- 首次／最近：2026-09-11／2026-09-11
-- 發生次數：3（#352 連續 4 次、#361 2 次、#370 1 次）
+- 首次／最近：2026-09-11／2026-09-17
+- 發生次數：4（#352、#361、#370、#553；次數是事件，不是 CI 執行總數）
 - Issue／PR／CI：PR #352、#361、#370
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
@@ -866,6 +866,23 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：#352 第四次修正後守門 `Agent WIP Policy=success`、`classify-changes=success`，
   整合測試實際執行並通過。#361 改用 preflight 後，本機一次 `WIP_PREFLIGHT_PASS` 才推。
 - 狀態：監看中——預防 0 於 2026-09-11 才建立，尚未累積足夠的執行次數證明它真的擋得住。
+
+#### 2026-09-17 再發：#553 的 OWNER 來源漏過遠端交付驗證（#555）
+
+- 新增可核對事件：1 次；PB-034 原 3 次加本次合計 4 次。最近發生：2026-09-17。
+- 證據：#553 head f17347a45c119af78694238a0254bbcd4a439aee 的 Agent WIP Policy
+  run 35168676081 成功，合併後 comment 5706821404 才報 DELIVERY_METADATA_INVALID。
+- 精確根因：本機及 Completion Truth 已共用 validateDeliveryUnitBoundary，但 required workflow
+  把呼叫包在 AGENT+ACTIVE 條件中。OWNER 來源並不是交付契約豁免；共用函式不等於呼叫覆蓋一致。
+- 修正：required workflow 與 Completion Truth 共用 applicability；來源、Draft、lane 不再成漏驗開關。
+  不改模型政策、Product WIP 計數、安全審查或 closed-event 歷史保護。
+- 預防與驗證：直接執行真正 workflow 的內嵌程式，對 OWNER/UNKNOWN/AGENT 做合法與矛盾對照；
+  另檢查 open PARKED/COMPLETE、Product count=false、歷史不適用與 closed housekeeping。
+  故意恢復舊 AGENT+ACTIVE 條件必須讓反例轉紅，不能只測未接線的 helper。
+- 環境界線：本機無法解析 GitHub，使用無 TEST/Production secrets 的短命 branch-only 編輯載體；
+  發布前移除載體，正常 PR 仍須 exact-head 完整 source CI。無法 clone 不等於不能修改 GitHub。
+
+- #555 首次驗證 run 35171817256：23/24 通過；唯一失敗是測試把 UNKNOWN+AGENT_LANE 當合法。保留既有來源規則，僅修正對照組；不得為測試通過放寬身分契約。
 
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 

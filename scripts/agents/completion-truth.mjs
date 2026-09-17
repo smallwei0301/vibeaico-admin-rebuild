@@ -1,6 +1,6 @@
 import { readField, parseLaneMetadata } from "./agent-wip-policy.mjs";
 import { classifyWorkstream } from "./astra-review-policy.mjs";
-import { boundaryPaths, validateBookkeepingWorkstream, validateDeliveryUnitBoundary } from "./governance-workstream-boundary.mjs";
+import { boundaryPaths, validateBookkeepingWorkstream, validateDeliveryUnitBoundary, shouldValidateDeliveryUnitBoundary } from "./governance-workstream-boundary.mjs";
 
 const REACHABLE_STATUSES = new Set(["ahead", "identical"]);
 
@@ -181,7 +181,7 @@ export function evaluateProductDeliveryTruth(input = {}) {
   const metadataErrors = [...classification.errors,
     ...validateBookkeepingWorkstream({ body, changedFiles: paths })];
   // Historical records are not silently rewritten to satisfy a new authoring contract.
-  if (readField(body, "WORKSTREAM") || classification.policyApplies) {
+  if (shouldValidateDeliveryUnitBoundary(body, classification)) {
     metadataErrors.push(...validateDeliveryUnitBoundary(body, parseLaneMetadata(pr)));
   }
   const isModelGovernance = paths.length > 0 && classification.isModelGovernance && metadataErrors.length === 0;
