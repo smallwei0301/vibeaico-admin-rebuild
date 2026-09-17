@@ -514,6 +514,11 @@ PR merged、CI 綠、Issue closed 都不能單獨冒充已出貨。
 
 ### 9.1.1 工作分類、計數資格與上線驗收分開
 
+- #555：交付欄位是來源無關的資料契約。有 WORKSTREAM 宣告或現行分類政策適用的 open PR，
+  不因 WORK_ORIGIN=OWNER／UNKNOWN、Draft 或 lane 狀態而略過既有交付檢查。
+  遠端 required guard 與 Completion Truth 共用 applicability；本機 preflight 仍先驗再提交。
+  closed housekeeping 仍只清位置，不重寫歷史結果；未宣告且政策不適用的歷史記錄保留原相容性。
+
 - `WORKSTREAM` 回答工作屬於哪一條線；`COUNT_IN_DELIVERY_OUTCOME` 只回答是否納入交付計數。
   `false` 不代表治理，不得使真實 Product migration／正式驗收變成 `NOT_APPLICABLE`。
 - `SLICE`／`STANDALONE` 必須 `COUNT_IN_DELIVERY_OUTCOME=true`、

@@ -140,6 +140,58 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
 afterEach(() => vi.unstubAllEnvs());
 
 describe('governance boundary regression #500', () => {
+  describe('delivery applicability regression #555', () => {
+    it('shares the post-merge applicability and preserves undeclared historical records', () => {
+      const applies = boundaryPolicy.shouldValidateDeliveryUnitBoundary;
+      expect(applies('', { policyApplies: false })).toBe(false);
+      expect(applies('', { policyApplies: true })).toBe(true);
+      expect(applies(gov, { policyApplies: false })).toBe(true);
+      const completion = readFileSync('scripts/agents/completion-truth.mjs', 'utf8');
+      expect(completion).toContain('if (shouldValidateDeliveryUnitBoundary(body, classification))');
+    });
+    it.each(['OWNER', 'UNKNOWN', 'AGENT'])('rejects the #553 contradiction before merge for %s origin', async (origin) => {
+      const body = gov.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`)
+        .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));
+      expect(result.statuses.at(-1).state).toBe('failure');
+      expect(result.failures.join('\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
+      expect(truth(body, paths).metadataErrors).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
+      expect(result.calls).not.toContain('dispatch');
+    });
+    it.each(['OWNER', 'AGENT'])('retains valid pure governance without Product WIP for %s', async (origin) => {
+      const body = gov.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`);
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));
+      expect(result.failures).toEqual([]);
+      expect(result.calls).not.toContain('product-peers');
+      expect(result.calls).not.toContain('dispatch');
+      expect(result.statuses.at(-1).state).toBe('pending'); // Draft is not approval.
+    });
+    it.each(['OWNER', 'UNKNOWN'])('rejects Product count=false for %s without inventing shipment', async (origin) => {
+      const body = product.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`)
+        .replace('COUNT_IN_DELIVERY_OUTCOME: true', 'COUNT_IN_DELIVERY_OUTCOME: false');
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body), ['src/app/page.tsx']);
+      expect(result.failures.join('\n')).toContain('STANDALONE must set COUNT_IN_DELIVERY_OUTCOME=true');
+      expect(result.statuses.at(-1).state).toBe('failure');
+      expect(truth(body).productionAccepted).toBe(false);
+    });
+    it.each(['PARKED', 'COMPLETE'])('does not skip declared delivery metadata for open %s OWNER PRs', async (state) => {
+      const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')
+        .replace('LANE_STATE: ACTIVE', `LANE_STATE: ${state}`)
+        .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));
+      expect(result.failures.join('\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
+    });
+    it('keeps closed OWNER housekeeping ahead of validation and never rewrites historical statuses', async () => {
+      const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')
+        .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
+      const current = { ...subject(body), state: 'closed', merged: true };
+      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+      expect(result.statuses).toEqual([]);
+      expect(result.failures).toEqual([]);
+      expect(result.calls.every(call => call === 'labels')).toBe(true);
+    });
+  });
+
   it('uses the identical delivery validator in preflight and the remote contract', () => {
     expect(preflightBoundary).toBe(validateDeliveryUnitBoundary);
   });
