@@ -10,17 +10,20 @@ permissions:
 
 jobs:
   append-playbook:
-    if: github.event.head_commit.message == 'chore: bootstrap pb052 append carrier'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: governance/pb052-storage-shared-reference
           fetch-depth: 1
-      - name: Append PB-052 exactly once
+      - name: Append and commit PB-052
         shell: bash
         run: |
           set -euo pipefail
+          if [ "$(git log -1 --pretty=%s)" != 'chore: bootstrap pb052 append carrier' ]; then
+            echo 'Carrier already consumed; no action.'
+            exit 0
+          fi
           if grep -Fq '### PB-052 — 不可逆刪除 Storage 前，只看「目前這一列」會把共用物件誤判成孤兒' docs/AGENT-PLAYBOOK.md; then
             echo 'PB-052 already exists; refusing duplicate append.' >&2
             exit 1
@@ -50,10 +53,6 @@ jobs:
 - 狀態：keyword-reply bucket 已防止；同族的其他 bucket 與整列 DELETE cleanup 仍由 #572 監看中。
 - 相關教訓：PB-023（查詢失敗不可冒充空結果）、PB-044（破壞性動作的查證有效期有限）。
 PB052
-      - name: Commit appended lesson
-        shell: bash
-        run: |
-          set -euo pipefail
           git diff --check
           git diff -- docs/AGENT-PLAYBOOK.md | grep -F '### PB-052 — 不可逆刪除 Storage 前，只看「目前這一列」會把共用物件誤判成孤兒'
           git config user.name 'github-actions[bot]'
