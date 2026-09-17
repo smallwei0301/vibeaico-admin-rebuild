@@ -17,7 +17,7 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain('contents: read');
     expect(source).toContain('checks: read');
     expect(source).toContain('actions: read');
-    expect(source).toContain('ref: ${{ inputs.expected_main_sha }}');
+    expect(source).toContain("ref: ${{ github.event_name == 'push' && github.sha || inputs.expected_main_sha }}");
     expect(source).toContain('git rev-parse origin/main');
     expect(source).toContain('credential-proof:');
     expect(source).toContain('environment: production-db-writer');
@@ -27,6 +27,15 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).not.toContain('SUPABASE_ACCESS_TOKEN');
     expect(source).not.toContain('/database/query');
     expect(source).not.toContain('databaseMutationAuthorized: true');
+  });
+
+  it('allows one protected-main activation marker without enabling readiness on every push', () => {
+    expect(source).toContain('push:');
+    expect(source).toContain('branches: [main]');
+    expect(source).toContain("- 'docs/activation/production-db-automation-readiness.trigger'");
+    expect(source).toContain("EXPECTED_MAIN_SHA: ${{ github.event_name == 'push' && github.sha || inputs.expected_main_sha }}");
+    expect(source).toContain('EXPECTED_MAIN_SHA: ${{ needs.verify-exact-main.outputs.main_sha }}');
+    expect(source).toContain('production-db-automation-readiness-${{ needs.verify-exact-main.outputs.main_sha }}');
   });
 
   it('reconstructs exact-head CI from GitHub rather than accepting a caller green flag', () => {
@@ -74,7 +83,7 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain("result.databaseMutationAuthorized !== false");
     expect(source).toContain('automationReady: ${result.automationReady}');
     expect(source).toContain('blockers: ${blockers.length ? blockers.join');
-    expect(source).toContain('production-db-automation-readiness-${{ inputs.expected_main_sha }}');
+    expect(source).toContain('production-db-automation-readiness-${{ needs.verify-exact-main.outputs.main_sha }}');
     expect(source).toContain('production-db-exact-head-ci-evidence.json');
     expect(source).toContain('production-db-automation-evidence.json');
     expect(source).toContain('production-db-automation-readiness.json');
