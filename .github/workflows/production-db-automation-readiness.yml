@@ -66,27 +66,16 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
-      - name: Install Supabase Production CA for verify-full
-        shell: bash
-        env:
-          PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}
-        run: |
-          set -euo pipefail
-          test -n "$PRODUCTION_DB_SSL_ROOT_CERT"
-          case "$PRODUCTION_DB_SSL_ROOT_CERT" in
-            *"-----BEGIN CERTIFICATE-----"*"-----END CERTIFICATE-----"*) ;;
-            *) echo '::error::PRODUCTION_DB_SSL_ROOT_CERT must contain a PEM certificate'; exit 1 ;;
-          esac
-          printf '%s\n' "$PRODUCTION_DB_SSL_ROOT_CERT" > "$RUNNER_TEMP/supabase-production-root.crt"
-          chmod 600 "$RUNNER_TEMP/supabase-production-root.crt"
       - name: Verify project-bound writer credential without mutation
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
           WRITER_CREDENTIAL_ENVIRONMENT: production-db-writer
-          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
         shell: bash
         run: |
           set -euo pipefail
+          test -s "$NODE_EXTRA_CA_CERTS"
+          test "$(grep -c -- '-----BEGIN CERTIFICATE-----' "$NODE_EXTRA_CA_CERTS")" -eq 2
           node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
