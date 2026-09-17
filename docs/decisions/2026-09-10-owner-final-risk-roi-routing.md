@@ -1,5 +1,8 @@
 # Owner Decision — Final Risk ROI 路由收斂
 
+> **部分 SUPERSEDED（2026-09-17 #552）**：下方僅限 Astra/Fable、同級重試／互換與修復重審的模型限制已由 `2026-09-17-owner-final-risk-cost-downgrade.md` 取代。單次昂貴諮詢後直接降級；來源、測試、FULL/DELTA、可信證據與 Production 安全要求保留。舊文字保存作歷史，不再用作派送指令。
+
+
 > 裁示日期：2026-09-10
 > 追蹤 Issue：#332
 > 來源：Owner 在檢視 Astra/Fable 實際 Finding Yield 與等待成本後，要求依 ROI 收斂 Final Risk。

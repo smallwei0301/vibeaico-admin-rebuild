@@ -1,5 +1,10 @@
 # Owner decision: Issue #447 使用目前 Sol 完成 Final Risk
 
+> 2026-09-17 #552 後續裁示：以下「暫時 global allowlist／#447 closeout 撤回 Sol」已由
+> `2026-09-17-owner-final-risk-cost-downgrade.md` 的全專案條件式降級取代。
+> #447 可繼續真實 Sol 對抗審查，使用 AUDIT 證據欄位；不撤回永久降級能力、不再昂貴諮詢。
+> 本文其餘具體反例優先與不擴張 Production 授權的原則保留。下列暫時機制僅作歷史紀錄。
+
 日期：2026-09-17
 
 ## 決策

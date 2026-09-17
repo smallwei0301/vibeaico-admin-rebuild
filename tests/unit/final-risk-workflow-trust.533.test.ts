@@ -12,8 +12,8 @@ describe('Final Risk reviewer trust root (#533)', () => {
       allowedModels: ['untrusted-reviewer'],
     });
 
-    expect(result.action).toBe('SWITCH_REVIEWER_MODEL');
-    expect(routing.models.finalRiskAllowedModels).toContain(result.nextModel);
+    expect(result.action).toBe('DOWNGRADE_REVIEWER_MODEL');
+    expect(routing.models.finalRiskDowngradeAllowedModels).toContain(result.nextModel);
     expect(result.nextModel).not.toBe('untrusted-reviewer');
   });
 });

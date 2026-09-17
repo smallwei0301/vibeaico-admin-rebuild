@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
+import { finalRiskReviewerErrors, selectFinalRiskReviewer } from './final-risk-cost-policy.mjs';
 import { readField } from './agent-wip-policy.mjs';
 import { validateWipPreflight } from './agent-wip-preflight.mjs';
 import { changeDigestOf, parseAstraReviews, routing } from './astra-review-policy.mjs';
@@ -80,12 +81,10 @@ export function previousReviewFromCanonicalReviews(reviews = [], repository = ''
   const latest = parseAstraReviews(reviews)[0] ?? null;
   if (!latest) return null;
 
-  const allowedModels = new Set(unique(routing.models?.finalRiskAllowedModels ?? []));
   const canonicalTrustEligible =
     latest.parseError !== true &&
-    allowedModels.has(text(latest.requestedModel)) &&
-    allowedModels.has(text(latest.actualModel)) &&
-    latest.identityEvidence === 'OPERATOR_ATTESTED' &&
+    finalRiskReviewerErrors(latest, routing).length === 0 &&
+    (latest.reviewerTier === 'CURRENT_AGENT' || latest.identityEvidence === 'OPERATOR_ATTESTED') &&
     DIGEST64.test(text(latest.changeDigest)) &&
     routing.highRisk.includes(upper(latest.riskClass)) &&
     (!repository || text(latest.repository) === text(repository));
@@ -268,9 +267,11 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
     };
   }
 
+  const reviewerRoute = selectFinalRiskReviewer(normalized, routing);
   const evidenceRefs = unique(input.evidenceRefs);
   const packet = {
-    packetVersion: 2,
+    packetVersion: 3,
+    reviewerRoute,
     reviewMode: plan.mode,
     repository: text(input.repository),
     prNumber: Number(input.prNumber) || null,
@@ -315,7 +316,8 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
     ...readiness,
     reviewMode: plan.mode,
     previousReviewSource: previousReview?.evidenceSource ?? 'NONE',
-    nextAction: 'DISPATCH_FINAL_RISK_REVIEWER',
+    nextAction: reviewerRoute.action,
+    reviewerRoute,
     plan,
     packet,
   };
@@ -328,41 +330,20 @@ export function buildFinalRiskPacket(input = {}, deps = {}) {
  */
 export function decideFinalRiskRecovery(input = {}) {
   const failureClass = upper(input.failureClass);
-  const sameClassAttempts = Number(input.sameClassAttempts ?? 0);
-  const currentModel = text(input.currentModel);
-  const allowedModels = unique(routing.models?.finalRiskAllowedModels ?? []);
-  const attemptedModels = new Set(unique([...(input.attemptedModels ?? []), currentModel]));
-  const continueElsewhere = () => input.independentSliceAvailable === true
-    ? { breaker: 'OPEN', action: 'PARK_CURRENT_AND_REFILL_BUILD', nextModel: null }
-    : { breaker: 'OPEN', action: 'PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE', nextModel: null };
-
   if (failureClass === 'CONTENT_FINDING' || failureClass === 'REVIEW_FINDING') {
-    return { breaker: 'CLOSED', action: 'RETURN_TO_SOURCE_FIX', nextModel: null };
+    return { breaker: 'OPEN_FOR_PREMIUM', action: 'RETURN_TO_SOURCE_FIX', nextModel: null,
+      nextReviewTier: 'AUDIT_OR_CURRENT_AGENT', premiumRetryAllowed: false };
   }
   if (PRECHECK_FAILURES.has(failureClass)) {
     return { breaker: 'CLOSED', action: 'RETURN_TO_PRECHECK', nextModel: null };
   }
-  if (!TRANSIENT_FAILURES.has(failureClass)) {
+  if (!TRANSIENT_FAILURES.has(failureClass) && failureClass !== 'MODEL_SELECTION_UNAVAILABLE') {
     return { breaker: 'CLOSED', action: 'CLASSIFY_FAILURE_ONCE_THEN_REENTER', nextModel: null };
   }
-
-  if (!allowedModels.includes(currentModel)) {
-    const trusted = allowedModels.find((model) => !attemptedModels.has(model)) ?? allowedModels[0];
-    return trusted
-      ? { breaker: 'OPEN_FOR_CURRENT_MODEL', action: 'SWITCH_REVIEWER_MODEL', nextModel: trusted }
-      : continueElsewhere();
-  }
-
-  if (sameClassAttempts <= 1) {
-    return { breaker: 'CLOSED', action: 'RETRY_SAME_MODEL_ONCE', nextModel: currentModel };
-  }
-
-  const alternate = allowedModels.find((model) => !attemptedModels.has(model));
-  if (alternate) {
-    return { breaker: 'OPEN_FOR_CURRENT_MODEL', action: 'SWITCH_REVIEWER_MODEL', nextModel: alternate };
-  }
-
-  return continueElsewhere();
+  return { breaker: 'OPEN_FOR_PREMIUM', ...selectFinalRiskReviewer({ ...input, failureClass,
+    attemptedModels: unique([...(input.attemptedModels ?? []), input.currentModel]),
+    modelSelectionAvailable: failureClass === 'MODEL_SELECTION_UNAVAILABLE' ? false : input.modelSelectionAvailable,
+  }, routing) };
 }
 
 function parseArgs(argv) {

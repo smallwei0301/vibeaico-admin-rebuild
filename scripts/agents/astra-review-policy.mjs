@@ -1,3 +1,4 @@
+import { finalRiskReviewerErrors } from './final-risk-cost-policy.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { AMBIGUOUS_FIELD, readField } from './agent-wip-policy.mjs';
@@ -119,19 +120,6 @@ export function changeDigestOf(files = []) {
   return createHash('sha256').update(JSON.stringify(rows)).digest('hex');
 }
 
-const allowedFinalRiskModels = (policy) => {
-  const configured = policy.models?.finalRiskAllowedModels;
-  const catalog = policy.models?.finalRiskModelCatalog;
-  const validList = (models) => Array.isArray(models) && models.length > 0 &&
-    models.every(model => typeof model === 'string' && model.trim().length > 0) &&
-    new Set(models).size === models.length;
-  if (!validList(configured) || !validList(catalog)) return new Set();
-  const catalogSet = new Set(catalog);
-  if (!catalogSet.has(policy.models?.finalRisk) || !configured.includes(policy.models.finalRisk) || configured.some(model => !catalogSet.has(model))) {
-    return new Set();
-  }
-  return new Set(configured);
-};
 
 /**
  * Trusted Agent bots are an explicit trusted-main trust root, never "all bots".
@@ -299,13 +287,10 @@ export function evaluateAstra({ body = '', changedFiles = null, context = {}, re
     }
     if (!['COMMENTED', 'APPROVED'].includes(latest.reviewState)) errors.push('Astra review is dismissed or requests changes');
     if (latest.verdict !== 'PASS') errors.push('Astra verdict is not PASS');
-    const allowedModels = allowedFinalRiskModels(policy);
-    if (
-      latest.requestedModel !== latest.actualModel ||
-      !allowedModels.has(latest.requestedModel) ||
-      !allowedModels.has(latest.actualModel)
-    ) errors.push('Astra model identity is unverified');
-    if (latest.identityEvidence !== 'OPERATOR_ATTESTED') errors.push('Missing explicit operator model attestation');
+    if (finalRiskReviewerErrors(latest, policy).length) errors.push('Astra model identity is unverified');
+    if (latest.reviewerTier !== 'CURRENT_AGENT' && latest.identityEvidence !== 'OPERATOR_ATTESTED') {
+      errors.push('Missing explicit operator model attestation');
+    }
     if (!meaningful(latest.report) || !/^https:\/\/github\.com\//.test(latest.report)) errors.push('Missing durable review report URL');
     if (!meaningful(latest.findings)) errors.push('Missing Astra findings');
   }

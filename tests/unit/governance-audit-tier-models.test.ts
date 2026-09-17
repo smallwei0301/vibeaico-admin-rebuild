@@ -58,7 +58,7 @@ describe('MODEL_GOVERNANCE has no designated executor model (#360)', () => {
     assert.equal(governance.modelIdentityPolicy, 'TRUTHFUL_NON_BLOCKING');
     assert.equal(governance.finalRiskRequired, false);
     assert.equal(routing.version, '2026-09-08.4');
-    assert.deepEqual(routing.models.finalRiskAllowedModels, ['gpt-6-astra', 'claude-fable-5-1', 'gpt-5.6-sol']);
+    assert.deepEqual(routing.models.finalRiskAllowedModels, ['gpt-6-astra', 'claude-fable-5-1']);
   });
 
   for (const line of [

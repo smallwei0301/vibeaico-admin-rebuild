@@ -134,7 +134,7 @@ model ID 逐字取自 Anthropic 官方型號表，**本身即完整，不得附�
 
 以下規則只適用 Product mainline，不適用純 MODEL_GOVERNANCE。
 
-目前預設 Final Risk model 是 `claude-fable-5-1`；allowlist 另含 `gpt-6-astra`。Astra/Fable 是 reviewer **模型選擇**，不是 plugin、connector、MCP 或外部 reviewer channel。
+第一輪昂貴模型預設 `claude-fable-5-1`，另有 `gpt-6-astra`；兩者合計最多一次。Owner #552 已授權後續直接降為 Sol／Opus，無法選模型時用目前 agent 做對抗審查。型號是 runtime 模型選擇，不是外部 reviewer channel。
 
 Product 高後果類型維持：
 
@@ -151,15 +151,19 @@ Product 高後果類型維持：
 
 ## Product Final Risk model dispatch
 
-需要 Product Final Risk 時：
+以 `docs/AGENT-EXECUTION.md` §7.2 與 2026-09-17 #552 決策為準。
+先用 prepare/recover 讀取整條 lineage 的可信 review／派送歷史；最多一輪昂貴諮詢，先記帳再派送。
+300 秒沒有可核對的實際執行證據即降級；明確失敗／無回應／不能切換模型立即降級。
+諮詢後修改重審一律 Sol (`gpt-5.6-sol`) 或 Opus (`claude-opus-5`)；不再 retry／互換 Astra/Fable。
+無 selector 時用 CURRENT_AGENT 模式，requested=not_requested；未知 actual/identity 明記 unknown/UNKNOWN。
+模型由 runtime 的 model selector 選擇，不是另開 plugin（外掛）或 connector（連接器）。
+不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
+MODEL_EXECUTION_UNAVAILABLE 僅用於連已授權的 CURRENT_AGENT 也不能實際審查；
+不能選模型時依 #552 直接使用目前 agent，不要求第二次 Owner 授權或再試昂貴模型。
 
-1. 讀 trusted-main `model-routing.json` 的 `models.finalRisk` / `models.finalRiskAllowedModels`。
-2. 透過 Agent / sub-agent **model selector** 指定 allowlist 模型。
-3. reviewer 名稱不等於模型身分；只有實際指定並執行的模型才能填 `actualModel`。
-4. 不搜尋所謂 Astra plugin / connector，也不要求 Owner 開外部審查通道。
-5. 只有 runtime 確實無 model delegation 或所有 allowlist models 被明確拒絕，才可記 `MODEL_EXECUTION_UNAVAILABLE`。
-
-簡單說：**先改派模型，再談 unavailable。** 對 Product Final Risk，不能把「主 Session 不是 Astra/Fable」誤報成需要外部 reviewer 通道。
+Sol／Opus 從 `models.finalRiskDowngradeAllowedModels` 讀取。CURRENT_AGENT 是條件模式，不是全域 wildcard。
+兩類降級都要保留真實 adversarialEvidence、lineage、executionRef、reason/evidence、prior findings、current digest。
+沒有證據不會因更便宜而 PASS；無可執行 reviewer 才 park 並繼續其他安全工作。
 
 ## Product Agent-native attestation
 

@@ -2,7 +2,13 @@
 
 > 本檔是跨領域 Owner 決策索引，讓 Agent 在開工前快速知道哪些題目已經裁示，避免重複詢問。
 > 正式領域規格仍以各 `docs/integration/**` canonical 文件為準；Issue 負責施工範圍與驗收。
-> 最後更新：2026-09-14。
+> 最後更新：2026-09-17。
+
+## 2026-09-17 已裁示
+
+| Issue | 主題 | 現行 Owner 決策 | 實作來源 |
+|---|---|---|---|
+| #552 | 高風險審查成本降級 | Astra/Fable 合計最多一次；首次故障、300 秒無執行證據、修復重審直接 Sol/Opus；無 selector 用目前 agent 對抗審查。Owner 已接受風險，不再次索取授權。WIP 數量、可信證據及 Production gate 保留。 | `docs/decisions/2026-09-17-owner-final-risk-cost-downgrade.md`；`docs/AGENT-EXECUTION.md` §7.2；`scripts/agents/final-risk-cost-policy.mjs`。 |
 
 ## 2026-09-14 已裁示
 

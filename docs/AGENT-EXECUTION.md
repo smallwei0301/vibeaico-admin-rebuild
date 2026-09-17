@@ -399,8 +399,23 @@ Product 高後果範圍才需要 Final Risk，例如：
 - 不可拆的 `GOVERNANCE_GATE`
 - `UNRESOLVED_HIGH_RISK`
 
-現行預設 `claude-fable-5-1`；allowlist 另含 `gpt-6-astra`，實際值永遠以 trusted-main
-`scripts/agents/model-routing.json` 為準。
+Owner 2026-09-17 #552 已授權成本降級，取代 #533 的同級重試／互換：
+
+- 同一 reviewLineage 最多一次 Astra/Fable 昂貴諮詢，兩者合計，不是各一次。
+- 第一次諮詢後修改重審，或已派送無回應／環境不支援，直接 Sol／Opus，不再昂貴第二輪。
+- 派送起 300 秒沒有同 executionRef 的實際 RUNNING／token／tool 執行證據就降級；
+  排隊、接受請求、自述執行不算。已證明執行的唯一一輪不以五分鐘總時長截斷。
+- 無 model selector 時，允許目前 agent/model 真實對抗審查；未知型號如實記 unknown，不能冒充。
+- prepare/recover 使用 `scripts/agents/final-risk-cost-policy.mjs`。首次昂貴派送前先保存及回讀
+  唯一預算紀錄；新 head／Session／替代 PR 不歸零，歷史不明就降級。
+- 降級仍需 current digest、真實反例、舊 finding 核對、可信提交者與新 PASS；不是免審。
+- tier／reason／lineage／executionRef／adversarialEvidence 必須記進 canonical review；WIP
+  與 DB release 共用同一驗證器，CURRENT_AGENT 不視為獨立指定模型審查。
+- 取消／隔離超時原任務後再降級（runtime 支援時），不得並行燒兩份審查；無可用便宜路徑才 park。
+
+完整欄位與證據契約：`docs/decisions/2026-09-17-owner-final-risk-cost-downgrade.md`。
+模型型號由 trusted-main `scripts/agents/model-routing.json` 維護；本授權不改 Production 操作門檻。
+一般 Sol AUDIT 次數不拿來阻擋本授權的降級 Final Risk；同一份當前來源對抗證據能同時滿足兩者時，不重複派工。
 
 - 一般 UI、文案、小型接線不因是 Product PR 就自動要求 Final Risk。
 - 正式庫寫入是 §3.2 的獨立操作關卡：本次 Production DB release 一律要高風險審查，不能只沿用 source PR 的免審分類。
@@ -417,7 +432,7 @@ Product 高後果範圍才需要 Final Risk，例如：
   `shared-test-supabase-integration`。
 - Branch 手動 full CI 必須證明 exact PR、exact branch、exact SHA 與唯一 holder。
 - 同一 exact head、同一環境、同一命令不盲目重跑。
-- 環境錯誤連續兩次後停止該路徑，保存證據並切其他安全工作。
+- 一般 CI 環境錯誤連續兩次後停止該路徑；Final Risk 昂貴派送適用 §7.2，更嚴格為首次故障直接降級，不套用兩次重試規則。
 - 任何 Git Data API／遠端 tree 重建完成後，必須先驗證 exact head：
   `npm run guard:repo-integrity` → `npm ci` → `npm run typecheck` → `npm test` →
   `npm run build`。前一步未通過，不得更新 `preview/**`、不得把 Vercel build 當第一道語法檢查，
