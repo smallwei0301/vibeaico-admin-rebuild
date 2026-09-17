@@ -13,7 +13,7 @@
     { "type": "MAIN_BASE", "ref": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "note": "本 Run 起算時的 origin/main head。" }
   ],
   "main": { "startSha": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "endSha": null },
-  "inventory": { "openIssuesStart": 47, "openIssuesEnd": null, "openPrsStart": 1, "openPrsEnd": null, "mainTerraPeak": 3, "reserveTerraPeak": 2, "activeCandidatePeak": 3, "sharedTestPeak": 0, "closureSweeps": 1, "closureAdvancedOrClosed": 2 },
+  "inventory": { "openIssuesStart": 47, "openIssuesEnd": null, "openPrsStart": 1, "openPrsEnd": null, "mainTerraPeak": 3, "reserveTerraPeak": 2, "activeCandidatePeak": 3, "sharedTestPeak": 0, "closureSweeps": 1, "closureAdvancedOrClosed": 0 },
   "modelUsage": {
     "actualTokensAvailable": false, "weeklyUsageStartPercent": null, "weeklyUsageEndPercent": null, "weightedUsageImprovementPercent": null,
     "weights": { "luna": 1, "terra": 3, "sol": 6 },
@@ -25,9 +25,9 @@
       { "id": "issue-46-terra-security-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#46 Final Risk 覆核後的阻擋級安全修復：F1/F2/F3。推回 PR #563。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
       { "id": "issue-17-terra-ci-and-security-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#17 TERRA_BUILD 後續修復：已隨 PR #562 合併進 main。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
       { "id": "issue-47-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#47 TERRA_BUILD 施工。已合併 PR #571。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-17-migration-sql-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#17 migration-only PR #565 CI 抓到 PL/pgSQL 欄位歧義，已修復。後續 manifest re-pin 被執行環境權限陎下，PR 轉 PARKED。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
+      { "id": "issue-17-migration-sql-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#17 migration-only PR #565 CI 抓到 PL/pgSQL 欄位歧義，已修復。後續 manifest re-pin 被執行環境權限擋下，轉 PARKED。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
       { "id": "issue-47-merge-conflict-resolution", "requestedModel": "terra", "actualModel": "terra", "role": "#47 PR #571 合併衝突解決。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-46-final-risk-adversarial-review", "requestedModel": "sol", "actualModel": "sol", "role": "#46 PR #563 独立 audit 層（Opus）對抗審查：實跡 worktree 實跑 typecheck 與 22 則安全測試驗證 F1/F2/F3。F2/F3 CONFIRMED_FIXED；F1 發現新的 blocking 編回歸（N1：order_no 配號查詢無 .range()/.limit()，撞上 PostgREST max_rows=1000 截斷）。結論 FIX_REQUIRED，PR 轉 PARKED。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-opus-5" },
+      { "id": "issue-46-final-risk-adversarial-review", "requestedModel": "sol", "actualModel": "sol", "role": "#46 PR #563 独立審查層（Opus）對抗審查：實際 worktree 實跑 typecheck 與 22 則安全測試驗證 F1/F2/F3。F2/F3 CONFIRMED_FIXED；F1 發現新的 blocking 回歸（N1：order_no 配號查詢無 .range()/.limit()，撞上 PostgREST max_rows=1000 截斷）。結論 FIX_REQUIRED，PR 轉 PARKED。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-opus-5" },
       { "id": "issue-46-n1-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#46 修復 N1：`src/server/tour-order-no.ts` 改用 `.order()`+`.range()` 分頁掃完當日全部列，不依賴單次查詢拿到全部資料；新增 1500 筆（跨過 1000 上限）與 1000 筆（邊界值）回歸測試。`npx tsc --noEmit` 0 errors；`public-tour-request-security.46.test.ts`/`rate-limit.46.test.ts` 24 則全過；全量 `npm test` 233 檔/3035 則全過。commit 0864d30a。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" }
     ],
     "fullContextReplays": 0, "duplicateScans": 0
@@ -41,9 +41,10 @@
     "2026-09-17：PR #563 的 Final Risk（Astra/Fable 成本降級後之對抗審查）發現 F1/F2/F3，修復後推回同一 PR。",
     "2026-09-17：PR #562 合併進 main（squash merge d96d1b28）。",
     "2026-09-17：本檔 wipLifecycle.events 中 #17／#46 的 BUILD_ENTER 時間戳已更正為 Run 時間窗內可觀測的最早時間點（03:54:27Z／03:54:28Z）。",
-    "2026-09-17：PR #565 CI 發現 fresh-install-baseline manifest 需重新 re-pin，但執行環境權限陎下此操作，PR 轉 PARKED。",
+    "2026-09-17：PR #565 CI 發現 fresh-install-baseline manifest 需重新 re-pin，但執行環境權限擋下此操作，PR 轉 PARKED。",
     "2026-09-17：#568（#42）、#571（#47）均已合併進 main。",
-    "2026-09-17：PR #563 經独立 Opus 對抗審查發現 N1（order_no 配號查詢撞上 PostgREST max_rows=1000 截斷，比原 F1 門檸更低且匹名可觸發），已修復（commit 0864d30a，分頁掃描改寫 + 回歸測試）。待重新審查。"
+    "2026-09-17：PR #563 經独立 Opus 對抗審查發現 N1（order_no 配號查詢撞上 PostgREST max_rows=1000 截斷，比原 F1 門檸更低且匹名可觸發），已修復（commit 0864d30a，分頁掃描改寫 + 回歸測試）。待重新審查。",
+    "2026-09-17：修正 inventory.closureAdvancedOrClosed（原計 2）超過 closureSweeps（1）的欄位不一致：#568/#571 的合併是透過一般 WIP 名額升級流程，不是透過 closure sweep 機制發現，不應計入，正確值為 0。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": { "contractVersion": 1, "ownerRole": "PRODUCT_MAIN_SESSION", "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED", "state": "OPEN", "closedAt": null, "evidenceRef": null },
@@ -52,13 +53,13 @@
     "events": [
       { "id": "wip-2026-09-17-issue-17-build-enter", "at": "2026-09-17T03:54:27Z", "kind": "BUILD_ENTER", "pr": 562, "issue": 17, "head": "ba21b379b9fed28ebcd159fa887ca5b2cccc2b81", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #17 booking-addons rebuild started; corrected to the earliest raw-capturable timestamp inside this Run's window per #569, not backdated" },
       { "id": "wip-2026-09-17-issue-46-build-enter", "at": "2026-09-17T03:54:28Z", "kind": "BUILD_ENTER", "pr": 563, "issue": 46, "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #46 traveler REQUEST journey started; corrected to the earliest raw-capturable timestamp inside this Run's window per #569, not backdated" },
-      { "id": "wip-2026-09-17-issue-42-build-enter", "at": "2026-09-17T04:10:00Z", "kind": "BUILD_ENTER", "pr": 568, "issue": 42, "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #42 Quick Edit 殘餘缺口驗證與 planApiPayload 修復開始" },
+      { "id": "wip-2026-09-17-issue-42-build-enter", "at": "2026-09-17T04:10:00Z", "kind": "BUILD_ENTER", "pr": 568, "issue": 42, "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #42 驗證與修復開始" },
       { "id": "wip-2026-09-17-issue-42-build-exit-ready", "at": "2026-09-17T04:45:00Z", "kind": "BUILD_EXIT", "pr": 568, "issue": 42, "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "workstream": "PRODUCT_MAINLINE", "reason": "施工完成，讓出名額" },
       { "id": "wip-2026-09-17-issue-46-build-exit-parked", "at": "2026-09-17T04:47:00Z", "kind": "BUILD_EXIT", "pr": 563, "issue": 46, "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af", "workstream": "PRODUCT_MAINLINE", "reason": "Final Risk 發現 F1/F2/F3，PR PARKED，讓出名額" },
       { "id": "wip-2026-09-17-issue-47-build-enter", "at": "2026-09-17T05:14:00Z", "kind": "BUILD_ENTER", "pr": 571, "issue": 47, "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #47 施工開始" },
       { "id": "wip-2026-09-17-issue-47-build-exit-ready", "at": "2026-09-17T05:20:00Z", "kind": "BUILD_EXIT", "pr": 571, "issue": 47, "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e", "workstream": "PRODUCT_MAINLINE", "reason": "施工完成，讓出名額" },
       { "id": "wip-2026-09-17-issue-17-migration-build-enter", "at": "2026-09-17T05:36:00Z", "kind": "BUILD_ENTER", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "#565 升級為 active 候選" },
-      { "id": "wip-2026-09-17-issue-17-migration-build-exit-parked", "at": "2026-09-17T06:15:00Z", "kind": "BUILD_EXIT", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "執行環境權限陎下 manifest re-pin，PARKED，讓出名額" },
+      { "id": "wip-2026-09-17-issue-17-migration-build-exit-parked", "at": "2026-09-17T06:15:00Z", "kind": "BUILD_EXIT", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "執行環境權限擋下 manifest re-pin，PARKED，讓出名額" },
       { "id": "wip-2026-09-17-issue-42-build-enter-active", "at": "2026-09-17T06:16:00Z", "kind": "BUILD_ENTER", "pr": 568, "issue": 42, "head": "a49fb61dcf2ae9d56ccd695f74533e5e925d9735", "workstream": "PRODUCT_MAINLINE", "reason": "#568 升級為 active" },
       { "id": "wip-2026-09-17-issue-42-build-exit-merged", "at": "2026-09-17T06:26:25Z", "kind": "BUILD_EXIT", "pr": 568, "issue": 42, "head": "a49fb61dcf2ae9d56ccd695f74533e5e925d9735", "workstream": "PRODUCT_MAINLINE", "reason": "合併進 main（squash 5d4ad1b2），讓出名額" },
       { "id": "wip-2026-09-17-issue-47-build-enter-active", "at": "2026-09-17T06:27:00Z", "kind": "BUILD_ENTER", "pr": 571, "issue": 47, "head": "8d6bc42197d1f24fefa9c50487c07b8363fc611f", "workstream": "PRODUCT_MAINLINE", "reason": "#571 升級為 active" },
