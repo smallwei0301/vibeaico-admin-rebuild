@@ -586,6 +586,9 @@ Markdown report 必須由 current dispatcher 重算；不得手工改分數或�
   有真實 task 與 issuesStarted，並通過既有 strict-live 一致性規則。空白 Run 不能替實際施工背書。
 - 同一 Run 可跨日接續，不要求每天新建檔案；不得把治理帳本、已關帳 Run、事後重建觀測冒充即時 Product capture。
   缺原始事件時保留 NEEDS_CAPTURE 與原因，交原 Product 工作線接續或如實交接，不補造零、不替它強行關帳。
+- #569：OBSERVED_V1 的 WIP 事件必須落在該 Run 的 startedAt 至 endedAt（若有）之內，邊界相等有效。
+  排序與峰值自洽不能讓跨輪事件取得 LIVE_CAPTURE_READY；不得為過檢查倒填 Run 起始時間，
+  或把 PR 建立時間當代理派送時間。時間檢查只證明一致性，不代表事件來源已查證；歷史 replay 不改寫。
 
 Active Product Run 使用：
 
