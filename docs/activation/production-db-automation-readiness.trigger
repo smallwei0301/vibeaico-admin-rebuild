@@ -2,5 +2,7 @@
 
 issue: 447
 mode: protected-main-merge-trigger
+activation_sequence: 2
 production_mutation_authorized: false
-purpose: Trigger the merged-main production-db-automation-readiness workflow exactly when this marker enters main.
+reason: Retrigger after fixing the unrelated promotion-stats test clock that kept main required check red.
+purpose: Trigger the merged-main production-db-automation-readiness workflow on this protected main merge.
