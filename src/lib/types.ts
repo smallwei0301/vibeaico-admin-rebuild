@@ -592,6 +592,21 @@ export type TourOrder = {
   refundedAmount?: number;
   /** 18 分冊 §4：成交當下的收款政策 snapshot；null = 尚未補這個欄位。#41，選填。 */
   depositModeSnapshot?: TourDepositModeSnapshot | null;
+  /**
+   * 這筆訂單所屬方案的販售方式（#46）。用來判斷要不要顯示「接受／拒絕申請」——
+   * 只有 `sales_mode = 'REQUEST'` 且 `status = 'PENDING'` 的訂單才是「還在等待
+   * 導遊決定的申請」。選填：查不到方案（理論上不會發生，防禦性保留）時為
+   * undefined，畫面上一律視為不可接受／拒絕，不得亂猜。
+   */
+  salesMode?: TripSalesMode;
+  /**
+   * 成交當下的取消／退款政策 snapshot（#46，`trips.refund_policy_type` 的值），
+   * 由 `create_tour_order` 於建單當下寫入 `tour_orders.refund_policy_snapshot`。
+   * 之後行程改了政策不回頭改這一筆——與 `depositModeSnapshot` 同一類不變量。
+   * null／undefined＝尚未補這個欄位或找不到對應行程，畫面上顯示「政策未提供」，
+   * 不得替顧客猜一個政策出來。
+   */
+  refundPolicySnapshot?: 'STANDARD' | 'FLEXIBLE' | 'STRICT' | null;
 };
 
 /* -------------------------------------------------------------- 行事曆 */

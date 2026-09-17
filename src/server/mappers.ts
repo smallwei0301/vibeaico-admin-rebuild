@@ -411,6 +411,8 @@ export function mapTourOrder(r: any, derived: {
   departsOn: string;
   startTime: string;
   paymentMethodLabel: string;
+  /** #46：所屬方案的販售方式；查不到就是 undefined，不得猜一個值。 */
+  salesMode?: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
 }): TourOrder {
   const contact = (r.contact ?? {}) as Record<string, unknown>;
   return {
@@ -450,8 +452,19 @@ export function mapTourOrder(r: any, derived: {
     refundedAmount: Number.isFinite(Number(r.refunded_amount)) ? Number(r.refunded_amount) : 0,
     depositModeSnapshot: DEPOSIT_MODE_SNAPSHOT.has(r.deposit_mode_snapshot)
       ? r.deposit_mode_snapshot : null,
+    salesMode: derived.salesMode,
+    /**
+     * #46：`refund_policy_snapshot` 由 `0112` migration 加在 `tour_orders`
+     * 上、`create_tour_order` 建單當下寫入。值域外（含 null／undefined／
+     * 未知字串）一律收斂成 null——同 `depositModeSnapshot` 的既有慣例，
+     * 不得替一筆查不到 snapshot 的舊訂單假造一個政策。
+     */
+    refundPolicySnapshot: REFUND_POLICY_VALUES.has(r.refund_policy_snapshot)
+      ? r.refund_policy_snapshot : null,
   };
 }
+
+const REFUND_POLICY_VALUES = new Set(['STANDARD', 'FLEXIBLE', 'STRICT']);
 
 export function mapTripAddon(r: any): TripAddon {
   return {

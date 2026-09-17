@@ -23,6 +23,8 @@ export const tourOrdersPage = {
     complete: '標記完成',
     cancel: '取消訂單',
     contactLine: 'LINE 聯絡',
+    accept: '接受申請',
+    reject: '拒絕申請',
   },
 
   columns: {
@@ -80,6 +82,11 @@ export const tourOrdersPage = {
       customer: '旅客資訊',
       payment: '收款資訊',
       note: '備註',
+      /**
+       * #46：只在 `salesMode === 'REQUEST' && status === 'PENDING'` 時顯示——
+       * 這是旅客「送出申請，尚未鎖位」的狀態，導遊要在這裡做出接受／拒絕的決定。
+       */
+      request: '先申請再確認',
     },
     fields: {
       trip: '行程',
@@ -101,6 +108,18 @@ export const tourOrdersPage = {
     partyUnit: (n: number) => `${n} 位`,
     noRef: '尚未回報',
     noNote: '無',
+  },
+
+  /**
+   * #46：GUIDE 側接受／拒絕 REQUEST 申請的區塊文案。只在訂單詳情 modal 裡、
+   * 訂單符合「先申請再確認」條件時顯示——見 `detail.sections.request`。
+   */
+  request: {
+    explain: '旅客送出這筆申請時尚未鎖住名額。按「接受」會重新確認名額仍然足夠並鎖定，同時開始計算付款保留期限；按「拒絕」則會回絕這筆申請，不影響任何名額。',
+    holdHoursLabel: '付款保留時數（留空使用方案預設值）',
+    holdHoursPlaceholder: (defaultHours: number) => `預設 ${defaultHours} 小時`,
+    acceptConfirm: (orderNo: string) => `確定要接受訂單 ${orderNo} 的申請嗎？系統會重新確認名額並鎖定。`,
+    rejectConfirm: (orderNo: string) => `確定要拒絕訂單 ${orderNo} 的申請嗎？旅客不會被鎖住任何名額。`,
   },
 
   create: {
@@ -129,6 +148,7 @@ export const tourOrdersPage = {
     cancelTitle: '取消訂單',
     cancel: (orderNo: string) =>
       `確定要取消訂單 ${orderNo} 嗎？名額會立即釋放；已收款項需由你自行退款。`,
+    rejectTitle: '拒絕申請',
   },
 
   messages: {
@@ -138,6 +158,8 @@ export const tourOrdersPage = {
     cancelled: '訂單已取消，名額已釋放',
     seatsUnavailable: '名額不足，請重新選擇團次',
     loadFailed: '載入失敗，請稍後再試',
+    accepted: '已接受申請，名額已鎖定',
+    rejected: '已拒絕此申請',
     /**
      * issue #8-B：三個狀態動作與手動建單接上真實端點後，失敗必須顯示**後端的真實
      * 訊息**（`ApiError.message`），而不是自己編一句「失敗」——店家才分得出是

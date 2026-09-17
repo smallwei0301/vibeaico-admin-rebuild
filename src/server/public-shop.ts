@@ -63,6 +63,12 @@ export type PublicPlan = {
   pricePerPerson: number;
   minParty: number;
   maxParty: number;
+  /**
+   * #46：販售方式。只用來判斷要不要在方案旁邊顯示「申請預約」連結——
+   * REQUEST 是這個切片唯一接的旅程；FIXED_DEPARTURE／INSTANT 目前仍然只能
+   * 透過上方的聯絡方式（LINE／電話）詢問，該按鈕本輪不做（見檔頭）。
+   */
+  salesMode: 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST';
 };
 
 export type PublicTrip = {
@@ -210,7 +216,10 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
       ? [{ data: [], error: null }, { data: [], error: null }]
       : await Promise.all([
         admin.from('trip_plans')
-          .select('id, trip_id, name, description, price_per_person, min_party, max_party')
+          // #46：多取 sales_mode，判斷要不要顯示「申請預約」連結。仍是白名單
+          // select，不用 `*`——這是全站唯一不需要登入就能打到的資料路徑，
+          // 加欄位必須有人主動決定它可不可以公開（見檔頭三條規則）。
+          .select('id, trip_id, name, description, price_per_person, min_party, max_party, sales_mode')
           .eq('tenant_id', tenantId).in('trip_id', tripIds).eq('active', true)
           .order('sort_order', { ascending: true }),
         admin.from('trip_departures')
@@ -236,6 +245,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
       pricePerPerson: Number(row.price_per_person ?? 0),
       minParty: Number(row.min_party ?? 1),
       maxParty: Number(row.max_party ?? 1),
+      salesMode: row.sales_mode === 'INSTANT' || row.sales_mode === 'REQUEST'
+        ? row.sales_mode : 'FIXED_DEPARTURE',
     });
     plansByTrip.set(row.trip_id as string, list);
   }
