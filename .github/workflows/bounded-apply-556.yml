@@ -7,7 +7,7 @@ permissions:
 jobs:
   apply:
     if: >-
-      github.event.head_commit.message == 'chore: apply corrected 556 carrier syntax'
+      github.event.head_commit.message == 'chore: validate 556 with complete preflight fixture'
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -19,12 +19,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Apply previously reviewed literal source patch
+      - name: Apply reviewed source patch and complete the existing synthetic fixture
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import subprocess, os
+          import subprocess, os, json
           old='02dfdf710bb7947ae81728c15586c485c7e48d8f'
           text=subprocess.check_output(['git','show',old+':.github/workflows/bounded-edit-556.yml'],text=True)
           def block(a,b):
@@ -32,19 +32,30 @@ jobs:
               return '\n'.join(line[10:] if line.startswith('          ') else line for line in s.splitlines())
           patch=block('      - name: Apply bounded source patch\n        shell: bash\n        run: |\n','\n      - name: Source-only tests and mutation')
           patch=patch.split("python3 - <<'PY'\n",1)[1].rsplit('\nPY',1)[0]
-          patch=patch.replace("=='43139639d8ccf2dece8061eeda4b70cc676d72dc'", "=='"+old+"'")
+          patch=patch.replace("=='43139639d8ccf2dece8061eeda4b70cc676d72dc'", "=='f154186039baea06ad082761070c1b4cff62c10f'")
           patch=patch.replace("sorted([helper,'tests/unit/product-run-binding.556.test.ts'])", "sorted([helper,'tests/unit/product-run-binding.556.test.ts','.github/workflows/bounded-apply-556.yml'])")
           patch=patch.replace('Path(helper).unlink()', "Path(helper).unlink(); Path('.github/workflows/bounded-apply-556.yml').unlink()")
           exec(compile(patch,'literal-reviewed-556-patch','exec'))
-          p=Path('docs/AGENT-PLAYBOOK.md');s=p.read_text();mark='### PB-035 —'
-          assert s.count(mark)==1
-          s=s.replace(mark,'- #556 初次 branch-only runner 未啟動：if 條件的未引用 YAML scalar 含冒號，導致解析失敗。\n  修正載體使用 block scalar，未將它歸咎供應商、未盲目重跑相同版本；載體不保留於 main。\n\n'+mark)
+          p=Path('tests/unit/wip-evidence.497.test.ts');s=p.read_text()
+          before="      fs.writeFileSync(path.join(cwd, 'docs/metrics/agent-runs/2026-09-16-fixture.json'), JSON.stringify(\n        createRunLedgerV2('2026-09-16-fixture', new Date().toISOString(), { closeoutOwner: 'PRODUCT_MAIN_SESSION' })));"
+          after="      const run = createRunLedgerV2('2026-09-16-fixture', new Date().toISOString(), { closeoutOwner: 'PRODUCT_MAIN_SESSION' });\n      run.sources = [{ type: 'ISSUE', ref: 'issue/43', note: 'Synthetic preflight fixture, not Product history' }];\n      run.delivery.issuesStarted = 1;\n      run.modelUsage.tasks = [{ id: 'synthetic-497', requestedModel: 'unknown', actualModel: 'unknown',\n        role: 'Synthetic preflight fixture', count: 1, contextClass: 'compact', accepted: false,\n        inputTokens: null, outputTokens: null, cachedTokens: null }];\n      fs.writeFileSync(path.join(cwd, 'docs/metrics/agent-runs/2026-09-16-fixture.json'), JSON.stringify(run));"
+          assert s.count(before)==1;p.write_text(s.replace(before,after))
+          p=Path('docs/AGENT-PLAYBOOK.md');s=p.read_text();mark='### PB-035 —';assert s.count(mark)==1
+          s=s.replace(mark,'- #556 初次 branch-only runner 因 YAML 未引用 scalar 的冒號未啟動；修正為 block scalar，載體不保留於 main。\n- #556 run 35173223274：局部48/48、缺接線反例8項轉紅、還原48/48；完整測試2993/2994。\n  唯一失敗為 #497 正例只建空白 Run。補精確 issue/43 與 synthetic task 後仍保留原 freeze/dirty-worktree 斷言，未豁免新規則。\n\n'+mark)
           p.write_text(s)
           test=block('      - name: Source-only tests and mutation\n        shell: bash\n        run: |\n','\n      - name: Publish validated source blobs only')
+          test=test.replace('tests/unit/scorecard-required-gate.538.test.ts','tests/unit/scorecard-required-gate.538.test.ts tests/unit/wip-evidence.497.test.ts')
           Path(os.environ['RUNNER_TEMP'],'556-validate.sh').write_text(test)
+          files=json.loads(Path(os.environ['RUNNER_TEMP'],'556-files.json').read_text());files.append('tests/unit/wip-evidence.497.test.ts')
+          Path(os.environ['RUNNER_TEMP'],'556-files.json').write_text(json.dumps(files))
           subprocess.run(['git','diff','--check'],check=True)
+          actual=subprocess.check_output(['git','diff','--name-only','35af1f5a9f9b75b73da13e1f9cc2f71ffb5dbe97'],text=True).splitlines()
+          assert sorted(actual)==sorted(files)
+          stat=subprocess.check_output(['git','diff','--numstat','35af1f5a9f9b75b73da13e1f9cc2f71ffb5dbe97'],text=True)
+          assert sum(sum(int(x) for x in line.split('\t')[:2]) for line in stat.splitlines())<=800
+          print(stat)
           PY
-      - name: Actual source tests and deliberate missing-call mutation
+      - name: Actual tests, deliberate missing-call mutation, full unit suite
         shell: bash
         run: bash -e -o pipefail "$RUNNER_TEMP/556-validate.sh"
       - name: Publish only validated immutable source blobs
@@ -58,8 +69,8 @@ jobs:
             const current=await github.rest.git.getRef({owner,repo,ref:`heads/${branch}`});
             if(current.data.object.sha!==context.sha) throw new Error('Concurrent branch edit');
             const files=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'556-files.json'),'utf8'));
-            const allowed=['scripts/agents/scorecard-required-gate.mjs','scripts/agents/agent-wip-preflight.mjs','tests/unit/product-run-binding.556.test.ts','tests/unit/governance-workstream-boundary.500.test.ts','docs/AGENT-EXECUTION.md','docs/AGENT-PLAYBOOK.md'];
-            if(files.length!==6||files.some(f=>!allowed.includes(f))) throw new Error('Scope mismatch');
+            const allowed=['scripts/agents/scorecard-required-gate.mjs','scripts/agents/agent-wip-preflight.mjs','tests/unit/product-run-binding.556.test.ts','tests/unit/governance-workstream-boundary.500.test.ts','tests/unit/wip-evidence.497.test.ts','docs/AGENT-EXECUTION.md','docs/AGENT-PLAYBOOK.md'];
+            if(files.length!==7||files.some(f=>!allowed.includes(f))) throw new Error('Scope mismatch');
             const blobs=[];
             for(const file of files){const b=await github.rest.git.createBlob({owner,repo,content:fs.readFileSync(file,'utf8'),encoding:'utf-8'});blobs.push({path:file,mode:'100644',type:'blob',sha:b.data.sha});}
             core.info(`PATCH_BLOBS=${JSON.stringify(blobs)}`);
