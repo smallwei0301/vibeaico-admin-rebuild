@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  buildBackupMetadataNotCaptured,
   buildProductionDbRecoveryEvidence,
   captureBackupEvidence,
   normalizeBackupResponse,
@@ -22,6 +25,14 @@ function backup(mainSha = MAIN) {
       latest_physical_backup_date_unix: 1789380000,
     },
   }, { projectRef: PROD, capturedAt: CAPTURED, mainSha });
+}
+
+function marker(mainSha = MAIN) {
+  return buildBackupMetadataNotCaptured({
+    projectRef: PROD,
+    capturedAt: CAPTURED,
+    mainSha,
+  });
 }
 
 function restore(overrides: Record<string, unknown> = {}) {
@@ -94,6 +105,19 @@ describe('Production backup evidence collector', () => {
     expect(result.completedBackupCount).toBe(0);
   });
 
+  it('emits an honest exact-main marker when backup metadata is intentionally not captured', () => {
+    expect(marker()).toMatchObject({
+      status: 'BACKUP_METADATA_NOT_CAPTURED',
+      projectRef: PROD,
+      mainSha: MAIN,
+      reason: 'OBSERVER_CREDENTIAL_NOT_CONFIGURED',
+      pitrEnabled: null,
+      completedBackupCount: null,
+      storageObjectsCovered: false,
+      databaseMutationPerformed: false,
+    });
+  });
+
   it('fails closed when neither PITR nor a completed backup exists', () => {
     expect(() => normalizeBackupResponse({
       walg_enabled: false,
@@ -110,7 +134,7 @@ describe('Production backup evidence collector', () => {
     })).toThrow(/WRONG_PROJECT/);
   });
 
-  it('uses GET only and emits sanitized exact-main evidence', async () => {
+  it('uses GET only with an OAuth2 database:read credential and emits sanitized exact-main evidence', async () => {
     const fetchSpy = vi.fn(async (_url: string, init?: RequestInit) => {
       expect(init?.method).toBe('GET');
       return new Response(JSON.stringify({
@@ -122,7 +146,8 @@ describe('Production backup evidence collector', () => {
     });
 
     const result = await captureBackupEvidence({
-      token: 'fine-grained-read-token',
+      token: 'oauth-access-token',
+      credentialKind: 'OAUTH2_DATABASE_READ',
       projectRef: PROD,
       expectedMainSha: MAIN,
       fetchImpl: fetchSpy as unknown as typeof fetch,
@@ -130,35 +155,86 @@ describe('Production backup evidence collector', () => {
     });
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(JSON.stringify(result)).not.toContain('fine-grained-read-token');
+    expect(JSON.stringify(result)).not.toContain('oauth-access-token');
     expect(result.mainSha).toBe(MAIN);
     expect(result.databaseMutationPerformed).toBe(false);
   });
 
+  it('rejects PAT fallback and wrong credential kinds before any provider request', async () => {
+    const fetchSpy = vi.fn();
+    await expect(captureBackupEvidence({
+      token: 'sbp_classic-or-scoped-token',
+      credentialKind: 'OAUTH2_DATABASE_READ',
+      projectRef: PROD,
+      expectedMainSha: MAIN,
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    })).rejects.toThrow(/BACKUP_OBSERVER_PAT_FORBIDDEN/);
+    await expect(captureBackupEvidence({
+      token: 'oauth-access-token',
+      credentialKind: 'PERSONAL_ACCESS_TOKEN',
+      projectRef: PROD,
+      expectedMainSha: MAIN,
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    })).rejects.toThrow(/BACKUP_OBSERVER_CREDENTIAL_KIND_FORBIDDEN/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('rejects missing tokens and provider errors without retrying writes', async () => {
-    await expect(captureBackupEvidence({ token: '', projectRef: PROD })).rejects.toThrow(/MISSING_BACKUP_OBSERVER_TOKEN/);
+    await expect(captureBackupEvidence({
+      token: '', credentialKind: 'OAUTH2_DATABASE_READ', projectRef: PROD,
+    })).rejects.toThrow(/MISSING_BACKUP_OBSERVER_TOKEN/);
 
     const fetchSpy = vi.fn(async () => new Response('{"message":"forbidden"}', { status: 403 }));
     await expect(captureBackupEvidence({
-      token: 'read-token',
+      token: 'oauth-access-token',
+      credentialKind: 'OAUTH2_DATABASE_READ',
       projectRef: PROD,
       expectedMainSha: MAIN,
       fetchImpl: fetchSpy as unknown as typeof fetch,
     })).rejects.toThrow(/BACKUP_API_FAILED/);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps the workflow credential optional and does not wire a broad Supabase access token', () => {
+    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/agent-production-db-backup-observer.yml'), 'utf8');
+    expect(workflow).toContain('SUPABASE_BACKUP_OBSERVER_TOKEN:');
+    expect(workflow).toContain('required: false');
+    expect(workflow).toContain('SUPABASE_BACKUP_OBSERVER_CREDENTIAL_KIND: OAUTH2_DATABASE_READ');
+    expect(workflow).toContain('test -z "${SUPABASE_ACCESS_TOKEN:-}"');
+  });
 });
 
 describe('Production DB G4 recovery adapter #447', () => {
-  it('combines exact-main backup + trusted local rehearsal for non-BACKFILL releases without authorizing mutation', () => {
+  it.each(['ADDITIVE', 'SCHEMA_REPAIR', 'AUTHZ'])('%s accepts the exact-main no-metadata marker plus trusted local rehearsal', (riskTier) => {
+    expect(buildProductionDbRecoveryEvidence({
+      backupEvidence: marker(),
+      restoreEvidence: restore(),
+      plan: plan(riskTier),
+    })).toMatchObject({
+      status: 'RECOVERY_VERIFIED',
+      productionProjectRef: PROD,
+      mainSha: MAIN,
+      planDigest: PLAN,
+      backupMetadataCaptured: false,
+      backupMetadataRequired: false,
+      backupEvidenceStatus: 'BACKUP_METADATA_NOT_CAPTURED',
+      restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY',
+      databaseMutationAuthorized: false,
+    });
+  });
+
+  it('combines captured backup + trusted local rehearsal for non-BACKFILL releases without authorizing mutation', () => {
     expect(buildProductionDbRecoveryEvidence({
       backupEvidence: backup(),
       restoreEvidence: restore(),
       plan: plan('AUTHZ'),
     })).toMatchObject({
       status: 'RECOVERY_VERIFIED',
+      productionProjectRef: PROD,
       mainSha: MAIN,
       planDigest: PLAN,
+      backupMetadataCaptured: true,
+      backupMetadataRequired: false,
       restoreRehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY',
       productionBackupRestored: false,
       storageObjectsCovered: false,
@@ -188,7 +264,12 @@ describe('Production DB G4 recovery adapter #447', () => {
     })).toThrow(/UNTRUSTED_RESTORE_SOURCE/);
   });
 
-  it('does not let a local rehearsal satisfy BACKFILL recovery', () => {
+  it('does not let a no-metadata marker or local rehearsal satisfy BACKFILL recovery', () => {
+    expect(() => buildProductionDbRecoveryEvidence({
+      backupEvidence: marker(),
+      restoreEvidence: restore(),
+      plan: plan('BACKFILL'),
+    })).toThrow(/BACKUP_EVIDENCE_REQUIRED/);
     expect(() => buildProductionDbRecoveryEvidence({
       backupEvidence: backup(),
       restoreEvidence: restore(),
@@ -219,6 +300,8 @@ describe('Production DB G4 recovery adapter #447', () => {
       restoreRehearsalKind: 'PRODUCTION_BACKUP_CLONE',
       productionBackupRestored: true,
       preimageBackupVerified: true,
+      backupMetadataCaptured: true,
+      backupMetadataRequired: true,
       databaseMutationAuthorized: false,
     });
   });
