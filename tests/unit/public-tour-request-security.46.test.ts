@@ -12,6 +12,17 @@
  *   F3：`loadPublicTourRequestStatus` 必須用 `shopCode` 反查的 `tenantId` 過濾
  *       `tour_orders`，且尊重 `TOUR_MODULE` 功能閘門——不能只憑 `orderId` 查到
  *       其他租戶的訂單，也不能在功能停用時還查得到。
+ *
+ * F1 的第一版修法本身又埋了一個新洞，被獨立的對抗審查抓到：查詢沒有
+ * `.range()`／`.limit()`／`.order()`，PostgREST 的 `max_rows` 硬上限
+ * （`supabase/config.toml` 的 `api.max_rows = 1000`）會靜默把結果截斷成任意
+ * 1000 筆子集，單日訂單一旦超過 1000 筆，算出來的最大值就可能是錯的、撞號、
+ * 500——門檻比原本的 9999 惡化 10 倍，而且可以被匿名的
+ * `POST /api/public/tour-requests` 觸發。下面的 `fakeOrderNoClient` 因此不只是
+ * 回傳「餵進去的全部資料」，而是**模擬 PostgREST 的分頁與截斷行為**：沒有帶
+ * `.order()` 時視為「順序不可信任」，`.range()` 的每一頁都會被硬性截斷在
+ * `POSTGREST_MAX_ROWS` 筆——這樣「查詢沒有分頁」這個回歸類型的 bug 才會真的讓
+ * 對應的測試變紅，而不是被 stub 的寬容行為掩蓋掉。
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
@@ -19,20 +30,55 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { nextTourOrderNo } from '@/server/tour-order-no';
 
+/**
+ * 模擬 PostgREST 的 `max_rows` 硬上限（`supabase/config.toml` 的
+ * `api.max_rows`，也是 Supabase 平台預設值）：不管單次請求要求多少筆，
+ * 一律截斷在這個數字。
+ */
+const POSTGREST_MAX_ROWS = 1000;
+
+/**
+ * 會模擬 PostgREST 分頁／截斷行為的假 `tour_orders` client：
+ *
+ * - 沒呼叫 `.order()` 時，視為「回傳順序不可信任」，用餵進去的原始（未排序）
+ *   順序當作資料庫的「預設順序」——這在真實 PostgREST 上本來就是未定義行為，
+ *   不能假設它剛好等於遞增序。
+ * - 呼叫 `.order('order_no', …)` 之後才會用穩定總排序（這裡用字典序，因為
+ *   `order_no` 在 schema 上是 `unique (tenant_id, order_no)`，字典序或數值序
+ *   都是合法的穩定總排序，分頁正確性只依賴「穩定」，不依賴「剛好等於數值序」）。
+ * - 沒呼叫 `.range()` 時，等同 `.range(0, POSTGREST_MAX_ROWS - 1)`——PostgREST
+ *   對「沒有明講 Range」的查詢一樣會套用 `max_rows`。
+ * - 任何 `.range(from, to)` 的回應筆數都會被硬性截斷在 `POSTGREST_MAX_ROWS`，
+ *   即使呼叫端一次要求超過上限的範圍——這正是真實 PostgREST 的行為，也是
+ *   「沒有正確分頁的實作」在這個 stub 底下會被抓到的關鍵。
+ */
 function fakeOrderNoClient(existingOrderNos: string[]) {
   return {
     from: (table: string) => {
       if (table !== 'tour_orders') throw new Error(`unexpected table: ${table}`);
-      return {
-        select: () => ({
-          eq: () => ({
-            like: async () => ({
-              data: existingOrderNos.map((order_no) => ({ order_no })),
-              error: null,
-            }),
-          }),
-        }),
+      let ordered = false;
+      let range: [number, number] | null = null;
+      const builder: any = {
+        select: () => builder,
+        eq: () => builder,
+        like: () => builder,
+        order: (column: string) => {
+          if (column === 'order_no') ordered = true;
+          return builder;
+        },
+        range: (from: number, to: number) => {
+          range = [from, to];
+          return builder;
+        },
+        then: (resolve: (result: { data: Array<{ order_no: string }>; error: null }) => void) => {
+          const source = ordered ? [...existingOrderNos].sort() : existingOrderNos;
+          const [from, to] = range ?? [0, POSTGREST_MAX_ROWS - 1];
+          const cappedTo = Math.min(to, from + POSTGREST_MAX_ROWS - 1);
+          const page = from > cappedTo ? [] : source.slice(from, cappedTo + 1);
+          resolve({ data: page.map((order_no) => ({ order_no })), error: null });
+        },
       };
+      return builder;
     },
   };
 }
@@ -77,6 +123,36 @@ describe('nextTourOrderNo（Final Risk F1：配號不再依賴字串排序）', 
       'tenant-1', '260917',
     );
     expect(orderNo).toBe('TO2609170006');
+  });
+
+  it('單日訂單超過 PostgREST max_rows（1000）時仍能算出正確的最大值——這是 F1 首版留下的新洞：查詢沒有 .range()/.order()，PostgREST 會靜默只回一個 1000 筆的任意子集，算出的最大值可能比真正的最大值小，重算出的候選號碼會撞上一筆已存在的 order_no', async () => {
+    // 1500 筆，比 max_rows 大 500 筆——模擬單一租戶單日超過 1000 筆訂單
+    // （原本 F1 要防的門檻是 9999，這次的攻擊門檻只要湊到 1000 就會觸發）。
+    const existingOrderNos = Array.from(
+      { length: 1500 },
+      (_, index) => `TO260917${String(index + 1).padStart(4, '0')}`,
+    );
+    const orderNo = await nextTourOrderNo(
+      fakeOrderNoClient(existingOrderNos),
+      'tenant-1', '260917',
+    );
+    // 正確答案：真正的最大值是 1500，下一筆是 1501。
+    // 如果查詢沒有分頁（沒有 .range()/.order()，一次查詢被 PostgREST 截斷成
+    // 任意 1000 筆），算出來的 maxSerial 會 <= 1000，重算出的候選號碼會落在
+    // 1001~1500 之間、撞上一筆已經存在的 order_no——不會是這裡斷言的值。
+    expect(orderNo).toBe('TO2609171501');
+  });
+
+  it('剛好等於 PostgREST max_rows（1000 筆）時，下一筆是 1001——邊界值不會因為「剛好湊滿一整頁」被誤判成還有下一頁或漏算', async () => {
+    const existingOrderNos = Array.from(
+      { length: 1000 },
+      (_, index) => `TO260917${String(index + 1).padStart(4, '0')}`,
+    );
+    const orderNo = await nextTourOrderNo(
+      fakeOrderNoClient(existingOrderNos),
+      'tenant-1', '260917',
+    );
+    expect(orderNo).toBe('TO2609171001');
   });
 });
 
