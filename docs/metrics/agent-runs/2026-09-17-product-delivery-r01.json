@@ -44,6 +44,11 @@
       "type": "ISSUE",
       "ref": "issue/18",
       "note": "#18 LINE 老闆通知 owner-notify 缺口 A：confirmOwnerNotifyBind() 的 3 位上限併發洞（app 層先 count 再 insert），與 #572 型態不同（併發正確性修復，非 Storage 刪除），ASTRA_RISK=NONE。開 TERRA_BUILD PR #575（agent/issue-18-owner-notify-max-recipients-race），migration 0119 新增 confirm_owner_notify_bind advisory-lock RPC；依 #530 staged-release 政策拆為 migration-only PR，app 層 wiring 留給合併後的獨立 PR。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/50",
+      "note": "#50 LINE 關鍵字回覆圖片孤兒物件清理（item B）：換圖／移除圖片時 best-effort 刪除舊 Storage 物件（TERRA_BUILD PR #573）。ASTRA_RISK=IRREVERSIBLE_DATA，CI 全綠但卡在信任身份 Astra review，同 #46/PR #563 的外部阻擋型態，尚未合併。"
     }
   ],
   "main": {
@@ -207,15 +212,28 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-50-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#50 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：keyword-reply-images bucket 換圖／移除圖片時 best-effort 刪除舊 Storage 物件，新增共用 deleteTenantStorageObjectBestEffort() helper（供 #572 其餘 5 個 bucket 後續重用）。含 mutation test 自我對抗審查證據（移除 canonical URL 比對防線後 8 passed→7 passed/1 failed）。開 PR #573，CI 全綠，卡在 ASTRA_RISK=IRREVERSIBLE_DATA 的信任身份 Final Risk review 門檻，未合併。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 5,
+    "issuesStarted": 7,
     "issuesClosed": 0,
-    "auditReady": 3,
+    "auditReady": 4,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
     "commitOnly": 0,
@@ -260,7 +278,8 @@
     "2026-09-17：PR #562 經 Sol 對抗審查發現兩個問題（1）整合測試假設 migration 已套用，實際在 CI 的 local-isolated 環境下不成立；（2）GET route 對 PGRST200 錯誤碼未分支，安全降級這個場景下會失效。兩項均已修復並推回同一 PR，已合併進 main（squash merge d96d1b28）。",
     "2026-09-17：本檔 wipLifecycle.events 中 #17／#46 的 BUILD_ENTER 時間戳原為事後估計（03:15:00Z／03:24:00Z），不符合 #569 新增的 Run 時間窗規則。已誠實更正為本 Run 時間窗內可觀測到的最早時間點（03:54:27Z／03:54:28Z）。",
     "2026-09-17：PR #565（#17 migration-only）CI 在 SQL bug 修復 commit 0dad3e25 後發現 fresh-install-compatibility-baseline manifest 需要重新 re-pin，但本 session 執行環境的 auto-mode 安全分類器把這個合法的資料值更新整體判定為 Security Test Removal 並擋下。PR #565 因此轉 PARKED，讓出 active TERRA_BUILD 名額給已完工的 #568（#42）。",
-    "2026-09-17：#565 的 migration-build-exit-parked wipLifecycle 事件原本誤填了 fix commit 0dad3e25 作為 head，但 run-ledger-v2.mjs 要求 EXIT 事件必須與其 ENTER 事件引用完全相同的 head（標記的是這個租約進入時的狀態，不是離開當下的最新 commit）。已改回 ENTER 事件的 head（9db618a1）。"
+    "2026-09-17：#565 的 migration-build-exit-parked wipLifecycle 事件原本誤填了 fix commit 0dad3e25 作為 head，但 run-ledger-v2.mjs 要求 EXIT 事件必須與其 ENTER 事件引用完全相同的 head（標記的是這個租約進入時的狀態，不是離開當下的最新 commit）。已改回 ENTER 事件的 head（9db618a1）。",
+    "2026-09-17（收尾覆核）：main 上本 ledger 先前漏收 issue/50（PR #573）的 sources／modelUsage.tasks／wipLifecycle 記錄——#573 自身分支曾同步過這些欄位，但因該 PR 一直未合併（卡在信任身份 Astra review），main 上的權威副本從未繼承到那份記錄。現據 PR #573 的實際 timeline（created_at/updated_at/exact head）補齊，並同步修正 delivery.issuesStarted（5→7，含 #50）。本次修正由 build 層（claude-sonnet-5，本對話 session）直接編輯 docs/metrics/agent-runs/**，未委派 Luna（claude-haiku-4-5）子代理，依 CLAUDE.md「文件與盤點的 scout 歸屬」規則屬未依規委派，如實記錄為違規而非中性註記。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -375,6 +394,16 @@
         "reason": "#565 轉 PARKED 讓出名額，#568（#42）升級為本輪唯一 active TERRA_BUILD 候選"
       },
       {
+        "id": "wip-2026-09-17-issue-50-build-enter",
+        "at": "2026-09-17T06:52:08Z",
+        "kind": "BUILD_ENTER",
+        "pr": 573,
+        "issue": 50,
+        "head": "fa10ffb7a932bc0151258fddcf108cdda8aeb273",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #50 keyword-reply-images 孤兒物件清理開始（回填：本事件原記錄於 PR #573 自身分支的 ledger 副本，因該 PR 一直未合併，main 上的權威副本此前漏收，現據 PR #573 實際 timeline 補齊，不回填推算值）"
+      },
+      {
         "id": "wip-2026-09-17-issue-66-build-enter",
         "at": "2026-09-17T07:00:00Z",
         "kind": "BUILD_ENTER",
@@ -383,6 +412,16 @@
         "head": "2b3dfebcfc476b85d3b6441530f25ba44a46ba7f",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "TERRA_BUILD #66 current-main gap audit 完成後選定 bounded IA 切片開始施工：GuideBottomNav 五入口 + /tenant/more 分組目錄頁"
+      },
+      {
+        "id": "wip-2026-09-17-issue-50-build-exit-ready",
+        "at": "2026-09-17T07:02:33Z",
+        "kind": "BUILD_EXIT",
+        "pr": 573,
+        "issue": 50,
+        "head": "fa10ffb7a932bc0151258fddcf108cdda8aeb273",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "施工完成，CI 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，卡在 ASTRA_RISK=IRREVERSIBLE_DATA 的信任身份 Final Risk review 門檻（回填，理由同上）"
       },
       {
         "id": "wip-2026-09-17-issue-66-build-exit-ready",
