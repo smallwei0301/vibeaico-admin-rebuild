@@ -221,7 +221,7 @@ describe('Final Risk canonical handoff persistence (#533)', () => {
 });
 
 describe('Final Risk circuit breaker fallback (#533)', () => {
-  const allowed = ['claude-fable-5-1', 'gpt-6-astra'];
+  const allowed = routing.models.finalRiskAllowedModels;
 
   it('allows one retry, then switches trusted reviewer model', () => {
     const first = decideFinalRiskRecovery({ failureClass: 'TIMEOUT', sameClassAttempts: 1, currentModel: 'claude-fable-5-1', allowedModels: allowed });
@@ -231,9 +231,9 @@ describe('Final Risk circuit breaker fallback (#533)', () => {
     expect(second.nextModel).toBe('gpt-6-astra');
   });
 
-  it('parks only the blocked candidate and keeps the loop productive after reviewer paths are exhausted', () => {
-    const refill = decideFinalRiskRecovery({ failureClass: 'MODEL_DISPATCH', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: true });
-    const closure = decideFinalRiskRecovery({ failureClass: 'SAFETY_CLASSIFIER', sameClassAttempts: 2, currentModel: 'gpt-6-astra', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: false });
+  it('parks only the blocked candidate and keeps the loop productive after all configured reviewer paths are exhausted', () => {
+    const refill = decideFinalRiskRecovery({ failureClass: 'MODEL_DISPATCH', sameClassAttempts: 2, currentModel: 'gpt-5.6-sol', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: true });
+    const closure = decideFinalRiskRecovery({ failureClass: 'SAFETY_CLASSIFIER', sameClassAttempts: 2, currentModel: 'gpt-5.6-sol', attemptedModels: allowed, allowedModels: allowed, independentSliceAvailable: false });
     expect(refill.action).toBe('PARK_CURRENT_AND_REFILL_BUILD');
     expect(closure.action).toBe('PARK_CURRENT_AND_CONTINUE_CLOSURE_TRIAGE');
     expect(closure.action).not.toContain('STOP');
