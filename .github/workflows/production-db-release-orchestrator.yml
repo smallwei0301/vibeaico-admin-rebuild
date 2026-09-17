@@ -180,6 +180,20 @@ jobs:
       - name: Install locked Production writer dependencies
         run: npm ci
 
+      - name: Install Supabase Production CA for verify-full
+        shell: bash
+        env:
+          PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_DB_SSL_ROOT_CERT"
+          case "$PRODUCTION_DB_SSL_ROOT_CERT" in
+            *"-----BEGIN CERTIFICATE-----"*"-----END CERTIFICATE-----"*) ;;
+            *) echo '::error::PRODUCTION_DB_SSL_ROOT_CERT must contain a PEM certificate'; exit 1 ;;
+          esac
+          printf '%s\n' "$PRODUCTION_DB_SSL_ROOT_CERT" > "$RUNNER_TEMP/supabase-production-root.crt"
+          chmod 600 "$RUNNER_TEMP/supabase-production-root.crt"
+
       - name: Re-verify exact main before assembling release evidence
         shell: bash
         env:
@@ -363,6 +377,7 @@ jobs:
       - name: PREPARE controlled Production DB attempt
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt
         shell: bash
         run: |
           set -euo pipefail
@@ -413,6 +428,20 @@ jobs:
       - name: Install locked Production writer dependencies
         run: npm ci
 
+      - name: Install Supabase Production CA for verify-full
+        shell: bash
+        env:
+          PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_DB_SSL_ROOT_CERT"
+          case "$PRODUCTION_DB_SSL_ROOT_CERT" in
+            *"-----BEGIN CERTIFICATE-----"*"-----END CERTIFICATE-----"*) ;;
+            *) echo '::error::PRODUCTION_DB_SSL_ROOT_CERT must contain a PEM certificate'; exit 1 ;;
+          esac
+          printf '%s\n' "$PRODUCTION_DB_SSL_ROOT_CERT" > "$RUNNER_TEMP/supabase-production-root.crt"
+          chmod 600 "$RUNNER_TEMP/supabase-production-root.crt"
+
       - name: Re-verify exact main immediately before EXECUTE
         shell: bash
         env:
@@ -432,6 +461,7 @@ jobs:
       - name: EXECUTE controlled Production DB attempt
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt
         shell: bash
         run: |
           set -euo pipefail
