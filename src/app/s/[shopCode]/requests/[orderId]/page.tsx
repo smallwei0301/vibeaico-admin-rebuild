@@ -79,7 +79,7 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
   const { contact } = await searchParams;
 
   if (!contact) notFound();
-  const order = await loadPublicTourRequestStatus(orderId, contact);
+  const order = await loadPublicTourRequestStatus(shopCode, orderId, contact);
   if (!order) notFound();
 
   return (

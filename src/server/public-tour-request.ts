@@ -39,6 +39,8 @@ import { z } from 'zod';
 import { createAdminSupabase } from '@/server/supabase';
 import { SHOP_CODE_PATTERN } from '@/lib/shop-code';
 import { hydrateTourOrders } from '@/server/tour-orders';
+import { isFeatureActive } from '@/server/features';
+import { nextTourOrderNo } from '@/server/tour-order-no';
 import type { TourOrder } from '@/lib/types';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -169,11 +171,16 @@ export const submitPublicTourRequestSchema = z.object({
   planId: z.string().uuid(),
   departureId: z.string().uuid(),
   partySize: z.coerce.number().int().min(1, '人數至少為 1'),
-  contactName: z.string().trim().min(1, '請輸入姓名'),
+  // Final Risk F2：這幾個欄位先前沒有 `.max()`，是本檔唯一一批缺上限的自由文字
+  // 欄位（`preferredNote`／`specialRequest` 一開始就有 500 字上限）——在 F1 的
+  // 匿名節流補上之前，這是最便宜的儲存耗盡手段。上限值取一般表單常見上限
+  // （姓名／LINE ID 100 字、電話 40 字、Email 254 字＝RFC 5321 位址長度上限），
+  // 不是業務規則，只是防止異常輸入。
+  contactName: z.string().trim().min(1, '請輸入姓名').max(100, '姓名長度超過上限'),
   /** 至少一種聯絡方式（LINE／電話／Email）——三選一以上，不是三個都必填。 */
-  contactPhone: z.string().trim().optional(),
-  contactLine: z.string().trim().optional(),
-  contactEmail: z.string().trim().email('Email 格式錯誤').optional().or(z.literal('')),
+  contactPhone: z.string().trim().max(40, '電話長度超過上限').optional(),
+  contactLine: z.string().trim().max(100, 'LINE ID 長度超過上限').optional(),
+  contactEmail: z.string().trim().max(254, 'Email 長度超過上限').email('Email 格式錯誤').optional().or(z.literal('')),
   /** 方案專屬問題（最多 2 題，見 issue 規格「至多 2 題方案專屬必填問題」）。
    *  這一輪沒有方案端的問題設定介面（那是另一塊 UI 工作），所以固定成通用的
    *  「偏好日期/時段補充」與「特殊需求」兩題，並非每方案客製——如實記在
@@ -231,13 +238,16 @@ export async function submitPublicTourRequest(
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < MAX_ORDER_NO_ATTEMPTS && !orderId; attempt++) {
-    const { data: last, error: nError } = await admin
-      .from('tour_orders').select('order_no')
-      .eq('tenant_id', plan.tenantId).like('order_no', `TO${yymmdd}%`)
-      .order('order_no', { ascending: false }).limit(1).maybeSingle();
-    if (nError) throw queryFailed('order_no', nError);
-    const serial = last ? Number(String(last.order_no).slice(-4)) + 1 : 1;
-    const candidateOrderNo = `TO${yymmdd}${String(serial).padStart(4, '0')}`;
+    // Final Risk F1：不再用「查最後一筆、字串排序」——那個寫法在單一租戶單日
+    // 超過 9999 筆後會永久重算出同一個已存在的號碼、永久撞 unique 導致當天
+    // 完全無法建單（含這裡與 GUIDE 側手動建單，兩者共用同一個號碼命名空間）。
+    // 見 src/server/tour-order-no.ts 檔頭的完整說明。
+    let candidateOrderNo: string;
+    try {
+      candidateOrderNo = await nextTourOrderNo(admin, plan.tenantId, yymmdd);
+    } catch (nError) {
+      throw queryFailed('order_no', nError);
+    }
 
     const { data, error } = await admin.rpc('create_tour_order', {
       p_tenant: plan.tenantId,
@@ -283,17 +293,37 @@ export async function submitPublicTourRequest(
  * PR 說明的 DEPENDENCY），所以用「訂單 id + 申請時填的聯絡方式其中一項」做
  * 最小可行的身分核對——比對得上才回資料，比對不上一律回 null（呼叫端轉 404），
  * 不得因為 id 猜得到就把別人的訂單內容洩漏出去。
+ *
+ * Final Risk F3：**必須**帶 `shopCode` 並先反查成 `tenantId`、查詢時用它過濾
+ * `tour_orders.tenant_id`。先前這裡只用 `orderId` 查、完全不看路由上的
+ * `shopCode`，等於旅客只要猜對任何一筆訂單的 id 與其中一個聯絡方式，就能查到
+ * **全平台任何一個租戶**的訂單（不限 REQUEST，FIXED_DEPARTURE／INSTANT 的已
+ * 付款訂單一樣查得到）——這比「查到別人的 REQUEST 申請」嚴重得多。同時比照
+ * `submitPublicTourRequest` 的寫入路徑，補上 `TOUR_MODULE` 功能閘門：店家若已
+ * 停用旅遊模組，顧客訂單資料不該還能被外部查詢（先前寫入路徑有查、讀取路徑
+ * 沒查，兩邊不一致本身就是一個漏洞徵兆）。
  */
 export async function loadPublicTourRequestStatus(
-  orderId: string, contact: string,
+  shopCode: string, orderId: string, contact: string,
 ): Promise<TourOrder | null> {
+  if (!SHOP_CODE_PATTERN.test(shopCode)) return null;
   if (!UUID_RE.test(orderId)) return null;
   const normalizedContact = contact.trim().toLowerCase();
   if (!normalizedContact) return null;
 
   const admin = createAdminSupabase();
+
+  const { data: tenantRow, error: tenantError } = await admin
+    .from('tenants').select('id').eq('shop_code', shopCode).maybeSingle();
+  if (tenantError) throw queryFailed('tenants', tenantError);
+  if (!tenantRow) return null;
+  const tenantId = tenantRow.id as string;
+
+  if (!(await isFeatureActive(tenantId, 'TOUR_MODULE'))) return null;
+
   const { data: row, error } = await admin
-    .from('tour_orders').select('*').eq('id', orderId).maybeSingle();
+    .from('tour_orders').select('*')
+    .eq('id', orderId).eq('tenant_id', tenantId).maybeSingle();
   if (error) throw queryFailed('tour_orders', error);
   if (!row) return null;
 
@@ -303,6 +333,6 @@ export async function loadPublicTourRequestStatus(
     .map((v) => v.trim().toLowerCase());
   if (!candidates.includes(normalizedContact)) return null;
 
-  const [order] = await hydrateTourOrders(admin, row.tenant_id as string, [row]);
+  const [order] = await hydrateTourOrders(admin, tenantId, [row]);
   return order ?? null;
 }
