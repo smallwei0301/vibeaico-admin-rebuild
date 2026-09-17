@@ -17,8 +17,9 @@ import { ConfirmModal, Modal } from '@/components/ui/Modal';
 import { FormGroup, FormText, Input, Label, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  cancelTourOrder, completeTourOrder, confirmTourOrderPayment, createManualTourOrder,
-  listTourOrders, listTripDepartures, listTripPlans, listTrips, parseTourOrdersDeepLink,
+  acceptTourOrder, cancelTourOrder, completeTourOrder, confirmTourOrderPayment,
+  createManualTourOrder, listTourOrders, listTripDepartures, listTripPlans, listTrips,
+  parseTourOrdersDeepLink, rejectTourOrder,
 } from '@/services/tours';
 import { ApiError } from '@/lib/api';
 import { common } from '@/i18n/zh-TW/common';
@@ -81,8 +82,10 @@ export default function TourOrdersPage() {
   const [detail, setDetail] = React.useState<TourOrder | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
   const [action, setAction] = React.useState<
-    { kind: 'confirmPayment' | 'complete' | 'cancel'; order: TourOrder } | null
+    { kind: 'confirmPayment' | 'complete' | 'cancel' | 'reject'; order: TourOrder } | null
   >(null);
+  /** #46：接受申請的付款保留時數覆寫——空字串＝不覆寫，用方案的預設值。 */
+  const [acceptHoldHours, setAcceptHoldHours] = React.useState('');
 
   const [draft, setDraft] = React.useState({
     tripId: '', planId: '', departureId: '', customerName: '',
@@ -207,9 +210,25 @@ export default function TourOrdersPage() {
       ? [() => confirmTourOrderPayment(order.id), t.messages.paymentConfirmed] as const
       : kind === 'complete'
         ? [() => completeTourOrder(order.id), t.messages.completed] as const
-        : [() => cancelTourOrder(order.id), t.messages.cancelled] as const;
+        : kind === 'reject'
+          ? [() => rejectTourOrder(order.id), t.messages.rejected] as const
+          : [() => cancelTourOrder(order.id), t.messages.cancelled] as const;
     const ok = await runOrderAction(call, message);
     if (ok) setAction(null);
+  };
+
+  /**
+   * #46：接受 REQUEST 申請。獨立於 `runAction`／`ConfirmModal` 之外，因為它多一個
+   * 可選的「覆寫保留時數」輸入框——直接掛在詳情 modal 裡，成功後連詳情一起關掉
+   * （旅客的申請狀態已經改變，留著舊的詳情畫面容易讓導遊誤以為還是 PENDING）。
+   */
+  const acceptRequest = async (order: TourOrder) => {
+    const hours = acceptHoldHours.trim() ? Number(acceptHoldHours.trim()) : undefined;
+    const ok = await runOrderAction(
+      () => acceptTourOrder(order.id, hours),
+      t.messages.accepted,
+    );
+    if (ok) { setDetail(null); setAcceptHoldHours(''); }
   };
 
   /* ------------------------------------------------------- 手動建立訂單 */
@@ -538,6 +557,39 @@ export default function TourOrdersPage() {
                 {detail.note || t.detail.noNote}
               </p>
             </section>
+
+            {/* #46：只有「還在等待導遊決定的 REQUEST 申請」才顯示這一段。 */}
+            {detail.salesMode === 'REQUEST' && detail.status === 'PENDING' ? (
+              <section className="rounded-md border border-warning p-3">
+                <h4 className="mb-1 text-sm font-bold text-warning">
+                  {t.detail.sections.request}
+                </h4>
+                <p className="mb-2 text-sm text-secondary">{t.request.explain}</p>
+                <FormGroup className="mb-2">
+                  <Label>{t.request.holdHoursLabel}</Label>
+                  <Input
+                    type="number" min={0}
+                    placeholder={t.request.holdHoursPlaceholder(12)}
+                    value={acceptHoldHours}
+                    onChange={(e) => setAcceptHoldHours(e.target.value)}
+                  />
+                </FormGroup>
+                <div className="btn-group">
+                  <Button
+                    variant="primary" size="sm" loading={busy}
+                    onClick={() => acceptRequest(detail)}
+                  >
+                    <CheckCircle2 size={13} />{t.actions.accept}
+                  </Button>
+                  <Button
+                    variant="outlineDanger" size="sm"
+                    onClick={() => setAction({ kind: 'reject', order: detail })}
+                  >
+                    <XCircle size={13} />{t.actions.reject}
+                  </Button>
+                </div>
+              </section>
+            ) : null}
           </div>
         ) : null}
       </Modal>
@@ -672,21 +724,24 @@ export default function TourOrdersPage() {
         title={
           action?.kind === 'confirmPayment' ? t.confirm.confirmPaymentTitle
             : action?.kind === 'complete' ? t.confirm.completeTitle
-              : t.confirm.cancelTitle
+              : action?.kind === 'reject' ? t.confirm.rejectTitle
+                : t.confirm.cancelTitle
         }
         message={
           action
             ? action.kind === 'confirmPayment' ? t.confirm.confirmPayment(action.order.orderNo)
               : action.kind === 'complete' ? t.confirm.complete(action.order.orderNo)
-                : t.confirm.cancel(action.order.orderNo)
+                : action.kind === 'reject' ? t.request.rejectConfirm(action.order.orderNo)
+                  : t.confirm.cancel(action.order.orderNo)
             : ''
         }
         confirmText={
           action?.kind === 'confirmPayment' ? t.actions.confirmPayment
             : action?.kind === 'complete' ? t.actions.complete
-              : t.actions.cancel
+              : action?.kind === 'reject' ? t.actions.reject
+                : t.actions.cancel
         }
-        danger={action?.kind === 'cancel'}
+        danger={action?.kind === 'cancel' || action?.kind === 'reject'}
       />
     </>
   );

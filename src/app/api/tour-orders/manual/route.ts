@@ -4,6 +4,7 @@ import { requireFeature } from '@/server/features';
 import { taipeiTodayDateString } from '@/server/tz';
 import { manualTourOrderSchema } from '@/server/tour-domain';
 import { hydrateTourOrders } from '@/server/tour-orders';
+import { nextTourOrderNo } from '@/server/tour-order-no';
 
 /**
  * POST /api/tour-orders/manual — 導遊在後台手動建單（#8-B，10 分冊 §3）。
@@ -17,6 +18,13 @@ import { hydrateTourOrders } from '@/server/tour-orders';
  *
  * order_no：'TO' + yymmdd(Asia/Taipei) + 4 位當日流水（同租戶），與商品訂單
  * 同一套規則。撞 `unique (tenant_id, order_no)` 就重取流水重試最多 3 次。
+ *
+ * ⚠️ 配號邏輯抽到 `src/server/tour-order-no.ts`（issue #46 Final Risk 修復）：
+ * 原本這裡與 `src/server/public-tour-request.ts` 各自內嵌「查最後一筆＋字串
+ * 排序」的寫法，在單一租戶單日超過 9999 筆後會永久重算出同一個已存在的號碼、
+ * 永久撞 unique——兩個入口共用同一個 `(tenant_id, order_no)` 命名空間，所以
+ * 即使這裡本身流量正常，也會被另一個入口（旅客自助申請）的異常流量拖垮。
+ * 詳見該檔檔頭。
  */
 const MAX_ORDER_NO_ATTEMPTS = 3;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,13 +59,7 @@ export const POST = handle(async (req) => {
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt < MAX_ORDER_NO_ATTEMPTS && !orderId; attempt++) {
-    const { data: last, error: nError } = await t.supabase
-      .from('tour_orders').select('order_no')
-      .eq('tenant_id', t.tenantId).like('order_no', `TO${yymmdd}%`)
-      .order('order_no', { ascending: false }).limit(1).maybeSingle();
-    if (nError) throw nError;
-    const serial = last ? Number(String(last.order_no).slice(-4)) + 1 : 1;
-    const orderNo = `TO${yymmdd}${String(serial).padStart(4, '0')}`;
+    const orderNo = await nextTourOrderNo(t.supabase, t.tenantId, yymmdd);
 
     const { data, error } = await t.supabase.rpc('create_tour_order', {
       p_tenant: t.tenantId,
