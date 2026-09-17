@@ -415,21 +415,20 @@ describe('#396 已提交的正式資料', () => {
   const repoFiles = loadRealRepoFiles();
 
   // repo 端多出尚未套用的 0109、0110、0111、0112、0113、0114、0115、
-  // 0116_issue_18_owner_notify、0117_issue_25b_support_chat_threads、
-  // 0118_issue_25c_platform_donations 與本候選
-  // 0119_issue_17_booking_addons_hardening（依序合併自 #519/#524/#526/#527 等
-  // main 側 PR 加上本 issue #17 補齊-2，見 supabase/ledger-alias-map.json 對應
-  // evidence），正式庫快照維持 58 筆實際 ledger row（0106／0108／0107 已分別於
-  // 2026-09-14 經 Owner 具名授權套用並重新擷取本快照；0105 於 2026-09-15 以
-  // 唯讀查詢確認先前已套用於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，
-  // 四者都在快照裡）。#455 不會重寫、拆分或新增既有 migration 歷史；數字以
-  // current main 的實際檔案為準。
-  it('repo 有 68 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(68);
+  // 0116_issue_18_owner_notify、0117_issue_25b_support_chat_threads 與本候選
+  // 0118_issue_25c_platform_donations（三者依序合併自 #519/#524/#526/#527 等
+  // main 側 PR，見 supabase/ledger-alias-map.json 對應 evidence），正式庫快照
+  // 維持 58 筆實際 ledger row（0106／0108／0107 已分別於 2026-09-14 經 Owner
+  // 具名授權套用並重新擷取本快照；0105 於 2026-09-15 以唯讀查詢確認先前已套用
+  // 於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，四者都在快照裡）。
+  // #455 不會重寫、拆分或新增既有 migration 歷史；數字以 current main 的
+  // 實際檔案為準。
+  it('repo 有 67 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(67);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 68 個 repo 檔案與 58 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 67 個 repo 檔案與 58 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -455,16 +454,15 @@ describe('#396 已提交的正式資料', () => {
     // 發現 0105 其實已經套用於正式庫，本檔先前誤標記為 NOT_APPLIED／
     // PENDING_APPLY，隨即更正為 EXACT（50 → 51）。尚未套用的是 0109、0110、
     // 0111、0112、0113、0114、0115、0116_issue_18_owner_notify、
-    // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations
-    // 與本候選的 0119_issue_17_booking_addons_hardening
-    // （後幾筆合併自 origin/main 的 #519/#524/#526/#527 等 PR 加上本 issue #17
-    // 補齊-2），所以 NOT_APPLIED 是 11。十一者依 AGENTS.md 的規則，在合併進
-    // main 之前都不是任何環境的套用授權。0109 是 SCHEMA_REPAIR；0112、0114
-    // 是 AUTHZ+BACKFILL 混合風險。三者各自留在既有 migration 歷史中，並標為
-    // VERIFIED_NOT_APPLIED，直到未來獨立 release 有對應的審查與執行器。
+    // 0117_issue_25b_support_chat_threads 與本候選的 0118_issue_25c_platform_donations
+    // （後幾筆合併自 origin/main 的 #519/#524/#526/#527 等 PR），所以 NOT_APPLIED
+    // 是 10。十者依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
+    // 0109 是 SCHEMA_REPAIR；0112、0114 是 AUTHZ+BACKFILL 混合風險。三者各自
+    // 留在既有 migration 歷史中，並標為 VERIFIED_NOT_APPLIED，直到未來獨立
+    // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(11);
+    expect(counts.NOT_APPLIED ?? 0).toBe(10);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -729,16 +727,15 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 11 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、
-    // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
-    // 0119_issue_17_booking_addons_hardening 這 8 支是 PENDING_APPLY；
-    // 0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）
+    // 目前為 10 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、
+    // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations 這 7 支
+    // 是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）
     // 是 VERIFIED_NOT_APPLIED。0107／0108 已套用正式庫轉為 EXACT；0105 於
     // 2026-09-15 以唯讀查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。保留 main 那一版的
     // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
     // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
     // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(11);
+    expect(notApplied.length).toBe(10);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }
