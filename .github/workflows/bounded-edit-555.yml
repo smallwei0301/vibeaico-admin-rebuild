@@ -1,0 +1,120 @@
+name: bounded-edit-555
+on:
+  push:
+    branches: [governance/issue-555-delivery-boundary]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: >-
+      github.event.head_commit.message == 'chore: apply bounded 555 patch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply literal six-file patch on verified parent
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, re, json, os
+          base = '9a14feb1da0920958791ba6c8801e002e604acc3'
+          helper = '.github/workflows/bounded-edit-555.yml'
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD^') == base, 'Unexpected edit-carrier parent'
+          assert git('diff', '--name-only', base, 'HEAD').splitlines() == [helper], 'Unexpected carrier scope'
+          def replace(name, old, new):
+              p = Path(name); text = p.read_text()
+              assert text.count(old) == 1, f'{name}: patch anchor is not unique'
+              p.write_text(text.replace(old, new))
+          replace('scripts/agents/governance-workstream-boundary.mjs',
+              '// Shared by preflight and the required remote guard; do not duplicate this contract.',
+              "/** Shared applicability with Completion Truth; work origin is not an exemption.\n * @param {string} body @param {{policyApplies?: boolean}} classification */\nexport function shouldValidateDeliveryUnitBoundary(body = '', classification = {}) {\n  return Boolean(readField(body, 'WORKSTREAM') || classification.policyApplies);\n}\n\n// Shared by preflight and the required remote guard; do not duplicate this contract.")
+          replace('.github/workflows/agent-wip-guard.yml',
+              "            if (isAgent && metadata.state === 'ACTIVE') {\n              metadataErrors.push(...boundary.validateDeliveryUnitBoundary(current.body ?? '', metadata));\n            }",
+              "            if (boundary.shouldValidateDeliveryUnitBoundary(current.body ?? '', classification)) {\n              metadataErrors.push(...boundary.validateDeliveryUnitBoundary(current.body ?? '', metadata));\n            }")
+          replace('scripts/agents/completion-truth.mjs',
+              'import { boundaryPaths, validateBookkeepingWorkstream, validateDeliveryUnitBoundary } from "./governance-workstream-boundary.mjs";',
+              'import { boundaryPaths, validateBookkeepingWorkstream, validateDeliveryUnitBoundary, shouldValidateDeliveryUnitBoundary } from "./governance-workstream-boundary.mjs";')
+          replace('scripts/agents/completion-truth.mjs',
+              'if (readField(body, "WORKSTREAM") || classification.policyApplies) {',
+              'if (shouldValidateDeliveryUnitBoundary(body, classification)) {')
+          replace('tests/unit/governance-workstream-boundary.500.test.ts',
+            "describe('governance boundary regression #500', () => {",
+            "describe('governance boundary regression #500', () => {\n" + "  describe('delivery applicability regression #555', () => {\n    it('shares the post-merge applicability and preserves undeclared historical records', () => {\n      const applies = boundaryPolicy.shouldValidateDeliveryUnitBoundary;\n      expect(applies('', { policyApplies: false })).toBe(false);\n      expect(applies('', { policyApplies: true })).toBe(true);\n      expect(applies(gov, { policyApplies: false })).toBe(true);\n      const completion = readFileSync('scripts/agents/completion-truth.mjs', 'utf8');\n      expect(completion).toContain('if (shouldValidateDeliveryUnitBoundary(body, classification))');\n    });\n    it.each(['OWNER', 'UNKNOWN', 'AGENT'])('rejects the #553 contradiction before merge for %s origin', async (origin) => {\n      const body = gov.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`)\n        .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');\n      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));\n      expect(result.statuses.at(-1).state).toBe('failure');\n      expect(result.failures.join('\\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');\n      expect(truth(body, paths).metadataErrors).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');\n      expect(result.calls).not.toContain('dispatch');\n    });\n    it.each(['OWNER', 'UNKNOWN'])('retains valid pure governance without Product WIP for %s', async (origin) => {\n      const body = gov.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`);\n      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));\n      expect(result.failures).toEqual([]);\n      expect(result.calls).not.toContain('product-peers');\n      expect(result.calls).not.toContain('dispatch');\n      expect(result.statuses.at(-1).state).toBe('pending'); // Draft is not approval.\n    });\n    it.each(['OWNER', 'UNKNOWN'])('rejects Product count=false for %s without inventing shipment', async (origin) => {\n      const body = product.replace('WORK_ORIGIN: AGENT', `WORK_ORIGIN: ${origin}`)\n        .replace('COUNT_IN_DELIVERY_OUTCOME: true', 'COUNT_IN_DELIVERY_OUTCOME: false');\n      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body), ['src/app/page.tsx']);\n      expect(result.failures.join('\\n')).toContain('STANDALONE must set COUNT_IN_DELIVERY_OUTCOME=true');\n      expect(result.statuses.at(-1).state).toBe('failure');\n      expect(truth(body).productionAccepted).toBe(false);\n    });\n    it.each(['PARKED', 'COMPLETE'])('does not skip declared delivery metadata for open %s OWNER PRs', async (state) => {\n      const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')\n        .replace('LANE_STATE: ACTIVE', `LANE_STATE: ${state}`)\n        .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');\n      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));\n      expect(result.failures.join('\\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');\n    });\n    it('keeps closed OWNER housekeeping ahead of validation and never rewrites historical statuses', async () => {\n      const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')\n        .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');\n      const current = { ...subject(body), state: 'closed', merged: true };\n      const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);\n      expect(result.statuses).toEqual([]);\n      expect(result.failures).toEqual([]);\n      expect(result.calls.every(call => call === 'labels')).toBe(true);\n    });\n  });\n")
+          replace('docs/AGENT-EXECUTION.md', '### 9.1.1 工作分類、計數資格與上線驗收分開\n', '### 9.1.1 工作分類、計數資格與上線驗收分開\n\n- #555：交付欄位是來源無關的資料契約。有 WORKSTREAM 宣告或現行分類政策適用的 open PR，\n  不因 WORK_ORIGIN=OWNER／UNKNOWN、Draft 或 lane 狀態而略過既有交付檢查。\n  遠端 required guard 與 Completion Truth 共用 applicability；本機 preflight 仍先驗再提交。\n  closed housekeeping 仍只清位置，不重寫歷史結果；未宣告且政策不適用的歷史記錄保留原相容性。\n')
+          replace('docs/AGENT-PLAYBOOK.md', '### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger', '#### 2026-09-17 再發：#553 的 OWNER 來源漏過遠端交付驗證（#555）\n\n- 新增可核對事件：1 次；PB-034 原 3 次加本次合計 4 次。最近發生：2026-09-17。\n- 證據：#553 head f17347a45c119af78694238a0254bbcd4a439aee 的 Agent WIP Policy\n  run 35168676081 成功，合併後 comment 5706821404 才報 DELIVERY_METADATA_INVALID。\n- 精確根因：本機及 Completion Truth 已共用 validateDeliveryUnitBoundary，但 required workflow\n  把呼叫包在 AGENT+ACTIVE 條件中。OWNER 來源並不是交付契約豁免；共用函式不等於呼叫覆蓋一致。\n- 修正：required workflow 與 Completion Truth 共用 applicability；來源、Draft、lane 不再成漏驗開關。\n  不改模型政策、Product WIP 計數、安全審查或 closed-event 歷史保護。\n- 預防與驗證：直接執行真正 workflow 的內嵌程式，對 OWNER/UNKNOWN/AGENT 做合法與矛盾對照；\n  另檢查 open PARKED/COMPLETE、Product count=false、歷史不適用與 closed housekeeping。\n  故意恢復舊 AGENT+ACTIVE 條件必須讓反例轉紅，不能只測未接線的 helper。\n- 環境界線：本機無法解析 GitHub，使用無 TEST/Production secrets 的短命 branch-only 編輯載體；\n  發布前移除載體，正常 PR 仍須 exact-head 完整 source CI。無法 clone 不等於不能修改 GitHub。\n\n### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger')
+          Path(helper).unlink()
+          files = git('diff', '--name-only', base).splitlines()
+          expected = sorted(['.github/workflows/agent-wip-guard.yml', 'scripts/agents/governance-workstream-boundary.mjs', 'scripts/agents/completion-truth.mjs', 'tests/unit/governance-workstream-boundary.500.test.ts', 'docs/AGENT-EXECUTION.md', 'docs/AGENT-PLAYBOOK.md'])
+          assert sorted(files) == expected, files
+          stat = git('diff', '--numstat', base)
+          assert sum(sum(int(x) for x in line.split('\t')[:2]) for line in stat.splitlines()) <= 800
+          subprocess.run(['git', 'diff', '--check', base], check=True)
+          Path(os.environ['RUNNER_TEMP'], '555-files.json').write_text(json.dumps(files))
+          Path(os.environ['RUNNER_TEMP'], '555.patch').write_text(git('diff', base))
+          print('BOUNDED_PATCH', stat)
+          PY
+
+      - name: Focused real workflow tests, mutation and preflight
+        shell: bash
+        run: |
+          npm ci
+          npm run guard:repo-integrity
+          npx vitest run tests/unit/governance-workstream-boundary.500.test.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/agent-wip-guard.yml')
+          s = p.read_text()
+          a = "if (boundary.shouldValidateDeliveryUnitBoundary(current.body ?? '', classification)) {"
+          b = "if (isAgent && metadata.state === 'ACTIVE') {"
+          assert s.count(a) == 1
+          Path('/tmp/555-original.yml').write_text(s)
+          p.write_text(s.replace(a, b))
+          PY
+          set +e
+          npx vitest run tests/unit/governance-workstream-boundary.500.test.ts > "$RUNNER_TEMP/555-mutation.log" 2>&1
+          result=$?
+          set -e
+          cp /tmp/555-original.yml .github/workflows/agent-wip-guard.yml
+          if [ "$result" -eq 0 ]; then echo 'Mutation survived'; exit 1; fi
+          grep -E '(FAIL|Tests|Test Files)' "$RUNNER_TEMP/555-mutation.log" || true
+          npx vitest run tests/unit/governance-workstream-boundary.500.test.ts
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, json
+          p=Path(os.environ['RUNNER_TEMP'])
+          (p/'555-body.md').write_text('<!-- pr-lifecycle\nissue: 555\nstate: ACTIVE\nsupersedes:\n-->\nWORKSTREAM: MODEL_GOVERNANCE\nWORK_ORIGIN: OWNER\nAGENT_LANE: GOVERNANCE\nLANE_STATE: ACTIVE\nBPLUS_MODE: false\nRUN_ID: none\nSCORECARD_PATH: none\nACTIVE_CANDIDATE: false\nCLOSEABILITY_SCORE: 5\nSELECTION_REASON: OWNER_DIRECTED\nREMAINING_AUTONOMOUS_STEPS: CI, counterexample review, protected merge and closeout\nOWNER_OR_EXTERNAL_BLOCKER: none\nCLOSURE_SWEEP_TARGET: #555\nTEST_LANE_REQUIRED: false\nTEST_PROFILE: SOURCE_ONLY\nFINAL_CANONICAL_REQUIRED: false\nGOVERNANCE_SCOPE_EXCEPTION: none\nREQUESTED_MODEL / ACTUAL_MODEL: requested=not_requested; actual=unknown\nASTRA_RISK: NONE\nASTRA_RATIONALE: Existing delivery metadata validation call coverage only; no Product runtime, schema, model policy or database mutation\nFINAL_RISK_POLICY: NOT_REQUIRED_BY_OWNER_POLICY\nDELIVERY_UNIT_TYPE: GOVERNANCE\nCOUNT_IN_DELIVERY_OUTCOME: false\nRETROACTIVE_TRACKING_MIGRATION: false\nUSER_VISIBLE_OUTCOME: none\n')
+          (p/'555-files.txt').write_text('\n'.join(json.loads((p/'555-files.json').read_text())))
+          PY
+          node scripts/agents/agent-wip-preflight.mjs --body "$RUNNER_TEMP/555-body.md" --changed-files "$RUNNER_TEMP/555-files.txt" --number 555
+
+      - name: Publish only six immutable source blobs, no ref changes
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const {owner, repo} = context.repo;
+            const branch = 'governance/issue-555-delivery-boundary';
+            if (context.ref !== `refs/heads/${branch}`) throw new Error('Wrong branch');
+            const current = await github.rest.git.getRef({owner, repo, ref:`heads/${branch}`});
+            if (current.data.object.sha !== context.sha) throw new Error('Concurrent branch update');
+            const files = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'555-files.json'),'utf8'));
+            const allowed = ['.github/workflows/agent-wip-guard.yml','scripts/agents/governance-workstream-boundary.mjs','scripts/agents/completion-truth.mjs','tests/unit/governance-workstream-boundary.500.test.ts','docs/AGENT-EXECUTION.md','docs/AGENT-PLAYBOOK.md'];
+            if (files.length !== allowed.length || files.some(f=>!allowed.includes(f))) throw new Error('Scope mismatch');
+            const blobs = [];
+            for (const file of files) {
+              const result = await github.rest.git.createBlob({owner, repo, content:fs.readFileSync(file,'utf8'), encoding:'utf-8'});
+              blobs.push({path:file, mode:'100644', type:'blob', sha:result.data.sha});
+            }
+            core.info(`PATCH_BLOBS=${JSON.stringify(blobs)}`);
+            core.info(`VALIDATED_CARRIER_HEAD=${context.sha}`);
+            await core.summary.addHeading('Bounded #555 validated source blobs').addCodeBlock(JSON.stringify(blobs, null, 2),'json').addRaw('No ref updated; Connector will assemble the six-path tree, remove this carrier, and use normal PR CI/review.').write();
