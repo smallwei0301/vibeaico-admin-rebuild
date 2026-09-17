@@ -18,4 +18,27 @@ describe('CI workflow dispatch revision wiring', () => {
     expect(workflow).toContain("decision.reason !== 'docs_only';");
     expect(workflow).toContain('core.setFailed(decision.error || `Rejected workflow dispatch: ${decision.reason}`);');
   });
+
+  it('emits raw shared TEST evidence only after a trusted main_manual run and never overclaims cleanup or AUTHZ coverage', () => {
+    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf8');
+    const e2e = workflow.indexOf('name: Run E2E tests');
+    const emit = workflow.indexOf('name: Emit trusted-main shared TEST raw evidence');
+    const upload = workflow.indexOf('name: Upload trusted-main shared TEST raw evidence');
+
+    expect(e2e).toBeGreaterThan(0);
+    expect(emit).toBeGreaterThan(e2e);
+    expect(upload).toBeGreaterThan(emit);
+    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain("github.ref == 'refs/heads/main'");
+    expect(workflow).toContain("inputs.dispatch_reason == 'main_manual'");
+    expect(workflow).toContain('test "$MAIN_SHA" = "$EXPECTED_HEAD"');
+    expect(workflow).toContain("url.hostname !== 'nmwhwngojosmagjuvxol.supabase.co'");
+    expect(workflow).toContain("status: 'SHARED_TEST_RUN_VERIFIED'");
+    expect(workflow).toContain("cleanupClaim: 'NOT_INFERRED_FROM_WORKFLOW_SUCCESS'");
+    expect(workflow).toContain("authzCoverageClaim: 'NOT_INFERRED_FROM_WORKFLOW_SUCCESS'");
+    expect(workflow).toContain('databaseMutationAuthorized: false');
+    expect(workflow).toContain('productionMutationPerformed: false');
+    expect(workflow).not.toContain("cleanupClaim: 'PASSED'");
+    expect(workflow).not.toContain("authzCoverageClaim: 'PASSED'");
+  });
 });
