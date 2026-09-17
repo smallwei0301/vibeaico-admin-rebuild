@@ -13,7 +13,7 @@
     { "type": "MAIN_BASE", "ref": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "note": "本 Run 起算時的 origin/main head。" }
   ],
   "main": { "startSha": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "endSha": null },
-  "inventory": { "openIssuesStart": 47, "openIssuesEnd": null, "openPrsStart": 1, "openPrsEnd": null, "mainTerraPeak": 3, "reserveTerraPeak": 2, "activeCandidatePeak": 3, "sharedTestPeak": 0, "closureSweeps": 0, "closureAdvancedOrClosed": 0 },
+  "inventory": { "openIssuesStart": 47, "openIssuesEnd": null, "openPrsStart": 1, "openPrsEnd": null, "mainTerraPeak": 3, "reserveTerraPeak": 2, "activeCandidatePeak": 3, "sharedTestPeak": 0, "closureSweeps": 1, "closureAdvancedOrClosed": 0 },
   "modelUsage": {
     "actualTokensAvailable": false, "weeklyUsageStartPercent": null, "weeklyUsageEndPercent": null, "weightedUsageImprovementPercent": null,
     "weights": { "luna": 1, "terra": 3, "sol": 6 },
@@ -38,8 +38,9 @@
   "notes": [
     "2026-09-17：PR #563 的 Final Risk（Astra/Fable 成本降級後之對抗審查）發現三項阻擋級安全問題（F1 order_no 序號碰撞 DoS、F2 聯絡欄位無長度上限、F3 狀態頁跨租戶查詢）；PR 已轉 draft、LANE_STATE 改為 PARKED、ACTIVE_CANDIDATE 改為 false，交回原 builder agent 修復。修復已完成並推回同一 PR，等待新一輪 Final Risk 覆核（DELTA/FULL 由審查工具判定）。",
     "2026-09-17：PR #562 經 Sol 對抗審查發現兩個問題（1）整合測試假設 migration 已套用，實際在 CI 的 local-isolated 環境下不成立；（2）GET route 對 PGRST200 錯誤碼未分支，安全降級這個場景下會失效。兩項均已修復並推回同一 PR，已合併進 main（squash merge d96d1b28）。",
-    "2026-09-17：本檔 wipLifecycle.events 中 #17／#46 的 BUILD_ENTER 時間戳原為事後估計（03:15:00Z／03:24:00Z），不符合 #569 新增的 Run 時間窗規則。已誠實更正為本 Run 時間窗內可觀測到的最早時間點（03:54:27Z／03:54:28Z）。本分支（#571）先前合併衝突時採用的 HEAD 側內容仍帶舊時間戳，現同步修正。",
-    "2026-09-17：PR #565（#17 migration-only）CI 在 SQL bug 修復 commit 0dad3e25 後發現 fresh-install-compatibility-baseline manifest 需要重新 re-pin，但本 session 執行環境的 auto-mode 安全分類器把這個合法的資料值更新整體判定為 Security Test Removal 並擋下。PR #565 因此轉 PARKED，讓出 active TERRA_BUILD 名額給已完工的 #568（#42）。"
+    "2026-09-17：本檔 wipLifecycle.events 中 #17／#46 的 BUILD_ENTER 時間戳原為事後估計（03:15:00Z／03:24:00Z），不符合 #569 新增的 Run 時間窗規則。已誠實更正為本 Run 時間窗內可觀測到的最早時間點（03:54:27Z／03:54:28Z）。",
+    "2026-09-17：PR #565（#17 migration-only）CI 在 SQL bug 修復 commit 0dad3e25 後發現 fresh-install-compatibility-baseline manifest 需要重新 re-pin，但本 session 執行環境的 auto-mode 安全分類器把這個合法的資料值更新整體判定為 Security Test Removal 並擋下。PR #565 因此轉 PARKED，讓出 active TERRA_BUILD 名額給已完工的 #568（#42）。",
+    "2026-09-17：#565 的 migration-build-exit-parked wipLifecycle 事件原本誤填了 fix commit 0dad3e25 作為 head，但 run-ledger-v2.mjs 要求 EXIT 事件必須與其 ENTER 事件引用完全相同的 head（標記的是這個租約進入時的狀態，不是離開當下的最新 commit）。已改回 ENTER 事件的 head（9db618a1）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": { "contractVersion": 1, "ownerRole": "PRODUCT_MAIN_SESSION", "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED", "state": "OPEN", "closedAt": null, "evidenceRef": null },
@@ -54,7 +55,7 @@
       { "id": "wip-2026-09-17-issue-47-build-enter", "at": "2026-09-17T05:14:00Z", "kind": "BUILD_ENTER", "pr": 571, "issue": 47, "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #47 LINE 開通精靈施工開始" },
       { "id": "wip-2026-09-17-issue-47-build-exit-ready", "at": "2026-09-17T05:20:00Z", "kind": "BUILD_EXIT", "pr": 571, "issue": 47, "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e", "workstream": "PRODUCT_MAINLINE", "reason": "施工完成，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI" },
       { "id": "wip-2026-09-17-issue-17-migration-build-enter", "at": "2026-09-17T05:36:00Z", "kind": "BUILD_ENTER", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "主 PR #562 已合併，配套 migration-only PR #565 升級為本輪唯一 active TERRA_BUILD 候選" },
-      { "id": "wip-2026-09-17-issue-17-migration-build-exit-parked", "at": "2026-09-17T06:15:00Z", "kind": "BUILD_EXIT", "pr": 565, "issue": 17, "head": "0dad3e25cb6f26458ae097715d1787b74b481882", "workstream": "PRODUCT_MAINLINE", "reason": "CI 因 fresh-install-baseline manifest re-pin 待辦而紅燈，執行環境權限阻擋此操作，PR 轉 PARKED，讓出 active TERRA_BUILD 名額" },
+      { "id": "wip-2026-09-17-issue-17-migration-build-exit-parked", "at": "2026-09-17T06:15:00Z", "kind": "BUILD_EXIT", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "CI 因 fresh-install-baseline manifest re-pin 待辦而紅燈（後續 fix commit 0dad3e25、目前最新 head仍待重新 re-pin），執行環境權限阻擋此操作，PR 轉 PARKED，讓出 active TERRA_BUILD 名額" },
       { "id": "wip-2026-09-17-issue-42-build-enter-active", "at": "2026-09-17T06:16:00Z", "kind": "BUILD_ENTER", "pr": 568, "issue": 42, "head": "a49fb61dcf2ae9d56ccd695f74533e5e925d9735", "workstream": "PRODUCT_MAINLINE", "reason": "#565 轉 PARKED 讓出名額，#568（#42）升級為本輪唯一 active TERRA_BUILD 候選" }
     ]
   },
