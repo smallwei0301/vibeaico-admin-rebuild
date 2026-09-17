@@ -109,6 +109,19 @@ describe('schema 尚未就緒時的安全降級（migration 拆到獨立 PR，�
     expect(postRoute).toMatch(/return ok\(\[\]\)/);
   });
 
+  it('GET：select 內嵌的 performance_staff_id FK 關聯缺失（PostgREST PGRST200）時同樣收斂成空陣列，不是 500', () => {
+    // select 內嵌了 `performance:staff!booking_addons_performance_staff_id_fkey(name)`，
+    // 這個 FK 由 0121 建立；尚未套用時 PostgREST 對「relationship not found」
+    // 回的是 PGRST200，不是 42703——兩個錯誤碼都要收斂成 ok([])，缺一個就會讓
+    // GET 在 migration 尚未套用的環境上炸成未分類 500。
+    expect(postRoute).toMatch(/PGRST200/);
+    const i = postRoute.indexOf("from('booking_addons')\n    .select(ADDON_SELECT)");
+    expect(i, '找不到 booking_addons 的 GET select 區塊').toBeGreaterThan(-1);
+    const block = postRoute.slice(i, postRoute.indexOf('return ok((data', i));
+    expect(block).toMatch(/code === '42703' \|\| code === 'PGRST200'/);
+    expect(block).toContain('return ok([])');
+  });
+
   it('POST：找不到 create_booking_addon rpc（PGRST202/42883）時回可讀的 503，不是未分類 500', () => {
     expect(postRoute).toMatch(/PGRST202|42883/);
     expect(postRoute).toMatch(/尚未上線|尚未啟用/);

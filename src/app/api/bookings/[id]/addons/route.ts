@@ -67,9 +67,16 @@ export const GET = handle(async (req, { params }) => {
     .order('created_at', { ascending: true });
   if (error) {
     // 42703 = undefined_column：搭配的 migration（0121）尚未套用到這個環境，
-    // 新欄位還不存在。這不是「這筆預約真的沒有加購」以外的錯誤，但對使用者
-    // 而言效果相同——安全收斂成空陣列，不讓整頁因為 500 掛掉。
-    if (String((error as any)?.code ?? '') === '42703') return ok([]);
+    // 新欄位（如 performance_staff_id）還不存在。
+    // PGRST200 = PostgREST「relationship not found」：上面的 select 內嵌了
+    // `performance:staff!booking_addons_performance_staff_id_fkey(name)`，這個
+    // FK 同樣由 0121 建立，尚未套用時 PostgREST 找不到這個關聯，回的是
+    // PGRST200 而不是 42703（欄位缺失走 Postgres 錯誤碼、關聯缺失走
+    // PostgREST 自己的錯誤碼），兩者都是「這個環境還沒套 0121」的同一種情境。
+    // 兩者都不是「這筆預約真的沒有加購」以外的錯誤，但對使用者而言效果相
+    // 同——安全收斂成空陣列，不讓整頁因為 500 掛掉。
+    const code = String((error as any)?.code ?? '');
+    if (code === '42703' || code === 'PGRST200') return ok([]);
     throw error;
   }
 
