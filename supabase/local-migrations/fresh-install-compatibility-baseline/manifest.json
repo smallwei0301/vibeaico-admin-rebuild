@@ -4,8 +4,8 @@
   "mode": "LOCAL_ONLY_TRANSITIONAL",
   "source": {
     "repository": "smallwei0301/vibeaico-admin-rebuild",
-    "mainHead": "2bef9b60bcfd49f371d7a0891a266e69defec546",
-    "canonicalSourceDigest": "d70c03a9272cd517baff54754ef6a20f0c638751a2d6c09c530ba5d8d8ce83e3",
+    "mainHead": "926bb23bbb8d4d9b7546c35d1c94d55a221ab03e",
+    "canonicalSourceDigest": "c9b1bdacefec736cb4d77576e69b99c47e8737235db22c3087c20e3a9a32e682",
     "historicalManifest": "supabase/local-migrations/historical-integration-baseline/manifest.json",
     "historicalHead": "7ad9ac53df1f7f4971a2ec96c4038587e0515b66"
   },
