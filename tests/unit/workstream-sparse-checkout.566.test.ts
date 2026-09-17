@@ -70,12 +70,17 @@ describe('classification sparse-checkout dependency closure (#566)', () => {
     expect(result.stdout).toContain('SPARSE_POLICY_IMPORT_OK');
   });
 
-  it('detects the original missing final-risk-cost-policy dependency', () => {
-    const result = loadSparsePolicy(sparseFiles().filter((path) => !path.endsWith('/final-risk-cost-policy.mjs')));
+  it.each([
+    'astra-review-policy.mjs',
+    'agent-wip-policy.mjs',
+    'governance-workstream-boundary.mjs',
+    'final-risk-cost-policy.mjs',
+  ])('detects a missing required module: %s', (filename) => {
+    const result = loadSparsePolicy(sparseFiles().filter((path) => !path.endsWith(`/${filename}`)));
     expect(result.error).toBeUndefined();
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('ERR_MODULE_NOT_FOUND');
-    expect(result.stderr).toContain('final-risk-cost-policy.mjs');
+    expect(result.stderr).toContain(filename);
   });
 
   it('does not let model-routing.json leak in from the full checkout', () => {
