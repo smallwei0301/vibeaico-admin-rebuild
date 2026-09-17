@@ -28,6 +28,7 @@
       { "id": "issue-47-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#47 TERRA_BUILD 施工。已合併 PR #571。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
       { "id": "issue-17-migration-sql-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#17 migration-only PR #565 CI 抓到 PL/pgSQL 欄位歧義，已修復。後續 manifest re-pin 被擋下，轉 PARKED。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
       { "id": "issue-47-merge-conflict-resolution", "requestedModel": "terra", "actualModel": "terra", "role": "#47 PR #571 合併衝突解決。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
+      { "id": "refill-scout-scan", "requestedModel": "luna", "actualModel": "luna", "role": "REFILL 窗點與選題盤點（scout 層）：搜索開啟中 Issue，排除 #447 與本輪已處理的 #17/#42/#43/#46/#47，找出無 Owner 產品決策 blocker 的下一輪候選。推薦 #50（採納）與 #66（備選）。", "count": 1, "contextClass": "compact", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-haiku-4-5" },
       { "id": "issue-50-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#50 TERRA_BUILD 施工：關鍵字回覆換圖/移除圖片時清舊 Storage 物件（best-effort，不阻擋儲存）。新增 `src/server/storage-cleanup.ts` 共用函式，開共用追蹤 Issue #572。開 PR #573。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" }
     ],
     "fullContextReplays": 0, "duplicateScans": 0
@@ -41,7 +42,7 @@
     "2026-09-17：PR #563 的 Final Risk發現 F1/F2/F3，修復後推回同一 PR。",
     "2026-09-17：PR #562 合併進 main（squash merge d96d1b28）。",
     "2026-09-17：#568（#42）、#571（#47）均已合併進 main。",
-    "2026-09-17：須目從 Haiku 盤點推薦之候選中選出 #50 作為 REFILL，施工完成後開 PR #573，並依 #50 驗收標準新開共用 cleanup 追蹤 Issue #572。"
+    "2026-09-17：從 Haiku scout 層盤點推薦之候選中選出 #50 作為 REFILL，施工完成後開 PR #573，並依 #50 驗收標準新開共用 cleanup 追蹤 Issue #572。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": { "contractVersion": 1, "ownerRole": "PRODUCT_MAIN_SESSION", "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED", "state": "OPEN", "closedAt": null, "evidenceRef": null },
