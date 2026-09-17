@@ -62,12 +62,27 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      - name: Install Supabase Production CA for verify-full
+        shell: bash
+        env:
+          PRODUCTION_DB_SSL_ROOT_CERT: ${{ secrets.PRODUCTION_DB_SSL_ROOT_CERT }}
+        run: |
+          set -euo pipefail
+          test -n "$PRODUCTION_DB_SSL_ROOT_CERT"
+          case "$PRODUCTION_DB_SSL_ROOT_CERT" in
+            *"-----BEGIN CERTIFICATE-----"*"-----END CERTIFICATE-----"*) ;;
+            *) echo '::error::PRODUCTION_DB_SSL_ROOT_CERT must contain a PEM certificate'; exit 1 ;;
+          esac
+          printf '%s\n' "$PRODUCTION_DB_SSL_ROOT_CERT" > "$RUNNER_TEMP/supabase-production-root.crt"
+          chmod 600 "$RUNNER_TEMP/supabase-production-root.crt"
       - name: Verify project-bound writer credential without mutation
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
           WRITER_CREDENTIAL_ENVIRONMENT: production-db-writer
+          NODE_EXTRA_CA_CERTS: ${{ runner.temp }}/supabase-production-root.crt
         run: node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
       - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: production-db-writer-credential-proof-${{ needs.verify-exact-main.outputs.main_sha }}
           path: ${{ runner.temp }}/production-db-writer-credential-proof.json
@@ -113,6 +128,7 @@ jobs:
             tests/unit/production-db-final-risk-evidence.443.test.ts \
             tests/unit/controlled-production-db-release.447.test.ts \
             tests/unit/production-db-postgres-transport.447.test.ts \
+            tests/unit/production-db-writer-credential-proof.447.test.ts \
             tests/unit/production-db-apply-receipt.447.test.ts \
             tests/unit/production-db-postcheck.447.test.ts \
             tests/unit/production-db-release-orchestrator.447.test.ts \
