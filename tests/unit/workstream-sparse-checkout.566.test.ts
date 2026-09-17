@@ -45,7 +45,7 @@ function loadSparsePolicy(paths: string[]) {
     encoding: 'utf8',
     timeout: 10_000,
     // Do not expose CI or database credentials to the import-only smoke test.
-    env: { PATH: process.env.PATH ?? '' },
+    env: { PATH: process.env.PATH ?? '', NODE_ENV: 'test' },
   });
 }
 
