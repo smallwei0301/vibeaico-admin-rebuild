@@ -2,7 +2,6 @@
 
 > **Final Risk reviewer 更新（Owner 2026-09-17 #552）**：本 release 自己的 plan/evidence 綁定仍必須審查，但允許 Sol/Opus 或無 selector 的 current-agent 對抗審查，依 `AGENT-EXECUTION.md` §7.2。`production-db-release-preflight.mjs` 與 WIP 使用同一降級證據驗證器。通過只代表下一道安全關卡可檢查，不授予 Production 寫入權；G0–G7 其餘條件不變。
 
-
 > Owner 裁示：2026-09-14
 > 狀態：`POLICY_APPROVED_AUTOMATION_PENDING`
 > 目標狀態：`POLICY_GATED_ACTIVE`
@@ -27,12 +26,12 @@ Production DB 不再長期依賴「每次由 Owner 回覆同意」作為安全�
 |---|---|---|
 | `ADDITIVE`：向後相容 table/column/index/constraint/function 擴充 | G0–G7 | 不強迫 tenant/backfill 專屬測試 |
 | `AUTHZ`：RLS/ACL/auth/tenant boundary/privileged routine | G0–G7 | tenant 正向/反向、非法角色、跨租戶負向測試 |
-| `BACKFILL`：非金流、有界資料修復 | G0–G7 | preimage backup、row cap、批次/重跑/並行保護 |
+| `BACKFILL`：非金流、有界資料修復 | G0–G7 | Production backup/PITR、backup clone、preimage backup、row cap、批次/重跑/並行保護 |
 | `DESTRUCTIVE` / unknown | v1 不放行 | 先改成 expand → migrate → contract；不能靠人工特批跳過 |
 
-一般 additive migration 不因為安全治理就被迫做與它無關的租戶測試或資料回填備份。
+一般 additive / AUTHZ / schema-repair migration 不因為安全治理就被迫取得與其風險無關的 Production backup metadata credential。
 昂貴檢查只在風險需要時啟動；真正不可省的是 exact source、unexplained drift=0、真 TEST、
-可恢復、獨立高風險審查、唯一 writer 與 post-apply readback。
+與風險相稱的可恢復證據、對抗審查、唯一 writer 與 post-apply readback。
 
 ## 3. Release 狀態機
 
@@ -108,25 +107,28 @@ Production/TEST live evidence v1 最長 15 分鐘；未來時間、stale、wrong
 - cleanup 必須完成；
 - TEST 套用後重新 capture drift evidence，再交後續 gate。
 
-## 8. G4：Backup / Recovery
+## 8. G4：Backup / Recovery（依 risk tier）
 
-每次 release 自動查 Production backup/PITR availability，使用 project-scoped、read-only backup credential；
-backup observer 不得持有 writer token。
+G4 驗證的是「本 release 有與風險相稱的可恢復路徑」，不是要求所有 migration 都跑同一套 Production backup API。
+backup observer 永遠不得持有 writer credential，也不得退回 Classic / scoped PAT writer fallback。
 
-- backup evidence capture 必須在 release 前新鮮取得；
-- restore rehearsal 不必每支 additive migration 都重做，v1 可重用最近 30 天內成功演練；
-- schema/recovery mechanism 有重大變化時重做；
-- BACKFILL 額外需要本批精確 preimage evidence；
+- `ADDITIVE` / `SCHEMA_REPAIR` / `AUTHZ`：trusted-main exact-main marker + 成功的 local logical restore rehearsal 即可滿足 v1 recovery gate；沒有 Production backup metadata credential 時必須誠實記為 `BACKUP_METADATA_NOT_CAPTURED`，不得偽裝已查過 backup/PITR。
+- 若配置獨立 read-only observer credential，只接受 OAuth2 `database:read` 類型，PAT 不接入 observer contract；捕捉到的 metadata 只能增加證據，不改變 writer 權限。
+- `BACKFILL`：必須有實際 Production backup/PITR metadata、`PRODUCTION_BACKUP_CLONE` restore rehearsal 與本批 exact-plan preimage evidence；缺任何一項都 fail closed。
+- restore rehearsal 不必每支 additive/AUTHZ migration 都重做；mechanism 未變時可依 trusted workflow 的有效期重用。
+- schema/recovery mechanism 有重大變化時重做。
 - DB backup 不得宣稱涵蓋 Supabase Storage object bytes。
+
+因此目前 #447 的 AUTHZ release 不以 unavailable Scoped PAT 作為 blocker；未來 BACKFILL 若需要 provider backup metadata，必須另提供符合本節的 read-only OAuth credential，而不是借用 writer secret。
 
 ## 9. G5：Production Final Risk
 
-每次 Production DB release 都需要 independent Final Risk execution，與 source PR 的一般 risk classification 分開。
-使用 trusted-main `scripts/agents/model-routing.json` 的現行 allowlist；目前允許的實際 reviewer identity 必須由既有可信機制證明。
+每次 Production DB release 都需要 plan/evidence-bound adversarial Final Risk，與 source PR 的一般 risk classification 分開。
+reviewer 路由依 Owner #552：同一 review lineage 最多一次 Astra/Fable premium consultation；已諮詢過、啟動 timeout、無回應或環境無法選昂貴模型時，直接降級 Sol / Opus；無 selector 時可由 current agent 真實對抗審查。
 
-review 必須綁 exact source/plan digest、live consistency evidence、TEST、recovery evidence 與 release risk tier。
-`requestedModel == actualModel` 且 actual 在 allowlist 內；unknown 不能放行 Production write。
-若 source/plan/relevant schema/risk policy 未變，實質 review 可在 24 小時內重用；G6 live state 仍每次重查。
+review 必須綁 exact source/plan digest、live consistency evidence、TEST、recovery evidence 與 release risk tier，並保存 reviewer tier、降級原因、lineage、executionRef、反例證據、prior findings 與 unresolved finding count。
+不能把 Sol/current-agent 冒充成 Astra/Fable，也不能因降級而省略實質反例審查。
+若 source/plan/relevant schema/risk policy 未變，實質 review 可依 trusted-main semantic reuse 規則重用；G6 live state 仍每次重查。
 
 ## 10. G6：唯一 Writer + 最後 Live Recheck
 
@@ -140,9 +142,12 @@ review 必須綁 exact source/plan digest、live consistency evidence、TEST、r
 - migration history/pending set 與 plan 完全相同；
 - no stop marker from prior `APPLY_UNKNOWN` / `POSTCHECK_FAILED`。
 
+Production writer 使用 protected GitHub Environment `production-db-writer` 的 `PRODUCTION_DB_WRITER_URL`，以 dedicated PostgreSQL login `production_migration_writer` 連向 project `egehnijjpgijmccagxac`。真正擁有 migration 物件的是 NOLOGIN / NOINHERIT `production_migration_owner`；writer 只有受控 `SET ROLE` 路徑，不使用 `postgres` 管理帳號、Classic/broad PAT 或 Management API raw writer。
+
+連線只允許固定 Production direct endpoint 或 Supavisor Session pooler `5432`，TLS 必須 `sslmode=verify-full`；額外 URL startup/session 參數、duplicate `sslmode` 與 fragment fail closed。
+
 GitHub concurrency 只防 GitHub workflow 互撞，不足以防其他工具直接寫 DB。
-`POLICY_GATED_ACTIVE` 前必須完成 cross-tool writer control：Production schema writer credential 僅存在於受控 apply path，
-普通 PR / observer / test 不持有；若仍有旁路工具能直接寫 Production schema，狀態維持 `IMPLEMENTATION_BLOCKED`。
+`POLICY_GATED_ACTIVE` 前必須完成 cross-tool writer control：Production schema writer credential 僅存在於受控 apply path，普通 PR / observer / test 不持有；若仍有旁路工具能直接寫 Production schema，狀態維持 `IMPLEMENTATION_BLOCKED`。
 
 v1 writer 執行限制：
 
@@ -154,10 +159,7 @@ v1 writer 執行限制：
 - 不使用 Production reset/seed；
 - 不靠手動 repair migration ledger 掩蓋 SQL 未實際成功。
 
-優先採 migration-history-aware writer。標準候選為：
-`supabase migration list` / `supabase db push --dry-run` 驗 pending set，再執行 `supabase db push`；
-若使用 Management API migration endpoint，也必須先證明 endpoint/credential scope 對本專案可用且 plan identity 等價。
-現有 `scripts/db/run-migrations.mjs` 不可直接因為 source admission 已綠就當 Production writer；它必須先接本流程並驗證只執行 exact pending set。
+受控 writer 只接受 trusted-main 產生的 exact plan，不接受 caller 提供任意 DB URL、任意 SQL 或 branch-only migration。現有 legacy `scripts/db/run-migrations.mjs` 不能作 Production bypass。
 
 ## 11. G7：Post-Apply Readback
 
@@ -177,10 +179,18 @@ apply 後重新 read live Production：
 
 四件事缺一不可：
 
-1. read-only release preflight + scoped consistency adapter + backup observer 已 merge main 且 exact-head CI green；
-2. trusted Final Risk evidence adapter 已能驗 current allowed reviewer；
-3. controlled writer 已接 exact pending-set verification、single-use plan/lock、postcheck、failure journal，且不存在已知 Production schema write bypass；
-4. counterexample/mutation suite 證明 wrong project、stale evidence、unplanned drift、empty test、fake/stale review、missing recovery、receipt replay、parallel writer、partial apply、postcheck fail 都不能進 writer。
+1. read-only release preflight + scoped consistency adapter + risk-adaptive recovery evidence 已 merge main 且 exact-head CI green；
+2. trusted Final Risk evidence adapter 已能驗 current #552 premium / audit / current-agent reviewer contract；
+3. controlled PostgreSQL writer 已接 exact pending-set verification、single-use plan/lock、postcheck、failure journal，且不存在已知 Production schema write bypass；
+4. counterexample/mutation suite 證明 wrong project、stale evidence、unplanned drift、empty test、fake/stale review、missing tier-required recovery、receipt replay、parallel writer、partial apply、postcheck fail 都不能進 writer。
+
+Bootstrap current truth：
+
+- `production_migration_owner` / `production_migration_writer` 已建立並驗證危險 role flags 關閉；
+- dedicated writer password 已設定；
+- protected Environment `production-db-writer` 與 `PRODUCTION_DB_WRITER_URL` 已建立；
+- writer credential proof 仍必須由 trusted main 綁 exact current main 後機械驗證；
+- pending Production migration / DDL / DML 仍 **NOT_RUN**。
 
 當 trusted-main executable policy 產生：
 
@@ -196,6 +206,7 @@ PER_RUN_OWNER_APPROVAL=NOT_REQUIRED
 ```
 
 不需要 Owner 再做一次人工啟用或逐支 migration 批准。
+`AUTOMATION_READY=true` 本身不是 mutation credential，不會自動執行 pending Production migration。
 若 automation 後來健康檢查失效，系統 fail closed 為 `AUTOMATION_DEGRADED`，修技術證據，而不是退回「請 Owner 每次手動同意」作為常態流程。
 
 ## 13. 不在此政策內
