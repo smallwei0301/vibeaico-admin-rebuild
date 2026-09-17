@@ -1,6 +1,7 @@
 import { classifyWorkstream, routing } from './astra-review-policy.mjs';
 import { boundaryPaths, validateBookkeepingWorkstream } from './governance-workstream-boundary.mjs';
 import { validateIssueProvenance } from './issue-provenance-policy.mjs';
+import { readField } from './agent-wip-policy.mjs';
 
 /** @type {Readonly<Record<string, string>>} */
 const LABELS = Object.freeze({
@@ -11,9 +12,27 @@ const LABELS = Object.freeze({
 const workstreamLabels = item => (item.labels ?? [])
   .map(label => typeof label === 'string' ? label : label.name)
   .filter(name => String(name).startsWith('workstream:')).sort();
+/** Closed history remains observable; labels do not grant any execution permission. */
+const ACTIVE_LABELS = new Set(['state:active', 'candidate:active', 'state:reserve-ready', 'state:ready-for-promotion']);
+/** @param {any} item */
+const lifecycleLabels = item => (item.labels ?? [])
+  .map(label => typeof label === 'string' ? label : label.name)
+  .filter(name => /^(state|candidate):/.test(String(name))).sort();
+/** @param {any} item */
+function lifecycleErrors(item) {
+  if (item.state !== 'closed') return [];
+  const errors = lifecycleLabels(item).filter(name => ACTIVE_LABELS.has(name))
+    .map(name => `CLOSED_ITEM_ACTIVE_LABEL:${name}`);
+  for (const [field, active] of Object.entries({ LANE_STATE: ['ACTIVE', 'READY_FOR_PROMOTION'], ACTIVE_CANDIDATE: ['TRUE'] })) {
+    const value = readField(item.body ?? '', field).toUpperCase();
+    if (value.includes('|')) errors.push(`CLOSED_ITEM_AMBIGUOUS_FIELD:${field}`);
+    else if (active.includes(value)) errors.push(`CLOSED_ITEM_ACTIVE_FIELD:${field}`);
+  }
+  return errors;
+}
 /** @param {any} item */
 const snapshot = item => JSON.stringify([
-  item.number, item.body, item.state, item.draft, item.head?.sha, item.base?.sha, workstreamLabels(item),
+  item.number, item.body, item.state, item.draft, item.head?.sha, item.base?.sha, workstreamLabels(item), lifecycleLabels(item),
 ]);
 
 /** Same trusted classifiers as admission; labels are consistency evidence, never authority.
@@ -46,7 +65,7 @@ export function inspectClassification(item, files = null, policy = routing) {
   }
   // Historical unclassified PRs stay observable but are not silently reclassified or blocked.
   const legacy = isPr && result.workstream === 'LEGACY_UNCLASSIFIED' && result.errors.length === 0;
-  const errors = [...result.errors];
+  const errors = [...result.errors, ...lifecycleErrors(item)];
   if (!legacy) {
     const expected = LABELS[result.workstream];
     const labels = workstreamLabels(item);
@@ -55,7 +74,7 @@ export function inspectClassification(item, files = null, policy = routing) {
   return {
     number: item.number, kind: isPr ? 'PR' : 'ISSUE',
     workstream: Object.hasOwn(LABELS, result.workstream) || legacy ? result.workstream : 'INVALID',
-    status: legacy ? 'LEGACY_GRANDFATHERED' : errors.length ? 'FAIL' : 'PASS',
+    status: errors.length ? 'FAIL' : legacy ? 'LEGACY_GRANDFATHERED' : 'PASS',
     contentEvidence: isPr && files.length === 0 ? 'CONFIRMED_ZERO_CONTENT' : 'CONTENT_PRESENT',
     errors: [...new Set(errors)],
   };
@@ -68,11 +87,12 @@ export async function observeClassifications({ github, owner, repo, now = new Da
   if (!/^[a-f0-9]{40}$/.test(policySha) || !Number.isFinite(now.getTime()) ||
       !Number.isInteger(maxPages) || maxPages < 1 || maxPages > 20) throw new Error('INVALID_OBSERVATION_INPUT');
   const cutoff = now.getTime() - 72 * 60 * 60 * 1000;
-  /** @type {{status: string, observedAt: string, policySha: string, recentClosedHours: number,
+  /** @type {{status: string, observedAt: string, policySha: string, recentClosedHours: number, inventoryVersion: number, issueScope: string,
    * counts: {issues: number | null, pullRequests: number | null, checked: number, legacy: number},
    * findings: any[], unavailable: any[]}} */
   const report = {
     status: 'EVIDENCE_UNAVAILABLE', observedAt: now.toISOString(), policySha, recentClosedHours: 72,
+    inventoryVersion: 2, issueScope: 'OPEN_AND_UPDATED_CLOSED_72H',
     counts: { issues: null, pullRequests: null, checked: 0, legacy: 0 }, findings: [], unavailable: [],
   };
   const get = async (resource, params = {}) => (await github.request(
@@ -94,12 +114,13 @@ export async function observeClassifications({ github, owner, repo, now = new Da
     try { return await pages(resource, params, recent); }
     catch { report.unavailable.push({ resource, reason: 'INVENTORY_UNAVAILABLE_OR_TRUNCATED' }); return null; }
   };
-  // Issues endpoint includes open PRs. Closed PRs are independently paginated, not search-index snapshots.
+  // Both Issues inventories include PRs; exclude them and independently paginate closed PRs once.
   const open = await inventory('issues', { state: 'open', sort: 'updated', direction: 'desc' });
   const closed = await inventory('pulls', { state: 'closed', sort: 'updated', direction: 'desc' }, true);
-  const issueRows = open?.filter(row => !row.pull_request) ?? [];
+  const closedIssues = await inventory('issues', { state: 'closed', sort: 'updated', direction: 'desc', since: new Date(cutoff).toISOString() }, true);
+  const issueRows = [...(open ?? []), ...(closedIssues ?? [])].filter(row => !row.pull_request);
   const prRows = [...(open?.filter(row => row.pull_request) ?? []), ...(closed ?? [])];
-  report.counts.issues = open === null ? null : issueRows.length;
+  report.counts.issues = open === null || closedIssues === null ? null : issueRows.length;
   report.counts.pullRequests = open === null || closed === null ? null : prRows.length;
   const seen = new Set();
   for (const row of [...issueRows, ...prRows]) {
