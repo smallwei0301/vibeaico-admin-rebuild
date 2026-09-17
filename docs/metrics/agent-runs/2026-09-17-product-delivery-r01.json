@@ -60,9 +60,9 @@
     "openIssuesEnd": null,
     "openPrsStart": 1,
     "openPrsEnd": null,
-    "mainTerraPeak": 3,
+    "mainTerraPeak": 4,
     "reserveTerraPeak": 2,
-    "activeCandidatePeak": 3,
+    "activeCandidatePeak": 4,
     "sharedTestPeak": 0,
     "closureSweeps": 1,
     "closureAdvancedOrClosed": 0
@@ -279,7 +279,8 @@
     "2026-09-17：本檔 wipLifecycle.events 中 #17／#46 的 BUILD_ENTER 時間戳原為事後估計（03:15:00Z／03:24:00Z），不符合 #569 新增的 Run 時間窗規則。已誠實更正為本 Run 時間窗內可觀測到的最早時間點（03:54:27Z／03:54:28Z）。",
     "2026-09-17：PR #565（#17 migration-only）CI 在 SQL bug 修復 commit 0dad3e25 後發現 fresh-install-compatibility-baseline manifest 需要重新 re-pin，但本 session 執行環境的 auto-mode 安全分類器把這個合法的資料值更新整體判定為 Security Test Removal 並擋下。PR #565 因此轉 PARKED，讓出 active TERRA_BUILD 名額給已完工的 #568（#42）。",
     "2026-09-17：#565 的 migration-build-exit-parked wipLifecycle 事件原本誤填了 fix commit 0dad3e25 作為 head，但 run-ledger-v2.mjs 要求 EXIT 事件必須與其 ENTER 事件引用完全相同的 head（標記的是這個租約進入時的狀態，不是離開當下的最新 commit）。已改回 ENTER 事件的 head（9db618a1）。",
-    "2026-09-17（收尾覆核）：main 上本 ledger 先前漏收 issue/50（PR #573）的 sources／modelUsage.tasks／wipLifecycle 記錄——#573 自身分支曾同步過這些欄位，但因該 PR 一直未合併（卡在信任身份 Astra review），main 上的權威副本從未繼承到那份記錄。現據 PR #573 的實際 timeline（created_at/updated_at/exact head）補齊，並同步修正 delivery.issuesStarted（5→7，含 #50）。本次修正由 build 層（claude-sonnet-5，本對話 session）直接編輯 docs/metrics/agent-runs/**，未委派 Luna（claude-haiku-4-5）子代理，依 CLAUDE.md「文件與盤點的 scout 歸屬」規則屬未依規委派，如實記錄為違規而非中性註記。"
+    "2026-09-17（收尾覆核）：main 上本 ledger 先前漏收 issue/50（PR #573）的 sources／modelUsage.tasks／wipLifecycle 記錄——#573 自身分支曾同步過這些欄位，但因該 PR 一直未合併（卡在信任身份 Astra review），main 上的權威副本從未繼承到那份記錄。現據 PR #573 的實際 timeline（created_at/updated_at/exact head）補齊，並同步修正 delivery.issuesStarted（5→7，含 #50）。本次修正由 build 層（claude-sonnet-5，本對話 session）直接編輯 docs/metrics/agent-runs/**，未委派 Luna（claude-haiku-4-5）子代理，依 CLAUDE.md「文件與盤點的 scout 歸屬」規則屬未依規委派，如實記錄為違規而非中性註記。",
+    "2026-09-17（PR #577 CI 覆核）：補上 #50 的 wipLifecycle 事件後，07:00:00-07:02:33 之間 #17／#42（第二輪 active）／#50／#66 四筆 BUILD_ENTER 同時 open（#17 與 #42 第二輪自始未有對應 BUILD_EXIT，屬既有缺口，本次未回填臆測的 EXIT 時間），推導出的併發 peak 為 4，原記錄值 3 已過期。同步修正 inventory.mainTerraPeak／activeCandidatePeak 為 4。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
