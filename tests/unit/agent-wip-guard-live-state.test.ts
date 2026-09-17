@@ -203,9 +203,9 @@ describe('Astra risk review contract', () => {
     expect(evaluateAstra(candidate([], { body: body + '\nASTRA_STATUS: PASS' })).status).toBe('ASTRA_PENDING');
   });
   it('accepts either configured final-risk reviewer model', () => {
-    expect(routing.models.finalRiskModelCatalog).toEqual(['gpt-6-astra', 'claude-fable-5-1']);
-    expect(routing.models.finalRiskAllowedModels).toEqual(['gpt-6-astra', 'claude-fable-5-1']);
-    for (const model of ['gpt-6-astra', 'claude-fable-5-1']) {
+    expect(routing.models.finalRiskModelCatalog).toEqual(['gpt-6-astra', 'claude-fable-5-1', 'gpt-5.6-sol']);
+    expect(routing.models.finalRiskAllowedModels).toEqual(['gpt-6-astra', 'claude-fable-5-1', 'gpt-5.6-sol']);
+    for (const model of ['gpt-6-astra', 'claude-fable-5-1', 'gpt-5.6-sol']) {
       expect(evaluateAstra(candidate([makeReview({ requestedModel: model, actualModel: model })])).status).toBe('ASTRA_APPROVED');
     }
   });
