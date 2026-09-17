@@ -43,7 +43,7 @@
     {
       "type": "ISSUE",
       "ref": "issue/18",
-      "note": "#18 LINE 老闆通知 owner-notify 缺口 A：confirmOwnerNotifyBind() 的 3 位上限併發洞（app 層先 count 再 insert），與 #572 型態不同（併發正確性修復，非 Storage 刪除），ASTRA_RISK=NONE。開 TERRA_BUILD PR（agent/issue-18-owner-notify-max-recipients-race），migration 0119 新增 confirm_owner_notify_bind advisory-lock RPC。"
+      "note": "#18 LINE 老闆通知 owner-notify 缺口 A：confirmOwnerNotifyBind() 的 3 位上限併發洞（app 層先 count 再 insert），與 #572 型態不同（併發正確性修復，非 Storage 刪除），ASTRA_RISK=NONE。開 TERRA_BUILD PR #575（agent/issue-18-owner-notify-max-recipients-race），migration 0119 新增 confirm_owner_notify_bind advisory-lock RPC；依 #530 staged-release 政策拆為 migration-only PR，app 層 wiring 留給合併後的獨立 PR。"
     }
   ],
   "main": {
@@ -199,7 +199,7 @@
         "id": "issue-18-terra-main-build",
         "requestedModel": "terra",
         "actualModel": "terra",
-        "role": "#18 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：修復 owner-notify 3 位上限的 app 層先查後寫併發洞。新增 migration 0119（confirm_owner_notify_bind SECURITY DEFINER RPC，pg_advisory_xact_lock 依 tenant_id 串行化），confirmOwnerNotifyBind() 改走單一 rpc 呼叫。新增靜態/mutation 證據測試，同步更新 ledger-alias-map 與 fresh-install-compatibility-baseline manifest re-pin。",
+        "role": "#18 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：修復 owner-notify 3 位上限的 app 層先查後寫併發洞。新增 migration 0119（confirm_owner_notify_bind SECURITY DEFINER RPC，pg_advisory_xact_lock 依 tenant_id 串行化）。依 #530 staged-release 政策拆成 migration-only PR（#575），app 層 wiring 留給後續 PR。新增靜態/mutation 證據測試，同步更新 ledger-alias-map 與 fresh-install-compatibility-baseline manifest re-pin。",
         "count": 1,
         "contextClass": "full",
         "accepted": true,
@@ -400,7 +400,7 @@
         "kind": "BUILD_ENTER",
         "pr": 575,
         "issue": 18,
-        "head": "daa4b570ff0b27e2d7a42b08e5f632f9e4e03917",
+        "head": "a6a98c7999a2b92a57af373e9d03f5119bf7a92c",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "#66（PR #574）已 READY_FOR_PROMOTION 讓出 active TERRA_BUILD 名額；#18 owner-notify 3 位上限併發洞（缺口 A）升級為本輪 active TERRA_BUILD 候選，ASTRA_RISK=NONE，避開 #572 的 IRREVERSIBLE_DATA 分類。"
       },
@@ -410,9 +410,9 @@
         "kind": "BUILD_EXIT",
         "pr": 575,
         "issue": 18,
-        "head": "daa4b570ff0b27e2d7a42b08e5f632f9e4e03917",
+        "head": "a6a98c7999a2b92a57af373e9d03f5119bf7a92c",
         "workstream": "PRODUCT_MAINLINE",
-        "reason": "施工完成：migration 0119、owner-notify.ts、靜態/mutation 測試、ledger-alias-map、fresh-install-baseline manifest re-pin。typecheck/unit(3187)/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，等待 PR 開立與 CI。"
+        "reason": "施工完成，範圍收斂為 migration-only PR（依 #530 staged-release 政策，migration+Product runtime 同 PR 需 DEFAULT_OFF gate，不適合純 DB 併發加固，app 層 wiring 留給合併後的獨立 PR）：migration 0119、靜態/mutation 測試、ledger-alias-map、fresh-install-baseline manifest re-pin。typecheck/unit(3184)/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，等待 CI。"
       }
     ]
   },
