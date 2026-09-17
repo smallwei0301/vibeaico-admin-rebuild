@@ -49,6 +49,19 @@ function planApiPayload(payload: Partial<TripPlan>) {
     depositValue: payload.depositValue,
     sortOrder: payload.sortOrder,
     active: payload.active,
+    /**
+     * issue #42：`toAdvancedPlanPayload()` 已經把這三個欄位放進要儲存的
+     * Partial<TripPlan>，但這裡漏掉沒有一起序列化——Advanced Settings 存檔
+     * 時使用者在畫面上改的時長／計價方式／全年販售因此永遠送不到
+     * `PUT /api/trip-plans/:id`，`planUpdateSchema` 收到的 body 裡完全沒有
+     * 這三個 key，等於一個看起來成功、值卻沒進資料庫的假成功。
+     * 三個欄位在 payload 未帶到時本來就是 `undefined`，`JSON.stringify`
+     * 會整個拿掉該 key，因此加回來不會影響 Quick Edit（永遠不帶這三個欄位）
+     * 送出的 partial payload。
+     */
+    durationMinutes: payload.durationMinutes,
+    priceType: payload.priceType,
+    yearRound: payload.yearRound,
   };
 }
 
