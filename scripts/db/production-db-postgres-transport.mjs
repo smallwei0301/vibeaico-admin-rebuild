@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 
 import { PRODUCTION_DB_POLICY } from '../agents/production-db-release-preflight.mjs';
@@ -9,6 +10,7 @@ import {
 const EXPECTED_DATABASE = 'postgres';
 const DIRECT_HOST = `db.${PRODUCTION_DB_POLICY.productionProjectRef}.supabase.co`;
 const SESSION_POOLER_HOST = /^aws-\d+-ap-southeast-1\.pooler\.supabase\.com$/i;
+const SUPABASE_ROOT_CA_PATH = fileURLToPath(new URL('../../certs/supabase-prod-ca-2021.crt', import.meta.url));
 
 export const CANONICAL_PRODUCTION_DB_WRITER_ROLE = 'production_migration_writer';
 export const CANONICAL_PRODUCTION_DB_OWNER_ROLE = 'production_migration_owner';
@@ -87,6 +89,14 @@ export function parseProjectBoundProductionDbWriterUrl(connectionString) {
 
   if (!parsed.password) fail('WRITER_PASSWORD_REQUIRED', 'Production writer URL must include a dedicated role password');
 
+  // Keep the stored Secret minimal and fail-closed: callers may supply only
+  // sslmode=verify-full. Internally attach Supabase's public Root 2021 CA path
+  // for Postgres.js (>=3.4.2 sslrootcert support), so both read-only proof and
+  // later controlled apply verify the certificate chain and hostname without
+  // another secret or a rejectUnauthorized=false fallback.
+  const runtimeConnection = new URL(raw);
+  runtimeConnection.searchParams.set('sslrootcert', SUPABASE_ROOT_CA_PATH);
+
   return {
     projectRef: PRODUCTION_DB_POLICY.productionProjectRef,
     role: CANONICAL_PRODUCTION_DB_WRITER_ROLE,
@@ -95,7 +105,7 @@ export function parseProjectBoundProductionDbWriterUrl(connectionString) {
     host,
     port,
     transportMode,
-    connectionString: raw,
+    connectionString: runtimeConnection.toString(),
   };
 }
 
