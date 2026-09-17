@@ -4,6 +4,16 @@ on:
   schedule:
     - cron: '17 19 * * 0'
   workflow_dispatch:
+    inputs:
+      expected_main_sha:
+        description: Optional exact current main SHA to bind the rehearsal to
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      expected_main_sha:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,20 +29,27 @@ jobs:
     env:
       LOCAL_PROJECT_ID: production-db-restore-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - name: Checkout trusted main
+      - name: Checkout trusted main candidate
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ inputs.expected_main_sha || 'main' }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify trusted main checkout
+      - name: Verify exact current main
         shell: bash
+        env:
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
         run: |
           set -euo pipefail
           git fetch --quiet origin main
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo "MAIN_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          CHECKED_SHA="$(git rev-parse HEAD)"
+          CURRENT_MAIN_SHA="$(git rev-parse origin/main)"
+          BOUND_SHA="${EXPECTED_MAIN_SHA:-$CURRENT_MAIN_SHA}"
+          test "$CHECKED_SHA" = "$BOUND_SHA"
+          test "$CURRENT_MAIN_SHA" = "$BOUND_SHA"
+          echo "MAIN_SHA=$CHECKED_SHA" >> "$GITHUB_ENV"
+          echo "BOUND_MAIN_SHA=$BOUND_SHA" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
@@ -81,6 +98,7 @@ jobs:
             rehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY',
             verifiedAt: new Date().toISOString(),
             mainSha: process.env.MAIN_SHA,
+            expectedMainSha: process.env.BOUND_MAIN_SHA,
             runId: process.env.GITHUB_RUN_ID,
             runAttempt: process.env.GITHUB_RUN_ATTEMPT,
             source: 'TRUSTED_MAIN_GITHUB_ACTIONS',
@@ -94,7 +112,7 @@ jobs:
       - name: Upload sanitized rehearsal evidence
         uses: actions/upload-artifact@v4
         with:
-          name: production-db-restore-rehearsal
+          name: production-db-restore-rehearsal-${{ env.MAIN_SHA }}-${{ github.run_id }}
           path: ${{ runner.temp }}/production-db-restore-rehearsal.json
           if-no-files-found: error
           retention-days: 35

@@ -8,6 +8,33 @@ const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 
+// PostgreSQL resolves these built-ins from pg_catalog before application
+// schemas. Accept both normal spellings (`now()`) and explicit pg_catalog
+// spellings, but only for this finite list; a custom routine still fails closed.
+const catalogRoutineSpellings = (names) => new Set(names.flatMap((name) => [name, `pg_catalog.${name}`]));
+const SAFE_DECLARATIVE_CATALOG_ROUTINES = catalogRoutineSpellings([
+  'now',
+  'gen_random_uuid',
+]);
+const SAFE_PROCEDURAL_CATALOG_ROUTINES = catalogRoutineSpellings([
+  'count',
+  'string_agg',
+  'pg_get_constraintdef',
+  'pg_get_expr',
+  'array_agg',
+  'unnest',
+  'pg_get_function_identity_arguments',
+  'pg_get_functiondef',
+]);
+SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.to_regclass');
+SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.to_regtype');
+SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.format');
+const SAFE_POLICY_PREDICATE_ROUTINES = new Set([
+  'is_tenant_member',
+  'tenant_role_at_least',
+  'storage.foldername',
+]);
+
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
@@ -289,7 +316,7 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
   // All terminals below are RESERVED_KEYWORD, except VALUES (COL_NAME_KEYWORD);
   // neither category is an unqualified type_function_name. Quoted/qualified
   // versions never reach this helper. Nested candidates are still inspected.
-  if (/^(?:all|and|any|as|case|check|else|end|for|foreign|from|group|having|in|into|lateral|limit|not|offset|on|only|or|order|primary|returning|select|some|then|unique|using|values|when|where|with)$/.test(name)) return true;
+  if (/^(?:all|and|any|as|case|check|coalesce|default|else|end|for|foreign|from|group|having|in|into|lateral|limit|not|offset|on|only|or|order|primary|returning|select|some|then|unique|using|values|when|where|with)$/.test(name)) return true;
   if (name === 'exists') {
     return /^\s*(?:\(\s*)*(?:select|with|values)\b/i.test(input.slice(openIndex + 1));
   }
@@ -299,6 +326,11 @@ function isSqlParenthesisSyntax(name, before, input, openIndex) {
     const close = matchingParenthesisEnd(input, openIndex);
     return hasConflictActionContinuation(input, close);
   }
+  // KEY alone is callable (unlike CHECK/UNIQUE, it is not a reserved keyword),
+  // but `PRIMARY KEY (` / `FOREIGN KEY (` is the fixed table-constraint column
+  // list grammar — never a function call — so only that exact two-word
+  // continuation is recognized, not bare KEY everywhere.
+  if (name === 'key' && /\b(?:primary|foreign)\s+$/i.test(before)) return true;
   return false;
 }
 
@@ -308,28 +340,52 @@ function isDmlTargetColumnList(text, index) {
   );
 }
 
-function hasUnverifiedRoutineInvocation(text) {
+function isReferencesColumnList(text, index) {
+  // `references [schema.]table(col[, col...])` is DDL foreign-key syntax, not a
+  // routine call — the parenthesized part is a column list, not an argument list.
+  // The candidate match itself already covers the optional schema-qualified
+  // table name (mirroring how `isDmlTargetColumnList` covers `insert into
+  // schema.table(`), so this only needs to confirm the immediately preceding
+  // token is the `references` keyword. Any routine call that merely follows a
+  // REFERENCES clause later in the statement still falls through to full
+  // routine-invocation scrutiny, because its own preceding text will not end in
+  // `references\s+`.
+  return /\breferences\s+$/iu.test(String(text).slice(0, index));
+}
+
+function isAliasColumnList(text, index) {
+  // `... AS alias(col1, col2, ...)` renames a derived table/VALUES list's
+  // columns — the parenthesized part is a column-name list, not an argument
+  // list, so it is not a routine call. Only the exact `AS <candidate-name>(`
+  // spelling is recognized (the word immediately before the candidate identifier
+  // must be the `AS` keyword); an implicit (AS-less) alias column list still
+  // falls through to full routine-invocation scrutiny.
+  return /\bas\s+$/iu.test(String(text).slice(0, index));
+}
+
+function hasUnverifiedRoutineInvocation(text, allowedRoutineCalls = new Set()) {
   const input = String(text);
   const quotedCandidates = input.matchAll(
     /(?<![\p{ID_Continue}$])(?:[\p{ID_Start}_][\p{ID_Continue}_$]*\s*\.\s*)?"(?:[^"]|"")*"\s*\(/giu,
   );
   for (const match of quotedCandidates) {
-    if (isDmlTargetColumnList(input, match.index)) continue;
+    if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
+      || isAliasColumnList(input, match.index)) continue;
     return true;
   }
 
   const candidates = input.matchAll(
-    // Keep quoted schema qualifiers in the match: "public".filter() is a
-    // qualified call, never an unqualified SQL keyword from the allowlist.
     /(?<![\p{ID_Continue}$])(?:(?:"(?:[^"]|"")*"|[\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\.\s*)?([\p{ID_Start}_][\p{ID_Continue}_$]*)\s*\(/giu,
   );
   for (const match of candidates) {
-    if (isDmlTargetColumnList(input, match.index)) continue;
+    if (isDmlTargetColumnList(input, match.index) || isReferencesColumnList(input, match.index)
+      || isAliasColumnList(input, match.index)) continue;
     const calledName = match[0].slice(0, match[0].lastIndexOf('(')).replace(/\s+/g, '').toLowerCase();
     const name = String(match[1]).toLowerCase();
-    if (calledName === 'pg_catalog.format') continue;
+    const before = input.slice(0, match.index);
+    if (allowedRoutineCalls.has(calledName)) continue;
     if (!calledName.includes('.') && isSqlParenthesisSyntax(
-      name, input.slice(0, match.index), input, match.index + match[0].length - 1,
+      name, before, input, match.index + match[0].length - 1,
     )) continue;
     return true;
   }
@@ -367,19 +423,25 @@ function indexAccessMethodColumnListStart(text) {
 }
 
 function rejectImmediateRoutineInvocations(statements) {
-  const checkCommandText = (text) => hasUnverifiedRoutineInvocation(
+  const checkCommandText = (text, allowedRoutineCalls = new Set()) => hasUnverifiedRoutineInvocation(
     stripSqlStringLiterals(text, true, true),
+    allowedRoutineCalls,
   );
 
   for (const statement of statements) {
     const immediateText = stripStoredRoutineBodies(statement).trim();
     const lexicalText = stripSqlStringLiterals(immediateText);
     const topLevelCall = /^\s*call\b/i.test(lexicalText);
-    // DDL can evaluate expressions while validating existing rows, rewriting a
-    // column or building an index. Inspect expression tails without treating a
-    // table's declaration/column list as a routine call. Unknown calls fail closed
-    // even if a caller describes them as immutable or as deferred defaults.
+    const policyDeclaration = /^\s*create\s+policy\b/i.test(lexicalText);
+
+    // A policy predicate takes effect only as authorization logic, not while the
+    // migration executes. It is still limited to the G3-tested helper contract.
+    if (policyDeclaration && checkCommandText(immediateText, SAFE_POLICY_PREDICATE_ROUTINES)) {
+      fail('UNSUPPORTED_POLICY_ROUTINE_NOT_ADMITTED', 'policy predicate routine is not in the G3-covered contract');
+    }
+
     if (/^(?:create|alter)\b/i.test(lexicalText)
+      && !policyDeclaration
       && !/^create\s+(?:or\s+replace\s+)?(?:function|procedure)\b/i.test(lexicalText)) {
       const indexColumnsStart = indexAccessMethodColumnListStart(immediateText);
       for (const expression of lexicalText.matchAll(/\b(?:check|default|using|as|where|generated|partition)\b/gi)) {
@@ -387,11 +449,10 @@ function rejectImmediateRoutineInvocations(statements) {
         if (/^using$/i.test(expression[0]) && expressionStart < indexColumnsStart) {
           expressionStart = indexColumnsStart;
         }
-        if (checkCommandText(immediateText.slice(expressionStart))) {
+        if (checkCommandText(immediateText.slice(expressionStart), SAFE_DECLARATIVE_CATALOG_ROUTINES)) {
           fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'DDL expression routine invocation is not admitted');
         }
       }
-      // An index expression need not have a CHECK/USING/WHERE introducer.
       if (/^create\s+(?:unique\s+)?index\b/i.test(lexicalText)) {
         const open = lexicalText.indexOf('(');
         if (open >= 0 && checkCommandText(immediateText.slice(open))) {
@@ -399,23 +460,33 @@ function rejectImmediateRoutineInvocations(statements) {
         }
       }
     }
-    // Parentheses do not defer a query. COPY (query) executes the query too;
-    // strip only its COPY introducer so COPY itself is not mistaken for a call.
+
     const copyQuery = /^\s*copy\s*\(/i.exec(lexicalText);
     if (copyQuery && checkCommandText(immediateText.slice(copyQuery[0].length))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside a COPY query is not admitted');
     }
+    // Only USING (an ALTER COLUMN TYPE rewrite expression, evaluated against
+    // every existing row) is held to the zero-allowance immediate-execution bar
+    // here. A bare column DEFAULT is not re-scanned with an empty allowlist —
+    // the DDL expression scan above already vets it against
+    // SAFE_DECLARATIVE_CATALOG_ROUTINES (the Owner-approved pg_catalog-prefixed
+    // builtin allowlist), so re-including `default` here would silently
+    // re-reject the very pg_catalog.now()/pg_catalog.gen_random_uuid() calls
+    // that scan just admitted, with zero allowance instead of that allowlist.
     const topLevelExecutable = /^\s*(?:\(\s*)*(?:with|select|insert|update|delete|merge|values|explain)\b/i.test(lexicalText)
       || /^\s*create\s+(?:(?:(?:global|local)\s+)?(?:temporary|temp)\s+|unlogged\s+)?table\b[\s\S]*\bas\b/i.test(lexicalText)
       || /^\s*create\s+materialized\s+view\b[\s\S]*\bas\b/i.test(lexicalText)
-      || /^\s*alter\s+table\b[\s\S]*\b(?:using|default)\b/i.test(lexicalText);
+      || /^\s*alter\s+table\b[\s\S]*\busing\b/i.test(lexicalText);
     if ((topLevelCall || topLevelExecutable && checkCommandText(immediateText))) {
       fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'immediate routine invocation is not admitted by the fail-closed classifier');
     }
 
     if (/^\s*do\b/i.test(lexicalText)) {
+      if (/\bexecute\s*\(/i.test(lexicalText)) {
+        fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'parenthesized dynamic EXECUTE is not admitted');
+      }
       const body = immediateProceduralBody(immediateText);
-      if (body !== null && checkCommandText(body)) {
+      if (body !== null && checkCommandText(body, SAFE_PROCEDURAL_CATALOG_ROUTINES)) {
         fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside an immediate procedural block is not admitted');
       }
     }
@@ -793,7 +864,7 @@ function rejectUnclassifiedDropStatements(text) {
     if (!drops.length) fail('UNCLASSIFIED_DROP_NOT_ADMITTED', 'DROP target could not be lexically identified');
     for (const match of drops) {
       const objectType = String(match[1]).toLowerCase();
-      if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column']).has(objectType)) {
+      if (!new Set(['table', 'schema', 'policy', 'constraint', 'default', 'column', 'trigger']).has(objectType)) {
         fail('UNCLASSIFIED_DROP_NOT_ADMITTED', `unrecognized DROP form: ${objectType}`);
       }
     }

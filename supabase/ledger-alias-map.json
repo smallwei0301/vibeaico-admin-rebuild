@@ -492,8 +492,8 @@
       "repoFile": "0109_issue_41_schema_precondition_assertions",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "補上 0108 沒斷言的前提（tour_orders.payment_status 的型別／default）與 0107／0108 都沒比對過的 default 缺口。本筆隨建立 0109 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權；在 canonical／Production 上 payment_status 本來就是 enum，套用時預期整支 migration no-op。套用 Production 另需 Owner 具名授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "0109 是既有結構修復（SCHEMA_REPAIR），與本輪 AUTHZ 批次不同；本輪刻意不排入自動套用名單。保留為未套用，日後需獨立的 SCHEMA_REPAIR release、G3 證據與重新驗收。"
     },
     {
       "repoFile": "0110_issue_42_plan_duration_pricetype_yearround",
@@ -513,8 +513,8 @@
       "repoFile": "0112_keyword_reply_images_upload_acl",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#402：關閉 keyword-reply-images 的 authenticated 直寫 Storage 側門，與 0072_welcome_card_upload_acl 同型（固定 file_size_limit=5MiB、allowed_mime_types 限 jpeg/png/webp，並把此 bucket 從 p_storage_write 的 authenticated 允許清單移除；bucket 仍為 public，供 LINE 直接讀圖）。Owner 已在 Issue #402 留言（2026-09-15）裁示上述參數，本次僅做 local 驗證，未套用 canonical TEST 或 Production。本筆隨建立 0112 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "0112 同時含 Storage 權限變更（AUTHZ）與既有 bucket 資料更新（BACKFILL），不得混入單一風險批次。保留為未套用，日後需拆成專屬 release 並補對應證據。"
     },
     {
       "repoFile": "0113_issue_23_promotion_page_view_events",
@@ -527,8 +527,8 @@
       "repoFile": "0114_issue_22_banner_video_uploads",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
-      "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#22 Part A：banner video 兩階段上傳（presign/confirm/delete）。新增 storage.buckets 的 `banner-videos`（public=true、file_size_limit=52428800／50MiB、allowed_mime_types 限 video/mp4、video/webm）與新表 `banner_video_pending_uploads`（presign 時的追蹤列，供孤兒清理 cron 使用）；刻意不對 storage.objects 開放 authenticated 直接 INSERT policy（上傳靠 service role 核發的一次性簽名 token，不經 RLS，見 04 分冊 §A-1.1 與本檔頭）。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+      "notAppliedReason": "VERIFIED_NOT_APPLIED",
+      "evidence": "0114 同時含 Storage bucket 資料更新（BACKFILL）與 RLS 設定（AUTHZ），不得混入單一風險批次。保留為未套用，日後需拆成專屬 release 並補對應證據。"
     },
     {
       "repoFile": "0115_issue_21_external_calendars",
