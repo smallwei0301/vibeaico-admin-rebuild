@@ -21,49 +21,29 @@ import {
 import { useToast } from '@/components/ui/Toast';
 import {
   adjustBookingPrice, applyBookingCoupon, applyBookingPoints, cancelBooking,
-  completeBooking, confirmBooking, createBooking, listBookings,
-  markBookingPaidOffline, markNoShow, revertBookingComplete, updateBooking,
+  completeBooking, confirmBooking, createBooking, createBookingAddon, deleteBookingAddon,
+  listBookingAddons, listBookings, markBookingPaidOffline, markNoShow, revertBookingComplete,
+  updateBooking,
 } from '@/services/bookings';
 import { createCustomer, listCustomers } from '@/services/customers';
 import { listServices, listStaff } from '@/services/catalog';
 import { exportBookingsCsv, exportBookingsXlsx } from '@/services/reports';
-import { byMode } from '@/mock';
 import { common } from '@/i18n/zh-TW/common';
 import { nav } from '@/i18n/zh-TW/nav';
 import { bookingsPage as t } from '@/i18n/zh-TW/pages/bookings';
 import { formatCurrency, formatDate, formatTime } from '@/lib/utils';
-import type { Booking, BookingStatus, Customer, PaymentStatus, Service, Staff } from '@/lib/types';
+import type {
+  Booking, BookingAddon, BookingAddonPerformanceMode, BookingStatus, Customer, PaymentStatus,
+  Service, Staff,
+} from '@/lib/types';
 
-/* -------------------------------------------------------------------------- */
-/* 本頁專用假資料（不寫進 src/mock，避免與其他頁面衝突）                          */
 /* -------------------------------------------------------------------------- */
 
 /** 預約金額只顯示 API 回傳的 Booking.finalPrice；票券／點數折抵明細待真實欄位接線。 */
 
-type AddonItem = {
-  id: string;
-  name: string;
-  price: number;
-  quantity: number;
-  durationMinutes: number;
-  staffName: string | null;
-};
-
-const ADDON_ITEMS_LOCAL_SHOP: Record<string, AddonItem[]> = {
-  b_2: [
-    { id: 'ad_1', name: '深層護髮', price: 800, quantity: 1, durationMinutes: 30, staffName: 'Amy' },
-    { id: 'ad_2', name: '青草膏', price: 120, quantity: 2, durationMinutes: 0, staffName: null },
-  ],
-};
-
-const ADDON_ITEMS_GUIDE: Record<string, AddonItem[]> = {};
-
-const ADDON_ITEMS_CLINIC: Record<string, AddonItem[]> = {
-  b_2: [
-    { id: 'ad_1', name: '甲狀腺超音波', price: 1200, quantity: 1, durationMinutes: 20, staffName: '陳醫師' },
-    { id: 'ad_2', name: '肺部 X 光', price: 600, quantity: 1, durationMinutes: 10, staffName: null },
-  ],
-};
+/** 加購「業績歸戶」單一 select 的三個特殊值；其餘 value 是真實 staff.id（SPECIFIC_STAFF）。 */
+const ADDON_PERFORMANCE_INHERIT_VALUE = '';
+const ADDON_PERFORMANCE_NONE_VALUE = '__NONE__';
 
 /** 開始時間下拉：09:00 – 21:30，每 30 分鐘一檔 */
 const TIME_OPTIONS: string[] = Array.from({ length: 26 }, (_, i) => {
@@ -89,9 +69,12 @@ const STATUS_TONE: Record<BookingStatus, 'primary' | 'success' | 'warning' | 'da
 
 const REAL_STATUSES: BookingStatus[] = ['PENDING', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW'];
 
-const addonsOf = (b: Booking): AddonItem[] => byMode({
-  LOCAL_SHOP: ADDON_ITEMS_LOCAL_SHOP, GUIDE: ADDON_ITEMS_GUIDE, CLINIC: ADDON_ITEMS_CLINIC,
-})[b.id] ?? [];
+/** 加購明細「業績歸戶」欄位的顯示文字：INHERIT 顯示同本預約人員，NONE 明確標示不計業績。 */
+const addonPerformanceLabel = (item: BookingAddon): string => {
+  if (item.performanceMode === 'NONE') return t.addonModal.performanceNone;
+  if (item.performanceMode === 'SPECIFIC_STAFF') return item.performanceStaffName ?? t.labels.unassigned;
+  return item.staffName ?? t.labels.sameStaff;
+};
 
 /** 付款狀態顯示：只使用 bookings 的真實 paymentStatus。 */
 const isPaid = (b: Booking) =>
@@ -141,7 +124,12 @@ export default function BookingsPage() {
   const [noShowTarget, setNoShowTarget] = React.useState<Booking | null>(null);
   const [revertTarget, setRevertTarget] = React.useState<Booking | null>(null);
   const [batchConfirmOpen, setBatchConfirmOpen] = React.useState(false);
-  const [removeAddonTarget, setRemoveAddonTarget] = React.useState<AddonItem | null>(null);
+  const [removeAddonTarget, setRemoveAddonTarget] = React.useState<BookingAddon | null>(null);
+
+  /* 詳情彈窗的加購明細——真實資料，開啟時載入，有 loading/error/empty 三態 */
+  const [detailAddons, setDetailAddons] = React.useState<BookingAddon[]>([]);
+  const [addonsLoading, setAddonsLoading] = React.useState(false);
+  const [addonsError, setAddonsError] = React.useState('');
 
   const [cancelReason, setCancelReason] = React.useState('');
 
@@ -257,6 +245,40 @@ export default function BookingsPage() {
     } catch (e) {
       toast.show(`${failPrefix}${e instanceof Error ? e.message : t.messages.unknownError}`, 'danger');
     }
+  };
+
+  /**
+   * 加購明細唯一資料源（issue #17）：detailTarget 一開啟就打 GET，取代舊版
+   * 「畫面永遠顯示同一份寫死 mock」的假成功。每次呼叫都覆蓋整份清單，
+   * create/delete 成功後也呼叫這支重新拉一次，讓明細永遠是 DB 目前狀態。
+   */
+  const loadAddons = React.useCallback(async (bookingId: string) => {
+    setAddonsLoading(true);
+    setAddonsError('');
+    try {
+      setDetailAddons(await listBookingAddons(bookingId));
+    } catch (e) {
+      setDetailAddons([]);
+      setAddonsError(
+        `${t.messages.loadAddonsFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+      );
+    } finally {
+      setAddonsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (detailTarget) void loadAddons(detailTarget.id);
+    else { setDetailAddons([]); setAddonsError(''); }
+  }, [detailTarget, loadAddons]);
+
+  /** 加購或移除成功後：局部更新 detailTarget 的金額/時長（免關窗即可看到最新值）＋重新拉明細＋重新整理列表。 */
+  const refreshAfterAddonChange = (
+    bookingId: string, patch: { finalPrice: number; durationMinutes: number; endAt: string },
+  ) => {
+    setDetailTarget((prev) => (prev && prev.id === bookingId ? { ...prev, ...patch } : prev));
+    void loadAddons(bookingId);
+    void load();
   };
 
   /**
@@ -613,14 +635,16 @@ export default function BookingsPage() {
       <AddonModal
         booking={addonTarget}
         onClose={() => setAddonTarget(null)}
-        onAdded={(notify, hasLine) => {
+        onAdded={(result) => {
           setAddonTarget(null);
           toast.show(
-            !notify ? t.messages.addonAddedSilent
-              : hasLine ? t.messages.addonAdded
+            !result.notified || result.notified === 'NONE' ? t.messages.addonAddedSilent
+              : result.notified === 'LINE' ? t.messages.addonAdded
                 : t.messages.addonAddedNoLine,
           );
-          void load();
+          refreshAfterAddonChange(addonTarget!.id, {
+            finalPrice: result.finalPrice, durationMinutes: result.durationMinutes, endAt: result.endAt,
+          });
         }}
       />
 
@@ -638,6 +662,7 @@ export default function BookingsPage() {
       {/* ------------------------------------------------------ 6. 調整金額 */}
       <AdjustPriceModal
         booking={adjustTarget}
+        addonCount={detailAddons.length}
         onClose={() => setAdjustTarget(null)}
         onAdjusted={(amount) => {
           setAdjustTarget(null);
@@ -677,6 +702,9 @@ export default function BookingsPage() {
       {/* -------------------------------------------------------- 預約詳情 */}
       <BookingDetailModal
         booking={detailTarget}
+        addons={detailAddons}
+        addonsLoading={addonsLoading}
+        addonsError={addonsError}
         onClose={() => setDetailTarget(null)}
         onAddon={() => setAddonTarget(detailTarget)}
         onCoupon={() => setCouponTarget(detailTarget)}
@@ -769,9 +797,24 @@ export default function BookingsPage() {
         message={t.confirmMessages.removeAddon}
         onClose={() => setRemoveAddonTarget(null)}
         onConfirm={() => {
+          const item = removeAddonTarget;
+          const bookingId = detailTarget?.id;
           setRemoveAddonTarget(null);
-          toast.show(t.messages.addonRemoved);
-          void load();
+          if (!item || !bookingId) return;
+          void (async () => {
+            try {
+              const result = await deleteBookingAddon(bookingId, item.id);
+              toast.show(t.messages.addonRemoved);
+              refreshAfterAddonChange(bookingId, {
+                finalPrice: result.finalPrice, durationMinutes: result.durationMinutes, endAt: result.endAt,
+              });
+            } catch (e) {
+              toast.show(
+                `${t.messages.removeAddonFailed}${e instanceof Error ? e.message : t.messages.unknownError}`,
+                'danger',
+              );
+            }
+          })();
         }}
       />
 
@@ -1152,7 +1195,7 @@ function AddonModal({
 }: {
   booking: Booking | null;
   onClose: () => void;
-  onAdded: (notify: boolean, hasLine: boolean) => void;
+  onAdded: (result: Awaited<ReturnType<typeof createBookingAddon>>) => void;
 }) {
   const toast = useToast();
   const a = t.addonModal;
@@ -1163,15 +1206,22 @@ function AddonModal({
   const [price, setPrice] = React.useState('');
   const [duration, setDuration] = React.useState('0');
   const [quantity, setQuantity] = React.useState('1');
-  const [staffId, setStaffId] = React.useState('');
+  /** 單一 select：''＝INHERIT、__NONE__＝NONE、其餘為 staff.id＝SPECIFIC_STAFF（見檔頭常數）。 */
+  const [performanceSelect, setPerformanceSelect] = React.useState(ADDON_PERFORMANCE_INHERIT_VALUE);
   const [notify, setNotify] = React.useState(true);
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
+  /**
+   * 每次開啟視窗才產生一次，整個送出（含失敗後重試）沿用同一把 key——
+   * 這樣重試不會被伺服器當成第二筆全新加購（0119 rpc 的冪等收據）。
+   */
+  const idempotencyKeyRef = React.useRef('');
 
   React.useEffect(() => {
     if (!booking) return;
     setServiceId(''); setName(''); setPrice(''); setDuration('0');
-    setQuantity('1'); setStaffId(''); setNotify(true); setError('');
+    setQuantity('1'); setPerformanceSelect(ADDON_PERFORMANCE_INHERIT_VALUE); setNotify(true); setError('');
+    idempotencyKeyRef.current = crypto.randomUUID();
     void (async () => {
       try { setServices(await listServices()); }
       catch { toast.show(`${t.messages.loadAddonOptionsFailed}${t.messages.unknownError}`, 'danger'); }
@@ -1192,17 +1242,42 @@ function AddonModal({
     }
   };
 
+  const performanceMode: BookingAddonPerformanceMode =
+    performanceSelect === ADDON_PERFORMANCE_NONE_VALUE ? 'NONE'
+      : performanceSelect === ADDON_PERFORMANCE_INHERIT_VALUE ? 'INHERIT'
+        : 'SPECIFIC_STAFF';
+  const performanceStaffId = performanceMode === 'SPECIFIC_STAFF' ? performanceSelect : null;
+
   const submit = async () => {
+    if (!booking) return;
     if (!name.trim()) { setError(t.messages.itemNameRequired); return; }
     if (!price || Number(price) < 0 || Number.isNaN(Number(price))) {
       setError(t.messages.invalidAmount);
       return;
     }
+    const qty = Number(quantity);
+    if (!Number.isInteger(qty) || qty <= 0) { setError(t.messages.invalidQuantity); return; }
     setError('');
     setSaving(true);
     try {
-      await new Promise((r) => setTimeout(r, 400));
-      onAdded(notify, !!booking && booking.source === 'LINE');
+      const result = await createBookingAddon(booking.id, {
+        serviceId: serviceId || null,
+        name: name.trim(),
+        price: Number(price),
+        quantity: qty,
+        durationMinutes: Number(duration),
+        staffId: performanceStaffId,
+        performanceMode,
+        performanceStaffId,
+        notify,
+        idempotencyKey: idempotencyKeyRef.current,
+      });
+      onAdded(result);
+    } catch (e) {
+      toast.show(
+        e instanceof Error ? e.message : `${t.messages.actionFailed}`,
+        'danger',
+      );
     } finally {
       setSaving(false);
     }
@@ -1275,12 +1350,14 @@ function AddonModal({
       <FormGroup>
         <Label htmlFor="addonStaffSelect">{a.staffLabel}</Label>
         <Select
-          id="addonStaffSelect" className="form-select-sm" value={staffId}
-          onChange={(ev) => setStaffId(ev.target.value)}
+          id="addonStaffSelect" className="form-select-sm" value={performanceSelect}
+          onChange={(ev) => setPerformanceSelect(ev.target.value)}
         >
-          <option value="">{a.staffSame}</option>
+          <option value={ADDON_PERFORMANCE_INHERIT_VALUE}>{a.staffSame}</option>
           {staff.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          <option value={ADDON_PERFORMANCE_NONE_VALUE}>{a.performanceNone}</option>
         </Select>
+        <FormText>{a.performanceHelp}</FormText>
       </FormGroup>
 
       <FormGroup>
@@ -1374,9 +1451,11 @@ function ApplyCouponModal({
 /* ========================================================================== */
 
 function AdjustPriceModal({
-  booking, onClose, onAdjusted,
+  booking, addonCount, onClose, onAdjusted,
 }: {
   booking: Booking | null;
+  /** 詳情彈窗目前載入到的真實加購筆數（issue #17：不再讀寫死 mock）。 */
+  addonCount: number;
   onClose: () => void;
   onAdjusted: (amount: number) => void;
 }) {
@@ -1384,7 +1463,6 @@ function AdjustPriceModal({
   const [amount, setAmount] = React.useState('');
   const [error, setError] = React.useState('');
   const [saving, setSaving] = React.useState(false);
-  const addonCount = booking ? addonsOf(booking).length : 0;
 
   React.useEffect(() => {
     setAmount(booking ? String(booking.finalPrice) : '');
@@ -1520,10 +1598,13 @@ function ApplyPointsModal({
 /* ========================================================================== */
 
 function BookingDetailModal({
-  booking, onClose, onAddon, onCoupon, onPoints, onAdjust, onMarkPaid,
-  onComplete, onCancel, onRevert, onRemoveAddon,
+  booking, addons, addonsLoading, addonsError, onClose, onAddon, onCoupon, onPoints, onAdjust,
+  onMarkPaid, onComplete, onCancel, onRevert, onRemoveAddon,
 }: {
   booking: Booking | null;
+  addons: BookingAddon[];
+  addonsLoading: boolean;
+  addonsError: string;
   onClose: () => void;
   onAddon: () => void;
   onCoupon: () => void;
@@ -1533,10 +1614,9 @@ function BookingDetailModal({
   onComplete: () => void;
   onCancel: () => void;
   onRevert: () => void;
-  onRemoveAddon: (item: AddonItem) => void;
+  onRemoveAddon: (item: BookingAddon) => void;
 }) {
   const d = t.detailModal;
-  const addons = booking ? addonsOf(booking) : [];
   const amount = booking?.finalPrice ?? 0;
 
   return (
@@ -1611,20 +1691,22 @@ function BookingDetailModal({
             </div>
           ) : null}
 
-          {/* 加購明細 */}
+          {/* 加購明細（issue #17：真實載入，loading/error/empty 三態） */}
           <div>
             <h6 className="mb-2 text-base font-bold">{d.addonSection}</h6>
-            {addons.length === 0 ? (
+            {addonsLoading ? (
+              <p className="form-text">{d.loading}</p>
+            ) : addonsError ? (
+              <Alert tone="danger" className="mb-0">{addonsError}</Alert>
+            ) : addons.length === 0 ? (
               <p className="form-text">{t.labels.noData}</p>
             ) : (
               <ul className="flex flex-col gap-1">
                 {addons.map((item) => (
                   <li key={item.id} className="flex items-center gap-2 rounded-lg bg-neutral-50 px-3 py-2">
                     <span className="min-w-0 flex-1 truncate">{item.name} × {item.quantity}</span>
-                    <span className="text-xs text-secondary">
-                      {item.staffName ?? t.labels.sameStaff}
-                    </span>
-                    <span className="tabular-nums">{formatCurrency(item.price * item.quantity)}</span>
+                    <span className="text-xs text-secondary">{addonPerformanceLabel(item)}</span>
+                    <span className="tabular-nums">{formatCurrency(item.appliedAmount)}</span>
                     <Button
                       size="sm" variant="outlineDanger" aria-label={common.delete}
                       onClick={() => onRemoveAddon(item)}
@@ -1656,7 +1738,7 @@ function BookingDetailModal({
             </Button>
             <Button variant="outline" size="sm" onClick={onMarkPaid}>
               <Wallet size={13} />
-t.rowActions.markPaidOffline
+              {t.rowActions.markPaidOffline}
             </Button>
             {booking.source === 'LINE' ? (
               <Link href="/tenant/chat" className="btn btn-line btn-sm">{t.rowActions.chat}</Link>
