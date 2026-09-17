@@ -13,7 +13,7 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
   it('is manual, globally serialized and read-only at GitHub permission level', () => {
     expect(source).toContain('workflow_dispatch:');
     expect(source).not.toContain('pull_request:');
-    expect(source).not.toContain('push:');
+    expect(source).not.toContain('\npush:');
     expect(source).toContain('contents: read');
     expect(source).toContain('checks: read');
     expect(source).toContain('actions: read');
@@ -34,6 +34,14 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
     expect(source).toContain("evidence.writer?.projectBoundWriterCredentialPresent !== true");
     expect(source).toContain("evidence.writer?.writerTransport !== 'POSTGRES_PROJECT_BOUND'");
     expect(source).not.toContain('${{ secrets.SUPABASE_ACCESS_TOKEN }}');
+  });
+
+  it('accepts readiness only from the trusted readiness workflow on main with exact SHA', () => {
+    expect(source).toContain("run.name !== 'production-db-automation-readiness'");
+    expect(source).toContain("!['workflow_dispatch', 'push'].includes(run.event)");
+    expect(source).toContain("run.head_branch !== 'main'");
+    expect(source).toContain("String(run.head_sha || '').toLowerCase() !== expected");
+    expect(source).toContain("run.status !== 'completed' || run.conclusion !== 'success'");
   });
 
   it('blocks cross-run replay whenever this releaseId already has durable attempt evidence', () => {
@@ -103,6 +111,14 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
     expect(source).toContain('production-db-release-orchestrator.mjs postcheck');
     expect(source).toContain('production-db-terminal-result-${{ inputs.release_id }}-${{ github.run_id }}');
     expect(source).toContain('if: ${{ always() }}');
+  });
+
+  it('uses the same pinned Supabase CA contract in PREPARE and EXECUTE writer jobs', () => {
+    expect(source.match(/PRODUCTION_DB_SSL_ROOT_CERT: \$\{\{ secrets\.PRODUCTION_DB_SSL_ROOT_CERT \}\}/g)?.length).toBe(2);
+    expect(source.match(/NODE_EXTRA_CA_CERTS: \$\{\{ runner\.temp \}\}\/supabase-production-root\.crt/g)?.length).toBe(2);
+    expect(source.match(/Install Supabase Production CA for verify-full/g)?.length).toBe(2);
+    expect(source).not.toContain('NODE_TLS_REJECT_UNAUTHORIZED');
+    expect(source).not.toContain('rejectUnauthorized: false');
   });
 
   it('keeps observer/test credentials separated from the Production writer credential', () => {
