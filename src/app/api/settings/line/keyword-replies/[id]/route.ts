@@ -2,6 +2,12 @@ import { z } from 'zod';
 import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { requireFeature } from '@/server/features';
+import {
+  deleteTenantStorageObjectBestEffort,
+  keywordReplyImageMayStillBeReferenced,
+  KEYWORD_REPLY_IMAGES_BUCKET,
+} from '@/server/storage-cleanup';
+import { tenantOwnedPublicStorageUrl } from '@/server/storage';
 
 /**
  * PUT/DELETE /api/settings/line/keyword-replies/:id（04 分冊 §B-5）。
@@ -30,6 +36,16 @@ import { requireFeature } from '@/server/features';
  *
  * 判斷方式刻意寫成「**只有**停用、沒有夾帶任何內容變更」才放行——
  * 否則送 `{ active: false, content: {...} }` 就能繞過閘門改內容。
+ *
+ * ## 換圖／移除圖片時清掉舊 Storage 物件（Issue #50 item B）
+ *
+ * `content` 是整欄覆寫。PUT 在覆寫前讀舊 `content.imageUrl`，覆寫成功後若
+ * 新舊 canonical URL（標準化網址）不同，才考慮清掉舊物件。
+ *
+ * 因為不同 keyword reply 可能歷史上共用同一張圖，**不能看到本列不用了就直接刪**。
+ * 真正刪除前會掃描同租戶其餘回覆；只要仍有任何一列引用同一 canonical URL，或
+ * 引用掃描本身失敗，就跳過刪除。清理是 best-effort：寧可留下之後可回收的孤兒檔，
+ * 也不能讓另一筆仍在使用的回覆變成破圖。
  */
 
 const bodySchema = z.object({
@@ -69,12 +85,51 @@ export const PUT = handle(async (req, { params }) => {
     return ok();
   }
 
+  // content 整欄覆寫前先讀舊 imageUrl，儲存完成後才知道是否有舊物件可清理。
+  let oldImageUrl = '';
+  if (b.content !== undefined) {
+    const { data: existing, error: existingError } = await t.supabase
+      .from('keyword_replies').select('content')
+      .eq('id', id).eq('tenant_id', t.tenantId).maybeSingle();
+    if (existingError) throw existingError;
+    if (!existing) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+    const existingContent = (existing.content ?? {}) as Record<string, unknown>;
+    oldImageUrl = typeof existingContent.imageUrl === 'string' ? existingContent.imageUrl : '';
+  }
+
   const { data, error } = await t.supabase
     .from('keyword_replies').update(update)
     .eq('id', id).eq('tenant_id', t.tenantId)
     .select('id').maybeSingle();
   if (error) throw error;
   if (!data) throw new ApiHttpError(404, '找不到此關鍵字回覆', ERR.NOT_FOUND);
+
+  // 換圖／移除圖片：儲存成功後才做 best-effort cleanup。
+  // canonical URL 比對避免 query string／百分比編碼差異把同一物件誤判成換圖。
+  if (b.content !== undefined) {
+    const newImageUrl = typeof b.content.imageUrl === 'string' ? (b.content.imageUrl as string) : '';
+    const canonicalOld =
+      tenantOwnedPublicStorageUrl(oldImageUrl, KEYWORD_REPLY_IMAGES_BUCKET, t.tenantId) ?? oldImageUrl;
+    const canonicalNew =
+      tenantOwnedPublicStorageUrl(newImageUrl, KEYWORD_REPLY_IMAGES_BUCKET, t.tenantId) ?? newImageUrl;
+
+    if (oldImageUrl && canonicalOld !== canonicalNew) {
+      const stillReferenced = await keywordReplyImageMayStillBeReferenced({
+        supabase: t.supabase,
+        tenantId: t.tenantId,
+        excludeReplyId: id,
+        canonicalUrl: canonicalOld,
+      });
+
+      if (!stillReferenced) {
+        await deleteTenantStorageObjectBestEffort({
+          bucket: KEYWORD_REPLY_IMAGES_BUCKET,
+          url: oldImageUrl,
+          tenantId: t.tenantId,
+        });
+      }
+    }
+  }
 
   return ok();
 });
