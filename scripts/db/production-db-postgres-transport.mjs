@@ -33,16 +33,14 @@ function decodeUsername(value) {
 
 function assertConnectionQuery(parsed) {
   const entries = [...parsed.searchParams.entries()];
-  if (
-    entries.length !== 1 ||
-    entries[0][0] !== 'sslmode' ||
-    String(entries[0][1]).trim().toLowerCase() !== 'verify-full' ||
-    parsed.hash
-  ) {
+  if (parsed.hash || entries.length !== 1 || entries[0][0] !== 'sslmode') {
     fail(
       'WRITER_URL_QUERY_PARAMETER_FORBIDDEN',
-      'Production DB writer URL must contain exactly one connection query parameter: sslmode=verify-full',
+      'Production DB writer URL may contain exactly one connection query parameter: sslmode',
     );
+  }
+  if (String(entries[0][1]).trim().toLowerCase() !== 'verify-full') {
+    fail('WRITER_URL_TLS_VERIFICATION_REQUIRED', 'Production DB writer URL must use sslmode=verify-full');
   }
 }
 
