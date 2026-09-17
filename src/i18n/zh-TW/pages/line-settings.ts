@@ -15,6 +15,8 @@ export const lineSettingsPage = {
 
   /* ---------------------------------------------------------------- 頁首 */
   viewTutorial: '查看教學',
+  /** Issue #47：導向 /tenant/line-settings/onboarding 的白話開通精靈入口 */
+  onboardingWizardLink: '開通精靈（新手推薦）',
 
   /* --------------------------------------------- 🔴 設定完成後必做（警示） */
   mustDo: {

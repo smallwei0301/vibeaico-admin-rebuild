@@ -4,7 +4,7 @@ import Link from 'next/link';
 import {
   Activity, AlertTriangle, CheckCircle2, ClipboardCheck, ClipboardCopy, Eye, EyeOff,
   ExternalLink, Grid3x3, Images, Link2, MessageSquareText, Megaphone, Palette, Plug,
-  QrCode, HelpCircle, Reply, RotateCcw, Save, Unlink, UserPlus, XCircle,
+  QrCode, HelpCircle, Reply, RotateCcw, Save, Sparkles, Unlink, UserPlus, XCircle,
 } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -447,10 +447,16 @@ export default function LineSettingsPage() {
         eyebrow={nav.navSystem}
         title={t.title}
         actions={
-          <Button variant="outline" size="sm" onClick={() => setTutorialOpen(true)}>
-            <Images size={14} />
-            {t.viewTutorial}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Link className="btn btn-success btn-sm" href="/tenant/line-settings/onboarding">
+              <Sparkles size={14} />
+              {t.onboardingWizardLink}
+            </Link>
+            <Button variant="outline" size="sm" onClick={() => setTutorialOpen(true)}>
+              <Images size={14} />
+              {t.viewTutorial}
+            </Button>
+          </div>
         }
       />
 
