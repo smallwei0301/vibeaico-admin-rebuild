@@ -225,4 +225,14 @@ describe('governance current observation (#466)', () => {
     expect(markdown).toContain('firstPassCi');
     expect(markdown).not.toContain('/ 100');
   });
+  it('accepts historical lifecycle marker for a closed unmerged PR', () => {
+    const item = pr({
+      state: 'closed',
+      closed_at: '2026-09-15T01:30:00Z',
+      body: '<!-- pr-lifecycle\nstate: historical\n-->\nWORKSTREAM: MODEL_GOVERNANCE',
+    });
+    const result = observe([item], { [item.head.sha]: [] });
+    expect(result.counts.staleLifecycle).toBe(0);
+    expect(result.counts.lifecycleUnknown).toBe(0);
+  });
 });
