@@ -1,0 +1,79 @@
+name: bounded-apply-556
+on:
+  push:
+    branches: [governance/issue-556-product-run-binding]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: >-
+      github.event.head_commit.message == 'chore: apply corrected 556 carrier syntax'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply previously reviewed literal source patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, os
+          old='02dfdf710bb7947ae81728c15586c485c7e48d8f'
+          text=subprocess.check_output(['git','show',old+':.github/workflows/bounded-edit-556.yml'],text=True)
+          def block(a,b):
+              s=text.split(a,1)[1].split(b,1)[0]
+              return '\n'.join(line[10:] if line.startswith('          ') else line for line in s.splitlines())
+          patch=block('      - name: Apply bounded source patch\n        shell: bash\n        run: |\n','\n      - name: Source-only tests and mutation')
+          patch=patch.split("python3 - <<'PY'\n",1)[1].rsplit('\nPY',1)[0]
+          patch=patch.replace("=='43139639d8ccf2dece8061eeda4b70cc676d72dc'", "=='"+old+"'")
+          patch=patch.replace("sorted([helper,'tests/unit/product-run-binding.556.test.ts'])", "sorted([helper,'tests/unit/product-run-binding.556.test.ts','.github/workflows/bounded-apply-556.yml'])")
+          patch=patch.replace('Path(helper).unlink()', "Path(helper).unlink(); Path('.github/workflows/bounded-apply-556.yml').unlink()")
+          exec(compile(patch,'literal-reviewed-556-patch','exec'))
+          p=Path('docs/AGENT-PLAYBOOK.md');s=p.read_text();mark='### PB-035 —'
+          assert s.count(mark)==1
+          s=s.replace(mark,'- #556 初次 branch-only runner 未啟動：if 條件的未引用 YAML scalar 含冒號，導致解析失敗。\n  修正載體使用 block scalar，未將它歸咎供應商、未盲目重跑相同版本；載體不保留於 main。\n\n'+mark)
+          p.write_text(s)
+          test=block('      - name: Source-only tests and mutation\n        shell: bash\n        run: |\n','\n      - name: Publish validated source blobs only')
+          Path(os.environ['RUNNER_TEMP'],'556-validate.sh').write_text(test)
+          subprocess.run(['git','diff','--check'],check=True)
+          PY
+      - name: Actual source tests and deliberate missing-call mutation
+        shell: bash
+        run: bash -e -o pipefail "$RUNNER_TEMP/556-validate.sh"
+      - name: Publish only validated immutable source blobs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs=require('node:fs'); const path=require('node:path');
+            const {owner,repo}=context.repo;
+            const branch='governance/issue-556-product-run-binding';
+            if(context.ref!==`refs/heads/${branch}`) throw new Error('Wrong branch');
+            const current=await github.rest.git.getRef({owner,repo,ref:`heads/${branch}`});
+            if(current.data.object.sha!==context.sha) throw new Error('Concurrent branch edit');
+            const files=JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP,'556-files.json'),'utf8'));
+            const allowed=['scripts/agents/scorecard-required-gate.mjs','scripts/agents/agent-wip-preflight.mjs','tests/unit/product-run-binding.556.test.ts','tests/unit/governance-workstream-boundary.500.test.ts','docs/AGENT-EXECUTION.md','docs/AGENT-PLAYBOOK.md'];
+            if(files.length!==6||files.some(f=>!allowed.includes(f))) throw new Error('Scope mismatch');
+            const blobs=[];
+            for(const file of files){const b=await github.rest.git.createBlob({owner,repo,content:fs.readFileSync(file,'utf8'),encoding:'utf-8'});blobs.push({path:file,mode:'100644',type:'blob',sha:b.data.sha});}
+            core.info(`PATCH_BLOBS=${JSON.stringify(blobs)}`);
+            await core.summary.addHeading('Validated bounded #556 source').addCodeBlock(JSON.stringify(blobs,null,2),'json').write();
+      - name: Preserve source-only evidence
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/556-evidence"
+          git diff 35af1f5a9f9b75b73da13e1f9cc2f71ffb5dbe97 > "$RUNNER_TEMP/556-evidence/candidate.patch"
+          cp "$RUNNER_TEMP/556-mutation.log" "$RUNNER_TEMP/556-evidence/" 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: governance-556-source-evidence
+          path: ${{ runner.temp }}/556-evidence/
+          retention-days: 7
