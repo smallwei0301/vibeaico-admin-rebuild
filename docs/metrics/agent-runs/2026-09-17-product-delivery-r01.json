@@ -5,38 +5,256 @@
   "startedAt": "2026-09-17T03:54:26.487Z",
   "endedAt": null,
   "sources": [
-    { "type": "OWNER_INSTRUCTION", "ref": "goal/2026-09-17", "note": "Owner /goal 2026-09-17：PRODUCT DELIVERY MAIN SESSION，非 MODEL_GOVERNANCE。#447 完全排除交 OpenAI Session。BUILD 1=#17 預約加購去假成功，BUILD 2=#46 旅客自助預約 REQUEST 最短閉環。" },
-    { "type": "ISSUE", "ref": "issue/17", "note": "#17 補齊-2：預約加購 booking_addons 後端全套。主 PR #562 已合併進 main（d96d1b28）；配套 migration-only PR #565 因執行環境權限問題轉 PARKED，讓出 active TERRA_BUILD 名額。" },
-    { "type": "ISSUE", "ref": "issue/46", "note": "#46 GUIDE P0：LINE-first 自助預約旅程（TERRA_BUILD PR #563，Final Risk 發現 F1/F2/F3 阻擋級安全問題後已修復並重新送審；配套 migration-only PR #567）。" },
-    { "type": "ISSUE", "ref": "issue/42", "note": "#42 Quick Edit 殘留缺口：Advanced Settings 儲存假成功修復（TERRA_BUILD PR #568，已完成施工，本輪升級為 active TERRA_BUILD，等待 review/CI）。" },
-    { "type": "ISSUE", "ref": "issue/47", "note": "#47 GUIDE P1：LINE 開通精靈（TERRA_BUILD PR #571，已完成施工並解決合併衝突，READY_FOR_PROMOTION，等待 review/CI）。" },
-    { "type": "ISSUE", "ref": "issue/66", "note": "#66 GUIDE UI 重構第一步 current-main gap audit：確認五大父層級語意與 mobile bottom nav 均不存在（#34 blocker 已解除）。開 TERRA_BUILD PR #574，bounded IA 切片：GuideBottomNav 五入口 + 新增 /tenant/more 分組目錄頁，重用既有 NAV route，不涉及五頁視覺重製或 responsive/瀏覽器驗收。" },
-    { "type": "MAIN_BASE", "ref": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "note": "本 Run 起算時的 origin/main head。" }
+    {
+      "type": "OWNER_INSTRUCTION",
+      "ref": "goal/2026-09-17",
+      "note": "Owner /goal 2026-09-17：PRODUCT DELIVERY MAIN SESSION，非 MODEL_GOVERNANCE。#447 完全排除交 OpenAI Session。BUILD 1=#17 預約加購去假成功，BUILD 2=#46 旅客自助預約 REQUEST 最短閉環。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/17",
+      "note": "#17 補齊-2：預約加購 booking_addons 後端全套。主 PR #562 已合併進 main（d96d1b28）；配套 migration-only PR #565 因執行環境權限問題轉 PARKED，讓出 active TERRA_BUILD 名額。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/46",
+      "note": "#46 GUIDE P0：LINE-first 自助預約旅程（TERRA_BUILD PR #563，Final Risk 發現 F1/F2/F3 阻擋級安全問題後已修復並重新送審；配套 migration-only PR #567）。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/42",
+      "note": "#42 Quick Edit 殘留缺口：Advanced Settings 儲存假成功修復（TERRA_BUILD PR #568，已完成施工，本輪升級為 active TERRA_BUILD，等待 review/CI）。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/47",
+      "note": "#47 GUIDE P1：LINE 開通精靈（TERRA_BUILD PR #571，已完成施工並解決合併衝突，READY_FOR_PROMOTION，等待 review/CI）。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/66",
+      "note": "#66 GUIDE UI 重構第一步 current-main gap audit：確認五大父層級語意與 mobile bottom nav 均不存在（#34 blocker 已解除）。開 TERRA_BUILD PR #574，bounded IA 切片：GuideBottomNav 五入口 + 新增 /tenant/more 分組目錄頁，重用既有 NAV route，不涉及五頁視覺重製或 responsive/瀏覽器驗收。"
+    },
+    {
+      "type": "MAIN_BASE",
+      "ref": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6",
+      "note": "本 Run 起算時的 origin/main head。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/18",
+      "note": "#18 LINE 老闆通知 owner-notify 缺口 A：confirmOwnerNotifyBind() 的 3 位上限併發洞（app 層先 count 再 insert），與 #572 型態不同（併發正確性修復，非 Storage 刪除），ASTRA_RISK=NONE。開 TERRA_BUILD PR（agent/issue-18-owner-notify-max-recipients-race），migration 0119 新增 confirm_owner_notify_bind advisory-lock RPC。"
+    }
   ],
-  "main": { "startSha": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "endSha": null },
-  "inventory": { "openIssuesStart": 47, "openIssuesEnd": null, "openPrsStart": 1, "openPrsEnd": null, "mainTerraPeak": 3, "reserveTerraPeak": 2, "activeCandidatePeak": 3, "sharedTestPeak": 0, "closureSweeps": 1, "closureAdvancedOrClosed": 0 },
-  "modelUsage": {
-    "actualTokensAvailable": false, "weeklyUsageStartPercent": null, "weeklyUsageEndPercent": null, "weightedUsageImprovementPercent": null,
-    "weights": { "luna": 1, "terra": 3, "sol": 6 },
-    "contextMultipliers": { "compact": 1, "medium": 1.5, "full": 3 },
-    "tasks": [
-      { "id": "issue-17-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#17 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：預約加購後端全套重建（schema-prep migration、atomic create/delete RPC、GET/POST/DELETE API、service、UI 去假成功）。開 PR #562（已合併），於 CI 修復過程中依 schema-staged-release 政策把 migration 拆為獨立 PR #565。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-46-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#46 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：旅客 REQUEST 自助申請最短端到端迴路（公開申請頁、狀態頁、POST /api/public/tour-requests、GUIDE 側接受/拒絕 UI 接線）。開 PR #563，本機隔離 Supabase 端到端驗證，並把新增 migration 拆為獨立 PR 以符合 schema-staged-release 政策。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-42-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#42 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：修復 `planApiPayload()` 儲存 Advanced Settings 時遺漏 `durationMinutes`/`priceType`/`yearRound` 的假成功缺陷。開 PR #568，新增 `tests/unit/trip-plan-advanced-persistence.42.test.ts`，本輪升級為 active TERRA_BUILD。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-46-terra-security-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#46 Final Risk 覆核後的阻擋級安全修復（build 層，worktree-isolated，實際委派 claude-sonnet-5）：F1 order_no 序號碰撞 DoS（改用數值比較 helper `nextTourOrderNo` + rate limiting）、F2 聯絡欄位缺長度上限（補齊 `.max()`）、F3 狀態頁跨租戶查詢（補齊 tenant/TOUR_MODULE 過濾）。新增 `tests/unit/public-tour-request-security.46.test.ts`／`tests/unit/rate-limit.46.test.ts` 共 22 則測試，推回 PR #563。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-17-terra-ci-and-security-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#17 TERRA_BUILD 後續修復（build 層，實際委派 claude-sonnet-5）：修正 tests/integration/api/booking-addons.17.test.ts 假設 rpc 存在的測試假設（改用 probeCreateAddonRpcAvailable 動態分派），並修正 GET route 對 PGRST200（relationship not found）的安全降級漏接。已隨 PR #562 合併進 main。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-47-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#47 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：新增 LINE 開通精靈 `/tenant/line-settings/onboarding`、`line-setup-wizard.ts` 純邏輯層與 i18n，完全重用既有 verify/saveLineSettings/syncLineWebhook，未新增 API route 或 migration。開 PR #571。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-17-migration-sql-fix", "requestedModel": "terra", "actualModel": "terra", "role": "#17 migration-only PR #565 CI 抓到 create_booking_addon RPC 的 PL/pgSQL 欄位歧義（Postgres 42702：RETURNS TABLE 的 OUT 參數名與 bookings 資料表同名欄位衝突），已修復（table alias b. 限定）並本機驗證。修復後另發現 fresh-install-baseline manifest 需要重新 re-pin，因執行環境權限問題無法在本 session 完成，PR #565 轉 PARKED。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-47-merge-conflict-resolution", "requestedModel": "terra", "actualModel": "terra", "role": "#47 PR #571 對 origin/main 出現 merge conflict（僅本 Run ledger json/md 的 add/add 衝突），委派子 agent 解決：確認 HEAD 側為 origin/main 側的嚴格超集，採用 HEAD 側完整內容，run-ledger-v2.mjs validate 回報 VALID_V2，typecheck／line-setup-wizard.47.test.ts 全綠，推送 commit eb91bfa6。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
-      { "id": "issue-66-terra-gap-audit-and-build", "requestedModel": "terra", "actualModel": "terra", "role": "#66 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：完成 current-main gap audit（讀 #66 全文、#34/#8 現況、20 分冊、五張基準圖 README），確認五大父層級語意與 mobile bottom nav 在 current main 均不存在。選定 bounded IA 切片並施工：`src/config/nav.ts` 新增 `GUIDE_MORE_GROUPS`/`getGuideMoreGroups()`/`getNavLeaf()`、新增 `GuideBottomNav` 元件與 `/tenant/more` 分組目錄頁、AppShell 掛載、i18n 補齊，新增 `tests/unit/guide-more-nav.66.test.ts`（10 則）。開 PR #574，明確排除五頁視覺重製與 responsive/瀏覽器驗收（留給後續有瀏覽器的 session）。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" }
-    ],
-    "fullContextReplays": 0, "duplicateScans": 0
+  "main": {
+    "startSha": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6",
+    "endSha": null
   },
-  "delivery": { "issuesStarted": 4, "issuesClosed": 0, "auditReady": 2, "ownerBlockedComplete": 0, "exactHeadCiOnly": 0, "commitOnly": 0, "unfinishedCarryover": 0, "cycleTimeMinutes": null },
-  "ci": { "fullCiRuns": 0, "invalidReruns": 0, "firstPassRatePercent": null, "sharedTestCollisions": 0 },
-  "quality": { "acceptanceEvidenceCoveragePercent": null, "auditFirstPassRatePercent": null, "unresolvedP0": 0, "unresolvedP1": 0, "reopenedIssues": 0, "postMergeRegressions": 0, "safetyViolations": 0, "hardFailReasons": [] },
-  "flow": { "lunaTasks": 0, "lunaAccepted": 0, "lunaDelegationRatePercent": null, "duplicateAgentTasks": 0, "ownershipCollisions": 0, "waitTimeConvertedPercent": null, "solTouches": 3, "solIssues": 3 },
-  "auditability": { "evidenceFieldsCompletePercent": null, "exactHeadTestCoveragePercent": null, "stalePendingDescriptions": 0, "preciseBlockersPercent": null, "scoreInputsCompletePercent": null },
+  "inventory": {
+    "openIssuesStart": 47,
+    "openIssuesEnd": null,
+    "openPrsStart": 1,
+    "openPrsEnd": null,
+    "mainTerraPeak": 3,
+    "reserveTerraPeak": 2,
+    "activeCandidatePeak": 3,
+    "sharedTestPeak": 0,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "issue-17-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#17 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：預約加購後端全套重建（schema-prep migration、atomic create/delete RPC、GET/POST/DELETE API、service、UI 去假成功）。開 PR #562（已合併），於 CI 修復過程中依 schema-staged-release 政策把 migration 拆為獨立 PR #565。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-46-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#46 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：旅客 REQUEST 自助申請最短端到端迴路（公開申請頁、狀態頁、POST /api/public/tour-requests、GUIDE 側接受/拒絕 UI 接線）。開 PR #563，本機隔離 Supabase 端到端驗證，並把新增 migration 拆為獨立 PR 以符合 schema-staged-release 政策。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-42-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#42 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：修復 `planApiPayload()` 儲存 Advanced Settings 時遺漏 `durationMinutes`/`priceType`/`yearRound` 的假成功缺陷。開 PR #568，新增 `tests/unit/trip-plan-advanced-persistence.42.test.ts`，本輪升級為 active TERRA_BUILD。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-46-terra-security-fix",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#46 Final Risk 覆核後的阻擋級安全修復（build 層，worktree-isolated，實際委派 claude-sonnet-5）：F1 order_no 序號碰撞 DoS（改用數值比較 helper `nextTourOrderNo` + rate limiting）、F2 聯絡欄位缺長度上限（補齊 `.max()`）、F3 狀態頁跨租戶查詢（補齊 tenant/TOUR_MODULE 過濾）。新增 `tests/unit/public-tour-request-security.46.test.ts`／`tests/unit/rate-limit.46.test.ts` 共 22 則測試，推回 PR #563。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-17-terra-ci-and-security-fix",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#17 TERRA_BUILD 後續修復（build 層，實際委派 claude-sonnet-5）：修正 tests/integration/api/booking-addons.17.test.ts 假設 rpc 存在的測試假設（改用 probeCreateAddonRpcAvailable 動態分派），並修正 GET route 對 PGRST200（relationship not found）的安全降級漏接。已隨 PR #562 合併進 main。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-47-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#47 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：新增 LINE 開通精靈 `/tenant/line-settings/onboarding`、`line-setup-wizard.ts` 純邏輯層與 i18n，完全重用既有 verify/saveLineSettings/syncLineWebhook，未新增 API route 或 migration。開 PR #571。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-17-migration-sql-fix",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#17 migration-only PR #565 CI 抓到 create_booking_addon RPC 的 PL/pgSQL 欄位歧義（Postgres 42702：RETURNS TABLE 的 OUT 參數名與 bookings 資料表同名欄位衝突），已修復（table alias b. 限定）並本機驗證。修復後另發現 fresh-install-baseline manifest 需要重新 re-pin，因執行環境權限問題無法在本 session 完成，PR #565 轉 PARKED。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-47-merge-conflict-resolution",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#47 PR #571 對 origin/main 出現 merge conflict（僅本 Run ledger json/md 的 add/add 衝突），委派子 agent 解決：確認 HEAD 側為 origin/main 側的嚴格超集，採用 HEAD 側完整內容，run-ledger-v2.mjs validate 回報 VALID_V2，typecheck／line-setup-wizard.47.test.ts 全綠，推送 commit eb91bfa6。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-66-terra-gap-audit-and-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#66 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：完成 current-main gap audit（讀 #66 全文、#34/#8 現況、20 分冊、五張基準圖 README），確認五大父層級語意與 mobile bottom nav 在 current main 均不存在。選定 bounded IA 切片並施工：`src/config/nav.ts` 新增 `GUIDE_MORE_GROUPS`/`getGuideMoreGroups()`/`getNavLeaf()`、新增 `GuideBottomNav` 元件與 `/tenant/more` 分組目錄頁、AppShell 掛載、i18n 補齊，新增 `tests/unit/guide-more-nav.66.test.ts`（10 則）。開 PR #574，明確排除五頁視覺重製與 responsive/瀏覽器驗收（留給後續有瀏覽器的 session）。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-18-terra-main-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#18 TERRA_BUILD 施工（build 層，實際委派 claude-sonnet-5）：修復 owner-notify 3 位上限的 app 層先查後寫併發洞。新增 migration 0119（confirm_owner_notify_bind SECURITY DEFINER RPC，pg_advisory_xact_lock 依 tenant_id 串行化），confirmOwnerNotifyBind() 改走單一 rpc 呼叫。新增靜態/mutation 證據測試，同步更新 ledger-alias-map 與 fresh-install-compatibility-baseline manifest re-pin。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 5,
+    "issuesClosed": 0,
+    "auditReady": 3,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 3,
+    "solIssues": 3
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
   "notes": [
     "2026-09-17：PR #563 的 Final Risk（Astra/Fable 成本降級後之對抗審查）發現三項阻擋級安全問題（F1 order_no 序號碰撞 DoS、F2 聯絡欄位無長度上限、F3 狀態頁跨租戶查詢）；PR 已轉 draft、LANE_STATE 改為 PARKED、ACTIVE_CANDIDATE 改為 false，交回原 builder agent 修復。修復已完成並推回同一 PR，等待新一輪 Final Risk 覆核（DELTA/FULL 由審查工具判定）。",
     "2026-09-17：PR #562 經 Sol 對抗審查發現兩個問題（1）整合測試假設 migration 已套用，實際在 CI 的 local-isolated 環境下不成立；（2）GET route 對 PGRST200 錯誤碼未分支，安全降級這個場景下會失效。兩項均已修復並推回同一 PR，已合併進 main（squash merge d96d1b28）。",
@@ -45,23 +263,162 @@
     "2026-09-17：#565 的 migration-build-exit-parked wipLifecycle 事件原本誤填了 fix commit 0dad3e25 作為 head，但 run-ledger-v2.mjs 要求 EXIT 事件必須與其 ENTER 事件引用完全相同的 head（標記的是這個租約進入時的狀態，不是離開當下的最新 commit）。已改回 ENTER 事件的 head（9db618a1）。"
   ],
   "deliveryTruthVersion": 4,
-  "closeout": { "contractVersion": 1, "ownerRole": "PRODUCT_MAIN_SESSION", "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED", "state": "OPEN", "closedAt": null, "evidenceRef": null },
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
   "wipLifecycle": {
     "schemaVersion": 1,
     "events": [
-      { "id": "wip-2026-09-17-issue-17-build-enter", "at": "2026-09-17T03:54:27Z", "kind": "BUILD_ENTER", "pr": 562, "issue": 17, "head": "ba21b379b9fed28ebcd159fa887ca5b2cccc2b81", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #17 booking-addons rebuild started; corrected to the earliest raw-capturable timestamp inside this Run's window per #569, not backdated" },
-      { "id": "wip-2026-09-17-issue-46-build-enter", "at": "2026-09-17T03:54:28Z", "kind": "BUILD_ENTER", "pr": 563, "issue": 46, "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #46 traveler REQUEST journey started; corrected to the earliest raw-capturable timestamp inside this Run's window per #569, not backdated" },
-      { "id": "wip-2026-09-17-issue-42-build-enter", "at": "2026-09-17T04:10:00Z", "kind": "BUILD_ENTER", "pr": 568, "issue": 42, "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #42 Quick Edit 殘餘缺口驗證與 planApiPayload 修復開始" },
-      { "id": "wip-2026-09-17-issue-42-build-exit-ready", "at": "2026-09-17T04:45:00Z", "kind": "BUILD_EXIT", "pr": 568, "issue": 42, "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "workstream": "PRODUCT_MAINLINE", "reason": "施工完成，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI" },
-      { "id": "wip-2026-09-17-issue-46-build-exit-parked", "at": "2026-09-17T04:47:00Z", "kind": "BUILD_EXIT", "pr": 563, "issue": 46, "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af", "workstream": "PRODUCT_MAINLINE", "reason": "Final Risk 發現 F1/F2/F3 阻擋級安全問題，PR 轉 draft／LANE_STATE=PARKED／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額" },
-      { "id": "wip-2026-09-17-issue-47-build-enter", "at": "2026-09-17T05:14:00Z", "kind": "BUILD_ENTER", "pr": 571, "issue": 47, "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #47 LINE 開通精靈施工開始" },
-      { "id": "wip-2026-09-17-issue-47-build-exit-ready", "at": "2026-09-17T05:20:00Z", "kind": "BUILD_EXIT", "pr": 571, "issue": 47, "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e", "workstream": "PRODUCT_MAINLINE", "reason": "施工完成，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI" },
-      { "id": "wip-2026-09-17-issue-17-migration-build-enter", "at": "2026-09-17T05:36:00Z", "kind": "BUILD_ENTER", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "主 PR #562 已合併，配套 migration-only PR #565 升級為本輪唯一 active TERRA_BUILD 候選" },
-      { "id": "wip-2026-09-17-issue-17-migration-build-exit-parked", "at": "2026-09-17T06:15:00Z", "kind": "BUILD_EXIT", "pr": 565, "issue": 17, "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904", "workstream": "PRODUCT_MAINLINE", "reason": "CI 因 fresh-install-baseline manifest re-pin 待辦而紅燈（後續 fix commit 0dad3e25、目前最新 head仍待重新 re-pin），執行環境權限阻擋此操作，PR 轉 PARKED，讓出 active TERRA_BUILD 名額" },
-      { "id": "wip-2026-09-17-issue-42-build-enter-active", "at": "2026-09-17T06:16:00Z", "kind": "BUILD_ENTER", "pr": 568, "issue": 42, "head": "a49fb61dcf2ae9d56ccd695f74533e5e925d9735", "workstream": "PRODUCT_MAINLINE", "reason": "#565 轉 PARKED 讓出名額，#568（#42）升級為本輪唯一 active TERRA_BUILD 候選" },
-      { "id": "wip-2026-09-17-issue-66-build-enter", "at": "2026-09-17T07:00:00Z", "kind": "BUILD_ENTER", "pr": 574, "issue": 66, "head": "2b3dfebcfc476b85d3b6441530f25ba44a46ba7f", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #66 current-main gap audit 完成後選定 bounded IA 切片開始施工：GuideBottomNav 五入口 + /tenant/more 分組目錄頁" },
-      { "id": "wip-2026-09-17-issue-66-build-exit-ready", "at": "2026-09-17T07:20:00Z", "kind": "BUILD_EXIT", "pr": 574, "issue": 66, "head": "2b3dfebcfc476b85d3b6441530f25ba44a46ba7f", "workstream": "PRODUCT_MAINLINE", "reason": "施工完成，typecheck/unit/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI" }
+      {
+        "id": "wip-2026-09-17-issue-17-build-enter",
+        "at": "2026-09-17T03:54:27Z",
+        "kind": "BUILD_ENTER",
+        "pr": 562,
+        "issue": 17,
+        "head": "ba21b379b9fed28ebcd159fa887ca5b2cccc2b81",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #17 booking-addons rebuild started; corrected to the earliest raw-capturable timestamp inside this Run's window per #569, not backdated"
+      },
+      {
+        "id": "wip-2026-09-17-issue-46-build-enter",
+        "at": "2026-09-17T03:54:28Z",
+        "kind": "BUILD_ENTER",
+        "pr": 563,
+        "issue": 46,
+        "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #46 traveler REQUEST journey started; corrected to the earliest raw-capturable timestamp inside this Run's window per #569, not backdated"
+      },
+      {
+        "id": "wip-2026-09-17-issue-42-build-enter",
+        "at": "2026-09-17T04:10:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 568,
+        "issue": 42,
+        "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #42 Quick Edit 殘餘缺口驗證與 planApiPayload 修復開始"
+      },
+      {
+        "id": "wip-2026-09-17-issue-42-build-exit-ready",
+        "at": "2026-09-17T04:45:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 568,
+        "issue": 42,
+        "head": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "施工完成，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI"
+      },
+      {
+        "id": "wip-2026-09-17-issue-46-build-exit-parked",
+        "at": "2026-09-17T04:47:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 563,
+        "issue": 46,
+        "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Final Risk 發現 F1/F2/F3 阻擋級安全問題，PR 轉 draft／LANE_STATE=PARKED／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額"
+      },
+      {
+        "id": "wip-2026-09-17-issue-47-build-enter",
+        "at": "2026-09-17T05:14:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 571,
+        "issue": 47,
+        "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #47 LINE 開通精靈施工開始"
+      },
+      {
+        "id": "wip-2026-09-17-issue-47-build-exit-ready",
+        "at": "2026-09-17T05:20:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 571,
+        "issue": 47,
+        "head": "3dc8c5b217e2ad883e69ba471d9f9e6f844b623e",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "施工完成，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI"
+      },
+      {
+        "id": "wip-2026-09-17-issue-17-migration-build-enter",
+        "at": "2026-09-17T05:36:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 565,
+        "issue": 17,
+        "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "主 PR #562 已合併，配套 migration-only PR #565 升級為本輪唯一 active TERRA_BUILD 候選"
+      },
+      {
+        "id": "wip-2026-09-17-issue-17-migration-build-exit-parked",
+        "at": "2026-09-17T06:15:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 565,
+        "issue": 17,
+        "head": "9db618a177b8a058306ee9ce7872ba0c8c9d8904",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "CI 因 fresh-install-baseline manifest re-pin 待辦而紅燈（後續 fix commit 0dad3e25、目前最新 head仍待重新 re-pin），執行環境權限阻擋此操作，PR 轉 PARKED，讓出 active TERRA_BUILD 名額"
+      },
+      {
+        "id": "wip-2026-09-17-issue-42-build-enter-active",
+        "at": "2026-09-17T06:16:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 568,
+        "issue": 42,
+        "head": "a49fb61dcf2ae9d56ccd695f74533e5e925d9735",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "#565 轉 PARKED 讓出名額，#568（#42）升級為本輪唯一 active TERRA_BUILD 候選"
+      },
+      {
+        "id": "wip-2026-09-17-issue-66-build-enter",
+        "at": "2026-09-17T07:00:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 574,
+        "issue": 66,
+        "head": "2b3dfebcfc476b85d3b6441530f25ba44a46ba7f",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #66 current-main gap audit 完成後選定 bounded IA 切片開始施工：GuideBottomNav 五入口 + /tenant/more 分組目錄頁"
+      },
+      {
+        "id": "wip-2026-09-17-issue-66-build-exit-ready",
+        "at": "2026-09-17T07:20:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 574,
+        "issue": 66,
+        "head": "2b3dfebcfc476b85d3b6441530f25ba44a46ba7f",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "施工完成，typecheck/unit/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，讓出 active TERRA_BUILD 名額，等待 review/CI"
+      },
+      {
+        "id": "wip-2026-09-17-issue-18-build-enter",
+        "at": "2026-09-17T07:22:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 575,
+        "issue": 18,
+        "head": "daa4b570ff0b27e2d7a42b08e5f632f9e4e03917",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "#66（PR #574）已 READY_FOR_PROMOTION 讓出 active TERRA_BUILD 名額；#18 owner-notify 3 位上限併發洞（缺口 A）升級為本輪 active TERRA_BUILD 候選，ASTRA_RISK=NONE，避開 #572 的 IRREVERSIBLE_DATA 分類。"
+      },
+      {
+        "id": "wip-2026-09-17-issue-18-build-exit-ready",
+        "at": "2026-09-17T07:32:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 575,
+        "issue": 18,
+        "head": "daa4b570ff0b27e2d7a42b08e5f632f9e4e03917",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "施工完成：migration 0119、owner-notify.ts、靜態/mutation 測試、ledger-alias-map、fresh-install-baseline manifest re-pin。typecheck/unit(3187)/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，等待 PR 開立與 CI。"
+      }
     ]
   },
-  "completionTruth": { "status": "NOT_CHECKED", "checkedAt": null, "claims": [] }
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
 }
