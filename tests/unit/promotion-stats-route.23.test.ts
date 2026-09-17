@@ -7,10 +7,11 @@
  * `vi.mock('@/server/tenant', …)`（同 tests/unit/line-disconnect-route.47.test.ts
  * 的手法）餵一組固定 rows 給假 supabase client，不碰真 DB。
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 type Row = { tenant_id: string; source: string; visitor_hash: string; created_at: string };
 
+const TEST_NOW = new Date('2026-09-15T12:00:00Z');
 let currentTenantId = 'tenant-a';
 let seededRows: Row[] = [];
 
@@ -53,15 +54,21 @@ async function callRoute(range?: string) {
   return { status: res.status, body };
 }
 
-/** N 小時前的 ISO；用來精準控制 events 落在哪個台北曆日、哪個 range 邊界內。 */
-function hoursAgoIso(hours: number, from = new Date('2026-09-15T12:00:00Z')): string {
+/** N 小時前的 ISO；基準時鐘由測試固定，避免 fixture 隨真實日期老化。 */
+function hoursAgoIso(hours: number, from = TEST_NOW): string {
   return new Date(from.getTime() - hours * 60 * 60 * 1000).toISOString();
 }
 
 describe('GET /api/promotion/stats（issue #23）', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_NOW);
     currentTenantId = 'tenant-a';
     seededRows = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('零資料：回傳 issue #23 的零資料 contract 逐字', async () => {
