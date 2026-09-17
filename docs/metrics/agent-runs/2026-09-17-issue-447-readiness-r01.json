@@ -25,7 +25,7 @@
     "openIssuesEnd": null,
     "openPrsStart": null,
     "openPrsEnd": null,
-    "mainTerraPeak": 0,
+    "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
@@ -123,7 +123,18 @@
   },
   "wipLifecycle": {
     "schemaVersion": 1,
-    "events": []
+    "events": [
+      {
+        "id": "pr-561-build-enter",
+        "at": "2026-09-17T02:46:40Z",
+        "kind": "BUILD_ENTER",
+        "pr": 561,
+        "issue": 447,
+        "head": "5bbdadda3069114b08383bae462a6602841622c4",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Final #447 bounded Evidence + Orchestration + Readiness PR opened as the sole active implementation candidate."
+      }
+    ]
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
