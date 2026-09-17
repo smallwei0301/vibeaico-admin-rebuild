@@ -5,8 +5,8 @@
     "build": "gpt-5.6-terra",
     "audit": "gpt-5.6-sol",
     "finalRisk": "claude-fable-5-1",
-    "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1"],
-    "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1"]
+    "finalRiskModelCatalog": ["gpt-6-astra", "claude-fable-5-1", "gpt-5.6-sol"],
+    "finalRiskAllowedModels": ["gpt-6-astra", "claude-fable-5-1", "gpt-5.6-sol"]
   },
   "anthropicEquivalents": {
     "version": "2026-09-10.1",
@@ -60,6 +60,14 @@
     "trustedAgentBots": [
       { "login": "claude[bot]", "id": 209825114, "type": "Bot" }
     ]
+  },
+  "temporaryOwnerDecisions": {
+    "version": "2026-09-17.1",
+    "issue447CurrentModelFinalRisk": {
+      "issue": 447,
+      "decision": "Allow gpt-5.6-sol as Final Risk reviewer while Issue #447 remains open; remove gpt-5.6-sol from finalRiskAllowedModels after #447 closeout",
+      "scope": "Issue #447 only by Owner process; no change to the default finalRisk model"
+    }
   },
   "highRisk": ["PAYMENT_CONSISTENCY", "TENANT_AUTH_BOUNDARY", "IRREVERSIBLE_DATA", "CROSS_REPO_CONTRACT", "GOVERNANCE_GATE", "UNRESOLVED_HIGH_RISK"],
   "sensitivePaths": [
