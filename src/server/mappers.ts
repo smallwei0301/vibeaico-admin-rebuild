@@ -454,10 +454,16 @@ export function mapTourOrder(r: any, derived: {
       ? r.deposit_mode_snapshot : null,
     salesMode: derived.salesMode,
     /**
-     * #46：`refund_policy_snapshot` 由 `0112` migration 加在 `tour_orders`
-     * 上、`create_tour_order` 建單當下寫入。值域外（含 null／undefined／
-     * 未知字串）一律收斂成 null——同 `depositModeSnapshot` 的既有慣例，
-     * 不得替一筆查不到 snapshot 的舊訂單假造一個政策。
+     * #46：`refund_policy_snapshot` 由一支獨立的 migration PR 加在
+     * `tour_orders` 上（本 PR 刻意不含任何 `supabase/migrations/**` 檔案，
+     * 見 commit 說明——避免與同期並行的 migration PR 撞號，也避開
+     * `schema-staged-release-policy.mjs` 對「migration + Product runtime
+     * 同一 PR」的 default-off gate 要求）、`create_tour_order` 建單當下寫入。
+     * 在該欄位真的存在之前，`r.refund_policy_snapshot` 永遠是 undefined，
+     * 下面這行收斂成 null 是刻意的：值域外（含 null／undefined／未知字串）
+     * 一律收斂成 null——同 `depositModeSnapshot` 的既有慣例，不得替一筆
+     * 查不到 snapshot 的舊訂單（或欄位還沒上線）假造一個政策。畫面上顯示
+     * 「政策未提供」，等 migration 合併並套用後自動補上真實值。
      */
     refundPolicySnapshot: REFUND_POLICY_VALUES.has(r.refund_policy_snapshot)
       ? r.refund_policy_snapshot : null,
