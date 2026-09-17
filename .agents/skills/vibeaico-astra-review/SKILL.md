@@ -31,6 +31,12 @@ Astra/Fable 合計最多一輪；首次要從持久歷史證明未使用，保�
 不能靠更名假裝切換模型；CURRENT_AGENT 的 actual 不明就 unknown，執行事實與型號證據分開。
 `prepare` 會附 reviewerRoute；`recover` 不再輸出昂貴同級 retry/switch。
 
+模型選擇不是另一個 plugin、connector、MCP、外部服務。不得因主 Session 本身不是 Astra/Fable
+就搜尋額外 plugin（外掛）或 connector（連接器）、要求 Owner 開通審查通道。
+「先改派模型，再談 unavailable」在 #552 下指依已授權路由降為 Sol/Opus，或無 selector
+時使用 CURRENT_AGENT，不是再試另一個昂貴模型。只有包含 CURRENT_AGENT 在內的可用路徑
+都無法真正執行審查，才記 MODEL_EXECUTION_UNAVAILABLE 並停放該候選；不停止其他安全工作。
+
 ## Trusted Agent 可以自己提交 Product Final Risk evidence
 
 正常 Product Agent 路徑 Owner action NOT_REQUIRED。
@@ -46,7 +52,7 @@ Astra/Fable 合計最多一輪；首次要從持久歷史證明未使用，保�
 ## PRODUCT_MAINLINE Review flow
 
 1. Sol 填 Product 風險分類與理由；範圍擴大時重新分類。
-2. 必要測試與 Sol diff 審核後，先跑 `scripts/agents/final-risk-workflow.mjs prepare`。只有 `READY` 才建立昂貴 reviewer；`NOT_READY` 回 cheap precheck，不算 reviewer round。
+2. 必要測試與 Sol diff 審核後，先跑 `scripts/agents/final-risk-workflow.mjs prepare`。只有 `READY` 才依 reviewerRoute 執行相應審查；`READY` 本身不是昂貴模型派送許可。`NOT_READY` 回 cheap precheck，不算 reviewer round。
 3. readiness packet 綁 repository、exact head、`changeDigest`、policy、TEST/schema 基線、bounded diff scope、測試證據與未驗證事項。
 4. 第一次 semantic review 固定 `FULL`；若前一輪為 blocking finding，修復後只有工具判定 `DELTA` 才可做 finding-fix review。任何新 scope／risk／policy／hot boundary 或 reviewer 要求都回 `FULL`。
 5. 依 reviewerRoute 使用單次 premium、降級 Sol/Opus 或無 selector 的 CURRENT_AGENT 做唯讀對抗審查；最後者明記不是獨立指定模型。要求具體反例、舊 finding 解法與阻塞項目。
