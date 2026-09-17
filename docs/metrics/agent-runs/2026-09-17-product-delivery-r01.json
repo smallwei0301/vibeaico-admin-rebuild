@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-17-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-17T03:54:26.487Z",
+  "endedAt": null,
+  "sources": [
+    { "type": "OWNER_INSTRUCTION", "ref": "goal/2026-09-17", "note": "Owner /goal 2026-09-17：PRODUCT DELIVERY MAIN SESSION，非 MODEL_GOVERNANCE。#447 完全排除交 OpenAI Session。BUILD 1=#17 預約加購去假成功，BUILD 2=#46 旅客自助預約 REQUEST 最短閉環。" },
+    { "type": "MAIN_BASE", "ref": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "note": "本 Run 起算時的 origin/main head。" }
+  ],
+  "main": { "startSha": "3d5c8ede28be55c0a54436081ccaad5c5e4900a6", "endSha": null },
+  "inventory": { "openIssuesStart": 47, "openIssuesEnd": null, "openPrsStart": 1, "openPrsEnd": null, "mainTerraPeak": 2, "reserveTerraPeak": 0, "activeCandidatePeak": 2, "sharedTestPeak": 0, "closureSweeps": 0, "closureAdvancedOrClosed": 0 },
+  "modelUsage": {
+    "actualTokensAvailable": false, "weeklyUsageStartPercent": null, "weeklyUsageEndPercent": null, "weightedUsageImprovementPercent": null,
+    "weights": { "luna": 1, "terra": 3, "sol": 6 },
+    "contextMultipliers": { "compact": 1, "medium": 1.5, "full": 3 },
+    "tasks": [
+      { "id": "issue-17-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#17 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：預約加購後端全套重建（schema-prep migration、atomic create/delete RPC、GET/POST/DELETE API、service、UI 去假成功）。開 PR #562，於 CI 修復過程中依 schema-staged-release 政策把 migration 拆為獨立 PR。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" },
+      { "id": "issue-46-terra-main-build", "requestedModel": "terra", "actualModel": "terra", "role": "#46 TERRA_BUILD 施工（build 層，worktree-isolated，實際委派 claude-sonnet-5）：旅客 REQUEST 自助申請最短端到端迴路（公開申請頁、狀態頁、POST /api/public/tour-requests、GUIDE 側接受/拒絕 UI 接線）。開 PR #563，本機隔離 Supabase 端到端驗證，並把新增 migration 拆為獨立 PR 以符合 schema-staged-release 政策。", "count": 1, "contextClass": "full", "accepted": true, "inputTokens": null, "outputTokens": null, "cachedTokens": null, "actualModelId": "claude-sonnet-5" }
+    ],
+    "fullContextReplays": 0, "duplicateScans": 0
+  },
+  "delivery": { "issuesStarted": 2, "issuesClosed": 0, "auditReady": 0, "ownerBlockedComplete": 0, "exactHeadCiOnly": 0, "commitOnly": 0, "unfinishedCarryover": 0, "cycleTimeMinutes": null },
+  "ci": { "fullCiRuns": 0, "invalidReruns": 0, "firstPassRatePercent": null, "sharedTestCollisions": 0 },
+  "quality": { "acceptanceEvidenceCoveragePercent": null, "auditFirstPassRatePercent": null, "unresolvedP0": 0, "unresolvedP1": 0, "reopenedIssues": 0, "postMergeRegressions": 0, "safetyViolations": 0, "hardFailReasons": [] },
+  "flow": { "lunaTasks": 0, "lunaAccepted": 0, "lunaDelegationRatePercent": null, "duplicateAgentTasks": 0, "ownershipCollisions": 0, "waitTimeConvertedPercent": null, "solTouches": 0, "solIssues": 0 },
+  "auditability": { "evidenceFieldsCompletePercent": null, "exactHeadTestCoveragePercent": null, "stalePendingDescriptions": 0, "preciseBlockersPercent": null, "scoreInputsCompletePercent": null },
+  "notes": [],
+  "deliveryTruthVersion": 4,
+  "closeout": { "contractVersion": 1, "ownerRole": "PRODUCT_MAIN_SESSION", "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED", "state": "OPEN", "closedAt": null, "evidenceRef": null },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": [
+      { "id": "wip-2026-09-17-issue-17-build-enter", "at": "2026-09-17T03:15:00Z", "kind": "BUILD_ENTER", "pr": 562, "issue": 17, "head": "ba21b379b9fed28ebcd159fa887ca5b2cccc2b81", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #17 booking-addons rebuild started" },
+      { "id": "wip-2026-09-17-issue-46-build-enter", "at": "2026-09-17T03:24:00Z", "kind": "BUILD_ENTER", "pr": 563, "issue": 46, "head": "79ebde7dc8f9eaba9b5b66dee17d8d22abb057af", "workstream": "PRODUCT_MAINLINE", "reason": "TERRA_BUILD #46 traveler REQUEST journey started" }
+    ]
+  },
+  "completionTruth": { "status": "NOT_CHECKED", "checkedAt": null, "claims": [] }
+}
