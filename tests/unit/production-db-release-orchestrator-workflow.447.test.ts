@@ -113,10 +113,10 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
     expect(source).toContain('if: ${{ always() }}');
   });
 
-  it('uses the same pinned Supabase CA contract in PREPARE and EXECUTE writer jobs', () => {
-    expect(source.match(/PRODUCTION_DB_SSL_ROOT_CERT: \$\{\{ secrets\.PRODUCTION_DB_SSL_ROOT_CERT \}\}/g)?.length).toBe(2);
-    expect(source.match(/NODE_EXTRA_CA_CERTS: \$\{\{ runner\.temp \}\}\/supabase-production-root\.crt/g)?.length).toBe(2);
-    expect(source.match(/Install Supabase Production CA for verify-full/g)?.length).toBe(2);
+  it('uses the same vendored Supabase CA bundle in PREPARE and EXECUTE writer jobs', () => {
+    expect(source.match(/NODE_EXTRA_CA_CERTS: \$\{\{ github\.workspace \}\}\/config\/supabase-production-root-bundle\.crt/g)?.length).toBe(2);
+    expect(source.match(/test -s "\$NODE_EXTRA_CA_CERTS"/g)?.length).toBe(2);
+    expect(source).not.toContain('PRODUCTION_DB_SSL_ROOT_CERT');
     expect(source).not.toContain('NODE_TLS_REJECT_UNAUTHORIZED');
     expect(source).not.toContain('rejectUnauthorized: false');
   });
