@@ -31,6 +31,7 @@
  * 就沒有第二道防線。
  */
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { loadPublicShop, type PublicShopData } from '@/server/public-shop';
 import { recordPromotionPageView } from '@/server/promotion-events';
@@ -196,12 +197,23 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                   {trip.plans.length > 0 ? (
                     <ul className="flex flex-col gap-1">
                       {trip.plans.map((plan) => (
-                        <li key={plan.id} className="flex flex-wrap items-baseline gap-2 text-sm">
+                        <li key={plan.id} className="flex flex-wrap items-center gap-2 text-sm">
                           <span className="font-medium">{plan.name}</span>
                           <span>{formatCurrency(plan.pricePerPerson)}</span>
                           <span className="text-2xs text-secondary">
                             {t.trips.partyRange(plan.minParty, plan.maxParty)}
                           </span>
+                          {plan.salesMode === 'REQUEST' ? (
+                            <>
+                              <span className="badge badge-success">{t.trips.requestBadge}</span>
+                              <Link
+                                href={`/s/${shopCode}/plans/${plan.id}/request`}
+                                className="btn btn-primary btn-sm"
+                              >
+                                {t.trips.requestCta}
+                              </Link>
+                            </>
+                          ) : null}
                         </li>
                       ))}
                     </ul>

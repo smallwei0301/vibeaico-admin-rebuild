@@ -45,7 +45,10 @@ export async function hydrateTourOrders(
       ? supabase.from('trips').select('id, title').eq('tenant_id', tenantId).in('id', tripIds)
       : { data: [], error: null },
     planIds.length
-      ? supabase.from('trip_plans').select('id, name').eq('tenant_id', tenantId).in('id', planIds)
+      // #46：多取 sales_mode，讓 mapTourOrder 能判斷這筆訂單是不是「還在等待
+      // 導遊決定的 REQUEST 申請」，畫面才知道要不要顯示接受／拒絕。
+      ? supabase.from('trip_plans').select('id, name, sales_mode')
+        .eq('tenant_id', tenantId).in('id', planIds)
       : { data: [], error: null },
     departureIds.length
       ? supabase.from('trip_departures').select('id, departs_on, start_time')
@@ -64,6 +67,11 @@ export async function hydrateTourOrders(
   const planById = new Map<string, string>(
     (plans.data ?? []).map((r: any) => [r.id, String(r.name ?? '')]),
   );
+  const salesModeByPlanId = new Map<string, 'FIXED_DEPARTURE' | 'INSTANT' | 'REQUEST'>(
+    (plans.data ?? [])
+      .filter((r: any) => r.sales_mode === 'FIXED_DEPARTURE' || r.sales_mode === 'INSTANT' || r.sales_mode === 'REQUEST')
+      .map((r: any) => [r.id, r.sales_mode]),
+  );
   const departureById = new Map<string, { departsOn: string; startTime: string }>(
     (departures.data ?? []).map((r: any) => [r.id, {
       departsOn: r.departs_on ?? '',
@@ -77,6 +85,7 @@ export async function hydrateTourOrders(
       planName: planById.get(r.plan_id) ?? '',
       departsOn: departure?.departsOn ?? '',
       startTime: departure?.startTime ?? '',
+      salesMode: salesModeByPlanId.get(r.plan_id),
       /**
        * ⚠️ 永遠回空字串，而且這是刻意的。
        *

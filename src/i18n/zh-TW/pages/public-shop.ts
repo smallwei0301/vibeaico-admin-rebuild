@@ -36,6 +36,13 @@ export const publicShopPage = {
     seatsLeft: (n: number) => `剩 ${n} 位`,
     /** 沒有指定出發時間的團次 */
     noStartTime: '時間未定',
+    /**
+     * #46：先申請再確認（REQUEST）模式的方案，是這一版唯一真的能線上送出的
+     * 旅程，其餘方案仍只能透過上方的聯絡方式詢問。徽章與連結文字都要誠實
+     * 反映「申請」而不是「預約成功」——送出申請不等於已經訂到。
+     */
+    requestBadge: '可線上申請',
+    requestCta: '線上申請（先申請，導遊確認後才鎖位）',
   },
 
   services: {
