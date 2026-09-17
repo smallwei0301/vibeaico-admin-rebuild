@@ -622,6 +622,10 @@ export type TourOrder = {
   refundedAmount?: number;
   /** 18 分冊 §4：成交當下的收款政策 snapshot；null = 尚未補這個欄位。#41，選填。 */
   depositModeSnapshot?: TourDepositModeSnapshot | null;
+  /** #46：方案販售方式；查不到方案時保持 undefined，不做推測。 */
+  salesMode?: TripSalesMode;
+  /** #46：成交當下取消／退款政策 snapshot；null/undefined 代表尚未提供。 */
+  refundPolicySnapshot?: 'STANDARD' | 'FLEXIBLE' | 'STRICT' | null;
 };
 
 /* -------------------------------------------------------------- 行事曆 */
