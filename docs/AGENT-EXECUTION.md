@@ -115,6 +115,9 @@ current truth
   正式 LANE_STATE=ACTIVE、ACTIVE_CANDIDATE=true 也列為 finding。範例／引用不是正式宣告。
   讀取前後生命周期標籤不同時保留 unavailable，不能把變動中的狀態當穩定證據。
   報告以 inventoryVersion=2 標明擴大範圍；不能直接拿舊總數減新總數當修復率。
+- #566：分類器新增本地 import 或讀檔相依時，必須同步 trusted workflow 的 sparse-checkout 清單。
+  送出前以該清單複製到乾淨目錄並實際載入分類入口；完整 checkout 的測試成功不能替代它。
+  相依缺檔是檢查器啟動失敗，不是 Product 分類錯誤；修補合併後重查目前事件，不重寫歷史結果。
 - 路徑與欄位檢查不能證明每個語意都正確；最終 exact-diff／反例審查及原有安全關卡仍必要。
 
 ## 2. 強制開工順序（低摩擦 default entry）

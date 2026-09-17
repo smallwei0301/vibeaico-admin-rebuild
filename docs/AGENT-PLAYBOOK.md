@@ -784,6 +784,18 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-034 — 用 CI 當規則查詢器：靠一次次被退來湊出正確的 PR 中繼資料
 
+- 2026-09-17 #566 續例（母單 #528）：#554 的分類器新增 final-risk-cost-policy.mjs import，
+  trusted sparse-checkout 卻漏下載該檔。分類入口在判定前即 ERR_MODULE_NOT_FOUND；
+  PR #562/#563/#564/#565 的分類紅燈與缺標籤因此不能直接歸因各張產品修改。
+  #566 原一行修補又漏填治理欄位，屬另一個已知 metadata 問題，不把兩者混成同一錯誤。
+  修正沿用既有 #566，補齊欄位與 sparse 路徑；不另開重複 PR、不改模型政策或產品原始碼。
+  預防測試從 workflow 真正的 sparse 清單建立乾淨目錄，在新 Node 程序 import 分類入口；
+  刻意移除 cost-policy 或 model-routing.json 時必須失敗，防止完整 checkout 掩蓋缺檔。
+  首次 focused 測試與 mutation 成功後，完整型別檢查抓到隔離程序 env 漏填必要 NODE_ENV；
+  明確補 NODE_ENV=test，不傳入全部 CI 環境或憑證，不用型別轉換隱藏問題。
+  驗證以 #566 對應版本的 focused mutation、preflight、required source CI 與合併後分類事件為準；
+  SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
+
 - 首次／最近：2026-09-11／2026-09-17
 - 發生次數：4（#352、#361、#370、#553；次數是事件，不是 CI 執行總數）
 - Issue／PR／CI：PR #352、#361、#370
