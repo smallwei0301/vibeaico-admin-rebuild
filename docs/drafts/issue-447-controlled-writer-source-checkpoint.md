@@ -33,7 +33,7 @@ It does not authorize or perform a Production database mutation.
 3. fresh canonical G3 TEST evidence for the locked current-main release plan, including risk-adaptive AUTHZ coverage;
 4. trusted G4 backup / restore evidence bound to the eventual exact main;
 5. independent Product Final Risk on the exact release evidence bundle;
-6. independently evidenced project-scoped Production `DATABASE_READ_WRITE` credential and no broad-PAT fallback;
+6. independently evidenced project-bound Production PostgreSQL writer credential and no broad-PAT fallback;
 7. correct Product build-tier / Terra merge-readiness verification; this source was authored by `gpt-5.6-sol` and must not be relabeled as Terra evidence.
 
 ## Completion truth

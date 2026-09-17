@@ -1,8 +1,5 @@
 # Production 資料庫 Policy-Gated Release Workflow
 
-> **Final Risk reviewer 更新（Owner 2026-09-17 #552）**：本 release 自己的 plan/evidence 綁定仍必須審查，但允許 Sol/Opus 或無 selector 的 current-agent 對抗審查，依 `AGENT-EXECUTION.md` §7.2。`production-db-release-preflight.mjs` 與 WIP 使用同一降級證據驗證器。通過只代表下一道安全關卡可檢查，不授予 Production 寫入權；G0–G7 其餘條件不變。
-
-
 > Owner 裁示：2026-09-14
 > 狀態：`POLICY_APPROVED_AUTOMATION_PENDING`
 > 目標狀態：`POLICY_GATED_ACTIVE`
@@ -110,8 +107,8 @@ Production/TEST live evidence v1 最長 15 分鐘；未來時間、stale、wrong
 
 ## 8. G4：Backup / Recovery
 
-每次 release 自動查 Production backup/PITR availability，使用 project-scoped、read-only backup credential；
-backup observer 不得持有 writer token。
+每次 release 自動查 Production backup/PITR availability，使用獨立的 read-only credential；
+backup observer 不得持有 writer credential。
 
 - backup evidence capture 必須在 release 前新鮮取得；
 - restore rehearsal 不必每支 additive migration 都重做，v1 可重用最近 30 天內成功演練；
@@ -154,9 +151,10 @@ v1 writer 執行限制：
 - 不使用 Production reset/seed；
 - 不靠手動 repair migration ledger 掩蓋 SQL 未實際成功。
 
-優先採 migration-history-aware writer。標準候選為：
-`supabase migration list` / `supabase db push --dry-run` 驗 pending set，再執行 `supabase db push`；
-若使用 Management API migration endpoint，也必須先證明 endpoint/credential scope 對本專案可用且 plan identity 等價。
+唯一受控 writer 使用 `PRODUCTION_DB_WRITER_URL` 連到固定的
+`db.egehnijjpgijmccagxac.supabase.co:5432/postgres`，再以 PostgreSQL transaction 執行既有 lock、live recheck、migration、ledger 與 readback。
+它只接受專案專屬的 dedicated migration role；`postgres` superuser、Classic PAT、broad PAT、Management API writer 都禁止。
+未來若 provider 提供同樣專案綁定能力的 scoped token，可以新增 transport，但不能降低上述 identity／交易檢查。
 現有 `scripts/db/run-migrations.mjs` 不可直接因為 source admission 已綠就當 Production writer；它必須先接本流程並驗證只執行 exact pending set。
 
 ## 11. G7：Post-Apply Readback
@@ -175,12 +173,21 @@ apply 後重新 read live Production：
 
 ## 12. Automation Ready 的機器條件
 
-四件事缺一不可：
+五件事缺一不可：
 
 1. read-only release preflight + scoped consistency adapter + backup observer 已 merge main 且 exact-head CI green；
 2. trusted Final Risk evidence adapter 已能驗 current allowed reviewer；
 3. controlled writer 已接 exact pending-set verification、single-use plan/lock、postcheck、failure journal，且不存在已知 Production schema write bypass；
 4. counterexample/mutation suite 證明 wrong project、stale evidence、unplanned drift、empty test、fake/stale review、missing recovery、receipt replay、parallel writer、partial apply、postcheck fail 都不能進 writer。
+5. 受保護 `production-db-writer` environment 的 `PRODUCTION_DB_WRITER_URL` 已由無 mutation 的 credential-proof job 驗證：直連固定 Production host、資料庫與 dedicated role、讀取 migration ledger；proof 必須標示 `POSTGRES_PROJECT_BOUND`。一般 PR、observer、TEST 與 source CI 不取得此 secret。`PRODUCTION_DB_READ_ONLY_URL` 可供未來純 PostgreSQL observer 使用；目前 observer tokens 與 writer URL 已分離。
+
+## 13. 一次性 bootstrap（尚未執行）
+
+啟用前需要由 Owner 在既有 Production gate 下建立/驗證 dedicated migration role，並把只連到 Production 專案的 URL 存為 `production-db-writer` environment 的 `PRODUCTION_DB_WRITER_URL`。這是 `BOOTSTRAP_REQUIRED`，不是本次自動化可執行的 Production mutation。
+
+目前 pending migrations 含既有物件的 `ALTER`、RLS/policy、function 與 ledger 寫入；PostgreSQL 對既有物件的 `ALTER` 多半要求 owner 權限。因此 bootstrap 必須先列出受影響物件、確認最小 ownership / grant，必要時做受審核的 ownership transfer。不得把 `postgres` 密碼直接放入 secret。
+
+驗證：credential-proof 必須成功讀取 ledger；故意填 TEST、其他專案、缺失或 malformed URL、或 `postgres` role 都必須在任何 migration SQL 前 fail closed。Rollback：撤銷 role login / grants，並刪除 `PRODUCTION_DB_WRITER_URL` secret；不會 rollback 已另行完成的 migration。
 
 當 trusted-main executable policy 產生：
 

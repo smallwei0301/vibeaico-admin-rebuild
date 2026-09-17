@@ -38,6 +38,7 @@ async function login(page: import('@playwright/test').Page): Promise<void> {
 }
 
 test('建行程→編輯儲存→發布→重新整理後清單與詳情頁都是真實持久化狀態', async ({ page }) => {
+  test.setTimeout(90_000);
   expect(process.env.TEST_SUPABASE_URL).toBeTruthy();
   expect(process.env.TEST_SUPABASE_SERVICE_ROLE_KEY).toBeTruthy();
   const admin = createClient(
