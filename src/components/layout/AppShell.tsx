@@ -1,6 +1,7 @@
 'use client';
 import * as React from 'react';
 import { Sidebar } from './Sidebar';
+import { GuideBottomNav } from './GuideBottomNav';
 import { ImpersonationBanner } from './ImpersonationBanner';
 import { Topbar } from './Topbar';
 import { Footer } from './Footer';
@@ -10,6 +11,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { BusinessTypeProvider, CurrentTenantProvider } from './BusinessTypeContext';
 import { MOCK_TENANTS, MOCK_SIDEBAR_COUNTS, MOCK_SETUP_STATUS, MOCK_USER, applyMockMode } from '@/mock';
 import { USE_MOCK } from '@/config/env';
+import { cn } from '@/lib/utils';
 import { myTenants, switchTenant as switchTenantApi, sidebarCounts, currentUserName, getSetupStatus } from '@/services';
 import type { SidebarCounts } from '@/services/shell';
 import type { TenantSummary } from '@/lib/types';
@@ -136,10 +138,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           />
           {/* 代入中必須每一頁都看得到——見 ImpersonationBanner 檔頭。 */}
           <ImpersonationBanner />
-          <main className="content-area" key={businessType}>{children}</main>
+          {/*
+            businessType === 'GUIDE' 時手機底部固定五大入口導航（20 分冊 §2、#66 gap-audit
+            「mobile bottom nav 是否真正在 runtime 掛載」）；額外留出底部安全高度避免內容被蓋住。
+          */}
+          <main
+            className={cn('content-area', businessType === 'GUIDE' && 'pb-20 lg:pb-0')}
+            key={businessType}
+          >
+            {children}
+          </main>
           <Footer />
         </div>
       </div>
+      {businessType === 'GUIDE' && <GuideBottomNav counts={counts} />}
       <BugReportButton />
       <SupportChatWidget />
       </CurrentTenantProvider>

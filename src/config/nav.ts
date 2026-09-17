@@ -154,3 +154,54 @@ export function findActiveGroup(pathname: string): string | null {
   }
   return null;
 }
+
+/**
+ * 扁平化 `NAV`：key → leaf（含在群組底下的葉節點）。
+ * 供「更多」頁與 GUIDE 底部導航依 key 反查 href/icon，避免重複定義第二份路由表
+ * （見 docs/integration/20-GUIDE-RESPONSIVE-UI.md §7.2 的既有 route 映射）。
+ */
+const NAV_LEAVES: Record<string, NavLeaf> = Object.fromEntries(
+  NAV.flatMap((entry) => (isGroup(entry) ? entry.children : [entry])).map((leaf) => [leaf.key, leaf]),
+);
+
+export type NavGroupDef = { key: string; leafKeys: readonly string[] };
+
+/**
+ * GUIDE 手機五大入口的「更多」父層級分組（docs/integration/20-GUIDE-RESPONSIVE-UI.md §7.2）。
+ * 只收斂**既有** NAV 葉節點的歸屬，不新增本 issue 分工表以外的功能（#118/#120 等
+ * 尚未落地的項目留給各自 Issue，見 #66 body「與其他 Issue 分工」）。
+ * 首頁／團次／旅客／訊息四個父層級已各自對應 dashboard／calendar/tour_orders/trips／
+ * customers／chat，因此不出現在「更多」；trips 雖屬團次領域的商品設定，但依 §4.1
+ * 「『更多』可提供快捷入口」，故同時收在「行程與營運」。
+ */
+export const GUIDE_MORE_GROUPS: readonly NavGroupDef[] = [
+  { key: 'operations', leafKeys: ['trips', 'staff', 'reports', 'calendar_sync'] },
+  { key: 'payments', leafKeys: ['payment_methods', 'product_orders', 'products', 'inventory'] },
+  { key: 'customerGrowth', leafKeys: ['membership_levels', 'coupons', 'points'] },
+  { key: 'lineAutomation', leafKeys: ['line_settings', 'rich_menu_design', 'keyword_replies', 'ai_settings'] },
+  { key: 'marketing', leafKeys: ['promote', 'campaigns', 'marketing', 'referrals', 'shop_design', 'portfolio'] },
+  { key: 'platform', leafKeys: ['settings', 'feature_store', 'donate', 'report_issue'] },
+];
+
+/**
+ * 依業態模式展開「更多」分組（目前僅 GUIDE 使用；見 `GuideBottomNav`／`/tenant/more`）。
+ * 套用與 `getNav()` 相同的 hidden-key 規則，並移除套用後變空的分組。
+ */
+export function getGuideMoreGroups(
+  businessType: BusinessType = 'GUIDE',
+  extraModules: readonly BusinessType[] = [],
+): { key: string; leaves: NavLeaf[] }[] {
+  const hidden = new Set(hiddenNavKeys(businessType, extraModules));
+  return GUIDE_MORE_GROUPS.flatMap((group) => {
+    const leaves = group.leafKeys
+      .filter((key) => !hidden.has(key))
+      .map((key) => NAV_LEAVES[key])
+      .filter((leaf): leaf is NavLeaf => Boolean(leaf));
+    return leaves.length ? [{ key: group.key, leaves }] : [];
+  });
+}
+
+/** 取得單一 NAV 葉節點定義（依 key），供 `GuideBottomNav` 標記 active 狀態使用 */
+export function getNavLeaf(key: string): NavLeaf | undefined {
+  return NAV_LEAVES[key];
+}
