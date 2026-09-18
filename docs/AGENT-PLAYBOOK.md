@@ -797,7 +797,7 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
   SOURCE_ONLY 不宣稱資料庫或產品驗收通過，舊失敗通知不覆寫。
 
 - 首次／最近：2026-09-11／2026-09-17
-- 發生次數：4（#352、#361、#370、#553；次數是事件，不是 CI 執行總數）
+- 發生次數：5（#352、#361、#370、#553、#586；次數是事件，不是 CI 執行總數）
 - Issue／PR／CI：PR #352、#361、#370
 - 分類：Agent
 - 事件：#352 開出後被守門與 CI 連退四次，**四次都是中繼資料填錯，沒有一次是程式碼問題**：
@@ -933,6 +933,34 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 正反例直接執行 collector，包括 closed+active、正常 closed、open active、PR 去重、72h、失敗分頁與標籤競態；
   移除 closed-Issue inventory 或 snapshot lifecycle labels 必須使對應測試失敗。
 - 本輪擴大觀測母體，新舊 findings 總數不可直接當改善率；修補巡查不等於已清空既有分類存量。
+
+
+#### 2026-09-18 再發：#586 太早標 COMPLETE，required status 被設計成永遠 pending
+
+- 新增可核對事件：1 次；PB-034 合計 5 次。Issue／PR：#586。
+- 事件：純治理 Playbook PR 的內容與 CI 都已通過，但 PR body 在開單時把 `LANE_STATE` 填成
+  `COMPLETE`。第一次 merge API 因 required status `Agent WIP Policy` 仍為 pending 而拒絕。
+  同一顆 head 的 `agent-wip-guard` workflow 本身其實是 success，造成「workflow 綠、required
+  status 仍 pending」的表面矛盾。
+- 根因：現行 guard 對**仍開放但非 ACTIVE** 的 PR 會刻意採 `DEFERRED_NON_ACTIVE`，
+  並把 custom commit status `Agent WIP Policy` 維持 pending。這不是 CI 延遲，也不是 GitHub
+  卡住，而是 lifecycle metadata（生命週期中繼資料）與「正在準備合併」這個事實不一致。
+  我在真正 merge 完成之前就先把狀態寫成 COMPLETE。
+- 修正：只把 #586 的 `LANE_STATE: COMPLETE` 改回 `ACTIVE`，不改 head、不補 no-op commit、
+  不重跑 source CI。PR edited 事件重新觸發 guard；新的 `Agent WIP Policy` custom status
+  轉為 success 後，以同一 exact head 成功 squash merge。
+- 預防：
+  1. **open PR 在真正 merge 前不得先標 COMPLETE。** COMPLETE 是 merge／closeout 後的歷史狀態，
+     不是「程式碼已寫完」的同義詞。
+  2. merge API 回「required status pending」時，先同時查 workflow check-run 與 custom commit status。
+     若 workflow success、custom status pending，再讀 guard 對 lifecycle 的政策，不要先重跑 CI。
+  3. metadata 修正能由 `pull_request_target: edited` 重新判定時，只改 body；禁止為了刺激檢查補
+     空 commit。這是 PB-021／PB-049 的同族：要改的是**檢查當下讀到的狀態**，不是製造新 head。
+- 驗證：#586 exact head `5870480574c112e397f5762eb935f663d88d2b14` 未變；修正後
+  `agent-wip-guard` run `35294279587` success，custom status `Agent WIP Policy=success`；
+  merge commit `cee68b7cebbe25cdccec9dfd4676d07283f55059`，main 回讀 PB-052 成功。
+- 狀態：已防止於 #586；後續開放 PR 沿用「merge 前 ACTIVE、merge 後 COMPLETE」。
+- 相關教訓：PB-021、PB-049。
 
 ### PB-035 — 從欄位定義推斷「這筆 insert 會失敗」，卻沒查參與寫入的 trigger
 
