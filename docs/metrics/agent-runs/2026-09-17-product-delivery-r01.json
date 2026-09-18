@@ -249,7 +249,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 8,
+    "issuesStarted": 9,
     "issuesClosed": 0,
     "auditReady": 4,
     "ownerBlockedComplete": 0,
@@ -471,6 +471,16 @@
         "head": "a6a98c7999a2b92a57af373e9d03f5119bf7a92c",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "施工完成，範圍收斂為 migration-only PR（依 #530 staged-release 政策，migration+Product runtime 同 PR 需 DEFAULT_OFF gate，不適合純 DB 併發加固，app 層 wiring 留給合併後的獨立 PR）：migration 0119、靜態/mutation 測試、ledger-alias-map、fresh-install-baseline manifest re-pin。typecheck/unit(3184)/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，等待 CI。"
+      },
+      {
+        "id": "wip-2026-09-17-issue-589-build-enter",
+        "at": "2026-09-18T02:03:58.819Z",
+        "kind": "BUILD_ENTER",
+        "pr": 593,
+        "issue": 589,
+        "head": "ad5077cccd8a717fc35fe64451626866337c93de",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #589 Phase A richmenu-assets retirement schema prep entered from the recorded 2026-09-18 dispatch; PR/branch exact head captured from the live candidate, with Phase B runtime deliberately separate"
       }
     ]
   },
