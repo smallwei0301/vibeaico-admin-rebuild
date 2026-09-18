@@ -100,6 +100,28 @@ describe('project-bound Production PostgreSQL writer transport #447', () => {
     expect(unsafe).toHaveBeenCalledTimes(1);
   });
 
+  it('proves migration-ledger privileges by catalog OID without resolving the restricted schema as the login writer', async () => {
+    let capabilityQuery = '';
+    const unsafe = vi.fn(async (query: string) => {
+      if (query.startsWith('select current_database')) {
+        return [{ database_name: 'postgres', database_user: 'production_migration_writer', session_user: 'production_migration_writer' }];
+      }
+      capabilityQuery = query;
+      return [safeCapabilities()];
+    });
+    const release = vi.fn(async () => undefined);
+    const reserve = vi.fn(async () => ({ unsafe, release }));
+    const end = vi.fn(async () => undefined);
+    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => ({ reserve, end })) as any });
+
+    await expect(transport.captureCredentialCapabilities()).resolves.toMatchObject(safeCapabilities());
+    expect(capabilityQuery).toContain("ledger_namespace as");
+    expect(capabilityQuery).toContain("ledger_relation as");
+    expect(capabilityQuery).toContain("has_schema_privilege(o.oid, (select oid from ledger_namespace), 'USAGE')");
+    expect(capabilityQuery).toContain("has_table_privilege(o.oid, (select oid from ledger_relation), 'SELECT')");
+    expect(capabilityQuery).not.toContain("has_table_privilege('production_migration_owner', 'supabase_migrations.schema_migrations'");
+  });
+
   it('accepts the exact dedicated writer/owner capability contract', () => {
     expect(assertDedicatedProductionDbWriterCapabilities(safeCapabilities())).toMatchObject({
       dedicatedRoleVerified: true,
