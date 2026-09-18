@@ -155,19 +155,30 @@ jobs:
               core.setFailed('expected_main_sha is not an exact SHA');
               return;
             }
-            const response = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: expected,
-              per_page: 100,
-              filter: 'latest',
-            });
-            const runs = response.data.check_runs
-              .filter((run) => run.name === 'check' && String(run.head_sha || '').toLowerCase() === expected)
-              .sort((a, b) => Date.parse(b.completed_at || b.started_at || '1970-01-01') - Date.parse(a.completed_at || a.started_at || '1970-01-01'));
-            const latest = runs[0];
-            if (!latest || latest.conclusion !== 'success') {
-              core.setFailed(`latest exact-head check is not successful: ${latest?.conclusion || 'missing'}`);
+            let latest = null;
+            for (let attempt = 0; attempt < 60; attempt += 1) {
+              const response = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: expected,
+                per_page: 100,
+                filter: 'latest',
+              });
+              const runs = response.data.check_runs
+                .filter((run) => run.name === 'check' && String(run.head_sha || '').toLowerCase() === expected)
+                .sort((a, b) => Date.parse(b.completed_at || b.started_at || '1970-01-01') - Date.parse(a.completed_at || a.started_at || '1970-01-01'));
+              latest = runs[0] ?? null;
+              if (latest?.status === 'completed') {
+                if (latest.conclusion !== 'success') {
+                  core.setFailed(`latest exact-head check completed unsuccessfully: ${latest.conclusion || 'missing'}`);
+                  return;
+                }
+                break;
+              }
+              if (attempt < 59) await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            if (!latest || latest.status !== 'completed' || latest.conclusion !== 'success') {
+              core.setFailed(`latest exact-head check did not become successful before timeout: ${latest?.status || 'missing'}/${latest?.conclusion || 'missing'}`);
               return;
             }
             const evidence = {
