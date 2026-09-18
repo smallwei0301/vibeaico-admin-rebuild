@@ -298,14 +298,17 @@ export function createProjectBoundProductionDbTransport({ connectionString, sqlF
       ssl: 'verify-full',
       prepare: false,
     });
+    let reserved;
     try {
-      const identityRows = await sql.unsafe('select current_database() as database_name, current_user as database_user, session_user as session_user');
+      reserved = await sql.reserve();
+      const identityRows = await reserved.unsafe('select current_database() as database_name, current_user as database_user, session_user as session_user');
       const identity = identityRows?.[0] ?? {};
       if (String(identity.database_name ?? '') !== expected.database || String(identity.database_user ?? '') !== expected.role || String(identity.session_user ?? '') !== expected.role) {
         fail('WRITER_DATABASE_IDENTITY_MISMATCH', 'live database/session role does not match the dedicated Production writer');
       }
-      return await fn(sql);
+      return await fn(reserved);
     } finally {
+      if (reserved) await Promise.resolve(reserved.release()).catch(() => undefined);
       await sql.end({ timeout: 2 }).catch(() => undefined);
     }
   }
