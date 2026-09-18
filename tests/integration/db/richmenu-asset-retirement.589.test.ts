@@ -254,4 +254,28 @@ localDescribe('Issue #589 real PostgreSQL retirement contract', () => {
       await Promise.allSettled([writerPromise]);
     }
   });
+
+  it('completes concurrent multi-URL swaps without a deadlock when JSON order differs', async () => {
+    const first = db.begin(async (tx) => {
+      await updateLine(
+        fixture.tenantId,
+        lineWith(fixture.flexA, fixture.flexB),
+        tx,
+      );
+    });
+    const second = db.begin(async (tx) => {
+      await updateLine(
+        fixture.tenantId,
+        lineWith(fixture.flexB, fixture.flexA),
+        tx,
+      );
+    });
+
+    await Promise.race([
+      Promise.all([first, second]),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('concurrent multi-URL swap deadlocked')), 5_000);
+      }),
+    ]);
+  });
 });
