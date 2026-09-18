@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-17-issue-447-readiness-r01",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-17T02:42:09Z",
-  "endedAt": null,
+  "endedAt": "2026-09-18T10:39:18Z",
   "sources": [
     {
       "type": "OWNER_INSTRUCTION",
@@ -18,13 +18,13 @@
   ],
   "main": {
     "startSha": "e17512320dcbca7baa16275e2f410d5c7aff4589",
-    "endSha": null
+    "endSha": "995c195d93ff0efce92e21fde457395e52b194d3"
   },
   "inventory": {
     "openIssuesStart": null,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 47,
     "openPrsStart": null,
-    "openPrsEnd": null,
+    "openPrsEnd": 2,
     "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 1,
@@ -66,7 +66,7 @@
   },
   "delivery": {
     "issuesStarted": 1,
-    "issuesClosed": 0,
+    "issuesClosed": 1,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
@@ -110,16 +110,18 @@
   "notes": [
     "This Run begins after #551 Writer Core merged. Historical #455/#551 premium-review attempts are not reset or rewritten.",
     "The final source/readiness slice combines the previously planned B and C work to avoid duplicating CI, Final Risk, and closeout cycles while remaining below the 40-file review-packet bound.",
-    "No Production migration, DDL, DML, payment/order mutation, reset/seed, or deployment promotion is authorized by this Run."
+    "No Production migration, DDL, DML, payment/order mutation, reset/seed, or deployment promotion is authorized by this Run.",
+    "Closeout records only live-verifiable terminal facts. Historical token, CI-run and model-touch counters were not retroactively invented or backfilled.",
+    "Issue #447 repository activation completed with AUTOMATION_READY=true while Production migration/DDL/DML remained NOT_RUN."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
     "contractVersion": 1,
     "ownerRole": "PRODUCT_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-18T10:39:18Z",
+    "evidenceRef": "github:issue#447"
   },
   "wipLifecycle": {
     "schemaVersion": 1,
@@ -137,8 +139,25 @@
     ]
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-18T10:39:18Z",
+    "claims": [
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue#447",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#447"
+      },
+      {
+        "type": "RUN_COMPLETE",
+        "subject": "run:2026-09-17-issue-447-readiness-r01",
+        "claimedState": "complete",
+        "observedState": "complete",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#447"
+      }
+    ]
   }
 }
