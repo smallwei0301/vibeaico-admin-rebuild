@@ -42,8 +42,8 @@ async function createTenant(line: RichMenuLine): Promise<string> {
     [id, `issue-589-${suffix}`, `Issue 589 ${suffix}`],
   );
   await db.unsafe(
-    'insert into public.tenant_settings (tenant_id, line) values ($1::uuid, $2::jsonb)',
-    [id, JSON.stringify(line)],
+    'insert into public.tenant_settings (tenant_id, line) values ($1::uuid, $2)',
+    [id, db.json(line)],
   );
   createdTenantIds.push(id);
   return id;
@@ -55,8 +55,8 @@ async function updateLine(
   connection: { unsafe: ReturnType<typeof postgres>['unsafe'] } = db,
 ): Promise<void> {
   await connection.unsafe(
-    'update public.tenant_settings set line = $2::jsonb where tenant_id = $1::uuid',
-    [tenantId, JSON.stringify(line)],
+    'update public.tenant_settings set line = $2 where tenant_id = $1::uuid',
+    [tenantId, db.json(line)],
   );
 }
 
@@ -186,7 +186,7 @@ localDescribe('Issue #589 real PostgreSQL retirement contract', () => {
         await tx.unsafe('set local role service_role');
         await tx.unsafe(
           'select * from public.richmenu_asset_references($1::jsonb)',
-          [JSON.stringify(malformed)],
+          [db.json(malformed)],
         );
       })).rejects.toMatchObject({ code: '22023' });
     }
