@@ -1679,3 +1679,27 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
   遺失「模型不是外部 plugin／connector 通道」的既有提醒而失敗。補回有實際意義的指引，
   並明定 unavailable 必須連 CURRENT_AGENT 也無法執行；不刪測試、不恢復昂貴互換。
   文件替換前要跑既有跨文件契約，避免局部新測試全綠卻漏掉舊入口要求。
+
+
+
+### PB-052 — 不可逆刪除 Storage 前，只看「目前這一列」會把共用物件誤判成孤兒
+
+- 首次／最近：2026-09-17／2026-09-18
+- 發生次數：1
+- Issue／PR／CI：Issue #50、#572；舊 PR #573；successor PR #583；exact-head CI `35210358280`
+- 分類：Storage／不可逆資料／引用生命週期
+- 事件：舊 #573 在 keyword reply 換圖或移除圖片後，只比較「目前這一列」的新舊 canonical URL，就 best-effort 刪除舊 Storage 物件。若同租戶另一筆 keyword reply 仍引用同一張實體圖，刪除會成功，但另一筆立刻變成破圖。
+- 證據：Final Risk 對 #573 重讀後建立 successor #583；#583 的 regression tests 明確涵蓋「另一列直接共用相同 URL」「query string／fragment 別名仍是同一物件」「共用引用落在第 2 頁」「引用掃描失敗」四種反例。Final Risk change digest `bd270fc460f9fda16d76851687e33cba3bd39512729543870fd90539eb2d64c0`。
+- 根因：把「這一列已經不再引用舊圖」錯當成「整個 ownership domain（同租戶可引用範圍）已經沒有人引用舊圖」。canonical URL 比對只能證明兩個網址是否指向同一實體物件，不能證明引用數量已經是 0；best-effort 也只代表刪除失敗不拖垮使用者操作，不代表「刪除成功就是安全的」。
+- 影響：若直接合併舊 #573，共用圖片資料會被不可逆刪除；另一筆仍保存舊 URL，但實體物件已不存在，使用者看到破圖。此次在合併前被 Final Risk 擋住，Production 資料未因此受損。
+- 修正：#583 從 current main 乾淨重建。真正執行 Storage `remove()` 前，先分頁掃描同租戶其他 keyword replies、排除目前 id、把 URL 正規化後比對；任一其他引用存在就不刪；掃描本身出錯也 fail closed（不確定就不刪）。舊 #573 已關閉，#583 已 squash merge 到 main：`6b63fd3d75cb211795f9c236e7f52797c7dee248`。
+- 預防：
+  1. **任何不可逆 cleanup（清理）先定義 reference set（引用集合）與 ownership domain（所有權範圍）**。不能只檢查正在被修改的那一列。
+  2. 宣稱「孤兒物件」前，必須證明所有合法引用位置都不再指向它；查詢錯誤、分頁不完整或物件身分無法正規化時，一律不刪。
+  3. 比對引用前先 canonicalize（網址正規化）物件身分，避免 query string、fragment、percent-encoding 等別名把同一物件看成不同物件。
+  4. 測試至少要有第二個 entity（另一筆資料）仍引用舊物件的反例；拿掉共享引用 guard 後，測試必須變紅。
+  5. **best-effort ≠ safe-delete（安全刪除）**。它只解決「刪除失敗不要讓主操作假失敗」，不解決「刪錯但成功」。兩個問題必須分開驗。
+  6. #572 後續 service/product/portfolio/staff/richmenu buckets 沿用同一判準。若未來 UI 允許多筆資料併發重用同一舊 URL，應升級成 DB 端 atomic retire/reference contract（原子退役／引用契約），不能只靠「先查再刪」。
+- 驗證：#583 exact head `a638bcb90a578b97330fb3c4bb2ad8092771a297` 的 repository integrity、ledger map、typecheck、完整 unit 與 build 實際通過；integration 與 local-isolated 依 SOURCE_ONLY policy skip，沒有冒充真 DB／Storage E2E。Agent WIP Guard 與 GPT-5.6 Sol Final Risk PASS。merge 後 current main 已重讀 `src/server/storage-cleanup.ts`，確認 fail-closed shared-reference guard 存在。
+- 狀態：keyword-reply bucket 已防止；同族的其他 bucket 與整列 DELETE cleanup 仍由 #572 監看中。
+- 相關教訓：PB-023（查詢失敗不可冒充空結果）、PB-044（破壞性動作的查證有效期有限）。
