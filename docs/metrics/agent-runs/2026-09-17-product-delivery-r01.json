@@ -49,6 +49,11 @@
       "type": "ISSUE",
       "ref": "issue/50",
       "note": "#50 LINE 關鍵字回覆圖片孤兒物件清理（item B）：換圖／移除圖片時 best-effort 刪除舊 Storage 物件（TERRA_BUILD PR #573）。ASTRA_RISK=IRREVERSIBLE_DATA，CI 全綠但卡在信任身份 Astra review，同 #46/PR #563 的外部阻擋型態，尚未合併。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/589",
+      "note": "#589 richmenu-assets 原子退役 Phase A：2026-09-18 current main b8843c42 重新盤點後正式派送 TERRA_BUILD，實際 dispatchAt=2026-09-18T02:03:58.819Z，agent=01a0b241-aa85-7a12-95eb-df45551960a6；只做 migration-only schema prep，不做 Phase B runtime activation。"
     }
   ],
   "main": {
@@ -225,13 +230,26 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-589-terra-phase-a-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#589 TERRA_BUILD Phase A schema-prep（build 層，實際委派 gpt-5.6-terra；dispatchAt=2026-09-18T02:03:58.819Z）：只新增 richmenu asset retirement migration、bounded source/mutation tests 與必要 migration governance metadata；不接 Phase B runtime、不套用 TEST/Production、不部署。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "gpt-5.6-terra"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 7,
+    "issuesStarted": 8,
     "issuesClosed": 0,
     "auditReady": 4,
     "ownerBlockedComplete": 0,
