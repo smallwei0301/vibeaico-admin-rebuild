@@ -2,7 +2,7 @@
 
 issue: 447
 mode: protected-main-merge-trigger
-activation_sequence: 3
+activation_sequence: 4
 production_mutation_authorized: false
-reason: Retrigger after installing the Supabase Production server root CA for verify-full writer credential proof and making NOT_EVIDENCED fail closed.
+reason: Retrigger after keeping the login writer least-privilege and reading the migration ledger only after SET ROLE production_migration_owner.
 purpose: Trigger the merged-main production-db-automation-readiness workflow on this protected main merge.

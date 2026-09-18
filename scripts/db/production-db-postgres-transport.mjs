@@ -318,7 +318,10 @@ export function createProjectBoundProductionDbTransport({ connectionString, sqlF
     transportMode: expected.transportMode,
 
     async captureLedger() {
-      return withSession((sql) => sql.unsafe('select version, name from supabase_migrations.schema_migrations order by version'));
+      return withSession(async (sql) => {
+        await sql.unsafe(`set role ${CANONICAL_PRODUCTION_DB_OWNER_ROLE}`);
+        return sql.unsafe('select version, name from supabase_migrations.schema_migrations order by version');
+      });
     },
 
     async captureCatalogFingerprint() {

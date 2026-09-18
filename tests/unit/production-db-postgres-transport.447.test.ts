@@ -81,6 +81,7 @@ describe('project-bound Production PostgreSQL writer transport #447', () => {
     await expect(transport.captureLedger()).resolves.toEqual([{ version: '1', name: '0001_base' }]);
     expect(unsafe.mock.calls.map(([sql]) => sql)).toEqual([
       'select current_database() as database_name, current_user as database_user, session_user as session_user',
+      'set role production_migration_owner',
       'select version, name from supabase_migrations.schema_migrations order by version',
     ]);
   });
