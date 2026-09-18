@@ -87,6 +87,7 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
     const executeJob = position('  execute:');
     const reload = position('- name: Re-download durable prepared attempt');
     const execute = position('- name: EXECUTE controlled Production DB attempt');
+    const persistApply = position('- name: Persist apply result or APPLY_UNKNOWN stop marker');
     expect(prepare).toBeLessThan(persist);
     expect(persist).toBeLessThan(executeJob);
     expect(executeJob).toBeLessThan(reload);
