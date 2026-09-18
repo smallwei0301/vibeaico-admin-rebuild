@@ -67,7 +67,10 @@ describe('Production DB automation readiness workflow #447', () => {
     const build = position('production-db-automation-readiness-evidence.mjs build');
     expect(query).toBeLessThan(build);
     expect(source).toContain("run.name === 'check'");
+    expect(source).toContain('for (let attempt = 0; attempt < 60; attempt += 1)');
+    expect(source).toContain('setTimeout(resolve, 5000)');
     expect(source).toContain("latest.conclusion !== 'success'");
+    expect(source).toContain('did not become successful before timeout');
     expect(source).toContain("status: 'EXACT_HEAD_CI_GREEN'");
     expect(source).toContain('checkRunId: latest.id');
     expect(source).toContain('mainSha: expected');
