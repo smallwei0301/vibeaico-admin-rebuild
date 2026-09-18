@@ -742,9 +742,9 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 
 ### PB-033 — 對正式庫下了 revoke 之後，才回頭查有沒有呼叫端
 
-- 首次／最近：2026-09-11／2026-09-11
-- 發生次數：1
-- Issue／PR／CI：PR #352 的 Final Risk 追查；正式庫 `egehnijjpgijmccagxac`
+- 首次／最近：2026-09-11／2026-09-18
+- 發生次數：2（第二次為 #447 dedicated writer bootstrap/readiness）
+- Issue／PR／CI：PR #352 的 Final Risk 追查；Issue #447；readiness run `35335418384`；正式庫 `egehnijjpgijmccagxac`
 - 分類：權限
 - 事件：查到正式庫三支 tour-seat RPC 對 `anon` 開放、取得 Owner 授權後立即套用 revoke。
   **套用之後**才去讀 `requireTenant()`，發現它在正常路徑回傳的是 **session client（authenticated
@@ -779,6 +779,20 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：第二批五支撤權前後皆記錄 `has_function_privilege` 與 `proacl`；雙向自我驗證未觸發。
   工作區污染於 commit 前查出方向（diff 顯示為移除 `reorderProducts` 接線），以
   `git reset --hard HEAD` 丟棄，並確認被丟掉的兩份 docs 與 `origin/main` 逐位元組相同。
+
+  **2026-09-18 #447 同根因再發：** dedicated writer 已能登入 Production，但 trusted-main credential proof
+  先後回報 `permission denied for schema supabase_migrations` 與 `permission denied for schema extensions`。
+  根因不是密碼或連線，而是 bootstrap 只驗了 owner 對 ledger table／routine 的物件權限，沒有沿著
+  **每一個實際執行身分**列出 schema-resolution 權限：PREPARE/fingerprint 以 writer 執行，G6 lock 後
+  fingerprint 以 `production_migration_owner` 執行。修正只補最小必要權限：writer 對
+  `supabase_migrations` 取得 `USAGE`，但 `schema_migrations` 的 `SELECT/INSERT` 仍為 false；writer 與 owner
+  對 `extensions` 取得 `USAGE`，`CREATE` 仍為 false。`digest()` 的 EXECUTE 原本就由 PUBLIC 提供，沒有再加權。
+  最終 protected Environment 真憑證 proof 與 readiness run `35335418384` 全綠。
+
+  **新增預防：** Production role bootstrap 必須建立「phase × execution role × object dependency」最小權限矩陣，
+  不只列 table/function grant；凡 SQL 使用 fully-qualified schema、extension function、catalog helper，連同 schema
+  `USAGE` 一起驗。最後必須用 protected Environment 裡的真 dedicated credential 跑 read-only proof，不能只用
+  admin 角色的 `has_*_privilege()` 推論真 caller 會成功。
 - 狀態：已防止
 - 相關教訓：PB-028。
 
@@ -1554,9 +1568,9 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-049 — 在證據還沒送達之前就觸發檢查閘門，然後把時序問題讀成內容問題
 
-- 首次／最近：2026-09-14 / 2026-09-14
-- 發生次數：1（但與 PB-044「驗證有保存期限」是同一個家族的第二個面向）
-- Issue／PR／CI：Issue #43 第 1 類；PR #449；`agent-wip-guard` run `34838245246`、`34838537190`（皆 failure）、`34838944744`（success）
+- 首次／最近：2026-09-14 / 2026-09-18
+- 發生次數：2（第二次為 #447 readiness race；仍屬 PB-044 同一家族）
+- Issue／PR／CI：Issue #43 第 1 類、Issue #447；PR #449、#581；`agent-wip-guard` run `34838245246`、`34838537190`（皆 failure）、`34838944744`（success）；readiness 初次 activation run `35222106681`、最終 success run `35335418384`
 - 分類：流程順序；證據時序
 
 - 事實經過（時序，皆為 UTC）：
@@ -1608,7 +1622,13 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
      因為「沒有先確認狀態就宣布下一步」而付出代價（前一次是 `git push` 的結果被 pipe 吃掉，
      在分支仍 `ahead 1` 的情況下回報成功）。
 
-- 狀態：已關閉（預防規則已寫成上述可執行指令）；同類再犯視為第二次。
+**2026-09-18 #447 同根因第二次：** #581 merge 後 readiness workflow 立即查同一顆 main 的 required `check`；當時
+`check` 尚未建立／完成，readiness 因 `latest exact-head check is not successful: missing` fail closed。內容沒有壞，
+是依賴證據尚未可觀察。修正後 readiness 對 exact SHA 最多輪詢 60 次、每次 5 秒，只接受同 head 的 terminal
+`check=success`；failure 或逾時仍 fail closed。最終 run `35335418384` 在 `check` 完成後自動續跑並成功，不再靠
+外部盲重試。
+
+- 狀態：已關閉；同類再犯已轉成 workflow 內的 bounded wait，而不是人工 polling／重派。
 
 ### PB-050 — 埋了點，卻整輪沒跑過驗證器；欄位有值，但值在另一套詞彙裡
 
@@ -1689,8 +1709,8 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 ### PB-051：昂貴審查反覆重派，且入口／WIP／release 各保留一份模型規則
 
-- 最近發生：2026-09-17；次數：本輪確認 1 次成本政策收斂事件，歷史諮詢總數未知，不補零。
-- 證據：Owner 成本超支回報、#552；#551 保留 #455 與既有昂貴派送歷史。
+- 最近發生：2026-09-18；次數：2 個可重用事件（#552 成本政策收斂；#447 實戰驗證），歷史昂貴諮詢總數未知，不補零。
+- 證據：Owner 成本超支回報、#552；#455/#551/#561/#581/#591；#447 readiness run `35335418384`。
 - 根因：#533 將首次故障視為同級重試；修復重審可反覆使用昂貴模型。WIP 與 release
   各有 allowlist 驗證副本，只改文件會造成便宜審查仍被擋。
 - 修正：300 秒無實際執行證據直接降級，昂貴諮詢預算以持久 lineage 合計一次；
@@ -1710,6 +1730,17 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 
 
 
+
+- **2026-09-18 #447 成本／防禦收斂驗證：** 原 #455 一度膨脹到 63 檔，超過 Final Risk 40-file packet；
+  又曾多輪等待 Fable/Astra dispatcher。Owner 改用 #552 後，Writer Core #551 與 Evidence/Orchestration #561
+  分成 bounded slices，最終 exact-head review 由 GPT-5.6 Sol 走 canonical AUDIT downgrade contract，沒有再購買
+  第二輪 premium review。G4 同時改成 risk-adaptive：AUTHZ/ADDITIVE/SCHEMA_REPAIR 不再硬綁 provider backup token，
+  BACKFILL 才保留 Production backup/PITR + clone + preimage。這次實戰證明「減少重複流程」與「保留不同 failure
+  mode 的硬安全門」可以同時成立。
+- **新增預防：** 高風險流程若同一 invariant 已由 exact-head CI、protected credential proof、DB lock/recheck
+  等不同機械證據覆蓋，不再為了「更安全」新增另一個等價人工／模型 gate。新增 gate 前必須回答它阻擋的是哪個
+  **不同 failure mode**；回答不出來就合併或刪除重複 gate。#447 的最終 readiness `AUTOMATION_READY=true`
+  由 run `35335418384` 機械證明，且 `databaseMutationAuthorized=false`，沒有用流程簡化換取 Production 寫入豁免。
 ### PB-052 — 不可逆刪除 Storage 前，只看「目前這一列」會把共用物件誤判成孤兒
 
 - 首次／最近：2026-09-17／2026-09-18
