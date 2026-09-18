@@ -49,6 +49,11 @@
       "type": "ISSUE",
       "ref": "issue/50",
       "note": "#50 LINE 關鍵字回覆圖片孤兒物件清理（item B）：換圖／移除圖片時 best-effort 刪除舊 Storage 物件（TERRA_BUILD PR #573）。ASTRA_RISK=IRREVERSIBLE_DATA，CI 全綠但卡在信任身份 Astra review，同 #46/PR #563 的外部阻擋型態，尚未合併。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/589",
+      "note": "#589 richmenu-assets 原子退役 Phase A：2026-09-18 current main b8843c42 重新盤點後正式派送 TERRA_BUILD，實際 dispatchAt=2026-09-18T02:03:58.819Z，agent=01a0b241-aa85-7a12-95eb-df45551960a6；只做 migration-only schema prep，不做 Phase B runtime activation。"
     }
   ],
   "main": {
@@ -225,13 +230,26 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-589-terra-phase-a-build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#589 TERRA_BUILD Phase A schema-prep（build 層，實際委派 gpt-5.6-terra；dispatchAt=2026-09-18T02:03:58.819Z）：只新增 richmenu asset retirement migration、bounded source/mutation tests 與必要 migration governance metadata；不接 Phase B runtime、不套用 TEST/Production、不部署。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "gpt-5.6-terra"
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 7,
+    "issuesStarted": 8,
     "issuesClosed": 0,
     "auditReady": 4,
     "ownerBlockedComplete": 0,
@@ -280,7 +298,8 @@
     "2026-09-17：PR #565（#17 migration-only）CI 在 SQL bug 修復 commit 0dad3e25 後發現 fresh-install-compatibility-baseline manifest 需要重新 re-pin，但本 session 執行環境的 auto-mode 安全分類器把這個合法的資料值更新整體判定為 Security Test Removal 並擋下。PR #565 因此轉 PARKED，讓出 active TERRA_BUILD 名額給已完工的 #568（#42）。",
     "2026-09-17：#565 的 migration-build-exit-parked wipLifecycle 事件原本誤填了 fix commit 0dad3e25 作為 head，但 run-ledger-v2.mjs 要求 EXIT 事件必須與其 ENTER 事件引用完全相同的 head（標記的是這個租約進入時的狀態，不是離開當下的最新 commit）。已改回 ENTER 事件的 head（9db618a1）。",
     "2026-09-17（收尾覆核）：main 上本 ledger 先前漏收 issue/50（PR #573）的 sources／modelUsage.tasks／wipLifecycle 記錄——#573 自身分支曾同步過這些欄位，但因該 PR 一直未合併（卡在信任身份 Astra review），main 上的權威副本從未繼承到那份記錄。現據 PR #573 的實際 timeline（created_at/updated_at/exact head）補齊，並同步修正 delivery.issuesStarted（5→7，含 #50）。本次修正由 build 層（claude-sonnet-5，本對話 session）直接編輯 docs/metrics/agent-runs/**，未委派 Luna（claude-haiku-4-5）子代理，依 CLAUDE.md「文件與盤點的 scout 歸屬」規則屬未依規委派，如實記錄為違規而非中性註記。",
-    "2026-09-17（PR #577 CI 覆核）：補上 #50 的 wipLifecycle 事件後，07:00:00-07:02:33 之間 #17／#42（第二輪 active）／#50／#66 四筆 BUILD_ENTER 同時 open（#17 與 #42 第二輪自始未有對應 BUILD_EXIT，屬既有缺口，本次未回填臆測的 EXIT 時間），推導出的併發 peak 為 4，原記錄值 3 已過期。同步修正 inventory.mainTerraPeak／activeCandidatePeak 為 4。"
+    "2026-09-17（PR #577 CI 覆核）：補上 #50 的 wipLifecycle 事件後，07:00:00-07:02:33 之間 #17／#42（第二輪 active）／#50／#66 四筆 BUILD_ENTER 同時 open（#17 與 #42 第二輪自始未有對應 BUILD_EXIT，屬既有缺口，本次未回填臆測的 EXIT 時間），推導出的併發 peak 為 4，原記錄值 3 已過期。同步修正 inventory.mainTerraPeak／activeCandidatePeak 為 4。",
+    "2026-09-18（#589 exact-head audit 修正）：wipLifecycle BUILD_ENTER 的唯一 issue source 為 #17／#46／#42／#47／#50／#66／#18／#589 共 8 件；原 delivery.issuesStarted=9 與唯一 source 不一致，已更正為 8，沒有新增或刪除任何既有 BUILD_ENTER 事件。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -453,6 +472,16 @@
         "head": "a6a98c7999a2b92a57af373e9d03f5119bf7a92c",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "施工完成，範圍收斂為 migration-only PR（依 #530 staged-release 政策，migration+Product runtime 同 PR 需 DEFAULT_OFF gate，不適合純 DB 併發加固，app 層 wiring 留給合併後的獨立 PR）：migration 0119、靜態/mutation 測試、ledger-alias-map、fresh-install-baseline manifest re-pin。typecheck/unit(3184)/build 全綠，LANE_STATE=READY_FOR_PROMOTION／ACTIVE_CANDIDATE=false，等待 CI。"
+      },
+      {
+        "id": "wip-2026-09-17-issue-589-build-enter",
+        "at": "2026-09-18T02:03:58.819Z",
+        "kind": "BUILD_ENTER",
+        "pr": 593,
+        "issue": 589,
+        "head": "ad5077cccd8a717fc35fe64451626866337c93de",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "TERRA_BUILD #589 Phase A richmenu-assets retirement schema prep entered from the recorded 2026-09-18 dispatch; PR/branch exact head captured from the live candidate, with Phase B runtime deliberately separate"
       }
     ]
   },

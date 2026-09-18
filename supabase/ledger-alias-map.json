@@ -571,6 +571,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#17：booking_addons hardening migration。新增 C+ 業績三態、冪等 idempotency_key、deleted_at 軟刪、notification_requested，並新增 service_role-only 的 create_booking_addon／delete_booking_addon SECURITY DEFINER RPC。此 source 由 PR #565 最終修正版 0dad3e25 重建到 current main；舊 exact head 已在 disposable local Supabase 實際套用 0121 並通過 booking-addons.17 19 tests、全量 integration 825 passed/6 skipped 與 E2E 25 passed/6 skipped，當時唯一後續失敗是 stale fresh-install manifest pin。本 successor 仍需 exact-head CI 重驗。尚未套用 canonical TEST 或 Production；合併進 main 後仍為 PENDING_APPLY，遠端套用另走既有授權流程。"
+    },
+    {
+      "repoFile": "0123_issue_589_richmenu_asset_retirement",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#589 Phase A：richmenu-assets 的 tenant-scoped retirement table、同一 tenant+URL advisory transaction lock、阻擋 stale line 寫回的 BEFORE trigger，以及 service_role-only retire_richmenu_asset RPC。此為 schema preparation；本分支不修改 runtime、Storage remove、canonical TEST 或 Production。0122 已由 open PR #567 使用，故本 migration 取 0123 以避免 prefix collision。合併 main 後仍屬 PENDING_APPLY；任何遠端套用必須先由 current main 的 exact canonical SQL 成為授權來源，再走既有 staged release 與 Production gate。"
     }
   ]
 }
