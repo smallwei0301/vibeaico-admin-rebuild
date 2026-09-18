@@ -70,8 +70,26 @@ jobs:
         env:
           PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}
           WRITER_CREDENTIAL_ENVIRONMENT: production-db-writer
-        run: node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$NODE_EXTRA_CA_CERTS"
+          test "$(grep -c -- '-----BEGIN CERTIFICATE-----' "$NODE_EXTRA_CA_CERTS")" -eq 2
+          node scripts/agents/production-db-writer-credential-proof.mjs "${{ needs.verify-exact-main.outputs.main_sha }}" "$RUNNER_TEMP/production-db-writer-credential-proof.json"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const path = `${process.env.RUNNER_TEMP}/production-db-writer-credential-proof.json`;
+          const proof = JSON.parse(fs.readFileSync(path, 'utf8'));
+          if (proof.status !== 'PRODUCTION_DB_PROJECT_BOUND_WRITER_CREDENTIAL_VERIFIED') {
+            throw new Error(`writer credential proof is not verified: ${proof.status || 'missing'}`);
+          }
+          if (proof.databaseMutationAuthorized !== false) {
+            throw new Error('credential proof must never authorize Production mutation');
+          }
+          NODE
       - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
         with:
           name: production-db-writer-credential-proof-${{ needs.verify-exact-main.outputs.main_sha }}
           path: ${{ runner.temp }}/production-db-writer-credential-proof.json
@@ -137,19 +155,30 @@ jobs:
               core.setFailed('expected_main_sha is not an exact SHA');
               return;
             }
-            const response = await github.rest.checks.listForRef({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: expected,
-              per_page: 100,
-              filter: 'latest',
-            });
-            const runs = response.data.check_runs
-              .filter((run) => run.name === 'check' && String(run.head_sha || '').toLowerCase() === expected)
-              .sort((a, b) => Date.parse(b.completed_at || b.started_at || '1970-01-01') - Date.parse(a.completed_at || a.started_at || '1970-01-01'));
-            const latest = runs[0];
-            if (!latest || latest.conclusion !== 'success') {
-              core.setFailed(`latest exact-head check is not successful: ${latest?.conclusion || 'missing'}`);
+            let latest = null;
+            for (let attempt = 0; attempt < 60; attempt += 1) {
+              const response = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: expected,
+                per_page: 100,
+                filter: 'latest',
+              });
+              const runs = response.data.check_runs
+                .filter((run) => run.name === 'check' && String(run.head_sha || '').toLowerCase() === expected)
+                .sort((a, b) => Date.parse(b.completed_at || b.started_at || '1970-01-01') - Date.parse(a.completed_at || a.started_at || '1970-01-01'));
+              latest = runs[0] ?? null;
+              if (latest?.status === 'completed') {
+                if (latest.conclusion !== 'success') {
+                  core.setFailed(`latest exact-head check completed unsuccessfully: ${latest.conclusion || 'missing'}`);
+                  return;
+                }
+                break;
+              }
+              if (attempt < 59) await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+            if (!latest || latest.status !== 'completed' || latest.conclusion !== 'success') {
+              core.setFailed(`latest exact-head check did not become successful before timeout: ${latest?.status || 'missing'}/${latest?.conclusion || 'missing'}`);
               return;
             }
             const evidence = {
