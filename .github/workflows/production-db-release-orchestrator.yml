@@ -444,6 +444,7 @@ jobs:
           node scripts/agents/production-db-release-orchestrator.mjs execute \
             "$RUNNER_TEMP/prepared/production-db-automation-evidence.json" \
             "$RUNNER_TEMP/prepared/production-db-release-plan.json" \
+            "$RUNNER_TEMP/prepared/production-db-final-release-packet.json" \
             "$RUNNER_TEMP/prepared/prepared-production-db-attempt.json" \
             "$RUNNER_TEMP/production-db-apply-result.json"
 
