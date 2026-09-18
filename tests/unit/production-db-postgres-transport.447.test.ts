@@ -76,9 +76,13 @@ describe('project-bound Production PostgreSQL writer transport #447', () => {
     const unsafe = vi.fn(async (query: string) => query.startsWith('select current_database')
       ? [{ database_name: 'postgres', database_user: 'production_migration_writer', session_user: 'production_migration_writer' }]
       : [{ version: '1', name: '0001_base' }]);
+    const release = vi.fn(async () => undefined);
+    const reserve = vi.fn(async () => ({ unsafe, release }));
     const end = vi.fn(async () => undefined);
-    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => Object.assign(unsafe, { unsafe, end })) as any });
+    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => ({ reserve, end })) as any });
     await expect(transport.captureLedger()).resolves.toEqual([{ version: '1', name: '0001_base' }]);
+    expect(reserve).toHaveBeenCalledTimes(1);
+    expect(release).toHaveBeenCalledTimes(1);
     expect(unsafe.mock.calls.map(([sql]) => sql)).toEqual([
       'select current_database() as database_name, current_user as database_user, session_user as session_user',
       'set role production_migration_owner',
@@ -88,8 +92,10 @@ describe('project-bound Production PostgreSQL writer transport #447', () => {
 
   it('rejects a credential whose connected role is not the dedicated writer before any ledger access', async () => {
     const unsafe = vi.fn(async () => [{ database_name: 'postgres', database_user: 'test_writer', session_user: 'test_writer' }]);
+    const release = vi.fn(async () => undefined);
+    const reserve = vi.fn(async () => ({ unsafe, release }));
     const end = vi.fn(async () => undefined);
-    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => Object.assign(unsafe, { unsafe, end })) as any });
+    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => ({ reserve, end })) as any });
     await expect(transport.captureLedger()).rejects.toThrow(/WRITER_DATABASE_IDENTITY_MISMATCH/);
     expect(unsafe).toHaveBeenCalledTimes(1);
   });
@@ -125,8 +131,10 @@ describe('project-bound Production PostgreSQL writer transport #447', () => {
       if (query.includes('with writer as')) return [{ ...safeCapabilities(), owner_public_default_acl_matches_postgres: false }];
       return [{ catalog_fingerprint: 'a'.repeat(64) }];
     });
+    const release = vi.fn(async () => undefined);
+    const reserve = vi.fn(async () => ({ unsafe, release }));
     const end = vi.fn(async () => undefined);
-    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => Object.assign(unsafe, { unsafe, end })) as any });
+    const transport = createProjectBoundProductionDbTransport({ connectionString: PROD_URL, sqlFactory: (() => ({ reserve, end })) as any });
     await expect(transport.captureCatalogFingerprint()).rejects.toThrow(/DEDICATED_WRITER_ROLE_CAPABILITIES_NOT_VERIFIED/);
     expect(unsafe).toHaveBeenCalledTimes(2);
   });
