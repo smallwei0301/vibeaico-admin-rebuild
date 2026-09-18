@@ -117,6 +117,16 @@ with writer as (
   join pg_roles parent on parent.oid = m.roleid
   join pg_roles member on member.oid = m.member
   where member.rolname in ('${writer}', '${owner}')
+), ledger_namespace as (
+  select n.oid
+  from pg_namespace n
+  where n.nspname = 'supabase_migrations'
+), ledger_relation as (
+  select c.oid
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'supabase_migrations'
+    and c.relname = 'schema_migrations'
 ), required_relations(name) as (
   values ('trip_plans'), ('trip_departures'), ('tour_orders')
 ), required_routines(name, args) as (
@@ -182,9 +192,9 @@ select
   ) as dangerous_set_role_absent,
   has_schema_privilege('${owner}', 'public', 'USAGE') as public_schema_usage,
   has_schema_privilege('${owner}', 'public', 'CREATE') as public_schema_create,
-  has_schema_privilege('${owner}', 'supabase_migrations', 'USAGE') as ledger_schema_usage,
-  has_table_privilege('${owner}', 'supabase_migrations.schema_migrations', 'SELECT') as ledger_select,
-  has_table_privilege('${owner}', 'supabase_migrations.schema_migrations', 'INSERT') as ledger_insert,
+  coalesce(has_schema_privilege(o.oid, (select oid from ledger_namespace), 'USAGE'), false) as ledger_schema_usage,
+  coalesce(has_table_privilege(o.oid, (select oid from ledger_relation), 'SELECT'), false) as ledger_select,
+  coalesce(has_table_privilege(o.oid, (select oid from ledger_relation), 'INSERT'), false) as ledger_insert,
   (
     select count(*) = 3
     from pg_class c
