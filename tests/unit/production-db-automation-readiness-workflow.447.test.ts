@@ -1,7 +1,9 @@
+import { X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const source = readFileSync('.github/workflows/production-db-automation-readiness.yml', 'utf8');
+const supabaseCa = readFileSync('.github/certs/supabase-prod-ca-2021.crt', 'utf8');
 
 function position(text: string) {
   const index = source.indexOf(text);
@@ -22,11 +24,20 @@ describe('Production DB automation readiness workflow #447', () => {
     expect(source).toContain('credential-proof:');
     expect(source).toContain('environment: production-db-writer');
     expect(source).toContain('PRODUCTION_DB_WRITER_URL: ${{ secrets.PRODUCTION_DB_WRITER_URL }}');
+    expect(source).toContain('NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/.github/certs/supabase-prod-ca-2021.crt');
+    expect(source).toContain('if: ${{ always() }}');
     expect(source).not.toContain('PRODUCTION_DB_RELEASE_TOKEN');
     expect(source).not.toContain('TEST_DB_RELEASE_TOKEN');
     expect(source).not.toContain('SUPABASE_ACCESS_TOKEN');
     expect(source).not.toContain('/database/query');
     expect(source).not.toContain('databaseMutationAuthorized: true');
+  });
+
+  it('pins the public Supabase Root 2021 CA used by verify-full', () => {
+    const cert = new X509Certificate(supabaseCa);
+    expect(cert.subject).toContain('CN=Supabase Root 2021 CA');
+    expect(cert.issuer).toContain('CN=Supabase Root 2021 CA');
+    expect(cert.fingerprint256).toBe('80:70:25:AD:50:D4:ED:21:9D:2C:9C:7D:29:9C:00:4F:82:4E:B0:0C:F7:F6:5A:FE:F6:07:D0:7B:72:E6:CA:FA');
   });
 
   it('allows one protected-main activation marker without enabling readiness on every push', () => {

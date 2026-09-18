@@ -67,6 +67,7 @@ async function main() {
       reason: error instanceof Error ? error.message.replace(/postgres(?:ql)?:\/\/[^\s]+/gi, '[REDACTED_CONNECTION_STRING]') : 'UNKNOWN',
       databaseMutationAuthorized: false,
     }, null, 2)}\n`);
+    process.exitCode = 1;
   }
 }
 
