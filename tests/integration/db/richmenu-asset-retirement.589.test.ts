@@ -64,8 +64,15 @@ async function callRetire(
   connection: { begin: ReturnType<typeof postgres>['begin'] },
   tenantId: string,
   imageUrl: string,
+  applicationName?: string,
 ): Promise<boolean> {
   return connection.begin(async (tx) => {
+    if (applicationName) {
+      await tx.unsafe(
+        "select set_config('application_name', $1, true)",
+        [applicationName],
+      );
+    }
     await tx.unsafe('set local role service_role');
     const rows = await tx.unsafe(
       'select public.retire_richmenu_asset($1::uuid, $2::text) as retired',
@@ -193,16 +200,12 @@ localDescribe('Issue #589 real PostgreSQL retirement contract', () => {
   });
 
   it('observes a writer-first commit after waiting on the shared advisory lock', async () => {
-    const writer = await db.reserve();
-    const retireConnection = await db.reserve();
-    await retireConnection.unsafe("set application_name = 'issue-589-retirement-rpc'");
-
     let releaseWriter!: () => void;
     const writerRelease = new Promise<void>((resolve) => { releaseWriter = resolve; });
     let writerReady!: () => void;
     const writerStarted = new Promise<void>((resolve) => { writerReady = resolve; });
 
-    const writerPromise = writer.begin(async (tx) => {
+    const writerPromise = db.begin(async (tx) => {
       await updateLine(
         fixture.tenantId,
         lineWith(fixture.unreferenced),
@@ -225,9 +228,10 @@ localDescribe('Issue #589 real PostgreSQL retirement contract', () => {
       expect(probe[0].locked).toBe(false);
 
       const retirePromise = callRetire(
-        retireConnection,
+        db,
         fixture.tenantId,
         fixture.unreferenced,
+        'issue-589-retirement-rpc',
       );
       const observedWaiting = await eventually(async () => {
         const rows = await db.unsafe(
@@ -248,8 +252,6 @@ localDescribe('Issue #589 real PostgreSQL retirement contract', () => {
     } finally {
       releaseWriter();
       await Promise.allSettled([writerPromise]);
-      writer.release();
-      retireConnection.release();
     }
   });
 });
