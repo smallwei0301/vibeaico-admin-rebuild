@@ -49,6 +49,22 @@ function assertObserverTls(parsed) {
     fail('SCHEMA_OBSERVER_TLS_VERIFICATION_REQUIRED', 'observer URL must use exactly sslmode=verify-full');
   }
 }
+
+function normalizeObserverConnectionString(raw) {
+  const value = String(raw ?? '').trim();
+  const match = /^(postgres(?:ql)?:\/\/)([^/?#]*)(\/[^?#]*)?(\?.*)?$/i.exec(value);
+  if (!match) return value;
+  const authority = match[2];
+  const hostSeparator = authority.lastIndexOf('@');
+  if (hostSeparator < 0) return value;
+  const userInfo = authority.slice(0, hostSeparator);
+  const colon = userInfo.indexOf(':');
+  if (colon < 0) return value;
+  const username = userInfo.slice(0, colon);
+  const password = userInfo.slice(colon + 1);
+  if (!password.includes('@')) return value;
+  return `${match[1]}${username}:${encodeURIComponent(password)}@${authority.slice(hostSeparator + 1)}${match[3] ?? ''}${match[4] ?? ''}`;
+}
 /**
  * A direct observer connection is an alternate transport for the exact same
  * read-only snapshot contract. It deliberately binds both project and role.
@@ -57,7 +73,7 @@ export function parseProjectBoundSchemaObserverUrl(connectionString, environment
   const env = String(environment ?? '').trim().toUpperCase();
   const projectRef = EXPECTED_PROJECT_REFS[env];
   if (!projectRef || !SESSION_POOLER_HOSTS[env]) fail('SCHEMA_OBSERVER_ENVIRONMENT_INVALID', 'observer environment must be TEST or PRODUCTION');
-  const raw = String(connectionString ?? '').trim();
+  const raw = normalizeObserverConnectionString(connectionString);
   if (!raw) fail('MISSING_SCHEMA_OBSERVER_URL', 'schema observer connection URL is required');
   let parsed;
   try { parsed = new URL(raw); } catch { fail('MALFORMED_SCHEMA_OBSERVER_URL', 'schema observer URL is not a valid PostgreSQL URL'); }
@@ -469,7 +485,7 @@ export async function captureEnvironmentSnapshot({ environment, currentMainSha, 
   catch (error) { return unavailable(error?.code && /^[A-Z0-9_.-]+$/.test(error.code) ? error.code : 'EVIDENCE_UNAVAILABLE'); }
   if (directConnectionString) {
     try {
-      parseProjectBoundSchemaObserverUrl(directConnectionString, environment);
+      directConnectionString = parseProjectBoundSchemaObserverUrl(directConnectionString, environment).connectionString;
       const raw = await directQuery({ connectionString: directConnectionString, query: READ_ONLY_SNAPSHOT_SQL, readOnly: true });
       if (!raw) return unavailable('EVIDENCE_RESPONSE_SHAPE_INVALID');
       return buildObserverSnapshotFromRaw({ environment, projectRef, observedAt, observedMainSha: mainSha, evidenceRef, raw });
