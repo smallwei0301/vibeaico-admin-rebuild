@@ -226,6 +226,32 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     });
   });
 
+  it('binds the #18 legacy-shape RLS precondition to the same concrete assertions', () => {
+    const ownerNotifyFile = 'tests/integration/db/owner-notify-rls.18.test.ts';
+    const result = buildProductionDbTestCoverageEvidence({
+      plan: plan([
+        { repoFile: '0124_issue_18_owner_notify_legacy_shape', riskTier: 'AUTHZ', sha256: '4'.repeat(64) },
+      ]),
+      report: report({
+        numTotalTests: 2,
+        numPassedTests: 2,
+        testResults: [{
+          name: ownerNotifyFile,
+          assertionResults: [
+            { status: 'passed', fullName: '0124 owner notification RLS B 店登入使用者讀不到 A 店的 owner-notify bind request（tenant 隔離）' },
+            { status: 'passed', fullName: '0124 owner notification RLS B 店登入使用者不能直接在 A 店建立 owner-notify bind request' },
+          ],
+        }],
+      }),
+      sourceRunId: '34920000000',
+      sourceRunAttempt: 1,
+    });
+    expect(result.migrations['0124_issue_18_owner_notify_legacy_shape']).toMatchObject({
+      tenantBoundaryVerified: true,
+      negativeRoleTestsPassed: true,
+    });
+  });
+
   it('captures migration-scoped cleanup using GET only and the canonical SHOP_A tenant filter', async () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('GET');
