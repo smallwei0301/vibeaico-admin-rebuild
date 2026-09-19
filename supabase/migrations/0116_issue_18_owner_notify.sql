@@ -108,6 +108,14 @@ create table if not exists public.owner_notify_recipients (
     references public.line_users (tenant_id, line_user_id) on delete cascade
 );
 
+-- The disposable historical integration baseline may already have created the
+-- first owner-notify recipient shape (before the two event switches existed).
+-- Reconcile only those missing canonical columns before the shape assertion;
+-- existing incompatible types still fail closed below.
+alter table public.owner_notify_recipients
+  add column if not exists notify_new_booking boolean not null default true,
+  add column if not exists notify_cancel boolean not null default true;
+
 do $$
 declare
   r record;
