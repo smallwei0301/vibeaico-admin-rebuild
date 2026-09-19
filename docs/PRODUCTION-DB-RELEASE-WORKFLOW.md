@@ -107,6 +107,12 @@ Production/TEST live evidence v1 最長 15 分鐘；未來時間、stale、wrong
 - cleanup 必須完成；
 - TEST 套用後重新 capture drift evidence，再交後續 gate。
 
+`TEST_DB_RELEASE_TOKEN` 可維持既有、受限的 TEST Management API credential；若帳號沒有可建立的
+scope，亦可改為唯一 canonical TEST Supavisor session-pooler URL。程式只接受 `postgres.<TEST project ref>`、
+port `5432`、`postgres` database 與唯一 `sslmode=verify-full` 的連線，並在套用前後用同一條連線讀 ledger。
+它絕不接受 Production host、任意 project ref 或 writer URL，因此此替代 transport 只改變驗證通道，
+不擴大 G3 的 TEST-only 權限。
+
 ## 8. G4：Backup / Recovery（依 risk tier）
 
 G4 驗證的是「本 release 有與風險相稱的可恢復路徑」，不是要求所有 migration 都跑同一套 Production backup API。

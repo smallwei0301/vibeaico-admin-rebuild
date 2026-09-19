@@ -209,9 +209,13 @@ accepted shared-TEST baseline.
 
 The workflow is deliberately `workflow_dispatch` only. Before activation, provision a separate
 least-privilege `SCHEMA_OBSERVER_TOKEN`, run local fresh replay plus both remote captures once, inspect
-response shape and cleanup, inspect the sanitized uploaded report, classify each difference, and review the exceptions. Do not fall back to
-`SUPABASE_ACCESS_TOKEN` or grant Production access to make the ledger readable. Scheduling at UTC 01:17 and
-triggering after main migration-source changes are follow-up activation work.
+response shape and cleanup, inspect the sanitized uploaded report, classify each difference, and review the exceptions. The
+secret may be either the existing read-only Management API credential or an exact two-environment JSON map of
+dedicated `schema_observer` session-pooler URLs. The latter is accepted only when each URL is pinned to its
+own TEST/Production project, uses the non-admin `schema_observer` role, port `5432`, database `postgres`,
+and exactly `sslmode=verify-full`; the observer query itself runs in a read-only transaction. Do not fall back to
+`SUPABASE_ACCESS_TOKEN`, reuse a writer role, or grant table data access merely to make the ledger readable.
+Scheduling at UTC 01:17 and triggering after main migration-source changes are follow-up activation work.
 
 This observer does not prove customer-row equality, Storage, enum/sequence/default privileges, role
 inheritance, or provider configuration. Therefore every report keeps `fullEnvironmentParityProven=false`
