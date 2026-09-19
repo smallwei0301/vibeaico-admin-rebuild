@@ -24,6 +24,18 @@ describe('schema drift watch', () => {
     expect(READ_ONLY_SNAPSHOT_SQL).toContain('supabase_migrations.schema_migrations');
     expect(READ_ONLY_SNAPSHOT_SQL).not.toMatch(/from\s+public\.(?:customers|bookings|tenants)\b/i);
   });
+  it('round-trips ACL identities whose names differ by a suffix', () => {
+    const value: any = raw();
+    value.acl.functions = [
+      { schema: 'public', name: 'consume_push_quota', identityArguments: 'p_tenant uuid', owner: 'postgres', securityDefiner: true, privileges: [] },
+      { schema: 'public', name: 'consume_push_quota_17', identityArguments: 'p_tenant uuid', owner: 'postgres', securityDefiner: true, privileges: [] },
+    ];
+    const snapshot = buildObserverSnapshotFromRaw({
+      environment: 'TEST', projectRef: 'nmwhwngojosmagjuvxol', observedAt: '2026-09-14T01:18:00Z',
+      observedMainSha: MAIN, evidenceRef: 'supabase:test/schema-observer', raw: value,
+    });
+    expect((normalizeObserverSnapshot(snapshot, MAIN) as any).captureDigest).toEqual(snapshot.captureDigest);
+  });
   it('reports exact three-way match and never grants write authority', () => {
     const result = compareObserverSnapshots({ expectedSnapshot: expected(), testSnapshot: remote('TEST'), productionSnapshot: remote('PRODUCTION'), currentMainSha: MAIN, now: NOW });
     expect(result).toMatchObject({ status: 'MATCH', differenceCount: 0, safety: { fullEnvironmentParityProven: false, authorizesDatabaseWrite: false, rawDataIncluded: false } });
