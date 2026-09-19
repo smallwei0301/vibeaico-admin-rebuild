@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import postgres from 'postgres';
 import {
   ACL_METADATA_SQL, EXPECTED_PROJECT_REFS, METADATA_QUERY_DIGEST, METADATA_QUERY_VERSION,
   MIGRATION_LEDGER_SQL, PUBLIC_SCHEMA_METADATA_SQL, SURFACES, normalizeMetadataEvidencePacket,
@@ -19,6 +20,11 @@ const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 const ALL_SURFACES = Object.freeze([...SURFACES, 'acl']);
+const SCHEMA_OBSERVER_ROLE = 'schema_observer';
+const SESSION_POOLER_HOSTS = Object.freeze({
+  TEST: /^aws-\d+-ap-northeast-1\.pooler\.supabase\.com$/i,
+  PRODUCTION: /^aws-\d+-ap-southeast-1\.pooler\.supabase\.com$/i,
+});
 const EXCEPTION_CLASSES = new Set(['INTENTIONAL_DIFFERENCE', 'EXPECTED_PENDING_TEST', 'EXPECTED_PENDING_PRODUCTION']);
 const stripSql = (sql) => sql.trim().replace(/;\s*$/, '');
 export const READ_ONLY_SNAPSHOT_SQL = `
@@ -33,6 +39,64 @@ function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
   throw error;
+}
+function decodeUsername(value) {
+  try { return decodeURIComponent(String(value ?? '')); } catch { fail('MALFORMED_SCHEMA_OBSERVER_URL', 'observer username is not valid URL encoding'); }
+}
+function assertObserverTls(parsed) {
+  const entries = [...parsed.searchParams.entries()];
+  if (parsed.hash || entries.length !== 1 || entries[0][0] !== 'sslmode' || String(entries[0][1]).toLowerCase() !== 'verify-full') {
+    fail('SCHEMA_OBSERVER_TLS_VERIFICATION_REQUIRED', 'observer URL must use exactly sslmode=verify-full');
+  }
+}
+/**
+ * A direct observer connection is an alternate transport for the exact same
+ * read-only snapshot contract. It deliberately binds both project and role.
+ */
+export function parseProjectBoundSchemaObserverUrl(connectionString, environment) {
+  const env = String(environment ?? '').trim().toUpperCase();
+  const projectRef = EXPECTED_PROJECT_REFS[env];
+  if (!projectRef || !SESSION_POOLER_HOSTS[env]) fail('SCHEMA_OBSERVER_ENVIRONMENT_INVALID', 'observer environment must be TEST or PRODUCTION');
+  const raw = String(connectionString ?? '').trim();
+  if (!raw) fail('MISSING_SCHEMA_OBSERVER_URL', 'schema observer connection URL is required');
+  let parsed;
+  try { parsed = new URL(raw); } catch { fail('MALFORMED_SCHEMA_OBSERVER_URL', 'schema observer URL is not a valid PostgreSQL URL'); }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) fail('MALFORMED_SCHEMA_OBSERVER_URL', 'schema observer URL must use postgres/postgresql protocol');
+  if (String(parsed.port || '5432') !== '5432') fail('SCHEMA_OBSERVER_SESSION_MODE_REQUIRED', 'observer URL must use session/direct port 5432');
+  if ((parsed.pathname || '/postgres').replace(/^\//, '') !== 'postgres') fail('SCHEMA_OBSERVER_DATABASE_MISMATCH', 'observer URL must target the postgres database');
+  if (!SESSION_POOLER_HOSTS[env].test(String(parsed.hostname ?? ''))) fail('SCHEMA_OBSERVER_URL_PROJECT_MISMATCH', 'observer host does not match the requested environment');
+  if (decodeUsername(parsed.username) !== `${SCHEMA_OBSERVER_ROLE}.${projectRef}`) fail('SCHEMA_OBSERVER_ROLE_MISMATCH', 'observer URL must use the dedicated schema_observer role for this project');
+  if (!parsed.password) fail('SCHEMA_OBSERVER_PASSWORD_REQUIRED', 'observer URL requires a dedicated role password');
+  assertObserverTls(parsed);
+  return { environment: env, projectRef, role: SCHEMA_OBSERVER_ROLE, transportMode: 'SUPAVISOR_SESSION', connectionString: raw };
+}
+async function querySnapshotViaPostgres({ connectionString, query, readOnly }) {
+  if (readOnly !== true) fail('SCHEMA_OBSERVER_WRITE_FORBIDDEN', 'schema observer may only execute a read-only query');
+  const sql = postgres(connectionString, { max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 });
+  try {
+    const rows = await sql.begin(async (transaction) => {
+      await transaction.unsafe('set local transaction read only');
+      return transaction.unsafe(query);
+    });
+    return unwrapSnapshot(rows);
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+function observerConnectionStringFor(environment, value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  if (/^postgres(?:ql)?:\/\//i.test(raw)) return raw;
+  if (!raw.startsWith('{')) return null;
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { fail('MALFORMED_SCHEMA_OBSERVER_CREDENTIAL', 'observer credential map is not valid JSON'); }
+  const expectedKeys = ['PRODUCTION', 'TEST'];
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || Object.keys(parsed).sort().join('|') !== expectedKeys.join('|')) {
+    fail('MALFORMED_SCHEMA_OBSERVER_CREDENTIAL', 'observer credential map must contain exactly TEST and PRODUCTION');
+  }
+  const connectionString = parsed[environment];
+  if (typeof connectionString !== 'string' || !connectionString.trim()) fail('MALFORMED_SCHEMA_OBSERVER_CREDENTIAL', `observer credential map has no ${environment} connection`);
+  return connectionString.trim();
 }
 function assertKeys(value, expected, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('INVALID_EVIDENCE', `${label} must be an object`);
@@ -383,12 +447,36 @@ function unwrapSnapshot(body) {
   return candidates.find((candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate) &&
     Object.keys(candidate).sort().join('\n') === ['acl', 'ledger', 'metadata'].join('\n')) ?? null;
 }
-export async function captureEnvironmentSnapshot({ environment, currentMainSha, token = process.env.SCHEMA_OBSERVER_TOKEN, fetchImpl = globalThis.fetch, observedAt = new Date().toISOString() }) {
+/**
+ * @param {{
+ *   environment: 'TEST'|'PRODUCTION',
+ *   currentMainSha: string,
+ *   token?: string,
+ *   connectionString?: string | null,
+ *   directQuery?: (input:{connectionString:string, query:string, readOnly:true}) => Promise<any>,
+ *   fetchImpl?: typeof fetch,
+ *   observedAt?: string,
+ * }} input
+ */
+export async function captureEnvironmentSnapshot({ environment, currentMainSha, token = process.env.SCHEMA_OBSERVER_TOKEN, connectionString = null, directQuery = querySnapshotViaPostgres, fetchImpl = globalThis.fetch, observedAt = new Date().toISOString() } = /** @type {any} */ ({})) {
   const mainSha = validSha(currentMainSha, 'currentMainSha');
   const projectRef = EXPECTED_PROJECT_REFS[environment];
   const evidenceRef = `supabase:${String(environment).toLowerCase()}/schema-observer`;
   const unavailable = (reason) => buildUnavailableSnapshot({ environment, observedAt, observedMainSha: mainSha, reason });
   if (!['TEST', 'PRODUCTION'].includes(environment)) return unavailable('INVALID_ENVIRONMENT');
+  let directConnectionString;
+  try { directConnectionString = connectionString || observerConnectionStringFor(environment, token); }
+  catch (error) { return unavailable(error?.code && /^[A-Z0-9_.-]+$/.test(error.code) ? error.code : 'EVIDENCE_UNAVAILABLE'); }
+  if (directConnectionString) {
+    try {
+      parseProjectBoundSchemaObserverUrl(directConnectionString, environment);
+      const raw = await directQuery({ connectionString: directConnectionString, query: READ_ONLY_SNAPSHOT_SQL, readOnly: true });
+      if (!raw) return unavailable('EVIDENCE_RESPONSE_SHAPE_INVALID');
+      return buildObserverSnapshotFromRaw({ environment, projectRef, observedAt, observedMainSha: mainSha, evidenceRef, raw });
+    } catch (error) {
+      return unavailable(error?.code && /^[A-Z0-9_.-]+$/.test(error.code) ? error.code : 'EVIDENCE_UNAVAILABLE');
+    }
+  }
   if (typeof token !== 'string' || !token.trim()) return unavailable('SCHEMA_OBSERVER_TOKEN_MISSING');
   if (typeof fetchImpl !== 'function') return unavailable('FETCH_UNAVAILABLE');
   try {
