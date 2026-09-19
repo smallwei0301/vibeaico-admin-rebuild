@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -253,6 +255,21 @@ describe('Production DB release plan #447', () => {
       '0124_issue_18_owner_notify_legacy_shape',
       '0116_issue_18_owner_notify',
     ]);
+    expect(orderPendingProductionMigrations([
+      '0121_issue_17_booking_addons_hardening',
+      '0123_issue_589_richmenu_asset_retirement',
+      '0125_issue_17_booking_addons_legacy_enum',
+    ])).toEqual([
+      '0125_issue_17_booking_addons_legacy_enum',
+      '0121_issue_17_booking_addons_hardening',
+      '0123_issue_589_richmenu_asset_retirement',
+    ]);
+  });
+
+  it('keeps generic mixed-risk rejection while routing the bounded 0125 precondition through AUTHZ', () => {
+    const sql = readFileSync('supabase/migrations/0125_issue_17_booking_addons_legacy_enum.sql', 'utf8');
+    expect(() => inferMigrationRiskTier(sql)).toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);
+    expect(inferMigrationRiskTier(sql, '0125_issue_17_booking_addons_legacy_enum')).toBe('AUTHZ');
   });
 
   it('builds one immutable plan from exact main bytes and fixes ledger versions at G0', () => {

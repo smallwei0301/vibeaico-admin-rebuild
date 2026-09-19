@@ -144,6 +144,13 @@
       "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立舊版 owner_notify_recipients；本筆在 0116 前以 IF EXISTS／IF NOT EXISTS 補齊兩個事件開關，缺表時由 0116 建立完整 canonical shape。此 canonical migration 已進 main、尚未套用到正式庫，與 0116 同一個 G3 release 依序執行。"
     },
     {
+      "repoFile": "0125_issue_17_booking_addons_legacy_enum",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立 addon_performance_mode enum；本筆在 0121 前將 PRIMARY 映射為 INHERIT 並轉為 text，缺表或缺欄位時由 0121 建立 canonical shape。此 canonical migration 尚未套用到正式庫，與 0121 同一個 G3 release 依序執行。"
+    },
+    {
       "repoFile": "0065_issue_128_services_order_invariants",
       "ledgerNames": [
         "0065_issue_128_services_order_invariants"
