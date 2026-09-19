@@ -95,7 +95,10 @@ export function buildProductionDbPostTestSchemaEvidence({
   const { mainSha, planDigest, releaseId } = planIdentity(plan);
   const sourceRun = runIdentity(sourceRunId, sourceRunAttempt);
   const normalized = normalizeSnapshot(snapshot, mainSha);
-  if (!normalized || normalized.status !== 'CAPTURED') fail('POST_TEST_SCHEMA_CAPTURE_REQUIRED', 'TEST schema snapshot must be CAPTURED');
+  if (!normalized || normalized.status !== 'CAPTURED') {
+    const reason = normalized?.reason ? ` (${normalized.reason})` : '';
+    fail('POST_TEST_SCHEMA_CAPTURE_REQUIRED', `TEST schema snapshot must be CAPTURED${reason}`);
+  }
   if (normalized.environment !== 'TEST' || normalized.projectRef !== TEST_PROJECT_REF) {
     fail('POST_TEST_SCHEMA_PROJECT_MISMATCH', 'post-TEST schema snapshot must be canonical TEST');
   }
