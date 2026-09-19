@@ -250,9 +250,11 @@ jobs:
           MAIN_SHA: ${{ github.sha }}
           TEST_PROJECT_REF: nmwhwngojosmagjuvxol
           TEST_DB_RELEASE_TOKEN: ${{ secrets.TEST_DB_RELEASE_TOKEN }}
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
         run: |
           set -euo pipefail
           test -n "$TEST_DB_RELEASE_TOKEN"
+          test -s "$NODE_EXTRA_CA_CERTS"
           node scripts/db/validate-production-db-release-on-test.mjs plan \
             "$RELEASE_ID" "$MAIN_SHA" "$PLANNED_AT" \
             "$RUNNER_TEMP/production-db-release-plan.json"
@@ -366,10 +368,12 @@ jobs:
         shell: bash
         env:
           SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
         run: |
           set -euo pipefail
           test -n "$SCHEMA_OBSERVER_TOKEN"
           test -z "${SUPABASE_ACCESS_TOKEN:-}"
+          test -s "$NODE_EXTRA_CA_CERTS"
           node scripts/agents/production-db-g3-post-test-schema.mjs capture \
             "$RUNNER_TEMP/production-db-release-plan.json" \
             "$RUNNER_TEMP/production-db-test-post-schema-snapshot.json" \
