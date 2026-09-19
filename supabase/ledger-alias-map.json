@@ -151,6 +151,13 @@
       "evidence": "#589 G3 prerequisite：canonical TEST 的歷史 integration baseline 可能先建立 addon_performance_mode enum；本筆在 0121 前將 PRIMARY 映射為 INHERIT 並轉為 text，缺表或缺欄位時由 0121 建立 canonical shape。此 canonical migration 尚未套用到正式庫，與 0121 同一個 G3 release 依序執行。"
     },
     {
+      "repoFile": "0126_issue_402_keyword_reply_images_authz",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#402 的 release-safe successor：0112 同時含 Storage AUTHZ 與 bucket metadata BACKFILL，故保留為 VERIFIED_NOT_APPLIED；本筆只移除 keyword-reply-images 的 authenticated 直接 INSERT policy，不修改 storage.buckets，讓正常上傳維持由 POST /api/upload 經 service_role 完成。尚未套用 canonical TEST 或 Production，須隨 #589 的受控 G3／Production gate 取得對應證據。"
+    },
+    {
       "repoFile": "0065_issue_128_services_order_invariants",
       "ledgerNames": [
         "0065_issue_128_services_order_invariants"

@@ -21,6 +21,7 @@ const read = (relative: string) =>
 const sha256 = (content: string) => createHash('sha256').update(content, 'utf8').digest('hex');
 
 const migration = read('supabase/migrations/0112_keyword_reply_images_upload_acl.sql');
+const authzSuccessor = read('supabase/migrations/0126_issue_402_keyword_reply_images_authz.sql');
 const uploadRoute = read('src/app/api/upload/route.ts');
 const uploadService = read('src/services/upload.ts');
 
@@ -61,6 +62,17 @@ describe('keyword-reply-images 直寫 Storage 側門修復 #402', () => {
 
   it('0112 的檔頭以 #402 標頭起始', () => {
     expect(migration.startsWith('-- #402')).toBe(true);
+  });
+
+  it('0126 將 0112 拆成只有 AUTHZ 的 forward-only successor', () => {
+    expect(authzSuccessor.startsWith('-- #402')).toBe(true);
+    expect(authzSuccessor).toContain('drop policy if exists p_storage_write on storage.objects;');
+    const writePolicy = authzSuccessor.slice(authzSuccessor.indexOf('create policy p_storage_write'));
+    expect(writePolicy).toContain('create policy p_storage_write on storage.objects for insert to authenticated');
+    expect(writePolicy).toContain("'richmenu-assets', 'chat-images'");
+    expect(writePolicy).not.toContain('keyword-reply-images');
+    expect(authzSuccessor).not.toContain('update storage.buckets');
+    expect(authzSuccessor).not.toContain('file_size_limit');
   });
 
   it('本檔是 forward-only：0072/0073/0086 三支歷史 migration 內容逐位元組未被改寫', () => {

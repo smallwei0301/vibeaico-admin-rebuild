@@ -416,7 +416,7 @@ describe('#396 已提交的正式資料', () => {
 
   // repo 端多出尚未套用的 0109、0110、0111、0112、0113、0114、0115、
   // 0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
-  // 0125_issue_17_booking_addons_legacy_enum、
+  // 0125_issue_17_booking_addons_legacy_enum、0126_issue_402_keyword_reply_images_authz、
   // 0117_issue_25b_support_chat_threads、
   // 0118_issue_25c_platform_donations（三者依序合併自 #519/#524/#526/#527 等
   // main 側 PR，見 supabase/ledger-alias-map.json 對應 evidence）、
@@ -428,12 +428,12 @@ describe('#396 已提交的正式資料', () => {
   // 於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，四者都在快照裡）。
   // #455 不會重寫、拆分或新增既有 migration 歷史；數字以 current main 的
   // 實際檔案為準。
-  it('repo 有 72 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(72);
+  it('repo 有 73 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(73);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 72 個 repo 檔案與 58 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 73 個 repo 檔案與 58 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -444,7 +444,7 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：51 EXACT、6 ALIAS、15 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：51 EXACT、6 ALIAS、16 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
@@ -459,19 +459,19 @@ describe('#396 已提交的正式資料', () => {
     // 發現 0105 其實已經套用於正式庫，本檔先前誤標記為 NOT_APPLIED／
     // PENDING_APPLY，隨即更正為 EXACT（50 → 51）。尚未套用的是 0109、0110、
     // 0111、0112、0113、0114、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
-    // 0125_issue_17_booking_addons_legacy_enum、
+    // 0125_issue_17_booking_addons_legacy_enum、0126_issue_402_keyword_reply_images_authz、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening 與
     // 0123_issue_589_richmenu_asset_retirement
     // （後幾筆合併自 origin/main 的 #519/#524/#526/#527/#575 等 PR，加上本 issue #17
-    // 拆出的 migration-only successor），所以 NOT_APPLIED 是 15。
+    // 拆出的 migration-only successor，以及 #402 的 AUTHZ successor），所以 NOT_APPLIED 是 16。
     // 十二者依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
     // 0109 是 SCHEMA_REPAIR；0112、0114 是 AUTHZ+BACKFILL 混合風險。三者各自
     // 留在既有 migration 歷史中，並標為 VERIFIED_NOT_APPLIED，直到未來獨立
     // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(15);
+    expect(counts.NOT_APPLIED ?? 0).toBe(16);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -736,8 +736,8 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 15 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
-    // 0125_issue_17_booking_addons_legacy_enum、
+    // 目前為 16 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
+    // 0125_issue_17_booking_addons_legacy_enum、0126_issue_402_keyword_reply_images_authz、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening、
     // 0123_issue_589_richmenu_asset_retirement 這 12 支是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）是
@@ -746,7 +746,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
     // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
     // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(15);
+    expect(notApplied.length).toBe(16);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }
