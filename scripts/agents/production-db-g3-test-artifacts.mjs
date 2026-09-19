@@ -239,6 +239,9 @@ function cleanupScopes(plan) {
     scopes.push({
       migration: '0116_issue_18_owner_notify',
       table: 'line_users',
+      // line_users uses the composite (tenant_id, line_user_id) primary key;
+      // it deliberately has no synthetic id column.
+      select: 'tenant_id,line_user_id',
       filterColumn: 'line_user_id',
       filterOperator: 'like',
       filterValue: 'g3-447-owner-notify-%',
@@ -271,7 +274,7 @@ export async function captureProductionDbTestCleanupEvidence({
   let residueCount = 0;
   const checkedScopes = [];
   for (const scope of scopes) {
-    const params = new URLSearchParams({ select: 'id' });
+    const params = new URLSearchParams({ select: scope.select ?? 'id' });
     params.set(scope.filterColumn, `${scope.filterOperator ?? 'eq'}.${scope.filterValue}`);
     const response = await fetchImpl(`${origin}/rest/v1/${scope.table}?${params.toString()}`, {
       method: 'GET',

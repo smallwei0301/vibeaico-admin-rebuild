@@ -349,6 +349,40 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     });
   });
 
+  it('uses the composite line_users key instead of a nonexistent synthetic id during cleanup', async () => {
+    const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(init?.method).toBe('GET');
+      const text = decodeURIComponent(String(url));
+      expect(text).toContain('/rest/v1/line_users?');
+      expect(text).toContain('select=tenant_id,line_user_id');
+      expect(text).not.toContain('select=id');
+      expect(text).toContain('line_user_id=like.g3-447-owner-notify-%');
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const result = await captureProductionDbTestCleanupEvidence({
+      plan: plan([
+        { repoFile: '0116_issue_18_owner_notify', riskTier: 'AUTHZ', sha256: '3'.repeat(64) },
+      ]),
+      testSupabaseUrl: TEST_URL,
+      serviceRoleKey: 'test-service-role-only',
+      sourceRunId: '34920000000',
+      sourceRunAttempt: 1,
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      status: 'TEST_CLEANUP_VERIFIED',
+      cleanup: 'PASSED',
+      residueCount: 0,
+      checkedScopes: [{
+        migration: '0116_issue_18_owner_notify',
+        table: 'line_users',
+        filter: 'line_user_id=like.g3-447-owner-notify-%',
+        residueCount: 0,
+      }],
+    });
+  });
+
   it('rejects wrong TEST hosts before network and rejects scoped residue', async () => {
     const fetchSpy = vi.fn();
     await expect(captureProductionDbTestCleanupEvidence({
