@@ -252,6 +252,75 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     });
   });
 
+  it('binds every remaining Issue #589 AUTHZ migration to live integration assertions', () => {
+    const ownerNotifyFile = 'tests/integration/db/owner-notify-rls.18.test.ts';
+    const bookingAddonsFile = 'tests/integration/api/booking-addons.17.test.ts';
+    const richmenuFile = 'tests/integration/db/richmenu-asset-retirement-authz.589.test.ts';
+    const uploadFile = 'tests/integration/api/upload-welcome-card.28.test.ts';
+    const result = buildProductionDbTestCoverageEvidence({
+      plan: plan([
+        { repoFile: '0119_issue_18_owner_notify_confirm_atomic', riskTier: 'AUTHZ', sha256: '1'.repeat(64) },
+        { repoFile: '0125_issue_17_booking_addons_legacy_enum', riskTier: 'AUTHZ', sha256: '2'.repeat(64) },
+        { repoFile: '0121_issue_17_booking_addons_hardening', riskTier: 'AUTHZ', sha256: '3'.repeat(64) },
+        { repoFile: '0123_issue_589_richmenu_asset_retirement', riskTier: 'AUTHZ', sha256: '4'.repeat(64) },
+        { repoFile: '0126_issue_402_keyword_reply_images_authz', riskTier: 'AUTHZ', sha256: '5'.repeat(64) },
+      ]),
+      report: {
+        numTotalTests: 7,
+        numPassedTests: 7,
+        numFailedTests: 0,
+        numPendingTests: 0,
+        numTodoTests: 0,
+        success: true,
+        testResults: [
+          {
+            name: ownerNotifyFile,
+            assertionResults: [
+              { status: 'passed', fullName: '0119 owner-notify confirm RPC 僅在請求所屬租戶內確認，不可跨租戶消費 bind request' },
+              { status: 'passed', fullName: '0119 未登入與已登入角色都不得直接呼叫 confirm_owner_notify_bind RPC' },
+            ],
+          },
+          {
+            name: bookingAddonsFile,
+            assertionResults: [
+              { status: 'passed', fullName: 'A 店的 idempotency key 不得命中 B 店（即使字面值相同）' },
+              { status: 'passed', fullName: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc' },
+            ],
+          },
+          {
+            name: richmenuFile,
+            assertionResults: [
+              { status: 'passed', fullName: 'retirement RPC is tenant-scoped: another tenant can retire the same URL independently' },
+              { status: 'passed', fullName: 'browser roles cannot execute or write richmenu retirement bookkeeping directly' },
+            ],
+          },
+          {
+            name: uploadFile,
+            assertionResults: [
+              { status: 'passed', fullName: 'rejects direct authenticated keyword-reply-images uploads, same shape as welcome-card-images (#402)' },
+            ],
+          },
+        ],
+      },
+      sourceRunId: '34920000000',
+      sourceRunAttempt: 1,
+    });
+
+    for (const repoFile of [
+      '0119_issue_18_owner_notify_confirm_atomic',
+      '0125_issue_17_booking_addons_legacy_enum',
+      '0121_issue_17_booking_addons_hardening',
+      '0123_issue_589_richmenu_asset_retirement',
+      '0126_issue_402_keyword_reply_images_authz',
+    ]) {
+      expect(result.migrations[repoFile]).toMatchObject({
+        status: 'MIGRATION_TEST_COVERAGE_VERIFIED',
+        tenantBoundaryVerified: true,
+        negativeRoleTestsPassed: true,
+      });
+    }
+  });
+
   it('captures migration-scoped cleanup using GET only and the canonical SHOP_A tenant filter', async () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('GET');
