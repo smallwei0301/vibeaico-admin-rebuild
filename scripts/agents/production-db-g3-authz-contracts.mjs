@@ -167,6 +167,91 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
     ]),
     negativeRoleAssertions: Object.freeze([]),
   }),
+  '0119_issue_18_owner_notify_confirm_atomic': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/db/owner-notify-rls.18.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/owner-notify-rls.18.test.ts',
+        fragment: '0119 owner-notify confirm RPC 僅在請求所屬租戶內確認，不可跨租戶消費 bind request',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/owner-notify-rls.18.test.ts',
+        fragment: '0119 未登入與已登入角色都不得直接呼叫 confirm_owner_notify_bind RPC',
+      }),
+    ]),
+  }),
+  // 0125 only normalizes the historical enum before 0121 owns the current
+  // booking-addons RPC contract. The live RPC, tenant-boundary, and role
+  // assertions therefore cover both identities after the ordered pair runs.
+  '0125_issue_17_booking_addons_legacy_enum': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/booking-addons.17.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/booking-addons.17.test.ts',
+        fragment: 'A 店的 idempotency key 不得命中 B 店（即使字面值相同）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/booking-addons.17.test.ts',
+        fragment: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc',
+      }),
+    ]),
+  }),
+  '0121_issue_17_booking_addons_hardening': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/booking-addons.17.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/booking-addons.17.test.ts',
+        fragment: 'A 店的 idempotency key 不得命中 B 店（即使字面值相同）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/booking-addons.17.test.ts',
+        fragment: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc',
+      }),
+    ]),
+  }),
+  '0123_issue_589_richmenu_asset_retirement': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/db/richmenu-asset-retirement-authz.589.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/richmenu-asset-retirement-authz.589.test.ts',
+        fragment: 'retirement RPC is tenant-scoped: another tenant can retire the same URL independently',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/richmenu-asset-retirement-authz.589.test.ts',
+        fragment: 'browser roles cannot execute or write richmenu retirement bookkeeping directly',
+      }),
+    ]),
+  }),
+  '0126_issue_402_keyword_reply_images_authz': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/upload-welcome-card.28.test.ts',
+    ]),
+    // 0126 is deliberately an ACL-only successor; tenant ownership is enforced
+    // by the validated upload route and is not a new assertion of this SQL.
+    tenantBoundaryAssertions: Object.freeze([]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/upload-welcome-card.28.test.ts',
+        fragment: 'rejects direct authenticated keyword-reply-images uploads, same shape as welcome-card-images (#402)',
+      }),
+    ]),
+  }),
 });
 
 export function getProductionDbG3AuthzContract(repoFile) {
