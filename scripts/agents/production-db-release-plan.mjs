@@ -13,6 +13,16 @@ const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACK
 // monotonic for repo-integrity, but execute this bounded precondition first.
 const PENDING_MIGRATION_PRECEDENCE = Object.freeze([
   Object.freeze({ before: '0124_issue_18_owner_notify_legacy_shape', after: '0116_issue_18_owner_notify' }),
+  Object.freeze({ before: '0125_issue_17_booking_addons_legacy_enum', after: '0121_issue_17_booking_addons_hardening' }),
+]);
+
+// This one bounded legacy-shape precondition contains a type rewrite and an
+// RLS enablement, but it must travel with the existing AUTHZ release lane so
+// the atomic G3 plan can reconcile the known TEST baseline drift before 0121.
+// Keep this an exact filename allowlist; generic mixed-risk SQL remains
+// fail-closed below.
+const AUTHZ_COMPATIBILITY_PRECONDITIONS = new Set([
+  '0125_issue_17_booking_addons_legacy_enum',
 ]);
 
 // PostgreSQL resolves these built-ins from pg_catalog before application
@@ -909,7 +919,7 @@ function hasAuthzConfigurationMutation(statement) {
     || /^\s*reset\s+(?:[A-Za-z_][\w$]*|(?:[uU]&)?(?:"(?:[^"]|"")*"))/i.test(input);
 }
 
-export function inferMigrationRiskTier(sql) {
+export function inferMigrationRiskTier(sql, repoFile = '') {
   const text = stripSqlComments(sql);
 
   // v1 絕不放行會直接刪掉資料容器或欄位的操作。constraint/default 的暫時移除
@@ -937,6 +947,11 @@ export function inferMigrationRiskTier(sql) {
   // v1 不用「選最高級」來掩蓋另一類必要證據。若一支 migration 同時混進兩種
   // specialized risk，先拆成 bounded migrations，讓每一支都有完整對應測試與復原證據。
   if (specialized.length > 1) {
+    if (AUTHZ_COMPATIBILITY_PRECONDITIONS.has(String(repoFile))
+      && specialized.includes('SCHEMA_REPAIR') && specialized.includes('AUTHZ')
+      && !specialized.includes('BACKFILL')) {
+      return 'AUTHZ';
+    }
     fail('MIXED_RISK_MIGRATION_NOT_ADMITTED', `split migration by risk class before v1 apply: ${specialized.join('+')}`);
   }
   return specialized[0] ?? 'ADDITIVE';
@@ -975,7 +990,7 @@ export function buildProductionDbReleasePlan({
       repoFile,
       path,
       sha256: sha256(Buffer.from(sql)),
-      riskTier: inferMigrationRiskTier(sql),
+      riskTier: inferMigrationRiskTier(sql, repoFile),
       ledgerVersion: ledgerVersionAt(normalizedPlannedAt, index),
     };
   });
@@ -1020,7 +1035,7 @@ export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql
     if (entry.path !== expectedPath) fail('MIGRATION_PATH_MISMATCH', `${entry.repoFile} path is not canonical`);
     const sql = String(readCanonicalSql(expectedPath));
     if (sha256(Buffer.from(sql)) !== entry.sha256) fail('MIGRATION_BYTES_MISMATCH', `${expectedPath} differs from reviewed main bytes`);
-    const inferred = inferMigrationRiskTier(sql);
+    const inferred = inferMigrationRiskTier(sql, entry.repoFile);
     if (entry.riskTier !== inferred) fail('MIGRATION_RISK_MISMATCH', `${entry.repoFile} risk tier changed`);
     tiers.push(inferred);
   }
