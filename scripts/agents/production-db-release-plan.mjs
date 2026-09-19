@@ -8,6 +8,13 @@ const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const LEDGER_VERSION = /^\d{14}$/;
 const RISK_ORDER = Object.freeze({ ADDITIVE: 1, SCHEMA_REPAIR: 2, AUTHZ: 3, BACKFILL: 4 });
 
+// A historical compatibility migration can have a newer identity while still
+// being a prerequisite for an older pending migration. Keep the file identity
+// monotonic for repo-integrity, but execute this bounded precondition first.
+const PENDING_MIGRATION_PRECEDENCE = Object.freeze([
+  Object.freeze({ before: '0124_issue_18_owner_notify_legacy_shape', after: '0116_issue_18_owner_notify' }),
+]);
+
 // PostgreSQL resolves these built-ins from pg_catalog before application
 // schemas. Accept both normal spellings (`now()`) and explicit pg_catalog
 // spellings, but only for this finite list; a custom routine still fails closed.
@@ -88,7 +95,20 @@ export function pendingProductionMigrations(aliasMap = {}) {
     .filter((entry) => entry?.classification === 'NOT_APPLIED' && entry?.notAppliedReason === 'PENDING_APPLY')
     .map((entry) => normalizedRepoFile(entry.repoFile));
   if (new Set(pending).size !== pending.length) fail('DUPLICATE_PENDING_MIGRATION', 'pending repo migration names must be unique');
-  return pending.sort();
+  return orderPendingProductionMigrations(pending);
+}
+
+export function orderPendingProductionMigrations(names = []) {
+  const ordered = [...names].sort();
+  for (const { before, after } of PENDING_MIGRATION_PRECEDENCE) {
+    const beforeIndex = ordered.indexOf(before);
+    const afterIndex = ordered.indexOf(after);
+    if (beforeIndex >= 0 && afterIndex >= 0 && beforeIndex > afterIndex) {
+      ordered.splice(beforeIndex, 1);
+      ordered.splice(afterIndex, 0, before);
+    }
+  }
+  return ordered;
 }
 
 function quotedTokenEnd(input, start, quote) {
@@ -984,7 +1004,7 @@ export function verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql
 
   const pending = pendingProductionMigrations(aliasMap);
   const names = (Array.isArray(plan.migrations) ? plan.migrations : []).map((entry) => normalizedRepoFile(entry?.repoFile));
-  if (pending.join('\n') !== [...names].sort().join('\n')) {
+  if (pending.join('\n') !== orderPendingProductionMigrations(names).join('\n')) {
     fail('PENDING_SET_MISMATCH', `plan=[${names.join(', ')}], pending=[${pending.join(', ')}]`);
   }
   if (new Set(names).size !== names.length) fail('DUPLICATE_PLAN_MIGRATION', 'plan migrations must be unique');
