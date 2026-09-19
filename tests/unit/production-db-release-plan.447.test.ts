@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildProductionDbReleasePlan,
   inferMigrationRiskTier,
+  orderPendingProductionMigrations,
   pendingProductionMigrations,
   releasePlanDigestOf,
   verifyProductionDbReleasePlan,
@@ -231,6 +232,27 @@ describe('Production DB release plan #447', () => {
 
   it('uses only PENDING_APPLY entries and excludes VERIFIED_NOT_APPLIED', () => {
     expect(pendingProductionMigrations(aliasMap())).toEqual(['0105_authz', '0109_assertions']);
+  });
+
+  it('runs the newer owner-notify compatibility precondition before immutable 0116', () => {
+    expect(orderPendingProductionMigrations([
+      '0116_issue_18_owner_notify',
+      '0124_issue_18_owner_notify_legacy_shape',
+      '0117_issue_25b_support_chat_threads',
+    ])).toEqual([
+      '0124_issue_18_owner_notify_legacy_shape',
+      '0116_issue_18_owner_notify',
+      '0117_issue_25b_support_chat_threads',
+    ]);
+    expect(orderPendingProductionMigrations([
+      '0110_issue_42_plan_duration_pricetype_yearround',
+      '0116_issue_18_owner_notify',
+      '0124_issue_18_owner_notify_legacy_shape',
+    ])).toEqual([
+      '0110_issue_42_plan_duration_pricetype_yearround',
+      '0124_issue_18_owner_notify_legacy_shape',
+      '0116_issue_18_owner_notify',
+    ]);
   });
 
   it('builds one immutable plan from exact main bytes and fixes ledger versions at G0', () => {

@@ -154,7 +154,7 @@ export function buildAtomicProductionApplySql({
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
   assertLiveLedgerMatchesAliasMap({ aliasMap, liveLedgerRows });
   const pending = pendingProductionMigrations(aliasMap);
-  const planned = plan.migrations.map((entry) => entry.repoFile).sort();
+  const planned = plan.migrations.map((entry) => entry.repoFile);
   if (pending.join('\n') !== planned.join('\n')) fail('PENDING_SET_MISMATCH', 'live apply plan no longer equals canonical PENDING_APPLY set');
 
   const baselineRows = normalizedLedgerRows(liveLedgerRows);

@@ -137,7 +137,7 @@
       "evidence": "檔名與正式庫 ledger row 名稱逐字相同。"
     },
     {
-      "repoFile": "0064_issue_18_owner_notify_legacy_shape",
+      "repoFile": "0124_issue_18_owner_notify_legacy_shape",
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",

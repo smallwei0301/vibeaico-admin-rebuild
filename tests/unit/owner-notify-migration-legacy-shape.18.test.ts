@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-const migration = readFileSync('supabase/migrations/0064_issue_18_owner_notify_legacy_shape.sql', 'utf8');
+const migration = readFileSync('supabase/migrations/0124_issue_18_owner_notify_legacy_shape.sql', 'utf8');
 
 describe('owner-notify canonical migration compatibility', () => {
   it('reconciles the historical recipient table before the fail-closed shape check', () => {

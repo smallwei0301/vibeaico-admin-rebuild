@@ -415,7 +415,7 @@ describe('#396 已提交的正式資料', () => {
   const repoFiles = loadRealRepoFiles();
 
   // repo 端多出尚未套用的 0109、0110、0111、0112、0113、0114、0115、
-  // 0064_issue_18_owner_notify_legacy_shape、0116_issue_18_owner_notify、
+  // 0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
   // 0117_issue_25b_support_chat_threads、
   // 0118_issue_25c_platform_donations（三者依序合併自 #519/#524/#526/#527 等
   // main 側 PR，見 supabase/ledger-alias-map.json 對應 evidence）、
@@ -457,7 +457,7 @@ describe('#396 已提交的正式資料', () => {
     // 再次重新擷取本快照（49 → 50）。2026-09-15：以唯讀查詢重新核對正式庫，
     // 發現 0105 其實已經套用於正式庫，本檔先前誤標記為 NOT_APPLIED／
     // PENDING_APPLY，隨即更正為 EXACT（50 → 51）。尚未套用的是 0109、0110、
-    // 0064_issue_18_owner_notify_legacy_shape、0111、0112、0113、0114、0115、0116_issue_18_owner_notify、
+    // 0111、0112、0113、0114、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening 與
     // 0123_issue_589_richmenu_asset_retirement
@@ -734,7 +734,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 14 筆：0064_issue_18_owner_notify_legacy_shape、0110、0111、0113、0115、0116_issue_18_owner_notify、
+    // 目前為 14 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening、
     // 0123_issue_589_richmenu_asset_retirement 這 10 支是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）是
