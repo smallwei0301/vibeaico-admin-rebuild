@@ -77,7 +77,10 @@ jobs:
       - name: Capture TEST and Production through read-only API only
         env:
           SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/config/supabase-production-root-bundle.crt
         run: |
+          set -euo pipefail
+          test -s "$NODE_EXTRA_CA_CERTS"
           node scripts/agents/schema-drift-watch.mjs capture --environment TEST --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/test.json"
           node scripts/agents/schema-drift-watch.mjs capture --environment PRODUCTION --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/production.json"
       - name: Compare exact object fingerprints and fail closed
