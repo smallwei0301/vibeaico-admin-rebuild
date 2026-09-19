@@ -85,7 +85,7 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
   it('replays one already-ledgered TEST migration but inserts ledger identity for every other absent pending migration', () => {
     const plan = buildPlan();
     const replay = replayMigration(plan);
-    const absent = plan.migrations.find((item:any) => item.repoFile !== replay.repoFile);
+    const absent = plan.migrations.find((item:any) => item.repoFile !== replay.repoFile)!;
     expect(absent).toBeTruthy();
     const aliasMap = JSON.parse(require('node:fs').readFileSync('supabase/ledger-alias-map.json', 'utf8'));
     const readCanonicalSql = (path:string) => require('node:fs').readFileSync(path, 'utf8');
