@@ -249,13 +249,21 @@ export function buildAtomicTestReleaseValidationSql({
     const decision = decisions.find((item) => item.repoFile === migration.repoFile);
     const sql = String(readCanonicalSql(migration.path));
     assertAtomicCompatibleSql(sql, migration.repoFile);
-    statements.push(`-- G3 exact-main validation ${migration.repoFile}\n${sql.trim()}${sql.trim().endsWith(';') ? '' : ';'}`);
-    if (!decision.existedBefore) {
-      statements.push(
-        `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key) values (` +
-        `${sqlLiteral(migration.ledgerVersion)}, null, ${sqlLiteral(migration.repoFile)}, ${sqlLiteral(CREATED_BY)}, ${sqlLiteral(decision.idempotencyKey)});`,
-      );
+    if (decision.existedBefore) {
+      // A migration already present in the TEST ledger is replay evidence, not
+      // permission to execute its DDL again. Historical migrations are allowed
+      // to be non-idempotent (for example, a bare CREATE TABLE), and the
+      // post-TEST ledger plus integration/schema evidence verifies that the
+      // exact planned identity is already present. Only migrations absent from
+      // the ledger are admitted to this mutable transaction.
+      statements.push(`-- G3 replay verification ${migration.repoFile}: existing TEST ledger; DDL not replayed`);
+      continue;
     }
+    statements.push(`-- G3 exact-main validation ${migration.repoFile}\n${sql.trim()}${sql.trim().endsWith(';') ? '' : ';'}`);
+    statements.push(
+      `insert into supabase_migrations.schema_migrations(version, statements, name, created_by, idempotency_key) values (` +
+      `${sqlLiteral(migration.ledgerVersion)}, null, ${sqlLiteral(migration.repoFile)}, ${sqlLiteral(CREATED_BY)}, ${sqlLiteral(decision.idempotencyKey)});`,
+    );
   }
 
   const plannedNames = plan.migrations.map((item) => item.repoFile);
