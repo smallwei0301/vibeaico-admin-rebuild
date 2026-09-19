@@ -82,7 +82,7 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
     expect(new Set(plan.migrations.map((item:any) => item.repoFile)).size).toBe(plan.migrations.length);
   });
 
-  it('replays one already-ledgered TEST migration but inserts ledger identity for every other absent pending migration', () => {
+  it('verifies one already-ledgered TEST migration without replaying its DDL and inserts every other absent identity', () => {
     const plan = buildPlan();
     const replay = replayMigration(plan);
     const absent = plan.migrations.find((item:any) => item.repoFile !== replay.repoFile)!;
@@ -99,11 +99,12 @@ describe('Production DB exact-plan remote TEST validator #447', () => {
     const absentDecision = built.decisions.find((item:any) => item.repoFile === absent.repoFile);
     expect(replayDecision).toMatchObject({ existedBefore: true });
     expect(absentDecision).toMatchObject({ existedBefore: false });
-    expect(built.sql).toContain(`G3 exact-main validation ${replay.repoFile}`);
+    expect(built.sql).toContain(`G3 replay verification ${replay.repoFile}`);
+    expect(built.sql).not.toContain(`G3 exact-main validation ${replay.repoFile}`);
     expect(built.sql).toContain(`G3 exact-main validation ${absent.repoFile}`);
     const absentCount = plan.migrations.length - 1;
     expect(built.sql.match(/insert into supabase_migrations\.schema_migrations/g)?.length).toBe(absentCount);
-    expect(built.sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(built.sql.indexOf(`G3 exact-main validation ${replay.repoFile}`));
+    expect(built.sql.indexOf('pg_try_advisory_xact_lock')).toBeLessThan(built.sql.indexOf(`G3 replay verification ${replay.repoFile}`));
   });
 
   it('fails closed on TEST ledger version collision before a mutable request is built', () => {

@@ -126,7 +126,7 @@ describe('Production DB G3 exact-plan TEST validator #447', () => {
     })).toThrow(/TEST_LEDGER_VERSION_COLLISION/);
   });
 
-  it('replays exact SQL for an already-present TEST migration without inserting a duplicate ledger row', () => {
+  it('does not replay DDL for an already-present TEST migration or insert a duplicate ledger row', () => {
     const built = buildAtomicTestReleaseValidationSql({
       plan: plan(),
       aliasMap: aliasMap(),
@@ -144,7 +144,8 @@ describe('Production DB G3 exact-plan TEST validator #447', () => {
     expect(built.decisions).toEqual([
       expect.objectContaining({ repoFile: REPO_FILE, existedBefore: true }),
     ]);
-    expect(built.sql).toContain(SQL);
+    expect(built.sql).toContain(`G3 replay verification ${REPO_FILE}`);
+    expect(built.sql).not.toContain(SQL);
     expect(built.sql).not.toMatch(/insert into supabase_migrations\.schema_migrations/);
   });
 
