@@ -163,6 +163,12 @@ function fail(code, message) {
   throw error;
 }
 
+// Evidence digests must not depend on the process locale. Native string
+// comparison gives us one deterministic UTF-16 code-unit order everywhere.
+export function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 export function stableStringify(value) {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -236,7 +242,7 @@ function normalizeMigrationLedger(value) {
       fail('INVALID_LEDGER_IDENTITY', `migrationLedger.identities[${index}] is invalid`);
     }
     return { version, name };
-  }).sort((left, right) => left.version.localeCompare(right.version) || left.name.localeCompare(right.name));
+  }).sort((left, right) => compareText(left.version, right.version) || compareText(left.name, right.name));
   const identityKeys = identities.map((identity) => `${identity.version}\u0000${identity.name}`);
   if (new Set(identityKeys).size !== identityKeys.length) fail('DUPLICATE_LEDGER_IDENTITY', 'migration identities must be unique');
   const digest = normalizeDigest(value.digest, 'migrationLedger.digest');
@@ -274,7 +280,7 @@ function normalizePrivileges(value, label) {
     if (!PRIVILEGES.has(privilege)) fail('INVALID_ACL_PRIVILEGE', `${label}[${index}].privilege is invalid`);
     if (typeof item.grantable !== 'boolean') fail('INVALID_ACL_GRANTABLE', `${label}[${index}].grantable must be boolean`);
     return { grantee: normalizeRole(item.grantee, `${label}[${index}].grantee`), privilege, grantable: item.grantable };
-  }).sort((left, right) => `${left.grantee}|${left.privilege}`.localeCompare(`${right.grantee}|${right.privilege}`));
+  }).sort((left, right) => compareText(`${left.grantee}|${left.privilege}`, `${right.grantee}|${right.privilege}`));
   const keys = privileges.map((item) => `${item.grantee}|${item.privilege}`);
   if (new Set(keys).size !== keys.length) fail('DUPLICATE_ACL_PRIVILEGE', `${label} contains a duplicate privilege`);
   return privileges;
@@ -294,7 +300,7 @@ function normalizeAcl(value) {
       forceRowSecurity: table.forceRowSecurity, policyCount: table.policyCount,
       privileges: normalizePrivileges(table.privileges, `acl.tables[${index}].privileges`),
     };
-  }).sort((left, right) => left.name.localeCompare(right.name));
+  }).sort((left, right) => compareText(left.name, right.name));
   const tableKeys = tables.map((item) => `${item.schema}.${item.name}`);
   if (new Set(tableKeys).size !== tableKeys.length) fail('DUPLICATE_ACL_TABLE', 'acl.tables contains a duplicate table');
 
@@ -309,7 +315,7 @@ function normalizeAcl(value) {
       owner: fn.owner, securityDefiner: fn.securityDefiner,
       privileges: normalizePrivileges(fn.privileges, `acl.functions[${index}].privileges`),
     };
-  }).sort((left, right) => `${left.name}(${left.identityArguments})`.localeCompare(`${right.name}(${right.identityArguments})`));
+  }).sort((left, right) => compareText(`${left.name}(${left.identityArguments})`, `${right.name}(${right.identityArguments})`));
   const functionKeys = functions.map((item) => `${item.schema}.${item.name}(${item.identityArguments})`);
   if (new Set(functionKeys).size !== functionKeys.length) fail('DUPLICATE_ACL_FUNCTION', 'acl.functions contains a duplicate function');
   return { tables, functions };

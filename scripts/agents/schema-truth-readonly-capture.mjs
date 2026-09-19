@@ -13,6 +13,7 @@ import {
   METADATA_QUERY_VERSION,
   PUBLIC_SCHEMA_METADATA_SQL,
   SURFACES,
+  compareText,
   compareMetadataEvidence,
   normalizeMetadataEvidencePacket,
   sha256,
@@ -162,7 +163,7 @@ function canonicalizePrivileges(value, label) {
       privilege: typeof item.privilege === 'string' ? item.privilege.toUpperCase() : item.privilege,
       grantable: item.grantable,
     };
-  }).sort((left, right) => `${left.grantee}|${left.privilege}`.localeCompare(`${right.grantee}|${right.privilege}`));
+  }).sort((left, right) => compareText(`${left.grantee}|${left.privilege}`, `${right.grantee}|${right.privilege}`));
 }
 
 export function canonicalizeAclSnapshot(snapshot) {
@@ -185,7 +186,7 @@ export function canonicalizeAclSnapshot(snapshot) {
       policyCount: table.policyCount,
       privileges: canonicalizePrivileges(table.privileges, `aclSnapshot.tables[${index}].privileges`),
     };
-  }).sort((left, right) => String(left.name).localeCompare(String(right.name)));
+  }).sort((left, right) => compareText(String(left.name), String(right.name)));
 
   const functions = snapshot.functions.map((fn, index) => {
     assertExactKeys(
@@ -201,7 +202,7 @@ export function canonicalizeAclSnapshot(snapshot) {
       securityDefiner: fn.securityDefiner,
       privileges: canonicalizePrivileges(fn.privileges, `aclSnapshot.functions[${index}].privileges`),
     };
-  }).sort((left, right) => `${left.name}(${left.identityArguments})`.localeCompare(`${right.name}(${right.identityArguments})`));
+  }).sort((left, right) => compareText(`${left.name}(${left.identityArguments})`, `${right.name}(${right.identityArguments})`));
 
   return { tables, functions };
 }
@@ -216,7 +217,7 @@ export function normalizeMigrationLedgerRows(rows) {
       fail('INVALID_READONLY_EVIDENCE', `migrationLedgerRows[${index}] must preserve exact string identities`);
     }
     return { version: row.version, name: row.name };
-  }).sort((left, right) => left.version.localeCompare(right.version) || left.name.localeCompare(right.name));
+  }).sort((left, right) => compareText(left.version, right.version) || compareText(left.name, right.name));
 
   return { state: 'PRESENT', identities, digest: digest(identities) };
 }
