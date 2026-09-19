@@ -106,6 +106,26 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  // 0124 only enables RLS on the historical recipient shape before 0116
+  // completes the canonical table/policy shape. The same live-TEST RLS
+  // assertions cover the compatibility precondition and the successor.
+  '0124_issue_18_owner_notify_legacy_shape': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/db/owner-notify-rls.18.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/owner-notify-rls.18.test.ts',
+        fragment: 'B 店登入使用者讀不到 A 店的 owner-notify bind request（tenant 隔離）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/owner-notify-rls.18.test.ts',
+        fragment: 'B 店登入使用者不能直接在 A 店建立 owner-notify bind request',
+      }),
+    ]),
+  }),
   // #455 TERRA_BUILD (2026-09-16): support_chat_threads/support_chat_messages
   // RLS (p_sct_r/p_sct_i/p_sct_u/p_scm_r/p_scm_i) already has real live-TEST
   // tenant-boundary coverage in the existing #? integration suite. There is no
