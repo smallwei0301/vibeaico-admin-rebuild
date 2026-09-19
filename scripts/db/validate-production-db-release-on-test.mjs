@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import process from 'node:process';
+import postgres from 'postgres';
 
 import {
   buildProductionDbReleasePlan,
@@ -17,11 +18,53 @@ const PRODUCTION_PROJECT_REF = 'egehnijjpgijmccagxac';
 const CREATED_BY = 'vibeaico-g3-test-validator';
 const LOCK_KEY = `vibeaico-g3-test-release:${TEST_PROJECT_REF}`;
 const SHA = /^[0-9a-f]{40}$/;
+const TEST_SESSION_POOLER_HOST = /^aws-\d+-ap-northeast-1\.pooler\.supabase\.com$/i;
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
   throw error;
+}
+function decodeUsername(value) {
+  try { return decodeURIComponent(String(value ?? '')); } catch { fail('MALFORMED_TEST_RELEASE_URL', 'TEST release username is not valid URL encoding'); }
+}
+/** The direct TEST path is intentionally bound to the one canonical test pooler. */
+export function parseProjectBoundTestDbReleaseUrl(connectionString) {
+  const raw = String(connectionString ?? '').trim();
+  if (!raw) fail('MISSING_TEST_RELEASE_URL', 'TEST_DB_RELEASE_URL is required');
+  let parsed;
+  try { parsed = new URL(raw); } catch { fail('MALFORMED_TEST_RELEASE_URL', 'TEST_DB_RELEASE_URL is not a valid PostgreSQL URL'); }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) fail('MALFORMED_TEST_RELEASE_URL', 'TEST_DB_RELEASE_URL must use postgres/postgresql protocol');
+  if (String(parsed.port || '5432') !== '5432') fail('TEST_RELEASE_URL_SESSION_MODE_REQUIRED', 'TEST release URL must use session/direct port 5432');
+  if ((parsed.pathname || '/postgres').replace(/^\//, '') !== 'postgres') fail('TEST_RELEASE_URL_DATABASE_MISMATCH', 'TEST release URL must target postgres');
+  if (!TEST_SESSION_POOLER_HOST.test(String(parsed.hostname ?? '')) || decodeUsername(parsed.username) !== `postgres.${TEST_PROJECT_REF}`) {
+    fail('TEST_RELEASE_URL_PROJECT_MISMATCH', 'TEST release URL must bind the canonical postgres TEST pooler user');
+  }
+  if (!parsed.password) fail('TEST_RELEASE_URL_PASSWORD_REQUIRED', 'TEST release URL requires a password');
+  const entries = [...parsed.searchParams.entries()];
+  if (parsed.hash || entries.length !== 1 || entries[0][0] !== 'sslmode' || String(entries[0][1]).toLowerCase() !== 'verify-full') {
+    fail('TEST_RELEASE_TLS_VERIFICATION_REQUIRED', 'TEST release URL must use exactly sslmode=verify-full');
+  }
+  return { projectRef: TEST_PROJECT_REF, role: 'postgres', transportMode: 'SUPAVISOR_SESSION', connectionString: raw };
+}
+async function queryViaTestDbReleaseUrl({ connectionString, sql: statement, readOnly }) {
+  parseProjectBoundTestDbReleaseUrl(connectionString);
+  const client = postgres(connectionString, { max: 1, prepare: false, connect_timeout: 15, idle_timeout: 5 });
+  try {
+    if (readOnly) {
+      return await client.begin(async (transaction) => {
+        await transaction.unsafe('set local transaction read only');
+        return transaction.unsafe(statement);
+      });
+    }
+    return await client.unsafe(statement);
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+}
+function directTestConnectionString(value) {
+  const raw = String(value ?? '').trim();
+  return /^postgres(?:ql)?:\/\//i.test(raw) ? raw : null;
 }
 
 function sqlLiteral(value) {
@@ -122,10 +165,26 @@ export function buildTestReleasePlanFromCheckout({
  */
 export async function captureTestProviderLedger({
   token,
+  connectionString = null,
+  directQuery = queryViaTestDbReleaseUrl,
   projectRef = TEST_PROJECT_REF,
   fetchImpl = fetch,
 } = /** @type {any} */ ({})) {
   const target = assertTestReleaseTarget(projectRef);
+  if (connectionString) {
+    parseProjectBoundTestDbReleaseUrl(connectionString);
+    const rows = await directQuery({
+      connectionString,
+      sql: 'select version, name, created_by, idempotency_key from supabase_migrations.schema_migrations order by version, name',
+      readOnly: true,
+    });
+    if (!Array.isArray(rows)) fail('TEST_LEDGER_READ_FAILED', 'TEST direct ledger read did not return rows');
+    return rows.map((row) => ({
+      version: String(row?.version ?? ''), name: String(row?.name ?? ''),
+      created_by: row?.created_by == null ? null : String(row.created_by),
+      idempotency_key: row?.idempotency_key == null ? null : String(row.idempotency_key),
+    }));
+  }
   if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN is required');
   const response = await fetchImpl(`${API}/v1/projects/${target}/database/query/read-only`, {
     method: 'POST',
@@ -211,8 +270,12 @@ export function buildAtomicTestReleaseValidationSql({
 /**
  * @param {{token?: string, projectRef?: string, sql?: string, fetchImpl?: typeof fetch}} input
  */
-async function executeAtomicTestRelease({ token, projectRef = TEST_PROJECT_REF, sql, fetchImpl = fetch } = /** @type {any} */ ({})) {
+async function executeAtomicTestRelease({ token, connectionString = null, directQuery = queryViaTestDbReleaseUrl, projectRef = TEST_PROJECT_REF, sql, fetchImpl = fetch } = /** @type {any} */ ({})) {
   const target = assertTestReleaseTarget(projectRef);
+  if (connectionString) {
+    await directQuery({ connectionString, sql, readOnly: false });
+    return;
+  }
   if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN is required');
   const response = await fetchImpl(`${API}/v1/projects/${target}/database/query`, {
     method: 'POST',
@@ -239,7 +302,9 @@ function verifyPostTestLedger(plan, rows) {
  * never a Production mutation credential.
  * @param {{
  *   plan: any,
- *   token: string,
+ *   token?: string,
+ *   connectionString?: string,
+ *   directQuery?: (input:{connectionString:string, sql:string, readOnly:boolean}) => Promise<any>,
  *   projectRef?: string,
  *   sourceRunId: string | number,
  *   sourceRunAttempt: number,
@@ -251,6 +316,8 @@ function verifyPostTestLedger(plan, rows) {
 export async function validateProductionDbReleasePlanOnTest({
   plan,
   token,
+  connectionString = null,
+  directQuery = queryViaTestDbReleaseUrl,
   projectRef = TEST_PROJECT_REF,
   sourceRunId,
   sourceRunAttempt,
@@ -259,7 +326,9 @@ export async function validateProductionDbReleasePlanOnTest({
   runner = spawnSync,
 } = /** @type {any} */ ({})) {
   const target = assertTestReleaseTarget(projectRef);
-  if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN is required');
+  const directConnectionString = connectionString || directTestConnectionString(token);
+  if (directConnectionString) parseProjectBoundTestDbReleaseUrl(directConnectionString);
+  else if (!String(token ?? '').trim()) fail('MISSING_TEST_RELEASE_TOKEN', 'TEST_DB_RELEASE_TOKEN or TEST_DB_RELEASE_URL is required');
   const runId = String(sourceRunId ?? '').trim();
   const runAttempt = Number(sourceRunAttempt);
   if (!runId || !Number.isSafeInteger(runAttempt) || runAttempt < 1) fail('INVALID_TEST_RUN_IDENTITY', 'GitHub run id/attempt are required');
@@ -268,10 +337,10 @@ export async function validateProductionDbReleasePlanOnTest({
   const readCanonicalSql = canonicalReader(repoRoot);
   verifyProductionDbReleasePlan({ plan, aliasMap, readCanonicalSql });
 
-  const before = await captureTestProviderLedger({ token, projectRef: target, fetchImpl });
+  const before = await captureTestProviderLedger({ token, connectionString: directConnectionString, directQuery, projectRef: target, fetchImpl });
   const built = buildAtomicTestReleaseValidationSql({ plan, aliasMap, liveLedgerRows: before, readCanonicalSql });
-  await executeAtomicTestRelease({ token, projectRef: target, sql: built.sql, fetchImpl });
-  const after = await captureTestProviderLedger({ token, projectRef: target, fetchImpl });
+  await executeAtomicTestRelease({ token, connectionString: directConnectionString, directQuery, projectRef: target, sql: built.sql, fetchImpl });
+  const after = await captureTestProviderLedger({ token, connectionString: directConnectionString, directQuery, projectRef: target, fetchImpl });
   const post = verifyPostTestLedger(plan, after);
 
   return {
@@ -318,6 +387,7 @@ async function main() {
       const evidence = await validateProductionDbReleasePlanOnTest({
         plan,
         token: process.env.TEST_DB_RELEASE_TOKEN,
+        connectionString: process.env.TEST_DB_RELEASE_URL,
         projectRef: process.env.TEST_PROJECT_REF || TEST_PROJECT_REF,
         sourceRunId: process.env.GITHUB_RUN_ID,
         sourceRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
