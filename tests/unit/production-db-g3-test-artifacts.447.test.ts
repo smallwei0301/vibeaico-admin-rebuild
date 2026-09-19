@@ -89,6 +89,55 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     }
   });
 
+  it('accepts only the explicitly documented shared-TEST pending suites', () => {
+    const result = buildProductionDbTestCoverageEvidence({
+      report: report({
+        numTotalTests: 5,
+        numPassedTests: 3,
+        numPendingTests: 2,
+        testResults: [
+          ...report().testResults,
+          {
+            name: '/home/runner/work/repo/repo/tests/integration/db/richmenu-asset-retirement.589.test.ts',
+            assertionResults: [
+              { status: 'pending', fullName: 'Issue #589 real PostgreSQL retirement contract re-reads references' },
+              { status: 'pending', fullName: 'Issue #589 real PostgreSQL retirement contract keeps tenant scope' },
+            ],
+          },
+        ],
+      }),
+      plan: plan([{ repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR', sha256: '2'.repeat(64) }]),
+      sourceRunId: '1',
+      sourceRunAttempt: 1,
+    });
+    expect(result).toMatchObject({
+      executedTests: 3,
+      totalTests: 5,
+      pendingTests: 2,
+      allowedPendingTests: 2,
+    });
+  });
+
+  it('rejects a pending assertion outside the canonical-TEST allowlist', () => {
+    expect(() => buildProductionDbTestCoverageEvidence({
+      report: report({
+        numTotalTests: 4,
+        numPassedTests: 3,
+        numPendingTests: 1,
+        testResults: [
+          ...report().testResults,
+          {
+            name: '/home/runner/work/repo/repo/tests/integration/api/unknown.test.ts',
+            assertionResults: [{ status: 'pending', fullName: 'unexpected skipped coverage' }],
+          },
+        ],
+      }),
+      plan: plan([{ repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR', sha256: '2'.repeat(64) }]),
+      sourceRunId: '1',
+      sourceRunAttempt: 1,
+    })).toThrow(/UNAPPROVED_VITEST_PENDING/);
+  });
+
   it('rejects 0105 coverage if required tenant-boundary or negative-role assertions did not actually pass', () => {
     const missingBoundary = report({
       numTotalTests: 2,

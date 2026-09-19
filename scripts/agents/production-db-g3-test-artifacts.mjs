@@ -14,6 +14,27 @@ const SHOP_A_ID = 'a1000000-0000-4000-8000-000000000001';
 const SHA = /^[0-9a-f]{40}$/;
 const DIGEST = /^[0-9a-f]{64}$/;
 
+// These suites are intentionally scoped to LOCAL_ISOLATED PostgreSQL or to the
+// pre-0121 downgrade contract.  The shared canonical TEST lane has the current
+// schema, so Vitest reports them as pending there even though the real remote
+// integration and E2E suites execute normally.  Keep this allowlist narrow and
+// bind each entry to its suite title so a newly skipped test cannot silently
+// enlarge the G3 evidence boundary.
+const CANONICAL_TEST_PENDING_ALLOWLIST = Object.freeze([
+  Object.freeze({
+    file: 'tests/integration/api/booking-addons.17.test.ts',
+    suite: 'schema 尚未套用 migration 0121 時的安全降級',
+  }),
+  Object.freeze({
+    file: 'tests/integration/db/richmenu-asset-retirement.589.test.ts',
+    suite: 'Issue #589 real PostgreSQL retirement contract',
+  }),
+  Object.freeze({
+    file: 'tests/integration/db/production-db-writer-mechanics.447.test.ts',
+    suite: 'Issue #447 dedicated Production-writer mechanics on isolated PostgreSQL',
+  }),
+]);
+
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
   error.code = code;
@@ -75,6 +96,27 @@ function passedAssertions(report) {
   return rows;
 }
 
+function pendingAssertions(report) {
+  const rows = [];
+  for (const file of Array.isArray(report?.testResults) ? report.testResults : []) {
+    const filePath = repoTestPath(file?.name ?? file?.testFilePath ?? '');
+    for (const assertion of Array.isArray(file?.assertionResults) ? file.assertionResults : []) {
+      const status = String(assertion?.status ?? '').toLowerCase();
+      if (status !== 'pending' && status !== 'skipped') continue;
+      rows.push({
+        file: filePath,
+        name: String(assertion?.fullName ?? assertion?.title ?? '').trim(),
+      });
+    }
+  }
+  return rows;
+}
+
+function isAllowedCanonicalTestPending(row) {
+  return CANONICAL_TEST_PENDING_ALLOWLIST.some((entry) =>
+    row.file === entry.file && row.name.includes(entry.suite));
+}
+
 function includesAssertion(rows, file, fragment) {
   return rows.some((row) => row.file === file && row.name.includes(fragment));
 }
@@ -95,8 +137,19 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
   const failed = Number(report.numFailedTests ?? 0);
   const pending = Number(report.numPendingTests ?? 0);
   const todo = Number(report.numTodoTests ?? 0);
-  if (report.success !== true || !Number.isSafeInteger(total) || total < 1 || passed !== total || failed !== 0 || pending !== 0 || todo !== 0) {
-    fail('INCOMPLETE_VITEST_COVERAGE', `Vitest report must be fully passing: total=${total}, passed=${passed}, failed=${failed}, pending=${pending}, todo=${todo}`);
+  const counts = [total, passed, failed, pending, todo];
+  if (report.success !== true || counts.some((value) => !Number.isSafeInteger(value) || value < 0) || total < 1
+    || passed + failed + pending + todo !== total || failed !== 0 || todo !== 0) {
+    fail('INCOMPLETE_VITEST_COVERAGE', `Vitest report must be fully passing apart from the explicit canonical-TEST pending allowlist: total=${total}, passed=${passed}, failed=${failed}, pending=${pending}, todo=${todo}`);
+  }
+
+  const pendingRows = pendingAssertions(report);
+  if (pendingRows.length !== pending) {
+    fail('INCOMPLETE_VITEST_COVERAGE', `Vitest reported ${pending} pending tests but exposed ${pendingRows.length} pending assertion rows`);
+  }
+  const unapprovedPending = pendingRows.filter((row) => !isAllowedCanonicalTestPending(row));
+  if (unapprovedPending.length) {
+    fail('UNAPPROVED_VITEST_PENDING', `canonical TEST pending assertions are outside the explicit allowlist: ${unapprovedPending.map((row) => `${row.file}:${row.name}`).join(' | ')}`);
   }
 
   const assertions = passedAssertions(report);
@@ -138,7 +191,10 @@ export function buildProductionDbTestCoverageEvidence({ report, plan, sourceRunI
     testProjectRef: TEST_PROJECT_REF,
     sourceRunId: sourceRun.runId,
     sourceRunAttempt: sourceRun.runAttempt,
-    executedTests: total,
+    executedTests: passed,
+    totalTests: total,
+    pendingTests: pending,
+    allowedPendingTests: pendingRows.length,
     executedFiles,
     migrations,
     reportSuccess: true,
