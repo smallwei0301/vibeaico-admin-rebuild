@@ -113,6 +113,10 @@ port `5432`、`postgres` database 與唯一 `sslmode=verify-full` 的連線，�
 它絕不接受 Production host、任意 project ref 或 writer URL，因此此替代 transport 只改變驗證通道，
 不擴大 G3 的 TEST-only 權限。
 
+這個 transport dependency 本身是 source-only；其 PR 不宣稱 canonical TEST 或 Production
+readiness。合併到 `main` 後，才可用 repository secret 執行 exact-main G3 與 read-only
+schema observer，並把兩個成功 workflow run 綁入不可由 ACTIVATE PR 自行補造的 readiness receipt。
+
 ## 8. G4：Backup / Recovery（依 risk tier）
 
 G4 驗證的是「本 release 有與風險相稱的可恢復路徑」，不是要求所有 migration 都跑同一套 Production backup API。
