@@ -103,6 +103,7 @@
 | PB-040 | 把埋點欄位建好，然後沒有埋 | 2026-09-14 我在 #411 結案時親自判定「前九本 Run 不可評分的原因是全程沒埋點」，並宣告「從現在起的 Run 即時埋點」。接著開了 `2026-09-14-product-delivery-r01`，寫了三段說明它會怎麼埋——然後 `modelUsage.tasks: 0`、`ci.fullCiRuns: 0`、`closureSweeps: 0`、`delivery: {}`。同一輪還完整違反了模型分層（兩張 TERRA_BUILD 都跑在 Opus 上，PB-036 第三次）、`lunaTasks: 0`、`solTouches: 0`。**記帳的架子搭好卻不記帳，比誠實地說「沒埋點」更糟——它看起來像有在做。** 與 PB-039 是同一種病：看起來在守，實際上沒有。**每完成一個可觀察事件（委派、CI run、closure sweep、開/關 Issue）就當場寫進 ledger，不留到收尾**；收尾時只准填當下仍可觀察的量，其餘維持 null。 | `docs/metrics/agent-runs/2026-09-14-product-delivery-r01.json`、#411、PB-036、PB-039 |
 | PB-041 | 一條**永遠失敗**的斷言，比恆真的斷言更糟 | PB-039 講的是「從來沒有受測對象的 guard」——恆真，沒用。它有個反面：**恆假**。`0108` 的 enum 值域後置斷言寫成 `array_agg(e.enumlabel::text order by e.enumlabel) is distinct from array['PAID','PARTIAL','REFUND_PENDING','REFUNDED','UNPAID']`，看起來嚴謹（「不多不少」），實際上永遠不相等：`pg_enum.enumlabel` 的型別是 `name`，排序走 C collation，共同前綴 `REFUND` 之後比 `E`(0x45) 與 `_`(0x5F)，所以實際順序是 `REFUNDED` 在 `REFUND_PENDING` **之前**，而手寫的期望陣列把兩者寫反。結果不是「驗得寬鬆」，是**這支 migration 在任何環境都套不上去**。本機 unit 測試沒抓到，因為它只對 migration 做字串比對；抓到它的是 CI 的 fresh-install replay，以及 Final Risk 覆核（`claude-fable-5-1`）在本機 PG16 上的實際重現。**預防**：(1) 斷言「集合相等」就用集合運算（不在預期集合內的值 + 數量），不要比對有序陣列——排序規則是環境變數，不是常數；(2) 對 catalog 欄位排序前先確認它的型別，`name` 與 `text` 的 collation 不同；(3) 新增或修改後置斷言時，至少跑一次**真的資料庫**，字串比對的 unit 測試證明不了斷言會通過。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-039、PB-026 |
 | PB-042 | 用 migration 帳本比對判斷「某環境缺什麼」，會得到危險的錯誤結論 | 2026-09-14 排查 shared TEST 時，我把 `supabase_migrations.schema_migrations` 的檔名集合與 `origin/main:supabase/migrations/` 的檔名集合做 `comm` 比對，得到「canonical 有 36 支 TEST 沒套用」（含 `0001`–`0014` 基礎建設與 `0066`／`0087` tour domain）與「TEST 有 37 支 canonical 沒有」。**那個結論是錯的**：實查 `to_regclass` 後，`tour_orders`(0087)、`trip_plans`(0066)、`tenants`(0003)、`bookings_view`(0007)、`trip_departure_staff`(0092)、`is_tenant_member()`(0010) 全都存在。原因是 shared TEST 是從 `supabase/local-migrations/historical-integration-baseline/` 那套**另一個編號體系**建起來的，帳本記的是 overlay 的檔名，與 canonical 檔名天生對不上。若照那張比對表去「補套 36 支」，會在一個物件已經存在的資料庫上重跑建表與 ACL，後果不可逆。這是 PB-017／PB-037「比對內容，不要只比對檔名」的第三種變形——這次連「檔名」都不是同一個命名空間。**預防**：(1) 判斷某環境是否具備某個物件，一律查 `to_regclass`／`information_schema`／`pg_proc` 等**實際 catalog**，不查 migration 帳本；(2) 帳本只能證明「這個檔名被這個環境跑過」，不能證明「這個環境缺什麼」；(3) 要宣告某支 canonical migration 未套用，必須拿出該 migration 所建物件不存在的實查證據——`0105` 的判定之所以成立，是因為 `to_regclass('public.traveler_risk_policies')` 回 `null`，不是因為帳本裡沒有它。 <br><br>**同一天的第二個實例：只比對欄位，會漏掉 trigger 與 function——而行為就在那裡。** 確認了「欄位清單」之後，我向 Owner 回報 shared TEST 的漂移是「三個形狀不對的欄位，範圍有限可列舉」。執行 `drop column` 時才被資料庫擋下來：`cannot drop column formation_status ... other objects depend on it`。實查後，TEST 上是一整套**活的**舊 #41 實作——15 個 function 與 8 個 trigger，包含 `decide_tour_formation`、`record_tour_order_payment_41` 等完整業務 RPC。委派的 scout 用 `git grep` 查函式名，正確回報「repo 端零引用」，**但那個方法本身也有盲點**：trigger 是自動觸發的，不需要被任何程式碼「引用」，所以 grep 找不到「某測試依賴 trigger 副作用」這種依賴。親讀 `snapshot_trip_departure_formation` 的函式本體才看到它會`raise FORMATION_DEADLINE_INVALID` 拒絕成團截止日已過的 INSERT、並在欄位為 null 時自動改寫 `min_to_depart_snapshot`——canonical `0107` 沒有這個 trigger，因此 TEST 的**寫入行為**不等於 canonical，整合測試在那裡跑出來的結果是假訊號。**預防**：(1) 盤點 schema 漂移時，欄位、constraint、index、trigger、function、view、RPC 授權要各自查一遍，缺一項就不要宣稱「範圍可列舉」；(2) 判斷「移除某物件會不會弄壞東西」時，`git grep` 名稱只能證明「沒有人按名字呼叫它」，證明不了「沒有人依賴它的副作用」——自動觸發的物件必須讀本體；(3) 對 Owner 回報範圍時，明說這份清單是用什麼維度查出來的，好讓讀的人知道它可能漏掉什麼。 | shared TEST `nmwhwngojosmagjuvxol`；PB-017、PB-037、PB-026 |
+| PB-053 | E2E 先以輸入控件文字判定保存完成，會與送出中的草稿撞名 | 保存完成前先等待只有成功才出現的畫面轉換／已保存標記，並保留重新載入查證；同字串 draft 與 persisted 並存時不用未限定 `getByText` | `tests/e2e/support-chat-threads.spec.ts`；Issue #589／PR #615 |
 | PB-043 | 在乾淨的最小 schema 上驗 migration，驗不出「既有資料」類的缺陷 | 2026-09-14 的 `0108` 覆核：build 端**確實**起了一個真的 PostgreSQL 16、跑了 9 次 INSERT 探測與突變測試——方法是對的，比字串比對強得多。但它是在一個**自己現建的最小 schema** 上跑的，那張表裡沒有任何既有列。於是它沒測出：`refunded_amount` 是本檔**新增**的欄位（`not null default 0`），而 M1 的 `check (payment_status::text <> 'REFUNDED' or (paid_amount > 0 and refunded_amount > 0))` 會在 `add constraint` 當下驗證既有資料——任何既有的 REFUNDED 訂單加完欄位後都是 `refunded_amount = 0`，於是整支 migration 以 23514 失敗。同一支檔案裡的 M2 有既有資料前置 guard，M1 沒有，兩個等價風險處理方式不對稱。**預防**：(1) 新增 CHECK 時先問「這條約束會不會對既有列失敗」，特別是當約束引用的欄位是**本檔新增**的（新欄位的 default 幾乎必然不滿足誠實性約束）；(2) 本機探測除了空表，至少要塞一列「本檔之前就合法、加上新約束後會違規」的既有資料；(3) 這類 migration 要嘛附既有資料前置 guard 並明確中止，要嘛說明為何既有資料不可能違規——不得靠「目前那張表是空的」，空表是當下的偶然不是保證。 | `supabase/migrations/0108_issue_41_payment_state_model.sql`、PB-026 |
 
 ## 事件紀錄
@@ -1762,3 +1763,27 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 驗證：#583 exact head `a638bcb90a578b97330fb3c4bb2ad8092771a297` 的 repository integrity、ledger map、typecheck、完整 unit 與 build 實際通過；integration 與 local-isolated 依 SOURCE_ONLY policy skip，沒有冒充真 DB／Storage E2E。Agent WIP Guard 與 GPT-5.6 Sol Final Risk PASS。merge 後 current main 已重讀 `src/server/storage-cleanup.ts`，確認 fail-closed shared-reference guard 存在。
 - 狀態：keyword-reply bucket 已防止；同族的其他 bucket 與整列 DELETE cleanup 仍由 #572 監看中。
 - 相關教訓：PB-023（查詢失敗不可冒充空結果）、PB-044（破壞性動作的查證有效期有限）。
+
+### PB-053 — E2E 先以輸入控件文字判定保存完成，會與送出中的草稿撞名
+
+- 首次／最近：2026-09-20／2026-09-20
+- 發生次數：1
+- Issue／PR／CI：Issue #589；PR #615；check CI `35490699629`；isolated integration/E2E/cleanup `35490699595`
+- 分類：CI／E2E／證據時序
+- 事件：`tests/e2e/support-chat-threads.spec.ts` 原先用 `getByText(body)` 判定 support thread 已保存。React textarea 仍保留相同輸入值時，這個 locator 會先命中尚未送出的輸入控件；測試因此在保存完成前開始等待通知狀態，造成不穩定的 10 秒等待。
+- 證據：PR #615 的修正先等待「內容」field hidden，再對已保存訊息做斷言；exact head `6cd5706b05c31ce8798b79a99fd39088b6a1fdc1` 的 check CI `35490699629` 成功，isolated run `35490699595` 的 integration、E2E 與 cleanup 成功。
+- 根因：測試把「文字仍存在於 DOM」當成「保存副作用已完成」，沒有先排除仍可編輯的輸入控件。相同字串同時存在於 draft input 與 persisted message 時，寬泛文字 locator 無法表達狀態邊界。
+- 影響：測試可能在真正的保存／通知狀態可觀察前就進入 timeout；失敗位置會看似通知問題，卻沒有證明通知或保存本身有錯。#589 release 的 G3 r15（`35488656009`）E2E 失敗且 cleanup 未執行，不能當作本修正的 release evidence。
+- 修正：先等待輸入控件（「內容」field）隱藏，確認送出中的編輯狀態已離開，再斷言保存後的訊息；後續仍應以保存成功專屬的畫面轉換／已保存標記及重新載入查證作為完成訊號；保留 exact-head CI 與 isolated cleanup 證據的分層記錄。
+- 預防：涉及保存、送出或非同步通知的 E2E，先等待只有保存成功才出現的畫面轉換／已保存標記，並保留重新載入查證；同一內容可能同時出現在 draft 與 persisted view 時，不使用未限定容器的 `getByText` 作完成訊號。每次修正後分開記錄 check、integration、E2E、cleanup；失敗且 cleanup 未跑不得宣稱 release evidence。
+- 驗證：exact head `6cd5706b05c31ce8798b79a99fd39088b6a1fdc1` 的 `35490699629` check 成功；`35490699595` isolated integration/E2E/cleanup 成功。未重試被平台拒絕的 r16 workflow。
+- 狀態：已防止；同類 E2E locator／狀態時序問題仍監看中。
+
+### PB-054 — 不可把截斷的讀取結果當作完整檔案覆寫
+
+- 首次／最近：2026-09-20／2026-09-20；發生次數：1。
+- 範圍：#589／#615 文件收尾分支 `docs/615-model-governance-closeout`，未合併的 `ae56f06224ce0a42715abded9f3105b4881e781f`。
+- 事件／根因：透過 connector 全檔替換時使用被截斷的讀取輸出，導致 Playbook 非預期刪除約 759 行；建立 PR 前的差異核對發現並停止。
+- 修正：從本地完整 main 基線加預期增補取回全部內容，以 guarded Contents update 追加修復 commit `21cf6621edde0beb7157e48bb937e9609cd3561d`，不改寫歷史、不合併損壞版本。
+- 預防：全檔替換必須使用完整原始內容，確認讀取未截斷；提交後檢查 exact remote head 的檔案位元與差異，新增教訓不應大量刪除既有內容。畫面摘要不能作全檔寫入來源。
+- 驗證：修復後比較 current main 與遠端分支，Playbook 只增加預期教訓；提交 PR 前再次核對無刪除。此事故未影響 main、產品或資料庫。
