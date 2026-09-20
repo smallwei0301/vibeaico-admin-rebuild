@@ -8,6 +8,9 @@ import { normalizeProductionDbImpactManifest } from '../../scripts/agents/produc
 import { buildObserverSnapshotFromRaw } from '../../scripts/agents/schema-drift-watch.mjs';
 
 const root = process.cwd();
+type Impact = { surface: string; objectKey: string };
+type ManifestEntry = { repoFile: string; impacts: Impact[] };
+type Manifest = { schemaVersion: 1; entries: ManifestEntry[] };
 const planFiles = [
   '0110_issue_42_plan_duration_pricetype_yearround',
   '0111_issue_46_guide_request_accept',
@@ -27,7 +30,7 @@ const plan = {
   mainSha: 'a'.repeat(40), planDigest: 'b'.repeat(64),
   migrations: planFiles.map((repoFile) => ({ repoFile, path: `supabase/migrations/${repoFile}.sql` })),
 };
-const manifest = JSON.parse(readFileSync(resolve(root, 'supabase/production-db-impact-manifest.json'), 'utf8'));
+const manifest: Manifest = JSON.parse(readFileSync(resolve(root, 'supabase/production-db-impact-manifest.json'), 'utf8'));
 
 const roots: Record<string, string[]> = {
   '0110_issue_42_plan_duration_pricetype_yearround': ['public.trip_plans.duration_minutes', 'public.trip_plans.trip_plans_price_type_check'],
@@ -71,8 +74,8 @@ function report() {
 
 describe('#589 Stage 1 production impact manifest', () => {
   it('covers all 13 planned canonical migrations with declared final-impact roots', () => {
-    const normalized = normalizeProductionDbImpactManifest(manifest);
-    const byFile = new Map(normalized.entries.map((entry) => [entry.repoFile, entry]));
+    const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
+    const byFile = new Map<string, ManifestEntry>(normalized.entries.map((entry) => [entry.repoFile, entry]));
     expect(planFiles).toHaveLength(13);
     expect([...byFile.keys()]).toEqual(expect.arrayContaining(planFiles));
     expect(byFile.get('0105_issue_44_traveler_risk_policies')!.impacts.length).toBeGreaterThan(0);
@@ -91,7 +94,7 @@ describe('#589 Stage 1 production impact manifest', () => {
   });
 
   it('uses the observer-emitted named function ACL identities and pins the planned root inventory', () => {
-    const normalized = normalizeProductionDbImpactManifest(manifest);
+    const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const inventory = normalized.entries.filter((entry) => planFiles.includes(entry.repoFile));
     const inventoryDigest = createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
     expect(inventoryDigest).toBe('ceb7d9e9cac104d8ca093d1d293aca40dbf6c4711776f44768b9bf3922be7d80');
@@ -114,15 +117,15 @@ describe('#589 Stage 1 production impact manifest', () => {
   });
 
   it('keeps compatibility-only predecessors empty and fails closed if final owners overlap', () => {
-    const normalized = normalizeProductionDbImpactManifest(manifest);
-    const byFile = new Map(normalized.entries.map((entry) => [entry.repoFile, entry]));
+    const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
+    const byFile = new Map<string, ManifestEntry>(normalized.entries.map((entry) => [entry.repoFile, entry]));
     expect(byFile.get('0124_issue_18_owner_notify_legacy_shape')!.impacts).toEqual([]);
     expect(byFile.get('0125_issue_17_booking_addons_legacy_enum')!.impacts).toEqual([]);
     expect(byFile.get('0110_issue_42_plan_duration_pricetype_yearround')!.impacts.map((impact) => impact.objectKey))
       .not.toContain('public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
 
-    const duplicate = structuredClone(manifest);
-    duplicate.entries.find((entry: any) => entry.repoFile === '0110_issue_42_plan_duration_pricetype_yearround').impacts.push({
+    const duplicate: Manifest = structuredClone(manifest);
+    duplicate.entries.find((entry) => entry.repoFile === '0110_issue_42_plan_duration_pricetype_yearround')!.impacts.push({
       surface: 'routines', objectKey: 'public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)',
     });
     expect(() => buildProductionConsistencyEvidence({ report: report(), plan, impactManifest: duplicate, mainSha: plan.mainSha, planDigest: plan.planDigest }))
