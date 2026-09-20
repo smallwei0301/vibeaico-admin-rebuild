@@ -409,7 +409,54 @@ describe("shared TEST owner policy", () => {
       .toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_pr" });
   });
 
-  it("never runs heavy TEST for docs-only changes", () => {
+  it("runs authenticated main G3 dispatches through full verification even when the exact diff is docs-only", () => {
+    const head = '3e94285fe6e9104be81bfcab43fa6e3c5a8a0b3d';
+    const firstParent = 'cc82a9bb498388b4c46578b1d0714cdf1689db3f';
+    const dispatch = {
+      eventName: "workflow_dispatch",
+      ref: "refs/heads/main",
+      sha: head,
+      docsOnly: true,
+      inputs: {
+        dispatch_reason: "main_manual",
+        expected_head: head,
+        base_revision: firstParent,
+        production_db_release_id: "release-20260920-589",
+        production_db_planned_at: "2026-09-20T00:00:00Z",
+      },
+      currentCommit: { sha: head, parents: [{ sha: firstParent }] },
+    };
+
+    expect(decideTestValidation(dispatch)).toMatchObject({
+      runTestValidation: true,
+      reason: "manual_main_g3_exact_head",
+      error: null,
+    });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, production_db_planned_at: "" },
+    })).toMatchObject({ runTestValidation: false, reason: "docs_only" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, production_db_release_id: "" },
+    })).toMatchObject({ runTestValidation: false, reason: "docs_only" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, base_revision: head },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_base" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, expected_head: firstParent },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_dispatch_expected_head" });
+    expect(decideTestValidation({
+      ...dispatch,
+      inputs: { ...dispatch.inputs, test_lane_pr: "589" },
+    })).toMatchObject({ runTestValidation: false, reason: "invalid_main_dispatch_pr" });
+    expect(decideTestValidation({ ...dispatch, ref: "refs/heads/other" }))
+      .toMatchObject({ runTestValidation: false, reason: "invalid_branch_dispatch_reason" });
+  });
+
+  it("never runs heavy TEST for ordinary docs-only changes", () => {
     const current = testPr(30);
     expect(decideTestValidation({
       eventName: "pull_request",

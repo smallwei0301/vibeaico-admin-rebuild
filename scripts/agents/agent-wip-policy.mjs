@@ -389,6 +389,15 @@ export function decideTestValidation({
       if (currentCommit?.sha !== expectedHead || firstParentSha !== baseRevision) {
         return result(false, "invalid_main_dispatch_base", "base_revision must be the authenticated first parent of the dispatched main head");
       }
+      // A release G3 request must run the canonical TEST verification even when the
+      // current main diff is documentation-only. The exact head and first-parent
+      // authentication above remain mandatory; this changes only the docs-only
+      // optimization after both explicit G3 inputs are present.
+      const productionDbReleaseId = String(inputs.production_db_release_id ?? "").trim();
+      const productionDbPlannedAt = String(inputs.production_db_planned_at ?? "").trim();
+      if (productionDbReleaseId && productionDbPlannedAt) {
+        return result(true, "manual_main_g3_exact_head");
+      }
       return docsOnly
         ? result(false, "docs_only")
         : result(true, "manual_main_exact_head");

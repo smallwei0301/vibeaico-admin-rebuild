@@ -19,6 +19,8 @@ describe('Production DB G3 trusted-main CI wiring #447', () => {
     expect(condition).toContain("inputs.dispatch_reason == 'main_manual'");
     expect(condition).toContain("inputs.production_db_release_id != ''");
     expect(condition).toContain("inputs.production_db_planned_at != ''");
+    expect(source).toContain("needs.classify-changes.outputs.run_test_validation == 'true'");
+    expect(source).toContain("needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true'");
   });
 
   it('uses only the dedicated TEST release token for the Management API TEST writer', () => {
