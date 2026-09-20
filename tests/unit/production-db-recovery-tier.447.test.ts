@@ -76,6 +76,22 @@ describe('Production DB recovery evidence tiers #447', () => {
     expect(workflow).toContain("ref: ${{ inputs.expected_main_sha || 'main' }}");
     expect(workflow).toContain('test "$CHECKED_SHA" = "$BOUND_SHA"');
     expect(workflow).toContain('test "$CURRENT_MAIN_SHA" = "$BOUND_SHA"');
+    const projectIdTemplate = workflow.match(/^\s*LOCAL_PROJECT_ID:\s*(.+)$/m)?.[1];
+    expect(projectIdTemplate).toBe('schema-proof-restore-${{ github.run_id }}-${{ github.run_attempt }}');
+    const projectId = projectIdTemplate
+      ?.replace('${{ github.run_id }}', '35519793130')
+      .replace('${{ github.run_attempt }}', '1');
+    expect(projectId).toMatch(/^schema-proof-[a-z0-9-]{1,50}$/);
+    expect(workflow).toContain('LOCAL_PROJECT_ID: schema-proof-restore-${{ github.run_id }}-${{ github.run_attempt }}');
+    const checked = workflow.indexOf('test "$CHECKED_SHA" = "$BOUND_SHA"');
+    const current = workflow.indexOf('test "$CURRENT_MAIN_SHA" = "$BOUND_SHA"');
+    const expectedHead = workflow.indexOf('echo "EXPECTED_HEAD=$BOUND_SHA" >> "$GITHUB_ENV"');
+    const bootstrap = workflow.indexOf('node scripts/agents/fresh-install-baseline.mjs');
+    expect(checked).toBeGreaterThan(0);
+    expect(current).toBeGreaterThan(checked);
+    expect(expectedHead).toBeGreaterThan(current);
+    expect(bootstrap).toBeGreaterThan(expectedHead);
+    expect(workflow).not.toContain('LOCAL_PROJECT_ID: production-db-restore-rehearsal-');
     expect(workflow).toContain("rehearsalKind: 'LOCAL_LOGICAL_RESTORE_CANARY'");
     expect(workflow).toContain('expectedMainSha: process.env.BOUND_MAIN_SHA');
     expect(workflow).toContain('productionBackupRestored: false');

@@ -17,6 +17,15 @@ const raw = {
 };
 
 describe('schema observer direct PostgreSQL transport #589', () => {
+  it('installs the lockfile-pinned postgres client before loading the read-only observer module', () => {
+    const workflow = readFileSync('.github/workflows/agent-schema-drift-watch.yml', 'utf8');
+    const install = workflow.indexOf('- name: Install locked schema observer dependencies');
+    const replay = workflow.indexOf('- name: Build and replay a disposable canonical local database');
+    expect(install).toBeGreaterThan(0);
+    expect(replay).toBeGreaterThan(install);
+    expect(workflow.slice(install, replay)).toContain('npm ci');
+  });
+
   it('binds each observer URL to its exact environment and non-admin role', () => {
     expect(parseProjectBoundSchemaObserverUrl(TEST_URL, 'TEST')).toMatchObject({
       environment: 'TEST', projectRef: 'nmwhwngojosmagjuvxol', role: 'schema_observer', transportMode: 'SUPAVISOR_SESSION',
