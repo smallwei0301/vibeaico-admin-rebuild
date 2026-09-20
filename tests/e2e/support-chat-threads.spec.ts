@@ -46,6 +46,10 @@ test.describe('客服對話串（issue #25 B 段）', () => {
     await page.getByLabel('內容').fill(body);
     await page.getByRole('button', { name: '送出給客服' }).click();
 
+    // React textarea 的內容也會被 getByText(body) 命中；先等成功後的詳情畫面
+    // 取代表單，避免 API 尚未完成就開始計算通知文案的等待時間。
+    await expect(page.getByLabel('內容')).toBeHidden({ timeout: 10_000 });
+
     // 送出後立刻切到詳情畫面，看得到自己剛送出的那則留言與誠實的通知狀態文案。
     await expect(page.getByText(body)).toBeVisible({ timeout: 10_000 });
     const notifyBanner = page.locator('text=/已送出|已保存/');
