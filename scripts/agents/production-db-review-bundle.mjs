@@ -102,7 +102,8 @@ export function assertReviewBundle({ manifest, plan, packet, run, jobs, releaseI
     requireValue(job.status === 'completed', `job ${job.name} must be completed`);
     requireValue(job.conclusion !== 'success' || COLLECT_SUCCESS_JOBS.has(job.name), `job ${job.name} succeeded outside the exact collection job allowlist; writer execution is forbidden in a review bundle`);
   }
-  for (const [name, conclusion] of [['collect', 'success'], ['prepare', 'skipped'], ['execute', 'skipped']]) {
+  const requiredJobs = [...COLLECT_SUCCESS_JOBS].map((name) => [name, 'success']);
+  for (const [name, conclusion] of [...requiredJobs, ['prepare', 'skipped'], ['execute', 'skipped']]) {
     const matches = jobs.filter((job) => job.name === name);
     requireValue(matches.length === 1 && matches[0].conclusion === conclusion, `live jobs must contain exactly one ${name} job with conclusion ${conclusion} for the current attempt`);
   }

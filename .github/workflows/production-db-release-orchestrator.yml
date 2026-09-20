@@ -582,8 +582,8 @@ jobs:
           test -s "$NODE_EXTRA_CA_CERTS"
           test -z "${SUPABASE_ACCESS_TOKEN:-}"
           node scripts/agents/production-db-release-orchestrator.mjs execute \
-            "$RUNNER_TEMP/prepared/production-db-automation-evidence.json" \
-            "$RUNNER_TEMP/prepared/production-db-release-plan.json" \
+            "$RUNNER_TEMP/prepared/readiness/production-db-automation-evidence.json" \
+            "$RUNNER_TEMP/prepared/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/prepared/production-db-final-release-packet.json" \
             "$RUNNER_TEMP/prepared/prepared-production-db-attempt.json" \
             "$RUNNER_TEMP/production-db-apply-result.json"
@@ -671,7 +671,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/agents/production-db-release-orchestrator.mjs postcheck \
-            "$RUNNER_TEMP/prepared/production-db-release-plan.json" \
+            "$RUNNER_TEMP/prepared/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/apply/production-db-apply-result.json" \
             "$RUNNER_TEMP/g7/report.json" \
             "$RUNNER_TEMP/production-db-terminal-result.json"

@@ -126,6 +126,9 @@ describe('Production DB trusted-main release orchestrator workflow #447', () => 
     expect(source).toContain('production-db-release-orchestrator.mjs prepare');
     expect(source).toContain('production-db-release-orchestrator.mjs execute');
     const executeBlock = source.slice(execute, persistApply);
+    expect(executeBlock).toContain('$RUNNER_TEMP/prepared/readiness/production-db-automation-evidence.json');
+    expect(executeBlock).toContain('$RUNNER_TEMP/prepared/g3/production-db-release-plan.json');
+    expect(source.slice(position('  postcheck:'))).toContain('$RUNNER_TEMP/prepared/g3/production-db-release-plan.json');
     expect(executeBlock).toContain('$RUNNER_TEMP/prepared/production-db-final-release-packet.json');
     expect(executeBlock).toContain('$RUNNER_TEMP/prepared/prepared-production-db-attempt.json');
     expect(source).toContain('retention-days: 90');

@@ -43,6 +43,17 @@ function canonical(value: any): any {
 const hash = (value: any) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 
 describe('collect review bundle #589', () => {
+  it.each(['admission', 'g2 / read-only-three-way', 'g4-backup / capture', 'g4-restore / local-logical-restore-canary'])('requires exactly one successful %s job', (name) => {
+    for (const result of ['missing', 'duplicate', 'skipped', 'failure']) {
+      const f = fixture();
+      const job = f.jobs.find((entry: any) => entry.name === name);
+      if (result === 'missing') f.jobs = f.jobs.filter((entry: any) => entry !== job);
+      else if (result === 'duplicate') f.jobs.push({ ...job });
+      else job.conclusion = result;
+      expect(() => assertReviewBundle(f)).toThrow(/live jobs must contain exactly one/);
+    }
+  });
+
   it('returns a read-only manifest with full canonical hashes and validates live provenance without changing inputs', () => {
     const f = fixture();
     const before = JSON.stringify(f);
