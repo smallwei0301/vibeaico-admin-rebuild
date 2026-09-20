@@ -1778,3 +1778,12 @@ NOT_GRADED，不刪除舊報告，也不把缺欄位改成 0。PB-039 的檢查�
 - 預防：涉及保存、送出或非同步通知的 E2E，先等待只有保存成功才出現的畫面轉換／已保存標記，並保留重新載入查證；同一內容可能同時出現在 draft 與 persisted view 時，不使用未限定容器的 `getByText` 作完成訊號。每次修正後分開記錄 check、integration、E2E、cleanup；失敗且 cleanup 未跑不得宣稱 release evidence。
 - 驗證：exact head `6cd5706b05c31ce8798b79a99fd39088b6a1fdc1` 的 `35490699629` check 成功；`35490699595` isolated integration/E2E/cleanup 成功。未重試被平台拒絕的 r16 workflow。
 - 狀態：已防止；同類 E2E locator／狀態時序問題仍監看中。
+
+### PB-054 — 不可把截斷的讀取結果當作完整檔案覆寫
+
+- 首次／最近：2026-09-20／2026-09-20；發生次數：1。
+- 範圍：#589／#615 文件收尾分支 `docs/615-model-governance-closeout`，未合併的 `ae56f06224ce0a42715abded9f3105b4881e781f`。
+- 事件／根因：透過 connector 全檔替換時使用被截斷的讀取輸出，導致 Playbook 非預期刪除約 759 行；建立 PR 前的差異核對發現並停止。
+- 修正：從本地完整 main 基線加預期增補取回全部內容，以 guarded Contents update 追加修復 commit `21cf6621edde0beb7157e48bb937e9609cd3561d`，不改寫歷史、不合併損壞版本。
+- 預防：全檔替換必須使用完整原始內容，確認讀取未截斷；提交後檢查 exact remote head 的檔案位元與差異，新增教訓不應大量刪除既有內容。畫面摘要不能作全檔寫入來源。
+- 驗證：修復後比較 current main 與遠端分支，Playbook 只增加預期教訓；提交 PR 前再次核對無刪除。此事故未影響 main、產品或資料庫。
