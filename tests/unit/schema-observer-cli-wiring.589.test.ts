@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -46,9 +46,15 @@ describe('schema observer workflow CLI contract #589', () => {
           '--current-main-sha', main, '--json-out', out], { encoding: 'utf8' });
         expect(result.error).toBeUndefined();
         expect(result.stderr).not.toContain('INVALID_ARGUMENT');
-        expect(result.status, result.stderr).toBe(command === 'capture' ? 2 : 0);
-        expect(JSON.parse(readFileSync(out, 'utf8')).status)
-          .toBe(command === 'capture' ? 'EVIDENCE_UNAVAILABLE' : command === 'compare' ? 'MATCH' : 'CAPTURED');
+        if (command === 'capture') {
+          expect(result.status).toBe(1);
+          expect(result.stderr).toContain('INVALID_ENVIRONMENT');
+          expect(existsSync(out)).toBe(false);
+        } else {
+          expect(result.status, result.stderr).toBe(0);
+          expect(JSON.parse(readFileSync(out, 'utf8')).status)
+            .toBe(command === 'compare' ? 'MATCH' : 'CAPTURED');
+        }
       }
       const legacy = spawnSync(process.execPath, [script, 'normalize', '--json-out', join(dir, 'legacy.json')], { encoding: 'utf8' });
       expect(legacy.status).toBe(1);
