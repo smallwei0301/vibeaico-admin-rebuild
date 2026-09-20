@@ -134,6 +134,10 @@ backup observer 永遠不得持有 writer credential，也不得退回 Classic /
 ## 9. G5：Production Final Risk
 
 每次 Production DB release 都需要 plan/evidence-bound adversarial Final Risk，與 source PR 的一般 risk classification 分開。
+`production-db-release-orchestrator` 預設 `mode=collect`：只收集 G1–G4，保存 immutable review bundle 後結束；此模式不進入 `production-db-writer` Environment，也不初始化寫入 receipt。
+reviewer 必須下載該成功 run 的 bundle，對其中 exact plan 與 base packet 做 release-bound review。完成後才以 `mode=execute`、`evidence_run_id` 與 `final_risk_pr` 接續。
+execute 驗證收集 run 的 repository、workflow、main SHA、attempt、成功狀態與唯讀 job 結果，以及 bundle 的完整 plan／packet digest 和 release／G3／readiness 綁定，再從 live GitHub 重建 G5。
+不得在 review 後偷偷重收 G1–G4；證據超過既有 freshness 上限時，重新 collect 並對新 digest 審查。單次 durable attempt 與 G6 live recheck 規則不變。
 reviewer 路由依 Owner #552：同一 review lineage 最多一次 Astra/Fable premium consultation；已諮詢過、啟動 timeout、無回應或環境無法選昂貴模型時，直接降級 Sol / Opus；無 selector 時可由 current agent 真實對抗審查。
 
 review 必須綁 exact source/plan digest、live consistency evidence、TEST、recovery evidence 與 release risk tier，並保存 reviewer tier、降級原因、lineage、executionRef、反例證據、prior findings 與 unresolved finding count。

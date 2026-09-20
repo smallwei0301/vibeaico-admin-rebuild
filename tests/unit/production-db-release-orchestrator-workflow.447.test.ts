@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 const source = readFileSync('.github/workflows/production-db-release-orchestrator.yml', 'utf8');
 
@@ -10,6 +11,35 @@ function position(text: string) {
 }
 
 describe('Production DB trusted-main release orchestrator workflow #447', () => {
+  it('defaults to a collect graph without writer credentials or receipt creation', () => {
+    const workflow = parse(source);
+    expect(workflow.on.workflow_dispatch.inputs.mode.default).toBe('collect');
+    for (const name of ['g2', 'g4-backup', 'g4-restore', 'collect']) {
+      const job = workflow.jobs[name];
+      expect(job.if).toBe("${{ inputs.mode == 'collect' }}");
+      expect(job.environment).toBeUndefined();
+      expect(JSON.stringify(job)).not.toMatch(/PRODUCTION_DB_WRITER_URL|init-state|mjs prepare|mjs execute/);
+    }
+    expect(workflow.jobs.prepare.needs).toBe('admission');
+    expect(workflow.jobs.prepare.if).toBe("${{ inputs.mode == 'execute' }}");
+    expect(workflow.jobs.execute.if).toBe("${{ inputs.mode == 'execute' && needs.prepare.result == 'success' }}");
+    expect(JSON.stringify(workflow.jobs.collect)).toContain('production-db-review-bundle-');
+  });
+
+  it('validates the attempt-bound frozen bundle before live Final Risk and preparation', () => {
+    const verify = position('- name: Verify source provenance and frozen packet bindings');
+    const review = position('- name: Reconstruct G5 FINAL_RISK from live GitHub');
+    expect(verify).toBeLessThan(review);
+    expect(review).toBeLessThan(position('- name: PREPARE controlled Production DB attempt'));
+    const prepare = parse(source).jobs.prepare;
+    const text = JSON.stringify(prepare);
+    expect(text).toContain('listJobsForWorkflowRunAttempt');
+    expect(text).toContain('assertReviewBundle');
+    expect(text).toContain('steps.provenance.outputs.attempt');
+    expect(text).not.toContain('base-packet');
+    expect(text).not.toContain('assemble-production-db-release-evidence.mjs');
+  });
+
   it('is manual, globally serialized and read-only at GitHub permission level', () => {
     expect(source).toContain('workflow_dispatch:');
     expect(source).not.toContain('pull_request:');
