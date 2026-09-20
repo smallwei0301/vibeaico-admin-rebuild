@@ -75,7 +75,7 @@ jobs:
           process.stdout.write(READ_ONLY_SNAPSHOT_SQL);
           NODE
           docker exec -i "supabase_db_${LOCAL_PROJECT_ID}" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 <"$RUNNER_TEMP/schema-observer.sql" >"$RUNNER_TEMP/local-raw.json"
-          node scripts/agents/schema-drift-watch.mjs normalize --environment LOCAL_EXPECTED --project-ref local-fresh --current-main-sha "$EXPECTED_MAIN_SHA" --raw-json "$RUNNER_TEMP/local-raw.json" --json-out "$RUNNER_TEMP/expected.json"
+          node scripts/agents/schema-drift-watch.mjs --command normalize --environment LOCAL_EXPECTED --project-ref local-fresh --current-main-sha "$EXPECTED_MAIN_SHA" --raw-json "$RUNNER_TEMP/local-raw.json" --json-out "$RUNNER_TEMP/expected.json"
       - name: Capture TEST and Production through read-only API only
         env:
           SCHEMA_OBSERVER_TOKEN: ${{ secrets.SCHEMA_OBSERVER_TOKEN }}
@@ -83,11 +83,11 @@ jobs:
         run: |
           set -euo pipefail
           test -s "$NODE_EXTRA_CA_CERTS"
-          node scripts/agents/schema-drift-watch.mjs capture --environment TEST --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/test.json"
-          node scripts/agents/schema-drift-watch.mjs capture --environment PRODUCTION --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/production.json"
+          node scripts/agents/schema-drift-watch.mjs --command capture --environment TEST --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/test.json"
+          node scripts/agents/schema-drift-watch.mjs --command capture --environment PRODUCTION --current-main-sha "$EXPECTED_MAIN_SHA" --json-out "$RUNNER_TEMP/production.json"
       - name: Compare exact object fingerprints and fail closed
         run: |
-          node scripts/agents/schema-drift-watch.mjs compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
+          node scripts/agents/schema-drift-watch.mjs --command compare --expected-snapshot "$RUNNER_TEMP/expected.json" --test-snapshot "$RUNNER_TEMP/test.json" --production-snapshot "$RUNNER_TEMP/production.json" --current-main-sha "$EXPECTED_MAIN_SHA" --exceptions docs/schema-truth/schema-drift-exceptions.json --json-out "$RUNNER_TEMP/report.json"
       - name: Emit sanitized drift report summary
         if: ${{ always() }}
         run: |
