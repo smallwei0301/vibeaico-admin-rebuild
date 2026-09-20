@@ -6,6 +6,7 @@ import {
   buildProductionDbFinalRiskEvidenceFromGithub,
 } from '../../scripts/agents/production-db-final-risk-evidence.mjs';
 import { releaseEvidenceDigestOf } from '../../scripts/agents/production-db-release-preflight.mjs';
+import { finalRiskReviewerErrors } from '../../scripts/agents/final-risk-cost-policy.mjs';
 
 const BASE = '1'.repeat(40);
 const HEAD = '2'.repeat(40);
@@ -171,6 +172,28 @@ function fakeGithub(options: FakeGithubOptions = {}) {
 }
 
 describe('Production DB Final Risk evidence adapter', () => {
+  it.each(['AUDIT', 'CURRENT_AGENT'])('preserves the validated %s identity through the preflight handoff', (reviewerTier) => {
+    const identity = {
+      reviewerTier, costPolicyVersion: '2026-09-17.1',
+      requestedModel: reviewerTier === 'AUDIT' ? 'gpt-5.6-sol' : 'not_requested',
+      actualModel: reviewerTier === 'AUDIT' ? 'gpt-5.6-sol' : 'unknown',
+      identityEvidence: reviewerTier === 'AUDIT' ? 'OPERATOR_ATTESTED' : 'UNKNOWN',
+      executionEvidence: 'OPERATOR_ATTESTED', modelSelectionAvailable: false,
+      downgradeReason: reviewerTier === 'AUDIT' ? 'HISTORY_UNAVAILABLE' : 'MODEL_SELECTION_UNAVAILABLE',
+      downgradeEvidenceRef: 'https://github.com/smallwei0301/vibeaico-admin-rebuild/pull/999',
+      reviewLineage: 'smallwei0301/vibeaico-admin-rebuild#589',
+      adversarialEvidence: 'Verified tampering and replay counterexamples against the exact frozen release bundle.',
+      priorFindingsReviewed: true, unresolvedFindingCount: 0,
+    };
+    const result = buildProductionDbFinalRiskEvidence({
+      body: BODY, changedFiles: ['scripts/agents/production-db-final-risk-evidence.mjs'],
+      context: context(), reviews: [review({ ...identity, executionRef: 'audit-execution-589' })], releasePacket: releasePacket(),
+    });
+    expect(result).toMatchObject(identity);
+    expect(finalRiskReviewerErrors(result, routing)).toEqual([]);
+    expect(result.databaseMutationAuthorized).toBe(false);
+  });
+
   it('converts a trusted existing Astra/Fable review into release-bound evidence', () => {
     const packet = releasePacket();
     const result = buildProductionDbFinalRiskEvidence({
