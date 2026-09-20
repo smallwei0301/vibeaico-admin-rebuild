@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Install locked schema observer dependencies
+        run: npm ci
       - uses: supabase/setup-cli@v3
         with:
           version: 2.116.0

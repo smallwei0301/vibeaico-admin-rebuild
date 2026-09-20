@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      LOCAL_PROJECT_ID: production-db-restore-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}
+      LOCAL_PROJECT_ID: schema-proof-restore-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout trusted main candidate
         uses: actions/checkout@v4
@@ -50,6 +50,7 @@ jobs:
           test "$CURRENT_MAIN_SHA" = "$BOUND_SHA"
           echo "MAIN_SHA=$CHECKED_SHA" >> "$GITHUB_ENV"
           echo "BOUND_MAIN_SHA=$BOUND_SHA" >> "$GITHUB_ENV"
+          echo "EXPECTED_HEAD=$BOUND_SHA" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
