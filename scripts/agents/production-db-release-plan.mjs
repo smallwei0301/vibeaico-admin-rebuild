@@ -23,6 +23,9 @@ const PENDING_MIGRATION_PRECEDENCE = Object.freeze([
 // fail-closed below.
 const AUTHZ_COMPATIBILITY_PRECONDITIONS = new Set([
   '0125_issue_17_booking_addons_legacy_enum',
+  // #589/0127 replaces a stale notified CHECK only after fail-closed shape and
+  // value inspection; its ACL/RLS reconciliation remains an AUTHZ release.
+  '0127_issue_589_authz_constraint_reconciliation',
 ]);
 
 // PostgreSQL resolves these built-ins from pg_catalog before application
@@ -42,10 +45,14 @@ const SAFE_PROCEDURAL_CATALOG_ROUTINES = catalogRoutineSpellings([
   'unnest',
   'pg_get_function_identity_arguments',
   'pg_get_functiondef',
+  // #589/0127 only reads ACL catalog rows before a bounded reconciliation.
+  // Qualified spellings below prevent an untrusted user-schema lookalike.
 ]);
 SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.to_regclass');
 SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.to_regtype');
 SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.format');
+SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.aclexplode');
+SAFE_PROCEDURAL_CATALOG_ROUTINES.add('pg_catalog.acldefault');
 const SAFE_POLICY_PREDICATE_ROUTINES = new Set([
   'is_tenant_member',
   'tenant_role_at_least',

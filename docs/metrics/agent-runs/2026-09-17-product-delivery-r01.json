@@ -243,6 +243,22 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "gpt-5.6-terra"
+      },
+      {
+        "id": "issue-589-0127-early-sol-audit-20260920",
+        "requestedModel": "sol",
+        "actualModel": "sol",
+        "actualModelId": "gpt-5.6-sol",
+        "role": "#589 0127 PREPARE EARLY_SOL_DIFF_AUDIT; executionRef=/root/release_review_prep; operator-attested inherited reviewer identity; result=FIX_REQUIRED. Reviewed base 642bd472 plus frozen working/untracked candidate; missing legacy policy impact ownership, cleanup mock mismatch, rollback/shape/six-state/FORCE evidence gaps. This is not final source approval or DB approval.",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "observedAt": "2026-09-20T23:41:42.107690+00:00",
+        "observationKind": "TASK_RESULT_RECEIVED",
+        "evidenceRef": "session:/root/release_review_prep/0127-early-audit"
       }
     ],
     "fullContextReplays": 0,
@@ -281,7 +297,7 @@
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
     "waitTimeConvertedPercent": null,
-    "solTouches": 3,
+    "solTouches": 4,
     "solIssues": 3
   },
   "auditability": {

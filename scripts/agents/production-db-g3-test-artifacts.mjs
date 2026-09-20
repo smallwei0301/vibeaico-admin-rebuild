@@ -33,6 +33,10 @@ const CANONICAL_TEST_PENDING_ALLOWLIST = Object.freeze([
     file: 'tests/integration/db/production-db-writer-mechanics.447.test.ts',
     suite: 'Issue #447 dedicated Production-writer mechanics on isolated PostgreSQL',
   }),
+  Object.freeze({
+    file: 'tests/integration/db/authz-constraint-reconciliation.589.test.ts',
+    suite: 'Issue #589 isolated PostgreSQL reconciliation preconditions and rollback',
+  }),
 ]);
 
 function fail(code, message) {
@@ -245,6 +249,30 @@ function cleanupScopes(plan) {
       filterColumn: 'line_user_id',
       filterOperator: 'like',
       filterValue: 'g3-447-owner-notify-%',
+    });
+  }
+  if (plan.migrations.some((migration) => String(migration?.repoFile ?? '') === '0127_issue_589_authz_constraint_reconciliation')) {
+    scopes.push({
+      migration: '0127_issue_589_authz_constraint_reconciliation',
+      table: 'booking_addons',
+      filterColumn: 'name',
+      filterOperator: 'like',
+      filterValue: 'g3-589-0127-%',
+    });
+    scopes.push({
+      migration: '0127_issue_589_authz_constraint_reconciliation',
+      table: 'owner_notify_recipients',
+      filterColumn: 'line_user_id',
+      filterOperator: 'like',
+      filterValue: 'g3-589-0127-%',
+    });
+    scopes.push({
+      migration: '0127_issue_589_authz_constraint_reconciliation',
+      table: 'line_users',
+      select: 'tenant_id,line_user_id',
+      filterColumn: 'line_user_id',
+      filterOperator: 'like',
+      filterValue: 'g3-589-0127-%',
     });
   }
   return scopes;

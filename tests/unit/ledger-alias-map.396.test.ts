@@ -736,17 +736,17 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 16 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
+    // 目前為 17 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
     // 0125_issue_17_booking_addons_legacy_enum、0126_issue_402_keyword_reply_images_authz、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening、
-    // 0123_issue_589_richmenu_asset_retirement 這 12 支是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）是
+    // 0123_issue_589_richmenu_asset_retirement、0127_issue_589_authz_constraint_reconciliation 這 13 支是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）是
     // VERIFIED_NOT_APPLIED。0107／0108 已套用正式庫轉為 EXACT；0105 於
     // 2026-09-15 以唯讀查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。保留 main 那一版的
     // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
     // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
     // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(16);
+    expect(notApplied.length).toBe(17);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

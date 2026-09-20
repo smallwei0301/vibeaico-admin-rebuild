@@ -65,7 +65,7 @@
       { "surface": "constraints", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_tenant_id_line_user_id_key" }, { "surface": "constraints", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_tenant_id_line_user_id_fkey" }, { "surface": "indexes", "objectKey": "public.owner_notify_bind_requests.owner_notify_bind_requests_pkey" },
       { "surface": "indexes", "objectKey": "public.owner_notify_bind_requests.u_owner_notify_bind_requests_pending" }, { "surface": "indexes", "objectKey": "public.owner_notify_bind_requests.idx_owner_notify_bind_requests_tenant" }, { "surface": "indexes", "objectKey": "public.owner_notify_recipients.owner_notify_recipients_pkey" },
       { "surface": "indexes", "objectKey": "public.owner_notify_recipients.idx_owner_notify_recipients_tenant" }, { "surface": "indexes", "objectKey": "public.owner_notify_recipients.u_owner_notify_recipients_primary" }, { "surface": "policies", "objectKey": "public.owner_notify_bind_requests.p_owner_notify_bind_requests_all" },
-      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all" }, { "surface": "acl", "objectKey": "table:public.owner_notify_bind_requests" }, { "surface": "acl", "objectKey": "table:public.owner_notify_recipients" }
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all" }, { "surface": "acl", "objectKey": "table:public.owner_notify_bind_requests" }
     ] },
     { "repoFile": "0117_issue_25b_support_chat_threads", "impacts": [
       { "surface": "columns", "objectKey": "public.support_chat_threads.id" }, { "surface": "columns", "objectKey": "public.support_chat_threads.tenant_id" }, { "surface": "columns", "objectKey": "public.support_chat_threads.subject" },
@@ -113,6 +113,20 @@
     ] },
     { "repoFile": "0126_issue_402_keyword_reply_images_authz", "impacts": [
       { "surface": "policies", "objectKey": "storage.objects.p_storage_write" }
+    ] },
+    { "repoFile": "0127_issue_589_authz_constraint_reconciliation", "impacts": [
+      { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_notified_check" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_s" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_i" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_u" },
+      { "surface": "policies", "objectKey": "public.booking_addons.p_booking_addons_d" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_all" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_s" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_i" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_u" },
+      { "surface": "policies", "objectKey": "public.owner_notify_recipients.p_owner_notify_recipients_d" },
+      { "surface": "acl", "objectKey": "table:public.booking_addons" },
+      { "surface": "acl", "objectKey": "table:public.owner_notify_recipients" }
     ] }
   ]
 }

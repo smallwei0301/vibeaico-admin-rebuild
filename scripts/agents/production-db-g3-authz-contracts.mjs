@@ -252,6 +252,23 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  '0127_issue_589_authz_constraint_reconciliation': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/authz-constraint-reconciliation.589.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/authz-constraint-reconciliation.589.test.ts',
+        fragment: 'authenticated tenant cannot read another tenant booking addons or owner notify recipients',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/authz-constraint-reconciliation.589.test.ts',
+        fragment: 'anon cannot read or write reconciled tables while authenticated addon writes remain denied',
+      }),
+    ]),
+  }),
 });
 
 export function getProductionDbG3AuthzContract(repoFile) {

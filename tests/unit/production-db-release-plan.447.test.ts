@@ -33,6 +33,14 @@ const sqlByPath: Record<string, string> = {
 const readCanonicalSql = (path: string) => sqlByPath[path];
 
 describe('Production DB release plan #447', () => {
+  it('admits only the fixed #589 ACL catalog readers in an immediate reconciliation block', () => {
+    const sql = readFileSync('supabase/migrations/0127_issue_589_authz_constraint_reconciliation.sql', 'utf8');
+    expect(inferMigrationRiskTier(sql, '0127_issue_589_authz_constraint_reconciliation')).toBe('AUTHZ');
+    expect(() => inferMigrationRiskTier("do $$ begin perform untrusted_acl_helper(); end $$;", 'evil_acl')).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier("do $$ begin perform aclexplode(null); end $$;", 'unqualified_acl')).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier("do $$ begin perform public.acldefault('r', 1); end $$;", 'user_acl')).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+  });
+
   it.each(['btree', 'hash'])('preserves %s index syntax without trusting routine calls', (method) => {
     for (const sql of [
       `create index orders_id_idx on public.orders using ${method} (id);`,
