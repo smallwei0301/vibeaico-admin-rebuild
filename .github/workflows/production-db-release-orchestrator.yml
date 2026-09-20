@@ -3,6 +3,16 @@ name: production-db-release-orchestrator
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: Collect immutable read-only evidence, or execute after release-bound review
+        required: true
+        default: collect
+        type: choice
+        options: [collect, execute]
+      evidence_run_id:
+        description: Successful collect run ID (required only for execute)
+        required: false
+        type: string
       expected_main_sha:
         description: Exact trusted current main SHA for the release
         required: true
@@ -21,7 +31,7 @@ on:
         type: string
       final_risk_pr:
         description: PR number whose live reviews contain the release-bound Final Risk decision
-        required: true
+        required: false
         type: string
 
 permissions:
@@ -53,6 +63,8 @@ jobs:
           READINESS_RUN_ID: ${{ inputs.readiness_run_id }}
           G3_RUN_ID: ${{ inputs.g3_run_id }}
           FINAL_RISK_PR: ${{ inputs.final_risk_pr }}
+          MODE: ${{ inputs.mode }}
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = 'refs/heads/main'
@@ -61,7 +73,11 @@ jobs:
           test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
           [[ "$READINESS_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$G3_RUN_ID" =~ ^[0-9]+$ ]]
-          [[ "$FINAL_RISK_PR" =~ ^[0-9]+$ ]]
+          [[ "$MODE" = collect || "$MODE" = execute ]]
+          if [ "$MODE" = execute ]; then
+            [[ "$FINAL_RISK_PR" =~ ^[0-9]+$ ]]
+            [[ "$EVIDENCE_RUN_ID" =~ ^[0-9]+$ ]]
+          fi
 
       - name: Reject any prior durable attempt for this releaseId
         uses: actions/github-script@v9
@@ -139,6 +155,7 @@ jobs:
 
   g2:
     needs: admission
+    if: ${{ inputs.mode == 'collect' }}
     uses: ./.github/workflows/agent-schema-drift-watch.yml
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
@@ -148,6 +165,7 @@ jobs:
 
   g4-backup:
     needs: admission
+    if: ${{ inputs.mode == 'collect' }}
     uses: ./.github/workflows/agent-production-db-backup-observer.yml
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
@@ -156,14 +174,15 @@ jobs:
 
   g4-restore:
     needs: admission
+    if: ${{ inputs.mode == 'collect' }}
     uses: ./.github/workflows/production-db-restore-rehearsal.yml
     with:
       expected_main_sha: ${{ inputs.expected_main_sha }}
 
-  prepare:
+  collect:
     needs: [admission, g2, g4-backup, g4-restore]
+    if: ${{ inputs.mode == 'collect' }}
     runs-on: ubuntu-latest
-    environment: production-db-writer
     timeout-minutes: 15
     steps:
       - name: Checkout exact trusted main
@@ -321,6 +340,126 @@ jobs:
             - \
             "$RUNNER_TEMP/production-db-base-release-packet.json"
 
+      - name: Seal immutable review bundle
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          READINESS_RUN_ID: ${{ inputs.readiness_run_id }}
+          G3_RUN_ID: ${{ inputs.g3_run_id }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { buildReviewBundleManifest } from './scripts/agents/production-db-review-bundle.mjs';
+          const root = process.env.RUNNER_TEMP;
+          const read = (name) => JSON.parse(fs.readFileSync(`${root}/${name}`, 'utf8'));
+          const manifest = buildReviewBundleManifest({
+            plan: read('g3/production-db-release-plan.json'), packet: read('production-db-base-release-packet.json'),
+            releaseId: process.env.RELEASE_ID, mainSha: process.env.EXPECTED_MAIN_SHA,
+            readinessRunId: process.env.READINESS_RUN_ID, g3RunId: process.env.G3_RUN_ID,
+            runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            repository: process.env.GITHUB_REPOSITORY,
+          });
+          fs.writeFileSync(`${root}/production-db-review-manifest.json`, JSON.stringify(manifest, null, 2));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Read-only collection complete. Review this frozen bundle before execute.\n\n\`\`\`json\n${JSON.stringify(manifest, null, 2)}\n\`\`\`\n`);
+          NODE
+
+      - name: Publish G1-G4 evidence for release-bound review
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-db-review-bundle-${{ inputs.release_id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/production-db-review-manifest.json
+            ${{ runner.temp }}/production-db-base-release-packet.json
+            ${{ runner.temp }}/g3/production-db-release-plan.json
+          if-no-files-found: error
+          retention-days: 1
+
+  prepare:
+    needs: admission
+    if: ${{ inputs.mode == 'execute' }}
+    runs-on: ubuntu-latest
+    environment: production-db-writer
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_main_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install locked Production writer dependencies
+        run: npm ci
+
+      - name: Load live collect run provenance
+        id: provenance
+        uses: actions/github-script@v9
+        env:
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const args = { owner: context.repo.owner, repo: context.repo.repo, run_id: Number(process.env.EVIDENCE_RUN_ID) };
+            const { data: run } = await github.rest.actions.getWorkflowRun(args);
+            const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt, { ...args, attempt_number: run.run_attempt, per_page: 100 });
+            fs.writeFileSync(`${process.env.RUNNER_TEMP}/collect-provenance.json`, JSON.stringify({run, jobs}));
+            core.setOutput('attempt', String(run.run_attempt));
+
+      - name: Download frozen review bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-review-bundle-${{ inputs.release_id }}-${{ inputs.evidence_run_id }}-${{ steps.provenance.outputs.attempt }}
+          path: ${{ runner.temp }}/review
+          run-id: ${{ inputs.evidence_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify source provenance and frozen packet bindings
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
+          READINESS_RUN_ID: ${{ inputs.readiness_run_id }}
+          G3_RUN_ID: ${{ inputs.g3_run_id }}
+          EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse origin/main)" = "$EXPECTED_MAIN_SHA"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          import { assertReviewBundle } from './scripts/agents/production-db-review-bundle.mjs';
+          const root = process.env.RUNNER_TEMP;
+          const read = (name) => JSON.parse(fs.readFileSync(`${root}/${name}`, 'utf8'));
+          const plan = read('review/g3/production-db-release-plan.json');
+          const packet = read('review/production-db-base-release-packet.json');
+          assertReviewBundle({
+            ...read('collect-provenance.json'), manifest: read('review/production-db-review-manifest.json'), plan, packet,
+            releaseId: process.env.RELEASE_ID, mainSha: process.env.EXPECTED_MAIN_SHA,
+            readinessRunId: process.env.READINESS_RUN_ID, g3RunId: process.env.G3_RUN_ID,
+            runId: process.env.EVIDENCE_RUN_ID, repository: process.env.GITHUB_REPOSITORY,
+          });
+          fs.mkdirSync(`${root}/g3`, {recursive:true});
+          const write = (name, value) => fs.writeFileSync(`${root}/${name}`, JSON.stringify(value, null, 2));
+          write('g3/production-db-release-plan.json', plan);
+          write('production-db-base-release-packet.json', packet);
+          write('production-db-source-evidence.json', packet.source);
+          write('production-db-consistency-evidence.json', packet.consistency);
+          write('g3/production-db-test-verified.json', packet.test);
+          write('production-db-recovery-evidence.json', packet.recovery);
+          NODE
+
+      - name: Download trusted readiness evidence for writer admission
+        uses: actions/download-artifact@v4
+        with:
+          name: production-db-automation-readiness-${{ inputs.expected_main_sha }}
+          path: ${{ runner.temp }}/readiness
+          run-id: ${{ inputs.readiness_run_id }}
+          github-token: ${{ github.token }}
+
       - name: Reconstruct G5 FINAL_RISK from live GitHub
         uses: actions/github-script@v9
         env:
@@ -397,6 +536,7 @@ jobs:
 
   execute:
     needs: prepare
+    if: ${{ inputs.mode == 'execute' && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     environment: production-db-writer
     timeout-minutes: 10
@@ -442,8 +582,8 @@ jobs:
           test -s "$NODE_EXTRA_CA_CERTS"
           test -z "${SUPABASE_ACCESS_TOKEN:-}"
           node scripts/agents/production-db-release-orchestrator.mjs execute \
-            "$RUNNER_TEMP/prepared/production-db-automation-evidence.json" \
-            "$RUNNER_TEMP/prepared/production-db-release-plan.json" \
+            "$RUNNER_TEMP/prepared/readiness/production-db-automation-evidence.json" \
+            "$RUNNER_TEMP/prepared/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/prepared/production-db-final-release-packet.json" \
             "$RUNNER_TEMP/prepared/prepared-production-db-attempt.json" \
             "$RUNNER_TEMP/production-db-apply-result.json"
@@ -531,7 +671,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/agents/production-db-release-orchestrator.mjs postcheck \
-            "$RUNNER_TEMP/prepared/production-db-release-plan.json" \
+            "$RUNNER_TEMP/prepared/g3/production-db-release-plan.json" \
             "$RUNNER_TEMP/apply/production-db-apply-result.json" \
             "$RUNNER_TEMP/g7/report.json" \
             "$RUNNER_TEMP/production-db-terminal-result.json"
