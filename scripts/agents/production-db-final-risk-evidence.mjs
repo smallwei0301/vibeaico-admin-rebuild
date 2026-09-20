@@ -74,10 +74,18 @@ export function buildProductionDbFinalRiskEvidence({
     status: 'ASTRA_APPROVED',
     requestedModel: latest.requestedModel,
     actualModel: latest.actualModel,
+    // Preserve the already-validated Owner #552 identity contract for G6.
+    // Dropping the tier makes preflight incorrectly treat audit/current-agent
+    // evidence as an unverified premium reviewer.
+    ...Object.fromEntries([
+      'reviewerTier', 'costPolicyVersion', 'identityEvidence', 'executionEvidence',
+      'modelSelectionAvailable', 'downgradeReason', 'downgradeEvidenceRef',
+      'reviewLineage', 'adversarialEvidence', 'priorFindingsReviewed', 'unresolvedFindingCount',
+    ].filter((key) => latest[key] !== undefined).map((key) => [key, latest[key]])),
     planDigest,
     evidenceDigest,
     reviewedAt: latest.submittedAt,
-    executionRef: latest.report,
+    executionRef: latest.executionRef || latest.report,
     reviewId: String(latest.reviewId),
     releaseId,
     trustSource: latest.trustSource,
