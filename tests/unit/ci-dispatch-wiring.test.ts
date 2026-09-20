@@ -17,6 +17,9 @@ describe('CI workflow dispatch revision wiring', () => {
     expect(workflow).toContain("const rejectedDispatch = context.eventName === 'workflow_dispatch'");
     expect(workflow).toContain("decision.reason !== 'docs_only';");
     expect(workflow).toContain('core.setFailed(decision.error || `Rejected workflow dispatch: ${decision.reason}`);');
+    expect(workflow).toContain("group: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || format('source-only-integration-{0}', github.run_id) }}");
+    expect(workflow.match(/needs\.classify-changes\.outputs\.docs_only == 'true' && needs\.classify-changes\.outputs\.run_test_validation != 'true'/g)).toHaveLength(3);
+    expect(workflow.match(/needs\.classify-changes\.outputs\.docs_only != 'true' \|\| needs\.classify-changes\.outputs\.run_test_validation == 'true'/g)).toHaveLength(4);
   });
 
   it('emits raw shared TEST evidence only after a trusted main_manual run and never overclaims cleanup or AUTHZ coverage', () => {

@@ -172,12 +172,12 @@ jobs:
             exit 1
           fi
       - name: Lightweight documentation check
-        if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true' }}
         run: |
           node --check scripts/ci/classify-changes.mjs
           git diff --check "${{ needs.classify-changes.outputs.base_revision }}" "${{ needs.classify-changes.outputs.head_revision }}"
       - name: Independent documentation allowlist revalidation
-        if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true' }}
         env:
           BASE_REVISION: ${{ needs.classify-changes.outputs.base_revision }}
           HEAD_REVISION: ${{ needs.classify-changes.outputs.head_revision }}
@@ -186,13 +186,13 @@ jobs:
           echo '- docs-only: npm, typecheck, unit, build and shared TEST intentionally skipped' >> "$GITHUB_STEP_SUMMARY"
       - name: Install the exact locked dependency tree
         run: npm ci
-        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' || needs.classify-changes.outputs.run_test_validation == 'true' }}
       - run: npm run typecheck
-        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' || needs.classify-changes.outputs.run_test_validation == 'true' }}
       - run: npm test
-        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' || needs.classify-changes.outputs.run_test_validation == 'true' }}
       - run: npm run build
-        if: ${{ needs.classify-changes.outputs.docs_only != 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only != 'true' || needs.classify-changes.outputs.run_test_validation == 'true' }}
         env: { NEXT_PUBLIC_USE_MOCK: 'true' }
 
   integration:
@@ -201,7 +201,7 @@ jobs:
     if: ${{ needs.check.result == 'success' }}
     runs-on: ubuntu-latest
     concurrency:
-      group: ${{ needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || format('source-only-integration-{0}', github.run_id) }}
+      group: ${{ needs.classify-changes.outputs.run_test_validation == 'true' && 'shared-test-supabase-integration' || needs.classify-changes.outputs.docs_only == 'true' && format('docs-integration-{0}', github.run_id) || format('source-only-integration-{0}', github.run_id) }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
@@ -226,7 +226,7 @@ jobs:
             test "$GITHUB_SHA" = "$EXPECTED_HEAD"
           fi
       - name: Documentation policy skip evidence
-        if: ${{ needs.classify-changes.outputs.docs_only == 'true' }}
+        if: ${{ needs.classify-changes.outputs.docs_only == 'true' && needs.classify-changes.outputs.run_test_validation != 'true' }}
         run: |
           echo 'POLICY_SKIP: shared TEST integration and Playwright E2E are skipped for docs-only work.'
           echo '- docs-only shared TEST policy skip' >> "$GITHUB_STEP_SUMMARY"
