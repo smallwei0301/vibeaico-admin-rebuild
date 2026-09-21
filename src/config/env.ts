@@ -103,6 +103,15 @@ const serverSchema = z.object({
   ECPAY_HASH_IV: z.string().optional(),
   /** 'production' 打正式 ECPay；其餘（含未設定）一律視為測試站，指向 payment-stage */
   ECPAY_ENV: z.enum(['production', 'stage']).default('stage'),
+
+  /**
+   * issue #11／`docs/integration/11-PARTNER-API.md` §4.1：允許跨網域呼叫
+   * `/api/public/**` 的來源網域，逗號分隔（例如 Midao 正式／預覽網域）。
+   * 未設定時 fail closed——`src/server/public-cors.ts` 不會放行任何跨網域
+   * Origin，只有同源請求（沒有 `Origin` header，或瀏覽器同源請求）不受影響。
+   * 不支援萬用字元；一律逐一列出允許的網域。
+   */
+  PUBLIC_CORS_ORIGINS: z.string().optional(),
 });
 
 const clientSchema = z.object({
