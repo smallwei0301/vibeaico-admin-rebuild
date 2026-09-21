@@ -432,8 +432,8 @@ describe('#396 已提交的正式資料', () => {
   // 以唯讀查詢確認先前已套用於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，
   // 四者都在快照裡）。#455 不會重寫、拆分或新增既有 migration 歷史；數字以 current
   // main 的實際檔案為準。
-  it('repo 有 76 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(76);
+  it('repo 有 77 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(77);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
@@ -480,7 +480,7 @@ describe('#396 已提交的正式資料', () => {
     // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(19);
+    expect(counts.NOT_APPLIED ?? 0).toBe(20);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -759,7 +759,7 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
     // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
     // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
     // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(19);
+    expect(notApplied.length).toBe(20);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

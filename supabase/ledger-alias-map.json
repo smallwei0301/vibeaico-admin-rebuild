@@ -620,6 +620,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "VERIFIED_NOT_APPLIED",
       "evidence": "issue #15：LINE chat 真的能傳送圖片。0126 的 p_storage_write 政策白名單已列出 chat-images，但 storage.buckets 從未真的建立這個 bucket（同 0086 修過的陷阱：政策提到一個 bucket 不代表它存在）。本檔只 insert 一列 storage.buckets（chat-images, public），不動任何政策；scripts/agents/production-db-release-plan.mjs（#447）把它歸類為 BACKFILL，與本輪 #589 AUTHZ 批次（0116…0127）不同 risk tier，因此比照 0109 的既有慣例，本輪刻意不排入自動套用名單。原檔名 0128 與 main 既有的 0128_issue_42_plan_seasonal_pricing 撞號，解衝突時改為 0129，避免前綴碰撞。保留為未套用，日後需獨立的 BACKFILL release、G3 證據與重新驗收，方能套用到正式庫或 canonical TEST。"
+    },
+    {
+      "repoFile": "0130_issue_46_refund_policy_snapshot",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#46：tour_orders.refund_policy_snapshot 補齊。src/server/mappers.ts 的 mapTourOrder 與旅客狀態頁（src/app/s/[shopCode]/requests/[orderId]/page.tsx）早就在讀寫此欄位，但欄位本身從未進入 main 的 migration 序列，導致每筆 REQUEST 訂單一律顯示「政策未提供」。本檔補上欄位、check constraint，並以目前 main 的 0111（seats_reserved 分流）函式本體為準重寫 create_tour_order，只多做 insert 當下 snapshot trips.refund_policy_type 這件事，不覆蓋 0111 已修好的名額鎖定行為。合併 main 後仍屬 PENDING_APPLY；canonical TEST 與 Production 的遠端套用各自需要 staged release 授權與回讀驗證。"
     }
   ]
 }
