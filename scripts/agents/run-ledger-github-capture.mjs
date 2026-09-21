@@ -49,7 +49,16 @@ export async function collectGithubRunEvidence({
     owner, repo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100,
   });
   const boundPulls = pulls.filter((pr) => productRunBound(pr, runId));
-  const issueNumbers = new Set();
+  const existingVerifiedIssueSubjects = new Set(
+    (Array.isArray(ledger?.completionTruth?.claims) ? ledger.completionTruth.claims : [])
+      .filter((claim) => claim?.type === 'ISSUE_CLOSED'
+        && claim?.verification === 'VERIFIED'
+        && String(claim?.observedState ?? '').toLowerCase() === 'closed')
+      .map((claim) => String(claim?.subject ?? '').match(/^issue#([1-9][0-9]*)$/)?.[1])
+      .filter(Boolean)
+      .map(Number),
+  );
+  const issueNumbers = new Set(existingVerifiedIssueSubjects);
   const ciRuns = new Map();
 
   for (const pr of boundPulls) {
@@ -91,17 +100,20 @@ export async function collectGithubRunEvidence({
     closedIssues.set(issueNumber, issue);
   }
 
-  const operations = [...closedIssues.keys()].sort((a, b) => a - b).map((issueNumber) => ({
-    action: 'ADD',
-    claim: {
-      type: 'ISSUE_CLOSED',
-      subject: `issue#${issueNumber}`,
-      claimedState: 'closed',
-      observedState: 'closed',
-      verification: 'VERIFIED',
-      evidenceRef: `github:issue#${issueNumber}`,
-    },
-  }));
+  const operations = [...closedIssues.keys()]
+    .filter((issueNumber) => !existingVerifiedIssueSubjects.has(issueNumber))
+    .sort((a, b) => a - b)
+    .map((issueNumber) => ({
+      action: 'ADD',
+      claim: {
+        type: 'ISSUE_CLOSED',
+        subject: `issue#${issueNumber}`,
+        claimedState: 'closed',
+        observedState: 'closed',
+        verification: 'VERIFIED',
+        evidenceRef: `github:issue#${issueNumber}`,
+      },
+    }));
 
   const counterOperations = [];
   const ciEvidenceRefs = [...ciRuns.keys()].sort((a, b) => a - b)
