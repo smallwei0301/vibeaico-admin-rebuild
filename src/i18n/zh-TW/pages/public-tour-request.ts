@@ -82,5 +82,35 @@ export const publicTourRequestPage = {
     cancellationPolicyTitle: '本次申請適用的取消／退款政策',
     cancellationPolicyMissing: '政策未提供',
     backToShop: '返回店家頁',
+    myOrdersLink: '查看我的所有訂單',
+  },
+
+  /** `/s/{shopCode}/my-orders`——旅客用送出申請時填的聯絡方式查自己的所有訂單。 */
+  myOrders: {
+    metaTitle: '我的訂單',
+    title: '查詢我的訂單',
+    description: '輸入您申請時填寫的電話、LINE ID 或 Email 其中一種，即可查詢在這家店送出過的所有申請與訂單。',
+    contactLabel: '電話 / LINE ID / Email',
+    contactPlaceholder: '請輸入其中一種聯絡方式',
+    submit: '查詢',
+    searching: '查詢中…',
+    errors: {
+      validation: '請輸入查詢用的聯絡方式',
+      rateLimited: '查詢過於頻繁，請稍後再試',
+      generic: '查詢失敗，請稍後再試',
+    },
+    emptyTitle: '查無符合的訂單',
+    emptyDescription: '請確認輸入的聯絡方式與申請時填寫的是否一致；若確定曾經申請過，請改用 LINE／電話聯絡店家確認。',
+    initialTitle: '輸入聯絡方式開始查詢',
+    initialDescription: '查詢結果只會顯示這家店的訂單，且僅比對您輸入的聯絡方式。',
+    resultCount: (n: number) => `共 ${n} 筆`,
+    status: {
+      PENDING: '待確認',
+      CONFIRMED: '已確認',
+      CANCELLED: '已取消',
+      COMPLETED: '已完成',
+    },
+    viewDetail: '查看詳情',
+    backToShop: '返回店家頁',
   },
 } as const;
