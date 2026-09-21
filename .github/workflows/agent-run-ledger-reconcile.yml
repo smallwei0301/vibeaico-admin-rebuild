@@ -18,7 +18,7 @@ on:
       capture_mode:
         description: Build evidence from live GitHub or use a supplied evidence artifact
         required: true
-        default: github_live
+        default: provided_evidence
         type: choice
         options:
           - github_live
