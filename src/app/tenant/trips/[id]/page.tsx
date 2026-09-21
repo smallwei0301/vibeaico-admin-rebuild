@@ -22,9 +22,9 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan,
+  batchCreateDepartures, deleteTripAddon, deleteTripDeparture, deleteTripPlan, deleteTripPlanSeason,
   getTrip, listTripAddons, listTripDepartures, listTripPlans, requestMidaoListing,
-  saveTripAddon, saveTripDeparture, saveTripPlan, updateTrip,
+  saveTripAddon, saveTripDeparture, saveTripPlan, saveTripPlanSeason, updateTrip,
 } from '@/services/tours';
 import { listStaff } from '@/services/catalog';
 import { common } from '@/i18n/zh-TW/common';
@@ -40,7 +40,7 @@ import {
 } from '@/lib/trip-plan-quick-edit';
 import type {
   DepartureConflict, DepartureFormationStatus, DepartureStatus, PlanReviewState, PriceType, Staff, Trip, TripAddon,
-  TripDeparture, TripPlan,
+  TripDeparture, TripPlan, TripPlanSeason,
 } from '@/lib/types';
 
 const GALLERY_MAX = 8;
@@ -76,6 +76,12 @@ const emptyPlan = (tripId: string): TripPlan => ({
 const emptyAddon = (tripId: string): TripAddon => ({
   id: '', tripId, name: '', price: 0, unit: 'PER_PERSON',
   stock: null, active: true, sortOrder: 0,
+});
+
+/** 空白季節（新增用）；issue #42：季節定價的最小可用輸入介面。 */
+const emptySeason = (): TripPlanSeason => ({
+  id: '', name: '', startMonth: 1, startDay: 1, endMonth: 12, endDay: 31,
+  priceOverride: null, active: true,
 });
 
 const emptyDeparture = (tripId: string, planId: string): TripDeparture => ({
@@ -189,8 +195,11 @@ export default function TripDetailPage() {
   /** 上一次批次開團因撞班被跳過的日期；成功訊息裡的 `skipped` 看不出原因。 */
   const [batchConflicts, setBatchConflicts] = React.useState<DepartureConflict[]>([]);
   const [deleteTarget, setDeleteTarget] = React.useState<
-    { kind: 'plan' | 'addon' | 'departure'; id: string; name: string } | null
+    { kind: 'plan' | 'addon' | 'departure' | 'season'; id: string; name: string } | null
   >(null);
+  /* issue #42：季節定價編輯中的草稿；null = 目前沒有在新增/編輯季節。 */
+  const [seasonDraft, setSeasonDraft] = React.useState<TripPlanSeason | null>(null);
+  const [savingSeason, setSavingSeason] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -266,6 +275,7 @@ export default function TripDetailPage() {
     setPlanDraft(null);
     setPlanEditorMode('quick');
     setShowChildPrice(false);
+    setSeasonDraft(null);
   };
 
   const closePlanEditor = () => {
@@ -276,6 +286,70 @@ export default function TripDetailPage() {
   const openAdvancedPlanEditor = () => {
     if (!planDraft?.id || savingPlan) return;
     setPlanEditorMode('advanced');
+  };
+
+  /* ------------------------------------------------------- 季節定價（#42） */
+  const openSeasonEditor = (season?: TripPlanSeason) => {
+    setSeasonDraft(season ? { ...season } : emptySeason());
+  };
+
+  const closeSeasonEditor = () => {
+    if (savingSeason) return;
+    setSeasonDraft(null);
+  };
+
+  /**
+   * issue #42：季節是獨立子表（`trip_plan_seasons`），不是 `trip_plans` 的一個
+   * 欄位，所以存檔不走 `saveTripPlan`／`toAdvancedPlanPayload`，而是自己的
+   * create/update 端點。存完立刻把結果寫回 `planDraft.seasons` 與 `plans`
+   * 列表——mock 模式沒有真的後端可讀回，所以在地組一筆看得到的結果（跟
+   * `savePlan()` 的 `USE_MOCK` 分支同一套慣例）；真後端模式用 API 實際回傳的列，
+   * 不是自己組的猜測值。
+   */
+  const saveSeason = async () => {
+    if (!planDraft?.id || !seasonDraft) return;
+    if (!seasonDraft.name.trim()) {
+      toast.show(t.messages.seasonNameRequired, 'danger');
+      return;
+    }
+    const inRange = (v: number, max: number) => Number.isInteger(v) && v >= 1 && v <= max;
+    if (
+      !inRange(seasonDraft.startMonth, 12) || !inRange(seasonDraft.endMonth, 12)
+      || !inRange(seasonDraft.startDay, 31) || !inRange(seasonDraft.endDay, 31)
+    ) {
+      toast.show(t.messages.seasonRangeInvalid, 'danger');
+      return;
+    }
+    if (
+      seasonDraft.priceOverride !== null
+      && (!Number.isFinite(seasonDraft.priceOverride) || seasonDraft.priceOverride < 0)
+    ) {
+      toast.show(t.messages.seasonPriceInvalid, 'danger');
+      return;
+    }
+
+    setSavingSeason(true);
+    try {
+      const saved = await saveTripPlanSeason(planDraft.id, seasonDraft);
+      const isNew = !seasonDraft.id;
+      const resolved: TripPlanSeason = USE_MOCK
+        ? { ...seasonDraft, id: seasonDraft.id || `season_new_${planDraft.seasons.length + 1}` }
+        : (saved as TripPlanSeason);
+      const nextSeasons = isNew
+        ? [...planDraft.seasons, resolved]
+        : planDraft.seasons.map((s) => (s.id === seasonDraft.id ? resolved : s));
+      setPlanDraft({ ...planDraft, seasons: nextSeasons });
+      setPlans((prev) => prev.map((p) => (p.id === planDraft.id ? { ...p, seasons: nextSeasons } : p)));
+      setSeasonDraft(null);
+      toast.show(t.messages.seasonSaved);
+    } catch (error) {
+      toast.show(
+        `${t.messages.actionFailedPrefix}${error instanceof ApiError ? error.message : ''}`,
+        'danger',
+      );
+    } finally {
+      setSavingSeason(false);
+    }
   };
 
   const savePlan = async () => {
@@ -475,13 +549,26 @@ export default function TripDetailPage() {
   const doDelete = async () => {
     if (!deleteTarget) return;
     const { kind, id } = deleteTarget;
+    // issue #42：季節走同一套 runAction()（fn → load() → toast），與
+    // plan/addon/departure 三種既有刪除一致，不另開一條「直接改 state」的路徑
+    // ——那正是 PR #266 修掉的假成功形狀。
     const [remove, message] = kind === 'plan'
       ? [() => deleteTripPlan(id), t.messages.planDeleted] as const
       : kind === 'addon'
         ? [() => deleteTripAddon(id), t.messages.addonDeleted] as const
-        : [() => deleteTripDeparture(id), t.messages.departureDeleted] as const;
+        : kind === 'season'
+          ? [() => deleteTripPlanSeason(id), t.messages.seasonDeleted] as const
+          : [() => deleteTripDeparture(id), t.messages.departureDeleted] as const;
     const ok = await runAction(remove, message);
-    if (ok) setDeleteTarget(null);
+    if (ok) {
+      setDeleteTarget(null);
+      // load() 重讀了 plans（含最新的 trip_plan_seasons embed），但目前開著的
+      // Advanced 編輯視窗（planDraft）是獨立 state，不會被 load() 同步——
+      // 這裡把剛刪掉的季節從 planDraft.seasons 移除，畫面才不會留著幽靈列。
+      if (kind === 'season' && planDraft) {
+        setPlanDraft({ ...planDraft, seasons: planDraft.seasons.filter((s) => s.id !== id) });
+      }
+    }
   };
 
   if (loading || !form || !trip) {
@@ -1383,6 +1470,153 @@ export default function TripDetailPage() {
                   </FormGroup>
                 ) : null}
 
+                {/* ---------------------------------------- 季節定價（issue #42） */}
+                <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-dark">{t.seasons.sectionTitle}</p>
+                      <p className="text-xs text-secondary">{t.seasons.sectionHint}</p>
+                    </div>
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      disabled={savingPlan || !!seasonDraft}
+                      onClick={() => openSeasonEditor()}
+                    >
+                      <Plus size={14} /> {t.seasons.add}
+                    </Button>
+                  </div>
+
+                  {planDraft.seasons.length === 0 ? (
+                    <p className="text-xs text-muted">{t.seasons.empty}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {planDraft.seasons.map((season) => (
+                        <li
+                          key={season.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-neutral-100 px-3 py-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 text-sm font-medium text-dark">
+                              {season.name}
+                              {!season.active ? <Badge tone="neutral">{common.disabled}</Badge> : null}
+                            </div>
+                            <div className="text-xs text-secondary">
+                              {t.seasons.rangeText(
+                                t.seasons.monthDay(season.startMonth, season.startDay),
+                                t.seasons.monthDay(season.endMonth, season.endDay),
+                              )}
+                              {' · '}
+                              {formatCurrency(season.priceOverride ?? planDraft.basePrice)}
+                            </div>
+                          </div>
+                          <span className="btn-group shrink-0">
+                            <Button
+                              type="button" variant="ghost" size="sm"
+                              title={t.actions.edit} aria-label={t.actions.edit}
+                              disabled={savingPlan || !!seasonDraft}
+                              onClick={() => openSeasonEditor(season)}
+                            >
+                              <Pencil size={13} />
+                            </Button>
+                            <Button
+                              type="button" variant="ghost" size="sm"
+                              title={t.actions.delete} aria-label={t.actions.delete}
+                              disabled={savingPlan || !!seasonDraft}
+                              onClick={() => setDeleteTarget({ kind: 'season', id: season.id, name: season.name })}
+                            >
+                              <Trash2 size={13} />
+                            </Button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {seasonDraft ? (
+                    <div className="flex flex-col gap-3 rounded-md border border-dashed border-neutral-300 p-3">
+                      <FormGroup>
+                        <Label htmlFor="season-name" required>{t.seasons.fields.nameLabel}</Label>
+                        <Input
+                          id="season-name"
+                          value={seasonDraft.name}
+                          placeholder={t.seasons.fields.namePlaceholder}
+                          onChange={(e) => setSeasonDraft({ ...seasonDraft, name: e.target.value })}
+                        />
+                      </FormGroup>
+
+                      <div>
+                        <Label required>{t.seasons.fields.rangeLabel}</Label>
+                        <div className="grid grid-cols-4 gap-2">
+                          <FormGroup>
+                            <Label htmlFor="season-start-month">{t.seasons.fields.startMonthLabel}</Label>
+                            <Input
+                              id="season-start-month" type="number" min={1} max={12} step={1}
+                              value={seasonDraft.startMonth}
+                              onChange={(e) => setSeasonDraft({ ...seasonDraft, startMonth: Number(e.target.value) })}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <Label htmlFor="season-start-day">{t.seasons.fields.startDayLabel}</Label>
+                            <Input
+                              id="season-start-day" type="number" min={1} max={31} step={1}
+                              value={seasonDraft.startDay}
+                              onChange={(e) => setSeasonDraft({ ...seasonDraft, startDay: Number(e.target.value) })}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <Label htmlFor="season-end-month">{t.seasons.fields.endMonthLabel}</Label>
+                            <Input
+                              id="season-end-month" type="number" min={1} max={12} step={1}
+                              value={seasonDraft.endMonth}
+                              onChange={(e) => setSeasonDraft({ ...seasonDraft, endMonth: Number(e.target.value) })}
+                            />
+                          </FormGroup>
+                          <FormGroup>
+                            <Label htmlFor="season-end-day">{t.seasons.fields.endDayLabel}</Label>
+                            <Input
+                              id="season-end-day" type="number" min={1} max={31} step={1}
+                              value={seasonDraft.endDay}
+                              onChange={(e) => setSeasonDraft({ ...seasonDraft, endDay: Number(e.target.value) })}
+                            />
+                          </FormGroup>
+                        </div>
+                        <FormText>{t.seasons.crossYearNote}</FormText>
+                      </div>
+
+                      <FormGroup>
+                        <Label htmlFor="season-price">{t.seasons.fields.priceLabel}</Label>
+                        <Input
+                          id="season-price"
+                          type="number" min={0} step={1}
+                          placeholder={t.seasons.fields.pricePlaceholder}
+                          value={seasonDraft.priceOverride ?? ''}
+                          onChange={(e) => setSeasonDraft({
+                            ...seasonDraft,
+                            priceOverride: e.target.value === '' ? null : Number(e.target.value),
+                          })}
+                        />
+                      </FormGroup>
+
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={seasonDraft.active}
+                          onCheckedChange={(v) => setSeasonDraft({ ...seasonDraft, active: v })}
+                        />
+                        <span className="text-sm">{t.seasons.fields.activeLabel}</span>
+                      </div>
+
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" variant="secondary" size="sm" onClick={closeSeasonEditor}>
+                          {t.seasons.cancel}
+                        </Button>
+                        <Button type="button" size="sm" loading={savingSeason} onClick={saveSeason}>
+                          {savingSeason ? t.seasons.saving : t.seasons.save}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
                 <Alert tone="info">{t.plans.advanced.scopeNote}</Alert>
               </>
             )}
@@ -1619,7 +1853,8 @@ export default function TripDetailPage() {
         message={
           deleteTarget?.kind === 'plan' ? t.confirm.deletePlan(deleteTarget.name)
             : deleteTarget?.kind === 'addon' ? t.confirm.deleteAddon(deleteTarget.name)
-              : common.confirm.message
+              : deleteTarget?.kind === 'season' ? t.confirm.deleteSeason(deleteTarget.name)
+                : common.confirm.message
         }
         confirmText={t.actions.delete}
         danger

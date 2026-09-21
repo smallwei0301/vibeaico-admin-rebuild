@@ -1,6 +1,7 @@
 import { adapt, request } from '@/lib/api';
 import type {
-  DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TourOrder, TourPaymentStatus, Paged,
+  DepartureConflict, Trip, TripAddon, TripDeparture, TripPlan, TripPlanSeason,
+  TourOrder, TourPaymentStatus, Paged,
 } from '@/lib/types';
 import {
   MOCK_TOUR_ORDERS, MOCK_TRIPS, MOCK_TRIP_ADDONS,
@@ -150,6 +151,30 @@ export const saveTripPlan = (tripId: string, payload: Partial<TripPlan>) =>
 
 export const deleteTripPlan = (planId: string) =>
   adapt(() => undefined, () => request<void>(`/api/trip-plans/${planId}`, { method: 'DELETE' }));
+
+/**
+ * issue #42：季節定價（`trip_plan_seasons`）。`TripPlan.seasons` 早就是
+ * canonical 契約的一部分，但一直沒有可以真的存進去的路徑——`mapTripPlan()`
+ * 過去對這個欄位寫死回傳 `[]`。存在自己的子表（比照 `trip_addons`），不是
+ * `trip_plans` 上的一個 key，所以有自己的 create/update/delete 端點：
+ * `POST /api/trip-plans/:planId/seasons`（新建）、
+ * `PUT/DELETE /api/trip-plan-seasons/:id`（既有列）。
+ *
+ * mock 模式沒有獨立的季節資料表，跟 `saveTripAddon`／`saveTripPlan` 同一套
+ * 慣例：呼叫端（頁面）在 `USE_MOCK` 分支自己把改動寫回 `planDraft.seasons`
+ * 這個 in-memory 陣列，這裡只負責在有真後端時真的打 API。
+ */
+export const saveTripPlanSeason = (planId: string, payload: Partial<TripPlanSeason>) =>
+  adapt<TripPlanSeason | undefined>(() => undefined, () => (payload.id
+    ? request<TripPlanSeason>(`/api/trip-plan-seasons/${payload.id}`, {
+      method: 'PUT', body: JSON.stringify(payload),
+    })
+    : request<TripPlanSeason>(`/api/trip-plans/${planId}/seasons`, {
+      method: 'POST', body: JSON.stringify(payload),
+    })));
+
+export const deleteTripPlanSeason = (id: string) =>
+  adapt(() => undefined, () => request<void>(`/api/trip-plan-seasons/${id}`, { method: 'DELETE' }));
 
 /* ------------------------------------------------------------------ 團次 */
 export const listTripDepartures = (tripId: string) =>

@@ -16,7 +16,7 @@ export const GET = handle(async (_req, { params }: Context) => {
   if (!trip) return fail(404, '找不到此行程', ERR.NOT_FOUND);
 
   const [{ data: plans, error: planError }, { count: upcoming, error: departureError }] = await Promise.all([
-    t.supabase.from('trip_plans').select('*').eq('tenant_id', t.tenantId).eq('trip_id', id)
+    t.supabase.from('trip_plans').select('*, trip_plan_seasons(*)').eq('tenant_id', t.tenantId).eq('trip_id', id)
       .order('sort_order', { ascending: true }),
     t.supabase.from('trip_departures').select('id', { count: 'exact', head: true })
       .eq('tenant_id', t.tenantId).eq('trip_id', id).eq('status', 'OPEN')

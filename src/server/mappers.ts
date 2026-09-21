@@ -30,6 +30,7 @@ import type {
   TripAddon,
   TripDeparture,
   TripPlan,
+  TripPlanSeason,
 } from '@/lib/types';
 
 /* ------------------------------------------------------------------ 預約 */
@@ -324,6 +325,23 @@ const DEPOSIT_MODE_SNAPSHOT = new Set(['NONE', 'DEPOSIT_FIXED', 'DEPOSIT_PERCENT
  */
 const TOUR_PAYMENT_STATUS = new Set(['UNPAID', 'PARTIAL', 'PAID', 'REFUND_PENDING', 'REFUNDED']);
 
+/**
+ * issue #42：`trip_plan_seasons`（`0127`）子表列 → `TripPlanSeason`。
+ * `price_override` 是 `number | null`——null 代表沿用方案基本價，不是 0。
+ */
+export function mapTripPlanSeason(r: any): TripPlanSeason {
+  return {
+    id: r.id,
+    name: r.name ?? '',
+    startMonth: Number(r.start_month),
+    startDay: Number(r.start_day),
+    endMonth: Number(r.end_month),
+    endDay: Number(r.end_day),
+    priceOverride: r.price_override == null ? null : Number(r.price_override),
+    active: r.active ?? true,
+  };
+}
+
 export function mapTripPlan(r: any): TripPlan {
   return {
     id: r.id,
@@ -344,7 +362,14 @@ export function mapTripPlan(r: any): TripPlan {
     depositValue: Number(r.deposit_value ?? 0),
     active: r.active ?? true,
     yearRound: r.year_round ?? true,
-    seasons: [],
+    // issue #42：`trip_plan_seasons`（0127）之前不存在，這裡永遠寫死 []。
+    // 呼叫端用 `.select('*, trip_plan_seasons(*))` 帶出子表列時才會有資料；
+    // PostgREST embed 不保證回傳順序，所以在這裡依 sort_order 排序一次。
+    seasons: Array.isArray(r.trip_plan_seasons)
+      ? [...r.trip_plan_seasons]
+        .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map(mapTripPlanSeason)
+      : [],
     reviewState: 'NONE',
     reviewNote: '',
     sortOrder: r.sort_order ?? 0,
