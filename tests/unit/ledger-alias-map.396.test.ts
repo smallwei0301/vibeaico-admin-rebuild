@@ -422,18 +422,20 @@ describe('#396 已提交的正式資料', () => {
   // main 側 PR，見 supabase/ledger-alias-map.json 對應 evidence）、
   // 0119_issue_18_owner_notify_confirm_atomic（#18 缺口 A 併發修復，不改既有
   // 表結構／RLS，只新增兩支 service-role-only 函式），以及本候選
-  // 0121_issue_17_booking_addons_hardening、0123_issue_589_richmenu_asset_retirement；正式庫快照維持 58 筆
-  // 實際 ledger row（0106／0108／0107 已分別於 2026-09-14 經 Owner
-  // 具名授權套用並重新擷取本快照；0105 於 2026-09-15 以唯讀查詢確認先前已套用
+  // 0121_issue_17_booking_addons_hardening、0123_issue_589_richmenu_asset_retirement、
+  // 0128_issue_15_chat_images_bucket（issue #15：只 insert 一列 storage.buckets，
+  // 補上 0126 政策白名單早就提到、卻從未真的建立的 chat-images bucket）；
+  // 正式庫快照維持 58 筆實際 ledger row（0106／0108／0107 已分別於 2026-09-14
+  // 經 Owner 具名授權套用並重新擷取本快照；0105 於 2026-09-15 以唯讀查詢確認先前已套用
   // 於正式庫，本檔先前誤標記為 NOT_APPLIED，已一併更正，四者都在快照裡）。
   // #455 不會重寫、拆分或新增既有 migration 歷史；數字以 current main 的
   // 實際檔案為準。
-  it('repo 有 74 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
-    expect(repoFiles).toHaveLength(74);
+  it('repo 有 75 個 migration 檔案，正式庫快照有 58 筆 ledger row', () => {
+    expect(repoFiles).toHaveLength(75);
     expect(snapshot.ledgerRowNames).toHaveLength(58);
   });
 
-  it('supabase/ledger-alias-map.json 完全涵蓋這 74 個 repo 檔案與 58 筆 ledger row', () => {
+  it('supabase/ledger-alias-map.json 完全涵蓋這 75 個 repo 檔案與 58 筆 ledger row', () => {
     const result = verifyLedgerAliasMap({
       repoFiles,
       ledgerRowNames: snapshot.ledgerRowNames,
@@ -444,7 +446,7 @@ describe('#396 已提交的正式資料', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('分類統計符合已查證的事實：51 EXACT、6 ALIAS、17 NOT_APPLIED、1 LEDGER_ONLY', () => {
+  it('分類統計符合已查證的事實：51 EXACT、6 ALIAS、18 NOT_APPLIED、1 LEDGER_ONLY', () => {
     const counts: Record<string, number> = {};
     for (const entry of aliasMap.entries) {
       counts[entry.classification] = (counts[entry.classification] ?? 0) + 1;
@@ -462,16 +464,19 @@ describe('#396 已提交的正式資料', () => {
     // 0125_issue_17_booking_addons_legacy_enum、0126_issue_402_keyword_reply_images_authz、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening 與
-    // 0123_issue_589_richmenu_asset_retirement、0127_issue_589_authz_constraint_reconciliation
+    // 0123_issue_589_richmenu_asset_retirement、0127_issue_589_authz_constraint_reconciliation、
+    // 0128_issue_15_chat_images_bucket
     // （後幾筆合併自 origin/main 的 #519/#524/#526/#527/#575 等 PR，加上本 issue #17
-    // 拆出的 migration-only successor、#402 的 AUTHZ successor，以及 #589 的 AUTHZ reconciliation），所以 NOT_APPLIED 是 17。
+    // 拆出的 migration-only successor、#402 的 AUTHZ successor、#589 的 AUTHZ reconciliation，
+    // 以及本 issue #15 只 insert 一列 storage.buckets 的 chat-images bucket birth），
+    // 所以 NOT_APPLIED 是 18。
     // 十二者依 AGENTS.md 的規則，在合併進 main 之前都不是任何環境的套用授權。
     // 0109 是 SCHEMA_REPAIR；0112、0114 是 AUTHZ+BACKFILL 混合風險。三者各自
     // 留在既有 migration 歷史中，並標為 VERIFIED_NOT_APPLIED，直到未來獨立
     // release 有對應的審查與執行器。
     expect(counts.EXACT).toBe(51);
     expect(counts.ALIAS).toBe(6);
-    expect(counts.NOT_APPLIED ?? 0).toBe(17);
+    expect(counts.NOT_APPLIED ?? 0).toBe(18);
     expect(counts.LEDGER_ONLY).toBe(1);
   });
 
@@ -736,17 +741,20 @@ describe('#396 NOT_APPLIED 的兩種狀態必須用列舉講清楚', () => {
   it('已提交的正式對照表：每一筆 NOT_APPLIED 都有合法的 notAppliedReason', () => {
     const aliasMap = loadRealAliasMap();
     const notApplied = aliasMap.entries.filter((e: any) => e.classification === 'NOT_APPLIED');
-    // 目前為 17 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
+    // 目前為 18 筆：0110、0111、0113、0115、0116_issue_18_owner_notify、0124_issue_18_owner_notify_legacy_shape、
     // 0125_issue_17_booking_addons_legacy_enum、0126_issue_402_keyword_reply_images_authz、
     // 0117_issue_25b_support_chat_threads、0118_issue_25c_platform_donations、
     // 0119_issue_18_owner_notify_confirm_atomic、0121_issue_17_booking_addons_hardening、
-    // 0123_issue_589_richmenu_asset_retirement、0127_issue_589_authz_constraint_reconciliation 這 13 支是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）是
+    // 0123_issue_589_richmenu_asset_retirement、0127_issue_589_authz_constraint_reconciliation
+    // 這 13 支是 PENDING_APPLY；0109（SCHEMA_REPAIR）、0112 與 0114（AUTHZ+BACKFILL 混合）、
+    // 0128_issue_15_chat_images_bucket（BACKFILL，與本輪 #589 AUTHZ 批次不同 risk tier，
+    // 依 production-db-release-plan.mjs #447 的單一 risk tier 限制不能混批）是
     // VERIFIED_NOT_APPLIED。0107／0108 已套用正式庫轉為 EXACT；0105 於
     // 2026-09-15 以唯讀查詢確認先前已套用於正式庫，本檔誤標記已更正為 EXACT。保留 main 那一版的
     // 意圖：釘住數量而不是只檢查「每一筆都有理由」，否則清單變空時這條規則會
     // 靜悄悄變成空轉。任何人日後新增或移除 NOT_APPLIED 都會先撞到這一行，被迫
     // 同時面對下面那條「必須有合法 notAppliedReason」的規則。
-    expect(notApplied.length).toBe(17);
+    expect(notApplied.length).toBe(18);
     for (const entry of notApplied) {
       expect(NOT_APPLIED_REASONS).toContain(entry.notAppliedReason);
     }

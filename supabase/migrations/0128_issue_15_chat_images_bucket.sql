@@ -15,6 +15,13 @@
 -- 依 schema-staged-release 閘門與今日 #42（PR #627）已驗證過的慣例，這支 migration
 -- 拆成獨立 PR，不與同批的 runtime 變更（/api/upload、/api/chat/messages、
 -- SupportChatWidget）混在同一個 PR。
+--
+-- ledger 分類為 VERIFIED_NOT_APPLIED（而非 PENDING_APPLY）：這支 migration 是純
+-- INSERT（BACKFILL risk tier，見 scripts/agents/production-db-release-plan.mjs
+-- #447），而目前排隊中的自動套用批次（0110…0127）全部是 #589 的 AUTHZ risk
+-- tier，`assertSingleRiskTier` 不允許混批。比照既有的 0109 慣例：保留為未套用，
+-- 日後需要獨立的 BACKFILL release、G3 證據與重新驗收，才會真的套用到正式庫或
+-- canonical TEST。
 
 insert into storage.buckets (id, name, public) values
   ('chat-images', 'chat-images', true)
