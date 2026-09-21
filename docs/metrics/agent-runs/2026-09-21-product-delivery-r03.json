@@ -143,15 +143,28 @@
         "cachedTokens": null,
         "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u4ee5\u771f\u5be6\u700f\u89bd\u5668\uff08Playwright, 390px\uff09\u64cd\u4f5c\u91cd\u73fe mock \u6a21\u5f0f\u4e0b Trip Plan \u5b58\u6a94\u4e0d\u6301\u4e45\u7684\u5047\u6210\u529f\uff0c\u4fee\u6b63 saveTripPlan()/deleteTripPlan() \u7684 mock \u5206\u652f\u4e26\u88dc\u4e0a\u76f4\u63a5\u547c\u53eb service function \u7684\u56de\u6b78\u6e2c\u8a66\uff0c\u958b\u65b0 PR\u3002",
         "count": 1
+      },
+      {
+        "id": "terra-11-public-shop-api",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u65b0\u589e GET /api/public/shops/{shopCode} \u8207 CORS \u6388\u6b0a\u5c64\uff08src/server/public-cors.ts\uff09\uff0c\u91cd\u7528\u65e2\u6709 loadPublicShop()\uff0c\u88dc\u4e0a\u771f\u5be6\u884c\u70ba\u6e2c\u8a66\u4e26\u7528\u672c\u5730 dev server + curl \u9a57\u8b49\uff0c\u958b PR #647\u3002",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 3,
+    "issuesStarted": 4,
     "issuesClosed": 0,
-    "auditReady": 3,
+    "auditReady": 4,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
     "commitOnly": 0,
@@ -260,6 +273,16 @@
         "head": "715a0853fdb44431ba8a6edeabf2d1a756154b21",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Trip Plan mock save/delete persistence fix (code-only, no migration), reproduced via Playwright at 390px"
+      },
+      {
+        "id": "647-build-enter",
+        "at": "2026-09-21T18:45:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 647,
+        "issue": 11,
+        "head": "ba564debea41adb4ca68521f47ec5df99546792c",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "First canonical /api/public/** endpoint (GET /api/public/shops/{shopCode}) + CORS authorization layer, no migration, no auth touch"
       }
     ]
   },
