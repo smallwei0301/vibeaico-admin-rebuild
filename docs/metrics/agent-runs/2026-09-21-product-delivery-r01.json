@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-21-product-delivery-r01",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-21T01:11:26.395Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "ISSUE",
+      "ref": "issue/46",
+      "note": "#46 旅客端「我的訂單」查詢入口：TERRA_BUILD 施工完成，開 PR #622（agent/issue-46-traveler-checkout-ui → main），npm run typecheck（0 errors）、npm run build（成功）、npx vitest run tests/unit/public-tour-request-security.46.test.ts（18/18 通過），awaiting CI review."
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/42",
+      "note": "#42 Quick Edit 季節定價持久化：TERRA_BUILD 施工進行中，尚未完成、尚未 commit，本輪派送中。"
+    },
+    {
+      "type": "PR",
+      "ref": "pr/622",
+      "note": "PR #622 agent/issue-46-traveler-checkout-ui：該 PR 遭遇 CI guard「Agent WIP Policy」失敗，8 個 policy error 中 4 項屬機械補齊（DELIVERY_UNIT_TYPE 等），另 4 項需對應 Run ledger（RUN_ID、SCORECARD_PATH 等）。派送 scout 層子 agent 排查，已完成診斷並在 PR 上留言說明，本 ledger 為該診斷結果對應的權威記錄。"
+    }
+  ],
+  "main": {
+    "startSha": null,
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": null,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "issue-46-terra-build-complete",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#46 TERRA_BUILD 施工完成（build 層，實際委派 claude-sonnet-5）：旅客端「我的訂單」查詢入口實作。新增 API route、service 層、React 頁面元件與單元測試。開 PR #622，本機驗證 npm run typecheck（0 errors）、npm run build（成功）、npx vitest run tests/unit/public-tour-request-security.46.test.ts（18/18 通過）。PR 提交後遭遇 CI guard 阻擋，await policy 補齊與 review。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-42-terra-build-in-progress",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#42 TERRA_BUILD 施工進行中（build 層，實際委派 claude-sonnet-5）：Quick Edit 季節定價持久化缺陷修復。本輪派送，進度：分析完成、修復編碼中，尚未 commit 或開 PR。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "pr-622-ci-policy-diagnostic",
+        "requestedModel": "luna",
+        "actualModel": "luna",
+        "role": "PR #622 CI guard 「Agent WIP Policy」失敗診斷（scout 層，實際委派 claude-haiku-4-5）：排查 8 個 policy error，分類為機械補齊（4 項）與需 Run ledger 記錄（4 項），在 PR 留言列舉各項，本 ledger 為對應的權威埋點。不修改 PR body 或補齊欄位，純診斷與記錄。",
+        "count": 1,
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-haiku-4-5"
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 2,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "2026-09-21（PRODUCT_MAIN_SESSION 協調回報）：本輪派工事項三件：#46 build 完成（PR #622，typecheck/build/test 全綠），#42 build 進行中，以及 PR #622 CI guard 診斷。四個 policy error 屬機械補齊，另四個需本 Run ledger 記錄後方能通過。本檔為診斷成果的權威記錄，scout 層子 agent 已完成診斷並在 PR 留言說明，不再補齊欄位。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

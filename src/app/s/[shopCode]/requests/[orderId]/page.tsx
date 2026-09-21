@@ -117,6 +117,13 @@ export default async function PublicTourRequestStatusPage({ params, searchParams
         </div>
       </section>
 
+      <Link
+        href={`/s/${shopCode}/my-orders?contact=${encodeURIComponent(contact)}`}
+        className="text-sm text-primary underline"
+      >
+        {t.status.myOrdersLink}
+      </Link>
+
       <Link href={`/s/${shopCode}`} className="text-sm text-secondary underline">
         {t.status.backToShop}
       </Link>

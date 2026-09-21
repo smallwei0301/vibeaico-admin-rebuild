@@ -21,6 +21,8 @@ export const publicShopPage = {
     viaEmail: (email: string) => `寄信到 ${email}`,
     /** 店家連一個聯絡方式都沒填時——不要假裝有 */
     noContact: '這家店尚未提供聯絡方式，請直接與店家確認。',
+    /** #46 第三片：已經送過申請的顧客，用這個入口查自己的訂單狀態。 */
+    myOrdersLink: '之前申請過？查詢我的訂單',
   },
 
   trips: {
