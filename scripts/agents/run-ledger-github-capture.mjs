@@ -55,19 +55,31 @@ export async function collectGithubRunEvidence({
   for (const pr of boundPulls) {
     const issue = readLifecycleIssue(pr?.body ?? '');
     if (issue) issueNumbers.add(issue);
-    const head = String(pr?.head?.sha ?? '').toLowerCase();
-    if (!SHA.test(head)) continue;
 
-    const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-      owner, repo, head_sha: head, per_page: 100,
+    // A PR may have several exact heads during one Product Run. Counting only
+    // the current head loses every earlier full CI round after a fix is pushed.
+    const commits = await github.paginate(github.rest.pulls.listCommits, {
+      owner, repo, pull_number: pr.number, per_page: 100,
     });
-    for (const run of runs) {
-      if (String(run?.head_sha ?? '').toLowerCase() !== head) continue;
-      if (workflowPath(run) !== '.github/workflows/ci.yml') continue;
-      if (run?.status !== 'completed' || !COUNTED_CI_CONCLUSIONS.has(String(run?.conclusion ?? ''))) continue;
-      if (!withinWindow(run?.run_started_at ?? run?.created_at, startedAt, endedAt)) continue;
-      const id = Number(run?.id);
-      if (Number.isSafeInteger(id) && id > 0) ciRuns.set(id, run);
+    const heads = new Set(
+      commits.map((commit) => String(commit?.sha ?? '').toLowerCase()).filter((sha) => SHA.test(sha)),
+    );
+    const currentHead = String(pr?.head?.sha ?? '').toLowerCase();
+    if (SHA.test(currentHead)) heads.add(currentHead);
+
+    for (const head of [...heads].sort()) {
+      const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+        owner, repo, head_sha: head, per_page: 100,
+      });
+      for (const run of runs) {
+        if (String(run?.head_sha ?? '').toLowerCase() !== head) continue;
+        if (String(run?.event ?? '') !== 'pull_request') continue;
+        if (workflowPath(run) !== '.github/workflows/ci.yml') continue;
+        if (run?.status !== 'completed' || !COUNTED_CI_CONCLUSIONS.has(String(run?.conclusion ?? ''))) continue;
+        if (!withinWindow(run?.run_started_at ?? run?.created_at, startedAt, endedAt)) continue;
+        const id = Number(run?.id);
+        if (Number.isSafeInteger(id) && id > 0) ciRuns.set(id, run);
+      }
     }
   }
 
