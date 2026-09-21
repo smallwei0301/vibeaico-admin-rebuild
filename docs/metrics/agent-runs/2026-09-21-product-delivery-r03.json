@@ -236,7 +236,9 @@
     "#43 GUIDE \u9996\u9801\u516d\u9805\u5019\u9078\u7f3a\u53e3\u9010\u4e00\u67e5\u8b49\uff0c\u7686\u5df2\u7531\u65e2\u6709\u6e2c\u8a66\u8986\u84cb\uff0c\u975e\u771f\u7f3a\u53e3\u3002",
     "#17 \u9010\u4e00\u6838\u5c0d Slice A-D \u8207 idempotency/concurrency checklist\uff0c\u78ba\u8a8d\u5df2\u7531 main \u4e0a\u7684\u6574\u5408\u6e2c\u8a66\u8986\u84cb\uff1b\u65bc Issue #17 \u7559\u4e0b LUNA_CLOSURE \u66f4\u65b0\u7559\u8a00\uff0c\u672a\u9015\u884c\u95dc\u9589\uff08Production schema \u5957\u7528\u8207 #40 \u4f9d\u8cf4\u3001authenticated Preview \u9a57\u6536\u4ecd\u662f\u5177\u540d blocker\uff09\u3002",
     "RESERVE/refill slice: #47 LINE Rich Menu \u5efa\u7acb\u6309\u9215\u771f\u63a5\u7dda\uff08PR #645\uff09\uff0c\u7d14 code-only\u3001\u7121 migration\uff0cmerge \u5f8c\u5c0d\u6240\u6709\u79df\u6236\u7acb\u5373\u751f\u6548\uff0c\u662f\u672c\u8f2a\u552f\u4e00\u771f\u6b63\u8cbc\u8fd1\u4f7f\u7528\u8005\u53ef\u898b\u6210\u679c\u7684\u8b8a\u66f4\uff08\u5c1a\u5f85\u4e00\u6b21 authenticated \u9a57\u6536\uff09\u3002",
-    "Closeout of this round: #645 verified merged+deployed (production READY) \u2014 first genuinely user-visible fix this session. #644 verified merged to main but remains PENDING_APPLY pending Owner-authorized Production schema release; not counted as shipped Product output."
+    "Closeout of this round: #645 verified merged+deployed (production READY) \u2014 first genuinely user-visible fix this session. #644 verified merged to main but remains PENDING_APPLY pending Owner-authorized Production schema release; not counted as shipped Product output.",
+    "#647 (#11 public shop API) merged to main, infra-only, zero frontend callers today \u2014 not counted as user-visible.",
+    "#648 (#46 cancellation policy on public shop homepage) merged to main (189c9a0a) \u2014 second genuinely traveler-visible fix this session: travelers browsing /s/{shopCode} now see the trip's current cancellation/refund policy before deciding to book, instead of only after clicking into a REQUEST form. Vercel production deployment was BUILDING at merge time; not yet confirmed READY."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -329,6 +331,16 @@
         "head": "f505eeb639266f3421c7732745878511eeac1417",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Public shop page now shows the trip's current cancellation/refund policy before booking (genuinely traveler-visible slice, no migration)"
+      },
+      {
+        "id": "648-build-exit",
+        "at": "2026-09-21T19:12:11Z",
+        "kind": "BUILD_EXIT",
+        "pr": 648,
+        "issue": 46,
+        "head": "f505eeb639266f3421c7732745878511eeac1417",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "PR #648 merged to main (189c9a0a92b3a94d2394c986b01ebd77bc947c95); Vercel production deployment dpl_5747ViLh7qcuJu4R3ivXHQxmEZuA state=BUILDING at merge time"
       }
     ]
   },
@@ -366,6 +378,14 @@
         "claimedState": "merge_commit_sha=87879eb1e0242eba1af911b27bd702c19997c7d1; main head reachable via get_commit(main); src/server/public-cors.ts re-read with ref=main confirms content",
         "observedState": "merge_commit_sha=87879eb1e0242eba1af911b27bd702c19997c7d1; main head reachable via get_commit(main); src/server/public-cors.ts re-read with ref=main confirms content",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/87879eb1e0242eba1af911b27bd702c19997c7d1",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "PR #648 (#46 cancellation policy on public shop page)",
+        "claimedState": "merge_commit_sha=189c9a0a92b3a94d2394c986b01ebd77bc947c95; main head reachable via get_commit(main); src/app/s/[shopCode]/page.tsx re-read with ref=main confirms cancellationPolicy render present",
+        "observedState": "merge_commit_sha=189c9a0a92b3a94d2394c986b01ebd77bc947c95; main head reachable via get_commit(main); src/app/s/[shopCode]/page.tsx re-read with ref=main confirms cancellationPolicy render present",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/189c9a0a92b3a94d2394c986b01ebd77bc947c95",
         "verification": "VERIFIED"
       }
     ]
