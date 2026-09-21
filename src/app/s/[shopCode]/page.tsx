@@ -157,6 +157,9 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
           <h2 className="text-base font-medium">{t.booking.title}</h2>
           <p className="text-sm text-secondary">{t.booking.howTo}</p>
           <ContactActions shop={shop} />
+          <Link href={`/s/${shopCode}/my-orders`} className="text-sm text-secondary underline w-fit">
+            {t.booking.myOrdersLink}
+          </Link>
         </div>
       </section>
 

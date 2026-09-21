@@ -43,6 +43,17 @@ import { isFeatureActive } from '@/server/features';
 import { nextTourOrderNo } from '@/server/tour-order-no';
 import type { TourOrder } from '@/lib/types';
 
+/** 「我的訂單」查詢一次最多回傳幾筆（issue #46）——避免無上限回應。 */
+const MY_ORDERS_LIMIT = 50;
+/** 「我的訂單」查詢時，最多回頭掃描該租戶多少筆最新訂單來比對聯絡方式。
+ *  這裡選擇「掃描最近 N 筆＋JS 比對」而不是對 `contact` jsonb 三個欄位各自
+ *  組 `ilike` 查詢字串，理由：聯絡方式是使用者輸入的自由文字，直接組進
+ *  PostgREST 的 `.or()` filter 字串必須逐一逃脫逗號／點號／萬用字元，一旦
+ *  漏掉一種特殊字元就是一個 filter injection；掃描＋JS 比對沒有這個風險，
+ *  代價是掃描筆數有上限（見下方 `MY_ORDERS_SCAN_LIMIT`）——對單一店家而言，
+ *  遠遠超過「這一支公開查詢端點該負責的資料量」。 */
+const MY_ORDERS_SCAN_LIMIT = 500;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function queryFailed(stage: string, cause: unknown): Error {
@@ -335,4 +346,48 @@ export async function loadPublicTourRequestStatus(
 
   const [order] = await hydrateTourOrders(admin, tenantId, [row]);
   return order ?? null;
+}
+
+/**
+ * 「我的訂單」——旅客用申請時填的聯絡方式，查出自己在這家店送出過的所有
+ * REQUEST／訂單（issue #46 第三片）。同樣**沒有旅客登入機制**，比對規則與
+ * `loadPublicTourRequestStatus` 完全一致（聯絡方式其中一項要對得上），差別
+ * 只是這裡回傳一批而不是一筆。
+ *
+ * 找不到符合的聯絡方式、店家不存在、或旅遊模組未啟用一律回傳空陣列，不丟
+ * 錯誤——查不到東西對旅客而言是正常情境（沒送過申請、打錯字），不是異常。
+ */
+export async function loadPublicTourOrdersByContact(
+  shopCode: string, contact: string,
+): Promise<TourOrder[]> {
+  if (!SHOP_CODE_PATTERN.test(shopCode)) return [];
+  const normalizedContact = contact.trim().toLowerCase();
+  if (!normalizedContact) return [];
+
+  const admin = createAdminSupabase();
+
+  const { data: tenantRow, error: tenantError } = await admin
+    .from('tenants').select('id').eq('shop_code', shopCode).maybeSingle();
+  if (tenantError) throw queryFailed('tenants', tenantError);
+  if (!tenantRow) return [];
+  const tenantId = tenantRow.id as string;
+
+  if (!(await isFeatureActive(tenantId, 'TOUR_MODULE'))) return [];
+
+  const { data: rows, error } = await admin
+    .from('tour_orders').select('*')
+    .eq('tenant_id', tenantId)
+    .order('created_at', { ascending: false })
+    .limit(MY_ORDERS_SCAN_LIMIT);
+  if (error) throw queryFailed('tour_orders', error);
+
+  const matched = (rows ?? []).filter((row) => {
+    const c = (row.contact ?? {}) as Record<string, unknown>;
+    const candidates = [c.phone, c.line, c.email]
+      .filter((v): v is string => typeof v === 'string' && v.length > 0)
+      .map((v) => v.trim().toLowerCase());
+    return candidates.includes(normalizedContact);
+  }).slice(0, MY_ORDERS_LIMIT);
+
+  return hydrateTourOrders(admin, tenantId, matched);
 }

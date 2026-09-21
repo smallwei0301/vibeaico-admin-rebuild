@@ -16,7 +16,7 @@ import { parseLaneMetadata } from '../../scripts/agents/agent-wip-policy.mjs';
 import { validateDeliveryUnitBoundary as preflightBoundary } from '../../scripts/agents/agent-wip-preflight.mjs';
 import { evaluateProductDeliveryTruth, formatProductDeliveryTruth } from '../../scripts/agents/completion-truth.mjs';
 import {
-  boundaryPaths, shouldApplyProductGlobalWip, terminalLabelPlan,
+  boundaryPaths, shouldApplyProductGlobalWip, terminalBodyPlan, terminalLabelPlan,
   validateBookkeepingWorkstream, validateDeliveryUnitBoundary,
 } from '../../scripts/agents/governance-workstream-boundary.mjs';
 
@@ -91,7 +91,11 @@ async function runWorkflow(file: string, current = subject(), files: any[] = pat
         return { data: { sha: file_sha, encoding: 'base64', size: Buffer.byteLength(file.content),
           content: Buffer.from(file.content).toString('base64') } };
       } },
-      pulls: { get: async () => ({ data: current }), listFiles, list },
+      pulls: {
+        get: async () => ({ data: current }),
+        update: async ({ body }: any) => { calls.push('body'); current.body = body; return { data: current }; },
+        listFiles, list,
+      },
       repos: { createCommitStatus: async (value: any) => { statuses.push(value); },
         getContent: async () => ({ data: { type: 'file' } }) },
       issues: { listComments, getLabel: async () => ({}),
@@ -181,14 +185,18 @@ describe('governance boundary regression #500', () => {
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', subject(body));
       expect(result.failures.join('\n')).toContain('AGENT_LANE=GOVERNANCE must use DELIVERY_UNIT_TYPE=GOVERNANCE');
     });
-    it('keeps closed OWNER housekeeping ahead of validation and never rewrites historical statuses', async () => {
+    it('keeps closed OWNER housekeeping ahead of validation and only rewrites current terminal fields', async () => {
       const body = gov.replace('WORK_ORIGIN: AGENT', 'WORK_ORIGIN: OWNER')
         .replace('DELIVERY_UNIT_TYPE: GOVERNANCE', 'DELIVERY_UNIT_TYPE: STANDALONE');
       const current = { ...subject(body), state: 'closed', merged: true };
       const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
       expect(result.statuses).toEqual([]);
       expect(result.failures).toEqual([]);
-      expect(result.calls.every(call => call === 'labels')).toBe(true);
+      expect(result.calls).toContain('body');
+      expect(current.body).toContain('LANE_STATE: COMPLETE');
+      expect(current.body).toContain('ACTIVE_CANDIDATE: false');
+      expect(result.calls).not.toContain('dispatch');
+      expect(result.calls).not.toContain('comment');
     });
   });
 
@@ -261,8 +269,31 @@ describe('governance boundary regression #500', () => {
       labels: [{ name: 'state:active' }, { name: 'candidate:active' }, { name: 'unrelated:keep' }] };
     const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
     expect(result.statuses).toEqual([]);
-    expect(result.calls.every(call => call === 'labels')).toBe(true);
+    expect(result.calls).toContain('body');
+    expect(result.calls.filter(call => call === 'labels').length).toBeGreaterThan(0);
+    expect(result.calls).not.toContain('dispatch');
+    expect(result.calls).not.toContain('comment');
+    expect(current.body).toContain('LANE_STATE: COMPLETE');
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
+  });
+
+  it('rewrites only live terminal declarations and preserves fenced examples', () => {
+    const body = gov + '\n```text\nLANE_STATE: ACTIVE\nACTIVE_CANDIDATE: true\n```\n';
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.errors).toEqual([]);
+    expect(plan?.changed).toBe(true);
+    expect(plan?.body).toContain('LANE_STATE: COMPLETE');
+    expect(plan?.body).toContain('\n```text\nLANE_STATE: ACTIVE\nACTIVE_CANDIDATE: true\n```');
+  });
+
+  it('fails safe on ambiguous terminal metadata instead of partially rewriting the PR body', async () => {
+    const body = gov + '\nACTIVE_CANDIDATE: true\n';
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
+    expect(plan?.errors.length).toBeGreaterThan(0);
+    const current = { ...subject(body), state: 'closed', merged: true };
+    const result = await runWorkflow('.github/workflows/agent-wip-guard.yml', current);
+    expect(result.calls).not.toContain('body');
+    expect(current.body).toBe(body);
   });
   it('executes the real raw-capture policy: bad ledger fails required status without borrowing Product WIP', async () => {
     const run = createRunLedgerV2('2026-09-16-synthetic-538', created_at,
