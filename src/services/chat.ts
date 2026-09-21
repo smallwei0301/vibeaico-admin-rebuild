@@ -2,6 +2,7 @@ import { USE_MOCK } from '@/config/env';
 import { adapt, request } from '@/lib/api';
 import type { Paged } from '@/lib/types';
 import { byMode } from '@/mock';
+import { uploadImage } from '@/services/upload';
 import type { UnboundLineUser } from './customers';
 
 /**
@@ -279,16 +280,20 @@ export function listMessages(q: { lineUserId: string; page?: number; after?: str
 /**
  * 店家回覆（LINE push，佔推播額度）。額度不足時後端回 409 REQ_003
  * 「本月推播額度已用完」→ 以 ApiError 拋出，頁面把 message 原樣 toast。
+ * 文字或圖片二選一：帶 `imageUrl`（已上傳到 chat-images 的 public URL）送圖片
+ * 訊息，否則帶 `text` 送文字訊息。
  * mock：合成一筆 SHOP 訊息回傳（不寫入固定資料，行為同先前純本地 append）。
  */
-export function sendMessage(p: { lineUserId: string; text: string }): Promise<ChatMessage> {
+export function sendMessage(
+  p: { lineUserId: string } & ({ text: string; imageUrl?: undefined } | { imageUrl: string; text?: undefined }),
+): Promise<ChatMessage> {
   return adapt(
     () => ({
       id: `m_local_${mockSeq++}`,
       from: 'SHOP' as const,
-      type: 'TEXT' as const,
-      text: p.text,
-      imageUrl: '',
+      type: p.imageUrl ? ('IMAGE' as const) : ('TEXT' as const),
+      text: p.text ?? '',
+      imageUrl: p.imageUrl ?? '',
       at: new Date().toISOString(),
       readAt: null,
     }),
@@ -300,6 +305,15 @@ export function sendMessage(p: { lineUserId: string; text: string }): Promise<Ch
       return toMessage(row);
     },
   );
+}
+
+/**
+ * 上傳一張圖片到本租戶的 chat-images bucket，回傳可用來 sendMessage 的
+ * public URL。呼叫端（頁面）負責在上傳中顯示 loading、失敗時顯示誠實錯誤——
+ * 這裡不吞錯誤、不假裝成功。`uploadImage()` 自己已經處理 mock/real 分流。
+ */
+export async function uploadChatImage(file: File): Promise<string> {
+  return (await uploadImage(file, 'chat-images')).url;
 }
 
 /** 單筆訊息標記已讀（read_at=now；已讀過不覆蓋）。mock：no-op。 */
