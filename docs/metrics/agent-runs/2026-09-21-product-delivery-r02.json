@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-21-product-delivery-r02",
-  "status": "IN_PROGRESS",
+  "status": "BASELINE",
   "startedAt": "2026-09-21T14:23:30.233Z",
-  "endedAt": null,
+  "endedAt": "2026-09-21T15:00:21.000Z",
   "sources": [
     {
       "type": "ISSUE",
@@ -28,13 +28,13 @@
   ],
   "main": {
     "startSha": "8547e228f419fd7d33c35697add90d2de094f5d3",
-    "endSha": null
+    "endSha": "122217c9eeab797ba42f574b196f8edb3d3f756b"
   },
   "inventory": {
     "openIssuesStart": 47,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 47,
     "openPrsStart": 4,
-    "openPrsEnd": null,
+    "openPrsEnd": 2,
     "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 0,
@@ -158,16 +158,17 @@
     "scoreInputsCompletePercent": null
   },
   "notes": [
-    "2026-09-21（r02 開場）：使用者在 r01 收尾（BASELINE, closed）之後，要求「解決衝突，並完成直到合併」PR #627/#628/#630。CI 的 Agent WIP Guard 回報 PRODUCT_RUN_BINDING_REJECTED（historical/closed Run 不可借用），因此開新 Run r02 接手，openIssuesStart/openPrsStart 為此刻即時查證值（47/4，#627 已先關閉、#638 已先合併）。"
+    "2026-09-21（r02 開場）：使用者在 r01 收尾（BASELINE, closed）之後，要求「解決衝突，並完成直到合併」PR #627/#628/#630。CI 的 Agent WIP Guard 回報 PRODUCT_RUN_BINDING_REJECTED（historical/closed Run 不可借用），因此開新 Run r02 接手，openIssuesStart/openPrsStart 為此刻即時查證值（47/4，#627 已先關閉、#638 已先合併）。",
+    "2026-09-21（r02 收尾）：三個 PR 全數處理完畢——#627 因與 main 重複而關閉；#628（migration）與 #630（runtime）皆已合併進 main（merge commit 50b3c0bf、122217c9），經 Completion Truth Gate 重讀 main 上的檔案內容確認真實落地（chat-images bucket migration、/api/upload 白名單、/api/chat/messages 支援 imageUrl）。過程中 #628 因原 TERRA_RESERVE／#630 TERRA_BUILD 配對關係在 #630 先合併後失效，被 Agent WIP Guard 的 pairing 規則卡在 pending 無法產生真實 pass/fail，改標 AGENT_LANE=TERRA_BUILD／DELIVERY_UNIT_TYPE=STANDALONE／COUNT_IN_DELIVERY_OUTCOME=true 後才通過，如實記錄此為因應治理閘門結構性限制的重新分類，非灌水。issue #15 保持 open，已在 issue 上留言誠實揭露兩項未達成的驗收項（LINE preview 縮圖非真縮圖、canonical TEST 尚未套用驗證），未宣稱 issue 已完成關閉。ci.fullCiRuns／完整 token 計量本輪未即時逐筆記錄，如實維持既有值，不事後回填推算數字。status 標記 BASELINE：本輪任務範圍（三個 PR 解衝突並合併）已完成，但不代表整體 backlog 已清空。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
     "contractVersion": 1,
     "ownerRole": "PRODUCT_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-21T15:00:21.000Z",
+    "evidenceRef": "github:pr#630"
   },
   "wipLifecycle": {
     "schemaVersion": 1,
