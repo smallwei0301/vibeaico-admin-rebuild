@@ -271,7 +271,14 @@ function verifyApplied(ledger, evidence) {
   return true;
 }
 
-export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha, currentLedgerSha, expectedLedgerSha }) {
+export function reconcileLedger({
+  ledger,
+  evidence: rawEvidence,
+  currentMainSha,
+  currentLedgerSha,
+  expectedLedgerSha,
+  allowCounterOperations = false,
+}) {
   if (!ledger || typeof ledger !== "object" || Array.isArray(ledger)) fail("INVALID_LEDGER", "ledger must be an object");
   if (ledger.schemaVersion !== 2) fail("INVALID_LEDGER", "schemaVersion must be 2");
   if (Number(ledger.deliveryTruthVersion ?? 2) < 3) {
@@ -283,6 +290,9 @@ export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha,
   }
 
   const evidence = normalizeEvidence(rawEvidence);
+  if (evidence.counterOperations.length && allowCounterOperations !== true) {
+    fail("TRUSTED_COUNTER_SOURCE_REQUIRED", "counter operations are allowed only from the trusted GitHub-live collector path");
+  }
   const mainSha = String(currentMainSha ?? "").trim().toLowerCase();
   const actualLedgerSha = String(currentLedgerSha ?? "").trim().toLowerCase();
   const expectedSha = String(expectedLedgerSha ?? "").trim().toLowerCase();
@@ -375,7 +385,7 @@ function validateCandidate(candidatePath) {
 export function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.command !== "apply") {
-    throw new Error("Usage: run-ledger-reconcile.mjs apply --ledger <run.json> --evidence <evidence.json> --current-main-sha <sha> --expected-ledger-sha <blob-sha> [--result <result.json>]");
+    throw new Error("Usage: run-ledger-reconcile.mjs apply --ledger <run.json> --evidence <evidence.json> --current-main-sha <sha> --expected-ledger-sha <blob-sha> [--allow-observed-counters] [--result <result.json>]");
   }
   for (const key of ["ledger", "evidence", "current-main-sha", "expected-ledger-sha"]) {
     if (!args[key]) fail("MISSING_ARGUMENT", `--${key} is required`);
@@ -391,6 +401,7 @@ export function runCli(argv = process.argv.slice(2)) {
     currentMainSha: args["current-main-sha"],
     currentLedgerSha,
     expectedLedgerSha: args["expected-ledger-sha"],
+    allowCounterOperations: args["allow-observed-counters"] === true,
   });
 
   let output = raw;
