@@ -11,8 +11,8 @@ export const PUT = handle(async (req, { params }: Context) => {
   const t = await requireTenantManager();
   await requireFeature(t.tenantId, 'TOUR_MODULE');
   const body = planUpdateSchema.parse(await req.json());
-  const { data: current, error: readError } = await t.supabase.from('trip_plans').select('*')
-    .eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
+  const { data: current, error: readError } = await t.supabase.from('trip_plans')
+    .select('*, trip_plan_seasons(*)').eq('tenant_id', t.tenantId).eq('id', id).maybeSingle();
   if (readError) throw readError;
   if (!current) return fail(404, '找不到此方案', ERR.NOT_FOUND);
 
@@ -44,7 +44,7 @@ export const PUT = handle(async (req, { params }: Context) => {
   if (Object.keys(patch).length === 0) return ok(mapTripPlan(current));
 
   const { data, error } = await t.supabase.from('trip_plans').update(patch)
-    .eq('tenant_id', t.tenantId).eq('id', id).select('*').maybeSingle();
+    .eq('tenant_id', t.tenantId).eq('id', id).select('*, trip_plan_seasons(*)').maybeSingle();
   if (error) throw error;
   if (!data) return fail(404, '找不到此方案', ERR.NOT_FOUND);
   return ok(mapTripPlan(data));

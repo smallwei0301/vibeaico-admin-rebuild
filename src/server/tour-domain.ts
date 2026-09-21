@@ -180,6 +180,28 @@ export const addonCreateSchema = z.object({
 
 export const addonUpdateSchema = addonCreateSchema.partial();
 
+/*
+ * issue #42：季節定價（`trip_plan_seasons`，`0127`）。月/日區間可跨年
+ * （例如 startMonth=12/startDay=1、endMonth=2/endDay=28），所以只驗證各自落在
+ * 合法月/日範圍，不驗證 start <= end——「跨年」是合法輸入，不是使用者輸入錯誤。
+ * `priceOverride: null` 代表沿用方案基本價，是合法值，不是「未帶」。
+ */
+const monthField = z.number().int().min(1, '月份必須介於 1–12').max(12, '月份必須介於 1–12');
+const dayField = z.number().int().min(1, '日期必須介於 1–31').max(31, '日期必須介於 1–31');
+
+export const seasonCreateSchema = z.object({
+  name: z.string().trim().min(1, '請輸入季節名稱'),
+  startMonth: monthField,
+  startDay: dayField,
+  endMonth: monthField,
+  endDay: dayField,
+  priceOverride: z.number().finite().nonnegative('季節售價不得為負數').nullable().optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+export const seasonUpdateSchema = seasonCreateSchema.partial();
+
 export function slugFromTitle(value: string): string {
   const slug = value.toLowerCase().trim()
     .replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-')

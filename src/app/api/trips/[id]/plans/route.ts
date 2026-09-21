@@ -18,7 +18,7 @@ export const GET = handle(async (_req, { params }: Context) => {
   const { id } = await params;
   const t = await requireTenant();
   if (!await requireTrip(t, id)) return fail(404, '找不到此行程', ERR.NOT_FOUND);
-  const { data, error } = await t.supabase.from('trip_plans').select('*')
+  const { data, error } = await t.supabase.from('trip_plans').select('*, trip_plan_seasons(*)')
     .eq('tenant_id', t.tenantId).eq('trip_id', id).order('sort_order', { ascending: true });
   if (error) throw error;
   return ok((data ?? []).map(mapTripPlan));
