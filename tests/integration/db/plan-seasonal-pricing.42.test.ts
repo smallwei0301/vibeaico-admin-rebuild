@@ -73,7 +73,10 @@ describe('0128 seasonal pricing RLS and tenant-boundary contract', () => {
 
   it('anon 不能讀取，authenticated 角色不能直接寫入 seasonal pricing', async () => {
     const anonymousRead = await anon.from('trip_plan_seasons').select('id').eq('id', seasonId);
-    expect(anonymousRead.error?.code).toBe('42501');
+    // TEST grants SELECT at the table privilege layer, so RLS filters anon to
+    // an empty result instead of returning a permission error.
+    expect(anonymousRead.error).toBeNull();
+    expect(anonymousRead.data).toEqual([]);
 
     const authenticatedWrite = await ownerA.from('trip_plan_seasons').insert({
       tenant_id: SHOP_A.id,
@@ -106,7 +109,7 @@ describe('0128 seasonal pricing RLS and tenant-boundary contract', () => {
     const cases = [
       { name: `${PREFIX}invalid-date`, start_month: 2, start_day: 30, end_month: 3, end_day: 1, price_override: 100 },
       { name: `${PREFIX}negative-price`, start_month: 3, start_day: 1, end_month: 3, end_day: 31, price_override: -1 },
-      { name: `${PREFIX}   `, start_month: 3, start_day: 1, end_month: 3, end_day: 31, price_override: 100 },
+      { name: '   ', start_month: 3, start_day: 1, end_month: 3, end_day: 31, price_override: 100 },
     ];
     for (const item of cases) {
       const result = await admin.from('trip_plan_seasons').insert({
