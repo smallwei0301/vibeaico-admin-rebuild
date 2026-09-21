@@ -155,7 +155,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 20,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -209,5 +209,38 @@
     "status": "NOT_CHECKED",
     "checkedAt": null,
     "claims": []
+  },
+  "reconciliation": {
+    "schemaVersion": 1,
+    "identities": [
+      {
+        "identity": "9033ffd479e2df62134d9b49f58e7c67877cde45e5fb784c28371ed9f4742c88",
+        "observedMainSha": "28331a6aa8fb5d98c5f3339eff4dd415a92ce85e",
+        "evidenceDigest": "b6ae6bee45e47896315020f6f430237c4955c948f2b36cdbf18be0528b4ecedc",
+        "operationCount": 1,
+        "evidenceRefs": [
+          "github:actions/run#35550440795",
+          "github:actions/run#35550491151",
+          "github:actions/run#35550699503",
+          "github:actions/run#35551950481",
+          "github:actions/run#35552107981",
+          "github:actions/run#35552556333",
+          "github:actions/run#35553007952",
+          "github:actions/run#35553389831",
+          "github:actions/run#35555757954",
+          "github:actions/run#35556427132",
+          "github:actions/run#35556586187",
+          "github:actions/run#35556793416",
+          "github:actions/run#35556892292",
+          "github:actions/run#35556938066",
+          "github:actions/run#35556973834",
+          "github:actions/run#35557079390",
+          "github:actions/run#35557227751",
+          "github:actions/run#35563028156",
+          "github:actions/run#35564195715",
+          "github:actions/run#35564267234"
+        ]
+      }
+    ]
   }
 }
