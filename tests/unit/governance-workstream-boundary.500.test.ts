@@ -273,6 +273,7 @@ describe('governance boundary regression #500', () => {
     expect(result.calls.filter(call => call === 'labels').length).toBeGreaterThan(0);
     expect(result.calls).not.toContain('dispatch');
     expect(result.calls).not.toContain('comment');
+    expect(current.body).toContain('state: MERGED');
     expect(current.body).toContain('LANE_STATE: COMPLETE');
     expect([...result.labels].sort()).toEqual(['state:complete', 'unrelated:keep']);
   });
@@ -282,8 +283,24 @@ describe('governance boundary regression #500', () => {
     const plan = terminalBodyPlan({ state: 'closed', merged: true, body });
     expect(plan?.errors).toEqual([]);
     expect(plan?.changed).toBe(true);
+    expect(plan?.changedFields).toContain('pr-lifecycle.state');
+    expect(plan?.body).toContain('state: MERGED');
     expect(plan?.body).toContain('LANE_STATE: COMPLETE');
     expect(plan?.body).toContain('\n```text\nLANE_STATE: ACTIVE\nACTIVE_CANDIDATE: true\n```');
+  });
+
+  it('marks closed-unmerged lifecycle metadata HISTORICAL', () => {
+    const plan = terminalBodyPlan({ state: 'closed', merged: false, body: gov });
+    expect(plan?.errors).toEqual([]);
+    expect(plan?.body).toContain('state: HISTORICAL');
+    expect(plan?.body).toContain('LANE_STATE: HISTORICAL');
+    expect(plan?.body).toContain('ACTIVE_CANDIDATE: false');
+  });
+
+  it('fails safe when multiple current pr-lifecycle blocks exist', () => {
+    const extra = '<!-- pr-lifecycle\nissue: 501\nstate: ACTIVE\nsupersedes: none\n-->';
+    const plan = terminalBodyPlan({ state: 'closed', merged: true, body: gov + '\n' + extra });
+    expect(plan?.errors.join(' ')).toContain('Ambiguous pr-lifecycle blocks');
   });
 
   it('fails safe on ambiguous terminal metadata instead of partially rewriting the PR body', async () => {

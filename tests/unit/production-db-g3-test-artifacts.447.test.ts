@@ -368,6 +368,25 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     });
   });
 
+  it('binds 0128 only to passing seasonal-pricing tenant and role assertions', () => {
+    const file = 'tests/integration/db/plan-seasonal-pricing.42.test.ts';
+    const result = buildProductionDbTestCoverageEvidence({
+      plan: plan([{ repoFile: '0128_issue_42_plan_seasonal_pricing', riskTier: 'AUTHZ', sha256: '8'.repeat(64) }]),
+      report: report({
+        numTotalTests: 2,
+        numPassedTests: 2,
+        testResults: [{ name: file, assertionResults: [
+          { status: 'passed', fullName: '0128 seasonal pricing RLS and tenant-boundary contract A 店 owner 讀得到自己的季節定價，B 店 owner 完全查不到（tenant 隔離）' },
+          { status: 'passed', fullName: '0128 seasonal pricing RLS and tenant-boundary contract anon 不能讀取，authenticated 角色不能直接寫入 seasonal pricing' },
+        ] }],
+      }),
+      sourceRunId: '1', sourceRunAttempt: 1,
+    });
+    expect(result.migrations['0128_issue_42_plan_seasonal_pricing']).toMatchObject({
+      executedFiles: [file], tenantBoundaryVerified: true, negativeRoleTestsPassed: true,
+    });
+  });
+
   it('captures migration-scoped cleanup using GET only and the canonical SHOP_A tenant filter', async () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('GET');
@@ -449,6 +468,27 @@ describe('Production DB G3 TEST artifact builders #447', () => {
       plan: plan([migration]), testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1,
       fetchImpl: vi.fn(async () => new Response('[{"line_user_id":"g3-589-0127-leftover"}]', { status: 200 })) as unknown as typeof fetch,
     })).rejects.toThrow(/TEST_CLEANUP_RESIDUE/);
+  });
+
+  it('checks 0128 seasonal-pricing fixtures by name and rejects residue', async () => {
+    const migration = { repoFile: '0128_issue_42_plan_seasonal_pricing', riskTier: 'AUTHZ', sha256: '9'.repeat(64) };
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const text = decodeURIComponent(String(url));
+      expect(text).toContain('/rest/v1/trip_plan_seasons?');
+      expect(text).toContain('name=like.g3-42-0128-%');
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const result = await captureProductionDbTestCleanupEvidence({
+      plan: plan([migration]), testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1,
+      fetchImpl: fetchSpy as unknown as typeof fetch,
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(result.checkedScopes).toEqual([{
+      migration: '0128_issue_42_plan_seasonal_pricing',
+      table: 'trip_plan_seasons',
+      filter: 'name=like.g3-42-0128-%',
+      residueCount: 0,
+    }]);
   });
 
   it('rejects wrong TEST hosts before network and rejects scoped residue', async () => {
