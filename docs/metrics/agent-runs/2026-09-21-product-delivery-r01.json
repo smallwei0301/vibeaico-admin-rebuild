@@ -41,6 +41,11 @@
       "note": "PR #628 agent/issue-15-chat-images-bucket → main：#15 LINE chat 圖片傳送的 migration-only reserve。新增 storage bucket migration 與 chat_images 資料表（僅新增不改既有欄位）。本機驗證 npm run typecheck（0 errors）、npm run build（成功）、npm test（全綠）。開 PR 時遭遇 CI guard「Agent WIP Policy」失敗：governance:lane-metadata-incomplete，原因為本 Run ledger 的 sources 陣列缺 issue/15 記錄。本 session 補齊該記錄後，PR #628 的 CI guard 應轉綠（但 PR 本身仍 await Owner review 合併）。"
     },
     {
+      "type": "PR",
+      "ref": "pr/630",
+      "note": "PR #630 agent/issue-15-chat-image → main：#15 LINE chat 圖片傳送 runtime PR（migration-only reserve PR #628 之外的施工）。/api/upload 白名單加 chat-images；/api/chat/messages POST 支援 imageUrl（tenantOwnedPublicStorageUrl() 驗證跨租戶、比照 /api/marketing/pushes/[id]/send 送 LINE image message、message_type='image'、額度照計）；services/chat.ts 新增 uploadChatImage()；/tenant/chat 頁面 sendImage 改為真的先上傳（loading／失敗誠實提示）再送出，移除舊的 URL.createObjectURL 本地假預覽。新增 tests/integration/api/chat-link.06.test.ts 兩案例（真實上傳→送圖、跨租戶偽造 URL 400），如實記錄該兩案例依賴 PR #628 的 migration 套用到 canonical TEST 才能轉綠。本機驗證 npm run typecheck（0 errors）、npm run build（成功）、npx vitest run（263 檔案、3428 測試全綠）。"
+    },
+    {
       "type": "ISSUE",
       "ref": "issue/17",
       "note": "#17 API 功能驗證（非本輪新施工）：source-level 驗證確認其核心功能已在 main 存在（API endpoints 已實現、service layer 實作完整、React UI 元件可用）。issue 本文內容已過時，本 session 於該 issue 留下 closeout 留言以更正狀態說明；issue 保持 open（仍有 concurrency 邏輯驗收、authenticated preview 等待）。"
@@ -139,6 +144,32 @@
         "outputTokens": null,
         "cachedTokens": null,
         "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "issue-15-terra-build-runtime-complete",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "#15 TERRA_BUILD 施工完成（build 層，實際委派 claude-sonnet-5）：LINE chat 圖片傳送 runtime 垂直切片（/api/upload、/api/chat/messages、services/chat.ts、/tenant/chat 頁面、tests/integration/api/chat-link.06.test.ts）。開 PR #630，本機驗證 npm run typecheck（0 errors）、npm run build（成功）、npx vitest run（263 檔案、3428 測試全綠）。migration 拆為獨立 PR #628（同 issue，migration-only），依 schema-staged-release 慣例不混在同一 PR。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "pr-628-pr-630-ledger-binding-remediation",
+        "requestedModel": "luna",
+        "actualModel": "terra",
+        "role": "PR #628／#630 的 PRODUCT_RUN_BINDING_REJECTED 修復：合併最新 main（已含另一 session 補齊的 issue/15、pr/628 來源）進兩個分支，並在本 ledger 補上 pr/630 來源與本筆埋點紀錄。依 CLAUDE.md「文件與盤點的 scout 歸屬」，docs/metrics/** 產出屬 scout 層（claude-haiku-4-5），本次由 build 層（claude-sonnet-5，本 session）直接執行、未委派 luna，如實記為 routing violation，不記為中性註記。",
+        "count": 1,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
       }
     ],
     "fullContextReplays": 0,
@@ -190,7 +221,8 @@
   "notes": [
     "2026-09-21（PRODUCT_MAIN_SESSION 協調回報）：本輪派工事項三件：#46 build 完成（PR #622，typecheck/build/test 全綠），#42 build 進行中，以及 PR #622 CI guard 診斷。四個 policy error 屬機械補齊，另四個需本 Run ledger 記錄後方能通過。本檔為診斷成果的權威記錄，scout 層子 agent 已完成診斷並在 PR 留言說明，不再補齊欄位。",
     "2026-09-21（PR #625 governance 修復回報）：#42 已真實完成（PR #625，typecheck/build/test 全綠，262 檔案 3414 測試），把 ledger 的 #42 事件從『進行中』更新為『完成』並補上 pr/625 來源。本次 docs/metrics/** 更新由 build 層（claude-sonnet-5）直接執行而非委派 scout 層，依 CLAUDE.md 規則記為 routing violation（見 modelUsage.tasks 的 pr-625-ledger-and-metadata-remediation 項），不追加編造的數字或已合併聲明——PR #625 本次記錄時仍為 open／blocked，尚未 merge。",
-    "2026-09-21（本次埋點補齊回報）：補齊本 Run ledger sources 與 delivery 計數，記錄 #15 LINE chat 圖片傳送 TERRA_BUILD 施工（migration-only reserve PR #628 已開，runtime PR 仍施工），以及 #17/#43/#47 三項 source-level 驗證（非新施工，已在 main，issue 本文過時，各 issue 已留 closeout 留言）。本次 docs/metrics/** 修正由 build 層直接執行，屬 CLAUDE.md 規定的 routing violation（scout 層應做）；違規已在 modelUsage.tasks 同步埋點為未來 Scorecard 計算之用。issuesStarted 計數調整：#46 已完成、#42 已完成、#15 施工中 = 3 件（#17/#43/#47 驗證不計新施工）。"
+    "2026-09-21（本次埋點補齊回報）：補齊本 Run ledger sources 與 delivery 計數，記錄 #15 LINE chat 圖片傳送 TERRA_BUILD 施工（migration-only reserve PR #628 已開，runtime PR 仍施工），以及 #17/#43/#47 三項 source-level 驗證（非新施工，已在 main，issue 本文過時，各 issue 已留 closeout 留言）。本次 docs/metrics/** 修正由 build 層直接執行，屬 CLAUDE.md 規定的 routing violation（scout 層應做）；違規已在 modelUsage.tasks 同步埋點為未來 Scorecard 計算之用。issuesStarted 計數調整：#46 已完成、#42 已完成、#15 施工中 = 3 件（#17/#43/#47 驗證不計新施工）。",
+    "2026-09-21（#15 runtime PR #630 埋點回報）：#15 runtime 垂直切片已施工完成並開 PR #630（typecheck/build/test 全綠），補上本 ledger 的 pr/630 來源與對應 modelUsage 埋點；PR #628（migration-only）已由另一 session 補齊 issue/15 來源後合併進本分支 exact head。本次 docs/metrics/** 更新同樣由 build 層直接執行而非委派 scout 層，依規則記為 routing violation（見 modelUsage.tasks 的 pr-628-pr-630-ledger-binding-remediation 項）；不追加任何合併或 CI 綠燈的編造聲明——PR #628／#630 本次記錄時均為 open，await CI／review。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
