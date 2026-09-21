@@ -200,27 +200,39 @@ describe("run ledger reconciliation", () => {
 
   it("collects CI and closed-Issue truth from live GitHub instead of supplied counts", async () => {
     const pullList = async () => ({ data: [] });
+    const commitList = async () => ({ data: [] });
     const runList = async () => ({ data: [] });
+    const previousHead = "b".repeat(40);
+    const currentHead = "c".repeat(40);
     const pulls = [{
       number: 10,
       body: "<!-- pr-lifecycle\nissue: 170\nstate: ACTIVE\nsupersedes:\n-->\nWORKSTREAM: PRODUCT_MAINLINE\nRUN_ID: 2026-09-04-reconcile-test",
-      head: { sha: "c".repeat(40) },
+      head: { sha: currentHead },
     }, {
       number: 11,
       body: "WORKSTREAM: PRODUCT_MAINLINE\nRUN_ID: another-run",
       head: { sha: "d".repeat(40) },
     }];
-    const runs = [
-      { id: 11, head_sha: "c".repeat(40), path: ".github/workflows/ci.yml", status: "completed",
-        conclusion: "success", run_started_at: "2026-09-04T01:00:00Z" },
-      { id: 12, head_sha: "c".repeat(40), path: ".github/workflows/ci.yml", status: "completed",
-        conclusion: "cancelled", run_started_at: "2026-09-04T01:10:00Z" },
-      { id: 13, head_sha: "c".repeat(40), path: ".github/workflows/ci.yml", status: "completed",
-        conclusion: "failure", run_started_at: "2026-09-03T23:59:59Z" },
-    ];
+    const runsByHead: Record<string, any[]> = {
+      [previousHead]: [
+        { id: 10, event: "pull_request", head_sha: previousHead, path: ".github/workflows/ci.yml",
+          status: "completed", conclusion: "failure", run_started_at: "2026-09-04T00:30:00Z" },
+      ],
+      [currentHead]: [
+        { id: 11, event: "pull_request", head_sha: currentHead, path: ".github/workflows/ci.yml",
+          status: "completed", conclusion: "success", run_started_at: "2026-09-04T01:00:00Z" },
+        { id: 12, event: "pull_request", head_sha: currentHead, path: ".github/workflows/ci.yml",
+          status: "completed", conclusion: "cancelled", run_started_at: "2026-09-04T01:10:00Z" },
+        { id: 13, event: "pull_request", head_sha: currentHead, path: ".github/workflows/ci.yml",
+          status: "completed", conclusion: "failure", run_started_at: "2026-09-03T23:59:59Z" },
+        { id: 14, event: "push", head_sha: currentHead, path: ".github/workflows/ci.yml",
+          status: "completed", conclusion: "success", run_started_at: "2026-09-04T01:20:00Z" },
+      ],
+    };
+    let requestedHead = "";
     const github: any = {
       rest: {
-        pulls: { list: pullList },
+        pulls: { list: pullList, listCommits: commitList },
         actions: { listWorkflowRunsForRepo: runList },
         issues: {
           get: async ({ issue_number }: any) => ({ data: {
@@ -228,9 +240,15 @@ describe("run ledger reconciliation", () => {
           } }),
         },
       },
-      paginate: async (method: any) => {
+      paginate: async (method: any, args: any) => {
         if (method === pullList) return pulls;
-        if (method === runList) return runs;
+        if (method === commitList) return args.pull_number === 10
+          ? [{ sha: previousHead }, { sha: currentHead }]
+          : [{ sha: "d".repeat(40) }];
+        if (method === runList) {
+          requestedHead = args.head_sha;
+          return runsByHead[requestedHead] ?? [];
+        }
         throw new Error("unexpected paginate");
       },
     };
@@ -246,11 +264,12 @@ describe("run ledger reconciliation", () => {
       },
     }]);
     expect(captured.counterOperations).toEqual([
-      { path: "ci.fullCiRuns", observed: 1, evidenceRefs: ["github:actions/run#11"] },
+      { path: "ci.fullCiRuns", observed: 2,
+        evidenceRefs: ["github:actions/run#10", "github:actions/run#11"] },
       { path: "delivery.issuesClosed", observed: 1, evidenceRefs: ["github:issue#170"] },
     ]);
     const reconciled = apply(ledger(), captured);
-    expect(reconciled.ledger.ci.fullCiRuns).toBe(1);
+    expect(reconciled.ledger.ci.fullCiRuns).toBe(2);
     expect(reconciled.ledger.delivery.issuesClosed).toBe(1);
   });
 
