@@ -1,4 +1,4 @@
--- 0128 — 建立 chat-images bucket（issue #15：LINE chat 真的能傳送圖片）
+-- 0129 — 建立 chat-images bucket（issue #15：LINE chat 真的能傳送圖片）
 --
 -- `0126_issue_402_keyword_reply_images_authz.sql` 的 `p_storage_write` 政策已經把
 -- 'chat-images' 列進允許清單，但那只是「政策提到這個 bucket」——跟 0086 那次一模
