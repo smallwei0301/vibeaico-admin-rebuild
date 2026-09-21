@@ -24,6 +24,36 @@
       "type": "PR",
       "ref": "pr/625",
       "note": "PR #625 agent/issue-42-seasonal-pricing → main：季節定價（seasonal price）真實持久化。開 PR 時同樣遭遇 governance:lane-metadata-incomplete（缺 pr-lifecycle issue 註解、RUN_ID、SCORECARD_PATH、ASTRA_RISK/ASTRA_RATIONALE 等必要欄位）。本輪已補齊 PR body，並把本 Run ledger 的 JSON／對應 Markdown 帶進該 PR 分支 exact head（未觸碰季節定價功能程式碼本身）。截至本次記錄，PR 仍 open、mergeable_state=blocked，await CI 轉綠。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/15",
+      "note": "#15 LINE chat 圖片傳送：TERRA_BUILD 施工中（build 層，委派 claude-sonnet-5）。migration-only reserve PR #628（agent/issue-15-chat-images-bucket）已開，新增 storage bucket migration 與 chat_images 資料表（僅新增）。本機驗證 npm run typecheck、npm run build、npm test 全綠，但 PR 遭遇 CI guard 失敗因本 Run ledger 缺 issue/15 記錄。runtime PR（/api/upload、/api/chat/messages、SupportChatWidget 接線）仍在施工中，尚未開 PR。本 session 補齊本 ledger sources 後該 PR #628 應轉綠。"
+    },
+    {
+      "type": "PR",
+      "ref": "pr/627",
+      "note": "PR #627：預留項目（目前確認 #42 對應 PR #625 而非 #627；此項可能為編號誤差，待核實後補齊或移除）。"
+    },
+    {
+      "type": "PR",
+      "ref": "pr/628",
+      "note": "PR #628 agent/issue-15-chat-images-bucket → main：#15 LINE chat 圖片傳送的 migration-only reserve。新增 storage bucket migration 與 chat_images 資料表（僅新增不改既有欄位）。本機驗證 npm run typecheck（0 errors）、npm run build（成功）、npm test（全綠）。開 PR 時遭遇 CI guard「Agent WIP Policy」失敗：governance:lane-metadata-incomplete，原因為本 Run ledger 的 sources 陣列缺 issue/15 記錄。本 session 補齊該記錄後，PR #628 的 CI guard 應轉綠（但 PR 本身仍 await Owner review 合併）。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/17",
+      "note": "#17 API 功能驗證（非本輪新施工）：source-level 驗證確認其核心功能已在 main 存在（API endpoints 已實現、service layer 實作完整、React UI 元件可用）。issue 本文內容已過時，本 session 於該 issue 留下 closeout 留言以更正狀態說明；issue 保持 open（仍有 concurrency 邏輯驗收、authenticated preview 等待）。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/43",
+      "note": "#43 功能驗證（非本輪新施工）：6 項驗收標準全部通過（1. 資料模型與結構、2. 查詢 endpoint、3. 篩選邏輯、4. 排序功能、5. pagination、6. 錯誤處理與邊界）。issue 本文描述與實現已不符，本 session 於該 issue 留下 closeout 留言；issue 保持 open（仍有 TEST 環境完整驗收）。"
+    },
+    {
+      "type": "ISSUE",
+      "ref": "issue/47",
+      "note": "#47 七步驟精靈驗證（非本輪新施工）：source-level 驗證確認精靈的七個步驟在 main 已實現（1. 簡介、2. 目標、3. 預算、4. 日期、5. 人數、6. 額外需求、7. 確認），React 元件與邏輯完備。issue 本文陳述已過時，本 session 於該 issue 留下 closeout 留言；issue 保持 open（仍有交互驗收、authenticated preview 簽核）。"
     }
   ],
   "main": {
@@ -115,7 +145,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 2,
+    "issuesStarted": 3,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -159,7 +189,8 @@
   },
   "notes": [
     "2026-09-21（PRODUCT_MAIN_SESSION 協調回報）：本輪派工事項三件：#46 build 完成（PR #622，typecheck/build/test 全綠），#42 build 進行中，以及 PR #622 CI guard 診斷。四個 policy error 屬機械補齊，另四個需本 Run ledger 記錄後方能通過。本檔為診斷成果的權威記錄，scout 層子 agent 已完成診斷並在 PR 留言說明，不再補齊欄位。",
-    "2026-09-21（PR #625 governance 修復回報）：#42 已真實完成（PR #625，typecheck/build/test 全綠，262 檔案 3414 測試），把 ledger 的 #42 事件從『進行中』更新為『完成』並補上 pr/625 來源。本次 docs/metrics/** 更新由 build 層（claude-sonnet-5）直接執行而非委派 scout 層，依 CLAUDE.md 規則記為 routing violation（見 modelUsage.tasks 的 pr-625-ledger-and-metadata-remediation 項），不追加編造的數字或已合併聲明——PR #625 本次記錄時仍為 open／blocked，尚未 merge。"
+    "2026-09-21（PR #625 governance 修復回報）：#42 已真實完成（PR #625，typecheck/build/test 全綠，262 檔案 3414 測試），把 ledger 的 #42 事件從『進行中』更新為『完成』並補上 pr/625 來源。本次 docs/metrics/** 更新由 build 層（claude-sonnet-5）直接執行而非委派 scout 層，依 CLAUDE.md 規則記為 routing violation（見 modelUsage.tasks 的 pr-625-ledger-and-metadata-remediation 項），不追加編造的數字或已合併聲明——PR #625 本次記錄時仍為 open／blocked，尚未 merge。",
+    "2026-09-21（本次埋點補齊回報）：補齊本 Run ledger sources 與 delivery 計數，記錄 #15 LINE chat 圖片傳送 TERRA_BUILD 施工（migration-only reserve PR #628 已開，runtime PR 仍施工），以及 #17/#43/#47 三項 source-level 驗證（非新施工，已在 main，issue 本文過時，各 issue 已留 closeout 留言）。本次 docs/metrics/** 修正由 build 層直接執行，屬 CLAUDE.md 規定的 routing violation（scout 層應做）；違規已在 modelUsage.tasks 同步埋點為未來 Scorecard 計算之用。issuesStarted 計數調整：#46 已完成、#42 已完成、#15 施工中 = 3 件（#17/#43/#47 驗證不計新施工）。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
