@@ -85,24 +85,27 @@ export const publicTourRequestPage = {
     myOrdersLink: '查看我的所有訂單',
   },
 
-  /** `/s/{shopCode}/my-orders`——旅客用送出申請時填的聯絡方式查自己的所有訂單。 */
+  /**
+   * `/s/{shopCode}/my-orders`——issue #650 起不再用聯絡方式當作本人證明。
+   * 正式批次查單會由 #12 traveler identity + /api/public/me/orders 接手。
+   */
   myOrders: {
     metaTitle: '我的訂單',
     title: '查詢我的訂單',
-    description: '輸入您申請時填寫的電話、LINE ID 或 Email 其中一種，即可查詢在這家店送出過的所有申請與訂單。',
+    description: '為保護您的訂單資料，查詢所有訂單需要先完成旅客身分驗證。',
     contactLabel: '電話 / LINE ID / Email',
-    contactPlaceholder: '請輸入其中一種聯絡方式',
+    contactPlaceholder: '匿名聯絡方式查詢已停用',
     submit: '查詢',
     searching: '查詢中…',
     errors: {
-      validation: '請輸入查詢用的聯絡方式',
+      validation: '需要先完成旅客身分驗證',
       rateLimited: '查詢過於頻繁，請稍後再試',
-      generic: '查詢失敗，請稍後再試',
+      generic: '目前無法安全查詢所有訂單',
     },
-    emptyTitle: '查無符合的訂單',
-    emptyDescription: '請確認輸入的聯絡方式與申請時填寫的是否一致；若確定曾經申請過，請改用 LINE／電話聯絡店家確認。',
-    initialTitle: '輸入聯絡方式開始查詢',
-    initialDescription: '查詢結果只會顯示這家店的訂單，且僅比對您輸入的聯絡方式。',
+    emptyTitle: '尚未完成身分驗證',
+    emptyDescription: '請從原本的申請狀態連結查看單筆申請，或直接聯絡店家協助確認。',
+    initialTitle: '需要先驗證旅客身分',
+    initialDescription: '目前不再接受只輸入電話、LINE ID 或 Email 的匿名批次查詢。完整「我的訂單」會在旅客登入驗證完成後開放。',
     resultCount: (n: number) => `共 ${n} 筆`,
     status: {
       PENDING: '待確認',
