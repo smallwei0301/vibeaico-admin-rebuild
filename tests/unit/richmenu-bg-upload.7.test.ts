@@ -121,8 +121,20 @@ describe('src/services/settings.ts — uploadRichMenuBgImage 走專用端點，�
     expect(fn).not.toContain("'/api/upload'");
   });
 
-  it('不得引用 rich-menu 的 create／發布端點', () => {
-    expect(service).not.toContain('/api/settings/line/rich-menu/create');
+  it('uploadRichMenuBgImage 本身不得引用 rich-menu 的 create／發布端點（上傳與發布是兩個獨立呼叫）', () => {
+    // issue #47：`/api/settings/line/rich-menu/create` 現在確實有呼叫端了
+    // （publishRichMenu，見 line-settings-richmenu-wiring.47.test.ts）——修正前
+    // `/tenant/line-settings` 的「建立 Rich Menu」按鈕只存欄位、從未真的打過
+    // LINE API，是一個真的假成功。這裡只鎖「上傳底圖」這個函式本身不該順便觸發
+    // 發布，範圍縮小到函式本體，不再對整支 service 檔案做全域字串排除。
+    const fnStart = service.indexOf('export const uploadRichMenuBgImage');
+    // 停在下一個「空行後緊接非空白字元」的邊界（不論後面是註解還是宣告），
+    // 避免把下一個 export 前面附掛的 JSDoc（其中會提到 create 端點作為說明文字）
+    // 也算進這個函式本體，導致鎖錯範圍。
+    const boundary = /\n\n(?=\S)/.exec(service.slice(fnStart));
+    expect(boundary, '找不到 uploadRichMenuBgImage 函式本體的結尾邊界').not.toBeNull();
+    const fn = service.slice(fnStart, fnStart + (boundary as RegExpExecArray).index);
+    expect(fn).not.toContain('/api/settings/line/rich-menu/create');
   });
 
   it('mock 分支（NEXT_PUBLIC_USE_MOCK 預設 true）— 正常檔案回傳 { url: file.name }，比照既有 uploadImage() 慣例', async () => {

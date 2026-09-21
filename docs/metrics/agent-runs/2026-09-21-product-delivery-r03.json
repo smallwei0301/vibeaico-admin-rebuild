@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-21-product-delivery-r03",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-21T17:45:28.071Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "issue/46"
+    },
+    {
+      "ref": "issue/47"
+    },
+    {
+      "ref": "origin/main"
+    }
+  ],
+  "main": {
+    "startSha": "03957e7accd0af36368c70e462af8111785b9de5",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 47,
+    "openIssuesEnd": 47,
+    "openPrsStart": 2,
+    "openPrsEnd": 4,
+    "mainTerraPeak": 2,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 2,
+    "sharedTestPeak": 0,
+    "closureSweeps": 1,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "scout-46-recon",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Issue #46 traveler journey \u76e4\u9ede\uff1bAgent tool \u672a\u986f\u5f0f\u6307\u5b9a model override\uff0c\u5be6\u969b\u57f7\u884c\u6a21\u578b\u672a\u53ef\u9a57\u8b49\uff0c\u5982\u5be6\u8a18 unknown\uff0c\u4e0d\u9810\u8a2d\u7b49\u65bc\u5df2\u7b26\u5408 scout tier\uff08PB-036/PB-050\uff09\u3002",
+        "count": 1
+      },
+      {
+        "id": "scout-43-recon",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Issue #43 GUIDE \u9996\u9801\u516d\u9805\u5019\u9078\u7f3a\u53e3\u76e4\u9ede\uff0c\u540c\u4e0a unknown \u6a21\u578b\u8a18\u9304\u7406\u7531\u3002",
+        "count": 1
+      },
+      {
+        "id": "scout-42-departure-snapshot-recon",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Issue #42 departure snapshot \u7f3a\u53e3\u76e4\u9ede\uff0c\u540c\u4e0a unknown \u6a21\u578b\u8a18\u9304\u7406\u7531\u3002",
+        "count": 1
+      },
+      {
+        "id": "terra-46-refund-policy-snapshot",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u65b0\u589e migration 0130\u3001\u4fee\u6e2c\u8a66\u3001\u66f4\u65b0 ledger-alias-map \u8207 fresh-install baseline manifest\uff0c\u958b PR #644\u3002",
+        "count": 1
+      },
+      {
+        "id": "scout-47-recon",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Issue #47 LINE \u958b\u901a\u7cbe\u9748\u56db\u9805\u5019\u9078\u7f3a\u53e3\u76e4\u9ede\uff0c\u540c\u4e0a unknown \u6a21\u578b\u8a18\u9304\u7406\u7531\u3002",
+        "count": 1
+      },
+      {
+        "id": "terra-47-richmenu-wiring",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u63a5\u6389 \u5efa\u7acb Rich Menu \u6309\u9215\u5230\u65e2\u6709\u771f\u5be6 rich-menu/create \u7aef\u9ede\uff0c\u4fee\u6e2c\u8a66\uff0c\u958b PR #645\uff08\u7d14 code-only\uff0c\u7121 migration\uff09\u3002",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 2,
+    "issuesClosed": 0,
+    "auditReady": 2,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 4,
+    "lunaAccepted": 4,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "MAIN slice: #46 refund_policy_snapshot canonical migration \u7f3a\u53e3\uff08PR #644\uff09\uff0c\u5df2\u5b8c\u6210 source-only \u65bd\u5de5\u4e26\u958b PR\uff0cAUDIT_READY\uff0c\u7b49\u5f85 CI\u3002",
+    "#42 review_state \u6301\u4e45\u5316\u8207 #42 departure snapshot \u70ba\u771f\u7f3a\u53e3\u4f46\u7121 canonical \u8a2d\u8a08\u88c1\u793a\uff0f\u5df2\u7531\u7522\u54c1\u81ea\u8eab\u6a19\u8a18\u70ba\u523b\u610f\u5ef6\u5f8c\u7684\u672a\u4f86\u5207\u7247\uff0c\u672c\u8f2a\u4e0d\u65bd\u5de5\uff0c\u907f\u514d\u5efa\u7acb\u7b2c\u4e8c\u5957\u672a\u88c1\u793a\u6a21\u578b\u3002",
+    "#43 GUIDE \u9996\u9801\u516d\u9805\u5019\u9078\u7f3a\u53e3\u9010\u4e00\u67e5\u8b49\uff0c\u7686\u5df2\u7531\u65e2\u6709\u6e2c\u8a66\u8986\u84cb\uff0c\u975e\u771f\u7f3a\u53e3\u3002",
+    "#17 \u9010\u4e00\u6838\u5c0d Slice A-D \u8207 idempotency/concurrency checklist\uff0c\u78ba\u8a8d\u5df2\u7531 main \u4e0a\u7684\u6574\u5408\u6e2c\u8a66\u8986\u84cb\uff1b\u65bc Issue #17 \u7559\u4e0b LUNA_CLOSURE \u66f4\u65b0\u7559\u8a00\uff0c\u672a\u9015\u884c\u95dc\u9589\uff08Production schema \u5957\u7528\u8207 #40 \u4f9d\u8cf4\u3001authenticated Preview \u9a57\u6536\u4ecd\u662f\u5177\u540d blocker\uff09\u3002",
+    "RESERVE/refill slice: #47 LINE Rich Menu \u5efa\u7acb\u6309\u9215\u771f\u63a5\u7dda\uff08PR #645\uff09\uff0c\u7d14 code-only\u3001\u7121 migration\uff0cmerge \u5f8c\u5c0d\u6240\u6709\u79df\u6236\u7acb\u5373\u751f\u6548\uff0c\u662f\u672c\u8f2a\u552f\u4e00\u771f\u6b63\u8cbc\u8fd1\u4f7f\u7528\u8005\u53ef\u898b\u6210\u679c\u7684\u8b8a\u66f4\uff08\u5c1a\u5f85\u4e00\u6b21 authenticated \u9a57\u6536\uff09\u3002"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": [
+      {
+        "id": "644-build-enter",
+        "at": "2026-09-21T17:45:29Z",
+        "kind": "BUILD_ENTER",
+        "pr": 644,
+        "issue": 46,
+        "head": "fee060e08c467ce9f02c032904cf585e314e82c9",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "MAIN slice #46 refund_policy_snapshot canonical migration (source-only)"
+      },
+      {
+        "id": "645-build-enter",
+        "at": "2026-09-21T17:58:20Z",
+        "kind": "BUILD_ENTER",
+        "pr": 645,
+        "issue": 47,
+        "head": "a9993b630927b34a69ce4a927dd1f83c88e08367",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Refill slice #47 rich-menu create button wiring (code-only, no migration)"
+      }
+    ]
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}

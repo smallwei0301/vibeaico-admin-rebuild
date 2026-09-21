@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import {
-  disconnectLine, getTenantSettings, saveLineSettings, syncLineWebhook, testLineConnection, verifyLineSetup,
+  disconnectLine, getTenantSettings, publishRichMenu, saveLineSettings, syncLineWebhook, testLineConnection,
+  verifyLineSetup,
 } from '@/services/settings';
 import { buildWebhookUrl, lineSettingsSchema, maskSecret } from '@/config/tenant-settings';
 import type { LineSettings, TenantSettings } from '@/config/tenant-settings';
@@ -321,12 +322,16 @@ export default function LineSettingsPage() {
   const createRichMenu = async () => {
     setCreatingRichMenu(true);
     try {
+      // 先存主題／底圖等欄位，讓 create 端點讀到當下畫面上的設定；真正「建立並
+      // 發布」的成功與否，以下面 publishRichMenu() 是否真的打通 LINE 為準——
+      // 存欄位成功不代表 LINE 端已經有這顆選單。
       await saveLineSettings({
         richMenuTheme, richMenuBgImageUrl, richMenuNoOverlay, richMenuTextColor,
       });
       patchLocalLine({
         richMenuTheme, richMenuBgImageUrl, richMenuNoOverlay, richMenuTextColor,
       });
+      await publishRichMenu();
       setRichMenuPublished(true);
       toast.show(
         richMenuBgImageUrl
