@@ -158,6 +158,13 @@
       "evidence": "#402 的 release-safe successor：0112 同時含 Storage AUTHZ 與 bucket metadata BACKFILL，故保留為 VERIFIED_NOT_APPLIED；本筆只移除 keyword-reply-images 的 authenticated 直接 INSERT policy，不修改 storage.buckets，讓正常上傳維持由 POST /api/upload 經 service_role 完成。尚未套用 canonical TEST 或 Production，須隨 #589 的受控 G3／Production gate 取得對應證據。"
     },
     {
+      "repoFile": "0127_issue_42_plan_seasonal_pricing",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#42：季節定價（trip_plan_seasons）——`mapTripPlan()` 對 `seasons` 過去寫死回傳 `[]`，因為 0066 從沒建過對應子表；0110 當初把這一塊明確排除，本筆是那個「另案處理」。新增獨立子表 trip_plan_seasons（tenant_id + plan_id 兩層 FK on delete cascade），RLS 比照 0113/0115 較新的慣例只開一條 select／authenticated policy（is_tenant_member(tenant_id)），不開 insert/update/delete policy——沒有對應指令的 policy 等於該指令一律被拒，寫入只走 requireTenantManager() 的 service-role client，與 0066/0068 對 trip_addons 用「for all policy + 明確 revoke insert/update/delete/truncate」的舊寫法安全語意等價，但不需要在 migration 文字裡寫出 truncate。只做加法，不動任何既有欄位／表，不回溯改寫既有 trip_departures 的 snapshot 欄位。本筆隨建立本 migration 的 PR 一起進 main，合併之後即符合 PENDING_APPLY 的定義（已在 main、尚未部署到正式庫）；正式庫快照目前沒有這筆 ledger row，canonical TEST 亦未套用。依 AGENTS.md「schema 變更的授權來源」（Owner 2026-09-14 裁示），在以最終內容合併進 main 之前，本檔不是任何環境的套用授權。套用 canonical TEST／Production 另需依既有授權流程各自取得授權，屆時必須重新擷取 supabase/production-ledger-snapshot.json 並把本筆改成 EXACT／ALIAS。"
+    },
+    {
       "repoFile": "0065_issue_128_services_order_invariants",
       "ledgerNames": [
         "0065_issue_128_services_order_invariants"
