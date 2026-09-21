@@ -1,1 +1,75 @@
-ewogICJ2ZXJzaW9uIjogMSwKICAicHJvZmlsZSI6ICJGUkVTSF9JTlNUQUxMX0NPTVBBVElCSUxJVFlfQkFTRUxJTkUiLAogICJtb2RlIjogIkxPQ0FMX09OTFlfVFJBTlNJVElPTkFMIiwKICAic291cmNlIjogewogICAgInJlcG9zaXRvcnkiOiAic21hbGx3ZWkwMzAxL3ZpYmVhaWNvLWFkbWluLXJlYnVpbGQiLAogICAgIm1haW5IZWFkIjogImJkMmVlNDYyMzQzZTM2NjYzNGRjYjU2MjBlNDUxNDEyZjFiN2MzM2IiLAogICAgImNhbm9uaWNhbFNvdXJjZURpZ2VzdCI6ICI3ODRjMTU0N2ZmMTg1MjEwMTY4NTFmNWRlYjFhZDEwYjRiYThlYWVhZmU1NTAyYjlmOGIzMjZmZTMxZjVhZDQiLAogICAgImhpc3RvcmljYWxNYW5pZmVzdCI6ICJzdXBhYmFzZS9sb2NhbC1taWdyYXRpb25zL2hpc3RvcmljYWwtaW50ZWdyYXRpb24tYmFzZWxpbmUvbWFuaWZlc3QuanNvbiIsCiAgICAiaGlzdG9yaWNhbEhlYWQiOiAiN2FkOWFjNTNkZjFmN2Y0OTcxYTJlYzk2YzQwMzg1ODdlMDUxNWI2NiIKICB9LAogICJlbnRyaWVzIjogWwogICAgewogICAgICAibmFtZSI6ICIwMDE2X3RvdXJfZG9tYWluX2NvcmUuc3FsIiwKICAgICAgImJsb2JTaGEiOiAiZTAwODBhOWRkMDQ3MGFkMDk2ZjlmN2I3MTkxMjg5NGE1OWRhOGYyYiIsCiAgICAgICJjbGFzc2lmaWNhdGlvbiI6ICJDT01QQVRJQklMSVRZX09OTFkiLAogICAgICAibG9jYWxUcmFuc2Zvcm0iOiBudWxsLAogICAgICAicmVhc29uIjogIkNyZWF0ZXMgdGhlIGhpc3RvcmljYWwgdG91ciB0YWJsZXMgcmVxdWlyZWQgYnkgdGhlIGFwcHJvdmVkIHBsYW4tY2FwIHJlcGxheTsgY2Fub25pY2FsIDAwNjYgcmVjb25jaWxlcyB0aGUgc2hhcGUgbGF0ZXIuIgogICAgfSwKICAgIHsKICAgICAgIm5hbWUiOiAiMDAxN19jaGF0X2ltYWdlc19idWNrZXRfYW5kX2xpbmVfc29ydF9vcmRlci5zcWwiLAogICAgICAiYmxvYlNoYSI6ICI0Zjk3MGMxYjFhZTA2OTQ2NzZkNTQ0NDBhNjkwOGFiMzhhYmU3MSIsCiAgICAgICJjbGFzc2lmaWNhdGlvbiI6ICJDT01QQVRJQklMSVRZX09OTFkiLAogICAgICAibG9jYWxUcmFuc2Zvcm0iOiBudWxsLAogICAgICAicmVhc29uIjogIlByb3ZpZGVzIHRoZSBidWNrZXQgYmlydGggcmVmZXJlbmNlZCBieSB0aGUgY2Fub25pY2FsIHN0b3JhZ2UgYWxsb3dsaXN0OyBsaW5lLXNvcnQgY29sdW1ucyBhcmUgcmVjb25jaWxlZCBieSBjYW5vbmljYWwgMDA2NSBhbmQgMDA3NS4iCiAgICB9LAogICAgewogICAgICAibmFtZSI6ICIwMDIwX2Jvb2tpbmdfYWRkb25zLnNxbCIsCiAgICAgICJibG9iU2hhIjogImUzYWY5ZDlmMDQ5ODEwMmJmMzIzMTU1YjE2NzMxMjdlMDNhN2IiLAogICAgICAiY2xhc3NpZmljYXRpb24iOiAiQ09NUEFUSUJJTElUWV9PTkxZIiwKICAgICAgImxvY2FsVHJhbnNmb3JtIjogbnVsbCwKICAgICAgInJlYXNvbiI6ICJTdXBwbGllcyB0aGUgdGFibGUgYmlydGggcmVxdWlyZWQgYmVmb3JlIGNhbm9uaWNhbCAwMDgyIGFkZHMgaXRzIHZlcmlmaWVkIGZpZWxkczsgaXQgaXMgbm90IHByb21vdGVkIGFzIGEgY3VycmVudCBib29raW5nLWFkZG9uIEFQSS4iCiAgICB9LAogICAgewogICAgICAibmFtZSI6ICIwMDI2X3RvdXJfZGVwYXJ0dXJlc19hZGRvbnNfb3JkZXJzLnNxbCIsCiAgICAgICJibG9iU2hhIjogImU0ODNhMzAxOTlkYTY0YWUwNmMzYzI5MmMxMGVmMDYyZTQiLAogICAgICAiY2xhc3NpZmljYXRpb24iOiAiQ09NUEFUSUJJTElUWV9PTkxZIiwKICAgICAgImxvY2FsVHJhbnNmb3JtIjogbnVsbCwKICAgICAgInJlYXNvbiI6ICJTdXBwbGllcyB0aGUgcHJlLWNhbm9uaWNhbCB0b3VyIHRhYmxlIGJpcnRocyBhbmQgbmV4dF90b3VyX29yZGVyX25vIHJlcXVpcmVkIGJ5IGNhbm9uaWNhbCAwMDk3OyBjYW5vbmljYWwgMDA2NiBhbmQgMDA4NyBvd24gdGhlIGN1cnJlbnQgc2hhcGVzLiIKICAgIH0sCiAgICB7CiAgICAgICJuYW1lIjogIjAwMzBfdHJpcF9wbGFuX2dsb2JhbF9saW1pdC5zcWwiLAogICAgICAiYmxvYlNoYSI6ICJlMzAzNzgxNTNjYTZkZWNhNGU2MjQyMDlkODcxNzQ3YWNhNWUiLAogICAgICAiY2xhc3NpZmljYXRpb24iOiAiQ09NUEFUSUJJTElUWV9PTkxZIiwKICAgICAgImxvY2FsVHJhbnNmb3JtIjogbnVsbCwKICAgICAgInJlYXNvbiI6ICJPd25lci1hcHByb3ZlZCBmcmVzaC1pbnN0YWxsIGNvbnRyYWN0OiBhdCBtb3N0IDEwMCBwbGFucyBwZXIgdGVuYW50IGFuZCB0cmlwLCB3aXRoIGEgcGFyZW50IGxvY2suIgogICAgfSwKICAgIHsKICAgICAgIm5hbWUiOiAiMDAzMV90cmlwX3BsYW5fbGltaXRfbG9ja19yZXBhaXIuc3FsIiwKICAgICAgImJsb2JTaGEiOiAiOWE2ZDVhYTJmNWQ2MDU1Zjc4M2NlMTEzNzdmNTU2YjcxMjNiMyIsCiAgICAgICJjbGFzc2lmaWNhdGlvbiI6ICJDT01QQVRJQklMSVRZX09OTFkiLAogICAgICAibG9jYWxUcmFuc2Zvcm0iOiAiV1JBUF9JTl9UUkFOU0FDVElPTiIsCiAgICAgICJyZWFzb24iOiAiUHJlc2VydmVzIHRoZSBoaXN0b3JpY2FsIGxvY2sgcmVwYWlyIGluIHRoZSBkaXNwb3NhYmxlIGJhc2VsaW5lOyBpdCBpcyBub3QgYSByZW1vdGUgbWlncmF0aW9uIGxlZGdlciBlbnRyeS4iCiAgICB9LAogICAgewogICAgICAibmFtZSI6ICIwMDMyX3RyaXBfcGxhbl9zdGF0ZW1lbnRfZ3VhcmQuc3FsIiwKICAgICAgImJsb2JTaGEiOiAiZmZkYjkzZDI5NDQ3MTYwZWQwZDJhZjlmNjdlYmFhMjYzMmQiLAogICAgICAiY2xhc3NpZmljYXRpb24iOiAiQ09NUEFUSUJJTElUWV9PTkxZIiwKICAgICAgImxvY2FsVHJhbnNmb3JtIjogIldSQVBfSU5fVFJBTlNBQ1RJT04iLAogICAgICAicmVhc29uIjogIlByZXNlcnZlcyB0aGUgYXBwcm92ZWQgc3RhdGVtZW50LWxldmVsIDEwMC1wbGFuIGd1YXJkIGFuZCBwYXJlbnQtcm93IGNvbmN1cnJlbmN5IGxvY2suIgogICAgfQogIF0sCiAgImNvbnRyYWN0cyI6IHsKICAgICJ0cmlwUGxhbkxpbWl0IjogewogICAgICAibWF4UGxhbnNQZXJUZW5hbnRUcmlwIjogMTAwLAogICAgICAidHJpZ2dlck5hbWVzIjogWwogICAgICAgICJ0cmlwX3BsYW5fbGltaXRfZ3VhcmQiLAogICAgICAgICJ0cmlwX3BsYW5fbGltaXRfZ3VhcmRfdXBkYXRlIgogICAgICBdLAogICAgICAiZnVuY3Rpb24iOiAicHVibGljLmVuZm9yY2VfdHJpcF9wbGFuX2xpbWl0KCkiLAogICAgICAic2hhcGUiOiAiU1RBVEVNRU5UX0xFVkVMIiwKICAgICAgImNvbmN1cnJlbmN5TG9jayI6ICJwYXJlbnQgdHJpcCByb3cgRk9SIE5PIEtFWSBVUERBVEUiCiAgICB9CiAgfQp9Cg==
+{
+  "version": 1,
+  "profile": "FRESH_INSTALL_COMPATIBILITY_BASELINE",
+  "mode": "LOCAL_ONLY_TRANSITIONAL",
+  "source": {
+    "repository": "smallwei0301/vibeaico-admin-rebuild",
+    "mainHead": "bd2ee462343e366634dcb5620e451412f1b7c33b",
+    "canonicalSourceDigest": "784c1547ff18521016851f5debe1ad10b4ba8eaeafe5502b9f8b326fe31f5ad4",
+    "historicalManifest": "supabase/local-migrations/historical-integration-baseline/manifest.json",
+    "historicalHead": "7ad9ac53df1f7f4971a2ec96c4038587e0515b66"
+  },
+  "entries": [
+    {
+      "name": "0016_tour_domain_core.sql",
+      "blobSha": "e0080a9dd0470ad096f9f7b71912894a59da8f2b",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Creates the historical tour tables required by the approved plan-cap replay; canonical 0066 reconciles the shape later."
+    },
+    {
+      "name": "0017_chat_images_bucket_and_line_sort_order.sql",
+      "blobSha": "4f970c1b1ae0694676d54440a6908ab38abe71",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Provides the bucket birth referenced by the canonical storage allowlist; line-sort columns are reconciled by canonical 0065 and 0075."
+    },
+    {
+      "name": "0020_booking_addons.sql",
+      "blobSha": "e3af9d9f0498102bf32155b1673127e03a7b",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Supplies the table birth required before canonical 0082 adds its verified fields; it is not promoted as a current booking-addon API."
+    },
+    {
+      "name": "0026_tour_departures_addons_orders.sql",
+      "blobSha": "e483a30199da64ae06c3c292c10ef062e4",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Supplies the pre-canonical tour table births and next_tour_order_no required by canonical 0097; canonical 0066 and 0087 own the current shapes."
+    },
+    {
+      "name": "0030_trip_plan_global_limit.sql",
+      "blobSha": "e30378153ca6deca4e624209d871747aca5e",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": null,
+      "reason": "Owner-approved fresh-install contract: at most 100 plans per tenant and trip, with a parent lock."
+    },
+    {
+      "name": "0031_trip_plan_limit_lock_repair.sql",
+      "blobSha": "9a6d5aa2f5d6055f783ce11377f556b7123b3",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": "WRAP_IN_TRANSACTION",
+      "reason": "Preserves the historical lock repair in the disposable baseline; it is not a remote migration ledger entry."
+    },
+    {
+      "name": "0032_trip_plan_statement_guard.sql",
+      "blobSha": "ffdb93d29447160ed0d2af9f67ebaa2632d",
+      "classification": "COMPATIBILITY_ONLY",
+      "localTransform": "WRAP_IN_TRANSACTION",
+      "reason": "Preserves the approved statement-level 100-plan guard and parent-row concurrency lock."
+    }
+  ],
+  "contracts": {
+    "tripPlanLimit": {
+      "maxPlansPerTenantTrip": 100,
+      "triggerNames": [
+        "trip_plan_limit_guard",
+        "trip_plan_limit_guard_update"
+      ],
+      "function": "public.enforce_trip_plan_limit()",
+      "shape": "STATEMENT_LEVEL",
+      "concurrencyLock": "parent trip row FOR NO KEY UPDATE"
+    }
+  }
+}
