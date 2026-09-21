@@ -75,6 +75,17 @@ jobs:
             if (ledger.sha !== expectedLedger) {
               throw new Error(`STALE_LEDGER_SHA: live=${ledger.sha} expected=${expectedLedger}`);
             }
+            if (String(context.payload.inputs?.capture_mode ?? 'provided_evidence') === 'github_live') {
+              if (ledger.encoding !== 'base64' || typeof ledger.content !== 'string') {
+                throw new Error('GitHub-live capture requires exact readable ledger bytes');
+              }
+              const parsed = JSON.parse(Buffer.from(ledger.content, 'base64').toString('utf8'));
+              if (parsed.schemaVersion !== 2 || parsed.deliveryTruthVersion !== 4
+                || !['IN_PROGRESS', 'CLOSURE_RECOVERY'].includes(parsed.status)
+                || parsed.closeout?.state !== 'OPEN') {
+                throw new Error('GitHub-live capture is restricted to active operational Delivery Truth v4 Runs');
+              }
+            }
             core.setOutput('main_sha', observed);
             core.setOutput('ledger_sha', expectedLedger);
             core.setOutput('ledger_path', ledgerPath);
