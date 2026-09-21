@@ -606,6 +606,13 @@
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
       "evidence": "#589 Stage 2：只收斂 booking_addons 與 owner_notify_recipients 的已知 policy/ACL 與 booking_addons.notified canonical 六值 check。SQL 在 G3 runner 外層 transaction 下固定順序鎖表；未知 policy/grantee/column ACL、非 text/not-null/default-NONE shape 或 PENDING/其他非 canonical 資料一律 fail closed，不清資料。此 migration 已在 main 前只能作 source review；canonical TEST 必須等 merge 後以 exact-main G3 套用與驗證，Production 仍另走 G0–G7。"
+    },
+    {
+      "repoFile": "0128_issue_42_plan_seasonal_pricing",
+      "ledgerNames": [],
+      "classification": "NOT_APPLIED",
+      "notAppliedReason": "PENDING_APPLY",
+      "evidence": "#42：TripPlan 的季節定價子表。以 tenant_id + plan_id 的複合外鍵保證季節不得指向其他租戶的 plan；月日 check 拒絕不存在的日期、允許跨年與 2/29。RLS 只給 authenticated 租戶成員讀取，寫入仍只走既有 service-role API。此為 schema preparation：不修改既有 departure/order 的價格 snapshot，也不規定重疊季節的產品優先順序。合併 main 後仍屬 PENDING_APPLY；canonical TEST 與 Production 的遠端套用各自需要 staged release 授權與回讀驗證。"
     }
   ]
 }
