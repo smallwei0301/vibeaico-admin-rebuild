@@ -137,6 +137,76 @@ export function readField(body = "", field) {
   return (declared[0]?.[1] ?? "").trim();
 }
 
+/**
+ * Rewrite one current metadata declaration without touching examples, comments,
+ * fenced/indented code or prose. This intentionally shares the same visibility
+ * rules as readField so terminal housekeeping cannot mutate a quoted example.
+ */
+export function rewriteField(body = "", field, nextValue = "") {
+  const current = readField(body, field);
+  if (!current || current.includes("|")) {
+    return { body: String(body), changed: false, error: `cannot safely rewrite ${field}: ${current || "missing"}` };
+  }
+
+  const text = String(body);
+  const newline = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r\n|\n|\r/);
+  const matches = [];
+  let fence = null;
+  let inComment = false;
+  const indented = /^(?: {4}| {0,3}\t)/;
+  const source = new RegExp(`^([ \\t]*[-*]?[ \\t]*${escapeRegExp(field)}[ \\t]*:[ \\t]*)(.*?)([ \\t]*)$`, "i");
+
+  lines.forEach((raw, index) => {
+    if (fence) {
+      const close = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+      if (close && close[1][0] === fence[0] && close[1].length >= fence.length) fence = null;
+      return;
+    }
+    if (!inComment) {
+      if (indented.test(raw)) return;
+      const open = raw.match(/^ {0,3}(?:(?:[-+*]|\d+[.)])[ \t]+)?(`{3,}|~{3,})(.*)$/);
+      if (open) { fence = open[1]; return; }
+    }
+
+    let visible = "";
+    let cursor = 0;
+    while (cursor < raw.length) {
+      if (inComment) {
+        const end = raw.indexOf("-->", cursor);
+        const next = end < 0 ? raw.length : end + 3;
+        visible += " ".repeat(next - cursor);
+        cursor = next;
+        if (end >= 0) inComment = false;
+      } else {
+        const start = raw.indexOf("<!--", cursor);
+        if (start < 0) { visible += raw.slice(cursor); break; }
+        visible += raw.slice(cursor, start) + "    ";
+        cursor = start + 4;
+        inComment = true;
+      }
+    }
+    if (!indented.test(visible) && source.test(visible)) matches.push(index);
+  });
+
+  if (fence || inComment || matches.length !== 1) {
+    return { body: text, changed: false, error: `cannot safely locate ${field} for rewrite` };
+  }
+  const index = matches[0];
+  if (lines[index].includes("<!--")) {
+    return { body: text, changed: false, error: `refusing inline-comment rewrite for ${field}` };
+  }
+  const match = lines[index].match(source);
+  if (!match) return { body: text, changed: false, error: `cannot parse ${field} declaration` };
+  lines[index] = `${match[1]}${nextValue}${match[3]}`;
+  const rewritten = lines.join(newline);
+  if (readField(rewritten, field) !== String(nextValue).trim()) {
+    return { body: text, changed: false, error: `postcondition failed for ${field}` };
+  }
+  return { body: rewritten, changed: rewritten !== text, error: null };
+}
+
+
 function upper(value) {
   return String(value ?? "").trim().toUpperCase();
 }

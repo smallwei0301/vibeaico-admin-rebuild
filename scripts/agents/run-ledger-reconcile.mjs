@@ -30,6 +30,9 @@ const ISSUE_CLAIM_TYPES = new Set([
 const CLAIM_FIELDS = [
   "type", "subject", "claimedState", "observedState", "verification", "evidenceRef",
 ];
+const COUNTER_RULES = new Map([
+  ["ci.fullCiRuns", /^github:actions\/run#[1-9][0-9]*$/],
+]);
 
 function fail(code, message) {
   const error = new Error(`${code}: ${message}`);
@@ -84,6 +87,48 @@ function claimDigest(claim) {
   return sha256(stableStringify(claim));
 }
 
+function normalizeCounterOperation(value, index) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    fail("INVALID_COUNTER_OPERATION", `counterOperations[${index}] must be an object`);
+  }
+  const extra = Object.keys(value).filter((key) => !["path", "observed", "evidenceRefs"].includes(key));
+  if (extra.length) fail("INVALID_COUNTER_OPERATION", `unsupported field(s): ${extra.join(", ")}`);
+  const counterPath = String(value.path ?? "").trim();
+  const refRule = COUNTER_RULES.get(counterPath);
+  if (!refRule) fail("UNSAFE_COUNTER_PATH", `${counterPath || "<empty>"} is not allowlisted`);
+  if (!Number.isSafeInteger(value.observed) || value.observed < 1) {
+    fail("INVALID_COUNTER_OPERATION", `${counterPath}.observed must be a positive safe integer`);
+  }
+  if (!Array.isArray(value.evidenceRefs) || value.evidenceRefs.length !== value.observed) {
+    fail("INVALID_COUNTER_OPERATION", `${counterPath}.evidenceRefs must contain exactly observed unique refs`);
+  }
+  const evidenceRefs = value.evidenceRefs.map((item) => String(item ?? "").trim()).sort();
+  if (new Set(evidenceRefs).size !== evidenceRefs.length || evidenceRefs.some((item) => !refRule.test(item))) {
+    fail("INVALID_COUNTER_OPERATION", `${counterPath}.evidenceRefs are invalid or duplicated`);
+  }
+  return { path: counterPath, observed: value.observed, evidenceRefs };
+}
+
+function readCounter(ledger, counterPath) {
+  const [section, field] = counterPath.split(".");
+  return ledger?.[section]?.[field];
+}
+
+function writeCounter(ledger, operation) {
+  const [section, field] = operation.path.split(".");
+  if (!ledger?.[section] || typeof ledger[section] !== "object" || Array.isArray(ledger[section])) {
+    fail("INVALID_LEDGER_COUNTER", `missing counter object for ${operation.path}`);
+  }
+  const current = ledger[section][field];
+  if (!(current === null || (Number.isSafeInteger(current) && current >= 0))) {
+    fail("INVALID_LEDGER_COUNTER", `${operation.path} is not a non-negative integer or null`);
+  }
+  if (Number.isSafeInteger(current) && current > operation.observed) {
+    fail("COUNTER_REGRESSION", `${operation.path} current=${current} exceeds observed=${operation.observed}`);
+  }
+  ledger[section][field] = operation.observed;
+}
+
 export function normalizeEvidence(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     fail("INVALID_EVIDENCE", "evidence must be an object");
@@ -111,11 +156,16 @@ export function normalizeEvidence(value) {
     completionTruth = { status, checkedAt: checkedAt === null ? null : checkedAt.trim() };
   }
 
-  if (!Array.isArray(value.operations) || value.operations.length === 0) {
-    fail("INVALID_EVIDENCE", "operations must be a non-empty array");
+  const rawOperations = value.operations ?? [];
+  const rawCounterOperations = value.counterOperations ?? [];
+  if (!Array.isArray(rawOperations)) fail("INVALID_EVIDENCE", "operations must be an array");
+  if (!Array.isArray(rawCounterOperations)) fail("INVALID_EVIDENCE", "counterOperations must be an array");
+  if (rawOperations.length === 0 && rawCounterOperations.length === 0) {
+    fail("INVALID_EVIDENCE", "at least one claim or counter operation is required");
   }
-  if (value.operations.length > 100) fail("INVALID_EVIDENCE", "operations exceeds 100");
-  const operations = value.operations.map((operation, index) => {
+  if (rawOperations.length > 100) fail("INVALID_EVIDENCE", "operations exceeds 100");
+  if (rawCounterOperations.length > 10) fail("INVALID_EVIDENCE", "counterOperations exceeds 10");
+  const operations = rawOperations.map((operation, index) => {
     const action = String(operation?.action ?? "").trim().toUpperCase();
     if (!new Set(["ADD", "REPLACE"]).has(action)) {
       fail("INVALID_OPERATION", `operations[${index}].action must be ADD or REPLACE`);
@@ -132,6 +182,11 @@ export function normalizeEvidence(value) {
   const sorted = operations
     .map((operation) => ({ operation, digest: sha256(stableStringify(operation)) }))
     .sort((left, right) => left.digest.localeCompare(right.digest));
+  const counterOperations = rawCounterOperations.map(normalizeCounterOperation)
+    .sort((left, right) => left.path.localeCompare(right.path));
+  if (new Set(counterOperations.map((item) => item.path)).size !== counterOperations.length) {
+    fail("CONFLICTING_COUNTER_OPERATION", "a counter path may be reconciled only once per evidence artifact");
+  }
   const duplicate = sorted.find((item, index) => index > 0 && item.digest === sorted[index - 1].digest);
   if (duplicate) fail("DUPLICATE_OPERATION", `duplicate operation ${duplicate.digest}`);
   const replaced = new Set();
@@ -148,10 +203,12 @@ export function normalizeEvidence(value) {
     observedMainSha,
     completionTruth,
     operations: sorted.map((item) => item.operation),
+    counterOperations,
   };
   const evidenceDigest = sha256(stableStringify({
     completionTruth: normalized.completionTruth,
     operations: normalized.operations,
+    counterOperations: normalized.counterOperations,
   }));
   const identity = sha256(`${runId}\n${observedMainSha}\n${evidenceDigest}`);
   return { ...normalized, evidenceDigest, identity };
@@ -167,13 +224,23 @@ function normalizeReconciliation(value) {
     const observedMainSha = String(item?.observedMainSha ?? "").trim();
     const evidenceDigest = String(item?.evidenceDigest ?? "").trim();
     const operationCount = Number(item?.operationCount);
+    const hasEvidenceRefs = item?.evidenceRefs !== undefined;
+    const evidenceRefs = hasEvidenceRefs && Array.isArray(item.evidenceRefs)
+      ? [...new Set(item.evidenceRefs.map((ref) => String(ref ?? "").trim()).filter(Boolean))].sort()
+      : [];
+    if (hasEvidenceRefs && (!Array.isArray(item.evidenceRefs) || evidenceRefs.length !== item.evidenceRefs.length)) {
+      fail("INVALID_RECONCILIATION_METADATA", "evidenceRefs must be a unique string array");
+    }
     if (!/^[0-9a-f]{64}$/.test(identity) || !SHA.test(observedMainSha) || !/^[0-9a-f]{64}$/.test(evidenceDigest)) {
       fail("INVALID_RECONCILIATION_METADATA", "identity metadata contains an invalid digest or SHA");
     }
     if (!Number.isInteger(operationCount) || operationCount < 1) {
       fail("INVALID_RECONCILIATION_METADATA", "operationCount must be a positive integer");
     }
-    return { identity, observedMainSha, evidenceDigest, operationCount };
+    return {
+      identity, observedMainSha, evidenceDigest, operationCount,
+      ...(hasEvidenceRefs ? { evidenceRefs } : {}),
+    };
   });
   identities.sort((left, right) => left.identity.localeCompare(right.identity));
   if (new Set(identities.map((item) => item.identity)).size !== identities.length) {
@@ -182,7 +249,9 @@ function normalizeReconciliation(value) {
   return { schemaVersion: 1, identities };
 }
 
-function verifyApplied(claims, evidence, truth) {
+function verifyApplied(ledger, evidence) {
+  const claims = ledger.completionTruth.claims;
+  const truth = ledger.completionTruth;
   const digests = claims.map((claim) => claimDigest(normalizeClaim(claim)));
   for (const operation of evidence.operations) {
     const resultDigest = claimDigest(operation.claim);
@@ -192,13 +261,23 @@ function verifyApplied(claims, evidence, truth) {
       if (oldDigest !== resultDigest && digests.includes(oldDigest)) return false;
     }
   }
+  for (const operation of evidence.counterOperations) {
+    if (readCounter(ledger, operation.path) !== operation.observed) return false;
+  }
   if (evidence.completionTruth) {
     if (truth.status !== evidence.completionTruth.status || truth.checkedAt !== evidence.completionTruth.checkedAt) return false;
   }
   return true;
 }
 
-export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha, currentLedgerSha, expectedLedgerSha }) {
+export function reconcileLedger({
+  ledger,
+  evidence: rawEvidence,
+  currentMainSha,
+  currentLedgerSha,
+  expectedLedgerSha,
+  allowCounterOperations = false,
+}) {
   if (!ledger || typeof ledger !== "object" || Array.isArray(ledger)) fail("INVALID_LEDGER", "ledger must be an object");
   if (ledger.schemaVersion !== 2) fail("INVALID_LEDGER", "schemaVersion must be 2");
   if (Number(ledger.deliveryTruthVersion ?? 2) < 3) {
@@ -210,6 +289,9 @@ export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha,
   }
 
   const evidence = normalizeEvidence(rawEvidence);
+  if (evidence.counterOperations.length && allowCounterOperations !== true) {
+    fail("TRUSTED_COUNTER_SOURCE_REQUIRED", "counter operations are allowed only from the trusted GitHub-live collector path");
+  }
   const mainSha = String(currentMainSha ?? "").trim().toLowerCase();
   const actualLedgerSha = String(currentLedgerSha ?? "").trim().toLowerCase();
   const expectedSha = String(expectedLedgerSha ?? "").trim().toLowerCase();
@@ -228,7 +310,7 @@ export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha,
     item.identity === evidence.identity || item.evidenceDigest === evidence.evidenceDigest
   ));
   if (previous) {
-    if (!verifyApplied(ledger.completionTruth.claims, evidence, ledger.completionTruth)) {
+    if (!verifyApplied(ledger, evidence)) {
       fail("APPLIED_IDENTITY_DRIFT", `evidence ${evidence.evidenceDigest} is recorded but its result is no longer present`);
     }
     return { ledger, changed: false, evidence };
@@ -256,6 +338,8 @@ export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha,
     else claims[matches[0].index] = operation.claim;
   }
 
+  for (const operation of evidence.counterOperations) writeCounter(next, operation);
+
   if (evidence.completionTruth) {
     next.completionTruth.status = evidence.completionTruth.status;
     next.completionTruth.checkedAt = evidence.completionTruth.checkedAt;
@@ -265,10 +349,14 @@ export function reconcileLedger({ ledger, evidence: rawEvidence, currentMainSha,
     identity: evidence.identity,
     observedMainSha: evidence.observedMainSha,
     evidenceDigest: evidence.evidenceDigest,
-    operationCount: evidence.operations.length,
+    operationCount: evidence.operations.length + evidence.counterOperations.length,
+    evidenceRefs: [...new Set([
+      ...evidence.operations.map((item) => item.claim.evidenceRef),
+      ...evidence.counterOperations.flatMap((item) => item.evidenceRefs),
+    ])].sort(),
   });
   next.reconciliation.identities.sort((left, right) => left.identity.localeCompare(right.identity));
-  if (!verifyApplied(next.completionTruth.claims, evidence, next.completionTruth)) {
+  if (!verifyApplied(next, evidence)) {
     fail("RECONCILIATION_POSTCONDITION_FAILED", "reconciled claims do not match the evidence artifact");
   }
   return { ledger: next, changed: stableStringify(next) !== stableStringify(ledger), evidence };
@@ -296,7 +384,7 @@ function validateCandidate(candidatePath) {
 export function runCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.command !== "apply") {
-    throw new Error("Usage: run-ledger-reconcile.mjs apply --ledger <run.json> --evidence <evidence.json> --current-main-sha <sha> --expected-ledger-sha <blob-sha> [--result <result.json>]");
+    throw new Error("Usage: run-ledger-reconcile.mjs apply --ledger <run.json> --evidence <evidence.json> --current-main-sha <sha> --expected-ledger-sha <blob-sha> [--allow-observed-counters] [--result <result.json>]");
   }
   for (const key of ["ledger", "evidence", "current-main-sha", "expected-ledger-sha"]) {
     if (!args[key]) fail("MISSING_ARGUMENT", `--${key} is required`);
@@ -312,6 +400,7 @@ export function runCli(argv = process.argv.slice(2)) {
     currentMainSha: args["current-main-sha"],
     currentLedgerSha,
     expectedLedgerSha: args["expected-ledger-sha"],
+    allowCounterOperations: args["allow-observed-counters"] === true,
   });
 
   let output = raw;
@@ -334,7 +423,7 @@ export function runCli(argv = process.argv.slice(2)) {
     identity: result.evidence.identity,
     ledgerShaBefore: currentLedgerSha,
     ledgerShaAfter: gitBlobSha(output),
-    operationCount: result.evidence.operations.length,
+    operationCount: result.evidence.operations.length + result.evidence.counterOperations.length,
   };
   if (args.result) {
     fs.mkdirSync(path.dirname(path.resolve(args.result)), { recursive: true });
