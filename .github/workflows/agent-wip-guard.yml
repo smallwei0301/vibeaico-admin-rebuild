@@ -90,8 +90,28 @@ jobs:
                 await github.rest.issues.createLabel({ owner, repo, name: terminal.add, color: '006B75' });
               }
               await github.rest.issues.addLabels({ owner, repo, issue_number: current.number, labels: [terminal.add] });
+
+              const bodyPlan = boundary.terminalBodyPlan(current);
+              let bodyReconciled = false;
+              if (bodyPlan?.errors?.length) {
+                core.warning(`Closed PR #${current.number} body not rewritten: ${bodyPlan.errors.join('; ')}`);
+              } else if (bodyPlan?.changed) {
+                // Re-read before mutation so a stale/delayed closed event cannot rewrite
+                // a PR that was reopened or whose head changed after this run started.
+                const { data: fresh } = await github.rest.pulls.get({
+                  owner, repo, pull_number: current.number,
+                });
+                if (fresh.state !== 'closed' || fresh.head?.sha !== current.head?.sha) {
+                  core.warning(`Closed PR #${current.number} changed before body reconciliation; leaving body untouched`);
+                } else {
+                  await github.rest.pulls.update({
+                    owner, repo, pull_number: current.number, body: bodyPlan.body,
+                  });
+                  bodyReconciled = true;
+                }
+              }
               await core.summary.addHeading('Closed PR lane reconciled')
-                .addRaw('Lane closed; no Product acceptance, new status, or rewritten review evidence.').write();
+                .addRaw(`Lane closed; terminal labels reconciled; current body metadata updated=${bodyReconciled}. Historical prose/review evidence and Product acceptance were not rewritten.`).write();
               return;
             }
             const marker = '<!-- agent-wip-guard -->';
