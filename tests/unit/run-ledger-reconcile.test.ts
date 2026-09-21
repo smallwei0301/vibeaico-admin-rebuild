@@ -275,6 +275,48 @@ describe("run ledger reconciliation", () => {
     expect(reconciled.ledger.delivery.issuesClosed).toBe(1);
   });
 
+  it("revalidates an existing verified Issue-close claim without duplicating it", async () => {
+    const current = ledger();
+    current.completionTruth.claims = [{
+      type: "ISSUE_CLOSED",
+      subject: "issue#170",
+      claimedState: "closed",
+      observedState: "closed",
+      verification: "VERIFIED",
+      evidenceRef: "github:older-observation",
+    }];
+    const pullList = async () => ({ data: [] });
+    const commitList = async () => ({ data: [] });
+    const runList = async () => ({ data: [] });
+    const github: any = {
+      rest: {
+        pulls: { list: pullList, listCommits: commitList },
+        actions: { listWorkflowRunsForRepo: runList },
+        issues: {
+          get: async ({ issue_number }: any) => ({ data: {
+            number: issue_number, state: "closed", closed_at: "2026-09-04T02:00:00Z",
+          } }),
+        },
+      },
+      paginate: async (method: any) => {
+        if (method === pullList) return [];
+        if (method === commitList || method === runList) return [];
+        throw new Error("unexpected paginate");
+      },
+    };
+    const captured = await collectGithubRunEvidence({
+      github, owner: "owner", repo: "repo",
+      runId: "2026-09-04-reconcile-test", ledger: current, observedMainSha: MAIN,
+    });
+    expect(captured.operations).toEqual([]);
+    expect(captured.counterOperations).toEqual([
+      { path: "delivery.issuesClosed", observed: 1, evidenceRefs: ["github:issue#170"] },
+    ]);
+    const reconciled = apply(current, captured, LEDGER_SHA, true);
+    expect(reconciled.ledger.completionTruth.claims).toHaveLength(1);
+    expect(reconciled.ledger.delivery.issuesClosed).toBe(1);
+  });
+
   it("computes Git blob SHA from the exact bytes", () => {
     expect(gitBlobSha("hello\n")).toBe("ce013625030ba8dba906f756967f9e9ca394464a");
   });
