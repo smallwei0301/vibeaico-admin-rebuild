@@ -459,7 +459,7 @@ function indexAccessMethodColumnListStart(text) {
   return prefix.exec(stripSqlStringLiterals(text, true, true))?.[0].length ?? -1;
 }
 
-function rejectImmediateRoutineInvocations(statements) {
+function rejectImmediateRoutineInvocations(statements, repoFile = '') {
   const checkCommandText = (text, allowedRoutineCalls = new Set()) => hasUnverifiedRoutineInvocation(
     stripSqlStringLiterals(text, true, true),
     allowedRoutineCalls,
@@ -523,11 +523,36 @@ function rejectImmediateRoutineInvocations(statements) {
         fail('UNSUPPORTED_DYNAMIC_SQL_NOT_ADMITTED', 'parenthesized dynamic EXECUTE is not admitted');
       }
       const body = immediateProceduralBody(immediateText);
-      if (body !== null && checkCommandText(body, SAFE_PROCEDURAL_CATALOG_ROUTINES)) {
+      const allowedProceduralCalls = String(repoFile) === '0127_issue_589_authz_constraint_reconciliation'
+        ? new Set([...SAFE_PROCEDURAL_CATALOG_ROUTINES, 'public.is_tenant_member'])
+        : SAFE_PROCEDURAL_CATALOG_ROUTINES;
+      if (body !== null && checkCommandText(body, allowedProceduralCalls)) {
         fail('UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED', 'routine invocation inside an immediate procedural block is not admitted');
       }
     }
   }
+}
+
+function isBounded0127ProceduralReconciliation(statements, repoFile) {
+  if (String(repoFile) !== '0127_issue_589_authz_constraint_reconciliation' || statements.length !== 1) return false;
+  const body = immediateProceduralBody(stripStoredRoutineBodies(statements[0]).trim());
+  if (body === null) return false;
+  const fragments = splitSqlStatements(body).map((fragment) => stripSqlStringLiterals(fragment).trim()).filter(Boolean);
+  const exact = new Set([
+    'drop policy if exists p_booking_addons_i on public.booking_addons',
+    'drop policy if exists p_booking_addons_u on public.booking_addons',
+    'drop policy if exists p_booking_addons_d on public.booking_addons',
+    'drop policy if exists p_booking_addons_s on public.booking_addons',
+    'drop policy if exists p_owner_notify_recipients_s on public.owner_notify_recipients',
+    'drop policy if exists p_owner_notify_recipients_i on public.owner_notify_recipients',
+    'drop policy if exists p_owner_notify_recipients_u on public.owner_notify_recipients',
+    'drop policy if exists p_owner_notify_recipients_d on public.owner_notify_recipients',
+    'drop policy if exists p_owner_notify_recipients_all on public.owner_notify_recipients',
+    'alter table public.booking_addons drop constraint if exists booking_addons_notified_check',
+  ]);
+  const drops = fragments.filter((fragment) => /\bdrop\b/i.test(fragment)).map((fragment) => fragment.toLowerCase());
+  return drops.length === exact.size && new Set(drops).size === exact.size
+    && drops.every((fragment) => exact.has(fragment));
 }
 
 function rejectImmediateConfigurationMutations(statements) {
@@ -537,6 +562,12 @@ function rejectImmediateConfigurationMutations(statements) {
     if (!/^\s*do\b/i.test(lexicalText)) continue;
     const body = immediateProceduralBody(immediateText);
     const bodyLexical = body === null ? '' : stripSqlStringLiterals(body, true, true);
+    if (/\b(?:commit|rollback|start\s+transaction|begin\s+transaction)\b/i.test(bodyLexical)) {
+      fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'transaction control inside an immediate procedural block is not admitted');
+    }
+    if (/\bexception\s+when\b[\s\S]*\bthen\b/i.test(bodyLexical)) {
+      fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'exception handlers inside an immediate procedural block are not admitted');
+    }
     if (/(?:^\s*(?:set|reset)\b|\bbegin\s+(?:set|reset)\b|(?:^|;|\b(?:then|else|loop|exception)\b)\s*(?:set|reset)\b)/i.test(bodyLexical)) {
       fail('UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED', 'SET/RESET inside an immediate procedural block is not admitted by the fail-closed classifier');
     }
@@ -861,8 +892,15 @@ function hasImmediateBackfillDml(text) {
     // WITH can be nested under CTAS, views, EXPLAIN, COPY or other wrappers.
     // Inspect every immediate WITH/DO, not just the first statement keyword;
     // routine declarations are excluded and quoted/commented text is masked.
-    const compoundDml = /\b(?:with|do)\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
-    const proceduralDml = body !== null && /\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(executableBody);
+    const compoundDml = !procedural && /\bwith\b[\s\S]*\b(?:update|delete\s+from|insert\s+into|merge\s+into)\b/i.test(lexicalText);
+    // Do not mistake a complete GRANT/REVOKE statement (which can list INSERT
+    // or UPDATE as a privilege) for executed DML. Keep the broad scan for all
+    // remaining procedural statements so BEGIN/IF/THEN/ELSE/LOOP DML remains
+    // fail-closed.
+    const proceduralWithoutPrivileges = body === null ? '' : splitSqlStatements(executableBody)
+      .filter((fragment) => !/^\s*(?:grant|revoke)\b/i.test(fragment))
+      .join(';');
+    const proceduralDml = body !== null && /\b(?:update|delete\s+from\b|insert\s+into\b|merge\s+into\b)/i.test(proceduralWithoutPrivileges);
     const dynamicKinds = body !== null ? assertDynamicExecutionSafe(body) : [];
     return directDml || explainedDml || compoundDml || proceduralDml || dynamicKinds.includes('BACKFILL');
   });
@@ -935,9 +973,13 @@ export function inferMigrationRiskTier(sql, repoFile = '') {
   const statements = splitSqlStatements(text);
   rejectUnsupportedRoutineLiteralBodies(statements);
   rejectUnsupportedPreparedStatements(statements);
-  rejectImmediateRoutineInvocations(statements);
+  rejectImmediateRoutineInvocations(statements, repoFile);
   rejectImmediateConfigurationMutations(statements);
-  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b|\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))) {
+  if (statements.some((statement) => /\btruncate\b|\bdrop\s+(?:table|schema)\b/i.test(statement))) {
+    fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA and TRUNCATE must use expand → migrate → contract outside v1');
+  }
+  if (statements.some((statement) => /\balter\s+table\b[\s\S]*\bdrop(?:\s+column)?\s+(?:if\s+exists\s+)?(?!constraint\b|default\b)/i.test(statement))
+    && !isBounded0127ProceduralReconciliation(statements, repoFile)) {
     fail('DESTRUCTIVE_SQL_NOT_ADMITTED', 'DROP TABLE/SCHEMA/COLUMN and TRUNCATE must use expand → migrate → contract outside v1');
   }
   rejectUnclassifiedDropStatements(text);

@@ -39,6 +39,20 @@ describe('Production DB release plan #447', () => {
     expect(() => inferMigrationRiskTier("do $$ begin perform untrusted_acl_helper(); end $$;", 'evil_acl')).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier("do $$ begin perform aclexplode(null); end $$;", 'unqualified_acl')).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
     expect(() => inferMigrationRiskTier("do $$ begin perform public.acldefault('r', 1); end $$;", 'user_acl')).toThrow(/UNSUPPORTED_ROUTINE_INVOCATION_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(sql.replace('drop constraint if exists booking_addons_notified_check', 'drop column notified'), '0127_issue_589_authz_constraint_reconciliation')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(sql.replace('end\n$reconcile$;', 'truncate table public.booking_addons;\nend\n$reconcile$;'), '0127_issue_589_authz_constraint_reconciliation')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(sql.replace('end\n$reconcile$;', 'drop table public.unrelated;\nend\n$reconcile$;'), '0127_issue_589_authz_constraint_reconciliation')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(sql.replace('drop policy if exists p_booking_addons_i', 'drop policy if exists p_booking_addons_s'), '0127_issue_589_authz_constraint_reconciliation')).toThrow(/DESTRUCTIVE_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(sql.replace('end\n$reconcile$;', 'commit;\nend\n$reconcile$;'), '0127_issue_589_authz_constraint_reconciliation')).toThrow(/UNSUPPORTED_SQL_LEXICAL_FORM|UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
+    expect(() => inferMigrationRiskTier(sql.replace('end\n$reconcile$;', 'update public.booking_addons set name = name;\nend\n$reconcile$;'), '0127_issue_589_authz_constraint_reconciliation')).toThrow(/MIXED_RISK_MIGRATION_NOT_ADMITTED/);
+  });
+
+  it.each([
+    'do $$ begin update public.orders set state = state; end $$;',
+    'do $$ begin if true then update public.orders set state = state; end if; end $$;',
+    'do $$ begin for n in 1..1 loop update public.orders set state = state; end loop; end $$;',
+  ])('keeps procedural DML classified as BACKFILL despite privilege-keyword filtering: %s', (sql) => {
+    expect(inferMigrationRiskTier(sql, 'ordinary_do_backfill')).toBe('BACKFILL');
   });
 
   it.each(['btree', 'hash'])('preserves %s index syntax without trusting routine calls', (method) => {

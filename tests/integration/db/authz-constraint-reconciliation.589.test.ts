@@ -160,4 +160,27 @@ localDescribe('Issue #589 isolated PostgreSQL reconciliation preconditions and r
       await contender.end({ timeout: 2 }).catch(() => undefined);
     }
   });
+
+  it('executes as one procedural statement without a client-side outer transaction', async () => {
+    await expect(db.unsafe(migration)).resolves.toBeTruthy();
+  });
+
+  it('remains atomic with the G3/G6-style outer migration-and-ledger transaction', async () => {
+    const before = await capture(db);
+    const outer = postgres(LOCAL_DB_URL, { max: 1, prepare: false });
+    try {
+      await outer.unsafe('create temporary table g3_589_ledger_probe (name text primary key)');
+      await expect(outer.begin(async (tx) => {
+        await tx.unsafe(migration);
+        await tx.unsafe("insert into g3_589_ledger_probe(name) values ('0127_issue_589_authz_constraint_reconciliation')");
+        const ledger = await tx.unsafe('select name from g3_589_ledger_probe');
+        expect(ledger).toEqual([{ name: '0127_issue_589_authz_constraint_reconciliation' }]);
+        throw new Error('rollback outer migration-and-ledger transaction');
+      })).rejects.toThrow(/rollback outer migration-and-ledger transaction/);
+      expect(await outer.unsafe('select name from g3_589_ledger_probe')).toEqual([]);
+      expect(await capture(db)).toEqual(before);
+    } finally {
+      await outer.end({ timeout: 2 });
+    }
+  });
 });
