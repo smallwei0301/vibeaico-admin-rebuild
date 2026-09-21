@@ -275,6 +275,15 @@ function cleanupScopes(plan) {
       filterValue: 'g3-589-0127-%',
     });
   }
+  if (plan.migrations.some((migration) => String(migration?.repoFile ?? '') === '0128_issue_42_plan_seasonal_pricing')) {
+    scopes.push({
+      migration: '0128_issue_42_plan_seasonal_pricing',
+      table: 'trip_plan_seasons',
+      filterColumn: 'name',
+      filterOperator: 'like',
+      filterValue: 'g3-42-0128-%',
+    });
+  }
   return scopes;
 }
 
