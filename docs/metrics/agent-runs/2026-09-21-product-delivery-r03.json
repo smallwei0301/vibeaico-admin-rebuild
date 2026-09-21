@@ -19,15 +19,21 @@
     },
     {
       "ref": "issue/11"
+    },
+    {
+      "ref": "issue/650"
+    },
+    {
+      "ref": "pr/651"
     }
   ],
   "main": {
     "startSha": "03957e7accd0af36368c70e462af8111785b9de5",
-    "endSha": "e1f6e85135c60f1a79cee51257f771d3b567bd15"
+    "endSha": "018477333b0e7a0594964fa6c76f5cf4c10421e0"
   },
   "inventory": {
     "openIssuesStart": 47,
-    "openIssuesEnd": 47,
+    "openIssuesEnd": 48,
     "openPrsStart": 2,
     "openPrsEnd": 2,
     "mainTerraPeak": 2,
@@ -63,7 +69,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "Issue #46 traveler journey \u76e4\u9ede\uff1bAgent tool \u672a\u986f\u5f0f\u6307\u5b9a model override\uff0c\u5be6\u969b\u57f7\u884c\u6a21\u578b\u672a\u53ef\u9a57\u8b49\uff0c\u5982\u5be6\u8a18 unknown\uff0c\u4e0d\u9810\u8a2d\u7b49\u65bc\u5df2\u7b26\u5408 scout tier\uff08PB-036/PB-050\uff09\u3002",
+        "note": "Issue #46 traveler journey 盤點；Agent tool 未顯式指定 model override，實際執行模型未可驗證，如實記 unknown，不預設等於已符合 scout tier（PB-036/PB-050）。",
         "count": 1
       },
       {
@@ -76,7 +82,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "Issue #43 GUIDE \u9996\u9801\u516d\u9805\u5019\u9078\u7f3a\u53e3\u76e4\u9ede\uff0c\u540c\u4e0a unknown \u6a21\u578b\u8a18\u9304\u7406\u7531\u3002",
+        "note": "Issue #43 GUIDE 首頁六項候選缺口盤點，同上 unknown 模型記錄理由。",
         "count": 1
       },
       {
@@ -89,7 +95,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "Issue #42 departure snapshot \u7f3a\u53e3\u76e4\u9ede\uff0c\u540c\u4e0a unknown \u6a21\u578b\u8a18\u9304\u7406\u7531\u3002",
+        "note": "Issue #42 departure snapshot 缺口盤點，同上 unknown 模型記錄理由。",
         "count": 1
       },
       {
@@ -102,7 +108,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u65b0\u589e migration 0130\u3001\u4fee\u6e2c\u8a66\u3001\u66f4\u65b0 ledger-alias-map \u8207 fresh-install baseline manifest\uff0c\u958b PR #644\u3002",
+        "note": "本 session（claude-sonnet-5）直接施工：新增 migration 0130、修測試、更新 ledger-alias-map 與 fresh-install baseline manifest，開 PR #644。",
         "count": 1
       },
       {
@@ -115,7 +121,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "Issue #47 LINE \u958b\u901a\u7cbe\u9748\u56db\u9805\u5019\u9078\u7f3a\u53e3\u76e4\u9ede\uff0c\u540c\u4e0a unknown \u6a21\u578b\u8a18\u9304\u7406\u7531\u3002",
+        "note": "Issue #47 LINE 開通精靈四項候選缺口盤點，同上 unknown 模型記錄理由。",
         "count": 1
       },
       {
@@ -128,7 +134,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u63a5\u6389 \u5efa\u7acb Rich Menu \u6309\u9215\u5230\u65e2\u6709\u771f\u5be6 rich-menu/create \u7aef\u9ede\uff0c\u4fee\u6e2c\u8a66\uff0c\u958b PR #645\uff08\u7d14 code-only\uff0c\u7121 migration\uff09\u3002",
+        "note": "本 session（claude-sonnet-5）直接施工：接掉 建立 Rich Menu 按鈕到既有真實 rich-menu/create 端點，修測試，開 PR #645（純 code-only，無 migration）。",
         "count": 1
       },
       {
@@ -141,7 +147,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u4ee5\u771f\u5be6\u700f\u89bd\u5668\uff08Playwright, 390px\uff09\u64cd\u4f5c\u91cd\u73fe mock \u6a21\u5f0f\u4e0b Trip Plan \u5b58\u6a94\u4e0d\u6301\u4e45\u7684\u5047\u6210\u529f\uff0c\u4fee\u6b63 saveTripPlan()/deleteTripPlan() \u7684 mock \u5206\u652f\u4e26\u88dc\u4e0a\u76f4\u63a5\u547c\u53eb service function \u7684\u56de\u6b78\u6e2c\u8a66\uff0c\u958b\u65b0 PR\u3002",
+        "note": "本 session（claude-sonnet-5）直接施工：以真實瀏覽器（Playwright, 390px）操作重現 mock 模式下 Trip Plan 存檔不持久的假成功，修正 saveTripPlan()/deleteTripPlan() 的 mock 分支並補上直接呼叫 service function 的回歸測試，開新 PR。",
         "count": 1
       },
       {
@@ -154,7 +160,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u65b0\u589e GET /api/public/shops/{shopCode} \u8207 CORS \u6388\u6b0a\u5c64\uff08src/server/public-cors.ts\uff09\uff0c\u91cd\u7528\u65e2\u6709 loadPublicShop()\uff0c\u88dc\u4e0a\u771f\u5be6\u884c\u70ba\u6e2c\u8a66\u4e26\u7528\u672c\u5730 dev server + curl \u9a57\u8b49\uff0c\u958b PR #647\u3002",
+        "note": "本 session（claude-sonnet-5）直接施工：新增 GET /api/public/shops/{shopCode} 與 CORS 授權層（src/server/public-cors.ts），重用既有 loadPublicShop()，補上真實行為測試並用本地 dev server + curl 驗證，開 PR #647。",
         "count": 1
       },
       {
@@ -167,7 +173,7 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "\u5c0d #46 \u53d6\u6d88\u653f\u7b56 snapshot \u5728\u65c5\u5ba2\u7aef UI \u7684\u6d88\u8cbb\u73fe\u72c0\u505a\u7a97\u9ede\u76e4\u9ede\uff08Explore agent\uff09\uff1a\u767c\u73fe\u516c\u958b\u5e97\u5bb6\u9996\u9801\u5217\u65b9\u6848\u6642\u5b8c\u5168\u6c92\u6709\u986f\u793a\u53d6\u6d88\u653f\u7b56\uff0c\u65c5\u5ba2\u8981\u9ede\u9032 REQUEST \u7533\u8acb\u8868\u55ae\u624d\u770b\u5f97\u5230\u3002",
+        "note": "對 #46 取消政策 snapshot 在旅客端 UI 的消費現狀做窗點盤點（Explore agent）：發現公開店家首頁列方案時完全沒有顯示取消政策，旅客要點進 REQUEST 申請表單才看得到。",
         "count": 1
       },
       {
@@ -180,7 +186,20 @@
         "inputTokens": null,
         "outputTokens": null,
         "cachedTokens": null,
-        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u516c\u958b\u5e97\u5bb6\u9996\u9801\uff08/s/{shopCode}\uff09\u65b0\u589e\u986f\u793a\u884c\u7a0b\u73fe\u884c\u53d6\u6d88\uff0f\u9000\u6b3e\u653f\u7b56\uff08trips.refund_policy_type\uff09\uff0c\u4e0d\u7528\u7b49\u65c5\u5ba2\u9ede\u9032 REQUEST \u7533\u8acb\u8868\u55ae\u624d\u770b\u5f97\u5230\uff1b\u65b0\u589e tests/unit/public-shop-cancellation-policy.46.test.ts\uff0c\u5168\u91cf unit\u3001typecheck\u3001build \u5747\u901a\u904e\u3002",
+        "note": "本 session（claude-sonnet-5）直接施工：公開店家首頁（/s/{shopCode}）新增顯示行程現行取消／退款政策（trips.refund_policy_type），不用等旅客點進 REQUEST 申請表單才看得到；新增 tests/unit/public-shop-cancellation-policy.46.test.ts，全量 unit、typecheck、build 均通過。",
+        "count": 1
+      },
+      {
+        "id": "issue-650-my-orders-auth-boundary",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "sol",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Owner requested execution from the 2026-09-22 retrospective evidence. Current OpenAI executor (Sol) implemented the bounded #650 safety slice directly because this session has no Terra subagent dispatch channel; recorded as actualModel=sol rather than pretending Terra. Scope: fail-close anonymous bulk order lookup, remove contact-only UI, add regression test. No DB/TEST/Production write.",
         "count": 1
       }
     ],
@@ -188,7 +207,7 @@
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 4,
+    "issuesStarted": 5,
     "issuesClosed": 0,
     "auditReady": 4,
     "ownerBlockedComplete": 0,
@@ -231,14 +250,15 @@
     "scoreInputsCompletePercent": null
   },
   "notes": [
-    "MAIN slice: #46 refund_policy_snapshot canonical migration \u7f3a\u53e3\uff08PR #644\uff09\uff0c\u5df2\u5b8c\u6210 source-only \u65bd\u5de5\u4e26\u958b PR\uff0cAUDIT_READY\uff0c\u7b49\u5f85 CI\u3002",
-    "#42 review_state \u6301\u4e45\u5316\u8207 #42 departure snapshot \u70ba\u771f\u7f3a\u53e3\u4f46\u7121 canonical \u8a2d\u8a08\u88c1\u793a\uff0f\u5df2\u7531\u7522\u54c1\u81ea\u8eab\u6a19\u8a18\u70ba\u523b\u610f\u5ef6\u5f8c\u7684\u672a\u4f86\u5207\u7247\uff0c\u672c\u8f2a\u4e0d\u65bd\u5de5\uff0c\u907f\u514d\u5efa\u7acb\u7b2c\u4e8c\u5957\u672a\u88c1\u793a\u6a21\u578b\u3002",
-    "#43 GUIDE \u9996\u9801\u516d\u9805\u5019\u9078\u7f3a\u53e3\u9010\u4e00\u67e5\u8b49\uff0c\u7686\u5df2\u7531\u65e2\u6709\u6e2c\u8a66\u8986\u84cb\uff0c\u975e\u771f\u7f3a\u53e3\u3002",
-    "#17 \u9010\u4e00\u6838\u5c0d Slice A-D \u8207 idempotency/concurrency checklist\uff0c\u78ba\u8a8d\u5df2\u7531 main \u4e0a\u7684\u6574\u5408\u6e2c\u8a66\u8986\u84cb\uff1b\u65bc Issue #17 \u7559\u4e0b LUNA_CLOSURE \u66f4\u65b0\u7559\u8a00\uff0c\u672a\u9015\u884c\u95dc\u9589\uff08Production schema \u5957\u7528\u8207 #40 \u4f9d\u8cf4\u3001authenticated Preview \u9a57\u6536\u4ecd\u662f\u5177\u540d blocker\uff09\u3002",
-    "RESERVE/refill slice: #47 LINE Rich Menu \u5efa\u7acb\u6309\u9215\u771f\u63a5\u7dda\uff08PR #645\uff09\uff0c\u7d14 code-only\u3001\u7121 migration\uff0cmerge \u5f8c\u5c0d\u6240\u6709\u79df\u6236\u7acb\u5373\u751f\u6548\uff0c\u662f\u672c\u8f2a\u552f\u4e00\u771f\u6b63\u8cbc\u8fd1\u4f7f\u7528\u8005\u53ef\u898b\u6210\u679c\u7684\u8b8a\u66f4\uff08\u5c1a\u5f85\u4e00\u6b21 authenticated \u9a57\u6536\uff09\u3002",
-    "Closeout of this round: #645 verified merged+deployed (production READY) \u2014 first genuinely user-visible fix this session. #644 verified merged to main but remains PENDING_APPLY pending Owner-authorized Production schema release; not counted as shipped Product output.",
-    "#647 (#11 public shop API) merged to main, infra-only, zero frontend callers today \u2014 not counted as user-visible.",
-    "#648 (#46 cancellation policy on public shop homepage) merged to main (189c9a0a) \u2014 second genuinely traveler-visible fix this session: travelers browsing /s/{shopCode} now see the trip's current cancellation/refund policy before deciding to book, instead of only after clicking into a REQUEST form. Vercel production deployment was BUILDING at merge time; not yet confirmed READY."
+    "MAIN slice: #46 refund_policy_snapshot canonical migration 缺口（PR #644），已完成 source-only 施工並開 PR，AUDIT_READY，等待 CI。",
+    "#42 review_state 持久化與 #42 departure snapshot 為真缺口但無 canonical 設計裁示／已由產品自身標記為刻意延後的未來切片，本輪不施工，避免建立第二套未裁示模型。",
+    "#43 GUIDE 首頁六項候選缺口逐一查證，皆已由既有測試覆蓋，非真缺口。",
+    "#17 逐一核對 Slice A-D 與 idempotency/concurrency checklist，確認已由 main 上的整合測試覆蓋；於 Issue #17 留下 LUNA_CLOSURE 更新留言，未逕行關閉（Production schema 套用與 #40 依賴、authenticated Preview 驗收仍是具名 blocker）。",
+    "RESERVE/refill slice: #47 LINE Rich Menu 建立按鈕真接線（PR #645），純 code-only、無 migration，merge 後對所有租戶立即生效，是本輪唯一真正貼近使用者可見成果的變更（尚待一次 authenticated 驗收）。",
+    "Closeout of this round: #645 verified merged+deployed (production READY) — first genuinely user-visible fix this session. #644 verified merged to main but remains PENDING_APPLY pending Owner-authorized Production schema release; not counted as shipped Product output.",
+    "#647 (#11 public shop API) merged to main, infra-only, zero frontend callers today — not counted as user-visible.",
+    "#648 (#46 cancellation policy on public shop homepage) merged to main (189c9a0a) — second genuinely traveler-visible fix this session: travelers browsing /s/{shopCode} now see the trip's current cancellation/refund policy before deciding to book, instead of only after clicking into a REQUEST form. Vercel production deployment was BUILDING at merge time; not yet confirmed READY.",
+    "2026-09-22 (#650 retrospective optimization): evidence confirmed contact-only anonymous bulk 'my orders' lookup did not prove traveler ownership. Opened bounded Issue #650 and PR #651; source slice fail-closes the anonymous route and removes contact-only batch-search UI. No real traveler rows, TEST/Production DB writes, migration, or deployment were performed. Full traveler JWT positive path remains #12."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -341,6 +361,16 @@
         "head": "f505eeb639266f3421c7732745878511eeac1417",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "PR #648 merged to main (189c9a0a92b3a94d2394c986b01ebd77bc947c95); Vercel production deployment dpl_5747ViLh7qcuJu4R3ivXHQxmEZuA state=BUILDING at merge time"
+      },
+      {
+        "id": "651-build-enter",
+        "at": "2026-09-21T23:52:38Z",
+        "kind": "BUILD_ENTER",
+        "pr": 651,
+        "issue": 650,
+        "head": "d61cb1e137b36089b970da1d39d930e8171921b7",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Issue #650: fail-close contact-only anonymous bulk 'my orders' lookup; auth-boundary safety slice, no DB/migration"
       }
     ]
   },
