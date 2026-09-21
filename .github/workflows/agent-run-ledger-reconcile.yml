@@ -139,11 +139,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/run-ledger-reconcile"
+          counter_args=()
+          if [[ '${{ inputs.capture_mode }}' == 'github_live' ]]; then
+            counter_args+=(--allow-observed-counters)
+          fi
           node scripts/agents/run-ledger-reconcile.mjs apply \
             --ledger '${{ steps.preflight.outputs.ledger_path }}' \
             --evidence "$RUNNER_TEMP/run-ledger-evidence.json" \
             --current-main-sha '${{ steps.preflight.outputs.main_sha }}' \
             --expected-ledger-sha '${{ steps.preflight.outputs.ledger_sha }}' \
+            "${counter_args[@]}" \
             --result "$RUNNER_TEMP/run-ledger-reconcile/result.json"
 
       - name: Regenerate Markdown, validate, score and drift-check
