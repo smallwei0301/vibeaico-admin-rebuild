@@ -32,7 +32,6 @@ const CLAIM_FIELDS = [
 ];
 const COUNTER_RULES = new Map([
   ["ci.fullCiRuns", /^github:actions\/run#[1-9][0-9]*$/],
-  ["delivery.issuesClosed", /^github:issue#[1-9][0-9]*$/],
 ]);
 
 function fail(code, message) {
