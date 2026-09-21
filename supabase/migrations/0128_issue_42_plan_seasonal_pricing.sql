@@ -27,7 +27,7 @@ create table if not exists public.trip_plan_seasons (
     foreign key (tenant_id) references public.tenants(id) on delete cascade,
   constraint trip_plan_seasons_tenant_plan_fkey
     foreign key (tenant_id, plan_id) references public.trip_plans(tenant_id, id) on delete cascade,
-  constraint trip_plan_seasons_name_nonblank_check check (name <> ''),
+  constraint trip_plan_seasons_name_nonblank_check check (name !~ '^[[:space:]]*$'),
   constraint trip_plan_seasons_start_date_valid_check check (
     start_month between 1 and 12
     and start_day between 1 and case start_month
@@ -107,7 +107,7 @@ begin
       ('trip_plan_seasons_pkey', 'p', 'PRIMARY KEY (id)'),
       ('trip_plan_seasons_tenant_fkey', 'f', 'FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE'),
       ('trip_plan_seasons_tenant_plan_fkey', 'f', 'FOREIGN KEY (tenant_id, plan_id) REFERENCES trip_plans(tenant_id, id) ON DELETE CASCADE'),
-      ('trip_plan_seasons_name_nonblank_check', 'c', 'btrim(name)'),
+      ('trip_plan_seasons_name_nonblank_check', 'c', 'name !~'),
       ('trip_plan_seasons_start_date_valid_check', 'c', 'start_month'),
       ('trip_plan_seasons_end_date_valid_check', 'c', 'end_month'),
       ('trip_plan_seasons_price_override_nonnegative_check', 'c', 'price_override')
