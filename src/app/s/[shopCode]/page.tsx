@@ -195,6 +195,12 @@ export default async function PublicShopPage({ params, searchParams }: Params) {
                     {trip.summary ? (
                       <p className="whitespace-pre-line text-sm text-secondary">{trip.summary}</p>
                     ) : null}
+                    {/* #46：下單前顯示現行取消／退款政策，不用等點進申請表單才看得到 */}
+                    <p className="text-2xs text-secondary">
+                      {t.trips.cancellationPolicyLabel}
+                      {'：'}
+                      {t.trips.cancellationPolicy[trip.refundPolicyType]}
+                    </p>
                   </div>
 
                   {trip.plans.length > 0 ? (

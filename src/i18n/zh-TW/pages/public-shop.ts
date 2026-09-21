@@ -45,6 +45,18 @@ export const publicShopPage = {
      */
     requestBadge: '可線上申請',
     requestCta: '線上申請（先申請，導遊確認後才鎖位）',
+    /**
+     * #46：下單前顯示現行取消／退款政策——與
+     * `src/i18n/zh-TW/pages/public-tour-request.ts` 的 `cancellationPolicy`
+     * 同一份商業條件，這裡用單行摘要（整頁列多個行程，逐一展開完整條文太長）；
+     * 完整條文顧客點進「線上申請」表單頁時看得到同一份值。
+     */
+    cancellationPolicyLabel: '取消／退款政策',
+    cancellationPolicy: {
+      STANDARD: '標準：出發前 7 天可全額退款',
+      FLEXIBLE: '彈性：出發前 24 小時內皆可全額退款',
+      STRICT: '嚴格：訂購後恕不接受退款',
+    },
   },
 
   services: {
