@@ -18,6 +18,7 @@ import {
   markThreadRead,
   sendMessage,
   startPolling,
+  uploadChatImage,
   type ChatConversation,
   type ChatMessage,
 } from '@/services/chat';
@@ -72,13 +73,13 @@ export default function ChatPage() {
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  const [imageSending, setImageSending] = React.useState(false);
 
   /** 手機版單欄：list ⇄ thread */
   const [mobileThread, setMobileThread] = React.useState(false);
 
   const fileRef = React.useRef<HTMLInputElement>(null);
   const bottomRef = React.useRef<HTMLDivElement>(null);
-  const nextId = React.useRef(1);
 
   /** 輪詢 callback 讀取用（effect 只掛一次，不重建計時器） */
   const activeIdRef = React.useRef<string | null>(null);
@@ -199,11 +200,6 @@ export default function ChatPage() {
     ? conversations.filter((c) => c.customerName.includes(keyword.trim()))
     : conversations;
 
-  const appendOwnMessage = (message: Omit<ChatMessage, 'id'>) => {
-    const id = `${LOCAL_ID_PREFIX}${nextId.current++}`;
-    setMessages((list) => [...list, { ...message, id }]);
-  };
-
   const sendText = async () => {
     const text = draft.trim();
     if (!text || !activeId) return;
@@ -226,22 +222,35 @@ export default function ChatPage() {
     }
   };
 
-  const sendImage = (file: File | undefined) => {
+  /**
+   * 選圖後先真的上傳到本租戶的 chat-images，成功才呼叫 sendMessage 推給
+   * LINE；期間顯示 loading，失敗要有誠實的錯誤提示（不能假裝成功）。
+   * 訊息串顯示的是 sendMessage 回傳的真實已存 URL，不是本地 blob 預覽——
+   * reload 後仍看得到。
+   */
+  const sendImage = async (file: File | undefined) => {
     if (!file || !activeId) return;
     if (file.size > t.imageMaxBytes) {
       toast.show(t.messages.imageTooLarge, 'warning');
       return;
     }
+    const targetId = activeId;
+    setImageSending(true);
     try {
-      appendOwnMessage({
-        from: 'SHOP', type: 'IMAGE', text: '',
-        imageUrl: URL.createObjectURL(file), at: new Date().toISOString(), readAt: null,
-      });
-      setConversations((list) => list.map((c) => (c.id === activeId
+      const imageUrl = await uploadChatImage(file);
+      const sent = await sendMessage({ lineUserId: targetId, imageUrl });
+      if (targetId === activeId) setMessages((list) => [...list, sent]);
+      setConversations((list) => list.map((c) => (c.id === targetId
         ? { ...c, lastMessageType: 'IMAGE', lastMessage: '', timeLabel: t.labels.justNow }
         : c)));
-    } catch {
-      toast.show(t.messages.imageSendFailed, 'danger');
+    } catch (error) {
+      /* 409 REQ_003（本月推播額度已用完）把後端 message 原樣顯示 */
+      const message = error instanceof ApiError && error.code === 'REQ_003' && error.message
+        ? error.message
+        : t.messages.imageSendFailed;
+      toast.show(message, 'danger');
+    } finally {
+      setImageSending(false);
     }
   };
 
@@ -398,10 +407,14 @@ export default function ChatPage() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => { sendImage(e.target.files?.[0]); e.target.value = ''; }}
+                      disabled={imageSending}
+                      onChange={(e) => { void sendImage(e.target.files?.[0]); e.target.value = ''; }}
                     />
                     <Button
-                      variant="outline" aria-label={t.composer.sendImage}
+                      variant="outline"
+                      aria-label={imageSending ? t.composer.uploadingImage : t.composer.sendImage}
+                      loading={imageSending}
+                      disabled={imageSending}
                       onClick={() => fileRef.current?.click()}
                     >
                       <ImageIcon size={15} />

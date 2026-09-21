@@ -3,17 +3,24 @@ import { ApiHttpError, ERR, handle, ok } from '@/server/http';
 import { requireTenant } from '@/server/tenant';
 import { pageRange, toPaged } from '@/server/paging';
 import { consumePushQuota, getLineCredentials, linePush } from '@/server/line';
+import { tenantOwnedPublicStorageUrl } from '@/server/storage';
 
 /**
- * /api/chat/messages（04 分冊 §B-5 / §B-5.1）。
+ * /api/chat/messages（04 分冊 §B-5 / §B-5.1；圖片訊息＝issue #15）。
  *
  * GET `?lineUserId&page&size`：分頁，舊→新（created_at asc、id asc 打平）。
  * GET `?lineUserId&after=<messageId>`：只回該筆之後的新訊息（5 秒輪詢用）；
  *   以該筆 created_at 為界、id 打平，全量回傳（不分頁）。
  *
- * POST `{lineUserId, text}`：店家後台主動回覆。replyToken 早已失效只能用 push，
- * 會佔推播額度 → 先 `consumePushQuota(tenantId, 1)`，不足回 409 REQ_003
- * 「本月推播額度已用完」且**不呼叫 LINE**；成功 → linePush + 寫 chat_messages(OUT)。
+ * POST `{lineUserId, text}` 或 `{lineUserId, imageUrl}`：店家後台主動回覆。
+ * replyToken 早已失效只能用 push，會佔推播額度 → 先
+ * `consumePushQuota(tenantId, 1)`，不足回 409 REQ_003「本月推播額度已用完」
+ * 且**不呼叫 LINE**；成功 → linePush（文字或 image message，比照
+ * `/api/marketing/pushes/[id]/send` 既有慣例）＋寫 chat_messages(OUT)。
+ *
+ * `imageUrl` 必須是這個租戶自己上傳到 `chat-images` bucket 的 public URL
+ * （由 `POST /api/upload` 回傳），以 `tenantOwnedPublicStorageUrl()` 驗證並
+ * 正規化——擋掉其他租戶的圖片或任意外部 URL 被拿來冒充已上傳圖片。
  */
 
 function mapMessage(r: any) {
@@ -78,10 +85,15 @@ export const GET = handle(async (req) => {
   return ok(toPaged((data ?? []).map(mapMessage), count, page, size));
 });
 
-const postSchema = z.object({
-  lineUserId: z.string().min(1, '請指定對話對象'),
-  text: z.string().min(1, '請輸入訊息內容').max(5000, '訊息長度超過上限'),
-});
+const postSchema = z
+  .object({
+    lineUserId: z.string().min(1, '請指定對話對象'),
+    text: z.string().max(5000, '訊息長度超過上限').optional(),
+    imageUrl: z.string().url('圖片網址格式錯誤').optional(),
+  })
+  .refine((b) => (b.text && b.text.trim().length > 0) || (b.imageUrl && b.imageUrl.trim().length > 0), {
+    message: '請輸入訊息內容或提供圖片',
+  });
 
 export const POST = handle(async (req) => {
   const t = await requireTenant();
@@ -99,12 +111,26 @@ export const POST = handle(async (req) => {
   if (!lu.followed)
     throw new ApiHttpError(409, '對方已封鎖或取消追蹤，無法傳送訊息', ERR.CONFLICT);
 
-  // 先扣額度；不足 → 409 且不打 LINE（06 分冊 §2）
+  // 圖片訊息：imageUrl 必須是本租戶自己上傳到 chat-images 的 public URL，
+  // 正規化成 canonical URL 後才拿去打 LINE 與落地，擋掉跨租戶／任意外部 URL。
+  let canonicalImageUrl: string | null = null;
+  if (b.imageUrl) {
+    canonicalImageUrl = tenantOwnedPublicStorageUrl(b.imageUrl, 'chat-images', t.tenantId);
+    if (!canonicalImageUrl)
+      throw new ApiHttpError(400, '圖片網址不屬於本租戶的已上傳圖片', ERR.VALIDATION);
+  }
+
+  // 先扣額度；不足 → 409 且不打 LINE（06 分冊 §2）。圖片訊息一樣計入配額。
   if (!(await consumePushQuota(t.tenantId, 1)))
     throw new ApiHttpError(409, '本月推播額度已用完', ERR.CONFLICT);
 
   const { token } = await getLineCredentials(t.tenantId);
-  await linePush(token, b.lineUserId, [{ type: 'text', text: b.text }]);
+  const lineMessage = canonicalImageUrl
+    ? { type: 'image', originalContentUrl: canonicalImageUrl, previewImageUrl: canonicalImageUrl }
+    : { type: 'text', text: b.text as string };
+  // linePush 送達 LINE 的伺服器只代表「LINE 平台已接受推播」，不是顧客已讀／
+  // 已收到——LINE Messaging API 不回傳送達或已讀狀態，這裡不得也不會假裝知道。
+  await linePush(token, b.lineUserId, [lineMessage]);
 
   const { data, error } = await t.supabase
     .from('chat_messages')
@@ -112,8 +138,8 @@ export const POST = handle(async (req) => {
       tenant_id: t.tenantId,
       line_user_id: b.lineUserId,
       direction: 'OUT',
-      message_type: 'text',
-      content: { text: b.text },
+      message_type: canonicalImageUrl ? 'image' : 'text',
+      content: canonicalImageUrl ? { imageUrl: canonicalImageUrl } : { text: b.text },
     })
     .select('*')
     .single();

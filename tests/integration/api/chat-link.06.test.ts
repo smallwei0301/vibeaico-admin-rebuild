@@ -19,6 +19,19 @@
  * 基線紀律：afterAll 刪掉本檔的 line_users / chat_messages、還原
  * push_quota_usage 當月列（原本不存在就刪掉）、還原 tenant_settings 快照；
  * 不碰 SHOP_A 點數交易。
+ *
+ * issue #15（圖片訊息）新增案例：先 POST /api/upload（bucket=chat-images）拿到
+ * 真實 public URL，再 POST /api/chat/messages 帶 imageUrl 送出，驗證 mock LINE
+ * 收到 image message（originalContentUrl/previewImageUrl）、DB OUT 訊息
+ * message_type='image' 且 content.imageUrl 是正規化後的 URL、額度一樣 -1；
+ * 另外驗證跨租戶／偽造 URL 被 400 擋下。
+ *
+ * ⚠️ 環境依賴：這些案例需要 `chat-images` storage bucket 已存在於 canonical
+ * TEST。bucket 由獨立 migration PR #628（0128_issue_15_chat_images_bucket.sql）
+ * 建立，且該 migration 目前刻意標為 VERIFIED_NOT_APPLIED（與 #589 AUTHZ 批次的
+ * risk tier 衝突，見 supabase/ledger-alias-map.json 的 0128 entry），要等它被排入
+ * 獨立的 BACKFILL release 並套用到 canonical TEST 後，這裡的圖片案例才會轉綠；
+ * 在那之前於 CI 上失敗是已知、如實揭露的落差，不是本 PR 的 runtime 程式碼有誤。
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createHmac } from 'node:crypto';
@@ -42,6 +55,13 @@ const USER_CHAT = 'Uchatlink06itest0000000000000000001';
 const IN_TEXT_1 = 'chat-link 測試第一句（顧客傳入）';
 const IN_TEXT_2 = 'chat-link 測試第二句（顧客傳入）';
 const OUT_TEXT = '您好，我們收到您的訊息了（後台回覆）';
+
+/** issue #15：圖片訊息測試用 1×1 透明 PNG（合法檔頭） */
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+const CHAT_IMAGES_BUCKET = 'chat-images';
 
 function sign(secret: string, rawBody: string): string {
   return createHmac('sha256', secret).update(rawBody).digest('base64');
@@ -84,6 +104,9 @@ let settingsSnapshot: {
   line_channel_access_token_enc: string;
 } | null = null;
 
+/** issue #15：圖片案例上傳成功後記下 chat-images 內的路徑，afterAll 清掉 */
+let uploadedChatImagePath: string | null = null;
+
 /** beforeAll 時當月 push_quota_usage 是否已有列／其 used 值（afterAll 還原用） */
 let quotaRowExistedAtStart = false;
 let quotaUsedAtStart = 0;
@@ -123,12 +146,12 @@ async function currentPushQuotaLimit(): Promise<number> {
 async function outMessages() {
   const { data, error } = await admin
     .from('chat_messages')
-    .select('id, direction, content')
+    .select('id, direction, message_type, content')
     .eq('tenant_id', SHOP_A.id)
     .eq('line_user_id', USER_CHAT)
     .eq('direction', 'OUT');
   expect(error).toBeNull();
-  return (data ?? []) as { id: string; content: any }[];
+  return (data ?? []) as { id: string; message_type: string; content: any }[];
 }
 
 beforeAll(async () => {
@@ -188,6 +211,12 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const cleanupErrors: Array<[string, unknown]> = [];
+
+  if (uploadedChatImagePath) {
+    const storageCleanup = await admin.storage.from(CHAT_IMAGES_BUCKET).remove([uploadedChatImagePath]);
+    cleanupErrors.push(['chat-images storage object', storageCleanup.error]);
+  }
+
   const messagesCleanup = await admin
     .from('chat_messages')
     .delete()
@@ -381,6 +410,67 @@ describe('傳出半邊：POST /api/chat/messages → push + OUT + 額度（04 §
 
     // 測後還原 quota 到本案例前的值（後面的 conversations 案例不受影響）
     await setQuotaUsed(usedBefore);
+    expect(await quotaUsed()).toBe(usedBefore);
+  });
+
+  it('圖片訊息：先上傳到 chat-images 拿到 URL，POST imageUrl → mock LINE 收到 image message、DB message_type=image、額度 +1', async () => {
+    mock.reset();
+    const usedBefore = await quotaUsed();
+
+    // 1) 先走 POST /api/upload 拿到真實可用的 chat-images public URL（不是本地
+    //    blob 預覽），比照 /tenant/chat 頁面「選圖 → 先上傳 → 才送出」的真實流程。
+    const form = new FormData();
+    form.append('file', new File([PNG_1X1 as unknown as BlobPart], 'chat.png', { type: 'image/png' }));
+    form.append('bucket', CHAT_IMAGES_BUCKET);
+    const uploadRes = await ownerA.fetch('/api/upload', { method: 'POST', body: form });
+    expect(uploadRes.status).toBe(200);
+    const uploadBody = (await uploadRes.json()) as Envelope<{ url: string }>;
+    expect(uploadBody.success).toBe(true);
+    const imageUrl = uploadBody.data!.url;
+    expect(imageUrl).toContain(`/${SHOP_A.id}/`);
+    uploadedChatImagePath = imageUrl.slice(imageUrl.indexOf(`${SHOP_A.id}/`));
+
+    // 2) POST /api/chat/messages 帶 imageUrl 送出
+    const res = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, imageUrl });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Envelope<{ direction: string; messageType: string; imageUrl: string }>;
+    expect(body.success).toBe(true);
+    expect(body.data!.direction).toBe('OUT');
+    expect(body.data!.messageType).toBe('image');
+    expect(body.data!.imageUrl).toBe(imageUrl);
+
+    // mock 收到恰一筆 push：image message，originalContentUrl/previewImageUrl 都是上傳的 URL
+    const pushes = mock.requestsFor('/v2/bot/message/push');
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].body.to).toBe(USER_CHAT);
+    expect(pushes[0].body.messages).toEqual([
+      { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+    ]);
+
+    // DB 有 OUT 圖片訊息
+    const outs = await outMessages();
+    const imageMessage = outs.find((m) => m.message_type === 'image');
+    expect(imageMessage).toBeTruthy();
+    expect(imageMessage!.content?.imageUrl).toBe(imageUrl);
+
+    // 圖片訊息一樣計入推播額度
+    expect(await quotaUsed()).toBe(usedBefore + 1);
+  });
+
+  it('圖片訊息：其他租戶／偽造的 imageUrl → 400，不呼叫 LINE、不落地', async () => {
+    mock.reset();
+    const outsBefore = (await outMessages()).length;
+    const usedBefore = await quotaUsed();
+
+    const foreignUrl = `${process.env.TEST_SUPABASE_URL}/storage/v1/object/public/${CHAT_IMAGES_BUCKET}/00000000-0000-0000-0000-000000000000/forged.png`;
+    const res = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, imageUrl: foreignUrl });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as Envelope;
+    expect(body.success).toBe(false);
+    expect(body.code).toBe('REQ_001');
+
+    expect(mock.requestsFor('/v2/bot/message/push')).toHaveLength(0);
+    expect((await outMessages()).length).toBe(outsBefore);
     expect(await quotaUsed()).toBe(usedBefore);
   });
 });

@@ -31,6 +31,7 @@ export const chatPage = {
     hint: 'Enter 發送，Shift+Enter 換行',
     send: '發送',
     sendImage: '傳送圖片',
+    uploadingImage: '圖片上傳中',
   },
 
   labels: {

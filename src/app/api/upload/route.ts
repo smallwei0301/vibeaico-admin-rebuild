@@ -44,6 +44,15 @@ const ALLOWED_BUCKETS = new Set([
    * 與其他 LINE 可讀 bucket 同性質：public、tenant 前綴路徑、只收 JPEG/PNG/WebP。
    */
   'keyword-reply-images',
+  /*
+   * issue #15：顧客訊息（/tenant/chat）店家傳送的圖片。bucket 屬性與其他
+   * LINE 可讀 bucket 一致：public、tenant 前綴路徑、只收 JPEG/PNG/WebP，
+   * LINE image message 的 originalContentUrl / previewImageUrl 需要外部
+   * 可直接抓取的 HTTPS URL。bucket 由獨立 migration PR #628
+   * （0128_issue_15_chat_images_bucket.sql）建立——在它套用到目標環境之前，
+   * 選這個 bucket 上傳會誠實地拿到 500（bucket 不存在），不會假裝成功。
+   */
+  'chat-images',
 ]);
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES: Record<string, string> = {
