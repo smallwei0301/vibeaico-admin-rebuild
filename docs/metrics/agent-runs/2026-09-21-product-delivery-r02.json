@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-21-product-delivery-r02",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-21T14:23:30.233Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "type": "ISSUE",
+      "ref": "issue/15",
+      "note": "延續上一輪 Run（2026-09-21-product-delivery-r01，已收尾 BASELINE）的殘留工作：使用者要求「解決衝突，並完成直到合併」PR #627/#628/#630。r01 已被 closeout，Agent WIP Guard 要求 active v4 Run 才能繼續操作 PRODUCT_MAINLINE PR，因此開新 Run r02 接手。"
+    },
+    {
+      "type": "PR",
+      "ref": "pr/627",
+      "note": "#42 migration-only reserve PR。解衝突過程中發現 main 已由另一條 session 合併等效的 0128_issue_42_plan_seasonal_pricing.sql（trip_plan_seasons 表，欄位/約束更嚴謹），繼續合併會造成 migration 前綴撞號與重複建表，因此不合併、直接關閉並在 PR 上如實說明。"
+    },
+    {
+      "type": "PR",
+      "ref": "pr/628",
+      "note": "#15 chat-images bucket migration-only reserve PR。解衝突時發現原檔名 0128_issue_15_chat_images_bucket.sql 與 main 新併入的 0128_issue_42_plan_seasonal_pricing.sql 撞號，改名為 0129_issue_15_chat_images_bucket.sql（內容不變，只改檔頭編號註解），同步更新 ledger-alias-map.json／fresh-install-compatibility-baseline manifest（重釘 mainHead/canonicalSourceDigest）／ledger-alias-map.396.test.ts 計數（75→76 檔案、18→19 NOT_APPLIED）。本機驗證：npx vitest run（targeted 128/128、全量 263 檔案 3432 測試）全綠、typecheck 0 錯誤、build 成功。"
+    },
+    {
+      "type": "PR",
+      "ref": "pr/630",
+      "note": "#15 LINE chat 圖片傳送 runtime PR。同步 main 時唯一衝突在 docs/metrics/agent-runs/2026-09-21-product-delivery-r01.json（已收尾 ledger），採用 main 版本，不影響功能程式碼。本機驗證：typecheck 0 錯誤、全量測試 263 檔案 3432 測試全綠、build 成功。依賴 PR #628 先合併。"
+    }
+  ],
+  "main": {
+    "startSha": "8547e228f419fd7d33c35697add90d2de094f5d3",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 47,
+    "openIssuesEnd": null,
+    "openPrsStart": 4,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "pr-627-close-superseded",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "解衝突時發現 PR #627（#42 migration-only reserve）與 main 上已合併的 0128_issue_42_plan_seasonal_pricing.sql 重複，判斷繼續合併會造成撞號與重複建表，改為關閉 PR #627 並在 PR 留言說明理由。",
+        "count": 1,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "pr-628-conflict-resolve-rename",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "PR #628 解衝突：合併 origin/main，將撞號的 0128_issue_15_chat_images_bucket.sql 更名為 0129_issue_15_chat_images_bucket.sql，同步更新 ledger-alias-map.json／fresh-install-compatibility-baseline manifest（含重釘 mainHead/canonicalSourceDigest）／ledger-alias-map.396.test.ts 計數斷言。npm run typecheck、targeted+全量 vitest、npm run build 全數驗證通過後推送。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "pr-630-conflict-resolve",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "role": "PR #630 解衝突：合併 origin/main，唯一衝突在已收尾的 Run ledger JSON，採用 main 版本。全新 worktree 需 npm install 補齊 node_modules 後執行 typecheck、全量 vitest、build 驗證通過後推送。",
+        "count": 1,
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      },
+      {
+        "id": "run-ledger-r02-init-and-instrument",
+        "requestedModel": "luna",
+        "actualModel": "terra",
+        "role": "初始化並埋點本 Run ledger（r01 已收尾，Agent WIP Guard 要求 active Run 才能繼續操作 PRODUCT_MAINLINE PR：PRODUCT_RUN_BINDING_REJECTED）。依 CLAUDE.md「文件與盤點的 scout 歸屬」，docs/metrics/** 屬 scout 層（claude-haiku-4-5），本次由 build 層（claude-sonnet-5，本 session）直接執行、未委派 luna，如實記為 routing violation。",
+        "count": 1,
+        "contextClass": "medium",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "actualModelId": "claude-sonnet-5"
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 0,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "2026-09-21（r02 開場）：使用者在 r01 收尾（BASELINE, closed）之後，要求「解決衝突，並完成直到合併」PR #627/#628/#630。CI 的 Agent WIP Guard 回報 PRODUCT_RUN_BINDING_REJECTED（historical/closed Run 不可借用），因此開新 Run r02 接手，openIssuesStart/openPrsStart 為此刻即時查證值（47/4，#627 已先關閉、#638 已先合併）。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
