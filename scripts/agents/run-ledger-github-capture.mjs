@@ -1,4 +1,5 @@
-import { readField } from './agent-wip-policy.mjs';
+import { readField, readLifecycleIssue } from './agent-wip-policy.mjs';
+import { normalizeEvidence } from './run-ledger-reconcile.mjs';
 
 const RUN_ID = /^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -40,6 +41,11 @@ export async function collectGithubRunEvidence({
   if (!github?.rest || typeof github.paginate !== 'function') throw new Error('GITHUB_CLIENT_REQUIRED');
   if (!RUN_ID.test(String(runId ?? '')) || ledger?.runId !== runId) throw new Error('RUN_ID_MISMATCH');
   if (!SHA.test(String(observedMainSha ?? '').toLowerCase())) throw new Error('INVALID_MAIN_SHA');
+  if (ledger?.schemaVersion !== 2 || ledger?.deliveryTruthVersion !== 4
+    || !['IN_PROGRESS', 'CLOSURE_RECOVERY'].includes(ledger?.status)
+    || ledger?.closeout?.state !== 'OPEN') {
+    throw new Error('LIVE_CAPTURE_REQUIRES_ACTIVE_V4');
+  }
 
   const startedAt = isoTime(ledger?.startedAt);
   const endedAt = ledger?.endedAt === null ? null : isoTime(ledger?.endedAt);
@@ -92,12 +98,47 @@ export async function collectGithubRunEvidence({
     });
   }
 
-  return {
+  const issueNumbers = [...new Set(boundPulls
+    .map((pr) => readLifecycleIssue(pr?.body ?? ''))
+    .filter((value) => Number.isSafeInteger(value) && value > 0))]
+    .sort((a, b) => a - b);
+  const issueEvidenceRefs = [];
+  for (const issueNumber of issueNumbers) {
+    const snapshot = (await github.rest.issues.get({
+      owner, repo, issue_number: issueNumber,
+    })).data;
+    if (snapshot?.state !== 'closed') continue;
+    if (!withinWindow(snapshot?.closed_at, startedAt, endedAt)) continue;
+    const evidenceRef = `github:issue#${issueNumber}`;
+    issueEvidenceRefs.push(evidenceRef);
+    operations.push({
+      action: 'ADD',
+      claim: {
+        type: 'ISSUE_CLOSED',
+        subject: `issue#${issueNumber}`,
+        claimedState: 'closed',
+        observedState: 'closed',
+        verification: 'VERIFIED',
+        evidenceRef,
+      },
+    });
+  }
+  if (issueEvidenceRefs.length) {
+    counterOperations.push({
+      path: 'delivery.issuesClosed',
+      observed: issueEvidenceRefs.length,
+      evidenceRefs: issueEvidenceRefs,
+    });
+  }
+
+  if (!operations.length && !counterOperations.length) {
+    throw new Error('NO_RECONCILABLE_GITHUB_FACTS');
+  }
+  return normalizeEvidence({
     schemaVersion: 1,
     runId,
     observedMainSha: String(observedMainSha).toLowerCase(),
-    completionTruth: null,
     operations,
     counterOperations,
-  };
+  });
 }
