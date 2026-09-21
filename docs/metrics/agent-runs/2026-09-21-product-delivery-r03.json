@@ -13,17 +13,20 @@
     },
     {
       "ref": "origin/main"
+    },
+    {
+      "ref": "issue/42"
     }
   ],
   "main": {
     "startSha": "03957e7accd0af36368c70e462af8111785b9de5",
-    "endSha": null
+    "endSha": "e1f6e85135c60f1a79cee51257f771d3b567bd15"
   },
   "inventory": {
     "openIssuesStart": 47,
     "openIssuesEnd": 47,
     "openPrsStart": 2,
-    "openPrsEnd": 4,
+    "openPrsEnd": 2,
     "mainTerraPeak": 2,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
@@ -124,15 +127,28 @@
         "cachedTokens": null,
         "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u63a5\u6389 \u5efa\u7acb Rich Menu \u6309\u9215\u5230\u65e2\u6709\u771f\u5be6 rich-menu/create \u7aef\u9ede\uff0c\u4fee\u6e2c\u8a66\uff0c\u958b PR #645\uff08\u7d14 code-only\uff0c\u7121 migration\uff09\u3002",
         "count": 1
+      },
+      {
+        "id": "terra-42-plan-mock-save-persistence",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u4ee5\u771f\u5be6\u700f\u89bd\u5668\uff08Playwright, 390px\uff09\u64cd\u4f5c\u91cd\u73fe mock \u6a21\u5f0f\u4e0b Trip Plan \u5b58\u6a94\u4e0d\u6301\u4e45\u7684\u5047\u6210\u529f\uff0c\u4fee\u6b63 saveTripPlan()/deleteTripPlan() \u7684 mock \u5206\u652f\u4e26\u88dc\u4e0a\u76f4\u63a5\u547c\u53eb service function \u7684\u56de\u6b78\u6e2c\u8a66\uff0c\u958b\u65b0 PR\u3002",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 2,
+    "issuesStarted": 3,
     "issuesClosed": 0,
-    "auditReady": 2,
+    "auditReady": 3,
     "ownerBlockedComplete": 0,
     "exactHeadCiOnly": 0,
     "commitOnly": 0,
@@ -140,7 +156,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 0,
+    "fullCiRuns": 2,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -177,7 +193,8 @@
     "#42 review_state \u6301\u4e45\u5316\u8207 #42 departure snapshot \u70ba\u771f\u7f3a\u53e3\u4f46\u7121 canonical \u8a2d\u8a08\u88c1\u793a\uff0f\u5df2\u7531\u7522\u54c1\u81ea\u8eab\u6a19\u8a18\u70ba\u523b\u610f\u5ef6\u5f8c\u7684\u672a\u4f86\u5207\u7247\uff0c\u672c\u8f2a\u4e0d\u65bd\u5de5\uff0c\u907f\u514d\u5efa\u7acb\u7b2c\u4e8c\u5957\u672a\u88c1\u793a\u6a21\u578b\u3002",
     "#43 GUIDE \u9996\u9801\u516d\u9805\u5019\u9078\u7f3a\u53e3\u9010\u4e00\u67e5\u8b49\uff0c\u7686\u5df2\u7531\u65e2\u6709\u6e2c\u8a66\u8986\u84cb\uff0c\u975e\u771f\u7f3a\u53e3\u3002",
     "#17 \u9010\u4e00\u6838\u5c0d Slice A-D \u8207 idempotency/concurrency checklist\uff0c\u78ba\u8a8d\u5df2\u7531 main \u4e0a\u7684\u6574\u5408\u6e2c\u8a66\u8986\u84cb\uff1b\u65bc Issue #17 \u7559\u4e0b LUNA_CLOSURE \u66f4\u65b0\u7559\u8a00\uff0c\u672a\u9015\u884c\u95dc\u9589\uff08Production schema \u5957\u7528\u8207 #40 \u4f9d\u8cf4\u3001authenticated Preview \u9a57\u6536\u4ecd\u662f\u5177\u540d blocker\uff09\u3002",
-    "RESERVE/refill slice: #47 LINE Rich Menu \u5efa\u7acb\u6309\u9215\u771f\u63a5\u7dda\uff08PR #645\uff09\uff0c\u7d14 code-only\u3001\u7121 migration\uff0cmerge \u5f8c\u5c0d\u6240\u6709\u79df\u6236\u7acb\u5373\u751f\u6548\uff0c\u662f\u672c\u8f2a\u552f\u4e00\u771f\u6b63\u8cbc\u8fd1\u4f7f\u7528\u8005\u53ef\u898b\u6210\u679c\u7684\u8b8a\u66f4\uff08\u5c1a\u5f85\u4e00\u6b21 authenticated \u9a57\u6536\uff09\u3002"
+    "RESERVE/refill slice: #47 LINE Rich Menu \u5efa\u7acb\u6309\u9215\u771f\u63a5\u7dda\uff08PR #645\uff09\uff0c\u7d14 code-only\u3001\u7121 migration\uff0cmerge \u5f8c\u5c0d\u6240\u6709\u79df\u6236\u7acb\u5373\u751f\u6548\uff0c\u662f\u672c\u8f2a\u552f\u4e00\u771f\u6b63\u8cbc\u8fd1\u4f7f\u7528\u8005\u53ef\u898b\u6210\u679c\u7684\u8b8a\u66f4\uff08\u5c1a\u5f85\u4e00\u6b21 authenticated \u9a57\u6536\uff09\u3002",
+    "Closeout of this round: #645 verified merged+deployed (production READY) \u2014 first genuinely user-visible fix this session. #644 verified merged to main but remains PENDING_APPLY pending Owner-authorized Production schema release; not counted as shipped Product output."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -210,12 +227,67 @@
         "head": "a9993b630927b34a69ce4a927dd1f83c88e08367",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Refill slice #47 rich-menu create button wiring (code-only, no migration)"
+      },
+      {
+        "id": "645-build-exit",
+        "at": "2026-09-21T18:08:17Z",
+        "kind": "BUILD_EXIT",
+        "pr": 645,
+        "issue": 47,
+        "head": "a9993b630927b34a69ce4a927dd1f83c88e08367",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "PR #645 merged to main (477b2831cce4ffe7a298986f251d908bf52199b6); production deployment READY per Vercel"
+      },
+      {
+        "id": "644-build-exit",
+        "at": "2026-09-21T18:10:01Z",
+        "kind": "BUILD_EXIT",
+        "pr": 644,
+        "issue": 46,
+        "head": "fee060e08c467ce9f02c032904cf585e314e82c9",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "PR #644 merged to main (e1f6e85135c60f1a79cee51257f771d3b567bd15); still PENDING_APPLY for Production schema (Owner authorization blocker)"
+      },
+      {
+        "id": "646-build-enter",
+        "at": "2026-09-21T18:30:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 646,
+        "issue": 42,
+        "head": "715a0853fdb44431ba8a6edeabf2d1a756154b21",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Trip Plan mock save/delete persistence fix (code-only, no migration), reproduced via Playwright at 390px"
       }
     ]
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-21T18:12:00Z",
+    "claims": [
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "PR #645 (#47 rich-menu create wiring)",
+        "claimedState": "merged to main",
+        "observedState": "merge_commit_sha=477b2831cce4ffe7a298986f251d908bf52199b6; main head reachable via get_commit(main); src/services/settings.ts re-read with ref=main confirms publishRichMenu() present",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/477b2831cce4ffe7a298986f251d908bf52199b6",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "AUTO_VERCEL_DEPLOYED",
+        "subject": "PR #645 (#47 rich-menu create wiring)",
+        "claimedState": "automatically deployed to production",
+        "observedState": "Vercel deployment dpl_2TUQsULaGvRSU5dq7vtAnpN12cZh for sha 477b2831 has state=READY target=production",
+        "evidenceRef": "https://vercel.com/smallwei0301s-projects/vibeaico-admin-rebuild/2TUQsULaGvRSU5dq7vtAnpN12cZh",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "PR #644 (#46 refund_policy_snapshot migration)",
+        "claimedState": "merged to main, source-only, schema not applied to any remote environment",
+        "observedState": "merge_commit_sha=e1f6e85135c60f1a79cee51257f771d3b567bd15; main head reachable via get_commit(main); supabase/migrations/0130_issue_46_refund_policy_snapshot.sql re-read with ref=main confirms content; supabase/ledger-alias-map.json entry remains NOT_APPLIED/PENDING_APPLY",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/e1f6e85135c60f1a79cee51257f771d3b567bd15",
+        "verification": "VERIFIED"
+      }
+    ]
   }
 }
