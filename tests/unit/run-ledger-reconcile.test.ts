@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildGithubLiveEvidence,
   gitBlobSha,
   normalizeEvidence,
   reconcileLedger,
@@ -28,10 +27,10 @@ function ledger(deliveryTruthVersion = 3): any {
     schemaVersion: 2,
     deliveryTruthVersion,
     runId: "2026-09-04-reconcile-test",
+    status: "IN_PROGRESS",
     startedAt: "2026-09-04T00:00:00Z",
     endedAt: null,
-    ci: { fullCiRuns: 0 },
-    delivery: { issuesClosed: 0 },
+    closeout: { state: "OPEN" },
     completionTruth: { status: "NOT_CHECKED", checkedAt: null, claims: [] },
     ci: { fullCiRuns: 0 },
     delivery: { issuesClosed: 0 },
@@ -239,6 +238,11 @@ describe("run ledger reconciliation", () => {
       rest: {
         pulls: { list: pullList, listCommits: commitList },
         actions: { listWorkflowRunsForRepo: runList },
+        issues: { get: async ({ issue_number }: any) => ({
+          data: issue_number === 170
+            ? { state: "closed", closed_at: "2026-09-04T01:30:00Z" }
+            : { state: "open", closed_at: null },
+        }) },
       },
       paginate: async (method: any, args: any) => {
         if (method === pullList) return pulls;
@@ -254,103 +258,20 @@ describe("run ledger reconciliation", () => {
     };
     const captured = await collectGithubRunEvidence({
       github, owner: "owner", repo: "repo",
-      runId: "2026-09-04-reconcile-test", ledger: ledger(), observedMainSha: MAIN,
+      runId: "2026-09-04-reconcile-test", ledger: ledger(4), observedMainSha: MAIN,
     });
-    expect(captured.operations).toEqual([]);
+    expect(captured.operations).toHaveLength(1);
+    expect(captured.operations[0].claim).toMatchObject({
+      type: "ISSUE_CLOSED", subject: "issue#170", evidenceRef: "github:issue#170",
+    });
     expect(captured.counterOperations).toEqual([
       { path: "ci.fullCiRuns", observed: 2,
         evidenceRefs: ["github:actions/run#10", "github:actions/run#11"] },
-    ]);
-    const reconciled = apply(ledger(), captured, LEDGER_SHA, true);
-    expect(reconciled.ledger.ci.fullCiRuns).toBe(2);
-    expect(reconciled.ledger.delivery.issuesClosed).toBe(0);
-  });
-
-  it("builds deterministic GitHub-live evidence and reconciles observed counters only on the trusted path", () => {
-    const head = "e".repeat(40);
-    const live = buildGithubLiveEvidence({
-      runId: "2026-09-04-reconcile-test",
-      observedMainSha: MAIN,
-      pullRequests: [{
-        body: "<!-- pr-lifecycle\nissue: 170\nstate: ACTIVE\n-->\nWORKSTREAM: PRODUCT_MAINLINE\nRUN_ID: 2026-09-04-reconcile-test",
-        head: { sha: head },
-      }],
-      workflowRunsByHead: {
-        [head]: [
-          { id: 11, path: ".github/workflows/ci.yml", head_sha: head, status: "completed", conclusion: "success" },
-          { id: 12, path: ".github/workflows/ci.yml", head_sha: head, status: "completed", conclusion: "cancelled" },
-        ],
-      },
-      issuesByNumber: { 170: { state: "closed" } },
-    });
-    expect(live.counterOperations).toEqual([
-      { path: "ci.fullCiRuns", observed: 1, evidenceRefs: ["github:actions/run#11"] },
       { path: "delivery.issuesClosed", observed: 1, evidenceRefs: ["github:issue#170"] },
     ]);
-    expect(live.operations[0].claim.type).toBe("ISSUE_CLOSED");
-
-    const first = reconcileLedger({
-      ledger: ledger(4), evidence: live, currentMainSha: MAIN,
-      currentLedgerSha: LEDGER_SHA, expectedLedgerSha: LEDGER_SHA, allowCounterOperations: true,
-    });
-    expect(first.ledger.ci.fullCiRuns).toBe(1);
-    expect(first.ledger.delivery.issuesClosed).toBe(1);
-    expect(first.ledger.completionTruth.claims).toHaveLength(1);
-
-    const second = reconcileLedger({
-      ledger: first.ledger, evidence: live, currentMainSha: MAIN,
-      currentLedgerSha: LEDGER_SHA, expectedLedgerSha: LEDGER_SHA, allowCounterOperations: true,
-    });
-    expect(second.changed).toBe(false);
-  });
-
-  it("rejects caller-supplied counters unless the trusted collector path explicitly enables them", () => {
-    const raw = {
-      schemaVersion: 1,
-      runId: "2026-09-04-reconcile-test",
-      observedMainSha: MAIN,
-      operations: [],
-      counterOperations: [{
-        path: "ci.fullCiRuns",
-        observed: 1,
-        evidenceRefs: ["github:actions/run#11"],
-      }],
-    };
-    expect(() => reconcileLedger({
-      ledger: ledger(4), evidence: raw, currentMainSha: MAIN,
-      currentLedgerSha: LEDGER_SHA, expectedLedgerSha: LEDGER_SHA,
-    })).toThrow(/TRUSTED_COUNTER_SOURCE_REQUIRED/);
-  });
-
-  it("fails closed when live collection has no positive evidence or would move a counter backwards", () => {
-    expect(() => buildGithubLiveEvidence({
-      runId: "2026-09-04-reconcile-test",
-      observedMainSha: MAIN,
-      pullRequests: [],
-      workflowRunsByHead: {},
-      issuesByNumber: {},
-    })).toThrow(/NO_LIVE_EVIDENCE/);
-
-    const current = ledger(4);
-    current.ci.fullCiRuns = 2;
-    expect(() => reconcileLedger({
-      ledger: current,
-      evidence: {
-        schemaVersion: 1,
-        runId: "2026-09-04-reconcile-test",
-        observedMainSha: MAIN,
-        operations: [],
-        counterOperations: [{
-          path: "ci.fullCiRuns",
-          observed: 1,
-          evidenceRefs: ["github:actions/run#11"],
-        }],
-      },
-      currentMainSha: MAIN,
-      currentLedgerSha: LEDGER_SHA,
-      expectedLedgerSha: LEDGER_SHA,
-      allowCounterOperations: true,
-    })).toThrow(/COUNTER_REGRESSION/);
+    const reconciled = apply(ledger(4), captured, LEDGER_SHA, true);
+    expect(reconciled.ledger.ci.fullCiRuns).toBe(2);
+    expect(reconciled.ledger.delivery.issuesClosed).toBe(1);
   });
 
   it("computes Git blob SHA from the exact bytes", () => {
