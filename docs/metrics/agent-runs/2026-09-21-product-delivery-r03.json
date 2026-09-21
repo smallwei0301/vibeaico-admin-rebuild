@@ -293,7 +293,7 @@
       {
         "type": "MERGED_TO_MAIN",
         "subject": "PR #645 (#47 rich-menu create wiring)",
-        "claimedState": "merged to main",
+        "claimedState": "merge_commit_sha=477b2831cce4ffe7a298986f251d908bf52199b6; main head reachable via get_commit(main); src/services/settings.ts re-read with ref=main confirms publishRichMenu() present",
         "observedState": "merge_commit_sha=477b2831cce4ffe7a298986f251d908bf52199b6; main head reachable via get_commit(main); src/services/settings.ts re-read with ref=main confirms publishRichMenu() present",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/477b2831cce4ffe7a298986f251d908bf52199b6",
         "verification": "VERIFIED"
@@ -301,7 +301,7 @@
       {
         "type": "AUTO_VERCEL_DEPLOYED",
         "subject": "PR #645 (#47 rich-menu create wiring)",
-        "claimedState": "automatically deployed to production",
+        "claimedState": "Vercel deployment dpl_2TUQsULaGvRSU5dq7vtAnpN12cZh for sha 477b2831 has state=READY target=production",
         "observedState": "Vercel deployment dpl_2TUQsULaGvRSU5dq7vtAnpN12cZh for sha 477b2831 has state=READY target=production",
         "evidenceRef": "https://vercel.com/smallwei0301s-projects/vibeaico-admin-rebuild/2TUQsULaGvRSU5dq7vtAnpN12cZh",
         "verification": "VERIFIED"
@@ -309,7 +309,7 @@
       {
         "type": "MERGED_TO_MAIN",
         "subject": "PR #644 (#46 refund_policy_snapshot migration)",
-        "claimedState": "merged to main, source-only, schema not applied to any remote environment",
+        "claimedState": "merge_commit_sha=e1f6e85135c60f1a79cee51257f771d3b567bd15; main head reachable via get_commit(main); supabase/migrations/0130_issue_46_refund_policy_snapshot.sql re-read with ref=main confirms content; supabase/ledger-alias-map.json entry remains NOT_APPLIED/PENDING_APPLY",
         "observedState": "merge_commit_sha=e1f6e85135c60f1a79cee51257f771d3b567bd15; main head reachable via get_commit(main); supabase/migrations/0130_issue_46_refund_policy_snapshot.sql re-read with ref=main confirms content; supabase/ledger-alias-map.json entry remains NOT_APPLIED/PENDING_APPLY",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/e1f6e85135c60f1a79cee51257f771d3b567bd15",
         "verification": "VERIFIED"
