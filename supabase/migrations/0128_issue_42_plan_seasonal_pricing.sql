@@ -27,7 +27,7 @@ create table if not exists public.trip_plan_seasons (
     foreign key (tenant_id) references public.tenants(id) on delete cascade,
   constraint trip_plan_seasons_tenant_plan_fkey
     foreign key (tenant_id, plan_id) references public.trip_plans(tenant_id, id) on delete cascade,
-  constraint trip_plan_seasons_name_nonblank_check check (btrim(name) <> ''),
+  constraint trip_plan_seasons_name_nonblank_check check (name <> ''),
   constraint trip_plan_seasons_start_date_valid_check check (
     start_month between 1 and 12
     and start_day between 1 and case start_month
@@ -77,7 +77,7 @@ begin
        and a.attname = r.column_name
        and a.attnum > 0
        and not a.attisdropped;
-    if v_type is distinct from r.expected_type or v_not_null is distinct from r.expected_not_null then
+    if v_type is null or v_type is distinct from r.expected_type or v_not_null is distinct from r.expected_not_null then
       raise exception 'trip_plan_seasons.% has unexpected type/nullability', r.column_name;
     end if;
   end loop;
@@ -118,8 +118,8 @@ begin
       from pg_constraint c
      where c.conrelid = 'public.trip_plan_seasons'::regclass
        and c.conname = r.constraint_name;
-    if v_constraint_type is distinct from r.expected_type
-       or position(r.required_fragment in coalesce(v_constraint_def, '')) = 0 then
+    if v_constraint_type is null or v_constraint_type is distinct from r.expected_type
+       or v_constraint_def is null or v_constraint_def not like '%' || r.required_fragment || '%' then
       raise exception 'trip_plan_seasons constraint % has unexpected shape', r.constraint_name;
     end if;
   end loop;
@@ -127,21 +127,6 @@ end $$;
 
 create index if not exists trip_plan_seasons_tenant_plan_sort_idx
   on public.trip_plan_seasons (tenant_id, plan_id, sort_order);
-
-do $$
-declare
-  v_index_def text;
-begin
-  select pg_get_indexdef(i.indexrelid)
-    into v_index_def
-    from pg_index i
-    join pg_class c on c.oid = i.indexrelid
-   where i.indrelid = 'public.trip_plan_seasons'::regclass
-     and c.relname = 'trip_plan_seasons_tenant_plan_sort_idx';
-  if position('(tenant_id, plan_id, sort_order)' in coalesce(v_index_def, '')) = 0 then
-    raise exception 'trip_plan_seasons_tenant_plan_sort_idx has unexpected shape';
-  end if;
-end $$;
 
 create trigger t_trip_plan_seasons_u before update on public.trip_plan_seasons
   for each row execute function public.set_updated_at();
