@@ -269,6 +269,23 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  '0128_issue_42_plan_seasonal_pricing': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/db/plan-seasonal-pricing.42.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/plan-seasonal-pricing.42.test.ts',
+        fragment: 'B 店 owner 完全查不到（tenant 隔離）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/db/plan-seasonal-pricing.42.test.ts',
+        fragment: 'authenticated 角色不能直接寫入 seasonal pricing',
+      }),
+    ]),
+  }),
 });
 
 export function getProductionDbG3AuthzContract(repoFile) {
