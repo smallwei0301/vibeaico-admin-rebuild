@@ -1,4 +1,4 @@
-import { readField, readLifecycleIssue } from './agent-wip-policy.mjs';
+import { readField } from './agent-wip-policy.mjs';
 
 const RUN_ID = /^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -49,21 +49,9 @@ export async function collectGithubRunEvidence({
     owner, repo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100,
   });
   const boundPulls = pulls.filter((pr) => productRunBound(pr, runId));
-  const existingVerifiedIssueSubjects = new Set(
-    (Array.isArray(ledger?.completionTruth?.claims) ? ledger.completionTruth.claims : [])
-      .filter((claim) => claim?.type === 'ISSUE_CLOSED'
-        && claim?.verification === 'VERIFIED'
-        && String(claim?.observedState ?? '').toLowerCase() === 'closed')
-      .map((claim) => String(claim?.subject ?? '').match(/^issue#([1-9][0-9]*)$/)?.[1])
-      .filter(Boolean)
-      .map(Number),
-  );
-  const issueNumbers = new Set(existingVerifiedIssueSubjects);
   const ciRuns = new Map();
 
   for (const pr of boundPulls) {
-    const issue = readLifecycleIssue(pr?.body ?? '');
-    if (issue) issueNumbers.add(issue);
 
     // A PR may have several exact heads during one Product Run. Counting only
     // the current head loses every earlier full CI round after a fix is pushed.
@@ -92,29 +80,7 @@ export async function collectGithubRunEvidence({
     }
   }
 
-  const closedIssues = new Map();
-  for (const issueNumber of [...issueNumbers].sort((a, b) => a - b)) {
-    const { data: issue } = await github.rest.issues.get({ owner, repo, issue_number: issueNumber });
-    if (issue?.pull_request || issue?.state !== 'closed') continue;
-    if (!withinWindow(issue?.closed_at, startedAt, endedAt)) continue;
-    closedIssues.set(issueNumber, issue);
-  }
-
-  const operations = [...closedIssues.keys()]
-    .filter((issueNumber) => !existingVerifiedIssueSubjects.has(issueNumber))
-    .sort((a, b) => a - b)
-    .map((issueNumber) => ({
-      action: 'ADD',
-      claim: {
-        type: 'ISSUE_CLOSED',
-        subject: `issue#${issueNumber}`,
-        claimedState: 'closed',
-        observedState: 'closed',
-        verification: 'VERIFIED',
-        evidenceRef: `github:issue#${issueNumber}`,
-      },
-    }));
-
+  const operations = [];
   const counterOperations = [];
   const ciEvidenceRefs = [...ciRuns.keys()].sort((a, b) => a - b)
     .map((id) => `github:actions/run#${id}`);
@@ -123,15 +89,6 @@ export async function collectGithubRunEvidence({
       path: 'ci.fullCiRuns',
       observed: ciEvidenceRefs.length,
       evidenceRefs: ciEvidenceRefs,
-    });
-  }
-  const issueEvidenceRefs = [...closedIssues.keys()].sort((a, b) => a - b)
-    .map((id) => `github:issue#${id}`);
-  if (issueEvidenceRefs.length) {
-    counterOperations.push({
-      path: 'delivery.issuesClosed',
-      observed: issueEvidenceRefs.length,
-      evidenceRefs: issueEvidenceRefs,
     });
   }
 
