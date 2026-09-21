@@ -86,6 +86,29 @@ export function terminalLabelPlan(pr) {
 }
 
 
+/** Reconcile the single current pr-lifecycle marker without touching prose/examples. */
+function rewriteLifecycleState(body, value) {
+  const source = String(body ?? '');
+  const blocks = [...source.matchAll(/<!--\\s*pr-lifecycle\\b[\\s\\S]*?-->/gi)];
+  if (!blocks.length) return { body: source, changed: false, error: null };
+  if (blocks.length !== 1) {
+    return { body: source, changed: false, error: 'Ambiguous pr-lifecycle blocks; terminal body not rewritten' };
+  }
+
+  const blockMatch = blocks[0];
+  const block = blockMatch[0];
+  const states = [...block.matchAll(/(^|\\n)(\\s*state\\s*:\\s*)([A-Z_]+)(?=\\s*(?:\\n|$))/gim)];
+  if (states.length !== 1) {
+    return { body: source, changed: false, error: 'Missing or ambiguous pr-lifecycle state; terminal body not rewritten' };
+  }
+
+  const stateMatch = states[0];
+  if (upper(stateMatch[3]) === value) return { body: source, changed: false, error: null };
+  const start = (blockMatch.index ?? 0) + (stateMatch.index ?? 0) + stateMatch[1].length + stateMatch[2].length;
+  const end = start + stateMatch[3].length;
+  return { body: source.slice(0, start) + value + source.slice(end), changed: true, error: null };
+}
+
 /**
  * Reconcile only current machine-readable lane declarations after GitHub has
  * already made the PR terminal. Historical prose/review evidence stays intact.
@@ -94,10 +117,17 @@ export function terminalLabelPlan(pr) {
  */
 export function terminalBodyPlan(pr) {
   if (pr?.state !== 'closed') return null;
-  const terminalState = pr.merged === true || Boolean(pr.merged_at) ? 'COMPLETE' : 'HISTORICAL';
+  const merged = pr.merged === true || Boolean(pr.merged_at);
+  const terminalState = merged ? 'COMPLETE' : 'HISTORICAL';
+  const lifecycleState = merged ? 'MERGED' : 'HISTORICAL';
   let body = String(pr.body ?? '');
   const errors = [];
   const changedFields = [];
+
+  const lifecycle = rewriteLifecycleState(body, lifecycleState);
+  if (lifecycle.error) errors.push(lifecycle.error);
+  else if (lifecycle.changed) changedFields.push('pr-lifecycle.state');
+  body = lifecycle.body;
 
   for (const [field, value] of [['LANE_STATE', terminalState], ['ACTIVE_CANDIDATE', 'false']]) {
     const current = readField(body, field);
