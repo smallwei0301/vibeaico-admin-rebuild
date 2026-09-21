@@ -156,6 +156,32 @@
         "cachedTokens": null,
         "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u65b0\u589e GET /api/public/shops/{shopCode} \u8207 CORS \u6388\u6b0a\u5c64\uff08src/server/public-cors.ts\uff09\uff0c\u91cd\u7528\u65e2\u6709 loadPublicShop()\uff0c\u88dc\u4e0a\u771f\u5be6\u884c\u70ba\u6e2c\u8a66\u4e26\u7528\u672c\u5730 dev server + curl \u9a57\u8b49\uff0c\u958b PR #647\u3002",
         "count": 1
+      },
+      {
+        "id": "scout-46-cancellation-policy-ui-recon",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "\u5c0d #46 \u53d6\u6d88\u653f\u7b56 snapshot \u5728\u65c5\u5ba2\u7aef UI \u7684\u6d88\u8cbb\u73fe\u72c0\u505a\u7a97\u9ede\u76e4\u9ede\uff08Explore agent\uff09\uff1a\u767c\u73fe\u516c\u958b\u5e97\u5bb6\u9996\u9801\u5217\u65b9\u6848\u6642\u5b8c\u5168\u6c92\u6709\u986f\u793a\u53d6\u6d88\u653f\u7b56\uff0c\u65c5\u5ba2\u8981\u9ede\u9032 REQUEST \u7533\u8acb\u8868\u55ae\u624d\u770b\u5f97\u5230\u3002",
+        "count": 1
+      },
+      {
+        "id": "terra-46-cancellation-policy-public-page",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u516c\u958b\u5e97\u5bb6\u9996\u9801\uff08/s/{shopCode}\uff09\u65b0\u589e\u986f\u793a\u884c\u7a0b\u73fe\u884c\u53d6\u6d88\uff0f\u9000\u6b3e\u653f\u7b56\uff08trips.refund_policy_type\uff09\uff0c\u4e0d\u7528\u7b49\u65c5\u5ba2\u9ede\u9032 REQUEST \u7533\u8acb\u8868\u55ae\u624d\u770b\u5f97\u5230\uff1b\u65b0\u589e tests/unit/public-shop-cancellation-policy.46.test.ts\uff0c\u5168\u91cf unit\u3001typecheck\u3001build \u5747\u901a\u904e\u3002",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -188,8 +214,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 4,
-    "lunaAccepted": 4,
+    "lunaTasks": 5,
+    "lunaAccepted": 5,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -283,6 +309,26 @@
         "head": "ba564debea41adb4ca68521f47ec5df99546792c",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "First canonical /api/public/** endpoint (GET /api/public/shops/{shopCode}) + CORS authorization layer, no migration, no auth touch"
+      },
+      {
+        "id": "647-build-exit",
+        "at": "2026-09-21T19:00:21Z",
+        "kind": "BUILD_EXIT",
+        "pr": 647,
+        "issue": 11,
+        "head": "ba564debea41adb4ca68521f47ec5df99546792c",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "PR #647 merged to main (87879eb1e0242eba1af911b27bd702c19997c7d1); no frontend caller yet, infra-only slice"
+      },
+      {
+        "id": "648-build-enter",
+        "at": "2026-09-21T19:01:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 648,
+        "issue": 46,
+        "head": "f505eeb639266f3421c7732745878511eeac1417",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Public shop page now shows the trip's current cancellation/refund policy before booking (genuinely traveler-visible slice, no migration)"
       }
     ]
   },
@@ -312,6 +358,14 @@
         "claimedState": "merge_commit_sha=e1f6e85135c60f1a79cee51257f771d3b567bd15; main head reachable via get_commit(main); supabase/migrations/0130_issue_46_refund_policy_snapshot.sql re-read with ref=main confirms content; supabase/ledger-alias-map.json entry remains NOT_APPLIED/PENDING_APPLY",
         "observedState": "merge_commit_sha=e1f6e85135c60f1a79cee51257f771d3b567bd15; main head reachable via get_commit(main); supabase/migrations/0130_issue_46_refund_policy_snapshot.sql re-read with ref=main confirms content; supabase/ledger-alias-map.json entry remains NOT_APPLIED/PENDING_APPLY",
         "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/e1f6e85135c60f1a79cee51257f771d3b567bd15",
+        "verification": "VERIFIED"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "PR #647 (#11 public shop API + CORS)",
+        "claimedState": "merge_commit_sha=87879eb1e0242eba1af911b27bd702c19997c7d1; main head reachable via get_commit(main); src/server/public-cors.ts re-read with ref=main confirms content",
+        "observedState": "merge_commit_sha=87879eb1e0242eba1af911b27bd702c19997c7d1; main head reachable via get_commit(main); src/server/public-cors.ts re-read with ref=main confirms content",
+        "evidenceRef": "https://github.com/smallwei0301/vibeaico-admin-rebuild/commit/87879eb1e0242eba1af911b27bd702c19997c7d1",
         "verification": "VERIFIED"
       }
     ]

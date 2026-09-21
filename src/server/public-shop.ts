@@ -78,6 +78,12 @@ export type PublicTrip = {
   location: string;
   coverImageUrl: string;
   durationHours: number | null;
+  /**
+   * #46：下單前必須顯示現行取消／退款政策——這是 trip 層欄位（見
+   * `0089_trip_display_fields.sql`），不是逐方案設定，所以整個行程共用同一個值。
+   * 值域固定在 STANDARD/FLEXIBLE/STRICT（DB check constraint），沒有第四種可能。
+   */
+  refundPolicyType: 'STANDARD' | 'FLEXIBLE' | 'STRICT';
   plans: PublicPlan[];
   /** 只含今天以後、未取消、未售罄的團次，最多 6 筆 */
   departures: PublicDeparture[];
@@ -198,7 +204,9 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
   const [{ data: tripRows, error: tripError }, { data: serviceRows, error: serviceError }] =
     await Promise.all([
       admin.from('trips')
-        .select('id, title, summary, location, cover_image_url, duration_hours')
+        // #46：多取 refund_policy_type，讓公開頁在下單前就顯示現行取消／退款政策
+        // （原本只有送出 REQUEST 申請的表單頁才看得到）。仍是白名單 select。
+        .select('id, title, summary, location, cover_image_url, duration_hours, refund_policy_type')
         .eq('tenant_id', tenantId).eq('status', 'PUBLISHED')
         .order('created_at', { ascending: false }),
       admin.from('services')
@@ -278,6 +286,8 @@ async function loadPublicShopUncached(shopCode: string): Promise<PublicShopData 
     location: (row.location as string) ?? '',
     coverImageUrl: (row.cover_image_url as string) ?? '',
     durationHours: row.duration_hours == null ? null : Number(row.duration_hours),
+    refundPolicyType: row.refund_policy_type === 'FLEXIBLE' || row.refund_policy_type === 'STRICT'
+      ? row.refund_policy_type : 'STANDARD',
     plans: plansByTrip.get(row.id as string) ?? [],
     departures: departuresByTrip.get(row.id as string) ?? [],
   }));
