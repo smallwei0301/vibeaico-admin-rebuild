@@ -5,10 +5,15 @@
   "startedAt": "2026-09-21T17:45:28.071Z",
   "endedAt": null,
   "sources": [
-    "origin/main",
-    "open Issues/PRs (github MCP)",
-    "docs/AGENT-EXECUTION.md",
-    "CLAUDE.md"
+    {
+      "ref": "issue/46"
+    },
+    {
+      "ref": "issue/47"
+    },
+    {
+      "ref": "origin/main"
+    }
   ],
   "main": {
     "startSha": "03957e7accd0af36368c70e462af8111785b9de5",
