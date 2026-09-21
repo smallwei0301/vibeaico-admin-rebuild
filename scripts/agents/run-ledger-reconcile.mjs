@@ -6,6 +6,7 @@ import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { readField, readLifecycleIssue } from "./agent-wip-policy.mjs";
 
 const RUN_ID = /^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-zA-Z0-9._-]+$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -32,6 +33,7 @@ const CLAIM_FIELDS = [
 ];
 const COUNTER_RULES = new Map([
   ["ci.fullCiRuns", /^github:actions\/run#[1-9][0-9]*$/],
+  ["delivery.issuesClosed", /^github:issue#[1-9][0-9]*$/],
 ]);
 
 function fail(code, message) {
@@ -127,6 +129,98 @@ function writeCounter(ledger, operation) {
     fail("COUNTER_REGRESSION", `${operation.path} current=${current} exceeds observed=${operation.observed}`);
   }
   ledger[section][field] = operation.observed;
+}
+
+export function buildGithubLiveEvidence({
+  runId,
+  observedMainSha,
+  pullRequests = [],
+  workflowRunsByHead = {},
+  issuesByNumber = {},
+} = {}) {
+  const normalizedRunId = String(runId ?? "").trim();
+  const mainSha = String(observedMainSha ?? "").trim().toLowerCase();
+  if (!RUN_ID.test(normalizedRunId)) fail("INVALID_LIVE_INPUT", "runId is invalid");
+  if (!SHA.test(mainSha)) fail("INVALID_LIVE_INPUT", "observedMainSha must be a 40-character SHA");
+  if (!Array.isArray(pullRequests)) fail("INVALID_LIVE_INPUT", "pullRequests must be an array");
+
+  const bound = pullRequests.filter((pr) => (
+    String(readField(pr?.body ?? "", "WORKSTREAM")).trim().toUpperCase() === "PRODUCT_MAINLINE"
+    && readField(pr?.body ?? "", "RUN_ID") === normalizedRunId
+  ));
+
+  const ciRefs = new Set();
+  const issueNumbers = new Set();
+  for (const pr of bound) {
+    const head = String(pr?.head?.sha ?? "").trim().toLowerCase();
+    if (SHA.test(head)) {
+      const runs = workflowRunsByHead instanceof Map
+        ? workflowRunsByHead.get(head)
+        : workflowRunsByHead?.[head];
+      if (Array.isArray(runs)) {
+        for (const run of runs) {
+          const runHead = String(run?.head_sha ?? "").trim().toLowerCase();
+          if (runHead !== head || run?.status !== "completed") continue;
+          if (!["success", "failure"].includes(String(run?.conclusion ?? "").trim().toLowerCase())) continue;
+          const workflowPath = String(run?.path ?? "").split("@", 1)[0];
+          if (workflowPath !== ".github/workflows/ci.yml") continue;
+          if (Number.isSafeInteger(run?.id) && run.id > 0) ciRefs.add(`github:actions/run#${run.id}`);
+        }
+      }
+    }
+    const issue = readLifecycleIssue(pr?.body ?? "");
+    if (Number.isSafeInteger(issue) && issue > 0) issueNumbers.add(issue);
+  }
+
+  const closedIssueRefs = [];
+  const operations = [];
+  for (const issueNumber of [...issueNumbers].sort((a, b) => a - b)) {
+    const snapshot = issuesByNumber instanceof Map
+      ? issuesByNumber.get(issueNumber)
+      : issuesByNumber?.[issueNumber];
+    if (snapshot?.state !== "closed") continue;
+    const evidenceRef = `github:issue#${issueNumber}`;
+    closedIssueRefs.push(evidenceRef);
+    operations.push({
+      action: "ADD",
+      claim: {
+        type: "ISSUE_CLOSED",
+        subject: `issue#${issueNumber}`,
+        claimedState: "closed",
+        observedState: "closed",
+        verification: "VERIFIED",
+        evidenceRef,
+      },
+    });
+  }
+
+  const counterOperations = [];
+  const ciEvidenceRefs = [...ciRefs].sort();
+  if (ciEvidenceRefs.length) {
+    counterOperations.push({
+      path: "ci.fullCiRuns",
+      observed: ciEvidenceRefs.length,
+      evidenceRefs: ciEvidenceRefs,
+    });
+  }
+  if (closedIssueRefs.length) {
+    counterOperations.push({
+      path: "delivery.issuesClosed",
+      observed: closedIssueRefs.length,
+      evidenceRefs: closedIssueRefs,
+    });
+  }
+
+  if (!operations.length && !counterOperations.length) {
+    fail("NO_LIVE_EVIDENCE", "GitHub-live collection found no reconstructable CI or closed-Issue facts; do not convert absence into zero");
+  }
+  return normalizeEvidence({
+    schemaVersion: 1,
+    runId: normalizedRunId,
+    observedMainSha: mainSha,
+    operations,
+    counterOperations,
+  });
 }
 
 export function normalizeEvidence(value) {
