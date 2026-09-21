@@ -46,13 +46,14 @@ function evidence(operations: any[], completionTruth: any = undefined, counterOp
   };
 }
 
-function apply(current: any, input: any, expected = LEDGER_SHA) {
+function apply(current: any, input: any, expected = LEDGER_SHA, allowCounterOperations = false) {
   return reconcileLedger({
     ledger: current,
     evidence: input,
     currentMainSha: MAIN,
     currentLedgerSha: LEDGER_SHA,
     expectedLedgerSha: expected,
+    allowCounterOperations,
   });
 }
 
@@ -171,13 +172,14 @@ describe("run ledger reconciliation", () => {
       observed: 2,
       evidenceRefs: ["github:actions/run#11", "github:actions/run#12"],
     }]);
-    const first = apply(ledger(), input);
+    expect(() => apply(ledger(), input)).toThrow(/TRUSTED_COUNTER_SOURCE_REQUIRED/);
+    const first = apply(ledger(), input, LEDGER_SHA, true);
     expect(first.changed).toBe(true);
     expect(first.ledger.ci.fullCiRuns).toBe(2);
     expect(first.ledger.reconciliation.identities[0].evidenceRefs).toEqual([
       "github:actions/run#11", "github:actions/run#12",
     ]);
-    const replay = apply(first.ledger, input);
+    const replay = apply(first.ledger, input, LEDGER_SHA, true);
     expect(replay.changed).toBe(false);
     expect(stableStringify(replay.ledger)).toBe(stableStringify(first.ledger));
   });
@@ -195,7 +197,7 @@ describe("run ledger reconciliation", () => {
       path: "ci.fullCiRuns",
       observed: 2,
       evidenceRefs: ["github:actions/run#11", "github:actions/run#12"],
-    }]))).toThrow(/COUNTER_REGRESSION/);
+    }]), LEDGER_SHA, true)).toThrow(/COUNTER_REGRESSION/);
   });
 
   it("collects CI and closed-Issue truth from live GitHub instead of supplied counts", async () => {
@@ -268,7 +270,7 @@ describe("run ledger reconciliation", () => {
         evidenceRefs: ["github:actions/run#10", "github:actions/run#11"] },
       { path: "delivery.issuesClosed", observed: 1, evidenceRefs: ["github:issue#170"] },
     ]);
-    const reconciled = apply(ledger(), captured);
+    const reconciled = apply(ledger(), captured, LEDGER_SHA, true);
     expect(reconciled.ledger.ci.fullCiRuns).toBe(2);
     expect(reconciled.ledger.delivery.issuesClosed).toBe(1);
   });
