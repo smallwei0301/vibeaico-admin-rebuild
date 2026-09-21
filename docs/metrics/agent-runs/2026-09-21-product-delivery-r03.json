@@ -185,7 +185,28 @@
   },
   "wipLifecycle": {
     "schemaVersion": 1,
-    "events": []
+    "events": [
+      {
+        "id": "644-build-enter",
+        "at": "2026-09-21T17:43:04Z",
+        "kind": "BUILD_ENTER",
+        "pr": 644,
+        "issue": 46,
+        "head": "fee060e08c467ce9f02c032904cf585e314e82c9",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "MAIN slice #46 refund_policy_snapshot canonical migration (source-only)"
+      },
+      {
+        "id": "645-build-enter",
+        "at": "2026-09-21T17:58:19Z",
+        "kind": "BUILD_ENTER",
+        "pr": 645,
+        "issue": 47,
+        "head": "a9993b630927b34a69ce4a927dd1f83c88e08367",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Refill slice #47 rich-menu create button wiring (code-only, no migration)"
+      }
+    ]
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
