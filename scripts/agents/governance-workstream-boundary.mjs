@@ -89,7 +89,7 @@ export function terminalLabelPlan(pr) {
 /** Reconcile the single current pr-lifecycle marker without touching prose/examples. */
 function rewriteLifecycleState(body, value) {
   const source = String(body ?? '');
-  const blocks = [...source.matchAll(/<!--\\s*pr-lifecycle\\b[\\s\\S]*?-->/gi)];
+  const blocks = [...source.matchAll(/<!--\s*pr-lifecycle\b[\s\S]*?-->/gi)];
   if (!blocks.length) return { body: source, changed: false, error: null };
   if (blocks.length !== 1) {
     return { body: source, changed: false, error: 'Ambiguous pr-lifecycle blocks; terminal body not rewritten' };
@@ -97,7 +97,7 @@ function rewriteLifecycleState(body, value) {
 
   const blockMatch = blocks[0];
   const block = blockMatch[0];
-  const states = [...block.matchAll(/(^|\\n)(\\s*state\\s*:\\s*)([A-Z_]+)(?=\\s*(?:\\n|$))/gim)];
+  const states = [...block.matchAll(/(^|\n)(\s*state\s*:\s*)([A-Z_]+)(?=\s*(?:\n|$))/gim)];
   if (states.length !== 1) {
     return { body: source, changed: false, error: 'Missing or ambiguous pr-lifecycle state; terminal body not rewritten' };
   }
