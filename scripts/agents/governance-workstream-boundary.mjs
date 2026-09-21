@@ -1,4 +1,4 @@
-import { isPlaceholder, readField } from './agent-wip-policy.mjs';
+import { isPlaceholder, readField, rewriteField } from './agent-wip-policy.mjs';
 
 const DELIVERY_TYPES = new Set(['SLICE', 'STANDALONE', 'EPIC', 'GOVERNANCE']);
 const upper = (value) => String(value ?? '').trim().toUpperCase();
@@ -82,5 +82,40 @@ export function terminalLabelPlan(pr) {
     remove: ['state:active', 'state:reserve-ready', 'state:parked', 'state:owner-blocked',
       'candidate:active', 'governance:lane-metadata-incomplete', 'governance:wip-violation',
       merged ? 'state:historical' : 'state:complete'],
+  };
+}
+
+
+/**
+ * Reconcile only current machine-readable lane declarations after GitHub has
+ * already made the PR terminal. Historical prose/review evidence stays intact.
+ * Ambiguous or example-only metadata is never rewritten.
+ * @param {any} pr
+ */
+export function terminalBodyPlan(pr) {
+  if (pr?.state !== 'closed') return null;
+  const terminalState = pr.merged === true || Boolean(pr.merged_at) ? 'COMPLETE' : 'HISTORICAL';
+  let body = String(pr.body ?? '');
+  const errors = [];
+  const changedFields = [];
+
+  for (const [field, value] of [['LANE_STATE', terminalState], ['ACTIVE_CANDIDATE', 'false']]) {
+    const current = readField(body, field);
+    if (!current) continue;
+    const rewritten = rewriteField(body, field, value);
+    if (rewritten.error) {
+      errors.push(rewritten.error);
+      continue;
+    }
+    if (rewritten.changed) changedFields.push(field);
+    body = rewritten.body;
+  }
+
+  return {
+    body,
+    changed: body !== String(pr.body ?? ''),
+    changedFields,
+    terminalState,
+    errors: [...new Set(errors)],
   };
 }
