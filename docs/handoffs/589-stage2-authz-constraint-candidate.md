@@ -12,13 +12,13 @@ It does not write, delete, convert, or backfill data. A `PENDING` row blocks the
 
 ## Transaction and safety boundary
 
-The G3/G6 runner supplies the one outer transaction and its five-second lock and sixty-second statement limits; this migration must not be run bare and contains no `BEGIN` or `COMMIT`. Within that transaction it takes `ACCESS EXCLUSIVE` locks in the fixed order `booking_addons`, then `owner_notify_recipients`, before every precheck and mutation. It enables RLS without changing existing FORCE RLS state.
+The final 0127 candidate places every lock, precheck, and DDL command inside one `DO` statement. A direct local CLI call executes that statement atomically; G3/G6 execute it inside their existing outer transaction, with the runner's five-second lock and sixty-second statement limits. The procedural `BEGIN` is not a transaction command; no internal `COMMIT` or `ROLLBACK` is present. The statement takes `ACCESS EXCLUSIVE` locks in the fixed order `booking_addons`, then `owner_notify_recipients`, before every precheck and mutation. It enables RLS without changing existing FORCE RLS state.
 
 Unknown policy names, any column-level ACL, and table ACL grantees other than the table owner, PUBLIC, anon, authenticated, or service_role fail closed. The candidate cannot safely infer how to preserve an unknown grant.
 
-## Verification needed after canonical merge and new TEST authorization
+## Verification after canonical merge under existing TEST authorization
 
-- Run the migration through the outer transaction and roll it back after each negative fixture: `PENDING`, an unknown policy, an unknown table role, and a column ACL must leave no persisted change.
+- Isolated regression coverage runs the migration through an outer transaction and rolls it back after each negative fixture: `PENDING`, an unknown policy, an unknown table role, and a column ACL must leave no persisted change.
 - Verify effective privileges and RLS, not migration text: anon is denied; authenticated can only read its tenant's addons; authenticated has tenant-scoped owner-notify CRUD; service role retains the required RPC/admin paths; cross-tenant reads and writes are denied.
 - Exercise concurrent insertion of a `PENDING` value while the migration holds its lock, then confirm the check is either safely blocked or installed against the post-lock value.
 
