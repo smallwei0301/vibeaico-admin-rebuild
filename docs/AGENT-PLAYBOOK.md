@@ -145,6 +145,17 @@ PB-001～PB-007 是從舊任務帶回、但當時未保存完整日期與證據�
 - 驗證：新增單元測試區分 missing table、missing column、missing function；待有新 TEST CI 時驗證會在 schema mismatch 的原始錯誤停止，且不產生子表 FK 錯誤。
 - 狀態：監看中
 
+### PB-007 — migration 必須在實際 runner 的交易邊界內驗證
+
+- 本次首次／最近：2026-09-20／2026-09-20；本次同根因事件 1 件，兩條 replay 同時暴露；不追填既有 PB-007 的歷史次數。
+- Issue／PR／CI：#589／#621；exact head `3aadb539b8237c1713bdb6732300b74c7326e790`；local-isolated `35545700863`、schema-bootstrap `35545700841`。
+- 事件／根因：0127 把 `LOCK TABLE` 放在頂層並假設執行器一定有外層交易。G3/G6 writer 的確有交易，但 Supabase CLI replay 逐 statement 執行，兩條 fresh replay 都以 `25P01: LOCK TABLE can only be used in transaction blocks` 停止；只在 `db.begin()` 內測 SQL 會掩蓋這個差異。
+- 影響：隔離 integration/E2E 尚未開始，不能當通過；同次來源 CI `35545700862` 另有 migration inventory 74/17 與舊預期 73/16 不符的兩個 assertion，須依實際新增 0127 更新，不能刪除 inventory 驗證。
+- 修正方向：把固定順序鎖、前置查證與全部 DDL 放進同一個 `DO` statement；CLI 使用該 statement 的交易，G3/G6 則保留 schema 與 ledger 所在的外層交易。不得為 CLI 補內部 `COMMIT`、吞掉例外或另造不同 SQL bytes 的 local wrapper。
+- 預防／必要驗證：同一 canonical SQL 必須同時通過直接單 statement 執行與外層交易故意失敗後的完整回滾；保留並行鎖等待、資料／ACL／RLS／constraint 比對，重跑來源、隔離與 fresh replay。更新 SQL 後依 PB-015 重綁 fresh baseline digest 與可達祖先。
+- 分類器反例：DO 內相鄰的 `ALTER TABLE` 與 `DROP POLICY` 不可被貪婪 regex 當成刪欄位；修復時也不得豁免 `TRUNCATE`／`DROP TABLE`，或為排除 `GRANT UPDATE` 而漏掉 `BEGIN`／`THEN`／`LOOP` 後的真正 DML。送出新版前須保留這些拒絕／BACKFILL 反例。
+- 狀態：修正與新 exact-head 驗證進行中；本段不宣稱 DB replay、TEST 或 Production 已通過。
+
 ### PB-008 — GitHub connector 寫入成功不代表 exact-head CI 已觸發
 
 - 首次／最近：2026-08-28／2026-08-28

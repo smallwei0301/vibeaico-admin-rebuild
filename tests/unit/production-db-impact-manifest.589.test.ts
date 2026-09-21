@@ -25,6 +25,7 @@ const planFiles = [
   '0121_issue_17_booking_addons_hardening',
   '0123_issue_589_richmenu_asset_retirement',
   '0126_issue_402_keyword_reply_images_authz',
+  '0127_issue_589_authz_constraint_reconciliation',
 ];
 const plan = {
   mainSha: 'a'.repeat(40), planDigest: 'b'.repeat(64),
@@ -46,6 +47,17 @@ const roots: Record<string, string[]> = {
   '0121_issue_17_booking_addons_hardening': ['public.booking_addons.performance_mode', 'public.create_booking_addon(p_tenant uuid, p_booking uuid, p_idempotency_key text, p_service_id uuid, p_name text, p_price numeric, p_quantity integer, p_duration_minutes integer, p_staff_id uuid, p_performance_mode text, p_performance_staff_id uuid, p_notification_requested boolean)'],
   '0123_issue_589_richmenu_asset_retirement': ['public.richmenu_asset_retirements.image_url', 'public.tenant_settings.trg_prevent_retired_richmenu_asset'],
   '0126_issue_402_keyword_reply_images_authz': ['storage.objects.p_storage_write'],
+  '0127_issue_589_authz_constraint_reconciliation': [
+    'public.booking_addons.booking_addons_notified_check',
+    'public.booking_addons.p_booking_addons_i',
+    'public.booking_addons.p_booking_addons_u',
+    'public.booking_addons.p_booking_addons_d',
+    'public.owner_notify_recipients.p_owner_notify_recipients_all',
+    'public.owner_notify_recipients.p_owner_notify_recipients_s',
+    'public.owner_notify_recipients.p_owner_notify_recipients_i',
+    'public.owner_notify_recipients.p_owner_notify_recipients_u',
+    'public.owner_notify_recipients.p_owner_notify_recipients_d',
+  ],
 };
 
 const functionAclIdentities = [
@@ -73,10 +85,10 @@ function report() {
 }
 
 describe('#589 Stage 1 production impact manifest', () => {
-  it('covers all 13 planned canonical migrations with declared final-impact roots', () => {
+  it('covers all 14 planned canonical migrations with declared final-impact roots', () => {
     const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const byFile = new Map<string, ManifestEntry>(normalized.entries.map((entry) => [entry.repoFile, entry]));
-    expect(planFiles).toHaveLength(13);
+    expect(planFiles).toHaveLength(14);
     expect([...byFile.keys()]).toEqual(expect.arrayContaining(planFiles));
     expect(byFile.get('0105_issue_44_traveler_risk_policies')!.impacts.length).toBeGreaterThan(0);
     expect(byFile.get('0109_issue_41_schema_precondition_assertions')!.impacts.length).toBeGreaterThan(0);
@@ -97,7 +109,7 @@ describe('#589 Stage 1 production impact manifest', () => {
     const normalized = normalizeProductionDbImpactManifest(manifest) as Manifest;
     const inventory = normalized.entries.filter((entry) => planFiles.includes(entry.repoFile));
     const inventoryDigest = createHash('sha256').update(JSON.stringify(inventory)).digest('hex');
-    expect(inventoryDigest).toBe('ceb7d9e9cac104d8ca093d1d293aca40dbf6c4711776f44768b9bf3922be7d80');
+    expect(inventoryDigest).toBe('3b5b129ea1c4b2af321a6cc7ba82ceb4536e4744f7e3b0012957cfd4e219aa7a');
 
     const functionAclKeys = inventory.flatMap((entry) => entry.impacts)
       .filter((impact) => impact.surface === 'acl' && impact.objectKey.startsWith('function:'))
@@ -121,6 +133,10 @@ describe('#589 Stage 1 production impact manifest', () => {
     const byFile = new Map<string, ManifestEntry>(normalized.entries.map((entry) => [entry.repoFile, entry]));
     expect(byFile.get('0124_issue_18_owner_notify_legacy_shape')!.impacts).toEqual([]);
     expect(byFile.get('0125_issue_17_booking_addons_legacy_enum')!.impacts).toEqual([]);
+    expect(byFile.get('0116_issue_18_owner_notify')!.impacts.map((impact) => impact.objectKey))
+      .not.toContain('table:public.owner_notify_recipients');
+    expect(byFile.get('0127_issue_589_authz_constraint_reconciliation')!.impacts.map((impact) => impact.objectKey))
+      .toContain('table:public.owner_notify_recipients');
     expect(byFile.get('0110_issue_42_plan_duration_pricetype_yearround')!.impacts.map((impact) => impact.objectKey))
       .not.toContain('public.create_tour_order(p_tenant uuid, p_order_no text, p_departure uuid, p_party_size integer, p_customer uuid, p_contact jsonb, p_source tour_order_source, p_payment_method uuid, p_note text, p_hold_expires timestamp with time zone)');
 

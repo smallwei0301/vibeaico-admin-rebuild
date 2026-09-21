@@ -138,6 +138,35 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     })).toThrow(/UNAPPROVED_VITEST_PENDING/);
   });
 
+  it('allows only the named local-only #589 reconciliation assertions as canonical pending', () => {
+    const result = buildProductionDbTestCoverageEvidence({
+      report: report({
+        numTotalTests: 4,
+        numPassedTests: 3,
+        numPendingTests: 1,
+        testResults: [...report().testResults, {
+          name: 'tests/integration/db/authz-constraint-reconciliation.589.test.ts',
+          assertionResults: [{ status: 'pending', fullName: 'Issue #589 isolated PostgreSQL reconciliation preconditions and rollback PENDING precheck rolls back the reconciliation transaction without persistent ACL changes' }],
+        }],
+      }),
+      plan: plan([{ repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR', sha256: '2'.repeat(64) }]),
+      sourceRunId: '1', sourceRunAttempt: 1,
+    });
+    expect(result.allowedPendingTests).toBe(1);
+
+    expect(() => buildProductionDbTestCoverageEvidence({
+      report: report({
+        numTotalTests: 4, numPassedTests: 3, numPendingTests: 1,
+        testResults: [...report().testResults, {
+          name: 'tests/integration/db/authz-constraint-reconciliation.589.test.ts',
+          assertionResults: [{ status: 'pending', fullName: 'unrelated skipped assertion' }],
+        }],
+      }),
+      plan: plan([{ repoFile: '0109_issue_41_schema_precondition_assertions', riskTier: 'SCHEMA_REPAIR', sha256: '2'.repeat(64) }]),
+      sourceRunId: '1', sourceRunAttempt: 1,
+    })).toThrow(/UNAPPROVED_VITEST_PENDING/);
+  });
+
   it('rejects 0105 coverage if required tenant-boundary or negative-role assertions did not actually pass', () => {
     const missingBoundary = report({
       numTotalTests: 2,
@@ -321,6 +350,24 @@ describe('Production DB G3 TEST artifact builders #447', () => {
     }
   });
 
+  it('binds 0127 only to passing canonical REST role and tenant assertions', () => {
+    const file = 'tests/integration/api/authz-constraint-reconciliation.589.test.ts';
+    const result = buildProductionDbTestCoverageEvidence({
+      plan: plan([{ repoFile: '0127_issue_589_authz_constraint_reconciliation', riskTier: 'AUTHZ', sha256: '6'.repeat(64) }]),
+      report: report({
+        numTotalTests: 2, numPassedTests: 2,
+        testResults: [{ name: file, assertionResults: [
+          { status: 'passed', fullName: '0127 reconciled table grants and RLS authenticated tenant cannot read another tenant booking addons or owner notify recipients' },
+          { status: 'passed', fullName: '0127 reconciled table grants and RLS anon cannot read or write reconciled tables while authenticated addon writes remain denied' },
+        ] }],
+      }),
+      sourceRunId: '1', sourceRunAttempt: 1,
+    });
+    expect(result.migrations['0127_issue_589_authz_constraint_reconciliation']).toMatchObject({
+      tenantBoundaryVerified: true, negativeRoleTestsPassed: true,
+    });
+  });
+
   it('captures migration-scoped cleanup using GET only and the canonical SHOP_A tenant filter', async () => {
     const fetchSpy = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       expect(init?.method).toBe('GET');
@@ -381,6 +428,27 @@ describe('Production DB G3 TEST artifact builders #447', () => {
         residueCount: 0,
       }],
     });
+  });
+
+  it('checks every 0127 REST fixture and rejects its residue', async () => {
+    const migration = { repoFile: '0127_issue_589_authz_constraint_reconciliation', riskTier: 'AUTHZ', sha256: '7'.repeat(64) };
+    const fetchSpy = vi.fn(async (url: string | URL | Request) => {
+      const text = decodeURIComponent(String(url));
+      if (text.includes('/rest/v1/booking_addons?')) expect(text).toContain('name=like.g3-589-0127-%');
+      else {
+        expect(text).toMatch(/\/(owner_notify_recipients|line_users)\?/);
+        expect(text).toContain('line_user_id=like.g3-589-0127-%');
+      }
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    const result = await captureProductionDbTestCleanupEvidence({ plan: plan([migration]), testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1, fetchImpl: fetchSpy as unknown as typeof fetch });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(result.checkedScopes).toHaveLength(3);
+
+    await expect(captureProductionDbTestCleanupEvidence({
+      plan: plan([migration]), testSupabaseUrl: TEST_URL, serviceRoleKey: 'key', sourceRunId: '1', sourceRunAttempt: 1,
+      fetchImpl: vi.fn(async () => new Response('[{"line_user_id":"g3-589-0127-leftover"}]', { status: 200 })) as unknown as typeof fetch,
+    })).rejects.toThrow(/TEST_CLEANUP_RESIDUE/);
   });
 
   it('rejects wrong TEST hosts before network and rejects scoped residue', async () => {

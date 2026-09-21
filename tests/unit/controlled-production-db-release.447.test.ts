@@ -468,16 +468,13 @@ describe('Controlled Production DB writer #447', () => {
     })).not.toThrow();
 
     const proceduralCommitSql = 'do ' + dollarQuote + ' begin commit; end ' + dollarQuote + ';';
-    const proceduralCommitPlan = buildProductionDbReleasePlan({
+    // The release planner now rejects transaction control inside an immediate
+    // DO block before a mutable writer can be assembled. Top-level controls
+    // above still exercise the writer's independent rejection boundary.
+    expect(() => buildProductionDbReleasePlan({
       releaseId: 'release-20260914-447', mainSha: MAIN, plannedAt: PLANNED_AT,
       aliasMap: aliasMap(), readCanonicalSql: () => proceduralCommitSql,
-    });
-    expect(() => buildAtomicProductionApplySql({
-      plan: proceduralCommitPlan,
-      aliasMap: aliasMap(),
-      liveLedgerRows: beforeRows,
-      readCanonicalSql: () => proceduralCommitSql,
-    })).toThrow(/TRANSACTION_CONTROL_NOT_ADMITTED/);
+    })).toThrow(/UNSUPPORTED_AUTHZ_SQL_NOT_ADMITTED/);
   });
 
   it('prepares with read-only work, survives serialization, then performs exactly one mutable transaction', async () => {
