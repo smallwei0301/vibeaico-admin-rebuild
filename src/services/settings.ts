@@ -90,6 +90,24 @@ export const uploadRichMenuBgImage = (file: File) =>
   );
 
 /**
+ * 真正建立並發布 Rich Menu —— 走 `/api/settings/line/rich-menu/create`
+ * （`src/app/api/settings/line/rich-menu/create/route.ts` 早已實作：建立→傳圖→
+ * 設為預設，三步驟原子完成，失敗會清掉半成品）。
+ *
+ * 在此之前，`/tenant/line-settings` 的「建立 Rich Menu」按鈕只呼叫
+ * `saveLineSettings()` 把主題／底圖等欄位寫進 `tenant_settings`，從未真的打過
+ * LINE 的 API——畫面上顯示「已建立並發布」，LINE 那邊其實什麼都沒發生。這支
+ * 函式接掉那顆按鈕，讓「建立」對應到真的會呼叫 LINE 官方 API 的端點，回傳真實
+ * `richMenuId`；呼叫失敗時把後端的真實錯誤（例如底圖讀不到、主題圖尚未上架）
+ * 原樣往上拋，不得顯示成功。
+ */
+export const publishRichMenu = () =>
+  adapt<{ richMenuId: string }>(
+    () => ({ richMenuId: 'mock-rich-menu-id' }),
+    () => request<{ richMenuId: string }>('/api/settings/line/rich-menu/create', { method: 'POST' }),
+  );
+
+/**
  * mock 分支「假倉庫」：/tenant/shop-design（Issue #7）三種業態各自的示範品牌內容
  * + 之後透過 saveTenantSettings({ branding }) 的異動，讓 mock 模式下的儲存也像
  * 真實後端一樣可讀回、可持久（比照 src/services/marketing.ts 的 getMockPushStore）。
