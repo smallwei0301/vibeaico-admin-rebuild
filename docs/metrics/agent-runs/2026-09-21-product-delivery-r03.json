@@ -247,6 +247,16 @@
         "head": "fee060e08c467ce9f02c032904cf585e314e82c9",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "PR #644 merged to main (e1f6e85135c60f1a79cee51257f771d3b567bd15); still PENDING_APPLY for Production schema (Owner authorization blocker)"
+      },
+      {
+        "id": "646-build-enter",
+        "at": "2026-09-21T18:30:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 646,
+        "issue": 42,
+        "head": "715a0853fdb44431ba8a6edeabf2d1a756154b21",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Trip Plan mock save/delete persistence fix (code-only, no migration), reproduced via Playwright at 390px"
       }
     ]
   },
