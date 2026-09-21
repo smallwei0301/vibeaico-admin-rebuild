@@ -140,17 +140,46 @@ export const listTripPlans = (tripId: string) =>
     () => request<TripPlan[]>(`/api/trips/${tripId}/plans`),
   );
 
+/**
+ * ⚠️ mock 分支曾經是 `() => undefined`——存檔當下畫面看起來成功（頁面自己把
+ * `planDraft` 樂觀寫進本地 `plans` state），但 `MOCK_TRIP_PLANS` 這個共用陣列
+ * 從未真的被改到。只要離開這個行程詳情頁再回來（甚至不用重整瀏覽器，單純
+ * SPA 導覽造成 component 重新掛載、重新呼叫 `listTripPlans()`），畫面就會
+ * 讀回沒改過的舊資料，同一個「看起來成功、其實沒存」的假成功模式，只是發生
+ * 在 mock/demo 模式而不是真後端。這裡補上：更新既有方案時真的把 payload
+ * 合併進 `MOCK_TRIP_PLANS` 對應那筆。新建方案（`payload.id` 不存在）維持
+ * 現況——`planApiPayload()` 只帶 Quick/Advanced 表單各自的子集欄位，不足以
+ * 拼出一筆完整新方案，頁面端目前是自己組完整 `planDraft` 樂觀更新本地
+ * state；要讓新建也在 mock 模式下撐過重新掛載，需要調整呼叫端傳遞完整草稿，
+ * 留給後續切片一起處理，避免這裡直接臆造欄位值。
+ */
 export const saveTripPlan = (tripId: string, payload: Partial<TripPlan>) =>
-  adapt(() => undefined, () => (payload.id
-    ? request<void>(`/api/trip-plans/${payload.id}`, {
-      method: 'PUT', body: JSON.stringify(planApiPayload(payload)),
-    })
-    : request<void>(`/api/trips/${tripId}/plans`, {
-      method: 'POST', body: JSON.stringify(planApiPayload(payload)),
-    })));
+  adapt(
+    () => {
+      if (payload.id) {
+        const idx = MOCK_TRIP_PLANS.findIndex((p) => p.id === payload.id);
+        if (idx >= 0) MOCK_TRIP_PLANS[idx] = { ...MOCK_TRIP_PLANS[idx], ...payload };
+      }
+      return undefined;
+    },
+    () => (payload.id
+      ? request<void>(`/api/trip-plans/${payload.id}`, {
+        method: 'PUT', body: JSON.stringify(planApiPayload(payload)),
+      })
+      : request<void>(`/api/trips/${tripId}/plans`, {
+        method: 'POST', body: JSON.stringify(planApiPayload(payload)),
+      })),
+  );
 
 export const deleteTripPlan = (planId: string) =>
-  adapt(() => undefined, () => request<void>(`/api/trip-plans/${planId}`, { method: 'DELETE' }));
+  adapt(
+    () => {
+      const idx = MOCK_TRIP_PLANS.findIndex((p) => p.id === planId);
+      if (idx >= 0) MOCK_TRIP_PLANS.splice(idx, 1);
+      return undefined;
+    },
+    () => request<void>(`/api/trip-plans/${planId}`, { method: 'DELETE' }),
+  );
 
 /**
  * issue #42：季節定價（`trip_plan_seasons`）。`TripPlan.seasons` 早就是
