@@ -319,6 +319,16 @@
         "head": "ba564debea41adb4ca68521f47ec5df99546792c",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "PR #647 merged to main (87879eb1e0242eba1af911b27bd702c19997c7d1); no frontend caller yet, infra-only slice"
+      },
+      {
+        "id": "648-build-enter",
+        "at": "2026-09-21T19:01:00Z",
+        "kind": "BUILD_ENTER",
+        "pr": 648,
+        "issue": 46,
+        "head": "f505eeb639266f3421c7732745878511eeac1417",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Public shop page now shows the trip's current cancellation/refund policy before booking (genuinely traveler-visible slice, no migration)"
       }
     ]
   },
