@@ -286,6 +286,80 @@ export const PRODUCTION_DB_G3_AUTHZ_CONTRACTS = Object.freeze({
       }),
     ]),
   }),
+  // 0130 and 0132 replace the same service_role-only create_tour_order
+  // function while preserving its tenant and browser-role boundary. Bind both
+  // identities to the live route/direct-RPC assertions instead of inheriting a
+  // generic suite-green claim.
+  '0130_issue_46_refund_policy_snapshot': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/tour-order-authz.447.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/tour-order-authz.447.test.ts',
+        fragment: 'cross-tenant owner cannot use another tenant departure',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/tour-order-authz.447.test.ts',
+        fragment: 'authenticated role cannot invoke SECURITY DEFINER create_tour_order directly',
+      }),
+    ]),
+  }),
+  '0131_issue_37_atomic_departure_staff': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+        fragment: 'service_role RPC rejects another tenant id for an existing departure without mutation',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/departure-staff-rpc-acl.37.test.ts',
+        fragment: 'anon and authenticated roles cannot execute replace_trip_departure_staff directly',
+      }),
+    ]),
+  }),
+  '0132_issue_42_seasonal_price_resolution': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/tour-order-authz.447.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/tour-order-authz.447.test.ts',
+        fragment: 'cross-tenant owner cannot use another tenant departure',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/tour-order-authz.447.test.ts',
+        fragment: 'authenticated role cannot invoke SECURITY DEFINER create_tour_order directly',
+      }),
+    ]),
+  }),
+  // 0133 changes only the FK shape used by the booking-addons read path; the
+  // existing RPC assertions remain the canonical tenant/role boundary.
+  '0133_issue_680_booking_addons_composite_fk_expand': Object.freeze({
+    requiredFiles: Object.freeze([
+      'tests/integration/api/booking-addons.17.test.ts',
+    ]),
+    tenantBoundaryAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/booking-addons.17.test.ts',
+        fragment: 'A 店的 idempotency key 不得命中 B 店（即使字面值相同）',
+      }),
+    ]),
+    negativeRoleAssertions: Object.freeze([
+      Object.freeze({
+        file: 'tests/integration/api/booking-addons.17.test.ts',
+        fragment: '未登入與已登入使用者都不得直接呼叫 create_booking_addon／delete_booking_addon rpc',
+      }),
+    ]),
+  }),
 });
 
 export function getProductionDbG3AuthzContract(repoFile) {
