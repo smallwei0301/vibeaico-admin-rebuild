@@ -28,6 +28,7 @@ import type {
   TourOrder,
   Trip,
   TripAddon,
+  TripBookingType,
   TripDeparture,
   TripPlan,
   TripPlanSeason,
@@ -342,7 +343,26 @@ export function mapTripPlanSeason(r: any): TripPlanSeason {
   };
 }
 
+/**
+ * issue #42：`sales_mode`（canonical，見 SALES_MODE）與 legacy `bookingType`
+ * 語意重疊，Owner 已裁示不新增第二個 DB 欄位，改由前者 derive 後者，而不是
+ * 讓 `bookingType` 繼續寫死成一個固定值。
+ *
+ * ⚠️ 這不只是顯示問題：`src/server/traveler-booking-policy.ts` 的
+ * `resolveTravelerBookingPolicy()` 直接把 `plan.bookingType` 當成
+ * `checkoutMode` 回傳（REQUEST_ONLY 政策除外）。寫死成 SCHEDULED 時，一個
+ * 實際設定成 REQUEST 或 INSTANT 的方案，會在 GUIDE 後台「預約型態」欄位
+ * 顯示錯誤的「固定團次」，未來接上 traveler checkout 後也會拿到錯的
+ * checkoutMode。
+ */
+function deriveBookingType(salesMode: TripPlan['salesMode']): TripBookingType {
+  if (salesMode === 'INSTANT') return 'INSTANT';
+  if (salesMode === 'REQUEST') return 'REQUEST';
+  return 'SCHEDULED';
+}
+
 export function mapTripPlan(r: any): TripPlan {
+  const salesMode: TripPlan['salesMode'] = SALES_MODE.has(r.sales_mode) ? r.sales_mode : 'FIXED_DEPARTURE';
   return {
     id: r.id,
     tripId: r.trip_id,
@@ -357,7 +377,7 @@ export function mapTripPlan(r: any): TripPlan {
     childPrice: r.child_price == null ? null : Number(r.child_price),
     minParticipants: r.min_party ?? 1,
     maxParticipants: r.max_party ?? 10,
-    bookingType: 'SCHEDULED',
+    bookingType: deriveBookingType(salesMode),
     depositMode: r.deposit_mode,
     depositValue: Number(r.deposit_value ?? 0),
     active: r.active ?? true,
@@ -382,7 +402,7 @@ export function mapTripPlan(r: any): TripPlan {
      * undefined——這幾個欄位的預設在 SQL 與這裡必須是同一組，否則同一筆資料
      * 在有無後端兩條路徑下會顯示成不同的規則。
      */
-    salesMode: SALES_MODE.has(r.sales_mode) ? r.sales_mode : 'FIXED_DEPARTURE',
+    salesMode,
     participationMode: r.participation_mode === 'PRIVATE' ? 'PRIVATE' : 'SHARED',
     minToDepart: Number.isFinite(Number(r.min_to_depart)) ? Number(r.min_to_depart) : 1,
     formationDeadlineDaysBefore: Number.isFinite(Number(r.formation_deadline_days_before))
