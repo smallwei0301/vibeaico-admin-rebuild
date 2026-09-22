@@ -68,6 +68,10 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
     expect(sql).toContain('NOT VALID');
     expect(sql).toContain('VALIDATE CONSTRAINT');
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_TENANT_MISMATCH');
+    expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_RLS_DISABLED');
+    expect(sql).toContain('ALTER TABLE public.booking_addons ENABLE ROW LEVEL SECURITY');
+    expect(sql).toContain('AND relrowsecurity = rls_before');
+    expect(sql).toContain('AND relforcerowsecurity = force_rls_before');
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_UNKNOWN_FK');
     expect(sql).toContain("fk.confdeltype = 'a' AND fk.confdelsetcols IS NULL");
     expect(sql).toContain("fk.confdeltype = 'n' AND fk.confdelsetcols = ARRAY[child_perf]::smallint[]");
