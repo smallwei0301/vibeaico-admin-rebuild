@@ -9,14 +9,27 @@
 - 真正出貨 shipped_units：0（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）
 - 正式環境待驗 production_pending：0
 - 自主完成 autonomous_outcome_units：0（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）
-- 在製品 WIP：Audit Ready 0、CI-only 2、commit-only 0、carryover 0
+- 在製品 WIP：Audit Ready 0、CI-only 0、commit-only 0、carryover 0
 - 內部加權 usage：33（不是官方 token）
 - 每件真正出貨 usage：資料不足
 - 每單位自主完成 usage：資料不足
 
 ## 為什麼尚不評分
 
-- run is still in progress
+- modelUsage.weightedUsageImprovementPercent is missing
+- ci.firstPassRatePercent is missing
+- quality.acceptanceEvidenceCoveragePercent is missing
+- quality.auditFirstPassRatePercent is missing
+- flow.lunaDelegationRatePercent is missing
+- flow.waitTimeConvertedPercent is missing
+- auditability.evidenceFieldsCompletePercent is missing
+- auditability.exactHeadTestCoveragePercent is missing
+- auditability.preciseBlockersPercent is missing
+- auditability.scoreInputsCompletePercent is missing
+- ISSUE_CLOSED issue/655 does not identify one canonical Issue
+- MERGED_TO_MAIN pr/657 does not identify one canonical Issue
+- verified RUN_COMPLETE claim is required
+- delivery.issuesClosed=1 does not match 0 production-accepted shipped subject(s)
 
 ---
 

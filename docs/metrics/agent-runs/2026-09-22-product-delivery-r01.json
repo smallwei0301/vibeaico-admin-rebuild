@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-22-product-delivery-r01",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-22T00:10:00.000Z",
-  "endedAt": null,
+  "endedAt": "2026-09-22T00:45:00.000Z",
   "sources": [
     {
       "ref": "origin/main"
@@ -23,13 +23,13 @@
   ],
   "main": {
     "startSha": "2c6c8bd3715bf17532a7742492f2998a25cf5f95",
-    "endSha": null
+    "endSha": "0dd523f382314f6fdf5cb8429d06a03efaceb221"
   },
   "inventory": {
     "openIssuesStart": 48,
-    "openIssuesEnd": 49,
+    "openIssuesEnd": 48,
     "openPrsStart": 1,
-    "openPrsEnd": 3,
+    "openPrsEnd": 1,
     "mainTerraPeak": 2,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 2,
@@ -124,16 +124,16 @@
   },
   "delivery": {
     "issuesStarted": 2,
-    "issuesClosed": 0,
+    "issuesClosed": 1,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
-    "exactHeadCiOnly": 2,
+    "exactHeadCiOnly": 0,
     "commitOnly": 0,
     "unfinishedCarryover": 0,
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 2,
+    "fullCiRuns": 6,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -175,9 +175,9 @@
     "contractVersion": 1,
     "ownerRole": "PRODUCT_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-22T00:45:00.000Z",
+    "evidenceRef": "github:pr#656"
   },
   "wipLifecycle": {
     "schemaVersion": 1,
@@ -211,12 +211,75 @@
         "head": "50433818b574540a6bb8ef4144d81cecc06a2d9e",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "PARKED：本輪 MAIN_TERRA 上限 1，讓位給 PR #654 佔用唯一 ACTIVE 名額，排隊等待轉回 ACTIVE"
+      },
+      {
+        "id": "wip-654-build-exit-merged",
+        "at": "2026-09-22T00:42:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 654,
+        "issue": 42,
+        "head": "17edade55f40e889f24ddb614efd0e5d2c12acd2",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "MERGED：squash sha 5efd957a43bf9123f3be15dadfeacb08683b1fde"
+      },
+      {
+        "id": "wip-656-build-enter-reactivated",
+        "at": "2026-09-22T00:43:03Z",
+        "kind": "BUILD_ENTER",
+        "pr": 656,
+        "issue": 655,
+        "head": "5b1e09141573823e383debb852620650356bf0c1",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "重新啟用：#654 合併後空出唯一 MAIN_TERRA 名額"
+      },
+      {
+        "id": "wip-656-build-exit-merged",
+        "at": "2026-09-22T00:44:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 656,
+        "issue": 655,
+        "head": "5b1e09141573823e383debb852620650356bf0c1",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "MERGED：squash sha 0dd523f382314f6fdf5cb8429d06a03efaceb221"
       }
     ]
   },
   "completionTruth": {
-    "status": "NOT_CHECKED",
-    "checkedAt": null,
-    "claims": []
+    "status": "VERIFIED",
+    "checkedAt": "2026-09-22T00:45:00Z",
+    "claims": [
+      {
+        "type": "PR_MERGED",
+        "subject": "pr/654",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:pr#654"
+      },
+      {
+        "type": "PR_MERGED",
+        "subject": "pr/656",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:pr#656"
+      },
+      {
+        "type": "ISSUE_CLOSED",
+        "subject": "issue/655",
+        "claimedState": "closed",
+        "observedState": "closed",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:issue#655"
+      },
+      {
+        "type": "MERGED_TO_MAIN",
+        "subject": "pr/657",
+        "claimedState": "merged",
+        "observedState": "merged",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:pr#657"
+      }
+    ]
   }
 }
