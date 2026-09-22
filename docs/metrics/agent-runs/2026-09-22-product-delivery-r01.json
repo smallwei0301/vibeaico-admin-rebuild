@@ -279,6 +279,14 @@
         "observedState": "merged",
         "verification": "VERIFIED",
         "evidenceRef": "github:pr#657"
+      },
+      {
+        "type": "RUN_COMPLETE",
+        "subject": "run/2026-09-22-product-delivery-r01",
+        "claimedState": "complete",
+        "observedState": "complete",
+        "verification": "VERIFIED",
+        "evidenceRef": "github:pr#656"
       }
     ]
   }
