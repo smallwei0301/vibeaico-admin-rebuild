@@ -1,22 +1,26 @@
 {
   "schemaVersion": 2,
   "runId": "2026-09-22-product-delivery-r05",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
   "startedAt": "2026-09-22T03:28:41.719Z",
-  "endedAt": null,
+  "endedAt": "2026-09-22T03:35:30.000Z",
   "sources": [
-    { "ref": "origin/main" },
-    { "ref": "issue/46" }
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/46"
+    }
   ],
   "main": {
     "startSha": "69f519ace59fd250a24998e225160ebe914b6510",
-    "endSha": null
+    "endSha": "c59005af62087a5891fde6797e4b53e976167845"
   },
   "inventory": {
     "openIssuesStart": 47,
-    "openIssuesEnd": null,
+    "openIssuesEnd": 47,
     "openPrsStart": 4,
-    "openPrsEnd": null,
+    "openPrsEnd": 1,
     "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 0,
@@ -106,9 +110,9 @@
     "contractVersion": 1,
     "ownerRole": "PRODUCT_MAIN_SESSION",
     "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
-    "state": "OPEN",
-    "closedAt": null,
-    "evidenceRef": null
+    "state": "CLOSED",
+    "closedAt": "2026-09-22T03:35:30.000Z",
+    "evidenceRef": "github:smallwei0301/vibeaico-admin-rebuild/pull/666"
   },
   "wipLifecycle": {
     "schemaVersion": 1,
