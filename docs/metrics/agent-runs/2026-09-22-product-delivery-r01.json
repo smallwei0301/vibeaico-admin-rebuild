@@ -201,6 +201,16 @@
         "head": "50433818b574540a6bb8ef4144d81cecc06a2d9e",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "TERRA_BUILD：bookings／tour-orders 狀態動作 mock 分支假成功修復（#655）"
+      },
+      {
+        "id": "wip-656-build-exit-parked",
+        "at": "2026-09-22T00:33:00Z",
+        "kind": "BUILD_EXIT",
+        "pr": 656,
+        "issue": 655,
+        "head": "50433818b574540a6bb8ef4144d81cecc06a2d9e",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "PARKED：本輪 MAIN_TERRA 上限 1，讓位給 PR #654 佔用唯一 ACTIVE 名額，排隊等待轉回 ACTIVE"
       }
     ]
   },
