@@ -98,10 +98,18 @@ test('預約加購：開詳情→加入真加購→重新整理仍在→移除�
       },
     });
     expect(createRes.ok(), await createRes.text()).toBeTruthy();
-    const created = (await createRes.json()).data as { id: string; finalPrice: number };
+    const created = (await createRes.json()).data as { id: string };
     bookingId = created.id;
     expect(bookingId).toBeTruthy();
-    const initialFinalPrice = created.finalPrice;
+
+    // POST /api/bookings 的既有回應契約只包含 id；由已受 target guard 保護的
+    // service-role client 讀回剛由 API 建立的列，作為加購前的持久化金額基線。
+    const { data: initialBooking, error: initialBookingErr } = await admin
+      .from('bookings').select('final_price').eq('id', bookingId).single();
+    expect(initialBookingErr, initialBookingErr?.message).toBeFalsy();
+    expect(initialBooking).toBeTruthy();
+    const initialFinalPrice = Number(initialBooking!.final_price);
+    expect(Number.isFinite(initialFinalPrice)).toBe(true);
 
     /* -------------------------------------------- 深連結直接開啟該筆預約詳情 */
     await page.goto(`/tenant/bookings?bookingId=${bookingId}`);

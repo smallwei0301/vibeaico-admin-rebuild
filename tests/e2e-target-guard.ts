@@ -51,6 +51,29 @@ export const TEST_SUPABASE_PROJECT_REF = 'nmwhwngojosmagjuvxol';
 export const PRODUCTION_SUPABASE_PROJECT_REF = 'egehnijjpgijmccagxac';
 
 /**
+ * Remote canonical TEST and disposable LOCAL_ISOLATED runs have different,
+ * explicit target evidence. A local admission is never inferred from a ref:
+ * it must prove the loopback URL plus the workflow-issued paired identities.
+ */
+export type E2eTargetEvidence = {
+  testProfile?: string;
+  testSupabaseUrl?: string;
+  localProjectId?: string;
+  testEnvId?: string;
+};
+
+export function targetEvidenceFromEnvironment(
+  env: Record<string, string | undefined> = process.env,
+): E2eTargetEvidence {
+  return {
+    testProfile: env.TEST_PROFILE,
+    testSupabaseUrl: env.TEST_SUPABASE_URL,
+    localProjectId: env.LOCAL_PROJECT_ID,
+    testEnvId: env.TEST_ENV_ID,
+  };
+}
+
+/**
  * `sb-<ref>-auth-token`，以及 token 過大時 @supabase/ssr 會切成的
  * `sb-<ref>-auth-token.0` / `.1` … 分片。
  */
@@ -94,6 +117,40 @@ function describeRef(ref: string): string {
   return `${ref}（未知專案）`;
 }
 
+function hasPairedLocalIdentity(evidence: E2eTargetEvidence): boolean {
+  const project = evidence.localProjectId ?? '';
+  const environment = evidence.testEnvId ?? '';
+
+  const prProject = /^vibeaico-(\d+)-([ab])$/.exec(project);
+  const prEnvironment = /^local-pr-(\d+)-([ab])$/.exec(environment);
+  if (prProject && prEnvironment) {
+    return prProject[1] === prEnvironment[1] && prProject[2] === prEnvironment[2];
+  }
+
+  const schemaProject = /^schema-proof-(\d+)-(\d+)$/.exec(project);
+  const schemaEnvironment = /^local-schema-(\d+)$/.exec(environment);
+  return !!schemaProject && !!schemaEnvironment && schemaProject[1] === schemaEnvironment[1];
+}
+
+export function isAdmittedLocalIsolatedTarget(
+  ref: string | null,
+  evidence: E2eTargetEvidence,
+): boolean {
+  if (ref === PRODUCTION_SUPABASE_PROJECT_REF || evidence.testProfile !== 'LOCAL_ISOLATED') return false;
+  if (!hasPairedLocalIdentity(evidence)) return false;
+
+  try {
+    const url = new URL(evidence.testSupabaseUrl ?? '');
+    if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname)
+        || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return false;
+    // The browser cookie/admin ref must agree with this exact loopback URL; do
+    // not allow a local-looking environment to bless an unrelated target.
+    return ref === projectRefFromSupabaseUrl(url.toString());
+  } catch {
+    return false;
+  }
+}
+
 /**
  * 安全鎖本體：不是 TEST 專案就丟例外，讓這一輪立刻停住。
  *
@@ -103,8 +160,13 @@ function describeRef(ref: string): string {
 export function assertTestSupabaseTarget(
   ref: string | null,
   context: string,
+  evidence: E2eTargetEvidence = targetEvidenceFromEnvironment(),
 ): asserts ref is string {
+  // Canonical TEST remains the original unconditional allowlist. Production is
+  // rejected before the local branch, even if hostile environment fields claim
+  // LOCAL_ISOLATED.
   if (ref === TEST_SUPABASE_PROJECT_REF) return;
+  if (ref !== PRODUCTION_SUPABASE_PROJECT_REF && isAdmittedLocalIsolatedTarget(ref, evidence)) return;
 
   const headline = ref === null
     ? '本次執行「無法確定」打到哪一個資料庫，已中止 —— 目標不明時一律不往下跑。'
@@ -119,7 +181,7 @@ export function assertTestSupabaseTarget(
     '',
     `  目標站台　：${context}`,
     `  實測專案　：${ref === null ? '判定不出來（登入後找不到 sb-<ref>-auth-token cookie，或找到互相矛盾的多個）' : describeRef(ref)}`,
-    `  唯一允許　：${TEST_SUPABASE_PROJECT_REF}（TEST）`,
+    `  唯一允許　：${TEST_SUPABASE_PROJECT_REF}（canonical TEST），或完整驗證的 LOCAL_ISOLATED loopback target`,
     '',
     '  這份驗收 spec 會寫入資料（改預約時間、存 AI 提示詞、建立商品訂單），',
     '  因此只准對 TEST 專案執行。請把 E2E_BASE_URL 指向 NEXT_PUBLIC_SUPABASE_URL',

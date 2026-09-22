@@ -37,6 +37,9 @@ INSERT INTO public.staff(id,tenant_id,name) VALUES
 const weakKeys = `
 ALTER TABLE public.trip_departure_staff DROP CONSTRAINT trip_departure_staff_tenant_id_staff_id_fkey;
 ALTER TABLE public.trip_departure_staff DROP CONSTRAINT trip_departure_staff_tenant_id_departure_id_fkey;
+-- #680 may already add this child composite dependency before this legacy 0102 fixture
+-- deliberately weakens staff's parent key. The outer proof transaction always rolls it back.
+ALTER TABLE public.booking_addons DROP CONSTRAINT IF EXISTS booking_addons_tenant_id_performance_staff_id_fkey;
 ALTER TABLE public.staff DROP CONSTRAINT staff_tenant_id_id_key;
 ALTER TABLE public.trip_departure_staff ADD CONSTRAINT trip_departure_staff_staff_id_fkey
  FOREIGN KEY(staff_id) REFERENCES public.staff(id) ON DELETE RESTRICT;

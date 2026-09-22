@@ -13,6 +13,9 @@
     },
     {
       "ref": "pr/679"
+    },
+    {
+      "ref": "issue/680"
     }
   ],
   "main": {
@@ -24,9 +27,9 @@
     "openIssuesEnd": null,
     "openPrsStart": 3,
     "openPrsEnd": null,
-    "mainTerraPeak": 0,
+    "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 0,
+    "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
@@ -59,13 +62,26 @@
         "cachedTokens": null,
         "note": "Run start 後重新讀 live guard、open Issue/PR inventory 與 exact-head workflow，修正 r08 binding facts；未操作 shared TEST 或資料庫。",
         "count": 1
+      },
+      {
+        "id": "terra-r08-issue-680-composite-fk-expand",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Owner 選 A 後，於本事件當下建立 source-only PREPARE/EXPAND：0133 將 booking_addons performance_staff 的 single-only/composite-only 已知起始形狀收斂為 transitional BOTH；不修改 runtime route、不占 shared TEST、不操作 TEST 或 Production。",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 1,
+    "issuesStarted": 2,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -75,7 +91,7 @@
     "cycleTimeMinutes": null
   },
   "ci": {
-    "fullCiRuns": 1,
+    "fullCiRuns": 10,
     "invalidReruns": 0,
     "firstPassRatePercent": null,
     "sharedTestCollisions": 0
@@ -111,7 +127,20 @@
     "本 Run 於 mandatory Product Run binding 被 live guard 指出後，以當下時間開始；不把此前 #679 的 Terra 建檔、read-only drift observation 或 PR 建立時間倒填成 Run 內事件。",
     "啟動時 shared canonical TEST holder 為 #676 / run 35696978227；本 Run 不重跑、不取消、不搶佔該 lane。",
     "本 Run 只收斂 Source→TEST→Production→authenticated acceptance 的現有 Environment Delivery queue，不增加新 Product 功能。",
-    "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success."
+    "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success.",
+    "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。",
+    "2026-09-22T10:20:53Z：#681 exact-head CI 35714460876 與 schema bootstrap 35714460916 的 FIX_REQUIRED 為目前可驗證的 reviewer return；依此即時記錄 9b4cff5 BUILD_ENTER/BUILD_EXIT，峰值回到 event-derived 1，未倒填此前歷史。",
+    "2026-09-22T10:30:10Z：#681 3281f8f exact-head CI 35715564083／schema bootstrap 35715564128 的 FIX_REQUIRED 觸發第二組 BUILD lifecycle；以當下事件記錄，未倒填。",
+    "2026-09-22T10:33:39Z：#681 9d2f403 的 schema bootstrap 35716411934 以真實 disposable proof finding 回 BUILD；本組事件為當下記錄。",
+    "2026-09-22T10:41:03Z：#681 99207fdf exact-head CI 35716683611 的真實 FIX_REQUIRED 顯示 release plan 將 tenant-auth boundary 誤作 ADDITIVE，與既有 AUTHZ queue 形成 AUTHZ+ADDITIVE；依當下 finding 回 BUILD，修正為明確 RLS precondition/enable readback，未操作任何遠端資料庫。",
+    "2026-09-22T10:45:10Z：#681 2927f849 的 schema bootstrap 35717431459 真實 FIX_REQUIRED：disposable proof 將 JavaScript variant 名稱原樣送進 PL/pgSQL，造成 `expectedCompositeDelete` identifier error；依當下 finding 回 BUILD，改為 closed allowlist 生成固定 catalog predicate，未操作任何遠端資料庫。",
+    "2026-09-22T10:58:42Z：依 durable workflow reread，fullCiRuns 由 1 更正為 7：35701338480 success；35714460876、35715564083、35716412007、35716683611 failure；35717431449、35717780994 success。取消的 local/schema run 不計入此 full-CI 計數。",
+    "2026-09-22T10:58:42Z：#681 16ea33ee 的 local-isolated 35717781006 與 schema bootstrap 35717780992 都在 current-main 的同一 chat-link.06 assertion（lastMessage '' vs OUT_TEXT）失敗；0133 disposable proof 已 PASS，故依實際 shared blocker 回 BUILD，移植既有 #676 的 test-only repair。",
+    "2026-09-22T11:15:09Z：#681 d3bcbaa6 的 schema bootstrap 35718956244 與 local-isolated 35718956382 均通過 0133 disposable proof／integration，僅 booking-addons.17 E2E 被既有 canonical-only target guard 對 loopback ref 127 fail closed；依兩個 workflow 已提供的 LOCAL_ISOLATED/loopback/paired identity contract 回 BUILD，補最小 guard admission。未預寫本次新 head 的 full CI 結果。",
+    "2026-09-22T11:22:10Z：review reread 更正 fullCiRuns=8；在既列七筆之外，d3bcbaa6 的 ci 35718956257 已在 5bc snapshot 引用前完成 success，故是 durable run evidence。現行 5bc head 的 35720435193 仍在執行，未計入。",
+    "2026-09-22T11:22:10Z：#681 5bc6915b 的 Final Spec review 指出 local admission 尚接受任意 pathname；review return（非 CI failure）回 BUILD，補根路徑與 incomplete-evidence fail-closed 反例。",
+    "2026-09-22T11:38:47Z：durable rerread 更正 fullCiRuns=10；新增兩筆 terminal exact-head ci success：5bc6915b 的 35720435193（第9）與 b43598d5 的 35721083150（第10）。不預寫本次修復 head 的結果。",
+    "2026-09-22T11:38:47Z：#681 b43598d5 的 schema bootstrap 35721083074 與 local-isolated 35721083116 都通過 0133 disposable proof／integration，並同在 booking-addons.17:153 失敗：POST /api/bookings 既有契約只回 id，E2E 卻讀取不存在的 finalPrice，導致 NT$非數值；依 durable 同根因回 BUILD，最小修復只讀回該 API 所建 booking 的 persisted final_price。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -124,7 +153,188 @@
   },
   "wipLifecycle": {
     "schemaVersion": 1,
-    "events": []
+    "events": [
+      {
+        "id": "pr-681-build-enter-fix-required-9b4cff5",
+        "at": "2026-09-22T10:20:53.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "9b4cff5d319afefdcdb4e1b74e764b520333cc95",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact-head CI 35714460876 and schema bootstrap 35714460916 returned FIX_REQUIRED; reviewer returned #681 to bounded source BUILD."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-9b4cff5",
+        "at": "2026-09-22T10:20:53.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "9b4cff5d319afefdcdb4e1b74e764b520333cc95",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at live reviewer return: exit the failed 9b4cff5 exact-head build lease before the repaired candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-3281f8f",
+        "at": "2026-09-22T10:30:10.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "3281f8fa34a078c95348facd2330e286ba78b6e6",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact-head CI 35715564083 and schema bootstrap 35715564128 returned FIX_REQUIRED: release-plan tier collision and non-deterministic disposable staff fixture."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-3281f8f",
+        "at": "2026-09-22T10:30:11.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "3281f8fa34a078c95348facd2330e286ba78b6e6",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at live reviewer return before the repaired additive candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-9d2f403",
+        "at": "2026-09-22T10:33:39.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "9d2f4034301411fd329b5d12fdfe1a798b7b9d2b",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Schema bootstrap 35716411934 reached the new disposable proof and returned FIX_REQUIRED: its rollback fixture lacked a declared record loop variable."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-9d2f403",
+        "at": "2026-09-22T10:33:40.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "9d2f4034301411fd329b5d12fdfe1a798b7b9d2b",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live source repair boundary before exact-head CI for the iterator declaration fix."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-99207fdf",
+        "at": "2026-09-22T10:41:03.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "99207fdf5ce820451753cfff5c155794dc5f6c99",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact-head CI 35716683611 returned FIX_REQUIRED: `MIXED_RISK_RELEASE_NOT_ADMITTED: AUTHZ+ADDITIVE`; #681 returned to bounded source BUILD for an explicit RLS auth-boundary precondition."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-99207fdf",
+        "at": "2026-09-22T10:41:04.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "99207fdf5ce820451753cfff5c155794dc5f6c99",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live reviewer return before the RLS-boundary repaired candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-2927f849",
+        "at": "2026-09-22T10:45:10.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "2927f84925f0583e109169cb3a83102421de09c0",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Schema bootstrap 35717431459 returned FIX_REQUIRED: disposable proof sent JavaScript `expectedCompositeDelete` as a PostgreSQL identifier; #681 returned to bounded source BUILD."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-2927f849",
+        "at": "2026-09-22T10:45:11.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "2927f84925f0583e109169cb3a83102421de09c0",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live reviewer return before the closed-variant proof candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-16ea33ee",
+        "at": "2026-09-22T10:58:42.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "16ea33eef062252c0701fd35bcd2df70815b1c85",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Required local-isolated 35717781006 and schema bootstrap 35717780992 both returned the same current-main `chat-link.06` lastMessage assertion failure; #681 returned to bounded BUILD for the existing #676 test-only repair."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-16ea33ee",
+        "at": "2026-09-22T10:58:43.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "16ea33eef062252c0701fd35bcd2df70815b1c85",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the durable common-failure diagnosis before the superseding candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-d3bcbaa6",
+        "at": "2026-09-22T11:15:09.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "d3bcbaa69d3a6a1179f64d6db3f88bea0aa9d4c8",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Schema bootstrap 35718956244 and local-isolated 35718956382 both reached booking-addons.17 E2E then correctly failed closed on loopback ref 127 under the canonical-only target guard; #681 returned to bounded BUILD for verified LOCAL_ISOLATED admission."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-d3bcbaa6",
+        "at": "2026-09-22T11:15:10.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "d3bcbaa69d3a6a1179f64d6db3f88bea0aa9d4c8",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the paired durable local failures before the explicit target-evidence candidate receives new exact-head checks."
+      },
+      {
+        "id": "pr-681-build-enter-review-return-5bc6915b",
+        "at": "2026-09-22T11:22:10.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "5bc6915bd32c4aa92459c370bb51500012761877",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Final Spec review returned #681 for a bounded fail-closed correction: LOCAL_ISOLATED admission must reject non-root URL paths and incomplete target evidence; this is a review return, not a CI failure."
+      },
+      {
+        "id": "pr-681-build-exit-review-return-5bc6915b",
+        "at": "2026-09-22T11:22:11.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "5bc6915bd32c4aa92459c370bb51500012761877",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the live Final Spec review return before the root-path guarded candidate receives new exact-head checks."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-b43598d5",
+        "at": "2026-09-22T11:38:47.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "b43598d5fab8147ea84b49e91fb374ce23ba6d15",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Durable reread of schema bootstrap 35721083074 and local-isolated 35721083116 found the same booking-addons.17 E2E contract-use failure after 0133 proof/integration passed; #681 returned to bounded source BUILD."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-b43598d5",
+        "at": "2026-09-22T11:38:48.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "b43598d5fab8147ea84b49e91fb374ce23ba6d15",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at the durable common-failure diagnosis before the persisted-price E2E repair receives a new exact-head CI."
+      }
+    ]
   },
   "completionTruth": {
     "status": "NOT_CHECKED",
