@@ -11,6 +11,19 @@ const normalPath = (name) => typeof name === 'string' && name.length > 0
   && !name.includes('\\') && !name.includes('\0') && !name.startsWith('/') && !name.split('/').includes('..');
 const readinessPath = (name) => /^docs\/schema-truth\/release-evidence\/[^/]+\.json$/.test(name);
 
+function declaredSchemaDependency(body = '') {
+  const explicit = String(readField(body, 'SCHEMA_DEPENDENCY') ?? '').trim();
+  if (explicit && !/^none$/i.test(explicit)) return explicit;
+
+  // Backward-compatible detection for the exact historical bypass exposed by
+  // PR #625/#627: the runtime PR declared a migration-only dependency in
+  // DEPENDS_ON_PR, but the migration bytes lived in a different PR, so the
+  // changed-file trigger saw "runtime only" and never required staged release.
+  const legacy = String(readField(body, 'DEPENDS_ON_PR') ?? '').trim();
+  if (legacy && /(?:migration|schema|supabase\/migrations\/)/i.test(legacy)) return legacy;
+  return '';
+}
+
 // Preserve offsets while blanking prose. A textual gate in an example, comment,
 // or string literal is not executable evidence.
 function executableSource(content) {
@@ -115,9 +128,11 @@ function readinessReceipt(content) {
 }
 
 /**
- * #530's policy is deliberately small: the file inventory is the trigger, and
- * a same-PR migration/runtime change must prove every changed runtime path is
- * controlled by one default-off gate. The same pure function is used before push and from trusted main in
+ * #530/#659 policy: the changed-file inventory remains the primary trigger, but
+ * runtime that explicitly depends on schema prepared in another PR/migration is
+ * also staged. PREPARE requires every changed runtime path to be default-off;
+ * ACTIVATE requires immutable TEST + Production schema readiness evidence. The
+ * same pure function is used before push and from trusted main in
  * the required GitHub guard; neither entrypoint executes PR code.
  */
 export function validateSchemaStagedRelease({ body = '', changedFiles = [], readFile = () => undefined } = {}) {
@@ -142,9 +157,16 @@ export function validateSchemaStagedRelease({ body = '', changedFiles = [], read
   }
 
   const migrationTouched = migrations.length > 0 || declaredMigration === 'TRUE';
-  if (migrationTouched && runtimes.length) {
+  const dependency = declaredSchemaDependency(body);
+  const dependencyPrepare = Boolean(dependency) && runtimes.length > 0 && !migrationTouched && stage !== 'ACTIVATE';
+  const prepareBoundary = runtimes.length > 0 && (migrationTouched || dependencyPrepare);
+  if (prepareBoundary) {
     if (stage !== 'PREPARE') {
-      errors.push(failure('migration plus Product runtime requires SCHEMA_RELEASE_STAGE=PREPARE'));
+      errors.push(failure(
+        migrationTouched
+          ? 'migration plus Product runtime requires SCHEMA_RELEASE_STAGE=PREPARE'
+          : 'runtime with schema dependency requires SCHEMA_RELEASE_STAGE=PREPARE until readiness-backed ACTIVATE',
+      ));
     }
     const gate = upper(readField(body, 'SCHEMA_ACTIVATION_GATE'));
     const env = String(readField(body, 'SCHEMA_ACTIVATION_ENV') ?? '').trim();
@@ -181,8 +203,8 @@ export function validateSchemaStagedRelease({ body = '', changedFiles = [], read
     }
   }
 
-  if (stage === 'PREPARE' && !migrationTouched) {
-    errors.push(failure('SCHEMA_RELEASE_STAGE=PREPARE requires migration evidence'));
+  if (stage === 'PREPARE' && !migrationTouched && !(dependency && runtimes.length)) {
+    errors.push(failure('SCHEMA_RELEASE_STAGE=PREPARE requires migration evidence or a declared schema dependency on changed runtime'));
   }
   if (stage === 'ACTIVATE') {
     if (migrationTouched) errors.push(failure('SCHEMA_RELEASE_STAGE=ACTIVATE must not include migration evidence'));
