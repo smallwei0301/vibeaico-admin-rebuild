@@ -19,15 +19,21 @@
     },
     {
       "ref": "issue/11"
+    },
+    {
+      "ref": "issue/650"
+    },
+    {
+      "ref": "pr/651"
     }
   ],
   "main": {
     "startSha": "03957e7accd0af36368c70e462af8111785b9de5",
-    "endSha": "e1f6e85135c60f1a79cee51257f771d3b567bd15"
+    "endSha": "018477333b0e7a0594964fa6c76f5cf4c10421e0"
   },
   "inventory": {
     "openIssuesStart": 47,
-    "openIssuesEnd": 47,
+    "openIssuesEnd": 48,
     "openPrsStart": 2,
     "openPrsEnd": 2,
     "mainTerraPeak": 2,
@@ -182,13 +188,26 @@
         "cachedTokens": null,
         "note": "\u672c session\uff08claude-sonnet-5\uff09\u76f4\u63a5\u65bd\u5de5\uff1a\u516c\u958b\u5e97\u5bb6\u9996\u9801\uff08/s/{shopCode}\uff09\u65b0\u589e\u986f\u793a\u884c\u7a0b\u73fe\u884c\u53d6\u6d88\uff0f\u9000\u6b3e\u653f\u7b56\uff08trips.refund_policy_type\uff09\uff0c\u4e0d\u7528\u7b49\u65c5\u5ba2\u9ede\u9032 REQUEST \u7533\u8acb\u8868\u55ae\u624d\u770b\u5f97\u5230\uff1b\u65b0\u589e tests/unit/public-shop-cancellation-policy.46.test.ts\uff0c\u5168\u91cf unit\u3001typecheck\u3001build \u5747\u901a\u904e\u3002",
         "count": 1
+      },
+      {
+        "id": "issue-650-my-orders-auth-boundary",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "sol",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Owner requested execution from the 2026-09-22 retrospective evidence. Current OpenAI executor (Sol) implemented the bounded #650 safety slice directly because this session has no Terra subagent dispatch channel; recorded as actualModel=sol rather than pretending Terra. Scope: fail-close anonymous bulk order lookup, remove contact-only UI, add regression test. No DB/TEST/Production write.",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 4,
+    "issuesStarted": 5,
     "issuesClosed": 0,
     "auditReady": 4,
     "ownerBlockedComplete": 0,
@@ -238,7 +257,8 @@
     "RESERVE/refill slice: #47 LINE Rich Menu \u5efa\u7acb\u6309\u9215\u771f\u63a5\u7dda\uff08PR #645\uff09\uff0c\u7d14 code-only\u3001\u7121 migration\uff0cmerge \u5f8c\u5c0d\u6240\u6709\u79df\u6236\u7acb\u5373\u751f\u6548\uff0c\u662f\u672c\u8f2a\u552f\u4e00\u771f\u6b63\u8cbc\u8fd1\u4f7f\u7528\u8005\u53ef\u898b\u6210\u679c\u7684\u8b8a\u66f4\uff08\u5c1a\u5f85\u4e00\u6b21 authenticated \u9a57\u6536\uff09\u3002",
     "Closeout of this round: #645 verified merged+deployed (production READY) \u2014 first genuinely user-visible fix this session. #644 verified merged to main but remains PENDING_APPLY pending Owner-authorized Production schema release; not counted as shipped Product output.",
     "#647 (#11 public shop API) merged to main, infra-only, zero frontend callers today \u2014 not counted as user-visible.",
-    "#648 (#46 cancellation policy on public shop homepage) merged to main (189c9a0a) \u2014 second genuinely traveler-visible fix this session: travelers browsing /s/{shopCode} now see the trip's current cancellation/refund policy before deciding to book, instead of only after clicking into a REQUEST form. Vercel production deployment was BUILDING at merge time; not yet confirmed READY."
+    "#648 (#46 cancellation policy on public shop homepage) merged to main (189c9a0a) \u2014 second genuinely traveler-visible fix this session: travelers browsing /s/{shopCode} now see the trip's current cancellation/refund policy before deciding to book, instead of only after clicking into a REQUEST form. Vercel production deployment was BUILDING at merge time; not yet confirmed READY.",
+    "2026-09-22 (#650 retrospective optimization): evidence confirmed contact-only anonymous bulk 'my orders' lookup did not prove traveler ownership. Opened bounded Issue #650 and PR #651; source slice fail-closes the anonymous route and removes contact-only batch-search UI. No real traveler rows, TEST/Production DB writes, migration, or deployment were performed. Full traveler JWT positive path remains #12."
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -341,6 +361,16 @@
         "head": "f505eeb639266f3421c7732745878511eeac1417",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "PR #648 merged to main (189c9a0a92b3a94d2394c986b01ebd77bc947c95); Vercel production deployment dpl_5747ViLh7qcuJu4R3ivXHQxmEZuA state=BUILDING at merge time"
+      },
+      {
+        "id": "651-build-enter",
+        "at": "2026-09-21T23:52:38Z",
+        "kind": "BUILD_ENTER",
+        "pr": 651,
+        "issue": 650,
+        "head": "d61cb1e137b36089b970da1d39d930e8171921b7",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Issue #650: fail-close contact-only anonymous bulk 'my orders' lookup; auth-boundary safety slice, no DB/migration"
       }
     ]
   },
