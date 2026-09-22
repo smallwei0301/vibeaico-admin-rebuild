@@ -91,10 +91,12 @@ jobs:
             const marker = '<!-- agent-completion-truth -->';
             const failures = [];
             const evidenceSinkWarnings = [];
+            const mainCiWarnings = [];
             const rows = [[
               { data: 'PR', header: true },
               { data: 'Source', header: true },
               { data: 'Main', header: true },
+              { data: 'Main CI', header: true },
               { data: 'Vercel', header: true },
               { data: 'Schema', header: true },
               { data: 'Authenticated Production', header: true },
@@ -132,6 +134,14 @@ jobs:
                 head_sha: pr.head.sha,
                 per_page: 100,
               });
+              const mainWorkflowResponse = pr.merge_commit_sha
+                ? await github.rest.actions.listWorkflowRunsForRepo({
+                    owner,
+                    repo,
+                    head_sha: pr.merge_commit_sha,
+                    per_page: 100,
+                  })
+                : { data: { workflow_runs: [] } };
               const statusResponse = pr.merge_commit_sha
                 ? await github.rest.repos.getCombinedStatusForRef({
                     owner,
@@ -147,6 +157,7 @@ jobs:
                 compareStatus,
                 changedFiles,
                 sourceWorkflowRuns: workflowResponse.data.workflow_runs,
+                mainWorkflowRuns: mainWorkflowResponse.data.workflow_runs,
                 commitStatuses: statusResponse.data.statuses,
               });
               const body = truth.formatProductDeliveryTruth(result);
@@ -178,6 +189,7 @@ jobs:
                 `#${pr.number}`,
                 result.source.state,
                 result.merge.verified ? 'VERIFIED' : 'UNVERIFIED',
+                result.mainCi.state,
                 result.vercel.state,
                 result.schema.state,
                 result.acceptance.state,
@@ -187,10 +199,21 @@ jobs:
                     ? 'PRODUCTION_PENDING'
                     : `NON_PRODUCT (${evidenceSink})`,
               ]);
+              for (const warning of result.warnings) {
+                if (!warning.startsWith('canonical ci on the merge commit')) continue;
+                mainCiWarnings.push(`#${pr.number}: ${warning}`);
+                core.warning(mainCiWarnings.at(-1));
+              }
               if (result.errors.length) failures.push(`#${pr.number}: ${result.errors.join('; ')}`);
             }
 
             await core.summary.addHeading('Product Delivery Truth Ladder').addTable(rows).write();
+            if (mainCiWarnings.length) {
+              await core.summary
+                .addHeading('Main CI warnings')
+                .addList(mainCiWarnings)
+                .write();
+            }
             if (evidenceSinkWarnings.length) {
               await core.summary
                 .addHeading('Evidence sink warnings')

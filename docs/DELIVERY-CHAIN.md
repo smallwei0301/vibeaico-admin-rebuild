@@ -42,7 +42,7 @@ Sol 早期 diff audit（可及早抓假成功；不放行）
   ↓
 Sol 最終 audit（必要測試完成後，讀 final exact-head diff 放行）
   ↓
-Completion Truth 五項驗證（不信 API 回應，實查 main）
+Completion Truth 六項驗證（不信 API 回應，實查 main）
 ```
 
 **任何一關可以判定「這一關不適用」，但不能判定「這一關略過」。** 不適用要寫出理由並留在
@@ -172,12 +172,12 @@ canonical TEST 是**唯一一套**遠端共用環境，**全 repo 同時最多�
 新 schema 準備依 §1.1 與 `docs/AGENT-EXECUTION.md` §3.2 的分段流程；其 source review／CI
 只放行資料庫準備候選，不代替後續 canonical TEST、Production Final Risk 或功能最終驗收。
 
-### 2.7 Completion Truth 五項驗證
+### 2.7 Completion Truth 六項驗證
 
-**要抓的東西：把「請求成功」當成「事情完成」。**
+**要抓的東西：把「請求成功」當成「事情完成」，以及把「合併進去了」當成「main 還是好的」。**
 
 **一個成功的 tool／API 呼叫只代表 REQUESTED，不代表 COMPLETED。** 宣稱「已合併」之前，
-五項全部要以**實查**取得，不得引用先前的 API 回應：
+第 1–5 項全部要以**實查**取得，不得引用先前的 API 回應：
 
 1. 重新 fetch 該 PR，讀 `merged_at`（非 null）
 2. 取得 `merge_commit_sha`
@@ -185,7 +185,21 @@ canonical TEST 是**唯一一套**遠端共用環境，**全 repo 同時最多�
 4. 驗證 merge commit 從 main head **可達**（ancestry / compare）
 5. 以 `ref=main` **重新讀取**一個關鍵檔案，確認內容確實是合併後的版本
 
-五項齊備才可以說「已合併」。
+前五項齊備才可以說「已合併」。但「已合併」不等於「main 是綠的」——前五項只證明這個 PR
+的 head 綠過、而且進了 main，證明不了合併之後的 main 還跑得起來。所以第六項：
+
+6. 讀 `merge_commit_sha` 上 canonical `ci` workflow run 的 `conclusion`。**只有 `success`
+   算綠**；`cancelled`、`timed_out`、`startup_failure` 一律視為**未知**，永遠不算綠燈；
+   還在跑是 `PENDING`，沒有 run 是 `NOT_REPORTED`，兩者都不是通過。
+
+第六項由 `scripts/agents/completion-truth.mjs` 的 `classifyMainCiAfterMerge()` 機械執行，
+結果寫在 `agent-completion-truth` 的 `MAIN_CI_AFTER_MERGE` 欄位；非 success 會留下 warning，
+而 `AUTHENTICATED_PRODUCTION_ACCEPTED` 在第六項綠燈之前不成立。
+
+**為什麼要多這一項**：2026-09-22 複盤查證 main 上最近的 14 筆 `ci` run，沒有一筆 success
+（8 次 failure、6 次 cancelled），而每一個 PR 的前五項都齊備、每一輪都宣告完成。
+沒有任何 gate 看合併後的那顆 commit，於是紅燈一路無聲累積。cancelled 特別危險：它看起來
+不是紅的，但它沒有跑完任何 job，把它當成通過就是用「沒人看到紅燈」冒充「沒有紅燈」。
 
 ## 3. Delivery Truth Ladder：合併不等於出貨
 
