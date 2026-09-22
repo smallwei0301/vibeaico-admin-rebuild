@@ -647,7 +647,7 @@
       "ledgerNames": [],
       "classification": "NOT_APPLIED",
       "notAppliedReason": "PENDING_APPLY",
-      "evidence": "#680 Owner 選擇 A：保留 0121 的單欄 performance_staff FK 供當前 runtime PostgREST hint 使用，同時新增／驗證 tenant-scoped 複合 FK，將 single-only、composite-only 或 BOTH 的已知起始形狀收斂成 transitional BOTH。migration 先驗同租戶資料、未知 FK、constraint identity、validated/nondeferred 與 ON DELETE SET NULL 範圍；不修資料、未操作 canonical TEST 或 Production。合併 main 後仍為 PENDING_APPLY，須依 shared TEST serialization 與 Production G0–G7 另行驗證／發布。"
+      "evidence": "#680 Owner 選擇 A：保留 0121 的單欄 performance_staff FK 供當前 runtime PostgREST hint 使用，同時新增／驗證 tenant-scoped 複合 FK，將 single-only、composite-only 或 BOTH 的已知起始形狀收斂成 transitional BOTH。migration 要求 booking_addons 既有 RLS 已啟用（disabled 一律 fail closed），保持 FORCE RLS 原值；並先驗同租戶資料、未知 FK、constraint identity、validated/nondeferred 與兩個已知複合 FK delete-action variants；不修資料、未操作 canonical TEST 或 Production。合併 main 後仍為 PENDING_APPLY，須依 shared TEST serialization 與 Production G0–G7 另行驗證／發布。"
     }
   ]
 }
