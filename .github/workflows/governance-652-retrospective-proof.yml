@@ -1,0 +1,90 @@
+name: Governance 652 retrospective execution proof
+on:
+  push:
+    branches: [governance/652-retrospective-execution-receipt]
+    paths: [.github/workflows/governance-652-retrospective-proof.yml]
+permissions:
+  contents: read
+  actions: read
+  issues: read
+  pull-requests: read
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Execute Product Scorecard surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/retro652"
+          ledger=docs/metrics/agent-runs/2026-09-21-product-delivery-r03.json
+          node scripts/agents/run-ledger-v2.mjs validate "$ledger" | tee "$RUNNER_TEMP/retro652/product-ledger-validate.txt"
+          node scripts/agents/scorecard-readiness.mjs "$ledger" --json | tee "$RUNNER_TEMP/retro652/product-readiness.json"
+          set +e
+          node scripts/agents/scorecard-readiness.mjs "$ledger" --strict-live > "$RUNNER_TEMP/retro652/product-readiness-strict.txt" 2>&1
+          strict_exit=$?
+          set -e
+          printf '%s\n' "$strict_exit" > "$RUNNER_TEMP/retro652/product-readiness-strict-exit.txt"
+          node scripts/agents/score-run-current.mjs "$ledger" | tee "$RUNNER_TEMP/retro652/product-score.md"
+          node scripts/agents/review-runs-v2.mjs docs/metrics/agent-runs | tee "$RUNNER_TEMP/retro652/product-trend.md"
+      - name: Execute Governance Scoreboard surfaces
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/metrics/governance-scoreboard.mjs \
+            docs/metrics/agent-runs/2026-09-09-governance-loop-r01.json \
+            docs/metrics/review-evidence/2026-09-09-governance-loop-r01.json \
+            docs/metrics/governance-scoreboard-policy.json \
+            | tee "$RUNNER_TEMP/retro652/governance-formal-scoreboard.md"
+          node scripts/metrics/governance-observation.mjs \
+            --repo smallwei0301/vibeaico-admin-rebuild \
+            --since 2026-09-21T11:21:20Z \
+            --until 2026-09-21T23:21:20Z \
+            --json \
+            | tee "$RUNNER_TEMP/retro652/governance-current-observation.json"
+      - name: Verify #652 completion-gate contract
+        run: npx vitest run tests/unit/retrospective-execution-receipt.652.test.ts
+      - name: Write execution receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          observed_main="$(git rev-parse origin/main)"
+          branch_head="$(git rev-parse HEAD)"
+          strict_exit="$(cat "$RUNNER_TEMP/retro652/product-readiness-strict-exit.txt")"
+          cat > "$RUNNER_TEMP/retro652/RETROSPECTIVE-EXECUTION-RECEIPT.md" <<EOF
+          # Retrospective Execution Receipt
+          RETROSPECTIVE_EXECUTION_RECEIPT_REQUIRED
+          OBSERVED_MAIN: $observed_main
+          EXECUTOR_BRANCH_HEAD: $branch_head
+          WINDOW_UTC: 2026-09-21T11:21:20Z..2026-09-21T23:21:20Z
+
+          Product:
+          - run-ledger-v2 validate: EXECUTED, output=product-ledger-validate.txt
+          - scorecard-readiness --json: EXECUTED, output=product-readiness.json
+          - scorecard-readiness --strict-live: EXECUTED, exit=$strict_exit, output=product-readiness-strict.txt
+          - score-run-current: EXECUTED, output=product-score.md
+          - review-runs-v2: EXECUTED, output=product-trend.md
+
+          Governance:
+          - governance-scoreboard formal replay: EXECUTED, input=2026-09-09-governance-loop-r01, output=governance-formal-scoreboard.md
+          - governance-observation exact window: EXECUTED, output=governance-current-observation.json
+          EOF
+          cat "$RUNNER_TEMP/retro652/RETROSPECTIVE-EXECUTION-RECEIPT.md"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrospective-execution-receipt-652
+          path: ${{ runner.temp }}/retro652/
+          if-no-files-found: error
+          retention-days: 14
