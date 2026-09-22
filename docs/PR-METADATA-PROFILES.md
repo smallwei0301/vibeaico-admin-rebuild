@@ -7,7 +7,7 @@
 ```text
 作者填 compact body
 → PR_PROFILE materializer 產生完整 explicit metadata
-→ 現有 agent-wip-preflight 用同一套 validator 驗證
+→ 現有 agent-wip-preflight 自動讀取 origin/main...HEAD changed files 並用同一套 validator 驗證
 → PASS 後才拿 materialized body 建 PR
 → remote Agent WIP Policy 繼續讀完整 explicit contract
 ```
@@ -30,7 +30,15 @@ node scripts/agents/pr-metadata-profile.mjs \
 PR_METADATA_PROFILE_PASS profile=<PROFILE> generated=<N> output=/tmp/pr-body.md
 ```
 
-失敗時不寫可用的 PR body，先修 compact input。禁止把 remote CI 當欄位猜謎器。
+接著直接執行同一套本機 preflight：
+
+```bash
+npm run agent:pr:preflight -- --body /tmp/pr-body.md
+```
+
+預設會用 `git diff --name-status --find-renames origin/main...HEAD` 自動建立 changed-file inventory（變更檔案清單）；rename/copy 會同時保留舊路徑與新路徑，避免 migration 被改名後從 schema guard 的視線消失。只有需要指定不同 baseline（比較基準）時才傳 `--base <ref>`。既有 `--changed-files <files.txt>` 仍保留給需要明確固定清單的工具流程，但作者不再需要為一般 PR 手工製作這個檔案。
+
+這不是第二套 policy：自動盤點完成後仍呼叫原本的 `validateWipPreflight()` 與其共用 validators。失敗時先在本機修正，禁止把 remote CI 當欄位猜謎器。
 
 ## Profile 1：`GOVERNANCE_SOURCE_ONLY`
 
