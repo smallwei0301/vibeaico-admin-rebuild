@@ -27,9 +27,9 @@
     "openIssuesEnd": null,
     "openPrsStart": 3,
     "openPrsEnd": null,
-    "mainTerraPeak": 1,
+    "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 1,
+    "activeCandidatePeak": 0,
     "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
@@ -128,7 +128,8 @@
     "啟動時 shared canonical TEST holder 為 #676 / run 35696978227；本 Run 不重跑、不取消、不搶佔該 lane。",
     "本 Run 只收斂 Source→TEST→Production→authenticated acceptance 的現有 Environment Delivery queue，不增加新 Product 功能。",
     "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success.",
-    "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。"
+    "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。",
+    "r08 的 wipLifecycle 沒有可驗證 BUILD_ENTER/候選事件；依 strict-live 規則不事後倒填，mainTerraPeak 與 activeCandidatePeak 均維持由事件推導的 0。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
