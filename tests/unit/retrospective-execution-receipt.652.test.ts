@@ -12,7 +12,7 @@ describe('#652 retrospective execution receipt', () => {
     for (const text of Object.values(files)) {
       expect(text).toContain('RETROSPECTIVE_EXECUTION_RECEIPT_REQUIRED');
     }
-    expect(files.skill).toContain('docs/AGENT-EXECUTION.md is the sole canonical');
+    expect(files.skill).toContain('`docs/AGENT-EXECUTION.md` is the sole canonical');
     expect(files.protocol).toContain('實際 Agent 執行規則仍以 `docs/AGENT-EXECUTION.md` 為準');
   });
 
