@@ -121,6 +121,19 @@
         "cachedTokens": null,
         "note": "LUNA_CLOSURE sweep: 49 Issues + 2 PRs scanned, EMPTY_WITH_SCAN with detailed reasoning",
         "count": 1
+      },
+      {
+        "id": "luna-metrics-674-capture-gap-correction",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "更正埋點語意：openIssuesStart/openPrsStart 維持 null（無起始快照），wipLifecycle.events 維持空（無配對事件証據）",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
@@ -153,8 +166,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 4,
-    "lunaAccepted": 4,
+    "lunaTasks": 5,
+    "lunaAccepted": 5,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
@@ -170,7 +183,9 @@
     "scoreInputsCompletePercent": null
   },
   "notes": [
-    "LUNA_CLOSURE-674: Scanned 49 open Issues and 2 open PRs (most recent updates 2026-09-22 to 2026-09-16, within 30 days). EMPTY_WITH_SCAN: All Issues either labeled state:active (37), state:parked (2), state:owner-blocked (1), have open dependent PRs (#674→#676, #589→#611), or explicitly depend on external conditions / Owner decisions. No candidates meet closure criteria (all requirements already on main, no dependent PRs, not blocked)."
+    "LUNA_CLOSURE-674: Scanned 49 open Issues and 2 open PRs (most recent updates 2026-09-22 to 2026-09-16, within 30 days). EMPTY_WITH_SCAN: All Issues either labeled state:active (37), state:parked (2), state:owner-blocked (1), have open dependent PRs (#674→#676, #589→#611), or explicitly depend on external conditions / Owner decisions. No candidates meet closure criteria (all requirements already on main, no dependent PRs, not blocked).",
+    "CAPTURE_GAP-inventory.openIssuesStart / openPrsStart: Run ledger 建立於 06:39:51Z，起始時刻的 open Issue / PR 數從未被量測。06:50 closure sweep 量測的 49 / 2 是後測值（後於 Run 起始），語意上不是 start snapshot；加註也不能變成。維持 null。",
+    "CAPTURE_GAP-wipLifecycle.events: Observed TEST_ENTER transition (CI workflow_dispatch run 35696978227 at 2026-09-22T06:54:27Z)，但無配對的 TEST_EXIT 證據。Schema 要求 enter/exit 成對配置（§141-163 run-ledger-v2.mjs），補造時間點違反 DURABLE_EVIDENCE 原則。維持 events: [] 空陣列，不寫無證據的轉移。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
