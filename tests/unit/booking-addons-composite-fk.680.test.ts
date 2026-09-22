@@ -50,6 +50,8 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
       expect(item.sql).toContain('same-tenant proof');
       expect(item.sql).toContain('cross-tenant proof');
       expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION');
+      expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_PARENT_DELETE_DID_NOT_CLEAR_STAFF');
+      expect(item.sql).toContain("DELETE FROM public.staff WHERE id='68000000-0000-4000-8000-000000000011'");
     }
   });
 
@@ -66,8 +68,10 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_TENANT_MISMATCH');
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_UNKNOWN_FK');
     expect(sql).toContain("fk.confdeltype = 'a' AND fk.confdelsetcols IS NULL");
+    expect(sql).toContain("fk.confdeltype = 'n' AND fk.confdelsetcols = ARRAY[child_perf]::smallint[]");
     expect(sql).toContain("NOTIFY pgrst, 'reload schema';");
     expect(sql).toContain("pg_catalog.to_regclass('public.booking_addons')");
+    expect(sql).not.toContain('DROP CONSTRAINT booking_addons_tenant_id_performance_staff_id_fkey');
     expect(sql).not.toContain('PERFORM set_config');
     expect(sql).not.toContain('PERFORM pg_notify');
     expect(sql.toLowerCase()).not.toContain('delete from public.booking_addons');
