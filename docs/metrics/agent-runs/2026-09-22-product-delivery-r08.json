@@ -13,6 +13,9 @@
     },
     {
       "ref": "pr/679"
+    },
+    {
+      "ref": "issue/680"
     }
   ],
   "main": {
@@ -24,9 +27,9 @@
     "openIssuesEnd": null,
     "openPrsStart": 3,
     "openPrsEnd": null,
-    "mainTerraPeak": 0,
+    "mainTerraPeak": 1,
     "reserveTerraPeak": 0,
-    "activeCandidatePeak": 0,
+    "activeCandidatePeak": 1,
     "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
@@ -59,13 +62,26 @@
         "cachedTokens": null,
         "note": "Run start 後重新讀 live guard、open Issue/PR inventory 與 exact-head workflow，修正 r08 binding facts；未操作 shared TEST 或資料庫。",
         "count": 1
+      },
+      {
+        "id": "terra-r08-issue-680-composite-fk-expand",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "unknown",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Owner 選 A 後，於本事件當下建立 source-only PREPARE/EXPAND：0133 將 booking_addons performance_staff 的 single-only/composite-only 已知起始形狀收斂為 transitional BOTH；不修改 runtime route、不占 shared TEST、不操作 TEST 或 Production。",
+        "count": 1
       }
     ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
   "delivery": {
-    "issuesStarted": 1,
+    "issuesStarted": 2,
     "issuesClosed": 0,
     "auditReady": 0,
     "ownerBlockedComplete": 0,
@@ -111,7 +127,8 @@
     "本 Run 於 mandatory Product Run binding 被 live guard 指出後，以當下時間開始；不把此前 #679 的 Terra 建檔、read-only drift observation 或 PR 建立時間倒填成 Run 內事件。",
     "啟動時 shared canonical TEST holder 為 #676 / run 35696978227；本 Run 不重跑、不取消、不搶佔該 lane。",
     "本 Run 只收斂 Source→TEST→Production→authenticated acceptance 的現有 Environment Delivery queue，不增加新 Product 功能。",
-    "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success."
+    "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success.",
+    "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
