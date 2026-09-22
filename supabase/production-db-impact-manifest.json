@@ -130,6 +130,7 @@
     ] },
     { "repoFile": "0133_issue_680_booking_addons_composite_fk_expand", "impacts": [
       { "surface": "constraints", "objectKey": "public.staff.staff_tenant_id_id_key" },
+      { "surface": "indexes", "objectKey": "public.staff.staff_tenant_id_id_key" },
       { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_performance_staff_id_fkey" },
       { "surface": "constraints", "objectKey": "public.booking_addons.booking_addons_tenant_id_performance_staff_id_fkey" }
     ] }
