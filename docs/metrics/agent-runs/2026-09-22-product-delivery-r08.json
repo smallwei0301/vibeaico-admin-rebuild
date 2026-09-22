@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-22-product-delivery-r08",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-22T07:43:19.227Z",
+  "endedAt": null,
+  "sources": [
+    {
+      "ref": "origin/main"
+    },
+    {
+      "ref": "issue/396"
+    },
+    {
+      "ref": "pr/679"
+    }
+  ],
+  "main": {
+    "startSha": "2ba87402af639bea1e714a8668690fa932fe4a80",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": null,
+    "openIssuesEnd": null,
+    "openPrsStart": 3,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 1,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [
+    "本 Run 於 mandatory Product Run binding 被 live guard 指出後，以當下時間開始；不把此前 #679 的 Terra 建檔、read-only drift observation 或 PR 建立時間倒填成 Run 內事件。",
+    "啟動時 shared canonical TEST holder 為 #676 / run 35696978227；本 Run 不重跑、不取消、不搶佔該 lane。",
+    "本 Run 只收斂 Source→TEST→Production→authenticated acceptance 的現有 Environment Delivery queue，不增加新 Product 功能。"
+  ],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
