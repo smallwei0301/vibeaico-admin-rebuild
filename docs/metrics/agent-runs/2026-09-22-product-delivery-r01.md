@@ -1,23 +1,46 @@
-# Delivery Outcome v2：2026-09-22-product-delivery-r01
+# Delivery Outcome：2026-09-22-product-delivery-r01
 
-> Delivery Truth 版本：**4**
-> 評分狀態：**NOT_GRADED**
-> 分數：尚不評分
+> 評分契約：**OBSERVED_V1**（startedAt 自 2026-09-15T00:00:00Z 起的新 terminal Product Run）
+> 評分狀態：**GRADED_OBSERVED_V1**
+> 分數：**75 / 100（C）**
 
 ## 兩本帳
 
-- 真正出貨 shipped_units：0（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）
-- 正式環境待驗 production_pending：0
-- 自主完成 autonomous_outcome_units：0（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）
-- 在製品 WIP：Audit Ready 0、CI-only 2、commit-only 0、carryover 0
-- 內部加權 usage：33（不是官方 token）
+- 真正出貨 shipped_units：0
+- 正式環境待驗 production_pending：1
+- 自主完成 autonomous_outcome_units：0
+- 在製品 WIP：Audit Ready 0、CI-only 0、commit-only 0、carryover 0
+- 內部加權 usage：33（比較尺，不是官方 token）
 - 每件真正出貨 usage：資料不足
-- 每單位自主完成 usage：資料不足
 
-## 為什麼尚不評分
+## 可觀測衍生指標
 
-- run is still in progress
+- observed task events：5
+- cycle time：35 分鐘（startedAt → endedAt）
+- Luna 採用率：100%（直接由 modelUsage.tasks 衍生）
+- closure conversion：0%
+- verified claim evidence coverage：100%
+- Production stage coverage：0%
+- Sol touches / issue：資料不足
+
+## Legacy supplemental telemetry（不再是 grading gate）
+
+- weightedUsageImprovementPercent：資料不足
+- firstPassRatePercent：資料不足
+- acceptanceEvidenceCoveragePercent：資料不足
+- auditFirstPassRatePercent：資料不足
+- waitTimeConvertedPercent：資料不足
+
+## 五面向
+
+| 面向 | 分數 |
+|---|---:|
+| usage / waste | 20 / 20 |
+| 完成效率 | 9 / 30 |
+| 品質安全 | 30 / 30 |
+| Agent 流動 | 8 / 10 |
+| 證據完整 | 8 / 10 |
 
 ---
 
-同一張 Issue 重複 claim 只算一次。Delivery Truth v3 必須依序驗證 source、main、Vercel、Production schema 與登入正式站後的真實操作；只合併、只部署 App、只套 TEST migration 或只看到成功提示，都不能冒充正式出貨。舊 v2.2 完成輪次維持原計分語意，不回寫歷史。
+OBSERVED_V1 只使用 ledger 既有原始事件、Completion Truth 與可直接衍生比例；缺少 denominator 的人工百分比保持 unknown，不補猜，也不再因一格 null 讓整輪失去分數。歷史或跨 cutoff 已開始的 Run 仍由 LEGACY_V2 原樣重播。
