@@ -12,12 +12,23 @@ import {
   PRODUCTION_SUPABASE_PROJECT_REF,
   TEST_SUPABASE_PROJECT_REF,
   assertTestSupabaseTarget,
+  isAdmittedLocalIsolatedTarget,
   projectRefFromCookieNames,
   projectRefFromSupabaseUrl,
 } from '../e2e-target-guard';
 
 const TEST_COOKIE = `sb-${TEST_SUPABASE_PROJECT_REF}-auth-token`;
 const PROD_COOKIE = `sb-${PRODUCTION_SUPABASE_PROJECT_REF}-auth-token`;
+
+function localEvidence(overrides: Record<string, string | undefined> = {}) {
+  return {
+    testProfile: 'LOCAL_ISOLATED',
+    testSupabaseUrl: 'http://127.0.0.1:54321',
+    localProjectId: 'vibeaico-681-a',
+    testEnvId: 'local-pr-681-a',
+    ...overrides,
+  };
+}
 
 describe('projectRefFromCookieNames', () => {
   it('從 sb-<ref>-auth-token 取出專案 ref', () => {
@@ -56,6 +67,34 @@ describe('assertTestSupabaseTarget', () => {
   it('TEST 專案 → 放行', () => {
     expect(() => assertTestSupabaseTarget(TEST_SUPABASE_PROJECT_REF, 'https://preview.example'))
       .not.toThrow();
+  });
+
+  it('只放行兩種 workflow-issued LOCAL_ISOLATED loopback identity', () => {
+    const prLocal = localEvidence();
+    const schemaLocal = localEvidence({
+      localProjectId: 'schema-proof-35718956244-1',
+      testEnvId: 'local-schema-35718956244',
+    });
+    expect(isAdmittedLocalIsolatedTarget('127', prLocal)).toBe(true);
+    expect(isAdmittedLocalIsolatedTarget('127', schemaLocal)).toBe(true);
+    expect(() => assertTestSupabaseTarget('127', 'local admin', prLocal)).not.toThrow();
+    expect(() => assertTestSupabaseTarget('127', 'schema local admin', schemaLocal)).not.toThrow();
+  });
+
+  it('拒絕偽裝成 LOCAL_ISOLATED 的 remote、Production、缺失或不配對 evidence', () => {
+    const rejected = [
+      ['remote URL', 'remote', localEvidence({ testSupabaseUrl: 'https://remote.example' })],
+      ['Production ref', PRODUCTION_SUPABASE_PROJECT_REF, localEvidence()],
+      ['missing project identity', '127', localEvidence({ localProjectId: undefined })],
+      ['mismatched slot', '127', localEvidence({ testEnvId: 'local-pr-681-b' })],
+      ['mismatched ref', 'localhost', localEvidence()],
+      ['URL credentials', '127', localEvidence({ testSupabaseUrl: 'http://user:pass@127.0.0.1:54321' })],
+      ['URL query', '127', localEvidence({ testSupabaseUrl: 'http://127.0.0.1:54321?unsafe=1' })],
+    ] as const;
+    for (const [, ref, evidence] of rejected) {
+      expect(isAdmittedLocalIsolatedTarget(ref, evidence)).toBe(false);
+      expect(() => assertTestSupabaseTarget(ref, 'untrusted target', evidence)).toThrow();
+    }
   });
 
   it('Production 專案 → 硬失敗，訊息要指名正式資料庫', () => {
