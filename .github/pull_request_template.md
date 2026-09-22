@@ -120,9 +120,10 @@ PRODUCT_MAINLINE uses current `docs/MODEL-ROUTING.md` and `scripts/agents/model-
 
 ## Schema staged release metadata
 
-<!-- Required by the executable guard when a migration and Product runtime/API/UI change together. PREPARE is legal only with a changed, mechanically visible default-off gate. ACTIVATE must be a later no-migration PR with immutable TEST and Production schema evidence. -->
+<!-- Required by the executable guard when a migration and Product runtime/API/UI change together, OR when runtime depends on schema prepared in another PR/migration. A split dependency does not bypass staged release: before readiness it must stay PREPARE + mechanically default-off; ACTIVATE is a later no-migration change backed by immutable TEST and Production schema evidence. -->
 
-- SCHEMA_RELEASE_STAGE: PREPARE | ACTIVATE | <!-- omit for ordinary non-schema work -->
+- SCHEMA_DEPENDENCY: none | <!-- runtime-only dependency, e.g. PR #123 / supabase/migrations/0128_example.sql; legacy DEPENDS_ON_PR migration/schema text is also detected -->
+- SCHEMA_RELEASE_STAGE: PREPARE | ACTIVATE | <!-- omit only for ordinary runtime with no schema dependency -->
 - SCHEMA_ACTIVATION_GATE: DEFAULT_OFF | <!-- required for migration + runtime PREPARE -->
 - SCHEMA_ACTIVATION_ENV: <!-- required for migration + runtime PREPARE; e.g. NEW_SCHEMA_FEATURE -->
 - SCHEMA_ACTIVATION_GUARD_PATH: <!-- changed runtime path that defines the gate symbol -->
