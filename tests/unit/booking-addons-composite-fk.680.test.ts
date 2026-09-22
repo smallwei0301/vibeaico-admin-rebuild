@@ -66,7 +66,10 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_TENANT_MISMATCH');
     expect(sql).toContain('BOOKING_ADDONS_PERFORMANCE_STAFF_UNKNOWN_FK');
     expect(sql).toContain('confdelsetcols = ARRAY[child_perf]::smallint[]');
-    expect(sql).toContain("pg_notify('pgrst', 'reload schema')");
+    expect(sql).toContain("NOTIFY pgrst, 'reload schema';");
+    expect(sql).toContain("pg_catalog.to_regclass('public.booking_addons')");
+    expect(sql).not.toContain('PERFORM set_config');
+    expect(sql).not.toContain('PERFORM pg_notify');
     expect(sql.toLowerCase()).not.toContain('delete from public.booking_addons');
     expect(sql.toLowerCase()).not.toContain('update public.booking_addons');
   });
