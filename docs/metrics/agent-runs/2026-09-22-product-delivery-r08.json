@@ -129,7 +129,8 @@
     "本 Run 只收斂 Source→TEST→Production→authenticated acceptance 的現有 Environment Delivery queue，不增加新 Product 功能。",
     "OBSERVED_FULL_CI: exact-head ci run 35701338480 completed success after Run start; recorded during final-gate correction. This does not convert the separate schema-bootstrap failure into success.",
     "Issue #680：Owner 已選 A；本 Run 於當下開始 source-only FK expand。canonical TEST 仍由 #676 的既有失敗後釋放，不重跑或搶佔；TEST_VERIFIED/PRODUCTION_SCHEMA_READY 尚未成立。",
-    "2026-09-22T10:20:53Z：#681 exact-head CI 35714460876 與 schema bootstrap 35714460916 的 FIX_REQUIRED 為目前可驗證的 reviewer return；依此即時記錄 9b4cff5 BUILD_ENTER/BUILD_EXIT，峰值回到 event-derived 1，未倒填此前歷史。"
+    "2026-09-22T10:20:53Z：#681 exact-head CI 35714460876 與 schema bootstrap 35714460916 的 FIX_REQUIRED 為目前可驗證的 reviewer return；依此即時記錄 9b4cff5 BUILD_ENTER/BUILD_EXIT，峰值回到 event-derived 1，未倒填此前歷史。",
+    "2026-09-22T10:30:10Z：#681 3281f8f exact-head CI 35715564083／schema bootstrap 35715564128 的 FIX_REQUIRED 觸發第二組 BUILD lifecycle；以當下事件記錄，未倒填。"
   ],
   "deliveryTruthVersion": 4,
   "closeout": {
@@ -162,6 +163,26 @@
         "head": "9b4cff5d319afefdcdb4e1b74e764b520333cc95",
         "workstream": "PRODUCT_MAINLINE",
         "reason": "Recorded at live reviewer return: exit the failed 9b4cff5 exact-head build lease before the repaired candidate receives a new exact-head CI."
+      },
+      {
+        "id": "pr-681-build-enter-fix-required-3281f8f",
+        "at": "2026-09-22T10:30:10.000Z",
+        "kind": "BUILD_ENTER",
+        "pr": 681,
+        "issue": 680,
+        "head": "3281f8fa34a078c95348facd2330e286ba78b6e6",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Exact-head CI 35715564083 and schema bootstrap 35715564128 returned FIX_REQUIRED: release-plan tier collision and non-deterministic disposable staff fixture."
+      },
+      {
+        "id": "pr-681-build-exit-fix-required-3281f8f",
+        "at": "2026-09-22T10:30:11.000Z",
+        "kind": "BUILD_EXIT",
+        "pr": 681,
+        "issue": 680,
+        "head": "3281f8fa34a078c95348facd2330e286ba78b6e6",
+        "workstream": "PRODUCT_MAINLINE",
+        "reason": "Recorded at live reviewer return before the repaired additive candidate receives a new exact-head CI."
       }
     ]
   },
