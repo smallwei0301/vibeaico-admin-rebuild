@@ -41,6 +41,12 @@ export const PUT = handle(async (req, { params }: Context) => {
   if (body.durationMinutes !== undefined) patch.duration_minutes = body.durationMinutes;
   if (body.priceType !== undefined) patch.price_type = body.priceType;
   if (body.yearRound !== undefined) patch.year_round = body.yearRound;
+  if (body.salesMode !== undefined) patch.sales_mode = body.salesMode;
+  if (body.participationMode !== undefined) patch.participation_mode = body.participationMode;
+  if (body.minToDepart !== undefined) patch.min_to_depart = body.minToDepart;
+  if (body.formationDeadlineDaysBefore !== undefined) {
+    patch.formation_deadline_days_before = body.formationDeadlineDaysBefore;
+  }
   if (Object.keys(patch).length === 0) return ok(mapTripPlan(current));
 
   const { data, error } = await t.supabase.from('trip_plans').update(patch)
