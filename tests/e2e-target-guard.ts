@@ -142,7 +142,7 @@ export function isAdmittedLocalIsolatedTarget(
   try {
     const url = new URL(evidence.testSupabaseUrl ?? '');
     if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname)
-        || url.username || url.password || url.search || url.hash) return false;
+        || url.username || url.password || url.pathname !== '/' || url.search || url.hash) return false;
     // The browser cookie/admin ref must agree with this exact loopback URL; do
     // not allow a local-looking environment to bless an unrelated target.
     return ref === projectRefFromSupabaseUrl(url.toString());
