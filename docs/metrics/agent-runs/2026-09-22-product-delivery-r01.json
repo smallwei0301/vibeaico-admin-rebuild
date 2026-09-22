@@ -266,7 +266,7 @@
       },
       {
         "type": "ISSUE_CLOSED",
-        "subject": "issue/655",
+        "subject": "issue#655",
         "claimedState": "closed",
         "observedState": "closed",
         "verification": "VERIFIED",

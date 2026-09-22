@@ -7,7 +7,7 @@
 ## 兩本帳
 
 - 真正出貨 shipped_units：0（v3 只算已關閉且完成五階段正式環境驗收的 Delivery Slice）
-- 正式環境待驗 production_pending：0
+- 正式環境待驗 production_pending：1
 - 自主完成 autonomous_outcome_units：0（正式出貨 + 唯一完整 OWNER_BLOCKED × 0.75）
 - 在製品 WIP：Audit Ready 0、CI-only 0、commit-only 0、carryover 0
 - 內部加權 usage：33（不是官方 token）
@@ -26,9 +26,13 @@
 - auditability.exactHeadTestCoveragePercent is missing
 - auditability.preciseBlockersPercent is missing
 - auditability.scoreInputsCompletePercent is missing
-- ISSUE_CLOSED issue/655 does not identify one canonical Issue
 - MERGED_TO_MAIN pr/657 does not identify one canonical Issue
 - verified RUN_COMPLETE claim is required
+- issue#655 is closed but SOURCE_VERIFIED is not verified at its successful state
+- issue#655 is closed but MERGED_TO_MAIN is not verified at its successful state
+- issue#655 is closed but AUTO_VERCEL_DEPLOYED is not verified at its successful state
+- issue#655 is closed but PRODUCTION_SCHEMA_READY is not verified at its successful state
+- issue#655 is closed but AUTHENTICATED_PRODUCTION_ACCEPTED is not verified at its successful state
 - delivery.issuesClosed=1 does not match 0 production-accepted shipped subject(s)
 
 ---
