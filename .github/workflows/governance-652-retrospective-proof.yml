@@ -1,4 +1,4 @@
-name: Governance 652 retrospective execution proof
+name: Governance 652 retrospective execution proof\n# rerun after #652 contract-test correction
 on:
   push:
     branches: [governance/652-retrospective-execution-receipt]
