@@ -46,12 +46,15 @@ describe('#680 booking_addons tenant-scoped performance staff FK expansion', () 
       'cross-tenant-existing-data-fails-closed',
     ]);
     expect(cases[2].error).toBe('BOOKING_ADDONS_PERFORMANCE_STAFF_TENANT_MISMATCH');
+    expect(cases[0].sql).toContain("c.confdeltype='a' AND c.confdelsetcols IS NULL");
+    expect(cases[1].sql).toContain("c.confdeltype='n' AND c.confdelsetcols=ARRAY[perf_att]::smallint[]");
     for (const item of cases.slice(0, 2)) {
       expect(item.sql).toContain('same-tenant proof');
       expect(item.sql).toContain('cross-tenant proof');
       expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION');
       expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_PARENT_DELETE_DID_NOT_CLEAR_STAFF');
       expect(item.sql).toContain('BOOKING_ADDONS_FK_PROOF_RLS_DISABLED');
+      expect(item.sql).not.toContain('expectedCompositeDelete');
       expect(item.sql).toContain("DELETE FROM public.staff WHERE id='68000000-0000-4000-8000-000000000011' AND tenant_id=a_tenant");
       expect(item.sql).toContain('SELECT id INTO b_tenant FROM public.tenants ORDER BY id OFFSET 1 LIMIT 1');
     }
