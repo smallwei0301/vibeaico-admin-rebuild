@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  discoverChangedFiles,
+  parseGitNameStatus,
   validateDeliveryUnitBoundary,
   validateWipPreflight,
 } from '../../scripts/agents/agent-wip-preflight.mjs';
@@ -207,6 +209,50 @@ describe('Issue #164 Agent WIP preflight', () => {
       { issueNumber: 150, origin: 'AGENT', state: 'ACTIVE', lane: 'TERRA_BUILD' },
     );
     expect(errors).toContain('A retroactive tracking migration must set COUNT_IN_DELIVERY_OUTCOME=false');
+  });
+});
+
+describe('#659 local preflight changed-file discovery', () => {
+  it('keeps both old and new paths for renames so schema triggers cannot disappear', () => {
+    expect(parseGitNameStatus([
+      'M\tsrc/server/widgets.ts',
+      'R100\tsupabase/migrations/0127_old.sql\tdocs/schema-truth/archive.sql',
+      'A\ttests/unit/example.test.ts',
+      '',
+    ].join('\n'))).toEqual([
+      'src/server/widgets.ts',
+      'supabase/migrations/0127_old.sql',
+      'docs/schema-truth/archive.sql',
+      'tests/unit/example.test.ts',
+    ]);
+  });
+
+  it('discovers the current branch inventory from one shell-free git diff call', () => {
+    const calls: Array<{ args: string[]; options: Record<string, unknown> }> = [];
+    const files = discoverChangedFiles({
+      base: 'origin/main',
+      repositoryRoot: '/repo',
+      runGit: (args, options) => {
+        calls.push({ args, options });
+        return 'M\tscripts/agents/agent-wip-preflight.mjs\n';
+      },
+    });
+    expect(files).toEqual(['scripts/agents/agent-wip-preflight.mjs']);
+    expect(calls).toEqual([{
+      args: ['diff', '--name-status', '--find-renames', 'origin/main...HEAD', '--'],
+      options: { cwd: '/repo', encoding: 'utf8' },
+    }]);
+  });
+
+  it('fails closed on an unsafe base ref or an empty branch diff', () => {
+    expect(() => discoverChangedFiles({
+      base: 'origin/main;echo unsafe',
+      runGit: () => '',
+    })).toThrow(/safe git base ref/);
+    expect(() => discoverChangedFiles({
+      base: 'origin/main',
+      runGit: () => '',
+    })).toThrow(/No changed files found/);
   });
 });
 
