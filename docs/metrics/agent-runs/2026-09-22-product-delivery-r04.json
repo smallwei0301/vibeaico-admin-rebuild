@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 2,
+  "runId": "2026-09-22-product-delivery-r04",
+  "status": "IN_PROGRESS",
+  "startedAt": "2026-09-22T03:15:06.414Z",
+  "endedAt": null,
+  "sources": [
+    { "ref": "origin/main" },
+    { "ref": "issue/42" }
+  ],
+  "main": {
+    "startSha": "69f519ace59fd250a24998e225160ebe914b6510",
+    "endSha": null
+  },
+  "inventory": {
+    "openIssuesStart": 47,
+    "openIssuesEnd": null,
+    "openPrsStart": 2,
+    "openPrsEnd": null,
+    "mainTerraPeak": 0,
+    "reserveTerraPeak": 0,
+    "activeCandidatePeak": 0,
+    "sharedTestPeak": 0,
+    "closureSweeps": 0,
+    "closureAdvancedOrClosed": 0
+  },
+  "modelUsage": {
+    "actualTokensAvailable": false,
+    "weeklyUsageStartPercent": null,
+    "weeklyUsageEndPercent": null,
+    "weightedUsageImprovementPercent": null,
+    "weights": {
+      "luna": 1,
+      "terra": 3,
+      "sol": 6
+    },
+    "contextMultipliers": {
+      "compact": 1,
+      "medium": 1.5,
+      "full": 3
+    },
+    "tasks": [
+      {
+        "id": "terra-build-issue-42-seasonal-price-resolution",
+        "role": "build",
+        "requestedModel": "terra",
+        "actualModel": "terra",
+        "contextClass": "full",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "TERRA_BUILD：#42 真缺口——0128 建立的 trip_plan_seasons 季節定價資料模型，0128 檔頭已自陳『不改既有 order 價格 snapshot』，0130 之後的 create_tour_order 仍無條件用 price_per_person，季節 override 從未對任何成交訂單生效。新增 0132_issue_42_seasonal_price_resolution，create or replace 同簽章 create_tour_order，依 departure.departs_on 比對 active 季節（含跨年展期，重疊 precedence＝範圍最小者優先，檔頭載明為本檔 bounded 設計決策），命中且有 price_override 時取代基本價；其餘 0110/0111/0130 既有行為原樣保留。純 migration-only，未修改任何 runtime/route/UI 檔。typecheck 0 錯誤、build 成功、全倉庫 3495 單元測試綠（含同步更新 ledger-alias-map.396.test.ts 的固定計數、重新釘住 fresh-install-compatibility-baseline manifest 的 digest/mainHead）。未套用任何環境（無法本機驗證 SQL 執行結果，如實記錄）。",
+        "count": 1
+      }
+    ],
+    "fullContextReplays": 0,
+    "duplicateScans": 0
+  },
+  "delivery": {
+    "issuesStarted": 1,
+    "issuesClosed": 0,
+    "auditReady": 0,
+    "ownerBlockedComplete": 0,
+    "exactHeadCiOnly": 0,
+    "commitOnly": 0,
+    "unfinishedCarryover": 0,
+    "cycleTimeMinutes": null
+  },
+  "ci": {
+    "fullCiRuns": 0,
+    "invalidReruns": 0,
+    "firstPassRatePercent": null,
+    "sharedTestCollisions": 0
+  },
+  "quality": {
+    "acceptanceEvidenceCoveragePercent": null,
+    "auditFirstPassRatePercent": null,
+    "unresolvedP0": 0,
+    "unresolvedP1": 0,
+    "reopenedIssues": 0,
+    "postMergeRegressions": 0,
+    "safetyViolations": 0,
+    "hardFailReasons": []
+  },
+  "flow": {
+    "lunaTasks": 0,
+    "lunaAccepted": 0,
+    "lunaDelegationRatePercent": null,
+    "duplicateAgentTasks": 0,
+    "ownershipCollisions": 0,
+    "waitTimeConvertedPercent": null,
+    "solTouches": 0,
+    "solIssues": 0
+  },
+  "auditability": {
+    "evidenceFieldsCompletePercent": null,
+    "exactHeadTestCoveragePercent": null,
+    "stalePendingDescriptions": 0,
+    "preciseBlockersPercent": null,
+    "scoreInputsCompletePercent": null
+  },
+  "notes": [],
+  "deliveryTruthVersion": 4,
+  "closeout": {
+    "contractVersion": 1,
+    "ownerRole": "PRODUCT_MAIN_SESSION",
+    "terminalPolicy": "CLOSE_OR_REASSIGN_BEFORE_SESSION_EXIT_OR_OWNER_STOP_OR_SCOPE_EXHAUSTED_OR_OWNER_BLOCKED",
+    "state": "OPEN",
+    "closedAt": null,
+    "evidenceRef": null
+  },
+  "wipLifecycle": {
+    "schemaVersion": 1,
+    "events": []
+  },
+  "completionTruth": {
+    "status": "NOT_CHECKED",
+    "checkedAt": null,
+    "claims": []
+  }
+}
