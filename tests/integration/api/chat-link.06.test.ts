@@ -104,8 +104,12 @@ let settingsSnapshot: {
   line_channel_access_token_enc: string;
 } | null = null;
 
-/** issue #15：圖片案例上傳成功後記下 chat-images 內的路徑，afterAll 清掉 */
-let uploadedChatImagePath: string | null = null;
+/**
+ * issue #15：圖片案例上傳成功後記下 chat-images 內的路徑，afterAll 清掉。
+ * #674：conversations 區塊也補了一個圖片情境測試，會再上傳一張，所以改陣列，
+ * 兩處上傳都用同一份清單，afterAll 一次全部 remove。
+ */
+const uploadedChatImagePaths: string[] = [];
 
 /** beforeAll 時當月 push_quota_usage 是否已有列／其 used 值（afterAll 還原用） */
 let quotaRowExistedAtStart = false;
@@ -212,9 +216,9 @@ beforeAll(async () => {
 afterAll(async () => {
   const cleanupErrors: Array<[string, unknown]> = [];
 
-  if (uploadedChatImagePath) {
-    const storageCleanup = await admin.storage.from(CHAT_IMAGES_BUCKET).remove([uploadedChatImagePath]);
-    cleanupErrors.push(['chat-images storage object', storageCleanup.error]);
+  if (uploadedChatImagePaths.length > 0) {
+    const storageCleanup = await admin.storage.from(CHAT_IMAGES_BUCKET).remove(uploadedChatImagePaths);
+    cleanupErrors.push(['chat-images storage objects', storageCleanup.error]);
   }
 
   const messagesCleanup = await admin
@@ -428,7 +432,7 @@ describe('傳出半邊：POST /api/chat/messages → push + OUT + 額度（04 §
     expect(uploadBody.success).toBe(true);
     const imageUrl = uploadBody.data!.url;
     expect(imageUrl).toContain(`/${SHOP_A.id}/`);
-    uploadedChatImagePath = imageUrl.slice(imageUrl.indexOf(`${SHOP_A.id}/`));
+    uploadedChatImagePaths.push(imageUrl.slice(imageUrl.indexOf(`${SHOP_A.id}/`)));
 
     // 2) POST /api/chat/messages 帶 imageUrl 送出
     const res = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, imageUrl });
@@ -476,7 +480,24 @@ describe('傳出半邊：POST /api/chat/messages → push + OUT + 額度（04 §
 });
 
 describe('GET /api/chat/conversations — 未讀數與最後訊息；read 後歸零（04 §B-5）', () => {
-  it('未讀 = 2 筆 IN、最後訊息 = 最新的 OUT 回覆、displayName 來自 mock profile', async () => {
+  /**
+   * #674：這個 it() 原本假設「本檔案時間序上最新的一筆 OUT 訊息是文字」，但這只在
+   * 「傳出半邊」describe 區塊最後一次 POST 剛好是文字 OUT 時才成立。issue #15 在
+   * 同檔案這個區塊之前插入了「圖片訊息」與「其他租戶偽造 URL（400，不落地）」兩個
+   * it()，其中圖片訊息 it() 會在文字 OUT 之後再送一筆更晚的圖片 OUT，讓前提在
+   * describe 執行序上被悄悄推翻，斷言卻沒有跟著更新（main 上穩定失敗即源於此）。
+   *
+   * 修法：不依賴同檔案其他 it() 留下的資料庫狀態或時間序，改成在本 it() 內先自行
+   * POST 一則新的文字 OUT，當場重建「最新一筆是文字 OUT」這個前提，再對它斷言。
+   * 這樣不論同檔案其他測試的執行順序或增減，這條 it() 都會自證前提成立。
+   */
+  it('未讀 = 2 筆 IN、最後訊息 = 最新的文字 OUT 回覆、displayName 來自 mock profile', async () => {
+    mock.reset();
+    const usedBefore = await quotaUsed();
+    const post = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, text: OUT_TEXT });
+    expect(post.status).toBe(200);
+    expect(await quotaUsed()).toBe(usedBefore + 1);
+
     const res = await ownerA.get('/api/chat/conversations');
     expect(res.status).toBe(200);
     const body = (await res.json()) as Envelope<
@@ -493,10 +514,50 @@ describe('GET /api/chat/conversations — 未讀數與最後訊息；read 後歸
     const conv = body.data!.find((c) => c.lineUserId === USER_CHAT);
     expect(conv).toBeTruthy();
     expect(conv!.unread).toBe(2); // IN_TEXT_1 + IN_TEXT_2 皆未讀（OUT 不算未讀）
-    expect(conv!.lastMessage).toBe(OUT_TEXT); // 時間序最新的一筆是後台的 OUT 回覆
+    expect(conv!.lastMessage).toBe(OUT_TEXT); // 剛剛重建的前提：最新一筆是文字 OUT
     expect(conv!.lastMessageType).toBe('TEXT');
     expect(conv!.lastMessageAt).not.toBeNull();
     expect(conv!.displayName).toBe(`${MOCK_PROFILE_NAME_PREFIX}${USER_CHAT.slice(-4)}`);
+  });
+
+  /**
+   * #674 補的覆蓋：src/app/api/chat/conversations/route.ts 的 contentText() 只讀
+   * content.text，圖片訊息的 content 是 { imageUrl }（沒有 text），所以「最新一筆
+   * 是圖片 OUT」時 lastMessage 正確地是空字串、lastMessageType 是 'IMAGE'——這是既
+   * 有的正確行為（前端 src/app/tenant/chat/page.tsx 已用 lastMessageType==='IMAGE'
+   * 顯示「圖片」字樣），但原本沒有任何測試鎖住它。這裡在本 it() 內自行上傳並 POST
+   * 一筆新的圖片 OUT，重建「最新一筆是圖片」的前提後再斷言，同樣不依賴執行順序。
+   */
+  it('最新一筆是圖片 OUT 時，lastMessageType = IMAGE、lastMessage = 空字串', async () => {
+    mock.reset();
+    const usedBefore = await quotaUsed();
+
+    const form = new FormData();
+    form.append('file', new File([PNG_1X1 as unknown as BlobPart], 'chat-conv.png', { type: 'image/png' }));
+    form.append('bucket', CHAT_IMAGES_BUCKET);
+    const uploadRes = await ownerA.fetch('/api/upload', { method: 'POST', body: form });
+    expect(uploadRes.status).toBe(200);
+    const uploadBody = (await uploadRes.json()) as Envelope<{ url: string }>;
+    expect(uploadBody.success).toBe(true);
+    const imageUrl = uploadBody.data!.url;
+    expect(imageUrl).toContain(`/${SHOP_A.id}/`);
+    uploadedChatImagePaths.push(imageUrl.slice(imageUrl.indexOf(`${SHOP_A.id}/`)));
+
+    const post = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, imageUrl });
+    expect(post.status).toBe(200);
+    expect(await quotaUsed()).toBe(usedBefore + 1);
+
+    const res = await ownerA.get('/api/chat/conversations');
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Envelope<
+      { lineUserId: string; lastMessage: string; lastMessageType: string; lastMessageAt: string | null }[]
+    >;
+    expect(body.success).toBe(true);
+    const conv = body.data!.find((c) => c.lineUserId === USER_CHAT);
+    expect(conv).toBeTruthy();
+    expect(conv!.lastMessageType).toBe('IMAGE');
+    expect(conv!.lastMessage).toBe('');
+    expect(conv!.lastMessageAt).not.toBeNull();
   });
 
   it('逐筆 read 未讀 IN 訊息 → 未讀歸零', async () => {
