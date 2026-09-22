@@ -33,11 +33,11 @@ const B_TENANT = '68000000-0000-4000-8000-000000000002';
 const A_STAFF = '68000000-0000-4000-8000-000000000011';
 const B_STAFF = '68000000-0000-4000-8000-000000000012';
 
-const reset = (shape, includeMismatch = false) => \`
+const reset = (shape, includeMismatch = false) => `
 DO $fixture$
 DECLARE
-  a_tenant uuid := '\${A_TENANT}';
-  b_tenant uuid := '\${B_TENANT}';
+  a_tenant uuid := '${A_TENANT}';
+  b_tenant uuid := '${B_TENANT}';
 BEGIN
   -- The canonical seed has no cross-tenant staff guarantee. Insert an exact,
   -- rollback-scoped pair so this proof's positive and negative controls are deterministic.
@@ -46,8 +46,8 @@ BEGIN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_REQUIRES_TWO_TENANTS';
   END IF;
   INSERT INTO public.staff (id, tenant_id, name) VALUES
-    ('\${A_STAFF}', a_tenant, 'I680 proof staff A'),
-    ('\${B_STAFF}', b_tenant, 'I680 proof staff B');
+    ('${A_STAFF}', a_tenant, 'I680 proof staff A'),
+    ('${B_STAFF}', b_tenant, 'I680 proof staff B');
 
   FOR fk IN SELECT conname FROM pg_constraint
     WHERE conrelid='public.booking_addons'::regclass AND contype='f'
@@ -56,11 +56,11 @@ BEGIN
   END LOOP;
   DELETE FROM public.booking_addons;
 
-  \${shape === 'single-only' ? \`
+  ${shape === 'single-only' ? `
   ALTER TABLE public.booking_addons
     ADD CONSTRAINT booking_addons_performance_staff_id_fkey
     FOREIGN KEY (performance_staff_id) REFERENCES public.staff(id) ON DELETE SET NULL;
-  \` : \`
+  ` : `
   -- This is the known TEST start shape. EXPAND retains it instead of performing a
   -- contract migration; the single FK below is added for runtime compatibility.
   ALTER TABLE public.booking_addons
@@ -68,18 +68,18 @@ BEGIN
     FOREIGN KEY (tenant_id, performance_staff_id)
     REFERENCES public.staff(tenant_id, id)
     ON DELETE SET NULL (performance_staff_id);
-  \`}
+  `}
 
-  \${includeMismatch ? \`
+  ${includeMismatch ? `
   INSERT INTO public.booking_addons
     (tenant_id, booking_id, name, performance_mode, performance_staff_id)
-  VALUES (a_tenant, gen_random_uuid(), 'cross-tenant precondition', 'INHERIT', '\${B_STAFF}');
-  \` : ''}
+  VALUES (a_tenant, gen_random_uuid(), 'cross-tenant precondition', 'INHERIT', '${B_STAFF}');
+  ` : ''}
 END
 $fixture$;
-\`;
+`;
 
-const proof = (expectedCompositeDelete) => \`
+const proof = (expectedCompositeDelete) => `
 DO $proof$
 DECLARE
   rejected boolean := false;
@@ -90,11 +90,11 @@ BEGIN
      AND attname='performance_staff_id' AND NOT attisdropped;
   INSERT INTO public.booking_addons
     (tenant_id, booking_id, name, performance_mode, performance_staff_id)
-  VALUES ('\${A_TENANT}', gen_random_uuid(), 'same-tenant proof', 'INHERIT', '\${A_STAFF}');
+  VALUES ('${A_TENANT}', gen_random_uuid(), 'same-tenant proof', 'INHERIT', '${A_STAFF}');
   BEGIN
     INSERT INTO public.booking_addons
       (tenant_id, booking_id, name, performance_mode, performance_staff_id)
-    VALUES ('\${A_TENANT}', gen_random_uuid(), 'cross-tenant proof', 'INHERIT', '\${B_STAFF}');
+    VALUES ('${A_TENANT}', gen_random_uuid(), 'cross-tenant proof', 'INHERIT', '${B_STAFF}');
   EXCEPTION WHEN foreign_key_violation THEN rejected := true;
   END;
   IF NOT rejected THEN RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_CROSS_TENANT_ACCEPTED'; END IF;
@@ -121,14 +121,14 @@ BEGIN
      ) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_IDENTITY_VALIDATION_OR_DELETE_ACTION';
   END IF;
-  DELETE FROM public.staff WHERE id='\${A_STAFF}' AND tenant_id='\${A_TENANT}';
+  DELETE FROM public.staff WHERE id='${A_STAFF}' AND tenant_id='${A_TENANT}';
   IF EXISTS (SELECT 1 FROM public.booking_addons
               WHERE name='same-tenant proof' AND performance_staff_id IS NOT NULL) THEN
     RAISE EXCEPTION 'BOOKING_ADDONS_FK_PROOF_PARENT_DELETE_DID_NOT_CLEAR_STAFF';
   END IF;
 END
 $proof$;
-\`;
+`;
 
 export function buildCases(migration) {
   return [
