@@ -431,8 +431,14 @@ describe('傳出半邊：POST /api/chat/messages → push + OUT + 額度（04 §
     const uploadBody = (await uploadRes.json()) as Envelope<{ url: string }>;
     expect(uploadBody.success).toBe(true);
     const imageUrl = uploadBody.data!.url;
+    // 物件已經上傳到 chat-images bucket；不論後面的 toContain 斷言是否通過，
+    // 都要先把能解析出的路徑登記進清理清單，afterAll 才能刪得到，避免共用
+    // TEST bucket 被斷言失敗的殘留物件污染。
+    const shopIdIndex = imageUrl.indexOf(`${SHOP_A.id}/`);
+    if (shopIdIndex >= 0) {
+      uploadedChatImagePaths.push(imageUrl.slice(shopIdIndex));
+    }
     expect(imageUrl).toContain(`/${SHOP_A.id}/`);
-    uploadedChatImagePaths.push(imageUrl.slice(imageUrl.indexOf(`${SHOP_A.id}/`)));
 
     // 2) POST /api/chat/messages 帶 imageUrl 送出
     const res = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, imageUrl });
@@ -540,8 +546,12 @@ describe('GET /api/chat/conversations — 未讀數與最後訊息；read 後歸
     const uploadBody = (await uploadRes.json()) as Envelope<{ url: string }>;
     expect(uploadBody.success).toBe(true);
     const imageUrl = uploadBody.data!.url;
+    // 同上：先登記能解析出的路徑，再斷言，避免斷言失敗導致清理清單漏掉已上傳的物件。
+    const shopIdIndex = imageUrl.indexOf(`${SHOP_A.id}/`);
+    if (shopIdIndex >= 0) {
+      uploadedChatImagePaths.push(imageUrl.slice(shopIdIndex));
+    }
     expect(imageUrl).toContain(`/${SHOP_A.id}/`);
-    uploadedChatImagePaths.push(imageUrl.slice(imageUrl.indexOf(`${SHOP_A.id}/`)));
 
     const post = await ownerA.post('/api/chat/messages', { lineUserId: USER_CHAT, imageUrl });
     expect(post.status).toBe(200);
