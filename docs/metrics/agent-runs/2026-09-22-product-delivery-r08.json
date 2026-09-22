@@ -20,14 +20,14 @@
     "endSha": null
   },
   "inventory": {
-    "openIssuesStart": null,
+    "openIssuesStart": 50,
     "openIssuesEnd": null,
     "openPrsStart": 3,
     "openPrsEnd": null,
     "mainTerraPeak": 0,
     "reserveTerraPeak": 0,
     "activeCandidatePeak": 0,
-    "sharedTestPeak": 1,
+    "sharedTestPeak": 0,
     "closureSweeps": 0,
     "closureAdvancedOrClosed": 0
   },
@@ -46,7 +46,21 @@
       "medium": 1.5,
       "full": 3
     },
-    "tasks": [],
+    "tasks": [
+      {
+        "id": "luna-r08-live-binding-triage",
+        "role": "scout",
+        "requestedModel": "luna",
+        "actualModel": "unknown",
+        "contextClass": "compact",
+        "accepted": true,
+        "inputTokens": null,
+        "outputTokens": null,
+        "cachedTokens": null,
+        "note": "Run start 後重新讀 live guard、open Issue/PR inventory 與 exact-head workflow，修正 r08 binding facts；未操作 shared TEST 或資料庫。",
+        "count": 1
+      }
+    ],
     "fullContextReplays": 0,
     "duplicateScans": 0
   },
@@ -77,8 +91,8 @@
     "hardFailReasons": []
   },
   "flow": {
-    "lunaTasks": 0,
-    "lunaAccepted": 0,
+    "lunaTasks": 1,
+    "lunaAccepted": 1,
     "lunaDelegationRatePercent": null,
     "duplicateAgentTasks": 0,
     "ownershipCollisions": 0,
